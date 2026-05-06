@@ -1,0 +1,40 @@
+{
+  "name": "zero-core",
+  "version": "0.1.0",
+  "description": "Custom agent core based on Pi Agent with configurable extensions and OpenClaw harness integration",
+  "type": "module",
+  "bin": { "zero-core": "./dist/cli.js" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./extension": {
+      "types": "./dist/extension/index.d.ts",
+      "import": "./dist/extension/index.js"
+    },
+    "./openclaw": {
+      "types": "./dist/openclaw/plugin-entry.d.ts",
+      "import": "./dist/openclaw/plugin-entry.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@mariozechner/pi-ai": "^0.73.0",
+    "@mariozechner/pi-agent-core": "^0.73.0",
+    "@mariozechner/pi-coding-agent": "^0.73.0",
+    "typebox": "^1.1.24"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  }
+}

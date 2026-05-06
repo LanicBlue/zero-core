@@ -1,0 +1,24 @@
+{
+  "id": "zero-core",
+  "name": "Zero Core Agent",
+  "description": "Custom agent core based on Pi Agent with configurable context management, tool policy, and compaction",
+  "activation": {
+    "onAgentHarnesses": ["zero-core"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "harnessPriority": {
+        "type": "number",
+        "default": 50
+      },
+      "supportedProviders": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
