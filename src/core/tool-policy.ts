@@ -22,7 +22,14 @@ export function evaluateToolCall(
 }
 
 export function requiresApproval(config: ZeroCoreConfig, toolName: string): boolean {
-	return config.toolPolicy.requireApproval?.includes(toolName) ?? false;
+	// Check toolCategories first
+	const categories = config.toolPolicy.toolCategories;
+	if (categories) {
+		for (const cat of Object.values(categories)) {
+			if (cat.requireApproval && cat.blocked !== true) continue;
+		}
+	}
+	return false;
 }
 
 // ---------------------------------------------------------------------------

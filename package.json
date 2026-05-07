@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "Custom agent core based on Pi Agent with configurable extensions and OpenClaw harness integration",
   "type": "module",
-  "bin": { "zero-core": "./dist/cli.js" },
+  "bin": {
+    "zero-core": "./dist/cli.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -21,18 +23,37 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsc -p tsconfig.json --watch"
+    "build": "tsc -p tsconfig.cli.json",
+    "build:server": "tsc -p tsconfig.cli.json",
+    "dev": "npx vite --config vite.config.ts",
+    "dev:server": "node --watch dist/serve.js",
+    "dev:full": "concurrently \"npm run build -- --watch\" \"npm run dev:server\"",
+    "serve": "node dist/serve.js",
+    "start": "node dist/serve.js"
   },
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.73.0",
     "@mariozechner/pi-agent-core": "^0.73.0",
+    "@mariozechner/pi-ai": "^0.73.0",
     "@mariozechner/pi-coding-agent": "^0.73.0",
-    "typebox": "^1.1.24"
+    "express": "^5.2.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "typebox": "^1.1.24",
+    "uuid": "^14.0.0",
+    "ws": "^8.20.0",
+    "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^24.3.0",
-    "typescript": "^5.7.3"
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.4.2"
   },
   "engines": {
     "node": ">=20.6.0"

@@ -9,7 +9,7 @@
 //    OPENCLAW_AGENT_RUNTIME=zero-core openclaw gateway run
 
 // Core configuration
-export { loadConfig, DEFAULT_CONFIG, ZeroCoreConfigSchema } from "./core/config.js";
+export { loadConfig, DEFAULT_CONFIG, ZeroCoreConfigSchema, ZERO_CORE_DIR, getGlobalConfigPath, resolveEffective } from "./core/config.js";
 export type { ZeroCoreConfig } from "./core/config.js";
 
 // Core logic

@@ -1,55 +1,134 @@
 import { Type, type Static } from "typebox";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 
 // ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
 
 export const ZeroCoreConfigSchema = Type.Object({
+	// ─── zero-core 独有 ─────────────────────────────────────────
+
+	persona: Type.Object({
+		name: Type.Optional(Type.String()),
+		role: Type.Optional(Type.String()),
+		traits: Type.Optional(Type.Array(Type.String())),
+		expertise: Type.Optional(Type.Array(Type.String())),
+		communicationStyle: Type.Optional(Type.String()),
+		customInstructions: Type.Optional(Type.String()),
+	}),
+
+	toolPolicy: Type.Object({
+		blockedTools: Type.Optional(Type.Array(Type.String())),
+		allowedTools: Type.Optional(Type.Array(Type.String())),
+		autoApprove: Type.Optional(Type.Array(Type.String())),
+		resultMaxTokens: Type.Optional(Type.Number()),
+		toolCategories: Type.Optional(
+			Type.Record(
+				Type.String(),
+				Type.Object({
+					blocked: Type.Optional(Type.Boolean()),
+					requireApproval: Type.Optional(Type.Boolean()),
+				}),
+			),
+		),
+		executionMode: Type.Optional(
+			Type.Union([Type.Literal("sequential"), Type.Literal("parallel")]),
+		),
+	}),
+
+	context: Type.Object({
+		maxTokens: Type.Optional(Type.Number()),
+		reserveTokens: Type.Optional(Type.Number()),
+		keepRecentTokens: Type.Optional(Type.Number()),
+		pruningStrategy: Type.Optional(
+			Type.Union([
+				Type.Literal("tail"),
+				Type.Literal("turn-boundary"),
+				Type.Literal("smart"),
+			]),
+		),
+		preserveToolResults: Type.Optional(Type.Boolean()),
+		importanceScoring: Type.Optional(Type.Boolean()),
+	}),
+
+	providerAdapter: Type.Object({
+		compatibility: Type.Optional(
+			Type.Record(
+				Type.String(),
+				Type.Object({
+					systemPromptAppend: Type.Optional(Type.String()),
+					maxSystemPromptTokens: Type.Optional(Type.Number()),
+					stripThinkingTags: Type.Optional(Type.Boolean()),
+				}),
+			),
+		),
+	}),
+
+	inputHandler: Type.Object({
+		commands: Type.Optional(
+			Type.Record(
+				Type.String(),
+				Type.Object({
+					template: Type.String(),
+					description: Type.Optional(Type.String()),
+				}),
+			),
+		),
+	}),
+
+	// ─── System Prompt ────────────────────────────────────────────
+
 	systemPrompt: Type.Object({
 		base: Type.Optional(Type.String()),
 		append: Type.Optional(Type.String()),
 		guidelines: Type.Optional(Type.Array(Type.String())),
-		injectProjectContext: Type.Optional(Type.Boolean({ default: true })),
+		injectProjectContext: Type.Optional(Type.Boolean()),
 		toolSnippets: Type.Optional(Type.Record(Type.String(), Type.String())),
 	}),
 
-
-	context: Type.Object({
-		maxTokens: Type.Optional(Type.Number()),
-		reserveTokens: Type.Optional(Type.Number({ default: 16384 })),
-		keepRecentTokens: Type.Optional(Type.Number({ default: 20000 })),
-		pruningStrategy: Type.Optional(Type.Union([
-			Type.Literal("tail"),
-			Type.Literal("turn-boundary"),
-		])),
-	}),
-
-
-	toolPolicy: Type.Object({
-		blockedTools: Type.Optional(Type.Array(Type.String())),
-		requireApproval: Type.Optional(Type.Array(Type.String())),
-		executionMode: Type.Optional(Type.Union([
-			Type.Literal("sequential"),
-			Type.Literal("parallel"),
-		])),
-	}),
-
+	// ─── Compaction ──────────────────────────────────────────────
 
 	compaction: Type.Object({
-		strategy: Type.Optional(Type.Union([
-			Type.Literal("pi-default"),
-			Type.Literal("custom"),
-		])),
+		strategy: Type.Optional(
+			Type.Union([Type.Literal("pi-default"), Type.Literal("custom")]),
+		),
 		customInstructions: Type.Optional(Type.String()),
+		enabled: Type.Optional(Type.Boolean()),
 		reserveTokens: Type.Optional(Type.Number()),
+		keepRecentTokens: Type.Optional(Type.Number()),
 	}),
 
+	// ─── Pi 运行时覆写 ──────────────────────────────────────────
+
+	defaults: Type.Object({
+		provider: Type.Optional(Type.String()),
+		model: Type.Optional(Type.String()),
+		thinkingLevel: Type.Optional(Type.String()),
+	}),
+
+	retry: Type.Object({
+		enabled: Type.Optional(Type.Boolean()),
+		maxRetries: Type.Optional(Type.Number()),
+		baseDelayMs: Type.Optional(Type.Number()),
+	}),
+
+	shell: Type.Object({
+		path: Type.Optional(Type.String()),
+		commandPrefix: Type.Optional(Type.String()),
+	}),
+
+	terminal: Type.Object({
+		showImages: Type.Optional(Type.Boolean()),
+		imageWidthCells: Type.Optional(Type.Number()),
+	}),
+
+	// ─── OpenClaw Harness ────────────────────────────────────────
 
 	harness: Type.Object({
-		id: Type.Optional(Type.String({ default: "zero-core" })),
-		priority: Type.Optional(Type.Number({ default: 50 })),
+		id: Type.Optional(Type.String()),
+		priority: Type.Optional(Type.Number()),
 		supportedProviders: Type.Optional(Type.Array(Type.String())),
 	}),
 });
@@ -61,6 +140,12 @@ export type ZeroCoreConfig = Static<typeof ZeroCoreConfigSchema>;
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_CONFIG: ZeroCoreConfig = {
+	persona: {
+		name: "Zero",
+		role: "Expert coding assistant",
+		traits: ["concise", "thorough"],
+		communicationStyle: "professional",
+	},
 	systemPrompt: {
 		injectProjectContext: true,
 	},
@@ -68,13 +153,22 @@ export const DEFAULT_CONFIG: ZeroCoreConfig = {
 		reserveTokens: 16384,
 		keepRecentTokens: 20000,
 		pruningStrategy: "turn-boundary",
+		preserveToolResults: true,
+		importanceScoring: false,
 	},
 	toolPolicy: {
+		autoApprove: [],
 		executionMode: "parallel",
 	},
 	compaction: {
 		strategy: "pi-default",
 	},
+	defaults: {},
+	retry: {},
+	shell: {},
+	terminal: {},
+	providerAdapter: {},
+	inputHandler: {},
 	harness: {
 		id: "zero-core",
 		priority: 50,
@@ -82,10 +176,18 @@ export const DEFAULT_CONFIG: ZeroCoreConfig = {
 };
 
 // ---------------------------------------------------------------------------
-// Loader
+// Global config path
 // ---------------------------------------------------------------------------
 
-const CONFIG_FILENAMES = ["zero-core.json", ".zero-core.json"];
+export const ZERO_CORE_DIR = process.env.ZERO_CORE_DIR ?? join(homedir(), ".zero-core");
+
+export function getGlobalConfigPath(): string {
+	return join(ZERO_CORE_DIR, "zero-core.json");
+}
+
+// ---------------------------------------------------------------------------
+// Deep merge
+// ---------------------------------------------------------------------------
 
 function deepMerge<T extends Record<string, unknown>>(base: T, override: Partial<T>): T {
 	const result = { ...base } as Record<string, unknown>;
@@ -109,26 +211,51 @@ function deepMerge<T extends Record<string, unknown>>(base: T, override: Partial
 	return result as T;
 }
 
+// ---------------------------------------------------------------------------
+// Loader
+// ---------------------------------------------------------------------------
+
+const PROJECT_CONFIG_FILENAMES = ["zero-core.json", ".zero-core.json"];
+
+function readJsonFile(filepath: string): Record<string, unknown> | null {
+	if (!existsSync(filepath)) return null;
+	try {
+		return JSON.parse(readFileSync(filepath, "utf-8"));
+	} catch {
+		return null;
+	}
+}
+
 export function loadConfig(cwd?: string, overrides?: Partial<ZeroCoreConfig>): ZeroCoreConfig {
 	let fileConfig: Partial<ZeroCoreConfig> = {};
 
+	// 1. Global config: ~/.zero-core/zero-core.json
+	const globalData = readJsonFile(getGlobalConfigPath());
+	if (globalData) fileConfig = deepMerge(fileConfig, globalData as Partial<ZeroCoreConfig>);
+
+	// 2. Project config: <cwd>/zero-core.json or <cwd>/.zero-core.json
 	if (cwd) {
-		for (const filename of CONFIG_FILENAMES) {
-			const filepath = join(cwd, filename);
-			if (existsSync(filepath)) {
-				try {
-					fileConfig = JSON.parse(readFileSync(filepath, "utf-8"));
-					break;
-				} catch {
-					// Ignore malformed config files
-				}
+		for (const filename of PROJECT_CONFIG_FILENAMES) {
+			const projectData = readJsonFile(join(cwd, filename));
+			if (projectData) {
+				fileConfig = deepMerge(fileConfig, projectData as Partial<ZeroCoreConfig>);
+				break;
 			}
 		}
 	}
 
+	// 3. Runtime overrides
 	if (overrides) {
 		fileConfig = deepMerge(fileConfig, overrides);
 	}
 
 	return deepMerge(DEFAULT_CONFIG, fileConfig);
+}
+
+// ---------------------------------------------------------------------------
+// Fallback helper
+// ---------------------------------------------------------------------------
+
+export function resolveEffective<T>(configValue: T | undefined, piDefault: T): T {
+	return configValue !== undefined ? configValue : piDefault;
 }
