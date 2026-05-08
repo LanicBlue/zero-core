@@ -10,6 +10,8 @@ import { evaluateToolCall, transformToolResult } from "../core/tool-policy.js";
 import { buildCompactionInstructions } from "../core/compaction.js";
 import { buildPersonaPrompt, applyPersonaToConfig, PERSONA_TEMPLATES } from "../core/persona.js";
 import { loadProjectContext, formatProjectContext } from "../core/project-context.js";
+import { getProviderAdapter } from "../core/provider-adapter.js";
+import { processInput } from "../core/input-handler.js";
 
 const extension = (pi: ExtensionAPI): void => {
 	const config = loadConfig(process.cwd());
@@ -23,13 +25,27 @@ const extension = (pi: ExtensionAPI): void => {
 		const persona = templateName ? PERSONA_TEMPLATES[templateName] : undefined;
 		const effectiveConfig = persona ? applyPersonaToConfig(config, persona) : config;
 
+		// Load project context if enabled
+		let projectContext: string | undefined;
+		if (effectiveConfig.systemPrompt.injectProjectContext !== false) {
+			const ctx = await loadProjectContext(process.cwd(), {
+				maxDirectoryDepth: 3,
+			});
+			projectContext = ctx ? formatProjectContext(ctx) : undefined;
+		}
+
+		// Provider adapter: append provider-specific system prompt sections
+		const adapter = getProviderAdapter(effectiveConfig, effectiveConfig.defaults.provider ?? "anthropic");
+
 		const systemPrompt = buildSystemPrompt(effectiveConfig, {
 			cwd: process.cwd(),
 			activeTools: [],
 			originalPrompt: event.systemPrompt,
-			extraSections: persona
-				? [{ key: "Persona", content: buildPersonaPrompt(persona) }]
-				: undefined,
+			projectContext,
+			extraSections: [
+				...(persona ? [{ key: "Persona", content: buildPersonaPrompt(persona) }] : []),
+				...(adapter.systemPromptAppend ? [{ key: "Provider Notes", content: adapter.systemPromptAppend }] : []),
+			],
 		});
 		return { systemPrompt };
 	});
@@ -83,6 +99,7 @@ const extension = (pi: ExtensionAPI): void => {
 			}
 		},
 	);
+
 };
 
 export default extension;
