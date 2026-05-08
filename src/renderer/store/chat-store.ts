@@ -24,7 +24,7 @@ export interface ChatMessage {
 
 interface ChatState {
 	messages: ChatMessage[];
-	activePersonaId: string | null;
+	activeAgentId: string | null;
 	isStreaming: boolean;
 	addMessage: (msg: ChatMessage) => void;
 	updateAssistantText: (text: string) => void;
@@ -32,7 +32,7 @@ interface ChatState {
 	updateToolCall: (name: string, status: "done" | "error") => void;
 	setIsStreaming: (v: boolean) => void;
 	finishStreaming: () => void;
-	setActivePersona: (id: string | null) => void;
+	setActiveAgent: (id: string | null) => void;
 	loadMessages: (messages: ChatMessage[]) => void;
 	clearMessages: () => void;
 }
@@ -55,7 +55,7 @@ function updateLastAssistantMsg(
 
 export const useChatStore = create<ChatState>((set) => ({
 	messages: [],
-	activePersonaId: null,
+	activeAgentId: null,
 	isStreaming: false,
 
 	addMessage: (msg) =>
@@ -114,7 +114,7 @@ export const useChatStore = create<ChatState>((set) => ({
 			return { messages: msgs, isStreaming: false };
 		}),
 
-	setActivePersona: (id) => set({ activePersonaId: id }),
+	setActiveAgent: (id) => set({ activeAgentId: id }),
 
 	loadMessages: (messages) => set({ messages, isStreaming: false }),
 

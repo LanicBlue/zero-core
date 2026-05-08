@@ -4,12 +4,11 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { loadConfig } from "../core/config.js";
 import { buildSystemPrompt } from "../core/system-prompt.js";
-import extension from "../extension/index.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
 import { buildPersonaPrompt, applyPersonaToConfig, type PersonaDefinition } from "../core/persona.js";
-import type { PersonaRecord } from "./persona-store.js";
+import type { AgentRecord } from "./agent-store.js";
 
 // ---------------------------------------------------------------------------
 // Ensure zero-core dirs
@@ -36,7 +35,7 @@ type StreamCallback = (event: { type: string; [key: string]: unknown }) => void;
 
 interface SessionEntry {
 	result: CreateAgentSessionResult;
-	personaId: string;
+	agentId: string;
 }
 
 class AgentService {
@@ -45,7 +44,6 @@ class AgentService {
 	private subscribers = new Set<StreamCallback>();
 	private config = loadConfig(process.cwd());
 	private workspaceDir: string;
-	// Track current streaming state for reconnecting clients
 	private isAgentBusy = false;
 	private currentStreamText = "";
 	private currentToolCalls: { name: string; status: "running" | "done" | "error" }[] = [];
@@ -66,7 +64,6 @@ class AgentService {
 		return () => { this.subscribers.delete(cb); };
 	}
 
-	/** Get current state for reconnecting clients */
 	getState(): { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[] } {
 		return {
 			isBusy: this.isAgentBusy,
@@ -75,27 +72,27 @@ class AgentService {
 		};
 	}
 
-	private async getOrCreateSession(persona?: PersonaRecord): Promise<SessionEntry> {
-		const personaId = persona?.id ?? "__default__";
+	private async getOrCreateSession(agent?: AgentRecord): Promise<SessionEntry> {
+		const agentId = agent?.id ?? "__default__";
 
-		let entry = this.sessions.get(personaId);
+		let entry = this.sessions.get(agentId);
 		if (entry) {
 			this.activeSession = entry;
 			return entry;
 		}
 
-		console.log("[agent] Creating session for persona:", personaId, "cwd:", this.workspaceDir);
+		const cwd = agent?.workspaceDir || this.workspaceDir;
+		console.log("[agent] Creating session for agent:", agentId, "cwd:", cwd);
 
 		const sessionOptions: Record<string, unknown> = {
-			cwd: this.workspaceDir,
+			cwd,
 		};
-
-		const extensionPath = join(import.meta.dirname ?? __dirname, "../extension/index.js");
 
 		const result = await createAgentSession(sessionOptions) as CreateAgentSessionResult;
 
 		console.log("[agent] Session created, loading extension...");
 
+		const extensionPath = join(import.meta.dirname ?? __dirname, "../extension/index.js");
 		try {
 			const { default: extensionFactory } = await import(extensionPath);
 			if (typeof extensionFactory === "function") {
@@ -105,17 +102,19 @@ class AgentService {
 			console.log("[agent] Extension import skipped:", (err as Error).message);
 		}
 
+		const definition = agent ? agentToDefinition(agent) : undefined;
+
 		// Merge persona overrides into config
-		const effectiveConfig = persona
-			? applyPersonaToConfig(this.config, personaToDefinition(persona))
+		const effectiveConfig = definition
+			? applyPersonaToConfig(this.config, definition)
 			: this.config;
 
 		const systemPrompt = buildSystemPrompt(effectiveConfig, {
-			cwd: this.workspaceDir,
+			cwd,
 			activeTools: [],
 			originalPrompt: "",
-			extraSections: persona
-				? [{ key: "Persona", content: buildPersonaPrompt(personaToDefinition(persona)) }]
+			extraSections: definition
+				? [{ key: "Persona", content: buildPersonaPrompt(definition) }]
 				: undefined,
 		});
 
@@ -130,17 +129,17 @@ class AgentService {
 			}
 		});
 
-		entry = { result, personaId };
+		entry = { result, agentId };
 		capturedEntry = entry;
-		this.sessions.set(personaId, entry);
+		this.sessions.set(agentId, entry);
 		this.activeSession = entry;
 
-		console.log("[agent] Session ready for:", personaId);
+		console.log("[agent] Session ready for:", agentId);
 		return entry;
 	}
 
-	async sendPrompt(text: string, persona?: PersonaRecord): Promise<void> {
-		const entry = await this.getOrCreateSession(persona);
+	async sendPrompt(text: string, agent?: AgentRecord): Promise<void> {
+		const entry = await this.getOrCreateSession(agent);
 
 		console.log("[agent] Sending prompt:", text.substring(0, 50));
 		this.isAgentBusy = true;
@@ -234,14 +233,14 @@ class AgentService {
 	}
 }
 
-function personaToDefinition(p: PersonaRecord): PersonaDefinition {
+function agentToDefinition(a: AgentRecord): PersonaDefinition {
 	return {
-		name: p.name,
-		role: p.role,
-		traits: p.traits,
-		expertise: p.expertise,
-		communicationStyle: p.communicationStyle as "professional" | "casual" | "technical" | "friendly",
-		customInstructions: p.customInstructions,
+		name: a.name,
+		role: a.role,
+		traits: a.traits,
+		expertise: a.expertise,
+		communicationStyle: a.communicationStyle as "professional" | "casual" | "technical" | "friendly",
+		customInstructions: a.customInstructions,
 	};
 }
 

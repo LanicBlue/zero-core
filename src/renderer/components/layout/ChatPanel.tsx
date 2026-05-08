@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useChatStore, nextMsgId, type MessageBlock } from "../../store/chat-store.js";
-import { usePersona } from "../../store/persona-store.js";
+import { useAgentStore } from "../../store/agent-store.js";
 
 function renderBlock(block: MessageBlock, key: number): React.ReactNode {
 	if (block.type === "text") {
@@ -17,23 +17,23 @@ function renderBlock(block: MessageBlock, key: number): React.ReactNode {
 
 export default function ChatPanel() {
 	const {
-		messages, activePersonaId, isStreaming,
+		messages, activeAgentId, isStreaming,
 		addMessage, updateAssistantText, addToolCall, updateToolCall,
 		finishStreaming, loadMessages, setIsStreaming,
 	} = useChatStore();
-	const { personas } = usePersona();
+	const { agents } = useAgentStore();
 	const [input, setInput] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const wsRef = useRef<WebSocket | null>(null);
-	const loadedPersonaRef = useRef<string | null>(null);
+	const loadedAgentRef = useRef<string | null>(null);
 
-	// Load message history when persona changes
+	// Load message history when agent changes
 	useEffect(() => {
-		if (!activePersonaId) return;
-		if (loadedPersonaRef.current === activePersonaId) return;
-		loadedPersonaRef.current = activePersonaId;
+		if (!activeAgentId) return;
+		if (loadedAgentRef.current === activeAgentId) return;
+		loadedAgentRef.current = activeAgentId;
 
-		fetch(`/api/messages/${activePersonaId}`)
+		fetch(`/api/messages/${activeAgentId}`)
 			.then((r) => r.json())
 			.then((msgs) => {
 				loadMessages(msgs);
@@ -41,7 +41,7 @@ export default function ChatPanel() {
 			.catch(() => {
 				loadMessages([]);
 			});
-	}, [activePersonaId, loadMessages]);
+	}, [activeAgentId, loadMessages]);
 
 	// Connect WebSocket
 	const connectWs = useCallback(() => {
@@ -55,7 +55,6 @@ export default function ChatPanel() {
 
 			switch (data.type) {
 				case "reconnect": {
-					// Agent is busy from before page reload — restore state
 					if (data.isBusy) {
 						const blocks: MessageBlock[] = [];
 						if (data.toolCalls) {
@@ -66,7 +65,6 @@ export default function ChatPanel() {
 						if (data.streamingText) {
 							blocks.push({ type: "text", text: data.streamingText });
 						}
-						// Add a streaming assistant message to show current state
 						addMessage({
 							id: nextMsgId(),
 							role: "assistant",
@@ -161,7 +159,7 @@ export default function ChatPanel() {
 		ws.send(JSON.stringify({
 			type: "send",
 			text,
-			personaId: activePersonaId,
+			agentId: activeAgentId,
 		}));
 	};
 
@@ -179,7 +177,7 @@ export default function ChatPanel() {
 		}
 	};
 
-	const activePersona = personas.find((p) => p.id === activePersonaId);
+	const activeAgent = agents.find((a) => a.id === activeAgentId);
 
 	const renderMessageContent = (msg: typeof messages[number]) => {
 		if (msg.role === "user") {
@@ -203,19 +201,19 @@ export default function ChatPanel() {
 	return (
 		<main className="chat-panel">
 			<div className="chat-header">
-				<span>{activePersona ? `Chatting with ${activePersona.name}` : "Select a persona to begin"}</span>
+				<span>{activeAgent ? `Chatting with ${activeAgent.name}` : "Select an agent to begin"}</span>
 			</div>
 
 			<div className="chat-messages">
 				{messages.length === 0 && (
 					<div className="chat-empty">
 						<h2>Welcome to Zero-Core</h2>
-						<p>Select a persona from the sidebar and start chatting.</p>
+						<p>Select an agent from the sidebar and start chatting.</p>
 					</div>
 				)}
 				{messages.map((msg) => (
 					<div key={msg.id} className={`message message-${msg.role}`}>
-						<div className="message-avatar">{msg.role === "user" ? "You" : activePersona?.name?.[0] ?? "Z"}</div>
+						<div className="message-avatar">{msg.role === "user" ? "You" : activeAgent?.name?.[0] ?? "Z"}</div>
 						<div className="message-content">
 							{renderMessageContent(msg)}
 						</div>
@@ -229,14 +227,14 @@ export default function ChatPanel() {
 					value={input}
 					onChange={(e) => setInput(e.target.value)}
 					onKeyDown={handleKeyDown}
-					placeholder={activePersonaId ? "Type a message..." : "Select a persona first..."}
-					disabled={!activePersonaId || isStreaming}
+					placeholder={activeAgentId ? "Type a message..." : "Select an agent first..."}
+					disabled={!activeAgentId || isStreaming}
 					rows={1}
 				/>
 				{isStreaming ? (
 					<button type="button" onClick={abort} className="btn-abort">Stop</button>
 				) : (
-					<button type="button" onClick={send} disabled={!activePersonaId || !input.trim()}>Send</button>
+					<button type="button" onClick={send} disabled={!activeAgentId || !input.trim()}>Send</button>
 				)}
 			</div>
 		</main>

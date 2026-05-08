@@ -4,7 +4,7 @@ import { WebSocketServer } from "ws";
 import { join, dirname, extname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { readdirSync, readFileSync, statSync, existsSync, mkdirSync } from "node:fs";
-import { PersonaStore } from "./persona-store.js";
+import { AgentStore } from "./agent-store.js";
 import { createAgentService } from "./agent-service.js";
 import { createMessageStore } from "./message-store.js";
 import { loadWorkspaceConfig, saveWorkspaceConfig } from "./workspace-config.js";
@@ -18,7 +18,7 @@ export async function startServer() {
 
 	const server = createServer(app);
 	const wss = new WebSocketServer({ server, path: "/ws" });
-	const personaStore = new PersonaStore();
+	const agentStore = new AgentStore();
 	const messageStore = createMessageStore();
 	let workspaceConfig = loadWorkspaceConfig();
 
@@ -30,12 +30,11 @@ export async function startServer() {
 	console.log("[server] Workspace:", workspaceConfig.workspaceDir);
 
 	// ─── Server-level Agent Service (survives UI disconnect) ──────
-	// One instance, shared across all WS connections.
 
 	const agentService = createAgentService(workspaceConfig.workspaceDir);
 
 	// Message persistence subscriber — always active, even without UI
-	let persistencePersonaId = "__default__";
+	let persistenceAgentId = "__default__";
 	let persistenceToolCalls: { name: string; status: "running" | "done" | "error" }[] = [];
 	let persistenceLastText = "";
 
@@ -52,7 +51,7 @@ export async function startServer() {
 		}
 		if (event.type === "agent_end") {
 			const toolCalls = persistenceToolCalls.length > 0 ? persistenceToolCalls : undefined;
-			messageStore.addAssistantMessage(persistencePersonaId, persistenceLastText, toolCalls);
+			messageStore.addAssistantMessage(persistenceAgentId, persistenceLastText, toolCalls);
 			persistenceToolCalls = [];
 			persistenceLastText = "";
 		}
@@ -79,45 +78,67 @@ export async function startServer() {
 		res.json(workspaceConfig);
 	});
 
-	// ─── Persona REST API ──────────────────────────────────────
+	// ─── Agent REST API ──────────────────────────────────────────
 
-	app.get("/api/personas", (_req, res) => {
-		res.json(personaStore.list());
+	app.get("/api/agents", (_req, res) => {
+		res.json(agentStore.list());
 	});
 
-	app.get("/api/personas/:id", (req, res) => {
-		const p = personaStore.get(req.params.id);
-		if (!p) return res.status(404).json({ error: "Not found" });
-		res.json(p);
+	app.get("/api/agents/:id", (req, res) => {
+		const a = agentStore.get(req.params.id);
+		if (!a) return res.status(404).json({ error: "Not found" });
+		res.json(a);
 	});
 
-	app.post("/api/personas", (req, res) => {
-		const p = personaStore.create(req.body);
-		res.status(201).json(p);
+	app.post("/api/agents", (req, res) => {
+		const a = agentStore.create(req.body);
+		res.status(201).json(a);
 	});
 
-	app.put("/api/personas/:id", (req, res) => {
+	app.put("/api/agents/:id", (req, res) => {
 		try {
-			const p = personaStore.update(req.params.id, req.body);
-			res.json(p);
+			const a = agentStore.update(req.params.id, req.body);
+			res.json(a);
 		} catch (e) {
 			res.status(404).json({ error: (e as Error).message });
 		}
 	});
 
-	app.delete("/api/personas/:id", (req, res) => {
-		personaStore.delete(req.params.id);
+	app.delete("/api/agents/:id", (req, res) => {
+		agentStore.delete(req.params.id);
 		res.json({ success: true });
 	});
 
-	// ─── Message History API ──────────────────────────────────
+	// ─── Models API ──────────────────────────────────────────────
 
-	app.get("/api/messages/:personaId", (req, res) => {
-		res.json(messageStore.list(req.params.personaId));
+	app.get("/api/models", async (_req, res) => {
+		try {
+			const { ModelRegistry } = await import("@mariozechner/pi-coding-agent");
+			const { AuthStorage } = await import("@mariozechner/pi-coding-agent");
+			const authStorage = AuthStorage.create();
+			const registry = ModelRegistry.create(authStorage);
+			const models = registry.getAvailable();
+			res.json(models.map((m) => ({
+				provider: m.provider,
+				id: m.id,
+				name: m.name ?? m.id,
+				contextWindow: m.contextWindow,
+				maxTokens: m.maxTokens,
+			})));
+		} catch (err) {
+			console.error("[server] Failed to list models:", (err as Error).message);
+			res.json([]);
+		}
 	});
 
-	app.delete("/api/messages/:personaId", (req, res) => {
-		messageStore.clear(req.params.personaId);
+	// ─── Message History API ──────────────────────────────────────
+
+	app.get("/api/messages/:agentId", (req, res) => {
+		res.json(messageStore.list(req.params.agentId));
+	});
+
+	app.delete("/api/messages/:agentId", (req, res) => {
+		messageStore.clear(req.params.agentId);
 		res.json({ success: true });
 	});
 
@@ -210,18 +231,21 @@ export async function startServer() {
 				const msg = JSON.parse(raw.toString());
 
 				if (msg.type === "send") {
-					const persona = msg.personaId
-						? personaStore.get(msg.personaId)
+					const agent = msg.agentId
+						? agentStore.get(msg.agentId)
 						: undefined;
 
-					persistencePersonaId = msg.personaId ?? "__default__";
+					persistenceAgentId = msg.agentId ?? "__default__";
 					persistenceToolCalls = [];
 					persistenceLastText = "";
 
-					messageStore.addUserMessage(persistencePersonaId, msg.text);
+					messageStore.addUserMessage(persistenceAgentId, msg.text);
 
-					agentService.setWorkspaceDir(workspaceConfig.workspaceDir);
-					await agentService.sendPrompt(msg.text, persona);
+					// Use agent-specific workspace or fall back to global
+					const wsDir = agent?.workspaceDir || workspaceConfig.workspaceDir;
+					agentService.setWorkspaceDir(wsDir);
+
+					await agentService.sendPrompt(msg.text, agent);
 				} else if (msg.type === "abort") {
 					await agentService.abort();
 				}
