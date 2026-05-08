@@ -1,14 +1,23 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useAgentStore } from "../../store/agent-store.js";
 import { useChatStore } from "../../store/chat-store.js";
 
 export default function Sidebar() {
 	const { agents, loading } = useAgentStore();
 	const { activeAgentId, setActiveAgent } = useChatStore();
+	const [globalWorkspace, setGlobalWorkspace] = useState("");
+
+	useEffect(() => {
+		fetch("/api/config")
+			.then((r) => r.json())
+			.then((c) => setGlobalWorkspace(c.workspaceDir))
+			.catch(() => {});
+	}, []);
 
 	if (loading) return <aside className="sidebar"><p>Loading...</p></aside>;
 
 	const active = agents.find((a) => a.id === activeAgentId);
+	const workspaceDir = active?.workspaceDir || globalWorkspace;
 
 	return (
 		<aside className="sidebar">
@@ -46,16 +55,11 @@ export default function Sidebar() {
 
 			<div className="sidebar-section">
 				<div className="section-title">Workspace</div>
-				<p className="workspace-path" title={active?.workspaceDir}>
-					{active?.workspaceDir
-						? active.workspaceDir.replace(/^C:\\Users\\[^\\]+/, "~").replace(/\\/g, "/")
-						: "Use global default"}
+				<p className="workspace-path" title={workspaceDir}>
+					{workspaceDir
+						? workspaceDir.replace(/^C:\\Users\\[^\\]+/, "~").replace(/\\/g, "/")
+						: "—"}
 				</p>
-			</div>
-
-			<div className="sidebar-section">
-				<div className="section-title">Conversations</div>
-				<div className="conversation-item active">Current session</div>
 			</div>
 		</aside>
 	);

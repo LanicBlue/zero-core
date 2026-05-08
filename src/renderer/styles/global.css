@@ -17,16 +17,43 @@ body {
   height: 100vh;
 }
 
+/* ─── Resizable Layout ─────────────────────────────── */
+
+.resizable-layout {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.resizable-panel {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.resizable-divider {
+  width: 4px;
+  min-width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.resizable-divider:hover {
+  background: #30363d;
+}
+
 /* ─── Sidebar ─────────────────────────────────────── */
 
 .sidebar {
-  width: 260px;
-  min-width: 260px;
   background: #0d1117;
   border-right: 1px solid #21262d;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  width: 100%;
+  min-width: 0;
 }
 
 .sidebar-header {
@@ -390,12 +417,12 @@ body {
 /* ─── Doc Panel ───────────────────────────────────── */
 
 .doc-panel {
-  width: 300px;
-  min-width: 300px;
   background: #0d1117;
   border-left: 1px solid #21262d;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  min-width: 0;
 }
 
 .doc-header {
