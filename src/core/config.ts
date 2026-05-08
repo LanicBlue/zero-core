@@ -11,12 +11,7 @@ export const ZeroCoreConfigSchema = Type.Object({
 	// ─── zero-core 独有 ─────────────────────────────────────────
 
 	persona: Type.Object({
-		name: Type.Optional(Type.String()),
-		role: Type.Optional(Type.String()),
-		traits: Type.Optional(Type.Array(Type.String())),
-		expertise: Type.Optional(Type.Array(Type.String())),
-		communicationStyle: Type.Optional(Type.String()),
-		customInstructions: Type.Optional(Type.String()),
+		defaultTemplate: Type.Optional(Type.String()),
 	}),
 
 	toolPolicy: Type.Object({
@@ -140,12 +135,7 @@ export type ZeroCoreConfig = Static<typeof ZeroCoreConfigSchema>;
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_CONFIG: ZeroCoreConfig = {
-	persona: {
-		name: "Zero",
-		role: "Expert coding assistant",
-		traits: ["concise", "thorough"],
-		communicationStyle: "professional",
-	},
+	persona: {},
 	systemPrompt: {
 		injectProjectContext: true,
 	},

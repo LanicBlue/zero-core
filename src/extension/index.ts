@@ -8,6 +8,7 @@ import { buildSystemPrompt } from "../core/system-prompt.js";
 import { shouldPrune, pruneMessages } from "../core/context-manager.js";
 import { evaluateToolCall, transformToolResult } from "../core/tool-policy.js";
 import { buildCompactionInstructions } from "../core/compaction.js";
+import { buildPersonaPrompt, applyPersonaToConfig, PERSONA_TEMPLATES } from "../core/persona.js";
 
 const extension = (pi: ExtensionAPI): void => {
 	const config = loadConfig(process.cwd());
@@ -16,10 +17,18 @@ const extension = (pi: ExtensionAPI): void => {
 	// System prompt customization
 	// -------------------------------------------------------------------------
 	pi.on("before_agent_start", async (event) => {
-		const systemPrompt = buildSystemPrompt(config, {
+		// Apply persona template if configured
+		const templateName = config.persona.defaultTemplate;
+		const persona = templateName ? PERSONA_TEMPLATES[templateName] : undefined;
+		const effectiveConfig = persona ? applyPersonaToConfig(config, persona) : config;
+
+		const systemPrompt = buildSystemPrompt(effectiveConfig, {
 			cwd: process.cwd(),
 			activeTools: [],
 			originalPrompt: event.systemPrompt,
+			extraSections: persona
+				? [{ key: "Persona", content: buildPersonaPrompt(persona) }]
+				: undefined,
 		});
 		return { systemPrompt };
 	});

@@ -8,6 +8,7 @@ import extension from "../extension/index.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
+import { buildPersonaPrompt, applyPersonaToConfig, type PersonaDefinition } from "../core/persona.js";
 import type { PersonaRecord } from "./persona-store.js";
 
 // ---------------------------------------------------------------------------
@@ -104,12 +105,17 @@ class AgentService {
 			console.log("[agent] Extension import skipped:", (err as Error).message);
 		}
 
-		const systemPrompt = buildSystemPrompt(this.config, {
+		// Merge persona overrides into config
+		const effectiveConfig = persona
+			? applyPersonaToConfig(this.config, personaToDefinition(persona))
+			: this.config;
+
+		const systemPrompt = buildSystemPrompt(effectiveConfig, {
 			cwd: this.workspaceDir,
 			activeTools: [],
 			originalPrompt: "",
 			extraSections: persona
-				? [{ key: "Persona", content: formatPersona(persona) }]
+				? [{ key: "Persona", content: buildPersonaPrompt(personaToDefinition(persona)) }]
 				: undefined,
 		});
 
@@ -228,13 +234,15 @@ class AgentService {
 	}
 }
 
-function formatPersona(p: PersonaRecord): string {
-	const lines = [`Your name is ${p.name}. ${p.role}`];
-	if (p.traits.length) lines.push(`Traits: ${p.traits.join(", ")}`);
-	if (p.expertise.length) lines.push(`Expertise: ${p.expertise.join(", ")}`);
-	lines.push(`Communication style: ${p.communicationStyle}`);
-	if (p.customInstructions) lines.push(`Custom instructions: ${p.customInstructions}`);
-	return lines.join("\n");
+function personaToDefinition(p: PersonaRecord): PersonaDefinition {
+	return {
+		name: p.name,
+		role: p.role,
+		traits: p.traits,
+		expertise: p.expertise,
+		communicationStyle: p.communicationStyle as "professional" | "casual" | "technical" | "friendly",
+		customInstructions: p.customInstructions,
+	};
 }
 
 export function createAgentService(workspaceDir: string): AgentService {

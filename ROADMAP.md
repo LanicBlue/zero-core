@@ -44,7 +44,7 @@ config.ts (基础)
 | 序号 | 模块 | 状态 | 完成日期 |
 |------|------|------|----------|
 | 1 | config.ts | 完成 | 2026-05-07 |
-| 2 | persona.ts | 待规划 | - |
+| 2 | persona.ts | 完成 | 2026-05-08 |
 | 3 | project-context.ts | 待规划 | - |
 | 4 | system-prompt.ts | 待规划 | - |
 | 5 | context-manager.ts | 待规划 | - |

@@ -92,9 +92,12 @@ export const useChatStore = create<ChatState>((set) => ({
 			messages: updateLastAssistantMsg(state.messages, (msg) => {
 				const blocks = [...(msg.blocks ?? [])];
 				for (let i = blocks.length - 1; i >= 0; i--) {
-					if (blocks[i].type === "tool" && blocks[i].name === name && blocks[i].status === "running") {
-						blocks[i] = { ...blocks[i], status };
-						break;
+					if (blocks[i].type === "tool") {
+						const tb = blocks[i] as ToolCallBlock;
+						if (tb.name === name && tb.status === "running") {
+							blocks[i] = { ...tb, status };
+							break;
+						}
 					}
 				}
 				return { ...msg, blocks, streaming: true };
