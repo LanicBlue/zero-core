@@ -1,8 +1,7 @@
 import React from "react";
 import IconSidebar from "./IconSidebar.js";
-import Sidebar from "./Sidebar.js";
 import ChatPanel from "./ChatPanel.js";
-import DocPanel from "./DocPanel.js";
+import WorkspacePanel from "./WorkspacePanel.js";
 import ResizableLayout from "./ResizableLayout.js";
 import AgentsPage from "../agents/AgentsPage.js";
 import { usePageStore } from "../../store/page-store.js";
@@ -15,12 +14,11 @@ export default function AppLayout() {
 			<IconSidebar />
 			{activePage === "chat" ? (
 				<ResizableLayout
-					defaults={[260, 500, 300]}
-					mins={[180, 300, 180]}
+					defaults={[500, 500]}
+					mins={[300, 250]}
 				>
-					<Sidebar />
 					<ChatPanel />
-					<DocPanel />
+					<WorkspacePanel />
 				</ResizableLayout>
 			) : (
 				<AgentsPage />

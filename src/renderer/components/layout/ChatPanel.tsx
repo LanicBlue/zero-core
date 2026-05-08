@@ -19,7 +19,7 @@ export default function ChatPanel() {
 	const {
 		messages, activeAgentId, isStreaming,
 		addMessage, updateAssistantText, addToolCall, updateToolCall,
-		finishStreaming, loadMessages, setIsStreaming,
+		finishStreaming, loadMessages, setIsStreaming, setActiveAgent,
 	} = useChatStore();
 	const { agents } = useAgentStore();
 	const [input, setInput] = useState("");
@@ -201,7 +201,16 @@ export default function ChatPanel() {
 	return (
 		<main className="chat-panel">
 			<div className="chat-header">
-				<span>{activeAgent ? `Chatting with ${activeAgent.name}` : "Select an agent to begin"}</span>
+				<select
+					className="chat-agent-select"
+					value={activeAgentId ?? ""}
+					onChange={(e) => setActiveAgent(e.target.value || null)}
+				>
+					<option value="">-- Select Agent --</option>
+					{agents.map((a) => (
+						<option key={a.id} value={a.id}>{a.name} — {a.role}</option>
+					))}
+				</select>
 			</div>
 
 			<div className="chat-messages">
