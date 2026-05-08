@@ -45,7 +45,7 @@ config.ts (基础)
 |------|------|------|----------|
 | 1 | config.ts | 完成 | 2026-05-07 |
 | 2 | persona.ts | 完成 | 2026-05-08 |
-| 3 | project-context.ts | 待规划 | - |
+| 3 | project-context.ts | 完成 | 2026-05-08 |
 | 4 | system-prompt.ts | 待规划 | - |
 | 5 | context-manager.ts | 待规划 | - |
 | 6 | tool-policy.ts | 待规划 | - |

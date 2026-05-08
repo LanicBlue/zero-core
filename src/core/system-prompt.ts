@@ -7,6 +7,7 @@ export interface SystemPromptContext {
 	skills?: Array<{ name: string; description: string }>;
 	toolSnippets?: Record<string, string>;
 	extraSections?: Array<{ key: string; content: string }>;
+	projectContext?: string;
 }
 
 export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptContext): string {
@@ -40,6 +41,11 @@ export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptConte
 	if (ctx.skills?.length) {
 		const skillList = ctx.skills.map((s) => `- **${s.name}**: ${s.description}`).join("\n");
 		sections.push("## Available Skills\n\n" + skillList);
+	}
+
+	// Project context
+	if (ctx.projectContext) {
+		sections.push("## Project Context\n\n" + ctx.projectContext);
 	}
 
 	// Extra sections

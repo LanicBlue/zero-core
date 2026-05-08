@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
 import { buildPersonaPrompt, applyPersonaToConfig, type PersonaDefinition } from "../core/persona.js";
+import { loadProjectContext, formatProjectContext } from "../core/project-context.js";
 import type { AgentRecord } from "./agent-store.js";
 
 // ---------------------------------------------------------------------------
@@ -109,10 +110,13 @@ class AgentService {
 			? applyPersonaToConfig(this.config, definition)
 			: this.config;
 
+		const projectCtx = loadProjectContext(cwd, agent?.contextConfig);
+
 		const systemPrompt = buildSystemPrompt(effectiveConfig, {
 			cwd,
 			activeTools: [],
 			originalPrompt: "",
+			projectContext: projectCtx ? formatProjectContext(projectCtx) : undefined,
 			extraSections: definition
 				? [{ key: "Persona", content: buildPersonaPrompt(definition) }]
 				: undefined,

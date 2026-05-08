@@ -9,6 +9,7 @@ import { shouldPrune, pruneMessages } from "../core/context-manager.js";
 import { evaluateToolCall, transformToolResult } from "../core/tool-policy.js";
 import { buildCompactionInstructions } from "../core/compaction.js";
 import { buildPersonaPrompt, applyPersonaToConfig, PERSONA_TEMPLATES } from "../core/persona.js";
+import { loadProjectContext, formatProjectContext } from "../core/project-context.js";
 
 const extension = (pi: ExtensionAPI): void => {
 	const config = loadConfig(process.cwd());
