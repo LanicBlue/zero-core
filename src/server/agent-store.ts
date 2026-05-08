@@ -67,7 +67,21 @@ export class AgentStore {
 
 		if (existsSync(this.filePath)) {
 			try {
-				return JSON.parse(readFileSync(this.filePath, "utf-8"));
+				const data = JSON.parse(readFileSync(this.filePath, "utf-8"));
+				// Backfill workspaceDir for agents created before the field existed
+				let dirty = false;
+				const defaultWs = join(homedir(), ".zero-core", "workspace");
+				for (const a of data.agents) {
+					if (!a.workspaceDir) {
+						a.workspaceDir = defaultWs;
+						dirty = true;
+					} else if (a.workspaceDir.startsWith("~")) {
+						a.workspaceDir = a.workspaceDir.replace(/^~/, require("os").homedir());
+						dirty = true;
+					}
+				}
+				if (dirty) this.save(data);
+				return data;
 			} catch {
 				// fall through
 			}
@@ -92,6 +106,7 @@ export class AgentStore {
 				expertise: (p.expertise as string[]) ?? [],
 				communicationStyle: (p.communicationStyle as string) ?? "professional",
 				customInstructions: p.customInstructions as string | undefined,
+				workspaceDir: (p.workspaceDir as string) || join(homedir(), ".zero-core", "workspace"),
 				createdAt: p.createdAt as string,
 				updatedAt: p.updatedAt as string,
 			}));
@@ -114,7 +129,9 @@ export class AgentStore {
 		input: Omit<AgentRecord, "id" | "createdAt" | "updatedAt">,
 	): AgentRecord {
 		const now = new Date().toISOString();
-		return { id: uuidv4(), ...input, createdAt: now, updatedAt: now };
+		const raw = input.workspaceDir || join(homedir(), ".zero-core", "workspace");
+		const workspaceDir = raw.startsWith("~") ? raw.replace(/^~/, homedir()) : raw;
+		return { id: uuidv4(), ...input, workspaceDir, createdAt: now, updatedAt: now };
 	}
 
 	list(): AgentRecord[] {
@@ -135,9 +152,13 @@ export class AgentStore {
 	update(id: string, input: Partial<Omit<AgentRecord, "id" | "createdAt">>): AgentRecord {
 		const index = this.data.agents.findIndex((a) => a.id === id);
 		if (index === -1) throw new Error(`Agent not found: ${id}`);
+		const patched = { ...input };
+		if (patched.workspaceDir?.startsWith("~")) {
+			patched.workspaceDir = patched.workspaceDir.replace(/^~/, homedir());
+		}
 		this.data.agents[index] = {
 			...this.data.agents[index],
-			...input,
+			...patched,
 			updatedAt: new Date().toISOString(),
 		};
 		this.save(this.data);

@@ -26,15 +26,20 @@ function esc(s: string): string {
 
 export default function DocViewerPanel() {
 	const [selectedFile, setSelectedFile] = useState<string | null>(null);
+	const [fileRoot, setFileRoot] = useState<string>("");
 	const [content, setContent] = useState("");
 	const [loading, setLoading] = useState(false);
 
 	useEffect(() => {
 		const handler = (e: Event) => {
-			const path = (e as CustomEvent).detail as string;
+			const detail = (e as CustomEvent).detail as { path: string; root: string };
+			const path = typeof detail === "string" ? detail : detail.path;
+			const root = typeof detail === "string" ? "" : (detail.root || "");
 			setSelectedFile(path);
+			setFileRoot(root);
 			setLoading(true);
-			fetch(`/api/files/content?path=${encodeURIComponent(path)}`)
+			const rootParam = root ? `&root=${encodeURIComponent(root)}` : "";
+			fetch(`/api/files/content?path=${encodeURIComponent(path)}${rootParam}`)
 				.then((r) => (r.ok ? r.json() : { content: "(unable to load)" }))
 				.then((data) => setContent(data.content ?? "(binary file)"))
 				.catch(() => setContent("(error)"))

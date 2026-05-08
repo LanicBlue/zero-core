@@ -820,6 +820,33 @@ body {
   font-size: 13px;
 }
 
+
+.workspace-dir-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.workspace-dir-input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  outline: none;
+}
+.workspace-dir-input:focus { border-color: #58a6ff; }
+.workspace-dir-hint {
+  font-size: 11px;
+  color: #484f58;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  padding-left: 2px;
+}
+
 /* ─── Scrollbar ──────────────────────────────────── */
 
 ::-webkit-scrollbar { width: 6px; }

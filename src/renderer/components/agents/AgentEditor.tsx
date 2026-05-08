@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAgentStore, type AgentRecord, type ModelInfo } from "../../store/agent-store.js";
 
 interface Props {
@@ -18,26 +18,55 @@ const EMPTY: FormState = {
 	communicationStyle: "professional",
 };
 
+const shorten = (p: string) =>
+	p.replace(/^[A-Z]:\\Users\\[^\\]+/, "~").replace(/\\/g, "/");
+
 export default function AgentEditor({ agent, onSaved, onCancel, onDelete }: Props) {
 	const { create, update, models } = useAgentStore();
+	const [globalWorkspace, setGlobalWorkspace] = useState("");
+
+	useEffect(() => {
+		fetch("/api/config").then((r) => r.json()).then((c) => setGlobalWorkspace(c.workspaceDir)).catch(() => {});
+	}, []);
+
+	const defaultWorkspace = globalWorkspace ? shorten(globalWorkspace) : "~/.zero-core/workspace";
+
+	const defaultForm = (): FormState => ({
+		...EMPTY,
+		workspaceDir: defaultWorkspace,
+	});
+
+	const agentToForm = (a: AgentRecord): FormState => ({
+		name: a.name,
+		role: a.role,
+		traits: a.traits,
+		expertise: a.expertise,
+		communicationStyle: a.communicationStyle,
+		customInstructions: a.customInstructions,
+		workspaceDir: a.workspaceDir ? shorten(a.workspaceDir) : defaultWorkspace,
+		model: a.model,
+		provider: a.provider,
+		thinkingLevel: a.thinkingLevel,
+		contextConfig: a.contextConfig,
+	});
+
 	const [form, setForm] = useState<FormState>(
-		agent
-			? {
-					name: agent.name,
-					role: agent.role,
-					traits: agent.traits,
-					expertise: agent.expertise,
-					communicationStyle: agent.communicationStyle,
-					customInstructions: agent.customInstructions,
-					workspaceDir: agent.workspaceDir,
-					model: agent.model,
-					provider: agent.provider,
-					thinkingLevel: agent.thinkingLevel,
-					contextConfig: agent.contextConfig,
-				}
-			: EMPTY,
+		agent ? agentToForm(agent) : defaultForm(),
 	);
 	const [traitsText, setTraitsText] = useState((agent?.traits ?? []).join(", "));
+
+	// Reset form when agent prop changes
+	useEffect(() => {
+		if (agent) {
+			setForm(agentToForm(agent));
+			setTraitsText((agent.traits ?? []).join(", "));
+			setExpertiseText((agent.expertise ?? []).join(", "));
+		} else {
+			setForm(defaultForm());
+			setTraitsText("");
+			setExpertiseText("");
+		}
+	}, [agent, globalWorkspace]);
 	const [expertiseText, setExpertiseText] = useState((agent?.expertise ?? []).join(", "));
 	const [saving, setSaving] = useState(false);
 
@@ -160,7 +189,7 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete }: Prop
 						<input
 							value={form.workspaceDir ?? ""}
 							onChange={(e) => setForm({ ...form, workspaceDir: e.target.value || undefined })}
-							placeholder="Leave empty for global default"
+							placeholder={defaultWorkspace}
 						/>
 					</label>
 				</div>

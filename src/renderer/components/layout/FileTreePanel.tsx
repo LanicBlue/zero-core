@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useChatStore } from "../../store/chat-store.js";
+import { useAgentStore, type AgentRecord } from "../../store/agent-store.js";
 
 interface FileEntry {
 	name: string;
@@ -16,6 +18,12 @@ export default function FileTreePanel() {
 	const [globalWorkspace, setGlobalWorkspace] = useState("");
 	const expandedRef = useRef<Set<string>>(new Set());
 	const lastHashRef = useRef<string>("");
+	const lastRootRef = useRef<string>("");
+
+	const activeAgentId = useChatStore((s) => s.activeAgentId);
+	const agents = useAgentStore((s) => s.agents);
+	const activeAgent = agents.find((a: AgentRecord) => a.id === activeAgentId) ?? null;
+	const effectiveRoot = activeAgent?.workspaceDir || globalWorkspace;
 
 	useEffect(() => {
 		fetch("/api/config")
@@ -24,7 +32,15 @@ export default function FileTreePanel() {
 			.catch(() => {});
 	}, []);
 
-	// Merge new tree data with existing expanded state
+	// Clear tree when root changes
+	useEffect(() => {
+		if (effectiveRoot && effectiveRoot !== lastRootRef.current) {
+			lastRootRef.current = effectiveRoot;
+			lastHashRef.current = "";
+			setTree([]);
+		}
+	}, [effectiveRoot]);
+
 	const mergeTree = (fresh: FileEntry[], prev: FileEntry[]): FileEntry[] => {
 		const prevMap = new Map<string, FileEntry>();
 		const indexPrev = (entries: FileEntry[]) => {
@@ -52,8 +68,9 @@ export default function FileTreePanel() {
 	};
 
 	const fetchTree = useCallback(async () => {
+		if (!effectiveRoot) return;
 		try {
-			const res = await fetch("/api/files");
+			const res = await fetch(`/api/files?root=${encodeURIComponent(effectiveRoot)}`);
 			if (res.ok) {
 				const data = await res.json();
 				const hash = JSON.stringify(data);
@@ -63,7 +80,7 @@ export default function FileTreePanel() {
 				}
 			}
 		} catch { /* */ }
-	}, []);
+	}, [effectiveRoot]);
 
 	useEffect(() => {
 		fetchTree();
@@ -76,7 +93,6 @@ export default function FileTreePanel() {
 			entries.map((e) => {
 				if (e.path === dirPath) {
 					const next = !e.expanded;
-					// Track expansion state in ref so refreshes preserve it
 					if (next) expandedRef.current.add(dirPath);
 					else expandedRef.current.delete(dirPath);
 					return { ...e, expanded: next };
@@ -87,8 +103,8 @@ export default function FileTreePanel() {
 		setTree(toggle(tree));
 	};
 
-	const shortDir = globalWorkspace
-		? globalWorkspace.replace(/^C:\\Users\\[^\\]+/, "~").replace(/\\/g, "/")
+	const shortDir = effectiveRoot
+		? effectiveRoot.replace(/^C:\\Users\\[^\\]+/, "~").replace(/\\/g, "/")
 		: "";
 
 	const handleFileClick = (entry: FileEntry) => {
@@ -96,7 +112,9 @@ export default function FileTreePanel() {
 			toggleDir(entry.path);
 		} else {
 			setSelectedFile(entry.path);
-			window.dispatchEvent(new CustomEvent("zero-file-select", { detail: entry.path }));
+			window.dispatchEvent(new CustomEvent("zero-file-select", {
+				detail: { path: entry.path, root: effectiveRoot },
+			}));
 		}
 	};
 

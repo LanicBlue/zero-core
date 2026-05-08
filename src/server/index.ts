@@ -4,6 +4,7 @@ import { WebSocketServer } from "ws";
 import { join, dirname, extname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { readdirSync, readFileSync, statSync, existsSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { AgentStore } from "./agent-store.js";
 import { createAgentService } from "./agent-service.js";
 import { createMessageStore } from "./message-store.js";
@@ -11,6 +12,7 @@ import { loadWorkspaceConfig, saveWorkspaceConfig } from "./workspace-config.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT ?? "3210", 10);
+const expandHome = (p: string) => p.startsWith("~") ? p.replace(/^~/, homedir()) : p;
 
 export async function startServer() {
 	const app = express();
@@ -175,8 +177,14 @@ export async function startServer() {
 		}
 	}
 
-	app.get("/api/files", (_req, res) => {
-		const dir = workspaceConfig.workspaceDir;
+	app.get("/api/files", (req, res) => {
+		const dir = expandHome((req.query.root as string) || workspaceConfig.workspaceDir);
+		try {
+			const stat = statSync(dir);
+			if (!stat.isDirectory()) return res.status(400).json({ error: "not a directory" });
+		} catch {
+			return res.status(404).json({ error: "directory not found" });
+		}
 		const tree = buildTree(dir, "");
 		res.json(tree);
 	});
@@ -188,9 +196,9 @@ export async function startServer() {
 		if (!TEXT_EXTS.has(ext) && ext !== "") {
 			return res.json({ content: "(binary file)" });
 		}
-		const root = workspaceConfig.workspaceDir;
+		const root = expandHome((req.query.root as string) || workspaceConfig.workspaceDir);
 		const full = resolve(root, filePath);
-		if (!full.startsWith(root)) {
+		if (!full.startsWith(resolve(root))) {
 			return res.status(403).json({ error: "access denied" });
 		}
 		try {
@@ -242,7 +250,7 @@ export async function startServer() {
 					messageStore.addUserMessage(persistenceAgentId, msg.text);
 
 					// Use agent-specific workspace or fall back to global
-					const wsDir = agent?.workspaceDir || workspaceConfig.workspaceDir;
+					const wsDir = expandHome(agent?.workspaceDir || workspaceConfig.workspaceDir);
 					agentService.setWorkspaceDir(wsDir);
 
 					await agentService.sendPrompt(msg.text, agent);
