@@ -1,47 +1,70 @@
-import React, { useRef, useCallback } from "react";
+import React, { useRef, useCallback, useEffect, useState } from "react";
 
 interface Props {
 	children: React.ReactNode[];
-	defaults: number[]; // initial widths in px
+	defaults: number[]; // proportion weights (e.g. [4, 2, 4])
 	mins: number[]; // min widths in px
 }
 
-/**
- * Horizontal resizable panel layout.
- * Renders N children separated by draggable dividers.
- */
 export default function ResizableLayout({ children, defaults, mins }: Props) {
 	const containerRef = useRef<HTMLDivElement>(null);
-	const widthsRef = useRef<number[]>(defaults.slice());
-	// Track positions for drag calculation
+	const [widths, setWidths] = useState<number[]>([]);
+	const totalWeight = defaults.reduce((a, b) => a + b, 0);
 	const dragRef = useRef<{
-		index: number; // which divider (0 = between child 0 and 1)
+		index: number;
 		startX: number;
 		startWidths: number[];
+		containerWidth: number;
 	} | null>(null);
+
+	// Calculate initial widths from container size
+	useEffect(() => {
+		if (!containerRef.current) return;
+		const containerWidth = containerRef.current.clientWidth;
+		const totalMins = mins.reduce((a, b) => a + b, 0);
+		const dividerSpace = (children.length - 1) * 4; // divider widths
+		const available = containerWidth - dividerSpace;
+
+		// If available space is too small, fall back to mins
+		if (available <= totalMins) {
+			setWidths(mins.slice());
+			return;
+		}
+
+		const calculated = defaults.map((w, i) => {
+			const fromWeight = Math.round((w / totalWeight) * available);
+			return Math.max(fromWeight, mins[i]);
+		});
+		setWidths(calculated);
+	}, []); // only on mount
 
 	const handleMouseDown = useCallback((index: number) => (e: React.MouseEvent) => {
 		e.preventDefault();
+		if (!containerRef.current) return;
 		dragRef.current = {
 			index,
 			startX: e.clientX,
-			startWidths: widthsRef.current.slice(),
+			startWidths: widths.slice(),
+			containerWidth: containerRef.current.clientWidth,
 		};
 
 		const handleMouseMove = (ev: MouseEvent) => {
 			if (!dragRef.current || !containerRef.current) return;
-			const { index: idx, startX, startWidths } = dragRef.current;
+			const { index: idx, startX, startWidths, containerWidth } = dragRef.current;
 			const dx = ev.clientX - startX;
+
+			const totalDividers = (children.length - 1) * 4;
+			const totalAvailable = containerWidth - totalDividers;
 
 			const newLeft = startWidths[idx] + dx;
 			const newRight = startWidths[idx + 1] - dx;
 
+			// Constrain to min sizes
 			if (newLeft >= mins[idx] && newRight >= mins[idx + 1]) {
 				const updated = startWidths.slice();
 				updated[idx] = newLeft;
 				updated[idx + 1] = newRight;
-				widthsRef.current = updated;
-				applyWidths(containerRef.current!, updated);
+				setWidths(updated);
 			}
 		};
 
@@ -57,7 +80,12 @@ export default function ResizableLayout({ children, defaults, mins }: Props) {
 		document.body.style.userSelect = "none";
 		document.addEventListener("mousemove", handleMouseMove);
 		document.addEventListener("mouseup", handleMouseUp);
-	}, [mins]);
+	}, [widths, mins, children.length]);
+
+	if (widths.length === 0) {
+		// Render placeholder to measure container
+		return <div ref={containerRef} className="resizable-layout" />;
+	}
 
 	const panels: React.ReactNode[] = [];
 	for (let i = 0; i < children.length; i++) {
@@ -65,7 +93,7 @@ export default function ResizableLayout({ children, defaults, mins }: Props) {
 			<div
 				key={`panel-${i}`}
 				className="resizable-panel"
-				style={{ width: defaults[i], minWidth: mins[i] }}
+				style={{ width: widths[i], minWidth: mins[i] }}
 			>
 				{children[i]}
 			</div>,
@@ -86,15 +114,4 @@ export default function ResizableLayout({ children, defaults, mins }: Props) {
 			{panels}
 		</div>
 	);
-}
-
-function applyWidths(container: HTMLElement, widths: number[]): void {
-	let panelIdx = 0;
-	for (let i = 0; i < container.children.length; i++) {
-		const el = container.children[i] as HTMLElement;
-		if (el.classList.contains("resizable-panel")) {
-			el.style.width = `${widths[panelIdx]}px`;
-			panelIdx++;
-		}
-	}
 }
