@@ -19,6 +19,9 @@ let createAgentService: typeof import("../server/agent-service").createAgentServ
 let providerStore: InstanceType<typeof import("../server/provider-store").ProviderStore>;
 let templateStore: InstanceType<typeof import("../server/template-store").TemplateStore>;
 let mcpStore: InstanceType<typeof import("../server/mcp-store").McpStore>;
+let mcpManager: typeof import("../server/mcp-manager").mcpManager;
+let kbStore: any;
+let kbDb: any;
 let workspaceConfig: { workspaceDir: string; defaultModel?: string; defaultProvider?: string };
 let saveWorkspaceConfig: (config: { workspaceDir?: string; defaultModel?: string; defaultProvider?: string }) => { workspaceDir: string; defaultModel?: string; defaultProvider?: string };
 let buildDefaultPrompt: typeof import("../core/default-prompt").buildDefaultPrompt;
@@ -71,14 +74,21 @@ async function loadCoreModules(): Promise<void> {
 	const mod = await import(toFileURL(join(distCore, "default-prompt.js")));
 	console.log(`${ts()} [ipc] core imports done (+${Date.now() - t0}ms)`);
 
+	const tmplMod = await import(toFileURL(join(distServer, "template-store.js")));
+	const mcpMod = await import(toFileURL(join(distServer, "mcp-store.js")));
+	const mcpMgrMod = await import(toFileURL(join(distServer, "mcp-manager.js")));
+
 	agentStore = new AgentStore();
 	providerStore = new ProviderStore();
-templateStore = new TemplateStore();
-mcpStore = new McpStore();
-	let kbStore = new KbStore();
-	let kbDb = new KbDB();
-	// Reconnect enabled MCP servers
-mcpManager.reconnectEnabled(mcpStore.list()).catch(() => {});
+	templateStore = new tmplMod.TemplateStore();
+	mcpStore = new mcpMod.McpStore();
+	mcpManager = mcpMgrMod.mcpManager;
+	const { KbStore } = await import(toFileURL(join(distServer, "kb-store.js")));
+	const { KbDB } = await import(toFileURL(join(distServer, "kb-db.js")));
+	kbStore = new KbStore();
+	kbDb = new KbDB();
+
+	mcpManager.reconnectEnabled(mcpStore.list()).catch(() => {});
 	buildDefaultPrompt = mod.buildDefaultPrompt;
 	saveWorkspaceConfig = wsMod.saveWorkspaceConfig;
 

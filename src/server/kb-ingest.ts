@@ -110,10 +110,15 @@ export function removeFile(kbId: string, filePath: string, kbDb: KbDB): void {
 
 async function extractPdfText(filePath: string): Promise<string> {
 	try {
-		const pdfParse = (await import("pdf-parse")).default;
+		const pdfMod: any = await import("pdf-parse");
 		const buffer = readFileSync(filePath);
-		const data = await pdfParse(buffer);
-		return data.text;
+		if (pdfMod.default && typeof pdfMod.default === "function") {
+			const data = await pdfMod.default(buffer);
+			return data.text ?? String(data);
+		}
+		const parser = new pdfMod.PDFParse({ verbosity: 0 });
+		const raw: any = await parser.getRawTextContent(buffer);
+		return String(raw);
 	} catch {
 		return `[PDF text extraction failed for ${filePath}]`;
 	}

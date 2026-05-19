@@ -22,12 +22,8 @@
     "src/core/**/*.ts",
     "src/runtime/**/*.ts",
     "src/extension/**/*.ts",
-    "src/server/agent-store.ts",
-    "src/server/agent-service.ts",
-    "src/server/message-store.ts",
-    "src/server/persona-store.ts",
-    "src/server/provider-store.ts",
-    "src/server/workspace-config.ts"
+    "src/server/*.ts",
+    "src/server/mcp-servers/**/*.ts"
   ],
   "exclude": [
     "node_modules",
