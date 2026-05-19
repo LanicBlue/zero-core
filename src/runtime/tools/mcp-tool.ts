@@ -21,7 +21,7 @@ export function createMcpTool(
 
 	return tool({
 		description: description ?? `MCP tool from ${serverName}: ${toolName}`,
-		parameters: zodSchema,
+		inputSchema: zodSchema,
 		execute: async (params) => {
 			const { result, error } = await callTool(serverId, toolName, params as Record<string, unknown>);
 			if (error) {
@@ -69,11 +69,11 @@ function propToZod(prop: Record<string, unknown>): z.ZodTypeAny {
 		case "boolean":
 			return z.boolean().describe((prop.description as string) ?? "");
 		case "array":
-			return z.array(z.any()).describe((prop.description as string) ?? "");
+			return z.array(z.unknown()).describe((prop.description as string) ?? "");
 		case "object":
-			return z.record(z.any()).describe((prop.description as string) ?? "");
+			return z.record(z.string(), z.unknown()).describe((prop.description as string) ?? "");
 		default:
-			return z.any().describe((prop.description as string) ?? "");
+			return z.unknown().describe((prop.description as string) ?? "");
 	}
 }
 

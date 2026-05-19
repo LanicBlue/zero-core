@@ -48,7 +48,7 @@ export function createMemoryTools() {
 	return {
 		memory_create_entities: tool({
 			description: "Create entities in the knowledge graph. Skips existing entities.",
-			parameters: z.object({
+			inputSchema: z.object({
 				entities: z.array(z.object({
 					name: z.string().describe("Entity name"),
 					entityType: z.string().describe("Entity type"),
@@ -72,7 +72,7 @@ export function createMemoryTools() {
 		}),
 		memory_create_relations: tool({
 			description: "Create relations between existing entities. Both entities must exist.",
-			parameters: z.object({
+			inputSchema: z.object({
 				relations: z.array(z.object({
 					from: z.string(),
 					to: z.string(),
@@ -98,7 +98,7 @@ export function createMemoryTools() {
 		}),
 		memory_add_observations: tool({
 			description: "Add observations to existing entities. Skips duplicates.",
-			parameters: z.object({
+			inputSchema: z.object({
 				observations: z.array(z.object({
 					entityName: z.string(),
 					contents: z.array(z.string()),
@@ -120,7 +120,7 @@ export function createMemoryTools() {
 		}),
 		memory_delete_entities: tool({
 			description: "Delete entities and their associated relations.",
-			parameters: z.object({
+			inputSchema: z.object({
 				entityNames: z.array(z.string()),
 			}),
 			execute: async ({ entityNames }) => {
@@ -134,7 +134,7 @@ export function createMemoryTools() {
 		}),
 		memory_delete_relations: tool({
 			description: "Delete specific relations.",
-			parameters: z.object({
+			inputSchema: z.object({
 				relations: z.array(z.object({
 					from: z.string(),
 					to: z.string(),
@@ -151,14 +151,14 @@ export function createMemoryTools() {
 		}),
 		memory_read_graph: tool({
 			description: "Read the entire knowledge graph.",
-			parameters: z.object({}),
+			inputSchema: z.object({}),
 			execute: async () => {
 				return JSON.stringify(loadGraph(), null, 2);
 			},
 		}),
 		memory_search_nodes: tool({
 			description: "Search entities and relations by query string.",
-			parameters: z.object({
+			inputSchema: z.object({
 				query: z.string().describe("Search query"),
 			}),
 			execute: async ({ query }) => {

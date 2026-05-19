@@ -15,11 +15,11 @@ export function createSequentialThinkingTools() {
 				"Use this tool to think through complex problems step by step, showing your reasoning process. " +
 				"Each call appends a thought to the chain. Use thoughtNumber and totalThoughts to track progress. " +
 				"Set nextThoughtNeeded to false when the reasoning is complete.",
-			parameters: z.object({
+			inputSchema: z.object({
 				thought: z.string().describe("Your current thinking step"),
 				nextThoughtNeeded: z.boolean().describe("Whether another thought step is needed"),
-				thoughtNumber: z.integer().min(1).describe("Current thought number (1-indexed)"),
-				totalThoughts: z.integer().min(1).describe("Estimated total thoughts needed"),
+				thoughtNumber: z.number().int().min(1).describe("Current thought number (1-indexed)"),
+				totalThoughts: z.number().int().min(1).describe("Estimated total thoughts needed"),
 				key: z.string().optional().describe("Optional key to group thoughts by problem/topic"),
 			}),
 			execute: async ({ thought, nextThoughtNeeded, thoughtNumber, totalThoughts, key }) => {

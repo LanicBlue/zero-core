@@ -32,7 +32,7 @@ export function createAssistantTools(getAppVersion?: () => string) {
 	return {
 		assistant_info: tool({
 			description: "Get zero-core app runtime information: version, paths, system info, memory usage.",
-			parameters: z.object({}),
+			inputSchema: z.object({}),
 			execute: async () => {
 				const mem = process.memoryUsage();
 				return JSON.stringify({
@@ -55,7 +55,7 @@ export function createAssistantTools(getAppVersion?: () => string) {
 
 		assistant_logs: tool({
 			description: "Read recent log entries from the zero-core log file.",
-			parameters: z.object({
+			inputSchema: z.object({
 				lines: z.number().optional().default(50).describe("Number of log lines to return (max 500)"),
 				level: z.enum(["all", "error", "warn"]).optional().default("all").describe("Filter by log level"),
 			}),
@@ -80,7 +80,7 @@ export function createAssistantTools(getAppVersion?: () => string) {
 
 		assistant_config: tool({
 			description: "Read the current zero-core configuration (settings, providers, theme). Redacts sensitive values.",
-			parameters: z.object({}),
+			inputSchema: z.object({}),
 			execute: async () => {
 				const configPath = join(ZERO_CORE_DIR, "config.json");
 				if (!existsSync(configPath)) return "No configuration file found at " + configPath;
@@ -100,7 +100,7 @@ export function createAssistantTools(getAppVersion?: () => string) {
 			description:
 				"Read a source file from the zero-core app directory for debugging. " +
 				"Blocks access to sensitive files (.env, credentials). File size limit 200KB.",
-			parameters: z.object({
+			inputSchema: z.object({
 				file_path: z.string().describe("Relative file path within the app directory"),
 			}),
 			execute: async ({ file_path }) => {
@@ -132,7 +132,7 @@ export function createAssistantTools(getAppVersion?: () => string) {
 
 		assistant_list_providers: tool({
 			description: "List configured AI providers with model counts. Redacts API keys.",
-			parameters: z.object({}),
+			inputSchema: z.object({}),
 			execute: async () => {
 				const configPath = join(ZERO_CORE_DIR, "config.json");
 				if (!existsSync(configPath)) return "No configuration found.";
@@ -157,7 +157,7 @@ export function createAssistantTools(getAppVersion?: () => string) {
 
 		assistant_list_files: tool({
 			description: "List files in a zero-core data directory (config, templates, mcp-servers, knowledge-bases).",
-			parameters: z.object({
+			inputSchema: z.object({
 				directory: z.enum(["root", "config", "templates", "mcp-servers", "knowledge", "logs"]).describe("Data directory to list"),
 			}),
 			execute: async ({ directory }) => {

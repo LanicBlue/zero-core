@@ -20,7 +20,7 @@ export function createFetchTools() {
 	return {
 		fetch_html: tool({
 			description: "Fetch a website and return the content as HTML",
-			parameters: z.object({
+			inputSchema: z.object({
 				url: z.string().describe("URL of the website to fetch"),
 				headers: z.record(z.string(), z.string()).optional().describe("Optional headers"),
 			}),
@@ -35,7 +35,7 @@ export function createFetchTools() {
 		}),
 		fetch_markdown: tool({
 			description: "Fetch a website and return the content as Markdown",
-			parameters: z.object({
+			inputSchema: z.object({
 				url: z.string().describe("URL of the website to fetch"),
 				headers: z.record(z.string(), z.string()).optional().describe("Optional headers"),
 			}),
@@ -51,7 +51,7 @@ export function createFetchTools() {
 		}),
 		fetch_text: tool({
 			description: "Fetch a website and return the content as plain text (no HTML tags)",
-			parameters: z.object({
+			inputSchema: z.object({
 				url: z.string().describe("URL of the website to fetch"),
 				headers: z.record(z.string(), z.string()).optional().describe("Optional headers"),
 			}),
@@ -72,7 +72,7 @@ export function createFetchTools() {
 		}),
 		fetch_json: tool({
 			description: "Fetch a JSON file from a URL",
-			parameters: z.object({
+			inputSchema: z.object({
 				url: z.string().describe("URL of the JSON to fetch"),
 				headers: z.record(z.string(), z.string()).optional().describe("Optional headers"),
 			}),

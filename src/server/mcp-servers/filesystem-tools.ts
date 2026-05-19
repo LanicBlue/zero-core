@@ -40,7 +40,7 @@ export function createFilesystemTools(options: FilesystemOptions) {
 			description:
 				"Read file contents with line numbers. Supports offset and limit for large files. " +
 				"Rejects binary files. All paths are relative to or within the workspace root.",
-			parameters: z.object({
+			inputSchema: z.object({
 				path: z.string().describe("File path (relative to workspace or absolute within workspace)"),
 				offset: z.number().optional().describe("Start line number (1-based, default 1)"),
 				limit: z.number().optional().describe("Number of lines to read (default 2000)"),
@@ -66,7 +66,7 @@ export function createFilesystemTools(options: FilesystemOptions) {
 			description:
 				"Create or overwrite a file with the given content. Creates parent directories automatically. " +
 				"Paths must be within the workspace root.",
-			parameters: z.object({
+			inputSchema: z.object({
 				path: z.string().describe("File path (relative to workspace or absolute within workspace)"),
 				content: z.string().describe("Content to write to the file"),
 			}),
@@ -88,7 +88,7 @@ export function createFilesystemTools(options: FilesystemOptions) {
 			description:
 				"Perform exact string replacement in a file. Set replace_all to true to replace all occurrences. " +
 				"Paths must be within the workspace root.",
-			parameters: z.object({
+			inputSchema: z.object({
 				path: z.string().describe("File path to edit"),
 				old_string: z.string().describe("The text to find and replace"),
 				new_string: z.string().describe("The replacement text"),
@@ -123,7 +123,7 @@ export function createFilesystemTools(options: FilesystemOptions) {
 			description:
 				"Delete a file or directory. Use recursive=true for directories. " +
 				"This operation cannot be undone. Paths must be within workspace root.",
-			parameters: z.object({
+			inputSchema: z.object({
 				path: z.string().describe("Path to file or directory to delete"),
 				recursive: z.boolean().optional().default(false).describe("Delete directories recursively"),
 			}),
@@ -145,7 +145,7 @@ export function createFilesystemTools(options: FilesystemOptions) {
 			description:
 				"List directory contents in a tree-like format. Shows directories first, then files. " +
 				"Excludes .git, node_modules, dist, build directories.",
-			parameters: z.object({
+			inputSchema: z.object({
 				path: z.string().optional().describe("Directory path (defaults to workspace root)"),
 				recursive: z.boolean().optional().default(false).describe("List recursively up to 5 levels"),
 			}),
@@ -188,7 +188,7 @@ export function createFilesystemTools(options: FilesystemOptions) {
 			description:
 				"Find files matching a glob pattern (e.g. '**/*.ts', 'src/**/*.tsx'). " +
 				"Returns file paths sorted by modification time.",
-			parameters: z.object({
+			inputSchema: z.object({
 				pattern: z.string().describe("Glob pattern (e.g. '**/*.ts')"),
 				path: z.string().optional().describe("Directory to search in (defaults to workspace root)"),
 			}),
@@ -203,7 +203,7 @@ export function createFilesystemTools(options: FilesystemOptions) {
 						const cmd = process.platform === 'win32'
 							? `dir /s /b "${resolved}\\${findPattern}" 2>nul`
 							: `find "${resolved}" -type f -name "${findPattern}" -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -${MAX_RESULTS}`;
-						const output = execSync(cmd, { encoding: 'utf-8', timeout: 10000, windowsHide: true, shell: true });
+						const output = execSync(cmd, { encoding: 'utf-8', timeout: 10000 });
 						results = output.trim().split(/\r?\n/).filter(Boolean).slice(0, MAX_RESULTS);
 					} catch {
 						results = [];
@@ -220,7 +220,7 @@ export function createFilesystemTools(options: FilesystemOptions) {
 			description:
 				"Search file contents by regex pattern. Returns matching file paths, line numbers, and content. " +
 				"Supports include patterns to filter by file type.",
-			parameters: z.object({
+			inputSchema: z.object({
 				pattern: z.string().describe("Regex pattern to search for"),
 				path: z.string().optional().describe("Directory to search in (defaults to workspace root)"),
 				include: z.string().optional().describe("File pattern to include (e.g. '*.ts', '*.{ts,tsx}')"),
