@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { readFile, writeFile, mkdir, rm, stat, readdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve, join, extname, relative } from "node:path";
 import { execSync } from "node:child_process";
 
@@ -252,7 +252,6 @@ export function createFilesystemTools(options: FilesystemOptions) {
 }
 
 // Sync helpers for tree listing
-import { readdirSync, statSync } from "node:fs";
 
 function readdirSyncSorted(dir: string): string[] {
 	return readdirSync(dir).sort((a, b) => {
