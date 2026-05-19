@@ -1,0 +1,84 @@
+import { create } from "zustand";
+
+export interface McpServerConfig {
+	id: string;
+	name: string;
+	transport: "stdio" | "sse" | "streamable-http";
+	command?: string;
+	args?: string[];
+	env?: Record<string, string>;
+	url?: string;
+	headers?: Record<string, string>;
+	enabled: boolean;
+	agentIds?: string[];
+	createdAt: string;
+	updatedAt: string;
+}
+
+const api = () => (window as any).api;
+
+interface McpState {
+	servers: McpServerConfig[];
+	loading: boolean;
+	fetchServers: () => Promise<void>;
+	create: (input: Omit<McpServerConfig, "id" | "createdAt" | "updatedAt">) => Promise<McpServerConfig>;
+	update: (id: string, input: Partial<McpServerConfig>) => Promise<McpServerConfig>;
+	remove: (id: string) => Promise<void>;
+	testConnection: (input: Omit<McpServerConfig, "id" | "createdAt" | "updatedAt">) => Promise<{ tools: { name: string; description?: string }[]; error?: string }>;
+	connect: (id: string) => Promise<{ tools: { name: string; description?: string }[]; error?: string }>;
+	disconnect: (id: string) => Promise<void>;
+	getStatus: () => Promise<{ id: string; name: string; connected: boolean; toolCount: number }[]>;
+}
+
+export const useMcpStore = create<McpState>((set, get) => ({
+	servers: [],
+	loading: true,
+
+	fetchServers: async () => {
+		try {
+			const data = await api().mcpList();
+			set({ servers: data, loading: false });
+		} catch {
+			set({ loading: false });
+		}
+	},
+
+	create: async (input) => {
+		const created = await api().mcpCreate(input);
+		await get().fetchServers();
+		return created;
+	},
+
+	update: async (id, input) => {
+		const updated = await api().mcpUpdate(id, input);
+		await get().fetchServers();
+		return updated;
+	},
+
+	remove: async (id) => {
+		await api().mcpDelete(id);
+		set((state) => ({ servers: state.servers.filter((s) => s.id !== id) }));
+	},
+
+	testConnection: async (input) => {
+		return api().mcpTest(input);
+	},
+
+	connect: async (id) => {
+		return api().mcpConnect(id);
+	},
+
+	disconnect: async (id) => {
+		await api().mcpDisconnect(id);
+	},
+
+	getStatus: async () => {
+		return api().mcpStatus();
+	},
+}));
+
+let _fetched = false;
+if (!_fetched) {
+	_fetched = true;
+	useMcpStore.getState().fetchServers();
+}

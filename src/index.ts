@@ -1,12 +1,7 @@
-// Zero Core - Custom Agent Core based on Pi Agent
+// Zero Core - Custom Agent Runtime
 //
-// Two usage modes:
-//
-// 1. Standalone (Pi CLI):
-//    pi --extension ./dist/extension/index.js
-//
-// 2. OpenClaw Harness Plugin:
-//    OPENCLAW_AGENT_RUNTIME=zero-core openclaw gateway run
+// Usage:
+//   import { createAgentService } from "zero-core/server/agent-service.js";
 
 // Core configuration
 export { loadConfig, DEFAULT_CONFIG, ZeroCoreConfigSchema, ZERO_CORE_DIR, getGlobalConfigPath, resolveEffective } from "./core/config.js";
@@ -16,7 +11,17 @@ export type { ZeroCoreConfig } from "./core/config.js";
 export { buildSystemPrompt } from "./core/system-prompt.js";
 export { shouldPrune, pruneMessages } from "./core/context-manager.js";
 export { evaluateToolCall, requiresApproval, transformToolResult } from "./core/tool-policy.js";
-export { shouldCompact, buildCompactionInstructions } from "./core/compaction.js";
 
-// OpenClaw harness
-export { createZeroCoreHarness } from "./openclaw/harness.js";
+// Runtime
+export { AgentLoop } from "./runtime/agent-loop.js";
+export type {
+	StreamEvent,
+	RuntimeProviderConfig,
+	SessionConfig,
+	RuntimeCallbacks,
+	AgentRuntime,
+	RuntimeState,
+	ToolExecutionContext,
+	ModelMessage,
+} from "./runtime/types.js";
+export { resolveModel, clearProviderCache } from "./runtime/provider-factory.js";

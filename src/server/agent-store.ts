@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { v4 as uuidv4 } from "uuid";
+import { buildDefaultPrompt } from "../core/default-prompt.js";
 
 // ---------------------------------------------------------------------------
 // Agent Record — replaces PersonaRecord
@@ -9,13 +10,8 @@ import { v4 as uuidv4 } from "uuid";
 
 export interface AgentRecord {
 	id: string;
-	// ─── Persona (character) ─────────────────────
+	// ─── Identity ────────────────────────────────
 	name: string;
-	role: string;
-	traits: string[];
-	expertise: string[];
-	communicationStyle: string;
-	customInstructions?: string;
 	// ─── Runtime config ──────────────────────────
 	workspaceDir?: string;
 	model?: string;
@@ -27,6 +23,16 @@ export interface AgentRecord {
 		maxDirectoryDepth?: number;
 		excludePatterns?: string[];
 		additionalFiles?: string[];
+	};
+	// ─── System Prompt ───────────────────────────
+	systemPrompt?: string;
+	// ─── Tool Policy ─────────────────────────────
+	toolPolicy?: {
+		autoApprove?: string[];
+		blockedTools?: string[];
+		executionMode?: "sequential" | "parallel";
+		resultMaxTokens?: number;
+		readScope?: "filesystem" | "workspace";
 	};
 	// ─── Metadata ────────────────────────────────
 	createdAt: string;
@@ -43,10 +49,7 @@ interface AgentStoreData {
 
 const DEFAULT_AGENT: Omit<AgentRecord, "id" | "createdAt" | "updatedAt"> = {
 	name: "Zero",
-	role: "Expert coding assistant with deep system design knowledge",
-	traits: ["concise", "thorough", "pragmatic"],
-	expertise: ["TypeScript", "system-design", "DevOps"],
-	communicationStyle: "professional",
+	systemPrompt: buildDefaultPrompt("Zero"),
 };
 
 export class AgentStore {
@@ -79,6 +82,35 @@ export class AgentStore {
 						a.workspaceDir = a.workspaceDir.replace(/^~/, require("os").homedir());
 						dirty = true;
 					}
+					// Normalize mixed path separators
+					if (a.workspaceDir) {
+						const sep = process.platform === "win32" ? "\\" : "/";
+						const normalized = a.workspaceDir.replace(/[/\\]+/g, sep);
+						if (normalized !== a.workspaceDir) {
+							a.workspaceDir = normalized;
+							dirty = true;
+						}
+					}
+					// Migrate old persona fields → systemPrompt
+					const hasOldFields = a.role || a.traits || a.expertise || a.communicationStyle || a.customInstructions;
+					if (!a.systemPrompt && hasOldFields) {
+						const parts: string[] = [];
+						if (a.name && a.role) parts.push("Your name is " + a.name + ". " + a.role);
+						else if (a.role) parts.push(a.role as string);
+						if ((a.traits as string[])?.length) parts.push("Personality traits: " + (a.traits as string[]).join(", "));
+						if ((a.expertise as string[])?.length) parts.push("Areas of expertise: " + (a.expertise as string[]).join(", "));
+						if (a.communicationStyle) parts.push("Communication style: " + a.communicationStyle);
+						if (a.customInstructions) parts.push(a.customInstructions as string);
+						a.systemPrompt = parts.join("\n") || buildDefaultPrompt(a.name || "Agent");
+					}
+					if (hasOldFields) {
+						delete a.role;
+						delete a.traits;
+						delete a.expertise;
+						delete a.communicationStyle;
+						delete a.customInstructions;
+						dirty = true;
+					}
 				}
 				if (dirty) this.save(data);
 				return data;
@@ -98,18 +130,22 @@ export class AgentStore {
 		try {
 			const raw = JSON.parse(readFileSync(personaPath, "utf-8"));
 			const personas: Record<string, unknown>[] = raw.personas ?? raw.agents ?? [];
-			const agents: AgentRecord[] = personas.map((p) => ({
-				id: p.id as string,
-				name: p.name as string,
-				role: p.role as string,
-				traits: (p.traits as string[]) ?? [],
-				expertise: (p.expertise as string[]) ?? [],
-				communicationStyle: (p.communicationStyle as string) ?? "professional",
-				customInstructions: p.customInstructions as string | undefined,
-				workspaceDir: (p.workspaceDir as string) || join(homedir(), ".zero-core", "workspace"),
-				createdAt: p.createdAt as string,
-				updatedAt: p.updatedAt as string,
-			}));
+			const agents: AgentRecord[] = personas.map((p) => {
+				const parts: string[] = [];
+				if (p.name && p.role) parts.push("Your name is " + p.name + ". " + p.role);
+				if ((p.traits as string[])?.length) parts.push("Personality traits: " + (p.traits as string[]).join(", "));
+				if ((p.expertise as string[])?.length) parts.push("Areas of expertise: " + (p.expertise as string[]).join(", "));
+				if (p.communicationStyle) parts.push("Communication style: " + p.communicationStyle);
+				if (p.customInstructions) parts.push(p.customInstructions as string);
+				return {
+					id: p.id as string,
+					name: p.name as string,
+					systemPrompt: parts.join("\n") || undefined,
+					workspaceDir: (p.workspaceDir as string) || join(homedir(), ".zero-core", "workspace"),
+					createdAt: p.createdAt as string,
+					updatedAt: p.updatedAt as string,
+				};
+			});
 			this.save({ agents });
 			// Rename old file as backup
 			try { renameSync(personaPath, personaPath + ".bak"); } catch { /* keep both */ }
@@ -130,7 +166,9 @@ export class AgentStore {
 	): AgentRecord {
 		const now = new Date().toISOString();
 		const raw = input.workspaceDir || join(homedir(), ".zero-core", "workspace");
-		const workspaceDir = raw.startsWith("~") ? raw.replace(/^~/, homedir()) : raw;
+		let workspaceDir = raw.startsWith("~") ? raw.replace(/^~/, homedir()) : raw;
+		const sep = process.platform === "win32" ? "\\" : "/";
+		workspaceDir = workspaceDir.replace(/[/\\]+/g, sep);
 		return { id: uuidv4(), ...input, workspaceDir, createdAt: now, updatedAt: now };
 	}
 
@@ -155,6 +193,10 @@ export class AgentStore {
 		const patched = { ...input };
 		if (patched.workspaceDir?.startsWith("~")) {
 			patched.workspaceDir = patched.workspaceDir.replace(/^~/, homedir());
+		}
+		if (patched.workspaceDir) {
+			const sep = process.platform === "win32" ? "\\" : "/";
+			patched.workspaceDir = patched.workspaceDir.replace(/[/\\]+/g, sep);
 		}
 		this.data.agents[index] = {
 			...this.data.agents[index],

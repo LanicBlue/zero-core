@@ -10,6 +10,8 @@ interface FileEntry {
 	expanded?: boolean;
 }
 
+const api = () => (window as any).api;
+
 export { type FileEntry };
 
 export default function FileTreePanel() {
@@ -26,9 +28,8 @@ export default function FileTreePanel() {
 	const effectiveRoot = activeAgent?.workspaceDir || globalWorkspace;
 
 	useEffect(() => {
-		fetch("/api/config")
-			.then((r) => r.json())
-			.then((c) => setGlobalWorkspace(c.workspaceDir))
+		api().configGet()
+			.then((c: any) => setGlobalWorkspace(c.workspaceDir))
 			.catch(() => {});
 	}, []);
 
@@ -70,14 +71,11 @@ export default function FileTreePanel() {
 	const fetchTree = useCallback(async () => {
 		if (!effectiveRoot) return;
 		try {
-			const res = await fetch(`/api/files?root=${encodeURIComponent(effectiveRoot)}`);
-			if (res.ok) {
-				const data = await res.json();
-				const hash = JSON.stringify(data);
-				if (hash !== lastHashRef.current) {
-					lastHashRef.current = hash;
-					setTree((prev) => mergeTree(data, prev));
-				}
+			const data = await api().filesTree(effectiveRoot);
+			const hash = JSON.stringify(data);
+			if (hash !== lastHashRef.current) {
+				lastHashRef.current = hash;
+				setTree((prev) => mergeTree(data, prev));
 			}
 		} catch { /* */ }
 	}, [effectiveRoot]);

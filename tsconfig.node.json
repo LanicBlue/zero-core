@@ -18,6 +18,7 @@
   "include": [
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
+    "src/server/**/*.ts",
     "src/core/**/*.ts",
     "src/extension/**/*.ts",
     "src/openclaw/**/*.ts",

@@ -6,9 +6,11 @@ import { fileURLToPath } from "url";
 import { readdirSync, readFileSync, statSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { AgentStore } from "./agent-store.js";
+import { ProviderStore } from "./provider-store.js";
 import { createAgentService } from "./agent-service.js";
-import { createMessageStore } from "./message-store.js";
+import { SessionDB } from "./session-db.js";
 import { loadWorkspaceConfig, saveWorkspaceConfig } from "./workspace-config.js";
+import { buildDefaultPrompt } from "../core/default-prompt.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT ?? "3210", 10);
@@ -21,7 +23,8 @@ export async function startServer() {
 	const server = createServer(app);
 	const wss = new WebSocketServer({ server, path: "/ws" });
 	const agentStore = new AgentStore();
-	const messageStore = createMessageStore();
+	const providerStore = new ProviderStore();
+	const sessionDB = new SessionDB();
 	let workspaceConfig = loadWorkspaceConfig();
 
 	// Ensure workspace dir exists
@@ -35,34 +38,14 @@ export async function startServer() {
 
 	const agentService = createAgentService(workspaceConfig.workspaceDir);
 
-	// Message persistence subscriber — always active, even without UI
-	let persistenceAgentId = "__default__";
-	let persistenceToolCalls: { name: string; status: "running" | "done" | "error" }[] = [];
-	let persistenceLastText = "";
-
 	agentService.subscribe((event) => {
-		if (event.type === "message_end") {
-			persistenceLastText = event.text as string;
-		}
-		if (event.type === "tool_start") {
-			persistenceToolCalls.push({ name: event.toolName as string, status: "running" });
-		}
-		if (event.type === "tool_end") {
-			const tc = persistenceToolCalls.find(t => t.name === event.toolName && t.status === "running");
-			if (tc) tc.status = event.isError ? "error" : "done";
-		}
-		if (event.type === "agent_end") {
-			const toolCalls = persistenceToolCalls.length > 0 ? persistenceToolCalls : undefined;
-			messageStore.addAssistantMessage(persistenceAgentId, persistenceLastText, toolCalls);
-			persistenceToolCalls = [];
-			persistenceLastText = "";
-		}
+		// Events are forwarded to WebSocket clients; persistence handled internally by agent-loop
 	});
 
 	// ─── Config API ─────────────────────────────────────────────
 
 	app.get("/api/config", (_req, res) => {
-		res.json(workspaceConfig);
+		res.json({ ...workspaceConfig, defaultPrompt: buildDefaultPrompt("Agent") });
 	});
 
 	app.put("/api/config", (req, res) => {
@@ -113,35 +96,109 @@ export async function startServer() {
 
 	// ─── Models API ──────────────────────────────────────────────
 
-	app.get("/api/models", async (_req, res) => {
+	app.get("/api/models", (_req, res) => {
 		try {
-			const { ModelRegistry } = await import("@mariozechner/pi-coding-agent");
-			const { AuthStorage } = await import("@mariozechner/pi-coding-agent");
-			const authStorage = AuthStorage.create();
-			const registry = ModelRegistry.create(authStorage);
-			const models = registry.getAvailable();
-			res.json(models.map((m) => ({
-				provider: m.provider,
-				id: m.id,
-				name: m.name ?? m.id,
-				contextWindow: m.contextWindow,
-				maxTokens: m.maxTokens,
-			})));
+			const models: {
+				providerId: string;
+				providerName: string;
+				providerType: string;
+				id: string;
+				name: string;
+				contextWindow?: number;
+				maxTokens?: number;
+			}[] = [];
+
+			for (const p of providerStore.list()) {
+				for (const m of p.models) {
+					models.push({
+						providerId: p.id,
+						providerName: p.name,
+						providerType: p.type,
+						id: m.id,
+						name: m.name,
+						contextWindow: m.contextWindow,
+						maxTokens: m.maxTokens,
+					});
+				}
+			}
+
+			res.json(models);
 		} catch (err) {
 			console.error("[server] Failed to list models:", (err as Error).message);
 			res.json([]);
 		}
 	});
 
-	// ─── Message History API ──────────────────────────────────────
+
+	app.get("/api/tools", (_req, res) => {
+		res.json([
+			{ name: "bash", description: "在环境中执行 Shell 命令" },
+			{ name: "read", description: "读取文件内容" },
+			{ name: "edit", description: "精确编辑文件" },
+			{ name: "write", description: "创建或覆盖文件" },
+			{ name: "grep", description: "搜索文件内容" },
+			{ name: "find", description: "按模式查找文件" },
+			{ name: "ls", description: "列出目录内容" },
+		]);
+	});
+
 
 	app.get("/api/messages/:agentId", (req, res) => {
-		res.json(messageStore.list(req.params.agentId));
+		const session = sessionDB.getMainSession(req.params.agentId);
+		if (!session) return res.json([]);
+		const msgs = sessionDB.getMessages(session.id);
+		const result: { id: string; role: "user" | "assistant"; text: string; timestamp: number }[] = [];
+		for (const msg of msgs) {
+			const role = msg.role as string;
+			if (role !== "user" && role !== "assistant") continue;
+			let text = "";
+			if (typeof msg.content === "string") {
+				text = msg.content;
+			} else if (Array.isArray(msg.content)) {
+				for (const part of msg.content) {
+					if (typeof part === "object" && "text" in part && typeof part.text === "string") {
+						text += part.text;
+					}
+				}
+			}
+			if (text) {
+				result.push({ id: `s${result.length}`, role: role as "user" | "assistant", text, timestamp: Date.now() });
+			}
+		}
+		res.json(result);
 	});
 
 	app.delete("/api/messages/:agentId", (req, res) => {
-		messageStore.clear(req.params.agentId);
+		const session = sessionDB.createSession(req.params.agentId);
+		sessionDB.setMainSession(req.params.agentId, session.id);
+		const agent = agentStore.get(req.params.agentId);
+		agentService.recreateLoop(req.params.agentId, session.id, agent);
 		res.json({ success: true });
+	});
+
+	// ─── Session API ────────────────────────────────────────────
+
+	app.get("/api/sessions/:agentId", (req, res) => {
+		res.json(sessionDB.listSessions(req.params.agentId));
+	});
+
+	app.post("/api/sessions/:agentId/new", (req, res) => {
+		const session = sessionDB.createSession(req.params.agentId);
+		sessionDB.setMainSession(req.params.agentId, session.id);
+		const agent = agentStore.get(req.params.agentId);
+		agentService.recreateLoop(req.params.agentId, session.id, agent);
+		res.json(session);
+	});
+
+	app.put("/api/sessions/:agentId/switch/:sessionId", (req, res) => {
+		sessionDB.setMainSession(req.params.agentId, req.params.sessionId);
+		const agent = agentStore.get(req.params.agentId);
+		agentService.recreateLoop(req.params.agentId, req.params.sessionId, agent);
+		res.json({ success: true, sessionId: req.params.sessionId });
+	});
+
+	app.get("/api/sessions/:agentId/current", (req, res) => {
+		res.json(sessionDB.getMainSession(req.params.agentId) ?? null);
 	});
 
 	// ─── File Tree API ──────────────────────────────────────────
@@ -243,11 +300,6 @@ export async function startServer() {
 						? agentStore.get(msg.agentId)
 						: undefined;
 
-					persistenceAgentId = msg.agentId ?? "__default__";
-					persistenceToolCalls = [];
-					persistenceLastText = "";
-
-					messageStore.addUserMessage(persistenceAgentId, msg.text);
 
 					// Use agent-specific workspace or fall back to global
 					const wsDir = expandHome(agent?.workspaceDir || workspaceConfig.workspaceDir);
@@ -273,7 +325,15 @@ export async function startServer() {
 
 	// ─── Static files (renderer) ──────────────────────────────
 
-	const rendererDir = join(__dirname, "../renderer");
+	let rendererDir = process.env.RENDERER_DIR;
+		if (!rendererDir || !existsSync(join(rendererDir, "index.html"))) {
+			const candidates = [
+				join(__dirname, "../../out/renderer"),
+				join(__dirname, "../renderer"),
+			];
+			rendererDir = candidates.find((d) => existsSync(join(d, "index.html"))) || candidates[0];
+		}
+		console.log("[server] Renderer dir:", rendererDir);
 	app.use(express.static(rendererDir));
 	app.use((_req, res) => {
 		res.sendFile(join(rendererDir, "index.html"));

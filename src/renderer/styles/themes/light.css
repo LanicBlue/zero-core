@@ -1,0 +1,39 @@
+/* Light Theme — GitHub Light palette */
+[data-theme="light"] {
+	--bg-canvas: #ffffff;
+	--bg-inset: #f6f8fa;
+	--bg-subtle: #f6f8fa;
+	--bg-elevated: #eaeef2;
+	--bg-active: #ddf4ff;
+	--bg-overlay: rgba(0, 0, 0, 0.4);
+
+	--fg-default: #1f2328;
+	--fg-muted: #656d76;
+	--fg-subtle: #6e7781;
+	--fg-faint: #8c959f;
+
+	--border-default: #d0d7de;
+	--border-muted: #d8dee4;
+
+	--color-primary: #0969da;
+	--color-primary-hover: #0550ae;
+	--color-primary-fg: #0969da;
+
+	--color-success: #1a7f37;
+	--color-success-fg: #1a7f37;
+	--color-success-bg: #dafbe1;
+
+	--color-warning: #9a6700;
+	--color-warning-fg: #9a6700;
+	--color-warning-bg: #fff8c5;
+
+	--color-danger: #cf222e;
+	--color-danger-fg: #cf222e;
+	--color-danger-bg: #ffebe9;
+
+	--color-purple: #8250df;
+	--color-purple-fg: #8250df;
+	--color-pink: #a371f7;
+
+	--color-blue-muted: #57606a;
+}

@@ -3,11 +3,6 @@ import { create } from "zustand";
 export interface AgentRecord {
 	id: string;
 	name: string;
-	role: string;
-	traits: string[];
-	expertise: string[];
-	communicationStyle: string;
-	customInstructions?: string;
 	workspaceDir?: string;
 	model?: string;
 	provider?: string;
@@ -18,6 +13,15 @@ export interface AgentRecord {
 		excludePatterns?: string[];
 		additionalFiles?: string[];
 	};
+	systemPrompt?: string;
+	toolPolicy?: {
+		autoApprove?: string[];
+		blockedTools?: string[];
+		executionMode?: "sequential" | "parallel";
+		resultMaxTokens?: number;
+t		readScope?: "filesystem" | "workspace";
+	};
+	knowledgeBaseIds?: string[];
 	createdAt: string;
 	updatedAt: string;
 }
@@ -30,12 +34,21 @@ export interface ModelInfo {
 	maxTokens: number;
 }
 
+export interface ToolInfo {
+	name: string;
+	description: string;
+}
+
+const api = () => (window as any).api;
+
 interface AgentState {
 	agents: AgentRecord[];
 	models: ModelInfo[];
+	tools: ToolInfo[];
 	loading: boolean;
 	fetchAgents: () => Promise<void>;
 	fetchModels: () => Promise<void>;
+	fetchTools: () => Promise<void>;
 	create: (input: Omit<AgentRecord, "id" | "createdAt" | "updatedAt">) => Promise<AgentRecord>;
 	update: (id: string, input: Partial<AgentRecord>) => Promise<AgentRecord>;
 	remove: (id: string) => Promise<void>;
@@ -44,12 +57,12 @@ interface AgentState {
 export const useAgentStore = create<AgentState>((set, get) => ({
 	agents: [],
 	models: [],
+	tools: [],
 	loading: true,
 
 	fetchAgents: async () => {
 		try {
-			const res = await fetch("/api/agents");
-			const data = await res.json();
+			const data = await api().agentsList();
 			set({ agents: data, loading: false });
 		} catch {
 			set({ loading: false });
@@ -58,38 +71,36 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
 	fetchModels: async () => {
 		try {
-			const res = await fetch("/api/models");
-			const data = await res.json();
+			const data = await api().modelsList();
 			set({ models: data });
 		} catch {
 			set({ models: [] });
 		}
 	},
 
+	fetchTools: async () => {
+		try {
+			const data = await api().toolsList();
+			set({ tools: data });
+		} catch {
+			set({ tools: [] });
+		}
+	},
+
 	create: async (input) => {
-		const res = await fetch("/api/agents", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(input),
-		});
-		const created = await res.json();
+		const created = await api().agentsCreate(input);
 		set((state) => ({ agents: [...state.agents, created] }));
 		return created;
 	},
 
 	update: async (id, input) => {
-		const res = await fetch(`/api/agents/${id}`, {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(input),
-		});
-		const updated = await res.json();
+		const updated = await api().agentsUpdate(id, input);
 		set((state) => ({ agents: state.agents.map((a) => (a.id === id ? updated : a)) }));
 		return updated;
 	},
 
 	remove: async (id) => {
-		await fetch(`/api/agents/${id}`, { method: "DELETE" });
+		await api().agentsDelete(id);
 		set((state) => ({ agents: state.agents.filter((a) => a.id !== id) }));
 	},
 }));
@@ -100,4 +111,5 @@ if (!_fetched) {
 	_fetched = true;
 	useAgentStore.getState().fetchAgents();
 	useAgentStore.getState().fetchModels();
+	useAgentStore.getState().fetchTools();
 }

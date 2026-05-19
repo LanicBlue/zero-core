@@ -1,63 +1,93 @@
-import {
-	createAgentSession,
-	type CreateAgentSessionResult,
-} from "@mariozechner/pi-coding-agent";
 import { loadConfig } from "../core/config.js";
 import { buildSystemPrompt } from "../core/system-prompt.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
-import { buildPersonaPrompt, applyPersonaToConfig, type PersonaDefinition } from "../core/persona.js";
 import { loadProjectContext, formatProjectContext } from "../core/project-context.js";
 import type { AgentRecord } from "./agent-store.js";
+import { AgentLoop } from "../runtime/agent-loop.js";
+import type { RuntimeProviderConfig, SessionConfig, StreamEvent, ToolExecutionContext } from "../runtime/types.js";
+import { clearProviderCache } from "../runtime/provider-factory.js";
+import { SessionDB } from "./session-db.js";
+import { mcpManager } from "./mcp-manager.js";
+import { buildMcpTools } from "../runtime/tools/mcp-tool.js";
+import { KbStore } from "./kb-store.js";
+import { KbDB } from "./kb-db.js";
+import { createEmbeddingProvider } from "./kb-embeddings.js";
+import { search, formatSearchResults } from "./kb-search.js";
+
+// Timestamp helper for log messages
+const ts = () => new Date().toISOString().substring(11, 23);
+const log = (...args: unknown[]) => console.log(`[${ts()} agent]`, ...args);
 
 // ---------------------------------------------------------------------------
 // Ensure zero-core dirs
 // ---------------------------------------------------------------------------
 
 const ZERO_CORE_DIR = process.env.ZERO_CORE_DIR ?? join(homedir(), ".zero-core");
-const ZERO_CORE_SESSION_DIR = process.env.ZERO_CORE_SESSION_DIR ?? join(ZERO_CORE_DIR, "sessions");
 
-if (!process.env.PI_CODING_AGENT_DIR) {
-	process.env.PI_CODING_AGENT_DIR = ZERO_CORE_DIR;
-}
-if (!process.env.PI_CODING_AGENT_SESSION_DIR) {
-	process.env.PI_CODING_AGENT_SESSION_DIR = ZERO_CORE_SESSION_DIR;
-}
-for (const dir of [ZERO_CORE_DIR, ZERO_CORE_SESSION_DIR]) {
-	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-}
+if (!existsSync(ZERO_CORE_DIR)) mkdirSync(ZERO_CORE_DIR, { recursive: true });
 
 // ---------------------------------------------------------------------------
-// Agent Service — long-lived, survives UI disconnects
+// Types
 // ---------------------------------------------------------------------------
 
 type StreamCallback = (event: { type: string; [key: string]: unknown }) => void;
 
-interface SessionEntry {
-	result: CreateAgentSessionResult;
-	agentId: string;
+export interface ProviderConfig {
+	name: string;
+	type: "openai" | "anthropic" | "gemini" | "openai-compatible" | "ollama";
+	apiKey: string;
+	baseUrl: string;
+	models: { id: string; name: string; contextWindow?: number; maxTokens?: number }[];
+	enabled: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Agent Service — long-lived, survives UI disconnects
+// Uses Vercel AI SDK runtime with SQLite session persistence
+// ---------------------------------------------------------------------------
+
 class AgentService {
-	private sessions = new Map<string, SessionEntry>();
-	private activeSession: SessionEntry | null = null;
+	private loops = new Map<string, AgentLoop>();
+	private activeLoopId: string | null = null;
 	private subscribers = new Set<StreamCallback>();
 	private config = loadConfig(process.cwd());
 	private workspaceDir: string;
 	private isAgentBusy = false;
 	private currentStreamText = "";
 	private currentToolCalls: { name: string; status: "running" | "done" | "error" }[] = [];
+	private providerConfigs: RuntimeProviderConfig[] = [];
+	private defaultModel: string | undefined;
+	private defaultProvider: string | undefined;
+	private db: SessionDB;
+	private kbStore: KbStore;
+	private kbDb: KbDB;
 
 	constructor(workspaceDir: string) {
 		this.workspaceDir = workspaceDir;
+		this.db = new SessionDB();
+		this.kbStore = new KbStore();
+		this.kbDb = new KbDB();
+	}
+
+	getDB(): SessionDB {
+		return this.db;
 	}
 
 	setWorkspaceDir(dir: string): void {
 		if (dir !== this.workspaceDir) {
 			this.workspaceDir = dir;
-			this.dispose();
+			this.invalidateLoops();
 		}
+	}
+
+	setProviders(providers: ProviderConfig[], defaultModel?: string, defaultProvider?: string): void {
+		this.providerConfigs = providers;
+		this.defaultModel = defaultModel;
+		this.defaultProvider = defaultProvider;
+		clearProviderCache();
+		this.invalidateLoops();
 	}
 
 	subscribe(cb: StreamCallback): () => void {
@@ -65,169 +95,184 @@ class AgentService {
 		return () => { this.subscribers.delete(cb); };
 	}
 
-	getState(): { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[] } {
+	getState(): { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[]; agentId?: string } {
 		return {
 			isBusy: this.isAgentBusy,
 			streamingText: this.currentStreamText,
 			toolCalls: [...this.currentToolCalls],
+			agentId: this.activeLoopId ?? undefined,
 		};
 	}
 
-	private async getOrCreateSession(agent?: AgentRecord): Promise<SessionEntry> {
+	private getOrCreateLoop(agent?: AgentRecord): AgentLoop {
 		const agentId = agent?.id ?? "__default__";
 
-		let entry = this.sessions.get(agentId);
-		if (entry) {
-			this.activeSession = entry;
-			return entry;
+		let loop = this.loops.get(agentId);
+		if (loop) {
+			this.activeLoopId = agentId;
+			return loop;
 		}
 
+		// Resolve or create main session for this agent
+		let session = this.db.getMainSession(agentId);
+		if (!session) {
+			session = this.db.createSession(agentId);
+			this.db.setMainSession(agentId, session.id);
+		}
+
+		return this.createLoopForSession(agentId, session.id, agent);
+	}
+
+	recreateLoop(agentId: string, sessionId: string, agent?: AgentRecord): void {
+		// Dispose old loop
+		const old = this.loops.get(agentId);
+		if (old) {
+			old.abort();
+			this.loops.delete(agentId);
+		}
+
+		this.createLoopForSession(agentId, sessionId, agent);
+	}
+
+	private createLoopForSession(agentId: string, sessionId: string, agent?: AgentRecord): AgentLoop {
 		const cwd = agent?.workspaceDir || this.workspaceDir;
-		console.log("[agent] Creating session for agent:", agentId, "cwd:", cwd);
-
-		const sessionOptions: Record<string, unknown> = {
-			cwd,
-		};
-
-		const result = await createAgentSession(sessionOptions) as CreateAgentSessionResult;
-
-		console.log("[agent] Session created, loading extension...");
-
-		const extensionPath = join(import.meta.dirname ?? __dirname, "../extension/index.js");
-		try {
-			const { default: extensionFactory } = await import(extensionPath);
-			if (typeof extensionFactory === "function") {
-				console.log("[agent] Extension loaded (factory mode)");
-			}
-		} catch (err) {
-			console.log("[agent] Extension import skipped:", (err as Error).message);
-		}
-
-		const definition = agent ? agentToDefinition(agent) : undefined;
-
-		// Merge persona overrides into config
-		const effectiveConfig = definition
-			? applyPersonaToConfig(this.config, definition)
-			: this.config;
+		log("Creating runtime for agent:", agentId, "session:", sessionId, "cwd:", cwd);
 
 		const projectCtx = loadProjectContext(cwd, agent?.contextConfig);
 
-		const systemPrompt = buildSystemPrompt(effectiveConfig, {
+		const systemPrompt = buildSystemPrompt(this.config, {
 			cwd,
 			activeTools: [],
-			originalPrompt: "",
+			originalPrompt: agent?.systemPrompt ?? "",
 			projectContext: projectCtx ? formatProjectContext(projectCtx) : undefined,
-			extraSections: definition
-				? [{ key: "Persona", content: buildPersonaPrompt(definition) }]
-				: undefined,
 		});
 
-		result.session.agent.state.systemPrompt = systemPrompt;
+		const sessionConfig: SessionConfig = {
+			agentId,
+			workspaceDir: cwd,
+			systemPrompt,
+			modelId: agent?.model || this.defaultModel || "",
+			providerName: agent?.provider || this.defaultProvider || "",
+			thinkingLevel: agent?.thinkingLevel,
+			maxSteps: 50,
+			sessionId,
+			toolPolicy: {
+				autoApprove: agent?.toolPolicy?.autoApprove ?? this.config.toolPolicy.autoApprove,
+				blockedTools: agent?.toolPolicy?.blockedTools ?? this.config.toolPolicy.blockedTools,
+				executionMode: agent?.toolPolicy?.executionMode ?? this.config.toolPolicy.executionMode,
+				resultMaxTokens: agent?.toolPolicy?.resultMaxTokens ?? this.config.toolPolicy.resultMaxTokens,
+					readScope: agent?.toolPolicy?.readScope ?? "filesystem",
+			},
+			getMcpTools: async (aid?: string) => {
+				const mcpToolInfos = mcpManager.getToolsForAgent(aid);
+				return buildMcpTools(mcpToolInfos, (serverId, toolName, args) =>
+					mcpManager.callTool(serverId, toolName, args),
+				);
+			},
+		};
 
-		let capturedEntry: SessionEntry | null = null;
+		const capturedAgentId = agentId;
 
-		result.session.subscribe((event: unknown) => {
-			const e = event as Record<string, unknown>;
-			if (this.activeSession === capturedEntry && e && "type" in e) {
-				this.handleEvent(e);
-			}
-		});
+		const loop = new AgentLoop(
+			sessionConfig,
+			this.providerConfigs,
+			{
+				onEvent: (event: StreamEvent) => {
+					if (this.activeLoopId === capturedAgentId) {
+						this.handleRuntimeEvent(event);
+					}
+				},
+			},
+			this.db,
+		);
 
-		entry = { result, agentId };
-		capturedEntry = entry;
-		this.sessions.set(agentId, entry);
-		this.activeSession = entry;
+		this.loops.set(agentId, loop);
+		this.activeLoopId = agentId;
 
-		console.log("[agent] Session ready for:", agentId);
-		return entry;
+		log("Runtime ready for:", agentId, "session:", sessionId);
+		return loop;
 	}
 
 	async sendPrompt(text: string, agent?: AgentRecord): Promise<void> {
-		const entry = await this.getOrCreateSession(agent);
+		const loop = this.getOrCreateLoop(agent);
 
-		console.log("[agent] Sending prompt:", text.substring(0, 50));
+		log("Sending prompt:", text.substring(0, 50));
 		this.isAgentBusy = true;
 		this.currentStreamText = "";
 		this.currentToolCalls = [];
 
 		try {
-			await entry.result.session.prompt(text);
-			console.log("[agent] Prompt completed");
+			await loop.run(text);
+			log("Prompt completed");
 		} catch (err) {
-			console.error("[agent] Prompt error:", (err as Error).message);
-			this.emit({ type: "error", error: (err as Error).message });
+			console.error(`[${ts()} agent] Prompt error:`, (err as Error).message);
+			this.emit({ type: "error", error: (err as Error).message, agentId: this.activeLoopId ?? undefined });
 		}
 	}
 
 	async abort(): Promise<void> {
-		this.activeSession?.result.session.agent.abort();
+		const loop = this.activeLoopId ? this.loops.get(this.activeLoopId) : null;
+		loop?.abort();
+	}
+
+	private getEmbeddingBaseUrl(provider: string): string {
+		// Use the first enabled provider's base URL for OpenAI-compatible
+		if (provider === "ollama") return "http://localhost:11434";
+		const p = this.providerConfigs.find((p) => p.enabled && p.type !== "ollama");
+		return p?.baseUrl ?? "https://api.openai.com/v1";
+	}
+
+	private getEmbeddingApiKey(provider: string): string {
+		if (provider === "ollama") return "";
+		const p = this.providerConfigs.find((p) => p.enabled && p.type !== "ollama");
+		return p?.apiKey ?? "";
 	}
 
 	dispose(): void {
-		for (const entry of this.sessions.values()) {
-			try {
-				entry.result.session.agent.abort();
-			} catch { /* ignore */ }
+		for (const loop of this.loops.values()) {
+			loop.abort();
 		}
-		this.sessions.clear();
-		this.activeSession = null;
-		this.subscribers.clear();
+		this.loops.clear();
+		this.activeLoopId = null;
 		this.isAgentBusy = false;
+		this.db.close();
+		this.kbDb.close();
 	}
 
-	private handleEvent(e: Record<string, unknown>): void {
-		switch (e.type) {
-			case "message_update": {
-				const msg = e.message as Record<string, unknown> | undefined;
-				if (!msg || typeof msg !== "object" || msg.role === "user") break;
-				if ("content" in msg && Array.isArray(msg.content)) {
-					for (const block of msg.content as Record<string, unknown>[]) {
-						if (block.type === "text" && typeof block.text === "string" && block.text) {
-							this.currentStreamText = block.text;
-							this.emit({ type: "text_delta", text: block.text });
-						}
-					}
-				}
+	private invalidateLoops(): void {
+		for (const loop of this.loops.values()) {
+			loop.abort();
+		}
+		this.loops.clear();
+		this.activeLoopId = null;
+	}
+
+	private handleRuntimeEvent(event: StreamEvent): void {
+		switch (event.type) {
+			case "text_delta": {
 				break;
 			}
-
+			case "tool_start": {
+				this.currentToolCalls.push({ name: event.toolName, status: "running" });
+				break;
+			}
+			case "tool_end": {
+				const tc = this.currentToolCalls.find(t => t.name === event.toolName && t.status === "running");
+				if (tc) tc.status = event.isError ? "error" : "done";
+				break;
+			}
 			case "message_end": {
-				const endMsg = e.message as Record<string, unknown> | undefined;
-				if (!endMsg || typeof endMsg !== "object" || endMsg.role === "user") break;
-				let fullText = "";
-				if ("content" in endMsg && Array.isArray(endMsg.content)) {
-					for (const block of endMsg.content as Record<string, unknown>[]) {
-						if (block.type === "text" && typeof block.text === "string") {
-							fullText += block.text;
-						}
-					}
-				}
-				this.currentStreamText = fullText;
-				this.emit({ type: "message_end", text: fullText });
+				this.currentStreamText = event.text;
 				break;
 			}
-
-			case "tool_execution_start": {
-				this.currentToolCalls.push({ name: e.toolName as string, status: "running" });
-				this.emit({ type: "tool_start", toolName: e.toolName });
-				break;
-			}
-
-			case "tool_execution_end": {
-				const tc = this.currentToolCalls.find(t => t.name === e.toolName && t.status === "running");
-				if (tc) tc.status = e.isError ? "error" : "done";
-				this.emit({ type: "tool_end", toolName: e.toolName, isError: e.isError });
-				break;
-			}
-
 			case "agent_end": {
 				this.isAgentBusy = false;
 				this.currentStreamText = "";
 				this.currentToolCalls = [];
-				this.emit({ type: "agent_end" });
 				break;
 			}
 		}
+		this.emit(event as { type: string; [key: string]: unknown });
 	}
 
 	private emit(event: { type: string; [key: string]: unknown }): void {
@@ -235,17 +280,6 @@ class AgentService {
 			try { cb(event); } catch { /* ignore */ }
 		}
 	}
-}
-
-function agentToDefinition(a: AgentRecord): PersonaDefinition {
-	return {
-		name: a.name,
-		role: a.role,
-		traits: a.traits,
-		expertise: a.expertise,
-		communicationStyle: a.communicationStyle as "professional" | "casual" | "technical" | "friendly",
-		customInstructions: a.customInstructions,
-	};
 }
 
 export function createAgentService(workspaceDir: string): AgentService {

@@ -1,0 +1,32 @@
+appId: com.zero-core.app
+productName: Zero-Core
+directories:
+  buildResources: build
+  output: release
+files:
+  - out/**/*
+  - dist/**/*
+  - package.json
+asar: false
+npmRebuild: true
+win:
+  executableName: Zero-Core
+  artifactName: "${productName}-${version}-${arch}-setup.${ext}"
+  target:
+    - nsis
+    - portable
+nsis:
+  artifactName: "${productName}-${version}-${arch}-setup.${ext}"
+  shortcutName: "${productName}"
+  uninstallDisplayName: "${productName}"
+  createDesktopShortcut: always
+  allowToChangeInstallationDirectory: true
+  oneClick: false
+portable:
+  artifactName: "${productName}-${version}-${arch}-portable.${ext}"
+mac:
+  target:
+    - dmg
+linux:
+  target:
+    - AppImage

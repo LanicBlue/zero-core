@@ -4,6 +4,8 @@ export interface ToolCallBlock {
 	type: "tool";
 	name: string;
 	status: "running" | "done" | "error";
+	args?: string;
+	result?: string;
 }
 
 export interface TextBlock {
@@ -11,7 +13,12 @@ export interface TextBlock {
 	text: string;
 }
 
-export type MessageBlock = TextBlock | ToolCallBlock;
+export interface ThinkingBlock {
+	type: "thinking";
+	text: string;
+}
+
+export type MessageBlock = TextBlock | ToolCallBlock | ThinkingBlock;
 
 export interface ChatMessage {
 	id: string;
@@ -22,22 +29,40 @@ export interface ChatMessage {
 	streaming?: boolean;
 }
 
-interface ChatState {
-	messages: ChatMessage[];
-	activeAgentId: string | null;
-	isStreaming: boolean;
-	addMessage: (msg: ChatMessage) => void;
-	updateAssistantText: (text: string) => void;
-	addToolCall: (name: string) => void;
-	updateToolCall: (name: string, status: "done" | "error") => void;
-	setIsStreaming: (v: boolean) => void;
-	finishStreaming: () => void;
-	setActiveAgent: (id: string | null) => void;
-	loadMessages: (messages: ChatMessage[]) => void;
-	clearMessages: () => void;
+export interface SessionInfo {
+	id: string;
+	agentId: string;
+	isMain: boolean;
+	title: string | null;
+	createdAt: string;
+	updatedAt: string;
 }
 
-let msgCounter = 0;
+let _nextId = Date.now();
+export const nextMsgId = () => String(_nextId++);
+
+interface ChatState {
+	messagesByAgent: Record<string, ChatMessage[]>;
+	activeAgentId: string | null;
+	streamingAgentId: string | null;
+	messages: ChatMessage[];
+	isStreaming: boolean;
+	sessionsByAgent: Record<string, SessionInfo[]>;
+	currentSessionId: string | null;
+
+	addMessage: (agentId: string, msg: ChatMessage) => void;
+	updateAssistantText: (agentId: string, text: string) => void;
+	updateThinking: (agentId: string, text: string) => void;
+	addToolCall: (agentId: string, name: string, args?: string) => void;
+	updateToolCall: (agentId: string, name: string, status: "done" | "error", result?: string) => void;
+	setIsStreaming: (agentId: string, v: boolean) => void;
+	finishStreaming: (agentId: string) => void;
+	setActiveAgent: (id: string | null) => void;
+	loadMessages: (agentId: string, messages: ChatMessage[]) => void;
+	clearMessages: (agentId: string) => void;
+	setSessions: (agentId: string, sessions: SessionInfo[]) => void;
+	setCurrentSessionId: (sessionId: string | null) => void;
+}
 
 function updateLastAssistantMsg(
 	msgs: ChatMessage[],
@@ -54,19 +79,31 @@ function updateLastAssistantMsg(
 }
 
 export const useChatStore = create<ChatState>((set) => ({
-	messages: [],
+	messagesByAgent: {},
 	activeAgentId: null,
+	streamingAgentId: null,
+	messages: [],
 	isStreaming: false,
+	sessionsByAgent: {},
+	currentSessionId: null,
 
-	addMessage: (msg) =>
-		set((state) => ({
-			messages: [...state.messages, msg],
-			isStreaming: msg.role === "assistant" ? true : state.isStreaming,
-		})),
+	addMessage: (agentId, msg) =>
+		set((state) => {
+			const agentMsgs = [...(state.messagesByAgent[agentId] ?? []), msg];
+			const newByAgent = { ...state.messagesByAgent, [agentId]: agentMsgs };
+			const isActive = agentId === state.activeAgentId;
+			const newStreamingId = msg.role === "assistant" ? agentId : state.streamingAgentId;
+			return {
+				messagesByAgent: newByAgent,
+				streamingAgentId: newStreamingId,
+				messages: isActive ? agentMsgs : state.messages,
+				isStreaming: newStreamingId !== null && newStreamingId === state.activeAgentId,
+			};
+		}),
 
-	updateAssistantText: (text) =>
-		set((state) => ({
-			messages: updateLastAssistantMsg(state.messages, (msg) => {
+	updateAssistantText: (agentId, text) =>
+		set((state) => {
+			const agentMsgs = updateLastAssistantMsg(state.messagesByAgent[agentId] ?? [], (msg) => {
 				const blocks = [...(msg.blocks ?? [])];
 				const lastBlock = blocks[blocks.length - 1];
 				if (lastBlock && lastBlock.type === "text") {
@@ -75,52 +112,138 @@ export const useChatStore = create<ChatState>((set) => ({
 					blocks.push({ type: "text", text });
 				}
 				return { ...msg, blocks, streaming: true };
-			}),
-		})),
+			});
+			const newByAgent = { ...state.messagesByAgent, [agentId]: agentMsgs };
+			const isActive = agentId === state.activeAgentId;
+			return {
+				messagesByAgent: newByAgent,
+				messages: isActive ? agentMsgs : state.messages,
+			};
+		}),
 
-	addToolCall: (name) =>
-		set((state) => ({
-			messages: updateLastAssistantMsg(state.messages, (msg) => {
+	updateThinking: (agentId, text) =>
+		set((state) => {
+			const agentMsgs = updateLastAssistantMsg(state.messagesByAgent[agentId] ?? [], (msg) => {
 				const blocks = [...(msg.blocks ?? [])];
-				blocks.push({ type: "tool", name, status: "running" });
+				const thinkIdx = blocks.findIndex((b) => b.type === "thinking");
+				if (thinkIdx >= 0) {
+					blocks[thinkIdx] = { type: "thinking", text };
+				} else {
+					blocks.unshift({ type: "thinking", text });
+				}
 				return { ...msg, blocks, streaming: true };
-			}),
-		})),
+			});
+			const newByAgent = { ...state.messagesByAgent, [agentId]: agentMsgs };
+			const isActive = agentId === state.activeAgentId;
+			return {
+				messagesByAgent: newByAgent,
+				messages: isActive ? agentMsgs : state.messages,
+			};
+		}),
 
-	updateToolCall: (name, status) =>
-		set((state) => ({
-			messages: updateLastAssistantMsg(state.messages, (msg) => {
+	addToolCall: (agentId, name, args?) =>
+		set((state) => {
+			const agentMsgs = updateLastAssistantMsg(state.messagesByAgent[agentId] ?? [], (msg) => {
+				const blocks = [...(msg.blocks ?? [])];
+				blocks.push({ type: "tool", name, status: "running", args });
+				return { ...msg, blocks, streaming: true };
+			});
+			const newByAgent = { ...state.messagesByAgent, [agentId]: agentMsgs };
+			const isActive = agentId === state.activeAgentId;
+			return {
+				messagesByAgent: newByAgent,
+				messages: isActive ? agentMsgs : state.messages,
+			};
+		}),
+
+	updateToolCall: (agentId, name, status, result?) =>
+		set((state) => {
+			const agentMsgs = updateLastAssistantMsg(state.messagesByAgent[agentId] ?? [], (msg) => {
 				const blocks = [...(msg.blocks ?? [])];
 				for (let i = blocks.length - 1; i >= 0; i--) {
 					if (blocks[i].type === "tool") {
 						const tb = blocks[i] as ToolCallBlock;
 						if (tb.name === name && tb.status === "running") {
-							blocks[i] = { ...tb, status };
+							blocks[i] = { ...tb, status, result };
 							break;
 						}
 					}
 				}
 				return { ...msg, blocks, streaming: true };
-			}),
-		})),
-
-	setIsStreaming: (v) => set({ isStreaming: v }),
-
-	finishStreaming: () =>
-		set((state) => {
-			const msgs = state.messages.map((m) =>
-				m.streaming ? { ...m, streaming: false } : m,
-			);
-			return { messages: msgs, isStreaming: false };
+			});
+			const newByAgent = { ...state.messagesByAgent, [agentId]: agentMsgs };
+			const isActive = agentId === state.activeAgentId;
+			return {
+				messagesByAgent: newByAgent,
+				messages: isActive ? agentMsgs : state.messages,
+			};
 		}),
 
-	setActiveAgent: (id) => set({ activeAgentId: id }),
+	setIsStreaming: (agentId, v) =>
+		set((state) => {
+			const newStreamingId = v ? agentId : (state.streamingAgentId === agentId ? null : state.streamingAgentId);
+			return {
+				streamingAgentId: newStreamingId,
+				isStreaming: newStreamingId !== null && newStreamingId === state.activeAgentId,
+			};
+		}),
 
-	loadMessages: (messages) => set({ messages, isStreaming: false }),
+	finishStreaming: (agentId) =>
+		set((state) => {
+			const agentMsgs = (state.messagesByAgent[agentId] ?? []).map((m) =>
+				m.streaming ? { ...m, streaming: false } : m,
+			);
+			const newByAgent = { ...state.messagesByAgent, [agentId]: agentMsgs };
+			const isActive = agentId === state.activeAgentId;
+			const newStreamingId = state.streamingAgentId === agentId ? null : state.streamingAgentId;
+			return {
+				messagesByAgent: newByAgent,
+				streamingAgentId: newStreamingId,
+				messages: isActive ? agentMsgs : state.messages,
+				isStreaming: newStreamingId !== null && newStreamingId === state.activeAgentId,
+			};
+		}),
 
-	clearMessages: () => set({ messages: [] }),
+	setActiveAgent: (id) =>
+		set((state) => {
+			const newByAgent = { ...state.messagesByAgent };
+			if (state.activeAgentId && state.activeAgentId !== id) {
+				newByAgent[state.activeAgentId] = state.messages;
+			}
+			const newMessages = newByAgent[id] ?? [];
+			return {
+				activeAgentId: id,
+				messagesByAgent: newByAgent,
+				messages: newMessages,
+				isStreaming: state.streamingAgentId !== null && state.streamingAgentId === id,
+			};
+		}),
+
+	loadMessages: (agentId, msgs) =>
+		set((state) => {
+			const newByAgent = { ...state.messagesByAgent, [agentId]: msgs };
+			const isActive = agentId === state.activeAgentId;
+			return {
+				messagesByAgent: newByAgent,
+				messages: isActive ? msgs : state.messages,
+			};
+		}),
+
+	clearMessages: (agentId) =>
+		set((state) => {
+			const newByAgent = { ...state.messagesByAgent, [agentId]: [] };
+			const isActive = agentId === state.activeAgentId;
+			return {
+				messagesByAgent: newByAgent,
+				messages: isActive ? [] : state.messages,
+			};
+		}),
+
+	setSessions: (agentId, sessions) =>
+		set((state) => ({
+			sessionsByAgent: { ...state.sessionsByAgent, [agentId]: sessions },
+		})),
+
+	setCurrentSessionId: (sessionId) =>
+		set({ currentSessionId: sessionId }),
 }));
-
-export function nextMsgId(): string {
-	return `msg-${++msgCounter}`;
-}

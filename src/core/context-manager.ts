@@ -1,27 +1,27 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { ModelMessage } from "ai";
 import type { ZeroCoreConfig } from "./config.js";
 
 // ---------------------------------------------------------------------------
 // Token estimation
 // ---------------------------------------------------------------------------
 
-function estimateTokens(messages: AgentMessage[]): number {
+function estimateTokens(messages: ModelMessage[]): number {
 	let total = 0;
 	for (const msg of messages) {
-		if ("content" in msg && Array.isArray(msg.content)) {
-			for (const block of msg.content) {
-				if ("text" in block && typeof block.text === "string") {
-					total += Math.ceil(block.text.length / 4);
+		if (typeof msg.content === "string") {
+			total += Math.ceil(msg.content.length / 4);
+		} else if (Array.isArray(msg.content)) {
+			for (const part of msg.content) {
+				if ("text" in part && typeof part.text === "string") {
+					total += Math.ceil(part.text.length / 4);
 				}
 			}
-		} else if ("content" in msg && typeof msg.content === "string") {
-			total += Math.ceil(msg.content.length / 4);
 		}
 	}
 	return total;
 }
 
-function messageTokens(msg: AgentMessage): number {
+function messageTokens(msg: ModelMessage): number {
 	return estimateTokens([msg]);
 }
 
@@ -29,7 +29,7 @@ function messageTokens(msg: AgentMessage): number {
 // Should we prune?
 // ---------------------------------------------------------------------------
 
-export function shouldPrune(config: ZeroCoreConfig, messages: AgentMessage[]): boolean {
+export function shouldPrune(config: ZeroCoreConfig, messages: ModelMessage[]): boolean {
 	const maxTokens = config.context.maxTokens;
 	if (!maxTokens) return false;
 	return estimateTokens(messages) > maxTokens - (config.context.reserveTokens ?? 16384);
@@ -39,7 +39,7 @@ export function shouldPrune(config: ZeroCoreConfig, messages: AgentMessage[]): b
 // Prune dispatch
 // ---------------------------------------------------------------------------
 
-export function pruneMessages(config: ZeroCoreConfig, messages: AgentMessage[]): AgentMessage[] {
+export function pruneMessages(config: ZeroCoreConfig, messages: ModelMessage[]): ModelMessage[] {
 	const strategy = config.context.pruningStrategy ?? "turn-boundary";
 	const keepRecent = config.context.keepRecentTokens ?? 20000;
 
@@ -58,9 +58,9 @@ export function pruneMessages(config: ZeroCoreConfig, messages: AgentMessage[]):
 // Tail strategy — keep last N tokens
 // ---------------------------------------------------------------------------
 
-function pruneTail(messages: AgentMessage[], keepRecentTokens: number, config: ZeroCoreConfig): AgentMessage[] {
+function pruneTail(messages: ModelMessage[], keepRecentTokens: number, config: ZeroCoreConfig): ModelMessage[] {
 	let tokenBudget = keepRecentTokens;
-	const kept: AgentMessage[] = [];
+	const kept: ModelMessage[] = [];
 
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const cost = messageTokens(messages[i]);
@@ -76,9 +76,9 @@ function pruneTail(messages: AgentMessage[], keepRecentTokens: number, config: Z
 // Turn-boundary strategy — keep complete turns
 // ---------------------------------------------------------------------------
 
-function pruneTurnBoundary(messages: AgentMessage[], keepRecentTokens: number, config: ZeroCoreConfig): AgentMessage[] {
+function pruneTurnBoundary(messages: ModelMessage[], keepRecentTokens: number, config: ZeroCoreConfig): ModelMessage[] {
 	let tokenBudget = keepRecentTokens;
-	const kept: AgentMessage[] = [];
+	const kept: ModelMessage[] = [];
 
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const cost = messageTokens(messages[i]);
@@ -87,21 +87,28 @@ function pruneTurnBoundary(messages: AgentMessage[], keepRecentTokens: number, c
 		kept.unshift(messages[i]);
 	}
 
-	// Snap to turn boundary: if first kept message is a toolResult, include its assistant message
-	if (kept.length > 0 && kept[0].role === "toolResult") {
-		const toolCallId = (kept[0] as { toolCallId: string }).toolCallId;
-		for (let i = messages.length - 1; i >= 0; i--) {
-			if (messages[i].role === "assistant") {
-				const content = (messages[i] as { content: unknown[] }).content;
-				if (content?.some((b) => (b as Record<string, unknown>).type === "toolCall" && (b as { id: string }).id === toolCallId)) {
-					// Already included?
-					if (!kept.includes(messages[i])) {
-						const cost = messageTokens(messages[i]);
-						if (tokenBudget - cost >= 0) {
-							kept.unshift(messages[i]);
+	// Snap to turn boundary: if first kept message is a tool result, include its assistant message
+	if (kept.length > 0 && kept[0].role === "tool") {
+		const toolContent = kept[0].content;
+		const toolCallId = Array.isArray(toolContent) && toolContent.length > 0
+			? (toolContent[0] as { toolCallId?: string }).toolCallId
+			: undefined;
+
+		if (toolCallId) {
+			for (let i = messages.length - 1; i >= 0; i--) {
+				if (messages[i].role === "assistant") {
+					const content = messages[i].content;
+					if (Array.isArray(content) && content.some((b) =>
+						(b as { type: string }).type === "tool-call" && (b as { toolCallId: string }).toolCallId === toolCallId
+					)) {
+						if (!kept.includes(messages[i])) {
+							const cost = messageTokens(messages[i]);
+							if (tokenBudget - cost >= 0) {
+								kept.unshift(messages[i]);
+							}
 						}
+						break;
 					}
-					break;
 				}
 			}
 		}
@@ -115,48 +122,45 @@ function pruneTurnBoundary(messages: AgentMessage[], keepRecentTokens: number, c
 // ---------------------------------------------------------------------------
 
 interface ScoredMessage {
-	msg: AgentMessage;
+	msg: ModelMessage;
 	index: number;
 	score: number;
 	tokens: number;
 }
 
-function scoreMessage(msg: AgentMessage, index: number, total: number): number {
+function scoreMessage(msg: ModelMessage, index: number, total: number): number {
 	let score = 0;
 
 	// Recency bonus: more recent = higher score (0..1)
 	score += (index / total) * 3;
 
 	if (msg.role === "user") {
-		// User messages are important — they define intent
 		score += 2;
 	} else if (msg.role === "assistant") {
-		const content = (msg as { content: unknown[] }).content;
-		// Assistant messages with tool calls are important for continuity
-		if (content?.some((b) => (b as Record<string, unknown>).type === "toolCall")) {
+		const content = msg.content;
+		if (Array.isArray(content) && content.some((b) => (b as { type: string }).type === "tool-call")) {
 			score += 1.5;
 		}
-		// Long assistant messages likely contain valuable analysis
 		const tokens = messageTokens(msg);
 		if (tokens > 500) score += 0.5;
-	} else if (msg.role === "toolResult") {
-		// Tool results are less important on their own
+	} else if (msg.role === "tool") {
 		score += 0.5;
-		// Error results are worth keeping
-		if ((msg as { isError?: boolean }).isError) score += 1;
+		// Check for error in tool results
+		const content = msg.content;
+		if (Array.isArray(content) && content.some((b) => (b as { isError?: boolean }).isError)) {
+			score += 1;
+		}
 	}
 
 	return score;
 }
 
-function pruneSmart(messages: AgentMessage[], keepRecentTokens: number, config: ZeroCoreConfig): AgentMessage[] {
+function pruneSmart(messages: ModelMessage[], keepRecentTokens: number, config: ZeroCoreConfig): ModelMessage[] {
 	if (messages.length === 0) return [];
 
-	// Always keep the most recent messages (reserve 60% of budget for recency)
 	const recentBudget = Math.floor(keepRecentTokens * 0.6);
 	const scoredBudget = keepRecentTokens - recentBudget;
 
-	// Collect recent messages (from end)
 	let recentTokens = 0;
 	let recentStart = messages.length;
 	for (let i = messages.length - 1; i >= 0; i--) {
@@ -173,7 +177,6 @@ function pruneSmart(messages: AgentMessage[], keepRecentTokens: number, config: 
 		return applyPreserveToolResults(recentMsgs, messages, config);
 	}
 
-	// Score older messages and select best within budget
 	const scored: ScoredMessage[] = olderMsgs.map((msg, idx) => ({
 		msg,
 		index: idx,
@@ -181,10 +184,9 @@ function pruneSmart(messages: AgentMessage[], keepRecentTokens: number, config: 
 		tokens: messageTokens(msg),
 	}));
 
-	// Sort by score descending
 	scored.sort((a, b) => b.score - a.score);
 
-	const selected: AgentMessage[] = [];
+	const selected: ModelMessage[] = [];
 	let usedTokens = 0;
 	for (const s of scored) {
 		if (usedTokens + s.tokens > scoredBudget) continue;
@@ -192,7 +194,6 @@ function pruneSmart(messages: AgentMessage[], keepRecentTokens: number, config: 
 		usedTokens += s.tokens;
 	}
 
-	// Re-sort selected by original order
 	selected.sort((a, b) => {
 		const ai = olderMsgs.indexOf(a);
 		const bi = olderMsgs.indexOf(b);
@@ -207,57 +208,58 @@ function pruneSmart(messages: AgentMessage[], keepRecentTokens: number, config: 
 // Preserve tool results — ensure no orphaned tool calls
 // ---------------------------------------------------------------------------
 
+function collectToolCallIds(msg: ModelMessage): string[] {
+	if (msg.role !== "assistant" || !Array.isArray(msg.content)) return [];
+	return msg.content
+		.filter((b) => (b as { type: string }).type === "tool-call")
+		.map((b) => (b as { toolCallId: string }).toolCallId);
+}
+
+function collectToolResultIds(msg: ModelMessage): string[] {
+	if (msg.role !== "tool" || !Array.isArray(msg.content)) return [];
+	return msg.content
+		.map((b) => (b as { toolCallId?: string }).toolCallId)
+		.filter((id): id is string => typeof id === "string");
+}
+
 function applyPreserveToolResults(
-	pruned: AgentMessage[],
-	original: AgentMessage[],
+	pruned: ModelMessage[],
+	original: ModelMessage[],
 	config: ZeroCoreConfig,
-): AgentMessage[] {
+): ModelMessage[] {
 	if (!config.context.preserveToolResults) return pruned;
 
-	// Collect toolCallIds from assistant messages in pruned set
-	const prunedIds = new Set(pruned.map((m) => {
-		if (m.role === "toolResult") return (m as { toolCallId: string }).toolCallId;
-		return null;
-	}).filter(Boolean) as string[]);
+	const prunedResultIds = new Set(pruned.flatMap(collectToolResultIds));
 
-	// Find tool calls in pruned assistants that are missing their results
 	const missingToolCallIds = new Set<string>();
 	for (const msg of pruned) {
-		if (msg.role === "assistant") {
-			const content = (msg as { content: unknown[] }).content;
-			for (const block of (content ?? [])) {
-				if ((block as Record<string, unknown>).type === "toolCall") {
-					const id = (block as { id: string }).id;
-					if (!prunedIds.has(id)) {
-						missingToolCallIds.add(id);
-					}
-				}
+		for (const id of collectToolCallIds(msg)) {
+			if (!prunedResultIds.has(id)) {
+				missingToolCallIds.add(id);
 			}
 		}
 	}
 
 	if (missingToolCallIds.size === 0) return pruned;
 
-	// Find missing tool results from original messages
 	const result = [...pruned];
 	for (const msg of original) {
-		if (msg.role === "toolResult") {
-			const id = (msg as { toolCallId: string }).toolCallId;
-			if (missingToolCallIds.has(id) && !result.includes(msg)) {
-				// Insert after the assistant message that called it
-				const assistantIdx = result.findIndex((m) => {
-					if (m.role !== "assistant") return false;
-					const content = (m as { content: unknown[] }).content;
-					return content?.some((b) =>
-						(b as Record<string, unknown>).type === "toolCall" && (b as { id: string }).id === id,
-					);
-				});
+		if (msg.role === "tool") {
+			const resultIds = collectToolResultIds(msg);
+			const hasMissing = resultIds.some((id) => missingToolCallIds.has(id));
+			if (hasMissing && !result.includes(msg)) {
+				const matchingId = resultIds.find((id) => missingToolCallIds.has(id));
+				const assistantIdx = result.findIndex((m) =>
+					collectToolCallIds(m).includes(matchingId!)
+				);
 				if (assistantIdx >= 0) {
 					result.splice(assistantIdx + 1, 0, msg);
 				} else {
 					result.push(msg);
 				}
-				missingToolCallIds.delete(id);
+				for (const id of resultIds) {
+					missingToolCallIds.delete(id);
+				}
 			}
 		}
 	}

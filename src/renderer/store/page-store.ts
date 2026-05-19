@@ -1,8 +1,8 @@
 import { create } from "zustand";
 
 interface PageState {
-	activePage: "chat" | "agents";
-	setActivePage: (page: "chat" | "agents") => void;
+	activePage: "chat" | "agents" | "settings" | "mcp" | "knowledge";
+	setActivePage: (page: "chat" | "agents" | "settings" | "mcp" | "knowledge") => void;
 }
 
 export const usePageStore = create<PageState>((set) => ({

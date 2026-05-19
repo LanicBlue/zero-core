@@ -6,6 +6,8 @@ const CONFIG_PATH = join(homedir(), ".zero-core", "workspace.json");
 
 export interface WorkspaceConfig {
 	workspaceDir: string;
+	defaultModel?: string;
+	defaultProvider?: string;
 }
 
 const DEFAULT_CONFIG: WorkspaceConfig = {

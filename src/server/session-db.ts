@@ -1,0 +1,211 @@
+import Database from "better-sqlite3";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { existsSync, readdirSync, readFileSync, renameSync, mkdirSync } from "node:fs";
+import { v4 as uuidv4 } from "uuid";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface SessionRecord {
+	id: string;
+	agentId: string;
+	isMain: boolean;
+	title: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// SessionDB — SQLite-backed session & message persistence
+// ---------------------------------------------------------------------------
+
+export class SessionDB {
+	private db: Database.Database;
+
+	constructor(dbPath?: string) {
+		const dir = join(dbPath ?? join(homedir(), ".zero-core"), "..");
+		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+		const path = dbPath ?? join(homedir(), ".zero-core", "sessions.db");
+		this.db = new Database(path);
+
+		this.db.pragma("journal_mode = WAL");
+		this.db.pragma("foreign_keys = ON");
+
+		this.initSchema();
+		this.migrateFromJson();
+	}
+
+	// -----------------------------------------------------------------------
+	// Schema
+	// -----------------------------------------------------------------------
+
+	private initSchema(): void {
+		this.db.exec(`
+			CREATE TABLE IF NOT EXISTS sessions (
+				id         TEXT PRIMARY KEY,
+				agent_id   TEXT NOT NULL,
+				is_main    INTEGER NOT NULL DEFAULT 0,
+				title      TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);
+			CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
+
+			CREATE TABLE IF NOT EXISTS messages (
+				id         INTEGER PRIMARY KEY AUTOINCREMENT,
+				session_id TEXT NOT NULL,
+				seq        INTEGER NOT NULL,
+				role       TEXT NOT NULL,
+				content    TEXT NOT NULL,
+				msg_json   TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+			);
+			CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_id, seq);
+		`);
+	}
+
+	// -----------------------------------------------------------------------
+	// Session CRUD
+	// -----------------------------------------------------------------------
+
+	createSession(agentId: string, title?: string): SessionRecord {
+		const now = new Date().toISOString();
+		const id = uuidv4();
+		this.db.prepare(
+			"INSERT INTO sessions (id, agent_id, is_main, title, created_at, updated_at) VALUES (?, ?, 0, ?, ?, ?)",
+		).run(id, agentId, title ?? null, now, now);
+		return { id, agentId, isMain: false, title: title ?? null, createdAt: now, updatedAt: now };
+	}
+
+	getSession(sessionId: string): SessionRecord | undefined {
+		const row = this.db.prepare("SELECT * FROM sessions WHERE id = ?").get(sessionId) as any;
+		return row ? this.rowToRecord(row) : undefined;
+	}
+
+	getMainSession(agentId: string): SessionRecord | undefined {
+		const row = this.db.prepare("SELECT * FROM sessions WHERE agent_id = ? AND is_main = 1").get(agentId) as any;
+		return row ? this.rowToRecord(row) : undefined;
+	}
+
+	setMainSession(agentId: string, sessionId: string): void {
+		const tx = this.db.transaction(() => {
+			this.db.prepare("UPDATE sessions SET is_main = 0 WHERE agent_id = ?").run(agentId);
+			this.db.prepare("UPDATE sessions SET is_main = 1, updated_at = ? WHERE id = ?").run(new Date().toISOString(), sessionId);
+		});
+		tx();
+	}
+
+	listSessions(agentId: string): SessionRecord[] {
+		const rows = this.db.prepare(
+			"SELECT * FROM sessions WHERE agent_id = ? ORDER BY updated_at DESC",
+		).all(agentId) as any[];
+		return rows.map((r) => this.rowToRecord(r));
+	}
+
+	deleteSession(sessionId: string): void {
+		this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+	}
+
+	// -----------------------------------------------------------------------
+	// Messages
+	// -----------------------------------------------------------------------
+
+	getMessages(sessionId: string): any[] {
+		const rows = this.db.prepare(
+			"SELECT msg_json FROM messages WHERE session_id = ? ORDER BY seq",
+		).all(sessionId) as { msg_json: string }[];
+		return rows.map((r) => JSON.parse(r.msg_json));
+	}
+
+	getMessageCount(sessionId: string): number {
+		const row = this.db.prepare(
+			"SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?",
+		).get(sessionId) as any;
+		return row.cnt;
+	}
+
+	saveTurn(sessionId: string, messages: any[]): void {
+		const now = new Date().toISOString();
+		const tx = this.db.transaction(() => {
+			this.db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
+			const insert = this.db.prepare(
+				"INSERT INTO messages (session_id, seq, role, content, msg_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+			);
+			for (let i = 0; i < messages.length; i++) {
+				const msg = messages[i];
+				const role = msg.role ?? "user";
+				const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+				insert.run(sessionId, i, role, content, JSON.stringify(msg), now);
+			}
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
+	}
+
+	// -----------------------------------------------------------------------
+	// Migration from old JSON files
+	// -----------------------------------------------------------------------
+
+	private migrateFromJson(): void {
+		const msgDir = join(homedir(), ".zero-core", "messages");
+		if (!existsSync(msgDir)) return;
+
+		const files = readdirSync(msgDir).filter((f) => f.endsWith(".json") && !f.endsWith(".migrated.bak"));
+		if (files.length === 0) return;
+
+		console.log(`[session-db] Migrating ${files.length} message files...`);
+
+		for (const file of files) {
+			const agentId = file.replace(".json", "");
+			const fp = join(msgDir, file);
+			try {
+				const data = JSON.parse(readFileSync(fp, "utf-8")) as any[];
+				if (!Array.isArray(data) || data.length === 0) {
+					renameSync(fp, fp + ".migrated.bak");
+					continue;
+				}
+
+				const session = this.createSession(agentId, "Migrated");
+				this.setMainSession(agentId, session.id);
+
+				const modelMessages = data.map((sm: any) => ({
+					role: sm.role === "assistant" ? "assistant" : "user",
+					content: sm.text ?? "",
+				}));
+				this.saveTurn(session.id, modelMessages);
+
+				renameSync(fp, fp + ".migrated.bak");
+				console.log(`[session-db] Migrated ${data.length} messages for agent ${agentId}`);
+			} catch (err) {
+				console.error(`[session-db] Failed to migrate ${file}:`, (err as Error).message);
+			}
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Lifecycle
+	// -----------------------------------------------------------------------
+
+	close(): void {
+		this.db.close();
+	}
+
+	// -----------------------------------------------------------------------
+	// Helpers
+	// -----------------------------------------------------------------------
+
+	private rowToRecord(row: any): SessionRecord {
+		return {
+			id: row.id,
+			agentId: row.agent_id,
+			isMain: row.is_main === 1,
+			title: row.title,
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+		};
+	}
+}

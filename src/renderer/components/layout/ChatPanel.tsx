@@ -1,143 +1,207 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { useChatStore, nextMsgId, type MessageBlock } from "../../store/chat-store.js";
+import { useChatStore, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
+import MarkdownRenderer from "../common/MarkdownRenderer.js";
 
-function renderBlock(block: MessageBlock, key: number): React.ReactNode {
-	if (block.type === "text") {
-		if (!block.text) return null;
-		return <span key={key} className="block-text">{block.text}</span>;
+const api = () => (window as any).api;
+
+// ---------------------------------------------------------------------------
+// Parse <think ...>...</think > tags from text into structured blocks
+// ---------------------------------------------------------------------------
+
+interface ParsedSegment {
+	type: "thinking" | "text";
+	text: string;
+}
+
+function parseThinkingFromText(text: string): ParsedSegment[] {
+	if (!text) return [];
+	const segments: ParsedSegment[] = [];
+	let remaining = text;
+
+	while (remaining) {
+		const openIdx = remaining.indexOf("<think");
+		if (openIdx === -1) {
+			if (remaining) segments.push({ type: "text", text: remaining });
+			break;
+		}
+
+		if (openIdx > 0) {
+			segments.push({ type: "text", text: remaining.substring(0, openIdx) });
+		}
+
+		const tagEnd = remaining.indexOf(">", openIdx);
+		if (tagEnd === -1) {
+			segments.push({ type: "text", text: remaining });
+			break;
+		}
+
+		const closeIdx = remaining.indexOf("</think", tagEnd);
+		if (closeIdx === -1) {
+			const thinkText = remaining.substring(tagEnd + 1).replace(/^\n/, "");
+			segments.push({ type: "thinking", text: thinkText });
+			break;
+		}
+
+		const thinkText = remaining.substring(tagEnd + 1, closeIdx).replace(/^\n/, "").replace(/\n$/, "");
+		segments.push({ type: "thinking", text: thinkText });
+
+		const closeEnd = remaining.indexOf(">", closeIdx);
+		remaining = closeEnd !== -1 ? remaining.substring(closeEnd + 1).replace(/^\n/, "") : "";
 	}
-	const statusIcon = block.status === "done" ? " ✓" : block.status === "error" ? " ✗" : " …";
+
+	return segments;
+}
+
+// ---------------------------------------------------------------------------
+// Components
+// ---------------------------------------------------------------------------
+
+function ThinkingBlockComponent({ text, streaming }: { text: string; streaming: boolean }) {
+	const [expanded, setExpanded] = useState(false);
+
 	return (
-		<span key={key} className={`block-tool block-tool-${block.status}`}>
-			{"› "}{block.name}{statusIcon}
-		</span>
+		<div className="thinking-block">
+			<div className="thinking-block-header" onClick={() => setExpanded(!expanded)}>
+				<span className="thinking-block-chevron">{expanded ? "▾" : "▸"}</span>
+				<span className="thinking-block-title">Thinking</span>
+				{streaming && <span className="thinking-block-spinner">…</span>}
+			</div>
+			{expanded && (
+				<div className="thinking-block-details">
+					<pre className="thinking-block-code">{text}</pre>
+				</div>
+			)}
+		</div>
 	);
 }
 
+function ToolBlock({ block, streaming }: { block: ToolCallBlock; streaming: boolean }) {
+	const [expanded, setExpanded] = useState(false);
+	const statusClass = block.status === "running" ? "tool-running" : block.status === "error" ? "tool-error" : "tool-done";
+
+	return (
+		<div className={`tool-block ${statusClass}`}>
+			<div className="tool-block-header" onClick={() => setExpanded(!expanded)}>
+				<span className="tool-block-chevron">{expanded ? "▾" : "▸"}</span>
+				<span className="tool-block-name">{block.name}</span>
+				<span className={`tool-block-status ${statusClass}`}>
+					{block.status === "running" ? "Running…" : block.status === "error" ? "Error" : "Done"}
+				</span>
+			</div>
+			{expanded && (
+				<div className="tool-block-details">
+					{block.args && <pre className="tool-block-code">Args: {block.args}</pre>}
+					{block.result && <pre className="tool-block-code">Result: {block.result}</pre>}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function renderBlocks(blocks: MessageBlock[], streaming: boolean) {
+	const elements: React.ReactNode[] = [];
+
+	for (let i = 0; i < blocks.length; i++) {
+		const block = blocks[i];
+		if (block.type === "thinking") {
+			elements.push(<ThinkingBlockComponent key={i} text={(block as ThinkingBlock).text} streaming={streaming} />);
+		} else if (block.type === "tool") {
+			elements.push(<ToolBlock key={i} block={block as ToolCallBlock} streaming={streaming} />);
+		} else if (block.type === "text") {
+			const segments = parseThinkingFromText((block as { text: string }).text);
+			for (const seg of segments) {
+				if (seg.type === "thinking") {
+					elements.push(<ThinkingBlockComponent key={`${i}-t-${elements.length}`} text={seg.text} streaming={streaming} />);
+				} else if (seg.text) {
+					elements.push(<MarkdownRenderer key={`${i}-s-${elements.length}`} content={seg.text} streaming={streaming} />);
+				}
+			}
+		}
+	}
+
+	return elements;
+}
+
+function storedToBlocks(msgs: any[]): any[] {
+	return msgs.map((m) => {
+		const blocks: MessageBlock[] = [];
+		// Restore tool call blocks from persisted data
+		if (m.toolCalls && Array.isArray(m.toolCalls)) {
+			for (const tc of m.toolCalls) {
+				blocks.push({
+					type: "tool",
+					name: tc.name,
+					status: tc.status || "done",
+					args: tc.args,
+					result: tc.result,
+				} as ToolCallBlock);
+			}
+		}
+		if (m.text) {
+			blocks.push({ type: "text", text: m.text });
+		}
+		return {
+			id: m.id || String(Date.now() + Math.random()),
+			role: m.role,
+			text: m.text || "",
+			timestamp: m.timestamp || Date.now(),
+			streaming: false,
+			blocks,
+		};
+	});
+}
+
+// ---------------------------------------------------------------------------
+// ChatPanel
+// ---------------------------------------------------------------------------
+
 export default function ChatPanel() {
 	const {
-		messages, activeAgentId, isStreaming,
-		addMessage, updateAssistantText, addToolCall, updateToolCall,
-		finishStreaming, loadMessages, setIsStreaming, setActiveAgent,
-	} = useChatStore();
+			messages, activeAgentId, isStreaming, sessionsByAgent, currentSessionId,
+			addMessage, finishStreaming, loadMessages, setActiveAgent,
+			setSessions, setCurrentSessionId, clearMessages,
+		} = useChatStore();
 	const { agents } = useAgentStore();
 	const [input, setInput] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
-	const wsRef = useRef<WebSocket | null>(null);
 	const loadedAgentRef = useRef<string | null>(null);
+	const [showSessions, setShowSessions] = useState(false);
 
-	// Load message history when agent changes
+	const refreshSessionData = useCallback(async (agentId: string) => {
+		const [sessions, msgs] = await Promise.all([
+			api().sessionsList(agentId),
+			api().messagesList(agentId),
+		]);
+		setSessions(agentId, sessions);
+		loadMessages(agentId, storedToBlocks(msgs));
+		const current = await api().sessionsCurrent(agentId);
+		setCurrentSessionId(current?.id ?? null);
+	}, []);
+
+	// Load message history + sessions when agent changes
 	useEffect(() => {
 		if (!activeAgentId) return;
 		if (loadedAgentRef.current === activeAgentId) return;
 		loadedAgentRef.current = activeAgentId;
 
-		fetch(`/api/messages/${activeAgentId}`)
-			.then((r) => r.json())
-			.then((msgs) => {
-				loadMessages(msgs);
-			})
-			.catch(() => {
-				loadMessages([]);
-			});
+		refreshSessionData(activeAgentId).catch(() => {
+			loadMessages(activeAgentId, []);
+		});
 	}, [activeAgentId, loadMessages]);
-
-	// Connect WebSocket
-	const connectWs = useCallback(() => {
-		if (wsRef.current?.readyState === WebSocket.OPEN) return wsRef.current;
-
-		const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-		const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
-
-		ws.onmessage = (event) => {
-			const data = JSON.parse(event.data);
-
-			switch (data.type) {
-				case "reconnect": {
-					if (data.isBusy) {
-						const blocks: MessageBlock[] = [];
-						if (data.toolCalls) {
-							for (const tc of data.toolCalls as { name: string; status: string }[]) {
-								blocks.push({ type: "tool", name: tc.name, status: tc.status as "running" | "done" | "error" });
-							}
-						}
-						if (data.streamingText) {
-							blocks.push({ type: "text", text: data.streamingText });
-						}
-						addMessage({
-							id: nextMsgId(),
-							role: "assistant",
-							text: data.streamingText ?? "",
-							timestamp: Date.now(),
-							streaming: true,
-							blocks,
-						});
-						setIsStreaming(true);
-					}
-					break;
-				}
-				case "text_delta": {
-					updateAssistantText(data.text);
-					break;
-				}
-				case "message_end": {
-					if (data.text) {
-						updateAssistantText(data.text);
-					}
-					break;
-				}
-				case "tool_start": {
-					addToolCall(data.toolName);
-					break;
-				}
-				case "tool_end": {
-					updateToolCall(data.toolName, data.isError ? "error" : "done");
-					break;
-				}
-				case "agent_end": {
-					finishStreaming();
-					break;
-				}
-				case "error": {
-					updateAssistantText(`\nError: ${data.error}`);
-					finishStreaming();
-					break;
-				}
-			}
-		};
-
-		ws.onclose = () => {
-			wsRef.current = null;
-		};
-
-		wsRef.current = ws;
-		return ws;
-	}, [updateAssistantText, addToolCall, updateToolCall, finishStreaming, addMessage, setIsStreaming]);
-
-	// Auto-connect on mount
-	useEffect(() => {
-		connectWs();
-	}, [connectWs]);
 
 	useEffect(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 	}, [messages]);
 
-	useEffect(() => {
-		return () => {
-			// Don't close WS on unmount — agent keeps running
-		};
-	}, []);
-
 	const send = async () => {
 		const text = input.trim();
-		if (!text || isStreaming) return;
+		if (!text || !activeAgentId || isStreaming) return;
 
-		addMessage({ id: nextMsgId(), role: "user", text, timestamp: Date.now() });
+		addMessage(activeAgentId, { id: nextMsgId(), role: "user", text, timestamp: Date.now() });
 		setInput("");
 
-		addMessage({
+		addMessage(activeAgentId, {
 			id: nextMsgId(),
 			role: "assistant",
 			text: "",
@@ -146,28 +210,44 @@ export default function ChatPanel() {
 			blocks: [],
 		});
 
-		const ws = connectWs();
-
-		if (ws.readyState !== WebSocket.OPEN) {
-			await new Promise<void>((resolve, reject) => {
-				ws.onopen = () => resolve();
-				ws.onerror = () => reject(new Error("WebSocket connection failed"));
-				setTimeout(() => reject(new Error("WebSocket timeout")), 5000);
-			});
-		}
-
-		ws.send(JSON.stringify({
-			type: "send",
-			text,
-			agentId: activeAgentId,
-		}));
+		await api().chatSend(text, activeAgentId);
 	};
 
 	const abort = () => {
-		if (wsRef.current?.readyState === WebSocket.OPEN) {
-			wsRef.current.send(JSON.stringify({ type: "abort" }));
+		if (activeAgentId) finishStreaming(activeAgentId);
+		api().chatAbort();
+	};
+
+	const handleNewSession = async () => {
+		if (!activeAgentId) return;
+		const session = await api().sessionsNew(activeAgentId);
+		setCurrentSessionId(session.id);
+		clearMessages(activeAgentId);
+		setShowSessions(false);
+		const sessions = await api().sessionsList(activeAgentId);
+		setSessions(activeAgentId, sessions);
+	};
+
+	const handleSwitchSession = async (sessionId: string) => {
+		if (!activeAgentId) return;
+		await api().sessionsSwitch(activeAgentId, sessionId);
+		setCurrentSessionId(sessionId);
+		setShowSessions(false);
+		const msgs = await api().messagesList(activeAgentId);
+		loadMessages(activeAgentId, storedToBlocks(msgs));
+		const sessions = await api().sessionsList(activeAgentId);
+		setSessions(activeAgentId, sessions);
+	};
+
+	const handleDeleteSession = async (sessionId: string) => {
+		if (!activeAgentId) return;
+		const result = await api().sessionsDelete(activeAgentId, sessionId);
+		if (result.newSessionId) {
+			setCurrentSessionId(result.newSessionId);
+			clearMessages(activeAgentId);
 		}
-		finishStreaming();
+		const sessions = await api().sessionsList(activeAgentId);
+		setSessions(activeAgentId, sessions);
 	};
 
 	const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -178,6 +258,7 @@ export default function ChatPanel() {
 	};
 
 	const activeAgent = agents.find((a) => a.id === activeAgentId);
+	const sessions = activeAgentId ? (sessionsByAgent[activeAgentId] ?? []) : [];
 
 	const renderMessageContent = (msg: typeof messages[number]) => {
 		if (msg.role === "user") {
@@ -192,7 +273,7 @@ export default function ChatPanel() {
 
 		return (
 			<>
-				{blocks.map((block, i) => renderBlock(block, i))}
+				{renderBlocks(blocks, !!msg.streaming)}
 				{msg.streaming && <span className="cursor-blink">|</span>}
 			</>
 		);
@@ -203,14 +284,54 @@ export default function ChatPanel() {
 			<div className="chat-header">
 				<select
 					className="chat-agent-select"
+					aria-label="Select Agent"
 					value={activeAgentId ?? ""}
 					onChange={(e) => setActiveAgent(e.target.value || null)}
 				>
 					<option value="">-- Select Agent --</option>
 					{agents.map((a) => (
-						<option key={a.id} value={a.id}>{a.name} — {a.role}</option>
+						<option key={a.id} value={a.id}>{a.name}</option>
 					))}
 				</select>
+
+				{activeAgentId && (
+					<div className="session-controls">
+						<button type="button" className="btn-new-session" onClick={handleNewSession} title="New Chat">
+							+
+						</button>
+						<button
+							type="button"
+							className="btn-sessions"
+							onClick={() => setShowSessions(!showSessions)}
+						>
+							{sessions.length} session{sessions.length !== 1 ? "s" : ""}
+						</button>
+						{showSessions && (
+							<div className="session-dropdown">
+								{sessions.map((s) => (
+									<div key={s.id} className={`session-item ${s.id === currentSessionId ? "active" : ""}`}>
+										<button
+											type="button"
+											className="session-item-label"
+											onClick={() => handleSwitchSession(s.id)}
+										>
+											{s.title ?? new Date(s.createdAt).toLocaleString()}
+											{s.isMain && <span className="session-main"> *</span>}
+										</button>
+										<button
+											type="button"
+											className="session-item-delete"
+											onClick={(e) => { e.stopPropagation(); handleDeleteSession(s.id); }}
+											title="Delete session"
+										>
+											x
+										</button>
+									</div>
+								))}
+							</div>
+						)}
+					</div>
+				)}
 			</div>
 
 			<div className="chat-messages">

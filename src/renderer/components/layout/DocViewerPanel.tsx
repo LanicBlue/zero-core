@@ -1,28 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
+import MarkdownRenderer from "../common/MarkdownRenderer.js";
 
-function renderMarkdown(text: string): string {
-	let html = text
-		.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) =>
-			`<pre class="md-code-block"><code class="lang-${lang}">${esc(code)}</code></pre>`)
-		.replace(/`([^`]+)`/g, "<code class='md-inline-code'>$1</code>")
-		.replace(/^### (.+)$/gm, "<h4>$1</h4>")
-		.replace(/^## (.+)$/gm, "<h3>$1</h3>")
-		.replace(/^# (.+)$/gm, "<h2>$1</h2>")
-		.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-		.replace(/\*(.+?)\*/g, "<em>$1</em>")
-		.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "<a href='$2' target='_blank'>$1</a>")
-		.replace(/^[*-] (.+)$/gm, "<li>$1</li>")
-		.replace(/\n{2,}/g, "</p><p>")
-		.replace(/\n/g, "<br>");
-	html = html.replace(/((?:<li>.*?<\/li><br>?)+)/g, "<ul>$1</ul>");
-	html = `<p>${html}</p>`;
-	html = html.replace(/<p>\s*<\/p>/g, "");
-	return html;
-}
-
-function esc(s: string): string {
-	return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+const api = () => (window as any).api;
 
 export default function DocViewerPanel() {
 	const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -31,19 +10,21 @@ export default function DocViewerPanel() {
 	const [loading, setLoading] = useState(false);
 
 	useEffect(() => {
-		const handler = (e: Event) => {
+		const handler = async (e: Event) => {
 			const detail = (e as CustomEvent).detail as { path: string; root: string };
 			const path = typeof detail === "string" ? detail : detail.path;
 			const root = typeof detail === "string" ? "" : (detail.root || "");
 			setSelectedFile(path);
 			setFileRoot(root);
 			setLoading(true);
-			const rootParam = root ? `&root=${encodeURIComponent(root)}` : "";
-			fetch(`/api/files/content?path=${encodeURIComponent(path)}${rootParam}`)
-				.then((r) => (r.ok ? r.json() : { content: "(unable to load)" }))
-				.then((data) => setContent(data.content ?? "(binary file)"))
-				.catch(() => setContent("(error)"))
-				.finally(() => setLoading(false));
+			try {
+				const data = await api().filesContent(path, root || undefined);
+				setContent(data.content ?? "(binary file)");
+			} catch {
+				setContent("(error)");
+			} finally {
+				setLoading(false);
+			}
 		};
 		window.addEventListener("zero-file-select", handler);
 		return () => window.removeEventListener("zero-file-select", handler);
@@ -63,10 +44,9 @@ export default function DocViewerPanel() {
 					{loading ? (
 						<div className="doc-viewer-panel-content"><p>Loading...</p></div>
 					) : isMarkdown ? (
-						<div
-							className="doc-viewer-panel-content md-render"
-							dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
-						/>
+						<div className="doc-viewer-panel-content">
+							<MarkdownRenderer content={content} />
+						</div>
 					) : (
 						<pre className="doc-viewer-panel-content doc-viewer-code">{content}</pre>
 					)}
