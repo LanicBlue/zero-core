@@ -46,6 +46,7 @@ export function buildToolsSet(
 	},
 	context: ToolExecutionContext,
 	mcpTools?: Record<string, any>,
+	builtInTools?: Record<string, any>,
 ): Record<string, any> {
 	const blocked = new Set(policy.blockedTools ?? []);
 	const autoApprove = new Set(policy.autoApprove ?? []);

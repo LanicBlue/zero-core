@@ -15,6 +15,7 @@ import { KbStore } from "./kb-store.js";
 import { KbDB } from "./kb-db.js";
 import { createEmbeddingProvider } from "./kb-embeddings.js";
 import { search, formatSearchResults } from "./kb-search.js";
+import { createAllBuiltInTools } from "./mcp-servers/index.js";
 
 // Timestamp helper for log messages
 const ts = () => new Date().toISOString().substring(11, 23);
@@ -163,6 +164,7 @@ class AgentService {
 				resultMaxTokens: agent?.toolPolicy?.resultMaxTokens ?? this.config.toolPolicy.resultMaxTokens,
 					readScope: agent?.toolPolicy?.readScope ?? "filesystem",
 			},
+			getBuiltInTools: () => createAllBuiltInTools({ workspaceDir: cwd }),
 			getMcpTools: async (aid?: string) => {
 				const mcpToolInfos = mcpManager.getToolsForAgent(aid);
 				return buildMcpTools(mcpToolInfos, (serverId, toolName, args) =>

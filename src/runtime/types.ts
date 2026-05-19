@@ -95,7 +95,10 @@ export interface SessionConfig {
 		resultMaxTokens?: number;
 			readScope?: "filesystem" | "workspace";
 	};
-}
+		getMcpTools?: (agentId?: string) => Promise<Record<string, any>>;
+		getRagContext?: (agentId: string, query: string) => Promise<string | undefined>;
+		getBuiltInTools?: () => Record<string, any>;
+	}
 
 // ---------------------------------------------------------------------------
 // Tool execution context — passed to each tool's execute function

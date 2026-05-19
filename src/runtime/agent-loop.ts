@@ -89,7 +89,13 @@ export class AgentLoop implements AgentRuntime {
 				try { mcpTools = await this.config.getMcpTools(this.config.agentId); }
 				catch { /* MCP tools unavailable */ }
 			}
-			const tools = buildToolsSet(this.config.toolPolicy, this.toolContext, mcpTools);
+			// Get built-in MCP server tools if available
+			let builtInTools: Record<string, any> | undefined;
+			if (this.config.getBuiltInTools) {
+				try { builtInTools = this.config.getBuiltInTools(); } catch { /* built-in tools unavailable */ }
+			}
+
+			const tools = buildToolsSet(this.config.toolPolicy, this.toolContext, mcpTools, builtInTools);
 
 			const toolPolicyDesc = buildToolPolicyDescription(this.config.toolPolicy);
 			let systemPrompt = this.session.getSystemPrompt() + "\n\n## Tool Permissions\n\n" + toolPolicyDesc;
