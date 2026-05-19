@@ -37,6 +37,7 @@ export interface ModelInfo {
 export interface ToolInfo {
 	name: string;
 	description: string;
+	group?: string;
 }
 
 const api = () => (window as any).api;

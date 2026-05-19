@@ -11,6 +11,70 @@ interface ServerStatus {
 
 type Transport = "stdio" | "sse" | "streamable-http";
 
+// Built-in MCP server tool groups
+const BUILTIN_SERVERS = [
+	{
+		name: "Web Fetch",
+		icon: "🌐",
+		desc: "Fetch web pages and convert to HTML/Markdown/text/JSON",
+		tools: [
+			{ name: "fetch_html", description: "获取网页返回 HTML" },
+			{ name: "fetch_markdown", description: "获取网页返回 Markdown" },
+			{ name: "fetch_text", description: "获取网页返回纯文本" },
+			{ name: "fetch_json", description: "获取 JSON 数据" },
+		],
+	},
+	{
+		name: "Knowledge Graph Memory",
+		icon: "🧠",
+		desc: "Persistent entity-relation knowledge graph",
+		tools: [
+			{ name: "memory_create_entities", description: "创建实体" },
+			{ name: "memory_create_relations", description: "创建关系" },
+			{ name: "memory_add_observations", description: "添加观察" },
+			{ name: "memory_delete_entities", description: "删除实体" },
+			{ name: "memory_delete_relations", description: "删除关系" },
+			{ name: "memory_read_graph", description: "读取图谱" },
+			{ name: "memory_search_nodes", description: "搜索节点" },
+		],
+	},
+	{
+		name: "Sequential Thinking",
+		icon: "💭",
+		desc: "Multi-step reasoning with thought history",
+		tools: [
+			{ name: "sequentialthinking", description: "多步骤顺序推理" },
+		],
+	},
+	{
+		name: "Filesystem",
+		icon: "📂",
+		desc: "File operations within workspace directory",
+		tools: [
+			{ name: "fs_read", description: "读取文件（带行号）" },
+			{ name: "fs_write", description: "创建/覆盖文件" },
+			{ name: "fs_edit", description: "字符串替换编辑" },
+			{ name: "fs_delete", description: "删除文件/目录" },
+			{ name: "fs_list", description: "列出目录（树形）" },
+			{ name: "fs_glob", description: "按模式匹配文件" },
+			{ name: "fs_grep", description: "按正则搜索内容" },
+		],
+	},
+	{
+		name: "Assistant",
+		icon: "🔧",
+		desc: "App diagnostics: info, logs, config, providers",
+		tools: [
+			{ name: "assistant_info", description: "运行时信息" },
+			{ name: "assistant_logs", description: "读取日志" },
+			{ name: "assistant_config", description: "读取配置" },
+			{ name: "assistant_read_source", description: "读取源码" },
+			{ name: "assistant_list_providers", description: "列出提供者" },
+			{ name: "assistant_list_files", description: "列出数据文件" },
+		],
+	},
+];
+
 const EMPTY_FORM = {
 	name: "",
 	transport: "stdio" as Transport,
@@ -28,6 +92,7 @@ export default function McpSettingsPage() {
 	const [statuses, setStatuses] = useState<ServerStatus[]>([]);
 	const [testResult, setTestResult] = useState<{ tools: { name: string; description?: string }[]; error?: string } | null>(null);
 	const [testing, setTesting] = useState(false);
+	const [expandedBuiltIn, setExpandedBuiltIn] = useState<string | null>(null);
 
 	const refreshStatus = async () => {
 		try {
@@ -243,6 +308,43 @@ export default function McpSettingsPage() {
 						/>
 					);
 				})}
+			</div>
+
+			{/* Built-in Tools Section */}
+			<div className="builtin-tools-section">
+				<h3 className="builtin-tools-header">
+					Built-in Tools
+					<span className="builtin-tools-count">{BUILTIN_SERVERS.reduce((sum, s) => sum + s.tools.length, 0)}</span>
+				</h3>
+				<p className="builtin-tools-desc">These tools are always available to all agents. No configuration needed.</p>
+				<div className="builtin-servers-grid">
+					{BUILTIN_SERVERS.map((server) => (
+						<div key={server.name} className="builtin-server-card">
+							<div
+								className="builtin-server-header"
+								onClick={() => setExpandedBuiltIn(expandedBuiltIn === server.name ? null : server.name)}
+							>
+								<span className="builtin-server-icon">{server.icon}</span>
+								<div className="builtin-server-info">
+									<span className="builtin-server-name">{server.name}</span>
+									<span className="builtin-server-desc">{server.desc}</span>
+								</div>
+								<span className="builtin-server-badge">{server.tools.length}</span>
+								<span className={`builtin-expand-icon ${expandedBuiltIn === server.name ? "expanded" : ""}`}>▸</span>
+							</div>
+							{expandedBuiltIn === server.name && (
+								<div className="builtin-tool-list">
+									{server.tools.map((tool) => (
+										<div key={tool.name} className="builtin-tool-item">
+											<code>{tool.name}</code>
+											<span className="builtin-tool-desc">{tool.description}</span>
+										</div>
+									))}
+								</div>
+							)}
+						</div>
+					))}
+				</div>
 			</div>
 		</div>
 	);

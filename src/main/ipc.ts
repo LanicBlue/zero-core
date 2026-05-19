@@ -232,15 +232,45 @@ export function registerIpc(win: BrowserWindow): void {
 		return models;
 	});
 
-	ipcMain.handle("tools:list", () => [
-		{ name: "bash", description: "在环境中执行 Shell 命令" },
-		{ name: "read", description: "读取文件内容" },
-		{ name: "edit", description: "精确编辑文件" },
-		{ name: "write", description: "创建或覆盖文件" },
-		{ name: "grep", description: "搜索文件内容" },
-		{ name: "find", description: "按模式查找文件" },
-		{ name: "ls", description: "列出目录内容" },
-	]);
+	ipcMain.handle("tools:list", () => {
+		const runtimeTools = [
+			{ name: "bash", description: "在环境中执行 Shell 命令", group: "runtime" },
+			{ name: "read", description: "读取文件内容", group: "runtime" },
+			{ name: "edit", description: "精确编辑文件", group: "runtime" },
+			{ name: "write", description: "创建或覆盖文件", group: "runtime" },
+			{ name: "grep", description: "搜索文件内容", group: "runtime" },
+			{ name: "find", description: "按模式查找文件", group: "runtime" },
+			{ name: "ls", description: "列出目录内容", group: "runtime" },
+		];
+		const builtInTools = [
+			{ name: "fetch_html", description: "获取网页并返回 HTML 内容", group: "fetch" },
+			{ name: "fetch_markdown", description: "获取网页并返回 Markdown 内容", group: "fetch" },
+			{ name: "fetch_text", description: "获取网页并返回纯文本内容", group: "fetch" },
+			{ name: "fetch_json", description: "获取 JSON 数据", group: "fetch" },
+			{ name: "memory_create_entities", description: "在知识图谱中创建实体", group: "memory" },
+			{ name: "memory_create_relations", description: "在实体间创建关系", group: "memory" },
+			{ name: "memory_add_observations", description: "为实体添加观察", group: "memory" },
+			{ name: "memory_delete_entities", description: "删除实体及其关系", group: "memory" },
+			{ name: "memory_delete_relations", description: "删除关系", group: "memory" },
+			{ name: "memory_read_graph", description: "读取整个知识图谱", group: "memory" },
+			{ name: "memory_search_nodes", description: "搜索知识图谱中的实体和关系", group: "memory" },
+			{ name: "sequentialthinking", description: "多步骤顺序推理思考", group: "thinking" },
+			{ name: "fs_read", description: "读取文件内容（带行号）", group: "filesystem" },
+			{ name: "fs_write", description: "创建或覆盖文件", group: "filesystem" },
+			{ name: "fs_edit", description: "精确字符串替换编辑文件", group: "filesystem" },
+			{ name: "fs_delete", description: "删除文件或目录", group: "filesystem" },
+			{ name: "fs_list", description: "列出目录内容（树形结构）", group: "filesystem" },
+			{ name: "fs_glob", description: "按 glob 模式匹配文件", group: "filesystem" },
+			{ name: "fs_grep", description: "按正则搜索文件内容", group: "filesystem" },
+			{ name: "assistant_info", description: "获取应用运行时信息", group: "assistant" },
+			{ name: "assistant_logs", description: "读取最近日志", group: "assistant" },
+			{ name: "assistant_config", description: "读取应用配置（已脱敏）", group: "assistant" },
+			{ name: "assistant_read_source", description: "读取应用源码文件", group: "assistant" },
+			{ name: "assistant_list_providers", description: "列出已配置的 AI 提供者", group: "assistant" },
+			{ name: "assistant_list_files", description: "列出 zero-core 数据目录中的文件", group: "assistant" },
+		];
+		return [...runtimeTools, ...builtInTools];
+	});
 
 	// ─── Messages (backed by SessionDB) ──────────────
 	// Converts full ModelMessage[] to simplified format with tool call records for renderer

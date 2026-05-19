@@ -256,25 +256,45 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 					{section === "tools" && (
 						<div className="editor-section">
 							<h4 className="section-title">可用工具</h4>
-							<p className="section-desc">选择该 Agent 可以使用的工具</p>
-							<div className="tool-list">
-								{tools.map((t) => {
-									const enabled = form.toolPolicy?.autoApprove?.includes(t.name) ?? false;
-									return (
-										<div key={t.name} className="tool-item">
-											<div className="tool-info">
-												<span className="tool-name">{t.name}</span>
-												<span className="tool-desc">{t.description}</span>
-											</div>
-											<button
-												type="button"
-												className={`toggle-switch ${enabled ? "on" : ""}`}
-												onClick={() => toggleAutoApprove(t.name)}
-											/>
+							<p className="section-desc">选择该 Agent 可以使用的工具（自动授权）</p>
+							{(() => {
+								const GROUP_LABELS: Record<string, string> = {
+									runtime: "运行时工具",
+									fetch: "Web Fetch",
+									memory: "Knowledge Graph Memory",
+									thinking: "Sequential Thinking",
+									filesystem: "Filesystem",
+									assistant: "Assistant 诊断",
+								};
+								const groups: Record<string, typeof tools> = {};
+								for (const t of tools) {
+									const g = t.group || "runtime";
+									(groups[g] ??= []).push(t);
+								}
+								return Object.entries(groups).map(([group, groupTools]) => (
+									<div key={group} className="tool-group">
+										<h5 className="tool-group-title">{GROUP_LABELS[group] || group}</h5>
+										<div className="tool-list">
+											{groupTools.map((t) => {
+												const enabled = form.toolPolicy?.autoApprove?.includes(t.name) ?? false;
+												return (
+													<div key={t.name} className="tool-item">
+														<div className="tool-info">
+															<span className="tool-name">{t.name}</span>
+															<span className="tool-desc">{t.description}</span>
+														</div>
+														<button
+															type="button"
+															className={`toggle-switch ${enabled ? "on" : ""}`}
+															onClick={() => toggleAutoApprove(t.name)}
+														/>
+													</div>
+												);
+											})}
 										</div>
-									);
-								})}
-							</div>
+									</div>
+								));
+							})()}
 						</div>
 					)}
 
