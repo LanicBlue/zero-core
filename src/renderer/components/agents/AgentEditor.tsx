@@ -263,7 +263,6 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 									fetch: "Web Fetch",
 									memory: "Knowledge Graph Memory",
 									thinking: "Sequential Thinking",
-									filesystem: "Filesystem",
 									assistant: "Assistant 诊断",
 								};
 								const groups: Record<string, typeof tools> = {};

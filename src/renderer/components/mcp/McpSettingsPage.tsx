@@ -47,20 +47,6 @@ const BUILTIN_SERVERS = [
 		],
 	},
 	{
-		name: "Filesystem",
-		icon: "📂",
-		desc: "File operations within workspace directory",
-		tools: [
-			{ name: "fs_read", description: "读取文件（带行号）" },
-			{ name: "fs_write", description: "创建/覆盖文件" },
-			{ name: "fs_edit", description: "字符串替换编辑" },
-			{ name: "fs_delete", description: "删除文件/目录" },
-			{ name: "fs_list", description: "列出目录（树形）" },
-			{ name: "fs_glob", description: "按模式匹配文件" },
-			{ name: "fs_grep", description: "按正则搜索内容" },
-		],
-	},
-	{
 		name: "Assistant",
 		icon: "🔧",
 		desc: "App diagnostics: info, logs, config, providers",
