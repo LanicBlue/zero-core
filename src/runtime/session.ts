@@ -24,6 +24,9 @@ export class AgentSession {
 
 		if (this.db && this.sessionId) {
 			this.messages = this.db.getMessages(this.sessionId);
+			if (this.messages.length === 0) {
+				this.messages = this.rebuildFromTurns();
+			}
 		}
 	}
 
@@ -67,6 +70,67 @@ export class AgentSession {
 		this.messages = kept;
 	}
 
+	rebuildFromTurns(): ModelMessage[] {
+		if (!this.db || !this.sessionId) return [];
+		const turns = this.db.getTurns(this.sessionId);
+		if (turns.length === 0) return [];
+
+		const messages: ModelMessage[] = [];
+		let toolCallIdx = 0;
+
+		for (const turn of turns) {
+			if (turn.role === "user") {
+				messages.push({ role: "user", content: turn.content ?? "" });
+			} else if (turn.role === "assistant") {
+				let blocks: any[] = [];
+				try { blocks = JSON.parse(turn.content ?? "[]"); } catch { blocks = []; }
+				this.appendAssistantMessages(blocks, messages);
+			}
+		}
+
+		return messages;
+	}
+
+	private appendAssistantMessages(blocks: any[], messages: ModelMessage[]): void {
+		const toolCalls: { id: string; name: string; input: any }[] = [];
+		const toolResults: { id: string; output: any; isError?: boolean }[] = [];
+		const textParts: string[] = [];
+
+		for (const b of blocks) {
+			if (b.type === "tool") {
+				const id = "tc-" + toolCalls.length;
+				toolCalls.push({ id, name: b.name, input: b.args ?? {} });
+				const result = typeof b.result === "string" ? b.result : JSON.stringify(b.result ?? "");
+				toolResults.push({ id, output: result, isError: b.status === "error" });
+			} else if (b.type === "text") {
+				textParts.push(b.text);
+			}
+		}
+
+		// Build assistant message parts
+		const parts: any[] = [];
+		if (toolCalls.length > 0) {
+			parts.push(...toolCalls.map((tc) => ({ type: "tool-call", toolCallId: tc.id, toolName: tc.name, input: tc.input })));
+		}
+		const textContent = textParts.join("").trim();
+		if (textContent) {
+			parts.push({ type: "text", text: textContent });
+		}
+
+		if (parts.length > 0) {
+			messages.push({ role: "assistant", content: parts });
+		}
+
+		// Add tool results as separate tool messages
+		if (toolResults.length > 0) {
+			for (const tr of toolResults) {
+				messages.push({
+					role: "tool",
+					content: [{ type: "tool-result", toolCallId: tr.id, output: tr.output, isError: tr.isError }],
+				} as any);
+			}
+		}
+	}
 	reset(): void {
 		this.messages = [];
 	}

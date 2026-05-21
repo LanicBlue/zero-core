@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readdirSync, readFileSync, renameSync, mkdirSync } from "node:fs";
 import { v4 as uuidv4 } from "uuid";
+import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,6 +66,17 @@ export class SessionDB {
 				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 			);
 			CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_id, seq);
+
+			CREATE TABLE IF NOT EXISTS turns (
+				id          INTEGER PRIMARY KEY AUTOINCREMENT,
+				session_id  TEXT NOT NULL,
+				seq         INTEGER NOT NULL,
+				role        TEXT NOT NULL,
+				content     TEXT,
+				created_at  TEXT NOT NULL,
+				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+			);
+			CREATE INDEX IF NOT EXISTS idx_turns_session_seq ON turns(session_id, seq);
 		`);
 	}
 
@@ -121,6 +133,12 @@ export class SessionDB {
 		return rows.map((r) => JSON.parse(r.msg_json));
 	}
 
+	getMessagesWithSeq(sessionId: string): Array<{ seq: number; msg_json: string }> {
+		return this.db.prepare(
+			"SELECT seq, msg_json FROM messages WHERE session_id = ? ORDER BY seq",
+		).all(sessionId) as Array<{ seq: number; msg_json: string }>;
+	}
+
 	getMessageCount(sessionId: string): number {
 		const row = this.db.prepare(
 			"SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?",
@@ -146,6 +164,20 @@ export class SessionDB {
 		tx();
 	}
 
+	deleteMessage(sessionId: string, seq: number): void {
+		const now = new Date().toISOString();
+		this.db.prepare("DELETE FROM messages WHERE session_id = ? AND seq = ?").run(sessionId, seq);
+		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+	}
+
+	updateMessageContent(sessionId: string, seq: number, content: string, msgJson: string): void {
+		const now = new Date().toISOString();
+		this.db.prepare(
+			"UPDATE messages SET content = ?, msg_json = ? WHERE session_id = ? AND seq = ?",
+		).run(content, msgJson, sessionId, seq);
+		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+	}
+
 	// -----------------------------------------------------------------------
 	// Migration from old JSON files
 	// -----------------------------------------------------------------------
@@ -157,7 +189,7 @@ export class SessionDB {
 		const files = readdirSync(msgDir).filter((f) => f.endsWith(".json") && !f.endsWith(".migrated.bak"));
 		if (files.length === 0) return;
 
-		console.log(`[session-db] Migrating ${files.length} message files...`);
+		log.db("Migrating", files.length, "message files...");
 
 		for (const file of files) {
 			const agentId = file.replace(".json", "");
@@ -179,11 +211,57 @@ export class SessionDB {
 				this.saveTurn(session.id, modelMessages);
 
 				renameSync(fp, fp + ".migrated.bak");
-				console.log(`[session-db] Migrated ${data.length} messages for agent ${agentId}`);
+				log.db("Migrated", data.length, "messages for agent", agentId);
 			} catch (err) {
-				console.error(`[session-db] Failed to migrate ${file}:`, (err as Error).message);
+				log.error("db", "Failed to migrate", file, (err as Error).message);
 			}
 		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Turns (unified block storage)
+	// -----------------------------------------------------------------------
+
+	appendTurn(sessionId: string, seq: number, role: string, content: string | null): void {
+		const now = new Date().toISOString();
+		this.db.prepare(
+			"INSERT INTO turns (session_id, seq, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+		).run(sessionId, seq, role, content ?? null, now);
+		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+	}
+
+	getTurns(sessionId: string): Array<{ id: number; seq: number; role: string; content: string | null; createdAt: string }> {
+		const rows = this.db.prepare(
+			"SELECT id, seq, role, content, created_at FROM turns WHERE session_id = ? ORDER BY seq",
+		).all(sessionId) as any[];
+		return rows.map((r) => ({
+			id: r.id,
+			seq: r.seq,
+			role: r.role,
+			content: r.content,
+			createdAt: r.created_at,
+		}));
+	}
+
+	getTurnCount(sessionId: string): number {
+		const row = this.db.prepare("SELECT COUNT(*) as cnt FROM turns WHERE session_id = ?").get(sessionId) as any;
+		return row.cnt;
+	}
+
+	clearTurns(sessionId: string): void {
+		this.db.prepare("DELETE FROM turns WHERE session_id = ?").run(sessionId);
+	}
+
+	deleteTurn(sessionId: string, seq: number): void {
+		this.db.prepare("DELETE FROM turns WHERE session_id = ? AND seq = ?").run(sessionId, seq);
+	}
+
+	updateTurnContent(sessionId: string, seq: number, content: string): void {
+		const now = new Date().toISOString();
+		this.db.prepare(
+			"UPDATE turns SET content = ? WHERE session_id = ? AND seq = ?",
+		).run(content, sessionId, seq);
+		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
 	}
 
 	// -----------------------------------------------------------------------

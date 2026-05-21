@@ -1,5 +1,5 @@
-import { tool } from "ai";
 import { z } from "zod";
+import { buildTool } from "../../runtime/tools/tool-factory.js";
 
 // ---------------------------------------------------------------------------
 // Sequential Thinking — multi-step reasoning with thought history
@@ -9,12 +9,14 @@ const thoughtHistories = new Map<string, { thought: string; thoughtNumber: numbe
 
 export function createSequentialThinkingTools() {
 	return {
-		sequentialthinking: tool({
+		sequentialthinking: buildTool({
+			name: "sequentialthinking",
 			description:
 				"A detailed tool for dynamic and reflective problem-solving through sequential thinking. " +
 				"Use this tool to think through complex problems step by step, showing your reasoning process. " +
 				"Each call appends a thought to the chain. Use thoughtNumber and totalThoughts to track progress. " +
 				"Set nextThoughtNeeded to false when the reasoning is complete.",
+			meta: { category: "thinking", isReadOnly: true },
 			inputSchema: z.object({
 				thought: z.string().describe("Your current thinking step"),
 				nextThoughtNeeded: z.boolean().describe("Whether another thought step is needed"),

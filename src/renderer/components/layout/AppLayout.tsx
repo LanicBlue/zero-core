@@ -9,6 +9,7 @@ import SettingsPage from "../settings/SettingsPage.js";
 import McpSettingsPage from "../mcp/McpSettingsPage.js";
 import KnowledgeBasePage from "../kb/KnowledgeBasePage.js";
 import { usePageStore } from "../../store/page-store.js";
+import { useInteractionStore } from "../../store/interaction-store.js";
 import { useChatStore, nextMsgId, type MessageBlock } from "../../store/chat-store.js";
 
 const api = () => (window as any).api;
@@ -46,7 +47,7 @@ export default function AppLayout() {
 	const {
 		messages, activeAgentId, isStreaming,
 		addMessage, updateAssistantText, updateThinking, addToolCall, updateToolCall,
-		finishStreaming, setIsStreaming,
+		finishStreaming, setIsStreaming, loadMessages, setSessions, setCurrentSessionId,
 	} = useChatStore();
 
 	// Track app readiness
@@ -73,14 +74,12 @@ export default function AppLayout() {
 					updateAssistantText(agentId, data.text);
 					break;
 				}
-				case "thinking_delta": {
-					updateThinking(agentId, data.text);
+				case "message_end": {
+					// text_delta already handled streaming text
 					break;
 				}
-				case "message_end": {
-					if (data.text) {
-						updateAssistantText(agentId, data.text);
-					}
+				case "thinking_delta": {
+					updateThinking(agentId, data.text);
 					break;
 				}
 				case "tool_start": {
@@ -95,6 +94,35 @@ export default function AppLayout() {
 				}
 				case "agent_end": {
 					finishStreaming(agentId);
+					// Reload from DB to get normalized blocks (thinking/tool/text)
+					(async () => {
+						try {
+							const [sessions, msgs] = await Promise.all([
+								api().sessionsList(agentId),
+								api().messagesList(agentId),
+							]);
+							setSessions(agentId, sessions);
+							const str = (v: any) => v == null ? undefined : typeof v === "string" ? v : JSON.stringify(v, null, 2);
+							const dbMsgs = msgs.map((m: any) => {
+								const blocks: any[] = [];
+								if (m.blocks && Array.isArray(m.blocks)) {
+									for (const b of m.blocks) {
+										if (b.type === "thinking") blocks.push({ type: "thinking", text: b.text });
+										else if (b.type === "tool") blocks.push({ type: "tool", name: b.name, status: b.status || "done", args: str(b.args), result: str(b.result) });
+										else if (b.type === "text" && b.text) blocks.push({ type: "text", text: b.text });
+									}
+								} else if (m.text) { blocks.push({ type: "text", text: m.text }); }
+								return { id: m.id || String(Date.now() + Math.random()), role: m.role, text: m.text || "", timestamp: m.timestamp || Date.now(), streaming: false, blocks };
+							});
+							loadMessages(agentId, dbMsgs);
+							const current = await api().sessionsCurrent(agentId);
+							setCurrentSessionId(current?.id ?? null);
+						} catch {}
+					})();
+					break;
+				}
+				case "retry_attempt": {
+					updateAssistantText(agentId, `Retrying (${data.attempt}/${data.maxAttempts})...`);
 					break;
 				}
 				case "error": {

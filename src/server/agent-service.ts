@@ -16,10 +16,10 @@ import { KbDB } from "./kb-db.js";
 import { createEmbeddingProvider } from "./kb-embeddings.js";
 import { search, formatSearchResults } from "./kb-search.js";
 import { createAllBuiltInTools } from "./mcp-servers/index.js";
+import { log } from "../core/logger.js";
 
-// Timestamp helper for log messages
+// Timestamp helper for error messages
 const ts = () => new Date().toISOString().substring(11, 23);
-const log = (...args: unknown[]) => console.log(`[${ts()} agent]`, ...args);
 
 // ---------------------------------------------------------------------------
 // Ensure zero-core dirs
@@ -137,7 +137,7 @@ class AgentService {
 
 	private createLoopForSession(agentId: string, sessionId: string, agent?: AgentRecord): AgentLoop {
 		const cwd = agent?.workspaceDir || this.workspaceDir;
-		log("Creating runtime for agent:", agentId, "session:", sessionId, "cwd:", cwd);
+		log.agent("Creating runtime for agent:", agentId, "session:", sessionId, "cwd:", cwd);
 
 		const projectCtx = loadProjectContext(cwd, agent?.contextConfig);
 
@@ -191,24 +191,26 @@ class AgentService {
 		this.loops.set(agentId, loop);
 		this.activeLoopId = agentId;
 
-		log("Runtime ready for:", agentId, "session:", sessionId);
+		log.agent("Runtime ready for:", agentId, "session:", sessionId);
 		return loop;
 	}
 
 	async sendPrompt(text: string, agent?: AgentRecord): Promise<void> {
 		const loop = this.getOrCreateLoop(agent);
 
-		log("Sending prompt:", text.substring(0, 50));
+		log.agent("Sending prompt, length:", text.length);
 		this.isAgentBusy = true;
 		this.currentStreamText = "";
 		this.currentToolCalls = [];
 
 		try {
 			await loop.run(text);
-			log("Prompt completed");
+			log.agent("Prompt completed");
 		} catch (err) {
-			console.error(`[${ts()} agent] Prompt error:`, (err as Error).message);
+			log.error("agent", "Prompt error:", (err as Error).message);
 			this.emit({ type: "error", error: (err as Error).message, agentId: this.activeLoopId ?? undefined });
+		} finally {
+			this.isAgentBusy = false;
 		}
 	}
 

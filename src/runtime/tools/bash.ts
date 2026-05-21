@@ -1,26 +1,27 @@
-import { tool } from "ai";
 import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { buildTool } from "./tool-factory.js";
 
 const execFileAsync = promisify(execFile);
 
-export const bashTool = tool({
+export const bashTool = buildTool({
+	name: "bash",
 	description: "Execute a shell command in the workspace. Returns stdout and stderr.",
+	meta: { category: "runtime", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
 	inputSchema: z.object({
 		command: z.string().describe("The shell command to execute"),
 		timeout: z.number().optional().describe("Timeout in milliseconds (default 30000)"),
 	}),
-	execute: async (input, options) => {
+	execute: async (input, ctx) => {
 		const { command, timeout } = input;
-		const ctx = options.experimental_context as { workingDir?: string } | undefined;
 		const isWin = process.platform === "win32";
 		const shell = isWin ? "cmd.exe" : "/bin/bash";
 		const shellArgs = isWin ? ["/c", command] : ["-c", command];
 
 		try {
 			const { stdout, stderr } = await execFileAsync(shell, shellArgs, {
-				cwd: ctx?.workingDir,
+				cwd: ctx.workingDir,
 				timeout: timeout ?? 30000,
 				maxBuffer: 10 * 1024 * 1024,
 			});

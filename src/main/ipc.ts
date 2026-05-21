@@ -3,6 +3,7 @@ import { resolve, extname, join, dirname } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { readdirSync, readFileSync, statSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
+import { log } from "../core/logger.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const toFileURL = (p: string) => { const { pathToFileURL: p2u } = require("url"); return p2u(p).href; };
@@ -63,16 +64,16 @@ async function loadCoreModules(): Promise<void> {
 	const distServer = join(__dirname, "../../dist/server");
 	const distCore = join(__dirname, "../../dist/core");
 
-	console.log(`${ts()} [ipc] Loading core modules...`);
+	log.ipc("Loading core modules...");
 	const { AgentStore } = await import(toFileURL(join(distServer, "agent-store.js")));
-	console.log(`${ts()} [ipc] agent-store loaded (+${Date.now() - t0}ms)`);
+	log.ipc("agent-store loaded", `+${Date.now() - t0}ms`);
 	const { ProviderStore } = await import(toFileURL(join(distServer, "provider-store.js")));
-	console.log(`${ts()} [ipc] provider-store loaded (+${Date.now() - t0}ms)`);
+	log.ipc("provider-store loaded", `+${Date.now() - t0}ms`);
 	const agentSvcMod = await import(toFileURL(join(distServer, "agent-service.js")));
 	createAgentService = agentSvcMod.createAgentService;
 	const wsMod = await import(toFileURL(join(distServer, "workspace-config.js")));
 	const mod = await import(toFileURL(join(distCore, "default-prompt.js")));
-	console.log(`${ts()} [ipc] core imports done (+${Date.now() - t0}ms)`);
+	log.ipc("core imports done", `+${Date.now() - t0}ms`);
 
 	const tmplMod = await import(toFileURL(join(distServer, "template-store.js")));
 	const mcpMod = await import(toFileURL(join(distServer, "mcp-store.js")));
@@ -106,7 +107,7 @@ async function loadCoreModules(): Promise<void> {
 		}
 	});
 
-	console.log(`${ts()} [ipc] Core modules ready, workspace:`, workspaceConfig.workspaceDir);
+	log.ipc("Core modules ready, workspace:", workspaceConfig.workspaceDir);
 }
 
 // ─── Ensure agent-service is available ──
@@ -284,87 +285,65 @@ export function registerIpc(win: BrowserWindow): void {
 
 	// ─── Messages (backed by SessionDB) ──────────────
 	// Converts full ModelMessage[] to simplified format with tool call records for renderer
-	ipcMain.handle("messages:list", async (_e, agentId: string) => {
-		if (!modulesReady || !agentService) return [];
+		ipcMain.handle("messages:list", async (_e, agentId: string) => {
+			if (!modulesReady || !agentService) return [];
+			const db = agentService.getDB();
+			const session = db.getMainSession(agentId);
+			if (!session) return [];
+			const turns = db.getTurns(session.id);
+			if (turns.length === 0) return [];
+
+			return turns.map((turn) => {
+				if (turn.role === "user") {
+					return { id: "t" + turn.seq, role: "user", text: turn.content ?? "", timestamp: turn.createdAt };
+				}
+				// assistant: content is JSON blocks array
+				let blocks: any[] = [];
+				try { blocks = JSON.parse(turn.content ?? "[]"); } catch { blocks = []; }
+				// Extract text for search/display
+				const textParts = blocks.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+				return { id: "t" + turn.seq, role: "assistant", blocks, text: textParts, timestamp: turn.createdAt };
+			});
+		});
+		ipcMain.handle("messages:clear", async (_e, agentId: string) => {
+			if (agentService) {
+				const db = agentService.getDB();
+				const session = db.createSession(agentId);
+				db.setMainSession(agentId, session.id);
+				const agent = agentStore.get(agentId);
+				agentService.recreateLoop(agentId, session.id, agent);
+			}
+			return { success: true };
+		});
+
+
+	ipcMain.handle("messages:edit", async (_e, agentId: string, msgSeq: number, newText: string) => {
+		if (!agentService) return { error: "not ready" };
 		const db = agentService.getDB();
 		const session = db.getMainSession(agentId);
-		if (!session) return [];
-		const msgs = db.getMessages(session.id);
-
-		// Build a map: toolInvocationId → tool result
-		const toolResults = new Map<string, { result: string; isError?: boolean }>();
-		for (const msg of msgs) {
-			if (msg.role !== "tool") continue;
-			const parts = Array.isArray(msg.content) ? msg.content : [];
-			for (const part of parts) {
-				if (typeof part === "object" && part.type === "tool-result") {
-					toolResults.set(part.toolInvocationId as string, {
-						result: typeof part.result === "string" ? part.result : JSON.stringify(part.result ?? ""),
-						isError: !!(part as any).isError,
-					});
-				}
-			}
+		if (!session) return { error: "session not found" };
+		db.updateTurnContent(session.id, msgSeq, newText);
+		const rows = db.getMessagesWithSeq(session.id);
+		const target = rows.find(r => r.seq === msgSeq);
+		if (target) {
+			const msg = JSON.parse(target.msg_json);
+			msg.content = newText;
+			db.updateMessageContent(session.id, msgSeq, newText, JSON.stringify(msg));
 		}
-
-		const result: { id: string; role: "user" | "assistant"; text: string; toolCalls?: { name: string; status: string; args?: string; result?: string }[]; timestamp: number }[] = [];
-		let seq = 0;
-
-		for (const msg of msgs) {
-			const role = msg.role as string;
-			if (role !== "user" && role !== "assistant") continue;
-
-			let text = "";
-			const toolCalls: { name: string; status: string; args?: string; result?: string }[] = [];
-
-			if (typeof msg.content === "string") {
-				text = msg.content;
-			} else if (Array.isArray(msg.content)) {
-				for (const part of msg.content) {
-					if (typeof part !== "object") continue;
-					if ("text" in part && typeof part.text === "string") {
-						text += part.text;
-					}
-					if ((part as any).type === "tool-invocation") {
-						const inv = part as any;
-						const tc: { name: string; status: string; args?: string; result?: string } = {
-							name: inv.toolName as string,
-							status: inv.state === "partial-call" ? "running" : "done",
-							args: inv.args ? JSON.stringify(inv.args) : undefined,
-						};
-						if (inv.toolInvocationId) {
-							const tr = toolResults.get(inv.toolInvocationId as string);
-							if (tr) {
-								tc.result = tr.result;
-								if (tr.isError) tc.status = "error";
-							}
-						}
-						toolCalls.push(tc);
-					}
-				}
-			}
-
-			// Include message if it has text or tool calls (previously skipped empty assistant msgs)
-			if (text || toolCalls.length > 0) {
-				result.push({
-					id: `s${seq++}`,
-					role: role as "user" | "assistant",
-					text,
-					toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-					timestamp: Date.now() - (msgs.length - seq) * 1000,
-				});
-			}
-		}
-		return result;
+		const agent = agentStore.get(agentId);
+		agentService.recreateLoop(agentId, session.id, agent);
+		return { success: true };
 	});
 
-	ipcMain.handle("messages:clear", async (_e, agentId: string) => {
-		if (agentService) {
-			const db = agentService.getDB();
-			const session = db.createSession(agentId);
-			db.setMainSession(agentId, session.id);
-			const agent = agentStore.get(agentId);
-			agentService.recreateLoop(agentId, session.id, agent);
-		}
+	ipcMain.handle("messages:delete", async (_e, agentId: string, msgSeq: number) => {
+		if (!agentService) return { error: "not ready" };
+		const db = agentService.getDB();
+		const session = db.getMainSession(agentId);
+		if (!session) return { error: "session not found" };
+		db.deleteTurn(session.id, msgSeq);
+		db.deleteMessage(session.id, msgSeq);
+		const agent = agentStore.get(agentId);
+		agentService.recreateLoop(agentId, session.id, agent);
 		return { success: true };
 	});
 
@@ -448,7 +427,34 @@ export function registerIpc(win: BrowserWindow): void {
 		}
 	});
 
-	ipcMain.handle("chat:send", async (_e, text: string, agentId?: string) => {
+	
+	ipcMain.handle("files:resolve-path", (_e, filePath: string, root?: string) => {
+		if (!filePath) return { error: "path required" };
+		const r = expandHome(root || (modulesReady ? workspaceConfig.workspaceDir : homedir()));
+		const full = resolve(r, filePath);
+		if (!full.startsWith(resolve(r))) {
+			return { error: "access denied" };
+		}
+		return { path: full };
+	});
+
+	ipcMain.handle("files:save", (_e, filePath: string, fileContent: string, root?: string) => {
+		if (!filePath) return { error: "path required" };
+		const r = expandHome(root || (modulesReady ? workspaceConfig.workspaceDir : homedir()));
+		const full = resolve(r, filePath);
+		if (!full.startsWith(resolve(r))) {
+			return { error: "access denied" };
+		}
+		try {
+			const { writeFileSync } = require("node:fs");
+			writeFileSync(full, fileContent, "utf-8");
+			return { success: true };
+		} catch (err: any) {
+			return { error: err.message };
+		}
+	});
+
+ipcMain.handle("chat:send", async (_e, text: string, agentId?: string) => {
 		if (!modulesReady) return { error: "loading" };
 		const svc = await ensureAgentService();
 		const agent = agentId ? agentStore.get(agentId) : undefined;
@@ -473,7 +479,7 @@ export function registerIpc(win: BrowserWindow): void {
 
 		svc.sendPrompt(text, agent).catch((err) => {
 			if (mainWindow && !mainWindow.isDestroyed()) {
-				mainWindow.webContents.send("agent:event", { type: "error", error: err.message });
+				mainWindow.webContents.send("agent:event", { type: "error", error: err.message, agentId: agentId ?? undefined });
 			}
 		});
 		return { success: true };
@@ -678,7 +684,7 @@ export function registerIpc(win: BrowserWindow): void {
 			return kbDb.getChunkCount(kbId);
 		});
 
-console.log(`${ts()} [ipc] All handlers registered`);
+log.ipc("All handlers registered");
 
 	// Load core modules in background
 	loadCoreModules().then(() => {

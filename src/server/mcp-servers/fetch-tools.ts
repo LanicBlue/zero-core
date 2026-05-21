@@ -1,7 +1,7 @@
-import { tool } from "ai";
 import { z } from "zod";
 import TurndownService from "turndown";
 import { JSDOM } from "jsdom";
+import { buildTool } from "../../runtime/tools/tool-factory.js";
 
 const turndown = new TurndownService();
 
@@ -18,8 +18,10 @@ async function fetchUrl(url: string, headers?: Record<string, string>): Promise<
 
 export function createFetchTools() {
 	return {
-		fetch_html: tool({
+		fetch_html: buildTool({
+			name: "fetch_html",
 			description: "Fetch a website and return the content as HTML",
+			meta: { category: "fetch", maxResultSize: 50000 },
 			inputSchema: z.object({
 				url: z.string().describe("URL of the website to fetch"),
 				headers: z.record(z.string(), z.string()).optional().describe("Optional headers"),
@@ -33,8 +35,10 @@ export function createFetchTools() {
 				}
 			},
 		}),
-		fetch_markdown: tool({
+		fetch_markdown: buildTool({
+			name: "fetch_markdown",
 			description: "Fetch a website and return the content as Markdown",
+			meta: { category: "fetch", maxResultSize: 50000 },
 			inputSchema: z.object({
 				url: z.string().describe("URL of the website to fetch"),
 				headers: z.record(z.string(), z.string()).optional().describe("Optional headers"),
@@ -49,8 +53,10 @@ export function createFetchTools() {
 				}
 			},
 		}),
-		fetch_text: tool({
+		fetch_text: buildTool({
+			name: "fetch_text",
 			description: "Fetch a website and return the content as plain text (no HTML tags)",
+			meta: { category: "fetch", maxResultSize: 50000 },
 			inputSchema: z.object({
 				url: z.string().describe("URL of the website to fetch"),
 				headers: z.record(z.string(), z.string()).optional().describe("Optional headers"),
@@ -70,8 +76,10 @@ export function createFetchTools() {
 				}
 			},
 		}),
-		fetch_json: tool({
+		fetch_json: buildTool({
+			name: "fetch_json",
 			description: "Fetch a JSON file from a URL",
+			meta: { category: "fetch", maxResultSize: 50000 },
 			inputSchema: z.object({
 				url: z.string().describe("URL of the JSON to fetch"),
 				headers: z.record(z.string(), z.string()).optional().describe("Optional headers"),

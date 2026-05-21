@@ -1,7 +1,7 @@
-import { tool } from "ai";
 import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { buildTool } from "./tool-factory.js";
 
 function resolvePath(path: string, workingDir: string | undefined, restrictToWorkspace: boolean): string | { error: string } {
 	if (!workingDir) return path;
@@ -12,18 +12,19 @@ function resolvePath(path: string, workingDir: string | undefined, restrictToWor
 	return resolved;
 }
 
-export const fileReadTool = tool({
+export const fileReadTool = buildTool({
+	name: "read",
 	description: "Read the contents of a file. Returns file content with line numbers.",
+	meta: { category: "runtime", isReadOnly: true },
 	inputSchema: z.object({
 		path: z.string().describe("Absolute or relative file path"),
 		offset: z.number().optional().describe("Start line number (1-based)"),
 		limit: z.number().optional().describe("Number of lines to read"),
 	}),
-	execute: async (input, options) => {
+	execute: async (input, ctx) => {
 		const { path, offset, limit } = input;
-		const ctx = options.experimental_context as { workingDir?: string; readScope?: string } | undefined;
-		const restrictToWorkspace = ctx?.readScope === "workspace";
-		const resolved = resolvePath(path, ctx?.workingDir, restrictToWorkspace);
+		const restrictToWorkspace = ctx.readScope === "workspace";
+		const resolved = resolvePath(path, ctx.workingDir, restrictToWorkspace);
 		if (typeof resolved === "object") return resolved.error;
 		try {
 			const content = await readFile(resolved, "utf-8");

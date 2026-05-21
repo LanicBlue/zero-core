@@ -1,23 +1,24 @@
-import { tool } from "ai";
 import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
+import { buildTool } from "./tool-factory.js";
 
 const execFileAsync = promisify(execFile);
 
-export const grepTool = tool({
+export const grepTool = buildTool({
+	name: "grep",
 	description: "Search file contents for a pattern. Returns matching lines with file paths.",
+	meta: { category: "runtime", isReadOnly: true },
 	inputSchema: z.object({
 		pattern: z.string().describe("Pattern to search for"),
 		path: z.string().optional().describe("Directory to search in (default: workspace)"),
 		include: z.string().optional().describe("Glob pattern for file filtering (e.g. '*.ts')"),
 	}),
-	execute: async (input, options) => {
+	execute: async (input, ctx) => {
 		const { pattern, path, include } = input;
-		const ctx = options.experimental_context as { workingDir?: string; readScope?: string } | undefined;
-		const restrictToWorkspace = ctx?.readScope === "workspace";
-		const workingDir = ctx?.workingDir;
+		const restrictToWorkspace = ctx.readScope === "workspace";
+		const workingDir = ctx.workingDir;
 
 		let searchPath: string;
 		if (path) {

@@ -1,9 +1,8 @@
-import { tool } from "ai";
 import { z } from "zod";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { join, resolve, extname, relative } from "node:path";
+import { join, resolve, extname } from "node:path";
 import { homedir } from "node:os";
-import { execSync } from "node:child_process";
+import { buildTool } from "../../runtime/tools/tool-factory.js";
 
 // ---------------------------------------------------------------------------
 // Assistant Tools — built-in MCP server for app diagnostics
@@ -11,6 +10,13 @@ import { execSync } from "node:child_process";
 
 const ZERO_CORE_DIR = process.env.ZERO_CORE_DIR ?? join(homedir(), ".zero-core");
 const BLOCKED_FILES = new Set([".env", ".env.local", ".env.production", "credentials.json", "secret"]);
+
+const BINARY_EXTENSIONS: Record<string, boolean> = {
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".ico": true,
+	".zip": true, ".tar": true, ".gz": true, ".exe": true, ".dll": true,
+	".so": true, ".dylib": true, ".woff": true, ".woff2": true, ".ttf": true,
+	".eot": true, ".pdf": true, ".sqlite": true,
+};
 
 function getLatestLogFile(): string | null {
 	const logDir = join(ZERO_CORE_DIR, "logs");
@@ -26,12 +32,25 @@ function getLatestLogFile(): string | null {
 	}
 }
 
+function redactSensitive(obj: any): void {
+	if (!obj || typeof obj !== "object") return;
+	for (const key of Object.keys(obj)) {
+		if (typeof obj[key] === "string" && (key.toLowerCase().includes("apikey") || key.toLowerCase().includes("secret") || key.toLowerCase().includes("password") || key.toLowerCase().includes("token"))) {
+			obj[key] = obj[key] ? `${obj[key].substring(0, 8)}***REDACTED***` : "";
+		} else if (typeof obj[key] === "object") {
+			redactSensitive(obj[key]);
+		}
+	}
+}
+
 export function createAssistantTools(getAppVersion?: () => string) {
 	const version = getAppVersion?.() ?? "0.0.0-dev";
 
 	return {
-		assistant_info: tool({
+		assistant_info: buildTool({
+			name: "assistant_info",
 			description: "Get zero-core app runtime information: version, paths, system info, memory usage.",
+			meta: { category: "assistant", isReadOnly: true },
 			inputSchema: z.object({}),
 			execute: async () => {
 				const mem = process.memoryUsage();
@@ -53,8 +72,10 @@ export function createAssistantTools(getAppVersion?: () => string) {
 			},
 		}),
 
-		assistant_logs: tool({
+		assistant_logs: buildTool({
+			name: "assistant_logs",
 			description: "Read recent log entries from the zero-core log file.",
+			meta: { category: "assistant", isReadOnly: true },
 			inputSchema: z.object({
 				lines: z.number().optional().default(50).describe("Number of log lines to return (max 500)"),
 				level: z.enum(["all", "error", "warn"]).optional().default("all").describe("Filter by log level"),
@@ -78,8 +99,10 @@ export function createAssistantTools(getAppVersion?: () => string) {
 			},
 		}),
 
-		assistant_config: tool({
+		assistant_config: buildTool({
+			name: "assistant_config",
 			description: "Read the current zero-core configuration (settings, providers, theme). Redacts sensitive values.",
+			meta: { category: "assistant", isReadOnly: true },
 			inputSchema: z.object({}),
 			execute: async () => {
 				const configPath = join(ZERO_CORE_DIR, "config.json");
@@ -87,7 +110,6 @@ export function createAssistantTools(getAppVersion?: () => string) {
 				try {
 					const content = readFileSync(configPath, "utf-8");
 					const config = JSON.parse(content);
-					// Redact API keys
 					redactSensitive(config);
 					return JSON.stringify(config, null, 2);
 				} catch (err: any) {
@@ -96,21 +118,21 @@ export function createAssistantTools(getAppVersion?: () => string) {
 			},
 		}),
 
-		assistant_read_source: tool({
+		assistant_read_source: buildTool({
+			name: "assistant_read_source",
 			description:
 				"Read a source file from the zero-core app directory for debugging. " +
 				"Blocks access to sensitive files (.env, credentials). File size limit 200KB.",
+			meta: { category: "assistant", isReadOnly: true },
 			inputSchema: z.object({
 				file_path: z.string().describe("Relative file path within the app directory"),
 			}),
 			execute: async ({ file_path }) => {
-				// Security: block sensitive files
 				const basename = file_path.split("/").pop() ?? "";
 				if (BLOCKED_FILES.has(basename) || basename.startsWith(".env")) {
 					return `Error: access denied for sensitive file: ${file_path}`;
 				}
 				const resolved = resolve(process.cwd(), file_path);
-				// Must be within app directory
 				if (!resolved.startsWith(resolve(process.cwd()))) {
 					return `Error: path outside app directory: ${file_path}`;
 				}
@@ -130,8 +152,10 @@ export function createAssistantTools(getAppVersion?: () => string) {
 			},
 		}),
 
-		assistant_list_providers: tool({
+		assistant_list_providers: buildTool({
+			name: "assistant_list_providers",
 			description: "List configured AI providers with model counts. Redacts API keys.",
+			meta: { category: "assistant", isReadOnly: true },
 			inputSchema: z.object({}),
 			execute: async () => {
 				const configPath = join(ZERO_CORE_DIR, "config.json");
@@ -155,8 +179,10 @@ export function createAssistantTools(getAppVersion?: () => string) {
 			},
 		}),
 
-		assistant_list_files: tool({
+		assistant_list_files: buildTool({
+			name: "assistant_list_files",
 			description: "List files in a zero-core data directory (config, templates, mcp-servers, knowledge-bases).",
+			meta: { category: "assistant", isReadOnly: true },
 			inputSchema: z.object({
 				directory: z.enum(["root", "config", "templates", "mcp-servers", "knowledge", "logs"]).describe("Data directory to list"),
 			}),
@@ -175,7 +201,6 @@ export function createAssistantTools(getAppVersion?: () => string) {
 					const files = readdirSync(targetDir)
 						.filter((f) => {
 							const stat = statSync(join(targetDir, f));
-							// For root, show only specific files
 							if (directory !== "logs") {
 								return f.endsWith(".json") || f.endsWith(".db") || stat.isDirectory();
 							}
@@ -193,22 +218,4 @@ export function createAssistantTools(getAppVersion?: () => string) {
 			},
 		}),
 	};
-}
-
-const BINARY_EXTENSIONS: Record<string, boolean> = {
-	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".ico": true,
-	".zip": true, ".tar": true, ".gz": true, ".exe": true, ".dll": true,
-	".so": true, ".dylib": true, ".woff": true, ".woff2": true, ".ttf": true,
-	".eot": true, ".pdf": true, ".sqlite": true,
-};
-
-function redactSensitive(obj: any): void {
-	if (!obj || typeof obj !== "object") return;
-	for (const key of Object.keys(obj)) {
-		if (typeof obj[key] === "string" && (key.toLowerCase().includes("apikey") || key.toLowerCase().includes("secret") || key.toLowerCase().includes("password") || key.toLowerCase().includes("token"))) {
-			obj[key] = obj[key] ? `${obj[key].substring(0, 8)}***REDACTED***` : "";
-		} else if (typeof obj[key] === "object") {
-			redactSensitive(obj[key]);
-		}
-	}
 }

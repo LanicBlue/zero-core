@@ -1,19 +1,20 @@
-import { tool } from "ai";
 import { z } from "zod";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { buildTool } from "./tool-factory.js";
 
-export const fileEditTool = tool({
+export const fileEditTool = buildTool({
+	name: "edit",
 	description: "Make a targeted edit to a file by replacing exact text matches. Always restricted to workspace.",
+	meta: { category: "runtime", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
 	inputSchema: z.object({
 		path: z.string().describe("File path to edit"),
 		oldText: z.string().describe("Exact text to find and replace"),
 		newText: z.string().describe("Replacement text"),
 	}),
-	execute: async (input, options) => {
+	execute: async (input, ctx) => {
 		const { path, oldText, newText } = input;
-		const ctx = options.experimental_context as { workingDir?: string } | undefined;
-		if (!ctx?.workingDir) return "Error: no workspace directory configured";
+		if (!ctx.workingDir) return "Error: no workspace directory configured";
 		const filePath = resolve(ctx.workingDir, path);
 		if (!filePath.startsWith(resolve(ctx.workingDir))) {
 			return `Access denied: path outside workspace (${path})`;

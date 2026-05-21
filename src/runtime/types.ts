@@ -46,6 +46,48 @@ export interface ErrorEvent {
 	type: "error";
 	agentId?: string;
 	error: string;
+	errorClass?: ErrorClass;
+}
+
+export interface RetryAttemptEvent {
+	type: "retry_attempt";
+	agentId?: string;
+	attempt: number;
+	maxAttempts: number;
+	delayMs: number;
+	errorClass: ErrorClass;
+}
+
+export type ErrorClass = "timeout" | "rate_limit" | "server_error" | "auth" | "network" | "prompt_too_long" | "unknown";
+
+export interface AskUserEvent {
+	type: "ask_user";
+	agentId?: string;
+	requestId: string;
+	questions: Array<{
+		question: string;
+		header?: string;
+		options?: Array<{ label: string; description?: string }>;
+		multiSelect?: boolean;
+	}>;
+}
+
+export interface TodosUpdateEvent {
+	type: "todos_update";
+	agentId?: string;
+	todos: Array<{
+		content: string;
+		status: "pending" | "in_progress" | "completed";
+		activeForm: string;
+	}>;
+}
+
+export interface ScheduleWakeupEvent {
+	type: "schedule_wakeup";
+	agentId?: string;
+	delaySeconds: number;
+	reason: string;
+	prompt: string;
 }
 
 export type StreamEvent =
@@ -55,7 +97,11 @@ export type StreamEvent =
 	| ToolEndEvent
 	| MessageEndEvent
 	| AgentEndEvent
-	| ErrorEvent;
+	| ErrorEvent
+	| RetryAttemptEvent
+	| AskUserEvent
+	| TodosUpdateEvent
+	| ScheduleWakeupEvent;
 
 // ---------------------------------------------------------------------------
 // Provider config — mirrors existing ProviderConfig

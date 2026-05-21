@@ -264,6 +264,8 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 									memory: "Knowledge Graph Memory",
 									thinking: "Sequential Thinking",
 									assistant: "Assistant 诊断",
+								search: "Web 搜索",
+								interaction: "交互工具",
 								};
 								const groups: Record<string, typeof tools> = {};
 								for (const t of tools) {

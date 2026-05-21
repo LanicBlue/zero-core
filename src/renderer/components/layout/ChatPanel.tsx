@@ -2,55 +2,68 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useChatStore, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
+import AskUserCard from "../chat/AskUserCard.js";
+import TodosList from "../chat/TodosList.js";
+import { useInteractionStore } from "../../store/interaction-store.js";
 
 const api = () => (window as any).api;
 
 // ---------------------------------------------------------------------------
-// Parse <think ...>...</think > tags from text into structured blocks
+// Helpers
 // ---------------------------------------------------------------------------
 
-interface ParsedSegment {
-	type: "thinking" | "text";
-	text: string;
+/** Collapse 3+ consecutive newlines to 2, then trim. Preserves markdown paragraph breaks and tables. */
+function collapseNewlines(s: string): string {
+	return s.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function parseThinkingFromText(text: string): ParsedSegment[] {
-	if (!text) return [];
-	const segments: ParsedSegment[] = [];
-	let remaining = text;
+function stripLeadingNL(s: string): string {
+	return s.charCodeAt(0) === 10 ? s.substring(1) : s;
+}
 
+function stripTrailingNL(s: string): string {
+	return s.charCodeAt(s.length - 1) === 10 ? s.substring(0, s.length - 1) : s;
+}
+
+/**
+ * Parse <think...>...</think...> tags from text into structured segments.
+ * Collapses consecutive blank lines in text segments.
+ */
+function parseThinkingSegments(text: string): { type: "thinking" | "text"; text: string }[] {
+	if (!text) return [];
+	const segs: { type: "thinking" | "text"; text: string }[] = [];
+	let remaining = text;
 	while (remaining) {
 		const openIdx = remaining.indexOf("<think");
 		if (openIdx === -1) {
-			if (remaining) segments.push({ type: "text", text: remaining });
+			const t = collapseNewlines(remaining);
+			if (t) segs.push({ type: "text", text: t });
 			break;
 		}
-
 		if (openIdx > 0) {
-			segments.push({ type: "text", text: remaining.substring(0, openIdx) });
+			const before = collapseNewlines(remaining.substring(0, openIdx));
+			if (before) segs.push({ type: "text", text: before });
 		}
-
 		const tagEnd = remaining.indexOf(">", openIdx);
 		if (tagEnd === -1) {
-			segments.push({ type: "text", text: remaining });
+			const t = collapseNewlines(remaining);
+			if (t) segs.push({ type: "text", text: t });
 			break;
 		}
-
 		const closeIdx = remaining.indexOf("</think", tagEnd);
 		if (closeIdx === -1) {
-			const thinkText = remaining.substring(tagEnd + 1).replace(/^\n/, "");
-			segments.push({ type: "thinking", text: thinkText });
+			let t = stripLeadingNL(remaining.substring(tagEnd + 1));
+			if (t) segs.push({ type: "thinking", text: t });
 			break;
 		}
-
-		const thinkText = remaining.substring(tagEnd + 1, closeIdx).replace(/^\n/, "").replace(/\n$/, "");
-		segments.push({ type: "thinking", text: thinkText });
-
+		let t = stripTrailingNL(stripLeadingNL(remaining.substring(tagEnd + 1, closeIdx)));
+		if (t) segs.push({ type: "thinking", text: t });
 		const closeEnd = remaining.indexOf(">", closeIdx);
-		remaining = closeEnd !== -1 ? remaining.substring(closeEnd + 1).replace(/^\n/, "") : "";
+		let after = closeEnd !== -1 ? remaining.substring(closeEnd + 1) : "";
+		after = stripLeadingNL(after);
+		remaining = after;
 	}
-
-	return segments;
+	return segs;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,20 +114,23 @@ function ToolBlock({ block, streaming }: { block: ToolCallBlock; streaming: bool
 
 function renderBlocks(blocks: MessageBlock[], streaming: boolean) {
 	const elements: React.ReactNode[] = [];
+	let ti = 0, ki = 0, xi = 0;
 
-	for (let i = 0; i < blocks.length; i++) {
-		const block = blocks[i];
+	for (const block of blocks) {
 		if (block.type === "thinking") {
-			elements.push(<ThinkingBlockComponent key={i} text={(block as ThinkingBlock).text} streaming={streaming} />);
+			elements.push(<ThinkingBlockComponent key={"t" + (ti++)} text={(block as ThinkingBlock).text} streaming={streaming} />);
 		} else if (block.type === "tool") {
-			elements.push(<ToolBlock key={i} block={block as ToolCallBlock} streaming={streaming} />);
+			elements.push(<ToolBlock key={"k" + (ki++)} block={block as ToolCallBlock} streaming={streaming} />);
 		} else if (block.type === "text") {
-			const segments = parseThinkingFromText((block as { text: string }).text);
-			for (const seg of segments) {
+			const text = (block as { text: string }).text;
+			if (!text) continue;
+			// Parse <think...> tags that may be embedded in text (non-Anthropic models)
+			const segs = parseThinkingSegments(text);
+			for (const seg of segs) {
 				if (seg.type === "thinking") {
-					elements.push(<ThinkingBlockComponent key={`${i}-t-${elements.length}`} text={seg.text} streaming={streaming} />);
+					elements.push(<ThinkingBlockComponent key={"t" + (ti++)} text={seg.text} streaming={streaming} />);
 				} else if (seg.text) {
-					elements.push(<MarkdownRenderer key={`${i}-s-${elements.length}`} content={seg.text} streaming={streaming} />);
+					elements.push(<MarkdownRenderer key={"x" + (xi++)} content={seg.text} streaming={streaming} />);
 				}
 			}
 		}
@@ -123,24 +139,26 @@ function renderBlocks(blocks: MessageBlock[], streaming: boolean) {
 	return elements;
 }
 
+const str = (v: any) => v == null ? undefined : typeof v === "string" ? v : JSON.stringify(v, null, 2);
+
 function storedToBlocks(msgs: any[]): any[] {
 	return msgs.map((m) => {
 		const blocks: MessageBlock[] = [];
-		// Restore tool call blocks from persisted data
-		if (m.toolCalls && Array.isArray(m.toolCalls)) {
-			for (const tc of m.toolCalls) {
-				blocks.push({
-					type: "tool",
-					name: tc.name,
-					status: tc.status || "done",
-					args: tc.args,
-					result: tc.result,
-				} as ToolCallBlock);
+
+		if (m.blocks && Array.isArray(m.blocks)) {
+			for (const b of m.blocks) {
+				if (b.type === "thinking") {
+					blocks.push({ type: "thinking", text: b.text });
+				} else if (b.type === "tool") {
+					blocks.push({ type: "tool", name: b.name, status: b.status || "done", args: str(b.args), result: str(b.result) } as ToolCallBlock);
+				} else if (b.type === "text" && b.text) {
+					blocks.push({ type: "text", text: b.text });
+				}
 			}
-		}
-		if (m.text) {
+		} else if (m.text) {
 			blocks.push({ type: "text", text: m.text });
 		}
+
 		return {
 			id: m.id || String(Date.now() + Math.random()),
 			role: m.role,
@@ -161,12 +179,16 @@ export default function ChatPanel() {
 			messages, activeAgentId, isStreaming, sessionsByAgent, currentSessionId,
 			addMessage, finishStreaming, loadMessages, setActiveAgent,
 			setSessions, setCurrentSessionId, clearMessages,
+			editMessage, deleteMessage,
 		} = useChatStore();
 	const { agents } = useAgentStore();
+	const { pendingQuestions, todosByAgent } = useInteractionStore();
 	const [input, setInput] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const loadedAgentRef = useRef<string | null>(null);
 	const [showSessions, setShowSessions] = useState(false);
+	const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+	const [editText, setEditText] = useState("");
 
 	const refreshSessionData = useCallback(async (agentId: string) => {
 		const [sessions, msgs] = await Promise.all([
@@ -257,8 +279,37 @@ export default function ChatPanel() {
 		}
 	};
 
+	const parseMsgSeq = (id: string) => parseInt(id.slice(1), 10);
+
 	const activeAgent = agents.find((a) => a.id === activeAgentId);
 	const sessions = activeAgentId ? (sessionsByAgent[activeAgentId] ?? []) : [];
+
+	const startEdit = (msg: typeof messages[number]) => {
+		setEditingMsgId(msg.id);
+		setEditText(msg.text);
+	};
+
+	const cancelEdit = () => {
+		setEditingMsgId(null);
+		setEditText("");
+	};
+
+	const saveEdit = async (msg: typeof messages[number]) => {
+		if (!activeAgentId || !editText.trim()) return;
+		const seq = parseMsgSeq(msg.id);
+		await api().messagesEdit(activeAgentId, seq, editText.trim());
+		editMessage(activeAgentId, msg.id, editText.trim());
+		setEditingMsgId(null);
+		setEditText("");
+	};
+
+	const handleDeleteMsg = async (msg: typeof messages[number]) => {
+		if (!activeAgentId) return;
+		if (!confirm("Delete this message?")) return;
+		const seq = parseMsgSeq(msg.id);
+		await api().messagesDelete(activeAgentId, seq);
+		deleteMessage(activeAgentId, msg.id);
+	};
 
 	const renderMessageContent = (msg: typeof messages[number]) => {
 		if (msg.role === "user") {
@@ -343,9 +394,25 @@ export default function ChatPanel() {
 				)}
 				{messages.map((msg) => (
 					<div key={msg.id} className={`message message-${msg.role}`}>
-						<div className="message-avatar">{msg.role === "user" ? "You" : activeAgent?.name?.[0] ?? "Z"}</div>
-						<div className="message-content">
-							{renderMessageContent(msg)}
+						<div className="message-avatar">{msg.role === "user" ? "U" : activeAgent?.name?.[0] ?? "Z"}</div>
+						<div className="message-content-wrapper">
+							<div className="message-content">
+								{editingMsgId === msg.id ? (
+									<div className="msg-edit-container">
+										<textarea className="msg-edit-area" value={editText} onChange={(e) => setEditText(e.target.value)} rows={3} />
+										<div className="msg-edit-actions">
+											<button type="button" className="msg-edit-save" onClick={() => saveEdit(msg)}>Save</button>
+											<button type="button" className="msg-edit-cancel" onClick={cancelEdit}>Cancel</button>
+										</div>
+									</div>
+								) : renderMessageContent(msg)}
+							</div>
+							{!msg.streaming && editingMsgId !== msg.id && (
+								<div className="message-actions">
+									<button className="msg-action-btn" onClick={() => startEdit(msg)} title="Edit">Edit</button>
+									<button className="msg-action-btn" onClick={() => handleDeleteMsg(msg)} title="Delete">Delete</button>
+								</div>
+							)}
 						</div>
 					</div>
 				))}

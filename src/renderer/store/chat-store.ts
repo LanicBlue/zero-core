@@ -62,6 +62,8 @@ interface ChatState {
 	clearMessages: (agentId: string) => void;
 	setSessions: (agentId: string, sessions: SessionInfo[]) => void;
 	setCurrentSessionId: (sessionId: string | null) => void;
+	editMessage: (agentId: string, msgId: string, newText: string) => void;
+	deleteMessage: (agentId: string, msgId: string) => void;
 }
 
 function updateLastAssistantMsg(
@@ -125,11 +127,11 @@ export const useChatStore = create<ChatState>((set) => ({
 		set((state) => {
 			const agentMsgs = updateLastAssistantMsg(state.messagesByAgent[agentId] ?? [], (msg) => {
 				const blocks = [...(msg.blocks ?? [])];
-				const thinkIdx = blocks.findIndex((b) => b.type === "thinking");
-				if (thinkIdx >= 0) {
-					blocks[thinkIdx] = { type: "thinking", text };
+				const lastBlock = blocks[blocks.length - 1];
+				if (lastBlock && lastBlock.type === "thinking") {
+					blocks[blocks.length - 1] = { type: "thinking", text };
 				} else {
-					blocks.unshift({ type: "thinking", text });
+					blocks.push({ type: "thinking", text });
 				}
 				return { ...msg, blocks, streaming: true };
 			});
@@ -246,4 +248,30 @@ export const useChatStore = create<ChatState>((set) => ({
 
 	setCurrentSessionId: (sessionId) =>
 		set({ currentSessionId: sessionId }),
+
+	editMessage: (agentId, msgId, newText) =>
+		set((state) => {
+			const agentMsgs = (state.messagesByAgent[agentId] ?? []).map((m) =>
+				m.id === msgId
+					? { ...m, text: newText, blocks: [{ type: "text" as const, text: newText }] }
+					: m,
+			);
+			const newByAgent = { ...state.messagesByAgent, [agentId]: agentMsgs };
+			const isActive = agentId === state.activeAgentId;
+			return {
+				messagesByAgent: newByAgent,
+				messages: isActive ? agentMsgs : state.messages,
+			};
+		}),
+
+	deleteMessage: (agentId, msgId) =>
+		set((state) => {
+			const agentMsgs = (state.messagesByAgent[agentId] ?? []).filter((m) => m.id !== msgId);
+			const newByAgent = { ...state.messagesByAgent, [agentId]: agentMsgs };
+			const isActive = agentId === state.activeAgentId;
+			return {
+				messagesByAgent: newByAgent,
+				messages: isActive ? agentMsgs : state.messages,
+			};
+		}),
 }));

@@ -1,22 +1,23 @@
-import { tool } from "ai";
 import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { buildTool } from "./tool-factory.js";
 
 const execFileAsync = promisify(execFile);
 
-export const externalAgentTool = tool({
+export const externalAgentTool = buildTool({
+	name: "external_agent",
 	description:
 		"Invoke an external agent CLI (Claude Code or Codex) to perform a task. The agent runs in the workspace directory and returns its output.",
+	meta: { category: "runtime", isReadOnly: false, isDestructive: true, isConcurrencySafe: false, maxResultSize: 50000 },
 	inputSchema: z.object({
 		agent: z.enum(["claude-code", "codex"]).describe("Which external agent to invoke"),
 		prompt: z.string().describe("The task prompt for the external agent"),
 		workingDir: z.string().optional().describe("Working directory override"),
 	}),
-	execute: async (input, options) => {
+	execute: async (input, ctx) => {
 		const { agent, prompt, workingDir } = input;
-		const ctx = options.experimental_context as { workingDir?: string } | undefined;
-		const cwd = workingDir || ctx?.workingDir || ".";
+		const cwd = workingDir || ctx.workingDir || ".";
 
 		try {
 			let command: string;

@@ -1,8 +1,8 @@
-import { tool } from "ai";
 import { z } from "zod";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
+import { buildTool } from "../../runtime/tools/tool-factory.js";
 
 // ---------------------------------------------------------------------------
 // Knowledge Graph Memory — persistent entity-relation graph
@@ -46,8 +46,10 @@ function saveGraph(graph: KnowledgeGraph): void {
 
 export function createMemoryTools() {
 	return {
-		memory_create_entities: tool({
+		memory_create_entities: buildTool({
+			name: "memory_create_entities",
 			description: "Create entities in the knowledge graph. Skips existing entities.",
+			meta: { category: "memory", isReadOnly: false, isConcurrencySafe: false },
 			inputSchema: z.object({
 				entities: z.array(z.object({
 					name: z.string().describe("Entity name"),
@@ -70,8 +72,10 @@ export function createMemoryTools() {
 				return JSON.stringify(created, null, 2);
 			},
 		}),
-		memory_create_relations: tool({
+		memory_create_relations: buildTool({
+			name: "memory_create_relations",
 			description: "Create relations between existing entities. Both entities must exist.",
+			meta: { category: "memory", isReadOnly: false, isConcurrencySafe: false },
 			inputSchema: z.object({
 				relations: z.array(z.object({
 					from: z.string(),
@@ -96,8 +100,10 @@ export function createMemoryTools() {
 				return JSON.stringify(created, null, 2);
 			},
 		}),
-		memory_add_observations: tool({
+		memory_add_observations: buildTool({
+			name: "memory_add_observations",
 			description: "Add observations to existing entities. Skips duplicates.",
+			meta: { category: "memory", isReadOnly: false, isConcurrencySafe: false },
 			inputSchema: z.object({
 				observations: z.array(z.object({
 					entityName: z.string(),
@@ -110,7 +116,7 @@ export function createMemoryTools() {
 				for (const o of observations) {
 					const entity = graph.entities.find((e) => e.name === o.entityName);
 					if (!entity) continue;
-					const added = o.contents.filter((c) => !entity.observations.includes(c));
+					const added = o.contents.filter((c: string) => !entity.observations.includes(c));
 					entity.observations.push(...added);
 					results.push({ entityName: o.entityName, added });
 				}
@@ -118,8 +124,10 @@ export function createMemoryTools() {
 				return JSON.stringify(results, null, 2);
 			},
 		}),
-		memory_delete_entities: tool({
+		memory_delete_entities: buildTool({
+			name: "memory_delete_entities",
 			description: "Delete entities and their associated relations.",
+			meta: { category: "memory", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
 			inputSchema: z.object({
 				entityNames: z.array(z.string()),
 			}),
@@ -132,8 +140,10 @@ export function createMemoryTools() {
 				return "Entities deleted";
 			},
 		}),
-		memory_delete_relations: tool({
+		memory_delete_relations: buildTool({
+			name: "memory_delete_relations",
 			description: "Delete specific relations.",
+			meta: { category: "memory", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
 			inputSchema: z.object({
 				relations: z.array(z.object({
 					from: z.string(),
@@ -143,21 +153,25 @@ export function createMemoryTools() {
 			}),
 			execute: async ({ relations }) => {
 				const graph = loadGraph();
-				const toDelete = new Set(relations.map((r) => JSON.stringify(r)));
-				graph.relations = graph.relations.filter((r) => !toDelete.has(JSON.stringify(r)));
+				const toDelete = new Set(relations.map((r: Relation) => JSON.stringify(r)));
+				graph.relations = graph.relations.filter((r: Relation) => !toDelete.has(JSON.stringify(r)));
 				saveGraph(graph);
 				return "Relations deleted";
 			},
 		}),
-		memory_read_graph: tool({
+		memory_read_graph: buildTool({
+			name: "memory_read_graph",
 			description: "Read the entire knowledge graph.",
+			meta: { category: "memory", isReadOnly: true },
 			inputSchema: z.object({}),
 			execute: async () => {
 				return JSON.stringify(loadGraph(), null, 2);
 			},
 		}),
-		memory_search_nodes: tool({
+		memory_search_nodes: buildTool({
+			name: "memory_search_nodes",
 			description: "Search entities and relations by query string.",
+			meta: { category: "memory", isReadOnly: true },
 			inputSchema: z.object({
 				query: z.string().describe("Search query"),
 			}),

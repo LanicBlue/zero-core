@@ -278,14 +278,20 @@ function ProviderEditor({ provider, onClose }: { provider: Provider | null; onCl
 
 export default function SettingsPage() {
 	const { providers, loading, fetchProviders } = useProviderStore();
-	const [editingProvider, setEditingProvider] = useState<Provider | null>( null);
+	const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
 	const [creating, setCreating] = useState(false);
+	const [activeSection, setActiveSection] = useState<string>("providers");
 
-	useEffect(() => {
-		fetchProviders();
-	}, [fetchProviders]);
+	useEffect(() => { fetchProviders(); }, [fetchProviders]);
 
 	const enabledCount = providers.filter((p) => p.enabled).length;
+
+	const sections = [
+		{ key: "providers", label: "API Providers", badge: String(providers.length) },
+		{ key: "search", label: "Web Search" },
+		{ key: "theme", label: "Theme" },
+		{ key: "workspace", label: "Workspace" },
+	];
 
 	return (
 		<div className="settings-page">
@@ -296,46 +302,70 @@ export default function SettingsPage() {
 				</div>
 			</div>
 
-			<div className="settings-body">
-				<div className="settings-section">
-					<div className="section-title-row">
-						<h3>API Providers</h3>
+			<div className="settings-content">
+				<div className="settings-nav">
+					{sections.map((s) => (
 						<button
+							key={s.key}
 							type="button"
-							className="btn-primary btn-sm"
-							onClick={() => { setCreating(true); setEditingProvider(null); }}
+							className={`settings-nav-item ${activeSection === s.key ? "active" : ""}`}
+							onClick={() => setActiveSection(s.key)}
 						>
-							+ Add Provider
+							<span className="settings-nav-label">{s.label}</span>
+							{s.badge && <span className="settings-nav-badge">{s.badge}</span>}
 						</button>
-					</div>
+					))}
+				</div>
 
-					{loading && <p className="settings-empty">Loading providers...</p>}
-					{!loading && providers.length === 0 && (
-						<p className="settings-empty">No providers configured.</p>
+				<div className="settings-panel">
+					{activeSection === "providers" && (
+						<>
+							<div className="section-title-row">
+								<h3>API Providers</h3>
+								<button
+									type="button"
+									className="btn-primary btn-sm"
+									onClick={() => { setCreating(true); setEditingProvider(null); }}
+								>
+									+ Add Provider
+								</button>
+							</div>
+							{loading && <p className="settings-empty">Loading providers...</p>}
+							{!loading && providers.length === 0 && (
+								<p className="settings-empty">No providers configured.</p>
+							)}
+							<div className="providers-grid">
+								{providers.map((p) => (
+									<ProviderCard
+										key={p.id}
+										provider={p}
+										onEdit={() => { setEditingProvider(p); setCreating(false); }}
+									/>
+								))}
+							</div>
+						</>
 					)}
-					<div className="providers-grid">
-						{providers.map((p) => (
-							<ProviderCard
-								key={p.id}
-								provider={p}
-								onEdit={() => { setEditingProvider(p); setCreating(false); }}
-							/>
-						))}
-					</div>
-				</div>
 
-				<div className="settings-section">
-					<div className="section-title-row">
-						<h3>Theme</h3>
-					</div>
-					<ThemeSettings />
-				</div>
+					{activeSection === "search" && (
+						<>
+							<div className="section-title-row"><h3>Web Search</h3></div>
+							<SearchProviderSettings />
+						</>
+					)}
 
-				<div className="settings-section">
-					<div className="section-title-row">
-						<h3>Global Workspace</h3>
-					</div>
-					<WorkspaceConfig />
+					{activeSection === "theme" && (
+						<>
+							<div className="section-title-row"><h3>Theme</h3></div>
+							<ThemeSettings />
+						</>
+					)}
+
+					{activeSection === "workspace" && (
+						<>
+							<div className="section-title-row"><h3>Workspace</h3></div>
+							<WorkspaceConfig />
+						</>
+					)}
 				</div>
 			</div>
 
@@ -345,6 +375,76 @@ export default function SettingsPage() {
 					onClose={() => { setCreating(false); setEditingProvider(null); }}
 				/>
 			)}
+		</div>
+	);
+}
+
+function SearchProviderSettings() {
+	const [provider, setProvider] = useState<string>("");
+	const [searxngUrl, setSearxngUrl] = useState("http://localhost:8080");
+	const [serpApiKey, setSerpApiKey] = useState("");
+	const [braveApiKey, setBraveApiKey] = useState("");
+	const [saved, setSaved] = useState(false);
+
+	useEffect(() => {
+		api().getSearchProvider().then((r: any) => {
+			if (r?.name) setProvider(r.name);
+		}).catch(() => {});
+	}, []);
+
+	const providers = [
+		{ key: "duckduckgo", label: "DuckDuckGo", desc: "Free, no API key" },
+		{ key: "brave", label: "Brave Search", desc: "Free tier: 2K/mo" },
+		{ key: "searxng", label: "SearXNG", desc: "Self-hosted" },
+		{ key: "serpapi", label: "SerpAPI", desc: "Google results" },
+	];
+
+	const save = async () => {
+		const config: any = { type: provider || "duckduckgo" };
+		if (provider === "searxng") config.searxngUrl = searxngUrl;
+		if (provider === "serpapi") config.serpApiKey = serpApiKey;
+		if (provider === "brave") config.braveApiKey = braveApiKey;
+		await api().setSearchProvider(config);
+		setSaved(true);
+		setTimeout(() => setSaved(false), 2000);
+	};
+
+	return (
+		<div className="search-provider-section">
+			<div className="search-provider-options">
+				{providers.map((p) => (
+					<button
+						key={p.key}
+						type="button"
+						className={"search-provider-btn " + (provider === p.key ? "active" : "")}
+						onClick={() => setProvider(p.key)}
+					>
+						<span className="sp-label">{p.label}</span>
+						<span className="sp-desc">{p.desc}</span>
+					</button>
+				))}
+			</div>
+			{(provider === "searxng") && (
+				<div className="search-provider-field">
+					<label className="config-label">SearXNG URL</label>
+					<input value={searxngUrl} onChange={(e) => setSearxngUrl(e.target.value)} placeholder="http://localhost:8080" />
+				</div>
+			)}
+			{(provider === "serpapi") && (
+				<div className="search-provider-field">
+					<label className="config-label">SerpAPI Key</label>
+					<input type="password" value={serpApiKey} onChange={(e) => setSerpApiKey(e.target.value)} placeholder="Your SerpAPI key" />
+				</div>
+			)}
+			{(provider === "brave") && (
+				<div className="search-provider-field">
+					<label className="config-label">Brave API Key</label>
+					<input type="password" value={braveApiKey} onChange={(e) => setBraveApiKey(e.target.value)} placeholder="Your Brave Search API key" />
+				</div>
+			)}
+			<button type="button" className="btn-primary btn-sm" onClick={save}>
+				{saved ? "Saved ✓" : "Save"}
+			</button>
 		</div>
 	);
 }

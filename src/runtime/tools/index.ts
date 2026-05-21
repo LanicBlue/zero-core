@@ -10,6 +10,12 @@ import { findTool } from "./find.js";
 import { delegateTool } from "./delegate.js";
 import { externalAgentTool } from "./external-agent.js";
 import { buildMcpTools } from "./mcp-tool.js";
+import { webSearchTool } from "./web-search.js";
+import { askUserTool } from "./ask-user.js";
+import { todoWriteTool } from "./todo-write.js";
+import { scheduleWakeupTool } from "./schedule-wakeup.js";
+import { getToolMeta, getToolName } from "./tool-factory.js";
+import type { ToolCategory } from "./tool-factory.js";
 
 const ALL_TOOLS: Record<string, any> = {
 	bash: bashTool,
@@ -20,6 +26,10 @@ const ALL_TOOLS: Record<string, any> = {
 	find: findTool,
 	delegate: delegateTool,
 	external_agent: externalAgentTool,
+	web_search: webSearchTool,
+	ask_user: askUserTool,
+	todo_write: todoWriteTool,
+	schedule_wakeup: scheduleWakeupTool,
 };
 
 // Tools that require special context capabilities
@@ -72,8 +82,56 @@ export function buildToolsSet(
 		Object.assign(tools, mcpTools);
 	}
 
-	return tools;
+	// Merge built-in tools (fetch, memory, thinking, assistant)
+	if (builtInTools) {
+		for (const [name, def] of Object.entries(builtInTools)) {
+			if (blocked.has(name)) continue;
+			if (autoApprove.has(name) || autoApprove.has("*")) {
+				tools[name] = def;
+			} else {
+				const desc = (def as any)?.description ?? name;
+				tools[name] = wrapDisabledTool(name, typeof desc === "string" ? desc : "");
+			}
+		}
 	}
+
+	return tools;
+}
+
+// ---------------------------------------------------------------------------
+// Tool metadata helpers
+// ---------------------------------------------------------------------------
+
+export function getToolCategories(): Record<ToolCategory, string[]> {
+	const categories: Record<string, string[]> = {};
+
+	for (const [name, def] of Object.entries(ALL_TOOLS)) {
+		const meta = getToolMeta(def);
+		const cat = meta?.category ?? "runtime";
+		if (!categories[cat]) categories[cat] = [];
+		categories[cat].push(name);
+	}
+
+	return categories as Record<ToolCategory, string[]>;
+}
+
+export function getAllToolInfo(): { name: string; category: ToolCategory; description: string; isReadOnly: boolean; isDestructive: boolean }[] {
+	const infos: { name: string; category: ToolCategory; description: string; isReadOnly: boolean; isDestructive: boolean }[] = [];
+
+	for (const [name, def] of Object.entries(ALL_TOOLS)) {
+		const meta = getToolMeta(def);
+		const desc = (def as any)?.description ?? "";
+		infos.push({
+			name,
+			category: meta?.category ?? "runtime",
+			description: typeof desc === "string" ? desc : "",
+			isReadOnly: meta?.isReadOnly ?? true,
+			isDestructive: meta?.isDestructive ?? false,
+		});
+	}
+
+	return infos;
+}
 
 export function buildToolPolicyDescription(
 	policy: { autoApprove?: string[]; blockedTools?: string[]; readScope?: string },

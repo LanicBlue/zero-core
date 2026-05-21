@@ -29,10 +29,14 @@ const api = {
 	// ─── Messages ────────────────────────────────────
 	messagesList: (agentId: string) => ipcRenderer.invoke("messages:list", agentId),
 	messagesClear: (agentId: string) => ipcRenderer.invoke("messages:clear", agentId),
+		messagesEdit: (agentId: string, msgSeq: number, newText: string) => ipcRenderer.invoke("messages:edit", agentId, msgSeq, newText),
+		messagesDelete: (agentId: string, msgSeq: number) => ipcRenderer.invoke("messages:delete", agentId, msgSeq),
 
 	// ─── Files ───────────────────────────────────────
 	filesTree: (root?: string) => ipcRenderer.invoke("files:tree", root),
 	filesContent: (path: string, root?: string) => ipcRenderer.invoke("files:content", path, root),
+		filesResolvePath: (path: string, root?: string) => ipcRenderer.invoke("files:resolve-path", path, root),
+		filesSave: (path: string, content: string, root?: string) => ipcRenderer.invoke("files:save", path, content, root),
 
 	// ─── Chat ────────────────────────────────────────
 	chatSend: (text: string, agentId?: string) => ipcRenderer.invoke("chat:send", text, agentId),
@@ -99,6 +103,11 @@ const api = {
 		// ─── Theme ───────────────────────────────────────
 		configGetTheme: () => ipcRenderer.invoke("config:get-theme"),
 		configSetTheme: (data) => ipcRenderer.invoke("config:set-theme", data),
-};
+
+		// ─── Ask User / Todos / Search ──────────────────
+		askUserRespond: (requestId: string, answers: Record<string, string>) => ipcRenderer.invoke("ask-user:respond", requestId, answers),
+		getTodos: (agentId: string) => ipcRenderer.invoke("todos:get", agentId),
+		getSearchProvider: () => ipcRenderer.invoke("search-provider:get"),
+		setSearchProvider: (config: { type: string; searxngUrl?: string; serpApiKey?: string }) => ipcRenderer.invoke("search-provider:set", config),};
 
 contextBridge.exposeInMainWorld("api", api);
