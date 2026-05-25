@@ -172,7 +172,7 @@ export default function AppLayout() {
 	return (
 		<div className="app-layout">
 			<IconSidebar />
-			{activePage === "chat" ? (
+			<div className={"page-chat" + (activePage === "chat" ? " page-active" : "")}>
 				<ResizableLayout
 					defaults={[4, 2, 4]}
 					mins={[280, 160, 200]}
@@ -181,16 +181,15 @@ export default function AppLayout() {
 					<FileTreePanel />
 					<DocViewerPanel />
 				</ResizableLayout>
-			) : activePage === "settings" ? (
-				<SettingsPage />
-			) : activePage === "mcp" ? (
-				<McpSettingsPage />
-			) : activePage === "tools" ? (
-				<ToolsPage />
-			) : activePage === "knowledge" ? (
-				<KnowledgeBasePage />
-			) : (
-				<AgentsPage />
+			</div>
+			{activePage !== "chat" && (
+				<div className="page-overlay">
+					{activePage === "settings" && <SettingsPage />}
+					{activePage === "mcp" && <McpSettingsPage />}
+					{activePage === "tools" && <ToolsPage />}
+					{activePage === "knowledge" && <KnowledgeBasePage />}
+					{activePage === "agents" && <AgentsPage />}
+				</div>
 			)}
 
 			{/* Log toggle button */}

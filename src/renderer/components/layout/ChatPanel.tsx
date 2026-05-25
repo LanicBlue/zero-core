@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { useChatStore, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
@@ -93,11 +93,35 @@ function ToolBlock({ block, streaming }: { block: ToolCallBlock; streaming: bool
 	const [expanded, setExpanded] = useState(false);
 	const statusClass = block.status === "running" ? "tool-running" : block.status === "error" ? "tool-error" : "tool-done";
 
+	const summary = useMemo(() => {
+		if (!block.args) return "";
+		try {
+			const a = JSON.parse(block.args);
+			switch (block.name) {
+				case "bash": return a.command || a.description || "";
+				case "read": return a.file_path || a.path || "";
+				case "write": return a.file_path || a.path || "";
+				case "edit": return a.file_path || a.path || "";
+				case "grep": return a.pattern || "";
+				case "glob": return a.pattern || "";
+				case "web_search": case "webSearch": return a.query || "";
+				case "web_fetch": case "fetch": return a.url || "";
+				default: {
+					const vals = Object.values(a).filter((v: any) => typeof v === "string" && v.length < 120);
+					return (vals as string[])[0] || "";
+				}
+			}
+		} catch { return ""; }
+	}, [block.name, block.args]);
+
+	const displaySummary = summary.length > 100 ? summary.slice(0, 100) + "…" : summary;
+
 	return (
 		<div className={`tool-block ${statusClass}`}>
 			<div className="tool-block-header" onClick={() => setExpanded(!expanded)}>
 				<span className="tool-block-chevron">{expanded ? "▾" : "▸"}</span>
 				<span className="tool-block-name">{block.name}</span>
+				{!expanded && displaySummary && <span className="tool-block-summary">{displaySummary}</span>}
 				<span className={`tool-block-status ${statusClass}`}>
 					{block.status === "running" ? "Running…" : block.status === "error" ? "Error" : "Done"}
 				</span>
@@ -176,7 +200,7 @@ function storedToBlocks(msgs: any[]): any[] {
 
 export default function ChatPanel() {
 	const {
-			messages, activeAgentId, isStreaming, sessionsByAgent, currentSessionId,
+			messages, activeAgentId, isStreaming, streamingAgentId, sessionsByAgent, currentSessionId,
 			addMessage, finishStreaming, loadMessages, setActiveAgent,
 			setSessions, setCurrentSessionId, clearMessages,
 			editMessage, deleteMessage,
@@ -185,6 +209,7 @@ export default function ChatPanel() {
 	const { pendingQuestions, todosByAgent } = useInteractionStore();
 	const [input, setInput] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
+	const messagesContainerRef = useRef<HTMLDivElement>(null);
 	const loadedAgentRef = useRef<string | null>(null);
 	const [showSessions, setShowSessions] = useState(false);
 	const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
@@ -202,18 +227,23 @@ export default function ChatPanel() {
 	}, []);
 
 	// Load message history + sessions when agent changes
+	// Skip DB reload if agent is actively streaming — keep in-memory state
 	useEffect(() => {
 		if (!activeAgentId) return;
 		if (loadedAgentRef.current === activeAgentId) return;
 		loadedAgentRef.current = activeAgentId;
 
+		if (streamingAgentId === activeAgentId) return;
+
 		refreshSessionData(activeAgentId).catch(() => {
 			loadMessages(activeAgentId, []);
 		});
-	}, [activeAgentId, loadMessages]);
+	}, [activeAgentId, loadMessages, streamingAgentId]);
 
-	useEffect(() => {
-		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+	// Sync scroll to bottom — no animation, before paint
+	useLayoutEffect(() => {
+		const el = messagesContainerRef.current;
+		if (el) el.scrollTop = el.scrollHeight;
 	}, [messages]);
 
 	const send = async () => {
@@ -385,7 +415,7 @@ export default function ChatPanel() {
 				)}
 			</div>
 
-			<div className="chat-messages">
+			<div className="chat-messages" ref={messagesContainerRef}>
 				{messages.length === 0 && (
 					<div className="chat-empty">
 						<h2>Welcome to Zero-Core</h2>

@@ -21,6 +21,23 @@ body {
 .app-layout {
   display: flex;
   height: 100vh;
+  position: relative;
+}
+.page-chat {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+.page-chat:not(.page-active) {
+  visibility: hidden;
+}
+.page-overlay {
+  position: absolute;
+  top: 0;
+  left: 56px;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
 }
 
 /* ─── Resizable Layout ─────────────────────────────── */
@@ -224,23 +241,26 @@ body {
   line-height: 1.6;
   word-wrap: break-word;
 }
-.markdown-body p { margin: 2px 0; }
-.markdown-body p:first-child { margin-top: 0; }
-.markdown-body p:last-child { margin-bottom: 0; }
-.markdown-body h1 { font-size: 22px; font-weight: 600; margin: 20px 0 10px; color: var(--fg-default); border-bottom: 1px solid var(--border-default); padding-bottom: 6px; }
-.markdown-body h2 { font-size: 18px; font-weight: 600; margin: 18px 0 8px; color: var(--fg-default); border-bottom: 1px solid var(--border-default); padding-bottom: 4px; }
-.markdown-body h3 { font-size: 16px; font-weight: 600; margin: 14px 0 6px; color: var(--fg-default); }
-.markdown-body h4 { font-size: 14px; font-weight: 600; margin: 12px 0 4px; color: var(--fg-default); }
+.markdown-body > *:first-child { margin-top: 0 !important; }
+.markdown-body > *:last-child { margin-bottom: 0 !important; }
+.markdown-body > * + * { margin-top: 8px; }
+.markdown-body > * + h2 { margin-top: 12px; }
+.markdown-body > * + h1 { margin-top: 16px; }
+.markdown-body p:empty { display: none; }
+.markdown-body h1 { font-size: 22px; font-weight: 600; margin: 0; color: var(--fg-default); border-bottom: 1px solid var(--border-default); padding-bottom: 6px; }
+.markdown-body h2 { font-size: 18px; font-weight: 600; margin: 0; color: var(--fg-default); border-bottom: 1px solid var(--border-default); padding-bottom: 4px; }
+.markdown-body h3 { font-size: 16px; font-weight: 600; margin: 0; color: var(--fg-default); }
+.markdown-body h4 { font-size: 14px; font-weight: 600; margin: 0; color: var(--fg-default); }
 .markdown-body strong { font-weight: 600; color: var(--fg-default); }
 .markdown-body em { font-style: italic; }
 .markdown-body a { color: var(--color-primary-fg); text-decoration: none; }
 .markdown-body a:hover { text-decoration: underline; }
-.markdown-body ul, .markdown-body ol { padding-left: 24px; margin: 6px 0; }
-.markdown-body li { margin: 3px 0; }
-.markdown-body blockquote { border-left: 3px solid var(--border-muted); padding: 4px 12px; margin: 8px 0; color: var(--fg-subtle); background: var(--bg-subtle); border-radius: 0 4px 4px 0; }
-.markdown-body hr { border: none; border-top: 1px solid var(--border-default); margin: 16px 0; }
-.markdown-body img { max-width: 100%; border-radius: 4px; }
-.markdown-body table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.markdown-body ul, .markdown-body ol { padding-left: 24px; margin: 0; }
+.markdown-body li { margin: 2px 0; }
+.markdown-body blockquote { border-left: 3px solid var(--border-muted); padding: 4px 12px; margin: 0; color: var(--fg-subtle); background: var(--bg-subtle); border-radius: 0 4px 4px 0; }
+.markdown-body hr { border: none; border-top: 1px solid var(--border-default); margin: 0; }
+.markdown-body img { max-width: 100%; border-radius: 4px; display: block; }
+.markdown-body table { border-collapse: collapse; width: 100%; margin: 0; }
 .markdown-body th, .markdown-body td { border: 1px solid var(--border-default); padding: 6px 12px; text-align: left; }
 .markdown-body th { background: var(--bg-subtle); font-weight: 600; }
 .markdown-body tr:hover { background: var(--bg-subtle); }
@@ -611,7 +631,6 @@ body {
   flex: 1;
   line-height: 1.6;
   font-size: 14px;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
@@ -746,7 +765,17 @@ body {
   flex-shrink: 0;
 }
 .tool-block-name {
+  flex-shrink: 0;
+}
+.tool-block-summary {
   flex: 1;
+  font-size: 12px;
+  color: var(--fg-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 6px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }
 .tool-block-status {
   flex-shrink: 0;

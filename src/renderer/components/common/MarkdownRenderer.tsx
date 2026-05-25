@@ -11,8 +11,7 @@ interface Props {
 }
 
 export default function MarkdownRenderer({ content, streaming, className }: Props) {
-	// Collapse 3+ consecutive newlines to 2 (preserves markdown tables/paragraphs), then trim
-	const cleaned = content.replace(/\n{3,}/g, "\n\n").trim();
+	const cleaned = useMemo(() => content.replace(/\n{3,}/g, "\n\n").trim(), [content]);
 
 	const components = useMemo(() => ({
 		code({ className: codeClassName, children, ...rest }: React.HTMLAttributes<HTMLElement> & { node?: any }) {
