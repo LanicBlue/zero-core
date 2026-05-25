@@ -44,138 +44,28 @@ function saveGraph(graph: KnowledgeGraph): void {
 	writeFileSync(MEMORY_PATH, JSON.stringify(graph, null, 2), "utf-8");
 }
 
+// ---------------------------------------------------------------------------
+// Consolidated memory tools: memory_read + memory_write
+// ---------------------------------------------------------------------------
+
 export function createMemoryTools() {
 	return {
-		memory_create_entities: buildTool({
-			name: "memory_create_entities",
-			description: "Create entities in the knowledge graph. Skips existing entities.",
-			meta: { category: "memory", isReadOnly: false, isConcurrencySafe: false },
-			inputSchema: z.object({
-				entities: z.array(z.object({
-					name: z.string().describe("Entity name"),
-					entityType: z.string().describe("Entity type"),
-					observations: z.array(z.string()).optional().default([]).describe("Observations"),
-				})).describe("Entities to create"),
-			}),
-			execute: async ({ entities }) => {
-				const graph = loadGraph();
-				const existing = new Set(graph.entities.map((e) => e.name));
-				const created: Entity[] = [];
-				for (const e of entities) {
-					if (!existing.has(e.name)) {
-						const entity: Entity = { name: e.name, entityType: e.entityType, observations: e.observations ?? [] };
-						graph.entities.push(entity);
-						created.push(entity);
-					}
-				}
-				if (created.length > 0) saveGraph(graph);
-				return JSON.stringify(created, null, 2);
-			},
-		}),
-		memory_create_relations: buildTool({
-			name: "memory_create_relations",
-			description: "Create relations between existing entities. Both entities must exist.",
-			meta: { category: "memory", isReadOnly: false, isConcurrencySafe: false },
-			inputSchema: z.object({
-				relations: z.array(z.object({
-					from: z.string(),
-					to: z.string(),
-					relationType: z.string(),
-				})),
-			}),
-			execute: async ({ relations }) => {
-				const graph = loadGraph();
-				const names = new Set(graph.entities.map((e) => e.name));
-				const created: Relation[] = [];
-				const existing = new Set(graph.relations.map((r) => JSON.stringify(r)));
-				for (const r of relations) {
-					if (!names.has(r.from) || !names.has(r.to)) continue;
-					const key = JSON.stringify(r);
-					if (!existing.has(key)) {
-						graph.relations.push(r);
-						created.push(r);
-					}
-				}
-				if (created.length > 0) saveGraph(graph);
-				return JSON.stringify(created, null, 2);
-			},
-		}),
-		memory_add_observations: buildTool({
-			name: "memory_add_observations",
-			description: "Add observations to existing entities. Skips duplicates.",
-			meta: { category: "memory", isReadOnly: false, isConcurrencySafe: false },
-			inputSchema: z.object({
-				observations: z.array(z.object({
-					entityName: z.string(),
-					contents: z.array(z.string()),
-				})),
-			}),
-			execute: async ({ observations }) => {
-				const graph = loadGraph();
-				const results: { entityName: string; added: string[] }[] = [];
-				for (const o of observations) {
-					const entity = graph.entities.find((e) => e.name === o.entityName);
-					if (!entity) continue;
-					const added = o.contents.filter((c: string) => !entity.observations.includes(c));
-					entity.observations.push(...added);
-					results.push({ entityName: o.entityName, added });
-				}
-				saveGraph(graph);
-				return JSON.stringify(results, null, 2);
-			},
-		}),
-		memory_delete_entities: buildTool({
-			name: "memory_delete_entities",
-			description: "Delete entities and their associated relations.",
-			meta: { category: "memory", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
-			inputSchema: z.object({
-				entityNames: z.array(z.string()),
-			}),
-			execute: async ({ entityNames }) => {
-				const graph = loadGraph();
-				const toDelete = new Set(entityNames);
-				graph.entities = graph.entities.filter((e) => !toDelete.has(e.name));
-				graph.relations = graph.relations.filter((r) => !toDelete.has(r.from) && !toDelete.has(r.to));
-				saveGraph(graph);
-				return "Entities deleted";
-			},
-		}),
-		memory_delete_relations: buildTool({
-			name: "memory_delete_relations",
-			description: "Delete specific relations.",
-			meta: { category: "memory", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
-			inputSchema: z.object({
-				relations: z.array(z.object({
-					from: z.string(),
-					to: z.string(),
-					relationType: z.string(),
-				})),
-			}),
-			execute: async ({ relations }) => {
-				const graph = loadGraph();
-				const toDelete = new Set(relations.map((r: Relation) => JSON.stringify(r)));
-				graph.relations = graph.relations.filter((r: Relation) => !toDelete.has(JSON.stringify(r)));
-				saveGraph(graph);
-				return "Relations deleted";
-			},
-		}),
-		memory_read_graph: buildTool({
-			name: "memory_read_graph",
-			description: "Read the entire knowledge graph.",
-			meta: { category: "memory", isReadOnly: true },
-			inputSchema: z.object({}),
-			execute: async () => {
-				return JSON.stringify(loadGraph(), null, 2);
-			},
-		}),
-		memory_search_nodes: buildTool({
-			name: "memory_search_nodes",
-			description: "Search entities and relations by query string.",
+		memory_read: buildTool({
+			name: "memory_read",
+			description:
+				"Read from the knowledge graph memory. Use action 'search' to find entities/relations by query, " +
+				"or 'graph' to read the entire knowledge graph.",
 			meta: { category: "memory", isReadOnly: true },
 			inputSchema: z.object({
-				query: z.string().describe("Search query"),
+				action: z.enum(["search", "graph"]).describe("'search' to find by query, 'graph' to read everything"),
+				query: z.string().optional().describe("Search query (required for 'search' action)"),
 			}),
-			execute: async ({ query }) => {
+			execute: async ({ action, query }) => {
+				if (action === "graph") {
+					return JSON.stringify(loadGraph(), null, 2);
+				}
+				// search
+				if (!query) return "Error: query is required for search action.";
 				const graph = loadGraph();
 				const q = query.toLowerCase();
 				const entities = graph.entities.filter(
@@ -187,6 +77,102 @@ export function createMemoryTools() {
 				const names = new Set(entities.map((e) => e.name));
 				const relations = graph.relations.filter((r) => names.has(r.from) && names.has(r.to));
 				return JSON.stringify({ entities, relations }, null, 2);
+			},
+		}),
+
+		memory_write: buildTool({
+			name: "memory_write",
+			description:
+				"Write to the knowledge graph memory. Actions: " +
+				"'create_entities' to add entities, 'create_relations' to link entities, " +
+				"'add_observations' to append observations, 'delete_entities' to remove entities, " +
+				"'delete_relations' to remove relations.",
+			meta: { category: "memory", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
+			inputSchema: z.object({
+				action: z.enum([
+					"create_entities",
+					"create_relations",
+					"add_observations",
+					"delete_entities",
+					"delete_relations",
+				]).describe("The write operation to perform"),
+				entities: z.array(z.object({
+					name: z.string(),
+					entityType: z.string(),
+					observations: z.array(z.string()).optional().default([]),
+				})).optional().describe("Entities (for create_entities)"),
+				relations: z.array(z.object({
+					from: z.string(),
+					to: z.string(),
+					relationType: z.string(),
+				})).optional().describe("Relations (for create_relations / delete_relations)"),
+				observations: z.array(z.object({
+					entityName: z.string(),
+					contents: z.array(z.string()),
+				})).optional().describe("Observations to add (for add_observations)"),
+				entityNames: z.array(z.string()).optional().describe("Entity names to delete (for delete_entities)"),
+			}),
+			execute: async (input) => {
+				const { action } = input;
+				const graph = loadGraph();
+
+				switch (action) {
+					case "create_entities": {
+						const existing = new Set(graph.entities.map((e) => e.name));
+						const created: Entity[] = [];
+						for (const e of (input.entities ?? [])) {
+							if (!existing.has(e.name)) {
+								const entity: Entity = { name: e.name, entityType: e.entityType, observations: e.observations ?? [] };
+								graph.entities.push(entity);
+								created.push(entity);
+							}
+						}
+						if (created.length > 0) saveGraph(graph);
+						return JSON.stringify(created, null, 2);
+					}
+					case "create_relations": {
+						const names = new Set(graph.entities.map((e) => e.name));
+						const existingRel = new Set(graph.relations.map((r) => JSON.stringify(r)));
+						const created: Relation[] = [];
+						for (const r of (input.relations ?? [])) {
+							if (!names.has(r.from) || !names.has(r.to)) continue;
+							const key = JSON.stringify(r);
+							if (!existingRel.has(key)) {
+								graph.relations.push(r);
+								created.push(r);
+							}
+						}
+						if (created.length > 0) saveGraph(graph);
+						return JSON.stringify(created, null, 2);
+					}
+					case "add_observations": {
+						const results: { entityName: string; added: string[] }[] = [];
+						for (const o of (input.observations ?? [])) {
+							const entity = graph.entities.find((e) => e.name === o.entityName);
+							if (!entity) continue;
+							const added = o.contents.filter((c: string) => !entity.observations.includes(c));
+							entity.observations.push(...added);
+							results.push({ entityName: o.entityName, added });
+						}
+						saveGraph(graph);
+						return JSON.stringify(results, null, 2);
+					}
+					case "delete_entities": {
+						const toDelete = new Set(input.entityNames ?? []);
+						graph.entities = graph.entities.filter((e) => !toDelete.has(e.name));
+						graph.relations = graph.relations.filter((r) => !toDelete.has(r.from) && !toDelete.has(r.to));
+						saveGraph(graph);
+						return "Entities deleted";
+					}
+					case "delete_relations": {
+						const toDelete = new Set((input.relations ?? []).map((r: Relation) => JSON.stringify(r)));
+						graph.relations = graph.relations.filter((r: Relation) => !toDelete.has(JSON.stringify(r)));
+						saveGraph(graph);
+						return "Relations deleted";
+					}
+					default:
+						return `Unknown action: ${action}`;
+				}
 			},
 		}),
 	};

@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import type { ZodSchema } from "zod";
 import type { ToolExecutionContext } from "../types.js";
+import type { ToolConfigField } from "../../core/tool-registry.js";
 
 // ---------------------------------------------------------------------------
 // Tool metadata — inspired by Claude Code's buildTool pattern
@@ -8,12 +9,12 @@ import type { ToolExecutionContext } from "../types.js";
 
 export type ToolCategory =
 	| "runtime"
-	| "fetch"
+	| "web"
 	| "memory"
 	| "thinking"
 	| "assistant"
-	| "search"
-	| "interaction";
+	| "interaction"
+	| "agent";
 
 export interface ToolMeta {
 	category: ToolCategory;
@@ -51,6 +52,7 @@ export interface BuildToolOptions<T extends ZodSchema> {
 	name: string;
 	description: string;
 	meta?: Partial<ToolMeta>;
+	configSchema?: ToolConfigField[];
 	inputSchema: T;
 	execute: (input: any, ctx: ToolExecutionContext) => Promise<string>;
 }
@@ -82,6 +84,14 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 		writable: false,
 	});
 
+	if (options.configSchema) {
+		Object.defineProperty(toolDef, "__configSchema", {
+			value: options.configSchema,
+			enumerable: false,
+			writable: false,
+		});
+	}
+
 	return toolDef;
 }
 
@@ -95,4 +105,8 @@ export function getToolMeta(toolObj: any): ToolMeta | undefined {
 
 export function getToolName(toolObj: any): string | undefined {
 	return toolObj?.__name;
+}
+
+export function getToolConfigSchema(toolObj: any): ToolConfigField[] | undefined {
+	return toolObj?.__configSchema;
 }

@@ -8,6 +8,7 @@ import AgentsPage from "../agents/AgentsPage.js";
 import SettingsPage from "../settings/SettingsPage.js";
 import McpSettingsPage from "../mcp/McpSettingsPage.js";
 import KnowledgeBasePage from "../kb/KnowledgeBasePage.js";
+import ToolsPage from "../tools/ToolsPage.js";
 import { usePageStore } from "../../store/page-store.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
 import { useChatStore, nextMsgId, type MessageBlock } from "../../store/chat-store.js";
@@ -184,6 +185,8 @@ export default function AppLayout() {
 				<SettingsPage />
 			) : activePage === "mcp" ? (
 				<McpSettingsPage />
+			) : activePage === "tools" ? (
+				<ToolsPage />
 			) : activePage === "knowledge" ? (
 				<KnowledgeBasePage />
 			) : (

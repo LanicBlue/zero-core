@@ -276,6 +276,147 @@ function ProviderEditor({ provider, onClose }: { provider: Provider | null; onCl
 	);
 }
 
+function DeviceContextSettings() {
+	const [content, setContent] = useState("");
+	const [generating, setGenerating] = useState(false);
+	const [saving, setSaving] = useState(false);
+	const [saved, setSaved] = useState(false);
+
+	useEffect(() => {
+		api().deviceContextGet().then((r: any) => {
+			setContent(r.content ?? "");
+		}).catch(() => {});
+	}, []);
+
+	const handleGenerate = async () => {
+		setGenerating(true);
+		try {
+			const r = await api().deviceContextGenerate();
+			if (r.content) setContent(r.content);
+		} finally {
+			setGenerating(false);
+		}
+	};
+
+	const handleSave = async () => {
+		setSaving(true);
+		try {
+			await api().deviceContextSave(content);
+			setSaved(true);
+			setTimeout(() => setSaved(false), 2000);
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	return (
+		<div className="device-context-section">
+			<p className="section-desc" style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+				Device context is included in the system prompt for agents that have it enabled.
+				Click "Generate" to auto-detect hardware and OS info, then edit as needed.
+			</p>
+			<div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+				<button type="button" className="btn-ghost btn-sm" onClick={handleGenerate} disabled={generating}>
+					{generating ? "Generating..." : "Generate"}
+				</button>
+				<button type="button" className="btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+					{saving ? "Saving..." : saved ? "Saved ✓" : "Save"}
+				</button>
+			</div>
+			<textarea
+				className="device-context-editor"
+				value={content}
+				onChange={(e) => setContent(e.target.value)}
+				placeholder="Click Generate to detect device info, or type custom context here..."
+				rows={15}
+				style={{ width: "100%", resize: "vertical", fontFamily: "monospace", fontSize: 13, padding: 12, borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
+			/>
+		</div>
+	);
+}
+
+function GuidelinesSettings() {
+	const [guidelines, setGuidelines] = useState<string[]>([]);
+	const [defaults, setDefaults] = useState<string[]>([]);
+	const [newGuideline, setNewGuideline] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [saved, setSaved] = useState(false);
+
+	useEffect(() => {
+		api().guidelinesGet().then((r: any) => {
+			setGuidelines(r.guidelines ?? []);
+			setDefaults(r.defaults ?? []);
+		}).catch(() => {});
+	}, []);
+
+	const handleSave = async () => {
+		setSaving(true);
+		try {
+			await api().guidelinesSave(guidelines);
+			setSaved(true);
+			setTimeout(() => setSaved(false), 2000);
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const addGuideline = () => {
+		const trimmed = newGuideline.trim();
+		if (trimmed) {
+			setGuidelines([...guidelines, trimmed]);
+			setNewGuideline("");
+		}
+	};
+
+	const removeGuideline = (idx: number) => {
+		setGuidelines(guidelines.filter((_, i) => i !== idx));
+	};
+
+	const updateGuideline = (idx: number, value: string) => {
+		setGuidelines(guidelines.map((g, i) => i === idx ? value : g));
+	};
+
+	return (
+		<div className="guidelines-section">
+			<p className="section-desc" style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+				Global guidelines are included in the system prompt for agents that have them enabled.
+			</p>
+			<div className="guidelines-list" style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+				{guidelines.map((g, idx) => (
+					<div key={idx} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+						<input
+							type="text"
+							value={g}
+							onChange={(e) => updateGuideline(idx, e.target.value)}
+							style={{ flex: 1, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}
+						/>
+						<button type="button" className="btn-ghost btn-sm" onClick={() => removeGuideline(idx)}>Remove</button>
+					</div>
+				))}
+			</div>
+			<div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+				<input
+					type="text"
+					value={newGuideline}
+					onChange={(e) => setNewGuideline(e.target.value)}
+					onKeyDown={(e) => { if (e.key === "Enter") addGuideline(); }}
+					placeholder="Add a new guideline..."
+					style={{ flex: 1, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}
+				/>
+				<button type="button" className="btn-ghost btn-sm" onClick={addGuideline} disabled={!newGuideline.trim()}>Add</button>
+			</div>
+			<div style={{ display: "flex", gap: 8 }}>
+				<button type="button" className="btn-ghost btn-sm" onClick={() => setGuidelines([...defaults])} disabled={guidelines.length === defaults.length && guidelines.every((g, i) => g === defaults[i])}>
+					Restore Defaults
+				</button>
+				<button type="button" className="btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+					{saving ? "Saving..." : saved ? "Saved ✓" : "Save"}
+				</button>
+			</div>
+		</div>
+	);
+}
+
 export default function SettingsPage() {
 	const { providers, loading, fetchProviders } = useProviderStore();
 	const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
@@ -288,7 +429,8 @@ export default function SettingsPage() {
 
 	const sections = [
 		{ key: "providers", label: "API Providers", badge: String(providers.length) },
-		{ key: "search", label: "Web Search" },
+		{ key: "device-context", label: "Device Context" },
+		{ key: "guidelines", label: "Guidelines" },
 		{ key: "theme", label: "Theme" },
 		{ key: "workspace", label: "Workspace" },
 	];
@@ -346,12 +488,21 @@ export default function SettingsPage() {
 						</>
 					)}
 
-					{activeSection === "search" && (
-						<>
-							<div className="section-title-row"><h3>Web Search</h3></div>
-							<SearchProviderSettings />
-						</>
-					)}
+					{activeSection === "device-context" && (
+					<>
+						<div className="section-title-row"><h3>Device Context</h3></div>
+						<DeviceContextSettings />
+					</>
+				)}
+
+				{activeSection === "guidelines" && (
+					<>
+						<div className="section-title-row"><h3>Guidelines</h3></div>
+					<GuidelinesSettings />
+					</>
+				)}
+
+
 
 					{activeSection === "theme" && (
 						<>
@@ -375,76 +526,6 @@ export default function SettingsPage() {
 					onClose={() => { setCreating(false); setEditingProvider(null); }}
 				/>
 			)}
-		</div>
-	);
-}
-
-function SearchProviderSettings() {
-	const [provider, setProvider] = useState<string>("");
-	const [searxngUrl, setSearxngUrl] = useState("http://localhost:8080");
-	const [serpApiKey, setSerpApiKey] = useState("");
-	const [braveApiKey, setBraveApiKey] = useState("");
-	const [saved, setSaved] = useState(false);
-
-	useEffect(() => {
-		api().getSearchProvider().then((r: any) => {
-			if (r?.name) setProvider(r.name);
-		}).catch(() => {});
-	}, []);
-
-	const providers = [
-		{ key: "duckduckgo", label: "DuckDuckGo", desc: "Free, no API key" },
-		{ key: "brave", label: "Brave Search", desc: "Free tier: 2K/mo" },
-		{ key: "searxng", label: "SearXNG", desc: "Self-hosted" },
-		{ key: "serpapi", label: "SerpAPI", desc: "Google results" },
-	];
-
-	const save = async () => {
-		const config: any = { type: provider || "duckduckgo" };
-		if (provider === "searxng") config.searxngUrl = searxngUrl;
-		if (provider === "serpapi") config.serpApiKey = serpApiKey;
-		if (provider === "brave") config.braveApiKey = braveApiKey;
-		await api().setSearchProvider(config);
-		setSaved(true);
-		setTimeout(() => setSaved(false), 2000);
-	};
-
-	return (
-		<div className="search-provider-section">
-			<div className="search-provider-options">
-				{providers.map((p) => (
-					<button
-						key={p.key}
-						type="button"
-						className={"search-provider-btn " + (provider === p.key ? "active" : "")}
-						onClick={() => setProvider(p.key)}
-					>
-						<span className="sp-label">{p.label}</span>
-						<span className="sp-desc">{p.desc}</span>
-					</button>
-				))}
-			</div>
-			{(provider === "searxng") && (
-				<div className="search-provider-field">
-					<label className="config-label">SearXNG URL</label>
-					<input value={searxngUrl} onChange={(e) => setSearxngUrl(e.target.value)} placeholder="http://localhost:8080" />
-				</div>
-			)}
-			{(provider === "serpapi") && (
-				<div className="search-provider-field">
-					<label className="config-label">SerpAPI Key</label>
-					<input type="password" value={serpApiKey} onChange={(e) => setSerpApiKey(e.target.value)} placeholder="Your SerpAPI key" />
-				</div>
-			)}
-			{(provider === "brave") && (
-				<div className="search-provider-field">
-					<label className="config-label">Brave API Key</label>
-					<input type="password" value={braveApiKey} onChange={(e) => setBraveApiKey(e.target.value)} placeholder="Your Brave Search API key" />
-				</div>
-			)}
-			<button type="button" className="btn-primary btn-sm" onClick={save}>
-				{saved ? "Saved ✓" : "Save"}
-			</button>
 		</div>
 	);
 }

@@ -15,6 +15,8 @@ const api = {
 	// ─── Models & Tools ──────────────────────────────
 	modelsList: () => ipcRenderer.invoke("models:list"),
 	toolsList: () => ipcRenderer.invoke("tools:list"),
+	toolConfigGet: () => ipcRenderer.invoke("tool-config:get"),
+	toolConfigSave: (config: Record<string, Record<string, any>>) => ipcRenderer.invoke("tool-config:save", config),
 
 	// ─── Providers ───────────────────────────────────
 	providersList: () => ipcRenderer.invoke("providers:list"),
@@ -40,8 +42,8 @@ const api = {
 
 	// ─── Chat ────────────────────────────────────────
 	chatSend: (text: string, agentId?: string) => ipcRenderer.invoke("chat:send", text, agentId),
-	chatAbort: () => ipcRenderer.invoke("chat:abort"),
-	chatState: () => ipcRenderer.invoke("chat:state"),
+	chatAbort: (agentId?: string) => ipcRenderer.invoke("chat:abort", agentId),
+	chatState: (agentId?: string) => ipcRenderer.invoke("chat:state", agentId),
 
 	// ─── Sessions ────────────────────────────────────
 	sessionsList: (agentId: string) => ipcRenderer.invoke("sessions:list", agentId),
@@ -55,6 +57,13 @@ const api = {
 		const handler = (_e: any, data: any) => callback(data);
 		ipcRenderer.on("agent:event", handler);
 		return () => { ipcRenderer.removeListener("agent:event", handler); };
+	},
+
+	// ─── Tools change notification ───────────────
+	onToolsChanged: (callback: () => void) => {
+		const handler = () => { callback(); };
+		ipcRenderer.on("tools:changed", handler);
+		return () => { ipcRenderer.removeListener("tools:changed", handler); };
 	},
 
 	// ─── App readiness ───────────────────────────────
@@ -79,6 +88,14 @@ const api = {
 		kbSearch: (kbIds: string[], query: string) => ipcRenderer.invoke("kb:search", kbIds, query),
 		kbChunkCount: (kbId: string) => ipcRenderer.invoke("kb:chunk-count", kbId),
 
+		// ─── Agent Tools ──────────────────────────────────
+		agentToolsList: () => ipcRenderer.invoke("agent-tools:list"),
+		agentToolsGet: (id: string) => ipcRenderer.invoke("agent-tools:get", id),
+		agentToolsGetByAgent: (agentId: string) => ipcRenderer.invoke("agent-tools:get-by-agent", agentId),
+		agentToolsCreate: (input: unknown) => ipcRenderer.invoke("agent-tools:create", input),
+		agentToolsUpdate: (id: string, input: unknown) => ipcRenderer.invoke("agent-tools:update", id, input),
+		agentToolsDelete: (id: string) => ipcRenderer.invoke("agent-tools:delete", id),
+
 		// ─── MCP ──────────────────────────────────────────
 		mcpList: () => ipcRenderer.invoke("mcp:list"),
 		mcpGet: (id: string) => ipcRenderer.invoke("mcp:get", id),
@@ -99,6 +116,18 @@ const api = {
 		templatesDelete: (id: string) => ipcRenderer.invoke("templates:delete", id),
 		templatesExport: (id: string) => ipcRenderer.invoke("templates:export", id),
 		templatesImport: (json: string) => ipcRenderer.invoke("templates:import", json),
+			templatesGithubPreview: (url: string, subdir?: string) => ipcRenderer.invoke("templates:github-preview", url, subdir),
+			templatesImportGithub: (url: string, selectedPaths: string[]) => ipcRenderer.invoke("templates:import-github", url, selectedPaths),
+			onGithubImportProgress: (callback: (progress: { current: number; total: number }) => void) => {
+				const handler = (_e: any, data: any) => callback(data);
+				ipcRenderer.on("github-import:progress", handler);
+				return () => { ipcRenderer.removeListener("github-import:progress", handler); };
+			},
+			onGithubPreviewProgress: (callback: (progress: { current: number; total: number }) => void) => {
+				const handler = (_e: any, data: any) => callback(data);
+				ipcRenderer.on("github-preview:progress", handler);
+				return () => { ipcRenderer.removeListener("github-preview:progress", handler); };
+			},
 
 		// ─── Theme ───────────────────────────────────────
 		configGetTheme: () => ipcRenderer.invoke("config:get-theme"),
@@ -108,6 +137,15 @@ const api = {
 		askUserRespond: (requestId: string, answers: Record<string, string>) => ipcRenderer.invoke("ask-user:respond", requestId, answers),
 		getTodos: (agentId: string) => ipcRenderer.invoke("todos:get", agentId),
 		getSearchProvider: () => ipcRenderer.invoke("search-provider:get"),
-		setSearchProvider: (config: { type: string; searxngUrl?: string; serpApiKey?: string }) => ipcRenderer.invoke("search-provider:set", config),};
+		setSearchProvider: (config: { type: string; searxngUrl?: string; serpApiKey?: string }) => ipcRenderer.invoke("search-provider:set", config),
+
+		// ─── Device Context ─────────────────────────────
+		deviceContextGet: () => ipcRenderer.invoke("device-context:get"),
+		deviceContextGenerate: () => ipcRenderer.invoke("device-context:generate"),
+		deviceContextSave: (content: string) => ipcRenderer.invoke("device-context:save", content),
+
+		// ─── Guidelines ─────────────────────────────────
+		guidelinesGet: () => ipcRenderer.invoke("guidelines:get"),
+		guidelinesSave: (guidelines: string[]) => ipcRenderer.invoke("guidelines:save", guidelines),};
 
 contextBridge.exposeInMainWorld("api", api);

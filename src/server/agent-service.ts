@@ -3,23 +3,19 @@ import { buildSystemPrompt } from "../core/system-prompt.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
-import { loadProjectContext, formatProjectContext } from "../core/project-context.js";
+import { loadDeviceContext } from "../core/device-context.js";
 import type { AgentRecord } from "./agent-store.js";
+import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
-import type { RuntimeProviderConfig, SessionConfig, StreamEvent, ToolExecutionContext } from "../runtime/types.js";
+import type { RuntimeProviderConfig, SessionConfig, StreamEvent } from "../runtime/types.js";
 import { clearProviderCache } from "../runtime/provider-factory.js";
 import { SessionDB } from "./session-db.js";
 import { mcpManager } from "./mcp-manager.js";
 import { buildMcpTools } from "../runtime/tools/mcp-tool.js";
 import { KbStore } from "./kb-store.js";
 import { KbDB } from "./kb-db.js";
-import { createEmbeddingProvider } from "./kb-embeddings.js";
-import { search, formatSearchResults } from "./kb-search.js";
-import { createAllBuiltInTools } from "./mcp-servers/index.js";
 import { log } from "../core/logger.js";
-
-// Timestamp helper for error messages
-const ts = () => new Date().toISOString().substring(11, 23);
+import { toolRegistry } from "../core/tool-registry.js";
 
 // ---------------------------------------------------------------------------
 // Ensure zero-core dirs
@@ -44,26 +40,30 @@ export interface ProviderConfig {
 	enabled: boolean;
 }
 
+interface AgentRunState {
+	isBusy: boolean;
+	streamingText: string;
+	toolCalls: { name: string; status: "running" | "done" | "error" }[];
+}
+
 // ---------------------------------------------------------------------------
-// Agent Service — long-lived, survives UI disconnects
-// Uses Vercel AI SDK runtime with SQLite session persistence
+// Agent Service — supports concurrent multi-agent execution
 // ---------------------------------------------------------------------------
 
 class AgentService {
 	private loops = new Map<string, AgentLoop>();
-	private activeLoopId: string | null = null;
+	private runStates = new Map<string, AgentRunState>();
 	private subscribers = new Set<StreamCallback>();
 	private config = loadConfig(process.cwd());
 	private workspaceDir: string;
-	private isAgentBusy = false;
-	private currentStreamText = "";
-	private currentToolCalls: { name: string; status: "running" | "done" | "error" }[] = [];
 	private providerConfigs: RuntimeProviderConfig[] = [];
 	private defaultModel: string | undefined;
 	private defaultProvider: string | undefined;
 	private db: SessionDB;
 	private kbStore: KbStore;
 	private kbDb: KbDB;
+	private agentStore: AgentStore | null = null;
+	private agentToolStore: import("./agent-tool-store.js").AgentToolStore | null = null;
 
 	constructor(workspaceDir: string) {
 		this.workspaceDir = workspaceDir;
@@ -91,30 +91,58 @@ class AgentService {
 		this.invalidateLoops();
 	}
 
+	setAgentStore(store: AgentStore): void {
+		this.agentStore = store;
+	}
+
+	setAgentToolStore(store: import("./agent-tool-store.js").AgentToolStore): void {
+		this.agentToolStore = store;
+	}
+
 	subscribe(cb: StreamCallback): () => void {
 		this.subscribers.add(cb);
 		return () => { this.subscribers.delete(cb); };
 	}
 
-	getState(): { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[]; agentId?: string } {
-		return {
-			isBusy: this.isAgentBusy,
-			streamingText: this.currentStreamText,
-			toolCalls: [...this.currentToolCalls],
-			agentId: this.activeLoopId ?? undefined,
-		};
+	// ─── State queries — per-agent ─────────────────────────────────
+
+	getState(agentId?: string): { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[]; agentId?: string } {
+		if (agentId) {
+			const s = this.runStates.get(agentId);
+			return s
+				? { isBusy: s.isBusy, streamingText: s.streamingText, toolCalls: [...s.toolCalls], agentId }
+				: { isBusy: false, streamingText: "", toolCalls: [], agentId };
+		}
+		// No agentId — return the first busy agent, or idle
+		for (const [id, s] of this.runStates) {
+			if (s.isBusy) return { isBusy: true, streamingText: s.streamingText, toolCalls: [...s.toolCalls], agentId: id };
+		}
+		return { isBusy: false, streamingText: "", toolCalls: [] };
 	}
+
+	getAllStates(): Record<string, { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[] }> {
+		const result: Record<string, any> = {};
+		for (const [id, s] of this.runStates) {
+			result[id] = { isBusy: s.isBusy, streamingText: s.streamingText, toolCalls: [...s.toolCalls] };
+		}
+		return result;
+	}
+
+	isAnyBusy(): boolean {
+		for (const s of this.runStates.values()) {
+			if (s.isBusy) return true;
+		}
+		return false;
+	}
+
+	// ─── Loop management ───────────────────────────────────────────
 
 	private getOrCreateLoop(agent?: AgentRecord): AgentLoop {
 		const agentId = agent?.id ?? "__default__";
 
 		let loop = this.loops.get(agentId);
-		if (loop) {
-			this.activeLoopId = agentId;
-			return loop;
-		}
+		if (loop) return loop;
 
-		// Resolve or create main session for this agent
 		let session = this.db.getMainSession(agentId);
 		if (!session) {
 			session = this.db.createSession(agentId);
@@ -125,7 +153,6 @@ class AgentService {
 	}
 
 	recreateLoop(agentId: string, sessionId: string, agent?: AgentRecord): void {
-		// Dispose old loop
 		const old = this.loops.get(agentId);
 		if (old) {
 			old.abort();
@@ -139,13 +166,17 @@ class AgentService {
 		const cwd = agent?.workspaceDir || this.workspaceDir;
 		log.agent("Creating runtime for agent:", agentId, "session:", sessionId, "cwd:", cwd);
 
-		const projectCtx = loadProjectContext(cwd, agent?.contextConfig);
+		const deviceContext = loadDeviceContext() || undefined;
 
 		const systemPrompt = buildSystemPrompt(this.config, {
 			cwd,
 			activeTools: [],
 			originalPrompt: agent?.systemPrompt ?? "",
-			projectContext: projectCtx ? formatProjectContext(projectCtx) : undefined,
+			deviceContext,
+			useDeviceContext: agent?.contextConfig?.useDeviceContext,
+			useGuidelines: agent?.contextConfig?.useGuidelines,
+			useMemoryContext: agent?.contextConfig?.useMemoryContext,
+			enabledSkills: agent?.skillPolicy?.enabledSkills,
 		});
 
 		const sessionConfig: SessionConfig = {
@@ -164,14 +195,38 @@ class AgentService {
 				resultMaxTokens: agent?.toolPolicy?.resultMaxTokens ?? this.config.toolPolicy.resultMaxTokens,
 					readScope: agent?.toolPolicy?.readScope ?? "filesystem",
 			},
-			getBuiltInTools: () => createAllBuiltInTools({ workspaceDir: cwd }),
 			getMcpTools: async (aid?: string) => {
 				const mcpToolInfos = mcpManager.getToolsForAgent(aid);
 				return buildMcpTools(mcpToolInfos, (serverId, toolName, args) =>
 					mcpManager.callTool(serverId, toolName, args),
 				);
 			},
-		};
+		getAgentToolEntries: async () => {
+					if (!this.agentToolStore || !this.agentStore) {
+						return { entries: [], agents: new Map() };
+					}
+					const entries = this.agentToolStore.list().filter((e) => {
+						if (!e.enabled) return false;
+						if (e.type === "internal") return e.agentId !== agentId;
+						return true;
+					});
+					const agentMap = new Map<string, { id: string; name: string; systemPrompt?: string; model?: string }>();
+					for (const agent of this.agentStore.list()) {
+						agentMap.set(agent.id, {
+							id: agent.id,
+							name: agent.name,
+							systemPrompt: agent.systemPrompt,
+							model: agent.model,
+						});
+					}
+					return { entries, agents: agentMap };
+				},
+			};
+
+		// Initialize run state for this agent
+		if (!this.runStates.has(agentId)) {
+			this.runStates.set(agentId, { isBusy: false, streamingText: "", toolCalls: [] });
+		}
 
 		const capturedAgentId = agentId;
 
@@ -180,56 +235,53 @@ class AgentService {
 			this.providerConfigs,
 			{
 				onEvent: (event: StreamEvent) => {
-					if (this.activeLoopId === capturedAgentId) {
-						this.handleRuntimeEvent(event);
-					}
+					this.handleRuntimeEvent(capturedAgentId, event);
 				},
 			},
 			this.db,
 		);
 
 		this.loops.set(agentId, loop);
-		this.activeLoopId = agentId;
 
 		log.agent("Runtime ready for:", agentId, "session:", sessionId);
 		return loop;
 	}
 
+	// ─── Prompt execution — concurrent ──────────────────────────────
+
 	async sendPrompt(text: string, agent?: AgentRecord): Promise<void> {
+		const agentId = agent?.id ?? "__default__";
 		const loop = this.getOrCreateLoop(agent);
 
-		log.agent("Sending prompt, length:", text.length);
-		this.isAgentBusy = true;
-		this.currentStreamText = "";
-		this.currentToolCalls = [];
+		log.agent("Sending prompt to:", agentId, "length:", text.length);
+
+		const state = this.runStates.get(agentId) ?? { isBusy: false, streamingText: "", toolCalls: [] };
+		state.isBusy = true;
+		state.streamingText = "";
+		state.toolCalls = [];
+		this.runStates.set(agentId, state);
 
 		try {
 			await loop.run(text);
-			log.agent("Prompt completed");
+			log.agent("Prompt completed for:", agentId);
 		} catch (err) {
 			log.error("agent", "Prompt error:", (err as Error).message);
-			this.emit({ type: "error", error: (err as Error).message, agentId: this.activeLoopId ?? undefined });
-		} finally {
-			this.isAgentBusy = false;
+			this.emit({ type: "error", error: (err as Error).message, agentId });
 		}
 	}
 
-	async abort(): Promise<void> {
-		const loop = this.activeLoopId ? this.loops.get(this.activeLoopId) : null;
-		loop?.abort();
-	}
-
-	private getEmbeddingBaseUrl(provider: string): string {
-		// Use the first enabled provider's base URL for OpenAI-compatible
-		if (provider === "ollama") return "http://localhost:11434";
-		const p = this.providerConfigs.find((p) => p.enabled && p.type !== "ollama");
-		return p?.baseUrl ?? "https://api.openai.com/v1";
-	}
-
-	private getEmbeddingApiKey(provider: string): string {
-		if (provider === "ollama") return "";
-		const p = this.providerConfigs.find((p) => p.enabled && p.type !== "ollama");
-		return p?.apiKey ?? "";
+	async abort(agentId?: string): Promise<void> {
+		if (agentId) {
+			const loop = this.loops.get(agentId);
+			loop?.abort();
+		} else {
+			// Abort all running agents
+			for (const [id, s] of this.runStates) {
+				if (s.isBusy) {
+					this.loops.get(id)?.abort();
+				}
+			}
+		}
 	}
 
 	dispose(): void {
@@ -237,8 +289,7 @@ class AgentService {
 			loop.abort();
 		}
 		this.loops.clear();
-		this.activeLoopId = null;
-		this.isAgentBusy = false;
+		this.runStates.clear();
 		this.db.close();
 		this.kbDb.close();
 	}
@@ -248,31 +299,36 @@ class AgentService {
 			loop.abort();
 		}
 		this.loops.clear();
-		this.activeLoopId = null;
+		this.runStates.clear();
 	}
 
-	private handleRuntimeEvent(event: StreamEvent): void {
+	// ─── Event handling — per-agent state ──────────────────────────
+
+	private handleRuntimeEvent(agentId: string, event: StreamEvent): void {
+		const state = this.runStates.get(agentId);
+		if (!state) return;
+
 		switch (event.type) {
 			case "text_delta": {
 				break;
 			}
 			case "tool_start": {
-				this.currentToolCalls.push({ name: event.toolName, status: "running" });
+				state.toolCalls.push({ name: event.toolName, status: "running" });
 				break;
 			}
 			case "tool_end": {
-				const tc = this.currentToolCalls.find(t => t.name === event.toolName && t.status === "running");
+				const tc = state.toolCalls.find(t => t.name === event.toolName && t.status === "running");
 				if (tc) tc.status = event.isError ? "error" : "done";
 				break;
 			}
 			case "message_end": {
-				this.currentStreamText = event.text;
+				state.streamingText = event.text;
 				break;
 			}
 			case "agent_end": {
-				this.isAgentBusy = false;
-				this.currentStreamText = "";
-				this.currentToolCalls = [];
+				state.isBusy = false;
+				state.streamingText = "";
+				state.toolCalls = [];
 				break;
 			}
 		}
@@ -288,4 +344,27 @@ class AgentService {
 
 export function createAgentService(workspaceDir: string): AgentService {
 	return new AgentService(workspaceDir);
+}
+
+export function registerAgentToolEntries(agentToolStore: import("./agent-tool-store.js").AgentToolStore): void {
+	toolRegistry.unregister("agent");
+
+	for (const entry of agentToolStore.list()) {
+		if (!entry.enabled) continue;
+		toolRegistry.register({
+			name: entry.name,
+			description: entry.description || `Run the "${entry.name}" agent`,
+			category: "agent",
+			source: "agent",
+			agentToolId: entry.id,
+			configSchema: [],
+			meta: {
+				isReadOnly: entry.type === "internal" || entry.transport === "http",
+				isDestructive: entry.type === "external" && entry.transport === "cli",
+				isConcurrencySafe: false,
+				requiresConfirmation: false,
+			},
+		});
+	}
+	toolRegistry.notifyChange();
 }

@@ -224,7 +224,14 @@ export const webSearchTool = buildTool({
 	description:
 		"Search the web for up-to-date information. Returns search results with titles, URLs, and snippets. " +
 		"Include a 'Sources:' section in your response with the URLs.",
-	meta: { category: "search", isReadOnly: true, maxResultSize: 15000 },
+	meta: { category: "web", isReadOnly: true, maxResultSize: 15000 },
+	configSchema: [
+		{ key: "provider", type: "select", label: "Search engine", default: "duckduckgo", options: ["duckduckgo", "searxng", "serpapi", "brave"] },
+		{ key: "maxResults", type: "number", label: "Max results", default: 8 },
+			{ key: "searxngUrl", type: "string", label: "SearXNG URL", description: "Required for SearXNG provider" },
+			{ key: "serpApiKey", type: "string", label: "SerpAPI Key", description: "Required for SerpAPI provider" },
+			{ key: "braveApiKey", type: "string", label: "Brave API Key", description: "Required for Brave Search provider" },
+	],
 	inputSchema: z.object({
 		query: z.string().describe("Search query"),
 		maxResults: z.number().optional().describe("Max results (default 8, max 20)"),

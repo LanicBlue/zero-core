@@ -16,6 +16,8 @@ const expandHome = (p: string) => p.startsWith("~") ? p.replace(/^~/, homedir())
 
 let agentStore: InstanceType<typeof import("../server/agent-store").AgentStore>;
 let agentService: ReturnType<typeof import("../server/agent-service").createAgentService> | undefined;
+let distCore: string;
+let distServer: string;
 let createAgentService: typeof import("../server/agent-service").createAgentService;
 let providerStore: InstanceType<typeof import("../server/provider-store").ProviderStore>;
 let templateStore: InstanceType<typeof import("../server/template-store").TemplateStore>;
@@ -26,6 +28,8 @@ let kbDb: any;
 let workspaceConfig: { workspaceDir: string; defaultModel?: string; defaultProvider?: string };
 let saveWorkspaceConfig: (config: { workspaceDir?: string; defaultModel?: string; defaultProvider?: string }) => { workspaceDir: string; defaultModel?: string; defaultProvider?: string };
 let buildDefaultPrompt: typeof import("../core/default-prompt").buildDefaultPrompt;
+let toolRegistry: InstanceType<typeof import("../core/tool-registry").ToolRegistry>;
+let agentToolStore: InstanceType<typeof import("../server/agent-tool-store").AgentToolStore>;
 
 let mainWindow: BrowserWindow;
 
@@ -61,8 +65,8 @@ function buildTree(dir: string, basePath: string): unknown[] {
 
 async function loadCoreModules(): Promise<void> {
 	const t0 = Date.now();
-	const distServer = join(__dirname, "../../dist/server");
-	const distCore = join(__dirname, "../../dist/core");
+	distServer = join(__dirname, "../../dist/server");
+	distCore = join(__dirname, "../../dist/core");
 
 	log.ipc("Loading core modules...");
 	const { AgentStore } = await import(toFileURL(join(distServer, "agent-store.js")));
@@ -101,6 +105,12 @@ async function loadCoreModules(): Promise<void> {
 
 	// Eagerly init agent-service so session/message queries work before first chat
 	agentService = createAgentService(workspaceConfig.workspaceDir);
+	agentService.setAgentStore(agentStore);
+
+		// Load AgentToolStore
+		const atMod = await import(toFileURL(join(distServer, "agent-tool-store.js")));
+		agentToolStore = new atMod.AgentToolStore();
+		agentService.setAgentToolStore(agentToolStore);
 	agentService.subscribe((event) => {
 		if (mainWindow && !mainWindow.isDestroyed()) {
 			mainWindow.webContents.send("agent:event", event);
@@ -108,6 +118,26 @@ async function loadCoreModules(): Promise<void> {
 	});
 
 	log.ipc("Core modules ready, workspace:", workspaceConfig.workspaceDir);
+
+	// Register all tools into ToolRegistry
+	const { registerRuntimeTools } = await import(toFileURL(join(__dirname, "../../dist/runtime/tools/index.js")));
+	const trMod = await import(toFileURL(join(distCore, "tool-registry.js")));
+	toolRegistry = trMod.toolRegistry;
+		registerRuntimeTools();
+		const { registerAgentToolEntries } = await import(toFileURL(join(distServer, "agent-service.js")));
+		_registerAgentTools = registerAgentToolEntries;
+		registerAgentToolEntries(agentToolStore);
+		log.ipc("Tool registry populated");
+}
+
+let _registerAgentTools: ((store: any) => void) | null = null;
+
+function refreshAgentTools(): void {
+	if (!_registerAgentTools || !agentToolStore) return;
+	_registerAgentTools(agentToolStore);
+	if (mainWindow && !mainWindow.isDestroyed()) {
+		mainWindow.webContents.send("tools:changed");
+	}
 }
 
 // ─── Ensure agent-service is available ──
@@ -157,18 +187,54 @@ export function registerIpc(win: BrowserWindow): void {
 
 	ipcMain.handle("agents:list", () => modulesReady ? agentStore.list() : []);
 	ipcMain.handle("agents:get", (_e, id: string) => modulesReady ? agentStore.get(id) : undefined);
-	ipcMain.handle("agents:create", (_e, input: unknown) => modulesReady ? agentStore.create(input as any) : { error: "loading" });
+	ipcMain.handle("agents:create", (_e, input: unknown) => {
+			if (!modulesReady) return { error: "loading" };
+			const result = agentStore.create(input as any);
+			refreshAgentTools();
+			return result;
+		});
 	ipcMain.handle("agents:update", (_e, id: string, input: unknown) => {
 		if (!modulesReady) return { error: "loading" };
-		try { return agentStore.update(id, input as any); }
-		catch (e) { return { error: (e as Error).message }; }
+		try {
+			const result = agentStore.update(id, input as any);
+			refreshAgentTools();
+			return result;
+		} catch (e) { return { error: (e as Error).message }; }
 	});
 	ipcMain.handle("agents:delete", (_e, id: string) => {
-		if (modulesReady) agentStore.delete(id);
+		if (modulesReady) {
+			agentStore.delete(id);
+			refreshAgentTools();
+		}
 		return { success: true };
 	});
 
-	// ─── Providers CRUD ───────────────────────────────
+	// ─── Agent Tools CRUD ───────────────────────────────
+		ipcMain.handle("agent-tools:list", () => modulesReady ? agentToolStore.list() : []);
+		ipcMain.handle("agent-tools:get", (_e, id: string) => modulesReady ? agentToolStore.get(id) : undefined);
+		ipcMain.handle("agent-tools:get-by-agent", (_e, agentId: string) => modulesReady ? agentToolStore.getByAgentId(agentId) : undefined);
+		ipcMain.handle("agent-tools:create", (_e, input: unknown) => {
+			if (!modulesReady) return { error: "loading" };
+			const result = agentToolStore.create(input as any);
+			refreshAgentTools();
+			return result;
+		});
+		ipcMain.handle("agent-tools:update", (_e, id: string, input: unknown) => {
+			if (!modulesReady) return { error: "loading" };
+			try {
+				const result = agentToolStore.update(id, input as any);
+				refreshAgentTools();
+				return result;
+			} catch (e) { return { error: (e as Error).message }; }
+		});
+		ipcMain.handle("agent-tools:delete", (_e, id: string) => {
+			if (!modulesReady) return { error: "loading" };
+			agentToolStore.delete(id);
+			refreshAgentTools();
+			return { success: true };
+		});
+
+		// ─── Providers CRUD ───────────────────────────────
 	ipcMain.handle("providers:list", () => modulesReady ? providerStore.list() : []);
 	ipcMain.handle("providers:get", (_e, id: string) => modulesReady ? providerStore.get(id) : undefined);
 	ipcMain.handle("providers:create", (_e, input: unknown) => {
@@ -244,43 +310,26 @@ export function registerIpc(win: BrowserWindow): void {
 	});
 
 	ipcMain.handle("tools:list", () => {
-		const runtimeTools = [
-			{ name: "bash", description: "在环境中执行 Shell 命令", group: "runtime" },
-			{ name: "read", description: "读取文件内容", group: "runtime" },
-			{ name: "edit", description: "精确编辑文件", group: "runtime" },
-			{ name: "write", description: "创建或覆盖文件", group: "runtime" },
-			{ name: "grep", description: "搜索文件内容", group: "runtime" },
-			{ name: "find", description: "按模式查找文件", group: "runtime" },
-			{ name: "ls", description: "列出目录内容", group: "runtime" },
-		];
-		const builtInTools = [
-			{ name: "fetch_html", description: "获取网页并返回 HTML 内容", group: "fetch" },
-			{ name: "fetch_markdown", description: "获取网页并返回 Markdown 内容", group: "fetch" },
-			{ name: "fetch_text", description: "获取网页并返回纯文本内容", group: "fetch" },
-			{ name: "fetch_json", description: "获取 JSON 数据", group: "fetch" },
-			{ name: "memory_create_entities", description: "在知识图谱中创建实体", group: "memory" },
-			{ name: "memory_create_relations", description: "在实体间创建关系", group: "memory" },
-			{ name: "memory_add_observations", description: "为实体添加观察", group: "memory" },
-			{ name: "memory_delete_entities", description: "删除实体及其关系", group: "memory" },
-			{ name: "memory_delete_relations", description: "删除关系", group: "memory" },
-			{ name: "memory_read_graph", description: "读取整个知识图谱", group: "memory" },
-			{ name: "memory_search_nodes", description: "搜索知识图谱中的实体和关系", group: "memory" },
-			{ name: "sequentialthinking", description: "多步骤顺序推理思考", group: "thinking" },
-			{ name: "fs_read", description: "读取文件内容（带行号）", group: "filesystem" },
-			{ name: "fs_write", description: "创建或覆盖文件", group: "filesystem" },
-			{ name: "fs_edit", description: "精确字符串替换编辑文件", group: "filesystem" },
-			{ name: "fs_delete", description: "删除文件或目录", group: "filesystem" },
-			{ name: "fs_list", description: "列出目录内容（树形结构）", group: "filesystem" },
-			{ name: "fs_glob", description: "按 glob 模式匹配文件", group: "filesystem" },
-			{ name: "fs_grep", description: "按正则搜索文件内容", group: "filesystem" },
-			{ name: "assistant_info", description: "获取应用运行时信息", group: "assistant" },
-			{ name: "assistant_logs", description: "读取最近日志", group: "assistant" },
-			{ name: "assistant_config", description: "读取应用配置（已脱敏）", group: "assistant" },
-			{ name: "assistant_read_source", description: "读取应用源码文件", group: "assistant" },
-			{ name: "assistant_list_providers", description: "列出已配置的 AI 提供者", group: "assistant" },
-			{ name: "assistant_list_files", description: "列出 zero-core 数据目录中的文件", group: "assistant" },
-		];
-		return [...runtimeTools, ...builtInTools];
+		if (!modulesReady || !toolRegistry) return [];
+		return toolRegistry.getAll().map((d: any) => ({
+			name: d.name,
+			description: d.description,
+			group: d.category,
+			source: d.source,
+			mcpServerName: d.mcpServerName,
+			configSchema: d.configSchema,
+			meta: d.meta,
+		}));
+	});
+
+	ipcMain.handle("tool-config:get", () => {
+		if (!toolRegistry) return {};
+		return toolRegistry.getToolConfig();
+	});
+
+	ipcMain.handle("tool-config:save", (_e, config: Record<string, Record<string, any>>) => {
+		if (!toolRegistry) return;
+		toolRegistry.saveToolConfig(config);
 	});
 
 	// ─── Messages (backed by SessionDB) ──────────────
@@ -394,7 +443,59 @@ export function registerIpc(win: BrowserWindow): void {
 	});
 
 
-	// ─── Files ───────────────────────────────────────
+		// ─── Device Context ─────────────────────────────
+		ipcMain.handle("device-context:get", async () => {
+			if (!modulesReady) return { content: "", loading: true };
+			const { loadDeviceContext } = await import(toFileURL(join(distCore, "device-context.js")));
+			return { content: loadDeviceContext() };
+		});
+
+		ipcMain.handle("device-context:generate", async () => {
+			if (!modulesReady) return { content: "", error: "loading" };
+			const { generateAndSaveDeviceContext } = await import(toFileURL(join(distCore, "device-context.js")));
+			try {
+				const content = generateAndSaveDeviceContext();
+				return { content };
+			} catch (err: any) {
+				return { content: "", error: err.message };
+			}
+		});
+
+		ipcMain.handle("device-context:save", async (_e, content: string) => {
+			if (!modulesReady) return { error: "loading" };
+			const { saveDeviceContext } = await import(toFileURL(join(distCore, "device-context.js")));
+			try {
+				saveDeviceContext(content);
+				return { success: true };
+			} catch (err: any) {
+				return { error: err.message };
+			}
+		});
+
+		// ─── Guidelines ─────────────────────────────────
+		ipcMain.handle("guidelines:get", async () => {
+			if (!modulesReady || !agentService) return { guidelines: [], defaults: [] };
+			const { loadConfig, DEFAULT_GUIDELINES } = await import(toFileURL(join(distCore, "config.js")));
+			const config = loadConfig(process.cwd());
+			const guidelines = config.systemPrompt?.guidelines;
+			return { guidelines: guidelines ?? DEFAULT_GUIDELINES, defaults: DEFAULT_GUIDELINES, isDefault: !guidelines };
+		});
+
+		ipcMain.handle("guidelines:save", async (_e, guidelines: string[]) => {
+			if (!modulesReady) return { error: "loading" };
+			const configPath = join(homedir(), ".zero-core", "zero-core.json");
+			let configData: any = {};
+			if (existsSync(configPath)) {
+				try { configData = JSON.parse(readFileSync(configPath, "utf-8")); } catch { /* ignore */ }
+			}
+			if (!configData.systemPrompt) configData.systemPrompt = {};
+			configData.systemPrompt.guidelines = guidelines;
+			writeFileSync(configPath, JSON.stringify(configData, null, 2), "utf-8");
+			return { success: true };
+		});
+
+
+		// ─── Files ───────────────────────────────────────
 	ipcMain.handle("files:tree", (_e, root?: string) => {
 		if (!modulesReady) return [];
 		const dir = expandHome(root || workspaceConfig.workspaceDir);
@@ -490,7 +591,7 @@ ipcMain.handle("chat:send", async (_e, text: string, agentId?: string) => {
 		return { success: true };
 	});
 
-	ipcMain.handle("chat:state", () => agentService ? agentService.getState() : { isBusy: false });
+	ipcMain.handle("chat:state", (_e, agentId?: string) => agentService ? agentService.getState(agentId) : { isBusy: false });
 
 		// ─── Theme ────────────────────────────────────
 		const themePath = join(homedir(), ".zero-core", "theme.json");
@@ -544,7 +645,10 @@ ipcMain.handle("chat:send", async (_e, text: string, agentId?: string) => {
 		});
 
 
-		// ─── MCP ─────────────────────────────────────────
+
+			
+		
+
 		ipcMain.handle("mcp:list", () => modulesReady ? mcpStore.list() : []);
 		ipcMain.handle("mcp:get", (_e, id: string) => modulesReady ? mcpStore.get(id) : undefined);
 		ipcMain.handle("mcp:create", async (_e, input: unknown) => {
@@ -603,7 +707,6 @@ ipcMain.handle("chat:send", async (_e, text: string, agentId?: string) => {
 			return mcpManager.getConnectedServers();
 		});
 
-
 		// ─── Knowledge Base ─────────────────────────────────
 		ipcMain.handle("kb:list", () => modulesReady ? kbStore.list() : []);
 		ipcMain.handle("kb:get", (_e, id: string) => modulesReady ? kbStore.get(id) : undefined);
@@ -626,14 +729,12 @@ ipcMain.handle("chat:send", async (_e, text: string, agentId?: string) => {
 			if (!modulesReady) return { error: "loading" };
 			const kb = kbStore.get(kbId);
 			if (!kb) return { error: "Knowledge base not found" };
-			// Ingest each file
 			const results: { path: string; chunks: number; error?: string }[] = [];
 			for (const fp of filePaths) {
 				const { statSync } = require("node:fs");
 				const { basename } = require("node:path");
 				try {
 					const stat = statSync(fp);
-					// Get embedding provider from provider configs
 					const providers = providerStore.list();
 					const embProv = providers.find((p: any) => p.enabled && p.type !== "ollama");
 					const embedder = createEmbeddingProvider(kb.embeddingProvider, {
@@ -684,7 +785,186 @@ ipcMain.handle("chat:send", async (_e, text: string, agentId?: string) => {
 			return kbDb.getChunkCount(kbId);
 		});
 
-log.ipc("All handlers registered");
+			// Cache for GitHub preview results
+		const githubCacheFile = join(homedir(), ".zero-core", "github-cache.json");
+			function loadGithubCache(): Record<string, { sha: string; items: any[]; sourceUrl: string; timestamp: number }> {
+				try { if (existsSync(githubCacheFile)) return JSON.parse(readFileSync(githubCacheFile, "utf-8")); } catch {}
+				return {};
+			}
+			function saveGithubCache(data: Record<string, any>) {
+				try { mkdirSync(dirname(githubCacheFile), { recursive: true }); writeFileSync(githubCacheFile, JSON.stringify(data, null, 2), "utf-8"); } catch {}
+			}
+			let githubCache = loadGithubCache();
+
+		function shouldSkipMd(fpath: string): boolean {
+			const parts = fpath.split("/");
+			// Root-level files are never templates
+			if (parts.length === 1) return true;
+			// .github and scripts are infrastructure
+			if (parts[0] === ".github" || parts[0] === "scripts") return true;
+			// README files in any directory are not templates
+			if (parts[parts.length - 1] === "README.md") return true;
+			return false;
+		}
+
+		function parseFrontmatter(content: string): Record<string, string> | null {
+			const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+			if (!fmMatch) return null;
+			const fm: Record<string, string> = {};
+			for (const line of fmMatch[1].split("\n")) {
+				const ci = line.indexOf(":");
+				if (ci === -1) continue;
+				let val = line.slice(ci + 1).trim();
+				val = val.replace(/\\U([0-9A-Fa-f]{4,8})/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
+				val = val.replace(/\\u([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+				if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) val = val.slice(1, -1);
+				fm[line.slice(0, ci).trim()] = val;
+			}
+			return fm;
+		}
+
+		function extractTag(fpath: string): string {
+			const parts = fpath.split("/");
+			let tag = parts[0].replace(/-/g, " ");
+			if (parts.length > 2) tag = parts[0].replace(/-/g, " ") + "/" + parts[1].replace(/-/g, " ");
+			return tag;
+		}
+
+			ipcMain.handle("templates:github-preview", async (_e, url: string, subdir?: string) => {
+				if (!modulesReady) return { error: "loading" };
+				try {
+					const repoMatch = url.match(/github\.com\/([^/]+)\/([^/\s]+)/);
+					if (!repoMatch) return { error: "Invalid GitHub URL" };
+					const owner = repoMatch[1];
+					const repo = repoMatch[2].replace(/.git$/, "");
+					const sourceUrl = "https://github.com/" + owner + "/" + repo;
+
+					// Check disk cache first
+					const cacheKey = owner + "/" + repo + "/" + (subdir || "");
+					const cached = githubCache[cacheKey];
+					const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+					if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+						// Cache is fresh — return immediately, no network call needed
+						const items = cached.items.map((item: any) => ({
+							...item,
+							exists: !!templateStore.findByNameAndSource(item.name, cached.sourceUrl),
+						}));
+						return { items, sourceUrl: cached.sourceUrl, cached: true };
+					}
+
+					// Cache expired or missing — check if repo has new commits
+					const repoResp = await fetch("https://api.github.com/repos/" + owner + "/" + repo);
+					if (!repoResp.ok) return { error: "GitHub API error: " + repoResp.status };
+					const repoData = await repoResp.json() as any;
+					const branch = repoData.default_branch || "main";
+					const refResp = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/git/refs/heads/" + branch);
+					const refData = refResp.ok ? await refResp.json() as any : null;
+					const latestSha = refData?.object?.sha || "";
+
+					// SHA unchanged — refresh cache timestamp and return cached
+					if (cached && cached.sha === latestSha) {
+						cached.timestamp = Date.now();
+						saveGithubCache(githubCache);
+						const items = cached.items.map((item: any) => ({
+							...item,
+							exists: !!templateStore.findByNameAndSource(item.name, cached.sourceUrl),
+						}));
+						return { items, sourceUrl: cached.sourceUrl, cached: true };
+					}
+
+				// Fetch file tree
+				const treeResp = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/git/trees/" + branch + "?recursive=1", {
+					headers: { "Accept": "application/vnd.github.v3+json" },
+				});
+				if (!treeResp.ok) return { error: "GitHub tree API error: " + treeResp.status };
+				const treeData = await treeResp.json() as any;
+				const allFiles: any[] = (treeData.tree || []).filter((f: any) => f.type === "blob");
+				let mdFiles = allFiles
+					.filter((f: any) => f.path.endsWith(".md"))
+					.filter((f: any) => !shouldSkipMd(f.path));
+				if (subdir) mdFiles = mdFiles.filter((f: any) => f.path.startsWith(subdir + "/"));
+
+				const CHUNK = 10;
+				const items: { name: string; description: string; icon: string; tag: string; path: string; exists: boolean; color?: string; recommendedTools?: string[] }[] = [];
+				for (let i = 0; i < mdFiles.length; i += CHUNK) {
+					const chunk = mdFiles.slice(i, i + CHUNK);
+					const results = await Promise.all(chunk.map(async (f: any) => {
+						try {
+							const resp = await fetch("https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + branch + "/" + f.path);
+							if (!resp.ok) return null;
+							const content = await resp.text();
+							const fm = parseFrontmatter(content);
+							if (!fm || !fm.name) return null;
+							const tag = extractTag(f.path);
+							const exists = !!templateStore.findByNameAndSource(fm.name, sourceUrl);
+							const tools = fm.tools ? fm.tools.split(",").map((t: string) => t.trim()) : undefined;
+								return { name: fm.name, description: fm.description || "", icon: fm.emoji || "", tag, path: f.path, exists, color: fm.color, recommendedTools: tools };
+						} catch { return null; }
+					}));
+					for (const r of results) { if (r) items.push(r); }
+					if (mainWindow && !mainWindow.isDestroyed()) {
+						mainWindow.webContents.send("github-preview:progress", { current: Math.min(i + CHUNK, mdFiles.length), total: mdFiles.length });
+					}
+				}
+
+				// Update cache
+				githubCache[cacheKey] = { sha: latestSha, items, sourceUrl, timestamp: Date.now() };
+						saveGithubCache(githubCache);
+				return { items, sourceUrl };
+			} catch (err: any) { return { error: err.message }; }
+		});
+
+		ipcMain.handle("templates:import-github", async (_e, url: string, selectedPaths: string[]) => {
+			if (!modulesReady) return { error: "loading" };
+			try {
+				const repoMatch = url.match(/github\.com\/([^/]+)\/([^/\s]+)/);
+				if (!repoMatch) return { error: "Invalid GitHub URL" };
+				const owner = repoMatch[1];
+				const repo = repoMatch[2].replace(/\.git\$/, "");
+				const sourceUrl = "https://github.com/" + owner + "/" + repo;
+
+				const repoResp = await fetch("https://api.github.com/repos/" + owner + "/" + repo);
+				if (!repoResp.ok) return { error: "GitHub API error: " + repoResp.status };
+				const repoData = await repoResp.json() as any;
+				const branch = repoData.default_branch || "main";
+
+				let imported = 0;
+				let updated = 0;
+
+				for (const filePath of selectedPaths) {
+					try {
+						const resp = await fetch("https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + branch + "/" + filePath);
+						if (!resp.ok) continue;
+						const content = await resp.text();
+						const fm = parseFrontmatter(content);
+						if (!fm || !fm.name) continue;
+						const body = content.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, "").trim();
+						if (!body) continue;
+						const prompt = fm.vibe ? fm.vibe + "\n\n" + body : body;
+						const tag = extractTag(filePath);
+						const tools = fm.tools ? fm.tools.split(",").map((t: string) => t.trim()) : undefined;
+						const existing = templateStore.findByNameAndSource(fm.name, sourceUrl);
+						if (existing) {
+							templateStore.update(existing.id, { description: fm.description || existing.description, icon: fm.emoji || existing.icon, systemPrompt: prompt, tags: [tag], color: fm.color || existing.color, recommendedTools: tools });
+							updated++;
+						} else {
+							templateStore.create({ name: fm.name, description: fm.description || "", icon: fm.emoji || undefined, systemPrompt: prompt, tags: [tag], sourceUrl, color: fm.color, recommendedTools: tools, isBuiltIn: false });
+							imported++;
+						}
+						if (mainWindow && !mainWindow.isDestroyed()) {
+							mainWindow.webContents.send("github-import:progress", { current: imported + updated, total: selectedPaths.length });
+						}
+					} catch { continue; }
+				}
+				// Invalidate cache after import
+				const cacheKey = owner + "/" + repo + "/";
+				delete githubCache[cacheKey];
+				return { imported, updated, total: selectedPaths.length };
+			} catch (err: any) { return { error: err.message }; }
+		});
+
+
+	log.ipc("All handlers registered");
 
 	// Load core modules in background
 	loadCoreModules().then(() => {
@@ -694,4 +974,3 @@ log.ipc("All handlers registered");
 		}
 	});
 }
-

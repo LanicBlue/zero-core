@@ -17,6 +17,9 @@ export interface PromptTemplate {
 		readScope?: "filesystem" | "workspace";
 	};
 	tags: string[];
+	sourceUrl?: string;
+	color?: string;
+	recommendedTools?: string[];
 	isBuiltIn: boolean;
 	createdAt: string;
 	updatedAt: string;
@@ -33,6 +36,8 @@ interface TemplateState {
 	remove: (id: string) => Promise<void>;
 	exportTemplate: (id: string) => Promise<string>;
 	importTemplate: (json: string) => Promise<PromptTemplate>;
+		githubPreview: (url: string, subdir?: string) => Promise<{ items: { name: string; description: string; icon: string; tag: string; path: string; exists: boolean }[]; sourceUrl: string; error?: string }>;
+		importFromGithub: (url: string, selectedPaths: string[]) => Promise<{ imported: number; updated: number; total: number; error?: string }>;
 }
 
 export const useTemplateStore = create<TemplateState>((set, get) => ({
@@ -74,6 +79,16 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
 		set((state) => ({ templates: [...state.templates, imported] }));
 		return imported;
 	},
+
+		githubPreview: async (url: string, subdir?: string) => {
+			return api().templatesGithubPreview(url, subdir);
+		},
+
+		importFromGithub: async (url: string, selectedPaths: string[]) => {
+			const result = await api().templatesImportGithub(url, selectedPaths);
+			await useTemplateStore.getState().fetchTemplates();
+			return result;
+		},
 }));
 
 // Auto-fetch on first import

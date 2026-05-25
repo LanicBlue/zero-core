@@ -13,6 +13,7 @@ import type {
 import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
 import { buildToolsSet, buildToolPolicyDescription } from "./tools/index.js";
+import { buildAgentTools } from "./tools/agent-tool.js";
 import type { SessionDB } from "../server/session-db.js";
 import { log } from "../core/logger.js";
 
@@ -226,12 +227,15 @@ export class AgentLoop implements AgentRuntime {
 			try { mcpTools = await this.config.getMcpTools(this.config.agentId); }
 			catch { /* MCP tools unavailable */ }
 		}
-		let builtInTools: Record<string, any> | undefined;
-		if (this.config.getBuiltInTools) {
-			try { builtInTools = this.config.getBuiltInTools(); } catch { /* built-in tools unavailable */ }
-		}
+			let agentTools: Record<string, any> | undefined;
+				if (this.config.getAgentToolEntries) {
+					try {
+						const { entries, agents } = await this.config.getAgentToolEntries();
+						agentTools = buildAgentTools(entries, agents, this.toolContext.delegateTask);
+					} catch { /* agent tools unavailable */ }
+				}
 
-		const tools = buildToolsSet(this.config.toolPolicy, this.toolContext, mcpTools, builtInTools);
+			const tools = buildToolsSet(this.config.toolPolicy, this.toolContext, mcpTools, agentTools);
 		const toolPolicyDesc = buildToolPolicyDescription(this.config.toolPolicy);
 		let systemPrompt = this.session.getSystemPrompt() + "\n\n## Tool Permissions\n\n" + toolPolicyDesc;
 

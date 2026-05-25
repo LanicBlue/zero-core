@@ -143,7 +143,10 @@ export interface SessionConfig {
 	};
 		getMcpTools?: (agentId?: string) => Promise<Record<string, any>>;
 		getRagContext?: (agentId: string, query: string) => Promise<string | undefined>;
-		getBuiltInTools?: () => Record<string, any>;
+			getAgentToolEntries?: () => Promise<{
+				entries: Array<import("../server/agent-tool-store.js").AgentToolEntry>;
+				agents: Map<string, { id: string; name: string; systemPrompt?: string; model?: string }>;
+			}>;
 	}
 
 // ---------------------------------------------------------------------------

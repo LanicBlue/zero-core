@@ -24,6 +24,9 @@ export interface PromptTemplate {
 		readScope?: "filesystem" | "workspace";
 	};
 	tags: string[];
+	sourceUrl?: string;
+	color?: string;
+	recommendedTools?: string[];
 	isBuiltIn: boolean;
 	createdAt: string;
 	updatedAt: string;
@@ -235,10 +238,17 @@ export class TemplateStore {
 			thinkingLevel: parsed.thinkingLevel,
 			toolPolicy: parsed.toolPolicy,
 			tags: parsed.tags ?? [],
+			sourceUrl: parsed.sourceUrl,
 			isBuiltIn: false,
 		});
 		this.data.templates.push(record);
 		this.save(this.data);
 		return record;
+	}
+
+	findByNameAndSource(name: string, sourceUrl: string): PromptTemplate | undefined {
+		return this.data.templates.find(
+			(t) => t.name === name && t.sourceUrl === sourceUrl,
+		);
 	}
 }

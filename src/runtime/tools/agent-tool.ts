@@ -1,0 +1,225 @@
+import { z } from "zod";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { buildTool } from "./tool-factory.js";
+import type { ToolExecutionContext } from "../types.js";
+import type { AgentToolEntry } from "../../server/agent-tool-store.js";
+
+const execFileAsync = promisify(execFile);
+
+interface AgentRecordLite {
+	id: string;
+	name: string;
+	systemPrompt?: string;
+	model?: string;
+}
+
+function kebabCase(s: string): string {
+	return s
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "_")
+		.replace(/^_|_$/g, "");
+}
+
+function resolveTemplate(template: string, task: string): string {
+	return template.replace(/\{\{task\}\}/g, task);
+}
+
+function resolveArgsTemplate(template: string, task: string): string[] {
+	const resolved = resolveTemplate(template, task);
+	// Split by whitespace but preserve quoted segments
+	const args: string[] = [];
+	let current = "";
+	let inQuote = false;
+	for (const ch of resolved) {
+		if (ch === '"') { inQuote = !inQuote; continue; }
+		if (ch === " " && !inQuote) {
+			if (current) { args.push(current); current = ""; }
+		} else {
+			current += ch;
+		}
+	}
+	if (current) args.push(current);
+	return args;
+}
+
+const MAX_RESULT = 50000;
+
+function truncateResult(text: string): string {
+	if (text.length <= MAX_RESULT) return text;
+	return text.slice(0, MAX_RESULT) + "\n... (output truncated)";
+}
+
+export function buildAgentTools(
+	entries: AgentToolEntry[],
+	agents: Map<string, AgentRecordLite>,
+	delegateTask: ToolExecutionContext["delegateTask"],
+): Record<string, any> {
+	const tools: Record<string, any> = {};
+
+	for (const entry of entries) {
+		if (!entry.enabled) continue;
+
+		const toolName = entry.name || "agent_tool";
+		const desc = entry.description || `Run the "${entry.name}" agent`;
+
+		if (entry.type === "internal") {
+			// Internal agent tool — use delegateTask
+			const agent = agents.get(entry.agentId ?? "");
+			if (!agent) continue;
+
+			const capturedEntry = entry;
+			const capturedAgent = agent;
+
+			tools[toolName] = buildTool({
+				name: toolName,
+				description: desc,
+				meta: {
+					category: "agent",
+					isReadOnly: true,
+					isConcurrencySafe: false,
+					isDestructive: false,
+				},
+				inputSchema: z.object({
+					task: z.string().describe("Task for the agent to perform"),
+				}),
+				execute: async (input) => {
+					if (!delegateTask) return "Error: Agent delegation is not available.";
+					try {
+						const result = await delegateTask(input.task, {
+							systemPrompt: capturedAgent.systemPrompt,
+							model: capturedAgent.model,
+						});
+						return truncateResult(result || "(agent returned no output)");
+					} catch (err: any) {
+						return `Agent error: ${err.message}`;
+					}
+				},
+			});
+		} else if (entry.type === "external" && entry.transport === "cli") {
+			// External CLI agent tool
+			if (!entry.command) continue;
+
+			const capturedEntry = entry;
+
+			tools[toolName] = buildTool({
+				name: toolName,
+				description: desc,
+				meta: {
+					category: "agent",
+					isReadOnly: false,
+					isConcurrencySafe: false,
+					isDestructive: true,
+					maxResultSize: 50000,
+				},
+				inputSchema: z.object({
+					task: z.string().describe("Task for the external agent to perform"),
+				}),
+				execute: async (input, ctx) => {
+					try {
+						const args = capturedEntry.argsTemplate
+							? resolveArgsTemplate(capturedEntry.argsTemplate, input.task)
+							: [input.task];
+						const timeout = capturedEntry.timeout ?? 300000;
+
+						const { stdout, stderr } = await execFileAsync(capturedEntry.command!, args, {
+							cwd: ctx.workingDir || ".",
+							timeout,
+							maxBuffer: 10 * 1024 * 1024,
+						});
+
+						let result = "";
+						if (stdout) result += stdout;
+						if (stderr) result += (result ? "\n" : "") + "[stderr] " + stderr;
+						return truncateResult(result || "(no output)");
+					} catch (err: any) {
+						if (err.code === "ENOENT") {
+							return `Error: command "${capturedEntry.command}" not found.`;
+						}
+						if (err.killed) {
+							return `Error: agent timed out after ${capturedEntry.timeout ?? 300}s`;
+						}
+						return `Error: ${err.message}\n${err.stdout || ""}${err.stderr ? "\n[stderr] " + err.stderr : ""}`;
+					}
+				},
+			});
+		} else if (entry.type === "external" && entry.transport === "http") {
+			// External HTTP agent tool
+			if (!entry.url) continue;
+
+			const capturedEntry = entry;
+
+			tools[toolName] = buildTool({
+				name: toolName,
+				description: desc,
+				meta: {
+					category: "agent",
+					isReadOnly: true,
+					isConcurrencySafe: false,
+					isDestructive: false,
+				},
+				inputSchema: z.object({
+					task: z.string().describe("Task for the external agent to perform"),
+				}),
+				execute: async (input) => {
+					try {
+						const method = capturedEntry.method ?? "POST";
+						const headers: Record<string, string> = {
+							"Content-Type": "application/json",
+							...capturedEntry.headers,
+						};
+						const timeout = capturedEntry.timeout ?? 300000;
+
+						let body: string | undefined;
+						if (capturedEntry.bodyTemplate) {
+							body = resolveTemplate(capturedEntry.bodyTemplate, input.task);
+						} else {
+							body = JSON.stringify({ task: input.task });
+						}
+
+						const controller = new AbortController();
+						const timer = setTimeout(() => controller.abort(), timeout);
+
+						const resp = await fetch(capturedEntry.url!, {
+							method,
+							headers,
+							body: method !== "GET" ? body : undefined,
+							signal: controller.signal,
+						});
+						clearTimeout(timer);
+
+						if (!resp.ok) {
+							return `Error: HTTP ${resp.status} ${resp.statusText}`;
+						}
+
+						const text = await resp.text();
+
+						// Extract from response path if specified
+						if (capturedEntry.responsePath) {
+							try {
+								const json = JSON.parse(text);
+								const parts = capturedEntry.responsePath.split(".");
+								let val: any = json;
+								for (const p of parts) {
+									val = val?.[p];
+								}
+								return truncateResult(typeof val === "string" ? val : JSON.stringify(val));
+							} catch {
+								// Return raw text if path extraction fails
+							}
+						}
+
+						return truncateResult(text);
+					} catch (err: any) {
+						if (err.name === "AbortError") {
+							return `Error: agent timed out after ${capturedEntry.timeout ?? 300}s`;
+						}
+						return `Error: ${err.message}`;
+					}
+				},
+			});
+		}
+	}
+
+	return tools;
+}

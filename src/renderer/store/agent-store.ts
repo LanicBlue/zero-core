@@ -8,18 +8,21 @@ export interface AgentRecord {
 	provider?: string;
 	thinkingLevel?: string;
 	contextConfig?: {
-		injectProjectContext?: boolean;
-		maxDirectoryDepth?: number;
-		excludePatterns?: string[];
-		additionalFiles?: string[];
+		useDeviceContext?: boolean;
+		useGuidelines?: boolean;
+		useMemoryContext?: boolean;
 	};
 	systemPrompt?: string;
 	toolPolicy?: {
 		autoApprove?: string[];
 		blockedTools?: string[];
+		tools?: Record<string, { enabled: boolean }>;
 		executionMode?: "sequential" | "parallel";
 		resultMaxTokens?: number;
-t		readScope?: "filesystem" | "workspace";
+		readScope?: "filesystem" | "workspace";
+	};
+	skillPolicy?: {
+		enabledSkills?: string[];
 	};
 	knowledgeBaseIds?: string[];
 	createdAt: string;
@@ -113,4 +116,9 @@ if (!_fetched) {
 	useAgentStore.getState().fetchAgents();
 	useAgentStore.getState().fetchModels();
 	useAgentStore.getState().fetchTools();
+
+	// Refresh tools when agent tools change (expose/disable)
+	const unsub = api().onToolsChanged(() => {
+		useAgentStore.getState().fetchTools();
+	});
 }

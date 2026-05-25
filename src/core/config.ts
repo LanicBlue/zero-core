@@ -134,10 +134,18 @@ export type ZeroCoreConfig = Static<typeof ZeroCoreConfigSchema>;
 // Defaults
 // ---------------------------------------------------------------------------
 
+export const DEFAULT_GUIDELINES = [
+	"使用用户设置的语言进行回复",
+	"在执行危险操作前先确认",
+	"优先使用现有工具完成任务",
+	"保持回复简洁，避免不必要的重复",
+];
+
 export const DEFAULT_CONFIG: ZeroCoreConfig = {
 	persona: {},
 	systemPrompt: {
 		injectProjectContext: true,
+		guidelines: DEFAULT_GUIDELINES,
 	},
 	context: {
 		reserveTokens: 16384,

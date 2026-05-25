@@ -4,29 +4,39 @@ export interface SystemPromptContext {
 	cwd: string;
 	activeTools: string[];
 	originalPrompt: string;
-	skills?: Array<{ name: string; description: string }>;
+	// ─── Global content ─────────────────────────
+	deviceContext?: string;
+	guidelines?: string[];
+	skills?: Array<{ id: string; name: string; description: string }>;
 	toolSnippets?: Record<string, string>;
-	extraSections?: Array<{ key: string; content: string }>;
-	projectContext?: string;
+	// ─── Section toggles (default true, false to disable) ──
+	useDeviceContext?: boolean;
+	useGuidelines?: boolean;
+	useMemoryContext?: boolean;
+	enabledSkills?: string[];
 }
 
 export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptContext): string {
 	const sections: string[] = [];
 
-	// Base prompt: use config override or fall back to original
-	if (config.systemPrompt.base) {
-		sections.push(config.systemPrompt.base);
-	} else {
-		sections.push(ctx.originalPrompt);
+	// 1. Device Context
+	if (ctx.useDeviceContext !== false && ctx.deviceContext) {
+		sections.push(ctx.deviceContext);
 	}
 
-	// Guidelines
-	if (config.systemPrompt.guidelines?.length) {
-		sections.push("## Guidelines\n\n" + config.systemPrompt.guidelines.map((g) => `- ${g}`).join("\n"));
+	// 2. Base Prompt (always included)
+	sections.push(ctx.originalPrompt);
+
+	// 3. Guidelines
+	if (ctx.useGuidelines !== false) {
+		const guidelines = ctx.guidelines ?? config.systemPrompt?.guidelines;
+		if (guidelines?.length) {
+			sections.push("## Guidelines\n\n" + guidelines.map((g) => `- ${g}`).join("\n"));
+		}
 	}
 
-	// Tool snippets
-	const snippets = { ...ctx.toolSnippets, ...config.systemPrompt.toolSnippets };
+	// 4. Tool Reference
+	const snippets = { ...ctx.toolSnippets, ...config.systemPrompt?.toolSnippets };
 	if (Object.keys(snippets).length > 0) {
 		const activeSnippets = ctx.activeTools
 			.filter((t) => snippets[t])
@@ -37,27 +47,21 @@ export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptConte
 		}
 	}
 
-	// Skills
+	// 5. Skills
 	if (ctx.skills?.length) {
-		const skillList = ctx.skills.map((s) => `- **${s.name}**: ${s.description}`).join("\n");
-		sections.push("## Available Skills\n\n" + skillList);
-	}
-
-	// Project context
-	if (ctx.projectContext) {
-		sections.push("## Project Context\n\n" + ctx.projectContext);
-	}
-
-	// Extra sections
-	if (ctx.extraSections?.length) {
-		for (const section of ctx.extraSections) {
-			sections.push(`## ${section.key}\n\n${section.content}`);
+		const enabled = ctx.enabledSkills;
+		const filtered = enabled
+			? ctx.skills.filter((s) => enabled.includes(s.id))
+			: ctx.skills;
+		if (filtered.length) {
+			const skillList = filtered.map((s) => `- **${s.name}**: ${s.description}`).join("\n");
+			sections.push("## Available Skills\n\n" + skillList);
 		}
 	}
 
-	// Append prompt
-	if (config.systemPrompt.append) {
-		sections.push(config.systemPrompt.append);
+	// 6. Memory/Wiki (reserved)
+	if (ctx.useMemoryContext === true) {
+		sections.push("## Memory\n\n(Memory context will be injected here when available.)");
 	}
 
 	return sections.join("\n\n");

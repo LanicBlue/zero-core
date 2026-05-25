@@ -1,15 +1,20 @@
 import React, { useState, useMemo, useRef } from "react";
 import { useTemplateStore, type PromptTemplate } from "../../store/template-store.js";
 import TemplateCard from "./TemplateCard.js";
+import GithubImportModal from "./GithubImportModal.js";
+import TemplateDetailModal from "./TemplateDetailModal.js";
 
 interface Props {
 	onUseTemplate: (template: PromptTemplate) => void;
 }
 
 export default function TemplateGallery({ onUseTemplate }: Props) {
-	const { templates, loading, importTemplate } = useTemplateStore();
+	const { templates, loading, importTemplate, githubPreview, importFromGithub } = useTemplateStore();
 	const [search, setSearch] = useState("");
 	const [activeTag, setActiveTag] = useState<string | null>(null);
+	const [showGithubModal, setShowGithubModal] = useState(false);
+	const [detailTemplate, setDetailTemplate] = useState<PromptTemplate | null>(null);
+	const [deleteTarget, setDeleteTarget] = useState<PromptTemplate | null>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	const allTags = useMemo(() => {
@@ -64,6 +69,29 @@ export default function TemplateGallery({ onUseTemplate }: Props) {
 		if (fileInputRef.current) fileInputRef.current.value = "";
 	};
 
+	const handlePreview = async (url: string, subdir?: string) => {
+		return githubPreview(url, subdir);
+	};
+
+	const handleGithubImport = async (url: string, selectedPaths: string[]) => {
+		return importFromGithub(url, selectedPaths);
+	};
+
+	const handleProgress = (cb: (p: { current: number; total: number }) => void) => {
+		return (window as any).api.onGithubImportProgress(cb);
+	};
+
+	const handlePreviewProgress = (cb: (p: { current: number; total: number }) => void) => {
+		return (window as any).api.onGithubPreviewProgress(cb);
+	};
+
+	const handleConfirmDelete = () => {
+		if (deleteTarget) {
+			useTemplateStore.getState().remove(deleteTarget.id);
+			setDeleteTarget(null);
+		}
+	};
+
 	if (loading) {
 		return <div className="template-gallery"><p className="agents-empty">Loading templates...</p></div>;
 	}
@@ -80,6 +108,13 @@ export default function TemplateGallery({ onUseTemplate }: Props) {
 				/>
 				<button type="button" className="btn-ghost btn-sm" onClick={() => fileInputRef.current?.click()}>
 					Import
+				</button>
+				<button
+					type="button"
+					className="btn-ghost btn-sm"
+					onClick={() => setShowGithubModal(true)}
+				>
+					Sync GitHub
 				</button>
 				<input
 					ref={fileInputRef}
@@ -114,12 +149,56 @@ export default function TemplateGallery({ onUseTemplate }: Props) {
 
 			<div className="template-grid">
 				{filtered.map((t) => (
-					<TemplateCard key={t.id} template={t} onUse={onUseTemplate} onExport={handleExport} />
+					<TemplateCard
+						key={t.id}
+						template={t}
+						onUse={onUseTemplate}
+						onExport={handleExport}
+						onDetail={() => setDetailTemplate(t)}
+						onDelete={() => setDeleteTarget(t)}
+					/>
 				))}
 				{filtered.length === 0 && (
 					<p className="agents-empty">No templates match your search.</p>
 				)}
 			</div>
+
+			{showGithubModal && (
+				<GithubImportModal
+					onClose={() => setShowGithubModal(false)}
+					onPreview={handlePreview}
+					onImport={handleGithubImport}
+					onProgress={handleProgress}
+					onPreviewProgress={handlePreviewProgress}
+				/>
+			)}
+
+			{detailTemplate && (
+				<TemplateDetailModal
+					template={detailTemplate}
+					onUse={() => { onUseTemplate(detailTemplate); setDetailTemplate(null); }}
+					onExport={() => { handleExport(detailTemplate); }}
+					onClose={() => setDetailTemplate(null)}
+				/>
+			)}
+
+			{deleteTarget && (
+				<div className="modal-overlay">
+					<div className="modal-content modal-confirm" onClick={(e) => e.stopPropagation()}>
+						<div className="modal-header">
+							<h3>Delete Template</h3>
+							<button type="button" className="btn-ghost btn-sm" onClick={() => setDeleteTarget(null)}>X</button>
+						</div>
+						<div className="modal-body">
+							<p className="modal-info">Are you sure you want to delete "{deleteTarget.name}"? This cannot be undone.</p>
+							<div className="modal-actions">
+								<button type="button" className="btn-ghost" onClick={() => setDeleteTarget(null)}>Cancel</button>
+								<button type="button" className="btn-danger" onClick={handleConfirmDelete}>Delete</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

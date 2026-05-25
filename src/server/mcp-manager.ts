@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { McpServerConfig } from "./mcp-store.js";
+import { toolRegistry } from "../core/tool-registry.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -85,6 +86,26 @@ class MCPManager {
 			// Update cache
 			this.toolCache.set(config.id, { tools, expires: Date.now() + this.CACHE_TTL });
 
+			// Register MCP tools into ToolRegistry
+			for (const t of tools) {
+				const qualifiedName = `mcp__${config.name}__${t.name}`;
+				toolRegistry.register({
+					name: qualifiedName,
+					description: t.description ?? "",
+					category: "mcp",
+					source: "mcp",
+					mcpServerId: config.id,
+					mcpServerName: config.name,
+					meta: {
+						isReadOnly: true,
+						isDestructive: false,
+						isConcurrencySafe: true,
+						requiresConfirmation: false,
+					},
+				});
+			}
+			toolRegistry.notifyChange?.();
+
 			return { tools };
 		} catch (err) {
 			return { tools: [], error: (err as Error).message };
@@ -110,6 +131,9 @@ class MCPManager {
 
 		this.servers.delete(serverId);
 		this.toolCache.delete(serverId);
+
+		// Unregister MCP tools from ToolRegistry
+		toolRegistry.unregister("mcp", serverId);
 	}
 
 	async disconnectAll(): Promise<void> {

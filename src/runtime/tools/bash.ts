@@ -9,6 +9,9 @@ export const bashTool = buildTool({
 	name: "bash",
 	description: "Execute a shell command in the workspace. Returns stdout and stderr.",
 	meta: { category: "runtime", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
+	configSchema: [
+		{ key: "timeout", type: "number", label: "Default timeout (ms)", default: 30000, description: "Default command execution timeout" },
+	],
 	inputSchema: z.object({
 		command: z.string().describe("The shell command to execute"),
 		timeout: z.number().optional().describe("Timeout in milliseconds (default 30000)"),

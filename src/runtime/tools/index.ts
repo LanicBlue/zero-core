@@ -8,14 +8,32 @@ import { fileEditTool } from "./file-edit.js";
 import { grepTool } from "./grep.js";
 import { findTool } from "./find.js";
 import { delegateTool } from "./delegate.js";
-import { externalAgentTool } from "./external-agent.js";
 import { buildMcpTools } from "./mcp-tool.js";
 import { webSearchTool } from "./web-search.js";
 import { askUserTool } from "./ask-user.js";
 import { todoWriteTool } from "./todo-write.js";
 import { scheduleWakeupTool } from "./schedule-wakeup.js";
-import { getToolMeta, getToolName } from "./tool-factory.js";
+import { getToolMeta, getToolName, getToolConfigSchema } from "./tool-factory.js";
+import { createFetchTools } from "../../server/mcp-servers/fetch-tools.js";
+import { createMemoryTools } from "../../server/mcp-servers/memory-tools.js";
+import { createSequentialThinkingTools } from "../../server/mcp-servers/sequential-thinking-tools.js";
+import { createAssistantTools } from "../../server/mcp-servers/assistant-tools.js";
+import { toolRegistry } from "../../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";
+
+// Built-in tools (initialized lazily)
+let _builtinTools: Record<string, any> | null = null;
+function getBuiltinTools(): Record<string, any> {
+	if (!_builtinTools) {
+		_builtinTools = {
+			...createFetchTools(),
+			...createMemoryTools(),
+			...createSequentialThinkingTools(),
+			...createAssistantTools(),
+		};
+	}
+	return _builtinTools;
+}
 
 const ALL_TOOLS: Record<string, any> = {
 	bash: bashTool,
@@ -25,17 +43,16 @@ const ALL_TOOLS: Record<string, any> = {
 	grep: grepTool,
 	find: findTool,
 	delegate: delegateTool,
-	external_agent: externalAgentTool,
 	web_search: webSearchTool,
 	ask_user: askUserTool,
 	todo_write: todoWriteTool,
 	schedule_wakeup: scheduleWakeupTool,
+	...getBuiltinTools(),
 };
 
 // Tools that require special context capabilities
 const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> = {
 	delegate: (ctx) => !!ctx.delegateTask,
-	external_agent: () => true,
 };
 
 function wrapDisabledTool(name: string, originalDescription: string) {
@@ -47,19 +64,65 @@ function wrapDisabledTool(name: string, originalDescription: string) {
 	});
 }
 
+
+// ---------------------------------------------------------------------------
+// Runtime tool registration into ToolRegistry
+// ---------------------------------------------------------------------------
+
+export function registerRuntimeTools(): void {
+	for (const [name, def] of Object.entries(ALL_TOOLS)) {
+		const meta = getToolMeta(def);
+		const configSchema = getToolConfigSchema(def);
+		const desc = (def as any)?.description ?? "";
+		toolRegistry.register({
+			name,
+			description: typeof desc === "string" ? desc : "",
+			category: meta?.category ?? "runtime",
+			source: "runtime",
+			configSchema,
+			meta: {
+				isReadOnly: meta?.isReadOnly ?? true,
+				isDestructive: meta?.isDestructive ?? false,
+				isConcurrencySafe: meta?.isConcurrencySafe ?? true,
+				requiresConfirmation: meta?.requiresConfirmation ?? false,
+			},
+		});
+	}
+}
+
 export function buildToolsSet(
 	policy: {
 		autoApprove?: string[];
 		blockedTools?: string[];
+		tools?: Record<string, { enabled: boolean }>;
 		executionMode?: "sequential" | "parallel";
 		resultMaxTokens?: number;
 	},
 	context: ToolExecutionContext,
 	mcpTools?: Record<string, any>,
-	builtInTools?: Record<string, any>,
+	agentTools?: Record<string, any>,
 ): Record<string, any> {
 	const blocked = new Set(policy.blockedTools ?? []);
+
+	// Tools enabled by default — core filesystem/shell tools only
+	const DEFAULT_ENABLED = new Set(["bash", "read", "write", "edit", "grep", "find"]);
+
+	// Determine enabled check: prefer tools map, fall back to autoApprove
+	const toolsMap = policy.tools;
 	const autoApprove = new Set(policy.autoApprove ?? []);
+	const isEnabled = (name: string): boolean => {
+		// Explicit tools map takes priority
+		if (toolsMap) {
+			if (name in toolsMap) return toolsMap[name].enabled;
+			return DEFAULT_ENABLED.has(name);
+		}
+		// Legacy autoApprove
+		if (autoApprove.has("*")) return true;
+		if (autoApprove.size > 0) return autoApprove.has(name);
+		// No config — basic tools only
+		return DEFAULT_ENABLED.has(name);
+	};
+
 	const tools: Record<string, any> = {};
 
 	for (const [name, def] of Object.entries(ALL_TOOLS)) {
@@ -69,7 +132,7 @@ export function buildToolsSet(
 		const condition = CONDITIONAL_TOOLS[name];
 		if (condition && !condition(context)) continue;
 
-		if (autoApprove.has(name) || autoApprove.has("*")) {
+		if (isEnabled(name)) {
 			tools[name] = def;
 		} else {
 			const desc = (def as any)?.description ?? name;
@@ -79,18 +142,20 @@ export function buildToolsSet(
 
 	// Merge MCP tools
 	if (mcpTools) {
-		Object.assign(tools, mcpTools);
+		for (const [name, def] of Object.entries(mcpTools)) {
+			if (blocked.has(name)) continue;
+			if (isEnabled(name)) {
+				tools[name] = def;
+			}
+		}
 	}
 
-	// Merge built-in tools (fetch, memory, thinking, assistant)
-	if (builtInTools) {
-		for (const [name, def] of Object.entries(builtInTools)) {
+	// Merge agent tools
+	if (agentTools) {
+		for (const [name, def] of Object.entries(agentTools)) {
 			if (blocked.has(name)) continue;
-			if (autoApprove.has(name) || autoApprove.has("*")) {
+			if (isEnabled(name)) {
 				tools[name] = def;
-			} else {
-				const desc = (def as any)?.description ?? name;
-				tools[name] = wrapDisabledTool(name, typeof desc === "string" ? desc : "");
 			}
 		}
 	}

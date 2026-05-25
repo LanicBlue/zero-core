@@ -17,12 +17,11 @@ export interface AgentRecord {
 	model?: string;
 	provider?: string;
 	thinkingLevel?: string;
-	// ─── Context config ──────────────────────────
+	// ─── Context config (段落开关) ──────────────
 	contextConfig?: {
-		injectProjectContext?: boolean;
-		maxDirectoryDepth?: number;
-		excludePatterns?: string[];
-		additionalFiles?: string[];
+		useDeviceContext?: boolean;
+		useGuidelines?: boolean;
+		useMemoryContext?: boolean;
 	};
 	// ─── System Prompt ───────────────────────────
 	systemPrompt?: string;
@@ -30,9 +29,14 @@ export interface AgentRecord {
 	toolPolicy?: {
 		autoApprove?: string[];
 		blockedTools?: string[];
+		tools?: Record<string, { enabled: boolean }>;
 		executionMode?: "sequential" | "parallel";
 		resultMaxTokens?: number;
 		readScope?: "filesystem" | "workspace";
+	};
+	// ─── Skill Policy ────────────────────────────
+	skillPolicy?: {
+		enabledSkills?: string[];
 	};
 	// ─── Metadata ────────────────────────────────
 	createdAt: string;
