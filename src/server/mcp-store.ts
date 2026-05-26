@@ -1,7 +1,7 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import { homedir } from "node:os";
-import { v4 as uuidv4 } from "uuid";
+import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
+import type Database from "better-sqlite3";
 
 // ---------------------------------------------------------------------------
 // MCP Server Configuration
@@ -10,98 +10,68 @@ import { v4 as uuidv4 } from "uuid";
 export interface McpServerConfig {
 	id: string;
 	name: string;
-	/** Transport type */
 	transport: "stdio" | "sse" | "streamable-http";
-	/** For stdio: command to run (e.g. "npx") */
 	command?: string;
-	/** For stdio: arguments array */
 	args?: string[];
-	/** For stdio: environment variables */
 	env?: Record<string, string>;
-	/** For sse / streamable-http: server URL */
 	url?: string;
-	/** For sse: optional headers */
 	headers?: Record<string, string>;
-	/** Whether this server is enabled */
 	enabled: boolean;
-	/** Agent IDs that can use this server's tools (empty = all agents) */
 	agentIds?: string[];
 	createdAt: string;
 	updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
-// Storage
+// Column definitions
 // ---------------------------------------------------------------------------
 
-interface McpStoreData {
-	servers: McpServerConfig[];
-}
+const COLUMNS: ColumnDef[] = [
+	{ key: "name" },
+	{ key: "transport" },
+	{ key: "command" },
+	{ key: "args", json: true },
+	{ key: "env", json: true },
+	{ key: "url" },
+	{ key: "headers", json: true },
+	{ key: "enabled", bool: true },
+	{ key: "agentIds", column: "agent_ids", json: true },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+// ---------------------------------------------------------------------------
+// McpStore
+// ---------------------------------------------------------------------------
 
 export class McpStore {
-	private filePath: string;
-	private data: McpStoreData;
+	private store: SqliteStore<McpServerConfig>;
 
-	constructor(filePath?: string) {
-		this.filePath = filePath ?? join(homedir(), ".zero-core", "mcp-servers.json");
-		this.data = this.load();
-	}
+	constructor(db: Database.Database) {
+		this.store = new SqliteStore<McpServerConfig>(db, "mcp_servers", COLUMNS);
 
-	private load(): McpStoreData {
-		if (existsSync(this.filePath)) {
-			try {
-				return JSON.parse(readFileSync(this.filePath, "utf-8"));
-			} catch {
-				// fall through
-			}
-		}
-
-		const data: McpStoreData = { servers: [] };
-		this.save(data);
-		return data;
-	}
-
-	private save(data: McpStoreData): void {
-		const dir = dirname(this.filePath);
-		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-		writeFileSync(this.filePath, JSON.stringify(data, null, 2), "utf-8");
+		// Migrate from JSON if needed
+		const jsonPath = join(homedir(), ".zero-core", "mcp-servers.json");
+		this.store.migrateFromJson(jsonPath, "servers");
 	}
 
 	list(): McpServerConfig[] {
-		return this.data.servers;
+		return this.store.list();
 	}
 
 	get(id: string): McpServerConfig | undefined {
-		return this.data.servers.find((s) => s.id === id);
+		return this.store.get(id);
 	}
 
 	create(input: Omit<McpServerConfig, "id" | "createdAt" | "updatedAt">): McpServerConfig {
-		const now = new Date().toISOString();
-		const record: McpServerConfig = {
-			id: uuidv4(),
-			...input,
-			createdAt: now,
-			updatedAt: now,
-		};
-		this.data.servers.push(record);
-		this.save(this.data);
-		return record;
+		return this.store.create(input as any);
 	}
 
 	update(id: string, input: Partial<Omit<McpServerConfig, "id" | "createdAt">>): McpServerConfig {
-		const index = this.data.servers.findIndex((s) => s.id === id);
-		if (index === -1) throw new Error(`MCP server not found: ${id}`);
-		this.data.servers[index] = {
-			...this.data.servers[index],
-			...input,
-			updatedAt: new Date().toISOString(),
-		};
-		this.save(this.data);
-		return this.data.servers[index];
+		return this.store.update(id, input as any);
 	}
 
 	delete(id: string): void {
-		this.data.servers = this.data.servers.filter((s) => s.id !== id);
-		this.save(this.data);
+		this.store.delete(id);
 	}
 }

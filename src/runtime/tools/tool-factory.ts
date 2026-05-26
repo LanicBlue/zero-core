@@ -51,6 +51,7 @@ export function truncateResult(result: string, maxSize: number): string {
 export interface BuildToolOptions<T extends ZodSchema> {
 	name: string;
 	description: string;
+	userDescription?: string;
 	meta?: Partial<ToolMeta>;
 	configSchema?: ToolConfigField[];
 	inputSchema: T;
@@ -92,6 +93,14 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 		});
 	}
 
+	if (options.userDescription) {
+		Object.defineProperty(toolDef, "__userDescription", {
+			value: options.userDescription,
+			enumerable: false,
+			writable: false,
+		});
+	}
+
 	return toolDef;
 }
 
@@ -109,4 +118,8 @@ export function getToolName(toolObj: any): string | undefined {
 
 export function getToolConfigSchema(toolObj: any): ToolConfigField[] | undefined {
 	return toolObj?.__configSchema;
+}
+
+export function getToolUserDescription(toolObj: any): string | undefined {
+	return toolObj?.__userDescription;
 }

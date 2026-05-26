@@ -6,6 +6,7 @@ import { buildTool } from "./tool-factory.js";
 export const fileEditTool = buildTool({
 	name: "edit",
 	description: "Make a targeted edit to a file by replacing exact text matches. Always restricted to workspace.",
+	userDescription: "通过精确查找替换编辑文件中的指定文本。oldText 必须与文件中的内容完全匹配。始终限制在工作目录内。",
 	meta: { category: "runtime", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
 	inputSchema: z.object({
 		path: z.string().describe("File path to edit"),

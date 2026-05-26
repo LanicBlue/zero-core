@@ -28,6 +28,7 @@ export const todoWriteTool = buildTool({
 		"Update the task list to track progress on multi-step work. " +
 		"Mark tasks in_progress BEFORE starting them and completed IMMEDIATELY after finishing. " +
 		"Only one task should be in_progress at a time.",
+	userDescription: "管理任务列表来追踪多步骤工作进度。开始任务前标记为 in_progress，完成后立即标记为 completed。同一时间只有一个任务应为 in_progress。",
 	meta: { category: "interaction", isReadOnly: false, isConcurrencySafe: false },
 	inputSchema: z.object({
 		todos: z.array(z.object({

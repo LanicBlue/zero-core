@@ -29,6 +29,7 @@ export interface ToolConfigField {
 export interface ToolDescriptor {
 	name: string;
 	description: string;
+	userDescription?: string;
 	category: ToolCategory;
 	source: "runtime" | "builtin" | "mcp" | "agent";
 	mcpServerId?: string;

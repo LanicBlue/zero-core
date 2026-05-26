@@ -224,13 +224,14 @@ export const webSearchTool = buildTool({
 	description:
 		"Search the web for up-to-date information. Returns search results with titles, URLs, and snippets. " +
 		"Include a 'Sources:' section in your response with the URLs.",
+	userDescription: "搜索互联网获取最新信息。支持 DuckDuckGo（免费）、SearXNG（自托管）、SerpAPI 和 Brave Search。可在工具配置中切换搜索引擎和设置 API Key。",
 	meta: { category: "web", isReadOnly: true, maxResultSize: 15000 },
 	configSchema: [
-		{ key: "provider", type: "select", label: "Search engine", default: "duckduckgo", options: ["duckduckgo", "searxng", "serpapi", "brave"] },
-		{ key: "maxResults", type: "number", label: "Max results", default: 8 },
-			{ key: "searxngUrl", type: "string", label: "SearXNG URL", description: "Required for SearXNG provider" },
-			{ key: "serpApiKey", type: "string", label: "SerpAPI Key", description: "Required for SerpAPI provider" },
-			{ key: "braveApiKey", type: "string", label: "Brave API Key", description: "Required for Brave Search provider" },
+		{ key: "provider", type: "select", label: "搜索引擎", default: "duckduckgo", options: ["duckduckgo", "searxng", "serpapi", "brave"] },
+		{ key: "maxResults", type: "number", label: "最大结果数", default: 8 },
+			{ key: "searxngUrl", type: "string", label: "SearXNG URL", description: "SearXNG 自托管地址" },
+			{ key: "serpApiKey", type: "string", label: "SerpAPI Key", description: "SerpAPI 所需的 API Key" },
+			{ key: "braveApiKey", type: "string", label: "Brave API Key", description: "Brave Search 所需的 API Key" },
 	],
 	inputSchema: z.object({
 		query: z.string().describe("Search query"),

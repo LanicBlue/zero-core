@@ -1,7 +1,7 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import { homedir } from "node:os";
-import { v4 as uuidv4 } from "uuid";
+import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
+import type Database from "better-sqlite3";
 
 // ---------------------------------------------------------------------------
 // Prompt Template
@@ -120,100 +120,77 @@ const BUILT_IN_TEMPLATES: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">
 ];
 
 // ---------------------------------------------------------------------------
-// Storage
+// Column definitions
 // ---------------------------------------------------------------------------
 
-interface TemplateStoreData {
-	templates: PromptTemplate[];
-}
+const COLUMNS: ColumnDef[] = [
+	{ key: "name" },
+	{ key: "description" },
+	{ key: "icon" },
+	{ key: "systemPrompt", column: "system_prompt" },
+	{ key: "model" },
+	{ key: "provider" },
+	{ key: "thinkingLevel", column: "thinking_level" },
+	{ key: "toolPolicy", column: "tool_policy", json: true },
+	{ key: "tags", json: true },
+	{ key: "sourceUrl", column: "source_url" },
+	{ key: "color" },
+	{ key: "recommendedTools", column: "recommended_tools", json: true },
+	{ key: "isBuiltIn", column: "is_built_in", bool: true },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+// ---------------------------------------------------------------------------
+// TemplateStore
+// ---------------------------------------------------------------------------
 
 export class TemplateStore {
-	private filePath: string;
-	private data: TemplateStoreData;
+	private store: SqliteStore<PromptTemplate>;
 
-	constructor(filePath?: string) {
-		this.filePath = filePath ?? join(homedir(), ".zero-core", "templates.json");
-		this.data = this.load();
+	constructor(db: Database.Database) {
+		this.store = new SqliteStore<PromptTemplate>(db, "templates", COLUMNS);
+
+		// Migrate from JSON if needed
+		const jsonPath = join(homedir(), ".zero-core", "templates.json");
+		this.store.migrateFromJson(jsonPath, "templates");
+
+		// Merge built-in templates
+		this.mergeBuiltInTemplates();
 	}
 
-	private load(): TemplateStoreData {
-		if (existsSync(this.filePath)) {
-			try {
-				const data = JSON.parse(readFileSync(this.filePath, "utf-8"));
-				// Merge in new built-in templates that may have been added
-				const existingBuiltInNames = new Set(
-					data.templates.filter((t: PromptTemplate) => t.isBuiltIn).map((t: PromptTemplate) => t.name),
-				);
-				let dirty = false;
-				for (const builtin of BUILT_IN_TEMPLATES) {
-					if (!existingBuiltInNames.has(builtin.name)) {
-						data.templates.push(this.createRecord(builtin));
-						dirty = true;
-					}
-				}
-				if (dirty) this.save(data);
-				return data;
-			} catch {
-				// fall through
+	private mergeBuiltInTemplates(): void {
+		const existing = this.store.list();
+		const existingBuiltInNames = new Set(
+			existing.filter((t) => t.isBuiltIn).map((t) => t.name),
+		);
+		for (const builtin of BUILT_IN_TEMPLATES) {
+			if (!existingBuiltInNames.has(builtin.name)) {
+				this.store.create({ ...builtin, isBuiltIn: true } as any);
 			}
 		}
-
-		const templates = BUILT_IN_TEMPLATES.map((t) => this.createRecord(t));
-		const data: TemplateStoreData = { templates };
-		this.save(data);
-		return data;
-	}
-
-	private save(data: TemplateStoreData): void {
-		const dir = dirname(this.filePath);
-		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-		writeFileSync(this.filePath, JSON.stringify(data, null, 2), "utf-8");
-	}
-
-	private createRecord(
-		input: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">,
-	): PromptTemplate {
-		const now = new Date().toISOString();
-		return {
-			id: uuidv4(),
-			...input,
-			createdAt: now,
-			updatedAt: now,
-		};
 	}
 
 	list(): PromptTemplate[] {
-		return this.data.templates;
+		return this.store.list();
 	}
 
 	get(id: string): PromptTemplate | undefined {
-		return this.data.templates.find((t) => t.id === id);
+		return this.store.get(id);
 	}
 
 	create(input: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">): PromptTemplate {
-		const record = this.createRecord({ ...input, isBuiltIn: false });
-		this.data.templates.push(record);
-		this.save(this.data);
-		return record;
+		return this.store.create({ ...input, isBuiltIn: false } as any);
 	}
 
 	update(id: string, input: Partial<Omit<PromptTemplate, "id" | "createdAt">>): PromptTemplate {
-		const index = this.data.templates.findIndex((t) => t.id === id);
-		if (index === -1) throw new Error(`Template not found: ${id}`);
-		this.data.templates[index] = {
-			...this.data.templates[index],
-			...input,
-			updatedAt: new Date().toISOString(),
-		};
-		this.save(this.data);
-		return this.data.templates[index];
+		return this.store.update(id, input as any);
 	}
 
 	delete(id: string): void {
-		const t = this.data.templates.find((t) => t.id === id);
+		const t = this.store.get(id);
 		if (t?.isBuiltIn) throw new Error("Cannot delete built-in template");
-		this.data.templates = this.data.templates.filter((t) => t.id !== id);
-		this.save(this.data);
+		this.store.delete(id);
 	}
 
 	exportTemplate(id: string): string {
@@ -227,8 +204,7 @@ export class TemplateStore {
 		if (!parsed.name || !parsed.systemPrompt) {
 			throw new Error("Invalid template: name and systemPrompt are required");
 		}
-		// Assign a new ID to avoid conflicts
-		const record = this.createRecord({
+		return this.store.create({
 			name: parsed.name,
 			description: parsed.description ?? "",
 			icon: parsed.icon,
@@ -240,14 +216,11 @@ export class TemplateStore {
 			tags: parsed.tags ?? [],
 			sourceUrl: parsed.sourceUrl,
 			isBuiltIn: false,
-		});
-		this.data.templates.push(record);
-		this.save(this.data);
-		return record;
+		} as any);
 	}
 
 	findByNameAndSource(name: string, sourceUrl: string): PromptTemplate | undefined {
-		return this.data.templates.find(
+		return this.store.list().find(
 			(t) => t.name === name && t.sourceUrl === sourceUrl,
 		);
 	}

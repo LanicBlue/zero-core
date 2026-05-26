@@ -22,9 +22,10 @@ export async function startServer() {
 
 	const server = createServer(app);
 	const wss = new WebSocketServer({ server, path: "/ws" });
-	const agentStore = new AgentStore();
-	const providerStore = new ProviderStore();
 	const sessionDB = new SessionDB();
+	const db = sessionDB.getDb();
+	const agentStore = new AgentStore(db);
+	const providerStore = new ProviderStore(db);
 	let workspaceConfig = loadWorkspaceConfig();
 
 	// Ensure workspace dir exists
@@ -36,7 +37,7 @@ export async function startServer() {
 
 	// ─── Server-level Agent Service (survives UI disconnect) ──────
 
-	const agentService = createAgentService(workspaceConfig.workspaceDir);
+	const agentService = createAgentService(workspaceConfig.workspaceDir, sessionDB);
 
 	agentService.subscribe((event) => {
 		// Events are forwarded to WebSocket clients; persistence handled internally by agent-loop

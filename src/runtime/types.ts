@@ -132,7 +132,8 @@ export interface SessionConfig {
 	modelId: string;
 	providerName: string;
 	thinkingLevel?: string;
-	maxSteps: number;
+	maxSteps?: number;
+	timeoutSec?: number;
 	sessionId?: string;
 	toolPolicy: {
 		autoApprove?: string[];
@@ -158,7 +159,8 @@ export interface ToolExecutionContext {
 	agentId: string;
 	emit: (event: StreamEvent) => void;
 	delegateTask?: (task: string, options?: { model?: string; systemPrompt?: string }) => Promise<string>;
-		readScope?: "filesystem" | "workspace";
+	readScope?: "filesystem" | "workspace";
+	toolConfig?: Record<string, Record<string, any>>;
 }
 
 // ---------------------------------------------------------------------------

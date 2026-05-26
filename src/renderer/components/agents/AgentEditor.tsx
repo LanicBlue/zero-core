@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useAgentStore, type AgentRecord, type ModelInfo } from "../../store/agent-store.js";
 import { useAgentToolStore, type AgentToolEntry } from "../../store/agent-tool-store.js";
 import { useProviderStore } from "../../store/provider-store.js";
@@ -156,6 +156,7 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 	const pendingSectionRef = useRef<Section | null>(null);
+	const [expandedTool, setExpandedTool] = useState<string | null>(null);
 
 	useEffect(() => {
 		api().configGet().then((c: any) => {
@@ -236,6 +237,7 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 	}
 
 	// Prompt has unsaved changes?
+
 	const promptDirty = editingPrompt && draftPrompt !== savedPromptRef.current;
 
 	const startEditPrompt = () => {
@@ -243,53 +245,34 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		setEditingPrompt(true);
 	};
 
-	const cancelEditPrompt = () => {
-		if (promptDirty) {
-			setShowDiscardConfirm(true);
-			return;
-		}
-		setEditingPrompt(false);
-	};
 
 	const savePrompt = async () => {
 		setSaving(true);
-		const data = { ...form, systemPrompt: draftPrompt || undefined };
 		try {
 			if (agent) {
-				const updated = await update(agent.id, data);
+				const updated = await update(agent.id, { ...form, systemPrompt: draftPrompt || undefined });
 				savedPromptRef.current = draftPrompt;
 				onSaved(updated);
-			} else {
-				const created = await create(data as Omit<AgentRecord, "id" | "createdAt" | "updatedAt">);
-				savedPromptRef.current = draftPrompt;
-				onSaved(created);
 			}
+			savedPromptRef.current = draftPrompt;
 			setForm((f) => ({ ...f, systemPrompt: draftPrompt }));
 			setEditingPrompt(false);
 		} finally {
 			setSaving(false);
 		}
 	};
-
-	// Section switching with dirty check
-	const handleSectionChange = (s: Section) => {
-		if (section === "prompt" && promptDirty) {
-			pendingSectionRef.current = s;
-			setShowDiscardConfirm(true);
-			return;
+	const handleCreate = async () => {
+		if (!form.name.trim()) return;
+		setSaving(true);
+		try {
+			const created = await create({
+				...form,
+				systemPrompt: form.systemPrompt || undefined,
+			} as Omit<AgentRecord, "id" | "createdAt" | "updatedAt">);
+			onSaved(created);
+		} finally {
+			setSaving(false);
 		}
-		if (section === "prompt") setEditingPrompt(false);
-		setSection(s);
-	};
-
-	// Close with dirty check
-	const handleClose = () => {
-		if (section === "prompt" && promptDirty) {
-			pendingSectionRef.current = null;
-			setShowDiscardConfirm(true);
-			return;
-		}
-		onCancel();
 	};
 
 	const handleDiscardConfirm = () => {
@@ -305,15 +288,39 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		}
 	};
 
+	const handleSectionChange = (s: Section) => {
+		if (section === "prompt" && promptDirty) {
+			pendingSectionRef.current = s;
+			setShowDiscardConfirm(true);
+			return;
+		}
+		if (section === "prompt") setEditingPrompt(false);
+		setSection(s);
+	};
+
+	const handleClose = () => {
+		if (section === "prompt" && promptDirty) {
+			pendingSectionRef.current = null;
+			setShowDiscardConfirm(true);
+			return;
+		}
+		onCancel();
+	};
+
+
 	const set = <K extends keyof FormState>(key: K, val: FormState[K]) => {
 		const next = { ...form, [key]: val };
 		setForm(next);
 		if (agent) autoSave(next);
 	};
 
+	const DEFAULT_ENABLED_TOOLS = new Set(["bash", "read", "write", "edit", "grep", "find"]);
+
 	const toggleTool = (toolName: string) => {
 		const toolsMap = form.toolPolicy?.tools ?? {};
-		const enabled = toolsMap[toolName]?.enabled !== false;
+		const enabled = toolName in toolsMap
+			? toolsMap[toolName].enabled !== false
+			: DEFAULT_ENABLED_TOOLS.has(toolName);
 		const next: FormState = {
 			...form,
 			toolPolicy: {
@@ -343,6 +350,16 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		if (agent) autoSave(next);
 	};
 
+	function formatTokens(tokens: number): string {
+		if (tokens >= 1000) return ;
+		return ;
+	}
+
+	function formatTokens(tokens: number): string {
+		if (tokens >= 1000) return `~${(tokens / 1000).toFixed(1)}k`;
+		return `~${tokens}`;
+	}
+
 	const SECTIONS: { key: Section; label: string }[] = [
 		{ key: "basic", label: "基础设置" },
 		{ key: "prompt", label: "提示词设置" },
@@ -351,13 +368,43 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		{ key: "permissions", label: "权限模式" },
 	];
 
+	const promptTokenCount = useMemo(() => {
+			const text = form.systemPrompt ?? "";
+			return Math.ceil(text.length / 4);
+		}, [form.systemPrompt]);
+
+		const promptTokenEstimate = formatTokens(promptTokenCount);
+
+	const toolsTokenCount = useMemo(() => {
+			const toolsMap = form.toolPolicy?.tools;
+			const DEFAULT_ENABLED = new Set(["bash", "read", "write", "edit", "grep", "find"]);
+			let total = 0;
+			for (const t of tools) {
+				const enabled = toolsMap
+					? (t.name in toolsMap ? toolsMap[t.name].enabled : DEFAULT_ENABLED.has(t.name))
+					: DEFAULT_ENABLED.has(t.name);
+				if (enabled) {
+					total += (t.description ?? "").length;
+					total += t.name.length;
+				}
+			}
+			return Math.ceil(total / 4);
+		}, [form.toolPolicy?.tools, tools]);
+
+		const toolsTokenEstimate = formatTokens(toolsTokenCount);
+
+		const totalTokenEstimate = formatTokens(promptTokenCount + toolsTokenCount);
+
 	return (
 		<div className="agent-editor">
 			<div className="editor-header">
-				<h3>{agent ? agent.name : "New Agent"}</h3>
+				<h3>{agent ? agent.name : "New Agent"} <span className="token-badge">{totalTokenEstimate} tokens total</span></h3>
 				<div className="editor-header-actions">
 					{!agent && (
-						<button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
+						<>
+							<button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
+							<button type="button" className="btn-primary btn-sm" onClick={handleCreate} disabled={saving}>{saving ? "Creating..." : "Create"}</button>
+						</>
 					)}
 					{agent && onDelete && (
 						<button type="button" className="btn-danger" onClick={() => setShowDeleteConfirm(true)}>Delete</button>
@@ -386,7 +433,10 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 								<input value={form.name} onChange={(e) => set("name", e.target.value)} required />
 							</label>
 							<label>Workspace Directory
-								<input value={form.workspaceDir ?? ""} onChange={(e) => set("workspaceDir", e.target.value || undefined)} placeholder={defaultWorkspaceDisplay} />
+								<div className="workspace-dir-row">
+									<input value={form.workspaceDir ?? ""} onChange={(e) => set("workspaceDir", e.target.value || undefined)} placeholder={defaultWorkspaceDisplay} />
+									<button type="button" className="btn-ghost btn-sm" onClick={async () => { const dir = await api().dialogOpenDirectory(); if (dir) set("workspaceDir", dir); }}>...</button>
+								</div>
 							</label>
 							<label>Model
 								<select
@@ -429,17 +479,16 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 					{section === "prompt" && (
 						<div className="editor-section">
 							<div className="prompt-header">
-								<h4 className="section-title">System Prompt</h4>
+								<h4 className="section-title">System Prompt <span className="token-badge">{promptTokenEstimate} tokens</span></h4>
 							<div className="prompt-header-actions">
 								{!editingPrompt ? (
 									<>
-										{agent && <button type="button" className="btn-ghost btn-sm" onClick={() => setForm({ ...form, systemPrompt: defaultPrompt })}>Reset</button>}
 										<button type="button" className="btn-primary btn-sm" onClick={startEditPrompt}>Edit</button>
 									</>
 								) : (
 									<>
-										<button type="button" className="btn-ghost btn-sm" onClick={cancelEditPrompt}>Cancel</button>
-										<button type="button" className="btn-primary btn-sm" onClick={savePrompt} disabled={saving}>{saving ? "Saving..." : agent ? "Save" : "Create"}</button>
+										<button type="button" className="btn-ghost btn-sm" onClick={() => setDraftPrompt(savedPromptRef.current)}>Reset</button>
+										<button type="button" className="btn-primary btn-sm" onClick={savePrompt} disabled={saving}>{saving ? "Saving..." : "Save"}</button>
 									</>
 								)}
 							</div>
@@ -489,11 +538,11 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 
 					{section === "tools" && (
 						<div className="editor-section">
-							<h4 className="section-title">可用工具</h4>
-							<p className="section-desc">选择该 Agent 可以使用的工具（默认全部启用）</p>
+							<h4 className="section-title">可用工具 <span className="token-badge">{toolsTokenEstimate} tokens</span></h4>
+							<p className="section-desc">选择该 Agent 可以使用的工具</p>
 							{(() => {
 								const GROUP_LABELS: Record<string, string> = {
-									runtime: "运行时工具",
+									runtime: "基本工具",
 									web: "Web",
 									memory: "Knowledge Graph Memory",
 									thinking: "Sequential Thinking",
@@ -518,18 +567,25 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 													? (t.name in toolsMap ? toolsMap[t.name].enabled : DEFAULT_ENABLED.has(t.name))
 													: DEFAULT_ENABLED.has(t.name);
 												return (
-													<div key={t.name} className="tool-item">
-														<div className="tool-info">
-															<span className="tool-name">{t.name}</span>
-															<span className="tool-desc">{t.description}</span>
-															{t.mcpServerName && <span className="tool-mcp-badge">{t.mcpServerName}</span>}
+													<div key={t.name}>
+														<div className="tool-item">
+															<div className="tool-info" onClick={() => setExpandedTool(expandedTool === t.name ? null : t.name)} style={{ cursor: "pointer" }}>
+																<span className="tool-name">{t.name}</span>
+																<span className="tool-desc">{t.description}</span>
+																{t.mcpServerName && <span className="tool-mcp-badge">{t.mcpServerName}</span>}
+															</div>
+															<button
+																type="button"
+																title={enabled ? "Disable" : "Enable"}
+																className={`toggle-switch ${enabled ? "on" : ""}`}
+																onClick={() => toggleTool(t.name)}
+															/>
 														</div>
-														<button
-															type="button"
-															title={enabled ? "Disable" : "Enable"}
-															className={`toggle-switch ${enabled ? "on" : ""}`}
-															onClick={() => toggleTool(t.name)}
-														/>
+														{expandedTool === t.name && t.userDescription && (
+															<div className="tool-detail-panel">
+																<p>{t.userDescription}</p>
+															</div>
+														)}
 													</div>
 												);
 											})}
@@ -572,16 +628,6 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 				</div>
 			</div>
 
-			{showDeleteConfirm && (
-				<ConfirmModal
-					title="Delete Agent"
-					message={`Are you sure you want to delete "${agent?.name}"? This cannot be undone.`}
-					confirmLabel="Delete"
-					onConfirm={() => { setShowDeleteConfirm(false); onDelete?.(); }}
-					onCancel={() => setShowDeleteConfirm(false)}
-				/>
-			)}
-
 			{showDiscardConfirm && (
 				<ConfirmModal
 					title="Unsaved Changes"
@@ -589,6 +635,16 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 					confirmLabel="Discard"
 					onConfirm={handleDiscardConfirm}
 					onCancel={() => { setShowDiscardConfirm(false); pendingSectionRef.current = null; }}
+				/>
+			)}
+
+			{showDeleteConfirm && (
+				<ConfirmModal
+					title="Delete Agent"
+					message={`Are you sure you want to delete "${agent?.name}"? This cannot be undone.`}
+					confirmLabel="Delete"
+					onConfirm={() => { setShowDeleteConfirm(false); onDelete?.(); }}
+					onCancel={() => setShowDeleteConfirm(false)}
 				/>
 			)}
 		</div>

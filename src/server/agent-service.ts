@@ -65,10 +65,10 @@ class AgentService {
 	private agentStore: AgentStore | null = null;
 	private agentToolStore: import("./agent-tool-store.js").AgentToolStore | null = null;
 
-	constructor(workspaceDir: string) {
+	constructor(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore) {
 		this.workspaceDir = workspaceDir;
-		this.db = new SessionDB();
-		this.kbStore = new KbStore();
+		this.db = sessionDb ?? new SessionDB();
+		this.kbStore = kb ?? new KbStore(this.db.getDb());
 		this.kbDb = new KbDB();
 	}
 
@@ -342,8 +342,8 @@ class AgentService {
 	}
 }
 
-export function createAgentService(workspaceDir: string): AgentService {
-	return new AgentService(workspaceDir);
+export function createAgentService(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore): AgentService {
+	return new AgentService(workspaceDir, sessionDb, kb);
 }
 
 export function registerAgentToolEntries(agentToolStore: import("./agent-tool-store.js").AgentToolStore): void {

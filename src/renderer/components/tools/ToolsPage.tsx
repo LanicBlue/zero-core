@@ -116,6 +116,9 @@ export default function ToolsPage() {
 									)}
 								</div>
 								<p className="tools-page-detail-desc">{selectedTool.description}</p>
+								{selectedTool.userDescription && (
+									<p className="tools-page-detail-user-desc">{selectedTool.userDescription}</p>
+								)}
 							</div>
 
 							{selectedTool.configSchema?.length > 0 ? (

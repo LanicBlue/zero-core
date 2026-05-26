@@ -41,6 +41,16 @@ export interface ToolInfo {
 	name: string;
 	description: string;
 	group?: string;
+	source?: string;
+	mcpServerName?: string;
+	userDescription?: string;
+	configSchema?: any[];
+	meta?: {
+		isReadOnly: boolean;
+		isDestructive: boolean;
+		isConcurrencySafe: boolean;
+		requiresConfirmation: boolean;
+	};
 }
 
 const api = () => (window as any).api;

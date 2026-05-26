@@ -38,6 +38,9 @@ body {
   right: 0;
   bottom: 0;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* ─── Resizable Layout ─────────────────────────────── */
@@ -503,13 +506,17 @@ body {
 }
 
 .message-actions {
-  display: none;
+  display: flex;
   gap: 4px;
   padding: 4px 0 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
 }
 
 .message:hover .message-actions {
-  display: flex;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .msg-action-btn {
@@ -1295,7 +1302,8 @@ body {
   justify-content: space-between;
   margin-bottom: 6px;
 }
-.modal-detail-token-badge {
+.modal-detail-token-badge,
+.token-badge {
   font-size: 11px;
   color: var(--fg-subtle);
   background: var(--bg-canvas);
@@ -1356,6 +1364,8 @@ body {
   flex-direction: column;
   background: var(--bg-canvas);
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .agents-header {
@@ -1508,6 +1518,25 @@ body {
 .editor-section input:focus,
 .editor-section textarea:focus,
 .editor-section select:focus { border-color: var(--color-primary-fg); }
+
+.editor-section .workspace-dir-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.editor-section .workspace-dir-row input {
+  display: inline-block;
+  flex: 1;
+  width: auto;
+}
+.editor-section .workspace-dir-row button {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 6px 12px;
+  line-height: 1.2;
+  font-size: 12px;
+}
 
 .checkbox-label {
   display: flex !important;
@@ -1702,32 +1731,6 @@ body {
   tab-size: 2;
 }
 
-
-.workspace-dir-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.workspace-dir-input {
-  display: block;
-  width: 100%;
-  margin-top: 4px;
-  padding: 8px 10px;
-  background: var(--bg-canvas);
-  border: 1px solid var(--border-muted);
-  border-radius: 6px;
-  color: var(--fg-default);
-  font-size: 13px;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  outline: none;
-}
-.workspace-dir-input:focus { border-color: var(--color-primary-fg); }
-.workspace-dir-hint {
-  font-size: 11px;
-  color: var(--fg-faint);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  padding-left: 2px;
-}
 
 /* ─── Scrollbar ──────────────────────────────────── */
 
@@ -1930,6 +1933,30 @@ body {
 .tool-desc {
   font-size: 12px;
   color: var(--fg-subtle);
+}
+.tool-detail-panel {
+  padding: 8px 12px 12px;
+  border: 1px solid var(--border-default);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  background: var(--bg-subtle);
+  margin-top: -2px;
+  margin-bottom: 6px;
+}
+.tool-detail-panel p {
+  font-size: 12px;
+  color: var(--fg-subtle);
+  margin: 0;
+  line-height: 1.6;
+}
+.tools-page-detail-user-desc {
+  font-size: 13px;
+  color: var(--fg-default);
+  margin: 6px 0 0;
+  line-height: 1.6;
+  padding: 8px 12px;
+  background: var(--bg-subtle);
+  border-radius: 6px;
 }
 
 /* ─── Toggle Switch ──────────────────────────── */

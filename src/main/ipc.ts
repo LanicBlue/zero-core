@@ -1,4 +1,4 @@
-import { ipcMain, type BrowserWindow } from "electron";
+import { ipcMain, dialog, type BrowserWindow } from "electron";
 import { resolve, extname, join, dirname } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { readdirSync, readFileSync, statSync, existsSync, mkdirSync } from "node:fs";
@@ -25,6 +25,7 @@ let mcpStore: InstanceType<typeof import("../server/mcp-store").McpStore>;
 let mcpManager: typeof import("../server/mcp-manager").mcpManager;
 let kbStore: any;
 let kbDb: any;
+let sessionDb: InstanceType<typeof import("../server/session-db").SessionDB> | undefined;
 let workspaceConfig: { workspaceDir: string; defaultModel?: string; defaultProvider?: string };
 let saveWorkspaceConfig: (config: { workspaceDir?: string; defaultModel?: string; defaultProvider?: string }) => { workspaceDir: string; defaultModel?: string; defaultProvider?: string };
 let buildDefaultPrompt: typeof import("../core/default-prompt").buildDefaultPrompt;
@@ -83,14 +84,19 @@ async function loadCoreModules(): Promise<void> {
 	const mcpMod = await import(toFileURL(join(distServer, "mcp-store.js")));
 	const mcpMgrMod = await import(toFileURL(join(distServer, "mcp-manager.js")));
 
-	agentStore = new AgentStore();
-	providerStore = new ProviderStore();
-	templateStore = new tmplMod.TemplateStore();
-	mcpStore = new mcpMod.McpStore();
+	// Create shared SessionDB — all stores share the same SQLite connection
+	const { SessionDB } = await import(toFileURL(join(distServer, "session-db.js")));
+	sessionDb = new SessionDB();
+	const db = sessionDb.getDb();
+
+	agentStore = new AgentStore(db);
+	providerStore = new ProviderStore(db);
+	templateStore = new tmplMod.TemplateStore(db);
+	mcpStore = new mcpMod.McpStore(db);
 	mcpManager = mcpMgrMod.mcpManager;
 	const { KbStore } = await import(toFileURL(join(distServer, "kb-store.js")));
 	const { KbDB } = await import(toFileURL(join(distServer, "kb-db.js")));
-	kbStore = new KbStore();
+	kbStore = new KbStore(db);
 	kbDb = new KbDB();
 
 	mcpManager.reconnectEnabled(mcpStore.list()).catch(() => {});
@@ -104,12 +110,12 @@ async function loadCoreModules(): Promise<void> {
 	}
 
 	// Eagerly init agent-service so session/message queries work before first chat
-	agentService = createAgentService(workspaceConfig.workspaceDir);
+	agentService = createAgentService(workspaceConfig.workspaceDir, sessionDb, kbStore);
 	agentService.setAgentStore(agentStore);
 
 		// Load AgentToolStore
 		const atMod = await import(toFileURL(join(distServer, "agent-tool-store.js")));
-		agentToolStore = new atMod.AgentToolStore();
+		agentToolStore = new atMod.AgentToolStore(db);
 		agentService.setAgentToolStore(agentToolStore);
 	agentService.subscribe((event) => {
 		if (mainWindow && !mainWindow.isDestroyed()) {
@@ -145,7 +151,7 @@ function refreshAgentTools(): void {
 async function ensureAgentService(): Promise<NonNullable<typeof agentService>> {
 	if (agentService) return agentService;
 	// Fallback: should not happen since we eagerly init in loadCoreModules
-	agentService = createAgentService(workspaceConfig.workspaceDir);
+	agentService = createAgentService(workspaceConfig.workspaceDir, sessionDb, kbStore);
 	agentService.subscribe((event) => {
 		if (mainWindow && !mainWindow.isDestroyed()) {
 			mainWindow.webContents.send("agent:event", event);
@@ -163,7 +169,16 @@ export function registerIpc(win: BrowserWindow): void {
 
 	ipcMain.handle("app:ready", () => modulesReady);
 
-	ipcMain.handle("config:get", () => {
+		ipcMain.handle("dialog:openDirectory", async () => {
+			const result = await dialog.showOpenDialog(mainWindow, {
+				properties: ["openDirectory", "createDirectory"],
+				title: "Select Directory",
+			});
+			if (result.canceled || result.filePaths.length === 0) return undefined;
+			return result.filePaths[0];
+		});
+
+		ipcMain.handle("config:get", () => {
 		if (!modulesReady) return { workspaceDir: "", defaultPrompt: "", loading: true };
 		return { ...workspaceConfig, defaultPrompt: buildDefaultPrompt("Agent") };
 	});
@@ -314,6 +329,7 @@ export function registerIpc(win: BrowserWindow): void {
 		return toolRegistry.getAll().map((d: any) => ({
 			name: d.name,
 			description: d.description,
+			userDescription: d.userDescription,
 			group: d.category,
 			source: d.source,
 			mcpServerName: d.mcpServerName,

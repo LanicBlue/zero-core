@@ -1,7 +1,13 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { v4 as uuidv4 } from "uuid";
+import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
+import type Database from "better-sqlite3";
+import { log } from "../core/logger.js";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export interface ProviderModel {
 	id: string;
@@ -24,9 +30,9 @@ export interface Provider {
 	updatedAt: string;
 }
 
-interface ProviderStoreData {
-	providers: Provider[];
-}
+// ---------------------------------------------------------------------------
+// System providers (built-in defaults)
+// ---------------------------------------------------------------------------
 
 const SYSTEM_PROVIDERS: Omit<Provider, "id" | "createdAt" | "updatedAt">[] = [
 	{
@@ -83,94 +89,89 @@ const SYSTEM_PROVIDERS: Omit<Provider, "id" | "createdAt" | "updatedAt">[] = [
 	},
 ];
 
+// ---------------------------------------------------------------------------
+// Column definitions
+// ---------------------------------------------------------------------------
+
+const COLUMNS: ColumnDef[] = [
+	{ key: "name" },
+	{ key: "type" },
+	{ key: "apiKey", column: "api_key" },
+	{ key: "baseUrl", column: "base_url" },
+	{ key: "models", json: true },
+	{ key: "enabled", bool: true },
+	{ key: "isSystem", column: "is_system", bool: true },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+// ---------------------------------------------------------------------------
+// ProviderStore
+// ---------------------------------------------------------------------------
+
 export class ProviderStore {
-	private filePath: string;
-	private data: ProviderStoreData;
+	private store: SqliteStore<Provider>;
+	private db: Database.Database;
 
-	constructor(filePath?: string) {
-		this.filePath = filePath ?? join(homedir(), ".zero-core", "providers.json");
-		this.data = this.load();
+	constructor(db: Database.Database) {
+		this.db = db;
+		this.store = new SqliteStore<Provider>(db, "providers", COLUMNS);
+
+		// Migrate from JSON first — before creating system providers
+		const jsonPath = join(homedir(), ".zero-core", "providers.json");
+		this.store.migrateFromJson(jsonPath, "providers", (raw: any) => ({
+			...raw,
+			models: raw.models ?? [],
+		}));
+
+		// Then merge system providers (creates missing ones, adds new models)
+		this.mergeSystemProviders();
 	}
 
-	private load(): ProviderStoreData {
-		if (existsSync(this.filePath)) {
-			try {
-				const data = JSON.parse(readFileSync(this.filePath, "utf-8"));
-				// Merge in any new system providers
-				this.mergeSystemProviders(data);
-				return data;
-			} catch {
-				// fall through
-			}
-		}
-
-		const providers = SYSTEM_PROVIDERS.map((p) => this.createRecord(p));
-		const data: ProviderStoreData = { providers };
-		this.save(data);
-		return data;
-	}
-
-	private mergeSystemProviders(data: ProviderStoreData): void {
-		let dirty = false;
+	private mergeSystemProviders(): void {
+		const existing = this.store.list();
 		for (const sys of SYSTEM_PROVIDERS) {
-			const existing = data.providers.find((p) => p.isSystem && p.name === sys.name);
-			if (!existing) {
-				data.providers.push(this.createRecord(sys));
-				dirty = true;
+			const match = existing.find((p) => p.isSystem && p.name === sys.name);
+			if (!match) {
+				this.store.create({
+					...sys,
+					isSystem: true,
+				} as any);
 			} else {
-				// Merge new models into existing provider
+				// Merge new models
+				let dirty = false;
+				const models = [...match.models];
 				for (const model of sys.models) {
-					if (!existing.models.some((m) => m.id === model.id)) {
-						existing.models.push(model);
+					if (!models.some((m) => m.id === model.id)) {
+						models.push(model);
 						dirty = true;
 					}
 				}
+				if (dirty) {
+					this.store.update(match.id, { models } as any);
+				}
 			}
 		}
-		if (dirty) this.save(data);
-	}
-
-	private save(data: ProviderStoreData): void {
-		const dir = join(this.filePath, "..");
-		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-		writeFileSync(this.filePath, JSON.stringify(data, null, 2), "utf-8");
-	}
-
-	private createRecord(input: Omit<Provider, "id" | "createdAt" | "updatedAt">): Provider {
-		const now = new Date().toISOString();
-		return { id: uuidv4(), ...input, createdAt: now, updatedAt: now };
 	}
 
 	list(): Provider[] {
-		return this.data.providers;
+		return this.store.list();
 	}
 
 	get(id: string): Provider | undefined {
-		return this.data.providers.find((p) => p.id === id);
+		return this.store.get(id);
 	}
 
 	create(input: Omit<Provider, "id" | "createdAt" | "updatedAt">): Provider {
-		const record = this.createRecord(input);
-		this.data.providers.push(record);
-		this.save(this.data);
-		return record;
+		return this.store.create(input as any);
 	}
 
 	update(id: string, input: Partial<Omit<Provider, "id" | "createdAt">>): Provider {
-		const index = this.data.providers.findIndex((p) => p.id === id);
-		if (index === -1) throw new Error(`Provider not found: ${id}`);
-		this.data.providers[index] = {
-			...this.data.providers[index],
-			...input,
-			updatedAt: new Date().toISOString(),
-		};
-		this.save(this.data);
-		return this.data.providers[index];
+		return this.store.update(id, input as any);
 	}
 
 	delete(id: string): void {
-		this.data.providers = this.data.providers.filter((p) => p.id !== id);
-		this.save(this.data);
+		this.store.delete(id);
 	}
 
 	addModel(providerId: string, model: ProviderModel): Provider {
@@ -180,17 +181,13 @@ export class ProviderStore {
 			throw new Error(`Model ${model.id} already exists`);
 		}
 		provider.models.push(model);
-		provider.updatedAt = new Date().toISOString();
-		this.save(this.data);
-		return provider;
+		return this.store.update(providerId, { models: provider.models } as any);
 	}
 
 	removeModel(providerId: string, modelId: string): Provider {
 		const provider = this.get(providerId);
 		if (!provider) throw new Error(`Provider not found: ${providerId}`);
 		provider.models = provider.models.filter((m) => m.id !== modelId);
-		provider.updatedAt = new Date().toISOString();
-		this.save(this.data);
-		return provider;
+		return this.store.update(providerId, { models: provider.models } as any);
 	}
 }

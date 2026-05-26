@@ -4,6 +4,7 @@ const api = {
 	// ─── Config ──────────────────────────────────────
 	configGet: () => ipcRenderer.invoke("config:get"),
 	configUpdate: (data: { workspaceDir: string }) => ipcRenderer.invoke("config:update", data),
+		dialogOpenDirectory: () => ipcRenderer.invoke("dialog:openDirectory"),
 
 	// ─── Agents ──────────────────────────────────────
 	agentsList: () => ipcRenderer.invoke("agents:list"),

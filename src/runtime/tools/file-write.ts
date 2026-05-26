@@ -6,6 +6,7 @@ import { buildTool } from "./tool-factory.js";
 export const fileWriteTool = buildTool({
 	name: "write",
 	description: "Create or overwrite a file with the given content. Always restricted to workspace.",
+	userDescription: "创建或覆盖文件。自动创建父目录。始终限制在工作目录内。",
 	meta: { category: "runtime", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
 	inputSchema: z.object({
 		path: z.string().describe("File path to write"),

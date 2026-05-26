@@ -1,117 +1,100 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { v4 as uuidv4 } from "uuid";
+import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
+import type Database from "better-sqlite3";
 
 // ---------------------------------------------------------------------------
-// Agent Tool Entry — unified config for internal/external agent tools
+// Agent Tool Entry
 // ---------------------------------------------------------------------------
 
 export interface AgentToolEntry {
 	id: string;
-	name: string;            // tool name (kebab-case)
-	description?: string;    // LLM-visible tool description
+	name: string;
+	description?: string;
 	type: "internal" | "external";
 	enabled: boolean;
-	// internal: reference a local agent
 	agentId?: string;
-	// external transport
 	transport?: "cli" | "http";
-	// cli fields
-	command?: string;        // e.g. "claude"
-	argsTemplate?: string;   // e.g. "--print {{task}}"
-	// http fields
+	command?: string;
+	argsTemplate?: string;
 	url?: string;
 	method?: string;
 	headers?: Record<string, string>;
-	bodyTemplate?: string;   // JSON template with {{task}}
-	responsePath?: string;   // dot-path to extract from response
-	// common
+	bodyTemplate?: string;
+	responsePath?: string;
 	timeout?: number;
 	createdAt: string;
 	updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
-// Storage
+// Column definitions
 // ---------------------------------------------------------------------------
 
-interface AgentToolStoreData {
-	entries: AgentToolEntry[];
-}
+const COLUMNS: ColumnDef[] = [
+	{ key: "name" },
+	{ key: "description" },
+	{ key: "type" },
+	{ key: "enabled", bool: true },
+	{ key: "agentId", column: "agent_id" },
+	{ key: "transport" },
+	{ key: "command" },
+	{ key: "argsTemplate", column: "args_template" },
+	{ key: "url" },
+	{ key: "method" },
+	{ key: "headers", json: true },
+	{ key: "bodyTemplate", column: "body_template" },
+	{ key: "responsePath", column: "response_path" },
+	{ key: "timeout" },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+// ---------------------------------------------------------------------------
+// AgentToolStore
+// ---------------------------------------------------------------------------
 
 export class AgentToolStore {
-	private filePath: string;
-	private data: AgentToolStoreData;
+	private store: SqliteStore<AgentToolEntry>;
 
-	constructor(filePath?: string) {
-		this.filePath = filePath ?? join(homedir(), ".zero-core", "agent-tools.json");
-		this.data = this.load();
-	}
+	constructor(db: Database.Database) {
+		this.store = new SqliteStore<AgentToolEntry>(db, "agent_tools", COLUMNS);
 
-	private load(): AgentToolStoreData {
-		if (existsSync(this.filePath)) {
-			try {
-				return JSON.parse(readFileSync(this.filePath, "utf-8"));
-			} catch { /* fall through */ }
-		}
-		const empty: AgentToolStoreData = { entries: [] };
-		this.save(empty);
-		return empty;
-	}
-
-	private save(data: AgentToolStoreData): void {
-		const dir = join(this.filePath, "..");
-		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-		writeFileSync(this.filePath, JSON.stringify(data, null, 2), "utf-8");
+		// Migrate from JSON if needed
+		const jsonPath = join(homedir(), ".zero-core", "agent-tools.json");
+		this.store.migrateFromJson(jsonPath, "entries");
 	}
 
 	list(): AgentToolEntry[] {
-		return this.data.entries;
+		return this.store.list();
 	}
 
 	get(id: string): AgentToolEntry | undefined {
-		return this.data.entries.find((e) => e.id === id);
+		return this.store.get(id);
 	}
 
 	getByAgentId(agentId: string): AgentToolEntry | undefined {
-		return this.data.entries.find((e) => e.type === "internal" && e.agentId === agentId);
+		return this.store.list().find((e) => e.type === "internal" && e.agentId === agentId);
 	}
 
 	create(input: Omit<AgentToolEntry, "id" | "createdAt" | "updatedAt">): AgentToolEntry {
-		const now = new Date().toISOString();
-		const entry: AgentToolEntry = {
-			id: uuidv4(),
-			...input,
-			createdAt: now,
-			updatedAt: now,
-		};
-		this.data.entries.push(entry);
-		this.save(this.data);
-		return entry;
+		return this.store.create(input as any);
 	}
 
 	update(id: string, input: Partial<Omit<AgentToolEntry, "id" | "createdAt">>): AgentToolEntry {
-		const index = this.data.entries.findIndex((e) => e.id === id);
-		if (index === -1) throw new Error(`Agent tool not found: ${id}`);
-		this.data.entries[index] = {
-			...this.data.entries[index],
-			...input,
-			updatedAt: new Date().toISOString(),
-		};
-		this.save(this.data);
-		return this.data.entries[index];
+		return this.store.update(id, input as any);
 	}
 
 	delete(id: string): void {
-		this.data.entries = this.data.entries.filter((e) => e.id !== id);
-		this.save(this.data);
+		this.store.delete(id);
 	}
 
 	deleteByAgentId(agentId: string): void {
-		this.data.entries = this.data.entries.filter(
-			(e) => !(e.type === "internal" && e.agentId === agentId),
+		const entries = this.store.list().filter(
+			(e) => e.type === "internal" && e.agentId === agentId,
 		);
-		this.save(this.data);
+		for (const e of entries) {
+			this.store.delete(e.id);
+		}
 	}
 }

@@ -1,31 +1,28 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { v4 as uuidv4 } from "uuid";
+import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
+import type Database from "better-sqlite3";
 import { buildDefaultPrompt } from "../core/default-prompt.js";
+import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
-// Agent Record — replaces PersonaRecord
+// Agent Record
 // ---------------------------------------------------------------------------
 
 export interface AgentRecord {
 	id: string;
-	// ─── Identity ────────────────────────────────
 	name: string;
-	// ─── Runtime config ──────────────────────────
 	workspaceDir?: string;
 	model?: string;
 	provider?: string;
 	thinkingLevel?: string;
-	// ─── Context config (段落开关) ──────────────
 	contextConfig?: {
 		useDeviceContext?: boolean;
 		useGuidelines?: boolean;
 		useMemoryContext?: boolean;
 	};
-	// ─── System Prompt ───────────────────────────
 	systemPrompt?: string;
-	// ─── Tool Policy ─────────────────────────────
 	toolPolicy?: {
 		autoApprove?: string[];
 		blockedTools?: string[];
@@ -34,185 +31,143 @@ export interface AgentRecord {
 		resultMaxTokens?: number;
 		readScope?: "filesystem" | "workspace";
 	};
-	// ─── Skill Policy ────────────────────────────
 	skillPolicy?: {
 		enabledSkills?: string[];
 	};
-	// ─── Metadata ────────────────────────────────
 	createdAt: string;
 	updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
-// Storage
+// Column definitions
 // ---------------------------------------------------------------------------
 
-interface AgentStoreData {
-	agents: AgentRecord[];
-}
+const COLUMNS: ColumnDef[] = [
+	{ key: "name" },
+	{ key: "workspaceDir", column: "workspace_dir" },
+	{ key: "model" },
+	{ key: "provider" },
+	{ key: "thinkingLevel", column: "thinking_level" },
+	{ key: "contextConfig", column: "context_config", json: true },
+	{ key: "systemPrompt", column: "system_prompt" },
+	{ key: "toolPolicy", column: "tool_policy", json: true },
+	{ key: "skillPolicy", column: "skill_policy", json: true },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 const DEFAULT_AGENT: Omit<AgentRecord, "id" | "createdAt" | "updatedAt"> = {
 	name: "Zero",
 	systemPrompt: buildDefaultPrompt("Zero"),
 };
 
+function normalizeWorkspaceDir(dir: string | undefined): string | undefined {
+	if (!dir) return join(homedir(), ".zero-core", "workspace");
+	let d = dir.startsWith("~") ? dir.replace(/^~/, homedir()) : dir;
+	const sep = process.platform === "win32" ? "\\" : "/";
+	d = d.replace(/[/\\]+/g, sep);
+	return d;
+}
+
+// ---------------------------------------------------------------------------
+// AgentStore
+// ---------------------------------------------------------------------------
+
 export class AgentStore {
-	private filePath: string;
-	private data: AgentStoreData;
+	private store: SqliteStore<AgentRecord>;
+	private db: Database.Database;
 
-	constructor(filePath?: string) {
-		this.filePath = filePath ?? join(homedir(), ".zero-core", "agents.json");
-		this.data = this.load();
-	}
+	constructor(db: Database.Database) {
+		this.db = db;
+		this.store = new SqliteStore<AgentRecord>(db, "agents", COLUMNS);
 
-	private load(): AgentStoreData {
-		// Migration: personas.json → agents.json
+		// Migrate from JSON: agents.json
+		const jsonPath = join(homedir(), ".zero-core", "agents.json");
+		this.store.migrateFromJson(jsonPath, "agents", (raw: any) => {
+			const normalized = { ...raw };
+			normalized.workspaceDir = normalizeWorkspaceDir(raw.workspaceDir);
+			// Migrate old persona fields → systemPrompt
+			if (!normalized.systemPrompt && (raw.role || raw.traits || raw.customInstructions)) {
+				const parts: string[] = [];
+				if (normalized.name && raw.role) parts.push("Your name is " + normalized.name + ". " + raw.role);
+				if ((raw.traits as string[])?.length) parts.push("Personality traits: " + (raw.traits as string[]).join(", "));
+				if ((raw.expertise as string[])?.length) parts.push("Areas of expertise: " + (raw.expertise as string[]).join(", "));
+				if (raw.communicationStyle) parts.push("Communication style: " + raw.communicationStyle);
+				if (raw.customInstructions) parts.push(raw.customInstructions);
+				normalized.systemPrompt = parts.join("\n") || buildDefaultPrompt(normalized.name || "Agent");
+			}
+			return normalized;
+		});
+
+		// Also migrate from personas.json if agents.json didn't exist
 		const personaPath = join(homedir(), ".zero-core", "personas.json");
-		if (!existsSync(this.filePath) && existsSync(personaPath)) {
+		if (!existsSync(jsonPath) && existsSync(personaPath) && !existsSync(jsonPath + ".migrated.bak")) {
 			this.migrateFromPersonas(personaPath);
 		}
 
-		if (existsSync(this.filePath)) {
-			try {
-				const data = JSON.parse(readFileSync(this.filePath, "utf-8"));
-				// Backfill workspaceDir for agents created before the field existed
-				let dirty = false;
-				const defaultWs = join(homedir(), ".zero-core", "workspace");
-				for (const a of data.agents) {
-					if (!a.workspaceDir) {
-						a.workspaceDir = defaultWs;
-						dirty = true;
-					} else if (a.workspaceDir.startsWith("~")) {
-						a.workspaceDir = a.workspaceDir.replace(/^~/, require("os").homedir());
-						dirty = true;
-					}
-					// Normalize mixed path separators
-					if (a.workspaceDir) {
-						const sep = process.platform === "win32" ? "\\" : "/";
-						const normalized = a.workspaceDir.replace(/[/\\]+/g, sep);
-						if (normalized !== a.workspaceDir) {
-							a.workspaceDir = normalized;
-							dirty = true;
-						}
-					}
-					// Migrate old persona fields → systemPrompt
-					const hasOldFields = a.role || a.traits || a.expertise || a.communicationStyle || a.customInstructions;
-					if (!a.systemPrompt && hasOldFields) {
-						const parts: string[] = [];
-						if (a.name && a.role) parts.push("Your name is " + a.name + ". " + a.role);
-						else if (a.role) parts.push(a.role as string);
-						if ((a.traits as string[])?.length) parts.push("Personality traits: " + (a.traits as string[]).join(", "));
-						if ((a.expertise as string[])?.length) parts.push("Areas of expertise: " + (a.expertise as string[]).join(", "));
-						if (a.communicationStyle) parts.push("Communication style: " + a.communicationStyle);
-						if (a.customInstructions) parts.push(a.customInstructions as string);
-						a.systemPrompt = parts.join("\n") || buildDefaultPrompt(a.name || "Agent");
-					}
-					if (hasOldFields) {
-						delete a.role;
-						delete a.traits;
-						delete a.expertise;
-						delete a.communicationStyle;
-						delete a.customInstructions;
-						dirty = true;
-					}
-				}
-				if (dirty) this.save(data);
-				return data;
-			} catch {
-				// fall through
-			}
+		// Ensure at least one default agent exists
+		if (this.store.list().length === 0) {
+			const defaultWs = join(homedir(), ".zero-core", "workspace");
+			this.store.create({ ...DEFAULT_AGENT, workspaceDir: defaultWs } as any);
 		}
-
-		const defaultData: AgentStoreData = {
-			agents: [this.createRecord(DEFAULT_AGENT)],
-		};
-		this.save(defaultData);
-		return defaultData;
 	}
 
 	private migrateFromPersonas(personaPath: string): void {
 		try {
 			const raw = JSON.parse(readFileSync(personaPath, "utf-8"));
 			const personas: Record<string, unknown>[] = raw.personas ?? raw.agents ?? [];
-			const agents: AgentRecord[] = personas.map((p) => {
+			for (const p of personas) {
 				const parts: string[] = [];
 				if (p.name && p.role) parts.push("Your name is " + p.name + ". " + p.role);
 				if ((p.traits as string[])?.length) parts.push("Personality traits: " + (p.traits as string[]).join(", "));
 				if ((p.expertise as string[])?.length) parts.push("Areas of expertise: " + (p.expertise as string[]).join(", "));
 				if (p.communicationStyle) parts.push("Communication style: " + p.communicationStyle);
 				if (p.customInstructions) parts.push(p.customInstructions as string);
-				return {
+
+				const record = {
 					id: p.id as string,
 					name: p.name as string,
 					systemPrompt: parts.join("\n") || undefined,
-					workspaceDir: (p.workspaceDir as string) || join(homedir(), ".zero-core", "workspace"),
+					workspaceDir: normalizeWorkspaceDir(p.workspaceDir as string),
 					createdAt: p.createdAt as string,
 					updatedAt: p.updatedAt as string,
 				};
-			});
-			this.save({ agents });
-			// Rename old file as backup
+				this.store.create(record as any);
+			}
 			try { renameSync(personaPath, personaPath + ".bak"); } catch { /* keep both */ }
-			console.log(`[agent-store] Migrated ${agents.length} persona(s) to agents.json`);
+			log.db(`Migrated ${personas.length} persona(s) to agents table`);
 		} catch (err) {
-			console.error("[agent-store] Migration failed:", (err as Error).message);
+			log.error("agent-store", "Migration failed:", (err as Error).message);
 		}
-	}
-
-	private save(data: AgentStoreData): void {
-		const dir = join(this.filePath, "..");
-		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-		writeFileSync(this.filePath, JSON.stringify(data, null, 2), "utf-8");
-	}
-
-	private createRecord(
-		input: Omit<AgentRecord, "id" | "createdAt" | "updatedAt">,
-	): AgentRecord {
-		const now = new Date().toISOString();
-		const raw = input.workspaceDir || join(homedir(), ".zero-core", "workspace");
-		let workspaceDir = raw.startsWith("~") ? raw.replace(/^~/, homedir()) : raw;
-		const sep = process.platform === "win32" ? "\\" : "/";
-		workspaceDir = workspaceDir.replace(/[/\\]+/g, sep);
-		return { id: uuidv4(), ...input, workspaceDir, createdAt: now, updatedAt: now };
 	}
 
 	list(): AgentRecord[] {
-		return this.data.agents;
+		return this.store.list();
 	}
 
 	get(id: string): AgentRecord | undefined {
-		return this.data.agents.find((a) => a.id === id);
+		return this.store.get(id);
 	}
 
 	create(input: Omit<AgentRecord, "id" | "createdAt" | "updatedAt">): AgentRecord {
-		const record = this.createRecord(input);
-		this.data.agents.push(record);
-		this.save(this.data);
-		return record;
+		const normalized = { ...input };
+		normalized.workspaceDir = normalizeWorkspaceDir(normalized.workspaceDir);
+		return this.store.create(normalized as any);
 	}
 
 	update(id: string, input: Partial<Omit<AgentRecord, "id" | "createdAt">>): AgentRecord {
-		const index = this.data.agents.findIndex((a) => a.id === id);
-		if (index === -1) throw new Error(`Agent not found: ${id}`);
 		const patched = { ...input };
-		if (patched.workspaceDir?.startsWith("~")) {
-			patched.workspaceDir = patched.workspaceDir.replace(/^~/, homedir());
+		if (patched.workspaceDir !== undefined) {
+			patched.workspaceDir = normalizeWorkspaceDir(patched.workspaceDir);
 		}
-		if (patched.workspaceDir) {
-			const sep = process.platform === "win32" ? "\\" : "/";
-			patched.workspaceDir = patched.workspaceDir.replace(/[/\\]+/g, sep);
-		}
-		this.data.agents[index] = {
-			...this.data.agents[index],
-			...patched,
-			updatedAt: new Date().toISOString(),
-		};
-		this.save(this.data);
-		return this.data.agents[index];
+		return this.store.update(id, patched as any);
 	}
 
 	delete(id: string): void {
-		this.data.agents = this.data.agents.filter((a) => a.id !== id);
-		this.save(this.data);
+		this.store.delete(id);
 	}
 }

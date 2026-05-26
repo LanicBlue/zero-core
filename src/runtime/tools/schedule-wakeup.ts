@@ -10,6 +10,7 @@ export const scheduleWakeupTool = buildTool({
 	description:
 		"Schedule a delayed wake-up to resume work after waiting for external state changes " +
 		"(CI runs, deployments, remote builds). The agent will be re-invoked with the given prompt after the delay.",
+	userDescription: "调度延迟唤醒，等待外部状态变化（如 CI 构建、部署完成）后恢复工作。延迟范围 60-3600 秒。",
 	meta: { category: "interaction", isReadOnly: true },
 	inputSchema: z.object({
 		delaySeconds: z.number().min(60).max(3600).describe("Seconds until wake-up (60-3600)"),

@@ -13,7 +13,7 @@ import { webSearchTool } from "./web-search.js";
 import { askUserTool } from "./ask-user.js";
 import { todoWriteTool } from "./todo-write.js";
 import { scheduleWakeupTool } from "./schedule-wakeup.js";
-import { getToolMeta, getToolName, getToolConfigSchema } from "./tool-factory.js";
+import { getToolMeta, getToolName, getToolConfigSchema, getToolUserDescription } from "./tool-factory.js";
 import { createFetchTools } from "../../server/mcp-servers/fetch-tools.js";
 import { createMemoryTools } from "../../server/mcp-servers/memory-tools.js";
 import { createSequentialThinkingTools } from "../../server/mcp-servers/sequential-thinking-tools.js";
@@ -42,7 +42,7 @@ const ALL_TOOLS: Record<string, any> = {
 	edit: fileEditTool,
 	grep: grepTool,
 	find: findTool,
-	delegate: delegateTool,
+	subagent: delegateTool,
 	web_search: webSearchTool,
 	ask_user: askUserTool,
 	todo_write: todoWriteTool,
@@ -52,17 +52,10 @@ const ALL_TOOLS: Record<string, any> = {
 
 // Tools that require special context capabilities
 const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> = {
-	delegate: (ctx) => !!ctx.delegateTask,
+	subagent: (ctx) => !!ctx.delegateTask,
 };
 
-function wrapDisabledTool(name: string, originalDescription: string) {
-	return tool({
-		description: `[DISABLED] ${originalDescription} — This tool is not enabled for this agent.`,
-		inputSchema: z.object({ _: z.string().optional() }),
-		execute: async () =>
-			`Tool "${name}" is not enabled for this agent. You can ask the user to enable it in agent settings if needed.`,
-	});
-}
+
 
 
 // ---------------------------------------------------------------------------
@@ -73,10 +66,12 @@ export function registerRuntimeTools(): void {
 	for (const [name, def] of Object.entries(ALL_TOOLS)) {
 		const meta = getToolMeta(def);
 		const configSchema = getToolConfigSchema(def);
+		const userDescription = getToolUserDescription(def);
 		const desc = (def as any)?.description ?? "";
 		toolRegistry.register({
 			name,
 			description: typeof desc === "string" ? desc : "",
+			userDescription,
 			category: meta?.category ?? "runtime",
 			source: "runtime",
 			configSchema,
@@ -134,9 +129,6 @@ export function buildToolsSet(
 
 		if (isEnabled(name)) {
 			tools[name] = def;
-		} else {
-			const desc = (def as any)?.description ?? name;
-			tools[name] = wrapDisabledTool(name, typeof desc === "string" ? desc : "");
 		}
 	}
 
