@@ -1,0 +1,77 @@
+import { z } from "zod";
+import { buildTool } from "./tool-factory.js";
+import type { TaskInfo } from "../types.js";
+
+function formatTask(t: TaskInfo): string {
+	const elapsed = t.completedAt
+		? Math.round((t.completedAt - t.startedAt) / 1000) + "s"
+		: Math.round((Date.now() - t.startedAt) / 1000) + "s";
+	const statusIcon = { running: "●", completed: "✓", failed: "✗", killed: "⊘" }[t.status];
+	const typeLabel = t.type === "bash" ? "bash" : "subagent";
+
+	let line = `${statusIcon} [${t.id}] ${typeLabel}  ${t.status}  step:${t.step}  ${elapsed}`;
+	if (t.currentTool) line += `  tool:${t.currentTool}`;
+	line += `\n    ${t.task}`;
+	if (t.error) line += `\n    error: ${t.error}`;
+	return line;
+}
+
+export const taskListTool = buildTool({
+	name: "task_list",
+	description:
+		"List all tasks dispatched by this agent. Returns running and completed background tasks (subagents and bash commands) with their status, progress, and results.",
+	userDescription: "列出当前 agent 派发的所有后台任务。显示每个任务的状态、执行进度和结果摘要。支持按状态过滤。",
+	meta: { category: "task", isReadOnly: true, isConcurrencySafe: true, isDestructive: false },
+	configSchema: [
+		{
+			key: "max_completed",
+			type: "number",
+			label: "Max Completed",
+			default: 5,
+			description: "列表中显示的最近已完成任务数量",
+		},
+	],
+	inputSchema: z.object({
+		filter: z.enum(["all", "running", "completed"]).optional().describe("Filter by status: all (default), running, or completed"),
+	}),
+	execute: async (input, ctx) => {
+		if (!ctx.listTasks) {
+			return "Error: Task listing is not available in this context.";
+		}
+
+		const config = ctx.toolConfig?.task_list ?? {};
+		const maxCompleted = config.max_completed ?? 5;
+		const filter = input.filter ?? "all";
+		const tasks = ctx.listTasks(filter === "all" ? undefined : filter);
+
+		if (!tasks.length) {
+			return filter === "running"
+				? "No running tasks."
+				: "No tasks.";
+		}
+
+		const running = tasks.filter((t) => t.status === "running");
+		const completed = tasks.filter((t) => t.status !== "running");
+
+		const lines: string[] = [];
+
+		if (running.length) {
+			lines.push(`Running (${running.length}):`);
+			lines.push(...running.map(formatTask));
+		}
+
+		if (completed.length) {
+			if (lines.length) lines.push("");
+			const recent = completed.reverse().slice(0, maxCompleted);
+			const remaining = completed.length - recent.length;
+			lines.push(`Completed (showing ${recent.length}${remaining ? ` of ${completed.length}` : ""}):`);
+			lines.push(...recent.map(formatTask));
+			if (remaining) lines.push(`  ... and ${remaining} older tasks`);
+		}
+
+		lines.push("");
+		lines.push(`Total: ${tasks.length} tasks, ${running.length} running`);
+
+		return lines.join("\n");
+	},
+});

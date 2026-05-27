@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 
 export type ToolCategory =
 	| "runtime"
+	| "task"
 	| "web"
 	| "memory"
 	| "thinking"

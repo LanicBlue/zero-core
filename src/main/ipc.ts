@@ -89,6 +89,10 @@ async function loadCoreModules(): Promise<void> {
 	sessionDb = new SessionDB();
 	const db = sessionDb.getDb();
 
+		// Expose SessionDB for tools that need direct db access
+		const { setSessionDB } = await import(toFileURL(join(__dirname, "../../dist/runtime/db-access.js")));
+		setSessionDB(sessionDb);
+
 	agentStore = new AgentStore(db);
 	providerStore = new ProviderStore(db);
 	templateStore = new tmplMod.TemplateStore(db);

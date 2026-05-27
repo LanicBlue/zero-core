@@ -1,4 +1,4 @@
-import { streamText, stepCountIs } from "ai";
+import { streamText } from "ai";
 import type {
 	StreamEvent,
 	RuntimeCallbacks,
@@ -13,10 +13,11 @@ import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
 import { buildToolsSet, buildToolPolicyDescription } from "./tools/index.js";
 import { buildAgentTools } from "./tools/agent-tool.js";
-import type { SessionDB } from "../server/session-db.js";
 import { log } from "../core/logger.js";
+import { toolRegistry } from "../core/tool-registry.js";
 import { classifyError, isTransientError, userFriendlyMessage, parseThinkingTags, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
 import { TaskRegistry } from "./task-registry.js";
+import { getSessionDB } from "./db-access.js";
 
 // ---------------------------------------------------------------------------
 // AgentLoop
@@ -27,7 +28,6 @@ export class AgentLoop implements AgentRuntime {
 	private config: SessionConfig;
 	private providers: RuntimeProviderConfig[];
 	private callbacks: RuntimeCallbacks;
-	private db: SessionDB | null = null;
 	private toolContext: ToolExecutionContext;
 	private taskRegistry: TaskRegistry;
 	private abortController: AbortController | null = null;
@@ -43,15 +43,13 @@ export class AgentLoop implements AgentRuntime {
 		config: SessionConfig,
 		providers: RuntimeProviderConfig[],
 		callbacks: RuntimeCallbacks,
-		db?: SessionDB,
 	) {
 		this.config = config;
 		this.providers = providers;
 		this.callbacks = callbacks;
-		this.db = db ?? null;
 
 		const contextWindow = getContextWindow(providers, config.providerName, config.modelId);
-		this.session = new AgentSession(config.systemPrompt, contextWindow, db, config.sessionId);
+		this.session = new AgentSession(config.systemPrompt, contextWindow, config.sessionId);
 
 		const capturedProviders = providers;
 		const capturedConfig = config;
@@ -63,14 +61,14 @@ export class AgentLoop implements AgentRuntime {
 			agentId: config.agentId,
 			emit: (event) => this.emit(event),
 			readScope: config.toolPolicy.readScope,
+			toolConfig: toolRegistry.getToolConfig(),
 			delegateTask: async (task, options) => {
 				const subConfig: SessionConfig = {
 					...capturedConfig,
 					agentId: `${capturedConfig.agentId}:sub-${Date.now()}`,
 					systemPrompt: options?.systemPrompt ?? capturedConfig.systemPrompt,
 					modelId: options?.model ?? capturedConfig.modelId,
-					...(this.toolContext.toolConfig?.subagent?.max_steps ? { maxSteps: this.toolContext.toolConfig.subagent.max_steps } : {}),
-					timeoutSec: this.toolContext.toolConfig?.subagent?.timeout,
+						timeoutSec: this.toolContext.toolConfig?.subagent?.timeout,
 				};
 				const subAbort = new AbortController();
 				const subLoop = new AgentLoop(subConfig, capturedProviders, {
@@ -84,8 +82,7 @@ export class AgentLoop implements AgentRuntime {
 					const taskId = `${subConfig.agentId}:bg-${Date.now()}`;
 					const registry = this.taskRegistry;
 					const parentEmit = (event: StreamEvent) => this.emit(event);
-					const maxSteps = this.toolContext.toolConfig?.subagent?.max_steps;
-				
+					
 					// Fire-and-forget: subLoop.run() continues in background
 					let bgResult = "";
 					let bgError = "";
@@ -111,7 +108,7 @@ export class AgentLoop implements AgentRuntime {
 					}
 				
 					// Timeout: register as background task, parent continues
-					registry.create(taskId, "subagent", task, maxSteps);
+					registry.create(taskId, "subagent", task);
 				
 					// When subagent eventually finishes, update registry
 					done.then(() => {
@@ -133,7 +130,6 @@ export class AgentLoop implements AgentRuntime {
 			},
 			delegateTaskBackground: (task, options) => {
 				const taskId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-				const maxSteps = this.toolContext.toolConfig?.subagent?.max_steps;
 				this.emit({
 					type: "subagent_dispatched",
 					agentId: capturedConfig.agentId,
@@ -146,13 +142,12 @@ export class AgentLoop implements AgentRuntime {
 					agentId: `${capturedConfig.agentId}:${taskId}`,
 					systemPrompt: options?.systemPrompt ?? capturedConfig.systemPrompt,
 					modelId: options?.model ?? capturedConfig.modelId,
-					...(maxSteps ? { maxSteps } : {}),
 					timeoutSec: this.toolContext.toolConfig?.subagent?.timeout,
 				};
 
 				const registry = this.taskRegistry;
 				const subAbort = new AbortController();
-				registry.create(taskId, "subagent", task, maxSteps, subAbort);
+				registry.create(taskId, "subagent", task, subAbort);
 				const parentEmit = (event: StreamEvent) => this.emit(event);
 
 				setImmediate(async () => {
@@ -167,7 +162,6 @@ export class AgentLoop implements AgentRuntime {
 									agentId: capturedConfig.agentId,
 									taskId,
 									step: stepCount,
-									maxSteps,
 									toolName: event.toolName,
 								});
 							}
@@ -204,6 +198,9 @@ export class AgentLoop implements AgentRuntime {
 			},
 			getTaskResult: (taskId: string): TaskInfo | null => {
 				return this.taskRegistry.get(taskId) ?? null;
+			},
+			listTasks: (filter?: "running" | "completed"): TaskInfo[] => {
+				return this.taskRegistry.list(filter);
 			},
 			stopTask: (taskId: string): boolean => {
 				return this.taskRegistry.kill(taskId);
@@ -386,7 +383,6 @@ export class AgentLoop implements AgentRuntime {
 			system: systemPrompt,
 			messages: this.session.getMessages(),
 			tools,
-			...(this.config.maxSteps ? { stopWhen: stepCountIs(this.config.maxSteps) } : {}),
 			abortSignal: this.abortController!.signal,
 			experimental_context: this.toolContext,
 			...(Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
@@ -518,17 +514,19 @@ export class AgentLoop implements AgentRuntime {
 
 	private saveUserTurn(text: string): void {
 		const sessionId = this.session.getSessionId();
-		if (!this.db || !sessionId) return;
-		const seq = this.db.getTurnCount(sessionId);
-		this.db.appendTurn(sessionId, seq, "user", text);
+		const db = getSessionDB();
+		if (!db || !sessionId) return;
+		const seq = db.getTurnCount(sessionId);
+		db.appendTurn(sessionId, seq, "user", text);
 	}
 
 	private saveAssistantTurn(): void {
 		const sessionId = this.session.getSessionId();
-		if (!this.db || !sessionId) return;
+		const db = getSessionDB();
+		if (!db || !sessionId) return;
 		if (this.turnBlocks.length === 0) return;
-		const seq = this.db.getTurnCount(sessionId);
-		this.db.appendTurn(sessionId, seq, "assistant", JSON.stringify(this.turnBlocks));
+		const seq = db.getTurnCount(sessionId);
+		db.appendTurn(sessionId, seq, "assistant", JSON.stringify(this.turnBlocks));
 	}
 	private emit(event: StreamEvent): void {
 		try {

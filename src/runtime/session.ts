@@ -1,5 +1,5 @@
 import type { ModelMessage } from "ai";
-import type { SessionDB } from "../server/session-db.js";
+import { getSessionDB } from "./db-access.js";
 
 const DEFAULT_CONTEXT_WINDOW = 128000;
 const RESERVE_TOKENS = 16384;
@@ -9,21 +9,19 @@ export class AgentSession {
 	private readonly systemPrompt: string;
 	private readonly contextWindow: number;
 	private sessionId: string | null = null;
-	private db: SessionDB | null = null;
 
 	constructor(
 		systemPrompt: string,
 		contextWindow?: number,
-		db?: SessionDB,
 		sessionId?: string,
 	) {
 		this.systemPrompt = systemPrompt;
 		this.contextWindow = contextWindow ?? DEFAULT_CONTEXT_WINDOW;
-		this.db = db ?? null;
 		this.sessionId = sessionId ?? null;
 
-		if (this.db && this.sessionId) {
-			this.messages = this.db.getMessages(this.sessionId);
+		const db = getSessionDB();
+		if (db && this.sessionId) {
+			this.messages = db.getMessages(this.sessionId);
 			if (this.messages.length === 0) {
 				this.messages = this.rebuildFromTurns();
 			}
@@ -47,8 +45,9 @@ export class AgentSession {
 	}
 
 	saveToDb(): void {
-		if (this.db && this.sessionId) {
-			this.db.saveTurn(this.sessionId, this.messages);
+		const db = getSessionDB();
+		if (db && this.sessionId) {
+			db.saveTurn(this.sessionId, this.messages);
 		}
 	}
 
@@ -71,8 +70,9 @@ export class AgentSession {
 	}
 
 	rebuildFromTurns(): ModelMessage[] {
-		if (!this.db || !this.sessionId) return [];
-		const turns = this.db.getTurns(this.sessionId);
+		const db = getSessionDB();
+		if (!db || !this.sessionId) return [];
+		const turns = db.getTurns(this.sessionId);
 		if (turns.length === 0) return [];
 
 		const messages: ModelMessage[] = [];

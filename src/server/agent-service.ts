@@ -186,7 +186,6 @@ class AgentService {
 			modelId: agent?.model || this.defaultModel || "",
 			providerName: agent?.provider || this.defaultProvider || "",
 			thinkingLevel: agent?.thinkingLevel,
-			maxSteps: 50,
 			sessionId,
 			toolPolicy: {
 				autoApprove: agent?.toolPolicy?.autoApprove ?? this.config.toolPolicy.autoApprove,
@@ -238,7 +237,6 @@ class AgentService {
 					this.handleRuntimeEvent(capturedAgentId, event);
 				},
 			},
-			this.db,
 		);
 
 		this.loops.set(agentId, loop);

@@ -9,6 +9,7 @@ import { grepTool } from "./grep.js";
 import { findTool } from "./find.js";
 import { delegateTool } from "./agent.js";
 import { taskStatusTool } from "./task-status.js";
+import { taskListTool } from "./task-list.js";
 import { taskStopTool } from "./task-stop.js";
 import { waitTool } from "./wait.js";
 import { buildMcpTools } from "./mcp-tool.js";
@@ -46,6 +47,7 @@ const ALL_TOOLS: Record<string, any> = {
 	find: findTool,
 	agent: delegateTool,
 	task_status: taskStatusTool,
+	task_list: taskListTool,
 	task_stop: taskStopTool,
 	wait: waitTool,
 	web_search: webSearchTool,
@@ -59,6 +61,7 @@ const ALL_TOOLS: Record<string, any> = {
 const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> = {
 	agent: (ctx) => !!ctx.delegateTask,
 	task_status: (ctx) => !!ctx.getTaskResult,
+	task_list: (ctx) => !!ctx.listTasks,
 	task_stop: (ctx) => !!ctx.stopTask,
 	wait: (ctx) => !!ctx.suspendUntilWake,
 };

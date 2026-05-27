@@ -94,7 +94,6 @@ export interface SubagentProgressEvent {
 	agentId?: string;
 	taskId: string;
 	step: number;
-	maxSteps?: number;
 	toolName?: string;
 }
 
@@ -150,7 +149,6 @@ export interface SessionConfig {
 	modelId: string;
 	providerName: string;
 	thinkingLevel?: string;
-	maxSteps?: number;
 	timeoutSec?: number;
 	sessionId?: string;
 	toolPolicy: {
@@ -180,7 +178,6 @@ export interface TaskInfo {
 	task: string;
 	status: "running" | "completed" | "failed" | "killed";
 	step: number;
-	maxSteps?: number;
 	currentTool?: string;
 	result?: string;
 	error?: string;
@@ -200,6 +197,7 @@ export interface ToolExecutionContext {
 	delegateTask?: (task: string, options?: { model?: string; systemPrompt?: string }) => Promise<string>;
 	delegateTaskBackground?: (task: string, options?: { model?: string; systemPrompt?: string }) => string;
 	getTaskResult?: (taskId: string) => TaskInfo | null;
+	listTasks?: (filter?: "running" | "completed") => TaskInfo[];
 	stopTask?: (taskId: string) => boolean;
 	suspendUntilWake?: (timeoutMs: number, taskId?: string) => Promise<string>;
 		runBackground?: (command: string, timeout?: number) => string;

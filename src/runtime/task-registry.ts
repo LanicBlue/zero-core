@@ -5,14 +5,13 @@ export class TaskRegistry {
 	private abortControllers = new Map<string, AbortController>();
 	private wakeCallback: (() => void) | null = null;
 
-	create(taskId: string, type: TaskType, task: string, maxSteps?: number, abortController?: AbortController): void {
+	create(taskId: string, type: TaskType, task: string, abortController?: AbortController): void {
 		this.tasks.set(taskId, {
 			id: taskId,
 			type,
 			task,
 			status: "running",
 			step: 0,
-			maxSteps,
 			startedAt: Date.now(),
 		});
 		if (abortController) {
@@ -68,6 +67,13 @@ export class TaskRegistry {
 		return this.tasks.get(taskId);
 	}
 
+	list(filter?: "running" | "completed"): TaskInfo[] {
+		const all = [...this.tasks.values()];
+		if (!filter) return all;
+		if (filter === "running") return all.filter((t) => t.status === "running");
+		return all.filter((t) => t.status !== "running");
+	}
+
 	getCompletedUnnotified(): TaskInfo[] {
 		const result: TaskInfo[] = [];
 		for (const info of this.tasks.values()) {
@@ -97,7 +103,6 @@ export class TaskRegistry {
 			}, timeoutMs);
 
 			this.wakeCallback = () => {
-				// If waiting for a specific task, only wake when that task finishes
 				if (taskId) {
 					const info = this.tasks.get(taskId);
 					if (info && info.status !== "running") {
@@ -105,7 +110,6 @@ export class TaskRegistry {
 						this.wakeCallback = null;
 						resolve();
 					}
-					// Otherwise keep waiting (another task finished, not the one we want)
 				} else {
 					clearTimeout(timer);
 					this.wakeCallback = null;
@@ -144,7 +148,6 @@ export class TaskRegistry {
 	private tryWake(): void {
 		if (this.wakeCallback) {
 			const cb = this.wakeCallback;
-			// Don't null here — let the callback decide via its own logic
 			cb();
 		}
 	}

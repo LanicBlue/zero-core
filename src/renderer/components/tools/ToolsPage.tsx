@@ -4,6 +4,7 @@ const api = () => (window as any).api;
 
 const CATEGORY_LABELS: Record<string, string> = {
 	runtime: "Base",
+	task: "Task",
 	web: "Web",
 	memory: "Memory",
 	thinking: "Thinking",

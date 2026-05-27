@@ -9,6 +9,7 @@ import type { ToolConfigField } from "../../core/tool-registry.js";
 
 export type ToolCategory =
 	| "runtime"
+	| "task"
 	| "web"
 	| "memory"
 	| "thinking"
