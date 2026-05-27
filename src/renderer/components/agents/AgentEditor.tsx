@@ -61,6 +61,8 @@ function ExposeAsToolSection({ agentId, agentName, systemPrompt }: { agentId: st
 	const [toolName, setToolName] = useState("");
 	const [description, setDescription] = useState("");
 	const [enabled, setEnabled] = useState(false);
+	const [autoBackground, setAutoBackground] = useState(false);
+		const [bgTimeout, setBgTimeout] = useState(0);
 
 	useEffect(() => {
 		const existing = entries.find((e) => e.type === "internal" && e.agentId === agentId);
@@ -69,6 +71,9 @@ function ExposeAsToolSection({ agentId, agentName, systemPrompt }: { agentId: st
 			setToolName(existing.name);
 			setDescription(existing.description ?? "");
 			setEnabled(existing.enabled);
+				setAutoBackground(existing.blocking === false);
+				setBgTimeout(existing.auto_background_timeout ?? 0);
+				skipSaveRef.current = true;
 		} else {
 			setToolEntry(null);
 			setToolName(kebab(agentName));
@@ -77,12 +82,30 @@ function ExposeAsToolSection({ agentId, agentName, systemPrompt }: { agentId: st
 		}
 	}, [entries, agentId, agentName]);
 
+	const skipSaveRef = useRef(false);
+
+	// Auto-save when execution mode changes
+	const saveToolConfig = async (bg: boolean, timeout: number) => {
+		if (!toolEntry) return;
+		await update(toolEntry.id, {
+			blocking: !bg,
+			auto_background_timeout: bg ? timeout : undefined,
+		});
+		fetchEntries();
+	};
+
+	useEffect(() => {
+		if (toolEntry && enabled && !skipSaveRef.current) saveToolConfig(autoBackground, bgTimeout);
+	}, [autoBackground, bgTimeout]);
+
 	const handleToggle = async (val: boolean) => {
 		setEnabled(val);
 		if (val && !toolEntry) {
 			const created = await create({
 				name: toolName || kebab(agentName),
 				description: description || undefined,
+				blocking: !autoBackground,
+				auto_background_timeout: autoBackground ? bgTimeout : undefined,
 				type: "internal",
 				enabled: true,
 				agentId,
@@ -100,6 +123,8 @@ function ExposeAsToolSection({ agentId, agentName, systemPrompt }: { agentId: st
 		await update(toolEntry.id, {
 			name: toolName || kebab(agentName),
 			description: description || undefined,
+			blocking: !autoBackground,
+			auto_background_timeout: autoBackground ? bgTimeout : undefined,
 		});
 		fetchEntries();
 	};
@@ -132,7 +157,24 @@ function ExposeAsToolSection({ agentId, agentName, systemPrompt }: { agentId: st
 							rows={3}
 						/>
 					</label>
-					<button type="button" className="btn-ghost btn-sm" onClick={handleSave}>保存工具配置</button>
+					<label className="checkbox-label">
+						<input type="checkbox"
+							checked={autoBackground}
+							onChange={(e) => { setAutoBackground(e.target.checked); skipSaveRef.current = false; }}
+						/>
+						自动转后台
+					</label>
+					{autoBackground && (
+						<label>等待超时 (s)
+							<input
+								type="number"
+								value={bgTimeout}
+								onChange={(e) => { setBgTimeout(Number(e.target.value)); skipSaveRef.current = false; }}
+								min={0}
+								placeholder="设为 0 则立即后台执行，不等待"
+							/>
+						</label>
+					)}
 				</>
 			)}
 		</div>

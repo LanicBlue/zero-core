@@ -16,6 +16,8 @@ export interface AgentToolEntry {
 	bodyTemplate?: string;
 	responsePath?: string;
 	timeout?: number;
+	blocking?: boolean;
+		auto_background_timeout?: number;
 	createdAt: string;
 	updatedAt: string;
 }

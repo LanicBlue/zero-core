@@ -53,7 +53,7 @@ function truncateResult(text: string): string {
 export function buildAgentTools(
 	entries: AgentToolEntry[],
 	agents: Map<string, AgentRecordLite>,
-	delegateTask: ToolExecutionContext["delegateTask"],
+	context: ToolExecutionContext,
 ): Record<string, any> {
 	const tools: Record<string, any> = {};
 
@@ -64,12 +64,14 @@ export function buildAgentTools(
 		const desc = entry.description || `Run the "${entry.name}" agent`;
 
 		if (entry.type === "internal") {
-			// Internal agent tool — use delegateTask
+			// Internal agent tool — use delegateTask / delegateTaskBackground
 			const agent = agents.get(entry.agentId ?? "");
 			if (!agent) continue;
 
 			const capturedEntry = entry;
 			const capturedAgent = agent;
+
+			const isBlocking = capturedEntry.blocking !== false;
 
 			tools[toolName] = buildTool({
 				name: toolName,
@@ -84,15 +86,24 @@ export function buildAgentTools(
 					task: z.string().describe("Task for the agent to perform"),
 				}),
 				execute: async (input) => {
-					if (!delegateTask) return "Error: Agent delegation is not available.";
-					try {
-						const result = await delegateTask(input.task, {
+					if (isBlocking) {
+						if (!context.delegateTask) return "Error: Agent delegation is not available.";
+						try {
+							const result = await context.delegateTask(input.task, {
+								systemPrompt: capturedAgent.systemPrompt,
+								model: capturedAgent.model,
+							});
+							return truncateResult(result || "(agent returned no output)");
+						} catch (err: any) {
+							return `Agent error: ${err.message}`;
+						}
+					} else {
+						if (!context.delegateTaskBackground) return "Error: Non-blocking agent delegation is not available.";
+						const taskId = context.delegateTaskBackground(input.task, {
 							systemPrompt: capturedAgent.systemPrompt,
 							model: capturedAgent.model,
 						});
-						return truncateResult(result || "(agent returned no output)");
-					} catch (err: any) {
-						return `Agent error: ${err.message}`;
+						return `Agent task dispatched in non-blocking mode.\ntask_id: ${taskId}\nUse task_status to check progress.`;
 					}
 				},
 			});

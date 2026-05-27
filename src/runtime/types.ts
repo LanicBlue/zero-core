@@ -82,12 +82,28 @@ export interface TodosUpdateEvent {
 	}>;
 }
 
-export interface ScheduleWakeupEvent {
-	type: "schedule_wakeup";
+export interface SubagentDispatchedEvent {
+	type: "subagent_dispatched";
 	agentId?: string;
-	delaySeconds: number;
-	reason: string;
-	prompt: string;
+	taskId: string;
+	task: string;
+}
+
+export interface SubagentProgressEvent {
+	type: "subagent_progress";
+	agentId?: string;
+	taskId: string;
+	step: number;
+	maxSteps?: number;
+	toolName?: string;
+}
+
+export interface SubagentCompletedEvent {
+	type: "subagent_completed";
+	agentId?: string;
+	taskId: string;
+	status: "completed" | "failed";
+	result?: string;
 }
 
 export type StreamEvent =
@@ -101,7 +117,9 @@ export type StreamEvent =
 	| RetryAttemptEvent
 	| AskUserEvent
 	| TodosUpdateEvent
-	| ScheduleWakeupEvent;
+	| SubagentDispatchedEvent
+	| SubagentProgressEvent
+	| SubagentCompletedEvent;
 
 // ---------------------------------------------------------------------------
 // Provider config — mirrors existing ProviderConfig
@@ -151,6 +169,27 @@ export interface SessionConfig {
 	}
 
 // ---------------------------------------------------------------------------
+// Subagent task info — tracked by SubagentTaskRegistry
+// ---------------------------------------------------------------------------
+
+export type TaskType = "subagent" | "bash";
+
+export interface TaskInfo {
+	id: string;
+	type: TaskType;
+	task: string;
+	status: "running" | "completed" | "failed" | "killed";
+	step: number;
+	maxSteps?: number;
+	currentTool?: string;
+	result?: string;
+	error?: string;
+	startedAt: number;
+	completedAt?: number;
+	notified?: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Tool execution context — passed to each tool's execute function
 // ---------------------------------------------------------------------------
 
@@ -159,6 +198,11 @@ export interface ToolExecutionContext {
 	agentId: string;
 	emit: (event: StreamEvent) => void;
 	delegateTask?: (task: string, options?: { model?: string; systemPrompt?: string }) => Promise<string>;
+	delegateTaskBackground?: (task: string, options?: { model?: string; systemPrompt?: string }) => string;
+	getTaskResult?: (taskId: string) => TaskInfo | null;
+	stopTask?: (taskId: string) => boolean;
+	suspendUntilWake?: (timeoutMs: number, taskId?: string) => Promise<string>;
+		runBackground?: (command: string, timeout?: number) => string;
 	readScope?: "filesystem" | "workspace";
 	toolConfig?: Record<string, Record<string, any>>;
 }

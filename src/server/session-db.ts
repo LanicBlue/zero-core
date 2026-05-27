@@ -130,6 +130,7 @@ export class SessionDB {
 					url TEXT, method TEXT, headers TEXT,
 					body_template TEXT, response_path TEXT,
 					timeout INTEGER,
+					blocking INTEGER DEFAULT 1,
 					created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 				);
 
@@ -141,12 +142,29 @@ export class SessionDB {
 				);
 			`);
 			this.db.pragma("user_version = 2");
-			log.db("Schema migrated to user_version 2 (config tables added)");
-		}
-	}
+				log.db("Schema migrated to user_version 2 (config tables added)");
 
-	// -----------------------------------------------------------------------
-	// Session CRUD
+			}
+
+			if (version < 3) {
+				try {
+					this.db.exec("ALTER TABLE agent_tools ADD COLUMN blocking INTEGER DEFAULT 1");
+				} catch { /* column may already exist */ }
+				this.db.pragma("user_version = 3");
+				log.db("Schema migrated to user_version 3 (agent_tools.blocking column)");
+			}
+
+			if (version < 4) {
+				try {
+					this.db.exec("ALTER TABLE agent_tools ADD COLUMN auto_background_timeout INTEGER");
+				} catch { /* column may already exist */ }
+				this.db.pragma("user_version = 4");
+				log.db("Schema migrated to user_version 4 (agent_tools.auto_background_timeout column)");
+			}
+		}
+
+		// -----------------------------------------------------------------------
+		// Session CRUD
 	// -----------------------------------------------------------------------
 
 	createSession(agentId: string, title?: string): SessionRecord {

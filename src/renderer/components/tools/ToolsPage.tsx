@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 const api = () => (window as any).api;
 
 const CATEGORY_LABELS: Record<string, string> = {
-	runtime: "Runtime",
+	runtime: "Base",
 	web: "Web",
 	memory: "Memory",
 	thinking: "Thinking",
@@ -126,6 +126,7 @@ export default function ToolsPage() {
 									<h4 className="tools-page-config-heading">Configuration</h4>
 									{selectedTool.configSchema.map((field: any) => {
 										const val = config[selectedTool.name]?.[field.key] ?? field.default ?? "";
+								if (field.key === "auto_background_timeout" && !config[selectedTool.name]?.auto_background) return null;
 										return (
 											<div key={field.key} className="tools-page-config-field">
 												<div className="tools-page-config-label-row">

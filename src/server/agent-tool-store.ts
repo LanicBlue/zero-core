@@ -23,6 +23,8 @@ export interface AgentToolEntry {
 	bodyTemplate?: string;
 	responsePath?: string;
 	timeout?: number;
+	blocking?: boolean;
+		auto_background_timeout?: number;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -46,6 +48,8 @@ const COLUMNS: ColumnDef[] = [
 	{ key: "bodyTemplate", column: "body_template" },
 	{ key: "responsePath", column: "response_path" },
 	{ key: "timeout" },
+	{ key: "blocking", bool: true },
+		{ key: "auto_background_timeout" },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
 ];

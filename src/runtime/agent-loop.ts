@@ -7,6 +7,7 @@ import type {
 	AgentRuntime,
 	RuntimeState,
 	ToolExecutionContext,
+	TaskInfo,
 } from "./types.js";
 import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
@@ -15,6 +16,7 @@ import { buildAgentTools } from "./tools/agent-tool.js";
 import type { SessionDB } from "../server/session-db.js";
 import { log } from "../core/logger.js";
 import { classifyError, isTransientError, userFriendlyMessage, parseThinkingTags, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
+import { TaskRegistry } from "./task-registry.js";
 
 // ---------------------------------------------------------------------------
 // AgentLoop
@@ -27,6 +29,7 @@ export class AgentLoop implements AgentRuntime {
 	private callbacks: RuntimeCallbacks;
 	private db: SessionDB | null = null;
 	private toolContext: ToolExecutionContext;
+	private taskRegistry: TaskRegistry;
 	private abortController: AbortController | null = null;
 	private busy = false;
 	private streamText = "";
@@ -53,6 +56,8 @@ export class AgentLoop implements AgentRuntime {
 		const capturedProviders = providers;
 		const capturedConfig = config;
 
+		this.taskRegistry = new TaskRegistry();
+
 		this.toolContext = {
 			workingDir: config.workspaceDir,
 			agentId: config.agentId,
@@ -65,13 +70,185 @@ export class AgentLoop implements AgentRuntime {
 					systemPrompt: options?.systemPrompt ?? capturedConfig.systemPrompt,
 					modelId: options?.model ?? capturedConfig.modelId,
 					...(this.toolContext.toolConfig?.subagent?.max_steps ? { maxSteps: this.toolContext.toolConfig.subagent.max_steps } : {}),
-					timeoutSec: this.toolContext.toolConfig?.subagent?.timeout_ms,
+					timeoutSec: this.toolContext.toolConfig?.subagent?.timeout,
 				};
+				const subAbort = new AbortController();
 				const subLoop = new AgentLoop(subConfig, capturedProviders, {
 					onEvent: () => {},
 				});
+
+				// Auto-background: if configured, transition to non-blocking after timeout
+				const autoBgEnabled = this.toolContext.toolConfig?.subagent?.auto_background === true;
+				const autoBgSec = Number(this.toolContext.toolConfig?.subagent?.auto_background_timeout) || 0;
+				if (autoBgEnabled && autoBgSec > 0) {
+					const taskId = `${subConfig.agentId}:bg-${Date.now()}`;
+					const registry = this.taskRegistry;
+					const parentEmit = (event: StreamEvent) => this.emit(event);
+					const maxSteps = this.toolContext.toolConfig?.subagent?.max_steps;
+				
+					// Fire-and-forget: subLoop.run() continues in background
+					let bgResult = "";
+					let bgError = "";
+					const done = new Promise<void>((resolve) => {
+						subLoop.run(task).then(() => {
+							bgResult = subLoop.getResult();
+							resolve();
+						}).catch((err: any) => {
+							bgError = err.message || "Unknown error";
+							resolve();
+						});
+					});
+				
+					const timeout = new Promise<string>((resolve) =>
+						setTimeout(() => resolve("timeout"), autoBgSec * 1000)
+					);
+				
+					const raceResult = await Promise.race([done.then(() => "done"), timeout]);
+				
+					if (raceResult === "done") {
+						if (bgError) throw new Error(bgError);
+						return bgResult || "(sub-agent returned no output)";
+					}
+				
+					// Timeout: register as background task, parent continues
+					registry.create(taskId, "subagent", task, maxSteps);
+				
+					// When subagent eventually finishes, update registry
+					done.then(() => {
+						if (bgError) {
+							registry.fail(taskId, bgError);
+							parentEmit({ type: "subagent_completed", agentId: capturedConfig.agentId, taskId, status: "failed", result: bgError });
+						} else {
+							registry.complete(taskId, bgResult);
+							parentEmit({ type: "subagent_completed", agentId: capturedConfig.agentId, taskId, status: "completed", result: bgResult });
+						}
+					});
+				
+					return `Sub-agent auto-backgrounded after ${autoBgSec}s (still running)." + NL + "task_id: ${taskId}" + NL + "Use task_status to check progress.`;
+				}
+				
+				// No auto-background: simple blocking execution
 				await subLoop.run(task);
 				return subLoop.getResult();
+			},
+			delegateTaskBackground: (task, options) => {
+				const taskId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+				const maxSteps = this.toolContext.toolConfig?.subagent?.max_steps;
+				this.emit({
+					type: "subagent_dispatched",
+					agentId: capturedConfig.agentId,
+					taskId,
+					task,
+				});
+
+				const subConfig: SessionConfig = {
+					...capturedConfig,
+					agentId: `${capturedConfig.agentId}:${taskId}`,
+					systemPrompt: options?.systemPrompt ?? capturedConfig.systemPrompt,
+					modelId: options?.model ?? capturedConfig.modelId,
+					...(maxSteps ? { maxSteps } : {}),
+					timeoutSec: this.toolContext.toolConfig?.subagent?.timeout,
+				};
+
+				const registry = this.taskRegistry;
+				const subAbort = new AbortController();
+				registry.create(taskId, "subagent", task, maxSteps, subAbort);
+				const parentEmit = (event: StreamEvent) => this.emit(event);
+
+				setImmediate(async () => {
+					let stepCount = 0;
+					const subLoop = new AgentLoop(subConfig, capturedProviders, {
+						onEvent: (event) => {
+							if (event.type === "tool_start") {
+								stepCount++;
+								registry.updateProgress(taskId, stepCount, event.toolName);
+								parentEmit({
+									type: "subagent_progress",
+									agentId: capturedConfig.agentId,
+									taskId,
+									step: stepCount,
+									maxSteps,
+									toolName: event.toolName,
+								});
+							}
+						},
+					});
+
+					// Link external abort to subLoop
+					subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
+
+					try {
+						await subLoop.run(task);
+						const result = subLoop.getResult();
+						registry.complete(taskId, result);
+						parentEmit({
+							type: "subagent_completed",
+							agentId: capturedConfig.agentId,
+							taskId,
+							status: "completed",
+							result,
+						});
+					} catch (err: any) {
+						registry.fail(taskId, err.message || "Unknown error");
+						parentEmit({
+							type: "subagent_completed",
+							agentId: capturedConfig.agentId,
+							taskId,
+							status: "failed",
+							result: err.message,
+						});
+					}
+				});
+
+				return taskId;
+			},
+			getTaskResult: (taskId: string): TaskInfo | null => {
+				return this.taskRegistry.get(taskId) ?? null;
+			},
+			stopTask: (taskId: string): boolean => {
+				return this.taskRegistry.kill(taskId);
+			},
+			suspendUntilWake: (timeoutMs: number, taskId?: string): Promise<string> => {
+				return this.taskRegistry.suspendUntilWake(timeoutMs);
+			},
+			runBackground: (command: string, timeoutSec?: number): string => {
+				const taskId = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+				const isWin = process.platform === "win32";
+				const shell = isWin ? "cmd.exe" : "/bin/bash";
+				const shellArgs = isWin ? ["/c", command] : ["-c", command];
+				const registry = this.taskRegistry;
+				const parentEmit = (event: StreamEvent) => this.emit(event);
+
+				registry.create(taskId, "bash", command);
+
+				const child = require("node:child_process").spawn(shell, shellArgs, {
+					cwd: this.config.workspaceDir,
+					maxBuffer: 10 * 1024 * 1024,
+				});
+				let stdout = "";
+				let stderr = "";
+				child.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
+				child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+
+				child.on("close", (code: number) => {
+					let result = "";
+					if (stdout) result += stdout;
+					if (stderr) result += (result ? "\n" : "") + "[stderr] " + stderr;
+					if (result.length > 50000) result = result.slice(0, 50000) + "\n... (output truncated)";
+					if (code === 0) {
+						registry.complete(taskId, result || "(no output)");
+					} else {
+						registry.fail(taskId, `Exit code ${code}: ${result}`);
+					}
+					parentEmit({ type: "subagent_completed", agentId: capturedConfig.agentId, taskId, status: code === 0 ? "completed" : "failed", result });
+				});
+
+				child.on("error", (err: Error) => {
+					registry.fail(taskId, err.message);
+					parentEmit({ type: "subagent_completed", agentId: capturedConfig.agentId, taskId, status: "failed", result: err.message });
+				});
+
+				return taskId;
 			},
 		};
 	}
@@ -143,6 +320,7 @@ export class AgentLoop implements AgentRuntime {
 			if (timeout) clearTimeout(timeout);
 			this.busy = false;
 			this.streamText = "";
+			this.taskRegistry.cleanup();
 
 			this.emit({ type: "agent_end", agentId: this.config.agentId });
 		}
@@ -161,7 +339,7 @@ export class AgentLoop implements AgentRuntime {
 				if (this.config.getAgentToolEntries) {
 					try {
 						const { entries, agents } = await this.config.getAgentToolEntries();
-						agentTools = buildAgentTools(entries, agents, this.toolContext.delegateTask);
+						agentTools = buildAgentTools(entries, agents, this.toolContext);
 					} catch { /* agent tools unavailable */ }
 				}
 
@@ -183,6 +361,26 @@ export class AgentLoop implements AgentRuntime {
 		}
 
 		log.debug("loop", "Starting streamText...");
+
+		// Inject completed subagent notifications into context
+		const completedTasks = this.taskRegistry.getCompletedUnnotified();
+		if (completedTasks.length > 0) {
+			const notifications = completedTasks.map((t) => {
+				this.taskRegistry.markNotified(t.id);
+				const r = t.result && t.result.length > 2000 ? t.result.slice(0, 2000) + "..." : t.result;
+				const lines = [
+					"<task-notification>",
+					"<task_id>" + t.id + "</task_id>",
+					"<status>" + t.status + "</status>",
+					"<task>" + t.task + "</task>",
+				];
+				if (r) lines.push("<result>" + r + "</result>");
+				if (t.error) lines.push("<error>" + t.error + "</error>");
+				lines.push("</task-notification>");
+				return lines.join(String.fromCharCode(10));
+			});
+			this.session.addMessage({ role: "user", content: notifications.join(String.fromCharCode(10, 10)) });
+		}
 		const result = streamText({
 			model,
 			system: systemPrompt,

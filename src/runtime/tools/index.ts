@@ -7,12 +7,14 @@ import { fileWriteTool } from "./file-write.js";
 import { fileEditTool } from "./file-edit.js";
 import { grepTool } from "./grep.js";
 import { findTool } from "./find.js";
-import { delegateTool } from "./delegate.js";
+import { delegateTool } from "./agent.js";
+import { taskStatusTool } from "./task-status.js";
+import { taskStopTool } from "./task-stop.js";
+import { waitTool } from "./wait.js";
 import { buildMcpTools } from "./mcp-tool.js";
 import { webSearchTool } from "./web-search.js";
 import { askUserTool } from "./ask-user.js";
 import { todoWriteTool } from "./todo-write.js";
-import { scheduleWakeupTool } from "./schedule-wakeup.js";
 import { getToolMeta, getToolName, getToolConfigSchema, getToolUserDescription } from "./tool-factory.js";
 import { createFetchTools } from "../../server/mcp-servers/fetch-tools.js";
 import { createMemoryTools } from "../../server/mcp-servers/memory-tools.js";
@@ -42,17 +44,23 @@ const ALL_TOOLS: Record<string, any> = {
 	edit: fileEditTool,
 	grep: grepTool,
 	find: findTool,
-	subagent: delegateTool,
+	agent: delegateTool,
+	task_status: taskStatusTool,
+	task_stop: taskStopTool,
+	wait: waitTool,
 	web_search: webSearchTool,
 	ask_user: askUserTool,
 	todo_write: todoWriteTool,
-	schedule_wakeup: scheduleWakeupTool,
+	
 	...getBuiltinTools(),
 };
 
 // Tools that require special context capabilities
 const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> = {
-	subagent: (ctx) => !!ctx.delegateTask,
+	agent: (ctx) => !!ctx.delegateTask,
+	task_status: (ctx) => !!ctx.getTaskResult,
+	task_stop: (ctx) => !!ctx.stopTask,
+	wait: (ctx) => !!ctx.suspendUntilWake,
 };
 
 
