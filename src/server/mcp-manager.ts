@@ -1,8 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import type { McpServerConfig } from "./mcp-store.js";
-import { toolRegistry } from "../core/tool-registry.js";
+import type { McpServerConfig } from "../shared/types.js";
+import type { ToolRegistry } from "../core/tool-registry.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,10 +26,15 @@ interface ConnectedServer {
 // MCP Manager — manages connections to MCP servers
 // ---------------------------------------------------------------------------
 
-class MCPManager {
+export class MCPManager {
 	private servers = new Map<string, ConnectedServer>();
 	private toolCache = new Map<string, { tools: McpToolInfo[]; expires: number }>();
 	private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+	private registry: ToolRegistry;
+
+	constructor(registry: ToolRegistry) {
+		this.registry = registry;
+	}
 
 	async connect(config: McpServerConfig): Promise<{ tools: McpToolInfo[]; error?: string }> {
 		// Disconnect existing if reconnecting
@@ -89,7 +94,7 @@ class MCPManager {
 			// Register MCP tools into ToolRegistry
 			for (const t of tools) {
 				const qualifiedName = `mcp__${config.name}__${t.name}`;
-				toolRegistry.register({
+				this.registry.register({
 					name: qualifiedName,
 					description: t.description ?? "",
 					category: "mcp",
@@ -104,7 +109,7 @@ class MCPManager {
 					},
 				});
 			}
-			toolRegistry.notifyChange?.();
+			this.registry.notifyChange?.();
 
 			return { tools };
 		} catch (err) {
@@ -133,7 +138,7 @@ class MCPManager {
 		this.toolCache.delete(serverId);
 
 		// Unregister MCP tools from ToolRegistry
-		toolRegistry.unregister("mcp", serverId);
+		this.registry.unregister("mcp", serverId);
 	}
 
 	async disconnectAll(): Promise<void> {
@@ -207,6 +212,3 @@ class MCPManager {
 		);
 	}
 }
-
-// Singleton
-export const mcpManager = new MCPManager();

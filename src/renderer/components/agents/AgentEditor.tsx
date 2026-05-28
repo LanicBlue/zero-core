@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { useAgentStore, type AgentRecord, type ModelInfo } from "../../store/agent-store.js";
-import { useAgentToolStore, type AgentToolEntry } from "../../store/agent-tool-store.js";
+import { useAgentStore, type ModelInfo } from "../../store/agent-store.js";
+import { useAgentToolStore } from "../../store/agent-tool-store.js";
 import { useProviderStore } from "../../store/provider-store.js";
-import type { PromptTemplate } from "../../store/template-store.js";
+import type { AgentRecord, AgentToolEntry, PromptTemplate } from "../../../shared/types.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
 
 interface Props {

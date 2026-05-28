@@ -17,11 +17,11 @@ import { webSearchTool } from "./web-search.js";
 import { askUserTool } from "./ask-user.js";
 import { todoWriteTool } from "./todo-write.js";
 import { getToolMeta, getToolName, getToolConfigSchema, getToolUserDescription } from "./tool-factory.js";
-import { createFetchTools } from "../../server/mcp-servers/fetch-tools.js";
-import { createMemoryTools } from "../../server/mcp-servers/memory-tools.js";
-import { createSequentialThinkingTools } from "../../server/mcp-servers/sequential-thinking-tools.js";
-import { createAssistantTools } from "../../server/mcp-servers/assistant-tools.js";
-import { toolRegistry } from "../../core/tool-registry.js";
+import { createFetchTools } from "../mcp-tools/fetch-tools.js";
+import { createMemoryTools } from "../mcp-tools/memory-tools.js";
+import { createSequentialThinkingTools } from "../mcp-tools/sequential-thinking-tools.js";
+import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
+import type { ToolRegistry } from "../../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";
 
 // Built-in tools (initialized lazily)
@@ -73,13 +73,13 @@ const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> 
 // Runtime tool registration into ToolRegistry
 // ---------------------------------------------------------------------------
 
-export function registerRuntimeTools(): void {
+export function registerRuntimeTools(registry: ToolRegistry): void {
 	for (const [name, def] of Object.entries(ALL_TOOLS)) {
 		const meta = getToolMeta(def);
 		const configSchema = getToolConfigSchema(def);
 		const userDescription = getToolUserDescription(def);
 		const desc = (def as any)?.description ?? "";
-		toolRegistry.register({
+		registry.register({
 			name,
 			description: typeof desc === "string" ? desc : "",
 			userDescription,

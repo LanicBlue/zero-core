@@ -20,8 +20,6 @@
     "src/preload/**/*.ts",
     "src/server/**/*.ts",
     "src/core/**/*.ts",
-    "src/extension/**/*.ts",
-    "src/openclaw/**/*.ts",
     "electron.vite.config.ts"
   ]
 }

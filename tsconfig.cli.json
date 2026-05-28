@@ -21,7 +21,6 @@
     "src/index.ts",
     "src/core/**/*.ts",
     "src/runtime/**/*.ts",
-    "src/extension/**/*.ts",
     "src/server/*.ts",
     "src/server/mcp-servers/**/*.ts"
   ],

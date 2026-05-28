@@ -1,7 +1,7 @@
 import { z } from "zod";
 import TurndownService from "turndown";
 import { JSDOM } from "jsdom";
-import { buildTool } from "../../runtime/tools/tool-factory.js";
+import { buildTool } from "../tools/tool-factory.js";
 
 const turndown = new TurndownService();
 

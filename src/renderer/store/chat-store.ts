@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { SessionRecord } from "../../shared/types.js";
 
 export interface ToolCallBlock {
 	type: "tool";
@@ -29,15 +30,6 @@ export interface ChatMessage {
 	streaming?: boolean;
 }
 
-export interface SessionInfo {
-	id: string;
-	agentId: string;
-	isMain: boolean;
-	title: string | null;
-	createdAt: string;
-	updatedAt: string;
-}
-
 let _nextId = Date.now();
 export const nextMsgId = () => String(_nextId++);
 
@@ -47,7 +39,7 @@ interface ChatState {
 	streamingAgentId: string | null;
 	messages: ChatMessage[];
 	isStreaming: boolean;
-	sessionsByAgent: Record<string, SessionInfo[]>;
+	sessionsByAgent: Record<string, SessionRecord[]>;
 	currentSessionId: string | null;
 
 	addMessage: (agentId: string, msg: ChatMessage) => void;
@@ -60,7 +52,7 @@ interface ChatState {
 	setActiveAgent: (id: string | null) => void;
 	loadMessages: (agentId: string, messages: ChatMessage[]) => void;
 	clearMessages: (agentId: string) => void;
-	setSessions: (agentId: string, sessions: SessionInfo[]) => void;
+	setSessions: (agentId: string, sessions: SessionRecord[]) => void;
 	setCurrentSessionId: (sessionId: string | null) => void;
 	editMessage: (agentId: string, msgId: string, newText: string) => void;
 	deleteMessage: (agentId: string, msgId: string) => void;

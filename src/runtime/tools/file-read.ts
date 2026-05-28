@@ -27,15 +27,15 @@ export const fileReadTool = buildTool({
 	],
 	inputSchema: z.object({
 		path: z.string().describe("Absolute or relative file path"),
-		offset: z.number().optional().describe("Start line number (1-based)"),
-		limit: z.number().optional().describe("Number of lines to read"),
+		offset: z.number().optional().describe("Line number to start reading from (1-based). Only provide for large files where you know which part to read."),
+		limit: z.number().optional().describe("Number of lines to read. Only provide for large files where you know which part to read."),
 		mode: z.enum(["full", "outline"]).optional().describe("full=raw text with line numbers, outline=structured code outline"),
 	}),
 	execute: async (input, ctx) => {
 		const { path, offset, limit: inputLimit } = input;
 		const config = ctx.toolConfig?.read ?? {};
 		const maxLines = config.max_lines ?? 2000;
-		const mode = input.mode ?? config.default_mode ?? "full";
+		const mode = (offset != null || inputLimit != null) ? "full" : (input.mode ?? config.default_mode ?? "full");
 		const restrictToWorkspace = ctx.readScope === "workspace";
 		const resolved = resolvePath(path, ctx.workingDir, restrictToWorkspace);
 		if (typeof resolved === "object") return resolved.error;

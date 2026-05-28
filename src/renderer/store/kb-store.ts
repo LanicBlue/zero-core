@@ -1,24 +1,5 @@
 import { create } from "zustand";
-
-export interface KbFileInfo {
-	path: string;
-	name: string;
-	size: number;
-	chunks: number;
-	ingestedAt: string;
-}
-
-export interface KnowledgeBase {
-	id: string;
-	name: string;
-	description: string;
-	embeddingProvider: string;
-	embeddingModel: string;
-	agentIds: string[];
-	files: KbFileInfo[];
-	createdAt: string;
-	updatedAt: string;
-}
+import type { KnowledgeBase, KbFileInfo } from "../../shared/types.js";
 
 const api = () => (window as any).api;
 

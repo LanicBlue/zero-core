@@ -1,0 +1,189 @@
+import { Router } from "express";
+import { existsSync, mkdirSync } from "node:fs";
+import { resolve } from "node:path";
+import type { SessionDB } from "./session-db.js";
+import type { ToolRegistry } from "../core/tool-registry.js";
+import type { WorkspaceConfig } from "./workspace-config.js";
+import { loadWorkspaceConfig, saveWorkspaceConfig } from "./workspace-config.js";
+import { loadConfig, saveGlobalConfig, DEFAULT_GUIDELINES } from "../core/config.js";
+import { loadDeviceContext, saveDeviceContext, generateAndSaveDeviceContext } from "../core/device-context.js";
+
+export interface ConfigRouterDeps {
+	sessionDB: SessionDB;
+	registry: ToolRegistry;
+	buildDefaultPrompt: (name: string) => string;
+}
+
+export function createConfigRouter(deps: ConfigRouterDeps): Router {
+	const router = Router();
+	const { sessionDB, registry, buildDefaultPrompt } = deps;
+	const kv = () => sessionDB.getKVStore();
+
+	// ─── Workspace Config ────────────────────────────────────
+
+	// config:get — return workspace config + default prompt
+	router.get("/", (_req, res) => {
+		try {
+			const config = loadWorkspaceConfig(sessionDB);
+			res.json({ ...config, defaultPrompt: buildDefaultPrompt("Agent") });
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
+		}
+	});
+
+	// config:update — update workspace config
+	router.put("/", (req, res) => {
+		try {
+			const data = req.body as { workspaceDir?: string; defaultModel?: string; defaultProvider?: string };
+
+			if (typeof data.workspaceDir === "string") {
+				const abs = resolve(data.workspaceDir);
+				if (!existsSync(abs)) {
+					try {
+						mkdirSync(abs, { recursive: true });
+					} catch {
+						res.status(400).json({ error: "Cannot create directory" });
+						return;
+					}
+				}
+				saveWorkspaceConfig({ workspaceDir: abs }, sessionDB);
+			}
+
+			if (data.defaultModel !== undefined || data.defaultProvider !== undefined) {
+				saveWorkspaceConfig(
+					{ defaultModel: data.defaultModel, defaultProvider: data.defaultProvider },
+					sessionDB,
+				);
+			}
+
+			const config = loadWorkspaceConfig(sessionDB);
+			res.json(config);
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	// ─── Theme ───────────────────────────────────────────────
+
+	// config:get-theme
+	router.get("/theme", (_req, res) => {
+		try {
+			const stored = kv().getJson<{ mode: string; customPrimaryColor?: string }>("theme");
+			res.json(stored ?? { mode: "dark", customPrimaryColor: null });
+		} catch {
+			res.json({ mode: "dark", customPrimaryColor: null });
+		}
+	});
+
+	// config:set-theme
+	router.put("/theme", (req, res) => {
+		try {
+			kv().setJson("theme", req.body);
+			res.json({ success: true });
+		} catch {
+			res.status(400).json({ error: "failed to save theme" });
+		}
+	});
+
+	// ─── Device Context ──────────────────────────────────────
+
+	// device-context:get
+	router.get("/device-context", (_req, res) => {
+		try {
+			const content = loadDeviceContext(kv());
+			res.json({ content });
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
+		}
+	});
+
+	// device-context:generate — generate and save device context
+	router.post("/device-context/generate", (_req, res) => {
+		try {
+			const content = generateAndSaveDeviceContext(kv());
+			res.json({ content });
+		} catch (err: any) {
+			res.status(500).json({ content: "", error: err.message });
+		}
+	});
+
+	// device-context:save — save device context
+	router.put("/device-context", (req, res) => {
+		try {
+			const { content } = req.body as { content: string };
+			saveDeviceContext(content, kv());
+			res.json({ success: true });
+		} catch (err: any) {
+			res.status(400).json({ error: err.message });
+		}
+	});
+
+	// ─── Guidelines ──────────────────────────────────────────
+
+	// guidelines:get — get guidelines from config
+	router.get("/guidelines", (_req, res) => {
+		try {
+			const config = loadConfig(process.cwd(), undefined, kv());
+			const guidelines = config.systemPrompt?.guidelines;
+			res.json({
+				guidelines: guidelines ?? DEFAULT_GUIDELINES,
+				defaults: DEFAULT_GUIDELINES,
+				isDefault: !guidelines,
+			});
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
+		}
+	});
+
+	// guidelines:save — save guidelines
+	router.put("/guidelines", (req, res) => {
+		try {
+			const guidelines = req.body as string[];
+			const configData: any = kv().getJson("global_config") ?? {};
+			if (!configData.systemPrompt) configData.systemPrompt = {};
+			configData.systemPrompt.guidelines = guidelines;
+			kv().setJson("global_config", configData);
+			res.json({ success: true });
+		} catch {
+			res.status(400).json({ error: "failed to save guidelines" });
+		}
+	});
+
+	// ─── Tools ───────────────────────────────────────────────
+
+	// tools:list — list tools from registry
+	router.get("/tools", (_req, res) => {
+		try {
+			const tools = registry.getAll().map((d) => ({
+				name: d.name,
+				description: d.description,
+				userDescription: d.userDescription,
+				group: d.category,
+				source: d.source,
+				mcpServerName: d.mcpServerName,
+				configSchema: d.configSchema,
+				meta: d.meta,
+			}));
+			res.json(tools);
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
+		}
+	});
+
+	// tool-config:get — get tool config
+	router.get("/tool-config", (_req, res) => {
+		res.json(registry.getToolConfig());
+	});
+
+	// tool-config:save — save tool config
+	router.put("/tool-config", (req, res) => {
+		try {
+			registry.saveToolConfig(req.body);
+			res.json({ success: true });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	return router;
+}

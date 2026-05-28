@@ -2,6 +2,7 @@ import { Type, type Static } from "typebox";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import type { IKVStore } from "./kv-store-interface.js";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -224,12 +225,19 @@ function readJsonFile(filepath: string): Record<string, unknown> | null {
 	}
 }
 
-export function loadConfig(cwd?: string, overrides?: Partial<ZeroCoreConfig>): ZeroCoreConfig {
+export function loadConfig(cwd?: string, overrides?: Partial<ZeroCoreConfig>, kv?: IKVStore): ZeroCoreConfig {
 	let fileConfig: Partial<ZeroCoreConfig> = {};
 
-	// 1. Global config: ~/.zero-core/zero-core.json
-	const globalData = readJsonFile(getGlobalConfigPath());
-	if (globalData) fileConfig = deepMerge(fileConfig, globalData as Partial<ZeroCoreConfig>);
+	// 1. Global config: from SQLite kv_store (migrated from zero-core.json)
+	// db passed as parameter
+	if (kv) {
+		const globalData = kv.getJson<Partial<ZeroCoreConfig>>("global_config");
+		if (globalData) fileConfig = deepMerge(fileConfig, globalData);
+	} else {
+		// Fallback for environments where DB is not yet initialized
+		const globalData = readJsonFile(getGlobalConfigPath());
+		if (globalData) fileConfig = deepMerge(fileConfig, globalData as Partial<ZeroCoreConfig>);
+	}
 
 	// 2. Project config: <cwd>/zero-core.json or <cwd>/.zero-core.json
 	if (cwd) {
@@ -256,4 +264,8 @@ export function loadConfig(cwd?: string, overrides?: Partial<ZeroCoreConfig>): Z
 
 export function resolveEffective<T>(configValue: T | undefined, piDefault: T): T {
 	return configValue !== undefined ? configValue : piDefault;
+}
+
+export function saveGlobalConfig(config: Partial<ZeroCoreConfig>, kv: IKVStore): void {
+	kv.setJson("global_config", config);
 }

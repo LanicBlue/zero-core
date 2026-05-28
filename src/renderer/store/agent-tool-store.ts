@@ -1,26 +1,5 @@
 import { create } from "zustand";
-
-export interface AgentToolEntry {
-	id: string;
-	name: string;
-	description?: string;
-	type: "internal" | "external";
-	enabled: boolean;
-	agentId?: string;
-	transport?: "cli" | "http";
-	command?: string;
-	argsTemplate?: string;
-	url?: string;
-	method?: string;
-	headers?: Record<string, string>;
-	bodyTemplate?: string;
-	responsePath?: string;
-	timeout?: number;
-	blocking?: boolean;
-		auto_background_timeout?: number;
-	createdAt: string;
-	updatedAt: string;
-}
+import type { AgentToolEntry } from "../../shared/types.js";
 
 const api = () => (window as any).api;
 

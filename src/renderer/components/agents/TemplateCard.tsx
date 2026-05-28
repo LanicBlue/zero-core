@@ -1,5 +1,5 @@
 import React from "react";
-import type { PromptTemplate } from "../../store/template-store.js";
+import type { PromptTemplate } from "../../../shared/types.js";
 
 interface Props {
 	template: PromptTemplate;

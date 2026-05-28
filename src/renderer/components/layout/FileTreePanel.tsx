@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useChatStore } from "../../store/chat-store.js";
-import { useAgentStore, type AgentRecord } from "../../store/agent-store.js";
+import { useAgentStore } from "../../store/agent-store.js";
+import type { AgentRecord } from "../../../shared/types.js";
 
 interface FileEntry {
 	name: string;

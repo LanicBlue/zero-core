@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { buildTool } from "../../runtime/tools/tool-factory.js";
+import { buildTool } from "../tools/tool-factory.js";
 
 // ---------------------------------------------------------------------------
 // Sequential Thinking — multi-step reasoning with thought history

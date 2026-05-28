@@ -1,5 +1,5 @@
 import type { ModelMessage } from "ai";
-import { getSessionDB } from "./db-access.js";
+import type { ISessionStore } from "./session-store-interface.js";
 
 const DEFAULT_CONTEXT_WINDOW = 128000;
 const RESERVE_TOKENS = 16384;
@@ -9,19 +9,21 @@ export class AgentSession {
 	private readonly systemPrompt: string;
 	private readonly contextWindow: number;
 	private sessionId: string | null = null;
+	private db: ISessionStore | null;
 
 	constructor(
 		systemPrompt: string,
 		contextWindow?: number,
 		sessionId?: string,
+		db?: ISessionStore,
 	) {
 		this.systemPrompt = systemPrompt;
 		this.contextWindow = contextWindow ?? DEFAULT_CONTEXT_WINDOW;
 		this.sessionId = sessionId ?? null;
+		this.db = db ?? null;
 
-		const db = getSessionDB();
-		if (db && this.sessionId) {
-			this.messages = db.getMessages(this.sessionId);
+		if (this.db && this.sessionId) {
+			this.messages = this.db.getMessages(this.sessionId);
 			if (this.messages.length === 0) {
 				this.messages = this.rebuildFromTurns();
 			}
@@ -45,9 +47,8 @@ export class AgentSession {
 	}
 
 	saveToDb(): void {
-		const db = getSessionDB();
-		if (db && this.sessionId) {
-			db.saveTurn(this.sessionId, this.messages);
+		if (this.db && this.sessionId) {
+			this.db.saveTurn(this.sessionId, this.messages);
 		}
 	}
 
@@ -69,10 +70,23 @@ export class AgentSession {
 		this.messages = kept;
 	}
 
+	/** Aggressively prune: keep only the last keepRatio of messages (by token budget). */
+	aggressivePrune(keepRatio: number): void {
+		const keepTokens = Math.floor((this.contextWindow - RESERVE_TOKENS) * keepRatio);
+		let budget = keepTokens;
+		const kept: ModelMessage[] = [];
+		for (let i = this.messages.length - 1; i >= 0; i--) {
+			const cost = this.estimateMessageTokens(this.messages[i]);
+			if (budget - cost < 0) break;
+			budget -= cost;
+			kept.unshift(this.messages[i]);
+		}
+		this.messages = kept;
+	}
+
 	rebuildFromTurns(): ModelMessage[] {
-		const db = getSessionDB();
-		if (!db || !this.sessionId) return [];
-		const turns = db.getTurns(this.sessionId);
+		if (!this.db || !this.sessionId) return [];
+		const turns = this.db.getTurns(this.sessionId);
 		if (turns.length === 0) return [];
 
 		const messages: ModelMessage[] = [];

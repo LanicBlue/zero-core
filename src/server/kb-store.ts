@@ -1,31 +1,6 @@
-import { join } from "node:path";
-import { homedir } from "node:os";
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type Database from "better-sqlite3";
-
-// ---------------------------------------------------------------------------
-// Knowledge Base Record
-// ---------------------------------------------------------------------------
-
-export interface KnowledgeBase {
-	id: string;
-	name: string;
-	description: string;
-	embeddingProvider: string;
-	embeddingModel: string;
-	agentIds: string[];
-	files: KbFileInfo[];
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface KbFileInfo {
-	path: string;
-	name: string;
-	size: number;
-	chunks: number;
-	ingestedAt: string;
-}
+import type { SessionDB } from "./session-db.js";
+import type { KnowledgeBase, KbFileInfo } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
 // Column definitions
@@ -49,12 +24,8 @@ const COLUMNS: ColumnDef[] = [
 export class KbStore {
 	private store: SqliteStore<KnowledgeBase>;
 
-	constructor(db: Database.Database) {
-		this.store = new SqliteStore<KnowledgeBase>(db, "kb_entries", COLUMNS);
-
-		// Migrate from JSON if needed
-		const jsonPath = join(homedir(), ".zero-core", "knowledge-bases.json");
-		this.store.migrateFromJson(jsonPath, "knowledgeBases");
+	constructor(sessionDB: SessionDB) {
+		this.store = new SqliteStore<KnowledgeBase>(sessionDB.getDb(), "kb_entries", COLUMNS);
 	}
 
 	list(): KnowledgeBase[] {

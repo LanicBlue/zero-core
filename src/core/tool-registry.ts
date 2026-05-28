@@ -1,6 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import type { IKVStore } from "./kv-store-interface.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,19 +46,21 @@ export interface ToolDescriptor {
 
 type ChangeCallback = () => void;
 
+const KV_KEY = "tool_config";
+
 // ---------------------------------------------------------------------------
-// ToolRegistry — singleton
+// ToolRegistry
 // ---------------------------------------------------------------------------
 
-class ToolRegistry {
+export class ToolRegistry {
 	private tools = new Map<string, ToolDescriptor>();
-	private configPath: string;
 	private config: Record<string, Record<string, any>> = {};
 	private changeListeners: ChangeCallback[] = [];
+	private kv: IKVStore | null;
 
-	constructor() {
-		this.configPath = join(homedir(), ".zero-core", "tool-config.json");
-		this.loadConfig();
+	constructor(kv?: IKVStore) {
+		this.kv = kv ?? null;
+		if (this.kv) this.loadConfig();
 	}
 
 	// ─── Registration ───────────────────────────
@@ -108,20 +108,15 @@ class ToolRegistry {
 
 	saveToolConfig(config: Record<string, Record<string, any>>): void {
 		this.config = config;
-		const dir = join(this.configPath, "..");
-		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-		writeFileSync(this.configPath, JSON.stringify(config, null, 2), "utf-8");
+		if (this.kv) {
+			this.kv.setJson(KV_KEY, config);
+		}
 	}
 
 	private loadConfig(): void {
-		if (!existsSync(this.configPath)) {
-			this.config = {};
-			return;
-		}
-		try {
-			this.config = JSON.parse(readFileSync(this.configPath, "utf-8"));
-		} catch {
-			this.config = {};
+		if (this.kv) {
+			const stored = this.kv.getJson<Record<string, Record<string, any>>>(KV_KEY);
+			this.config = stored ?? {};
 		}
 	}
 
@@ -140,6 +135,3 @@ class ToolRegistry {
 		}
 	}
 }
-
-// Singleton
-export const toolRegistry = new ToolRegistry();

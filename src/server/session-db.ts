@@ -1,22 +1,12 @@
 import Database from "better-sqlite3";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { existsSync, readdirSync, readFileSync, renameSync, mkdirSync } from "node:fs";
 import { v4 as uuidv4 } from "uuid";
 import { log } from "../core/logger.js";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface SessionRecord {
-	id: string;
-	agentId: string;
-	isMain: boolean;
-	title: string | null;
-	createdAt: string;
-	updatedAt: string;
-}
+import type { SessionRecord } from "../shared/types.js";
+import { KeyValueStore } from "./key-value-store.js";
+import { MemoryStore } from "./memory-store.js";
+import { ZERO_CORE_DIR } from "../core/config.js";
 
 // ---------------------------------------------------------------------------
 // SessionDB — SQLite-backed session & message persistence
@@ -24,19 +14,24 @@ export interface SessionRecord {
 
 export class SessionDB {
 	private db: Database.Database;
+	private kvStore: KeyValueStore;
+	private memoryStore: MemoryStore;
 
 	constructor(dbPath?: string) {
-		const dir = join(dbPath ?? join(homedir(), ".zero-core"), "..");
+		const dir = join(dbPath ?? ZERO_CORE_DIR, "..");
 		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-		const path = dbPath ?? join(homedir(), ".zero-core", "sessions.db");
+		const path = dbPath ?? join(ZERO_CORE_DIR, "sessions.db");
 		this.db = new Database(path);
 
 		this.db.pragma("journal_mode = WAL");
 		this.db.pragma("foreign_keys = ON");
 
+		this.kvStore = new KeyValueStore(this.db);
+		this.memoryStore = new MemoryStore(this.db);
+
 		this.initSchema();
-		this.migrateFromJson();
+		this.migrateMessageFiles();
 	}
 
 	/** Expose the underlying db for SqliteStore instances. */
@@ -44,8 +39,16 @@ export class SessionDB {
 		return this.db;
 	}
 
+	getKVStore(): KeyValueStore {
+		return this.kvStore;
+	}
+
+	getMemoryStore(): MemoryStore {
+		return this.memoryStore;
+	}
+
 	// -----------------------------------------------------------------------
-	// Schema
+	// Schema — only sessions/messages/turns (owned by SessionDB itself)
 	// -----------------------------------------------------------------------
 
 	private initSchema(): void {
@@ -83,88 +86,9 @@ export class SessionDB {
 			);
 			CREATE INDEX IF NOT EXISTS idx_turns_session_seq ON turns(session_id, seq);
 		`);
+	}
 
-		// Progressive schema migration via user_version
-		const version = (this.db.pragma("user_version", { simple: true }) as number) ?? 0;
-
-		if (version < 2) {
-			this.db.exec(`
-				CREATE TABLE IF NOT EXISTS providers (
-					id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL,
-					api_key TEXT DEFAULT '', base_url TEXT DEFAULT '',
-					models TEXT DEFAULT '[]', enabled INTEGER DEFAULT 0,
-					is_system INTEGER DEFAULT 0,
-					created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-				);
-
-				CREATE TABLE IF NOT EXISTS mcp_servers (
-					id TEXT PRIMARY KEY, name TEXT NOT NULL, transport TEXT NOT NULL DEFAULT 'stdio',
-					command TEXT, args TEXT, env TEXT, url TEXT, headers TEXT,
-					enabled INTEGER DEFAULT 0, agent_ids TEXT,
-					created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-				);
-
-				CREATE TABLE IF NOT EXISTS agents (
-					id TEXT PRIMARY KEY, name TEXT NOT NULL,
-					workspace_dir TEXT, model TEXT, provider TEXT,
-					thinking_level TEXT, context_config TEXT,
-					system_prompt TEXT, tool_policy TEXT, skill_policy TEXT,
-					created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-				);
-
-				CREATE TABLE IF NOT EXISTS templates (
-					id TEXT PRIMARY KEY, name TEXT NOT NULL,
-					description TEXT DEFAULT '', icon TEXT,
-					system_prompt TEXT, model TEXT, provider TEXT,
-					thinking_level TEXT, tool_policy TEXT,
-					tags TEXT DEFAULT '[]', source_url TEXT, color TEXT,
-					recommended_tools TEXT, is_built_in INTEGER DEFAULT 0,
-					created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-				);
-
-				CREATE TABLE IF NOT EXISTS agent_tools (
-					id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT,
-					type TEXT NOT NULL, enabled INTEGER DEFAULT 1,
-					agent_id TEXT, transport TEXT,
-					command TEXT, args_template TEXT,
-					url TEXT, method TEXT, headers TEXT,
-					body_template TEXT, response_path TEXT,
-					timeout INTEGER,
-					blocking INTEGER DEFAULT 1,
-					created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-				);
-
-				CREATE TABLE IF NOT EXISTS kb_entries (
-					id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT DEFAULT '',
-					embedding_provider TEXT DEFAULT 'openai', embedding_model TEXT DEFAULT '',
-					agent_ids TEXT DEFAULT '[]', files TEXT DEFAULT '[]',
-					created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-				);
-			`);
-			this.db.pragma("user_version = 2");
-				log.db("Schema migrated to user_version 2 (config tables added)");
-
-			}
-
-			if (version < 3) {
-				try {
-					this.db.exec("ALTER TABLE agent_tools ADD COLUMN blocking INTEGER DEFAULT 1");
-				} catch { /* column may already exist */ }
-				this.db.pragma("user_version = 3");
-				log.db("Schema migrated to user_version 3 (agent_tools.blocking column)");
-			}
-
-			if (version < 4) {
-				try {
-					this.db.exec("ALTER TABLE agent_tools ADD COLUMN auto_background_timeout INTEGER");
-				} catch { /* column may already exist */ }
-				this.db.pragma("user_version = 4");
-				log.db("Schema migrated to user_version 4 (agent_tools.auto_background_timeout column)");
-			}
-		}
-
-		// -----------------------------------------------------------------------
-		// Session CRUD
+	// Session CRUD
 	// -----------------------------------------------------------------------
 
 	createSession(agentId: string, title?: string): SessionRecord {
@@ -262,11 +186,11 @@ export class SessionDB {
 	}
 
 	// -----------------------------------------------------------------------
-	// Migration from old JSON files
+	// Migration from legacy message JSON files
 	// -----------------------------------------------------------------------
 
-	private migrateFromJson(): void {
-		const msgDir = join(homedir(), ".zero-core", "messages");
+	private migrateMessageFiles(): void {
+		const msgDir = join(ZERO_CORE_DIR, "messages");
 		if (!existsSync(msgDir)) return;
 
 		const files = readdirSync(msgDir).filter((f) => f.endsWith(".json") && !f.endsWith(".migrated.bak"));

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { useKbStore, type KnowledgeBase, type KbFileInfo } from "../../store/kb-store.js";
+import { useKbStore } from "../../store/kb-store.js";
+import type { KnowledgeBase, KbFileInfo } from "../../../shared/types.js";
 
 type Tab = "list" | "create" | "detail";
 

@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { buildTool } from "./tool-factory.js";
 import type { ToolExecutionContext } from "../types.js";
-import type { AgentToolEntry } from "../../server/agent-tool-store.js";
+import type { AgentToolEntry } from "../../shared/types.js";
 
 const execFileAsync = promisify(execFile);
 

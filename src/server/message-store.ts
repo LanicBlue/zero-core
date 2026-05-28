@@ -1,6 +1,6 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { ZERO_CORE_DIR } from "../core/config.js";
 
 export interface StoredMessage {
 	id: string;
@@ -10,7 +10,7 @@ export interface StoredMessage {
 	toolCalls?: { name: string; status: "running" | "done" | "error" }[];
 }
 
-const MSG_DIR = join(homedir(), ".zero-core", "messages");
+const MSG_DIR = join(ZERO_CORE_DIR, "messages");
 
 if (!existsSync(MSG_DIR)) mkdirSync(MSG_DIR, { recursive: true });
 

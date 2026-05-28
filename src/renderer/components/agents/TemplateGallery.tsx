@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef } from "react";
-import { useTemplateStore, type PromptTemplate } from "../../store/template-store.js";
+import { useTemplateStore } from "../../store/template-store.js";
+import type { PromptTemplate } from "../../../shared/types.js";
 import TemplateCard from "./TemplateCard.js";
 import GithubImportModal from "./GithubImportModal.js";
 import TemplateDetailModal from "./TemplateDetailModal.js";

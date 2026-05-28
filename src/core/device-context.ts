@@ -1,8 +1,6 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { arch, cpus, hostname, networkInterfaces, platform, release, totalmem, type } from "node:os";
-import { homedir } from "node:os";
+import type { IKVStore } from "./kv-store-interface.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -175,45 +173,34 @@ export function formatDeviceContext(info: DeviceInfo): string {
 }
 
 // ---------------------------------------------------------------------------
-// Persistence
+// Persistence — backed by SQLite kv_store
 // ---------------------------------------------------------------------------
 
-function getDeviceContextPath(): string {
-	return join(homedir(), ".zero-core", "device-context.json");
+const KV_KEY = "device_context";
+
+interface DeviceContextData {
+	content: string;
+	updatedAt: string;
 }
 
-export function loadDeviceContext(): string {
-	const filePath = getDeviceContextPath();
-	if (!existsSync(filePath)) {
-		// First run: auto-generate and save
-		try {
-			return generateAndSaveDeviceContext();
-		} catch {
-			return "";
-		}
+export function loadDeviceContext(kv?: IKVStore): string {
+	if (!kv) {
+		try { return generateAndSaveDeviceContext(kv); } catch { return ""; }
 	}
-	try {
-		const data = JSON.parse(readFileSync(filePath, "utf-8"));
-		return data.content ?? "";
-	} catch {
-		return "";
+	const stored = kv.getJson<DeviceContextData>(KV_KEY);
+	if (!stored) {
+		try { return generateAndSaveDeviceContext(); } catch { return ""; }
 	}
+	return stored.content ?? "";
 }
 
-export function saveDeviceContext(content: string): void {
-	const filePath = getDeviceContextPath();
-	const dir = join(filePath, "..");
-	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-	const data: DeviceContextFile = {
-		content,
-		updatedAt: new Date().toISOString(),
-	};
-	writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+export function saveDeviceContext(content: string, kv: IKVStore): void {
+	kv.setJson(KV_KEY, { content, updatedAt: new Date().toISOString() });
 }
 
-export function generateAndSaveDeviceContext(): string {
+export function generateAndSaveDeviceContext(kv?: IKVStore): string {
 	const info = collectDeviceInfo();
 	const formatted = formatDeviceContext(info);
-	saveDeviceContext(formatted);
+	if (kv) saveDeviceContext(formatted, kv);
 	return formatted;
 }

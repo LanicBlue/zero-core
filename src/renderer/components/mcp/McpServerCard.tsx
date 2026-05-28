@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import type { McpServerConfig } from "../../store/mcp-store.js";
+import type { McpServerConfig } from "../../../shared/types.js";
 
 interface Props {
 	server: McpServerConfig;

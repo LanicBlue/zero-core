@@ -1,8 +1,11 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import type { SessionDB } from "../server/session-db.js";
+import { ZERO_CORE_DIR } from "../core/config.js";
 
-const CONFIG_PATH = join(homedir(), ".zero-core", "workspace.json");
+// ---------------------------------------------------------------------------
+// Workspace configuration — backed by SQLite kv_store
+// ---------------------------------------------------------------------------
 
 export interface WorkspaceConfig {
 	workspaceDir: string;
@@ -11,31 +14,23 @@ export interface WorkspaceConfig {
 }
 
 const DEFAULT_CONFIG: WorkspaceConfig = {
-	workspaceDir: join(homedir(), ".zero-core", "workspace"),
+	workspaceDir: join(ZERO_CORE_DIR, "workspace"),
 };
 
-function ensureDir(): void {
-	const dir = join(homedir(), ".zero-core");
-	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+const KV_KEY = "workspace";
+
+export function loadWorkspaceConfig(db?: SessionDB): WorkspaceConfig {
+	if (!db) return { ...DEFAULT_CONFIG };
+
+	const kv = db.getKVStore();
+	const stored = kv.getJson<WorkspaceConfig>(KV_KEY);
+	return stored ? { ...DEFAULT_CONFIG, ...stored } : { ...DEFAULT_CONFIG };
 }
 
-export function loadWorkspaceConfig(): WorkspaceConfig {
-	ensureDir();
-	if (!existsSync(CONFIG_PATH)) {
-		writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2));
-		return { ...DEFAULT_CONFIG };
-	}
-	try {
-		const raw = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
-		return { ...DEFAULT_CONFIG, ...raw };
-	} catch {
-		return { ...DEFAULT_CONFIG };
-	}
-}
-
-export function saveWorkspaceConfig(config: Partial<WorkspaceConfig>): WorkspaceConfig {
-	const current = loadWorkspaceConfig();
+export function saveWorkspaceConfig(config: Partial<WorkspaceConfig>, db: SessionDB): WorkspaceConfig {
+	const current = loadWorkspaceConfig(db);
 	const updated = { ...current, ...config };
-	writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2));
+
+	db.getKVStore().setJson(KV_KEY, updated);
 	return updated;
 }

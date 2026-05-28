@@ -1,27 +1,24 @@
-import { loadConfig } from "../core/config.js";
+import { loadConfig, ZERO_CORE_DIR, type ZeroCoreConfig } from "../core/config.js";
 import { buildSystemPrompt } from "../core/system-prompt.js";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
 import { loadDeviceContext } from "../core/device-context.js";
-import type { AgentRecord } from "./agent-store.js";
+import type { AgentRecord } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
 import type { RuntimeProviderConfig, SessionConfig, StreamEvent } from "../runtime/types.js";
 import { clearProviderCache } from "../runtime/provider-factory.js";
 import { SessionDB } from "./session-db.js";
-import { mcpManager } from "./mcp-manager.js";
+import { MCPManager } from "./mcp-manager.js";
 import { buildMcpTools } from "../runtime/tools/mcp-tool.js";
 import { KbStore } from "./kb-store.js";
 import { KbDB } from "./kb-db.js";
 import { log } from "../core/logger.js";
-import { toolRegistry } from "../core/tool-registry.js";
+import { ToolRegistry } from "../core/tool-registry.js";
 
 // ---------------------------------------------------------------------------
 // Ensure zero-core dirs
 // ---------------------------------------------------------------------------
-
-const ZERO_CORE_DIR = process.env.ZERO_CORE_DIR ?? join(homedir(), ".zero-core");
 
 if (!existsSync(ZERO_CORE_DIR)) mkdirSync(ZERO_CORE_DIR, { recursive: true });
 
@@ -54,7 +51,7 @@ class AgentService {
 	private loops = new Map<string, AgentLoop>();
 	private runStates = new Map<string, AgentRunState>();
 	private subscribers = new Set<StreamCallback>();
-	private config = loadConfig(process.cwd());
+	private config!: ZeroCoreConfig;
 	private workspaceDir: string;
 	private providerConfigs: RuntimeProviderConfig[] = [];
 	private defaultModel: string | undefined;
@@ -62,14 +59,19 @@ class AgentService {
 	private db: SessionDB;
 	private kbStore: KbStore;
 	private kbDb: KbDB;
+	private registry: ToolRegistry;
+	private mcp: MCPManager;
 	private agentStore: AgentStore | null = null;
 	private agentToolStore: import("./agent-tool-store.js").AgentToolStore | null = null;
 
-	constructor(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore) {
+	constructor(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore, registry?: ToolRegistry, mcp?: MCPManager) {
 		this.workspaceDir = workspaceDir;
 		this.db = sessionDb ?? new SessionDB();
-		this.kbStore = kb ?? new KbStore(this.db.getDb());
+		this.kbStore = kb ?? new KbStore(this.db);
 		this.kbDb = new KbDB();
+		this.registry = registry ?? new ToolRegistry(this.db.getKVStore());
+		this.mcp = mcp ?? new MCPManager(this.registry);
+		this.config = loadConfig(process.cwd(), undefined, this.db.getKVStore());
 	}
 
 	getDB(): SessionDB {
@@ -166,7 +168,7 @@ class AgentService {
 		const cwd = agent?.workspaceDir || this.workspaceDir;
 		log.agent("Creating runtime for agent:", agentId, "session:", sessionId, "cwd:", cwd);
 
-		const deviceContext = loadDeviceContext() || undefined;
+		const deviceContext = loadDeviceContext(this.db.getKVStore()) || undefined;
 
 		const systemPrompt = buildSystemPrompt(this.config, {
 			cwd,
@@ -187,6 +189,7 @@ class AgentService {
 			providerName: agent?.provider || this.defaultProvider || "",
 			thinkingLevel: agent?.thinkingLevel,
 			sessionId,
+			db: this.db,
 			toolPolicy: {
 				autoApprove: agent?.toolPolicy?.autoApprove ?? this.config.toolPolicy.autoApprove,
 				blockedTools: agent?.toolPolicy?.blockedTools ?? this.config.toolPolicy.blockedTools,
@@ -195,9 +198,9 @@ class AgentService {
 					readScope: agent?.toolPolicy?.readScope ?? "filesystem",
 			},
 			getMcpTools: async (aid?: string) => {
-				const mcpToolInfos = mcpManager.getToolsForAgent(aid);
+				const mcpToolInfos = this.mcp.getToolsForAgent(aid);
 				return buildMcpTools(mcpToolInfos, (serverId, toolName, args) =>
-					mcpManager.callTool(serverId, toolName, args),
+					this.mcp.callTool(serverId, toolName, args),
 				);
 			},
 		getAgentToolEntries: async () => {
@@ -340,16 +343,16 @@ class AgentService {
 	}
 }
 
-export function createAgentService(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore): AgentService {
-	return new AgentService(workspaceDir, sessionDb, kb);
+export function createAgentService(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore, registry?: ToolRegistry, mcp?: MCPManager): AgentService {
+	return new AgentService(workspaceDir, sessionDb, kb, registry, mcp);
 }
 
-export function registerAgentToolEntries(agentToolStore: import("./agent-tool-store.js").AgentToolStore): void {
-	toolRegistry.unregister("agent");
+export function registerAgentToolEntries(agentToolStore: import("./agent-tool-store.js").AgentToolStore, registry: ToolRegistry): void {
+	registry.unregister("agent");
 
 	for (const entry of agentToolStore.list()) {
 		if (!entry.enabled) continue;
-		toolRegistry.register({
+		registry.register({
 			name: entry.name,
 			description: entry.description || `Run the "${entry.name}" agent`,
 			category: "agent",
@@ -364,5 +367,5 @@ export function registerAgentToolEntries(agentToolStore: import("./agent-tool-st
 			},
 		});
 	}
-	toolRegistry.notifyChange();
+	registry.notifyChange();
 }

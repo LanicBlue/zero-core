@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { useProviderStore, type Provider, type ProviderModel } from "../../store/provider-store.js";
+import { useProviderStore } from "../../store/provider-store.js";
+import type { Provider, ProviderModel } from "../../../shared/types.js";
 import { useThemeStore } from "../../store/theme-store.js";
 
 const api = () => (window as any).api;

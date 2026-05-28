@@ -1,29 +1,5 @@
 import { create } from "zustand";
-
-export interface PromptTemplate {
-	id: string;
-	name: string;
-	description: string;
-	icon?: string;
-	systemPrompt: string;
-	model?: string;
-	provider?: string;
-	thinkingLevel?: string;
-	toolPolicy?: {
-		autoApprove?: string[];
-		blockedTools?: string[];
-		executionMode?: "sequential" | "parallel";
-		resultMaxTokens?: number;
-		readScope?: "filesystem" | "workspace";
-	};
-	tags: string[];
-	sourceUrl?: string;
-	color?: string;
-	recommendedTools?: string[];
-	isBuiltIn: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
+import type { PromptTemplate } from "../../shared/types.js";
 
 const api = () => (window as any).api;
 

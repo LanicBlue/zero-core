@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { v4 as uuidv4 } from "uuid";
+import { ZERO_CORE_DIR } from "../core/config.js";
 
 export interface PersonaRecord {
 	id: string;
@@ -32,7 +32,7 @@ export class PersonaStore {
 	private data: PersonaStoreData;
 
 	constructor(filePath?: string) {
-		this.filePath = filePath ?? join(homedir(), ".zero-core", "personas.json");
+		this.filePath = filePath ?? join(ZERO_CORE_DIR, "personas.json");
 		this.data = this.load();
 	}
 

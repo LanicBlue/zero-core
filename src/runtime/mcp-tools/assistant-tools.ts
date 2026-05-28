@@ -1,14 +1,13 @@
 import { z } from "zod";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, resolve, extname } from "node:path";
-import { homedir } from "node:os";
-import { buildTool } from "../../runtime/tools/tool-factory.js";
+import { buildTool } from "../tools/tool-factory.js";
+import { ZERO_CORE_DIR } from "../../core/config.js";
 
 // ---------------------------------------------------------------------------
 // Assistant Tool — consolidated app diagnostics
 // ---------------------------------------------------------------------------
 
-const ZERO_CORE_DIR = process.env.ZERO_CORE_DIR ?? join(homedir(), ".zero-core");
 const BLOCKED_FILES = new Set([".env", ".env.local", ".env.production", "credentials.json", "secret"]);
 
 const BINARY_EXTENSIONS: Record<string, boolean> = {

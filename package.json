@@ -12,14 +12,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./extension": {
-      "types": "./dist/extension/index.d.ts",
-      "import": "./dist/extension/index.js"
-    },
-    "./openclaw": {
-      "types": "./dist/openclaw/plugin-entry.d.ts",
-      "import": "./dist/openclaw/plugin-entry.js"
     }
   },
   "scripts": {

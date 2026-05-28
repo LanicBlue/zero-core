@@ -1,33 +1,5 @@
 import { create } from "zustand";
-
-export interface AgentRecord {
-	id: string;
-	name: string;
-	workspaceDir?: string;
-	model?: string;
-	provider?: string;
-	thinkingLevel?: string;
-	contextConfig?: {
-		useDeviceContext?: boolean;
-		useGuidelines?: boolean;
-		useMemoryContext?: boolean;
-	};
-	systemPrompt?: string;
-	toolPolicy?: {
-		autoApprove?: string[];
-		blockedTools?: string[];
-		tools?: Record<string, { enabled: boolean }>;
-		executionMode?: "sequential" | "parallel";
-		resultMaxTokens?: number;
-		readScope?: "filesystem" | "workspace";
-	};
-	skillPolicy?: {
-		enabledSkills?: string[];
-	};
-	knowledgeBaseIds?: string[];
-	createdAt: string;
-	updatedAt: string;
-}
+import type { AgentRecord } from "../../shared/types.js";
 
 export interface ModelInfo {
 	provider: string;

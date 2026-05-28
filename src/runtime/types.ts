@@ -1,4 +1,5 @@
 import type { ModelMessage } from "ai";
+import type { ISessionStore } from "./session-store-interface.js";
 
 // ---------------------------------------------------------------------------
 // Stream events — must match the existing IPC contract
@@ -151,6 +152,7 @@ export interface SessionConfig {
 	thinkingLevel?: string;
 	timeoutSec?: number;
 	sessionId?: string;
+	db?: ISessionStore;
 	toolPolicy: {
 		autoApprove?: string[];
 		blockedTools?: string[];
@@ -161,7 +163,7 @@ export interface SessionConfig {
 		getMcpTools?: (agentId?: string) => Promise<Record<string, any>>;
 		getRagContext?: (agentId: string, query: string) => Promise<string | undefined>;
 			getAgentToolEntries?: () => Promise<{
-				entries: Array<import("../server/agent-tool-store.js").AgentToolEntry>;
+				entries: Array<import("../shared/types.js").AgentToolEntry>;
 				agents: Map<string, { id: string; name: string; systemPrompt?: string; model?: string }>;
 			}>;
 	}
@@ -194,6 +196,7 @@ export interface ToolExecutionContext {
 	workingDir: string;
 	agentId: string;
 	emit: (event: StreamEvent) => void;
+	db?: ISessionStore;
 	delegateTask?: (task: string, options?: { model?: string; systemPrompt?: string }) => Promise<string>;
 	delegateTaskBackground?: (task: string, options?: { model?: string; systemPrompt?: string }) => string;
 	getTaskResult?: (taskId: string) => TaskInfo | null;

@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import type { PromptTemplate } from "../../store/template-store.js";
+import type { PromptTemplate } from "../../../shared/types.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
 
 interface Props {

@@ -1,34 +1,6 @@
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type Database from "better-sqlite3";
-import { log } from "../core/logger.js";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface ProviderModel {
-	id: string;
-	name: string;
-	group?: string;
-	contextWindow?: number;
-	maxTokens?: number;
-}
-
-export interface Provider {
-	id: string;
-	name: string;
-	type: "openai" | "anthropic" | "gemini" | "openai-compatible" | "ollama";
-	apiKey: string;
-	baseUrl: string;
-	models: ProviderModel[];
-	enabled: boolean;
-	isSystem?: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
+import type { SessionDB } from "./session-db.js";
+import type { ProviderModel, Provider } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
 // System providers (built-in defaults)
@@ -111,20 +83,13 @@ const COLUMNS: ColumnDef[] = [
 
 export class ProviderStore {
 	private store: SqliteStore<Provider>;
-	private db: Database.Database;
+	private db: SessionDB;
 
-	constructor(db: Database.Database) {
-		this.db = db;
-		this.store = new SqliteStore<Provider>(db, "providers", COLUMNS);
+	constructor(sessionDB: SessionDB) {
+		this.db = sessionDB;
+		this.store = new SqliteStore<Provider>(sessionDB.getDb(), "providers", COLUMNS);
 
-		// Migrate from JSON first — before creating system providers
-		const jsonPath = join(homedir(), ".zero-core", "providers.json");
-		this.store.migrateFromJson(jsonPath, "providers", (raw: any) => ({
-			...raw,
-			models: raw.models ?? [],
-		}));
-
-		// Then merge system providers (creates missing ones, adds new models)
+		// Merge system providers (creates missing ones, adds new models)
 		this.mergeSystemProviders();
 	}
 

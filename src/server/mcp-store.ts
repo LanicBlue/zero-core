@@ -1,26 +1,6 @@
-import { join } from "node:path";
-import { homedir } from "node:os";
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type Database from "better-sqlite3";
-
-// ---------------------------------------------------------------------------
-// MCP Server Configuration
-// ---------------------------------------------------------------------------
-
-export interface McpServerConfig {
-	id: string;
-	name: string;
-	transport: "stdio" | "sse" | "streamable-http";
-	command?: string;
-	args?: string[];
-	env?: Record<string, string>;
-	url?: string;
-	headers?: Record<string, string>;
-	enabled: boolean;
-	agentIds?: string[];
-	createdAt: string;
-	updatedAt: string;
-}
+import type { SessionDB } from "./session-db.js";
+import type { McpServerConfig } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
 // Column definitions
@@ -47,12 +27,8 @@ const COLUMNS: ColumnDef[] = [
 export class McpStore {
 	private store: SqliteStore<McpServerConfig>;
 
-	constructor(db: Database.Database) {
-		this.store = new SqliteStore<McpServerConfig>(db, "mcp_servers", COLUMNS);
-
-		// Migrate from JSON if needed
-		const jsonPath = join(homedir(), ".zero-core", "mcp-servers.json");
-		this.store.migrateFromJson(jsonPath, "servers");
+	constructor(sessionDB: SessionDB) {
+		this.store = new SqliteStore<McpServerConfig>(sessionDB.getDb(), "mcp_servers", COLUMNS);
 	}
 
 	list(): McpServerConfig[] {

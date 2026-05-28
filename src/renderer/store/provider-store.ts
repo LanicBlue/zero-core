@@ -1,25 +1,5 @@
 import { create } from "zustand";
-
-export interface ProviderModel {
-	id: string;
-	name: string;
-	group?: string;
-	contextWindow?: number;
-	maxTokens?: number;
-}
-
-export interface Provider {
-	id: string;
-	name: string;
-	type: "openai" | "anthropic" | "gemini" | "openai-compatible" | "ollama";
-	apiKey: string;
-	baseUrl: string;
-	models: ProviderModel[];
-	enabled: boolean;
-	isSystem?: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
+import type { ProviderModel, Provider } from "../../shared/types.js";
 
 const api = () => (window as any).api;
 

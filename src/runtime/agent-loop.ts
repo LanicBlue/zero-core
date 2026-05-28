@@ -1,4 +1,4 @@
-import { streamText } from "ai";
+import { streamText, stepCountIs } from "ai";
 import type {
 	StreamEvent,
 	RuntimeCallbacks,
@@ -14,10 +14,12 @@ import { AgentSession } from "./session.js";
 import { buildToolsSet, buildToolPolicyDescription } from "./tools/index.js";
 import { buildAgentTools } from "./tools/agent-tool.js";
 import { log } from "../core/logger.js";
-import { toolRegistry } from "../core/tool-registry.js";
+import { ToolRegistry } from "../core/tool-registry.js";
 import { classifyError, isTransientError, userFriendlyMessage, parseThinkingTags, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
 import { TaskRegistry } from "./task-registry.js";
-import { getSessionDB } from "./db-access.js";
+import type { ISessionStore } from "./session-store-interface.js";
+import { TurnRecorder } from "./turn-recorder.js";
+import { SystemPromptAssembler } from "./prompt-sections.js";
 
 // ---------------------------------------------------------------------------
 // AgentLoop
@@ -30,13 +32,13 @@ export class AgentLoop implements AgentRuntime {
 	private callbacks: RuntimeCallbacks;
 	private toolContext: ToolExecutionContext;
 	private taskRegistry: TaskRegistry;
+	private promptAssembler: SystemPromptAssembler;
+	private db: ISessionStore | undefined;
 	private abortController: AbortController | null = null;
 	private busy = false;
 	private streamText = "";
 	private thinkingText = "";
-	private currentStepThinking = "";
-	private currentStepText = "";
-	private turnBlocks: any[] = [];
+	private recorder = new TurnRecorder();
 	private resultText = "";
 
 	constructor(
@@ -47,9 +49,24 @@ export class AgentLoop implements AgentRuntime {
 		this.config = config;
 		this.providers = providers;
 		this.callbacks = callbacks;
+		this.db = config.db;
 
 		const contextWindow = getContextWindow(providers, config.providerName, config.modelId);
-		this.session = new AgentSession(config.systemPrompt, contextWindow, config.sessionId);
+		this.session = new AgentSession(config.systemPrompt, contextWindow, config.sessionId, this.db);
+
+		this.promptAssembler = new SystemPromptAssembler([
+			{ name: "base", compute: () => this.session.getSystemPrompt(), cacheBreak: false },
+			{ name: "tool_policy", compute: () => buildToolPolicyDescription(this.config.toolPolicy), cacheBreak: false },
+			{
+				name: "rag_context",
+				cacheBreak: true,
+				compute: async () => {
+					if (!this.config.getRagContext) return "";
+					try { return (await this.config.getRagContext(this.config.agentId, "")) ?? ""; }
+					catch { return ""; }
+				},
+			},
+		]);
 
 		const capturedProviders = providers;
 		const capturedConfig = config;
@@ -60,8 +77,9 @@ export class AgentLoop implements AgentRuntime {
 			workingDir: config.workspaceDir,
 			agentId: config.agentId,
 			emit: (event) => this.emit(event),
+			db: this.db,
 			readScope: config.toolPolicy.readScope,
-			toolConfig: toolRegistry.getToolConfig(),
+			toolConfig: {},
 			delegateTask: async (task, options) => {
 				const subConfig: SessionConfig = {
 					...capturedConfig,
@@ -257,10 +275,8 @@ export class AgentLoop implements AgentRuntime {
 		this.busy = true;
 		this.streamText = "";
 		this.thinkingText = "";
-		this.currentStepThinking = "";
 		this.resultText = "";
-		this.currentStepText = "";
-		this.turnBlocks = [];
+		this.recorder.reset();
 		this.abortController = new AbortController();
 		const timeoutMs = this.config.timeoutSec ? this.config.timeoutSec * 1000 : undefined;
 		const timeout = timeoutMs ? setTimeout(() => {
@@ -271,6 +287,8 @@ export class AgentLoop implements AgentRuntime {
 			this.session.addMessage({ role: "user", content: userMessage });
 			this.session.saveToDb();
 			this.session.pruneIfNeeded();
+
+			log.loop("Messages after prune:", this.session.getMessages().length, "est tokens:", this.session.getMessages().reduce((s: number, m: any) => s + Math.ceil(JSON.stringify(m).length / 4), 0));
 
 			// Store user turn
 			this.saveUserTurn(userMessage);
@@ -285,7 +303,14 @@ export class AgentLoop implements AgentRuntime {
 					if (err.name === "AbortError" || this.abortController?.signal.aborted) break;
 
 					const cls = classifyError(err);
-					log.debug("loop", "Attempt " + (attempt + 1) + " failed:", cls, err.message?.slice(0, 120));
+					log.error("loop", "Attempt " + (attempt + 1) + " failed:", cls, err.message?.slice(0, 200));
+
+					if (cls === "prompt_too_long") {
+						this.session.aggressivePrune(0.5);
+						log.loop("Context too long, aggressive prune. Messages:", this.session.getMessages().length);
+						if (attempt < 1) continue;
+					}
+
 					if (!isTransientError(cls) || attempt === MAX_RETRIES) break;
 
 					const delay = BASE_DELAY_MS * Math.pow(2, attempt);
@@ -341,15 +366,12 @@ export class AgentLoop implements AgentRuntime {
 				}
 
 			const tools = buildToolsSet(this.config.toolPolicy, this.toolContext, mcpTools, agentTools);
-		const toolPolicyDesc = buildToolPolicyDescription(this.config.toolPolicy);
-		let systemPrompt = this.session.getSystemPrompt() + "\n\n## Tool Permissions\n\n" + toolPolicyDesc;
 
-		if (this.config.getRagContext) {
-			try {
-				const ragContext = await this.config.getRagContext(this.config.agentId, "");
-				if (ragContext) systemPrompt += "\n\n" + ragContext;
-			} catch { /* RAG context unavailable */ }
-		}
+		const sections = await this.promptAssembler.assemble();
+		const systemPrompt = sections
+			.filter(s => s.text)
+			.map(s => s.text)
+			.join(String.fromCharCode(10, 10));
 
 		const providerOptions: Record<string, Record<string, any>> = {};
 		if (this.config.thinkingLevel && this.config.thinkingLevel !== "none") {
@@ -379,6 +401,7 @@ export class AgentLoop implements AgentRuntime {
 			this.session.addMessage({ role: "user", content: notifications.join(String.fromCharCode(10, 10)) });
 		}
 		const result = streamText({
+				stopWhen: stepCountIs(200),
 			model,
 			system: systemPrompt,
 			messages: this.session.getMessages(),
@@ -395,30 +418,30 @@ export class AgentLoop implements AgentRuntime {
 				case "text-delta": {
 					const text = (event as any).text ?? (event as any).delta ?? "";
 					this.streamText += text;
-					this.currentStepText += text;
+					this.recorder.addTextDelta(text);
 					this.emit({
 						type: "text_delta",
 						agentId: this.config.agentId,
-						text: this.currentStepText,
+						text: this.streamText,
 					});
 					break;
 				}
 				case "reasoning-delta": {
 					const text = (event as any).text ?? (event as any).delta ?? "";
 					this.thinkingText += text;
-					this.currentStepThinking += text;
+					this.recorder.addThinkingDelta(text);
 					this.emit({
 						type: "thinking_delta",
 						agentId: this.config.agentId,
-						text: this.currentStepThinking,
+						text: this.thinkingText,
 					});
 					break;
 				}
 				case "tool-call": {
 					const e = event as any;
-					this.sealStep();
+					this.recorder.sealStep();
 					log.debug("loop", "Tool call:", e.toolName);
-					this.turnBlocks.push({ type: "tool", name: e.toolName, status: "running", args: e.input });
+					this.recorder.blocks.push({ type: "tool", name: e.toolName, status: "running", args: e.input });
 					this.emit({
 						type: "tool_start",
 						agentId: this.config.agentId,
@@ -430,7 +453,7 @@ export class AgentLoop implements AgentRuntime {
 				case "tool-result": {
 					const e = event as any;
 					log.debug("loop", "Tool result:", e.toolName);
-					const tb = [...this.turnBlocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
+					const tb = [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
 					if (tb) { tb.status = "done"; tb.result = e.output; }
 					this.emit({
 						type: "tool_end",
@@ -444,7 +467,7 @@ export class AgentLoop implements AgentRuntime {
 				case "tool-error": {
 					const e = event as any;
 					log.debug("loop", "Tool error:", e.toolName, e.errorText?.slice(0, 80));
-					const tb = [...this.turnBlocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
+					const tb = [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
 					if (tb) { tb.status = "error"; tb.result = e.errorText ?? String(e.output); }
 					this.emit({
 						type: "tool_end",
@@ -459,7 +482,7 @@ export class AgentLoop implements AgentRuntime {
 		}
 
 		this.resultText = await result.text;
-		this.sealStep();
+		this.recorder.sealStep();
 
 		// Store assistant turn to turns table
 		this.saveAssistantTurn();
@@ -487,7 +510,7 @@ export class AgentLoop implements AgentRuntime {
 		return {
 			isBusy: this.busy,
 			streamingText: this.streamText,
-			toolCalls: this.turnBlocks.filter((b: any) => b.type === "tool").map((b: any) => ({ name: b.name, status: b.status })),
+			toolCalls: this.recorder.getToolCalls() as { name: string; status: "running" | "done" | "error" }[],
 		};
 	}
 
@@ -497,36 +520,20 @@ export class AgentLoop implements AgentRuntime {
 
 	resetSession(): void {
 		this.session.reset();
+		this.promptAssembler.invalidate();
 	}
 
-	private sealStep(): void {
-		if (this.currentStepThinking) {
-			let t = this.currentStepThinking;
-			while (t.charCodeAt(t.length - 1) === 10) t = t.substring(0, t.length - 1);
-			if (t) this.turnBlocks.push({ type: "thinking", text: t });
-			this.currentStepThinking = "";
-		}
-		if (this.currentStepText) {
-			for (const b of parseThinkingTags(this.currentStepText)) this.turnBlocks.push(b);
-			this.currentStepText = "";
-		}
-	}
+	private sealStep(): void { this.recorder.sealStep(); }
 
-	private saveUserTurn(text: string): void {
-		const sessionId = this.session.getSessionId();
-		const db = getSessionDB();
-		if (!db || !sessionId) return;
-		const seq = db.getTurnCount(sessionId);
-		db.appendTurn(sessionId, seq, "user", text);
-	}
+	private saveUserTurn(text: string): void { this.recorder.saveUserTurn(this.db!, this.session.getSessionId()!, text); }
 
 	private saveAssistantTurn(): void {
 		const sessionId = this.session.getSessionId();
-		const db = getSessionDB();
-		if (!db || !sessionId) return;
-		if (this.turnBlocks.length === 0) return;
-		const seq = db.getTurnCount(sessionId);
-		db.appendTurn(sessionId, seq, "assistant", JSON.stringify(this.turnBlocks));
+		
+		if (!this.db || !sessionId) return;
+		if (this.recorder.blocks.length === 0) return;
+		const seq = this.db.getTurnCount(sessionId);
+		this.db.appendTurn(sessionId, seq, "assistant", JSON.stringify(this.recorder.blocks));
 	}
 	private emit(event: StreamEvent): void {
 		try {

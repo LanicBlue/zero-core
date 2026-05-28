@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import { getSessionDB } from "../db-access.js";
+
 
 function formatTurn(turn: { role: string; content: string | null }, limit: number): string {
 	const clip = (s: string) => s.length > limit ? s.slice(0, limit - 3) + "..." : s;
@@ -64,7 +64,7 @@ export const taskStatusTool = buildTool({
 		];
 		if (info.currentTool) header.push(`Current tool: ${info.currentTool}`);
 
-		const db = getSessionDB();
+		const db = ctx.db;
 		if (!db) return header.join("\n");
 
 		const subAgentId = `${ctx.agentId}:${input.task_id}`;

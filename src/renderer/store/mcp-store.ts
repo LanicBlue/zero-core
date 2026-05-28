@@ -1,19 +1,5 @@
 import { create } from "zustand";
-
-export interface McpServerConfig {
-	id: string;
-	name: string;
-	transport: "stdio" | "sse" | "streamable-http";
-	command?: string;
-	args?: string[];
-	env?: Record<string, string>;
-	url?: string;
-	headers?: Record<string, string>;
-	enabled: boolean;
-	agentIds?: string[];
-	createdAt: string;
-	updatedAt: string;
-}
+import type { McpServerConfig } from "../../shared/types.js";
 
 const api = () => (window as any).api;
 

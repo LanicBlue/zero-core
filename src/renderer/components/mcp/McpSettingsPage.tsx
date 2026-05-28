@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { useMcpStore, type McpServerConfig } from "../../store/mcp-store.js";
+import { useMcpStore } from "../../store/mcp-store.js";
+import type { McpServerConfig } from "../../../shared/types.js";
 import McpServerCard from "./McpServerCard.js";
 
 interface ServerStatus {

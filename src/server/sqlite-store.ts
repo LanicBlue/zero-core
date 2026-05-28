@@ -68,7 +68,29 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 			if (!this.allColumns.includes("updated_at")) this.allColumns.push("updated_at");
 		}
 
-		this.initStatements();
+		this.ensureTable();
+			this.initStatements();
+	}
+
+	private ensureTable(): void {
+		const colDefs = this.allColumns.map((snakeCol: string) => {
+			if (snakeCol === "id") return "id TEXT PRIMARY KEY";
+			if (snakeCol === "created_at" || snakeCol === "updated_at") return `${snakeCol} TEXT NOT NULL`;
+			if (snakeCol === "is_main") return `${snakeCol} INTEGER NOT NULL DEFAULT 0`;
+			if (snakeCol === "enabled" || snakeCol === "is_system" || snakeCol === "is_built_in") return `${snakeCol} INTEGER DEFAULT 0`;
+			return `${snakeCol} TEXT`;
+		});
+		this.db.exec(`CREATE TABLE IF NOT EXISTS ${this.table} (${colDefs.join(", ")})`);
+	}
+
+	/** Safely add a column if it doesn't exist yet (for progressive schema migration). */
+	ensureColumn(columnName: string, columnDef: string): void {
+		try {
+			const cols = (this.db.pragma(`table_info(${this.table})`) as Array<{ name: string }>).map((r) => r.name);
+			if (!cols.includes(columnName)) {
+				this.db.exec(`ALTER TABLE ${this.table} ADD COLUMN ${columnName} ${columnDef}`);
+			}
+		} catch { /* column may already exist */ }
 	}
 
 	private initStatements(): void {

@@ -1,33 +1,6 @@
-import { join } from "node:path";
-import { homedir } from "node:os";
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type Database from "better-sqlite3";
-
-// ---------------------------------------------------------------------------
-// Agent Tool Entry
-// ---------------------------------------------------------------------------
-
-export interface AgentToolEntry {
-	id: string;
-	name: string;
-	description?: string;
-	type: "internal" | "external";
-	enabled: boolean;
-	agentId?: string;
-	transport?: "cli" | "http";
-	command?: string;
-	argsTemplate?: string;
-	url?: string;
-	method?: string;
-	headers?: Record<string, string>;
-	bodyTemplate?: string;
-	responsePath?: string;
-	timeout?: number;
-	blocking?: boolean;
-		auto_background_timeout?: number;
-	createdAt: string;
-	updatedAt: string;
-}
+import type { SessionDB } from "./session-db.js";
+import type { AgentToolEntry } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
 // Column definitions
@@ -61,12 +34,8 @@ const COLUMNS: ColumnDef[] = [
 export class AgentToolStore {
 	private store: SqliteStore<AgentToolEntry>;
 
-	constructor(db: Database.Database) {
-		this.store = new SqliteStore<AgentToolEntry>(db, "agent_tools", COLUMNS);
-
-		// Migrate from JSON if needed
-		const jsonPath = join(homedir(), ".zero-core", "agent-tools.json");
-		this.store.migrateFromJson(jsonPath, "entries");
+	constructor(sessionDB: SessionDB) {
+		this.store = new SqliteStore<AgentToolEntry>(sessionDB.getDb(), "agent_tools", COLUMNS);
 	}
 
 	list(): AgentToolEntry[] {

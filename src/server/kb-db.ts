@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { existsSync, mkdirSync } from "node:fs";
+import { ZERO_CORE_DIR } from "../core/config.js";
 
 // ---------------------------------------------------------------------------
 // KB Database — stores chunks + embeddings for knowledge bases
@@ -22,7 +22,7 @@ export class KbDB {
 	private db: Database.Database;
 
 	constructor(dbPath?: string) {
-		const path = dbPath ?? join(homedir(), ".zero-core", "knowledge.db");
+		const path = dbPath ?? join(ZERO_CORE_DIR, "knowledge.db");
 		const dir = join(path, "..");
 		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 

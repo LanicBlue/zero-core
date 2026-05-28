@@ -63,15 +63,21 @@ export class TypeScriptExtractor implements LangExtractor {
 		// arrow function
 		const am = bare.match(/^(?:const|let|var)\s+(\w+).*=>/);
 		if (am) {
+			// Expression-body arrow (no { after =>): treat as simple statement
+			const afterArrow = bare.slice(bare.indexOf("=>") + 2).trimStart();
+			if (!afterArrow.startsWith("{")) {
+				const endIdx = this.findStatementEnd(lines, idx);
+				return { kind: "function", name: am[1], line: idx + 1, endLine: endIdx + 1, detail: origDetail, children: [] };
+			}
 			const block = this.findBlock(lines, idx);
-			return { kind: "function", name: am[1], line: idx + 1, endLine: block.endLine, detail: origDetail, children: [] };
+			return { kind: "function", name: am[1], line: idx + 1, endLine: block.endLine, detail: origDetail, children: this.extractMembers(lines, origLines, idx, block.endIdx) };
 		}
 
 		// const/let/var
 		const vm = bare.match(/^(?:const|let|var)\s+(\w+)/);
 		if (vm) {
-			const block = this.findBlock(lines, idx);
-			return { kind: "const", name: vm[1], line: idx + 1, endLine: block.endLine, detail: origDetail, children: [] };
+			const endIdx = this.findStatementEnd(lines, idx);
+			return { kind: "const", name: vm[1], line: idx + 1, endLine: endIdx + 1, detail: origDetail, children: [] };
 		}
 
 		return null;
@@ -88,6 +94,18 @@ export class TypeScriptExtractor implements LangExtractor {
 			if (foundOpen && depth <= 0) return { endIdx: i, endLine: i + 1 };
 		}
 		return { endIdx: lines.length - 1, endLine: lines.length };
+	}
+
+	/** Find end of a simple statement (no braces) - scan until semicolon or brace. */
+	private findStatementEnd(lines: string[], startIdx: number): number {
+		for (let i = startIdx; i < lines.length; i++) {
+			if (lines[i].includes(";")) return i;
+			if (lines[i].includes("{")) {
+				const block = this.findBlock(lines, startIdx);
+				return block.endIdx;
+			}
+		}
+		return startIdx;
 	}
 
 	/**

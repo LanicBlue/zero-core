@@ -1,36 +1,6 @@
-import { join } from "node:path";
-import { homedir } from "node:os";
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type Database from "better-sqlite3";
-
-// ---------------------------------------------------------------------------
-// Prompt Template
-// ---------------------------------------------------------------------------
-
-export interface PromptTemplate {
-	id: string;
-	name: string;
-	description: string;
-	icon?: string;
-	systemPrompt: string;
-	model?: string;
-	provider?: string;
-	thinkingLevel?: string;
-	toolPolicy?: {
-		autoApprove?: string[];
-		blockedTools?: string[];
-		executionMode?: "sequential" | "parallel";
-		resultMaxTokens?: number;
-		readScope?: "filesystem" | "workspace";
-	};
-	tags: string[];
-	sourceUrl?: string;
-	color?: string;
-	recommendedTools?: string[];
-	isBuiltIn: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
+import type { SessionDB } from "./session-db.js";
+import type { PromptTemplate } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
 // Built-in templates
@@ -148,12 +118,8 @@ const COLUMNS: ColumnDef[] = [
 export class TemplateStore {
 	private store: SqliteStore<PromptTemplate>;
 
-	constructor(db: Database.Database) {
-		this.store = new SqliteStore<PromptTemplate>(db, "templates", COLUMNS);
-
-		// Migrate from JSON if needed
-		const jsonPath = join(homedir(), ".zero-core", "templates.json");
-		this.store.migrateFromJson(jsonPath, "templates");
+	constructor(sessionDB: SessionDB) {
+		this.store = new SqliteStore<PromptTemplate>(sessionDB.getDb(), "templates", COLUMNS);
 
 		// Merge built-in templates
 		this.mergeBuiltInTemplates();

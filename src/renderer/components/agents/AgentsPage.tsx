@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { useAgentStore, type AgentRecord } from "../../store/agent-store.js";
-import { type PromptTemplate } from "../../store/template-store.js";
+import { useAgentStore } from "../../store/agent-store.js";
+import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
 import AgentEditor from "./AgentEditor.js";
 import TemplateGallery from "./TemplateGallery.js";
 
