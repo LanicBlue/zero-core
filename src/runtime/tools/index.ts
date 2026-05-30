@@ -6,7 +6,7 @@ import { fileReadTool } from "./file-read.js";
 import { fileWriteTool } from "./file-write.js";
 import { fileEditTool } from "./file-edit.js";
 import { grepTool } from "./grep.js";
-import { findTool } from "./find.js";
+import { globTool } from "./glob.js";
 import { delegateTool } from "./agent.js";
 import { taskStatusTool } from "./task-status.js";
 import { taskListTool } from "./task-list.js";
@@ -16,55 +16,55 @@ import { buildMcpTools } from "./mcp-tool.js";
 import { webSearchTool } from "./web-search.js";
 import { askUserTool } from "./ask-user.js";
 import { todoWriteTool } from "./todo-write.js";
-import { getToolMeta, getToolName, getToolConfigSchema, getToolUserDescription } from "./tool-factory.js";
-import { createFetchTools } from "../mcp-tools/fetch-tools.js";
-import { createMemoryTools } from "../mcp-tools/memory-tools.js";
-import { createSequentialThinkingTools } from "../mcp-tools/sequential-thinking-tools.js";
+import { getToolMeta, getToolName, getToolConfigSchema, getToolDescription, getToolPrompt } from "./tool-factory.js";
+import { webFetchTool } from "../mcp-tools/fetch-tools.js";
+import { memoryReadTool, memoryWriteTool } from "../mcp-tools/memory-tools.js";
+import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
 import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
-import type { ToolRegistry } from "../../core/tool-registry.js";
+import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";
 
-// Built-in tools (initialized lazily)
-let _builtinTools: Record<string, any> | null = null;
-function getBuiltinTools(): Record<string, any> {
-	if (!_builtinTools) {
-		_builtinTools = {
-			...createFetchTools(),
-			...createMemoryTools(),
-			...createSequentialThinkingTools(),
-			...createAssistantTools(),
-		};
+// Built-in tools (assistant needs getAppVersion, so lazy init)
+let _assistantTools: Record<string, any> | null = null;
+function getAssistantTools(): Record<string, any> {
+	if (!_assistantTools) {
+		_assistantTools = createAssistantTools();
 	}
-	return _builtinTools;
+	return _assistantTools;
 }
 
 const ALL_TOOLS: Record<string, any> = {
-	bash: bashTool,
-	read: fileReadTool,
-	write: fileWriteTool,
-	edit: fileEditTool,
-	grep: grepTool,
-	find: findTool,
-	agent: delegateTool,
-	task_status: taskStatusTool,
-	task_list: taskListTool,
-	task_stop: taskStopTool,
-	wait: waitTool,
-	web_search: webSearchTool,
-	ask_user: askUserTool,
-	todo_write: todoWriteTool,
-	
-	...getBuiltinTools(),
+	Bash: bashTool,
+	Read: fileReadTool,
+	Write: fileWriteTool,
+	Edit: fileEditTool,
+	Grep: grepTool,
+	Glob: globTool,
+	Agent: delegateTool,
+	TaskStatus: taskStatusTool,
+	TaskList: taskListTool,
+	TaskStop: taskStopTool,
+	Wait: waitTool,
+	WebSearch: webSearchTool,
+	AskUser: askUserTool,
+	TodoWrite: todoWriteTool,
+	WebFetch: webFetchTool,
+	MemoryRead: memoryReadTool,
+	MemoryWrite: memoryWriteTool,
+	SequentialThinking: sequentialThinkingTool,
+
+	...getAssistantTools(),
 };
 
 // Tools that require special context capabilities
 const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> = {
-	agent: (ctx) => !!ctx.delegateTask,
-	task_status: (ctx) => !!ctx.getTaskResult,
-	task_list: (ctx) => !!ctx.listTasks,
-	task_stop: (ctx) => !!ctx.stopTask,
-	wait: (ctx) => !!ctx.suspendUntilWake,
+	Agent: (ctx) => !!ctx.delegateTask,
+	TaskStatus: (ctx) => !!ctx.getTaskResult,
+	TaskList: (ctx) => !!ctx.listTasks,
+	TaskStop: (ctx) => !!ctx.stopTask,
+	Wait: (ctx) => !!ctx.suspendUntilWake,
 };
+
 
 
 
@@ -77,12 +77,12 @@ export function registerRuntimeTools(registry: ToolRegistry): void {
 	for (const [name, def] of Object.entries(ALL_TOOLS)) {
 		const meta = getToolMeta(def);
 		const configSchema = getToolConfigSchema(def);
-		const userDescription = getToolUserDescription(def);
-		const desc = (def as any)?.description ?? "";
+		const description = getToolDescription(def) ?? "";
+		const prompt = getToolPrompt(def);
 		registry.register({
 			name,
-			description: typeof desc === "string" ? desc : "",
-			userDescription,
+			description,
+			prompt: prompt ?? description,
 			category: meta?.category ?? "runtime",
 			source: "runtime",
 			configSchema,
@@ -108,10 +108,19 @@ export function buildToolsSet(
 	mcpTools?: Record<string, any>,
 	agentTools?: Record<string, any>,
 ): Record<string, any> {
+	// Migrate legacy lowercase tool keys to PascalCase
+	if (policy.tools) {
+		const migrated: Record<string, { enabled: boolean }> = {};
+		for (const [key, val] of Object.entries(policy.tools)) {
+			migrated[RENAMED_TOOLS[key] ?? key] = val;
+		}
+		policy.tools = migrated;
+	}
+
 	const blocked = new Set(policy.blockedTools ?? []);
 
 	// Tools enabled by default — core filesystem/shell tools only
-	const DEFAULT_ENABLED = new Set(["bash", "read", "write", "edit", "grep", "find"]);
+	const DEFAULT_ENABLED = new Set(["Bash", "Read", "Write", "Edit", "Grep", "Glob"]);
 
 	// Determine enabled check: prefer tools map, fall back to autoApprove
 	const toolsMap = policy.tools;
@@ -162,6 +171,9 @@ export function buildToolsSet(
 			}
 		}
 	}
+
+	// Config injection into descriptions is now handled by ToolRegistry.getAll()
+	// via buildEffectiveDescription() - UI and runtime see the same prompt.
 
 	return tools;
 }
@@ -225,11 +237,11 @@ export function buildToolPolicyDescription(
 	}
 
 	if (policy.readScope === "workspace") {
-		lines.push("Read tools (read, grep, find) are restricted to the workspace directory only.");
+		lines.push("Read tools (Read, Grep, Glob) are restricted to the workspace directory only.");
 	} else {
-		lines.push("Read tools (read, grep, find) can access the entire filesystem.");
+		lines.push("Read tools (Read, Grep, Glob) can access the entire filesystem.");
 	}
-	lines.push("Write/edit/delete tools (write, edit, bash) are always restricted to the workspace directory.");
+	lines.push("Write/edit/delete tools (Write, Edit, Bash) are always restricted to the workspace directory.");
 
 	return lines.join("\n");
 }

@@ -1,18 +1,50 @@
 import { z } from "zod";
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { buildTool } from "./tool-factory.js";
 
 const execFileAsync = promisify(execFile);
 
-const MAX_BG_RESULT = 50000;
+function decodeOutput(buf: Buffer | string): string {
+	if (typeof buf === "string") return buf;
+	if (!buf || buf.length === 0) return "";
+	const utf8 = buf.toString("utf-8");
+	if (!utf8.includes("�")) return utf8;
+	try {
+		const { TextDecoder } = globalThis as any;
+		if (TextDecoder) {
+			return new TextDecoder("gbk").decode(buf);
+		}
+	} catch { /* no GBK decoder available */ }
+	return utf8;
+}
 
 export const bashTool = buildTool({
-	name: "bash",
-	description:
-		"Execute a shell command in the workspace. Returns stdout and stderr. " +
-		"Set background=true for long-running commands (downloads, installs) — returns a task_id immediately.",
-	userDescription: "在工作目录中执行 shell 命令。支持后台模式：长任务（下载、安装等）设为后台执行，立即返回 task_id，可通过 wait 或 task_status 查询结果。",
+	name: "Bash",
+	description: "Executes a given bash command and returns its output.",
+	prompt:
+		"Executes a given bash command and returns its output.\n\n" +
+		"The working directory persists between commands, but shell state does not. The shell environment is initialized from the user's profile.\n\n" +
+		"IMPORTANT: Avoid using this tool to run `find`, `ls`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, " +
+		"unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. " +
+		"Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:\n" +
+		"- File search and directory listing: Use `Glob` tool (NOT find, ls, or dir)\n" +
+		"- Content search: Use `Grep` tool (NOT shell grep or rg)\n" +
+		"- Read files: Use `Read` tool (NOT cat, head, tail)\n" +
+		"- Edit files: Use `Edit` tool (NOT sed, awk)\n" +
+		"- Write files: Use `Write` tool (NOT echo >, cat <<EOF)\n\n" +
+		"While the Bash tool can do similar things, it's better to use the built-in tools as they provide a better user experience.\n\n" +
+		"# Instructions\n" +
+		"- If your command will create new directories or files, first run `ls` to verify the parent directory exists.\n" +
+		"- Always quote file paths that contain spaces with double quotes.\n" +
+		"- Try to maintain your current working directory by using absolute paths. You may use `cd` if the User explicitly requests it.\n" +
+		"- You may specify an optional timeout in seconds. By default, commands have no timeout unless configured.\n" +
+		"- Use background=true for long-running commands (downloads, installs) - returns a task_id immediately. Use Wait or TaskStatus to check progress.\n" +
+		"- When issuing multiple commands: if independent, make multiple Bash calls in parallel; if dependent, chain with `&&`. Use `;` only when you don't care if earlier commands fail.\n" +
+		"- DO NOT use newlines to separate commands.\n" +
+		"- For git commands: prefer creating new commits over amending. Never skip hooks (--no-verify) unless explicitly asked.\n" +
+		"- Avoid unnecessary `sleep` commands. Do not retry failing commands in a sleep loop - diagnose the root cause.\n" +
+		"- Communication: Output text directly (NOT echo/printf).",
 	meta: { category: "runtime", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
 	configSchema: [
 		{ key: "timeout", type: "number", label: "默认超时 (s)", description: "命令执行超时时间（秒，留空则不限制）" },
@@ -24,12 +56,12 @@ export const bashTool = buildTool({
 	}),
 	execute: async (input, ctx) => {
 		const { command, timeout: inputTimeout, background } = input;
-		const config = ctx.toolConfig?.bash ?? {};
+		const config = ctx.toolConfig?.Bash ?? {};
 		const timeoutSec = inputTimeout ?? config.timeout;
 		const timeout = timeoutSec ? timeoutSec * 1000 : undefined;
 		const isWin = process.platform === "win32";
 		const shell = isWin ? "cmd.exe" : "/bin/bash";
-		const shellArgs = isWin ? ["/c", command] : ["-c", command];
+		const shellArgs = isWin ? ["/c", "chcp 65001 >nul && " + command] : ["-c", command];
 
 		// Background mode
 		if (background) {
@@ -37,23 +69,31 @@ export const bashTool = buildTool({
 				return "Error: Background execution is not available in this context.";
 			}
 			const taskId = ctx.runBackground(command, timeoutSec);
-			return `Command running in background.\ntask_id: ${taskId}\nUse wait or task_status to check progress and retrieve the result.`;
+			return `Command running in background.\ntask_id: ${taskId}\nUse Wait or TaskStatus to check progress and retrieve the result.`;
 		}
 
-		// Foreground mode
+		// Foreground mode — use buffer encoding to decode GBK→UTF-8 on Windows
 		try {
-			const execOpts: any = { cwd: ctx.workingDir, maxBuffer: 10 * 1024 * 1024 };
+			const execOpts: any = { cwd: ctx.workingDir, maxBuffer: 10 * 1024 * 1024, encoding: "buffer" };
 			if (timeout) execOpts.timeout = timeout;
-			const { stdout, stderr } = await execFileAsync(shell, shellArgs, execOpts);
-			let result = "";
-			if (stdout) result += stdout;
-			if (stderr) result += (result ? "\n" : "") + "[stderr] " + stderr;
-			return result || "(no output)";
+			const result = await execFileAsync(shell, shellArgs, execOpts) as { stdout: Buffer; stderr: Buffer };
+			const stdout = decodeOutput(result.stdout);
+			const stderr = decodeOutput(result.stderr);
+			let out = "";
+			if (stdout) out += stdout;
+			if (stderr) out += (out ? "\n" : "") + "[stderr] " + stderr;
+			return out || "(no output)";
 		} catch (err: any) {
 			if (err.killed) {
 				return `Error: Command timed out after ${timeoutSec}s`;
 			}
-			return `Error: ${err.message}\n${err.stdout || ""}${err.stderr ? "\n[stderr] " + err.stderr : ""}`;
+			const stdout = decodeOutput(err.stdout as Buffer);
+			const stderr = decodeOutput(err.stderr as Buffer);
+			const exitCode = err.status ?? 1;
+			let out = `Error: Exit code ${exitCode}`;
+			if (stdout) out += "\n" + stdout;
+			if (stderr) out += "\n[stderr] " + stderr;
+			return out;
 		}
 	},
 });

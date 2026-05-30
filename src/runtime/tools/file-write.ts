@@ -5,9 +5,17 @@ import { buildTool } from "./tool-factory.js";
 import { checkSyntax, formatDiagnostics } from "./syntax-check.js";
 
 export const fileWriteTool = buildTool({
-	name: "write",
-	description: "Create or overwrite a file with the given content. Always restricted to workspace.",
-	userDescription: "创建或覆盖文件。自动创建父目录。始终限制在工作目录内。",
+	name: "Write",
+	description: "Writes a file to the local filesystem. Overwrites existing files.",
+	prompt:
+		"Writes a file to the local filesystem.\n\n" +
+		"Usage:\n" +
+		"- This tool will overwrite the existing file if there is one at the provided path.\n" +
+		"- If this is an existing file, you MUST use the Read tool first to read the file's contents before overwriting.\n" +
+		"- Prefer the Edit tool for modifying existing files - it only sends the diff. Only use this tool to create new files or for complete rewrites.\n" +
+		"- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.\n" +
+		"- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.\n" +
+		"- Write operations are always restricted to the workspace directory.",
 	meta: { category: "runtime", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
 	configSchema: [
 		{
@@ -33,7 +41,7 @@ export const fileWriteTool = buildTool({
 			await mkdir(dirname(filePath), { recursive: true });
 			await writeFile(filePath, content, "utf-8");
 			let result = `Successfully wrote ${content.length} bytes to ${path}`;
-			const enabled = ctx.toolConfig?.write?.syntaxCheck ?? true;
+			const enabled = ctx.toolConfig?.Write?.syntaxCheck ?? true;
 			if (enabled) {
 				const ext = extname(path).slice(1).toLowerCase();
 				const diags = checkSyntax(content, ext);

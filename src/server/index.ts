@@ -44,6 +44,13 @@ export async function startServer() {
 	const sessionDB = new SessionDB();
 	runMigrations(sessionDB);
 
+	// Initialize hook system + durable execution
+	const { HookRegistry } = await import("../core/hook-registry.js");
+	const { registerDurableHooks } = await import("./durable-hooks.js");
+	const { runRecovery } = await import("./recovery.js");
+	registerDurableHooks(sessionDB);
+	await runRecovery(sessionDB);
+
 	const registry = new ToolRegistry(sessionDB.getKVStore());
 	const mcp = new MCPManager(registry);
 	const agentStore = new AgentStore(sessionDB);

@@ -4,10 +4,6 @@ import { join, resolve, extname } from "node:path";
 import { buildTool } from "../tools/tool-factory.js";
 import { ZERO_CORE_DIR } from "../../core/config.js";
 
-// ---------------------------------------------------------------------------
-// Assistant Tool — consolidated app diagnostics
-// ---------------------------------------------------------------------------
-
 const BLOCKED_FILES = new Set([".env", ".env.local", ".env.production", "credentials.json", "secret"]);
 
 const BINARY_EXTENSIONS: Record<string, boolean> = {
@@ -46,9 +42,10 @@ export function createAssistantTools(getAppVersion?: () => string) {
 	const version = getAppVersion?.() ?? "0.0.0-dev";
 
 	return {
-		assistant: buildTool({
-			name: "assistant",
-			description:
+		Assistant: buildTool({
+			name: "Assistant",
+			description: "Access zero-core app diagnostics: version, logs, config, providers, and files.",
+			prompt:
 				"Access zero-core app diagnostics. Resources: " +
 				"'info' — app version, paths, memory usage; " +
 				"'logs' — recent log entries; " +

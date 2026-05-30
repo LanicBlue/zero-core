@@ -28,7 +28,7 @@ export interface ToolConfigField {
 export interface ToolDescriptor {
 	name: string;
 	description: string;
-	userDescription?: string;
+	prompt?: string;
 	category: ToolCategory;
 	source: "runtime" | "builtin" | "mcp" | "agent";
 	mcpServerId?: string;
@@ -47,6 +47,17 @@ export interface ToolDescriptor {
 type ChangeCallback = () => void;
 
 const KV_KEY = "tool_config";
+
+// Legacy lowercase tool name → PascalCase mapping
+export const RENAMED_TOOLS: Record<string, string> = {
+	bash: "Bash", read: "Read", write: "Write", edit: "Edit",
+	grep: "Grep", glob: "Glob", find: "Glob", agent: "Agent",
+	task_status: "TaskStatus", task_list: "TaskList", task_stop: "TaskStop",
+	wait: "Wait", web_search: "WebSearch", ask_user: "AskUser", todo_write: "TodoWrite",
+	subagent: "Agent", assistant: "Assistant",
+	web_fetch: "WebFetch", memory_read: "MemoryRead", memory_write: "MemoryWrite",
+	sequentialthinking: "SequentialThinking",
+};
 
 // ---------------------------------------------------------------------------
 // ToolRegistry
@@ -81,7 +92,12 @@ export class ToolRegistry {
 	// ─── Query ──────────────────────────────────
 
 	getAll(): ToolDescriptor[] {
-		return [...this.tools.values()];
+		const config = this.getToolConfig();
+		return [...this.tools.values()].map(desc => ({
+			...desc,
+			description: desc.description,
+			prompt: this.buildEffectivePrompt(desc, config),
+		}));
 	}
 
 	getByCategory(): Record<string, ToolDescriptor[]> {
@@ -98,13 +114,32 @@ export class ToolRegistry {
 
 	// ─── Tool Config Persistence ────────────────
 
-	getToolConfig(): Record<string, Record<string, any>> {
-		return { ...this.config };
+getToolConfig(): Record<string, Record<string, any>> {
+	const result: Record<string, Record<string, any>> = {};
+
+	// 1. Start with defaults from registered tools configSchema
+	for (const [name, desc] of this.tools) {
+		if (desc.configSchema?.length) {
+			const defaults: Record<string, any> = {};
+			for (const field of desc.configSchema) {
+				if (field.default !== undefined) defaults[field.key] = field.default;
+			}
+			if (Object.keys(defaults).length > 0) result[name] = defaults;
+		}
 	}
 
-	getToolConfigFor(name: string): Record<string, any> {
-		return this.config[name] ?? {};
+	// 2. Overlay stored user config (with legacy key migration)
+	for (const [key, val] of Object.entries(this.config)) {
+		const mapped = RENAMED_TOOLS[key] ?? key;
+		result[mapped] = { ...(result[mapped] ?? {}), ...val };
 	}
+
+	return result;
+}
+
+getToolConfigFor(name: string): Record<string, any> {
+	return this.getToolConfig()[name] ?? {};
+}
 
 	saveToolConfig(config: Record<string, Record<string, any>>): void {
 		this.config = config;
@@ -127,6 +162,18 @@ export class ToolRegistry {
 		return () => {
 			this.changeListeners = this.changeListeners.filter((c) => c !== cb);
 		};
+	}
+
+	private buildEffectivePrompt(desc: ToolDescriptor, config: Record<string, Record<string, any>>): string {
+		const base = desc.prompt ?? desc.description;
+		const toolConfig = config[desc.name];
+		if (!toolConfig || !desc.configSchema?.length) return base;
+		const entries = desc.configSchema
+			.map(f => [f.key, toolConfig[f.key] ?? f.default] as [string, any])
+			.filter(([, v]) => v !== undefined && v !== "");
+		if (entries.length === 0) return base;
+		const configHint = "\n\nCurrent config: " + entries.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ");
+		return base + configHint;
 	}
 
 	notifyChange(): void {

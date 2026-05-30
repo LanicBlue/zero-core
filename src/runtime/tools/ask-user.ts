@@ -1,18 +1,19 @@
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 import { pendingResponses } from "../pending-responses.js";
+import { triggerHooks } from "../../core/hook-registry.js";
 
 // ---------------------------------------------------------------------------
 // AskUserQuestion — ask the user questions during task execution
 // ---------------------------------------------------------------------------
 
 export const askUserTool = buildTool({
-	name: "ask_user",
-	description:
+	name: "AskUser",
+	description: "Ask the user a question during task execution. Supports multiple-choice and free-text.",
+	prompt:
 		"Ask the user a question during task execution. Use to clarify requirements, " +
 		"get decisions on implementation choices, or gather preferences. " +
 		"The user can select from provided options or type a custom answer.",
-	userDescription: "在任务执行过程中向用户提问。支持多选题（2-4 个选项）和自由文本回答。可用于确认意图、选择方案或获取偏好。",
 	meta: { category: "interaction", isReadOnly: true, isConcurrencySafe: false },
 	inputSchema: z.object({
 		questions: z.array(z.object({
@@ -28,6 +29,9 @@ export const askUserTool = buildTool({
 	execute: async ({ questions }, ctx) => {
 		const requestId = `${ctx.agentId}-${Date.now()}`;
 
+			// Hook: Elicitation
+			triggerHooks("Elicitation", { agentId: ctx.agentId, questions });
+
 		// Emit ask_user event for renderer to pick up
 		ctx.emit({
 			type: "ask_user",
@@ -38,6 +42,9 @@ export const askUserTool = buildTool({
 
 		// Wait for user response
 		const answers = await pendingResponses.createRequest(requestId);
+
+			// Hook: ElicitationResult
+			triggerHooks("ElicitationResult", { agentId: ctx.agentId, response: answers });
 
 		// Format answers for the agent
 		const lines: string[] = ["User responses:"];

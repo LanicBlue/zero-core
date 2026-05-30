@@ -220,11 +220,11 @@ export function getSearchProvider(): SearchProvider {
 // ---------------------------------------------------------------------------
 
 export const webSearchTool = buildTool({
-	name: "web_search",
-	description:
+	name: "WebSearch",
+	description: "Search the web for up-to-date information. Returns titles, URLs, and snippets.",
+	prompt:
 		"Search the web for up-to-date information. Returns search results with titles, URLs, and snippets. " +
 		"Include a 'Sources:' section in your response with the URLs.",
-	userDescription: "搜索互联网获取最新信息。支持 DuckDuckGo（免费）、SearXNG（自托管）、SerpAPI 和 Brave Search。可在工具配置中切换搜索引擎和设置 API Key。",
 	meta: { category: "web", isReadOnly: true, maxResultSize: 15000 },
 	configSchema: [
 		{ key: "provider", type: "select", label: "搜索引擎", default: "duckduckgo", options: ["duckduckgo", "searxng", "serpapi", "brave"] },

@@ -13,7 +13,7 @@ const BUILT_IN_TEMPLATES: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">
 		icon: "💻",
 		systemPrompt: `You are an expert software developer. Write clean, efficient, and well-structured code. Follow best practices and design patterns. When debugging, reason step-by-step. Use tools proactively to read files, run commands, and verify your work.`,
 		toolPolicy: {
-			autoApprove: ["bash", "read", "edit", "write", "grep", "find", "ls"],
+			autoApprove: ["Bash", "Read", "Edit", "Write", "Grep", "Glob", "Glob"],
 			readScope: "filesystem",
 		},
 		tags: ["coding", "development"],
@@ -25,7 +25,7 @@ const BUILT_IN_TEMPLATES: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">
 		icon: "✍️",
 		systemPrompt: `You are a skilled writer and editor. Help create clear, engaging, and well-structured content. Adapt your tone and style to the audience. For documentation, prioritize clarity and completeness. For creative writing, bring originality and vivid language.`,
 		toolPolicy: {
-			autoApprove: ["read", "write"],
+			autoApprove: ["Read", "Write"],
 			readScope: "workspace",
 		},
 		tags: ["writing", "content"],
@@ -37,7 +37,7 @@ const BUILT_IN_TEMPLATES: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">
 		icon: "🌐",
 		systemPrompt: `You are a professional translator. Translate text accurately while preserving the original meaning, tone, and style. Handle idioms and cultural references appropriately. When ambiguous, provide alternatives with brief explanations.`,
 		toolPolicy: {
-			autoApprove: ["read"],
+			autoApprove: ["Read"],
 			readScope: "workspace",
 		},
 		tags: ["translation", "language"],
@@ -49,7 +49,7 @@ const BUILT_IN_TEMPLATES: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">
 		icon: "🔍",
 		systemPrompt: `You are a thorough reviewer. Analyze code or text and provide specific, actionable feedback. For code reviews, check for bugs, security issues, performance problems, and style inconsistencies. For text, evaluate clarity, structure, grammar, and persuasiveness.`,
 		toolPolicy: {
-			autoApprove: ["read", "grep", "find", "ls"],
+			autoApprove: ["Read", "Grep", "Glob", "Glob"],
 			readScope: "filesystem",
 		},
 		tags: ["review", "feedback"],
@@ -61,7 +61,7 @@ const BUILT_IN_TEMPLATES: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">
 		icon: "📊",
 		systemPrompt: `You are a data analyst expert. Help analyze data, identify patterns, and present insights clearly. Write scripts to process data when needed. Create clear visualizations and summaries. Always explain your methodology and assumptions.`,
 		toolPolicy: {
-			autoApprove: ["bash", "read", "write", "grep", "find", "ls"],
+			autoApprove: ["Bash", "Read", "Write", "Grep", "Glob", "Glob"],
 			readScope: "filesystem",
 		},
 		tags: ["data", "analysis"],
@@ -73,7 +73,7 @@ const BUILT_IN_TEMPLATES: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">
 		icon: "🎓",
 		systemPrompt: `You are a patient and knowledgeable tutor. Explain concepts clearly using simple language and relatable examples. Break complex topics into digestible steps. Use analogies and practical demonstrations. Encourage questions and adapt your explanations to the learner's level.`,
 		toolPolicy: {
-			autoApprove: ["read"],
+			autoApprove: ["Read"],
 			readScope: "workspace",
 		},
 		tags: ["education", "learning"],

@@ -2,10 +2,10 @@ import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 
 export const delegateTool = buildTool({
-	name: "agent",
-	description:
+	name: "Agent",
+	description: "Delegate a task to a sub-agent. Supports blocking and non-blocking modes.",
+	prompt:
 		"Delegate a task to a sub-agent. Blocking mode waits for the result; non-blocking mode returns a task_id immediately for later polling via task_status or wait.",
-	userDescription: "将任务委托给子 agent。支持阻塞（等待结果）和非阻塞（后台执行）两种模式。非阻塞模式下会立即返回 task_id，可通过 task_status 查询进度，或用 wait 等待完成。",
 	meta: { category: "runtime", isReadOnly: false, isConcurrencySafe: false },
 	configSchema: [
 		{ key: "auto_background", type: "boolean", label: "自动转后台", description: "阻塞超时后自动转为非阻塞后台执行" },
@@ -19,7 +19,7 @@ export const delegateTool = buildTool({
 	}),
 	execute: async (input, ctx) => {
 		const { task, model, systemPrompt, mode: inputMode } = input;
-		const config = ctx.toolConfig?.subagent ?? {};
+		const config = ctx.toolConfig?.Agent ?? {};
 		const autoBg = config.auto_background === true;
 		const bgTimeout = Number(config.auto_background_timeout) || 0;
 

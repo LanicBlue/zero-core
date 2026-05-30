@@ -1,10 +1,34 @@
-import React, { useState } from "react";
+import React, { useState, Component, type ErrorInfo, type ReactNode } from "react";
 import { useAgentStore } from "../../store/agent-store.js";
 import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
 import AgentEditor from "./AgentEditor.js";
 import TemplateGallery from "./TemplateGallery.js";
 
 type Tab = "agents" | "templates";
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+	state = { error: null as string | null };
+	static getDerivedStateFromError(err: Error) {
+		return { error: `${err.message}\n\n${err.stack}` };
+	}
+	componentDidCatch(err: Error, info: ErrorInfo) {
+		console.error("[AgentsPage ErrorBoundary]", err, info);
+	}
+	render() {
+		if (this.state.error) {
+			return (
+				<div style={{ padding: 20, color: "#f66", whiteSpace: "pre-wrap", fontSize: 12 }}>
+					<h3>Agent Editor Error</h3>
+					<p>{this.state.error}</p>
+					<button type="button" onClick={() => this.setState({ error: null })} style={{ marginTop: 10, padding: "4px 12px" }}>
+						Retry
+					</button>
+				</div>
+			);
+		}
+		return this.props.children;
+	}
+}
 
 export default function AgentsPage() {
 	const { agents, loading, remove } = useAgentStore();
@@ -35,82 +59,84 @@ export default function AgentsPage() {
 	};
 
 	return (
-		<div className="agents-page">
-			<div className="agents-header">
-				<div className="agents-tabs">
-					<button
-						type="button"
-						className={`agents-tab ${tab === "agents" ? "active" : ""}`}
-						onClick={() => setTab("agents")}
-					>
-						My Agents
-					</button>
-					<button
-						type="button"
-						className={`agents-tab ${tab === "templates" ? "active" : ""}`}
-						onClick={() => setTab("templates")}
-					>
-						Templates
-					</button>
+		<ErrorBoundary>
+			<div className="agents-page">
+				<div className="agents-header">
+					<div className="agents-tabs">
+						<button
+							type="button"
+							className={`agents-tab ${tab === "agents" ? "active" : ""}`}
+							onClick={() => setTab("agents")}
+						>
+							My Agents
+						</button>
+						<button
+							type="button"
+							className={`agents-tab ${tab === "templates" ? "active" : ""}`}
+							onClick={() => setTab("templates")}
+						>
+							Templates
+						</button>
+					</div>
+					{tab === "agents" && (
+						<button
+							type="button"
+							className="btn-primary"
+							onClick={() => { setCreating(true); setSelectedId(null); setPrefillTemplate(null); }}
+						>
+							+ New
+						</button>
+					)}
 				</div>
-				{tab === "agents" && (
-					<button
-						type="button"
-						className="btn-primary"
-						onClick={() => { setCreating(true); setSelectedId(null); setPrefillTemplate(null); }}
-					>
-						+ New
-					</button>
+
+				{tab === "templates" ? (
+					<TemplateGallery onUseTemplate={handleUseTemplate} />
+				) : (
+					<div className="agents-content">
+						<div className="agents-list">
+							{loading && <p className="agents-empty">Loading...</p>}
+							{!loading && agents.length === 0 && (
+								<p className="agents-empty">No agents yet. Create one or use a template to get started.</p>
+							)}
+							{agents.map((a) => (
+								<div
+									key={a.id}
+									className={`agents-list-item ${selectedId === a.id ? "active" : ""}`}
+									onClick={() => { setSelectedId(a.id); setCreating(false); }}
+								>
+									<div className="agent-list-name">{a.name}</div>
+									{a.systemPrompt && <div className="agent-list-role">{a.systemPrompt.split("\n")[0]}</div>}
+									{a.model && <div className="agent-list-model">{a.provider}/{a.model}</div>}
+								</div>
+							))}
+						</div>
+
+						<div className="agents-editor-area">
+							{creating && (
+								<AgentEditor
+									agent={null}
+									onSaved={handleSaved}
+									onCancel={() => { setCreating(false); setPrefillTemplate(null); }}
+									prefillTemplate={prefillTemplate ?? undefined}
+								/>
+							)}
+							{!creating && selected && (
+								<AgentEditor
+									agent={selected}
+									onSaved={() => {}}
+									onCancel={() => setSelectedId(null)}
+									onDelete={() => handleDelete(selected.id)}
+								/>
+							)}
+							{!creating && !selected && (
+								<div className="agents-empty-state">
+									<p>Select an agent from the list or create a new one.</p>
+								</div>
+							)}
+						</div>
+					</div>
 				)}
 			</div>
-
-			{tab === "templates" ? (
-				<TemplateGallery onUseTemplate={handleUseTemplate} />
-			) : (
-				<div className="agents-content">
-					<div className="agents-list">
-						{loading && <p className="agents-empty">Loading...</p>}
-						{!loading && agents.length === 0 && (
-							<p className="agents-empty">No agents yet. Create one or use a template to get started.</p>
-						)}
-						{agents.map((a) => (
-							<div
-								key={a.id}
-								className={`agents-list-item ${selectedId === a.id ? "active" : ""}`}
-								onClick={() => { setSelectedId(a.id); setCreating(false); }}
-							>
-								<div className="agent-list-name">{a.name}</div>
-								{a.systemPrompt && <div className="agent-list-role">{a.systemPrompt.split("\n")[0]}</div>}
-								{a.model && <div className="agent-list-model">{a.provider}/{a.model}</div>}
-							</div>
-						))}
-					</div>
-
-					<div className="agents-editor-area">
-						{creating && (
-							<AgentEditor
-								agent={null}
-								onSaved={handleSaved}
-								onCancel={() => { setCreating(false); setPrefillTemplate(null); }}
-								prefillTemplate={prefillTemplate ?? undefined}
-							/>
-						)}
-						{!creating && selected && (
-							<AgentEditor
-								agent={selected}
-								onSaved={() => {}}
-								onCancel={() => setSelectedId(null)}
-								onDelete={() => handleDelete(selected.id)}
-							/>
-						)}
-						{!creating && !selected && (
-							<div className="agents-empty-state">
-								<p>Select an agent from the list or create a new one.</p>
-							</div>
-						)}
-					</div>
-				</div>
-			)}
-		</div>
+		</ErrorBoundary>
 	);
 }

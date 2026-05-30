@@ -128,6 +128,13 @@ export async function loadCoreModules(): Promise<void> {
 	const { runMigrations } = await import(toFileURL(join(_distServer, "db-migration.js")));
 	runMigrations(_sessionDb);
 
+		// Initialize hook system + durable execution
+		const { HookRegistry } = await import(toFileURL(join(_distCore, "hook-registry.js")));
+		const { registerDurableHooks } = await import(toFileURL(join(_distServer, "durable-hooks.js")));
+		const { runRecovery } = await import(toFileURL(join(_distServer, "recovery.js")));
+		registerDurableHooks(_sessionDb);
+		await runRecovery(_sessionDb);
+
 	_agentStore = new AgentStore(_sessionDb);
 	_providerStore = new ProviderStore(_sessionDb);
 	_templateStore = new tmplMod.TemplateStore(_sessionDb);

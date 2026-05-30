@@ -85,6 +85,19 @@ export class SessionDB {
 				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 			);
 			CREATE INDEX IF NOT EXISTS idx_turns_session_seq ON turns(session_id, seq);
+
+			CREATE TABLE IF NOT EXISTS turn_state (
+				session_id  TEXT NOT NULL,
+				turn_seq    INTEGER NOT NULL,
+				phase       TEXT NOT NULL DEFAULT 'pending',
+				checkpoint  TEXT,
+				error       TEXT,
+				created_at  TEXT NOT NULL,
+				updated_at  TEXT NOT NULL,
+				PRIMARY KEY (session_id, turn_seq),
+				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+			);
+			CREATE INDEX IF NOT EXISTS idx_turn_state_session ON turn_state(session_id);
 		`);
 	}
 
@@ -269,6 +282,62 @@ export class SessionDB {
 			"UPDATE turns SET content = ? WHERE session_id = ? AND seq = ?",
 		).run(content, sessionId, seq);
 		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+	}
+
+	// -----------------------------------------------------------------------
+	// Turn state (durable execution checkpointing)
+	// -----------------------------------------------------------------------
+
+	createTurnState(sessionId: string, turnSeq: number): void {
+		const now = new Date().toISOString();
+		this.db.prepare(
+			`INSERT OR REPLACE INTO turn_state (session_id, turn_seq, phase, created_at, updated_at) VALUES (?, ?, "pending", ?, ?)`,
+		).run(sessionId, turnSeq, now, now);
+	}
+
+	updateTurnPhase(sessionId: string, turnSeq: number, phase: string, checkpoint?: any): void {
+		const now = new Date().toISOString();
+		this.db.prepare(
+			"UPDATE turn_state SET phase = ?, checkpoint = ?, updated_at = ? WHERE session_id = ? AND turn_seq = ?",
+		).run(phase, checkpoint ? JSON.stringify(checkpoint) : null, now, sessionId, turnSeq);
+	}
+
+	completeTurnState(sessionId: string, turnSeq: number): void {
+		const now = new Date().toISOString();
+		this.db.prepare(
+			`UPDATE turn_state SET phase = "completed", updated_at = ? WHERE session_id = ? AND turn_seq = ?`,
+		).run(now, sessionId, turnSeq);
+	}
+
+	failTurnState(sessionId: string, turnSeq: number, error: string): void {
+		const now = new Date().toISOString();
+		this.db.prepare(
+			`UPDATE turn_state SET phase = "failed", error = ?, updated_at = ? WHERE session_id = ? AND turn_seq = ?`,
+		).run(error, now, sessionId, turnSeq);
+	}
+
+	getIncompleteTurns(): Array<{ sessionId: string; turnSeq: number; phase: string; checkpoint: any; error: string | null }> {
+		const rows = this.db.prepare(
+			`SELECT session_id, turn_seq, phase, checkpoint, error FROM turn_state WHERE phase NOT IN ("completed", "failed")`,
+		).all() as any[];
+		return rows.map((r: any) => ({
+			sessionId: r.session_id,
+			turnSeq: r.turn_seq,
+			phase: r.phase,
+			checkpoint: r.checkpoint ? JSON.parse(r.checkpoint) : null,
+			error: r.error,
+		}));
+	}
+
+	cleanOldTurnState(maxAgeMs: number): void {
+		const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+		this.db.prepare(
+			`DELETE FROM turn_state WHERE updated_at < ? AND phase IN ("completed", "failed")`,
+		).run(cutoff);
+	}
+
+	deleteTurnState(sessionId: string): void {
+		this.db.prepare("DELETE FROM turn_state WHERE session_id = ?").run(sessionId);
 	}
 
 	// -----------------------------------------------------------------------

@@ -31,7 +31,7 @@ export function evaluateToolCall(
 		for (const [, cat] of Object.entries(policy.toolCategories)) {
 			if (cat.blocked) {
 				// Category-level block applies to tools matching the category name
-				// (categories are matched by prefix, e.g. "bash" blocks "bash" tool)
+				// (categories are matched by prefix, e.g. "bash" blocks "Bash" tool)
 				if (toolName.startsWith(Object.keys(policy.toolCategories).find(
 					(k) => policy.toolCategories![k] === cat,
 				) ?? "")) {

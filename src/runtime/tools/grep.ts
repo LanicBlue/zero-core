@@ -7,13 +7,17 @@ import { buildTool } from "./tool-factory.js";
 const execFileAsync = promisify(execFile);
 
 export const grepTool = buildTool({
-	name: "grep",
-	description:
-		"A powerful search tool built on ripgrep. " +
-		"Supports full regex syntax (e.g., \"log.*Error\", \"function\\s+\\w+\"). " +
-		"Filter files with glob parameter (e.g., \"*.js\", \"*.{ts,tsx}\") or type parameter (e.g., \"js\", \"py\", \"rust\"). " +
-		"Use output_mode to control output: \"content\" shows matching lines, \"files_with_matches\" shows only file paths, \"count\" shows match counts.",
-	userDescription: "使用 ripgrep 搜索文件内容。支持正则表达式、上下文行（-A/-B/-C）、大小写忽略、文件类型过滤和多种输出模式。ripgrep 不可用时自动回退到 grep。",
+	name: "Grep",
+	description: "Search file contents using ripgrep with regex support and multiple output modes.",
+	prompt:
+		"A powerful search tool built on ripgrep.\n\n" +
+		"Usage:\n" +
+		"- ALWAYS use Grep for search tasks. NEVER run shell grep or rg in Bash. The Grep tool handles encoding, truncation, and formatting.\n" +
+		"- Supports full regex syntax (e.g., \"log.*Error\", \"function\\s+\\w+\").\n" +
+		"- Filter files with glob parameter (e.g., \"*.js\", \"**/*.tsx\") or type parameter (e.g., \"js\", \"py\", \"rust\").\n" +
+		"- Use output_mode to control output: \"content\" shows matching lines, \"files_with_matches\" shows only file paths (default), \"count\" shows match counts.\n" +
+		"- Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\\{\\}` to find `interface{}` in Go code).\n" +
+		"- Multiline matching: By default patterns match within single lines only. For cross-line patterns, use `multiline: true`.",
 	configSchema: [
 		{ key: "head_limit", type: "number", label: "默认结果上限", default: 250, description: "搜索结果最大返回条数" },
 		{ key: "max_columns", type: "number", label: "最大列宽", default: 500, description: "超过此宽度的行会被截断" },
@@ -43,7 +47,7 @@ export const grepTool = buildTool({
 			head_limit,
 		} = input;
 
-		const config = ctx.toolConfig?.grep ?? {};
+		const config = ctx.toolConfig?.Grep ?? {};
 		const resolved_head_limit = input.head_limit ?? config.head_limit ?? 250;
 		const restrictToWorkspace = ctx.readScope === "workspace";
 		const workingDir = ctx.workingDir;

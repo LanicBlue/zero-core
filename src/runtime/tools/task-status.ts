@@ -21,10 +21,10 @@ function formatTurn(turn: { role: string; content: string | null }, limit: numbe
 }
 
 export const taskStatusTool = buildTool({
-	name: "task_status",
-	description:
+	name: "TaskStatus",
+	description: "Check the status and recent activity of a background task.",
+	prompt:
 		"Check the status of a background task. Shows status header and the most recent turns from the session.",
-	userDescription: "查询后台任务的状态和最近执行记录。",
 	meta: { category: "task", isReadOnly: true, isConcurrencySafe: true, isDestructive: false },
 	configSchema: [
 		{
@@ -71,7 +71,7 @@ export const taskStatusTool = buildTool({
 		const session = db.getMainSession(subAgentId);
 		if (!session) return header.join("\n");
 
-		const config = ctx.toolConfig?.task_status ?? {};
+		const config = ctx.toolConfig?.TaskStatus ?? {};
 		const n = config.recent_turns ?? 6;
 		const turnLimit = config.turn_length ?? 500;
 		const turns = db.getTurns(session.id).slice(-n);

@@ -15,7 +15,7 @@ export interface ToolInfo {
 	group?: string;
 	source?: string;
 	mcpServerName?: string;
-	userDescription?: string;
+	prompt?: string;
 	configSchema?: any[];
 	meta?: {
 		isReadOnly: boolean;

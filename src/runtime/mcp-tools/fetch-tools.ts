@@ -25,45 +25,42 @@ function htmlToText(html: string): string {
 	return (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
-export function createFetchTools() {
-	return {
-		web_fetch: buildTool({
-			name: "web_fetch",
-			description: "Fetch a URL and return the content. Supports multiple output formats.",
-			meta: { category: "web", maxResultSize: 50000 },
-			configSchema: [
-				{ key: "format", type: "select", label: "Default format", default: "markdown", options: ["markdown", "html", "text", "json"], description: "Default output format when not specified in the call" },
-			],
-			inputSchema: z.object({
-				url: z.string().describe("URL to fetch"),
-				format: z.enum(["markdown", "html", "text", "json"]).optional().describe("Output format (default: markdown)"),
-				headers: z.record(z.string(), z.string()).optional().describe("Optional request headers"),
-			}),
-			execute: async ({ url, format, headers }) => {
-				try {
-					const resp = await fetchUrl(url, headers);
-					const fmt = format ?? "markdown";
+export const webFetchTool = buildTool({
+	name: "WebFetch",
+	description: "Fetch a URL and return the content in markdown, HTML, text, or JSON format.",
+	prompt: "Fetch a URL and return the content. Supports multiple output formats.",
+	meta: { category: "web", isReadOnly: true },
+	configSchema: [
+		{ key: "format", type: "select", label: "Default format", default: "markdown", options: ["markdown", "html", "text", "json"], description: "默认输出格式" },
+	],
+	inputSchema: z.object({
+		url: z.string().describe("URL to fetch"),
+		format: z.enum(["markdown", "html", "text", "json"]).optional().describe("Output format (default: markdown)"),
+		headers: z.record(z.string(), z.string()).optional().describe("Optional request headers"),
+	}),
+	execute: async ({ url, format, headers }) => {
+		try {
+			const resp = await fetchUrl(url, headers);
+			const fmt = format ?? "markdown";
 
-					if (fmt === "json") {
-						const json = await resp.json();
-						return JSON.stringify(json, null, 2);
-					}
+			if (fmt === "json") {
+				const json = await resp.json();
+				return JSON.stringify(json, null, 2);
+			}
 
-					const html = await resp.text();
+			const html = await resp.text();
 
-					switch (fmt) {
-						case "html":
-							return html;
-						case "text":
-							return htmlToText(html);
-						case "markdown":
-						default:
-							return turndown.turndown(html);
-					}
-				} catch (err: any) {
-					return `Error: ${err.message}`;
-				}
-			},
-		}),
-	};
-}
+			switch (fmt) {
+				case "html":
+					return html;
+				case "text":
+					return htmlToText(html);
+				case "markdown":
+				default:
+					return turndown.turndown(html);
+			}
+		} catch (err: any) {
+			return `Error: ${err.message}`;
+		}
+	},
+});

@@ -166,6 +166,7 @@ export interface SessionConfig {
 				entries: Array<import("../shared/types.js").AgentToolEntry>;
 				agents: Map<string, { id: string; name: string; systemPrompt?: string; model?: string }>;
 			}>;
+	getToolConfig?: () => Record<string, Record<string, any>>;
 	}
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,8 @@ interface Props {
 
 type Section = "basic" | "prompt" | "tools" | "expose" | "permissions";
 
+const DEFAULT_ENABLED_TOOLS = new Set(["Bash", "Read", "Write", "Edit", "Grep", "Glob"]);
+
 type FormState = Omit<AgentRecord, "id" | "createdAt" | "updatedAt">;
 
 const shorten = (p: string) =>
@@ -356,7 +358,6 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		if (agent) autoSave(next);
 	};
 
-	const DEFAULT_ENABLED_TOOLS = new Set(["bash", "read", "write", "edit", "grep", "find"]);
 
 	const toggleTool = (toolName: string) => {
 		const toolsMap = form.toolPolicy?.tools ?? {};
@@ -393,11 +394,6 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 	};
 
 	function formatTokens(tokens: number): string {
-		if (tokens >= 1000) return ;
-		return ;
-	}
-
-	function formatTokens(tokens: number): string {
 		if (tokens >= 1000) return `~${(tokens / 1000).toFixed(1)}k`;
 		return `~${tokens}`;
 	}
@@ -419,15 +415,14 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 
 	const toolsTokenCount = useMemo(() => {
 			const toolsMap = form.toolPolicy?.tools;
-			const DEFAULT_ENABLED = new Set(["bash", "read", "write", "edit", "grep", "find"]);
 			let total = 0;
 			for (const t of tools) {
 				const enabled = toolsMap
-					? (t.name in toolsMap ? toolsMap[t.name].enabled : DEFAULT_ENABLED.has(t.name))
-					: DEFAULT_ENABLED.has(t.name);
+					? (t.name in toolsMap ? toolsMap[t.name].enabled : DEFAULT_ENABLED_TOOLS.has(t.name))
+					: DEFAULT_ENABLED_TOOLS.has(t.name);
 				if (enabled) {
-					total += (t.description ?? "").length;
-					total += t.name.length;
+					total += (t.prompt ?? "").length;
+					total += t.name.length + 20;
 				}
 			}
 			return Math.ceil(total / 4);
@@ -604,10 +599,9 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 										<h5 className="tool-group-title">{GROUP_LABELS[group] || group}</h5>
 										<div className="tool-list">
 											{groupTools.map((t) => {
-												const DEFAULT_ENABLED = new Set(["bash", "read", "write", "edit", "grep", "find"]);
 												const enabled = toolsMap
-													? (t.name in toolsMap ? toolsMap[t.name].enabled : DEFAULT_ENABLED.has(t.name))
-													: DEFAULT_ENABLED.has(t.name);
+													? (t.name in toolsMap ? toolsMap[t.name].enabled : DEFAULT_ENABLED_TOOLS.has(t.name))
+													: DEFAULT_ENABLED_TOOLS.has(t.name);
 												return (
 													<div key={t.name}>
 														<div className="tool-item">
@@ -623,9 +617,9 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 																onClick={() => toggleTool(t.name)}
 															/>
 														</div>
-														{expandedTool === t.name && t.userDescription && (
+														{expandedTool === t.name && t.description && (
 															<div className="tool-detail-panel">
-																<p>{t.userDescription}</p>
+																<p>{t.description}</p>
 															</div>
 														)}
 													</div>

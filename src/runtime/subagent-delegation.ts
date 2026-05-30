@@ -6,6 +6,7 @@ import type {
 } from "./types.js";
 import { TaskRegistry } from "./task-registry.js";
 import { AgentLoop } from "./agent-loop.js";
+import { triggerHooks } from "../core/hook-registry.js";
 
 // ---------------------------------------------------------------------------
 // Subagent / task delegation factory
@@ -98,6 +99,8 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 						status: "failed",
 						result: bgError,
 					});
+
+			triggerHooks("SubagentStop", { agentId: config.agentId, taskId, status: "failed" });
 				} else {
 					taskRegistry.complete(taskId, bgResult);
 					emit({
@@ -107,6 +110,8 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 						status: "completed",
 						result: bgResult,
 					});
+
+			triggerHooks("SubagentStop", { agentId: config.agentId, taskId, status: "completed" });
 				}
 			});
 
@@ -137,6 +142,8 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 			taskId,
 			task,
 		});
+
+			triggerHooks("SubagentStart", { agentId: config.agentId, taskId, task });
 
 		const subConfig: SessionConfig = {
 			...config,
@@ -181,6 +188,8 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 					status: "completed",
 					result,
 				});
+
+			triggerHooks("SubagentStop", { agentId: config.agentId, taskId, status: "completed" });
 			} catch (err: any) {
 				taskRegistry.fail(taskId, err.message || "Unknown error");
 				emit({
@@ -190,6 +199,8 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 					status: "failed",
 					result: err.message,
 				});
+
+			triggerHooks("SubagentStop", { agentId: config.agentId, taskId, status: "failed" });
 			}
 		});
 
@@ -254,6 +265,8 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 				status: code === 0 ? "completed" : "failed",
 				result,
 			});
+
+			triggerHooks("SubagentStop", { agentId: config.agentId, taskId, status: code === 0 ? "completed" : "failed" });
 		});
 
 		child.on("error", (err: Error) => {
@@ -265,6 +278,8 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 				status: "failed",
 				result: err.message,
 			});
+
+			triggerHooks("SubagentStop", { agentId: config.agentId, taskId, status: "failed" });
 		});
 
 		return taskId;

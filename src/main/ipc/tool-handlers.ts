@@ -7,7 +7,7 @@ export function registerToolHandlers(ctx: IpcContext): void {
 		return ctx.toolRegistry.getAll().map((d: any) => ({
 			name: d.name,
 			description: d.description,
-			userDescription: d.userDescription,
+			prompt: d.prompt,
 			group: d.category,
 			source: d.source,
 			mcpServerName: d.mcpServerName,

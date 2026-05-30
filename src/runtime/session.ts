@@ -1,5 +1,6 @@
 import type { ModelMessage } from "ai";
 import type { ISessionStore } from "./session-store-interface.js";
+import { triggerHooks } from "../core/hook-registry.js";
 
 const DEFAULT_CONTEXT_WINDOW = 128000;
 const RESERVE_TOKENS = 16384;
@@ -56,6 +57,8 @@ export class AgentSession {
 		const total = this.estimateTokens();
 		if (total <= this.contextWindow - RESERVE_TOKENS) return;
 
+		triggerHooks("PreCompact", { sessionId: this.sessionId ?? "", messageCount: this.messages.length, estimatedTokens: this.estimateTokens(), contextWindow: this.contextWindow });
+
 		const keepTokens = this.contextWindow - RESERVE_TOKENS;
 		let budget = keepTokens;
 		const kept: ModelMessage[] = [];
@@ -68,6 +71,8 @@ export class AgentSession {
 		}
 
 		this.messages = kept;
+
+		triggerHooks("PostCompact", { sessionId: this.sessionId ?? "", messageCount: this.messages.length, estimatedTokens: this.estimateTokens(), contextWindow: this.contextWindow });
 	}
 
 	/** Aggressively prune: keep only the last keepRatio of messages (by token budget). */

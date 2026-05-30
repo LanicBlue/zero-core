@@ -223,6 +223,7 @@ class AgentService {
 					}
 					return { entries, agents: agentMap };
 				},
+			getToolConfig: () => this.registry.getToolConfig(),
 			};
 
 		// Initialize run state for this agent

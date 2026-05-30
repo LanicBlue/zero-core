@@ -157,7 +157,7 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 			const tools = registry.getAll().map((d) => ({
 				name: d.name,
 				description: d.description,
-				userDescription: d.userDescription,
+				prompt: d.prompt,
 				group: d.category,
 				source: d.source,
 				mcpServerName: d.mcpServerName,

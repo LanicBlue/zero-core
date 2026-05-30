@@ -53,7 +53,7 @@ export const PERSONA_TEMPLATES: Record<string, PersonaDefinition> = {
 		expertise: ["code-quality", "security", "performance"],
 		communicationStyle: "professional",
 		toolPolicy: {
-			blockedTools: ["bash"],
+			blockedTools: ["Bash"],
 		},
 	},
 	architect: {

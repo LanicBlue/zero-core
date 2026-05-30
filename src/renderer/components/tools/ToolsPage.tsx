@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 
 const api = () => (window as any).api;
 
@@ -117,8 +117,11 @@ export default function ToolsPage() {
 									)}
 								</div>
 								<p className="tools-page-detail-desc">{selectedTool.description}</p>
-								{selectedTool.userDescription && (
-									<p className="tools-page-detail-user-desc">{selectedTool.userDescription}</p>
+								{selectedTool.prompt && selectedTool.prompt !== selectedTool.description && (
+									<details className="tools-page-ai-prompt-details">
+										<summary>AI Prompt</summary>
+										<pre className="tools-page-ai-prompt-content">{selectedTool.prompt}</pre>
+									</details>
 								)}
 							</div>
 
@@ -127,7 +130,7 @@ export default function ToolsPage() {
 									<h4 className="tools-page-config-heading">Configuration</h4>
 									{selectedTool.configSchema.map((field: any) => {
 										const val = config[selectedTool.name]?.[field.key] ?? field.default ?? "";
-								if (field.key === "auto_background_timeout" && !config[selectedTool.name]?.auto_background) return null;
+										if (field.key === "auto_background_timeout" && !config[selectedTool.name]?.auto_background) return null;
 										return (
 											<div key={field.key} className="tools-page-config-field">
 												<div className="tools-page-config-label-row">

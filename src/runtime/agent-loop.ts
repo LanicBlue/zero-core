@@ -15,6 +15,7 @@ import { buildToolsSet, buildToolPolicyDescription } from "./tools/index.js";
 import { buildAgentTools } from "./tools/agent-tool.js";
 import { log } from "../core/logger.js";
 import { ToolRegistry } from "../core/tool-registry.js";
+import { triggerHooks } from "../core/hook-registry.js";
 import { classifyError, isTransientError, userFriendlyMessage, parseThinkingTags, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
 import { TaskRegistry } from "./task-registry.js";
 import type { ISessionStore } from "./session-store-interface.js";
@@ -86,7 +87,7 @@ export class AgentLoop implements AgentRuntime {
 					agentId: `${capturedConfig.agentId}:sub-${Date.now()}`,
 					systemPrompt: options?.systemPrompt ?? capturedConfig.systemPrompt,
 					modelId: options?.model ?? capturedConfig.modelId,
-						timeoutSec: this.toolContext.toolConfig?.subagent?.timeout,
+						timeoutSec: this.toolContext.toolConfig?.Agent?.timeout,
 				};
 				const subAbort = new AbortController();
 				const subLoop = new AgentLoop(subConfig, capturedProviders, {
@@ -94,8 +95,8 @@ export class AgentLoop implements AgentRuntime {
 				});
 
 				// Auto-background: if configured, transition to non-blocking after timeout
-				const autoBgEnabled = this.toolContext.toolConfig?.subagent?.auto_background === true;
-				const autoBgSec = Number(this.toolContext.toolConfig?.subagent?.auto_background_timeout) || 0;
+				const autoBgEnabled = this.toolContext.toolConfig?.Agent?.auto_background === true;
+				const autoBgSec = Number(this.toolContext.toolConfig?.Agent?.auto_background_timeout) || 0;
 				if (autoBgEnabled && autoBgSec > 0) {
 					const taskId = `${subConfig.agentId}:bg-${Date.now()}`;
 					const registry = this.taskRegistry;
@@ -160,7 +161,7 @@ export class AgentLoop implements AgentRuntime {
 					agentId: `${capturedConfig.agentId}:${taskId}`,
 					systemPrompt: options?.systemPrompt ?? capturedConfig.systemPrompt,
 					modelId: options?.model ?? capturedConfig.modelId,
-					timeoutSec: this.toolContext.toolConfig?.subagent?.timeout,
+					timeoutSec: this.toolContext.toolConfig?.Agent?.timeout,
 				};
 
 				const registry = this.taskRegistry;
@@ -230,7 +231,7 @@ export class AgentLoop implements AgentRuntime {
 				const taskId = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 				const isWin = process.platform === "win32";
 				const shell = isWin ? "cmd.exe" : "/bin/bash";
-				const shellArgs = isWin ? ["/c", command] : ["-c", command];
+				const shellArgs = isWin ? ["/c", "chcp 65001 >/dev/null && " + command] : ["-c", command];
 				const registry = this.taskRegistry;
 				const parentEmit = (event: StreamEvent) => this.emit(event);
 
@@ -242,8 +243,8 @@ export class AgentLoop implements AgentRuntime {
 				});
 				let stdout = "";
 				let stderr = "";
-				child.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-				child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+				child.stdout.on("data", (d: Buffer) => { stdout += d.toString("utf-8"); });
+				child.stderr.on("data", (d: Buffer) => { stderr += d.toString("utf-8"); });
 
 				child.on("close", (code: number) => {
 					let result = "";
@@ -293,7 +294,13 @@ export class AgentLoop implements AgentRuntime {
 			// Store user turn
 			this.saveUserTurn(userMessage);
 
+				// Hook: UserPromptSubmit
+				await triggerHooks("UserPromptSubmit", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), message: userMessage });
+
 			let lastError: any;
+				// Hook: SessionStart
+				await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
+
 			for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
 				try {
 					await this.executeStream();
@@ -331,6 +338,9 @@ export class AgentLoop implements AgentRuntime {
 			if (lastError && !(lastError.name === "AbortError" || this.abortController?.signal.aborted)) {
 				const cls = classifyError(lastError);
 				log.error("loop", "All retries exhausted:", cls, lastError.message);
+				// Hook: StopFailure
+				await triggerHooks("StopFailure", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), error: lastError?.message, errorClass: cls });
+
 				this.emit({
 					type: "error",
 					agentId: this.config.agentId,
@@ -344,6 +354,10 @@ export class AgentLoop implements AgentRuntime {
 			this.streamText = "";
 			this.taskRegistry.cleanup();
 
+			// Hook: Stop
+			await triggerHooks("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length });
+			await triggerHooks("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
+
 			this.emit({ type: "agent_end", agentId: this.config.agentId });
 		}
 	}
@@ -352,7 +366,12 @@ export class AgentLoop implements AgentRuntime {
 		const model = resolveModel(this.providers, this.config.providerName, this.config.modelId);
 		log.debug("loop", "Model resolved:", this.config.providerName, this.config.modelId);
 
-		let mcpTools: Record<string, any> | undefined;
+		// Inject tool config from registry into toolContext
+			if (this.config.getToolConfig) {
+				this.toolContext.toolConfig = this.config.getToolConfig();
+			}
+
+			let mcpTools: Record<string, any> | undefined;
 		if (this.config.getMcpTools) {
 			try { mcpTools = await this.config.getMcpTools(this.config.agentId); }
 			catch { /* MCP tools unavailable */ }
@@ -440,6 +459,8 @@ export class AgentLoop implements AgentRuntime {
 				case "tool-call": {
 					const e = event as any;
 					this.recorder.sealStep();
+					this.thinkingText = "";
+					this.streamText = "";
 					log.debug("loop", "Tool call:", e.toolName);
 					this.recorder.blocks.push({ type: "tool", name: e.toolName, status: "running", args: e.input });
 					this.emit({

@@ -5,9 +5,18 @@ import { buildTool } from "./tool-factory.js";
 import { checkSyntax, formatDiagnostics } from "./syntax-check.js";
 
 export const fileEditTool = buildTool({
-	name: "edit",
-	description: "Make a targeted edit to a file by replacing exact text matches. Always restricted to workspace.",
-	userDescription: "通过精确查找替换编辑文件中的指定文本。oldText 必须与文件中的内容完全匹配。始终限制在工作目录内。",
+	name: "Edit",
+	description: "Performs exact string replacements in files.",
+	prompt:
+		"Performs exact string replacements in files.\n\n" +
+		"Usage:\n" +
+		"- You must use your `Read` tool at least once in the conversation before editing.\n" +
+		"- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. Never include any part of the line number prefix in the old_string or new_string.\n" +
+		"- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.\n" +
+		"- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance.\n" +
+		"- Use `replace_all` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.\n" +
+		"- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.\n" +
+		"- Edit operations are always restricted to the workspace directory.",
 	meta: { category: "runtime", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
 	configSchema: [
 		{
@@ -38,7 +47,7 @@ export const fileEditTool = buildTool({
 			const newContent = content.replace(oldText, newText);
 			await writeFile(filePath, newContent, "utf-8");
 			let result = `Successfully edited ${path}`;
-			const enabled = ctx.toolConfig?.edit?.syntaxCheck ?? true;
+			const enabled = ctx.toolConfig?.Edit?.syntaxCheck ?? true;
 			if (enabled) {
 				const ext = extname(path).slice(1).toLowerCase();
 				const diags = checkSyntax(newContent, ext);

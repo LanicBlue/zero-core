@@ -17,10 +17,10 @@ function formatTask(t: TaskInfo): string {
 }
 
 export const taskListTool = buildTool({
-	name: "task_list",
-	description:
+	name: "TaskList",
+	description: "List all background tasks with their status and progress.",
+	prompt:
 		"List all tasks dispatched by this agent. Returns running and completed background tasks (subagents and bash commands) with their status, progress, and results.",
-	userDescription: "列出当前 agent 派发的所有后台任务。显示每个任务的状态、执行进度和结果摘要。支持按状态过滤。",
 	meta: { category: "task", isReadOnly: true, isConcurrencySafe: true, isDestructive: false },
 	configSchema: [
 		{
@@ -39,7 +39,7 @@ export const taskListTool = buildTool({
 			return "Error: Task listing is not available in this context.";
 		}
 
-		const config = ctx.toolConfig?.task_list ?? {};
+		const config = ctx.toolConfig?.TaskList ?? {};
 		const maxCompleted = config.max_completed ?? 5;
 		const filter = input.filter ?? "all";
 		const tasks = ctx.listTasks(filter === "all" ? undefined : filter);

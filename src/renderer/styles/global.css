@@ -1958,6 +1958,34 @@ body {
   background: var(--bg-subtle);
   border-radius: 6px;
 }
+.tools-page-ai-prompt-details {
+  margin-top: 8px;
+}
+.tools-page-ai-prompt-details summary {
+  font-size: 11px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.tools-page-ai-prompt-details summary:hover {
+  color: var(--fg-default);
+}
+.tools-page-ai-prompt-content {
+  font-size: 11px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  background: var(--bg-subtle);
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
 
 /* ─── Toggle Switch ──────────────────────────── */
 
