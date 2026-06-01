@@ -5,3 +5,4 @@ release/
 *.tgz
 .DS_Store
 Thumbs.db
+.vs/

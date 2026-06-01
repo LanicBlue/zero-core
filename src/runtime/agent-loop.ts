@@ -43,6 +43,11 @@ export class AgentLoop implements AgentRuntime {
 	private resultText = "";
 	private pendingToolCalls: Map<string, { name: string; args: any }> = new Map();
 	private checkpointMessages: any[] = [];
+	/** Tracks the seq of the current assistant turn in the turns table.
+	 *  -1 = not yet created (set by saveIncrementalCheckpoint or saveAssistantTurn)
+	 *  >= 0 = turn exists, use updateTurnContent to update.
+	 *  Initialized in run() and resume(); NOT reset by executeStream().
+	 *  Retry cleanup deletes the partial turn and resets to -1. */
 	private incrementalTurnSeq = -1;
 
 	constructor(
@@ -322,6 +327,16 @@ export class AgentLoop implements AgentRuntime {
 					const cls = classifyError(err);
 					log.error("loop", "Attempt " + (attempt + 1) + " failed:", cls, err.message?.slice(0, 200));
 
+					// Clean up partial turn and recorder state from failed attempt
+					if (this.incrementalTurnSeq >= 0 && this.db) {
+						const sid = this.session.getSessionId();
+						if (sid) {
+							try { this.db.deleteTurn(sid, this.incrementalTurnSeq); } catch {}
+						}
+						this.incrementalTurnSeq = -1;
+					}
+					this.recorder.reset();
+
 					if (cls === "prompt_too_long") {
 						this.session.aggressivePrune(0.5);
 						log.loop("Context too long, aggressive prune. Messages:", this.session.getMessages().length);
@@ -381,17 +396,26 @@ export class AgentLoop implements AgentRuntime {
 		this.streamText = "";
 		this.thinkingText = "";
 		this.resultText = "";
-		this.recorder.reset();
-		this.pendingToolCalls.clear();
-		this.checkpointMessages = [];
-		this.incrementalTurnSeq = -1;
-		// Delete the interrupted assistant turn so recovery replaces it
-		if (interruptedTurnSeq !== undefined && this.db) {
-			const sid = this.session.getSessionId();
-			if (sid) {
-				try { this.db.deleteTurn(sid, interruptedTurnSeq); } catch { /* ignore */ }
+			this.recorder.reset();
+			this.pendingToolCalls.clear();
+			this.checkpointMessages = [];
+			this.incrementalTurnSeq = -1;
+			// Load interrupted turn blocks into recorder and continue on same turn
+			if (interruptedTurnSeq !== undefined && this.db) {
+				const sid = this.session.getSessionId();
+				if (sid) {
+					try {
+						const turns = this.db.getTurns(sid);
+						const existing = turns.find(t => t.seq === interruptedTurnSeq);
+						if (existing && existing.content) {
+							const blocks = JSON.parse(existing.content);
+							if (Array.isArray(blocks)) this.recorder.blocks = blocks;
+						}
+						this.incrementalTurnSeq = interruptedTurnSeq;
+
+					} catch { /* ignore parse errors */ }
+				}
 			}
-		}
 		this.abortController = new AbortController();
 		const timeoutMs = this.config.timeoutSec ? this.config.timeoutSec * 1000 : undefined;
 		const timeout = timeoutMs ? setTimeout(() => {
@@ -454,10 +478,11 @@ export class AgentLoop implements AgentRuntime {
 		const model = resolveModel(this.providers, this.config.providerName, this.config.modelId);
 		log.debug("loop", "Model resolved:", this.config.providerName, this.config.modelId);
 
-		// Reset incremental checkpoint state
+		// Reset per-stream checkpoint state.
+		// Note: incrementalTurnSeq is NOT reset here — it is managed by run()/resume()
+		// and persists across executeStream() calls within a single turn.
 		this.pendingToolCalls.clear();
 		this.checkpointMessages = [];
-		this.incrementalTurnSeq = -1;
 
 		// Inject tool config from registry into toolContext
 			if (this.config.getToolConfig) {
@@ -681,14 +706,20 @@ export class AgentLoop implements AgentRuntime {
 
 	private saveUserTurn(text: string): void { this.recorder.saveUserTurn(this.db!, this.session.getSessionId()!, text); }
 
-	private saveAssistantTurn(): void {
-		const sessionId = this.session.getSessionId();
+		private saveAssistantTurn(): void {
+			const sessionId = this.session.getSessionId();
 
-		if (!this.db || !sessionId) return;
-		if (this.recorder.blocks.length === 0) return;
-		const seq = this.db.getTurnCount(sessionId);
-		this.db.appendTurn(sessionId, seq, "assistant", JSON.stringify(this.recorder.blocks));
-	}
+			if (!this.db || !sessionId) return;
+			if (this.recorder.blocks.length === 0) return;
+			const blocksJson = JSON.stringify(this.recorder.blocks);
+			// If incremental checkpointing already created a turn, update it instead of duplicating
+			if (this.incrementalTurnSeq >= 0) {
+				this.db.updateTurnContent(sessionId, this.incrementalTurnSeq, blocksJson);
+				return;
+			}
+			const seq = this.db.getTurnCount(sessionId);
+			this.db.appendTurn(sessionId, seq, "assistant", blocksJson);
+		}
 
 	/**
 	 * After each tool-result, save messages + turns to DB so recovery can

@@ -80,14 +80,6 @@ export class TurnRecorder {
 		db.appendTurn(sessionId, seq, "user", text);
 	}
 
-	/** Append an assistant turn (the collected blocks) to the turns table. */
-	saveAssistantTurn(db: ISessionStore, sessionId: string): void {
-		if (!db || !sessionId) return;
-		if (this.blocks.length === 0) return;
-		const seq = db.getTurnCount(sessionId);
-		db.appendTurn(sessionId, seq, "assistant", JSON.stringify(this.blocks));
-	}
-
 	// -----------------------------------------------------------------------
 	// Lifecycle
 	// -----------------------------------------------------------------------

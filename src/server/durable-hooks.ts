@@ -26,7 +26,7 @@ export function registerDurableHooks(sessionDb: SessionDB): void {
 				log.debug("durable", `Turn seq already set for session ${sessionId}, skipping create`);
 				return;
 			}
-			const turnSeq = sessionDb.getTurnCount(sessionId) + 1;
+			const turnSeq = sessionDb.getTurnCount(sessionId);
 			sessionTurnSeq.set(sessionId, turnSeq);
 			sessionDb.createTurnState(sessionId, turnSeq);
 			log.debug("durable", `Turn ${turnSeq} created for session ${sessionId}`);
