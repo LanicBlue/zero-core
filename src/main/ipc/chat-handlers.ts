@@ -26,6 +26,8 @@ export function registerChatHandlers(ctx: IpcContext): void {
 					maxTokens: m.maxTokens,
 				})),
 				enabled: p.enabled,
+				enableConcurrencyLimit: p.enableConcurrencyLimit ?? false,
+				maxConcurrency: p.maxConcurrency ?? 1,
 			}));
 			svc.setProviders(providerConfigs, _ctx.workspaceConfig.defaultModel, _ctx.workspaceConfig.defaultProvider);
 

@@ -37,7 +37,7 @@ interface ChatState {
 	messagesBySession: Record<string, ChatMessage[]>;
 	activeAgentId: string | null;
 	activeSessionId: string | null;
-	streamingSessionId: string | null;
+	streamingSessions: Set<string>;
 	messages: ChatMessage[];
 	isStreaming: boolean;
 	sessionsByAgent: Record<string, SessionRecord[]>;
@@ -72,11 +72,15 @@ function updateLastAssistantMsg(
 	return result;
 }
 
+function calcIsStreaming(streamingSessions: Set<string>, activeSessionId: string | null): boolean {
+	return activeSessionId !== null && streamingSessions.has(activeSessionId);
+}
+
 export const useChatStore = create<ChatState>((set) => ({
 	messagesBySession: {},
 	activeAgentId: null,
 	activeSessionId: null,
-	streamingSessionId: null,
+	streamingSessions: new Set(),
 	messages: [],
 	isStreaming: false,
 	sessionsByAgent: {},
@@ -86,12 +90,13 @@ export const useChatStore = create<ChatState>((set) => ({
 			const sessionMsgs = [...(state.messagesBySession[sessionId] ?? []), msg];
 			const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
 			const isActive = sessionId === state.activeSessionId;
-			const newStreamingId = msg.role === "assistant" ? sessionId : state.streamingSessionId;
+			const newStreaming = new Set(state.streamingSessions);
+			if (msg.role === "assistant") newStreaming.add(sessionId);
 			return {
 				messagesBySession: newBySession,
-				streamingSessionId: newStreamingId,
+				streamingSessions: newStreaming,
 				messages: isActive ? sessionMsgs : state.messages,
-				isStreaming: newStreamingId !== null && newStreamingId === state.activeSessionId,
+				isStreaming: calcIsStreaming(newStreaming, state.activeSessionId),
 			};
 		}),
 
@@ -175,10 +180,12 @@ export const useChatStore = create<ChatState>((set) => ({
 
 	setIsStreaming: (sessionId, v) =>
 		set((state) => {
-			const newStreamingId = v ? sessionId : (state.streamingSessionId === sessionId ? null : state.streamingSessionId);
+			const newStreaming = new Set(state.streamingSessions);
+			if (v) newStreaming.add(sessionId);
+			else newStreaming.delete(sessionId);
 			return {
-				streamingSessionId: newStreamingId,
-				isStreaming: newStreamingId !== null && newStreamingId === state.activeSessionId,
+				streamingSessions: newStreaming,
+				isStreaming: calcIsStreaming(newStreaming, state.activeSessionId),
 			};
 		}),
 
@@ -189,12 +196,13 @@ export const useChatStore = create<ChatState>((set) => ({
 			);
 			const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
 			const isActive = sessionId === state.activeSessionId;
-			const newStreamingId = state.streamingSessionId === sessionId ? null : state.streamingSessionId;
+			const newStreaming = new Set(state.streamingSessions);
+			newStreaming.delete(sessionId);
 			return {
 				messagesBySession: newBySession,
-				streamingSessionId: newStreamingId,
+				streamingSessions: newStreaming,
 				messages: isActive ? sessionMsgs : state.messages,
-				isStreaming: newStreamingId !== null && newStreamingId === state.activeSessionId,
+				isStreaming: calcIsStreaming(newStreaming, state.activeSessionId),
 			};
 		}),
 
@@ -202,7 +210,6 @@ export const useChatStore = create<ChatState>((set) => ({
 		set((state) => {
 			const newBySession = { ...state.messagesBySession };
 			if (state.activeSessionId && state.activeAgentId && state.activeAgentId !== id) {
-				// Save current messages for old session
 				newBySession[state.activeSessionId] = state.messages;
 			}
 			const newActiveSessionId = sessionId ?? null;
@@ -212,7 +219,7 @@ export const useChatStore = create<ChatState>((set) => ({
 				activeSessionId: newActiveSessionId,
 				messagesBySession: newBySession,
 				messages: newMessages,
-				isStreaming: state.streamingSessionId !== null && state.streamingSessionId === newActiveSessionId,
+				isStreaming: calcIsStreaming(state.streamingSessions, newActiveSessionId),
 			};
 		}),
 
@@ -247,7 +254,7 @@ export const useChatStore = create<ChatState>((set) => ({
 			return {
 				activeSessionId: sessionId,
 				messages: newMessages,
-				isStreaming: state.streamingSessionId !== null && state.streamingSessionId === sessionId,
+				isStreaming: calcIsStreaming(state.streamingSessions, sessionId),
 			};
 		}),
 

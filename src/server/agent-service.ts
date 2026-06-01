@@ -7,7 +7,7 @@ import type { AgentRecord } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
 import type { RuntimeProviderConfig, SessionConfig, StreamEvent } from "../runtime/types.js";
-import { clearProviderCache } from "../runtime/provider-factory.js";
+import { clearProviderCache, setConcurrencyManager } from "../runtime/provider-factory.js";
 import { SessionDB } from "./session-db.js";
 import { MCPManager } from "./mcp-manager.js";
 import { buildMcpTools } from "../runtime/tools/mcp-tool.js";
@@ -15,6 +15,7 @@ import { KbStore } from "./kb-store.js";
 import { KbDB } from "./kb-db.js";
 import { log } from "../core/logger.js";
 import { ToolRegistry } from "../core/tool-registry.js";
+import { ProviderConcurrencyManager } from "../runtime/provider-concurrency-manager.js";
 
 // ---------------------------------------------------------------------------
 // Ensure zero-core dirs
@@ -63,6 +64,7 @@ class AgentService {
 	private kbDb: KbDB;
 	private registry: ToolRegistry;
 	private mcp: MCPManager;
+	private concurrencyManager = new ProviderConcurrencyManager();
 	private agentStore: AgentStore | null = null;
 	private agentToolStore: import("./agent-tool-store.js").AgentToolStore | null = null;
 
@@ -92,6 +94,8 @@ class AgentService {
 		this.defaultModel = defaultModel;
 		this.defaultProvider = defaultProvider;
 		clearProviderCache();
+		this.concurrencyManager.reconfigure(providers as any[]);
+		setConcurrencyManager(this.concurrencyManager);
 		this.invalidateLoops();
 	}
 
@@ -364,6 +368,7 @@ class AgentService {
 		this.loops.clear();
 		this.runStates.clear();
 		this.activeSessions.clear();
+		this.concurrencyManager.clear();
 		this.db.close();
 		this.kbDb.close();
 	}

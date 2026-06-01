@@ -203,6 +203,8 @@ export async function loadCoreModules(): Promise<void> {
 			name: p.name, type: p.type, apiKey: p.apiKey, baseUrl: p.baseUrl,
 			models: p.models.map((m: any) => ({ id: m.id, name: m.name, contextWindow: m.contextWindow, maxTokens: m.maxTokens })),
 			enabled: p.enabled,
+			enableConcurrencyLimit: p.enableConcurrencyLimit ?? false,
+			maxConcurrency: p.maxConcurrency ?? 1,
 		}));
 	_agentService.setProviders(providerConfigs, _workspaceConfig.defaultModel, _workspaceConfig.defaultProvider);
 	_agentService.subscribe((event: any) => {

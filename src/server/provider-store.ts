@@ -73,6 +73,8 @@ const COLUMNS: ColumnDef[] = [
 	{ key: "models", json: true },
 	{ key: "enabled", bool: true },
 	{ key: "isSystem", column: "is_system", bool: true },
+		{ key: "enableConcurrencyLimit", column: "enable_concurrency_limit", bool: true },
+		{ key: "maxConcurrency", column: "max_concurrency" },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
 ];

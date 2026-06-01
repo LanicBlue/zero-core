@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import IconSidebar from "./IconSidebar.js";
 import ChatPanel from "./ChatPanel.js";
 import FileTreePanel from "./FileTreePanel.js";
@@ -19,6 +19,7 @@ const api = () => (window as any).api;
 export default function AppLayout() {
 	const { activePage } = usePageStore();
 	const [showLog, setShowLog] = useState(false);
+	const lastErrorKey = useRef<string | null>(null);
 
 	const {
 		messages, activeAgentId, activeSessionId, isStreaming,
@@ -80,6 +81,11 @@ export default function AppLayout() {
 				}
 				case "agent_end": {
 					finishStreaming(key);
+					// Skip DB reload if an error was just shown — preserve error in UI
+					if (lastErrorKey.current === key) {
+						lastErrorKey.current = null;
+						break;
+					}
 					// Reload from DB to get normalized blocks (thinking/tool/text)
 					(async () => {
 						try {
@@ -112,6 +118,7 @@ export default function AppLayout() {
 					break;
 				}
 				case "error": {
+					lastErrorKey.current = key;
 					updateAssistantText(key, `\nError: ${data.error}`);
 					finishStreaming(key);
 					break;

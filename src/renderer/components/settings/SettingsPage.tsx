@@ -31,6 +31,7 @@ function ProviderCard({ provider, onEdit }: { provider: Provider; onEdit: () => 
 					<span className="provider-type-badge">{provider.type}</span>
 					{provider.apiKey && <span className="provider-key-status active">Key set</span>}
 					{!provider.apiKey && <span className="provider-key-status">No key</span>}
+						{provider.enableConcurrencyLimit && <span className="concurrency-badge">Max {provider.maxConcurrency} concurrent</span>}
 				</div>
 				<div className="provider-actions">
 					<button
@@ -70,6 +71,8 @@ function ProviderEditor({ provider, onClose }: { provider: Provider | null; onCl
 		apiKey: provider?.apiKey ?? "",
 		baseUrl: provider?.baseUrl ?? "https://api.openai.com/v1",
 		enabled: provider?.enabled ?? true,
+		enableConcurrencyLimit: provider?.enableConcurrencyLimit ?? false,
+		maxConcurrency: provider?.maxConcurrency ?? 3,
 	});
 	const [newModelId, setNewModelId] = useState("");
 	const [newModelGroup, setNewModelGroup] = useState("");
@@ -90,6 +93,8 @@ function ProviderEditor({ provider, onClose }: { provider: Provider | null; onCl
 					apiKey: form.apiKey,
 					baseUrl: form.baseUrl,
 					enabled: form.enabled,
+					enableConcurrencyLimit: form.enableConcurrencyLimit,
+					maxConcurrency: form.maxConcurrency,
 				});
 			} else {
 				await create({
@@ -98,6 +103,8 @@ function ProviderEditor({ provider, onClose }: { provider: Provider | null; onCl
 					apiKey: form.apiKey,
 					baseUrl: form.baseUrl,
 					enabled: form.enabled,
+					enableConcurrencyLimit: form.enableConcurrencyLimit,
+					maxConcurrency: form.maxConcurrency,
 					models: models,
 					isSystem: false,
 				});
@@ -213,6 +220,12 @@ function ProviderEditor({ provider, onClose }: { provider: Provider | null; onCl
 						<label>API Key
 							<input type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder={form.type === "ollama" ? "Not required" : "sk-..."} />
 						</label>
+					<label>Concurrency Limit
+						<div className="concurrency-row">
+							<label className="checkbox-label"><input type="checkbox" checked={form.enableConcurrencyLimit} onChange={(e) => setForm({ ...form, enableConcurrencyLimit: e.target.checked })} /> Enable</label>
+							<input type="number" className="concurrency-input" min={1} max={10} value={form.maxConcurrency} onChange={(e) => setForm({ ...form, maxConcurrency: Math.max(1, Math.min(10, parseInt(e.target.value) || 1)) })} disabled={!form.enableConcurrencyLimit} />
+						</div>
+					</label>
 					</div>
 
 					<div className="provider-models-section">

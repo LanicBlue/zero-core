@@ -2178,6 +2178,41 @@ body {
 .provider-key-status.active {
   color: var(--color-success-fg);
 }
+.concurrency-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--fg-faint);
+}
+.concurrency-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+.concurrency-row .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.concurrency-input {
+  width: 60px;
+  padding: 4px 6px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--fg);
+  text-align: center;
+}
+.concurrency-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 .provider-actions {
   display: flex;
   align-items: center;

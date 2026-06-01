@@ -75,6 +75,8 @@ export function runMigrations(sessionDB: SessionDB): void {
 	safeAddColumn(db, "agents", "knowledge_base_ids", "TEXT");
 	safeAddColumn(db, "agent_tools", "blocking", "INTEGER DEFAULT 1");
 	safeAddColumn(db, "agent_tools", "auto_background_timeout", "INTEGER");
+	safeAddColumn(db, "providers", "enable_concurrency_limit", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "providers", "max_concurrency", "INTEGER");
 
 	// Now safe to create SqliteStore instances with all columns
 	const agents = new SqliteStore<AgentRecord>(db, "agents", AGENT_COLUMNS);
@@ -90,6 +92,8 @@ export function runMigrations(sessionDB: SessionDB): void {
 		{ key: "name" }, { key: "type" }, { key: "apiKey", column: "api_key" },
 		{ key: "baseUrl", column: "base_url" }, { key: "models", json: true },
 		{ key: "enabled", bool: true }, { key: "isSystem", column: "is_system", bool: true },
+		{ key: "enableConcurrencyLimit", column: "enable_concurrency_limit", bool: true },
+		{ key: "maxConcurrency", column: "max_concurrency" },
 		{ key: "createdAt", column: "created_at" }, { key: "updatedAt", column: "updated_at" },
 	]);
 	providers.migrateFromJson(join(zeroDir, "providers.json"), "providers", (raw: any) => ({

@@ -200,7 +200,7 @@ function storedToBlocks(msgs: any[]): any[] {
 
 export default function ChatPanel() {
 	const {
-				messages, activeAgentId, activeSessionId, isStreaming, streamingSessionId, sessionsByAgent,
+				messages, activeAgentId, activeSessionId, isStreaming, sessionsByAgent,
 				addMessage, finishStreaming, loadMessages, setActiveAgent,
 				setSessions, setActiveSessionId, clearMessages,
 				editMessage, deleteMessage, setIsStreaming,
@@ -262,7 +262,7 @@ export default function ChatPanel() {
 		refreshSessionData(activeAgentId).catch(() => {
 			loadMessages(activeSessionId ?? activeAgentId, []);
 		});
-	}, [activeAgentId, loadMessages, streamingSessionId]);
+	}, [activeAgentId, loadMessages]);
 
 	// Sync scroll to bottom — no animation, before paint
 	useLayoutEffect(() => {

@@ -51,6 +51,8 @@ export interface Provider {
 	models: ProviderModel[];
 	enabled: boolean;
 	isSystem?: boolean;
+	enableConcurrencyLimit?: boolean;
+	maxConcurrency?: number;
 	createdAt: string;
 	updatedAt: string;
 }

@@ -150,6 +150,8 @@ export interface RuntimeProviderConfig {
 		maxTokens?: number;
 	}[];
 	enabled: boolean;
+	enableConcurrencyLimit?: boolean;
+	maxConcurrency?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -166,6 +168,7 @@ export interface SessionConfig {
 	timeoutSec?: number;
 	sessionId?: string;
 	db?: ISessionStore;
+	concurrencyManager?: import("./provider-concurrency-manager.js").ProviderConcurrencyManager;
 	toolPolicy: {
 		autoApprove?: string[];
 		blockedTools?: string[];

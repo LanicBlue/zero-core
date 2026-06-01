@@ -506,6 +506,7 @@ export class AgentLoop implements AgentRuntime {
 			"tools:", Object.keys(tools).join(","),
 			"lastMsgRole:", this.session.getMessages().at(-1)?.role);
 
+
 		const result = streamText({
 				stopWhen: stepCountIs(200),
 			model,
@@ -523,7 +524,7 @@ export class AgentLoop implements AgentRuntime {
 			if ((event as any).type === "error") {
 				const errEvent = event as any;
 				log.error("loop", "Stream error:", errEvent.error?.message ?? JSON.stringify(errEvent));
-				break;
+				throw new Error(errEvent.error?.message ?? "Stream error");
 			}
 
 			switch (event.type) {
@@ -624,8 +625,7 @@ export class AgentLoop implements AgentRuntime {
 			agentId: this.config.agentId,
 			text: this.resultText,
 		});
-	}
-
+		}
 	abort(): void {
 		this.abortController?.abort();
 	}
