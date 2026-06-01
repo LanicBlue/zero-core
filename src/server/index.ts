@@ -32,6 +32,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT ?? "3210", 10);
 const expandHome = (p: string) => p.startsWith("~") ? p.replace(/^~/, homedir()) : p;
 
+process.on("unhandledRejection", (reason) => {
+	const msg = reason instanceof Error ? reason.message : String(reason);
+	const stack = reason instanceof Error ? reason.stack : "";
+	console.error(`[server] Unhandled rejection: ${msg}`);
+	if (stack) console.error(stack);
+});
+
+process.on("uncaughtException", (err) => {
+	console.error(`[server] Uncaught exception: ${err.message}`);
+	if (err.stack) console.error(err.stack);
+});
+
 export async function startServer() {
 	const app = express();
 	app.use(express.json());
@@ -47,9 +59,7 @@ export async function startServer() {
 	// Initialize hook system + durable execution
 	const { HookRegistry } = await import("../core/hook-registry.js");
 	const { registerDurableHooks } = await import("./durable-hooks.js");
-	const { runRecovery } = await import("./recovery.js");
-	registerDurableHooks(sessionDB);
-	await runRecovery(sessionDB);
+		registerDurableHooks(sessionDB);
 
 	const registry = new ToolRegistry(sessionDB.getKVStore());
 	const mcp = new MCPManager(registry);
@@ -76,6 +86,13 @@ export async function startServer() {
 	agentService.subscribe(() => {
 		// Events forwarded to WebSocket clients below
 	});
+
+	// Scan for interrupted turns and resume them
+	const { scanIncompleteTurns } = await import("./recovery.js");
+	const interrupted = scanIncompleteTurns(sessionDB);
+	if (interrupted.length > 0) {
+		await agentService.recoverIncompleteSessions();
+	}
 
 	// ─── Mount API routers ───────────────────────────────────────
 

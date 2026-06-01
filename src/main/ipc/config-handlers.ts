@@ -1,99 +1,106 @@
-import { ipcMain } from "electron";
 import { resolve, join } from "path";
 import { existsSync, mkdirSync } from "node:fs";
+import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 
 export function registerConfigHandlers(ctx: IpcContext): void {
-	ipcMain.handle("config:get", () => {
-		if (!ctx.modulesReady) return { workspaceDir: "", defaultPrompt: "", loading: true };
-		return { ...ctx.workspaceConfig, defaultPrompt: ctx.buildDefaultPrompt("Agent") };
-	});
+	typedHandle("config:get", "workspaceConfig",
+		(_ctx) => ({ ..._ctx.workspaceConfig, defaultPrompt: _ctx.buildDefaultPrompt("Agent") }),
+	);
 
-	ipcMain.handle("config:update", (_e, data: { workspaceDir?: string; defaultModel?: string; defaultProvider?: string }) => {
-		if (!ctx.modulesReady) return { error: "loading" };
-		if (typeof data.workspaceDir === "string") {
-			const abs = resolve(data.workspaceDir);
-			if (!existsSync(abs)) {
-				try { mkdirSync(abs, { recursive: true }); } catch {
-					return { error: "Cannot create directory" };
+	typedHandle("config:update", ["workspaceConfig", "sessionDb"],
+		(_ctx, data) => {
+			if (typeof data.workspaceDir === "string") {
+				const abs = resolve(data.workspaceDir);
+				if (!existsSync(abs)) {
+					try { mkdirSync(abs, { recursive: true }); } catch {
+						return _ctx.workspaceConfig;
+					}
 				}
+				_ctx.workspaceConfig = _ctx.saveWorkspaceConfig({ workspaceDir: abs }, _ctx.sessionDb);
 			}
-			ctx.workspaceConfig = ctx.saveWorkspaceConfig({ workspaceDir: abs }, ctx.sessionDb);
-		}
-		if (data.defaultModel !== undefined || data.defaultProvider !== undefined) {
-			ctx.workspaceConfig = ctx.saveWorkspaceConfig({ defaultModel: data.defaultModel, defaultProvider: data.defaultProvider }, ctx.sessionDb);
-		}
-		return ctx.workspaceConfig;
-	});
+			if (data.defaultModel !== undefined || data.defaultProvider !== undefined) {
+				_ctx.workspaceConfig = _ctx.saveWorkspaceConfig({ defaultModel: data.defaultModel, defaultProvider: data.defaultProvider }, _ctx.sessionDb);
+			}
+			return _ctx.workspaceConfig;
+		},
+	);
 
-	// ─── Device Context ─────────────────────────────
-	ipcMain.handle("device-context:get", async () => {
-		if (!ctx.modulesReady) return { content: "", loading: true };
-		const { loadDeviceContext } = await import(ctx.toFileURL(join(ctx.distCore, "device-context.js")));
-		return { content: loadDeviceContext(ctx.sessionDb.getKVStore()) };
-	});
+	typedHandle("device-context:get", "sessionDb",
+		async (_ctx) => {
+			const { loadDeviceContext } = await import(_ctx.toFileURL(join(_ctx.distCore, "device-context.js")));
+			return { content: loadDeviceContext(_ctx.sessionDb.getKVStore()) };
+		},
+	);
 
-	ipcMain.handle("device-context:generate", async () => {
-		if (!ctx.modulesReady) return { content: "", error: "loading" };
-		const { generateAndSaveDeviceContext } = await import(ctx.toFileURL(join(ctx.distCore, "device-context.js")));
-		try {
-			const content = generateAndSaveDeviceContext(ctx.sessionDb.getKVStore());
-			return { content };
-		} catch (err: any) {
-			return { content: "", error: err.message };
-		}
-	});
+	typedHandle("device-context:generate", "sessionDb",
+		async (_ctx) => {
+			const { generateAndSaveDeviceContext } = await import(_ctx.toFileURL(join(_ctx.distCore, "device-context.js")));
+			try {
+				const content = generateAndSaveDeviceContext(_ctx.sessionDb.getKVStore());
+				return { content };
+			} catch (err: any) {
+				return { content: "", error: err.message };
+			}
+		},
+	);
 
-	ipcMain.handle("device-context:save", async (_e, content: string) => {
-		if (!ctx.modulesReady) return { error: "loading" };
-		const { saveDeviceContext } = await import(ctx.toFileURL(join(ctx.distCore, "device-context.js")));
-		try {
-			saveDeviceContext(content, ctx.sessionDb.getKVStore());
-			return { success: true };
-		} catch (err: any) {
-			return { error: err.message };
-		}
-	});
+	typedHandle("device-context:save", "sessionDb",
+		async (_ctx, content) => {
+			const { saveDeviceContext } = await import(_ctx.toFileURL(join(_ctx.distCore, "device-context.js")));
+			try {
+				saveDeviceContext(content, _ctx.sessionDb.getKVStore());
+				return { success: true as const };
+			} catch (err: any) {
+				return { error: err.message };
+			}
+		},
+	);
 
-	// ─── Guidelines ─────────────────────────────────
-	ipcMain.handle("guidelines:get", async () => {
-		if (!ctx.modulesReady || !ctx.agentService) return { guidelines: [], defaults: [] };
-		const { loadConfig, DEFAULT_GUIDELINES } = await import(ctx.toFileURL(join(ctx.distCore, "config.js")));
-		const config = loadConfig(process.cwd(), undefined, ctx.sessionDb.getKVStore());
-		const guidelines = config.systemPrompt?.guidelines;
-		return { guidelines: guidelines ?? DEFAULT_GUIDELINES, defaults: DEFAULT_GUIDELINES, isDefault: !guidelines };
-	});
+	typedHandle("guidelines:get", ["agentService", "sessionDb"],
+		async (_ctx) => {
+			const { loadConfig, DEFAULT_GUIDELINES } = await import(_ctx.toFileURL(join(_ctx.distCore, "config.js")));
+			const config = loadConfig(process.cwd(), undefined, _ctx.sessionDb.getKVStore());
+			const guidelines = config.systemPrompt?.guidelines;
+			return { guidelines: guidelines ?? DEFAULT_GUIDELINES, defaults: DEFAULT_GUIDELINES, isDefault: !guidelines };
+		},
+	);
 
-	ipcMain.handle("guidelines:save", async (_e, guidelines: string[]) => {
-		if (!ctx.modulesReady) return { error: "loading" };
-		try {
-			const kv = ctx.sessionDb?.getKVStore();
-			if (!kv) return { error: "db not available" };
-			let configData: any = kv.getJson("global_config") ?? {};
-			if (!configData.systemPrompt) configData.systemPrompt = {};
-			configData.systemPrompt.guidelines = guidelines;
-			kv.setJson("global_config", configData);
-			return { success: true };
-		} catch {
-			return { error: "failed to save guidelines" };
-		}
-	});
+	typedHandle("guidelines:save", "sessionDb",
+		(_ctx, guidelines) => {
+			try {
+				const kv = _ctx.sessionDb?.getKVStore();
+				if (!kv) return { error: "db not available" };
+				let configData: any = kv.getJson("global_config") ?? {};
+				if (!configData.systemPrompt) configData.systemPrompt = {};
+				configData.systemPrompt.guidelines = guidelines;
+				kv.setJson("global_config", configData);
+				return { success: true as const };
+			} catch {
+				return { error: "failed to save guidelines" };
+			}
+		},
+	);
 
-	// ─── Theme ────────────────────────────────────
-	ipcMain.handle("config:get-theme", () => {
-		try {
-			const stored = ctx.sessionDb?.getKVStore().getJson<{ mode: string; customPrimaryColor?: string }>("theme");
-			return stored ?? { mode: "dark", customPrimaryColor: null };
-		} catch {
-			return { mode: "dark", customPrimaryColor: null };
-		}
-	});
-	ipcMain.handle("config:set-theme", (_e, data) => {
-		try {
-			ctx.sessionDb?.getKVStore().setJson("theme", data);
-			return { success: true };
-		} catch {
-			return { error: "failed to save theme" };
-		}
-	});
+	typedHandle("config:get-theme", [],
+		(_ctx) => {
+			try {
+				const stored = _ctx.sessionDb?.getKVStore().getJson<{ mode: string; customPrimaryColor?: string }>("theme");
+				return stored ?? { mode: "dark", customPrimaryColor: null };
+			} catch {
+				return { mode: "dark", customPrimaryColor: null };
+			}
+		},
+	);
+
+	typedHandle("config:set-theme", [],
+		(_ctx, data) => {
+			try {
+				_ctx.sessionDb?.getKVStore().setJson("theme", data);
+				return { success: true as const };
+			} catch {
+				return { error: "failed to save theme" };
+			}
+		},
+	);
 }

@@ -1,78 +1,76 @@
-import { ipcMain } from "electron";
+import { registerCrud, typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
+import type { Provider, CreateProviderInput, UpdateProviderInput, ProviderModel } from "../../shared/types.js";
 
 export function registerProviderHandlers(ctx: IpcContext): void {
-	ipcMain.handle("providers:list", () => ctx.modulesReady ? ctx.providerStore.list() : []);
-	ipcMain.handle("providers:get", (_e, id: string) => ctx.modulesReady ? ctx.providerStore.get(id) : undefined);
-	ipcMain.handle("providers:create", (_e, input: unknown) => {
-		if (!ctx.modulesReady) return { error: "loading" };
-		return ctx.providerStore.create(input as any);
-	});
-	ipcMain.handle("providers:update", (_e, id: string, input: unknown) => {
-		if (!ctx.modulesReady) return { error: "loading" };
-		try { return ctx.providerStore.update(id, input as any); }
-		catch (e) { return { error: (e as Error).message }; }
-	});
-	ipcMain.handle("providers:delete", (_e, id: string) => {
-		if (ctx.modulesReady) ctx.providerStore.delete(id);
-		return { success: true };
-	});
-	ipcMain.handle("providers:add-model", (_e, providerId: string, model: unknown) => {
-		if (!ctx.modulesReady) return { error: "loading" };
-		try { return ctx.providerStore.addModel(providerId, model as any); }
-		catch (e) { return { error: (e as Error).message }; }
-	});
-	ipcMain.handle("providers:remove-model", (_e, providerId: string, modelId: string) => {
-		if (!ctx.modulesReady) return { error: "loading" };
-		try { return ctx.providerStore.removeModel(providerId, modelId); }
-		catch (e) { return { error: (e as Error).message }; }
-	});
-	ipcMain.handle("providers:fetch-models", async (_e, providerId: string) => {
-		if (!ctx.modulesReady) return [];
-		const provider = ctx.providerStore.get(providerId);
-		if (!provider || !provider.apiKey) return [];
-		try {
-			const baseUrl = provider.baseUrl.replace(/\/+$/, "");
-			const url = provider.type === "anthropic"
-				? `${baseUrl}/v1/models`
-				: `${baseUrl}/models`;
-			const headers: Record<string, string> = {};
-			if (provider.type === "anthropic") {
-				headers["x-api-key"] = provider.apiKey;
-				headers["anthropic-version"] = "2023-06-01";
-			} else {
-				headers["Authorization"] = `Bearer ${provider.apiKey}`;
-			}
-			const resp = await fetch(url, { headers });
-			if (!resp.ok) return [];
-			const json = await resp.json() as any;
-			const rawModels = json.data || json.models || [];
-			return rawModels.map((m: any) => ({
-				id: m.id || m.name,
-				name: m.name || m.id || m.display_name,
-				group: m.owned_by || undefined,
-			}));
-		} catch {
-			return [];
-		}
+	registerCrud<Provider, CreateProviderInput, UpdateProviderInput>({
+		channel: "providers",
+		store: () => ctx.providerStore as any,
+		module: "providerStore",
 	});
 
-	ipcMain.handle("models:list", () => {
-		if (!ctx.modulesReady) return [];
-		const providers = ctx.providerStore.list();
-		const models: { provider: string; id: string; name: string; contextWindow?: number; maxTokens?: number }[] = [];
-		for (const p of providers) {
-			if (!p.enabled) continue;
-			for (const m of p.models) {
-				models.push({
-					provider: p.name,
-					id: m.id,
-					name: m.name || m.id,
-					contextWindow: m.contextWindow,
-					maxTokens: m.maxTokens,
-				});
+	typedHandle("providers:add-model", "providerStore",
+		(_ctx, providerId: string, model: ProviderModel) => {
+			try { return (_ctx.providerStore as any).addModel(providerId, model); }
+			catch (e) { return { error: (e as Error).message }; }
+		},
+	);
+
+	typedHandle("providers:remove-model", "providerStore",
+		(_ctx, providerId: string, modelId: string) => {
+			try { return (_ctx.providerStore as any).removeModel(providerId, modelId); }
+			catch (e) { return { error: (e as Error).message }; }
+		},
+	);
+
+	typedHandle("providers:fetch-models", "providerStore",
+		async (_ctx, providerId: string) => {
+			const provider = (_ctx.providerStore as any).get(providerId) as Provider | undefined;
+			if (!provider || !provider.apiKey) return [];
+			try {
+				const baseUrl = provider.baseUrl.replace(/\/+$/, "");
+				const url = provider.type === "anthropic"
+					? `${baseUrl}/v1/models`
+					: `${baseUrl}/models`;
+				const headers: Record<string, string> = {};
+				if (provider.type === "anthropic") {
+					headers["x-api-key"] = provider.apiKey;
+					headers["anthropic-version"] = "2023-06-01";
+				} else {
+					headers["Authorization"] = `Bearer ${provider.apiKey}`;
+				}
+				const resp = await fetch(url, { headers });
+				if (!resp.ok) return [];
+				const json = await resp.json() as any;
+				const rawModels = json.data || json.models || [];
+				return rawModels.map((m: any) => ({
+					id: m.id || m.name,
+					name: m.name || m.id || m.display_name,
+					group: m.owned_by || undefined,
+				}));
+			} catch {
+				return [];
 			}
-		}
-		return models;
-	});
+		},
+	);
+
+	typedHandle("models:list", "providerStore",
+		(_ctx) => {
+			const providers = (_ctx.providerStore as any).list() as Provider[];
+			const models: { provider: string; id: string; name: string; contextWindow?: number; maxTokens?: number }[] = [];
+			for (const p of providers) {
+				if (!p.enabled) continue;
+				for (const m of p.models) {
+					models.push({
+						provider: p.name,
+						id: m.id,
+						name: m.name || m.id,
+						contextWindow: m.contextWindow,
+						maxTokens: m.maxTokens,
+					});
+				}
+			}
+			return models;
+		},
+	);
 }

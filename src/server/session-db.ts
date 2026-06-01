@@ -167,6 +167,15 @@ export class SessionDB {
 	}
 
 	saveTurn(sessionId: string, messages: any[]): void {
+		// Ensure the session row exists (FK constraint on messages.session_id)
+		const existing = this.db.prepare("SELECT 1 FROM sessions WHERE id = ?").get(sessionId);
+		if (!existing) {
+			log.warn("db", "saveTurn: session not found, creating:", sessionId);
+			this.db.prepare(
+				"INSERT OR IGNORE INTO sessions (id, agent_id, is_main, title, created_at, updated_at) VALUES (?, '__recovered__', 0, NULL, ?, ?)",
+			).run(sessionId, new Date().toISOString(), new Date().toISOString());
+		}
+
 		const now = new Date().toISOString();
 		const tx = this.db.transaction(() => {
 			this.db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
@@ -196,6 +205,16 @@ export class SessionDB {
 			"UPDATE messages SET content = ?, msg_json = ? WHERE session_id = ? AND seq = ?",
 		).run(content, msgJson, sessionId, seq);
 		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+	}
+
+	/** Ensure a session row exists for the given ID (defensive FK guard). */
+	private ensureSession(sessionId: string): void {
+		const existing = this.db.prepare("SELECT 1 FROM sessions WHERE id = ?").get(sessionId);
+		if (!existing) {
+			this.db.prepare(
+				"INSERT OR IGNORE INTO sessions (id, agent_id, is_main, title, created_at, updated_at) VALUES (?, '__recovered__', 0, NULL, ?, ?)",
+			).run(sessionId, new Date().toISOString(), new Date().toISOString());
+		}
 	}
 
 	// -----------------------------------------------------------------------
@@ -243,6 +262,7 @@ export class SessionDB {
 	// -----------------------------------------------------------------------
 
 	appendTurn(sessionId: string, seq: number, role: string, content: string | null): void {
+		this.ensureSession(sessionId);
 		const now = new Date().toISOString();
 		this.db.prepare(
 			"INSERT INTO turns (session_id, seq, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -290,53 +310,83 @@ export class SessionDB {
 
 	createTurnState(sessionId: string, turnSeq: number): void {
 		const now = new Date().toISOString();
-		this.db.prepare(
-			`INSERT OR REPLACE INTO turn_state (session_id, turn_seq, phase, created_at, updated_at) VALUES (?, ?, "pending", ?, ?)`,
-		).run(sessionId, turnSeq, now, now);
+		try {
+			this.db.prepare(
+				`INSERT OR REPLACE INTO turn_state (session_id, turn_seq, phase, created_at, updated_at) VALUES (?, ?, 'pending', ?, ?)`,
+			).run(sessionId, turnSeq, now, now);
+		} catch (e) {
+			log.error("db", `createTurnState failed (session=${sessionId}, turn=${turnSeq}):`, (e as Error).message);
+			throw e;
+		}
 	}
 
 	updateTurnPhase(sessionId: string, turnSeq: number, phase: string, checkpoint?: any): void {
 		const now = new Date().toISOString();
-		this.db.prepare(
-			"UPDATE turn_state SET phase = ?, checkpoint = ?, updated_at = ? WHERE session_id = ? AND turn_seq = ?",
-		).run(phase, checkpoint ? JSON.stringify(checkpoint) : null, now, sessionId, turnSeq);
+		try {
+			this.db.prepare(
+				"UPDATE turn_state SET phase = ?, checkpoint = ?, updated_at = ? WHERE session_id = ? AND turn_seq = ?",
+			).run(phase, checkpoint ? JSON.stringify(checkpoint) : null, now, sessionId, turnSeq);
+		} catch (e) {
+			log.error("db", `updateTurnPhase failed (session=${sessionId}, turn=${turnSeq}, phase=${phase}):`, (e as Error).message);
+			throw e;
+		}
 	}
 
 	completeTurnState(sessionId: string, turnSeq: number): void {
 		const now = new Date().toISOString();
-		this.db.prepare(
-			`UPDATE turn_state SET phase = "completed", updated_at = ? WHERE session_id = ? AND turn_seq = ?`,
-		).run(now, sessionId, turnSeq);
+		try {
+			this.db.prepare(
+				`UPDATE turn_state SET phase = 'completed', updated_at = ? WHERE session_id = ? AND turn_seq = ?`,
+			).run(now, sessionId, turnSeq);
+		} catch (e) {
+			log.error("db", `completeTurnState failed (session=${sessionId}, turn=${turnSeq}):`, (e as Error).message);
+			throw e;
+		}
 	}
 
 	failTurnState(sessionId: string, turnSeq: number, error: string): void {
 		const now = new Date().toISOString();
-		this.db.prepare(
-			`UPDATE turn_state SET phase = "failed", error = ?, updated_at = ? WHERE session_id = ? AND turn_seq = ?`,
-		).run(error, now, sessionId, turnSeq);
+		try {
+			this.db.prepare(
+				`UPDATE turn_state SET phase = 'failed', error = ?, updated_at = ? WHERE session_id = ? AND turn_seq = ?`,
+			).run(error, now, sessionId, turnSeq);
+		} catch (e) {
+			log.error("db", `failTurnState failed (session=${sessionId}, turn=${turnSeq}):`, (e as Error).message);
+			throw e;
+		}
 	}
 
 	getIncompleteTurns(): Array<{ sessionId: string; turnSeq: number; phase: string; checkpoint: any; error: string | null }> {
-		const rows = this.db.prepare(
-			`SELECT session_id, turn_seq, phase, checkpoint, error FROM turn_state WHERE phase NOT IN ("completed", "failed")`,
-		).all() as any[];
-		return rows.map((r: any) => ({
-			sessionId: r.session_id,
-			turnSeq: r.turn_seq,
-			phase: r.phase,
-			checkpoint: r.checkpoint ? JSON.parse(r.checkpoint) : null,
-			error: r.error,
-		}));
+		try {
+			const rows = this.db.prepare(
+				`SELECT session_id, turn_seq, phase, checkpoint, error FROM turn_state WHERE phase NOT IN ('completed', 'failed')`,
+			).all() as any[];
+			return rows.map((r: any) => ({
+				sessionId: r.session_id,
+				turnSeq: r.turn_seq,
+				phase: r.phase,
+				checkpoint: r.checkpoint ? JSON.parse(r.checkpoint) : null,
+				error: r.error,
+			}));
+		} catch (e) {
+			log.error("db", "getIncompleteTurns failed:", (e as Error).message);
+			throw e;
+		}
 	}
 
 	cleanOldTurnState(maxAgeMs: number): void {
 		const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
-		this.db.prepare(
-			`DELETE FROM turn_state WHERE updated_at < ? AND phase IN ("completed", "failed")`,
-		).run(cutoff);
+		try {
+			this.db.prepare(
+				`DELETE FROM turn_state WHERE updated_at < ? AND phase IN ('completed', 'failed')`,
+			).run(cutoff);
+		} catch (e) {
+			log.error("db", "cleanOldTurnState failed:", (e as Error).message);
+			throw e;
+		}
 	}
 
-	deleteTurnState(sessionId: string): void {
+		deleteTurnState(sessionId: string): void {
 		this.db.prepare("DELETE FROM turn_state WHERE session_id = ?").run(sessionId);
 	}
 

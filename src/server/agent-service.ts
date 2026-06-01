@@ -38,6 +38,7 @@ export interface ProviderConfig {
 }
 
 interface AgentRunState {
+	agentId: string;
 	isBusy: boolean;
 	streamingText: string;
 	toolCalls: { name: string; status: "running" | "done" | "error" }[];
@@ -48,8 +49,9 @@ interface AgentRunState {
 // ---------------------------------------------------------------------------
 
 class AgentService {
-	private loops = new Map<string, AgentLoop>();
-	private runStates = new Map<string, AgentRunState>();
+	private loops = new Map<string, AgentLoop>();        // sessionId → loop
+	private runStates = new Map<string, AgentRunState>(); // sessionId → state
+	private activeSessions = new Map<string, string>();    // agentId → active sessionId
 	private subscribers = new Set<StreamCallback>();
 	private config!: ZeroCoreConfig;
 	private workspaceDir: string;
@@ -110,22 +112,24 @@ class AgentService {
 
 	getState(agentId?: string): { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[]; agentId?: string } {
 		if (agentId) {
-			const s = this.runStates.get(agentId);
-			return s
-				? { isBusy: s.isBusy, streamingText: s.streamingText, toolCalls: [...s.toolCalls], agentId }
-				: { isBusy: false, streamingText: "", toolCalls: [], agentId };
+			const sessionId = this.activeSessions.get(agentId);
+			if (sessionId) {
+				const s = this.runStates.get(sessionId);
+				if (s) return { isBusy: s.isBusy, streamingText: s.streamingText, toolCalls: [...s.toolCalls], agentId };
+			}
+			return { isBusy: false, streamingText: "", toolCalls: [], agentId };
 		}
 		// No agentId — return the first busy agent, or idle
-		for (const [id, s] of this.runStates) {
-			if (s.isBusy) return { isBusy: true, streamingText: s.streamingText, toolCalls: [...s.toolCalls], agentId: id };
+		for (const [sid, s] of this.runStates) {
+			if (s.isBusy) return { isBusy: true, streamingText: s.streamingText, toolCalls: [...s.toolCalls], agentId: s.agentId };
 		}
 		return { isBusy: false, streamingText: "", toolCalls: [] };
 	}
 
 	getAllStates(): Record<string, { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[] }> {
 		const result: Record<string, any> = {};
-		for (const [id, s] of this.runStates) {
-			result[id] = { isBusy: s.isBusy, streamingText: s.streamingText, toolCalls: [...s.toolCalls] };
+		for (const [sid, s] of this.runStates) {
+			result[s.agentId] = { isBusy: s.isBusy, streamingText: s.streamingText, toolCalls: [...s.toolCalls] };
 		}
 		return result;
 	}
@@ -142,8 +146,11 @@ class AgentService {
 	private getOrCreateLoop(agent?: AgentRecord): AgentLoop {
 		const agentId = agent?.id ?? "__default__";
 
-		let loop = this.loops.get(agentId);
-		if (loop) return loop;
+		const activeSessionId = this.activeSessions.get(agentId);
+		if (activeSessionId) {
+			const loop = this.loops.get(activeSessionId);
+			if (loop) return loop;
+		}
 
 		let session = this.db.getMainSession(agentId);
 		if (!session) {
@@ -151,17 +158,18 @@ class AgentService {
 			this.db.setMainSession(agentId, session.id);
 		}
 
+		this.activeSessions.set(agentId, session.id);
 		return this.createLoopForSession(agentId, session.id, agent);
 	}
 
 	recreateLoop(agentId: string, sessionId: string, agent?: AgentRecord): void {
-		const old = this.loops.get(agentId);
-		if (old) {
-			old.abort();
-			this.loops.delete(agentId);
+		if (this.loops.has(sessionId)) {
+			this.activeSessions.set(agentId, sessionId);
+			return;
 		}
 
 		this.createLoopForSession(agentId, sessionId, agent);
+		this.activeSessions.set(agentId, sessionId);
 	}
 
 	private createLoopForSession(agentId: string, sessionId: string, agent?: AgentRecord): AgentLoop {
@@ -226,9 +234,9 @@ class AgentService {
 			getToolConfig: () => this.registry.getToolConfig(),
 			};
 
-		// Initialize run state for this agent
-		if (!this.runStates.has(agentId)) {
-			this.runStates.set(agentId, { isBusy: false, streamingText: "", toolCalls: [] });
+		// Initialize run state for this session
+		if (!this.runStates.has(sessionId)) {
+			this.runStates.set(sessionId, { agentId, isBusy: false, streamingText: "", toolCalls: [] });
 		}
 
 		const capturedAgentId = agentId;
@@ -243,7 +251,7 @@ class AgentService {
 			},
 		);
 
-		this.loops.set(agentId, loop);
+		this.loops.set(sessionId, loop);
 
 		log.agent("Runtime ready for:", agentId, "session:", sessionId);
 		return loop;
@@ -251,17 +259,26 @@ class AgentService {
 
 	// ─── Prompt execution — concurrent ──────────────────────────────
 
-	async sendPrompt(text: string, agent?: AgentRecord): Promise<void> {
+	async sendPrompt(text: string, agent?: AgentRecord, sessionId?: string): Promise<void> {
 		const agentId = agent?.id ?? "__default__";
-		const loop = this.getOrCreateLoop(agent);
 
-		log.agent("Sending prompt to:", agentId, "length:", text.length);
+		// If sessionId provided, look up (or create) the loop for that specific session
+		let loop: AgentLoop;
+		if (sessionId) {
+			loop = this.loops.get(sessionId) ?? this.createLoopForSession(agentId, sessionId, agent);
+			this.activeSessions.set(agentId, sessionId);
+		} else {
+			loop = this.getOrCreateLoop(agent);
+			sessionId = this.activeSessions.get(agentId) ?? agentId;
+		}
 
-		const state = this.runStates.get(agentId) ?? { isBusy: false, streamingText: "", toolCalls: [] };
+		log.agent("Sending prompt to:", agentId, "session:", sessionId, "length:", text.length);
+
+		const state = this.runStates.get(sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
 		state.isBusy = true;
 		state.streamingText = "";
 		state.toolCalls = [];
-		this.runStates.set(agentId, state);
+		this.runStates.set(sessionId, state);
 
 		try {
 			await loop.run(text);
@@ -274,14 +291,68 @@ class AgentService {
 
 	async abort(agentId?: string): Promise<void> {
 		if (agentId) {
-			const loop = this.loops.get(agentId);
-			loop?.abort();
+			const sessionId = this.activeSessions.get(agentId);
+			if (sessionId) this.loops.get(sessionId)?.abort();
 		} else {
-			// Abort all running agents
-			for (const [id, s] of this.runStates) {
+			for (const [sid, s] of this.runStates) {
 				if (s.isBusy) {
-					this.loops.get(id)?.abort();
+					this.loops.get(sid)?.abort();
 				}
+			}
+		}
+	}
+
+	async recoverIncompleteSessions(): Promise<void> {
+		const incomplete = this.db.getIncompleteTurns();
+		if (incomplete.length === 0) {
+			log.debug("recovery", "No interrupted turns found");
+			return;
+		}
+
+		log.db(`Recovering ${incomplete.length} interrupted session(s)`);
+
+		for (const turn of incomplete) {
+			try {
+				const session = this.db.getSession(turn.sessionId);
+				if (!session) {
+					this.db.failTurnState(turn.sessionId, turn.turnSeq, "Session not found");
+					continue;
+				}
+
+				const agent = this.agentStore
+					? this.agentStore.list().find((a) => a.id === session.agentId)
+					: null;
+
+				const agentId = agent?.id ?? session.agentId;
+
+				// Create loop for the specific interrupted session
+				let loop = this.loops.get(turn.sessionId);
+				if (!loop) {
+					loop = this.createLoopForSession(agentId, turn.sessionId, agent ?? undefined);
+				}
+
+				this.activeSessions.set(agentId, turn.sessionId);
+
+				const state = this.runStates.get(turn.sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
+				state.isBusy = true;
+				state.streamingText = "";
+				state.toolCalls = [];
+				this.runStates.set(turn.sessionId, state);
+
+				log.db(`Recovering agent ${agentId}, session ${turn.sessionId}, phase ${turn.phase}`);
+
+				// Fire-and-forget: resume in background so we don't block startup
+				loop.resume().then(() => {
+					log.db(`Resumed session ${turn.sessionId} (agent ${agentId})`);
+					// Mark the original incomplete turn as completed
+					this.db.completeTurnState(turn.sessionId, turn.turnSeq);
+				}).catch((err: any) => {
+					log.error("recovery", `Failed to resume ${turn.sessionId}:`, err.message);
+					this.db.failTurnState(turn.sessionId, turn.turnSeq, err.message);
+				});
+			} catch (err) {
+				log.error("recovery", `Recovery failed for ${turn.sessionId}:`, (err as Error).message);
+				this.db.failTurnState(turn.sessionId, turn.turnSeq, (err as Error).message);
 			}
 		}
 	}
@@ -292,22 +363,29 @@ class AgentService {
 		}
 		this.loops.clear();
 		this.runStates.clear();
+		this.activeSessions.clear();
 		this.db.close();
 		this.kbDb.close();
 	}
 
 	private invalidateLoops(): void {
-		for (const loop of this.loops.values()) {
+		for (const [sessionId, loop] of this.loops) {
+			const state = this.runStates.get(sessionId);
+			if (state?.isBusy) continue; // Don't abort busy loops (e.g. recovery in progress)
 			loop.abort();
+			this.loops.delete(sessionId);
+			this.runStates.delete(sessionId);
 		}
-		this.loops.clear();
-		this.runStates.clear();
+		this.activeSessions.clear();
 	}
 
 	// ─── Event handling — per-agent state ──────────────────────────
 
 	private handleRuntimeEvent(agentId: string, event: StreamEvent): void {
-		const state = this.runStates.get(agentId);
+		const sessionId = (event as any).sessionId;
+		const state = sessionId
+			? this.runStates.get(sessionId)
+			: this.findStateByAgentId(agentId);
 		if (!state) return;
 
 		switch (event.type) {
@@ -335,6 +413,13 @@ class AgentService {
 			}
 		}
 		this.emit(event as { type: string; [key: string]: unknown });
+	}
+
+	private findStateByAgentId(agentId: string): AgentRunState | undefined {
+		for (const [, s] of this.runStates) {
+			if (s.agentId === agentId) return s;
+		}
+		return undefined;
 	}
 
 	private emit(event: { type: string; [key: string]: unknown }): void {

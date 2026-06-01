@@ -1,4 +1,5 @@
 import type { BrowserWindow } from "electron";
+import type { ModuleName } from "./module-readiness.js";
 
 export interface IpcContext {
 	win: BrowserWindow;
@@ -19,6 +20,8 @@ export interface IpcContext {
 	saveWorkspaceConfig: any;
 	createAgentService: any;
 	modulesReady: boolean;
+	whenReady: (name: ModuleName) => Promise<void>;
+	isModuleReady: (name: ModuleName) => boolean;
 	// Dynamic import helpers
 	toFileURL: (p: string) => string;
 	distServer: string;

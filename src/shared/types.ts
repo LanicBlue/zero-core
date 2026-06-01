@@ -3,6 +3,8 @@
 // Single source of truth for all data model interfaces.
 // ---------------------------------------------------------------------------
 
+// ── Data Models ─────────────────────────────────────────────────────────────
+
 export interface AgentRecord {
 	id: string;
 	name: string;
@@ -142,4 +144,133 @@ export interface SessionRecord {
 	title: string | null;
 	createdAt: string;
 	updatedAt: string;
+}
+
+export interface LogEntry {
+	timestamp: string;
+	level: "debug" | "info" | "warn" | "error";
+	module: string;
+	message: string;
+}
+
+export interface LogFileSummary {
+	filename: string;
+	size: number;
+	date: string;
+}
+
+// ── Input Types (derived from data models) ──────────────────────────────────
+
+export type CreateAgentInput = Omit<AgentRecord, "id" | "createdAt" | "updatedAt">;
+export type UpdateAgentInput = Partial<Omit<AgentRecord, "id" | "createdAt" | "updatedAt">>;
+
+export type CreateProviderInput = Omit<Provider, "id" | "createdAt" | "updatedAt">;
+export type UpdateProviderInput = Partial<Omit<Provider, "id" | "createdAt" | "updatedAt">>;
+
+export type CreateAgentToolInput = Omit<AgentToolEntry, "id" | "createdAt" | "updatedAt">;
+export type UpdateAgentToolInput = Partial<Omit<AgentToolEntry, "id" | "createdAt" | "updatedAt">>;
+
+export type CreateKbInput = Omit<KnowledgeBase, "id" | "createdAt" | "updatedAt">;
+export type UpdateKbInput = Partial<Omit<KnowledgeBase, "id" | "createdAt" | "updatedAt">>;
+
+export type CreateMcpInput = Omit<McpServerConfig, "id" | "createdAt" | "updatedAt">;
+export type UpdateMcpInput = Partial<Omit<McpServerConfig, "id" | "createdAt" | "updatedAt">>;
+
+export type CreateTemplateInput = Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">;
+export type UpdateTemplateInput = Partial<Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">>;
+
+// ── Result Types ────────────────────────────────────────────────────────────
+
+export type Ok = { success: true };
+export type Err = { error: string };
+export type OkOrErr = Ok | Err;
+
+// ── Workspace Config ────────────────────────────────────────────────────────
+
+export interface WorkspaceConfig {
+	workspaceDir: string;
+	defaultModel?: string;
+	defaultProvider?: string;
+}
+
+// ── File Log Config ─────────────────────────────────────────────────────────
+
+export interface FileLogConfig {
+	enabled: boolean;
+	retentionDays: number;
+	globalLevel: "debug" | "info" | "warn" | "error";
+}
+
+// ── Tool Info ───────────────────────────────────────────────────────────────
+
+export interface ToolInfo {
+	name: string;
+	description: string;
+	prompt: string;
+	group: string;
+	source: string;
+	mcpServerName?: string;
+	configSchema?: any[];
+	meta?: any;
+}
+
+// ── Model Info ──────────────────────────────────────────────────────────────
+
+export interface ModelInfo {
+	provider: string;
+	id: string;
+	name: string;
+	contextWindow?: number;
+	maxTokens?: number;
+}
+
+// ── Runtime State ───────────────────────────────────────────────────────────
+
+export interface RuntimeState {
+	isBusy: boolean;
+	streamingText: string;
+	toolCalls: { name: string; status: string }[];
+	agentId?: string;
+}
+
+// ── Message Types ───────────────────────────────────────────────────────────
+
+export interface MessageTurn {
+	id: string;
+	role: "user" | "assistant";
+	text: string;
+	blocks?: any[];
+	timestamp: string;
+}
+
+// ── KB Search ───────────────────────────────────────────────────────────────
+
+export interface KbSearchResult {
+	chunkId: number;
+	filePath: string;
+	content: string;
+	score: number;
+}
+
+export interface KbFileIngestResult {
+	path: string;
+	chunks: number;
+	error?: string;
+}
+
+// ── MCP Status ──────────────────────────────────────────────────────────────
+
+export interface McpStatus {
+	id: string;
+	name: string;
+	connected: boolean;
+	toolCount: number;
+}
+
+// ── Fetched Model (from provider API) ───────────────────────────────────────
+
+export interface FetchedModel {
+	id: string;
+	name: string;
+	group?: string;
 }

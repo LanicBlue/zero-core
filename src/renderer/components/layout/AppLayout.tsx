@@ -9,46 +9,21 @@ import SettingsPage from "../settings/SettingsPage.js";
 import McpSettingsPage from "../mcp/McpSettingsPage.js";
 import KnowledgeBasePage from "../kb/KnowledgeBasePage.js";
 import ToolsPage from "../tools/ToolsPage.js";
+import LogViewer from "../common/LogViewer.js";
 import { usePageStore } from "../../store/page-store.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
-import { useChatStore, nextMsgId, type MessageBlock } from "../../store/chat-store.js";
+import { useChatStore } from "../../store/chat-store.js";
 
 const api = () => (window as any).api;
-
-// Capture console logs for the log panel
-const logEntries: { time: number; level: string; msg: string }[] = [];
-const origLog = console.log;
-const origError = console.error;
-const origWarn = console.warn;
-
-function captureLog(level: string, ...args: any[]) {
-	const msg = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
-	logEntries.push({ time: Date.now(), level, msg });
-	if (logEntries.length > 200) logEntries.shift();
-}
-
-console.log = (...args: any[]) => { captureLog("info", ...args); origLog(...args); };
-console.error = (...args: any[]) => { captureLog("error", ...args); origError(...args); };
-console.warn = (...args: any[]) => { captureLog("warn", ...args); origWarn(...args); };
-
-if (typeof window !== "undefined") {
-	window.addEventListener("error", (e) => {
-		captureLog("error", `Uncaught: ${e.message} at ${e.filename}:${e.lineno}`);
-	});
-	window.addEventListener("unhandledrejection", (e) => {
-		captureLog("error", `Unhandled rejection: ${e.reason}`);
-	});
-}
 
 export default function AppLayout() {
 	const { activePage } = usePageStore();
 	const [showLog, setShowLog] = useState(false);
-	const [, forceUpdate] = useState(0);
 
 	const {
-		messages, activeAgentId, isStreaming,
+		messages, activeAgentId, activeSessionId, isStreaming,
 		addMessage, updateAssistantText, updateThinking, addToolCall, updateToolCall,
-		finishStreaming, setIsStreaming, loadMessages, setSessions, setCurrentSessionId,
+		finishStreaming, loadMessages, setSessions, setActiveSessionId,
 	} = useChatStore();
 
 	// Track app readiness
@@ -70,9 +45,19 @@ export default function AppLayout() {
 			const agentId = data.agentId;
 			if (!agentId) return;
 
+			const sessionId = data.sessionId;
+			// Filter: only process events for the currently active session
+			const currentSessionId = useChatStore.getState().activeSessionId;
+			if (sessionId && currentSessionId && sessionId !== currentSessionId) {
+				return;
+			}
+
+			// Use sessionId for store operations, fallback to agentId for legacy events
+			const key = sessionId || currentSessionId || agentId;
+
 			switch (data.type) {
 				case "text_delta": {
-					updateAssistantText(agentId, data.text);
+					updateAssistantText(key, data.text);
 					break;
 				}
 				case "message_end": {
@@ -80,21 +65,21 @@ export default function AppLayout() {
 					break;
 				}
 				case "thinking_delta": {
-					updateThinking(agentId, data.text);
+					updateThinking(key, data.text);
 					break;
 				}
 				case "tool_start": {
 					const args = data.args ? (typeof data.args === "string" ? data.args : JSON.stringify(data.args, null, 2)) : undefined;
-					addToolCall(agentId, data.toolName, args);
+					addToolCall(key, data.toolName, args);
 					break;
 				}
 				case "tool_end": {
 					const result = data.result ? (typeof data.result === "string" ? data.result : JSON.stringify(data.result, null, 2)) : undefined;
-					updateToolCall(agentId, data.toolName, data.isError ? "error" : "done", result);
+					updateToolCall(key, data.toolName, data.isError ? "error" : "done", result);
 					break;
 				}
 				case "agent_end": {
-					finishStreaming(agentId);
+					finishStreaming(key);
 					// Reload from DB to get normalized blocks (thinking/tool/text)
 					(async () => {
 						try {
@@ -115,59 +100,29 @@ export default function AppLayout() {
 								} else if (m.text) { blocks.push({ type: "text", text: m.text }); }
 								return { id: m.id || String(Date.now() + Math.random()), role: m.role, text: m.text || "", timestamp: m.timestamp || Date.now(), streaming: false, blocks };
 							});
-							loadMessages(agentId, dbMsgs);
+							loadMessages(key, dbMsgs);
 							const current = await api().sessionsCurrent(agentId);
-							setCurrentSessionId(current?.id ?? null);
+							setActiveSessionId(current?.id ?? null);
 						} catch {}
 					})();
 					break;
 				}
 				case "retry_attempt": {
-					updateAssistantText(agentId, `Retrying (${data.attempt}/${data.maxAttempts})...`);
+					updateAssistantText(key, `Retrying (${data.attempt}/${data.maxAttempts})...`);
 					break;
 				}
 				case "error": {
-					updateAssistantText(agentId, `\nError: ${data.error}`);
-					finishStreaming(agentId);
+					updateAssistantText(key, `\nError: ${data.error}`);
+					finishStreaming(key);
 					break;
 				}
 			}
 		});
 
-		// Check for in-progress agent on mount (e.g. page refresh)
-		api().chatState().then((state: { isBusy: boolean; streamingText: string; toolCalls: any[]; agentId?: string }) => {
-			if (state.isBusy && state.agentId) {
-				const blocks: MessageBlock[] = [];
-				if (state.toolCalls) {
-					for (const tc of state.toolCalls) {
-						blocks.push({ type: "tool", name: tc.name, status: tc.status as "running" | "done" | "error" });
-					}
-				}
-				if (state.streamingText) {
-					blocks.push({ type: "text", text: state.streamingText });
-				}
-				addMessage(state.agentId, {
-					id: nextMsgId(),
-					role: "assistant",
-					text: state.streamingText ?? "",
-					timestamp: Date.now(),
-					streaming: true,
-					blocks,
-				});
-				setIsStreaming(state.agentId, true);
-			}
-		}).catch(() => {});
 
 		return unsubscribe;
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
-
-	// Refresh log panel
-	useEffect(() => {
-		if (!showLog) return;
-		const interval = setInterval(() => forceUpdate((n) => n + 1), 500);
-		return () => clearInterval(interval);
-	}, [showLog]);
 
 	return (
 		<div className="app-layout">
@@ -205,18 +160,7 @@ export default function AppLayout() {
 			{/* Log panel */}
 			{showLog && (
 				<div className="log-panel">
-					<div className="log-panel-header">
-						<span>Runtime Log</span>
-						<button type="button" onClick={() => setShowLog(false)}>Close</button>
-					</div>
-					<div className="log-panel-body">
-						{logEntries.map((entry, i) => (
-							<div key={i} className={`log-entry log-${entry.level}`}>
-								<span className="log-time">{new Date(entry.time).toLocaleTimeString()}</span>
-								<span className="log-msg">{entry.msg}</span>
-							</div>
-						))}
-					</div>
+					<LogViewer />
 				</div>
 			)}
 		</div>

@@ -1,15 +1,20 @@
 // ---------------------------------------------------------------------------
-// Logger — debug mode vs production mode
+// Logger — debug mode vs production mode, console + file dual sink
 // ---------------------------------------------------------------------------
 //
 // Debug mode:  set ZERO_CORE_DEBUG=1 or --debug flag
 // Production:  only warn/error level logs
+//
+// File sink:   writes to {ZERO_CORE_DIR}/logs/YYYY-MM-DD.log
+//              always enabled, configurable via configureLogging()
 //
 // Usage:
 //   import { log } from "../core/logger.js";
 //   log.agent("Sending prompt:", text);
 //   log.debug("loop", "Stream event:", event.type);
 // ---------------------------------------------------------------------------
+
+import { createFileLogSink, type FileLogConfig } from "./file-log-sink.js";
 
 const DEBUG = !!(
 	process.env.ZERO_CORE_DEBUG === "1" ||
@@ -18,7 +23,7 @@ const DEBUG = !!(
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
-interface LogPayload {
+export interface LogPayload {
 	level: LogLevel;
 	module: string;
 	message: string;
@@ -27,7 +32,13 @@ interface LogPayload {
 
 const formatters = new Map<string, (payload: LogPayload) => string>();
 
-let logSink: (payload: LogPayload) => void = (payload) => {
+// ─── File sink ──────────────────────────────────────────────────────────
+
+const fileLog = createFileLogSink();
+
+// ─── Console sink ───────────────────────────────────────────────────────
+
+const consoleSink = (payload: LogPayload) => {
 	const ts = new Date().toISOString().slice(11, 23);
 	const fmt = formatters.get(payload.module);
 	const prefix = fmt
@@ -44,6 +55,13 @@ let logSink: (payload: LogPayload) => void = (payload) => {
 		default:
 			console.log(prefix, ...payload.args);
 	}
+};
+
+// ─── Combined sink ──────────────────────────────────────────────────────
+
+let logSink: (payload: LogPayload) => void = (payload) => {
+	consoleSink(payload);
+	fileLog.sink(payload);
 };
 
 function emit(level: LogLevel, module: string, message: string, args: unknown[]) {
@@ -72,3 +90,9 @@ export const log = {
 	// Query
 	isDebug: () => DEBUG,
 };
+
+// ─── Runtime configuration ──────────────────────────────────────────────
+
+export function configureLogging(config: FileLogConfig): void {
+	fileLog.updateConfig(config);
+}

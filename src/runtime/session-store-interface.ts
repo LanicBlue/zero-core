@@ -15,6 +15,7 @@ export interface ISessionStore {
 	setMainSession(agentId: string, sessionId: string): void;
 	listSessions(agentId: string): Array<{ id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string }>;
 	deleteSession(sessionId: string): void;
+	updateTurnContent(sessionId: string, seq: number, content: string): void;
 	getKVStore(): IKVStore;
 	getMemoryStore(): any;
 }

@@ -1,62 +1,84 @@
-import { ipcMain } from "electron";
+import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
+import type { McpServerConfig, CreateMcpInput, UpdateMcpInput } from "../../shared/types.js";
 
 export function registerMcpHandlers(ctx: IpcContext): void {
-	ipcMain.handle("mcp:list", () => ctx.modulesReady ? ctx.mcpStore.list() : []);
-	ipcMain.handle("mcp:get", (_e, id: string) => ctx.modulesReady ? ctx.mcpStore.get(id) : undefined);
-	ipcMain.handle("mcp:create", async (_e, input: unknown) => {
-		if (!ctx.modulesReady) return { error: "loading" };
-		const record = ctx.mcpStore.create(input as any);
-		if (record.enabled) {
-			const result = await ctx.mcpManager.connect(record);
-			return { ...record, connectedTools: result.tools, connectError: result.error };
-		}
-		return record;
-	});
-	ipcMain.handle("mcp:update", async (_e, id: string, input: unknown) => {
-		if (!ctx.modulesReady) return { error: "loading" };
-		try {
-			const record = ctx.mcpStore.update(id, input as any);
+	// MCP has custom logic on create/update/delete (auto-connect/disconnect),
+	// so we register all handlers manually with typedHandle.
+
+	typedHandle("mcp:list", "mcpStore",
+		(_ctx) => (_ctx.mcpStore as any).list(),
+	);
+
+	typedHandle("mcp:get", "mcpStore",
+		(_ctx, id) => (_ctx.mcpStore as any).get(id),
+	);
+
+	typedHandle("mcp:create", ["mcpStore", "mcpManager"],
+		async (_ctx, input) => {
+			const record = (_ctx.mcpStore as any).create(input) as McpServerConfig;
 			if (record.enabled) {
-				await ctx.mcpManager.connect(record);
-			} else {
-				await ctx.mcpManager.disconnect(id);
+				const result = await (_ctx.mcpManager as any).connect(record);
+				return { ...record, connectedTools: result.tools, connectError: result.error };
 			}
-			return record;
-		} catch (e) { return { error: (e as Error).message }; }
-	});
-	ipcMain.handle("mcp:delete", async (_e, id: string) => {
-		if (!ctx.modulesReady) return { error: "loading" };
-		await ctx.mcpManager.disconnect(id);
-		ctx.mcpStore.delete(id);
-		return { success: true };
-	});
-	ipcMain.handle("mcp:test", async (_e, input: unknown) => {
-		if (!ctx.modulesReady) return { tools: [], error: "loading" };
-		return ctx.mcpManager.testConnection(input as any);
-	});
-	ipcMain.handle("mcp:tools", async (_e, serverId: string) => {
-		if (!ctx.modulesReady) return [];
-		const server = ctx.mcpStore.get(serverId);
-		if (!server) return [];
-		if (!ctx.mcpManager.isConnected(serverId)) {
-			const result = await ctx.mcpManager.connect(server);
-			return result.tools;
-		}
-		return ctx.mcpManager.getConnectedServers().find((s: any) => s.id === serverId)?.toolCount ?? 0;
-	});
-	ipcMain.handle("mcp:connect", async (_e, id: string) => {
-		if (!ctx.modulesReady) return { error: "loading" };
-		const server = ctx.mcpStore.get(id);
-		if (!server) return { tools: [], error: "Server not found" };
-		const result = await ctx.mcpManager.connect(server);
-		return result;
-	});
-	ipcMain.handle("mcp:disconnect", async (_e, id: string) => {
-		await ctx.mcpManager.disconnect(id);
-		return { success: true };
-	});
-	ipcMain.handle("mcp:status", () => {
-		return ctx.mcpManager.getConnectedServers();
-	});
+			return { ...record };
+		},
+	);
+
+	typedHandle("mcp:update", ["mcpStore", "mcpManager"],
+		async (_ctx, id, input) => {
+			try {
+				const record = (_ctx.mcpStore as any).update(id, input) as McpServerConfig;
+				if (record.enabled) {
+					await (_ctx.mcpManager as any).connect(record);
+				} else {
+					await (_ctx.mcpManager as any).disconnect(id);
+				}
+				return record;
+			} catch (e) { return { error: (e as Error).message }; }
+		},
+	);
+
+	typedHandle("mcp:delete", ["mcpStore", "mcpManager"],
+		async (_ctx, id) => {
+			await (_ctx.mcpManager as any).disconnect(id);
+			(_ctx.mcpStore as any).delete(id);
+			return { success: true as const };
+		},
+	);
+
+	typedHandle("mcp:test", "mcpManager",
+		(_ctx, input) => (_ctx.mcpManager as any).testConnection(input),
+	);
+
+	typedHandle("mcp:tools", ["mcpStore", "mcpManager"],
+		async (_ctx, serverId) => {
+			const server = (_ctx.mcpStore as any).get(serverId) as McpServerConfig | undefined;
+			if (!server) return [];
+			if (!(_ctx.mcpManager as any).isConnected(serverId)) {
+				const result = await (_ctx.mcpManager as any).connect(server);
+				return result.tools;
+			}
+			return (_ctx.mcpManager as any).getConnectedServers().find((s: any) => s.id === serverId)?.toolCount ?? 0;
+		},
+	);
+
+	typedHandle("mcp:connect", ["mcpStore", "mcpManager"],
+		async (_ctx, id) => {
+			const server = (_ctx.mcpStore as any).get(id) as McpServerConfig | undefined;
+			if (!server) return { tools: [], error: "Server not found" };
+			return (_ctx.mcpManager as any).connect(server);
+		},
+	);
+
+	typedHandle("mcp:disconnect", "mcpManager",
+		async (_ctx, id) => {
+			await (_ctx.mcpManager as any).disconnect(id);
+			return { success: true as const };
+		},
+	);
+
+	typedHandle("mcp:status", "mcpManager",
+		(_ctx) => (_ctx.mcpManager as any).getConnectedServers(),
+	);
 }

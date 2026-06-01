@@ -2480,6 +2480,61 @@ body {
   word-break: break-all;
 }
 
+.log-toolbar {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.log-file-select, .log-lines-select {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-muted);
+  border-radius: 4px;
+  color: var(--fg-subtle);
+  font-size: 11px;
+  padding: 2px 6px;
+  font-family: ui-monospace, monospace;
+}
+
+.log-filter-group {
+  display: flex;
+  gap: 2px;
+}
+
+.log-filter-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--fg-faint);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 6px;
+  font-family: ui-monospace, monospace;
+}
+
+.log-filter-btn:hover {
+  border-color: var(--border-muted);
+  color: var(--fg-subtle);
+}
+
+.log-filter-btn.active {
+  background: var(--bg-subtle);
+  border-color: var(--border-default);
+  color: var(--fg-default);
+}
+
+.log-module {
+  color: var(--color-primary-fg);
+  flex-shrink: 0;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.log-debug .log-msg { color: var(--fg-faint); }
+
 /* ─── Template Gallery ─────────────────────────────── */
 
 .agents-tabs {

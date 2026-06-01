@@ -24,7 +24,7 @@ export class AgentSession {
 		this.db = db ?? null;
 
 		if (this.db && this.sessionId) {
-			this.messages = this.db.getMessages(this.sessionId);
+			this.messages = this.normalizeMessages(this.db.getMessages(this.sessionId));
 			if (this.messages.length === 0) {
 				this.messages = this.rebuildFromTurns();
 			}
@@ -117,7 +117,7 @@ export class AgentSession {
 
 		for (const b of blocks) {
 			if (b.type === "tool") {
-				const id = "tc-" + toolCalls.length;
+				const id = b.toolCallId ?? "tc-" + toolCalls.length;
 				toolCalls.push({ id, name: b.name, input: b.args ?? {} });
 				const result = typeof b.result === "string" ? b.result : JSON.stringify(b.result ?? "");
 				toolResults.push({ id, output: result, isError: b.status === "error" });
@@ -165,5 +165,23 @@ export class AgentSession {
 	private estimateMessageTokens(msg: ModelMessage): number {
 		const json = JSON.stringify(msg);
 		return Math.ceil(json.length / 4);
+	}
+
+	/**
+	 * Normalize message format: AI SDK v6 response.messages uses `args` in
+	 * tool-call parts, but ToolCallPart expects `input`. Convert so the SDK
+	 * can parse tool arguments when messages are passed back to streamText().
+	 */
+	private normalizeMessages(msgs: ModelMessage[]): ModelMessage[] {
+		for (const msg of msgs) {
+			if (msg.role === "assistant" && Array.isArray((msg as any).content)) {
+				for (const part of (msg as any).content) {
+					if (part.type === "tool-call" && "args" in part && !("input" in part)) {
+						part.input = part.args;
+					}
+				}
+			}
+		}
+		return msgs;
 	}
 }

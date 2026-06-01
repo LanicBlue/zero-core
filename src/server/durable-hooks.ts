@@ -7,7 +7,8 @@ import { log } from "../core/logger.js";
 // The first consumer of the hook system. Registered at startup.
 // ---------------------------------------------------------------------------
 
-let turnSeqCounter = 0;
+// Per-session turn sequence tracking
+const sessionTurnSeq = new Map<string, number>();
 
 export function registerDurableHooks(sessionDb: SessionDB): void {
 	const registry = HookRegistry.getInstance();
@@ -16,9 +17,10 @@ export function registerDurableHooks(sessionDb: SessionDB): void {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
-			turnSeqCounter++;
-			sessionDb.createTurnState(sessionId, turnSeqCounter);
-			log.debug("durable", `Turn ${turnSeqCounter} created for session ${sessionId}`);
+			const turnSeq = sessionDb.getTurnCount(sessionId) + 1;
+			sessionTurnSeq.set(sessionId, turnSeq);
+			sessionDb.createTurnState(sessionId, turnSeq);
+			log.debug("durable", `Turn ${turnSeq} created for session ${sessionId}`);
 		} catch (err) {
 			log.error("durable", "SessionStart hook failed:", (err as Error).message);
 		}
@@ -28,7 +30,9 @@ export function registerDurableHooks(sessionDb: SessionDB): void {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
-			sessionDb.updateTurnPhase(sessionId, turnSeqCounter, "tools_executing", {
+			const turnSeq = sessionTurnSeq.get(sessionId);
+			if (turnSeq === undefined) return;
+			sessionDb.updateTurnPhase(sessionId, turnSeq, "tools_executing", {
 				lastTool: ctx.toolName,
 				timestamp: ctx.timestamp,
 			});
@@ -41,8 +45,11 @@ export function registerDurableHooks(sessionDb: SessionDB): void {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
-			sessionDb.completeTurnState(sessionId, turnSeqCounter);
-			log.debug("durable", `Turn ${turnSeqCounter} completed for session ${sessionId}`);
+			const turnSeq = sessionTurnSeq.get(sessionId);
+			if (turnSeq === undefined) return;
+			sessionDb.completeTurnState(sessionId, turnSeq);
+			log.debug("durable", `Turn ${turnSeq} completed for session ${sessionId}`);
+			sessionTurnSeq.delete(sessionId);
 		} catch (err) {
 			log.error("durable", "Stop hook failed:", (err as Error).message);
 		}
@@ -52,8 +59,11 @@ export function registerDurableHooks(sessionDb: SessionDB): void {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
-			sessionDb.failTurnState(sessionId, turnSeqCounter, ctx.error as string ?? "Unknown error");
-			log.debug("durable", `Turn ${turnSeqCounter} failed for session ${sessionId}`);
+			const turnSeq = sessionTurnSeq.get(sessionId);
+			if (turnSeq === undefined) return;
+			sessionDb.failTurnState(sessionId, turnSeq, ctx.error as string ?? "Unknown error");
+			log.debug("durable", `Turn ${turnSeq} failed for session ${sessionId}`);
+			sessionTurnSeq.delete(sessionId);
 		} catch (err) {
 			log.error("durable", "StopFailure hook failed:", (err as Error).message);
 		}

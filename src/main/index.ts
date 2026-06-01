@@ -13,6 +13,22 @@ function log(msg: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Global error handlers — catch unhandled rejections and exceptions
+// ---------------------------------------------------------------------------
+
+process.on("unhandledRejection", (reason, promise) => {
+	const msg = reason instanceof Error ? reason.message : String(reason);
+	const stack = reason instanceof Error ? reason.stack : "";
+	console.error(`[main] Unhandled rejection: ${msg}`);
+	if (stack) console.error(stack);
+});
+
+process.on("uncaughtException", (err) => {
+	console.error(`[main] Uncaught exception: ${err.message}`);
+	if (err.stack) console.error(err.stack);
+});
+
+// ---------------------------------------------------------------------------
 // Window
 // ---------------------------------------------------------------------------
 

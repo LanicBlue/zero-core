@@ -8,18 +8,21 @@ import type { ISessionStore } from "./session-store-interface.js";
 export interface TextDeltaEvent {
 	type: "text_delta";
 	agentId?: string;
+	sessionId?: string;
 	text: string;
 }
 
 export interface ThinkingDeltaEvent {
 	type: "thinking_delta";
 	agentId?: string;
+	sessionId?: string;
 	text: string;
 }
 
 export interface ToolStartEvent {
 	type: "tool_start";
 	agentId?: string;
+	sessionId?: string;
 	toolName: string;
 	args?: unknown;
 }
@@ -27,6 +30,7 @@ export interface ToolStartEvent {
 export interface ToolEndEvent {
 	type: "tool_end";
 	agentId?: string;
+	sessionId?: string;
 	toolName: string;
 	isError: boolean;
 	result?: unknown;
@@ -35,17 +39,20 @@ export interface ToolEndEvent {
 export interface MessageEndEvent {
 	type: "message_end";
 	agentId?: string;
+	sessionId?: string;
 	text: string;
 }
 
 export interface AgentEndEvent {
 	type: "agent_end";
 	agentId?: string;
+	sessionId?: string;
 }
 
 export interface ErrorEvent {
 	type: "error";
 	agentId?: string;
+	sessionId?: string;
 	error: string;
 	errorClass?: ErrorClass;
 }
@@ -53,6 +60,7 @@ export interface ErrorEvent {
 export interface RetryAttemptEvent {
 	type: "retry_attempt";
 	agentId?: string;
+	sessionId?: string;
 	attempt: number;
 	maxAttempts: number;
 	delayMs: number;
@@ -64,6 +72,7 @@ export type ErrorClass = "timeout" | "rate_limit" | "server_error" | "auth" | "n
 export interface AskUserEvent {
 	type: "ask_user";
 	agentId?: string;
+	sessionId?: string;
 	requestId: string;
 	questions: Array<{
 		question: string;
@@ -76,6 +85,7 @@ export interface AskUserEvent {
 export interface TodosUpdateEvent {
 	type: "todos_update";
 	agentId?: string;
+	sessionId?: string;
 	todos: Array<{
 		content: string;
 		status: "pending" | "in_progress" | "completed";
@@ -86,6 +96,7 @@ export interface TodosUpdateEvent {
 export interface SubagentDispatchedEvent {
 	type: "subagent_dispatched";
 	agentId?: string;
+	sessionId?: string;
 	taskId: string;
 	task: string;
 }
@@ -93,6 +104,7 @@ export interface SubagentDispatchedEvent {
 export interface SubagentProgressEvent {
 	type: "subagent_progress";
 	agentId?: string;
+	sessionId?: string;
 	taskId: string;
 	step: number;
 	toolName?: string;
@@ -101,6 +113,7 @@ export interface SubagentProgressEvent {
 export interface SubagentCompletedEvent {
 	type: "subagent_completed";
 	agentId?: string;
+	sessionId?: string;
 	taskId: string;
 	status: "completed" | "failed";
 	result?: string;

@@ -41,6 +41,9 @@ export class AgentLoop implements AgentRuntime {
 	private thinkingText = "";
 	private recorder = new TurnRecorder();
 	private resultText = "";
+	private pendingToolCalls: Map<string, { name: string; args: any }> = new Map();
+	private checkpointMessages: any[] = [];
+	private incrementalTurnSeq = -1;
 
 	constructor(
 		config: SessionConfig,
@@ -278,6 +281,9 @@ export class AgentLoop implements AgentRuntime {
 		this.thinkingText = "";
 		this.resultText = "";
 		this.recorder.reset();
+		this.pendingToolCalls.clear();
+		this.checkpointMessages = [];
+		this.incrementalTurnSeq = -1;
 		this.abortController = new AbortController();
 		const timeoutMs = this.config.timeoutSec ? this.config.timeoutSec * 1000 : undefined;
 		const timeout = timeoutMs ? setTimeout(() => {
@@ -362,9 +368,85 @@ export class AgentLoop implements AgentRuntime {
 		}
 	}
 
+	/** Resume an interrupted turn. Messages are already loaded from DB. */
+	async resume(): Promise<void> {
+		if (this.busy) throw new Error("Agent is already busy");
+		log.loop("resume() called, messages:", this.session.getMessages().length);
+
+		this.busy = true;
+		this.streamText = "";
+		this.thinkingText = "";
+		this.resultText = "";
+		this.recorder.reset();
+		this.pendingToolCalls.clear();
+		this.checkpointMessages = [];
+		this.incrementalTurnSeq = -1;
+		this.abortController = new AbortController();
+		const timeoutMs = this.config.timeoutSec ? this.config.timeoutSec * 1000 : undefined;
+		const timeout = timeoutMs ? setTimeout(() => {
+			this.abortController?.abort();
+		}, timeoutMs) : null;
+
+		try {
+			// No user message added — messages already loaded from DB
+			this.session.pruneIfNeeded();
+
+			await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)" });
+
+			let lastError: any;
+			for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+				try {
+					await this.executeStream();
+					return;
+				} catch (err: any) {
+					lastError = err;
+					if (err.name === "AbortError" || this.abortController?.signal.aborted) break;
+
+					const cls = classifyError(err);
+					log.error("loop", "Resume attempt " + (attempt + 1) + " failed:", cls, err.message?.slice(0, 200));
+
+					if (cls === "prompt_too_long") {
+						this.session.aggressivePrune(0.5);
+						if (attempt < 1) continue;
+					}
+
+					if (!isTransientError(cls) || attempt === MAX_RETRIES) break;
+
+					const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+					await new Promise(r => setTimeout(r, delay));
+				}
+			}
+
+			if (lastError && !(lastError.name === "AbortError" || this.abortController?.signal.aborted)) {
+				const cls = classifyError(lastError);
+				await triggerHooks("StopFailure", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), error: lastError?.message, errorClass: cls });
+				this.emit({
+					type: "error",
+					agentId: this.config.agentId,
+					error: userFriendlyMessage(cls, lastError.message),
+					errorClass: cls,
+				});
+			}
+		} finally {
+			if (timeout) clearTimeout(timeout);
+			this.busy = false;
+			this.streamText = "";
+			this.taskRegistry.cleanup();
+
+			await triggerHooks("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length });
+			await triggerHooks("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
+
+			this.emit({ type: "agent_end", agentId: this.config.agentId });
+		}
+	}
 	private async executeStream(): Promise<void> {
 		const model = resolveModel(this.providers, this.config.providerName, this.config.modelId);
 		log.debug("loop", "Model resolved:", this.config.providerName, this.config.modelId);
+
+		// Reset incremental checkpoint state
+		this.pendingToolCalls.clear();
+		this.checkpointMessages = [];
+		this.incrementalTurnSeq = -1;
 
 		// Inject tool config from registry into toolContext
 			if (this.config.getToolConfig) {
@@ -419,6 +501,11 @@ export class AgentLoop implements AgentRuntime {
 			});
 			this.session.addMessage({ role: "user", content: notifications.join(String.fromCharCode(10, 10)) });
 		}
+		log.debug("loop", "streamText called, messages:", this.session.getMessages().length,
+			"model:", this.config.providerName + "/" + this.config.modelId,
+			"tools:", Object.keys(tools).join(","),
+			"lastMsgRole:", this.session.getMessages().at(-1)?.role);
+
 		const result = streamText({
 				stopWhen: stepCountIs(200),
 			model,
@@ -432,6 +519,12 @@ export class AgentLoop implements AgentRuntime {
 
 		for await (const event of result.fullStream) {
 			if (!this.busy && this.abortController?.signal.aborted) break;
+
+			if ((event as any).type === "error") {
+				const errEvent = event as any;
+				log.error("loop", "Stream error:", errEvent.error?.message ?? JSON.stringify(errEvent));
+				break;
+			}
 
 			switch (event.type) {
 				case "text-delta": {
@@ -462,7 +555,9 @@ export class AgentLoop implements AgentRuntime {
 					this.thinkingText = "";
 					this.streamText = "";
 					log.debug("loop", "Tool call:", e.toolName);
-					this.recorder.blocks.push({ type: "tool", name: e.toolName, status: "running", args: e.input });
+					const tcId = e.toolCallId ?? e.id ?? `tc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+					this.pendingToolCalls.set(tcId, { name: e.toolName, args: e.input });
+					this.recorder.blocks.push({ type: "tool", name: e.toolName, status: "running", args: e.input, toolCallId: tcId });
 					this.emit({
 						type: "tool_start",
 						agentId: this.config.agentId,
@@ -474,7 +569,10 @@ export class AgentLoop implements AgentRuntime {
 				case "tool-result": {
 					const e = event as any;
 					log.debug("loop", "Tool result:", e.toolName);
-					const tb = [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
+					const resultTcId = e.toolCallId ?? e.id;
+					const tb = resultTcId
+						? [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.toolCallId === resultTcId)
+						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
 					if (tb) { tb.status = "done"; tb.result = e.output; }
 					this.emit({
 						type: "tool_end",
@@ -483,12 +581,16 @@ export class AgentLoop implements AgentRuntime {
 						isError: false,
 						result: e.output,
 					});
+					if (resultTcId) this.saveIncrementalCheckpoint(resultTcId, e.output, false);
 					break;
 				}
 				case "tool-error": {
 					const e = event as any;
 					log.debug("loop", "Tool error:", e.toolName, e.errorText?.slice(0, 80));
-					const tb = [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
+					const errTcId = e.toolCallId ?? e.id;
+					const tb = errTcId
+						? [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.toolCallId === errTcId)
+						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
 					if (tb) { tb.status = "error"; tb.result = e.errorText ?? String(e.output); }
 					this.emit({
 						type: "tool_end",
@@ -497,6 +599,7 @@ export class AgentLoop implements AgentRuntime {
 						isError: true,
 						result: e.errorText ?? String(e.output),
 					});
+					if (errTcId) this.saveIncrementalCheckpoint(errTcId, e.errorText ?? String(e.output), true);
 					break;
 				}
 			}
@@ -550,13 +653,61 @@ export class AgentLoop implements AgentRuntime {
 
 	private saveAssistantTurn(): void {
 		const sessionId = this.session.getSessionId();
-		
+
 		if (!this.db || !sessionId) return;
 		if (this.recorder.blocks.length === 0) return;
 		const seq = this.db.getTurnCount(sessionId);
 		this.db.appendTurn(sessionId, seq, "assistant", JSON.stringify(this.recorder.blocks));
 	}
+
+	/**
+	 * After each tool-result, save messages + turns to DB so recovery can
+	 * continue from this point instead of re-executing from scratch.
+	 */
+	private saveIncrementalCheckpoint(toolCallId: string, output: any, isError: boolean): void {
+		const sessionId = this.session.getSessionId();
+		if (!this.db || !sessionId) return;
+
+		const tc = this.pendingToolCalls.get(toolCallId);
+		if (!tc) return;
+
+		// Build checkpoint messages in AI SDK format
+		this.checkpointMessages.push(
+			{ role: "assistant", content: [{ type: "tool-call", toolCallId, toolName: tc.name, args: tc.args }] },
+			{ role: "tool", content: [{ type: "tool-result", toolCallId, output: typeof output === "string" ? output : JSON.stringify(output), isError }] } as any,
+		);
+
+		// Save full message list to DB (session base + checkpoint messages)
+		const allMessages = [...this.session.getMessages(), ...this.checkpointMessages];
+		try {
+			this.db.saveTurn(sessionId, allMessages);
+		} catch (err) {
+			log.error("loop", "Incremental checkpoint saveTurn failed for session:", sessionId, "agent:", this.config.agentId, "err:", (err as Error).message);
+		}
+
+		// Update turns table with current recorder blocks
+		this.recorder.sealStep();
+		const blocksJson = JSON.stringify(this.recorder.blocks);
+		try {
+			if (this.incrementalTurnSeq < 0) {
+				this.incrementalTurnSeq = this.db.getTurnCount(sessionId);
+				this.db.appendTurn(sessionId, this.incrementalTurnSeq, "assistant", blocksJson);
+			} else {
+				this.db.updateTurnContent(sessionId, this.incrementalTurnSeq, blocksJson);
+			}
+		} catch (err) {
+			log.error("loop", "Incremental checkpoint turn save failed:", (err as Error).message);
+		}
+
+		this.pendingToolCalls.delete(toolCallId);
+		log.debug("loop", "Incremental checkpoint saved, tool:", tc.name, "msgs:", allMessages.length);
+	}
+
 	private emit(event: StreamEvent): void {
+		// Inject sessionId into all events if available
+		if (this.config.sessionId && !(event as any).sessionId) {
+			(event as any).sessionId = this.config.sessionId;
+		}
 		try {
 			this.callbacks.onEvent(event);
 		} catch { /* ignore subscriber errors */ }

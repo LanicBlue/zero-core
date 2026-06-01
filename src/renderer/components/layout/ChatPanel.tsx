@@ -200,11 +200,11 @@ function storedToBlocks(msgs: any[]): any[] {
 
 export default function ChatPanel() {
 	const {
-			messages, activeAgentId, isStreaming, streamingAgentId, sessionsByAgent, currentSessionId,
-			addMessage, finishStreaming, loadMessages, setActiveAgent,
-			setSessions, setCurrentSessionId, clearMessages,
-			editMessage, deleteMessage,
-		} = useChatStore();
+				messages, activeAgentId, activeSessionId, isStreaming, streamingSessionId, sessionsByAgent,
+				addMessage, finishStreaming, loadMessages, setActiveAgent,
+				setSessions, setActiveSessionId, clearMessages,
+				editMessage, deleteMessage, setIsStreaming,
+			} = useChatStore();
 	const { agents } = useAgentStore();
 	const { pendingQuestions, todosByAgent } = useInteractionStore();
 	const [input, setInput] = useState("");
@@ -216,14 +216,40 @@ export default function ChatPanel() {
 	const [editText, setEditText] = useState("");
 
 	const refreshSessionData = useCallback(async (agentId: string) => {
-		const [sessions, msgs] = await Promise.all([
+		const [sessions, msgs, state] = await Promise.all([
 			api().sessionsList(agentId),
 			api().messagesList(agentId),
+			api().chatState(agentId),
 		]);
 		setSessions(agentId, sessions);
-		loadMessages(agentId, storedToBlocks(msgs));
-		const current = await api().sessionsCurrent(agentId);
-		setCurrentSessionId(current?.id ?? null);
+		const mainSession = sessions.find((s: any) => s.isMain);
+		const sessionId = mainSession?.id ?? agentId;
+		setActiveSessionId(sessionId);
+		loadMessages(sessionId, storedToBlocks(msgs));
+
+		// Sync runtime state — if agent is busy (e.g. recovery), show streaming indicator
+		if (state.isBusy && state.agentId === agentId) {
+			const blocks: MessageBlock[] = [];
+			if (state.toolCalls) {
+				for (const tc of state.toolCalls) {
+					blocks.push({ type: "tool", name: tc.name, status: tc.status as "running" | "done" | "error" });
+				}
+			}
+			if (state.streamingText) {
+				blocks.push({ type: "text", text: state.streamingText });
+			}
+			addMessage(sessionId, {
+				id: nextMsgId(),
+				role: "assistant",
+				text: state.streamingText ?? "",
+				timestamp: Date.now(),
+				streaming: true,
+				blocks,
+			});
+			setIsStreaming(sessionId, true);
+		}
+
+		// activeSessionId already set above from main session
 	}, []);
 
 	// Load message history + sessions when agent changes
@@ -233,12 +259,10 @@ export default function ChatPanel() {
 		if (loadedAgentRef.current === activeAgentId) return;
 		loadedAgentRef.current = activeAgentId;
 
-		if (streamingAgentId === activeAgentId) return;
-
 		refreshSessionData(activeAgentId).catch(() => {
-			loadMessages(activeAgentId, []);
+			loadMessages(activeSessionId ?? activeAgentId, []);
 		});
-	}, [activeAgentId, loadMessages, streamingAgentId]);
+	}, [activeAgentId, loadMessages, streamingSessionId]);
 
 	// Sync scroll to bottom — no animation, before paint
 	useLayoutEffect(() => {
@@ -250,10 +274,10 @@ export default function ChatPanel() {
 		const text = input.trim();
 		if (!text || !activeAgentId || isStreaming) return;
 
-		addMessage(activeAgentId, { id: nextMsgId(), role: "user", text, timestamp: Date.now() });
+		addMessage(activeSessionId ?? activeAgentId, { id: nextMsgId(), role: "user", text, timestamp: Date.now() });
 		setInput("");
 
-		addMessage(activeAgentId, {
+		addMessage(activeSessionId ?? activeAgentId, {
 			id: nextMsgId(),
 			role: "assistant",
 			text: "",
@@ -262,19 +286,19 @@ export default function ChatPanel() {
 			blocks: [],
 		});
 
-		await api().chatSend(text, activeAgentId);
+		await api().chatSend(text, activeAgentId, activeSessionId ?? undefined);
 	};
 
 	const abort = () => {
-		if (activeAgentId) finishStreaming(activeAgentId);
+		if (activeSessionId) finishStreaming(activeSessionId);
 		api().chatAbort();
 	};
 
 	const handleNewSession = async () => {
 		if (!activeAgentId) return;
 		const session = await api().sessionsNew(activeAgentId);
-		setCurrentSessionId(session.id);
-		clearMessages(activeAgentId);
+		setActiveSessionId(session.id);
+		clearMessages(session.id);
 		setShowSessions(false);
 		const sessions = await api().sessionsList(activeAgentId);
 		setSessions(activeAgentId, sessions);
@@ -283,10 +307,10 @@ export default function ChatPanel() {
 	const handleSwitchSession = async (sessionId: string) => {
 		if (!activeAgentId) return;
 		await api().sessionsSwitch(activeAgentId, sessionId);
-		setCurrentSessionId(sessionId);
+		setActiveSessionId(sessionId);
 		setShowSessions(false);
 		const msgs = await api().messagesList(activeAgentId);
-		loadMessages(activeAgentId, storedToBlocks(msgs));
+		loadMessages(sessionId, storedToBlocks(msgs));
 		const sessions = await api().sessionsList(activeAgentId);
 		setSessions(activeAgentId, sessions);
 	};
@@ -295,8 +319,8 @@ export default function ChatPanel() {
 		if (!activeAgentId) return;
 		const result = await api().sessionsDelete(activeAgentId, sessionId);
 		if (result.newSessionId) {
-			setCurrentSessionId(result.newSessionId);
-			clearMessages(activeAgentId);
+			setActiveSessionId(result.newSessionId);
+			clearMessages(result.newSessionId);
 		}
 		const sessions = await api().sessionsList(activeAgentId);
 		setSessions(activeAgentId, sessions);
@@ -328,7 +352,7 @@ export default function ChatPanel() {
 		if (!activeAgentId || !editText.trim()) return;
 		const seq = parseMsgSeq(msg.id);
 		await api().messagesEdit(activeAgentId, seq, editText.trim());
-		editMessage(activeAgentId, msg.id, editText.trim());
+		editMessage(activeSessionId ?? activeAgentId, msg.id, editText.trim());
 		setEditingMsgId(null);
 		setEditText("");
 	};
@@ -338,7 +362,7 @@ export default function ChatPanel() {
 		if (!confirm("Delete this message?")) return;
 		const seq = parseMsgSeq(msg.id);
 		await api().messagesDelete(activeAgentId, seq);
-		deleteMessage(activeAgentId, msg.id);
+		deleteMessage(activeSessionId ?? activeAgentId, msg.id);
 	};
 
 	const renderMessageContent = (msg: typeof messages[number]) => {
@@ -390,7 +414,7 @@ export default function ChatPanel() {
 						{showSessions && (
 							<div className="session-dropdown">
 								{sessions.map((s) => (
-									<div key={s.id} className={`session-item ${s.id === currentSessionId ? "active" : ""}`}>
+									<div key={s.id} className={`session-item ${s.id === activeSessionId ? "active" : ""}`}>
 										<button
 											type="button"
 											className="session-item-label"

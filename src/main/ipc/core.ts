@@ -4,6 +4,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { log } from "../../core/logger.js";
 import type { IpcContext } from "./types.js";
 import type { BrowserWindow } from "electron";
+import { moduleReadiness, type ModuleName } from "./module-readiness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const toFileURL = (p: string) => { const { pathToFileURL: p2u } = require("url"); return p2u(p).href; };
@@ -57,6 +58,8 @@ const _ctx: IpcContext = {
 	get createAgentService() { return _createAgentServiceFn; },
 	get modulesReady() { return _modulesReady; },
 	set modulesReady(v: boolean) { _modulesReady = v; },
+	whenReady: (name: ModuleName) => moduleReadiness.whenReady(name),
+	isModuleReady: (name: ModuleName) => moduleReadiness.isReady(name),
 	toFileURL,
 	get distServer() { return _distServer; },
 	get distCore() { return _distCore; },
@@ -105,79 +108,121 @@ export async function loadCoreModules(): Promise<void> {
 	_distServer = join(__dirname, "../../dist/server");
 	_distCore = join(__dirname, "../../dist/core");
 
+	// Initialize per-module readiness slots
+	moduleReadiness.initAllSlots([
+		"sessionDb", "agentStore", "providerStore", "templateStore",
+		"mcpStore", "kbStore", "kbDb", "agentToolStore", "workspaceConfig",
+		"registry", "toolRegistry", "agentService", "mcpManager", "recovery",
+	]);
+
+	// ─── Phase 0: All dynamic imports in parallel ────────────────
 	log.ipc("Loading core modules...");
-	const { AgentStore } = await import(toFileURL(join(_distServer, "agent-store.js")));
-	log.ipc("agent-store loaded", `+${Date.now() - t0}ms`);
-	const { ProviderStore } = await import(toFileURL(join(_distServer, "provider-store.js")));
-	log.ipc("provider-store loaded", `+${Date.now() - t0}ms`);
-	const agentSvcMod = await import(toFileURL(join(_distServer, "agent-service.js")));
+	const [
+		agentStoreMod, providerStoreMod, agentSvcMod, wsMod, promptMod,
+		tmplMod, mcpMod, mcpMgrMod, sessionDbMod, migrationMod,
+		durableHooksMod, kbStoreMod, kbDbMod, agentToolStoreMod,
+		runtimeToolsMod, trMod, recoveryMod,
+	] = await Promise.all([
+		import(toFileURL(join(_distServer, "agent-store.js"))),
+		import(toFileURL(join(_distServer, "provider-store.js"))),
+		import(toFileURL(join(_distServer, "agent-service.js"))),
+		import(toFileURL(join(_distServer, "workspace-config.js"))),
+		import(toFileURL(join(_distCore, "default-prompt.js"))),
+		import(toFileURL(join(_distServer, "template-store.js"))),
+		import(toFileURL(join(_distServer, "mcp-store.js"))),
+		import(toFileURL(join(_distServer, "mcp-manager.js"))),
+		import(toFileURL(join(_distServer, "session-db.js"))),
+		import(toFileURL(join(_distServer, "db-migration.js"))),
+		import(toFileURL(join(_distServer, "durable-hooks.js"))),
+		import(toFileURL(join(_distServer, "kb-store.js"))),
+		import(toFileURL(join(_distServer, "kb-db.js"))),
+		import(toFileURL(join(_distServer, "agent-tool-store.js"))),
+		import(toFileURL(join(__dirname, "../../dist/runtime/tools/index.js"))),
+		import(toFileURL(join(_distCore, "tool-registry.js"))),
+		import(toFileURL(join(_distServer, "recovery.js"))),
+	]);
+	log.ipc("All imports done", `+${Date.now() - t0}ms`);
+
 	_createAgentServiceFn = agentSvcMod.createAgentService;
-	const wsMod = await import(toFileURL(join(_distServer, "workspace-config.js")));
-	const mod = await import(toFileURL(join(_distCore, "default-prompt.js")));
-	log.ipc("core imports done", `+${Date.now() - t0}ms`);
-
-	const tmplMod = await import(toFileURL(join(_distServer, "template-store.js")));
-	const mcpMod = await import(toFileURL(join(_distServer, "mcp-store.js")));
-	const mcpMgrMod = await import(toFileURL(join(_distServer, "mcp-manager.js")));
-
-	// Create shared SessionDB — all stores share the same SQLite connection
-	const { SessionDB } = await import(toFileURL(join(_distServer, "session-db.js")));
-	_sessionDb = new SessionDB();
-
-	// Run all JSON→SQLite migrations before creating stores
-	const { runMigrations } = await import(toFileURL(join(_distServer, "db-migration.js")));
-	runMigrations(_sessionDb);
-
-		// Initialize hook system + durable execution
-		const { HookRegistry } = await import(toFileURL(join(_distCore, "hook-registry.js")));
-		const { registerDurableHooks } = await import(toFileURL(join(_distServer, "durable-hooks.js")));
-		const { runRecovery } = await import(toFileURL(join(_distServer, "recovery.js")));
-		registerDurableHooks(_sessionDb);
-		await runRecovery(_sessionDb);
-
-	_agentStore = new AgentStore(_sessionDb);
-	_providerStore = new ProviderStore(_sessionDb);
-	_templateStore = new tmplMod.TemplateStore(_sessionDb);
-	_mcpStore = new mcpMod.McpStore(_sessionDb);
-	const { KbStore } = await import(toFileURL(join(_distServer, "kb-store.js")));
-	const { KbDB } = await import(toFileURL(join(_distServer, "kb-db.js")));
-	_kbStore = new KbStore(_sessionDb);
-	_kbDb = new KbDB();
-	_buildDefaultPromptFn = mod.buildDefaultPrompt;
+	_buildDefaultPromptFn = promptMod.buildDefaultPrompt;
 	_saveWorkspaceConfigFn = wsMod.saveWorkspaceConfig;
 
+	// ─── Phase 1: SessionDB + migrations ─────────────────────────
+	_sessionDb = new sessionDbMod.SessionDB();
+	migrationMod.runMigrations(_sessionDb);
+	moduleReadiness.resolveModule("sessionDb");
+
+	// ─── Phase 1b: Hooks + file logging (depend on sessionDb) ────
+	durableHooksMod.registerDurableHooks(_sessionDb);
+	try {
+		const logConfig = _sessionDb.getKVStore().getJson("log_config");
+		const { configureLogging } = await import(toFileURL(join(_distCore, "logger.js")));
+		configureLogging(logConfig ?? { enabled: true, retentionDays: 7, globalLevel: "debug" });
+	} catch { /* use defaults */ }
+
+	// ─── Phase 2: All stores + config (depend on sessionDb) ──────
+	_agentStore = new agentStoreMod.AgentStore(_sessionDb);
+	_providerStore = new providerStoreMod.ProviderStore(_sessionDb);
+	_templateStore = new tmplMod.TemplateStore(_sessionDb);
+	_mcpStore = new mcpMod.McpStore(_sessionDb);
+	_kbStore = new kbStoreMod.KbStore(_sessionDb);
+	_kbDb = new kbDbMod.KbDB();
+	_agentToolStore = new agentToolStoreMod.AgentToolStore(_sessionDb);
 	_workspaceConfig = wsMod.loadWorkspaceConfig(_sessionDb);
 
 	if (!existsSync(_workspaceConfig.workspaceDir)) {
 		mkdirSync(_workspaceConfig.workspaceDir, { recursive: true });
 	}
 
-	// Eagerly init agent-service so session/message queries work before first chat
-	_agentService = _createAgentServiceFn(_workspaceConfig.workspaceDir, _sessionDb, _kbStore, _registry, _mcpManager);
-	_agentService.setAgentStore(_agentStore);
+	moduleReadiness.resolveModules([
+		"agentStore", "providerStore", "templateStore", "mcpStore",
+		"kbStore", "kbDb", "agentToolStore", "workspaceConfig",
+	]);
+	log.ipc("Stores ready", `+${Date.now() - t0}ms`);
 
-	// Load AgentToolStore
-	const atMod = await import(toFileURL(join(_distServer, "agent-tool-store.js")));
-	_agentToolStore = new atMod.AgentToolStore(_sessionDb);
+	// ─── Phase 3: ToolRegistry (depends on sessionDb) ────────────
+	_registry = new trMod.ToolRegistry(_sessionDb.getKVStore());
+	_toolRegistry = _registry;
+	runtimeToolsMod.registerRuntimeTools(_registry);
+	moduleReadiness.resolveModules(["registry", "toolRegistry"]);
+
+	// ─── Phase 4: MCPManager (depends on registry) ───────────────
+	_mcpManager = new mcpMgrMod.MCPManager(_registry);
+	moduleReadiness.resolveModule("mcpManager");
+
+	// ─── Phase 5: AgentService (depends on all above) ────────────
+	_agentService = _createAgentServiceFn(
+		_workspaceConfig.workspaceDir, _sessionDb, _kbStore, _registry, _mcpManager,
+	);
+	_agentService.setAgentStore(_agentStore);
 	_agentService.setAgentToolStore(_agentToolStore);
+
+	const providerConfigs = _providerStore.list()
+		.filter((p: any) => p.enabled)
+		.map((p: any) => ({
+			name: p.name, type: p.type, apiKey: p.apiKey, baseUrl: p.baseUrl,
+			models: p.models.map((m: any) => ({ id: m.id, name: m.name, contextWindow: m.contextWindow, maxTokens: m.maxTokens })),
+			enabled: p.enabled,
+		}));
+	_agentService.setProviders(providerConfigs, _workspaceConfig.defaultModel, _workspaceConfig.defaultProvider);
 	_agentService.subscribe((event: any) => {
 		if (_mainWindow && !_mainWindow.isDestroyed()) {
 			_mainWindow.webContents.send("agent:event", event);
 		}
 	});
+	moduleReadiness.resolveModule("agentService");
 
-	log.ipc("Core modules ready, workspace:", _workspaceConfig.workspaceDir);
-
-	// Register all tools into ToolRegistry
-	const { registerRuntimeTools } = await import(toFileURL(join(__dirname, "../../dist/runtime/tools/index.js")));
-	const trMod = await import(toFileURL(join(_distCore, "tool-registry.js")));
-	_registry = new trMod.ToolRegistry(_sessionDb.getKVStore());
-	_toolRegistry = _registry;
-	registerRuntimeTools(_registry);
-	_mcpManager = new mcpMgrMod.MCPManager(_registry);
+	// MCP reconnect + agent tool entries
 	_mcpManager.reconnectEnabled(_mcpStore.list()).catch(() => {});
-	const { registerAgentToolEntries } = await import(toFileURL(join(_distServer, "agent-service.js")));
-	_registerAgentTools = registerAgentToolEntries;
-	registerAgentToolEntries(_agentToolStore, _registry);
-	log.ipc("Tool registry populated");
+	_registerAgentTools = agentSvcMod.registerAgentToolEntries;
+	agentSvcMod.registerAgentToolEntries(_agentToolStore, _registry);
+
+	// ─── Phase 6: Recovery ───────────────────────────────────────
+	const interrupted = recoveryMod.scanIncompleteTurns(_sessionDb);
+	if (interrupted.length > 0) {
+		await _agentService.recoverIncompleteSessions();
+	}
+	moduleReadiness.resolveModule("recovery");
+
+	log.ipc("All modules ready", `+${Date.now() - t0}ms`);
 }
