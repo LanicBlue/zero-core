@@ -112,7 +112,7 @@ export class AgentSession {
 
 	private appendAssistantMessages(blocks: any[], messages: ModelMessage[]): void {
 		const toolCalls: { id: string; name: string; input: any }[] = [];
-		const toolResults: { id: string; output: any; isError?: boolean }[] = [];
+		const toolResults: { id: string; name: string; output: any; isError?: boolean }[] = [];
 		const textParts: string[] = [];
 
 		for (const b of blocks) {
@@ -120,7 +120,7 @@ export class AgentSession {
 				const id = b.toolCallId ?? "tc-" + toolCalls.length;
 				toolCalls.push({ id, name: b.name, input: b.args ?? {} });
 				const result = typeof b.result === "string" ? b.result : JSON.stringify(b.result ?? "");
-				toolResults.push({ id, output: result, isError: b.status === "error" });
+				toolResults.push({ id, name: b.name, output: result, isError: b.status === "error" });
 			} else if (b.type === "text") {
 				textParts.push(b.text);
 			}
@@ -145,7 +145,7 @@ export class AgentSession {
 			for (const tr of toolResults) {
 				messages.push({
 					role: "tool",
-					content: [{ type: "tool-result", toolCallId: tr.id, output: tr.output, isError: tr.isError }],
+					content: [{ type: "tool-result", toolCallId: tr.id, toolName: tr.name, output: typeof tr.output === "string" ? { type: "text", value: tr.output } : { type: "json", value: tr.output } }],
 				} as any);
 			}
 		}
@@ -173,11 +173,28 @@ export class AgentSession {
 	 * can parse tool arguments when messages are passed back to streamText().
 	 */
 	private normalizeMessages(msgs: ModelMessage[]): ModelMessage[] {
+		const toolNameMap = new Map<string, string>();
 		for (const msg of msgs) {
 			if (msg.role === "assistant" && Array.isArray((msg as any).content)) {
 				for (const part of (msg as any).content) {
-					if (part.type === "tool-call" && "args" in part && !("input" in part)) {
-						part.input = part.args;
+					if (part.type === "tool-call") {
+						if ("args" in part && !("input" in part)) part.input = part.args;
+						if (part.toolName && part.toolCallId) toolNameMap.set(part.toolCallId, part.toolName);
+					}
+				}
+			}
+		}
+		for (const msg of msgs) {
+			if ((msg as any).role === "tool" && Array.isArray((msg as any).content)) {
+				for (const part of (msg as any).content) {
+					if (part.type === "tool-result") {
+						if (!part.toolName && part.toolCallId) part.toolName = toolNameMap.get(part.toolCallId) ?? "unknown";
+						// AI SDK v6 requires output to be { type, value }, not plain string
+						if (typeof part.output === "string") {
+							part.output = { type: "text", value: part.output };
+						} else if (part.output != null && typeof part.output === "object" && !("type" in (part.output as any))) {
+							part.output = { type: "json", value: part.output };
+						}
 					}
 				}
 			}

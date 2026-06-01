@@ -90,6 +90,8 @@ export class AgentLoop implements AgentRuntime {
 					agentId: `${capturedConfig.agentId}:sub-${Date.now()}`,
 					systemPrompt: options?.systemPrompt ?? capturedConfig.systemPrompt,
 					modelId: options?.model ?? capturedConfig.modelId,
+					parentSessionId: capturedConfig.sessionId,
+					spawnDepth: (capturedConfig.spawnDepth ?? 0) + 1,
 						timeoutSec: this.toolContext.toolConfig?.Agent?.timeout,
 				};
 				const subAbort = new AbortController();
@@ -165,6 +167,8 @@ export class AgentLoop implements AgentRuntime {
 					systemPrompt: options?.systemPrompt ?? capturedConfig.systemPrompt,
 					modelId: options?.model ?? capturedConfig.modelId,
 					timeoutSec: this.toolContext.toolConfig?.Agent?.timeout,
+				parentSessionId: capturedConfig.sessionId,
+				spawnDepth: (capturedConfig.spawnDepth ?? 0) + 1,
 				};
 
 				const registry = this.taskRegistry;
@@ -369,7 +373,7 @@ export class AgentLoop implements AgentRuntime {
 	}
 
 	/** Resume an interrupted turn. Messages are already loaded from DB. */
-	async resume(): Promise<void> {
+	async resume(interruptedTurnSeq?: number): Promise<void> {
 		if (this.busy) throw new Error("Agent is already busy");
 		log.loop("resume() called, messages:", this.session.getMessages().length);
 
@@ -381,6 +385,13 @@ export class AgentLoop implements AgentRuntime {
 		this.pendingToolCalls.clear();
 		this.checkpointMessages = [];
 		this.incrementalTurnSeq = -1;
+		// Delete the interrupted assistant turn so recovery replaces it
+		if (interruptedTurnSeq !== undefined && this.db) {
+			const sid = this.session.getSessionId();
+			if (sid) {
+				try { this.db.deleteTurn(sid, interruptedTurnSeq); } catch { /* ignore */ }
+			}
+		}
 		this.abortController = new AbortController();
 		const timeoutMs = this.config.timeoutSec ? this.config.timeoutSec * 1000 : undefined;
 		const timeout = timeoutMs ? setTimeout(() => {
@@ -607,6 +618,25 @@ export class AgentLoop implements AgentRuntime {
 		}
 
 		this.resultText = await result.text;
+
+			// Capture precise token usage from AI SDK
+			try {
+				const usage = await result.usage;
+				if (usage) {
+					this.emit({
+						type: "usage",
+						agentId: this.config.agentId,
+						usage: {
+							inputTokens: usage.inputTokens ?? 0,
+							outputTokens: usage.outputTokens ?? 0,
+							totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+							cacheReadTokens: (usage as any).cacheReadTokens ?? (usage as any).promptCacheReadTokens,
+							cacheWriteTokens: (usage as any).cacheWriteTokens ?? (usage as any).promptCacheWriteTokens,
+							reasoningTokens: (usage as any).reasoningTokens,
+						},
+					});
+				}
+			} catch { /* usage not available for some providers */ }
 		this.recorder.sealStep();
 
 		// Store assistant turn to turns table
@@ -673,8 +703,8 @@ export class AgentLoop implements AgentRuntime {
 
 		// Build checkpoint messages in AI SDK format
 		this.checkpointMessages.push(
-			{ role: "assistant", content: [{ type: "tool-call", toolCallId, toolName: tc.name, args: tc.args }] },
-			{ role: "tool", content: [{ type: "tool-result", toolCallId, output: typeof output === "string" ? output : JSON.stringify(output), isError }] } as any,
+				{ role: "assistant", content: [{ type: "tool-call", toolCallId, toolName: tc.name, input: tc.args }] },
+				{ role: "tool", content: [{ type: "tool-result", toolCallId, toolName: tc.name, output: { type: "text", value: typeof output === "string" ? output : JSON.stringify(output) } }] } as any,
 		);
 
 		// Save full message list to DB (session base + checkpoint messages)

@@ -67,6 +67,11 @@ const api: WindowApi = {
 		ipcRenderer.on("tools:changed", handler);
 		return () => { ipcRenderer.removeListener("tools:changed", handler); };
 	},
+	onSessionLifecycle: (callback) => {
+		const handler = (_e: any, data: any) => callback(data);
+		ipcRenderer.on("session:lifecycle", handler);
+		return () => { ipcRenderer.removeListener("session:lifecycle", handler); };
+	},
 	onAppReady: (callback) => {
 		const handler = () => { callback(); };
 		ipcRenderer.on("app:ready", handler);

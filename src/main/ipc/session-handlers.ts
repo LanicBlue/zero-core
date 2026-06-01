@@ -108,4 +108,19 @@ export function registerSessionHandlers(ctx: IpcContext): void {
 			return { success: true as const };
 		},
 	);
+
+	typedHandle("sessions:metrics", "agentService",
+		async (_ctx) => {
+			const sm = _ctx.agentService.getSessionManager();
+			if (!sm) {
+				return { totalSessions: 0, activeSessions: 0, busySessions: 0, idleSessions: 0, totalTurns: 0, totalErrors: 0, totalToolCalls: 0, globalAvgTurnLatencyMs: 0, globalAvgToolCallDurationMs: 0, concurrencySnapshot: {}, lastUpdatedAt: Date.now(), sessions: {} };
+			}
+			const aggregate = sm.getAggregateMetrics();
+			const sessions: Record<string, any> = {};
+			for (const [id, m] of sm.getAllSessionMetrics()) {
+				sessions[id] = { ...m, toolCallCounts: Object.fromEntries(m.toolCallCounts), toolCallErrors: Object.fromEntries(m.toolCallErrors) };
+			}
+			return { ...aggregate, concurrencySnapshot: Object.fromEntries(Object.entries(aggregate.concurrencySnapshot)), sessions };
+		},
+	);
 }

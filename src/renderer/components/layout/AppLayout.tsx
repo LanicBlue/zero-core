@@ -24,7 +24,7 @@ export default function AppLayout() {
 	const {
 		messages, activeAgentId, activeSessionId, isStreaming,
 		addMessage, updateAssistantText, updateThinking, addToolCall, updateToolCall,
-		finishStreaming, loadMessages, setSessions, setActiveSessionId,
+		finishStreaming, loadMessages, setSessions, setActiveSessionId, updateSessionLifecycle,
 	} = useChatStore();
 
 	// Track app readiness
@@ -36,6 +36,14 @@ export default function AppLayout() {
 			console.log(`[renderer] IPC ready (+${Date.now() - t0}ms)`);
 		});
 
+		return unsub;
+	}, []);
+
+	// ─── Session lifecycle events ──────────────────────────────────
+	useEffect(() => {
+		const unsub = api().onSessionLifecycle((data: any) => {
+			updateSessionLifecycle(data.sessionId, data.to);
+		});
 		return unsub;
 	}, []);
 

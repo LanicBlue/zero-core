@@ -146,6 +146,13 @@ export interface SessionRecord {
 	title: string | null;
 	createdAt: string;
 	updatedAt: string;
+	inputTokens?: number;
+	outputTokens?: number;
+	totalTokens?: number;
+	cacheReadTokens?: number;
+	cacheWriteTokens?: number;
+	reasoningTokens?: number;
+	estimatedCostUsd?: number;
 }
 
 export interface LogEntry {

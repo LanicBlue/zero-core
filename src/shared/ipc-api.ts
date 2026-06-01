@@ -116,6 +116,7 @@ export interface IpcChannelDefs {
 	"sessions:switch":  { params: [agentId: string, sessionId: string];           result: Ok & { sessionId: string } };
 	"sessions:current": { params: [agentId: string];                              result: SessionRecord | null };
 	"sessions:delete":  { params: [agentId: string, sessionId: string];           result: Ok | (Ok & { newSessionId: string }) };
+	"sessions:metrics": { params: []; result: import("../server/session-metrics.js").AggregateMetrics & { sessions: Record<string, import("../server/session-metrics.js").SessionMetrics> } };
 
 	// ── Chat ─────────────────────────────────────────────────
 	"chat:send":   { params: [text: string, agentId?: string, sessionId?: string];    result: Ok };

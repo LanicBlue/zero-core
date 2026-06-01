@@ -10,6 +10,10 @@ import { log } from "../core/logger.js";
 // Per-session turn sequence tracking
 const sessionTurnSeq = new Map<string, number>();
 
+export function setSessionTurnSeq(sessionId: string, turnSeq: number): void {
+	sessionTurnSeq.set(sessionId, turnSeq);
+}
+
 export function registerDurableHooks(sessionDb: SessionDB): void {
 	const registry = HookRegistry.getInstance();
 
@@ -17,6 +21,11 @@ export function registerDurableHooks(sessionDb: SessionDB): void {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
+			// Skip if already tracked (e.g. recovery scenario — turn_state exists)
+			if (sessionTurnSeq.has(sessionId)) {
+				log.debug("durable", `Turn seq already set for session ${sessionId}, skipping create`);
+				return;
+			}
 			const turnSeq = sessionDb.getTurnCount(sessionId) + 1;
 			sessionTurnSeq.set(sessionId, turnSeq);
 			sessionDb.createTurnState(sessionId, turnSeq);

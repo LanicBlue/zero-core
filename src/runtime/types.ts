@@ -119,6 +119,20 @@ export interface SubagentCompletedEvent {
 	result?: string;
 }
 
+export interface UsageEvent {
+	type: "usage";
+	agentId?: string;
+	sessionId?: string;
+	usage: {
+		inputTokens: number;
+		outputTokens: number;
+		totalTokens: number;
+		cacheReadTokens?: number;
+		cacheWriteTokens?: number;
+		reasoningTokens?: number;
+	};
+}
+
 export type StreamEvent =
 	| TextDeltaEvent
 	| ThinkingDeltaEvent
@@ -132,7 +146,8 @@ export type StreamEvent =
 	| TodosUpdateEvent
 	| SubagentDispatchedEvent
 	| SubagentProgressEvent
-	| SubagentCompletedEvent;
+	| SubagentCompletedEvent
+	| UsageEvent;
 
 // ---------------------------------------------------------------------------
 // Provider config — mirrors existing ProviderConfig
@@ -169,6 +184,8 @@ export interface SessionConfig {
 	sessionId?: string;
 	db?: ISessionStore;
 	concurrencyManager?: import("./provider-concurrency-manager.js").ProviderConcurrencyManager;
+	parentSessionId?: string;
+	spawnDepth?: number;
 	toolPolicy: {
 		autoApprove?: string[];
 		blockedTools?: string[];

@@ -16,6 +16,9 @@ import { KbDB } from "./kb-db.js";
 import { log } from "../core/logger.js";
 import { ToolRegistry } from "../core/tool-registry.js";
 import { ProviderConcurrencyManager } from "../runtime/provider-concurrency-manager.js";
+import type { SessionManager } from "./session-manager.js";
+import { createEventMetricsAdapter, type EventMetricsAdapter } from "./metrics-events.js";
+import { setSessionTurnSeq } from "./durable-hooks.js";
 
 // ---------------------------------------------------------------------------
 // Ensure zero-core dirs
@@ -67,6 +70,8 @@ class AgentService {
 	private concurrencyManager = new ProviderConcurrencyManager();
 	private agentStore: AgentStore | null = null;
 	private agentToolStore: import("./agent-tool-store.js").AgentToolStore | null = null;
+	private sessionManager: SessionManager | null = null;
+	private metricsAdapter: EventMetricsAdapter | null = null;
 
 	constructor(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore, registry?: ToolRegistry, mcp?: MCPManager) {
 		this.workspaceDir = workspaceDir;
@@ -105,6 +110,28 @@ class AgentService {
 
 	setAgentToolStore(store: import("./agent-tool-store.js").AgentToolStore): void {
 		this.agentToolStore = store;
+	}
+
+	setSessionManager(sm: SessionManager): void {
+		this.sessionManager = sm;
+		this.metricsAdapter = createEventMetricsAdapter(sm);
+	}
+
+	getSessionManager(): SessionManager | null {
+		return this.sessionManager;
+	}
+
+	getActiveSessionsMap(): ReadonlyMap<string, string> {
+		return this.activeSessions;
+	}
+
+	evictSessionFromMemory(sessionId: string): void {
+		const loop = this.loops.get(sessionId);
+		if (loop) { loop.abort(); this.loops.delete(sessionId); }
+		this.runStates.delete(sessionId);
+		for (const [agentId, sid] of this.activeSessions) {
+			if (sid === sessionId) { this.activeSessions.delete(agentId); break; }
+		}
 	}
 
 	subscribe(cb: StreamCallback): () => void {
@@ -257,6 +284,9 @@ class AgentService {
 
 		this.loops.set(sessionId, loop);
 
+		this.sessionManager?.trackSessionCreated(sessionId, agentId);
+		this.sessionManager?.trackSessionActivated(sessionId);
+
 		log.agent("Runtime ready for:", agentId, "session:", sessionId);
 		return loop;
 	}
@@ -277,6 +307,8 @@ class AgentService {
 		}
 
 		log.agent("Sending prompt to:", agentId, "session:", sessionId, "length:", text.length);
+
+		this.sessionManager?.trackSessionQueued(sessionId);
 
 		const state = this.runStates.get(sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
 		state.isBusy = true;
@@ -337,6 +369,16 @@ class AgentService {
 
 				this.activeSessions.set(agentId, turn.sessionId);
 
+				// Pre-populate turn seq so SessionStart hook skips creating a duplicate
+				setSessionTurnSeq(turn.sessionId, turn.turnSeq);
+
+				// Set lifecycle state based on interrupted phase
+				if (turn.phase === "tools_executing") {
+					this.sessionManager?.trackSessionExecutingTools(turn.sessionId);
+				} else {
+					this.sessionManager?.trackSessionStreaming(turn.sessionId);
+				}
+
 				const state = this.runStates.get(turn.sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
 				state.isBusy = true;
 				state.streamingText = "";
@@ -346,7 +388,7 @@ class AgentService {
 				log.db(`Recovering agent ${agentId}, session ${turn.sessionId}, phase ${turn.phase}`);
 
 				// Fire-and-forget: resume in background so we don't block startup
-				loop.resume().then(() => {
+					loop.resume(turn.turnSeq).then(() => {
 					log.db(`Resumed session ${turn.sessionId} (agent ${agentId})`);
 					// Mark the original incomplete turn as completed
 					this.db.completeTurnState(turn.sessionId, turn.turnSeq);
@@ -362,6 +404,8 @@ class AgentService {
 	}
 
 	dispose(): void {
+		this.sessionManager?.stopTtlCleanup();
+		this.sessionManager?.dispose();
 		for (const loop of this.loops.values()) {
 			loop.abort();
 		}
@@ -392,6 +436,10 @@ class AgentService {
 			? this.runStates.get(sessionId)
 			: this.findStateByAgentId(agentId);
 		if (!state) return;
+
+		if (this.metricsAdapter && sessionId) {
+			this.metricsAdapter.onEvent(event, sessionId);
+		}
 
 		switch (event.type) {
 			case "text_delta": {

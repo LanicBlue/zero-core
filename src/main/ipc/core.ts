@@ -214,6 +214,25 @@ export async function loadCoreModules(): Promise<void> {
 	});
 	moduleReadiness.resolveModule("agentService");
 
+	// ─── Phase 5b: SessionManager + metrics hooks ────────────────
+	try {
+		const { SessionManager } = await import(toFileURL(join(_distServer, "session-manager.js")));
+		const { registerMetricsHooks } = await import(toFileURL(join(_distServer, "metrics-hooks.js")));
+		const sm = new SessionManager(_agentService, {
+			onStateChange: (sessionId, from, to) => {
+				if (_mainWindow && !_mainWindow.isDestroyed()) {
+					_mainWindow.webContents.send("session:lifecycle", { sessionId, from, to });
+				}
+			},
+		});
+		_agentService.setSessionManager(sm);
+			sm.setSessionDb(_agentService.getDB());
+		registerMetricsHooks(sm);
+		sm.startTtlCleanup();
+	} catch (err) {
+		log.warn("ipc", "SessionManager init skipped:", (err as Error).message);
+	}
+
 	// MCP reconnect + agent tool entries
 	_mcpManager.reconnectEnabled(_mcpStore.list()).catch(() => {});
 	_registerAgentTools = agentSvcMod.registerAgentToolEntries;

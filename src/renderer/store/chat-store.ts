@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { SessionRecord } from "../../shared/types.js";
 
+type SessionLifecycleState = "created" | "idle" | "queued" | "streaming" | "executing_tools" | "error" | "disposed";
+
 export interface ToolCallBlock {
 	type: "tool";
 	name: string;
@@ -49,6 +51,7 @@ interface ChatState {
 	updateToolCall: (sessionId: string, name: string, status: "done" | "error", result?: string) => void;
 	setIsStreaming: (sessionId: string, v: boolean) => void;
 	finishStreaming: (sessionId: string) => void;
+	updateSessionLifecycle: (sessionId: string, state: SessionLifecycleState) => void;
 	setActiveAgent: (id: string | null, sessionId?: string | null) => void;
 	loadMessages: (sessionId: string, messages: ChatMessage[]) => void;
 	clearMessages: (sessionId: string) => void;
@@ -85,20 +88,16 @@ export const useChatStore = create<ChatState>((set) => ({
 	isStreaming: false,
 	sessionsByAgent: {},
 
-	addMessage: (sessionId, msg) =>
-		set((state) => {
-			const sessionMsgs = [...(state.messagesBySession[sessionId] ?? []), msg];
-			const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
-			const isActive = sessionId === state.activeSessionId;
-			const newStreaming = new Set(state.streamingSessions);
-			if (msg.role === "assistant") newStreaming.add(sessionId);
-			return {
-				messagesBySession: newBySession,
-				streamingSessions: newStreaming,
-				messages: isActive ? sessionMsgs : state.messages,
-				isStreaming: calcIsStreaming(newStreaming, state.activeSessionId),
-			};
-		}),
+		addMessage: (sessionId, msg) =>
+			set((state) => {
+				const sessionMsgs = [...(state.messagesBySession[sessionId] ?? []), msg];
+				const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
+				const isActive = sessionId === state.activeSessionId;
+				return {
+					messagesBySession: newBySession,
+					messages: isActive ? sessionMsgs : state.messages,
+				};
+			}),
 
 	updateAssistantText: (sessionId, text) =>
 		set((state) => {
@@ -189,22 +188,30 @@ export const useChatStore = create<ChatState>((set) => ({
 			};
 		}),
 
-	finishStreaming: (sessionId) =>
-		set((state) => {
-			const sessionMsgs = (state.messagesBySession[sessionId] ?? []).map((m) =>
-				m.streaming ? { ...m, streaming: false } : m,
-			);
-			const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
-			const isActive = sessionId === state.activeSessionId;
-			const newStreaming = new Set(state.streamingSessions);
-			newStreaming.delete(sessionId);
-			return {
-				messagesBySession: newBySession,
-				streamingSessions: newStreaming,
-				messages: isActive ? sessionMsgs : state.messages,
-				isStreaming: calcIsStreaming(newStreaming, state.activeSessionId),
-			};
-		}),
+		finishStreaming: (sessionId) =>
+			set((state) => {
+				const sessionMsgs = (state.messagesBySession[sessionId] ?? []).map((m) =>
+					m.streaming ? { ...m, streaming: false } : m,
+				);
+				const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
+				const isActive = sessionId === state.activeSessionId;
+				return {
+					messagesBySession: newBySession,
+					messages: isActive ? sessionMsgs : state.messages,
+				};
+			}),
+
+		updateSessionLifecycle: (sessionId, lifecycleState) =>
+			set((s) => {
+				const newStreaming = new Set(s.streamingSessions);
+				const active = lifecycleState === "streaming" || lifecycleState === "executing_tools" || lifecycleState === "queued";
+				if (active) newStreaming.add(sessionId);
+				else newStreaming.delete(sessionId);
+				return {
+					streamingSessions: newStreaming,
+					isStreaming: calcIsStreaming(newStreaming, s.activeSessionId),
+				};
+			}),
 
 	setActiveAgent: (id, sessionId?) =>
 		set((state) => {

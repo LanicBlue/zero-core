@@ -142,6 +142,13 @@ export class SessionDB {
 		this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
 	}
 
+	updateSessionUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number; estimatedCostUsd: number }): void {
+		const now = new Date().toISOString();
+		this.db.prepare(
+			"UPDATE sessions SET input_tokens = ?, output_tokens = ?, total_tokens = ?, cache_read_tokens = ?, cache_write_tokens = ?, reasoning_tokens = ?, estimated_cost_usd = ?, updated_at = ? WHERE id = ?"
+		).run(usage.inputTokens, usage.outputTokens, usage.totalTokens, usage.cacheReadTokens, usage.cacheWriteTokens, usage.reasoningTokens, usage.estimatedCostUsd, now, sessionId);
+	}
+
 	// -----------------------------------------------------------------------
 	// Messages
 	// -----------------------------------------------------------------------
@@ -410,6 +417,13 @@ export class SessionDB {
 			title: row.title,
 			createdAt: row.created_at,
 			updatedAt: row.updated_at,
+			inputTokens: row.input_tokens ?? 0,
+			outputTokens: row.output_tokens ?? 0,
+			totalTokens: row.total_tokens ?? 0,
+			cacheReadTokens: row.cache_read_tokens ?? 0,
+			cacheWriteTokens: row.cache_write_tokens ?? 0,
+			reasoningTokens: row.reasoning_tokens ?? 0,
+			estimatedCostUsd: row.estimated_cost_usd ?? 0,
 		};
 	}
 }

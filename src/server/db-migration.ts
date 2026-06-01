@@ -78,6 +78,15 @@ export function runMigrations(sessionDB: SessionDB): void {
 	safeAddColumn(db, "providers", "enable_concurrency_limit", "INTEGER DEFAULT 0");
 	safeAddColumn(db, "providers", "max_concurrency", "INTEGER");
 
+	// Session token tracking
+	safeAddColumn(db, "sessions", "input_tokens", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "sessions", "output_tokens", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "sessions", "total_tokens", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "sessions", "cache_read_tokens", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "sessions", "cache_write_tokens", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "sessions", "reasoning_tokens", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "sessions", "estimated_cost_usd", "REAL DEFAULT 0");
+
 	// Now safe to create SqliteStore instances with all columns
 	const agents = new SqliteStore<AgentRecord>(db, "agents", AGENT_COLUMNS);
 	const agentTools = new SqliteStore<any>(db, "agent_tools", AGENT_TOOL_COLUMNS);
