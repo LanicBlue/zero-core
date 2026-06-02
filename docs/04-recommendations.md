@@ -180,10 +180,18 @@ if (handler) handler(data, key);
   - [ThemeSettings.tsx](../src/renderer/components/settings/ThemeSettings.tsx)
 - 全部通过 55 单测 + 2 E2E，typecheck 干净
 
-**未做**：
-- [AgentEditor.tsx](../src/renderer/components/agents/AgentEditor.tsx) 688 行 → AgentBasicInfo / AgentTools / AgentPrompt / AgentModel 等
-
-UI 拆分比 IPC 拆分风险高（props 链路 + state 提升），需要单独运行 + 视觉验证，建议分两次做。
+**已完成（2026-06-02 第三批）**：AgentEditor 拆分
+- [AgentEditor.tsx](../src/renderer/components/agents/AgentEditor.tsx) 688 → 304 行（state + orchestrator）
+- 共享类型抽到 [agent-editor-types.ts](../src/renderer/components/agents/agent-editor-types.ts)（`FormState` / `Section` / `DEFAULT_ENABLED_TOOLS` / `agentToForm` / `templateToForm` / `defaultForm` / `formatTokens` / `shorten` / `kebab`）
+- 拆出 5 个 satellite 组件：
+  - [BasicSection.tsx](../src/renderer/components/agents/BasicSection.tsx) — name / workspace / model / thinking
+  - [PromptSection.tsx](../src/renderer/components/agents/PromptSection.tsx) — system prompt editor + context sections
+  - [ToolsSection.tsx](../src/renderer/components/agents/ToolsSection.tsx) — tool list grouped，本地 `expandedTool` state 一并下放
+  - [ExposeAsToolSection.tsx](../src/renderer/components/agents/ExposeAsToolSection.tsx) — 已有 inline function 提为独立文件
+  - [PermissionsSection.tsx](../src/renderer/components/agents/PermissionsSection.tsx) — readScope / executionMode
+- [ConfirmModal.tsx](../src/renderer/components/common/ConfirmModal.tsx) 提到 `common/`（可复用）
+- Form state 留在 AgentEditor（避免 state 提升风险），section 组件纯 props → JSX
+- 全部通过 55 单测 + 2 E2E，typecheck 干净
 
 ### R13. 双构建整合
 

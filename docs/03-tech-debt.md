@@ -91,7 +91,7 @@
 
 | 文件 | 行数 | 问题 |
 |------|------|------|
-| [AgentEditor.tsx](../src/renderer/components/agents/AgentEditor.tsx) | 688 | create/edit/多 section 全在一个组件 |
+| [AgentEditor.tsx](../src/renderer/components/agents/AgentEditor.tsx) | 304 (was 688) | ✅ 2026-06-02 已拆 — state 留 orchestrator，5 个 section + ConfirmModal + agent-editor-types.ts |
 | [agent-loop.ts](../src/runtime/agent-loop.ts) | 784 | 单 turn 执行 + retry + streaming + tool 调度 |
 | [SettingsPage.tsx](../src/renderer/components/settings/SettingsPage.tsx) | 119 (was 667) | ✅ 2026-06-02 已拆 — 6 个 satellite 组件（ProviderCard / ProviderEditor / DeviceContextSettings / GuidelinesSettings / WorkspaceSettings / ThemeSettings）|
 | [ChatPanel.tsx](../src/renderer/components/layout/ChatPanel.tsx) | 431 | 可接受，但 session 切换 + 输入 + 消息渲染可拆 |

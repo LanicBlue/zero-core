@@ -1,0 +1,51 @@
+import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
+
+export type FormState = Omit<AgentRecord, "id" | "createdAt" | "updatedAt">;
+
+export type Section = "basic" | "prompt" | "tools" | "expose" | "permissions";
+
+export const DEFAULT_ENABLED_TOOLS = new Set(["Bash", "Read", "Write", "Edit", "Grep", "Glob"]);
+
+export const EMPTY_FORM: FormState = {
+	name: "",
+};
+
+export const shorten = (p: string) =>
+	p.replace(/^[A-Z]:\\Users\\[^\\]+/, "~").replace(/\\/g, "/");
+
+export const kebab = (s: string) =>
+	s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+
+export function agentToForm(a: AgentRecord): FormState {
+	return {
+		name: a.name,
+		workspaceDir: a.workspaceDir || undefined,
+		model: a.model,
+		provider: a.provider,
+		thinkingLevel: a.thinkingLevel,
+		contextConfig: a.contextConfig,
+		systemPrompt: a.systemPrompt ?? "",
+		toolPolicy: a.toolPolicy,
+		skillPolicy: a.skillPolicy,
+	};
+}
+
+export function templateToForm(t: PromptTemplate): FormState {
+	return {
+		name: t.name,
+		systemPrompt: t.systemPrompt,
+		model: t.model,
+		provider: t.provider,
+		thinkingLevel: t.thinkingLevel,
+		toolPolicy: t.toolPolicy,
+	};
+}
+
+export function defaultForm(defaultPrompt: string): FormState {
+	return { ...EMPTY_FORM, systemPrompt: defaultPrompt };
+}
+
+export function formatTokens(tokens: number): string {
+	if (tokens >= 1000) return `~${(tokens / 1000).toFixed(1)}k`;
+	return `~${tokens}`;
+}
