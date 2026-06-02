@@ -93,7 +93,7 @@
 |------|------|------|
 | [AgentEditor.tsx](../src/renderer/components/agents/AgentEditor.tsx) | 688 | create/edit/多 section 全在一个组件 |
 | [agent-loop.ts](../src/runtime/agent-loop.ts) | 784 | 单 turn 执行 + retry + streaming + tool 调度 |
-| [SettingsPage.tsx](../src/renderer/components/settings/SettingsPage.tsx) | 667 | provider/theme/device/guidelines 多个 section |
+| [SettingsPage.tsx](../src/renderer/components/settings/SettingsPage.tsx) | 119 (was 667) | ✅ 2026-06-02 已拆 — 6 个 satellite 组件（ProviderCard / ProviderEditor / DeviceContextSettings / GuidelinesSettings / WorkspaceSettings / ThemeSettings）|
 | [ChatPanel.tsx](../src/renderer/components/layout/ChatPanel.tsx) | 431 | 可接受，但 session 切换 + 输入 + 消息渲染可拆 |
 | [session-handlers.ts](../src/main/ipc/session-handlers.ts) | 6 个独立操作（已拆出 message-handlers） | ✅ 2026-06-02 已拆 |
 | [template-handlers.ts](../src/main/ipc/template-handlers.ts) | 188 + GitHub import | 可拆 github-handlers |
