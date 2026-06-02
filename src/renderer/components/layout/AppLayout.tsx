@@ -50,60 +50,32 @@ export default function AppLayout() {
 	// ─── Central IPC event subscription (never unmounts) ──────────
 	// This stays alive regardless of which page the user is on.
 	useEffect(() => {
+		const stringify = (v: unknown) =>
+			typeof v === "string" ? v : JSON.stringify(v, null, 2);
+
+		const handlers: Record<string, (data: any, key: string) => void> = {
+			session_init: (d, key) => initSession(d.sessionId || key, { messages: d.messages || [] }),
+			text_delta: (d, key) => updateAssistantText(key, d.text),
+			message_end: () => { /* text_delta already handled streaming text */ },
+			thinking_delta: (d, key) => updateThinking(key, d.text),
+			tool_start: (d, key) => addToolCall(key, d.toolName, d.args ? stringify(d.args) : undefined),
+			tool_end: (d, key) => updateToolCall(key, d.toolName, d.isError ? "error" : "done", d.result ? stringify(d.result) : undefined),
+			agent_end: (_d, key) => finishStreaming(key),
+			retry_attempt: (d, key) => updateAssistantText(key, `Retrying (${d.attempt}/${d.maxAttempts})...`),
+			error: (d, key) => {
+				lastErrorKey.current = key;
+				updateAssistantText(key, `\nError: ${d.error}`);
+				finishStreaming(key);
+			},
+		};
+
 		const unsubscribe = api().onAgentEvent((data: any) => {
-			const agentId = data.agentId;
-			if (!agentId) return;
-
-			const sessionId = data.sessionId;
-			// Use sessionId for store operations, fallback to activeSessionId or agentId
+			if (!data.agentId) return;
 			const currentSessionId = useChatStore.getState().activeSessionId;
-			const key = sessionId || currentSessionId || agentId;
-
-			switch (data.type) {
-				case "session_init": {
-					const sid = data.sessionId || key;
-					initSession(sid, { messages: data.messages || [] });
-					break;
-				}
-				case "text_delta": {
-					updateAssistantText(key, data.text);
-					break;
-				}
-				case "message_end": {
-					// text_delta already handled streaming text
-					break;
-				}
-				case "thinking_delta": {
-					updateThinking(key, data.text);
-					break;
-				}
-				case "tool_start": {
-					const args = data.args ? (typeof data.args === "string" ? data.args : JSON.stringify(data.args, null, 2)) : undefined;
-					addToolCall(key, data.toolName, args);
-					break;
-				}
-				case "tool_end": {
-					const result = data.result ? (typeof data.result === "string" ? data.result : JSON.stringify(data.result, null, 2)) : undefined;
-					updateToolCall(key, data.toolName, data.isError ? "error" : "done", result);
-					break;
-				}
-				case "agent_end": {
-					finishStreaming(key);
-					break;
-				}
-				case "retry_attempt": {
-					updateAssistantText(key, `Retrying (${data.attempt}/${data.maxAttempts})...`);
-					break;
-				}
-				case "error": {
-					lastErrorKey.current = key;
-					updateAssistantText(key, `\nError: ${data.error}`);
-					finishStreaming(key);
-					break;
-				}
-			}
+			const key = data.sessionId || currentSessionId || data.agentId;
+			const handler = handlers[data.type];
+			if (handler) handler(data, key);
 		});
-
 
 		return unsubscribe;
 		// eslint-disable-next-line react-hooks/exhaustive-deps

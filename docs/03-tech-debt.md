@@ -98,11 +98,9 @@
 | [session-handlers.ts](../src/main/ipc/session-handlers.ts) | 6 个独立操作（已拆出 message-handlers） | ✅ 2026-06-02 已拆 |
 | [template-handlers.ts](../src/main/ipc/template-handlers.ts) | 188 + GitHub import | 可拆 github-handlers |
 
-### 9. AppLayout 的 `onAgentEvent` switch 巨大
+### 9. AppLayout 的 `onAgentEvent` switch 巨大 ✅ 已修（2026-06-02 R8）
 
-[AppLayout.tsx:62-104](../src/renderer/components/layout/AppLayout.tsx#L62) 一个 switch 处理 8+ event type。每加一个事件类型都要改这里。
-
-**修复建议**：dispatcher 模式 — event name → handler function map。
+[AppLayout.tsx onAgentEvent](../src/renderer/components/layout/AppLayout.tsx) 改为 dispatcher map，新增 event type 只动 handlers object，不动主体。
 
 ### 10. 双构建系统
 

@@ -104,11 +104,9 @@ export interface IpcContext {
 
 这一步不改 runtime 代码，纯 UI 层配置。
 
-### R8. AppLayout event dispatcher 重构
+### R8. AppLayout event dispatcher 重构 ✅ 已完成（2026-06-02）
 
-**难度**：S  **风险**：中  **价值**：低（可维护性）
-
-把 [AppLayout.tsx:62-104](../src/renderer/components/layout/AppLayout.tsx#L62) 的 switch 改成：
+把 [AppLayout.tsx onAgentEvent](../src/renderer/components/layout/AppLayout.tsx) 内的 8-case switch 改成 dispatcher map：
 
 ```ts
 const handlers: Record<string, (data: any, key: string) => void> = {
@@ -119,6 +117,8 @@ const handlers: Record<string, (data: any, key: string) => void> = {
 const handler = handlers[data.type];
 if (handler) handler(data, key);
 ```
+
+顺带把 `JSON.stringify(..., null, 2)` 抽成 `stringify()` helper（tool_start / tool_end 共用）。新增 event type 现在只改 handlers map，不再动 switch 主体。55 单测 + 2 E2E 通过。
 
 ## 阶段三：补测试（持续）
 
