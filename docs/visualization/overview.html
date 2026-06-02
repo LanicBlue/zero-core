@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Zero-Core 模块依赖图</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    margin: 0;
+    padding: 24px;
+    background: #0d1117;
+    color: #c9d1d9;
+  }
+  h1 { margin: 0 0 8px; color: #f0f6fc; font-size: 22px; }
+  .subtitle { color: #8b949e; margin-bottom: 24px; font-size: 13px; }
+  .legend {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    background: #161b22; padding: 12px 16px; border-radius: 6px;
+    margin-bottom: 24px; font-size: 12px;
+    border: 1px solid #30363d;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch {
+    width: 14px; height: 14px; border-radius: 3px;
+    border: 1px solid #30363d;
+  }
+  .canvas {
+    position: relative;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 32px;
+    min-height: 720px;
+    overflow: hidden;
+  }
+  .layer {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 60px;
+    flex-wrap: wrap;
+  }
+  .layer-label {
+    position: absolute;
+    left: 0; top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+    transform-origin: left center;
+    color: #8b949e;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .module {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 14px 16px;
+    min-width: 200px;
+    max-width: 260px;
+    flex: 0 1 auto;
+  }
+  .module h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: #f0f6fc;
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 6px;
+  }
+  .module .role {
+    font-size: 11px;
+    color: #8b949e;
+    margin-bottom: 8px;
+  }
+  .module ul {
+    margin: 0;
+    padding-left: 16px;
+    font-size: 11px;
+    line-height: 1.6;
+    color: #c9d1d9;
+  }
+  .module .meta {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed #30363d;
+    font-size: 10px;
+    color: #8b949e;
+  }
+  .swatch-renderer { background: #1a3a5c; border-color: #2f6fad; }
+  .swatch-preload  { background: #3c2a1a; border-color: #ad7b2f; }
+  .swatch-main     { background: #2a1a3c; border-color: #6f2fad; }
+  .swatch-runtime  { background: #1a3c2a; border-color: #2fad6f; }
+  .swatch-server   { background: #3c1a2a; border-color: #ad2f6f; }
+  .swatch-core     { background: #3c3c1a; border-color: #adad2f; }
+  .swatch-shared   { background: #1a2a3c; border-color: #2f6fad; }
+  .arrow {
+    position: absolute;
+    pointer-events: none;
+  }
+  .footer {
+    margin-top: 32px;
+    color: #8b949e;
+    font-size: 11px;
+    border-top: 1px solid #30363d;
+    padding-top: 12px;
+  }
+  .issue-tag {
+    display: inline-block;
+    background: #3c1a1a;
+    color: #f85149;
+    border: 1px solid #f8514955;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    margin-left: 4px;
+  }
+  .warn-tag {
+    display: inline-block;
+    background: #3c2a1a;
+    color: #d29922;
+    border: 1px solid #d2992255;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    margin-left: 4px;
+  }
+  svg.flow {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .key-stat {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 12px 16px;
+    min-width: 140px;
+  }
+  .stat-card .value {
+    font-size: 22px;
+    color: #f0f6fc;
+    font-weight: 600;
+  }
+  .stat-card .label {
+    font-size: 11px;
+    color: #8b949e;
+    margin-top: 4px;
+  }
+  .stat-card.warning .value { color: #d29922; }
+  .stat-card.danger .value { color: #f85149; }
+</style>
+</head>
+<body>
+
+<h1>Zero-Core · 模块依赖图</h1>
+<div class="subtitle">分层架构 · 自上而下 · 箭头表示"调用 / 依赖"关系</div>
+
+<div class="key-stat">
+  <div class="stat-card"><div class="value">198</div><div class="label">src/ 文件数</div></div>
+  <div class="stat-card danger"><div class="value">378</div><div class="label">any 类型使用</div></div>
+  <div class="stat-card warning"><div class="value">91</div><div class="label">catch 块（含空）</div></div>
+  <div class="stat-card warning"><div class="value">2 / 0</div><div class="label">E2E / Unit 测试</div></div>
+  <div class="stat-card"><div class="value">10</div><div class="label">Zustand stores</div></div>
+  <div class="stat-card"><div class="value">13</div><div class="label">IPC handler 文件</div></div>
+  <div class="stat-card"><div class="value">7</div><div class="label">SQLite stores</div></div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch swatch-renderer"></div>Renderer (React)</div>
+  <div class="legend-item"><div class="legend-swatch swatch-preload"></div>Preload (桥)</div>
+  <div class="legend-item"><div class="legend-swatch swatch-main"></div>Main (Electron)</div>
+  <div class="legend-item"><div class="legend-swatch swatch-runtime"></div>Runtime (Agent)</div>
+  <div class="legend-item"><div class="legend-swatch swatch-server"></div>Server (持久化)</div>
+  <div class="legend-item"><div class="legend-swatch swatch-core"></div>Core (共享)</div>
+  <div class="legend-item"><div class="legend-swatch swatch-shared"></div>Shared Types</div>
+  <div class="legend-item"><span class="issue-tag">已知问题</span></div>
+  <div class="legend-item"><span class="warn-tag">需关注</span></div>
+</div>
+
+<div class="canvas" id="canvas">
+
+  <!-- Layer 1: Renderer -->
+  <div class="layer">
+    <div class="layer-label">Renderer · React 19</div>
+    <div class="module swatch-renderer">
+      <h3>components/ <span class="warn-tag">god 文件</span></h3>
+      <div class="role">UI 组件</div>
+      <ul>
+        <li>layout/ — AppLayout, ChatPanel, FileTreePanel, DocViewerPanel</li>
+        <li>agents/ — AgentEditor <span class="warn-tag">688 行</span></li>
+        <li>settings/ — SettingsPage <span class="warn-tag">667 行</span></li>
+        <li>mcp/, kb/, tools/</li>
+      </ul>
+      <div class="meta">41 文件</div>
+    </div>
+    <div class="module swatch-renderer">
+      <h3>store/ <span class="issue-tag">双状态</span></h3>
+      <div class="role">Zustand stores × 10</div>
+      <ul>
+        <li>chat-store <span class="issue-tag">messages + messagesBySession</span></li>
+        <li>agent-store, provider-store, ...</li>
+        <li>page-store, theme-store, interaction-store</li>
+      </ul>
+      <div class="meta">单源真理：chat messages</div>
+    </div>
+  </div>
+
+  <!-- Layer 2: Preload -->
+  <div class="layer">
+    <div class="layer-label">Preload · Context Bridge</div>
+    <div class="module swatch-preload">
+      <h3>preload/index.ts</h3>
+      <div class="role">156 个 IPC 桥接方法</div>
+      <ul>
+        <li>contextIsolation: true</li>
+        <li>无 capability 分级 <span class="warn-tag">暴露面广</span></li>
+        <li>事件订阅返回 cleanup</li>
+      </ul>
+      <div class="meta">1 文件</div>
+    </div>
+  </div>
+
+  <!-- Layer 3: Main -->
+  <div class="layer">
+    <div class="layer-label">Main · Electron</div>
+    <div class="module swatch-main">
+      <h3>main/ipc/ <span class="issue-tag">IpcContext 全 any</span></h3>
+      <div class="role">IPC handlers × 13 文件</div>
+      <ul>
+        <li>core.ts — 模块加载 + 响应式 ctx</li>
+        <li>typed-ipc.ts — 类型安全（?）</li>
+        <li>chat/session/template/kb/mcp/...-handlers.ts</li>
+        <li>module-readiness.ts — gating</li>
+      </ul>
+      <div class="meta">20 文件 · 156 channels</div>
+    </div>
+    <div class="module swatch-main">
+      <h3>main/index.ts</h3>
+      <div class="role">入口 + BrowserWindow</div>
+      <ul>
+        <li>app.whenReady → createWindow → registerIpc → loadCoreModules</li>
+        <li>test-setup.ts (gated by env)</li>
+        <li>单窗口架构</li>
+      </ul>
+      <div class="meta">Phase 0-6 启动</div>
+    </div>
+  </div>
+
+  <!-- Layer 4: Runtime -->
+  <div class="layer">
+    <div class="layer-label">Runtime · Agent 编排</div>
+    <div class="module swatch-runtime">
+      <h3>agent-loop.ts <span class="warn-tag">784 行</span></h3>
+      <div class="role">单 turn 编排 + retry + streaming</div>
+      <ul>
+        <li>fullStream 消费 → emit 事件</li>
+        <li>retry: max 3, exp backoff</li>
+        <li>context-length error → prune + retry</li>
+        <li>28 个 any 类型</li>
+      </ul>
+    </div>
+    <div class="module swatch-runtime">
+      <h3>provider-factory.ts <span class="issue-tag">无 MiniMax/GLM</span></h3>
+      <div class="role">Provider 工厂</div>
+      <ul>
+        <li>openai / anthropic / gemini / ollama</li>
+        <li>openai-compatible (MiniMax/GLM 走这)</li>
+        <li>mock (E2E 用)</li>
+        <li>concurrency manager</li>
+      </ul>
+    </div>
+    <div class="module swatch-runtime">
+      <h3>tools/ + mcp-tools/</h3>
+      <div class="role">工具系统</div>
+      <ul>
+        <li>runtime tools: bash, read, write, edit, grep, glob, ...</li>
+        <li>mcp-tools/: fetch, memory, sequential-thinking</li>
+        <li>tool-registry.ts — 注册中心</li>
+        <li>tool-policy.ts — 白/黑名单</li>
+      </ul>
+    </div>
+    <div class="module swatch-runtime">
+      <h3>session.ts / turn-recorder.ts</h3>
+      <div class="role">会话与检查点</div>
+      <ul>
+        <li>context window pruning</li>
+        <li>incremental checkpoint</li>
+        <li>prompt-sections.ts (cached)</li>
+        <li>agent-utils.ts — retry + thinking tags</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Layer 5: Server -->
+  <div class="layer">
+    <div class="layer-label">Server · 持久化 + 服务</div>
+    <div class="module swatch-server">
+      <h3>agent-service.ts</h3>
+      <div class="role">Agent 全局调度</div>
+      <ul>
+        <li>sendPrompt → loop.run</li>
+        <li>activateSession → emit session_init</li>
+        <li>recoverIncompleteSessions</li>
+      </ul>
+    </div>
+    <div class="module swatch-server">
+      <h3>session-db.ts + sqlite-store.ts <span class="issue-tag">列同步陷阱</span></h3>
+      <div class="role">SQLite 持久化</div>
+      <ul>
+        <li>sessions, messages, turns, turn_state</li>
+        <li>SqliteStore 通用 CRUD</li>
+        <li>7 个表</li>
+        <li>migration 双源问题</li>
+      </ul>
+    </div>
+    <div class="module swatch-server">
+      <h3>mcp-manager.ts</h3>
+      <div class="role">MCP 客户端</div>
+      <ul>
+        <li>stdio + SSE 传输</li>
+        <li>启动期 reconnect <span class="warn-tag">fire-and-forget</span></li>
+        <li>tool 注册到 ToolRegistry</li>
+      </ul>
+    </div>
+    <div class="module swatch-server">
+      <h3>session-manager.ts + recovery.ts</h3>
+      <div class="role">生命周期 + 中断恢复</div>
+      <ul>
+        <li>状态机: created→streaming→disposed</li>
+        <li>TTL 清理</li>
+        <li>metrics hooks</li>
+        <li>recovery <span class="warn-tag">stuck pending 不清</span></li>
+      </ul>
+    </div>
+    <div class="module swatch-server">
+      <h3>kb-store + kb-db + kb-search</h3>
+      <div class="role">知识库</div>
+      <ul>
+        <li>KbStore (元数据) + KbDB (向量)</li>
+        <li>独立 knowledge.db</li>
+        <li>cosine similarity + top-K</li>
+        <li>embedding 失败 graceful</li>
+      </ul>
+    </div>
+    <div class="module swatch-server">
+      <h3>stores/</h3>
+      <div class="role">业务 store × 6</div>
+      <ul>
+        <li>AgentStore, ProviderStore, TemplateStore</li>
+        <li>McpStore, AgentToolStore</li>
+        <li>MemoryStore, KeyValueStore</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Layer 6: Core / Shared -->
+  <div class="layer">
+    <div class="layer-label">Core / Shared · 跨进程</div>
+    <div class="module swatch-core">
+      <h3>core/</h3>
+      <div class="role">配置 + 工具</div>
+      <ul>
+        <li>config.ts — ZERO_CORE_DIR, 默认值</li>
+        <li>logger.ts — 文件日志</li>
+        <li>context-manager.ts</li>
+        <li>tool-policy.ts, hook-registry.ts</li>
+        <li>default-prompt.ts</li>
+      </ul>
+      <div class="meta">18 文件</div>
+    </div>
+    <div class="module swatch-shared">
+      <h3>shared/</h3>
+      <div class="role">类型契约</div>
+      <ul>
+        <li>types.ts — AgentRecord, Provider, ...</li>
+        <li>ipc-api.ts — IPC 类型定义</li>
+        <li><span class="issue-tag">todos:get.result 是 any[]</span></li>
+      </ul>
+      <div class="meta">5 文件 · 应为单一来源</div>
+    </div>
+  </div>
+
+  <!-- SVG flow arrows (decorative, show directionality) -->
+  <svg class="flow">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+              markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#30363d"/>
+      </marker>
+    </defs>
+    <!-- Arrows are illustrative; the actual dependency is documented in the modules -->
+  </svg>
+</div>
+
+<div class="footer">
+  生成于 2026-06-02 · 详细文档见 <code>docs/02-architecture.md</code>
+</div>
+
+</body>
+</html>
