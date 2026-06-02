@@ -14,7 +14,6 @@ zero-core/
 ├── build/                # 空目录（占位）
 ├── resources/            # 空目录（占位）
 ├── env-dump.txt          # 调试残留，应删除
-├── openclaw.plugin.json  # 用途不明，需确认
 ├── package.json
 ├── tsconfig.json         # 根 references（不参与编译）
 ├── tsconfig.cli.json     # 库构建（Node16/ES2022 → dist/）
@@ -129,7 +128,6 @@ npm run test:e2e
 | 路径 | 问题 |
 |------|------|
 | `env-dump.txt` | 上一轮调试残留 |
-| `openclaw.plugin.json` | 用途不明，需要确认是否还需要 |
 | `src/renderer/components/workspace/` | 空目录 |
 | `build/` | 空目录 |
 | `resources/` | 空目录 |

@@ -160,10 +160,11 @@
 
 **状态**：✅ 2026-06-02 已删除 `env-dump.txt`，`test-results/` 已加入 `.gitignore`。
 
-**仍需确认**：
-- `openclaw.plugin.json`（用途不明 — src/ 无引用，但可能是外部 Pi Agent harness 读，未删）
+**仍需关注**：
 - `src/renderer/components/workspace/`（空目录）
 - `build/`、`resources/`（空目录 — git 不追踪空目录，磁盘上无害）
+
+> 已删除：`env-dump.txt`（2026-06-02 调试残留）、`openclaw.plugin.json`（2026-06-02，原计划做成 Pi Agent 插件，现已独立 harness，不再需要）。
 
 ### 15. 空状态 / loading / error 不一致
 

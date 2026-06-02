@@ -36,7 +36,7 @@
 
 - ✅ 删 `env-dump.txt`
 - ✅ `.gitignore` 加入 `test-results/` 和 `.env`
-- ⏸️ `openclaw.plugin.json` 未删 — src/ 无引用但可能是外部 Pi Agent harness 读，需用户确认
+- ✅ 删 `openclaw.plugin.json`（原计划做成 Pi Agent 插件，现已独立 harness）
 - 空目录（`build/`、`resources/`、`src/renderer/components/workspace/`）git 不追踪，磁盘无害，暂留
 
 ## 阶段二：根除反复 bug 的模式（3-5 天）
