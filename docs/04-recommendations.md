@@ -41,21 +41,27 @@
 
 ## 阶段二：根除反复 bug 的模式（3-5 天）
 
-### R5. chat-store 单源化
+### R5. chat-store 单源化 ✅ 已完成（2026-06-02）
 
-**难度**：M  **风险**：中  **价值**：高
-
-去掉 `messages` 字段，所有读取改成：
+**做法**：[src/renderer/store/chat-store.ts](../src/renderer/store/chat-store.ts) 移除 `messages` 和 `isStreaming` 两个字段，改成 derived selector：
 
 ```ts
-const messages = useChatStore(s => 
-  s.activeSessionId ? s.messagesBySession[s.activeSessionId] ?? [] : []
-);
+const EMPTY_MESSAGES: ChatMessage[] = [];
+export const selectActiveMessages = (s) =>
+  s.activeSessionId ? (s.messagesBySession[s.activeSessionId] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES;
+export const selectIsStreaming = (s) =>
+  s.activeSessionId !== null && s.streamingSessions.has(s.activeSessionId);
 ```
 
-或者保留 `messages` 作为 derived state，用 zustand 的 subscribe 同步，让两份状态永远自动一致。
+所有 setter 不再维护双状态，只写 `messagesBySession` 和 `streamingSessions`。
 
-**回归风险**：renderer 多处直接订阅 `messages`，要全局替换并测一遍。
+**消费者更新**：
+- [ChatPanel.tsx](../src/renderer/components/layout/ChatPanel.tsx) 改成 `useChatStore(selectActiveMessages)` / `useChatStore(selectIsStreaming)`
+- [AppLayout.tsx](../src/renderer/components/layout/AppLayout.tsx) 之前 destructure 了 `messages`/`isStreaming` 但实际没用，移除
+
+**踩过的坑（已修）**：初版 selector 写成 `?? []` 字面量，每次调用返回新的空数组引用，zustand 视为状态变化触发重渲染 → React error #185（无限更新）。修复：用模块级 `EMPTY_MESSAGES` 常量保证引用稳定。
+
+**测试**：原本 23 个 chat-store 测试改写为 25 个（去掉 dual-state 不变量、加上 single-source 不变量）。Mutation 测试仍有意义：破坏 `addMessage` 让 `messagesBySession` 不更新，对应测试失败。
 
 ### R6. IpcContext 加真类型 ✅ 已完成（2026-06-02）
 

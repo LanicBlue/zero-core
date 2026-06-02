@@ -34,19 +34,13 @@
 
 **仍需做**：lint 规则自动化检测（未做）— 目前靠 code review。IpcContext 加真类型后，TS 可以编译期校验。
 
-### 4. `activeSessionId` 同步路径脆弱
+### 4. `activeSessionId` 同步路径脆弱（已修复）
 
-**症状**：[chat-store.ts](../src/renderer/store/chat-store.ts) 双状态（messagesBySession + messages），任何 addMessage / updateAssistantText 都要判断 `isActive = sessionId === activeSessionId`。
+**状态**：✅ 2026-06-02 R5 已完成 — 移除 chat-store 的 `messages` 和 `isStreaming` 双源字段，改为 derived selector（`selectActiveMessages` / `selectIsStreaming`）。所有 setter 只写 `messagesBySession` 和 `streamingSessions`，不再维护镜像状态。
 
-**根因**：rendering 优化带来的双源。
+**根因回顾**：原本 [chat-store.ts](../src/renderer/store/chat-store.ts) 维护 `messagesBySession + messages` 双状态，每个 setter 都要判断 `isActive = sessionId === activeSessionId` 决定是否同步 `messages`。容易漏写导致用户消息不渲染、text_delta 在 activeSessionId 切换时静默丢弃等问题。
 
-**刚暴露的 bug**：refreshSessionData 不 setActiveSessionId → 用户消息不渲染。已修，但同样的模式还有：
-- text_delta 在 activeSessionId null 时静默丢弃（updateAssistantText 也用 isActive 判断）
-- session_init 的 messages 在 activeSessionId 不匹配时静默丢弃
-
-**修复建议**：
-- 单源化：只用 `messagesBySession[activeSessionId]`，删除 `messages` 字段，renderer 直接 select
-- 或：保留 `messages` 但在 setter 里强制 invariant（activeSessionId 改变后立即同步）
+**踩过的坑**：selector 写成 `?? []` 字面量会触发 React error #185（无限重渲染），因为每次调用产生新数组引用。修法是模块级常量 `EMPTY_MESSAGES`。
 
 ### 5. 单元测试几乎为零（部分缓解）
 

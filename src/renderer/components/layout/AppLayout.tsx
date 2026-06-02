@@ -22,7 +22,7 @@ export default function AppLayout() {
 	const lastErrorKey = useRef<string | null>(null);
 
 	const {
-		messages, activeAgentId, activeSessionId, isStreaming,
+		activeAgentId, activeSessionId,
 		addMessage, updateAssistantText, updateThinking, addToolCall, updateToolCall,
 		finishStreaming, initSession, updateSessionLifecycle,
 	} = useChatStore();

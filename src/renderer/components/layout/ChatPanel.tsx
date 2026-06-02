@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { useChatStore, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
+import { useChatStore, selectActiveMessages, selectIsStreaming, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
 import AskUserCard from "../chat/AskUserCard.js";
@@ -169,11 +169,13 @@ function renderBlocks(blocks: MessageBlock[], streaming: boolean) {
 
 export default function ChatPanel() {
 	const {
-				messages, activeAgentId, activeSessionId, isStreaming, sessionsByAgent,
+				activeAgentId, activeSessionId, sessionsByAgent,
 				addMessage, finishStreaming, setActiveAgent,
 				setSessions, setActiveSessionId, clearMessages,
 				editMessage, deleteMessage, setIsStreaming,
 			} = useChatStore();
+	const messages = useChatStore(selectActiveMessages);
+	const isStreaming = useChatStore(selectIsStreaming);
 	const { agents } = useAgentStore();
 	const { pendingQuestions, todosByAgent } = useInteractionStore();
 	const [input, setInput] = useState("");

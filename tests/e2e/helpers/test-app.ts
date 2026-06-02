@@ -36,10 +36,21 @@ export async function launchApp(fixtureAbsPath: string): Promise<TestApp> {
 		},
 	});
 
-	const window = await app.firstWindow();
-
 	app.process().stdout?.on("data", (chunk) => process.stdout.write(`[electron:stdout] ${chunk}`));
 	app.process().stderr?.on("data", (chunk) => process.stderr.write(`[electron:stderr] ${chunk}`));
+
+	const window = await app.firstWindow();
+
+	// Surface renderer console errors so failures aren't silent.
+	window.on("console", (msg) => {
+		const type = msg.type();
+		if (type === "error" || type === "warning") {
+			process.stderr.write(`[renderer:${type}] ${msg.text()}\n`);
+		}
+	});
+	window.on("pageerror", (err) => {
+		process.stderr.write(`[renderer:pageerror] ${err.message}\n${err.stack ?? ""}\n`);
+	});
 
 	return {
 		app,

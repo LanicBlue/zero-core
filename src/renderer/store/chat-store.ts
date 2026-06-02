@@ -40,8 +40,6 @@ interface ChatState {
 	activeAgentId: string | null;
 	activeSessionId: string | null;
 	streamingSessions: Set<string>;
-	messages: ChatMessage[];
-	isStreaming: boolean;
 	sessionsByAgent: Record<string, SessionRecord[]>;
 
 	addMessage: (sessionId: string, msg: ChatMessage) => void;
@@ -76,29 +74,37 @@ function updateLastAssistantMsg(
 	return result;
 }
 
-function calcIsStreaming(streamingSessions: Set<string>, activeSessionId: string | null): boolean {
-	return activeSessionId !== null && streamingSessions.has(activeSessionId);
-}
+// ---------------------------------------------------------------------------
+// Selectors — derived state, single source of truth lives in messagesBySession
+// and streamingSessions. Consumers should use these instead of reading a
+// duplicated `messages` / `isStreaming` field.
+//
+// IMPORTANT: selectors must return a stable reference for equal inputs —
+// `?? []` would create a new array on every call and cause React to loop.
+// ---------------------------------------------------------------------------
+
+const EMPTY_MESSAGES: ChatMessage[] = [];
+
+export const selectActiveMessages = (s: ChatState): ChatMessage[] =>
+	s.activeSessionId ? (s.messagesBySession[s.activeSessionId] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES;
+
+export const selectIsStreaming = (s: ChatState): boolean =>
+	s.activeSessionId !== null && s.streamingSessions.has(s.activeSessionId);
 
 export const useChatStore = create<ChatState>((set) => ({
 	messagesBySession: {},
 	activeAgentId: null,
 	activeSessionId: null,
 	streamingSessions: new Set(),
-	messages: [],
-	isStreaming: false,
 	sessionsByAgent: {},
 
-		addMessage: (sessionId, msg) =>
-			set((state) => {
-				const sessionMsgs = [...(state.messagesBySession[sessionId] ?? []), msg];
-				const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
-				const isActive = sessionId === state.activeSessionId;
-				return {
-					messagesBySession: newBySession,
-					messages: isActive ? sessionMsgs : state.messages,
-				};
-			}),
+	addMessage: (sessionId, msg) =>
+		set((state) => ({
+			messagesBySession: {
+				...state.messagesBySession,
+				[sessionId]: [...(state.messagesBySession[sessionId] ?? []), msg],
+			},
+		})),
 
 	updateAssistantText: (sessionId, text) =>
 		set((state) => {
@@ -112,11 +118,8 @@ export const useChatStore = create<ChatState>((set) => ({
 				}
 				return { ...msg, blocks, streaming: true };
 			});
-			const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
-			const isActive = sessionId === state.activeSessionId;
 			return {
-				messagesBySession: newBySession,
-				messages: isActive ? sessionMsgs : state.messages,
+				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
 			};
 		}),
 
@@ -132,11 +135,8 @@ export const useChatStore = create<ChatState>((set) => ({
 				}
 				return { ...msg, blocks, streaming: true };
 			});
-			const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
-			const isActive = sessionId === state.activeSessionId;
 			return {
-				messagesBySession: newBySession,
-				messages: isActive ? sessionMsgs : state.messages,
+				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
 			};
 		}),
 
@@ -147,11 +147,8 @@ export const useChatStore = create<ChatState>((set) => ({
 				blocks.push({ type: "tool", name, status: "running", args });
 				return { ...msg, blocks, streaming: true };
 			});
-			const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
-			const isActive = sessionId === state.activeSessionId;
 			return {
-				messagesBySession: newBySession,
-				messages: isActive ? sessionMsgs : state.messages,
+				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
 			};
 		}),
 
@@ -170,11 +167,8 @@ export const useChatStore = create<ChatState>((set) => ({
 				}
 				return { ...msg, blocks, streaming: true };
 			});
-			const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
-			const isActive = sessionId === state.activeSessionId;
 			return {
-				messagesBySession: newBySession,
-				messages: isActive ? sessionMsgs : state.messages,
+				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
 			};
 		}),
 
@@ -183,63 +177,38 @@ export const useChatStore = create<ChatState>((set) => ({
 			const newStreaming = new Set(state.streamingSessions);
 			if (v) newStreaming.add(sessionId);
 			else newStreaming.delete(sessionId);
-			return {
-				streamingSessions: newStreaming,
-				isStreaming: calcIsStreaming(newStreaming, state.activeSessionId),
-			};
+			return { streamingSessions: newStreaming };
 		}),
 
-		finishStreaming: (sessionId) =>
-			set((state) => {
-				const sessionMsgs = (state.messagesBySession[sessionId] ?? []).map((m) =>
-					m.streaming ? { ...m, streaming: false } : m,
-				);
-				const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
-				const isActive = sessionId === state.activeSessionId;
-				return {
-					messagesBySession: newBySession,
-					messages: isActive ? sessionMsgs : state.messages,
-				};
-			}),
-
-		updateSessionLifecycle: (sessionId, lifecycleState) =>
-			set((s) => {
-				const newStreaming = new Set(s.streamingSessions);
-				const active = lifecycleState === "streaming" || lifecycleState === "executing_tools" || lifecycleState === "queued";
-				if (active) newStreaming.add(sessionId);
-				else newStreaming.delete(sessionId);
-				return {
-					streamingSessions: newStreaming,
-					isStreaming: calcIsStreaming(newStreaming, s.activeSessionId),
-				};
-			}),
-
-	setActiveAgent: (id, sessionId?) =>
+	finishStreaming: (sessionId) =>
 		set((state) => {
-			const newBySession = { ...state.messagesBySession };
-			if (state.activeSessionId && state.activeAgentId && state.activeAgentId !== id) {
-				newBySession[state.activeSessionId] = state.messages;
-			}
-			const newActiveSessionId = sessionId ?? null;
-			const newMessages = newActiveSessionId ? (newBySession[newActiveSessionId] ?? []) : [];
+			const sessionMsgs = (state.messagesBySession[sessionId] ?? []).map((m) =>
+				m.streaming ? { ...m, streaming: false } : m,
+			);
 			return {
-				activeAgentId: id,
-				activeSessionId: newActiveSessionId,
-				messagesBySession: newBySession,
-				messages: newMessages,
-				isStreaming: calcIsStreaming(state.streamingSessions, newActiveSessionId),
+				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
 			};
 		}),
+
+	updateSessionLifecycle: (sessionId, lifecycleState) =>
+		set((s) => {
+			const newStreaming = new Set(s.streamingSessions);
+			const active = lifecycleState === "streaming" || lifecycleState === "executing_tools" || lifecycleState === "queued";
+			if (active) newStreaming.add(sessionId);
+			else newStreaming.delete(sessionId);
+			return { streamingSessions: newStreaming };
+		}),
+
+	setActiveAgent: (_id, sessionId?) =>
+		set(() => ({
+			activeAgentId: _id,
+			activeSessionId: sessionId ?? null,
+		})),
 
 	loadMessages: (sessionId, msgs) =>
-		set((state) => {
-			const newBySession = { ...state.messagesBySession, [sessionId]: msgs };
-			const isActive = sessionId === state.activeSessionId;
-			return {
-				messagesBySession: newBySession,
-				messages: isActive ? msgs : state.messages,
-			};
-		}),
+		set((state) => ({
+			messagesBySession: { ...state.messagesBySession, [sessionId]: msgs },
+		})),
 
 	initSession: (sessionId, payload) =>
 		set((state) => {
@@ -248,25 +217,16 @@ export const useChatStore = create<ChatState>((set) => ({
 			if (hasStreaming) newStreaming.add(sessionId);
 			else newStreaming.delete(sessionId);
 
-			const newBySession = { ...state.messagesBySession, [sessionId]: payload.messages };
-			const isActive = sessionId === state.activeSessionId;
 			return {
-				messagesBySession: newBySession,
-				messages: isActive ? payload.messages : state.messages,
+				messagesBySession: { ...state.messagesBySession, [sessionId]: payload.messages },
 				streamingSessions: newStreaming,
-				isStreaming: calcIsStreaming(newStreaming, isActive ? sessionId : state.activeSessionId),
 			};
 		}),
 
 	clearMessages: (sessionId) =>
-		set((state) => {
-			const newBySession = { ...state.messagesBySession, [sessionId]: [] };
-			const isActive = sessionId === state.activeSessionId;
-			return {
-				messagesBySession: newBySession,
-				messages: isActive ? [] : state.messages,
-			};
-		}),
+		set((state) => ({
+			messagesBySession: { ...state.messagesBySession, [sessionId]: [] },
+		})),
 
 	setSessions: (agentId, sessions) =>
 		set((state) => ({
@@ -274,14 +234,7 @@ export const useChatStore = create<ChatState>((set) => ({
 		})),
 
 	setActiveSessionId: (sessionId) =>
-		set((state) => {
-			const newMessages = sessionId ? (state.messagesBySession[sessionId] ?? []) : [];
-			return {
-				activeSessionId: sessionId,
-				messages: newMessages,
-				isStreaming: calcIsStreaming(state.streamingSessions, sessionId),
-			};
-		}),
+		set(() => ({ activeSessionId: sessionId })),
 
 	editMessage: (sessionId, msgId, newText) =>
 		set((state) => {
@@ -290,22 +243,16 @@ export const useChatStore = create<ChatState>((set) => ({
 					? { ...m, text: newText, blocks: [{ type: "text" as const, text: newText }] }
 					: m,
 			);
-			const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
-			const isActive = sessionId === state.activeSessionId;
 			return {
-				messagesBySession: newBySession,
-				messages: isActive ? sessionMsgs : state.messages,
+				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
 			};
 		}),
 
 	deleteMessage: (sessionId, msgId) =>
 		set((state) => {
 			const sessionMsgs = (state.messagesBySession[sessionId] ?? []).filter((m) => m.id !== msgId);
-			const newBySession = { ...state.messagesBySession, [sessionId]: sessionMsgs };
-			const isActive = sessionId === state.activeSessionId;
 			return {
-				messagesBySession: newBySession,
-				messages: isActive ? sessionMsgs : state.messages,
+				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
 			};
 		}),
 }));
