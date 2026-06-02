@@ -137,7 +137,7 @@ export class SessionManager {
 							reasoningTokens: m.reasoningTokens,
 							estimatedCostUsd: 0,
 						});
-					} catch { /* ignore DB errors */ }
+					} catch (err) { log.warn("session", "persist metrics failed:", (err as Error).message); }
 				}
 			}
 		}

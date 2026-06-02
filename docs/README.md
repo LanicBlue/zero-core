@@ -22,12 +22,18 @@
 
 **结构层面**：分层是清晰的（main / preload / renderer / runtime / server / core / shared），但分层之间的边界**靠人治不靠类型**——[IpcContext 的 15 个字段全是 `any`](../src/main/ipc/types.ts)，[`typedHandle` 提供的类型安全是假象](../src/main/ipc/typed-ipc.ts)。
 
-**主要风险**：
-1. **fresh-DB 类 bug 容易复发**：刚修了 `AgentToolStore` 列同步和 `activeSessionId`，但模式问题（migration 列定义和 store 列定义两套）没根除
-2. **`any` 类型泛滥**：378 处，public API 也有
-3. **错误吞噬**：91 个 catch 块，大量 `catch {}`
-4. **测试覆盖几乎为零**：仅 2 个 E2E 烟测，runtime/agent-loop、recovery、MCP、KB、tool 调用全部没有自动化测试
-5. **god 文件**：[AgentEditor.tsx (688 行)](../src/renderer/components/agents/AgentEditor.tsx)、[SettingsPage.tsx (667 行)](../src/renderer/components/settings/SettingsPage.tsx)、[session-handlers.ts (9 个独立操作)](../src/main/ipc/session-handlers.ts)
+**止血阶段已完成的修复**（2026-06-02）：
+- ✅ SqliteStore self-heal：构造时检测缺失列并自动 ALTER ADD COLUMN（[R1](04-recommendations.md#r1)）
+- ⚠️ handler modules 数组漏报已修 4 处（chat:send / chat:abort / config:get-theme / config:set-theme）（[R2](04-recommendations.md#r2)）
+- ⚠️ 5 处真正静默的 catch 已加 log.warn（[R3](04-recommendations.md#r3)）
+- ⚠️ env-dump.txt 已删，test-results 加入 gitignore（[R4](04-recommendations.md#r4)）
+
+**仍需关注的主要风险**：
+1. **fresh-DB 类 bug 模式**：R1 缓解了，但 db-migration.ts 的 *_COLUMNS 和 store COLUMNS 双源问题未根除（见 [R15](04-recommendations.md#r15)）
+2. **`any` 类型泛滥**：378 处，public API 也有 — 见 [R6](04-recommendations.md#r6)
+3. **测试覆盖几乎为零**：仅 2 个 E2E 烟测，runtime/agent-loop、recovery、MCP、KB、tool 调用全部没有自动化测试 — 见 [R9-R11](04-recommendations.md#r9)
+4. **god 文件**：[AgentEditor.tsx (688 行)](../src/renderer/components/agents/AgentEditor.tsx)、[SettingsPage.tsx (667 行)](../src/renderer/components/settings/SettingsPage.tsx)、[session-handlers.ts (9 个独立操作)](../src/main/ipc/session-handlers.ts) — 见 [R12](04-recommendations.md#r12)
+5. **chat-store 双状态**：messagesBySession + messages 双源 — 见 [R5](04-recommendations.md#r5)
 
 **已经潜伏的 bug**：见 [05-known-bugs.md](05-known-bugs.md)。
 

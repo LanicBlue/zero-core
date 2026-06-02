@@ -3,6 +3,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { McpServerConfig } from "../shared/types.js";
 import type { ToolRegistry } from "../core/tool-registry.js";
+import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -131,7 +132,7 @@ export class MCPManager {
 		if (server.transport instanceof StdioClientTransport) {
 			try {
 				(server.transport as any).close?.();
-			} catch { /* ignore */ }
+			} catch (err) { log.warn("mcp", "transport close failed:", (err as Error).message); }
 		}
 
 		this.servers.delete(serverId);

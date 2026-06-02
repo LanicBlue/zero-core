@@ -4,17 +4,17 @@
 
 ## 🔴 高优先级
 
-### 1. SQLite migration 列同步问题（架构层面未根除）
+### 1. SQLite migration 列同步问题（已自愈，架构层面部分缓解）
 
-**症状**：刚修了 [AGENT_TOOL_COLUMNS 漏 auto_background_timeout](../src/server/db-migration.ts#L33) 导致 fresh DB 启动崩溃。
+**状态**：✅ 2026-06-02 已实现 self-heal（[sqlite-store.ts ensureTable](../src/server/sqlite-store.ts#L75)）— 构造时检测缺失列并自动 ALTER ADD COLUMN。
+
+**症状**：曾因 [AGENT_TOOL_COLUMNS 漏 auto_background_timeout](../src/server/db-migration.ts#L33) 导致 fresh DB 启动崩溃。
 
 **根因**：每个 SqliteStore 的 `COLUMNS` 数组和 [db-migration.ts](../src/server/db-migration.ts) 里对应的 `*_COLUMNS` 数组是**两份独立定义**，靠人工同步。`safeAddColumn` 在表不存在时静默失败，所以 fresh DB 完全靠 migration 的 COLUMNS 列表创建表。
 
-**影响范围**：现在 7 个 store 都是这个模式（agents、agent_tools、providers、templates、mcp_servers、kb_entries、memory）。任何新增列都可能复现这个 bug。
+**当前状态**：现在 [SqliteStore.ensureTable](../src/server/sqlite-store.ts#L75) 在 CREATE TABLE 之后会读 table_info，对每个声明的列做 ALTER ADD COLUMN if missing。这意味着即使 migration 的 *_COLUMNS 落后，store 自己会补齐。
 
-**修复建议**：
-- 短期：让 migration 文件直接 import store 的 COLUMNS 常量，消除双源
-- 长期：把 schema 定义和 SqliteStore 类绑定，migration 自动派生
+**仍需做**：长期目标是让 db-migration.ts 直接 import 各 store 的 COLUMNS 常量，彻底消除双源。当前 self-heal 是 safety net，不是根除。
 
 ### 2. IpcContext 全 `any`，typedHandle 是假类型安全
 
@@ -26,15 +26,15 @@
 - 给 IpcContext 字段加真类型（`agentStore: AgentStore` 等）
 - 升级 typedHandle 让它在编译期校验 modules 数组和实际访问的 ctx 字段一致
 
-### 3. handler 声明的依赖不准确
+### 3. handler 声明的依赖不准确（已修）
 
-**症状**：[chat-handlers.ts:9](../src/main/ipc/chat-handlers.ts#L9) `chat:send` 声明 `["agentService", "workspaceConfig"]` 但实际还访问 `providerStore`、`agentStore`。`chat:abort` 声明 `[]` 但访问 `agentService`。
+**状态**：✅ 2026-06-02 已修正 [chat:send](../src/main/ipc/chat-handlers.ts#L9)、[chat:abort](../src/main/ipc/chat-handlers.ts#L44)、`config:get-theme`、`config:set-theme` 的 modules 数组。
+
+**症状**：曾存在 [chat-handlers.ts:9](../src/main/ipc/chat-handlers.ts#L9) `chat:send` 声明 `["agentService", "workspaceConfig"]` 但实际还访问 `providerStore`、`agentStore`。`chat:abort` 声明 `[]` 但访问 `agentService`。
 
 **根因**：typedHandle 不强制校验，靠开发者自觉。
 
-**影响**：模块没 ready 时 IPC 调用直接 crash（已经发生过 — Phase 2b 测试 seed 异常时）。
-
-**修复建议**：lint 规则 + 准确声明。
+**仍需做**：lint 规则自动化检测（未做）— 目前靠 code review。IpcContext 加真类型后，TS 可以编译期校验。
 
 ### 4. `activeSessionId` 同步路径脆弱
 
@@ -78,15 +78,20 @@
 4. `mcp-handlers.ts` — 18
 5. `main/ipc/types.ts` / `kb-handlers.ts` — 各 16
 
-### 7. 错误吞噬
+### 7. 错误吞噬（部分已修）
 
-**91 个 catch 块**，大量 `catch {}`。典型问题位置：
-- [src/main/ipc/core.ts:248](../src/main/ipc/core.ts#L248) MCP reconnect 错误吞噬
-- [src/main/ipc/template-handlers.ts:54](../src/main/ipc/template-handlers.ts#L54) GitHub cache 保存失败静默
-- [src/runtime/agent-loop.ts:334](../src/runtime/agent-loop.ts#L334) retry 时删 turn 失败静默
-- [src/main/index.ts:75](../src/main/index.ts#L75) chcp 设置失败静默（虽然是合理的 best effort）
+**状态**：⚠️ 2026-06-02 已处理真正静默 + 标 "ignore" 但属于真实错误的几处。其他 best-effort 路径（file-log-sink、rename backup、glob skip 等）保持原样，已有注释说明意图。
 
-**修复建议**：至少 `log.warn` 一行，不要全静默。
+**91 个 catch 块**。已修：
+- [src/runtime/agent-loop.ts:334](../src/runtime/agent-loop.ts#L334) retry 时删 turn 失败 → `log.warn("loop", ...)`
+- [src/main/ipc/template-handlers.ts:54](../src/main/ipc/template-handlers.ts#L54) GitHub cache 保存失败 → `log.warn("ipc", ...)`
+- [src/renderer/components/agents/AgentEditor.tsx:266](../src/renderer/components/agents/AgentEditor.tsx#L266) UI 自动保存失败 → `console.error`
+- [src/server/session-manager.ts:140](../src/server/session-manager.ts#L140) metrics 持久化失败 → `log.warn("session", ...)`
+- [src/server/mcp-manager.ts:134](../src/server/mcp-manager.ts#L134) MCP transport close 失败 → `log.warn("mcp", ...)`
+
+**仍需关注**：
+- [src/main/ipc/core.ts:248](../src/main/ipc/core.ts#L248) MCP reconnect 错误吞噬 — fire-and-forget，建议至少 log
+- [src/main/index.ts:75](../src/main/index.ts#L75) chcp 设置失败 — 合理 best effort，保留
 
 ## 🟡 中优先级
 
@@ -151,13 +156,14 @@
 
 ## 🟢 低优先级（清理类）
 
-### 14. 残留文件
+### 14. 残留文件（部分已清）
 
-- `env-dump.txt`（根目录，上轮调试残留）
-- `openclaw.plugin.json`（用途不明）
+**状态**：✅ 2026-06-02 已删除 `env-dump.txt`，`test-results/` 已加入 `.gitignore`。
+
+**仍需确认**：
+- `openclaw.plugin.json`（用途不明 — src/ 无引用，但可能是外部 Pi Agent harness 读，未删）
 - `src/renderer/components/workspace/`（空目录）
-- `build/`（空目录）
-- `resources/`（空目录）
+- `build/`、`resources/`（空目录 — git 不追踪空目录，磁盘上无害）
 
 ### 15. 空状态 / loading / error 不一致
 

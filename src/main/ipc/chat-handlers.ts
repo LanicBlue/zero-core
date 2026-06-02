@@ -6,7 +6,7 @@ import { ensureAgentService, getMainWindow } from "./core.js";
 const expandHome = (p: string) => p.startsWith("~") ? p.replace(/^~/, homedir()) : p;
 
 export function registerChatHandlers(ctx: IpcContext): void {
-	typedHandle("chat:send", ["agentService", "workspaceConfig"],
+	typedHandle("chat:send", ["agentService", "workspaceConfig", "providerStore", "agentStore"],
 		async (_ctx, text, agentId, sessionId?) => {
 			const svc = await ensureAgentService();
 			const agent = agentId ? _ctx.agentStore.get(agentId) : undefined;
@@ -41,7 +41,7 @@ export function registerChatHandlers(ctx: IpcContext): void {
 		},
 	);
 
-	typedHandle("chat:abort", [],
+	typedHandle("chat:abort", ["agentService"],
 		async (_ctx, agentId) => {
 			if (_ctx.agentService) await _ctx.agentService.abort();
 			return { success: true as const };

@@ -6,47 +6,38 @@
 
 这一阶段的目标是**确保已有路径不会再悄无声息地坏掉**。
 
-### R1. 给所有 SqliteStore 加列同步 sanity check
+### R1. 给所有 SqliteStore 加列同步 sanity check ✅ 已完成（2026-06-02）
 
-**难度**：S  **风险**：低  **价值**：高
+**实际做法比原计划更稳**：不只是 sanity check 报错，而是 self-heal。修改 [sqlite-store.ts ensureTable](../src/server/sqlite-store.ts#L75) 在 CREATE TABLE IF NOT EXISTS 之后，对每个声明的列检查 table_info，缺失就 ALTER ADD COLUMN。
 
-在 [SqliteStore 构造函数](../src/server/sqlite-store.ts#L34) 末尾加：
+这意味着即使 db-migration.ts 的 *_COLUMNS 漏了某列，store 自己会补齐。运行期更稳，长期再优化双源问题（见 R15）。
 
-```ts
-const actualCols = new Set((db.pragma(`table_info(${this.table})`) as any[]).map(r => r.name));
-const expectedCols = new Set(this.allColumns);
-for (const c of expectedCols) {
-  if (!actualCols.has(c)) {
-    throw new Error(`Schema mismatch: ${this.table} missing column ${c}`);
-  }
-}
-```
+### R2. handler modules 数组校验 ⚠️ 部分完成（2026-06-02）
 
-这样如果以后有人加列忘了同步 migration 文件，构造期就 fail-fast，而不是运行期 `no such column` 崩溃。
+已手动修正已知的几处漏报：
+- `chat:send` 现在声明 `["agentService", "workspaceConfig", "providerStore", "agentStore"]`
+- `chat:abort` 现在声明 `["agentService"]`
+- `config:get-theme` / `config:set-theme` 现在声明 `["sessionDb"]`
 
-### R2. handler modules 数组校验
+**未做**：自动化 lint 检测新加 handler 时的漏报。需要 R6（IpcContext 加真类型）后 TS 编译期才能强制校验。
 
-**难度**：S  **风险**：低  **价值**：中
+### R3. 把空 catch 改成至少 `log.warn` ⚠️ 部分完成（2026-06-02）
 
-写一个 lint / 启动期自检，扫描所有 `typedHandle` 调用，对比 handler 函数体里实际访问的 `ctx.*` 字段，发现 modules 数组没声明的就警告。
+已处理 5 处真正静默或标注 "ignore" 但属于真实错误的：
+- agent-loop.ts:334 retry 删 turn 失败 → log.warn
+- template-handlers.ts:54 GitHub cache 保存失败 → log.warn
+- AgentEditor.tsx:266 UI autoSave 失败 → console.error
+- session-manager.ts:140 metrics 持久化失败 → log.warn
+- mcp-manager.ts:134 transport close 失败 → log.warn
 
-最简单的版本：grep `_ctx\.\w+` 和 modules 数组对比（虽然粗糙，能挡住 chat:send 那类漏报）。
+**保留**：safeAddColumn、file-log-sink、renameSync 等已有明确注释说明意图的 catch。
 
-### R3. 把空 catch 改成至少 `log.warn`
+### R4. 清理残留文件 ⚠️ 部分完成（2026-06-02）
 
-**难度**：S  **风险**：极低  **价值**：中
-
-遍历所有 `catch {}`，至少加一行 `log.warn("module", "operation failed:", err)`。dev 时不挡道，prod 时有线索。
-
-特例：`safeAddColumn` 这种"已存在就算了"的逻辑可以保留空 catch，但加注释说明。
-
-### R4. 清理残留文件
-
-**难度**：S  **风险**：零  **价值**：低
-
-- 删 `env-dump.txt`
-- 删空目录 `build/`、`resources/`、`src/renderer/components/workspace/`
-- 确认 `openclaw.plugin.json` 是否还需要
+- ✅ 删 `env-dump.txt`
+- ✅ `.gitignore` 加入 `test-results/` 和 `.env`
+- ⏸️ `openclaw.plugin.json` 未删 — src/ 无引用但可能是外部 Pi Agent harness 读，需用户确认
+- 空目录（`build/`、`resources/`、`src/renderer/components/workspace/`）git 不追踪，磁盘无害，暂留
 
 ## 阶段二：根除反复 bug 的模式（3-5 天）
 

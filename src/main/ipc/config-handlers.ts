@@ -82,7 +82,7 @@ export function registerConfigHandlers(ctx: IpcContext): void {
 		},
 	);
 
-	typedHandle("config:get-theme", [],
+	typedHandle("config:get-theme", ["sessionDb"],
 		(_ctx) => {
 			try {
 				const stored = _ctx.sessionDb?.getKVStore().getJson<{ mode: string; customPrimaryColor?: string }>("theme");
@@ -93,7 +93,7 @@ export function registerConfigHandlers(ctx: IpcContext): void {
 		},
 	);
 
-	typedHandle("config:set-theme", [],
+	typedHandle("config:set-theme", ["sessionDb"],
 		(_ctx, data) => {
 			try {
 				_ctx.sessionDb?.getKVStore().setJson("theme", data);

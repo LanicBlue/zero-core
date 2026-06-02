@@ -69,18 +69,32 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 		}
 
 		this.ensureTable();
-			this.initStatements();
+		this.initStatements();
+	}
+
+	private columnDef(snakeCol: string): string {
+		if (snakeCol === "id") return "id TEXT PRIMARY KEY";
+		if (snakeCol === "created_at" || snakeCol === "updated_at") return `${snakeCol} TEXT NOT NULL`;
+		if (snakeCol === "is_main") return `${snakeCol} INTEGER NOT NULL DEFAULT 0`;
+		if (snakeCol === "enabled" || snakeCol === "is_system" || snakeCol === "is_built_in") return `${snakeCol} INTEGER DEFAULT 0`;
+		return `${snakeCol} TEXT`;
 	}
 
 	private ensureTable(): void {
-		const colDefs = this.allColumns.map((snakeCol: string) => {
-			if (snakeCol === "id") return "id TEXT PRIMARY KEY";
-			if (snakeCol === "created_at" || snakeCol === "updated_at") return `${snakeCol} TEXT NOT NULL`;
-			if (snakeCol === "is_main") return `${snakeCol} INTEGER NOT NULL DEFAULT 0`;
-			if (snakeCol === "enabled" || snakeCol === "is_system" || snakeCol === "is_built_in") return `${snakeCol} INTEGER DEFAULT 0`;
-			return `${snakeCol} TEXT`;
-		});
+		const colDefs = this.allColumns.map((c) => this.columnDef(c));
 		this.db.exec(`CREATE TABLE IF NOT EXISTS ${this.table} (${colDefs.join(", ")})`);
+
+		// Self-heal: add any declared columns missing from the actual table.
+		// This protects against the dual-source bug where db-migration.ts's
+		// *_COLUMNS arrays drift out of sync with a store's COLUMNS.
+		const actualCols = new Set(
+			(this.db.pragma(`table_info(${this.table})`) as Array<{ name: string }>).map((r) => r.name),
+		);
+		for (const col of this.allColumns) {
+			if (!actualCols.has(col)) {
+				this.db.exec(`ALTER TABLE ${this.table} ADD COLUMN ${this.columnDef(col)}`);
+			}
+		}
 	}
 
 	/** Safely add a column if it doesn't exist yet (for progressive schema migration). */

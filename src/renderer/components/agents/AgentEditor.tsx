@@ -263,7 +263,7 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 				systemPrompt: data.systemPrompt || undefined,
 			});
 			onSaved(updated);
-		} catch {}
+		} catch (err) { console.error("AgentEditor autoSave failed:", err); }
 	};
 
 	// Combine built-in models + enabled provider models

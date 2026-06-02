@@ -331,7 +331,7 @@ export class AgentLoop implements AgentRuntime {
 					if (this.incrementalTurnSeq >= 0 && this.db) {
 						const sid = this.session.getSessionId();
 						if (sid) {
-							try { this.db.deleteTurn(sid, this.incrementalTurnSeq); } catch {}
+							try { this.db.deleteTurn(sid, this.incrementalTurnSeq); } catch (err) { log.warn("loop", "deleteTurn during retry cleanup failed:", (err as Error).message); }
 						}
 						this.incrementalTurnSeq = -1;
 					}

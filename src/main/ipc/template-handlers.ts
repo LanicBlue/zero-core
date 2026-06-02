@@ -1,6 +1,7 @@
 import { typedHandle } from "./typed-ipc.js";
 import { parseFrontmatter, extractTag, shouldSkipMd } from "../../shared/github-template-utils.js";
 import { getMainWindow } from "./core.js";
+import { log } from "../../core/logger.js";
 import type { IpcContext } from "./types.js";
 import type { PromptTemplate, CreateTemplateInput, UpdateTemplateInput } from "../../shared/types.js";
 
@@ -51,7 +52,7 @@ export function registerTemplateHandlers(ctx: IpcContext): void {
 		try { return ctx.sessionDb?.getKVStore().getJson("github_cache") ?? {}; } catch { return {}; }
 	}
 	function saveGithubCache(data: Record<string, any>) {
-		try { ctx.sessionDb?.getKVStore().setJson("github_cache", data); } catch {}
+		try { ctx.sessionDb?.getKVStore().setJson("github_cache", data); } catch (err) { log.warn("ipc", "github cache save failed:", (err as Error).message); }
 	}
 	let githubCache = loadGithubCache();
 
