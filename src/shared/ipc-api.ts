@@ -137,8 +137,6 @@ export interface IpcChannelDefs {
 
 	// ── Misc ─────────────────────────────────────────────────
 	"ask-user:respond":    { params: [requestId: string, answers: Record<string, string>]; result: Ok };
-	// TODO: handler not yet implemented — see memory/project-todos-search-provider-completion.md
-	"todos:get":           { params: [agentId: string];                                    result: any[] };
 	"search-provider:get": { params: [];                                                   result: any };
 	"search-provider:set": { params: [config: { type: string; searxngUrl?: string; serpApiKey?: string }]; result: Ok };
 }

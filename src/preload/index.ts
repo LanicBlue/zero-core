@@ -148,9 +148,8 @@ const api: WindowApi = {
 	logsGetConfig: () => ipcRenderer.invoke("logs:get-config"),
 	logsSetConfig: (config) => ipcRenderer.invoke("logs:set-config", config),
 
-	// ─── Ask User / Todos / Search ──────────────────
+	// ─── Ask User / Search ──────────────────────────
 	askUserRespond: (requestId, answers) => ipcRenderer.invoke("ask-user:respond", requestId, answers),
-	getTodos: (agentId) => ipcRenderer.invoke("todos:get", agentId),
 	getSearchProvider: () => ipcRenderer.invoke("search-provider:get"),
 	setSearchProvider: (config) => ipcRenderer.invoke("search-provider:set", config),
 };

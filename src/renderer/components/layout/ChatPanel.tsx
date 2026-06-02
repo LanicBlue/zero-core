@@ -178,6 +178,7 @@ export default function ChatPanel() {
 	const isStreaming = useChatStore(selectIsStreaming);
 	const { agents } = useAgentStore();
 	const { pendingQuestions, todosByAgent } = useInteractionStore();
+	const todos = activeAgentId ? (todosByAgent[activeAgentId] ?? []) : [];
 	const [input, setInput] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -412,6 +413,8 @@ export default function ChatPanel() {
 				))}
 				<div ref={messagesEndRef} />
 			</div>
+
+			{todos.length > 0 && <TodosList todos={todos} />}
 
 			<div className="chat-input-bar">
 				<textarea

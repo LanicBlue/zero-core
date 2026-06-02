@@ -62,6 +62,9 @@ export default function AppLayout() {
 			tool_end: (d, key) => updateToolCall(key, d.toolName, d.isError ? "error" : "done", d.result ? stringify(d.result) : undefined),
 			agent_end: (_d, key) => finishStreaming(key),
 			retry_attempt: (d, key) => updateAssistantText(key, `Retrying (${d.attempt}/${d.maxAttempts})...`),
+			todos_update: (d) => {
+				useInteractionStore.getState().setTodos(d.agentId, d.todos);
+			},
 			error: (d, key) => {
 				lastErrorKey.current = key;
 				updateAssistantText(key, `\nError: ${d.error}`);
