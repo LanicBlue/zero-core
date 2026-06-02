@@ -34,27 +34,19 @@
 
 ## 已知问题（未修）
 
-### B3. recovery 不清理 stuck pending turn
+### B3. recovery 不清理 stuck pending turn ✅ 已修复（2026-06）
 
-**位置**：[agent-service.ts:391-398](../src/server/agent-service.ts#L391)
+**位置**：[session-db.ts cleanOldTurnState](../src/server/session-db.ts)
 
-**症状**：`turn_state` 表里 status='pending' 但超过 24h 没活动的记录不会被自动清理。
+**根因**：原本 `cleanOldTurnState` 只删 `'completed'` 和 `'failed'`，`'pending'` 行永久累积，每次重启都尝试 resume 早就放弃的 turn。
 
-**影响**：长时间运行后 `turn_state` 表可能堆积。重启时 recovery 会尝试 resume 这些旧 turn，可能错误。
+**修复**：cleanOldTurnState 改为删除所有早于 cutoff 的行（启动时上一进程已死，任何 >24h 的记录都是 stale）。
 
-**建议**：recovery 加一个"过期 pending 视为 failed"的清理逻辑。
+### B4. MCP reconnect 失败静默 ✅ 已修复（2026-06）
 
-### B4. MCP reconnect 失败静默
+**位置**：[core.ts MCP reconnect](../src/main/ipc/core.ts)
 
-**位置**：[core.ts:248](../src/main/ipc/core.ts#L248)
-
-```ts
-_mcpManager.reconnectEnabled(_mcpStore.list()).catch(() => {});
-```
-
-**症状**：MCP server 配置错误（命令不存在、URL 不通）时，启动期 reconnect 失败被完全吞掉。用户不知道为什么 server 没启动。
-
-**建议**：错误至少 `log.warn`，最好 broadcast 给 renderer 显示一个 banner。
+**修复**：`.catch(() => {})` 改为 `.catch((err) => log.warn("mcp", ...))`。
 
 ### B5. chat-store 在 activeSessionId null 时丢弃事件
 
@@ -87,19 +79,11 @@ _mcpManager.reconnectEnabled(_mcpStore.list()).catch(() => {});
 
 **建议**：未来加多 agent E2E 时扩展 seed 函数支持多 agent。
 
-### B8. KV migration 单个失败不报错
+### B8. KV migration 单个失败不报错 ✅ 已修复（2026-06）
 
-**位置**：[db-migration.ts:175-177](../src/server/db-migration.ts#L175)
+**位置**：[db-migration.ts KV migrations](../src/server/db-migration.ts)
 
-```ts
-for (const { key, file } of kvMigrations) {
-  kv.migrateFromJsonFile(key, join(zeroDir, file));
-}
-```
-
-**症状**：循环里没有 try/catch，单个 migration 失败会终止后续 migration。或者反过来 — 一旦失败整个 KV migration 半完成，状态难恢复。
-
-**建议**：每个 migration 单独 try/catch + log。
+**修复**：循环里每个 migration 单独 try/catch + `log.warn("migration", ...)`。单个失败不再阻断后续。
 
 ### B9. error 处理在 chat:send 的 sendPrompt
 

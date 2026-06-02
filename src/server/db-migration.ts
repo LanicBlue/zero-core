@@ -174,7 +174,11 @@ export function runMigrations(sessionDB: SessionDB): void {
 		{ key: "global_config", file: "zero-core.json" },
 	];
 	for (const { key, file } of kvMigrations) {
-		kv.migrateFromJsonFile(key, join(zeroDir, file));
+		try {
+			kv.migrateFromJsonFile(key, join(zeroDir, file));
+		} catch (err) {
+			log.warn("migration", `KV migration failed for ${key} (${file}):`, (err as Error).message);
+		}
 	}
 
 	// ─── 4. Memory graph migration ───────────────────────────────

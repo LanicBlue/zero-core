@@ -258,7 +258,9 @@ export async function loadCoreModules(): Promise<void> {
 	}
 
 	// MCP reconnect + agent tool entries
-	_mcpManager.reconnectEnabled(_mcpStore.list()).catch(() => {});
+	_mcpManager.reconnectEnabled(_mcpStore.list()).catch((err: any) => {
+		log.warn("mcp", "Reconnect failed:", err?.message ?? err);
+	});
 	_registerAgentTools = agentSvcMod.registerAgentToolEntries;
 	agentSvcMod.registerAgentToolEntries(_agentToolStore, _registry);
 

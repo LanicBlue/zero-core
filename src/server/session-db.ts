@@ -384,9 +384,15 @@ export class SessionDB {
 	cleanOldTurnState(maxAgeMs: number): void {
 		const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
 		try {
-			this.db.prepare(
-				`DELETE FROM turn_state WHERE updated_at < ? AND phase IN ('completed', 'failed')`,
+			// At startup, the previous process is gone — every row older than cutoff is stale.
+			// This includes pending rows that would otherwise accumulate forever and cause
+			// bogus recovery attempts on every subsequent startup.
+			const result = this.db.prepare(
+				`DELETE FROM turn_state WHERE updated_at < ?`,
 			).run(cutoff);
+			if (result.changes > 0) {
+				log.db(`cleanOldTurnState removed ${result.changes} stale row(s) older than ${maxAgeMs}ms`);
+			}
 		} catch (e) {
 			log.error("db", "cleanOldTurnState failed:", (e as Error).message);
 			throw e;
