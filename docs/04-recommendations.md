@@ -12,14 +12,25 @@
 
 这意味着即使 db-migration.ts 的 *_COLUMNS 漏了某列，store 自己会补齐。运行期更稳，长期再优化双源问题（见 R15）。
 
-### R2. handler modules 数组校验 ⚠️ 部分完成（2026-06-02）
+### R2. handler modules 数组校验 ✅ 已完成（2026-06-02）
 
-已手动修正已知的几处漏报：
+**自动化**：[scripts/check-handler-modules.ts](../scripts/check-handler-modules.ts) — 用 TS compiler API 扫 `src/main/ipc/*.ts` 里所有 `typedHandle` / `registerCrud` 调用，对比声明的 modules 数组和 handler 内 `ctx.*` 访问，漏报就 fail。
+
+跑法：`npm run check:handlers`。当前所有 handler 通过。
+
+**实现要点**：
+- 用 `ModuleName` union 限定只检查真实模块字段（避免 `ctx.win`、`ctx.modulesReady` 等非模块字段误报）
+- 同时处理 `ctx.X` PropertyAccess 和 `const { foo, bar } = ctx` 解构
+- `registerCrud({ module, store: () => ctx.X })` 也检查 store factory
+
+**限制**：
+- 仅扫字面量访问，动态属性 (`ctx[someVar]`) 不会报告
+- 只检 `src/main/ipc/*.ts`；如果将来 handler 散到其他位置需扩 glob
+
+**之前手动修过的漏报**（也是这个脚本会发现的）：
 - `chat:send` 现在声明 `["agentService", "workspaceConfig", "providerStore", "agentStore"]`
 - `chat:abort` 现在声明 `["agentService"]`
 - `config:get-theme` / `config:set-theme` 现在声明 `["sessionDb"]`
-
-**未做**：自动化 lint 检测新加 handler 时的漏报。需要 R6（IpcContext 加真类型）后 TS 编译期才能强制校验。
 
 ### R3. 把空 catch 改成至少 `log.warn` ⚠️ 部分完成（2026-06-02）
 

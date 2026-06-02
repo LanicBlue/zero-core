@@ -24,15 +24,15 @@
 
 **仍需做**：`registerCrud` 的 `store: () => ctx.agentStore as any` 强转保留 — 因 CrudStore 接口的 `update(id, Update)` 与实际 store 的 `update(id, Partial<Omit<...>>)` 不兼容。需要后续重构 CrudStore 接口或 store 签名。
 
-### 3. handler 声明的依赖不准确（已修）
+### 3. handler 声明的依赖不准确 ✅ 已修（2026-06-02 R2）
 
-**状态**：✅ 2026-06-02 已修正 [chat:send](../src/main/ipc/chat-handlers.ts#L9)、[chat:abort](../src/main/ipc/chat-handlers.ts#L44)、`config:get-theme`、`config:set-theme` 的 modules 数组。
+**状态**：✅ 2026-06-02 已修正所有已知的 modules 数组漏报，并加自动化检查脚本 [scripts/check-handler-modules.ts](../scripts/check-handler-modules.ts)（`npm run check:handlers`）。
 
-**症状**：曾存在 [chat-handlers.ts:9](../src/main/ipc/chat-handlers.ts#L9) `chat:send` 声明 `["agentService", "workspaceConfig"]` 但实际还访问 `providerStore`、`agentStore`。`chat:abort` 声明 `[]` 但访问 `agentService`。
+**之前症状**：曾存在 [chat-handlers.ts:9](../src/main/ipc/chat-handlers.ts#L9) `chat:send` 声明 `["agentService", "workspaceConfig"]` 但实际还访问 `providerStore`、`agentStore`。`chat:abort` 声明 `[]` 但访问 `agentService`。
 
 **根因**：typedHandle 不强制校验，靠开发者自觉。
 
-**仍需做**：lint 规则自动化检测（未做）— 目前靠 code review。IpcContext 加真类型后，TS 可以编译期校验。
+**修法**：AST 脚本扫每个 `typedHandle(name, modules, handler)` 调用，对比声明的 modules 数组和 handler 内 `ctx.*` 访问。同时检查 `registerCrud({ module, store: () => ctx.X })`。新加 handler 漏写会立刻 fail。
 
 ### 4. `activeSessionId` 同步路径脆弱（已修复）
 
