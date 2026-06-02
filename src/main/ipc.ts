@@ -10,6 +10,7 @@ import { registerAgentToolHandlers } from "./ipc/agent-tool-handlers.js";
 import { registerProviderHandlers } from "./ipc/provider-handlers.js";
 import { registerToolHandlers } from "./ipc/tool-handlers.js";
 import { registerSessionHandlers } from "./ipc/session-handlers.js";
+import { registerMessageHandlers } from "./ipc/message-handlers.js";
 import { registerFileHandlers } from "./ipc/file-handlers.js";
 import { registerChatHandlers } from "./ipc/chat-handlers.js";
 import { registerTemplateHandlers } from "./ipc/template-handlers.js";
@@ -30,6 +31,7 @@ export function registerIpc(win: BrowserWindow): void {
 	registerProviderHandlers(ctx);
 	registerToolHandlers(ctx);
 	registerSessionHandlers(ctx);
+	registerMessageHandlers(ctx);
 	registerFileHandlers(ctx);
 	registerChatHandlers(ctx);
 	registerTemplateHandlers(ctx);

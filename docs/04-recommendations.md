@@ -163,11 +163,17 @@ if (handler) handler(data, key);
 
 ## 阶段四：架构演进（长期）
 
-### R12. 拆分 god 组件
+### R12. 拆分 god 组件（部分完成）
 
-- AgentEditor 688 行 → AgentBasicInfo / AgentTools / AgentPrompt / AgentModel 等
-- SettingsPage 667 行 → ProviderSection / ThemeSection / DeviceContextSection / GuidelinesSection
-- session-handlers → message-handlers + session-handlers
+**已完成（2026-06-02）**：
+- `session-handlers.ts` (113 行 / 9 ops) → 拆为 [message-handlers.ts](../src/main/ipc/message-handlers.ts) (3 ops) + [session-handlers.ts](../src/main/ipc/session-handlers.ts) (6 ops + metrics)
+- 改动机械、零行为变化，全部通过现有测试网（55 单测 + 2 E2E）
+
+**未做**：
+- [AgentEditor.tsx](../src/renderer/components/agents/AgentEditor.tsx) 688 行 → AgentBasicInfo / AgentTools / AgentPrompt / AgentModel 等
+- [SettingsPage.tsx](../src/renderer/components/settings/SettingsPage.tsx) 667 行 → ProviderSection / ThemeSection / DeviceContextSection / GuidelinesSection
+
+UI 拆分比 IPC 拆分风险高（props 链路 + state 提升），需要单独运行 + 视觉验证，建议分两次做。
 
 ### R13. 双构建整合
 
