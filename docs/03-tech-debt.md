@@ -44,7 +44,7 @@
 
 ### 5. 单元测试几乎为零（部分缓解）
 
-**状态**：⚠️ 2026-06-02 引入 vitest，覆盖纯逻辑模块（53 个测试）。SQL/runtime 大模块仍未覆盖。
+**状态**：⚠️ 2026-06-02 引入 vitest，覆盖纯逻辑模块（85 个测试）。SQL/runtime 大模块仍未覆盖。
 
 **已完成**（见 [R9](04-recommendations.md#r9)）：chat-store（23 个 + dual-state 不变量断言）、agent-utils（26 个）、default-prompt（4 个）。mutation 测试验证 chat-store 测试能真实捕获 dual-state 回归。
 

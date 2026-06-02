@@ -140,10 +140,12 @@ if (handler) handler(data, key);
 - `npm run test:unit` 脚本（不需要 build）
 - `vitest.config.ts` 顶层配置
 
-**已覆盖**（53 个测试）：
+**已覆盖**（85 个测试）：
 - `chat-store.ts`（23 个）— 每个 action 的状态转换 + dual-state 不变量断言。mutation 测试验证：破坏 `addMessage` 的 dual-state 同步会让 12 个测试失败。
 - `agent-utils.ts`（26 个）— `classifyError` / `isTransientError` / `userFriendlyMessage` / `parseThinkingTags`
 - `default-prompt.ts`（4 个）— 模板生成
+- **`provider-factory.ts`（14 个，2026-06-02）** — `getContextWindow`（含 fallback / 名字归一化）、`resolveModel` 错误路径（provider 缺失 / 禁用 / 无 apiKey）、mock provider 实例化、缓存行为、`clearProviderCache`
+- **`session-metrics.ts`（18 个，2026-06-02）** — `RunningStats`（Welford 算法、sample variance 用 n-1、边界值）、`SessionMetricsHolder`（构造、`recordTokenUsage` 累积可选字段、`toSessionMetrics` 防御性 Map 拷贝）
 
 **未覆盖**：依赖 `better-sqlite3` 的模块（db-migration、recovery、kb-search、session-manager 等）—— native 模块编译给 Electron 的 Node 版本（NODE_MODULE_VERSION 145），普通 Node 进程加载失败。E2E 已覆盖关键 SQL 路径。
 
