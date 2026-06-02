@@ -1,17 +1,13 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type { SessionDB } from "../server/session-db.js";
 import { ZERO_CORE_DIR } from "../core/config.js";
+import type { WorkspaceConfig } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
 // Workspace configuration — backed by SQLite kv_store
 // ---------------------------------------------------------------------------
 
-export interface WorkspaceConfig {
-	workspaceDir: string;
-	defaultModel?: string;
-	defaultProvider?: string;
-}
+export type { WorkspaceConfig } from "../shared/types.js";
 
 const DEFAULT_CONFIG: WorkspaceConfig = {
 	workspaceDir: join(ZERO_CORE_DIR, "workspace"),

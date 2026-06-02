@@ -18,6 +18,7 @@ import { registerGithubTemplateHandlers } from "./ipc/github-template-handlers.j
 import { registerMcpHandlers } from "./ipc/mcp-handlers.js";
 import { registerKbHandlers } from "./ipc/kb-handlers.js";
 import { registerLogHandlers } from "./ipc/log-handlers.js";
+import { registerSearchProviderHandlers } from "./ipc/search-provider-handlers.js";
 
 export function registerIpc(win: BrowserWindow): void {
 	setMainWindow(win);
@@ -40,6 +41,7 @@ export function registerIpc(win: BrowserWindow): void {
 	registerMcpHandlers(ctx);
 	registerKbHandlers(ctx);
 	registerLogHandlers(ctx);
+	registerSearchProviderHandlers(ctx);
 
 	log.ipc("All handlers registered");
 

@@ -12,8 +12,8 @@ import type {
 	PromptTemplate, CreateTemplateInput, UpdateTemplateInput,
 	SessionRecord,
 	LogEntry, LogFileSummary, FileLogConfig,
-	WorkspaceConfig, ToolInfo, ModelInfo,
-	Ok, Err,
+	WorkspaceConfig, SearchProviderConfig, ToolInfo, ModelInfo,
+	Ok, Err, OkOrErr,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -137,6 +137,6 @@ export interface IpcChannelDefs {
 
 	// ── Misc ─────────────────────────────────────────────────
 	"ask-user:respond":    { params: [requestId: string, answers: Record<string, string>]; result: Ok };
-	"search-provider:get": { params: [];                                                   result: any };
-	"search-provider:set": { params: [config: { type: string; searxngUrl?: string; serpApiKey?: string }]; result: Ok };
+	"search-provider:get": { params: []; result: SearchProviderConfig };
+	"search-provider:set": { params: [config: SearchProviderConfig]; result: OkOrErr };
 }

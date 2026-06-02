@@ -197,6 +197,19 @@ export async function loadCoreModules(): Promise<void> {
 	runtimeToolsMod.registerRuntimeTools(_registry);
 	moduleReadiness.resolveModules(["registry", "toolRegistry"]);
 
+	// ─── Phase 3b: Initialize search provider from saved config ──
+	try {
+		const spCfg = _workspaceConfig.searchProvider;
+		if (spCfg && spCfg.type !== "duckduckgo") {
+			const { createSearchProvider, setSearchProvider } = await import(
+				toFileURL(join(__dirname, "../../dist/runtime/tools/web-search.js"))
+			);
+			setSearchProvider(createSearchProvider(spCfg));
+		}
+	} catch (err) {
+		log.ipc("Failed to init search provider:", (err as Error).message);
+	}
+
 	// ─── Phase 4: MCPManager (depends on registry) ───────────────
 	_mcpManager = new mcpMgrMod.MCPManager(_registry);
 	moduleReadiness.resolveModule("mcpManager");

@@ -196,10 +196,20 @@ export type OkOrErr = Ok | Err;
 
 // ── Workspace Config ────────────────────────────────────────────────────────
 
+export type SearchProviderType = "duckduckgo" | "searxng" | "serpapi" | "brave";
+
+export interface SearchProviderConfig {
+	type: SearchProviderType;
+	searxngUrl?: string;
+	serpApiKey?: string;
+	braveApiKey?: string;
+}
+
 export interface WorkspaceConfig {
 	workspaceDir: string;
 	defaultModel?: string;
 	defaultProvider?: string;
+	searchProvider?: SearchProviderConfig;
 }
 
 // ── File Log Config ─────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ import { DeviceContextSettings } from "./DeviceContextSettings.js";
 import { GuidelinesSettings } from "./GuidelinesSettings.js";
 import { WorkspaceSettings } from "./WorkspaceSettings.js";
 import { ThemeSettings } from "./ThemeSettings.js";
+import { SearchSettings } from "./SearchSettings.js";
 
 export default function SettingsPage() {
 	const { providers, loading, fetchProviders } = useProviderStore();
@@ -24,6 +25,7 @@ export default function SettingsPage() {
 		{ key: "guidelines", label: "Guidelines" },
 		{ key: "theme", label: "Theme" },
 		{ key: "workspace", label: "Workspace" },
+		{ key: "search", label: "Search" },
 	];
 
 	return (
@@ -104,6 +106,13 @@ export default function SettingsPage() {
 						<>
 							<div className="section-title-row"><h3>Workspace</h3></div>
 							<WorkspaceSettings />
+						</>
+					)}
+
+					{activeSection === "search" && (
+						<>
+							<div className="section-title-row"><h3>Web Search</h3></div>
+							<SearchSettings />
 						</>
 					)}
 				</div>
