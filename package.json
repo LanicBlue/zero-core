@@ -21,6 +21,8 @@
     "build:mac": "npm run build && electron-builder --mac",
     "preview": "electron-vite preview",
     "build:lib": "tsc -p tsconfig.cli.json",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
     "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
@@ -60,7 +62,8 @@
     "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
     "typescript": "^5.7.3",
-    "vite": "^6.4.2"
+    "vite": "^6.4.2",
+    "vitest": "^4.1.8"
   },
   "engines": {
     "node": ">=20.6.0"

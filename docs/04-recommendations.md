@@ -106,14 +106,21 @@ if (handler) handler(data, key);
 
 ## 阶段三：补测试（持续）
 
-### R9. 单元测试基础设施
+### R9. 单元测试基础设施 ✅ 已完成（2026-06-02）
 
-**难度**：M  **风险**：零  **价值**：高
-
-引入 vitest，配置：
+**实际范围比原计划窄但有侧重**。引入 vitest 4.1，配置：
 - `tests/unit/` 目录
 - `npm run test:unit` 脚本（不需要 build）
-- CI 跑 unit + e2e
+- `vitest.config.ts` 顶层配置
+
+**已覆盖**（53 个测试）：
+- `chat-store.ts`（23 个）— 每个 action 的状态转换 + dual-state 不变量断言。mutation 测试验证：破坏 `addMessage` 的 dual-state 同步会让 12 个测试失败。
+- `agent-utils.ts`（26 个）— `classifyError` / `isTransientError` / `userFriendlyMessage` / `parseThinkingTags`
+- `default-prompt.ts`（4 个）— 模板生成
+
+**未覆盖**：依赖 `better-sqlite3` 的模块（db-migration、recovery、kb-search、session-manager 等）—— native 模块编译给 Electron 的 Node 版本（NODE_MODULE_VERSION 145），普通 Node 进程加载失败。E2E 已覆盖关键 SQL 路径。
+
+**未来扩展**：若想测 SQL 模块，要么在 tests 目录装第二份 better-sqlite3 重编译给 Node，要么改用 sqlite3 纯 JS 包并重写 SqliteStore，要么注入 DB 抽象层——成本都高于当前收益。
 
 ### R10. 高优先级单元测试
 

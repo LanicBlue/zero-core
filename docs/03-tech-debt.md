@@ -50,15 +50,15 @@
 - 单源化：只用 `messagesBySession[activeSessionId]`，删除 `messages` 字段，renderer 直接 select
 - 或：保留 `messages` 但在 setter 里强制 invariant（activeSessionId 改变后立即同步）
 
-### 5. 单元测试几乎为零
+### 5. 单元测试几乎为零（部分缓解）
 
-**症状**：仅 2 个 E2E 烟测，runtime、recovery、MCP、KB、tool 调用、迁移**全无自动化测试**。
+**状态**：⚠️ 2026-06-02 引入 vitest，覆盖纯逻辑模块（53 个测试）。SQL/runtime 大模块仍未覆盖。
 
-**高风险路径**：
-- agent-loop 重试 + context pruning 逻辑
-- recovery 中断恢复
-- migration 跑在 fresh DB 上的所有路径
-- chat-store reducer（任何回归都会影响 UI）
+**已完成**（见 [R9](04-recommendations.md#r9)）：chat-store（23 个 + dual-state 不变量断言）、agent-utils（26 个）、default-prompt（4 个）。mutation 测试验证 chat-store 测试能真实捕获 dual-state 回归。
+
+**未覆盖**：
+- `db-migration.ts` / `recovery.ts` / `kb-search.ts` 等 SqliteStore 用户 — better-sqlite3 编译给 Electron 的 Node 版本（NODE_MODULE_VERSION 145），vitest（普通 Node 137）无法加载。需 E2E 兜底。
+- `agent-loop.ts` — 依赖太多（AI SDK、子进程、tool registry），单测 ROI 低。
 
 **修复建议**：见 [04-recommendations.md](04-recommendations.md) 测试章节。
 
