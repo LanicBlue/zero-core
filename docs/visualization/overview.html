@@ -126,6 +126,16 @@
     font-size: 10px;
     margin-left: 4px;
   }
+  .ok-tag {
+    display: inline-block;
+    background: #1a3c1a;
+    color: #56d364;
+    border: 1px solid #56d36455;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    margin-left: 4px;
+  }
   svg.flow {
     position: absolute;
     top: 0; left: 0;
@@ -165,13 +175,14 @@
 <div class="subtitle">分层架构 · 自上而下 · 箭头表示"调用 / 依赖"关系</div>
 
 <div class="key-stat">
-  <div class="stat-card"><div class="value">198</div><div class="label">src/ 文件数</div></div>
-  <div class="stat-card danger"><div class="value">378</div><div class="label">any 类型使用</div></div>
-  <div class="stat-card warning"><div class="value">91</div><div class="label">catch 块（含空）</div></div>
-  <div class="stat-card warning"><div class="value">2 / 0</div><div class="label">E2E / Unit 测试</div></div>
+  <div class="stat-card"><div class="value">212</div><div class="label">src/ 文件数</div></div>
+  <div class="stat-card warning"><div class="value">348</div><div class="label">any 类型使用</div></div>
+  <div class="stat-card"><div class="value">205</div><div class="label">catch 块</div></div>
+  <div class="stat-card"><div class="value">85 / 2</div><div class="label">Unit / E2E 测试</div></div>
   <div class="stat-card"><div class="value">10</div><div class="label">Zustand stores</div></div>
-  <div class="stat-card"><div class="value">13</div><div class="label">IPC handler 文件</div></div>
-  <div class="stat-card"><div class="value">7</div><div class="label">SQLite stores</div></div>
+  <div class="stat-card"><div class="value">14</div><div class="label">IPC handler 文件</div></div>
+  <div class="stat-card"><div class="value">10</div><div class="label">SQLite stores</div></div>
+  <div class="stat-card"><div class="value">85</div><div class="label">IPC channels</div></div>
 </div>
 
 <div class="legend">
@@ -184,6 +195,7 @@
   <div class="legend-item"><div class="legend-swatch swatch-shared"></div>Shared Types</div>
   <div class="legend-item"><span class="issue-tag">已知问题</span></div>
   <div class="legend-item"><span class="warn-tag">需关注</span></div>
+  <div class="legend-item"><span class="ok-tag">已修复</span></div>
 </div>
 
 <div class="canvas" id="canvas">
@@ -192,25 +204,26 @@
   <div class="layer">
     <div class="layer-label">Renderer · React 19</div>
     <div class="module swatch-renderer">
-      <h3>components/ <span class="warn-tag">god 文件</span></h3>
-      <div class="role">UI 组件</div>
+      <h3>components/</h3>
+      <div class="role">UI 组件（已拆 god 文件）</div>
       <ul>
-        <li>layout/ — AppLayout, ChatPanel, FileTreePanel, DocViewerPanel</li>
-        <li>agents/ — AgentEditor <span class="warn-tag">688 行</span></li>
-        <li>settings/ — SettingsPage <span class="warn-tag">667 行</span></li>
-        <li>mcp/, kb/, tools/</li>
+        <li>layout/ — AppLayout (dispatcher map), ChatPanel, FileTreePanel, DocViewerPanel</li>
+        <li>agents/ — AgentEditor (337 行) + 5 section + agent-editor-types</li>
+        <li>settings/ — SettingsPage (119 行 orchestrator) + 7 satellite</li>
+        <li>mcp/, kb/, tools/, chat/, common/</li>
       </ul>
-      <div class="meta">41 文件</div>
+      <div class="meta">51 文件</div>
     </div>
     <div class="module swatch-renderer">
-      <h3>store/ <span class="issue-tag">双状态</span></h3>
+      <h3>store/ <span class="ok-tag">单源</span></h3>
       <div class="role">Zustand stores × 10</div>
       <ul>
-        <li>chat-store <span class="issue-tag">messages + messagesBySession</span></li>
+        <li>chat-store — messagesBySession + streamingSessions Set</li>
+        <li>selectActiveMessages / selectIsStreaming (derived)</li>
         <li>agent-store, provider-store, ...</li>
-        <li>page-store, theme-store, interaction-store</li>
+        <li>interaction-store — todosByAgent + AskUser</li>
       </ul>
-      <div class="meta">单源真理：chat messages</div>
+      <div class="meta">10 文件 · 单源真理</div>
     </div>
   </div>
 
@@ -219,7 +232,7 @@
     <div class="layer-label">Preload · Context Bridge</div>
     <div class="module swatch-preload">
       <h3>preload/index.ts</h3>
-      <div class="role">156 个 IPC 桥接方法</div>
+      <div class="role">85 个 IPC 桥接方法 + 4 事件订阅</div>
       <ul>
         <li>contextIsolation: true</li>
         <li>无 capability 分级 <span class="warn-tag">暴露面广</span></li>
@@ -233,15 +246,16 @@
   <div class="layer">
     <div class="layer-label">Main · Electron</div>
     <div class="module swatch-main">
-      <h3>main/ipc/ <span class="issue-tag">IpcContext 全 any</span></h3>
-      <div class="role">IPC handlers × 13 文件</div>
+      <h3>main/ipc/ <span class="ok-tag">已类型化</span></h3>
+      <div class="role">IPC handlers × 14 register 文件</div>
       <ul>
         <li>core.ts — 模块加载 + 响应式 ctx</li>
-        <li>typed-ipc.ts — 类型安全（?）</li>
-        <li>chat/session/template/kb/mcp/...-handlers.ts</li>
+        <li>typed-ipc.ts — 类型安全 + readiness gate</li>
+        <li>14 个领域 handler 文件 + github/search-provider</li>
         <li>module-readiness.ts — gating</li>
+        <li>check:handlers AST 校验脚本</li>
       </ul>
-      <div class="meta">20 文件 · 156 channels</div>
+      <div class="meta">20 文件 · 85 channels</div>
     </div>
     <div class="module swatch-main">
       <h3>main/index.ts</h3>
@@ -265,11 +279,11 @@
         <li>fullStream 消费 → emit 事件</li>
         <li>retry: max 3, exp backoff</li>
         <li>context-length error → prune + retry</li>
-        <li>28 个 any 类型</li>
+        <li>仍含 ~28 处 any（拆分 ROI 低）</li>
       </ul>
     </div>
     <div class="module swatch-runtime">
-      <h3>provider-factory.ts <span class="issue-tag">无 MiniMax/GLM</span></h3>
+      <h3>provider-factory.ts</h3>
       <div class="role">Provider 工厂</div>
       <ul>
         <li>openai / anthropic / gemini / ollama</li>
@@ -282,20 +296,22 @@
       <h3>tools/ + mcp-tools/</h3>
       <div class="role">工具系统</div>
       <ul>
-        <li>runtime tools: bash, read, write, edit, grep, glob, ...</li>
+        <li>runtime tools: bash, read, write, edit, grep, glob, web-search, todo-write, ...</li>
         <li>mcp-tools/: fetch, memory, sequential-thinking</li>
         <li>tool-registry.ts — 注册中心</li>
         <li>tool-policy.ts — 白/黑名单</li>
+        <li>subagent-delegation.ts — blocking + auto-background</li>
       </ul>
     </div>
     <div class="module swatch-runtime">
-      <h3>session.ts / turn-recorder.ts</h3>
-      <div class="role">会话与检查点</div>
+      <h3>web-search.ts <span class="ok-tag">可配置</span></h3>
+      <div class="role">4 个 provider 切换</div>
       <ul>
-        <li>context window pruning</li>
-        <li>incremental checkpoint</li>
-        <li>prompt-sections.ts (cached)</li>
-        <li>agent-utils.ts — retry + thinking tags</li>
+        <li>DuckDuckGo (默认, 免费)</li>
+        <li>SearXNG (自托管)</li>
+        <li>SerpAPI / Brave (需 key)</li>
+        <li>setSearchProvider 即时切换</li>
+        <li>启动期从 workspaceConfig 初始化</li>
       </ul>
     </div>
   </div>
@@ -313,13 +329,12 @@
       </ul>
     </div>
     <div class="module swatch-server">
-      <h3>session-db.ts + sqlite-store.ts <span class="issue-tag">列同步陷阱</span></h3>
+      <h3>session-db.ts + sqlite-store.ts <span class="ok-tag">self-heal</span></h3>
       <div class="role">SQLite 持久化</div>
       <ul>
         <li>sessions, messages, turns, turn_state</li>
-        <li>SqliteStore 通用 CRUD</li>
-        <li>7 个表</li>
-        <li>migration 双源问题</li>
+        <li>SqliteStore 构造时 ALTER ADD COLUMN if missing</li>
+        <li>cleanOldTurnState 删 24h+ 所有行 (含 pending)</li>
       </ul>
     </div>
     <div class="module swatch-server">
@@ -327,7 +342,7 @@
       <div class="role">MCP 客户端</div>
       <ul>
         <li>stdio + SSE 传输</li>
-        <li>启动期 reconnect <span class="warn-tag">fire-and-forget</span></li>
+        <li>启动期 reconnect (fire-and-forget, log.warn on fail)</li>
         <li>tool 注册到 ToolRegistry</li>
       </ul>
     </div>
@@ -338,26 +353,26 @@
         <li>状态机: created→streaming→disposed</li>
         <li>TTL 清理</li>
         <li>metrics hooks</li>
-        <li>recovery <span class="warn-tag">stuck pending 不清</span></li>
+        <li>recovery: cleanOldTurnState 24h + resume incomplete</li>
       </ul>
     </div>
     <div class="module swatch-server">
-      <h3>kb-store + kb-db + kb-search</h3>
+      <h3>kb-store + kb-db + kb-search + kb-embeddings</h3>
       <div class="role">知识库</div>
       <ul>
-        <li>KbStore (元数据) + KbDB (向量)</li>
-        <li>独立 knowledge.db</li>
+        <li>KbStore (元数据) + KbDB (向量, 独立 knowledge.db)</li>
+        <li>OpenAI / Ollama embedding, 20 chunk 一批</li>
         <li>cosine similarity + top-K</li>
         <li>embedding 失败 graceful</li>
       </ul>
     </div>
     <div class="module swatch-server">
-      <h3>stores/</h3>
-      <div class="role">业务 store × 6</div>
+      <h3>stores/ + workspace-config.ts</h3>
+      <div class="role">业务 store × 6 + workspace config</div>
       <ul>
         <li>AgentStore, ProviderStore, TemplateStore</li>
-        <li>McpStore, AgentToolStore</li>
-        <li>MemoryStore, KeyValueStore</li>
+        <li>McpStore, AgentToolStore, MemoryStore, KeyValueStore</li>
+        <li>workspace-config.ts — 持久化 searchProvider + workspaceDir</li>
       </ul>
     </div>
   </div>
@@ -370,22 +385,23 @@
       <div class="role">配置 + 工具</div>
       <ul>
         <li>config.ts — ZERO_CORE_DIR, 默认值</li>
+        <li>constants.ts — EXEC_MAX_BUFFER_BYTES, DEFAULT_URLS, ...</li>
         <li>logger.ts — 文件日志</li>
         <li>context-manager.ts</li>
         <li>tool-policy.ts, hook-registry.ts</li>
         <li>default-prompt.ts</li>
       </ul>
-      <div class="meta">18 文件</div>
+      <div class="meta">19 文件</div>
     </div>
     <div class="module swatch-shared">
       <h3>shared/</h3>
       <div class="role">类型契约</div>
       <ul>
-        <li>types.ts — AgentRecord, Provider, ...</li>
-        <li>ipc-api.ts — IPC 类型定义</li>
-        <li><span class="issue-tag">todos:get.result 是 any[]</span></li>
+        <li>types.ts — AgentRecord, Provider, SearchProviderConfig, ...</li>
+        <li>ipc-api.ts — 85 IPC 类型定义</li>
+        <li>file-utils.ts — FileTreeNode</li>
       </ul>
-      <div class="meta">5 文件 · 应为单一来源</div>
+      <div class="meta">5 文件 · 单一来源</div>
     </div>
   </div>
 
@@ -402,7 +418,7 @@
 </div>
 
 <div class="footer">
-  生成于 2026-06-02 · 详细文档见 <code>docs/02-architecture.md</code>
+  更新于 2026-06 · 详细文档见 <code>docs/02-architecture.md</code>
 </div>
 
 </body>

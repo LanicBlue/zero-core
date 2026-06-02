@@ -1,7 +1,8 @@
 # Zero-Core 代码审查文档
 
-> 审查日期：2026-06-02
-> 审查范围：src/ 全量 + 构建配置
+> 最近审查：2026-06-02
+> 文档最近重写：2026-06（清理 + 重分析）
+> 审查范围：src/ 全量（212 文件）+ 构建配置 + 测试套件
 > 输出形式：5 份 markdown + 2 份 HTML 可视化
 
 ## 文档索引
@@ -16,26 +17,42 @@
 | [visualization/overview.html](visualization/overview.html) | 模块依赖图（HTML） | 全局把握 |
 | [visualization/call-graph.html](visualization/call-graph.html) | IPC 调用链（HTML） | 追踪具体路径 |
 
-## TL;DR — 项目当前状态
+## TL;DR — 项目当前状态（2026-06 重分析）
 
-**功能层面**：核心特性（agent runtime、单源真理 store、SQLite 持久化、MCP、知识库、工具系统、recovery）都已实现且能工作，不是空架子。E2E 烟测已经能跑通 chat + session 切换。
+**功能层面**：核心特性（agent runtime、单源真理 store、SQLite 持久化、MCP、知识库、工具系统、recovery）都已实现且能工作。E2E 烟测覆盖单 agent chat + A→B→A session 切换两条路径，85 个单元测试覆盖纯逻辑模块。
 
-**结构层面**：分层是清晰的（main / preload / renderer / runtime / server / core / shared），但分层之间的边界**靠人治不靠类型**——[IpcContext 的 15 个字段全是 `any`](../src/main/ipc/types.ts)，[`typedHandle` 提供的类型安全是假象](../src/main/ipc/typed-ipc.ts)。
+**质量层面**：止血阶段（R1-R8）和补完阶段（todos 渲染、search-provider 配置、god 文件拆分、硬编码抽常量、IpcContext 类型化）全部完成。剩余的"中等优先级" bug（B3/B4/B8）也已清掉。
 
-**止血阶段已完成的修复**（2026-06-02）：
-- ✅ SqliteStore self-heal：构造时检测缺失列并自动 ALTER ADD COLUMN（[R1](04-recommendations.md#r1)）
-- ⚠️ handler modules 数组漏报已修 4 处（chat:send / chat:abort / config:get-theme / config:set-theme）（[R2](04-recommendations.md#r2)）
-- ⚠️ 5 处真正静默的 catch 已加 log.warn（[R3](04-recommendations.md#r3)）
-- ⚠️ env-dump.txt 已删，test-results 加入 gitignore（[R4](04-recommendations.md#r4)）
+**当前剩余的债**：
+1. **`any` 仍有 348 处**（195 `: any` + 153 `as any`）— IpcContext 已修复，剩余主要在 agent-loop.ts (28)、main/ipc/core.ts (22)、mcp-handlers.ts (18)
+2. **测试覆盖仍偏窄**：85 单测 + 2 E2E，runtime/agent-loop、recovery、MCP、KB 仍依赖 E2E 兜底（因 better-sqlite3 native 模块版本限制，单测无法直接覆盖 SQL 模块）
+3. **agent-loop.ts 784 行**：仍是单文件最大模块（retry + streaming + tool 调度都在里面），但拆分 ROI 低
+4. **R7 MiniMax/GLM preset**：用户判定不值得做（体验问题，不影响正确性）
+5. **R13/R14/R15 长期项**：双构建整合 / preload capability 分级 / schema 单源 — 都属于"可做可不做"
 
-**仍需关注的主要风险**：
-1. **fresh-DB 类 bug 模式**：R1 缓解了，但 db-migration.ts 的 *_COLUMNS 和 store COLUMNS 双源问题未根除（见 [R15](04-recommendations.md#r15)）
-2. **`any` 类型泛滥**：378 处，public API 也有 — 见 [R6](04-recommendations.md#r6)
-3. **测试覆盖几乎为零**：仅 2 个 E2E 烟测，runtime/agent-loop、recovery、MCP、KB、tool 调用全部没有自动化测试 — 见 [R9-R11](04-recommendations.md#r9)
-4. **god 文件**：[AgentEditor.tsx (688 行)](../src/renderer/components/agents/AgentEditor.tsx)、[SettingsPage.tsx (667 行)](../src/renderer/components/settings/SettingsPage.tsx)、[session-handlers.ts (9 个独立操作)](../src/main/ipc/session-handlers.ts) — 见 [R12](04-recommendations.md#r12)
-5. **chat-store 双状态**：messagesBySession + messages 双源 — 见 [R5](04-recommendations.md#r5)
+**已经潜伏的 bug**：见 [05-known-bugs.md](05-known-bugs.md)，全部是非阻塞的（E2E 覆盖窄、error banner UI 等）。
 
-**已经潜伏的 bug**：见 [05-known-bugs.md](05-known-bugs.md)。
+## 2026-06 已完成清单
+
+详见 [04-recommendations.md](04-recommendations.md)。简版：
+
+- ✅ **R1** SqliteStore self-heal（[sqlite-store.ts](../src/server/sqlite-store.ts)）
+- ✅ **R2** handler modules AST 校验脚本（[scripts/check-handler-modules.ts](../scripts/check-handler-modules.ts)）
+- ✅ **R3** 真·静默 catch 加 log（5 处）
+- ✅ **R4** env-dump.txt 删除 + .gitignore 完善
+- ✅ **R5** chat-store 单源化（移除双状态 + selector）
+- ✅ **R6** IpcContext 类型化（15 字段 any → 真类型，顺带修 3 个被 any 掩盖的 bug）
+- ✅ **R8** AppLayout dispatcher map 重构
+- ✅ **R9** vitest 基础设施 + 85 单测
+- ✅ **R10** provider-factory + session-metrics 单测（32 个）
+- ✅ **R12** god 文件拆分（SettingsPage 667→119、AgentEditor 688→337、template-handlers 188→47）
+- ✅ **#6** public API 的 `any` 替换（parseThinkingTags、files:tree）
+- ✅ **#12** 硬编码 URL/magic number 抽到 [src/core/constants.ts](../src/core/constants.ts)
+- ✅ **todos 渲染补完**（AppLayout dispatcher + ChatPanel render）
+- ✅ **search-provider 配置**（IPC + UI + 启动初始化）
+- ✅ **B3** stuck pending turn 自动清理（24h cutoff）
+- ✅ **B4** MCP reconnect 错误 log
+- ✅ **B8** KV migration 单个失败不阻断后续
 
 ## 阅读顺序建议
 

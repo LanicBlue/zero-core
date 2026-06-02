@@ -1,46 +1,52 @@
 # 01 · 项目结构与构建
 
+> 最近重写：2026-06（清理过期数据 + 反映拆分后的目录布局）
+
 ## 顶层目录
 
 ```
 zero-core/
-├── src/                  # 生产源码（198 文件 / 29 子目录）
-├── tests/e2e/            # Playwright E2E（仅 2 个 spec）
-├── scripts/dev.js        # dev 启动脚本
+├── src/                  # 生产源码（212 文件 / 29 子目录 / ~24.5k 行）
+├── tests/
+│   ├── e2e/              # Playwright Electron E2E（2 个 spec + helper）
+│   └── unit/             # vitest 单测（5 个 test 文件 / 85 测试）
+├── scripts/
+│   ├── dev.js            # dev 启动脚本
+│   └── check-handler-modules.ts  # IPC handler modules 数组 AST 校验
 ├── docs/                 # 本文档
 ├── dist/                 # tsc 输出（库形式，给 npm 发布用）
 ├── out/                  # electron-vite 输出（main/preload/renderer）
 ├── release/              # electron-builder 打包产物（NSIS / portable）
-├── build/                # 空目录（占位）
-├── resources/            # 空目录（占位）
-├── env-dump.txt          # 调试残留，应删除
-├── package.json
+├── package.json          # type: module，bin: zero-core → dist/cli.js
 ├── tsconfig.json         # 根 references（不参与编译）
 ├── tsconfig.cli.json     # 库构建（Node16/ES2022 → dist/）
 ├── tsconfig.node.json    # 主进程 + preload（ESNext，noEmit）
 ├── tsconfig.web.json     # renderer（ESNext + React，noEmit）
-├── vite.config.ts        # 库的 vite 配置（与 electron-vite 并存）
+├── vite.config.ts        # 库的 vite 配置（保留，给 dist/ npm 发布路径）
 ├── electron.vite.config.ts
 ├── electron-builder.yml
-└── playwright.config.ts
+├── playwright.config.ts
+└── vitest.config.ts
 ```
+
+**已删的杂项**（2026-06）：`env-dump.txt`（调试残留）、`openclaw.plugin.json`（不再走 Pi Agent 插件方向）。`test-results/`、`.env` 已加入 `.gitignore`。
 
 ## src/ 子目录
 
 | 目录 | 文件数 | 角色 | 关键入口 |
 |------|--------|------|----------|
-| `src/core/` | 18 | 配置、context、tool policy、prompt | `config.ts`, `context-manager.ts`, `default-prompt.ts` |
-| `src/main/` | 20 | Electron 主进程 | `index.ts` |
-| `src/main/ipc/` | 12 | IPC handlers | `ipc.ts`, `core.ts`, `typed-ipc.ts` |
-| `src/preload/` | 1 | Electron preload | `index.ts`（156 个 IPC 桥） |
-| `src/renderer/` | 41 | React UI | `App.tsx` → `AppLayout.tsx` |
-| `src/renderer/store/` | 10 | Zustand stores | `chat-store.ts`, `agent-store.ts` 等 |
-| `src/runtime/` | 74 | Agent runtime | `agent-loop.ts`, `provider-factory.ts`, `tools/` |
-| `src/runtime/tools/` | 多 | 工具实现 | `bash.ts`, `file-read.ts`, ... |
-| `src/runtime/mcp-tools/` | 多 | 内置 MCP 风格工具 | `fetch`, `memory`, `sequential-thinking` |
-| `src/server/` | 36 | 服务层（持久化、session、recovery） | `agent-service.ts`, `session-db.ts`, `mcp-manager.ts` |
-| `src/server/mcp-servers/` | 多 | 内置 MCP 服务器实现 | |
-| `src/shared/` | 5 | 跨进程共享类型 | `types.ts`, `ipc-api.ts` |
+| `src/core/` | 19 | 配置、context、tool policy、prompt、constants | `config.ts`, `constants.ts`, `default-prompt.ts`, `tool-registry.ts` |
+| `src/main/` | 23 | Electron 主进程 | `index.ts`, `test-setup.ts` |
+| `src/main/ipc/` | 20 | IPC handlers + reactive ctx + module readiness | `ipc.ts`, `core.ts`, `typed-ipc.ts`, `types.ts` |
+| `src/preload/` | 1 | Electron preload | `index.ts`（85 个 IPC 桥接方法） |
+| `src/renderer/` | 51 | React UI（含 store 10、components 8 子目录） | `App.tsx` → `AppLayout.tsx` |
+| `src/renderer/store/` | 10 | Zustand stores | `chat-store.ts`（单源）等 |
+| `src/runtime/` | 40 | Agent runtime | `agent-loop.ts` (784 行), `provider-factory.ts`, `subagent-delegation.ts` |
+| `src/runtime/tools/` | 21 | 工具实现 | `bash.ts`, `file-read.ts`, `web-search.ts`, `todo-write.ts`, `agent-tool.ts` 等 |
+| `src/runtime/mcp-tools/` | 4 | 内置 MCP 风格工具 | `fetch`, `memory`, `sequential-thinking` |
+| `src/server/` | 36 | 服务层（持久化、session、recovery、API routers） | `agent-service.ts`, `session-db.ts`, `mcp-manager.ts`, `recovery.ts` |
+| `src/server/mcp-servers/` | 1 | 内置 MCP 服务器实现 | |
+| `src/shared/` | 5 | 跨进程共享类型 | `types.ts`, `ipc-api.ts`, `file-utils.ts` |
 
 ## 进程模型
 
@@ -60,12 +66,12 @@ zero-core/
 ```
 
 - **Main**：Node.js + Electron，CJS 输出，加载所有 server / runtime 模块
-- **Preload**：contextIsolation 桥，显式暴露 156 个 IPC 调用
-- **Renderer**React 19 + Vite，ESM 输出
+- **Preload**：contextIsolation 桥，显式暴露 85 个 IPC 调用 + 4 个事件订阅（`onAgentEvent`、`onSessionLifecycle`、`onAppReady`、`onToolsChanged`）
+- **Renderer**：React 19 + Vite，ESM 输出
 
 ## 构建管线
 
-### 两套构建并存
+### 双构建并存（保留，供 npm 发布路径）
 
 ```
 npm run build
@@ -76,7 +82,7 @@ npm run build
        └─ renderer  → out/renderer/index.html + assets/
 ```
 
-**问题**：库构建（`dist/`）和应用构建（`out/`）产出于不同路径，但都从 `src/` 编译。修改源码后必须两个都重 build 才同步。`dist/` 的存在主要是为了 npm 发布（`package.json` 里有 `main: ./dist/index.js`），但目前看实际 npm 使用场景不明确。
+`dist/` 用于 npm 发布（`package.json` 里 `main: ./out/main/index.cjs`、`bin: ./dist/cli.js`、`exports: ./dist/index.js`）。CLI 模式（`zero-core` 命令）和 HTTP server 模式都依赖 `dist/`，所以 build:lib 不能删。
 
 ### 打包
 
@@ -91,9 +97,9 @@ electron-builder → release/
 ### 测试
 
 ```
-npm run test:e2e
-  ├─ npm run build        (依赖 out/ 产物)
-  └─ playwright test      (tests/e2e/*.spec.ts)
+npm run test:unit    # vitest run — 5 个 test 文件 / 85 测试
+npm run test:e2e     # npm run build + playwright test
+npm run check:handlers  # AST 校验 IPC handler 的 modules 数组
 ```
 
 ## TypeScript 配置矩阵
@@ -105,7 +111,7 @@ npm run test:e2e
 | `tsconfig.node.json` | ESNext/Bundle | - | 主进程类型检查 | 否（electron-vite emit） |
 | `tsconfig.web.json` | ESNext/Bundle | - | renderer 类型检查 | 否（electron-vite emit） |
 
-**陷阱**：三套配置意味着 `npm run build` 不一定能捕获所有类型错误。建议在 CI 中跑 `tsc --noEmit -p tsconfig.node.json` 和 `tsc --noEmit -p tsconfig.web.json`。
+**注意**：根目录跑 `tsc --noEmit -p tsconfig.json` 能覆盖整个项目类型检查。CI 推荐 `npm run build:lib` + `tsc --noEmit -p tsconfig.json`。
 
 ## 依赖关键项
 
@@ -114,21 +120,21 @@ npm run test:e2e
 - **React 19.2.6**
 - **`@ai-sdk/*`**：openai、anthropic、google（gemini）
 - **`@modelcontextprotocol/sdk`**
-- **`better-sqlite3`**（必须用 node-gyp 针对 Electron 编译，[见相关 memory](../C:/Users/Administrator/.claude/projects/c--Users-Administrator-Documents-workspace-agent-zero-core/memory/feedback-native-module-rebuild.md)）
-- **`zustand`**
-- **`uuid`**
+- **`better-sqlite3`** 12.10 — 必须用 node-gyp 针对 Electron 编译，[见相关 memory](../C:/Users/Administrator/.claude/projects/c--Users-Administrator-Documents-workspace-agent-zero-core/memory/feedback-native-module-rebuild.md)
+- **`zustand`** 5.0
+- **`zod`** 4.4
+- **`uuid`** 14.0
 
 ### 开发
-- **`@playwright/test`**
+- **`@playwright/test`** — E2E
+- **`vitest`** 4.1 — 单测
+- **`tsx`** — 跑 scripts/check-handler-modules.ts
 - **`electron-vite`**、**`electron-builder`**
-- **`vite`**（同时给库和 renderer 用）
+- **`vite`**（库构建用）
 
-## 应清理的杂项
+## 仍可清理的（非阻塞）
 
-| 路径 | 问题 |
+| 路径 | 状态 |
 |------|------|
-| `env-dump.txt` | 上一轮调试残留 |
-| `src/renderer/components/workspace/` | 空目录 |
-| `build/` | 空目录 |
-| `resources/` | 空目录 |
-| `dist/` 与 npm 发布 | 如果不实际发布 npm 包，可以删掉 `build:lib` 步骤 |
+| `src/renderer/components/workspace/` | 空目录，git 不追踪，磁盘无害 |
+| `build/`、`resources/` | 空目录，同上 |

@@ -216,14 +216,12 @@
       <div class="flow-header">
         <span class="channel">chat:send</span>
         <span class="deps">
-          声明: <span class="dep">agentService</span><span class="dep">workspaceConfig</span>
-          <span class="dep missing">+ providerStore (未声明)</span>
-          <span class="dep missing">+ agentStore (未声明)</span>
+          声明: <span class="dep">agentService</span><span class="dep">workspaceConfig</span><span class="dep">providerStore</span><span class="dep">agentStore</span>
         </span>
       </div>
       <div class="chain">
         <div class="node handler">
-          <div class="file">chat-handlers.ts:9</div>
+          <div class="file">chat-handlers.ts</div>
           <div class="func">typedHandle("chat:send")</div>
         </div><span class="arrow">→</span>
         <div class="node service">
@@ -248,36 +246,33 @@
           <div class="file">emit("text_delta"/"tool_start"/"agent_end")</div>
         </div><span class="arrow">→</span>
         <div class="node handler">
-          <div class="file">core.ts:97</div>
+          <div class="file">core.ts</div>
           <div class="func">webContents.send("agent:event")</div>
         </div><span class="arrow">→</span>
         <div class="node">
-          <div class="file">AppLayout.tsx:53</div>
-          <div class="func">onAgentEvent dispatcher</div>
+          <div class="file">AppLayout.tsx</div>
+          <div class="func">onAgentEvent dispatcher map</div>
         </div><span class="arrow">→</span>
         <div class="node store">
           <div class="file">chat-store.ts</div>
-          <div class="func">updateAssistantText/addToolCall</div>
+          <div class="func">updateAssistantText/addToolCall/setTodos</div>
         </div>
       </div>
-      <div class="notes danger">
-        Bug: sendPrompt 异步执行，错误仅通过 agent:event 推送。
-        如果 user 还没第一条消息，error 文本可能无处附加。
-        handler modules 数组漏报 providerStore/agentStore 依赖。
+      <div class="notes">
+        Bug B9: sendPrompt 异步执行，错误仅通过 agent:event 推送。
+        如果 user 还没第一条消息，error 文本可能无处附加。建议加 error banner。
+        R2 后 modules 数组完整声明。check:handlers 脚本持续守护。
       </div>
     </div>
 
     <div class="flow">
       <div class="flow-header">
         <span class="channel">chat:abort</span>
-        <span class="deps">
-          声明: <span class="dep">[] (无)</span>
-          <span class="dep missing">+ agentService (未声明)</span>
-        </span>
+        <span class="deps">声明: <span class="dep">agentService</span></span>
       </div>
       <div class="chain">
         <div class="node handler">
-          <div class="file">chat-handlers.ts:44</div>
+          <div class="file">chat-handlers.ts</div>
           <div class="func">typedHandle("chat:abort")</div>
         </div><span class="arrow">→</span>
         <div class="node service">
@@ -289,7 +284,7 @@
           <div class="func">abortController.abort()</div>
         </div>
       </div>
-      <div class="notes">modules 数组声明 []，但实际访问 _ctx.agentService。</div>
+      <div class="notes">R2 已修：modules 数组现在完整声明 agentService。</div>
     </div>
 
   </div>
@@ -311,7 +306,7 @@
       </div>
       <div class="chain">
         <div class="node handler">
-          <div class="file">session-handlers.ts:71</div>
+          <div class="file">session-handlers.ts:28</div>
           <div class="func">typedHandle</div>
         </div><span class="arrow">→</span>
         <div class="node service">
@@ -353,7 +348,7 @@
       </div>
       <div class="chain">
         <div class="node handler">
-          <div class="file">session-handlers.ts:52</div>
+          <div class="file">session-handlers.ts:9</div>
         </div><span class="arrow">→</span>
         <div class="node store">
           <div class="file">session-db.ts</div>
@@ -373,7 +368,7 @@
       </div>
       <div class="chain">
         <div class="node handler">
-          <div class="file">session-handlers.ts:63</div>
+          <div class="file">session-handlers.ts:20</div>
         </div><span class="arrow">→</span>
         <div class="node store">
           <div class="file">session-db.ts</div>
@@ -392,7 +387,7 @@
       </div>
       <div class="chain">
         <div class="node handler">
-          <div class="file">session-handlers.ts:16</div>
+          <div class="file">message-handlers.ts:16</div>
         </div><span class="arrow">→</span>
         <div class="node store">
           <div class="file">session-db.ts</div>
