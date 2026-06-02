@@ -71,7 +71,7 @@ function parseThinkingSegments(text: string): { type: "thinking" | "text"; text:
 // ---------------------------------------------------------------------------
 
 function ThinkingBlockComponent({ text, streaming }: { text: string; streaming: boolean }) {
-	const [expanded, setExpanded] = useState(false);
+	const [expanded, setExpanded] = useState(true);
 
 	return (
 		<div className="thinking-block">
@@ -227,26 +227,20 @@ export default function ChatPanel() {
 		setActiveSessionId(sessionId);
 		loadMessages(sessionId, storedToBlocks(msgs));
 
-		// Sync runtime state — if agent is busy (e.g. recovery), show streaming indicator
+		// Sync runtime state — if agent is busy (e.g. recovery), mark last assistant as streaming
+		// instead of adding a duplicate message bubble (the DB already has a partial assistant turn)
 		if (state.isBusy && state.agentId === agentId) {
-			const blocks: MessageBlock[] = [];
-			if (state.toolCalls) {
-				for (const tc of state.toolCalls) {
-					blocks.push({ type: "tool", name: tc.name, status: tc.status as "running" | "done" | "error" });
+			setIsStreaming(sessionId, true);
+			// Mark the last loaded assistant message as streaming so events update it
+			const loaded = useChatStore.getState().messagesBySession[sessionId] ?? [];
+			if (loaded.length > 0) {
+				const lastIdx = loaded.length - 1;
+				if (loaded[lastIdx].role === "assistant") {
+					const updated = [...loaded];
+					updated[lastIdx] = { ...updated[lastIdx], streaming: true };
+					loadMessages(sessionId, updated);
 				}
 			}
-			if (state.streamingText) {
-				blocks.push({ type: "text", text: state.streamingText });
-			}
-			addMessage(sessionId, {
-				id: nextMsgId(),
-				role: "assistant",
-				text: state.streamingText ?? "",
-				timestamp: Date.now(),
-				streaming: true,
-				blocks,
-			});
-			setIsStreaming(sessionId, true);
 		}
 
 		// activeSessionId already set above from main session
@@ -274,10 +268,12 @@ export default function ChatPanel() {
 		const text = input.trim();
 		if (!text || !activeAgentId || isStreaming) return;
 
-		addMessage(activeSessionId ?? activeAgentId, { id: nextMsgId(), role: "user", text, timestamp: Date.now() });
+		const sid = activeSessionId ?? activeAgentId;
+		addMessage(sid, { id: nextMsgId(), role: "user", text, timestamp: Date.now() });
 		setInput("");
+		setIsStreaming(sid, true);
 
-		addMessage(activeSessionId ?? activeAgentId, {
+		addMessage(sid, {
 			id: nextMsgId(),
 			role: "assistant",
 			text: "",
