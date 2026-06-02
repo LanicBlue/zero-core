@@ -78,7 +78,7 @@ export function registerLogHandlers(ctx: IpcContext): void {
 	typedHandle("logs:get-config", "sessionDb",
 		async (_ctx) => {
 			const kv = _ctx.sessionDb.getKVStore();
-			return kv.getJson<FileLogConfig>("log_config") ?? { enabled: true, retentionDays: 7, globalLevel: "debug" };
+			return kv.getJson<FileLogConfig>("log_config") ?? { enabled: true, retentionDays: 7, globalLevel: "debug" as const };
 		},
 	);
 

@@ -230,7 +230,7 @@ export async function loadCoreModules(): Promise<void> {
 		const { SessionManager } = await import(toFileURL(join(_distServer, "session-manager.js")));
 		const { registerMetricsHooks } = await import(toFileURL(join(_distServer, "metrics-hooks.js")));
 		const sm = new SessionManager(_agentService, {
-			onStateChange: (sessionId, from, to) => {
+			onStateChange: (sessionId: string, from: string, to: string) => {
 				if (_mainWindow && !_mainWindow.isDestroyed()) {
 					_mainWindow.webContents.send("session:lifecycle", { sessionId, from, to });
 				}

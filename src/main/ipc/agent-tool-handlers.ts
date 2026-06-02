@@ -12,6 +12,6 @@ export function registerAgentToolHandlers(ctx: IpcContext): void {
 	});
 
 	typedHandle("agent-tools:get-by-agent", "agentToolStore",
-		(_ctx, agentId: string) => (_ctx.agentToolStore as any).getByAgentId(agentId),
+		(_ctx, agentId: string) => _ctx.agentToolStore.getByAgentId(agentId),
 	);
 }

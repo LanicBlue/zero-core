@@ -57,25 +57,35 @@ const messages = useChatStore(s =>
 
 **回归风险**：renderer 多处直接订阅 `messages`，要全局替换并测一遍。
 
-### R6. IpcContext 加真类型
+### R6. IpcContext 加真类型 ✅ 已完成（2026-06-02）
 
-**难度**：M  **风险**：低  **价值**：高
-
-把 [src/main/ipc/types.ts](../src/main/ipc/types.ts) 改成：
+**实际做法**：把 [src/main/ipc/types.ts](../src/main/ipc/types.ts) 的 15 个 `any` 字段全部改成真类型：
 
 ```ts
-import type { AgentStore } from "../../server/agent-store.js";
 import type { SessionDB } from "../../server/session-db.js";
+import type { AgentStore } from "../../server/agent-store.js";
 // ...
 
 export interface IpcContext {
   sessionDb: SessionDB;
   agentStore: AgentStore;
+  agentToolStore: AgentToolStore;
+  providerStore: ProviderStore;
   // ...
 }
 ```
 
-然后修所有 `as any` 强转。这一步不会改变运行行为，纯类型重塑。
+为支持类型化，[agent-service.ts](../src/server/agent-service.ts) 把 `class AgentService` 改成 `export class`。
+
+**顺带暴露并修复了 3 个被 `any` 掩盖的 bug**：
+- `kb:add-files` 在 KB 不存在时返回 `{ error }` 单对象，与 IPC 类型 `KbFileIngestResult[]` 不匹配 — 改为返回每个文件一个 error 结果
+- `config:get-theme` 返回 `customPrimaryColor?: string`（undefined）但 IPC 类型是 `string | null` — 显式把 undefined 转 null
+- `logs:get-config` 默认值的 `globalLevel: "debug"` 被推断为 `string` 而非 `"debug" | "info" | "warn" | "error"` — 加 `as const`
+- preload 实现 `onSessionLifecycle` 但 `WindowApi` 没声明 — 补声明
+
+**清理**：移除 kb-handlers.ts 和 agent-tool-handlers.ts 里所有 `_ctx.kbStore as any` / `_ctx.kbDb as any` / `_ctx.providerStore as any` 强转。
+
+**未做**：agent-handlers.ts 和 agent-tool-handlers.ts 里 `registerCrud` 的 `store: () => ctx.agentStore as any` 强转保留 — 因为 CrudStore 接口的 `update(id, Update)` 与实际 store 的 `update(id, Partial<Omit<...>>)` 类型不兼容，需要先重构 CrudStore 接口或 store 签名，不属于 R6 范围。
 
 ### R7. MiniMax / GLM preset
 

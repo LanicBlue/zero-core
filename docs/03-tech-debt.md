@@ -16,15 +16,13 @@
 
 **仍需做**：长期目标是让 db-migration.ts 直接 import 各 store 的 COLUMNS 常量，彻底消除双源。当前 self-heal 是 safety net，不是根除。
 
-### 2. IpcContext 全 `any`，typedHandle 是假类型安全
+### 2. IpcContext 全 `any`，typedHandle 是假类型安全（已修复）
 
-**症状**：[src/main/ipc/types.ts](../src/main/ipc/types.ts) 15 个字段全是 `any`，handler 写 `_ctx.agentToolStore.getByAgentId(id)` 编译器不报错，但运行时 `agentToolStore` 可能是 undefined。
+**状态**：✅ 2026-06-02 R6 已完成 — [src/main/ipc/types.ts](../src/main/ipc/types.ts) 15 个字段全部改成真类型，连带修复 3 个被 `any` 掩盖的 bug（kb:add-files 返回类型、config:get-theme null 语义、logs:get-config globalLevel 推断），并补全 preload 的 `onSessionLifecycle` 类型声明。
 
-**根因**：[typed-ipc.ts](../src/main/ipc/typed-ipc.ts) 的泛型只在 handler 函数签名层面给类型，没要求 ctx 字段也有类型。
+**根因回顾**：原本 IpcContext 字段全是 `any`，handler 写 `_ctx.agentToolStore.getByAgentId(id)` 编译器不报错，但运行时若 `agentToolStore` 未就绪会 undefined。[typed-ipc.ts](../src/main/ipc/typed-ipc.ts) 的泛型只在 handler 函数签名层面给类型，没要求 ctx 字段也有类型。
 
-**修复建议**：
-- 给 IpcContext 字段加真类型（`agentStore: AgentStore` 等）
-- 升级 typedHandle 让它在编译期校验 modules 数组和实际访问的 ctx 字段一致
+**仍需做**：`registerCrud` 的 `store: () => ctx.agentStore as any` 强转保留 — 因 CrudStore 接口的 `update(id, Update)` 与实际 store 的 `update(id, Partial<Omit<...>>)` 不兼容。需要后续重构 CrudStore 接口或 store 签名。
 
 ### 3. handler 声明的依赖不准确（已修）
 

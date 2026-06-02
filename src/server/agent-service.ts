@@ -52,7 +52,7 @@ interface AgentRunState {
 // Agent Service — supports concurrent multi-agent execution
 // ---------------------------------------------------------------------------
 
-class AgentService {
+export class AgentService {
 	private loops = new Map<string, AgentLoop>();        // sessionId → loop
 	private runStates = new Map<string, AgentRunState>(); // sessionId → state
 	private activeSessions = new Map<string, string>();    // agentId → active sessionId

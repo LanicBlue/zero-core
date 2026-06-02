@@ -86,7 +86,8 @@ export function registerConfigHandlers(ctx: IpcContext): void {
 		(_ctx) => {
 			try {
 				const stored = _ctx.sessionDb?.getKVStore().getJson<{ mode: string; customPrimaryColor?: string }>("theme");
-				return stored ?? { mode: "dark", customPrimaryColor: null };
+				if (!stored) return { mode: "dark", customPrimaryColor: null };
+				return { mode: stored.mode, customPrimaryColor: stored.customPrimaryColor ?? null };
 			} catch {
 				return { mode: "dark", customPrimaryColor: null };
 			}
