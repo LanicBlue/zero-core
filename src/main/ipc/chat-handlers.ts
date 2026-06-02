@@ -47,8 +47,4 @@ export function registerChatHandlers(ctx: IpcContext): void {
 			return { success: true as const };
 		},
 	);
-
-	typedHandle("chat:state", [],
-		(_ctx, agentId) => _ctx.agentService ? _ctx.agentService.getState(agentId) : { isBusy: false, streamingText: "", toolCalls: [] },
-	);
 }

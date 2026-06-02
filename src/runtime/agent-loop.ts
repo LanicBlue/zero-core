@@ -693,6 +693,13 @@ export class AgentLoop implements AgentRuntime {
 		};
 	}
 
+	getLoopState(): { isBusy: boolean; recorderBlocks: any[] } {
+		return {
+			isBusy: this.busy,
+			recorderBlocks: this.recorder.blocks.slice(),
+		};
+	}
+
 	getResult(): string {
 		return this.resultText;
 	}

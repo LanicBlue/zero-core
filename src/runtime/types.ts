@@ -133,6 +133,29 @@ export interface UsageEvent {
 	};
 }
 
+export interface SessionInitMessage {
+	id: string;
+	role: "user" | "assistant";
+	text: string;
+	blocks?: Array<{
+		type: "thinking" | "tool" | "text";
+		text?: string;
+		name?: string;
+		status?: "running" | "done" | "error";
+		args?: string;
+		result?: string;
+	}>;
+	timestamp: number;
+	streaming?: boolean;
+}
+
+export interface SessionInitEvent {
+	type: "session_init";
+	agentId?: string;
+	sessionId?: string;
+	messages: SessionInitMessage[];
+}
+
 export type StreamEvent =
 	| TextDeltaEvent
 	| ThinkingDeltaEvent
@@ -147,7 +170,8 @@ export type StreamEvent =
 	| SubagentDispatchedEvent
 	| SubagentProgressEvent
 	| SubagentCompletedEvent
-	| UsageEvent;
+	| UsageEvent
+	| SessionInitEvent;
 
 // ---------------------------------------------------------------------------
 // Provider config — mirrors existing ProviderConfig
@@ -155,7 +179,7 @@ export type StreamEvent =
 
 export interface RuntimeProviderConfig {
 	name: string;
-	type: "openai" | "anthropic" | "gemini" | "openai-compatible" | "ollama";
+	type: "openai" | "anthropic" | "gemini" | "openai-compatible" | "ollama" | "mock";
 	apiKey: string;
 	baseUrl: string;
 	models: {

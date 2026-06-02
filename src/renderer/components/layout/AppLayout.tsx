@@ -24,7 +24,7 @@ export default function AppLayout() {
 	const {
 		messages, activeAgentId, activeSessionId, isStreaming,
 		addMessage, updateAssistantText, updateThinking, addToolCall, updateToolCall,
-		finishStreaming, loadMessages, setSessions, setActiveSessionId, updateSessionLifecycle,
+		finishStreaming, initSession, updateSessionLifecycle,
 	} = useChatStore();
 
 	// Track app readiness
@@ -55,16 +55,16 @@ export default function AppLayout() {
 			if (!agentId) return;
 
 			const sessionId = data.sessionId;
-			// Filter: only process events for the currently active session
+			// Use sessionId for store operations, fallback to activeSessionId or agentId
 			const currentSessionId = useChatStore.getState().activeSessionId;
-			if (sessionId && currentSessionId && sessionId !== currentSessionId) {
-				return;
-			}
-
-			// Use sessionId for store operations, fallback to agentId for legacy events
 			const key = sessionId || currentSessionId || agentId;
 
 			switch (data.type) {
+				case "session_init": {
+					const sid = data.sessionId || key;
+					initSession(sid, { messages: data.messages || [] });
+					break;
+				}
 				case "text_delta": {
 					updateAssistantText(key, data.text);
 					break;
@@ -89,36 +89,6 @@ export default function AppLayout() {
 				}
 				case "agent_end": {
 					finishStreaming(key);
-					// Skip DB reload if an error was just shown — preserve error in UI
-					if (lastErrorKey.current === key) {
-						lastErrorKey.current = null;
-						break;
-					}
-					// Reload from DB to get normalized blocks (thinking/tool/text)
-					(async () => {
-						try {
-							const [sessions, msgs] = await Promise.all([
-								api().sessionsList(agentId),
-								api().messagesList(agentId),
-							]);
-							setSessions(agentId, sessions);
-							const str = (v: any) => v == null ? undefined : typeof v === "string" ? v : JSON.stringify(v, null, 2);
-							const dbMsgs = msgs.map((m: any) => {
-								const blocks: any[] = [];
-								if (m.blocks && Array.isArray(m.blocks)) {
-									for (const b of m.blocks) {
-										if (b.type === "thinking") blocks.push({ type: "thinking", text: b.text });
-										else if (b.type === "tool") blocks.push({ type: "tool", name: b.name, status: b.status || "done", args: str(b.args), result: str(b.result) });
-										else if (b.type === "text" && b.text) blocks.push({ type: "text", text: b.text });
-									}
-								} else if (m.text) { blocks.push({ type: "text", text: m.text }); }
-								return { id: m.id || String(Date.now() + Math.random()), role: m.role, text: m.text || "", timestamp: m.timestamp || Date.now(), streaming: false, blocks };
-							});
-							loadMessages(key, dbMsgs);
-							const current = await api().sessionsCurrent(agentId);
-							setActiveSessionId(current?.id ?? null);
-						} catch {}
-					})();
 					break;
 				}
 				case "retry_attempt": {

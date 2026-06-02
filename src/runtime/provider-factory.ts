@@ -5,6 +5,7 @@ import { wrapLanguageModel } from "ai";
 import type { RuntimeProviderConfig } from "./types.js";
 import type { ProviderConcurrencyManager } from "./provider-concurrency-manager.js";
 import { log } from "../core/logger.js";
+import { createMockLanguageModel } from "./mock-language-model.js";
 
 // Cache provider instances by config fingerprint
 const providerCache = new Map<string, (modelId: string) => any>();
@@ -120,6 +121,12 @@ function getOrCreateProvider(config: RuntimeProviderConfig): (modelId: string) =
 		case "gemini": {
 			const provider = createGoogleGenerativeAI({ apiKey: config.apiKey });
 			factory = (id: string) => provider(id);
+			break;
+		}
+		case "mock": {
+			const fixturePath = config.baseUrl;
+			if (!fixturePath) throw new Error("Mock provider requires fixture path in baseUrl");
+			factory = (id: string) => createMockLanguageModel(fixturePath, id);
 			break;
 		}
 		default:

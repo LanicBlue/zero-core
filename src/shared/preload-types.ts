@@ -10,9 +10,9 @@ import type {
 	KnowledgeBase, CreateKbInput, UpdateKbInput, KbSearchResult, KbFileIngestResult,
 	McpServerConfig, CreateMcpInput, UpdateMcpInput, McpStatus,
 	PromptTemplate, CreateTemplateInput, UpdateTemplateInput,
-	SessionRecord, MessageTurn,
+	SessionRecord,
 	LogEntry, LogFileSummary, FileLogConfig,
-	WorkspaceConfig, ToolInfo, ModelInfo, RuntimeState,
+	WorkspaceConfig, ToolInfo, ModelInfo,
 } from "./types.js";
 
 export interface WindowApi {
@@ -47,7 +47,6 @@ export interface WindowApi {
 	providersFetchModels: (providerId: string) => Promise<FetchedModel[]>;
 
 	// ── Messages ──
-	messagesList: (agentId: string) => Promise<MessageTurn[]>;
 	messagesClear: (agentId: string) => Promise<{ success: true }>;
 	messagesEdit: (agentId: string, msgSeq: number, newText: string) => Promise<{ success: true } | { error: string }>;
 	messagesDelete: (agentId: string, msgSeq: number) => Promise<{ success: true } | { error: string }>;
@@ -59,15 +58,15 @@ export interface WindowApi {
 	filesSave: (path: string, content: string, root?: string) => Promise<{ success: true } | { error: string }>;
 
 	// ── Chat ──
-	chatSend: (text: string, agentId?: string) => Promise<{ success: true }>;
+	chatSend: (text: string, agentId?: string, sessionId?: string) => Promise<{ success: true }>;
 	chatAbort: (agentId?: string) => Promise<{ success: true }>;
-	chatState: (agentId?: string) => Promise<RuntimeState>;
 
 	// ── Sessions ──
 	sessionsList: (agentId: string) => Promise<SessionRecord[]>;
 	sessionsNew: (agentId: string) => Promise<SessionRecord>;
 	sessionsSwitch: (agentId: string, sessionId: string) => Promise<{ success: true; sessionId: string }>;
 	sessionsCurrent: (agentId: string) => Promise<SessionRecord | null>;
+	sessionsActivate: (agentId: string, sessionId?: string) => Promise<{ success: true }>;
 	sessionsDelete: (agentId: string, sessionId: string) => Promise<{ success: true; newSessionId?: string }>;
 
 	// ── Streaming events ──

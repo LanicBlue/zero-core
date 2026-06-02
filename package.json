@@ -20,7 +20,8 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "preview": "electron-vite preview",
-    "build:lib": "tsc -p tsconfig.cli.json"
+    "build:lib": "tsc -p tsconfig.cli.json",
+    "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.77",
@@ -44,6 +45,7 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/jsdom": "^28.0.3",

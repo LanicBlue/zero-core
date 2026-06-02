@@ -55,7 +55,7 @@ function createWindow() {
 
 	log("BrowserWindow created");
 
-	if (isDev) {
+	if (isDev && !process.env.ZERO_CORE_TEST_FIXTURE) {
 		mainWindow.loadURL("http://localhost:5173");
 	} else {
 		mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
@@ -83,7 +83,7 @@ app.whenReady().then(() => {
 	// Load modules in background — window is already visible
 	registerIpc(mainWindow!);
 
-	if (isDev) {
+	if (isDev && !process.env.ZERO_CORE_TEST_FIXTURE) {
 		mainWindow?.webContents.openDevTools({ mode: "detach" });
 	}
 });

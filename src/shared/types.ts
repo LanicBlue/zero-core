@@ -45,7 +45,7 @@ export interface ProviderModel {
 export interface Provider {
 	id: string;
 	name: string;
-	type: "openai" | "anthropic" | "gemini" | "openai-compatible" | "ollama";
+	type: "openai" | "anthropic" | "gemini" | "openai-compatible" | "ollama" | "mock";
 	apiKey: string;
 	baseUrl: string;
 	models: ProviderModel[];

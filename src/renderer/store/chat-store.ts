@@ -54,6 +54,7 @@ interface ChatState {
 	updateSessionLifecycle: (sessionId: string, state: SessionLifecycleState) => void;
 	setActiveAgent: (id: string | null, sessionId?: string | null) => void;
 	loadMessages: (sessionId: string, messages: ChatMessage[]) => void;
+	initSession: (sessionId: string, payload: { messages: ChatMessage[]; activeAgentId?: string | null }) => void;
 	clearMessages: (sessionId: string) => void;
 	setSessions: (agentId: string, sessions: SessionRecord[]) => void;
 	setActiveSessionId: (sessionId: string | null) => void;
@@ -237,6 +238,23 @@ export const useChatStore = create<ChatState>((set) => ({
 			return {
 				messagesBySession: newBySession,
 				messages: isActive ? msgs : state.messages,
+			};
+		}),
+
+	initSession: (sessionId, payload) =>
+		set((state) => {
+			const newStreaming = new Set(state.streamingSessions);
+			const hasStreaming = payload.messages.some((m) => m.streaming);
+			if (hasStreaming) newStreaming.add(sessionId);
+			else newStreaming.delete(sessionId);
+
+			const newBySession = { ...state.messagesBySession, [sessionId]: payload.messages };
+			const isActive = sessionId === state.activeSessionId;
+			return {
+				messagesBySession: newBySession,
+				messages: isActive ? payload.messages : state.messages,
+				streamingSessions: newStreaming,
+				isStreaming: calcIsStreaming(newStreaming, isActive ? sessionId : state.activeSessionId),
 			};
 		}),
 

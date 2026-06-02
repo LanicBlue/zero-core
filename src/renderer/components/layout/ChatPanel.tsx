@@ -163,37 +163,6 @@ function renderBlocks(blocks: MessageBlock[], streaming: boolean) {
 	return elements;
 }
 
-const str = (v: any) => v == null ? undefined : typeof v === "string" ? v : JSON.stringify(v, null, 2);
-
-function storedToBlocks(msgs: any[]): any[] {
-	return msgs.map((m) => {
-		const blocks: MessageBlock[] = [];
-
-		if (m.blocks && Array.isArray(m.blocks)) {
-			for (const b of m.blocks) {
-				if (b.type === "thinking") {
-					blocks.push({ type: "thinking", text: b.text });
-				} else if (b.type === "tool") {
-					blocks.push({ type: "tool", name: b.name, status: b.status || "done", args: str(b.args), result: str(b.result) } as ToolCallBlock);
-				} else if (b.type === "text" && b.text) {
-					blocks.push({ type: "text", text: b.text });
-				}
-			}
-		} else if (m.text) {
-			blocks.push({ type: "text", text: m.text });
-		}
-
-		return {
-			id: m.id || String(Date.now() + Math.random()),
-			role: m.role,
-			text: m.text || "",
-			timestamp: m.timestamp || Date.now(),
-			streaming: false,
-			blocks,
-		};
-	});
-}
-
 // ---------------------------------------------------------------------------
 // ChatPanel
 // ---------------------------------------------------------------------------
@@ -201,7 +170,7 @@ function storedToBlocks(msgs: any[]): any[] {
 export default function ChatPanel() {
 	const {
 				messages, activeAgentId, activeSessionId, isStreaming, sessionsByAgent,
-				addMessage, finishStreaming, loadMessages, setActiveAgent,
+				addMessage, finishStreaming, setActiveAgent,
 				setSessions, setActiveSessionId, clearMessages,
 				editMessage, deleteMessage, setIsStreaming,
 			} = useChatStore();
@@ -216,47 +185,22 @@ export default function ChatPanel() {
 	const [editText, setEditText] = useState("");
 
 	const refreshSessionData = useCallback(async (agentId: string) => {
-		const [sessions, msgs, state] = await Promise.all([
-			api().sessionsList(agentId),
-			api().messagesList(agentId),
-			api().chatState(agentId),
-		]);
+		const sessions = await api().sessionsList(agentId);
 		setSessions(agentId, sessions);
-		const mainSession = sessions.find((s: any) => s.isMain);
-		const sessionId = mainSession?.id ?? agentId;
-		setActiveSessionId(sessionId);
-		loadMessages(sessionId, storedToBlocks(msgs));
-
-		// Sync runtime state — if agent is busy (e.g. recovery), mark last assistant as streaming
-		// instead of adding a duplicate message bubble (the DB already has a partial assistant turn)
-		if (state.isBusy && state.agentId === agentId) {
-			setIsStreaming(sessionId, true);
-			// Mark the last loaded assistant message as streaming so events update it
-			const loaded = useChatStore.getState().messagesBySession[sessionId] ?? [];
-			if (loaded.length > 0) {
-				const lastIdx = loaded.length - 1;
-				if (loaded[lastIdx].role === "assistant") {
-					const updated = [...loaded];
-					updated[lastIdx] = { ...updated[lastIdx], streaming: true };
-					loadMessages(sessionId, updated);
-				}
-			}
-		}
-
-		// activeSessionId already set above from main session
+		const result = await api().sessionsActivate(agentId);
+		if (result?.sessionId) setActiveSessionId(result.sessionId);
 	}, []);
 
 	// Load message history + sessions when agent changes
-	// Skip DB reload if agent is actively streaming — keep in-memory state
 	useEffect(() => {
 		if (!activeAgentId) return;
 		if (loadedAgentRef.current === activeAgentId) return;
 		loadedAgentRef.current = activeAgentId;
 
 		refreshSessionData(activeAgentId).catch(() => {
-			loadMessages(activeSessionId ?? activeAgentId, []);
+			// session_init event may still arrive later
 		});
-	}, [activeAgentId, loadMessages]);
+	}, [activeAgentId]);
 
 	// Sync scroll to bottom — no animation, before paint
 	useLayoutEffect(() => {
@@ -305,8 +249,6 @@ export default function ChatPanel() {
 		await api().sessionsSwitch(activeAgentId, sessionId);
 		setActiveSessionId(sessionId);
 		setShowSessions(false);
-		const msgs = await api().messagesList(activeAgentId);
-		loadMessages(sessionId, storedToBlocks(msgs));
 		const sessions = await api().sessionsList(activeAgentId);
 		setSessions(activeAgentId, sessions);
 	};
@@ -381,7 +323,7 @@ export default function ChatPanel() {
 	};
 
 	return (
-		<main className="chat-panel">
+		<main className="chat-panel" data-session-id={activeSessionId ?? ""}>
 			<div className="chat-header">
 				<select
 					className="chat-agent-select"

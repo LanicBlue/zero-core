@@ -2,26 +2,6 @@ import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 
 export function registerSessionHandlers(ctx: IpcContext): void {
-	typedHandle("messages:list", ["agentService", "agentStore"],
-		async (_ctx, agentId) => {
-			const db = _ctx.agentService.getDB();
-			const session = db.getMainSession(agentId);
-			if (!session) return [];
-			const turns = db.getTurns(session.id);
-			if (turns.length === 0) return [];
-
-			return turns.map((turn: any) => {
-				if (turn.role === "user") {
-					return { id: "t" + turn.seq, role: "user", text: turn.content ?? "", timestamp: turn.createdAt };
-				}
-				let blocks: any[] = [];
-				try { blocks = JSON.parse(turn.content ?? "[]"); } catch { blocks = []; }
-				const textParts = blocks.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
-				return { id: "t" + turn.seq, role: "assistant", blocks, text: textParts, timestamp: turn.createdAt };
-			});
-		},
-	);
-
 	typedHandle("messages:clear", ["agentService", "agentStore"],
 		async (_ctx, agentId) => {
 			const db = _ctx.agentService.getDB();
@@ -83,9 +63,15 @@ export function registerSessionHandlers(ctx: IpcContext): void {
 	typedHandle("sessions:switch", ["agentService", "agentStore"],
 		async (_ctx, agentId, sessionId) => {
 			_ctx.agentService.getDB().setMainSession(agentId, sessionId);
-			const agent = _ctx.agentStore.get(agentId);
-			_ctx.agentService.recreateLoop(agentId, sessionId, agent);
+			await _ctx.agentService.activateSession(agentId, sessionId);
 			return { success: true as const, sessionId };
+		},
+	);
+
+	typedHandle("sessions:activate", "agentService",
+		async (_ctx, agentId, sessionId) => {
+			const sid = await _ctx.agentService.activateSession(agentId, sessionId);
+			return { success: true as const, sessionId: sid };
 		},
 	);
 

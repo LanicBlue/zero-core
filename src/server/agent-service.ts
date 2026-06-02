@@ -403,6 +403,103 @@ class AgentService {
 		}
 	}
 
+	// ─── Session activation — runtime as single source of truth for UI ───
+
+	async activateSession(agentId: string, sessionId?: string): Promise<string> {
+		// Resolve target session: explicit id, active session, main session, or create new
+		const candidate = sessionId ?? this.activeSessions.get(agentId);
+		let resolvedSessionId: string;
+		let session: { id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string } | undefined;
+
+		if (candidate) {
+			session = this.db.getSession(candidate);
+		}
+		if (!session) {
+			session = this.db.getMainSession(agentId);
+			if (!session) {
+				session = this.db.createSession(agentId);
+				this.db.setMainSession(agentId, session.id);
+			}
+		}
+		resolvedSessionId = session.id;
+
+		this.activeSessions.set(agentId, resolvedSessionId);
+
+		// Ensure loop exists — this also creates runState
+		let loop = this.loops.get(resolvedSessionId);
+		if (!loop) {
+			const agent = this.agentStore
+				? this.agentStore.list().find((a) => a.id === agentId)
+				: undefined;
+			loop = this.createLoopForSession(agentId, resolvedSessionId, agent);
+		}
+
+		const messages = this.buildSessionInitMessages(agentId, resolvedSessionId, loop);
+
+		this.emit({
+			type: "session_init",
+			agentId,
+			sessionId: resolvedSessionId,
+			messages,
+		});
+
+		return resolvedSessionId;
+	}
+
+	private buildSessionInitMessages(agentId: string, sessionId: string, loop: AgentLoop): any[] {
+		const turns = this.db.getTurns(sessionId);
+		const { isBusy, recorderBlocks } = loop.getLoopState();
+
+		const result: any[] = [];
+		for (let i = 0; i < turns.length; i++) {
+			const t = turns[i];
+			const isLastAssistant = (i === turns.length - 1) && t.role === "assistant";
+
+			if (t.role === "user") {
+				result.push({
+					id: `m${t.seq}`,
+					role: "user",
+					text: t.content ?? "",
+					timestamp: new Date(t.createdAt).getTime(),
+				});
+			} else {
+				// Assistant turn — content is JSON-stringified blocks array (or plain text fallback)
+				let blocks: any[] = [];
+				try {
+					const parsed = t.content ? JSON.parse(t.content) : null;
+					if (Array.isArray(parsed)) {
+						blocks = parsed;
+					} else if (typeof parsed === "string") {
+						blocks = [{ type: "text", text: parsed }];
+					}
+				} catch {
+					if (t.content) blocks = [{ type: "text", text: t.content }];
+				}
+
+				// If this is the last assistant turn AND the loop is currently streaming
+				// (or has partial recorder state from recovery), replace with live recorder blocks
+				if (isLastAssistant && recorderBlocks.length > 0) {
+					blocks = recorderBlocks;
+				}
+
+				const text = blocks
+					.filter((b: any) => b.type === "text")
+					.map((b: any) => b.text || "")
+					.join("");
+
+				result.push({
+					id: `m${t.seq}`,
+					role: "assistant",
+					text,
+					blocks,
+					timestamp: new Date(t.createdAt).getTime(),
+					streaming: isLastAssistant && isBusy,
+				});
+			}
+		}
+		return result;
+	}
+
 	dispose(): void {
 		this.sessionManager?.stopTtlCleanup();
 		this.sessionManager?.dispose();

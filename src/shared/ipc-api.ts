@@ -10,9 +10,9 @@ import type {
 	KnowledgeBase, CreateKbInput, UpdateKbInput, KbSearchResult, KbFileIngestResult,
 	McpServerConfig, CreateMcpInput, UpdateMcpInput, McpStatus,
 	PromptTemplate, CreateTemplateInput, UpdateTemplateInput,
-	SessionRecord, MessageTurn,
+	SessionRecord,
 	LogEntry, LogFileSummary, FileLogConfig,
-	WorkspaceConfig, ToolInfo, ModelInfo, RuntimeState,
+	WorkspaceConfig, ToolInfo, ModelInfo,
 	Ok, Err,
 } from "./types.js";
 
@@ -107,7 +107,6 @@ export interface IpcChannelDefs {
 	"guidelines:save":        { params: [guidelines: string[]];               result: Ok | Err };
 
 	// ── Sessions & Messages ──────────────────────────────────
-	"messages:list":    { params: [agentId: string];                              result: MessageTurn[] };
 	"messages:clear":   { params: [agentId: string];                              result: Ok };
 	"messages:edit":    { params: [agentId: string, msgSeq: number, newText: string]; result: Ok | Err };
 	"messages:delete":  { params: [agentId: string, msgSeq: number];               result: Ok | Err };
@@ -115,13 +114,13 @@ export interface IpcChannelDefs {
 	"sessions:new":     { params: [agentId: string];                              result: SessionRecord };
 	"sessions:switch":  { params: [agentId: string, sessionId: string];           result: Ok & { sessionId: string } };
 	"sessions:current": { params: [agentId: string];                              result: SessionRecord | null };
+	"sessions:activate":{ params: [agentId: string, sessionId?: string];          result: Ok };
 	"sessions:delete":  { params: [agentId: string, sessionId: string];           result: Ok | (Ok & { newSessionId: string }) };
 	"sessions:metrics": { params: []; result: import("../server/session-metrics.js").AggregateMetrics & { sessions: Record<string, import("../server/session-metrics.js").SessionMetrics> } };
 
 	// ── Chat ─────────────────────────────────────────────────
 	"chat:send":   { params: [text: string, agentId?: string, sessionId?: string];    result: Ok };
 	"chat:abort":  { params: [agentId?: string];                  result: Ok };
-	"chat:state":  { params: [agentId?: string];                  result: RuntimeState };
 
 	// ── Files ────────────────────────────────────────────────
 	"files:tree":         { params: [root?: string];                              result: any | Err };

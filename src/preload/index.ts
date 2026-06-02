@@ -33,7 +33,6 @@ const api: WindowApi = {
 	providersFetchModels: (providerId) => ipcRenderer.invoke("providers:fetch-models", providerId),
 
 	// ─── Messages ────────────────────────────────────
-	messagesList: (agentId) => ipcRenderer.invoke("messages:list", agentId),
 	messagesClear: (agentId) => ipcRenderer.invoke("messages:clear", agentId),
 	messagesEdit: (agentId, msgSeq, newText) => ipcRenderer.invoke("messages:edit", agentId, msgSeq, newText),
 	messagesDelete: (agentId, msgSeq) => ipcRenderer.invoke("messages:delete", agentId, msgSeq),
@@ -47,13 +46,13 @@ const api: WindowApi = {
 	// ─── Chat ────────────────────────────────────────
 	chatSend: (text, agentId, sessionId?) => ipcRenderer.invoke("chat:send", text, agentId, sessionId),
 	chatAbort: (agentId) => ipcRenderer.invoke("chat:abort", agentId),
-	chatState: (agentId) => ipcRenderer.invoke("chat:state", agentId),
 
 	// ─── Sessions ────────────────────────────────────
 	sessionsList: (agentId) => ipcRenderer.invoke("sessions:list", agentId),
 	sessionsNew: (agentId) => ipcRenderer.invoke("sessions:new", agentId),
 	sessionsSwitch: (agentId, sessionId) => ipcRenderer.invoke("sessions:switch", agentId, sessionId),
 	sessionsCurrent: (agentId) => ipcRenderer.invoke("sessions:current", agentId),
+	sessionsActivate: (agentId, sessionId?) => ipcRenderer.invoke("sessions:activate", agentId, sessionId),
 	sessionsDelete: (agentId, sessionId) => ipcRenderer.invoke("sessions:delete", agentId, sessionId),
 
 	// ─── Streaming events ────────────────────────────

@@ -1,0 +1,9 @@
+{
+  "chunks": [
+    { "type": "text", "text": "Hello from mock model. " },
+    { "type": "text", "text": "Streaming works." },
+    { "type": "finish", "finishReason": "stop" }
+  ],
+  "usage": { "inputTokens": 5, "outputTokens": 8, "totalTokens": 13 },
+  "delayMs": 10
+}

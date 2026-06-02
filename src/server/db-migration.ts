@@ -46,6 +46,7 @@ const AGENT_TOOL_COLUMNS = [
 	{ key: "responsePath", column: "response_path" },
 	{ key: "timeout" },
 	{ key: "blocking", bool: true },
+	{ key: "auto_background_timeout" },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
 ];

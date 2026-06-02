@@ -5,6 +5,7 @@ import { log } from "../../core/logger.js";
 import type { IpcContext } from "./types.js";
 import type { BrowserWindow } from "electron";
 import { moduleReadiness, type ModuleName } from "./module-readiness.js";
+import { isTestMode, seedTestEnvironment } from "../test-setup.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const toFileURL = (p: string) => { const { pathToFileURL: p2u } = require("url"); return p2u(p).href; };
@@ -105,6 +106,7 @@ export async function ensureAgentService(): Promise<any> {
 
 export async function loadCoreModules(): Promise<void> {
 	const t0 = Date.now();
+	log.ipc("loadCoreModules entered");
 	_distServer = join(__dirname, "../../dist/server");
 	_distCore = join(__dirname, "../../dist/core");
 
@@ -151,6 +153,7 @@ export async function loadCoreModules(): Promise<void> {
 	_sessionDb = new sessionDbMod.SessionDB();
 	migrationMod.runMigrations(_sessionDb);
 	moduleReadiness.resolveModule("sessionDb");
+	log.ipc("Phase 1 done");
 
 	// ─── Phase 1b: Hooks + file logging (depend on sessionDb) ────
 	durableHooksMod.registerDurableHooks(_sessionDb);
@@ -179,6 +182,14 @@ export async function loadCoreModules(): Promise<void> {
 		"kbStore", "kbDb", "agentToolStore", "workspaceConfig",
 	]);
 	log.ipc("Stores ready", `+${Date.now() - t0}ms`);
+
+	// ─── Phase 2b: Test-mode seed (before setProviders reads provider list) ──
+	log.ipc("Test mode check:", isTestMode());
+	if (isTestMode()) {
+		seedTestEnvironment(_sessionDb, _agentStore, _providerStore);
+		_workspaceConfig = wsMod.loadWorkspaceConfig(_sessionDb);
+		log.ipc("Test seed applied");
+	}
 
 	// ─── Phase 3: ToolRegistry (depends on sessionDb) ────────────
 	_registry = new trMod.ToolRegistry(_sessionDb.getKVStore());
