@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
 import { buildTool } from "./tool-factory.js";
+import { EXEC_MAX_BUFFER_BYTES } from "../../core/constants.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -102,7 +103,7 @@ export const grepTool = buildTool({
 				const { stdout } = await execFileAsync("rg", args, {
 					cwd: workingDir,
 					timeout: 20000,
-					maxBuffer: 10 * 1024 * 1024,
+					maxBuffer: EXEC_MAX_BUFFER_BYTES,
 				});
 				if (!stdout) return "No matches found.";
 
@@ -136,7 +137,7 @@ export const grepTool = buildTool({
 			const { stdout } = await execFileAsync("grep", grepArgs, {
 				cwd: workingDir,
 				timeout: 20000,
-				maxBuffer: 10 * 1024 * 1024,
+				maxBuffer: EXEC_MAX_BUFFER_BYTES,
 			});
 			return stdout || "No matches found.";
 		} catch (err: any) {

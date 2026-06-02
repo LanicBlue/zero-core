@@ -1,6 +1,7 @@
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { ProviderModel, Provider } from "../shared/types.js";
+import { DEFAULT_URLS } from "../core/constants.js";
 
 // ---------------------------------------------------------------------------
 // System providers (built-in defaults)
@@ -11,7 +12,7 @@ const SYSTEM_PROVIDERS: Omit<Provider, "id" | "createdAt" | "updatedAt">[] = [
 		name: "OpenAI",
 		type: "openai",
 		apiKey: "",
-		baseUrl: "https://api.openai.com/v1",
+		baseUrl: DEFAULT_URLS.openai,
 		models: [
 			{ id: "gpt-4o", name: "GPT-4o", group: "GPT-4o", contextWindow: 128000, maxTokens: 16384 },
 			{ id: "gpt-4o-mini", name: "GPT-4o Mini", group: "GPT-4o", contextWindow: 128000, maxTokens: 16384 },
@@ -54,7 +55,7 @@ const SYSTEM_PROVIDERS: Omit<Provider, "id" | "createdAt" | "updatedAt">[] = [
 		name: "Ollama",
 		type: "ollama",
 		apiKey: "",
-		baseUrl: "http://localhost:11434",
+		baseUrl: DEFAULT_URLS.ollama,
 		models: [],
 		enabled: false,
 		isSystem: true,

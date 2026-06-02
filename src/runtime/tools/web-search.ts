@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
+import { DEFAULT_URLS } from "../../core/constants.js";
 
 // ---------------------------------------------------------------------------
 // Web Search — adapter pattern for multiple search backends
@@ -192,7 +193,7 @@ export function createSearchProvider(config?: {
 	const type = config?.type ?? "duckduckgo";
 	switch (type) {
 		case "searxng":
-			return new SearXNGProvider(config?.searxngUrl ?? "http://localhost:8080");
+			return new SearXNGProvider(config?.searxngUrl ?? DEFAULT_URLS.searxng);
 		case "serpapi":
 			if (!config?.serpApiKey) throw new Error("SerpAPI requires an API key");
 			return new SerpAPIProvider(config.serpApiKey);

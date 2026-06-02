@@ -7,6 +7,7 @@ import type { ProviderStore } from "./provider-store.js";
 import { ingestFile, removeFile } from "./kb-ingest.js";
 import { search as kbSearch } from "./kb-search.js";
 import { createEmbeddingProvider } from "./kb-embeddings.js";
+import { DEFAULT_URLS } from "../core/constants.js";
 
 export function createKbRouter(kbStore: KbStore, kbDb: KbDB, providerStore: ProviderStore): Router {
 	const router = Router();
@@ -20,8 +21,8 @@ export function createKbRouter(kbStore: KbStore, kbDb: KbDB, providerStore: Prov
 		const embProv = providers.find((p: any) => p.enabled && p.type !== "ollama");
 		return createEmbeddingProvider(kb.embeddingProvider, {
 			baseUrl: kb.embeddingProvider === "ollama"
-				? "http://localhost:11434"
-				: (embProv?.baseUrl ?? "https://api.openai.com/v1"),
+				? DEFAULT_URLS.ollama
+				: (embProv?.baseUrl ?? DEFAULT_URLS.openai),
 			apiKey: kb.embeddingProvider === "ollama" ? "" : (embProv?.apiKey ?? ""),
 			model: kb.embeddingModel,
 		});

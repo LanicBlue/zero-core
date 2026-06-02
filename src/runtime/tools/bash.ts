@@ -2,6 +2,7 @@ import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { buildTool } from "./tool-factory.js";
+import { EXEC_MAX_BUFFER_BYTES } from "../../core/constants.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -74,7 +75,7 @@ export const bashTool = buildTool({
 
 		// Foreground mode — use buffer encoding to decode GBK→UTF-8 on Windows
 		try {
-			const execOpts: any = { cwd: ctx.workingDir, maxBuffer: 10 * 1024 * 1024, encoding: "buffer" };
+			const execOpts: any = { cwd: ctx.workingDir, maxBuffer: EXEC_MAX_BUFFER_BYTES, encoding: "buffer" };
 			if (timeout) execOpts.timeout = timeout;
 			const result = await execFileAsync(shell, shellArgs, execOpts) as { stdout: Buffer; stderr: Buffer };
 			const stdout = decodeOutput(result.stdout);

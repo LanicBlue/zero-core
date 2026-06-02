@@ -117,22 +117,18 @@
 - 短期：保持现状（context isolation 已提供基本保护）
 - 长期：把 preload API 按模块切分，按页面 / 角色分级暴露
 
-### 12. 硬编码 URL 和 magic number
+### 12. 硬编码 URL 和 magic number ✅ 已完成（2026-06）
 
-**URLs**：
-- `http://localhost:5173`（dev server）
-- `http://localhost:11434`（Ollama 默认）
-- `http://localhost:3000`（MCP SSE 默认）
-- `http://localhost:8080`（SearXNG 默认）
-- `http://localhost:3210`（API server 默认）
+主要 URL 与常量已抽到 [src/core/constants.ts](../src/core/constants.ts)：
+- `EXEC_MAX_BUFFER_BYTES` (10 MB) — 替换 6 处 maxBuffer
+- `OUTPUT_TRUNCATION_CHARS` (50_000) — 替换 3 处输出截断
+- `DEFAULT_URLS.{ollama, searxng, openai}` — 替换 KB / search / provider 默认 URL
+- `DEV_SERVER_URL` — 替换 main/index.ts 中的 vite dev URL
 
-**magic number**：
-- `200`（agent loop max steps）
-- `10 * 1024 * 1024`（background process max buffer）
-- `50000`（output truncation）
-- 各种 `1500ms / 2000ms / 5000ms / 10000ms` 超时
-
-**修复建议**：抽到 `core/config.ts` 或 `core/constants.ts`。
+未抽的（暂留）：
+- `200`（agent loop max steps）— 已通过 SessionConfig 暴露给配置，不算硬编码
+- 各类超时（1500/2000/5000/10000ms）— 散落于 UI 动画 / 重试逻辑，分类抽常量收益低
+- MCP SSE / API server 默认端口 — 这两条路径暂未启用
 
 ### 13. Provider 类型与 UI 选项不匹配
 
@@ -184,5 +180,5 @@
 | catch 块（含空 catch） | 91 |
 | TODO/FIXME 注释 | ~5（数量少说明文档习惯好，但也可能未标注） |
 | E2E 测试 | 2 |
-| 单元测试 | 0 |
-| 硬编码 URL | 9 |
+| 单元测试 | 85 |
+| 硬编码 URL | 0（核心默认值已抽常量） |

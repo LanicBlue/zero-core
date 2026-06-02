@@ -2,6 +2,8 @@
 // Embedding providers — OpenAI and Ollama
 // ---------------------------------------------------------------------------
 
+import { DEFAULT_URLS } from "../core/constants.js";
+
 export interface EmbeddingProvider {
 	embed(texts: string[]): Promise<Float32Array[]>;
 	dimension: number;
@@ -52,7 +54,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
 	private model: string;
 	readonly dimension: number;
 
-	constructor(baseUrl: string = "http://localhost:11434", model: string = "nomic-embed-text", dimension: number = 768) {
+	constructor(baseUrl: string = DEFAULT_URLS.ollama, model: string = "nomic-embed-text", dimension: number = 768) {
 		this.baseUrl = baseUrl.replace(/\/+$/, "");
 		this.model = model;
 		this.dimension = dimension;
@@ -85,14 +87,14 @@ export function createEmbeddingProvider(
 ): EmbeddingProvider {
 	if (provider === "ollama") {
 		return new OllamaEmbeddingProvider(
-			config.baseUrl ?? "http://localhost:11434",
+			config.baseUrl ?? DEFAULT_URLS.ollama,
 			config.model ?? "nomic-embed-text",
 		);
 	}
 	// Default to OpenAI-compatible
 	return new OpenAIEmbeddingProvider(
 		config.apiKey ?? "",
-		config.baseUrl ?? "https://api.openai.com/v1",
+		config.baseUrl ?? DEFAULT_URLS.openai,
 		config.model ?? "text-embedding-3-small",
 	);
 }

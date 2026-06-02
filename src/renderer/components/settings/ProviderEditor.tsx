@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useProviderStore } from "../../store/provider-store.js";
 import type { Provider, ProviderModel } from "../../../shared/types.js";
+import { DEFAULT_URLS } from "../../../core/constants.js";
 
 export function ProviderEditor({ provider, onClose }: { provider: Provider | null; onClose: () => void }) {
 	const { create, update, addModel, removeModel, fetchModels } = useProviderStore();
@@ -10,7 +11,7 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 		name: provider?.name ?? "",
 		type: provider?.type ?? "openai-compatible" as Provider["type"],
 		apiKey: provider?.apiKey ?? "",
-		baseUrl: provider?.baseUrl ?? "https://api.openai.com/v1",
+		baseUrl: provider?.baseUrl ?? DEFAULT_URLS.openai,
 		enabled: provider?.enabled ?? true,
 		enableConcurrencyLimit: provider?.enableConcurrencyLimit ?? false,
 		maxConcurrency: provider?.maxConcurrency ?? 3,

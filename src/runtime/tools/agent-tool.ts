@@ -2,6 +2,7 @@ import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { buildTool } from "./tool-factory.js";
+import { EXEC_MAX_BUFFER_BYTES, OUTPUT_TRUNCATION_CHARS } from "../../core/constants.js";
 import type { ToolExecutionContext } from "../types.js";
 import type { AgentToolEntry } from "../../shared/types.js";
 
@@ -43,11 +44,9 @@ function resolveArgsTemplate(template: string, task: string): string[] {
 	return args;
 }
 
-const MAX_RESULT = 50000;
-
 function truncateResult(text: string): string {
-	if (text.length <= MAX_RESULT) return text;
-	return text.slice(0, MAX_RESULT) + "\n... (output truncated)";
+	if (text.length <= OUTPUT_TRUNCATION_CHARS) return text;
+	return text.slice(0, OUTPUT_TRUNCATION_CHARS) + "\n... (output truncated)";
 }
 
 export function buildAgentTools(
@@ -121,7 +120,7 @@ export function buildAgentTools(
 					isReadOnly: false,
 					isConcurrencySafe: false,
 					isDestructive: true,
-					maxResultSize: 50000,
+					maxResultSize: OUTPUT_TRUNCATION_CHARS,
 				},
 				inputSchema: z.object({
 					task: z.string().describe("Task for the external agent to perform"),
@@ -136,7 +135,7 @@ export function buildAgentTools(
 						const { stdout, stderr } = await execFileAsync(capturedEntry.command!, args, {
 							cwd: ctx.workingDir || ".",
 							timeout,
-							maxBuffer: 10 * 1024 * 1024,
+							maxBuffer: EXEC_MAX_BUFFER_BYTES,
 						});
 
 						let result = "";

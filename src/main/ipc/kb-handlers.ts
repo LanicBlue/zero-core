@@ -1,6 +1,7 @@
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 import type { KnowledgeBase, CreateKbInput, UpdateKbInput } from "../../shared/types.js";
+import { DEFAULT_URLS } from "../../core/constants.js";
 
 export function registerKbHandlers(ctx: IpcContext): void {
 	// KB has custom delete (needs kbDb), so all handlers are manual.
@@ -47,7 +48,7 @@ export function registerKbHandlers(ctx: IpcContext): void {
 					const { createEmbeddingProvider } = await import(_ctx.toFileURL(join(_ctx.distServer, "kb-embeddings.js")));
 					const { ingestFile } = await import(_ctx.toFileURL(join(_ctx.distServer, "kb-ingest.js")));
 					const embedder = createEmbeddingProvider(kb.embeddingProvider, {
-						baseUrl: kb.embeddingProvider === "ollama" ? "http://localhost:11434" : (embProv?.baseUrl ?? "https://api.openai.com/v1"),
+						baseUrl: kb.embeddingProvider === "ollama" ? DEFAULT_URLS.ollama : (embProv?.baseUrl ?? DEFAULT_URLS.openai),
 						apiKey: kb.embeddingProvider === "ollama" ? "" : (embProv?.apiKey ?? ""),
 						model: kb.embeddingModel,
 					});
@@ -89,7 +90,7 @@ export function registerKbHandlers(ctx: IpcContext): void {
 			const kb = targetKbs[0];
 			const { createEmbeddingProvider } = await import(_ctx.toFileURL(join(_ctx.distServer, "kb-embeddings.js")));
 			const embedder = createEmbeddingProvider(kb.embeddingProvider, {
-				baseUrl: kb.embeddingProvider === "ollama" ? "http://localhost:11434" : (embProv?.baseUrl ?? "https://api.openai.com/v1"),
+				baseUrl: kb.embeddingProvider === "ollama" ? DEFAULT_URLS.ollama : (embProv?.baseUrl ?? DEFAULT_URLS.openai),
 				apiKey: kb.embeddingProvider === "ollama" ? "" : (embProv?.apiKey ?? ""),
 				model: kb.embeddingModel,
 			});

@@ -17,6 +17,7 @@ import { log } from "../core/logger.js";
 import { ToolRegistry } from "../core/tool-registry.js";
 import { triggerHooks } from "../core/hook-registry.js";
 import { classifyError, isTransientError, userFriendlyMessage, parseThinkingTags, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
+import { EXEC_MAX_BUFFER_BYTES, OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
 import { TaskRegistry } from "./task-registry.js";
 import type { ISessionStore } from "./session-store-interface.js";
 import { TurnRecorder } from "./turn-recorder.js";
@@ -251,7 +252,7 @@ export class AgentLoop implements AgentRuntime {
 
 				const child = require("node:child_process").spawn(shell, shellArgs, {
 					cwd: this.config.workspaceDir,
-					maxBuffer: 10 * 1024 * 1024,
+					maxBuffer: EXEC_MAX_BUFFER_BYTES,
 				});
 				let stdout = "";
 				let stderr = "";
@@ -262,7 +263,7 @@ export class AgentLoop implements AgentRuntime {
 					let result = "";
 					if (stdout) result += stdout;
 					if (stderr) result += (result ? "\n" : "") + "[stderr] " + stderr;
-					if (result.length > 50000) result = result.slice(0, 50000) + "\n... (output truncated)";
+					if (result.length > OUTPUT_TRUNCATION_CHARS) result = result.slice(0, OUTPUT_TRUNCATION_CHARS) + "\n... (output truncated)";
 					if (code === 0) {
 						registry.complete(taskId, result || "(no output)");
 					} else {

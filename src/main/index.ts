@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { registerIpc } from "./ipc";
+import { DEV_SERVER_URL } from "../core/constants.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
@@ -56,7 +57,7 @@ function createWindow() {
 	log("BrowserWindow created");
 
 	if (isDev && !process.env.ZERO_CORE_TEST_FIXTURE) {
-		mainWindow.loadURL("http://localhost:5173");
+		mainWindow.loadURL(DEV_SERVER_URL);
 	} else {
 		mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
 	}

@@ -7,6 +7,7 @@ import type {
 import { TaskRegistry } from "./task-registry.js";
 import { AgentLoop } from "./agent-loop.js";
 import { triggerHooks } from "../core/hook-registry.js";
+import { EXEC_MAX_BUFFER_BYTES, OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
 
 // ---------------------------------------------------------------------------
 // Subagent / task delegation factory
@@ -241,7 +242,7 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 
 		const child = require("node:child_process").spawn(shell, shellArgs, {
 			cwd: config.workspaceDir,
-			maxBuffer: 10 * 1024 * 1024,
+			maxBuffer: EXEC_MAX_BUFFER_BYTES,
 		});
 		let stdout = "";
 		let stderr = "";
@@ -252,7 +253,7 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 			let result = "";
 			if (stdout) result += stdout;
 			if (stderr) result += (result ? "\n" : "") + "[stderr] " + stderr;
-			if (result.length > 50000) result = result.slice(0, 50000) + "\n... (output truncated)";
+			if (result.length > OUTPUT_TRUNCATION_CHARS) result = result.slice(0, OUTPUT_TRUNCATION_CHARS) + "\n... (output truncated)";
 			if (code === 0) {
 				taskRegistry.complete(taskId, result || "(no output)");
 			} else {
