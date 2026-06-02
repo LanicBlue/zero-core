@@ -14,6 +14,7 @@ import { registerMessageHandlers } from "./ipc/message-handlers.js";
 import { registerFileHandlers } from "./ipc/file-handlers.js";
 import { registerChatHandlers } from "./ipc/chat-handlers.js";
 import { registerTemplateHandlers } from "./ipc/template-handlers.js";
+import { registerGithubTemplateHandlers } from "./ipc/github-template-handlers.js";
 import { registerMcpHandlers } from "./ipc/mcp-handlers.js";
 import { registerKbHandlers } from "./ipc/kb-handlers.js";
 import { registerLogHandlers } from "./ipc/log-handlers.js";
@@ -35,6 +36,7 @@ export function registerIpc(win: BrowserWindow): void {
 	registerFileHandlers(ctx);
 	registerChatHandlers(ctx);
 	registerTemplateHandlers(ctx);
+	registerGithubTemplateHandlers(ctx);
 	registerMcpHandlers(ctx);
 	registerKbHandlers(ctx);
 	registerLogHandlers(ctx);

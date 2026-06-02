@@ -206,6 +206,12 @@ if (handler) handler(data, key);
 - Form state 留在 AgentEditor（避免 state 提升风险），section 组件纯 props → JSX
 - 全部通过 55 单测 + 2 E2E，typecheck 干净
 
+**已完成（2026-06-02 第四批）**：template-handlers 拆分
+- [template-handlers.ts](../src/main/ipc/template-handlers.ts) 188 → 47 行（7 个 CRUD handler）
+- 拆出 [github-template-handlers.ts](../src/main/ipc/github-template-handlers.ts)（140 行，2 个 handler：`templates:github-preview` + `templates:import-github` + cache helpers）
+- 在 [src/main/ipc.ts](../src/main/ipc.ts) 注册新 handler
+- 全部通过 85 单测 + 2 E2E，typecheck 干净
+
 ### R13. 双构建整合
 
 如果 `dist/` 不实际用于 npm 发布，删除 `build:lib` 步骤 + `tsconfig.cli.json` + `vite.config.ts`（如果只是给 lib 用）。

@@ -97,7 +97,7 @@
 | [SettingsPage.tsx](../src/renderer/components/settings/SettingsPage.tsx) | 119 (was 667) | ✅ 2026-06-02 已拆 — 6 个 satellite 组件（ProviderCard / ProviderEditor / DeviceContextSettings / GuidelinesSettings / WorkspaceSettings / ThemeSettings）|
 | [ChatPanel.tsx](../src/renderer/components/layout/ChatPanel.tsx) | 431 | 可接受，但 session 切换 + 输入 + 消息渲染可拆 |
 | [session-handlers.ts](../src/main/ipc/session-handlers.ts) | 6 个独立操作（已拆出 message-handlers） | ✅ 2026-06-02 已拆 |
-| [template-handlers.ts](../src/main/ipc/template-handlers.ts) | 188 + GitHub import | 可拆 github-handlers |
+| [template-handlers.ts](../src/main/ipc/template-handlers.ts) | 47 (was 188) | ✅ 2026-06-02 已拆 — 7 CRUD handler 留原文件，github preview/import 拆到 [github-template-handlers.ts](../src/main/ipc/github-template-handlers.ts) |
 
 ### 9. AppLayout 的 `onAgentEvent` switch 巨大 ✅ 已修（2026-06-02 R8）
 
