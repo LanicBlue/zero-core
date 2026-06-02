@@ -15,6 +15,7 @@ import type {
 	WorkspaceConfig, ToolInfo, ModelInfo,
 	Ok, Err,
 } from "./types.js";
+import type { FileTreeNode } from "./file-utils.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -123,7 +124,7 @@ export interface IpcChannelDefs {
 	"chat:abort":  { params: [agentId?: string];                  result: Ok };
 
 	// ── Files ────────────────────────────────────────────────
-	"files:tree":         { params: [root?: string];                              result: any | Err };
+	"files:tree":         { params: [root?: string];                              result: FileTreeNode[] | Err };
 	"files:content":      { params: [filePath: string, root?: string];          result: { content: string } | Err };
 	"files:resolve-path": { params: [filePath: string, root?: string];          result: { path: string } | Err };
 	"files:save":         { params: [filePath: string, content: string, root?: string]; result: Ok | Err };
@@ -136,6 +137,7 @@ export interface IpcChannelDefs {
 
 	// ── Misc ─────────────────────────────────────────────────
 	"ask-user:respond":    { params: [requestId: string, answers: Record<string, string>]; result: Ok };
+	// TODO: handler not yet implemented — see memory/project-todos-search-provider-completion.md
 	"todos:get":           { params: [agentId: string];                                    result: any[] };
 	"search-provider:get": { params: [];                                                   result: any };
 	"search-provider:set": { params: [config: { type: string; searxngUrl?: string; serpApiKey?: string }]; result: Ok };

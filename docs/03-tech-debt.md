@@ -57,9 +57,10 @@
 ### 6. `any` 在 public API 上
 
 **最严重的几处**：
-- [src/main/ipc/types.ts](../src/main/ipc/types.ts) — 整个 IpcContext
-- [src/shared/ipc-api.ts:139](../src/shared/ipc-api.ts#L139) `"todos:get": { result: any[] }`
-- [src/runtime/agent-utils.ts:48](../src/runtime/agent-utils.ts#L48) `parseThinkingTags(): any[]`
+- [src/main/ipc/types.ts](../src/main/ipc/types.ts) — 整个 IpcContext — ✅ R6 已修
+- [src/shared/ipc-api.ts:139](../src/shared/ipc-api.ts#L139) `"todos:get": { result: any[] }` — ⚠️ 标 TODO，等 todos 功能补完时一起改
+- [src/runtime/agent-utils.ts:48](../src/runtime/agent-utils.ts#L48) `parseThinkingTags(): any[]` — ✅ 2026-06-02 已改为 `ThinkingBlock[]`
+- `files:tree` 返回 `any` — ✅ 2026-06-02 已改为 `FileTreeNode[]`
 
 **总数据**：378 处 `any`（215 `: any` + 163 `as any`）。
 

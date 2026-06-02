@@ -9,7 +9,14 @@ export const TEXT_EXTS = new Set([
 	".sh", ".bash", ".env", ".gitignore", ".sql",
 ]);
 
-export function buildTree(dir: string, basePath: string): unknown[] {
+export interface FileTreeNode {
+	name: string;
+	path: string;
+	type: "dir" | "file";
+	children?: FileTreeNode[];
+}
+
+export function buildTree(dir: string, basePath: string): FileTreeNode[] {
 	try {
 		const entries = readdirSync(dir, { withFileTypes: true });
 		return entries

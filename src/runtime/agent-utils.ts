@@ -45,9 +45,13 @@ export function userFriendlyMessage(cls: ErrorClass, raw: string): string {
 // Thinking tag parser
 // ---------------------------------------------------------------------------
 
-export function parseThinkingTags(text: string): any[] {
+export type ThinkingBlock =
+	| { type: "text"; text: string }
+	| { type: "thinking"; text: string };
+
+export function parseThinkingTags(text: string): ThinkingBlock[] {
 	if (!text) return [];
-	const result: any[] = [];
+	const result: ThinkingBlock[] = [];
 	let remaining = text;
 	// Strip leading newlines
 	while (remaining.charCodeAt(0) === 10) remaining = remaining.substring(1);
