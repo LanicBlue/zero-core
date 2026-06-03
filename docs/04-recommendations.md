@@ -79,10 +79,10 @@ export const selectIsStreaming = (s) =>
 
 ### R11. E2E 扩展 ✅ 首批完成（2026-06）
 
-新增 5 个 E2E 测试（共 7 个）：
+新增 6 个 E2E 测试（共 8 个）：
 - 多轮对话：3 轮连续消息，验证 user/assistant 气泡按序出现
 - error banner：首条消息失败时出现、手动关闭、5 秒自动消失
-- session 删除：非活跃 session 删除后活跃 session 消息保留
+- session 删除：活跃 session 删除后切换到新空 session + 非活跃 session 删除后活跃 session 消息保留
 
 mock-language-model 扩展支持 error fixture (`error: { message }` 字段，doStream/doGenerate 直接 throw）。
 

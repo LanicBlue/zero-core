@@ -23,6 +23,21 @@ test.describe("Session deletion", () => {
 		await cleanup();
 	});
 
+	test("deleting the active session switches to a new empty session", async () => {
+		// Send a message in session A
+		await sendChatMessage(window, "message in A");
+		await expect(window.locator(".message.message-user")).toHaveCount(1);
+
+		// Delete the active session
+		await window.locator(".btn-sessions").click();
+		const items = window.locator(".session-item");
+		await expect(items).toHaveCount(1, { timeout: 5_000 });
+		await items.first().locator(".session-item-delete").click();
+
+		// A new empty session should be created
+		await expect(window.locator(".chat-empty")).toBeVisible({ timeout: 5_000 });
+	});
+
 	test("deleting a non-active session preserves active session messages", async () => {
 		// Session A: send a message
 		await sendChatMessage(window, "message in A");

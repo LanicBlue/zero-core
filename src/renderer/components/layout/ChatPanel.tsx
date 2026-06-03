@@ -209,10 +209,10 @@ export default function ChatPanel() {
 	const [editText, setEditText] = useState("");
 
 	const refreshSessionData = useCallback(async (agentId: string) => {
-		const sessions = await api().sessionsList(agentId);
-		setSessions(agentId, sessions);
 		const result = await api().sessionsActivate(agentId);
 		if (result?.sessionId) setActiveSessionId(result.sessionId);
+		const sessions = await api().sessionsList(agentId);
+		setSessions(agentId, sessions);
 	}, []);
 
 	// Load message history + sessions when agent changes
@@ -280,12 +280,12 @@ export default function ChatPanel() {
 	const handleDeleteSession = async (sessionId: string) => {
 		if (!activeAgentId) return;
 		const result = await api().sessionsDelete(activeAgentId, sessionId);
-		if (result.newSessionId) {
-			setActiveSessionId(result.newSessionId);
-			clearMessages(result.newSessionId);
-		}
 		const sessions = await api().sessionsList(activeAgentId);
 		setSessions(activeAgentId, sessions);
+		if (result.newSessionId) {
+			const activateResult = await api().sessionsActivate(activeAgentId, result.newSessionId);
+			if (activateResult?.sessionId) setActiveSessionId(activateResult.sessionId);
+		}
 	};
 
 	const handleKeyDown = (e: React.KeyboardEvent) => {

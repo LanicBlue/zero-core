@@ -20,7 +20,7 @@
 
 ## TL;DR — 项目当前状态（2026-06 重分析）
 
-**功能层面**：核心特性（agent runtime、单源真理 store、SQLite 持久化、MCP、知识库、工具系统、recovery）都已实现且能工作。E2E 覆盖 7 条路径（单轮、多轮、error banner、session 切换/删除），85 个单元测试覆盖纯逻辑模块。
+**功能层面**：核心特性（agent runtime、单源真理 store、SQLite 持久化、MCP、知识库、工具系统、recovery）都已实现且能工作。E2E 覆盖 8 条路径（单轮、多轮、error banner、session 切换/删除/活跃删除），85 个单元测试覆盖纯逻辑模块。
 
 **质量层面**：止血阶段（R1-R8）和补完阶段（todos 渲染、search-provider 配置、god 文件拆分、硬编码抽常量、IpcContext 类型化）全部完成。剩余的"中等优先级" bug（B3/B4/B8）也已清掉。
 
