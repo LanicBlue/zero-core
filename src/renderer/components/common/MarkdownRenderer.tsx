@@ -8,10 +8,15 @@ interface Props {
 	content: string;
 	streaming?: boolean;
 	className?: string;
+	softBreak?: boolean;
 }
 
-export default function MarkdownRenderer({ content, streaming, className }: Props) {
-	const cleaned = useMemo(() => content.replace(/\n{3,}/g, "\n\n").trim(), [content]);
+export default function MarkdownRenderer({ content, streaming, className, softBreak }: Props) {
+	const cleaned = useMemo(() => {
+		let s = content;
+		if (softBreak) s = s.replace(/\n/g, "  \n");
+		return s.replace(/\n{3,}/g, "\n\n").trim();
+	}, [content, softBreak]);
 
 	const components = useMemo(() => ({
 		code({ className: codeClassName, children, ...rest }: React.HTMLAttributes<HTMLElement> & { node?: any }) {

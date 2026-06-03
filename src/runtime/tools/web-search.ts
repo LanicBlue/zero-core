@@ -245,9 +245,19 @@ export const webSearchTool = buildTool({
 		query: z.string().describe("Search query"),
 		maxResults: z.number().optional().describe("Max results (default 8, max 20)"),
 	}),
-	execute: async ({ query, maxResults }) => {
+	execute: async ({ query, maxResults }, ctx) => {
 		try {
-			const results = await currentProvider.search(query, {
+			const cfg = ctx.toolConfig?.WebSearch;
+			const provider = cfg?.provider
+				? createSearchProvider({
+					type: cfg.provider,
+					searxngUrl: cfg.searxngUrl,
+					serpApiKey: cfg.serpApiKey,
+					braveApiKey: cfg.braveApiKey,
+				})
+				: currentProvider;
+
+			const results = await provider.search(query, {
 				maxResults: Math.min(maxResults ?? 8, 20),
 			});
 

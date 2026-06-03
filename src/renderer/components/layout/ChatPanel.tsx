@@ -176,7 +176,7 @@ function ThinkingBlockComponent({ text, streaming }: { text: string; streaming: 
 						{block.result && (
 							<div className="tool-block-result">
 								<div className="tool-block-section-label">Result</div>
-								<MarkdownRenderer content={block.result} />
+								<MarkdownRenderer content={block.result} softBreak />
 							</div>
 						)}
 					</div>

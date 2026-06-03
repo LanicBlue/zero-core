@@ -42,6 +42,7 @@ export function renderOutline(result: OutlineResult, opts?: RenderOptions): stri
 			if (e.children) {
 				const childEntries = expandChildren(e);
 				e.children = undefined;
+				e.line = fmtLine(e.node, e.depth, true);
 				entries.splice(i + 1, 0, ...childEntries);
 				totalLines += childEntries.length;
 			}
@@ -72,6 +73,7 @@ export function renderOutline(result: OutlineResult, opts?: RenderOptions): stri
 			}
 
 			entry.children = undefined;
+			entry.line = fmtLine(entry.node, entry.depth, true);
 			entries.splice(bestIdx + 1, 0, ...childEntries);
 			totalLines += childEntries.length;
 		}
@@ -156,8 +158,8 @@ function mergeImports(nodes: OutlineNode[]): OutlineNode[] {
 	return result;
 }
 
-function fmtLine(node: OutlineNode, depth: number): string {
-	const range = node.line === node.endLine
+function fmtLine(node: OutlineNode, depth: number, expandedChildren?: boolean): string {
+	const range = expandedChildren || node.line === node.endLine
 		? `L${node.line}`
 		: `L${node.line}-${node.endLine}`;
 

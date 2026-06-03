@@ -41,7 +41,7 @@ export const fileReadTool = buildTool({
 		"- Any file which appears to be binary (images, executables, etc) will be rejected",
 	meta: { category: "runtime", isReadOnly: true },
 	configSchema: [
-		{ key: "max_lines", type: "number", label: "Max Lines", default: 2000, description: "单次读取/大纲输出的最大行数" },
+		{ key: "max_lines", type: "number", label: "Max Lines (lines)", default: 2000, description: "单次读取/大纲输出的最大行数" },
 		{ key: "default_mode", type: "select", label: "Default Mode", default: "full", options: ["full", "outline"], description: "未指定 mode 时的默认读取模式" },
 		{ key: "max_file_size", type: "number", label: "Max File Size (KB)", default: 256, description: "最大文件大小 (KB，0 = 不限制)" },
 	],

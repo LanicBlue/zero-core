@@ -31,7 +31,7 @@ export const taskListTool = buildTool({
 		{
 			key: "max_completed",
 			type: "number",
-			label: "Max Completed",
+			label: "Max Completed (items)",
 			default: 5,
 			description: "列表中显示的最近已完成任务数量",
 		},

@@ -169,10 +169,14 @@ getToolConfigFor(name: string): Record<string, any> {
 		const toolConfig = config[desc.name];
 		if (!toolConfig || !desc.configSchema?.length) return base;
 		const entries = desc.configSchema
-			.map(f => [f.key, toolConfig[f.key] ?? f.default] as [string, any])
-			.filter(([, v]) => v !== undefined && v !== "");
+			.map(f => {
+				const v = toolConfig[f.key] ?? f.default;
+				if (v === undefined || v === "") return null;
+				return `${f.label || f.key}=${JSON.stringify(v)}`;
+			})
+			.filter(Boolean);
 		if (entries.length === 0) return base;
-		const configHint = "\n\nCurrent config: " + entries.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ");
+		const configHint = "\n\nCurrent config: " + entries.join(", ");
 		return base + configHint;
 	}
 

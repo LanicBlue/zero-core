@@ -16,13 +16,36 @@ async function fetchUrl(url: string, headers?: Record<string, string>): Promise<
 	return resp;
 }
 
+const STRIP_TAGS = ["script", "style", "noscript", "iframe", "svg", "link", "meta"];
+
+function getBody(doc: Document): HTMLElement {
+	// Prefer semantic main content regions
+	const main = doc.querySelector("main, article, [role='main'], #content, .content");
+	if (main) return main as HTMLElement;
+	return doc.body ?? doc.documentElement;
+}
+
 function htmlToText(html: string): string {
 	const dom = new JSDOM(html);
 	const doc = dom.window.document;
-	for (const el of [...doc.getElementsByTagName("script"), ...doc.getElementsByTagName("style")]) {
-		el.remove();
+	for (const tag of STRIP_TAGS) {
+		for (const el of [...doc.getElementsByTagName(tag)]) {
+			el.remove();
+		}
 	}
-	return (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
+	const text = (getBody(doc).textContent ?? "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+	return text;
+}
+
+function cleanHtml(html: string): string {
+	const dom = new JSDOM(html);
+	const doc = dom.window.document;
+	for (const tag of STRIP_TAGS) {
+		for (const el of [...doc.getElementsByTagName(tag)]) {
+			el.remove();
+		}
+	}
+	return getBody(doc).innerHTML;
 }
 
 export const webFetchTool = buildTool({
@@ -49,10 +72,10 @@ export const webFetchTool = buildTool({
 		format: z.enum(["markdown", "html", "text", "json"]).optional().describe("Output format (default: markdown)"),
 		headers: z.record(z.string(), z.string()).optional().describe("Optional request headers"),
 	}),
-	execute: async ({ url, format, headers }) => {
+	execute: async ({ url, format, headers }, ctx) => {
 		try {
 			const resp = await fetchUrl(url, headers);
-			const fmt = format ?? "markdown";
+			const fmt = format ?? ctx.toolConfig?.WebFetch?.format ?? "markdown";
 
 			if (fmt === "json") {
 				const json = await resp.json();
@@ -68,7 +91,7 @@ export const webFetchTool = buildTool({
 					return htmlToText(html);
 				case "markdown":
 				default:
-					return turndown.turndown(html);
+					return turndown.turndown(cleanHtml(html));
 			}
 		} catch (err: any) {
 			return `Error: ${err.message}`;

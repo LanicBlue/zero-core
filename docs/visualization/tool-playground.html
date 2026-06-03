@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zero-Core · Tool Playground</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;background:#0d1117;color:#c9d1d9;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+.header{display:flex;align-items:center;gap:12px;padding:8px 16px;border-bottom:1px solid #30363d;background:#161b22;flex-shrink:0}
+.header h1{color:#f0f6fc;font-size:16px;white-space:nowrap}
+.header .sandbox{color:#8b949e;font-size:11px;margin-left:auto}
+.header .sandbox code{color:#79c0ff;background:#0d1117;padding:1px 4px;border-radius:2px}
+
+.main{display:flex;flex:1;overflow:hidden}
+
+/* Sidebar */
+.sidebar{width:200px;border-right:1px solid #30363d;display:flex;flex-direction:column;flex-shrink:0}
+.sidebar input{margin:8px;padding:5px 8px;background:#161b22;border:1px solid #30363d;border-radius:3px;color:#c9d1d9;font-size:11px}
+.sidebar input:focus{outline:none;border-color:#58a6ff}
+.tool-list{overflow-y:auto;flex:1}
+.tool-list::-webkit-scrollbar{width:4px}
+.tool-list::-webkit-scrollbar-thumb{background:#30363d;border-radius:2px}
+.cat-label{padding:6px 12px 2px;color:#484f58;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px}
+.tool-item{padding:5px 12px;cursor:pointer;font-size:12px;border-left:2px solid transparent;display:flex;align-items:center;gap:6px}
+.tool-item:hover{background:#161b22}
+.tool-item.active{background:#1c2129;border-left-color:#58a6ff}
+.tool-item .icon{width:18px;text-align:center;font-size:12px}
+.tool-item .name{flex:1;color:#c9d1d9}
+.tool-item .badge{font-size:8px;padding:1px 4px;border-radius:2px;font-weight:600}
+.badge-ro{background:#0e4429;color:#3fb950}
+.badge-wr{background:#341a00;color:#d29922}
+.badge-wb{background:#0c2d6b;color:#58a6ff}
+.badge-tk{background:#272740;color:#bc8cff}
+
+/* FS panel */
+.fs-panel{border-top:1px solid #30363d;max-height:35%;display:flex;flex-direction:column}
+.fs-panel .fs-header{padding:6px 12px;font-size:10px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:6px}
+.fs-panel .fs-header button{background:none;border:1px solid #30363d;color:#8b949e;padding:1px 6px;border-radius:2px;cursor:pointer;font-size:10px}
+.fs-panel .fs-header button:hover{color:#c9d1d9;border-color:#58a6ff}
+.fs-files{overflow-y:auto;flex:1;padding:2px 0;font-family:"SFMono-Regular",Consolas,monospace;font-size:11px}
+.fs-files::-webkit-scrollbar{width:4px}
+.fs-files::-webkit-scrollbar-thumb{background:#30363d;border-radius:2px}
+.fs-file{padding:2px 12px;cursor:pointer;color:#8b949e;display:flex;gap:6px}
+.fs-file:hover{background:#161b22;color:#c9d1d9}
+.fs-file .fname{color:#d2a8ff}
+.fs-file .fsize{color:#484f58;margin-left:auto}
+
+/* Content */
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* Tool header */
+.tool-hdr{padding:10px 16px;border-bottom:1px solid #30363d;background:#161b22;flex-shrink:0}
+.tool-hdr h2{color:#f0f6fc;font-size:14px}
+.tool-hdr .desc{color:#8b949e;font-size:11px;margin-top:2px}
+
+/* Split form/output */
+.split{display:flex;flex:1;overflow:hidden}
+
+/* Form */
+.form{width:42%;border-right:1px solid #30363d;overflow-y:auto;padding:12px 16px}
+.form::-webkit-scrollbar{width:4px}
+.form::-webkit-scrollbar-thumb{background:#30363d;border-radius:2px}
+.form h3{color:#8b949e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px}
+.form h3:first-child{margin-top:0}
+.field{margin-bottom:8px}
+.field label{display:block;color:#c9d1d9;font-size:11px;margin-bottom:2px;font-weight:500}
+.field label .opt{color:#484f58;font-weight:400}
+.field input,.field textarea,.field select{width:100%;padding:5px 8px;background:#0d1117;border:1px solid #30363d;border-radius:3px;color:#c9d1d9;font-size:12px;font-family:"SFMono-Regular",Consolas,monospace}
+.field textarea{min-height:60px;resize:vertical;line-height:1.4}
+.field :focus{outline:none;border-color:#58a6ff}
+.field select{cursor:pointer}
+.presets{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.preset{background:#21262d;color:#8b949e;border:1px solid #30363d;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px}
+.preset:hover{color:#c9d1d9;border-color:#58a6ff}
+
+/* Exec bar */
+.exec-bar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-top:1px solid #21262d;flex-shrink:0}
+.exec-btn{padding:5px 16px;background:#238636;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:12px;font-weight:500}
+.exec-btn:hover{background:#2ea043}
+.exec-btn:disabled{background:#21262d;color:#484f58;cursor:not-allowed}
+.exec-btn.loading{background:#1f6feb}
+.elapsed{color:#8b949e;font-size:11px}
+.elapsed b{color:#f0f6fc}
+.shortcut{color:#484f58;font-size:10px;margin-left:auto}
+
+/* Output */
+.output-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.output-bar{display:flex;align-items:center;gap:6px;padding:8px 16px;border-bottom:1px solid #21262d}
+.output-bar span{color:#8b949e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.output-bar .tag{font-size:9px;padding:1px 4px;border-radius:2px;font-weight:600;text-transform:none;letter-spacing:0}
+.tag-ok{background:#0e4429;color:#3fb950}
+.tag-err{background:#3d1214;color:#f85149}
+.output-box{flex:1;overflow-y:auto;padding:12px 16px}
+.output-box::-webkit-scrollbar{width:4px}
+.output-box::-webkit-scrollbar-thumb{background:#30363d;border-radius:2px}
+.output-text{background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:10px;font-family:"SFMono-Regular",Consolas,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;line-height:1.5;color:#7ee787;min-height:60px}
+.output-text.err{color:#f85149}
+.output-text.empty{color:#484f58;font-style:italic;font-family:inherit}
+
+/* Welcome */
+.welcome{display:flex;align-items:center;justify-content:center;height:100%;color:#484f58;text-align:center;font-size:13px;line-height:2}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Tool Playground</h1>
+  <div class="sandbox">Sandbox: <code>virtual://</code> in-memory filesystem</div>
+</div>
+<div class="main">
+  <div class="sidebar">
+    <input type="search" id="search" placeholder="filter tools...">
+    <div class="tool-list" id="tool-list"></div>
+    <div class="fs-panel">
+      <div class="fs-header">Virtual FS <button onclick="addFile()">+ Add</button></div>
+      <div class="fs-files" id="fs-files"></div>
+    </div>
+  </div>
+  <div class="content" id="content">
+    <div class="welcome">Select a tool from the sidebar to start experimenting</div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// Virtual Filesystem
+// ═══════════════════════════════════════════
+const FS = new Map();
+
+function initFS() {
+  FS.set("sample.ts", `import { z } from 'zod';
+
+export function hello(name: string): string {
+  return \`Hello \${name}\`;
+}
+
+export class Foo {
+  private x: number;
+  constructor(x: number) { this.x = x; }
+  bar(): number { return this.x * 2; }
+}
+`);
+  FS.set("readme.txt", `Zero-Core Tool Playground
+=========================
+This is a sandbox environment for testing tools.
+
+You can read, write, edit, and search files here.
+Changes are kept in browser memory.
+
+Features:
+- 13 interactive tools
+- Config overrides
+- Output formatting
+- Preset examples
+`);
+  FS.set("data.json", JSON.stringify({
+    users: [
+      { id: 1, name: "Alice", role: "admin" },
+      { id: 2, name: "Bob", role: "user" },
+      { id: 3, name: "Charlie", role: "user" },
+    ],
+    version: "1.0.0",
+  }, null, 2));
+  FS.set("config.yaml", `server:
+  host: localhost
+  port: 8080
+  debug: true
+
+database:
+  driver: sqlite
+  path: ./data.db
+
+logging:
+  level: info
+  file: app.log
+`);
+  FS.set("50lines.txt", Array.from({length: 50}, (_, i) => `line ${i + 1}`).join("\n") + "\n");
+}
+
+function renderFS() {
+  const el = document.getElementById("fs-files");
+  const files = [...FS.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  el.innerHTML = files.map(([name, content]) => {
+    const size = content.length;
+    const label = size > 1024 ? (size / 1024).toFixed(1) + " KB" : size + " B";
+    return `<div class="fs-file" onclick="viewFile('${esc(name)}')"><span class="fname">${esc(name)}</span><span class="fsize">${label}</span></div>`;
+  }).join("");
+}
+
+function viewFile(name) {
+  // Select Read tool and populate path
+  selectTool("Read");
+  setTimeout(() => {
+    const el = document.getElementById("param-path");
+    if (el) el.value = name;
+  }, 50);
+}
+
+function addFile() {
+  const name = prompt("File name:");
+  if (!name) return;
+  const content = prompt("Content:", "");
+  if (content === null) return;
+  FS.set(name, content);
+  renderFS();
+}
+
+// ═══════════════════════════════════════════
+// Tool definitions
+// ═══════════════════════════════════════════
+const TOOLS = [
+  {
+    name: "Bash", cat: "runtime", ro: false, icon: "⌨", badge: "wr",
+    desc: "Execute shell commands (simulated)",
+    fields: [
+      { key: "command", type: "text", label: "command", desc: "Shell command" },
+      { key: "timeout", type: "number", label: "timeout", opt: true, desc: "Timeout in seconds" },
+    ],
+    configFields: [{ key: "timeout", type: "number", label: "Default timeout (s)" }],
+    presets: [
+      { label: "echo hello", input: { command: "echo hello" } },
+      { label: "ls", input: { command: "ls" } },
+      { label: "cat readme.txt", input: { command: "cat readme.txt" } },
+      { label: "wc -l", input: { command: "wc -l sample.ts" } },
+      { label: "head -5", input: { command: "head -5 readme.txt" } },
+    ],
+    exec: implBash,
+  },
+  {
+    name: "Read", cat: "runtime", ro: true, icon: "📄", badge: "ro",
+    desc: "Read file contents with line numbers or outline mode",
+    fields: [
+      { key: "path", type: "text", label: "path", desc: "File path" },
+      { key: "offset", type: "number", label: "offset", opt: true, desc: "Start line (1-based)" },
+      { key: "limit", type: "number", label: "limit", opt: true, desc: "Max lines" },
+      { key: "mode", type: "select", label: "mode", opt: true, options: ["full", "outline"], desc: "Read mode" },
+    ],
+    configFields: [
+      { key: "max_lines", type: "number", label: "Max lines", def: 2000 },
+      { key: "default_mode", type: "select", label: "Default mode", options: ["full", "outline"], def: "full" },
+      { key: "max_file_size", type: "number", label: "Max file size (KB)", def: 256 },
+    ],
+    presets: [
+      { label: "sample.ts full", input: { path: "sample.ts" } },
+      { label: "sample.ts outline", input: { path: "sample.ts", mode: "outline" } },
+      { label: "readme.txt", input: { path: "readme.txt" } },
+      { label: "data.json", input: { path: "data.json" } },
+      { label: "config.yaml", input: { path: "config.yaml" } },
+      { label: "50lines (max 5)", input: { path: "50lines.txt" }, config: { max_lines: 5 } },
+    ],
+    exec: implRead,
+  },
+  {
+    name: "Write", cat: "runtime", ro: false, icon: "✏", badge: "wr",
+    desc: "Write content to a file (auto-creates directories)",
+    fields: [
+      { key: "path", type: "text", label: "path", desc: "File path" },
+      { key: "content", type: "textarea", label: "content", desc: "Content to write" },
+    ],
+    configFields: [
+      { key: "syntaxCheck", type: "select", label: "Syntax check", options: ["true", "false"], def: "true" },
+    ],
+    presets: [
+      { label: "create hello.ts", input: { path: "hello.ts", content: 'export function greet(name: string): string {\n  return `Hello, ${name}!`;\n}\n' } },
+      { label: "create notes.md", input: { path: "notes.md", content: "# Notes\n\n- Item 1\n- Item 2\n- Item 3\n" } },
+      { label: "nested dir", input: { path: "deep/sub/file.txt", content: "nested file content" } },
+    ],
+    exec: implWrite,
+  },
+  {
+    name: "Edit", cat: "runtime", ro: false, icon: "🔧", badge: "wr",
+    desc: "Exact string replacement in a file",
+    fields: [
+      { key: "path", type: "text", label: "path", desc: "File path" },
+      { key: "oldText", type: "textarea", label: "oldText", desc: "Exact text to find" },
+      { key: "newText", type: "textarea", label: "newText", desc: "Replacement text" },
+    ],
+    configFields: [
+      { key: "syntaxCheck", type: "select", label: "Syntax check", options: ["true", "false"], def: "true" },
+    ],
+    presets: [
+      { label: "fix typo", input: { path: "readme.txt", oldText: "sandbox environment", newText: "interactive playground" } },
+      { label: "rename fn", input: { path: "sample.ts", oldText: "export function hello", newText: "export function greet" } },
+    ],
+    exec: implEdit,
+  },
+  {
+    name: "Grep", cat: "runtime", ro: true, icon: "🔍", badge: "ro",
+    desc: "Search file contents using regex patterns",
+    fields: [
+      { key: "pattern", type: "text", label: "pattern", desc: "Regex pattern" },
+      { key: "path", type: "text", label: "path", opt: true, desc: "Directory or file" },
+      { key: "glob", type: "text", label: "glob", opt: true, desc: 'File filter (e.g. *.ts)' },
+      { key: "output_mode", type: "select", label: "output_mode", opt: true, options: ["content", "files_with_matches", "count"], desc: "Output format" },
+      { key: "head_limit", type: "number", label: "head_limit", opt: true, desc: "Max results" },
+    ],
+    configFields: [
+      { key: "head_limit", type: "number", label: "Default max results", def: 250 },
+      { key: "max_columns", type: "number", label: "Max columns per line", def: 500 },
+    ],
+    presets: [
+      { label: "search 'function'", input: { pattern: "function" } },
+      { label: "search 'export'", input: { pattern: "export" } },
+      { label: "search in *.ts", input: { pattern: "class|function", glob: "*.ts" } },
+      { label: "count mode", input: { pattern: "e", output_mode: "count" } },
+    ],
+    exec: implGrep,
+  },
+  {
+    name: "Glob", cat: "runtime", ro: true, icon: "📂", badge: "ro",
+    desc: "Find files by name pattern",
+    fields: [
+      { key: "pattern", type: "text", label: "pattern", desc: "Glob pattern (e.g. **/*.ts)" },
+      { key: "path", type: "text", label: "path", opt: true, desc: "Directory to search" },
+    ],
+    configFields: [],
+    presets: [
+      { label: "*.ts", input: { pattern: "*.ts" } },
+      { label: "*.txt", input: { pattern: "*.txt" } },
+      { label: "*.*", input: { pattern: "*.*" } },
+    ],
+    exec: implGlob,
+  },
+  {
+    name: "WebFetch", cat: "web", ro: true, icon: "⚡", badge: "wb",
+    desc: "Fetch a URL and return content in various formats",
+    fields: [
+      { key: "url", type: "text", label: "url", desc: "URL to fetch" },
+      { key: "format", type: "select", label: "format", opt: true, options: ["markdown", "html", "text", "json"], desc: "Output format" },
+    ],
+    configFields: [{ key: "format", type: "select", label: "Default format", options: ["markdown", "html", "text", "json"], def: "markdown" }],
+    presets: [
+      { label: "example.com", input: { url: "https://example.com" } },
+      { label: "json API", input: { url: "https://jsonplaceholder.typicode.com/posts/1", format: "json" } },
+      { label: "text mode", input: { url: "https://example.com", format: "text" } },
+    ],
+    exec: implWebFetch,
+  },
+  {
+    name: "WebSearch", cat: "web", ro: true, icon: "🌐", badge: "wb",
+    desc: "Search the web (simulated results for demo)",
+    fields: [
+      { key: "query", type: "text", label: "query", desc: "Search query" },
+      { key: "maxResults", type: "number", label: "maxResults", opt: true, desc: "Max results (default 8)" },
+    ],
+    configFields: [
+      { key: "provider", type: "text", label: "Provider", def: "duckduckgo" },
+      { key: "maxResults", type: "number", label: "Default max results", def: 8 },
+    ],
+    presets: [
+      { label: "test query", input: { query: "zero-core agent framework" } },
+      { label: "limit 2", input: { query: "TypeScript tools", maxResults: 2 } },
+    ],
+    exec: implWebSearch,
+  },
+  {
+    name: "TodoWrite", cat: "interaction", ro: false, icon: "📝", badge: "wr",
+    desc: "Update the task list",
+    fields: [
+      { key: "todos", type: "textarea", label: "todos (JSON array)", desc: '[{content, status, activeForm}]' },
+    ],
+    configFields: [],
+    presets: [
+      { label: "3 tasks", input: { todos: '[{"content":"Setup project","status":"completed","activeForm":"Setting up"},{"content":"Add features","status":"in_progress","activeForm":"Adding features"},{"content":"Write tests","status":"pending","activeForm":"Writing tests"}]' } },
+      { label: "1 task done", input: { todos: '[{"content":"Task complete","status":"completed","activeForm":"Completing task"}]' } },
+    ],
+    exec: implTodoWrite,
+  },
+  {
+    name: "TaskList", cat: "task", ro: true, icon: "📋", badge: "tk",
+    desc: "List background tasks",
+    fields: [
+      { key: "filter", type: "select", label: "filter", opt: true, options: ["all", "running", "completed"], desc: "Status filter" },
+    ],
+    configFields: [{ key: "max_completed", type: "number", label: "Max completed to show", def: 5 }],
+    presets: [
+      { label: "all tasks", input: {} },
+      { label: "running only", input: { filter: "running" } },
+    ],
+    exec: implTaskList,
+  },
+  {
+    name: "TaskStatus", cat: "task", ro: true, icon: "📊", badge: "tk",
+    desc: "Check status and activity of a background task",
+    fields: [
+      { key: "task_id", type: "text", label: "task_id", desc: "Task ID" },
+    ],
+    configFields: [
+      { key: "recent_turns", type: "number", label: "Recent turns", def: 6 },
+      { key: "turn_length", type: "number", label: "Max chars per turn", def: 500 },
+    ],
+    presets: [
+      { label: "not found", input: { task_id: "nope" } },
+      { label: "running task", input: { task_id: "t1" } },
+      { label: "completed", input: { task_id: "t2" } },
+    ],
+    exec: implTaskStatus,
+  },
+  {
+    name: "TaskStop", cat: "task", ro: false, icon: "🛑", badge: "wr",
+    desc: "Stop a running background task",
+    fields: [
+      { key: "task_id", type: "text", label: "task_id", desc: "Task ID" },
+    ],
+    configFields: [],
+    presets: [
+      { label: "not found", input: { task_id: "nope" } },
+      { label: "not running", input: { task_id: "t1" } },
+      { label: "stopped", input: { task_id: "t2" } },
+    ],
+    exec: implTaskStop,
+  },
+  {
+    name: "Wait", cat: "task", ro: false, icon: "⏳", badge: "tk",
+    desc: "Wait for background tasks or timeout",
+    fields: [
+      { key: "timeout", type: "number", label: "timeout", desc: "Max wait in seconds (1-3600)" },
+      { key: "task_id", type: "text", label: "task_id", opt: true, desc: "Wait for specific task" },
+    ],
+    configFields: [],
+    presets: [
+      { label: "wait 1s", input: { timeout: 1 } },
+      { label: "wait for task", input: { timeout: 5, task_id: "t1" } },
+    ],
+    exec: implWait,
+  },
+];
+
+let currentTool = null;
+let todos = [];
+
+// ═══════════════════════════════════════════
+// Tool Implementations
+// ═══════════════════════════════════════════
+
+function implBash(input, config) {
+  const cmd = (input.command || "").trim();
+  if (!cmd) return { ok: false, text: "Error: No command specified" };
+
+  const parts = cmd.split(/\s+/);
+  const prog = parts[0];
+  const args = parts.slice(1);
+  const t0 = Date.now();
+
+  let output = "";
+  let err = false;
+
+  switch (prog) {
+    case "echo":
+      output = args.join(" ");
+      break;
+    case "ls": {
+      const pattern = args[0] || ".";
+      const names = [...FS.keys()].sort();
+      if (args.includes("-la") || args.includes("-l")) {
+        output = names.map(n => {
+          const s = FS.get(n).length;
+          const d = new Date();
+          const ds = d.toDateString().split(" ").slice(1).join(" ");
+          return `-rw-r--r--  1 user user ${String(s).padStart(6)} ${ds} ${n}`;
+        }).join("\n");
+      } else {
+        output = names.join("\n");
+      }
+      break;
+    }
+    case "cat": {
+      const fn = args[0];
+      if (!fn) { err = true; output = "Error: missing file operand"; break; }
+      if (!FS.has(fn)) { err = true; output = `Error: ${fn}: No such file`; break; }
+      output = FS.get(fn).replace(/\n$/, "");
+      break;
+    }
+    case "head": {
+      let n = 10;
+      const ni = args.indexOf("-n");
+      if (ni >= 0 && args[ni + 1]) n = parseInt(args[ni + 1]) || 10;
+      else if (args[0]?.startsWith("-")) n = parseInt(args[0].slice(1)) || 10;
+      const fn = args.filter(a => !a.startsWith("-") && a !== String(n))[0] || args[args.length - 1];
+      if (!FS.has(fn)) { err = true; output = `Error: ${fn}: No such file`; break; }
+      output = FS.get(fn).split("\n").slice(0, n).join("\n");
+      break;
+    }
+    case "wc": {
+      const fn = args.find(a => !a.startsWith("-"));
+      if (!fn || !FS.has(fn)) { err = true; output = `Error: ${fn || "?"}: No such file`; break; }
+      const content = FS.get(fn);
+      const lines = content.split("\n").length;
+      const words = content.split(/\s+/).filter(Boolean).length;
+      const chars = content.length;
+      if (args.includes("-l")) output = `  ${lines} ${fn}`;
+      else output = `  ${lines}\t${words}\t${chars}\t${fn}`;
+      break;
+    }
+    case "pwd":
+      output = "/virtual/sandbox";
+      break;
+    case "mkdir":
+      output = "(directory created in virtual FS)";
+      break;
+    case "date":
+      output = new Date().toString();
+      break;
+    case "whoami":
+      output = "playground-user";
+      break;
+    case "env":
+      output = "HOME=/virtual/sandbox\nPATH=/usr/bin\nUSER=playground-user";
+      break;
+    case "grep": {
+      const pattern = args.find(a => !a.startsWith("-") && a !== args[args.length - 1]);
+      const fn = args[args.length - 1];
+      if (!pattern || !fn || !FS.has(fn)) { err = true; output = "Usage: grep PATTERN FILE"; break; }
+      try {
+        const re = new RegExp(pattern, args.includes("-i") ? "gi" : "g");
+        const lines = FS.get(fn).split("\n");
+        const matches = lines.map((l, i) => re.test(l) ? `${fn}:${i + 1}:${l}` : null).filter(Boolean);
+        output = matches.length ? matches.join("\n") : "(no matches)";
+      } catch (e) { err = true; output = `Error: invalid regex: ${e.message}`; }
+      break;
+    }
+    case "sort": {
+      const fn = args.find(a => !a.startsWith("-"));
+      if (!fn || !FS.has(fn)) { err = true; output = `Error: ${fn || "?"}: No such file`; break; }
+      output = FS.get(fn).split("\n").sort().join("\n");
+      break;
+    }
+    default:
+      err = true;
+      output = `Error: '${prog}' is not available in playground mode\nAvailable: echo, ls, cat, head, wc, pwd, date, whoami, env, grep, sort`;
+  }
+
+  const elapsed = Date.now() - t0;
+  if (err) return { ok: false, text: output };
+  return { ok: true, text: output + `\n\n[Completed in ${(elapsed / 1000).toFixed(1)}s]` };
+}
+
+function implRead(input, config) {
+  const path = (input.path || "").trim();
+  if (!path) return { ok: false, text: "Error: No file path specified" };
+  if (!FS.has(path)) return { ok: false, text: `Error: File not found: ${path}` };
+
+  const content = FS.get(path);
+  const maxLines = config?.max_lines || 2000;
+  const maxFileSize = config?.max_file_size || 256;
+  const maxBytes = maxFileSize > 0 ? maxFileSize * 1024 : 0;
+  const mode = input.mode || config?.default_mode || "full";
+
+  // File size check
+  if (maxBytes > 0 && content.length > maxBytes) {
+    return { ok: false, text: `File too large (${(content.length / 1024).toFixed(1)} KB). Maximum is ${maxFileSize}.0 KB.\nUse offset and limit parameters to read specific sections of large files.` };
+  }
+
+  // Outline mode
+  if (mode === "outline") {
+    return { ok: true, text: generateOutline(path, content) };
+  }
+
+  // Full mode
+  let lines = content.split("\n");
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+
+  const start = Math.max(0, (input.offset || 1) - 1);
+  const limit = input.limit || maxLines;
+  const end = Math.min(start + limit, lines.length);
+  const selected = lines.slice(start, end);
+  const truncated = start + limit < lines.length;
+
+  let result = selected.map((line, i) => `${start + i + 1}\t${line}`).join("\n");
+  if (truncated) {
+    result += `\n\n[File has ${lines.length} lines, showing ${start + 1}-${end}. Use offset/limit to read more.]`;
+  }
+  return { ok: true, text: result };
+}
+
+function generateOutline(filename, content) {
+  const ext = filename.split(".").pop();
+  const langMap = { ts: "TypeScript", tsx: "TypeScript", js: "JavaScript", py: "Python", json: "JSON", yaml: "YAML", md: "Markdown", txt: "Text" };
+  const lang = langMap[ext] || ext.toUpperCase();
+
+  const lines = content.split("\n");
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  const total = lines.length;
+
+  const nodes = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const ln = i + 1;
+
+    // Import
+    if (/^import\s/.test(line)) {
+      nodes.push({ kind: "import", name: line.slice(0, 50).replace(/,.*/, ", ...}"), line: ln, endLine: ln });
+      continue;
+    }
+
+    // Function
+    const fnMatch = line.match(/^(export\s+)?(async\s+)?function\s+(\w+)/);
+    if (fnMatch) {
+      const name = fnMatch[3];
+      const detail = line.trim().slice(0, 60);
+      let end = ln;
+      for (let j = i + 1; j < lines.length; j++) { if (/^function |^export |^class |^const |^let |^var |^interface |^type |^enum /.test(lines[j])) break; end = j + 1; }
+      nodes.push({ kind: "fn", name, detail, line: ln, endLine: end });
+      continue;
+    }
+
+    // Class
+    const clsMatch = line.match(/^(export\s+)?class\s+(\w+)/);
+    if (clsMatch) {
+      const name = clsMatch[2];
+      const children = [];
+      let end = ln;
+      for (let j = i + 1; j < lines.length; j++) {
+        if (/^class |^export class |^function |^export function/.test(lines[j])) break;
+        end = j + 1;
+        const mMatch = lines[j].match(/^\s+(private\s+|public\s+|static\s+)?(\w+)\s*\(/);
+        if (mMatch) {
+          children.push({ kind: "method", name: mMatch[2], line: j + 1, endLine: j + 1 });
+        }
+        const pMatch = lines[j].match(/^\s+(private\s+|public\s+)?(\w+)\s*[:=]/);
+        if (pMatch && !mMatch) {
+          children.push({ kind: "field", name: pMatch[2], line: j + 1, endLine: j + 1 });
+        }
+      }
+      nodes.push({ kind: "class", name, line: ln, endLine: end, children });
+      continue;
+    }
+
+    // Const / variable
+    const constMatch = line.match(/^(export\s+)?const\s+(\w+)/);
+    if (constMatch) {
+      nodes.push({ kind: "const", name: constMatch[2], line: ln, endLine: ln });
+      continue;
+    }
+
+    // Heading (markdown)
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
+    if (headingMatch) {
+      nodes.push({ kind: "heading", name: headingMatch[2].trim(), line: ln, endLine: ln });
+      continue;
+    }
+
+    // YAML key
+    if (ext === "yaml" && /^[\w-]+:/.test(line) && !line.startsWith(" ")) {
+      nodes.push({ kind: "key", name: line.match(/^([\w-]+)/)[1], line: ln, endLine: ln });
+    }
+  }
+
+  // Render
+  const header = `${filename} (${total} lines, ${lang})`;
+  const out = [header, ""];
+
+  for (const n of nodes) {
+    const range = n.line === n.endLine ? `L${n.line}` : `L${n.line}-${n.endLine}`;
+    const indent = n.kind === "method" || n.kind === "field" ? "  " : "";
+    const detail = n.detail && n.detail !== n.name ? ` - ${n.detail.slice(0, 60)}` : "";
+    out.push(`${range.padEnd(12)} ${indent}${n.kind} ${n.name}${detail}`);
+
+    if (n.children) {
+      for (const c of n.children) {
+        out.push(`L${c.line}`.padEnd(12) + `   ${c.kind} ${c.name}`);
+      }
+    }
+  }
+
+  return { ok: true, text: out.join("\n") };
+}
+
+function implWrite(input, config) {
+  const path = (input.path || "").trim();
+  if (!path) return { ok: false, text: "Error: No file path specified" };
+
+  const content = input.content || "";
+  FS.set(path, content);
+  renderFS();
+
+  let result = `Successfully wrote ${content.length} bytes to ${path}`;
+
+  // Syntax check
+  if (config?.syntaxCheck !== "false" && config?.syntaxCheck !== false) {
+    const warnings = checkSyntax(path, content);
+    if (warnings) {
+      result += `\n\n⚠ Syntax warnings in ${path}:\n${warnings}\nPlease verify the file structure is correct.`;
+    }
+  }
+
+  return { ok: true, text: result };
+}
+
+function implEdit(input, config) {
+  const path = (input.path || "").trim();
+  if (!path) return { ok: false, text: "Error: No file path specified" };
+  if (!FS.has(path)) return { ok: false, text: `Error: File not found: ${path}` };
+
+  const content = FS.get(path);
+  const oldText = input.oldText || "";
+  const newText = input.newText || "";
+
+  if (!content.includes(oldText)) {
+    // Check partial match
+    const lines = content.split("\n");
+    let partialLine = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes(oldText.slice(0, Math.ceil(oldText.length * 0.6)))) {
+        partialLine = i;
+        break;
+      }
+    }
+
+    let diag = `Error: Text not found in ${path} (${lines.length} lines).\n\n`;
+    if (partialLine >= 0) {
+      const start = Math.max(0, partialLine - 1);
+      const end = Math.min(lines.length, partialLine + 2);
+      diag += `Partial match found near line ${partialLine + 1}:\n`;
+      for (let i = start; i < end; i++) diag += `${i + 1}: ${lines[i]}\n`;
+    } else {
+      diag += `File starts with:\n`;
+      for (let i = 0; i < Math.min(4, lines.length); i++) diag += `${i + 1}: ${lines[i]}\n`;
+    }
+    diag += `\nUse Read to re-read the file and verify exact content.`;
+    return { ok: false, text: diag };
+  }
+
+  const newContent = content.replace(oldText, newText);
+  FS.set(path, newContent);
+  renderFS();
+
+  let result = `Successfully edited ${path}`;
+
+  if (config?.syntaxCheck !== "false" && config?.syntaxCheck !== false) {
+    const warnings = checkSyntax(path, newContent);
+    if (warnings) {
+      result += `\n\n⚠ Syntax warnings in ${path}:\n${warnings}\nPlease verify the file structure is correct.`;
+    }
+  }
+
+  return { ok: true, text: result };
+}
+
+function checkSyntax(path, content) {
+  const ext = path.split(".").pop();
+  if (!["ts", "tsx", "js", "jsx"].includes(ext)) return null;
+
+  // Basic bracket matching
+  const stack = [];
+  const pairs = { "{": "}", "(": ")", "[": "]" };
+  const openers = new Set(Object.keys(pairs));
+  const closers = new Set(Object.values(pairs));
+
+  let inString = false;
+  let stringChar = "";
+  let inComment = false;
+  const lines = content.split("\n");
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    inComment = false;
+    for (let j = 0; j < line.length; j++) {
+      const ch = line[j];
+      const next = line[j + 1];
+
+      if (inString) {
+        if (ch === "\\") { j++; continue; }
+        if (ch === stringChar) inString = false;
+        continue;
+      }
+      if (ch === "/" && next === "/") break;
+      if (ch === "/" && next === "*") { inComment = true; j++; continue; }
+      if (inComment && ch === "*" && next === "/") { inComment = false; j++; continue; }
+      if (inComment) continue;
+
+      if (ch === '"' || ch === "'" || ch === "`") { inString = true; stringChar = ch; continue; }
+      if (openers.has(ch)) { stack.push({ ch, line: i + 1 }); continue; }
+      if (closers.has(ch)) {
+        if (stack.length === 0) return `  L${i + 1}: unexpected '${ch}'`;
+        const top = stack.pop();
+        if (pairs[top.ch] !== ch) return `  L${top.line}: unmatched '${top.ch}' — expected '${pairs[top.ch]}', got '${ch}'`;
+      }
+    }
+  }
+
+  if (stack.length > 0) {
+    const top = stack[stack.length - 1];
+    return `  L${top.line}: unmatched '${top.ch}' — missing '${pairs[top.ch]}'`;
+  }
+  return null;
+}
+
+function implGrep(input, config) {
+  const pattern = input.pattern || "";
+  if (!pattern) return { ok: false, text: "Error: No pattern specified" };
+
+  const headLimit = input.head_limit || config?.head_limit || 250;
+  const maxCols = config?.max_columns || 500;
+  const mode = input.output_mode || "content";
+  const globFilter = input.glob || null;
+
+  let regex;
+  try { regex = new RegExp(pattern, "g"); } catch (e) { return { ok: false, text: `Error: invalid regex: ${e.message}` }; }
+
+  const results = [];
+  const files = [...FS.keys()].sort();
+
+  for (const fn of files) {
+    // Glob filter
+    if (globFilter && !matchGlob(fn, globFilter)) continue;
+
+    const content = FS.get(fn);
+    const lines = content.split("\n");
+    let count = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      regex.lastIndex = 0;
+      if (regex.test(lines[i])) {
+        count++;
+        if (mode === "content" && results.length < headLimit) {
+          let line = lines[i];
+          if (line.length > maxCols) line = line.slice(0, maxCols) + " ...";
+          results.push(`${fn}:${i + 1}:${line}`);
+        }
+      }
+    }
+
+    if (mode === "files_with_matches" && count > 0) results.push(fn);
+    if (mode === "count" && count > 0) results.push(`${fn}:${count}`);
+  }
+
+  if (results.length === 0) return { ok: true, text: "No matches found." };
+  return { ok: true, text: results.join("\n") };
+}
+
+function implGlob(input) {
+  const pattern = input.pattern || "";
+  if (!pattern) return { ok: false, text: "Error: No pattern specified" };
+
+  const files = [...FS.keys()].sort();
+  const matched = files.filter(fn => matchGlob(fn, pattern));
+
+  if (matched.length === 0) return { ok: true, text: `No files matching '${pattern}' found.` };
+  return { ok: true, text: matched.join("\n") };
+}
+
+function matchGlob(name, pattern) {
+  // Convert simple glob to regex
+  const re = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, "{{GLOBSTAR}}")
+    .replace(/\*/g, "[^/]*")
+    .replace(/\?/g, "[^/]")
+    .replace(/\{\{GLOBSTAR\}\}/g, ".*");
+  try { return new RegExp("^" + re + "$").test(name); }
+  catch { return name === pattern; }
+}
+
+async function implWebFetch(input, config) {
+  const url = input.url || "";
+  if (!url) return { ok: false, text: "Error: No URL specified" };
+
+  try { new URL(url); } catch { return { ok: false, text: "Error: Failed to parse URL from " + url }; }
+
+  const format = input.format || config?.format || "markdown";
+
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return { ok: false, text: `Error: HTTP ${resp.status}: ${resp.statusText}` };
+
+    if (format === "json") {
+      try {
+        const json = await resp.json();
+        return { ok: true, text: JSON.stringify(json, null, 2) };
+      } catch { return { ok: false, text: "Error: Response is not valid JSON" }; }
+    }
+
+    const html = await resp.text();
+
+    if (format === "html") return { ok: true, text: html.slice(0, 5000) + (html.length > 5000 ? "\n\n[truncated]" : "") };
+
+    // Simple HTML to text/markdown
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+      .replace(/<header[\s\S]*?<\/header>/gi, "")
+      .replace(/<footer[\s\S]*?<\/footer>/gi, "")
+      .replace(/<[^>]+>/g, format === "text" ? "" : "")
+      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    if (format === "text") return { ok: true, text: text.slice(0, 5000) };
+
+    // Markdown-ish
+    const md = html
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, "# $1\n\n")
+      .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, "## $1\n\n")
+      .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, "### $1\n\n")
+      .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, "$1\n\n")
+      .replace(/<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)")
+      .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, "**$1**")
+      .replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, "*$1*")
+      .replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, "`$1`")
+      .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, "- $1\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    return { ok: true, text: md.slice(0, 5000) + (md.length > 5000 ? "\n\n[truncated]" : "") };
+  } catch (e) {
+    return { ok: false, text: `Error: ${e.message}` };
+  }
+}
+
+function implWebSearch(input, config) {
+  const query = input.query || "";
+  if (!query) return { ok: false, text: "Error: No query specified" };
+
+  const max = input.maxResults || config?.maxResults || 8;
+
+  // Simulated results
+  const fakeResults = [
+    { title: `${query} - Wikipedia`, url: `https://en.wikipedia.org/wiki/${encodeURIComponent(query)}`, snippet: `Information about ${query} from the free encyclopedia.` },
+    { title: `${query} Documentation`, url: `https://docs.example.com/${encodeURIComponent(query)}`, snippet: `Official documentation for ${query}. Getting started, API reference, and examples.` },
+    { title: `${query} Tutorial`, url: `https://tutorial.example.com/${encodeURIComponent(query)}`, snippet: `Step-by-step tutorial for ${query}. Learn the basics and advanced concepts.` },
+    { title: `${query} GitHub Repository`, url: `https://github.com/example/${encodeURIComponent(query)}`, snippet: `Source code and issue tracker for ${query}. Open source, MIT licensed.` },
+    { title: `Best practices for ${query}`, url: `https://blog.example.com/best-${encodeURIComponent(query)}`, snippet: `Industry best practices and common patterns for ${query}.` },
+  ].slice(0, max);
+
+  let text = `Found ${fakeResults.length} results for: "${query}"\n\n`;
+  fakeResults.forEach((r, i) => {
+    text += `[${i + 1}] ${r.title}\n    ${r.url}\n    ${r.snippet}\n\n`;
+  });
+  text += "Sources:\n";
+  fakeResults.forEach((r, i) => {
+    text += `- [${r.title}](${r.url})\n`;
+  });
+
+  return { ok: true, text };
+}
+
+function implTodoWrite(input) {
+  let items;
+  try {
+    items = typeof input.todos === "string" ? JSON.parse(input.todos) : input.todos;
+  } catch { return { ok: false, text: "Error: todos must be a valid JSON array" }; }
+
+  todos = items;
+  const completed = items.filter(t => t.status === "completed").length;
+  const inProgress = items.filter(t => t.status === "in_progress").length;
+
+  return { ok: true, text: `Task list updated: ${completed}/${items.length} completed, ${inProgress} in progress.` };
+}
+
+function implTaskList(input) {
+  // Simulated tasks
+  const tasks = [
+    { id: "t1", tool: "bash", status: "running", steps: 4, desc: "npm install", elapsed: "3s" },
+    { id: "t2", tool: "bash", status: "completed", steps: 8, desc: "npm run build", elapsed: "5s" },
+    { id: "t3", tool: "bash", status: "completed", steps: 1, desc: "echo hello", elapsed: "1s" },
+  ];
+
+  const filter = input.filter || "all";
+  const filtered = filter === "all" ? tasks : tasks.filter(t => t.status === filter);
+  const running = tasks.filter(t => t.status === "running");
+
+  if (filter === "running" && running.length === 0) return { ok: true, text: "No running tasks." };
+
+  const completed = filtered.filter(t => t.status === "completed");
+  let text = "";
+  if (completed.length) {
+    text += `Completed (showing ${completed.length}):\n`;
+    for (const t of completed) {
+      text += `✓ [${t.id}] ${t.tool}  ${t.status}  step:${t.steps}  ${t.elapsed}\n    ${t.desc}\n`;
+    }
+  }
+  if (running.length && filter !== "completed") {
+    text += `Running:\n`;
+    for (const t of running) {
+      text += `◉ [${t.id}] ${t.tool}  ${t.status}  step:${t.steps}  ${t.elapsed}\n    ${t.desc}\n`;
+    }
+  }
+  text += `\nTotal: ${tasks.length} tasks, ${running.length} running`;
+  return { ok: true, text };
+}
+
+function implTaskStatus(input) {
+  const tid = input.task_id || "";
+  if (tid === "nope") return { ok: false, text: "Task nope not found." };
+  if (tid === "t1") return { ok: true, text: "task_id: t1\nStatus: running\nElapsed: 3s\nSteps: 4\nCurrent tool: Bash" };
+  if (tid === "t2") return { ok: true, text: "task_id: t2\nStatus: completed\nElapsed: 5s\nSteps: 8" };
+  return { ok: false, text: `Task ${tid} not found.` };
+}
+
+function implTaskStop(input) {
+  const tid = input.task_id || "";
+  if (tid === "nope") return { ok: false, text: "Task nope not found." };
+  if (tid === "t1") return { ok: false, text: "Task t1 is not running (status: completed)." };
+  if (tid === "t2") return { ok: true, text: "Task t2 has been stopped." };
+  return { ok: false, text: `Task ${tid} not found.` };
+}
+
+function implWait(input) {
+  const timeout = input.timeout || 1;
+  const tid = input.task_id;
+  if (tid === "t1") return { ok: true, text: "Task t1 done" };
+  return { ok: true, text: `Resumed after ${timeout}s.` };
+}
+
+// ═══════════════════════════════════════════
+// UI
+// ═══════════════════════════════════════════
+
+function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function renderSidebar() {
+  const cats = {};
+  for (const t of TOOLS) {
+    const catName = { runtime: "File System", web: "Web", task: "Task", interaction: "Interaction" }[t.cat] || t.cat;
+    if (!cats[catName]) cats[catName] = [];
+    cats[catName].push(t);
+  }
+
+  const list = document.getElementById("tool-list");
+  let html = "";
+  for (const [cat, tools] of Object.entries(cats)) {
+    html += `<div class="cat-label">${cat}</div>`;
+    for (const t of tools) {
+      html += `<div class="tool-item" data-name="${t.name}" onclick="selectTool('${t.name}')">
+        <span class="icon">${t.icon}</span>
+        <span class="name">${t.name}</span>
+        <span class="badge badge-${t.badge}">${t.ro ? "read" : "write"}</span>
+      </div>`;
+    }
+  }
+  list.innerHTML = html;
+}
+
+function selectTool(name) {
+  const tool = TOOLS.find(t => t.name === name);
+  if (!tool) return;
+  currentTool = tool;
+
+  document.querySelectorAll(".tool-item").forEach(el => el.classList.toggle("active", el.dataset.name === name));
+
+  const content = document.getElementById("content");
+
+  const fieldsHtml = tool.fields.map(f => {
+    const opt = f.opt ? ' <span class="opt">(optional)</span>' : "";
+    const desc = f.desc ? ` — ${f.desc}` : "";
+    if (f.type === "textarea") {
+      return `<div class="field"><label>${f.label}${opt}${desc}</label><textarea id="param-${f.key}" data-key="${f.key}"></textarea></div>`;
+    }
+    if (f.type === "select") {
+      const opts = (f.options || []).map(o => `<option value="${o}">${o}</option>`).join("");
+      return `<div class="field"><label>${f.label}${opt}${desc}</label><select id="param-${f.key}" data-key="${f.key}">${opts}</select></div>`;
+    }
+    return `<div class="field"><label>${f.label}${opt}${desc}</label><input id="param-${f.key}" data-key="${f.key}" type="${f.type === 'number' ? 'number' : 'text'}"></div>`;
+  }).join("");
+
+  const configHtml = (tool.configFields || []).map(c => {
+    if (c.options) {
+      const opts = c.options.map(o => `<option value="${o}">${o}</option>`).join("");
+      return `<div class="field"><label>${c.label}${c.def ? ` (default: ${c.def})` : ""}</label><select id="cfg-${c.key}" data-ckey="${c.key}">${opts}</select></div>`;
+    }
+    return `<div class="field"><label>${c.label}${c.def ? ` (default: ${c.def})` : ""}</label><input id="cfg-${c.key}" data-ckey="${c.key}" type="${c.type === 'number' ? 'number' : 'text'}"></div>`;
+  }).join("");
+
+  const presetsHtml = (tool.presets || []).map(p =>
+    `<button class="preset" onclick="applyPreset(this)" data-input='${JSON.stringify(p.input)}' ${p.config ? `data-config='${JSON.stringify(p.config)}'` : ""}>${p.label}</button>`
+  ).join("");
+
+  content.innerHTML = `
+    <div class="tool-hdr">
+      <h2>${tool.icon} ${tool.name}</h2>
+      <div class="desc">${tool.desc}</div>
+    </div>
+    <div class="split">
+      <div class="form">
+        <h3>Parameters</h3>
+        ${fieldsHtml || '<div style="color:#484f58;font-style:italic;padding:8px 0">No parameters</div>'}
+        ${configHtml ? `<h3>Config</h3>${configHtml}` : ""}
+        ${presetsHtml ? `<h3>Presets</h3><div class="presets">${presetsHtml}</div>` : ""}
+      </div>
+      <div class="output-area">
+        <div class="output-bar">
+          <span>Output</span>
+          <span class="tag" id="output-tag" style="display:none"></span>
+        </div>
+        <div class="output-box">
+          <div class="output-text empty" id="output">Click Execute or press Ctrl+Enter to run</div>
+        </div>
+      </div>
+    </div>
+    <div class="exec-bar">
+      <button class="exec-btn" id="exec-btn" onclick="runTool()">▶ Execute</button>
+      <span class="elapsed" id="elapsed"></span>
+      <span class="shortcut">Ctrl+Enter</span>
+    </div>
+  `;
+
+  content.onkeydown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runTool(); }
+  };
+}
+
+function applyPreset(btn) {
+  const input = JSON.parse(btn.dataset.input);
+  const config = btn.dataset.config ? JSON.parse(btn.dataset.config) : null;
+
+  for (const [key, val] of Object.entries(input)) {
+    const el = document.getElementById("param-" + key);
+    if (!el) continue;
+    el.value = typeof val === "object" ? JSON.stringify(val) : String(val);
+  }
+
+  if (config) {
+    for (const [key, val] of Object.entries(config)) {
+      const el = document.getElementById("cfg-" + key);
+      if (el) el.value = String(val);
+    }
+  }
+}
+
+async function runTool() {
+  if (!currentTool) return;
+
+  const btn = document.getElementById("exec-btn");
+  const output = document.getElementById("output");
+  const tag = document.getElementById("output-tag");
+  const elapsed = document.getElementById("elapsed");
+
+  // Gather input
+  const input = {};
+  document.querySelectorAll("[data-key]").forEach(el => {
+    const key = el.dataset.key;
+    const val = el.value;
+    if (!val) return;
+    const field = currentTool.fields.find(f => f.key === key);
+    if (field?.type === "number") input[key] = Number(val);
+    else input[key] = val;
+  });
+
+  // Gather config
+  const config = {};
+  document.querySelectorAll("[data-ckey]").forEach(el => {
+    const key = el.dataset.ckey;
+    const val = el.value;
+    if (!val) return;
+    const cf = (currentTool.configFields || []).find(c => c.key === key);
+    if (cf?.type === "number") config[key] = Number(val);
+    else config[key] = val;
+  });
+
+  // Execute
+  btn.disabled = true;
+  btn.textContent = "Running...";
+  btn.classList.add("loading");
+  output.className = "output-text empty";
+  output.textContent = "";
+
+  const t0 = Date.now();
+  const result = await currentTool.exec(input, config);
+  const ms = Date.now() - t0;
+
+  btn.disabled = false;
+  btn.textContent = "▶ Execute";
+  btn.classList.remove("loading");
+
+  output.className = "output-text" + (result.ok ? "" : " err");
+  output.textContent = result.text || "(empty output)";
+
+  tag.style.display = "";
+  tag.className = "tag " + (result.ok ? "tag-ok" : "tag-err");
+  tag.textContent = result.ok ? "OK" : "ERROR";
+
+  elapsed.innerHTML = `<b>${ms}</b>ms`;
+}
+
+// Search
+document.getElementById("search").addEventListener("input", function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll(".tool-item").forEach(el => {
+    el.style.display = el.dataset.name.toLowerCase().includes(q) ? "" : "none";
+  });
+});
+
+// Init
+initFS();
+renderSidebar();
+renderFS();
+</script>
+</body>
+</html>

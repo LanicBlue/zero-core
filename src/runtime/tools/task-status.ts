@@ -35,14 +35,14 @@ export const taskStatusTool = buildTool({
 		{
 			key: "recent_turns",
 			type: "number",
-			label: "Recent Turns",
+			label: "Recent Turns (items)",
 			default: 6,
 			description: "显示的最近 turn 条数",
 		},
 		{
 			key: "turn_length",
 			type: "number",
-			label: "Turn Length",
+			label: "Turn Length (chars)",
 			default: 500,
 			description: "每条 turn 的最大字符数",
 		},

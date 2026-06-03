@@ -94,7 +94,7 @@ export const bashTool = buildTool({
 			}
 			const stdout = decodeOutput(err.stdout as Buffer);
 			const stderr = decodeOutput(err.stderr as Buffer);
-			const exitCode = err.status ?? 1;
+			const exitCode = err.status ?? err.code ?? 1;
 			let out = `Error: Exit code ${exitCode}`;
 			if (command.length <= 200) out += `\nCommand: ${command}`;
 			if (stdout) out += "\n" + stdout;

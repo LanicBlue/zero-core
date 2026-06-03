@@ -20,8 +20,8 @@ export const grepTool = buildTool({
 		"- Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\\{\\}` to find `interface{}` in Go code).\n" +
 		"- Multiline matching: By default patterns match within single lines only. For cross-line patterns, use `multiline: true`.",
 	configSchema: [
-		{ key: "head_limit", type: "number", label: "默认结果上限", default: 250, description: "搜索结果最大返回条数" },
-		{ key: "max_columns", type: "number", label: "最大列宽", default: 500, description: "超过此宽度的行会被截断" },
+		{ key: "head_limit", type: "number", label: "默认结果上限 (items)", default: 250, description: "搜索结果最大返回条数" },
+		{ key: "max_columns", type: "number", label: "最大列宽 (chars)", default: 500, description: "超过此宽度的行会被截断" },
 	],
 	meta: { category: "runtime", isReadOnly: true, isConcurrencySafe: true },
 	inputSchema: z.object({
@@ -50,6 +50,7 @@ export const grepTool = buildTool({
 
 		const config = ctx.toolConfig?.Grep ?? {};
 		const resolved_head_limit = input.head_limit ?? config.head_limit ?? 250;
+		const resolved_max_columns = config.max_columns ?? 500;
 		const restrictToWorkspace = ctx.readScope === "workspace";
 		const workingDir = ctx.workingDir;
 
@@ -63,11 +64,32 @@ export const grepTool = buildTool({
 			searchPath = workingDir || ".";
 		}
 
+		// Apply max_columns truncation to content-mode output
+		function truncateColumns(text: string): string {
+			if (output_mode !== "content") return text;
+			const maxCols = resolved_max_columns;
+			const lines = text.split("\n");
+			let changed = false;
+			const truncated = lines.map(line => {
+				// Lines have format: "path:linenum:content" or "path:content" or just "content"
+				const colonIdx = line.indexOf(":");
+				if (colonIdx < 0) return line;
+				const secondColon = line.indexOf(":", colonIdx + 1);
+				const prefixEnd = secondColon > colonIdx ? secondColon + 1 : colonIdx + 1;
+				const prefix = line.slice(0, prefixEnd);
+				const content = line.slice(prefixEnd);
+				if (content.length <= maxCols) return line;
+				changed = true;
+				return prefix + content.slice(0, maxCols) + " ...";
+			});
+			return changed ? truncated.join("\n") : text;
+		}
+
 		try {
 			const args: string[] = [
 				"--hidden",
 				"--glob", "!.git",
-				"--max-columns", String(config.max_columns ?? 500),
+				"--max-columns", String(resolved_max_columns),
 			];
 
 			// Output mode
@@ -116,7 +138,7 @@ export const grepTool = buildTool({
 				}
 				return stdout;
 			} catch (rgErr: any) {
-				if (rgErr.stdout) return rgErr.stdout;
+				if (rgErr.stdout) return truncateColumns(rgErr.stdout);
 				if (rgErr.code === 1) return "No matches found.";
 				if (rgErr.code === 2) return `Search error: ${rgErr.stderr || rgErr.message}`;
 			}
@@ -131,7 +153,7 @@ export const grepTool = buildTool({
 			}
 			if (glob) grepArgs.push("--include", glob);
 			if (output_mode === "count") grepArgs.push("-c");
-			grepArgs.push("-m", String(head_limit));
+			grepArgs.push("-m", String(resolved_head_limit));
 			grepArgs.push("--", pattern, searchPath);
 
 			const { stdout } = await execFileAsync("grep", grepArgs, {
@@ -139,7 +161,7 @@ export const grepTool = buildTool({
 				timeout: 20000,
 				maxBuffer: EXEC_MAX_BUFFER_BYTES,
 			});
-			return stdout || "No matches found.";
+			return truncateColumns(stdout || "No matches found.");
 		} catch (err: any) {
 			if (err.code === 1) return "No matches found.";
 			return `Error searching: ${err.message}`;
