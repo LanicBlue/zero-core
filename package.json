@@ -24,7 +24,8 @@
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:e2e": "npm run build && playwright test",
-    "check:handlers": "tsx scripts/check-handler-modules.ts"
+    "check:handlers": "tsx scripts/check-handler-modules.ts",
+    "build:codegraph": "tsx scripts/build-codegraph.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.77",

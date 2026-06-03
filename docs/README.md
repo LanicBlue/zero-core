@@ -3,7 +3,7 @@
 > 最近审查：2026-06-02
 > 文档最近重写：2026-06（清理 + 重分析）
 > 审查范围：src/ 全量（212 文件）+ 构建配置 + 测试套件
-> 输出形式：5 份 markdown + 2 份 HTML 可视化
+> 输出形式：5 份 markdown + 1 份代码大纲 + 调用关系可视化
 
 ## 文档索引
 
@@ -14,8 +14,9 @@
 | [03-tech-debt.md](03-tech-debt.md) | 技术债清单（按严重程度分级） | 决定优先级、规划清理 |
 | [04-recommendations.md](04-recommendations.md) | 建议的修复顺序与具体步骤 | 周末开搞 |
 | [05-known-bugs.md](05-known-bugs.md) | 已暴露但未完全修复的问题 | 临时排障 |
-| [visualization/overview.html](visualization/overview.html) | 模块依赖图（HTML） | 全局把握 |
-| [visualization/call-graph.html](visualization/call-graph.html) | IPC 调用链（HTML） | 追踪具体路径 |
+| [visualization/code-graph.html](visualization/code-graph.html) | 代码大纲 + 调用关系（Outline + Calls） | 浏览函数 / 追踪调用链 |
+
+生成命令：`npm run build:codegraph`
 
 ## TL;DR — 项目当前状态（2026-06 重分析）
 
@@ -56,7 +57,7 @@
 
 ## 阅读顺序建议
 
-- **第一次接触项目**：01 → 02 → 打开 overview.html
+- **第一次接触项目**：01 → 02 → 打开 code-graph.html 看代码大纲
 - **要修 bug**：05 → 02 对应章节
 - **要重构 / 还技术债**：03 → 04
-- **要加新功能**：02 → 看 visualization/call-graph.html 找参考路径
+- **要加新功能**：02 → 用 code-graph.html 搜函数名找参考路径
