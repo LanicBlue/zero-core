@@ -89,52 +89,101 @@ function ThinkingBlockComponent({ text, streaming }: { text: string; streaming: 
 	);
 }
 
-function ToolBlock({ block, streaming }: { block: ToolCallBlock; streaming: boolean }) {
-	const [expanded, setExpanded] = useState(false);
-	const statusClass = block.status === "running" ? "tool-running" : block.status === "error" ? "tool-error" : "tool-done";
+// Tool display names and summary key maps
+	const TOOL_DISPLAY_NAMES: Record<string, string> = {
+		bash: "Bash", read: "Read", write: "Write", edit: "Edit",
+		grep: "Grep", glob: "Glob",
+		webSearch: "Web Search", web_search: "Web Search",
+		webFetch: "Web Fetch", web_fetch: "Web Fetch",
+		agent: "Agent", wait: "Wait",
+		taskStatus: "Task Status", taskList: "Task List", taskStop: "Task Stop",
+		askUser: "Ask User", todoWrite: "Todo Write",
+		memoryRead: "Memory Read", memoryWrite: "Memory Write",
+	};
+	const TOOL_SUMMARY_KEY: Record<string, string[]> = {
+		bash: ["command", "description"],
+		read: ["file_path", "path"], write: ["file_path", "path"], edit: ["file_path", "path"],
+		grep: ["pattern"], glob: ["pattern"],
+		webSearch: ["query"], web_search: ["query"],
+		webFetch: ["url"], web_fetch: ["url"],
+		agent: ["description", "prompt"], wait: ["timeout"],
+		taskStatus: ["task_id"], taskList: [], taskStop: ["task_id"], askUser: [],
+	};
 
-	const summary = useMemo(() => {
-		if (!block.args) return "";
-		try {
-			const a = JSON.parse(block.args);
-			switch (block.name) {
-				case "bash": return a.command || a.description || "";
-				case "read": return a.file_path || a.path || "";
-				case "write": return a.file_path || a.path || "";
-				case "edit": return a.file_path || a.path || "";
-				case "grep": return a.pattern || "";
-				case "glob": return a.pattern || "";
-				case "web_search": case "webSearch": return a.query || "";
-				case "web_fetch": case "fetch": return a.url || "";
-				default: {
-					const vals = Object.values(a).filter((v: any) => typeof v === "string" && v.length < 120);
-					return (vals as string[])[0] || "";
+	function ToolBlock({ block, streaming }: { block: ToolCallBlock; streaming: boolean }) {
+		const [expanded, setExpanded] = useState(false);
+		const statusClass = block.status === "running" ? "tool-running" : block.status === "error" ? "tool-error" : "tool-done";
+
+		const summary = useMemo(() => {
+			if (!block.args) return "";
+			try {
+				const a = JSON.parse(block.args);
+				const keys = TOOL_SUMMARY_KEY[block.name];
+				if (keys) {
+					for (const k of keys) { if (a[k]) return String(a[k]); }
+					return "";
 				}
-			}
-		} catch { return ""; }
-	}, [block.name, block.args]);
+				const vals = Object.values(a).filter((v: any) => typeof v === "string" && v.length < 120);
+				return (vals as string[])[0] || "";
+			} catch { return ""; }
+		}, [block.name, block.args]);
 
-	const displaySummary = summary.length > 100 ? summary.slice(0, 100) + "…" : summary;
+		const displaySummary = summary.length > 100 ? summary.slice(0, 100) + "…" : summary;
+		const displayName = TOOL_DISPLAY_NAMES[block.name] ?? block.name;
 
-	return (
-		<div className={`tool-block ${statusClass}`}>
-			<div className="tool-block-header" onClick={() => setExpanded(!expanded)}>
-				<span className="tool-block-chevron">{expanded ? "▾" : "▸"}</span>
-				<span className="tool-block-name">{block.name}</span>
-				{!expanded && displaySummary && <span className="tool-block-summary">{displaySummary}</span>}
-				<span className={`tool-block-status ${statusClass}`}>
-					{block.status === "running" ? "Running…" : block.status === "error" ? "Error" : "Done"}
-				</span>
-			</div>
-			{expanded && (
-				<div className="tool-block-details">
-					{block.args && <pre className="tool-block-code">Args: {block.args}</pre>}
-					{block.result && <pre className="tool-block-code">Result: {block.result}</pre>}
+		const elapsed = useMemo(() => {
+			if (!block.startedAt) return null;
+			const end = block.completedAt ?? Date.now();
+			return ((end - block.startedAt) / 1000).toFixed(1) + "s";
+		}, [block.startedAt, block.completedAt, block.status]);
+
+		const formattedArgs = useMemo(() => {
+			if (!block.args) return null;
+			try {
+				const a = JSON.parse(block.args);
+				return Object.entries(a)
+					.filter(([, v]) => v !== undefined && v !== "")
+					.map(([k, v]) => {
+						const s = typeof v === "string" ? v : JSON.stringify(v);
+						return { key: k, value: s.length > 200 ? s.slice(0, 200) + "…" : s };
+					});
+			} catch { return null; }
+		}, [block.args]);
+
+		return (
+			<div className={`tool-block ${statusClass}`}>
+				<div className="tool-block-header" onClick={() => setExpanded(!expanded)}>
+					<span className="tool-block-chevron">{expanded ? "▾" : "▸"}</span>
+					<span className="tool-block-name">{displayName}</span>
+					{!expanded && displaySummary && <span className="tool-block-summary">{displaySummary}</span>}
+					<span className={`tool-block-status ${statusClass}`}>
+						{block.status === "running" ? "Running…" : block.status === "error" ? "Error" : `Done${elapsed ? ` (${elapsed})` : ""}`}
+					</span>
 				</div>
-			)}
-		</div>
-	);
-}
+				{expanded && (
+					<div className="tool-block-details">
+						{formattedArgs && (
+							<div className="tool-block-args">
+								<div className="tool-block-section-label">Args</div>
+								{formattedArgs.map(({ key, value }) => (
+									<div key={key} className="tool-block-arg-row">
+										<span className="tool-block-arg-key">{key}:</span>
+										<span className="tool-block-arg-value">{value}</span>
+									</div>
+								))}
+							</div>
+						)}
+						{block.result && (
+							<div className="tool-block-result">
+								<div className="tool-block-section-label">Result</div>
+								<MarkdownRenderer content={block.result} />
+							</div>
+						)}
+					</div>
+				)}
+			</div>
+		);
+	}
 
 function renderBlocks(blocks: MessageBlock[], streaming: boolean) {
 	const elements: React.ReactNode[] = [];

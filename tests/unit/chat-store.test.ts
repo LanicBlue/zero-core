@@ -140,11 +140,12 @@ describe("chat-store", () => {
 			addMessage("sess-a", assistantMsg(""));
 			addToolCall("sess-a", "bash", "ls");
 			const blocks = activeMessages()[0].blocks!;
-			expect(blocks[blocks.length - 1]).toEqual({
+			expect(blocks[blocks.length - 1]).toMatchObject({
 				type: "tool",
 				name: "bash",
 				status: "running",
 				args: "ls",
+				startedAt: expect.any(Number),
 			});
 		});
 

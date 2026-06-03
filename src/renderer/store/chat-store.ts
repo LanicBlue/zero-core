@@ -9,6 +9,8 @@ export interface ToolCallBlock {
 	status: "running" | "done" | "error";
 	args?: string;
 	result?: string;
+	startedAt?: number;
+	completedAt?: number;
 }
 
 export interface TextBlock {
@@ -151,7 +153,7 @@ export const useChatStore = create<ChatState>((set) => ({
 		set((state) => {
 			const sessionMsgs = updateLastAssistantMsg(state.messagesBySession[sessionId] ?? [], (msg) => {
 				const blocks = [...(msg.blocks ?? [])];
-				blocks.push({ type: "tool", name, status: "running", args });
+				blocks.push({ type: "tool", name, status: "running", args, startedAt: Date.now() });
 				return { ...msg, blocks, streaming: true };
 			});
 			return {
@@ -167,7 +169,7 @@ export const useChatStore = create<ChatState>((set) => ({
 					if (blocks[i].type === "tool") {
 						const tb = blocks[i] as ToolCallBlock;
 						if (tb.name === name && tb.status === "running") {
-							blocks[i] = { ...tb, status, result };
+							blocks[i] = { ...tb, status, result, completedAt: Date.now() };
 							break;
 						}
 					}
