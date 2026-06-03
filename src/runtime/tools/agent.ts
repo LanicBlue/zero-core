@@ -4,8 +4,17 @@ import { buildTool } from "./tool-factory.js";
 export const delegateTool = buildTool({
 	name: "Agent",
 	description: "Delegate a task to a sub-agent. Supports blocking and non-blocking modes.",
-	prompt:
-		"Delegate a task to a sub-agent. Blocking mode waits for the result; non-blocking mode returns a task_id immediately for later polling via task_status or wait.",
+	prompt: "Delegate a task to a sub-agent that runs in an isolated context with its own conversation history.\n\n" +
+		"Modes:\n" +
+		"- blocking (default): waits for the sub-agent to finish and returns its output. Use for quick tasks.\n" +
+		"- non_blocking: returns a task_id immediately. Use Wait or TaskStatus to check progress later.\n\n" +
+		"When to delegate:\n" +
+		"- Parallel work: dispatch multiple sub-agents for independent tasks\n" +
+		"- Complex multi-step searches requiring multiple rounds of grep/glob\n" +
+		"- Isolated exploration that should not pollute the main conversation\n\n" +
+		"Use model parameter to override the model for the sub-agent.\n" +
+		"Use systemPrompt to give the sub-agent specialized instructions.\n\n" +
+		"For non-blocking tasks, use Wait to be notified when done, or TaskStatus to poll progress.",
 	meta: { category: "runtime", isReadOnly: false, isConcurrencySafe: false },
 	configSchema: [
 		{ key: "auto_background", type: "boolean", label: "自动转后台", description: "阻塞超时后自动转为非阻塞后台执行" },

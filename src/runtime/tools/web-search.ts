@@ -223,9 +223,16 @@ export function getSearchProvider(): SearchProvider {
 export const webSearchTool = buildTool({
 	name: "WebSearch",
 	description: "Search the web for up-to-date information. Returns titles, URLs, and snippets.",
-	prompt:
-		"Search the web for up-to-date information. Returns search results with titles, URLs, and snippets. " +
-		"Include a 'Sources:' section in your response with the URLs.",
+		prompt: "Search the web for up-to-date information not available locally.\n\n" +
+			"When to use WebSearch:\n" +
+			"- Current events, recent data, or information after your knowledge cutoff\n" +
+			"- Documentation or API references not available locally\n" +
+			"- Factual verification of claims or technical details\n\n" +
+			"When NOT to use:\n" +
+			"- Code understanding: use Read, Grep, Glob instead\n" +
+			"- File contents: use Read or Grep instead\n\n" +
+			"Query tips: be specific, include year for time-sensitive topics.\n" +
+			"IMPORTANT: Always include a Sources section with markdown links.",
 	meta: { category: "web", isReadOnly: true, maxResultSize: 15000 },
 	configSchema: [
 		{ key: "provider", type: "select", label: "搜索引擎", default: "duckduckgo", options: ["duckduckgo", "searxng", "serpapi", "brave"] },

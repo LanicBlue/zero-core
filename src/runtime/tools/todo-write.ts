@@ -26,9 +26,7 @@ export const todoWriteTool = buildTool({
 	name: "TodoWrite",
 	description: "Update the task list to track progress on multi-step work.",
 	prompt:
-		"Update the task list to track progress on multi-step work. " +
-		"Mark tasks in_progress BEFORE starting them and completed IMMEDIATELY after finishing. " +
-		"Only one task should be in_progress at a time.",
+		"Create and update a task list for tracking progress on multi-step work.\n\nWhen to update todos:\n- Starting a complex task with 3+ distinct steps\n- After completing a step — mark it done immediately\n- When discovering new work during implementation\n\nTask format: each item has content (imperative, e.g. 'Fix auth bug') and status (pending/in_progress/completed).\nKeep exactly one task in_progress at a time. Complete current tasks before starting new ones.",
 	meta: { category: "interaction", isReadOnly: false, isConcurrencySafe: false },
 	inputSchema: z.object({
 		todos: z.array(z.object({

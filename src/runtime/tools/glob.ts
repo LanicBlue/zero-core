@@ -7,15 +7,17 @@ import { buildTool } from "./tool-factory.js";
 export const globTool = buildTool({
 	name: "Glob",
 	description: "Fast file pattern matching tool. Returns matching file paths sorted by modification time.",
-	prompt:
-		"- Fast file pattern matching tool that works with any codebase size.\n" +
-		"- Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\".\n" +
-		"- Returns matching file paths sorted by modification time.\n" +
-		"- Use this tool when you need to find files by name or pattern.\n" +
-		"- When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead.",
-	configSchema: [
-		{ key: "result_limit", type: "number", label: "最大结果数", default: 250, description: "返回的最大文件数" },
-	],
+		prompt: "Fast file pattern matching. Returns matching paths sorted by modification time.\n\n" +
+			"When to use Glob:\n" +
+			"- Finding files by name, extension, or path pattern\n" +
+			"- Discovering project structure\n\n" +
+			"When NOT to use: searching file contents — use Grep instead.\n\n" +
+			"Pattern examples:\n" +
+			"- **/*.ts — all TypeScript files recursively\n" +
+			"- src/**/*.test.ts — test files under src/\n" +
+			"- *.{json,yaml,yml} — config files\n\n" +
+			"Use path parameter to scope search to a directory.\n" +
+			"For multi-round searches, use the Agent tool instead.",
 	meta: { category: "runtime", isReadOnly: true, isConcurrencySafe: true },
 	inputSchema: z.object({
 		pattern: z.string().describe('Glob pattern to match files against (e.g., "**/*.ts", "src/**/*.tsx")'),

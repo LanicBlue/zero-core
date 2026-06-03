@@ -11,9 +11,7 @@ export const askUserTool = buildTool({
 	name: "AskUser",
 	description: "Ask the user a question during task execution. Supports multiple-choice and free-text.",
 	prompt:
-		"Ask the user a question during task execution. Use to clarify requirements, " +
-		"get decisions on implementation choices, or gather preferences. " +
-		"The user can select from provided options or type a custom answer.",
+		"Ask the user a question and wait for their response. Use when you need clarification or a decision.\n\nWhen to ask:\n- The task is ambiguous and multiple interpretations are possible\n- You need the user to choose between options\n- You are unsure about a destructive action\n\nWhen NOT to ask:\n- The intent is clear from context — just do it\n- You can infer the answer from the codebase or conversation\n\nTips:\n- Provide 2-4 concrete options when possible (faster for the user)\n- Include 'Other' as an implicit option — the user can always type freely\n- Keep questions specific and actionable",
 	meta: { category: "interaction", isReadOnly: true, isConcurrencySafe: false },
 	inputSchema: z.object({
 		questions: z.array(z.object({

@@ -8,9 +8,15 @@ function getMemoryStore(db: any): any {
 export const memoryReadTool = buildTool({
 	name: "MemoryRead",
 	description: "Read from the knowledge graph memory. Search entities/relations or read the full graph.",
-	prompt:
-		"Read from the knowledge graph memory. Use action 'search' to find entities/relations by query, " +
-		"or 'graph' to read the entire knowledge graph.",
+	prompt: "Read from the persistent knowledge graph memory. Data persists across sessions.\n\n" +
+		"Actions:\n" +
+		"- search: find entities by name/keyword. Returns matching entities and their relations. Requires query.\n" +
+		"- graph: return the entire knowledge graph. Use sparingly.\n\n" +
+		"When to use memory:\n" +
+		"- Recalling user preferences or project context from earlier sessions\n" +
+		"- Looking up entity relationships\n" +
+		"- Checking stored observations about a component or concept\n\n" +
+		"Results are returned as JSON with entities and relations arrays.",
 	meta: { category: "memory", isReadOnly: true },
 	inputSchema: z.object({
 		action: z.enum(["search", "graph"]).describe("'search' to find by query, 'graph' to read everything"),
@@ -35,11 +41,19 @@ export const memoryReadTool = buildTool({
 export const memoryWriteTool = buildTool({
 	name: "MemoryWrite",
 	description: "Write to the knowledge graph memory. Create/delete entities, relations, and observations.",
-	prompt:
-		"Write to the knowledge graph memory. Actions: " +
-		"'create_entities' to add entities, 'create_relations' to link entities, " +
-		"'add_observations' to append observations, 'delete_entities' to remove entities, " +
-		"'delete_relations' to remove relations.",
+	prompt: "Write to the persistent knowledge graph memory. Data persists across sessions.\n\n" +
+		"Actions:\n" +
+		"- create_entities: add new entities with name, type, and optional observations\n" +
+		"- create_relations: link two entities with a relation type\n" +
+		"- add_observations: append new observations to an existing entity\n" +
+		"- delete_entities: remove entities by name\n" +
+		"- delete_relations: remove relations\n\n" +
+		"When to save to memory:\n" +
+		"- User explicitly asks you to remember something\n" +
+		"- Important project decisions or architecture choices\n" +
+		"- Key facts about the codebase, team, or workflows\n\n" +
+		"Example entities: [{ name: \"AuthService\", entityType: \"service\", observations: [\"Handles JWT\"] }]\n" +
+		"Example relations: [{ from: \"AuthService\", to: \"UserDB\", relationType: \"depends_on\" }]",
 	meta: { category: "memory", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
 	inputSchema: z.object({
 		action: z.enum([

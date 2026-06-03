@@ -28,7 +28,18 @@ function htmlToText(html: string): string {
 export const webFetchTool = buildTool({
 	name: "WebFetch",
 	description: "Fetch a URL and return the content in markdown, HTML, text, or JSON format.",
-	prompt: "Fetch a URL and return the content. Supports multiple output formats.",
+	prompt: "Fetch a URL and return its content in the specified format.\n\n" +
+		"When to use WebFetch:\n" +
+		"- Reading documentation pages found via WebSearch\n" +
+		"- Fetching API endpoint responses (use format=\"json\")\n" +
+		"- Reading raw content from GitHub or similar platforms\n\n" +
+		"Format selection:\n" +
+		"- markdown (default): best for web pages, converts HTML to clean markdown\n" +
+		"- json: best for API endpoints, returns raw JSON\n" +
+		"- text: plain text extraction, strips all HTML\n" +
+		"- html: raw HTML source\n\n" +
+		"Combine with WebSearch: search first, then fetch the most promising results.\n" +
+		"Use headers parameter for APIs requiring authentication or specific content types.",
 	meta: { category: "web", isReadOnly: true },
 	configSchema: [
 		{ key: "format", type: "select", label: "Default format", default: "markdown", options: ["markdown", "html", "text", "json"], description: "默认输出格式" },

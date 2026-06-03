@@ -23,8 +23,13 @@ function formatTurn(turn: { role: string; content: string | null }, limit: numbe
 export const taskStatusTool = buildTool({
 	name: "TaskStatus",
 	description: "Check the status and recent activity of a background task.",
-	prompt:
-		"Check the status of a background task. Shows status header and the most recent turns from the session.",
+	prompt: "Check the status and output of a background task (Agent non-blocking or Bash background).\n\n" +
+		"Returns: task status (running/completed/killed), elapsed time, and recent conversation turns.\n\n" +
+		"When to use:\n" +
+		"- After Wait wakes you up, check the specific task result\n" +
+		"- To monitor progress of a long-running background task\n" +
+		"- To retrieve the output of a completed task\n\n" +
+		"Prefer Wait over polling TaskStatus in a loop — Wait is event-driven.",
 	meta: { category: "task", isReadOnly: true, isConcurrencySafe: true, isDestructive: false },
 	configSchema: [
 		{

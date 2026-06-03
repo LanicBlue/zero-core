@@ -4,8 +4,12 @@ import { buildTool } from "./tool-factory.js";
 export const taskStopTool = buildTool({
 	name: "TaskStop",
 	description: "Stop a running background task by task_id.",
-	prompt:
-		"Stop a running background subagent by task_id. The subagent is aborted and its status set to 'killed'.",
+	prompt: "Stop a running background task (Agent or Bash) by task_id.\n\n" +
+		"The task is immediately aborted. Stopped tasks cannot be resumed.\n\n" +
+		"When to use:\n" +
+		"- A background task is taking too long or producing unwanted results\n" +
+		"- The user asks to cancel an ongoing operation\n" +
+		"- You dispatched a task that is no longer relevant",
 	meta: { category: "task", isReadOnly: false, isConcurrencySafe: false, isDestructive: true },
 	inputSchema: z.object({
 		task_id: z.string().describe("The task ID of the subagent to stop"),

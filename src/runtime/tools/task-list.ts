@@ -19,8 +19,13 @@ function formatTask(t: TaskInfo): string {
 export const taskListTool = buildTool({
 	name: "TaskList",
 	description: "List all background tasks with their status and progress.",
-	prompt:
-		"List all tasks dispatched by this agent. Returns running and completed background tasks (subagents and bash commands) with their status, progress, and results.",
+	prompt: "List all background tasks dispatched by this agent.\n\n" +
+		"Returns: task IDs, status (running/completed/killed), type, and summary.\n\n" +
+		"When to use:\n" +
+		"- After dispatching multiple parallel tasks to check overall progress\n" +
+		"- To find a task_id for use with TaskStatus or Wait\n" +
+		"- To review completed task results\n\n" +
+		"Use filter parameter to narrow results: running for active, completed for finished.",
 	meta: { category: "task", isReadOnly: true, isConcurrencySafe: true, isDestructive: false },
 	configSchema: [
 		{
