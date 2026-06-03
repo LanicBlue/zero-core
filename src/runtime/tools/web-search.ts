@@ -256,6 +256,9 @@ export const webSearchTool = buildTool({
 			}
 
 			const lines: string[] = [];
+			lines.push(`Found ${results.length} result${results.length > 1 ? "s" : ""} for: "${query}"`);
+			lines.push("");
+
 			for (let i = 0; i < results.length; i++) {
 				const r = results[i];
 				lines.push(`[${i + 1}] ${r.title}`);

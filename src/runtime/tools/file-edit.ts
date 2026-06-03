@@ -42,7 +42,7 @@ export const fileEditTool = buildTool({
 		try {
 			const content = await readFile(filePath, "utf-8");
 			if (!content.includes(oldText)) {
-				return `Error: Text not found in ${path}. The oldText must match exactly.`;
+				return buildNotFoundMessage(path, content, oldText);
 			}
 			const newContent = content.replace(oldText, newText);
 			await writeFile(filePath, newContent, "utf-8");
@@ -59,3 +59,49 @@ export const fileEditTool = buildTool({
 		}
 	},
 });
+
+// ---------------------------------------------------------------------------
+// "Text not found" diagnostics
+// ---------------------------------------------------------------------------
+
+function buildNotFoundMessage(path: string, content: string, oldText: string): string {
+	const lines = content.split("\n");
+	const totalLines = lines.length;
+	const header = `Error: Text not found in ${path} (${totalLines} lines).`;
+
+	// Check for partial match — first line of oldText
+	const hints: string[] = [];
+	const firstLine = oldText.split("\n")[0];
+	if (firstLine && content.includes(firstLine)) {
+		const idx = lines.findIndex((l) => l.includes(firstLine));
+		if (idx >= 0) {
+			const start = Math.max(0, idx - 1);
+			const end = Math.min(lines.length, idx + 4);
+			const snippet = lines.slice(start, end)
+				.map((l, i) => `${start + i + 1}: ${l}`)
+				.join("\n");
+			hints.push(`Partial match found near line ${idx + 1}:\n${snippet}`);
+		}
+	} else {
+		// Show file head
+		const head = lines.slice(0, 8)
+			.map((l, i) => `${i + 1}: ${l}`)
+			.join("\n");
+		hints.push(`File starts with:\n${head}`);
+	}
+
+	// Common whitespace issues
+	if (content.includes("\r\n") && !oldText.includes("\r\n")) {
+		hints.push("Hint: file uses CRLF line endings but oldText uses LF.");
+	}
+	if (!content.includes("\r\n") && oldText.includes("\r\n")) {
+		hints.push("Hint: file uses LF line endings but oldText uses CRLF.");
+	}
+	const oldFirstNonSpace = oldText.match(/^([ \t]+)/)?.[1];
+	if (oldFirstNonSpace && oldFirstNonSpace.includes("\t")) {
+		const hasTabs = lines.some((l) => l.startsWith("\t"));
+		if (!hasTabs) hints.push("Hint: oldText uses tab indentation but file uses spaces.");
+	}
+
+	return [header, ...hints, "Use Read to re-read the file and verify exact content."].join("\n\n");
+}

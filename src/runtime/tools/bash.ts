@@ -77,21 +77,26 @@ export const bashTool = buildTool({
 		try {
 			const execOpts: any = { cwd: ctx.workingDir, maxBuffer: EXEC_MAX_BUFFER_BYTES, encoding: "buffer" };
 			if (timeout) execOpts.timeout = timeout;
+			const t0 = Date.now();
 			const result = await execFileAsync(shell, shellArgs, execOpts) as { stdout: Buffer; stderr: Buffer };
+			const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 			const stdout = decodeOutput(result.stdout);
 			const stderr = decodeOutput(result.stderr);
 			let out = "";
 			if (stdout) out += stdout;
 			if (stderr) out += (out ? "\n" : "") + "[stderr] " + stderr;
-			return out || "(no output)";
+			if (!out) out = "(no output)";
+			out += `\n[Completed in ${elapsed}s]`;
+			return out;
 		} catch (err: any) {
 			if (err.killed) {
-				return `Error: Command timed out after ${timeoutSec}s`;
+				return `Error: Command timed out after ${timeoutSec}s\nCommand: ${command}`;
 			}
 			const stdout = decodeOutput(err.stdout as Buffer);
 			const stderr = decodeOutput(err.stderr as Buffer);
 			const exitCode = err.status ?? 1;
 			let out = `Error: Exit code ${exitCode}`;
+			if (command.length <= 200) out += `\nCommand: ${command}`;
 			if (stdout) out += "\n" + stdout;
 			if (stderr) out += "\n[stderr] " + stderr;
 			return out;

@@ -73,17 +73,17 @@ const FILE_DESC: Record<string, string> = {
 	"src/runtime/tools/edit-tool.ts": "文件编辑工具：精确字符串替换",
 	"src/runtime/tools/grep-tool.ts": "内容搜索工具：ripgrep 封装",
 	"src/runtime/tools/glob-tool.ts": "文件搜索工具：glob 模式匹配",
-	"src/runtime/tools/web-search.ts": "Web 搜索：DuckDuckGo（默认）/SearXNG/SerpAPI/Brave 四个 provider，运行时可切换",
+	"src/runtime/tools/web-search.ts": "Web 搜索：DuckDuckGo（默认）/SearXNG/SerpAPI/Brave 四个 provider，运行时可切换，结果带摘要行",
 	"src/runtime/tools/todo-write-tool.ts": "Todo 列表管理工具：创建/更新任务列表",
 	"src/runtime/tools/agent-delegation-tool.ts": "Sub-agent 委派：blocking + auto-background 模式",
 	"src/runtime/tools/tool-registry.ts": "ToolRegistry：工具注册中心，按名称查找，执行调度",
 	"src/runtime/tools/tool-policy.ts": "ToolPolicy：白/黑名单过滤，控制可用工具集",
-	"src/runtime/tools/bash.ts": "Bash 执行工具实现：子进程 + timeout + 输出截断 + 编码处理",
+	"src/runtime/tools/bash.ts": "Bash 执行工具实现：子进程 + timeout + 输出截断 + 编码处理 + 执行计时 + 超时/错误含命令",
 	"src/runtime/tools/glob.ts": "文件搜索工具实现：glob 模式匹配",
 	"src/runtime/tools/grep.ts": "内容搜索工具实现：ripgrep 封装",
 	"src/runtime/tools/file-read.ts": "文件读取工具实现：支持多种文件类型（文本/图片/PDF/Jupyter）",
 	"src/runtime/tools/file-write.ts": "文件写入工具实现",
-	"src/runtime/tools/file-edit.ts": "文件编辑工具实现：精确字符串替换",
+	"src/runtime/tools/file-edit.ts": "文件编辑工具实现：精确字符串替换 + buildNotFoundMessage 诊断（行数、部分匹配、CRLF/LF、Tab/空格）",
 	"src/runtime/tools/file-read-helpers.ts": "文件读取辅助：类型检测、编码、PDF 提取、Jupyter 解析、相似文件推荐",
 	"src/runtime/tools/ask-user.ts": "AskUser 工具：向用户提问并等待回复",
 	"src/runtime/tools/agent.ts": "Agent 委派工具实现",
@@ -340,10 +340,12 @@ const FUNC_DESC: Record<string, string> = {
 	"src/runtime/tools/agent-tool.ts/buildAgentTools:52": "根据配置条目构建内部/CLI/HTTP 三类代理工具",
 	// ── runtime/tools/bash.ts ──
 	"src/runtime/tools/bash.ts/decodeOutput:9": "解码命令输出，尝试 GBK 到 UTF-8 转换以兼容 Windows",
+	"src/runtime/tools/bash.ts/bashTool.execute:58": "执行 shell 命令：测量耗时追加 [Completed in Xs]，超时/错误含命令信息",
 	// ── runtime/tools/file-read.ts ──
 	"src/runtime/tools/file-read.ts/resolvePath:18": "将文件路径解析为绝对路径并可选限制在工作区内",
 	// ── runtime/tools/grep.ts ──
 	"src/runtime/tools/grep.ts/grepTool.execute:40": "使用 ripgrep 执行文件内容搜索，支持多种输出模式和过滤",
+	"src/runtime/tools/file-edit.ts/buildNotFoundMessage:67": "构建 'text not found' 诊断消息：行数统计、部分匹配上下文、CRLF/LF 和 Tab/空格检测",
 	// ── runtime/tools/web-search.ts ──
 	"src/runtime/tools/web-search.ts/DuckDuckGoProvider.search:29": "通过 DuckDuckGo Lite HTML 页面执行搜索并解析结果",
 	"src/runtime/tools/web-search.ts/SearXNGProvider.constructor:85": "初始化 SearXNG 自托管搜索引擎客户端",
@@ -355,6 +357,7 @@ const FUNC_DESC: Record<string, string> = {
 	"src/runtime/tools/web-search.ts/createSearchProvider:187": "按配置类型创建对应的搜索引擎提供者实例",
 	"src/runtime/tools/web-search.ts/setSearchProvider:211": "替换当前全局搜索引擎实例",
 	"src/runtime/tools/web-search.ts/getSearchProvider:215": "返回当前全局搜索引擎实例",
+	"src/runtime/tools/web-search.ts/webSearchTool.execute:248": "执行搜索并以 Found N results for: query 格式输出结果摘要",
 	"src/runtime/tools/web-search.ts/decodeHTMLEntities:276": "将 HTML 实体和标签解码为纯文本",
 	// ── runtime/tools/todo-write.ts ──
 	"src/runtime/tools/todo-write.ts/getAgentTodos:17": "获取指定代理的任务列表",
