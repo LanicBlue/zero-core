@@ -1,0 +1,5 @@
+{
+  "error": { "message": "Model request failed: connection timeout" },
+  "chunks": [],
+  "delayMs": 5
+}

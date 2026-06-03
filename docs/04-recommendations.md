@@ -77,7 +77,14 @@ export const selectIsStreaming = (s) =>
 - `db-migration.ts` / `recovery.ts` / `kb-search.ts` — better-sqlite3 限制，留给 E2E
 - `agent-loop.ts` — ROI 低，留给 E2E
 
-### R11. E2E 扩展（持续）
+### R11. E2E 扩展 ✅ 首批完成（2026-06）
+
+新增 5 个 E2E 测试（共 7 个）：
+- 多轮对话：3 轮连续消息，验证 user/assistant 气泡按序出现
+- error banner：首条消息失败时出现、手动关闭、5 秒自动消失
+- session 删除：非活跃 session 删除后活跃 session 消息保留
+
+mock-language-model 扩展支持 error fixture (`error: { message }` 字段，doStream/doGenerate 直接 throw）。
 
 剩余可加：
 - 多 session 并发（A streaming 时切到 B）
@@ -85,7 +92,7 @@ export const selectIsStreaming = (s) =>
 - 工具调用完整链路（mock tool + fixture）
 - thinking / reasoning block 流式
 - 多 agent 场景（B7）
-- session 删除
+
 
 ## 阶段四：架构演进（部分完成 / 长期）
 
@@ -135,4 +142,5 @@ export const selectIsStreaming = (s) =>
 - **search-provider 配置**（WorkspaceConfig 字段、IPC handler、Settings > Search UI、启动初始化）
 - **B3** stuck pending turn 自动清理（24h cutoff，包含 pending）
 - **B4** MCP reconnect 错误 log.warn
+- **B9** error banner（chat-store lastError 状态 + ErrorBanner 组件 + mock error fixture）
 - **B8** KV migration 单个失败 try/catch + log.warn

@@ -7,6 +7,7 @@ import type { LanguageModelV2, LanguageModelV2StreamPart, LanguageModelV2CallOpt
 // ---------------------------------------------------------------------------
 
 export interface MockFixture {
+	error?: { message: string };
 	chunks: Array<
 		| { type: "thinking"; text: string }
 		| { type: "text"; text: string }
@@ -70,6 +71,7 @@ export function createMockLanguageModel(fixturePath: string, modelId = "mock-mod
 		supportedUrls: {},
 
 		async doGenerate(_options: LanguageModelV2CallOptions) {
+			if (fixture.error) throw new Error(fixture.error.message);
 			const textParts = fixture.chunks
 				.filter((c) => c.type === "text")
 				.map((c) => (c as { text: string }).text)
@@ -87,6 +89,7 @@ export function createMockLanguageModel(fixturePath: string, modelId = "mock-mod
 		},
 
 		async doStream(_options: LanguageModelV2CallOptions) {
+			if (fixture.error) throw new Error(fixture.error.message);
 			const stream = new ReadableStream<LanguageModelV2StreamPart>({
 				async start(controller) {
 					controller.enqueue({ type: "stream-start", warnings: [] });

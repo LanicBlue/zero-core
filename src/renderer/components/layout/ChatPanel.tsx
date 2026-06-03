@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { useChatStore, selectActiveMessages, selectIsStreaming, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
+import { useChatStore, selectActiveMessages, selectIsStreaming, selectLastError, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
 import AskUserCard from "../chat/AskUserCard.js";
@@ -166,6 +166,27 @@ function renderBlocks(blocks: MessageBlock[], streaming: boolean) {
 // ---------------------------------------------------------------------------
 // ChatPanel
 // ---------------------------------------------------------------------------
+
+
+function ErrorBanner() {
+	const lastError = useChatStore(selectLastError);
+	const clearErr = useChatStore.getState().clearError;
+
+	useEffect(() => {
+		if (!lastError) return;
+		const timer = setTimeout(clearErr, 5000);
+		return () => clearTimeout(timer);
+	}, [lastError]);
+
+	if (!lastError) return null;
+
+	return (
+		<div className="error-banner">
+			<span className="error-banner-text">{lastError.message}</span>
+			<button type="button" className="error-banner-close" onClick={clearErr}>x</button>
+		</div>
+	);
+}
 
 export default function ChatPanel() {
 	const {
@@ -379,6 +400,8 @@ export default function ChatPanel() {
 					</div>
 				)}
 			</div>
+
+			<ErrorBanner />
 
 			<div className="chat-messages" ref={messagesContainerRef}>
 				{messages.length === 0 && (

@@ -41,6 +41,7 @@ interface ChatState {
 	activeSessionId: string | null;
 	streamingSessions: Set<string>;
 	sessionsByAgent: Record<string, SessionRecord[]>;
+	lastError: { sessionId: string; message: string } | null;
 
 	addMessage: (sessionId: string, msg: ChatMessage) => void;
 	updateAssistantText: (sessionId: string, text: string) => void;
@@ -58,6 +59,8 @@ interface ChatState {
 	setActiveSessionId: (sessionId: string | null) => void;
 	editMessage: (sessionId: string, msgId: string, newText: string) => void;
 	deleteMessage: (sessionId: string, msgId: string) => void;
+	setError: (sessionId: string, message: string) => void;
+	clearError: () => void;
 }
 
 function updateLastAssistantMsg(
@@ -91,12 +94,16 @@ export const selectActiveMessages = (s: ChatState): ChatMessage[] =>
 export const selectIsStreaming = (s: ChatState): boolean =>
 	s.activeSessionId !== null && s.streamingSessions.has(s.activeSessionId);
 
+export const selectLastError = (s: ChatState): ChatState["lastError"] =>
+	s.lastError && s.lastError.sessionId === s.activeSessionId ? s.lastError : null;
+
 export const useChatStore = create<ChatState>((set) => ({
 	messagesBySession: {},
 	activeAgentId: null,
 	activeSessionId: null,
 	streamingSessions: new Set(),
 	sessionsByAgent: {},
+	lastError: null,
 
 	addMessage: (sessionId, msg) =>
 		set((state) => ({
@@ -255,4 +262,10 @@ export const useChatStore = create<ChatState>((set) => ({
 				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
 			};
 		}),
+
+	setError: (sessionId, message) =>
+		set(() => ({ lastError: { sessionId, message } })),
+
+	clearError: () =>
+		set(() => ({ lastError: null })),
 }));

@@ -24,7 +24,7 @@ export default function AppLayout() {
 	const {
 		activeAgentId, activeSessionId,
 		addMessage, updateAssistantText, updateThinking, addToolCall, updateToolCall,
-		finishStreaming, initSession, updateSessionLifecycle,
+		finishStreaming, initSession, updateSessionLifecycle, setError,
 	} = useChatStore();
 
 	// Track app readiness
@@ -66,6 +66,7 @@ export default function AppLayout() {
 				useInteractionStore.getState().setTodos(d.agentId, d.todos);
 			},
 			error: (d, key) => {
+				setError(key, d.error);
 				lastErrorKey.current = key;
 				updateAssistantText(key, `\nError: ${d.error}`);
 				finishStreaming(key);
