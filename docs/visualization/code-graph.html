@@ -99,7 +99,7 @@ code{background:#21262d;padding:1px 4px;border-radius:2px;font-size:11px}
     <div class="tree" id="outline-tree"></div>
   </div>
   <div class="col col-detail detail" id="outline-detail">
-    <div style="color:#8b949e;padding:8px;">点击左侧函数查看 callees 与 callers</div>
+    <div style="color:#8b949e;padding:8px;">点击左侧模块/文件/函数查看详情</div>
   </div>
 </div>
 <div id="panel-calls" class="panel">
@@ -157,20 +157,12 @@ function renderDir(d,parent){
   span.className='name';
   span.textContent=d.name+'/';
   li.appendChild(span);
-  // Module description for top-level dirs
-  const modKey='src/'+d.name;
-  if(moduleDesc[modKey]){
-    const descSpan=document.createElement('span');
-    descSpan.className='desc';
-    descSpan.textContent=moduleDesc[modKey];
-    li.appendChild(descSpan);
-  }
   const ul=document.createElement('ul');
   ul.style.display='none';
   for(const sd of Object.values(d.children).sort((a,b)=>a.name.localeCompare(b.name)))renderDir(sd,ul);
   for(const fi of d.files.sort((a,b)=>a.path.localeCompare(b.path)))renderFile(fi,ul);
   li.appendChild(ul);
-  span.onclick=e=>{e.stopPropagation();li.classList.toggle('open');ul.style.display=li.classList.contains('open')?'block':'none';};
+  span.onclick=e=>{e.stopPropagation();li.classList.toggle('open');ul.style.display=li.classList.contains('open')?'block':'none';showDirDetail(d);};
   parent.appendChild(li);
 }
 function renderFile(fi,parent){
@@ -186,12 +178,6 @@ function renderFile(fi,parent){
   meta.className='meta';
   meta.textContent=fi.lines+' lines · '+fi.functions.length+' fns';
   li.appendChild(meta);
-  if(fi.description){
-    const d=document.createElement('span');
-    d.className='desc';
-    d.textContent=fi.description;
-    li.appendChild(d);
-  }
   const ul=document.createElement('ul');
   ul.style.display='none';
   for(const fid of fi.functions){
@@ -209,17 +195,11 @@ function renderFile(fi,parent){
     fm.className='meta';
     fm.textContent=':'+f.line+(f.statementCount>0?' · '+f.statementCount+' stmts':'');
     fli.appendChild(fm);
-    if(f.description){
-      const fd=document.createElement('span');
-      fd.className='desc';
-      fd.textContent=f.description;
-      fli.appendChild(fd);
-    }
     fli.onclick=e=>{e.stopPropagation();document.querySelectorAll('.tree li.selected').forEach(n=>n.classList.remove('selected'));fli.classList.add('selected');showDetail(f);};
     ul.appendChild(fli);
   }
   li.appendChild(ul);
-  span.onclick=e=>{e.stopPropagation();li.classList.toggle('open');ul.style.display=li.classList.contains('open')?'block':'none';};
+  span.onclick=e=>{e.stopPropagation();li.classList.toggle('open');ul.style.display=li.classList.contains('open')?'block':'none';showFileDetail(fi);};
   parent.appendChild(li);
 }
 const root=buildTree(DATA.files);
@@ -239,6 +219,95 @@ document.getElementById('outline-search').addEventListener('input',function(){
 });
 
 // ========== Detail panel ==========
+function showDirDetail(d){
+  const detail=document.getElementById('outline-detail');
+  detail.innerHTML='';
+  const h=document.createElement('h3');h.textContent=d.name+'/';detail.appendChild(h);
+  const modKey='src/'+d.name;
+  if(moduleDesc[modKey]){const desc=document.createElement('div');desc.className='desc-text';desc.textContent=moduleDesc[modKey];detail.appendChild(desc);}
+  // Stats
+  const allDirs=[d];
+  const collectDirs=(node)=>{for(const sd of Object.values(node.children)){allDirs.push(sd);collectDirs(sd);}};
+  collectDirs(d);
+  let fileCount=0,fnCount=0;
+  const fileInfos=[];
+  for(const dd of allDirs){fileCount+=dd.files.length;for(const fi of dd.files){fnCount+=fi.functions.length;fileInfos.push(fi);}}
+  const stats=document.createElement('div');stats.className='loc';
+  stats.textContent=fileCount+' files · '+fnCount+' functions';
+  detail.appendChild(stats);
+  // File list
+  const fl=document.createElement('h3');fl.textContent='包含文件 ('+fileCount+')';detail.appendChild(fl);
+  const ul=document.createElement('ul');ul.className='edge-list';
+  for(const fi of fileInfos.sort((a,b)=>a.path.localeCompare(b.path))){
+    const li=document.createElement('li');
+    const nm=document.createElement('div');nm.className='name';nm.textContent=shortFile(fi.path);
+    const mt=document.createElement('div');mt.className='file';mt.textContent=fi.functions.length+' fns · '+fi.lines+' lines';
+    li.appendChild(nm);li.appendChild(mt);
+    if(fi.description){const ds=document.createElement('span');ds.className='desc-inline';ds.textContent=fi.description.slice(0,80);li.appendChild(ds);}
+    li.onclick=()=>showFileDetail(fi);
+    ul.appendChild(li);
+  }
+  detail.appendChild(ul);
+}
+
+function showFileDetail(fi){
+  const detail=document.getElementById('outline-detail');
+  detail.innerHTML='';
+  const h=document.createElement('h3');h.textContent=shortFile(fi.path);detail.appendChild(h);
+  if(fi.description){const desc=document.createElement('div');desc.className='desc-text';desc.textContent=fi.description;detail.appendChild(desc);}
+  const stats=document.createElement('div');stats.className='loc';
+  stats.textContent=fi.lines+' lines · '+fi.functions.length+' functions · '+fi.exports.length+' exported · '+fi.imports.length+' imports';
+  detail.appendChild(stats);
+  // Functions
+  const fh=document.createElement('h3');fh.textContent='函数列表 ('+fi.functions.length+')';detail.appendChild(fh);
+  const ul=document.createElement('ul');ul.className='edge-list';
+  for(const fid of fi.functions){
+    const f=funcById.get(fid);
+    if(!f)continue;
+    ul.appendChild(makeEdgeItem(f,()=>showDetail(f)));
+  }
+  if(fi.functions.length===0)ul.appendChild(makeEmpty('无可识别的命名函数'));
+  detail.appendChild(ul);
+  // Imports
+  if(fi.imports.length>0){
+    const ih=document.createElement('h3');ih.textContent='依赖文件 ('+fi.imports.length+')';detail.appendChild(ih);
+    const iul=document.createElement('ul');iul.className='edge-list';
+    for(const imp of fi.imports){
+      const tf=fileByPath.get(imp);
+      const li=document.createElement('li');
+      const nm=document.createElement('div');nm.className='name';nm.textContent=shortFile(imp);
+      li.appendChild(nm);
+      if(tf){
+        const mt=document.createElement('div');mt.className='file';mt.textContent=tf.functions.length+' fns';
+        li.appendChild(mt);
+        if(tf.description){const ds=document.createElement('span');ds.className='desc-inline';ds.textContent=tf.description.slice(0,60);li.appendChild(ds);}
+        li.onclick=()=>showFileDetail(tf);
+      }
+      iul.appendChild(li);
+    }
+    detail.appendChild(iul);
+  }
+  // Imported by
+  const callers=fileCallers[fi.path]||[];
+  if(callers.length>0){
+    const ch=document.createElement('h3');ch.textContent='被依赖 by ('+callers.length+')';detail.appendChild(ch);
+    const cul=document.createElement('ul');cul.className='edge-list';
+    for(const cp of callers){
+      const tf=fileByPath.get(cp);
+      const li=document.createElement('li');
+      const nm=document.createElement('div');nm.className='name';nm.textContent=shortFile(cp);
+      li.appendChild(nm);
+      if(tf){
+        const mt=document.createElement('div');mt.className='file';mt.textContent=tf.functions.length+' fns';
+        li.appendChild(mt);
+        li.onclick=()=>showFileDetail(tf);
+      }
+      cul.appendChild(li);
+    }
+    detail.appendChild(cul);
+  }
+}
+
 function showDetail(f){
   const detail=document.getElementById('outline-detail');
   detail.innerHTML='';
