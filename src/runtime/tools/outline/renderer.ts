@@ -8,12 +8,12 @@ interface RenderEntry {
 	line: string;
 	children?: OutlineNode[];
 	depth: number;
-	expandPriority: number;
 	node: OutlineNode;
 }
 
 export function renderOutline(result: OutlineResult, opts?: RenderOptions): string {
 	const budget = opts?.budget ?? 200;
+	const lang = result.language;
 	const nodes = mergeImports(result.nodes);
 
 	// Count total nodes to decide if we can fully expand
@@ -24,10 +24,9 @@ export function renderOutline(result: OutlineResult, opts?: RenderOptions): stri
 
 	for (const node of nodes) {
 		entries.push({
-			line: fmtLine(node, 0),
+			line: fmtLine(node, 0, false, lang),
 			children: node.children?.length ? node.children : undefined,
 			depth: 0,
-			expandPriority: expandPriority(node),
 			node,
 		});
 	}
@@ -40,35 +39,52 @@ export function renderOutline(result: OutlineResult, opts?: RenderOptions): stri
 		while (i < entries.length) {
 			const e = entries[i];
 			if (e.children) {
-				const childEntries = expandChildren(e);
+				const childEntries = expandChildren(e, lang);
 				e.children = undefined;
-				e.line = fmtLine(e.node, e.depth, true);
+				e.line = fmtLine(e.node, e.depth, true, lang);
 				entries.splice(i + 1, 0, ...childEntries);
 				totalLines += childEntries.length;
 			}
 			i++;
 		}
 	} else {
-		// Priority-based partial expansion
+		// BFS expansion: expand shallowest depth first, then by children count
 		totalLines += 3; // header + blank + footer
+		let skipped = 0;
+		const prevSkipped = -1;
+
 		while (totalLines < budget) {
+			// Pick best candidate: shallowest depth, then most children
 			let bestIdx = -1;
-			let bestPri = -1;
+			let bestDepth = Infinity;
+			let bestChildren = -1;
+
 			for (let i = 0; i < entries.length; i++) {
 				const e = entries[i];
 				if (!e.children) continue;
-				if (e.expandPriority > bestPri) {
-					bestPri = e.expandPriority;
+
+				// BFS: prefer shallower depth
+				if (e.depth > bestDepth) continue;
+				if (e.depth < bestDepth) {
+					bestDepth = e.depth;
+					bestChildren = -1;
+				}
+
+				// Among same depth: prefer more children
+				if (e.children.length > bestChildren) {
+					bestChildren = e.children.length;
 					bestIdx = i;
 				}
 			}
+
 			if (bestIdx < 0) break;
 
 			const entry = entries[bestIdx];
-			const childEntries = expandChildren(entry);
+			const childEntries = expandChildren(entry, lang);
 
 			if (totalLines + childEntries.length > budget) {
-				entry.expandPriority = -1;
+				entry.children = undefined; // too large, mark as collapsed
+				skipped++;
 				continue;
 			}
 
@@ -78,11 +94,11 @@ export function renderOutline(result: OutlineResult, opts?: RenderOptions): stri
 			totalLines += childEntries.length;
 		}
 
-		// Mark collapsed nodes
+		// Mark collapsed nodes with child summary
 		for (const entry of entries) {
 			if (entry.children && entry.children.length > 0) {
-				const count = entry.children.length;
-				entry.line += ` [+${count} collapsed — use read offset=${entry.node.line} limit=${entry.node.endLine - entry.node.line + 1}]`;
+				const summary = summarizeChildren(entry.children);
+				entry.line += ` [+${summary} — use read offset=${entry.node.line} limit=${entry.node.endLine - entry.node.line + 1}]`;
 				entry.children = undefined;
 			}
 		}
@@ -104,24 +120,13 @@ function countAllNodes(nodes: OutlineNode[]): number {
 	return count;
 }
 
-function expandChildren(entry: RenderEntry): RenderEntry[] {
+function expandChildren(entry: RenderEntry, lang: string): RenderEntry[] {
 	return (entry.children ?? []).map(cn => ({
-		line: fmtLine(cn, entry.depth + 1),
+		line: fmtLine(cn, entry.depth + 1, false, lang),
 		children: cn.children?.length ? cn.children : undefined,
 		depth: entry.depth + 1,
-		expandPriority: expandPriority(cn),
 		node: cn,
 	}));
-}
-
-function expandPriority(node: OutlineNode): number {
-	switch (node.kind) {
-		case "class": case "struct": case "interface": case "trait": return 10;
-		case "function": case "method": case "impl": return 5;
-		case "property": case "key": return 3;
-		case "rule": return 1;
-		default: return 2;
-	}
 }
 
 function mergeImports(nodes: OutlineNode[]): OutlineNode[] {
@@ -158,14 +163,14 @@ function mergeImports(nodes: OutlineNode[]): OutlineNode[] {
 	return result;
 }
 
-function fmtLine(node: OutlineNode, depth: number, expandedChildren?: boolean): string {
+function fmtLine(node: OutlineNode, depth: number, expandedChildren?: boolean, lang?: string): string {
 	const range = expandedChildren || node.line === node.endLine
 		? `L${node.line}`
 		: `L${node.line}-${node.endLine}`;
 
 	const indent = "  ".repeat(depth);
 	const kind = shortKind(node.kind);
-	const detail = formatDetail(node);
+	const detail = formatDetail(node, expandedChildren ?? false, lang ?? "");
 
 	return `${range.padEnd(12)} ${indent}${kind} ${node.name}${detail}`;
 }
@@ -188,16 +193,81 @@ function shortKind(kind: string): string {
 	}
 }
 
-function formatDetail(node: OutlineNode): string {
-	if (!node.detail) return "";
+function formatDetail(node: OutlineNode, expandedChildren: boolean, lang: string): string {
 	if (node.kind === "import") return "";
 
-	const d = node.detail;
-	if (d === node.name || d.startsWith(node.name + " ") || d.startsWith(node.name + "(")) return "";
-	if (node.kind === "rule" && d === node.name) return "";
-	if (node.kind === "heading") return "";
+	const isMultiLine = node.endLine > node.line;
+	const isLeaf = !node.children?.length;
+	const showEllipsis = isMultiLine && isLeaf && !expandedChildren;
+	const closing = showEllipsis ? closingText(node, lang) : "";
 
-	const maxLen = 60;
-	const shortened = d.length > maxLen ? d.slice(0, maxLen - 3) + "..." : d;
-	return ` - ${shortened}`;
+	let d = node.detail ?? "";
+
+	// Strip trailing {/</ when we'll append { ... } / <tag> ... </tag>
+	if (showEllipsis && d.endsWith(" {")) d = d.slice(0, -2);
+	else if (showEllipsis && d.endsWith("{")) d = d.slice(0, -1);
+
+	let detail = "";
+	if (d && d !== node.name && !d.startsWith(node.name + " ") && !d.startsWith(node.name + "(")) {
+		const budget = 80 - (closing.length ? closing.length + 6 : 0);
+		const shortened = d.length > budget ? d.slice(0, budget - 3) + "..." : d;
+		detail = ` - ${shortened}`;
+	}
+
+	if (closing) {
+		const opener = openingText(node);
+		detail += ` ${opener} ... ${closing}`;
+	}
+
+	return detail;
+}
+
+// Language categories for closing text
+const BRACE_LANGS = new Set([
+	"TypeScript", "TypeScript (TSX)", "JavaScript", "JavaScript (JSX)",
+	"JavaScript (ESM)", "JavaScript (CJS)", "Java", "C", "C Header",
+	"C++", "C++ Header", "Go", "Rust", "Swift", "Kotlin", "Kotlin Script",
+	"Scala", "Dart", "CSS", "SCSS", "SASS", "Less",
+]);
+
+const END_LANGS = new Set(["Ruby", "Lua", "Shell", "Bash", "Zsh"]);
+
+function closingText(node: OutlineNode, lang: string): string {
+	// Per-node override
+	if (node.close !== undefined) return node.close;
+
+	switch (node.kind) {
+		case "tag": return `</${node.name}>`;
+		case "heading": case "import": case "key": case "segment":
+			return "";
+		default:
+			if (END_LANGS.has(lang)) return "end";
+			if (!BRACE_LANGS.has(lang)) return ""; // Python, YAML, TOML, etc.
+			return "}";
+	}
+}
+
+function openingText(node: OutlineNode): string {
+	if (node.kind === "tag") return "";
+	return "{";
+}
+
+function summarizeChildren(children: OutlineNode[]): string {
+	const total = children.length;
+	const byKind: Record<string, number> = {};
+	for (const c of children) {
+		const k = shortKind(c.kind);
+		byKind[k] = (byKind[k] || 0) + 1;
+	}
+	const parts = Object.entries(byKind)
+		.sort((a, b) => b[1] - a[1])
+		.slice(0, 3)
+		.map(([k, v]) => `${v} ${v === 1 ? k : pluralize(k)}`);
+	return parts.join(", ");
+}
+
+function pluralize(word: string): string {
+	if (word.endsWith("s") || word.endsWith("es")) return word;
+	if (word.endsWith("y")) return word.slice(0, -1) + "ies";
+	return word + "s";
 }

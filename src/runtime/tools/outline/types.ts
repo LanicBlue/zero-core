@@ -4,6 +4,7 @@ export interface OutlineNode {
 	line: number;       // 1-based start line
 	endLine: number;    // end line (inclusive)
 	detail?: string;    // signature summary (params, return type, etc.)
+	close?: string;     // closing text for ellipsis display ("}" for C-style, "" to suppress)
 	children: OutlineNode[];
 }
 

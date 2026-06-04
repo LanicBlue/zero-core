@@ -1246,7 +1246,9 @@ const exportedCount = allFunctions.filter((f) => f.exported).length;
 const html = buildHtml(payload, { fileCount: files.length, functionCount: allFunctions.length, exportedCount, edgeCount: totalEdges });
 
 const outPath = join(ROOT, "docs", "visualization", "code-graph.html");
+const dataPath = join(ROOT, "docs", "visualization", "code-graph-data.json");
 writeFileSync(outPath, html, "utf-8");
+writeFileSync(dataPath, JSON.stringify(payload, null, "\t"), "utf-8");
 const withDesc = allFunctions.filter((f) => f.description.trim().length > 0).length;
 const missingDesc = allFunctions.filter((f) => !f.description.trim());
 console.log(
@@ -1395,7 +1397,8 @@ code{background:#21262d;padding:1px 4px;border-radius:2px;font-size:11px}
 <div class="footer">生成命令: <code>npm run build:codegraph</code> · 数据来自静态分析，可能因动态 import / 高阶函数遗漏部分调用</div>
 <script>
 const DATA=${dataJson};
-const funcById=new Map(DATA.functions.map(f=>[f.id,f]));
+async function init(){
+  const funcById=new Map(DATA.functions.map(f=>[f.id,f]));
 const fileByPath=new Map(DATA.files.map(f=>[f.path,f]));
 const fnCallers=DATA.callers;
 const fileCallers=DATA.fileCallers;
@@ -1756,6 +1759,8 @@ function makeFileEdge(f,onClick){
 }
 
 renderBrowse();
+} // end init()
+init();
 </script>
 </body>
 </html>`;
