@@ -112,9 +112,8 @@ function renderNode(
 			? `L${String(node.line).padStart(width)}`
 			: `L${String(node.line).padStart(width)}-${node.endLine}`;
 		const indent = "  ".repeat(depth);
-		let label = node.name;
-		if (node.detail) label += ` - ${node.detail}`;
-		output.push(`${range}  ${indent}${label} [+${span} lines]`);
+		
+		output.push(`${range}  ${indent}${node.name} [...]`);
 		return;
 	}
 
