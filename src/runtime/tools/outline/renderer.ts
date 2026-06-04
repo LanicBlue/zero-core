@@ -41,27 +41,39 @@ export function renderOutline(result: OutlineResult, opts?: RenderOptions): stri
 	}
 	if (lines.length > 0) alwaysGap += Math.max(0, lines.length + 1 - pos);
 
-	// BFS expansion by depth level
+	// BFS expansion: expand one node at a time
+	// Priority: shallower depth first, then more children first
 	const expanded = new Set<OutlineNode>();
-	// Initial: only roots visible as fold hints + always-visible gaps + header
 	let currentSize = nodes.length + alwaysGap + headerLines;
-	const maxDepth = byDepth.size > 0 ? Math.max(...byDepth.keys()) : 0;
 
-	for (let d = 0; d <= maxDepth; d++) {
-		const depthNodes = byDepth.get(d);
-		if (!depthNodes || depthNodes.length === 0) continue;
+	// Use a priority queue: sort by (depth asc, childrenCount desc)
+	const candidates: { node: OutlineNode; depth: number }[] = [];
+	for (const n of nodes) candidates.push({ node: n, depth: 0 });
 
-		// Cost of expanding all nodes at this depth:
-		// each node goes from 1 fold-hint line to (gapLines + childCount) lines
-		let cost = 0;
-		for (const node of depthNodes) {
-			cost += gapLineCount(node) + node.children.length - 1;
+	while (candidates.length > 0) {
+		// Find the best candidate: shallowest depth, then most children
+		let bestIdx = 0;
+		for (let j = 1; j < candidates.length; j++) {
+			const best = candidates[bestIdx];
+			const curr = candidates[j];
+			if (curr.depth < best.depth ||
+				(curr.depth === best.depth && curr.node.children.length > best.node.children.length)) {
+				bestIdx = j;
+			}
 		}
 
-		if (currentSize + cost > budget) break;
+		const { node, depth } = candidates[bestIdx];
+		candidates.splice(bestIdx, 1);
 
-		for (const node of depthNodes) expanded.add(node);
+		const cost = gapLineCount(node) + node.children.length - 1;
+
+		if (currentSize + cost > budget) continue; // skip, doesn't fit
+
+		expanded.add(node);
 		currentSize += cost;
+		for (const child of node.children) {
+			candidates.push({ node: child, depth: depth + 1 });
+		}
 	}
 
 	// Render: walk source lines, show content for expanded nodes, fold hints for collapsed
