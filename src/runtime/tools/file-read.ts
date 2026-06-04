@@ -107,7 +107,7 @@ export const fileReadTool = buildTool({
 			// 10. Outline mode
 			if (mode === "outline") {
 				const outline = extractOutline(basename(resolved), content);
-				return renderOutline(outline, { budget: maxLines });
+				return renderOutline(outline, { budget: maxLines, source: content });
 			}
 
 			// 11. Full mode
