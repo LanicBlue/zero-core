@@ -9,8 +9,8 @@
 | [01-project-structure.md](01-project-structure.md) | 目录布局、构建管线、产出物 | 新人入门 |
 | [02-architecture.md](02-architecture.md) | 进程模型、IPC、状态管理、runtime/server 内部 | 架构调整、跨层修改 |
 | [03-tech-debt.md](03-tech-debt.md) | 剩余技术债（中/低优先级 + 长期项） | 规划清理 |
-| [06-architecture-review.md](06-architecture-review.md) | 架构问题深度分析（5 高 + 7 中 + 6 低） | 决定重构方向 |
-| [05-known-bugs.md](05-known-bugs.md) | 未修问题 + 排查 cheat sheet | 排障 |
+| [04-architecture-review.md](04-architecture-review.md) | 架构问题深度分析（5 高 + 7 中 + 6 低） | 决定重构方向 |
+| [05-known-bugs.md](05-known-bugs.md) | 未修问题 + 排查 cheat sheet | 排障   |
 | [tool-guide.md](tool-guide.md) | 15+ 工具的参数、配置、输出示例（57 测试） | 理解工具行为 |
 
 ## 可视化

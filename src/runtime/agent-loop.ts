@@ -7,21 +7,18 @@ import type {
 	AgentRuntime,
 	RuntimeState,
 	ToolExecutionContext,
-	TaskInfo,
 } from "./types.js";
 import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
 import { buildToolsSet, buildToolPolicyDescription } from "./tools/index.js";
 import { buildAgentTools } from "./tools/agent-tool.js";
 import { log } from "../core/logger.js";
-import { ToolRegistry } from "../core/tool-registry.js";
 import { triggerHooks } from "../core/hook-registry.js";
-import { classifyError, isTransientError, userFriendlyMessage, parseThinkingTags, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
-import { EXEC_MAX_BUFFER_BYTES, OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
-import { TaskRegistry } from "./task-registry.js";
-import type { ISessionStore } from "./session-store-interface.js";
+import { classifyError, isTransientError, userFriendlyMessage, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
 import { TurnRecorder } from "./turn-recorder.js";
 import { SystemPromptAssembler } from "./prompt-sections.js";
+import { SubagentDelegator } from "./subagent-delegator.js";
+import { CheckpointManager } from "./checkpoint-manager.js";
 
 // ---------------------------------------------------------------------------
 // AgentLoop
@@ -33,23 +30,15 @@ export class AgentLoop implements AgentRuntime {
 	private providers: RuntimeProviderConfig[];
 	private callbacks: RuntimeCallbacks;
 	private toolContext: ToolExecutionContext;
-	private taskRegistry: TaskRegistry;
+	private delegator: SubagentDelegator;
+	private checkpoint: CheckpointManager;
 	private promptAssembler: SystemPromptAssembler;
-	private db: ISessionStore | undefined;
 	private abortController: AbortController | null = null;
 	private busy = false;
 	private streamText = "";
 	private thinkingText = "";
 	private recorder = new TurnRecorder();
 	private resultText = "";
-	private pendingToolCalls: Map<string, { name: string; args: any }> = new Map();
-	private checkpointMessages: any[] = [];
-	/** Tracks the seq of the current assistant turn in the turns table.
-	 *  -1 = not yet created (set by saveIncrementalCheckpoint or saveAssistantTurn)
-	 *  >= 0 = turn exists, use updateTurnContent to update.
-	 *  Initialized in run() and resume(); NOT reset by executeStream().
-	 *  Retry cleanup deletes the partial turn and resets to -1. */
-	private incrementalTurnSeq = -1;
 
 	constructor(
 		config: SessionConfig,
@@ -59,10 +48,9 @@ export class AgentLoop implements AgentRuntime {
 		this.config = config;
 		this.providers = providers;
 		this.callbacks = callbacks;
-		this.db = config.db;
 
 		const contextWindow = getContextWindow(providers, config.providerName, config.modelId);
-		this.session = new AgentSession(config.systemPrompt, contextWindow, config.sessionId, this.db);
+		this.session = new AgentSession(config.systemPrompt, contextWindow, config.sessionId, config.db);
 
 		this.promptAssembler = new SystemPromptAssembler([
 			{ name: "base", compute: () => this.session.getSystemPrompt(), cacheBreak: false },
@@ -78,209 +66,34 @@ export class AgentLoop implements AgentRuntime {
 			},
 		]);
 
-		const capturedProviders = providers;
-		const capturedConfig = config;
+		this.checkpoint = new CheckpointManager(config.db);
 
-		this.taskRegistry = new TaskRegistry();
+		this.delegator = new SubagentDelegator({
+			config,
+			providers,
+			emit: (event) => this.emit(event),
+			createSubLoop: (cfg, prov, cb) => new AgentLoop(cfg, prov, cb),
+			getToolConfig: () => this.toolContext.toolConfig ?? {},
+		});
 
 		this.toolContext = {
 			workingDir: config.workspaceDir,
 			agentId: config.agentId,
 			emit: (event) => this.emit(event),
-			db: this.db,
+			db: config.db,
 			readScope: config.toolPolicy.readScope,
 			toolConfig: {},
-			delegateTask: async (task, options) => {
-				const subConfig: SessionConfig = {
-					...capturedConfig,
-					agentId: `${capturedConfig.agentId}:sub-${Date.now()}`,
-					systemPrompt: options?.systemPrompt ?? capturedConfig.systemPrompt,
-					modelId: options?.model ?? capturedConfig.modelId,
-					parentSessionId: capturedConfig.sessionId,
-					spawnDepth: (capturedConfig.spawnDepth ?? 0) + 1,
-						timeoutSec: this.toolContext.toolConfig?.Agent?.timeout,
-				};
-				const subAbort = new AbortController();
-				const subLoop = new AgentLoop(subConfig, capturedProviders, {
-					onEvent: () => {},
-				});
-
-				// Auto-background: if configured, transition to non-blocking after timeout
-				const autoBgEnabled = this.toolContext.toolConfig?.Agent?.auto_background === true;
-				const autoBgSec = Number(this.toolContext.toolConfig?.Agent?.auto_background_timeout) || 0;
-				if (autoBgEnabled && autoBgSec > 0) {
-					const taskId = `${subConfig.agentId}:bg-${Date.now()}`;
-					const registry = this.taskRegistry;
-					const parentEmit = (event: StreamEvent) => this.emit(event);
-					
-					// Fire-and-forget: subLoop.run() continues in background
-					let bgResult = "";
-					let bgError = "";
-					const done = new Promise<void>((resolve) => {
-						subLoop.run(task).then(() => {
-							bgResult = subLoop.getResult();
-							resolve();
-						}).catch((err: any) => {
-							bgError = err.message || "Unknown error";
-							resolve();
-						});
-					});
-				
-					const timeout = new Promise<string>((resolve) =>
-						setTimeout(() => resolve("timeout"), autoBgSec * 1000)
-					);
-				
-					const raceResult = await Promise.race([done.then(() => "done"), timeout]);
-				
-					if (raceResult === "done") {
-						if (bgError) throw new Error(bgError);
-						return bgResult || "(sub-agent returned no output)";
-					}
-				
-					// Timeout: register as background task, parent continues
-					registry.create(taskId, "subagent", task);
-				
-					// When subagent eventually finishes, update registry
-					done.then(() => {
-						if (bgError) {
-							registry.fail(taskId, bgError);
-							parentEmit({ type: "subagent_completed", agentId: capturedConfig.agentId, taskId, status: "failed", result: bgError });
-						} else {
-							registry.complete(taskId, bgResult);
-							parentEmit({ type: "subagent_completed", agentId: capturedConfig.agentId, taskId, status: "completed", result: bgResult });
-						}
-					});
-				
-					return `Sub-agent auto-backgrounded after ${autoBgSec}s (still running)." + NL + "task_id: ${taskId}" + NL + "Use task_status to check progress.`;
-				}
-				
-				// No auto-background: simple blocking execution
-				await subLoop.run(task);
-				return subLoop.getResult();
-			},
-			delegateTaskBackground: (task, options) => {
-				const taskId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-				this.emit({
-					type: "subagent_dispatched",
-					agentId: capturedConfig.agentId,
-					taskId,
-					task,
-				});
-
-				const subConfig: SessionConfig = {
-					...capturedConfig,
-					agentId: `${capturedConfig.agentId}:${taskId}`,
-					systemPrompt: options?.systemPrompt ?? capturedConfig.systemPrompt,
-					modelId: options?.model ?? capturedConfig.modelId,
-					timeoutSec: this.toolContext.toolConfig?.Agent?.timeout,
-				parentSessionId: capturedConfig.sessionId,
-				spawnDepth: (capturedConfig.spawnDepth ?? 0) + 1,
-				};
-
-				const registry = this.taskRegistry;
-				const subAbort = new AbortController();
-				registry.create(taskId, "subagent", task, subAbort);
-				const parentEmit = (event: StreamEvent) => this.emit(event);
-
-				setImmediate(async () => {
-					let stepCount = 0;
-					const subLoop = new AgentLoop(subConfig, capturedProviders, {
-						onEvent: (event) => {
-							if (event.type === "tool_start") {
-								stepCount++;
-								registry.updateProgress(taskId, stepCount, event.toolName);
-								parentEmit({
-									type: "subagent_progress",
-									agentId: capturedConfig.agentId,
-									taskId,
-									step: stepCount,
-									toolName: event.toolName,
-								});
-							}
-						},
-					});
-
-					// Link external abort to subLoop
-					subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
-
-					try {
-						await subLoop.run(task);
-						const result = subLoop.getResult();
-						registry.complete(taskId, result);
-						parentEmit({
-							type: "subagent_completed",
-							agentId: capturedConfig.agentId,
-							taskId,
-							status: "completed",
-							result,
-						});
-					} catch (err: any) {
-						registry.fail(taskId, err.message || "Unknown error");
-						parentEmit({
-							type: "subagent_completed",
-							agentId: capturedConfig.agentId,
-							taskId,
-							status: "failed",
-							result: err.message,
-						});
-					}
-				});
-
-				return taskId;
-			},
-			getTaskResult: (taskId: string): TaskInfo | null => {
-				return this.taskRegistry.get(taskId) ?? null;
-			},
-			listTasks: (filter?: "running" | "completed"): TaskInfo[] => {
-				return this.taskRegistry.list(filter);
-			},
-			stopTask: (taskId: string): boolean => {
-				return this.taskRegistry.kill(taskId);
-			},
-			suspendUntilWake: (timeoutMs: number, taskId?: string): Promise<string> => {
-				return this.taskRegistry.suspendUntilWake(timeoutMs);
-			},
-			runBackground: (command: string, timeoutSec?: number): string => {
-				const taskId = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-				const isWin = process.platform === "win32";
-				const shell = isWin ? "cmd.exe" : "/bin/bash";
-				const shellArgs = isWin ? ["/c", "chcp 65001 >/dev/null && " + command] : ["-c", command];
-				const registry = this.taskRegistry;
-				const parentEmit = (event: StreamEvent) => this.emit(event);
-
-				registry.create(taskId, "bash", command);
-
-				const child = require("node:child_process").spawn(shell, shellArgs, {
-					cwd: this.config.workspaceDir,
-					maxBuffer: EXEC_MAX_BUFFER_BYTES,
-				});
-				let stdout = "";
-				let stderr = "";
-				child.stdout.on("data", (d: Buffer) => { stdout += d.toString("utf-8"); });
-				child.stderr.on("data", (d: Buffer) => { stderr += d.toString("utf-8"); });
-
-				child.on("close", (code: number) => {
-					let result = "";
-					if (stdout) result += stdout;
-					if (stderr) result += (result ? "\n" : "") + "[stderr] " + stderr;
-					if (result.length > OUTPUT_TRUNCATION_CHARS) result = result.slice(0, OUTPUT_TRUNCATION_CHARS) + "\n... (output truncated)";
-					if (code === 0) {
-						registry.complete(taskId, result || "(no output)");
-					} else {
-						registry.fail(taskId, `Exit code ${code}: ${result}`);
-					}
-					parentEmit({ type: "subagent_completed", agentId: capturedConfig.agentId, taskId, status: code === 0 ? "completed" : "failed", result });
-				});
-
-				child.on("error", (err: Error) => {
-					registry.fail(taskId, err.message);
-					parentEmit({ type: "subagent_completed", agentId: capturedConfig.agentId, taskId, status: "failed", result: err.message });
-				});
-
-				return taskId;
-			},
+			delegateTask: (task, options) => this.delegator.delegateTask(task, options),
+			delegateTaskBackground: (task, options) => this.delegator.delegateTaskBackground(task, options),
+			getTaskResult: (taskId) => this.delegator.getTaskResult(taskId),
+			listTasks: (filter) => this.delegator.listTasks(filter),
+			stopTask: (taskId) => this.delegator.stopTask(taskId),
+			suspendUntilWake: (timeoutMs, taskId) => this.delegator.suspendUntilWake(timeoutMs, taskId),
+			runBackground: (command, timeoutSec) => this.delegator.runBackground(command, timeoutSec),
 		};
 	}
+
+	// ─── Public API ──────────────────────────────────────────────
 
 	async run(userMessage: string): Promise<void> {
 		if (this.busy) throw new Error("Agent is already busy");
@@ -291,14 +104,9 @@ export class AgentLoop implements AgentRuntime {
 		this.thinkingText = "";
 		this.resultText = "";
 		this.recorder.reset();
-		this.pendingToolCalls.clear();
-		this.checkpointMessages = [];
-		this.incrementalTurnSeq = -1;
+		this.checkpoint.reset();
 		this.abortController = new AbortController();
-		const timeoutMs = this.config.timeoutSec ? this.config.timeoutSec * 1000 : undefined;
-		const timeout = timeoutMs ? setTimeout(() => {
-			this.abortController?.abort();
-		}, timeoutMs) : null;
+		const timeout = this.setupTimeout();
 
 		try {
 			this.session.addMessage({ role: "user", content: userMessage });
@@ -307,80 +115,19 @@ export class AgentLoop implements AgentRuntime {
 
 			log.loop("Messages after prune:", this.session.getMessages().length, "est tokens:", this.session.getMessages().reduce((s: number, m: any) => s + Math.ceil(JSON.stringify(m).length / 4), 0));
 
-			// Store user turn
-			this.saveUserTurn(userMessage);
+			this.checkpoint.saveUserTurn(this.session.getSessionId(), this.recorder, userMessage);
 
-				// Hook: UserPromptSubmit
-				await triggerHooks("UserPromptSubmit", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), message: userMessage });
+			await triggerHooks("UserPromptSubmit", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), message: userMessage });
+			await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
 
-			let lastError: any;
-				// Hook: SessionStart
-				await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
+			await this.runWithRetry();
 
-			for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-				try {
-					await this.executeStream();
-					return;
-				} catch (err: any) {
-					lastError = err;
-					if (err.name === "AbortError" || this.abortController?.signal.aborted) break;
-
-					const cls = classifyError(err);
-					log.error("loop", "Attempt " + (attempt + 1) + " failed:", cls, err.message?.slice(0, 200));
-
-					// Clean up partial turn and recorder state from failed attempt
-					if (this.incrementalTurnSeq >= 0 && this.db) {
-						const sid = this.session.getSessionId();
-						if (sid) {
-							try { this.db.deleteTurn(sid, this.incrementalTurnSeq); } catch (err) { log.warn("loop", "deleteTurn during retry cleanup failed:", (err as Error).message); }
-						}
-						this.incrementalTurnSeq = -1;
-					}
-					this.recorder.reset();
-
-					if (cls === "prompt_too_long") {
-						this.session.aggressivePrune(0.5);
-						log.loop("Context too long, aggressive prune. Messages:", this.session.getMessages().length);
-						if (attempt < 1) continue;
-					}
-
-					if (!isTransientError(cls) || attempt === MAX_RETRIES) break;
-
-					const delay = BASE_DELAY_MS * Math.pow(2, attempt);
-					log.loop("Retrying in " + delay + "ms (attempt " + (attempt + 1) + "/" + MAX_RETRIES + ")");
-					this.emit({
-						type: "retry_attempt",
-						agentId: this.config.agentId,
-						attempt: attempt + 1,
-						maxAttempts: MAX_RETRIES,
-						delayMs: delay,
-						errorClass: cls,
-					});
-					await new Promise(r => setTimeout(r, delay));
-				}
-			}
-
-			// All retries exhausted or non-transient error
-			if (lastError && !(lastError.name === "AbortError" || this.abortController?.signal.aborted)) {
-				const cls = classifyError(lastError);
-				log.error("loop", "All retries exhausted:", cls, lastError.message);
-				// Hook: StopFailure
-				await triggerHooks("StopFailure", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), error: lastError?.message, errorClass: cls });
-
-				this.emit({
-					type: "error",
-					agentId: this.config.agentId,
-					error: userFriendlyMessage(cls, lastError.message),
-					errorClass: cls,
-				});
-			}
 		} finally {
 			if (timeout) clearTimeout(timeout);
 			this.busy = false;
 			this.streamText = "";
-			this.taskRegistry.cleanup();
+			this.delegator.cleanup();
 
-			// Hook: Stop
 			await triggerHooks("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length });
 			await triggerHooks("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
 
@@ -388,7 +135,6 @@ export class AgentLoop implements AgentRuntime {
 		}
 	}
 
-	/** Resume an interrupted turn. Messages are already loaded from DB. */
 	async resume(interruptedTurnSeq?: number): Promise<void> {
 		if (this.busy) throw new Error("Agent is already busy");
 		log.loop("resume() called, messages:", this.session.getMessages().length);
@@ -397,77 +143,21 @@ export class AgentLoop implements AgentRuntime {
 		this.streamText = "";
 		this.thinkingText = "";
 		this.resultText = "";
-			this.recorder.reset();
-			this.pendingToolCalls.clear();
-			this.checkpointMessages = [];
-			this.incrementalTurnSeq = -1;
-			// Load interrupted turn blocks into recorder and continue on same turn
-			if (interruptedTurnSeq !== undefined && this.db) {
-				const sid = this.session.getSessionId();
-				if (sid) {
-					try {
-						const turns = this.db.getTurns(sid);
-						const existing = turns.find(t => t.seq === interruptedTurnSeq);
-						if (existing && existing.content) {
-							const blocks = JSON.parse(existing.content);
-							if (Array.isArray(blocks)) this.recorder.blocks = blocks;
-						}
-						this.incrementalTurnSeq = interruptedTurnSeq;
-
-					} catch { /* ignore parse errors */ }
-				}
-			}
+		this.recorder.reset();
+		this.checkpoint.reset();
+		this.checkpoint.loadResumedTurns(this.session.getSessionId(), this.recorder, interruptedTurnSeq);
 		this.abortController = new AbortController();
-		const timeoutMs = this.config.timeoutSec ? this.config.timeoutSec * 1000 : undefined;
-		const timeout = timeoutMs ? setTimeout(() => {
-			this.abortController?.abort();
-		}, timeoutMs) : null;
+		const timeout = this.setupTimeout();
 
 		try {
-			// No user message added — messages already loaded from DB
 			this.session.pruneIfNeeded();
-
 			await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)" });
-
-			let lastError: any;
-			for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-				try {
-					await this.executeStream();
-					return;
-				} catch (err: any) {
-					lastError = err;
-					if (err.name === "AbortError" || this.abortController?.signal.aborted) break;
-
-					const cls = classifyError(err);
-					log.error("loop", "Resume attempt " + (attempt + 1) + " failed:", cls, err.message?.slice(0, 200));
-
-					if (cls === "prompt_too_long") {
-						this.session.aggressivePrune(0.5);
-						if (attempt < 1) continue;
-					}
-
-					if (!isTransientError(cls) || attempt === MAX_RETRIES) break;
-
-					const delay = BASE_DELAY_MS * Math.pow(2, attempt);
-					await new Promise(r => setTimeout(r, delay));
-				}
-			}
-
-			if (lastError && !(lastError.name === "AbortError" || this.abortController?.signal.aborted)) {
-				const cls = classifyError(lastError);
-				await triggerHooks("StopFailure", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), error: lastError?.message, errorClass: cls });
-				this.emit({
-					type: "error",
-					agentId: this.config.agentId,
-					error: userFriendlyMessage(cls, lastError.message),
-					errorClass: cls,
-				});
-			}
+			await this.runWithRetry();
 		} finally {
 			if (timeout) clearTimeout(timeout);
 			this.busy = false;
 			this.streamText = "";
-			this.taskRegistry.cleanup();
+			this.delegator.cleanup();
 
 			await triggerHooks("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length });
 			await triggerHooks("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
@@ -475,213 +165,7 @@ export class AgentLoop implements AgentRuntime {
 			this.emit({ type: "agent_end", agentId: this.config.agentId });
 		}
 	}
-	private async executeStream(): Promise<void> {
-		const model = resolveModel(this.providers, this.config.providerName, this.config.modelId);
-		log.debug("loop", "Model resolved:", this.config.providerName, this.config.modelId);
 
-		// Reset per-stream checkpoint state.
-		// Note: incrementalTurnSeq is NOT reset here — it is managed by run()/resume()
-		// and persists across executeStream() calls within a single turn.
-		this.pendingToolCalls.clear();
-		this.checkpointMessages = [];
-
-		// Inject tool config from registry into toolContext
-			if (this.config.getToolConfig) {
-				this.toolContext.toolConfig = this.config.getToolConfig();
-			}
-
-			let mcpTools: Record<string, any> | undefined;
-		if (this.config.getMcpTools) {
-			try { mcpTools = await this.config.getMcpTools(this.config.agentId); }
-			catch { /* MCP tools unavailable */ }
-		}
-			let agentTools: Record<string, any> | undefined;
-				if (this.config.getAgentToolEntries) {
-					try {
-						const { entries, agents } = await this.config.getAgentToolEntries();
-						agentTools = buildAgentTools(entries, agents, this.toolContext);
-					} catch { /* agent tools unavailable */ }
-				}
-
-			const tools = buildToolsSet(this.config.toolPolicy, this.toolContext, mcpTools, agentTools);
-
-		const sections = await this.promptAssembler.assemble();
-		const systemPrompt = sections
-			.filter(s => s.text)
-			.map(s => s.text)
-			.join(String.fromCharCode(10, 10));
-
-		const providerOptions: Record<string, Record<string, any>> = {};
-		if (this.config.thinkingLevel && this.config.thinkingLevel !== "none") {
-			const budgetTokens = ({ low: 4096, medium: 16384, high: 32768 } as Record<string, number>)[this.config.thinkingLevel] ?? 16384;
-			providerOptions.anthropic = { thinking: { type: "enabled", budgetTokens } };
-		}
-
-		log.debug("loop", "Starting streamText...");
-
-		// Inject completed subagent notifications into context
-		const completedTasks = this.taskRegistry.getCompletedUnnotified();
-		if (completedTasks.length > 0) {
-			const notifications = completedTasks.map((t) => {
-				this.taskRegistry.markNotified(t.id);
-				const r = t.result && t.result.length > 2000 ? t.result.slice(0, 2000) + "..." : t.result;
-				const lines = [
-					"<task-notification>",
-					"<task_id>" + t.id + "</task_id>",
-					"<status>" + t.status + "</status>",
-					"<task>" + t.task + "</task>",
-				];
-				if (r) lines.push("<result>" + r + "</result>");
-				if (t.error) lines.push("<error>" + t.error + "</error>");
-				lines.push("</task-notification>");
-				return lines.join(String.fromCharCode(10));
-			});
-			this.session.addMessage({ role: "user", content: notifications.join(String.fromCharCode(10, 10)) });
-		}
-		log.debug("loop", "streamText called, messages:", this.session.getMessages().length,
-			"model:", this.config.providerName + "/" + this.config.modelId,
-			"tools:", Object.keys(tools).join(","),
-			"lastMsgRole:", this.session.getMessages().at(-1)?.role);
-
-
-		const result = streamText({
-				stopWhen: stepCountIs(200),
-			model,
-			system: systemPrompt,
-			messages: this.session.getMessages(),
-			tools,
-			abortSignal: this.abortController!.signal,
-			experimental_context: this.toolContext,
-			...(Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
-		});
-
-		for await (const event of result.fullStream) {
-			if (!this.busy && this.abortController?.signal.aborted) break;
-
-			if ((event as any).type === "error") {
-				const errEvent = event as any;
-				log.error("loop", "Stream error:", errEvent.error?.message ?? JSON.stringify(errEvent));
-				throw new Error(errEvent.error?.message ?? "Stream error");
-			}
-
-			switch (event.type) {
-				case "text-delta": {
-					const text = (event as any).text ?? (event as any).delta ?? "";
-					this.streamText += text;
-					this.recorder.addTextDelta(text);
-					this.emit({
-						type: "text_delta",
-						agentId: this.config.agentId,
-						text: this.streamText,
-					});
-					break;
-				}
-				case "reasoning-delta": {
-					const text = (event as any).text ?? (event as any).delta ?? "";
-					this.thinkingText += text;
-					this.recorder.addThinkingDelta(text);
-					this.emit({
-						type: "thinking_delta",
-						agentId: this.config.agentId,
-						text: this.thinkingText,
-					});
-					break;
-				}
-				case "tool-call": {
-					const e = event as any;
-					this.recorder.sealStep();
-					this.thinkingText = "";
-					this.streamText = "";
-					log.debug("loop", "Tool call:", e.toolName);
-					const tcId = e.toolCallId ?? e.id ?? `tc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-					this.pendingToolCalls.set(tcId, { name: e.toolName, args: e.input });
-					this.recorder.blocks.push({ type: "tool", name: e.toolName, status: "running", args: e.input, toolCallId: tcId });
-					this.emit({
-						type: "tool_start",
-						agentId: this.config.agentId,
-						toolName: e.toolName,
-						args: e.input,
-					});
-					break;
-				}
-				case "tool-result": {
-					const e = event as any;
-					log.debug("loop", "Tool result:", e.toolName);
-					const resultTcId = e.toolCallId ?? e.id;
-					const tb = resultTcId
-						? [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.toolCallId === resultTcId)
-						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
-					if (tb) { tb.status = "done"; tb.result = e.output; }
-					this.emit({
-						type: "tool_end",
-						agentId: this.config.agentId,
-						toolName: e.toolName,
-						isError: false,
-						result: e.output,
-					});
-					if (resultTcId) this.saveIncrementalCheckpoint(resultTcId, e.output, false);
-					break;
-				}
-				case "tool-error": {
-					const e = event as any;
-					log.debug("loop", "Tool error:", e.toolName, e.errorText?.slice(0, 80));
-					const errTcId = e.toolCallId ?? e.id;
-					const tb = errTcId
-						? [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.toolCallId === errTcId)
-						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
-					if (tb) { tb.status = "error"; tb.result = e.errorText ?? String(e.output); }
-					this.emit({
-						type: "tool_end",
-						agentId: this.config.agentId,
-						toolName: e.toolName,
-						isError: true,
-						result: e.errorText ?? String(e.output),
-					});
-					if (errTcId) this.saveIncrementalCheckpoint(errTcId, e.errorText ?? String(e.output), true);
-					break;
-				}
-			}
-		}
-
-		this.resultText = await result.text;
-
-			// Capture precise token usage from AI SDK
-			try {
-				const usage = await result.usage;
-				if (usage) {
-					this.emit({
-						type: "usage",
-						agentId: this.config.agentId,
-						usage: {
-							inputTokens: usage.inputTokens ?? 0,
-							outputTokens: usage.outputTokens ?? 0,
-							totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
-							cacheReadTokens: (usage as any).cacheReadTokens ?? (usage as any).promptCacheReadTokens,
-							cacheWriteTokens: (usage as any).cacheWriteTokens ?? (usage as any).promptCacheWriteTokens,
-							reasoningTokens: (usage as any).reasoningTokens,
-						},
-					});
-				}
-			} catch { /* usage not available for some providers */ }
-		this.recorder.sealStep();
-
-		// Store assistant turn to turns table
-		this.saveAssistantTurn();
-
-		// Also store to messages table for model context
-		const response = await result.response;
-		if (response.messages) {
-			for (const msg of response.messages) {
-				this.session.addMessage(msg);
-			}
-		}
-		this.session.saveToDb();
-		this.emit({
-			type: "message_end",
-			agentId: this.config.agentId,
-			text: this.resultText,
-		});
-		}
 	abort(): void {
 		this.abortController?.abort();
 	}
@@ -710,70 +194,257 @@ export class AgentLoop implements AgentRuntime {
 		this.promptAssembler.invalidate();
 	}
 
-	private sealStep(): void { this.recorder.sealStep(); }
+	// ─── Retry loop (shared by run and resume) ──────────────────
 
-	private saveUserTurn(text: string): void { this.recorder.saveUserTurn(this.db!, this.session.getSessionId()!, text); }
-
-		private saveAssistantTurn(): void {
-			const sessionId = this.session.getSessionId();
-
-			if (!this.db || !sessionId) return;
-			if (this.recorder.blocks.length === 0) return;
-			const blocksJson = JSON.stringify(this.recorder.blocks);
-			// If incremental checkpointing already created a turn, update it instead of duplicating
-			if (this.incrementalTurnSeq >= 0) {
-				this.db.updateTurnContent(sessionId, this.incrementalTurnSeq, blocksJson);
+	private async runWithRetry(): Promise<void> {
+		let lastError: any;
+		for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+			try {
+				await this.executeStream();
 				return;
+			} catch (err: any) {
+				lastError = err;
+				if (err.name === "AbortError" || this.abortController?.signal.aborted) break;
+
+				const cls = classifyError(err);
+				log.error("loop", "Attempt " + (attempt + 1) + " failed:", cls, err.message?.slice(0, 200));
+
+				this.checkpoint.deletePartialTurn(this.session.getSessionId());
+				this.recorder.reset();
+
+				if (cls === "prompt_too_long") {
+					this.session.aggressivePrune(0.5);
+					log.loop("Context too long, aggressive prune. Messages:", this.session.getMessages().length);
+					if (attempt < 1) continue;
+				}
+
+				if (!isTransientError(cls) || attempt === MAX_RETRIES) break;
+
+				const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+				log.loop("Retrying in " + delay + "ms (attempt " + (attempt + 1) + "/" + MAX_RETRIES + ")");
+				this.emit({
+					type: "retry_attempt",
+					agentId: this.config.agentId,
+					attempt: attempt + 1,
+					maxAttempts: MAX_RETRIES,
+					delayMs: delay,
+					errorClass: cls,
+				});
+				await new Promise(r => setTimeout(r, delay));
 			}
-			const seq = this.db.getTurnCount(sessionId);
-			this.db.appendTurn(sessionId, seq, "assistant", blocksJson);
 		}
 
-	/**
-	 * After each tool-result, save messages + turns to DB so recovery can
-	 * continue from this point instead of re-executing from scratch.
-	 */
-	private saveIncrementalCheckpoint(toolCallId: string, output: any, isError: boolean): void {
-		const sessionId = this.session.getSessionId();
-		if (!this.db || !sessionId) return;
+		if (lastError && !(lastError.name === "AbortError" || this.abortController?.signal.aborted)) {
+			const cls = classifyError(lastError);
+			log.error("loop", "All retries exhausted:", cls, lastError.message);
+			await triggerHooks("StopFailure", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), error: lastError?.message, errorClass: cls });
+			this.emit({
+				type: "error",
+				agentId: this.config.agentId,
+				error: userFriendlyMessage(cls, lastError.message),
+				errorClass: cls,
+			});
+		}
+	}
 
-		const tc = this.pendingToolCalls.get(toolCallId);
-		if (!tc) return;
+	// ─── Stream execution (decomposed) ─────────────────────────
 
-		// Build checkpoint messages in AI SDK format
-		this.checkpointMessages.push(
-				{ role: "assistant", content: [{ type: "tool-call", toolCallId, toolName: tc.name, input: tc.args }] },
-				{ role: "tool", content: [{ type: "tool-result", toolCallId, toolName: tc.name, output: { type: "text", value: typeof output === "string" ? output : JSON.stringify(output) } }] } as any,
-		);
+	private async executeStream(): Promise<void> {
+		const model = resolveModel(this.providers, this.config.providerName, this.config.modelId);
+		log.debug("loop", "Model resolved:", this.config.providerName, this.config.modelId);
 
-		// Save full message list to DB (session base + checkpoint messages)
-		const allMessages = [...this.session.getMessages(), ...this.checkpointMessages];
+		this.checkpoint.resetStreamState();
+
+		if (this.config.getToolConfig) {
+			this.toolContext.toolConfig = this.config.getToolConfig();
+		}
+
+		const tools = await this.buildTools();
+		const systemPrompt = await this.assembleSystemPrompt();
+		this.injectTaskNotifications();
+
+		const providerOptions = this.buildProviderOptions();
+
+		log.debug("loop", "streamText called, messages:", this.session.getMessages().length,
+			"model:", this.config.providerName + "/" + this.config.modelId,
+			"tools:", Object.keys(tools).join(","),
+			"lastMsgRole:", this.session.getMessages().at(-1)?.role);
+
+		const result = streamText({
+			stopWhen: stepCountIs(200),
+			model,
+			system: systemPrompt,
+			messages: this.session.getMessages(),
+			tools,
+			abortSignal: this.abortController!.signal,
+			experimental_context: this.toolContext,
+			...(Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
+		});
+
+		await this.processStreamEvents(result);
+		await this.finalizeStream(result);
+	}
+
+	private async buildTools(): Promise<Record<string, any>> {
+		let mcpTools: Record<string, any> | undefined;
+		if (this.config.getMcpTools) {
+			try { mcpTools = await this.config.getMcpTools(this.config.agentId); }
+			catch { /* MCP tools unavailable */ }
+		}
+		let agentTools: Record<string, any> | undefined;
+		if (this.config.getAgentToolEntries) {
+			try {
+				const { entries, agents } = await this.config.getAgentToolEntries();
+				agentTools = buildAgentTools(entries, agents, this.toolContext);
+			} catch { /* agent tools unavailable */ }
+		}
+		return buildToolsSet(this.config.toolPolicy, this.toolContext, mcpTools, agentTools);
+	}
+
+	private async assembleSystemPrompt(): Promise<string> {
+		const sections = await this.promptAssembler.assemble();
+		return sections
+			.filter(s => s.text)
+			.map(s => s.text)
+			.join(String.fromCharCode(10, 10));
+	}
+
+	private injectTaskNotifications(): void {
+		const completedTasks = this.delegator.taskRegistry.getCompletedUnnotified();
+		if (completedTasks.length === 0) return;
+		const notifications = completedTasks.map((t) => {
+			this.delegator.taskRegistry.markNotified(t.id);
+			const r = t.result && t.result.length > 2000 ? t.result.slice(0, 2000) + "..." : t.result;
+			const lines = [
+				"<task-notification>",
+				"<task_id>" + t.id + "</task_id>",
+				"<status>" + t.status + "</status>",
+				"<task>" + t.task + "</task>",
+			];
+			if (r) lines.push("<result>" + r + "</result>");
+			if (t.error) lines.push("<error>" + t.error + "</error>");
+			lines.push("</task-notification>");
+			return lines.join(String.fromCharCode(10));
+		});
+		this.session.addMessage({ role: "user", content: notifications.join(String.fromCharCode(10, 10)) });
+	}
+
+	private buildProviderOptions(): Record<string, Record<string, any>> {
+		const providerOptions: Record<string, Record<string, any>> = {};
+		if (this.config.thinkingLevel && this.config.thinkingLevel !== "none") {
+			const budgetTokens = ({ low: 4096, medium: 16384, high: 32768 } as Record<string, number>)[this.config.thinkingLevel] ?? 16384;
+			providerOptions.anthropic = { thinking: { type: "enabled", budgetTokens } };
+		}
+		return providerOptions;
+	}
+
+	private async processStreamEvents(result: any): Promise<void> {
+		for await (const event of result.fullStream) {
+			if (!this.busy && this.abortController?.signal.aborted) break;
+
+			if ((event as any).type === "error") {
+				const errEvent = event as any;
+				log.error("loop", "Stream error:", errEvent.error?.message ?? JSON.stringify(errEvent));
+				throw new Error(errEvent.error?.message ?? "Stream error");
+			}
+
+			switch (event.type) {
+				case "text-delta": {
+					const text = (event as any).text ?? (event as any).delta ?? "";
+					this.streamText += text;
+					this.recorder.addTextDelta(text);
+					this.emit({ type: "text_delta", agentId: this.config.agentId, text: this.streamText });
+					break;
+				}
+				case "reasoning-delta": {
+					const text = (event as any).text ?? (event as any).delta ?? "";
+					this.thinkingText += text;
+					this.recorder.addThinkingDelta(text);
+					this.emit({ type: "thinking_delta", agentId: this.config.agentId, text: this.thinkingText });
+					break;
+				}
+				case "tool-call": {
+					const e = event as any;
+					this.recorder.sealStep();
+					this.thinkingText = "";
+					this.streamText = "";
+					log.debug("loop", "Tool call:", e.toolName);
+					const tcId = e.toolCallId ?? e.id ?? `tc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+					this.checkpoint.recordToolCall(tcId, e.toolName, e.input);
+					this.recorder.blocks.push({ type: "tool", name: e.toolName, status: "running", args: e.input, toolCallId: tcId });
+					this.emit({ type: "tool_start", agentId: this.config.agentId, toolName: e.toolName, args: e.input });
+					break;
+				}
+				case "tool-result": {
+					const e = event as any;
+					log.debug("loop", "Tool result:", e.toolName);
+					const resultTcId = e.toolCallId ?? e.id;
+					const tb = resultTcId
+						? [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.toolCallId === resultTcId)
+						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
+					if (tb) { tb.status = "done"; tb.result = e.output; }
+					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, isError: false, result: e.output });
+					if (resultTcId) this.checkpoint.saveIncrementalCheckpoint(this.session.getSessionId(), this.recorder, this.session.getMessages(), resultTcId, e.output);
+					break;
+				}
+				case "tool-error": {
+					const e = event as any;
+					log.debug("loop", "Tool error:", e.toolName, e.errorText?.slice(0, 80));
+					const errTcId = e.toolCallId ?? e.id;
+					const tb = errTcId
+						? [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.toolCallId === errTcId)
+						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
+					if (tb) { tb.status = "error"; tb.result = e.errorText ?? String(e.output); }
+					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, isError: true, result: e.errorText ?? String(e.output) });
+					if (errTcId) this.checkpoint.saveIncrementalCheckpoint(this.session.getSessionId(), this.recorder, this.session.getMessages(), errTcId, e.errorText ?? String(e.output));
+					break;
+				}
+			}
+		}
+	}
+
+	private async finalizeStream(result: any): Promise<void> {
+		this.resultText = await result.text;
+
 		try {
-			this.db.saveTurn(sessionId, allMessages);
-		} catch (err) {
-			log.error("loop", "Incremental checkpoint saveTurn failed for session:", sessionId, "agent:", this.config.agentId, "err:", (err as Error).message);
-		}
+			const usage = await result.usage;
+			if (usage) {
+				this.emit({
+					type: "usage",
+					agentId: this.config.agentId,
+					usage: {
+						inputTokens: usage.inputTokens ?? 0,
+						outputTokens: usage.outputTokens ?? 0,
+						totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+						cacheReadTokens: (usage as any).cacheReadTokens ?? (usage as any).promptCacheReadTokens,
+						cacheWriteTokens: (usage as any).cacheWriteTokens ?? (usage as any).promptCacheWriteTokens,
+						reasoningTokens: (usage as any).reasoningTokens,
+					},
+				});
+			}
+		} catch { /* usage not available for some providers */ }
 
-		// Update turns table with current recorder blocks
 		this.recorder.sealStep();
-		const blocksJson = JSON.stringify(this.recorder.blocks);
-		try {
-			if (this.incrementalTurnSeq < 0) {
-				this.incrementalTurnSeq = this.db.getTurnCount(sessionId);
-				this.db.appendTurn(sessionId, this.incrementalTurnSeq, "assistant", blocksJson);
-			} else {
-				this.db.updateTurnContent(sessionId, this.incrementalTurnSeq, blocksJson);
-			}
-		} catch (err) {
-			log.error("loop", "Incremental checkpoint turn save failed:", (err as Error).message);
-		}
+		this.checkpoint.saveAssistantTurn(this.session.getSessionId(), this.recorder);
 
-		this.pendingToolCalls.delete(toolCallId);
-		log.debug("loop", "Incremental checkpoint saved, tool:", tc.name, "msgs:", allMessages.length);
+		const response = await result.response;
+		if (response.messages) {
+			for (const msg of response.messages) {
+				this.session.addMessage(msg);
+			}
+		}
+		this.session.saveToDb();
+		this.emit({ type: "message_end", agentId: this.config.agentId, text: this.resultText });
+	}
+
+	// ─── Helpers ────────────────────────────────────────────────
+
+	private setupTimeout(): NodeJS.Timeout | null {
+		const timeoutMs = this.config.timeoutSec ? this.config.timeoutSec * 1000 : undefined;
+		return timeoutMs ? setTimeout(() => { this.abortController?.abort(); }, timeoutMs) : null;
 	}
 
 	private emit(event: StreamEvent): void {
-		// Inject sessionId into all events if available
 		if (this.config.sessionId && !(event as any).sessionId) {
 			(event as any).sessionId = this.config.sessionId;
 		}
