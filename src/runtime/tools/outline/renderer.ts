@@ -89,10 +89,20 @@ export function renderOutline(result: OutlineResult, opts?: RenderOptions): stri
 	});
 
 	const fullContent = new Set<OutlineNode>();
-	for (const { node } of leafCandidates) {
+	let prevDepth = -1;
+	let depthFailed = false;
+	for (const { node, depth } of leafCandidates) {
+		if (depth !== prevDepth) {
+			if (depthFailed) break;
+			prevDepth = depth;
+			depthFailed = false;
+		}
 		const span = node.endLine - node.line + 1;
 		const cost = span - 1;
-		if (currentSize + cost > budget) continue;
+		if (currentSize + cost > budget) {
+			depthFailed = true;
+			continue;
+		}
 		fullContent.add(node);
 		currentSize += cost;
 	}

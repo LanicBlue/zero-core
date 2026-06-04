@@ -59,7 +59,13 @@ export class CssExtractor implements LangExtractor {
 
 	private extractNestedRules(lines: string[], start: number, end: number): OutlineNode[] {
 		const sub = lines.slice(start, end + 1);
-		return this.extract(sub.join("\n"));
+		const nodes = this.extract(sub.join("\n"));
+		const offset = start; // 0-based line index offset
+		for (const n of nodes) {
+			n.line += offset;
+			n.endLine += offset;
+		}
+		return nodes;
 	}
 
 	private findBlock(lines: string[], startIdx: number): { endIdx: number; endLine: number } {

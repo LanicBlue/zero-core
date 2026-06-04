@@ -57,7 +57,8 @@ export class TypeScriptExtractor implements LangExtractor {
 		const fm = bare.match(/^(?:(?:async|generator)\s+)*function\s*\*?\s+(\w+)/);
 		if (fm) {
 			const block = this.findBlock(lines, idx);
-			return { kind: "function", name: fm[1], line: idx + 1, endLine: block.endLine, detail: origDetail, children: [] };
+			const children = this.extractBody(lines, origLines, block.openIdx + 1, block.endIdx);
+			return { kind: "function", name: fm[1], line: idx + 1, endLine: block.endLine, detail: origDetail, children };
 		}
 
 		// arrow function
@@ -70,7 +71,8 @@ export class TypeScriptExtractor implements LangExtractor {
 				return { kind: "function", name: am[1], line: idx + 1, endLine: endIdx + 1, detail: origDetail, children: [] };
 			}
 			const block = this.findBlock(lines, idx);
-			return { kind: "function", name: am[1], line: idx + 1, endLine: block.endLine, detail: origDetail, children: this.extractMembers(lines, origLines, idx, block.endIdx) };
+			const children = this.extractBody(lines, origLines, block.openIdx + 1, block.endIdx);
+			return { kind: "function", name: am[1], line: idx + 1, endLine: block.endLine, detail: origDetail, children };
 		}
 
 		// const/let/var
@@ -83,17 +85,21 @@ export class TypeScriptExtractor implements LangExtractor {
 		return null;
 	}
 
-	private findBlock(lines: string[], startIdx: number): { endIdx: number; endLine: number } {
+	private findBlock(lines: string[], startIdx: number): { endIdx: number; endLine: number; openIdx: number } {
 		let depth = 0;
 		let foundOpen = false;
+		let openIdx = startIdx;
 		for (let i = startIdx; i < lines.length; i++) {
 			for (const ch of lines[i]) {
-				if (ch === "{") { depth++; foundOpen = true; }
+				if (ch === "{") {
+					if (!foundOpen) { openIdx = i; foundOpen = true; }
+					depth++;
+				}
 				if (ch === "}") depth--;
 			}
-			if (foundOpen && depth <= 0) return { endIdx: i, endLine: i + 1 };
+			if (foundOpen && depth <= 0) return { endIdx: i, endLine: i + 1, openIdx };
 		}
-		return { endIdx: lines.length - 1, endLine: lines.length };
+		return { endIdx: lines.length - 1, endLine: lines.length, openIdx };
 	}
 
 	/** Find end of a simple statement (no braces) - scan until semicolon or brace. */
@@ -162,13 +168,14 @@ export class TypeScriptExtractor implements LangExtractor {
 
 			if (ctorMatch) {
 				const block = this.findBlock(lines, i);
+				const bodyChildren = this.extractBody(lines, origLines, block.openIdx + 1, block.endIdx);
 				members.push({
 					kind: "method",
 					name: "constructor",
 					line: i + 1,
 					endLine: Math.min(block.endLine, classEndIdx + 1),
 					detail: this.summary(origLines[i].trim()),
-					children: [],
+					children: bodyChildren,
 				});
 				// Skip to end of constructor
 				// Re-adjust depth by scanning forward
@@ -185,13 +192,14 @@ export class TypeScriptExtractor implements LangExtractor {
 
 			if (methodMatch && !this.isKeyword(trimmed)) {
 				const block = this.findBlock(lines, i);
+				const bodyChildren = this.extractBody(lines, origLines, block.openIdx + 1, block.endIdx);
 				members.push({
 					kind: "method",
 					name: methodMatch[1],
 					line: i + 1,
 					endLine: Math.min(block.endLine, classEndIdx + 1),
 					detail: this.summary(origLines[i].trim()),
-					children: [],
+					children: bodyChildren,
 				});
 				// Skip to end of method body
 				depth = 0;
@@ -207,6 +215,119 @@ export class TypeScriptExtractor implements LangExtractor {
 		}
 
 		return members;
+	}
+
+	/**
+	 * Extract multi-line blocks from a function/method body as child nodes.
+	 * Single-line blocks are NOT extracted — they remain as gap lines.
+	 * Recursively extracts children from inner blocks.
+	 */
+	private extractBody(lines: string[], origLines: string[], startIdx: number, endIdx: number): OutlineNode[] {
+		const children: OutlineNode[] = [];
+		let depth = 0;
+
+		for (let i = startIdx; i <= endIdx; i++) {
+			const trimmed = lines[i].trim();
+			if (!trimmed || trimmed === "{" || trimmed === "}") {
+				for (const ch of lines[i]) {
+					if (ch === "{") depth++;
+					if (ch === "}") depth--;
+				}
+				continue;
+			}
+
+			// Detect control flow that opens a multi-line block
+			const blockKind = this.detectBlockKind(trimmed);
+			if (blockKind) {
+				const block = this.findBlock(lines, i);
+				// Only extract if it spans multiple lines
+				if (block.endIdx > i) {
+					const name = this.blockName(blockKind, origLines[i].trim());
+					const innerChildren = this.extractBody(lines, origLines, block.openIdx + 1, block.endIdx);
+
+					// For try, extend to cover catch/finally chains
+					let tryEndIdx = block.endIdx;
+					if (blockKind === "try") {
+						tryEndIdx = this.extendTryBlock(lines, block.endIdx + 1, endIdx);
+					}
+
+					children.push({
+						kind: blockKind,
+						name,
+						line: i + 1,
+						endLine: tryEndIdx + 1,
+						children: innerChildren,
+					});
+
+					// Skip past the block
+					const skipTo = blockKind === "try" ? tryEndIdx : block.endIdx;
+					for (let j = i; j <= skipTo; j++) {
+						for (const ch of lines[j]) {
+							if (ch === "{") depth++;
+							if (ch === "}") depth--;
+						}
+					}
+					i = skipTo;
+					continue;
+				}
+			}
+
+			// Track depth for non-block lines
+			for (const ch of lines[i]) {
+				if (ch === "{") depth++;
+				if (ch === "}") depth--;
+			}
+		}
+
+		return children;
+	}
+
+	/**
+	 * Detect if a line starts a control flow block.
+	 * Returns the keyword (kind) or null.
+	 */
+	private detectBlockKind(trimmed: string): string | null {
+		// Must contain { somewhere (possibly on next line, but we check current line first)
+		const match = trimmed.match(/^(if|for|while|do|try|catch|finally|switch|else|return)\b/);
+		if (!match) return null;
+		const keyword = match[1];
+		// Only if the line contains or leads to a block
+		// For return, only when followed by {
+		if (keyword === "return") {
+			const afterReturn = trimmed.slice(6).trimStart();
+			return afterReturn.startsWith("{") ? "return" : null;
+		}
+		// These always open blocks (if they have {)
+		if (!trimmed.includes("{")) return null;
+		return keyword;
+	}
+
+	/**
+	 * Generate a display name for a block node.
+	 */
+	private blockName(kind: string, line: string): string {
+		const s = line.replace(/\s+/g, " ").trim();
+		if (s.length > 60) return s.slice(0, 57) + "...";
+		return s;
+	}
+
+	/**
+	 * For try blocks, extend the end to cover catch/finally chains.
+	 */
+	private extendTryBlock(lines: string[], fromIdx: number, limitIdx: number): number {
+		let endIdx = fromIdx - 1; // start right after the try block
+		for (let i = fromIdx; i <= limitIdx; i++) {
+			const trimmed = lines[i].trim();
+			if (trimmed.startsWith("catch") || trimmed.startsWith("finally")) {
+				const block = this.findBlock(lines, i);
+				endIdx = block.endIdx;
+				i = block.endIdx;
+				continue;
+			}
+			// Stop at first non-catch/finally line
+			if (trimmed && !trimmed.startsWith("}")) break;
+		}
+		return endIdx;
 	}
 
 	private isKeyword(trimmed: string): boolean {

@@ -448,19 +448,19 @@
 		},
 		{
 			"path": "src/preload/index.ts",
-			"lines": 159,
+			"lines": 160,
 			"dir": "src/preload",
 			"exports": [],
 			"imports": [
 				"src/shared/preload-types.ts"
 			],
 			"functions": [
-				"src/preload/index.ts/handler:61",
-				"src/preload/index.ts/handler:66",
-				"src/preload/index.ts/handler:71",
-				"src/preload/index.ts/handler:76",
-				"src/preload/index.ts/handler:82",
-				"src/preload/index.ts/handler:87"
+				"src/preload/index.ts/handler:62",
+				"src/preload/index.ts/handler:67",
+				"src/preload/index.ts/handler:72",
+				"src/preload/index.ts/handler:77",
+				"src/preload/index.ts/handler:83",
+				"src/preload/index.ts/handler:88"
 			],
 			"description": "contextBridge 暴露 85 个 IPC 方法和 4 个事件订阅给 renderer"
 		},
@@ -1647,7 +1647,7 @@
 		},
 		{
 			"path": "src/runtime/tools/outline/extractors/typescript.ts",
-			"lines": 221,
+			"lines": 342,
 			"dir": "src/runtime/tools/outline/extractors",
 			"exports": [
 				"TypeScriptExtractor.extract",
@@ -1655,6 +1655,10 @@
 				"TypeScriptExtractor.findBlock",
 				"TypeScriptExtractor.findStatementEnd",
 				"TypeScriptExtractor.extractMembers",
+				"TypeScriptExtractor.extractBody",
+				"TypeScriptExtractor.detectBlockKind",
+				"TypeScriptExtractor.blockName",
+				"TypeScriptExtractor.extendTryBlock",
 				"TypeScriptExtractor.isKeyword",
 				"TypeScriptExtractor.summary"
 			],
@@ -1665,11 +1669,15 @@
 			"functions": [
 				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extract:5",
 				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.tryParseDecl:41",
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:86",
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findStatementEnd:100",
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:115",
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.isKeyword:212",
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.summary:216"
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:88",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findStatementEnd:106",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:121",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractBody:225",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.detectBlockKind:289",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.blockName:308",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extendTryBlock:317",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.isKeyword:333",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.summary:337"
 			],
 			"description": "TypeScript/JSX outline 提取器：声明解析 + 块匹配"
 		},
@@ -1729,7 +1737,7 @@
 		},
 		{
 			"path": "src/runtime/tools/outline/index.ts",
-			"lines": 275,
+			"lines": 236,
 			"dir": "src/runtime/tools/outline",
 			"exports": [
 				"extractOutline"
@@ -1771,15 +1779,14 @@
 				"src/runtime/tools/outline/index.ts/C_EXT:33",
 				"src/runtime/tools/outline/index.ts/CPP_EXT:34",
 				"src/runtime/tools/outline/index.ts/extractOutline:176",
-				"src/runtime/tools/outline/index.ts/fillBodyPreviews:197",
-				"src/runtime/tools/outline/index.ts/getExtension:231",
-				"src/runtime/tools/outline/index.ts/fallbackExtract:240"
+				"src/runtime/tools/outline/index.ts/getExtension:192",
+				"src/runtime/tools/outline/index.ts/fallbackExtract:201"
 			],
 			"description": "Outline 工具入口：按文件扩展名选择提取器，支持 27 种语言"
 		},
 		{
 			"path": "src/runtime/tools/outline/renderer.ts",
-			"lines": 274,
+			"lines": 222,
 			"dir": "src/runtime/tools/outline",
 			"exports": [
 				"renderOutline"
@@ -1788,17 +1795,12 @@
 				"src/runtime/tools/outline/types.ts"
 			],
 			"functions": [
-				"src/runtime/tools/outline/renderer.ts/renderOutline:14",
-				"src/runtime/tools/outline/renderer.ts/countAllNodes:114",
-				"src/runtime/tools/outline/renderer.ts/expandChildren:123",
-				"src/runtime/tools/outline/renderer.ts/mergeImports:132",
-				"src/runtime/tools/outline/renderer.ts/fmtLine:166",
-				"src/runtime/tools/outline/renderer.ts/shortKind:178",
-				"src/runtime/tools/outline/renderer.ts/formatDetail:196",
-				"src/runtime/tools/outline/renderer.ts/closingText:235",
-				"src/runtime/tools/outline/renderer.ts/openingText:250",
-				"src/runtime/tools/outline/renderer.ts/summarizeChildren:255",
-				"src/runtime/tools/outline/renderer.ts/pluralize:269"
+				"src/runtime/tools/outline/renderer.ts/renderOutline:8",
+				"src/runtime/tools/outline/renderer.ts/gapLineCount:17",
+				"src/runtime/tools/outline/renderer.ts/collectLeaves:70",
+				"src/runtime/tools/outline/renderer.ts/fmtContent:136",
+				"src/runtime/tools/outline/renderer.ts/renderNode:140",
+				"src/runtime/tools/outline/renderer.ts/mergeImports:189"
 			],
 			"description": "Outline 渲染器：将 AST 节点转为格式化文本输出"
 		},
@@ -3434,7 +3436,7 @@
 		},
 		{
 			"path": "src/shared/preload-types.ts",
-			"lines": 147,
+			"lines": 166,
 			"dir": "src/shared",
 			"exports": [],
 			"imports": [
@@ -4059,12 +4061,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:61",
+			"id": "src/preload/index.ts/handler:62",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 61,
-			"endLine": 61,
+			"line": 62,
+			"endLine": 62,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (_e: any, data: any)",
@@ -4072,12 +4074,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:66",
+			"id": "src/preload/index.ts/handler:67",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 66,
-			"endLine": 66,
+			"line": 67,
+			"endLine": 67,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "fn ()",
@@ -4085,12 +4087,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:71",
+			"id": "src/preload/index.ts/handler:72",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 71,
-			"endLine": 71,
+			"line": 72,
+			"endLine": 72,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (_e: any, data: any)",
@@ -4098,12 +4100,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:76",
+			"id": "src/preload/index.ts/handler:77",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 76,
-			"endLine": 76,
+			"line": 77,
+			"endLine": 77,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "fn ()",
@@ -4111,12 +4113,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:82",
+			"id": "src/preload/index.ts/handler:83",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 82,
-			"endLine": 82,
+			"line": 83,
+			"endLine": 83,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (_e: any, data: any)",
@@ -4124,12 +4126,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:87",
+			"id": "src/preload/index.ts/handler:88",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 87,
-			"endLine": 87,
+			"line": 88,
+			"endLine": 88,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (_e: any, data: any)",
@@ -7308,87 +7310,149 @@
 			"kind": "method",
 			"file": "src/runtime/tools/outline/extractors/typescript.ts",
 			"line": 41,
-			"endLine": 84,
-			"statementCount": 25,
+			"endLine": 86,
+			"statementCount": 27,
 			"exported": true,
 			"signature": "method tryParseDecl(lines: string[], origLines: string[], idx: number)",
 			"description": "尝试解析单行声明语句",
 			"callees": [
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.summary:216",
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:86",
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:115",
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findStatementEnd:100"
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.summary:337",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:88",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:121",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractBody:225",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findStatementEnd:106"
 			]
 		},
 		{
-			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:86",
+			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:88",
 			"name": "TypeScriptExtractor.findBlock",
 			"kind": "method",
 			"file": "src/runtime/tools/outline/extractors/typescript.ts",
-			"line": 86,
-			"endLine": 97,
-			"statementCount": 12,
+			"line": 88,
+			"endLine": 103,
+			"statementCount": 15,
 			"exported": true,
 			"signature": "method findBlock(lines: string[], startIdx: number)",
-			"description": "根据花括号匹配查找代码块范围",
+			"description": "",
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findStatementEnd:100",
+			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findStatementEnd:106",
 			"name": "TypeScriptExtractor.findStatementEnd",
 			"kind": "method",
 			"file": "src/runtime/tools/outline/extractors/typescript.ts",
-			"line": 100,
-			"endLine": 109,
+			"line": 106,
+			"endLine": 115,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method findStatementEnd(lines: string[], startIdx: number)",
 			"description": "Find end of a simple statement (no braces) - scan until semicolon or brace.",
 			"callees": [
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:86"
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:88"
 			]
 		},
 		{
-			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:115",
+			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:121",
 			"name": "TypeScriptExtractor.extractMembers",
 			"kind": "method",
 			"file": "src/runtime/tools/outline/extractors/typescript.ts",
-			"line": 115,
-			"endLine": 210,
-			"statementCount": 50,
+			"line": 121,
+			"endLine": 218,
+			"statementCount": 52,
 			"exported": true,
 			"signature": "method extractMembers(lines: string[], origLines: string[], classIdx: number, classEndIdx: number)",
-			"description": "Extract class/interface members by tracking brace depth incrementally.\r",
+			"description": "Extract class/interface members by tracking brace depth incrementally.",
 			"callees": [
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.summary:216",
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:86",
-				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.isKeyword:212"
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.summary:337",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:88",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractBody:225",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.isKeyword:333"
 			]
 		},
 		{
-			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.isKeyword:212",
-			"name": "TypeScriptExtractor.isKeyword",
+			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractBody:225",
+			"name": "TypeScriptExtractor.extractBody",
 			"kind": "method",
 			"file": "src/runtime/tools/outline/extractors/typescript.ts",
-			"line": 212,
-			"endLine": 214,
-			"statementCount": 1,
+			"line": 225,
+			"endLine": 283,
+			"statementCount": 36,
 			"exported": true,
-			"signature": "method isKeyword(trimmed: string)",
-			"description": "判断标识符是否为 TypeScript 关键字",
+			"signature": "method extractBody(lines: string[], origLines: string[], startIdx: number, endIdx: number)",
+			"description": "Extract multi-line blocks from a function/method body as child nodes.",
+			"callees": [
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.detectBlockKind:289",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:88",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.blockName:308",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractBody:225",
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extendTryBlock:317"
+			]
+		},
+		{
+			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.detectBlockKind:289",
+			"name": "TypeScriptExtractor.detectBlockKind",
+			"kind": "method",
+			"file": "src/runtime/tools/outline/extractors/typescript.ts",
+			"line": 289,
+			"endLine": 303,
+			"statementCount": 10,
+			"exported": true,
+			"signature": "method detectBlockKind(trimmed: string)",
+			"description": "Detect if a line starts a control flow block.",
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.summary:216",
+			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.blockName:308",
+			"name": "TypeScriptExtractor.blockName",
+			"kind": "method",
+			"file": "src/runtime/tools/outline/extractors/typescript.ts",
+			"line": 308,
+			"endLine": 312,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method blockName(kind: string, line: string)",
+			"description": "Generate a display name for a block node.",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extendTryBlock:317",
+			"name": "TypeScriptExtractor.extendTryBlock",
+			"kind": "method",
+			"file": "src/runtime/tools/outline/extractors/typescript.ts",
+			"line": 317,
+			"endLine": 331,
+			"statementCount": 11,
+			"exported": true,
+			"signature": "method extendTryBlock(lines: string[], fromIdx: number, limitIdx: number)",
+			"description": "For try blocks, extend the end to cover catch/finally chains.",
+			"callees": [
+				"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:88"
+			]
+		},
+		{
+			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.isKeyword:333",
+			"name": "TypeScriptExtractor.isKeyword",
+			"kind": "method",
+			"file": "src/runtime/tools/outline/extractors/typescript.ts",
+			"line": 333,
+			"endLine": 335,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method isKeyword(trimmed: string)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.summary:337",
 			"name": "TypeScriptExtractor.summary",
 			"kind": "method",
 			"file": "src/runtime/tools/outline/extractors/typescript.ts",
-			"line": 216,
-			"endLine": 219,
+			"line": 337,
+			"endLine": 340,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method summary(text: string)",
-			"description": "生成文件级别的摘要信息",
+			"description": "",
 			"callees": []
 		},
 		{
@@ -7526,39 +7590,23 @@
 			"kind": "function",
 			"file": "src/runtime/tools/outline/index.ts",
 			"line": 176,
-			"endLine": 190,
-			"statementCount": 10,
+			"endLine": 189,
+			"statementCount": 9,
 			"exported": true,
 			"signature": "function extractOutline(file: string, source: string)",
 			"description": "根据文件扩展名选择提取器并生成代码大纲",
 			"callees": [
-				"src/runtime/tools/outline/index.ts/getExtension:231",
-				"src/runtime/tools/outline/index.ts/fallbackExtract:240",
-				"src/runtime/tools/outline/index.ts/fillBodyPreviews:197"
+				"src/runtime/tools/outline/index.ts/getExtension:192",
+				"src/runtime/tools/outline/index.ts/fallbackExtract:201"
 			]
 		},
 		{
-			"id": "src/runtime/tools/outline/index.ts/fillBodyPreviews:197",
-			"name": "fillBodyPreviews",
-			"kind": "function",
-			"file": "src/runtime/tools/outline/index.ts",
-			"line": 197,
-			"endLine": 229,
-			"statementCount": 29,
-			"exported": false,
-			"signature": "function fillBodyPreviews(nodes: OutlineNode[], source: string)",
-			"description": "Post-process: for leaf nodes spanning 3+ lines with no children,",
-			"callees": [
-				"src/runtime/tools/outline/index.ts/fillBodyPreviews:197"
-			]
-		},
-		{
-			"id": "src/runtime/tools/outline/index.ts/getExtension:231",
+			"id": "src/runtime/tools/outline/index.ts/getExtension:192",
 			"name": "getExtension",
 			"kind": "function",
 			"file": "src/runtime/tools/outline/index.ts",
-			"line": 231,
-			"endLine": 238,
+			"line": 192,
+			"endLine": 199,
 			"statementCount": 7,
 			"exported": false,
 			"signature": "function getExtension(path: string)",
@@ -7566,12 +7614,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/outline/index.ts/fallbackExtract:240",
+			"id": "src/runtime/tools/outline/index.ts/fallbackExtract:201",
 			"name": "fallbackExtract",
 			"kind": "function",
 			"file": "src/runtime/tools/outline/index.ts",
-			"line": 240,
-			"endLine": 274,
+			"line": 201,
+			"endLine": 235,
 			"statementCount": 14,
 			"exported": false,
 			"signature": "function fallbackExtract(source: string)",
@@ -7579,164 +7627,91 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/outline/renderer.ts/renderOutline:14",
+			"id": "src/runtime/tools/outline/renderer.ts/renderOutline:8",
 			"name": "renderOutline",
 			"kind": "function",
 			"file": "src/runtime/tools/outline/renderer.ts",
-			"line": 14,
-			"endLine": 112,
-			"statementCount": 61,
+			"line": 8,
+			"endLine": 134,
+			"statementCount": 84,
 			"exported": true,
 			"signature": "function renderOutline(result: OutlineResult, opts?: RenderOptions)",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/outline/renderer.ts/mergeImports:132",
-				"src/runtime/tools/outline/renderer.ts/countAllNodes:114",
-				"src/runtime/tools/outline/renderer.ts/fmtLine:166",
-				"src/runtime/tools/outline/renderer.ts/expandChildren:123",
-				"src/runtime/tools/outline/renderer.ts/summarizeChildren:255"
+				"src/runtime/tools/outline/renderer.ts/mergeImports:189",
+				"src/runtime/tools/outline/renderer.ts/gapLineCount:17",
+				"src/runtime/tools/outline/renderer.ts/collectLeaves:70",
+				"src/runtime/tools/outline/renderer.ts/fmtContent:136",
+				"src/runtime/tools/outline/renderer.ts/renderNode:140"
 			]
 		},
 		{
-			"id": "src/runtime/tools/outline/renderer.ts/countAllNodes:114",
-			"name": "countAllNodes",
+			"id": "src/runtime/tools/outline/renderer.ts/gapLineCount:17",
+			"name": "gapLineCount",
 			"kind": "function",
 			"file": "src/runtime/tools/outline/renderer.ts",
-			"line": 114,
-			"endLine": 121,
-			"statementCount": 6,
+			"line": 17,
+			"endLine": 22,
+			"statementCount": 5,
 			"exported": false,
-			"signature": "function countAllNodes(nodes: OutlineNode[])",
+			"signature": "function gapLineCount(node: OutlineNode)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/tools/outline/renderer.ts/collectLeaves:70",
+			"name": "collectLeaves",
+			"kind": "function",
+			"file": "src/runtime/tools/outline/renderer.ts",
+			"line": 70,
+			"endLine": 82,
+			"statementCount": 5,
+			"exported": false,
+			"signature": "function collectLeaves(ns: OutlineNode[], depth: number)",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/outline/renderer.ts/countAllNodes:114"
+				"src/runtime/tools/outline/renderer.ts/collectLeaves:70"
 			]
 		},
 		{
-			"id": "src/runtime/tools/outline/renderer.ts/expandChildren:123",
-			"name": "expandChildren",
+			"id": "src/runtime/tools/outline/renderer.ts/fmtContent:136",
+			"name": "fmtContent",
 			"kind": "function",
 			"file": "src/runtime/tools/outline/renderer.ts",
-			"line": 123,
-			"endLine": 130,
+			"line": 136,
+			"endLine": 138,
 			"statementCount": 1,
 			"exported": false,
-			"signature": "function expandChildren(entry: RenderEntry, lang: string)",
+			"signature": "function fmtContent(line: number, content: string, width: number)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/tools/outline/renderer.ts/renderNode:140",
+			"name": "renderNode",
+			"kind": "function",
+			"file": "src/runtime/tools/outline/renderer.ts",
+			"line": 140,
+			"endLine": 187,
+			"statementCount": 21,
+			"exported": false,
+			"signature": "function renderNode(node: OutlineNode, lines: string[], expanded: Set<OutlineNode>, fullContent: Set<OutlineNode>, depth: number, width: number, output: string[], hasSource: boolean)",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/outline/renderer.ts/fmtLine:166"
+				"src/runtime/tools/outline/renderer.ts/fmtContent:136",
+				"src/runtime/tools/outline/renderer.ts/renderNode:140"
 			]
 		},
 		{
-			"id": "src/runtime/tools/outline/renderer.ts/mergeImports:132",
+			"id": "src/runtime/tools/outline/renderer.ts/mergeImports:189",
 			"name": "mergeImports",
 			"kind": "function",
 			"file": "src/runtime/tools/outline/renderer.ts",
-			"line": 132,
-			"endLine": 164,
+			"line": 189,
+			"endLine": 221,
 			"statementCount": 20,
 			"exported": false,
 			"signature": "function mergeImports(nodes: OutlineNode[])",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/runtime/tools/outline/renderer.ts/fmtLine:166",
-			"name": "fmtLine",
-			"kind": "function",
-			"file": "src/runtime/tools/outline/renderer.ts",
-			"line": 166,
-			"endLine": 176,
-			"statementCount": 5,
-			"exported": false,
-			"signature": "function fmtLine(node: OutlineNode, depth: number, expandedChildren?: boolean, lang?: string)",
-			"description": "",
-			"callees": [
-				"src/runtime/tools/outline/renderer.ts/shortKind:178",
-				"src/runtime/tools/outline/renderer.ts/formatDetail:196"
-			]
-		},
-		{
-			"id": "src/runtime/tools/outline/renderer.ts/shortKind:178",
-			"name": "shortKind",
-			"kind": "function",
-			"file": "src/runtime/tools/outline/renderer.ts",
-			"line": 178,
-			"endLine": 194,
-			"statementCount": 14,
-			"exported": false,
-			"signature": "function shortKind(kind: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/runtime/tools/outline/renderer.ts/formatDetail:196",
-			"name": "formatDetail",
-			"kind": "function",
-			"file": "src/runtime/tools/outline/renderer.ts",
-			"line": 196,
-			"endLine": 223,
-			"statementCount": 20,
-			"exported": false,
-			"signature": "function formatDetail(node: OutlineNode, expandedChildren: boolean, lang: string)",
-			"description": "",
-			"callees": [
-				"src/runtime/tools/outline/renderer.ts/closingText:235",
-				"src/runtime/tools/outline/renderer.ts/openingText:250"
-			]
-		},
-		{
-			"id": "src/runtime/tools/outline/renderer.ts/closingText:235",
-			"name": "closingText",
-			"kind": "function",
-			"file": "src/runtime/tools/outline/renderer.ts",
-			"line": 235,
-			"endLine": 248,
-			"statementCount": 10,
-			"exported": false,
-			"signature": "function closingText(node: OutlineNode, lang: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/runtime/tools/outline/renderer.ts/openingText:250",
-			"name": "openingText",
-			"kind": "function",
-			"file": "src/runtime/tools/outline/renderer.ts",
-			"line": 250,
-			"endLine": 253,
-			"statementCount": 3,
-			"exported": false,
-			"signature": "function openingText(node: OutlineNode)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/runtime/tools/outline/renderer.ts/summarizeChildren:255",
-			"name": "summarizeChildren",
-			"kind": "function",
-			"file": "src/runtime/tools/outline/renderer.ts",
-			"line": 255,
-			"endLine": 267,
-			"statementCount": 7,
-			"exported": false,
-			"signature": "function summarizeChildren(children: OutlineNode[])",
-			"description": "",
-			"callees": [
-				"src/runtime/tools/outline/renderer.ts/shortKind:178",
-				"src/runtime/tools/outline/renderer.ts/pluralize:269"
-			]
-		},
-		{
-			"id": "src/runtime/tools/outline/renderer.ts/pluralize:269",
-			"name": "pluralize",
-			"kind": "function",
-			"file": "src/runtime/tools/outline/renderer.ts",
-			"line": 269,
-			"endLine": 273,
-			"statementCount": 5,
-			"exported": false,
-			"signature": "function pluralize(word: string)",
 			"description": "",
 			"callees": []
 		},
@@ -13315,23 +13290,39 @@
 		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.tryParseDecl:41": [
 			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extract:5"
 		],
-		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.summary:216": [
+		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.summary:337": [
 			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.tryParseDecl:41",
-			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:115"
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:121"
 		],
-		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:86": [
+		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findBlock:88": [
 			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.tryParseDecl:41",
-			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findStatementEnd:100",
-			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:115"
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findStatementEnd:106",
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:121",
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractBody:225",
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extendTryBlock:317"
 		],
-		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:115": [
+		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:121": [
 			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.tryParseDecl:41"
 		],
-		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findStatementEnd:100": [
+		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractBody:225": [
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.tryParseDecl:41",
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:121",
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractBody:225"
+		],
+		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.findStatementEnd:106": [
 			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.tryParseDecl:41"
 		],
-		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.isKeyword:212": [
-			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:115"
+		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.isKeyword:333": [
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractMembers:121"
+		],
+		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.detectBlockKind:289": [
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractBody:225"
+		],
+		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.blockName:308": [
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractBody:225"
+		],
+		"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extendTryBlock:317": [
+			"src/runtime/tools/outline/extractors/typescript.ts/TypeScriptExtractor.extractBody:225"
 		],
 		"src/runtime/tools/outline/extractors/vue.ts/VueExtractor.extract:9": [
 			"src/runtime/tools/outline/extractors/vue.ts/VueExtractor.extract:9"
@@ -13350,48 +13341,29 @@
 		"src/runtime/tools/outline/extractors/zig.ts/ZigExtractor.findEnd:54": [
 			"src/runtime/tools/outline/extractors/zig.ts/ZigExtractor.extract:8"
 		],
-		"src/runtime/tools/outline/index.ts/getExtension:231": [
+		"src/runtime/tools/outline/index.ts/getExtension:192": [
 			"src/runtime/tools/outline/index.ts/extractOutline:176"
 		],
-		"src/runtime/tools/outline/index.ts/fallbackExtract:240": [
+		"src/runtime/tools/outline/index.ts/fallbackExtract:201": [
 			"src/runtime/tools/outline/index.ts/extractOutline:176"
 		],
-		"src/runtime/tools/outline/index.ts/fillBodyPreviews:197": [
-			"src/runtime/tools/outline/index.ts/extractOutline:176",
-			"src/runtime/tools/outline/index.ts/fillBodyPreviews:197"
+		"src/runtime/tools/outline/renderer.ts/mergeImports:189": [
+			"src/runtime/tools/outline/renderer.ts/renderOutline:8"
 		],
-		"src/runtime/tools/outline/renderer.ts/mergeImports:132": [
-			"src/runtime/tools/outline/renderer.ts/renderOutline:14"
+		"src/runtime/tools/outline/renderer.ts/gapLineCount:17": [
+			"src/runtime/tools/outline/renderer.ts/renderOutline:8"
 		],
-		"src/runtime/tools/outline/renderer.ts/countAllNodes:114": [
-			"src/runtime/tools/outline/renderer.ts/renderOutline:14",
-			"src/runtime/tools/outline/renderer.ts/countAllNodes:114"
+		"src/runtime/tools/outline/renderer.ts/collectLeaves:70": [
+			"src/runtime/tools/outline/renderer.ts/renderOutline:8",
+			"src/runtime/tools/outline/renderer.ts/collectLeaves:70"
 		],
-		"src/runtime/tools/outline/renderer.ts/fmtLine:166": [
-			"src/runtime/tools/outline/renderer.ts/renderOutline:14",
-			"src/runtime/tools/outline/renderer.ts/expandChildren:123"
+		"src/runtime/tools/outline/renderer.ts/fmtContent:136": [
+			"src/runtime/tools/outline/renderer.ts/renderOutline:8",
+			"src/runtime/tools/outline/renderer.ts/renderNode:140"
 		],
-		"src/runtime/tools/outline/renderer.ts/expandChildren:123": [
-			"src/runtime/tools/outline/renderer.ts/renderOutline:14"
-		],
-		"src/runtime/tools/outline/renderer.ts/summarizeChildren:255": [
-			"src/runtime/tools/outline/renderer.ts/renderOutline:14"
-		],
-		"src/runtime/tools/outline/renderer.ts/shortKind:178": [
-			"src/runtime/tools/outline/renderer.ts/fmtLine:166",
-			"src/runtime/tools/outline/renderer.ts/summarizeChildren:255"
-		],
-		"src/runtime/tools/outline/renderer.ts/formatDetail:196": [
-			"src/runtime/tools/outline/renderer.ts/fmtLine:166"
-		],
-		"src/runtime/tools/outline/renderer.ts/closingText:235": [
-			"src/runtime/tools/outline/renderer.ts/formatDetail:196"
-		],
-		"src/runtime/tools/outline/renderer.ts/openingText:250": [
-			"src/runtime/tools/outline/renderer.ts/formatDetail:196"
-		],
-		"src/runtime/tools/outline/renderer.ts/pluralize:269": [
-			"src/runtime/tools/outline/renderer.ts/summarizeChildren:255"
+		"src/runtime/tools/outline/renderer.ts/renderNode:140": [
+			"src/runtime/tools/outline/renderer.ts/renderOutline:8",
+			"src/runtime/tools/outline/renderer.ts/renderNode:140"
 		],
 		"src/runtime/tools/syntax-check.ts/checkUnterminatedStrings:79": [
 			"src/runtime/tools/syntax-check.ts/checkSyntax:33"
