@@ -13,17 +13,6 @@ export function renderOutline(result: OutlineResult, opts?: RenderOptions): stri
 	const nodes = mergeImports(result.nodes);
 	const headerLines = 2; // header + blank
 
-	// Collect all nodes grouped by depth
-	const byDepth = new Map<number, OutlineNode[]>();
-	function collectByDepth(ns: OutlineNode[], depth: number) {
-		for (const n of ns) {
-			if (!byDepth.has(depth)) byDepth.set(depth, []);
-			byDepth.get(depth)!.push(n);
-			if (n.children.length > 0) collectByDepth(n.children, depth + 1);
-		}
-	}
-	collectByDepth(nodes, 0);
-
 	// Lines in a node's range not covered by its children
 	function gapLineCount(node: OutlineNode): number {
 		const total = node.endLine - node.line + 1;
@@ -41,57 +30,87 @@ export function renderOutline(result: OutlineResult, opts?: RenderOptions): stri
 	}
 	if (lines.length > 0) alwaysGap += Math.max(0, lines.length + 1 - pos);
 
-	// BFS expansion: expand one node at a time
-	// Priority: shallower depth first, then more children first
+	// Phase 1: Expand structural (non-leaf) nodes with BFS priority
 	const expanded = new Set<OutlineNode>();
 	let currentSize = nodes.length + alwaysGap + headerLines;
 
-	// Use a priority queue: sort by (depth asc, childrenCount desc)
-	const candidates: { node: OutlineNode; depth: number }[] = [];
-	for (const n of nodes) candidates.push({ node: n, depth: 0 });
+	const structuralQueue: { node: OutlineNode; depth: number }[] = [];
+	for (const n of nodes) structuralQueue.push({ node: n, depth: 0 });
 
-	while (candidates.length > 0) {
-		// Find the best candidate: shallowest depth, then most children
+	while (structuralQueue.length > 0) {
+		// Pick best: shallowest depth, then most children
 		let bestIdx = 0;
-		for (let j = 1; j < candidates.length; j++) {
-			const best = candidates[bestIdx];
-			const curr = candidates[j];
+		for (let j = 1; j < structuralQueue.length; j++) {
+			const best = structuralQueue[bestIdx];
+			const curr = structuralQueue[j];
 			if (curr.depth < best.depth ||
 				(curr.depth === best.depth && curr.node.children.length > best.node.children.length)) {
 				bestIdx = j;
 			}
 		}
+		const { node, depth } = structuralQueue[bestIdx];
+		structuralQueue.splice(bestIdx, 1);
 
-		const { node, depth } = candidates[bestIdx];
-		candidates.splice(bestIdx, 1);
+		// Skip leaf nodes in phase 1
+		if (node.children.length === 0) continue;
 
 		const cost = gapLineCount(node) + node.children.length - 1;
-
-		if (currentSize + cost > budget) continue; // skip, doesn't fit
+		if (currentSize + cost > budget) continue;
 
 		expanded.add(node);
 		currentSize += cost;
 		for (const child of node.children) {
-			candidates.push({ node: child, depth: depth + 1 });
+			structuralQueue.push({ node: child, depth: depth + 1 });
 		}
 	}
 
-	// Render: walk source lines, show content for expanded nodes, fold hints for collapsed
+	// Phase 2: Expand leaf nodes to show full content
+	// Collect visible leaf nodes (those whose ancestors are all expanded)
+	const leafCandidates: { node: OutlineNode; depth: number }[] = [];
+	function collectLeaves(ns: OutlineNode[], depth: number) {
+		for (const n of ns) {
+			if (!expanded.has(n)) {
+				// Collapsed: if leaf, it's a candidate
+				if (n.children.length === 0) {
+					leafCandidates.push({ node: n, depth });
+				}
+			} else {
+				// Expanded: recurse into children
+				collectLeaves(n.children, depth + 1);
+			}
+		}
+	}
+	collectLeaves(nodes, 0);
+
+	// Sort: shallowest first, then smallest span first
+	leafCandidates.sort((a, b) => {
+		if (a.depth !== b.depth) return a.depth - b.depth;
+		return (a.node.endLine - a.node.line) - (b.node.endLine - b.node.line);
+	});
+
+	const fullContent = new Set<OutlineNode>();
+	for (const { node } of leafCandidates) {
+		const span = node.endLine - node.line + 1;
+		const cost = span - 1;
+		if (currentSize + cost > budget) continue;
+		fullContent.add(node);
+		currentSize += cost;
+	}
+
+	// Render
 	const output: string[] = [];
 	pos = 1;
 
 	for (const node of nodes) {
-		// Gap lines before this root node
 		if (source) {
 			for (let i = pos; i < node.line; i++) {
 				output.push(fmtContent(i, lines[i - 1], width));
 			}
 		}
-		renderNode(node, lines, expanded, 0, width, output, !!source);
+		renderNode(node, lines, expanded, fullContent, 0, width, output, !!source);
 		pos = node.endLine + 1;
 	}
 
-	// Gap lines after last root node
 	if (source) {
 		for (let i = pos; i <= lines.length; i++) {
 			output.push(fmtContent(i, lines[i - 1], width));
@@ -112,36 +131,44 @@ function renderNode(
 	node: OutlineNode,
 	lines: string[],
 	expanded: Set<OutlineNode>,
+	fullContent: Set<OutlineNode>,
 	depth: number,
 	width: number,
 	output: string[],
 	hasSource: boolean,
 ): void {
-	if (!expanded.has(node)) {
-		// Collapsed: show fold hint with name + detail
-		const span = node.endLine - node.line + 1;
+	const isExpanded = expanded.has(node);
+	const showContent = fullContent.has(node);
+
+	if (showContent) {
+		// Leaf node with full content
+		for (let i = node.line; i <= node.endLine; i++) {
+			output.push(fmtContent(i, lines[i - 1], width));
+		}
+		return;
+	}
+
+	if (!isExpanded) {
+		// Collapsed: fold hint
 		const range = node.line === node.endLine
 			? `L${String(node.line).padStart(width)}`
 			: `L${String(node.line).padStart(width)}-${node.endLine}`;
 		const indent = "  ".repeat(depth);
-		
 		output.push(`${range}  ${indent}${node.name} [...]`);
 		return;
 	}
 
-	// Expanded: show actual source content interleaved with children
+	// Expanded non-leaf: show gap lines + children
 	let pos = node.line;
 	for (const child of node.children) {
-		// Gap lines before this child
 		if (hasSource) {
 			for (let i = pos; i < child.line; i++) {
 				output.push(fmtContent(i, lines[i - 1], width));
 			}
 		}
-		renderNode(child, lines, expanded, depth + 1, width, output, hasSource);
+		renderNode(child, lines, expanded, fullContent, depth + 1, width, output, hasSource);
 		pos = child.endLine + 1;
 	}
-	// Gap lines after last child
 	if (hasSource) {
 		for (let i = pos; i <= node.endLine; i++) {
 			output.push(fmtContent(i, lines[i - 1], width));
