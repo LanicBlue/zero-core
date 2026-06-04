@@ -185,48 +185,9 @@ export function extractOutline(file: string, source: string): OutlineResult {
 
 	const extractor = factory();
 	const nodes = extractor.extract(source);
-	fillBodyPreviews(nodes, source);
 	return { file, language, totalLines, nodes };
 }
 
-/**
- * Post-process: for leaf nodes spanning 3+ lines with no children,
- * extract the first few content lines as preview children.
- * This gives the renderer more content to expand within budget.
- */
-function fillBodyPreviews(nodes: OutlineNode[], source: string): void {
-	const lines = source.split("\n");
-	for (const node of nodes) {
-		if (node.children.length > 0) {
-			fillBodyPreviews(node.children, source);
-			continue;
-		}
-		// Leaf node spanning 3+ lines: extract preview
-		if (node.endLine - node.line < 2) continue;
-		// Skip nodes with fold indicator (script/style blocks)
-		if (node.detail && /\[\d+ lines (CSS|JS)/.test(node.detail)) continue;
-		const maxPreview = Math.min(node.endLine - node.line, 8);
-		const firstLine = (lines[node.line - 1] ?? "").trim();
-		const preview: OutlineNode[] = [];
-		for (let i = node.line; i < node.line + maxPreview && i <= node.endLine; i++) {
-			const line = (lines[i - 1] ?? "").trim();
-			if (!line) continue;
-			if (line === firstLine) continue;
-			if (/^#{1,6}\s/.test(line)) continue;
-			if (/^<\//.test(line) || /^<!/.test(line)) continue;
-			if (/^```/.test(line)) continue;
-			preview.push({
-				kind: "text",
-				name: line.length > 100 ? line.slice(0, 97) + "..." : line,
-				line: i,
-				endLine: i,
-				children: [],
-			});
-			if (preview.length >= 5) break;
-		}
-		if (preview.length > 0) node.children = preview;
-	}
-}
 
 function getExtension(path: string): string {
 	const lastDot = path.lastIndexOf(".");
