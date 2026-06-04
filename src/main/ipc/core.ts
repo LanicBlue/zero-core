@@ -150,10 +150,20 @@ export async function loadCoreModules(): Promise<void> {
 	_saveWorkspaceConfigFn = wsMod.saveWorkspaceConfig;
 
 	// ─── Phase 1: SessionDB + migrations ─────────────────────────
-	_sessionDb = new sessionDbMod.SessionDB();
-	migrationMod.runMigrations(_sessionDb);
-	moduleReadiness.resolveModule("sessionDb");
-	log.ipc("Phase 1 done");
+		try {
+			_sessionDb = new sessionDbMod.SessionDB();
+			migrationMod.runMigrations(_sessionDb);
+			moduleReadiness.resolveModule("sessionDb");
+			log.ipc("Phase 1 done");
+		} catch (err) {
+			log.error("ipc", "Phase 1 failed (sessionDb):", (err as Error).message);
+			moduleReadiness.rejectModule("sessionDb", err as Error);
+			moduleReadiness.rejectModules(
+				["agentStore", "providerStore", "templateStore", "mcpStore", "kbStore", "kbDb", "agentToolStore", "workspaceConfig", "registry", "toolRegistry", "agentService", "mcpManager", "recovery"],
+				new Error("skipped: sessionDb failed"),
+			);
+			return;
+		}
 
 	// ─── Phase 1b: Hooks + file logging (depend on sessionDb) ────
 	durableHooksMod.registerDurableHooks(_sessionDb);
@@ -164,24 +174,36 @@ export async function loadCoreModules(): Promise<void> {
 	} catch { /* use defaults */ }
 
 	// ─── Phase 2: All stores + config (depend on sessionDb) ──────
-	_agentStore = new agentStoreMod.AgentStore(_sessionDb);
-	_providerStore = new providerStoreMod.ProviderStore(_sessionDb);
-	_templateStore = new tmplMod.TemplateStore(_sessionDb);
-	_mcpStore = new mcpMod.McpStore(_sessionDb);
-	_kbStore = new kbStoreMod.KbStore(_sessionDb);
-	_kbDb = new kbDbMod.KbDB();
-	_agentToolStore = new agentToolStoreMod.AgentToolStore(_sessionDb);
-	_workspaceConfig = wsMod.loadWorkspaceConfig(_sessionDb);
+		try {
+			_agentStore = new agentStoreMod.AgentStore(_sessionDb);
+			_providerStore = new providerStoreMod.ProviderStore(_sessionDb);
+			_templateStore = new tmplMod.TemplateStore(_sessionDb);
+			_mcpStore = new mcpMod.McpStore(_sessionDb);
+			_kbStore = new kbStoreMod.KbStore(_sessionDb);
+			_kbDb = new kbDbMod.KbDB();
+			_agentToolStore = new agentToolStoreMod.AgentToolStore(_sessionDb);
+			_workspaceConfig = wsMod.loadWorkspaceConfig(_sessionDb);
 
-	if (!existsSync(_workspaceConfig.workspaceDir)) {
-		mkdirSync(_workspaceConfig.workspaceDir, { recursive: true });
-	}
+			if (!existsSync(_workspaceConfig.workspaceDir)) {
+				mkdirSync(_workspaceConfig.workspaceDir, { recursive: true });
+			}
 
-	moduleReadiness.resolveModules([
-		"agentStore", "providerStore", "templateStore", "mcpStore",
-		"kbStore", "kbDb", "agentToolStore", "workspaceConfig",
-	]);
-	log.ipc("Stores ready", `+${Date.now() - t0}ms`);
+			moduleReadiness.resolveModules([
+				"agentStore", "providerStore", "templateStore", "mcpStore",
+				"kbStore", "kbDb", "agentToolStore", "workspaceConfig",
+			]);
+		} catch (err) {
+			log.error("ipc", "Phase 2 failed (stores):", (err as Error).message);
+			moduleReadiness.rejectModules(
+				["agentStore", "providerStore", "templateStore", "mcpStore", "kbStore", "kbDb", "agentToolStore", "workspaceConfig"],
+				err as Error,
+			);
+			moduleReadiness.rejectModules(
+				["registry", "toolRegistry", "agentService", "mcpManager", "recovery"],
+				new Error("skipped: stores failed"),
+			);
+			return;
+		}
 
 	// ─── Phase 2b: Test-mode seed (before setProviders reads provider list) ──
 	log.ipc("Test mode check:", isTestMode());
@@ -192,10 +214,20 @@ export async function loadCoreModules(): Promise<void> {
 	}
 
 	// ─── Phase 3: ToolRegistry (depends on sessionDb) ────────────
-	_registry = new trMod.ToolRegistry(_sessionDb.getKVStore());
-	_toolRegistry = _registry;
-	runtimeToolsMod.registerRuntimeTools(_registry);
-	moduleReadiness.resolveModules(["registry", "toolRegistry"]);
+		try {
+			_registry = new trMod.ToolRegistry(_sessionDb.getKVStore());
+			_toolRegistry = _registry;
+			runtimeToolsMod.registerRuntimeTools(_registry);
+			moduleReadiness.resolveModules(["registry", "toolRegistry"]);
+		} catch (err) {
+			log.error("ipc", "Phase 3 failed (toolRegistry):", (err as Error).message);
+			moduleReadiness.rejectModules(["registry", "toolRegistry"], err as Error);
+			moduleReadiness.rejectModules(
+				["agentService", "mcpManager", "recovery"],
+				new Error("skipped: toolRegistry failed"),
+			);
+			return;
+		}
 
 	// ─── Phase 3b: Initialize search provider from saved config ──
 	try {
@@ -211,10 +243,16 @@ export async function loadCoreModules(): Promise<void> {
 	}
 
 	// ─── Phase 4: MCPManager (depends on registry) ───────────────
-	_mcpManager = new mcpMgrMod.MCPManager(_registry);
-	moduleReadiness.resolveModule("mcpManager");
+		try {
+			_mcpManager = new mcpMgrMod.MCPManager(_registry);
+			moduleReadiness.resolveModule("mcpManager");
+		} catch (err) {
+			log.error("ipc", "Phase 4 failed (mcpManager):", (err as Error).message);
+			moduleReadiness.rejectModule("mcpManager", err as Error);
+		}
 
 	// ─── Phase 5: AgentService (depends on all above) ────────────
+	try {
 	_agentService = _createAgentServiceFn(
 		_workspaceConfig.workspaceDir, _sessionDb, _kbStore, _registry, _mcpManager,
 	);
@@ -237,6 +275,12 @@ export async function loadCoreModules(): Promise<void> {
 		}
 	});
 	moduleReadiness.resolveModule("agentService");
+	} catch (err) {
+		log.error("ipc", "Phase 5 failed (agentService):", (err as Error).message);
+		moduleReadiness.rejectModule("agentService", err as Error);
+		moduleReadiness.rejectModule("recovery", new Error("skipped: agentService failed"));
+		return;
+	}
 
 	// ─── Phase 5b: SessionManager + metrics hooks ────────────────
 	try {
@@ -265,11 +309,16 @@ export async function loadCoreModules(): Promise<void> {
 	agentSvcMod.registerAgentToolEntries(_agentToolStore, _registry);
 
 	// ─── Phase 6: Recovery ───────────────────────────────────────
-	const interrupted = recoveryMod.scanIncompleteTurns(_sessionDb);
-	if (interrupted.length > 0) {
-		await _agentService.recoverIncompleteSessions();
-	}
-	moduleReadiness.resolveModule("recovery");
+		try {
+			const interrupted = recoveryMod.scanIncompleteTurns(_sessionDb);
+			if (interrupted.length > 0) {
+				await _agentService.recoverIncompleteSessions();
+			}
+			moduleReadiness.resolveModule("recovery");
+		} catch (err) {
+			log.error("ipc", "Phase 6 failed (recovery):", (err as Error).message);
+			moduleReadiness.rejectModule("recovery", err as Error);
+		}
 
-	log.ipc("All modules ready", `+${Date.now() - t0}ms`);
-}
+		log.ipc("All modules ready", `+${Date.now() - t0}ms`);
+	}

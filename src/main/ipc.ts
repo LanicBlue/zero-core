@@ -46,11 +46,22 @@ export function registerIpc(win: BrowserWindow): void {
 	log.ipc("All handlers registered");
 
 	// Load core modules in background — handlers use whenReady() to await specific modules
-	loadCoreModules().then(async () => {
-		await moduleReadiness.whenAllReady();
-		ctx.modulesReady = true;
-		if (win && !win.isDestroyed()) {
-			win.webContents.send("app:ready", true);
-		}
-	});
+	loadCoreModules()
+		.then(async () => {
+			await moduleReadiness.whenAllReady();
+			ctx.modulesReady = true;
+			if (win && !win.isDestroyed()) {
+				win.webContents.send("app:ready", true);
+			}
+		})
+		.catch((err) => {
+			log.error("ipc", "Core modules failed:", err.message);
+			const failed = moduleReadiness.getFailedModules();
+			if (win && !win.isDestroyed()) {
+				win.webContents.send("app:ready", false);
+				if (failed.length > 0) {
+					win.webContents.send("app:module-errors", failed.map(f => ({ name: f.name, error: f.error.message })));
+				}
+			}
+		});
 }

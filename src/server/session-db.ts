@@ -202,16 +202,22 @@ export class SessionDB {
 
 	deleteMessage(sessionId: string, seq: number): void {
 		const now = new Date().toISOString();
-		this.db.prepare("DELETE FROM messages WHERE session_id = ? AND seq = ?").run(sessionId, seq);
-		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		const tx = this.db.transaction(() => {
+			this.db.prepare("DELETE FROM messages WHERE session_id = ? AND seq = ?").run(sessionId, seq);
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
 	}
 
 	updateMessageContent(sessionId: string, seq: number, content: string, msgJson: string): void {
 		const now = new Date().toISOString();
-		this.db.prepare(
-			"UPDATE messages SET content = ?, msg_json = ? WHERE session_id = ? AND seq = ?",
-		).run(content, msgJson, sessionId, seq);
-		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		const tx = this.db.transaction(() => {
+			this.db.prepare(
+				"UPDATE messages SET content = ?, msg_json = ? WHERE session_id = ? AND seq = ?",
+			).run(content, msgJson, sessionId, seq);
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
 	}
 
 	/** Ensure a session row exists for the given ID (defensive FK guard). */
@@ -271,10 +277,13 @@ export class SessionDB {
 	appendTurn(sessionId: string, seq: number, role: string, content: string | null): void {
 		this.ensureSession(sessionId);
 		const now = new Date().toISOString();
-		this.db.prepare(
-			"INSERT INTO turns (session_id, seq, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
-		).run(sessionId, seq, role, content ?? null, now);
-		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		const tx = this.db.transaction(() => {
+			this.db.prepare(
+				"INSERT INTO turns (session_id, seq, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+			).run(sessionId, seq, role, content ?? null, now);
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
 	}
 
 	getTurns(sessionId: string): Array<{ id: number; seq: number; role: string; content: string | null; createdAt: string }> {
@@ -305,10 +314,13 @@ export class SessionDB {
 
 	updateTurnContent(sessionId: string, seq: number, content: string): void {
 		const now = new Date().toISOString();
-		this.db.prepare(
-			"UPDATE turns SET content = ? WHERE session_id = ? AND seq = ?",
-		).run(content, sessionId, seq);
-		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		const tx = this.db.transaction(() => {
+			this.db.prepare(
+				"UPDATE turns SET content = ? WHERE session_id = ? AND seq = ?",
+			).run(content, sessionId, seq);
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
 	}
 
 	// -----------------------------------------------------------------------

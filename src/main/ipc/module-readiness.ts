@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
 // Per-module readiness tracker
 // IPC handlers await individual modules instead of a global boolean.
+// Supports both resolve (success) and reject (failure) paths.
 // ---------------------------------------------------------------------------
 
 export type ModuleName =
@@ -22,15 +23,19 @@ export type ModuleName =
 interface ModuleEntry {
 	promise: Promise<void>;
 	resolve: () => void;
+	reject: (err: Error) => void;
 	resolved: boolean;
+	failed: boolean;
+	error?: Error;
 }
 
 const entries = new Map<ModuleName, ModuleEntry>();
 
 function createSlot(name: ModuleName): void {
 	let resolve!: () => void;
-	const promise = new Promise<void>((r) => { resolve = r; });
-	entries.set(name, { promise, resolve, resolved: false });
+	let reject!: (err: Error) => void;
+	const promise = new Promise<void>((r, j) => { resolve = r; reject = j; });
+	entries.set(name, { promise, resolve, reject, resolved: false, failed: false });
 }
 
 export const moduleReadiness = {
@@ -40,7 +45,7 @@ export const moduleReadiness = {
 
 	resolveModule(name: ModuleName): void {
 		const entry = entries.get(name);
-		if (entry && !entry.resolved) {
+		if (entry && !entry.resolved && !entry.failed) {
 			entry.resolved = true;
 			entry.resolve();
 		}
@@ -50,9 +55,23 @@ export const moduleReadiness = {
 		for (const name of names) moduleReadiness.resolveModule(name);
 	},
 
+	rejectModule(name: ModuleName, error: Error): void {
+		const entry = entries.get(name);
+		if (entry && !entry.resolved && !entry.failed) {
+			entry.failed = true;
+			entry.error = error;
+			entry.reject(error);
+		}
+	},
+
+	rejectModules(names: ModuleName[], error: Error): void {
+		for (const name of names) moduleReadiness.rejectModule(name, error);
+	},
+
 	async whenReady(name: ModuleName): Promise<void> {
 		const entry = entries.get(name);
 		if (!entry || entry.resolved) return;
+		if (entry.failed) throw entry.error;
 		await entry.promise;
 	},
 
@@ -60,9 +79,23 @@ export const moduleReadiness = {
 		return entries.get(name)?.resolved ?? false;
 	},
 
+	isFailed(name: ModuleName): boolean {
+		return entries.get(name)?.failed ?? false;
+	},
+
 	async whenAllReady(): Promise<void> {
 		for (const entry of entries.values()) {
-			if (!entry.resolved) await entry.promise;
+			if (entry.resolved) continue;
+			if (entry.failed) throw entry.error;
+			await entry.promise;
 		}
+	},
+
+	getFailedModules(): Array<{ name: ModuleName; error: Error }> {
+		const failed: Array<{ name: ModuleName; error: Error }> = [];
+		for (const [name, entry] of entries) {
+			if (entry.failed && entry.error) failed.push({ name, error: entry.error });
+		}
+		return failed;
 	},
 };
