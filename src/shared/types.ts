@@ -230,6 +230,7 @@ export interface ToolInfo {
 	source: string;
 	mcpServerName?: string;
 	configSchema?: any[];
+	inputFields?: Array<{ key: string; type: string; required: boolean; description?: string; enum?: string[] }>;
 	meta?: any;
 }
 

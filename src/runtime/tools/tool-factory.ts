@@ -144,6 +144,18 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 		});
 	}
 
+	Object.defineProperty(toolDef, "__inputFields", {
+		value: extractInputFields(options.inputSchema),
+		enumerable: false,
+		writable: false,
+	});
+
+	Object.defineProperty(toolDef, "__execute", {
+		value: options.execute,
+		enumerable: false,
+		writable: false,
+	});
+
 	return toolDef;
 }
 
@@ -169,5 +181,43 @@ export function getToolPrompt(toolObj: any): string | undefined {
 
 export function getToolConfigSchema(toolObj: any): ToolConfigField[] | undefined {
 	return toolObj?.__configSchema;
+}
+
+export function getToolInputFields(toolObj: any): any[] {
+	return toolObj?.__inputFields ?? [];
+}
+
+export function getToolExecute(toolObj: any): ((input: any, ctx: ToolExecutionContext) => Promise<string>) | undefined {
+	return toolObj?.__execute;
+}
+
+// ---------------------------------------------------------------------------
+// Zod schema introspection for input form generation
+// ---------------------------------------------------------------------------
+
+function extractInputFields(schema: any): Array<{ key: string; type: string; required: boolean; description?: string; enum?: string[] }> {
+	if (!schema?._def?.shape) return [];
+	const shape = typeof schema._def.shape === "function" ? schema._def.shape() : schema._def.shape;
+	return Object.entries(shape).map(([key, field]: [string, any]) => {
+		let inner = field;
+		let required = true;
+		// Zod v4: _def.type === "optional", v3: _def.typeName === "ZodOptional"
+		if (inner._def?.type === "optional" || inner._def?.typeName === "ZodOptional") {
+			inner = inner._def.innerType;
+			required = false;
+		}
+		const typeName = inner._def?.type ?? inner._def?.typeName ?? "";
+		let type = "string";
+		if (typeName === "number" || typeName === "ZodNumber") type = "number";
+		else if (typeName === "boolean" || typeName === "ZodBoolean") type = "boolean";
+		else if (typeName === "enum" || typeName === "ZodEnum") type = "select";
+		const result: any = { key, type, required };
+		if (inner._def?.description) result.description = inner._def.description;
+		// Zod v4: _def.options, v3: _def.values
+		if (typeName === "enum" || typeName === "ZodEnum") {
+			result.enum = inner.options ?? inner._def?.options ?? inner._def?.values ?? [];
+		}
+		return result;
+	});
 }
 

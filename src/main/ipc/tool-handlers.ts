@@ -1,5 +1,8 @@
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
+import type { ToolExecutionContext } from "../../runtime/types.js";
+import { ALL_TOOLS } from "../../runtime/tools/index.js";
+import { getToolExecute, getToolInputFields } from "../../runtime/tools/tool-factory.js";
 
 export function registerToolHandlers(ctx: IpcContext): void {
 	typedHandle("tools:list", "toolRegistry",
@@ -11,6 +14,7 @@ export function registerToolHandlers(ctx: IpcContext): void {
 			source: d.source,
 			mcpServerName: d.mcpServerName,
 			configSchema: d.configSchema,
+			inputFields: getToolInputFields(ALL_TOOLS[d.name]),
 			meta: d.meta,
 		})),
 	);
@@ -21,5 +25,33 @@ export function registerToolHandlers(ctx: IpcContext): void {
 
 	typedHandle("tool-config:save", "toolRegistry",
 		(_ctx, config) => { (_ctx.toolRegistry as any).saveToolConfig(config); },
+	);
+
+	typedHandle("tool:execute", ["toolRegistry", "workspaceConfig"],
+		async (_ctx, { toolName, input }: { toolName: string; input: Record<string, any> }) => {
+			const toolDef = ALL_TOOLS[toolName];
+			if (!toolDef) return { ok: false as const, error: `Tool not found: ${toolName}`, elapsedMs: 0 };
+
+			const execute = getToolExecute(toolDef);
+			if (!execute) return { ok: false as const, error: `Tool not testable: ${toolName}`, elapsedMs: 0 };
+
+			const config = (_ctx.toolRegistry as any).getToolConfig();
+			const toolCtx: ToolExecutionContext = {
+				workingDir: _ctx.workspaceConfig.workspaceDir,
+				agentId: "__test__",
+				emit: () => {},
+				db: _ctx.sessionDb,
+				readScope: _ctx.workspaceConfig.readScope ?? "filesystem",
+				toolConfig: config,
+			};
+
+			const t0 = Date.now();
+			try {
+				const result = await execute(input, toolCtx);
+				return { ok: true as const, result, elapsedMs: Date.now() - t0 };
+			} catch (err: any) {
+				return { ok: false as const, error: err.message, elapsedMs: Date.now() - t0 };
+			}
+		},
 	);
 }

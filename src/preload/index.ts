@@ -21,6 +21,7 @@ const api: WindowApi = {
 	toolsList: () => ipcRenderer.invoke("tools:list"),
 	toolConfigGet: () => ipcRenderer.invoke("tool-config:get"),
 	toolConfigSave: (config) => ipcRenderer.invoke("tool-config:save", config),
+	toolExecute: (toolName, input) => ipcRenderer.invoke("tool:execute", { toolName, input }),
 
 	// ─── Providers ───────────────────────────────────
 	providersList: () => ipcRenderer.invoke("providers:list"),

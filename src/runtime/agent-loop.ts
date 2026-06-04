@@ -409,6 +409,9 @@ export class AgentLoop implements AgentRuntime {
 		try {
 			const usage = await result.usage;
 			if (usage) {
+				if (usage.inputTokens) {
+					this.session.calibrateFromActualUsage(usage.inputTokens);
+				}
 				this.emit({
 					type: "usage",
 					agentId: this.config.agentId,

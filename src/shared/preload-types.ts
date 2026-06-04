@@ -35,6 +35,7 @@ export interface WindowApi {
 	toolsList: () => Promise<ToolInfo[]>;
 	toolConfigGet: () => Promise<Record<string, Record<string, any>>>;
 	toolConfigSave: (config: Record<string, Record<string, any>>) => Promise<void>;
+	toolExecute: (toolName: string, input: Record<string, any>) => Promise<{ ok: boolean; result?: string; error?: string; elapsedMs: number }>;
 
 	// ── Providers ──
 	providersList: () => Promise<Provider[]>;

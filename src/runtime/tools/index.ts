@@ -16,7 +16,7 @@ import { buildMcpTools } from "./mcp-tool.js";
 import { webSearchTool } from "./web-search.js";
 import { askUserTool } from "./ask-user.js";
 import { todoWriteTool } from "./todo-write.js";
-import { getToolMeta, getToolName, getToolConfigSchema, getToolDescription, getToolPrompt } from "./tool-factory.js";
+import { getToolMeta, getToolName, getToolConfigSchema, getToolDescription, getToolPrompt, getToolInputFields, getToolExecute } from "./tool-factory.js";
 import { webFetchTool } from "../mcp-tools/fetch-tools.js";
 import { memoryReadTool, memoryWriteTool } from "../mcp-tools/memory-tools.js";
 import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
@@ -33,7 +33,7 @@ function getAssistantTools(): Record<string, any> {
 	return _assistantTools;
 }
 
-const ALL_TOOLS: Record<string, any> = {
+export const ALL_TOOLS: Record<string, any> = {
 	Bash: bashTool,
 	Read: fileReadTool,
 	Write: fileWriteTool,

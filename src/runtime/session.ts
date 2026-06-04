@@ -12,6 +12,11 @@ export class AgentSession {
 	private sessionId: string | null = null;
 	private db: ISessionStore | null;
 
+	/** Calibrated token count from last API response. null = no calibration yet. */
+	private lastActualInputTokens: number | null = null;
+	/** How many messages were in the session when calibration was recorded. */
+	private messageCountAtCalibration: number = 0;
+
 	constructor(
 		systemPrompt: string,
 		contextWindow?: number,
@@ -54,13 +59,14 @@ export class AgentSession {
 	}
 
 	pruneIfNeeded(): void {
+		const systemPromptTokens = this.estimateSystemPromptTokens();
+		const available = this.contextWindow - RESERVE_TOKENS - systemPromptTokens;
 		const total = this.estimateTokens();
-		if (total <= this.contextWindow - RESERVE_TOKENS) return;
+		if (total <= available) return;
 
 		triggerHooks("PreCompact", { sessionId: this.sessionId ?? "", messageCount: this.messages.length, estimatedTokens: this.estimateTokens(), contextWindow: this.contextWindow });
 
-		const keepTokens = this.contextWindow - RESERVE_TOKENS;
-		let budget = keepTokens;
+		let budget = available;
 		const kept: ModelMessage[] = [];
 
 		for (let i = this.messages.length - 1; i >= 0; i--) {
@@ -71,13 +77,15 @@ export class AgentSession {
 		}
 
 		this.messages = kept;
+		this.invalidateCalibration();
 
 		triggerHooks("PostCompact", { sessionId: this.sessionId ?? "", messageCount: this.messages.length, estimatedTokens: this.estimateTokens(), contextWindow: this.contextWindow });
 	}
 
 	/** Aggressively prune: keep only the last keepRatio of messages (by token budget). */
 	aggressivePrune(keepRatio: number): void {
-		const keepTokens = Math.floor((this.contextWindow - RESERVE_TOKENS) * keepRatio);
+		const available = this.contextWindow - RESERVE_TOKENS - this.estimateSystemPromptTokens();
+		const keepTokens = Math.floor(available * keepRatio);
 		let budget = keepTokens;
 		const kept: ModelMessage[] = [];
 		for (let i = this.messages.length - 1; i >= 0; i--) {
@@ -87,6 +95,7 @@ export class AgentSession {
 			kept.unshift(this.messages[i]);
 		}
 		this.messages = kept;
+		this.invalidateCalibration();
 	}
 
 	rebuildFromTurns(): ModelMessage[] {
@@ -152,19 +161,39 @@ export class AgentSession {
 	}
 	reset(): void {
 		this.messages = [];
+		this.invalidateCalibration();
+	}
+
+	calibrateFromActualUsage(actualInputTokens: number): void {
+		this.lastActualInputTokens = actualInputTokens;
+		this.messageCountAtCalibration = this.messages.length;
 	}
 
 	private estimateTokens(): number {
-		let total = 0;
-		for (const msg of this.messages) {
-			total += this.estimateMessageTokens(msg);
+		if (this.lastActualInputTokens !== null) {
+			// Use calibrated value + heuristic delta for messages added since last API call
+			if (this.messages.length <= this.messageCountAtCalibration) {
+				return this.lastActualInputTokens;
+			}
+			const delta = this.messages.slice(this.messageCountAtCalibration)
+				.reduce((sum, msg) => sum + this.estimateMessageTokens(msg), 0);
+			return this.lastActualInputTokens + delta;
 		}
-		return total;
+		return this.messages.reduce((sum, msg) => sum + this.estimateMessageTokens(msg), 0);
 	}
 
 	private estimateMessageTokens(msg: ModelMessage): number {
 		const json = JSON.stringify(msg);
-		return Math.ceil(json.length / 4);
+		return Math.ceil(json.length / 4) + 4;
+	}
+
+	private estimateSystemPromptTokens(): number {
+		return Math.ceil(this.systemPrompt.length / 4) + 4;
+	}
+
+	private invalidateCalibration(): void {
+		this.lastActualInputTokens = null;
+		this.messageCountAtCalibration = 0;
 	}
 
 	/**

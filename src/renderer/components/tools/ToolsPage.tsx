@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 
 const api = () => (window as any).api;
 
@@ -20,6 +20,9 @@ export default function ToolsPage() {
 	const [selected, setSelected] = useState<string | null>(null);
 	const [saved, setSaved] = useState(false);
 	const [loading, setLoading] = useState(true);
+	const [testInput, setTestInput] = useState<Record<string, any>>({});
+	const [testResult, setTestResult] = useState<{ ok: boolean; result?: string; error?: string; elapsedMs: number } | null>(null);
+	const [testing, setTesting] = useState(false);
 
 	useEffect(() => {
 		(async () => {
@@ -29,6 +32,11 @@ export default function ToolsPage() {
 			setLoading(false);
 		})();
 	}, []);
+
+	useEffect(() => {
+		setTestInput({});
+		setTestResult(null);
+	}, [selected]);
 
 	const grouped = tools.reduce((acc: Record<string, any[]>, t: any) => {
 		const cat = t.group || t.source || "other";
@@ -47,6 +55,24 @@ export default function ToolsPage() {
 			...prev,
 			[toolName]: { ...(prev[toolName] ?? {}), [key]: value },
 		}));
+	};
+
+	const updateTestInput = (key: string, value: any) => {
+		setTestInput((prev: any) => ({ ...prev, [key]: value }));
+	};
+
+	const runTest = async () => {
+		if (!selected || testing) return;
+		setTesting(true);
+		setTestResult(null);
+		try {
+			const result = await api().toolExecute(selected, testInput);
+			setTestResult(result);
+		} catch (err: any) {
+			setTestResult({ ok: false, error: err.message, elapsedMs: 0 });
+		} finally {
+			setTesting(false);
+		}
 	};
 
 	const selectedTool = tools.find((t) => t.name === selected) ?? null;
@@ -75,7 +101,6 @@ export default function ToolsPage() {
 			</div>
 
 			<div className="tools-page-body">
-				{/* Left panel — tool list */}
 				<div className="tools-page-list">
 					{Object.entries(grouped).map(([cat, catTools]) => (
 						<div key={cat} className="tools-page-category">
@@ -99,7 +124,6 @@ export default function ToolsPage() {
 					))}
 				</div>
 
-				{/* Right panel — detail */}
 				<div className="tools-page-detail">
 					{selectedTool ? (
 						<>
@@ -178,6 +202,95 @@ export default function ToolsPage() {
 								</div>
 							) : (
 								<p className="tools-page-no-config">No configurable parameters.</p>
+							)}
+
+							{selectedTool.inputFields?.length > 0 && (
+								<div className="tools-page-test-panel">
+									<h4 className="tools-page-config-heading">Test</h4>
+									<div className="tools-page-test-body">
+										<div className="tools-page-test-input">
+											{selectedTool.meta?.isDestructive && (
+												<div className="tools-page-test-warning">
+													Destructive — will modify real files.
+												</div>
+											)}
+											{selectedTool.inputFields.map((field: any) => (
+												<div key={field.key} className="tools-page-config-field">
+													<div className="tools-page-config-label-row">
+														<label>{field.key}{field.required && " *"}</label>
+														{field.description && (
+															<span className="tools-page-config-desc">{field.description}</span>
+														)}
+													</div>
+													{field.type === "boolean" ? (
+														<button
+															type="button"
+															title={testInput[field.key] ? "false" : "true"}
+															className={"toggle-switch " + (testInput[field.key] ? "on" : "")}
+															onClick={() => updateTestInput(field.key, !testInput[field.key])}
+														/>
+													) : field.type === "select" ? (
+														<div className="tools-page-test-combo">
+															<input
+																type="text"
+																title={field.key}
+																list={"test-" + field.key}
+																placeholder={field.description ?? field.key}
+																value={testInput[field.key] ?? ""}
+																onChange={(e) => updateTestInput(field.key, e.target.value || undefined)}
+															/>
+															<datalist id={"test-" + field.key}>
+																{field.enum.map((opt: string) => (
+																	<option key={opt} value={opt} />
+																))}
+																<option value="" />
+																<option value="__invalid__" />
+															</datalist>
+														</div>
+													) : field.type === "number" ? (
+														<input
+															type="number"
+															placeholder={field.description ?? field.key}
+															value={testInput[field.key] ?? ""}
+															onChange={(e) => updateTestInput(field.key, e.target.value ? Number(e.target.value) : undefined)}
+														/>
+													) : (
+														<input
+															type="text"
+															placeholder={field.description ?? field.key}
+															value={testInput[field.key] ?? ""}
+															onChange={(e) => updateTestInput(field.key, e.target.value || undefined)}
+														/>
+													)}
+												</div>
+											))}
+											<button
+												type="button"
+												className={"btn-primary btn-sm tools-page-test-run" + (testing ? " disabled" : "")}
+												onClick={runTest}
+												disabled={testing}
+											>
+												{testing ? "Running..." : "Run Test"}
+											</button>
+										</div>
+
+										<div className="tools-page-test-output-wrap">
+											{testResult ? (
+												<div className="tools-page-test-output">
+													<div className="tools-page-test-output-header">
+														<span className={"tools-page-test-status " + (testResult.ok ? "ok" : "error")}>
+															{testResult.ok ? "OK" : "ERROR"}
+														</span>
+														<span className="tools-page-test-elapsed">{testResult.elapsedMs}ms</span>
+													</div>
+													<pre className="tools-page-test-result">{testResult.result ?? testResult.error}</pre>
+												</div>
+											) : (
+												<div className="tools-page-test-placeholder">Output will appear here</div>
+											)}
+										</div>
+									</div>
+								</div>
 							)}
 						</>
 					) : (
