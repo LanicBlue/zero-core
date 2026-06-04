@@ -69,6 +69,25 @@ export interface WindowApi {
 	sessionsCurrent: (agentId: string) => Promise<SessionRecord | null>;
 	sessionsActivate: (agentId: string, sessionId?: string) => Promise<{ success: true }>;
 	sessionsDelete: (agentId: string, sessionId: string) => Promise<{ success: true; newSessionId?: string }>;
+	sessionsMetrics: () => Promise<{
+		sessions: Record<string, {
+			sessionId: string;
+			agentId: string;
+			lifecycleState: string;
+			lastActivityAt: number;
+			inputTokens: number;
+			outputTokens: number;
+			totalTokens: number;
+			totalTurns: number;
+			errorCount: number;
+		}>;
+		totalSessions: number;
+		activeSessions: number;
+		busySessions: number;
+		idleSessions: number;
+		concurrencySnapshot: Record<string, { active: number; waiting: number }>;
+		lastUpdatedAt: number;
+	}>;
 
 	// ── Streaming events ──
 	onAgentEvent: (callback: (event: any) => void) => () => void;

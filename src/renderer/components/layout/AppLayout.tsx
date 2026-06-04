@@ -9,6 +9,7 @@ import SettingsPage from "../settings/SettingsPage.js";
 import McpSettingsPage from "../mcp/McpSettingsPage.js";
 import KnowledgeBasePage from "../kb/KnowledgeBasePage.js";
 import ToolsPage from "../tools/ToolsPage.js";
+import DashboardPage from "../dashboard/DashboardPage.js";
 import LogViewer from "../common/LogViewer.js";
 import { usePageStore } from "../../store/page-store.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
@@ -100,6 +101,7 @@ export default function AppLayout() {
 			</div>
 			{activePage !== "chat" && (
 				<div className="page-overlay">
+					{activePage === "dashboard" && <DashboardPage />}
 					{activePage === "settings" && <SettingsPage />}
 					{activePage === "mcp" && <McpSettingsPage />}
 					{activePage === "tools" && <ToolsPage />}

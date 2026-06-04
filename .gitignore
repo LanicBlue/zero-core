@@ -8,3 +8,10 @@ Thumbs.db
 .vs/
 test-results/
 .env
+test_*.ts
+.claude/
+.codex/
+.cursor/
+.openprd/
+AGENTS.md
+CLAUDE.md
