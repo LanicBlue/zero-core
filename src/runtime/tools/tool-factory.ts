@@ -100,6 +100,7 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 		execute: async (input: any, opts: any) => {
 			const ctx = opts?.experimental_context as ToolExecutionContext | undefined;
 			const ctxOrEmpty = ctx ?? { workingDir: "", agentId: "", emit: () => {} };
+			const toolCallId = (opts?.toolCallId ?? opts?.id ?? "") as string;
 
 			// PreToolUse hook — can block execution
 			const preResult = await triggerHooks("PreToolUse", {
@@ -107,6 +108,7 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 				sessionId: (ctxOrEmpty as any).sessionId,
 				toolName: options.name,
 				args: input,
+				toolCallId,
 			});
 			if (preResult && typeof preResult === "object" && "blocked" in preResult) {
 				return `Tool blocked: ${(preResult as any).reason}`;
@@ -120,6 +122,8 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 					toolName: options.name,
 					result,
 					isError: false,
+					args: input,
+					toolCallId,
 				});
 				return truncateResult(result, meta.maxResultSize);
 			} catch (err) {
@@ -128,6 +132,8 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 					sessionId: (ctxOrEmpty as any).sessionId,
 					toolName: options.name,
 					error: (err as Error).message,
+					args: input,
+					toolCallId,
 				});
 				throw err;
 			}

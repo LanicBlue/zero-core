@@ -151,7 +151,7 @@ export async function loadCoreModules(): Promise<void> {
 	const [
 		agentStoreMod, providerStoreMod, agentSvcMod, wsMod, promptMod,
 		tmplMod, mcpMod, mcpMgrMod, sessionDbMod, migrationMod,
-		durableHooksMod, kbStoreMod, kbDbMod, agentToolStoreMod,
+		durableHooksMod, toolExecHooksMod, kbStoreMod, kbDbMod, agentToolStoreMod,
 		runtimeToolsMod, trMod, recoveryMod,
 	] = await Promise.all([
 		import(toFileURL(join(_distServer, "agent-store.js"))),
@@ -165,6 +165,7 @@ export async function loadCoreModules(): Promise<void> {
 		import(toFileURL(join(_distServer, "session-db.js"))),
 		import(toFileURL(join(_distServer, "db-migration.js"))),
 		import(toFileURL(join(_distServer, "durable-hooks.js"))),
+		import(toFileURL(join(_distServer, "tool-execution-hooks.js"))),
 		import(toFileURL(join(_distServer, "kb-store.js"))),
 		import(toFileURL(join(_distServer, "kb-db.js"))),
 		import(toFileURL(join(_distServer, "agent-tool-store.js"))),
@@ -196,6 +197,7 @@ export async function loadCoreModules(): Promise<void> {
 
 	// ─── Phase 1b: Hooks + file logging (depend on sessionDb) ────
 	durableHooksMod.registerDurableHooks(_sessionDb);
+	toolExecHooksMod.registerToolExecutionHooks(_sessionDb);
 	try {
 		const logConfig = _sessionDb.getKVStore().getJson("log_config");
 		const { configureLogging } = await import(toFileURL(join(_distCore, "logger.js")));

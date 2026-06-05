@@ -81,7 +81,9 @@ export async function startServer() {
 	// Initialize hook system + durable execution
 	const { HookRegistry } = await import("../core/hook-registry.js");
 	const { registerDurableHooks } = await import("./durable-hooks.js");
-		registerDurableHooks(sessionDB);
+	const { registerToolExecutionHooks } = await import("./tool-execution-hooks.js");
+	registerDurableHooks(sessionDB);
+	registerToolExecutionHooks(sessionDB);
 
 	const registry = new ToolRegistry(sessionDB.getKVStore());
 	const mcp = new MCPManager(registry);
