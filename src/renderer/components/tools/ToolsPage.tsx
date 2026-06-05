@@ -445,30 +445,6 @@ export default function ToolsPage() {
 												</div>
 											</div>
 
-											{/* Recent errors */}
-											{recentErrors.length > 0 && (
-												<div className="tools-stats-section">
-													<h4 className="tools-stats-section-title">Recent Errors</h4>
-													<div className="tools-stats-errors">
-														{recentErrors.map((e) => (
-															<div key={e.id} className="tools-stats-error-item">
-																<div className="tools-stats-error-header">
-																	<span className="tools-stats-error-tool">{e.toolName}</span>
-																	<span className="tools-stats-error-time">{formatTime(e.createdAt)}</span>
-																</div>
-																<div className="tools-stats-error-msg">{e.errorMessage ?? "Unknown error"}</div>
-																{e.inputPreview && (
-																	<details className="tools-stats-error-details">
-																		<summary>Input</summary>
-																		<pre>{e.inputPreview}</pre>
-																	</details>
-																)}
-															</div>
-														))}
-													</div>
-												</div>
-											)}
-
 											{/* AI Analysis */}
 											<div className="tools-stats-section">
 												<div className="tools-stats-analysis-header">
@@ -495,6 +471,30 @@ export default function ToolsPage() {
 													</details>
 												)}
 											</div>
+
+											{/* Recent errors */}
+											{recentErrors.length > 0 && (
+												<div className="tools-stats-section">
+													<h4 className="tools-stats-section-title">Recent Errors</h4>
+													<div className="tools-stats-errors">
+														{recentErrors.map((e) => (
+															<div key={e.id} className="tools-stats-error-item">
+																<div className="tools-stats-error-header">
+																	<span className="tools-stats-error-tool">{e.toolName}</span>
+																	<span className="tools-stats-error-time">{formatTime(e.createdAt)}</span>
+																</div>
+																<div className="tools-stats-error-msg">{e.errorMessage ?? "Unknown error"}</div>
+																{e.inputPreview && (
+																	<details className="tools-stats-error-details">
+																		<summary>Input</summary>
+																		<pre>{e.inputPreview}</pre>
+																	</details>
+																)}
+															</div>
+														))}
+													</div>
+												</div>
+											)}
 										</>
 									)}
 								</div>
