@@ -100,6 +100,16 @@ export const webFetchTool = buildTool({
 			const fmt = format ?? ctx.toolConfig?.WebFetch?.format ?? "markdown";
 
 			if (fmt === "json") {
+				const ct = resp.headers.get("content-type") ?? "";
+				if (ct.includes("html")) {
+					const html = await resp.text();
+					const md = turndown.turndown(cleanHtml(html));
+					throw new Error(
+						`The response from ${url} is HTML (Content-Type: ${ct}), not JSON. ` +
+						`Use format="markdown" or format="html" instead. ` +
+						`Preview of the page content:\n${md.slice(0, 2000)}`,
+					);
+				}
 				const json = await resp.json();
 				return JSON.stringify(json, null, 2);
 			}
@@ -116,7 +126,26 @@ export const webFetchTool = buildTool({
 					return turndown.turndown(cleanHtml(html));
 			}
 		} catch (err: any) {
-			return `Error: ${err.message}`;
+			const msg = err.message ?? String(err);
+			if (/HTTP (401|403)/.test(msg)) {
+				throw new Error(`Access denied fetching ${url}. The site may require authentication, block automated requests, or use Cloudflare/bot protection. Try a different URL or format.`);
+			}
+			if (/HTTP (404|410)/.test(msg)) {
+				throw new Error(`Page not found: ${url}. The URL may be incorrect or the page has been removed. Verify the URL and try again.`);
+			}
+			if (/HTTP (429|503)/.test(msg)) {
+				throw new Error(`Rate-limited or temporarily unavailable: ${url}. The server is throttling requests or under maintenance. Wait a moment and retry.`);
+			}
+			if (/HTTP 5\d\d/.test(msg)) {
+				throw new Error(`Server error fetching ${url}: ${msg}. The remote server encountered an internal error. Try again later.`);
+			}
+			if (/is not valid JSON/.test(msg)) {
+				throw new Error(`The response from ${url} is not valid JSON. The URL likely returns HTML. Use format="markdown" or format="html" instead of format="json".`);
+			}
+			if (/fetch failed|ECONNREFUSED|ENOTFOUND|timeout/i.test(msg)) {
+				throw new Error(`Network error fetching ${url}: ${msg}. Check that the URL is correct, the host is reachable, and proxy settings are configured if needed.`);
+			}
+			throw new Error(`Failed to fetch ${url}: ${msg}`);
 		}
 	},
 });
