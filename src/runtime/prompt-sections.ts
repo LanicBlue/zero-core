@@ -1,3 +1,25 @@
+// 系统提示词分段组装器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 将系统提示词按 section 分段组装，支持静态缓存和动态刷新
+//
+// ## 输入
+// PromptSection 数组（含缓存标记）
+//
+// ## 输出
+// 组装完成的系统提示词文本
+//
+// ## 定位
+// src/runtime/ — 运行时层，为 agent-loop 提供高效的提示词管理
+//
+// ## 依赖
+// 无外部依赖
+//
+// ## 维护规则
+// 新增 section 时需考虑是否需要 cacheBreak 标记
+//
 /**
  * System prompt section-based assembly with caching.
  *

@@ -1,3 +1,29 @@
+// 应用主布局
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 应用主布局组件，管理页面切换和面板布局。
+//
+// ## 输入
+// - 页面状态
+// - 聊天状态
+//
+// ## 输出
+// - 渲染的布局
+// - 页面内容
+//
+// ## 定位
+// 渲染进程主布局，被 App.tsx 使用。
+//
+// ## 依赖
+// - react - React 框架
+// - ../../store - 状态管理
+//
+// ## 维护规则
+// - 新增页面时需更新
+// - 保持布局响应性
+//
 import React, { useState, useRef, useEffect } from "react";
 import IconSidebar from "./IconSidebar.js";
 import ChatPanel from "./ChatPanel.js";

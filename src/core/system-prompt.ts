@@ -1,3 +1,27 @@
+// 系统提示词构建
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 构建系统提示词，整合各种上下文信息（设备、指南、工具等）。
+//
+// ## 输入
+// - SystemPromptContext - 上下文信息
+// - ZeroCoreConfig - 配置
+//
+// ## 输出
+// - 完整的系统提示词字符串
+//
+// ## 定位
+// 提示词构建模块，被 agent-loop 调用。
+//
+// ## 依赖
+// - ./config - 配置类型
+//
+// ## 维护规则
+// - 提示词格式变更时需更新
+// - 保持提示词质量
+//
 import type { ZeroCoreConfig } from "./config.js";
 
 export interface SystemPromptContext {

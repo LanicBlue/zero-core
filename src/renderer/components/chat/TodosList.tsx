@@ -1,3 +1,25 @@
+// TodoWrite 待办列表组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 显示 Agent 创建的待办事项列表及其状态
+//
+// ## 输入
+// TodoItem 数组（内容、状态）
+//
+// ## 输出
+// 带状态标记的待办列表 JSX
+//
+// ## 定位
+// src/renderer/components/chat/ — 聊天组件，显示 Agent 任务进度
+//
+// ## 依赖
+// React、store/interaction-store.ts
+//
+// ## 维护规则
+// 任务状态类型变更需同步更新渲染逻辑
+//
 import React from "react";
 import type { TodoItem } from "../../store/interaction-store.js";
 

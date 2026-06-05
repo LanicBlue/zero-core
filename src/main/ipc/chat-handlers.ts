@@ -1,3 +1,25 @@
+// 聊天消息 IPC handlers
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 处理聊天消息发送、会话管理等 IPC 请求
+//
+// ## 输入
+// 用户消息文本、agentId、sessionId
+//
+// ## 输出
+// 调用 agentService 发送消息，返回消息结果
+//
+// ## 定位
+// src/main/ipc/ — 主进程 IPC 层，连接渲染器与 agent 运行时
+//
+// ## 依赖
+// typed-ipc.ts、core.ts（agentService/workspaceConfig）
+//
+// ## 维护规则
+// 聊天相关 IPC 新增通道时在此注册
+//
 import { homedir } from "node:os";
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";

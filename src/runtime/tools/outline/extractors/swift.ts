@@ -1,3 +1,25 @@
+// Swift 代码大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 Swift 源码中提取 import、class、struct、enum、protocol、func 等大纲节点
+//
+// ## 输入
+// Swift 源代码文本
+//
+// ## 输出
+// OutlineNode 数组（类、结构体、枚举、协议、函数等）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// Swift concurrency（async/actor）需正确解析
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

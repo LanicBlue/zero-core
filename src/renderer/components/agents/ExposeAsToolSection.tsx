@@ -1,3 +1,25 @@
+// Agent 暴露为工具配置区段
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 在 Agent 编辑器中管理"暴露为工具"的配置选项
+//
+// ## 输入
+// AgentToolEntry 列表、agent-editor-types 中的工具函数
+//
+// ## 输出
+// 暴露为工具的配置表单 JSX
+//
+// ## 定位
+// src/renderer/components/agents/ — Agent 编辑器的子区段
+//
+// ## 依赖
+// React、store/agent-tool-store.ts、agent-editor-types.ts
+//
+// ## 维护规则
+// 工具配置字段变更需同步更新表单
+//
 import { useEffect, useRef, useState } from "react";
 import { useAgentToolStore } from "../../store/agent-tool-store.js";
 import type { AgentToolEntry } from "../../../shared/types.js";

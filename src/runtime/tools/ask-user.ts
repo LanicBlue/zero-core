@@ -1,3 +1,28 @@
+// 用户交互工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供用户交互能力，允许 Agent 向用户提问并等待回答。
+//
+// ## 输入
+// - 问题文本
+// - 选项（可选）
+//
+// ## 输出
+// - 用户回答
+//
+// ## 定位
+// Runtime 工具，被 Agent 调用。
+//
+// ## 依赖
+// - zod - 数据验证
+// - ../pending-responses - 响应管理
+//
+// ## 维护规则
+// - 保持交互逻辑正确
+// - 处理超时情况
+//
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 import { pendingResponses } from "../pending-responses.js";

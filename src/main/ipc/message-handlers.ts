@@ -1,3 +1,25 @@
+// 消息管理 IPC handlers
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 处理消息清除、会话重置等 IPC 请求
+//
+// ## 输入
+// agentId、会话操作参数
+//
+// ## 输出
+// 操作结果（清除/重置确认）
+//
+// ## 定位
+// src/main/ipc/ — 主进程 IPC 层，管理消息生命周期
+//
+// ## 依赖
+// typed-ipc.ts、agentService、agentStore
+//
+// ## 维护规则
+// 消息操作类型变更需同步更新 shared/ipc-api.ts
+//
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 

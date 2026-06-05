@@ -1,6 +1,28 @@
 // ---------------------------------------------------------------------------
 // Preload API — type definition for the bridge between main and renderer.
 // The preload script implements this interface; the renderer consumes it.
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 定义预加载 API 类型，连接主进程和渲染进程。
+//
+// ## 输入
+// 无 - 类型定义文件。
+//
+// ## 输出
+// - WindowApi 接口
+//
+// ## 定位
+// 共享类型模块，被 preload 和 renderer 使用。
+//
+// ## 依赖
+// - ./types - 数据模型类型
+//
+// ## 维护规则
+// - 新增 API 时需更新
+// - 保持类型安全
+//
 // ---------------------------------------------------------------------------
 
 import type {
@@ -13,12 +35,13 @@ import type {
 	SessionRecord,
 	LogEntry, LogFileSummary, FileLogConfig,
 	WorkspaceConfig, ToolInfo, ModelInfo,
+	ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats,
 } from "./types.js";
 
 export interface WindowApi {
 	// ── Config ──
 	configGet: () => Promise<WorkspaceConfig & { defaultPrompt: string }>;
-	configUpdate: (data: Partial<Pick<WorkspaceConfig, "workspaceDir" | "defaultModel" | "defaultProvider">>) => Promise<WorkspaceConfig>;
+	configUpdate: (data: Partial<Pick<WorkspaceConfig, "workspaceDir" | "defaultModel" | "defaultProvider" | "proxy">>) => Promise<WorkspaceConfig>;
 	dialogOpenDirectory: () => Promise<string | undefined>;
 	configGetTheme: () => Promise<{ mode: string; customPrimaryColor: string | null }>;
 	configSetTheme: (data: { mode: string; customPrimaryColor?: string }) => Promise<{ success: true } | { error: string }>;
@@ -159,7 +182,9 @@ export interface WindowApi {
 
 	// ── Ask User / Todos / Search ──
 	askUserRespond: (requestId: string, answers: Record<string, string>) => Promise<{ success: true }>;
-	getTodos: (agentId: string) => Promise<any[]>;
-	getSearchProvider: () => Promise<any>;
-	setSearchProvider: (config: { type: string; searxngUrl?: string; serpApiKey?: string }) => Promise<{ success: true }>;
+	// ── Tool Executions ──
+	toolExecutionsQuery: (filter: ToolExecutionFilter) => Promise<ToolExecutionRecord[]>;
+	toolExecutionsStats: (agentId?: string) => Promise<ToolExecutionStats[]>;
+	toolExecutionsCleanup: (maxAgeMs: number) => Promise<number>;
+	toolExecutionsAnalyze: (agentId?: string) => Promise<{ analysis: string; stats: ToolExecutionStats[]; recentErrors: ToolExecutionRecord[] } | { error: string }>;
 }

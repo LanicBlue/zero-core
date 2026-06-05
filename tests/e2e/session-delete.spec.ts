@@ -1,3 +1,26 @@
+// E2E 测试：会话删除
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 验证删除活跃会话后自动切换到新的空会话，删除非活跃会话保留当前会话消息
+//
+// ## 输入
+// simple-response.json fixture（mock provider 响应）
+//
+// ## 输出
+// Playwright 测试用例：deleting active session switches to empty / deleting non-active preserves messages
+//
+// ## 定位
+// tests/e2e/ — E2E 测试套件，验证会话删除流程
+//
+// ## 依赖
+// @playwright/test、./helpers/test-app（launchApp、waitForAppReady、selectTestAgent、sendChatMessage）
+//
+// ## 维护规则
+// session-item CSS 类名变更需同步更新选择器
+// 删除按钮位置变更需更新 session-item-delete 选择器
+//
 import { test, expect } from "@playwright/test";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

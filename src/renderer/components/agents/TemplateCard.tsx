@@ -1,3 +1,25 @@
+// 模板卡片组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 以卡片形式展示单个 Agent 模板的摘要信息
+//
+// ## 输入
+// PromptTemplate 数据
+//
+// ## 输出
+// 模板卡片 JSX（含名称、描述、操作按钮）
+//
+// ## 定位
+// src/renderer/components/agents/ — Agent 页面组件，用于模板列表展示
+//
+// ## 依赖
+// React、shared/types.ts
+//
+// ## 维护规则
+// 模板字段变更需更新卡片展示内容
+//
 import React from "react";
 import type { PromptTemplate } from "../../../shared/types.js";
 

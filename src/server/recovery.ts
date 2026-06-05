@@ -1,3 +1,25 @@
+// 会话恢复与启动清理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 启动时扫描中断的会话轮次，清理过期记录，辅助 AgentService 恢复未完成会话
+//
+// ## 输入
+// SessionDB 实例
+//
+// ## 输出
+// 不完整轮次列表（sessionId、turnSeq、phase）
+//
+// ## 定位
+// src/server/ — 服务层，应用启动时的数据恢复机制
+//
+// ## 依赖
+// session-db.ts、core/logger.ts
+//
+// ## 维护规则
+// 新增中断场景需在此添加扫描逻辑
+//
 import type { SessionDB } from "./session-db.js";
 import { log } from "../core/logger.js";
 

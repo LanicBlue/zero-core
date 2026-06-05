@@ -1,3 +1,25 @@
+// 日志查看 IPC handlers
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 处理日志文件列表查询、日志内容读取等 IPC 请求
+//
+// ## 输入
+// 日志目录路径、查询参数
+//
+// ## 输出
+// LogEntry 数组、LogFileSummary 信息
+//
+// ## 定位
+// src/main/ipc/ — 主进程 IPC 层，为渲染器提供日志查看能力
+//
+// ## 依赖
+// typed-ipc.ts、core/file-log-sink.ts、shared/types.ts
+//
+// ## 维护规则
+// 日志格式变更需同步更新 LogEntry 类型
+//
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { typedHandle } from "./typed-ipc.js";

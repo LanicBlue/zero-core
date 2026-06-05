@@ -1,3 +1,26 @@
+// 单元测试：会话指标
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 测试 RunningStats 在线统计和 SessionMetricsHolder 指标累积、快照和防御性拷贝
+//
+// ## 输入
+// src/server/session-metrics.js 导出的 RunningStats、SessionMetricsHolder
+//
+// ## 输出
+// Vitest 测试用例覆盖均值/方差计算、Token 累积、可选字段处理、快照隔离
+//
+// ## 定位
+// tests/unit/ — 单元测试套件，验证服务层指标计算逻辑
+//
+// ## 依赖
+// vitest、../../src/server/session-metrics
+//
+// ## 维护规则
+// RunningStats 算法变更需验证数值精度测试
+// 新增指标字段需添加累积和快照测试
+//
 import { describe, test, expect } from "vitest";
 import { RunningStats, SessionMetricsHolder } from "../../src/server/session-metrics.js";
 

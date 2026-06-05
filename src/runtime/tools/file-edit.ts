@@ -1,3 +1,30 @@
+// 文件编辑工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供文件编辑能力，支持精确字符串替换。
+//
+// ## 输入
+// - 文件路径
+// - old_string - 要替换的字符串
+// - new_string - 替换后的字符串
+//
+// ## 输出
+// - 编辑结果
+//
+// ## 定位
+// Runtime 工具，被 Agent 调用。
+//
+// ## 依赖
+// - zod - 数据验证
+// - node:fs - 文件系统
+// - ./syntax-check - 语法检查
+//
+// ## 维护规则
+// - 保持精确匹配逻辑
+// - 处理 tab/空格格式问题
+//
 import { z } from "zod";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";

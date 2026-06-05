@@ -1,5 +1,31 @@
 // Zero Core - Custom Agent Runtime
 //
+// # 文件说明书
+//
+// ## 核心功能
+// 导出 zero-core 的公共 API，包括配置、核心逻辑、运行时和类型。
+//
+// ## 输入
+// 无 - 此文件仅导出模块。
+//
+// ## 输出
+// - 配置相关：loadConfig, DEFAULT_CONFIG, ZeroCoreConfigSchema 等
+// - 核心逻辑：buildSystemPrompt, shouldPrune, evaluateToolCall 等
+// - 运行时：AgentLoop, StreamEvent, RuntimeProviderConfig 等
+//
+// ## 定位
+// 项目入口点，供外部应用导入使用。
+//
+// ## 依赖
+// - ./core/config.js - 配置管理
+// - ./core/system-prompt.js - 系统提示词
+// - ./runtime/agent-loop.js - Agent 循环
+// - ./runtime/types.js - 类型定义
+//
+// ## 维护规则
+// - 新增公共 API 时必须在此导出
+// - 保持导出与实际模块功能一致
+//
 // Usage:
 //   import { createAgentService } from "zero-core/server/agent-service.js";
 

@@ -1,3 +1,26 @@
+// Provider 并发调用管理器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理多个 LLM Provider 的并发请求队列，支持按 Provider 粒度配置并发上限和动态重配置
+//
+// ## 输入
+// Provider 配置列表（名称、是否启用并发限制、最大并发数）
+//
+// ## 输出
+// 按 Provider 名称获取 ConcurrencyQueue 实例，提供 getQueue/reconfigure/clear 方法
+//
+// ## 定位
+// src/runtime/ — Agent 运行时并发控制层，被 agent-loop 在发起 LLM 调用前使用
+//
+// ## 依赖
+// ./concurrency-queue、../core/logger
+//
+// ## 维护规则
+// 并发数范围限制（1-10）在 clampConcurrency 中定义，修改需评估 Provider 限流策略
+// 新增 Provider 需确保名称规范化规则一致
+//
 import { ConcurrencyQueue } from "./concurrency-queue.js";
 import { log } from "../core/logger.js";
 

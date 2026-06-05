@@ -1,3 +1,26 @@
+// E2E 测试 Electron 应用启动器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 封装 Playwright Electron 应用启动、窗口就绪等待、Agent 选择和消息发送等 E2E 测试基础设施
+//
+// ## 输入
+// fixture JSON 文件绝对路径（通过 ZERO_CORE_TEST_FIXTURE 环境变量注入主进程）
+//
+// ## 输出
+// TestApp 对象（ElectronApplication、Page、zeroDir、cleanup）
+//
+// ## 定位
+// tests/e2e/helpers/ — E2E 测试辅助层，被所有 spec 文件引用
+//
+// ## 依赖
+// @playwright/test（_electron）、node:fs、node:path、node:os
+//
+// ## 维护规则
+// 应用启动参数变更需在此文件同步
+// better-sqlite3 编译限制：数据 seed 必须在 Electron 进程内完成，不能从 Playwright runner 执行
+//
 // Playwright Electron launcher — sets ZERO_CORE_DIR + ZERO_CORE_TEST_FIXTURE
 // and lets the production main process seed itself (see src/main/test-setup.ts).
 //

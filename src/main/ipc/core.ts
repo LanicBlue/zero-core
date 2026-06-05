@@ -1,3 +1,31 @@
+// IPC 核心注册
+//
+// # 文件说明书
+//
+// ## 核心功能
+// IPC 模块的核心，负责注册所有 IPC 处理器和初始化上下文。
+//
+// ## 输入
+// - BrowserWindow - 主窗口
+// - 服务实例（agentStore, agentService 等）
+//
+// ## 输出
+// - 注册的 IPC 处理器
+// - IpcContext 实例
+//
+// ## 定位
+// IPC 模块入口，被 main/index.ts 调用。
+//
+// ## 依赖
+// - electron - Electron 主进程
+// - ../../core/logger - 日志
+// - ./types - 类型定义
+// - ./module-readiness - 模块就绪检查
+//
+// ## 维护规则
+// - 新增处理器模块时需注册
+// - 保持初始化顺序正确
+//
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { existsSync, mkdirSync } from "node:fs";
@@ -53,6 +81,7 @@ const _ctx: IpcContext = {
 	get mcpManager() { return _mcpManager; },
 	get agentService() { return _agentService; },
 	get workspaceConfig() { return _workspaceConfig; },
+		set workspaceConfig(v) { _workspaceConfig = v; },
 	get toolRegistry() { return _toolRegistry; },
 	get buildDefaultPrompt() { return _buildDefaultPromptFn; },
 	get saveWorkspaceConfig() { return _saveWorkspaceConfigFn; },
@@ -183,6 +212,13 @@ export async function loadCoreModules(): Promise<void> {
 			_kbDb = new kbDbMod.KbDB();
 			_agentToolStore = new agentToolStoreMod.AgentToolStore(_sessionDb);
 			_workspaceConfig = wsMod.loadWorkspaceConfig(_sessionDb);
+			console.log("[startup] workspaceConfig:", JSON.stringify(_workspaceConfig));
+			// Apply proxy config
+			try {
+				const proxyMod = await import(toFileURL(join(__dirname, "../../dist/runtime/proxy-manager.js")));
+				proxyMod.applyProxy(_workspaceConfig.proxy);
+			} catch (e) { log.error("ipc", "Proxy init failed:", (e as Error).message); }
+
 
 			if (!existsSync(_workspaceConfig.workspaceDir)) {
 				mkdirSync(_workspaceConfig.workspaceDir, { recursive: true });
@@ -228,19 +264,6 @@ export async function loadCoreModules(): Promise<void> {
 			);
 			return;
 		}
-
-	// ─── Phase 3b: Initialize search provider from saved config ──
-	try {
-		const spCfg = _workspaceConfig.searchProvider;
-		if (spCfg && spCfg.type !== "duckduckgo") {
-			const { createSearchProvider, setSearchProvider } = await import(
-				toFileURL(join(__dirname, "../../dist/runtime/tools/web-search.js"))
-			);
-			setSearchProvider(createSearchProvider(spCfg));
-		}
-	} catch (err) {
-		log.ipc("Failed to init search provider:", (err as Error).message);
-	}
 
 	// ─── Phase 4: MCPManager (depends on registry) ───────────────
 		try {

@@ -1,3 +1,25 @@
+// 确认弹窗组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 通用的二次确认弹窗组件，用于危险操作前的确认提示
+//
+// ## 输入
+// 标题、消息、确认按钮文字、确认/取消回调
+//
+// ## 输出
+// 确认弹窗 JSX
+//
+// ## 定位
+// src/renderer/components/common/ — 通用组件，为删除等危险操作提供确认
+//
+// ## 依赖
+// React
+//
+// ## 维护规则
+// 样式变更需确保可访问性（焦点管理、键盘操作）
+//
 export function ConfirmModal({ title, message, confirmLabel, onConfirm, onCancel }: {
 	title: string;
 	message: string;

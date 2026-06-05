@@ -1,3 +1,25 @@
+// Agent 工具持久化存储
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理 Agent 自定义工具配置的 SQLite 持久化存储
+//
+// ## 输入
+// AgentToolEntry 数据（名称、描述、handler 配置等）
+//
+// ## 输出
+// CRUD 操作、工具列表查询
+//
+// ## 定位
+// src/server/ — 服务层，为 IPC 和 REST API 提供工具数据存储
+//
+// ## 依赖
+// sqlite-store.ts、session-db.ts、shared/types.ts
+//
+// ## 维护规则
+// 新增工具字段需同步更新 COLUMNS 数组
+//
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { AgentToolEntry } from "../shared/types.js";

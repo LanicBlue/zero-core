@@ -1,3 +1,25 @@
+// GraphQL 大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 GraphQL schema 中提取 type、input、enum、interface、query 等大纲节点
+//
+// ## 输入
+// GraphQL schema 文本
+//
+// ## 输出
+// OutlineNode 数组（类型、输入、枚举、接口、查询等）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// GraphQL 新特性（如 directive）需更新提取逻辑
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

@@ -1,6 +1,28 @@
 // ---------------------------------------------------------------------------
 // Logger — debug mode vs production mode, console + file dual sink
-// ---------------------------------------------------------------------------
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供分级日志功能，支持控制台和文件双输出。
+//
+// ## 输入
+// - ZERO_CORE_DEBUG 环境变量
+// - configureLogging() 配置
+//
+// ## 输出
+// - log 对象（agent, debug, info, warn, error 方法）
+// - 日志文件写入
+//
+// ## 定位
+// 全局日志模块，被整个项目使用。
+//
+// ## 依赖
+// - ./file-log-sink - 文件日志
+//
+// ## 维护规则
+// - 新增日志类别时需更新类型定义
+// - 保持日志格式一致
 //
 // Debug mode:  set ZERO_CORE_DEBUG=1 or --debug flag
 // Production:  only warn/error level logs

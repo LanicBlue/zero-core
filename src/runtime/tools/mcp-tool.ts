@@ -1,3 +1,29 @@
+// MCP 工具适配器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 将 MCP 工具定义转换为 Vercel AI SDK 工具。
+//
+// ## 输入
+// - MCP 工具定义
+// - MCP 服务器信息
+//
+// ## 输出
+// - AI SDK 工具
+// - 工具列表
+//
+// ## 定位
+// Runtime MCP 适配器，被 agent-loop 和 mcp-manager 使用。
+//
+// ## 依赖
+// - ai - AI SDK
+// - zod - 数据验证
+//
+// ## 维护规则
+// - MCP 协议变更时需更新
+// - 保持转换逻辑正确
+//
 import { tool } from "ai";
 import { z } from "zod";
 

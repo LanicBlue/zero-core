@@ -1,3 +1,25 @@
+// 模板详情弹窗组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 以弹窗形式展示模板的完整详情（含 Markdown 预览）
+//
+// ## 输入
+// PromptTemplate 数据
+//
+// ## 输出
+// 模板详情弹窗 JSX
+//
+// ## 定位
+// src/renderer/components/agents/ — Agent 页面组件，模板详情查看
+//
+// ## 依赖
+// React、shared/types.ts、common/MarkdownRenderer.tsx
+//
+// ## 维护规则
+// 详情展示字段变更需同步更新渲染逻辑
+//
 import React, { useMemo } from "react";
 import type { PromptTemplate } from "../../../shared/types.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";

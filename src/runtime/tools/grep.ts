@@ -1,3 +1,28 @@
+// Grep 搜索工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供文件内容搜索能力，基于 ripgrep 实现。
+//
+// ## 输入
+// - 搜索模式
+// - 搜索路径
+//
+// ## 输出
+// - 匹配结果
+//
+// ## 定位
+// Runtime 工具，被 Agent 调用。
+//
+// ## 依赖
+// - zod - 数据验证
+// - node:child_process - 进程执行
+//
+// ## 维护规则
+// - 保持 ripgrep 参数兼容
+// - 处理特殊字符转义
+//
 import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";

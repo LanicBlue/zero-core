@@ -1,3 +1,25 @@
+// 助手文件读取工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供安全的文件系统读取工具，支持文件浏览、目录遍历和敏感文件过滤
+//
+// ## 输入
+// 文件路径、目录路径、搜索模式
+//
+// ## 输出
+// 文件内容、目录结构、文件列表
+//
+// ## 定位
+// src/runtime/mcp-tools/ — 内置 MCP 工具，为 agent 提供文件系统能力
+//
+// ## 依赖
+// zod、tools/tool-factory.ts、core/config.ts、Node.js fs/path
+//
+// ## 维护规则
+// 新增敏感文件模式需在 BLOCKED_FILES 中添加
+//
 import { z } from "zod";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, resolve, extname } from "node:path";

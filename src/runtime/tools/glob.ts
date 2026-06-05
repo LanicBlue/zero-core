@@ -1,3 +1,28 @@
+// Glob 文件匹配工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供文件模式匹配能力，基于 glob 模式查找文件。
+//
+// ## 输入
+// - glob 模式
+// - 搜索路径
+//
+// ## 输出
+// - 匹配的文件路径列表
+//
+// ## 定位
+// Runtime 工具，被 Agent 调用。
+//
+// ## 依赖
+// - zod - 数据验证
+// - node:fs - 文件系统
+//
+// ## 维护规则
+// - 保持 glob 模式兼容
+// - 处理路径分隔符差异
+//
 import { z } from "zod";
 import { resolve, relative } from "node:path";
 import { stat } from "node:fs/promises";

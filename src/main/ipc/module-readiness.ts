@@ -1,3 +1,25 @@
+// 模块就绪状态追踪器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 追踪各模块的初始化状态，支持 IPC handler 按模块粒度等待就绪
+//
+// ## 输入
+// ModuleName（模块名称）
+//
+// ## 输出
+// 模块就绪 Promise、resolve/reject 函数
+//
+// ## 定位
+// src/main/ipc/ — 主进程 IPC 层基础设施，协调模块初始化顺序
+//
+// ## 依赖
+// 无外部依赖
+//
+// ## 维护规则
+// 新增 Store 模块时需在 ModuleName 中注册
+//
 // ---------------------------------------------------------------------------
 // Per-module readiness tracker
 // IPC handlers await individual modules instead of a global boolean.

@@ -1,3 +1,25 @@
+// CSS/SCSS/SASS/Less 大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 CSS/SCSS/SASS/Less 中提取选择器、@media、@keyframes、变量等大纲节点
+//
+// ## 输入
+// CSS/SCSS/SASS/Less 文本
+//
+// ## 输出
+// OutlineNode 数组（选择器、媒体查询、关键帧、变量等）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// CSS 嵌套语法和容器查询需正确解析
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

@@ -1,3 +1,28 @@
+// Agent 委托工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供 Agent 委托能力，允许一个 Agent 调用另一个 Agent。
+//
+// ## 输入
+// - Agent ID
+// - 输入数据
+//
+// ## 输出
+// - 子 Agent 的执行结果
+//
+// ## 定位
+// Runtime 工具，被 Agent 调用。
+//
+// ## 依赖
+// - zod - 数据验证
+// - node:child_process - 进程执行
+//
+// ## 维护规则
+// - 保持委托逻辑正确
+// - 处理嵌套调用限制
+//
 import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";

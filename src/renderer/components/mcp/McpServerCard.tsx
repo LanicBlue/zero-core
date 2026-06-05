@@ -1,3 +1,25 @@
+// MCP 服务器卡片组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 以卡片形式展示单个 MCP 服务器的配置和状态
+//
+// ## 输入
+// McpServerConfig 数据
+//
+// ## 输出
+// 服务器卡片 JSX（含状态指示、编辑/删除操作）
+//
+// ## 定位
+// src/renderer/components/mcp/ — MCP 页面组件，用于服务器列表展示
+//
+// ## 依赖
+// React、shared/types.ts
+//
+// ## 维护规则
+// 服务器状态指示器需反映实际连接状态
+//
 import React, { useState } from "react";
 import type { McpServerConfig } from "../../../shared/types.js";
 

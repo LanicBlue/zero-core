@@ -1,3 +1,25 @@
+// Markdown 文档大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 Markdown 文档中提取标题层级结构（H1-H6）
+//
+// ## 输入
+// Markdown 文本
+//
+// ## 输出
+// OutlineNode 数组（heading 层级节点树）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// 特殊标记（frontmatter）需正确跳过
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 export class MarkdownExtractor implements LangExtractor {

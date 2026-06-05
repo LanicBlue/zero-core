@@ -1,3 +1,25 @@
+// LLM Provider IPC handlers
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 处理 LLM Provider 的 CRUD 和模型列表查询 IPC 请求
+//
+// ## 输入
+// Provider、CreateProviderInput、UpdateProviderInput
+//
+// ## 输出
+// Provider 列表、模型列表、CRUD 操作结果
+//
+// ## 定位
+// src/main/ipc/ — 主进程 IPC 层，管理 AI 提供商配置
+//
+// ## 依赖
+// typed-ipc.ts、providerStore、shared/types.ts
+//
+// ## 维护规则
+// Provider 配置字段变更需同步更新 shared/types.ts
+//
 import { registerCrud, typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 import type { Provider, CreateProviderInput, UpdateProviderInput, ProviderModel } from "../../shared/types.js";

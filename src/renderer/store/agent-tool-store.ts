@@ -1,3 +1,25 @@
+// Agent 工具前端状态管理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理 Agent 自定义工具的前端状态和 IPC 调用
+//
+// ## 输入
+// IPC API 调用结果
+//
+// ## 输出
+// AgentToolState（工具列表、加载状态、CRUD 操作）
+//
+// ## 定位
+// src/renderer/store/ — 渲染进程状态层，为 ToolsPage 提供数据
+//
+// ## 依赖
+// zustand、shared/types.ts、preload API
+//
+// ## 维护规则
+// 工具配置字段变更需同步更新 shared/types.ts
+//
 import { create } from "zustand";
 import type { AgentToolEntry } from "../../shared/types.js";
 

@@ -1,3 +1,25 @@
+// 文件读取辅助工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供文件读取的通用辅助函数：二进制检测、大小限制、目录遍历
+//
+// ## 输入
+// 文件路径、扩展名
+//
+// ## 输出
+// 文件大小限制常量、二进制文件检测结果、文件过滤逻辑
+//
+// ## 定位
+// src/runtime/tools/ — 工具层，为 file-read 等工具提供共享辅助
+//
+// ## 依赖
+// Node.js fs/path 模块
+//
+// ## 维护规则
+// 新增二进制扩展名需在 BINARY_EXTENSIONS 集合中添加
+//
 import { readdir } from "node:fs/promises";
 import { resolve, basename, extname, dirname, join } from "node:path";
 

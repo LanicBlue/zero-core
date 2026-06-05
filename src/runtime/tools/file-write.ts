@@ -1,3 +1,29 @@
+// 文件写入工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供文件写入能力，支持新建和覆盖文件。
+//
+// ## 输入
+// - 文件路径
+// - 文件内容
+//
+// ## 输出
+// - 写入结果
+//
+// ## 定位
+// Runtime 工具，被 Agent 调用。
+//
+// ## 依赖
+// - zod - 数据验证
+// - node:fs - 文件系统
+// - ./syntax-check - 语法检查
+//
+// ## 维护规则
+// - 保持安全限制（路径限制）
+// - 新增文件格式支持时需更新
+//
 import { z } from "zod";
 import { writeFile, mkdir } from "node:fs/promises";
 import { dirname, resolve, extname } from "node:path";

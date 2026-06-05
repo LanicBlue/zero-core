@@ -1,3 +1,25 @@
+// 会话指标收集与聚合
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 使用 Welford 在线算法收集和聚合会话运行指标（token 用量、延迟等）
+//
+// ## 输入
+// 会话指标数据（token 数、耗时、工具调用次数等）
+//
+// ## 输出
+// RunningStats 统计对象、SessionMetrics、AggregateMetrics
+//
+// ## 定位
+// src/server/ — 服务层，为 session-manager 和 Dashboard 提供指标数据
+//
+// ## 依赖
+// session-lifecycle.ts
+//
+// ## 维护规则
+// 新增指标维度需同步更新 SessionMetrics 接口
+//
 import type { SessionLifecycleState } from "./session-lifecycle.js";
 
 // ---------------------------------------------------------------------------

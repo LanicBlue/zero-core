@@ -1,3 +1,25 @@
+// 可调整大小的分割布局组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供可拖拽调整比例的多面板分割布局
+//
+// ## 输入
+// 子组件数组、默认比例权重
+//
+// ## 输出
+// 可拖拽分割的多面板布局 JSX
+//
+// ## 定位
+// src/renderer/components/layout/ — 布局组件，支撑主界面三栏布局
+//
+// ## 依赖
+// React
+//
+// ## 维护规则
+// 拖拽交互和面板比例计算逻辑变更需充分测试
+//
 import React, { useRef, useCallback, useEffect, useState } from "react";
 
 interface Props {

@@ -1,3 +1,25 @@
+// 模板管理 IPC handlers
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 处理模板的列表查询、获取、创建、更新和删除 IPC 请求
+//
+// ## 输入
+// 模板 ID、模板数据
+//
+// ## 输出
+// 模板列表、模板详情、CRUD 操作结果
+//
+// ## 定位
+// src/main/ipc/ — 主进程 IPC 层，管理 Agent 模板
+//
+// ## 依赖
+// typed-ipc.ts、templateStore
+//
+// ## 维护规则
+// 内置模板不可删除，需在 handler 中保留保护逻辑
+//
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 

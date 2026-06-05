@@ -1,6 +1,28 @@
 // ---------------------------------------------------------------------------
 // Shared types — used by both server (main process) and renderer (UI)
 // Single source of truth for all data model interfaces.
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 定义共享类型，供主进程和渲染进程使用。
+//
+// ## 输入
+// 无 - 类型定义文件。
+//
+// ## 输出
+// - TypeScript 类型定义
+//
+// ## 定位
+// 共享类型模块，被整个项目使用。
+//
+// ## 依赖
+// 无
+//
+// ## 维护规则
+// - 新增类型时需更新
+// - 保持类型命名一致
+//
 // ---------------------------------------------------------------------------
 
 // ── Data Models ─────────────────────────────────────────────────────────────
@@ -205,11 +227,18 @@ export interface SearchProviderConfig {
 	braveApiKey?: string;
 }
 
+export interface ProxyConfig {
+	enabled: boolean;
+	url: string;
+	bypass?: string[];
+}
+
 export interface WorkspaceConfig {
 	workspaceDir: string;
 	defaultModel?: string;
 	defaultProvider?: string;
 	searchProvider?: SearchProviderConfig;
+	proxy?: ProxyConfig;
 }
 
 // ── File Log Config ─────────────────────────────────────────────────────────
@@ -285,6 +314,40 @@ export interface McpStatus {
 	name: string;
 	connected: boolean;
 	toolCount: number;
+}
+
+// ── Tool Execution Tracking ────────────────────────────────────────────────
+
+export interface ToolExecutionRecord {
+	id: number;
+	sessionId: string;
+	agentId: string;
+	toolName: string;
+	success: boolean;
+	errorMessage?: string;
+	inputPreview?: string;
+	outputPreview?: string;
+	durationMs: number;
+	turnSeq?: number;
+	createdAt: string;
+}
+
+export interface ToolExecutionFilter {
+	agentId?: string;
+	sessionId?: string;
+	toolName?: string;
+	success?: boolean;
+	limit?: number;
+	offset?: number;
+}
+
+export interface ToolExecutionStats {
+	toolName: string;
+	totalCalls: number;
+	errorCount: number;
+	errorRate: number;
+	avgDurationMs: number;
+	lastErrorAt?: string;
 }
 
 // ── Fetched Model (from provider API) ───────────────────────────────────────

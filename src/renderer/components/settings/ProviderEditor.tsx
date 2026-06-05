@@ -1,3 +1,25 @@
+// Provider 编辑器组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 编辑和创建 LLM Provider 配置（API Key、Base URL、模型列表等）
+//
+// ## 输入
+// Provider 数据（编辑模式）、默认配置
+//
+// ## 输出
+// Provider 编辑表单 JSX、保存/取消操作
+//
+// ## 定位
+// src/renderer/components/settings/ — 设置页面组件，Provider 配置编辑
+//
+// ## 依赖
+// React、store/provider-store.ts、shared/types.ts、core/constants.ts
+//
+// ## 维护规则
+// Provider 字段变更需同步更新表单
+//
 import React, { useState } from "react";
 import { useProviderStore } from "../../store/provider-store.js";
 import type { Provider, ProviderModel } from "../../../shared/types.js";

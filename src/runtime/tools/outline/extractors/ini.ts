@@ -1,3 +1,25 @@
+// INI/配置文件大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 INI/dotenv/Properties 配置文件中提取 section 和键值对
+//
+// ## 输入
+// INI/dotenv/Properties 文本
+//
+// ## 输出
+// OutlineNode 数组（section、键值对）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// 注释行和空行需正确跳过
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

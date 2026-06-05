@@ -1,3 +1,29 @@
+// MCP 设置页面
+//
+// # 文件说明书
+//
+// ## 核心功能
+// MCP 服务器管理页面，支持添加、编辑和测试 MCP 服务器。
+//
+// ## 输入
+// - MCP 状态
+// - IPC API 调用
+//
+// ## 输出
+// - MCP 服务器列表
+// - 连接管理
+//
+// ## 定位
+// 渲染进程页面，被 AppLayout 使用。
+//
+// ## 依赖
+// - react - React 框架
+// - ../../store - 状态管理
+//
+// ## 维护规则
+// - MCP 协议变更时需更新
+// - 保持连接状态同步
+//
 import React, { useState, useEffect } from "react";
 import { useMcpStore } from "../../store/mcp-store.js";
 import type { McpServerConfig } from "../../../shared/types.js";

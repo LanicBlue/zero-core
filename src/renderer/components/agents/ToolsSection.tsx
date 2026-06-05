@@ -1,3 +1,25 @@
+// Agent 工具选择区段
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 在 Agent 编辑器中管理可用工具的启用/禁用配置
+//
+// ## 输入
+// FormState 中的 enabledTools、模型信息
+//
+// ## 输出
+// 工具开关列表 JSX
+//
+// ## 定位
+// src/renderer/components/agents/ — Agent 编辑器的子区段
+//
+// ## 依赖
+// React、store/agent-store.ts、agent-editor-types.ts
+//
+// ## 维护规则
+// 新增内置工具需在此添加开关选项
+//
 import { useState } from "react";
 import type { ModelInfo } from "../../store/agent-store.js";
 import { DEFAULT_ENABLED_TOOLS, type FormState } from "./agent-editor-types.js";

@@ -1,3 +1,29 @@
+// MCP IPC 处理器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// MCP 服务器相关的 IPC 处理器，处理 MCP 服务器管理。
+//
+// ## 输入
+// - IPC 通道调用
+// - IpcContext - 上下文
+//
+// ## 输出
+// - MCP 服务器列表
+// - 操作结果
+//
+// ## 定位
+// IPC 处理器，被 core.ts 注册。
+//
+// ## 依赖
+// - ./typed-ipc - 类型化 IPC
+// - ../../shared/types - 共享类型
+//
+// ## 维护规则
+// - MCP 协议变更时需同步更新
+// - 保持与前端 API 一致
+//
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 import type { McpServerConfig, CreateMcpInput, UpdateMcpInput } from "../../shared/types.js";

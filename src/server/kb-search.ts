@@ -1,3 +1,25 @@
+// 知识库向量搜索
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 将查询文本向量化后与知识库中的分块进行余弦相似度搜索
+//
+// ## 输入
+// 查询文本、KbDB、EmbeddingProvider、top-K 参数
+//
+// ## 输出
+// SearchResult 数组（包含分块 ID、文件路径、相似度分数）
+//
+// ## 定位
+// src/server/ — 服务层，为 kb-router 提供语义搜索能力
+//
+// ## 依赖
+// kb-db.ts、kb-embeddings.ts
+//
+// ## 维护规则
+// 搜索算法变更需确保排序一致性
+//
 import type { KbDB } from "./kb-db.js";
 import type { EmbeddingProvider } from "./kb-embeddings.js";
 

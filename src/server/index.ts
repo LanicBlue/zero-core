@@ -1,3 +1,25 @@
+// HTTP/WebSocket 服务入口
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 创建 Express HTTP 和 WebSocket 服务器，注册所有 REST API 路由
+//
+// ## 输入
+// 各 Store 和 Manager 实例
+//
+// ## 输出
+// HTTP Server 和 WebSocket Server 实例
+//
+// ## 定位
+// src/server/ — 服务层入口，为外部客户端提供 API 服务
+//
+// ## 依赖
+// express、ws、所有 router 和 store 模块
+//
+// ## 维护规则
+// 新增路由模块需在此注册
+//
 import express from "express";
 import { createServer } from "http";
 import { WebSocketServer } from "ws";

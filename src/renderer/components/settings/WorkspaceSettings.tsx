@@ -1,3 +1,25 @@
+// 工作区设置组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 展示和编辑工作区配置（工作目录、默认 Agent、Provider 等）
+//
+// ## 输入
+// preload API 返回的工作区配置数据
+//
+// ## 输出
+// 工作区配置编辑表单 JSX
+//
+// ## 定位
+// src/renderer/components/settings/ — 设置页面组件，工作区级配置
+//
+// ## 依赖
+// React、store/provider-store.ts、preload API
+//
+// ## 维护规则
+// 工作区配置字段变更需同步更新 shared/types.ts
+//
 import { useEffect, useState } from "react";
 import { useProviderStore } from "../../store/provider-store.js";
 

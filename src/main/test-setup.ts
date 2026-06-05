@@ -1,3 +1,25 @@
+// E2E 测试数据种子
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 在测试模式下（ZERO_CORE_TEST_FIXTURE 环境变量）创建 mock provider 和 agent 种子数据
+//
+// ## 输入
+// ZERO_CORE_TEST_FIXTURE 环境变量指定的 fixture 路径
+//
+// ## 输出
+// 写入测试用 provider、agent 和工作区配置到数据库
+//
+// ## 定位
+// src/main/ — 主进程层，仅用于 E2E 测试初始化
+//
+// ## 依赖
+// server 层各 Store、core/config.ts
+//
+// ## 维护规则
+// 测试 fixture 变更需同步更新此文件
+//
 // Test-mode seed — only runs when ZERO_CORE_TEST_FIXTURE env var is set.
 // Creates a mock provider pointing at the fixture and an agent using it,
 // then sets the workspace config so the UI is immediately usable.

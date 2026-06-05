@@ -1,3 +1,28 @@
+// 配置 IPC 处理器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 配置相关的 IPC 处理器，处理配置获取和更新。
+//
+// ## 输入
+// - IPC 通道调用
+// - IpcContext - 上下文
+//
+// ## 输出
+// - 配置数据
+//
+// ## 定位
+// IPC 处理器，被 core.ts 注册。
+//
+// ## 依赖
+// - ./typed-ipc - 类型化 IPC
+// - node:fs - 文件系统
+//
+// ## 维护规则
+// - 配置结构变更时需同步更新
+// - 保持与前端 API 一致
+//
 import { resolve, join } from "path";
 import { existsSync, mkdirSync } from "node:fs";
 import { typedHandle } from "./typed-ipc.js";
@@ -21,6 +46,10 @@ export function registerConfigHandlers(ctx: IpcContext): void {
 			}
 			if (data.defaultModel !== undefined || data.defaultProvider !== undefined) {
 				_ctx.workspaceConfig = _ctx.saveWorkspaceConfig({ defaultModel: data.defaultModel, defaultProvider: data.defaultProvider }, _ctx.sessionDb);
+			}
+			if (data.proxy !== undefined) {
+				_ctx.workspaceConfig = _ctx.saveWorkspaceConfig({ proxy: data.proxy }, _ctx.sessionDb);
+				import(_ctx.toFileURL(join(_ctx.distServer, "../runtime/proxy-manager.js"))).then((m) => m.applyProxy(data.proxy));
 			}
 			return _ctx.workspaceConfig;
 		},

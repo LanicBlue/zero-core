@@ -1,3 +1,25 @@
+// 模板画廊组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 展示模板画廊，支持搜索、筛选和 GitHub 导入
+//
+// ## 输入
+// template-store 中的模板列表
+//
+// ## 输出
+// 模板卡片网格 + GitHub 导入入口 JSX
+//
+// ## 定位
+// src/renderer/components/agents/ — Agent 页面组件，模板浏览入口
+//
+// ## 依赖
+// React、store/template-store.ts、TemplateCard、GithubImportModal
+//
+// ## 维护规则
+// 搜索/筛选逻辑变更需确保性能
+//
 import React, { useState, useMemo, useRef } from "react";
 import { useTemplateStore } from "../../store/template-store.js";
 import type { PromptTemplate } from "../../../shared/types.js";

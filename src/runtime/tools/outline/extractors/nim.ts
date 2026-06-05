@@ -1,3 +1,25 @@
+// Nim 代码大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 Nim 源码中提取 import、type、proc、func、method、template 等大纲节点
+//
+// ## 输入
+// Nim 源代码文本
+//
+// ## 输出
+// OutlineNode 数组（导入、类型、过程、函数、宏等）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// Nim 的缩进语法需正确跟踪嵌套层级
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

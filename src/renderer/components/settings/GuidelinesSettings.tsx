@@ -1,3 +1,25 @@
+// 指南设置组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 展示和编辑全局行为指南（guidelines）配置
+//
+// ## 输入
+// preload API 返回的指南数据
+//
+// ## 输出
+// 指南文本编辑表单 JSX
+//
+// ## 定位
+// src/renderer/components/settings/ — 设置页面组件，全局行为指南配置
+//
+// ## 依赖
+// React、preload API
+//
+// ## 维护规则
+// 指南变更需实时同步到 system-prompt
+//
 import { useEffect, useState } from "react";
 
 const api = () => (window as any).api;

@@ -1,6 +1,28 @@
 // ---------------------------------------------------------------------------
 // IPC API — typed contract between main process handlers and renderer.
 // Every IPC channel is declared here with params and result types.
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 定义 IPC API 契约，声明所有 IPC 通道的参数和结果类型。
+//
+// ## 输入
+// 无 - API 契约定义。
+//
+// ## 输出
+// - IPC 通道类型定义
+//
+// ## 定位
+// 共享类型模块，被主进程和渲染进程使用。
+//
+// ## 依赖
+// - ./types - 数据模型类型
+//
+// ## 维护规则
+// - 新增 IPC 通道时需更新
+// - 保持契约一致性
+//
 // ---------------------------------------------------------------------------
 
 import type {
@@ -12,8 +34,9 @@ import type {
 	PromptTemplate, CreateTemplateInput, UpdateTemplateInput,
 	SessionRecord,
 	LogEntry, LogFileSummary, FileLogConfig,
-	WorkspaceConfig, SearchProviderConfig, ToolInfo, ModelInfo,
+	WorkspaceConfig, ToolInfo, ModelInfo,
 	Ok, Err, OkOrErr,
+		ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -98,7 +121,7 @@ export interface IpcChannelDefs {
 
 	// ── Config ───────────────────────────────────────────────
 	"config:get":             { params: [];                                   result: WorkspaceConfig & { defaultPrompt: string } };
-	"config:update":          { params: [data: Partial<Pick<WorkspaceConfig, "workspaceDir" | "defaultModel" | "defaultProvider">>]; result: WorkspaceConfig };
+	"config:update":          { params: [data: Partial<Pick<WorkspaceConfig, "workspaceDir" | "defaultModel" | "defaultProvider" | "proxy">>]; result: WorkspaceConfig };
 	"config:get-theme":       { params: [];                                   result: { mode: string; customPrimaryColor: string | null } };
 	"config:set-theme":       { params: [data: { mode: string; customPrimaryColor?: string }]; result: Ok | Err };
 	"device-context:get":     { params: [];                                   result: { content: string } };
@@ -137,6 +160,10 @@ export interface IpcChannelDefs {
 
 	// ── Misc ─────────────────────────────────────────────────
 	"ask-user:respond":    { params: [requestId: string, answers: Record<string, string>]; result: Ok };
-	"search-provider:get": { params: []; result: SearchProviderConfig };
-	"search-provider:set": { params: [config: SearchProviderConfig]; result: OkOrErr };
+
+	// ── Tool Executions ──────────────────────────────────────
+	"tool-executions:query":   { params: [filter: ToolExecutionFilter];              result: ToolExecutionRecord[] };
+	"tool-executions:stats":   { params: [agentId?: string];                         result: ToolExecutionStats[] };
+	"tool-executions:cleanup": { params: [maxAgeMs: number];                          result: number };
+	"tool-executions:analyze": { params: [agentId?: string];                          result: { analysis: string; stats: ToolExecutionStats[]; recentErrors: ToolExecutionRecord[] } | Err };
 }

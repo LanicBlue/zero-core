@@ -1,3 +1,25 @@
+// C/C++ 代码大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 C/C++ 源码中提取 include、struct、class、function 等大纲节点
+//
+// ## 输入
+// C/C++ 源代码文本
+//
+// ## 输出
+// OutlineNode 数组（结构体、类、函数声明等）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js、../stripper.js
+//
+// ## 维护规则
+// C++ 新特性（如 concepts）需更新提取逻辑
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 import { stripComments } from "../stripper.js";
 

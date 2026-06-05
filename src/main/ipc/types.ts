@@ -1,3 +1,25 @@
+// IPC 上下文类型定义
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 定义 IPC handler 的共享上下文类型，聚合所有 Store 和服务实例
+//
+// ## 输入
+// 各 Store 和服务的类型引用
+//
+// ## 输出
+// IpcContext 接口，包含所有 IPC handler 可访问的依赖
+//
+// ## 定位
+// src/main/ipc/ — 主进程 IPC 层类型定义
+//
+// ## 依赖
+// Electron、server 层各 Store 类型
+//
+// ## 维护规则
+// 新增 Store 时需在 IpcContext 中添加对应字段
+//
 import type { BrowserWindow } from "electron";
 import type { ModuleName } from "./module-readiness.js";
 import type { SessionDB } from "../../server/session-db.js";

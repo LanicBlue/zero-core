@@ -1,3 +1,25 @@
+// Agent 权限配置区段
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 在 Agent 编辑器中管理工具执行权限策略（toolPolicy）
+//
+// ## 输入
+// FormState 中的 toolPolicy、更新回调
+//
+// ## 输出
+// 权限配置表单 JSX
+//
+// ## 定位
+// src/renderer/components/agents/ — Agent 编辑器的子区段
+//
+// ## 依赖
+// agent-editor-types.ts
+//
+// ## 维护规则
+// 权限策略字段变更需同步更新 toolPolicy 类型
+//
 import type { FormState } from "./agent-editor-types.js";
 
 interface Props {

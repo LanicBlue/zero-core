@@ -1,3 +1,25 @@
+// 流式事件到指标适配器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 将 runtime 流式事件（StreamEvent）转换为 SessionManager 的生命周期和指标调用
+//
+// ## 输入
+// StreamEvent 流式事件、sessionId
+//
+// ## 输出
+// SessionManager 生命周期状态转换和指标更新
+//
+// ## 定位
+// src/server/ — 服务层，桥接 runtime 事件与指标系统
+//
+// ## 依赖
+// runtime/types.ts、session-manager.ts
+//
+// ## 维护规则
+// 新增 StreamEvent 类型需在此添加对应的指标处理
+//
 import type { StreamEvent } from "../runtime/types.js";
 import type { SessionManager } from "./session-manager.js";
 

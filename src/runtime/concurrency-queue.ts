@@ -1,3 +1,26 @@
+// 并发队列
+//
+// # 文件说明书
+//
+// ## 核心功能
+// FIFO 信号量，控制每个 Provider 的并发 API 请求数。
+//
+// ## 输入
+// - 最大并发数
+// - acquire/release 调用
+//
+// ## 输出
+// - acquire 返回 Promise
+//
+// ## 定位
+// Runtime 并发控制，被 provider-factory 使用。
+//
+// ## 依赖
+// 无
+//
+// ## 维护规则
+// - 并发逻辑变更时需更新
+//
 interface Waiter {
 	resolve: () => void;
 	reject: (reason: Error) => void;

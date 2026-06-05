@@ -1,3 +1,28 @@
+// MCP 服务器管理器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理 MCP 服务器连接，处理工具发现和调用。
+//
+// ## 输入
+// - McpServerConfig - 服务器配置
+//
+// ## 输出
+// - MCP 工具列表
+// - 工具调用结果
+//
+// ## 定位
+// 服务层管理器，被 agent-service 使用。
+//
+// ## 依赖
+// - @modelcontextprotocol/sdk - MCP SDK
+// - ../core/tool-registry - 工具注册
+//
+// ## 维护规则
+// - MCP 协议变更时需更新
+// - 保持连接状态同步
+//
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";

@@ -1,4 +1,27 @@
-/* Dark Theme — GitHub Dark palette */
+/*
+深色主题 CSS 变量定义
+
+# 文件说明书
+
+## 核心功能
+深色主题 CSS 变量定义，基于 GitHub Dark 配色
+
+## 输入
+[data-theme="dark"] 选择器激活
+
+## 输出
+CSS 自定义属性（--bg-canvas, --fg-default 等）
+
+## 定位
+src/renderer/styles/themes/ — 渲染进程主题层，被 global.css 引用
+
+## 依赖
+无外部依赖，被 renderer 组件通过 CSS 变量消费
+
+## 维护规则
+- 颜色变更时需保持对比度可读性
+- 新增变量需同时在 light.css 中定义对应值
+*/
 [data-theme="dark"] {
 	--bg-canvas: #0d1117;
 	--bg-inset: #010409;

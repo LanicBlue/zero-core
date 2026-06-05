@@ -1,3 +1,25 @@
+// LLM Provider 前端状态管理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理 LLM Provider 配置的前端状态和 IPC 调用
+//
+// ## 输入
+// IPC API 调用结果
+//
+// ## 输出
+// ProviderState（Provider 列表、模型列表、CRUD 操作）
+//
+// ## 定位
+// src/renderer/store/ — 渲染进程状态层，为 Provider 页面提供数据
+//
+// ## 依赖
+// zustand、shared/types.ts、preload API
+//
+// ## 维护规则
+// Provider 字段变更需同步更新 shared/types.ts
+//
 import { create } from "zustand";
 import type { ProviderModel, Provider } from "../../shared/types.js";
 

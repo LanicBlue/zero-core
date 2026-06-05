@@ -1,3 +1,25 @@
+// JSON 结构大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 JSON 文件中提取顶层键和嵌套结构大纲
+//
+// ## 输入
+// JSON 文本
+//
+// ## 输出
+// OutlineNode 数组（顶层键、嵌套对象）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// 解析异常需返回空数组而非抛错
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 export class JsonExtractor implements LangExtractor {

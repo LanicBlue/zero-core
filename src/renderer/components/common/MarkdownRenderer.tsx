@@ -1,3 +1,25 @@
+// Markdown 渲染器组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 将 Markdown 文本渲染为 HTML，支持 GFM 扩展、代码高亮和原始 HTML
+//
+// ## 输入
+// Markdown 文本、可选 CSS 类名
+//
+// ## 输出
+// 渲染后的 HTML JSX
+//
+// ## 定位
+// src/renderer/components/common/ — 通用组件，为多个页面提供 Markdown 展示
+//
+// ## 依赖
+// React、react-markdown、remark-gfm、rehype-raw、CodeBlock
+//
+// ## 维护规则
+// Markdown 插件升级需确保不破坏现有渲染
+//
 import React, { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";

@@ -1,3 +1,25 @@
+// Hook 事件类型定义
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 定义 27 个 Hook 事件名称和回调函数类型，覆盖 agent 完整生命周期
+//
+// ## 输入
+// 无（纯类型定义）
+//
+// ## 输出
+// HookEventName 联合类型、HookCallback 函数类型
+//
+// ## 定位
+// src/core/ — 核心层，为 hook-registry 提供事件类型基础
+//
+// ## 依赖
+// 无外部依赖
+//
+// ## 维护规则
+// 新增或删除事件时需确保不破坏已有 hook 注册
+//
 // ---------------------------------------------------------------------------
 // Hook event definitions — 27 events covering the full agent lifecycle
 // Inspired by Claude Code's hook architecture (27 event points)

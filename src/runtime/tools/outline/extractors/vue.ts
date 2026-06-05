@@ -1,3 +1,25 @@
+// Vue 单文件组件大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 Vue SFC 中提取 template、script、style 块的结构大纲
+//
+// ## 输入
+// Vue 单文件组件文本
+//
+// ## 输出
+// OutlineNode 数组（template 标签、script 导入/导出、style 规则）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js、typescript.js
+//
+// ## 维护规则
+// Vue 3 Composition API 和 <script setup> 需正确处理
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 import { TypeScriptExtractor } from "./typescript.js";
 

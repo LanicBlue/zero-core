@@ -1,3 +1,30 @@
+// 聊天面板组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 聊天界面主组件，显示消息流、工具调用和思考过程。
+//
+// ## 输入
+// - useChatStore - 聊天状态
+// - useAgentStore - Agent 状态
+//
+// ## 输出
+// - 渲染的消息列表
+// - 工具调用卡片
+// - 用户输入区域
+//
+// ## 定位
+// 渲染进程组件，被 AppLayout 使用。
+//
+// ## 依赖
+// - react - React 框架
+// - ../../store - 状态管理
+//
+// ## 维护规则
+// - 新增消息类型时需更新
+// - 保持 UI 响应性
+//
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { useChatStore, selectActiveMessages, selectIsStreaming, selectLastError, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";

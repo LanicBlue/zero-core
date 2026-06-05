@@ -1,3 +1,27 @@
+// Provider 存储
+//
+// # 文件说明书
+//
+// ## 核心功能
+// Provider 数据持久化，管理 AI 模型提供商配置。
+//
+// ## 输入
+// - SessionDB 实例
+// - Provider 数据
+//
+// ## 输出
+// - Provider CRUD
+//
+// ## 定位
+// 服务层存储，被 agent-service 使用。
+//
+// ## 依赖
+// - ./sqlite-store - 通用存储
+// - ../core/constants - 默认配置
+//
+// ## 维护规则
+// - 新增字段时需更新列定义
+//
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { ProviderModel, Provider } from "../shared/types.js";

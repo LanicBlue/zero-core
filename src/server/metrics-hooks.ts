@@ -1,3 +1,25 @@
+// 指标收集 Hook 注册
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 将指标收集逻辑注册到 Hook 系统，在会话生命周期事件中自动采集指标
+//
+// ## 输入
+// SessionManager 实例
+//
+// ## 输出
+// 注销函数（cleanup）
+//
+// ## 定位
+// src/server/ — 服务层，Hook 系统的指标收集消费者
+//
+// ## 依赖
+// core/hook-registry.ts、core/hook-types.ts、session-manager.ts
+//
+// ## 维护规则
+// 新增 hook 事件需评估是否需要在此收集指标
+//
 import { HookRegistry } from "../core/hook-registry.js";
 import type { HookEventName } from "../core/hook-types.js";
 import type { SessionManager } from "./session-manager.js";

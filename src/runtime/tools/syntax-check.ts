@@ -1,3 +1,27 @@
+// 语法检查工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供代码语法检查能力，检测常见语法错误。
+//
+// ## 输入
+// - 文件扩展名
+// - 文件内容
+//
+// ## 输出
+// - 诊断结果
+//
+// ## 定位
+// Runtime 工具函数，被文件工具使用。
+//
+// ## 依赖
+// - ./outline/stripper - 注释剥离
+//
+// ## 维护规则
+// - 新增语言支持时需更新
+// - 保持检查规则准确
+//
 import { stripComments, type CommentStyle } from "./outline/stripper.js";
 
 interface Diagnostic {

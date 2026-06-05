@@ -1,3 +1,25 @@
+// 代码架构图生成器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 静态分析后端 TS 源码，提取大纲、调用图和导入关系，生成可视化 HTML
+//
+// ## 输入
+// src/ 下所有 TypeScript 源码
+//
+// ## 输出
+// docs/visualization/code-graph.html 自包含可视化页面
+//
+// ## 定位
+// scripts/ — 构建脚本，生成架构文档
+//
+// ## 依赖
+// typescript（TS AST 解析）
+//
+// ## 维护规则
+// 源码结构变更后需重新运行此脚本
+//
 // Static analyzer: extract outline + call graph from backend TypeScript source.
 //
 // Scans src/{main,preload,runtime,server,core,shared}, builds:

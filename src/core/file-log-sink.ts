@@ -1,3 +1,25 @@
+// 文件日志输出器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 将结构化日志写入按日期轮转的日志文件，支持日志级别和自动清理
+//
+// ## 输入
+// 日志级别（debug/info/warn/error）、模块名、消息和参数
+//
+// ## 输出
+// 写入 .zero-core/logs/ 目录下的每日日志文件
+//
+// ## 定位
+// src/core/ — 核心层，为 logger.ts 提供文件输出通道
+//
+// ## 依赖
+// Node.js fs/path 模块、config.ts
+//
+// ## 维护规则
+// 日志格式变更需考虑向后兼容性和日志解析工具
+//
 import { appendFileSync, mkdirSync, readdirSync, statSync, unlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { ZERO_CORE_DIR } from "./config.js";

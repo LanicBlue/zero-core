@@ -1,3 +1,26 @@
+/*
+ * 全局样式
+ *
+ * # 文件说明书
+ *
+ * ## 核心功能
+ * 应用全局 CSS 样式入口，导入主题和定义全局变量
+ *
+ * ## 输入
+ * dark.css / light.css 主题文件
+ *
+ * ## 输出
+ * CSS 全局变量和基础样式
+ *
+ * ## 定位
+ * src/renderer/styles/ — 渲染进程样式层，全局 CSS 入口
+ *
+ * ## 依赖
+ * themes/dark.css、themes/light.css
+ *
+ * ## 维护规则
+ * 全局 CSS 变量变更需确保主题兼容
+ */
 @import "./themes/dark.css";
 @import "./themes/light.css";
 

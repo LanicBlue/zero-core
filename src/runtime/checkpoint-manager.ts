@@ -1,3 +1,25 @@
+// 对话检查点管理器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理 agent 对话的检查点（checkpoint），支持增量保存和回滚
+//
+// ## 输入
+// ISessionStore 实例、工具调用消息
+//
+// ## 输出
+// 检查点数据写入 session store
+//
+// ## 定位
+// src/runtime/ — 运行时层，为 agent-loop 提供对话持久化
+//
+// ## 依赖
+// session-store-interface.ts、turn-recorder.ts、core/logger.ts
+//
+// ## 维护规则
+// 检查点格式变更需考虑与历史数据的兼容性
+//
 import type { ISessionStore } from "./session-store-interface.js";
 import { TurnRecorder } from "./turn-recorder.js";
 import { log } from "../core/logger.js";

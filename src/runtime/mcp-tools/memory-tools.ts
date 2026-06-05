@@ -1,3 +1,25 @@
+// 知识图谱记忆工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供知识图谱的读写操作，支持实体/关系的搜索、创建和删除
+//
+// ## 输入
+// 查询条件、实体数据、关系数据
+//
+// ## 输出
+// 知识图谱查询结果、实体列表、关系列表
+//
+// ## 定位
+// src/runtime/mcp-tools/ — 内置 MCP 工具，为 agent 提供持久化记忆
+//
+// ## 依赖
+// zod、tools/tool-factory.ts、server/memory-store
+//
+// ## 维护规则
+// 图谱 schema 变更需确保数据迁移兼容
+//
 import { z } from "zod";
 import { buildTool } from "../tools/tool-factory.js";
 

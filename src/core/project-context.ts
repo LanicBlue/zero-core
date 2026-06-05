@@ -1,3 +1,25 @@
+// 项目上下文收集器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 扫描项目目录，收集上下文文件（CLAUDE.md、文档等）供 agent 使用
+//
+// ## 输入
+// 项目根目录路径、配置的上下文文件模式
+//
+// ## 输出
+// ContextFile 数组，包含文件路径和内容
+//
+// ## 定位
+// src/core/ — 核心层，为 system-prompt 提供项目上下文
+//
+// ## 依赖
+// Node.js fs/path 模块
+//
+// ## 维护规则
+// 新增上下文文件类型时需更新文件匹配逻辑
+//
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 

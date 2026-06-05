@@ -1,3 +1,26 @@
+// 单元测试：聊天状态管理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 测试 chat-store Zustand store 的消息增删改查、会话切换、流式状态、工具调用块等全部状态操作
+//
+// ## 输入
+// src/renderer/store/chat-store.js 导出的 useChatStore、selectActiveMessages、selectIsStreaming
+//
+// ## 输出
+// Vitest 测试用例覆盖 addMessage、updateAssistantText、updateThinking、addToolCall、流式控制、会话切换等
+//
+// ## 定位
+// tests/unit/ — 单元测试套件，验证前端状态管理逻辑
+//
+// ## 依赖
+// vitest、../../src/renderer/store/chat-store
+//
+// ## 维护规则
+// store 结构变更需更新此测试的 initialState 和 reset 函数
+// 新增 store action 需添加对应测试
+//
 import { describe, test, expect, beforeEach } from "vitest";
 import {
 	useChatStore,

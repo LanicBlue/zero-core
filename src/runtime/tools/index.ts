@@ -1,3 +1,29 @@
+// 工具模块入口
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 导出所有工具和工具相关函数，提供统一的工具访问点。
+//
+// ## 输入
+// 无 - 模块入口文件。
+//
+// ## 输出
+// - ALL_TOOLS - 所有工具列表
+// - buildToolsSet - 构建工具集
+//
+// ## 定位
+// 工具模块入口，被 agent-loop 和其他模块使用。
+//
+// ## 依赖
+// - ai - AI SDK
+// - zod - 数据验证
+// - ./ - 各个工具模块
+//
+// ## 维护规则
+// - 新增工具时需在此导出
+// - 保持工具列表完整
+//
 import { tool } from "ai";
 import { z } from "zod";
 import type { ToolExecutionContext } from "../types.js";

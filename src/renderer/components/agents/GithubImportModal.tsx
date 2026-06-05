@@ -1,3 +1,25 @@
+// GitHub 模板导入弹窗组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 GitHub 仓库预览和导入 Agent 模板的弹窗组件
+//
+// ## 输入
+// GitHub 仓库 URL
+//
+// ## 输出
+// 导入的模板数据
+//
+// ## 定位
+// src/renderer/components/agents/ — Agent 页面组件，支持远程模板导入
+//
+// ## 依赖
+// React
+//
+// ## 维护规则
+// GitHub API 限流需在 UI 中给出友好提示
+//
 import React, { useState, useEffect, useRef } from "react";
 
 const DEFAULT_URL = "https://github.com/msitarzewski/agency-agents";

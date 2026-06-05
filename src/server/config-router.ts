@@ -1,3 +1,25 @@
+// 全局配置 REST API 路由
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供全局配置（工作区、设备上下文、指南等）的 Express REST API 路由
+//
+// ## 输入
+// HTTP 请求、SessionDB、ToolRegistry、WorkspaceConfig
+//
+// ## 输出
+// Express Router，处理配置读写 API
+//
+// ## 定位
+// src/server/ — 服务层，为外部 API 提供配置管理端点
+//
+// ## 依赖
+// express、session-db.ts、core/config.ts、workspace-config.ts
+//
+// ## 维护规则
+// 配置结构变更需考虑向后兼容和迁移
+//
 import { Router } from "express";
 import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";

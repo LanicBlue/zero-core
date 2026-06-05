@@ -1,3 +1,25 @@
+// 代码块高亮渲染组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 使用 Shiki 进行语法高亮的代码块渲染
+//
+// ## 输入
+// 代码文本、语言标识、可选标题
+//
+// ## 输出
+// 带语法高亮的代码块 JSX
+//
+// ## 定位
+// src/renderer/components/common/ — 通用组件，为 Markdown 渲染提供代码支持
+//
+// ## 依赖
+// React、utils/shiki-init.js
+//
+// ## 维护规则
+// 新增高亮语言需确保 Shiki 已加载对应 grammar
+//
 import React, { useState, useEffect, useMemo } from "react";
 import { getShiki, isShikiReady } from "../../utils/shiki-init.js";
 

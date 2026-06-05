@@ -1,3 +1,25 @@
+// 持久化执行 Hook
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 将轮次状态检查点到数据库，确保 hook 事件持久化后可恢复
+//
+// ## 输入
+// Hook 事件上下文、SessionDB 实例
+//
+// ## 输出
+// 数据库中的轮次状态记录
+//
+// ## 定位
+// src/server/ — 服务层，Hook 系统的首个持久化消费者
+//
+// ## 依赖
+// core/hook-registry.ts、session-db.ts、core/logger.ts
+//
+// ## 维护规则
+// 检查点格式变更需考虑数据迁移
+//
 import { HookRegistry } from "../core/hook-registry.js";
 import type { SessionDB } from "./session-db.js";
 import { log } from "../core/logger.js";

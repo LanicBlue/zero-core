@@ -1,3 +1,28 @@
+// Hook 注册表
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 单例 Hook 注册表，管理生命周期钩子。
+//
+// ## 输入
+// - HookEventName - 事件名称
+// - HookHandler - 处理函数
+//
+// ## 输出
+// - HookResult - Hook 执行结果
+//
+// ## 定位
+// 核心扩展机制，被整个项目使用。
+//
+// ## 依赖
+// - ./hook-types - Hook 类型
+// - ./logger - 日志
+//
+// ## 维护规则
+// - 新增 Hook 事件时需更新类型
+// - 保持 Hook 执行顺序稳定
+//
 import type { HookEventName, HookHandler, HookResult } from "./hook-types.js";
 import { log } from "./logger.js";
 

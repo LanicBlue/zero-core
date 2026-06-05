@@ -1,3 +1,29 @@
+// 上下文管理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理对话上下文，提供 token 估算和消息修剪功能。
+//
+// ## 输入
+// - ModelMessage[] - 消息数组
+// - ZeroCoreConfig - 配置
+//
+// ## 输出
+// - 估算的 token 数量
+// - 修剪后的消息数组
+//
+// ## 定位
+// 上下文管理模块，被 agent-loop 调用。
+//
+// ## 依赖
+// - ai - AI SDK 类型
+// - ./config - 配置类型
+//
+// ## 维护规则
+// - token 估算算法变更时需更新
+// - 保持修剪策略合理
+//
 import type { ModelMessage } from "ai";
 import type { ZeroCoreConfig } from "./config.js";
 

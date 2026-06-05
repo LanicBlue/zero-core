@@ -1,3 +1,31 @@
+// Agent 服务
+//
+// # 文件说明书
+//
+// ## 核心功能
+// Agent 执行服务，管理 Agent 循环、会话和配置。
+//
+// ## 输入
+// - AgentRecord - Agent 配置
+// - SessionConfig - 会话配置
+//
+// ## 输出
+// - StreamEvent - 流式事件
+// - 执行结果
+//
+// ## 定位
+// 服务层核心，被 IPC 处理器调用。
+//
+// ## 依赖
+// - ../core - 核心模块
+// - ../runtime - 运行时
+// - ./session-db - 会话数据库
+// - ./mcp-manager - MCP 管理
+//
+// ## 维护规则
+// - 核心执行逻辑变更时需谨慎
+// - 保持向后兼容性
+//
 import { loadConfig, ZERO_CORE_DIR, type ZeroCoreConfig } from "../core/config.js";
 import { buildSystemPrompt } from "../core/system-prompt.js";
 import { join } from "node:path";

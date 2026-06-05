@@ -1,3 +1,25 @@
+// Svelte 组件大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 Svelte 组件中提取 script、style 和顶层标记元素结构
+//
+// ## 输入
+// Svelte 组件文本
+//
+// ## 输出
+// OutlineNode 数组（script 块、style 块、标记元素）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// Svelte 5 runes 语法需正确处理
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

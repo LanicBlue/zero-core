@@ -1,3 +1,27 @@
+// Runtime 类型定义
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 定义运行时相关的 TypeScript 类型，包括事件、配置和状态。
+//
+// ## 输入
+// 无 - 类型定义文件。
+//
+// ## 输出
+// - TypeScript 类型定义
+//
+// ## 定位
+// Runtime 模块类型定义，被整个 runtime 使用。
+//
+// ## 依赖
+// - ai - AI SDK 类型
+// - ./session-store-interface - 会话存储接口
+//
+// ## 维护规则
+// - 新增事件类型时需更新
+// - 保持与 IPC 契约一致
+//
 import type { ModelMessage } from "ai";
 import type { ISessionStore } from "./session-store-interface.js";
 

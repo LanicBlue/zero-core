@@ -1,3 +1,34 @@
+// Agent 循环执行引擎
+//
+// # 文件说明书
+//
+// ## 核心功能
+// Agent 执行的核心循环，管理消息流、工具调用和状态转换。
+//
+// ## 输入
+// - SessionConfig - 会话配置
+// - RuntimeCallbacks - 回调函数（工具调用、状态更新等）
+//
+// ## 输出
+// - StreamEvent - 流式事件（文本、工具调用、错误等）
+// - 运行时状态更新
+//
+// ## 定位
+// Agent 执行核心，被 agent-service 调用。
+//
+// ## 依赖
+// - ai - Vercel AI SDK
+// - ./types - 类型定义
+// - ./provider-factory - 模型解析
+// - ./session - 会话管理
+// - ./tools - 工具集
+// - ../core/logger - 日志
+// - ../core/hook-registry - Hook 注册
+//
+// ## 维护规则
+// - 核心执行逻辑变更时需谨慎
+// - 保持向后兼容性
+//
 import { streamText, stepCountIs } from "ai";
 import type {
 	StreamEvent,
@@ -38,6 +69,7 @@ export class AgentLoop implements AgentRuntime {
 	private streamText = "";
 	private thinkingText = "";
 	private recorder = new TurnRecorder();
+	private toolStartTimes = new Map<string, number>();
 	private resultText = "";
 
 	constructor(
@@ -104,6 +136,7 @@ export class AgentLoop implements AgentRuntime {
 		this.thinkingText = "";
 		this.resultText = "";
 		this.recorder.reset();
+		this.toolStartTimes.clear();
 		this.checkpoint.reset();
 		this.abortController = new AbortController();
 		const timeout = this.setupTimeout();
@@ -144,6 +177,7 @@ export class AgentLoop implements AgentRuntime {
 		this.thinkingText = "";
 		this.resultText = "";
 		this.recorder.reset();
+		this.toolStartTimes.clear();
 		this.checkpoint.reset();
 		this.checkpoint.loadResumedTurns(this.session.getSessionId(), this.recorder, interruptedTurnSeq);
 		this.abortController = new AbortController();
@@ -211,6 +245,7 @@ export class AgentLoop implements AgentRuntime {
 
 				this.checkpoint.deletePartialTurn(this.session.getSessionId());
 				this.recorder.reset();
+		this.toolStartTimes.clear();
 
 				if (cls === "prompt_too_long") {
 					this.session.aggressivePrune(0.5);
@@ -371,6 +406,7 @@ export class AgentLoop implements AgentRuntime {
 					log.debug("loop", "Tool call:", e.toolName);
 					const tcId = e.toolCallId ?? e.id ?? `tc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 					this.checkpoint.recordToolCall(tcId, e.toolName, e.input);
+					this.toolStartTimes.set(tcId, Date.now());
 					this.recorder.blocks.push({ type: "tool", name: e.toolName, status: "running", args: e.input, toolCallId: tcId });
 					this.emit({ type: "tool_start", agentId: this.config.agentId, toolName: e.toolName, args: e.input });
 					break;
@@ -385,6 +421,7 @@ export class AgentLoop implements AgentRuntime {
 					if (tb) { tb.status = "done"; tb.result = e.output; }
 					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, isError: false, result: e.output });
 					if (resultTcId) this.checkpoint.saveIncrementalCheckpoint(this.session.getSessionId(), this.recorder, this.session.getMessages(), resultTcId, e.output);
+					this.recordToolExecution(resultTcId, e.toolName, e.input, e.output, false);
 					break;
 				}
 				case "tool-error": {
@@ -397,6 +434,7 @@ export class AgentLoop implements AgentRuntime {
 					if (tb) { tb.status = "error"; tb.result = e.errorText ?? String(e.output); }
 					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, isError: true, result: e.errorText ?? String(e.output) });
 					if (errTcId) this.checkpoint.saveIncrementalCheckpoint(this.session.getSessionId(), this.recorder, this.session.getMessages(), errTcId, e.errorText ?? String(e.output));
+					this.recordToolExecution(errTcId, e.toolName, e.input, e.errorText ?? String(e.output), true);
 					break;
 				}
 			}
@@ -445,6 +483,31 @@ export class AgentLoop implements AgentRuntime {
 	private setupTimeout(): NodeJS.Timeout | null {
 		const timeoutMs = this.config.timeoutSec ? this.config.timeoutSec * 1000 : undefined;
 		return timeoutMs ? setTimeout(() => { this.abortController?.abort(); }, timeoutMs) : null;
+	}
+
+
+	private recordToolExecution(tcId: string | undefined, toolName: string, input: any, output: any, isError: boolean): void {
+		if (!this.config.db || !this.config.sessionId) return;
+		const startTime = tcId ? this.toolStartTimes.get(tcId) : undefined;
+		const durationMs = startTime ? Date.now() - startTime : 0;
+		if (tcId) this.toolStartTimes.delete(tcId);
+		const inputPreview = typeof input === "string" ? (input.length > 500 ? input.slice(0, 500) + "..." : input) : JSON.stringify(input)?.slice(0, 500);
+		const outputStr = typeof output === "string" ? output : JSON.stringify(output);
+		const outputPreview = outputStr?.length > 500 ? outputStr.slice(0, 500) + "..." : outputStr;
+		try {
+			this.config.db.recordToolExecution({
+				sessionId: this.config.sessionId,
+				agentId: this.config.agentId,
+				toolName,
+				success: !isError,
+				errorMessage: isError ? outputStr : undefined,
+				inputPreview,
+				outputPreview: isError ? undefined : outputPreview,
+				durationMs,
+			});
+		} catch (e) {
+			log.error("loop", "Failed to record tool execution:", e);
+		}
 	}
 
 	private emit(event: StreamEvent): void {

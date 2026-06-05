@@ -1,3 +1,25 @@
+// AskUser 交互卡片组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 显示 Agent 提问并提供选项供用户回复的交互卡片
+//
+// ## 输入
+// AskUserQuestion（问题、选项、描述）
+//
+// ## 输出
+// 用户选择结果通过 IPC 返回给 Agent
+//
+// ## 定位
+// src/renderer/components/chat/ — 聊天组件，处理 Agent-用户交互
+//
+// ## 依赖
+// React、store/interaction-store.ts
+//
+// ## 维护规则
+// 交互选项格式变更需同步 interaction-store
+//
 import React, { useState } from "react";
 import type { AskUserQuestion } from "../../store/interaction-store.js";
 

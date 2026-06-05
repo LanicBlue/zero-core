@@ -1,3 +1,26 @@
+// 单元测试：Agent 工具函数
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 测试 agent-utils 中的错误分类、瞬态判断、用户友好消息生成和 thinking 标签解析
+//
+// ## 输入
+// src/runtime/agent-utils.js 导出的 classifyError、isTransientError、userFriendlyMessage、parseThinkingTags
+//
+// ## 输出
+// Vitest 测试用例覆盖错误分类映射、瞬态/非瞬态判断、消息本地化和 thinking 标签解析
+//
+// ## 定位
+// tests/unit/ — 单元测试套件，验证 Agent 辅助逻辑
+//
+// ## 依赖
+// vitest、../../src/runtime/agent-utils
+//
+// ## 维护规则
+// 新增错误分类需添加对应测试用例
+// 用户友好消息文案变更需更新断言
+//
 import { describe, test, expect } from "vitest";
 import {
 	classifyError,

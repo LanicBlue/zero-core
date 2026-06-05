@@ -1,3 +1,25 @@
+// 文件系统操作 IPC handlers
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 处理文件读取、目录树构建等文件系统相关 IPC 请求
+//
+// ## 输入
+// 文件路径、目录路径
+//
+// ## 输出
+// 文件内容、目录树结构
+//
+// ## 定位
+// src/main/ipc/ — 主进程 IPC 层，为渲染器提供安全文件访问
+//
+// ## 依赖
+// typed-ipc.ts、shared/file-utils.ts、Node.js fs/path
+//
+// ## 维护规则
+// 文件访问需遵循安全策略，不可越权访问
+//
 import { resolve, extname } from "path";
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";

@@ -1,3 +1,25 @@
+// Rust 代码大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 Rust 源码中提取 use、fn、struct、enum、impl、trait 等大纲节点
+//
+// ## 输入
+// Rust 源代码文本
+//
+// ## 输出
+// OutlineNode 数组（函数、结构体、枚举、trait 等）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js、../stripper.js
+//
+// ## 维护规则
+// Rust async/await 和宏规则需正确处理
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 import { stripComments } from "../stripper.js";
 

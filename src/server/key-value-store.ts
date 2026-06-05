@@ -1,3 +1,25 @@
+// SQLite 键值存储
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 基于 SQLite 的简单键值持久化存储，替代散落的 JSON 配置文件
+//
+// ## 输入
+// 键名（字符串）、值（JSON 序列化）
+//
+// ## 输出
+// get/set/delete/list 操作、IKVStore 接口实现
+//
+// ## 定位
+// src/server/ — 服务层，为 workspace-config 等提供统一存储后端
+//
+// ## 依赖
+// better-sqlite3、core/logger.ts
+//
+// ## 维护规则
+// 存储 schema 变更需考虑数据迁移
+//
 import type Database from "better-sqlite3";
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { log } from "../core/logger.js";

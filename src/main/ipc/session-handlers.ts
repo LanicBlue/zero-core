@@ -1,3 +1,29 @@
+// 会话 IPC 处理器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 会话相关的 IPC 处理器，处理会话列表、创建、删除等操作。
+//
+// ## 输入
+// - IPC 通道调用
+// - IpcContext - 上下文
+//
+// ## 输出
+// - 会话数据
+// - 操作结果
+//
+// ## 定位
+// IPC 处理器，被 core.ts 注册。
+//
+// ## 依赖
+// - ./typed-ipc - 类型化 IPC
+// - ./types - 类型定义
+//
+// ## 维护规则
+// - 新增会话操作时需同步更新
+// - 保持与前端 API 一致
+//
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 

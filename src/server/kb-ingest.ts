@@ -1,3 +1,25 @@
+// 知识库文档导入管道
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 将文件读入、分块、生成嵌入向量并存储到向量数据库
+//
+// ## 输入
+// 文件路径、KbDB、EmbeddingProvider
+//
+// ## 输出
+// IngestProgress 导入进度、分块数量
+//
+// ## 定位
+// src/server/ — 服务层，为 kb-router 提供文档导入能力
+//
+// ## 依赖
+// kb-db.ts、kb-embeddings.ts、Node.js fs/path
+//
+// ## 维护规则
+// 新增文件类型支持需更新分块策略
+//
 import { readFileSync, statSync } from "node:fs";
 import { extname, basename } from "node:path";
 import type { KbDB } from "./kb-db.js";

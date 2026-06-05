@@ -1,3 +1,25 @@
+// 大纲渲染器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 将大纲节点树渲染为缩进文本格式，支持预算限制和内容感知
+//
+// ## 输入
+// OutlineResult、RenderOptions（行数预算、源码内容）
+//
+// ## 输出
+// 缩进格式的大纲文本字符串
+//
+// ## 定位
+// src/runtime/tools/outline/ — 大纲模块，为 file-read 工具提供结构化视图
+//
+// ## 依赖
+// types.ts
+//
+// ## 维护规则
+// 渲染格式变更需确保可读性和一致性
+//
 import { OutlineNode, OutlineResult } from "./types.js";
 
 export interface RenderOptions {

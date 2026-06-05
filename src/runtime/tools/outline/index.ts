@@ -1,3 +1,25 @@
+// 代码大纲提取器入口
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 根据文件语言选择对应的提取器，生成代码大纲树
+//
+// ## 输入
+// 源代码文本、文件扩展名
+//
+// ## 输出
+// OutlineResult，包含大纲节点树和语言信息
+//
+// ## 定位
+// src/runtime/tools/outline/ — 大纲提取模块入口
+//
+// ## 依赖
+// types.ts、各语言 extractor（TS/Python/JSON/MD/C/Java/Go/Rust/HTML）
+//
+// ## 维护规则
+// 新增语言支持需在此注册对应的 extractor
+//
 import { OutlineResult, OutlineNode, LangExtractor } from "./types.js";
 import { TypeScriptExtractor } from "./extractors/typescript.js";
 import { PythonExtractor } from "./extractors/python.js";

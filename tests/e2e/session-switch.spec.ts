@@ -1,3 +1,26 @@
+// E2E 测试：会话切换
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 验证会话 A 到 B 再切回 A 时消息历史完整保留，无重复或丢失
+//
+// ## 输入
+// simple-response.json fixture（mock provider 响应）
+//
+// ## 输出
+// Playwright 测试用例：switching A → B → A preserves history
+//
+// ## 定位
+// tests/e2e/ — E2E 测试套件，验证会话切换流程
+//
+// ## 依赖
+// @playwright/test、./helpers/test-app（launchApp、waitForAppReady、selectTestAgent、sendChatMessage）
+//
+// ## 维护规则
+// session-item-label CSS 类名变更需同步更新选择器
+// 会话列表 DOM 结构变更需更新 active 判断逻辑
+//
 import { test, expect } from "@playwright/test";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

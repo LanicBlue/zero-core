@@ -1,3 +1,25 @@
+// GitHub 模板工具函数
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 解析模板文件的 frontmatter 元数据和标签提取
+//
+// ## 输入
+// 模板文件内容（Markdown 文本）
+//
+// ## 输出
+// Frontmatter 键值对、标签列表、跳过判断
+//
+// ## 定位
+// src/shared/ — 共享层，为主进程和渲染器提供模板解析工具
+//
+// ## 依赖
+// 无外部依赖
+//
+// ## 维护规则
+// frontmatter 格式变更需同步更新解析逻辑
+//
 export function parseFrontmatter(content: string): Record<string, string> | null {
 	const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
 	if (!fmMatch) return null;

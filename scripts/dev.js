@@ -1,3 +1,27 @@
+// 开发模式启动脚本
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 开发环境启动脚本，处理构建检查和 electron-vite 启动。
+//
+// ## 输入
+// - 命令行参数
+//
+// ## 输出
+// - 启动的开发服务器
+//
+// ## 定位
+// 开发脚本，通过 npm run dev 调用。
+//
+// ## 依赖
+// - child_process - 进程管理
+// - fs - 文件系统
+//
+// ## 维护规则
+// - 构建逻辑变更时需更新
+// - 保持跨平台兼容性
+//
 // Dev launcher that removes ELECTRON_RUN_AS_NODE before starting electron-vite
 // VSCode's Claude Code extension sets ELECTRON_RUN_AS_NODE=1, which breaks Electron
 delete process.env.ELECTRON_RUN_AS_NODE;

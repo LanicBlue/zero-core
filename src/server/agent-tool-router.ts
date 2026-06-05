@@ -1,3 +1,25 @@
+// Agent 工具 REST API 路由
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供 Agent 自定义工具的 Express REST API 路由（列表、创建、更新、删除）
+//
+// ## 输入
+// HTTP 请求、AgentToolStore
+//
+// ## 输出
+// Express Router，处理 Agent 工具 CRUD API
+//
+// ## 定位
+// src/server/ — 服务层，为外部 API 提供 Agent 工具管理端点
+//
+// ## 依赖
+// express、agent-tool-store.ts
+//
+// ## 维护规则
+// API 路径变更需同步更新前端调用
+//
 import { Router } from "express";
 import type { AgentToolStore } from "./agent-tool-store.js";
 

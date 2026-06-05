@@ -1,3 +1,25 @@
+// IPC 模块总注册入口
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 集中注册所有 IPC handler，初始化模块就绪状态，协调主进程与渲染器通信
+//
+// ## 输入
+// BrowserWindow 实例
+//
+// ## 输出
+// 完成所有 IPC handler 的注册和模块初始化
+//
+// ## 定位
+// src/main/ — 主进程入口，IPC 层的总协调者
+//
+// ## 依赖
+// 所有 ipc/ 子模块、core/logger.ts
+//
+// ## 维护规则
+// 新增 IPC handler 模块时需在此文件导入并注册
+//
 import type { BrowserWindow } from "electron";
 import { log } from "../core/logger.js";
 import { loadCoreModules, getModuleState, setMainWindow } from "./ipc/core.js";
@@ -18,7 +40,7 @@ import { registerGithubTemplateHandlers } from "./ipc/github-template-handlers.j
 import { registerMcpHandlers } from "./ipc/mcp-handlers.js";
 import { registerKbHandlers } from "./ipc/kb-handlers.js";
 import { registerLogHandlers } from "./ipc/log-handlers.js";
-import { registerSearchProviderHandlers } from "./ipc/search-provider-handlers.js";
+import { registerToolExecutionHandlers } from "./ipc/tool-execution-handlers.js";
 
 export function registerIpc(win: BrowserWindow): void {
 	setMainWindow(win);
@@ -41,7 +63,7 @@ export function registerIpc(win: BrowserWindow): void {
 	registerMcpHandlers(ctx);
 	registerKbHandlers(ctx);
 	registerLogHandlers(ctx);
-	registerSearchProviderHandlers(ctx);
+	registerToolExecutionHandlers(ctx);
 
 	log.ipc("All handlers registered");
 

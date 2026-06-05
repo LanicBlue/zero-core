@@ -1,3 +1,28 @@
+// 聊天状态管理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 聊天相关的 Zustand 状态管理，包括消息、会话和流式状态。
+//
+// ## 输入
+// - IPC 事件（session_init, text_delta, tool_start 等）
+//
+// ## 输出
+// - 状态选择器
+// - 状态更新函数
+//
+// ## 定位
+// 渲染进程状态管理，被聊天组件使用。
+//
+// ## 依赖
+// - zustand - 状态管理
+// - ../../shared/types - 共享类型
+//
+// ## 维护规则
+// - 新增状态字段时需更新类型
+// - 保持状态更新幂等性
+//
 import { create } from "zustand";
 import type { SessionRecord } from "../../shared/types.js";
 

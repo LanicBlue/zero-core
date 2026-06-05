@@ -1,3 +1,25 @@
+// HTML/XML/SVG 大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 HTML/XML/SVG 中提取标签结构，构建 DOM 树父子嵌套大纲
+//
+// ## 输入
+// HTML/XML/SVG 文本
+//
+// ## 输出
+// OutlineNode 数组（标签节点树）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// 自闭合标签和特殊标签（script/style）需正确处理
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

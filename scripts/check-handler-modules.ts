@@ -1,3 +1,25 @@
+// IPC Handler 模块依赖静态检查
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 静态分析所有 typedHandle/registerCrud handler，确保声明的模块依赖与实际访问一致
+//
+// ## 输入
+// src/main/ipc/ 下所有 handler 源码
+//
+// ## 输出
+// 检查结果（缺失模块声明警告）
+//
+// ## 定位
+// scripts/ — 构建脚本，CI 质量检查
+//
+// ## 依赖
+// typescript（TS AST 解析）
+//
+// ## 维护规则
+// 新增 IPC handler 模式需确保此检查能覆盖
+//
 // Static check: ensure every typedHandle/registerCrud handler declares all
 // the modules it actually accesses on ctx.
 //

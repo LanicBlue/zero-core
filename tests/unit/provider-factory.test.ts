@@ -1,3 +1,26 @@
+// 单元测试：Provider 工厂
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 测试 Provider 工厂的模型解析、上下文窗口查询、Provider 名称规范化、缓存和错误处理
+//
+// ## 输入
+// src/runtime/provider-factory.js 导出的 resolveModel、getContextWindow、clearProviderCache
+//
+// ## 输出
+// Vitest 测试用例覆盖 context window 回退、名称规范化、mock provider 创建、缓存行为和错误抛出
+//
+// ## 定位
+// tests/unit/ — 单元测试套件，验证 LLM Provider 工厂逻辑
+//
+// ## 依赖
+// vitest、../../src/runtime/provider-factory、../../src/runtime/types
+//
+// ## 维护规则
+// Provider 创建逻辑变更需更新 makeProvider 工厂函数
+// 新增 Provider 类型需添加对应测试
+//
 import { describe, test, expect, beforeEach } from "vitest";
 import {
 	resolveModel,

@@ -1,3 +1,25 @@
+// LLM Provider 工厂
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 根据 RuntimeProviderConfig 创建和缓存 LLM provider 实例
+//
+// ## 输入
+// RuntimeProviderConfig（provider 类型、API key、base URL 等）
+//
+// ## 输出
+// LanguageModel 实例，支持 OpenAI/Anthropic/Google/Mock
+//
+// ## 定位
+// src/runtime/ — 运行时层，为 agent-loop 提供模型实例
+//
+// ## 依赖
+// @ai-sdk/openai、@ai-sdk/anthropic、@ai-sdk/google、mock-language-model.ts
+//
+// ## 维护规则
+// 新增 provider 支持时需在此添加创建逻辑
+//
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";

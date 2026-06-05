@@ -1,3 +1,25 @@
+// 设备信息采集模块
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 采集当前设备的硬件和系统信息（CPU、内存、网络、操作系统等）
+//
+// ## 输入
+// IKVStore 实例（用于缓存）
+//
+// ## 输出
+// DeviceInfo 对象，包含完整的设备信息
+//
+// ## 定位
+// src/core/ — 核心层，为 system-prompt 和上下文管理提供设备信息
+//
+// ## 依赖
+// Node.js os/child_process 模块、kv-store-interface.ts
+//
+// ## 维护规则
+// 新增设备信息字段时需同步更新 DeviceInfo 接口
+//
 import { execSync } from "node:child_process";
 import { arch, cpus, hostname, networkInterfaces, platform, release, totalmem, type } from "node:os";
 import type { IKVStore } from "./kv-store-interface.js";

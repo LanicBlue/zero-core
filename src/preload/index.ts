@@ -1,3 +1,27 @@
+// 预加载脚本
+//
+// # 文件说明书
+//
+// ## 核心功能
+// Electron 预加载脚本，通过 contextBridge 暴露安全的 IPC API。
+//
+// ## 输入
+// - IPC 调用
+//
+// ## 输出
+// - window.api 对象
+//
+// ## 定位
+// 预加载脚本，被 Electron 主进程加载。
+//
+// ## 依赖
+// - electron - Electron 框架
+// - ../shared/preload-types - 类型定义
+//
+// ## 维护规则
+// - 新增 IPC 通道时需同步添加
+// - 保持类型安全
+//
 import { contextBridge, ipcRenderer } from "electron";
 import type { WindowApi } from "../shared/preload-types.js";
 
@@ -154,6 +178,12 @@ const api: WindowApi = {
 	askUserRespond: (requestId, answers) => ipcRenderer.invoke("ask-user:respond", requestId, answers),
 	getSearchProvider: () => ipcRenderer.invoke("search-provider:get"),
 	setSearchProvider: (config) => ipcRenderer.invoke("search-provider:set", config),
+
+		// ── Tool Executions ──
+		toolExecutionsQuery: (filter) => ipcRenderer.invoke("tool-executions:query", filter),
+		toolExecutionsStats: (agentId?) => ipcRenderer.invoke("tool-executions:stats", agentId),
+		toolExecutionsCleanup: (maxAgeMs) => ipcRenderer.invoke("tool-executions:cleanup", maxAgeMs),
+		toolExecutionsAnalyze: (agentId?) => ipcRenderer.invoke("tool-executions:analyze", agentId),
 };
 
 contextBridge.exposeInMainWorld("api", api);

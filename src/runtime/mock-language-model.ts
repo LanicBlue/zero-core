@@ -1,3 +1,26 @@
+// Mock 语言模型，基于 fixture 重放事件序列
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供 AI SDK LanguageModelV2 接口的 mock 实现，通过 JSON fixture 文件定义流式响应序列，用于 E2E 测试
+//
+// ## 输入
+// fixture 文件路径（JSON 格式的 MockFixture）、可选的 modelId
+//
+// ## 输出
+// 符合 LanguageModelV2 接口的 mock 模型实例，支持 doGenerate 和 doStream
+//
+// ## 定位
+// src/runtime/ — 运行时测试基础设施，被 provider-factory 在 type=mock 时调用
+//
+// ## 依赖
+// @ai-sdk/provider（LanguageModelV2 类型）、node:fs
+//
+// ## 维护规则
+// fixture 格式变更需同步更新 MockFixture 接口和 E2E fixture 文件
+// 新增 chunk 类型需在 toStreamPart 中添加转换逻辑
+//
 import { readFileSync } from "node:fs";
 import type { LanguageModelV2, LanguageModelV2StreamPart, LanguageModelV2CallOptions } from "@ai-sdk/provider";
 

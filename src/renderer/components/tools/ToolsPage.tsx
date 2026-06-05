@@ -1,3 +1,28 @@
+// 工具配置页面
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 工具管理页面，提供工具列表、配置和测试功能。
+//
+// ## 输入
+// - IPC API 调用（toolsList, toolConfigGet, toolConfigSave, toolExecute）
+//
+// ## 输出
+// - 工具配置更新
+// - 工具测试执行
+//
+// ## 定位
+// 渲染进程页面组件，通过 AppLayout 访问。
+//
+// ## 依赖
+// - react - React 框架
+// - window.api - IPC API
+//
+// ## 维护规则
+// - 新增工具配置字段时需同步更新
+// - 保持与后端 tool-handlers 接口一致
+//
 import React, { useState, useEffect } from "react";
 
 const api = () => (window as any).api;

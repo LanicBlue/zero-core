@@ -1,3 +1,25 @@
+// 知识库 REST API 路由
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供知识库的 Express REST API 路由（列表、导入、搜索、删除）
+//
+// ## 输入
+// HTTP 请求、KbStore、KbDB、ProviderStore
+//
+// ## 输出
+// Express Router，处理知识库管理 API
+//
+// ## 定位
+// src/server/ — 服务层，为外部 API 提供知识库管理端点
+//
+// ## 依赖
+// express、kb-store.ts、kb-db.ts、kb-ingest.ts、kb-search.ts
+//
+// ## 维护规则
+// 知识库 API 路径变更需同步更新前端调用
+//
 import { Router } from "express";
 import { statSync } from "node:fs";
 import { basename } from "node:path";

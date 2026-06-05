@@ -1,3 +1,25 @@
+// 终端输出适配器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 将 agent 流式事件转换为终端 ANSI 彩色输出，支持 CLI 模式交互
+//
+// ## 输入
+// StreamEvent 流式事件、AskUserEvent 用户交互事件
+//
+// ## 输出
+// 终端 ANSI 格式化输出
+//
+// ## 定位
+// src/runtime/ — 运行时层，适配 CLI 终端显示
+//
+// ## 依赖
+// Node.js readline、pending-responses.ts
+//
+// ## 维护规则
+// 新增事件类型时需在此添加对应的终端渲染逻辑
+//
 import * as readline from "node:readline";
 import type { StreamEvent, AskUserEvent } from "./types.js";
 import { pendingResponses } from "./pending-responses.js";

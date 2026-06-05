@@ -1,3 +1,25 @@
+// 角色配置持久化存储
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理 AI 角色配置的文件系统持久化存储（JSON 文件）
+//
+// ## 输入
+// PersonaRecord 数据（ID、名称、角色、特征、通信风格等）
+//
+// ## 输出
+// 角色列表、CRUD 操作
+//
+// ## 定位
+// src/server/ — 服务层，为 IPC 提供角色配置存储
+//
+// ## 依赖
+// uuid、core/config.ts、Node.js fs/path
+//
+// ## 维护规则
+// 角色字段变更需确保 JSON 迁移兼容
+//
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { v4 as uuidv4 } from "uuid";

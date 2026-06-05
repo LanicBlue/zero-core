@@ -1,3 +1,25 @@
+// Python 代码大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 Python 源码中提取 import、class、function、async def 等大纲节点
+//
+// ## 输入
+// Python 源代码文本
+//
+// ## 输出
+// OutlineNode 数组（类、函数、导入等）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// Python 新语法（如 match/case）需更新提取正则
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 export class PythonExtractor implements LangExtractor {

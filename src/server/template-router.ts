@@ -1,3 +1,25 @@
+// 模板 REST API 路由
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供 Agent 模板的 Express REST API 路由（列表、创建、更新、删除）
+//
+// ## 输入
+// HTTP 请求、TemplateStore
+//
+// ## 输出
+// Express Router，处理模板 CRUD API
+//
+// ## 定位
+// src/server/ — 服务层，为外部 API 提供模板管理端点
+//
+// ## 依赖
+// express、template-store.ts
+//
+// ## 维护规则
+// 内置模板不可删除，需在路由中保留保护逻辑
+//
 import { Router } from "express";
 import type { TemplateStore } from "./template-store.js";
 

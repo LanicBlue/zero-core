@@ -1,3 +1,30 @@
+// Bash 执行工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 执行 Shell 命令，返回输出和错误信息。
+//
+// ## 输入
+// - 命令字符串
+// - 工作目录
+//
+// ## 输出
+// - stdout 输出
+// - stderr 错误
+// - 退出码
+//
+// ## 定位
+// Runtime 工具，被 Agent 调用。
+//
+// ## 依赖
+// - zod - 数据验证
+// - node:child_process - 进程执行
+//
+// ## 维护规则
+// - 保持安全限制（超时、缓冲区）
+// - 新增危险命令黑名单时需更新
+//
 import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";

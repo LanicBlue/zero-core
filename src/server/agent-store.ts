@@ -1,3 +1,27 @@
+// Agent 存储
+//
+// # 文件说明书
+//
+// ## 核心功能
+// Agent 数据持久化，基于 SqliteStore 的 CRUD 操作。
+//
+// ## 输入
+// - SessionDB 实例
+// - Agent 数据
+//
+// ## 输出
+// - AgentRecord CRUD
+//
+// ## 定位
+// 服务层存储，被 agent-service 使用。
+//
+// ## 依赖
+// - ./sqlite-store - 通用存储
+// - ../core/default-prompt - 默认提示词
+//
+// ## 维护规则
+// - 新增字段时需更新列定义
+//
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";

@@ -1,3 +1,25 @@
+// Elixir 代码大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 Elixir 源码中提取 defmodule、def、defp 等大纲节点
+//
+// ## 输入
+// Elixir 源代码文本
+//
+// ## 输出
+// OutlineNode 数组（模块、公有函数、私有函数等）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// Elixir 宏和 guard 需正确处理
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

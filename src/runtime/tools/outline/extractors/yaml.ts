@@ -1,3 +1,25 @@
+// YAML 配置大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 YAML 文件中提取键层级结构（key hierarchy）和锚点
+//
+// ## 输入
+// YAML 文本
+//
+// ## 输出
+// OutlineNode 数组（键层级节点树）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// 多文档 YAML（---分隔）需正确分段处理
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

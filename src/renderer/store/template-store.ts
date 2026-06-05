@@ -1,3 +1,25 @@
+// 模板前端状态管理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理 Agent 模板的前端状态和 IPC 调用
+//
+// ## 输入
+// IPC API 调用结果
+//
+// ## 输出
+// TemplateState（模板列表、加载状态、CRUD 操作）
+//
+// ## 定位
+// src/renderer/store/ — 渲染进程状态层，为模板页面提供数据
+//
+// ## 依赖
+// zustand、shared/types.ts、preload API
+//
+// ## 维护规则
+// 模板字段变更需同步更新 shared/types.ts
+//
 import { create } from "zustand";
 import type { PromptTemplate } from "../../shared/types.js";
 

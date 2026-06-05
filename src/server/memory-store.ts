@@ -1,3 +1,25 @@
+// 知识图谱持久化存储
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 基于 SQLite 的知识图谱持久化，使用 memory_entities + memory_relations 表
+//
+// ## 输入
+// 实体数据、关系数据
+//
+// ## 输出
+// 实体/关系的 CRUD 操作、图谱查询
+//
+// ## 定位
+// src/server/ — 服务层，为 memory-tools 提供知识图谱存储后端
+//
+// ## 依赖
+// better-sqlite3、core/logger.ts、core/config.ts
+//
+// ## 维护规则
+// 图谱 schema 变更需提供数据迁移脚本
+//
 import type Database from "better-sqlite3";
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";

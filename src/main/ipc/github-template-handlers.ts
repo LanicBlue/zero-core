@@ -1,3 +1,25 @@
+// GitHub 模板同步 IPC handlers
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 GitHub 仓库同步模板文件，支持 frontmatter 解析和缓存
+//
+// ## 输入
+// GitHub 仓库 URL、模板目录路径
+//
+// ## 输出
+// 解析后的模板列表，带 SHA 缓存
+//
+// ## 定位
+// src/main/ipc/ — 主进程 IPC 层，支持远程模板导入
+//
+// ## 依赖
+// typed-ipc.ts、shared/github-template-utils.ts、core/logger.ts
+//
+// ## 维护规则
+// GitHub API 变更或模板格式变更需更新解析逻辑
+//
 import { typedHandle } from "./typed-ipc.js";
 import { parseFrontmatter, extractTag, shouldSkipMd } from "../../shared/github-template-utils.js";
 import { getMainWindow } from "./core.js";

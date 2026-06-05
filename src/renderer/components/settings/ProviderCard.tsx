@@ -1,3 +1,25 @@
+// Provider 卡片组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 以卡片形式展示单个 LLM Provider 的配置和状态
+//
+// ## 输入
+// Provider 数据、编辑回调
+//
+// ## 输出
+// Provider 卡片 JSX（含编辑/删除/测试操作）
+//
+// ## 定位
+// src/renderer/components/settings/ — 设置页面组件，用于 Provider 列表展示
+//
+// ## 依赖
+// React、store/provider-store.ts、shared/types.ts
+//
+// ## 维护规则
+// Provider 字段变更需更新卡片展示内容
+//
 import { useState } from "react";
 import { useProviderStore } from "../../store/provider-store.js";
 import type { Provider } from "../../../shared/types.js";

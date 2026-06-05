@@ -1,3 +1,25 @@
+// Agent 子任务委派工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 定义 Agent 工具，支持阻塞/非阻塞两种模式的子任务委派
+//
+// ## 输入
+// 子任务描述、委派模式（blocking/non_blocking）
+//
+// ## 输出
+// 阻塞模式返回子 Agent 输出，非阻塞模式返回 task_id
+//
+// ## 定位
+// src/runtime/tools/ — 工具层，供 agent-loop 调用
+//
+// ## 依赖
+// zod、tool-factory.ts
+//
+// ## 维护规则
+// 新增委派参数需同步更新 zod schema
+//
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 

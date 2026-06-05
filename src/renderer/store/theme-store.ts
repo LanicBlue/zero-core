@@ -1,3 +1,25 @@
+// 主题模式状态管理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理应用主题模式（dark/light/system）和自定义主色调
+//
+// ## 输入
+// 主题模式切换请求、自定义颜色值
+//
+// ## 输出
+// ThemeState（mode、resolvedTheme、customPrimaryColor）
+//
+// ## 定位
+// src/renderer/store/ — 渲染进程状态层，为 UI 提供主题配置
+//
+// ## 依赖
+// zustand
+//
+// ## 维护规则
+// 主题模式变更需确保 resolvedTheme 正确解析
+//
 import { create } from "zustand";
 
 type ThemeMode = "dark" | "light" | "system";

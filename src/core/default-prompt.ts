@@ -1,3 +1,25 @@
+// 默认系统提示词构建器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 根据角色名称生成默认的系统提示词（system prompt）
+//
+// ## 输入
+// 角色名称字符串
+//
+// ## 输出
+// 完整的默认系统提示词文本
+//
+// ## 定位
+// src/core/ — 核心层，为 system-prompt.ts 提供兜底提示词
+//
+// ## 依赖
+// 无外部依赖
+//
+// ## 维护规则
+// 修改默认行为原则时需同步更新文档
+//
 export function buildDefaultPrompt(name: string): string {
 	return `You are ${name}, an expert coding assistant designed to help users with software development tasks.
 

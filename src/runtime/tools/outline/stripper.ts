@@ -1,3 +1,25 @@
+// 注释和字符串剥离器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从源代码中剥离注释和字符串字面量，保留行号，防止提取器误匹配
+//
+// ## 输入
+// 源代码文本、CommentStyle（c/hash/html）
+//
+// ## 输出
+// 剥离后的源代码文本（空格替换）
+//
+// ## 定位
+// src/runtime/tools/outline/ — 大纲模块，为各语言提取器提供预处理
+//
+// ## 依赖
+// 无外部依赖
+//
+// ## 维护规则
+// 新增注释风格需更新 CommentStyle 类型和剥离逻辑
+//
 /**
  * Strip comments and string literals from source code while preserving line numbers.
  * Replaces comment/string content with spaces so regex-based extractors don't match

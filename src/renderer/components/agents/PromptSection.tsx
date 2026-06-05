@@ -1,3 +1,25 @@
+// Agent 提示词编辑区段
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 在 Agent 编辑器中管理系统提示词（system prompt）的编辑和预览
+//
+// ## 输入
+// FormState 中的 systemPrompt 字段、ref 引用
+//
+// ## 输出
+// 提示词编辑器 + Markdown 预览 JSX
+//
+// ## 定位
+// src/renderer/components/agents/ — Agent 编辑器的子区段
+//
+// ## 依赖
+// React、common/MarkdownRenderer.tsx、agent-editor-types.ts
+//
+// ## 维护规则
+// 提示词模板变量变更需同步更新预览
+//
 import type { MutableRefObject } from "react";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
 import type { FormState } from "./agent-editor-types.js";

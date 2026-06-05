@@ -1,3 +1,26 @@
+// E2E 测试：基础聊天功能
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 验证发送单条消息后渲染进程正确显示一条用户气泡和一条助手气泡
+//
+// ## 输入
+// simple-response.json fixture（mock provider 响应）
+//
+// ## 输出
+// Playwright 测试用例：send message produces one user and one assistant bubble
+//
+// ## 定位
+// tests/e2e/ — E2E 测试套件，验证核心聊天流程
+//
+// ## 依赖
+// @playwright/test、./helpers/test-app（launchApp、waitForAppReady、selectTestAgent、sendChatMessage）
+//
+// ## 维护规则
+// fixture 内容变更需同步更新断言中的期望文本
+// 测试需在 mock provider 模式下运行
+//
 import { test, expect } from "@playwright/test";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

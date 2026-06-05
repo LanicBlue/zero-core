@@ -1,3 +1,29 @@
+// 知识库页面
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 知识库管理页面，支持创建、编辑和搜索知识库。
+//
+// ## 输入
+// - 知识库状态
+// - IPC API 调用
+//
+// ## 输出
+// - 知识库列表
+// - 搜索结果
+//
+// ## 定位
+// 渲染进程页面，被 AppLayout 使用。
+//
+// ## 依赖
+// - react - React 框架
+// - ../../store - 状态管理
+//
+// ## 维护规则
+// - 新增知识库功能时需更新
+// - 保持搜索逻辑正确
+//
 import React, { useState } from "react";
 import { useKbStore } from "../../store/kb-store.js";
 import type { KnowledgeBase, KbFileInfo } from "../../../shared/types.js";

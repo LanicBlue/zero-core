@@ -1,3 +1,30 @@
+// 配置管理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 定义和管理 zero-core 的配置 schema，提供配置加载和验证功能。
+//
+// ## 输入
+// - 配置文件路径（默认 ~/.zero-core/config.yaml）
+//
+// ## 输出
+// - ZeroCoreConfigSchema - 配置 schema
+// - loadConfig() - 加载配置的函数
+// - DEFAULT_CONFIG - 默认配置值
+//
+// ## 定位
+// 核心配置模块，被整个项目使用。
+//
+// ## 依赖
+// - typebox - Schema 定义
+// - node:fs - 文件系统操作
+// - ./kv-store-interface - KV 存储
+//
+// ## 维护规则
+// - 新增配置项时需更新 schema
+// - 保持默认值与 schema 一致
+//
 import { Type, type Static } from "typebox";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";

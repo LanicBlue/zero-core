@@ -1,3 +1,30 @@
+// CLI 入口
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 命令行接口入口，提供终端交互模式。
+//
+// ## 输入
+// - 命令行参数
+// - stdin 输入
+//
+// ## 输出
+// - stdout 输出
+// - Agent 响应
+//
+// ## 定位
+// CLI 入口，通过 zero-core 命令调用。
+//
+// ## 依赖
+// - ./runtime/agent-loop - Agent 循环
+// - ./runtime/terminal-adapter - 终端适配
+// - ./core/config - 配置
+//
+// ## 维护规则
+// - CLI 参数变更时需更新
+// - 保持终端交互逻辑正确
+//
 #!/usr/bin/env node
 import * as readline from "node:readline";
 import { homedir } from "node:os";

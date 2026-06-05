@@ -1,3 +1,25 @@
+// PHP 代码大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 PHP 源码中提取 namespace、class、function、interface、trait 等大纲节点
+//
+// ## 输入
+// PHP 源代码文本
+//
+// ## 输出
+// OutlineNode 数组（命名空间、类、函数、接口等）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// PHP 8 新特性（如 enum、attribute）需更新提取逻辑
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

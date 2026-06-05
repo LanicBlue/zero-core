@@ -1,3 +1,25 @@
+// 网页抓取与转换工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 抓取网页内容并转换为 Markdown 格式，支持 HTML 到文本的转换
+//
+// ## 输入
+// URL 地址、抓取选项
+//
+// ## 输出
+// Markdown 格式的网页内容
+//
+// ## 定位
+// src/runtime/mcp-tools/ — 内置 MCP 工具，为 agent 提供网页访问能力
+//
+// ## 依赖
+// zod、turndown、jsdom、tools/tool-factory.ts
+//
+// ## 维护规则
+// 目标网站反爬策略变更需更新 User-Agent 和请求逻辑
+//
 import { z } from "zod";
 import TurndownService from "turndown";
 import { JSDOM } from "jsdom";

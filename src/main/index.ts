@@ -1,3 +1,29 @@
+// Electron 主进程入口
+//
+// # 文件说明书
+//
+// ## 核心功能
+// Electron 应用主进程入口，负责窗口创建、生命周期管理和 IPC 注册。
+//
+// ## 输入
+// - Electron app 事件（ready, window-all-closed 等）
+//
+// ## 输出
+// - BrowserWindow 实例（主窗口）
+// - IPC 处理器注册
+//
+// ## 定位
+// Electron 主进程入口点。
+//
+// ## 依赖
+// - electron - Electron 框架
+// - ./ipc - IPC 处理器注册
+// - ../core/constants - 常量定义
+//
+// ## 维护规则
+// - 窗口创建逻辑变更时需更新
+// - 新增 IPC 通道需在 ./ipc 中注册
+//
 import { app, BrowserWindow } from "electron";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";

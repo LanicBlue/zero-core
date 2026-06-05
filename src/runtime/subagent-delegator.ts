@@ -1,3 +1,25 @@
+// 子 Agent 委派调度器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理子 Agent 的创建、委派和结果收集，支持并行子任务执行
+//
+// ## 输入
+// 子任务描述、Agent 配置、回调函数
+//
+// ## 输出
+// 子 Agent 运行时实例和执行结果
+//
+// ## 定位
+// src/runtime/ — 运行时层，为 agent-loop 提供子任务委派能力
+//
+// ## 依赖
+// types.ts、task-registry.ts、core/logger.ts
+//
+// ## 维护规则
+// 子 Agent 生命周期变更需确保资源正确释放
+//
 import type {
 	StreamEvent,
 	RuntimeProviderConfig,

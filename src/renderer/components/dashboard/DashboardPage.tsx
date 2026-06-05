@@ -1,3 +1,28 @@
+// 仪表盘页面
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 仪表盘页面，展示会话指标和统计信息。
+//
+// ## 输入
+// - IPC API 调用（sessionsMetrics）
+//
+// ## 输出
+// - 会话统计卡片
+// - 资源使用概览
+//
+// ## 定位
+// 渲染进程页面，被 AppLayout 使用。
+//
+// ## 依赖
+// - react - React 框架
+// - window.api - IPC API
+//
+// ## 维护规则
+// - 新增指标时需更新
+// - 保持数据刷新逻辑正确
+//
 import React, { useEffect, useState, useCallback } from "react";
 
 const api = () => (window as any).api;

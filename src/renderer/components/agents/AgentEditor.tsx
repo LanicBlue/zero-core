@@ -1,3 +1,29 @@
+// Agent 编辑器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// Agent 编辑组件，提供表单编辑和验证功能。
+//
+// ## 输入
+// - Agent 数据
+// - Provider 数据
+//
+// ## 输出
+// - 编辑表单
+// - 保存/删除操作
+//
+// ## 定位
+// 渲染进程组件，被 AgentsPage 使用。
+//
+// ## 依赖
+// - react - React 框架
+// - ../../store - 状态管理
+//
+// ## 维护规则
+// - 新增字段时需更新表单
+// - 保持验证逻辑正确
+//
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useAgentStore } from "../../store/agent-store.js";
 import { useProviderStore } from "../../store/provider-store.js";

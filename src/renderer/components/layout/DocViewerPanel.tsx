@@ -1,3 +1,25 @@
+// 文档查看器面板组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 在侧面板中显示 Markdown 格式的文档内容（CLAUDE.md 等）
+//
+// ## 输入
+// 文档文件路径
+//
+// ## 输出
+// Markdown 渲染的文档内容 JSX
+//
+// ## 定位
+// src/renderer/components/layout/ — 布局组件，为用户提供上下文文档查看
+//
+// ## 依赖
+// React、common/MarkdownRenderer.tsx、preload API
+//
+// ## 维护规则
+// 文档路径解析逻辑变更需确保安全
+//
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
 

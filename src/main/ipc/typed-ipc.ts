@@ -1,3 +1,25 @@
+// 类型安全的 IPC 注册辅助工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供类型安全的 IPC handler 注册机制，支持自动模块就绪检查
+//
+// ## 输入
+// IPC 通道定义（IpcChannelDefs）、模块名称、handler 函数
+//
+// ## 输出
+// typedHandle / registerCrud 等注册函数
+//
+// ## 定位
+// src/main/ipc/ — 主进程 IPC 层基础设施
+//
+// ## 依赖
+// Electron ipcMain、shared/ipc-api.ts、module-readiness.ts
+//
+// ## 维护规则
+// 新增 IPC 通道必须通过此模块注册以确保类型安全
+//
 // ---------------------------------------------------------------------------
 // Typed IPC registration helpers.
 // Provides type-safe handler registration with automatic module readiness.

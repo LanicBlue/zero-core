@@ -1,3 +1,30 @@
+// Agent 会话管理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// Agent 会话类，管理消息历史、token 计算和上下文窗口。
+//
+// ## 输入
+// - 系统提示词
+// - 上下文窗口大小
+//
+// ## 输出
+// - 消息历史
+// - token 使用统计
+//
+// ## 定位
+// Runtime 会话管理，被 AgentLoop 使用。
+//
+// ## 依赖
+// - ai - AI SDK 类型
+// - ./session-store-interface - 会话存储
+// - ../core/hook-registry - Hook 触发
+//
+// ## 维护规则
+// - token 计算逻辑变更时需更新
+// - 保持消息修剪策略正确
+//
 import type { ModelMessage } from "ai";
 import type { ISessionStore } from "./session-store-interface.js";
 import { triggerHooks } from "../core/hook-registry.js";

@@ -1,3 +1,25 @@
+// 任务注册与状态管理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理运行时任务的注册、查询、取消和生命周期状态追踪
+//
+// ## 输入
+// TaskInfo（任务 ID、类型、描述）、AbortController
+//
+// ## 输出
+// 任务列表、任务状态、取消操作
+//
+// ## 定位
+// src/runtime/ — 运行时层，为 agent-loop 和 UI 提供任务管理
+//
+// ## 依赖
+// types.ts
+//
+// ## 维护规则
+// 新增任务类型时需更新 TaskType 联合类型
+//
 import type { TaskInfo, TaskType } from "./types.js";
 
 export class TaskRegistry {

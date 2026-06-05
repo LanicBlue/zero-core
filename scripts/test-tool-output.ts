@@ -1,3 +1,25 @@
+// 工具输出格式测试脚本
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 独立测试各内置工具的输出格式和 schema 验证
+//
+// ## 输入
+// 各工具模块（bash、file-edit、file-write 等）
+//
+// ## 输出
+// 测试结果（JSON 格式验证报告）
+//
+// ## 定位
+// scripts/ — 测试脚本，验证工具输出格式正确性
+//
+// ## 依赖
+// runtime/tools/ 下各工具模块
+//
+// ## 维护规则
+// 新增工具需在此添加对应的输出测试
+//
 import { mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";

@@ -1,9 +1,36 @@
+// 会话数据库
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 会话数据库管理，提供会话 CRUD、消息存储和 KV 存储。
+//
+// ## 输入
+// - 数据库路径
+// - SessionRecord 数据
+//
+// ## 输出
+// - SessionDB 实例
+// - KeyValueStore
+// - MemoryStore
+//
+// ## 定位
+// 服务层数据库，被 agent-service 使用。
+//
+// ## 依赖
+// - better-sqlite3 - SQLite 驱动
+// - uuid - ID 生成
+//
+// ## 维护规则
+// - 新增表或列时需同步更新 db-migration.ts
+// - 保持向后兼容
+//
 import Database from "better-sqlite3";
 import { join } from "node:path";
 import { existsSync, readdirSync, readFileSync, renameSync, mkdirSync } from "node:fs";
 import { v4 as uuidv4 } from "uuid";
 import { log } from "../core/logger.js";
-import type { SessionRecord } from "../shared/types.js";
+import type { SessionRecord, ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats } from "../shared/types.js";
 import { KeyValueStore } from "./key-value-store.js";
 import { MemoryStore } from "./memory-store.js";
 import { ZERO_CORE_DIR } from "../core/config.js";
@@ -98,6 +125,23 @@ export class SessionDB {
 				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 			);
 			CREATE INDEX IF NOT EXISTS idx_turn_state_session ON turn_state(session_id);
+
+				CREATE TABLE IF NOT EXISTS tool_executions (
+					id             INTEGER PRIMARY KEY AUTOINCREMENT,
+					session_id     TEXT NOT NULL,
+					agent_id       TEXT NOT NULL,
+					tool_name      TEXT NOT NULL,
+					success        INTEGER NOT NULL DEFAULT 1,
+					error_message  TEXT,
+					input_preview  TEXT,
+					output_preview TEXT,
+					duration_ms    INTEGER NOT NULL DEFAULT 0,
+					turn_seq       INTEGER,
+					created_at     TEXT NOT NULL
+				);
+				CREATE INDEX IF NOT EXISTS idx_tool_exec_session ON tool_executions(session_id);
+				CREATE INDEX IF NOT EXISTS idx_tool_exec_agent_tool ON tool_executions(agent_id, tool_name);
+				CREATE INDEX IF NOT EXISTS idx_tool_exec_created ON tool_executions(created_at);
 		`);
 	}
 
@@ -413,6 +457,98 @@ export class SessionDB {
 
 		deleteTurnState(sessionId: string): void {
 		this.db.prepare("DELETE FROM turn_state WHERE session_id = ?").run(sessionId);
+	}
+
+	// -----------------------------------------------------------------------
+	// Tool executions
+	// -----------------------------------------------------------------------
+
+	recordToolExecution(exec: {
+		sessionId: string;
+		agentId: string;
+		toolName: string;
+		success: boolean;
+		errorMessage?: string;
+		inputPreview?: string;
+		outputPreview?: string;
+		durationMs: number;
+		turnSeq?: number;
+	}): void {
+		this.db.prepare(
+			"INSERT INTO tool_executions (session_id, agent_id, tool_name, success, error_message, input_preview, output_preview, duration_ms, turn_seq, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+		).run(
+			exec.sessionId,
+			exec.agentId,
+			exec.toolName,
+			exec.success ? 1 : 0,
+			exec.errorMessage ?? null,
+			exec.inputPreview ?? null,
+			exec.outputPreview ?? null,
+			exec.durationMs,
+			exec.turnSeq ?? null,
+			new Date().toISOString()
+		);
+	}
+
+	queryToolExecutions(filter: ToolExecutionFilter): ToolExecutionRecord[] {
+		const clauses: string[] = ["1=1"];
+		const params: any[] = [];
+		if (filter.agentId) { clauses.push("agent_id = ?"); params.push(filter.agentId); }
+		if (filter.sessionId) { clauses.push("session_id = ?"); params.push(filter.sessionId); }
+		if (filter.toolName) { clauses.push("tool_name = ?"); params.push(filter.toolName); }
+		if (filter.success !== undefined) { clauses.push("success = ?"); params.push(filter.success ? 1 : 0); }
+		const where = clauses.join(" AND ");
+		const limit = filter.limit ?? 100;
+		const offset = filter.offset ?? 0;
+		const rows = this.db.prepare(
+			"SELECT * FROM tool_executions WHERE " + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+		).all(...params, limit, offset) as any[];
+		return rows.map(r => this.toolExecRowToRecord(r));
+	}
+
+	getToolExecutionStats(agentId?: string): ToolExecutionStats[] {
+		const params: any[] = [];
+		let where = "";
+		if (agentId) { where = " WHERE agent_id = ?"; params.push(agentId); }
+		const rows = this.db.prepare(
+			"SELECT tool_name, COUNT(*) as total_calls, SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as error_count, " +
+			"ROUND(AVG(duration_ms), 1) as avg_duration_ms, " +
+			"MAX(CASE WHEN success = 0 THEN created_at END) as last_error_at " +
+			"FROM tool_executions" + where + " GROUP BY tool_name ORDER BY error_count DESC, total_calls DESC"
+		).all(...params) as any[];
+		return rows.map(r => ({
+			toolName: r.tool_name,
+			totalCalls: r.total_calls,
+			errorCount: r.error_count,
+			errorRate: r.total_calls > 0 ? Math.round((r.error_count / r.total_calls) * 1000) / 1000 : 0,
+			avgDurationMs: r.avg_duration_ms ?? 0,
+			lastErrorAt: r.last_error_at ?? undefined,
+		}));
+	}
+
+	cleanOldToolExecutions(maxAgeMs: number): number {
+		const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+		const result = this.db.prepare("DELETE FROM tool_executions WHERE created_at < ?").run(cutoff);
+		if (result.changes > 0) {
+			log.db("cleanOldToolExecutions removed " + result.changes + " row(s) older than " + maxAgeMs + "ms");
+		}
+		return result.changes;
+	}
+
+	private toolExecRowToRecord(row: any): ToolExecutionRecord {
+		return {
+			id: row.id,
+			sessionId: row.session_id,
+			agentId: row.agent_id,
+			toolName: row.tool_name,
+			success: row.success === 1,
+			errorMessage: row.error_message ?? undefined,
+			inputPreview: row.input_preview ?? undefined,
+			outputPreview: row.output_preview ?? undefined,
+			durationMs: row.duration_ms,
+			turnSeq: row.turn_seq ?? undefined,
+			createdAt: row.created_at,
+		};
 	}
 
 	// -----------------------------------------------------------------------

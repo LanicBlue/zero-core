@@ -1,9 +1,35 @@
-import type { ISessionStore } from "./session-store-interface.js";
-import { parseThinkingTags } from "./agent-utils.js";
-
+// 轮次记录器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 记录流式输出的轮次数据，包括文本、思考和工具调用。
+//
+// ## 输入
+// - 流式事件
+// - 会话存储
+//
+// ## 输出
+// - 轮次数据
+// - 工具调用记录
+//
+// ## 定位
+// Runtime 记录器，被 AgentLoop 使用。
+//
+// ## 依赖
+// - ./session-store-interface - 会话存储
+// - ./agent-utils - 工具函数
+//
+// ## 维护规则
+// - 新增事件类型时需更新
+// - 保持记录准确性
+//
 // ---------------------------------------------------------------------------
 // TurnRecorder — collects streaming blocks and persists turns to the DB
 // ---------------------------------------------------------------------------
+
+import { parseThinkingTags } from "./agent-utils.js";
+import type { ISessionStore } from "./session-store-interface.js";
 
 /**
  * Manages the turnBlocks array during a streaming run and provides methods

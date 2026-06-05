@@ -1,3 +1,25 @@
+// 文件树面板组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 展示项目文件目录树，支持文件浏览和选择
+//
+// ## 输入
+// chat-store 中的工作目录路径
+//
+// ## 输出
+// 可交互的文件目录树 JSX
+//
+// ## 定位
+// src/renderer/components/layout/ — 布局组件，为用户提供文件导航
+//
+// ## 依赖
+// React、store/chat-store.ts、store/agent-store.ts
+//
+// ## 维护规则
+// 大型目录的懒加载需确保性能
+//
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useChatStore } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";

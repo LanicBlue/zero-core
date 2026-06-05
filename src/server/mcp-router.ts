@@ -1,3 +1,25 @@
+// MCP 服务器 REST API 路由
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供 MCP 服务器的 Express REST API 路由（列表、创建、更新、删除、工具调用）
+//
+// ## 输入
+// HTTP 请求、McpStore、MCPManager
+//
+// ## 输出
+// Express Router，处理 MCP 服务器管理 API
+//
+// ## 定位
+// src/server/ — 服务层，为外部 API 提供 MCP 管理端点
+//
+// ## 依赖
+// express、mcp-store.ts、mcp-manager.ts
+//
+// ## 维护规则
+// 新增 MCP 操作类型需在此添加对应路由
+//
 import { Router } from "express";
 import type { McpStore } from "./mcp-store.js";
 import type { MCPManager } from "./mcp-manager.js";

@@ -1,3 +1,26 @@
+// 知识库存储
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 知识库数据持久化，管理知识库和文件索引。
+//
+// ## 输入
+// - SessionDB 实例
+// - 知识库数据
+//
+// ## 输出
+// - KnowledgeBase CRUD
+//
+// ## 定位
+// 服务层存储，被 IPC 处理器使用。
+//
+// ## 依赖
+// - ./sqlite-store - 通用存储
+//
+// ## 维护规则
+// - 新增字段时需更新列定义
+//
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { KnowledgeBase, KbFileInfo } from "../shared/types.js";

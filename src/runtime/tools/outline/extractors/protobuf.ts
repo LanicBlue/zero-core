@@ -1,3 +1,25 @@
+// Protobuf 大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 Protocol Buffers 定义中提取 message、enum、service 等大纲节点
+//
+// ## 输入
+// .proto 文本
+//
+// ## 输出
+// OutlineNode 数组（message、enum、service、option 等）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// proto3 语法需完整支持
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

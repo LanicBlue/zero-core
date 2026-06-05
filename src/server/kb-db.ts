@@ -1,3 +1,25 @@
+// 知识库向量数据库
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理知识库的 SQLite 向量数据库，存储文档分块（chunk）和嵌入向量
+//
+// ## 输入
+// 文档分块文本、嵌入向量
+//
+// ## 输出
+// KbChunk 数据（含向量相似度查询）
+//
+// ## 定位
+// src/server/ — 服务层，为知识库系统提供向量存储和检索
+//
+// ## 依赖
+// better-sqlite3、core/config.ts
+//
+// ## 维护规则
+// 向量维度变更需重建索引
+//
 import Database from "better-sqlite3";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";

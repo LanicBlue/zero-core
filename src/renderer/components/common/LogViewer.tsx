@@ -1,3 +1,25 @@
+// 日志查看器组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 实时显示应用日志，支持级别过滤和自动滚动
+//
+// ## 输入
+// preload API 返回的日志数据
+//
+// ## 输出
+// 日志列表 JSX（含级别筛选、自动滚动到底部）
+//
+// ## 定位
+// src/renderer/components/common/ — 通用组件，为用户提供调试日志查看
+//
+// ## 依赖
+// React、preload API
+//
+// ## 维护规则
+// 日志级别变更需同步更新过滤器
+//
 import React, { useState, useEffect, useCallback, useRef } from "react";
 
 const api = () => (window as any).api;

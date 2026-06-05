@@ -1,3 +1,28 @@
+// SQLite 通用存储
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 通用 SQLite CRUD 操作，提供表级别的增删改查。
+//
+// ## 输入
+// - Database 实例
+// - 表名
+//
+// ## 输出
+// - CRUD 操作结果
+//
+// ## 定位
+// 服务层数据访问，被各种 Store 使用。
+//
+// ## 依赖
+// - better-sqlite3 - SQLite 驱动
+// - uuid - ID 生成
+//
+// ## 维护规则
+// - 新增列时需同步更新 COLUMNS 数组
+// - 保持查询性能
+//
 import type Database from "better-sqlite3";
 import { v4 as uuidv4 } from "uuid";
 import { readFileSync, existsSync, renameSync } from "node:fs";

@@ -1,3 +1,28 @@
+// Agent 状态管理
+//
+// # 文件说明书
+//
+// ## 核心功能
+// Agent 相关的 Zustand 状态管理，包括 Agent 列表和配置。
+//
+// ## 输入
+// - IPC 事件（agents:list 等）
+//
+// ## 输出
+// - Agent 列表
+// - CRUD 操作
+//
+// ## 定位
+// 渲染进程状态管理，被 Agent 组件使用。
+//
+// ## 依赖
+// - zustand - 状态管理
+// - ../../shared/types - 共享类型
+//
+// ## 维护规则
+// - 新增 Agent 字段时需更新类型
+// - 保持与 IPC 接口一致
+//
 import { create } from "zustand";
 import type { AgentRecord } from "../../shared/types.js";
 

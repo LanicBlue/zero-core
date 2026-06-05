@@ -1,3 +1,29 @@
+// 设置页面
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 设置页面，管理 Provider、设备上下文、指南和工作空间配置。
+//
+// ## 输入
+// - Provider 状态
+// - IPC API 调用
+//
+// ## 输出
+// - 设置表单
+// - 配置保存
+//
+// ## 定位
+// 渲染进程页面，被 AppLayout 使用。
+//
+// ## 依赖
+// - react - React 框架
+// - ../../store - 状态管理
+//
+// ## 维护规则
+// - 新增设置项时需更新
+// - 保持配置保存逻辑正确
+//
 import { useEffect, useState } from "react";
 import { useProviderStore } from "../../store/provider-store.js";
 import type { Provider } from "../../../shared/types.js";
@@ -7,7 +33,8 @@ import { DeviceContextSettings } from "./DeviceContextSettings.js";
 import { GuidelinesSettings } from "./GuidelinesSettings.js";
 import { WorkspaceSettings } from "./WorkspaceSettings.js";
 import { ThemeSettings } from "./ThemeSettings.js";
-import { SearchSettings } from "./SearchSettings.js";
+
+import { ProxySettings } from "./ProxySettings.js";
 
 export default function SettingsPage() {
 	const { providers, loading, fetchProviders } = useProviderStore();
@@ -25,7 +52,7 @@ export default function SettingsPage() {
 		{ key: "guidelines", label: "Guidelines" },
 		{ key: "theme", label: "Theme" },
 		{ key: "workspace", label: "Workspace" },
-		{ key: "search", label: "Search" },
+		{ key: "proxy", label: "Proxy" },
 	];
 
 	return (
@@ -109,10 +136,10 @@ export default function SettingsPage() {
 						</>
 					)}
 
-					{activeSection === "search" && (
+					{activeSection === "proxy" && (
 						<>
-							<div className="section-title-row"><h3>Web Search</h3></div>
-							<SearchSettings />
+							<div className="section-title-row"><h3>Proxy</h3></div>
+							<ProxySettings />
 						</>
 					)}
 				</div>

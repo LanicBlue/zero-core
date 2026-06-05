@@ -1,3 +1,25 @@
+// 知识库 IPC handlers
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 处理知识库（Knowledge Base）的 CRUD 和搜索 IPC 请求
+//
+// ## 输入
+// KnowledgeBase、CreateKbInput、UpdateKbInput、搜索查询
+//
+// ## 输出
+// 知识库列表、搜索结果、CRUD 操作结果
+//
+// ## 定位
+// src/main/ipc/ — 主进程 IPC 层，管理知识库数据
+//
+// ## 依赖
+// typed-ipc.ts、kbStore、kbDb、core/constants.ts
+//
+// ## 维护规则
+// 知识库删除需要同时清理 kbDb 数据
+//
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 import type { KnowledgeBase, CreateKbInput, UpdateKbInput } from "../../shared/types.js";

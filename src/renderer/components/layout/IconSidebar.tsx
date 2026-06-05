@@ -1,3 +1,28 @@
+// 图标侧边栏
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 侧边栏导航图标，提供页面切换和主题切换功能。
+//
+// ## 输入
+// - 页面状态
+// - 主题状态
+//
+// ## 输出
+// - 渲染的图标栏
+//
+// ## 定位
+// 渲染进程组件，被 AppLayout 使用。
+//
+// ## 依赖
+// - react - React 框架
+// - ../../store - 状态管理
+//
+// ## 维护规则
+// - 新增页面时需更新
+// - 保持图标一致性
+//
 import React from "react";
 import { usePageStore } from "../../store/page-store.js";
 import { useThemeStore } from "../../store/theme-store.js";

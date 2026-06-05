@@ -1,3 +1,25 @@
+// Agent 编辑器类型定义
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 定义 Agent 编辑器的表单状态类型、分页枚举和工具函数
+//
+// ## 输入
+// AgentRecord、PromptTemplate 类型引用
+//
+// ## 输出
+// FormState 类型、Section 枚举、kebab 等工具函数
+//
+// ## 定位
+// src/renderer/components/agents/ — Agent 编辑器的共享类型层
+//
+// ## 依赖
+// shared/types.ts
+//
+// ## 维护规则
+// 表单字段变更需同步更新 FormState 类型
+//
 import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
 
 export type FormState = Omit<AgentRecord, "id" | "createdAt" | "updatedAt">;

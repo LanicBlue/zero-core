@@ -1,3 +1,25 @@
+// 会话管理器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理会话的生命周期状态转换、指标收集和超时处理
+//
+// ## 输入
+// SessionDB、SessionLifecycleState 转换请求
+//
+// ## 输出
+// 会话状态管理、聚合指标、超时清理
+//
+// ## 定位
+// src/server/ — 服务层，为 AgentService 提供会话状态管理
+//
+// ## 依赖
+// session-lifecycle.ts、session-metrics.ts、session-db.ts、core/logger.ts
+//
+// ## 维护规则
+// 状态转换规则变更需确保 isValidTransition 同步
+//
 import type { SessionLifecycleState } from "./session-lifecycle.js";
 import { isValidTransition } from "./session-lifecycle.js";
 import type { SessionMetrics, AggregateMetrics } from "./session-metrics.js";

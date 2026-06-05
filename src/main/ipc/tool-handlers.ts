@@ -1,3 +1,30 @@
+// 工具 IPC 处理器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 工具相关的 IPC 处理器，处理工具列表、配置、测试等操作。
+//
+// ## 输入
+// - IPC 通道调用
+// - IpcContext - 上下文
+//
+// ## 输出
+// - 工具列表
+// - 工具配置
+// - 测试结果
+//
+// ## 定位
+// IPC 处理器，被 core.ts 注册。
+//
+// ## 依赖
+// - ./typed-ipc - 类型化 IPC
+// - ../../runtime/tools - 工具模块
+//
+// ## 维护规则
+// - 新增工具操作时需同步更新
+// - 保持与前端 API 一致
+//
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 import type { ToolExecutionContext } from "../../runtime/types.js";

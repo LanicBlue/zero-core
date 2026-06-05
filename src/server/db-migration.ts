@@ -1,3 +1,27 @@
+// 数据库迁移
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 数据库迁移管理，处理 schema 版本升级和数据迁移。
+//
+// ## 输入
+// - SessionDB 实例
+//
+// ## 输出
+// - 迁移结果
+//
+// ## 定位
+// 服务层迁移，被 loadCoreModules 调用。
+//
+// ## 依赖
+// - better-sqlite3 - SQLite 驱动
+// - ./session-db - 会话数据库
+//
+// ## 维护规则
+// - 新增迁移时需追加到迁移列表
+// - 保持迁移顺序不可变
+//
 import type Database from "better-sqlite3";
 import type { SessionDB } from "./session-db.js";
 import { join } from "node:path";

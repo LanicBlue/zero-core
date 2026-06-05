@@ -1,3 +1,26 @@
+// 子 Agent 委派工厂
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 创建子 Agent 委派函数集（阻塞/非阻塞执行、后台 shell、任务查询控制），构成 ToolExecutionContext 的委派 API
+//
+// ## 输入
+// SubagentDelegationConfig（父会话配置、Provider 列表、任务注册表、事件发射器、工具配置获取器）
+//
+// ## 输出
+// delegateTask、delegateTaskBackground、getTaskResult、listTasks、stopTask、suspendUntilWake、runBackground 七个函数
+//
+// ## 定位
+// src/runtime/ — Agent 运行时子任务调度层，被 agent-loop 和 agent-tool 调用
+//
+// ## 依赖
+// ./types、./task-registry、./agent-loop、../core/hook-registry、../core/constants
+//
+// ## 维护规则
+// 子 Agent 超时和自动后台策略由工具配置 subagent 字段控制
+// 新增委派模式需同步更新 ToolExecutionContext 类型
+//
 import type {
 	StreamEvent,
 	RuntimeProviderConfig,

@@ -1,3 +1,25 @@
+// Agent 基本信息编辑区段
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 在 Agent 编辑器中管理基本信息（名称、描述、模型选择等）
+//
+// ## 输入
+// FormState、模型列表、preload API
+//
+// ## 输出
+// 基本信息编辑表单 JSX
+//
+// ## 定位
+// src/renderer/components/agents/ — Agent 编辑器的子区段
+//
+// ## 依赖
+// agent-editor-types.ts、preload API
+//
+// ## 维护规则
+// 模型列表获取逻辑变更需确保加载状态正确
+//
 import type { FormState } from "./agent-editor-types.js";
 
 const api = () => (window as any).api;

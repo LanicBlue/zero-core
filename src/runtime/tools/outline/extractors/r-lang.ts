@@ -1,3 +1,25 @@
+// R 语言大纲提取器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 从 R 源码中提取 library、function 等大纲节点
+//
+// ## 输入
+// R 源代码文本
+//
+// ## 输出
+// OutlineNode 数组（库引用、函数定义等）
+//
+// ## 定位
+// src/runtime/tools/outline/extractors/ — 大纲模块语言提取器
+//
+// ## 依赖
+// ../types.js
+//
+// ## 维护规则
+// R 的 <- 赋值函数定义需正确识别
+//
 import { OutlineNode, LangExtractor } from "../types.js";
 
 /**

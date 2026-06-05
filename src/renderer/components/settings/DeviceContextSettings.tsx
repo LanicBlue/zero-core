@@ -1,3 +1,25 @@
+// 设备上下文设置组件
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 展示和编辑设备信息上下文（系统信息、硬件配置等）
+//
+// ## 输入
+// preload API 返回的设备上下文数据
+//
+// ## 输出
+// 设备上下文编辑表单 JSX
+//
+// ## 定位
+// src/renderer/components/settings/ — 设置页面组件，设备信息配置
+//
+// ## 依赖
+// React、preload API
+//
+// ## 维护规则
+// 设备信息字段变更需同步更新 core/device-context.ts
+//
 import { useEffect, useState } from "react";
 
 const api = () => (window as any).api;

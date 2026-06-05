@@ -1,3 +1,30 @@
+// 文件读取工具
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供文件读取能力，支持多种文件格式（文本、图片、PDF 等）。
+//
+// ## 输入
+// - 文件路径
+// - 工作目录
+//
+// ## 输出
+// - 文件内容
+// - 元数据（大小、类型等）
+//
+// ## 定位
+// Runtime 工具，被 Agent 调用。
+//
+// ## 依赖
+// - zod - 数据验证
+// - node:fs - 文件系统
+// - ./outline - 大纲提取
+//
+// ## 维护规则
+// - 新增文件格式支持时需更新
+// - 保持安全性（路径限制）
+//
 import { z } from "zod";
 import { readFile, stat } from "node:fs/promises";
 import { resolve, basename } from "node:path";

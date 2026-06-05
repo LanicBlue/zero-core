@@ -1,3 +1,29 @@
+// Agent 管理页面
+//
+// # 文件说明书
+//
+// ## 核心功能
+// Agent 列表和管理页面，支持创建、编辑和删除 Agent。
+//
+// ## 输入
+// - Agent 状态
+// - 模板状态
+//
+// ## 输出
+// - Agent 列表
+// - Agent 编辑器
+//
+// ## 定位
+// 渲染进程页面，被 AppLayout 使用。
+//
+// ## 依赖
+// - react - React 框架
+// - ../../store - 状态管理
+//
+// ## 维护规则
+// - 新增 Agent 字段时需更新
+// - 保持表单验证正确
+//
 import React, { useState, Component, type ErrorInfo, type ReactNode } from "react";
 import { useAgentStore } from "../../store/agent-store.js";
 import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
