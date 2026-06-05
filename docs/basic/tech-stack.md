@@ -5,7 +5,7 @@
 - **语言**：TypeScript
 - **运行时**：Node.js 24+
 - **平台**：Windows、macOS、Linux（Electron 跨平台）
-- **构建工具**：Vite (electron-vite)
+- **构建工具**：Vite（electron-vite）
 - **包管理器**：npm
 
 ## 核心依赖
@@ -15,6 +15,7 @@
 - `react` - React UI 框架
 - `react-dom` - React DOM
 - `zustand` - 状态管理
+- `react-markdown` + `remark-gfm` + `rehype-raw` - Markdown 渲染
 
 **AI 集成**：
 - `@ai-sdk/anthropic` - Anthropic AI SDK
@@ -33,6 +34,8 @@
 - `shiki` - 语法高亮
 - `uuid` - UUID 生成
 - `zod` - 数据验证
+- `typebox` - Schema 验证（JSON Schema）
+- `undici` - HTTP 客户端
 
 **测试**：
 - `vitest` - 单元测试
@@ -41,8 +44,8 @@
 ## 工具链
 
 **构建**：
-- `npm run build` - 构建应用
-- `npm run build:lib` - 构建 TypeScript
+- `npm run build` - 构建应用（lib + electron-vite）
+- `npm run build:lib` - 构建 TypeScript（tsconfig.cli.json）
 - `npm run build:win` - 构建 Windows 安装包
 - `npm run build:mac` - 构建 macOS 安装包
 

@@ -13,5 +13,6 @@ test_*.ts
 .codex/
 .cursor/
 .openprd/
+openprd/
 AGENTS.md
 CLAUDE.md
