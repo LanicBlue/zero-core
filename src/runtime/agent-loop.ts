@@ -110,6 +110,7 @@ export class AgentLoop implements AgentRuntime {
 		this.toolContext = {
 			workingDir: config.workspaceDir,
 			agentId: config.agentId,
+			sessionId: config.sessionId,
 			emit: (event) => this.emit(event),
 			db: config.db,
 			readScope: config.toolPolicy.readScope,

@@ -88,7 +88,7 @@ export const bashTool = buildTool({
 		const timeoutSec = inputTimeout ?? config.timeout;
 		const timeout = timeoutSec ? timeoutSec * 1000 : undefined;
 		const isWin = process.platform === "win32";
-		const shell = isWin ? "cmd.exe" : "/bin/bash";
+		const shell = isWin ? "powershell.exe" : "/bin/bash";
 		const shellArgs = isWin ? ["/c", "chcp 65001 >nul && " + command] : ["-c", command];
 
 		// Background mode
@@ -114,19 +114,20 @@ export const bashTool = buildTool({
 			if (stderr) out += (out ? "\n" : "") + "[stderr] " + stderr;
 			if (!out) out = "(no output)";
 			out += `\n[Completed in ${elapsed}s]`;
-			return out;
+			throw new Error(out);
+
 		} catch (err: any) {
 			if (err.killed) {
-				return `Error: Command timed out after ${timeoutSec}s\nCommand: ${command}`;
+				throw new Error(`Command timed out after ${timeoutSec}s\nCommand: ${command}`);
 			}
 			const stdout = decodeOutput(err.stdout as Buffer);
 			const stderr = decodeOutput(err.stderr as Buffer);
 			const exitCode = err.status ?? err.code ?? 1;
-			let out = `Error: Exit code ${exitCode}`;
+			let out = `Exit code ${exitCode}`;
 			if (command.length <= 200) out += `\nCommand: ${command}`;
 			if (stdout) out += "\n" + stdout;
 			if (stderr) out += "\n[stderr] " + stderr;
-			return out;
+			throw new Error(out);
 		}
 	},
 });

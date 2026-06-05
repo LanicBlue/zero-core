@@ -38,6 +38,7 @@ export function registerToolExecutionHooks(sessionDb: SessionDB): void {
 	registry.register("PreToolUse", async (ctx) => {
 		try {
 			const toolCallId = ctx.toolCallId as string | undefined;
+				const turnSeq = ctx.turnSeq as number | undefined;
 			if (!toolCallId) return;
 			pendingExecutions.set(toolCallId, { startTime: Date.now(), args: ctx.args });
 		} catch (err) {
@@ -51,6 +52,7 @@ export function registerToolExecutionHooks(sessionDb: SessionDB): void {
 			const agentId = ctx.agentId as string;
 			const toolName = ctx.toolName as string;
 			const toolCallId = ctx.toolCallId as string | undefined;
+				const turnSeq = ctx.turnSeq as number | undefined;
 
 			const entry = toolCallId ? pendingExecutions.get(toolCallId) : undefined;
 			const durationMs = entry ? Date.now() - entry.startTime : 0;
@@ -81,6 +83,7 @@ export function registerToolExecutionHooks(sessionDb: SessionDB): void {
 			const agentId = ctx.agentId as string;
 			const toolName = ctx.toolName as string;
 			const toolCallId = ctx.toolCallId as string | undefined;
+				const turnSeq = ctx.turnSeq as number | undefined;
 
 			const entry = toolCallId ? pendingExecutions.get(toolCallId) : undefined;
 			const durationMs = entry ? Date.now() - entry.startTime : 0;

@@ -3850,44 +3850,40 @@ n.tools-page-test-chips {
 	border-color: #f87171;
 }
 
-/* ─── Tools Page: Tabs ─── */
-.tools-page-tabs {
+/* ─── Tools Page: Detail Tabs ─── */
+.tools-detail-tabs {
 	display: flex;
 	gap: 2px;
-	margin-left: 16px;
+	margin-top: 16px;
+	border-bottom: 1px solid var(--border-default, #333);
 }
 
-.tools-page-tab {
+.tools-detail-tab {
 	background: none;
 	border: none;
 	color: var(--fg-muted);
 	padding: 6px 16px;
 	cursor: pointer;
 	border-bottom: 2px solid transparent;
-	font-size: 14px;
+	font-size: 13px;
 	font-weight: 500;
 }
 
-.tools-page-tab:hover { color: var(--fg-default); }
-.tools-page-tab.active {
+.tools-detail-tab:hover { color: var(--fg-default); }
+.tools-detail-tab.active {
 	color: var(--color-primary-fg);
 	border-bottom-color: var(--color-primary);
 }
 
 /* ─── Tools Page: Statistics Tab ─── */
-.tools-stats-page {
-	flex: 1;
-	overflow-y: auto;
-	padding: 24px 32px;
+.tools-stats-content {
+	margin-top: 16px;
 }
 
 .tools-stats-empty {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	height: 100%;
 	color: var(--text-muted);
 	font-size: 14px;
+	padding: 24px 0;
 }
 
 .tools-stats-empty-sm {

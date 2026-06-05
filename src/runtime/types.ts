@@ -277,6 +277,8 @@ export interface TaskInfo {
 export interface ToolExecutionContext {
 	workingDir: string;
 	agentId: string;
+	sessionId?: string;
+	turnSeq?: number;
 	emit: (event: StreamEvent) => void;
 	db?: ISessionStore;
 	delegateTask?: (task: string, options?: { model?: string; systemPrompt?: string }) => Promise<string>;

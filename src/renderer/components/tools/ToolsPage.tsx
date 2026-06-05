@@ -29,7 +29,7 @@ import type { ToolExecutionStats, ToolExecutionRecord } from "../../../shared/ty
 
 const api = () => (window as any).api;
 
-type Tab = "tools" | "statistics";
+type DetailTab = "config" | "test" | "stats";
 
 const CATEGORY_LABELS: Record<string, string> = {
 	runtime: "Base",
@@ -44,17 +44,17 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default function ToolsPage() {
-	const [tab, setTab] = useState<Tab>("tools");
 	const [tools, setTools] = useState<any[]>([]);
 	const [config, setConfig] = useState<Record<string, Record<string, any>>>({});
 	const [selected, setSelected] = useState<string | null>(null);
 	const [saved, setSaved] = useState(false);
 	const [loading, setLoading] = useState(true);
+	const [detailTab, setDetailTab] = useState<DetailTab>("config");
 	const [testInput, setTestInput] = useState<Record<string, any>>({});
 	const [testResult, setTestResult] = useState<{ ok: boolean; result?: string; error?: string; elapsedMs: number } | null>(null);
 	const [testing, setTesting] = useState(false);
 
-	// Statistics tab state
+	// Statistics state (per-tool)
 	const [stats, setStats] = useState<ToolExecutionStats[]>([]);
 	const [recentErrors, setRecentErrors] = useState<ToolExecutionRecord[]>([]);
 	const [statsLoading, setStatsLoading] = useState(false);
@@ -71,14 +71,16 @@ export default function ToolsPage() {
 		})();
 	}, []);
 
-	const loadStats = useCallback(async () => {
+	const loadStats = useCallback(async (toolName: string) => {
 		setStatsLoading(true);
 		try {
 			const [s, e] = await Promise.all([
 				api().toolExecutionsStats(),
-				api().toolExecutionsQuery({ success: false, limit: 20 }),
+				api().toolExecutionsQuery({ toolName, success: false, limit: 20 }),
 			]);
-			setStats(s ?? []);
+			// Filter stats to the selected tool
+			const allStats: ToolExecutionStats[] = s ?? [];
+			setStats(allStats.filter((st: ToolExecutionStats) => st.toolName === toolName));
 			setRecentErrors(e ?? []);
 		} finally {
 			setStatsLoading(false);
@@ -86,14 +88,15 @@ export default function ToolsPage() {
 	}, []);
 
 	useEffect(() => {
-		if (tab === "statistics") {
-			loadStats();
+		if (selected && detailTab === "stats") {
+			loadStats(selected);
 		}
-	}, [tab, loadStats]);
+	}, [selected, detailTab, loadStats]);
 
 	useEffect(() => {
 		setTestInput({});
 		setTestResult(null);
+		setDetailTab("config");
 	}, [selected]);
 
 	const grouped = tools.reduce((acc: Record<string, any[]>, t: any) => {
@@ -103,12 +106,12 @@ export default function ToolsPage() {
 	}, {} as Record<string, any[]>);
 
 	const runAnalysis = async () => {
-		if (analyzing) return;
+		if (analyzing || !selected) return;
 		setAnalyzing(true);
 		setAnalysisResult(null);
 		setAnalysisExpanded(false);
 		try {
-			const result = await api().toolExecutionsAnalyze();
+			const result = await api().toolExecutionsAnalyze(selected);
 			if (result.error) {
 				setAnalysisResult("Error: " + result.error);
 			} else {
@@ -163,13 +166,8 @@ export default function ToolsPage() {
 
 	const selectedTool = tools.find((t) => t.name === selected) ?? null;
 
-	// Aggregate stats for overview cards
-	const totalCalls = stats.reduce((sum, s) => sum + s.totalCalls, 0);
-	const totalErrors = stats.reduce((sum, s) => sum + s.errorCount, 0);
-	const overallErrorRate = totalCalls > 0 ? totalErrors / totalCalls : 0;
-	const avgDuration = stats.length > 0
-		? Math.round(stats.reduce((sum, s) => sum + s.avgDurationMs, 0) / stats.length)
-		: 0;
+	// Per-tool stats derived from filtered data
+	const toolStat = stats.length > 0 ? stats[0] : null;
 
 	if (loading) {
 		return (
@@ -186,153 +184,14 @@ export default function ToolsPage() {
 		<div className="tools-page">
 			<div className="tools-page-header">
 				<h2>Tools</h2>
-				<div className="tools-page-tabs">
-					<button
-						type="button"
-						className={`tools-page-tab ${tab === "tools" ? "active" : ""}`}
-						onClick={() => setTab("tools")}
-					>
-						Configuration
-					</button>
-					<button
-						type="button"
-						className={`tools-page-tab ${tab === "statistics" ? "active" : ""}`}
-						onClick={() => setTab("statistics")}
-					>
-						Statistics
-					</button>
-				</div>
 				<div className="tools-page-header-info">
-					{tab === "tools" && <span>{tools.length} tools registered</span>}
+					<span>{tools.length} tools registered</span>
 				</div>
-				{tab === "tools" && (
-					<button type="button" className="btn-primary btn-sm" onClick={save}>
-						{saved ? "Saved!" : "Save Configuration"}
-					</button>
-				)}
+				<button type="button" className="btn-primary btn-sm" onClick={save}>
+					{saved ? "Saved!" : "Save Configuration"}
+				</button>
 			</div>
 
-			{tab === "statistics" ? (
-				<div className="tools-stats-page">
-					{statsLoading ? (
-						<div className="tools-stats-empty">Loading statistics...</div>
-					) : stats.length === 0 ? (
-						<div className="tools-stats-empty">No tool execution data yet. Run some tools to see statistics.</div>
-					) : (
-						<>
-							{/* Overview cards */}
-							<div className="tools-stats-cards">
-								<div className="tools-stats-card">
-									<div className="tools-stats-card-value">{totalCalls.toLocaleString()}</div>
-									<div className="tools-stats-card-label">Total Calls</div>
-								</div>
-								<div className="tools-stats-card">
-									<div className="tools-stats-card-value error">{totalErrors.toLocaleString()}</div>
-									<div className="tools-stats-card-label">Errors</div>
-								</div>
-								<div className="tools-stats-card">
-									<div className={`tools-stats-card-value ${overallErrorRate > 0.1 ? "error" : ""}`}>
-										{(overallErrorRate * 100).toFixed(1)}%
-									</div>
-									<div className="tools-stats-card-label">Error Rate</div>
-								</div>
-								<div className="tools-stats-card">
-									<div className="tools-stats-card-value">{avgDuration}ms</div>
-									<div className="tools-stats-card-label">Avg Duration</div>
-								</div>
-							</div>
-
-							{/* Tool breakdown */}
-							<div className="tools-stats-section">
-								<h4 className="tools-stats-section-title">Tool Breakdown</h4>
-								{stats.length === 0 ? (
-									<p className="tools-stats-empty-sm">No data.</p>
-								) : (
-									<div className="tools-stats-table-wrap">
-										<table className="tools-stats-table">
-											<thead>
-												<tr>
-													<th>Tool</th>
-													<th>Calls</th>
-													<th>Errors</th>
-													<th>Error Rate</th>
-													<th>Avg Duration</th>
-													<th>Last Error</th>
-												</tr>
-											</thead>
-											<tbody>
-												{stats.map((s) => (
-													<tr key={s.toolName}>
-														<td className="tools-stats-tool-name">{s.toolName}</td>
-														<td>{s.totalCalls}</td>
-														<td className={s.errorCount > 0 ? "tools-stats-num-error" : ""}>{s.errorCount}</td>
-														<td className={s.errorRate > 0.1 ? "tools-stats-num-error" : ""}>
-															{(s.errorRate * 100).toFixed(1)}%
-														</td>
-														<td>{s.avgDurationMs}ms</td>
-														<td className="tools-stats-time">{s.lastErrorAt ? formatTime(s.lastErrorAt) : "\u2014"}</td>
-													</tr>
-												))}
-											</tbody>
-										</table>
-									</div>
-								)}
-							</div>
-
-							{/* Recent errors */}
-							{recentErrors.length > 0 && (
-								<div className="tools-stats-section">
-									<h4 className="tools-stats-section-title">Recent Errors</h4>
-									<div className="tools-stats-errors">
-										{recentErrors.map((e) => (
-											<div key={e.id} className="tools-stats-error-item">
-												<div className="tools-stats-error-header">
-													<span className="tools-stats-error-tool">{e.toolName}</span>
-													<span className="tools-stats-error-time">{formatTime(e.createdAt)}</span>
-												</div>
-												<div className="tools-stats-error-msg">{e.errorMessage ?? "Unknown error"}</div>
-												{e.inputPreview && (
-													<details className="tools-stats-error-details">
-														<summary>Input</summary>
-														<pre>{e.inputPreview}</pre>
-													</details>
-												)}
-											</div>
-										))}
-									</div>
-								</div>
-							)}
-
-							{/* AI Analysis */}
-							<div className="tools-stats-section">
-								<div className="tools-stats-analysis-header">
-									<h4 className="tools-stats-section-title">AI Analysis</h4>
-									<button
-										type="button"
-										className={"btn-primary btn-sm" + (analyzing ? " disabled" : "")}
-										onClick={runAnalysis}
-										disabled={analyzing}
-									>
-										{analyzing ? "Analyzing..." : "Run Analysis"}
-									</button>
-								</div>
-								{analysisResult && (
-									<details
-										className="tools-stats-analysis-result"
-										open={analysisExpanded}
-										onToggle={(e: any) => setAnalysisExpanded(e.target.open)}
-									>
-										<summary>{analysisExpanded ? "Hide Analysis" : "Show Analysis"}</summary>
-										<div className="tools-stats-analysis-body">
-											{analysisResult}
-										</div>
-									</details>
-								)}
-							</div>
-						</>
-					)}
-				</div>
-			) : (
 			<div className="tools-page-body">
 				<div className="tools-page-list">
 					{Object.entries(grouped).map(([cat, catTools]) => (
@@ -380,77 +239,44 @@ export default function ToolsPage() {
 										<pre className="tools-page-ai-prompt-content">{selectedTool.prompt}</pre>
 									</details>
 								)}
+
+								{/* Detail panel tab bar */}
+								<div className="tools-detail-tabs">
+									<button
+										type="button"
+										className={`tools-detail-tab ${detailTab === "config" ? "active" : ""}`}
+										onClick={() => setDetailTab("config")}
+									>
+										Configuration
+									</button>
+									<button
+										type="button"
+										className={`tools-detail-tab ${detailTab === "test" ? "active" : ""}`}
+										onClick={() => setDetailTab("test")}
+									>
+										Test
+									</button>
+									<button
+										type="button"
+										className={`tools-detail-tab ${detailTab === "stats" ? "active" : ""}`}
+										onClick={() => setDetailTab("stats")}
+									>
+										Statistics
+									</button>
+								</div>
 							</div>
 
-							{selectedTool.configSchema?.length > 0 ? (
-								<div className="tools-page-detail-config">
-									<h4 className="tools-page-config-heading">Configuration</h4>
-									{selectedTool.configSchema.map((field: any) => {
-										const val = config[selectedTool.name]?.[field.key] ?? field.default ?? "";
-										if (field.key === "auto_background_timeout" && !config[selectedTool.name]?.auto_background) return null;
-										return (
-											<div key={field.key} className="tools-page-config-field">
-												<div className="tools-page-config-label-row">
-													<label>{field.label}</label>
-													{field.description && (
-														<span className="tools-page-config-desc">{field.description}</span>
-													)}
-												</div>
-												{field.type === "boolean" ? (
-													<button
-														type="button"
-														title={val ? "Disable" : "Enable"}
-														className={"toggle-switch " + (val ? "on" : "")}
-														onClick={() => updateField(selectedTool.name, field.key, !val)}
-													/>
-												) : field.type === "select" ? (
-													<select
-														title={field.label}
-														value={val}
-														onChange={(e) => updateField(selectedTool.name, field.key, e.target.value)}
-													>
-														{(field.options ?? []).map((o: string) => (
-															<option key={o} value={o}>{o}</option>
-														))}
-													</select>
-												) : field.type === "number" ? (
-													<input
-														type="number"
-														title={field.label}
-														placeholder={field.label}
-														value={val}
-														onChange={(e) => updateField(selectedTool.name, field.key, Number(e.target.value))}
-													/>
-												) : (
-													<input
-														type={field.key.toLowerCase().includes("key") || field.key.toLowerCase().includes("api") ? "password" : "text"}
-														value={val}
-														onChange={(e) => updateField(selectedTool.name, field.key, e.target.value)}
-														placeholder={field.description ?? ""}
-													/>
-												)}
-											</div>
-										);
-									})}
-								</div>
-							) : (
-								<p className="tools-page-no-config">No configurable parameters.</p>
-							)}
-
-							{selectedTool.inputFields?.length > 0 && (
-								<div className="tools-page-test-panel">
-									<h4 className="tools-page-config-heading">Test</h4>
-									<div className="tools-page-test-body">
-										<div className="tools-page-test-input">
-											{selectedTool.meta?.isDestructive && (
-												<div className="tools-page-test-warning">
-													Destructive — will modify real files.
-												</div>
-											)}
-											{selectedTool.inputFields.map((field: any) => (
+							{detailTab === "config" && (
+								selectedTool.configSchema?.length > 0 ? (
+									<div className="tools-page-detail-config">
+										<h4 className="tools-page-config-heading">Configuration</h4>
+										{selectedTool.configSchema.map((field: any) => {
+											const val = config[selectedTool.name]?.[field.key] ?? field.default ?? "";
+											if (field.key === "auto_background_timeout" && !config[selectedTool.name]?.auto_background) return null;
+											return (
 												<div key={field.key} className="tools-page-config-field">
 													<div className="tools-page-config-label-row">
-														<label>{field.key}{field.required && " *"}</label>
+														<label>{field.label}</label>
 														{field.description && (
 															<span className="tools-page-config-desc">{field.description}</span>
 														)}
@@ -458,71 +284,219 @@ export default function ToolsPage() {
 													{field.type === "boolean" ? (
 														<button
 															type="button"
-															title={testInput[field.key] ? "false" : "true"}
-															className={"toggle-switch " + (testInput[field.key] ? "on" : "")}
-															onClick={() => updateTestInput(field.key, !testInput[field.key])}
+															title={val ? "Disable" : "Enable"}
+															className={"toggle-switch " + (val ? "on" : "")}
+															onClick={() => updateField(selectedTool.name, field.key, !val)}
 														/>
 													) : field.type === "select" ? (
-														<div className="tools-page-test-combo">
+														<select
+															title={field.label}
+															value={val}
+															onChange={(e) => updateField(selectedTool.name, field.key, e.target.value)}
+														>
+															{(field.options ?? []).map((o: string) => (
+																<option key={o} value={o}>{o}</option>
+															))}
+														</select>
+													) : field.type === "number" ? (
+														<input
+															type="number"
+															title={field.label}
+															placeholder={field.label}
+															value={val}
+															onChange={(e) => updateField(selectedTool.name, field.key, Number(e.target.value))}
+														/>
+													) : (
+														<input
+															type={field.key.toLowerCase().includes("key") || field.key.toLowerCase().includes("api") ? "password" : "text"}
+															value={val}
+															onChange={(e) => updateField(selectedTool.name, field.key, e.target.value)}
+															placeholder={field.description ?? ""}
+														/>
+													)}
+												</div>
+											);
+										})}
+									</div>
+								) : (
+									<p className="tools-page-no-config">No configurable parameters.</p>
+								)
+							)}
+
+							{detailTab === "test" && (
+								selectedTool.inputFields?.length > 0 ? (
+									<div className="tools-page-test-panel">
+										<div className="tools-page-test-body">
+											<div className="tools-page-test-input">
+												{selectedTool.meta?.isDestructive && (
+													<div className="tools-page-test-warning">
+														Destructive — will modify real files.
+													</div>
+												)}
+												{selectedTool.inputFields.map((field: any) => (
+													<div key={field.key} className="tools-page-config-field">
+														<div className="tools-page-config-label-row">
+															<label>{field.key}{field.required && " *"}</label>
+															{field.description && (
+																<span className="tools-page-config-desc">{field.description}</span>
+															)}
+														</div>
+														{field.type === "boolean" ? (
+															<button
+																type="button"
+																title={testInput[field.key] ? "false" : "true"}
+																className={"toggle-switch " + (testInput[field.key] ? "on" : "")}
+																onClick={() => updateTestInput(field.key, !testInput[field.key])}
+															/>
+														) : field.type === "select" ? (
+															<div className="tools-page-test-combo">
+																<input
+																	type="text"
+																	title={field.key}
+																	list={"test-" + field.key}
+																	placeholder={field.description ?? field.key}
+																	value={testInput[field.key] ?? ""}
+																	onChange={(e) => updateTestInput(field.key, e.target.value || undefined)}
+																/>
+																<datalist id={"test-" + field.key}>
+																	{field.enum.map((opt: string) => (
+																		<option key={opt} value={opt} />
+																	))}
+																	<option value="" />
+																	<option value="__invalid__" />
+																</datalist>
+															</div>
+														) : field.type === "number" ? (
+															<input
+																type="number"
+																placeholder={field.description ?? field.key}
+																value={testInput[field.key] ?? ""}
+																onChange={(e) => updateTestInput(field.key, e.target.value ? Number(e.target.value) : undefined)}
+															/>
+														) : (
 															<input
 																type="text"
-																title={field.key}
-																list={"test-" + field.key}
 																placeholder={field.description ?? field.key}
 																value={testInput[field.key] ?? ""}
 																onChange={(e) => updateTestInput(field.key, e.target.value || undefined)}
 															/>
-															<datalist id={"test-" + field.key}>
-																{field.enum.map((opt: string) => (
-																	<option key={opt} value={opt} />
-																))}
-																<option value="" />
-																<option value="__invalid__" />
-															</datalist>
-														</div>
-													) : field.type === "number" ? (
-														<input
-															type="number"
-															placeholder={field.description ?? field.key}
-															value={testInput[field.key] ?? ""}
-															onChange={(e) => updateTestInput(field.key, e.target.value ? Number(e.target.value) : undefined)}
-														/>
-													) : (
-														<input
-															type="text"
-															placeholder={field.description ?? field.key}
-															value={testInput[field.key] ?? ""}
-															onChange={(e) => updateTestInput(field.key, e.target.value || undefined)}
-														/>
-													)}
-												</div>
-											))}
-											<button
-												type="button"
-												className={"btn-primary btn-sm tools-page-test-run" + (testing ? " disabled" : "")}
-												onClick={runTest}
-												disabled={testing}
-											>
-												{testing ? "Running..." : "Run Test"}
-											</button>
-										</div>
-
-										<div className="tools-page-test-output-wrap">
-											{testResult ? (
-												<div className="tools-page-test-output">
-													<div className="tools-page-test-output-header">
-														<span className={"tools-page-test-status " + (testResult.ok ? "ok" : "error")}>
-															{testResult.ok ? "OK" : "ERROR"}
-														</span>
-														<span className="tools-page-test-elapsed">{testResult.elapsedMs}ms</span>
+														)}
 													</div>
-													<pre className="tools-page-test-result">{testResult.result ?? testResult.error}</pre>
-												</div>
-											) : (
-												<div className="tools-page-test-placeholder">Output will appear here</div>
-											)}
+												))}
+												<button
+													type="button"
+													className={"btn-primary btn-sm tools-page-test-run" + (testing ? " disabled" : "")}
+													onClick={runTest}
+													disabled={testing}
+												>
+													{testing ? "Running..." : "Run Test"}
+												</button>
+											</div>
+
+											<div className="tools-page-test-output-wrap">
+												{testResult ? (
+													<div className="tools-page-test-output">
+														<div className="tools-page-test-output-header">
+															<span className={"tools-page-test-status " + (testResult.ok ? "ok" : "error")}>
+																{testResult.ok ? "OK" : "ERROR"}
+															</span>
+															<span className="tools-page-test-elapsed">{testResult.elapsedMs}ms</span>
+														</div>
+														<pre className="tools-page-test-result">{testResult.result ?? testResult.error}</pre>
+													</div>
+												) : (
+													<div className="tools-page-test-placeholder">Output will appear here</div>
+												)}
+											</div>
 										</div>
 									</div>
+								) : (
+									<p className="tools-page-no-config">No testable parameters.</p>
+								)
+							)}
+
+							{detailTab === "stats" && (
+								<div className="tools-stats-content">
+									{statsLoading ? (
+										<div className="tools-stats-empty">Loading statistics...</div>
+									) : !toolStat ? (
+										<div className="tools-stats-empty">No execution data for this tool yet.</div>
+									) : (
+										<>
+											{/* Overview cards */}
+											<div className="tools-stats-cards">
+												<div className="tools-stats-card">
+													<div className="tools-stats-card-value">{toolStat.totalCalls.toLocaleString()}</div>
+													<div className="tools-stats-card-label">Total Calls</div>
+												</div>
+												<div className="tools-stats-card">
+													<div className="tools-stats-card-value error">{toolStat.errorCount.toLocaleString()}</div>
+													<div className="tools-stats-card-label">Errors</div>
+												</div>
+												<div className="tools-stats-card">
+													<div className={`tools-stats-card-value ${toolStat.errorRate > 0.1 ? "error" : ""}`}>
+														{(toolStat.errorRate * 100).toFixed(1)}%
+													</div>
+													<div className="tools-stats-card-label">Error Rate</div>
+												</div>
+												<div className="tools-stats-card">
+													<div className="tools-stats-card-value">{toolStat.avgDurationMs}ms</div>
+													<div className="tools-stats-card-label">Avg Duration</div>
+												</div>
+											</div>
+
+											{/* Recent errors */}
+											{recentErrors.length > 0 && (
+												<div className="tools-stats-section">
+													<h4 className="tools-stats-section-title">Recent Errors</h4>
+													<div className="tools-stats-errors">
+														{recentErrors.map((e) => (
+															<div key={e.id} className="tools-stats-error-item">
+																<div className="tools-stats-error-header">
+																	<span className="tools-stats-error-tool">{e.toolName}</span>
+																	<span className="tools-stats-error-time">{formatTime(e.createdAt)}</span>
+																</div>
+																<div className="tools-stats-error-msg">{e.errorMessage ?? "Unknown error"}</div>
+																{e.inputPreview && (
+																	<details className="tools-stats-error-details">
+																		<summary>Input</summary>
+																		<pre>{e.inputPreview}</pre>
+																	</details>
+																)}
+															</div>
+														))}
+													</div>
+												</div>
+											)}
+
+											{/* AI Analysis */}
+											<div className="tools-stats-section">
+												<div className="tools-stats-analysis-header">
+													<h4 className="tools-stats-section-title">AI Analysis</h4>
+													<button
+														type="button"
+														className={"btn-primary btn-sm" + (analyzing ? " disabled" : "")}
+														onClick={runAnalysis}
+														disabled={analyzing}
+													>
+														{analyzing ? "Analyzing..." : "Run Analysis"}
+													</button>
+												</div>
+												{analysisResult && (
+													<details
+														className="tools-stats-analysis-result"
+														open={analysisExpanded}
+														onToggle={(e: any) => setAnalysisExpanded(e.target.open)}
+													>
+														<summary>{analysisExpanded ? "Hide Analysis" : "Show Analysis"}</summary>
+														<div className="tools-stats-analysis-body">
+															{analysisResult}
+														</div>
+													</details>
+												)}
+											</div>
+										</>
+									)}
 								</div>
 							)}
 						</>
@@ -533,7 +507,6 @@ export default function ToolsPage() {
 					)}
 				</div>
 			</div>
-			)}
 		</div>
 	);
 }
