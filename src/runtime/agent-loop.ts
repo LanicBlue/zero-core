@@ -426,9 +426,9 @@ export class AgentLoop implements AgentRuntime {
 					const tb = errTcId
 						? [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.toolCallId === errTcId)
 						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
-					if (tb) { tb.status = "error"; tb.result = e.errorText ?? String(e.output); }
-					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, isError: true, result: e.errorText ?? String(e.output) });
-					if (errTcId) this.checkpoint.saveIncrementalCheckpoint(this.session.getSessionId(), this.recorder, this.session.getMessages(), errTcId, e.errorText ?? String(e.output));
+					if (tb) { tb.status = "error"; tb.result = String(e.error ?? e.errorText ?? ""); }
+					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, isError: true, result: String(e.error ?? e.errorText ?? "") });
+					if (errTcId) this.checkpoint.saveIncrementalCheckpoint(this.session.getSessionId(), this.recorder, this.session.getMessages(), errTcId, String(e.error ?? e.errorText ?? ""));
 					break;
 				}
 			}
