@@ -33,20 +33,6 @@ import { EXEC_MAX_BUFFER_BYTES } from "../../core/constants.js";
 
 const execFileAsync = promisify(execFile);
 
-function decodeOutput(buf: Buffer | string): string {
-	if (typeof buf === "string") return buf;
-	if (!buf || buf.length === 0) return "";
-	const utf8 = buf.toString("utf-8");
-	if (!utf8.includes("�")) return utf8;
-	try {
-		const { TextDecoder } = globalThis as any;
-		if (TextDecoder) {
-			return new TextDecoder("gbk").decode(buf);
-		}
-	} catch { /* no GBK decoder available */ }
-	return utf8;
-}
-
 export const bashTool = buildTool({
 	name: "Bash",
 	description: "Executes a given bash command and returns its output.",
@@ -61,7 +47,7 @@ export const bashTool = buildTool({
 		"- Read files: Use `Read` tool (NOT cat, head, tail)\n" +
 		"- Edit files: Use `Edit` tool (NOT sed, awk)\n" +
 		"- Write files: Use `Write` tool (NOT echo >, cat <<EOF)\n\n" +
-		"While the Bash tool can do similar things, it's better to use the built-in tools as they provide a better user experience.\n\n" +
+		"While the Bash tool can do similar things, it's better to use the built-in tools as they provide a much better experience for the user.\n\n" +
 		"# Instructions\n" +
 		"- If your command will create new directories or files, first run `ls` to verify the parent directory exists.\n" +
 		"- Always quote file paths that contain spaces with double quotes.\n" +
@@ -88,8 +74,10 @@ export const bashTool = buildTool({
 		const timeoutSec = inputTimeout ?? config.timeout;
 		const timeout = timeoutSec ? timeoutSec * 1000 : undefined;
 		const isWin = process.platform === "win32";
-		const shell = isWin ? "powershell.exe" : "/bin/bash";
-		const shellArgs = isWin ? ["-NoProfile", "-Command", "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " + command] : ["-c", command];
+		const shell = isWin ? "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" : "/bin/bash";
+		const shellArgs = isWin
+			? ["-NoProfile", "-Command", "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " + command]
+			: ["-c", command];
 
 		// Background mode
 		if (background) {
@@ -100,33 +88,35 @@ export const bashTool = buildTool({
 			return `Command running in background.\ntask_id: ${taskId}\nUse Wait or TaskStatus to check progress and retrieve the result.`;
 		}
 
-		// Foreground mode — use buffer encoding to decode GBK→UTF-8 on Windows
+		// Foreground mode — use utf8 encoding (PowerShell already set to UTF-8 output)
+		const execOpts: any = { cwd: ctx.workingDir, maxBuffer: EXEC_MAX_BUFFER_BYTES };
+		if (timeout) execOpts.timeout = timeout;
+		const t0 = Date.now();
+
 		try {
-			const execOpts: any = { cwd: ctx.workingDir, maxBuffer: EXEC_MAX_BUFFER_BYTES, encoding: "buffer" };
-			if (timeout) execOpts.timeout = timeout;
-			const t0 = Date.now();
-			const result = await execFileAsync(shell, shellArgs, execOpts) as { stdout: Buffer; stderr: Buffer };
+			const result = await execFileAsync(shell, shellArgs, execOpts) as { stdout: string; stderr: string };
 			const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-			const stdout = decodeOutput(result.stdout);
-			const stderr = decodeOutput(result.stderr);
+			const stdout = (result.stdout ?? "").trim();
+			const stderr = (result.stderr ?? "").trim();
 			let out = "";
 			if (stdout) out += stdout;
 			if (stderr) out += (out ? "\n" : "") + "[stderr] " + stderr;
 			if (!out) out = "(no output)";
 			out += `\n[Completed in ${elapsed}s]`;
-			throw new Error(out);
-
+			return out;
 		} catch (err: any) {
 			if (err.killed) {
 				throw new Error(`Command timed out after ${timeoutSec}s\nCommand: ${command}`);
 			}
-			const stdout = decodeOutput(err.stdout as Buffer);
-			const stderr = decodeOutput(err.stderr as Buffer);
+			const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+			const stdout = (err.stdout ?? "").trim();
+			const stderr = (err.stderr ?? "").trim();
 			const exitCode = err.status ?? err.code ?? 1;
 			let out = `Exit code ${exitCode}`;
 			if (command.length <= 200) out += `\nCommand: ${command}`;
 			if (stdout) out += "\n" + stdout;
 			if (stderr) out += "\n[stderr] " + stderr;
+			out += `\n[Completed in ${elapsed}s]`;
 			throw new Error(out);
 		}
 	},
