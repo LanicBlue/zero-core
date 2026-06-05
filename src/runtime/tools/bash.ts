@@ -89,7 +89,7 @@ export const bashTool = buildTool({
 		const timeout = timeoutSec ? timeoutSec * 1000 : undefined;
 		const isWin = process.platform === "win32";
 		const shell = isWin ? "powershell.exe" : "/bin/bash";
-		const shellArgs = isWin ? ["/c", "chcp 65001 >nul && " + command] : ["-c", command];
+		const shellArgs = isWin ? ["-NoProfile", "-Command", "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " + command] : ["-c", command];
 
 		// Background mode
 		if (background) {
