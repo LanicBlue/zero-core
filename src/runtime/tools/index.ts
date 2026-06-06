@@ -238,36 +238,3 @@ export function getAllToolInfo(): { name: string; category: ToolCategory; descri
 
 	return infos;
 }
-
-export function buildToolPolicyDescription(
-	policy: { autoApprove?: string[]; blockedTools?: string[]; readScope?: string },
-): string {
-	const autoApprove = new Set(policy.autoApprove ?? []);
-	const blocked = new Set(policy.blockedTools ?? []);
-	const allNames = Object.keys(ALL_TOOLS);
-	const isAll = autoApprove.has("*");
-
-	const enabled = isAll
-		? allNames.filter((n) => !blocked.has(n))
-		: allNames.filter((n) => autoApprove.has(n));
-	const disabled = isAll
-		? []
-		: allNames.filter((n) => !autoApprove.has(n) && !blocked.has(n));
-
-	const lines: string[] = [];
-	if (isAll) {
-		lines.push(`All tools are enabled${blocked.size ? ` except: ${[...blocked].join(", ")}` : ""}.`);
-	} else {
-		lines.push(`Enabled tools: ${enabled.length ? enabled.join(", ") : "(none)"}`);
-		if (disabled.length) lines.push(`Disabled tools: ${disabled.join(", ")}`);
-	}
-
-	if (policy.readScope === "workspace") {
-		lines.push("Read tools (Read, Grep, Glob) are restricted to the workspace directory only.");
-	} else {
-		lines.push("Read tools (Read, Grep, Glob) can access the entire filesystem.");
-	}
-	lines.push("Write/edit/delete tools (Write, Edit, Bash) are always restricted to the workspace directory.");
-
-	return lines.join("\n");
-}

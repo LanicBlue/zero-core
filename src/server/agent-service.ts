@@ -27,10 +27,8 @@
 // - 保持向后兼容性
 //
 import { loadConfig, ZERO_CORE_DIR, type ZeroCoreConfig } from "../core/config.js";
-import { buildSystemPrompt } from "../core/system-prompt.js";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
-import { loadDeviceContext } from "../core/device-context.js";
 import type { AgentRecord } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
@@ -235,23 +233,15 @@ export class AgentService {
 		const cwd = agent?.workspaceDir || this.workspaceDir;
 		log.agent("Creating runtime for agent:", agentId, "session:", sessionId, "cwd:", cwd);
 
-		const deviceContext = loadDeviceContext(this.db.getKVStore()) || undefined;
 
-		const systemPrompt = buildSystemPrompt(this.config, {
-			cwd,
-			activeTools: [],
-			originalPrompt: agent?.systemPrompt ?? "",
-			deviceContext,
-			useDeviceContext: agent?.contextConfig?.useDeviceContext,
-			useGuidelines: agent?.contextConfig?.useGuidelines,
-			useMemoryContext: agent?.contextConfig?.useMemoryContext,
-			enabledSkills: agent?.skillPolicy?.enabledSkills,
-		});
+		const systemPrompt = agent?.systemPrompt ?? "";
+		const guidelines = this.config.systemPrompt?.guidelines;
 
 		const sessionConfig: SessionConfig = {
 			agentId,
 			workspaceDir: cwd,
 			systemPrompt,
+			guidelines,
 			modelId: agent?.model || this.defaultModel || "",
 			providerName: agent?.provider || this.defaultProvider || "",
 			thinkingLevel: agent?.thinkingLevel,

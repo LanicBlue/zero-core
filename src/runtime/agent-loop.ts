@@ -41,13 +41,14 @@ import type {
 } from "./types.js";
 import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
-import { buildToolsSet, buildToolPolicyDescription } from "./tools/index.js";
+import { buildToolsSet } from "./tools/index.js";
 import { buildAgentTools } from "./tools/agent-tool.js";
 import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
 import { classifyError, isTransientError, userFriendlyMessage, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
 import { TurnRecorder } from "./turn-recorder.js";
 import { SystemPromptAssembler } from "./prompt-sections.js";
+import { buildContextMessage } from "./context-message.js";
 import { SubagentDelegator } from "./subagent-delegator.js";
 import { CheckpointManager } from "./checkpoint-manager.js";
 import { ToolRateLimiter } from "./tool-rate-limiter.js";
@@ -86,16 +87,6 @@ export class AgentLoop implements AgentRuntime {
 
 		this.promptAssembler = new SystemPromptAssembler([
 			{ name: "base", compute: () => this.session.getSystemPrompt(), cacheBreak: false },
-			{ name: "tool_policy", compute: () => buildToolPolicyDescription(this.config.toolPolicy), cacheBreak: false },
-			{
-				name: "rag_context",
-				cacheBreak: true,
-				compute: async () => {
-					if (!this.config.getRagContext) return "";
-					try { return (await this.config.getRagContext(this.config.agentId, "")) ?? ""; }
-					catch { return ""; }
-				},
-			},
 		]);
 
 		this.checkpoint = new CheckpointManager(config.db);
@@ -297,18 +288,28 @@ export class AgentLoop implements AgentRuntime {
 		const systemPrompt = await this.assembleSystemPrompt();
 		this.injectTaskNotifications();
 
+		// Build ephemeral context message (guidelines + env + rag)
+		const ragContext = await this.getRagContext();
+		const ctx = buildContextMessage({
+			workspaceDir: this.config.workspaceDir,
+			guidelines: this.config.guidelines,
+			ragContext,
+		});
+		const messages = this.prependContext(this.session.getMessages(), ctx);
+
 		const providerOptions = this.buildProviderOptions();
 
-		log.debug("loop", "streamText called, messages:", this.session.getMessages().length,
+		log.debug("loop", "streamText called, messages:", messages.length,
 			"model:", this.config.providerName + "/" + this.config.modelId,
 			"tools:", Object.keys(tools).join(","),
-			"lastMsgRole:", this.session.getMessages().at(-1)?.role);
+			"lastMsgRole:", messages.at(-1)?.role,
+			"hasContext:", !!ctx);
 
 		const result = streamText({
 			stopWhen: stepCountIs(200),
 			model,
 			system: systemPrompt,
-			messages: this.session.getMessages(),
+			messages,
 			tools,
 			abortSignal: this.abortController!.signal,
 			experimental_context: this.toolContext,
@@ -341,6 +342,23 @@ export class AgentLoop implements AgentRuntime {
 			.filter(s => s.text)
 			.map(s => s.text)
 			.join(String.fromCharCode(10, 10));
+	}
+
+	private async getRagContext(): Promise<string | undefined> {
+		if (!this.config.getRagContext) return undefined;
+		try { return (await this.config.getRagContext(this.config.agentId, "")) ?? undefined; }
+		catch { return undefined; }
+	}
+
+	/** Prepend ephemeral context to the last user message, without modifying originals */
+	private prependContext(messages: any[], ctx: string | null): any[] {
+		if (!ctx) return messages;
+		const copy = [...messages];
+		const last = copy[copy.length - 1];
+		if (last?.role === "user") {
+			copy[copy.length - 1] = { ...last, content: ctx + last.content };
+		}
+		return copy;
 	}
 
 	private injectTaskNotifications(): void {
@@ -481,7 +499,7 @@ export class AgentLoop implements AgentRuntime {
 		return timeoutMs ? setTimeout(() => { this.abortController?.abort(); }, timeoutMs) : null;
 	}
 
-
+
 
 	private emit(event: StreamEvent): void {
 		if (this.config.sessionId && !(event as any).sessionId) {

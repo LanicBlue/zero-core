@@ -227,6 +227,7 @@ export interface SessionConfig {
 	agentId: string;
 	workspaceDir: string;
 	systemPrompt: string;
+	guidelines?: string[];
 	modelId: string;
 	providerName: string;
 	thinkingLevel?: string;

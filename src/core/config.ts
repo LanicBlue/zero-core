@@ -164,10 +164,8 @@ export type ZeroCoreConfig = Static<typeof ZeroCoreConfigSchema>;
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_GUIDELINES = [
-	"使用用户设置的语言进行回复",
-	"在执行危险操作前先确认",
-	"优先使用现有工具完成任务",
-	"保持回复简洁，避免不必要的重复",
+	"Confirm with the user before starting work if there are unresolved Open Questions",
+	"Ask for confirmation before executing dangerous operations",
 ];
 
 export const DEFAULT_CONFIG: ZeroCoreConfig = {
