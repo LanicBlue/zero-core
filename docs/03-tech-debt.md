@@ -1,18 +1,18 @@
 # 03 · 技术债清单
 
-> 最近更新：2026-06-03（清理已修复项，仅保留剩余开放项）
+> 最近更新：2026-06-06
 
 ## 🟡 中优先级
 
-### 1. agent-loop.ts 仍是最大单文件（784 行）
+### 1. agent-loop.ts 是最大单文件（512 行）
 
 单 turn 执行 + retry + streaming + tool 调度都在里面。拆分 ROI 低，暂留。
 
-### 2. session-manager.ts (399 行) / session-db.ts (435 行)
+### 2. session-manager.ts (421 行) / session-db.ts (583 行)
 
 可按职责拆分，但当前可接受。
 
-### 3. `any` 仍有 348 处（195 `: any` + 153 `as any`）
+### 3. `any` 仍有 374 处
 
 主要分布：agent-loop.ts (28)、main/ipc/core.ts (22)、mcp-handlers.ts (18)。分模块渐进改。
 

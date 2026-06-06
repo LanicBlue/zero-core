@@ -27,8 +27,8 @@ export function shouldCompact(
 	tokensBefore: number,
 	contextWindow: number,
 ): boolean {
-	if (config.compaction.strategy === "pi-default") {
-		// Let Pi handle it
+	if (config.compaction.strategy === "auto") {
+		// Auto compaction not yet implemented
 		return false;
 	}
 	const reserve = config.compaction.reserveTokens ?? 16384;

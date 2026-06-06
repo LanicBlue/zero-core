@@ -116,7 +116,7 @@ export const ZeroCoreConfigSchema = Type.Object({
 
 	compaction: Type.Object({
 		strategy: Type.Optional(
-			Type.Union([Type.Literal("pi-default"), Type.Literal("custom")]),
+			Type.Union([Type.Literal("auto"), Type.Literal("custom")]),
 		),
 		customInstructions: Type.Optional(Type.String()),
 		enabled: Type.Optional(Type.Boolean()),
@@ -124,7 +124,7 @@ export const ZeroCoreConfigSchema = Type.Object({
 		keepRecentTokens: Type.Optional(Type.Number()),
 	}),
 
-	// ─── Pi 运行时覆写 ──────────────────────────────────────────
+	// ─── Runtime defaults ──────────────────────────────────────────
 
 	defaults: Type.Object({
 		provider: Type.Optional(Type.String()),
@@ -148,7 +148,7 @@ export const ZeroCoreConfigSchema = Type.Object({
 		imageWidthCells: Type.Optional(Type.Number()),
 	}),
 
-	// ─── OpenClaw Harness ────────────────────────────────────────
+	// ─── Harness ────────────────────────────────────────
 
 	harness: Type.Object({
 		id: Type.Optional(Type.String()),
@@ -186,7 +186,7 @@ export const DEFAULT_CONFIG: ZeroCoreConfig = {
 		executionMode: "parallel",
 	},
 	compaction: {
-		strategy: "pi-default",
+		strategy: "auto",
 	},
 	defaults: {},
 	retry: {},

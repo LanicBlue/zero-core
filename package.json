@@ -1,7 +1,7 @@
 {
   "name": "zero-core",
   "version": "0.1.0",
-  "description": "Custom agent core based on Pi Agent with configurable extensions and OpenClaw harness integration",
+  "description": "AI Agent runtime built on Electron with configurable tools, MCP, and multi-provider support",
   "type": "module",
   "bin": {
     "zero-core": "./dist/cli.js"

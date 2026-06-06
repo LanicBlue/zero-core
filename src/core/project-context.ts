@@ -48,7 +48,7 @@ export interface ProjectContextResult {
 }
 
 // ---------------------------------------------------------------------------
-// Context file discovery (wraps Pi Agent's convention)
+// Context file discovery
 // ---------------------------------------------------------------------------
 
 const CONTEXT_FILENAMES = ["AGENTS.md", "CLAUDE.md"];
