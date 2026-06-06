@@ -303,6 +303,8 @@ export const webSearchTool = buildTool({
 			{ key: "searxngUrl", type: "string", label: "SearXNG URL", description: "SearXNG 自托管地址" },
 			{ key: "serpApiKey", type: "string", label: "SerpAPI Key", description: "SerpAPI 所需的 API Key" },
 			{ key: "braveApiKey", type: "string", label: "Brave API Key", description: "Brave Search 所需的 API Key" },
+			{ key: "minInterval", type: "number", label: "最小间隔(ms)", default: 0, description: "两次调用最小间隔，0=不限速" },
+			{ key: "maxConcurrent", type: "number", label: "最大并发", default: 0, description: "最大并发数，0=不限制" },
 	],
 	inputSchema: z.object({
 		query: z.string().describe("Search query"),

@@ -29,7 +29,9 @@ import { tool } from "ai";
 import type { ZodSchema } from "zod";
 import type { ToolExecutionContext } from "../types.js";
 import type { ToolConfigField } from "../../core/tool-registry.js";
+import { log } from "../../core/logger.js";
 import { triggerHooks } from "../../core/hook-registry.js";
+import type { ToolRateLimiter } from "../tool-rate-limiter.js";
 
 // ---------------------------------------------------------------------------
 // Tool metadata
@@ -115,6 +117,17 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 				return `Tool blocked: ${(preResult as any).reason}`;
 			}
 
+			// Rate limiting — acquire slot before execution
+			const limiter = ctxOrEmpty.rateLimiter;
+			const rlConfig = ctxOrEmpty.toolConfig?.[options.name];
+			if (limiter && rlConfig && (rlConfig.minInterval > 0 || rlConfig.maxConcurrent > 0)) {
+				log.debug("rate-limit", options.name + ": minInterval=" + rlConfig.minInterval + " maxConcurrent=" + rlConfig.maxConcurrent);
+				await limiter.acquire(options.name, {
+					minInterval: rlConfig.minInterval,
+					maxConcurrent: rlConfig.maxConcurrent,
+				});
+			}
+
 			try {
 				const result = await options.execute(input, ctxOrEmpty);
 				await triggerHooks("PostToolUse", {
@@ -127,6 +140,7 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 					args: input,
 					toolCallId,
 				});
+				if (limiter && rlConfig) limiter.release(options.name);
 				return truncateResult(result, meta.maxResultSize);
 			} catch (err) {
 				await triggerHooks("PostToolUseFailure", {
@@ -138,6 +152,7 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 					args: input,
 					toolCallId,
 				});
+				if (limiter && rlConfig) limiter.release(options.name);
 				throw err;
 			}
 		},

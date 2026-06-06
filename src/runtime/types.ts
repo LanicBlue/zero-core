@@ -290,6 +290,7 @@ export interface ToolExecutionContext {
 		runBackground?: (command: string, timeout?: number) => string;
 	readScope?: "filesystem" | "workspace";
 	toolConfig?: Record<string, Record<string, any>>;
+	rateLimiter?: import("./tool-rate-limiter.js").ToolRateLimiter;
 }
 
 // ---------------------------------------------------------------------------

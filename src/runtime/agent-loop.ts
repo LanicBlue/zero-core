@@ -50,6 +50,7 @@ import { TurnRecorder } from "./turn-recorder.js";
 import { SystemPromptAssembler } from "./prompt-sections.js";
 import { SubagentDelegator } from "./subagent-delegator.js";
 import { CheckpointManager } from "./checkpoint-manager.js";
+import { ToolRateLimiter } from "./tool-rate-limiter.js";
 
 // ---------------------------------------------------------------------------
 // AgentLoop
@@ -122,6 +123,7 @@ export class AgentLoop implements AgentRuntime {
 			stopTask: (taskId) => this.delegator.stopTask(taskId),
 			suspendUntilWake: (timeoutMs, taskId) => this.delegator.suspendUntilWake(timeoutMs, taskId),
 			runBackground: (command, timeoutSec) => this.delegator.runBackground(command, timeoutSec),
+			rateLimiter: new ToolRateLimiter(),
 		};
 	}
 
