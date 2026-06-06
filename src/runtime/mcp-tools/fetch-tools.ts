@@ -3,10 +3,10 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 抓取网页内容并转换为 Markdown 格式，支持缓存、大结果存盘、图片/链接提取
+// 抓取网页内容并转换为 Markdown 格式，支持缓存、大结果存盘、图片/链接提取、浏览器渲染
 //
 // ## 输入
-// URL 地址、格式、超时、缓存控制、输出选项
+// URL 地址、格式、超时、缓存控制、输出选项、渲染模式
 //
 // ## 输出
 // Markdown / HTML / Text / JSON 格式内容
@@ -28,6 +28,7 @@ import { homedir } from "node:os";
 import TurndownService from "turndown";
 import { JSDOM } from "jsdom";
 import { buildTool } from "../tools/tool-factory.js";
+import { renderWithBrowser } from "./browser-render.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -246,15 +247,40 @@ function extractLinksSummary(html: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// SPA detection
+// ---------------------------------------------------------------------------
+
+function looksLikeSpa(html: string): boolean {
+	const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+	if (!bodyMatch) return false;
+	const body = bodyMatch[1];
+	const hasSpaRoot = /<div\s+id=["'](?:root|app|__next|__nuxt|___gatsby)["']/i.test(body);
+	if (!hasSpaRoot) return false;
+	const hasScriptBundle = /<script[^>]+src=["'][^"']+\.(js|mjs)["']/i.test(body);
+	if (!hasScriptBundle) return false;
+	const textContent = body.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+		.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+		.replace(/<[^>]+>/g, "").trim();
+	return textContent.length < 200;
+}
+
+// ---------------------------------------------------------------------------
 // Fetch with timeout
 // ---------------------------------------------------------------------------
 
-async function fetchUrl(url: string, headers: Record<string, string>, timeoutSec: number): Promise<Response> {
+async function fetchUrl(url: string, headers: Record<string, string>, timeoutSec: number, cookies?: Record<string, string>): Promise<Response> {
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), timeoutSec * 1000);
 	try {
 		const resp = await fetch(url, {
-			headers: { "User-Agent": UA, ...headers },
+			headers: (() => {
+			const h: Record<string, string> = { "User-Agent": UA, "Accept": "text/markdown, text/html, */*" };
+			if (cookies && Object.keys(cookies).length > 0) {
+				h["Cookie"] = Object.entries(cookies).map(([k, v]) => k + "=" + v).join("; ");
+			}
+			Object.assign(h, headers);
+			return h;
+		})(),
 			signal: controller.signal,
 		});
 		if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
@@ -308,13 +334,15 @@ function getCookiesForUrl(url: string): Record<string, string> {
 	const domain = getDomain(url);
 	if (!domain) return {};
 	const now = Date.now();
-	const entries = cookieJar[domain];
-	if (!entries) return {};
 	const cookies: Record<string, string> = {};
-	for (const [name, entry] of Object.entries(entries)) {
-		if (entry.expires > 0 && entry.expires < now) continue;
-		if (entry.path && !url.includes(entry.path)) continue;
-		cookies[name] = entry.value;
+	for (const [jarDomain, entries] of Object.entries(cookieJar)) {
+		// Match exact domain or parent domain (subdomain sharing)
+		if (jarDomain !== domain && !domain.endsWith('.' + jarDomain)) continue;
+		for (const [name, entry] of Object.entries(entries)) {
+			if (entry.expires > 0 && entry.expires < now) continue;
+			if (entry.path && !url.includes(entry.path)) continue;
+			cookies[name] = entry.value;
+		}
 	}
 	return cookies;
 }
@@ -324,39 +352,62 @@ function storeCookiesFromResponse(url: string, resp: Response): void {
 	if (!domain) return;
 	const setCookieHeaders = resp.headers.getSetCookie?.() ?? [];
 	if (setCookieHeaders.length === 0) {
-		// Fallback: try raw header
-		const raw = resp.headers.get("set-cookie");
-		if (raw) setCookieHeaders.push(...raw.split(", ").filter(h => h.includes("=")));
+		const raw = resp.headers.get('set-cookie');
+		if (raw) setCookieHeaders.push(...raw.split(', ').filter((h: string) => h.includes('=')));
 	}
 	if (setCookieHeaders.length === 0) return;
-
 	if (!cookieJar[domain]) cookieJar[domain] = {};
-
 	for (const header of setCookieHeaders) {
-		const parts = header.split(";").map(p => p.trim());
-		const nameVal = parts[0] ?? "";
-		const eqIdx = nameVal.indexOf("=");
+		const parts = header.split(';').map((p: string) => p.trim());
+		const nameVal = parts[0] ?? '';
+		const eqIdx = nameVal.indexOf('=');
 		if (eqIdx === -1) continue;
 		const name = nameVal.slice(0, eqIdx);
 		const value = nameVal.slice(eqIdx + 1);
-
 		let expires = 0;
-		let path = "/";
+		let path = '/';
 		for (const part of parts.slice(1)) {
 			const lower = part.toLowerCase();
-			if (lower.startsWith("max-age=")) {
-				const sec = parseInt(part.split("=")[1], 10);
+			if (lower.startsWith('max-age=')) {
+				const sec = parseInt(part.split('=')[1], 10);
 				if (!isNaN(sec) && sec > 0) expires = Date.now() + sec * 1000;
-				else if (sec <= 0) expires = 0; // session cookie or delete
-			} else if (lower.startsWith("expires=")) {
-				const d = new Date(part.split("=").slice(1).join("="));
+			} else if (lower.startsWith('expires=')) {
+				const d = new Date(part.split('=').slice(1).join('='));
 				if (!isNaN(d.getTime())) expires = d.getTime();
-			} else if (lower.startsWith("path=")) {
-				path = part.split("=")[1] ?? "/";
+			} else if (lower.startsWith('path=')) {
+				path = part.split('=')[1] ?? '/';
 			}
 		}
-
 		cookieJar[domain][name] = { value, expires, path };
+	}
+	saveCookies();
+}
+
+// Exported for login handler
+export function importCookies(domain: string, cookies: Array<{ name: string; value: string; expires?: number; path?: string }>): number {
+	if (!cookieJar[domain]) cookieJar[domain] = {};
+	let count = 0;
+	for (const c of cookies) {
+		cookieJar[domain][c.name] = { value: c.value, expires: c.expires ?? 0, path: c.path ?? "/" };
+		count++;
+	}
+	saveCookies();
+	return count;
+}
+
+export function getCookieCount(): Record<string, number> {
+	const result: Record<string, number> = {};
+	for (const [domain, entries] of Object.entries(cookieJar)) {
+		result[domain] = Object.keys(entries).length;
+	}
+	return result;
+}
+
+export function clearCookies(domain?: string): void {
+	if (domain) {
+		delete cookieJar[domain];
+	} else {
+		cookieJar = {};
 	}
 	saveCookies();
 }
@@ -397,10 +448,16 @@ export const webFetchTool = buildTool({
 		"- withImageSummary: append a list of all images found on the page\n" +
 		"- timeout: override request timeout in seconds (default: 30)\n" +
 		"- noCache: force fresh fetch, ignoring cached response\n\n" +
+		"Render modes (configurable in Tools page):\n" +
+		"- fetch: plain HTTP request (fastest, but cannot render JavaScript)\n" +
+		"- browser: renders the page in a browser, executing JavaScript (slower)\n" +
+		"- auto (default): tries HTTP first, automatically switches to browser for SPA sites\n\n" +
 		"Large results: if the response exceeds 30,000 characters, the full content is saved to disk " +
 		"and a preview with the file path is returned. Use FileRead to access the full content.\n\n" +
 		"Combine with WebSearch: search first, then fetch the most promising results.\n" +
-		"Use headers parameter for APIs requiring authentication or specific content types.",
+		"Use headers parameter for APIs requiring authentication or specific content types.\n\n" +
+		"Cookie support: WebFetch automatically sends saved cookies for matching domains. " +
+		"Use the login feature in the Tools page to save cookies by logging into websites through a browser window.",
 	meta: { category: "web", isReadOnly: true },
 	configSchema: [
 		{ key: "format", type: "select", label: "Default format", default: "markdown", options: ["markdown", "html", "text", "json"], description: "默认输出格式" },
@@ -409,6 +466,9 @@ export const webFetchTool = buildTool({
 		{ key: "cacheTTL", type: "number", label: "缓存过期 (s)", default: 300, description: "缓存有效期（秒）" },
 		{ key: "retainImages", type: "boolean", label: "保留图片", default: true, description: "Markdown 输出中保留图片" },
 		{ key: "maxContentSize", type: "number", label: "最大响应 (MB)", default: 10, description: "最大允许的响应体大小" },
+		{ key: "useCookies", type: "boolean", label: "启用 Cookie", default: true, description: "自动发送已保存的 Cookie" },
+		{ key: "renderMode", type: "select", label: "渲染模式", default: "auto", options: ["fetch", "browser", "auto"], description: "fetch=纯HTTP, browser=浏览器渲染, auto=自动检测SPA" },
+		{ key: "renderDelay", type: "number", label: "渲染等待 (s)", default: 3, description: "浏览器渲染后等待JS执行的秒数" },
 	],
 	inputSchema: z.object({
 		url: z.string().describe("URL to fetch"),
@@ -419,6 +479,7 @@ export const webFetchTool = buildTool({
 		withLinksSummary: z.boolean().optional().describe("Append extracted links summary"),
 		withImageSummary: z.boolean().optional().describe("Append extracted images summary"),
 		noCache: z.boolean().optional().describe("Skip cache, force fresh fetch"),
+		renderMode: z.enum(["fetch", "browser", "auto"]).optional().describe("Override render mode: fetch=HTTP only, browser=render JS, auto=detect SPA"),
 	}),
 	execute: async (input, ctx) => {
 		const { url, headers } = input;
@@ -429,6 +490,8 @@ export const webFetchTool = buildTool({
 		const noCache = input.noCache ?? config.noCache ?? false;
 		const cacheTTL = (config.cacheTTL ?? 300) * 1000;
 		const maxBytes = (config.maxContentSize ?? 10) * 1024 * 1024;
+		const renderMode = input.renderMode ?? config.renderMode ?? "auto";
+		const renderDelay = config.renderDelay ?? 3;
 
 		// Step 1: Check cache
 		const cacheKey = urlHash(url);
@@ -441,46 +504,64 @@ export const webFetchTool = buildTool({
 			}
 		}
 
-		// Step 2: Fetch
+		// Step 2: Get HTML content
 		try {
-			const resp = await fetchUrl(url, headers ?? {}, timeoutSec);
-			const ct = resp.headers.get("content-type") ?? "";
+			let html: string;
 
-			// Binary content
-			if (isBinaryContentType(ct)) {
-				const buf = await resp.arrayBuffer();
-				if (buf.byteLength > maxBytes) {
-					throw new Error(`Response too large (${(buf.byteLength / 1024 / 1024).toFixed(1)}MB). Maximum is ${(maxBytes / 1024 / 1024).toFixed(0)}MB.`);
+			if (renderMode === "browser") {
+				// Browser-only: render page with BrowserWindow (login cookies are automatic)
+				const rendered = await renderWithBrowser(url, { renderDelay, timeout: timeoutSec });
+				html = rendered.html;
+			} else {
+				// HTTP fetch (fetch or auto mode)
+				const useCookies = config.useCookies !== false;
+				const cookies = useCookies ? getCookiesForUrl(url) : undefined;
+				const resp = await fetchUrl(url, headers ?? {}, timeoutSec, cookies);
+				if (useCookies) storeCookiesFromResponse(url, resp);
+				const ct = resp.headers.get("content-type") ?? "";
+
+				// Binary content — return directly (not applicable to browser rendering)
+				if (isBinaryContentType(ct)) {
+					const buf = await resp.arrayBuffer();
+					if (buf.byteLength > maxBytes) {
+						throw new Error(`Response too large (${(buf.byteLength / 1024 / 1024).toFixed(1)}MB). Maximum is ${(maxBytes / 1024 / 1024).toFixed(0)}MB.`);
+					}
+					const ext = mimeToExt(ct);
+					const path = persistBinary(buf, ext);
+					return `Binary content saved to: ${path}\nSize: ${(buf.byteLength / 1024).toFixed(1)}KB\nType: ${ct}`;
 				}
-				const ext = mimeToExt(ct);
-				const path = persistBinary(buf, ext);
-				return `Binary content saved to: ${path}\nSize: ${(buf.byteLength / 1024).toFixed(1)}KB\nType: ${ct}`;
-			}
 
-			// JSON format
-			if (fmt === "json") {
-				if (ct.includes("html")) {
-					const html = await resp.text();
-					const md = turndown.turndown(cleanHtml(html, retainImages));
-					throw new Error(
-						`The response from ${url} is HTML (Content-Type: ${ct}), not JSON. ` +
-						`Use format="markdown" or format="html" instead. ` +
-						`Preview of the page content:\n${md.slice(0, 2000)}`,
-					);
+				// JSON format — return directly
+				if (fmt === "json") {
+					if (ct.includes("html")) {
+						const rawHtml = await resp.text();
+						const md = turndown.turndown(cleanHtml(rawHtml, retainImages));
+						throw new Error(
+							`The response from ${url} is HTML (Content-Type: ${ct}), not JSON. ` +
+							`Use format="markdown" or format="html" instead. ` +
+							`Preview of the page content:\n${md.slice(0, 2000)}`,
+						);
+					}
+					const json = await resp.json();
+					const result = JSON.stringify(json, null, 2);
+					return handleLargeResult(result);
 				}
-				const json = await resp.json();
-				const result = JSON.stringify(json, null, 2);
-				return handleLargeResult(result);
+
+				html = await resp.text();
+
+				// Size check
+				if (html.length > maxBytes) {
+					throw new Error(`Response too large (${(html.length / 1024 / 1024).toFixed(1)}MB). Maximum is ${(maxBytes / 1024 / 1024).toFixed(0)}MB.`);
+				}
+
+				// Auto mode: detect SPA and retry with browser rendering
+				if (renderMode === "auto" && looksLikeSpa(html)) {
+					const rendered = await renderWithBrowser(url, { renderDelay, timeout: timeoutSec });
+					html = rendered.html;
+				}
 			}
 
-			const html = await resp.text();
-
-			// Size check
-			if (html.length > maxBytes) {
-				throw new Error(`Response too large (${(html.length / 1024 / 1024).toFixed(1)}MB). Maximum is ${(maxBytes / 1024 / 1024).toFixed(0)}MB.`);
-			}
-
-			// Step 3: Convert
+			// Step 3: Convert to requested format
 			let result: string;
 			switch (fmt) {
 				case "html":
@@ -513,7 +594,7 @@ export const webFetchTool = buildTool({
 		} catch (err: any) {
 			const msg = err.message ?? String(err);
 			if (/HTTP (401|403)/.test(msg)) {
-				throw new Error(`Access denied fetching ${url}. The site may require authentication, block automated requests, or use Cloudflare/bot protection. Try a different URL or format.`);
+				throw new Error(`Access denied fetching ${url}. The site may require authentication. Try using the login feature in Tools page to save cookies, or check if the site blocks automated requests.`);
 			}
 			if (/HTTP (404|410)/.test(msg)) {
 				throw new Error(`Page not found: ${url}. The URL may be incorrect or the page has been removed. Verify the URL and try again.`);

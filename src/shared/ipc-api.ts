@@ -161,6 +161,11 @@ export interface IpcChannelDefs {
 	// ── Misc ─────────────────────────────────────────────────
 	"ask-user:respond":    { params: [requestId: string, answers: Record<string, string>]; result: Ok };
 
+	// ── WebFetch Cookie Login ────────────────────────────────
+	"webfetch:login":         { params: [url: string];    result: { ok: boolean; cookieCount: number; error?: string } };
+	"webfetch:cookies":       { params: [];               result: Record<string, number> };
+	"webfetch:clear-cookies": { params: [domain?: string]; result: void };
+
 	// ── Tool Executions ──────────────────────────────────────
 	"tool-executions:query":   { params: [filter: ToolExecutionFilter];              result: ToolExecutionRecord[] };
 	"tool-executions:stats":   { params: [agentId?: string];                         result: ToolExecutionStats[] };

@@ -1,35 +1,10 @@
-// 工具 IPC 处理器
-//
-// # 文件说明书
-//
-// ## 核心功能
-// 工具相关的 IPC 处理器，处理工具列表、配置、测试等操作。
-//
-// ## 输入
-// - IPC 通道调用
-// - IpcContext - 上下文
-//
-// ## 输出
-// - 工具列表
-// - 工具配置
-// - 测试结果
-//
-// ## 定位
-// IPC 处理器，被 core.ts 注册。
-//
-// ## 依赖
-// - ./typed-ipc - 类型化 IPC
-// - ../../runtime/tools - 工具模块
-//
-// ## 维护规则
-// - 新增工具操作时需同步更新
-// - 保持与前端 API 一致
-//
+import { BrowserWindow, session } from "electron";
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 import type { ToolExecutionContext } from "../../runtime/types.js";
 import { ALL_TOOLS } from "../../runtime/tools/index.js";
 import { getToolExecute, getToolInputFields } from "../../runtime/tools/tool-factory.js";
+import { importCookies, getCookieCount, clearCookies } from "../../runtime/mcp-tools/fetch-tools.js";
 
 export function registerToolHandlers(ctx: IpcContext): void {
 	typedHandle("tools:list", "toolRegistry",
@@ -81,4 +56,78 @@ export function registerToolHandlers(ctx: IpcContext): void {
 			}
 		},
 	);
+
+	// ── WebFetch Cookie Login ──────────────────────────────────
+	// Note: Some sites (like okjike.com) use localStorage instead of cookies for auth.
+	// The login window still serves a purpose: the persist:webfetch session stores
+	// localStorage data, which browser rendering mode uses automatically.
+	// Cookie extraction is a bonus for sites that DO use cookies.
+	typedHandle("webfetch:login", [], async (_ctx, url: string) => {
+		try {
+			const hostname = new URL(url).hostname;
+			const win = new BrowserWindow({
+				width: 1000,
+				height: 700,
+				title: "Login — " + hostname,
+				webPreferences: {
+					partition: "persist:webfetch",
+					nodeIntegration: false,
+					contextIsolation: true,
+				},
+			});
+			await win.loadURL(url);
+
+			// Capture cookies before window is destroyed
+			let capturedCookies: Electron.Cookie[] = [];
+			await new Promise<void>((resolve) => {
+				win.on("close", (e) => {
+					e.preventDefault();
+					win.webContents.session.cookies.get({}).then((cookies) => {
+						capturedCookies = cookies;
+						win.destroy();
+						resolve();
+					}).catch(() => {
+						win.destroy();
+						resolve();
+					});
+				});
+			});
+
+			// Filter and import cookies for relevant domains
+			const relevant = capturedCookies.filter((c) => {
+				const d = c.domain.replace(/^\./, "");
+				return d === hostname || hostname.endsWith("." + d);
+			});
+
+			let totalImported = 0;
+			const byDomain = new Map<string, Electron.Cookie[]>();
+			for (const c of relevant) {
+				const d = c.domain.replace(/^\./, "");
+				if (!byDomain.has(d)) byDomain.set(d, []);
+				byDomain.get(d)!.push(c);
+			}
+			for (const [domain, cookies] of byDomain) {
+				totalImported += importCookies(
+					domain,
+					cookies.map((c) => ({
+						name: c.name,
+						value: c.value,
+						expires: c.expirationDate ? Math.floor(c.expirationDate * 1000) : 0,
+						path: c.path ?? "/",
+					})),
+				);
+			}
+			return { ok: true, cookieCount: totalImported };
+		} catch (err: any) {
+			return { ok: false, cookieCount: 0, error: err.message };
+		}
+	});
+
+	typedHandle("webfetch:cookies", [], () => {
+		return getCookieCount();
+	});
+
+	typedHandle("webfetch:clear-cookies", [], (_ctx, domain?: string) => {
+		clearCookies(domain);
+	});
 }

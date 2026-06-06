@@ -184,6 +184,11 @@ const api: WindowApi = {
 		toolExecutionsStats: (agentId?) => ipcRenderer.invoke("tool-executions:stats", agentId),
 		toolExecutionsCleanup: (maxAgeMs) => ipcRenderer.invoke("tool-executions:cleanup", maxAgeMs),
 		toolExecutionsAnalyze: (agentId?) => ipcRenderer.invoke("tool-executions:analyze", agentId),
+
+		// WebFetch
+		webfetchLogin: (url) => ipcRenderer.invoke("webfetch:login", url),
+		webfetchCookies: () => ipcRenderer.invoke("webfetch:cookies"),
+		webfetchClearCookies: (domain?) => ipcRenderer.invoke("webfetch:clear-cookies", domain),
 };
 
 contextBridge.exposeInMainWorld("api", api);

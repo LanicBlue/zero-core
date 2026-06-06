@@ -25,6 +25,7 @@
 // - 保持与后端 tool-handlers 接口一致
 //
 import React, { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import type { ToolExecutionStats, ToolExecutionRecord } from "../../../shared/types";
 
 const api = () => (window as any).api;
@@ -62,6 +63,12 @@ export default function ToolsPage() {
 	const [analyzing, setAnalyzing] = useState(false);
 	const [analysisExpanded, setAnalysisExpanded] = useState(false);
 
+	const [loginModalOpen, setLoginModalOpen] = useState(false);
+	const [loginUrl, setLoginUrl] = useState("https://");
+	const [loginStatus, setLoginStatus] = useState<{ ok: boolean; cookieCount: number; error?: string } | null>(null);
+	const [loggingIn, setLoggingIn] = useState(false);
+	const [cookieInfo, setCookieInfo] = useState<Record<string, number>>({});
+
 	useEffect(() => {
 		(async () => {
 			const [t, c] = await Promise.all([api().toolsList(), api().toolConfigGet()]);
@@ -97,6 +104,8 @@ export default function ToolsPage() {
 		setTestInput({});
 		setTestResult(null);
 		setDetailTab("config");
+		setLoginStatus(null);
+		setLoginModalOpen(false);
 	}, [selected]);
 
 	const grouped = tools.reduce((acc: Record<string, any[]>, t: any) => {
@@ -123,6 +132,40 @@ export default function ToolsPage() {
 		} finally {
 			setAnalyzing(false);
 		}
+	};
+
+	const loadCookieInfo = async () => {
+		try {
+			const info = await api().webfetchCookies();
+			setCookieInfo(info);
+		} catch { /* ignore */ }
+	};
+
+	const runLogin = async () => {
+		if (!loginUrl || loggingIn) return;
+		setLoggingIn(true);
+		setLoginStatus(null);
+		try {
+			const result = await api().webfetchLogin(loginUrl);
+			setLoginStatus(result);
+			if (result.ok) await loadCookieInfo();
+		} catch (err: any) {
+			setLoginStatus({ ok: false, cookieCount: 0, error: err.message });
+		} finally {
+			setLoggingIn(false);
+		}
+	};
+
+	const clearAllCookies = async () => {
+		await api().webfetchClearCookies();
+		setCookieInfo({});
+		setLoginStatus(null);
+	};
+
+	const openLoginModal = async () => {
+		setLoginModalOpen(true);
+		setLoginStatus(null);
+		await loadCookieInfo();
 	};
 
 	const formatTime = (iso: string) => {
@@ -323,7 +366,20 @@ export default function ToolsPage() {
 								)
 							)}
 
-							{detailTab === "test" && (
+							{selected === "WebFetch" && detailTab === "config" && (
+							<div className="tools-page-login-row">
+								<button type="button" className="btn-primary btn-sm" onClick={openLoginModal}>
+									Cookie Login
+								</button>
+								{Object.keys(cookieInfo).length > 0 && (
+									<span className="tools-page-cookie-badge">
+										{Object.values(cookieInfo).reduce((a, b) => a + b, 0)} cookies saved
+									</span>
+								)}
+							</div>
+						)}
+
+						{detailTab === "test" && (
 								selectedTool.inputFields?.length > 0 ? (
 									<div className="tools-page-test-panel">
 										<div className="tools-page-test-body">
@@ -506,7 +562,54 @@ export default function ToolsPage() {
 						</div>
 					)}
 				</div>
-			</div>
+		</div>
+		{loginModalOpen && createPortal(
+							<div className="modal-overlay">
+								<div className="modal" onClick={(e) => e.stopPropagation()}>
+									<div className="modal-header">
+										<h3>Cookie Login</h3>
+										<button type="button" className="modal-close" onClick={() => setLoginModalOpen(false)}>x</button>
+									</div>
+									<p className="modal-desc">Open a browser window to log into a website. Cookies will be saved automatically.</p>
+									<div className="modal-body">
+										<div className="tools-page-config-field">
+											<input
+												type="text"
+												placeholder="https://example.com"
+												value={loginUrl}
+												onChange={(e) => setLoginUrl(e.target.value)}
+											/>
+											<button
+												type="button"
+												className={"btn-primary btn-sm" + (loggingIn ? " disabled" : "")}
+												onClick={runLogin}
+												disabled={loggingIn || !loginUrl.startsWith("http")}
+											>
+												{loggingIn ? "Waiting..." : "Open Login Window"}
+											</button>
+										</div>
+										{loginStatus && (
+											<div className={"tools-page-login-status " + (loginStatus.ok ? "ok" : "error")}>
+												{loginStatus.ok
+													? "Saved " + loginStatus.cookieCount + " cookies"
+													: "Error: " + (loginStatus.error ?? "unknown")}
+											</div>
+										)}
+										{Object.keys(cookieInfo).length > 0 && (
+											<div className="tools-page-cookie-info">
+												<h5>Saved Cookies</h5>
+												{Object.entries(cookieInfo).map(([domain, count]) => (
+													<div key={domain} className="tools-page-cookie-entry">
+														<span>{domain}: {count} cookies</span>
+													</div>
+												))}
+												<button type="button" className="btn-sm" onClick={clearAllCookies}>Clear All</button>
+											</div>
+										)}
+									</div>
+								</div>
+						</div>
+				, document.body)}
 		</div>
 	);
 }
