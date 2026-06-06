@@ -35,5 +35,8 @@ export function registerAgentHandlers(ctx: IpcContext): void {
 		store: () => ctx.agentStore as any,
 		module: "agentStore",
 		afterMutation: refreshAgentTools,
+		afterDelete: (id) => {
+			(ctx.agentToolStore as any)?.deleteByAgentId(id);
+		},
 	});
 }

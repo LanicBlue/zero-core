@@ -94,7 +94,7 @@ export const bashTool = buildTool({
 		const t0 = Date.now();
 
 		try {
-			const result = await execFileAsync(shell, shellArgs, execOpts) as { stdout: string; stderr: string };
+			const result = await execFileAsync(shell, shellArgs, execOpts) as unknown as { stdout: string; stderr: string };
 			const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 			const stdout = (result.stdout ?? "").trim();
 			const stderr = (result.stderr ?? "").trim();

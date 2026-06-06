@@ -74,8 +74,9 @@ export function registerCrud<
 	store: () => CrudStore<T, Create, Update>;
 	module: ModuleName;
 	afterMutation?: () => void;
+	afterDelete?: (id: string) => void;
 }): void {
-	const { channel, store, module, afterMutation } = opts;
+	const { channel, store, module, afterMutation, afterDelete } = opts;
 
 	const ready = () => getCtx().whenReady(module);
 

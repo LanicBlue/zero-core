@@ -89,6 +89,7 @@ export async function startServer() {
 	const mcp = new MCPManager(registry);
 	const agentStore = new AgentStore(sessionDB);
 	const agentToolStore = new AgentToolStore(sessionDB);
+		agentToolStore.cleanupOrphans();
 	const providerStore = new ProviderStore(sessionDB);
 	const templateStore = new TemplateStore(sessionDB);
 	const mcpStore = new McpStore(sessionDB);
@@ -126,7 +127,7 @@ export async function startServer() {
 		buildDefaultPrompt,
 	}));
 
-	app.use("/api/agents", createAgentRouter({ agentStore, agentService, sessionDB }));
+	app.use("/api/agents", createAgentRouter({ agentStore, agentToolStore, agentService, sessionDB }));
 	app.use("/api/agent-tools", createAgentToolRouter(agentToolStore));
 	app.use("/api/providers", createProviderRouter(providerStore));
 	app.use("/api/templates", createTemplateRouter(templateStore));

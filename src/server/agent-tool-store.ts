@@ -55,9 +55,24 @@ const COLUMNS: ColumnDef[] = [
 
 export class AgentToolStore {
 	private store: SqliteStore<AgentToolEntry>;
+	private sessionDB: SessionDB;
 
 	constructor(sessionDB: SessionDB) {
+		this.sessionDB = sessionDB;
 		this.store = new SqliteStore<AgentToolEntry>(sessionDB.getDb(), "agent_tools", COLUMNS);
+	}
+
+	/** Remove agent-tool entries that reference deleted agents. */
+	cleanupOrphans(): void {
+		const agentIds = new Set(
+			this.sessionDB.getDb().prepare("SELECT id FROM agents").all().map((r: any) => r.id),
+		);
+		const orphans = this.store.list().filter(
+			(e) => e.type === "internal" && e.agentId && !agentIds.has(e.agentId),
+		);
+		for (const o of orphans) {
+			this.store.delete(o.id);
+		}
 	}
 
 	list(): AgentToolEntry[] {
