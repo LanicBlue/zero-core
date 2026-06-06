@@ -48,6 +48,7 @@ export interface ToolStartEvent {
 	agentId?: string;
 	sessionId?: string;
 	toolName: string;
+	toolCallId?: string;
 	args?: unknown;
 }
 
@@ -56,6 +57,7 @@ export interface ToolEndEvent {
 	agentId?: string;
 	sessionId?: string;
 	toolName: string;
+	toolCallId?: string;
 	isError: boolean;
 	result?: unknown;
 }
@@ -237,6 +239,7 @@ export interface SessionConfig {
 	toolPolicy: {
 		autoApprove?: string[];
 		blockedTools?: string[];
+		tools?: Record<string, { enabled: boolean }>;
 		executionMode?: "sequential" | "parallel";
 		resultMaxTokens?: number;
 			readScope?: "filesystem" | "workspace";

@@ -406,7 +406,7 @@ export class AgentLoop implements AgentRuntime {
 					const tcId = e.toolCallId ?? e.id ?? `tc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 					this.checkpoint.recordToolCall(tcId, e.toolName, e.input);
 					this.recorder.blocks.push({ type: "tool", name: e.toolName, status: "running", args: e.input, toolCallId: tcId });
-					this.emit({ type: "tool_start", agentId: this.config.agentId, toolName: e.toolName, args: e.input });
+					this.emit({ type: "tool_start", agentId: this.config.agentId, toolName: e.toolName, toolCallId: tcId, args: e.input });
 					break;
 				}
 				case "tool-result": {
@@ -417,7 +417,7 @@ export class AgentLoop implements AgentRuntime {
 						? [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.toolCallId === resultTcId)
 						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
 					if (tb) { tb.status = "done"; tb.result = e.output; }
-					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, isError: false, result: e.output });
+					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: resultTcId, isError: false, result: e.output });
 					if (resultTcId) this.checkpoint.saveIncrementalCheckpoint(this.session.getSessionId(), this.recorder, this.session.getMessages(), resultTcId, e.output);
 					break;
 				}
@@ -429,7 +429,7 @@ export class AgentLoop implements AgentRuntime {
 						? [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.toolCallId === errTcId)
 						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
 					if (tb) { tb.status = "error"; tb.result = String(e.error ?? e.errorText ?? ""); }
-					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, isError: true, result: String(e.error ?? e.errorText ?? "") });
+					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: errTcId, isError: true, result: String(e.error ?? e.errorText ?? "") });
 					if (errTcId) this.checkpoint.saveIncrementalCheckpoint(this.session.getSessionId(), this.recorder, this.session.getMessages(), errTcId, String(e.error ?? e.errorText ?? ""));
 					break;
 				}

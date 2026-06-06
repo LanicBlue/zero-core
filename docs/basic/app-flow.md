@@ -4,56 +4,55 @@
 
 1. **启动流程**
    - Electron 主进程启动（`src/main/index.ts`）
-   - 初始化数据库、配置和 Hook 注册表
-   - 注册指标收集 Hook 和工具执行记录 Hook
-   - 创建主窗口
-   - 加载渲染进程（React 应用）
+   - 初始化数据库、运行迁移（`db-migration.ts`）
+   - 注册 Hook 系统 + 持久化 Hook + 工具执行记录 Hook
+   - 创建 ToolRegistry、MCPManager
+   - 启动时清理孤儿 agent-tool 条目（`agentToolStore.cleanupOrphans()`）
+   - 扫描中断的 turn 并恢复（`recovery.ts`）
+   - 创建主窗口，加载渲染进程
 
 2. **Agent 执行流程**
-   - 用户发送消息（`ChatPanel`）
-   - IPC 调用到主进程（`session-handlers.ts`）
-   - Agent 循环执行（`src/runtime/agent-loop.ts`）
-   - 工具调用（`src/runtime/tools/`）
-   - Hook 系统触发 PreToolUse / PostToolUse 事件
-   - 结果记录到 `turn-recorder.ts` 和 `tool_executions` 表
-   - 结果返回渲染进程
+   - 用户发送消息 → IPC `chat:send` → `agent-service.ts`
+   - 构建 SessionConfig（含 toolPolicy.tools map 传递到运行时）
+   - AgentLoop 启动，组装 system prompt（base + tool_policy + rag_context）
+   - `streamText()` 调用 AI SDK，处理流式事件
+   - 工具调用：`tool-call` 事件 → PreToolUse hook → ToolRateLimiter.acquire() → execute → release → PostToolUse hook
+   - 并行工具调用通过 `toolCallId` 匹配结果，避免混淆
+   - 结果通过 IPC 流式返回渲染进程
 
-3. **工具管理流程**
-   - 工具注册（`tool-registry.ts`）
-   - 工具执行（`tool-factory.ts`）
-   - 工具执行记录（`tool-execution-hooks.ts` → `session-db.ts`）
-   - 结果记录（`turn-recorder.ts`）
+3. **工具限速流程**
+   - 配置来源：`ctx.toolConfig[toolName].minInterval / maxConcurrent`
+   - `tool-factory.ts` 的 execute 包装：hook → acquire → execute → release → hook
+   - minInterval=0 && maxConcurrent=0 时零开销跳过
 
-4. **工具分析流程**
-   - 进入 Tools 页面统计 Tab
-   - 查看工具调用概况（总调用、错误率、平均耗时）
-   - 选择工具查看详细错误列表
-   - 点击 AI 分析获取错误诊断建议
+4. **中断恢复流程**
+   - CheckpointManager 在每个 tool-result 后保存增量检查点
+   - 中断后重启时 `recovery.ts` 扫描 `turn_state` 表
+   - `AgentLoop.resume()` 加载已完成的 turn，继续执行
 
-5. **仪表板流程**
-   - 进入 Dashboard 页面
-   - 查看会话指标（活跃会话、Token 用量、延迟统计）
-   - 实时刷新（2 秒间隔）
-
-6. **数据清理流程**
-   - 调用清理接口（`tool-execution-handlers.ts` → `cleanup`）
-   - 按时间阈值清理旧工具执行记录和 Turn 状态
+5. **Agent 删除流程**
+   - 删除 Agent → `afterDelete` 回调级联删除关联 agent-tool 条目
+   - 启动时 `cleanupOrphans()` 清理引用已删除 Agent 的 agent-tool 记录
 
 ## 用户路径
 
-- **创建 Agent**：进入 Agents 页面 → 填写配置 → 保存
-- **运行 Agent**：选择 Agent → 发送消息 → 查看结果
-- **管理工具**：进入 Tools 页面 → 配置工具 → 测试工具
-- **查看工具统计**：进入 Tools 页面 → 统计 Tab → 查看调用概况和错误分析
-- **AI 错误分析**：工具统计页 → 选择工具 → 点击 AI 分析 → 查看诊断报告
-- **监控会话**：进入 Dashboard 页面 → 查看实时指标
+- **创建 Agent**：Agents 页面 → 选模板或从空白创建 → 配置模型/工具/prompt → 保存
+- **运行 Agent**：选择 Agent → 发送消息 → 查看流式结果和工具调用
+- **管理工具**：Tools 页面 → 启用/禁用工具 → 配置参数（限速等）→ 测试
+- **查看统计**：Tools 页面 → 统计 Tab → 调用概况 + AI 错误分析
+- **监控会话**：Dashboard → 实时会话指标
 
-## 状态变化
+## 事件流
 
-- `session_init` → `text_delta` → `tool_start` → `tool_end` → `agent_end`
-- Hook 生命周期：`SessionStart` → `PreToolUse` → `PostToolUse` / `PostToolUseFailure` → `SessionEnd`
-- 异常状态：工具失败、超时、数据库错误、Hook 执行异常
+```
+session_init → text_delta → [thinking_delta] → [tool_start {toolCallId}] → [tool_end {toolCallId}] → ... → agent_end
+```
+
+Hook 生命周期：
+```
+SessionStart → [PreToolUse → PostToolUse/PostToolUseFailure]* → Stop → SessionEnd
+```
 
 ## 维护规则
 
-- 每次用户流程、页面跳转、任务状态或异常处理发生变化后，必须检查并更新本文件
+- 每次用户流程、事件流或异常处理变化后，必须检查并更新本文件

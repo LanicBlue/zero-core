@@ -64,7 +64,11 @@ export const fileReadTool = buildTool({
 		"- Results are returned using cat -n format, with line numbers starting at 1\n" +
 		"- This tool can read Jupyter notebooks (.ipynb files) — returns all cells with their outputs\n" +
 		"- This tool can extract text from PDF files\n" +
-		"- Use `mode='outline'` to get a structured code outline showing the file's symbol hierarchy\n" +
+		"- Use `mode='outline'` to get a structured code outline showing the file's symbol hierarchy. Prefer outline mode when:\n" +
+		"  - First reading a file you haven't seen before, especially large files (saves tokens)\n" +
+		"  - You need to understand the file's structure and find specific functions/classes before reading details\n" +
+		"  - Exploring a codebase to locate relevant code\n" +
+		"- In outline mode, collapsed sections appear as `L10-45  myFunction [collapsed, lines 10-45]`. To read the collapsed content, call Read again with the matching offset and limit (e.g., offset=10 limit=36), or use mode='full' to read the entire file\n" +
 		"- Any file which appears to be binary (images, executables, etc) will be rejected",
 	meta: { category: "runtime", isReadOnly: true },
 	configSchema: [
@@ -85,7 +89,7 @@ export const fileReadTool = buildTool({
 		const maxLines = config.max_lines ?? 2000;
 		const maxFileSize = config.max_file_size ?? 256;
 		const maxBytes = maxFileSize > 0 ? maxFileSize * 1024 : 0;
-		const mode = (offset != null || inputLimit != null) ? "full" : (input.mode ?? config.default_mode ?? "full");
+		const mode = (offset != null) ? "full" : (input.mode ?? config.default_mode ?? "full");
 		const restrictToWorkspace = ctx.readScope === "workspace";
 		const resolved = resolvePath(path, ctx.workingDir, restrictToWorkspace);
 		if (typeof resolved === "object") return resolved.error;
@@ -134,11 +138,11 @@ export const fileReadTool = buildTool({
 			// 10. Outline mode
 			if (mode === "outline") {
 				const outline = extractOutline(basename(resolved), content);
-				return renderOutline(outline, { budget: maxLines, source: content });
+				return renderOutline(outline, { budget: inputLimit ?? maxLines, source: content });
 			}
 
 			// 11. Full mode
-			const lines = content.split("\n");
+			const lines = content.split(/\r?\n/);
 			// Remove trailing empty line from split if file ends with newline
 			if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
 

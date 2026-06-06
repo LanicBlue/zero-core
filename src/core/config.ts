@@ -46,6 +46,7 @@ export const ZeroCoreConfigSchema = Type.Object({
 		blockedTools: Type.Optional(Type.Array(Type.String())),
 		allowedTools: Type.Optional(Type.Array(Type.String())),
 		autoApprove: Type.Optional(Type.Array(Type.String())),
+		tools: Type.Optional(Type.Record(Type.String(), Type.Object({ enabled: Type.Boolean() }))),
 		resultMaxTokens: Type.Optional(Type.Number()),
 		toolCategories: Type.Optional(
 			Type.Record(

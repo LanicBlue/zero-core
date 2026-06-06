@@ -24,7 +24,7 @@
 // - 新增页面时需更新
 // - 保持布局响应性
 //
-import React, { useState, useRef, useEffect } from "react";
+import React, { useRef, useEffect } from "react";
 import IconSidebar from "./IconSidebar.js";
 import ChatPanel from "./ChatPanel.js";
 import FileTreePanel from "./FileTreePanel.js";
@@ -36,7 +36,7 @@ import McpSettingsPage from "../mcp/McpSettingsPage.js";
 import KnowledgeBasePage from "../kb/KnowledgeBasePage.js";
 import ToolsPage from "../tools/ToolsPage.js";
 import DashboardPage from "../dashboard/DashboardPage.js";
-import LogViewer from "../common/LogViewer.js";
+
 import { usePageStore } from "../../store/page-store.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
 import { useChatStore } from "../../store/chat-store.js";
@@ -45,7 +45,6 @@ const api = () => (window as any).api;
 
 export default function AppLayout() {
 	const { activePage } = usePageStore();
-	const [showLog, setShowLog] = useState(false);
 	const lastErrorKey = useRef<string | null>(null);
 
 	const {
@@ -85,8 +84,8 @@ export default function AppLayout() {
 			text_delta: (d, key) => updateAssistantText(key, d.text),
 			message_end: () => { /* text_delta already handled streaming text */ },
 			thinking_delta: (d, key) => updateThinking(key, d.text),
-			tool_start: (d, key) => addToolCall(key, d.toolName, d.args ? stringify(d.args) : undefined),
-			tool_end: (d, key) => updateToolCall(key, d.toolName, d.isError ? "error" : "done", d.result ? stringify(d.result) : undefined),
+			tool_start: (d, key) => addToolCall(key, d.toolName, d.args ? stringify(d.args) : undefined, d.toolCallId),
+			tool_end: (d, key) => updateToolCall(key, d.toolName, d.isError ? "error" : "done", d.result ? stringify(d.result) : undefined, d.toolCallId),
 			agent_end: (_d, key) => finishStreaming(key),
 			retry_attempt: (d, key) => updateAssistantText(key, `Retrying (${d.attempt}/${d.maxAttempts})...`),
 			todos_update: (d) => {
@@ -136,22 +135,6 @@ export default function AppLayout() {
 				</div>
 			)}
 
-			{/* Log toggle button */}
-			<button
-				type="button"
-				className="log-toggle-btn"
-				onClick={() => setShowLog(!showLog)}
-				title="Toggle Log Panel"
-			>
-				{showLog ? "×" : "⟁"}
-			</button>
-
-			{/* Log panel */}
-			{showLog && (
-				<div className="log-panel">
-					<LogViewer />
-				</div>
-			)}
 		</div>
 	);
 }

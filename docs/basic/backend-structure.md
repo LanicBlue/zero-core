@@ -1,90 +1,61 @@
 # 后端架构设计
 
-## 适用范围
-
-本文档适用于 zero-core 的后端架构，包括主进程、服务层、Hook 系统和数据流。
-
 ## 服务边界
 
-**主要服务**：
-- `src/main/index.ts` - Electron 主进程入口
-- `src/server/agent-service.ts` - Agent 执行服务
-- `src/server/session-db.ts` - 会话数据库服务（含工具执行记录和统计）
-- `src/server/session-metrics.ts` - 会话指标收集服务（Welford 在线统计算法）
-- `src/server/mcp-manager.ts` - MCP 服务器管理
-- `src/runtime/agent-loop.ts` - Agent 循环执行引擎
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| 主进程入口 | `src/main/index.ts` | Electron 生命周期、窗口管理 |
+| Agent 服务 | `src/server/agent-service.ts` | Agent 会话创建、消息调度、事件转发 |
+| Agent 循环 | `src/runtime/agent-loop.ts` | 核心执行引擎，管理消息流、工具调用、重试、状态转换 |
+| 会话管理 | `src/runtime/session.ts` | 消息历史、token 计数、上下文裁剪 |
+| 子任务委派 | `src/runtime/subagent-delegator.ts` | 前台/后台子任务、任务注册表 |
+| 检查点 | `src/runtime/checkpoint-manager.ts` | 对话检查点持久化和中断恢复 |
+| 限速器 | `src/runtime/tool-rate-limiter.ts` | per-tool FIFO 队列 + 时间间隔门控 |
+| 工具工厂 | `src/runtime/tools/tool-factory.ts` | 工具注册、元数据、execute 包装（hook + 限速 + 截断） |
+| 工具注册中心 | `src/core/tool-registry.ts` | 工具元数据、配置 schema、运行时描述 |
+| MCP 管理 | `src/server/mcp-manager.ts` | MCP 服务器生命周期和工具调用 |
+| Hook 系统 | `src/core/hook-registry.ts` | 单例注册表，27 个生命周期事件 |
+| 模板管理 | `src/server/template-store.ts` | 12 个内置模板 + 用户模板，自动合并更新 |
 
-**模块职责**：
-- `src/main/ipc/` - IPC 处理器（21 个），连接渲染进程和主进程
-- `src/runtime/` - Agent 运行时，包括工具调用、状态管理、子代理委派
-- `src/server/` - 服务层，提供数据持久化、业务逻辑和指标收集
-- `src/core/` - 核心逻辑，包括配置、上下文管理和 Hook 系统
+## 工具执行管线
 
-## Hook 系统
+```
+tool-call 事件
+  → PreToolUse hook（可阻断）
+  → ToolRateLimiter.acquire()（FIFO 排队）
+  → 实际 execute()
+  → ToolRateLimiter.release()
+  → PostToolUse / PostToolUseFailure hook
+  → 结果截断（truncateResult）
+```
 
-**注册表**：
-- `src/core/hook-registry.ts` - 单例 Hook 注册表，支持 27 个生命周期事件
+## 工具策略层级
 
-**Hook 事件类型**：
-- 工具生命周期：`PreToolUse`、`PostToolUse`、`PostToolUseFailure`
-- 会话生命周期：`SessionStart`、`SessionEnd`、`Stop`、`StopFailure`
-- 子代理：`SubagentStart`、`SubagentStop`
-- 压缩：`PreCompact`、`PostCompact`
-- 配置变更：`ConfigChange`、`CwdChanged`、`FileChanged`
+1. `toolPolicy.tools` map（UI 开关状态，精确控制每个工具）
+2. `toolPolicy.autoApprove`（template 默认值，兜底）
+3. `DEFAULT_ENABLED`（Bash, Read, Write, Edit, Grep, Glob）
 
-**Hook 消费者**：
-- `src/server/tool-execution-hooks.ts` - 工具执行记录
-- `src/server/metrics-hooks.ts` - 指标收集
-- `src/server/durable-hooks.ts` - 持久化执行钩子
+运行时优先级：`tools` map > `autoApprove` > `DEFAULT_ENABLED`。`tools` map 通过 `agent-service.ts` 传入 `SessionConfig.toolPolicy`。
 
-## CLI 接入面
+## IPC 接入面
 
-**不适用** - zero-core 是 Electron 应用，不提供 CLI 接入面。
+通过 `typed-ipc.ts` 的 `registerCrud` 统一注册 CRUD 通道，支持 `afterDelete` 回调。
 
-## API 接入面
+**通道列表**：agents、agent-tools、providers、templates、chat、sessions、tools、tool-config、webfetch、config、mcp、kb、messages、log、dialog、files、github-templates
 
-**内部 IPC 接口**：
-- `session-handlers.ts` - 会话管理（创建、删除、查询）
-- `agent-handlers.ts` - Agent 执行（启动、停止、流式输出）
-- `tool-handlers.ts` - 工具管理（列表、配置、测试）
-- `tool-execution-handlers.ts` - 工具分析（统计、清理、AI 诊断）
-- `config-handlers.ts` - 配置管理（获取、更新）
-- `chat-handlers.ts` - 聊天交互
-- `agent-tool-handlers.ts` - Agent 工具绑定
-- `provider-handlers.ts` - Provider 配置
-- `mcp-handlers.ts` - MCP 服务器管理
-- `kb-handlers.ts` - 知识库操作
-- `template-handlers.ts` - 提示词模板
-- `message-handlers.ts` - 消息编辑删除
-- `log-handlers.ts` - 日志文件访问
-- `dialog-handlers.ts` - 原生对话框
-- `file-handlers.ts` - 文件操作
-- `github-template-handlers.ts` - GitHub 模板导入
+## 数据存储
 
-**协议**：Electron IPC（基于事件，通过 `typed-ipc.ts` 类型安全封装）
-
-## 数据流
-
-**输入路径**：
-- 用户输入 → 渲染进程 → IPC → 主进程 → Agent 服务
-
-**处理路径**：
-- Agent 循环 → 工具调用 → Hook 触发 → 结果处理 → 状态更新
-- Hook 触发 → 工具执行记录写入 SQLite
-- Hook 触发 → 指标收集更新内存统计
-
-**存储路径**：
-- 会话数据 → SQLite（`session-db.ts`）
-- 工具执行记录 → SQLite `tool_executions` 表
-- Turn 状态检查点 → SQLite `turn_state` 表
-- 配置数据 → JSON 文件（`config.yaml`）
-- 指标数据 → 内存（Welford 在线统计，按会话聚合）
-
-**输出路径**：
-- Agent 结果 → IPC → 渲染进程 → UI 更新
-- 工具统计 → IPC → Tools 页面统计 Tab
-- 会话指标 → IPC → Dashboard 页面
+| 存储类 | 数据 |
+|--------|------|
+| `SessionDB` | 会话、消息、turn_state、tool_executions、KV store |
+| `AgentStore` | Agent 配置（模型、prompt、toolPolicy） |
+| `AgentToolStore` | Agent-as-Tool 映射，含级联删除和孤儿清理 |
+| `ProviderStore` | AI Provider 配置和模型列表 |
+| `TemplateStore` | 12 内置 + 用户模板，自动合并 |
+| `McpStore` | MCP 服务器配置 |
+| `KbStore` | 知识库元数据 |
+| `SqliteStore` | 基础 CRUD store（所有 store 的父类） |
 
 ## 维护规则
 
-- 每次服务边界、IPC 接入契约、数据流、存储或外部依赖发生变化后，必须检查并更新本文件
+- 每次服务边界、IPC 契约、数据流或存储变化后，必须检查并更新本文件

@@ -181,12 +181,12 @@ function renderNode(
 	}
 
 	if (!isExpanded) {
-		// Collapsed: fold hint
+		// Collapsed: fold hint with actionable range
 		const range = node.line === node.endLine
 			? `L${String(node.line).padStart(width)}`
 			: `L${String(node.line).padStart(width)}-${node.endLine}`;
 		const indent = "  ".repeat(depth);
-		output.push(`${range}  ${indent}${node.name} [...]`);
+		output.push(`${range}  ${indent}${node.name} [collapsed, lines ${node.line}-${node.endLine}]`);
 		return;
 	}
 

@@ -260,6 +260,7 @@ export class AgentService {
 			toolPolicy: {
 				autoApprove: agent?.toolPolicy?.autoApprove ?? this.config.toolPolicy.autoApprove,
 				blockedTools: agent?.toolPolicy?.blockedTools ?? this.config.toolPolicy.blockedTools,
+				tools: agent?.toolPolicy?.tools ?? this.config.toolPolicy.tools,
 				executionMode: agent?.toolPolicy?.executionMode ?? this.config.toolPolicy.executionMode,
 				resultMaxTokens: agent?.toolPolicy?.resultMaxTokens ?? this.config.toolPolicy.resultMaxTokens,
 					readScope: agent?.toolPolicy?.readScope ?? "filesystem",

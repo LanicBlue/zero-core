@@ -31,6 +31,7 @@ type SessionLifecycleState = "created" | "idle" | "queued" | "streaming" | "exec
 export interface ToolCallBlock {
 	type: "tool";
 	name: string;
+	toolCallId?: string;
 	status: "running" | "done" | "error";
 	args?: string;
 	result?: string;
@@ -73,8 +74,8 @@ interface ChatState {
 	addMessage: (sessionId: string, msg: ChatMessage) => void;
 	updateAssistantText: (sessionId: string, text: string) => void;
 	updateThinking: (sessionId: string, text: string) => void;
-	addToolCall: (sessionId: string, name: string, args?: string) => void;
-	updateToolCall: (sessionId: string, name: string, status: "done" | "error", result?: string) => void;
+	addToolCall: (sessionId: string, name: string, args?: string, toolCallId?: string) => void;
+	updateToolCall: (sessionId: string, name: string, status: "done" | "error", result?: string, toolCallId?: string) => void;
 	setIsStreaming: (sessionId: string, v: boolean) => void;
 	finishStreaming: (sessionId: string) => void;
 	updateSessionLifecycle: (sessionId: string, state: SessionLifecycleState) => void;
@@ -174,11 +175,11 @@ export const useChatStore = create<ChatState>((set) => ({
 			};
 		}),
 
-	addToolCall: (sessionId, name, args?) =>
+	addToolCall: (sessionId, name, args?, toolCallId?) =>
 		set((state) => {
 			const sessionMsgs = updateLastAssistantMsg(state.messagesBySession[sessionId] ?? [], (msg) => {
 				const blocks = [...(msg.blocks ?? [])];
-				blocks.push({ type: "tool", name, status: "running", args, startedAt: Date.now() });
+				blocks.push({ type: "tool", name, toolCallId, status: "running", args, startedAt: Date.now() });
 				return { ...msg, blocks, streaming: true };
 			});
 			return {
@@ -186,14 +187,18 @@ export const useChatStore = create<ChatState>((set) => ({
 			};
 		}),
 
-	updateToolCall: (sessionId, name, status, result?) =>
+	updateToolCall: (sessionId, name, status, result?, toolCallId?) =>
 		set((state) => {
 			const sessionMsgs = updateLastAssistantMsg(state.messagesBySession[sessionId] ?? [], (msg) => {
 				const blocks = [...(msg.blocks ?? [])];
 				for (let i = blocks.length - 1; i >= 0; i--) {
 					if (blocks[i].type === "tool") {
 						const tb = blocks[i] as ToolCallBlock;
-						if (tb.name === name && tb.status === "running") {
+						// Match by toolCallId if available, fall back to name
+						const match = toolCallId
+							? tb.toolCallId === toolCallId
+							: (tb.name === name && tb.status === "running");
+						if (match) {
 							blocks[i] = { ...tb, status, result, completedAt: Date.now() };
 							break;
 						}

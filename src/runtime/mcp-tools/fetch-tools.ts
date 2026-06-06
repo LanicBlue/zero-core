@@ -647,6 +647,6 @@ function handleLargeResult(result: string): string {
 	return (
 		`${preview}\n\n` +
 		`---\n[Result too large (${result.length.toLocaleString()} chars). Full content saved to: ${filePath}]\n` +
-		`Use FileRead to access the complete content.`
+		`Use the Read tool to access the complete content.`
 	);
 }
