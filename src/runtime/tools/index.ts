@@ -44,7 +44,7 @@ import { askUserTool } from "./ask-user.js";
 import { todoWriteTool } from "./todo-write.js";
 import { getToolMeta, getToolName, getToolConfigSchema, getToolDescription, getToolPrompt, getToolInputFields, getToolExecute } from "./tool-factory.js";
 import { webFetchTool } from "../mcp-tools/fetch-tools.js";
-import { memoryReadTool, memoryWriteTool } from "../mcp-tools/memory-tools.js";
+import { memoryRecallTool, memoryNoteTool } from "../mcp-tools/memory-node-tools.js";
 import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
 import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
 import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
@@ -75,8 +75,8 @@ export const ALL_TOOLS: Record<string, any> = {
 	AskUser: askUserTool,
 	TodoWrite: todoWriteTool,
 	WebFetch: webFetchTool,
-	MemoryRead: memoryReadTool,
-	MemoryWrite: memoryWriteTool,
+	MemoryRecall: memoryRecallTool,
+	MemoryNote: memoryNoteTool,
 	SequentialThinking: sequentialThinkingTool,
 
 	...getAssistantTools(),

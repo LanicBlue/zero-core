@@ -33,6 +33,7 @@ import { log } from "../core/logger.js";
 import type { SessionRecord, ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats } from "../shared/types.js";
 import { KeyValueStore } from "./key-value-store.js";
 import { MemoryStore } from "./memory-store.js";
+import { MemoryNodeStore } from "./memory-node-store.js";
 import { ZERO_CORE_DIR } from "../core/config.js";
 
 // ---------------------------------------------------------------------------
@@ -43,6 +44,7 @@ export class SessionDB {
 	private db: Database.Database;
 	private kvStore: KeyValueStore;
 	private memoryStore: MemoryStore;
+	private memoryNodeStore: MemoryNodeStore;
 
 	constructor(dbPath?: string) {
 		const dir = join(dbPath ?? ZERO_CORE_DIR, "..");
@@ -56,6 +58,7 @@ export class SessionDB {
 
 		this.kvStore = new KeyValueStore(this.db);
 		this.memoryStore = new MemoryStore(this.db);
+		this.memoryNodeStore = new MemoryNodeStore(this.db);
 
 		this.initSchema();
 		this.migrateMessageFiles();
@@ -72,6 +75,10 @@ export class SessionDB {
 
 	getMemoryStore(): MemoryStore {
 		return this.memoryStore;
+	}
+
+	getMemoryNodeStore(): MemoryNodeStore {
+		return this.memoryNodeStore;
 	}
 
 	// -----------------------------------------------------------------------
@@ -108,6 +115,7 @@ export class SessionDB {
 				seq         INTEGER NOT NULL,
 				role        TEXT NOT NULL,
 				content     TEXT,
+				compressed  INTEGER NOT NULL DEFAULT 0,
 				created_at  TEXT NOT NULL,
 				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 			);

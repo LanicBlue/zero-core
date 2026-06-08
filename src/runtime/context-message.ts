@@ -10,6 +10,7 @@ export function buildContextMessage(config: {
 	workspaceDir?: string;
 	guidelines?: string[];
 	ragContext?: string;
+	memoryContext?: string;
 }): string | null {
 	const parts: string[] = [];
 
@@ -18,6 +19,10 @@ export function buildContextMessage(config: {
 
 	if (config.guidelines?.length) {
 		parts.push("## Guidelines\n" + config.guidelines.map(g => `- ${g}`).join("\n"));
+	}
+
+	if (config.memoryContext) {
+		parts.push("## Recalled Memories\n" + config.memoryContext);
 	}
 
 	if (config.ragContext) {

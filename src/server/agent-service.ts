@@ -242,6 +242,8 @@ export class AgentService {
 			workspaceDir: cwd,
 			systemPrompt,
 			guidelines,
+			compression: this.config.compression,
+			memory: this.config.memory,
 			modelId: agent?.model || this.defaultModel || "",
 			providerName: agent?.provider || this.defaultProvider || "",
 			thinkingLevel: agent?.thinkingLevel,

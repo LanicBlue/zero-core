@@ -124,6 +124,26 @@ export const ZeroCoreConfigSchema = Type.Object({
 		keepRecentTokens: Type.Optional(Type.Number()),
 	}),
 
+	// ─── Compression (L1/L2 progressive)
+
+	compression: Type.Object({
+		enabled: Type.Optional(Type.Boolean()),
+		keepRecentTurns: Type.Optional(Type.Number()),
+		l1Threshold: Type.Optional(Type.Number()),
+		l2Threshold: Type.Optional(Type.Number()),
+		provider: Type.Optional(Type.String()),
+		model: Type.Optional(Type.String()),
+	}),
+
+	// ─── Memory (wiki nodes)
+
+	memory: Type.Object({
+		enabled: Type.Optional(Type.Boolean()),
+		autoExtract: Type.Optional(Type.Boolean()),
+		autoRecall: Type.Optional(Type.Boolean()),
+		recallLimit: Type.Optional(Type.Number()),
+	}),
+
 	// ─── Runtime defaults ──────────────────────────────────────────
 
 	defaults: Type.Object({

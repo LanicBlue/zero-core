@@ -79,6 +79,16 @@ export class AgentSession {
 		this.messages.push(msg);
 	}
 
+	replaceMessages(messages: ModelMessage[]): void {
+		this.messages = messages;
+		this.invalidateCalibration();
+	}
+
+	getContextUsage(): number {
+		const total = this.estimateTokens();
+		return this.contextWindow > 0 ? total / this.contextWindow : 0;
+	}
+
 	saveToDb(): void {
 		if (this.db && this.sessionId) {
 			this.db.saveTurn(this.sessionId, this.messages);

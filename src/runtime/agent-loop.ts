@@ -146,6 +146,7 @@ export class AgentLoop implements AgentRuntime {
 			await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
 
 			await this.runWithRetry();
+			await this.compressIfNeeded();
 
 		} finally {
 			if (timeout) clearTimeout(timeout);
@@ -288,12 +289,25 @@ export class AgentLoop implements AgentRuntime {
 		const systemPrompt = await this.assembleSystemPrompt();
 		this.injectTaskNotifications();
 
-		// Build ephemeral context message (guidelines + env + rag)
+		// Build ephemeral context message (guidelines + env + rag + memory)
 		const ragContext = await this.getRagContext();
+		let memoryContext: string | undefined;
+		if (this.memoryRecall && this.config.memory?.autoRecall !== false) {
+			const userMsgs = this.session.getMessages().filter((m: any) => m.role === "user");
+			const lastUser = userMsgs[userMsgs.length - 1];
+			if (lastUser) {
+				const text = typeof lastUser.content === "string" ? lastUser.content : JSON.stringify(lastUser.content);
+				try {
+					const recall = await this.memoryRecall.recall(text, this.config.memory?.recallLimit);
+					if (recall) memoryContext = this.memoryRecall.formatForContext(recall) ?? undefined;
+				} catch { /* recall failure is non-fatal */ }
+			}
+		}
 		const ctx = buildContextMessage({
 			workspaceDir: this.config.workspaceDir,
 			guidelines: this.config.guidelines,
 			ragContext,
+			memoryContext,
 		});
 		const messages = this.prependContext(this.session.getMessages(), ctx);
 
@@ -348,6 +362,48 @@ export class AgentLoop implements AgentRuntime {
 		if (!this.config.getRagContext) return undefined;
 		try { return (await this.config.getRagContext(this.config.agentId, "")) ?? undefined; }
 		catch { return undefined; }
+	}
+
+	/** Run progressive compression if context usage exceeds thresholds */
+	private async compressIfNeeded(): Promise<void> {
+		const compressionConfig = this.config.compression;
+		if (!compressionConfig?.enabled) return;
+
+		const contextUsage = this.session.getContextUsage();
+		if (contextUsage <= (compressionConfig.l1Threshold ?? 0.7)) return;
+
+		try {
+			const result = await this.compressionEngine.compressIfNeeded(
+				this.session.getMessages(),
+				contextUsage,
+				{
+					keepRecentTurns: compressionConfig.keepRecentTurns ?? 5,
+					l1Threshold: compressionConfig.l1Threshold ?? 0.7,
+					l2Threshold: compressionConfig.l2Threshold ?? 0.5,
+				},
+			);
+
+			if (result.didCompress || result.didExtract) {
+				this.session.replaceMessages(result.messages);
+				this.session.saveToDb();
+
+				if (result.memoryNodes.length > 0 && this.config.db) {
+					try {
+						const nodeStore = this.config.db.getMemoryNodeStore();
+						if (nodeStore) {
+							nodeStore.upsertNodes(this.session.getSessionId() ?? null, result.memoryNodes);
+						}
+					} catch (err) {
+						log.warn("compression", "Memory node save failed:", (err as Error).message);
+					}
+				}
+
+				log.debug("compression", "Compressed:", result.didCompress, "Extracted:", result.didExtract,
+					"Memory nodes:", result.memoryNodes.length, "Messages:", result.messages.length);
+			}
+		} catch (err) {
+			log.warn("compression", "Compression failed, skipping:", (err as Error).message);
+		}
 	}
 
 	/** Prepend ephemeral context to the last user message, without modifying originals */
