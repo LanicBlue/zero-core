@@ -28,7 +28,6 @@ import { homedir } from "node:os";
 import TurndownService from "turndown";
 import { JSDOM } from "jsdom";
 import { buildTool } from "../tools/tool-factory.js";
-import { renderWithBrowser } from "./browser-render.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -510,7 +509,8 @@ export const webFetchTool = buildTool({
 
 			if (renderMode === "browser") {
 				// Browser-only: render page with BrowserWindow (login cookies are automatic)
-				const rendered = await renderWithBrowser(url, { renderDelay, timeout: timeoutSec });
+				const { renderWithBrowser } = await import("./browser-render.js");
+					const rendered = await renderWithBrowser(url, { renderDelay, timeout: timeoutSec });
 				html = rendered.html;
 			} else {
 				// HTTP fetch (fetch or auto mode)
@@ -556,6 +556,7 @@ export const webFetchTool = buildTool({
 
 				// Auto mode: detect SPA and retry with browser rendering
 				if (renderMode === "auto" && looksLikeSpa(html)) {
+					const { renderWithBrowser } = await import("./browser-render.js");
 					const rendered = await renderWithBrowser(url, { renderDelay, timeout: timeoutSec });
 					html = rendered.html;
 				}

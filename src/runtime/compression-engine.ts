@@ -180,7 +180,7 @@ export class CompressionEngine {
 				.replace("{userMessage}", serializeContent(userMsg.content).slice(0, 1000))
 				.replace("{assistantContent}", assistantContent.slice(0, 4000));
 
-			const result = await generateText({ model, prompt, maxTokens: 300 });
+			const result = await generateText({ model, prompt, maxOutputTokens: 300 });
 			const summary = result.text.trim();
 
 			if (!summary) return null;
@@ -221,7 +221,7 @@ export class CompressionEngine {
 			const model = resolveModel(this.providers, this.providerName, this.modelId);
 			const prompt = L2_PROMPT.replace("{turnTexts}", turnTexts.slice(0, 6000));
 
-			const result = await generateText({ model, prompt, maxTokens: 500 });
+			const result = await generateText({ model, prompt, maxOutputTokens: 500 });
 			const text = result.text.trim();
 
 			// Parse JSON from response

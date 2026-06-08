@@ -239,6 +239,7 @@ export interface WorkspaceConfig {
 	defaultProvider?: string;
 	searchProvider?: SearchProviderConfig;
 	proxy?: ProxyConfig;
+	readScope?: "filesystem" | "workspace";
 }
 
 // ── File Log Config ─────────────────────────────────────────────────────────

@@ -36,7 +36,7 @@ export default defineConfig({
 				fileName: () => "index.js",
 			},
 			rollupOptions: {
-				external: ["electron"],
+				external: ["electron", "ws", "bufferutil", "utf-8-validate"],
 			},
 		},
 	},

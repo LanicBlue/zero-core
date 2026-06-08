@@ -52,6 +52,9 @@ import { buildContextMessage } from "./context-message.js";
 import { SubagentDelegator } from "./subagent-delegator.js";
 import { CheckpointManager } from "./checkpoint-manager.js";
 import { ToolRateLimiter } from "./tool-rate-limiter.js";
+import { CompressionEngine } from "./compression-engine.js";
+import { MemoryRecall } from "./memory-recall.js";
+import type { MemoryNodeStore } from "../server/memory-node-store.js";
 
 // ---------------------------------------------------------------------------
 // AgentLoop
@@ -72,6 +75,8 @@ export class AgentLoop implements AgentRuntime {
 	private thinkingText = "";
 	private recorder = new TurnRecorder();
 	private resultText = "";
+	private compressionEngine!: CompressionEngine;
+	private memoryRecall: MemoryRecall | null = null;
 
 	constructor(
 		config: SessionConfig,
@@ -116,6 +121,19 @@ export class AgentLoop implements AgentRuntime {
 			runBackground: (command, timeoutSec) => this.delegator.runBackground(command, timeoutSec),
 			rateLimiter: new ToolRateLimiter(),
 		};
+
+		this.compressionEngine = new CompressionEngine(
+			providers,
+			config.providerName,
+			config.modelId,
+		);
+
+		if (config.memory?.enabled && config.db) {
+			const nodeStore = (config.db as any).getMemoryNodeStore?.() as MemoryNodeStore | undefined;
+			if (nodeStore) {
+				this.memoryRecall = new MemoryRecall(nodeStore);
+			}
+		}
 	}
 
 	// ─── Public API ──────────────────────────────────────────────

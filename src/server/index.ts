@@ -20,14 +20,14 @@
 // ## 维护规则
 // 新增路由模块需在此注册
 //
+
 import express from "express";
 import { createServer } from "http";
 import { WebSocketServer } from "ws";
-import { join, dirname, extname, resolve } from "path";
+import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { readFileSync, statSync, existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { IGNORED_DIRS, TEXT_EXTS, buildTree } from "../shared/file-utils.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentToolStore } from "./agent-tool-store.js";
 import { ProviderStore } from "./provider-store.js";
@@ -35,10 +35,10 @@ import { TemplateStore } from "./template-store.js";
 import { McpStore } from "./mcp-store.js";
 import { KbStore } from "./kb-store.js";
 import { KbDB } from "./kb-db.js";
-import { createAgentService } from "./agent-service.js";
+import { createAgentService, registerAgentToolEntries } from "./agent-service.js";
 import { SessionDB } from "./session-db.js";
 import { runMigrations } from "./db-migration.js";
-import { loadWorkspaceConfig, saveWorkspaceConfig } from "./workspace-config.js";
+import { loadWorkspaceConfig } from "./workspace-config.js";
 import { buildDefaultPrompt } from "../core/default-prompt.js";
 import { ToolRegistry } from "../core/tool-registry.js";
 import { MCPManager } from "./mcp-manager.js";
@@ -49,9 +49,17 @@ import { createTemplateRouter } from "./template-router.js";
 import { createMcpRouter } from "./mcp-router.js";
 import { createKbRouter } from "./kb-router.js";
 import { createConfigRouter } from "./config-router.js";
+import { createChatRouter } from "./chat-router.js";
+import { createSessionRouter } from "./session-router.js";
+import { createLogRouter } from "./log-router.js";
+import { createFileRouter } from "./file-router.js";
+import { createToolExecutionRouter } from "./tool-execution-router.js";
+import { ALL_TOOLS, registerRuntimeTools } from "../runtime/tools/index.js";
+import { getToolExecute } from "../runtime/tools/tool-factory.js";
+import type { ToolExecutionContext } from "../runtime/types.js";
+import { getCookieCount, clearCookies } from "../runtime/mcp-tools/fetch-tools.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PORT = parseInt(process.env.PORT ?? "3210", 10);
 const expandHome = (p: string) => p.startsWith("~") ? p.replace(/^~/, homedir()) : p;
 
 process.on("unhandledRejection", (reason) => {
@@ -66,7 +74,15 @@ process.on("uncaughtException", (err) => {
 	if (err.stack) console.error(err.stack);
 });
 
-export async function startServer() {
+export interface StartServerOptions {
+	port?: number;
+	serveStatic?: boolean;
+}
+
+export async function startServer(options?: StartServerOptions) {
+	const port = options?.port ?? parseInt(process.env.PORT ?? "3210", 10);
+	const serveStatic = options?.serveStatic ?? true;
+
 	const app = express();
 	app.use(express.json());
 
@@ -79,17 +95,18 @@ export async function startServer() {
 	runMigrations(sessionDB);
 
 	// Initialize hook system + durable execution
-	const { HookRegistry } = await import("../core/hook-registry.js");
 	const { registerDurableHooks } = await import("./durable-hooks.js");
 	const { registerToolExecutionHooks } = await import("./tool-execution-hooks.js");
 	registerDurableHooks(sessionDB);
 	registerToolExecutionHooks(sessionDB);
 
 	const registry = new ToolRegistry(sessionDB.getKVStore());
+	registerRuntimeTools(registry);
 	const mcp = new MCPManager(registry);
 	const agentStore = new AgentStore(sessionDB);
 	const agentToolStore = new AgentToolStore(sessionDB);
-		agentToolStore.cleanupOrphans();
+	agentToolStore.cleanupOrphans();
+	registerAgentToolEntries(agentToolStore, registry);
 	const providerStore = new ProviderStore(sessionDB);
 	const templateStore = new TemplateStore(sessionDB);
 	const mcpStore = new McpStore(sessionDB);
@@ -108,8 +125,14 @@ export async function startServer() {
 	agentService.setAgentStore(agentStore);
 	agentService.setAgentToolStore(agentToolStore);
 
-	agentService.subscribe(() => {
-		// Events forwarded to WebSocket clients below
+	agentService.subscribe((event: any) => {
+		// Forward all agent events to WebSocket clients
+		const msg = JSON.stringify(event);
+		for (const ws of wss.clients) {
+			if (ws.readyState === ws.OPEN) {
+				ws.send(msg);
+			}
+		}
 	});
 
 	// Scan for interrupted turns and resume them
@@ -133,6 +156,48 @@ export async function startServer() {
 	app.use("/api/templates", createTemplateRouter(templateStore));
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
 	app.use("/api/kb", createKbRouter(kbStore, kbDb, providerStore));
+
+	// New routers
+	app.use("/api/chat", createChatRouter({ agentService, agentStore, providerStore, workspaceConfig }));
+	app.use("/api/sessions", createSessionRouter({ agentService, agentStore }));
+	app.use("/api/logs", createLogRouter({ sessionDb: sessionDB }));
+	app.use("/api/files", createFileRouter({ workspaceConfig }));
+	app.use("/api/tool-executions", createToolExecutionRouter({ sessionDb: sessionDB, agentService, providerStore, workspaceConfig }));
+
+	// Tool execute
+	app.post("/api/tool-execute", async (req, res) => {
+		const { toolName, input } = req.body;
+		const toolDef = ALL_TOOLS[toolName];
+		if (!toolDef) return res.json({ ok: false, error: `Tool not found: ${toolName}`, elapsedMs: 0 });
+
+		const execute = getToolExecute(toolDef);
+		if (!execute) return res.json({ ok: false, error: `Tool not testable: ${toolName}`, elapsedMs: 0 });
+
+		const config = registry.getToolConfig();
+		const toolCtx: ToolExecutionContext = {
+			workingDir: workspaceConfig.workspaceDir,
+			agentId: "__test__",
+			emit: () => {},
+			db: sessionDB,
+			readScope: workspaceConfig.readScope ?? "filesystem",
+			toolConfig: config,
+		};
+
+		const t0 = Date.now();
+		try {
+			const result = await execute(input, toolCtx);
+			res.json({ ok: true, result, elapsedMs: Date.now() - t0 });
+		} catch (err: any) {
+			res.json({ ok: false, error: err.message, elapsedMs: Date.now() - t0 });
+		}
+	});
+
+	// WebFetch cookie ops (login stays in Electron)
+	app.get("/api/webfetch/cookies", (_req, res) => res.json(getCookieCount()));
+	app.delete("/api/webfetch/cookies", (req, res) => {
+		clearCookies(req.query.domain as string | undefined);
+		res.json({ success: true });
+	});
 
 	// Models — aggregated from all providers
 	app.get("/api/models", (_req, res) => {
@@ -166,41 +231,8 @@ export async function startServer() {
 		}
 	});
 
-	// ─── File Tree API ──────────────────────────────────────────
-
-	app.get("/api/files", (req, res) => {
-		const dir = expandHome((req.query.root as string) || workspaceConfig.workspaceDir);
-		try {
-			const stat = statSync(dir);
-			if (!stat.isDirectory()) return res.status(400).json({ error: "not a directory" });
-		} catch {
-			return res.status(404).json({ error: "directory not found" });
-		}
-		res.json(buildTree(dir, ""));
-	});
-
-	app.get("/api/files/content", (req, res) => {
-		const filePath = req.query.path as string;
-		if (!filePath) return res.status(400).json({ error: "path required" });
-		const ext = extname(filePath);
-		if (!TEXT_EXTS.has(ext) && ext !== "") {
-			return res.json({ content: "(binary file)" });
-		}
-		const root = expandHome((req.query.root as string) || workspaceConfig.workspaceDir);
-		const full = resolve(root, filePath);
-		if (!full.startsWith(resolve(root))) {
-			return res.status(403).json({ error: "access denied" });
-		}
-		try {
-			const stat = statSync(full);
-			if (stat.size > 500_000) {
-				return res.json({ content: "(file too large, > 500KB)" });
-			}
-			res.json({ content: readFileSync(full, "utf-8") });
-		} catch {
-			res.status(404).json({ error: "file not found" });
-		}
-	});
+	// Ready endpoint
+	app.get("/api/ready", (_req, res) => res.json({ ready: true }));
 
 	// ─── WebSocket ──────────────────────────────────────────────
 
@@ -214,12 +246,6 @@ export async function startServer() {
 				toolCalls: state.toolCalls,
 			}));
 		}
-
-		const unsubscribe = agentService.subscribe((event) => {
-			if (ws.readyState === ws.OPEN) {
-				ws.send(JSON.stringify(event));
-			}
-		});
 
 		ws.on("message", async (raw) => {
 			try {
@@ -242,32 +268,35 @@ export async function startServer() {
 				}));
 			}
 		});
-
-		ws.on("close", () => {
-			unsubscribe();
-		});
 	});
 
 	// ─── Static files (renderer) ──────────────────────────────
 
-	let rendererDir = process.env.RENDERER_DIR;
-	if (!rendererDir || !existsSync(join(rendererDir, "index.html"))) {
-		const candidates = [
-			join(__dirname, "../../out/renderer"),
-			join(__dirname, "../renderer"),
-		];
-		rendererDir = candidates.find((d) => existsSync(join(d, "index.html"))) || candidates[0];
+	if (serveStatic) {
+		let rendererDir = process.env.RENDERER_DIR;
+		if (!rendererDir || !existsSync(join(rendererDir, "index.html"))) {
+			const candidates = [
+				join(__dirname, "../../out/renderer"),
+				join(__dirname, "../renderer"),
+			];
+			rendererDir = candidates.find((d) => existsSync(join(d, "index.html"))) || candidates[0];
+		}
+		console.log("[server] Renderer dir:", rendererDir);
+		app.use(express.static(rendererDir));
+		app.use((_req, res) => {
+			res.sendFile(join(rendererDir, "index.html"));
+		});
 	}
-	console.log("[server] Renderer dir:", rendererDir);
-	app.use(express.static(rendererDir));
-	app.use((_req, res) => {
-		res.sendFile(join(rendererDir, "index.html"));
-	});
 
 	// ─── Start ────────────────────────────────────────────────
 
-	server.listen(PORT, () => {
-		console.log(`Zero-Core server running at http://localhost:${PORT}`);
-		console.log(`Workspace: ${workspaceConfig.workspaceDir}`);
+	await new Promise<void>((resolve) => {
+		server.listen(port, () => {
+			console.log(`Zero-Core server running at http://localhost:${(server.address() as any).port}`);
+			console.log(`Workspace: ${workspaceConfig.workspaceDir}`);
+			resolve();
+		});
 	});
+
+	return { server, agentService };
 }

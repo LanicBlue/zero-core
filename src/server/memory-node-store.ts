@@ -96,7 +96,7 @@ export class MemoryNodeStore {
 			"SELECT from_subject, to_subject, relation FROM memory_edges WHERE from_subject = ? OR to_subject = ?",
 		);
 		this.searchFtsStmt = this.db.prepare(
-			"SELECT rowid, subject, type, content FROM memory_nodes_fts WHERE memory_nodes_fts MATCH ? ORDER BY rank LIMIT ?",
+			"SELECT rowid, subject, content FROM memory_nodes_fts WHERE memory_nodes_fts MATCH ? ORDER BY rank LIMIT ?",
 		);
 		this.insertFtsStmt = this.db.prepare(
 			"INSERT INTO memory_nodes_fts (rowid, subject, content) VALUES (?, ?, ?)",
@@ -141,8 +141,13 @@ export class MemoryNodeStore {
 			CREATE INDEX IF NOT EXISTS idx_memory_edges_from ON memory_edges(from_subject);
 		`);
 
-		// FTS5 — create separately (may fail if already exists, that's ok)
+		// FTS5 — rebuild if schema changed (FTS5 tables cannot be ALTERed)
 		try {
+			const ftsCols = (this.db.pragma("table_info(memory_nodes_fts)") as Array<{ name: string }>).map(r => r.name);
+			if (ftsCols.length > 0) {
+				// Old FTS table exists — drop and recreate to ensure correct schema
+				this.db.exec("DROP TABLE IF EXISTS memory_nodes_fts");
+			}
 			this.db.exec(`
 				CREATE VIRTUAL TABLE IF NOT EXISTS memory_nodes_fts USING fts5(
 					subject,
@@ -153,7 +158,6 @@ export class MemoryNodeStore {
 				);
 			`);
 		} catch {
-			// FTS5 table may already exist or FTS5 not available
 			log.warn("memory", "FTS5 virtual table creation skipped (may already exist or unsupported)");
 		}
 	}

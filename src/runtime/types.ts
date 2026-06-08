@@ -252,6 +252,20 @@ export interface SessionConfig {
 				agents: Map<string, { id: string; name: string; systemPrompt?: string; model?: string }>;
 			}>;
 	getToolConfig?: () => Record<string, Record<string, any>>;
+	compression?: {
+		enabled?: boolean;
+		keepRecentTurns?: number;
+		l1Threshold?: number;
+		l2Threshold?: number;
+		provider?: string;
+		model?: string;
+	};
+	memory?: {
+		enabled?: boolean;
+		autoExtract?: boolean;
+		autoRecall?: boolean;
+		recallLimit?: number;
+	};
 	}
 
 // ---------------------------------------------------------------------------

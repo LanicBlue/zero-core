@@ -208,6 +208,12 @@ export const DEFAULT_CONFIG: ZeroCoreConfig = {
 	compaction: {
 		strategy: "auto",
 	},
+	compression: {
+		enabled: false,
+	},
+	memory: {
+		enabled: false,
+	},
 	defaults: {},
 	retry: {},
 	shell: {},

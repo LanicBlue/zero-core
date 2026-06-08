@@ -41,6 +41,7 @@ export interface ISessionStore {
 	deleteTurn(sessionId: string, seq: number): void;
 	getKVStore(): IKVStore;
 	getMemoryStore(): any;
+	getMemoryNodeStore(): any;
 	recordToolExecution(exec: {
 		sessionId: string;
 		agentId: string;

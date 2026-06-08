@@ -19,6 +19,7 @@
   },
   "include": [
     "src/index.ts",
+    "src/backend.ts",
     "src/core/**/*.ts",
     "src/runtime/**/*.ts",
     "src/server/*.ts",

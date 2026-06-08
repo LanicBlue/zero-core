@@ -63,6 +63,7 @@ export const memoryRecallTool = buildTool({
 				).join("\n");
 			}
 		}
+		return "Unknown action.";
 	},
 });
 
@@ -133,5 +134,6 @@ export const memoryNoteTool = buildTool({
 				return `Linked: ${input.subject} —[${input.relation}]→ ${input.targetSubject}`;
 			}
 		}
+		return "Unknown action.";
 	},
 });

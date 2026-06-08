@@ -3,7 +3,7 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 构建系统提示词，整合各种上下文信息（设备、指南、工具等）。
+// 构建系统提示词，整合各种上下文信息（设备、工具等）。
 //
 // ## 输入
 // - SystemPromptContext - 上下文信息
@@ -30,12 +30,10 @@ export interface SystemPromptContext {
 	originalPrompt: string;
 	// ─── Global content ─────────────────────────
 	deviceContext?: string;
-	guidelines?: string[];
 	skills?: Array<{ id: string; name: string; description: string }>;
 	toolSnippets?: Record<string, string>;
 	// ─── Section toggles (default true, false to disable) ──
 	useDeviceContext?: boolean;
-	useGuidelines?: boolean;
 	useMemoryContext?: boolean;
 	enabledSkills?: string[];
 }
@@ -51,15 +49,7 @@ export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptConte
 	// 2. Base Prompt (always included)
 	sections.push(ctx.originalPrompt);
 
-	// 3. Guidelines
-	if (ctx.useGuidelines !== false) {
-		const guidelines = ctx.guidelines ?? config.systemPrompt?.guidelines;
-		if (guidelines?.length) {
-			sections.push("## Guidelines\n\n" + guidelines.map((g) => `- ${g}`).join("\n"));
-		}
-	}
-
-	// 4. Tool Reference
+	// 3. Tool Reference
 	const snippets = { ...ctx.toolSnippets, ...config.systemPrompt?.toolSnippets };
 	if (Object.keys(snippets).length > 0) {
 		const activeSnippets = ctx.activeTools
@@ -71,7 +61,7 @@ export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptConte
 		}
 	}
 
-	// 5. Skills
+	// 4. Skills
 	if (ctx.skills?.length) {
 		const enabled = ctx.enabledSkills;
 		const filtered = enabled
@@ -81,11 +71,6 @@ export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptConte
 			const skillList = filtered.map((s) => `- **${s.name}**: ${s.description}`).join("\n");
 			sections.push("## Available Skills\n\n" + skillList);
 		}
-	}
-
-	// 6. Memory/Wiki (reserved)
-	if (ctx.useMemoryContext === true) {
-		sections.push("## Memory\n\n(Memory context will be injected here when available.)");
 	}
 
 	return sections.join("\n\n");

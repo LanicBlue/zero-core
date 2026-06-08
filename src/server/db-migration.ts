@@ -97,9 +97,20 @@ export function runMigrations(sessionDB: SessionDB): void {
 	// Must add columns BEFORE creating SqliteStore instances, because
 	// the constructor runs initStatements() which SELECTs all declared columns.
 
+	// Agent columns
 	safeAddColumn(db, "agents", "knowledge_base_ids", "TEXT");
-	safeAddColumn(db, "agent_tools", "blocking", "INTEGER DEFAULT 1");
-	safeAddColumn(db, "agent_tools", "auto_background_timeout", "INTEGER");
+
+	// Agent tool columns (table may exist from older versions with fewer columns)
+	for (const col of AGENT_TOOL_COLUMNS) {
+		const colName = col.column || col.key;
+		const isJson = col.json;
+		const isBool = col.bool;
+		const type = isJson ? "TEXT" : isBool ? "INTEGER" : "TEXT";
+		const def = isBool ? `${type} DEFAULT 1` : type;
+		safeAddColumn(db, "agent_tools", colName, def);
+	}
+
+	// Provider columns
 	safeAddColumn(db, "providers", "enable_concurrency_limit", "INTEGER DEFAULT 0");
 	safeAddColumn(db, "providers", "max_concurrency", "INTEGER");
 
