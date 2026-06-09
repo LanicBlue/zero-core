@@ -20,7 +20,7 @@
 // ## 维护规则
 // 代理配置变更需同步到 provider 请求层
 //
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ProxyConfig } from "../../../shared/types";
 
 const api = () => (window as any).api;
@@ -33,20 +33,15 @@ export function ProxySettings() {
 	const [testing, setTesting] = useState(false);
 	const [testResult, setTestResult] = useState<string | null>(null);
 
-	// Load current config
-	const loadConfig = async () => {
-		try {
-			const wc = await api().configGet();
-			setConfig(wc.proxy ?? { enabled: false, url: "" });
-		} catch { /* ignore */ }
-	};
-	if (!loadConfig) return null; // trigger once — useEffect below handles it
-
-	// Simple one-shot load via ref
-	if (!(ProxySettings as any)._loaded) {
-		(ProxySettings as any)._loaded = true;
-		loadConfig();
-	}
+	// Load current config on mount
+	useEffect(() => {
+		(async () => {
+			try {
+				const wc = await api().configGet();
+				setConfig(wc.proxy ?? { enabled: false, url: "" });
+			} catch { /* ignore */ }
+		})();
+	}, []);
 
 	const save = async () => {
 		setSaving(true);

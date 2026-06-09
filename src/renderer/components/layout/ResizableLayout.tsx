@@ -31,52 +31,77 @@ interface Props {
 export default function ResizableLayout({ children, defaults, mins }: Props) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const [widths, setWidths] = useState<number[]>([]);
-	const totalWeight = defaults.reduce((a, b) => a + b, 0);
 	const dragRef = useRef<{
 		index: number;
 		startX: number;
 		startWidths: number[];
 		containerWidth: number;
 	} | null>(null);
+	// Track whether user has manually dragged — if so, keep proportions on resize
+	const userProportionsRef = useRef<number[] | null>(null);
+	// Latest widths ref for use in mouseup without stale closure
+	const widthsRef = useRef<number[]>([]);
+	const isDraggingRef = useRef(false);
 
-	// Calculate initial widths from container size
+	// Keep widthsRef in sync
+	useEffect(() => { widthsRef.current = widths; }, [widths]);
+
+	// Calculate widths from container size; recalculates on resize
 	useEffect(() => {
-		if (!containerRef.current) return;
-		const containerWidth = containerRef.current.clientWidth;
-		const totalMins = mins.reduce((a, b) => a + b, 0);
-		const dividerSpace = (children.length - 1) * 4; // divider widths
-		const available = containerWidth - dividerSpace;
+		const el = containerRef.current;
+		if (!el) return;
 
-		// If available space is too small, fall back to mins
-		if (available <= totalMins) {
-			setWidths(mins.slice());
-			return;
-		}
+		const recalc = (containerWidth: number) => {
+			const totalMins = mins.reduce((a, b) => a + b, 0);
+			const dividerSpace = (children.length - 1) * 4;
+			const available = containerWidth - dividerSpace;
 
-		const calculated = defaults.map((w, i) => {
-			const fromWeight = Math.round((w / totalWeight) * available);
-			return Math.max(fromWeight, mins[i]);
+			if (available <= totalMins) {
+				setWidths(mins.slice());
+				return;
+			}
+
+			// Use user-dragged proportions if available, otherwise defaults
+			const weights = userProportionsRef.current ?? defaults;
+			const totalW = weights.reduce((a, b) => a + b, 0);
+
+			const calculated = weights.map((w, i) => {
+				const fromWeight = Math.round((w / totalW) * available);
+				return Math.max(fromWeight, mins[i]);
+			});
+			setWidths(calculated);
+		};
+
+		// Initial calculation
+		recalc(el.clientWidth);
+
+		// Observe container size changes (window resize, layout shifts)
+		// Skip recalc during active drag to prevent feedback loop
+		const observer = new ResizeObserver((entries) => {
+			if (isDraggingRef.current) return;
+			for (const entry of entries) {
+				recalc(entry.contentRect.width);
+			}
 		});
-		setWidths(calculated);
-	}, []); // only on mount
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, [defaults, mins, children.length]);
 
 	const handleMouseDown = useCallback((index: number) => (e: React.MouseEvent) => {
 		e.preventDefault();
 		if (!containerRef.current) return;
+		isDraggingRef.current = true;
 		dragRef.current = {
 			index,
 			startX: e.clientX,
-			startWidths: widths.slice(),
+			startWidths: widthsRef.current.slice(),
 			containerWidth: containerRef.current.clientWidth,
 		};
 
 		const handleMouseMove = (ev: MouseEvent) => {
 			if (!dragRef.current || !containerRef.current) return;
-			const { index: idx, startX, startWidths, containerWidth } = dragRef.current;
+			const { index: idx, startX, startWidths } = dragRef.current;
 			const dx = ev.clientX - startX;
-
-			const totalDividers = (children.length - 1) * 4;
-			const totalAvailable = containerWidth - totalDividers;
 
 			const newLeft = startWidths[idx] + dx;
 			const newRight = startWidths[idx + 1] - dx;
@@ -91,7 +116,12 @@ export default function ResizableLayout({ children, defaults, mins }: Props) {
 		};
 
 		const handleMouseUp = () => {
+			// Save current widths as proportions for resize recalculation
+			if (dragRef.current) {
+				userProportionsRef.current = widthsRef.current.slice();
+			}
 			dragRef.current = null;
+			isDraggingRef.current = false;
 			document.removeEventListener("mousemove", handleMouseMove);
 			document.removeEventListener("mouseup", handleMouseUp);
 			document.body.style.cursor = "";
@@ -102,7 +132,7 @@ export default function ResizableLayout({ children, defaults, mins }: Props) {
 		document.body.style.userSelect = "none";
 		document.addEventListener("mousemove", handleMouseMove);
 		document.addEventListener("mouseup", handleMouseUp);
-	}, [widths, mins, children.length]);
+	}, [mins, children.length]);
 
 	if (widths.length === 0) {
 		// Render placeholder to measure container

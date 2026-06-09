@@ -67,7 +67,7 @@ export function MemorySettings() {
 					/>
 				</div>
 
-				<div className="memory-config-row">
+				<div className="memory-config-row memory-config-row-stack">
 					<label className="config-label">Model</label>
 					<select
 						className="default-model-select"
