@@ -171,6 +171,35 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 		}
 	});
 
+	// ─── Memory Config ────────────────────────────────────────
+
+	// config:memory-get
+	router.get("/memory-config", (_req, res) => {
+		try {
+			const configData: any = kv().getJson("global_config") ?? {};
+			res.json({
+				compression: configData.compression ?? { enabled: false },
+				memory: configData.memory ?? { enabled: false },
+			});
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
+		}
+	});
+
+	// config:memory-update
+	router.put("/memory-config", (req, res) => {
+		try {
+			const { compression, memory } = req.body as { compression?: any; memory?: any };
+			const configData: any = kv().getJson("global_config") ?? {};
+			if (compression !== undefined) configData.compression = compression;
+			if (memory !== undefined) configData.memory = memory;
+			kv().setJson("global_config", configData);
+			res.json({ success: true });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
 	// ─── Tools ───────────────────────────────────────────────
 
 	// tools:list — list tools from registry

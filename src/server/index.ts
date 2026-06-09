@@ -55,6 +55,7 @@ import { createLogRouter } from "./log-router.js";
 import { createFileRouter } from "./file-router.js";
 import { createToolExecutionRouter } from "./tool-execution-router.js";
 import { createSkillRouter } from "./skill-router.js";
+import { createMemoryNodeRouter } from "./memory-node-router.js";
 import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
 import { ALL_TOOLS, registerRuntimeTools } from "../runtime/tools/index.js";
 import { getToolExecute } from "../runtime/tools/tool-factory.js";
@@ -101,6 +102,8 @@ export async function startServer(options?: StartServerOptions) {
 	const { registerToolExecutionHooks } = await import("./tool-execution-hooks.js");
 	registerDurableHooks(sessionDB);
 	registerToolExecutionHooks(sessionDB);
+	const { registerAllRuntimeHooks } = await import("../runtime/hooks/index.js");
+	registerAllRuntimeHooks();
 
 	const registry = new ToolRegistry(sessionDB.getKVStore());
 	registerRuntimeTools(registry);
@@ -178,6 +181,7 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
 	app.use("/api/kb", createKbRouter(kbStore, kbDb, providerStore));
 	app.use("/api/skills", createSkillRouter());
+	app.use("/api/memory-nodes", createMemoryNodeRouter(sessionDB.getMemoryNodeStore()));
 
 	// New routers
 	app.use("/api/chat", createChatRouter({ agentService, agentStore, providerStore, workspaceConfig }));

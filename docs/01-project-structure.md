@@ -6,7 +6,7 @@
 
 ```
 zero-core/
-├── src/                  # 生产源码（212 文件 / 29 子目录 / ~24.5k 行）
+├── src/                  # 生产源码（244 文件 / ~29.5k 行）
 ├── tests/
 │   ├── e2e/              # Playwright Electron E2E（2 个 spec + helper）
 │   └── unit/             # vitest 单测（5 个 test 文件 / 85 测试）
@@ -41,7 +41,7 @@ zero-core/
 | `src/preload/` | 1 | Electron preload | `index.ts`（85 个 IPC 桥接方法） |
 | `src/renderer/` | 51 | React UI（含 store 10、components 8 子目录） | `App.tsx` → `AppLayout.tsx` |
 | `src/renderer/store/` | 10 | Zustand stores | `chat-store.ts`（单源）等 |
-| `src/runtime/` | 40 | Agent runtime | `agent-loop.ts` (784 行), `provider-factory.ts`, `subagent-delegation.ts` |
+| `src/runtime/` | 44 | Agent runtime | `agent-loop.ts` (526 行，核心循环), `hooks/` (4 feature hook 模块), `provider-factory.ts`, `subagent-delegation.ts` |
 | `src/runtime/tools/` | 21 | 工具实现 | `bash.ts`, `file-read.ts`, `web-search.ts`, `todo-write.ts`, `agent-tool.ts` 等 |
 | `src/runtime/mcp-tools/` | 4 | 内置 MCP 风格工具 | `fetch`, `memory`, `sequential-thinking` |
 | `src/server/` | 36 | 服务层（持久化、session、recovery、API routers） | `agent-service.ts`, `session-db.ts`, `mcp-manager.ts`, `recovery.ts` |

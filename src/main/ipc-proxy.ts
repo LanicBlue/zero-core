@@ -137,6 +137,17 @@ const R: Record<string, RouteMapping> = {
 
 	// Skills
 	"skills:list":    { method: "GET", path: "/api/skills", buildReq: () => ({}) },
+
+		// Memory Nodes
+		"memory-nodes:nodes":          { method: "GET", path: "/api/memory-nodes/nodes", buildReq: (limit?) => ({ query: limit ? { limit: String(limit) } : {} }) },
+		"memory-nodes:subjects":       { method: "GET", path: "/api/memory-nodes/subjects", buildReq: () => ({}) },
+		"memory-nodes:subject-nodes":  { method: "GET", path: "/api/memory-nodes/subject/:name", buildReq: (name) => ({ params: { name } }) },
+		"memory-nodes:search":         { method: "GET", path: "/api/memory-nodes/search", buildReq: (q, limit?) => ({ query: { q, ...(limit ? { limit: String(limit) } : {}) } }) },
+		"memory-nodes:delete":         { method: "DELETE", path: "/api/memory-nodes/nodes/:id", buildReq: (id) => ({ params: { id } }) },
+
+		// Memory Config
+		"config:memory-get":    { method: "GET", path: "/api/config/memory-config", buildReq: () => ({}) },
+		"config:memory-update": { method: "PUT", path: "/api/config/memory-config", buildReq: (data) => ({ body: data }) },
 	// Misc
 	"ask-user:respond": { method: "POST", path: "/api/ask-user/respond", buildReq: (requestId, answers) => ({ body: { requestId, answers } }) },
 };

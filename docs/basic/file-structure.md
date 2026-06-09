@@ -10,13 +10,14 @@ zero-core 是基于 Electron 的 AI Agent 运行时，采用 main + preload + re
 - `src/main/` — Electron 主进程：入口、IPC 处理器（typed-ipc, 16 个 handler 模块）
 - `src/preload/` — 预加载脚本：IPC API 暴露给渲染进程
 - `src/renderer/` — React 前端：组件（10 个页面目录）、10 个 Zustand store、样式
-- `src/runtime/` — Agent 运行时：执行引擎、工具集、限速器、子任务委派、检查点
+- `src/runtime/` — Agent 运行时：核心循环、feature hooks、工具集、限速器、子任务委派、检查点
 - `src/server/` — 服务层：Agent 服务、数据存储、REST 路由、MCP 管理、知识库
 - `src/shared/` — 共享类型、IPC 契约、工具函数
 
 ## runtime/ 详细结构
 
-- `agent-loop.ts` — 核心执行引擎
+- `agent-loop.ts` — 核心循环（LLM→tool→loop，不含功能逻辑）
+- `hooks/` — 4 个 feature hook handler：compression-hooks、memory-hooks、rag-hooks、index
 - `session.ts` — 会话消息和 token 管理
 - `subagent-delegator.ts` — 子任务委派
 - `checkpoint-manager.ts` — 对话检查点

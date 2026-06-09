@@ -1,34 +1,24 @@
-// 知识库页面
-//
-// # 文件说明书
-//
-// ## 核心功能
-// 知识库管理页面，支持创建、编辑和搜索知识库。
-//
-// ## 输入
-// - 知识库状态
-// - IPC API 调用
-//
-// ## 输出
-// - 知识库列表
-// - 搜索结果
-//
-// ## 定位
-// 渲染进程页面，被 AppLayout 使用。
-//
-// ## 依赖
-// - react - React 框架
-// - ../../store - 状态管理
-//
-// ## 维护规则
-// - 新增知识库功能时需更新
-// - 保持搜索逻辑正确
-//
 import React, { useState } from "react";
 import { useKbStore } from "../../store/kb-store.js";
 import type { KnowledgeBase, KbFileInfo } from "../../../shared/types.js";
 
-type Tab = "list" | "create" | "detail";
+const api = () => (window as any).api;
+
+type Tab = "list" | "create" | "detail" | "memory";
+
+interface MemoryNode {
+	id: string;
+	subject: string;
+	type: string;
+	content: string;
+	updatedAt: string;
+}
+
+interface MemorySubject {
+	subject: string;
+	nodeCount: number;
+	latestUpdate: string;
+}
 
 export default function KnowledgeBasePage() {
 	const { knowledgeBases, loading, create, remove, addFiles, removeFile } = useKbStore();
@@ -43,7 +33,73 @@ export default function KnowledgeBasePage() {
 	const [addFilePath, setAddFilePath] = useState("");
 	const [ingesting, setIngesting] = useState(false);
 
+	// Memory state
+	const [memorySubjects, setMemorySubjects] = useState<MemorySubject[]>([]);
+	const [memoryNodes, setMemoryNodes] = useState<MemoryNode[]>([]);
+	const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
+	const [subjectNodes, setSubjectNodes] = useState<MemoryNode[]>([]);
+	const [searchQuery, setSearchQuery] = useState("");
+	const [searchResults, setSearchResults] = useState<MemoryNode[] | null>(null);
+
 	const selected = selectedId ? knowledgeBases.find((kb) => kb.id === selectedId) : null;
+
+	const loadMemorySubjects = async () => {
+		try {
+			const subjects = await api().memoryNodeSubjects();
+			setMemorySubjects(subjects);
+		} catch { /* ignore */ }
+	};
+
+	const loadRecentNodes = async () => {
+		try {
+			const nodes = await api().memoryNodeList(50);
+			setMemoryNodes(nodes);
+		} catch { /* ignore */ }
+	};
+
+	const handleMemoryTab = async () => {
+		setTab("memory");
+		setSearchResults(null);
+		await Promise.all([loadMemorySubjects(), loadRecentNodes()]);
+	};
+
+	const handleSubjectExpand = async (subject: string) => {
+		if (expandedSubject === subject) {
+			setExpandedSubject(null);
+			setSubjectNodes([]);
+			return;
+		}
+		setExpandedSubject(subject);
+		try {
+			const result = await api().memoryNodeSubjectNodes(subject);
+			setSubjectNodes(result.nodes ?? []);
+		} catch { /* ignore */ }
+	};
+
+	const handleMemorySearch = async () => {
+		if (!searchQuery.trim()) {
+			setSearchResults(null);
+			return;
+		}
+		try {
+			const results = await api().memoryNodeSearch(searchQuery.trim());
+			setSearchResults(results);
+		} catch { /* ignore */ }
+	};
+
+	const handleDeleteNode = async (id: string) => {
+		try {
+			await api().memoryNodeDelete(id);
+			await Promise.all([loadMemorySubjects(), loadRecentNodes()]);
+			if (expandedSubject) {
+				const result = await api().memoryNodeSubjectNodes(expandedSubject);
+				setSubjectNodes(result.nodes ?? []);
+			}
+			if (searchResults) {
+				setSearchResults(searchResults.filter((n: MemoryNode) => n.id !== id));
+			}
+		} catch { /* ignore */ }
+	};
 
 	const handleCreate = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -85,20 +141,33 @@ export default function KnowledgeBasePage() {
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	};
 
+	const typeBadge = (type: string) => {
+		return <span className={`memory-type-badge type-${type}`}>{type.replace("_", " ")}</span>;
+	};
+
 	return (
 		<div className="kb-page">
 			<div className="kb-page-header">
 				<h2>Knowledge Base</h2>
-				{tab === "list" && (
+				<div className="kb-header-spacer" />
+				{(tab === "list") && (
 					<button type="button" className="btn-primary" onClick={() => setTab("create")}>
 						+ New
 					</button>
 				)}
-				{tab !== "list" && (
+				{(tab === "create" || tab === "detail") && (
 					<button type="button" className="btn-ghost" onClick={() => { setTab("list"); setSelectedId(null); }}>
 						Back
 					</button>
 				)}
+			</div>
+			<div className="kb-page-tabs">
+				<button type="button" className={`kb-tab-btn ${tab === "list" || tab === "create" || tab === "detail" ? "active" : ""}`} onClick={() => setTab("list")}>
+					Libraries
+				</button>
+				<button type="button" className={`kb-tab-btn ${tab === "memory" ? "active" : ""}`} onClick={handleMemoryTab}>
+					Memory
+				</button>
 			</div>
 
 			{tab === "create" && (
@@ -195,6 +264,101 @@ export default function KnowledgeBasePage() {
 							</div>
 						</div>
 					))}
+				</div>
+			)}
+
+			{tab === "memory" && (
+				<div className="memory-page-content">
+					<div className="memory-search-bar">
+						<input
+							value={searchQuery}
+							onChange={(e) => setSearchQuery(e.target.value)}
+							onKeyDown={(e) => e.key === "Enter" && handleMemorySearch()}
+							placeholder="Search memory nodes..."
+							className="memory-search-input"
+						/>
+						<button type="button" className="btn-primary btn-sm" onClick={handleMemorySearch} disabled={!searchQuery.trim()}>
+							Search
+						</button>
+						{searchResults !== null && (
+							<button type="button" className="btn-ghost btn-sm" onClick={() => { setSearchResults(null); setSearchQuery(""); }}>
+								Clear
+							</button>
+						)}
+					</div>
+
+					<div className="memory-stats">
+						<span>{memorySubjects.length} subjects</span>
+						<span>{memoryNodes.length} nodes</span>
+					</div>
+
+					{searchResults !== null ? (
+						<div className="memory-node-list">
+							{searchResults.length === 0 && <p className="agents-empty">No results found.</p>}
+							{searchResults.map((node) => (
+								<div key={node.id} className="memory-node-card">
+									<div className="memory-node-header">
+										{typeBadge(node.type)}
+										<span className="memory-node-subject">{node.subject}</span>
+										<span className="memory-node-date">{node.updatedAt.slice(0, 10)}</span>
+										<button type="button" className="btn-ghost btn-sm" onClick={() => handleDeleteNode(node.id)}>Delete</button>
+									</div>
+									<p className="memory-node-content">{node.content}</p>
+								</div>
+							))}
+						</div>
+					) : (
+						<>
+							<div className="memory-subjects">
+								{memorySubjects.length === 0 && (
+									<p className="agents-empty">No memory nodes yet. Enable Memory & Compression in Settings to start building memories from conversations.</p>
+								)}
+								{memorySubjects.map((s) => (
+									<div key={s.subject} className="memory-subject-card">
+										<div className="memory-subject-header" onClick={() => handleSubjectExpand(s.subject)}>
+											<span className="memory-subject-name">{s.subject}</span>
+											<span className="memory-subject-count">{s.nodeCount} node(s)</span>
+											<span className="memory-subject-date">{s.latestUpdate.slice(0, 10)}</span>
+											<span className="memory-subject-expand">{expandedSubject === s.subject ? "▲" : "▼"}</span>
+										</div>
+										{expandedSubject === s.subject && (
+											<div className="memory-subject-nodes">
+												{subjectNodes.map((node) => (
+													<div key={node.id} className="memory-node-card">
+														<div className="memory-node-header">
+															{typeBadge(node.type)}
+															<span className="memory-node-date">{node.updatedAt.slice(0, 10)}</span>
+															<button type="button" className="btn-ghost btn-sm" onClick={() => handleDeleteNode(node.id)}>Delete</button>
+														</div>
+														<p className="memory-node-content">{node.content}</p>
+													</div>
+												))}
+											</div>
+										)}
+									</div>
+								))}
+							</div>
+
+							{memoryNodes.length > 0 && memorySubjects.length > 0 && (
+								<>
+									<h3 className="memory-recent-title">Recent Nodes</h3>
+									<div className="memory-node-list">
+										{memoryNodes.slice(0, 10).map((node) => (
+											<div key={node.id} className="memory-node-card">
+												<div className="memory-node-header">
+													{typeBadge(node.type)}
+													<span className="memory-node-subject">{node.subject}</span>
+													<span className="memory-node-date">{node.updatedAt.slice(0, 10)}</span>
+													<button type="button" className="btn-ghost btn-sm" onClick={() => handleDeleteNode(node.id)}>Delete</button>
+												</div>
+												<p className="memory-node-content">{node.content}</p>
+											</div>
+										))}
+									</div>
+								</>
+							)}
+						</>
+					)}
 				</div>
 			)}
 		</div>

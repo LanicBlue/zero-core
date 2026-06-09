@@ -198,6 +198,8 @@ export async function loadCoreModules(): Promise<void> {
 	// ─── Phase 1b: Hooks + file logging (depend on sessionDb) ────
 	durableHooksMod.registerDurableHooks(_sessionDb);
 	toolExecHooksMod.registerToolExecutionHooks(_sessionDb);
+	const { registerAllRuntimeHooks } = await import(toFileURL(join(__dirname, "../../dist/runtime/hooks/index.js")));
+	registerAllRuntimeHooks();
 	try {
 		const logConfig = _sessionDb.getKVStore().getJson("log_config");
 		const { configureLogging } = await import(toFileURL(join(_distCore, "logger.js")));

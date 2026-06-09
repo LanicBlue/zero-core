@@ -4766,3 +4766,263 @@ n.tools-page-test-chips {
 	-webkit-box-orient: vertical;
 	overflow: hidden;
 }
+
+/* ─── Memory Config Settings ────────────────────────────── */
+
+.memory-config {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+.memory-config-section {
+	border: 1px solid var(--border-default);
+	border-radius: 8px;
+	padding: 16px;
+}
+
+.memory-config-title {
+	margin: 0 0 4px;
+	font-size: 14px;
+}
+
+.memory-config-desc {
+	margin: 0 0 12px;
+	color: var(--fg-muted);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.memory-config-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 0;
+	border-bottom: 1px solid var(--border-default);
+}
+
+.memory-config-row:last-child {
+	border-bottom: none;
+}
+
+.memory-config-number {
+	width: 80px;
+	padding: 4px 8px;
+	background: var(--bg-default);
+	border: 1px solid var(--border-default);
+	border-radius: 4px;
+	color: var(--fg-default);
+	font-size: 13px;
+	text-align: right;
+}
+
+.memory-config-slider-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.memory-config-slider {
+	width: 160px;
+	accent-color: var(--accent-fg);
+}
+
+.memory-config-slider-val {
+	font-size: 13px;
+	color: var(--fg-muted);
+	min-width: 36px;
+}
+
+/* ─── Knowledge Base Tabs ────────────────────────────── */
+
+.kb-header-spacer {
+	flex: 1;
+}
+
+.kb-page-tabs {
+	display: flex;
+	gap: 2px;
+	padding: 0 16px;
+	border-bottom: 1px solid var(--border-default);
+}
+
+.kb-tab-btn {
+	background: none;
+	border: none;
+	color: var(--fg-muted);
+	font-size: 13px;
+	padding: 4px 12px;
+	cursor: pointer;
+	border-bottom: 2px solid transparent;
+	transition: all 0.15s;
+}
+
+.kb-tab-btn:hover {
+	color: var(--fg-default);
+}
+
+.kb-tab-btn.active {
+	color: var(--accent-fg);
+	border-bottom-color: var(--accent-fg);
+}
+
+/* ─── Memory Wiki Page ────────────────────────────── */
+
+.memory-page-content {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 16px 0;
+}
+
+.memory-search-bar {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+.memory-search-input {
+	flex: 1;
+	padding: 6px 10px;
+	background: var(--bg-default);
+	border: 1px solid var(--border-default);
+	border-radius: 6px;
+	color: var(--fg-default);
+	font-size: 13px;
+}
+
+.memory-stats {
+	display: flex;
+	gap: 16px;
+	font-size: 12px;
+	color: var(--fg-muted);
+}
+
+.memory-subjects {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.memory-subject-card {
+	border: 1px solid var(--border-default);
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+.memory-subject-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 12px;
+	cursor: pointer;
+	transition: background 0.1s;
+}
+
+.memory-subject-header:hover {
+	background: var(--bg-subtle);
+}
+
+.memory-subject-name {
+	font-weight: 600;
+	font-size: 13px;
+	flex: 1;
+}
+
+.memory-subject-count {
+	font-size: 12px;
+	color: var(--fg-muted);
+}
+
+.memory-subject-date {
+	font-size: 11px;
+	color: var(--fg-faint);
+}
+
+.memory-subject-expand {
+	font-size: 10px;
+	color: var(--fg-faint);
+}
+
+.memory-subject-nodes {
+	padding: 4px 12px 12px;
+	border-top: 1px solid var(--border-default);
+}
+
+.memory-recent-title {
+	font-size: 13px;
+	margin: 8px 0 4px;
+	color: var(--fg-muted);
+}
+
+.memory-node-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.memory-node-card {
+	padding: 10px 12px;
+	border: 1px solid var(--border-default);
+	border-radius: 6px;
+	transition: background 0.1s;
+}
+
+.memory-node-card:hover {
+	background: var(--bg-subtle);
+}
+
+.memory-node-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 4px;
+}
+
+.memory-node-subject {
+	font-weight: 600;
+	font-size: 13px;
+	flex: 1;
+}
+
+.memory-node-date {
+	font-size: 11px;
+	color: var(--fg-faint);
+}
+
+.memory-node-content {
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.4;
+	color: var(--fg-default);
+}
+
+.memory-type-badge {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: capitalize;
+	padding: 1px 6px;
+	border-radius: 3px;
+	background: var(--bg-subtle);
+}
+
+.memory-type-badge.type-event {
+	color: var(--color-success-fg);
+}
+
+.memory-type-badge.type-decision {
+	color: var(--color-warning-fg);
+}
+
+.memory-type-badge.type-discovery {
+	color: var(--accent-fg);
+}
+
+.memory-type-badge.type-status_change {
+	color: var(--fg-muted);
+}
+
+.memory-type-badge.type-preference {
+	color: var(--color-danger-fg);
+}
+

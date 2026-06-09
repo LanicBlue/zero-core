@@ -35,6 +35,7 @@ import { WorkspaceSettings } from "./WorkspaceSettings.js";
 import { ThemeSettings } from "./ThemeSettings.js";
 
 import { ProxySettings } from "./ProxySettings.js";
+import { MemorySettings } from "./MemorySettings.js";
 
 export default function SettingsPage() {
 	const { providers, loading, fetchProviders } = useProviderStore();
@@ -53,6 +54,7 @@ export default function SettingsPage() {
 		{ key: "theme", label: "Theme" },
 		{ key: "workspace", label: "Workspace" },
 		{ key: "proxy", label: "Proxy" },
+		{ key: "memory", label: "Memory" },
 	];
 
 	return (
@@ -140,6 +142,13 @@ export default function SettingsPage() {
 						<>
 							<div className="section-title-row"><h3>Proxy</h3></div>
 							<ProxySettings />
+						</>
+					)}
+
+					{activeSection === "memory" && (
+						<>
+							<div className="section-title-row"><h3>Memory & Compression</h3></div>
+							<MemorySettings />
 						</>
 					)}
 				</div>

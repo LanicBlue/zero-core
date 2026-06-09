@@ -2,11 +2,13 @@
 
 > 最近更新：2026-06-06
 
+## ✅ 已解决
+
+### ~~1. agent-loop.ts 是最大单文件（512 行）~~
+
+**已解决**（2026-06）：hook-driven 重构。AgentLoop 从 ~587 行减至 526 行，删除 CompressionEngine/MemoryRecall 内联逻辑。功能拆到 `src/runtime/hooks/` 下 4 个独立模块（compression-hooks、memory-hooks、rag-hooks、index）。新增 `PreLLMCall` 和 `PostTurnComplete` 两个 hook 事件。
+
 ## 🟡 中优先级
-
-### 1. agent-loop.ts 是最大单文件（512 行）
-
-单 turn 执行 + retry + streaming + tool 调度都在里面。拆分 ROI 低，暂留。
 
 ### 2. session-manager.ts (421 行) / session-db.ts (583 行)
 

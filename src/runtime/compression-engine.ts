@@ -97,6 +97,7 @@ export class CompressionEngine {
 
 	/**
 	 * Run the full compression pipeline: L1 then L2 if needed.
+	 * Optional provider/model overrides for the AI calls.
 	 */
 	async compressIfNeeded(
 		messages: any[],
@@ -105,8 +106,13 @@ export class CompressionEngine {
 			keepRecentTurns: number;
 			l1Threshold: number;
 			l2Threshold: number;
+			provider?: string;
+			model?: string;
 		},
 	): Promise<CompressionResult> {
+		const provider = config.provider || this.providerName;
+		const model = config.model || this.modelId;
+
 		let result: CompressionResult = {
 			messages: [...messages],
 			memoryNodes: [],
@@ -116,7 +122,7 @@ export class CompressionEngine {
 
 		// L1: compress oldest uncompressed turn
 		if (contextUsage > config.l1Threshold) {
-			const l1Result = await this.compressOldestTurn(result.messages, config.keepRecentTurns);
+			const l1Result = await this.compressOldestTurn(result.messages, config.keepRecentTurns, provider, model);
 			if (l1Result) {
 				result.messages = l1Result.messages;
 				result.didCompress = true;
@@ -130,7 +136,7 @@ export class CompressionEngine {
 		if (totalTurns > config.keepRecentTurns) {
 			const compressedTurns = this.findCompressedTurns(result.messages, turns, config.keepRecentTurns);
 			if (compressedTurns.length > 0) {
-				const nodes = await this.extractMemoryNodes(result.messages, compressedTurns);
+				const nodes = await this.extractMemoryNodes(result.messages, compressedTurns, provider, model);
 				if (nodes.length > 0) {
 					result.memoryNodes = nodes;
 					result.didExtract = true;
@@ -150,6 +156,8 @@ export class CompressionEngine {
 	private async compressOldestTurn(
 		messages: any[],
 		keepRecentTurns: number,
+		provider: string,
+		model: string,
 	): Promise<{ messages: any[]; turnStart: number } | null> {
 		const turns = this.identifyTurns(messages);
 		if (turns.length <= keepRecentTurns) return null;
@@ -175,12 +183,12 @@ export class CompressionEngine {
 		if (assistantContent.length < 200) return null;
 
 		try {
-			const model = resolveModel(this.providers, this.providerName, this.modelId);
+			const resolvedModel = resolveModel(this.providers, provider, model);
 			const prompt = L1_PROMPT
 				.replace("{userMessage}", serializeContent(userMsg.content).slice(0, 1000))
 				.replace("{assistantContent}", assistantContent.slice(0, 4000));
 
-			const result = await generateText({ model, prompt, maxOutputTokens: 300 });
+			const result = await generateText({ model: resolvedModel, prompt, maxOutputTokens: 300 });
 			const summary = result.text.trim();
 
 			if (!summary) return null;
@@ -205,6 +213,8 @@ export class CompressionEngine {
 	private async extractMemoryNodes(
 		messages: any[],
 		turnRanges: TurnBoundary[],
+		provider: string,
+		model: string,
 	): Promise<MemoryNodeInput[]> {
 		const turnTexts = turnRanges.map(t => {
 			const userMsg = serializeContent(messages[t.start].content).slice(0, 300);
@@ -218,10 +228,10 @@ export class CompressionEngine {
 		if (!turnTexts.trim()) return [];
 
 		try {
-			const model = resolveModel(this.providers, this.providerName, this.modelId);
+			const resolvedModel = resolveModel(this.providers, provider, model);
 			const prompt = L2_PROMPT.replace("{turnTexts}", turnTexts.slice(0, 6000));
 
-			const result = await generateText({ model, prompt, maxOutputTokens: 500 });
+			const result = await generateText({ model: resolvedModel, prompt, maxOutputTokens: 500 });
 			const text = result.text.trim();
 
 			// Parse JSON from response

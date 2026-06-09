@@ -6,7 +6,8 @@
 |------|------|------|
 | 主进程入口 | `src/main/index.ts` | Electron 生命周期、窗口管理 |
 | Agent 服务 | `src/server/agent-service.ts` | Agent 会话创建、消息调度、事件转发 |
-| Agent 循环 | `src/runtime/agent-loop.ts` | 核心执行引擎，管理消息流、工具调用、重试、状态转换 |
+| Agent 循环 | `src/runtime/agent-loop.ts` | 核心循环（LLM→tool→loop），不含功能逻辑 |
+| Feature Hooks | `src/runtime/hooks/` | 4 个 hook handler 模块（compression、memory、RAG、index） |
 | 会话管理 | `src/runtime/session.ts` | 消息历史、token 计数、上下文裁剪 |
 | 子任务委派 | `src/runtime/subagent-delegator.ts` | 前台/后台子任务、任务注册表 |
 | 检查点 | `src/runtime/checkpoint-manager.ts` | 对话检查点持久化和中断恢复 |
@@ -14,7 +15,7 @@
 | 工具工厂 | `src/runtime/tools/tool-factory.ts` | 工具注册、元数据、execute 包装（hook + 限速 + 截断） |
 | 工具注册中心 | `src/core/tool-registry.ts` | 工具元数据、配置 schema、运行时描述 |
 | MCP 管理 | `src/server/mcp-manager.ts` | MCP 服务器生命周期和工具调用 |
-| Hook 系统 | `src/core/hook-registry.ts` | 单例注册表，27 个生命周期事件 |
+| Hook 系统 | `src/core/hook-registry.ts` | 单例注册表，29 个生命周期事件 |
 | 模板管理 | `src/server/template-store.ts` | 12 个内置模板 + 用户模板，自动合并更新 |
 
 ## 工具执行管线

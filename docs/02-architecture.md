@@ -14,7 +14,7 @@
 6. `loadCoreModules()` 异步开始
 7. Phase 0：17 个动态 import 并行
 8. Phase 1：SessionDB + migrations
-9. Phase 1b：durable hooks + 日志配置
+9. Phase 1b：durable hooks + runtime feature hooks + 日志配置
 10. Phase 2：8 个 store + workspaceConfig
 11. Phase 3：ToolRegistry → Phase 3b：search-provider 初始化 → Phase 4：MCPManager → Phase 5：AgentService
 12. Phase 5b：SessionManager + metrics hooks
@@ -144,17 +144,33 @@ export const selectIsStreaming = (s) =>
 
 ### Agent 单 turn 执行流程（[agent-loop.ts](../src/runtime/agent-loop.ts)）
 
+AgentLoop 只包含核心 LLM→tool→loop 循环。所有功能（compression、memory recall、RAG）通过 hook handler 注册。
+
 ```
 1. setBusy, init checkpoint tracking
 2. append user msg → session, save to DB
 3. fire SessionStart + UserPromptSubmit hooks
 4. retry loop (max 3, exponential backoff):
-   a. executeStream() — consume AI SDK fullStream
-   b. text-delta / reasoning-delta / tool-call / tool-result / finish
-   c. on context-length error: prune + retry
-5. fire Stop / StopFailure / SessionEnd hooks
-6. emit agent_end
+   a. executeStream():
+      - resolveModel, buildTools, assembleSystemPrompt
+      - fire PreLLMCall hooks (memory recall, RAG context injection)
+      - streamText() → consume AI SDK fullStream
+      - text-delta / reasoning-delta / tool-call / tool-result / finish
+   b. on context-length error: prune + retry
+5. fire PostTurnComplete hooks (compression, memory extraction)
+6. fire Stop / StopFailure / SessionEnd hooks
+7. emit agent_end
 ```
+
+### Feature Hooks（[src/runtime/hooks/](../src/runtime/hooks/)）
+
+| Hook 事件 | Handler 模块 | 功能 |
+|-----------|-------------|------|
+| `PreLLMCall` | `memory-hooks.ts` | FTS5 记忆召回，注入 Recalled Memories 段 |
+| `PreLLMCall` | `rag-hooks.ts` | KB RAG context 注入 |
+| `PostTurnComplete` | `compression-hooks.ts` | L1 摘要 + L2 记忆节点提取 |
+
+新功能一律通过 hook 注册，不直接写入 agent-loop。详见 [hook-types.ts](../src/core/hook-types.ts)（29 个事件）。
 
 ### Provider 工厂
 

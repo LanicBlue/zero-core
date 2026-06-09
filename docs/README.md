@@ -1,6 +1,6 @@
 # Zero-Core 文档
 
-> 最近更新：2026-06-06
+> 最近更新：2026-06-09
 
 ## 文档索引
 
@@ -21,7 +21,7 @@
 
 ## 项目状态
 
-- **212 文件 / ~24,550 行** TypeScript + React + Electron
+- **244 文件 / ~29,500 行** TypeScript + React + Electron
 - **85 单元测试 + 8 E2E 路径** — vitest + Playwright
 - **57 工具配置测试** — `npx tsx scripts/test-tool-output.ts`
 - 止血/补完/架构阶段全部完成，剩余为中/低优先级技术债
