@@ -56,7 +56,7 @@ interface Props {
 const api = () => (window as any).api;
 
 export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefillTemplate }: Props) {
-	const { create, update, models, tools } = useAgentStore();
+	const { create, update, tools } = useAgentStore();
 	const { providers } = useProviderStore();
 	const [section, setSection] = useState<Section>("basic");
 	const [globalWorkspace, setGlobalWorkspace] = useState("");
@@ -110,10 +110,6 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 	};
 
 	const allModelsByGroup: Record<string, { id: string; name: string; provider?: string }[]> = {};
-	for (const m of models) {
-		const group = m.provider;
-		(allModelsByGroup[group] ??= []).push({ id: m.id, name: m.name, provider: m.provider });
-	}
 	for (const p of providers) {
 		if (!p.enabled) continue;
 		for (const m of p.models) {

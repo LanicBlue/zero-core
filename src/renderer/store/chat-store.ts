@@ -224,8 +224,11 @@ export const useChatStore = create<ChatState>((set) => ({
 			const sessionMsgs = (state.messagesBySession[sessionId] ?? []).map((m) =>
 				m.streaming ? { ...m, streaming: false } : m,
 			);
+			const newStreaming = new Set(state.streamingSessions);
+			newStreaming.delete(sessionId);
 			return {
 				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
+				streamingSessions: newStreaming,
 			};
 		}),
 
