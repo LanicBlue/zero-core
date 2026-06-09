@@ -132,6 +132,7 @@ export interface McpServerConfig {
 	headers?: Record<string, string>;
 	enabled: boolean;
 	agentIds?: string[];
+	sourceApp?: string;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -357,4 +358,15 @@ export interface FetchedModel {
 	id: string;
 	name: string;
 	group?: string;
+}
+
+// ── Skills ──────────────────────────────────────────────────────────────────
+
+export interface DiscoveredSkill {
+	id: string;
+	name: string;
+	description: string;
+	source: "user" | "app";
+	filePath: string;
+	baseDir: string;
 }

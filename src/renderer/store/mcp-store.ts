@@ -1,29 +1,16 @@
-// MCP 服务器前端状态管理
-//
-// # 文件说明书
-//
-// ## 核心功能
-// 管理 MCP 服务器配置的前端状态和 IPC 调用
-//
-// ## 输入
-// IPC API 调用结果
-//
-// ## 输出
-// McpState（服务器列表、加载状态、CRUD 操作）
-//
-// ## 定位
-// src/renderer/store/ — 渲染进程状态层，为 MCP 页面提供数据
-//
-// ## 依赖
-// zustand、shared/types.ts、preload API
-//
-// ## 维护规则
-// MCP 配置字段变更需同步更新 shared/types.ts
-//
 import { create } from "zustand";
 import type { McpServerConfig } from "../../shared/types.js";
 
 const api = () => (window as any).api;
+
+export interface McpPreset {
+	id: string;
+	name: string;
+	description: string;
+	category: string;
+	transport: "stdio" | "sse" | "streamable-http";
+	envKeys: string[];
+}
 
 interface McpState {
 	servers: McpServerConfig[];
@@ -36,6 +23,9 @@ interface McpState {
 	connect: (id: string) => Promise<{ tools: { name: string; description?: string }[]; error?: string }>;
 	disconnect: (id: string) => Promise<void>;
 	getStatus: () => Promise<{ id: string; name: string; connected: boolean; toolCount: number }[]>;
+	scan: () => Promise<{ detected: number; added: number }>;
+	presets: () => Promise<McpPreset[]>;
+	addPreset: (presetId: string, envValues: Record<string, string>) => Promise<McpServerConfig>;
 }
 
 export const useMcpStore = create<McpState>((set, get) => ({
@@ -82,6 +72,20 @@ export const useMcpStore = create<McpState>((set, get) => ({
 
 	getStatus: async () => {
 		return api().mcpStatus();
+	},
+
+	scan: async () => {
+		return api().mcpScan();
+	},
+
+	presets: async () => {
+		return api().mcpPresets();
+	},
+
+	addPreset: async (presetId, envValues) => {
+		const created = await api().mcpAddPreset(presetId, envValues);
+		await get().fetchServers();
+		return created;
 	},
 }));
 

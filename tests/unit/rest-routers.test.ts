@@ -460,6 +460,10 @@ describe("ipc-proxy route mapping completeness", () => {
 		"mcp:connect":             { method: "POST", path: "/api/mcp/:id/connect" },
 		"mcp:disconnect":          { method: "POST", path: "/api/mcp/:id/disconnect" },
 		"mcp:status":              { method: "GET",  path: "/api/mcp/status" },
+			"mcp:scan":                { method: "POST", path: "/api/mcp/scan" },
+			"mcp:presets":             { method: "GET",  path: "/api/mcp/presets" },
+			"mcp:add-preset":          { method: "POST", path: "/api/mcp/add-preset" },
+			"skills:list":             { method: "GET",  path: "/api/skills" },
 		"kb:list":                 { method: "GET",  path: "/api/kb" },
 		"kb:get":                  { method: "GET",  path: "/api/kb/:id" },
 		"kb:create":               { method: "POST", path: "/api/kb" },
@@ -513,6 +517,9 @@ describe("ipc-proxy route mapping completeness", () => {
 	const LOCAL_CHANNELS = new Set([
 		"dialog:openDirectory",
 		"webfetch:login",
+		"window:minimize",
+		"window:maximize",
+		"window:close",
 	]);
 
 	// Channels that use ipcRenderer.invoke but are event-like (not proxied)
@@ -699,5 +706,147 @@ describe("log-router config persistence", () => {
 		expect(getRes.data.enabled).toBe(true);
 		expect(getRes.data.retentionDays).toBe(14);
 		expect(getRes.data.globalLevel).toBe("warn");
+	});
+});
+
+
+// ─── MCP Presets Tests ──────────────────────────────────────
+
+describe("mcp-presets", () => {
+	test("MCP_PRESETS has 4 Z.AI presets", async () => {
+		const { MCP_PRESETS } = await import("../../src/server/mcp-presets.js");
+		expect(MCP_PRESETS.length).toBe(4);
+		for (const p of MCP_PRESETS) {
+			expect(p).toHaveProperty("id");
+			expect(p).toHaveProperty("name");
+			expect(p).toHaveProperty("category", "Z.AI");
+			expect(p).toHaveProperty("envKeys");
+			expect(p.envKeys).toContain("Z_AI_API_KEY");
+		}
+	});
+
+	test("buildPresetConfig builds stdio config with env", async () => {
+		const { MCP_PRESETS, buildPresetConfig } = await import("../../src/server/mcp-presets.js");
+		const vision = MCP_PRESETS.find((p) => p.id === "zai-vision")!;
+		const config = buildPresetConfig(vision, { Z_AI_API_KEY: "test-key-123" });
+		expect(config.transport).toBe("stdio");
+		expect(config.command).toBe("npx");
+		expect(config.env?.Z_AI_API_KEY).toBe("test-key-123");
+		expect(config.env?.Z_AI_MODE).toBe("ZHIPU");
+	});
+
+	test("buildPresetConfig builds HTTP config with auth header", async () => {
+		const { MCP_PRESETS, buildPresetConfig } = await import("../../src/server/mcp-presets.js");
+		const search = MCP_PRESETS.find((p) => p.id === "zai-web-search")!;
+		const config = buildPresetConfig(search, { Z_AI_API_KEY: "test-key-456" });
+		expect(config.transport).toBe("streamable-http");
+		expect(config.url).toContain("open.bigmodel.cn");
+		expect(config.headers?.Authorization).toBe("Bearer test-key-456");
+	});
+});
+
+// ─── MCP Router Integration Tests ──────────────────────────
+
+describe("mcp-router", () => {
+	async function setupMcpRouter(): Promise<{ port: number; mcpManager: any; store: any[] }> {
+		const { createMcpRouter } = await import("../../src/server/mcp-router.js");
+		const app = express();
+
+		const store: any[] = [];
+		let nextId = 1;
+		const mcpStore = {
+			list: () => store,
+			get: (id: string) => store.find((s) => s.id === id),
+			create: (input: any) => {
+				const record = { id: String(nextId++), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...input };
+				store.push(record);
+				return record;
+			},
+			delete: (id: string) => {
+				const idx = store.findIndex((s) => s.id === id);
+				if (idx >= 0) store.splice(idx, 1);
+			},
+			update: (id: string, input: any) => {
+				const record = store.find((s) => s.id === id);
+				if (record) Object.assign(record, input, { updatedAt: new Date().toISOString() });
+				return record;
+			},
+		};
+		const mcpManager = {
+			connect: vi.fn().mockResolvedValue({ tools: [], error: undefined }),
+			disconnect: vi.fn().mockResolvedValue(undefined),
+			testConnection: vi.fn().mockResolvedValue({ tools: [{ name: "test-tool" }], error: undefined }),
+			isConnected: vi.fn().mockReturnValue(false),
+			getConnectedServers: vi.fn().mockReturnValue([]),
+		};
+
+		app.use(express.json());
+		app.use("/api/mcp", createMcpRouter(mcpStore, mcpManager as any));
+		const { server, port } = await listen(app);
+		return { port, mcpManager, store };
+	}
+
+	test("GET /presets returns preset list", async () => {
+		const { port } = await setupMcpRouter();
+		const res = await request(port, "GET", "/api/mcp/presets");
+		expect(res.status).toBe(200);
+		expect(Array.isArray(res.data)).toBe(true);
+		expect(res.data.length).toBe(4);
+		expect(res.data[0]).toHaveProperty("id", "zai-vision");
+	});
+
+	test("POST /add-preset creates server from preset", async () => {
+		const { port, store } = await setupMcpRouter();
+		const res = await request(port, "POST", "/api/mcp/add-preset", {
+			presetId: "zai-vision",
+			envValues: { Z_AI_API_KEY: "my-test-key" },
+		});
+		expect(res.status).toBe(201);
+		expect(res.data.name).toBe("Z.AI Vision");
+		expect(res.data.transport).toBe("stdio");
+		expect(store.length).toBe(1);
+	});
+
+	test("POST /add-preset returns 404 for unknown preset", async () => {
+		const { port } = await setupMcpRouter();
+		const res = await request(port, "POST", "/api/mcp/add-preset", {
+			presetId: "nonexistent",
+			envValues: {},
+		});
+		expect(res.status).toBe(404);
+	});
+
+	test("GET /status returns connected servers", async () => {
+		const { port, mcpManager } = await setupMcpRouter();
+		mcpManager.getConnectedServers.mockReturnValue([{ id: "x", name: "test", connected: true, toolCount: 3 }]);
+		const res = await request(port, "GET", "/api/mcp/status");
+		expect(res.status).toBe(200);
+		expect(res.data.length).toBe(1);
+	});
+
+	test("POST /test tests connection config", async () => {
+		const { port, mcpManager } = await setupMcpRouter();
+		mcpManager.testConnection.mockResolvedValue({ tools: [{ name: "analyze" }], error: undefined });
+		const res = await request(port, "POST", "/api/mcp/test", {
+			name: "test",
+			transport: "stdio",
+			command: "npx",
+		});
+		expect(res.status).toBe(200);
+		expect(res.data.tools.length).toBe(1);
+	});
+
+	test("GET /presets is not intercepted by /:id", async () => {
+		const { port } = await setupMcpRouter();
+		const res = await request(port, "GET", "/api/mcp/presets");
+		expect(res.status).toBe(200);
+		expect(Array.isArray(res.data)).toBe(true);
+	});
+
+	test("GET /status is not intercepted by /:id", async () => {
+		const { port } = await setupMcpRouter();
+		const res = await request(port, "GET", "/api/mcp/status");
+		expect(res.status).toBe(200);
+		expect(Array.isArray(res.data)).toBe(true);
 	});
 });

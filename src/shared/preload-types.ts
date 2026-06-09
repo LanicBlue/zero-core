@@ -36,6 +36,7 @@ import type {
 	LogEntry, LogFileSummary, FileLogConfig,
 	WorkspaceConfig, ToolInfo, ModelInfo,
 	ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats,
+	DiscoveredSkill,
 } from "./types.js";
 
 export interface WindowApi {
@@ -123,6 +124,11 @@ export interface WindowApi {
 	// ── Platform ──
 	platform: string;
 
+	// ── Window Controls ──
+	windowMinimize: () => Promise<void>;
+	windowMaximize: () => Promise<void>;
+	windowClose: () => Promise<void>;
+
 	// ── Knowledge Base ──
 	kbList: () => Promise<KnowledgeBase[]>;
 	kbGet: (id: string) => Promise<KnowledgeBase | undefined>;
@@ -153,6 +159,10 @@ export interface WindowApi {
 	mcpConnect: (id: string) => Promise<{ tools: { name: string; description?: string }[]; error?: string }>;
 	mcpDisconnect: (id: string) => Promise<{ success: true }>;
 	mcpStatus: () => Promise<McpStatus[]>;
+	mcpScan: () => Promise<{ detected: number; added: number; servers: McpServerConfig[] }>;
+
+	// ── Skills ──
+	skillsList: () => Promise<DiscoveredSkill[]>;
 
 	// ── Templates ──
 	templatesList: () => Promise<PromptTemplate[]>;

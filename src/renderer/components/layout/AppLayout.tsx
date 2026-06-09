@@ -25,6 +25,7 @@
 // - 保持布局响应性
 //
 import React, { useRef, useEffect } from "react";
+import TitleBar from "./TitleBar.js";
 import IconSidebar from "./IconSidebar.js";
 import ChatPanel from "./ChatPanel.js";
 import FileTreePanel from "./FileTreePanel.js";
@@ -33,6 +34,7 @@ import ResizableLayout from "./ResizableLayout.js";
 import AgentsPage from "../agents/AgentsPage.js";
 import SettingsPage from "../settings/SettingsPage.js";
 import McpSettingsPage from "../mcp/McpSettingsPage.js";
+import SkillsPage from "../skills/SkillsPage.js";
 import KnowledgeBasePage from "../kb/KnowledgeBasePage.js";
 import ToolsPage from "../tools/ToolsPage.js";
 import DashboardPage from "../dashboard/DashboardPage.js";
@@ -113,28 +115,31 @@ export default function AppLayout() {
 
 	return (
 		<div className="app-layout">
-			<IconSidebar />
-			<div className={"page-chat" + (activePage === "chat" ? " page-active" : "")}>
-				<ResizableLayout
-					defaults={[4, 2, 4]}
-					mins={[280, 160, 200]}
-				>
-					<ChatPanel />
-					<FileTreePanel />
-					<DocViewerPanel />
-				</ResizableLayout>
-			</div>
-			{activePage !== "chat" && (
-				<div className="page-overlay">
-					{activePage === "dashboard" && <DashboardPage />}
-					{activePage === "settings" && <SettingsPage />}
-					{activePage === "mcp" && <McpSettingsPage />}
-					{activePage === "tools" && <ToolsPage />}
-					{activePage === "knowledge" && <KnowledgeBasePage />}
-					{activePage === "agents" && <AgentsPage />}
+			<TitleBar />
+			<div className="app-body">
+				<IconSidebar />
+				<div className={"page-chat" + (activePage === "chat" ? " page-active" : "")}>
+					<ResizableLayout
+						defaults={[4, 2, 4]}
+						mins={[280, 160, 200]}
+					>
+						<ChatPanel />
+						<FileTreePanel />
+						<DocViewerPanel />
+					</ResizableLayout>
 				</div>
-			)}
-
+				{activePage !== "chat" && (
+					<div className="page-overlay">
+						{activePage === "dashboard" && <DashboardPage />}
+						{activePage === "settings" && <SettingsPage />}
+						{activePage === "mcp" && <McpSettingsPage />}
+						{activePage === "skills" && <SkillsPage />}
+						{activePage === "tools" && <ToolsPage />}
+						{activePage === "knowledge" && <KnowledgeBasePage />}
+						{activePage === "agents" && <AgentsPage />}
+					</div>
+				)}
+			</div>
 		</div>
 	);
 }

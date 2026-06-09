@@ -54,6 +54,8 @@ import { createSessionRouter } from "./session-router.js";
 import { createLogRouter } from "./log-router.js";
 import { createFileRouter } from "./file-router.js";
 import { createToolExecutionRouter } from "./tool-execution-router.js";
+import { createSkillRouter } from "./skill-router.js";
+import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
 import { ALL_TOOLS, registerRuntimeTools } from "../runtime/tools/index.js";
 import { getToolExecute } from "../runtime/tools/tool-factory.js";
 import type { ToolExecutionContext } from "../runtime/types.js";
@@ -142,6 +144,25 @@ export async function startServer(options?: StartServerOptions) {
 		await agentService.recoverIncompleteSessions();
 	}
 
+	// ─── Auto-detect MCP servers from external tools ────────────────
+	try {
+		const detected = await scanExternalMcpConfigs(workspaceConfig.workspaceDir);
+		if (detected.length > 0) {
+			const existing = mcpStore.list();
+			const added = mergeDetectedServers(existing, (input) => mcpStore.create(input), detected);
+			if (added.length > 0) {
+				console.log(`[server] Auto-detected ${added.length} MCP servers from external tools`);
+				for (const server of added) {
+					if (server.enabled && (server.transport === "sse" || server.transport === "streamable-http") && server.url) {
+						mcp.connect(server).catch(() => {});
+					}
+				}
+			}
+		}
+	} catch (err) {
+		console.error("[server] MCP auto-detect failed:", (err as Error).message);
+	}
+
 	// ─── Mount API routers ───────────────────────────────────────
 
 	app.use("/api/config", createConfigRouter({
@@ -156,6 +177,7 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/templates", createTemplateRouter(templateStore));
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
 	app.use("/api/kb", createKbRouter(kbStore, kbDb, providerStore));
+	app.use("/api/skills", createSkillRouter());
 
 	// New routers
 	app.use("/api/chat", createChatRouter({ agentService, agentStore, providerStore, workspaceConfig }));

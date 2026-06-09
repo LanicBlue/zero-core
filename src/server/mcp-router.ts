@@ -23,6 +23,8 @@
 import { Router } from "express";
 import type { McpStore } from "./mcp-store.js";
 import type { MCPManager } from "./mcp-manager.js";
+import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
+import { MCP_PRESETS, buildPresetConfig } from "./mcp-presets.js";
 
 export function createMcpRouter(mcpStore: McpStore, mcpManager: MCPManager): Router {
 	const router = Router();
@@ -34,6 +36,33 @@ export function createMcpRouter(mcpStore: McpStore, mcpManager: MCPManager): Rou
 		} catch (e) {
 			res.status(500).json({ error: (e as Error).message });
 		}
+	});
+
+	// mcp:presets — list available preset MCP servers
+	router.get("/presets", (_req, res) => {
+		res.json(MCP_PRESETS);
+	});
+
+	// mcp:add-preset — add a preset server with user-provided env values
+	router.post("/add-preset", (req, res) => {
+		try {
+			const { presetId, envValues } = req.body as { presetId: string; envValues: Record<string, string> };
+			const preset = MCP_PRESETS.find((p) => p.id === presetId);
+			if (!preset) {
+				res.status(404).json({ error: "Preset not found" });
+				return;
+			}
+			const config = buildPresetConfig(preset, envValues);
+			const record = mcpStore.create(config);
+			res.status(201).json(record);
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	// mcp:status — get all connected servers
+	router.get("/status", (_req, res) => {
+		res.json(mcpManager.getConnectedServers());
 	});
 
 	// mcp:get — get a single server
@@ -65,6 +94,30 @@ export function createMcpRouter(mcpStore: McpStore, mcpManager: MCPManager): Rou
 		}
 	});
 
+	// mcp:test — test connection (body has full server config)
+	router.post("/test", async (req, res) => {
+		try {
+			const result = await mcpManager.testConnection(req.body);
+			res.json(result);
+		} catch (e) {
+			res.status(400).json({ tools: [], error: (e as Error).message });
+		}
+	});
+
+	// mcp:scan — scan for external MCP server configs
+	router.post("/scan", async (_req, res) => {
+		try {
+			const { loadWorkspaceConfig } = await import("./workspace-config.js");
+			const { workspaceDir } = loadWorkspaceConfig();
+			const detected = await scanExternalMcpConfigs(workspaceDir);
+			const existing = mcpStore.list();
+			const added = mergeDetectedServers(existing, (input) => mcpStore.create(input), detected);
+			res.json({ detected: detected.length, added: added.length, servers: added });
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
+		}
+	});
+
 	// mcp:update — update server, connect/disconnect accordingly
 	router.put("/:id", async (req, res) => {
 		try {
@@ -91,15 +144,6 @@ export function createMcpRouter(mcpStore: McpStore, mcpManager: MCPManager): Rou
 		}
 	});
 
-	// mcp:test — test connection (body has full server config)
-	router.post("/:id/test", async (req, res) => {
-		try {
-			const result = await mcpManager.testConnection(req.body);
-			res.json(result);
-		} catch (e) {
-			res.status(400).json({ tools: [], error: (e as Error).message });
-		}
-	});
 
 	// mcp:tools — get tools for server, connect if needed
 	router.get("/:id/tools", async (req, res) => {
@@ -147,10 +191,6 @@ export function createMcpRouter(mcpStore: McpStore, mcpManager: MCPManager): Rou
 		}
 	});
 
-	// mcp:status — get all connected servers
-	router.get("/status", (_req, res) => {
-		res.json(mcpManager.getConnectedServers());
-	});
 
 	return router;
 }

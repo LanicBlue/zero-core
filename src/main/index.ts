@@ -67,11 +67,7 @@ function createWindow() {
 		minHeight: 600,
 		title: "Zero-Core",
 		titleBarStyle: "hidden",
-		titleBarOverlay: {
-			color: "#0d1117",
-			symbolColor: "#8b949e",
-			height: 36,
-		},
+		frame: false,
 		webPreferences: {
 			preload: join(__dirname, "../preload/index.cjs"),
 			contextIsolation: true,
@@ -98,6 +94,14 @@ function createWindow() {
 // ---------------------------------------------------------------------------
 
 function registerLocalHandlers(win: BrowserWindow) {
+	// Window controls
+	ipcMain.handle("window:minimize", () => win.minimize());
+	ipcMain.handle("window:maximize", () => {
+		if (win.isMaximized()) win.unmaximize();
+		else win.maximize();
+	});
+	ipcMain.handle("window:close", () => win.close());
+
 	// dialog:openDirectory — native directory picker
 	ipcMain.handle("dialog:openDirectory", async () => {
 		const result = await dialog.showOpenDialog(win, {

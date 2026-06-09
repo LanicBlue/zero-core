@@ -230,7 +230,7 @@ export default function ToolsPage() {
 				<div className="tools-page-header-info">
 					<span>{tools.length} tools registered</span>
 				</div>
-				<button type="button" className="btn-primary btn-sm" onClick={save}>
+				<button type="button" className="btn-primary" onClick={save}>
 					{saved ? "Saved!" : "Save Configuration"}
 				</button>
 			</div>

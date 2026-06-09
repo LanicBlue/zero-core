@@ -24,8 +24,8 @@
 import { create } from "zustand";
 
 interface PageState {
-	activePage: "dashboard" | "chat" | "agents" | "settings" | "mcp" | "knowledge" | "tools";
-	setActivePage: (page: "dashboard" | "chat" | "agents" | "settings" | "mcp" | "knowledge" | "tools") => void;
+	activePage: "dashboard" | "chat" | "agents" | "settings" | "mcp" | "skills" | "knowledge" | "tools";
+	setActivePage: (page: "dashboard" | "chat" | "agents" | "settings" | "mcp" | "skills" | "knowledge" | "tools") => void;
 }
 
 export const usePageStore = create<PageState>((set) => ({

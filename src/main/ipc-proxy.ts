@@ -65,6 +65,9 @@ const R: Record<string, RouteMapping> = {
 	"mcp:connect":    { method: "POST", path: "/api/mcp/:id/connect", buildReq: (id) => ({ params: { id } }) },
 	"mcp:disconnect": { method: "POST", path: "/api/mcp/:id/disconnect", buildReq: (id) => ({ params: { id } }) },
 	"mcp:status":     { method: "GET", path: "/api/mcp/status", buildReq: () => ({}) },
+	"mcp:scan":       { method: "POST", path: "/api/mcp/scan", buildReq: () => ({}) },
+	"mcp:presets":    { method: "GET", path: "/api/mcp/presets", buildReq: () => ({}) },
+	"mcp:add-preset": { method: "POST", path: "/api/mcp/add-preset", buildReq: (presetId, envValues) => ({ body: { presetId, envValues } }) },
 
 	// Knowledge Base
 	"kb:list":        { method: "GET", path: "/api/kb", buildReq: () => ({}) },
@@ -132,6 +135,8 @@ const R: Record<string, RouteMapping> = {
 	"webfetch:cookies":       { method: "GET", path: "/api/webfetch/cookies", buildReq: () => ({}) },
 	"webfetch:clear-cookies": { method: "DELETE", path: "/api/webfetch/cookies", buildReq: (domain?) => ({ query: domain ? { domain } : {} }) },
 
+	// Skills
+	"skills:list":    { method: "GET", path: "/api/skills", buildReq: () => ({}) },
 	// Misc
 	"ask-user:respond": { method: "POST", path: "/api/ask-user/respond", buildReq: (requestId, answers) => ({ body: { requestId, answers } }) },
 };

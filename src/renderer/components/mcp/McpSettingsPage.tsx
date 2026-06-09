@@ -1,31 +1,5 @@
-// MCP 设置页面
-//
-// # 文件说明书
-//
-// ## 核心功能
-// MCP 服务器管理页面，支持添加、编辑和测试 MCP 服务器。
-//
-// ## 输入
-// - MCP 状态
-// - IPC API 调用
-//
-// ## 输出
-// - MCP 服务器列表
-// - 连接管理
-//
-// ## 定位
-// 渲染进程页面，被 AppLayout 使用。
-//
-// ## 依赖
-// - react - React 框架
-// - ../../store - 状态管理
-//
-// ## 维护规则
-// - MCP 协议变更时需更新
-// - 保持连接状态同步
-//
 import React, { useState, useEffect } from "react";
-import { useMcpStore } from "../../store/mcp-store.js";
+import { useMcpStore, type McpPreset } from "../../store/mcp-store.js";
 import type { McpServerConfig } from "../../../shared/types.js";
 import McpServerCard from "./McpServerCard.js";
 
@@ -50,12 +24,20 @@ const EMPTY_FORM = {
 };
 
 export default function McpSettingsPage() {
-	const { servers, loading, create, update, remove, testConnection, connect, disconnect, getStatus } = useMcpStore();
+	const { servers, loading, create, update, remove, testConnection, connect, disconnect, getStatus, scan, presets, addPreset } = useMcpStore();
 	const [showForm, setShowForm] = useState(false);
 	const [form, setForm] = useState(EMPTY_FORM);
 	const [statuses, setStatuses] = useState<ServerStatus[]>([]);
 	const [testResult, setTestResult] = useState<{ tools: { name: string; description?: string }[]; error?: string } | null>(null);
 	const [testing, setTesting] = useState(false);
+	const [scanning, setScanning] = useState(false);
+	const [presetList, setPresetList] = useState<McpPreset[]>([]);
+	const [apiKey, setApiKey] = useState("");
+	const [addingPreset, setAddingPreset] = useState<string | null>(null);
+
+	useEffect(() => {
+		presets().then(setPresetList).catch(() => {});
+	}, []);
 
 	const refreshStatus = async () => {
 		try {
@@ -69,6 +51,29 @@ export default function McpSettingsPage() {
 		const interval = setInterval(refreshStatus, 10000);
 		return () => clearInterval(interval);
 	}, [servers]);
+
+	const handleScan = async () => {
+		setScanning(true);
+		try {
+			const result = await scan();
+			if (result.added > 0) {
+				await refreshStatus();
+			}
+		} finally {
+			setScanning(false);
+		}
+	};
+
+	const handleAddPreset = async (preset: McpPreset) => {
+		if (!apiKey.trim()) return;
+		setAddingPreset(preset.id);
+		try {
+			await addPreset(preset.id, { Z_AI_API_KEY: apiKey.trim() });
+			await refreshStatus();
+		} finally {
+			setAddingPreset(null);
+		}
+	};
 
 	const handleToggle = async (id: string, enabled: boolean) => {
 		await update(id, { enabled });
@@ -182,10 +187,16 @@ export default function McpSettingsPage() {
 
 	const getStatusFor = (id: string) => statuses.find((s) => s.id === id) ?? { connected: false, toolCount: 0 };
 
+	const existingNames = new Set(servers.map((s) => s.name));
+	const unaddedPresets = presetList.filter((p) => !existingNames.has(p.name));
+
 	return (
 		<div className="mcp-page">
 			<div className="mcp-page-header">
 				<h2>MCP Servers</h2>
+				<button type="button" className="btn-ghost" onClick={handleScan} disabled={scanning}>
+					{scanning ? "Scanning..." : "Scan System"}
+				</button>
 				<button
 					type="button"
 					className="btn-primary"
@@ -195,82 +206,122 @@ export default function McpSettingsPage() {
 				</button>
 			</div>
 
-			{showForm && (
-				<form className="mcp-add-form" onSubmit={submit}>
-					<label>Name
-						<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. filesystem" />
-					</label>
-					<label>Transport
-						<select value={form.transport} onChange={(e) => setForm({ ...form, transport: e.target.value as Transport })}>
-							<option value="stdio">STDIO</option>
-							<option value="sse">SSE</option>
-							<option value="streamable-http">Streamable HTTP</option>
-						</select>
-					</label>
-					{form.transport === "stdio" ? (
-						<>
-							<label>Command
-								<input value={form.command} onChange={(e) => setForm({ ...form, command: e.target.value })} placeholder="e.g. npx -y @modelcontextprotocol/server-filesystem" required />
-							</label>
-							<label>Arguments (space-separated, optional)
-								<input value={form.args} onChange={(e) => setForm({ ...form, args: e.target.value })} placeholder="e.g. /path/to/dir" />
-							</label>
-							<label>Environment (key=val, comma-separated, optional)
-								<input value={form.env} onChange={(e) => setForm({ ...form, env: e.target.value })} placeholder="e.g. API_KEY=xxx,DEBUG=true" />
-							</label>
-						</>
-					) : (
-						<label>URL
-							<input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="e.g. http://localhost:3000/sse" required />
-						</label>
-					)}
-					<div className="mcp-form-actions">
-						<button type="button" className="btn-ghost" onClick={handleFormTest} disabled={testing || !form.name}>
-							{testing ? "Testing..." : "Test Connection"}
-						</button>
-						<button type="submit" className="btn-primary">
-							Add Server
-						</button>
-					</div>
-					{testResult && (
-						<div className="mcp-test-result">
-							{testResult.error && <p className="mcp-test-error">Error: {testResult.error}</p>}
-							{testResult.tools.length > 0 && (
-								<div className="mcp-test-tools">
-									<p>Found {testResult.tools.length} tool(s):</p>
-									<ul>
-										{testResult.tools.map((t) => (
-											<li key={t.name}><strong>{t.name}</strong> {t.description ? `— ${t.description}` : ""}</li>
-										))}
-									</ul>
-								</div>
-							)}
-						</div>
-					)}
-				</form>
-			)}
+			<div className="mcp-page-body">
 
-			<div className="mcp-server-list">
-				{loading && <p className="agents-empty">Loading...</p>}
-				{!loading && servers.length === 0 && (
-					<p className="agents-empty">No MCP servers configured. Add one to extend your agents with external tools.</p>
+				{unaddedPresets.length > 0 && (
+					<div className="mcp-presets-section">
+						<h3 className="mcp-presets-title">Recommended</h3>
+						<div className="mcp-presets-key">
+							<label>
+								Z.AI API Key
+								<input
+									type="password"
+									value={apiKey}
+									onChange={(e) => setApiKey(e.target.value)}
+									placeholder="Enter your Z.AI API key"
+								/>
+							</label>
+						</div>
+						<div className="mcp-presets-grid">
+							{unaddedPresets.map((preset) => (
+								<div key={preset.id} className="mcp-preset-card">
+									<div className="mcp-preset-card-header">
+										<span className="mcp-preset-card-name">{preset.name}</span>
+										<span className="mcp-preset-card-badge">{preset.category}</span>
+									</div>
+									<p className="mcp-preset-card-desc">{preset.description}</p>
+									<span className="mcp-preset-card-transport">{preset.transport}</span>
+									<button
+										type="button"
+										className="btn-primary btn-sm"
+										disabled={!apiKey.trim() || addingPreset === preset.id}
+										onClick={() => handleAddPreset(preset)}
+									>
+										{addingPreset === preset.id ? "Adding..." : "+ Add"}
+									</button>
+								</div>
+							))}
+						</div>
+					</div>
 				)}
-				{servers.map((server) => {
-					const status = getStatusFor(server.id);
-					return (
-						<McpServerCard
-							key={server.id}
-							server={server}
-							connected={status.connected}
-							toolCount={status.toolCount}
-							onToggle={handleToggle}
-							onDelete={handleDelete}
-							onTest={handleTest}
-							onConnect={handleConnect}
-							onDisconnect={handleDisconnect}
-						/>
-					);
-				})}
+
+				{showForm && (
+					<form className="mcp-add-form" onSubmit={submit}>
+						<label>Name
+							<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. filesystem" />
+						</label>
+						<label>Transport
+							<select value={form.transport} onChange={(e) => setForm({ ...form, transport: e.target.value as Transport })}>
+								<option value="stdio">STDIO</option>
+								<option value="sse">SSE</option>
+								<option value="streamable-http">Streamable HTTP</option>
+							</select>
+						</label>
+						{form.transport === "stdio" ? (
+							<>
+								<label>Command
+									<input value={form.command} onChange={(e) => setForm({ ...form, command: e.target.value })} placeholder="e.g. npx -y @modelcontextprotocol/server-filesystem" required />
+								</label>
+								<label>Arguments (space-separated, optional)
+									<input value={form.args} onChange={(e) => setForm({ ...form, args: e.target.value })} placeholder="e.g. /path/to/dir" />
+								</label>
+								<label>Environment (key=val, comma-separated, optional)
+									<input value={form.env} onChange={(e) => setForm({ ...form, env: e.target.value })} placeholder="e.g. API_KEY=xxx,DEBUG=true" />
+								</label>
+							</>
+						) : (
+							<label>URL
+								<input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="e.g. http://localhost:3000/sse" required />
+							</label>
+						)}
+						<div className="mcp-form-actions">
+							<button type="button" className="btn-ghost" onClick={handleFormTest} disabled={testing || !form.name}>
+								{testing ? "Testing..." : "Test Connection"}
+							</button>
+							<button type="submit" className="btn-primary">
+								Add Server
+							</button>
+						</div>
+						{testResult && (
+							<div className="mcp-test-result">
+								{testResult.error && <p className="mcp-test-error">Error: {testResult.error}</p>}
+								{testResult.tools.length > 0 && (
+									<div className="mcp-test-tools">
+										<p>Found {testResult.tools.length} tool(s):</p>
+										<ul>
+											{testResult.tools.map((t) => (
+												<li key={t.name}><strong>{t.name}</strong> {t.description ? `— ${t.description}` : ""}</li>
+											))}
+										</ul>
+									</div>
+								)}
+							</div>
+						)}
+					</form>
+				)}
+
+				<div className="mcp-server-list">
+					{loading && <p className="agents-empty">Loading...</p>}
+					{!loading && servers.length === 0 && unaddedPresets.length === 0 && (
+						<p className="agents-empty">No MCP servers configured. Add one to extend your agents with external tools.</p>
+					)}
+					{servers.map((server) => {
+						const status = getStatusFor(server.id);
+						return (
+							<McpServerCard
+								key={server.id}
+								server={server}
+								connected={status.connected}
+								toolCount={status.toolCount}
+								onToggle={handleToggle}
+								onDelete={handleDelete}
+								onTest={handleTest}
+								onConnect={handleConnect}
+								onDisconnect={handleDisconnect}
+							/>
+						);
+					})}
+				</div>
 			</div>
 
 		</div>

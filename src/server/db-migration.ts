@@ -183,6 +183,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 		{ key: "args", json: true }, { key: "env", json: true }, { key: "url" },
 		{ key: "headers", json: true }, { key: "enabled", bool: true },
 		{ key: "agentIds", column: "agent_ids", json: true },
+		{ key: "sourceApp", column: "source_app" },
 		{ key: "createdAt", column: "created_at" }, { key: "updatedAt", column: "updated_at" },
 	]);
 	mcpServers.migrateFromJson(join(zeroDir, "mcp-servers.json"), "servers");

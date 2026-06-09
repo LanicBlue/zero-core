@@ -117,7 +117,15 @@ const api: WindowApi = {
 	// ─── Platform ────────────────────────────────────
 	platform: process.platform,
 
-	// ─── Knowledge Base ──────────────────────────────
+		// ─── Window Controls ────────────────────────────────
+		windowMinimize: () => ipcRenderer.invoke("window:minimize"),
+		windowMaximize: () => ipcRenderer.invoke("window:maximize"),
+		windowClose: () => ipcRenderer.invoke("window:close"),
+
+	// ─── Skills
+	skillsList: () => ipcRenderer.invoke("skills:list"),
+
+		// ─── Knowledge Base ──────────────────────────────
 	kbList: () => ipcRenderer.invoke("kb:list"),
 	kbGet: (id) => ipcRenderer.invoke("kb:get", id),
 	kbCreate: (input) => ipcRenderer.invoke("kb:create", input),
@@ -147,6 +155,9 @@ const api: WindowApi = {
 	mcpConnect: (id) => ipcRenderer.invoke("mcp:connect", id),
 	mcpDisconnect: (id) => ipcRenderer.invoke("mcp:disconnect", id),
 	mcpStatus: () => ipcRenderer.invoke("mcp:status"),
+	mcpScan: () => ipcRenderer.invoke("mcp:scan"),
+	mcpPresets: () => ipcRenderer.invoke("mcp:presets"),
+	mcpAddPreset: (presetId, envValues) => ipcRenderer.invoke("mcp:add-preset", presetId, envValues),
 
 	// ─── Templates ───────────────────────────────────
 	templatesList: () => ipcRenderer.invoke("templates:list"),

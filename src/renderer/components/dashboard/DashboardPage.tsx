@@ -79,7 +79,7 @@ export default function DashboardPage() {
 		return (
 			<div className="dashboard-page">
 				<header className="dashboard-header">
-					<h1>Dashboard</h1>
+					<h2>Dashboard</h2>
 				</header>
 				<div className="dashboard-error">Error loading metrics: {error}</div>
 			</div>
@@ -90,7 +90,7 @@ export default function DashboardPage() {
 		return (
 			<div className="dashboard-page">
 				<header className="dashboard-header">
-					<h1>Dashboard</h1>
+					<h2>Dashboard</h2>
 				</header>
 				<div className="dashboard-loading">Loading...</div>
 			</div>
@@ -109,7 +109,7 @@ export default function DashboardPage() {
 	return (
 		<div className="dashboard-page">
 			<header className="dashboard-header">
-				<h1>Dashboard</h1>
+				<h2>Dashboard</h2>
 				<p className="dashboard-subtitle">
 					{activeSessions.length} active sessions · Updated {new Date(metrics.lastUpdatedAt).toLocaleTimeString()}
 				</p>
