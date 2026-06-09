@@ -178,13 +178,11 @@ export function buildToolsSet(
 		}
 	}
 
-	// Merge MCP tools
+	// Merge MCP tools (always enabled unless blocked)
 	if (mcpTools) {
 		for (const [name, def] of Object.entries(mcpTools)) {
 			if (blocked.has(name)) continue;
-			if (isEnabled(name)) {
-				tools[name] = def;
-			}
+			tools[name] = def;
 		}
 	}
 
