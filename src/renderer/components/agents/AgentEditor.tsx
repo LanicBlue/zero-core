@@ -57,7 +57,7 @@ const api = () => (window as any).api;
 
 export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefillTemplate }: Props) {
 	const { create, update, tools } = useAgentStore();
-	const { providers } = useProviderStore();
+	const { providers, fetchProviders } = useProviderStore();
 	const [section, setSection] = useState<Section>("basic");
 	const [globalWorkspace, setGlobalWorkspace] = useState("");
 	const [defaultPrompt, setDefaultPrompt] = useState("");
@@ -70,6 +70,7 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 	const pendingSectionRef = useRef<Section | null>(null);
+	useEffect(() => { fetchProviders(); }, [fetchProviders]);
 
 	useEffect(() => {
 		api().configGet().then((c: any) => {
@@ -109,12 +110,12 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		} catch (err) { console.error("AgentEditor autoSave failed:", err); }
 	};
 
-	const allModelsByGroup: Record<string, { id: string; name: string; provider?: string }[]> = {};
+	const allModelsByGroup: Record<string, { id: string; name: string; provider?: string; contextWindow?: number; multimodal?: boolean }[]> = {};
 	for (const p of providers) {
 		if (!p.enabled) continue;
 		for (const m of p.models) {
 			const group = m.group || p.name;
-			(allModelsByGroup[group] ??= []).push({ id: m.id, name: m.name || m.id, provider: p.name });
+			(allModelsByGroup[group] ??= []).push({ id: m.id, name: m.name || m.id, provider: p.name, contextWindow: m.contextWindow, multimodal: m.multimodal });
 		}
 	}
 

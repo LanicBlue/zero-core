@@ -27,6 +27,7 @@ import {
 	nextMsgId,
 	selectActiveMessages,
 	selectIsStreaming,
+	selectContextInfo,
 } from "../../src/renderer/store/chat-store.js";
 import type { ChatMessage } from "../../src/renderer/store/chat-store.js";
 
@@ -326,6 +327,43 @@ describe("chat-store", () => {
 			const { addMessage } = useChatStore.getState();
 			addMessage("sess-a", userMsg("hi"));
 			expect(activeMessages()).toEqual([]);
+		});
+	});
+
+	describe("contextInfo", () => {
+		test("updateContextInfo stores info by session", () => {
+			const { updateContextInfo } = useChatStore.getState();
+			updateContextInfo("sess-a", { usedTokens: 5000, contextWindow: 128000, usage: 0.04 });
+			expect(useChatStore.getState().contextInfoBySession["sess-a"]).toEqual({
+				usedTokens: 5000,
+				contextWindow: 128000,
+				usage: 0.04,
+			});
+		});
+
+		test("selectContextInfo returns info for active session", () => {
+			const { updateContextInfo, setActiveSessionId } = useChatStore.getState();
+			updateContextInfo("sess-a", { usedTokens: 10000, contextWindow: 200000, usage: 0.05 });
+			updateContextInfo("sess-b", { usedTokens: 20000, contextWindow: 128000, usage: 0.16 });
+			setActiveSessionId("sess-a");
+			expect(selectContextInfo(useChatStore.getState())).toEqual({
+				usedTokens: 10000,
+				contextWindow: 200000,
+				usage: 0.05,
+			});
+		});
+
+		test("selectContextInfo returns null when no active session", () => {
+			const { updateContextInfo } = useChatStore.getState();
+			updateContextInfo("sess-a", { usedTokens: 5000, contextWindow: 128000, usage: 0.04 });
+			expect(selectContextInfo(useChatStore.getState())).toBeNull();
+		});
+
+		test("updateContextInfo overwrites previous value", () => {
+			const { updateContextInfo } = useChatStore.getState();
+			updateContextInfo("sess-a", { usedTokens: 5000, contextWindow: 128000, usage: 0.04 });
+			updateContextInfo("sess-a", { usedTokens: 80000, contextWindow: 128000, usage: 0.625 });
+			expect(useChatStore.getState().contextInfoBySession["sess-a"].usage).toBe(0.625);
 		});
 	});
 });

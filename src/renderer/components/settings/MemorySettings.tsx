@@ -3,6 +3,11 @@ import { useProviderStore } from "../../store/provider-store.js";
 
 const api = () => (window as any).api;
 
+function formatCtx(n?: number): string {
+	if (!n) return "";
+	return n >= 1048576 ? (n / 1048576).toFixed(n % 1048576 === 0 ? 0 : 1) + "M" : n >= 1000 ? Math.round(n / 1000) + "K" : String(n);
+}
+
 interface CompressionConfig {
 	enabled?: boolean;
 	keepRecentTurns?: number;
@@ -33,11 +38,11 @@ export function MemorySettings() {
 		}).catch(() => setLoading(false));
 	}, []);
 
-	const enabledModels: { provider: string; id: string; name: string; group: string }[] = [];
+	const enabledModels: { provider: string; id: string; name: string; group: string; contextWindow?: number }[] = [];
 	for (const p of providers) {
 		if (!p.enabled) continue;
 		for (const m of p.models) {
-			enabledModels.push({ provider: p.name, id: m.id, name: m.name || m.id, group: m.group || p.name });
+			enabledModels.push({ provider: p.name, id: m.id, name: m.name || m.id, group: m.group || p.name, contextWindow: m.contextWindow });
 		}
 	}
 
@@ -90,7 +95,7 @@ export function MemorySettings() {
 									.filter((m) => m.group === group)
 									.map((m) => (
 										<option key={`${m.provider}|${m.id}`} value={`${m.provider}|${m.id}`}>
-											{m.name}
+											{m.name}{m.contextWindow ? ` — ${formatCtx(m.contextWindow)}` : ""}
 										</option>
 									))}
 							</optgroup>

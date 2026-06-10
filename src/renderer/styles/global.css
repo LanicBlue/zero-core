@@ -463,6 +463,29 @@ body {
 .chat-header select {
 }
 
+.context-usage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg-subtle);
+}
+.context-usage-text {
+  white-space: nowrap;
+}
+.context-usage-bar {
+  width: 60px;
+  height: 4px;
+  background: var(--bg-muted, #21262d);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.context-usage-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
 .session-controls {
   display: flex;
   align-items: center;

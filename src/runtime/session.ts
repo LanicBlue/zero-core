@@ -1,68 +1,72 @@
-// Agent 会话管理
-//
-// # 文件说明书
-//
-// ## 核心功能
-// Agent 会话类，管理消息历史、token 计算和上下文窗口。
-//
-// ## 输入
-// - 系统提示词
-// - 上下文窗口大小
-//
-// ## 输出
-// - 消息历史
-// - token 使用统计
-//
-// ## 定位
-// Runtime 会话管理，被 AgentLoop 使用。
-//
-// ## 依赖
-// - ai - AI SDK 类型
-// - ./session-store-interface - 会话存储
-// - ../core/hook-registry - Hook 触发
-//
-// ## 维护规则
-// - token 计算逻辑变更时需更新
-// - 保持消息修剪策略正确
-//
-import type { ModelMessage } from "ai";
-import type { ISessionStore } from "./session-store-interface.js";
-import { triggerHooks } from "../core/hook-registry.js";
-
-const DEFAULT_CONTEXT_WINDOW = 128000;
-const RESERVE_TOKENS = 16384;
-
-export class AgentSession {
-	private messages: ModelMessage[] = [];
-	private readonly systemPrompt: string;
-	private readonly contextWindow: number;
-	private sessionId: string | null = null;
-	private db: ISessionStore | null;
-
-	/** Calibrated token count from last API response. null = no calibration yet. */
-	private lastActualInputTokens: number | null = null;
-	/** How many messages were in the session when calibration was recorded. */
-	private messageCountAtCalibration: number = 0;
-
-	constructor(
-		systemPrompt: string,
-		contextWindow?: number,
-		sessionId?: string,
-		db?: ISessionStore,
-	) {
-		this.systemPrompt = systemPrompt;
-		this.contextWindow = contextWindow ?? DEFAULT_CONTEXT_WINDOW;
-		this.sessionId = sessionId ?? null;
-		this.db = db ?? null;
-
-		if (this.db && this.sessionId) {
-			this.messages = this.normalizeMessages(this.db.getMessages(this.sessionId));
-			if (this.messages.length === 0) {
-				this.messages = this.rebuildFromTurns();
+		/**
+		 * Normalize message format for AI SDK compatibility:
+		 * 1. Convert args → input (AI SDK v6)
+		 * 2. Fix tool-result output format
+		 * 3. Strip orphaned tool results (no matching tool-call)
+		 * 4. Deduplicate consecutive identical user messages
+		 */
+		private normalizeMessages(msgs: ModelMessage[]): ModelMessage[] {
+			// Pass 1: Collect tool-call IDs
+			const toolCallIds = new Set<string>();
+			for (const msg of msgs) {
+				if (msg.role === "assistant" && Array.isArray((msg as any).content)) {
+					for (const part of (msg as any).content) {
+						if (part.type === "tool-call") {
+							if ("args" in part && !("input" in part)) part.input = part.args;
+							if (part.toolCallId) toolCallIds.add(part.toolCallId);
+						}
+					}
+				}
 			}
+
+			// Pass 2: Fix tool-result format and strip orphans
+			for (const msg of msgs) {
+				if ((msg as any).role === "tool" && Array.isArray((msg as any).content)) {
+					const kept: any[] = [];
+					for (const part of (msg as any).content) {
+						if (part.type === "tool-result") {
+							if (!part.toolCallId || !toolCallIds.has(part.toolCallId)) {
+								// Orphaned — skip entirely to avoid provider errors
+								continue;
+							}
+							if (!part.toolName && part.toolCallId) part.toolName = "unknown";
+							if (typeof part.output === "string") {
+								part.output = { type: "text", value: part.output };
+							} else if (part.output != null && typeof part.output === "object" && !("type" in (part.output as any))) {
+								part.output = { type: "json", value: part.output };
+							}
+							kept.push(part);
+						} else {
+							kept.push(part);
+						}
+					}
+					(msg as any).content = kept;
+				}
+			}
+
+			// Pass 3: Remove empty tool messages, deduplicate user messages
+			const result: ModelMessage[] = [];
+			for (const msg of msgs) {
+				// Skip empty tool messages
+				if ((msg as any).role === "tool") {
+					const parts = (msg as any).content;
+					if (Array.isArray(parts) && parts.length === 0) continue;
+				}
+
+				// Deduplicate consecutive identical user messages
+				if (msg.role === "user" && typeof (msg as any).content === "string") {
+					const last = result[result.length - 1];
+					if (last && last.role === "user" && typeof (last as any).content === "string" && (last as any).content === (msg as any).content) {
+						continue;
+					}
+				}
+
+				result.push(msg);
+			}
+
+			return result;
 		}
 	}
-
 	getSessionId(): string | null {
 		return this.sessionId;
 	}
@@ -87,6 +91,14 @@ export class AgentSession {
 	getContextUsage(): number {
 		const total = this.estimateTokens();
 		return this.contextWindow > 0 ? total / this.contextWindow : 0;
+	}
+
+	getContextWindow(): number {
+		return this.contextWindow;
+	}
+
+	getEstimatedTokens(): number {
+		return this.estimateTokens();
 	}
 
 	saveToDb(): void {
@@ -163,7 +175,8 @@ export class AgentSession {
 
 		for (const b of blocks) {
 			if (b.type === "tool") {
-				const id = b.toolCallId ?? "tc-" + toolCalls.length;
+				// Always regenerate toolCallId to avoid provider-specific ID formats (e.g. MiniMax call_function_xxx)
+				const id = "tc-" + toolCalls.length;
 				toolCalls.push({ id, name: b.name, input: b.args ?? {} });
 				const result = typeof b.result === "string" ? b.result : JSON.stringify(b.result ?? "");
 				toolResults.push({ id, name: b.name, output: result, isError: b.status === "error" });

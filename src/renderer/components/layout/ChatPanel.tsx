@@ -26,7 +26,7 @@
 // - 保持 UI 响应性
 //
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { useChatStore, selectActiveMessages, selectIsStreaming, selectLastError, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
+import { useChatStore, selectActiveMessages, selectIsStreaming, selectLastError, selectContextInfo, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
 import AskUserCard from "../chat/AskUserCard.js";
@@ -42,6 +42,10 @@ const api = () => (window as any).api;
 /** Collapse 3+ consecutive newlines to 2, then trim. Preserves markdown paragraph breaks and tables. */
 function collapseNewlines(s: string): string {
 	return s.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function formatTokenCount(n: number): string {
+	return n >= 1048576 ? (n / 1048576).toFixed(n % 1048576 === 0 ? 0 : 1) + "M" : n >= 1000 ? Math.round(n / 1000) + "K" : String(n);
 }
 
 function stripLeadingNL(s: string): string {
@@ -270,9 +274,11 @@ export default function ChatPanel() {
 				addMessage, finishStreaming, setActiveAgent,
 				setSessions, setActiveSessionId, clearMessages,
 				editMessage, deleteMessage, setIsStreaming,
+				updateContextInfo,
 			} = useChatStore();
 	const messages = useChatStore(selectActiveMessages);
 	const isStreaming = useChatStore(selectIsStreaming);
+	const contextInfo = useChatStore(selectContextInfo);
 	const { agents } = useAgentStore();
 	const { pendingQuestions, todosByAgent } = useInteractionStore();
 	const todos = activeAgentId ? (todosByAgent[activeAgentId] ?? []) : [];
@@ -436,6 +442,25 @@ export default function ChatPanel() {
 						<option key={a.id} value={a.id}>{a.name}</option>
 					))}
 				</select>
+
+				{contextInfo && (
+					<div className="context-usage">
+						<span className="context-usage-text">
+							{contextInfo.inputTokens > 0
+								? <>{formatTokenCount(contextInfo.inputTokens)} in · {formatTokenCount(contextInfo.outputTokens)} out | {formatTokenCount(contextInfo.contextWindow)}</>
+								: <>{formatTokenCount(contextInfo.usedTokens)} / {formatTokenCount(contextInfo.contextWindow)}</>}
+						</span>
+						<div className="context-usage-bar">
+							<div
+								className="context-usage-fill"
+								style={{
+									width: Math.min(contextInfo.usage * 100, 100) + "%",
+									background: contextInfo.usage > 0.7 ? "var(--danger, #f85149)" : contextInfo.usage > 0.5 ? "var(--warning, #d29922)" : "var(--success, #7ee787)",
+								}}
+							/>
+						</div>
+					</div>
+				)}
 
 				{activeAgentId && (
 					<div className="session-controls">

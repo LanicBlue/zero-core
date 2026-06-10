@@ -23,6 +23,7 @@
 import { registerCrud, typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";
 import type { Provider, CreateProviderInput, UpdateProviderInput, ProviderModel } from "../../shared/types.js";
+import { enrichModels } from "../../core/model-registry.js";
 
 export function registerProviderHandlers(ctx: IpcContext): void {
 	registerCrud<Provider, CreateProviderInput, UpdateProviderInput>({
@@ -65,11 +66,16 @@ export function registerProviderHandlers(ctx: IpcContext): void {
 				if (!resp.ok) return [];
 				const json = await resp.json() as any;
 				const rawModels = json.data || json.models || [];
-				return rawModels.map((m: any) => ({
+				const mapped = rawModels.map((m: any) => ({
 					id: m.id || m.name,
 					name: m.name || m.id || m.display_name,
 					group: m.owned_by || undefined,
+					contextWindow: m.context_length || m.context_window || m.max_context_length || undefined,
+					maxTokens: m.max_tokens || m.max_completion_tokens || m.max_output_tokens || undefined,
 				}));
+				const enriched = await enrichModels(mapped);
+				try { (_ctx.providerStore as any).update(providerId, { models: enriched }); } catch {}
+				return enriched;
 			} catch {
 				return [];
 			}

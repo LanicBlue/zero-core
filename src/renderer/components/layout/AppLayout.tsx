@@ -52,7 +52,7 @@ export default function AppLayout() {
 	const {
 		activeAgentId, activeSessionId,
 		addMessage, updateAssistantText, updateThinking, addToolCall, updateToolCall,
-		finishStreaming, initSession, updateSessionLifecycle, setError,
+		finishStreaming, initSession, updateSessionLifecycle, setError, updateContextInfo,
 	} = useChatStore();
 
 	// Track app readiness
@@ -84,7 +84,29 @@ export default function AppLayout() {
 		const handlers: Record<string, (data: any, key: string) => void> = {
 			session_init: (d, key) => initSession(d.sessionId || key, { messages: d.messages || [] }),
 			text_delta: (d, key) => updateAssistantText(key, d.text),
-			message_end: () => { /* text_delta already handled streaming text */ },
+			message_end: (d, key) => {
+				if (!d.contextWindow) return;
+				const prev = useChatStore.getState().contextInfoBySession[key];
+				updateContextInfo(key, {
+					usedTokens: prev?.inputTokens ?? d.estimatedTokens ?? 0,
+					contextWindow: d.contextWindow,
+					usage: d.contextUsage ?? 0,
+					inputTokens: prev?.inputTokens ?? 0,
+					outputTokens: prev?.outputTokens ?? 0,
+					totalTokens: prev?.totalTokens ?? 0,
+				});
+			},
+			usage: (d, key) => {
+				const prev = useChatStore.getState().contextInfoBySession[key];
+				updateContextInfo(key, {
+					usedTokens: d.usage.inputTokens ?? prev?.usedTokens ?? 0,
+					contextWindow: prev?.contextWindow ?? 128000,
+					usage: prev ? d.usage.inputTokens / prev.contextWindow : 0,
+					inputTokens: d.usage.inputTokens ?? 0,
+					outputTokens: d.usage.outputTokens ?? 0,
+					totalTokens: d.usage.totalTokens ?? 0,
+				});
+			},
 			thinking_delta: (d, key) => updateThinking(key, d.text),
 			tool_start: (d, key) => addToolCall(key, d.toolName, d.args ? stringify(d.args) : undefined, d.toolCallId),
 			tool_end: (d, key) => updateToolCall(key, d.toolName, d.isError ? "error" : "done", d.result ? stringify(d.result) : undefined, d.toolCallId),

@@ -62,6 +62,7 @@ export interface ProviderModel {
 	group?: string;
 	contextWindow?: number;
 	maxTokens?: number;
+	multimodal?: boolean;
 }
 
 export interface Provider {

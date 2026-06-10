@@ -503,7 +503,7 @@ export class AgentLoop implements AgentRuntime {
 			}
 		}
 		this.session.saveToDb();
-		this.emit({ type: "message_end", agentId: this.config.agentId, text: this.resultText });
+		this.emit({ type: "message_end", agentId: this.config.agentId, text: this.resultText, contextUsage: this.session.getContextUsage(), contextWindow: this.session.getContextWindow(), estimatedTokens: this.session.getEstimatedTokens() });
 	}
 
 	// ─── Helpers ────────────────────────────────────────────────

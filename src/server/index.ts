@@ -120,6 +120,13 @@ export async function startServer(options?: StartServerOptions) {
 
 	let workspaceConfig = loadWorkspaceConfig(sessionDB);
 
+	// Test-mode seed — populate mock provider + agent when ZERO_CORE_TEST_FIXTURE is set
+	if (process.env.ZERO_CORE_TEST_FIXTURE) {
+		const { seedTestEnvironment } = await import("../core/test-seed.js");
+		seedTestEnvironment(sessionDB, agentStore, providerStore);
+		workspaceConfig = loadWorkspaceConfig(sessionDB);
+	}
+
 	if (!existsSync(workspaceConfig.workspaceDir)) {
 		mkdirSync(workspaceConfig.workspaceDir, { recursive: true });
 	}

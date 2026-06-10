@@ -28,6 +28,8 @@ interface ModelOption {
 	id: string;
 	name: string;
 	provider?: string;
+	contextWindow?: number;
+	multimodal?: boolean;
 }
 
 interface Props {
@@ -37,6 +39,11 @@ interface Props {
 	onAutoSave: (data: FormState) => void;
 	defaultWorkspaceDisplay: string;
 	allModelsByGroup: Record<string, ModelOption[]>;
+}
+
+function formatCtx(n?: number): string {
+	if (!n) return "";
+	return n >= 1048576 ? (n / 1048576).toFixed(n % 1048576 === 0 ? 0 : 1) + "M" : n >= 1000 ? Math.round(n / 1000) + "K" : String(n);
 }
 
 export function BasicSection({ form, onSet, onSetForm, onAutoSave, defaultWorkspaceDisplay, allModelsByGroup }: Props) {
@@ -72,7 +79,7 @@ export function BasicSection({ form, onSet, onSetForm, onAutoSave, defaultWorksp
 						<optgroup key={group} label={group}>
 							{groupModels.map((m) => (
 								<option key={`${m.provider}|${m.id}`} value={`${m.provider}|${m.id}`}>
-									{m.name}
+									{m.name}{m.contextWindow ? ` — ${formatCtx(m.contextWindow)}` : ""}
 								</option>
 							))}
 						</optgroup>

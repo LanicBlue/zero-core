@@ -86,8 +86,12 @@ export async function launchApp(fixtureAbsPath: string): Promise<TestApp> {
 	};
 }
 
-// Wait until the agent selector is populated (core modules loaded).
+// Navigate to the Chat page and wait until the agent selector is populated.
 export async function waitForAppReady(window: Page): Promise<void> {
+	// Default page is "dashboard"; click Chat sidebar button first.
+	const chatBtn = window.locator("button[title='Chat']");
+	await chatBtn.click({ timeout: 15_000 });
+	await window.waitForSelector(".page-chat.page-active", { timeout: 10_000 });
 	await window.waitForSelector(".chat-agent-select option[value]:not([value=''])", { timeout: 30_000, state: "attached" });
 }
 

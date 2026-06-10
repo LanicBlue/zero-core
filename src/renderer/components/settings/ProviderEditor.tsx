@@ -26,7 +26,7 @@ import type { Provider, ProviderModel } from "../../../shared/types.js";
 import { DEFAULT_URLS } from "../../../core/constants.js";
 
 export function ProviderEditor({ provider, onClose }: { provider: Provider | null; onClose: () => void }) {
-	const { create, update, addModel, removeModel, fetchModels } = useProviderStore();
+	const { create, update, addModel, removeModel, fetchModels, fetchProviders } = useProviderStore();
 	const isEdit = !!provider;
 
 	const [form, setForm] = useState({
@@ -99,14 +99,10 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 				pid = created.id;
 			}
 			if (pid) {
-				const fetched = await fetchModels(pid);
-				if (fetched.length > 0) {
-					for (const m of fetched) {
-						if (!currentModels.some((cm) => cm.id === m.id)) {
-							await addModel(pid, m);
-						}
-					}
-				}
+				// Backend fetch-models endpoint enriches and saves models to DB.
+				await fetchModels(pid);
+				// Refresh store from backend to pick up enriched data.
+				await fetchProviders();
 				const updated = useProviderStore.getState().providers.find((p) => p.id === pid);
 				if (updated) setModels(updated.models);
 				if (!isEdit && pid) {

@@ -63,6 +63,15 @@ export interface ChatMessage {
 let _nextId = Date.now();
 export const nextMsgId = () => String(_nextId++);
 
+export interface ContextInfo {
+	usedTokens: number;
+	contextWindow: number;
+	usage: number;
+	inputTokens: number;
+	outputTokens: number;
+	totalTokens: number;
+}
+
 interface ChatState {
 	messagesBySession: Record<string, ChatMessage[]>;
 	activeAgentId: string | null;
@@ -70,6 +79,7 @@ interface ChatState {
 	streamingSessions: Set<string>;
 	sessionsByAgent: Record<string, SessionRecord[]>;
 	lastError: { sessionId: string; message: string } | null;
+	contextInfoBySession: Record<string, ContextInfo>;
 
 	addMessage: (sessionId: string, msg: ChatMessage) => void;
 	updateAssistantText: (sessionId: string, text: string) => void;
@@ -89,6 +99,7 @@ interface ChatState {
 	deleteMessage: (sessionId: string, msgId: string) => void;
 	setError: (sessionId: string, message: string) => void;
 	clearError: () => void;
+	updateContextInfo: (sessionId: string, info: ContextInfo) => void;
 }
 
 function updateLastAssistantMsg(
@@ -122,6 +133,9 @@ export const selectActiveMessages = (s: ChatState): ChatMessage[] =>
 export const selectIsStreaming = (s: ChatState): boolean =>
 	s.activeSessionId !== null && s.streamingSessions.has(s.activeSessionId);
 
+export const selectContextInfo = (s: ChatState): ContextInfo | null =>
+	s.activeSessionId ? (s.contextInfoBySession[s.activeSessionId] ?? null) : null;
+
 export const selectLastError = (s: ChatState): ChatState["lastError"] =>
 	s.lastError && s.lastError.sessionId === s.activeSessionId ? s.lastError : null;
 
@@ -132,6 +146,7 @@ export const useChatStore = create<ChatState>((set) => ({
 	streamingSessions: new Set(),
 	sessionsByAgent: {},
 	lastError: null,
+	contextInfoBySession: {},
 
 	addMessage: (sessionId, msg) =>
 		set((state) => ({
@@ -300,6 +315,11 @@ export const useChatStore = create<ChatState>((set) => ({
 
 	setError: (sessionId, message) =>
 		set(() => ({ lastError: { sessionId, message } })),
+
+	updateContextInfo: (sessionId, info) =>
+		set((state) => ({
+			contextInfoBySession: { ...state.contextInfoBySession, [sessionId]: info },
+		})),
 
 	clearError: () =>
 		set(() => ({ lastError: null })),

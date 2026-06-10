@@ -67,6 +67,9 @@ export interface MessageEndEvent {
 	agentId?: string;
 	sessionId?: string;
 	text: string;
+	contextUsage?: number;
+	contextWindow?: number;
+	estimatedTokens?: number;
 }
 
 export interface AgentEndEvent {
