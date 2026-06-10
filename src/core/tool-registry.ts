@@ -72,7 +72,7 @@ const KV_KEY = "tool_config";
 
 // Legacy lowercase tool name → PascalCase mapping
 export const RENAMED_TOOLS: Record<string, string> = {
-	bash: "Bash", read: "Read", write: "Write", edit: "Edit",
+	bash: "Shell", shell: "Shell", read: "Read", write: "Write", edit: "Edit",
 	grep: "Grep", glob: "Glob", find: "Glob", agent: "Agent",
 	task_status: "TaskStatus", task_list: "TaskList", task_stop: "TaskStop",
 	wait: "Wait", web_search: "WebSearch", ask_user: "AskUser", todo_write: "TodoWrite",

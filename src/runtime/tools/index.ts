@@ -60,7 +60,7 @@ function getAssistantTools(): Record<string, any> {
 }
 
 export const ALL_TOOLS: Record<string, any> = {
-	Bash: bashTool,
+	Shell: bashTool,
 	Read: fileReadTool,
 	Write: fileWriteTool,
 	Edit: fileEditTool,
@@ -146,7 +146,7 @@ export function buildToolsSet(
 	const blocked = new Set(policy.blockedTools ?? []);
 
 	// Tools enabled by default — core filesystem/shell tools only
-	const DEFAULT_ENABLED = new Set(["Bash", "Read", "Write", "Edit", "Grep", "Glob"]);
+	const DEFAULT_ENABLED = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);
 
 	// Determine enabled check: prefer tools map, fall back to autoApprove
 	const toolsMap = policy.tools;

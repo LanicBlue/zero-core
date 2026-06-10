@@ -122,7 +122,7 @@ function ThinkingBlockComponent({ text, streaming }: { text: string; streaming: 
 
 // Tool display names and summary key maps
 	const TOOL_DISPLAY_NAMES: Record<string, string> = {
-		bash: "Bash", read: "Read", write: "Write", edit: "Edit",
+		bash: "Shell", shell: "Shell", read: "Read", write: "Write", edit: "Edit",
 		grep: "Grep", glob: "Glob",
 		webSearch: "Web Search", web_search: "Web Search",
 		webFetch: "Web Fetch", web_fetch: "Web Fetch",

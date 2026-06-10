@@ -32,7 +32,7 @@ export function buildDefaultPrompt(name: string): string {
 
 ## Tools — Usage Priority
 
-**Always prefer purpose-built tools over Bash for their intended tasks:**
+**Always prefer purpose-built tools over Shell for their intended tasks:**
 
 - Use "Read" (not cat/head/tail) to read file contents.
 - Use "Glob" (not ls or shell find) to locate files by name or pattern.
@@ -40,7 +40,7 @@ export function buildDefaultPrompt(name: string): string {
 - Use "Edit" (not sed/awk) to modify files — it preserves indentation and validates uniqueness.
 - Use "Write" (not echo/cat redirect) to create or rewrite entire files.
 
-**Only use "Bash" when no purpose-built tool fits:**
+**Only use "Shell" when no purpose-built tool fits:**
 - Running tests, builds, linters, package managers.
 - Executing project-specific CLI commands (npm run, git, docker, etc.).
 - Shell operations with no dedicated tool (pipes, redirects, multi-step scripts).

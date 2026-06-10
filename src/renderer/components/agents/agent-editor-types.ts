@@ -26,7 +26,7 @@ export type FormState = Omit<AgentRecord, "id" | "createdAt" | "updatedAt">;
 
 export type Section = "basic" | "prompt" | "tools" | "expose" | "permissions";
 
-export const DEFAULT_ENABLED_TOOLS = new Set(["Bash", "Read", "Write", "Edit", "Grep", "Glob"]);
+export const DEFAULT_ENABLED_TOOLS = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);
 
 export const EMPTY_FORM: FormState = {
 	name: "",
