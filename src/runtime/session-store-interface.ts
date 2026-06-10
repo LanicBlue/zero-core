@@ -39,6 +39,7 @@ export interface ISessionStore {
 	deleteSession(sessionId: string): void;
 	updateTurnContent(sessionId: string, seq: number, content: string): void;
 	deleteTurn(sessionId: string, seq: number): void;
+	clearTurns(sessionId: string): void;
 	getKVStore(): IKVStore;
 	getMemoryStore(): any;
 	getMemoryNodeStore(): any;

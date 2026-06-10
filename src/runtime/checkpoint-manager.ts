@@ -27,7 +27,6 @@ import { log } from "../core/logger.js";
 export class CheckpointManager {
 	private db: ISessionStore | undefined;
 	private pendingToolCalls = new Map<string, { name: string; args: any }>();
-	private checkpointMessages: any[] = [];
 	private incrementalTurnSeq = -1;
 
 	constructor(db?: ISessionStore) {
@@ -36,13 +35,11 @@ export class CheckpointManager {
 
 	reset(): void {
 		this.pendingToolCalls.clear();
-		this.checkpointMessages = [];
 		this.incrementalTurnSeq = -1;
 	}
 
 	resetStreamState(): void {
 		this.pendingToolCalls.clear();
-		this.checkpointMessages = [];
 	}
 
 	get turnSeq(): number {
@@ -73,27 +70,17 @@ export class CheckpointManager {
 	saveIncrementalCheckpoint(
 		sessionId: string | null | undefined,
 		recorder: TurnRecorder,
-		sessionMessages: any[],
+		_sessionMessages: any[],
 		toolCallId: string,
-		output: any,
+		_output: any,
 	): void {
 		if (!this.db || !sessionId) return;
 
 		const tc = this.pendingToolCalls.get(toolCallId);
 		if (!tc) return;
 
-		this.checkpointMessages.push(
-			{ role: "assistant", content: [{ type: "tool-call", toolCallId, toolName: tc.name, input: tc.args }] },
-			{ role: "tool", content: [{ type: "tool-result", toolCallId, toolName: tc.name, output: { type: "text", value: typeof output === "string" ? output : JSON.stringify(output) } }] } as any,
-		);
-
-		const allMessages = [...sessionMessages, ...this.checkpointMessages];
-		try {
-			this.db.saveTurn(sessionId, allMessages);
-		} catch (err) {
-			log.error("loop", "Incremental checkpoint saveTurn failed for session:", sessionId, "err:", (err as Error).message);
-		}
-
+		// Save turn blocks to turns table only (not messages table).
+		// The messages table is updated once at the end by finalizeStream's saveToDb.
 		recorder.sealStep();
 		const blocksJson = JSON.stringify(recorder.blocks);
 		try {
@@ -108,7 +95,7 @@ export class CheckpointManager {
 		}
 
 		this.pendingToolCalls.delete(toolCallId);
-		log.debug("loop", "Incremental checkpoint saved, tool:", tc.name, "msgs:", allMessages.length);
+		log.debug("loop", "Incremental checkpoint saved, tool:", tc.name);
 	}
 
 	deletePartialTurn(sessionId: string | null | undefined): void {
