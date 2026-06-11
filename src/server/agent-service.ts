@@ -45,19 +45,15 @@ import { ProviderConcurrencyManager } from "../runtime/provider-concurrency-mana
 import type { SessionManager } from "./session-manager.js";
 import { createEventMetricsAdapter, type EventMetricsAdapter } from "./metrics-events.js";
 import { setSessionTurnSeq } from "./durable-hooks.js";
-
+import { setTurnSeq } from "../runtime/hooks/turn-hooks.js";
 // ---------------------------------------------------------------------------
 // Ensure zero-core dirs
 // ---------------------------------------------------------------------------
-
 if (!existsSync(ZERO_CORE_DIR)) mkdirSync(ZERO_CORE_DIR, { recursive: true });
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 type StreamCallback = (event: { type: string; [key: string]: unknown }) => void;
-
 export interface ProviderConfig {
 	name: string;
 	type: "openai" | "anthropic" | "gemini" | "openai-compatible" | "ollama";
@@ -66,18 +62,15 @@ export interface ProviderConfig {
 	models: { id: string; name: string; contextWindow?: number; maxTokens?: number }[];
 	enabled: boolean;
 }
-
 interface AgentRunState {
 	agentId: string;
 	isBusy: boolean;
 	streamingText: string;
 	toolCalls: { name: string; status: "running" | "done" | "error" }[];
 }
-
 // ---------------------------------------------------------------------------
 // Agent Service — supports concurrent multi-agent execution
 // ---------------------------------------------------------------------------
-
 export class AgentService {
 	private loops = new Map<string, AgentLoop>();        // sessionId → loop
 	private runStates = new Map<string, AgentRunState>(); // sessionId → state
@@ -99,6 +92,9 @@ export class AgentService {
 	private sessionManager: SessionManager | null = null;
 	private metricsAdapter: EventMetricsAdapter | null = null;
 
+	// Module readiness — modules notify when loaded, deferred actions wait until ready
+	private readyModules = new Set<string>();
+	private deferredActions: Array<{ waitFor: string[]; action: () => Promise<void> }> = [];
 	constructor(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore, registry?: ToolRegistry, mcp?: MCPManager) {
 		this.workspaceDir = workspaceDir;
 		this.db = sessionDb ?? new SessionDB();
@@ -108,18 +104,15 @@ export class AgentService {
 		this.mcp = mcp ?? new MCPManager(this.registry);
 		this.config = loadConfig(process.cwd(), undefined, this.db.getKVStore());
 	}
-
 	getDB(): SessionDB {
 		return this.db;
 	}
-
 	setWorkspaceDir(dir: string): void {
 		if (dir !== this.workspaceDir) {
 			this.workspaceDir = dir;
 			this.invalidateLoops();
 		}
 	}
-
 	setProviders(providers: ProviderConfig[], defaultModel?: string, defaultProvider?: string): void {
 		this.providerConfigs = providers;
 		this.defaultModel = defaultModel;
@@ -128,29 +121,53 @@ export class AgentService {
 		this.concurrencyManager.reconfigure(providers as any[]);
 		setConcurrencyManager(this.concurrencyManager);
 		this.invalidateLoops();
+		this.notifyReady("providers");
 	}
-
 	setAgentStore(store: AgentStore): void {
 		this.agentStore = store;
+		this.notifyReady("agentStore");
 	}
-
 	setAgentToolStore(store: import("./agent-tool-store.js").AgentToolStore): void {
 		this.agentToolStore = store;
 	}
-
 	setSessionManager(sm: SessionManager): void {
 		this.sessionManager = sm;
 		this.metricsAdapter = createEventMetricsAdapter(sm);
 	}
-
 	getSessionManager(): SessionManager | null {
 		return this.sessionManager;
 	}
 
+	/** Mark a module as ready (e.g. "providers", "agentStore"). Triggers deferred actions. */
+	notifyReady(module: string): void {
+		if (this.readyModules.has(module)) return;
+		this.readyModules.add(module);
+		console.error("[server] Module ready:", module, "(" + [...this.readyModules].join(", ") + ")");
+
+		// Check if any deferred actions can now run
+		const ready = [...this.deferredActions];
+		this.deferredActions = [];
+		for (const entry of ready) {
+			if (entry.waitFor.every(m => this.readyModules.has(m))) {
+				entry.action().catch((err: any) => log.error("recovery", "Deferred action failed:", err.message));
+			} else {
+				this.deferredActions.push(entry);
+			}
+		}
+	}
+
+	/** Wait until all specified modules are ready, then run action. Runs immediately if already ready. */
+	whenReady(waitFor: string[], action: () => Promise<void>): void {
+		if (waitFor.every(m => this.readyModules.has(m))) {
+			action().catch((err: any) => log.error("recovery", "Deferred action failed:", err.message));
+		} else {
+			console.error("[server] Deferring action, waiting for:", waitFor.filter(m => !this.readyModules.has(m)));
+			this.deferredActions.push({ waitFor, action });
+		}
+	}
 	getActiveSessionsMap(): ReadonlyMap<string, string> {
 		return this.activeSessions;
 	}
-
 	evictSessionFromMemory(sessionId: string): void {
 		const loop = this.loops.get(sessionId);
 		if (loop) { loop.abort(); this.loops.delete(sessionId); }
@@ -159,14 +176,11 @@ export class AgentService {
 			if (sid === sessionId) { this.activeSessions.delete(agentId); break; }
 		}
 	}
-
 	subscribe(cb: StreamCallback): () => void {
 		this.subscribers.add(cb);
 		return () => { this.subscribers.delete(cb); };
 	}
-
 	// ─── State queries — per-agent ─────────────────────────────────
-
 	getState(agentId?: string): { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[]; agentId?: string } {
 		if (agentId) {
 			const sessionId = this.activeSessions.get(agentId);
@@ -182,7 +196,6 @@ export class AgentService {
 		}
 		return { isBusy: false, streamingText: "", toolCalls: [] };
 	}
-
 	getAllStates(): Record<string, { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[] }> {
 		const result: Record<string, any> = {};
 		for (const [sid, s] of this.runStates) {
@@ -190,53 +203,41 @@ export class AgentService {
 		}
 		return result;
 	}
-
 	isAnyBusy(): boolean {
 		for (const s of this.runStates.values()) {
 			if (s.isBusy) return true;
 		}
 		return false;
 	}
-
 	// ─── Loop management ───────────────────────────────────────────
-
 	private getOrCreateLoop(agent?: AgentRecord): AgentLoop {
 		const agentId = agent?.id ?? "__default__";
-
 		const activeSessionId = this.activeSessions.get(agentId);
 		if (activeSessionId) {
 			const loop = this.loops.get(activeSessionId);
 			if (loop) return loop;
 		}
-
 		let session = this.db.getMainSession(agentId);
 		if (!session) {
 			session = this.db.createSession(agentId);
 			this.db.setMainSession(agentId, session.id);
 		}
-
 		this.activeSessions.set(agentId, session.id);
 		return this.createLoopForSession(agentId, session.id, agent);
 	}
-
 	recreateLoop(agentId: string, sessionId: string, agent?: AgentRecord): void {
 		if (this.loops.has(sessionId)) {
 			this.activeSessions.set(agentId, sessionId);
 			return;
 		}
-
 		this.createLoopForSession(agentId, sessionId, agent);
 		this.activeSessions.set(agentId, sessionId);
 	}
-
 	private createLoopForSession(agentId: string, sessionId: string, agent?: AgentRecord): AgentLoop {
 		const cwd = agent?.workspaceDir || this.workspaceDir;
 		log.agent("Creating runtime for agent:", agentId, "session:", sessionId, "cwd:", cwd);
-
-
 		const systemPrompt = agent?.systemPrompt ?? "";
 		const guidelines = this.config.systemPrompt?.guidelines;
-
 		const sessionConfig: SessionConfig = {
 			agentId,
 			workspaceDir: cwd,
@@ -285,14 +286,11 @@ export class AgentService {
 				},
 			getToolConfig: () => this.registry.getToolConfig(),
 			};
-
 		// Initialize run state for this session
 		if (!this.runStates.has(sessionId)) {
 			this.runStates.set(sessionId, { agentId, isBusy: false, streamingText: "", toolCalls: [] });
 		}
-
 		const capturedAgentId = agentId;
-
 		const loop = new AgentLoop(
 			sessionConfig,
 			this.providerConfigs,
@@ -302,21 +300,15 @@ export class AgentService {
 				},
 			},
 		);
-
 		this.loops.set(sessionId, loop);
-
 		this.sessionManager?.trackSessionCreated(sessionId, agentId);
 		this.sessionManager?.trackSessionActivated(sessionId);
-
 		log.agent("Runtime ready for:", agentId, "session:", sessionId);
 		return loop;
 	}
-
 	// ─── Prompt execution — concurrent ──────────────────────────────
-
 	async sendPrompt(text: string, agent?: AgentRecord, sessionId?: string): Promise<void> {
 		const agentId = agent?.id ?? "__default__";
-
 		// If sessionId provided, look up (or create) the loop for that specific session
 		let loop: AgentLoop;
 		if (sessionId) {
@@ -326,17 +318,13 @@ export class AgentService {
 			loop = this.getOrCreateLoop(agent);
 			sessionId = this.activeSessions.get(agentId) ?? agentId;
 		}
-
 		log.agent("Sending prompt to:", agentId, "session:", sessionId, "length:", text.length);
-
 		this.sessionManager?.trackSessionQueued(sessionId);
-
 		const state = this.runStates.get(sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
 		state.isBusy = true;
 		state.streamingText = "";
 		state.toolCalls = [];
 		this.runStates.set(sessionId, state);
-
 		try {
 			await loop.run(text);
 			log.agent("Prompt completed for:", agentId);
@@ -345,7 +333,6 @@ export class AgentService {
 			this.emit({ type: "error", error: (err as Error).message, agentId });
 		}
 	}
-
 	async abort(agentId?: string): Promise<void> {
 		if (agentId) {
 			const sessionId = this.activeSessions.get(agentId);
@@ -358,16 +345,18 @@ export class AgentService {
 			}
 		}
 	}
+	recoverIncompleteSessions(): void {
+		// Defer until providers and agentStore are ready
+		this.whenReady(["providers", "agentStore"], () => this.doRecoverIncompleteSessions());
+	}
 
-	async recoverIncompleteSessions(): Promise<void> {
+	private async doRecoverIncompleteSessions(): Promise<void> {
 		const incomplete = this.db.getIncompleteTurns();
 		if (incomplete.length === 0) {
 			log.debug("recovery", "No interrupted turns found");
 			return;
 		}
-
-		log.db(`Recovering ${incomplete.length} interrupted session(s)`);
-
+		console.error(`[server] Recovering ${incomplete.length} interrupted session(s)`);
 		for (const turn of incomplete) {
 			try {
 				const session = this.db.getSession(turn.sessionId);
@@ -375,39 +364,31 @@ export class AgentService {
 					this.db.failTurnState(turn.sessionId, turn.turnSeq, "Session not found");
 					continue;
 				}
-
 				const agent = this.agentStore
 					? this.agentStore.list().find((a) => a.id === session.agentId)
 					: null;
-
 				const agentId = agent?.id ?? session.agentId;
-
 				// Create loop for the specific interrupted session
 				let loop = this.loops.get(turn.sessionId);
 				if (!loop) {
 					loop = this.createLoopForSession(agentId, turn.sessionId, agent ?? undefined);
 				}
-
 				this.activeSessions.set(agentId, turn.sessionId);
-
 				// Pre-populate turn seq so SessionStart hook skips creating a duplicate
 				setSessionTurnSeq(turn.sessionId, turn.turnSeq);
-
+					setTurnSeq(turn.sessionId, turn.turnSeq);
 				// Set lifecycle state based on interrupted phase
 				if (turn.phase === "tools_executing") {
 					this.sessionManager?.trackSessionExecutingTools(turn.sessionId);
 				} else {
 					this.sessionManager?.trackSessionStreaming(turn.sessionId);
 				}
-
 				const state = this.runStates.get(turn.sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
 				state.isBusy = true;
 				state.streamingText = "";
 				state.toolCalls = [];
 				this.runStates.set(turn.sessionId, state);
-
 				log.db(`Recovering agent ${agentId}, session ${turn.sessionId}, phase ${turn.phase}`);
-
 				// Fire-and-forget: resume in background so we don't block startup
 					loop.resume(turn.turnSeq).then(() => {
 					log.db(`Resumed session ${turn.sessionId} (agent ${agentId})`);
@@ -424,14 +405,31 @@ export class AgentService {
 		}
 	}
 
-	// ─── Session activation — runtime as single source of truth for UI ───
+	// ─── Startup: restore all sessions from DB into runtime ───────────────
 
+	async restoreAllSessions(): Promise<void> {
+		const allSessions = this.db.listAllSessions();
+		console.error(`[server] Restoring ${allSessions.length} session(s) into runtime`);
+
+		for (const session of allSessions) {
+			try {
+				if (this.loops.has(session.id)) continue;
+
+				const agent = this.agentStore?.list().find((a) => a.id === session.agentId);
+				this.createLoopForSession(session.agentId, session.id, agent ?? undefined);
+				this.activeSessions.set(session.agentId, session.id);
+			} catch (err) {
+				log.error("recovery", `Failed to restore ${session.id}:`, (err as Error).message);
+			}
+		}
+	}
+
+	// ─── Session activation — runtime as single source of truth for UI ───
 	async activateSession(agentId: string, sessionId?: string): Promise<string> {
 		// Resolve target session: explicit id, active session, main session, or create new
 		const candidate = sessionId ?? this.activeSessions.get(agentId);
 		let resolvedSessionId: string;
-		let session: { id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string } | undefined;
-
+		let session: { id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string; inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
 		if (candidate) {
 			session = this.db.getSession(candidate);
 		}
@@ -443,9 +441,7 @@ export class AgentService {
 			}
 		}
 		resolvedSessionId = session.id;
-
 		this.activeSessions.set(agentId, resolvedSessionId);
-
 		// Ensure loop exists — this also creates runState
 		let loop = this.loops.get(resolvedSessionId);
 		if (!loop) {
@@ -454,28 +450,28 @@ export class AgentService {
 				: undefined;
 			loop = this.createLoopForSession(agentId, resolvedSessionId, agent);
 		}
-
+		// Refresh turns cache so incremental persists are visible
+		loop.refreshTurnsCache();
 		const messages = this.buildSessionInitMessages(agentId, resolvedSessionId, loop);
-
 		this.emit({
 			type: "session_init",
 			agentId,
 			sessionId: resolvedSessionId,
 			messages,
+			inputTokens: session?.inputTokens ?? 0,
+			outputTokens: session?.outputTokens ?? 0,
+			totalTokens: session?.totalTokens ?? 0,
 		});
-
 		return resolvedSessionId;
 	}
-
 	private buildSessionInitMessages(agentId: string, sessionId: string, loop: AgentLoop): any[] {
-		const turns = this.db.getTurns(sessionId);
+		// Read from runtime, NOT from DB — runtime is the single source of truth for UI.
+		const turns = loop.getSessionTurns();
 		const { isBusy, recorderBlocks } = loop.getLoopState();
-
 		const result: any[] = [];
 		for (let i = 0; i < turns.length; i++) {
 			const t = turns[i];
 			const isLastAssistant = (i === turns.length - 1) && t.role === "assistant";
-
 			if (t.role === "user") {
 				result.push({
 					id: `m${t.seq}`,
@@ -496,18 +492,15 @@ export class AgentService {
 				} catch {
 					if (t.content) blocks = [{ type: "text", text: t.content }];
 				}
-
 				// If this is the last assistant turn AND the loop is currently streaming
 				// (or has partial recorder state from recovery), replace with live recorder blocks
 				if (isLastAssistant && recorderBlocks.length > 0) {
 					blocks = recorderBlocks;
 				}
-
 				const text = blocks
 					.filter((b: any) => b.type === "text")
 					.map((b: any) => b.text || "")
 					.join("");
-
 				result.push({
 					id: `m${t.seq}`,
 					role: "assistant",
@@ -517,13 +510,38 @@ export class AgentService {
 					streaming: isLastAssistant && isBusy,
 				});
 			}
+			// Runtime fix: if the loop is actively streaming but the DB has no
+			// assistant turn yet (not persisted until message_end), append a live
+			// assistant message from recorder blocks so session_init is complete.
+			if (isBusy && recorderBlocks.length > 0) {
+				const lastTurn = turns[turns.length - 1];
+				const lastIsUser = !lastTurn || lastTurn.role === "user";
+				if (lastIsUser) {
+					const text = recorderBlocks
+						.filter((b: any) => b.type === "text")
+						.map((b: any) => b.text || "")
+						.join("");
+					result.push({
+						id: "m-streaming",
+						role: "assistant",
+						text,
+						blocks: recorderBlocks,
+						timestamp: Date.now(),
+						streaming: true,
+					});
+				}
+			}
 		}
 		return result;
 	}
-
 	dispose(): void {
 		this.sessionManager?.stopTtlCleanup();
 		this.sessionManager?.dispose();
+		// Close DB BEFORE aborting loops. This prevents Stop hooks from
+		// completing turn_state rows — they stay incomplete so that
+		// recoverIncompleteSessions() can resume them on next startup.
+		this.db.close();
+		this.kbDb.close();
 		for (const loop of this.loops.values()) {
 			loop.abort();
 		}
@@ -531,10 +549,7 @@ export class AgentService {
 		this.runStates.clear();
 		this.activeSessions.clear();
 		this.concurrencyManager.clear();
-		this.db.close();
-		this.kbDb.close();
 	}
-
 	private invalidateLoops(): void {
 		for (const [sessionId, loop] of this.loops) {
 			const state = this.runStates.get(sessionId);
@@ -545,20 +560,16 @@ export class AgentService {
 		}
 		this.activeSessions.clear();
 	}
-
 	// ─── Event handling — per-agent state ──────────────────────────
-
 	private handleRuntimeEvent(agentId: string, event: StreamEvent): void {
 		const sessionId = (event as any).sessionId;
 		const state = sessionId
 			? this.runStates.get(sessionId)
 			: this.findStateByAgentId(agentId);
 		if (!state) return;
-
 		if (this.metricsAdapter && sessionId) {
 			this.metricsAdapter.onEvent(event, sessionId);
 		}
-
 		switch (event.type) {
 			case "text_delta": {
 				break;
@@ -585,28 +596,23 @@ export class AgentService {
 		}
 		this.emit(event as { type: string; [key: string]: unknown });
 	}
-
 	private findStateByAgentId(agentId: string): AgentRunState | undefined {
 		for (const [, s] of this.runStates) {
 			if (s.agentId === agentId) return s;
 		}
 		return undefined;
 	}
-
 	private emit(event: { type: string; [key: string]: unknown }): void {
 		for (const cb of this.subscribers) {
 			try { cb(event); } catch { /* ignore */ }
 		}
 	}
 }
-
 export function createAgentService(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore, registry?: ToolRegistry, mcp?: MCPManager): AgentService {
 	return new AgentService(workspaceDir, sessionDb, kb, registry, mcp);
 }
-
 export function registerAgentToolEntries(agentToolStore: import("./agent-tool-store.js").AgentToolStore, registry: ToolRegistry): void {
 	registry.unregister("agent");
-
 	for (const entry of agentToolStore.list()) {
 		if (!entry.enabled) continue;
 		registry.register({

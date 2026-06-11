@@ -50,7 +50,6 @@ import { TurnRecorder } from "./turn-recorder.js";
 import { SystemPromptAssembler } from "./prompt-sections.js";
 import { buildContextMessage } from "./context-message.js";
 import { SubagentDelegator } from "./subagent-delegator.js";
-import { CheckpointManager } from "./checkpoint-manager.js";
 import { ToolRateLimiter } from "./tool-rate-limiter.js";
 
 // ---------------------------------------------------------------------------
@@ -64,7 +63,6 @@ export class AgentLoop implements AgentRuntime {
 	private callbacks: RuntimeCallbacks;
 	private toolContext: ToolExecutionContext;
 	private delegator: SubagentDelegator;
-	private checkpoint: CheckpointManager;
 	private promptAssembler: SystemPromptAssembler;
 	private abortController: AbortController | null = null;
 	private busy = false;
@@ -72,6 +70,9 @@ export class AgentLoop implements AgentRuntime {
 	private thinkingText = "";
 	private recorder = new TurnRecorder();
 	private resultText = "";
+	private currentAssistantSeq = -1;
+	private lastPersistTextLength = 0;
+	private static readonly TEXT_PERSIST_INTERVAL = 500;
 
 	constructor(
 		config: SessionConfig,
@@ -88,8 +89,6 @@ export class AgentLoop implements AgentRuntime {
 		this.promptAssembler = new SystemPromptAssembler([
 			{ name: "base", compute: () => this.session.getSystemPrompt(), cacheBreak: false },
 		]);
-
-		this.checkpoint = new CheckpointManager(config.db);
 
 		this.delegator = new SubagentDelegator({
 			config,
@@ -129,7 +128,6 @@ export class AgentLoop implements AgentRuntime {
 		this.thinkingText = "";
 		this.resultText = "";
 		this.recorder.reset();
-		this.checkpoint.reset();
 		this.abortController = new AbortController();
 		const timeout = this.setupTimeout();
 
@@ -140,10 +138,14 @@ export class AgentLoop implements AgentRuntime {
 
 			log.loop("Messages after prune:", this.session.getMessages().length, "est tokens:", this.session.getMessages().reduce((s: number, m: any) => s + Math.ceil(JSON.stringify(m).length / 4), 0));
 
-			this.checkpoint.saveUserTurn(this.session.getSessionId(), this.recorder, userMessage);
-
 			await triggerHooks("UserPromptSubmit", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), message: userMessage });
 			await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
+
+			// SessionStart hook has written user turn; next seq is the assistant turn
+			if (this.config.db && this.config.sessionId) {
+				this.currentAssistantSeq = this.config.db.getTurnCount(this.config.sessionId);
+			}
+			this.lastPersistTextLength = 0;
 
 			await this.runWithRetry();
 
@@ -163,7 +165,7 @@ export class AgentLoop implements AgentRuntime {
 			this.streamText = "";
 			this.delegator.cleanup();
 
-			await triggerHooks("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length });
+			await triggerHooks("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
 			await triggerHooks("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
 
 			this.emit({ type: "agent_end", agentId: this.config.agentId });
@@ -179,13 +181,17 @@ export class AgentLoop implements AgentRuntime {
 		this.thinkingText = "";
 		this.resultText = "";
 		this.recorder.reset();
-		this.checkpoint.reset();
-		this.checkpoint.loadResumedTurns(this.session.getSessionId(), this.recorder, interruptedTurnSeq);
 		this.abortController = new AbortController();
 		const timeout = this.setupTimeout();
 
 		try {
 			this.session.pruneIfNeeded();
+
+			// SessionStart hook has written user turn; next seq is the assistant turn
+			if (this.config.db && this.config.sessionId) {
+				this.currentAssistantSeq = this.config.db.getTurnCount(this.config.sessionId);
+			}
+			this.lastPersistTextLength = 0;
 			await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)" });
 			await this.runWithRetry();
 		} finally {
@@ -194,7 +200,7 @@ export class AgentLoop implements AgentRuntime {
 			this.streamText = "";
 			this.delegator.cleanup();
 
-			await triggerHooks("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length });
+			await triggerHooks("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
 			await triggerHooks("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
 
 			this.emit({ type: "agent_end", agentId: this.config.agentId });
@@ -220,6 +226,16 @@ export class AgentLoop implements AgentRuntime {
 		};
 	}
 
+	/** Expose session turns for UI rendering — runtime is the single source of truth. */
+	getSessionTurns(): Array<{ seq: number; role: string; content: string | null; createdAt: string }> {
+		return this.session.getTurns();
+	}
+
+	/** Refresh the cached turns from DB before UI session_init. */
+	refreshTurnsCache(): void {
+		this.session.refreshTurnsCache();
+	}
+
 	getResult(): string {
 		return this.resultText;
 	}
@@ -227,6 +243,15 @@ export class AgentLoop implements AgentRuntime {
 	resetSession(): void {
 		this.session.reset();
 		this.promptAssembler.invalidate();
+	}
+
+
+	// ─── Incremental persistence ─────────────────────────────────
+
+	/** Persist current recorder blocks snapshot to DB. */
+	private persistBlocksSnapshot(): void {
+		if (!this.config.db || !this.config.sessionId || this.currentAssistantSeq < 0) return;
+		this.recorder.persistBlocksSnapshot(this.config.db, this.config.sessionId, this.currentAssistantSeq);
 	}
 
 	// ─── Retry loop (shared by run and resume) ──────────────────
@@ -244,7 +269,6 @@ export class AgentLoop implements AgentRuntime {
 				const cls = classifyError(err);
 				log.error("loop", "Attempt " + (attempt + 1) + " failed:", cls, err.message?.slice(0, 200));
 
-				this.checkpoint.deletePartialTurn(this.session.getSessionId());
 				this.recorder.reset();
 
 				if (cls === "prompt_too_long") {
@@ -272,7 +296,7 @@ export class AgentLoop implements AgentRuntime {
 		if (lastError && !(lastError.name === "AbortError" || this.abortController?.signal.aborted)) {
 			const cls = classifyError(lastError);
 			log.error("loop", "All retries exhausted:", cls, lastError.message);
-			await triggerHooks("StopFailure", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), error: lastError?.message, errorClass: cls });
+			await triggerHooks("StopFailure", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), error: lastError?.message, errorClass: cls, blocks: this.recorder.blocks.slice() });
 			this.emit({
 				type: "error",
 				agentId: this.config.agentId,
@@ -287,8 +311,6 @@ export class AgentLoop implements AgentRuntime {
 	private async executeStream(): Promise<void> {
 		const model = resolveModel(this.providers, this.config.providerName, this.config.modelId);
 		log.debug("loop", "Model resolved:", this.config.providerName, this.config.modelId);
-
-		this.checkpoint.resetStreamState();
 
 		if (this.config.getToolConfig) {
 			this.toolContext.toolConfig = this.config.getToolConfig();
@@ -420,6 +442,11 @@ export class AgentLoop implements AgentRuntime {
 					this.streamText += text;
 					this.recorder.addTextDelta(text);
 					this.emit({ type: "text_delta", agentId: this.config.agentId, text: this.streamText });
+					if (this.streamText.length - this.lastPersistTextLength >= AgentLoop.TEXT_PERSIST_INTERVAL) {
+						this.lastPersistTextLength = this.streamText.length;
+						this.recorder.sealStep();
+						this.persistBlocksSnapshot();
+					}
 					break;
 				}
 				case "reasoning-delta": {
@@ -436,9 +463,9 @@ export class AgentLoop implements AgentRuntime {
 					this.streamText = "";
 					log.debug("loop", "Tool call:", e.toolName);
 					const tcId = e.toolCallId ?? e.id ?? `tc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-					this.checkpoint.recordToolCall(tcId, e.toolName, e.input);
 					this.recorder.blocks.push({ type: "tool", name: e.toolName, status: "running", args: e.input, toolCallId: tcId });
 					this.emit({ type: "tool_start", agentId: this.config.agentId, toolName: e.toolName, toolCallId: tcId, args: e.input });
+					this.persistBlocksSnapshot();
 					break;
 				}
 				case "tool-result": {
@@ -450,7 +477,7 @@ export class AgentLoop implements AgentRuntime {
 						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
 					if (tb) { tb.status = "done"; tb.result = e.output; }
 					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: resultTcId, isError: false, result: e.output });
-					if (resultTcId) this.checkpoint.saveIncrementalCheckpoint(this.session.getSessionId(), this.recorder, this.session.getMessages(), resultTcId, e.output);
+					this.persistBlocksSnapshot();
 					break;
 				}
 				case "tool-error": {
@@ -462,7 +489,29 @@ export class AgentLoop implements AgentRuntime {
 						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
 					if (tb) { tb.status = "error"; tb.result = String(e.error ?? e.errorText ?? ""); }
 					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: errTcId, isError: true, result: String(e.error ?? e.errorText ?? "") });
-					if (errTcId) this.checkpoint.saveIncrementalCheckpoint(this.session.getSessionId(), this.recorder, this.session.getMessages(), errTcId, String(e.error ?? e.errorText ?? ""));
+					this.persistBlocksSnapshot();
+					break;
+				}
+				case "finish-step": {
+					const e = event as any;
+					const stepUsage = e.usage;
+					if (stepUsage) {
+						if (stepUsage.inputTokens) {
+							this.session.calibrateFromActualUsage(stepUsage.inputTokens);
+						}
+						this.emit({
+							type: "usage",
+							agentId: this.config.agentId,
+							usage: {
+								inputTokens: stepUsage.inputTokens ?? 0,
+								outputTokens: stepUsage.outputTokens ?? 0,
+								totalTokens: (stepUsage.inputTokens ?? 0) + (stepUsage.outputTokens ?? 0),
+								cacheReadTokens: (stepUsage as any).cacheReadTokens ?? (stepUsage as any).promptCacheReadTokens,
+								cacheWriteTokens: (stepUsage as any).cacheWriteTokens ?? (stepUsage as any).promptCacheWriteTokens,
+								reasoningTokens: (stepUsage as any).reasoningTokens,
+							},
+						});
+					}
 					break;
 				}
 			}
@@ -474,28 +523,12 @@ export class AgentLoop implements AgentRuntime {
 
 		try {
 			const usage = await result.usage;
-			if (usage) {
-				if (usage.inputTokens) {
-					this.session.calibrateFromActualUsage(usage.inputTokens);
-				}
-				this.emit({
-					type: "usage",
-					agentId: this.config.agentId,
-					usage: {
-						inputTokens: usage.inputTokens ?? 0,
-						outputTokens: usage.outputTokens ?? 0,
-						totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
-						cacheReadTokens: (usage as any).cacheReadTokens ?? (usage as any).promptCacheReadTokens,
-						cacheWriteTokens: (usage as any).cacheWriteTokens ?? (usage as any).promptCacheWriteTokens,
-						reasoningTokens: (usage as any).reasoningTokens,
-					},
-				});
+			if (usage?.inputTokens) {
+				this.session.calibrateFromActualUsage(usage.inputTokens);
 			}
 		} catch { /* usage not available for some providers */ }
 
 		this.recorder.sealStep();
-		this.checkpoint.saveAssistantTurn(this.session.getSessionId(), this.recorder);
-
 		const response = await result.response;
 		if (response.messages) {
 			for (const msg of response.messages) {

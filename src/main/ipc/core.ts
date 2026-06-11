@@ -199,7 +199,7 @@ export async function loadCoreModules(): Promise<void> {
 	durableHooksMod.registerDurableHooks(_sessionDb);
 	toolExecHooksMod.registerToolExecutionHooks(_sessionDb);
 	const { registerAllRuntimeHooks } = await import(toFileURL(join(__dirname, "../../dist/runtime/hooks/index.js")));
-	registerAllRuntimeHooks();
+	registerAllRuntimeHooks(_sessionDb);
 	try {
 		const logConfig = _sessionDb.getKVStore().getJson("log_config");
 		const { configureLogging } = await import(toFileURL(join(_distCore, "logger.js")));
@@ -301,6 +301,10 @@ export async function loadCoreModules(): Promise<void> {
 			_mainWindow.webContents.send("agent:event", event);
 		}
 	});
+
+		// Restore all sessions from DB into this AgentService instance
+		await _agentService.restoreAllSessions();
+		_agentService.recoverIncompleteSessions();
 	moduleReadiness.resolveModule("agentService");
 	} catch (err) {
 		log.error("ipc", "Phase 5 failed (agentService):", (err as Error).message);

@@ -39,6 +39,9 @@ export class AgentSession {
 	private sessionId: string | null = null;
 	private db: ISessionStore | null;
 
+	/** Cached raw turns from DB — populated by rebuildFromTurns(), used as runtime source for UI. */
+	private cachedTurns: Array<{ seq: number; role: string; content: string | null; createdAt: string }> = [];
+
 	/** Calibrated token count from last API response. null = no calibration yet. */
 	private lastActualInputTokens: number | null = null;
 	/** How many messages were in the session when calibration was recorded. */
@@ -74,6 +77,17 @@ export class AgentSession {
 		return this.messages;
 	}
 
+	/** Cached raw turns from DB (populated by rebuildFromTurns). Used as runtime source for UI. */
+	/** Refresh the cached turns from DB (e.g. before UI session_init). */
+	refreshTurnsCache(): void {
+		if (!this.db || !this.sessionId) return;
+		this.cachedTurns = this.db.getTurns(this.sessionId);
+	}
+
+	getTurns(): Array<{ seq: number; role: string; content: string | null; createdAt: string }> {
+		return this.cachedTurns;
+	}
+
 	addMessage(msg: ModelMessage): void {
 		this.messages.push(msg);
 	}
@@ -99,7 +113,6 @@ export class AgentSession {
 	saveToDb(): void {
 		if (this.db && this.sessionId) {
 			this.db.saveTurn(this.sessionId, this.messages);
-			this.syncTurnsFromMessages();
 		}
 	}
 
@@ -145,8 +158,9 @@ export class AgentSession {
 
 	rebuildFromTurns(): ModelMessage[] {
 		if (!this.db || !this.sessionId) return [];
-		const turns = this.db.getTurns(this.sessionId);
-		if (turns.length === 0) return [];
+		this.cachedTurns = this.db.getTurns(this.sessionId);
+		if (this.cachedTurns.length === 0) return [];
+		const turns = this.cachedTurns;
 
 		const messages: ModelMessage[] = [];
 
@@ -206,32 +220,7 @@ export class AgentSession {
 		}
 	}
 
-	/**
-	 * Reconstruct turns from current messages and persist to turns table.
-	 * Called after saveToDb writes to messages table, to keep turns in sync.
-	 */
-	private syncTurnsFromMessages(): void {
-		if (!this.db || !this.sessionId) return;
-
-		this.db.clearTurns(this.sessionId);
-		let seq = 0;
-
-		for (const msg of this.messages) {
-			if (msg.role === "user") {
-				const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
-				this.db.appendTurn(this.sessionId, seq++, "user", content);
-			} else if (msg.role === "assistant") {
-				const blocks = this.extractBlocks(msg);
-				if (blocks.length > 0) {
-					this.db.appendTurn(this.sessionId, seq++, "assistant", JSON.stringify(blocks));
-				}
-			}
-			// tool messages are embedded in the preceding assistant turn's blocks
-		}
-	}
-
-	/** Extract turn blocks from an assistant message's content parts. */
-	private extractBlocks(msg: ModelMessage): any[] {
+		/** Extract turn blocks from an assistant message's content parts. */private extractBlocks(msg: ModelMessage): any[] {
 		const blocks: any[] = [];
 		const content = (msg as any).content;
 		if (!Array.isArray(content)) {

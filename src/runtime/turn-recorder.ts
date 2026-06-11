@@ -106,6 +106,16 @@ export class TurnRecorder {
 		db.appendTurn(sessionId, seq, "user", text);
 	}
 
+
+	/**
+	 * Persist the current blocks snapshot to the DB (incremental write).
+	 * Called at tool-call / tool-result events and text thresholds during streaming.
+	 */
+	persistBlocksSnapshot(db: ISessionStore, sessionId: string, assistantSeq: number): void {
+		if (!db || !sessionId || this.blocks.length === 0) return;
+		db.upsertAssistantTurn(sessionId, assistantSeq, JSON.stringify(this.blocks));
+	}
+
 	// -----------------------------------------------------------------------
 	// Lifecycle
 	// -----------------------------------------------------------------------

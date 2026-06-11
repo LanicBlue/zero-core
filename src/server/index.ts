@@ -103,7 +103,7 @@ export async function startServer(options?: StartServerOptions) {
 	registerDurableHooks(sessionDB);
 	registerToolExecutionHooks(sessionDB);
 	const { registerAllRuntimeHooks } = await import("../runtime/hooks/index.js");
-	registerAllRuntimeHooks();
+	registerAllRuntimeHooks(sessionDB);
 
 	const registry = new ToolRegistry(sessionDB.getKVStore());
 	registerRuntimeTools(registry);
@@ -147,11 +147,33 @@ export async function startServer(options?: StartServerOptions) {
 		}
 	});
 
-	// Scan for interrupted turns and resume them
+
+	// Load providers from DB for backend-spawn mode.
+	// In IPC mode, main process calls setProviders later via Phase 5 — notifyReady deduplicates.
+	{
+		const providerConfigs = providerStore.list()
+			.filter((p) => p.enabled)
+			.map((p) => ({
+				name: p.name, type: p.type, apiKey: p.apiKey, baseUrl: p.baseUrl,
+				models: p.models.map((m: any) => ({ id: m.id, name: m.name, contextWindow: m.contextWindow, maxTokens: m.maxTokens })),
+				enabled: p.enabled,
+				enableConcurrencyLimit: p.enableConcurrencyLimit ?? false,
+				maxConcurrency: p.maxConcurrency ?? 1,
+			}));
+		agentService.setProviders(providerConfigs as any, workspaceConfig.defaultModel, workspaceConfig.defaultProvider);
+	}
+
+	// Restore all sessions from DB into runtime (no provider dependency)
+	console.error("[server] Restoring all sessions from DB into runtime...");
+	await agentService.restoreAllSessions();
+
+	// Resume any sessions that were actively executing when the process died.
+	// This defers until providers and agentStore are ready (via whenReady).
 	const { scanIncompleteTurns } = await import("./recovery.js");
 	const interrupted = scanIncompleteTurns(sessionDB);
+	console.error("[server] Interrupted turns: " + interrupted.length + ", scheduling recovery...");
 	if (interrupted.length > 0) {
-		await agentService.recoverIncompleteSessions();
+		agentService.recoverIncompleteSessions();
 	}
 
 	// ─── Auto-detect MCP servers from external tools ────────────────
@@ -184,7 +206,7 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/agents", createAgentRouter({ agentStore, agentToolStore, agentService, sessionDB }));
 	app.use("/api/agent-tools", createAgentToolRouter(agentToolStore));
 	app.use("/api/providers", createProviderRouter(providerStore));
-	app.use("/api/templates", createTemplateRouter(templateStore));
+	app.use("/api/templates", createTemplateRouter(templateStore, sessionDB));
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
 	app.use("/api/kb", createKbRouter(kbStore, kbDb, providerStore));
 	app.use("/api/skills", createSkillRouter());
@@ -237,6 +259,7 @@ export async function startServer(options?: StartServerOptions) {
 		try {
 			const models: {
 				providerId: string;
+				provider: string;
 				providerName: string;
 				providerType: string;
 				id: string;
@@ -248,6 +271,7 @@ export async function startServer(options?: StartServerOptions) {
 				for (const m of p.models) {
 					models.push({
 						providerId: p.id,
+					provider: p.name,
 						providerName: p.name,
 						providerType: p.type,
 						id: m.id,

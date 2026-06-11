@@ -151,6 +151,23 @@ export class SessionDB {
 				CREATE INDEX IF NOT EXISTS idx_tool_exec_agent_tool ON tool_executions(agent_id, tool_name);
 				CREATE INDEX IF NOT EXISTS idx_tool_exec_created ON tool_executions(created_at);
 		`);
+
+		// Migrate renamed tools (Bash -> Shell, etc.)
+		this.migrateToolNames();
+	}
+
+	private migrateToolNames(): void {
+		const renames: Record<string, string> = {
+			Bash: "Shell",
+		};
+		for (const [oldName, newName] of Object.entries(renames)) {
+			const result = this.db.prepare(
+				"UPDATE tool_executions SET tool_name = ? WHERE tool_name = ?"
+			).run(newName, oldName);
+			if (result.changes > 0) {
+				log.db("migrateToolNames: " + result.changes + " rows " + oldName + " -> " + newName);
+			}
+		}
 	}
 
 	// Session CRUD
@@ -190,6 +207,12 @@ export class SessionDB {
 		return rows.map((r) => this.rowToRecord(r));
 	}
 
+	listAllSessions(): SessionRecord[] {
+		const rows = this.db.prepare(
+			"SELECT * FROM sessions WHERE agent_id != '__recovered__' ORDER BY updated_at DESC",
+		).all() as any[];
+		return rows.map((r) => this.rowToRecord(r));
+	}
 	deleteSession(sessionId: string): void {
 		this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
 	}
@@ -375,6 +398,24 @@ export class SessionDB {
 		tx();
 	}
 
+
+	upsertAssistantTurn(sessionId: string, seq: number, content: string): void {
+		this.ensureSession(sessionId);
+		const now = new Date().toISOString();
+		const existing = this.db.prepare(
+			"SELECT 1 FROM turns WHERE session_id = ? AND seq = ?"
+		).get(sessionId, seq);
+		if (existing) {
+			this.db.prepare(
+				"UPDATE turns SET content = ? WHERE session_id = ? AND seq = ?"
+			).run(content, sessionId, seq);
+		} else {
+			this.db.prepare(
+				"INSERT INTO turns (session_id, seq, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)"
+			).run(sessionId, seq, content, now);
+		}
+		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+	}
 	// -----------------------------------------------------------------------
 	// Turn state (durable execution checkpointing)
 	// -----------------------------------------------------------------------
