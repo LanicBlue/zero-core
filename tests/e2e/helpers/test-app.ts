@@ -19,15 +19,17 @@
 //
 // ## 维护规则
 // 应用启动参数变更需在此文件同步
-// better-sqlite3 编译限制：数据 seed 必须在 Electron 进程内完成，不能从 Playwright runner 执行
+// better-sqlite3 编译说明：开发模式下后端子进程用系统 Node.js spawn（而非 Electron fork），
+// 所以 test seed 在后端子进程内完成（startServer 中的 ZERO_CORE_TEST_FIXTURE 分支），无 ABI 问题
 //
 // Playwright Electron launcher — sets ZERO_CORE_DIR + ZERO_CORE_TEST_FIXTURE
 // and lets the production main process seed itself (see src/main/test-setup.ts).
 //
 // Why we don't seed from the test runner:
-//   better-sqlite3 is compiled against Electron's NODE_MODULE_VERSION. Loading
-//   it from plain Node (Playwright's test runner) throws. The seed must run
-//   inside Electron.
+//   The test seed runs inside the backend subprocess (startServer handles
+//   ZERO_CORE_TEST_FIXTURE), not in Electron's main process. The backend
+//   subprocess uses system Node.js (dev mode) or Electron's fork (packaged),
+//   both of which have a compatible better-sqlite3.
 
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";

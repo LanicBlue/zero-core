@@ -1,10 +1,14 @@
 // 后端子进程生命周期管理
 //
 // 负责启动、监控、优雅关闭后端 Node.js 子进程。
+//
+// 开发模式：用系统 Node.js spawn 后端，避免 Electron ABI 与 better-sqlite3 不匹配。
+// 打包模式：用 fork()，electron-builder 的 npmRebuild=true 已将 better-sqlite3 重新编译给 Electron。
 
-import { fork, type ChildProcess } from "child_process";
+import { fork, spawn, type ChildProcess } from "child_process";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { app } from "electron";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -23,10 +27,24 @@ let _shuttingDown = false;
 export function spawnBackend(): Promise<BackendHandle> {
 	return new Promise((resolve, reject) => {
 		const backendPath = join(__dirname, "../../dist/backend.js");
-		log(`Forking: ${backendPath}`);
-		const child = fork(backendPath, ["--port=0"], {
-			stdio: ["pipe", "pipe", "pipe", "ipc"],
-		});
+		const isPackaged = app.isPackaged;
+
+		let child: ChildProcess;
+		if (isPackaged) {
+			// 打包模式：用户机器可能无 Node.js，用 Electron fork
+			// electron-builder npmRebuild=true 已将 better-sqlite3 重新编译给 Electron ABI
+			log(`Forking (packaged): ${backendPath}`);
+			child = fork(backendPath, ["--port=0"], {
+				stdio: ["pipe", "pipe", "pipe", "ipc"],
+			});
+		} else {
+			// 开发模式：用系统 Node.js spawn，better-sqlite3 由 npm install 编译给系统 Node
+			log(`Spawning (dev): node ${backendPath}`);
+			child = spawn("node", [backendPath, "--port=0"], {
+				stdio: ["pipe", "pipe", "pipe"],
+				env: { ...process.env },
+			});
+		}
 
 		log(`Child PID: ${child.pid}`);
 
