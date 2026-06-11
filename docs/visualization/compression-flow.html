@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compression Flow: Hermes vs Zero-Core (50 Turns)</title>
+<style>
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--blue:#58a6ff;--green:#3fb950;--orange:#d29922;--red:#f85149;--purple:#bc8cff;--cyan:#39d2c0}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'SF Mono','Cascadia Code',monospace;background:var(--bg);color:var(--text);min-height:100vh}
+.hd{text-align:center;padding:14px 16px 6px;border-bottom:1px solid var(--border);background:var(--surface)}
+.hd h1{font-size:17px;background:linear-gradient(90deg,var(--orange),var(--purple),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hd p{color:var(--text2);font-size:10px;margin-top:2px}
+.lg{display:flex;gap:10px;justify-content:center;margin-top:4px;font-size:9px;color:var(--text2)}
+.lg span{display:flex;align-items:center;gap:3px}
+.lg i{display:inline-block;width:8px;height:8px;border-radius:1px}
+.tl{display:flex;gap:1px;padding:6px 10px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto}
+.tc{width:14px;height:14px;border-radius:2px;cursor:pointer;flex-shrink:0;border:1px solid transparent;transition:all .15s}
+.tc:hover{border-color:var(--text);transform:scale(1.4)}
+.tc.a{border-color:#fff;box-shadow:0 0 4px rgba(255,255,255,.5)}
+.tc.n{background:var(--border)}.tc.c{background:var(--orange)}.tc.l{background:var(--cyan)}
+.tc.d{background:var(--red)}.tc.b{background:linear-gradient(135deg,var(--cyan),var(--red))}
+.ct{display:flex;justify-content:center;gap:6px;padding:6px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.ct button{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px}
+.ct button:hover{border-color:var(--blue);color:var(--blue)}
+.ct button.act{background:var(--blue);color:#fff}
+.ct button:disabled{opacity:.4;cursor:not-allowed}
+.ct select{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px;border-radius:4px;font-family:inherit;font-size:10px}
+.pp{display:grid;grid-template-columns:1fr 1fr}
+.sd{padding:10px 12px;border-right:1px solid var(--border);overflow-y:auto;max-height:calc(100vh - 150px)}
+.sd:last-child{border-right:none}
+.st{font-size:12px;font-weight:700;margin-bottom:1px;display:flex;align-items:center;gap:5px}
+.tg{font-size:8px;padding:1px 5px;border-radius:8px;font-weight:600}
+.ht{background:var(--orange);color:#000}.zt{background:var(--cyan);color:#000}
+.ss{color:var(--text2);font-size:9px;margin-bottom:6px}
+.ev{font-size:9px;font-weight:600;padding:2px 5px;border-radius:2px;margin-bottom:4px}
+.e-n{background:var(--border);color:var(--text2)}.e-c{background:#d2992233;color:var(--orange)}
+.e-l{background:#39d2c033;color:var(--cyan)}.e-d{background:#f8514933;color:var(--red)}
+.e-b{background:linear-gradient(90deg,#39d2c033,#f8514933);color:var(--purple)}
+.ml{display:flex;flex-direction:column;gap:1px}
+.mg{display:flex;align-items:center;gap:2px;padding:1px 3px;border-radius:2px;font-size:8px}
+.mg .r{font-weight:700;min-width:28px;font-size:7px;text-transform:uppercase;flex-shrink:0}
+.mg .b{height:4px;border-radius:1px;flex-shrink:0}
+.mg .l{font-size:7px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.mg .t{color:var(--text2);font-size:7px;margin-left:auto;white-space:nowrap}
+.bg{font-size:6px;font-weight:700;padding:0 2px;border-radius:1px;flex-shrink:0;line-height:1.4}
+.bg-h{background:var(--green);color:#000}.bg-m{background:var(--red);color:#fff}.bg-n{background:var(--cyan);color:#000}
+.idx{min-width:18px;font-size:7px;color:var(--text2);text-align:right;flex-shrink:0;font-weight:600}
+.mg.new-msg{background:#39d2c012;border-left:2px solid var(--cyan)}
+.mg.sys .b{background:var(--blue)}.mg.sys{background:#1f6feb22}
+.mg.usr .b{background:var(--green)}.mg.usr{background:#23863618}
+.mg.ast .b{background:var(--purple)}.mg.ast{background:#6e40c918}
+.mg.tol .b{background:var(--orange)}.mg.tol{background:#9e6a0318}
+.mg.sum .b{background:var(--red)}.mg.sum{background:#da363318}
+.sb{display:flex;gap:6px;font-size:8px;color:var(--text2);padding:3px 0;margin-top:3px;border-top:1px solid var(--border)}
+.sb .v{color:var(--text);font-weight:600}
+.cb{display:flex;align-items:center;gap:3px;font-size:8px;margin:1px 0}
+.ct2{flex:1;height:3px;border-radius:1px;background:var(--border);overflow:hidden}
+.cf{height:100%;border-radius:1px;transition:width .3s}
+.ib{font-size:8px;color:var(--text2);padding:2px 0;line-height:1.3;margin-top:3px;border-top:1px solid var(--border)}
+.ib strong{color:var(--text)}
+.mp{margin-top:4px;padding-top:3px;border-top:1px solid var(--border)}
+.mt2{font-size:8px;color:#d29922;font-weight:600;margin-bottom:1px}
+.mn{font-size:7px;padding:1px 3px;background:#bf870018;border-radius:2px;margin:1px 0;color:var(--text2)}
+.mn b{color:#d29922;font-size:7px}
+.sp{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:9px;color:var(--text2);z-index:200;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.sp .sn{color:var(--blue);font-weight:700}
+.danger{color:var(--red)!important;font-weight:700}
+@media(max-width:900px){.pp{grid-template-columns:1fr}.sd{max-height:none;border-right:none;border-bottom:1px solid var(--border)}}
+</style>
+</head>
+<body>
+<div class="hd">
+<h1>Context Compression: Hermes vs Zero-Core</h1>
+<p>50-turn lifecycle simulation &mdash; per-message cache HIT/MISS tracking</p>
+<div class="lg">
+<span><i style="background:var(--border)"></i>Normal</span>
+<span><i style="background:var(--orange)"></i>Hermes Compress</span>
+<span><i style="background:var(--cyan)"></i>L1</span>
+<span><i style="background:var(--red)"></i>L2</span>
+<span><i style="background:linear-gradient(135deg,var(--cyan),var(--red))"></i>L1+L2</span>
+</div>
+</div>
+<div class="tl" id="tl"></div>
+<div class="ct">
+<button type="button" onclick="rs()">Reset</button>
+<button type="button" id="bp" onclick="pv()" disabled>Prev</button>
+<button type="button" id="bn" onclick="nx()">Next</button>
+<button type="button" id="ba" onclick="au()">Auto</button>
+<select title="Auto-play speed" id="sp2" onchange="usp()">
+<option value="1200">Fast</option>
+<option value="2200" selected>Normal</option>
+<option value="3500">Slow</option>
+</select>
+<button type="button" onclick="jt(-1)">End</button>
+</div>
+<div class="pp">
+<div class="sd"><div class="st"><span class="tg ht">Hermes</span>Hermes Agent</div><div class="ss">Single-pass: Prune &rarr; Head/Tail boundary &rarr; LLM summary (incremental update)</div><div id="hc"></div></div>
+<div class="sd"><div class="st"><span class="tg zt">Zero-Core</span>Zero-Core</div><div class="ss">Progressive: L1 one-turn-per-hook &rarr; L2 memory extract + discard (SQLite FTS5)</div><div id="zc"></div></div>
+</div>
+<div class="sp"><span class="sn" id="sn">1</span>/<span id="st2">50</span>&nbsp;<span id="sd"></span></div>
+<script>
+/* ─── Config ─── */
+var CW=200000,HT=0.5,ZT_L1=0.7,ZT_L2=0.5,KR=5,TB=20000,HN=4,N=50;
+
+/* ─── 50 realistic dev tasks ─── */
+var TOPICS=["Fix login bug in auth.ts","Add rate limiting middleware","Add structured logging module","Fix memory leak in cache layer","Add Redis caching layer","Update REST API to v2","Fix race condition in job queue","Add health check endpoint","Optimize slow DB queries","Add WebSocket support","Fix CORS configuration","Add input validation middleware","Implement cursor pagination","Add Sentry error tracking","Fix timeout on long requests","Add circuit breaker pattern","Implement retry with backoff","Add Prometheus metrics endpoint","Fix auth token refresh logic","Add batch processing API","Fix SQL injection in search","Add request deduplication","Implement graceful shutdown","Add DB connection pooling","Fix file upload size limit","Add API key rotation job","Implement event sourcing","Add distributed tracing","Fix webhook delivery failures","Add multi-tenant isolation","Implement data migration scripts","Add backup scheduling cron","Fix memory fragmentation in pool","Add request throttling","Implement audit logging","Fix SSL certificate rotation","Add service discovery","Implement CQRS pattern","Fix dead letter queue","Add global rate limiting","Implement feature flags","Fix timezone handling","Add data encryption at rest","Implement saga pattern","Fix concurrent write conflicts","Add health check aggregator","Implement schema validation","Fix duplicate event processing","Add telemetry pipeline","Implement zero-downtime deploy"];
+var FILES="auth.ts,cache.ts,queue.ts,api.ts,db.ts,utils.ts,config.ts,mw.ts,handler.ts,srv.ts".split(",");
+
+/* ─── Turn generator (deterministic, no upward trend) ─── */
+function gT(i){
+  var tp=TOPICS[i],fl=FILES[i%FILES.length];
+  /* Knuth multiplicative hash — uncorrelated, no trend with i */
+  var h1=((i*2654435761)>>>0), h2=((i*2246822519)>>>0), h3=((i*3266489917)>>>0);
+  var u=40+(h1%40), a1=200+(h2%200);
+  var ft=5000+(h1%10000), tt=2000+(h2%6000), a2=200+(h3%150);
+  var act=tp.toLowerCase().replace("fix ","fixed ").replace("add ","added ").replace("implement ","implemented ").replace("update ","updated ");
+  return [
+    {role:"user",label:"User: "+tp,tokens:u,ti:i},
+    {role:"assistant",label:"Asst: analyzing "+fl+"...",tokens:a1,ti:i},
+    {role:"tool",label:"read_file: "+fl+" ("+ft+" tok)",tokens:ft,ti:i},
+    {role:"tool",label:"terminal: npm test ("+tt+" tok)",tokens:tt,ti:i},
+    {role:"assistant",label:"Asst: "+act,tokens:a2,ti:i}
+  ];
+}
+
+/* ─── Identify turn boundaries ─── */
+function iT(ms){
+  var ts=[],s=-1;
+  for(var i=0;i<ms.length;i++){if(ms[i].role==="user"){if(s>=0)ts.push({s:s,e:i});s=i;}}
+  if(s>=0)ts.push({s:s,e:ms.length});
+  return ts;
+}
+
+/* ─── Cache calc: prefix-based HIT/MISS ─── */
+function cC(pr,cu){
+  var r=[],br=false;
+  for(var i=0;i<cu.length;i++){
+    if(br){r.push("miss");}
+    else if(i<pr.length&&pr[i].label===cu[i].label&&pr[i].tokens===cu[i].tokens){r.push("hit");}
+    else{r.push("miss");br=true;}
+  }
+  return r;
+}
+/* Cache %: system prompt always HIT + messages prefix match */
+function cP(pr,cu){
+  var ht=SYS_TOK,tt=SYS_TOK,i; /* system always cached */
+  for(i=0;i<cu.length;i++)tt+=cu[i].tokens;
+  for(i=0;i<cu.length;i++){
+    if(i<pr.length&&pr[i].label===cu[i].label&&pr[i].tokens===cu[i].tokens)ht+=cu[i].tokens;
+    else break;
+  }
+  return tt>0?Math.round(ht/tt*100):0;
+}
+
+/* ─── Simulation engine ─── */
+/* System prompt is NOT in messages array — it's streamText()'s `system` param.
+   Always cached (never modified). Messages only contain user/assistant/tool. */
+var SYS_TOK=800;
+
+function sim(){
+  var steps=[];
+  var hM=[];
+  var hP=[];
+  var hST=[];
+  var hCC=0;
+  var zM=[];
+  var zP=[];
+  var zMN=[];
+  var zL1C=0,zL2C=0;
+
+  for(var i=0;i<N;i++){
+    /* Save previous state for cache calc */
+    hP=hM.map(function(m){return{role:m.role,label:m.label,tokens:m.tokens,ti:m.ti,isSummary:m.isSummary};});
+    zP=zM.map(function(m){return{role:m.role,label:m.label,tokens:m.tokens,ti:m.ti,isL1:m.isL1,isSummary:m.isSummary};});
+
+    /* Generate and append new turn */
+    var nt=gT(i);
+    hM=hM.concat(nt.map(function(m){return{role:m.role,label:m.label,tokens:m.tokens,ti:m.ti};}));
+    zM=zM.concat(nt.map(function(m){return{role:m.role,label:m.label,tokens:m.tokens,ti:m.ti};}));
+
+    var hE="n",hL="Turn "+(i+1)+": "+TOPICS[i],hCo=false;
+    var zE="n",zL="Turn "+(i+1)+": "+TOPICS[i],zL1=false,zL2=false,zCTC=0;
+
+    /* ─── Hermes compression ─── */
+    var hTk=hM.reduce(function(s,m){return s+m.tokens;},0);
+    if(hTk>CW*HT){
+      var he=HN; /* head = first 4 msgs (protect_first_n, no system in array) */
+      /* Phase 1: walk tail backward by token budget */
+      var ta=0,ts2=hM.length;
+      for(var j=hM.length-1;j>=he;j--){ta+=hM[j].tokens;if(ta>=TB){ts2=j+1;break;}ts2=j;}
+      if(ts2>he){
+        var mm=hM.slice(he,ts2);
+        var mt=mm.reduce(function(s,m){return s+m.tokens;},0);
+        /* Phase 2+3: summarize middle (~5% of original) */
+        var st=Math.max(200,Math.floor(mt*0.05));
+        mm.filter(function(m){return m.role==="user";}).forEach(function(m){hST.push(m.label.replace("User: ",""));});
+        var sl="## Summary: "+hST.slice(-6).join("; ")+"...";
+        /* Phase 4: assemble [head, summary, tail] */
+        hM=hM.slice(0,he).concat([{role:"assistant",label:sl,tokens:st,isSummary:true}],hM.slice(ts2));
+        hCC++;hCo=true;hE="c";
+        hL="COMPRESS #"+hCC+" — pruned middle "+Math.round(mt/1000)+"K→"+Math.round(st/1000)+"K tok | "+TOPICS[i];
+      }
+    }
+
+    /* ─── Zero-Core L1: ctx > 70% → compress first NON-compressed old turn ─── */
+    var zTk=zM.reduce(function(s,m){return s+m.tokens;},0);
+    if(zTk>CW*ZT_L1){
+      var tns=iT(zM);
+      if(tns.length>KR){
+        /* Scan old turns, skip already-compressed ones */
+        var tg=null,tTk=0;
+        for(var ti=0;ti<tns.length-KR;ti++){
+          var cand=tns[ti];
+          var cMs=zM.slice(cand.s,cand.e);
+          var hasL1=false;
+          for(var k=0;k<cMs.length;k++){if(cMs[k].isL1){hasL1=true;break;}}
+          if(!hasL1){
+            var cTk=cMs.reduce(function(s,m){return s+m.tokens;},0);
+            if(cTk>200){tg=cand;tTk=cTk;break;}
+          }
+        }
+        if(tg){
+          var st2=Math.max(40,Math.floor(tTk*0.07));
+          var ul=zM[tg.s].label;
+          var sl2="L1: "+ul.replace("User: ","intent→")+", result→done";
+          zM=zM.slice(0,tg.s).concat([
+            {role:"user",label:ul,tokens:zM[tg.s].tokens},
+            {role:"assistant",label:sl2,tokens:st2,isL1:true}
+          ],zM.slice(tg.e));
+          zL1C++;zL1=true;
+        }
+      }
+    }
+
+    /* ─── Zero-Core L2: ctx > 50% → extract memory from compressed turns, discard ─── */
+    var zTkAfter=SYS_TOK+zM.reduce(function(s,m){return s+m.tokens;},0);
+    if(zTkAfter>CW*ZT_L2){
+    var zT2=iT(zM);
+    if(zT2.length>KR){
+      var ct=[];
+      for(var t=0;t<zT2.length-KR;t++){
+        var rng=zT2[t];
+        var ms=zM.slice(rng.s,rng.e);
+        var has=false;
+        for(var k=0;k<ms.length;k++){if(ms[k].isL1){has=true;break;}}
+        if(has)ct.push(rng);
+      }
+      if(ct.length>=2){
+        zCTC=ct.length;
+        ct.forEach(function(t){
+          var u2=zM[t.s];
+          zMN.push({subject:u2.label.replace("User: ","").split(" ").slice(0,2).join(" "),type:["discovery","decision","event"][zMN.length%3],content:u2.label.replace("User: ","")});
+        });
+        var rm={};
+        ct.forEach(function(t){for(var j=t.s;j<t.e;j++)rm[j]=true;});
+        zM=zM.filter(function(_,j){return!rm[j];});
+        zL2C++;zL2=true;
+      }
+    }
+    } /* end L2 threshold gate */
+
+    /* ─── Cache calculation ─── */
+    var hCa=cC(hP,hM),zCa=cC(zP,zM);
+    hM.forEach(function(m,j){m.cache=hCa[j]||"miss";});
+    zM.forEach(function(m,j){m.cache=zCa[j]||"miss";});
+
+    /* ─── Event labels ─── */
+    if(zL1&&zL2)zE="b";
+    else if(zL1)zE="l";
+    else if(zL2)zE="d";
+    if(zL1||zL2){
+      var pts=[];
+      if(zL1)pts.push("L1 #"+zL1C);
+      if(zL2)pts.push("L2 #"+zL2C+" ("+zCTC+" nodes→SQLite)");
+      zL=pts.join(" + ")+" | "+TOPICS[i];
+    }
+
+    steps.push({
+      turn:i+1,topic:TOPICS[i],
+      hM:hM.map(function(m){return{role:m.role,label:m.label,tokens:m.tokens,ti:m.ti,isSummary:m.isSummary,cache:m.cache};}),
+      zM:zM.map(function(m){return{role:m.role,label:m.label,tokens:m.tokens,ti:m.ti,isL1:m.isL1,cache:m.cache};}),
+      hPrev:hP.map(function(m){return{role:m.role,label:m.label,tokens:m.tokens};}),
+      zPrev:zP.map(function(m){return{role:m.role,label:m.label,tokens:m.tokens};}),
+      hPct:Math.min(100,Math.round((SYS_TOK+hM.reduce(function(s,m){return s+m.tokens;},0))/CW*100)),
+      zPct:Math.min(100,Math.round((SYS_TOK+zM.reduce(function(s,m){return s+m.tokens;},0))/CW*100)),
+      hE:hE,hL:hL,hCo:hCo,hCC:hCC,
+      zE:zE,zL:zL,zL1:zL1,zL2:zL2,zL1C:zL1C,zL2C:zL2C,
+      mC:zMN.length,mN:zMN.map(function(n){return{subject:n.subject,type:n.type,content:n.content};}),
+      hCP:cP(hP,hM),zCP:cP(zP,zM)
+    });
+  }
+  return steps;
+}
+
+/* ─── Rendering ─── */
+/* System prompt row: always HIT (separate `system` param, not in messages) */
+function rSys(){
+  return '<div class="mg sys" style="border-bottom:1px dashed var(--blue);margin-bottom:2px"><span class="idx" style="color:var(--blue)">S</span><span class="r">sys</span><span class="b" style="width:40px"></span><span class="l">System Prompt (streamText `system` param, always cached)</span><span class="bg bg-h">HIT</span><span class="t">'+SYS_TOK+'t</span></div>';
+}
+
+/* Identify which messages are "new" (appended at tail, not in previous step at all) */
+function findNewIdx(prev, curr) {
+  /* Walk backward from end: last K messages that don't appear in prev at any position are "new" */
+  if (!prev.length) return 0; /* all new */
+  /* Simple: find the first index from end where content matches prev's last occurrence */
+  for (var start = curr.length - 1; start >= 0; start--) {
+    var found = false;
+    for (var j = 0; j < prev.length; j++) {
+      if (curr[start].label === prev[j].label && curr[start].tokens === prev[j].tokens) { found = true; break; }
+    }
+    if (found) return start + 1; /* first index that is NOT in prev = new tail start */
+  }
+  return 0;
+}
+
+function rM(m, idx, isNew) {
+  var rc = m.role === "user" ? "usr" : m.isSummary || m.isL1 ? "sum" : m.role === "assistant" ? "ast" : "tol";
+  var ch = m.cache === "hit" ? '<span class="bg bg-h">HIT</span>' : '<span class="bg bg-m">MISS</span>';
+  var nw = isNew ? '<span class="bg bg-n">NEW</span>' : '';
+  var bw = Math.min(Math.max(Math.round(m.tokens / 40), 3), 170);
+  var idxStr = idx < 10 ? ' ' + idx : '' + idx;
+  return '<div class="mg ' + rc + (isNew ? ' new-msg' : '') + '"><span class="idx">' + idxStr + '</span><span class="r">' + m.role.substring(0, 3) + '</span><span class="b" style="width:' + bw + 'px"></span><span class="l">' + m.label + '</span>' + nw + ch + '<span class="t">' + m.tokens + 't</span></div>';
+}
+
+function rML(ms, prev) {
+  var newStart = findNewIdx(prev || [], ms);
+  var h = rSys();
+  /* separator before message list */
+  h += '<div class="ml">';
+  for (var i = 0; i < ms.length; i++) {
+    h += rM(ms[i], i, i >= newStart);
+  }
+  h += '</div>';
+  return h;
+}
+function rS(ms,pct,cp){
+  var tk=SYS_TOK+ms.reduce(function(s,m){return s+m.tokens;},0);
+  var cl=pct>70?'var(--red)':pct>50?'var(--orange)':'var(--green)';
+  var dc=pct>90?' danger':'';
+  return '<div class="sb">msgs:<span class="v">'+(ms.length+1)+'</span> | tok:<span class="v">'+tk.toLocaleString()+'</span> | ctx:<span class="v'+dc+'" style="color:'+cl+'">'+pct+'%</span> | cache:<span class="v">'+cp+'%</span></div><div class="cb"><div class="ct2"><div class="cf" style="width:'+pct+'%;background:'+cl+'"></div></div></div>';
+}
+function rMN(ns){
+  if(!ns.length)return '';
+  var h='<div class="mp"><div class="mt2">Memory Nodes ('+ns.length+')</div>';
+  ns.slice(-6).forEach(function(n){h+='<div class="mn"><b>'+n.type+'</b> '+n.subject+': '+n.content+'</div>';});
+  if(ns.length>6)h+='<div class="mn" style="color:var(--text2)">... +'+(ns.length-6)+' more</div>';
+  return h+'</div>';
+}
+
+function rD(s){
+  /* Hermes side */
+  var h='<div class="ev e-'+s.hE+'">'+s.hL+'</div>';
+  if(s.hCo)h+='<div class="ib"><strong>Hermes compressed:</strong> head (first turn, fixed) + summary (replaces middle) + tail (recent, ~20K budget). New msgs append at tail.</div>';
+  else h+='<div class="ib">Prefix HIT (same position, same content). NEW msgs appended at tail = MISS.</div>';
+  h+=rML(s.hM,s.hPrev)+rS(s.hM,s.hPct,s.hCP);
+  if(s.hCC>0)h+='<div class="ib" style="color:var(--orange)">Total compressions: '+s.hCC+'</div>';
+
+  /* Zero-Core side */
+  var z='<div class="ev e-'+s.zE+'">'+s.zL+'</div>';
+  if(s.zL1||s.zL2){
+    var pts=[];
+    if(s.zL1)pts.push("L1: oldest turn → short summary");
+    if(s.zL2)pts.push("L2: "+s.mC+" memory nodes → SQLite, compressed turn discarded");
+    z+='<div class="ib"><strong>'+pts.join(" then ")+'</strong></div>';
+  }
+  z+=rML(s.zM,s.zPrev)+rS(s.zM,s.zPct,s.zCP);
+  z+=rMN(s.mN);
+  if(s.zL1C>0||s.zL2C>0)z+='<div class="ib" style="color:var(--cyan)">L1: '+s.zL1C+' | L2: '+s.zL2C+' | Memory: '+s.mC+' nodes</div>';
+
+  document.getElementById("hc").innerHTML=h;
+  document.getElementById("zc").innerHTML=z;
+}
+
+/* ─── Timeline ─── */
+function rTL(steps){
+  var tl=document.getElementById("tl"),h="";
+  for(var i=0;i<steps.length;i++){
+    var s=steps[i],cl="n";
+    if(s.hCo&&(s.zL1||s.zL2))cl="b";
+    else if(s.hCo)cl="c";
+    else if(s.zL1&&s.zL2)cl="b";
+    else if(s.zL1)cl="l";
+    else if(s.zL2)cl="d";
+    h+='<div class="tc '+cl+'" onclick="jt('+i+')" title="Turn '+s.turn+': '+s.topic+'"></div>';
+  }
+  tl.innerHTML=h;
+}
+
+/* ─── Controls ─── */
+var STEPS,C=0,AT=null;
+function nx(){if(C<N-1)rD(STEPS[++C]);uB();}
+function pv(){if(C>0)rD(STEPS[--C]);uB();}
+function rs(){sA();C=0;rD(STEPS[0]);uB();}
+function jt(i){sA();C=i<0?N-1:i;rD(STEPS[C]);uB();}
+function au(){
+  if(AT){sA();return;}
+  document.getElementById("ba").classList.add("act");
+  document.getElementById("ba").textContent="Pause";
+  var sp=parseInt(document.getElementById("sp2").value);
+  AT=setInterval(function(){if(C<N-1){C++;rD(STEPS[C]);uB();}else sA();},sp);
+}
+function sA(){if(AT){clearInterval(AT);AT=null;}document.getElementById("ba").classList.remove("act");document.getElementById("ba").textContent="Auto";}
+function usp(){if(AT){sA();au();}}
+function uB(){
+  document.getElementById("bp").disabled=C===0;
+  document.getElementById("bn").disabled=C===N-1;
+  document.getElementById("sn").textContent=C+1;
+  document.getElementById("sd").textContent=STEPS[C].topic;
+  var cells=document.querySelectorAll(".tc");
+  for(var i=0;i<cells.length;i++){if(i===C)cells[i].classList.add("a");else cells[i].classList.remove("a");}
+  if(cells[C])cells[C].scrollIntoView({behavior:"smooth",block:"nearest",inline:"center"});
+}
+
+/* ─── Init ─── */
+STEPS=sim();
+document.getElementById("st2").textContent=N;
+rTL(STEPS);
+rD(STEPS[0]);
+uB();
+</script>
+</body>
+</html>
