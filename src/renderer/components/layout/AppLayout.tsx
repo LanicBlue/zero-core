@@ -89,8 +89,7 @@ export default function AppLayout() {
 					const state = useChatStore.getState();
 					if (state.streamingSessions.has(sid)) return;
 					initSession(sid, { messages: d.messages || [] });
-					// Restore persisted token usage
-					if (d.inputTokens > 0 || d.outputTokens > 0) {
+						// Restore context window and token usage from backend
 						updateContextInfo(d.sessionId || key, {
 							usedTokens: d.inputTokens ?? 0,
 							contextWindow: d.contextWindow ?? 128000,
@@ -99,7 +98,6 @@ export default function AppLayout() {
 							outputTokens: d.outputTokens ?? 0,
 							totalTokens: d.totalTokens ?? 0,
 						});
-					}
 				},
 			text_delta: (d, key) => updateAssistantText(key, d.text),
 			message_end: (d, key) => {
