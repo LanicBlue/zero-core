@@ -28,6 +28,8 @@ import type { ToolRegistry } from "../core/tool-registry.js";
 import type { WorkspaceConfig } from "./workspace-config.js";
 import { loadWorkspaceConfig, saveWorkspaceConfig } from "./workspace-config.js";
 import { loadConfig, saveGlobalConfig, DEFAULT_GUIDELINES } from "../core/config.js";
+import { ALL_TOOLS } from "../runtime/tools/index.js";
+import { getToolInputFields } from "../runtime/tools/tool-factory.js";
 import { loadDeviceContext, saveDeviceContext, generateAndSaveDeviceContext } from "../core/device-context.js";
 
 export interface ConfigRouterDeps {
@@ -56,7 +58,7 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 	// config:update — update workspace config
 	router.put("/", (req, res) => {
 		try {
-			const data = req.body as { workspaceDir?: string; defaultModel?: string; defaultProvider?: string };
+			const data = req.body as { workspaceDir?: string; defaultModel?: string; defaultProvider?: string; proxy?: any };
 
 			if (typeof data.workspaceDir === "string") {
 				const abs = resolve(data.workspaceDir);
@@ -76,6 +78,11 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 					{ defaultModel: data.defaultModel, defaultProvider: data.defaultProvider },
 					sessionDB,
 				);
+			}
+
+			if (data.proxy !== undefined) {
+				saveWorkspaceConfig({ proxy: data.proxy }, sessionDB);
+				import("../runtime/proxy-manager.js").then((m) => m.applyProxy(data.proxy)).catch(() => {});
 			}
 
 			const config = loadWorkspaceConfig(sessionDB);
@@ -214,6 +221,7 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 				mcpServerName: d.mcpServerName,
 				configSchema: d.configSchema,
 				meta: d.meta,
+				inputFields: getToolInputFields(ALL_TOOLS[d.name]),
 			}));
 			res.json(tools);
 		} catch (e) {

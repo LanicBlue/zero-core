@@ -13,6 +13,28 @@ export function createProviderRouter(providerStore: ProviderStore): Router {
 		}
 	});
 
+
+	router.get("/models", (_req, res) => {
+		try {
+			const providers = providerStore.list();
+			const models: { provider: string; id: string; name: string; contextWindow?: number; maxTokens?: number }[] = [];
+			for (const p of providers) {
+				if (!p.enabled) continue;
+				for (const m of p.models) {
+					models.push({
+						provider: p.name,
+						id: m.id,
+						name: m.name || m.id,
+						contextWindow: m.contextWindow,
+						maxTokens: m.maxTokens,
+					});
+				}
+			}
+			res.json(models);
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
+		}
+	});
 	router.get("/:id", (req, res) => {
 		try {
 			const provider = providerStore.get(req.params.id);
@@ -118,27 +140,6 @@ export function createProviderRouter(providerStore: ProviderStore): Router {
 		}
 	});
 
-	router.get("/models", (_req, res) => {
-		try {
-			const providers = providerStore.list();
-			const models: { provider: string; id: string; name: string; contextWindow?: number; maxTokens?: number }[] = [];
-			for (const p of providers) {
-				if (!p.enabled) continue;
-				for (const m of p.models) {
-					models.push({
-						provider: p.name,
-						id: m.id,
-						name: m.name || m.id,
-						contextWindow: m.contextWindow,
-						maxTokens: m.maxTokens,
-					});
-				}
-			}
-			res.json(models);
-		} catch (e) {
-			res.status(500).json({ error: (e as Error).message });
-		}
-	});
 
 	return router;
 }

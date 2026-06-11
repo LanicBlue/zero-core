@@ -191,7 +191,7 @@ export function createKbRouter(kbStore: KbStore, kbDb: KbDB, providerStore: Prov
 	router.get("/:id/chunk-count", (req, res) => {
 		try {
 			const count = kbDb.getChunkCount(req.params.id);
-			res.json({ count });
+			res.json(count);
 		} catch (e) {
 			res.status(500).json({ error: (e as Error).message });
 		}

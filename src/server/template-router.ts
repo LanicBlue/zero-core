@@ -3,28 +3,50 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 提供 Agent 模板的 Express REST API 路由（列表、创建、更新、删除）
+// 提供 Agent 模板的 Express REST API 路由（列表、创建、更新、删除、GitHub 同步）
 //
 // ## 输入
-// HTTP 请求、TemplateStore
+// HTTP 请求、TemplateStore、SessionDB (for cache)
 //
 // ## 输出
-// Express Router，处理模板 CRUD API
+// Express Router，处理模板 CRUD + GitHub 导入 API
 //
 // ## 定位
 // src/server/ — 服务层，为外部 API 提供模板管理端点
 //
 // ## 依赖
-// express、template-store.ts
+// express、template-store.ts、github-template-utils
 //
 // ## 维护规则
 // 内置模板不可删除，需在路由中保留保护逻辑
 //
 import { Router } from "express";
 import type { TemplateStore } from "./template-store.js";
+import type { SessionDB } from "./session-db.js";
+import { parseFrontmatter, extractTag, shouldSkipMd } from "../shared/github-template-utils.js";
+import { log } from "../core/logger.js";
 
-export function createTemplateRouter(templateStore: TemplateStore): Router {
+interface GithubCacheEntry {
+	sha: string;
+	items: any[];
+	sourceUrl: string;
+	timestamp: number;
+}
+
+type GithubCache = Record<string, GithubCacheEntry>;
+
+function loadGithubCache(sessionDB: SessionDB): GithubCache {
+	try { return sessionDB.getKVStore().getJson("github_cache") ?? {}; } catch { return {}; }
+}
+
+function saveGithubCache(sessionDB: SessionDB, data: GithubCache): void {
+	try { sessionDB.getKVStore().setJson("github_cache", data); }
+	catch (err) { log.warn("template-router", "github cache save failed:", (err as Error).message); }
+}
+
+export function createTemplateRouter(templateStore: TemplateStore, sessionDB: SessionDB): Router {
 	const router = Router();
+	let githubCache: GithubCache = loadGithubCache(sessionDB);
 
 	// templates:list — list all templates
 	router.get("/", (_req, res) => {
@@ -35,17 +57,132 @@ export function createTemplateRouter(templateStore: TemplateStore): Router {
 		}
 	});
 
-	// templates:get — get a single template
-	router.get("/:id", (req, res) => {
+	// templates:github-preview — preview templates from a GitHub repo
+	router.post("/github-preview", async (req, res) => {
 		try {
-			const template = templateStore.get(req.params.id);
-			if (!template) {
-				res.status(404).json({ error: "Template not found" });
+			const { url, subdir } = req.body as { url: string; subdir?: string };
+			const repoMatch = url.match(/github\.com\/([^/]+)\/([^/\s]+)/);
+			if (!repoMatch) { res.json({ error: "Invalid GitHub URL" }); return; }
+			const owner = repoMatch[1];
+			const repo = repoMatch[2].replace(/\.git$/, "");
+			const sourceUrl = "https://github.com/" + owner + "/" + repo;
+
+			const cacheKey = owner + "/" + repo + "/" + (subdir || "");
+			const cached = githubCache[cacheKey];
+			const CACHE_TTL = 24 * 60 * 60 * 1000;
+			if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+				const items = cached.items.map((item: any) => ({
+					...item,
+					exists: !!(templateStore as any).findByNameAndSource(item.name, cached.sourceUrl),
+				}));
+				res.json({ items, sourceUrl: cached.sourceUrl, cached: true });
 				return;
 			}
-			res.json(template);
-		} catch (e) {
-			res.status(500).json({ error: (e as Error).message });
+
+			const repoResp = await fetch("https://api.github.com/repos/" + owner + "/" + repo);
+			if (!repoResp.ok) { res.json({ error: "GitHub API error: " + repoResp.status }); return; }
+			const repoData = await repoResp.json() as any;
+			const branch = repoData.default_branch || "main";
+			const refResp = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/git/refs/heads/" + branch);
+			const refData = refResp.ok ? await refResp.json() as any : null;
+			const latestSha = refData?.object?.sha || "";
+
+			if (cached && cached.sha === latestSha) {
+				cached.timestamp = Date.now();
+				saveGithubCache(sessionDB, githubCache);
+				const items = cached.items.map((item: any) => ({
+					...item,
+					exists: !!(templateStore as any).findByNameAndSource(item.name, cached.sourceUrl),
+				}));
+				res.json({ items, sourceUrl: cached.sourceUrl, cached: true });
+				return;
+			}
+
+			const treeResp = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/git/trees/" + branch + "?recursive=1", {
+				headers: { "Accept": "application/vnd.github.v3+json" },
+			});
+			if (!treeResp.ok) { res.json({ error: "GitHub tree API error: " + treeResp.status }); return; }
+			const treeData = await treeResp.json() as any;
+			const allFiles: any[] = (treeData.tree || []).filter((f: any) => f.type === "blob");
+			let mdFiles = allFiles
+				.filter((f: any) => f.path.endsWith(".md"))
+				.filter((f: any) => !shouldSkipMd(f.path));
+			if (subdir) mdFiles = mdFiles.filter((f: any) => f.path.startsWith(subdir + "/"));
+
+			const CHUNK = 10;
+			const items: any[] = [];
+			for (let i = 0; i < mdFiles.length; i += CHUNK) {
+				const chunk = mdFiles.slice(i, i + CHUNK);
+				const results = await Promise.all(chunk.map(async (f: any) => {
+					try {
+						const resp = await fetch("https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + branch + "/" + f.path);
+						if (!resp.ok) return null;
+						const content = await resp.text();
+						const fm = parseFrontmatter(content);
+						if (!fm || !fm.name) return null;
+						const tag = extractTag(f.path);
+						const exists = !!(templateStore as any).findByNameAndSource(fm.name, sourceUrl);
+						const tools = fm.tools ? fm.tools.split(",").map((t: string) => t.trim()) : undefined;
+						return { name: fm.name, description: fm.description || "", icon: fm.emoji || "", tag, path: f.path, exists, color: fm.color, recommendedTools: tools };
+					} catch { return null; }
+				}));
+				for (const r of results) { if (r) items.push(r); }
+			}
+
+			githubCache[cacheKey] = { sha: latestSha, items, sourceUrl, timestamp: Date.now() };
+			saveGithubCache(sessionDB, githubCache);
+			res.json({ items, sourceUrl });
+		} catch (err: any) {
+			res.json({ error: err.message });
+		}
+	});
+
+	// templates:import-github — import selected templates from a GitHub repo
+	router.post("/import-github", async (req, res) => {
+		try {
+			const { url, selectedPaths } = req.body as { url: string; selectedPaths: string[] };
+			const repoMatch = url.match(/github\.com\/([^/]+)\/([^/\s]+)/);
+			if (!repoMatch) { res.json({ error: "Invalid GitHub URL" }); return; }
+			const owner = repoMatch[1];
+			const repo = repoMatch[2].replace(/\.git$/, "");
+			const sourceUrl = "https://github.com/" + owner + "/" + repo;
+
+			const repoResp = await fetch("https://api.github.com/repos/" + owner + "/" + repo);
+			if (!repoResp.ok) { res.json({ error: "GitHub API error: " + repoResp.status }); return; }
+			const repoData = await repoResp.json() as any;
+			const branch = repoData.default_branch || "main";
+
+			let imported = 0;
+			let updated = 0;
+
+			for (const filePath of selectedPaths) {
+				try {
+					const resp = await fetch("https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + branch + "/" + filePath);
+					if (!resp.ok) continue;
+					const content = await resp.text();
+					const fm = parseFrontmatter(content);
+					if (!fm || !fm.name) continue;
+					const body = content.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, "").trim();
+					if (!body) continue;
+					const prompt = fm.vibe ? fm.vibe + "\n\n" + body : body;
+					const tag = extractTag(filePath);
+					const tools = fm.tools ? fm.tools.split(",").map((t: string) => t.trim()) : undefined;
+					const existing = (templateStore as any).findByNameAndSource(fm.name, sourceUrl);
+					if (existing) {
+						(templateStore as any).update(existing.id, { description: fm.description || existing.description, icon: fm.emoji || existing.icon, systemPrompt: prompt, tags: [tag], color: fm.color || existing.color, recommendedTools: tools });
+						updated++;
+					} else {
+						(templateStore as any).create({ name: fm.name, description: fm.description || "", icon: fm.emoji || undefined, systemPrompt: prompt, tags: [tag], sourceUrl, color: fm.color, recommendedTools: tools, isBuiltIn: false });
+						imported++;
+					}
+				} catch { continue; }
+			}
+
+			const cacheKey = owner + "/" + repo + "/";
+			delete githubCache[cacheKey];
+			res.json({ imported, updated, total: selectedPaths.length });
+		} catch (err: any) {
+			res.json({ error: err.message });
 		}
 	});
 
@@ -73,7 +210,7 @@ export function createTemplateRouter(templateStore: TemplateStore): Router {
 	router.delete("/:id", (req, res) => {
 		try {
 			templateStore.delete(req.params.id);
-			res.json({ ok: true });
+			res.json({ success: true });
 		} catch (e) {
 			res.status(400).json({ error: (e as Error).message });
 		}
@@ -83,7 +220,7 @@ export function createTemplateRouter(templateStore: TemplateStore): Router {
 	router.post("/:id/export", (req, res) => {
 		try {
 			const json = templateStore.exportTemplate(req.params.id);
-			res.json({ json });
+			res.json(json);
 		} catch (e) {
 			res.status(400).json({ error: (e as Error).message });
 		}
@@ -101,6 +238,20 @@ export function createTemplateRouter(templateStore: TemplateStore): Router {
 			res.status(201).json(template);
 		} catch (e) {
 			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	// templates:get — get a single template (must be LAST among /:id routes)
+	router.get("/:id", (req, res) => {
+		try {
+			const template = templateStore.get(req.params.id);
+			if (!template) {
+				res.status(404).json({ error: "Template not found" });
+				return;
+			}
+			res.json(template);
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
 		}
 	});
 

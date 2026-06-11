@@ -132,10 +132,9 @@ export function createAgentRouter(deps: {
 	});
 
 	/** PUT /:agentId/sessions/switch/:sessionId — switch session */
-	router.put("/:agentId/sessions/switch/:sessionId", (req, res) => {
+	router.put("/:agentId/sessions/switch/:sessionId", async (req, res) => {
 		sessionDB.setMainSession(req.params.agentId, req.params.sessionId);
-		const agent = agentStore.get(req.params.agentId);
-		agentService.recreateLoop(req.params.agentId, req.params.sessionId, agent);
+		await agentService.activateSession(req.params.agentId, req.params.sessionId);
 		res.json({ success: true, sessionId: req.params.sessionId });
 	});
 
