@@ -93,7 +93,7 @@ export default function AppLayout() {
 						updateContextInfo(d.sessionId || key, {
 							usedTokens: d.inputTokens ?? 0,
 							contextWindow: d.contextWindow ?? 128000,
-							usage: 0,
+							usage: d.contextUsage ?? 0,
 							inputTokens: d.inputTokens ?? 0,
 							outputTokens: d.outputTokens ?? 0,
 							totalTokens: d.totalTokens ?? 0,

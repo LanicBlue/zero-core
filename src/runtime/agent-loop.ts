@@ -241,6 +241,16 @@ export class AgentLoop implements AgentRuntime {
 		return this.session.getContextWindow();
 	}
 
+	/** Get estimated token count from restored messages. */
+	getEstimatedTokens(): number {
+		return this.session.getEstimatedTokens();
+	}
+
+	/** Get context usage ratio from restored messages. */
+	getContextUsage(): number {
+		return this.session.getContextUsage();
+	}
+
 	getResult(): string {
 		return this.resultText;
 	}

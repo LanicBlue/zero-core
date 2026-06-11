@@ -453,18 +453,21 @@ export class AgentService {
 		// Refresh turns cache so incremental persists are visible
 		loop.refreshTurnsCache();
 		const messages = this.buildSessionInitMessages(agentId, resolvedSessionId, loop);
-		this.emit({
-			type: "session_init",
-			agentId,
-			sessionId: resolvedSessionId,
-			messages,
-			inputTokens: session?.inputTokens ?? 0,
-			outputTokens: session?.outputTokens ?? 0,
-			totalTokens: session?.totalTokens ?? 0,
-			contextWindow: loop.getContextWindow(),
-		});
-		return resolvedSessionId;
-	}
+			this.emit({
+				type: "session_init",
+				agentId,
+				sessionId: resolvedSessionId,
+				messages,
+				// Context info from runtime (rebuilt from DB turns), not from DB session record
+				inputTokens: loop.getEstimatedTokens(),
+				outputTokens: session?.outputTokens ?? 0,
+				totalTokens: (session?.outputTokens ?? 0) + loop.getEstimatedTokens(),
+				contextWindow: loop.getContextWindow(),
+				contextUsage: loop.getContextUsage(),
+			});
+			return resolvedSessionId;
+		}
+
 	private buildSessionInitMessages(agentId: string, sessionId: string, loop: AgentLoop): any[] {
 		// Read from runtime, NOT from DB — runtime is the single source of truth for UI.
 		const turns = loop.getSessionTurns();
