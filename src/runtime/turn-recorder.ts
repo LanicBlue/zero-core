@@ -88,6 +88,7 @@ export class TurnRecorder {
 			while (t.charCodeAt(t.length - 1) === 10) t = t.substring(0, t.length - 1);
 			if (t) this.blocks.push({ type: "thinking", text: t });
 			this.currentStepThinking = "";
+		this.markStepStart();
 		}
 		if (this.currentStepText) {
 			for (const b of parseThinkingTags(this.currentStepText)) this.blocks.push(b);
@@ -96,6 +97,28 @@ export class TurnRecorder {
 	}
 
 	// -----------------------------------------------------------------------
+	// Step boundary tracking for per-step usage
+	private stepStartIndex = 0;
+
+	/** Mark the start of a new step (called on sealStep). */
+	markStepStart(): void {
+		this.stepStartIndex = this.blocks.length;
+	}
+
+	/** Attach per-step token usage to the last block of the current step. */
+	addStepUsage(usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void {
+		if (this.blocks.length === 0) return;
+		// Find the last block from this step (tool or text/thinking)
+		const lastBlock = this.blocks[this.blocks.length - 1];
+		if (!lastBlock.stepUsage) {
+			lastBlock.stepUsage = {
+				inputTokens: usage.inputTokens ?? 0,
+				outputTokens: usage.outputTokens ?? 0,
+				totalTokens: usage.totalTokens ?? 0,
+			};
+		}
+	}
+
 	// Persistence
 	// -----------------------------------------------------------------------
 

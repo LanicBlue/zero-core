@@ -526,6 +526,14 @@ export class AgentLoop implements AgentRuntime {
 								reasoningTokens: (stepUsage as any).reasoningTokens,
 							},
 						});
+					// Attach per-step usage to recorder block and persist
+					this.recorder.sealStep();
+					this.recorder.addStepUsage({
+						inputTokens: stepUsage.inputTokens ?? 0,
+						outputTokens: stepUsage.outputTokens ?? 0,
+						totalTokens: (stepUsage.inputTokens ?? 0) + (stepUsage.outputTokens ?? 0),
+					});
+					this.persistBlocksSnapshot();
 					}
 					break;
 				}

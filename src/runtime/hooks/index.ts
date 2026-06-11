@@ -6,9 +6,12 @@
 import { registerCompressionHooks } from "./compression-hooks.js";
 import { registerMemoryHooks } from "./memory-hooks.js";
 import { registerRagHooks } from "./rag-hooks.js";
+import { registerTurnHooks } from "./turn-hooks.js";
+import type { ISessionStore } from "../session-store-interface.js";
 import { log } from "../../core/logger.js";
 
-export function registerAllRuntimeHooks(): void {
+export function registerAllRuntimeHooks(db?: ISessionStore): void {
+	if (db) registerTurnHooks(db);
 	registerCompressionHooks();
 	registerMemoryHooks();
 	registerRagHooks();

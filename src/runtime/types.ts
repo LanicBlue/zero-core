@@ -183,6 +183,9 @@ export interface SessionInitEvent {
 	agentId?: string;
 	sessionId?: string;
 	messages: SessionInitMessage[];
+	inputTokens?: number;
+	outputTokens?: number;
+	totalTokens?: number;
 }
 
 export type StreamEvent =

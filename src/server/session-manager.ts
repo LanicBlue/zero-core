@@ -144,24 +144,6 @@ export class SessionManager {
 				m.totalTurns++;
 			}
 			this.turnStartAt.delete(sessionId);
-
-			// Persist accumulated token usage to DB
-			if (this.db) {
-				const m = this.metrics.get(sessionId);
-				if (m) {
-					try {
-						this.db.updateSessionUsage(sessionId, {
-							inputTokens: m.inputTokens,
-							outputTokens: m.outputTokens,
-							totalTokens: m.inputTokens + m.outputTokens,
-							cacheReadTokens: m.cacheReadTokens,
-							cacheWriteTokens: m.cacheWriteTokens,
-							reasoningTokens: m.reasoningTokens,
-							estimatedCostUsd: 0,
-						});
-					} catch (err) { log.warn("session", "persist metrics failed:", (err as Error).message); }
-				}
-			}
 		}
 	}
 
@@ -264,7 +246,23 @@ export class SessionManager {
 
 	recordTokenUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens?: number; cacheWriteTokens?: number; reasoningTokens?: number }): void {
 		const m = this.metrics.get(sessionId);
-		if (m) m.recordTokenUsage(usage);
+		if (m) {
+			m.recordTokenUsage(usage);
+			// Persist to DB on every API call, not just at turn end
+			if (this.db) {
+				try {
+					this.db.updateSessionUsage(sessionId, {
+						inputTokens: m.inputTokens,
+						outputTokens: m.outputTokens,
+						totalTokens: m.inputTokens + m.outputTokens,
+						cacheReadTokens: m.cacheReadTokens,
+						cacheWriteTokens: m.cacheWriteTokens,
+						reasoningTokens: m.reasoningTokens,
+						estimatedCostUsd: 0,
+					});
+				} catch (err) { log.warn("session", "persist usage failed:", (err as Error).message); }
+			}
+		}
 	}
 
 	// ─── Metrics queries ────────────────────────────────────────
