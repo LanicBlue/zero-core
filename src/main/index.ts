@@ -183,6 +183,10 @@ if (process.platform === "win32") {
 	try { require("child_process").execSync("chcp 65001", { stdio: "ignore" }); } catch {}
 }
 
+
+// Fix GPU disk cache corruption (Electron/Chromium on Windows)
+// Prevents "Unable to move the cache: Access Denied" errors
+app.commandLine.appendSwitch("disable-gpu-shader-disk-cache");
 log("App starting...");
 app.whenReady().then(async () => {
 	log("app.whenReady fired");

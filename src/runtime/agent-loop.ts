@@ -236,6 +236,11 @@ export class AgentLoop implements AgentRuntime {
 		this.session.refreshTurnsCache();
 	}
 
+	/** Get the context window for the current session model. */
+	getContextWindow(): number {
+		return this.session.getContextWindow();
+	}
+
 	getResult(): string {
 		return this.resultText;
 	}

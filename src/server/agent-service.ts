@@ -461,6 +461,7 @@ export class AgentService {
 			inputTokens: session?.inputTokens ?? 0,
 			outputTokens: session?.outputTokens ?? 0,
 			totalTokens: session?.totalTokens ?? 0,
+			contextWindow: loop.getContextWindow(),
 		});
 		return resolvedSessionId;
 	}

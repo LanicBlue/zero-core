@@ -82,7 +82,25 @@ export default function AppLayout() {
 			typeof v === "string" ? v : JSON.stringify(v, null, 2);
 
 		const handlers: Record<string, (data: any, key: string) => void> = {
-			session_init: (d, key) => initSession(d.sessionId || key, { messages: d.messages || [] }),
+			session_init: (d, key) => {
+					const sid = d.sessionId || key;
+					// Don't overwrite a session that is actively streaming.
+					// Real-time events have already been keeping the store up to date.
+					const state = useChatStore.getState();
+					if (state.streamingSessions.has(sid)) return;
+					initSession(sid, { messages: d.messages || [] });
+					// Restore persisted token usage
+					if (d.inputTokens > 0 || d.outputTokens > 0) {
+						updateContextInfo(d.sessionId || key, {
+							usedTokens: d.inputTokens ?? 0,
+							contextWindow: d.contextWindow ?? 128000,
+							usage: 0,
+							inputTokens: d.inputTokens ?? 0,
+							outputTokens: d.outputTokens ?? 0,
+							totalTokens: d.totalTokens ?? 0,
+						});
+					}
+				},
 			text_delta: (d, key) => updateAssistantText(key, d.text),
 			message_end: (d, key) => {
 				if (!d.contextWindow) return;
