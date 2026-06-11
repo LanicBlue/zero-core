@@ -1,0 +1,63 @@
+import { test, expect } from "@playwright/test";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { launchApp, waitForAppReady } from "./helpers/test-app.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const FIXTURE = resolve(__dirname, "fixtures/simple-response.json");
+
+test.describe("Skills page", () => {
+	let cleanup: () => Promise<void>;
+	let window: Awaited<ReturnType<typeof launchApp>>["window"];
+
+	test.beforeEach(async () => {
+		const app = await launchApp(FIXTURE);
+		window = app.window;
+		cleanup = app.cleanup;
+		await waitForAppReady(window);
+	});
+
+	test.afterEach(async () => {
+		await cleanup();
+	});
+
+	test("skills icon is visible in sidebar after MCP", async () => {
+		const sidebar = window.locator(".icon-sidebar-top");
+		await expect(sidebar).toBeVisible();
+
+		const buttons = sidebar.locator("button");
+		const count = await buttons.count();
+
+		// Find the MCP button and verify Skills button comes after it
+		let mcpIdx = -1;
+		let skillsIdx = -1;
+		for (let i = 0; i < count; i++) {
+			const title = await buttons.nth(i).getAttribute("title");
+			if (title === "MCP Servers") mcpIdx = i;
+			if (title === "Skills") skillsIdx = i;
+		}
+		expect(mcpIdx).toBeGreaterThanOrEqual(0);
+		expect(skillsIdx).toBeGreaterThanOrEqual(0);
+		expect(skillsIdx).toBeGreaterThan(mcpIdx);
+	});
+
+	test("clicking Skills icon shows skills page", async () => {
+		const skillsBtn = window.locator(".icon-sidebar-top button[title='Skills']");
+		await skillsBtn.click();
+
+		const page = window.locator(".skills-page");
+		await expect(page).toBeVisible();
+
+		const header = page.locator("h2");
+		await expect(header).toHaveText("Skills");
+	});
+
+	test("skills page shows refresh button", async () => {
+		const skillsBtn = window.locator(".icon-sidebar-top button[title='Skills']");
+		await skillsBtn.click();
+
+		const refreshBtn = window.locator(".skills-page .btn-ghost");
+		await expect(refreshBtn).toBeVisible();
+	});
+});

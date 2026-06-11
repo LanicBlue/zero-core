@@ -1,0 +1,11 @@
+{
+  "chunks": [
+    { "type": "text", "text": "Part one. " },
+    { "type": "text", "text": "Part two. " },
+    { "type": "text", "text": "Part three. " },
+    { "type": "text", "text": "Final." },
+    { "type": "finish", "finishReason": "stop" }
+  ],
+  "usage": { "inputTokens": 5, "outputTokens": 8, "totalTokens": 13 },
+  "delayMs": 200
+}

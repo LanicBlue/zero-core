@@ -1,0 +1,8 @@
+{
+  "chunks": [
+    { "type": "text", "text": "Model info test response." },
+    { "type": "finish", "finishReason": "stop" }
+  ],
+  "usage": { "inputTokens": 5, "outputTokens": 8, "totalTokens": 13 },
+  "delayMs": 10
+}
