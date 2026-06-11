@@ -130,15 +130,23 @@ const UNIX_ALTERNATIVES: Record<string, string> = {
 };
 
 function preprocessCommand(command: string, shellType: string): string {
-	if (shellType === "bash") return command;
+	let result = command;
+
+	if (shellType === "bash") return result;
+
+	// Fix unquoted Windows paths with spaces: C:\Users\Some Dir\file → "C:\Users\Some Dir\file"
+	result = result.replace(
+		/(?:^|[\s=])([A-Za-z]:\\(?:[^\s"|']+\s+[^\s"|']*)+)(?:[\s]|$)/g,
+		(match, path: string) => match.replace(path, `"${path}"`),
+	);
 
 	// cmd.exe: translate common commands
-	const firstWord = command.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+	const firstWord = result.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
 	if (CMD_TRANSLATIONS[firstWord]) {
-		const rest = command.trim().substring(firstWord.length);
+		const rest = result.trim().substring(firstWord.length);
 		return CMD_TRANSLATIONS[firstWord] + rest;
 	}
-	return command;
+	return result;
 }
 
 function checkUnixCommand(command: string, shellType: string): string | null {
@@ -181,7 +189,7 @@ function buildPrompt(): string {
 	const lines: string[] = [
 		buildDescription(),
 		"",
-		"The working directory persists between commands, but shell state does not. The shell environment is initialized from the user's profile.",
+		"Each Shell call runs in a separate subprocess — `cd` does NOT persist across calls. The working directory is set to the workspace root on every invocation. Always use absolute paths, or chain `cd && command` in a single call.",
 		"",
 		"IMPORTANT: Avoid using this tool to run `find`, `ls`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, " +
 		"unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. " +
@@ -210,7 +218,7 @@ function buildPrompt(): string {
 		"# Instructions",
 		"- If your command will create new directories or files, first run `ls` to verify the parent directory exists.",
 		"- Always quote file paths that contain spaces with double quotes.",
-		"- Try to maintain your current working directory by using absolute paths. You may use `cd` if the User explicitly requests it.",
+		"- Always use absolute paths. Do NOT rely on `cd` to persist — each call starts fresh from the workspace root. Use `cd dir && command` to run in a specific directory within a single call.",
 		"- You may specify an optional timeout in seconds. By default, commands have no timeout unless configured.",
 		"- Use background=true for long-running commands (downloads, installs) - returns a task_id immediately. Use Wait or TaskStatus to check progress.",
 		"- When issuing multiple commands: if independent, make multiple Shell calls in parallel; if dependent, chain with `&&`. Use `;` only when you don't care if earlier commands fail.",
@@ -268,7 +276,8 @@ export const bashTool = buildTool({
 		}
 
 		// Foreground mode
-		const execOpts: any = { cwd: ctx.workingDir, maxBuffer: EXEC_MAX_BUFFER_BYTES };
+		const cwd = ctx.workingDir ?? ".";
+		const execOpts: any = { cwd, maxBuffer: EXEC_MAX_BUFFER_BYTES };
 		if (timeout) execOpts.timeout = timeout;
 		const t0 = Date.now();
 
@@ -279,8 +288,7 @@ export const bashTool = buildTool({
 			const stderr = (result.stderr ?? "").trim();
 			let out = "";
 			if (stdout) out += stdout;
-			if (stderr) out += (out ? "\n" : "") + "[stderr] " + stderr;
-			if (!out) out = "(no output)";
+			if (stderr) out += "\n[stderr] " + stderr;
 			out += `\n[Completed in ${elapsed}s]`;
 			return out;
 		} catch (err: any) {

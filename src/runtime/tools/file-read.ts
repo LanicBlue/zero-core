@@ -27,7 +27,7 @@
 //
 import { z } from "zod";
 import { readFile, stat } from "node:fs/promises";
-import { resolve, basename } from "node:path";
+import { resolve, basename, dirname, normalize } from "node:path";
 import { buildTool } from "./tool-factory.js";
 import { extractOutline } from "./outline/index.js";
 import { renderOutline } from "./outline/renderer.js";
@@ -44,8 +44,15 @@ import {
 
 function resolvePath(path: string, workingDir: string | undefined, restrictToWorkspace: boolean): string | { error: string } {
 	if (!workingDir) return path;
-	const resolved = resolve(workingDir, path);
-	if (restrictToWorkspace && !resolved.startsWith(resolve(workingDir))) {
+
+	// Normalize: trim whitespace, strip surrounding quotes
+	let p = path.trim();
+	if ((p.startsWith('"') && p.endsWith('"')) || (p.startsWith("'") && p.endsWith("'"))) {
+		p = p.slice(1, -1);
+	}
+
+	const resolved = normalize(resolve(workingDir, p));
+	if (restrictToWorkspace && !resolved.startsWith(normalize(resolve(workingDir)))) {
 		return { error: `Access denied: path outside workspace (${path})` };
 	}
 	return resolved;
@@ -161,16 +168,24 @@ export const fileReadTool = buildTool({
 			return result;
 		} catch (err: any) {
 			if (err.code === "ENOENT") {
+				const parentDir = dirname(resolved as string);
+				let parentExists = false;
+				try { parentExists = (await stat(parentDir)).isDirectory(); } catch { /* ignore */ }
+				let msg = `Error: File not found: ${path}\n  Resolved: ${resolved}`;
+				if (!parentExists) {
+					msg += `\n  Parent directory does not exist: ${parentDir}`;
+				}
 				const suggestions = await suggestSimilarFiles(resolved as string, ctx.workingDir);
-				return `Error: File not found: ${path}${suggestions ? "\n\n" + suggestions : ""}`;
+				if (suggestions) msg += "\n\n" + suggestions;
+				return msg;
 			}
 			if (err.code === "EACCES") {
-				return `Error: Permission denied: ${path}`;
+				return `Error: Permission denied: ${path}\n  Resolved: ${resolved}`;
 			}
 			if (err.code === "EISDIR") {
 				return `Error: ${path} is a directory, not a file. Use Glob to list directory contents.`;
 			}
-			return `Error reading file: ${err.message}`;
+			return `Error reading file: ${err.message}\n  Path: ${path}\n  Resolved: ${resolved}`;
 		}
 	},
 });

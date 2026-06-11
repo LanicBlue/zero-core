@@ -43,7 +43,9 @@ function buildEnvironmentBlock(workspaceDir?: string): string {
 		`CPU: ${os.cpus()[0]?.model} (${os.cpus().length} cores) | RAM: ${Math.round(os.totalmem() / 1024 / 1024 / 1024)} GB`,
 	];
 	if (workspaceDir) {
-		lines.push(`Working directory: ${workspaceDir}`);
+		const cwd = workspaceDir.replace(/\\/g, "/");
+		lines.push(`Working directory: ${cwd}`);
+		lines.push("All tools (Shell, Read, Write, Edit, Glob, Grep) default to this directory. Shell `cd` does NOT persist across calls - always use absolute paths or chain `cd dir && command` in a single call.");
 	}
 	return lines.join("\n");
 }
