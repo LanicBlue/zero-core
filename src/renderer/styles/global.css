@@ -422,6 +422,13 @@ body {
 }
 .code-block-expand:hover { background: var(--bg-canvas); }
 
+/* ─── Mermaid ─────────────────────────────────────── */
+
+.mermaid-content { padding: 12px; overflow-x: auto; text-align: center; }
+.mermaid-content svg { max-width: 100%; height: auto; }
+.mermaid-loading { padding: 12px; color: var(--text-muted, #888); }
+.mermaid-error { padding: 8px 12px; color: var(--danger, #f85149); font-size: 12px; }
+
 /* ─── Chat Agent Select ───────────────────────────── */
 
 .chat-agent-select {
