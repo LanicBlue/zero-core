@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentLoop 循环解剖图</title>
+<style>
+:root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--blue:#58a6ff;--green:#3fb950;--purple:#bc8cff;--orange:#d29922;--red:#f85149;--cyan:#39d2c0;--dim:#484f58;--yellow:#e3b341}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px 24px;line-height:1.6}
+h1{text-align:center;font-size:22px;margin-bottom:4px}
+.sub{text-align:center;color:var(--muted);font-size:13px;margin-bottom:28px}
+
+/* ─── Loop container ─── */
+.loop-wrap{max-width:1100px;margin:0 auto;position:relative}
+
+.loop-spine{position:relative;display:flex;flex-direction:column;align-items:center;gap:0}
+
+.loop-arrow{position:absolute;left:50%;top:0;bottom:0;width:3px;background:linear-gradient(to bottom,var(--blue),var(--purple),var(--cyan),var(--blue));transform:translateX(-50%);border-radius:2px;opacity:.15;z-index:0}
+
+/* ─── Stage node ─── */
+.stage{position:relative;width:100%;display:flex;align-items:flex-start;z-index:1;margin:2px 0}
+.stage:first-child{margin-top:0}
+
+.stage-center{flex:0 0 220px;display:flex;align-items:center;justify-content:flex-end;padding-right:0}
+
+.node{
+  position:relative;
+  min-width:200px;
+  padding:10px 16px;
+  border-radius:10px;
+  font-size:13px;font-weight:600;
+  text-align:center;
+  z-index:2;
+  transition:transform .15s;
+}
+.node:hover{transform:scale(1.03)}
+.node.core{background:linear-gradient(135deg,#1a3a5c,#1a2744);border:1.5px solid var(--blue);color:var(--blue)}
+.node.hook-point{background:var(--surface);border:1.5px solid var(--border);color:var(--text)}
+.node.hook-point::before{
+  content:'';position:absolute;left:-10px;top:50%;transform:translateY(-50%);
+  width:8px;height:8px;border-radius:50%;background:var(--green);border:2px solid var(--surface);z-index:3
+}
+.node.error-path{background:linear-gradient(135deg,#3d1f1f,#2d1a1a);border:1.5px solid var(--red);color:var(--red)}
+.node.error-path::before{
+  content:'';position:absolute;left:-10px;top:50%;transform:translateY(-50%);
+  width:8px;height:8px;border-radius:50%;background:var(--red);border:2px solid var(--surface);z-index:3
+}
+
+.node-label{font-size:12px;font-weight:700;letter-spacing:.3px}
+.node-sub{font-size:10.5px;color:var(--muted);margin-top:2px;font-weight:400}
+
+/* ─── Connector dots on spine ─── */
+.spine-dot{
+  flex:0 0 3px;width:3px;min-height:30px;
+  background:var(--border);border-radius:2px;
+  margin:0 auto;position:relative;z-index:1
+}
+.spine-dot.active{background:var(--green);box-shadow:0 0 6px rgba(63,185,80,.3)}
+
+/* ─── Hook branches ─── */
+.branches{flex:1;display:flex;flex-direction:column;gap:6px;padding-left:24px;min-width:0}
+.branches-left{flex:1;display:flex;flex-direction:column;gap:6px;padding-right:24px;align-items:flex-end;min-width:0}
+
+.branch{
+  display:flex;align-items:center;gap:8px;
+  font-size:11.5px;padding:6px 12px;
+  border-radius:8px;
+  transition:background .15s,transform .15s;
+  max-width:420px;
+}
+.branch:hover{transform:translateX(3px)}
+.branch.active{background:rgba(63,185,80,.08);border-left:2px solid var(--green)}
+.branch.active:hover{background:rgba(63,185,80,.14)}
+.branch.reserved{background:rgba(72,79,88,.06);border-left:2px solid var(--dim);opacity:.5}
+.branch.reserved:hover{opacity:.7}
+.branch.side-effect{background:rgba(210,153,34,.06);border-left:2px solid var(--orange)}
+.branch.side-effect:hover{background:rgba(210,153,34,.12)}
+
+.b-icon{font-size:13px;flex-shrink:0}
+.b-name{font-family:'SF Mono',Consolas,monospace;color:var(--cyan);font-weight:600;white-space:nowrap}
+.b-desc{color:var(--muted);font-size:10.5px}
+.b-tag{font-size:9px;padding:1px 5px;border-radius:4px;font-weight:600;white-space:nowrap}
+.b-tag-hook{background:rgba(63,185,80,.12);color:var(--green)}
+.b-tag-side{background:rgba(210,153,34,.12);color:var(--orange)}
+.b-tag-block{background:rgba(248,81,73,.12);color:var(--red)}
+.b-tag-ret{background:rgba(88,166,255,.12);color:var(--blue)}
+.b-tag-new{background:rgba(63,185,80,.2);color:var(--green)}
+
+/* ─── Loop-back arrow ─── */
+.loop-back{
+  position:relative;
+  display:flex;align-items:center;justify-content:center;
+  padding:16px 0 8px;
+}
+.loop-back-label{
+  font-size:11px;color:var(--purple);font-weight:600;letter-spacing:.5px;
+  background:var(--surface);padding:4px 16px;border-radius:20px;
+  border:1px solid rgba(188,140,255,.2);
+}
+
+/* ─── Phase separator ─── */
+.phase-sep{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 0 4px;
+  width:100%;
+}
+.phase-sep-line{flex:1;height:1px;background:var(--border)}
+.phase-sep-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);font-weight:600;white-space:nowrap}
+
+/* ─── Legend ─── */
+.legend{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin:24px 0 16px;font-size:11.5px;color:var(--muted)}
+.li{display:flex;align-items:center;gap:5px}
+
+/* ─── Inner loop bracket ─── */
+.inner-loop{
+  margin:4px 0 4px 240px;
+  padding:8px 0 8px 20px;
+  border-left:2px dotted rgba(63,185,80,.3);
+  width:calc(100% - 240px);
+}
+.inner-loop-label{font-size:10px;color:var(--green);font-weight:600;letter-spacing:.5px;margin-bottom:6px;opacity:.7}
+
+/* ─── Data flow labels ─── */
+.flow-tag{
+  display:inline-block;
+  font-size:9.5px;font-family:'SF Mono',Consolas,monospace;
+  padding:2px 7px;border-radius:4px;
+  background:rgba(88,166,255,.08);color:var(--blue);
+  margin:1px 2px;
+}
+
+/* ─── Responsive ─── */
+@media(max-width:768px){
+  .stage{flex-direction:column}
+  .stage-center{flex:0 0 auto;justify-content:center;padding:0}
+  .branches,.branches-left{padding:8px 0 0}
+  .inner-loop{margin:4px 0 4px 20px;width:calc(100% - 20px)}
+  .node.hook-point::before,.node.error-path::before{display:none}
+}
+</style>
+</head>
+<body>
+
+<h1>🔄 AgentLoop 循环解剖图</h1>
+<p class="sub">Hooks 与功能如何挂在循环的每个阶段 · 内联提取后的最终形态</p>
+
+<div class="legend">
+  <div class="li"><div style="width:10px;height:10px;border-radius:50%;background:var(--blue);border:1.5px solid var(--blue)"></div> Loop 核心节点</div>
+  <div class="li"><div style="width:10px;height:10px;border-radius:50%;background:var(--green);border:1.5px solid var(--green)"></div> Hook 挂载点（已激活）</div>
+  <div class="li"><div style="width:10px;height:10px;border-radius:50%;background:var(--red);border:1.5px solid var(--red)"></div> 异常路径</div>
+  <div class="li"><span class="b-tag b-tag-hook">hook</span> 返回值注入</div>
+  <div class="li"><span class="b-tag b-tag-side">副作用</span> 写入/修改</div>
+  <div class="li"><span class="b-tag b-tag-block">🛡️</span> 可阻断</div>
+</div>
+
+<div class="loop-wrap">
+<div class="loop-spine">
+
+<!-- ═══ PHASE: TURN START ═══ -->
+<div class="phase-sep"><div class="phase-sep-line"></div><div class="phase-sep-label">Turn 启动</div><div class="phase-sep-line"></div></div>
+
+<!-- UserPromptSubmit -->
+<div class="stage">
+  <div class="stage-center">
+    <div class="node hook-point">
+      <div class="node-label">UserPromptSubmit</div>
+      <div class="node-sub">addMessage 之前</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch reserved"><span class="b-icon">📄</span><span class="b-name">预留</span><span class="b-desc">— 用户输入审计、内容过滤</span><span class="b-tag b-tag-block">可阻断</span><span class="b-tag b-tag-ret">modifiedMessage</span></div>
+  </div>
+</div>
+
+<div class="spine-dot active"></div>
+
+<!-- SessionStart -->
+<div class="stage">
+  <div class="stage-center">
+    <div class="node hook-point">
+      <div class="node-label">SessionStart</div>
+      <div class="node-sub">user turn 写入后</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch active"><span class="b-icon">💾</span><span class="b-name">turn-hooks</span><span class="b-desc">— user turn → step row 写入 DB</span><span class="b-tag b-tag-side">副作用</span></div>
+    <div class="branch active"><span class="b-icon">🔒</span><span class="b-name">durable-hooks</span><span class="b-desc">— turn_state 检查点</span><span class="b-tag b-tag-side">副作用</span></div>
+  </div>
+</div>
+
+<div class="spine-dot active"></div>
+
+<!-- ═══ PHASE: LLM CALL ═══ -->
+<div class="phase-sep"><div class="phase-sep-line"></div><div class="phase-sep-label">LLM 调用（executeStream 核心）</div><div class="phase-sep-line"></div></div>
+
+<!-- PreLLMCall — the big aggregation point -->
+<div class="stage">
+  <div class="stage-center">
+    <div class="node hook-point">
+      <div class="node-label">PreLLMCall</div>
+      <div class="node-sub">唯一聚合点 · 4 handlers</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch active"><span class="b-icon">🔔</span><span class="b-name">notification-hooks</span><span class="b-desc">— 后台任务通知 → session.addMessage() + triggerHooks("Notification")</span><span class="b-tag b-tag-new">🆕</span><span class="b-tag b-tag-side">副作用</span></div>
+    <div class="branch active"><span class="b-icon">🧠</span><span class="b-name">memory-hooks</span><span class="b-desc">— FTS5 记忆检索</span><span class="b-tag b-tag-hook">return</span><span class="b-tag b-tag-ret">memoryContext</span></div>
+    <div class="branch active"><span class="b-icon">📚</span><span class="b-name">rag-hooks</span><span class="b-desc">— 知识库 RAG</span><span class="b-tag b-tag-hook">return</span><span class="b-tag b-tag-ret">ragContext</span></div>
+    <div class="branch active"><span class="b-icon">⚡</span><span class="b-name">provider-options-hooks</span><span class="b-desc">— thinking budget</span><span class="b-tag b-tag-new">🆕</span><span class="b-tag b-tag-hook">return</span><span class="b-tag b-tag-ret">providerOptions</span></div>
+  </div>
+</div>
+
+<div class="spine-dot active"></div>
+
+<!-- Core: buildContext -->
+<div class="stage">
+  <div class="stage-center">
+    <div class="node core">
+      <div class="node-label">buildContextMessage</div>
+      <div class="node-sub">memoryContext + ragContext → 上下文</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div style="padding:4px 12px;font-size:10.5px;color:var(--muted)">↑ 从 preResult 读取 <span class="flow-tag">memoryContext</span> <span class="flow-tag">ragContext</span></div>
+  </div>
+</div>
+
+<div class="spine-dot"></div>
+
+<!-- Core: streamText -->
+<div class="stage">
+  <div class="stage-center">
+    <div class="node core">
+      <div class="node-label">streamText()</div>
+      <div class="node-sub">Vercel AI SDK · providerOptions 注入</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div style="padding:4px 12px;font-size:10.5px;color:var(--muted)">↑ 从 preResult 读取 <span class="flow-tag">providerOptions</span>（thinking budget）</div>
+  </div>
+</div>
+
+<div class="spine-dot active"></div>
+
+<!-- ═══ INNER LOOP: TOOL EXECUTION ═══ -->
+<div class="inner-loop">
+<div class="inner-loop-label">↻ 工具执行循环（processStreamEvents）</div>
+
+<!-- text-delta -->
+<div class="stage" style="margin:2px 0">
+  <div class="stage-center">
+    <div class="node core" style="min-width:160px;background:var(--surface);border-color:var(--dim);color:var(--muted)">
+      <div class="node-label" style="font-size:11px">text-delta</div>
+      <div class="node-sub">流式文本输出</div>
+    </div>
+  </div>
+  <div class="branches"><div style="padding:4px 12px;font-size:10.5px;color:var(--dim)">recorder.addTextDelta → emit text_delta</div></div>
+</div>
+
+<!-- reasoning-delta -->
+<div class="stage" style="margin:2px 0">
+  <div class="stage-center">
+    <div class="node core" style="min-width:160px;background:var(--surface);border-color:var(--dim);color:var(--muted)">
+      <div class="node-label" style="font-size:11px">reasoning-delta</div>
+      <div class="node-sub">thinking 输出</div>
+    </div>
+  </div>
+  <div class="branches"><div style="padding:4px 12px;font-size:10.5px;color:var(--dim)">recorder.addThinkingDelta → emit thinking_delta</div></div>
+</div>
+
+<div class="spine-dot active" style="margin:4px auto"></div>
+
+<!-- PreToolUse -->
+<div class="stage" style="margin:4px 0">
+  <div class="stage-center">
+    <div class="node hook-point" style="min-width:160px">
+      <div class="node-label">PreToolUse</div>
+      <div class="node-sub">工具执行前</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch active"><span class="b-icon">⏱️</span><span class="b-name">tool-exec-hooks</span><span class="b-desc">— 记录开始时间 + args</span><span class="b-tag b-tag-side">副作用</span></div>
+    <div class="branch reserved"><span class="b-icon">🔒</span><span class="b-name">预留</span><span class="b-desc">— RateLimiter 限流</span></div>
+    <div style="padding:2px 12px;font-size:10px;color:var(--muted)">支持 <span class="b-tag b-tag-block">可阻断</span> <span class="b-tag b-tag-ret">modifiedArgs</span></div>
+  </div>
+</div>
+
+<div class="spine-dot" style="margin:4px auto"></div>
+
+<!-- PostToolUse -->
+<div class="stage" style="margin:4px 0">
+  <div class="stage-center">
+    <div class="node hook-point" style="min-width:160px">
+      <div class="node-label">PostToolUse</div>
+      <div class="node-sub">工具执行成功</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch active"><span class="b-icon">⏱️</span><span class="b-name">tool-exec-hooks</span><span class="b-desc">— 记录耗时 + 结果</span><span class="b-tag b-tag-side">副作用</span></div>
+    <div class="branch active"><span class="b-icon">🔒</span><span class="b-name">durable-hooks</span><span class="b-desc">— turn_state phase</span><span class="b-tag b-tag-side">副作用</span></div>
+    <div style="padding:2px 12px;font-size:10px;color:var(--muted)">支持 <span class="b-tag b-tag-ret">modifiedResult</span> <span class="b-tag b-tag-ret">modifiedIsError</span></div>
+  </div>
+</div>
+
+<!-- PostToolUseFailure -->
+<div class="stage" style="margin:4px 0">
+  <div class="stage-center">
+    <div class="node hook-point" style="min-width:160px">
+      <div class="node-label">PostToolUseFailure</div>
+      <div class="node-sub">工具执行失败</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch active"><span class="b-icon">⏱️</span><span class="b-name">tool-exec-hooks</span><span class="b-desc">— 记录错误 + 耗时</span><span class="b-tag b-tag-side">副作用</span></div>
+    <div style="padding:2px 12px;font-size:10px;color:var(--muted)">支持 <span class="b-tag b-tag-ret">modifiedError</span></div>
+  </div>
+</div>
+
+<div class="spine-dot active" style="margin:4px auto"></div>
+
+<!-- finish-step -->
+<div class="stage" style="margin:2px 0">
+  <div class="stage-center">
+    <div class="node hook-point" style="min-width:160px">
+      <div class="node-label">PostStep</div>
+      <div class="node-sub">finish-step + finalizeStream</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch active"><span class="b-icon">💾</span><span class="b-name">turn-hooks</span><span class="b-desc">— 增量持久化 step 到 DB</span><span class="b-tag b-tag-side">副作用</span></div>
+    <div style="padding:2px 12px;font-size:10px;color:var(--muted)">session.calibrateFromActualUsage → token 校准</div>
+  </div>
+</div>
+
+</div><!-- /inner-loop -->
+
+<!-- ═══ PHASE: TURN END ═══ -->
+<div class="phase-sep"><div class="phase-sep-line"></div><div class="phase-sep-label">Turn 结束</div><div class="phase-sep-line"></div></div>
+
+<!-- PostTurnComplete -->
+<div class="stage">
+  <div class="stage-center">
+    <div class="node hook-point">
+      <div class="node-label">PostTurnComplete</div>
+      <div class="node-sub">turn 完成后</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch active"><span class="b-icon">🗜️</span><span class="b-name">compression-hooks</span><span class="b-desc">— L1 摘要 + L2 记忆提取 + turns 同步</span><span class="b-tag b-tag-side">副作用</span></div>
+  </div>
+</div>
+
+<div class="spine-dot active"></div>
+
+<!-- Stop -->
+<div class="stage">
+  <div class="stage-center">
+    <div class="node hook-point">
+      <div class="node-label">Stop</div>
+      <div class="node-sub">finally 块</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch active"><span class="b-icon">💾</span><span class="b-name">turn-hooks</span><span class="b-desc">— 安全网确保 step 落盘</span><span class="b-tag b-tag-side">副作用</span></div>
+    <div class="branch active"><span class="b-icon">🔒</span><span class="b-name">durable-hooks</span><span class="b-desc">— turn_state 检查点完成</span><span class="b-tag b-tag-side">副作用</span></div>
+  </div>
+</div>
+
+<div class="spine-dot active"></div>
+
+<!-- SessionEnd -->
+<div class="stage">
+  <div class="stage-center">
+    <div class="node hook-point">
+      <div class="node-label">SessionEnd</div>
+      <div class="node-sub">会话清理</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch reserved"><span class="b-icon">📊</span><span class="b-name">预留</span><span class="b-desc">— 会话级清理、统计上报</span></div>
+  </div>
+</div>
+
+<!-- ═══ ERROR PATH (parallel) ═══ -->
+<div class="phase-sep"><div class="phase-sep-line" style="background:var(--red)"></div><div class="phase-sep-label" style="color:var(--red)">异常路径</div><div class="phase-sep-line" style="background:var(--red)"></div></div>
+
+<!-- StopFailure -->
+<div class="stage">
+  <div class="stage-center">
+    <div class="node error-path">
+      <div class="node-label">StopFailure</div>
+      <div class="node-sub">重试耗尽</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch active" style="border-left-color:var(--red);background:rgba(248,81,73,.06)"><span class="b-icon">💾</span><span class="b-name">turn-hooks</span><span class="b-desc">— 异常时保存已有 blocks</span><span class="b-tag b-tag-side">副作用</span></div>
+    <div class="branch active" style="border-left-color:var(--red);background:rgba(248,81,73,.06)"><span class="b-icon">🔒</span><span class="b-name">durable-hooks</span><span class="b-desc">— turn_state → failed</span><span class="b-tag b-tag-side">副作用</span></div>
+    <div style="padding:2px 12px;font-size:10px;color:var(--red)">含 userFriendlyMsg + retryAttempts</div>
+  </div>
+</div>
+
+<!-- ═══ LOOP BACK ═══ -->
+<div class="loop-back">
+  <div class="loop-back-label">↻ runWithRetry → 多步重试 · abort → 终止循环</div>
+</div>
+
+<!-- ═══ CONTEXT LIFECYCLE (side note) ═══ -->
+<div class="phase-sep"><div class="phase-sep-line"></div><div class="phase-sep-label">上下文管理（pruneIfNeeded）</div><div class="phase-sep-line"></div></div>
+
+<div class="stage">
+  <div class="stage-center">
+    <div class="node hook-point" style="min-width:180px">
+      <div class="node-label">PreCompact</div>
+      <div class="node-sub">消息修剪前</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch reserved"><span class="b-icon">📋</span><span class="b-name">预留</span><span class="b-desc">— 强制保留某些消息、注入摘要提示</span></div>
+  </div>
+</div>
+<div class="spine-dot active"></div>
+<div class="stage">
+  <div class="stage-center">
+    <div class="node hook-point" style="min-width:180px">
+      <div class="node-label">PostCompact</div>
+      <div class="node-sub">消息修剪后</div>
+    </div>
+  </div>
+  <div class="branches">
+    <div class="branch reserved"><span class="b-icon">📋</span><span class="b-name">预留</span><span class="b-desc">— 压缩质量审计、通知 UI 刷新</span></div>
+  </div>
+</div>
+
+</div><!-- /loop-spine -->
+</div><!-- /loop-wrap -->
+
+<!-- ═══ FOOTER ═══ -->
+<div style="max-width:1100px;margin:40px auto 0;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--muted);line-height:1.8">
+  <div style="font-weight:600;color:var(--text);margin-bottom:6px">📊 数据流总结</div>
+  <div><span style="color:var(--green)">● PreLLMCall 聚合返回</span>：<span class="flow-tag">memoryContext</span> <span class="flow-tag">ragContext</span> <span class="flow-tag">providerOptions</span> → buildContextMessage + streamText</div>
+  <div><span style="color:var(--blue)">● 核心节点不持有业务逻辑</span>：executeStream() 52 行纯编排，所有功能在 hook handler 中</div>
+  <div><span style="color:var(--orange)">● 副作用 handler</span>：notification-hooks（session + taskRegistry）、turn-hooks（DB 写入）、compression-hooks（消息替换）</div>
+  <div><span style="color:var(--red)">● 可阻断点</span>：UserPromptSubmit、PreToolUse — handler 返回 <code>{blocked:true}</code> 即停止</div>
+</div>
+
+<p style="text-align:center;margin-top:32px;font-size:11px;color:var(--dim)">
+  AgentLoop 循环解剖图 · 内联提取后 · executeStream 纯编排 · 2026-06-12</p>
+</body>
+</html>

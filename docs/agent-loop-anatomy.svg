@@ -1,0 +1,278 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 1180" font-family="'Noto Sans CJK SC','Droid Sans Fallback',system-ui,sans-serif">
+  <defs>
+    <linearGradient id="hdr" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#1e3a5f"/><stop offset="100%" stop-color="#0f766e"/></linearGradient>
+  </defs>
+
+  <rect width="960" height="1180" fill="#fafbfc"/>
+  <rect width="960" height="36" rx="6" fill="url(#hdr)"/>
+  <rect y="28" width="960" height="8" fill="url(#hdr)"/>
+  <text x="480" y="24" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">AgentLoop 循环解剖 — Hook 挂载点全景（30 个）</text>
+
+  <!-- Column labels -->
+  <text x="175" y="56" text-anchor="middle" fill="#059669" font-size="9" font-weight="600">← Before Hook</text>
+  <text x="480" y="56" text-anchor="middle" fill="#2563eb" font-size="9" font-weight="600">▼ 核心流程</text>
+  <text x="785" y="56" text-anchor="middle" fill="#7c3aed" font-size="9" font-weight="600">After Hook →</text>
+
+  <!-- Center vertical guide -->
+  <line x1="480" y1="62" x2="480" y2="900" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,6"/>
+
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 1: run()  cy=100                    -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="415" y="82" width="130" height="36" rx="6" fill="#fff" stroke="#2563eb" stroke-width="2"/>
+  <text x="480" y="105" text-anchor="middle" fill="#1e3a5f" font-size="12" font-weight="700">run()</text>
+
+  <!-- LEFT: UserPromptSubmit -->
+  <line x1="310" y1="100" x2="415" y2="100" stroke="#059669" stroke-width="2"/>
+  <circle cx="415" cy="100" r="4" fill="#059669"/>
+  <rect x="30" y="78" width="280" height="44" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="0.8"/>
+  <text x="40" y="94" fill="#065f46" font-size="9" font-weight="700">① UserPromptSubmit ✅</text>
+  <text x="40" y="108" fill="#047857" font-size="7.5">🛡️可阻断 · modifiedMessage · 预留: 输入审计</text>
+
+  <!-- RIGHT: SessionStart -->
+  <line x1="545" y1="100" x2="650" y2="100" stroke="#059669" stroke-width="2"/>
+  <circle cx="545" cy="100" r="4" fill="#059669"/>
+  <rect x="650" y="78" width="280" height="44" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="0.8"/>
+  <text x="660" y="94" fill="#065f46" font-size="9" font-weight="700">② SessionStart ✅×2</text>
+  <text x="660" y="108" fill="#047857" font-size="7.5">💾turn-hooks · 🔒durable-hooks</text>
+
+  <!-- ↓ -->
+  <line x1="480" y1="118" x2="480" y2="152" stroke="#475569" stroke-width="1.5"/>
+  <polygon points="480,158 475,150 485,150" fill="#475569"/>
+
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 2: PreLLMCall  cy=180               -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="400" y="162" width="160" height="36" rx="6" fill="#fffbeb" stroke="#d97706" stroke-width="2"/>
+  <text x="480" y="185" text-anchor="middle" fill="#92400e" font-size="11" font-weight="700">PreLLMCall 聚合</text>
+
+  <!-- LEFT: 4 handlers -->
+  <line x1="310" y1="180" x2="400" y2="180" stroke="#d97706" stroke-width="2"/>
+  <circle cx="400" cy="180" r="4" fill="#d97706"/>
+  <rect x="30" y="132" width="280" height="96" rx="5" fill="#fffbeb" stroke="#d97706" stroke-width="0.8"/>
+  <text x="40" y="148" fill="#92400e" font-size="9" font-weight="700">③ PreLLMCall ✅×4</text>
+  <line x1="40" y1="153" x2="300" y2="153" stroke="#d97706" stroke-width="0.3"/>
+  <text x="40" y="166" fill="#78350f" font-size="7.5">🔔 notification-hooks → 副作用: session.addMessage</text>
+  <text x="40" y="180" fill="#78350f" font-size="7.5">🧠 memory-hooks → return { memoryContext }</text>
+  <text x="40" y="194" fill="#78350f" font-size="7.5">📚 rag-hooks → return { ragContext }</text>
+  <text x="40" y="208" fill="#78350f" font-size="7.5">⚡ provider-options → return { providerOptions }</text>
+  <text x="40" y="222" fill="#b45309" font-size="6.5">注册顺序 = 执行顺序 (last-writer-wins)</text>
+
+  <!-- RIGHT: output data flow -->
+  <line x1="560" y1="180" x2="650" y2="180" stroke="#d97706" stroke-width="2"/>
+  <circle cx="560" cy="180" r="4" fill="#d97706"/>
+  <rect x="650" y="156" width="280" height="48" rx="5" fill="#fffbeb" stroke="#d97706" stroke-width="0.8"/>
+  <text x="660" y="172" fill="#92400e" font-size="9" font-weight="700">聚合输出 →</text>
+  <text x="660" y="186" fill="#78350f" font-size="7.5">memoryContext + ragContext → buildContextMessage</text>
+  <text x="660" y="200" fill="#78350f" font-size="7.5">providerOptions → streamText</text>
+
+  <!-- ↓ -->
+  <line x1="480" y1="198" x2="480" y2="248" stroke="#475569" stroke-width="1.5"/>
+  <polygon points="480,254 475,246 485,246" fill="#475569"/>
+
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 3: buildContext  cy=270              -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="410" y="256" width="140" height="32" rx="6" fill="#fff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="480" y="277" text-anchor="middle" fill="#1e3a5f" font-size="10" font-weight="700">buildContext</text>
+
+  <!-- LEFT: PreCompact/PostCompact -->
+  <line x1="310" y1="272" x2="410" y2="272" stroke="#059669" stroke-width="1.2"/>
+  <circle cx="410" cy="272" r="3" fill="#059669"/>
+  <rect x="30" y="244" width="280" height="44" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="0.6"/>
+  <text x="40" y="260" fill="#065f46" font-size="9" font-weight="700">④ PreCompact ✅ / PostCompact ✅</text>
+  <text x="40" y="274" fill="#047857" font-size="7.5">pruneIfNeeded() 中触发 · 预留: 强制保留/注入摘要</text>
+  <text x="40" y="286" fill="#94a3b8" font-size="6.5">session.ts:145,160 · 当前无handler</text>
+
+  <!-- ↓ -->
+  <line x1="480" y1="288" x2="480" y2="310" stroke="#475569" stroke-width="1.5"/>
+  <polygon points="480,316 475,308 485,308" fill="#475569"/>
+
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 4: LLM  cy=340                      -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="415" y="318" width="130" height="38" rx="6" fill="#fff" stroke="#2563eb" stroke-width="2.5"/>
+  <text x="480" y="342" text-anchor="middle" fill="#1e3a5f" font-size="14" font-weight="700">LLM</text>
+  <text x="480" y="352" text-anchor="middle" fill="#64748b" font-size="7">streamText()</text>
+
+  <!-- ↓ -->
+  <line x1="480" y1="356" x2="480" y2="392" stroke="#475569" stroke-width="1.5"/>
+  <polygon points="480,398 475,390 485,390" fill="#475569"/>
+
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 5: processStreamEvents  cy=420       -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="375" y="400" width="210" height="120" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="2"/>
+  <text x="480" y="419" text-anchor="middle" fill="#991b1b" font-size="10" font-weight="700">processStreamEvents</text>
+  <text x="480" y="433" text-anchor="middle" fill="#b91c1c" font-size="7">tool-call → tool-result → finish-step</text>
+
+  <!-- LEFT: PreToolUse -->
+  <line x1="290" y1="420" x2="375" y2="420" stroke="#dc2626" stroke-width="2"/>
+  <circle cx="375" cy="420" r="4" fill="#dc2626"/>
+  <rect x="30" y="396" width="260" height="48" rx="5" fill="#fef2f2" stroke="#dc2626" stroke-width="0.8"/>
+  <text x="40" y="412" fill="#991b1b" font-size="9" font-weight="700">⑤ PreToolUse ✅×2</text>
+  <text x="40" y="426" fill="#b91c1c" font-size="7.5">🛡️可阻断 · modifiedArgs改写参数</text>
+  <text x="40" y="440" fill="#b91c1c" font-size="7.5">⏱️tool-exec-hooks → 开始时间+args</text>
+
+  <!-- RIGHT: PostToolUse -->
+  <line x1="585" y1="420" x2="670" y2="420" stroke="#dc2626" stroke-width="2"/>
+  <circle cx="585" cy="420" r="4" fill="#dc2626"/>
+  <rect x="670" y="388" width="260" height="60" rx="5" fill="#fef2f2" stroke="#dc2626" stroke-width="0.8"/>
+  <text x="680" y="404" fill="#991b1b" font-size="9" font-weight="700">⑥ PostToolUse ✅×2</text>
+  <text x="680" y="418" fill="#b91c1c" font-size="7.5">modifiedResult改写输出 · modifiedIsError</text>
+  <text x="680" y="432" fill="#b91c1c" font-size="7.5">⏱️tool-exec → 耗时+结果</text>
+  <text x="680" y="446" fill="#b91c1c" font-size="7.5">🔒durable → turn_state phase</text>
+
+
+  <!-- LEFT: PostStep -->
+  <line x1="310" y1="478" x2="375" y2="478" stroke="#dc2626" stroke-width="2"/>
+  <circle cx="375" cy="478" r="4" fill="#dc2626"/>
+  <rect x="30" y="456" width="280" height="44" rx="5" fill="#fef2f2" stroke="#dc2626" stroke-width="0.6"/>
+  <text x="40" y="472" fill="#991b1b" font-size="9" font-weight="700">⑧ PostStep ✅×2</text>
+  <text x="40" y="486" fill="#b91c1c" font-size="7.5">💾turn-hooks → 增量持久化step到DB</text>
+  <text x="40" y="498" fill="#b91c1c" font-size="7.5">calibrateFromActualUsage → token校准</text>
+
+  <!-- RIGHT: PostToolUseFailure -->
+  <line x1="585" y1="478" x2="670" y2="478" stroke="#dc2626" stroke-width="2"/>
+  <circle cx="585" cy="478" r="4" fill="#dc2626"/>
+  <rect x="670" y="456" width="260" height="40" rx="5" fill="#fef2f2" stroke="#dc2626" stroke-width="0.6"/>
+  <text x="680" y="472" fill="#991b1b" font-size="9" font-weight="700">⑦ PostToolUseFailure ✅</text>
+  <text x="680" y="486" fill="#b91c1c" font-size="7.5">modifiedError改写错误 · tool-exec记录</text>
+
+  <!-- ↓ -->
+  <line x1="480" y1="520" x2="480" y2="548" stroke="#475569" stroke-width="1.5"/>
+  <polygon points="480,554 475,546 485,546" fill="#475569"/>
+
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 6: finalize  cy=555                 -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="415" y="557" width="130" height="32" rx="6" fill="#fff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="480" y="578" text-anchor="middle" fill="#1e3a5f" font-size="10" font-weight="700">finalize</text>
+
+  <!-- RIGHT: PostTurnComplete -->
+  <line x1="545" y1="573" x2="650" y2="573" stroke="#7c3aed" stroke-width="2"/>
+  <circle cx="545" cy="573" r="4" fill="#7c3aed"/>
+  <rect x="650" y="552" width="280" height="44" rx="5" fill="#f5f3ff" stroke="#7c3aed" stroke-width="0.8"/>
+  <text x="660" y="568" fill="#5b21b6" font-size="9" font-weight="700">⑨ PostTurnComplete ✅</text>
+  <text x="660" y="594" fill="#6d28d9" font-size="7.5">🗜️compression → L1摘要+L2记忆+turns同步</text>
+  <text x="660" y="582" fill="#6d28d9" font-size="7.5">session.replaceMessages() · saveToDb()</text>
+
+  <!-- ↓ -->
+  <line x1="480" y1="589" x2="480" y2="620" stroke="#475569" stroke-width="1.5"/>
+  <polygon points="480,626 475,618 485,618" fill="#475569"/>
+
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 7: Stop  cy=632                     -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="415" y="630" width="130" height="34" rx="6" fill="#fff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="480" y="652" text-anchor="middle" fill="#5b21b6" font-size="12" font-weight="700">Stop</text>
+
+  <!-- RIGHT: Stop handlers -->
+  <line x1="545" y1="647" x2="650" y2="647" stroke="#7c3aed" stroke-width="2"/>
+  <circle cx="545" cy="647" r="4" fill="#7c3aed"/>
+  <rect x="650" y="608" width="280" height="80" rx="5" fill="#f5f3ff" stroke="#7c3aed" stroke-width="0.8"/>
+  <text x="660" y="624" fill="#5b21b6" font-size="9" font-weight="700">⑩ Stop ✅×2 (finally)</text>
+  <text x="660" y="638" fill="#6d28d9" font-size="7.5">💾turn-hooks → 安全网确保step落盘</text>
+  <text x="660" y="652" fill="#6d28d9" font-size="7.5">🔒durable → turn_state检查点</text>
+  <line x1="660" y1="648" x2="920" y2="648" stroke="#7c3aed" stroke-width="0.3"/>
+  <text x="660" y="674" fill="#5b21b6" font-size="8.5" font-weight="600">⑪ SessionEnd ✅</text>
+  <text x="660" y="686" fill="#6d28d9" font-size="7.5">预留: 会话清理、统计上报</text>
+
+  <!-- ↓ error path -->
+  <line x1="480" y1="664" x2="480" y2="712" stroke="#dc2626" stroke-width="1.5"/>
+  <polygon points="480,718 475,710 485,710" fill="#dc2626"/>
+
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 8: StopFailure  cy=724              -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="398" y="722" width="164" height="34" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="2"/>
+  <text x="480" y="744" text-anchor="middle" fill="#991b1b" font-size="10" font-weight="700">StopFailure</text>
+
+  <!-- RIGHT: StopFailure handlers -->
+  <line x1="562" y1="739" x2="650" y2="739" stroke="#dc2626" stroke-width="2"/>
+  <circle cx="562" cy="739" r="4" fill="#dc2626"/>
+  <rect x="650" y="712" width="280" height="52" rx="5" fill="#fef2f2" stroke="#dc2626" stroke-width="0.8"/>
+  <text x="660" y="728" fill="#991b1b" font-size="9" font-weight="700">⑫ StopFailure ✅×2</text>
+  <text x="660" y="742" fill="#b91c1c" font-size="7.5">💾turn-hooks → 异常保存blocks</text>
+  <text x="660" y="756" fill="#b91c1c" font-size="7.5">🔒durable → turn_state=failed</text>
+
+  <!-- Loop back arrow -->
+  <path d="M 398 727 L 355 727 L 355 100 L 415 100" fill="none" stroke="#475569" stroke-width="1.2" stroke-dasharray="5,4"/>
+  <polygon points="415,100 407,96 407,104" fill="#475569"/>
+  <text x="340" y="420" fill="#64748b" font-size="8" writing-mode="tb">runWithRetry → 下一轮</text>
+
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- LEFT SIDE: Subagent hooks (standalone)   -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="30" y="556" width="340" height="120" rx="5" fill="#f0fdfa" stroke="#0d9488" stroke-width="0.8"/>
+  <text x="40" y="574" fill="#0f766e" font-size="9" font-weight="700">⑬ 子代理 / 任务 / 通知</text>
+  <line x1="40" y1="580" x2="360" y2="580" stroke="#0d9488" stroke-width="0.3"/>
+  <text x="40" y="596" fill="#0f766e" font-size="8">SubagentStart ✅ · SubagentStop ✅</text>
+  <text x="40" y="612" fill="#0f766e" font-size="8">TaskCreated ✅ · TaskCompleted ✅</text>
+  <text x="40" y="628" fill="#0f766e" font-size="8">Notification ✅ (notification-hooks内部触发)</text>
+  <line x1="40" y1="636" x2="360" y2="636" stroke="#0d9488" stroke-width="0.3"/>
+  <text x="40" y="652" fill="#94a3b8" font-size="7">Elicitation · ElicitationResult — 预留</text>
+  <text x="40" y="668" fill="#94a3b8" font-size="6.5">挂载: subagent-delegator.ts</text>
+  <text x="40" y="680" fill="#94a3b8" font-size="6.5">delegateTask / delegateTaskBackground</text>
+
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- RESERVED HOOKS                           -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="30" y="770" width="900" height="80" rx="5" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.6"/>
+  <text x="480" y="790" text-anchor="middle" fill="#475569" font-size="10" font-weight="700">⑭ 预留 Hooks（12/30 — 已定义但无handler）</text>
+  <text x="50" y="810" fill="#94a3b8" font-size="8.5">Setup · InstructionsLoaded · ConfigChange</text>
+  <text x="50" y="828" fill="#94a3b8" font-size="8.5">PermissionRequest · PermissionDenied · TeammateIdle</text>
+  <text x="490" y="810" fill="#94a3b8" font-size="8.5">CwdChanged · FileChanged</text>
+  <text x="490" y="828" fill="#94a3b8" font-size="8.5">WorktreeCreate · WorktreeRemove</text>
+  <text x="490" y="844" fill="#94a3b8" font-size="7.5">hook-types.ts 已定义30个 · triggerHooks已调用18个 · 无handler: 12个</text>
+
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- HANDLER TABLE                            -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="30" y="870" width="900" height="96" rx="5" fill="#fff" stroke="#e2e8f0" stroke-width="0.8"/>
+  <text x="480" y="890" text-anchor="middle" fill="#1e293b" font-size="10" font-weight="700">8 Handler 文件</text>
+
+  <rect x="42" y="900" width="200" height="24" rx="3" fill="#ecfdf5" stroke="#059669" stroke-width="0.4"/>
+  <text x="48" y="914" fill="#065f46" font-size="7">notification🆕 · memory · rag · provider-options🆕</text>
+  <text x="48" y="922" fill="#047857" font-size="6">→ PreLLMCall(聚合4handler) · Notification(内部)</text>
+
+  <rect x="252" y="900" width="200" height="24" rx="3" fill="#fef2f2" stroke="#dc2626" stroke-width="0.4"/>
+  <text x="258" y="914" fill="#991b1b" font-size="7">tool-exec-hooks</text>
+  <text x="258" y="922" fill="#b91c1c" font-size="6">→ PreToolUse · PostToolUse · Failure</text>
+
+  <rect x="462" y="900" width="200" height="24" rx="3" fill="#f5f3ff" stroke="#7c3aed" stroke-width="0.4"/>
+  <text x="468" y="914" fill="#5b21b6" font-size="7">turn-hooks · durable-hooks</text>
+  <text x="468" y="922" fill="#6d28d9" font-size="6">→ SessionStart · PostStep · Stop · Failure</text>
+
+  <rect x="672" y="900" width="200" height="24" rx="3" fill="#f5f3ff" stroke="#7c3aed" stroke-width="0.4"/>
+  <text x="678" y="914" fill="#5b21b6" font-size="7">compression-hooks</text>
+  <text x="678" y="922" fill="#6d28d9" font-size="6">→ PostTurnComplete(L1+L2+turns)</text>
+
+  <rect x="42" y="932" width="830" height="24" rx="3" fill="#f0fdfa" stroke="#0d9488" stroke-width="0.4"/>
+  <text x="48" y="946" fill="#0f766e" font-size="7.5" font-weight="600">HookRegistry 聚合: trigger()遍历handler → AggregatedHookResult · blocked=true立即中断 · last-writer-wins · 注册顺序=执行顺序</text>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- LEGEND                                    -->
+  <!-- ═══════════════════════════════════════ -->
+  <rect x="30" y="982" width="900" height="28" rx="4" fill="#fff" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="42" y="990" width="12" height="12" rx="2" fill="#059669"/><text x="60" y="1000" fill="#64748b" font-size="7.5">Turn启动</text>
+  <rect x="120" y="990" width="12" height="12" rx="2" fill="#d97706"/><text x="138" y="1000" fill="#64748b" font-size="7.5">PreLLMCall</text>
+  <rect x="215" y="990" width="12" height="12" rx="2" fill="#dc2626"/><text x="233" y="1000" fill="#64748b" font-size="7.5">工具循环</text>
+  <rect x="300" y="990" width="12" height="12" rx="2" fill="#7c3aed"/><text x="318" y="1000" fill="#64748b" font-size="7.5">Turn结束</text>
+  <rect x="385" y="990" width="12" height="12" rx="2" fill="#0d9488"/><text x="403" y="1000" fill="#64748b" font-size="7.5">子代理</text>
+  <rect x="455" y="990" width="12" height="12" rx="2" fill="#cbd5e1"/><text x="473" y="1000" fill="#94a3b8" font-size="7.5">预留</text>
+  <line x1="530" y1="996" x2="560" y2="996" stroke="#059669" stroke-width="2"/><circle cx="560" cy="996" r="3" fill="#059669"/>
+  <text x="568" y="1000" fill="#64748b" font-size="7.5">挂载点</text>
+  <text x="640" y="1000" fill="#94a3b8" font-size="8">30 hooks · 18已激活 · 8 handler文件 · 2026-06-12</text>
+</svg>

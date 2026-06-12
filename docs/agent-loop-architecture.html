@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgentLoop Hook 扩展点 — 迁移后状态</title>
+<title>AgentLoop Hook 扩展点 — 内联提取后</title>
 <style>
 :root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--blue:#58a6ff;--green:#3fb950;--purple:#bc8cff;--orange:#d29922;--red:#f85149;--cyan:#39d2c0;--dim:#484f58}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -57,13 +57,13 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 </head>
 <body>
 
-<h1>🔌 AgentLoop 全扩展点 — 迁移后</h1>
-<p class="sub">按 loop 执行顺序 · 30 Hook 点 · 已激活 vs 预留</p>
+<h1>🔌 AgentLoop 全扩展点 — 内联提取后</h1>
+<p class="sub">按 loop 执行顺序 · 30 Hook 点 · executeStream 纯编排 · Loop 不持有业务逻辑</p>
 
 <div class="stats">
   <div style="text-align:center"><span class="sn" style="color:var(--green)">18</span>已激活</div>
   <div style="text-align:center"><span class="sn" style="color:var(--dim)">12</span>预留</div>
-  <div style="text-align:center"><span class="sn" style="color:var(--cyan)">6</span>Hook 文件</div>
+  <div style="text-align:center"><span class="sn" style="color:var(--cyan)">8</span>Hook 文件</div>
 </div>
 
 <div class="bar-wrap"><div class="bar-bg">
@@ -100,9 +100,9 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 <div class="phase-label">Turn 启动</div>
 
 <div class="row"><div class="hook-name">UserPromptSubmit</div><div class="dot live"></div><div class="cc"><div class="card live">
-<div class="ct">UserPromptSubmit <span class="s sl">✅ 已激活</span></div>
+<div class="ct">UserPromptSubmit <span class="s sl">✅ 已激活</span> <span class="s sa">🛡️ 可阻断</span></div>
 <div class="desc"><span class="loc">agent-loop.ts:138</span> — 在 addMessage 之前触发<br>
-当前无 handler 注册。预留用于用户输入审计、内容过滤、prompt 改写。</div>
+支持 <code>{blocked:true, modifiedMessage}</code> 返回值。当前无 handler 注册。</div>
 </div></div></div>
 
 <div class="row"><div class="hook-name">SessionStart</div><div class="dot live"></div><div class="cc"><div class="card live">
@@ -117,11 +117,13 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 <div class="phase-label">LLM 调用前</div>
 
 <div class="row"><div class="hook-name">PreLLMCall</div><div class="dot live"></div><div class="cc"><div class="card live">
-<div class="ct">PreLLMCall <span class="s sl">✅ 已接入 ×2</span></div>
-<div class="desc"><span class="loc">agent-loop.ts:376</span><br>
-<span class="impl">● memory-hooks</span> — FTS5 记忆检索 → 注入 memoryContext<br>
-<span class="impl">● rag-hooks</span> — 知识库 RAG → 注入 ragContext<br>
-⚠️ 均为 non-fatal
+<div class="ct">PreLLMCall <span class="s sl">✅ 已接入 ×4</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:357</span> — executeStream() 中唯一聚合点<br>
+<span class="impl">● notification-hooks</span> — 后台任务通知 → session.addMessage() + triggerHooks("Notification")<br>
+<span class="impl">● memory-hooks</span> — FTS5 记忆检索 → <code>return { memoryContext }</code><br>
+<span class="impl">● rag-hooks</span> — 知识库 RAG → <code>return { ragContext }</code><br>
+<span class="impl">● provider-options-hooks</span> — thinking budget → <code>return { providerOptions }</code><br>
+⚠️ 均为 non-fatal，聚合模式 last-writer-wins
 </div>
 </div></div></div>
 
@@ -130,7 +132,7 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 
 <div class="row"><div class="hook-name">PostStep</div><div class="dot live"></div><div class="cc"><div class="card live">
 <div class="ct">PostStep <span class="s sl">✅ 已接入 ×2</span></div>
-<div class="desc"><span class="loc">agent-loop.ts:590, 622</span> — finish-step + finalizeStream<br>
+<div class="desc"><span class="loc">agent-loop.ts:557, 589</span> — finish-step + finalizeStream<br>
 <span class="impl">● turn-hooks</span> — 增量持久化 step 到 DB
 </div>
 </div></div></div>
@@ -139,7 +141,8 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 
 <div class="row"><div class="hook-name">PreToolUse</div><div class="dot live"></div><div class="cc"><div class="card live">
 <div class="ct">PreToolUse <span class="s sl">✅ 已接入 ×2</span> <span class="s sa">🛡️ 可阻断</span></div>
-<div class="desc"><span class="loc">agent-loop.ts:510</span> — 支持 <code>{blocked:true}</code> 返回值阻断工具调用<br>
+<div class="desc"><span class="loc">agent-loop.ts:469</span><br>
+支持 <code>{blocked:true}</code> 阻断 + <code>{modifiedArgs}</code> 改写工具参数<br>
 <span class="impl">● tool-exec-hooks</span> — 记录工具开始时间 + args<br>
 <span class="impl">● RateLimiter.acquire()</span> — 限流（未来可迁入）
 </div>
@@ -147,7 +150,8 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 
 <div class="row"><div class="hook-name">PostToolUse</div><div class="dot live"></div><div class="cc"><div class="card live">
 <div class="ct">PostToolUse <span class="s sl">✅ 已接入 ×2</span></div>
-<div class="desc"><span class="loc">agent-loop.ts:535</span><br>
+<div class="desc"><span class="loc">agent-loop.ts:496</span><br>
+支持 <code>{modifiedResult, modifiedIsError}</code> 改写工具输出<br>
 <span class="impl">● tool-exec-hooks</span> — 记录工具耗时 + 结果到 DB<br>
 <span class="impl">● durable-hooks</span> — 更新 turn_state phase → tools_executing
 </div>
@@ -155,7 +159,8 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 
 <div class="row"><div class="hook-name">PostToolUseFailure</div><div class="dot live"></div><div class="cc"><div class="card live">
 <div class="ct">PostToolUseFailure <span class="s sl">✅ 已接入 ×1</span></div>
-<div class="desc"><span class="loc">agent-loop.ts:553</span><br>
+<div class="desc"><span class="loc">agent-loop.ts:517</span><br>
+支持 <code>{modifiedError}</code> 改写错误消息<br>
 <span class="impl">● tool-exec-hooks</span> — 记录工具错误 + 耗时到 DB
 </div>
 </div></div></div>
@@ -164,13 +169,13 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 
 <div class="row"><div class="hook-name">SubagentStart</div><div class="dot live"></div><div class="cc"><div class="card live">
 <div class="ct">SubagentStart <span class="s sl">✅ 已激活</span></div>
-<div class="desc"><span class="loc">subagent-delegator.ts:79, 202</span> — delegateTask + delegateTaskBackground<br>
+<div class="desc"><span class="loc">subagent-delegator.ts</span> — delegateTask + delegateTaskBackground<br>
 当前无 handler 注册。预留用于任务追踪 UI、并发度控制。</div>
 </div></div></div>
 
 <div class="row"><div class="hook-name">SubagentStop</div><div class="dot live"></div><div class="cc"><div class="card live">
 <div class="ct">SubagentStop <span class="s sl">✅ 已激活</span></div>
-<div class="desc"><span class="loc">subagent-delegator.ts:116,126,150,156,167,239,251,271</span><br>
+<div class="desc"><span class="loc">subagent-delegator.ts</span><br>
 当前无 handler 注册。预留用于任务完成通知、结果分发。</div>
 </div></div></div>
 
@@ -178,20 +183,21 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 
 <div class="row"><div class="hook-name">TaskCreated</div><div class="dot live"></div><div class="cc"><div class="card live">
 <div class="ct">TaskCreated <span class="s sl">✅ 已激活</span></div>
-<div class="desc"><span class="loc">subagent-delegator.ts:138, 202, 291</span> — delegateTask bg + delegateTaskBackground + runBackground<br>
+<div class="desc"><span class="loc">subagent-delegator.ts</span><br>
 当前无 handler 注册。预留用于 UI 任务列表实时更新。</div>
 </div></div></div>
 
 <div class="row"><div class="hook-name">TaskCompleted</div><div class="dot live"></div><div class="cc"><div class="card live">
 <div class="ct">TaskCompleted <span class="s sl">✅ 已激活</span></div>
-<div class="desc"><span class="loc">subagent-delegator.ts:151,157,240,252,272,314,321</span> — 全路径覆盖<br>
+<div class="desc"><span class="loc">subagent-delegator.ts</span><br>
 当前无 handler 注册。预留用于任务结果分发、依赖链推进。</div>
 </div></div></div>
 
 <div class="row"><div class="hook-name">Notification</div><div class="dot live"></div><div class="cc"><div class="card live">
 <div class="ct">Notification <span class="s sl">✅ 已激活</span></div>
-<div class="desc"><span class="loc">agent-loop.ts:359</span> — executeStream 中后台任务通知时触发<br>
-当前无 handler 注册。预留用于通知分发、结果审计。</div>
+<div class="desc"><span class="loc">notification-hooks.ts</span> — PreLLMCall handler 内部触发<br>
+后台任务完成时通知，由 notification-hooks 注册并内部调用。<br>
+当前无外部 handler 注册。预留用于通知分发、结果审计。</div>
 </div></div></div>
 
 <div class="row"><div class="hook-name">PermissionRequest</div><div class="dot empty"></div><div class="cc"><div class="card empty">
@@ -285,19 +291,36 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim)">注册的 Hook 点</th>
 </tr></thead>
 <tbody>
+<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">notification-hooks.ts</span> <span style="color:var(--green);font-size:10px">🆕</span></td><td style="padding:6px 10px;color:var(--muted)">PreLLMCall · Notification（内部）</td></tr>
+<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">memory-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">PreLLMCall → <code>{ memoryContext }</code></td></tr>
+<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">rag-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">PreLLMCall → <code>{ ragContext }</code></td></tr>
+<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">provider-options-hooks.ts</span> <span style="color:var(--green);font-size:10px">🆕</span></td><td style="padding:6px 10px;color:var(--muted)">PreLLMCall → <code>{ providerOptions }</code></td></tr>
 <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">turn-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">SessionStart · PostStep · Stop · StopFailure</td></tr>
 <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">compression-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">PostTurnComplete</td></tr>
-<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">memory-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">PreLLMCall</td></tr>
-<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">rag-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">PreLLMCall</td></tr>
 <tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">tool-execution-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">PreToolUse · PostToolUse · PostToolUseFailure</td></tr>
 <tr><td style="padding:6px 10px"><span class="impl">durable-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">SessionStart · PostToolUse · Stop · StopFailure</td></tr>
 </tbody>
 </table>
 </div>
 
-<p style="text-align:center;margin-top:40px;font-size:12px;color:var(--dim)">
-  AgentLoop 迁移后状态 · 18/30 已激活 · 6 Handler 文件 · 2026-06-12
-</p>
+<!-- ═══ EXECUTESTREAM FLOW ═══ -->
+<div class="divider" style="margin-top:36px">──── executeStream() 流程（纯编排）────</div>
 
+<div style="max-width:880px;margin:16px auto 0;font-size:12px;font-family:'SF Mono',Consolas,monospace;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px 20px;line-height:2">
+<span style="color:var(--muted)">executeStream()</span><br>
+<span style="color:var(--dim)">│</span> resolveModel()<br>
+<span style="color:var(--dim)">│</span> buildTools()<br>
+<span style="color:var(--dim)">│</span> assembleSystemPrompt()<br>
+<span style="color:var(--green)">│</span> <span style="color:var(--green)">preResult =</span> triggerHooks("PreLLMCall") <span style="color:var(--muted)">← 聚合 notification + memory + rag + providerOptions</span><br>
+<span style="color:var(--dim)">│</span> buildContextMessage(preResult.memoryContext, preResult.ragContext)<br>
+<span style="color:var(--dim)">│</span> prependContext(session.messages, ctx)<br>
+<span style="color:var(--dim)">│</span> streamText({ providerOptions: preResult.providerOptions })<br>
+<span style="color:var(--dim)">│</span> processStreamEvents() <span style="color:var(--muted)">← PreToolUse(<span style="color:var(--orange)">modifiedArgs</span>) + PostToolUse(<span style="color:var(--orange)">modifiedResult</span>)</span><br>
+<span style="color:var(--dim)">│</span> finalizeStream()<br>
+<span style="color:var(--muted)">52 行 · 无内联业务逻辑 · 所有功能在 hook handler 中</span>
+</div>
+
+<p style="text-align:center;margin-top:40px;font-size:12px;color:var(--dim)">
+  AgentLoop 内联提取后 · 18/30 已激活 · 8 Handler 文件 · executeStream 52 行 · 2026-06-12</p>
 </body>
 </html>
