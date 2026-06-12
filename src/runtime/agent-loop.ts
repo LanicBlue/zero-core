@@ -502,7 +502,7 @@ export class AgentLoop implements AgentRuntime {
 						toolCallId: resultTcId,
 					});
 					const output = postResult?.modifiedResult !== undefined ? postResult.modifiedResult : e.output;
-					const isError = postResult?.modifiedIsError ?? false;
+					const isError = (postResult?.modifiedIsError as boolean | undefined) ?? false;
 					this.recorder.updateToolResult(resultTcId, e.toolName, output, isError);
 					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: resultTcId, isError, result: output });
 					break;
