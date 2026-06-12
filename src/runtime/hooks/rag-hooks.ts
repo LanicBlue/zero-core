@@ -17,7 +17,7 @@ export function registerRagHooks(): void {
 		try {
 			const ragContext = await config.getRagContext(config.agentId, "");
 			if (ragContext) {
-				ctx.ragContext = ragContext;
+				return { ragContext };
 			}
 		} catch {
 			// RAG failure is non-fatal

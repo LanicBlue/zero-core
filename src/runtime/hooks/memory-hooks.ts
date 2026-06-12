@@ -31,7 +31,7 @@ export function registerMemoryHooks(): void {
 			const recall = new MemoryRecall(nodeStore);
 			const result = await recall.recall(text, config.memory?.recallLimit);
 			if (result) {
-				ctx.memoryContext = recall.formatForContext(result) ?? undefined;
+				return { memoryContext: recall.formatForContext(result) ?? undefined };
 			}
 		} catch {
 			// recall failure is non-fatal

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Loop 内联提取 — 改动可视化</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace; background: #0d1117; color: #c9d1d9; padding: 24px; line-height: 1.6; }
+  h1 { color: #58a6ff; font-size: 20px; margin-bottom: 24px; }
+  h2 { color: #8b949e; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; margin: 32px 0 12px; border-bottom: 1px solid #21262d; padding-bottom: 8px; }
+  .container { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 1400px; }
+  .col { background: #161b22; border: 1px solid #21262d; border-radius: 8px; overflow: hidden; }
+  .col-header { padding: 10px 16px; font-size: 13px; font-weight: 600; }
+  .col-header.before { background: #3d1f1f; color: #f85149; }
+  .col-header.after { background: #1f3d1f; color: #3fb950; }
+  .code-block { padding: 12px 16px; font-size: 12px; white-space: pre; overflow-x: auto; max-height: 600px; overflow-y: auto; }
+  .code-block code { font-family: inherit; }
+
+  /* Diff colors */
+  .del { background: #3d1f1f; color: #ffa198; }
+  .add { background: #1f3d1f; color: #7ee787; }
+  .ctx { color: #8b949e; }
+  .highlight { color: #ffa657; font-weight: bold; }
+  .label { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; margin-right: 6px; }
+  .label-del { background: #f8514933; color: #f85149; }
+  .label-add { background: #3fb95033; color: #3fb950; }
+  .label-move { background: #a371f733; color: #a371f7; }
+  .label-new { background: #58a6ff33; color: #58a6ff; }
+
+  .full-width { grid-column: 1 / -1; }
+  .file-list { padding: 16px; }
+  .file-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+  .file-item .icon { width: 20px; text-align: center; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-del { background: #f8514922; color: #f85149; border: 1px solid #f8514944; }
+  .badge-add { background: #3fb95022; color: #3fb950; border: 1px solid #3fb95044; }
+  .badge-edit { background: #ffa65722; color: #ffa657; border: 1px solid #ffa65744; }
+
+  .arrow { color: #58a6ff; font-size: 16px; text-align: center; padding: 8px 0; }
+
+  /* Flow diagram */
+  .flow { display: flex; flex-direction: column; gap: 4px; padding: 16px; }
+  .flow-node { padding: 6px 12px; border-radius: 4px; font-size: 12px; white-space: nowrap; }
+  .flow-core { background: #21262d; border-left: 3px solid #58a6ff; }
+  .flow-hook { background: #1f3d1f; border-left: 3px solid #3fb950; }
+  .flow-del { background: #3d1f1f; border-left: 3px solid #f85149; text-decoration: line-through; opacity: 0.7; }
+  .flow-new { background: #1f3d1f; border-left: 3px solid #3fb950; }
+  .flow-connector { color: #484f58; font-size: 10px; padding-left: 12px; }
+
+  .legend { display: flex; gap: 16px; margin-bottom: 16px; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  .section { margin-bottom: 40px; }
+  .section-title { color: #e6edf3; font-size: 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .section-num { background: #58a6ff; color: #0d1117; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+
+  .summary { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px; margin-bottom: 32px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .stat { text-align: center; }
+  .stat-value { font-size: 28px; font-weight: 700; }
+  .stat-value.red { color: #f85149; }
+  .stat-value.green { color: #3fb950; }
+  .stat-value.blue { color: #58a6ff; }
+  .stat-label { font-size: 11px; color: #8b949e; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>🔄 Loop 内联提取 — 改动可视化</h1>
+
+<div class="summary">
+  <div class="summary-grid">
+    <div class="stat"><div class="stat-value red">2</div><div class="stat-label">删除的私有方法</div></div>
+    <div class="stat"><div class="stat-value blue">2</div><div class="stat-label">新建的 hook 文件</div></div>
+    <div class="stat"><div class="stat-value green">62→40</div><div class="stat-label">executeStream() 行数</div></div>
+  </div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div> 删除的代码</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> 新增的代码</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ffa657"></div> 修改的代码</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#a371f7"></div> 搬移到 hook</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> 保持不变</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<div class="section-title"><span class="section-num">1</span> executeStream() 流程对比</div>
+
+<div class="container">
+  <div class="col">
+    <div class="col-header before">❌ 改前 — 内联逻辑散布在 loop 中</div>
+    <div class="flow">
+      <div class="flow-node flow-core">resolveModel()</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">buildTools()</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">assembleSystemPrompt()</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-del">🔴 injectTaskNotifications() <span class="label label-del">删除</span></div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-del">🔴 triggerHooks("Notification") <span class="label label-move">→ hook 内部</span></div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-del">🔴 hookCtx = { ragContext: undefined, memoryContext: undefined } <span class="label label-del">删除</span></div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-del">🔴 triggerHooks("PreLLMCall", hookCtx) <span class="label label-del">ctx mutation</span></div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">buildContextMessage(hookCtx.ragContext, hookCtx.memoryContext)</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">prependContext()</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-del">🔴 buildProviderOptions() <span class="label label-del">删除</span></div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">streamText({ providerOptions })</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">processStreamEvents()</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">finalizeStream()</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="col-header after">✅ 改后 — 纯流程编排</div>
+    <div class="flow">
+      <div class="flow-node flow-core">resolveModel()</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">buildTools()</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">assembleSystemPrompt()</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-new">🟢 preResult = triggerHooks("PreLLMCall", {taskRegistry, ...}) <span class="label label-add">聚合</span></div>
+      <div class="flow-connector">│ ↓ preResult 包含</div>
+      <div class="flow-connector">│ &nbsp;&nbsp;memoryContext + ragContext + providerOptions</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">buildContextMessage(preResult.memoryContext, preResult.ragContext)</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">prependContext()</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">streamText({ preResult.providerOptions })</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">processStreamEvents()</div>
+      <div class="flow-connector">│</div>
+      <div class="flow-node flow-core">finalizeStream()</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<div class="section-title"><span class="section-num">2</span> PreLLMCall handlers 执行顺序</div>
+
+<div class="flow" style="max-width: 600px; margin: 0 auto; background: #161b22; border-radius: 8px; border: 1px solid #21262d;">
+  <div style="text-align:center; color: #8b949e; font-size: 11px; padding: 8px;">triggerHooks("PreLLMCall") 按注册顺序执行</div>
+
+  <div class="flow-node flow-new">🆕 notification-hooks <span class="label label-add">新建</span> — session.addMessage() + triggerHooks("Notification")</div>
+  <div class="flow-connector">│</div>
+  <div class="flow-node flow-hook">✏️ memory-hooks <span class="label label-edit">改动</span> — <code>return { memoryContext }</code></div>
+  <div class="flow-connector">│</div>
+  <div class="flow-node flow-hook">✏️ rag-hooks <span class="label label-edit">改动</span> — <code>return { ragContext }</code></div>
+  <div class="flow-connector">│</div>
+  <div class="flow-node flow-new">🆕 provider-options-hooks <span class="label label-add">新建</span> — <code>return { providerOptions }</code></div>
+  <div class="flow-connector">│</div>
+  <div style="text-align:center; padding: 8px; background: #21262d; border-radius: 4px;">
+    <span style="color:#ffa657">聚合 → AggregatedHookResult</span><br>
+    <span style="color:#8b949e; font-size: 11px;">{ memoryContext, ragContext, providerOptions }</span>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<div class="section-title"><span class="section-num">3</span> Tool 分支改动</div>
+
+<div class="container">
+  <div class="col">
+    <div class="col-header before">❌ 改前 — tool-call</div>
+    <div class="code-block"><code><span class="ctx">case "tool-call":</span>
+  <span class="ctx">const preResult = await triggerHooks("PreToolUse", {...});</span>
+  <span class="ctx">if (preResult?.blocked) { /* 阻断 */ break; }</span>
+
+  <span class="ctx">this.emit({ type: "tool_start", args: e.input });</span></code></div>
+  </div>
+  <div class="col">
+    <div class="col-header after">✅ 改后 — tool-call</div>
+    <div class="code-block"><code><span class="ctx">case "tool-call":</span>
+  <span class="ctx">const preResult = await triggerHooks("PreToolUse", {...});</span>
+  <span class="ctx">if (preResult?.blocked) { /* 阻断 */ break; }</span>
+  <span class="add">  if (preResult?.modifiedArgs) e.input = preResult.modifiedArgs;</span>
+
+  <span class="ctx">this.emit({ type: "tool_start", args: e.input });</span></code></div>
+  </div>
+</div>
+
+<div class="container" style="margin-top: 12px;">
+  <div class="col">
+    <div class="col-header before">❌ 改前 — tool-result</div>
+    <div class="code-block"><code><span class="ctx">case "tool-result":</span>
+  <span class="ctx">const resultTcId = e.toolCallId ?? e.id;</span>
+  <span class="del">this.recorder.updateToolResult(resultTcId, e.toolName, e.output, false);</span>
+  <span class="del">this.emit({ type: "tool_end", isError: false, result: e.output });</span>
+
+  <span class="ctx">await triggerHooks("PostToolUse", {...});</span></code></div>
+  </div>
+  <div class="col">
+    <div class="col-header after">✅ 改后 — tool-result</div>
+    <div class="code-block"><code><span class="ctx">case "tool-result":</span>
+  <span class="ctx">const resultTcId = e.toolCallId ?? e.id;</span>
+  <span class="add">const postResult = await triggerHooks("PostToolUse", {...});</span>
+  <span class="add">const output = postResult?.modifiedResult ?? e.output;</span>
+  <span class="add">const isError = postResult?.modifiedIsError ?? false;</span>
+  <span class="ctx">this.recorder.updateToolResult(resultTcId, e.toolName, output, isError);</span>
+  <span class="ctx">this.emit({ type: "tool_end", isError, result: output });</span></code></div>
+  </div>
+</div>
+
+<div class="container" style="margin-top: 12px;">
+  <div class="col">
+    <div class="col-header before">❌ 改前 — tool-error</div>
+    <div class="code-block"><code><span class="ctx">case "tool-error":</span>
+  <span class="ctx">const errTcId = e.toolCallId ?? e.id;</span>
+  <span class="del">this.recorder.updateToolResult(errTcId, e.toolName,</span>
+  <span class="del">  String(e.error ?? e.errorText ?? ""), true);</span>
+
+  <span class="ctx">await triggerHooks("PostToolUseFailure", {...});</span></code></div>
+  </div>
+  <div class="col">
+    <div class="col-header after">✅ 改后 — tool-error</div>
+    <div class="code-block"><code><span class="ctx">case "tool-error":</span>
+  <span class="ctx">const errTcId = e.toolCallId ?? e.id;</span>
+  <span class="add">let errorStr = String(e.error ?? e.errorText ?? "");</span>
+  <span class="add">const failResult = await triggerHooks("PostToolUseFailure", {...});</span>
+  <span class="add">if (failResult?.modifiedError) errorStr = failResult.modifiedError;</span>
+  <span class="ctx">this.recorder.updateToolResult(errTcId, e.toolName, errorStr, true);</span></code></div>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<div class="section-title"><span class="section-num">4</span> Handler 改动细节</div>
+
+<div class="container">
+  <div class="col">
+    <div class="col-header before">❌ memory-hooks.ts L34 — ctx mutation</div>
+    <div class="code-block"><code><span class="del">ctx.memoryContext = recall.formatForContext(result) ?? undefined;</span></code></div>
+  </div>
+  <div class="col">
+    <div class="col-header after">✅ memory-hooks.ts — typed return</div>
+    <div class="code-block"><code><span class="add">return { memoryContext: recall.formatForContext(result) ?? undefined };</span></code></div>
+  </div>
+</div>
+
+<div class="container" style="margin-top: 12px;">
+  <div class="col">
+    <div class="col-header before">❌ rag-hooks.ts L20 — ctx mutation</div>
+    <div class="code-block"><code><span class="del">ctx.ragContext = ragContext;</span></code></div>
+  </div>
+  <div class="col">
+    <div class="col-header after">✅ rag-hooks.ts — typed return</div>
+    <div class="code-block"><code><span class="add">return { ragContext };</span></code></div>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<div class="section-title"><span class="section-num">5</span> 涉及文件总览</div>
+
+<div class="file-list" style="background: #161b22; border: 1px solid #21262d; border-radius: 8px; max-width: 800px;">
+  <div class="file-item"><span class="badge badge-del">删除方法</span> src/runtime/agent-loop.ts — buildProviderOptions(), injectTaskNotifications()</div>
+  <div class="file-item"><span class="badge badge-edit">改写</span> src/runtime/agent-loop.ts — executeStream() + tool 分支</div>
+  <div class="file-item"><span class="badge badge-edit">一行</span> src/runtime/hooks/memory-hooks.ts — ctx mutation → return</div>
+  <div class="file-item"><span class="badge badge-edit">一行</span> src/runtime/hooks/rag-hooks.ts — ctx mutation → return</div>
+  <div class="file-item"><span class="badge badge-add">新建</span> src/runtime/hooks/provider-options-hooks.ts — thinking budget</div>
+  <div class="file-item"><span class="badge badge-add">新建</span> src/runtime/hooks/notification-hooks.ts — 任务通知</div>
+  <div class="file-item"><span class="badge badge-edit">注册</span> src/runtime/hooks/index.ts — 注册新 hook + 调顺序</div>
+</div>
+</div>
+
+</body>
+</html>

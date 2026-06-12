@@ -345,7 +345,6 @@ export class AgentLoop implements AgentRuntime {
 
 	private async executeStream(): Promise<void> {
 		const model = resolveModel(this.providers, this.config.providerName, this.config.modelId);
-		log.debug("loop", "Model resolved:", this.config.providerName, this.config.modelId);
 
 		if (this.config.getToolConfig) {
 			this.toolContext.toolConfig = this.config.getToolConfig();
@@ -353,37 +352,28 @@ export class AgentLoop implements AgentRuntime {
 
 		const tools = await this.buildTools();
 		const systemPrompt = await this.assembleSystemPrompt();
-		// [Batch 3] Inject task notifications and trigger Notification hook
-		const taskNotifs = this.injectTaskNotifications();
-		if (taskNotifs.length > 0) {
-			await triggerHooks("Notification", {
-				agentId: this.config.agentId,
-				sessionId: this.session.getSessionId(),
-				notifications: taskNotifs,
-			});
-		}
 
-		// Build ephemeral context message via PreLLMCall hooks (memory recall, RAG, etc.)
-		const hookCtx: Record<string, unknown> = {
+		// PreLLMCall: aggregate notification + memory + rag + providerOptions
+		const preResult = await triggerHooks("PreLLMCall", {
 			agentId: this.config.agentId,
 			sessionId: this.session.getSessionId(),
 			session: this.session,
 			config: this.config,
 			providers: this.providers,
-			ragContext: undefined as string | undefined,
-			memoryContext: undefined as string | undefined,
-		};
-		await triggerHooks("PreLLMCall", hookCtx);
+			taskRegistry: this.delegator.taskRegistry,
+		});
+
+		const memoryContext = preResult.memoryContext as string | undefined;
+		const ragContext = preResult.ragContext as string | undefined;
+		const providerOptions = (preResult.providerOptions as Record<string, Record<string, any>>) ?? {};
 
 		const ctx = buildContextMessage({
 			workspaceDir: this.config.workspaceDir,
 			guidelines: this.config.guidelines,
-			ragContext: hookCtx.ragContext as string | undefined,
-			memoryContext: hookCtx.memoryContext as string | undefined,
+			ragContext,
+			memoryContext,
 		});
 		const messages = this.prependContext(this.session.getMessages(), ctx);
-
-		const providerOptions = this.buildProviderOptions();
 
 		log.debug("loop", "streamText called, messages:", messages.length,
 			"model:", this.config.providerName + "/" + this.config.modelId,
@@ -440,38 +430,7 @@ export class AgentLoop implements AgentRuntime {
 		return copy;
 	}
 
-	private injectTaskNotifications(): Array<{ taskId: string; status: string; result?: string }> {
-		const completedTasks = this.delegator.taskRegistry.getCompletedUnnotified();
-		if (completedTasks.length === 0) return [];
 
-		const notifications = completedTasks.map((t) => {
-			this.delegator.taskRegistry.markNotified(t.id);
-			const r = t.result && t.result.length > 2000 ? t.result.slice(0, 2000) + "..." : t.result;
-			const lines = [
-				"<task-notification>",
-				"<task_id>" + t.id + "</task_id>",
-				"<status>" + t.status + "</status>",
-				"<task>" + t.task + "</task>",
-			];
-			if (r) lines.push("<result>" + r + "</result>");
-			if (t.error) lines.push("<error>" + t.error + "</error>");
-			lines.push("</task-notification>");
-			return lines.join(String.fromCharCode(10));
-		});
-		this.session.addMessage({ role: "user", content: notifications.join(String.fromCharCode(10, 10)) });
-
-		// Return notification data for hook trigger
-		return completedTasks.map(t => ({ taskId: t.id, status: t.status, result: t.result }));
-	}
-
-	private buildProviderOptions(): Record<string, Record<string, any>> {
-		const providerOptions: Record<string, Record<string, any>> = {};
-		if (this.config.thinkingLevel && this.config.thinkingLevel !== "none") {
-			const budgetTokens = ({ low: 4096, medium: 16384, high: 32768 } as Record<string, number>)[this.config.thinkingLevel] ?? 16384;
-			providerOptions.anthropic = { thinking: { type: "enabled", budgetTokens } };
-		}
-		return providerOptions;
-	}
 
 	private async processStreamEvents(result: any): Promise<void> {
 		for await (const event of result.fullStream) {
@@ -521,6 +480,10 @@ export class AgentLoop implements AgentRuntime {
 						break;
 					}
 
+					if (preResult?.modifiedArgs) {
+						e.input = preResult.modifiedArgs;
+					}
+
 					this.emit({ type: "tool_start", agentId: this.config.agentId, toolName: e.toolName, toolCallId: tcId, args: e.input });
 					break;
 				}
@@ -529,10 +492,8 @@ export class AgentLoop implements AgentRuntime {
 					const e = event as any;
 					log.debug("loop", "Tool result:", e.toolName);
 					const resultTcId = e.toolCallId ?? e.id;
-					this.recorder.updateToolResult(resultTcId, e.toolName, e.output, false);
-					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: resultTcId, isError: false, result: e.output });
 
-					await triggerHooks("PostToolUse", {
+					const postResult = await triggerHooks("PostToolUse", {
 						agentId: this.config.agentId,
 						sessionId: this.session.getSessionId(),
 						toolName: e.toolName,
@@ -540,6 +501,10 @@ export class AgentLoop implements AgentRuntime {
 						isError: false,
 						toolCallId: resultTcId,
 					});
+					const output = postResult?.modifiedResult !== undefined ? postResult.modifiedResult : e.output;
+					const isError = postResult?.modifiedIsError ?? false;
+					this.recorder.updateToolResult(resultTcId, e.toolName, output, isError);
+					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: resultTcId, isError, result: output });
 					break;
 				}
 				// [Batch 1] PostToolUseFailure hook — 工具执行失败后通知
@@ -547,16 +512,18 @@ export class AgentLoop implements AgentRuntime {
 					const e = event as any;
 					log.debug("loop", "Tool error:", e.toolName, e.errorText?.slice(0, 80));
 					const errTcId = e.toolCallId ?? e.id;
-					this.recorder.updateToolResult(errTcId, e.toolName, String(e.error ?? e.errorText ?? ""), true);
-					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: errTcId, isError: true, result: String(e.error ?? e.errorText ?? "") });
+					let errorStr = String(e.error ?? e.errorText ?? "");
 
-					await triggerHooks("PostToolUseFailure", {
+					const failResult = await triggerHooks("PostToolUseFailure", {
 						agentId: this.config.agentId,
 						sessionId: this.session.getSessionId(),
 						toolName: e.toolName,
-						error: String(e.error ?? e.errorText ?? ""),
+						error: errorStr,
 						toolCallId: errTcId,
 					});
+					if (failResult?.modifiedError) errorStr = failResult.modifiedError as string;
+					this.recorder.updateToolResult(errTcId, e.toolName, errorStr, true);
+					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: errTcId, isError: true, result: errorStr });
 					break;
 				}
 				case "finish-step": {
