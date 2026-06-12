@@ -4,6 +4,7 @@
 //
 // ## 核心功能
 // 记录流式输出的轮次数据，包括文本、思考和工具调用。
+// 按 step（一次 LLM API call）管理 blocks，每个 step 独立持久化。
 //
 // ## 输入
 // - 流式事件
@@ -25,23 +26,80 @@
 // - 保持记录准确性
 //
 // ---------------------------------------------------------------------------
-// TurnRecorder — collects streaming blocks and persists turns to the DB
+// TurnRecorder — collects streaming blocks per step and persists to the DB
 // ---------------------------------------------------------------------------
 
 import { parseThinkingTags } from "./agent-utils.js";
 import type { ISessionStore } from "./session-store-interface.js";
 
+/** Data for a completed step, waiting for persistAllSteps(). */
+interface StepData {
+	blocks: any[];
+	usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+}
+
 /**
- * Manages the turnBlocks array during a streaming run and provides methods
- * to persist user / assistant turns to the session store.
+ * Manages step-level blocks during a streaming run and provides methods
+ * to persist user/assistant steps to the session store.
+ *
+ * External consumers still use `blocks` getter to get a merged view
+ * of all blocks across steps (backward compatible).
  */
 export class TurnRecorder {
-	/** Collected blocks for the current assistant turn (text, thinking, tool). */
-	blocks: any[] = [];
+	/** Blocks for the current (in-progress) step. */
+	private currentStepBlocks: any[] = [];
 
-	// Internal accumulators for the current step (between tool calls)
+	/** Completed steps awaiting final persist. */
+	private completedSteps: StepData[] = [];
+
+	/** Current turn group (set by startTurnGroup). */
+	private currentTurnGroup = -1;
+
+	/** Whether the current step has been persisted at least once. */
+	private currentStepPersisted = false;
+
+	// Internal accumulators for streaming deltas
 	private currentStepThinking = "";
 	private currentStepText = "";
+
+	// -----------------------------------------------------------------------
+	// Backward-compatible merged view
+	// -----------------------------------------------------------------------
+
+	/** Merged view of all blocks across completed steps + current step.
+	 *  Used by getLoopState(), Stop hook, and UI streaming display. */
+	get blocks(): any[] {
+		const result: any[] = [];
+		for (const s of this.completedSteps) {
+			result.push(...s.blocks);
+		}
+		result.push(...this.currentStepBlocks);
+		return result;
+	}
+
+	// -----------------------------------------------------------------------
+	// Turn group management
+	// -----------------------------------------------------------------------
+
+	/** Start a new turn group. Resets all internal state. */
+	startTurnGroup(turnGroup: number): void {
+		this.currentTurnGroup = turnGroup;
+		this.currentStepBlocks = [];
+		this.completedSteps = [];
+		this.currentStepPersisted = false;
+		this.currentStepThinking = "";
+		this.currentStepText = "";
+	}
+
+	/** Get the current turn group value. */
+	getTurnGroup(): number {
+		return this.currentTurnGroup;
+	}
+
+	/** Whether there is any unpersisted data (blocks in current step or completed steps). */
+	hasUnpersistedData(): boolean {
+		return this.currentStepBlocks.length > 0 || this.currentStepThinking.length > 0 || this.currentStepText.length > 0 || this.completedSteps.length > 0;
+	}
 
 	// -----------------------------------------------------------------------
 	// Block accumulation
@@ -58,85 +116,129 @@ export class TurnRecorder {
 	}
 
 	/** Record a tool-call start. Seals any pending text/thinking first. */
-	addToolStart(name: string, args: any): void {
+	addToolStart(name: string, args: any, toolCallId?: string): void {
 		this.sealStep();
-		this.blocks.push({ type: "tool", name, status: "running", args });
+		this.currentStepBlocks.push({ type: "tool", name, status: "running", args, ...(toolCallId ? { toolCallId } : {}) });
 	}
 
-	/** Record a successful tool result. */
+	/** Update a tool block when result arrives. Matches by toolCallId if provided, else by name. */
+	updateToolResult(toolCallId: string | undefined, name: string, result: any, isError: boolean): void {
+		const tb = this.findToolBlock(toolCallId, name);
+		if (tb) {
+			tb.status = isError ? "error" : "done";
+			tb.result = result;
+		}
+	}
+
+	/** Record a successful tool result (legacy API — matches by name only). */
 	addToolResult(name: string, output: any): void {
-		const tb = this.findRunningTool(name);
+		const tb = this.findToolBlock(undefined, name);
 		if (tb) {
 			tb.status = "done";
 			tb.result = output;
 		}
 	}
 
-	/** Record a tool error. */
+	/** Record a tool error (legacy API — matches by name only). */
 	addToolError(name: string, errorText: string, output?: any): void {
-		const tb = this.findRunningTool(name);
+		const tb = this.findToolBlock(undefined, name);
 		if (tb) {
 			tb.status = "error";
 			tb.result = errorText ?? String(output);
 		}
 	}
 
-	/** Flush any pending text/thinking into blocks (called before tool calls and at end). */
+	/** Flush any pending text/thinking into currentStepBlocks.
+	 *  Does NOT move currentStepBlocks into completedSteps — that happens on sealAndAdvanceStep(). */
 	sealStep(): void {
 		if (this.currentStepThinking) {
 			let t = this.currentStepThinking;
 			while (t.charCodeAt(t.length - 1) === 10) t = t.substring(0, t.length - 1);
-			if (t) this.blocks.push({ type: "thinking", text: t });
+			if (t) this.currentStepBlocks.push({ type: "thinking", text: t });
 			this.currentStepThinking = "";
-		this.markStepStart();
 		}
 		if (this.currentStepText) {
-			for (const b of parseThinkingTags(this.currentStepText)) this.blocks.push(b);
+			for (const b of parseThinkingTags(this.currentStepText)) this.currentStepBlocks.push(b);
 			this.currentStepText = "";
 		}
 	}
 
-	// -----------------------------------------------------------------------
-	// Step boundary tracking for per-step usage
-	private stepStartIndex = 0;
-
-	/** Mark the start of a new step (called on sealStep). */
-	markStepStart(): void {
-		this.stepStartIndex = this.blocks.length;
-	}
-
-	/** Attach per-step token usage to the last block of the current step. */
-	addStepUsage(usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void {
-		if (this.blocks.length === 0) return;
-		// Find the last block from this step (tool or text/thinking)
-		const lastBlock = this.blocks[this.blocks.length - 1];
-		if (!lastBlock.stepUsage) {
-			lastBlock.stepUsage = {
-				inputTokens: usage.inputTokens ?? 0,
-				outputTokens: usage.outputTokens ?? 0,
-				totalTokens: usage.totalTokens ?? 0,
-			};
+	/** Seal the current step, attach usage, and move it to completedSteps.
+	 *  Called at finish-step event. */
+	sealAndAdvanceStep(usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void {
+		this.sealStep();
+		if (this.currentStepBlocks.length > 0) {
+			// Attach usage to the last block of this step
+			if (usage) {
+				const lastBlock = this.currentStepBlocks[this.currentStepBlocks.length - 1];
+				if (!lastBlock.stepUsage) {
+					lastBlock.stepUsage = {
+						inputTokens: usage.inputTokens ?? 0,
+						outputTokens: usage.outputTokens ?? 0,
+						totalTokens: usage.totalTokens ?? 0,
+					};
+				}
+			}
+			this.completedSteps.push({
+				blocks: this.currentStepBlocks,
+				usage,
+			});
 		}
+		this.currentStepBlocks = [];
+		this.currentStepPersisted = false;
 	}
 
+	// -----------------------------------------------------------------------
 	// Persistence
 	// -----------------------------------------------------------------------
 
-	/** Append a user turn to the turns table. */
+	/** Append a user turn as a step row. */
 	saveUserTurn(db: ISessionStore, sessionId: string, text: string): void {
 		if (!db || !sessionId) return;
 		const seq = db.getTurnCount(sessionId);
-		db.appendTurn(sessionId, seq, "user", text);
+		db.appendStep(sessionId, seq, seq, "user", text);
 	}
 
+	/** Persist the current in-progress step (for incremental streaming writes).
+	 *  Uses upsertStep so it can be called repeatedly as deltas arrive.
+	 *  Writes the merged view of ALL blocks (completedSteps + currentStep)
+	 *  to maintain backward compatibility with streaming UI. */
+	persistCurrentStep(db: ISessionStore, sessionId: string, seq: number): void {
+		if (!db || !sessionId) return;
+		this.sealStep();
+		const allBlocks = this.blocks;
+		if (allBlocks.length === 0) return;
+		db.upsertStep(sessionId, seq, this.currentTurnGroup, "assistant", JSON.stringify(allBlocks));
+		this.currentStepPersisted = true;
+	}
 
-	/**
-	 * Persist the current blocks snapshot to the DB (incremental write).
-	 * Called at tool-call / tool-result events and text thresholds during streaming.
-	 */
-	persistBlocksSnapshot(db: ISessionStore, sessionId: string, assistantSeq: number): void {
-		if (!db || !sessionId || this.blocks.length === 0) return;
-		db.upsertAssistantTurn(sessionId, assistantSeq, JSON.stringify(this.blocks));
+	/** Persist all completed steps as individual rows.
+	 *  Called at finish-step to write per-step rows with usage data.
+	 *  baseSeq = the first seq for this turn group's assistant steps. */
+	persistAllSteps(db: ISessionStore, sessionId: string, baseSeq: number): void {
+		if (!db || !sessionId) return;
+		this.sealStep();
+
+		// Persist any completed steps that haven't been written yet
+		for (let i = 0; i < this.completedSteps.length; i++) {
+			const step = this.completedSteps[i];
+			if (step.blocks.length > 0) {
+				db.upsertStep(
+					sessionId, baseSeq + i, this.currentTurnGroup,
+					"assistant", JSON.stringify(step.blocks), step.usage,
+				);
+			}
+		}
+
+		// Persist current step
+		if (this.currentStepBlocks.length > 0) {
+			const stepIdx = this.completedSteps.length;
+			db.upsertStep(
+				sessionId, baseSeq + stepIdx, this.currentTurnGroup,
+				"assistant", JSON.stringify(this.currentStepBlocks),
+			);
+			this.currentStepPersisted = true;
+		}
 	}
 
 	// -----------------------------------------------------------------------
@@ -145,7 +247,10 @@ export class TurnRecorder {
 
 	/** Reset state for a new run. */
 	reset(): void {
-		this.blocks = [];
+		this.currentStepBlocks = [];
+		this.completedSteps = [];
+		this.currentTurnGroup = -1;
+		this.currentStepPersisted = false;
 		this.currentStepThinking = "";
 		this.currentStepText = "";
 	}
@@ -161,8 +266,14 @@ export class TurnRecorder {
 	// Internal helpers
 	// -----------------------------------------------------------------------
 
-	/** Find the most recent running tool block with the given name. */
-	private findRunningTool(name: string): any | undefined {
+	/** Find a tool block by toolCallId (preferred) or by name+status=running. */
+	private findToolBlock(toolCallId: string | undefined, name: string): any | undefined {
+		if (toolCallId) {
+			const found = [...this.blocks].reverse().find(
+				(b: any) => b.type === "tool" && b.toolCallId === toolCallId,
+			);
+			if (found) return found;
+		}
 		return [...this.blocks].reverse().find(
 			(b: any) => b.type === "tool" && b.name === name && b.status === "running",
 		);

@@ -4,6 +4,7 @@
 //
 // ## 核心功能
 // 处理消息清除、会话重置等 IPC 请求
+// 支持按 turnGroup 操作（step-level 存储）
 //
 // ## 输入
 // agentId、会话操作参数
@@ -35,12 +36,26 @@ export function registerMessageHandlers(_ctx: IpcContext): void {
 		},
 	);
 
+	// msgSeq is now a turnGroup value (from UI's `m${turnGroup}` id)
 	typedHandle("messages:edit", ["agentService", "agentStore"],
 		async (ctx, agentId, msgSeq, newText) => {
 			const db = ctx.agentService.getDB();
 			const session = db.getMainSession(agentId);
 			if (!session) return { error: "session not found" };
-			db.updateTurnContent(session.id, msgSeq, newText);
+
+			if (db.hasStepSchema()) {
+				// Step-level: find user step in this turnGroup and update
+				const steps = db.getStepGroup(session.id, msgSeq);
+				for (const step of steps) {
+					if (step.role === "user") {
+						db.updateStepContent(session.id, step.seq, newText);
+					}
+				}
+			} else {
+				db.updateTurnContent(session.id, msgSeq, newText);
+			}
+
+			// Also update messages table
 			const rows = db.getMessagesWithSeq(session.id);
 			const target = rows.find((r: any) => r.seq === msgSeq);
 			if (target) {
@@ -54,12 +69,19 @@ export function registerMessageHandlers(_ctx: IpcContext): void {
 		},
 	);
 
+	// msgSeq is now a turnGroup value — delete entire group
 	typedHandle("messages:delete", ["agentService", "agentStore"],
 		async (ctx, agentId, msgSeq) => {
 			const db = ctx.agentService.getDB();
 			const session = db.getMainSession(agentId);
 			if (!session) return { error: "session not found" };
-			db.deleteTurn(session.id, msgSeq);
+
+			if (db.hasStepSchema()) {
+				// Step-level: delete all steps in the turnGroup
+				db.deleteStepGroup(session.id, msgSeq);
+			} else {
+				db.deleteTurn(session.id, msgSeq);
+			}
 			db.deleteMessage(session.id, msgSeq);
 			const agent = ctx.agentStore.get(agentId);
 			ctx.agentService.recreateLoop(agentId, session.id, agent);

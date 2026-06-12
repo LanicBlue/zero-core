@@ -468,10 +468,145 @@ export class AgentService {
 			return resolvedSessionId;
 		}
 
+	/**
+	 * Build UI messages from runtime turns.
+	 *
+	 * Step-level storage: turns may have `turnGroup` field. When present,
+	 * multiple assistant steps with the same turnGroup are merged into one
+	 * UI message. Message IDs use `turnGroup` instead of `seq` so that
+	 * edit/delete operations target the entire turn group.
+	 *
+	 * Legacy (no turnGroup): each turn is one UI message, ID uses `seq`.
+	 */
 	private buildSessionInitMessages(agentId: string, sessionId: string, loop: AgentLoop): any[] {
 		// Read from runtime, NOT from DB — runtime is the single source of truth for UI.
 		const turns = loop.getSessionTurns();
 		const { isBusy, recorderBlocks } = loop.getLoopState();
+
+		// Check if we have step-level data (turnGroup field present)
+		const hasStepData = turns.length > 0 && turns[0].turnGroup !== undefined;
+
+		if (hasStepData) {
+			return this.buildStepLevelMessages(turns, isBusy, recorderBlocks);
+		}
+
+		// Legacy path: no turnGroup, treat each turn as one UI message
+		return this.buildLegacyMessages(turns, isBusy, recorderBlocks);
+	}
+
+	/** Build UI messages from step-level data, grouping by turnGroup. */
+	private buildStepLevelMessages(
+		turns: Array<{ seq: number; role: string; content: string | null; createdAt: string; turnGroup?: number }>,
+		isBusy: boolean,
+		recorderBlocks: any[],
+	): any[] {
+		const result: any[] = [];
+
+		// Group steps by turnGroup, preserving order
+		const groups = new Map<number, Array<{ seq: number; role: string; content: string | null; createdAt: string }>>();
+		const groupOrder: number[] = [];
+		for (const t of turns) {
+			const tg = t.turnGroup ?? t.seq;
+			let group = groups.get(tg);
+			if (!group) {
+				group = [];
+				groups.set(tg, group);
+				groupOrder.push(tg);
+			}
+			group.push(t);
+		}
+
+		for (let gi = 0; gi < groupOrder.length; gi++) {
+			const tg = groupOrder[gi];
+			const groupSteps = groups.get(tg)!;
+			const isLastGroup = gi === groupOrder.length - 1;
+
+			// Find user step in this group
+			const userStep = groupSteps.find(s => s.role === "user");
+			// Find assistant steps in this group
+			const assistantSteps = groupSteps.filter(s => s.role === "assistant");
+
+			// User message
+			if (userStep) {
+				result.push({
+					id: `m${tg}`,
+					role: "user",
+					text: userStep.content ?? "",
+					timestamp: new Date(userStep.createdAt).getTime(),
+				});
+			}
+
+			// Assistant message — merge all assistant steps' blocks
+			if (assistantSteps.length > 0) {
+				const allBlocks: any[] = [];
+				for (const step of assistantSteps) {
+					let blocks: any[] = [];
+					try {
+						const parsed = step.content ? JSON.parse(step.content) : null;
+						if (Array.isArray(parsed)) {
+							blocks = parsed;
+						} else if (typeof parsed === "string") {
+							blocks = [{ type: "text", text: parsed }];
+						}
+					} catch {
+						if (step.content) blocks = [{ type: "text", text: step.content }];
+					}
+					allBlocks.push(...blocks);
+				}
+
+				// If this is the last group AND the loop is streaming, replace with live recorder blocks
+				if (isLastGroup && recorderBlocks.length > 0) {
+					allBlocks.length = 0;
+					allBlocks.push(...recorderBlocks);
+				}
+
+				const text = allBlocks
+					.filter((b: any) => b.type === "text")
+					.map((b: any) => b.text || "")
+					.join("");
+
+				result.push({
+					id: `m${tg}`,
+					role: "assistant",
+					text,
+					blocks: allBlocks,
+					timestamp: new Date(assistantSteps[0].createdAt).getTime(),
+					streaming: isLastGroup && isBusy && assistantSteps.length > 0,
+				});
+			}
+		}
+
+		// Runtime fix: if the loop is actively streaming but no assistant steps exist yet
+		// (not persisted), append a live assistant message from recorder blocks.
+		if (isBusy && recorderBlocks.length > 0) {
+			const lastGroup = groupOrder[groupOrder.length - 1];
+			const lastGroupSteps = lastGroup !== undefined ? groups.get(lastGroup) : undefined;
+			const lastIsUser = !lastGroupSteps || lastGroupSteps.every(s => s.role === "user");
+			if (lastIsUser) {
+				const text = recorderBlocks
+					.filter((b: any) => b.type === "text")
+					.map((b: any) => b.text || "")
+					.join("");
+				result.push({
+					id: "m-streaming",
+					role: "assistant",
+					text,
+					blocks: recorderBlocks,
+					timestamp: Date.now(),
+					streaming: true,
+				});
+			}
+		}
+
+		return result;
+	}
+
+	/** Legacy path: no turnGroup, each turn is one UI message. */
+	private buildLegacyMessages(
+		turns: Array<{ seq: number; role: string; content: string | null; createdAt: string }>,
+		isBusy: boolean,
+		recorderBlocks: any[],
+	): any[] {
 		const result: any[] = [];
 		for (let i = 0; i < turns.length; i++) {
 			const t = turns[i];

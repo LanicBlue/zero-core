@@ -117,10 +117,14 @@ export class SessionDB {
 				content     TEXT,
 				compressed  INTEGER NOT NULL DEFAULT 0,
 				created_at  TEXT NOT NULL,
+				turn_group  INTEGER NOT NULL DEFAULT -1,
+				input_tokens  INTEGER DEFAULT 0,
+				output_tokens INTEGER DEFAULT 0,
+				total_tokens  INTEGER DEFAULT 0,
 				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 			);
 			CREATE INDEX IF NOT EXISTS idx_turns_session_seq ON turns(session_id, seq);
-
+			
 			CREATE TABLE IF NOT EXISTS turn_state (
 				session_id  TEXT NOT NULL,
 				turn_seq    INTEGER NOT NULL,
@@ -154,6 +158,12 @@ export class SessionDB {
 
 		// Migrate renamed tools (Bash -> Shell, etc.)
 		this.migrateToolNames();
+	}
+
+	/** Check if the turns table has step-level schema (turn_group column). */
+	hasStepSchema(): boolean {
+		const cols = (this.db.pragma("table_info(turns)") as Array<{ name: string }>).map(r => r.name);
+		return cols.includes("turn_group");
 	}
 
 	private migrateToolNames(): void {
@@ -416,6 +426,176 @@ export class SessionDB {
 		}
 		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
 	}
+
+	// -----------------------------------------------------------------------
+	// Step-level storage (new methods, kept alongside legacy turn methods)
+	// -----------------------------------------------------------------------
+
+	getSteps(sessionId: string): Array<{
+		seq: number; turnGroup: number; role: string;
+		content: string | null; inputTokens: number; outputTokens: number;
+		totalTokens: number; createdAt: string;
+	}> {
+		const rows = this.db.prepare(
+			"SELECT seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at " +
+			"FROM turns WHERE session_id = ? ORDER BY seq",
+		).all(sessionId) as any[];
+		return rows.map((r) => ({
+			seq: r.seq,
+			turnGroup: r.turn_group,
+			role: r.role,
+			content: r.content,
+			inputTokens: r.input_tokens ?? 0,
+			outputTokens: r.output_tokens ?? 0,
+			totalTokens: r.total_tokens ?? 0,
+			createdAt: r.created_at,
+		}));
+	}
+
+	getStepGroup(sessionId: string, turnGroup: number): Array<{
+		seq: number; turnGroup: number; role: string;
+		content: string | null; inputTokens: number; outputTokens: number;
+		totalTokens: number; createdAt: string;
+	}> {
+		const rows = this.db.prepare(
+			"SELECT seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at " +
+			"FROM turns WHERE session_id = ? AND turn_group = ? ORDER BY seq",
+		).all(sessionId, turnGroup) as any[];
+		return rows.map((r) => ({
+			seq: r.seq,
+			turnGroup: r.turn_group,
+			role: r.role,
+			content: r.content,
+			inputTokens: r.input_tokens ?? 0,
+			outputTokens: r.output_tokens ?? 0,
+			totalTokens: r.total_tokens ?? 0,
+			createdAt: r.created_at,
+		}));
+	}
+
+	appendStep(
+		sessionId: string, seq: number, turnGroup: number,
+		role: string, content: string | null,
+		usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number },
+	): void {
+		this.ensureSession(sessionId);
+		const now = new Date().toISOString();
+		const tx = this.db.transaction(() => {
+			this.db.prepare(
+				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at) " +
+				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			).run(
+				sessionId, seq, turnGroup, role, content ?? null,
+				usage?.inputTokens ?? 0,
+				usage?.outputTokens ?? 0,
+				usage?.totalTokens ?? 0,
+				now,
+			);
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
+	}
+
+	upsertStep(
+		sessionId: string, seq: number, turnGroup: number,
+		role: string, content: string | null,
+		usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number },
+	): void {
+		this.ensureSession(sessionId);
+		const now = new Date().toISOString();
+		const existing = this.db.prepare(
+			"SELECT 1 FROM turns WHERE session_id = ? AND seq = ?",
+		).get(sessionId, seq);
+		if (existing) {
+			this.db.prepare(
+				"UPDATE turns SET turn_group = ?, content = ?, input_tokens = ?, output_tokens = ?, total_tokens = ? " +
+				"WHERE session_id = ? AND seq = ?",
+			).run(
+				turnGroup, content ?? null,
+				usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, usage?.totalTokens ?? 0,
+				sessionId, seq,
+			);
+		} else {
+			this.db.prepare(
+				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at) " +
+				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			).run(
+				sessionId, seq, turnGroup, role, content ?? null,
+				usage?.inputTokens ?? 0,
+				usage?.outputTokens ?? 0,
+				usage?.totalTokens ?? 0,
+				now,
+			);
+		}
+		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+	}
+
+	updateStepContent(
+		sessionId: string, seq: number, content: string,
+		usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number },
+	): void {
+		const now = new Date().toISOString();
+		const tx = this.db.transaction(() => {
+			if (usage) {
+				this.db.prepare(
+					"UPDATE turns SET content = ?, input_tokens = ?, output_tokens = ?, total_tokens = ? " +
+					"WHERE session_id = ? AND seq = ?",
+				).run(content, usage.inputTokens ?? 0, usage.outputTokens ?? 0, usage.totalTokens ?? 0, sessionId, seq);
+			} else {
+				this.db.prepare(
+					"UPDATE turns SET content = ? WHERE session_id = ? AND seq = ?",
+				).run(content, sessionId, seq);
+			}
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
+	}
+
+	deleteStepGroup(sessionId: string, turnGroup: number): void {
+		const now = new Date().toISOString();
+		const tx = this.db.transaction(() => {
+			this.db.prepare("DELETE FROM turns WHERE session_id = ? AND turn_group = ?").run(sessionId, turnGroup);
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
+	}
+
+	getTurnGroupCount(sessionId: string): number {
+		const row = this.db.prepare(
+			"SELECT COUNT(DISTINCT turn_group) as cnt FROM turns WHERE session_id = ?",
+		).get(sessionId) as any;
+		return row.cnt;
+	}
+
+	/** Replace all turns for a session with step-level rows derived from messages.
+	 *  Used after compression to sync the turns table with the compressed messages. */
+	replaceStepsFromMessages(
+		sessionId: string,
+		steps: Array<{
+			seq: number; turnGroup: number; role: string;
+			content: string | null;
+			usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+		}>,
+	): void {
+		const now = new Date().toISOString();
+		const tx = this.db.transaction(() => {
+			this.db.prepare("DELETE FROM turns WHERE session_id = ?").run(sessionId);
+			const insert = this.db.prepare(
+				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at) " +
+				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			);
+			for (const s of steps) {
+				insert.run(
+					sessionId, s.seq, s.turnGroup, s.role, s.content ?? null,
+					s.usage?.inputTokens ?? 0, s.usage?.outputTokens ?? 0, s.usage?.totalTokens ?? 0,
+					now,
+				);
+			}
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
+	}
+
 	// -----------------------------------------------------------------------
 	// Turn state (durable execution checkpointing)
 	// -----------------------------------------------------------------------

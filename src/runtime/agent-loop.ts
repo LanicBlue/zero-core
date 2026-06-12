@@ -70,9 +70,10 @@ export class AgentLoop implements AgentRuntime {
 	private thinkingText = "";
 	private recorder = new TurnRecorder();
 	private resultText = "";
-	private currentAssistantSeq = -1;
-	private lastPersistTextLength = 0;
-	private static readonly TEXT_PERSIST_INTERVAL = 500;
+	/** Base seq for the current turn group's assistant steps. */
+	private stepBaseSeq = -1;
+	/** How many steps have been completed in the current turn group. */
+	private stepOffset = 0;
 
 	constructor(
 		config: SessionConfig,
@@ -141,11 +142,16 @@ export class AgentLoop implements AgentRuntime {
 			await triggerHooks("UserPromptSubmit", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), message: userMessage });
 			await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
 
-			// SessionStart hook has written user turn; next seq is the assistant turn
+			// SessionStart hook has written user turn; next seq is the first assistant step
 			if (this.config.db && this.config.sessionId) {
-				this.currentAssistantSeq = this.config.db.getTurnCount(this.config.sessionId);
+				this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
 			}
-			this.lastPersistTextLength = 0;
+			this.stepOffset = 0;
+
+			// Set the turn group (= user message's seq = stepBaseSeq - 1 for non-resume,
+			// but SessionStart already wrote the user turn so getTurnCount includes it)
+			const userSeq = this.stepBaseSeq - 1;
+			this.recorder.startTurnGroup(userSeq);
 
 			await this.runWithRetry();
 
@@ -187,12 +193,21 @@ export class AgentLoop implements AgentRuntime {
 		try {
 			this.session.pruneIfNeeded();
 
-			// SessionStart hook has written user turn; next seq is the assistant turn
+			// For resume, the user turn is already in DB
 			if (this.config.db && this.config.sessionId) {
-				this.currentAssistantSeq = this.config.db.getTurnCount(this.config.sessionId);
+				this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
 			}
-			this.lastPersistTextLength = 0;
+			this.stepOffset = 0;
+
 			await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)" });
+
+			// After SessionStart, the turn count may have increased (if hook wrote a turn)
+			if (this.config.db && this.config.sessionId) {
+				this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+			}
+			const userSeq = this.stepBaseSeq - 1;
+			this.recorder.startTurnGroup(userSeq);
+
 			await this.runWithRetry();
 		} finally {
 			if (timeout) clearTimeout(timeout);
@@ -227,7 +242,7 @@ export class AgentLoop implements AgentRuntime {
 	}
 
 	/** Expose session turns for UI rendering — runtime is the single source of truth. */
-	getSessionTurns(): Array<{ seq: number; role: string; content: string | null; createdAt: string }> {
+	getSessionTurns(): Array<{ seq: number; role: string; content: string | null; createdAt: string; turnGroup?: number }> {
 		return this.session.getTurns();
 	}
 
@@ -261,13 +276,6 @@ export class AgentLoop implements AgentRuntime {
 	}
 
 
-	// ─── Incremental persistence ─────────────────────────────────
-
-	/** Persist current recorder blocks snapshot to DB. */
-	private persistBlocksSnapshot(): void {
-		if (!this.config.db || !this.config.sessionId || this.currentAssistantSeq < 0) return;
-		this.recorder.persistBlocksSnapshot(this.config.db, this.config.sessionId, this.currentAssistantSeq);
-	}
 
 	// ─── Retry loop (shared by run and resume) ──────────────────
 
@@ -457,11 +465,6 @@ export class AgentLoop implements AgentRuntime {
 					this.streamText += text;
 					this.recorder.addTextDelta(text);
 					this.emit({ type: "text_delta", agentId: this.config.agentId, text: this.streamText });
-					if (this.streamText.length - this.lastPersistTextLength >= AgentLoop.TEXT_PERSIST_INTERVAL) {
-						this.lastPersistTextLength = this.streamText.length;
-						this.recorder.sealStep();
-						this.persistBlocksSnapshot();
-					}
 					break;
 				}
 				case "reasoning-delta": {
@@ -473,38 +476,28 @@ export class AgentLoop implements AgentRuntime {
 				}
 				case "tool-call": {
 					const e = event as any;
-					this.recorder.sealStep();
 					this.thinkingText = "";
 					this.streamText = "";
 					log.debug("loop", "Tool call:", e.toolName);
 					const tcId = e.toolCallId ?? e.id ?? `tc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-					this.recorder.blocks.push({ type: "tool", name: e.toolName, status: "running", args: e.input, toolCallId: tcId });
+					this.recorder.addToolStart(e.toolName, e.input, tcId);
 					this.emit({ type: "tool_start", agentId: this.config.agentId, toolName: e.toolName, toolCallId: tcId, args: e.input });
-					this.persistBlocksSnapshot();
 					break;
 				}
 				case "tool-result": {
 					const e = event as any;
 					log.debug("loop", "Tool result:", e.toolName);
 					const resultTcId = e.toolCallId ?? e.id;
-					const tb = resultTcId
-						? [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.toolCallId === resultTcId)
-						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
-					if (tb) { tb.status = "done"; tb.result = e.output; }
+					this.recorder.updateToolResult(resultTcId, e.toolName, e.output, false);
 					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: resultTcId, isError: false, result: e.output });
-					this.persistBlocksSnapshot();
 					break;
 				}
 				case "tool-error": {
 					const e = event as any;
 					log.debug("loop", "Tool error:", e.toolName, e.errorText?.slice(0, 80));
 					const errTcId = e.toolCallId ?? e.id;
-					const tb = errTcId
-						? [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.toolCallId === errTcId)
-						: [...this.recorder.blocks].reverse().find((b: any) => b.type === "tool" && b.name === e.toolName && b.status === "running");
-					if (tb) { tb.status = "error"; tb.result = String(e.error ?? e.errorText ?? ""); }
+					this.recorder.updateToolResult(errTcId, e.toolName, String(e.error ?? e.errorText ?? ""), true);
 					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: errTcId, isError: true, result: String(e.error ?? e.errorText ?? "") });
-					this.persistBlocksSnapshot();
 					break;
 				}
 				case "finish-step": {
@@ -526,14 +519,28 @@ export class AgentLoop implements AgentRuntime {
 								reasoningTokens: (stepUsage as any).reasoningTokens,
 							},
 						});
-					// Attach per-step usage to recorder block and persist
-					this.recorder.sealStep();
-					this.recorder.addStepUsage({
-						inputTokens: stepUsage.inputTokens ?? 0,
-						outputTokens: stepUsage.outputTokens ?? 0,
-						totalTokens: (stepUsage.inputTokens ?? 0) + (stepUsage.outputTokens ?? 0),
-					});
-					this.persistBlocksSnapshot();
+
+						// Seal the step, attach usage, persist as individual step row
+						this.recorder.sealAndAdvanceStep({
+							inputTokens: stepUsage.inputTokens ?? 0,
+							outputTokens: stepUsage.outputTokens ?? 0,
+							totalTokens: (stepUsage.inputTokens ?? 0) + (stepUsage.outputTokens ?? 0),
+						});
+
+						// Persist all completed steps via PostStep hook
+						await triggerHooks("PostStep", {
+							agentId: this.config.agentId,
+							sessionId: this.session.getSessionId(),
+							recorder: this.recorder,
+							stepBaseSeq: this.stepBaseSeq,
+							stepOffset: this.stepOffset,
+							usage: {
+								inputTokens: stepUsage.inputTokens ?? 0,
+								outputTokens: stepUsage.outputTokens ?? 0,
+								totalTokens: (stepUsage.inputTokens ?? 0) + (stepUsage.outputTokens ?? 0),
+							},
+						});
+						this.stepOffset++;
 					}
 					break;
 				}
@@ -552,6 +559,15 @@ export class AgentLoop implements AgentRuntime {
 		} catch { /* usage not available for some providers */ }
 
 		this.recorder.sealStep();
+		// Final persist for any remaining blocks via PostStep hook
+		await triggerHooks("PostStep", {
+			agentId: this.config.agentId,
+			sessionId: this.session.getSessionId(),
+			recorder: this.recorder,
+			stepBaseSeq: this.stepBaseSeq,
+			stepOffset: this.stepOffset,
+		});
+
 		const response = await result.response;
 		if (response.messages) {
 			for (const msg of response.messages) {

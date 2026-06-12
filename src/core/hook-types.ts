@@ -3,7 +3,7 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 定义 29 个 Hook 事件名称和回调函数类型，覆盖 agent 完整生命周期
+// 定义 30 个 Hook 事件名称和回调函数类型，覆盖 agent 完整生命周期
 //
 // ## 输入
 // 无（纯类型定义）
@@ -21,18 +21,18 @@
 // 新增或删除事件时需确保不破坏已有 hook 注册
 //
 // ---------------------------------------------------------------------------
-// Hook event definitions — 29 events covering the full agent lifecycle
+// Hook event definitions — 30 events covering the full agent lifecycle
 // Inspired by Claude Code's hook architecture (27 event points)
 // ---------------------------------------------------------------------------
 
-/** All 29 hook event names */
+/** All 30 hook event names */
 export type HookEventName =
 	| "PreToolUse" | "PostToolUse" | "PostToolUseFailure"
 	| "SessionStart" | "SessionEnd" | "Stop" | "StopFailure" | "Setup"
 	| "UserPromptSubmit" | "Notification" | "PermissionRequest" | "PermissionDenied"
 	| "SubagentStart" | "SubagentStop"
 	| "PreCompact" | "PostCompact"
-	| "PreLLMCall" | "PostTurnComplete"
+	| "PreLLMCall" | "PostStep" | "PostTurnComplete"
 	| "TeammateIdle" | "TaskCreated" | "TaskCompleted"
 	| "Elicitation" | "ElicitationResult"
 	| "ConfigChange" | "CwdChanged" | "FileChanged"
@@ -117,6 +117,15 @@ export interface ElicitationResultContext extends BaseHookContext {
 
 export interface NotificationContext extends BaseHookContext {
 	notifications: Array<{ taskId: string; status: string; result?: string }>;
+}
+
+export interface PostStepContext extends BaseHookContext {
+	stepOffset: number;
+	usage?: {
+		inputTokens: number;
+		outputTokens: number;
+		totalTokens: number;
+	};
 }
 
 // ---------------------------------------------------------------------------

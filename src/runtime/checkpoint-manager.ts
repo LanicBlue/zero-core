@@ -20,6 +20,8 @@
 // ## 维护规则
 // 检查点格式变更需考虑与历史数据的兼容性
 //
+/** @deprecated Replaced by turn-hooks.ts. Retained for reference only; not actively imported. */
+
 import type { ISessionStore } from "./session-store-interface.js";
 import { TurnRecorder } from "./turn-recorder.js";
 import { log } from "../core/logger.js";
@@ -105,16 +107,11 @@ export class CheckpointManager {
 		this.incrementalTurnSeq = -1;
 	}
 
-	loadResumedTurns(sessionId: string | null | undefined, recorder: TurnRecorder, turnSeq?: number): void {
+	loadResumedTurns(sessionId: string | null | undefined, _recorder: TurnRecorder, turnSeq?: number): void {
 		if (turnSeq === undefined || !this.db || !sessionId) return;
-		try {
-			const turns = this.db.getTurns(sessionId);
-			const existing = turns.find(t => t.seq === turnSeq);
-			if (existing && existing.content) {
-				const blocks = JSON.parse(existing.content);
-				if (Array.isArray(blocks)) recorder.blocks = blocks;
-			}
-			this.incrementalTurnSeq = turnSeq;
-		} catch { /* ignore parse errors */ }
+		// NOTE: recorder.blocks is now a read-only getter (step-level storage).
+		// Direct assignment is no longer possible. This deprecated method
+		// would need a full rewrite to support step-level storage.
+		this.incrementalTurnSeq = turnSeq;
 	}
 }

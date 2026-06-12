@@ -4,6 +4,7 @@
 //
 // ## 核心功能
 // Agent 会话类，管理消息历史、token 计算和上下文窗口。
+// 支持从 step-level 存储重建消息（优先）和 legacy turn-level 回退。
 //
 // ## 输入
 // - 系统提示词
@@ -26,11 +27,20 @@
 // - 保持消息修剪策略正确
 //
 import type { ModelMessage } from "ai";
-import type { ISessionStore } from "./session-store-interface.js";
+import type { ISessionStore, StepRow } from "./session-store-interface.js";
 import { triggerHooks } from "../core/hook-registry.js";
 
 const DEFAULT_CONTEXT_WINDOW = 128000;
 const RESERVE_TOKENS = 16384;
+
+/** Cached turn data — now includes turnGroup for step-level storage. */
+export interface CachedTurnData {
+	seq: number;
+	role: string;
+	content: string | null;
+	createdAt: string;
+	turnGroup?: number;
+}
 
 export class AgentSession {
 	private messages: ModelMessage[] = [];
@@ -40,7 +50,7 @@ export class AgentSession {
 	private db: ISessionStore | null;
 
 	/** Cached raw turns from DB — populated by rebuildFromTurns(), used as runtime source for UI. */
-	private cachedTurns: Array<{ seq: number; role: string; content: string | null; createdAt: string }> = [];
+	private cachedTurns: CachedTurnData[] = [];
 
 	/** Calibrated token count from last API response. null = no calibration yet. */
 	private lastActualInputTokens: number | null = null;
@@ -81,10 +91,20 @@ export class AgentSession {
 	/** Refresh the cached turns from DB (e.g. before UI session_init). */
 	refreshTurnsCache(): void {
 		if (!this.db || !this.sessionId) return;
-		this.cachedTurns = this.db.getTurns(this.sessionId);
+		if (this.db.hasStepSchema()) {
+			this.cachedTurns = this.db.getSteps(this.sessionId).map(s => ({
+				seq: s.seq,
+				role: s.role,
+				content: s.content,
+				createdAt: s.createdAt,
+				turnGroup: s.turnGroup,
+			}));
+		} else {
+			this.cachedTurns = this.db.getTurns(this.sessionId);
+		}
 	}
 
-	getTurns(): Array<{ seq: number; role: string; content: string | null; createdAt: string }> {
+	getTurns(): CachedTurnData[] {
 		return this.cachedTurns;
 	}
 
@@ -158,10 +178,28 @@ export class AgentSession {
 
 	rebuildFromTurns(): ModelMessage[] {
 		if (!this.db || !this.sessionId) return [];
+
+		// Prefer step-level storage if available
+		if (this.db.hasStepSchema()) {
+			const steps = this.db.getSteps(this.sessionId);
+			if (steps.length > 0) {
+				// Cache the step data
+				this.cachedTurns = steps.map(s => ({
+					seq: s.seq,
+					role: s.role,
+					content: s.content,
+					createdAt: s.createdAt,
+					turnGroup: s.turnGroup,
+				}));
+				return this.rebuildFromSteps(steps);
+			}
+		}
+
+		// Fallback: legacy turn-level storage
 		this.cachedTurns = this.db.getTurns(this.sessionId);
 		if (this.cachedTurns.length === 0) return [];
-		const turns = this.cachedTurns;
 
+		const turns = this.cachedTurns;
 		const messages: ModelMessage[] = [];
 
 		for (const turn of turns) {
@@ -177,16 +215,52 @@ export class AgentSession {
 		return messages;
 	}
 
-	private appendAssistantMessages(blocks: any[], messages: ModelMessage[]): void {
+	/** Rebuild messages from step-level rows. Groups by turnGroup and handles toolCallId offsets. */
+	private rebuildFromSteps(steps: StepRow[]): ModelMessage[] {
+		const messages: ModelMessage[] = [];
+		let tcOffset = 0;
+
+		// Group steps by turnGroup, preserving order
+		const groups = new Map<number, StepRow[]>();
+		for (const step of steps) {
+			const group = groups.get(step.turnGroup);
+			if (group) {
+				group.push(step);
+			} else {
+				groups.set(step.turnGroup, [step]);
+			}
+		}
+
+		for (const [, groupSteps] of groups) {
+			// First step in group should be user
+			const userStep = groupSteps.find(s => s.role === "user");
+			if (userStep) {
+				messages.push({ role: "user", content: userStep.content ?? "" });
+			}
+
+			// Process assistant steps
+			for (const step of groupSteps) {
+				if (step.role !== "assistant") continue;
+				let blocks: any[] = [];
+				try { blocks = JSON.parse(step.content ?? "[]"); } catch { blocks = []; }
+				tcOffset = this.appendStepMessages(blocks, messages, tcOffset);
+			}
+		}
+
+		return messages;
+	}
+
+	/** Process a single step's blocks into AI SDK messages, with toolCallId offset.
+	 *  Returns the updated tcOffset for the next step. */
+	private appendStepMessages(blocks: any[], messages: ModelMessage[], toolCallOffset: number): number {
 		const toolCalls: { id: string; name: string; input: any }[] = [];
 		const toolResults: { id: string; name: string; output: any; isError?: boolean }[] = [];
 		const textParts: string[] = [];
 
 		for (const b of blocks) {
 			if (b.type === "tool") {
-				// Always regenerate toolCallId to avoid provider-specific ID formats
-				// (e.g. MiniMax's "call_function_xxx_N") that APIs reject across sessions
-				const id = "tc-" + toolCalls.length;
+				// Generate globally unique toolCallId using offset
+				const id = "tc-" + (toolCallOffset + toolCalls.length);
 				toolCalls.push({ id, name: b.name, input: b.args ?? {} });
 				const result = typeof b.result === "string" ? b.result : JSON.stringify(b.result ?? "");
 				toolResults.push({ id, name: b.name, output: result, isError: b.status === "error" });
@@ -218,6 +292,14 @@ export class AgentSession {
 				} as any);
 			}
 		}
+
+		// Return updated offset
+		return toolCallOffset + toolCalls.length;
+	}
+
+	/** Legacy: process all blocks from a single turn-level row. */
+	private appendAssistantMessages(blocks: any[], messages: ModelMessage[]): void {
+		this.appendStepMessages(blocks, messages, 0);
 	}
 
 		/** Extract turn blocks from an assistant message's content parts. */private extractBlocks(msg: ModelMessage): any[] {

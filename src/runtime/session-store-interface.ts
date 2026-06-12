@@ -22,6 +22,18 @@
 //
 import type { IKVStore } from "../core/kv-store-interface.js";
 
+/** Step-level row from the turns table. */
+export interface StepRow {
+	seq: number;
+	turnGroup: number;
+	role: string;
+	content: string | null;
+	inputTokens: number;
+	outputTokens: number;
+	totalTokens: number;
+	createdAt: string;
+}
+
 /**
  * Interface for session/message persistence.
  * Runtime layer uses this instead of depending on server/SessionDB.
@@ -56,4 +68,15 @@ export interface ISessionStore {
 		durationMs: number;
 		turnSeq?: number;
 	}): void;
+
+	// Step-level storage methods (new)
+	hasStepSchema(): boolean;
+	getSteps(sessionId: string): StepRow[];
+	getStepGroup(sessionId: string, turnGroup: number): StepRow[];
+	appendStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void;
+	upsertStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void;
+	updateStepContent(sessionId: string, seq: number, content: string, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void;
+	deleteStepGroup(sessionId: string, turnGroup: number): void;
+	getTurnGroupCount(sessionId: string): number;
+	replaceStepsFromMessages(sessionId: string, steps: Array<{ seq: number; turnGroup: number; role: string; content: string | null; usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number } }>): void;
 }

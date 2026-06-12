@@ -88,6 +88,15 @@ function safeAddColumn(db: Database.Database, table: string, column: string, def
 	} catch { /* already exists */ }
 }
 
+function safeAddIndex(db: Database.Database, table: string, indexName: string, columns: string): void {
+	try {
+		const indexes = (db.pragma("index_list(" + table + ")") as Array<{ name: string }>).map(r => r.name);
+		if (!indexes.includes(indexName)) {
+			db.exec("CREATE INDEX " + indexName + " ON " + table + "(" + columns + ")");
+		}
+	} catch { /* already exists */ }
+}
+
 export function runMigrations(sessionDB: SessionDB): void {
 	const kv = sessionDB.getKVStore();
 	const memory = sessionDB.getMemoryStore();
@@ -122,6 +131,16 @@ export function runMigrations(sessionDB: SessionDB): void {
 	safeAddColumn(db, "sessions", "cache_write_tokens", "INTEGER DEFAULT 0");
 	safeAddColumn(db, "sessions", "reasoning_tokens", "INTEGER DEFAULT 0");
 	safeAddColumn(db, "sessions", "estimated_cost_usd", "REAL DEFAULT 0");
+
+	// Step-level storage: turns table new columns
+	safeAddColumn(db, "turns", "turn_group", "INTEGER NOT NULL DEFAULT -1");
+	safeAddColumn(db, "turns", "input_tokens", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "turns", "output_tokens", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "turns", "total_tokens", "INTEGER DEFAULT 0");
+	safeAddIndex(db, "turns", "idx_turns_session_group", "session_id, turn_group");
+
+	// Migrate old rows: set turn_group = seq for un-migrated rows
+	migrateTurnsToSteps(db);
 
 	// Now safe to create SqliteStore instances with all columns
 	const agents = new SqliteStore<AgentRecord>(db, "agents", AGENT_COLUMNS);
@@ -220,6 +239,17 @@ export function runMigrations(sessionDB: SessionDB): void {
 	// ─── 4. Memory graph migration ───────────────────────────────
 
 	memory.migrateFromJson();
+}
+
+// ---------------------------------------------------------------------------
+// Step-level migration: set turn_group = seq for old rows
+// ---------------------------------------------------------------------------
+
+function migrateTurnsToSteps(db: Database.Database): void {
+	const result = db.prepare("UPDATE turns SET turn_group = seq WHERE turn_group = -1").run();
+	if (result.changes > 0) {
+		log.db(`migrateTurnsToSteps: updated ${result.changes} row(s) with turn_group = seq`);
+	}
 }
 
 // ---------------------------------------------------------------------------

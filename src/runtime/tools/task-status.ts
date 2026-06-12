@@ -36,11 +36,35 @@ function formatTurn(turn: { role: string; content: string | null }, limit: numbe
 			if (b.type === "text") return clip(b.text);
 			if (b.type === "tool_use") return "[tool] " + b.name;
 			if (b.type === "tool_result") return "[result] " + clip(typeof b.content === "string" ? b.content : JSON.stringify(b.content));
+			if (b.type === "tool") return "[tool] " + b.name + (b.status === "error" ? " (error)" : "");
 			return "";
 		}).filter(Boolean).join("\n");
 	} catch {
 		return clip(turn.content ?? "");
 	}
+}
+
+/** Format a group of steps as a single turn for display. */
+function formatStepGroup(steps: Array<{ role: string; content: string | null }>, limit: number): string {
+	const userStep = steps.find(s => s.role === "user");
+	if (userStep) return formatTurn(userStep, limit);
+
+	// Merge all assistant steps
+	const allText: string[] = [];
+	for (const step of steps) {
+		if (step.role !== "assistant") continue;
+		try {
+			const blocks = JSON.parse(step.content ?? "[]");
+			for (const b of blocks) {
+				if (b.type === "text") allText.push(b.text);
+				if (b.type === "tool") allText.push("[tool] " + b.name + (b.status === "error" ? " (error)" : ""));
+			}
+		} catch {
+			if (step.content) allText.push(step.content);
+		}
+	}
+	const clip = (s: string) => s.length > limit ? s.slice(0, limit - 3) + "..." : s;
+	return allText.map(clip).join("\n");
 }
 
 export const taskStatusTool = buildTool({
@@ -102,9 +126,29 @@ export const taskStatusTool = buildTool({
 		const config = ctx.toolConfig?.TaskStatus ?? {};
 		const n = config.recent_turns ?? 6;
 		const turnLimit = config.turn_length ?? 500;
+
+		// Use step-level data if available, group by turnGroup
+		if (db.hasStepSchema()) {
+			const steps = db.getSteps(session.id);
+			// Group by turnGroup
+			const groups = new Map<number, Array<{ role: string; content: string | null }>>();
+			for (const s of steps) {
+				let group = groups.get(s.turnGroup);
+				if (!group) {
+					group = [];
+					groups.set(s.turnGroup, group);
+				}
+				group.push({ role: s.role, content: s.content });
+			}
+			const groupEntries = [...groups.entries()].slice(-n);
+			if (!groupEntries.length) return header.join("\n");
+			const activity = groupEntries.map(([, g]) => formatStepGroup(g, turnLimit)).join("\n---\n");
+			return header.join("\n") + "\n\n" + activity;
+		}
+
+		// Legacy fallback
 		const turns = db.getTurns(session.id).slice(-n);
 		if (!turns.length) return header.join("\n");
-
 		const activity = turns.map((t: any) => formatTurn({ role: t.role, content: t.content }, turnLimit)).join("\n---\n");
 		return header.join("\n") + "\n\n" + activity;
 	},

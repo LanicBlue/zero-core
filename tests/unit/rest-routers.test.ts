@@ -63,6 +63,16 @@ function mockSessionDb() {
 		queryToolExecutions: vi.fn(() => []),
 		getToolExecutionStats: vi.fn(() => []),
 		cleanOldToolExecutions: vi.fn(() => 0),
+		// Step-level storage methods
+		hasStepSchema: vi.fn(() => true),
+		getSteps: vi.fn(() => []),
+		getStepGroup: vi.fn(() => []),
+		appendStep: vi.fn(),
+		upsertStep: vi.fn(),
+		updateStepContent: vi.fn(),
+		deleteStepGroup: vi.fn(),
+		getTurnGroupCount: vi.fn(() => 0),
+		replaceStepsFromMessages: vi.fn(),
 	};
 }
 

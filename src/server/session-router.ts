@@ -84,33 +84,55 @@ export function createSessionRouter(deps: {
 		res.json({ success: true });
 	});
 
+	// Edit message — :seq is now a turnGroup value (from UI's `m${turnGroup}` id)
 	router.put("/:agentId/messages/:seq", (req, res) => {
 		const { newText } = req.body;
 		const db = getDb();
 		const session = db.getMainSession(req.params.agentId);
 		if (!session) return res.status(404).json({ error: "session not found" });
 
-		db.updateTurnContent(session.id, parseInt(req.params.seq), newText);
+		const seqParam = parseInt(req.params.seq);
+
+		if (db.hasStepSchema()) {
+			// Step-level: find the step(s) for this turnGroup and update content
+			const steps = db.getStepGroup(session.id, seqParam);
+			for (const step of steps) {
+				if (step.role === "user") {
+					db.updateStepContent(session.id, step.seq, newText);
+				}
+			}
+		} else {
+			db.updateTurnContent(session.id, seqParam, newText);
+		}
+
+		// Also update messages table for in-memory cache
 		const rows = db.getMessagesWithSeq(session.id);
-		const target = rows.find((r: any) => r.seq === parseInt(req.params.seq));
+		const target = rows.find((r: any) => r.seq === seqParam);
 		if (target) {
 			const msg = JSON.parse(target.msg_json);
 			msg.content = newText;
-			db.updateMessageContent(session.id, parseInt(req.params.seq), newText, JSON.stringify(msg));
+			db.updateMessageContent(session.id, seqParam, newText, JSON.stringify(msg));
 		}
 		const agent = agentStore.get(req.params.agentId);
 		agentService.recreateLoop(req.params.agentId, session.id, agent);
 		res.json({ success: true });
 	});
 
+	// Delete message — :seq is now a turnGroup value, deletes entire group
 	router.delete("/:agentId/messages/:seq", (req, res) => {
 		const db = getDb();
 		const session = db.getMainSession(req.params.agentId);
 		if (!session) return res.status(404).json({ error: "session not found" });
 
-		const seq = parseInt(req.params.seq);
-		db.deleteTurn(session.id, seq);
-		db.deleteMessage(session.id, seq);
+		const seqParam = parseInt(req.params.seq);
+
+		if (db.hasStepSchema()) {
+			// Step-level: delete all steps in the turnGroup
+			db.deleteStepGroup(session.id, seqParam);
+		} else {
+			db.deleteTurn(session.id, seqParam);
+		}
+		db.deleteMessage(session.id, seqParam);
 		const agent = agentStore.get(req.params.agentId);
 		agentService.recreateLoop(req.params.agentId, session.id, agent);
 		res.json({ success: true });
