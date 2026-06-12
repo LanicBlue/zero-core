@@ -55,17 +55,20 @@ export interface BaseHookContext {
 export interface PreToolUseContext extends BaseHookContext {
 	toolName: string;
 	args: Record<string, unknown>;
+	toolCallId?: string;
 }
 
 export interface PostToolUseContext extends BaseHookContext {
 	toolName: string;
 	result: unknown;
 	isError: boolean;
+	toolCallId?: string;
 }
 
 export interface PostToolUseFailureContext extends BaseHookContext {
 	toolName: string;
 	error: string;
+	toolCallId?: string;
 }
 
 export interface StopContext extends BaseHookContext {
@@ -76,6 +79,8 @@ export interface StopContext extends BaseHookContext {
 export interface StopFailureContext extends BaseHookContext {
 	error: string;
 	errorClass?: string;
+	userFriendlyMsg?: string;
+	retryAttempts?: number;
 }
 
 export interface UserPromptSubmitContext extends BaseHookContext {
@@ -144,8 +149,56 @@ export interface HookContinueResult {
 	message: string;
 }
 
+// --- Per-event data-modification results ---
+
+/** PreToolUse: can block or modify tool arguments */
+export interface PreToolUseResult {
+	blocked?: boolean;
+	reason?: string;
+	modifiedArgs?: Record<string, unknown>;
+}
+
+/** PostToolUse: can modify tool output */
+export interface PostToolUseResult {
+	modifiedResult?: unknown;
+	modifiedIsError?: boolean;
+}
+
+/** PostToolUseFailure: can modify error message */
+export interface PostToolUseFailureResult {
+	modifiedError?: string;
+}
+
+/** PreLLMCall: can inject context strings and provider options */
+export interface PreLLMCallResult {
+	memoryContext?: string;
+	ragContext?: string;
+	providerOptions?: Record<string, Record<string, unknown>>;
+}
+
+/** PostStep: can trigger token calibration */
+export interface PostStepResult {
+	inputTokens?: number;
+}
+
+/** UserPromptSubmit: can block or modify user message */
+export interface UserPromptSubmitResult {
+	blocked?: boolean;
+	reason?: string;
+	modifiedMessage?: string;
+}
+
 /** Union of all possible hook return values. void = no action */
-export type HookResult = void | HookBlockResult | HookContinueResult;
+export type HookResult =
+	| void
+	| HookBlockResult
+	| HookContinueResult
+	| PreToolUseResult
+	| PostToolUseResult
+	| PostToolUseFailureResult
+	| PreLLMCallResult
+	| PostStepResult
+	| UserPromptSubmitResult;
 
 /** Handler function signature */
 export type HookHandler = (ctx: BaseHookContext & Record<string, unknown>) => HookResult | Promise<HookResult>;

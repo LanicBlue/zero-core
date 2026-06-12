@@ -113,8 +113,8 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 				args: input,
 				toolCallId,
 				});
-			if (preResult && typeof preResult === "object" && "blocked" in preResult) {
-				return `Tool blocked: ${(preResult as any).reason}`;
+			if (preResult?.blocked) {
+				return `Tool blocked: ${preResult.reason}`;
 			}
 
 			// Rate limiting — acquire slot before execution

@@ -3,537 +3,300 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgentLoop Hook 扩展点全景</title>
+<title>AgentLoop Hook 扩展点 — 迁移后状态</title>
 <style>
-:root {
-  --bg: #0d1117; --surface: #161b22; --surface2: #1c2128;
-  --border: #30363d; --text: #e6edf3; --muted: #8b949e;
-  --blue: #58a6ff; --green: #3fb950; --purple: #bc8cff;
-  --orange: #d29922; --red: #f85149; --cyan: #39d2c0;
-  --pink: #f778ba; --dim: #484f58;
-}
+:root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--blue:#58a6ff;--green:#3fb950;--purple:#bc8cff;--orange:#d29922;--red:#f85149;--cyan:#39d2c0;--dim:#484f58}
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px 24px;line-height:1.6}
+h1{text-align:center;font-size:24px;margin-bottom:4px}
+.sub{text-align:center;color:var(--muted);font-size:13px;margin-bottom:32px}
 
-h1{text-align:center;font-size:26px;margin-bottom:4px}
-.sub{text-align:center;color:var(--muted);font-size:13px;margin-bottom:36px}
-
-/* Timeline */
-.timeline{position:relative;max-width:820px;margin:0 auto}
+.timeline{position:relative;max-width:880px;margin:0 auto}
 .timeline::before{content:'';position:absolute;left:196px;top:0;bottom:0;width:2px;background:var(--border)}
+.phase-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--dim);padding:10px 0 4px;margin-left:210px}
 
-.phase{margin-bottom:4px}
-.phase-label{
-  font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;
-  color:var(--dim);padding:8px 0 4px 0;margin-left:210px;
-}
-.phase-label:first-child{padding-top:0}
-
-.row{
-  display:grid;
-  grid-template-columns: 190px 14px 1fr;
-  gap:0;
-  align-items:center;
-  min-height:42px;
-  position:relative;
-}
-
-/* Dot on timeline */
-.dot{
-  width:10px;height:10px;border-radius:50%;
-  border:2px solid var(--border);background:var(--surface);
-  z-index:1;justify-self:center;
-}
-.dot.active{border-color:var(--green);background:var(--green);box-shadow:0 0 8px rgba(63,185,80,.4)}
-.dot.reserved{border-color:var(--dim);background:var(--surface2)}
-
-/* Left: hook name */
-.hook-name{
-  text-align:right;padding-right:16px;font-size:13px;
-  font-family:'SF Mono',Consolas,monospace;color:var(--muted);
-  transition: color .15s;
-}
+.row{display:grid;grid-template-columns:190px 14px 1fr;gap:0;align-items:start;min-height:40px;position:relative;padding:3px 0}
+.dot{width:10px;height:10px;border-radius:50%;z-index:1;justify-self:center;margin-top:6px;flex-shrink:0}
+.dot.live{border:2px solid var(--green);background:var(--green);box-shadow:0 0 8px rgba(63,185,80,.35)}
+.dot.empty{border:2px solid var(--dim);background:var(--surface2)}
+.hook-name{text-align:right;padding-right:16px;font-size:12.5px;font-family:'SF Mono',Consolas,monospace;color:var(--muted);transition:color .15s;padding-top:6px}
 .row:hover .hook-name{color:var(--text)}
-.row:hover .dot.active{transform:scale(1.3)}
-
-/* Right: content card */
-.card-cell{padding-left:24px;min-height:42px;display:flex;align-items:center}
-.card{
-  background:var(--surface);border:1px solid var(--border);border-radius:8px;
-  padding:8px 14px;width:100%;transition:border-color .15s,transform .15s;
-}
+.cc{padding-left:24px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 14px;width:100%;transition:border-color .15s,transform .15s}
 .row:hover .card{border-color:var(--muted);transform:translateX(2px)}
-.card.active{border-left:3px solid var(--green)}
-.card.reserved{border-left:3px solid var(--dim);opacity:.55}
-.row:hover .card.reserved{opacity:.75}
+.card.live{border-left:3px solid var(--green)}
+.card.empty{border-left:3px solid var(--dim);opacity:.45}
+.row:hover .card.empty{opacity:.6}
 
-.card-title{font-size:13px;font-weight:600;margin-bottom:2px;display:flex;align-items:center;gap:6px}
-.card-title .status{
-  font-size:10px;padding:1px 6px;border-radius:8px;font-weight:500;
-}
-.status.on{background:rgba(63,185,80,.15);color:var(--green)}
-.status.off{background:rgba(72,79,88,.2);color:var(--dim)}
+.ct{font-size:13px;font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.s{font-size:10px;padding:1px 6px;border-radius:8px;font-weight:500;white-space:nowrap}
+.sl{background:rgba(63,185,80,.15);color:var(--green)}
+.se{background:rgba(72,79,88,.2);color:var(--dim)}
+.sa{background:rgba(210,153,34,.12);color:var(--orange)}
+.desc{font-size:12px;color:var(--muted);line-height:1.5;margin-top:2px}
+.impl{color:var(--cyan);font-size:11px;font-family:'SF Mono',Consolas,monospace}
+.loc{color:var(--orange);font-size:10px}
 
-.card-desc{font-size:12px;color:var(--muted);line-height:1.5}
-.card-desc .impl{color:var(--green);font-weight:500}
-.card-desc .file{color:var(--cyan);font-family:'SF Mono',Consolas,monospace;font-size:11px}
-.card-desc .loc{color:var(--orange);font-size:11px}
+.loop-bracket{margin-left:210px;padding:4px 0 2px 24px;border-left:2px dashed var(--border);font-size:11px;color:var(--dim);font-style:italic}
+.loop-bracket-inner{margin-left:210px;padding:3px 0 2px 24px;border-left:2px dotted var(--border);font-size:11px;color:var(--dim);font-style:italic}
+.divider{text-align:center;padding:20px 0 6px;color:var(--dim);font-size:12px;letter-spacing:2px}
 
-/* Connector arrows between repeating sections */
-.loop-bracket{
-  margin-left:210px;padding:4px 0 4px 24px;
-  border-left:2px dashed var(--border);
-  font-size:11px;color:var(--dim);font-style:italic;
-}
-.loop-bracket-inner{
-  margin-left:210px;padding:4px 0 4px 24px;
-  border-left:2px dotted var(--border);
-  font-size:11px;color:var(--dim);font-style:italic;
-}
+.legend{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin:20px 0 32px;font-size:12px;color:var(--muted)}
+.li{display:flex;align-items:center;gap:6px}
+.ld{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.ld-on{background:var(--green)}.ld-off{background:var(--surface2);border:2px solid var(--dim)}
 
-/* Legend */
-.legend{display:flex;flex-wrap:wrap;gap:20px;justify-content:center;margin:24px 0 40px;font-size:12px;color:var(--muted)}
-.legend-item{display:flex;align-items:center;gap:6px}
-.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.legend-dot.on{background:var(--green);box-shadow:0 0 6px rgba(63,185,80,.4)}
-.legend-dot.off{background:var(--surface2);border:2px solid var(--dim)}
+.stats{display:flex;gap:36px;justify-content:center;margin:24px 0 20px;font-size:13px;color:var(--muted)}
+.sn{font-size:28px;font-weight:700;display:block;margin-bottom:2px}
 
-/* Section divider */
-.divider{text-align:center;padding:24px 0 8px;color:var(--dim);font-size:12px;letter-spacing:2px}
-
-/* Stats bar */
-.stats{
-  display:flex;gap:24px;justify-content:center;margin:32px 0 16px;
-  font-size:13px;color:var(--muted);
-}
-.stat-num{font-size:28px;font-weight:700;display:block;margin-bottom:2px}
-.stat-num.green{color:var(--green)}
-.stat-num.dim{color:var(--dim)}
-.stat-num.blue{color:var(--blue)}
+.bar-wrap{max-width:880px;margin:0 auto 24px}
+.bar-bg{background:var(--surface2);border-radius:6px;height:20px;overflow:hidden;display:flex}
+.bar-on{background:var(--green);transition:width .5s}
+.bar-off{background:var(--dim);transition:width .5s}
 </style>
 </head>
 <body>
 
-<h1>🔌 AgentLoop 全扩展点时序图</h1>
-<p class="sub">按 loop 执行顺序列出全部 30 个 Hook 点 · 已接入功能 vs 预留扩展点</p>
+<h1>🔌 AgentLoop 全扩展点 — 迁移后</h1>
+<p class="sub">按 loop 执行顺序 · 30 Hook 点 · 已激活 vs 预留</p>
 
 <div class="stats">
-  <div style="text-align:center"><span class="stat-num green">8</span>已触发</div>
-  <div style="text-align:center"><span class="stat-num dim">22</span>预留</div>
-  <div style="text-align:center"><span class="stat-num blue">4</span>功能文件</div>
+  <div style="text-align:center"><span class="sn" style="color:var(--green)">18</span>已激活</div>
+  <div style="text-align:center"><span class="sn" style="color:var(--dim)">12</span>预留</div>
+  <div style="text-align:center"><span class="sn" style="color:var(--cyan)">6</span>Hook 文件</div>
 </div>
 
+<div class="bar-wrap"><div class="bar-bg">
+  <div class="bar-on" style="width:60%"></div>
+  <div class="bar-off" style="width:40%"></div>
+</div></div>
+
 <div class="legend">
-  <div class="legend-item"><div class="legend-dot on"></div>已接入功能</div>
-  <div class="legend-item"><div class="legend-dot off"></div>已定义 / 预留</div>
+  <div class="li"><div class="ld ld-on"></div>已激活（triggerHooks + handler）</div>
+  <div class="li"><div class="ld ld-off"></div>预留（无触发或无 handler）</div>
 </div>
 
 <div class="timeline">
 
-<!-- ═══════════════ SETUP ═══════════════ -->
+<!-- ═══ SETUP ═══ -->
 <div class="phase-label">Setup</div>
 
-<div class="row">
-  <div class="hook-name">Setup</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">Setup <span class="status off">预留</span></div>
-    <div class="card-desc">系统初始化阶段触发。可用于环境检查、配置加载等一次性初始化逻辑。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">Setup</div><div class="dot empty"></div><div class="cc"><div class="card empty">
+<div class="ct">Setup <span class="s se">预留</span></div>
+<div class="desc">系统初始化阶段触发。可用于环境检查、一次性初始化逻辑。</div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">InstructionsLoaded</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">InstructionsLoaded <span class="status off">预留</span></div>
-    <div class="card-desc">指令（system prompt / CLAUDE.md / memory）加载完成后触发。可用于校验、打日志、动态修改已加载指令。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">InstructionsLoaded</div><div class="dot empty"></div><div class="cc"><div class="card empty">
+<div class="ct">InstructionsLoaded <span class="s se">预留</span></div>
+<div class="desc">指令加载完成后触发。可用于校验、动态修改已加载指令。</div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">ConfigChange</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">ConfigChange <span class="status off">预留</span></div>
-    <div class="card-desc">会话配置变更时触发。可用于通知 UI 刷新、热重载模型参数等。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">ConfigChange</div><div class="dot empty"></div><div class="cc"><div class="card empty">
+<div class="ct">ConfigChange <span class="s se">预留</span></div>
+<div class="desc">会话配置变更时触发。可用于热重载模型参数、通知 UI。</div>
+</div></div></div>
 
-<!-- ═══════════════ TURN START ═══════════════ -->
+<!-- ═══ TURN START ═══ -->
 <div class="phase-label">Turn 启动</div>
 
-<div class="row">
-  <div class="hook-name">UserPromptSubmit</div>
-  <div class="dot active"></div>
-  <div class="card-cell"><div class="card active">
-    <div class="card-title">UserPromptSubmit <span class="status on">已触发</span></div>
-    <div class="card-desc">
-      <b>触发位置：</b><span class="loc">agent-loop.ts:142</span> — <code>run()</code> 内<br>
-      <b>当前行为：</b>仅触发，无 hook 注册。预留给用户输入审计、内容过滤、prompt 改写等。
-    </div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">UserPromptSubmit</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">UserPromptSubmit <span class="s sl">✅ 已激活</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:138</span> — 在 addMessage 之前触发<br>
+当前无 handler 注册。预留用于用户输入审计、内容过滤、prompt 改写。</div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">SessionStart</div>
-  <div class="dot active"></div>
-  <div class="card-cell"><div class="card active">
-    <div class="card-title">SessionStart <span class="status on">已接入</span></div>
-    <div class="card-desc">
-      <b>触发位置：</b><span class="loc">agent-loop.ts:143</span> — <code>run()</code> 内<br>
-      <span class="impl">● turn-hooks</span>
-      <span class="file">hooks/turn-hooks.ts</span><br>
-      写入 user turn 为 step row，初始化 turn sequence 追踪。支持 step-level 和 legacy 两种存储。
-    </div>
-  </div></div>
+<div class="row"><div class="hook-name">SessionStart</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">SessionStart <span class="s sl">✅ 已接入 ×2</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:146, 205</span><br>
+<span class="impl">● turn-hooks</span> — 写入 user turn step row<br>
+<span class="impl">● durable-hooks</span> — 创建 turn_state 检查点
 </div>
+</div></div></div>
 
-<!-- ═══════════════ PRE-LLM ═══════════════ -->
+<!-- ═══ PRE-LLM ═══ -->
 <div class="phase-label">LLM 调用前</div>
 
-<div class="row">
-  <div class="hook-name">PreLLMCall</div>
-  <div class="dot active"></div>
-  <div class="card-cell"><div class="card active">
-    <div class="card-title">PreLLMCall <span class="status on">已接入 ×2</span></div>
-    <div class="card-desc">
-      <b>触发位置：</b><span class="loc">agent-loop.ts:356</span> — <code>executeStream()</code> 内<br>
-      <span class="impl">● memory-hooks</span>
-      <span class="file">hooks/memory-hooks.ts</span><br>
-      FTS5 检索相关记忆节点 → 注入 <code>memoryContext</code> 到 ephemeral context<br>
-      <span class="impl">● rag-hooks</span>
-      <span class="file">hooks/rag-hooks.ts</span><br>
-      获取知识库 RAG 内容 → 注入 <code>ragContext</code> 到 ephemeral context<br>
-      <b>⚠️ 均为 non-fatal</b>：失败不阻断执行
-    </div>
-  </div></div>
+<div class="row"><div class="hook-name">PreLLMCall</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">PreLLMCall <span class="s sl">✅ 已接入 ×2</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:376</span><br>
+<span class="impl">● memory-hooks</span> — FTS5 记忆检索 → 注入 memoryContext<br>
+<span class="impl">● rag-hooks</span> — 知识库 RAG → 注入 ragContext<br>
+⚠️ 均为 non-fatal
 </div>
+</div></div></div>
 
-<!-- ═══════════════ STEP LOOP ═══════════════ -->
-<div class="loop-bracket">↻ LLM step 循环（单次 turn 内可执行多步，直到 stop_reason ≠ tool_use）</div>
+<!-- ═══ STEP LOOP ═══ -->
+<div class="loop-bracket">↻ LLM step 循环</div>
 
-<div class="row">
-  <div class="hook-name">PostStep</div>
-  <div class="dot active"></div>
-  <div class="card-cell"><div class="card active">
-    <div class="card-title">PostStep <span class="status on">已接入</span></div>
-    <div class="card-desc">
-      <b>触发位置：</b><span class="loc">agent-loop.ts:531</span> — <code>processStreamEvents()</code> 内 finish-step<br>
-      <span class="impl">● turn-hooks</span>
-      <span class="file">hooks/turn-hooks.ts</span><br>
-      每步完成后增量持久化 step 到 DB（流式写入，防 abort 丢数据）。<br>
-      在 <code>finalizeStream()</code> 末尾还会再触发一次确保尾步落盘。
-    </div>
-  </div></div>
+<div class="row"><div class="hook-name">PostStep</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">PostStep <span class="s sl">✅ 已接入 ×2</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:590, 622</span> — finish-step + finalizeStream<br>
+<span class="impl">● turn-hooks</span> — 增量持久化 step 到 DB
 </div>
+</div></div></div>
 
-<div class="loop-bracket-inner">↻ 工具执行循环（单步内可有多次 tool_call → tool_result）</div>
+<div class="loop-bracket-inner">↻ 工具执行循环</div>
 
-<div class="row">
-  <div class="hook-name">PreToolUse</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">PreToolUse <span class="status off">预留</span></div>
-    <div class="card-desc">
-      工具执行前触发。<b>支持返回 <code>{blocked:true, reason}</code> 阻断调用</b>。<br>
-      可用于安全审计、工具权限校验、敏感操作拦截。
-    </div>
-  </div></div>
+<div class="row"><div class="hook-name">PreToolUse</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">PreToolUse <span class="s sl">✅ 已接入 ×2</span> <span class="s sa">🛡️ 可阻断</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:510</span> — 支持 <code>{blocked:true}</code> 返回值阻断工具调用<br>
+<span class="impl">● tool-exec-hooks</span> — 记录工具开始时间 + args<br>
+<span class="impl">● RateLimiter.acquire()</span> — 限流（未来可迁入）
 </div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">PostToolUse</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">PostToolUse <span class="status off">预留</span></div>
-    <div class="card-desc">工具执行成功后触发。携带 toolName + result。可用于结果审计、副作用记录、通知推送。</div>
-  </div></div>
+<div class="row"><div class="hook-name">PostToolUse</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">PostToolUse <span class="s sl">✅ 已接入 ×2</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:535</span><br>
+<span class="impl">● tool-exec-hooks</span> — 记录工具耗时 + 结果到 DB<br>
+<span class="impl">● durable-hooks</span> — 更新 turn_state phase → tools_executing
 </div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">PostToolUseFailure</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">PostToolUseFailure <span class="status off">预留</span></div>
-    <div class="card-desc">工具执行失败后触发。携带 error 信息。可用于错误上报、自动重试策略。</div>
-  </div></div>
+<div class="row"><div class="hook-name">PostToolUseFailure</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">PostToolUseFailure <span class="s sl">✅ 已接入 ×1</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:553</span><br>
+<span class="impl">● tool-exec-hooks</span> — 记录工具错误 + 耗时到 DB
 </div>
+</div></div></div>
 
-<div class="loop-bracket-inner">↻ 子代理执行（delegateTask 创建子 AgentLoop）</div>
+<div class="loop-bracket-inner">↻ 子代理执行</div>
 
-<div class="row">
-  <div class="hook-name">SubagentStart</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">SubagentStart <span class="status off">预留</span></div>
-    <div class="card-desc">子代理任务启动时触发。携带 taskId + task 描述。可用于任务追踪 UI、并发度控制。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">SubagentStart</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">SubagentStart <span class="s sl">✅ 已激活</span></div>
+<div class="desc"><span class="loc">subagent-delegator.ts:79, 202</span> — delegateTask + delegateTaskBackground<br>
+当前无 handler 注册。预留用于任务追踪 UI、并发度控制。</div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">SubagentStop</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">SubagentStop <span class="status off">预留</span></div>
-    <div class="card-desc">子代理任务结束时触发。携带 taskId + status (completed/failed) + result。可用于任务完成通知。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">SubagentStop</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">SubagentStop <span class="s sl">✅ 已激活</span></div>
+<div class="desc"><span class="loc">subagent-delegator.ts:116,126,150,156,167,239,251,271</span><br>
+当前无 handler 注册。预留用于任务完成通知、结果分发。</div>
+</div></div></div>
 
-<div class="loop-bracket-inner" style="border-left-style:dashed">子事件（可在任意阶段发生）</div>
+<div class="loop-bracket-inner" style="border-left-style:dashed">子事件</div>
 
-<div class="row">
-  <div class="hook-name">TaskCreated</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">TaskCreated <span class="status off">预留</span></div>
-    <div class="card-desc">后台任务创建时触发（<code>delegateTaskBackground</code>）。可用于 UI 任务列表实时更新。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">TaskCreated</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">TaskCreated <span class="s sl">✅ 已激活</span></div>
+<div class="desc"><span class="loc">subagent-delegator.ts:138, 202, 291</span> — delegateTask bg + delegateTaskBackground + runBackground<br>
+当前无 handler 注册。预留用于 UI 任务列表实时更新。</div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">TaskCompleted</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">TaskCompleted <span class="status off">预留</span></div>
-    <div class="card-desc">后台任务完成时触发。可用于任务结果分发、依赖链推进。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">TaskCompleted</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">TaskCompleted <span class="s sl">✅ 已激活</span></div>
+<div class="desc"><span class="loc">subagent-delegator.ts:151,157,240,252,272,314,321</span> — 全路径覆盖<br>
+当前无 handler 注册。预留用于任务结果分发、依赖链推进。</div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">Notification</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">Notification <span class="status off">预留</span></div>
-    <div class="card-desc">通知事件触发。目前 loop 通过 <code>injectTaskNotifications()</code> 将完成的后台任务注入消息，但未通过 hook 分发。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">Notification</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">Notification <span class="s sl">✅ 已激活</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:359</span> — executeStream 中后台任务通知时触发<br>
+当前无 handler 注册。预留用于通知分发、结果审计。</div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">PermissionRequest</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">PermissionRequest <span class="status off">预留</span></div>
-    <div class="card-desc">工具权限请求时触发。可用于自定义权限 UI、审计日志、自动审批策略。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">PermissionRequest</div><div class="dot empty"></div><div class="cc"><div class="card empty">
+<div class="ct">PermissionRequest <span class="s se">预留</span></div>
+<div class="desc">工具权限请求时触发。可配合 PreToolUse 实现工具级权限控制。</div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">PermissionDenied</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">PermissionDenied <span class="status off">预留</span></div>
-    <div class="card-desc">权限被拒绝时触发。可用于拒绝审计、降级策略。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">PermissionDenied</div><div class="dot empty"></div><div class="cc"><div class="card empty">
+<div class="ct">PermissionDenied <span class="s se">预留</span></div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">Elicitation</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">Elicitation <span class="status off">预留</span></div>
-    <div class="card-desc">Agent 向用户提问时触发。可用于自定义 elicitation UI、问题预处理。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">Elicitation</div><div class="dot empty"></div><div class="cc"><div class="card empty">
+<div class="ct">Elicitation <span class="s se">预留</span></div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">ElicitationResult</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">ElicitationResult <span class="status off">预留</span></div>
-    <div class="card-desc">用户回答 elicitation 问题后触发。可用于答案校验、预处理、自动补全。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">ElicitationResult</div><div class="dot empty"></div><div class="cc"><div class="card empty">
+<div class="ct">ElicitationResult <span class="s se">预留</span></div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">TeammateIdle</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">TeammateIdle <span class="status off">预留</span></div>
-    <div class="card-desc">队友代理空闲时触发。可用于多代理调度、任务再分配。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">TeammateIdle</div><div class="dot empty"></div><div class="cc"><div class="card empty">
+<div class="ct">TeammateIdle <span class="s se">预留</span></div>
+</div></div></div>
 
-<!-- ═══════════════ COMPRESSION ═══════════════ -->
+<!-- ═══ CONTEXT ═══ -->
 <div class="phase-label">上下文管理</div>
 
-<div class="row">
-  <div class="hook-name">PreCompact</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">PreCompact <span class="status off">预留</span></div>
-    <div class="card-desc">消息裁剪/压缩前触发。可用于强制保留某些消息、注入摘要提示。<br>当前压缩逻辑在 PostTurnComplete 的 hook 内自管，未独立触发此点。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">PreCompact</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">PreCompact <span class="s sl">✅ 已激活</span></div>
+<div class="desc"><span class="loc">session.ts:145</span> — pruneIfNeeded() 中 await 触发<br>
+当前无 handler 注册。预留用于强制保留某些消息、注入摘要提示。</div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">PostCompact</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">PostCompact <span class="status off">预留</span></div>
-    <div class="card-desc">消息压缩完成后触发。可用于压缩质量审计、token 统计、通知 UI 刷新。</div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">PostCompact</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">PostCompact <span class="s sl">✅ 已激活</span></div>
+<div class="desc"><span class="loc">session.ts:160</span> — pruneIfNeeded() 完成后 await 触发<br>
+当前无 handler 注册。预留用于压缩质量审计、通知 UI 刷新。</div>
+</div></div></div>
 
-<!-- ═══════════════ TURN END ═══════════════ -->
+<!-- ═══ TURN END ═══ -->
 <div class="phase-label">Turn 结束</div>
 
-<div class="row">
-  <div class="hook-name">PostTurnComplete</div>
-  <div class="dot active"></div>
-  <div class="card-cell"><div class="card active">
-    <div class="card-title">PostTurnComplete <span class="status on">已接入</span></div>
-    <div class="card-desc">
-      <b>触发位置：</b><span class="loc">agent-loop.ts:158</span> — <code>run()</code> 内，finally 之前<br>
-      <span class="impl">● compression-hooks</span>
-      <span class="file">hooks/compression-hooks.ts</span><br>
-      上下文使用率超阈值时：L1 摘要压缩 → L2 记忆提取 → <code>replaceMessages()</code> + 同步 turns 表 + 保存记忆节点。<br>
-      <b>⚠️ non-fatal</b>：压缩失败跳过
-    </div>
-  </div></div>
+<div class="row"><div class="hook-name">PostTurnComplete</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">PostTurnComplete <span class="s sl">✅ 已接入 ×1</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:161</span><br>
+<span class="impl">● compression-hooks</span> — L1 摘要 + L2 记忆提取 + turns 同步
 </div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">Stop</div>
-  <div class="dot active"></div>
-  <div class="card-cell"><div class="card active">
-    <div class="card-title">Stop <span class="status on">已接入</span></div>
-    <div class="card-desc">
-      <b>触发位置：</b><span class="loc">agent-loop.ts:174</span> — <code>run()</code> finally 块<br>
-      <span class="impl">● turn-hooks</span>
-      <span class="file">hooks/turn-hooks.ts</span><br>
-      安全网：若 abort 发生在 finish-step 之前，确保最后一个 assistant step 落盘。清理 sessionTurnSeq。
-    </div>
-  </div></div>
+<div class="row"><div class="hook-name">Stop</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">Stop <span class="s sl">✅ 已接入 ×2</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:177, 221</span><br>
+<span class="impl">● turn-hooks</span> — 安全网确保 step 落盘<br>
+<span class="impl">● durable-hooks</span> — 完成 turn_state 检查点
 </div>
+</div></div></div>
 
-<div class="row">
-  <div class="hook-name">SessionEnd</div>
-  <div class="dot active"></div>
-  <div class="card-cell"><div class="card active">
-    <div class="card-title">SessionEnd <span class="status on">已触发</span></div>
-    <div class="card-desc">
-      <b>触发位置：</b><span class="loc">agent-loop.ts:175</span> — <code>run()</code> finally 块<br>
-      <b>当前行为：</b>仅触发，无 hook 注册。预留给会话级清理、统计上报、资源释放等。
-    </div>
-  </div></div>
-</div>
+<div class="row"><div class="hook-name">SessionEnd</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">SessionEnd <span class="s sl">✅ 已激活</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:178, 222</span> — finally 块中触发<br>
+当前无 handler 注册。预留用于会话级清理、统计上报。</div>
+</div></div></div>
 
-<!-- ═══════════════ ERROR PATH ═══════════════ -->
+<!-- ═══ ERROR ═══ -->
 <div class="phase-label">异常路径</div>
 
-<div class="row">
-  <div class="hook-name">StopFailure</div>
-  <div class="dot active"></div>
-  <div class="card-cell"><div class="card active">
-    <div class="card-title">StopFailure <span class="status on">已接入</span></div>
-    <div class="card-desc">
-      <b>触发位置：</b><span class="loc">agent-loop.ts:322</span> — <code>runWithRetry()</code> 所有重试耗尽后<br>
-      <span class="impl">● turn-hooks</span>
-      <span class="file">hooks/turn-hooks.ts</span><br>
-      保存异常前已有的 blocks（尽力而为）。清理 sessionTurnSeq。
-    </div>
-  </div></div>
+<div class="row"><div class="hook-name">StopFailure</div><div class="dot live"></div><div class="cc"><div class="card live">
+<div class="ct">StopFailure <span class="s sl">✅ 已接入 ×2</span></div>
+<div class="desc"><span class="loc">agent-loop.ts:326</span> — 含增强字段：userFriendlyMsg + retryAttempts<br>
+<span class="impl">● turn-hooks</span> — 异常时保存已有 blocks<br>
+<span class="impl">● durable-hooks</span> — 标记 turn_state 为 failed
+</div>
+</div></div></div>
+
+<!-- ═══ ENV ═══ -->
+<div class="divider">──── 环境事件（预留）────</div>
+
+<div class="row"><div class="hook-name">CwdChanged</div><div class="dot empty"></div><div class="cc"><div class="card empty"><div class="ct">CwdChanged <span class="s se">预留</span></div></div></div></div>
+<div class="row"><div class="hook-name">FileChanged</div><div class="dot empty"></div><div class="cc"><div class="card empty"><div class="ct">FileChanged <span class="s se">预留</span></div></div></div></div>
+<div class="row"><div class="hook-name">WorktreeCreate</div><div class="dot empty"></div><div class="cc"><div class="card empty"><div class="ct">WorktreeCreate <span class="s se">预留</span></div></div></div></div>
+<div class="row"><div class="hook-name">WorktreeRemove</div><div class="dot empty"></div><div class="cc"><div class="card empty"><div class="ct">WorktreeRemove <span class="s se">预留</span></div></div></div></div>
+
 </div>
 
-<!-- ═══════════════ ENVIRONMENT ═══════════════ -->
-<div class="divider">──── 环境事件（可在任意时刻发生）────</div>
+<!-- ═══ HANDLER MAP ═══ -->
+<div class="divider" style="margin-top:36px">──── Handler 注册总览 ────</div>
 
-<div class="row">
-  <div class="hook-name">CwdChanged</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">CwdChanged <span class="status off">预留</span></div>
-    <div class="card-desc">工作目录变更时触发。可用于刷新 tool context、通知 UI 路径变更。</div>
-  </div></div>
-</div>
-
-<div class="row">
-  <div class="hook-name">FileChanged</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">FileChanged <span class="status off">预留</span></div>
-    <div class="card-desc">文件变更时触发。可用于热重载、自动刷新依赖图、触发 lint。</div>
-  </div></div>
-</div>
-
-<div class="row">
-  <div class="hook-name">WorktreeCreate</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">WorktreeCreate <span class="status off">预留</span></div>
-    <div class="card-desc">Git worktree 创建时触发。可用于环境隔离、并发编辑管理。</div>
-  </div></div>
-</div>
-
-<div class="row">
-  <div class="hook-name">WorktreeRemove</div>
-  <div class="dot reserved"></div>
-  <div class="card-cell"><div class="card reserved">
-    <div class="card-title">WorktreeRemove <span class="status off">预留</span></div>
-    <div class="card-desc">Git worktree 删除时触发。可用于清理资源、同步状态。</div>
-  </div></div>
-</div>
-
-</div><!-- /timeline -->
-
-<!-- ═══════════════ SUMMARY TABLE ═══════════════ -->
-<div class="divider" style="margin-top:40px">──── 接入总览 ────</div>
-
-<div style="max-width:820px;margin:20px auto 0">
-<table style="width:100%;border-collapse:collapse;font-size:13px">
-<thead>
-<tr style="border-bottom:1px solid var(--border)">
-  <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px">Hook 点</th>
-  <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px">触发位置</th>
-  <th style="text-align:left;padding:8px 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px">接入功能</th>
-</tr>
-</thead>
+<div style="max-width:880px;margin:16px auto 0;font-size:13px">
+<table style="width:100%;border-collapse:collapse">
+<thead><tr style="border-bottom:1px solid var(--border)">
+<th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim)">Handler 文件</th>
+<th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim)">注册的 Hook 点</th>
+</tr></thead>
 <tbody>
-<tr style="border-bottom:1px solid var(--border)">
-  <td style="padding:8px 12px"><code style="color:var(--green)">SessionStart</code></td>
-  <td style="padding:8px 12px;color:var(--muted)">agent-loop.ts:143</td>
-  <td style="padding:8px 12px"><span style="color:var(--cyan);font-size:12px">turn-hooks</span> — 写入 user turn step row</td>
-</tr>
-<tr style="border-bottom:1px solid var(--border)">
-  <td style="padding:8px 12px"><code style="color:var(--green)">PreLLMCall</code></td>
-  <td style="padding:8px 12px;color:var(--muted)">agent-loop.ts:356</td>
-  <td style="padding:8px 12px">
-    <span style="color:var(--cyan);font-size:12px">memory-hooks</span> — 记忆检索注入<br>
-    <span style="color:var(--cyan);font-size:12px">rag-hooks</span> — 知识库 RAG 注入
-  </td>
-</tr>
-<tr style="border-bottom:1px solid var(--border)">
-  <td style="padding:8px 12px"><code style="color:var(--green)">PostStep</code></td>
-  <td style="padding:8px 12px;color:var(--muted)">agent-loop.ts:531</td>
-  <td style="padding:8px 12px"><span style="color:var(--cyan);font-size:12px">turn-hooks</span> — 增量持久化 step</td>
-</tr>
-<tr style="border-bottom:1px solid var(--border)">
-  <td style="padding:8px 12px"><code style="color:var(--green)">PostTurnComplete</code></td>
-  <td style="padding:8px 12px;color:var(--muted)">agent-loop.ts:158</td>
-  <td style="padding:8px 12px"><span style="color:var(--cyan);font-size:12px">compression-hooks</span> — L1摘要 + L2记忆提取</td>
-</tr>
-<tr style="border-bottom:1px solid var(--border)">
-  <td style="padding:8px 12px"><code style="color:var(--green)">Stop</code></td>
-  <td style="padding:8px 12px;color:var(--muted)">agent-loop.ts:174</td>
-  <td style="padding:8px 12px"><span style="color:var(--cyan);font-size:12px">turn-hooks</span> — 安全网：确保 step 落盘</td>
-</tr>
-<tr style="border-bottom:1px solid var(--border)">
-  <td style="padding:8px 12px"><code style="color:var(--green)">StopFailure</code></td>
-  <td style="padding:8px 12px;color:var(--muted)">agent-loop.ts:322</td>
-  <td style="padding:8px 12px"><span style="color:var(--cyan);font-size:12px">turn-hooks</span> — 异常时保存已有 blocks</td>
-</tr>
-<tr>
-  <td style="padding:8px 12px;color:var(--dim)"><code>UserPromptSubmit</code> · <code>SessionEnd</code></td>
-  <td style="padding:8px 12px;color:var(--dim)">:142 · :175</td>
-  <td style="padding:8px 12px;color:var(--dim)">仅触发，无 hook 注册</td>
-</tr>
+<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">turn-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">SessionStart · PostStep · Stop · StopFailure</td></tr>
+<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">compression-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">PostTurnComplete</td></tr>
+<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">memory-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">PreLLMCall</td></tr>
+<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">rag-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">PreLLMCall</td></tr>
+<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="impl">tool-execution-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">PreToolUse · PostToolUse · PostToolUseFailure</td></tr>
+<tr><td style="padding:6px 10px"><span class="impl">durable-hooks.ts</span></td><td style="padding:6px 10px;color:var(--muted)">SessionStart · PostToolUse · Stop · StopFailure</td></tr>
 </tbody>
 </table>
 </div>
 
-<p style="text-align:center;margin-top:48px;font-size:12px;color:var(--dim)">
-  AgentLoop 全扩展点时序图 · 30 Hook 点 · 8 已触发 · 6 已接入功能 · 2026-06-12
+<p style="text-align:center;margin-top:40px;font-size:12px;color:var(--dim)">
+  AgentLoop 迁移后状态 · 18/30 已激活 · 6 Handler 文件 · 2026-06-12
 </p>
 
 </body>

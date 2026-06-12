@@ -136,13 +136,13 @@ export class AgentSession {
 		}
 	}
 
-	pruneIfNeeded(): void {
+	async pruneIfNeeded(): Promise<void> {
 		const systemPromptTokens = this.estimateSystemPromptTokens();
 		const available = this.contextWindow - RESERVE_TOKENS - systemPromptTokens;
 		const total = this.estimateTokens();
 		if (total <= available) return;
 
-		triggerHooks("PreCompact", { sessionId: this.sessionId ?? "", messageCount: this.messages.length, estimatedTokens: this.estimateTokens(), contextWindow: this.contextWindow });
+		await triggerHooks("PreCompact", { sessionId: this.sessionId ?? "", messageCount: this.messages.length, estimatedTokens: this.estimateTokens(), contextWindow: this.contextWindow });
 
 		let budget = available;
 		const kept: ModelMessage[] = [];
@@ -157,11 +157,11 @@ export class AgentSession {
 		this.messages = kept;
 		this.invalidateCalibration();
 
-		triggerHooks("PostCompact", { sessionId: this.sessionId ?? "", messageCount: this.messages.length, estimatedTokens: this.estimateTokens(), contextWindow: this.contextWindow });
+		await triggerHooks("PostCompact", { sessionId: this.sessionId ?? "", messageCount: this.messages.length, estimatedTokens: this.estimateTokens(), contextWindow: this.contextWindow });
 	}
 
 	/** Aggressively prune: keep only the last keepRatio of messages (by token budget). */
-	aggressivePrune(keepRatio: number): void {
+	async aggressivePrune(keepRatio: number): Promise<void> {
 		const available = this.contextWindow - RESERVE_TOKENS - this.estimateSystemPromptTokens();
 		const keepTokens = Math.floor(available * keepRatio);
 		let budget = keepTokens;

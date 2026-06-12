@@ -10,7 +10,7 @@
 // - HookHandler - 处理函数
 //
 // ## 输出
-// - HookResult - Hook 执行结果
+// - AggregatedHookResult - 所有 handler 返回值的聚合结果
 //
 // ## 定位
 // 核心扩展机制，被整个项目使用。
@@ -23,8 +23,15 @@
 // - 新增 Hook 事件时需更新类型
 // - 保持 Hook 执行顺序稳定
 //
-import type { HookEventName, HookHandler, HookResult } from "./hook-types.js";
+import type { HookEventName, HookHandler } from "./hook-types.js";
 import { log } from "./logger.js";
+
+// ---------------------------------------------------------------------------
+// AggregatedHookResult — merged result from all handlers for an event
+// ---------------------------------------------------------------------------
+
+/** Merged result from all registered handlers. Empty object = no data. */
+export type AggregatedHookResult = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
 // HookRegistry — singleton registry for lifecycle hooks
@@ -54,21 +61,40 @@ export class HookRegistry {
 	}
 
 	/**
-	 * Trigger all handlers for an event. First handler to return a non-void
-	 * result wins (first-writer-wins). Errors are caught and logged — they
-	 * never propagate to the caller.
+	 * Trigger all handlers for an event and aggregate their results.
+	 *
+	 * - Each handler's returned object fields are merged into the result.
+	 * - If any handler returns `{ blocked: true }`, aggregation stops immediately
+	 *   and the result includes `blocked: true` + `reason`.
+	 * - Errors are caught and logged — they never propagate to the caller.
+	 * - Returns an empty object when no handlers are registered or all return void.
 	 */
-	async trigger(event: HookEventName, ctx: Record<string, unknown>): Promise<HookResult> {
+	async trigger(event: HookEventName, ctx: Record<string, unknown>): Promise<AggregatedHookResult> {
 		const handlers = this.handlers.get(event);
-		if (!handlers || handlers.length === 0) return;
+		if (!handlers || handlers.length === 0) return {};
+
+		const merged: AggregatedHookResult = {};
+
 		for (const handler of handlers) {
 			try {
 				const result = await handler(ctx as any);
-				if (result) return result;
+				if (!result || typeof result !== "object") continue;
+
+				// blocked = immediate stop, return block result
+				if ("blocked" in result && result.blocked) {
+					return { blocked: true, reason: (result as any).reason ?? "Blocked by hook" };
+				}
+
+				// Merge data fields (last-writer-wins for same key)
+				for (const [k, v] of Object.entries(result)) {
+					if (v !== undefined) merged[k] = v;
+				}
 			} catch (err) {
 				log.error("hook", `Handler for ${event} threw:`, (err as Error).message);
 			}
 		}
+
+		return merged;
 	}
 
 	/** Remove all handlers. Useful for testing. */
@@ -86,10 +112,11 @@ export class HookRegistry {
 /**
  * Convenience: trigger hooks on the singleton registry.
  * Automatically adds timestamp to the context.
+ * Returns aggregated result from all handlers.
  */
 export async function triggerHooks(
 	event: HookEventName,
 	ctx: Record<string, unknown>,
-): Promise<HookResult> {
+): Promise<AggregatedHookResult> {
 	return HookRegistry.getInstance().trigger(event, { ...ctx, timestamp: Date.now() });
 }

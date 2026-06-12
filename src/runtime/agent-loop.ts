@@ -133,13 +133,16 @@ export class AgentLoop implements AgentRuntime {
 		const timeout = this.setupTimeout();
 
 		try {
+			// [Batch 4] UserPromptSubmit hook fires BEFORE addMessage,
+			// allowing consumers to audit/filter the message
+			await triggerHooks("UserPromptSubmit", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), message: userMessage });
+
 			this.session.addMessage({ role: "user", content: userMessage });
 			this.session.saveToDb();
-			this.session.pruneIfNeeded();
+			await this.session.pruneIfNeeded();
 
 			log.loop("Messages after prune:", this.session.getMessages().length, "est tokens:", this.session.getMessages().reduce((s: number, m: any) => s + Math.ceil(JSON.stringify(m).length / 4), 0));
 
-			await triggerHooks("UserPromptSubmit", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), message: userMessage });
 			await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
 
 			// SessionStart hook has written user turn; next seq is the first assistant step
@@ -191,7 +194,7 @@ export class AgentLoop implements AgentRuntime {
 		const timeout = this.setupTimeout();
 
 		try {
-			this.session.pruneIfNeeded();
+			await this.session.pruneIfNeeded();
 
 			// For resume, the user turn is already in DB
 			if (this.config.db && this.config.sessionId) {
@@ -295,7 +298,7 @@ export class AgentLoop implements AgentRuntime {
 				this.recorder.reset();
 
 				if (cls === "prompt_too_long") {
-					this.session.aggressivePrune(0.5);
+					await this.session.aggressivePrune(0.5);
 					log.loop("Context too long, aggressive prune. Messages:", this.session.getMessages().length);
 					if (attempt < 1) continue;
 				}
@@ -319,7 +322,16 @@ export class AgentLoop implements AgentRuntime {
 		if (lastError && !(lastError.name === "AbortError" || this.abortController?.signal.aborted)) {
 			const cls = classifyError(lastError);
 			log.error("loop", "All retries exhausted:", cls, lastError.message);
-			await triggerHooks("StopFailure", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), error: lastError?.message, errorClass: cls, blocks: this.recorder.blocks.slice() });
+			// [Batch 4] StopFailure with enriched context
+			await triggerHooks("StopFailure", {
+				agentId: this.config.agentId,
+				sessionId: this.session.getSessionId(),
+				error: lastError?.message,
+				errorClass: cls,
+				userFriendlyMsg: userFriendlyMessage(cls, lastError.message),
+				retryAttempts: MAX_RETRIES + 1,
+				blocks: this.recorder.blocks.slice(),
+			});
 			this.emit({
 				type: "error",
 				agentId: this.config.agentId,
@@ -341,7 +353,15 @@ export class AgentLoop implements AgentRuntime {
 
 		const tools = await this.buildTools();
 		const systemPrompt = await this.assembleSystemPrompt();
-		this.injectTaskNotifications();
+		// [Batch 3] Inject task notifications and trigger Notification hook
+		const taskNotifs = this.injectTaskNotifications();
+		if (taskNotifs.length > 0) {
+			await triggerHooks("Notification", {
+				agentId: this.config.agentId,
+				sessionId: this.session.getSessionId(),
+				notifications: taskNotifs,
+			});
+		}
 
 		// Build ephemeral context message via PreLLMCall hooks (memory recall, RAG, etc.)
 		const hookCtx: Record<string, unknown> = {
@@ -420,9 +440,10 @@ export class AgentLoop implements AgentRuntime {
 		return copy;
 	}
 
-	private injectTaskNotifications(): void {
+	private injectTaskNotifications(): Array<{ taskId: string; status: string; result?: string }> {
 		const completedTasks = this.delegator.taskRegistry.getCompletedUnnotified();
-		if (completedTasks.length === 0) return;
+		if (completedTasks.length === 0) return [];
+
 		const notifications = completedTasks.map((t) => {
 			this.delegator.taskRegistry.markNotified(t.id);
 			const r = t.result && t.result.length > 2000 ? t.result.slice(0, 2000) + "..." : t.result;
@@ -438,6 +459,9 @@ export class AgentLoop implements AgentRuntime {
 			return lines.join(String.fromCharCode(10));
 		});
 		this.session.addMessage({ role: "user", content: notifications.join(String.fromCharCode(10, 10)) });
+
+		// Return notification data for hook trigger
+		return completedTasks.map(t => ({ taskId: t.id, status: t.status, result: t.result }));
 	}
 
 	private buildProviderOptions(): Record<string, Record<string, any>> {
@@ -474,6 +498,7 @@ export class AgentLoop implements AgentRuntime {
 					this.emit({ type: "thinking_delta", agentId: this.config.agentId, text: this.thinkingText });
 					break;
 				}
+				// [Batch 1] PreToolUse hook — 允许 hook 阻断工具调用
 				case "tool-call": {
 					const e = event as any;
 					this.thinkingText = "";
@@ -481,23 +506,57 @@ export class AgentLoop implements AgentRuntime {
 					log.debug("loop", "Tool call:", e.toolName);
 					const tcId = e.toolCallId ?? e.id ?? `tc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 					this.recorder.addToolStart(e.toolName, e.input, tcId);
+
+					const preResult = await triggerHooks("PreToolUse", {
+						agentId: this.config.agentId,
+						sessionId: this.session.getSessionId(),
+						toolName: e.toolName,
+						args: e.input,
+						toolCallId: tcId,
+					});
+					if (preResult?.blocked) {
+						const blockReason = preResult.reason ?? "Blocked by hook";
+						this.recorder.updateToolResult(tcId, e.toolName, `Blocked: ${blockReason}`, true);
+						this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: tcId, isError: true, result: `Blocked: ${blockReason}` });
+						break;
+					}
+
 					this.emit({ type: "tool_start", agentId: this.config.agentId, toolName: e.toolName, toolCallId: tcId, args: e.input });
 					break;
 				}
+				// [Batch 1] PostToolUse hook — 工具执行成功后通知
 				case "tool-result": {
 					const e = event as any;
 					log.debug("loop", "Tool result:", e.toolName);
 					const resultTcId = e.toolCallId ?? e.id;
 					this.recorder.updateToolResult(resultTcId, e.toolName, e.output, false);
 					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: resultTcId, isError: false, result: e.output });
+
+					await triggerHooks("PostToolUse", {
+						agentId: this.config.agentId,
+						sessionId: this.session.getSessionId(),
+						toolName: e.toolName,
+						result: e.output,
+						isError: false,
+						toolCallId: resultTcId,
+					});
 					break;
 				}
+				// [Batch 1] PostToolUseFailure hook — 工具执行失败后通知
 				case "tool-error": {
 					const e = event as any;
 					log.debug("loop", "Tool error:", e.toolName, e.errorText?.slice(0, 80));
 					const errTcId = e.toolCallId ?? e.id;
 					this.recorder.updateToolResult(errTcId, e.toolName, String(e.error ?? e.errorText ?? ""), true);
 					this.emit({ type: "tool_end", agentId: this.config.agentId, toolName: e.toolName, toolCallId: errTcId, isError: true, result: String(e.error ?? e.errorText ?? "") });
+
+					await triggerHooks("PostToolUseFailure", {
+						agentId: this.config.agentId,
+						sessionId: this.session.getSessionId(),
+						toolName: e.toolName,
+						error: String(e.error ?? e.errorText ?? ""),
+						toolCallId: errTcId,
+					});
 					break;
 				}
 				case "finish-step": {

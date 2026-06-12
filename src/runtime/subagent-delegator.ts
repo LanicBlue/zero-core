@@ -30,6 +30,7 @@ import type {
 } from "./types.js";
 import { TaskRegistry } from "./task-registry.js";
 import { log } from "../core/logger.js";
+import { triggerHooks } from "../core/hook-registry.js";
 import { EXEC_MAX_BUFFER_BYTES, OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
 
 type LoopFactory = (
@@ -73,6 +74,15 @@ export class SubagentDelegator {
 			spawnDepth: (this.config.spawnDepth ?? 0) + 1,
 			timeoutSec: toolConfig?.Agent?.timeout,
 		};
+
+		// [Batch 2] SubagentStart hook
+		await triggerHooks("SubagentStart", {
+			agentId: this.config.agentId,
+			sessionId: this.config.sessionId,
+			taskId: subConfig.agentId,
+			task,
+		});
+
 		const subLoop = this.createSubLoop(subConfig, this.providers, { onEvent: () => {} });
 
 		const autoBgEnabled = toolConfig?.Agent?.auto_background === true;
@@ -101,19 +111,50 @@ export class SubagentDelegator {
 			const raceResult = await Promise.race([done.then(() => "done"), timeout]);
 
 			if (raceResult === "done") {
-				if (bgError) throw new Error(bgError);
+				if (bgError) {
+					// [Batch 2] SubagentStop hook (inline failure)
+					await triggerHooks("SubagentStop", {
+						agentId: this.config.agentId,
+						sessionId: this.config.sessionId,
+						taskId: subConfig.agentId,
+						status: "failed",
+						result: bgError,
+					});
+					throw new Error(bgError);
+				}
+				// [Batch 2] SubagentStop hook (inline success)
+				await triggerHooks("SubagentStop", {
+					agentId: this.config.agentId,
+					sessionId: this.config.sessionId,
+					taskId: subConfig.agentId,
+					status: "completed",
+					result: bgResult,
+				});
 				return bgResult || "(sub-agent returned no output)";
 			}
 
 			registry.create(taskId, "subagent", task);
+			// [Batch 2] TaskCreated hook
+			await triggerHooks("TaskCreated", {
+				agentId: this.config.agentId,
+				sessionId: this.config.sessionId,
+				taskId,
+				task,
+			});
 
-			done.then(() => {
+			done.then(async () => {
 				if (bgError) {
 					registry.fail(taskId, bgError);
 					parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: bgError });
+					// [Batch 2] SubagentStop + TaskCompleted hooks
+					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
+					await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
 				} else {
 					registry.complete(taskId, bgResult);
 					parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "completed", result: bgResult });
+					// [Batch 2] SubagentStop + TaskCompleted hooks
+					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
+					await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
 				}
 			});
 
@@ -121,7 +162,16 @@ export class SubagentDelegator {
 		}
 
 		await subLoop.run(task);
-		return subLoop.getResult();
+		const result = subLoop.getResult();
+		// [Batch 2] SubagentStop hook (synchronous completion)
+		await triggerHooks("SubagentStop", {
+			agentId: this.config.agentId,
+			sessionId: this.config.sessionId,
+			taskId: subConfig.agentId,
+			status: "completed",
+			result,
+		});
+		return result;
 	}
 
 	delegateTaskBackground(task: string, options?: { model?: string; systemPrompt?: string }): string {
@@ -147,6 +197,11 @@ export class SubagentDelegator {
 		const registry = this.taskRegistry;
 		const subAbort = new AbortController();
 		registry.create(taskId, "subagent", task, subAbort);
+
+		// [Batch 2] TaskCreated + SubagentStart hooks
+		triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task }).catch(() => {});
+		triggerHooks("SubagentStart", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task }).catch(() => {});
+
 		const parentEmit = (event: StreamEvent) => this.emit(event);
 
 		setImmediate(async () => {
@@ -180,6 +235,9 @@ export class SubagentDelegator {
 					status: "completed",
 					result,
 				});
+				// [Batch 2] SubagentStop + TaskCompleted hooks
+				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
+				await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
 			} catch (err: any) {
 				registry.fail(taskId, err.message || "Unknown error");
 				parentEmit({
@@ -189,6 +247,9 @@ export class SubagentDelegator {
 					status: "failed",
 					result: err.message,
 				});
+				// [Batch 2] SubagentStop + TaskCompleted hooks
+				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: err.message });
+				await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: err.message });
 			}
 		});
 
@@ -204,7 +265,13 @@ export class SubagentDelegator {
 	}
 
 	stopTask(taskId: string): boolean {
-		return this.taskRegistry.kill(taskId);
+		const killed = this.taskRegistry.kill(taskId);
+		if (killed) {
+			// [Batch 2] SubagentStop + TaskCompleted hooks for killed tasks
+			triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed" }).catch(() => {});
+			triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed" }).catch(() => {});
+		}
+		return killed;
 	}
 
 	suspendUntilWake(timeoutMs: number, taskId?: string): Promise<string> {
@@ -220,6 +287,8 @@ export class SubagentDelegator {
 		const parentEmit = (event: StreamEvent) => this.emit(event);
 
 		registry.create(taskId, "bash", command);
+		// [Batch 2] TaskCreated hook
+		triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task: command }).catch(() => {});
 
 		const child = require("node:child_process").spawn(shell, shellArgs, {
 			cwd: this.config.workspaceDir,
@@ -241,11 +310,15 @@ export class SubagentDelegator {
 				registry.fail(taskId, `Exit code ${code}: ${result}`);
 			}
 			parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: code === 0 ? "completed" : "failed", result });
+			// [Batch 2] TaskCompleted hook
+			triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: code === 0 ? "completed" : "failed", result }).catch(() => {});
 		});
 
 		child.on("error", (err: Error) => {
 			registry.fail(taskId, err.message);
 			parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: err.message });
+			// [Batch 2] TaskCompleted hook
+			triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: err.message }).catch(() => {});
 		});
 
 		return taskId;
