@@ -117,15 +117,15 @@ const api: WindowApi = {
 	// ─── Platform ────────────────────────────────────
 	platform: process.platform,
 
-		// ─── Window Controls ────────────────────────────────
-		windowMinimize: () => ipcRenderer.invoke("window:minimize"),
-		windowMaximize: () => ipcRenderer.invoke("window:maximize"),
-		windowClose: () => ipcRenderer.invoke("window:close"),
+	// ─── Window Controls ────────────────────────────────
+	windowMinimize: () => ipcRenderer.invoke("window:minimize"),
+	windowMaximize: () => ipcRenderer.invoke("window:maximize"),
+	windowClose: () => ipcRenderer.invoke("window:close"),
 
 	// ─── Skills
 	skillsList: () => ipcRenderer.invoke("skills:list"),
 
-		// ─── Knowledge Base ──────────────────────────────
+	// ─── Knowledge Base ──────────────────────────────
 	kbList: () => ipcRenderer.invoke("kb:list"),
 	kbGet: (id) => ipcRenderer.invoke("kb:get", id),
 	kbCreate: (input) => ipcRenderer.invoke("kb:create", input),
@@ -190,28 +190,52 @@ const api: WindowApi = {
 	getSearchProvider: () => ipcRenderer.invoke("search-provider:get"),
 	setSearchProvider: (config) => ipcRenderer.invoke("search-provider:set", config),
 
-		// ── Tool Executions ──
-		toolExecutionsQuery: (filter) => ipcRenderer.invoke("tool-executions:query", filter),
-		toolExecutionsStats: (agentId?) => ipcRenderer.invoke("tool-executions:stats", agentId),
-		toolExecutionsCleanup: (maxAgeMs) => ipcRenderer.invoke("tool-executions:cleanup", maxAgeMs),
-		toolExecutionsAnalyze: (agentId?) => ipcRenderer.invoke("tool-executions:analyze", agentId),
+	// ── Tool Executions ──
+	toolExecutionsQuery: (filter) => ipcRenderer.invoke("tool-executions:query", filter),
+	toolExecutionsStats: (agentId?) => ipcRenderer.invoke("tool-executions:stats", agentId),
+	toolExecutionsCleanup: (maxAgeMs) => ipcRenderer.invoke("tool-executions:cleanup", maxAgeMs),
+	toolExecutionsAnalyze: (agentId?) => ipcRenderer.invoke("tool-executions:analyze", agentId),
 
-		// WebFetch
-		webfetchLogin: (url) => ipcRenderer.invoke("webfetch:login", url),
-		webfetchCookies: () => ipcRenderer.invoke("webfetch:cookies"),
-		webfetchClearCookies: (domain?) => ipcRenderer.invoke("webfetch:clear-cookies", domain),
+	// WebFetch
+	webfetchLogin: (url) => ipcRenderer.invoke("webfetch:login", url),
+	webfetchCookies: () => ipcRenderer.invoke("webfetch:cookies"),
+	webfetchClearCookies: (domain?) => ipcRenderer.invoke("webfetch:clear-cookies", domain),
 
+	// ── Memory Nodes ──
+	memoryNodeList: (limit?) => ipcRenderer.invoke("memory-nodes:nodes", limit),
+	memoryNodeSubjects: () => ipcRenderer.invoke("memory-nodes:subjects"),
+	memoryNodeSubjectNodes: (name) => ipcRenderer.invoke("memory-nodes:subject-nodes", name),
+	memoryNodeSearch: (q, limit?) => ipcRenderer.invoke("memory-nodes:search", q, limit),
+	memoryNodeDelete: (id) => ipcRenderer.invoke("memory-nodes:delete", id),
 
-		// ── Memory Nodes ──
-		memoryNodeList: (limit?) => ipcRenderer.invoke("memory-nodes:nodes", limit),
-		memoryNodeSubjects: () => ipcRenderer.invoke("memory-nodes:subjects"),
-		memoryNodeSubjectNodes: (name) => ipcRenderer.invoke("memory-nodes:subject-nodes", name),
-		memoryNodeSearch: (q, limit?) => ipcRenderer.invoke("memory-nodes:search", q, limit),
-		memoryNodeDelete: (id) => ipcRenderer.invoke("memory-nodes:delete", id),
+	// ── Memory Config ──
+	memoryConfigGet: () => ipcRenderer.invoke("config:memory-get"),
+	memoryConfigUpdate: (data) => ipcRenderer.invoke("config:memory-update", data),
 
-		// ── Memory Config ──
-		memoryConfigGet: () => ipcRenderer.invoke("config:memory-get"),
-		memoryConfigUpdate: (data) => ipcRenderer.invoke("config:memory-update", data),
+	// ── Projects ──
+	projectsList: (filter?) => ipcRenderer.invoke("projects:list", filter),
+	projectsGet: (id) => ipcRenderer.invoke("projects:get", id),
+	projectsCreate: (input) => ipcRenderer.invoke("projects:create", input),
+	projectsUpdate: (id, input) => ipcRenderer.invoke("projects:update", id, input),
+	projectsDelete: (id) => ipcRenderer.invoke("projects:delete", id),
+
+	// ── Requirements ──
+	requirementsList: (filter?) => ipcRenderer.invoke("requirements:list", filter),
+	requirementsGet: (id) => ipcRenderer.invoke("requirements:get", id),
+	requirementsCreate: (input) => ipcRenderer.invoke("requirements:create", input),
+	requirementsUpdate: (id, input) => ipcRenderer.invoke("requirements:update", id, input),
+	requirementsTransition: (id, toStatus, triggeredBy, comment?) => ipcRenderer.invoke("requirements:transition", id, toStatus, triggeredBy, comment),
+	requirementsHistory: (id) => ipcRenderer.invoke("requirements:history", id),
+	requirementsMessages: (id) => ipcRenderer.invoke("requirements:messages", id),
+	requirementsAddMessage: (id, sender, content, messageType?) => ipcRenderer.invoke("requirements:addMessage", id, sender, content, messageType),
+	requirementsSteps: (id) => ipcRenderer.invoke("requirements:steps", id),
+
+	// ── Wiki ──
+	wikiListByProject: (projectId) => ipcRenderer.invoke("wiki:listByProject", projectId),
+	wikiGetNode: (id) => ipcRenderer.invoke("wiki:getNode", id),
+	wikiCreateNode: (projectId, input) => ipcRenderer.invoke("wiki:createNode", projectId, input),
+	wikiUpdateNode: (id, input) => ipcRenderer.invoke("wiki:updateNode", id, input),
+	wikiDeleteNode: (id) => ipcRenderer.invoke("wiki:deleteNode", id),
 };
 
 contextBridge.exposeInMainWorld("api", api);

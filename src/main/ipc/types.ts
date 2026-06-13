@@ -36,6 +36,10 @@ import type { AgentService } from "../../server/agent-service.js";
 import type { WorkspaceConfig, loadWorkspaceConfig as LoadWorkspaceConfig, saveWorkspaceConfig as SaveWorkspaceConfig } from "../../server/workspace-config.js";
 import type { buildDefaultPrompt as BuildDefaultPrompt } from "../../core/default-prompt.js";
 import type { createAgentService as CreateAgentService } from "../../server/agent-service.js";
+import type { ProjectStore } from "../../server/project-store.js";
+import type { RequirementStore } from "../../server/requirement-store.js";
+import type { ProjectWikiStore } from "../../server/project-wiki-store.js";
+import type { TaskStepStore } from "../../server/task-step-store.js";
 
 export interface IpcContext {
 	win: BrowserWindow;
@@ -55,6 +59,10 @@ export interface IpcContext {
 	buildDefaultPrompt: typeof BuildDefaultPrompt;
 	saveWorkspaceConfig: typeof SaveWorkspaceConfig;
 	createAgentService: typeof CreateAgentService;
+	projectStore: ProjectStore;
+	requirementStore: RequirementStore;
+	wikiStore: ProjectWikiStore;
+	taskStepStore: TaskStepStore;
 	modulesReady: boolean;
 	whenReady: (name: ModuleName) => Promise<void>;
 	isModuleReady: (name: ModuleName) => boolean;

@@ -56,6 +56,13 @@ import { createFileRouter } from "./file-router.js";
 import { createToolExecutionRouter } from "./tool-execution-router.js";
 import { createSkillRouter } from "./skill-router.js";
 import { createMemoryNodeRouter } from "./memory-node-router.js";
+import { ProjectStore } from "./project-store.js";
+import { RequirementStore } from "./requirement-store.js";
+import { ProjectWikiStore } from "./project-wiki-store.js";
+import { TaskStepStore } from "./task-step-store.js";
+import { createProjectRouter } from "./project-router.js";
+import { createRequirementRouter } from "./requirement-router.js";
+import { createWikiRouter } from "./project-wiki-router.js";
 import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
 import { ALL_TOOLS, registerRuntimeTools } from "../runtime/tools/index.js";
 import { getToolExecute } from "../runtime/tools/tool-factory.js";
@@ -117,6 +124,12 @@ export async function startServer(options?: StartServerOptions) {
 	const mcpStore = new McpStore(sessionDB);
 	const kbStore = new KbStore(sessionDB);
 	const kbDb = new KbDB();
+
+		// Multi-Agent Workflow stores
+		const projectStore = new ProjectStore(sessionDB);
+		const requirementStore = new RequirementStore(sessionDB);
+		const wikiStore = new ProjectWikiStore(sessionDB);
+		const taskStepStore = new TaskStepStore(sessionDB);
 
 	let workspaceConfig = loadWorkspaceConfig(sessionDB);
 
@@ -218,6 +231,11 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/logs", createLogRouter({ sessionDb: sessionDB }));
 	app.use("/api/files", createFileRouter({ workspaceConfig }));
 	app.use("/api/tool-executions", createToolExecutionRouter({ sessionDb: sessionDB, agentService, providerStore, workspaceConfig }));
+
+		// Multi-Agent Workflow routers
+		app.use("/api/projects", createProjectRouter({ projectStore, requirementStore, wikiStore, taskStepStore }));
+		app.use("/api/requirements", createRequirementRouter({ requirementStore, taskStepStore }));
+		app.use("/api/project-wiki", createWikiRouter({ wikiStore }));
 
 	// Tool execute
 	app.post("/api/tool-execute", async (req, res) => {

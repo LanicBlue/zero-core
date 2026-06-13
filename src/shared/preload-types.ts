@@ -37,6 +37,9 @@ import type {
 	WorkspaceConfig, ToolInfo, ModelInfo,
 	ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats,
 	DiscoveredSkill,
+	ProjectRecord, CreateProjectInput, UpdateProjectInput,
+	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
+	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 } from "./types.js";
 
 export interface WindowApi {
@@ -198,15 +201,39 @@ export interface WindowApi {
 	toolExecutionsCleanup: (maxAgeMs: number) => Promise<number>;
 	toolExecutionsAnalyze: (agentId?: string) => Promise<{ analysis: string; stats: ToolExecutionStats[]; recentErrors: ToolExecutionRecord[] } | { error: string }>;
 
+	// ── Memory Nodes ──
+	memoryNodeList: (limit?: number) => Promise<Array<{ id: string; subject: string; type: string; content: string; updatedAt: string }>>;
+	memoryNodeSubjects: () => Promise<Array<{ subject: string; nodeCount: number; latestUpdate: string }>>;
+	memoryNodeSubjectNodes: (name: string) => Promise<{ nodes: any[]; subject: any | null }>;
+	memoryNodeSearch: (q: string, limit?: number) => Promise<Array<{ id: string; subject: string; type: string; content: string; updatedAt: string }>>;
+	memoryNodeDelete: (id: string) => Promise<{ success: true }>;
 
-		// ── Memory Nodes ──
-		memoryNodeList: (limit?: number) => Promise<Array<{ id: string; subject: string; type: string; content: string; updatedAt: string }>>;
-		memoryNodeSubjects: () => Promise<Array<{ subject: string; nodeCount: number; latestUpdate: string }>>;
-		memoryNodeSubjectNodes: (name: string) => Promise<{ nodes: any[]; subject: any | null }>;
-		memoryNodeSearch: (q: string, limit?: number) => Promise<Array<{ id: string; subject: string; type: string; content: string; updatedAt: string }>>;
-		memoryNodeDelete: (id: string) => Promise<{ success: true }>;
+	// ── Memory Config ──
+	memoryConfigGet: () => Promise<{ compression: { enabled?: boolean; keepRecentTurns?: number; l1Threshold?: number; l2Threshold?: number }; memory: { enabled?: boolean; autoRecall?: boolean; recallLimit?: number } }>;
+	memoryConfigUpdate: (data: { compression?: any; memory?: any }) => Promise<{ success: true }>;
 
-		// ── Memory Config ──
-		memoryConfigGet: () => Promise<{ compression: { enabled?: boolean; keepRecentTurns?: number; l1Threshold?: number; l2Threshold?: number }; memory: { enabled?: boolean; autoRecall?: boolean; recallLimit?: number } }>;
-		memoryConfigUpdate: (data: { compression?: any; memory?: any }) => Promise<{ success: true }>;
+	// ── Projects ──
+	projectsList: (filter?: { status?: string }) => Promise<ProjectRecord[]>;
+	projectsGet: (id: string) => Promise<ProjectRecord | undefined>;
+	projectsCreate: (input: CreateProjectInput) => Promise<ProjectRecord>;
+	projectsUpdate: (id: string, input: UpdateProjectInput) => Promise<ProjectRecord | { error: string }>;
+	projectsDelete: (id: string) => Promise<{ success: true }>;
+
+	// ── Requirements ──
+	requirementsList: (filter?: { projectId?: string; status?: string; priority?: string }) => Promise<RequirementRecord[]>;
+	requirementsGet: (id: string) => Promise<RequirementRecord | undefined>;
+	requirementsCreate: (input: CreateRequirementInput) => Promise<RequirementRecord>;
+	requirementsUpdate: (id: string, input: UpdateRequirementInput) => Promise<RequirementRecord | { error: string }>;
+	requirementsTransition: (id: string, toStatus: string, triggeredBy: string, comment?: string) => Promise<{ requirement: RequirementRecord; historyEntry: RequirementStatusHistory } | { error: string }>;
+	requirementsHistory: (id: string) => Promise<RequirementStatusHistory[]>;
+	requirementsMessages: (id: string) => Promise<RequirementMessage[]>;
+	requirementsAddMessage: (id: string, sender: string, content: string, messageType?: string) => Promise<RequirementMessage>;
+	requirementsSteps: (id: string) => Promise<TaskStepRecord[]>;
+
+	// ── Wiki ──
+	wikiListByProject: (projectId: string) => Promise<ProjectWikiNode[]>;
+	wikiGetNode: (id: string) => Promise<ProjectWikiNode | undefined>;
+	wikiCreateNode: (projectId: string, input: CreateWikiNodeInput) => Promise<ProjectWikiNode>;
+	wikiUpdateNode: (id: string, input: UpdateWikiNodeInput) => Promise<ProjectWikiNode | { error: string }>;
+	wikiDeleteNode: (id: string) => Promise<{ success: true }>;
 }

@@ -36,7 +36,10 @@ import type {
 	LogEntry, LogFileSummary, FileLogConfig,
 	WorkspaceConfig, ToolInfo, ModelInfo,
 	Ok, Err, OkOrErr,
-		ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats,
+	ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats,
+	ProjectRecord, CreateProjectInput, UpdateProjectInput,
+	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
+	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -171,4 +174,29 @@ export interface IpcChannelDefs {
 	"tool-executions:stats":   { params: [agentId?: string];                         result: ToolExecutionStats[] };
 	"tool-executions:cleanup": { params: [maxAgeMs: number];                          result: number };
 	"tool-executions:analyze": { params: [agentId?: string];                          result: { analysis: string; stats: ToolExecutionStats[]; recentErrors: ToolExecutionRecord[] } | Err };
+
+	// ── Projects (CRUD) ──────────────────────────────────────
+	"projects:list":   { params: [filter?: { status?: string }];                     result: ProjectRecord[] };
+	"projects:get":    { params: [id: string];                                       result: ProjectRecord | undefined };
+	"projects:create": { params: [input: CreateProjectInput];                        result: ProjectRecord };
+	"projects:update": { params: [id: string, input: UpdateProjectInput];            result: ProjectRecord | Err };
+	"projects:delete": { params: [id: string];                                       result: Ok };
+
+	// ── Requirements (CRUD + transitions + messages + steps) ─
+	"requirements:list":       { params: [filter?: { projectId?: string; status?: string; priority?: string }]; result: RequirementRecord[] };
+	"requirements:get":        { params: [id: string];                                                       result: RequirementRecord | undefined };
+	"requirements:create":     { params: [input: CreateRequirementInput];                                    result: RequirementRecord };
+	"requirements:update":     { params: [id: string, input: UpdateRequirementInput];                        result: RequirementRecord | Err };
+	"requirements:transition": { params: [id: string, toStatus: string, triggeredBy: string, comment?: string]; result: { requirement: RequirementRecord; historyEntry: RequirementStatusHistory } | Err };
+	"requirements:history":    { params: [id: string];                                                       result: RequirementStatusHistory[] };
+	"requirements:messages":   { params: [id: string];                                                       result: RequirementMessage[] };
+	"requirements:addMessage": { params: [id: string, sender: string, content: string, messageType?: string]; result: RequirementMessage };
+	"requirements:steps":      { params: [id: string];                                                       result: TaskStepRecord[] };
+
+	// ── Wiki ─────────────────────────────────────────────────
+	"wiki:listByProject": { params: [projectId: string];                            result: ProjectWikiNode[] };
+	"wiki:getNode":       { params: [id: string];                                  result: ProjectWikiNode | undefined };
+	"wiki:createNode":    { params: [projectId: string, input: CreateWikiNodeInput]; result: ProjectWikiNode };
+	"wiki:updateNode":    { params: [id: string, input: UpdateWikiNodeInput];       result: ProjectWikiNode | Err };
+	"wiki:deleteNode":    { params: [id: string];                                  result: Ok };
 }

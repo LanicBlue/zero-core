@@ -75,6 +75,89 @@ const AGENT_TOOL_COLUMNS = [
 	{ key: "updatedAt", column: "updated_at" },
 ];
 
+const PROJECT_COLUMNS = [
+	{ key: "name" },
+	{ key: "path" },
+	{ key: "analystCronId", column: "analyst_cron_id" },
+	{ key: "analystSessionId", column: "analyst_session_id" },
+	{ key: "lastAnalysisAt", column: "last_analysis_at" },
+	{ key: "analysisInterval", column: "analysis_interval" },
+	{ key: "status" },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+const PROJECT_WIKI_COLUMNS = [
+	{ key: "projectId", column: "project_id" },
+	{ key: "parentId", column: "parent_id" },
+	{ key: "nodeType", column: "node_type" },
+	{ key: "path" },
+	{ key: "title" },
+	{ key: "summary" },
+	{ key: "detail" },
+	{ key: "lastUpdatedBy", column: "last_updated_by" },
+	{ key: "sourceReqId", column: "source_req_id" },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+const REQUIREMENT_COLUMNS = [
+	{ key: "projectId", column: "project_id" },
+	{ key: "title" },
+	{ key: "description" },
+	{ key: "status" },
+	{ key: "source" },
+	{ key: "priority" },
+	{ key: "impactScope", column: "impact_scope" },
+	{ key: "context" },
+	{ key: "assignedLeadSessionId", column: "assigned_lead_session_id" },
+	{ key: "discussionSessionId", column: "discussion_session_id" },
+	{ key: "reviewer" },
+	{ key: "closedAt", column: "closed_at" },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+const REQUIREMENT_STATUS_HISTORY_COLUMNS = [
+	{ key: "requirementId", column: "requirement_id" },
+	{ key: "fromStatus", column: "from_status" },
+	{ key: "toStatus", column: "to_status" },
+	{ key: "triggeredBy", column: "triggered_by" },
+	{ key: "comment" },
+	{ key: "createdAt", column: "created_at" },
+];
+
+const TASK_STEPS_COLUMNS = [
+	{ key: "requirementId", column: "requirement_id" },
+	{ key: "stepOrder", column: "step_order" },
+	{ key: "role" },
+	{ key: "title" },
+	{ key: "description" },
+	{ key: "agentConfig", column: "agent_config" },
+	{ key: "status" },
+	{ key: "input" },
+	{ key: "output" },
+	{ key: "reviewResult", column: "review_result" },
+	{ key: "reviewComment", column: "review_comment" },
+	{ key: "retryCount", column: "retry_count" },
+	{ key: "maxRetries", column: "max_retries" },
+	{ key: "sessionId", column: "session_id" },
+	{ key: "startedAt", column: "started_at" },
+	{ key: "completedAt", column: "completed_at" },
+	{ key: "error" },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+const REQUIREMENT_MESSAGES_COLUMNS = [
+	{ key: "requirementId", column: "requirement_id" },
+	{ key: "sender" },
+	{ key: "content" },
+	{ key: "messageType", column: "message_type" },
+	{ key: "metadata" },
+	{ key: "createdAt", column: "created_at" },
+];
+
 // ---------------------------------------------------------------------------
 // runMigrations — called once at startup, after SessionDB is created
 // ---------------------------------------------------------------------------
@@ -141,6 +224,64 @@ export function runMigrations(sessionDB: SessionDB): void {
 
 	// Migrate old rows: set turn_group = seq for un-migrated rows
 	migrateTurnsToSteps(db);
+
+	// ─── Multi-Agent Workflow tables ───────────────────────────
+	db.exec(`CREATE TABLE IF NOT EXISTS projects (
+		id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL UNIQUE,
+		analyst_cron_id TEXT, analyst_session_id TEXT, last_analysis_at TEXT,
+		analysis_interval TEXT DEFAULT 'daily', status TEXT DEFAULT 'active',
+		created_at TEXT, updated_at TEXT
+	)`);
+	safeAddIndex(db, "projects", "idx_projects_status", "status");
+
+	db.exec(`CREATE TABLE IF NOT EXISTS project_wiki (
+		id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
+		parent_id TEXT REFERENCES project_wiki(id),
+		node_type TEXT NOT NULL, path TEXT NOT NULL, title TEXT NOT NULL,
+		summary TEXT, detail TEXT, last_updated_by TEXT DEFAULT 'analyst',
+		source_req_id TEXT, created_at TEXT, updated_at TEXT,
+		UNIQUE(project_id, path)
+	)`);
+	safeAddIndex(db, "project_wiki", "idx_wiki_project", "project_id");
+	safeAddIndex(db, "project_wiki", "idx_wiki_parent", "parent_id");
+
+	db.exec(`CREATE TABLE IF NOT EXISTS requirements (
+		id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
+		title TEXT NOT NULL, description TEXT, status TEXT DEFAULT 'found',
+		source TEXT DEFAULT 'analyst', priority TEXT DEFAULT 'normal',
+		impact_scope TEXT, context TEXT,
+		assigned_lead_session_id TEXT, discussion_session_id TEXT,
+		reviewer TEXT DEFAULT 'analyst',
+		closed_at TEXT, created_at TEXT, updated_at TEXT
+	)`);
+	safeAddIndex(db, "requirements", "idx_req_project", "project_id");
+	safeAddIndex(db, "requirements", "idx_req_status", "status");
+
+	db.exec(`CREATE TABLE IF NOT EXISTS requirement_status_history (
+		id TEXT PRIMARY KEY, requirement_id TEXT NOT NULL REFERENCES requirements(id),
+		from_status TEXT, to_status TEXT NOT NULL, triggered_by TEXT NOT NULL,
+		comment TEXT, created_at TEXT
+	)`);
+	safeAddIndex(db, "requirement_status_history", "idx_rsh_req", "requirement_id");
+
+	db.exec(`CREATE TABLE IF NOT EXISTS task_steps (
+		id TEXT PRIMARY KEY, requirement_id TEXT NOT NULL REFERENCES requirements(id),
+		step_order INTEGER NOT NULL, role TEXT NOT NULL, title TEXT NOT NULL,
+		description TEXT, agent_config TEXT,
+		status TEXT DEFAULT 'pending', input TEXT, output TEXT,
+		review_result TEXT, review_comment TEXT,
+		retry_count INTEGER DEFAULT 0, max_retries INTEGER DEFAULT 3,
+		session_id TEXT, started_at TEXT, completed_at TEXT, error TEXT,
+		created_at TEXT, updated_at TEXT
+	)`);
+	safeAddIndex(db, "task_steps", "idx_steps_req", "requirement_id");
+
+	db.exec(`CREATE TABLE IF NOT EXISTS requirement_messages (
+		id TEXT PRIMARY KEY, requirement_id TEXT NOT NULL REFERENCES requirements(id),
+		sender TEXT NOT NULL, content TEXT NOT NULL,
+		message_type TEXT DEFAULT 'text', metadata TEXT, created_at TEXT
+	)`);
+	safeAddIndex(db, "requirement_messages", "idx_msg_req", "requirement_id");
 
 	// Now safe to create SqliteStore instances with all columns
 	const agents = new SqliteStore<AgentRecord>(db, "agents", AGENT_COLUMNS);

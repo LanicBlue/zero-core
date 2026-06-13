@@ -61,6 +61,10 @@ let _agentToolStore: any;
 let _mainWindow: BrowserWindow;
 let _modulesReady = false;
 let _registerAgentTools: ((store: any, registry: any) => void) | null = null;
+let _projectStore: any;
+let _requirementStore: any;
+let _wikiStore: any;
+let _taskStepStore: any;
 
 // ─── Expose current state as IpcContext (reactive) ──────────
 
@@ -81,11 +85,15 @@ const _ctx: IpcContext = {
 	get mcpManager() { return _mcpManager; },
 	get agentService() { return _agentService; },
 	get workspaceConfig() { return _workspaceConfig; },
-		set workspaceConfig(v) { _workspaceConfig = v; },
+	set workspaceConfig(v) { _workspaceConfig = v; },
 	get toolRegistry() { return _toolRegistry; },
 	get buildDefaultPrompt() { return _buildDefaultPromptFn; },
 	get saveWorkspaceConfig() { return _saveWorkspaceConfigFn; },
 	get createAgentService() { return _createAgentServiceFn; },
+	get projectStore() { return _projectStore; },
+	get requirementStore() { return _requirementStore; },
+	get wikiStore() { return _wikiStore; },
+	get taskStepStore() { return _taskStepStore; },
 	get modulesReady() { return _modulesReady; },
 	set modulesReady(v: boolean) { _modulesReady = v; },
 	whenReady: (name: ModuleName) => moduleReadiness.whenReady(name),
@@ -153,6 +161,7 @@ export async function loadCoreModules(): Promise<void> {
 		tmplMod, mcpMod, mcpMgrMod, sessionDbMod, migrationMod,
 		durableHooksMod, toolExecHooksMod, kbStoreMod, kbDbMod, agentToolStoreMod,
 		runtimeToolsMod, trMod, recoveryMod,
+		projectStoreMod, requirementStoreMod, wikiStoreMod, taskStepStoreMod,
 	] = await Promise.all([
 		import(toFileURL(join(_distServer, "agent-store.js"))),
 		import(toFileURL(join(_distServer, "provider-store.js"))),
@@ -172,6 +181,10 @@ export async function loadCoreModules(): Promise<void> {
 		import(toFileURL(join(__dirname, "../../dist/runtime/tools/index.js"))),
 		import(toFileURL(join(_distCore, "tool-registry.js"))),
 		import(toFileURL(join(_distServer, "recovery.js"))),
+		import(toFileURL(join(_distServer, "project-store.js"))),
+		import(toFileURL(join(_distServer, "requirement-store.js"))),
+		import(toFileURL(join(_distServer, "project-wiki-store.js"))),
+		import(toFileURL(join(_distServer, "task-step-store.js"))),
 	]);
 	log.ipc("All imports done", `+${Date.now() - t0}ms`);
 
@@ -216,6 +229,13 @@ export async function loadCoreModules(): Promise<void> {
 			_kbDb = new kbDbMod.KbDB();
 			_agentToolStore = new agentToolStoreMod.AgentToolStore(_sessionDb);
 			_workspaceConfig = wsMod.loadWorkspaceConfig(_sessionDb);
+
+			// Multi-Agent Workflow stores
+			_projectStore = new projectStoreMod.ProjectStore(_sessionDb);
+			_requirementStore = new requirementStoreMod.RequirementStore(_sessionDb);
+			_wikiStore = new wikiStoreMod.ProjectWikiStore(_sessionDb);
+			_taskStepStore = new taskStepStoreMod.TaskStepStore(_sessionDb);
+
 			console.log("[startup] workspaceConfig:", JSON.stringify(_workspaceConfig));
 			// Apply proxy config
 			try {

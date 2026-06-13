@@ -371,3 +371,121 @@ export interface DiscoveredSkill {
 	filePath: string;
 	baseDir: string;
 }
+
+// ── Multi-Agent Workflow Types ─────────────────────────────────
+
+export interface ProjectRecord {
+	id: string;
+	name: string;
+	path: string;
+	analystCronId?: string;
+	analystSessionId?: string;
+	lastAnalysisAt?: string;
+	analysisInterval: string;       // 'daily' | 'hourly' | custom cron
+	status: "active" | "paused";
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type RequirementStatus =
+	| "found" | "discuss" | "ready" | "plan"
+	| "build" | "verify" | "closed" | "cancelled";
+export type RequirementPriority = "low" | "normal" | "high" | "critical";
+export type RequirementSource = "analyst" | "user";
+
+export interface RequirementRecord {
+	id: string;
+	projectId: string;
+	title: string;
+	description?: string;
+	status: RequirementStatus;
+	source: RequirementSource;
+	priority: RequirementPriority;
+	impactScope?: string;
+	context?: string;               // JSON
+	assignedLeadSessionId?: string;
+	discussionSessionId?: string;
+	reviewer: "analyst" | "user";
+	closedAt?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface RequirementStatusHistory {
+	id: string;
+	requirementId: string;
+	fromStatus?: RequirementStatus;
+	toStatus: RequirementStatus;
+	triggeredBy: "analyst" | "user" | "lead" | "system";
+	comment?: string;
+	createdAt: string;
+}
+
+export type TaskStepRole = "developer" | "reviewer" | "qa";
+export type TaskStepStatus = "pending" | "running" | "completed" | "failed" | "skipped";
+
+export interface TaskStepRecord {
+	id: string;
+	requirementId: string;
+	stepOrder: number;
+	role: TaskStepRole;
+	title: string;
+	description?: string;
+	agentConfig?: string;           // JSON
+	status: TaskStepStatus;
+	input?: string;                 // JSON
+	output?: string;                // JSON
+	reviewResult?: "approved" | "rejected";
+	reviewComment?: string;
+	retryCount: number;
+	maxRetries: number;
+	sessionId?: string;
+	startedAt?: string;
+	completedAt?: string;
+	error?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type WikiNodeType = "directory" | "file" | "function" | "class" | "section";
+
+export interface ProjectWikiNode {
+	id: string;
+	projectId: string;
+	parentId?: string;
+	nodeType: WikiNodeType;
+	path: string;
+	title: string;
+	summary?: string;
+	detail?: string;
+	lastUpdatedBy: "analyst" | "user";
+	sourceReqId?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type RequirementMessageSender =
+	| "user" | "analyst" | "lead" | "developer" | "reviewer" | "qa";
+export type RequirementMessageType =
+	| "text" | "status_change" | "approval_request" | "notification";
+
+export interface RequirementMessage {
+	id: string;
+	requirementId: string;
+	sender: RequirementMessageSender;
+	content: string;
+	messageType: RequirementMessageType;
+	metadata?: string;              // JSON
+	createdAt: string;
+}
+
+// ── Multi-Agent Workflow Input Types ──────────────────────────
+
+export type CreateProjectInput = Omit<ProjectRecord, "id" | "createdAt" | "updatedAt">;
+export type UpdateProjectInput = Partial<Omit<ProjectRecord, "id" | "createdAt" | "updatedAt">>;
+
+export type CreateRequirementInput = Omit<RequirementRecord, "id" | "createdAt" | "updatedAt">;
+export type UpdateRequirementInput = Partial<Omit<RequirementRecord, "id" | "createdAt" | "updatedAt">>;
+
+export type CreateWikiNodeInput = Omit<ProjectWikiNode, "id" | "createdAt" | "updatedAt">;
+export type UpdateWikiNodeInput = Partial<Omit<ProjectWikiNode, "id" | "createdAt" | "updatedAt">>;
