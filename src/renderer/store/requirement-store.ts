@@ -32,6 +32,7 @@ import type {
 	TaskStepRecord,
 	CreateRequirementInput,
 } from "../../shared/types.js";
+import { useNotificationStore } from "./notification-store.js";
 
 const api = () => (window as any).api;
 
@@ -73,25 +74,36 @@ export const useRequirementStore = create<RequirementState>((set, get) => ({
 			const mergedFilter = { ...get().filter, ...filter };
 			const data = await api().requirementsList(mergedFilter);
 			set({ requirements: data, filter: mergedFilter, loading: false });
-		} catch {
+		} catch (err: any) {
 			set({ loading: false });
+			useNotificationStore.getState().addError(err?.message || "Failed to fetch requirements");
 		}
 	},
 
 	createRequirement: async (input) => {
-		const created = await api().requirementsCreate(input);
-		set((state) => ({ requirements: [...state.requirements, created] }));
-		return created;
+		try {
+			const created = await api().requirementsCreate(input);
+			set((state) => ({ requirements: [...state.requirements, created] }));
+			return created;
+		} catch (err: any) {
+			useNotificationStore.getState().addError(err?.message || "Failed to create requirement");
+			throw err;
+		}
 	},
 
 	transitionStatus: async (id, toStatus, triggeredBy, comment?) => {
-		const result = await api().requirementsTransition(id, toStatus, triggeredBy, comment);
-		if ("error" in result) throw new Error(result.error);
-		set((state) => ({
-			requirements: state.requirements.map((r) =>
-				r.id === id ? result.requirement : r
-			),
-		}));
+		try {
+			const result = await api().requirementsTransition(id, toStatus, triggeredBy, comment);
+			if ("error" in result) throw new Error(result.error);
+			set((state) => ({
+				requirements: state.requirements.map((r) =>
+					r.id === id ? result.requirement : r
+				),
+			}));
+		} catch (err: any) {
+			useNotificationStore.getState().addError(err?.message || "Failed to transition status");
+			throw err;
+		}
 	},
 
 	fetchSteps: async (reqId) => {
@@ -100,7 +112,9 @@ export const useRequirementStore = create<RequirementState>((set, get) => ({
 			set((state) => ({
 				stepsByReq: { ...state.stepsByReq, [reqId]: steps },
 			}));
-		} catch { /* keep existing data */ }
+		} catch (err: any) {
+			useNotificationStore.getState().addError(err?.message || "Failed to fetch steps");
+		}
 	},
 
 	fetchMessages: async (reqId) => {
@@ -109,17 +123,24 @@ export const useRequirementStore = create<RequirementState>((set, get) => ({
 			set((state) => ({
 				messagesByReq: { ...state.messagesByReq, [reqId]: messages },
 			}));
-		} catch { /* keep existing data */ }
+		} catch (err: any) {
+			useNotificationStore.getState().addError(err?.message || "Failed to fetch messages");
+		}
 	},
 
 	sendMessage: async (reqId, sender, content, messageType?) => {
-		const msg = await api().requirementsAddMessage(reqId, sender, content, messageType);
-		set((state) => ({
-			messagesByReq: {
-				...state.messagesByReq,
-				[reqId]: [...(state.messagesByReq[reqId] || []), msg],
-			},
-		}));
+		try {
+			const msg = await api().requirementsAddMessage(reqId, sender, content, messageType);
+			set((state) => ({
+				messagesByReq: {
+					...state.messagesByReq,
+					[reqId]: [...(state.messagesByReq[reqId] || []), msg],
+				},
+			}));
+		} catch (err: any) {
+			useNotificationStore.getState().addError(err?.message || "Failed to send message");
+			throw err;
+		}
 	},
 
 	setFilter: (filter) => {

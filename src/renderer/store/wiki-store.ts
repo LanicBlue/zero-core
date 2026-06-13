@@ -26,6 +26,7 @@
 //
 import { create } from "zustand";
 import type { ProjectWikiNode, UpdateWikiNodeInput } from "../../shared/types.js";
+import { useNotificationStore } from "./notification-store.js";
 
 const api = () => (window as any).api;
 
@@ -57,8 +58,9 @@ export const useWikiStore = create<WikiState>((set, get) => ({
 				nodesByProject: { ...state.nodesByProject, [projectId]: nodes },
 				loading: false,
 			}));
-		} catch {
+		} catch (err: any) {
 			set({ loading: false });
+			useNotificationStore.getState().addError(err?.message || "Failed to fetch wiki tree");
 		}
 	},
 
@@ -78,19 +80,26 @@ export const useWikiStore = create<WikiState>((set, get) => ({
 				}
 				return { nodesByProject: updated, expandedDetail: nodeId };
 			});
-		} catch { /* keep existing data */ }
+		} catch (err: any) {
+			useNotificationStore.getState().addError(err?.message || "Failed to expand wiki node");
+		}
 	},
 
 	updateNode: async (nodeId, data) => {
-		const result = await api().wikiUpdateNode(nodeId, data);
-		if ("error" in result) throw new Error(result.error);
-		set((state) => {
-			const updated: Record<string, ProjectWikiNode[]> = {};
-			for (const [pid, nodes] of Object.entries(state.nodesByProject)) {
-				updated[pid] = nodes.map((n) => (n.id === nodeId ? result : n));
-			}
-			return { nodesByProject: updated };
-		});
+		try {
+			const result = await api().wikiUpdateNode(nodeId, data);
+			if ("error" in result) throw new Error(result.error);
+			set((state) => {
+				const updated: Record<string, ProjectWikiNode[]> = {};
+				for (const [pid, nodes] of Object.entries(state.nodesByProject)) {
+					updated[pid] = nodes.map((n) => (n.id === nodeId ? result : n));
+				}
+				return { nodesByProject: updated };
+			});
+		} catch (err: any) {
+			useNotificationStore.getState().addError(err?.message || "Failed to update wiki node");
+			throw err;
+		}
 	},
 
 	getSelectedNode: () => {

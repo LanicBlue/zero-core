@@ -25,6 +25,7 @@
 //
 import { create } from "zustand";
 import type { ProjectRecord, CreateProjectInput, UpdateProjectInput } from "../../shared/types.js";
+import { useNotificationStore } from "./notification-store.js";
 
 const api = () => (window as any).api;
 
@@ -46,27 +47,43 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 		try {
 			const data = await api().projectsList(filter);
 			set({ projects: data, loading: false });
-		} catch {
+		} catch (err: any) {
 			set({ loading: false });
+			useNotificationStore.getState().addError(err?.message || "Failed to fetch projects");
 		}
 	},
 
 	createProject: async (input) => {
-		const created = await api().projectsCreate(input);
-		set((state) => ({ projects: [...state.projects, created] }));
-		return created;
+		try {
+			const created = await api().projectsCreate(input);
+			set((state) => ({ projects: [...state.projects, created] }));
+			return created;
+		} catch (err: any) {
+			useNotificationStore.getState().addError(err?.message || "Failed to create project");
+			throw err;
+		}
 	},
 
 	updateProject: async (id, input) => {
-		const updated = await api().projectsUpdate(id, input);
-		if ("error" in updated) throw new Error(updated.error);
-		set((state) => ({
-			projects: state.projects.map((p) => (p.id === id ? updated : p)),
-		}));
+		try {
+			const updated = await api().projectsUpdate(id, input);
+			if ("error" in updated) throw new Error(updated.error);
+			set((state) => ({
+				projects: state.projects.map((p) => (p.id === id ? updated : p)),
+			}));
+		} catch (err: any) {
+			useNotificationStore.getState().addError(err?.message || "Failed to update project");
+			throw err;
+		}
 	},
 
 	removeProject: async (id) => {
-		await api().projectsDelete(id);
-		set((state) => ({ projects: state.projects.filter((p) => p.id !== id) }));
+		try {
+			await api().projectsDelete(id);
+			set((state) => ({ projects: state.projects.filter((p) => p.id !== id) }));
+		} catch (err: any) {
+			useNotificationStore.getState().addError(err?.message || "Failed to remove project");
+			throw err;
+		}
 	},
 }));

@@ -44,6 +44,9 @@ import WikiPage from "../wiki/WikiPage.js";
 import { usePageStore } from "../../store/page-store.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
 import { useChatStore } from "../../store/chat-store.js";
+import { useNotificationStore } from "../../store/notification-store.js";
+import { useRequirementStore } from "../../store/requirement-store.js";
+import NotificationToast from "../common/NotificationToast.js";
 
 const api = () => (window as any).api;
 
@@ -139,6 +142,34 @@ export default function AppLayout() {
 				updateAssistantText(key, `\nError: ${d.error}`);
 				finishStreaming(key);
 			},
+			requirement_notification: (d) => {
+				useNotificationStore.getState().addNotification({
+					type: d.type || "requirement",
+					priority: d.priority || "info",
+					title: d.title || "Requirement Update",
+					message: d.message || "",
+					actionUrl: d.actionUrl,
+				});
+				useRequirementStore.getState().fetchRequirements();
+			},
+			step_failure: (d) => {
+				useNotificationStore.getState().addNotification({
+					type: "step_failure",
+					priority: "warning",
+					title: d.title || "Step Failed",
+					message: d.message || d.error || "A step has failed",
+					actionUrl: d.actionUrl,
+				});
+			},
+			verification_failure: (d) => {
+				useNotificationStore.getState().addNotification({
+					type: "verification_failure",
+					priority: "critical",
+					title: d.title || "Verification Failed",
+					message: d.message || d.error || "Verification check failed",
+					actionUrl: d.actionUrl,
+				});
+			},
 		};
 
 		const unsubscribe = api().onAgentEvent((data: any) => {
@@ -182,6 +213,7 @@ export default function AppLayout() {
 					</div>
 				)}
 			</div>
+			<NotificationToast />
 		</div>
 	);
 }
