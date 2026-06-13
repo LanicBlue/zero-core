@@ -49,6 +49,7 @@ import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.j
 import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
 import { expandNodeTool, updateWikiNodeTool } from "./wiki-tools.js";
 import { createRequirementTool } from "./requirement-tools.js";
+import { orchestrateTool } from "./orchestrate-tool.js";
 import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";
 
@@ -83,6 +84,7 @@ export const ALL_TOOLS: Record<string, any> = {
 	ExpandNode: expandNodeTool,
 	UpdateWikiNode: updateWikiNodeTool,
 	CreateRequirement: createRequirementTool,
+	Orchestrate: orchestrateTool,
 
 	...getAssistantTools(),
 };
@@ -97,8 +99,8 @@ const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> 
 	ExpandNode: (ctx) => !!ctx.wikiStore,
 	UpdateWikiNode: (ctx) => !!ctx.wikiStore,
 	CreateRequirement: (ctx) => !!ctx.requirementStore,
+	Orchestrate: (ctx) => !!ctx.createRoleLoop,
 };
-
 
 
 

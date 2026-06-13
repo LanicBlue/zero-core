@@ -329,8 +329,23 @@ export interface ToolExecutionContext {
 	// Multi-Agent Workflow context
 	wikiStore?: any;                    // ProjectWikiStore
 	requirementStore?: any;             // RequirementStore
+	taskStepStore?: any;                // TaskStepStore
 	projectId?: string;                 // Current project ID
 	agentRole?: string;                 // Current agent role (analyst | lead | developer | reviewer | qa)
+	projectPath?: string;               // Project root directory path
+	activeRequirementId?: string;       // Current requirement ID for orchestration
+	// Orchestration — injected into Lead session for sub-agent dispatch
+	createRoleLoop?: (params: {
+		role: string;
+		task: string;
+		systemPrompt: string;
+		toolPolicy: { allow: string[]; deny: string[] };
+		wikiContext?: string;
+		workspaceDir?: string;
+	}) => Promise<{
+		result: string;           // sub-agent execution result summary
+		changedFiles: string[];   // list of changed file paths
+	}>;
 }
 
 // ---------------------------------------------------------------------------

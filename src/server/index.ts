@@ -223,6 +223,24 @@ export async function startServer(options?: StartServerOptions) {
 		templateStore,
 	});
 
+	// ─── LeadService + Requirement Hooks (M3) ────────────────────────
+	const { LeadService } = await import("./lead-service.js");
+	const { registerRequirementHooks } = await import("./requirement-hooks.js");
+	const leadService = new LeadService({
+		agentService,
+		agentStore,
+		requirementStore,
+		taskStepStore,
+		wikiStore,
+		projectStore,
+		templateStore,
+	});
+	registerRequirementHooks({
+		requirementStore,
+		taskStepStore,
+		leadService,
+	});
+
 	// ─── Mount API routers ───────────────────────────────────────
 
 	app.use("/api/config", createConfigRouter({

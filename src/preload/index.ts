@@ -236,6 +236,10 @@ const api: WindowApi = {
 	wikiCreateNode: (projectId, input) => ipcRenderer.invoke("wiki:createNode", projectId, input),
 	wikiUpdateNode: (id, input) => ipcRenderer.invoke("wiki:updateNode", id, input),
 	wikiDeleteNode: (id) => ipcRenderer.invoke("wiki:deleteNode", id),
+
+	// ── Lead ──
+	leadPickup: (requirementId) => ipcRenderer.invoke("lead:pickup", requirementId),
+	leadProgress: (requirementId) => ipcRenderer.invoke("lead:progress", requirementId),
 };
 
 contextBridge.exposeInMainWorld("api", api);

@@ -337,7 +337,7 @@ export class AgentService {
 	/**
 	 * Send a prompt with workflow role awareness.
 	 * Injects role-specific system prompt, tool policy, and workflow context
-	 * (wikiStore, requirementStore, projectId) into the session.
+	 * (wikiStore, requirementStore, projectId, taskStepStore, createRoleLoop) into the session.
 	 */
 	async sendRolePrompt(
 		agentId: string,
@@ -350,7 +350,9 @@ export class AgentService {
 			projectName?: string;
 			wikiStore?: any;
 			requirementStore?: any;
+			taskStepStore?: any;
 			activeRequirementId?: string;
+			createRoleLoop?: any;
 		},
 	): Promise<void> {
 		const agent = this.agentStore?.get(agentId);
@@ -411,7 +413,11 @@ export class AgentService {
 			} : undefined,
 			wikiStore: context.wikiStore,
 			requirementStore: context.requirementStore,
-		};
+		} as any;
+
+		// Inject M3 fields into sessionConfig (via `as any` since SessionConfig doesn't have them typed)
+		(sessionConfig as any).taskStepStore = context.taskStepStore;
+		(sessionConfig as any).createRoleLoop = context.createRoleLoop;
 
 		let loop = this.loops.get(sessionId);
 		if (!loop) {
@@ -442,6 +448,100 @@ export class AgentService {
 			log.error("agent", "Role prompt error:", (err as Error).message);
 			this.emit({ type: "error", error: (err as Error).message, agentId });
 		}
+	}
+	/**
+	 * Create a role loop factory — used by LeadService to dispatch sub-agents.
+	 * Returns a function that creates temporary AgentLoop instances for sub-agent execution.
+	 */
+	createRoleLoopFactory(
+		project: { id: string; name: string; path: string },
+		wikiStore: any,
+		taskStepStore: any,
+	): import("../runtime/types.js").ToolExecutionContext["createRoleLoop"] {
+		const self = this;
+		return async (params) => {
+			// 1. Get role config
+			const roleConfig = getRoleConfig(params.role);
+
+			// 2. Build systemPrompt — use provided or fallback to role append
+			const systemPrompt = params.systemPrompt || roleConfig.promptAppend;
+
+			// 3. Build tool policy for sub-agent
+			const subToolPolicy = {
+				autoApprove: roleConfig.toolPolicy.autoApprove,
+				blockedTools: roleConfig.toolPolicy.blockedTools,
+			};
+
+			// 4. Create temporary AgentLoop (not persisted to DB)
+			const subAgentId = `role-${params.role}-${Date.now()}`;
+			const subSession = self.db.createSession(subAgentId);
+			const subSessionId = subSession.id;
+
+			const subConfig: SessionConfig = {
+				agentId: subAgentId,
+				workspaceDir: params.workspaceDir || project.path,
+				systemPrompt,
+				modelId: self.defaultModel || "",
+				providerName: self.defaultProvider || "",
+				sessionId: subSessionId,
+				db: self.db,
+				toolPolicy: subToolPolicy,
+				agentRole: params.role,
+				projectContext: {
+					projectId: project.id,
+					projectName: project.name,
+					projectPath: project.path,
+				},
+				getMcpTools: async (aid?: string) => {
+					const mcpToolInfos = self.mcp.getToolsForAgent(aid);
+					return buildMcpTools(mcpToolInfos, (serverId, toolName, args) =>
+						self.mcp.callTool(serverId, toolName, args),
+					);
+				},
+				getToolConfig: () => self.registry.getToolConfig(),
+			};
+
+			// 5. Create and execute AgentLoop
+			const loop = new AgentLoop(subConfig, self.providerConfigs, {
+				onEvent: (_event: StreamEvent) => {
+					// Silently consume sub-agent events — don't forward to UI
+				},
+			});
+
+			self.loops.set(subSessionId, loop);
+			if (!self.runStates.has(subSessionId)) {
+				self.runStates.set(subSessionId, {
+					agentId: subAgentId,
+					isBusy: false,
+					streamingText: "",
+					toolCalls: [],
+				});
+			}
+
+			try {
+				await loop.run(params.task);
+				const result = loop.getResult();
+
+				// 6. Collect changed files (best effort — git diff)
+				let changedFiles: string[] = [];
+				try {
+					const { execSync } = require("child_process");
+					const diffOutput = execSync(
+						`git -C "${project.path}" diff --name-only HEAD`,
+						{ encoding: "utf-8", timeout: 10000 },
+					);
+					changedFiles = diffOutput.split("\n").filter(Boolean);
+				} catch {
+					// git not available or no changes
+				}
+
+				return { result, changedFiles };
+			} finally {
+				// Cleanup temporary loop
+				self.loops.delete(subSessionId);
+				self.runStates.delete(subSessionId);
+			}
+		};
 	}
 	async abort(agentId?: string): Promise<void> {
 		if (agentId) {

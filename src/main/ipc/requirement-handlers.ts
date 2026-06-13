@@ -3,7 +3,7 @@
 // # 文件说明书
 //
 // ## 核心功能
-// Requirement 相关的 IPC 处理器，处理需求 CRUD + 状态流转 + 消息操作。
+// Requirement 相关的 IPC 处理器，处理需求 CRUD + 状态流转 + 消息操作 + Lead 操作。
 //
 // ## 输入
 // - IPC 通道调用
@@ -13,6 +13,7 @@
 // - Requirement 数据
 // - 状态流转结果
 // - 消息数据
+// - Lead 操作结果
 //
 // ## 定位
 // IPC 处理器，被 ipc.ts 注册。
@@ -63,5 +64,24 @@ export function registerRequirementHandlers(ctx: IpcContext): void {
 	// Steps
 	typedHandle("requirements:steps", "sessionDb", (ctx, id) => {
 		return ctx.taskStepStore.listByRequirement(id);
+	});
+
+	// Lead: pickup requirement
+	typedHandle("lead:pickup", "sessionDb", async (ctx, requirementId) => {
+		try {
+			const sessionId = await ctx.leadService.pickupRequirement(requirementId);
+			return { sessionId };
+		} catch (e) {
+			return { error: (e as Error).message };
+		}
+	});
+
+	// Lead: get progress
+	typedHandle("lead:progress", "sessionDb", (ctx, requirementId) => {
+		try {
+			return ctx.leadService.getProgress(requirementId);
+		} catch (e) {
+			return { error: (e as Error).message };
+		}
 	});
 }

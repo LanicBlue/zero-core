@@ -236,4 +236,8 @@ export interface WindowApi {
 	wikiCreateNode: (projectId: string, input: CreateWikiNodeInput) => Promise<ProjectWikiNode>;
 	wikiUpdateNode: (id: string, input: UpdateWikiNodeInput) => Promise<ProjectWikiNode | { error: string }>;
 	wikiDeleteNode: (id: string) => Promise<{ success: true }>;
+
+	// ── Lead ──
+	leadPickup: (requirementId: string) => Promise<{ sessionId: string } | { error: string }>;
+	leadProgress: (requirementId: string) => Promise<{ requirement: RequirementRecord; steps: TaskStepRecord[]; currentStep: TaskStepRecord | undefined; completedCount: number; totalCount: number } | { error: string }>;
 }

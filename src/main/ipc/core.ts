@@ -65,6 +65,8 @@ let _projectStore: any;
 let _requirementStore: any;
 let _wikiStore: any;
 let _taskStepStore: any;
+let _analystService: any;
+let _leadService: any;
 
 // ─── Expose current state as IpcContext (reactive) ──────────
 
@@ -94,6 +96,8 @@ const _ctx: IpcContext = {
 	get requirementStore() { return _requirementStore; },
 	get wikiStore() { return _wikiStore; },
 	get taskStepStore() { return _taskStepStore; },
+	get analystService() { return _analystService; },
+	get leadService() { return _leadService; },
 	get modulesReady() { return _modulesReady; },
 	set modulesReady(v: boolean) { _modulesReady = v; },
 	whenReady: (name: ModuleName) => moduleReadiness.whenReady(name),
@@ -162,6 +166,7 @@ export async function loadCoreModules(): Promise<void> {
 		durableHooksMod, toolExecHooksMod, kbStoreMod, kbDbMod, agentToolStoreMod,
 		runtimeToolsMod, trMod, recoveryMod,
 		projectStoreMod, requirementStoreMod, wikiStoreMod, taskStepStoreMod,
+		analystSvcMod, leadSvcMod, reqHooksMod, wfCtxHookMod,
 	] = await Promise.all([
 		import(toFileURL(join(_distServer, "agent-store.js"))),
 		import(toFileURL(join(_distServer, "provider-store.js"))),
@@ -185,6 +190,10 @@ export async function loadCoreModules(): Promise<void> {
 		import(toFileURL(join(_distServer, "requirement-store.js"))),
 		import(toFileURL(join(_distServer, "project-wiki-store.js"))),
 		import(toFileURL(join(_distServer, "task-step-store.js"))),
+		import(toFileURL(join(_distServer, "analyst-service.js"))),
+		import(toFileURL(join(_distServer, "lead-service.js"))),
+		import(toFileURL(join(_distServer, "requirement-hooks.js"))),
+		import(toFileURL(join(_distServer, "workflow-context-hook.js"))),
 	]);
 	log.ipc("All imports done", `+${Date.now() - t0}ms`);
 
@@ -358,6 +367,47 @@ export async function loadCoreModules(): Promise<void> {
 	});
 	_registerAgentTools = agentSvcMod.registerAgentToolEntries;
 	agentSvcMod.registerAgentToolEntries(_agentToolStore, _registry);
+
+	// ─── Phase 5c: Workflow services + hooks (M2/M3) ────────────
+	try {
+		// Register workflow context hook (T2 context injection via PreLLMCall)
+		wfCtxHookMod.registerWorkflowContextHook({
+			projectStore: _projectStore,
+			requirementStore: _requirementStore,
+			wikiStore: _wikiStore,
+			taskStepStore: _taskStepStore,
+		});
+
+		// AnalystService (M2)
+		_analystService = new analystSvcMod.AnalystService({
+			agentService: _agentService,
+			agentStore: _agentStore,
+			projectStore: _projectStore,
+			wikiStore: _wikiStore,
+			requirementStore: _requirementStore,
+			templateStore: _templateStore,
+		});
+
+		// LeadService + Requirement Hooks (M3)
+		_leadService = new leadSvcMod.LeadService({
+			agentService: _agentService,
+			agentStore: _agentStore,
+			requirementStore: _requirementStore,
+			taskStepStore: _taskStepStore,
+			wikiStore: _wikiStore,
+			projectStore: _projectStore,
+			templateStore: _templateStore,
+		});
+		reqHooksMod.registerRequirementHooks({
+			requirementStore: _requirementStore,
+			taskStepStore: _taskStepStore,
+			leadService: _leadService,
+		});
+
+		log.ipc("Workflow services initialized");
+	} catch (err) {
+		log.error("ipc", "Phase 5c failed (workflow services):", (err as Error).message);
+	}
 
 	// ─── Phase 6: Recovery ───────────────────────────────────────
 		try {

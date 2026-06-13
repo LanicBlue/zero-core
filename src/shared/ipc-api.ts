@@ -199,4 +199,8 @@ export interface IpcChannelDefs {
 	"wiki:createNode":    { params: [projectId: string, input: CreateWikiNodeInput]; result: ProjectWikiNode };
 	"wiki:updateNode":    { params: [id: string, input: UpdateWikiNodeInput];       result: ProjectWikiNode | Err };
 	"wiki:deleteNode":    { params: [id: string];                                  result: Ok };
+
+	// ── Lead (internal — backend auto-pickup, manual retry) ──
+	"lead:pickup":    { params: [requirementId: string];                            result: { sessionId: string } | Err };
+	"lead:progress":  { params: [requirementId: string];                            result: { requirement: RequirementRecord; steps: TaskStepRecord[]; currentStep: TaskStepRecord | undefined; completedCount: number; totalCount: number } | Err };
 }
