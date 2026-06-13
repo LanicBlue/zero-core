@@ -47,6 +47,8 @@ import { webFetchTool } from "../mcp-tools/fetch-tools.js";
 import { memoryRecallTool, memoryNoteTool } from "../mcp-tools/memory-node-tools.js";
 import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
 import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
+import { expandNodeTool, updateWikiNodeTool } from "./wiki-tools.js";
+import { createRequirementTool } from "./requirement-tools.js";
 import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";
 
@@ -78,6 +80,9 @@ export const ALL_TOOLS: Record<string, any> = {
 	MemoryRecall: memoryRecallTool,
 	MemoryNote: memoryNoteTool,
 	SequentialThinking: sequentialThinkingTool,
+	ExpandNode: expandNodeTool,
+	UpdateWikiNode: updateWikiNodeTool,
+	CreateRequirement: createRequirementTool,
 
 	...getAssistantTools(),
 };
@@ -89,6 +94,9 @@ const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> 
 	TaskList: (ctx) => !!ctx.listTasks,
 	TaskStop: (ctx) => !!ctx.stopTask,
 	Wait: (ctx) => !!ctx.suspendUntilWake,
+	ExpandNode: (ctx) => !!ctx.wikiStore,
+	UpdateWikiNode: (ctx) => !!ctx.wikiStore,
+	CreateRequirement: (ctx) => !!ctx.requirementStore,
 };
 
 

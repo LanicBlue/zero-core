@@ -25,15 +25,17 @@ import type { ProjectStore } from "./project-store.js";
 import type { RequirementStore } from "./requirement-store.js";
 import type { ProjectWikiStore } from "./project-wiki-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
+import type { AnalystService } from "./analyst-service.js";
 
 export function createProjectRouter(deps: {
 	projectStore: ProjectStore;
 	requirementStore: RequirementStore;
 	wikiStore: ProjectWikiStore;
 	taskStepStore: TaskStepStore;
+	analystService?: AnalystService;
 }): Router {
 	const router = Router();
-	const { projectStore, requirementStore, wikiStore, taskStepStore } = deps;
+	const { projectStore, requirementStore, wikiStore, taskStepStore, analystService } = deps;
 
 	/** GET / — list projects (optional ?status= filter) */
 	router.get("/", (req, res) => {
@@ -51,6 +53,13 @@ export function createProjectRouter(deps: {
 			}
 			const p = projectStore.create(req.body);
 			res.status(201).json(p);
+
+			// Async cold-start analysis (non-blocking)
+			if (analystService) {
+				analystService.runFullAnalysis(p.id).catch((err) => {
+					console.error("[analyst] Cold start analysis failed:", (err as Error).message);
+				});
+			}
 		} catch (e) {
 			res.status(500).json({ error: (e as Error).message });
 		}
@@ -116,9 +125,30 @@ export function createProjectRouter(deps: {
 		}
 	});
 
-	/** POST /:id/trigger-analysis — placeholder for M2 */
-	router.post("/:id/trigger-analysis", (_req, res) => {
-		res.status(202).json({ ok: true, message: "Analysis triggered", type: "full" });
+	/** POST /:id/trigger-analysis — trigger full or incremental analysis */
+	router.post("/:id/trigger-analysis", (req, res) => {
+		const project = projectStore.get(req.params.id);
+		if (!project) return res.status(404).json({ error: "Project not found" });
+
+		if (!analystService) {
+			return res.status(503).json({ error: "Analyst service not available" });
+		}
+
+		// If first time (no lastAnalysisAt), run full; otherwise incremental
+		const isFull = !project.lastAnalysisAt;
+		const analysisPromise = isFull
+			? analystService.runFullAnalysis(project.id)
+			: analystService.runIncrementalAnalysis(project.id);
+
+		analysisPromise.catch((err) => {
+			console.error("[analyst] Analysis failed:", (err as Error).message);
+		});
+
+		res.status(202).json({
+			ok: true,
+			message: "Analysis triggered",
+			type: isFull ? "full" : "incremental",
+		});
 	});
 
 	return router;

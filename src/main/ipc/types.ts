@@ -40,6 +40,7 @@ import type { ProjectStore } from "../../server/project-store.js";
 import type { RequirementStore } from "../../server/requirement-store.js";
 import type { ProjectWikiStore } from "../../server/project-wiki-store.js";
 import type { TaskStepStore } from "../../server/task-step-store.js";
+import type { AnalystService } from "../../server/analyst-service.js";
 
 export interface IpcContext {
 	win: BrowserWindow;
@@ -63,6 +64,7 @@ export interface IpcContext {
 	requirementStore: RequirementStore;
 	wikiStore: ProjectWikiStore;
 	taskStepStore: TaskStepStore;
+	analystService: AnalystService;
 	modulesReady: boolean;
 	whenReady: (name: ModuleName) => Promise<void>;
 	isModuleReady: (name: ModuleName) => boolean;

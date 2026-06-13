@@ -46,6 +46,7 @@ import type { SessionManager } from "./session-manager.js";
 import { createEventMetricsAdapter, type EventMetricsAdapter } from "./metrics-events.js";
 import { setSessionTurnSeq } from "./durable-hooks.js";
 import { setTurnSeq } from "../runtime/hooks/turn-hooks.js";
+import { buildWorkflowSystemPrompt, getRoleConfig } from "../runtime/agent-roles.js";
 // ---------------------------------------------------------------------------
 // Ensure zero-core dirs
 // ---------------------------------------------------------------------------
@@ -330,6 +331,115 @@ export class AgentService {
 			log.agent("Prompt completed for:", agentId);
 		} catch (err) {
 			log.error("agent", "Prompt error:", (err as Error).message);
+			this.emit({ type: "error", error: (err as Error).message, agentId });
+		}
+	}
+	/**
+	 * Send a prompt with workflow role awareness.
+	 * Injects role-specific system prompt, tool policy, and workflow context
+	 * (wikiStore, requirementStore, projectId) into the session.
+	 */
+	async sendRolePrompt(
+		agentId: string,
+		sessionId: string,
+		role: string,
+		prompt: string,
+		context: {
+			projectId?: string;
+			projectPath?: string;
+			projectName?: string;
+			wikiStore?: any;
+			requirementStore?: any;
+			activeRequirementId?: string;
+		},
+	): Promise<void> {
+		const agent = this.agentStore?.get(agentId);
+		if (!agent) throw new Error(`Agent not found: ${agentId}`);
+
+		const roleConfig = getRoleConfig(role);
+		const systemPrompt = agent.systemPrompt || "";
+		const cwd = context.projectPath || agent.workspaceDir || this.workspaceDir;
+
+		const sessionConfig: SessionConfig = {
+			agentId,
+			workspaceDir: cwd,
+			systemPrompt,
+			guidelines: this.config.systemPrompt?.guidelines,
+			compression: this.config.compression,
+			memory: this.config.memory,
+			modelId: agent.model || this.defaultModel || "",
+			providerName: agent.provider || this.defaultProvider || "",
+			thinkingLevel: agent.thinkingLevel,
+			sessionId,
+			db: this.db,
+			toolPolicy: {
+				autoApprove: roleConfig.toolPolicy.autoApprove,
+				blockedTools: roleConfig.toolPolicy.blockedTools,
+				tools: agent.toolPolicy?.tools ?? this.config.toolPolicy.tools,
+				executionMode: agent.toolPolicy?.executionMode ?? this.config.toolPolicy.executionMode,
+				resultMaxTokens: agent.toolPolicy?.resultMaxTokens ?? this.config.toolPolicy.resultMaxTokens,
+				readScope: agent.toolPolicy?.readScope ?? "filesystem",
+			},
+			getMcpTools: async (aid?: string) => {
+				const mcpToolInfos = this.mcp.getToolsForAgent(aid);
+				return buildMcpTools(mcpToolInfos, (serverId, toolName, args) =>
+					this.mcp.callTool(serverId, toolName, args),
+				);
+			},
+			getAgentToolEntries: async () => {
+				if (!this.agentToolStore || !this.agentStore) {
+					return { entries: [], agents: new Map() };
+				}
+				const entries = this.agentToolStore.list().filter((e) => {
+					if (!e.enabled) return false;
+					if (e.type === "internal") return e.agentId !== agentId;
+					return true;
+				});
+				const agentMap = new Map<string, { id: string; name: string; systemPrompt?: string; model?: string }>();
+				for (const a of this.agentStore!.list()) {
+					agentMap.set(a.id, { id: a.id, name: a.name, systemPrompt: a.systemPrompt, model: a.model });
+				}
+				return { entries, agents: agentMap };
+			},
+			getToolConfig: () => this.registry.getToolConfig(),
+			agentRole: role,
+			projectContext: context.projectId ? {
+				projectId: context.projectId,
+				projectName: context.projectName || "",
+				projectPath: context.projectPath || "",
+				activeRequirementId: context.activeRequirementId,
+			} : undefined,
+			wikiStore: context.wikiStore,
+			requirementStore: context.requirementStore,
+		};
+
+		let loop = this.loops.get(sessionId);
+		if (!loop) {
+			loop = new AgentLoop(sessionConfig, this.providerConfigs, {
+				onEvent: (event: StreamEvent) => {
+					this.handleRuntimeEvent(agentId, event);
+				},
+			});
+			this.loops.set(sessionId, loop);
+		}
+
+		this.activeSessions.set(agentId, sessionId);
+		if (!this.runStates.has(sessionId)) {
+			this.runStates.set(sessionId, { agentId, isBusy: false, streamingText: "", toolCalls: [] });
+		}
+
+		const state = this.runStates.get(sessionId)!;
+		state.isBusy = true;
+		state.streamingText = "";
+		state.toolCalls = [];
+
+		log.agent("Sending role prompt to:", agentId, "role:", role, "session:", sessionId);
+
+		try {
+			await loop.run(prompt);
+			log.agent("Role prompt completed for:", agentId, "role:", role);
+		} catch (err) {
+			log.error("agent", "Role prompt error:", (err as Error).message);
 			this.emit({ type: "error", error: (err as Error).message, agentId });
 		}
 	}

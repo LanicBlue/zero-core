@@ -115,6 +115,11 @@ export class AgentLoop implements AgentRuntime {
 			suspendUntilWake: (timeoutMs, taskId) => this.delegator.suspendUntilWake(timeoutMs, taskId),
 			runBackground: (command, timeoutSec) => this.delegator.runBackground(command, timeoutSec),
 			rateLimiter: new ToolRateLimiter(),
+				// Multi-Agent Workflow context
+				wikiStore: (config as any).wikiStore,
+				requirementStore: (config as any).requirementStore,
+				projectId: config.projectContext?.projectId,
+				agentRole: config.agentRole,
 		};
 	}
 

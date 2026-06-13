@@ -249,14 +249,14 @@ export interface SessionConfig {
 		tools?: Record<string, { enabled: boolean }>;
 		executionMode?: "sequential" | "parallel";
 		resultMaxTokens?: number;
-			readScope?: "filesystem" | "workspace";
+		readScope?: "filesystem" | "workspace";
 	};
-		getMcpTools?: (agentId?: string) => Promise<Record<string, any>>;
-		getRagContext?: (agentId: string, query: string) => Promise<string | undefined>;
-			getAgentToolEntries?: () => Promise<{
-				entries: Array<import("../shared/types.js").AgentToolEntry>;
-				agents: Map<string, { id: string; name: string; systemPrompt?: string; model?: string }>;
-			}>;
+	getMcpTools?: (agentId?: string) => Promise<Record<string, any>>;
+	getRagContext?: (agentId: string, query: string) => Promise<string | undefined>;
+	getAgentToolEntries?: () => Promise<{
+		entries: Array<import("../shared/types.js").AgentToolEntry>;
+		agents: Map<string, { id: string; name: string; systemPrompt?: string; model?: string }>;
+	}>;
 	getToolConfig?: () => Record<string, Record<string, any>>;
 	compression?: {
 		enabled?: boolean;
@@ -272,7 +272,18 @@ export interface SessionConfig {
 		autoRecall?: boolean;
 		recallLimit?: number;
 	};
-	}
+	// Multi-Agent Workflow
+	agentRole?: string;                    // analyst | lead | developer | reviewer | qa
+	projectContext?: {
+		projectId: string;
+		projectName: string;
+		projectPath: string;
+		activeRequirementId?: string;        // Lead/sub-agent use
+	};
+	/** Injected into ToolExecutionContext for workflow tools */
+	wikiStore?: any;                       // ProjectWikiStore
+	requirementStore?: any;                // RequirementStore
+}
 
 // ---------------------------------------------------------------------------
 // Subagent task info — tracked by SubagentTaskRegistry
@@ -311,10 +322,15 @@ export interface ToolExecutionContext {
 	listTasks?: (filter?: "running" | "completed") => TaskInfo[];
 	stopTask?: (taskId: string) => boolean;
 	suspendUntilWake?: (timeoutMs: number, taskId?: string) => Promise<string>;
-		runBackground?: (command: string, timeout?: number) => string;
+	runBackground?: (command: string, timeout?: number) => string;
 	readScope?: "filesystem" | "workspace";
 	toolConfig?: Record<string, Record<string, any>>;
 	rateLimiter?: import("./tool-rate-limiter.js").ToolRateLimiter;
+	// Multi-Agent Workflow context
+	wikiStore?: any;                    // ProjectWikiStore
+	requirementStore?: any;             // RequirementStore
+	projectId?: string;                 // Current project ID
+	agentRole?: string;                 // Current agent role (analyst | lead | developer | reviewer | qa)
 }
 
 // ---------------------------------------------------------------------------

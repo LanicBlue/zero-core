@@ -63,6 +63,8 @@ import { TaskStepStore } from "./task-step-store.js";
 import { createProjectRouter } from "./project-router.js";
 import { createRequirementRouter } from "./requirement-router.js";
 import { createWikiRouter } from "./project-wiki-router.js";
+import { AnalystService } from "./analyst-service.js";
+import { registerWorkflowContextHook } from "./workflow-context-hook.js";
 import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
 import { ALL_TOOLS, registerRuntimeTools } from "../runtime/tools/index.js";
 import { getToolExecute } from "../runtime/tools/tool-factory.js";
@@ -125,11 +127,14 @@ export async function startServer(options?: StartServerOptions) {
 	const kbStore = new KbStore(sessionDB);
 	const kbDb = new KbDB();
 
-		// Multi-Agent Workflow stores
-		const projectStore = new ProjectStore(sessionDB);
-		const requirementStore = new RequirementStore(sessionDB);
-		const wikiStore = new ProjectWikiStore(sessionDB);
-		const taskStepStore = new TaskStepStore(sessionDB);
+	// Multi-Agent Workflow stores
+	const projectStore = new ProjectStore(sessionDB);
+	const requirementStore = new RequirementStore(sessionDB);
+	const wikiStore = new ProjectWikiStore(sessionDB);
+	const taskStepStore = new TaskStepStore(sessionDB);
+
+	// Register workflow context hook (T2 context injection via PreLLMCall)
+	registerWorkflowContextHook({ projectStore, requirementStore, wikiStore, taskStepStore });
 
 	let workspaceConfig = loadWorkspaceConfig(sessionDB);
 
@@ -208,6 +213,16 @@ export async function startServer(options?: StartServerOptions) {
 		console.error("[server] MCP auto-detect failed:", (err as Error).message);
 	}
 
+	// ─── AnalystService (M2) ─────────────────────────────────────────
+	const analystService = new AnalystService({
+		agentService,
+		agentStore,
+		projectStore,
+		wikiStore,
+		requirementStore,
+		templateStore,
+	});
+
 	// ─── Mount API routers ───────────────────────────────────────
 
 	app.use("/api/config", createConfigRouter({
@@ -232,10 +247,10 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/files", createFileRouter({ workspaceConfig }));
 	app.use("/api/tool-executions", createToolExecutionRouter({ sessionDb: sessionDB, agentService, providerStore, workspaceConfig }));
 
-		// Multi-Agent Workflow routers
-		app.use("/api/projects", createProjectRouter({ projectStore, requirementStore, wikiStore, taskStepStore }));
-		app.use("/api/requirements", createRequirementRouter({ requirementStore, taskStepStore }));
-		app.use("/api/project-wiki", createWikiRouter({ wikiStore }));
+	// Multi-Agent Workflow routers
+	app.use("/api/projects", createProjectRouter({ projectStore, requirementStore, wikiStore, taskStepStore, analystService }));
+	app.use("/api/requirements", createRequirementRouter({ requirementStore, taskStepStore }));
+	app.use("/api/project-wiki", createWikiRouter({ wikiStore }));
 
 	// Tool execute
 	app.post("/api/tool-execute", async (req, res) => {
@@ -290,12 +305,12 @@ export async function startServer(options?: StartServerOptions) {
 					models.push({
 						providerId: p.id,
 					provider: p.name,
-						providerName: p.name,
-						providerType: p.type,
-						id: m.id,
-						name: m.name,
-						contextWindow: m.contextWindow,
-						maxTokens: m.maxTokens,
+					providerName: p.name,
+					providerType: p.type,
+					id: m.id,
+					name: m.name,
+					contextWindow: m.contextWindow,
+					maxTokens: m.maxTokens,
 					});
 				}
 			}
