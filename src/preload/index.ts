@@ -240,6 +240,16 @@ const api: WindowApi = {
 	// ── Lead ──
 	leadPickup: (requirementId) => ipcRenderer.invoke("lead:pickup", requirementId),
 	leadProgress: (requirementId) => ipcRenderer.invoke("lead:progress", requirementId),
+
+	// ── M5: Verification, Archive, Report ──
+	requirementsVerify: (id) => ipcRenderer.invoke("requirements:verify", id),
+	requirementsArchive: (id) => ipcRenderer.invoke("requirements:archive", id),
+	requirementsReport: (id) => ipcRenderer.invoke("requirements:report", id),
+
+	// ── M5: Project pause/resume/interval ──
+	projectsUpdateInterval: (id, interval) => ipcRenderer.invoke("projects:updateInterval", id, interval),
+	projectsPause: (id) => ipcRenderer.invoke("projects:pause", id),
+	projectsResume: (id) => ipcRenderer.invoke("projects:resume", id),
 };
 
 contextBridge.exposeInMainWorld("api", api);

@@ -38,6 +38,7 @@ import type { ProjectWikiStore } from "./project-wiki-store.js";
 import type { RequirementStore } from "./requirement-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import type { TemplateStore } from "./template-store.js";
+import type { GitIntegration } from "./git-integration.js";
 import type { ProjectRecord, RequirementRecord, TaskStepRecord } from "../shared/types.js";
 import { buildWorkflowSystemPrompt, getRoleConfig } from "../runtime/agent-roles.js";
 import { log } from "../core/logger.js";
@@ -67,6 +68,7 @@ export class LeadService {
 	private wikiStore: ProjectWikiStore;
 	private projectStore: ProjectStore;
 	private templateStore: TemplateStore;
+	private gitIntegration: GitIntegration | null = null;
 
 	constructor(deps: {
 		agentService: AgentService;
@@ -76,6 +78,7 @@ export class LeadService {
 		wikiStore: ProjectWikiStore;
 		projectStore: ProjectStore;
 		templateStore: TemplateStore;
+		gitIntegration?: GitIntegration;
 	}) {
 		this.agentService = deps.agentService;
 		this.agentStore = deps.agentStore;
@@ -84,6 +87,14 @@ export class LeadService {
 		this.wikiStore = deps.wikiStore;
 		this.projectStore = deps.projectStore;
 		this.templateStore = deps.templateStore;
+		if (deps.gitIntegration) this.gitIntegration = deps.gitIntegration;
+	}
+
+	/**
+	 * M5: Inject GitIntegration after construction.
+	 */
+	setGitIntegration(gi: GitIntegration): void {
+		this.gitIntegration = gi;
 	}
 
 	// ─── Public API ──────────────────────────────────────────────────
@@ -124,6 +135,15 @@ export class LeadService {
 
 		// 6. Transition status: ready → plan
 		this.requirementStore.transitionStatus(requirementId, "plan", "lead", "Lead 领取需求");
+
+		// M5: Create requirement branch (non-blocking)
+		if (this.gitIntegration && project.path) {
+			this.gitIntegration.createRequirementBranch(
+				project.path, requirementId, req.title,
+			).catch((err) => {
+				log.debug("lead", "Git branch creation failed (non-blocking):", (err as Error).message);
+			});
+		}
 
 		// 7. Build tool context
 		const toolContext = this.buildLeadToolContext(project, req);

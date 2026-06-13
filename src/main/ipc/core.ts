@@ -67,6 +67,10 @@ let _wikiStore: any;
 let _taskStepStore: any;
 let _analystService: any;
 let _leadService: any;
+// M5 services
+let _cronManager: any = null;
+let _gitIntegration: any = null;
+let _notificationService: any = null;
 
 // ─── Expose current state as IpcContext (reactive) ──────────
 
@@ -98,6 +102,10 @@ const _ctx: IpcContext = {
 	get taskStepStore() { return _taskStepStore; },
 	get analystService() { return _analystService; },
 	get leadService() { return _leadService; },
+	// M5 services
+	get cronManager() { return _cronManager; },
+	get gitIntegration() { return _gitIntegration; },
+	get notificationService() { return _notificationService; },
 	get modulesReady() { return _modulesReady; },
 	set modulesReady(v: boolean) { _modulesReady = v; },
 	whenReady: (name: ModuleName) => moduleReadiness.whenReady(name),
@@ -167,6 +175,7 @@ export async function loadCoreModules(): Promise<void> {
 		runtimeToolsMod, trMod, recoveryMod,
 		projectStoreMod, requirementStoreMod, wikiStoreMod, taskStepStoreMod,
 		analystSvcMod, leadSvcMod, reqHooksMod, wfCtxHookMod,
+		gitIntegMod, notifSvcMod, cronAnalysisMod,
 	] = await Promise.all([
 		import(toFileURL(join(_distServer, "agent-store.js"))),
 		import(toFileURL(join(_distServer, "provider-store.js"))),
@@ -194,6 +203,10 @@ export async function loadCoreModules(): Promise<void> {
 		import(toFileURL(join(_distServer, "lead-service.js"))),
 		import(toFileURL(join(_distServer, "requirement-hooks.js"))),
 		import(toFileURL(join(_distServer, "workflow-context-hook.js"))),
+		// M5 modules
+		import(toFileURL(join(_distServer, "git-integration.js"))),
+		import(toFileURL(join(_distServer, "notification-service.js"))),
+		import(toFileURL(join(_distServer, "cron-analysis.js"))),
 	]);
 	log.ipc("All imports done", `+${Date.now() - t0}ms`);
 
@@ -309,38 +322,38 @@ export async function loadCoreModules(): Promise<void> {
 
 	// ─── Phase 5: AgentService (depends on all above) ────────────
 	try {
-	_agentService = _createAgentServiceFn(
-		_workspaceConfig.workspaceDir, _sessionDb, _kbStore, _registry, _mcpManager,
-	);
-	_agentService.setAgentStore(_agentStore);
-	_agentService.setAgentToolStore(_agentToolStore);
+		_agentService = _createAgentServiceFn(
+			_workspaceConfig.workspaceDir, _sessionDb, _kbStore, _registry, _mcpManager,
+		);
+		_agentService.setAgentStore(_agentStore);
+		_agentService.setAgentToolStore(_agentToolStore);
 
-	const providerConfigs = _providerStore.list()
-		.filter((p: any) => p.enabled)
-		.map((p: any) => ({
-			name: p.name, type: p.type, apiKey: p.apiKey, baseUrl: p.baseUrl,
-			models: p.models.map((m: any) => ({ id: m.id, name: m.name, contextWindow: m.contextWindow, maxTokens: m.maxTokens })),
-			enabled: p.enabled,
-			enableConcurrencyLimit: p.enableConcurrencyLimit ?? false,
-			maxConcurrency: p.maxConcurrency ?? 1,
-		}));
-	_agentService.setProviders(providerConfigs, _workspaceConfig.defaultModel, _workspaceConfig.defaultProvider);
-	_agentService.subscribe((event: any) => {
-		if (_mainWindow && !_mainWindow.isDestroyed()) {
-			_mainWindow.webContents.send("agent:event", event);
+		const providerConfigs = _providerStore.list()
+			.filter((p: any) => p.enabled)
+			.map((p: any) => ({
+				name: p.name, type: p.type, apiKey: p.apiKey, baseUrl: p.baseUrl,
+				models: p.models.map((m: any) => ({ id: m.id, name: m.name, contextWindow: m.contextWindow, maxTokens: m.maxTokens })),
+				enabled: p.enabled,
+				enableConcurrencyLimit: p.enableConcurrencyLimit ?? false,
+				maxConcurrency: p.maxConcurrency ?? 1,
+			}));
+		_agentService.setProviders(providerConfigs, _workspaceConfig.defaultModel, _workspaceConfig.defaultProvider);
+		_agentService.subscribe((event: any) => {
+			if (_mainWindow && !_mainWindow.isDestroyed()) {
+				_mainWindow.webContents.send("agent:event", event);
+			}
+		});
+
+			// Restore all sessions from DB into this AgentService instance
+			await _agentService.restoreAllSessions();
+			_agentService.recoverIncompleteSessions();
+		moduleReadiness.resolveModule("agentService");
+		} catch (err) {
+			log.error("ipc", "Phase 5 failed (agentService):", (err as Error).message);
+			moduleReadiness.rejectModule("agentService", err as Error);
+			moduleReadiness.rejectModule("recovery", new Error("skipped: agentService failed"));
+			return;
 		}
-	});
-
-		// Restore all sessions from DB into this AgentService instance
-		await _agentService.restoreAllSessions();
-		_agentService.recoverIncompleteSessions();
-	moduleReadiness.resolveModule("agentService");
-	} catch (err) {
-		log.error("ipc", "Phase 5 failed (agentService):", (err as Error).message);
-		moduleReadiness.rejectModule("agentService", err as Error);
-		moduleReadiness.rejectModule("recovery", new Error("skipped: agentService failed"));
-		return;
-	}
 
 	// ─── Phase 5b: SessionManager + metrics hooks ────────────────
 	try {
@@ -368,7 +381,7 @@ export async function loadCoreModules(): Promise<void> {
 	_registerAgentTools = agentSvcMod.registerAgentToolEntries;
 	agentSvcMod.registerAgentToolEntries(_agentToolStore, _registry);
 
-	// ─── Phase 5c: Workflow services + hooks (M2/M3) ────────────
+	// ─── Phase 5c: Workflow services + hooks (M2/M3/M5) ────────────
 	try {
 		// Register workflow context hook (T2 context injection via PreLLMCall)
 		wfCtxHookMod.registerWorkflowContextHook({
@@ -378,17 +391,18 @@ export async function loadCoreModules(): Promise<void> {
 			taskStepStore: _taskStepStore,
 		});
 
-		// AnalystService (M2)
+		// AnalystService (M2) — now includes taskStepStore for M5
 		_analystService = new analystSvcMod.AnalystService({
 			agentService: _agentService,
 			agentStore: _agentStore,
 			projectStore: _projectStore,
 			wikiStore: _wikiStore,
 			requirementStore: _requirementStore,
+			taskStepStore: _taskStepStore,
 			templateStore: _templateStore,
 		});
 
-		// LeadService + Requirement Hooks (M3)
+		// LeadService (M3)
 		_leadService = new leadSvcMod.LeadService({
 			agentService: _agentService,
 			agentStore: _agentStore,
@@ -398,13 +412,31 @@ export async function loadCoreModules(): Promise<void> {
 			projectStore: _projectStore,
 			templateStore: _templateStore,
 		});
+
+		// M5: Git Integration, Notification, Cron
+		_gitIntegration = new gitIntegMod.GitIntegration();
+		_notificationService = new notifSvcMod.NotificationService({
+			wss: null,  // WebSocket not available in IPC mode; notifications go to requirement_messages only
+			requirementStore: _requirementStore,
+		});
+		_cronManager = new cronAnalysisMod.CronAnalysisManager({
+			analystService: _analystService,
+			projectStore: _projectStore,
+		});
+
+		// Inject GitIntegration into AnalystService
+		_analystService.setGitIntegration(_gitIntegration);
+
+		// Register requirement hooks with M5 dependencies
 		reqHooksMod.registerRequirementHooks({
 			requirementStore: _requirementStore,
 			taskStepStore: _taskStepStore,
 			leadService: _leadService,
+			analystService: _analystService,
+			notificationService: _notificationService,
 		});
 
-		log.ipc("Workflow services initialized");
+		log.ipc("Workflow services initialized (M2/M3/M5)");
 	} catch (err) {
 		log.error("ipc", "Phase 5c failed (workflow services):", (err as Error).message);
 	}
@@ -415,6 +447,18 @@ export async function loadCoreModules(): Promise<void> {
 			if (interrupted.length > 0) {
 				await _agentService.recoverIncompleteSessions();
 			}
+
+			// M5: Workflow state recovery (build/plan/verify requirements)
+			if (_cronManager && _requirementStore && _taskStepStore) {
+				recoveryMod.recoverWorkflowState({
+					projectStore: _projectStore,
+					requirementStore: _requirementStore,
+					taskStepStore: _taskStepStore,
+					cronManager: _cronManager,
+					agentService: _agentService,
+				});
+			}
+
 			moduleReadiness.resolveModule("recovery");
 		} catch (err) {
 			log.error("ipc", "Phase 6 failed (recovery):", (err as Error).message);

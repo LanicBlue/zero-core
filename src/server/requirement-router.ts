@@ -23,13 +23,15 @@
 import { Router } from "express";
 import type { RequirementStore } from "./requirement-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
+import type { NotificationService } from "./notification-service.js";
 
 export function createRequirementRouter(deps: {
 	requirementStore: RequirementStore;
 	taskStepStore: TaskStepStore;
+	notificationService?: NotificationService;
 }): Router {
 	const router = Router();
-	const { requirementStore, taskStepStore } = deps;
+	const { requirementStore, taskStepStore, notificationService } = deps;
 
 	/** GET / — list requirements (optional ?projectId=&status=) */
 	router.get("/", (req, res) => {
@@ -44,6 +46,10 @@ export function createRequirementRouter(deps: {
 	router.post("/", (req, res) => {
 		try {
 			const r = requirementStore.create(req.body);
+			// M5: Notify critical/high priority requirements
+			if (notificationService && (r.priority === "critical" || r.priority === "high")) {
+				notificationService.notifyCriticalRequirement(r).catch(() => {});
+			}
 			res.status(201).json(r);
 		} catch (e) {
 			res.status(500).json({ error: (e as Error).message });

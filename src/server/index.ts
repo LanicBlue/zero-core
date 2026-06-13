@@ -235,11 +235,29 @@ export async function startServer(options?: StartServerOptions) {
 		projectStore,
 		templateStore,
 	});
+
+	// ─── M5: Git, Notifications, Cron ────────────────────────────
+	const { GitIntegration } = await import("./git-integration.js");
+	const { NotificationService } = await import("./notification-service.js");
+	const { CronAnalysisManager } = await import("./cron-analysis.js");
+	const { recoverWorkflowState } = await import("./recovery.js");
+
+	const gitIntegration = new GitIntegration();
+	const notificationService = new NotificationService({ wss, requirementStore });
+	const cronManager = new CronAnalysisManager({ analystService, projectStore });
+
+	analystService.setGitIntegration(gitIntegration);
+
 	registerRequirementHooks({
 		requirementStore,
 		taskStepStore,
 		leadService,
+		analystService,
+		notificationService,
 	});
+
+	// M5: Run workflow state recovery
+	recoverWorkflowState({ projectStore, requirementStore, taskStepStore, cronManager, agentService });
 
 	// ─── Mount API routers ───────────────────────────────────────
 
@@ -266,8 +284,61 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/tool-executions", createToolExecutionRouter({ sessionDb: sessionDB, agentService, providerStore, workspaceConfig }));
 
 	// Multi-Agent Workflow routers
-	app.use("/api/projects", createProjectRouter({ projectStore, requirementStore, wikiStore, taskStepStore, analystService }));
-	app.use("/api/requirements", createRequirementRouter({ requirementStore, taskStepStore }));
+
+	// Projects — with M5 interval/pause/resume + cron wiring
+	const projectRouter = createProjectRouter({ projectStore, requirementStore, wikiStore, taskStepStore, analystService });
+	// M5: Cron registration on project lifecycle
+	projectRouter.post("/", (req, res, next) => {
+		// Intercept original POST response to register cron after creation
+		const origJson = res.json.bind(res);
+		res.json = (body: any) => {
+			if (res.statusCode === 201 && body?.id) {
+				cronManager.scheduleProject(body.id, body.analysisInterval || "daily");
+			}
+			return origJson(body);
+		};
+		next();
+	});
+	projectRouter.put("/:id/interval", (req, res) => {
+		const { interval } = req.body;
+		projectStore.update(req.params.id, { analysisInterval: interval } as any);
+		cronManager.rescheduleProject(req.params.id, interval);
+		res.json({ ok: true });
+	});
+	projectRouter.post("/:id/pause", (req, res) => {
+		projectStore.update(req.params.id, { status: "paused" } as any);
+		cronManager.unscheduleProject(req.params.id);
+		res.json({ ok: true });
+	});
+	projectRouter.post("/:id/resume", (req, res) => {
+		const project = projectStore.get(req.params.id);
+		projectStore.update(req.params.id, { status: "active" } as any);
+		if (project) cronManager.scheduleProject(req.params.id, project.analysisInterval);
+		res.json({ ok: true });
+	});
+	app.use("/api/projects", projectRouter);
+
+	// Requirements — with M5 verify/archive/report + notifications
+	const requirementRouter = createRequirementRouter({ requirementStore, taskStepStore, notificationService });
+	requirementRouter.post("/:id/verify", async (req, res) => {
+		try {
+			const result = await analystService.verifyRequirement(req.params.id);
+			res.json(result);
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	requirementRouter.post("/:id/archive", async (req, res) => {
+		try {
+			await analystService.archiveRequirement(req.params.id);
+			res.json({ ok: true });
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	requirementRouter.get("/:id/report", (req, res) => {
+		const messages = requirementStore.getMessages(req.params.id);
+		const report = messages.find(m => m.messageType === "status_change" && m.content.startsWith("##"));
+		res.json({ report: report?.content || null });
+	});
+	app.use("/api/requirements", requirementRouter);
+
 	app.use("/api/project-wiki", createWikiRouter({ wikiStore }));
 
 	// Tool execute

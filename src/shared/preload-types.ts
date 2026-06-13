@@ -240,4 +240,14 @@ export interface WindowApi {
 	// ── Lead ──
 	leadPickup: (requirementId: string) => Promise<{ sessionId: string } | { error: string }>;
 	leadProgress: (requirementId: string) => Promise<{ requirement: RequirementRecord; steps: TaskStepRecord[]; currentStep: TaskStepRecord | undefined; completedCount: number; totalCount: number } | { error: string }>;
+
+	// ── M5: Verification, Archive, Report ──
+	requirementsVerify: (id: string) => Promise<{ passed: boolean; report: string } | { error: string }>;
+	requirementsArchive: (id: string) => Promise<{ success: true } | { error: string }>;
+	requirementsReport: (id: string) => Promise<{ report: string | null }>;
+
+	// ── M5: Project pause/resume/interval ──
+	projectsUpdateInterval: (id: string, interval: string) => Promise<{ success: true }>;
+	projectsPause: (id: string) => Promise<{ success: true }>;
+	projectsResume: (id: string) => Promise<{ success: true }>;
 }

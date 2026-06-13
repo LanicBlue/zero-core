@@ -30,6 +30,8 @@ import { HookRegistry } from "../core/hook-registry.js";
 import type { RequirementStore } from "./requirement-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import type { LeadService } from "./lead-service.js";
+import type { AnalystService } from "./analyst-service.js";
+import type { NotificationService } from "./notification-service.js";
 import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -41,13 +43,15 @@ import { log } from "../core/logger.js";
  *
  * PostToolUse: when Orchestrate tool is used by Lead, check if plan→build transition needed.
  * PostTurnComplete: when Lead session turn completes, check if all steps done → verify transition.
+ *   M5: if reviewer='analyst', auto-trigger verifyRequirement + archiveRequirement.
  */
 export function registerRequirementHooks(deps: {
 	requirementStore: RequirementStore;
 	taskStepStore: TaskStepStore;
 	leadService: LeadService;
 	hookRegistry?: HookRegistry;
-	notificationService?: any;  // M5 placeholder
+	analystService?: AnalystService;
+	notificationService?: NotificationService;
 }): void {
 	const registry = deps.hookRegistry ?? HookRegistry.getInstance();
 
@@ -75,6 +79,14 @@ export function registerRequirementHooks(deps: {
 			} catch (err) {
 				// Transition may fail if already moved — ignore
 				log.debug("requirement-hooks", "plan→build transition failed:", (err as Error).message);
+			}
+
+			// M5: Notify plan review required on plan→build transition
+			if (deps.notificationService) {
+				deps.notificationService.notifyPlanReviewRequired(
+					targetReq.id,
+					targetReq.projectId,
+				).catch(() => {});
 			}
 		}
 	});
@@ -109,14 +121,48 @@ export function registerRequirementHooks(deps: {
 				log.debug("requirement-hooks", "build→verify transition failed:", (err as Error).message);
 			}
 
+			// M5: Auto-verify if reviewer is 'analyst'
+			if (targetReq.reviewer === "analyst" && deps.analystService) {
+				log.agent("M5 auto-verify: reviewer=analyst, triggering verification for:", targetReq.id);
+				// Non-blocking — don't await to avoid blocking the hook
+				deps.analystService.verifyRequirement(targetReq.id).then((result) => {
+					if (result.passed) {
+						log.agent("M5 auto-verify: PASSED, archiving:", targetReq.id);
+						return deps.analystService!.archiveRequirement(targetReq.id);
+					} else {
+						log.agent("M5 auto-verify: FAILED for:", targetReq.id);
+						// Notify verification failure
+						if (deps.notificationService) {
+							return deps.notificationService.notifyVerificationFailure(
+								targetReq.id,
+								targetReq.projectId,
+								result.report,
+							);
+						}
+					}
+				}).catch((err) => {
+					log.error("requirement-hooks", "M5 auto-verify error:", (err as Error).message);
+				});
+			}
+
 			// After completing current requirement, auto-pickup next if idle
 			// Don't await — non-blocking
 			if (targetReq.projectId) {
 				deps.leadService.autoPickupIfIdle(targetReq.projectId).catch(() => {});
 			}
 		} else if (hasFailed) {
-			// Notification hook point (M5)
+			// M5: Notify step failure
 			log.agent("Requirement has failed steps:", targetReq.id, targetReq.title);
+			const failedSteps = steps.filter((s) => s.status === "failed");
+			if (deps.notificationService) {
+				for (const step of failedSteps) {
+					deps.notificationService.notifyStepFailure(
+						targetReq.id,
+						targetReq.projectId,
+						step,
+					).catch(() => {});
+				}
+			}
 		}
 	});
 }

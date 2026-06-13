@@ -42,6 +42,9 @@ import type { ProjectWikiStore } from "../../server/project-wiki-store.js";
 import type { TaskStepStore } from "../../server/task-step-store.js";
 import type { AnalystService } from "../../server/analyst-service.js";
 import type { LeadService } from "../../server/lead-service.js";
+import type { CronAnalysisManager } from "../../server/cron-analysis.js";
+import type { GitIntegration } from "../../server/git-integration.js";
+import type { NotificationService } from "../../server/notification-service.js";
 
 export interface IpcContext {
 	win: BrowserWindow;
@@ -67,6 +70,9 @@ export interface IpcContext {
 	taskStepStore: TaskStepStore;
 	analystService: AnalystService;
 	leadService: LeadService;
+	cronManager: CronAnalysisManager | null;
+	gitIntegration: GitIntegration | null;
+	notificationService: NotificationService | null;
 	modulesReady: boolean;
 	whenReady: (name: ModuleName) => Promise<void>;
 	isModuleReady: (name: ModuleName) => boolean;

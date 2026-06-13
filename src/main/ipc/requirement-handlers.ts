@@ -84,4 +84,32 @@ export function registerRequirementHandlers(ctx: IpcContext): void {
 			return { error: (e as Error).message };
 		}
 	});
+
+	// M5: Verify requirement
+	typedHandle("requirements:verify", "sessionDb", async (ctx, id) => {
+		try {
+			return await ctx.analystService.verifyRequirement(id);
+		} catch (e) {
+			return { error: (e as Error).message };
+		}
+	});
+
+	// M5: Archive requirement
+	typedHandle("requirements:archive", "sessionDb", async (ctx, id) => {
+		try {
+			await ctx.analystService.archiveRequirement(id);
+			return { success: true as const };
+		} catch (e) {
+			return { error: (e as Error).message };
+		}
+	});
+
+	// M5: Get completion report
+	typedHandle("requirements:report", "sessionDb", (ctx, id) => {
+		const messages = ctx.requirementStore.getMessages(id);
+		const report = messages.find((m: any) =>
+			m.messageType === "status_change" && m.content.startsWith("##"),
+		);
+		return { report: report?.content || null };
+	});
 }

@@ -21,6 +21,11 @@
 // 新增中断场景需在此添加扫描逻辑
 //
 import type { SessionDB } from "./session-db.js";
+import type { ProjectStore } from "./project-store.js";
+import type { RequirementStore } from "./requirement-store.js";
+import type { TaskStepStore } from "./task-step-store.js";
+import type { CronAnalysisManager } from "./cron-analysis.js";
+import type { AgentService } from "./agent-service.js";
 import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -40,4 +45,107 @@ export function scanIncompleteTurns(sessionDb: SessionDB): Array<{ sessionId: st
 		log.db(`Found ${incomplete.length} interrupted turn(s)`);
 	}
 	return incomplete;
+}
+
+// ---------------------------------------------------------------------------
+// M5: Workflow state recovery
+// Recover requirements in build/plan/verify status after a crash.
+// All errors are caught and logged — recovery does not block startup.
+// ---------------------------------------------------------------------------
+
+export interface RecoveryDeps {
+	projectStore: ProjectStore;
+	requirementStore: RequirementStore;
+	taskStepStore: TaskStepStore;
+	cronManager: CronAnalysisManager;
+	agentService: AgentService;
+}
+
+export function recoverWorkflowState(deps: RecoveryDeps): void {
+	const { projectStore, requirementStore, taskStepStore, cronManager, agentService } = deps;
+
+	try {
+		// 1. Restore cron schedules for all active projects
+		cronManager.restoreSchedules();
+
+		// 2. Recover requirements in 'build' status
+		const buildingReqs = requirementStore.listByStatus("build" as any);
+		for (const req of buildingReqs) {
+			try {
+				// Mark running steps as failed
+				const runningSteps = taskStepStore.listByRequirement(req.id)
+					.filter(s => s.status === "running");
+
+				for (const step of runningSteps) {
+					taskStepStore.update(step.id, {
+						status: "failed",
+						error: "Session interrupted by crash",
+						completedAt: new Date().toISOString(),
+					} as any);
+				}
+
+				// Check if Lead session is still alive
+				if (req.assignedLeadSessionId) {
+					const session = agentService.getDB().getSession(req.assignedLeadSessionId);
+					if (!session) {
+						// Session lost — add recovery message
+						requirementStore.addMessage(
+							req.id,
+							"system" as any,
+							"Lead session lost due to unexpected shutdown. Manual recovery or re-pickup required.",
+							"notification",
+						);
+					}
+				}
+			} catch (err) {
+				log.error("recovery", `Failed to recover build requirement ${req.id}: ${(err as Error).message}`);
+			}
+		}
+
+		// 3. Recover requirements in 'plan' status
+		const planReqs = requirementStore.listByStatus("plan" as any);
+		for (const req of planReqs) {
+			try {
+				if (req.assignedLeadSessionId) {
+					const session = agentService.getDB().getSession(req.assignedLeadSessionId);
+					if (!session) {
+						// Lead session lost — reset to ready
+						requirementStore.transitionStatus(
+							req.id, "ready" as any, "system" as any,
+							"Lead session lost due to unexpected shutdown, requirement reset to ready",
+						);
+						requirementStore.update(req.id, {
+							assignedLeadSessionId: undefined,
+						} as any);
+					}
+				}
+			} catch (err) {
+				log.error("recovery", `Failed to recover plan requirement ${req.id}: ${(err as Error).message}`);
+			}
+		}
+
+		// 4. Recover requirements in 'verify' status
+		const verifyReqs = requirementStore.listByStatus("verify" as any);
+		for (const req of verifyReqs) {
+			try {
+				requirementStore.addMessage(
+					req.id,
+					"system" as any,
+					"Verification was interrupted by restart. Re-trigger verification to proceed.",
+					"notification",
+				);
+			} catch (err) {
+				log.error("recovery", `Failed to recover verify requirement ${req.id}: ${(err as Error).message}`);
+			}
+		}
+
+		const totalRecovered = buildingReqs.length + planReqs.length + verifyReqs.length;
+		if (totalRecovered > 0) {
+			log.debug("recovery", `Recovered ${totalRecovered} workflow requirement(s) (build:${buildingReqs.length} plan:${planReqs.length} verify:${verifyReqs.length})`);
+		} else {
+			log.debug("recovery", "No workflow requirements needed recovery");
+		}
+	} catch (err) {
+		log.error("recovery", `Workflow recovery failed: ${(err as Error).message}`);
+	}
 }

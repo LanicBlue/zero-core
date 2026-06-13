@@ -203,4 +203,14 @@ export interface IpcChannelDefs {
 	// ── Lead (internal — backend auto-pickup, manual retry) ──
 	"lead:pickup":    { params: [requirementId: string];                            result: { sessionId: string } | Err };
 	"lead:progress":  { params: [requirementId: string];                            result: { requirement: RequirementRecord; steps: TaskStepRecord[]; currentStep: TaskStepRecord | undefined; completedCount: number; totalCount: number } | Err };
+
+	// ── M5: Verification, Archive, Report ──
+	"requirements:verify":     { params: [id: string];                               result: { passed: boolean; report: string } | Err };
+	"requirements:archive":    { params: [id: string];                               result: Ok | Err };
+	"requirements:report":     { params: [id: string];                               result: { report: string | null } };
+
+	// ── M5: Project pause/resume/interval ──
+	"projects:updateInterval": { params: [id: string, interval: string];             result: Ok };
+	"projects:pause":          { params: [id: string];                                result: Ok };
+	"projects:resume":         { params: [id: string];                                result: Ok };
 }
