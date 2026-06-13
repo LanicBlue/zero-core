@@ -23,12 +23,22 @@
 //
 import { create } from "zustand";
 
+type PageType = "dashboard" | "chat" | "agents" | "settings" | "mcp" | "skills" | "knowledge" | "tools" | "requirements" | "wiki";
+
 interface PageState {
-	activePage: "dashboard" | "chat" | "agents" | "settings" | "mcp" | "skills" | "knowledge" | "tools";
-	setActivePage: (page: "dashboard" | "chat" | "agents" | "settings" | "mcp" | "skills" | "knowledge" | "tools") => void;
+	activePage: PageType;
+	setActivePage: (page: PageType) => void;
+	activeRequirementId: string | null;
+	setActiveRequirementId: (id: string | null) => void;
+	activeWikiProjectId: string | null;
+	setActiveWikiProjectId: (id: string | null) => void;
 }
 
 export const usePageStore = create<PageState>((set) => ({
 	activePage: "dashboard",
 	setActivePage: (page) => set({ activePage: page }),
+	activeRequirementId: null,
+	setActiveRequirementId: (id) => set({ activeRequirementId: id }),
+	activeWikiProjectId: null,
+	setActiveWikiProjectId: (id) => set({ activeWikiProjectId: id }),
 }));

@@ -32,6 +32,10 @@ import MarkdownRenderer from "../common/MarkdownRenderer.js";
 import AskUserCard from "../chat/AskUserCard.js";
 import TodosList from "../chat/TodosList.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
+import { usePageStore } from "../../store/page-store.js";
+import { useRequirementStore } from "../../store/requirement-store.js";
+import RequirementHeader from "../requirements/RequirementHeader.js";
+import type { RequirementStatus } from "../../shared/types.js";
 
 const api = () => (window as any).api;
 
@@ -281,6 +285,11 @@ export default function ChatPanel() {
 	const contextInfo = useChatStore(selectContextInfo);
 	const { agents } = useAgentStore();
 	const { pendingQuestions, todosByAgent } = useInteractionStore();
+	const { activeRequirementId, setActiveRequirementId, setActivePage } = usePageStore();
+	const { requirements, transitionStatus, sendMessage: sendReqMessage } = useRequirementStore();
+	const activeRequirement = activeRequirementId
+		? requirements.find((r) => r.id === activeRequirementId)
+		: undefined;
 	const todos = activeAgentId ? (todosByAgent[activeAgentId] ?? []) : [];
 	const [input, setInput] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -409,6 +418,23 @@ export default function ChatPanel() {
 		deleteMessage(activeSessionId ?? activeAgentId, msg.id);
 	};
 
+	// Requirement discussion: handle status transitions
+	const handleRequirementTransition = async (toStatus: RequirementStatus) => {
+		if (!activeRequirementId || !activeRequirement) return;
+		try {
+			await transitionStatus(activeRequirementId, toStatus, "user");
+			// If transitioning away from discussion, record a message
+			await sendReqMessage(activeRequirementId, "user", `Status changed to: ${toStatus}`);
+		} catch (err) {
+			console.error("Failed to transition requirement:", err);
+		}
+	};
+
+	const handleCloseRequirement = () => {
+		setActiveRequirementId(null);
+		setActivePage("requirements");
+	};
+
 	const renderMessageContent = (msg: typeof messages[number]) => {
 		if (msg.role === "user") {
 			return msg.text;
@@ -430,6 +456,15 @@ export default function ChatPanel() {
 
 	return (
 		<main className="chat-panel" data-session-id={activeSessionId ?? ""}>
+			{/* Requirement discussion header */}
+			{activeRequirementId && activeRequirement && (
+				<RequirementHeader
+					requirement={activeRequirement}
+					onTransition={handleRequirementTransition}
+					onClose={handleCloseRequirement}
+				/>
+			)}
+
 			<div className="chat-header">
 				<select
 					className="chat-agent-select"

@@ -38,6 +38,8 @@ import SkillsPage from "../skills/SkillsPage.js";
 import KnowledgeBasePage from "../kb/KnowledgeBasePage.js";
 import ToolsPage from "../tools/ToolsPage.js";
 import DashboardPage from "../dashboard/DashboardPage.js";
+import KanbanPage from "../requirements/KanbanPage.js";
+import WikiPage from "../wiki/WikiPage.js";
 
 import { usePageStore } from "../../store/page-store.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
@@ -106,7 +108,7 @@ export default function AppLayout() {
 				updateContextInfo(key, {
 					usedTokens: prev?.inputTokens ?? d.estimatedTokens ?? 0,
 					contextWindow: d.contextWindow,
-					usage: d.contextUsage ?? 0,
+					usage: prev ? d.usage.inputTokens / prev.contextWindow : 0,
 					inputTokens: prev?.inputTokens ?? 0,
 					outputTokens: prev?.outputTokens ?? 0,
 					totalTokens: prev?.totalTokens ?? 0,
@@ -175,6 +177,8 @@ export default function AppLayout() {
 						{activePage === "tools" && <ToolsPage />}
 						{activePage === "knowledge" && <KnowledgeBasePage />}
 						{activePage === "agents" && <AgentsPage />}
+						{activePage === "requirements" && <KanbanPage />}
+						{activePage === "wiki" && <WikiPage />}
 					</div>
 				)}
 			</div>
