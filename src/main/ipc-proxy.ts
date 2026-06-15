@@ -149,7 +149,43 @@ const R: Record<string, RouteMapping> = {
 		"config:memory-get":    { method: "GET", path: "/api/config/memory-config", buildReq: () => ({}) },
 		"config:memory-update": { method: "PUT", path: "/api/config/memory-config", buildReq: (data) => ({ body: data }) },
 	// Misc
-	"ask-user:respond": { method: "POST", path: "/api/ask-user/respond", buildReq: (requestId, answers) => ({ body: { requestId, answers } }) },
+
+		// ─── Projects (M1) ─────────────────────────────────
+		"projects:list":           { method: "GET",    path: "/api/projects",                 buildReq: (filter?) => ({ query: filter ?? {} }) },
+		"projects:get":            { method: "GET",    path: "/api/projects/:id",             buildReq: (id) => ({ params: { id } }) },
+		"projects:create":         { method: "POST",   path: "/api/projects",                 buildReq: (input) => ({ body: input }) },
+		"projects:update":         { method: "PUT",    path: "/api/projects/:id",             buildReq: (id, input) => ({ params: { id }, body: input }) },
+		"projects:delete":         { method: "DELETE", path: "/api/projects/:id",             buildReq: (id) => ({ params: { id } }) },
+		"projects:updateInterval": { method: "PUT",    path: "/api/projects/:id/interval",    buildReq: (id, interval) => ({ params: { id }, body: { interval } }) },
+		"projects:pause":          { method: "POST",   path: "/api/projects/:id/pause",       buildReq: (id) => ({ params: { id } }) },
+		"projects:resume":         { method: "POST",   path: "/api/projects/:id/resume",      buildReq: (id) => ({ params: { id } }) },
+
+		// ─── Requirements (M1) ──────────────────────────────
+		"requirements:list":       { method: "GET",    path: "/api/requirements",              buildReq: (filter?) => ({ query: filter ?? {} }) },
+		"requirements:get":        { method: "GET",    path: "/api/requirements/:id",           buildReq: (id) => ({ params: { id } }) },
+		"requirements:create":     { method: "POST",   path: "/api/requirements",              buildReq: (input) => ({ body: input }) },
+		"requirements:update":     { method: "PUT",    path: "/api/requirements/:id",           buildReq: (id, input) => ({ params: { id }, body: input }) },
+		"requirements:transition": { method: "PUT",    path: "/api/requirements/:id/status",   buildReq: (id, toStatus, triggeredBy, comment?) => ({ params: { id }, body: { toStatus, triggeredBy, comment } }) },
+		"requirements:history":    { method: "GET",    path: "/api/requirements/:id/history",  buildReq: (id) => ({ params: { id } }) },
+		"requirements:messages":   { method: "GET",    path: "/api/requirements/:id/messages", buildReq: (id) => ({ params: { id } }) },
+		"requirements:addMessage": { method: "POST",   path: "/api/requirements/:id/messages", buildReq: (id, sender, content, messageType?) => ({ params: { id }, body: { sender, content, messageType } }) },
+		"requirements:steps":      { method: "GET",    path: "/api/requirements/:id/steps",    buildReq: (id) => ({ params: { id } }) },
+
+		// ─── Requirements M5 ────────────────────────────────
+		"requirements:verify":     { method: "POST",   path: "/api/requirements/:id/verify",   buildReq: (id) => ({ params: { id } }) },
+		"requirements:archive":    { method: "POST",   path: "/api/requirements/:id/archive",  buildReq: (id) => ({ params: { id } }) },
+		"requirements:report":     { method: "GET",    path: "/api/requirements/:id/report",   buildReq: (id) => ({ params: { id } }) },
+
+		// ─── Wiki (M1) ──────────────────────────────────────
+		"wiki:listByProject":      { method: "GET",    path: "/api/project-wiki/:projectId/nodes", buildReq: (projectId) => ({ params: { projectId } }) },
+		"wiki:getNode":            { method: "GET",    path: "/api/project-wiki/node/:id",         buildReq: (id) => ({ params: { id } }) },
+		"wiki:createNode":         { method: "POST",   path: "/api/project-wiki/:projectId/nodes", buildReq: (projectId, input) => ({ params: { projectId }, body: input }) },
+		"wiki:updateNode":         { method: "PUT",    path: "/api/project-wiki/node/:id",         buildReq: (id, input) => ({ params: { id }, body: input }) },
+		"wiki:deleteNode":         { method: "DELETE", path: "/api/project-wiki/node/:id",         buildReq: (id) => ({ params: { id } }) },
+
+		// ─── Lead (M3) ──────────────────────────────────────
+		"lead:pickup":             { method: "POST",   path: "/api/requirements/:id/pickup",   buildReq: (requirementId) => ({ params: { id: requirementId } }) },
+		"lead:progress":           { method: "GET",    path: "/api/requirements/:id/progress", buildReq: (requirementId) => ({ params: { id: requirementId } }) },
 };
 
 // ─── Proxy Registration ─────────────────────────────────────

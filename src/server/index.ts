@@ -337,6 +337,19 @@ export async function startServer(options?: StartServerOptions) {
 		const report = messages.find(m => m.messageType === "status_change" && m.content.startsWith("##"));
 		res.json({ report: report?.content || null });
 	});
+		// Lead REST endpoints (M3)
+		requirementRouter.post("/:id/pickup", async (req, res) => {
+			try {
+				const sessionId = await leadService.pickupRequirement(req.params.id);
+				res.json({ sessionId });
+			} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+		});
+		requirementRouter.get("/:id/progress", (req, res) => {
+			try {
+				const progress = leadService.getProgress(req.params.id);
+				res.json(progress);
+			} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+		});
 	app.use("/api/requirements", requirementRouter);
 
 	app.use("/api/project-wiki", createWikiRouter({ wikiStore }));

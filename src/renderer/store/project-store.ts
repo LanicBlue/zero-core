@@ -3,14 +3,14 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 项目相关的 Zustand 状态管理，包括项目列表和 CRUD 操作。
+// 项目相关的 Zustand 状态管理，自动从 Agent 同步项目。
 //
 // ## 输入
-// - IPC 调用（projects:list 等）
+// - IPC 调用（projects:list, agents:list 等）
 //
 // ## 输出
 // - 项目列表
-// - CRUD 操作
+// - 自动同步方法
 //
 // ## 定位
 // 渲染进程状态管理，被 KanbanPage 等组件使用。
@@ -20,8 +20,7 @@
 // - ../../shared/types - 共享类型
 //
 // ## 维护规则
-// - 新增项目字段时需更新类型
-// - 保持与 IPC 接口一致
+// - 项目自动从 Agent 同步，不需要手动创建
 //
 import { create } from "zustand";
 import type { ProjectRecord, CreateProjectInput, UpdateProjectInput } from "../../shared/types.js";
@@ -33,7 +32,7 @@ interface ProjectState {
 	projects: ProjectRecord[];
 	loading: boolean;
 	fetchProjects: (filter?: { status?: string }) => Promise<void>;
-	createProject: (input: CreateProjectInput) => Promise<ProjectRecord>;
+	syncFromAgents: () => Promise<void>;
 	updateProject: (id: string, input: UpdateProjectInput) => Promise<void>;
 	removeProject: (id: string) => Promise<void>;
 }
@@ -42,25 +41,46 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 	projects: [],
 	loading: false,
 
+	/**
+	 * 自动从 Agent 列表同步项目。
+	 * 每个 Agent 的 workspaceDir 对应一个 Project。
+	 * 如果 Agent 还没有对应的 Project，自动创建。
+	 */
+	syncFromAgents: async () => {
+		try {
+			const agents = await api().agentsList();
+			const projects = await api().projectsList();
+			const existingPaths = new Set(projects.map((p: ProjectRecord) => p.path));
+
+			for (const agent of agents) {
+				if (agent.workspaceDir && !existingPaths.has(agent.workspaceDir)) {
+					try {
+						await api().projectsCreate({
+							name: agent.name,
+							path: agent.workspaceDir,
+							analysisInterval: "daily",
+							status: "active",
+						});
+					} catch {
+						// 可能路径冲突或其他错误，跳过
+					}
+				}
+			}
+		} catch {
+			// 同步失败不阻塞
+		}
+	},
+
 	fetchProjects: async (filter?) => {
 		set({ loading: true });
 		try {
+			// 先同步，再拉列表
+			await get().syncFromAgents();
 			const data = await api().projectsList(filter);
 			set({ projects: data, loading: false });
 		} catch (err: any) {
 			set({ loading: false });
 			useNotificationStore.getState().addError(err?.message || "Failed to fetch projects");
-		}
-	},
-
-	createProject: async (input) => {
-		try {
-			const created = await api().projectsCreate(input);
-			set((state) => ({ projects: [...state.projects, created] }));
-			return created;
-		} catch (err: any) {
-			useNotificationStore.getState().addError(err?.message || "Failed to create project");
-			throw err;
 		}
 	},
 

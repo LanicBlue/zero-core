@@ -30,10 +30,11 @@ export function registerDialogHandlers(ctx: IpcContext): void {
 	);
 
 	typedHandle("dialog:openDirectory", [],
-		async () => {
+		async (_ctx, defaultPath?: string) => {
 			const result = await dialog.showOpenDialog(ctx.win, {
 				properties: ["openDirectory", "createDirectory"],
 				title: "Select Directory",
+				defaultPath,
 			});
 			if (result.canceled || result.filePaths.length === 0) return undefined;
 			return result.filePaths[0];

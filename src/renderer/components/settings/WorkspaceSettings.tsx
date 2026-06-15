@@ -67,13 +67,14 @@ export function WorkspaceSettings() {
 		<div className="workspace-config">
 			<div className="workspace-config-row">
 				<label className="config-label">Workspace Directory</label>
-				<div className="workspace-config-input-row">
+				<div className="workspace-dir-row">
 					<input
 						value={dir}
 						onChange={(e) => setDir(e.target.value)}
 						placeholder="C:\Users\..."
 						className="workspace-dir-input"
 					/>
+					<button type="button" className="btn-ghost btn-sm" onClick={async () => { const d = await api().dialogOpenDirectory(dir); if (d) setDir(d); }}>...</button>
 				</div>
 			</div>
 			<div className="workspace-config-row">

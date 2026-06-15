@@ -55,7 +55,7 @@ export function BasicSection({ form, onSet, onSetForm, onAutoSave, defaultWorksp
 			<label>Workspace Directory
 				<div className="workspace-dir-row">
 					<input value={form.workspaceDir ?? ""} onChange={(e) => onSet("workspaceDir", e.target.value || undefined)} placeholder={defaultWorkspaceDisplay} />
-					<button type="button" className="btn-ghost btn-sm" onClick={async () => { const dir = await api().dialogOpenDirectory(); if (dir) onSet("workspaceDir", dir); }}>...</button>
+					<button type="button" className="btn-ghost btn-sm" onClick={async () => { const dir = await api().dialogOpenDirectory(form.workspaceDir || defaultWorkspaceDisplay); if (dir) onSet("workspaceDir", dir); }}>...</button>
 				</div>
 			</label>
 			<label>Model
