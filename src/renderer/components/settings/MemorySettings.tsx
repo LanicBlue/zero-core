@@ -1,3 +1,29 @@
+// 会话压缩与记忆设置面板
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 配置会话压缩（L1 摘要阈值 / L2 记忆抽取阈值 / 保留轮数 / 压缩模型）与记忆持久化（开关 / 自动召回 / 召回上限），保存到主进程。
+//
+// ## 输入
+// - providerStore (Zustand)：用于挑选压缩模型的可用 provider/model 列表
+// - window.api.memoryConfigGet / memoryConfigUpdate：读写主进程配置
+//
+// ## 输出
+// - 渲染的设置面板 DOM（含滑块、开关、模型下拉与保存按钮）
+//
+// ## 定位
+// 渲染进程组件，被 SettingsPage 在 Memory 分页下渲染。
+//
+// ## 依赖
+// - react
+// - ../../store/provider-store
+// - window.api（preload 暴露的 memoryConfig* 接口）
+//
+// ## 维护规则
+// - 压缩或记忆配置字段（阈值/默认值）变化时同步本面板。
+// - 新增模型分组逻辑需要保留按 group 聚合的 optgroup 渲染。
+//
 import { useEffect, useState } from "react";
 import { useProviderStore } from "../../store/provider-store.js";
 

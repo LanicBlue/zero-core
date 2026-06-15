@@ -1,3 +1,26 @@
+// E2E 测试：上下文使用量指示器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 验证发送消息后聊天界面渲染上下文使用量指示器（文本 + 进度条），覆盖出现时机、128K 窗口文本、低占用绿色进度条、启动恢复和多次消息持久等场景
+//
+// ## 输入
+// simple-response.json fixture（mock provider，contextWindow=128000）
+//
+// ## 输出
+// Playwright 测试用例：检查 .context-usage、.context-usage-text、.context-usage-bar、.context-usage-fill 元素
+//
+// ## 定位
+// tests/e2e/ — E2E 测试套件，验证上下文使用量 UI
+//
+// ## 依赖
+// @playwright/test、./helpers/test-app（launchApp、waitForAppReady、selectTestAgent、sendChatMessage）
+//
+// ## 维护规则
+// fixture 或上下文窗口默认值变更需同步更新 128K 断言
+// 进度条颜色策略变更需更新绿色匹配规则
+//
 import { test, expect } from "@playwright/test";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

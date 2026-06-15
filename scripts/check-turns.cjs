@@ -1,3 +1,30 @@
+// 临时调试脚本：dump Architect session 的最近 turns。
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 直连 ~/.zero-core/sessions.db，按硬编码的 Architect sessionId 取最近 20 条
+// turn，打印 seq / role / content 预览，并尝试解析 assistant 内容中的 tool 块
+// （name / toolCallId / status），用于排查工具调用 ID 写入问题。
+//
+// ## 输入
+// - 无 CLI 参数；sessionId 在脚本顶部硬编码
+// - 直读磁盘上的 ~/.zero-core/sessions.db
+//
+// ## 输出
+// - 控制台文本：最近 turns 摘要 + tool 调用块信息
+//
+// ## 定位
+// scripts/ 下的一次性调试脚本，不属于正式测试套件；随时可删除或修改。
+//
+// ## 依赖
+// - better-sqlite3（CommonJS require）
+// - os / path
+//
+// ## 维护规则
+// - 仅用于本地排障，不要接入 CI
+// - 改 sessionId 后即可复用到其他会话
+// - 如果 sessions.db 路径变更需同步修改
 const Database = require("better-sqlite3");
 const os = require("os");
 const path = require("path");

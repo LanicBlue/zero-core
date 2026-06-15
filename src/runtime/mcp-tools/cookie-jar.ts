@@ -1,7 +1,30 @@
-// Cookie jar for webfetch — persisted to ~/.zero-core/webfetch/cookies.json
+// webfetch 的 cookie 持久化：按 domain 存取 ~/.zero-core/webfetch/cookies.json。
 //
-// Extracted from fetch-tools.ts to avoid pulling browser-render/electron
-// into the main process bundle.
+// # 文件说明书
+//
+// ## 核心功能
+// 维护按 domain 分桶的 cookie jar：模块加载时读取磁盘并清理过期项；importCookies 写入、
+// getCookieCount 统计、clearCookies 清空（可选单 domain）。从 fetch-tools 抽出独立模块，
+// 避免把 browser-render / electron 拖进主进程 bundle。
+//
+// ## 输入
+// - importCookies(domain, cookies[])：写入一批 cookie
+// - clearCookies(domain?)：清空全部或指定 domain
+//
+// ## 输出
+// - importCookies 返回写入条数；getCookieCount 返回 { domain: count } 映射
+// - 副作用：读写 ~/.zero-core/webfetch/cookies.json
+//
+// ## 定位
+// runtime/mcp-tools 层基础设施，给 fetch-tools 与 browser-render 共享登录态；不依赖 Electron。
+//
+// ## 依赖
+// - node:fs、node:path、node:os
+// - ~/.zero-core/webfetch 目录（自动创建）
+//
+// ## 维护规则
+// - cookie 字段（value/expires/path）若扩展需同步 browser-render 的分区注入与导入 UI。
+// - 文件格式变更要考虑老用户数据迁移，避免静默丢弃已有登录态。
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

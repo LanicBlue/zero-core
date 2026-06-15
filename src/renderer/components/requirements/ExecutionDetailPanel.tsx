@@ -20,6 +20,10 @@
 // - react
 // - ../../shared/types
 //
+// ## 维护规则
+// - 执行步骤/状态展示字段或 TaskStepStatus 变更时同步本组件
+// - 步骤日志结构变更需同步渲染逻辑
+//
 import React, { useEffect } from "react";
 import type { RequirementRecord, TaskStepRecord, RequirementMessage, TaskStepStatus } from "../../../shared/types.js";
 

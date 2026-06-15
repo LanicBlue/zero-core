@@ -20,6 +20,10 @@
 // - react
 // - ../../store/*
 //
+// ## 维护规则
+// - 分栏布局或 store 订阅变更时同步本组件
+// - 新增 wiki 操作需挂接 WikiTree/WikiDetail 并在 store 暴露方法
+//
 import React, { useEffect, useState } from "react";
 import { useWikiStore } from "../../store/wiki-store.js";
 import { useProjectStore } from "../../store/project-store.js";

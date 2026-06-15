@@ -1,26 +1,37 @@
-// 需求 IPC 处理器
+// Requirement（多 agent 工作流中的需求实体）IPC 处理器。
 //
 // # 文件说明书
 //
 // ## 核心功能
-// Requirement 相关的 IPC 处理器，处理需求 CRUD + 状态流转 + 消息操作 + Lead 操作。
+// 注册 `requirements:*`、`lead:*` 系列 IPC 通道，覆盖需求全生命周期：
+//   - CRUD（落地到 ctx.requirementStore）；
+//   - 状态流转 transition / 历史 getStatusHistory / 消息列表与追加 / 步骤查询；
+//   - Lead 接管：lead:pickup 调 leadService.pickupRequirement、lead:progress 取进度；
+//   - M5 完结闭环：requirements:verify（analystService.verifyRequirement）、
+//     requirements:archive（archivist 归档）、requirements:report（从 status_change
+//     消息里抽取 markdown 报告）。
 //
 // ## 输入
-// - IPC 通道调用
-// - IpcContext - 上下文
+// - IpcContext：requirementStore、taskStepStore、leadService、analystService
+// - 通道参数：requirementId、toStatus、triggeredBy、comment、sender、content 等
 //
 // ## 输出
-// - Requirement 数据
-// - 状态流转结果
-// - 消息数据
-// - Lead 操作结果
+// - RequirementRecord、状态历史、消息、步骤、进度、报告
+// - 失败路径统一返回 `{error: message}` 而非抛出
 //
 // ## 定位
-// IPC 处理器，被 ipc.ts 注册。
+// src/main/ipc 下领域 IPC 处理器；由 ipc 注册入口调用
+// registerRequirementHandlers(ctx)。串联 PM/Lead/Architect/Archivist 多个 service。
 //
 // ## 依赖
-// - ./typed-ipc - 类型化 IPC
-// - ../../shared/types - 共享类型
+// - ./typed-ipc.js、./types.js
+// - ../../shared/types.js：Requirement/StatusHistory/Message/TaskStep 等类型
+// - 间接：ctx.requirementStore、ctx.taskStepStore、ctx.leadService、ctx.analystService
+//
+// ## 维护规则
+// - 状态机新增状态需同步 transition 校验与文档
+// - Lead / Analyst / Archivist service 接口签名变更必须同步本文件调用
+// - 错误统一以 `{error}` 返回，不要让异常冒泡到 IPC 边界
 //
 import { registerCrud, typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";

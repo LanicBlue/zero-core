@@ -1,3 +1,35 @@
+// Agent 会话与消息的 REST 入口,涵盖会话创建/切换/删除与历史消息编辑
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 管理 agent 维度的会话:列表、新建、切换/激活、删除(删主会话会自动重建),以及对会话消息的清空、按 turnGroup 编辑与删除(同时支持 step 级 schema 与旧 turn 级 schema);/metrics 路径在 /:agentId 之前注册以避免被参数捕获。任何消息改动后会调用 agentService.recreateLoop 让运行时重建上下文。
+//
+// ## 输入
+// - 注入 agentService 与 agentStore(用于 recreateLoop 与 agent 查找)
+// - :agentId / :sessionId / :seq 路径参数
+// - PUT /:agentId/messages/:seq 请求体 { newText }
+// - POST /:agentId/activate 请求体 { sessionId? }
+//
+// ## 输出
+// - /metrics 返回聚合指标 + 各 session 详情(含并发快照、工具调用计数)
+// - 会话操作返回 session 或 { success, sessionId? / newSessionId? }
+// - 消息编辑/删除返回 { success: true }
+//
+// ## 定位
+// src/server/ 服务层,挂载于 /api/sessions,服务于渲染进程的会话列表、对话面板与消息操作。
+//
+// ## 依赖
+// - express Router
+// - ./agent-service(createAgentService)、./agent-store
+// - SessionDB(via agentService.getDB)提供的 step / turn / message 接口
+//
+// ## 维护规则
+// - 新增 GET 端点若路径形如固定段(如 /metrics),必须放在 /:agentId 之前,否则会被 agentId 捕获。
+// - 修改消息后必须 recreateLoop,否则运行时上下文与 DB 不一致。
+// - step 级与 turn 级 schema 同时存在时,优先走 hasStepSchema() 分支,保持向后兼容。
+//
+
 import { Router } from "express";
 import type { createAgentService } from "./agent-service.js";
 import type { AgentStore } from "./agent-store.js";

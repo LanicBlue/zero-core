@@ -1,8 +1,35 @@
-// 后端子进程入口
+// 后端子进程入口，由 Electron 主进程 spawn 后运行。
 //
-// Electron 自动 spawn 的 Node.js 后端进程。
-// 启动 Express + WebSocket 服务器，通过 stdout 报告就绪状态。
-// 接收 stdin 的 shutdown 命令执行优雅关闭。
+// # 文件说明书
+//
+// ## 核心功能
+// 作为 detached 后端进程的 Node.js 入口：解析 --port 参数启动 Express + WebSocket
+// 服务器，通过 stdout 行协议向父进程上报 `{type:"ready",port,pid}`，并监听 stdin
+// 的 `{type:"shutdown"}` 指令完成优雅关闭。
+//
+// ## 输入
+// - 命令行参数 `--port=0`（由 backend-spawn.ts 传入，0 表示随机端口）
+// - stdin 上行 JSON 行：`{type:"shutdown"}`
+// - 进程信号 SIGTERM / SIGINT
+//
+// ## 输出
+// - stdout JSON 行：`{type:"ready",port,pid}` 给父进程握手
+// - 已就绪的 HTTP / WebSocket 服务器（端口由内核分配）
+// - stderr 日志与退出码（正常 0、致命 1）
+//
+// ## 定位
+// 后端子进程独立入口；编译产物 dist/backend.js，由 src/main/backend-spawn.ts 在
+// 开发模式下用系统 node spawn、打包模式下用 electron fork 加载。
+//
+// ## 依赖
+// - ./server/index.js 的 startServer()
+// - Node.js 内置：node:readline、process 进程信号
+// - 间接：Express、ws、better-sqlite3（通过 server 启动时引入）
+//
+// ## 维护规则
+// - stdout 协议格式与 backend-spawn.ts 的解析逻辑必须保持同步
+// - 优雅关闭超时阈值改动需同时调整父进程等待逻辑
+// - 任何顶层未捕获错误必须以非零码退出，触发父进程重启
 
 import { startServer } from "./server/index.js";
 

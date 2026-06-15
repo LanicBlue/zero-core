@@ -20,6 +20,10 @@
 // - react
 // - ../../shared/types
 //
+// ## 维护规则
+// - 树结构渲染或展开/选中交互变更时同步本组件
+// - WikiNodeType 新增分支需补充图标与默认展开策略
+//
 import React, { useState, useMemo } from "react";
 import type { ProjectWikiNode, WikiNodeType } from "../../../shared/types.js";
 

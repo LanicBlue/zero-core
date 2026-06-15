@@ -1,8 +1,31 @@
-// 对话压缩引擎
+// 对话压缩引擎：上下文超阈值时对旧 turn 做渐进式压缩，并把可记忆事实抽成节点。
 //
-// 渐进式压缩：L1（摘要）+ L2（记忆节点提取）
-// L1: 上下文 > 70% 时将旧 turn 的 assistant 压缩为摘要
-// L2: L1 后仍 > 50% 时从已压缩 turn 提取记忆节点，然后丢弃
+// # 文件说明书
+//
+// ## 核心功能
+// 提供 CompressionEngine：L1（把单个旧 assistant turn 摘要成一句话）+ L2（从已压缩的旧 turn
+// 里抽取记忆节点并整段丢弃）。两段阈值由 SessionConfig 控制；L1 阈值默认 70%，L2 默认 50%。
+//
+// ## 输入
+// - 当前对话 messages 数组（user/assistant/tool 混排）
+// - 当前 contextUsage（0-1 浮点）
+// - keepRecentTurns / l1Threshold / l2Threshold 以及可选 provider、model 覆盖
+//
+// ## 输出
+// - CompressionResult：压缩后的新 messages、待写入的记忆节点、didCompress/didExtract 标志
+//
+// ## 定位
+// runtime 层纯算法模块，被 hooks/compression-hooks.ts 在 PostTurnComplete 调用；不直接读写 DB。
+//
+// ## 依赖
+// - ai.generateText、provider-factory.resolveModel（执行摘要/抽取 LLM 调用）
+// - server/memory-node-store 的 MemoryNodeInput 类型
+// - core/logger
+//
+// ## 维护规则
+// - 改阈值默认值或 prompt 模板时同步更新 types.ts 的 SessionConfig.compression 注释。
+// - 新增/调整 turn 识别逻辑（identifyTurns）后必须验证 PreLLMCall 压缩链路仍可工作。
+// - L1/L2 prompt 改动后应跑一次长对话以验证摘要质量和节点抽取有效性。
 
 import { generateText } from "ai";
 import type { RuntimeProviderConfig } from "./types.js";

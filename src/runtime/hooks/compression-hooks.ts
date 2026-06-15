@@ -1,11 +1,34 @@
-// Compression hook handler
+// PostTurnComplete 钩子：触发渐进式压缩并同步 messages 表与 turns 表。
 //
-// PostTurnComplete handler: progressive compression (L1 summary + L2 memory extraction)
-// Extracted from agent-loop per the hook-driven architecture.
+// # 文件说明书
 //
-// Cross-layer concern: after compression, both messages table AND turns table
-// must be synced. Step-level storage makes turns the authoritative source for
-// rebuildFromSteps(), so unsynced turns = compression lost on restart.
+// ## 核心功能
+// registerCompressionHooks 在 PostTurnComplete 注册处理器：当 contextUsage 超过阈值时调用
+// CompressionEngine.compressIfNeeded；若发生压缩或抽取，则 replaceMessages + saveToDb，再通过
+// syncTurnsAfterCompression 重建 step-level turns（避免重启 rebuildFromSteps 时丢失压缩效果），
+// 最后把抽出的记忆节点写入 MemoryNodeStore。
+//
+// ## 输入
+// - Hook 上下文：config（SessionConfig.compression）、session、contextUsage、providers
+// - CompressionEngine 输出的压缩 messages 与 memoryNodes
+//
+// ## 输出
+// - 副作用：更新 session 内存态、DB messages、DB turns、memory-node 表
+// - 无返回值；失败时仅 warn 不抛出
+//
+// ## 定位
+// runtime/hooks 层，是 compression-engine 与 session/DB 之间的胶水；由 hooks/index.ts 统一注册。
+//
+// ## 依赖
+// - core/hook-registry、core/hook-types、core/logger
+// - runtime/compression-engine、runtime/types、runtime/session
+// - server/memory-node-store、具备 hasStepSchema/replaceStepsFromMessages 的 DB
+//
+// ## 维护规则
+// - 压缩阈值或 keepRecentTurns 默认值调整时，同步更新 types.ts 的 SessionConfig.compression 注释。
+// - step-level turns 重建逻辑（syncTurnsAfterCompression）改动后必须验证重启 rebuildFromSteps
+//   仍能还原压缩结果，否则会出现"重启后压缩消失"。
+// - 任何新增的压缩后副作用都应放进本处理器，禁止把内联代码写回 agent-loop。
 
 import type { HookHandler } from "../../core/hook-types.js";
 import { HookRegistry } from "../../core/hook-registry.js";

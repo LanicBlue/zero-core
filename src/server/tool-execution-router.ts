@@ -1,3 +1,37 @@
+// 工具执行历史查询、统计、清理与 LLM 错误分析的 REST 入口
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 提供工具执行历史的查询(/query)、聚合统计(/stats)、按时间清理(/cleanup),以及 /analyze:从 sessionDb 拉取错误统计与最近失败记录,组装 prompt 调用默认 provider 的 generateText 让模型给出诊断建议;没有可用 provider 时返回纯统计的兜底分析。
+//
+// ## 输入
+// - 注入 sessionDb(执行历史读取)、agentService、providerStore、workspaceConfig
+// - POST /query 请求体为 ToolExecutionFilter
+// - GET /stats query: { agentId? }
+// - POST /cleanup 请求体 { maxAgeMs }
+// - POST /analyze 请求体 { agentId? }
+//
+// ## 输出
+// - /query 返回执行记录列表;/stats 返回按工具聚合的统计
+// - /cleanup 返回清理结果
+// - /analyze 返回 { analysis, stats, recentErrors } 或 { error }
+//
+// ## 定位
+// src/server/ 服务层,挂载于 /api/tool-executions,服务于调试面板与工具健康度分析。
+//
+// ## 依赖
+// - express Router
+// - ../runtime/provider-factory(resolveModel)
+// - 动态 import("ai") 的 generateText
+// - ../shared/types(ToolExecutionFilter)
+//
+// ## 维护规则
+// - /analyze 失败要返回 200 + { error } 而非 500,避免阻塞前端展示统计。
+// - prompt 模板改动需与中文/英文展示风格保持一致;错误摘要最多取 5 条避免 token 爆炸。
+// - 新增分析维度(如按 agent / 时间窗口)时优先扩展 ToolExecutionFilter 与 sessionDb 查询。
+//
+
 import { Router } from "express";
 import { resolveModel } from "../runtime/provider-factory.js";
 import type { ToolExecutionFilter } from "../shared/types.js";

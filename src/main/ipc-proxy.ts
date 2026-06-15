@@ -1,7 +1,39 @@
-// IPC → HTTP/WS 桥接层
+// IPC → HTTP/WS 桥接层：把 Electron IPC 通道代理到后端子进程。
 //
-// 将 Electron IPC 通道映射到后端子进程的 HTTP API。
-// 49 个 IPC 通道中 47 个走 HTTP 代理，2 个（dialog, webfetch:login）在本地处理。
+// # 文件说明书
+//
+// ## 核心功能
+// 维护一份 `IPC 通道 → REST 路由` 映射表 R，统一注册 ipcMain.handle：
+//   - 将渲染层 ipcRenderer.invoke 调用翻译成对 `http://localhost:<backendPort>`
+//     的 fetch（GET/POST/PUT/DELETE），自动拼 path 参数、query 和 JSON body；
+//   - connectEventBridge 反向建立 WebSocket，把后端 agent 事件转发回渲染层
+//     `agent:event` 通道；并轮询 `/api/ready` 在后端就绪时通知主窗口。
+//
+// ## 输入
+// - 后端端口号（来自 backend-spawn.getBackendPort）
+// - 渲染层每个通道的 IPC 调用参数（args 透传给 buildReq）
+// - 后端 WS 事件 / REST 响应文本
+//
+// ## 输出
+// - 注册到 ipcMain 的若干 handle 回调
+// - 经 BrowserWindow.webContents.send 转发的事件流
+// - app:ready 状态推送
+//
+// ## 定位
+// 主进程桥接层；被 src/main/index.ts 在窗口创建后调用 registerProxyHandlers 与
+// connectEventBridge。本地不处理的通道（dialog、webfetch:login 等）由
+// src/main/ipc/*-handlers.ts 接管。
+//
+// ## 依赖
+// - electron：ipcMain、BrowserWindow
+// - ws：WebSocket 客户端
+// - ../core/logger.js：log
+// - 后端 REST/WS API（路径与通道名同源定义在映射表 R）
+//
+// ## 维护规则
+// - 新增后端 REST 接口需在 R 表补对应通道与 buildReq，并同步 preload 暴露
+// - 仅当调用必须在 Electron 内完成（弹窗、登录 cookie 等）才不放此表
+// - WebSocket 事件类型一旦扩展需同步渲染层订阅与 agent:event 转发
 
 import { ipcMain, type BrowserWindow } from "electron";
 import WebSocket from "ws";

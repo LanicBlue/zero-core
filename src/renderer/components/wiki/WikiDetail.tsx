@@ -20,6 +20,10 @@
 // - react
 // - ../../shared/types
 //
+// ## 维护规则
+// - ProjectWikiNode 展示字段或编辑回调变更时同步本组件
+// - 节点类型渲染分支变更需同步 onExpand/onEdit 契约
+//
 import React, { useState } from "react";
 import type { ProjectWikiNode, UpdateWikiNodeInput } from "../../../shared/types.js";
 

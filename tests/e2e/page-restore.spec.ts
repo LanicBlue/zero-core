@@ -1,8 +1,26 @@
 // E2E 测试：页面切换后消息恢复
 //
-// 验证用户从 Chat 页面导航到其他页面再切回后，对话内容能正确恢复。
-// 包含 Agent 运行中切页和 Agent 完成后切回两种核心场景。
-
+// # 文件说明书
+//
+// ## 核心功能
+// 验证用户从 Chat 页面导航到其他页面再切回后，对话内容能正确恢复；覆盖 Agent 已完成后切页恢复，以及 Agent 流式输出进行中切到 Settings 等后台流式完成后再切回 Chat 的恢复场景
+//
+// ## 输入
+// simple-response.json（普通响应）与 slow-response.json（带「Starting... still running... done.」分块慢响应）fixture
+//
+// ## 输出
+// Playwright 测试用例：断言切页前后 .message.message-user / .message.message-assistant 数量与文本一致，并等待 .cursor-blink detached
+//
+// ## 定位
+// tests/e2e/ — E2E 测试套件，验证 Chat 页面挂载/卸载后的消息持久化与流式后台续跑
+//
+// ## 依赖
+// @playwright/test、./helpers/test-app（launchApp、waitForAppReady、selectTestAgent、sendChatMessage）
+//
+// ## 维护规则
+// fixture 文本变更需同步更新「Hello from mock model」「Starting」「done」等断言
+// Chat 页面挂载策略（visibility:hidden vs unmount）变更需重新评估后台流式续跑测试
+//
 import { test, expect } from "@playwright/test";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

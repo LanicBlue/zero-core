@@ -3,6 +3,35 @@
 // Wiki 风格的记忆节点系统，所有 agent 共享全局 memory wiki。
 // 包含记忆节点（memory_nodes）、主体节点（memory_subjects）、主体关系（memory_edges）
 // 和 FTS5 全文搜索虚拟表。
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 在 better-sqlite3 上维护全局记忆 wiki:节点按 (subject, type) 唯一演化(evolved_from)、主体(MOC)的计数与摘要、主体间关系边、以及基于 FTS5 的全文检索;同主体同类型节点再次写入会演化为更新而非新增。
+//
+// ## 输入
+// - 构造时注入 better-sqlite3 Database(由 SessionDB 提供)
+// - upsertNode / upsertNodes 接收 { subject, type: event|decision|discovery|status_change|preference, content } 与可选 sessionId / sourceSeq
+// - searchNodes 接收查询字符串
+// - createEdge / getRelatedSubjects 接收 subject 名称与 relation
+//
+// ## 输出
+// - 节点 CRUD 返回 MemoryNode;getSubject 返回 MemorySubject;searchNodes 返回 { node, subject }[]
+//
+// ## 定位
+// src/server/ 数据层,被 SessionDB 持有并暴露给 memory-node-router 与 agent 运行时 hook。
+//
+// ## 依赖
+// - better-sqlite3、uuid
+// - ../core/logger(log)
+// - 数据库表 memory_nodes / memory_subjects / memory_edges / memory_nodes_fts 由 init() 自建
+//
+// ## 维护规则
+// - 新增数据库列必须同步更新 db-migration.ts 的列清单(否则 fresh DB 会缺列)。
+// - FTS5 表无法 ALTER,init() 在检测到旧 FTS 表时会 DROP 重建;schema 变更时复用此模式。
+// - 搜索失败时回退到 LIKE,不要让 FTS 不可用直接报错给上层。
+// - 节点类型集合 MEMORY_NODE_TYPES 是契约,新增类型需同步 agent 写入端与前端展示。
+//
 
 import type Database from "better-sqlite3";
 import { v4 as uuid } from "uuid";

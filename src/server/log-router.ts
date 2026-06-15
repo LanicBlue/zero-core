@@ -1,3 +1,35 @@
+// 日志查看与运行时日志配置 REST 入口
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 列出 logs 目录中的日志文件、按级别过滤读取最近的日志行,并提供日志开关/保留天数的读写配置端点;配置写入会即时调用 configureLogging 应用到运行时日志器。
+//
+// ## 输入
+// - GET /files 无参数
+// - GET /read query: { filename, level?, lines? }
+// - GET /config、PUT /config 请求体为 FileLogConfig { enabled, retentionDays, globalLevel }
+// - 注入 sessionDb(从其 KVStore 读写 log_config)
+//
+// ## 输出
+// - /files 返回 LogFileSummary[]
+// - /read 返回解析后的 LogEntry[]
+// - /config 返回当前 FileLogConfig,PUT 返回 { success: true }
+//
+// ## 定位
+// src/server/ 服务层,挂载于 /api/logs,服务于渲染进程的日志查看面板与设置页日志开关。
+//
+// ## 依赖
+// - express Router、node:fs、node:path
+// - ../core/config(ZERO_CORE_DIR)、../core/logger(configureLogging)、../core/file-log-sink 类型
+// - ../shared/types(LogEntry、LogFileSummary)
+//
+// ## 维护规则
+// - filename 解析时禁止包含 `..` / `/` / `\`,防止越权读取 logs 目录外的文件。
+// - 日志行解析依赖固定正则 LOG_LINE_RE;日志器格式调整需同步更新此正则。
+// - 新增运行时可配置项时,需同时更新 FileLogConfig 类型与 configureLogging。
+//
+
 import { Router } from "express";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";

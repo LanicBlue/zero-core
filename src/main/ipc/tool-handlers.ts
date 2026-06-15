@@ -1,3 +1,30 @@
+// 工具 IPC 处理器
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 注册工具相关 IPC 通道：工具列表（含 inputFields/meta）、工具配置读写、cookie 导入/计数/清空。
+//
+// ## 输入
+// - IpcContext（含 toolRegistry）
+// - 渲染进程工具配置保存请求
+// - cookie 导入/清空请求
+//
+// ## 输出
+// - tools:list / tool-config:get / tool-config:save / cookie:* IPC 响应
+//
+// ## 定位
+// src/main/ipc/ —— 主进程侧工具治理入口，桥接渲染进程与 runtime 工具注册表。
+//
+// ## 依赖
+// - electron（BrowserWindow/session）
+// - runtime/tools（ALL_TOOLS、tool-factory）
+// - runtime/mcp-tools/fetch-tools（cookie 操作）
+//
+// ## 维护规则
+// - 新增工具相关 IPC 通道在此注册并在 typed-ipc 类型中声明
+// - 工具元信息字段（meta/inputFields）结构变更需同步 tools:list 映射
+//
 import { BrowserWindow, session } from "electron";
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";

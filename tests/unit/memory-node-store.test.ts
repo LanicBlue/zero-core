@@ -1,9 +1,27 @@
-// MemoryNodeStore unit tests
+// 单元测试：MemoryNodeStore 内存节点存储逻辑
 //
-// Since better-sqlite3 is compiled for Electron (not Node.js),
-// we mock the Database with an in-memory store that replicates
-// the SQL behavior used by MemoryNodeStore.
-
+// # 文件说明书
+//
+// ## 核心功能
+// 由于 better-sqlite3 编译为 Electron ABI 无法在 Node vitest 直接加载，本文件用内存 MockStore 复刻 MemoryNodeStore 的 SQL 行为，测试 node upsert/evolve/batch、getNode/getNodesForSubject/getRecentNodes/deleteNode、searchNodes、subject 计数、createEdge/getRelatedSubjects 等逻辑
+//
+// ## 输入
+// MemoryNodeInput（subject/type/content）序列与 sessionId
+//
+// ## 输出
+// Vitest 测试用例：覆盖 node CRUD、evolution（同 subject+type 更新而非新增）、subject nodeCount 维护、edge 双向查询、search 关键词匹配与 limit
+//
+// ## 定位
+// tests/unit/ — 单元测试套件，验证 MemoryNodeStore 的内存模型行为（SQL 实现在 src/server/memory-node-store.ts）
+//
+// ## 依赖
+// vitest、../../src/server/memory-node-store（MemoryNodeInput、MemoryNode、MemorySubject 类型）
+//
+// ## 维护规则
+// MemoryNodeStore 的 SQL 行为（evolve 规则、排序、subject 聚合）变更需同步更新 MockStore 与对应测试
+// 新增节点 type 需更新 validTypes 白名单
+// 仅当 MockStore 行为与 SQL 一致时测试才有意义，新增 SQL 行为需先在 MockStore 复刻
+//
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import type { MemoryNodeInput, MemoryNode, MemorySubject } from "../../src/server/memory-node-store.js";
 

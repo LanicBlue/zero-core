@@ -1,8 +1,28 @@
-// REST router integration tests
+// 单元测试：REST 路由集成与 IPC 代理完整性
 //
-// Tests the new router modules using Express + Node http.
-// No external dependencies needed — uses built-in http to make requests.
-
+// # 文件说明书
+//
+// ## 核心功能
+// 通过 Express + Node 内置 http 启动临时 server，测试 chat/session/file/log/tool-execution/mcp/memory-node/memory-config 等 router 的端点行为；并校验 preload 中每个 ipcRenderer.invoke 通道都在 ipc-proxy.ts 与 ROUTE_MAP 中有映射、IPC 代理源码包含全部通道、backend 子进程协议（port 解析、ready/shutdown 消息格式）、session-router 路由顺序（/metrics 不被 /:agentId 捕获）、log-router 配置持久化、mcp-presets 构造
+//
+// ## 输入
+// mock 的 sessionDb / agentService / mcpManager / store；preload 与 ipc-proxy 源码（fs.readFileSync 读取）
+//
+// ## 输出
+// Vitest 测试用例：覆盖各 router 的成功/失败/路径穿越/参数校验场景，以及 IPC 通道与代理映射的一致性
+//
+// ## 定位
+// tests/unit/ — 单元测试套件，验证 server 层 REST router 与 main 进程 IPC 代理的契约
+//
+// ## 依赖
+// vitest、express、node:http、node:fs、../../src/server/*（各 router 与 mcp-presets）、src/preload/index.ts、src/main/ipc-proxy.ts（源码读取）
+//
+// ## 维护规则
+// 新增 IPC 通道必须同步加到 ROUTE_MAP 并确保 ipc-proxy.ts 包含，否则通道映射测试失败
+// 新增 router 端点需补充对应 request 测试
+// 路由顺序（静态路径 vs /:param）变更需更新 route ordering 测试
+// mcp-presets 数量或字段变更需更新 Z.AI preset 断言
+//
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import express, { type Express } from "express";
 import { createServer, type Server } from "http";

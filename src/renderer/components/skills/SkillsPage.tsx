@@ -1,3 +1,28 @@
+// Skills 发现与浏览页面
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 通过 window.api.skillsList 拉取已发现的 Skill，按 user / app 来源分组渲染名称、来源标签与描述，支持手动刷新。
+//
+// ## 输入
+// - window.api.skillsList：返回 DiscoveredSkill[]
+//
+// ## 输出
+// - 渲染的页面 DOM（User Skills / App Skills 两组卡片）
+//
+// ## 定位
+// 渲染进程组件，被 AppLayout 路由到 skills 页面时加载。
+//
+// ## 依赖
+// - react
+// - ../../../shared/types (DiscoveredSkill)
+// - window.api（preload 暴露的 skillsList 接口）
+//
+// ## 维护规则
+// - DiscoveredSkill 字段变化时同步卡片渲染。
+// - Skill 来源类别新增（如 plugin）时需要扩展分组逻辑。
+//
 import React, { useState, useEffect, useCallback } from "react";
 import type { DiscoveredSkill } from "../../../shared/types.js";
 

@@ -1,3 +1,26 @@
+// E2E 测试：Fetch from API 拉取模型列表
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 验证 Settings 页打开后未崩溃、providersFetchModels IPC 调用成功（GET 方法）返回数组、调用后 UI 仍可正常切换 Chat 页，确保 fetch-models 代理使用 GET 而非 POST
+//
+// ## 输入
+// simple-response.json fixture（mock provider）
+//
+// ## 输出
+// Playwright 测试用例：直接通过 window.evaluate 调用 api.providersFetchModels 校验返回数组
+//
+// ## 定位
+// tests/e2e/ — E2E 测试套件，验证 fetch-models IPC 代理与设置页 UI 健壮性
+//
+// ## 依赖
+// @playwright/test、./helpers/test-app（launchApp、waitForAppReady、selectTestAgent）
+//
+// ## 维护规则
+// IPC 代理方法（GET/POST）变更需同步更新 isArray 断言
+// mock provider 返回模型数变化时需调整 modelCount 期望
+//
 import { test, expect } from "@playwright/test";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

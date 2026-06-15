@@ -1,11 +1,29 @@
-// 工具限速队列
+// 工具调用限速队列：每工具 maxConcurrent + minInterval 双维度门控。
 //
-// FIFO 信号量 + 时间间隔门控，控制每个工具的调用速率。
-// 两个独立维度可单独或组合使用：
-// - maxConcurrent: 同一工具最多 N 个并行执行
-// - minInterval: 两次调用之间最小间隔（ms）
+// # 文件说明书
 //
-// 当两个值都为 0 时完全跳过限速逻辑，零开销。
+// ## 核心功能
+// ToolRateLimiter 按工具名维护 slot；acquire 时同时校验并发数与最小时间间隔，不满足则进入
+// FIFO waiter 队列，由 release 或定时器异步唤醒。两个维度可单独或组合使用；两者都为 0 时
+// acquire 直接返回，零开销。
+//
+// ## 输入
+// - acquire(toolName, { minInterval?, maxConcurrent? })：发起一次调用请求
+// - release(toolName)：调用结束释放槽位
+//
+// ## 输出
+// - 无显式返回；通过 Promise resolve 通知调用方何时可以真正执行工具
+//
+// ## 定位
+// runtime 层通用基础设施，由工具执行路径在调用 execute 前后包裹，配合 provider-concurrency-manager
+// 等机制共同限流。
+//
+// ## 依赖
+// - 仅依赖 Node 内置 setTimeout / clearTimeout，无第三方或 DB 依赖
+//
+// ## 维护规则
+// - 修改调度逻辑后必须验证 waiter 队列在并发释放、定时器取消、minInterval=0 等边界下不会泄漏或卡死。
+// - 新增维度（如 token 限流）应作为独立模块，不要把职责塞进本类。
 
 interface Waiter {
 	resolve: () => void;

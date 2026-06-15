@@ -1,7 +1,31 @@
-// 记忆节点工具
+// 记忆节点 wiki 工具：暴露给 agent 的 MemoryRecall（只读检索）与 MemoryNote（增删改）。
 //
-// 替代旧的知识图谱工具（MemoryRead/MemoryWrite），
-// 使用 wiki 风格的记忆节点系统。
+// # 文件说明书
+//
+// ## 核心功能
+// 通过 buildTool 注册两个工具：
+// - MemoryRecall：search / recent / subject 三种动作从 MemoryNodeStore 检索节点。
+// - MemoryNote：create / update / delete / link 四种动作写入节点或建立 subject 间关系。
+// 替代旧的知识图谱工具（MemoryRead/MemoryWrite），采用 wiki 风格的记忆节点系统。
+//
+// ## 输入
+// - 工具入参（zod schema 校验）：action、query、subject、type、content、nodeId、relation、targetSubject 等
+// - ctx.db：用于取出 MemoryNodeStore；ctx.sessionId 用于关联节点来源
+//
+// ## 输出
+// - 字符串形式的人类可读结果（命中节点列表或写入/删除/链接确认）
+//
+// ## 定位
+// runtime/mcp-tools 层，把记忆 wiki 暴露为 agent 可调用工具；底层复用 server/memory-node-store。
+//
+// ## 依赖
+// - zod、runtime/tools/tool-factory（buildTool）
+// - server/memory-node-store（MemoryNodeStore 类型与实现）
+//
+// ## 维护规则
+// - 节点类型集合（event/decision/discovery/status_change/preference）若扩展，需同步
+//   compression-engine L2 prompt、memory-recall 渲染与 docs。
+// - 工具 prompt 文案调整后注意验证 agent 是否仍能在正确场景下选用本工具。
 
 import { z } from "zod";
 import { buildTool } from "../tools/tool-factory.js";

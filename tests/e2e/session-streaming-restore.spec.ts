@@ -1,8 +1,26 @@
 // E2E 测试：流式输出中切换 session 后切回，验证消息恢复
 //
-// 核心场景：Agent 正在流式输出时切换到另一个 session，再切回来，
-// assistant 的流式内容不应丢失。
-
+// # 文件说明书
+//
+// ## 核心功能
+// 验证 Agent 正在流式输出时切换到另一个 session、在 B session 发送消息、再通过 sessions 下拉切回原 A session 后，A 的流式内容不丢失；断言 A 的用户气泡、助手气泡及多分块文本「Part one ... Final」均完整存在
+//
+// ## 输入
+// multi-chunk-slow.json fixture（流式输出 Part one. Part two. Part three. Final.）
+//
+// ## 输出
+// Playwright 测试用例：监测 .chat-panel[data-session-id] 切换、.session-item 列表、.message.message-user/assistant 数量与文本
+//
+// ## 定位
+// tests/e2e/ — E2E 测试套件，验证 session 切换中的流式输出保持与恢复
+//
+// ## 依赖
+// @playwright/test、./helpers/test-app（launchApp、waitForAppReady、selectTestAgent）
+//
+// ## 维护规则
+// fixture 分块文本变更需同步更新「Part one」「Final」断言
+// session 切换 UI（btn-new-session / btn-sessions / session-item）变更需更新选择器
+//
 import { test, expect } from "@playwright/test";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

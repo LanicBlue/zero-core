@@ -1,3 +1,36 @@
+// Step-level 存储集成测试：对真实 SessionDB 跑全生命周期。
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 不使用 mock，直接从 dist/ 加载真实 SessionDB 与 runMigrations，新建临时 DB 后
+// 串联 12 个用例验证 step 级存储：建库+迁移、列与索引存在性、appendStep/
+// getStepGroup/getSteps/upsertStep/updateStepContent/deleteStepGroup/
+// getTurnGroupCount/replaceStepsFromMessages、token 用量统计、旧 schema 迁移、
+// 以及 legacy turn 路径（appendTurn/updateTurnContent/deleteTurn）兼容。
+//
+// ## 输入
+// - 可选 CLI 参数：db-path（默认 ~/.zero-core/itest-test.db）
+// - 前置条件：项目已构建出 dist/server/session-db.js 与 dist/server/db-migration.js
+//
+// ## 输出
+// - 控制台逐项 ✓ / ✗，最后汇总 passed/failed
+// - 进程退出码：有失败返回 1，否则 0
+// - 退出前清理临时 DB 及其 wal/shm 文件
+//
+// ## 定位
+// scripts/ 下的手动集成测试；在 dist 构建后用 node 直接运行，用于回归 step 存储
+// 语义与 schema 迁移逻辑。
+//
+// ## 依赖
+// - dist/server/session-db.js（SessionDB）
+// - dist/server/db-migration.js（runMigrations）
+// - Node.js：path / os / fs
+//
+// ## 维护规则
+// - step 存储接口或列结构变更后必须更新对应断言
+// - 新增 schema 迁移分支建议追加用例覆盖
+// - 运行前确保已执行构建（dist/ 存在），否则 import 会失败
 /**
  * Integration test: step-level storage against real database.
  *

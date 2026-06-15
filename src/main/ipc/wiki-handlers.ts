@@ -1,24 +1,33 @@
-// Wiki IPC 处理器
+// Project Wiki（项目知识库节点）IPC 处理器。
 //
 // # 文件说明书
 //
 // ## 核心功能
-// Wiki 相关的 IPC 处理器，处理 Wiki 节点 CRUD 操作。
+// 注册 `wiki:*` 系列 IPC 通道，提供按项目组织的 Wiki 节点 CRUD：
+//   - wiki:listByProject 列出某项目下全部节点；
+//   - wiki:getNode / wiki:createNode（强制绑定 projectId）/
+//     wiki:updateNode（失败时返回 `{error}`）/ wiki:deleteNode。
 //
 // ## 输入
-// - IPC 通道调用
-// - IpcContext - 上下文
+// - IpcContext：wikiStore
+// - 通道参数：projectId、节点 id、节点 input
 //
 // ## 输出
-// - Wiki 节点数据
-// - CRUD 操作结果
+// - WikiNode 列表 / 单节点 / 写操作结果
+// - updateNode 失败统一返回 `{error: message}`
 //
 // ## 定位
-// IPC 处理器，被 ipc.ts 注册。
+// src/main/ipc 下领域 IPC 处理器；由 ipc 注册入口调用
+// registerWikiHandlers(ctx)。是 M4 看板/知识库浏览页面的后端入口。
 //
 // ## 依赖
-// - ./typed-ipc - 类型化 IPC
-// - ../../shared/types - 共享类型
+// - ./typed-ipc.js、./types.js
+// - 间接：ctx.wikiStore（sessionDb 模块）
+//
+// ## 维护规则
+// - 创建节点必须确保 projectId 绑定，避免悬挂节点
+// - WikiNode 类型/字段变更需同步 shared 类型与 wikiStore 列定义
+// - 写路径上的异常需收敛为 `{error}` 返回，避免渲染层崩溃
 //
 import { typedHandle } from "./typed-ipc.js";
 import type { IpcContext } from "./types.js";

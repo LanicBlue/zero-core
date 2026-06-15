@@ -1,3 +1,26 @@
+// 单元测试：会话上下文压缩引擎
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 测试 CompressionEngine 的同步逻辑：identifyTurns（按 user 消息切分 turn 边界，处理 tool/连续 user 场景）和 shouldCompress（usage 阈值判断）；不覆盖需 LLM 调用的 L1/L2 压缩
+//
+// ## 输入
+// 构造的 role/content 消息序列与 usage/threshold 数值
+//
+// ## 输出
+// Vitest 测试用例：覆盖空消息、单 turn、多 turn、tool 嵌入、连续 user、阈值边界
+//
+// ## 定位
+// tests/unit/ — 单元测试套件，验证 runtime 压缩引擎的纯函数逻辑
+//
+// ## 依赖
+// vitest、../../src/runtime/compression-engine（CompressionEngine、TurnBoundary）
+//
+// ## 维护规则
+// turn 切分规则变更需同步更新 identifyTurns 期望
+// 阈值判定从 > 改为 >= 等边界行为变更需更新 shouldCompress 测试
+//
 import { describe, test, expect } from "vitest";
 import { CompressionEngine, TurnBoundary } from "../../src/runtime/compression-engine.js";
 

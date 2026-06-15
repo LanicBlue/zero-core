@@ -1,3 +1,26 @@
+// E2E 测试：Skills 页面入口与渲染
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 验证 Skills 按钮在侧边栏（MCP Servers 之后）可见、点击后进入 Skills 页（h2 文本「Skills」）且页面包含刷新按钮
+//
+// ## 输入
+// simple-response.json fixture（mock provider）
+//
+// ## 输出
+// Playwright 测试用例：检查 .icon-sidebar-top 中 Skills 按钮位置、.skills-page 与 .btn-ghost 元素
+//
+// ## 定位
+// tests/e2e/ — E2E 测试套件，验证 Skills 页面入口与基础渲染
+//
+// ## 依赖
+// @playwright/test、./helpers/test-app（launchApp、waitForAppReady）
+//
+// ## 维护规则
+// 侧边栏按钮顺序或 Skills 入口 title 变更需同步更新断言
+// Skills 页结构变更需更新 .skills-page / .btn-ghost 选择器
+//
 import { test, expect } from "@playwright/test";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

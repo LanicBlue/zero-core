@@ -20,6 +20,10 @@
 // - react
 // - ../../shared/types
 //
+// ## 维护规则
+// - RequirementRecord 字段、状态或优先级/来源图标映射变更时同步本组件
+// - 卡片交互（点击/选中态）变更需同步 KanbanPage 回调约定
+//
 import React from "react";
 import type { RequirementRecord, RequirementPriority, TaskStepRecord, RequirementStatus } from "../../../shared/types.js";
 

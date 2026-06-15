@@ -1,3 +1,30 @@
+// MCP 服务预定义清单与配置构造器,给 MCP 一键导入提供模板
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 维护一份内置 MCP 服务器预设列表(目前主要是 Z.AI 系列的视觉、Web 搜索、Web Reader、Zread),并提供 buildPresetConfig 把预设与用户填入的环境/凭证合并为可直接入库的 McpServerConfig。
+//
+// ## 输入
+// - 调用方选定 McpPreset
+// - envValues: 用户为 envKeys / headersKeys 中占位符(${KEY})填入的真实值
+//
+// ## 输出
+// - 导出 MCP_PRESETS: McpPreset[]
+// - buildPresetConfig 返回 Omit<McpServerConfig, "id" | "createdAt" | "updatedAt">,可直接交给 McpStore.create
+//
+// ## 定位
+// src/server/ 服务层,被 mcp-router 用来提供预设列表与一键添加;本身不直接挂载路由。
+//
+// ## 依赖
+// - ../shared/types(McpServerConfig)
+//
+// ## 维护规则
+// - 新增预设时确保 envKeys/headersKeys 中的占位符语法(${KEY})与 buildPresetConfig 的替换逻辑一致。
+// - 预设中 command/args 仅对 stdio transport 有效;url/headers 仅对 sse/streamable-http 有效。
+// - 不要把任何真实凭证写进预设,只声明需要哪些键。
+//
+
 import type { McpServerConfig } from "../shared/types.js";
 
 export interface McpPreset {

@@ -20,6 +20,10 @@
 // - ../../store/requirement-store
 // - ../../store/project-store
 //
+// ## 维护规则
+// - 需求表单字段或校验规则变更时同步本组件与 requirement-store 写入
+// - RequirementPriority 类型变更需同步表单选项
+//
 import React, { useState } from "react";
 import type { RequirementPriority } from "../../../shared/types.js";
 import { useRequirementStore } from "../../store/requirement-store.js";

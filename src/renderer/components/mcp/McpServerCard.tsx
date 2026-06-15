@@ -1,3 +1,29 @@
+// MCP 单服务器卡片
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 展示单个 MCP 服务器的名称、传输类型、连接状态、工具数量，支持启用/禁用开关、连接/断开、详情展开（命令/URL/环境变量）以及 Test Connection 测试并列举可用工具。
+//
+// ## 输入
+// - server: McpServerConfig
+// - connected / toolCount：当前连接状态与已发现工具数
+// - onToggle / onDelete / onTest / onConnect / onDisconnect 回调
+//
+// ## 输出
+// - 渲染的服务器卡片 DOM（含可展开详情区与测试结果）
+//
+// ## 定位
+// 渲染进程组件，被 McpSettingsPage 用于逐项渲染服务器列表。
+//
+// ## 依赖
+// - react
+// - ../../../shared/types (McpServerConfig)
+//
+// ## 维护规则
+// - McpServerConfig 字段（如 headers / transport 类型）调整时同步详情展示。
+// - 测试结果数据结构变化时同步 tools 渲染。
+//
 import React, { useState } from "react";
 import type { McpServerConfig } from "../../../shared/types.js";
 

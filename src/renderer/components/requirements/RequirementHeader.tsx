@@ -20,6 +20,10 @@
 // - react
 // - ../../shared/types
 //
+// ## 维护规则
+// - 标题/属性展示或状态流转按钮变更时同步本组件
+// - 状态流转回调契约变更需同步 ChatPanel 调用
+//
 import React from "react";
 import type { RequirementRecord, RequirementStatus, RequirementPriority } from "../../../shared/types.js";
 

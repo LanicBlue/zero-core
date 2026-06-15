@@ -1,3 +1,29 @@
+// 扫描本机已安装的 skill 目录,合并 user / app 来源并解析 SKILL.md
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 枚举 user(~/.claude/skills、~/.agents/skills)与 app(~/.zero-core/skills)三类来源目录,读取每个子目录的 SKILL.md,优先使用 .skills-manifest.json、回退到 SKILL.md frontmatter 解析 name/description,产出 DiscoveredSkill 列表(按名称排序,同名时高优先级来源覆盖低优先级)。
+//
+// ## 输入
+// - 无显式入参;来源目录在 getSkillSources 中硬编码
+// - 间接依赖文件系统中的 SKILL.md / .skills-manifest.json
+//
+// ## 输出
+// - scanSkills 返回 DiscoveredSkill[]: { id, name, description, source, filePath, baseDir }
+//
+// ## 定位
+// src/server/ 数据层,被 skill-router 调用;本身不持有状态。
+//
+// ## 依赖
+// - node:fs、node:path、node:os
+//
+// ## 维护规则
+// - SKILL.md frontmatter 解析只做轻量 YAML(key: value),复杂结构应通过 manifest 提供。
+// - 跳过以 . 开头的目录与 node_modules;单文件 > 256KB 视为非法并跳过。
+// - 新增来源目录时优先调高优先级顺序,保证用户目录覆盖 app 目录。
+//
+
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, basename } from "node:path";
 import { homedir } from "node:os";

@@ -1,3 +1,29 @@
+// MCP 服务器设置页面
+//
+// # 文件说明书
+//
+// ## 核心功能
+// MCP 服务器管理主页面：列出已配置服务器并定时刷新连接状态，提供添加表单（stdio/sse/streamable-http）、推荐预设一键添加、系统级 MCP 配置扫描、连接测试及启用/禁用/删除。
+//
+// ## 输入
+// - mcpStore (Zustand)：servers / loading / create / update / remove / testConnection / connect / disconnect / getStatus / scan / presets / addPreset
+//
+// ## 输出
+// - 渲染的设置页面 DOM（推荐区 / 添加表单 / 服务器卡片列表）
+//
+// ## 定位
+// 渲染进程组件，被 AppLayout 路由到 mcp 页面时加载。
+//
+// ## 依赖
+// - react
+// - ../../store/mcp-store (useMcpStore / McpPreset)
+// - ../../../shared/types (McpServerConfig)
+// - ./McpServerCard
+//
+// ## 维护规则
+// - mcpStore 接口变化时同步本页调用。
+// - 新增 transport 类型或预设字段时需要扩展表单与预设渲染。
+//
 import React, { useState, useEffect } from "react";
 import { useMcpStore, type McpPreset } from "../../store/mcp-store.js";
 import type { McpServerConfig } from "../../../shared/types.js";

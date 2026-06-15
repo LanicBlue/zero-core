@@ -1,3 +1,29 @@
+// MCP 服务器状态管理 store
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 基于 Zustand 的 MCP 服务器全局状态：维护服务器列表与 loading 标志，封装 window.api 上的 mcp* 接口（增删改查、连接测试、连接/断开、状态查询、系统扫描、预设列表与一键添加），并在模块加载时自动 fetchServers。
+//
+// ## 输入
+// - window.api.mcpList / mcpCreate / mcpUpdate / mcpDelete / mcpTest / mcpConnect / mcpDisconnect / mcpStatus / mcpScan / mcpPresets / mcpAddPreset
+//
+// ## 输出
+// - useMcpStore hook：servers / loading 及各 action
+// - 导出 McpPreset 类型
+//
+// ## 定位
+// 渲染进程状态层，被 components/mcp 下组件消费。
+//
+// ## 依赖
+// - zustand
+// - ../../shared/types (McpServerConfig)
+// - window.api（preload 暴露的 mcp* 接口）
+//
+// ## 维护规则
+// - 新增 mcp IPC 接口时需要在 McpState 与 store 实现中同步声明。
+// - 自动 fetchServers 的副作用只在模块首次加载执行一次，避免重复请求。
+//
 import { create } from "zustand";
 import type { McpServerConfig } from "../../shared/types.js";
 

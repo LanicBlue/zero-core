@@ -20,6 +20,10 @@
 // - react
 // - ../../store/*
 //
+// ## 维护规则
+// - 看板列划分或 RequirementStatus 状态机变更时同步分列逻辑
+// - 新增需求操作（创建/流转）需在此挂接入弹窗或卡片回调
+//
 import React, { useEffect, useState, useCallback } from "react";
 import type { RequirementRecord, RequirementStatus } from "../../../shared/types.js";
 import { useRequirementStore } from "../../store/requirement-store.js";

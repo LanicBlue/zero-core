@@ -1,3 +1,26 @@
+// E2E 测试：Memory 设置与 Knowledge Base Memory 标签页
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 验证 Settings 中 Memory 导航项存在、点击后展示 Memory & Compression 面板与压缩开关（默认 off）、Save 按钮可见；以及 Knowledge Base 页的 Libraries/Memory 两个标签、默认激活 Libraries、Memory 标签的搜索框、统计区、空状态文案、标签切换后位置不变
+//
+// ## 输入
+// simple-response.json fixture（mock provider，无 memory 节点）
+//
+// ## 输出
+// Playwright 测试用例：检查 .settings-nav-item、.memory-config、.kb-tab-btn、.memory-search-input、.memory-stats、.agents-empty 等元素
+//
+// ## 定位
+// tests/e2e/ — E2E 测试套件，验证 Memory 相关 UI 渲染
+//
+// ## 依赖
+// @playwright/test、./helpers/test-app（launchApp、waitForAppReady）
+//
+// ## 维护规则
+// Settings 导航结构或 KB 标签命名变更需同步更新选择器与文案断言
+// 压缩开关默认值变更需更新 hasOn 断言
+//
 import { test, expect } from "@playwright/test";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

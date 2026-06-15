@@ -1,23 +1,27 @@
-// 单元测试：模型元数据注册表
+// 单元测试：模型元数据注册表匹配逻辑
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 测试 model-registry 的 findMatch 和 enrichModels 逻辑
+// 测试 model-registry 的 findMatch 匹配逻辑：精确匹配（短名 / owner/name）、日期后缀剥离匹配（claude-opus-4-20250514）、子串模糊匹配（要求 key 长度 ≥ 模型 id 一半）、避免误匹配（o1-mini 不命中 o1）、多模态 input_modalities 检测；不实际调用 fetch，本地复刻 registry 构建与匹配函数
 //
 // ## 输入
-// src/core/model-registry 导出的 enrichModels
+// 构造的 OpenRouter 风格 mockModels 数组（含 context_length、architecture.input_modalities、top_provider）
 //
 // ## 输出
-// Vitest 测试用例覆盖模型匹配和元数据填充
+// Vitest 测试用例：断言匹配结果的 context_length、architecture 与 null 情况
 //
 // ## 定位
-// tests/unit/ — 单元测试套件
+// tests/unit/ — 单元测试套件，验证 core/model-registry 的匹配规则
 //
 // ## 依赖
-// vitest
+// vitest、../../src/core/model-registry（findMatch / enrichModels 逻辑的本地复刻）
 //
-
+// ## 维护规则
+// findMatch 匹配策略（精确 / 日期剥离 / 子串阈值）变更需同步更新测试
+// 新增测试模型需补 mockModels 并验证 multimodal 检测
+// enrichModels 实际接入 fetch 后需评估是否补充集成测试
+//
 import { describe, test, expect, vi, beforeEach } from "vitest";
 
 // Mock fetch for OpenRouter API

@@ -1,3 +1,30 @@
+// 知识库与记忆浏览页面
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 知识库管理页面，提供 Libraries（RAG 知识库 CRUD + 文件导入）和 Memory（记忆节点浏览/搜索/删除）两个 Tab，并展示嵌入提供商配置。
+//
+// ## 输入
+// - kbStore (Zustand)：knowledgeBases / loading / create / remove / addFiles / removeFile
+// - window.api.memoryNode*：记忆节点的 subject / list / search / delete 接口
+//
+// ## 输出
+// - 渲染的页面 DOM（列表 / 创建表单 / 详情 / 记忆面板）
+//
+// ## 定位
+// 渲染进程组件，被 AppLayout 路由到 kb 页面时加载。
+//
+// ## 依赖
+// - react
+// - ../../store/kb-store
+// - ../../../shared/types (KnowledgeBase / KbFileInfo)
+// - window.api（preload 暴露的记忆节点接口）
+//
+// ## 维护规则
+// - 记忆节点接口或 kbStore 行为变化时同步本组件。
+// - 新增知识库字段（如 chunk 策略）时需要扩展创建表单与详情展示。
+//
 import React, { useState } from "react";
 import { useKbStore } from "../../store/kb-store.js";
 import type { KnowledgeBase, KbFileInfo } from "../../../shared/types.js";

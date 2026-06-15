@@ -1,9 +1,37 @@
-// 后端子进程生命周期管理
+// 后端 Node.js 子进程的生命周期管理（spawn / 监控 / 优雅关闭）。
 //
-// 负责启动、监控、优雅关闭后端 Node.js 子进程。
+// # 文件说明书
 //
-// 开发模式：用系统 Node.js spawn 后端，避免 Electron ABI 与 better-sqlite3 不匹配。
-// 打包模式：用 fork()，electron-builder 的 npmRebuild=true 已将 better-sqlite3 重新编译给 Electron。
+// ## 核心功能
+// 统一封装后端子进程的启动、就绪握手、意外退出自愈与优雅关闭：
+//   - 开发模式用系统 node spawn，规避 Electron ABI 与 better-sqlite3 不匹配；
+//   - 打包模式用 fork()，依赖 electron-builder npmRebuild=true 已重编 better-sqlite3；
+//   - 通过 stdout `ready` 行建立握手，30s 未就绪则杀进程并拒绝；
+//   - 退出时按 stdin shutdown → SIGTERM → SIGKILL 三段式兜底。
+//
+// ## 输入
+// - dist/backend.js 的绝对路径（基于 __dirname 推导）
+// - app.isPackaged 决定 spawn/fork 分支
+// - 后端 stdout `ready` 行中的真实 port
+//
+// ## 输出
+// - BackendHandle { process, port }，由主进程持有
+// - getBackendPort() 供 ipc-proxy.ts 读取后端 HTTP/WS 端口
+// - shutdownBackend() 关闭子进程
+//
+// ## 定位
+// src/main 主进程辅助模块；被 src/main/index.ts 调用以拉起后端、被 ipc-proxy.ts
+// 间接通过 getBackendPort() 取端口。
+//
+// ## 依赖
+// - electron（app.isPackaged）
+// - child_process：fork / spawn / ChildProcess
+// - 编译产物 ../../dist/backend.js（由 src/backend.ts 构建）
+//
+// ## 维护规则
+// - 端口握手协议与 src/backend.ts 的 stdout 输出必须同步
+// - 修改启动/关闭超时阈值需评估用户机器冷启动时长
+// - 自愈重启逻辑（_shuttingDown 标志）改动需保证不与 shutdownBackend 竞争
 
 import { fork, spawn, type ChildProcess } from "child_process";
 import { join, dirname } from "path";

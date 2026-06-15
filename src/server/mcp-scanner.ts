@@ -1,3 +1,31 @@
+// 扫描外部工具(Claude Desktop / Cursor / VSCode 等)的 MCP 配置并合并入库
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 枚举本机上各 IDE / AI 工具的 MCP 配置文件路径(按平台区分 Windows / Unix),解析其中的 mcpServers / servers 配置,推断 transport(stdio / sse / streamable-http),并对 stdio 用 which/where、对 sse 用 fetch 探测 running 状态;mergeDetectedServers 负责把扫描结果去重后写回 McpStore。
+//
+// ## 输入
+// - scanExternalMcpConfigs(workspaceDir): 当前工作区目录,用于发现 .vscode/mcp.json 等 workspace 级配置
+// - mergeDetectedServers 接收 existing 已入库列表、create 入库函数与 detected 扫描结果
+//
+// ## 输出
+// - DetectedMcpServer[]: 含 running 状态的扫描结果
+// - mergeDetectedServers 返回本次新增入库的 McpServerConfig[]
+//
+// ## 定位
+// src/server/ 服务层,在服务启动(index.ts)时被调用一次,把外部工具已声明的 MCP 自动并入 zero-core 的 McpStore。
+//
+// ## 依赖
+// - node:fs、node:path、node:os、node:child_process、全局 fetch
+// - ../shared/types(McpServerConfig)
+//
+// ## 维护规则
+// - 新增支持的 IDE / 工具时,在 getConfigSources 添加文件路径(注意 Windows APPDATA 与 Unix ~/.config 区分)。
+// - 探测 running 的超时(2s for SSE、3s for which/where)应保持短,避免拖慢启动。
+// - 配置文件解析失败应静默跳过,不要让单个坏文件中断整个扫描。
+//
+
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir, platform } from "node:os";

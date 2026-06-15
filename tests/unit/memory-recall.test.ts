@@ -1,3 +1,26 @@
+// 单元测试：MemoryRecall 记忆召回与格式化
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 测试 MemoryRecall.recall（基于 mock MemoryNodeStore.searchNodes 召回节点、subject 去重、过滤 null subject）和 formatForContext（将节点列表格式化为 markdown「- **Subject** (type): content. [date]」列表，空列表返回 null）
+//
+// ## 输入
+// 通过 vi.fn 模拟的 MemoryNodeStore 与构造的 MemoryNode/MemorySubject 数据
+//
+// ## 输出
+// Vitest 测试用例：覆盖空召回返回 null、匹配节点、subject 去重、null subject 过滤、markdown 格式化与日期截取
+//
+// ## 定位
+// tests/unit/ — 单元测试套件，验证 runtime 记忆召回与上下文格式化逻辑
+//
+// ## 依赖
+// vitest、../../src/runtime/memory-recall（MemoryRecall）、../../src/server/memory-node-store（类型）
+//
+// ## 维护规则
+// recall 去重或过滤策略变更需同步更新测试
+// formatForContext 输出格式（日期、加粗、列表项）变更需更新断言
+//
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { MemoryRecall } from "../../src/runtime/memory-recall.js";
 import type { MemoryNodeStore, MemoryNode, MemorySubject } from "../../src/server/memory-node-store.js";
