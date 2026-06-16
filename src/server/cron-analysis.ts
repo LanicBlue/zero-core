@@ -70,15 +70,17 @@ export class CronAnalysisManager {
 	// ─── Public API ──────────────────────────────────────────────────
 
 	/**
-	 * 启动时恢复所有活跃项目的定时任务。
-	 * 读取 projectStore.listActive()，为每个项目注册 setInterval。
+	 * 启动时恢复所有项目的定时任务。
+	 * v0.8 (M0): ProjectRecord slimmed — no more status / analysisInterval
+	 * (those move to CronRecord in M1). Until M1 lands, treat all projects
+	 * as active with a default "daily" cadence.
 	 */
 	restoreSchedules(): void {
-		const activeProjects = this.projectStore.listActive();
-		for (const project of activeProjects) {
-			this.scheduleProject(project.id, project.analysisInterval);
+		const projects = this.projectStore.list();
+		for (const project of projects) {
+			this.scheduleProject(project.id, "daily");
 		}
-		log.debug("cron", `Restored schedules for ${activeProjects.length} active project(s)`);
+		log.debug("cron", `Restored schedules for ${projects.length} project(s)`);
 	}
 
 	/**
@@ -93,7 +95,7 @@ export class CronAnalysisManager {
 		const timer = setInterval(async () => {
 			try {
 				const project = this.projectStore.get(projectId);
-				if (!project || project.status !== "active") {
+				if (!project) {
 					this.unscheduleProject(projectId);
 					return;
 				}

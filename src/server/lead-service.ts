@@ -137,15 +137,16 @@ export class LeadService {
 		this.requirementStore.transitionStatus(requirementId, "plan", "lead", "Lead 领取需求");
 
 		// M5: Create requirement branch (non-blocking)
-		if (this.gitIntegration && project.path) {
+		if (this.gitIntegration && project.workspaceDir) {
 			this.gitIntegration.createRequirementBranch(
-				project.path, requirementId, req.title,
+				project.workspaceDir, requirementId, req.title,
 			).catch((err) => {
 				log.debug("lead", "Git branch creation failed (non-blocking):", (err as Error).message);
 			});
 		}
 
-		// 7. Build tool context
+		// 7. Build tool context (v0.8 M0: no createRoleLoop — Orchestrate now
+		// dispatches via delegateTask + toolPolicy, see orchestrate-tool.ts)
 		const toolContext = this.buildLeadToolContext(project, req);
 
 		// 8. Build pickup prompt
@@ -161,13 +162,12 @@ export class LeadService {
 			prompt,
 			{
 				projectId: project.id,
-				projectPath: project.path,
+				projectPath: project.workspaceDir,
 				projectName: project.name,
 				wikiStore: toolContext.wikiStore,
 				requirementStore: toolContext.requirementStore,
 				taskStepStore: toolContext.taskStepStore,
 				activeRequirementId: requirementId,
-				createRoleLoop: toolContext.createRoleLoop,
 			},
 		);
 
@@ -240,7 +240,7 @@ export class LeadService {
 
 		const agent = this.agentStore.create({
 			name: leadName,
-			workspaceDir: project.path,
+			workspaceDir: project.workspaceDir,
 			systemPrompt,
 			toolPolicy: {
 				autoApprove: roleConfig.toolPolicy.autoApprove,
@@ -253,26 +253,22 @@ export class LeadService {
 
 	/**
 	 * 构建 Lead 的工具上下文。
+	 * v0.8 (M0): no longer creates a role-loop factory. Sub-agent dispatch
+	 * (developer/reviewer/qa) is delegated to agent-as-tool + toolPolicy —
+	 * lead's toolPolicy whitelists the relevant role agent-tools.
 	 */
 	private buildLeadToolContext(
 		project: ProjectRecord,
 		requirement: RequirementRecord,
 	): Partial<ToolExecutionContext> {
-		const createRoleLoop = this.agentService.createRoleLoopFactory(
-			project,
-			this.wikiStore,
-			this.taskStepStore,
-		);
-
 		return {
 			wikiStore: this.wikiStore,
 			requirementStore: this.requirementStore,
 			taskStepStore: this.taskStepStore,
 			projectId: project.id,
 			agentRole: "lead",
-			projectPath: project.path,
+			projectPath: project.workspaceDir,
 			activeRequirementId: requirement.id,
-			createRoleLoop,
 		};
 	}
 

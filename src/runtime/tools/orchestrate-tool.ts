@@ -60,9 +60,9 @@ export const orchestrateTool = buildTool({
 	}),
 
 	execute: async (input, ctx) => {
-		// 1. Validate context
-		if (!ctx.createRoleLoop) {
-			return "Error: Orchestrate not available in this context (no createRoleLoop)";
+		// 1. Validate context (v0.8 M0: dispatch via delegateTask, not createRoleLoop)
+		if (!ctx.delegateTask) {
+			return "Error: Orchestrate not available in this context (no delegateTask)";
 		}
 		if (!ctx.activeRequirementId) {
 			return "Error: Orchestrate not available in this context (no activeRequirementId)";
@@ -124,34 +124,32 @@ export const orchestrateTool = buildTool({
 			startedAt: now,
 		});
 
-		// 7. Execute sub-agent via createRoleLoop
+		// 7. Execute sub-agent via delegateTask (v0.8 M0 — was createRoleLoop).
+		// The target role's agent is identified by a convention id
+		// `role:<role>`; lead's toolPolicy whitelists which role agents it can
+		// call. toolPolicy + systemPrompt come from the role config; the caller
+		// bundle is inherited by the sub-loop (RFC §2.11 / decision 16).
 		try {
-			const toolPolicy = {
-				allow: roleConfig.toolPolicy.autoApprove,
-				deny: roleConfig.toolPolicy.blockedTools,
-			};
-
-			const { result, changedFiles } = await ctx.createRoleLoop({
-				role: input.role,
-				task: input.task,
+			const result = await ctx.delegateTask(input.task, {
+				targetAgentId: `role:${input.role}`,
 				systemPrompt,
-				toolPolicy,
-				wikiContext: wikiContext || undefined,
+				toolPolicy: {
+					autoApprove: roleConfig.toolPolicy.autoApprove,
+					blockedTools: roleConfig.toolPolicy.blockedTools,
+				},
 				workspaceDir: ctx.projectPath,
 			});
 
-			// 8. Update step — success
+			// 8. Update step — success (changedFiles no longer collected by
+			// Orchestrate in M0; git diff tracking moves to archivist in M5)
 			taskStepStore.update(step.id, {
 				status: "completed",
-				output: JSON.stringify({ result, changedFiles }),
+				output: JSON.stringify({ result }),
 				completedAt: new Date().toISOString(),
 			});
 
 			// 9. Return summary to Lead
-			const fileSummary = changedFiles.length > 0
-				? `\nChanged files: ${changedFiles.join(", ")}`
-				: "";
-			return `Step completed: ${input.role} executed task\n${result}${fileSummary}`;
+			return `Step completed: ${input.role} executed task\n${result}`;
 		} catch (err) {
 			// Update step — failure
 			const errMsg = (err as Error).message || String(err);

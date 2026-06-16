@@ -52,6 +52,13 @@ export interface AgentRecord {
 		enabledSkills?: string[];
 	};
 	knowledgeBaseIds?: string[];
+	/**
+	 * v0.8 (M0): optional role tag for UI grouping and preset entry points.
+	 * Not a runtime type — workflow emerges from prompt + toolPolicy + caller
+	 * context, not from this field. Common values: lead | pm | archivist |
+	 * analyzer | planner | developer | reviewer | qa | zero.
+	 */
+	roleTag?: string;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -177,6 +184,25 @@ export interface SessionRecord {
 	cacheWriteTokens?: number;
 	reasoningTokens?: number;
 	estimatedCostUsd?: number;
+	/**
+	 * v0.8 (M0): session context bundle (D-B).
+	 * Carries the project/workspace/wiki-root context the global role is
+	 * currently serving. Sub-agents inherit caller bundle; cron/notification
+	 * provide scope via this field. `{agentId, context.projectId}` is the
+	 * find-or-create routing key for discuss/notification/cron.
+	 */
+	context?: SessionContextBundle;
+}
+
+/**
+ * v0.8 (M0): the context bundle a session carries. projectId is optional
+ * (global/observation sessions have none); workspaceDir and wikiRootNodeId
+ * are required so every session has a concrete work location and wiki view.
+ */
+export interface SessionContextBundle {
+	projectId?: string;
+	workspaceDir: string;
+	wikiRootNodeId: string;
 }
 
 export interface LogEntry {
@@ -261,6 +287,13 @@ export interface ToolInfo {
 	group: string;
 	source: string;
 	mcpServerName?: string;
+	/**
+	 * v0.8 (M0): for agent-tools (source === "agent"), the stable
+	 * AgentToolEntry.id used as the toolPolicy key. UI displays `name` but
+	 * toggles resolve against this id (decision 2). Undefined for built-in
+	 * tools (which remain name-keyed).
+	 */
+	agentToolId?: string;
 	configSchema?: any[];
 	inputFields?: Array<{ key: string; type: string; required: boolean; description?: string; enum?: string[] }>;
 	meta?: any;
@@ -374,15 +407,16 @@ export interface DiscoveredSkill {
 
 // ── Multi-Agent Workflow Types ─────────────────────────────────
 
+/**
+ * v0.8 (M0): Project slimmed to pure metadata + notification hub + ownership
+ * key. All cron runtime state moved out (cron is now a first-class entity,
+ * M1). workspaceDir is normalized (resolve + realpath), unique, immutable
+ * after creation.
+ */
 export interface ProjectRecord {
 	id: string;
 	name: string;
-	path: string;
-	analystCronId?: string;
-	analystSessionId?: string;
-	lastAnalysisAt?: string;
-	analysisInterval: string;       // 'daily' | 'hourly' | custom cron
-	status: "active" | "paused";
+	workspaceDir: string;
 	createdAt: string;
 	updatedAt: string;
 }

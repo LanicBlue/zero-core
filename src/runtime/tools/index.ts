@@ -50,6 +50,7 @@ import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
 import { expandNodeTool, updateWikiNodeTool } from "./wiki-tools.js";
 import { createRequirementTool } from "./requirement-tools.js";
 import { orchestrateTool } from "./orchestrate-tool.js";
+import { ZERO_ADMIN_TOOLS } from "./zero-admin-tools.js";
 import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";
 
@@ -86,6 +87,10 @@ export const ALL_TOOLS: Record<string, any> = {
 	CreateRequirement: createRequirementTool,
 	Orchestrate: orchestrateTool,
 
+	// v0.8 (M0): zero global-management tools. Gated on ctx.zeroAdmin
+	// (only zero sessions carry the ZeroAdminService handle).
+	...ZERO_ADMIN_TOOLS,
+
 	...getAssistantTools(),
 };
 
@@ -99,8 +104,14 @@ const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> 
 	ExpandNode: (ctx) => !!ctx.wikiStore,
 	UpdateWikiNode: (ctx) => !!ctx.wikiStore,
 	CreateRequirement: (ctx) => !!ctx.requirementStore,
-	Orchestrate: (ctx) => !!ctx.createRoleLoop,
+	Orchestrate: (ctx) => !!ctx.delegateTask,
 };
+
+// v0.8 (M0): all zero-admin tools require ctx.zeroAdmin (only present on zero
+// sessions). Generate gate entries from ZERO_ADMIN_TOOLS keys.
+for (const name of Object.keys(ZERO_ADMIN_TOOLS)) {
+	CONDITIONAL_TOOLS[name] = (ctx) => !!ctx.zeroAdmin;
+}
 
 
 
@@ -144,6 +155,12 @@ export function buildToolsSet(
 	mcpTools?: Record<string, any>,
 	agentTools?: Record<string, any>,
 ): Record<string, any> {
+	// v0.8 (M0): agent-tools are keyed by AgentToolEntry.id in `policy.tools`.
+	// Built-in tools (Shell/Read/…) stay keyed by name. We need the set of
+	// agent-tool ids so the isEnabled resolver can treat id-keys specially
+	// (an agent-tool is NOT in DEFAULT_ENABLED — opt-in only, decision 2).
+	const agentToolIds = new Set(agentTools ? Object.keys(agentTools) : []);
+
 	// Migrate legacy lowercase tool keys to PascalCase
 	if (policy.tools) {
 		const migrated: Record<string, { enabled: boolean }> = {};
@@ -165,6 +182,8 @@ export function buildToolsSet(
 		// Explicit tools map takes priority
 		if (toolsMap) {
 			if (name in toolsMap) return toolsMap[name].enabled;
+			// Agent-tools (id-keyed) are opt-in only — never implicitly enabled
+			if (agentToolIds.has(name)) return false;
 			return DEFAULT_ENABLED.has(name);
 		}
 		// Legacy autoApprove
@@ -196,12 +215,37 @@ export function buildToolsSet(
 		}
 	}
 
-	// Merge agent tools
+	// Merge agent tools (keyed by AgentToolEntry.id; user-facing name lives
+	// inside the tool def). Policy map lookup is by id (decision 2).
 	if (agentTools) {
-		for (const [name, def] of Object.entries(agentTools)) {
-			if (blocked.has(name)) continue;
-			if (isEnabled(name)) {
-				tools[name] = def;
+		for (const [entryId, def] of Object.entries(agentTools)) {
+			// Block by user-facing name AND by id (defensive — either works)
+			const toolName = getToolName(def);
+			if (toolName && blocked.has(toolName)) continue;
+			if (blocked.has(entryId)) continue;
+
+			// Resolve enabled: prefer id-keyed policy entry, fall back to
+			// legacy name-keyed entry (old data still keyed by name).
+			let enabled: boolean;
+			if (toolsMap && entryId in toolsMap) {
+				enabled = toolsMap[entryId].enabled;
+			} else if (toolsMap && toolName && toolName in toolsMap) {
+				// Legacy: policy keyed by name. Honor it (decision 2 is forward-
+				// looking; old data shouldn't break).
+				enabled = toolsMap[toolName].enabled;
+			} else if (toolsMap) {
+				// Not present in policy map → agent-tools are opt-in only
+				enabled = false;
+			} else if (autoApprove.has("*") || (toolName && autoApprove.has(toolName))) {
+				enabled = true;
+			} else {
+				enabled = false;
+			}
+
+			if (enabled) {
+				// Register under the user-facing name so the model calls it by
+				// name; policy resolution used the entry.id key above.
+				tools[toolName ?? entryId] = def;
 			}
 		}
 	}

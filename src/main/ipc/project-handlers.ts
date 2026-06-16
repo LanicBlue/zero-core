@@ -46,30 +46,27 @@ export function registerProjectHandlers(ctx: IpcContext): void {
 		module: "sessionDb",
 	});
 
-	// M5: Update analysis interval
+	// M5: Update analysis interval (v0.8 M0: analysisInterval moved off
+	// ProjectRecord; cron becomes first-class in M1. For now, just reschedule.)
 	typedHandle("projects:updateInterval", "sessionDb", (ctx, id, interval) => {
-		ctx.projectStore.update(id, { analysisInterval: interval } as any);
 		if (ctx.cronManager) {
 			ctx.cronManager.rescheduleProject(id, interval);
 		}
 		return { success: true as const };
 	});
 
-	// M5: Pause project analysis
+	// M5: Pause project analysis (v0.8 M0: status removed from ProjectRecord)
 	typedHandle("projects:pause", "sessionDb", (ctx, id) => {
-		ctx.projectStore.update(id, { status: "paused" } as any);
 		if (ctx.cronManager) {
 			ctx.cronManager.unscheduleProject(id);
 		}
 		return { success: true as const };
 	});
 
-	// M5: Resume project analysis
+	// M5: Resume project analysis (v0.8 M0: status / analysisInterval removed)
 	typedHandle("projects:resume", "sessionDb", (ctx, id) => {
-		const project = ctx.projectStore.get(id);
-		ctx.projectStore.update(id, { status: "active" } as any);
-		if (ctx.cronManager && project) {
-			ctx.cronManager.scheduleProject(id, project.analysisInterval);
+		if (ctx.cronManager) {
+			ctx.cronManager.scheduleProject(id, "daily");
 		}
 		return { success: true as const };
 	});

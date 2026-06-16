@@ -112,10 +112,8 @@ export class AnalystService {
 
 		try {
 			await this.agentService.sendPrompt(prompt, agent);
-			// Update lastAnalysisAt
-			this.projectStore.update(projectId, {
-				lastAnalysisAt: new Date().toISOString(),
-			} as any);
+			// v0.8 (M0): lastAnalysisAt removed from ProjectRecord. The per
+			// (archivist, project) git scan cursor is owned by archivist in M5.
 			log.agent("Analyst: full analysis completed for:", project.name);
 		} catch (err) {
 			log.error("analyst", "Full analysis failed:", (err as Error).message);
@@ -150,10 +148,7 @@ export class AnalystService {
 
 		try {
 			await this.agentService.sendPrompt(prompt, agent);
-			// Update lastAnalysisAt
-			this.projectStore.update(projectId, {
-				lastAnalysisAt: new Date().toISOString(),
-			} as any);
+			// v0.8 (M0): lastAnalysisAt removed (see runFullAnalysis note).
 			log.agent("Analyst: incremental analysis completed for:", project.name);
 		} catch (err) {
 			log.error("analyst", "Incremental analysis failed:", (err as Error).message);
@@ -180,7 +175,7 @@ export class AnalystService {
 		// Create AgentRecord
 		const agent = this.agentStore.create({
 			name: `Analyst-${project.name}`,
-			workspaceDir: project.path,
+			workspaceDir: project.workspaceDir,
 			systemPrompt,
 			toolPolicy: {
 				autoApprove: roleConfig.toolPolicy.autoApprove,
@@ -249,21 +244,20 @@ ${diff}
 
 	/**
 	 * 获取增量 git diff。
-	 * 基于 lastAnalysisAt 时间戳计算。
+	 * v0.8 (M0): lastAnalysisAt removed from ProjectRecord; falls back to a
+	 * 1-week window until the (archivist, project) git scan cursor lands in M5.
 	 */
 	private getGitDiff(project: ProjectRecord): string {
 		try {
 			const { execSync } = require("child_process");
-			const since = project.lastAnalysisAt
-				? `--since="${project.lastAnalysisAt}"`
-				: "--since=\"1 week ago\"";
-			const cmd = `git -C "${project.path}" log --oneline ${since} -n 50`;
+			const since = "--since=\"1 week ago\"";
+			const cmd = `git -C "${project.workspaceDir}" log --oneline ${since} -n 50`;
 			const logOutput = execSync(cmd, { encoding: "utf-8", timeout: 10000 });
 
 			if (!logOutput.trim()) return "";
 
 			// Get actual diff for changed files
-			const diffCmd = `git -C "${project.path}" diff HEAD~${Math.min(logOutput.split("\n").length, 20)} --stat`;
+			const diffCmd = `git -C "${project.workspaceDir}" diff HEAD~${Math.min(logOutput.split("\n").length, 20)} --stat`;
 			return execSync(diffCmd, { encoding: "utf-8", timeout: 30000 });
 		} catch {
 			return "";
@@ -304,7 +298,7 @@ ${diff}
 		const project = this.projectStore.get(req.projectId);
 		if (this.gitIntegration && project) {
 			try {
-				const gitFiles = await this.gitIntegration.getChangedFiles(project.path, "main");
+				const gitFiles = await this.gitIntegration.getChangedFiles(project.workspaceDir, "main");
 				for (const f of gitFiles) {
 					if (!changedFiles.includes(f)) changedFiles.push(f);
 				}

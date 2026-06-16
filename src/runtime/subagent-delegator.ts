@@ -28,6 +28,7 @@ import type {
 	RuntimeCallbacks,
 	AgentRuntime,
 } from "./types.js";
+import type { SessionContextBundle } from "../shared/types.js";
 import { TaskRegistry } from "./task-registry.js";
 import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
@@ -38,6 +39,35 @@ type LoopFactory = (
 	providers: RuntimeProviderConfig[],
 	callbacks: RuntimeCallbacks,
 ) => AgentRuntime;
+
+/**
+ * v0.8 (M0) — extended delegateTask options (RFC §2.11 / decision 16).
+ *
+ * Synchronous sub-agent calls inherit the CALLER session's context bundle
+ * (workspaceDir / wikiRootNodeId / projectId); the caller may override
+ * pieces per-call (e.g. narrow workspace to a subdirectory). Identity,
+ * toolPolicy and history come from the target agent itself — passed via
+ * `targetAgentId` / `toolPolicy` / `systemPrompt` here so the runtime can
+ * build the sub-loop against the target agent's config rather than the
+ * caller's.
+ */
+export interface DelegateTaskOptions {
+	/** Target agent id (the role/preset agent being delegated to). */
+	targetAgentId?: string;
+	/** Target agent's full system prompt (overrides caller's prompt). */
+	systemPrompt?: string;
+	/** Target agent's model id. */
+	model?: string;
+	/** Target agent's toolPolicy (overrides caller's policy). */
+	toolPolicy?: SessionConfig["toolPolicy"];
+	/** Caller-provided context bundle override (per-call). */
+	contextOverride?: Partial<SessionContextBundle>;
+	/**
+	 * Per-call workspace override. Falls back to caller bundle's workspaceDir,
+	 * then to the caller SessionConfig.workspaceDir.
+	 */
+	workspaceDir?: string;
+}
 
 export interface SubagentDelegatorDeps {
 	config: SessionConfig;
@@ -63,13 +93,35 @@ export class SubagentDelegator {
 		this.getToolConfig = deps.getToolConfig;
 	}
 
-	async delegateTask(task: string, options?: { model?: string; systemPrompt?: string }): Promise<string> {
+	async delegateTask(task: string, options?: DelegateTaskOptions): Promise<string> {
 		const toolConfig = this.getToolConfig();
+
+		// v0.8 (M0): inherit caller's context bundle, apply per-call override.
+		// targetAgentId drives the sub-agent's identity (the agent we delegate to);
+		// toolPolicy comes from the target agent unless the caller overrides.
+		const targetAgentId = options?.targetAgentId ?? `${this.config.agentId}:sub`;
+		const callerBundle = this.config.contextBundle;
+		const inheritedBundle: SessionContextBundle | undefined = callerBundle
+			? { ...callerBundle, ...options?.contextOverride }
+			: undefined;
+
+		// workspaceDir resolution: per-call override → inherited bundle → caller config.
+		const resolvedWorkspaceDir =
+			options?.workspaceDir
+			?? inheritedBundle?.workspaceDir
+			?? this.config.workspaceDir;
+
 		const subConfig: SessionConfig = {
 			...this.config,
-			agentId: `${this.config.agentId}:sub-${Date.now()}`,
+			agentId: `${targetAgentId}-${Date.now()}`,
+			// Identity / prompt / model / toolPolicy all come from the target
+			// agent (passed via options). Fall back to caller config when not
+			// supplied (legacy 2-arg call shape).
 			systemPrompt: options?.systemPrompt ?? this.config.systemPrompt,
 			modelId: options?.model ?? this.config.modelId,
+			toolPolicy: options?.toolPolicy ?? this.config.toolPolicy,
+			workspaceDir: resolvedWorkspaceDir,
+			contextBundle: inheritedBundle,
 			parentSessionId: this.config.sessionId,
 			spawnDepth: (this.config.spawnDepth ?? 0) + 1,
 			timeoutSec: toolConfig?.Agent?.timeout,

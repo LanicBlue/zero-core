@@ -123,7 +123,14 @@ export class AgentLoop implements AgentRuntime {
 			agentRole: config.agentRole,
 			projectPath: config.projectContext?.projectPath,
 			activeRequirementId: config.projectContext?.activeRequirementId,
-			createRoleLoop: (config as any).createRoleLoop,
+			// v0.8 (M0): createRoleLoop removed — sub-agent dispatch flows
+			// through delegateTask (extended signature).
+			// v0.8 (M0): session context bundle (D-B) — exposed on the context
+			// so workflow tools (and downstream M1 cron / M3 notification) can
+			// read the current (projectId, workspaceDir, wikiRootNodeId).
+			contextBundle: config.contextBundle,
+			// v0.8 (M0): ZeroAdminService handle for the zero role's tools.
+			zeroAdmin: config.zeroAdmin,
 		};
 	}
 

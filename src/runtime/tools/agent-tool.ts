@@ -38,6 +38,7 @@ interface AgentRecordLite {
 	name: string;
 	systemPrompt?: string;
 	model?: string;
+	toolPolicy?: any;
 }
 
 function kebabCase(s: string): string {
@@ -74,6 +75,19 @@ function truncateResult(text: string): string {
 	return text.slice(0, OUTPUT_TRUNCATION_CHARS) + "\n... (output truncated)";
 }
 
+/**
+ * v0.8 (M0): build agent tools keyed by `AgentToolEntry.id` (stable across
+ * renames). The tool's user-facing `name` (what the model sees) is still
+ * `entry.name`; only the policy map key changes from name → id.
+ *
+ * This means toolPolicy can say `tools[entryId] = { enabled: true }` and
+ * renaming the agent (which changes entry.name) won't break the policy
+ * reference. Only deleting the entry orphans the policy (decision 2).
+ *
+ * Returns `{ tools, idByName }` where `tools` is keyed by entry.id and
+ * `idByName` lets the policy layer resolve a built-in tool name from an
+ * entry name (rarely needed — built-in tools stay name-keyed).
+ */
 export function buildAgentTools(
 	entries: AgentToolEntry[],
 	agents: Map<string, AgentRecordLite>,
@@ -84,7 +98,9 @@ export function buildAgentTools(
 	for (const entry of entries) {
 		if (!entry.enabled) continue;
 
+		// User-facing tool name stays entry.name; policy key is entry.id.
 		const toolName = entry.name || "agent_tool";
+		const toolKey = entry.id; // stable policy key (decision 2)
 		const desc = entry.description || `Run the "${entry.name}" agent`;
 
 		if (entry.type === "internal") {
@@ -97,7 +113,7 @@ export function buildAgentTools(
 
 			const isBlocking = capturedEntry.blocking !== false;
 
-			tools[toolName] = buildTool({
+			tools[toolKey] = buildTool({
 				name: toolName,
 				description: desc,
 				meta: {
@@ -113,9 +129,14 @@ export function buildAgentTools(
 					if (isBlocking) {
 						if (!context.delegateTask) return "Error: Agent delegation is not available.";
 						try {
+							// v0.8 (M0): pass target agent's full config + per-call override.
+							// Identity / toolPolicy / history use the target agent itself;
+							// the caller's context bundle is inherited by the sub-loop.
 							const result = await context.delegateTask(input.task, {
+								targetAgentId: capturedAgent.id,
 								systemPrompt: capturedAgent.systemPrompt,
 								model: capturedAgent.model,
+								toolPolicy: capturedAgent.toolPolicy,
 							});
 							return truncateResult(result || "(agent returned no output)");
 						} catch (err: any) {
@@ -137,7 +158,7 @@ export function buildAgentTools(
 
 			const capturedEntry = entry;
 
-			tools[toolName] = buildTool({
+			tools[toolKey] = buildTool({
 				name: toolName,
 				description: desc,
 				meta: {
@@ -184,7 +205,7 @@ export function buildAgentTools(
 
 			const capturedEntry = entry;
 
-			tools[toolName] = buildTool({
+			tools[toolKey] = buildTool({
 				name: toolName,
 				description: desc,
 				meta: {

@@ -35,7 +35,8 @@ export type ToolCategory =
 	| "assistant"
 	| "interaction"
 	| "mcp"
-	| "agent";
+	| "agent"
+	| "zero-admin";
 
 export interface ToolConfigField {
 	key: string;

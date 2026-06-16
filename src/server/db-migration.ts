@@ -50,6 +50,7 @@ const AGENT_COLUMNS = [
 	{ key: "toolPolicy", column: "tool_policy", json: true },
 	{ key: "skillPolicy", column: "skill_policy", json: true },
 	{ key: "knowledgeBaseIds", column: "knowledge_base_ids", json: true },
+	{ key: "roleTag", column: "role_tag" },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
 ];
@@ -77,14 +78,20 @@ const AGENT_TOOL_COLUMNS = [
 
 const PROJECT_COLUMNS = [
 	{ key: "name" },
-	{ key: "path" },
-	{ key: "analystCronId", column: "analyst_cron_id" },
-	{ key: "analystSessionId", column: "analyst_session_id" },
-	{ key: "lastAnalysisAt", column: "last_analysis_at" },
-	{ key: "analysisInterval", column: "analysis_interval" },
-	{ key: "status" },
+	{ key: "workspaceDir", column: "workspace_dir" },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
+];
+
+// v0.8 (M0): SessionRecord context bundle columns. JSON-stored context +
+// extracted projectId column for the (agentId, projectId) find-or-create
+// routing key. Kept here for parity with the *_COLUMNS pattern even though
+// the sessions table itself is owned by SessionDB.
+const SESSION_COLUMNS = [
+	{ key: "context", json: true },
+	{ key: "contextProjectId", column: "context_project_id" },
+	{ key: "contextWorkspaceDir", column: "context_workspace_dir" },
+	{ key: "contextWikiRootNodeId", column: "context_wiki_root_node_id" },
 ];
 
 const PROJECT_WIKI_COLUMNS = [
@@ -191,6 +198,10 @@ export function runMigrations(sessionDB: SessionDB): void {
 
 	// Agent columns
 	safeAddColumn(db, "agents", "knowledge_base_ids", "TEXT");
+	// v0.8 (M0): AgentRecord slimmed — add roleTag (project binding / cron
+	// schedule / wikiRootNodeId / lastScannedRef never lived on agents in
+	// this version; their columns are simply not added here).
+	safeAddColumn(db, "agents", "role_tag", "TEXT");
 
 	// Agent tool columns (table may exist from older versions with fewer columns)
 	for (const col of AGENT_TOOL_COLUMNS) {
@@ -215,6 +226,13 @@ export function runMigrations(sessionDB: SessionDB): void {
 	safeAddColumn(db, "sessions", "reasoning_tokens", "INTEGER DEFAULT 0");
 	safeAddColumn(db, "sessions", "estimated_cost_usd", "REAL DEFAULT 0");
 
+	// v0.8 (M0): SessionRecord context bundle (D-B) + routing columns.
+	for (const col of SESSION_COLUMNS) {
+		const colName = col.column || col.key;
+		safeAddColumn(db, "sessions", colName, "TEXT");
+	}
+	safeAddIndex(db, "sessions", "idx_sessions_agent_project", "agent_id, context_project_id");
+
 	// Step-level storage: turns table new columns
 	safeAddColumn(db, "turns", "turn_group", "INTEGER NOT NULL DEFAULT -1");
 	safeAddColumn(db, "turns", "input_tokens", "INTEGER DEFAULT 0");
@@ -226,13 +244,28 @@ export function runMigrations(sessionDB: SessionDB): void {
 	migrateTurnsToSteps(db);
 
 	// ─── Multi-Agent Workflow tables ───────────────────────────
+	// v0.8 (M0): projects slimmed to pure metadata + workspaceDir uniqueness.
+	// Legacy columns (path/analyst_cron_id/analyst_session_id/last_analysis_at/
+	// analysis_interval/status) are not created on fresh DBs; on upgraded DBs
+	// they are left in place harmlessly (SqliteStore only reads PROJECT_COLUMNS).
 	db.exec(`CREATE TABLE IF NOT EXISTS projects (
-		id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL UNIQUE,
-		analyst_cron_id TEXT, analyst_session_id TEXT, last_analysis_at TEXT,
-		analysis_interval TEXT DEFAULT 'daily', status TEXT DEFAULT 'active',
-		created_at TEXT, updated_at TEXT
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		workspace_dir TEXT NOT NULL UNIQUE,
+		created_at TEXT,
+		updated_at TEXT
 	)`);
-	safeAddIndex(db, "projects", "idx_projects_status", "status");
+	// Best-effort: add the new workspace_dir column on upgraded DBs that have
+	// the old schema (CREATE TABLE IF NOT EXISTS won't alter existing rows).
+	safeAddColumn(db, "projects", "workspace_dir", "TEXT");
+	// Backfill workspace_dir from legacy `path` for rows that have one.
+	try {
+		const cols = (db.pragma("table_info(projects)") as Array<{ name: string }>).map(r => r.name);
+		if (cols.includes("path")) {
+			db.exec("UPDATE projects SET workspace_dir = COALESCE(workspace_dir, path) WHERE workspace_dir IS NULL");
+		}
+	} catch { /* ignore */ }
+	safeAddIndex(db, "projects", "idx_projects_workspace", "workspace_dir");
 
 	db.exec(`CREATE TABLE IF NOT EXISTS project_wiki (
 		id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),

@@ -92,6 +92,8 @@ export class AgentService {
 	private agentToolStore: import("./agent-tool-store.js").AgentToolStore | null = null;
 	private sessionManager: SessionManager | null = null;
 	private metricsAdapter: EventMetricsAdapter | null = null;
+	// v0.8 (M0): ZeroAdminService handle, injected into zero sessions only.
+	private zeroAdmin: import("./zero-admin-service.js").ZeroAdminService | null = null;
 
 	// Module readiness — modules notify when loaded, deferred actions wait until ready
 	private readyModules = new Set<string>();
@@ -134,6 +136,10 @@ export class AgentService {
 	setSessionManager(sm: SessionManager): void {
 		this.sessionManager = sm;
 		this.metricsAdapter = createEventMetricsAdapter(sm);
+	}
+	/** v0.8 (M0): inject the ZeroAdminService, gated to zero sessions only. */
+	setZeroAdmin(svc: import("./zero-admin-service.js").ZeroAdminService): void {
+		this.zeroAdmin = svc;
 	}
 	getSessionManager(): SessionManager | null {
 		return this.sessionManager;
@@ -274,19 +280,26 @@ export class AgentService {
 						if (e.type === "internal") return e.agentId !== agentId;
 						return true;
 					});
-					const agentMap = new Map<string, { id: string; name: string; systemPrompt?: string; model?: string }>();
+					const agentMap = new Map<string, { id: string; name: string; systemPrompt?: string; model?: string; toolPolicy?: any }>();
 					for (const agent of this.agentStore.list()) {
 						agentMap.set(agent.id, {
 							id: agent.id,
 							name: agent.name,
 							systemPrompt: agent.systemPrompt,
 							model: agent.model,
+							toolPolicy: agent.toolPolicy,
 						});
 					}
 					return { entries, agents: agentMap };
 				},
 			getToolConfig: () => this.registry.getToolConfig(),
 			};
+		// v0.8 (M0): zero sessions get the ZeroAdminService handle so the
+		// CreateProject/CreateAgent/InstantiatePreset/SetToolPolicy/ExposeAgentAsTool
+		// tools are available (gated via CONDITIONAL_TOOLS on ctx.zeroAdmin).
+		if (agent?.roleTag === "zero" && this.zeroAdmin) {
+			(sessionConfig as any).zeroAdmin = this.zeroAdmin;
+		}
 		// Initialize run state for this session
 		if (!this.runStates.has(sessionId)) {
 			this.runStates.set(sessionId, { agentId, isBusy: false, streamingText: "", toolCalls: [] });
@@ -337,7 +350,9 @@ export class AgentService {
 	/**
 	 * Send a prompt with workflow role awareness.
 	 * Injects role-specific system prompt, tool policy, and workflow context
-	 * (wikiStore, requirementStore, projectId, taskStepStore, createRoleLoop) into the session.
+	 * (wikiStore, requirementStore, projectId, taskStepStore) into the session.
+	 * v0.8 (M0): createRoleLoop removed; sub-agent dispatch flows through
+	 * delegateTask via agent-as-tool + toolPolicy.
 	 */
 	async sendRolePrompt(
 		agentId: string,
@@ -352,7 +367,6 @@ export class AgentService {
 			requirementStore?: any;
 			taskStepStore?: any;
 			activeRequirementId?: string;
-			createRoleLoop?: any;
 		},
 	): Promise<void> {
 		const agent = this.agentStore?.get(agentId);
@@ -397,9 +411,9 @@ export class AgentService {
 					if (e.type === "internal") return e.agentId !== agentId;
 					return true;
 				});
-				const agentMap = new Map<string, { id: string; name: string; systemPrompt?: string; model?: string }>();
+				const agentMap = new Map<string, { id: string; name: string; systemPrompt?: string; model?: string; toolPolicy?: any }>();
 				for (const a of this.agentStore!.list()) {
-					agentMap.set(a.id, { id: a.id, name: a.name, systemPrompt: a.systemPrompt, model: a.model });
+					agentMap.set(a.id, { id: a.id, name: a.name, systemPrompt: a.systemPrompt, model: a.model, toolPolicy: a.toolPolicy });
 				}
 				return { entries, agents: agentMap };
 			},
@@ -417,7 +431,6 @@ export class AgentService {
 
 		// Inject M3 fields into sessionConfig (via `as any` since SessionConfig doesn't have them typed)
 		(sessionConfig as any).taskStepStore = context.taskStepStore;
-		(sessionConfig as any).createRoleLoop = context.createRoleLoop;
 
 		let loop = this.loops.get(sessionId);
 		if (!loop) {
@@ -449,100 +462,10 @@ export class AgentService {
 			this.emit({ type: "error", error: (err as Error).message, agentId });
 		}
 	}
-	/**
-	 * Create a role loop factory — used by LeadService to dispatch sub-agents.
-	 * Returns a function that creates temporary AgentLoop instances for sub-agent execution.
-	 */
-	createRoleLoopFactory(
-		project: { id: string; name: string; path: string },
-		wikiStore: any,
-		taskStepStore: any,
-	): import("../runtime/types.js").ToolExecutionContext["createRoleLoop"] {
-		const self = this;
-		return async (params) => {
-			// 1. Get role config
-			const roleConfig = getRoleConfig(params.role);
-
-			// 2. Build systemPrompt — use provided or fallback to role append
-			const systemPrompt = params.systemPrompt || roleConfig.promptAppend;
-
-			// 3. Build tool policy for sub-agent
-			const subToolPolicy = {
-				autoApprove: roleConfig.toolPolicy.autoApprove,
-				blockedTools: roleConfig.toolPolicy.blockedTools,
-			};
-
-			// 4. Create temporary AgentLoop (not persisted to DB)
-			const subAgentId = `role-${params.role}-${Date.now()}`;
-			const subSession = self.db.createSession(subAgentId);
-			const subSessionId = subSession.id;
-
-			const subConfig: SessionConfig = {
-				agentId: subAgentId,
-				workspaceDir: params.workspaceDir || project.path,
-				systemPrompt,
-				modelId: self.defaultModel || "",
-				providerName: self.defaultProvider || "",
-				sessionId: subSessionId,
-				db: self.db,
-				toolPolicy: subToolPolicy,
-				agentRole: params.role,
-				projectContext: {
-					projectId: project.id,
-					projectName: project.name,
-					projectPath: project.path,
-				},
-				getMcpTools: async (aid?: string) => {
-					const mcpToolInfos = self.mcp.getToolsForAgent(aid);
-					return buildMcpTools(mcpToolInfos, (serverId, toolName, args) =>
-						self.mcp.callTool(serverId, toolName, args),
-					);
-				},
-				getToolConfig: () => self.registry.getToolConfig(),
-			};
-
-			// 5. Create and execute AgentLoop
-			const loop = new AgentLoop(subConfig, self.providerConfigs, {
-				onEvent: (_event: StreamEvent) => {
-					// Silently consume sub-agent events — don't forward to UI
-				},
-			});
-
-			self.loops.set(subSessionId, loop);
-			if (!self.runStates.has(subSessionId)) {
-				self.runStates.set(subSessionId, {
-					agentId: subAgentId,
-					isBusy: false,
-					streamingText: "",
-					toolCalls: [],
-				});
-			}
-
-			try {
-				await loop.run(params.task);
-				const result = loop.getResult();
-
-				// 6. Collect changed files (best effort — git diff)
-				let changedFiles: string[] = [];
-				try {
-					const { execSync } = require("child_process");
-					const diffOutput = execSync(
-						`git -C "${project.path}" diff --name-only HEAD`,
-						{ encoding: "utf-8", timeout: 10000 },
-					);
-					changedFiles = diffOutput.split("\n").filter(Boolean);
-				} catch {
-					// git not available or no changes
-				}
-
-				return { result, changedFiles };
-			} finally {
-				// Cleanup temporary loop
-				self.loops.delete(subSessionId);
-				self.runStates.delete(subSessionId);
-			}
-		};
-	}
+	// v0.8 (M0): createRoleLoopFactory removed. Sub-agent dispatch now flows
+	// through delegateTask (extended signature carries target agent full
+	// config + per-call override + caller bundle inheritance). Lead/orchestrate
+	// callers must use the agent-as-tool + toolPolicy path (decision 16).
 	async abort(agentId?: string): Promise<void> {
 		if (agentId) {
 			const sessionId = this.activeSessions.get(agentId);
@@ -971,6 +894,8 @@ export function registerAgentToolEntries(agentToolStore: import("./agent-tool-st
 			source: "agent",
 			agentToolId: entry.id,
 			configSchema: [],
+			// v0.8 (M0): carry the stable entry id on the tool info so the UI
+			// can resolve toggle state by id (decision 2) while showing name.
 			meta: {
 				isReadOnly: entry.type === "internal" || entry.transport === "http",
 				isDestructive: entry.type === "external" && entry.transport === "cli",

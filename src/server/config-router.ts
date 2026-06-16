@@ -219,6 +219,8 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 				group: d.category,
 				source: d.source,
 				mcpServerName: d.mcpServerName,
+				// v0.8 (M0): surface stable agent-tool entry id for policy keying
+				agentToolId: d.agentToolId,
 				configSchema: d.configSchema,
 				meta: d.meta,
 				inputFields: getToolInputFields(ALL_TOOLS[d.name]),

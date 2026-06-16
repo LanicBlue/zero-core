@@ -45,6 +45,7 @@ const COLUMNS: ColumnDef[] = [
 	{ key: "toolPolicy", column: "tool_policy", json: true },
 	{ key: "skillPolicy", column: "skill_policy", json: true },
 	{ key: "knowledgeBaseIds", column: "knowledge_base_ids", json: true },
+	{ key: "roleTag", column: "role_tag" },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
 ];
@@ -87,6 +88,11 @@ export class AgentStore {
 
 	list(): AgentRecord[] {
 		return this.store.list();
+	}
+
+	/** List agents by roleTag (preset entry grouping). */
+	listByRoleTag(roleTag: string): AgentRecord[] {
+		return this.store.list().filter((a) => a.roleTag === roleTag);
 	}
 
 	get(id: string): AgentRecord | undefined {

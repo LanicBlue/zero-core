@@ -50,17 +50,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 		try {
 			const agents = await api().agentsList();
 			const projects = await api().projectsList();
-			const existingPaths = new Set(projects.map((p: ProjectRecord) => p.path));
+			// v0.8 (M0): ProjectRecord uses workspaceDir (was: path)
+			const existingPaths = new Set(projects.map((p: ProjectRecord) => p.workspaceDir));
 
 			for (const agent of agents) {
 				if (agent.workspaceDir && !existingPaths.has(agent.workspaceDir)) {
 					try {
 						await api().projectsCreate({
 							name: agent.name,
-							path: agent.workspaceDir,
-							analysisInterval: "daily",
-							status: "active",
-						});
+							workspaceDir: agent.workspaceDir,
+						} as any);
 					} catch {
 						// 可能路径冲突或其他错误，跳过
 					}

@@ -124,7 +124,7 @@ export class SessionDB {
 				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 			);
 			CREATE INDEX IF NOT EXISTS idx_turns_session_seq ON turns(session_id, seq);
-			
+
 			CREATE TABLE IF NOT EXISTS turn_state (
 				session_id  TEXT NOT NULL,
 				turn_seq    INTEGER NOT NULL,
@@ -138,23 +138,33 @@ export class SessionDB {
 			);
 			CREATE INDEX IF NOT EXISTS idx_turn_state_session ON turn_state(session_id);
 
-				CREATE TABLE IF NOT EXISTS tool_executions (
-					id             INTEGER PRIMARY KEY AUTOINCREMENT,
-					session_id     TEXT NOT NULL,
-					agent_id       TEXT NOT NULL,
-					tool_name      TEXT NOT NULL,
-					success        INTEGER NOT NULL DEFAULT 1,
-					error_message  TEXT,
-					input_preview  TEXT,
-					output_preview TEXT,
-					duration_ms    INTEGER NOT NULL DEFAULT 0,
-					turn_seq       INTEGER,
-					created_at     TEXT NOT NULL
-				);
-				CREATE INDEX IF NOT EXISTS idx_tool_exec_session ON tool_executions(session_id);
-				CREATE INDEX IF NOT EXISTS idx_tool_exec_agent_tool ON tool_executions(agent_id, tool_name);
-				CREATE INDEX IF NOT EXISTS idx_tool_exec_created ON tool_executions(created_at);
+			CREATE TABLE IF NOT EXISTS tool_executions (
+				id             INTEGER PRIMARY KEY AUTOINCREMENT,
+				session_id     TEXT NOT NULL,
+				agent_id       TEXT NOT NULL,
+				tool_name      TEXT NOT NULL,
+				success        INTEGER NOT NULL DEFAULT 1,
+				error_message  TEXT,
+				input_preview  TEXT,
+				output_preview TEXT,
+				duration_ms    INTEGER NOT NULL DEFAULT 0,
+				turn_seq       INTEGER,
+				created_at     TEXT NOT NULL
+			);
+			CREATE INDEX IF NOT EXISTS idx_tool_exec_session ON tool_executions(session_id);
+			CREATE INDEX IF NOT EXISTS idx_tool_exec_agent_tool ON tool_executions(agent_id, tool_name);
+			CREATE INDEX IF NOT EXISTS idx_tool_exec_created ON tool_executions(created_at);
 		`);
+
+		// v0.8 (M0): session context bundle columns + routing index.
+		// JSON-stored context + extracted context_project_id column for the
+		// (agentId, projectId) find-or-create routing key (RFC §2.11).
+		this.safeAddColumn("sessions", "context", "TEXT");
+		this.safeAddColumn("sessions", "context_project_id", "TEXT");
+		this.safeAddColumn("sessions", "context_workspace_dir", "TEXT");
+		this.safeAddColumn("sessions", "context_wiki_root_node_id", "TEXT");
+		// Routing index — must come AFTER context_project_id exists.
+		this.safeAddIndex("sessions", "idx_sessions_agent_project", "agent_id, context_project_id");
 
 		// Migrate renamed tools (Bash -> Shell, etc.)
 		this.migrateToolNames();
@@ -164,6 +174,26 @@ export class SessionDB {
 	hasStepSchema(): boolean {
 		const cols = (this.db.pragma("table_info(turns)") as Array<{ name: string }>).map(r => r.name);
 		return cols.includes("turn_group");
+	}
+
+	/** Idempotently add a column to an existing table (no-op if present). */
+	private safeAddColumn(table: string, column: string, def: string): void {
+		try {
+			const cols = (this.db.pragma(`table_info(${table})`) as Array<{ name: string }>).map(r => r.name);
+			if (!cols.includes(column)) {
+				this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+			}
+		} catch { /* column already exists */ }
+	}
+
+	/** Idempotently create an index on an existing table (no-op if present). */
+	private safeAddIndex(table: string, indexName: string, columns: string): void {
+		try {
+			const indexes = (this.db.pragma(`index_list(${table})`) as Array<{ name: string }>).map(r => r.name);
+			if (!indexes.includes(indexName)) {
+				this.db.exec(`CREATE INDEX ${indexName} ON ${table}(${columns})`);
+			}
+		} catch { /* index already exists */ }
 	}
 
 	private migrateToolNames(): void {
@@ -183,13 +213,20 @@ export class SessionDB {
 	// Session CRUD
 	// -----------------------------------------------------------------------
 
-	createSession(agentId: string, title?: string): SessionRecord {
+	createSession(agentId: string, title?: string, context?: SessionRecord["context"]): SessionRecord {
 		const now = new Date().toISOString();
 		const id = uuidv4();
+		const ctxJson = context ? JSON.stringify(context) : null;
 		this.db.prepare(
-			"INSERT INTO sessions (id, agent_id, is_main, title, created_at, updated_at) VALUES (?, ?, 0, ?, ?, ?)",
-		).run(id, agentId, title ?? null, now, now);
-		return { id, agentId, isMain: false, title: title ?? null, createdAt: now, updatedAt: now };
+			"INSERT INTO sessions (id, agent_id, is_main, title, created_at, updated_at, context, context_project_id, context_workspace_dir, context_wiki_root_node_id) " +
+			"VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?)",
+		).run(
+			id, agentId, title ?? null, now, now, ctxJson,
+			context?.projectId ?? null,
+			context?.workspaceDir ?? null,
+			context?.wikiRootNodeId ?? null,
+		);
+		return { id, agentId, isMain: false, title: title ?? null, createdAt: now, updatedAt: now, context };
 	}
 
 	getSession(sessionId: string): SessionRecord | undefined {
@@ -222,6 +259,51 @@ export class SessionDB {
 			"SELECT * FROM sessions WHERE agent_id != '__recovered__' ORDER BY updated_at DESC",
 		).all() as any[];
 		return rows.map((r) => this.rowToRecord(r));
+	}
+
+	/**
+	 * v0.8 (M0): find-or-create routing key for `{role(agentId), projectId} → session`.
+	 * Used by discuss / notification / cron to land on a stable session per
+	 * (role, project). Returns existing session if found, otherwise undefined
+	 * (caller creates via createSession with the bundle).
+	 *
+	 * Lookup = (agentId, context.projectId). Sessions without a projectId in
+	 * their context bundle do not match this query (they are global sessions).
+	 */
+	findSessionByAgentAndProject(agentId: string, projectId: string): SessionRecord | undefined {
+		const row = this.db.prepare(
+			"SELECT * FROM sessions WHERE agent_id = ? AND context_project_id = ? " +
+			"ORDER BY updated_at DESC LIMIT 1",
+		).get(agentId, projectId) as any;
+		return row ? this.rowToRecord(row) : undefined;
+	}
+
+	/** Update a session's context bundle. */
+	updateSessionContext(sessionId: string, context: SessionRecord["context"]): void {
+		const now = new Date().toISOString();
+		this.db.prepare(
+			"UPDATE sessions SET context = ?, context_project_id = ?, context_workspace_dir = ?, " +
+			"context_wiki_root_node_id = ?, updated_at = ? WHERE id = ?",
+		).run(
+			context ? JSON.stringify(context) : null,
+			context?.projectId ?? null,
+			context?.workspaceDir ?? null,
+			context?.wikiRootNodeId ?? null,
+			now, sessionId,
+		);
+	}
+
+	/** Get a session's context bundle (D-B). */
+	getSessionContext(sessionId: string): SessionRecord["context"] | undefined {
+		const row = this.db.prepare(
+			"SELECT context FROM sessions WHERE id = ?",
+		).get(sessionId) as { context: string | null } | undefined;
+		if (!row || !row.context) return undefined;
+		try {
+			return JSON.parse(row.context) as SessionRecord["context"];
+		} catch {
+			return undefined;
+		}
 	}
 	deleteSession(sessionId: string): void {
 		this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
@@ -793,6 +875,27 @@ export class SessionDB {
 	// -----------------------------------------------------------------------
 
 	private rowToRecord(row: any): SessionRecord {
+		let context: SessionRecord["context"] | undefined;
+		if (row.context) {
+			try {
+				context = JSON.parse(row.context) as SessionRecord["context"];
+			} catch {
+				// Reconstruct from columns if JSON parse fails
+				if (row.context_workspace_dir || row.context_wiki_root_node_id) {
+					context = {
+						projectId: row.context_project_id ?? undefined,
+						workspaceDir: row.context_workspace_dir ?? "",
+						wikiRootNodeId: row.context_wiki_root_node_id ?? "",
+					};
+				}
+			}
+		} else if (row.context_workspace_dir || row.context_wiki_root_node_id) {
+			context = {
+				projectId: row.context_project_id ?? undefined,
+				workspaceDir: row.context_workspace_dir ?? "",
+				wikiRootNodeId: row.context_wiki_root_node_id ?? "",
+			};
+		}
 		return {
 			id: row.id,
 			agentId: row.agent_id,
@@ -807,6 +910,7 @@ export class SessionDB {
 			cacheWriteTokens: row.cache_write_tokens ?? 0,
 			reasoningTokens: row.reasoning_tokens ?? 0,
 			estimatedCostUsd: row.estimated_cost_usd ?? 0,
+			context,
 		};
 	}
 }

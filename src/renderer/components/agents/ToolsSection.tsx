@@ -42,6 +42,16 @@ const GROUP_LABELS: Record<string, string> = {
 	mcp: "MCP 工具",
 };
 
+/**
+ * v0.8 (M0): resolve the policy key for a tool. Agent-tools are keyed by
+ * `AgentToolEntry.id` (stable across renames); built-in tools stay keyed
+ * by name. Returns the key to look up in `toolsMap`, or the name if the
+ * agent-tool has no id (legacy / external).
+ */
+function policyKeyFor(t: ModelInfo): string {
+	return (t as any).agentToolId ?? t.name;
+}
+
 export function ToolsSection({ form, tools, toggleTool, toolsTokenEstimate }: Props) {
 	const [expandedTool, setExpandedTool] = useState<string | null>(null);
 	const groups: Record<string, typeof tools> = {};
@@ -60,8 +70,13 @@ export function ToolsSection({ form, tools, toggleTool, toolsTokenEstimate }: Pr
 					<h5 className="tool-group-title">{GROUP_LABELS[group] || group}</h5>
 					<div className="tool-list">
 						{groupTools.map((t) => {
+							// v0.8 (M0): agent-tools resolve by stable id (decision 2),
+							// UI still displays t.name.
+							const key = policyKeyFor(t);
 							const enabled = toolsMap
-								? (t.name in toolsMap ? toolsMap[t.name].enabled : DEFAULT_ENABLED_TOOLS.has(t.name))
+								? (key in toolsMap
+									? toolsMap[key].enabled
+									: (t.name in toolsMap ? toolsMap[t.name].enabled : DEFAULT_ENABLED_TOOLS.has(t.name)))
 								: DEFAULT_ENABLED_TOOLS.has(t.name);
 							return (
 								<div key={t.name}>
@@ -75,7 +90,7 @@ export function ToolsSection({ form, tools, toggleTool, toolsTokenEstimate }: Pr
 											type="button"
 											title={enabled ? "Disable" : "Enable"}
 											className={`toggle-switch ${enabled ? "on" : ""}`}
-											onClick={() => toggleTool(t.name)}
+											onClick={() => toggleTool(key)}
 										/>
 									</div>
 									{expandedTool === t.name && t.description && (

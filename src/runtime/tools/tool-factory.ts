@@ -45,7 +45,8 @@ export type ToolCategory =
 	| "thinking"
 	| "assistant"
 	| "interaction"
-	| "agent";
+	| "agent"
+	| "zero-admin";
 
 export interface ToolMeta {
 	category: ToolCategory;

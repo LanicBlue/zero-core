@@ -37,21 +37,25 @@ export function createProjectRouter(deps: {
 	const router = Router();
 	const { projectStore, requirementStore, wikiStore, taskStepStore, analystService } = deps;
 
-	/** GET / — list projects (optional ?status= filter) */
-	router.get("/", (req, res) => {
-		const filter: { status?: string } = {};
-		if (req.query.status) filter.status = req.query.status as string;
-		res.json(projectStore.list(filter));
+	/** GET / — list projects */
+	router.get("/", (_req, res) => {
+		// v0.8 (M0): status filter removed (ProjectRecord slimmed)
+		res.json(projectStore.list());
 	});
 
 	/** POST / — create project */
 	router.post("/", (req, res) => {
 		try {
-			const existing = projectStore.getByPath(req.body.path);
-			if (existing) {
-				return res.status(409).json({ error: "Project with this path already exists" });
+			// v0.8 (M0): workspaceDir is the unique key (was: path)
+			const workspaceDir = req.body.workspaceDir ?? req.body.path;
+			if (!workspaceDir) {
+				return res.status(400).json({ error: "workspaceDir is required" });
 			}
-			const p = projectStore.create(req.body);
+			const existing = projectStore.getByWorkspaceDir(workspaceDir);
+			if (existing) {
+				return res.status(409).json({ error: "Project with this workspaceDir already exists" });
+			}
+			const p = projectStore.create({ name: req.body.name, workspaceDir });
 			res.status(201).json(p);
 
 			// Async cold-start analysis (non-blocking)
@@ -134,8 +138,9 @@ export function createProjectRouter(deps: {
 			return res.status(503).json({ error: "Analyst service not available" });
 		}
 
-		// If first time (no lastAnalysisAt), run full; otherwise incremental
-		const isFull = !project.lastAnalysisAt;
+		// v0.8 (M0): lastAnalysisAt removed from ProjectRecord; use wiki-node
+		// presence as the "first time?" signal (matches analyst-service logic).
+		const isFull = wikiStore.listByProject(project.id).length === 0;
 		const analysisPromise = isFull
 			? analystService.runFullAnalysis(project.id)
 			: analystService.runIncrementalAnalysis(project.id);

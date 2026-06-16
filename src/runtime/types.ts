@@ -24,6 +24,7 @@
 //
 import type { ModelMessage } from "ai";
 import type { ISessionStore } from "./session-store-interface.js";
+import type { SessionContextBundle } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
 // Stream events — must match the existing IPC contract
@@ -255,7 +256,18 @@ export interface SessionConfig {
 	getRagContext?: (agentId: string, query: string) => Promise<string | undefined>;
 	getAgentToolEntries?: () => Promise<{
 		entries: Array<import("../shared/types.js").AgentToolEntry>;
-		agents: Map<string, { id: string; name: string; systemPrompt?: string; model?: string }>;
+		/**
+		 * v0.8 (M0): carries target agent's full identity + toolPolicy so the
+		 * agent-tool path can pass them to delegateTask (decision 16 — identity
+		 * / toolPolicy / history use the target agent's own config).
+		 */
+		agents: Map<string, {
+			id: string;
+			name: string;
+			systemPrompt?: string;
+			model?: string;
+			toolPolicy?: SessionConfig["toolPolicy"];
+		}>;
 	}>;
 	getToolConfig?: () => Record<string, Record<string, any>>;
 	compression?: {
@@ -283,6 +295,17 @@ export interface SessionConfig {
 	/** Injected into ToolExecutionContext for workflow tools */
 	wikiStore?: any;                       // ProjectWikiStore
 	requirementStore?: any;                // RequirementStore
+	/**
+	 * v0.8 (M0): session context bundle (D-B) carried by the SessionConfig.
+	 * Sub-agents built from this config inherit this bundle unless the caller
+	 * overrides per-call via DelegateTaskOptions.contextOverride.
+	 */
+	contextBundle?: SessionContextBundle;
+	/**
+	 * v0.8 (M0): ZeroAdminService handle for the zero role's management tools.
+	 * Only set on zero sessions.
+	 */
+	zeroAdmin?: any;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,7 +339,15 @@ export interface ToolExecutionContext {
 	turnSeq?: number;
 	emit: (event: StreamEvent) => void;
 	db?: ISessionStore;
-	delegateTask?: (task: string, options?: { model?: string; systemPrompt?: string }) => Promise<string>;
+	/**
+	 * v0.8 (M0): extended delegateTask signature (RFC §2.11 / decision 16).
+	 * Passes target agent full config + per-call override + caller bundle
+	 * inheritance. Identity/toolPolicy/history come from the target agent.
+	 *
+	 * Legacy 2-arg callers (`task`, `{model, systemPrompt}`) still work —
+	 * the extended fields are all optional.
+	 */
+	delegateTask?: (task: string, options?: import("./subagent-delegator.js").DelegateTaskOptions) => Promise<string>;
 	delegateTaskBackground?: (task: string, options?: { model?: string; systemPrompt?: string }) => string;
 	getTaskResult?: (taskId: string) => TaskInfo | null;
 	listTasks?: (filter?: "running" | "completed") => TaskInfo[];
@@ -334,18 +365,18 @@ export interface ToolExecutionContext {
 	agentRole?: string;                 // Current agent role (analyst | lead | developer | reviewer | qa)
 	projectPath?: string;               // Project root directory path
 	activeRequirementId?: string;       // Current requirement ID for orchestration
-	// Orchestration — injected into Lead session for sub-agent dispatch
-	createRoleLoop?: (params: {
-		role: string;
-		task: string;
-		systemPrompt: string;
-		toolPolicy: { allow: string[]; deny: string[] };
-		wikiContext?: string;
-		workspaceDir?: string;
-	}) => Promise<{
-		result: string;           // sub-agent execution result summary
-		changedFiles: string[];   // list of changed file paths
-	}>;
+	// v0.8 (M0): createRoleLoop removed from context. Sub-agent dispatch
+	// now flows through delegateTask (extended signature carries target agent
+	// full config + per-call override + caller bundle inheritance).
+	/** v0.8 (M0): session context bundle (D-B) carried by this loop. */
+	contextBundle?: SessionContextBundle;
+	/**
+	 * v0.8 (M0): ZeroAdminService handle for the zero global-management
+	 * role's tools (create/update/delete project, agent, set toolPolicy,
+	 * expose-as-tool). Only present on zero sessions; absent elsewhere so
+	 * the tools gate themselves out via CONDITIONAL_TOOLS.
+	 */
+	zeroAdmin?: any;
 }
 
 // ---------------------------------------------------------------------------

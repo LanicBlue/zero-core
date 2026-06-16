@@ -155,6 +155,11 @@ export async function startServer(options?: StartServerOptions) {
 	agentService.setAgentStore(agentStore);
 	agentService.setAgentToolStore(agentToolStore);
 
+	// v0.8 (M0): ZeroAdminService — zero global-management role's tool backend.
+	const { ZeroAdminService } = await import("./zero-admin-service.js");
+	const zeroAdmin = new ZeroAdminService({ agentStore, projectStore, agentToolStore });
+	agentService.setZeroAdmin(zeroAdmin);
+
 	agentService.subscribe((event: any) => {
 		// Forward all agent events to WebSocket clients
 		const msg = JSON.stringify(event);
@@ -293,7 +298,9 @@ export async function startServer(options?: StartServerOptions) {
 		const origJson = res.json.bind(res);
 		res.json = (body: any) => {
 			if (res.statusCode === 201 && body?.id) {
-				cronManager.scheduleProject(body.id, body.analysisInterval || "daily");
+				// v0.8 (M0): analysisInterval removed from ProjectRecord (cron
+				// becomes first-class in M1). Default to daily until then.
+				cronManager.scheduleProject(body.id, "daily");
 			}
 			return origJson(body);
 		};
@@ -301,19 +308,18 @@ export async function startServer(options?: StartServerOptions) {
 	});
 	projectRouter.put("/:id/interval", (req, res) => {
 		const { interval } = req.body;
-		projectStore.update(req.params.id, { analysisInterval: interval } as any);
+		// v0.8 (M0): analysisInterval no longer on ProjectRecord; just reschedule
 		cronManager.rescheduleProject(req.params.id, interval);
 		res.json({ ok: true });
 	});
 	projectRouter.post("/:id/pause", (req, res) => {
-		projectStore.update(req.params.id, { status: "paused" } as any);
+		// v0.8 (M0): status removed from ProjectRecord; just unschedule
 		cronManager.unscheduleProject(req.params.id);
 		res.json({ ok: true });
 	});
 	projectRouter.post("/:id/resume", (req, res) => {
-		const project = projectStore.get(req.params.id);
-		projectStore.update(req.params.id, { status: "active" } as any);
-		if (project) cronManager.scheduleProject(req.params.id, project.analysisInterval);
+		// v0.8 (M0): status / analysisInterval removed; default to daily
+		cronManager.scheduleProject(req.params.id, "daily");
 		res.json({ ok: true });
 	});
 	app.use("/api/projects", projectRouter);
@@ -353,6 +359,10 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/requirements", requirementRouter);
 
 	app.use("/api/project-wiki", createWikiRouter({ wikiStore }));
+
+	// v0.8 (M0): role presets — list + one-click instantiate
+	const { createPresetRouter } = await import("./preset-router.js");
+	app.use("/api/presets", createPresetRouter(zeroAdmin));
 
 	// Tool execute
 	app.post("/api/tool-execute", async (req, res) => {

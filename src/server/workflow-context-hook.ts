@@ -88,7 +88,8 @@ export function registerWorkflowContextHook(deps: {
 		if (policy.injectProjectInfo && projectId) {
 			const project = deps.projectStore.get(projectId);
 			if (project) {
-				parts.push(`## Project\n- Name: ${project.name}\n- Path: ${project.path}\n- Working directory: ${project.path}`);
+				// v0.8 (M0): ProjectRecord slimmed to workspaceDir
+				parts.push(`## Project\n- Name: ${project.name}\n- Working directory: ${project.workspaceDir}`);
 			}
 		}
 
@@ -98,10 +99,7 @@ export function registerWorkflowContextHook(deps: {
 			if (baseline) {
 				parts.push(`## Wiki Baseline\n${baseline}`);
 			}
-			const project = deps.projectStore.get(projectId);
-			if (project?.lastAnalysisAt) {
-				parts.push(`## Last Analysis: ${project.lastAnalysisAt}`);
-			}
+			// v0.8 (M0): lastAnalysisAt removed; (archivist, project) cursor lands in M5
 		}
 
 		// Requirement detail (Lead / Developer / Reviewer / QA)
