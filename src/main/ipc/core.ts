@@ -67,6 +67,8 @@ let _wikiStore: any;
 let _taskStepStore: any;
 let _analystService: any;
 let _leadService: any;
+// v0.8 (M1): cron store — first-class cron entity.
+let _cronStore: any = null;
 // M5 services
 let _cronManager: any = null;
 let _gitIntegration: any = null;
@@ -102,6 +104,8 @@ const _ctx: IpcContext = {
 	get taskStepStore() { return _taskStepStore; },
 	get analystService() { return _analystService; },
 	get leadService() { return _leadService; },
+	// v0.8 (M1): cron store
+	get cronStore() { return _cronStore; },
 	// M5 services
 	get cronManager() { return _cronManager; },
 	get gitIntegration() { return _gitIntegration; },
@@ -175,7 +179,7 @@ export async function loadCoreModules(): Promise<void> {
 		runtimeToolsMod, trMod, recoveryMod,
 		projectStoreMod, requirementStoreMod, wikiStoreMod, taskStepStoreMod,
 		analystSvcMod, leadSvcMod, reqHooksMod, wfCtxHookMod,
-		gitIntegMod, notifSvcMod, cronAnalysisMod,
+		gitIntegMod, notifSvcMod, cronAnalysisMod, cronStoreMod,
 	] = await Promise.all([
 		import(toFileURL(join(_distServer, "agent-store.js"))),
 		import(toFileURL(join(_distServer, "provider-store.js"))),
@@ -207,6 +211,8 @@ export async function loadCoreModules(): Promise<void> {
 		import(toFileURL(join(_distServer, "git-integration.js"))),
 		import(toFileURL(join(_distServer, "notification-service.js"))),
 		import(toFileURL(join(_distServer, "cron-analysis.js"))),
+		// M1 module
+		import(toFileURL(join(_distServer, "cron-store.js"))),
 	]);
 	log.ipc("All imports done", `+${Date.now() - t0}ms`);
 
@@ -257,6 +263,8 @@ export async function loadCoreModules(): Promise<void> {
 			_requirementStore = new requirementStoreMod.RequirementStore(_sessionDb);
 			_wikiStore = new wikiStoreMod.ProjectWikiStore(_sessionDb);
 			_taskStepStore = new taskStepStoreMod.TaskStepStore(_sessionDb);
+			// v0.8 (M1): cron store — first-class cron entity.
+			_cronStore = new cronStoreMod.CronStore(_sessionDb);
 
 			console.log("[startup] workspaceConfig:", JSON.stringify(_workspaceConfig));
 			// Apply proxy config
@@ -420,8 +428,11 @@ export async function loadCoreModules(): Promise<void> {
 			requirementStore: _requirementStore,
 		});
 		_cronManager = new cronAnalysisMod.CronAnalysisManager({
-			analystService: _analystService,
+			agentService: _agentService,
+			agentStore: _agentStore,
 			projectStore: _projectStore,
+			sessionDB: _sessionDb,
+			cronStore: _cronStore,
 		});
 
 		// Inject GitIntegration into AnalystService

@@ -36,7 +36,8 @@
 import type { AgentStore } from "./agent-store.js";
 import type { ProjectStore } from "./project-store.js";
 import type { AgentToolStore } from "./agent-tool-store.js";
-import type { AgentRecord, ProjectRecord } from "../shared/types.js";
+import type { CronStore } from "./cron-store.js";
+import type { AgentRecord, ProjectRecord, CronRecord } from "../shared/types.js";
 import { buildAgentFromPreset, getPreset, type RolePreset } from "../runtime/role-presets.js";
 import { log } from "../core/logger.js";
 
@@ -44,17 +45,31 @@ export interface ZeroAdminDeps {
 	agentStore: AgentStore;
 	projectStore: ProjectStore;
 	agentToolStore: AgentToolStore;
+	/** v0.8 M1: cron store — optional so M0 callers (and tests) still work. */
+	cronStore?: CronStore;
 }
 
 export class ZeroAdminService {
 	private agentStore: AgentStore;
 	private projectStore: ProjectStore;
 	private agentToolStore: AgentToolStore;
+	private cronStore: CronStore | null;
 
 	constructor(deps: ZeroAdminDeps) {
 		this.agentStore = deps.agentStore;
 		this.projectStore = deps.projectStore;
 		this.agentToolStore = deps.agentToolStore;
+		this.cronStore = deps.cronStore ?? null;
+	}
+
+	/** v0.8 M1: late-bind the cron store (matches M0 ordering where cron lands after stores). */
+	setCronStore(cronStore: CronStore): void {
+		this.cronStore = cronStore;
+	}
+
+	private requireCronStore(): CronStore {
+		if (!this.cronStore) throw new Error("CronStore not wired into ZeroAdminService (M1)");
+		return this.cronStore;
 	}
 
 	// ─── Projects ───────────────────────────────────────────────
@@ -92,6 +107,10 @@ export class ZeroAdminService {
 	deleteAgent(id: string): void {
 		// Cascade-clean agent-tool entries that referenced this agent.
 		this.agentToolStore.deleteByAgentId(id);
+		// v0.8 M1: also drop cron entries that referenced this agent (reverse
+		// direction — agent owns its crons). The inverse (deleting a cron) never
+		// touches the agent: cron deletion is an unbind, not a cascade.
+		this.cronStore?.deleteByAgent(id);
 		this.agentStore.delete(id);
 	}
 
@@ -221,6 +240,72 @@ export class ZeroAdminService {
 		// Re-import to avoid circular deps at module load
 		const { listPresets } = require("../runtime/role-presets.js");
 		return listPresets(roleTag);
+	}
+
+	// ─── Cron (v0.8 M1 — first-class cron entity) ───────────────
+	//
+	// One agent can carry N cron entries, each with its own workingScope.
+	// The cron's workingScope is the session-context bundle the cron resolves
+	// to on each trigger. projectId-optional: a global observation cron has
+	// none and routes to the agent's main session.
+
+	/** Validate the cron's agent + scope refs resolve, then persist. */
+	createCron(input: {
+		agentId: string;
+		workingScope: CronRecord["workingScope"];
+		schedule: CronRecord["schedule"];
+		prompt?: string;
+		enabled?: boolean;
+	}): CronRecord {
+		const store = this.requireCronStore();
+		if (!this.agentStore.get(input.agentId)) {
+			throw new Error(`Agent not found: ${input.agentId}`);
+		}
+		const scope = input.workingScope;
+		if (!scope || !scope.workspaceDir || !scope.wikiRootNodeId) {
+			throw new Error("workingScope requires workspaceDir and wikiRootNodeId");
+		}
+		if (scope.projectId && !this.projectStore.get(scope.projectId)) {
+			throw new Error(`Project not found: ${scope.projectId}`);
+		}
+		return store.create({
+			agentId: input.agentId,
+			workingScope: scope,
+			schedule: input.schedule,
+			prompt: input.prompt,
+			enabled: input.enabled ?? true,
+		});
+	}
+
+	/** Partial update of a cron row (scope / schedule / prompt / enabled). */
+	updateCron(id: string, input: Partial<Omit<CronRecord, "id" | "createdAt" | "updatedAt" | "agentId">>): CronRecord {
+		const store = this.requireCronStore();
+		const existing = store.get(id);
+		if (!existing) throw new Error(`Cron not found: ${id}`);
+		// Validate referenced project on scope change.
+		if (input.workingScope?.projectId && !this.projectStore.get(input.workingScope.projectId)) {
+			throw new Error(`Project not found: ${input.workingScope.projectId}`);
+		}
+		return store.update(id, input);
+	}
+
+	/**
+	 * Delete a cron entry. This is an *unbind* — the global agent it
+	 * referenced stays intact (acceptance-M1: "删 cron 不删它引用的全局 agent").
+	 */
+	deleteCron(id: string): void {
+		const store = this.requireCronStore();
+		store.delete(id);
+	}
+
+	listCrons(filter?: { agentId?: string }): CronRecord[] {
+		const store = this.requireCronStore();
+		if (filter?.agentId) return store.listByAgent(filter.agentId);
+		return store.list();
+	}
+
+	getCron(id: string): CronRecord | undefined {
+		return this.requireCronStore().get(id);
 	}
 
 	// ─── Private ────────────────────────────────────────────────

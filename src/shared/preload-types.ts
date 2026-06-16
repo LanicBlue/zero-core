@@ -40,6 +40,7 @@ import type {
 	ProjectRecord, CreateProjectInput, UpdateProjectInput,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
+	CronRecord, CreateCronInput, UpdateCronInput,
 } from "./types.js";
 
 export interface WindowApi {
@@ -250,4 +251,12 @@ export interface WindowApi {
 	projectsUpdateInterval: (id: string, interval: string) => Promise<{ success: true }>;
 	projectsPause: (id: string) => Promise<{ success: true }>;
 	projectsResume: (id: string) => Promise<{ success: true }>;
+
+	// ── M1: Cron (first-class cron entity) ──
+	cronsList: (filter?: { agentId?: string }) => Promise<CronRecord[]>;
+	cronsGet: (id: string) => Promise<CronRecord | undefined>;
+	cronsCreate: (input: CreateCronInput) => Promise<CronRecord | { error: string }>;
+	cronsUpdate: (id: string, input: UpdateCronInput) => Promise<CronRecord | { error: string }>;
+	cronsDelete: (id: string) => Promise<{ success: true }>;
+	cronsTrigger: (id: string) => Promise<{ success: true } | { error: string }>;
 }

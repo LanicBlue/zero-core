@@ -523,3 +523,35 @@ export type UpdateRequirementInput = Partial<Omit<RequirementRecord, "id" | "cre
 
 export type CreateWikiNodeInput = Omit<ProjectWikiNode, "id" | "createdAt" | "updatedAt">;
 export type UpdateWikiNodeInput = Partial<Omit<ProjectWikiNode, "id" | "createdAt" | "updatedAt">>;
+
+// ── Cron (v0.8 M1 — cron becomes a first-class entity) ────────
+
+/**
+ * v0.8 (M1): a CronRecord is one scheduled recurring run of a *global* agent
+ * against a *working scope* (RFC §4.3). One agent can carry N cron entries —
+ * one per scope (e.g. a global PM serving project A hourly and project B
+ * daily). The cron entry owns its own session bundle (`workingScope`); on
+ * trigger it routes to a session via resolveSessionByRoleProject (or, for
+ * observation cron with no projectId, a session keyed by agentId).
+ *
+ * schedule is one of the named cadences or a custom cron/interval string
+ * (kept opaque here; CronAnalysisManager parses it).
+ */
+export interface CronRecord {
+	id: string;
+	agentId: string;
+	/** Session-context bundle the cron resolves to on each trigger. */
+	workingScope: SessionContextBundle;
+	/** "off" disables the cron but keeps the row. */
+	schedule: CronSchedule;
+	prompt?: string;
+	enabled: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
+/** Named cadence presets; arbitrary cron/interval strings also allowed. */
+export type CronSchedule = "off" | "hourly" | "daily" | "weekly" | (string & {});
+
+export type CreateCronInput = Omit<CronRecord, "id" | "createdAt" | "updatedAt">;
+export type UpdateCronInput = Partial<Omit<CronRecord, "id" | "createdAt" | "updatedAt">>;

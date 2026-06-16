@@ -132,6 +132,8 @@ export async function startServer(options?: StartServerOptions) {
 	const requirementStore = new RequirementStore(sessionDB);
 	const wikiStore = new ProjectWikiStore(sessionDB);
 	const taskStepStore = new TaskStepStore(sessionDB);
+	// v0.8 (M1): cron store — first-class cron entity (one agent → N cron).
+	const cronStore = new (await import("./cron-store.js")).CronStore(sessionDB);
 
 	// Register workflow context hook (T2 context injection via PreLLMCall)
 	registerWorkflowContextHook({ projectStore, requirementStore, wikiStore, taskStepStore });
@@ -157,7 +159,7 @@ export async function startServer(options?: StartServerOptions) {
 
 	// v0.8 (M0): ZeroAdminService — zero global-management role's tool backend.
 	const { ZeroAdminService } = await import("./zero-admin-service.js");
-	const zeroAdmin = new ZeroAdminService({ agentStore, projectStore, agentToolStore });
+	const zeroAdmin = new ZeroAdminService({ agentStore, projectStore, agentToolStore, cronStore });
 	agentService.setZeroAdmin(zeroAdmin);
 
 	agentService.subscribe((event: any) => {
@@ -249,7 +251,15 @@ export async function startServer(options?: StartServerOptions) {
 
 	const gitIntegration = new GitIntegration();
 	const notificationService = new NotificationService({ wss, requirementStore });
-	const cronManager = new CronAnalysisManager({ analystService, projectStore });
+	// v0.8 (M1): cron manager now scans the cron table (one agent → N cron),
+	// routes triggers via resolveSessionByRoleProject + sendPrompt.
+	const cronManager = new CronAnalysisManager({
+		agentService,
+		agentStore,
+		projectStore,
+		sessionDB,
+		cronStore,
+	});
 
 	analystService.setGitIntegration(gitIntegration);
 
@@ -290,39 +300,20 @@ export async function startServer(options?: StartServerOptions) {
 
 	// Multi-Agent Workflow routers
 
-	// Projects — with M5 interval/pause/resume + cron wiring
+	// Projects — v0.8 M1: cron is agent-scoped, not project-scoped, so the
+	// project lifecycle no longer auto-registers a per-project cron. The
+	// /interval /pause /resume endpoints stay as no-op compat shims (their
+	// per-project cron concept is gone; cron entries are managed via the cron
+	// tools / cron editor / /api/crons).
 	const projectRouter = createProjectRouter({ projectStore, requirementStore, wikiStore, taskStepStore, analystService });
-	// M5: Cron registration on project lifecycle
-	projectRouter.post("/", (req, res, next) => {
-		// Intercept original POST response to register cron after creation
-		const origJson = res.json.bind(res);
-		res.json = (body: any) => {
-			if (res.statusCode === 201 && body?.id) {
-				// v0.8 (M0): analysisInterval removed from ProjectRecord (cron
-				// becomes first-class in M1). Default to daily until then.
-				cronManager.scheduleProject(body.id, "daily");
-			}
-			return origJson(body);
-		};
-		next();
-	});
-	projectRouter.put("/:id/interval", (req, res) => {
-		const { interval } = req.body;
-		// v0.8 (M0): analysisInterval no longer on ProjectRecord; just reschedule
-		cronManager.rescheduleProject(req.params.id, interval);
-		res.json({ ok: true });
-	});
-	projectRouter.post("/:id/pause", (req, res) => {
-		// v0.8 (M0): status removed from ProjectRecord; just unschedule
-		cronManager.unscheduleProject(req.params.id);
-		res.json({ ok: true });
-	});
-	projectRouter.post("/:id/resume", (req, res) => {
-		// v0.8 (M0): status / analysisInterval removed; default to daily
-		cronManager.scheduleProject(req.params.id, "daily");
-		res.json({ ok: true });
-	});
+	projectRouter.put("/:id/interval", (_req, res) => res.json({ ok: true }));
+	projectRouter.post("/:id/pause", (_req, res) => res.json({ ok: true }));
+	projectRouter.post("/:id/resume", (_req, res) => res.json({ ok: true }));
 	app.use("/api/projects", projectRouter);
+
+	// v0.8 (M1): cron REST router — create/update/delete/list cron entries.
+	const { createCronRouter } = await import("./cron-router.js");
+	app.use("/api/crons", createCronRouter({ zeroAdmin, cronManager }));
 
 	// Requirements — with M5 verify/archive/report + notifications
 	const requirementRouter = createRequirementRouter({ requirementStore, taskStepStore, notificationService });

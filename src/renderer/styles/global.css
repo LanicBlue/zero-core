@@ -5066,3 +5066,23 @@ n.tools-page-test-chips {
 	color: var(--color-danger-fg);
 }
 
+
+/* ── Cron editor (M1) ────────────────────────────────────── */
+.cron-settings { display: flex; flex-direction: column; gap: 12px; }
+.cron-list { display: flex; flex-direction: column; gap: 8px; }
+.cron-card {
+	border: 1px solid var(--color-border-default, #d0d7de);
+	border-radius: 6px; padding: 10px 12px; background: var(--color-canvas-subtle, #f6f8fa);
+}
+.cron-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.cron-card-agent { font-weight: 600; }
+.cron-badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
+.cron-badge.on { background: #1f883d22; color: #1f883d; }
+.cron-badge.off { background: #6e778133; color: #6e7781; }
+.cron-card-scope { font-size: 12px; color: var(--color-fg-muted, #6e7781); word-break: break-all; }
+.cron-card-prompt { font-size: 12px; color: var(--color-fg-muted, #6e7781); margin-top: 4px; font-style: italic; }
+.cron-card-actions { display: flex; gap: 6px; margin-top: 8px; }
+.cron-editor { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--color-border-default, #d0d7de); border-radius: 6px; background: var(--color-canvas-default, #fff); }
+.cron-prompt-textarea { width: 100%; resize: vertical; font-family: inherit; padding: 6px 8px; border: 1px solid var(--color-border-default, #d0d7de); border-radius: 4px; }
+.cron-toggle-row { display: flex; align-items: center; gap: 8px; }
+.cron-editor-actions { display: flex; gap: 8px; }

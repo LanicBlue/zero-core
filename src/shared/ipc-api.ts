@@ -40,6 +40,7 @@ import type {
 	ProjectRecord, CreateProjectInput, UpdateProjectInput,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
+	CronRecord, CreateCronInput, UpdateCronInput,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -213,4 +214,12 @@ export interface IpcChannelDefs {
 	"projects:updateInterval": { params: [id: string, interval: string];             result: Ok };
 	"projects:pause":          { params: [id: string];                                result: Ok };
 	"projects:resume":         { params: [id: string];                                result: Ok };
+
+	// ── M1: Cron (first-class cron entity) ──────────────────
+	"crons:list":    { params: [filter?: { agentId?: string }];                       result: CronRecord[] };
+	"crons:get":     { params: [id: string];                                          result: CronRecord | undefined };
+	"crons:create":  { params: [input: CreateCronInput];                              result: CronRecord | Err };
+	"crons:update":  { params: [id: string, input: UpdateCronInput];                  result: CronRecord | Err };
+	"crons:delete":  { params: [id: string];                                          result: Ok };
+	"crons:trigger": { params: [id: string];                                          result: Ok | Err };
 }

@@ -250,6 +250,14 @@ const api: WindowApi = {
 	projectsUpdateInterval: (id, interval) => ipcRenderer.invoke("projects:updateInterval", id, interval),
 	projectsPause: (id) => ipcRenderer.invoke("projects:pause", id),
 	projectsResume: (id) => ipcRenderer.invoke("projects:resume", id),
+
+	// ── M1: Cron (first-class cron entity) ──
+	cronsList: (filter?) => ipcRenderer.invoke("crons:list", filter),
+	cronsGet: (id) => ipcRenderer.invoke("crons:get", id),
+	cronsCreate: (input) => ipcRenderer.invoke("crons:create", input),
+	cronsUpdate: (id, input) => ipcRenderer.invoke("crons:update", id, input),
+	cronsDelete: (id) => ipcRenderer.invoke("crons:delete", id),
+	cronsTrigger: (id) => ipcRenderer.invoke("crons:trigger", id),
 };
 
 contextBridge.exposeInMainWorld("api", api);

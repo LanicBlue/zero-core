@@ -44,6 +44,7 @@ import { registerToolExecutionHandlers } from "./ipc/tool-execution-handlers.js"
 import { registerProjectHandlers } from "./ipc/project-handlers.js";
 import { registerRequirementHandlers } from "./ipc/requirement-handlers.js";
 import { registerWikiHandlers } from "./ipc/wiki-handlers.js";
+import { registerCronHandlers } from "./ipc/cron-handlers.js";
 
 export function registerIpc(win: BrowserWindow): void {
 	setMainWindow(win);
@@ -70,6 +71,7 @@ export function registerIpc(win: BrowserWindow): void {
 	registerProjectHandlers(ctx);
 	registerRequirementHandlers(ctx);
 	registerWikiHandlers(ctx);
+	registerCronHandlers(ctx);
 
 	log.ipc("All handlers registered");
 

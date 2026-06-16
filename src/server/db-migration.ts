@@ -165,6 +165,19 @@ const REQUIREMENT_MESSAGES_COLUMNS = [
 	{ key: "createdAt", column: "created_at" },
 ];
 
+// v0.8 (M1): CronRecord — cron becomes a first-class entity. One agent can
+// carry N cron entries (one per workingScope). workingScope is JSON-stored as
+// the full SessionContextBundle. MUST stay in sync with cron-store.ts COLUMNS.
+const CRON_COLUMNS = [
+	{ key: "agentId", column: "agent_id" },
+	{ key: "workingScope", column: "working_scope", json: true },
+	{ key: "schedule" },
+	{ key: "prompt" },
+	{ key: "enabled", bool: true },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
 // ---------------------------------------------------------------------------
 // runMigrations — called once at startup, after SessionDB is created
 // ---------------------------------------------------------------------------
@@ -315,6 +328,22 @@ export function runMigrations(sessionDB: SessionDB): void {
 		message_type TEXT DEFAULT 'text', metadata TEXT, created_at TEXT
 	)`);
 	safeAddIndex(db, "requirement_messages", "idx_msg_req", "requirement_id");
+
+	// v0.8 (M1): crons table — first-class cron entity. workingScope stored as
+	// JSON (SessionContextBundle). agentId is a soft reference (no FK) so cron
+	// deletion never cascades to the agent and the agent is the canonical owner.
+	db.exec(`CREATE TABLE IF NOT EXISTS crons (
+		id TEXT PRIMARY KEY,
+		agent_id TEXT NOT NULL,
+		working_scope TEXT,
+		schedule TEXT,
+		prompt TEXT,
+		enabled INTEGER DEFAULT 1,
+		created_at TEXT,
+		updated_at TEXT
+	)`);
+	safeAddIndex(db, "crons", "idx_crons_agent", "agent_id");
+	safeAddIndex(db, "crons", "idx_crons_enabled", "enabled");
 
 	// Now safe to create SqliteStore instances with all columns
 	const agents = new SqliteStore<AgentRecord>(db, "agents", AGENT_COLUMNS);

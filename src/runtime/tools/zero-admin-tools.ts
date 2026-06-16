@@ -10,8 +10,7 @@
 //   - ListPresets
 //   - SetToolPolicy / SetToolEnabled
 //   - ExposeAgentAsTool / UnexposeAgentAsTool
-//
-// cron 管理工具留 M1。
+//   - CreateCron / UpdateCron / DeleteCron / ListCrons (M1 — first-class cron)
 //
 // ## 输入
 // - ToolExecutionContext.zeroAdmin (ZeroAdminService 实例,只在 zero session 注入)
@@ -246,6 +245,70 @@ export const unexposeAgentAsToolTool = buildTool({
 });
 
 // ---------------------------------------------------------------------------
+// Cron management tools (v0.8 M1 — first-class cron entity)
+// ---------------------------------------------------------------------------
+
+export const createCronTool = buildTool({
+	name: "CreateCron",
+	description: "Create a cron entry: schedules a global agent to run on a recurring cadence against a workingScope (RFC §4.3). One agent can carry N cron entries (one per scope). schedule ∈ off|hourly|daily|weekly|<ms>. projectId is optional — omit it for a global observation cron.",
+	prompt: "Create a cron entry. Inputs: agentId, workingScope { projectId?, workspaceDir, wikiRootNodeId }, schedule, prompt?, enabled? (default true).",
+	meta: { category: "zero-admin", isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
+	inputSchema: z.object({
+		agentId: z.string(),
+		workingScope: z.object({
+			projectId: z.string().optional(),
+			workspaceDir: z.string(),
+			wikiRootNodeId: z.string(),
+		}),
+		schedule: z.string(),
+		prompt: z.string().optional(),
+		enabled: z.boolean().optional(),
+	}),
+	execute: async (input, ctx) => safe(() => admin(ctx).createCron(input)),
+});
+
+export const updateCronTool = buildTool({
+	name: "UpdateCron",
+	description: "Update an existing cron entry's scope / schedule / prompt / enabled. agentId is immutable.",
+	prompt: "Update a cron by id. Inputs: id, workingScope?, schedule?, prompt?, enabled?.",
+	meta: { category: "zero-admin", isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
+	inputSchema: z.object({
+		id: z.string(),
+		workingScope: z.object({
+			projectId: z.string().optional(),
+			workspaceDir: z.string(),
+			wikiRootNodeId: z.string(),
+		}).optional(),
+		schedule: z.string().optional(),
+		prompt: z.string().optional(),
+		enabled: z.boolean().optional(),
+	}),
+	execute: async (input, ctx) => safe(() => admin(ctx).updateCron(input.id, input)),
+});
+
+export const deleteCronTool = buildTool({
+	name: "DeleteCron",
+	description: "Delete a cron entry. This is an unbind — the global agent it referenced stays intact (not a cascade delete).",
+	prompt: "Delete a cron by id. The agent it referenced is NOT deleted.",
+	meta: { category: "zero-admin", isReadOnly: false, isConcurrencySafe: false, isDestructive: true },
+	inputSchema: z.object({
+		id: z.string(),
+	}),
+	execute: async (input, ctx) => safe(async () => { admin(ctx).deleteCron(input.id); return { success: true }; }),
+});
+
+export const listCronsTool = buildTool({
+	name: "ListCrons",
+	description: "List cron entries, optionally filtered by agentId.",
+	prompt: "List crons. Optional input: agentId to filter.",
+	meta: { category: "zero-admin", isReadOnly: true, isConcurrencySafe: true, isDestructive: false },
+	inputSchema: z.object({
+		agentId: z.string().optional(),
+	}),
+	execute: async (input, ctx) => safe(() => admin(ctx).listCrons(input.agentId ? { agentId: input.agentId } : undefined)),
+});
+
+// ---------------------------------------------------------------------------
 // Aggregate export
 // ---------------------------------------------------------------------------
 
@@ -264,4 +327,8 @@ export const ZERO_ADMIN_TOOLS: Record<string, any> = {
 	SetToolEnabled: setToolEnabledTool,
 	ExposeAgentAsTool: exposeAgentAsToolTool,
 	UnexposeAgentAsTool: unexposeAgentAsToolTool,
+	CreateCron: createCronTool,
+	UpdateCron: updateCronTool,
+	DeleteCron: deleteCronTool,
+	ListCrons: listCronsTool,
 };
