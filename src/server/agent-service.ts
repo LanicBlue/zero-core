@@ -367,6 +367,13 @@ export class AgentService {
 			requirementStore?: any;
 			taskStepStore?: any;
 			activeRequirementId?: string;
+			// v0.8 (M3): lead-only stores for the Orchestrate tool.
+			orchestratePlanStore?: any;
+			orchestrateManifestStore?: any;
+			// v0.8 (M3): lead-only git integration — Orchestrate tool uses it to
+			// commit each task step on the feature worktree with the [req-<short>]
+			// reference (decision 21 / RFC §2.15).
+			gitIntegration?: any;
 		},
 	): Promise<void> {
 		const agent = this.agentStore?.get(agentId);
@@ -431,6 +438,9 @@ export class AgentService {
 
 		// Inject M3 fields into sessionConfig (via `as any` since SessionConfig doesn't have them typed)
 		(sessionConfig as any).taskStepStore = context.taskStepStore;
+		(sessionConfig as any).orchestratePlanStore = context.orchestratePlanStore;
+		(sessionConfig as any).orchestrateManifestStore = context.orchestrateManifestStore;
+		(sessionConfig as any).gitIntegration = context.gitIntegration;
 
 		let loop = this.loops.get(sessionId);
 		if (!loop) {

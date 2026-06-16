@@ -73,6 +73,9 @@ let _cronStore: any = null;
 let _cronManager: any = null;
 let _gitIntegration: any = null;
 let _notificationService: any = null;
+// v0.8 (M3): Orchestrate plan store + project notification router.
+let _orchestratePlanStore: any = null;
+let _projectNotificationRouter: any = null;
 
 // ─── Expose current state as IpcContext (reactive) ──────────
 
@@ -110,6 +113,9 @@ const _ctx: IpcContext = {
 	get cronManager() { return _cronManager; },
 	get gitIntegration() { return _gitIntegration; },
 	get notificationService() { return _notificationService; },
+	// v0.8 (M3): Orchestrate plan store + project notification router.
+	get orchestratePlanStore() { return _orchestratePlanStore; },
+	get projectNotificationRouter() { return _projectNotificationRouter; },
 	get modulesReady() { return _modulesReady; },
 	set modulesReady(v: boolean) { _modulesReady = v; },
 	whenReady: (name: ModuleName) => moduleReadiness.whenReady(name),
@@ -435,16 +441,39 @@ export async function loadCoreModules(): Promise<void> {
 			cronStore: _cronStore,
 		});
 
-		// Inject GitIntegration into AnalystService
-		_analystService.setGitIntegration(_gitIntegration);
+		// v0.8 (M3): Orchestrate plan store + project notification router.
+		// Plan store backs the kanban plan-gate pending entry + confirm/reject
+		// IPC channels; the router fires verify_accept → archivist on verify
+		// PASSED (acceptance-M3 item 6).
+		const orchStoreMod = await import(toFileURL(join(_distServer, "orchestrate-store.js")));
+		const notifRouterMod = await import(toFileURL(join(_distServer, "project-notification-router.js")));
+		const manifestStoreForRouter = new orchStoreMod.OrchestrateManifestStore(_sessionDb);
+		_orchestratePlanStore = new orchStoreMod.OrchestratePlanStore(_sessionDb);
+		_leadService.setOrchestrateStores(_orchestratePlanStore, manifestStoreForRouter);
+		_projectNotificationRouter = new notifRouterMod.ProjectNotificationRouter({
+			agentService: _agentService,
+			agentStore: _agentStore,
+			projectStore: _projectStore,
+			requirementStore: _requirementStore,
+			sessionDB: _sessionDb,
+			leadService: _leadService,
+			manifestStore: manifestStoreForRouter,
+		});
 
-		// Register requirement hooks with M5 dependencies
+		// Inject GitIntegration into AnalystService + LeadService
+		_analystService.setGitIntegration(_gitIntegration);
+		_leadService.setGitIntegration(_gitIntegration);
+
+		// Register requirement hooks with M5/M3 dependencies.
+		// projectNotificationRouter is needed so the verify PASSED branch can
+		// fire notify("verify_accept", ...) → archivist merge.
 		reqHooksMod.registerRequirementHooks({
 			requirementStore: _requirementStore,
 			taskStepStore: _taskStepStore,
 			leadService: _leadService,
 			analystService: _analystService,
 			notificationService: _notificationService,
+			projectNotificationRouter: _projectNotificationRouter,
 		});
 
 		log.ipc("Workflow services initialized (M2/M3/M5)");

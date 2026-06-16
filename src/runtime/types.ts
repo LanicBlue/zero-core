@@ -377,6 +377,40 @@ export interface ToolExecutionContext {
 	 * the tools gate themselves out via CONDITIONAL_TOOLS.
 	 */
 	zeroAdmin?: any;
+	/**
+	 * v0.8 (M3): agent-tool entries resolver, surfaced onto the tool context
+	 * so the Orchestrate engine can resolve a DSL `task` node's `agentTool`
+	 * (user-facing name) → target agent id + identity. Mirrors the
+	 * SessionConfig.getAgentToolEntries callback the loop already uses.
+	 */
+	getAgentToolEntries?: () => Promise<{
+		entries: Array<import("../shared/types.js").AgentToolEntry>;
+		agents: Map<string, {
+			id: string;
+			name: string;
+			systemPrompt?: string;
+			model?: string;
+			toolPolicy?: SessionConfig["toolPolicy"];
+		}>;
+	}>;
+	/**
+	 * v0.8 (M3): Orchestrate plan store — persists lead-submitted DSL flows +
+	 * confirm gate state. Only present on lead sessions.
+	 */
+	orchestratePlanStore?: any;
+	/**
+	 * v0.8 (M3): Orchestrate manifest store — persists per-run manifests
+	 * (touched files + tests + review) for PM coverage judgement and archivist
+	 * traceability.
+	 */
+	orchestrateManifestStore?: any;
+	/**
+	 * v0.8 (M3): GitIntegration — lets the Orchestrate tool commit each task
+	 * step on the feature worktree with the [req-<short>] reference (decision
+	 * 21 / RFC §2.15). Only present on lead sessions; best-effort (safe-fail
+	 * when git is unavailable).
+	 */
+	gitIntegration?: any;
 }
 
 // ---------------------------------------------------------------------------

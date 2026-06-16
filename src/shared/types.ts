@@ -660,3 +660,145 @@ export type CronSchedule = "off" | "hourly" | "daily" | "weekly" | (string & {})
 
 export type CreateCronInput = Omit<CronRecord, "id" | "createdAt" | "updatedAt">;
 export type UpdateCronInput = Partial<Omit<CronRecord, "id" | "createdAt" | "updatedAt">>;
+
+// ── M3: Orchestrate DSL + lead delivery pipeline (RFC §2.6/§2.9/§2.15) ────
+
+/**
+ * One node in an Orchestrate DSL flow (RFC §2.9 / §4.5; decision 48). The DSL
+ * is authored by lead (lead picks which agent each node dispatches to); the
+ * Orchestrate tool is the execution engine. Each node references an agent-tool
+ * by the name exposed in lead's toolPolicy.
+ *
+ * Minimum subset (acceptance M3): parallel + pipeline + confirm. if/for/barrier
+ * are also defined as node kinds so the engine can recognize them; full
+ * conditional/iteration semantics are out of M3 scope.
+ */
+export type OrchestrateNodeKind =
+	| "task"
+	| "parallel"
+	| "pipeline"
+	| "if"
+	| "for"
+	| "barrier"
+	| "verify";
+
+/** A single dispatch of one agent-tool with a task description. */
+export interface OrchestrateTaskNode {
+	kind: "task";
+	id: string;
+	/** Name of the agent-tool to dispatch (must be enabled in lead's toolPolicy). */
+	agentTool: string;
+	task: string;
+	wikiNodes?: string[];
+	relatedFiles?: string[];
+}
+
+/** Run children concurrently, wait for all. */
+export interface OrchestrateParallelNode {
+	kind: "parallel";
+	id: string;
+	children: OrchestrateNode[];
+}
+
+/** Run children in order, piping each result into the next. */
+export interface OrchestratePipelineNode {
+	kind: "pipeline";
+	id: string;
+	children: OrchestrateNode[];
+}
+
+/** Conditional branch (M3: structure present; full predicate eval is stubbed). */
+export interface OrchestrateIfNode {
+	kind: "if";
+	id: string;
+	condition: string;
+	then: OrchestrateNode[];
+	else?: OrchestrateNode[];
+}
+
+/** Iterate over a list (M3: structure present; iteration semantics stubbed). */
+export interface OrchestrateForNode {
+	kind: "for";
+	id: string;
+	over: string;
+	as: string;
+	body: OrchestrateNode[];
+}
+
+/** Synchronization point — no-op marker; M3 passes through. */
+export interface OrchestrateBarrierNode {
+	kind: "barrier";
+	id: string;
+}
+
+/** Verification work — runs unit/smoke/review, produces manifest entries. */
+export interface OrchestrateVerifyNode {
+	kind: "verify";
+	id: string;
+	/** Commands to run (e.g. "npm test"). Empty = just collect touched files. */
+	commands?: string[];
+	/** Reviewer agent-tool name to dispatch for code review. */
+	reviewerAgentTool?: string;
+}
+
+export type OrchestrateNode =
+	| OrchestrateTaskNode
+	| OrchestrateParallelNode
+	| OrchestratePipelineNode
+	| OrchestrateIfNode
+	| OrchestrateForNode
+	| OrchestrateBarrierNode
+	| OrchestrateVerifyNode;
+
+/** Top-level Orchestrate flow submitted by lead. */
+export interface OrchestrateFlow {
+	requirementId: string;
+	title: string;
+	root: OrchestrateNode;
+}
+
+/** Lifecycle state of a submitted Orchestrate flow (decision 11). */
+export type OrchestrateConfirmState =
+	| "pending"    // submitted, waiting for user confirm
+	| "confirmed"  // user confirmed → engine runs
+	| "rejected"   // user rejected → returns false + reason
+	| "running"    // engine is executing
+	| "completed"  // finished successfully
+	| "failed";    // finished with failure
+
+/**
+ * Persisted record of a submitted Orchestrate flow + its confirm gate state.
+ * Created when lead submits the flow; mutated by the IPC confirm/reject path
+ * and by the engine as it executes.
+ */
+export interface OrchestratePlanRecord {
+	id: string;
+	requirementId: string;
+	projectId: string;
+	leadAgentId: string;
+	leadSessionId: string;
+	flow: string;           // JSON-serialized OrchestrateFlow
+	state: OrchestrateConfirmState;
+	rejectionReason?: string;
+	manifestId?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+/**
+ * Manifest produced by an Orchestrate run (decision 34). PM reads it to judge
+ * coverage; archivist reads it for traceability. Captures the files touched,
+ * tests run, and reviewer verdict.
+ */
+export interface OrchestrateManifestRecord {
+	id: string;
+	requirementId: string;
+	planId: string;
+	projectId: string;
+	touchedFiles: string[];
+	tests: Array<{ command: string; ok: boolean; output?: string }>;
+	review?: { verdict: "approved" | "rejected"; comment?: string };
+	summary: string;
+	createdAt: string;
+	updatedAt: string;
+}

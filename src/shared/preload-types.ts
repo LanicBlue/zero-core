@@ -41,6 +41,7 @@ import type {
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	CronRecord, CreateCronInput, UpdateCronInput,
+	OrchestratePlanRecord,
 } from "./types.js";
 
 export interface WindowApi {
@@ -259,4 +260,10 @@ export interface WindowApi {
 	cronsUpdate: (id: string, input: UpdateCronInput) => Promise<CronRecord | { error: string }>;
 	cronsDelete: (id: string) => Promise<{ success: true }>;
 	cronsTrigger: (id: string) => Promise<{ success: true } | { error: string }>;
+
+	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
+	orchestratePending: (filter?: { projectId?: string }) => Promise<OrchestratePlanRecord[]>;
+	orchestratePlan: (planId: string) => Promise<OrchestratePlanRecord | { error: string }>;
+	orchestrateConfirm: (planId: string) => Promise<{ success: boolean; planId: string; reason?: string }>;
+	orchestrateReject: (planId: string, reason: string) => Promise<{ success: boolean; planId: string; reason?: string }>;
 }

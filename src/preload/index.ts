@@ -258,6 +258,12 @@ const api: WindowApi = {
 	cronsUpdate: (id, input) => ipcRenderer.invoke("crons:update", id, input),
 	cronsDelete: (id) => ipcRenderer.invoke("crons:delete", id),
 	cronsTrigger: (id) => ipcRenderer.invoke("crons:trigger", id),
+
+	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
+	orchestratePending: (filter?) => ipcRenderer.invoke("orchestrate:pending", filter),
+	orchestratePlan: (planId) => ipcRenderer.invoke("orchestrate:plan", planId),
+	orchestrateConfirm: (planId) => ipcRenderer.invoke("orchestrate:confirm", planId),
+	orchestrateReject: (planId, reason) => ipcRenderer.invoke("orchestrate:reject", planId, reason),
 };
 
 contextBridge.exposeInMainWorld("api", api);

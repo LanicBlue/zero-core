@@ -557,6 +557,13 @@ describe("ipc-proxy route mapping completeness", () => {
 		"window:minimize",
 		"window:maximize",
 		"window:close",
+		// M3: orchestrate plan-gate is handled by a dedicated IPC handler
+		// (orchestrate-handlers.ts) — it owns the ConfirmRegistry singleton in
+		// the main process and must not be proxied to the REST surface.
+		"orchestrate:pending",
+		"orchestrate:plan",
+		"orchestrate:confirm",
+		"orchestrate:reject",
 	]);
 
 	// Channels that use ipcRenderer.invoke but are event-like (not proxied)

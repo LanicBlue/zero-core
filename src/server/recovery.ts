@@ -26,6 +26,7 @@ import type { RequirementStore } from "./requirement-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import type { CronAnalysisManager } from "./cron-analysis.js";
 import type { AgentService } from "./agent-service.js";
+import type { ProjectNotificationRouter } from "./project-notification-router.js";
 import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -59,10 +60,13 @@ export interface RecoveryDeps {
 	taskStepStore: TaskStepStore;
 	cronManager: CronAnalysisManager;
 	agentService: AgentService;
+	// v0.8 (M3): notification router — used for startup backfill of any
+	// ready/verify requirements whose notifications were lost in a crash.
+	projectNotificationRouter?: ProjectNotificationRouter;
 }
 
 export function recoverWorkflowState(deps: RecoveryDeps): void {
-	const { projectStore, requirementStore, taskStepStore, cronManager, agentService } = deps;
+	const { projectStore, requirementStore, taskStepStore, cronManager, agentService, projectNotificationRouter } = deps;
 
 	try {
 		// 1. Restore cron schedules for all active projects
@@ -144,6 +148,21 @@ export function recoverWorkflowState(deps: RecoveryDeps): void {
 			log.debug("recovery", `Recovered ${totalRecovered} workflow requirement(s) (build:${buildingReqs.length} plan:${planReqs.length} verify:${verifyReqs.length})`);
 		} else {
 			log.debug("recovery", "No workflow requirements needed recovery");
+		}
+
+		// v0.8 (M3): backfill any missed ready/verify notifications across all
+		// projects (cron fallback path runs at startup; the project-scoped cron
+		// ticks then take over for runtime misses — decision 10).
+		if (projectNotificationRouter) {
+			for (const project of projectStore.list()) {
+				try {
+					projectNotificationRouter.backfillPendingNotifications(project.id).catch((err) => {
+						log.debug("recovery", `backfill(${project.id}) failed: ${(err as Error).message}`);
+					});
+				} catch (err) {
+					log.debug("recovery", `backfill(${project.id}) threw: ${(err as Error).message}`);
+				}
+			}
 		}
 	} catch (err) {
 		log.error("recovery", `Workflow recovery failed: ${(err as Error).message}`);

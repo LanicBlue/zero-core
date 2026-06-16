@@ -258,6 +258,14 @@ export async function startServer(options?: StartServerOptions) {
 	// ─── LeadService + Requirement Hooks (M3) ────────────────────────
 	const { LeadService } = await import("./lead-service.js");
 	const { registerRequirementHooks } = await import("./requirement-hooks.js");
+	const { OrchestratePlanStore, OrchestrateManifestStore } = await import("./orchestrate-store.js");
+	const { ProjectNotificationRouter } = await import("./project-notification-router.js");
+
+	// v0.8 (M3): Orchestrate plan/manifest stores — confirm gate persistence
+	// (decision 11) + per-run manifest (decision 34).
+	const orchestratePlanStore = new OrchestratePlanStore(sessionDB);
+	const orchestrateManifestStore = new OrchestrateManifestStore(sessionDB);
+
 	const leadService = new LeadService({
 		agentService,
 		agentStore,
@@ -266,6 +274,8 @@ export async function startServer(options?: StartServerOptions) {
 		wikiStore,
 		projectStore,
 		templateStore,
+		orchestratePlanStore,
+		orchestrateManifestStore,
 	});
 
 	// ─── M5: Git, Notifications, Cron ────────────────────────────
@@ -275,6 +285,9 @@ export async function startServer(options?: StartServerOptions) {
 	const { recoverWorkflowState } = await import("./recovery.js");
 
 	const gitIntegration = new GitIntegration();
+	// v0.8 (M3): inject git into LeadService so it can create feature worktrees
+	// and commit steps with the [req-<shortId>] reference (decision 21/25).
+	leadService.setGitIntegration(gitIntegration);
 	const notificationService = new NotificationService({ wss, requirementStore });
 	// v0.8 (M1): cron manager now scans the cron table (one agent → N cron),
 	// routes triggers via resolveSessionByRoleProject + sendPrompt.
@@ -286,6 +299,18 @@ export async function startServer(options?: StartServerOptions) {
 		cronStore,
 	});
 
+	// v0.8 (M3): project-scoped cross-role notification router (decision 10).
+	// Routes ready→lead, verify→PM, accept→archivist via resolveSessionByRoleProject.
+	const projectNotificationRouter = new ProjectNotificationRouter({
+		agentService,
+		agentStore,
+		projectStore,
+		requirementStore,
+		sessionDB,
+		leadService,
+		manifestStore: orchestrateManifestStore,
+	});
+
 	analystService.setGitIntegration(gitIntegration);
 
 	registerRequirementHooks({
@@ -294,10 +319,11 @@ export async function startServer(options?: StartServerOptions) {
 		leadService,
 		analystService,
 		notificationService,
+		projectNotificationRouter,
 	});
 
 	// M5: Run workflow state recovery
-	recoverWorkflowState({ projectStore, requirementStore, taskStepStore, cronManager, agentService });
+	recoverWorkflowState({ projectStore, requirementStore, taskStepStore, cronManager, agentService, projectNotificationRouter });
 
 	// ─── Mount API routers ───────────────────────────────────────
 
@@ -342,6 +368,12 @@ export async function startServer(options?: StartServerOptions) {
 
 	// Requirements — with M5 verify/archive/report + notifications
 	const requirementRouter = createRequirementRouter({ requirementStore, taskStepStore, notificationService });
+	// v0.8 (M3): Orchestrate confirm-gate + manifest REST surface.
+	const { createOrchestrateRouter } = await import("./orchestrate-router.js");
+	const orchestrateRouter = createOrchestrateRouter({
+		planStore: orchestratePlanStore,
+		manifestStore: orchestrateManifestStore,
+	});
 	requirementRouter.post("/:id/verify", async (req, res) => {
 		try {
 			const result = await analystService.verifyRequirement(req.params.id);
@@ -373,6 +405,7 @@ export async function startServer(options?: StartServerOptions) {
 			} catch (err) { res.status(500).json({ error: (err as Error).message }); }
 		});
 	app.use("/api/requirements", requirementRouter);
+	app.use("/api/orchestrate", orchestrateRouter);
 
 	app.use("/api/project-wiki", createWikiRouter({ wikiStore }));
 

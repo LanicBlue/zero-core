@@ -46,6 +46,8 @@ import type { CronAnalysisManager } from "../../server/cron-analysis.js";
 import type { CronStore } from "../../server/cron-store.js";
 import type { GitIntegration } from "../../server/git-integration.js";
 import type { NotificationService } from "../../server/notification-service.js";
+import type { OrchestratePlanStore } from "../../server/orchestrate-store.js";
+import type { ProjectNotificationRouter } from "../../server/project-notification-router.js";
 
 export interface IpcContext {
 	win: BrowserWindow;
@@ -75,6 +77,13 @@ export interface IpcContext {
 	cronManager: CronAnalysisManager | null;
 	gitIntegration: GitIntegration | null;
 	notificationService: NotificationService | null;
+	// v0.8 (M3): Orchestrate plan store — for the kanban plan-gate pending
+	// entry + confirm/reject IPC channels.
+	orchestratePlanStore: OrchestratePlanStore | null;
+	// v0.8 (M3): project-scoped cross-role notification router (accept→archivist
+	// and friends). Wired into requirement-hooks so verify PASSED fires the
+	// archivist merge notification (acceptance-M3 item 6).
+	projectNotificationRouter: ProjectNotificationRouter | null;
 	modulesReady: boolean;
 	whenReady: (name: ModuleName) => Promise<void>;
 	isModuleReady: (name: ModuleName) => boolean;

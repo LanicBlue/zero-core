@@ -397,6 +397,43 @@ export function runMigrations(sessionDB: SessionDB): void {
 	safeAddIndex(db, "crons", "idx_crons_agent", "agent_id");
 	safeAddIndex(db, "crons", "idx_crons_enabled", "enabled");
 
+	// v0.8 (M3): orchestrate_plans — lead-submitted DSL flows + confirm gate
+	// state (decision 11). flow stored as JSON. leadSessionId is the routing
+	// key for the IPC confirm/reject path to find the active awaiter.
+	db.exec(`CREATE TABLE IF NOT EXISTS orchestrate_plans (
+		id TEXT PRIMARY KEY,
+		requirement_id TEXT NOT NULL,
+		project_id TEXT NOT NULL,
+		lead_agent_id TEXT NOT NULL,
+		lead_session_id TEXT NOT NULL,
+		flow TEXT,
+		state TEXT DEFAULT 'pending',
+		rejection_reason TEXT,
+		manifest_id TEXT,
+		created_at TEXT,
+		updated_at TEXT
+	)`);
+	safeAddIndex(db, "orchestrate_plans", "idx_oplans_req", "requirement_id");
+	safeAddIndex(db, "orchestrate_plans", "idx_oplans_session", "lead_session_id");
+	safeAddIndex(db, "orchestrate_plans", "idx_oplans_state", "state");
+
+	// v0.8 (M3): orchestrate_manifests — per-run manifest (decision 34) that
+	// PM reads for coverage judgement and archivist reads for traceability.
+	// touchedFiles/tests/review are JSON arrays.
+	db.exec(`CREATE TABLE IF NOT EXISTS orchestrate_manifests (
+		id TEXT PRIMARY KEY,
+		requirement_id TEXT NOT NULL,
+		plan_id TEXT NOT NULL,
+		project_id TEXT NOT NULL,
+		touched_files TEXT,
+		tests TEXT,
+		review TEXT,
+		summary TEXT,
+		created_at TEXT
+	)`);
+	safeAddIndex(db, "orchestrate_manifests", "idx_oman_req", "requirement_id");
+	safeAddIndex(db, "orchestrate_manifests", "idx_oman_plan", "plan_id");
+
 	// Now safe to create SqliteStore instances with all columns
 	const agents = new SqliteStore<AgentRecord>(db, "agents", AGENT_COLUMNS);
 	const agentTools = new SqliteStore<any>(db, "agent_tools", AGENT_TOOL_COLUMNS);

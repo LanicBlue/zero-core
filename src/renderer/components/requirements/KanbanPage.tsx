@@ -25,7 +25,7 @@
 // - 新增需求操作（创建/流转）需在此挂接入弹窗或卡片回调
 //
 import React, { useEffect, useState, useCallback } from "react";
-import type { RequirementRecord, RequirementStatus } from "../../../shared/types.js";
+import type { RequirementRecord, RequirementStatus, OrchestratePlanRecord } from "../../../shared/types.js";
 import { useRequirementStore } from "../../store/requirement-store.js";
 import { useProjectStore } from "../../store/project-store.js";
 import { usePageStore } from "../../store/page-store.js";
@@ -50,6 +50,12 @@ export default function KanbanPage() {
 	const [showCreateModal, setShowCreateModal] = useState(false);
 	const [selectedProjectId, setSelectedProjectId] = useState<string>("");
 	const [expandedReqId, setExpandedReqId] = useState<string | null>(null);
+	// v0.8 (M3): pending Orchestrate plans awaiting user confirm (decision 11 —
+	// plan 门是 confirm-gate,审核方 = 用户,看板提醒入口)。
+	const [pendingPlans, setPendingPlans] = useState<OrchestratePlanRecord[]>([]);
+	const [planActionInFlight, setPlanActionInFlight] = useState<string | null>(null);
+	const [rejectingPlanId, setRejectingPlanId] = useState<string | null>(null);
+	const [rejectReason, setRejectReason] = useState<string>("");
 
 	// Fetch data on mount
 	useEffect(() => {
@@ -57,12 +63,33 @@ export default function KanbanPage() {
 		fetchRequirements();
 	}, []);
 
+	const fetchPendingPlans = useCallback(async (projectId?: string) => {
+		try {
+			const api = (window as any).api;
+			if (!api?.orchestratePending) return;
+			const plans = await api.orchestratePending(projectId ? { projectId } : undefined) as OrchestratePlanRecord[];
+			setPendingPlans(Array.isArray(plans) ? plans : []);
+		} catch {
+			// best-effort — silent
+		}
+	}, []);
+
 	// Refresh when project filter changes
 	useEffect(() => {
 		if (selectedProjectId) {
 			fetchRequirements({ projectId: selectedProjectId });
 		}
-	}, [selectedProjectId]);
+		fetchPendingPlans(selectedProjectId || undefined);
+	}, [selectedProjectId, fetchPendingPlans]);
+
+	// Initial fetch of pending plans on mount + periodic refresh so the user
+	// sees new pending plans as lead submits them (the confirm gate is a
+	// long-lived pause; the user must be able to discover it).
+	useEffect(() => {
+		fetchPendingPlans();
+		const timer = setInterval(() => fetchPendingPlans(selectedProjectId || undefined), 5000);
+		return () => clearInterval(timer);
+	}, [fetchPendingPlans, selectedProjectId]);
 
 	const grouped = getGroupedByStatus();
 
@@ -87,7 +114,45 @@ export default function KanbanPage() {
 
 	const handleRefresh = () => {
 		fetchRequirements(selectedProjectId ? { projectId: selectedProjectId } : undefined);
+		fetchPendingPlans(selectedProjectId || undefined);
 	};
+
+	// v0.8 (M3): confirm / reject plan-gate handlers (decision 11).
+	const handleConfirmPlan = useCallback(async (planId: string) => {
+		const api = (window as any).api;
+		if (!api?.orchestrateConfirm) return;
+		setPlanActionInFlight(planId);
+		try {
+			const r = await api.orchestrateConfirm(planId);
+			if (!r?.success) {
+				alert(`Confirm failed: ${r?.reason ?? "(unknown)"}`);
+			}
+			await fetchPendingPlans(selectedProjectId || undefined);
+		} catch (e) {
+			alert(`Confirm error: ${(e as Error).message}`);
+		} finally {
+			setPlanActionInFlight(null);
+		}
+	}, [fetchPendingPlans, selectedProjectId]);
+
+	const handleRejectPlan = useCallback(async (planId: string, reason: string) => {
+		const api = (window as any).api;
+		if (!api?.orchestrateReject) return;
+		setPlanActionInFlight(planId);
+		try {
+			const r = await api.orchestrateReject(planId, reason);
+			if (!r?.success) {
+				alert(`Reject failed: ${r?.reason ?? "(unknown)"}`);
+			}
+			setRejectingPlanId(null);
+			setRejectReason("");
+			await fetchPendingPlans(selectedProjectId || undefined);
+		} catch (e) {
+			alert(`Reject error: ${(e as Error).message}`);
+		} finally {
+			setPlanActionInFlight(null);
+		}
+	}, [fetchPendingPlans, selectedProjectId]);
 
 	return (
 		<div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-primary, #1a1a1c)" }}>
@@ -160,6 +225,141 @@ export default function KanbanPage() {
 				overflowX: "auto",
 				gap: 0,
 			}}>
+			{/* v0.8 (M3): pending plan-gate entry (RFC §2.9 / decision 11) —
+				surfaces plans awaiting user confirm. Card-list + confirm/reject. */}
+			{pendingPlans.length > 0 && (
+				<div style={{
+					flex: "0 0 280px",
+					display: "flex",
+					flexDirection: "column",
+					borderRight: "1px solid var(--border-color, #333)",
+					background: "rgba(255, 152, 0, 0.06)",
+				}}>
+					<div style={{
+						padding: "10px 12px",
+						borderBottom: "2px solid #FF9800",
+						display: "flex",
+						alignItems: "center",
+						gap: 6,
+						fontSize: 12,
+						fontWeight: 600,
+						color: "#FF9800",
+					}}>
+						<span>{"\u{23F3}"}</span>
+						<span>Plan Review</span>
+						<span style={{
+							background: "#FF980033",
+							color: "#FF9800",
+							padding: "1px 6px",
+							borderRadius: 10,
+							fontSize: 10,
+						}}>
+							{pendingPlans.length}
+						</span>
+					</div>
+					<div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
+						{pendingPlans.map((plan) => {
+							const flowTitle = (() => {
+								try {
+									return (JSON.parse(plan.flow)?.title ?? plan.id) as string;
+								} catch {
+									return plan.id;
+								}
+							})();
+							const isConfirming = planActionInFlight === plan.id;
+							return (
+								<div key={plan.id} style={{
+									background: "var(--bg-secondary, #1c1c1e)",
+									border: "1px solid var(--border-color, #333)",
+									borderRadius: 6,
+									padding: 10,
+									marginBottom: 8,
+									fontSize: 11,
+								}}>
+									<div style={{ color: "var(--text-primary, #e0e0e0)", fontWeight: 600, marginBottom: 4 }}>
+										{flowTitle}
+									</div>
+									<div style={{ color: "var(--text-secondary, #888)", marginBottom: 6, fontSize: 10 }}>
+										req {plan.requirementId}
+									</div>
+									<div style={{ display: "flex", gap: 6 }}>
+										<button
+											type="button"
+											onClick={() => handleConfirmPlan(plan.id)}
+											disabled={isConfirming || rejectingPlanId === plan.id}
+											style={{
+												flex: 1, padding: "4px 8px",
+												background: "#4CAF50", border: "none", borderRadius: 4,
+												color: "#fff", fontSize: 11, cursor: "pointer",
+											}}
+										>
+											{isConfirming ? "..." : "Confirm"}
+										</button>
+										<button
+											type="button"
+											onClick={() => {
+												setRejectingPlanId(rejectingPlanId === plan.id ? null : plan.id);
+												setRejectReason("");
+											}}
+											disabled={isConfirming}
+											style={{
+												flex: 1, padding: "4px 8px",
+												background: "transparent",
+												border: "1px solid #f44336", borderRadius: 4,
+												color: "#f44336", fontSize: 11, cursor: "pointer",
+											}}
+										>
+											Reject
+										</button>
+									</div>
+									{rejectingPlanId === plan.id && (
+										<div style={{ marginTop: 6 }}>
+											<textarea
+												value={rejectReason}
+												onChange={(e) => setRejectReason(e.target.value)}
+												placeholder="Reason (optional)"
+												style={{
+													width: "100%", minHeight: 40, fontSize: 11,
+													background: "var(--bg-primary, #1a1a1c)",
+													border: "1px solid var(--border-color, #333)",
+													borderRadius: 4, color: "var(--text-primary, #e0e0e0)",
+													padding: 4, boxSizing: "border-box",
+												}}
+											/>
+											<div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+												<button
+													type="button"
+													onClick={() => handleRejectPlan(plan.id, rejectReason)}
+													disabled={isConfirming}
+													style={{
+														flex: 1, padding: "3px 8px",
+														background: "#f44336", border: "none", borderRadius: 4,
+														color: "#fff", fontSize: 11, cursor: "pointer",
+													}}
+												>
+													Send
+												</button>
+												<button
+													type="button"
+													onClick={() => { setRejectingPlanId(null); setRejectReason(""); }}
+													style={{
+														flex: 1, padding: "3px 8px",
+														background: "transparent",
+														border: "1px solid var(--border-color, #333)", borderRadius: 4,
+														color: "var(--text-secondary, #888)", fontSize: 11, cursor: "pointer",
+													}}
+												>
+													Cancel
+												</button>
+											</div>
+										</div>
+									)}
+								</div>
+							);
+						})}
+					</div>
+				</div>
+			)}
 				{KANBAN_COLUMNS.map((col) => {
 					const cards = grouped[col.status] || [];
 					return (

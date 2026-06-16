@@ -60,6 +60,9 @@ export class GitIntegration {
 	/**
 	 * 创建需求分支。
 	 * 分支名格式：workflow/{requirementId前8位}-{slug(title)}
+	 *
+	 * NOTE: 旧的 branch-only 流程(M5)。M3 起 lead 改用 createFeatureWorktree
+	 * 建独立 worktree(RFC §2.15)。本方法保留供旧路径调用。
 	 */
 	async createRequirementBranch(
 		projectPath: string,
@@ -77,6 +80,84 @@ export class GitIntegration {
 		} catch (err) {
 			log.error("git", `Failed to create branch: ${(err as Error).message}`);
 			return branchName;  // Return name even if creation failed
+		}
+	}
+
+	/**
+	 * v0.8 (M3): 创建 feature worktree(决策 25/28)。lead 进 build 时建独立
+	 * 目录 `{workspace}.worktrees/req-{shortId}/`,分支 `req-{shortId}` —— 与
+	 * archivist-git 的 featureWorktreePath/featureBranchName 约定完全一致,
+	 * archivist mergeFeatureToMain 直接能找到 + 清理。本方法 safe-fail(与
+	 * 其他 git 方法一样),git 不可用时只 log 不抛。
+	 *
+	 * 返回 worktree 路径;失败时返回 fallback = projectPath(在主 worktree 跑)。
+	 */
+	async createFeatureWorktree(
+		projectPath: string,
+		requirementId: string,
+	): Promise<{ worktreePath: string; branch: string; ok: boolean }> {
+		const shortId = requirementId.substring(0, 8);
+		const branch = `req-${shortId}`;
+		const worktreePath = `${projectPath}.worktrees/req-${shortId}`;
+
+		try {
+			// Create the branch (from current HEAD) and a linked worktree at the
+			// convention path. -b creates the branch if it doesn't exist; if it
+			// already exists we fall back to checking out the existing branch
+			// in the worktree.
+			try {
+				await execAsync(
+					`git worktree add -b ${branch} "${worktreePath}"`,
+					{ cwd: projectPath, timeout: 30000 },
+				);
+			} catch (err) {
+				// Branch may already exist — try without -b.
+				try {
+					await execAsync(
+						`git worktree add "${worktreePath}" ${branch}`,
+						{ cwd: projectPath, timeout: 30000 },
+					);
+				} catch {
+					// Worktree path may already exist too — fine, reuse it.
+					log.debug("git", `worktree add ${branch} failed (likely exists): ${(err as Error).message}`);
+				}
+			}
+			log.agent(`git: feature worktree ${branch} at ${worktreePath}`);
+			return { worktreePath, branch, ok: true };
+		} catch (err) {
+			log.error("git", `Failed to create feature worktree: ${(err as Error).message}`);
+			return { worktreePath: projectPath, branch, ok: false };
+		}
+	}
+
+	/**
+	 * v0.8 (M3): 在 feature worktree 提交一步,commit message 引用 requirementId
+	 * 喂 traceability(决策 21)。格式约定 `feat: <step> [req-<shortId>]`。
+	 */
+	async commitStep(
+		worktreePath: string,
+		requirementId: string,
+		message: string,
+	): Promise<{ ok: boolean; ref?: string; error?: string }> {
+		const shortId = requirementId.substring(0, 8);
+		// Strip any user-supplied square brackets / newlines to keep the
+		// reference block well-formed.
+		const cleanMsg = message.replace(/[\[\]\n\r]/g, " ").trim();
+		const subject = `${cleanMsg} [req-${shortId}]`;
+		try {
+			await execAsync("git add -A", { cwd: worktreePath });
+			// Check if there's anything staged (skip empty commits).
+			const status = await execAsync("git diff --cached --name-only", { cwd: worktreePath });
+			if (!status.trim()) {
+				return { ok: true };
+			}
+			const safeSubject = subject.replace(/"/g, "");
+			await execAsync(`git commit -m "${safeSubject}"`, { cwd: worktreePath });
+			const ref = (await execAsync("git rev-parse --verify HEAD", { cwd: worktreePath })).trim();
+			log.debug("git", `Committed step: ${subject} → ${ref}`);
+			return { ok: true, ref };
+		} catch (err) {
+			return { ok: false, error: (err as Error).message };
 		}
 	}
 

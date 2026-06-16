@@ -131,6 +131,16 @@ export class AgentLoop implements AgentRuntime {
 			contextBundle: config.contextBundle,
 			// v0.8 (M0): ZeroAdminService handle for the zero role's tools.
 			zeroAdmin: config.zeroAdmin,
+			// v0.8 (M3): surface the agent-tool resolver so Orchestrate can
+			// dispatch DSL task nodes by user-facing agent-tool name.
+			getAgentToolEntries: config.getAgentToolEntries,
+			// v0.8 (M3): Orchestrate plan/manifest stores for the lead's
+			// Orchestrate tool (confirm gate + manifest persistence).
+			orchestratePlanStore: (config as any).orchestratePlanStore,
+			orchestrateManifestStore: (config as any).orchestrateManifestStore,
+			// v0.8 (M3): GitIntegration for the Orchestrate tool's per-task
+			// commitStep on the feature worktree (decision 21).
+			gitIntegration: (config as any).gitIntegration,
 		};
 	}
 

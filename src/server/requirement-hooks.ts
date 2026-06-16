@@ -32,6 +32,7 @@ import type { TaskStepStore } from "./task-step-store.js";
 import type { LeadService } from "./lead-service.js";
 import type { AnalystService } from "./analyst-service.js";
 import type { NotificationService } from "./notification-service.js";
+import type { ProjectNotificationRouter } from "./project-notification-router.js";
 import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,10 @@ export function registerRequirementHooks(deps: {
 	hookRegistry?: HookRegistry;
 	analystService?: AnalystService;
 	notificationService?: NotificationService;
+	// v0.8 (M3): project-scoped cross-role notification router (ready→lead,
+	// verify→PM, accept→archivist). Falls back to NotificationService if absent
+	// (legacy path).
+	projectNotificationRouter?: ProjectNotificationRouter;
 }): void {
 	const registry = deps.hookRegistry ?? HookRegistry.getInstance();
 
@@ -121,12 +126,33 @@ export function registerRequirementHooks(deps: {
 				log.debug("requirement-hooks", "build→verify transition failed:", (err as Error).message);
 			}
 
+			// v0.8 (M3): notify PM session for coverage judgement (decision 10/34).
+			// PM reads the latest Orchestrate manifest and judges coverage.
+			// Non-blocking; cron fallback will retry if this notification fails.
+			if (deps.projectNotificationRouter) {
+				deps.projectNotificationRouter.notify("verify", targetReq.id, targetReq.projectId).catch(() => {});
+			}
+
 			// M5: Auto-verify if reviewer is 'analyst'
 			if (targetReq.reviewer === "analyst" && deps.analystService) {
 				log.agent("M5 auto-verify: reviewer=analyst, triggering verification for:", targetReq.id);
 				// Non-blocking — don't await to avoid blocking the hook
 				deps.analystService.verifyRequirement(targetReq.id).then((result) => {
 					if (result.passed) {
+						log.agent("M5 auto-verify: PASSED for:", targetReq.id);
+						// v0.8 (M3): verify accept → notify archivist to merge
+						// feature→main (RFC §2.9 / §2.15, acceptance-M3 item 6).
+						// Decisions 10/25 — the archivist session owns the merge;
+						// cron fallback retries if this notification is lost.
+						// Fire BEFORE archiveRequirement closes the requirement so
+						// the archivist still sees a verify-state requirement to
+						// merge. Notifications are best-effort and never throw
+						// (see ProjectNotificationRouter.notify catch-all).
+						if (deps.projectNotificationRouter) {
+							deps.projectNotificationRouter
+								.notify("verify_accept", targetReq.id, targetReq.projectId)
+								.catch(() => {});
+						}
 						log.agent("M5 auto-verify: PASSED, archiving:", targetReq.id);
 						return deps.analystService!.archiveRequirement(targetReq.id);
 					} else {

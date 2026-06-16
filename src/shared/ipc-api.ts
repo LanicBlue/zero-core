@@ -41,6 +41,7 @@ import type {
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	CronRecord, CreateCronInput, UpdateCronInput,
+	OrchestratePlanRecord,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -222,4 +223,12 @@ export interface IpcChannelDefs {
 	"crons:update":  { params: [id: string, input: UpdateCronInput];                  result: CronRecord | Err };
 	"crons:delete":  { params: [id: string];                                          result: Ok };
 	"crons:trigger": { params: [id: string];                                          result: Ok | Err };
+
+	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
+	// RFC §2.9 / decision 11 — the kanban surfaces pending plans to the user
+	// and calls confirm/reject. Resolves the awaiting Orchestrate tool Promise.
+	"orchestrate:pending": { params: [filter?: { projectId?: string }];               result: OrchestratePlanRecord[] };
+	"orchestrate:plan":    { params: [planId: string];                                result: OrchestratePlanRecord | Err };
+	"orchestrate:confirm": { params: [planId: string];                                result: { success: boolean; planId: string; reason?: string } };
+	"orchestrate:reject":  { params: [planId: string, reason: string];                result: { success: boolean; planId: string; reason?: string } };
 }
