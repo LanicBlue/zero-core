@@ -47,7 +47,7 @@ import { webFetchTool } from "../mcp-tools/fetch-tools.js";
 import { memoryRecallTool, memoryNoteTool } from "../mcp-tools/memory-node-tools.js";
 import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
 import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
-import { expandNodeTool, updateWikiNodeTool } from "./wiki-tools.js";
+import { expandNodeTool, updateWikiNodeTool, listWikiTreeTool, readDocTool } from "./wiki-tools.js";
 import { createRequirementTool } from "./requirement-tools.js";
 import { orchestrateTool } from "./orchestrate-tool.js";
 import { ZERO_ADMIN_TOOLS } from "./zero-admin-tools.js";
@@ -84,6 +84,10 @@ export const ALL_TOOLS: Record<string, any> = {
 	SequentialThinking: sequentialThinkingTool,
 	ExpandNode: expandNodeTool,
 	UpdateWikiNode: updateWikiNodeTool,
+	// v0.8 (M2): archivist wiki tree tools — read-only view (ListWikiTree),
+	// scoped upsert (UpdateWikiNode), and read-only doc access (ReadDoc).
+	ListWikiTree: listWikiTreeTool,
+	ReadDoc: readDocTool,
 	CreateRequirement: createRequirementTool,
 	Orchestrate: orchestrateTool,
 
@@ -103,6 +107,8 @@ const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> 
 	Wait: (ctx) => !!ctx.suspendUntilWake,
 	ExpandNode: (ctx) => !!ctx.wikiStore,
 	UpdateWikiNode: (ctx) => !!ctx.wikiStore,
+	ListWikiTree: (ctx) => !!ctx.wikiStore,
+	ReadDoc: (ctx) => !!(ctx.contextBundle?.workspaceDir ?? ctx.workingDir),
 	CreateRequirement: (ctx) => !!ctx.requirementStore,
 	Orchestrate: (ctx) => !!ctx.delegateTask,
 };

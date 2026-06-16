@@ -97,13 +97,46 @@ const SESSION_COLUMNS = [
 const PROJECT_WIKI_COLUMNS = [
 	{ key: "projectId", column: "project_id" },
 	{ key: "parentId", column: "parent_id" },
-	{ key: "nodeType", column: "node_type" },
+	// v0.8 (M2): global-tree type discriminator (header|intent|structure|project|memory).
+	// Legacy `node_type` kept below for back-compat rows; WikiStore synthesizes
+	// `type` from `node_type` on read if `type` is empty (RFC decision 23 — no
+	// migration scripts).
+	{ key: "type" },
 	{ key: "path" },
 	{ key: "title" },
 	{ key: "summary" },
 	{ key: "detail" },
+	// v0.8 (M2): leaf pointer to the actual document on disk (code file /
+	// requirement doc / ADR). The doc itself is NOT stored in the tree.
+	{ key: "docPointer", column: "doc_pointer" },
+	// v0.8 (M2): provenance tag for structural assertions (structure/derived/
+	// confirmed) — archivist's own confidence marker, RFC §2.17a decision 33.
+	{ key: "provenance" },
+	// v0.8 (M2): traceability requirement IDs, RFC §4.6.
+	{ key: "requirementIds", column: "requirement_ids", json: true },
+	// v0.8 (M2): free-form relations (module contains / depends-on / implements).
+	{ key: "relations", json: true },
+	// v0.8 (M2): archivist divergence flags (req unimplemented / code capability
+	// not covered by any req), RFC §2.16.
+	{ key: "flags", json: true },
 	{ key: "lastUpdatedBy", column: "last_updated_by" },
 	{ key: "sourceReqId", column: "source_req_id" },
+	// Legacy discriminator kept so ProjectWikiStore's back-compat view can read
+	// it for pre-M2 rows.
+	{ key: "nodeType", column: "node_type" },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+// v0.8 (M2): wiki scan cursor — per (archivist, project) git scan cursor
+// (RFC §2.13, §4.2). Records the main-branch commit sha the archivist last
+// scanned; on the next scan it runs `git log/diff <last>..main` and only
+// re-reads changes. MUST stay in sync with wiki-scan-cursor-store.ts COLUMNS.
+const WIKI_SCAN_CURSOR_COLUMNS = [
+	{ key: "archivistId", column: "archivist_id" },
+	{ key: "projectId", column: "project_id" },
+	{ key: "lastScannedRef", column: "last_scanned_ref" },
+	{ key: "lastFullScanAt", column: "last_full_scan_at" },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
 ];
@@ -281,15 +314,34 @@ export function runMigrations(sessionDB: SessionDB): void {
 	safeAddIndex(db, "projects", "idx_projects_workspace", "workspace_dir");
 
 	db.exec(`CREATE TABLE IF NOT EXISTS project_wiki (
-		id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
+		id TEXT PRIMARY KEY, project_id TEXT,
 		parent_id TEXT REFERENCES project_wiki(id),
-		node_type TEXT NOT NULL, path TEXT NOT NULL, title TEXT NOT NULL,
-		summary TEXT, detail TEXT, last_updated_by TEXT DEFAULT 'analyst',
-		source_req_id TEXT, created_at TEXT, updated_at TEXT,
-		UNIQUE(project_id, path)
+		type TEXT, node_type TEXT, path TEXT, title TEXT,
+		summary TEXT, detail TEXT, doc_pointer TEXT, provenance TEXT,
+		requirement_ids TEXT, relations TEXT, flags TEXT,
+		last_updated_by TEXT DEFAULT 'analyst',
+		source_req_id TEXT, created_at TEXT, updated_at TEXT
 	)`);
+	// v0.8 (M2): legacy UNIQUE(project_id, path) is dropped — global tree
+	// paths are unique within (parentId, path), not (projectId, path).
+	// For upgraded DBs the legacy constraint stays harmlessly.
 	safeAddIndex(db, "project_wiki", "idx_wiki_project", "project_id");
 	safeAddIndex(db, "project_wiki", "idx_wiki_parent", "parent_id");
+	safeAddIndex(db, "project_wiki", "idx_wiki_type", "type");
+
+	// v0.8 (M2): wiki scan cursor — per (archivist, project) git scan cursor
+	// (RFC §2.13, §4.2). (archivist_id, project_id) is the unique key.
+	db.exec(`CREATE TABLE IF NOT EXISTS wiki_scan_cursors (
+		id TEXT PRIMARY KEY,
+		archivist_id TEXT NOT NULL,
+		project_id TEXT NOT NULL,
+		last_scanned_ref TEXT,
+		last_full_scan_at TEXT,
+		created_at TEXT,
+		updated_at TEXT,
+		UNIQUE(archivist_id, project_id)
+	)`);
+	safeAddIndex(db, "wiki_scan_cursors", "idx_wsc_archivist_project", "archivist_id, project_id");
 
 	db.exec(`CREATE TABLE IF NOT EXISTS requirements (
 		id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),

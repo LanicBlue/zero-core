@@ -483,10 +483,115 @@ export interface TaskStepRecord {
 
 export type WikiNodeType = "directory" | "file" | "function" | "class" | "section";
 
+/**
+ * v0.8 (M2): the node type on the global wiki memory tree. RFC §4.6 / §2.19.
+ *
+ * - `project`  — root of one project's subtree (one per project; the session
+ *                `wikiRootNodeId` for project-role sessions points here).
+ * - `header`   — describes one code file; `docPointer` → file path.
+ * - `intent`   — describes one requirement doc; `docPointer` → doc path.
+ * - `structure`— module / subsystem / convention node (aggregated).
+ * - `memory`   — cross-project memory written by extractor A (M5); hangs
+ *                under a global type node, NOT under any `project` subtree.
+ *
+ * Legacy renderer still references the old `nodeType` ("directory"/"file"/…)
+ * and `path` fields; ProjectWikiNode below is kept as a back-compat view so
+ * the renderer keeps compiling. New code uses `type` + `docPointer`.
+ */
+export type WikiNodeTypeGlobal =
+	| "header" | "intent" | "structure" | "project" | "memory" | (string & {});
+
+/**
+ * v0.8 (M2): one node on the single global wiki memory tree (RFC §4.6 / §2.19).
+ *
+ * The tree lives in the zero-core database, NOT in any project workspace.
+ * Leaf nodes carry `docPointer` to the actual doc on disk (code file,
+ * requirement doc, ADR); the actual doc is NOT duplicated into the tree.
+ *
+ * Two disjoint writer scopes (RFC §2.16 N2):
+ *   - archivist writes the `project` subtree structure nodes only;
+ *   - extractor A (M5) writes global `memory` nodes outside any project
+ *     subtree.
+ */
+export interface WikiNode {
+	id: string;
+	/** Tree parent. Undefined only on the synthetic global root. */
+	parentId?: string;
+	/** Node type on the global tree (RFC §4.6). */
+	type: WikiNodeTypeGlobal;
+	/**
+	 * Stable path used as upsert key within a parent scope, e.g.
+	 *   "project:<projectId>"                  (project subtree root)
+	 *   "header:src/runtime/agent-loop.ts"     (code-file header)
+	 *   "intent:docs/req-foo.md"               (requirement-doc intent)
+	 *   "memory:global/dev/notes"              (M5 cross-project memory)
+	 * Legacy renderer code reads `path` directly; ProjectWikiNode view maps it.
+	 */
+	path: string;
+	title: string;
+	summary?: string;
+	detail?: string;
+	/**
+	 * Leaf pointer to the actual document on disk (code file / requirement
+	 * doc / ADR). The doc itself is NOT stored in the wiki tree.
+	 */
+	docPointer?: string;
+	/**
+	 * Provenance tag for structural assertions — archivist's own confidence
+	 * marker, not a workflow-wide labeling scheme (RFC §2.17a, decision 33).
+	 * - `structure` — inferred from code structure (what).
+	 * - `derived`   — aggregated from commit message / ADR / design doc /
+	 *                  comments (why, may lag).
+	 * - `confirmed` — confirmed from user discuss or PM requirement doc.
+	 */
+	provenance?: "structure" | "derived" | "confirmed";
+	/**
+	 * Traceability: requirement IDs this node relates to (req→module both
+	 * directions). RFC §4.6 / §2.13.
+	 */
+	requirementIds?: string[];
+	/**
+	 * Project ID this node belongs to (only set on `project` subtree nodes;
+	 * undefined on global memory nodes). Used as the project-scoping key.
+	 */
+	projectId?: string;
+	/** Free-form relations (module contains / depends-on / implements). */
+	relations?: Array<{ kind: string; targetId: string }>;
+	/**
+	 * Flag set when archivist detected a divergence it couldn't auto-resolve
+	 * (e.g. "no recorded intent for this code capability" / "intent with no
+	 * implementation"). PM/lead reads this to surface to the user.
+	 */
+	flags?: string[];
+	/**
+	 * Legacy back-compat: single requirement id this node originated from.
+	 * Pre-M2 rows carry this; new code uses requirementIds[]. Kept on the
+	 * type so the back-compat ProjectWikiStore view round-trips through it.
+	 */
+	sourceReqId?: string;
+	lastUpdatedBy?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+/**
+ * v0.8 (M2): ProjectWikiNode is the back-compat view over the global WikiNode
+ * tree. The legacy renderer (WikiTree.tsx / WikiDetail.tsx) and the existing
+ * IPC handlers consume this shape. New server code should use WikiNode.
+ *
+ * A project-subtree WikiNode projects to a ProjectWikiNode as:
+ *   nodeType = (type === "header" ? "file"
+ *              : type === "structure" ? "directory"
+ *              : type === "intent" ? "file"
+ *              : "section")
+ *   path     = node.path (already includes a leading scope prefix the
+ *              renderer strips; legacy behavior preserved)
+ */
 export interface ProjectWikiNode {
 	id: string;
 	projectId: string;
 	parentId?: string;
+	/** Legacy type discriminator; mapped from WikiNode.type (see above). */
 	nodeType: WikiNodeType;
 	path: string;
 	title: string;

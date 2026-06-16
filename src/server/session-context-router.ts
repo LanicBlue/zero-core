@@ -36,15 +36,29 @@ import type { ProjectStore } from "./project-store.js";
 import type { SessionContextBundle, SessionRecord } from "../shared/types.js";
 
 /**
- * Resolve a project's wiki root node id. Returns a placeholder root id until
- * M2 (global wiki tree) lands the real per-project subtree root. The placeholder
- * is deterministic per projectId so re-routing stays stable across restarts.
+ * Resolve a project's wiki root node id.
+ *
+ * v0.8 (M2): returns the id of the project's `project` subtree root in the
+ * global wiki memory tree (WikiStore.ensureProjectSubtree mints this id as
+ * `wiki-root:<projectId>`). For project-role sessions, this is the
+ * wikiRootNodeId carried in the session context bundle — and WikiStore's
+ * view-truncated queries treat it as the upper visibility bound (decision 38).
  */
 export type WikiRootResolver = (projectId: string) => string;
 
-/** Default placeholder wiki root resolver (M2 will replace this). */
+/**
+ * Default wiki root resolver — returns the per-project subtree root id.
+ * Stable across restarts (deterministic from projectId).
+ */
 export const defaultWikiRootResolver: WikiRootResolver = (projectId: string) =>
 	`wiki-root:${projectId}`;
+
+/**
+ * v0.8 (M2): the global wiki memory tree root id. Sessions whose wikiRootNodeId
+ * is this value (zero global-management sessions, observation cron) see the
+ * whole tree — every project subtree + global memory type nodes.
+ */
+export const GLOBAL_WIKI_ROOT_ID = "wiki-root:global";
 
 export interface SessionContextRouterDeps {
 	sessionDB: SessionDB;

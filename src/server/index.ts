@@ -59,6 +59,11 @@ import { createMemoryNodeRouter } from "./memory-node-router.js";
 import { ProjectStore } from "./project-store.js";
 import { RequirementStore } from "./requirement-store.js";
 import { ProjectWikiStore } from "./project-wiki-store.js";
+// v0.8 (M2): global wiki memory tree + archivist.
+import { WikiStore } from "./wiki-node-store.js";
+import { WikiScanCursorStore } from "./wiki-scan-cursor-store.js";
+import { ArchivistGit } from "./archivist-git.js";
+import { ArchivistService } from "./archivist-service.js";
 import { TaskStepStore } from "./task-step-store.js";
 import { createProjectRouter } from "./project-router.js";
 import { createRequirementRouter } from "./requirement-router.js";
@@ -130,7 +135,13 @@ export async function startServer(options?: StartServerOptions) {
 	// Multi-Agent Workflow stores
 	const projectStore = new ProjectStore(sessionDB);
 	const requirementStore = new RequirementStore(sessionDB);
-	const wikiStore = new ProjectWikiStore(sessionDB);
+	// v0.8 (M2): single global WikiStore (the memory tree) + back-compat
+	// ProjectWikiStore view over the same rows. New code uses wikiStoreGlobal;
+	// legacy IPC/router/renderer continue to use wikiStore (ProjectWikiStore).
+	const wikiStoreGlobal = new WikiStore(sessionDB);
+	const wikiStore = new ProjectWikiStore(wikiStoreGlobal);
+	// v0.8 (M2): per-(archivist, project) git scan cursor.
+	const wikiScanCursorStore = new WikiScanCursorStore(sessionDB);
 	const taskStepStore = new TaskStepStore(sessionDB);
 	// v0.8 (M1): cron store — first-class cron entity (one agent → N cron).
 	const cronStore = new (await import("./cron-store.js")).CronStore(sessionDB);
@@ -228,6 +239,20 @@ export async function startServer(options?: StartServerOptions) {
 		wikiStore,
 		requirementStore,
 		templateStore,
+	});
+
+	// ─── ArchivistService (v0.8 M2) ─────────────────────────────────
+	// archivist owns the project wiki subtree structure (RFC §2.7/§2.13/
+	// §2.16). Fed by main-branch git scans; writes only to its project
+	// subtree (store-layer enforced). Manages main-branch git (commit PM
+	// docs / merge feature→main / non-repo auto-init / worktree cleanup).
+	const archivistGit = new ArchivistGit();
+	const archivistService = new ArchivistService({
+		wikiStore: wikiStoreGlobal,
+		cursorStore: wikiScanCursorStore,
+		git: archivistGit,
+		projectStore,
+		requirementStore,
 	});
 
 	// ─── LeadService + Requirement Hooks (M3) ────────────────────────
@@ -350,6 +375,65 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/requirements", requirementRouter);
 
 	app.use("/api/project-wiki", createWikiRouter({ wikiStore }));
+
+	// v0.8 (M2): archivist endpoints — scan / rescan / divergence / git ops.
+	// Routes the project-notification / cron / requirement-accept flows into
+	// the archivist's wiki + main-git responsibilities (RFC §2.7 / §2.13 /
+	// §2.15 / §2.16).
+	const archivistRouter = express.Router();
+	archivistRouter.post("/:projectId/scan", async (req, res) => {
+		try {
+			const result = await archivistService.scanProject(req.params.projectId);
+			res.json(result);
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	archivistRouter.post("/:projectId/rescan-full", async (req, res) => {
+		try {
+			const result = await archivistService.rescanProjectFull(req.params.projectId);
+			res.json(result);
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	archivistRouter.get("/:projectId/divergence", async (req, res) => {
+		try {
+			const report = await archivistService.detectDivergence(req.params.projectId);
+			res.json(report);
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	archivistRouter.post("/:projectId/commit-requirement-doc", async (req, res) => {
+		try {
+			const { requirementId, title, docPaths } = req.body || {};
+			const r = await archivistService.commitRequirementDoc(
+				req.params.projectId, requirementId, title, docPaths ?? [],
+			);
+			res.json(r);
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	archivistRouter.post("/:projectId/merge-feature", async (req, res) => {
+		try {
+			const { requirementId } = req.body || {};
+			const r = await archivistService.mergeFeatureToMain(
+				req.params.projectId, requirementId,
+			);
+			res.json(r);
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	archivistRouter.post("/:projectId/cleanup-worktree", async (req, res) => {
+		try {
+			const { requirementId } = req.body || {};
+			await archivistService.cleanupWorktree(req.params.projectId, requirementId);
+			res.json({ ok: true });
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	// v0.8 (M2): read the global wiki tree from a session view root. Project-
+	// role sessions pass their wikiRootNodeId; global sessions pass
+	// "wiki-root:global". This is the view-truncated read (decision 38).
+	archivistRouter.get("/view/:wikiRootNodeId", (req, res) => {
+		try {
+			const nodes = wikiStoreGlobal.listVisibleFromRoot(req.params.wikiRootNodeId);
+			res.json(nodes);
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	app.use("/api/archivist", archivistRouter);
 
 	// v0.8 (M0): role presets — list + one-click instantiate
 	const { createPresetRouter } = await import("./preset-router.js");
