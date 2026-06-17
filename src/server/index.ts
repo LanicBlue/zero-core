@@ -111,13 +111,35 @@ export async function startServer(options?: StartServerOptions) {
 	const sessionDB = new SessionDB();
 	runMigrations(sessionDB);
 
+	// v0.8 (M2): single global WikiStore (the memory tree) — created EARLY so
+	// the M5 extraction hooks (registered below) can point at it. The
+	// back-compat ProjectWikiStore view is created alongside; legacy
+	// IPC/router/renderer keep using it.
+	const wikiStoreGlobal = new WikiStore(sessionDB);
+
 	// Initialize hook system + durable execution
 	const { registerDurableHooks } = await import("./durable-hooks.js");
 	const { registerToolExecutionHooks } = await import("./tool-execution-hooks.js");
 	registerDurableHooks(sessionDB);
 	registerToolExecutionHooks(sessionDB);
+
+	// v0.8 (M5): extractor cursor + telemetry stores live on SessionDB (lazy
+	// accessors). The extraction hook deps are wired here so PostTurnComplete
+	// can build extractor A/B with the global WikiStore as writer target.
+	const { ExtractorAService } = await import("./extractor-a-service.js");
+	const { ExtractorBService } = await import("./extractor-b-service.js");
+	const extractionDeps = {
+		cursorStore: sessionDB.getExtractionCursorStore(),
+		buildExtractorA: (providers: any[], providerName: string, modelId: string) =>
+			new ExtractorAService({ providers, providerName, modelId, wiki: wikiStoreGlobal }),
+		buildExtractorB: (providers: any[], providerName: string, modelId: string) =>
+			new ExtractorBService({
+				providers, providerName, modelId,
+				telemetry: sessionDB.getTelemetryStore(),
+			}),
+	};
 	const { registerAllRuntimeHooks } = await import("../runtime/hooks/index.js");
-	registerAllRuntimeHooks(sessionDB);
+	registerAllRuntimeHooks(sessionDB, extractionDeps);
 
 	const registry = new ToolRegistry(sessionDB.getKVStore());
 	registerRuntimeTools(registry);
@@ -135,10 +157,7 @@ export async function startServer(options?: StartServerOptions) {
 	// Multi-Agent Workflow stores
 	const projectStore = new ProjectStore(sessionDB);
 	const requirementStore = new RequirementStore(sessionDB);
-	// v0.8 (M2): single global WikiStore (the memory tree) + back-compat
-	// ProjectWikiStore view over the same rows. New code uses wikiStoreGlobal;
-	// legacy IPC/router/renderer continue to use wikiStore (ProjectWikiStore).
-	const wikiStoreGlobal = new WikiStore(sessionDB);
+	// ProjectWikiStore back-compat view over the same rows as wikiStoreGlobal.
 	const wikiStore = new ProjectWikiStore(wikiStoreGlobal);
 	// v0.8 (M2): per-(archivist, project) git scan cursor.
 	const wikiScanCursorStore = new WikiScanCursorStore(sessionDB);
@@ -335,6 +354,12 @@ export async function startServer(options?: StartServerOptions) {
 	// PmService.createRequirementWithDoc, and PM can read the project wiki
 	// (ListWikiTree / ReadDoc), from a cron-triggered sendPrompt loop.
 	agentService.setPmService(pmService, requirementStore, wikiStore);
+	// v0.8 (M5): surface the global WikiStore onto every session so extractor
+	// A can write global memory nodes (decision 46 N2) and recall
+	// (memory-hooks) can read them back. Extractor enable flags +
+	// checkpointThresholds are read from this.config.extractors inside
+	// AgentService (loaded via loadConfig in its constructor).
+	agentService.setWikiStoreGlobal(wikiStoreGlobal);
 
 	analystService.setGitIntegration(gitIntegration);
 

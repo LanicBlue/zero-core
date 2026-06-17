@@ -144,20 +144,131 @@ export class AgentSession {
 
 		await triggerHooks("PreCompact", { sessionId: this.sessionId ?? "", messageCount: this.messages.length, estimatedTokens: this.estimateTokens(), contextWindow: this.contextWindow });
 
+		// v0.8 (M5, prune/compress order fix — RFC §2.18):
+		// Bug being fixed: the old loop did `if (budget - cost < 0) break;`
+		// which meant a single turn larger than the budget was dropped
+		// entirely with NO summary ("裸丢"). For an agent with exactly one
+		// giant turn this zeroed the context.
+		//
+		// Fix: walk from the tail keeping messages while budget remains.
+		// When a message would overflow the remaining budget:
+		//   - If it's NOT the last turn's messages (i.e. we already kept at
+		//     least one message): drop it + everything older (they will be
+		//     picked up by the compression engine's L1/L2 on PostTurnComplete
+		//     and extracted into memory nodes — NOT naked-dropped).
+		//   - If it IS part of the most recent turn (we haven't kept anything
+		//     yet, or only kept partial of the current turn): KEEP it anyway
+		//     by truncating to fit. The agent must have SOMETHING to work
+		//     with; truncating one message is strictly better than dropping
+		//     the whole turn silently.
 		let budget = available;
 		const kept: ModelMessage[] = [];
+		const dropped: ModelMessage[] = [];
 
 		for (let i = this.messages.length - 1; i >= 0; i--) {
-			const cost = this.estimateMessageTokens(this.messages[i]);
-			if (budget - cost < 0) break;
-			budget -= cost;
-			kept.unshift(this.messages[i]);
+			const msg = this.messages[i];
+			const cost = this.estimateMessageTokens(msg);
+			if (budget - cost >= 0) {
+				budget -= cost;
+				kept.unshift(msg);
+				continue;
+			}
+			// Overflow case.
+			if (kept.length === 0) {
+				// Most recent message is itself larger than budget. Truncate
+				// to fit rather than naked-drop. This is the "large single
+				// turn" path — content is preserved (truncated), and the
+				// untruncated original still lives in the turns table
+				// (mechanism 1 — raw turn persistence) so the extractor can
+				// still summarize the full thing later.
+				const truncated = this.truncateMessage(msg, Math.max(budget, 1024));
+				kept.unshift(truncated);
+				budget = 0;
+				// Everything older than this gets dropped (will be summarized
+				// by compression engine on next PostTurnComplete).
+				for (let j = i - 1; j >= 0; j--) dropped.unshift(this.messages[j]);
+				break;
+			}
+			// Older overflow: drop this message and everything older. They
+			// are subject to compression-engine L1/L2 on PostTurnComplete
+			// (which extracts memory nodes from compressed turns — NOT a
+			// naked drop).
+			for (let j = i; j >= 0; j--) dropped.unshift(this.messages[j]);
+			break;
 		}
 
 		this.messages = kept;
 		this.invalidateCalibration();
 
-		await triggerHooks("PostCompact", { sessionId: this.sessionId ?? "", messageCount: this.messages.length, estimatedTokens: this.estimateTokens(), contextWindow: this.contextWindow });
+		// Surface dropped-turn count so the compression engine (and tests)
+		// can verify nothing was naked-dropped. PostCompact already fires
+		// after this; the compression hook runs on PostTurnComplete and
+		// will pick up the dropped turns via L1/L2 (they're gone from
+		// in-memory messages but still in the turns table — mechanism 1).
+		if (dropped.length > 0) {
+			await triggerHooks("PostCompact", {
+				sessionId: this.sessionId ?? "",
+				messageCount: this.messages.length,
+				estimatedTokens: this.estimateTokens(),
+				contextWindow: this.contextWindow,
+				droppedMessageCount: dropped.length,
+				prunedTailMessageCount: dropped.length,
+			} as any);
+		} else {
+			await triggerHooks("PostCompact", { sessionId: this.sessionId ?? "", messageCount: this.messages.length, estimatedTokens: this.estimateTokens(), contextWindow: this.contextWindow });
+		}
+	}
+
+	/**
+	 * v0.8 (M5): truncate a single oversized message to roughly `targetTokens`.
+	 * Used by pruneIfNeeded when the most-recent message itself overflows the
+	 * budget — truncating is strictly better than naked-dropping (the original
+	 * stays in the turns table for later extraction). Preserves role and
+	 * keeps the head of text content.
+	 */
+	private truncateMessage(msg: ModelMessage, targetTokens: number): ModelMessage {
+		const role = (msg as any).role;
+		const content = (msg as any).content;
+		// Approx tokens → chars (4 chars/token heuristic, matches estimateMessageTokens).
+		const targetChars = Math.max(256, targetTokens * 4);
+		const note = `\n\n[... truncated by pruneIfNeeded (M5 large-single-turn fix); full content remains in session storage for extractor A ...]`;
+
+		if (typeof content === "string") {
+			const sliced = content.length > targetChars ? content.slice(0, targetChars - note.length) + note : content;
+			return { role, content: sliced } as ModelMessage;
+		}
+		if (Array.isArray(content)) {
+			// Keep head text parts until budget; drop trailing parts.
+			const out: any[] = [];
+			let used = 0;
+			for (const part of content) {
+				if (part?.type === "text" && typeof part.text === "string") {
+					const remaining = targetChars - used - note.length;
+					if (remaining <= 0) break;
+					if (part.text.length > remaining) {
+						out.push({ type: "text", text: part.text.slice(0, remaining) + note });
+						used = targetChars;
+						break;
+					}
+					out.push(part);
+					used += part.text.length;
+				} else {
+					// Non-text parts (tool-call / tool-result) are usually
+					// smaller; keep them as-is but stop if we've blown budget.
+					if (used >= targetChars) break;
+					out.push(part);
+					used += JSON.stringify(part ?? {}).length;
+				}
+			}
+			if (out.length === 0 && content.length > 0) {
+				// Edge case: only non-text parts and they overflow. Keep the
+				// first part truncated.
+				const first = content[0];
+				out.push({ ...first, _truncated: true });
+			}
+			return { role, content: out } as ModelMessage;
+		}
+		return msg;
 	}
 
 	/** Aggressively prune: keep only the last keepRatio of messages (by token budget). */

@@ -35,7 +35,33 @@ import { HookRegistry } from "../../core/hook-registry.js";
 import { CompressionEngine } from "../compression-engine.js";
 import type { SessionConfig, RuntimeProviderConfig } from "../types.js";
 import type { AgentSession } from "../session.js";
+// v0.8 (M5): memory node migration — write to wiki tree (memory nodes) instead
+// of legacy MemoryNodeStore. memoryTypeRootId is shared with extractor-a-service
+// so all memory writes converge on the same parent layout.
+import { memoryTypeRootId } from "../../server/wiki-node-store.js";
 import { log } from "../../core/logger.js";
+
+/**
+ * Slugify a subject for use in the wiki memory node path. Duplicated from
+ * extractor-a-service so compression-hooks doesn't need a circular import
+ * (extractor-a-service imports the runtime layer via provider-factory; this
+ * is the runtime layer importing back).
+ */
+function subjectSlug(subject: string): string {
+	return subject
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 64) || "unnamed";
+}
+
+/**
+ * Wiki memory-type-root id, identical to the one exported from wiki-node-store
+ * (kept as a local alias to avoid surprising renames if the export moves).
+ */
+function wikiMemoryTypeRootId(type: string): string {
+	return memoryTypeRootId(type as any);
+}
 
 export function registerCompressionHooks(): void {
 	const registry = HookRegistry.getInstance();
@@ -83,9 +109,51 @@ export function registerCompressionHooks(): void {
 
 				if (result.memoryNodes.length > 0 && config.db) {
 					try {
-						const nodeStore = config.db.getMemoryNodeStore();
-						if (nodeStore) {
-							nodeStore.upsertNodes(session.getSessionId() ?? null, result.memoryNodes);
+						// v0.8 (M5): memory nodes are migrated to the global wiki
+						// tree (type=memory). The wiki tree is the canonical
+						// location for content memory (decision 53); the legacy
+						// MemoryNodeStore is kept for back-compat reads of
+						// pre-M5 data, but new writes go to the wiki tree so
+						// extractor A (which also writes there) sees them.
+						//
+						// If config.wikiStoreGlobal is unavailable (e.g. the
+						// session wasn't created via agent-service in tests),
+						// fall back to the legacy MemoryNodeStore so we don't
+						// silently lose the extraction.
+						const wikiGlobal = (config as any).wikiStoreGlobal;
+						if (wikiGlobal) {
+							for (const fact of result.memoryNodes) {
+								try {
+									// Reuse extractor A's write path so all
+									// content memory goes through the same
+									// global memory-type-root layout.
+									wikiGlobal.ensureMemoryTypeRoot(fact.type);
+									const parentId = wikiMemoryTypeRootId(fact.type);
+									const path = `memory:${subjectSlug(fact.subject)}`;
+									wikiGlobal.createMemoryNode({
+										parentId,
+										path,
+										title: `${fact.subject} (${fact.type})`,
+										summary: fact.content,
+										detail: JSON.stringify({
+											subject: fact.subject,
+											type: fact.type,
+											content: fact.content,
+											sourceSessionId: session.getSessionId() ?? null,
+											source: "compression-engine-L2",
+										}, null, 2),
+										provenance: "derived",
+										lastUpdatedBy: "extractor-A",
+									});
+								} catch (err2) {
+									log.warn("compression", `Memory node wiki write failed for ${fact.subject}:`, (err2 as Error).message);
+								}
+							}
+						} else {
+							const nodeStore = config.db.getMemoryNodeStore();
+							if (nodeStore) {
+								nodeStore.upsertNodes(session.getSessionId() ?? null, result.memoryNodes);
+							}
 						}
 					} catch (err) {
 						log.warn("compression", "Memory node save failed:", (err as Error).message);

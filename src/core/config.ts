@@ -144,6 +144,33 @@ export const ZeroCoreConfigSchema = Type.Object({
 		recallLimit: Type.Optional(Type.Number()),
 	}),
 
+	// ─── Extractors (v0.8 M5 — archive extractor A + tool telemetry extractor B)
+	//
+	// Two independent post-hoc agents that run async after each turn / on
+	// session close. Each has its own enable flag (decision 44).
+	//   - A: content memory extractor — writes global wiki `type=memory` nodes
+	//        (decision 46 N2). Used both for low-checkpoint incremental
+	//        extraction (mechanism 2) and terminal flush (mechanism 3).
+	//   - B: tool telemetry extractor — writes to an independent telemetry
+	//        store (NOT the wiki tree; platform-improvement data, not project
+	//        knowledge — decision 49).
+	// checkpointThresholds = token-budget ratios at which the low-checkpoint
+	// incremental extraction hook fires extractor A on the delta since the
+	// last cursor (decision 53). Default ~20% / 45% / 70% (RFC §2.18).
+	extractors: Type.Object({
+		A: Type.Object({
+			enabled: Type.Optional(Type.Boolean()),
+			provider: Type.Optional(Type.String()),
+			model: Type.Optional(Type.String()),
+		}),
+		B: Type.Object({
+			enabled: Type.Optional(Type.Boolean()),
+			provider: Type.Optional(Type.String()),
+			model: Type.Optional(Type.String()),
+		}),
+		checkpointThresholds: Type.Optional(Type.Array(Type.Number())),
+	}),
+
 	// ─── Runtime defaults ──────────────────────────────────────────
 
 	defaults: Type.Object({
@@ -213,6 +240,18 @@ export const DEFAULT_CONFIG: ZeroCoreConfig = {
 	},
 	memory: {
 		enabled: false,
+	},
+	// v0.8 (M5): archive extractors. A is the unified content-memory writer
+	// (incremental + close flush). B is the tool telemetry extractor. Both
+	// off by default; flip extractors.A.enabled=true in config to turn on.
+	extractors: {
+		A: { enabled: false },
+		B: { enabled: false },
+		// RFC §2.18 / decision 53 — fire at low budget points so the delta
+		// can be summarized while there's still headroom. NOT a "live
+		// checkpoint" — it's just a token-budget threshold for invoking the
+		// async extractor A on the delta since the last cursor.
+		checkpointThresholds: [0.2, 0.45, 0.7],
 	},
 	defaults: {},
 	retry: {},

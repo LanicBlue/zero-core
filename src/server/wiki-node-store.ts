@@ -97,6 +97,19 @@ export function projectSubtreeRootId(projectId: string): string {
 	return `wiki-root:${projectId}`;
 }
 
+/**
+ * v0.8 (M5): stable synthetic id of one of the five global memory-type
+ * roots (RFC §2.16 N2 / decision 46). Memory leaves written by extractor A
+ * hang under their matching type root. These ids are shared with
+ * extractor-a-service so it can look up the parent before upserting a leaf.
+ */
+export type MemoryFactType =
+	| "event" | "decision" | "discovery" | "status_change" | "preference";
+
+export function memoryTypeRootId(type: MemoryFactType): string {
+	return `wiki-root:memory:${type}`;
+}
+
 // ---------------------------------------------------------------------------
 // WikiStore — the single global wiki memory tree
 // ---------------------------------------------------------------------------
@@ -461,6 +474,42 @@ export class WikiStore {
 		});
 	}
 
+	/**
+	 * v0.8 (M5): ensure one of the five global memory-type root nodes exists
+	 * under WIKI_GLOBAL_ROOT_ID. Each (event/decision/discovery/status_change/
+	 * preference) gets its own synthetic-id root; extractor A's memory leaves
+	 * hang under the matching type root (RFC §2.16 N2, decision 46).
+	 *
+	 * Unlike createMemoryNode (which mints a uuid), this uses a stable
+	 * synthetic id (wiki-root:memory:<type>) so it's idempotent across runs.
+	 */
+	ensureMemoryTypeRoot(type: "event" | "decision" | "discovery" | "status_change" | "preference"): WikiNode {
+		const id = memoryTypeRootId(type);
+		const existing = this.get(id);
+		if (existing) return existing;
+		const now = new Date().toISOString();
+		const titles: Record<typeof type, string> = {
+			event: "Memory: Events",
+			decision: "Memory: Decisions",
+			discovery: "Memory: Discoveries",
+			status_change: "Memory: Status Changes",
+			preference: "Memory: Preferences",
+		};
+		this.insertWithId({
+			id,
+			parentId: WIKI_GLOBAL_ROOT_ID,
+			type: "memory",
+			nodeType: "section",
+			path: `memory-root:${type}`,
+			title: titles[type],
+			summary: `Global memory type root for ${type} facts (M5 extractor A).`,
+			lastUpdatedBy: "extractor-A",
+			createdAt: now,
+			updatedAt: now,
+		} as any);
+		return this.get(id)!;
+	}
+
 	// ─── Project registry / helpers ─────────────────────────────────
 
 	/** List all known project subtree root nodes. */
@@ -469,6 +518,54 @@ export class WikiStore {
 			.list()
 			.filter((n) => n.type === "project" && n.projectId)
 			.map((n) => n.projectId!) as string[];
+	}
+
+	// ─── Memory node queries (M5 — extractor A writes type=memory nodes) ──
+
+	/**
+	 * List all memory nodes in the global tree (any type). Used by recall +
+	 * telemetry consumers to read cross-project memory written by extractor A.
+	 *
+	 * v0.8 (M5): the canonical location for content memory is now the wiki
+	 * tree (decision 53); the legacy MemoryNodeStore is kept for back-compat
+	 * reads of pre-M5 data.
+	 */
+	listMemoryNodes(): WikiNode[] {
+		return this.store
+			.list()
+			.filter((n) => n.type === "memory")
+			.map(rowToWikiNode);
+	}
+
+	/**
+	 * Simple LIKE-based search over memory node title + summary + detail.
+	 * Splits the query on whitespace and ANDs the terms. NOT FTS5 — extractor
+	 * A's volume is small enough that a linear scan is fine for v1, and we
+	 * avoid coupling memory nodes to a second FTS table.
+	 *
+	 * Sorts by updatedAt DESC (most-recently-evolved first). Excludes the
+	 * five memory-type roots themselves (they have empty summaries).
+	 */
+	searchMemoryNodes(query: string, limit: number = 10): WikiNode[] {
+		const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+		if (terms.length === 0) return [];
+		const typeRootIds = new Set([
+			"wiki-root:memory:event",
+			"wiki-root:memory:decision",
+			"wiki-root:memory:discovery",
+			"wiki-root:memory:status_change",
+			"wiki-root:memory:preference",
+		]);
+		const matches = this.store.list().filter((n) => {
+			if (n.type !== "memory") return false;
+			if (typeRootIds.has(n.id)) return false; // skip type roots
+			const hay = (
+				(n.title ?? "") + " " + (n.summary ?? "") + " " + (n.detail ?? "")
+			).toLowerCase();
+			return terms.every(t => hay.includes(t));
+		});
+		matches.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+		return matches.slice(0, limit).map(rowToWikiNode);
 	}
 
 	/** Collect a node id and all its descendants. */

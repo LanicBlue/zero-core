@@ -34,6 +34,13 @@ import type { SessionRecord, ToolExecutionRecord, ToolExecutionFilter, ToolExecu
 import { KeyValueStore } from "./key-value-store.js";
 import { MemoryStore } from "./memory-store.js";
 import { MemoryNodeStore } from "./memory-node-store.js";
+// v0.8 (M5): extractor cursor + tool telemetry stores. These back
+// extractor A's incremental cursor (mechanism 2) and extractor B's
+// independent telemetry writes (decision 49). Tables are created in
+// their own constructors (idempotent IF NOT EXISTS), so they don't
+// need entries in db-migration.ts's *_COLUMNS arrays.
+import { ExtractionCursorStore } from "./extraction-cursor-store.js";
+import { TelemetryStore } from "./telemetry-store.js";
 import { ZERO_CORE_DIR } from "../core/config.js";
 
 // ---------------------------------------------------------------------------
@@ -45,6 +52,9 @@ export class SessionDB {
 	private kvStore: KeyValueStore;
 	private memoryStore: MemoryStore;
 	private memoryNodeStore: MemoryNodeStore;
+	// v0.8 (M5): extractor cursor + telemetry stores (lazy-init below).
+	private extractionCursorStore: ExtractionCursorStore | null = null;
+	private telemetryStore: TelemetryStore | null = null;
 
 	constructor(dbPath?: string) {
 		const dir = join(dbPath ?? ZERO_CORE_DIR, "..");
@@ -79,6 +89,22 @@ export class SessionDB {
 
 	getMemoryNodeStore(): MemoryNodeStore {
 		return this.memoryNodeStore;
+	}
+
+	// v0.8 (M5): extractor stores — lazy so existing code paths that never
+	// touch M5 (e.g. compression engine unit tests) don't pay the init cost.
+	getExtractionCursorStore(): ExtractionCursorStore {
+		if (!this.extractionCursorStore) {
+			this.extractionCursorStore = new ExtractionCursorStore(this.db);
+		}
+		return this.extractionCursorStore;
+	}
+
+	getTelemetryStore(): TelemetryStore {
+		if (!this.telemetryStore) {
+			this.telemetryStore = new TelemetryStore(this.db);
+		}
+		return this.telemetryStore;
 	}
 
 	// -----------------------------------------------------------------------

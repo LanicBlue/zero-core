@@ -102,6 +102,16 @@ export class AgentService {
 	private pmService: any = null;
 	private requirementStore: any = null;
 	private wikiStore: any = null;
+	// v0.8 (M5): the global WikiStore (not the ProjectWikiStore back-compat
+	// wrapper). Surfaced onto every session config so extractor A can write
+	// global memory nodes (decision 46 N2 — memory hangs under global type
+	// nodes, NOT under any project subtree), and so recall (memory-hooks)
+	// can read those nodes back.
+	private wikiStoreGlobal: any = null;
+	// v0.8 (M5): extractor config (extractors.A/B enabled + provider/model
+	// overrides + checkpointThresholds). Threaded into every session config
+	// so the extraction hook can gate + build extractor services.
+	private extractorsConfig: any = null;
 
 	// Module readiness — modules notify when loaded, deferred actions wait until ready
 	private readyModules = new Set<string>();
@@ -161,6 +171,17 @@ export class AgentService {
 		this.requirementStore = requirementStore;
 		this.wikiStore = wikiStore ?? null;
 	}
+	/**
+	 * v0.8 (M5): inject the global WikiStore. The global WikiStore is the
+	 * writer target for extractor A's memory nodes (decision 46 N2).
+	 * Extractor config (extractors.A/B enabled + provider/model overrides +
+	 * checkpointThresholds) is read from this.config.extractors (loaded in
+	 * the constructor via loadConfig).
+	 */
+	setWikiStoreGlobal(wikiStoreGlobal: any): void {
+		this.wikiStoreGlobal = wikiStoreGlobal ?? null;
+		this.extractorsConfig = (this.config as any).extractors ?? null;
+	}
 	getSessionManager(): SessionManager | null {
 		return this.sessionManager;
 	}
@@ -196,12 +217,77 @@ export class AgentService {
 		return this.activeSessions;
 	}
 	evictSessionFromMemory(sessionId: string): void {
+		// v0.8 (M5): mechanism 3 — close flush. Fire extractor A on the tail
+		// batch (anything after the last extraction cursor) so session death
+		// doesn't lose content. fire-and-forget: we kick it off and don't
+		// await (eviction is synchronous from the session-manager's POV and
+		// must not block on LLM calls).
+		try {
+			if (this.wikiStoreGlobal) {
+				const { closeFlushSession } = require("../runtime/hooks/extraction-hooks.js") as typeof import("../runtime/hooks/extraction-hooks.js");
+				void closeFlushSession({
+					sessionId,
+					resolveConfig: () => this.buildSessionConfigForEviction(sessionId),
+					resolveProviders: () => this.providerConfigs,
+				}).catch((err: any) => log.warn("agent", `close flush failed: ${err?.message}`));
+			}
+		} catch (err) {
+			log.warn("agent", `close flush dispatch failed: ${(err as Error)?.message}`);
+		}
 		const loop = this.loops.get(sessionId);
 		if (loop) { loop.abort(); this.loops.delete(sessionId); }
 		this.runStates.delete(sessionId);
 		for (const [agentId, sid] of this.activeSessions) {
 			if (sid === sessionId) { this.activeSessions.delete(agentId); break; }
 		}
+	}
+
+	/**
+	 * v0.8 (M5): reconstruct a minimal SessionConfig for a session being
+	 * evicted, so the close-flush extractor (which needs provider/model +
+	 * wikiStoreGlobal + db) can run. We don't have the original loop's
+	 * SessionConfig in hand anymore; rebuild from agent + defaults.
+	 */
+	private buildSessionConfigForEviction(sessionId: string): import("../runtime/types.js").SessionConfig | undefined {
+		// Find the agent that owned this session by scanning activeSessions
+		// (already partially cleared, but the lookup happens BEFORE we clear
+		// below in evictSessionFromMemory — actually, this is called from
+		// evictSessionFromMemory; we resolved sessionId from the caller and
+		// haven't cleared activeSessions yet at the point closeFlushSession
+		// runs). To be safe, also check by scanning runStates (the agentId
+		// is recorded there).
+		let agentId = "__default__";
+		for (const [aid, sid] of this.activeSessions) {
+			if (sid === sessionId) { agentId = aid; break; }
+		}
+		const state = this.runStates.get(sessionId);
+		if (state?.agentId) agentId = state.agentId;
+		const agent = this.agentStore?.get(agentId);
+		const cfg: import("../runtime/types.js").SessionConfig = {
+			agentId,
+			workspaceDir: agent?.workspaceDir || this.workspaceDir,
+			systemPrompt: "",
+			modelId: agent?.model || this.defaultModel || "",
+			providerName: agent?.provider || this.defaultProvider || "",
+			sessionId,
+			db: this.db,
+			toolPolicy: {
+				autoApprove: agent?.toolPolicy?.autoApprove ?? this.config.toolPolicy.autoApprove,
+				blockedTools: agent?.toolPolicy?.blockedTools ?? this.config.toolPolicy.blockedTools,
+				tools: agent?.toolPolicy?.tools ?? this.config.toolPolicy.tools,
+				executionMode: agent?.toolPolicy?.executionMode ?? this.config.toolPolicy.executionMode,
+				resultMaxTokens: agent?.toolPolicy?.resultMaxTokens ?? this.config.toolPolicy.resultMaxTokens,
+				readScope: agent?.toolPolicy?.readScope ?? "filesystem",
+			},
+		};
+		// Re-attach M5 fields used by the extraction hooks.
+		if (this.wikiStoreGlobal) (cfg as any).wikiStoreGlobal = this.wikiStoreGlobal;
+		if (this.extractorsConfig) (cfg as any).extractors = this.extractorsConfig;
+		// Re-attach compression + memory config (the extraction hook doesn't
+		// strictly need these but other code paths might run during the flush).
+		(cfg as any).compression = this.config.compression;
+		(cfg as any).memory = this.config.memory;
+		return cfg;
 	}
 	subscribe(cb: StreamCallback): () => void {
 		this.subscribers.add(cb);
@@ -333,6 +419,13 @@ export class AgentService {
 			// structure (no UpdateWikiNode in its toolPolicy).
 			if (this.wikiStore) (sessionConfig as any).wikiStore = this.wikiStore;
 		}
+		// v0.8 (M5): surface the global WikiStore + extractors config onto
+		// EVERY session (memory written by extractor A is global/cross-project,
+		// so even non-project sessions need access). The extraction hook reads
+		// config.extractors + config.wikiStoreGlobal; recall (memory-hooks)
+		// reaches config.wikiStoreGlobal for searchMemoryNodes.
+		if (this.wikiStoreGlobal) (sessionConfig as any).wikiStoreGlobal = this.wikiStoreGlobal;
+		if (this.extractorsConfig) (sessionConfig as any).extractors = this.extractorsConfig;
 		// Initialize run state for this session
 		if (!this.runStates.has(sessionId)) {
 			this.runStates.set(sessionId, { agentId, isBusy: false, streamingText: "", toolCalls: [] });

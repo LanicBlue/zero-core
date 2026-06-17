@@ -26,6 +26,7 @@
 // - 调整注册顺序前需评估 PreLLMCall 之间对返回值 merge 的影响（memoryContext / ragContext / providerOptions）。
 
 import { registerCompressionHooks } from "./compression-hooks.js";
+import { registerExtractionHooks, type ExtractionHooksDeps } from "./extraction-hooks.js";
 import { registerMemoryHooks } from "./memory-hooks.js";
 import { registerNotificationHooks } from "./notification-hooks.js";
 import { registerProviderOptionsHooks } from "./provider-options-hooks.js";
@@ -34,12 +35,18 @@ import { registerTurnHooks } from "./turn-hooks.js";
 import type { ISessionStore } from "../session-store-interface.js";
 import { log } from "../../core/logger.js";
 
-export function registerAllRuntimeHooks(db?: ISessionStore): void {
+/**
+ * Optional M5 extraction deps. When omitted, M5 extraction hooks are not
+ * registered (the system runs in pre-M5 mode). Pass them to enable
+ * mechanism 2 (incremental extraction) + close flush.
+ */
+export function registerAllRuntimeHooks(db?: ISessionStore, extractionDeps?: ExtractionHooksDeps): void {
 	if (db) registerTurnHooks(db);
 	registerNotificationHooks();
 	registerMemoryHooks();
 	registerRagHooks();
 	registerProviderOptionsHooks();
 	registerCompressionHooks();
+	if (extractionDeps) registerExtractionHooks(extractionDeps);
 	log.debug("hooks", "All runtime feature hooks registered");
 }

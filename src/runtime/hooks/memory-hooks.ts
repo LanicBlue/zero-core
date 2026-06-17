@@ -51,7 +51,15 @@ export function registerMemoryHooks(): void {
 
 		const text = typeof lastUser.content === "string" ? lastUser.content : JSON.stringify(lastUser.content);
 		try {
-			const recall = new MemoryRecall(nodeStore);
+			// v0.8 (M5): recall now reads from BOTH the wiki tree (extractor
+			// A's memory nodes — new data) and the legacy FTS5 store (pre-M5
+			// data). config.wikiStoreGlobal is the underlying WikiStore
+			// (has searchMemoryNodes); fall back to the ProjectWikiStore
+			// wrapper's getWikiStore() if only that's present (PM sessions).
+			const wikiGlobal = (config as any).wikiStoreGlobal;
+			const wikiWrap = (config as any).wikiStore;
+			const wikiStore = wikiGlobal ?? wikiWrap?.getWikiStore?.() ?? wikiWrap ?? null;
+			const recall = new MemoryRecall(nodeStore ?? null, { wikiStore });
 			const result = await recall.recall(text, config.memory?.recallLimit);
 			if (result) {
 				return { memoryContext: recall.formatForContext(result) ?? undefined };
