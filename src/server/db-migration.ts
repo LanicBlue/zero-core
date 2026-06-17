@@ -238,6 +238,38 @@ function safeAddIndex(db: Database.Database, table: string, indexName: string, c
 	} catch { /* already exists */ }
 }
 
+// v0.8 (M2): rebuild project_wiki when an upgraded DB still carries the
+// pre-M2 schema (`project_id TEXT NOT NULL` + UNIQUE(project_id, path)).
+// The global wiki tree needs project_id = NULL for the global root and
+// memory nodes, so the legacy NOT NULL constraint is fatal at startup.
+// Only rebuilds when the table is empty (lossless — archivist rescans
+// repopulate it); non-empty tables are left untouched to avoid data loss.
+function migrateWikiTableSchema(db: Database.Database): void {
+	try {
+		const cols = db.pragma("table_info(project_wiki)") as Array<{ name: string; notnull: number }>;
+		const projectIdCol = cols.find((c) => c.name === "project_id");
+		if (!projectIdCol || projectIdCol.notnull === 0) return; // already nullable — new schema
+		const rowCount = (db.prepare("SELECT count(*) AS n FROM project_wiki").get() as { n: number }).n;
+		if (rowCount > 0) {
+			console.warn(`[db-migration] project_wiki has legacy NOT NULL project_id constraint but ${rowCount} rows — leaving as-is to avoid data loss; global root/memory nodes will fail to insert.`);
+			return;
+		}
+		db.exec("DROP TABLE project_wiki");
+		db.exec(`CREATE TABLE project_wiki (
+			id TEXT PRIMARY KEY, project_id TEXT,
+			parent_id TEXT REFERENCES project_wiki(id),
+			type TEXT, node_type TEXT, path TEXT, title TEXT,
+			summary TEXT, detail TEXT, doc_pointer TEXT, provenance TEXT,
+			requirement_ids TEXT, relations TEXT, flags TEXT,
+			last_updated_by TEXT DEFAULT 'analyst',
+			source_req_id TEXT, created_at TEXT, updated_at TEXT
+		)`);
+		console.log("[db-migration] rebuilt project_wiki to v0.8 schema (was empty, dropped NOT NULL project_id + legacy UNIQUE).");
+	} catch (e) {
+		console.warn("[db-migration] project_wiki schema migration skipped:", (e as Error).message);
+	}
+}
+
 export function runMigrations(sessionDB: SessionDB): void {
 	const kv = sessionDB.getKVStore();
 	const memory = sessionDB.getMemoryStore();
@@ -329,7 +361,14 @@ export function runMigrations(sessionDB: SessionDB): void {
 	)`);
 	// v0.8 (M2): legacy UNIQUE(project_id, path) is dropped — global tree
 	// paths are unique within (parentId, path), not (projectId, path).
-	// For upgraded DBs the legacy constraint stays harmlessly.
+	// Upgraded DBs created the table pre-M2 with `project_id TEXT NOT NULL`
+	// and UNIQUE(project_id, path); CREATE TABLE IF NOT EXISTS does NOT alter
+	// an existing table, so the legacy NOT NULL constraint survives and breaks
+	// insertion of the global root / memory nodes (project_id = NULL). Rebuild
+	// the table when it still carries the old constraint and holds no data
+	// (project_wiki is repopulated by archivist scans, so an empty rebuild is
+	// lossless; if rows exist we leave it alone to avoid data loss).
+	migrateWikiTableSchema(db);
 	safeAddIndex(db, "project_wiki", "idx_wiki_project", "project_id");
 	safeAddIndex(db, "project_wiki", "idx_wiki_parent", "parent_id");
 	safeAddIndex(db, "project_wiki", "idx_wiki_type", "type");
