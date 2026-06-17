@@ -491,6 +491,18 @@ export async function startServer(options?: StartServerOptions) {
 			res.status(201).json(r);
 		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
 	});
+	// v0.8 (M4): kanban 「讨论」entry — resolve the {PM, projectId} session.
+	// Server-side only resolves the session (findPmAgent + resolveSessionByRoleProject);
+	// the renderer is responsible for setActiveAgent / page navigation. Mirrors the
+	// pm:openDiscuss IPC handler behaviour (openDiscussSession + findPmAgent).
+	pmRouter.post("/:projectId/discuss", (req, res) => {
+		try {
+			const resolved = pmService.openDiscussSession(req.params.projectId);
+			const agentId = pmService.findPmAgent()?.id;
+			if (!agentId) return res.status(409).json({ error: "no pm agent registered" });
+			res.json({ agentId, sessionId: resolved.session.id, created: resolved.created });
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
 	// Coverage verdict → notify(verify_accept | verify_reject).
 	pmRouter.post("/:requirementId/coverage-verdict", async (req, res) => {
 		try {

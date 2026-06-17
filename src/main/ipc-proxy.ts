@@ -218,6 +218,42 @@ const R: Record<string, RouteMapping> = {
 		// ─── Lead (M3) ──────────────────────────────────────
 		"lead:pickup":             { method: "POST",   path: "/api/requirements/:id/pickup",   buildReq: (requirementId) => ({ params: { id: requirementId } }) },
 		"lead:progress":           { method: "GET",    path: "/api/requirements/:id/progress", buildReq: (requirementId) => ({ params: { id: requirementId } }) },
+
+		// ─── Crons (M1) ──────────────────────────────────────
+		// backend /api/crons (cron-router.ts). list reads ?agentId from filter;
+		// trigger fires a manual run via cronManager.triggerCron.
+		"crons:list":    { method: "GET",    path: "/api/crons",            buildReq: (filter?) => ({ query: filter ?? {} }) },
+		"crons:get":     { method: "GET",    path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },
+		"crons:create":  { method: "POST",   path: "/api/crons",            buildReq: (input) => ({ body: input }) },
+		"crons:update":  { method: "PUT",    path: "/api/crons/:id",        buildReq: (id, input) => ({ params: { id }, body: input }) },
+		"crons:delete":  { method: "DELETE", path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },
+		"crons:trigger": { method: "POST",   path: "/api/crons/:id/trigger",buildReq: (id) => ({ params: { id } }) },
+
+		// ─── Orchestrate (M3) ────────────────────────────────
+		// backend /api/orchestrate (orchestrate-router.ts). pending is the
+		// kanban entry: plans currently in confirm-gate pending state.
+		"orchestrate:pending": { method: "GET",  path: "/api/orchestrate/pending",            buildReq: (filter?) => ({ query: filter ?? {} }) },
+		"orchestrate:plan":    { method: "GET",  path: "/api/orchestrate/plans/:id",          buildReq: (planId) => ({ params: { id: planId } }) },
+		"orchestrate:confirm": { method: "POST", path: "/api/orchestrate/plans/:id/confirm",  buildReq: (planId) => ({ params: { id: planId } }) },
+		"orchestrate:reject":  { method: "POST", path: "/api/orchestrate/plans/:id/reject",   buildReq: (planId, reason) => ({ params: { id: planId }, body: { reason } }) },
+
+		// ─── Requirements doc + PM (M4) ──────────────────────
+		// backend /api/pm (pmRouter in server/index.ts). doc = repo markdown
+		// read/write/list; coverageView = intent doc + latest manifest; verdict
+		// drives notify(verify_accept|verify_reject).
+		"requirements:doc:read":  { method: "GET",    path: "/api/pm/:projectId/requirements/:requirementId/doc", buildReq: (projectId, requirementId) => ({ params: { projectId, requirementId } }) },
+		"requirements:doc:write": { method: "PUT",    path: "/api/pm/:projectId/requirements/:requirementId/doc", buildReq: (projectId, requirementId, content) => ({ params: { projectId, requirementId }, body: { content } }) },
+		"requirements:doc:list":  { method: "GET",    path: "/api/pm/:projectId/requirements",                   buildReq: (projectId) => ({ params: { projectId } }) },
+		"pm:createRequirement":   { method: "POST",   path: "/api/pm/:projectId/requirements",                   buildReq: (input) => ({ params: { projectId: input?.projectId }, body: { title: input?.title, summary: input?.summary, body: input?.body, priority: input?.priority, source: input?.source } }) },
+		"pm:coverageView":        { method: "GET",    path: "/api/pm/:requirementId/coverage-view",              buildReq: (requirementId) => ({ params: { requirementId } }) },
+		"pm:coverageVerdict":     { method: "POST",   path: "/api/pm/:requirementId/coverage-verdict",           buildReq: (requirementId, covered, reason) => ({ params: { requirementId }, body: { covered, reason } }) },
+
+		// ─── pm:openDiscuss (M4) ─────────────────────────────
+		// backend POST /api/pm/:projectId/discuss resolves the {PM, projectId}
+		// session via PmService.openDiscussSession + findPmAgent. Returns
+		// { agentId, sessionId, created }; renderer then setActiveAgent/ Page.
+		// (UI navigation stays renderer-side; backend only resolves session.)
+		"pm:openDiscuss":         { method: "POST",   path: "/api/pm/:projectId/discuss",                        buildReq: (projectId) => ({ params: { projectId } }) },
 };
 
 // ─── Proxy Registration ─────────────────────────────────────
