@@ -92,17 +92,18 @@ Principles:
 const PM_PROMPT = `You are **PM (product manager)**, the product-side role for a software project.
 
 Your job is product discovery and requirement management:
-1. **discover** — periodically scan the workspace; call analyzer agents (UI / security / performance / architecture lens) for deep analysis.
-2. **requirement docs** — create new requirement documents in the repo based on discoveries; never modify existing requirement docs from cron (only discuss can).
-3. **discuss** — talk to the user to refine requirement docs; on confirmation, transition status → 'ready'.
-4. **verify coverage** — at 'verify' time, judge whether the change + test list produced by the flow covers the original requirement intent (product-level coverage, NOT technical acceptance — that's in the flow).
+1. **discover** — periodically scan the workspace; call analyzer agent-tools (UI / security / performance / architecture lens) for deeper analysis where useful. Whether to call them and how deep is YOUR call.
+2. **create requirement docs** — for each NEW finding worth tracking, use the **CreateRequirementWithDoc** tool. It creates a RequirementRecord (status='discuss') AND writes the repo requirement doc at \`{workspace}/.zero/requirements/{projectId}/{id}.md\`, binding docPath on the record. The requirement immediately lands in the kanban 'discuss' column. Idempotent: re-creating the same title in the same project is a no-op (safe on re-scans).
+3. **never modify existing requirement docs from a discovery pass** — only create new ones; discuss-time edits happen via the discuss session.
+4. **discuss** — talk to the user to refine requirement docs; on confirmation, transition status → 'ready'.
+5. **verify coverage** — at 'verify' time, judge whether the change + test list produced by the flow covers the original requirement intent (product-level coverage, NOT technical acceptance — that's in the flow).
 
 Principles:
 - You read archivist's wiki to write better requirements.
-- You do NOT touch code, wiki tree structure, or feature-branch git.
-- Code and wiki are read-only to you.
+- You do NOT touch code, wiki tree structure, or feature-branch git. Code and wiki are read-only to you. Your ONLY write surface is the CreateRequirementWithDoc tool (requirement records + docs).
+- Discovery is YOUR responsibility — the cron that wakes you only sends a prompt; how you discover and what you create is up to you.
 
-> M0 degraded: cron driver lands in M1; discuss flow lands in M4. Until then you can converse but won't auto-discover.`;
+> Discovery is agent-driven: a cron entry (you configure one via the zero role) periodically sends your {PM, projectId} session a prompt; you decide what to scan, which analyzers to call, and which findings to turn into requirement docs via CreateRequirementWithDoc.`;
 
 const ARCHIVIST_PROMPT = `You are **archivist**, the knowledge-side role for a software project.
 
@@ -227,10 +228,20 @@ export const ROLE_PRESETS: RolePreset[] = [
 		roleTag: "pm",
 		displayName: "PM (产品)",
 		description: "Product discovery, requirement docs, discuss, verify coverage.",
-		m0DegradedNote: "cron 驱动在 M1;discuss 流程在 M4;M0 阶段可对话但不会自动发现。",
+		m0DegradedNote: "cron 驱动在 M1;discuss 流程在 M4;M4 已激活 CreateRequirementWithDoc 工具 + discuss 跳转。",
 		systemPrompt: PM_PROMPT,
 		toolPolicy: {
-			tools: { ...FS_READ_TOOLS },
+			// PM is read-only to the filesystem (no Write/Edit), but is allowed
+			// to create requirement records + repo docs via this dedicated tool
+			// (M4 decision 7/12/14 — PM owns requirement docs, not code), and
+			// to read archivist's wiki (read-only view tools, no UpdateWikiNode).
+			tools: {
+				...FS_READ_TOOLS,
+				CreateRequirementWithDoc: { enabled: true },
+				ListWikiTree: { enabled: true },
+				ReadDoc: { enabled: true },
+				ExpandNode: { enabled: true },
+			},
 			executionMode: "sequential",
 			readScope: "filesystem",
 		},

@@ -42,6 +42,7 @@ import type {
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	CronRecord, CreateCronInput, UpdateCronInput,
 	OrchestratePlanRecord,
+	OrchestrateManifestRecord,
 } from "./types.js";
 
 export interface WindowApi {
@@ -266,4 +267,13 @@ export interface WindowApi {
 	orchestratePlan: (planId: string) => Promise<OrchestratePlanRecord | { error: string }>;
 	orchestrateConfirm: (planId: string) => Promise<{ success: boolean; planId: string; reason?: string }>;
 	orchestrateReject: (planId: string, reason: string) => Promise<{ success: boolean; planId: string; reason?: string }>;
+
+	// ── M4: PM discuss-as-document + coverage judgement ──
+	requirementsDocRead: (projectId: string, requirementId: string) => Promise<{ docPath?: string; content?: string }>;
+	requirementsDocWrite: (projectId: string, requirementId: string, content: string) => Promise<{ docPath: string } | { error: string }>;
+	requirementsDocList: (projectId: string) => Promise<string[]>;
+	pmCreateRequirement: (input: { projectId: string; title: string; summary?: string; body?: string; priority?: string; source?: "pm" | "user" }) => Promise<RequirementRecord | { error: string }>;
+	pmOpenDiscuss: (projectId: string) => Promise<{ agentId: string; sessionId: string; created: boolean } | { error: string }>;
+	pmCoverageView: (requirementId: string) => Promise<{ requirement?: RequirementRecord; intentDoc?: string; manifest?: OrchestrateManifestRecord }>;
+	pmCoverageVerdict: (requirementId: string, covered: boolean, reason?: string) => Promise<{ success: boolean; requirementId: string; kind: "verify_accept" | "verify_reject" } | { error: string }>;
 }

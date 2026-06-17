@@ -63,13 +63,21 @@ function timeAgo(dateStr: string): string {
 interface RequirementCardProps {
 	requirement: RequirementRecord;
 	currentStep?: TaskStepRecord;
+	/** v0.8 (M4): project name for the card's project tag (decision 7 — kanban grouped by Project). */
+	projectName?: string;
 	onClick: (req: RequirementRecord) => void;
+	/** v0.8 (M4): open the {PM, projectId} discuss session (decision 13/14). */
+	onDiscuss?: (req: RequirementRecord) => void;
+	/** v0.8 (M4): open the PM coverage-judgement view (decision 34, verify status). */
+	onCoverage?: (req: RequirementRecord) => void;
 }
 
-export default function RequirementCard({ requirement, currentStep, onClick }: RequirementCardProps) {
+export default function RequirementCard({ requirement, currentStep, projectName, onClick, onDiscuss, onCoverage }: RequirementCardProps) {
 	const priorityColor = PRIORITY_COLORS[requirement.priority] || "#9E9E9E";
 	const sourceIcon = SOURCE_ICONS[requirement.source] || "\u{1F4CB}";
 	const showExecution = (requirement.status === "build" || requirement.status === "verify") && currentStep;
+	const canDiscuss = requirement.status === "found" || requirement.status === "discuss";
+	const canCoverage = requirement.status === "verify";
 
 	return (
 		<div
@@ -115,7 +123,54 @@ export default function RequirementCard({ requirement, currentStep, onClick }: R
 				<span>{requirement.source}</span>
 				<span style={{ opacity: 0.3 }}>|</span>
 				<span>{timeAgo(requirement.updatedAt)}</span>
+				{projectName && (
+					<>
+						<span style={{ opacity: 0.3 }}>|</span>
+						<span
+							title={requirement.projectId}
+							style={{
+								background: "rgba(33,150,243,0.15)",
+								color: "#64B5F6",
+								padding: "0 6px",
+								borderRadius: 8,
+								fontSize: 10,
+							}}
+						>
+							{projectName}
+						</span>
+					</>
+				)}
 			</div>
+			{(canDiscuss || canCoverage) && (
+				<div style={{ marginTop: 6, display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+					{canDiscuss && (
+						<button
+							type="button"
+							onClick={() => onDiscuss?.(requirement)}
+							style={{
+								padding: "2px 8px",
+								background: "#2196F3", border: "none", borderRadius: 4,
+								color: "#fff", fontSize: 11, cursor: "pointer",
+							}}
+						>
+							{"\u{1F4AC}"} Discuss
+						</button>
+					)}
+					{canCoverage && (
+						<button
+							type="button"
+							onClick={() => onCoverage?.(requirement)}
+							style={{
+								padding: "2px 8px",
+								background: "#00BCD4", border: "none", borderRadius: 4,
+								color: "#fff", fontSize: 11, cursor: "pointer",
+							}}
+						>
+							{"\u{1F50D}"} Coverage
+						</button>
+					)}
+				</div>
+			)}
 			{showExecution && (
 				<div style={{
 					marginTop: 6,

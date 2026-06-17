@@ -564,6 +564,16 @@ describe("ipc-proxy route mapping completeness", () => {
 		"orchestrate:plan",
 		"orchestrate:confirm",
 		"orchestrate:reject",
+		// M4: PM discuss-doc + coverage channels are handled by dedicated IPC
+		// handlers (pm-handlers.ts); they touch PmService + RequirementDocStore
+		// directly and are not proxied to the REST surface.
+		"requirements:doc:read",
+		"requirements:doc:write",
+		"requirements:doc:list",
+		"pm:createRequirement",
+		"pm:openDiscuss",
+		"pm:coverageView",
+		"pm:coverageVerdict",
 	]);
 
 	// Channels that use ipcRenderer.invoke but are event-like (not proxied)

@@ -443,6 +443,22 @@ export interface RequirementRecord {
 	closedAt?: string;
 	createdAt: string;
 	updatedAt: string;
+	// v0.8 (M4): discuss-as-document. docPath points at the requirement doc
+	// inside the repo ({workspace}/.zero/requirements/{projectId}/…); the doc
+	// is also an intent leaf node in the project wiki tree (RFC §2.10 / §4.5 /
+	// decision 12/14). The agent fields carry the global role agent ids.
+	docPath?: string;
+	/** PM (global role agent) that created this requirement (discuss routing key = projectId + role). */
+	createdByAgentId?: string;
+	/** Lead (global role agent) that picked this up. */
+	assignedAgentId?: string;
+	/**
+	 * Coverage-judgement party (decision 34). v0.7+ semantics = the agent that
+	 * judges whether changes+tests cover the original intent — defaults to the
+	 * PM that created the requirement. NOT a technical accept (that lives in
+	 * the Orchestrate flow). No productionReady multi-gate aggregation.
+	 */
+	reviewerAgentId?: string;
 }
 
 export interface RequirementStatusHistory {

@@ -42,6 +42,7 @@ import type {
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	CronRecord, CreateCronInput, UpdateCronInput,
 	OrchestratePlanRecord,
+	OrchestrateManifestRecord,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -231,4 +232,20 @@ export interface IpcChannelDefs {
 	"orchestrate:plan":    { params: [planId: string];                                result: OrchestratePlanRecord | Err };
 	"orchestrate:confirm": { params: [planId: string];                                result: { success: boolean; planId: string; reason?: string } };
 	"orchestrate:reject":  { params: [planId: string, reason: string];                result: { success: boolean; planId: string; reason?: string } };
+
+	// ── M4: PM discuss-as-document + coverage judgement (RFC §2.5 / §2.10 /
+	// §2.17b / §4.5, decisions 7/12/13/14/34) ──
+	// Requirement doc lives at {workspace}/.zero/requirements/{projectId}/ and
+	// is the discuss substrate (no session isolation — state is in the doc).
+	"requirements:doc:read":   { params: [projectId: string, requirementId: string]; result: { docPath?: string; content?: string } };
+	"requirements:doc:write":  { params: [projectId: string, requirementId: string, content: string]; result: { docPath: string } | Err };
+	"requirements:doc:list":   { params: [projectId: string];                         result: string[] };
+	// PM creates a requirement + its repo doc in one shot (decision 12/14).
+	"pm:createRequirement":    { params: [input: { projectId: string; title: string; summary?: string; body?: string; priority?: string; source?: "pm" | "user" }]; result: RequirementRecord | Err };
+	// Open the {PM, projectId} discuss session (kanban "讨论" entry → chat page).
+	"pm:openDiscuss":          { params: [projectId: string];                         result: { agentId: string; sessionId: string; created: boolean } | Err };
+	// PM coverage judgement view: requirement intent doc + latest manifest.
+	"pm:coverageView":         { params: [requirementId: string];                     result: { requirement?: RequirementRecord; intentDoc?: string; manifest?: OrchestrateManifestRecord } };
+	// Submit PM coverage verdict → drives notify("verify_accept" | "verify_reject").
+	"pm:coverageVerdict":      { params: [requirementId: string, covered: boolean, reason?: string]; result: { success: boolean; requirementId: string; kind: "verify_accept" | "verify_reject" } | Err };
 }

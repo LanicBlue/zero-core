@@ -311,6 +311,31 @@ export async function startServer(options?: StartServerOptions) {
 		manifestStore: orchestrateManifestStore,
 	});
 
+	// v0.8 (M4): PM service + requirement doc store (RFC §2.5 / §2.10 / §2.17b).
+	// PM cron-driven discovery + discuss-as-document + coverage judgement.
+	// Coverage verdicts drive the notification router (verify_accept/reject).
+	const { PmService } = await import("./pm-service.js");
+	const { RequirementDocStore } = await import("./requirement-doc-store.js");
+	const requirementDocStore = new RequirementDocStore({
+		getWorkspaceDir: (pid: string) => projectStore.get(pid)?.workspaceDir,
+	});
+	const pmService = new PmService({
+		agentService,
+		agentStore,
+		projectStore,
+		requirementStore,
+		requirementDocStore,
+		wikiNodeStore: wikiStoreGlobal,
+		manifestStore: orchestrateManifestStore,
+		projectNotificationRouter,
+		sessionDB,
+	});
+	// v0.8 (M4): surface PmService + RequirementStore + wikiStore onto PM
+	// session tool contexts so the CreateRequirementWithDoc tool can call
+	// PmService.createRequirementWithDoc, and PM can read the project wiki
+	// (ListWikiTree / ReadDoc), from a cron-triggered sendPrompt loop.
+	agentService.setPmService(pmService, requirementStore, wikiStore);
+
 	analystService.setGitIntegration(gitIntegration);
 
 	registerRequirementHooks({
@@ -406,6 +431,55 @@ export async function startServer(options?: StartServerOptions) {
 		});
 	app.use("/api/requirements", requirementRouter);
 	app.use("/api/orchestrate", orchestrateRouter);
+
+	// v0.8 (M4): PM REST surface — discuss doc read/write + coverage verdict.
+	// Mirrors the pm:* IPC channels for server/HTTP mode parity.
+	const pmRouter = express.Router();
+	// Requirement doc (repo markdown) read/write/list.
+	pmRouter.get("/:projectId/requirements/:requirementId/doc", (req, res) => {
+		const content = requirementDocStore.readRequirementDoc(req.params.projectId, req.params.requirementId);
+		const req0 = requirementStore.get(req.params.requirementId);
+		res.json({ docPath: req0?.docPath, content });
+	});
+	pmRouter.put("/:projectId/requirements/:requirementId/doc", (req, res) => {
+		try {
+			const docPath = requirementDocStore.updateRequirementDoc(
+				req.params.projectId, req.params.requirementId, String(req.body?.content ?? ""),
+			);
+			res.json({ docPath });
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	pmRouter.get("/:projectId/requirements", (req, res) => {
+		res.json(requirementDocStore.listRequirementDocs(req.params.projectId));
+	});
+	// Create requirement + repo doc.
+	pmRouter.post("/:projectId/requirements", (req, res) => {
+		try {
+			const r = pmService.createRequirementWithDoc({
+				projectId: req.params.projectId,
+				title: req.body?.title,
+				summary: req.body?.summary,
+				body: req.body?.body,
+				priority: req.body?.priority,
+				source: req.body?.source,
+			});
+			res.status(201).json(r);
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	// Coverage verdict → notify(verify_accept | verify_reject).
+	pmRouter.post("/:requirementId/coverage-verdict", async (req, res) => {
+		try {
+			await pmService.submitCoverageVerdict(req.params.requirementId, {
+				covered: !!req.body?.covered,
+				reason: req.body?.reason,
+			});
+			res.json({ ok: true, kind: req.body?.covered ? "verify_accept" : "verify_reject" });
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	pmRouter.get("/:requirementId/coverage-view", (_req, res) => {
+		res.json(pmService.buildCoverageView(_req.params.requirementId));
+	});
+	app.use("/api/pm", pmRouter);
 
 	app.use("/api/project-wiki", createWikiRouter({ wikiStore }));
 

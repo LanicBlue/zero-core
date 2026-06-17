@@ -360,6 +360,9 @@ export interface ToolExecutionContext {
 	// Multi-Agent Workflow context
 	wikiStore?: any;                    // ProjectWikiStore
 	requirementStore?: any;             // RequirementStore
+	// v0.8 (M4): PmService handle (PM sessions only) — backs the
+	// CreateRequirementWithDoc tool. Gated via CONDITIONAL_TOOLS.
+	pmService?: any;                    // PmService
 	taskStepStore?: any;                // TaskStepStore
 	projectId?: string;                 // Current project ID
 	agentRole?: string;                 // Current agent role (analyst | lead | developer | reviewer | qa)

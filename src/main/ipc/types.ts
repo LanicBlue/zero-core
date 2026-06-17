@@ -48,6 +48,10 @@ import type { GitIntegration } from "../../server/git-integration.js";
 import type { NotificationService } from "../../server/notification-service.js";
 import type { OrchestratePlanStore } from "../../server/orchestrate-store.js";
 import type { ProjectNotificationRouter } from "../../server/project-notification-router.js";
+import type { PmService } from "../../server/pm-service.js";
+import type { RequirementDocStore } from "../../server/requirement-doc-store.js";
+import type { OrchestrateManifestStore } from "../../server/orchestrate-store.js";
+import type { WikiStore } from "../../server/wiki-node-store.js";
 
 export interface IpcContext {
 	win: BrowserWindow;
@@ -84,6 +88,11 @@ export interface IpcContext {
 	// and friends). Wired into requirement-hooks so verify PASSED fires the
 	// archivist merge notification (acceptance-M3 item 6).
 	projectNotificationRouter: ProjectNotificationRouter | null;
+	// v0.8 (M4): PM service + supporting stores.
+	pmService: PmService | null;
+	requirementDocStore: RequirementDocStore | null;
+	manifestStore: OrchestrateManifestStore | null;
+	wikiNodeStore: WikiStore | null;
 	modulesReady: boolean;
 	whenReady: (name: ModuleName) => Promise<void>;
 	isModuleReady: (name: ModuleName) => boolean;

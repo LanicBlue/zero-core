@@ -94,6 +94,14 @@ export class AgentService {
 	private metricsAdapter: EventMetricsAdapter | null = null;
 	// v0.8 (M0): ZeroAdminService handle, injected into zero sessions only.
 	private zeroAdmin: import("./zero-admin-service.js").ZeroAdminService | null = null;
+	// v0.8 (M4): PmService + RequirementStore handles, injected into PM
+	// (roleTag='pm') sessions so the CreateRequirementWithDoc tool can call
+	// PmService.createRequirementWithDoc from a cron-triggered sendPrompt loop.
+	// wikiStore (ProjectWikiStore) is also injected so PM can read archivist's
+	// wiki to write better requirements (acceptance-M4 line 3).
+	private pmService: any = null;
+	private requirementStore: any = null;
+	private wikiStore: any = null;
 
 	// Module readiness — modules notify when loaded, deferred actions wait until ready
 	private readyModules = new Set<string>();
@@ -140,6 +148,18 @@ export class AgentService {
 	/** v0.8 (M0): inject the ZeroAdminService, gated to zero sessions only. */
 	setZeroAdmin(svc: import("./zero-admin-service.js").ZeroAdminService): void {
 		this.zeroAdmin = svc;
+	}
+	/**
+	 * v0.8 (M4): inject the PmService + RequirementStore + wikiStore. These are
+	 * surfaced onto PM (roleTag='pm') session tool contexts so the
+	 * CreateRequirementWithDoc tool (and the read-only wiki tools) can call
+	 * PmService / read the project wiki from a cron-triggered sendPrompt loop
+	 * — without requiring the caller to thread them through sendRolePrompt.
+	 */
+	setPmService(pmService: any, requirementStore: any, wikiStore?: any): void {
+		this.pmService = pmService;
+		this.requirementStore = requirementStore;
+		this.wikiStore = wikiStore ?? null;
 	}
 	getSessionManager(): SessionManager | null {
 		return this.sessionManager;
@@ -299,6 +319,19 @@ export class AgentService {
 		// tools are available (gated via CONDITIONAL_TOOLS on ctx.zeroAdmin).
 		if (agent?.roleTag === "zero" && this.zeroAdmin) {
 			(sessionConfig as any).zeroAdmin = this.zeroAdmin;
+		}
+		// v0.8 (M4): PM sessions get the PmService + RequirementStore handles
+		// so the CreateRequirementWithDoc tool can call
+		// PmService.createRequirementWithDoc (gated via CONDITIONAL_TOOLS on
+		// ctx.pmService). Required because cron-triggered PM sessions go
+		// through sendPrompt → createLoopForSession, not sendRolePrompt.
+		if (agent?.roleTag === "pm") {
+			if (this.pmService) (sessionConfig as any).pmService = this.pmService;
+			if (this.requirementStore) (sessionConfig as any).requirementStore = this.requirementStore;
+			// wikiStore lets PM read the project wiki (ListWikiTree / ReadDoc /
+			// ExpandNode) — acceptance-M4 line 3. PM is read-only to the wiki
+			// structure (no UpdateWikiNode in its toolPolicy).
+			if (this.wikiStore) (sessionConfig as any).wikiStore = this.wikiStore;
 		}
 		// Initialize run state for this session
 		if (!this.runStates.has(sessionId)) {

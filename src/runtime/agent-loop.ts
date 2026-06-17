@@ -118,6 +118,9 @@ export class AgentLoop implements AgentRuntime {
 			// Multi-Agent Workflow context
 			wikiStore: (config as any).wikiStore,
 			requirementStore: (config as any).requirementStore,
+			// v0.8 (M4): PmService handle for PM sessions — backs the
+			// CreateRequirementWithDoc tool (PmService.createRequirementWithDoc).
+			pmService: (config as any).pmService,
 			taskStepStore: (config as any).taskStepStore,
 			projectId: config.projectContext?.projectId,
 			agentRole: config.agentRole,

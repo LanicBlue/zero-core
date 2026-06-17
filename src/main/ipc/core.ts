@@ -76,6 +76,13 @@ let _notificationService: any = null;
 // v0.8 (M3): Orchestrate plan store + project notification router.
 let _orchestratePlanStore: any = null;
 let _projectNotificationRouter: any = null;
+// v0.8 (M4): PM service + supporting stores (requirement doc repo store,
+// shared manifest store for coverage evidence, wiki-node store for PM
+// read-only project context).
+let _pmService: any = null;
+let _requirementDocStore: any = null;
+let _manifestStore: any = null;
+let _wikiNodeStore: any = null;
 
 // ─── Expose current state as IpcContext (reactive) ──────────
 
@@ -116,6 +123,11 @@ const _ctx: IpcContext = {
 	// v0.8 (M3): Orchestrate plan store + project notification router.
 	get orchestratePlanStore() { return _orchestratePlanStore; },
 	get projectNotificationRouter() { return _projectNotificationRouter; },
+	// v0.8 (M4): PM service + supporting stores.
+	get pmService() { return _pmService; },
+	get requirementDocStore() { return _requirementDocStore; },
+	get manifestStore() { return _manifestStore; },
+	get wikiNodeStore() { return _wikiNodeStore; },
 	get modulesReady() { return _modulesReady; },
 	set modulesReady(v: boolean) { _modulesReady = v; },
 	whenReady: (name: ModuleName) => moduleReadiness.whenReady(name),
@@ -447,9 +459,11 @@ export async function loadCoreModules(): Promise<void> {
 		// PASSED (acceptance-M3 item 6).
 		const orchStoreMod = await import(toFileURL(join(_distServer, "orchestrate-store.js")));
 		const notifRouterMod = await import(toFileURL(join(_distServer, "project-notification-router.js")));
-		const manifestStoreForRouter = new orchStoreMod.OrchestrateManifestStore(_sessionDb);
+		// v0.8 (M4): single shared manifest store — PM reads it for coverage
+		// evidence, the notification router reads it for the verify prompt.
+		_manifestStore = new orchStoreMod.OrchestrateManifestStore(_sessionDb);
 		_orchestratePlanStore = new orchStoreMod.OrchestratePlanStore(_sessionDb);
-		_leadService.setOrchestrateStores(_orchestratePlanStore, manifestStoreForRouter);
+		_leadService.setOrchestrateStores(_orchestratePlanStore, _manifestStore);
 		_projectNotificationRouter = new notifRouterMod.ProjectNotificationRouter({
 			agentService: _agentService,
 			agentStore: _agentStore,
@@ -457,7 +471,31 @@ export async function loadCoreModules(): Promise<void> {
 			requirementStore: _requirementStore,
 			sessionDB: _sessionDb,
 			leadService: _leadService,
-			manifestStore: manifestStoreForRouter,
+			manifestStore: _manifestStore,
+		});
+
+		// v0.8 (M4): PM service (RFC §2.5 / §2.10 / §2.17b). Wired after the
+		// notification router so PM coverage verdicts can drive
+		// notify("verify_accept" | "verify_reject"). RequirementDocStore writes
+		// repo docs under {workspace}/.zero/requirements/{projectId}/; wiki
+		// node store gives PM read-only project context.
+		const pmSvcMod = await import(toFileURL(join(_distServer, "pm-service.js")));
+		const reqDocStoreMod = await import(toFileURL(join(_distServer, "requirement-doc-store.js")));
+		const wikiNodeStoreMod = await import(toFileURL(join(_distServer, "wiki-node-store.js")));
+		_requirementDocStore = new reqDocStoreMod.RequirementDocStore({
+			getWorkspaceDir: (projectId: string) => _projectStore.get(projectId)?.workspaceDir,
+		});
+		_wikiNodeStore = new wikiNodeStoreMod.WikiStore(_sessionDb);
+		_pmService = new pmSvcMod.PmService({
+			agentService: _agentService,
+			agentStore: _agentStore,
+			projectStore: _projectStore,
+			requirementStore: _requirementStore,
+			requirementDocStore: _requirementDocStore,
+			wikiNodeStore: _wikiNodeStore,
+			manifestStore: _manifestStore,
+			projectNotificationRouter: _projectNotificationRouter,
+			sessionDB: _sessionDb,
 		});
 
 		// Inject GitIntegration into AnalystService + LeadService

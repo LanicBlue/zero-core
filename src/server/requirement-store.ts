@@ -53,6 +53,11 @@ const REQUIREMENT_COLUMNS: ColumnDef[] = [
 	{ key: "closedAt", column: "closed_at" },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
+	// v0.8 (M4): discuss-as-document fields (RFC §4.5 / decision 12/14/34).
+	{ key: "docPath", column: "doc_path" },
+	{ key: "createdByAgentId", column: "created_by_agent_id" },
+	{ key: "assignedAgentId", column: "assigned_agent_id" },
+	{ key: "reviewerAgentId", column: "reviewer_agent_id" },
 ];
 
 const STATUS_HISTORY_COLUMNS: ColumnDef[] = [

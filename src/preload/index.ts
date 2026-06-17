@@ -264,6 +264,15 @@ const api: WindowApi = {
 	orchestratePlan: (planId) => ipcRenderer.invoke("orchestrate:plan", planId),
 	orchestrateConfirm: (planId) => ipcRenderer.invoke("orchestrate:confirm", planId),
 	orchestrateReject: (planId, reason) => ipcRenderer.invoke("orchestrate:reject", planId, reason),
+
+	// ── M4: PM discuss-as-document + coverage judgement ──
+	requirementsDocRead: (projectId, requirementId) => ipcRenderer.invoke("requirements:doc:read", projectId, requirementId),
+	requirementsDocWrite: (projectId, requirementId, content) => ipcRenderer.invoke("requirements:doc:write", projectId, requirementId, content),
+	requirementsDocList: (projectId) => ipcRenderer.invoke("requirements:doc:list", projectId),
+	pmCreateRequirement: (input) => ipcRenderer.invoke("pm:createRequirement", input),
+	pmOpenDiscuss: (projectId) => ipcRenderer.invoke("pm:openDiscuss", projectId),
+	pmCoverageView: (requirementId) => ipcRenderer.invoke("pm:coverageView", requirementId),
+	pmCoverageVerdict: (requirementId, covered, reason) => ipcRenderer.invoke("pm:coverageVerdict", requirementId, covered, reason),
 };
 
 contextBridge.exposeInMainWorld("api", api);

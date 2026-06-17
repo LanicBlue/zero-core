@@ -46,6 +46,7 @@ import { registerRequirementHandlers } from "./ipc/requirement-handlers.js";
 import { registerWikiHandlers } from "./ipc/wiki-handlers.js";
 import { registerCronHandlers } from "./ipc/cron-handlers.js";
 import { registerOrchestrateHandlers } from "./ipc/orchestrate-handlers.js";
+import { registerPmHandlers } from "./ipc/pm-handlers.js";
 
 export function registerIpc(win: BrowserWindow): void {
 	setMainWindow(win);
@@ -74,6 +75,7 @@ export function registerIpc(win: BrowserWindow): void {
 	registerWikiHandlers(ctx);
 	registerCronHandlers(ctx);
 	registerOrchestrateHandlers();
+	registerPmHandlers();
 
 	log.ipc("All handlers registered");
 

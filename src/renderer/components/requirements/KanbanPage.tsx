@@ -32,6 +32,7 @@ import { usePageStore } from "../../store/page-store.js";
 import RequirementCard from "./RequirementCard.js";
 import CreateRequirementModal from "./CreateRequirementModal.js";
 import ExecutionDetailPanel from "./ExecutionDetailPanel.js";
+import CoverageJudgementModal from "./CoverageJudgementModal.js";
 
 const KANBAN_COLUMNS: { status: RequirementStatus; icon: string; label: string; color: string }[] = [
 	{ status: "found",   icon: "💡", label: "Found",   color: "#8B8B8B" },
@@ -153,6 +154,48 @@ export default function KanbanPage() {
 			setPlanActionInFlight(null);
 		}
 	}, [fetchPendingPlans, selectedProjectId]);
+
+	// v0.8 (M4): open the {PM, projectId} discuss session — kanban "讨论" entry
+	// → chat page (decision 13/14). Routes via pm:openDiscuss, then activates the
+	// PM agent + session in the chat store so the existing chat page renders it,
+	// AND opens the requirement's doc in the DocViewerPanel (user wants to see
+	// the requirement doc + talk to PM in the same view).
+	const [coverageReqId, setCoverageReqId] = useState<string | null>(null);
+	const handleDiscuss = useCallback(async (req: RequirementRecord) => {
+		const api = (window as any).api;
+		if (!api?.pmOpenDiscuss) return;
+		try {
+			const r = await api.pmOpenDiscuss(req.projectId);
+			if (r?.error) { alert(`Discuss failed: ${r.error}`); return; }
+			const chatStore = (await import("../../store/chat-store.js")).useChatStore.getState();
+			chatStore.setActiveAgent(r.agentId, r.sessionId);
+			const page = (await import("../../store/page-store.js")).usePageStore.getState();
+			page.setActivePage("chat");
+			// Open the requirement doc in the DocViewerPanel so the user sees
+			// the requirement file alongside the PM chat. docPath is workspace-
+			// relative (POSIX); root = the project's workspaceDir.
+			if (req.docPath) {
+				try {
+					const project = await api.projectsGet(req.projectId);
+					const root: string = project?.workspaceDir ?? "";
+					window.dispatchEvent(new CustomEvent("zero-file-select", {
+						detail: { path: req.docPath, root },
+					}));
+				} catch {
+					// Non-fatal: doc open is a convenience, not the main path.
+				}
+			}
+		} catch (e) {
+			alert(`Discuss error: ${(e as Error).message}`);
+		}
+	}, []);
+
+	// v0.8 (M4): open the PM coverage-judgement view (decision 34). Loads the
+	// requirement intent doc + latest manifest; user records the verdict which
+	// drives notify("verify_accept" | "verify_reject") via pm:coverageVerdict.
+	const handleCoverage = useCallback((req: RequirementRecord) => {
+		setCoverageReqId(req.id);
+	}, []);
 
 	return (
 		<div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-primary, #1a1a1c)" }}>
@@ -413,14 +456,17 @@ export default function KanbanPage() {
 											<RequirementCard
 												requirement={req}
 												currentStep={currentStep}
+												projectName={projects.find((p) => p.id === req.projectId)?.name}
 												onClick={handleCardClick}
+												onDiscuss={handleDiscuss}
+												onCoverage={handleCoverage}
 											/>
 											{isExpanded && (
 												<ExecutionDetailPanel
 													requirement={req}
 													steps={steps}
 													messages={messagesByReq[req.id] || []}
-t											onRefresh={() => { fetchSteps(req.id); fetchMessages(req.id); }}
+													onRefresh={() => { fetchSteps(req.id); fetchMessages(req.id); }}
 												/>
 											)}
 										</React.Fragment>
@@ -446,6 +492,12 @@ t											onRefresh={() => { fetchSteps(req.id); fetchMessages(req.id); }}
 			{showCreateModal && (
 				<CreateRequirementModal onClose={() => setShowCreateModal(false)} />
 			)}
+
+			{/* v0.8 (M4): PM coverage-judgement modal (decision 34) */}
+			<CoverageJudgementModal
+				requirementId={coverageReqId}
+				onClose={() => setCoverageReqId(null)}
+			/>
 		</div>
 	);
 }

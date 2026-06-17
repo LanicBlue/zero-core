@@ -48,7 +48,7 @@ import { memoryRecallTool, memoryNoteTool } from "../mcp-tools/memory-node-tools
 import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
 import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
 import { expandNodeTool, updateWikiNodeTool, listWikiTreeTool, readDocTool } from "./wiki-tools.js";
-import { createRequirementTool } from "./requirement-tools.js";
+import { createRequirementTool, createRequirementWithDocTool } from "./requirement-tools.js";
 import { orchestrateTool } from "./orchestrate-tool.js";
 import { ZERO_ADMIN_TOOLS } from "./zero-admin-tools.js";
 import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
@@ -89,6 +89,9 @@ export const ALL_TOOLS: Record<string, any> = {
 	ListWikiTree: listWikiTreeTool,
 	ReadDoc: readDocTool,
 	CreateRequirement: createRequirementTool,
+	// v0.8 (M4): PM-only tool — creates a requirement + repo doc + discuss
+	// landing in one shot (PmService.createRequirementWithDoc).
+	CreateRequirementWithDoc: createRequirementWithDocTool,
 	Orchestrate: orchestrateTool,
 
 	// v0.8 (M0): zero global-management tools. Gated on ctx.zeroAdmin
@@ -110,6 +113,8 @@ const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> 
 	ListWikiTree: (ctx) => !!ctx.wikiStore,
 	ReadDoc: (ctx) => !!(ctx.contextBundle?.workspaceDir ?? ctx.workingDir),
 	CreateRequirement: (ctx) => !!ctx.requirementStore,
+	// v0.8 (M4): PM-only — gated on ctx.pmService (only PM sessions carry it).
+	CreateRequirementWithDoc: (ctx) => !!(ctx as any).pmService,
 	Orchestrate: (ctx) => !!ctx.delegateTask,
 };
 
