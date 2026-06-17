@@ -229,6 +229,507 @@ found → discuss → ready → plan → build → verify → archived
 1. **dead path 未清理**：`src/main/ipc.ts` 的 `registerIpc` + `src/main/ipc/{cron,orchestrate,pm}-handlers.ts` + `typed-ipc.ts` + core.ts 的 ctx 装配——这些是 IPC 真实路径切到 ROUTE_MAP 之前的历史误植，当前不被主入口调用。清理需确认无其他引用（项目级，非本规范范围）。
 2. **CronAnalysisManager legacy aliases**：`restoreSchedulesForProjects / scheduleProject / unscheduleProject / rescheduleProject`（`cron-analysis.ts:184-201`，标 `@deprecated`），为 project-router 旧调用方保留的 no-op。
 3. **AgentRecord 与设计 RFC 的字段差**：`workflowRole / cronSchedule / subAgentChain` 未落到类型——当前用 `roleTag` + 独立 cron 表 + `delegateTask` 覆盖了等价语义，但与 RFC 文字描述不一致，需在后续决定是否补字段或修 RFC 措辞。
+4. **工具集待重构（见 §7）**：现有 `InstantiatePreset`、扁平的 17+ 个 zero-admin 工具、`toolPolicy` 单独成工具、expose 作为独立实体、role-`presets` 术语，均与 §7 定稿设计冲突。**代码暂未改，待 §7 确认后统一动**。
+
+---
+
+## 7. 初始化与引导（fresh-DB → 工作流就绪）
+
+> 本节是工作流的**冷启动引导规范**：从空库开始，如何让用户得到一个能跑的软件开发工作流。
+> 设计原则：**工具是按功能域分的原子 CRUD；工作流怎么组装，是写在 wiki 里的预设知识（playbook），由 zero 读后用原子工具搭建。**
+
+### 7.1 空库初始态（fresh-DB seed）
+
+真正的 fresh DB **默认只写入两样东西**（无 seed 则连 zero 都没有，自动路径进不去）：
+
+1. **一个 `zero` agent**（从 `zero` template 实例化）—— 全局管理角色，用户与它对话搭建工作流。**workspaceDir = 平台全局 `~/.zero-core`**（不绑单个项目，观察所有项目）。
+2. **wiki 树里的 `software-dev` 节点**（路径 `wiki-root:global / agent-group / software-dev`）—— 这个节点**包含 software-dev 工作流的全部配置**（需要哪些角色、谁 expose 给谁、谁配 cron）。zero 读它来学习怎么搭这套工作流。
+
+seed 触发点：`startServer` 内、所有 store 建好后、`restoreAllSessions` 之前，检查 `agentStore.list().length === 0` → seed。业务语义，放服务层不放 migration 层。
+
+> **这两个默认写入不可删除**（protected）—— `Agent(delete: zero)` 和 `Wiki(delete: software-dev)` 必须 reject。其余角色 agent（pm/lead/archivist/...）永不 seed，永远留在 template 表里，按需实例化。
+
+### 7.2 术语统一：Template（废弃 Preset）
+
+全仓统一用 **Template**：`role-presets.ts` → `role-templates.ts`，`ROLE_PRESETS` → `ROLE_TEMPLATES`，`getPreset`/`listPresets` → `getTemplate`/`listTemplates`，`instantiatePreset` → 废弃（由 `Agent create + template 字段` 替代）。Template 是**只读身份蓝图**（systemPrompt + roleTag + base toolPolicy + 可选 calleeRoleTags），不是运行时实体。
+
+### 7.3 工具分类：4 个 action 化工具
+
+zero 的工具按功能域压缩为 **4 个**，每个靠 `action` 字段路由输入（判别联合 schema）。
+
+> **工具是硬编码的**：4 个域工具 + 平台工具（Shell/Read/Grep/Glob/Write/Edit/委派）的**定义都在代码里，不入库**。
+> 但**工具的默认参数配置、使用记录需要 DB 表**：每个工具的默认 config、每次调用的 usage 记录都持久化（审计 + 复用配置）。
+> 「agent as tool」**不再是工具** —— 见 §7.4，改用 caller 侧 `subagents` 列表。
+
+#### `Project`（纯元数据）
+| action | 字段 | 说明 |
+|---|---|---|
+| create | name, workspaceDir | 建项目，绑定归一化 workspaceDir |
+| update | id, name? | workspaceDir 创建后不可变 |
+| delete / get / list | id / id / — | — |
+
+> **Project 只管元数据**。看板/需求/任务流转是工作流运行时的事（PM 建需求、hooks 推状态），**不属于 Project 工具**。现有 project-router 上挂的 kanban 端点是历史代码债，概念上不归 Project 域。
+
+#### `Agent`（agent 记录 CRUD + template 参考）
+| action | 字段 | 说明 |
+|---|---|---|
+| create | name, template?, systemPrompt?, roleTag?, toolPolicy?, subagents? | 给 `template` → 从模板拷身份；不给 → 裸建 |
+| update | id, <任意字段 incl. toolPolicy / subagents> | 改身份、改 toolPolicy、改 subagents 全走这里 |
+| delete | id | 级联清关联 cron；**zero agent 不可删**（protected） |
+| get / list | id / roleTag? | list 可按 roleTag 过滤 |
+| listTemplates / getTemplate | roleTag? / id | **只读**，zero 读 template 拿角色身份作参考 |
+
+AgentRecord 带 `subagents` 字段（caller 侧声明可委派的 agent 列表，见 §7.4）：
+```ts
+subagents?: Array<{
+  agentId: string;        // 被委派的目标 agent（稳定 id）
+  name?: string;          // caller 看到的别名，默认从目标 agent.name 派生
+  description?: string;   // 告诉 caller 这个 subagent 能干什么
+}>
+```
+
+#### `Cron`（定时器实体）
+| action | 字段 | 说明 |
+|---|---|---|
+| create | agentId, workingScope{projectId?, workspaceDir, wikiRootNodeId}, schedule, prompt?, enabled? | 一个 agent 可挂 N 条 cron |
+| update / delete / get / list | — | — |
+
+#### `Wiki`（全局记忆树读写，按角色写域）
+| action | 字段 | 写权 scope |
+|---|---|---|
+| list / expand / readDoc | nodeId / nodeId / path | 读：按 session viewRoot 截断（项目角色只看本子树，全局角色看全树） |
+| upsert | nodeId, type, title, summary?, detail?, ... | 写：**archivist→项目子树**；**zero→全局 knowledge 子树** |
+
+> 写域按角色分配：archivist 管项目结构（决策 39 守卫），zero 管全局 knowledge 子树。store 层 scope guard 按 caller role 放行。**为将来把 knowledge 子树交给 HR 角色预留**（收回 zero 写权、交给 HR roleTag）。
+
+### 7.4 委派关系 = caller 的 subagents 列表（拆掉 "agent as tool"）
+
+把原先「expose agent 成工具 → caller 在 toolPolicy 里启用」的概念**整个拆掉**，避免和硬编码平台工具（Project/Agent/Cron/Wiki/Shell/...）混淆：
+
+- **没有 `expose` 字段，没有 agent-tool-entries 表**。agent 不是工具。
+- 委派关系**完全在 caller 侧声明**：caller 的 AgentRecord 带 `subagents: [{agentId, name?, description?}]`。
+- caller 的 agent-loop 建工具时，为 `subagents` 列表每一项生成一个**委派入口**（直接调用对应 agent）——这些入口**不出现在全局工具 UI，只出现在该 caller 的工具配置列表**。
+- 源 agent **无需任何配置**（不 opt-in）——谁能委派给谁，完全由 caller 的 `subagents` 列表决定。
+
+调用机制复用现有 `delegateTask`（继承 caller bundle，不走 `resolveSessionByRoleProject`）。
+
+**所以工作流组装是**：zero 读 software-dev 节点 → 知道「lead 要能委派 developer/reviewer/qa」→ `Agent(create lead, subagents:[{agentId:developer,...},...])` 在 lead 上声明。一步搞定，没有复合工具，没有 expose 注册表。
+
+> 一句话区别：**「工具」是平台硬编码的能力；「subagent」是 caller 声明的可委派 agent 列表**。两者不混在一个 tool registry 里。
+
+### 7.5 全局 wiki 的 agent-group 子树
+
+全局 wiki 树结构（工作流配置的归宿）：
+
+```
+wiki-root:global              ← 全局根（zero 全局视角）
+└── agent-group               ← 工作流配置子树根
+    └── software-dev          ← software-dev 工作流的全部配置（fresh-DB seed）
+    └── <future>              ← 后续更多工作流（软件继续预置，或 agent 写入）
+```
+
+- **`software-dev` 节点**包含该工作流的**全部配置**：需要哪些角色、谁 expose 给谁、谁配 cron、各角色的协作关系。zero 读它来搭工作流。
+- **写权**：`agent-group` 子树由 **zero** 管理（store 层 scope guard 按 caller role 放行）。
+- **将来**：knowledge/agent-group 子树写权可从 zero 收回、交给 HR 角色。
+- ⚠️ fresh-DB seed `software-dev` 节点时，store 层写域需对 seed 路径放行（seed 是启动期特权写入，不走运行时角色 scope guard）。运行时只有 zero（及其后继角色）能写该子树。
+
+### 7.6 两条引导路径
+
+| 路径 | 流程 | 优点 | 缺点 |
+|---|---|---|---|
+| **手动** | 用户在 UI 一个个建：建 Project → 从 template 建 agent → expose → 配 caller toolPolicy → 配 cron | 自由度高 | 麻烦 |
+| **自动** | 用户跟 zero 对话给项目目录 → zero 读 playbook + 读相关 template → 链式调 4 工具搭全套 → 用户之后可改 | 快 | 依赖 zero 推理正确（靠 playbook + template 知识兜底） |
+
+两条路径**用同一套原子工具**（手动走 UI IPC → 同样的 create/update；自动走 zero 工具调用）。没有「一键 bootstrap」复合工具——组装是预设知识，不是一次性动作。
+
+### 7.7 落地待办（代码暂未改，确认后统一动）
+1. 全仓 `Preset` → `Template` 改名（role-presets.ts、zero-admin-*、preset-router、文档）。
+2. 删 `InstantiatePreset` 工具；**拆掉 expose 概念**，AgentRecord 加 `subagents: [{agentId, name?, description?}]` 字段（caller 侧）。
+3. **agent 不是工具**：废 `agent-tool-entries` 表 / `AgentToolStore` / `ExposeAgentAsTool`；caller agent-loop 改为按 `subagents` 列表生成委派入口（复用 `delegateTask`）。
+4. 工具默认参数配置 + 使用记录入库（**新表**：`tool_configs` 默认 config、`tool_usage` 调用记录）；工具定义本身仍硬编码。
+5. 17+ 扁平工具 → 4 个 action 化工具（Project / Agent / Cron / Wiki，判别联合 schema）。
+6. `toolPolicy` 不再单独成工具（并入 `Agent update`）。
+7. store 层 wiki 写域 scope guard：按 caller role 放行（zero → 全局 `agent-group` 子树；archivist → 项目子树）。
+8. fresh-DB seed：zero agent（workspaceDir=`~/.zero-core`）+ `software-dev` 节点；两者**不可删**（protected，delete reject）。
+9. zero toolPolicy 加 wiki 读工具（ListWikiTree / ExpandNode / ReadDoc）。
+
+---
+
+## 8. Project 模块（容器视图 + 项目页）
+
+> Project 是工作流的**容器**。一个 workspaceDir 绑定 = 一个 project。
+> **Project 不拥有 agent**（agent 是全局角色，见 §2.4 / §7）——它拥有：requirements + wiki 项目子树 + 指向它的 crons + 活跃 sessions。
+
+### 8.1 元数据（极简）
+`{id, name, workspaceDir}`。**不加状态 / 成员 / 配置**——model/provider 是 agent 配置（§7），项目级默认配置 YAGNI，以后真需要再加。
+
+### 8.2 Project 工具（§7.3 四工具之一，action 化）
+| action | 字段 | 说明 |
+|---|---|---|
+| create | name, workspaceDir | 建项目；**同步 `ensureProjectSubtree`（空根）+ 异步 kick 渐进扫描**（§8.3） |
+| update | id, name? | workspaceDir 创建后不可变 |
+| delete | id | 级联：requirements + task_steps + wiki 子树 + **该 projectId 的 crons**（当前漏删 crons，待补） |
+| get | id, includeContext? | 不带 context → 纯元数据；带 → 容器视图（§8.4） |
+| list | — | 全部项目（左侧列表用） |
+
+> 当前缺 `GetProject` 工具（service 有 `getProject`，没暴露）——并入 `Project(get)`。
+
+### 8.3 wiki 初始化与持续同步（大项目处理）
+**初始化**：create 时 `WikiStore.ensureProjectSubtree(projectId)` 立即建空根（`wiki-root:<projectId>`），project 即刻可用。新项目（空 workspace）到此为止，无需扫描。
+
+**渐进扫描**（解决已存在大项目「扫描很慢」）：
+- archivist **后台分块渐进扫描**：先浅扫建结构节点（structure），再逐步补 detail 节点。
+- 用已有的 `wiki_scan_cursors` 表（`db-migration.ts:378`）记录游标，**断点续扫、可中断恢复**。
+- **不阻塞 create**：大项目从 t=0 即可用，wiki 在后台逐步填满；项目仪表盘显示扫描进度。
+
+**持续同步**：**archivist 管理项目 git main 分支**——main 的更新都经 archivist 的 `mergeFeatureToMain()`（`archivist-service.ts:283`）发生，archivist 自己就是更新信号源。**merge 完成后立即触发增量 diff-scan**（只扫本次 merge 涉及的文件），无需轮询或文件监听。
+
+> `POST /api/projects/:id/trigger-analysis`（现 [project-router.ts:133](src/server/project-router.ts#L133)）从 project-router **删除**——扫描是 archivist 内部行为（create 触发 + merge 后触发），不是 project 域端点。手动重扫可选挂在 Wiki 工具的 scan action 或项目页按钮。
+
+### 8.4 容器视图（`Project(get, includeContext)`）
+```
+{
+  project,
+  requirementsByStatus: { found, discuss, ready, plan, build, verify, archived },
+  crons:        [project-scoped crons],
+  wikiSummary:  { nodeCount, lastUpdated, scanProgress },
+  activeSessions: [{ agentId, roleTag, sessionId }]
+}
+```
+注意：**不含 agent 列表**（agent 全局，不归 project；activeSessions 是「当前为该 project 活跃的 session」，按 context.projectId 过滤）。
+
+### 8.5 项目页（替换看板页）—— UI 规范
+原看板页 → **项目页**。
+
+- **左栏**：项目列表（可选 + 「新建项目」按钮，填 name + workspaceDir）。
+- **右栏**：选中项目的信息，三 tab：
+  1. **仪表盘 + 动态**：
+     - **仪表盘**（项目的更新情况 + 资源消耗）：
+       - 更新情况：wiki 扫描进度（phase + cursor）、git main HEAD、最近 merge/sync 时间、扫描是否最新（lag）。
+       - 资源消耗：token 用量 / cost，**按 project 聚合**——`sessions` 表已累计每个 session 的 `input_tokens / output_tokens / total_tokens / cache_read/write_tokens / reasoning_tokens / estimated_cost_usd`（`db-migration.ts:304-310`），SUM 这些字段 WHERE `session.context.projectId === 项目` 即得。逐轮明细在 `turns` 表（`:321-323`）。无需新表，与 `tool_usage`（工具调用日志，§7.7#4）是两回事。
+     - **动态**（最近事件时间线）：需求状态流转 / cron 触发 / archivist merge / wiki 更新等。
+       - 来源：`requirement_status_history`（`db-migration.ts:402`）+ `requirement_messages`（:421）+ cron/tool usage 记录，**派生聚合**，不单独建 activity 表。
+  2. **项目视图**：容器视图全貌（requirements / crons / wiki 子树 / sessions 列表），即 §8.4 的可视化。
+  3. **看板**：现有 kanban（按 status 的 requirement 列），现作为 tab 内嵌（不再独立成页）。
+- 用户可在项目页**手动创建新项目**。
+
+### 8.6 死代码清理（与 v0.8 矛盾）
+- 删 `projects:pause / resume / updateInterval` IPC + [project-handlers.ts:51-72](src/main/ipc/project-handlers.ts#L51) 对应 + REST（cron 调度归 Cron 域；这些调的是 v0.8 no-op legacy alias `cron-analysis.ts:184-201`）。
+- 删 `POST /api/projects/:id/trigger-analysis`（扫描归 archivist）。
+- 级联删除补「删该 projectId 的 crons」。
+- 补 `Project(get)` 工具。
+
+### 8.7 落地待办（代码暂未改，确认后统一动）
+1. `Project` 工具 action 化（create/update/delete/get/list），`get` 支持 `includeContext`。
+2. create 副作用：同步 `ensureProjectSubtree` + 异步 kick 渐进扫描。
+3. archivist 渐进扫描 + `wiki_scan_cursors` 断点续扫 + 仪表盘进度上报。
+4. archivist merge-feature-to-main 后触发增量 diff-scan（main 由 archivist 管理）。
+5. 容器视图聚合 API（requirementsByStatus + crons + wikiSummary + activeSessions）。
+6. 项目页（替换看板页）：左列表 + 右三 tab（仪表盘+动态 / 项目视图 / 看板）+ 新建项目。
+7. activity 派生聚合（status_history + messages + cron usage）。
+8. 死代码清理（§8.6 四项）。
+
+---
+
+## 9. Cron 模块（一等公民定时器 + 调度台）
+
+> Cron 是一等公民：一条 cron = 「在某个时间，激活某 agent 的某 scope session 并发 prompt」。激活后做什么完全由 agent 自己决定（§4.1）。Cron 有独立顶级页，不埋在 settings 里。
+
+### 9.1 调度模型（参考闹钟 app）
+抛弃当前 `parseSchedule` 的 setInterval-only 命名档（off/hourly/daily/weekly）。改成**闹钟风格的三模式**：
+
+```ts
+type CronSchedule =
+  | { mode: "once";     fireAt: string }        // 单次：ISO 带时区；到点触发后自动 disable
+  | { mode: "alarm";    time: "HH:MM"; days: number[]; tz: string }
+                                                    // 闹钟：每天选定的 days（0-6 周日-周六）的 time 触发
+                                                    //   days=[] → 每天；[1,2,3,4,5] → 工作日；[0,6] → 周末
+  | { mode: "interval"; everyMs: number };      // 间隔：每 N 毫秒（最小 60000）
+```
+
+- **once**：单次日期时间，触发后 `enabled=false`（留审计，不删）。
+- **alarm**：闹钟 —— 时间 + 重复星期（闘钟 app 的「重复：每天/工作日/周末/自选」）。锚定**钟点**（「什么时间点」）。覆盖原 daily/weekly。
+- **interval**：固定节奏 —— 每 N **分钟/小时**（UI 用「每 N 分钟」「每 N 小时」选择器，不暴露裸 ms；底层存 everyMs，最小 60000）。锚定**节奏**（「多久一次」），适合 PM 巡检这类高频。覆盖原 hourly。
+- 三模式覆盖：once=不重复、alarm=按钟点重复（日级）、interval=按节奏重复（分/时级）。
+- 原 `off` → 不再是 schedule 值，改用 `enabled=false` 表达（行保留，定时器摘除）。
+
+时区：once 的 `fireAt` 存 ISO 带偏移；alarm 存 `tz`（IANA，如 `Asia/Shanghai`）；UI 统一用本地时区显示。
+
+### 9.2 调度器（CronManager 重写）
+按 mode 分别调度（替代现 `parseSchedule` + setInterval）：
+- **once** → `setTimeout` 到 `fireAt`；触发后置 `enabled=false` + 摘定时器。
+- **alarm** → 计算下一次满足 (time, days) 的时刻 → `setTimeout`；触发后重算下一次（滚动）。
+- **interval** → `setInterval(everyMs)`（min 60000）。
+
+启动恢复（`restoreSchedules`）：
+- 遍历 `enabled=true` 的 cron，按 mode 重建定时器。
+- **错过的 once 不补跑**（Q3）：启动时若 `fireAt` 已过 → 直接置 `enabled=false` + 记一条 missed 的 `cron_runs`，不触发。
+- alarm/interval：只算「下一次未来时刻」，不追溯历史。
+
+单次触发错误不取消调度（catch + log + 落 `cron_runs` 失败记录）。
+
+### 9.3 数据
+**crons 表扩展**（现 [db-migration.ts:431](src/server/db-migration.ts#L431)）：`schedule` 改存结构化 JSON；新增列：
+- `trigger_mode`（once/alarm/interval，冗余便于查询）
+- `last_run_at` / `last_status`（ok/failed/missed）/ `last_error`
+- `next_run_at`（调度器算好后回写，UI 直接读，不用前端算）
+
+**新表 `cron_runs`**（运行历史，Q4）：
+```
+id, cron_id, fired_at, agent_id, session_id,
+success(0/1), error, duration_ms, tokens, cost
+```
+每次触发落一条；cron 页历史 + 项目页「动态」都读它。
+
+> ⚠️ schema 变更走显式 migration（契约 1.2）：旧 `schedule` 字符串行（off/hourly/daily/weekly）→ 映射到新 mode（hourly→interval 3600000；daily→alarm time+[]; weekly→alarm+[当日]；off→enabled=false）。
+
+### 9.4 Cron 工具（§7.3 四工具之一，action 化）
+| action | 字段 | 说明 |
+|---|---|---|
+| create | agentId, workingScope, schedule(三模式), prompt?, enabled? | 建定时器 |
+| update | id, <任意字段> | 改 schedule / prompt / enabled 全走这里；改后 CronManager.refreshCron 重算 next_run |
+| delete | id | 摘定时器 + 删行 |
+| get / list | id / filter{projectId?, agentId?, enabled?} | list 可按 project/agent/启用过滤 |
+| trigger | id | 「立即运行」（调试/手动，不计入 next_run） |
+
+### 9.5 Cron 页 —— 「调度台」（顶级页）
+创意设计：**闹钟感 + 时间轴可视化**。
+
+- **顶部：今日时间轴** —— 一条 24h 横条，把今天会触发的 cron 按时刻标成竖线刻度（颜色按 agent 区分），当前时刻有游标。一眼看「今天什么时候有事」。点刻度跳到对应卡片。
+- **主体：闹钟卡片网格**（像手机闹钟）。每张卡 = 一个 cron：
+  - 大字**下次触发时间** + 重复标签（「工作日 09:00」「单次 06-20 14:00」「每 2h」）
+  - **启用 toggle**（拨一下即开/关）
+  - **状态点**：上次成功绿 / 失败红 / 错过灰
+  - **倒计时**：「下次还剩 2h 13m」
+  - **「立即运行」** 按钮
+  - 展开看最近 `cron_runs` 迷你列表（时间 / 成功否 / 耗时）
+- **分组切换**：按 agent（PM 的闹钟 / archivist 的闹钟）或按 project 两种视图切换。
+- **新建**：右上「+」，像设闹钟 —— 选模式（单次/闹钟/间隔）→ 选 agent + workingScope（project 或全局）→ 设时间/重复 → 写 prompt。
+- 状态点 + 倒计时让每张卡「活着」，最临近触发的那张高亮（pulse）。
+
+### 9.6 落地待办（代码暂未改，确认后统一动）
+1. `CronSchedule` 类型改三模式（once/alarm/interval）；废 `parseSchedule` 命名档。
+2. CronManager 重写：按 mode 调度（setTimeout/interval/compute-next）；启动恢复 + missed-once 不补跑。
+3. crons 表扩展列（trigger_mode/last_run_at/last_status/last_error/next_run_at）+ migration 映射旧 schedule。
+4. 新建 `cron_runs` 表 + 每次触发落记录。
+5. Cron 页（调度台）从 settings 提到顶级：今日时间轴 + 闹钟卡片网格 + 分组切换 + 新建闹钟式表单。
+6. Cron 工具 action 化（create/update/delete/get/list/trigger），list 支持 projectId/agentId/enabled 过滤。
+7. 删 project 域的 dead 调度通道（§8.6 已列 pause/resume/updateInterval）—— cron 调度只归 Cron 域。
+
+---
+
+## 10. Wiki 模块（结构/内容分离 + 锚点权限 + 引用文档为叶）
+
+> wiki 是项目与全局知识的结构化记忆。本模块是 v0.8 最大重构：**树结构存 DB，节点文档存磁盘文件；权限按锚点节点定位；项目子树以「引用文档」为叶**。
+
+### 10.1 存储：结构 / 内容分离
+- **树结构 → DB**（`wiki_nodes` 表）：`id, parentId, path, title, summary, docPointer, relations, flags, createdAt, updatedAt`。
+  - **不存正文**（DB 里改正文不方便更新）。
+  - `summary`（一行：「这节点和它的子节点是什么」）留 DB，供 context 注入 + 树渲染。
+  - `docPointer` = 指向**节点自己的正文文件**（`~/.zero-core/wiki/<路径>.md`），代码内部用来定位正文；**agent 不感知**这个字段的存在。
+  - `relations`（JSON 图边，含需求追溯 `{kind,targetId}`，统一）、`flags`（JSON 分歧/状态标记）留 DB——关系型/可查询。
+  - provenance / lastUpdatedBy 等描述性/审计信息 → 正文文件 frontmatter，不进 DB。
+- **节点正文 → 磁盘文件** `~/.zero-core/wiki/<树路径>.md`。改正文 = 改文件，不动 DB。
+- **项目文件本身不进 wiki**：既不在 DB，也不在 `~/.zero-core/wiki/` 下；它就在项目 `workspaceDir` 里。archivist / agent 读项目代码 = 用普通 FS 工具读 `workspaceDir`；wiki 不掺和。
+- **强制 wiki 正文只走 wiki 工具读写**：代码层禁止 agent 用 FS 工具（Read/Shell/Grep...）直接访问 `~/.zero-core/wiki/`（路径不向 agent 暴露、不授权）。agent 只通过 wiki 工具读写正文；工具内部怎么定向到正文文件，是代码的事，agent 不用知道。
+
+### 10.2 项目 wiki 子树 —— 注释文档为叶
+- 项目子树叶节点正文 = archivist 对项目代码的**注释/理解**（存在 `~/.zero-core/wiki/projects/<projectId>/<路径>.md`）；正文里**链接到**对应项目文件（在 `workspaceDir`）。
+- 项目文件本身不在 wiki（见 10.1）。archivist 读项目代码 = FS 读 workspaceDir；写理解 = wiki 工具 upsert。两套权限天然分离。
+- 非叶节点（目录/模块）= 结构性，其正文描述该模块。
+
+### 10.3 权限模型 —— 多锚点（自动 + 自由，废 type-based 守卫）
+- 抛弃 `assertNodeInsideProjectScope` + type 枚举写域守卫（decision 39）。
+- 一个 session 有**多个 wiki 锚点**，分两类：
+  - **① 自动锚点**（运行时按角色/项目派生，不手配）：
+    - **memory 锚点** = `memory/<roleTag>/`（由角色派生；PM → `memory/pm/`）。
+    - **project 锚点** = `wiki-root:<projectId>/`（session 带 projectId 时由项目派生）。
+  - **② 自由锚点**（手配，AgentRecord.wikiAnchors）：配置页加/删，用于特殊场景（如 zero 指向 `knowledge/software-dev`）。
+- session 实际锚点 = 自动锚点（memory + project）∪ 自由锚点。
+- **读 + 写范围 = 所有锚点子树的并集**；并集外不可见。
+- store 守卫统一改为「目标节点是否在 caller 任一锚点子树内」—— 读 + 写用同一道边界。
+- **zero 特殊**：无 project → 无 project 自动锚点，靠 memory 自动锚点 + 自由锚点（knowledge 等）。
+
+### 10.3.1 锚点注入位置（system / context / off）
+每个锚点独立选注入位置，**按该子树运行时是否变化**：
+- **静态**（session 内不变）→ 注入 **system prompt** 段（可缓存）。
+- **动态**（运行时会变）→ 注入 **context**（每轮重算，不持久）。
+- **off** → 不注入（仅可 Wiki 工具主动查）。
+- 默认：project 锚点 → system；memory 锚点 → context。两者均可在 agent 配置页覆盖。
+- 注入内容 = 该锚点子树展开（title + summary，不带正文，§10.6）。
+
+### 10.4 节点无显式 type（位置即类型）
+- 抛弃 `type` 字段（现 header/intent/structure/project/memory）。节点「类型」由位置隐含：`projects/<projectId>/` 下 = 项目内容、`knowledge/` 下 = playbook、`memory/<role>/` 下 = 该角色记忆。
+- 「节点有没有正文」由 docPointer / 正文文件存在区分（结构/目录节点可能只有 summary 无正文）。
+
+### 10.5 全局树结构
+```
+wiki-root:global              ← 全局根（zero 锚点，整树可读写）
+├── knowledge                 ← 工作流配置子树（zero 写；将来 HR）
+│   └── software-dev          ← software-dev 工作流配置（fresh-DB seed）
+├── projects
+│   └── <projectId>           ← 项目子树根（archivist 锚点）
+│       └── <... 注释文档叶 ...>
+└── memory                    ← 全局记忆（提取者写；写入过程另行讨论）
+```
+- 磁盘镜像：`~/.zero-core/wiki/{knowledge,projects,memory}/...`。
+
+### 10.6 context 注入 —— wiki 结构每轮注入（关键新机制）
+LLM 调用的 prompt 结构是：
+
+```
+[system prompt]
+[seqs]                       ← 消息历史（持久）
+[context + new user message] ← context 每轮可变，注入在 user 消息前，不持久记录
+```
+
+**wiki 结构注入**（按 §10.3.1 每锚点独立选位置）：
+- 每个锚点展开**子树**，带 `title + summary`、**不带正文内容**，按该锚点的 inject 位置放进 **system prompt 段** 或 **context**。
+- agent 每轮（context 类）或每次启动（system 类）都能看到「存在哪些知识 / 项目结构」，需要某节点深度内容时再用 `expand` 工具拉正文。
+- **只带 summary 不带正文 → token 预算可控**（summary 是一行结构描述）。
+- system 类锚点：走 `SystemPromptAssembler` 的 section（可缓存，子树变了再刷新）。
+- context 类锚点：走 PreLLMCall hook（context builder），**不入 message history**（每轮重算）。
+- token 守卫：summary 设计为一行；超大子树用 `depth` 截断（§10.3.1 锚点可配 depth）。
+
+### 10.7 Wiki 工具（§7.3 四工具之一，action 化）
+因 §10.6 注入了结构 + summary，工具精简：
+
+| action | 说明 | 备注 |
+|---|---|---|
+| expand | 读节点**正文**（注释/理解的 .md 全文） | 需要深挖时拉，结构已注入 |
+| upsert | 建/改节点：写 DB 行 + 正文文件 | scope = caller 锚点并集 |
+| search | 全文搜节点（summary 可能不含关键词，需搜正文） | scope = caller 锚点并集 |
+
+**砍掉**：
+- `list` —— 结构 + summary 已由 §10.6 注入，无需工具拉。
+- `readDoc` —— 项目文件用 FS 工具读 workspaceDir；wiki 正文用 `expand`。两个读语义都不需要单独 wiki 工具。
+
+### 10.8 渐进扫描（承接 §8.3）
+archivist 两阶段（结构→细节）：
+- **phase 1（结构）**：扫项目代码 → 建 DB 结构行（path/title/summary/docPointer）+ skeleton 正文。
+- **phase 2（细节）**：逐个填正文（对项目文件的注释/理解）。
+- `wiki_scan_cursors` 断点续扫；archivist merge-feature-to-main 后增量 diff-scan，只重建变更文件对应的注释文档。
+
+### 10.9 UI（全局树浏览器）
+- **WikiPage 升级为全局树浏览器**：左树（全局根 → knowledge / projects / memory，按 session 锚点截断可见性），右节点正文（`expand` 的全文）。
+  - zero 看全树；项目角色只看本子树（锚点以上不可见）。
+- **project 页「项目视图」tab** 看本项目子树（同一数据，视角切片）。
+- 两个入口互补：WikiPage = 全局视角，project 页 = 单项目视角。
+
+### 10.10 落地待办（代码暂未改，确认后统一动）
+1. **存储分离**：`wiki_nodes` 表去 `detail`/`type`，保留 `summary/docPointer/relations/flags`；正文改走 `~/.zero-core/wiki/<路径>.md`；provenance/audit → 文件 frontmatter。
+2. **FS 隔离**：代码禁止 agent 用 FS 工具访问 `~/.zero-core/wiki/`（路径不暴露/不授权），wiki 正文只走 wiki 工具。
+3. **权限守卫重写**：废 type-based 守卫；多锚点（自动 memory+project ∪ 自由 wikiAnchors），读+写统一改为「目标在 caller 任一锚点子树内」。
+4. **注入**：每锚点按 inject(system/context/off)分别走 SystemPromptAssembler section 或 PreLLMCall context；展开 title+summary 不带正文。
+5. knowledge 子树 + software-dev seed 节点落地（§7.5）。
+6. Wiki 工具 action 化（expand/upsert/search），废 ExpandNode/ListWikiTree/UpdateWikiNode/ReadDoc。
+7. WikiPage 升级为全局树浏览器（左树 + 右正文）。
+8. archivist 渐进扫描改两阶段（建行+skeleton → 填正文）+ cursor 续扫 + merge 后增量。
+9. memory 合并到 wiki：memory/<role>/ 角色子树；废 MemoryRecall/独立召回；提取者 A 用 Wiki(upsert) 写、agent 自写；详见 §11.6。
+
+## 11. Agent 运行时装配（prompt 结构 + 多锚点 + 工具 + 委派）
+
+> 每次 LLM 调用怎么把 prompt 拼出来、工具怎么按 agent 配置构建、agent 之间怎么委派。
+> 好消息：**context 层已存在**（`context-message.ts:34` `buildContextMessage` + `agent-loop.ts:452` `prependContext`），prompt 结构 `[system]+[seqs]+[context+user]` 是真的，本节是在其上落 v0.8 设计。
+
+### 11.1 prompt 结构（已有，确认）
+```
+[system prompt]              ← 身份 + 静态知识（SystemPromptAssembler，section 可缓存）
+[seqs]                       ← 消息历史（session.getMessages，pruneIfNeeded 截断/压缩）
+[context + new user message] ← context 每轮可变，prependContext 注入在 user 前，不持久
+```
+- system prompt 来源：AgentRecord.systemPrompt（或 template）→ `SystemPromptAssembler`（`prompt-sections.ts:44`），支持 section 缓存。
+- 历史：`AgentSession`（`session.ts`）管理，`pruneIfNeeded` 按 context window 截断。
+- context：`buildContextMessage` 拼，`prependContext` 插在最后一条 user 消息前（真 user 文本在末尾，注意力最高）。
+
+### 11.2 注入位置原则（贯穿全局）
+**一个信息放 system 还是 context，取决于它在 session 运行时变不变**：
+- 静态 → system prompt section（可缓存）。
+- 动态 → context（每轮重算，不持久）。
+- 此原则统一决定：wiki 锚点注入（§10.3.1）、memory、current-task 等。
+
+### 11.3 多 wiki 锚点（承接 §10.3）
+- 自动锚点（memory by role + project by projectId）+ 自由锚点（AgentRecord.wikiAnchors）。
+- 每锚点按 inject(system/context/off) 走 SystemPromptAssembler section 或 context builder。
+- 注入内容 = 锚点子树展开 title+summary（不带正文）。
+- **AgentRecord 新增字段**：
+  ```ts
+  wikiAnchors?: Array<{ nodeId: string; inject: "system"|"context"|"off"; depth?: number }>;
+  ```
+  （自动锚点不存，运行时派生；inject 默认 project→system、memory→context，可在配置页覆盖。）
+
+### 11.4 工具集构建（框架，Q1 分类待定）
+现状 21+ 扁平硬编码工具（`tools/index.ts:66` ALL_TOOLS）。v0.8 框架：
+- **平台原语**（Shell/Read/Write/Edit/Grep/Glob + Memory/Web/Thinking/Todo/AskUser）—— 是否 action 化待 Q1 定；先保持扁平。
+- **管理域**（zero）：Project/Agent/Cron/Wiki 四个 action 化工具（§7.3、§8.2、§9.4、§10.7）。
+- **工作流域**：Orchestrate / CreateRequirementWithDoc 等（按角色配）。
+- **委派**：按 `AgentRecord.subagents` 派生委派入口（见 §11.5）。
+- `toolPolicy.tools` 只管**硬编码工具**开关；`subagents` 管**可委派 agent**，两者分开（§7.3）。
+
+### 11.5 委派（delegateTask 参数化）
+- `delegateTask(task, { targetAgentId, ... })`（`subagent-delegator.ts:96`）—— targetAgentId 是个**参数**，既可临时 `:sub` 也可真实 agentId。不改默认，保持灵活。
+- `AgentRecord.subagents: [{agentId, name?, description?}]` = caller 侧「能委派给谁」的清单，caller agent-loop 据此派生委派入口。
+- 委派同步（`delegateTask`）+ 异步（`delegateTaskBackground`）均保留；继承 caller context bundle（含 projectId）。
+- **spawnDepth 不限制**（Q3）。
+- **废 agent-as-tool**：`AgentToolEntry` / `buildAgentTools`（`agent-tool.ts:91`）/ `ExposeAgentAsTool` / agent-tool-entries 表。委派关系不再走 toolPolicy.tools[entryId]，改走 subagents。
+
+### 11.6 memory 合并到 wiki
+memory 不再有第二套系统，完全并入 wiki：
+- **存储**：`memory/<roleTag>/` 角色子树（wiki 节点，正文 = 记忆内容）。
+- **写入**：
+  - 提取者 A 主写 —— 根据 session 来源（哪个 agent/角色、哪个项目）用 `Wiki(upsert)` 写入对应角色 memory 子树。
+  - agent 自己也能写/整理（`Wiki(upsert)`）。
+- **读取/召回**：
+  - 结构 + summary → 该角色 memory 是 agent 的**自动锚点**（§10.3），按 inject 注入（默认 context）。
+  - 具体 → `Wiki(expand)`；按相关性 → `Wiki(search)`（将来语义召回给 wiki search 统一加向量索引，仍在 wiki 层）。
+- **废**：`MemoryRecall` / `memory-hooks` 独立召回 / legacy FTS5 memory 存储（`memory-recall.ts`）。
+
+### 11.7 context 层内容（每轮可变）
+`buildContextMessage` 拼，含：
+- Environment（日期/时区/OS/workspaceDir）
+- Guidelines
+- **wiki 动态锚点**（inject=context 的锚点结构）
+- **memory**（并入 wiki 的 memory 锚点）
+- current-task（session 内会变则放 context，不变放 system —— Q2 原则）
+- （RAG 召回，若用）
+- 均不入 message history。
+
+### 11.8 hooks
+PreLLMCall 链（注入用）：wiki/system section 刷新 + context 拼（env/guidelines/wiki动态/memory/task）+ provider options。
+注册顺序沿用 `hooks/index.ts:43`；新增 wiki 锚点注入逻辑（并入 context builder + SystemPromptAssembler）。
+PostToolUse / PostTurnComplete：需求状态流转（`requirement-hooks.ts`，§4）。
+
+### 11.9 AgentRecord 字段（定稿）
+```ts
+interface AgentRecord {
+  id, name, workspaceDir?, model?, provider?, thinkingLevel?,
+  systemPrompt?,                  // 身份（或来自 template）
+  roleTag?,                       // 角色（派生 memory 自动锚点）
+  toolPolicy?,                    // 硬编码工具开关（autoApprove/blockedTools/tools）
+  subagents?: [{agentId, name?, description?}],   // 可委派 agent 清单
+  wikiAnchors?: [{nodeId, inject, depth?}],       // 自由锚点（自动锚点运行时派生）
+  contextConfig?, knowledgeBaseIds?, ...
+}
+```
+- 无 `workflowRole/cronSchedule`（§2.2）；无 expose（§11.5 废）。
+- template 化：`buildAgentFromTemplate`（原 `buildAgentFromPreset`，`role-presets.ts:436`）。
+
+### 11.10 agent 配置页（可设）
+- 身份：name / systemPrompt / roleTag / model / provider
+- 工具：toolPolicy（硬编码工具开关）
+- 委派：subagents 列表（加/删 target agentId）
+- wiki 锚点：自由锚点加/删 + 每锚点 inject(system/context/off) + depth；自动锚点（memory/project）的 inject 也可在此覆盖
+- template 参考：listTemplates/getTemplate（§7.3）
+
+### 11.11 落地待办（代码暂未改，确认后统一动）
+1. AgentRecord 加 `subagents` + `wikiAnchors` 字段（同步 db-migration AGENT_COLUMNS）。
+2. 多锚点注入：自动锚点（memory by role + project by projectId）派生 + 自由锚点；每锚点按 inject 走 system section / context。
+3. 废 agent-as-tool：删 AgentToolEntry/agent-tool-entries/buildAgentTools/ExposeAgentAsTool；委派改走 subagents。
+4. memory 合并：memory/<role>/ 子树；提取者 A + agent 用 Wiki(upsert) 写；废 MemoryRecall/memory-hooks/FTS5。
+5. context builder 整合 wiki 动态锚点 + memory + current-task。
+6. Preset → Template 改名（§7.2）。
+7. 工具集 action 化（Q1 分类定后细化）。
+8. agent 配置页（身份/工具/委派/锚点）。
 
 ---
 
