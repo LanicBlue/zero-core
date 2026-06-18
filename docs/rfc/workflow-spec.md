@@ -760,15 +760,14 @@ interface AgentRecord {
 > 角色只是 template（prompt 库，§2.1）；实例化出的 agent 身份 = name + prompt（§1.4），不带 roleTag。
 > 逐角色与用户确认后写入。
 >
-> **prompt 分两层（贯穿所有角色,关键区分）**：
-> - **system prompt**（template 里,稳定）：角色**身份 + 工作方式**（这个角色是谁、怎么思考/干活）。一两句到一小段,通用可复用。**不写**具体项目/需求,也**不写**每次的任务规则/输出格式。
-> - **调用 prompt / call input**（每次调用时传入）：这次任务的**具体内容 + 规则 + 范围 + 输出格式**。来源：
->   - reviewer/developer/qa（被 lead Orchestrate 派）→ 调用 prompt = Orchestrate flow 里 dispatch 节点的任务描述（lead 写,含规则+输出格式+范围）。
->   - PM/lead/archivist（cron/用户激活）→ 调用 prompt = cron 的 prompt / 用户消息（具体项目+任务）。
+> **prompt 分三层（贯穿所有角色,关键区分）**：
+> - **工具携带任务**：任务 framing（做什么 + 规则 + 输出格式）在**工具**里（如 Orchestrate 的 dispatch 模板 / 专用 task-tool）,稳定、可复用、**跨角色**。同一工具调不同角色,任务一样。lead 调用时只补**范围/具体对象**（哪个需求、哪些文件）,不重写任务 framing。
+> - **角色 system prompt 携带风格**（template 里,稳定）：角色**身份 + 工作方式**,让该角色做任务时风格更确定/适配。**不写**任务规则/输出格式（那在工具里）,也**不写**具体项目/需求。
+> - **调用 prompt**：调用时传的具体对象（哪个需求、哪个范围）+ cron/用户的自然语言任务。
 >
-> 即:**身份走 system prompt,任务(规则/范围/输出格式)走调用 prompt**。下文每个角色分别给 system prompt(template 内容) + 调用 prompt 示例(调用方传入的样板)。
+> 即:**任务在工具,风格在角色 system prompt,对象在调用 prompt**。三层组合驱动行为。下文每个角色给 system prompt(template 内容) + 工具/调用 prompt 示例。
 >
-> **实现原则**：现有 `src/runtime/role-presets.ts` 已有这些角色的 system prompt,**实现时直接在原文件基础上改**（适配 v0.8 模型,并**把混进去的规则/输出格式挪到调用 prompt**）,不从零重写。analyzer/planner 在计划里标为抽象概念不写 §12 定义,但**代码里保留**它们的 preset。
+> **实现原则**：现有 `src/runtime/role-presets.ts` 已有这些角色的 system prompt,**实现时直接在原文件基础上改**（适配 v0.8 模型,并**把混进去的任务规则/输出格式挪到工具**）,不从零重写。analyzer/planner 在计划里标为抽象概念不写 §12 定义,但**代码里保留**它们的 preset。
 
 ### 12.1 zero —— 软件管家 / 用户入口
 
@@ -934,16 +933,16 @@ qa：
 You are a **qa** agent. You test an implementation delegated by the caller (typically lead), inheriting the caller's context bundle. You return a test verdict.
 ```
 
-**调用 prompt（call input,lead 用 Orchestrate 派发时传入；规则/范围/输出格式在这里,不在 system prompt）**
+**工具携带的任务（task framing 在工具里,不在 system prompt；lead 调用时只补对象/范围）**
 
-developer 调用样板：
+developer 任务（Implement 工具/dispatch 模板）：
 ```
 Implement: <task>. Scope: <files/area>.
 Rules: only modify files directly related to this task; read the project wiki subtree for context before changing code.
 Output: files changed, what you changed and why, any concerns.
 ```
 
-reviewer 调用样板：
+reviewer 任务（Review 工具/dispatch 模板）：
 ```
 Review the changes for: <requirement>. Scope: <delegated scope>.
 Rules: read the changes and relevant context (code + project wiki) carefully; review only the delegated scope; do not modify code.
@@ -953,7 +952,7 @@ Output format:
 - Suggestions: (list if any)
 ```
 
-qa 调用样板：
+qa 任务（Test 工具/dispatch 模板）：
 ```
 Test the implementation for: <requirement>.
 Strategy: test core paths first; cover happy path / error handling / boundary; create test files if needed.
@@ -964,7 +963,7 @@ Output format:
 - Overall verdict: PASS or FAIL
 ```
 
-> lead 在 Orchestrate flow 的 dispatch 节点里写这些调用 prompt(可按需求调整规则/输出格式)。system prompt 稳定不变,调用 prompt 每次可调。
+> 这些任务 framing 属于**工具**(Orchestrate dispatch 模板 / 专用 task-tool),稳定、跨角色——同一个 Review 工具调 reviewer 还是别的配置角色,任务 framing 一样,只是角色 system prompt 让风格不同。lead 调用时只填 `<requirement>`/`<scope>` 等对象,不重写 framing。
 
 ---
 
