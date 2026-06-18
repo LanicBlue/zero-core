@@ -51,6 +51,13 @@ import { SystemPromptAssembler } from "./prompt-sections.js";
 import { buildContextMessage } from "./context-message.js";
 import { SubagentDelegator } from "./subagent-delegator.js";
 import { ToolRateLimiter } from "./tool-rate-limiter.js";
+import type { WikiStore } from "../server/wiki-node-store.js";
+import {
+	resolveAnchors,
+	renderSystemAnchors,
+	renderContextAnchors,
+	type ResolvedAnchor,
+} from "./wiki-anchor-injection.js";
 
 // ---------------------------------------------------------------------------
 // AgentLoop
@@ -74,6 +81,14 @@ export class AgentLoop implements AgentRuntime {
 	private stepBaseSeq = -1;
 	/** How many steps have been completed in the current turn group. */
 	private stepOffset = 0;
+	/**
+	 * v0.8 (P1 §10.6): resolved wiki anchors for this session (auto memory +
+	 * auto project + free wikiAnchors). Cached at construction; invalidated
+	 * by invalidateWikiAnchorCache() when a subtree changes (future hook).
+	 */
+	private wikiAnchors: ResolvedAnchor[] = [];
+	/** v0.8 (P1 §10.6): global WikiStore, resolved from config.wikiStore. */
+	private wikiStoreGlobal: WikiStore | null = null;
 
 	constructor(
 		config: SessionConfig,
@@ -87,9 +102,32 @@ export class AgentLoop implements AgentRuntime {
 		const contextWindow = getContextWindow(providers, config.providerName, config.modelId);
 		this.session = new AgentSession(config.systemPrompt, contextWindow, config.sessionId, config.db);
 
-		this.promptAssembler = new SystemPromptAssembler([
+		// v0.8 (P1 §10.6): resolve the global WikiStore + the session's wiki
+		// anchor set. config.wikiStore is the ProjectWikiStore back-compat
+		// view (or already a WikiStore); .getWikiStore() unwraps it.
+		this.wikiStoreGlobal = this.resolveGlobalWikiStore(config);
+
+		// Build prompt sections: base + wiki system-anchor section (cacheable).
+		const sections = [
 			{ name: "base", compute: () => this.session.getSystemPrompt(), cacheBreak: false },
-		]);
+		];
+		if (this.wikiStoreGlobal) {
+			this.wikiAnchors = resolveAnchors({
+				wiki: this.wikiStoreGlobal,
+				agentId: config.agentId,
+				contextBundle: config.contextBundle,
+				wikiAnchors: config.wikiAnchors,
+			});
+			// system-channel anchors → cached section (refresh only when the
+			// caller invalidates it). context-channel anchors are rendered
+			// every turn in executeStream → buildContextMessage.
+			sections.push({
+				name: "wiki-system-anchors",
+				compute: () => renderSystemAnchors({ wiki: this.wikiStoreGlobal!, anchors: this.wikiAnchors }),
+				cacheBreak: false,
+			});
+		}
+		this.promptAssembler = new SystemPromptAssembler(sections);
 
 		this.delegator = new SubagentDelegator({
 			config,
@@ -396,11 +434,18 @@ export class AgentLoop implements AgentRuntime {
 		const ragContext = preResult.ragContext as string | undefined;
 		const providerOptions = (preResult.providerOptions as Record<string, Record<string, any>>) ?? {};
 
+		// v0.8 (P1 §10.6): render context-channel wiki anchors every turn
+		// (system-channel anchors already live in the cached system prompt).
+		const wikiAnchorsContext = this.wikiStoreGlobal
+			? renderContextAnchors({ wiki: this.wikiStoreGlobal, anchors: this.wikiAnchors })
+			: "";
+
 		const ctx = buildContextMessage({
 			workspaceDir: this.config.workspaceDir,
 			guidelines: this.config.guidelines,
 			ragContext,
 			memoryContext,
+			wikiAnchorsContext: wikiAnchorsContext || undefined,
 		});
 		const messages = this.prependContext(this.session.getMessages(), ctx);
 
@@ -457,6 +502,25 @@ export class AgentLoop implements AgentRuntime {
 			copy[copy.length - 1] = { ...last, content: ctx + last.content };
 		}
 		return copy;
+	}
+
+	/**
+	 * v0.8 (P1 §10.6): resolve the global WikiStore from SessionConfig. The
+	 * config carries it as the ProjectWikiStore back-compat view (which wraps
+	 * a WikiStore and exposes it via .getWikiStore()); some callers inject a
+	 * bare WikiStore. Returns null when no wiki store is configured (legacy
+	 * / test paths) — anchor injection is silently skipped in that case.
+	 */
+	private resolveGlobalWikiStore(config: SessionConfig): WikiStore | null {
+		const raw = (config as any).wikiStoreGlobal ?? config.wikiStore;
+		if (!raw) return null;
+		if (typeof raw.getWikiStore === "function") {
+			try { return raw.getWikiStore() as WikiStore; } catch { return null; }
+		}
+		if (typeof raw.upsertProjectNode === "function" || typeof raw.listVisibleFromAnchors === "function") {
+			return raw as WikiStore;
+		}
+		return null;
 	}
 
 

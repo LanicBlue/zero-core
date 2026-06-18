@@ -34,6 +34,8 @@ import {
 	WikiStore,
 	WIKI_GLOBAL_ROOT_ID,
 	projectSubtreeRootId,
+	deriveContentFilePath,
+	isInsideWikiDisk,
 } from "../../src/server/wiki-node-store.js";
 import { WikiScanCursorStore } from "../../src/server/wiki-scan-cursor-store.js";
 import { ProjectWikiStore } from "../../src/server/project-wiki-store.js";
@@ -127,6 +129,11 @@ describe("WikiStore: global memory tree structure", () => {
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "p") });
 		const root = wikiStore.ensureProjectSubtree(proj.id, "P");
 		// Should round-trip every new column without throwing.
+		// v0.8 (P1 §10.1, hardened): `docPointer` is NO LONGER an upsert input
+		// — it's a code-internal cache of the node's body file path, derived
+		// by the store. We pass `detail` (which triggers writeNodeDetail) and
+		// then assert the row's docPointer was stamped to the derived wiki
+		// body path — never to an external caller-supplied path.
 		const node = wikiStore.upsertProjectNode(proj.id, {
 			parentId: root.id,
 			type: "header",
@@ -134,18 +141,30 @@ describe("WikiStore: global memory tree structure", () => {
 			title: "foo.ts",
 			summary: "Foo module",
 			detail: "Detail text",
-			docPointer: "src/foo.ts",
 			provenance: "structure",
 			requirementIds: ["req-1"],
 			relations: [{ kind: "depends-on", targetId: "node-2" }],
 			flags: ["intent:no-recorded-reason"],
 		});
-		expect(node.docPointer).toBe("src/foo.ts");
+		// docPointer was stamped by writeNodeDetail to the derived wiki body
+		// path (inside WIKI_DISK_ROOT). It MUST NOT equal any external
+		// caller-supplied path like "src/foo.ts".
+		expect(node.docPointer).toBeDefined();
+		const expectedDerived = deriveContentFilePath(node);
+		expect(node.docPointer).toBe(expectedDerived);
+		expect(isInsideWikiDisk(node.docPointer)).toBe(true);
+		expect(node.docPointer).not.toBe("src/foo.ts");
+		// Other new columns round-trip unchanged.
 		expect(node.provenance).toBe("structure");
 		expect(node.requirementIds).toEqual(["req-1"]);
 		expect(node.relations).toEqual([{ kind: "depends-on", targetId: "node-2" }]);
 		expect(node.flags).toEqual(["intent:no-recorded-reason"]);
 		expect(node.projectId).toBe(proj.id);
+
+		// FS isolation guarantee (P1 §10.1): no file escapes WIKI_DISK_ROOT.
+		// The buggy old behavior wrote "Detail text" to <repo>/src/foo.ts;
+		// after the fix, src/foo.ts must NOT exist in the cwd.
+		expect(existsSync(join(process.cwd(), "src", "foo.ts"))).toBe(false);
 	});
 });
 
@@ -160,11 +179,11 @@ describe("WikiStore: view-truncated queries (decision 38)", () => {
 
 		wikiStore.upsertProjectNode(projA.id, {
 			parentId: rootA.id, type: "header", path: "header:a.ts",
-			title: "a.ts", docPointer: "a.ts",
+			title: "a.ts",
 		});
 		wikiStore.upsertProjectNode(projB.id, {
 			parentId: rootB.id, type: "header", path: "header:b.ts",
-			title: "b.ts", docPointer: "b.ts",
+			title: "b.ts",
 		});
 
 		// From A's view root, only A's subtree is visible.
@@ -196,7 +215,7 @@ describe("WikiStore: view-truncated queries (decision 38)", () => {
 		const rootB = wikiStore.ensureProjectSubtree(projB.id, "B");
 		const bHeader = wikiStore.upsertProjectNode(projB.id, {
 			parentId: rootB.id, type: "header", path: "header:b.ts",
-			title: "b.ts", docPointer: "b.ts",
+			title: "b.ts",
 		});
 
 		// From A's view root, B's node is structurally invisible.
@@ -216,10 +235,12 @@ describe("WikiStore: archivist write guard (decision 39)", () => {
 		const projB = projectStore.create({ name: "B", workspaceDir: join(tmpDir, "b") });
 		const rootB = wikiStore.ensureProjectSubtree(projB.id, "B");
 		// archivist for project A tries to write under B's root → reject.
+		// v0.8 (P1 §10.3): multi-anchor guard fired — the message is now
+		// "outside all caller anchor subtrees" (assertNodeInAnchorScope).
 		expect(() => wikiStore.upsertProjectNode(projA.id, {
 			parentId: rootB.id, type: "header", path: "header:foo.ts",
-			title: "foo", docPointer: "foo.ts",
-		})).toThrow(/outside project .* subtree|subtree not initialized/);
+			title: "foo",
+		})).toThrow(/outside all caller anchor subtrees/);
 	});
 
 	test("upsertProjectNode type signature restricts to header/intent/structure", () => {
@@ -229,7 +250,7 @@ describe("WikiStore: archivist write guard (decision 39)", () => {
 		// 'project' subtree roots are minted only by ensureProjectSubtree.
 		expect(() => wikiStore.upsertProjectNode(proj.id, {
 			parentId: root.id, type: "header" as any, path: "header:x.ts",
-			title: "x", docPointer: "x.ts",
+			title: "x",
 		})).not.toThrow();
 	});
 
@@ -282,7 +303,11 @@ describe("ArchivistService: incremental git scan", () => {
 		const headers = nodes.filter((n) => n.type === "header");
 		expect(headers.length).toBeGreaterThanOrEqual(2);
 		expect(headers.every((h) => h.provenance === "structure")).toBe(true);
-		expect(headers.every((h) => h.docPointer)).toBe(true);
+		// v0.8 (P1 §10.1, hardened): the workspace-file reference lives in
+		// the node PATH (`header:src/a.ts`), not docPointer. docPointer is a
+		// code-internal cache the archivist never sets directly (the store
+		// derives + stamps it when a body is written via writeNodeDetail).
+		expect(headers.every((h) => h.path.startsWith("header:"))).toBe(true);
 	});
 
 	test("second scan with no changes is a no-op", async () => {
@@ -365,7 +390,13 @@ describe("ArchivistService: intent aggregation + divergence signals", () => {
 		const intent = nodes.find((n) => n.type === "intent");
 		expect(intent).toBeDefined();
 		expect(intent!.provenance).toBe("confirmed");
-		expect(intent!.docPointer).toBe("docs/requirements/req-foo.md");
+		// v0.8 (P1 §10.1, hardcoded): the workspace-doc reference lives in the
+		// node PATH (`intent:<relPath>`), NOT in docPointer. docPointer is now
+		// a code-internal cache of the wiki body file (derived by the store);
+		// since the archivist writes no detail body for intent nodes, it stays
+		// null/undefined here.
+		expect(intent!.path).toBe("intent:docs/requirements/req-foo.md");
+		expect(intent!.docPointer).toBeFalsy();
 	});
 
 	test("code header without sibling intent flags 'intent:no-recorded-reason'", async () => {
@@ -493,7 +524,7 @@ describe("ProjectWikiStore back-compat view over WikiStore", () => {
 		const root = wikiStore.ensureProjectSubtree(proj.id, "P");
 		wikiStore.upsertProjectNode(proj.id, {
 			parentId: root.id, type: "header", path: "header:src/a.ts",
-			title: "a.ts", docPointer: "src/a.ts", summary: "A module",
+			title: "a.ts", summary: "A module",
 		});
 
 		const view = new ProjectWikiStore(wikiStore);

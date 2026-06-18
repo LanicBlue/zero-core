@@ -111,14 +111,19 @@ const PROJECT_WIKI_COLUMNS = [
 	{ key: "projectId", column: "project_id" },
 	{ key: "parentId", column: "parent_id" },
 	// v0.8 (M2): global-tree type discriminator (header|intent|structure|project|memory).
-	// Legacy `node_type` kept below for back-compat rows; WikiStore synthesizes
-	// `type` from `node_type` on read if `type` is empty (RFC decision 23 — no
-	// migration scripts).
-	{ key: "type" },
+	// v0.8 (P1 §10.1): `type` column is DROPPED — position is now the type (project
+	// subtree = project/header/intent/structure; global memory type roots + their
+	// leaves = memory). Legacy `node_type` is kept below for back-compat reads.
+	// Migration (migrateWikiDetailToDisk) physically drops the `type` column on
+	// upgraded DBs after exporting `detail` to disk (RFC decision 23 refined in P1).
 	{ key: "path" },
 	{ key: "title" },
 	{ key: "summary" },
-	{ key: "detail" },
+	// v0.8 (P1 §10.1): `detail` column is DROPPED — wiki body content lives on
+	// disk at `~/.zero-core/wiki/<area>/<safe-name>.md`. The `docPointer` column
+	// below carries the per-node body file path (code-internal locator; NOT
+	// exposed to agents — they use nodeId). Migration exports legacy `detail`
+	// rows to disk BEFORE dropping the column, so no content is lost.
 	// v0.8 (M2): leaf pointer to the actual document on disk (code file /
 	// requirement doc / ADR). The doc itself is NOT stored in the tree.
 	{ key: "docPointer", column: "doc_pointer" },
@@ -419,6 +424,11 @@ function migrateCronScheduleToJson(db: Database.Database): void {
 // memory nodes, so the legacy NOT NULL constraint is fatal at startup.
 // Only rebuilds when the table is empty (lossless — archivist rescans
 // repopulate it); non-empty tables are left untouched to avoid data loss.
+//
+// v0.8 (P1): the rebuilt schema mirrors the new (post-P1) shape — no `detail`
+// / `type` columns. Content lives on disk (migrateWikiDetailToDisk handles
+// export + drop on non-empty legacy tables; this empty-rebuild path just
+// builds the new shape directly).
 function migrateWikiTableSchema(db: Database.Database): void {
 	try {
 		const cols = db.pragma("table_info(project_wiki)") as Array<{ name: string; notnull: number }>;
@@ -433,8 +443,8 @@ function migrateWikiTableSchema(db: Database.Database): void {
 		db.exec(`CREATE TABLE project_wiki (
 			id TEXT PRIMARY KEY, project_id TEXT,
 			parent_id TEXT REFERENCES project_wiki(id),
-			type TEXT, node_type TEXT, path TEXT, title TEXT,
-			summary TEXT, detail TEXT, doc_pointer TEXT, provenance TEXT,
+			node_type TEXT, path TEXT, title TEXT,
+			summary TEXT, doc_pointer TEXT, provenance TEXT,
 			requirement_ids TEXT, relations TEXT, links TEXT,
 			flags TEXT,
 			last_updated_by TEXT DEFAULT 'analyst',
@@ -443,6 +453,127 @@ function migrateWikiTableSchema(db: Database.Database): void {
 		console.log("[db-migration] rebuilt project_wiki to v0.8 schema (was empty, dropped NOT NULL project_id + legacy UNIQUE).");
 	} catch (e) {
 		console.warn("[db-migration] project_wiki schema migration skipped:", (e as Error).message);
+	}
+}
+
+// v0.8 (P1 §10.1): export wiki body content from the legacy `detail` column to
+// disk (~/.zero-core/wiki/<area>/<safe-name>.md), populate `doc_pointer`, then
+// DROP the `detail` and `type` columns. Position (projectId / parentId chain)
+// now carries the type discriminator.
+//
+// This is the explicit, data-preserving migration promised by schema contract
+// §1.2 (plan-P1 §3): "detail 内容先导出磁盘再删列(否则丢数据)". Idempotent —
+// skips when `detail` is already absent.
+//
+// Path scheme (mirrors WikiStore.deriveContentFilePath):
+//   - node has project_id        → projects/<projectId>/<safeName>.md
+//   - node is under memory:* (parent path / own path) → memory/_legacy/<safeName>.md
+//   - otherwise                  → knowledge/<safeName>.md
+//
+// `type` column is dropped in the same pass; positions are already correct
+// (legacy rows were written with proper parentId chains). Rows whose `type`
+// disagrees with their position are left where they live — we trust the
+// position over the legacy column (RFC §10.4: "type 按位置归位").
+function migrateWikiDetailToDisk(db: Database.Database): void {
+	try {
+		const cols = db.pragma("table_info(project_wiki)") as Array<{ name: string }> | undefined;
+		if (!cols || cols.length === 0) return;
+		const colNames = new Set(cols.map((c) => c.name));
+		if (!colNames.has("detail")) return; // already migrated / fresh DB
+		const hasType = colNames.has("type");
+
+		const wikiDir = join(ZERO_CORE_DIR, "wiki");
+		// Resolve a node's row for parent lookup (to detect memory subtree).
+		const getParentStmt = db.prepare("SELECT id, parent_id, path, project_id FROM project_wiki WHERE id = ?");
+		const updatePointerStmt = db.prepare(
+			"UPDATE project_wiki SET doc_pointer = ? WHERE id = ?",
+		);
+
+		// safe leaf name from path: replace ':' and '/' to keep it filename-safe
+		// while staying unique within the area dir. Node ids are stable, so we
+		// also fold a short id suffix to avoid collisions across project subtrees.
+		function safeName(id: string, path: string | null): string {
+			const p = (path ?? id).replace(/[:/\\]+/g, "_").replace(/^_+|_+$/g, "");
+			const tail = id.length >= 8 ? id.slice(0, 8) : id;
+			return `${p || "node"}__${tail}.md`;
+		}
+
+		// Walk up to decide area: any ancestor with path "memory-root:*" or own
+		// project_id set tells us the area.
+		function areaOf(
+			row: { id: string; parent_id: string | null; path: string | null; project_id: string | null },
+		): string {
+			if (row.project_id) return join("projects", row.project_id);
+			// Walk parent chain to detect memory subtree.
+			let cur: string | null = row.parent_id;
+			let guard = 0;
+			while (cur && guard++ < 32) {
+				const parent = getParentStmt.get(cur) as
+					| { id: string; parent_id: string | null; path: string | null; project_id: string | null }
+					| undefined;
+				if (!parent) break;
+				if (parent.project_id) return join("projects", parent.project_id);
+				if (parent.path && (parent.path.startsWith("memory-root:") || parent.id.startsWith("wiki-root:memory:"))) {
+					return join("memory", "_legacy");
+				}
+				cur = parent.parent_id;
+			}
+			// Own path signals memory too.
+			if (row.path && row.path.startsWith("memory")) return join("memory", "_legacy");
+			return "knowledge";
+		}
+
+		const rows = db.prepare(
+			"SELECT id, parent_id, path, project_id, detail, doc_pointer FROM project_wiki",
+		).all() as Array<{
+			id: string;
+			parent_id: string | null;
+			path: string | null;
+			project_id: string | null;
+			detail: string | null;
+			doc_pointer: string | null;
+		}>;
+
+		const { mkdirSync, writeFileSync } = require("node:fs") as typeof import("node:fs");
+		let exported = 0;
+		let pointerFilled = 0;
+		for (const row of rows) {
+			// Skip synthetic roots — they carry no body content.
+			if (row.id.startsWith("wiki-root:")) continue;
+			const detail = row.detail;
+			// Compute canonical path; export only non-empty detail.
+			const area = areaOf(row);
+			const file = join(wikiDir, area, safeName(row.id, row.path));
+			if (detail && detail.trim().length > 0) {
+				mkdirSync(join(wikiDir, area), { recursive: true });
+				writeFileSync(file, detail, "utf-8");
+				exported++;
+				// Only stamp doc_pointer when there's actual content; otherwise leave it.
+				if (!row.doc_pointer) {
+					updatePointerStmt.run(file, row.id);
+					pointerFilled++;
+				}
+			}
+		}
+
+		// Now drop the columns. SQLite ≥3.35 supports ALTER TABLE DROP COLUMN.
+		try {
+			db.exec("ALTER TABLE project_wiki DROP COLUMN detail");
+		} catch (e) {
+			console.warn("[db-migration] DROP COLUMN detail failed (SQLite too old? leaving column inert):", (e as Error).message);
+		}
+		if (hasType) {
+			try {
+				db.exec("ALTER TABLE project_wiki DROP COLUMN type");
+			} catch (e) {
+				console.warn("[db-migration] DROP COLUMN type failed (SQLite too old? leaving column inert):", (e as Error).message);
+			}
+		}
+		console.log(
+			`[db-migration] wiki detail→disk: exported ${exported} body file(s), filled ${pointerFilled} doc_pointer(s), dropped detail${hasType ? " + type" : ""} column(s).`,
+		);
+	} catch (e) {
+		console.warn("[db-migration] wiki detail→disk migration skipped:", (e as Error).message);
 	}
 }
 
@@ -542,8 +673,8 @@ export function runMigrations(sessionDB: SessionDB): void {
 	db.exec(`CREATE TABLE IF NOT EXISTS project_wiki (
 		id TEXT PRIMARY KEY, project_id TEXT,
 		parent_id TEXT REFERENCES project_wiki(id),
-		type TEXT, node_type TEXT, path TEXT, title TEXT,
-		summary TEXT, detail TEXT, doc_pointer TEXT, provenance TEXT,
+		node_type TEXT, path TEXT, title TEXT,
+		summary TEXT, doc_pointer TEXT, provenance TEXT,
 		requirement_ids TEXT, relations TEXT, links TEXT,
 		flags TEXT,
 		last_updated_by TEXT DEFAULT 'analyst',
@@ -559,9 +690,21 @@ export function runMigrations(sessionDB: SessionDB): void {
 	// (project_wiki is repopulated by archivist scans, so an empty rebuild is
 	// lossless; if rows exist we leave it alone to avoid data loss).
 	migrateWikiTableSchema(db);
+	// v0.8 (P1 §10.1): move wiki body content from the `detail` column to disk
+	// (~/.zero-core/wiki/<area>/<safe-name>.md), then DROP the `detail` and
+	// `type` columns. Position now carries the type. This MUST run AFTER the
+	// table exists and AFTER the legacy schema rebuild (above), so the export
+	// sees a single project_wiki table. Idempotent: skips when `detail` is
+	// already absent (fresh DB or already-migrated).
+	migrateWikiDetailToDisk(db);
 	safeAddIndex(db, "project_wiki", "idx_wiki_project", "project_id");
 	safeAddIndex(db, "project_wiki", "idx_wiki_parent", "parent_id");
-	safeAddIndex(db, "project_wiki", "idx_wiki_type", "type");
+	// v0.8 (P1): idx_wiki_type referenced the now-dropped `type` column. Drop
+	// it explicitly (SQLite does not cascade DROP COLUMN to dependent indexes
+	// reliably across versions). Idempotent via try/catch.
+	try {
+		db.exec("DROP INDEX IF EXISTS idx_wiki_type");
+	} catch { /* ignore */ }
 
 	// v0.8 (M2): wiki scan cursor — per (archivist, project) git scan cursor
 	// (RFC §2.13, §4.2). (archivist_id, project_id) is the unique key.

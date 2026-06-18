@@ -30,6 +30,7 @@ import { writeFile, mkdir, stat } from "node:fs/promises";
 import { dirname, resolve, extname, normalize } from "node:path";
 import { buildTool } from "./tool-factory.js";
 import { checkSyntax, formatDiagnostics } from "./syntax-check.js";
+import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 
 function resolvePath(path: string, workingDir: string): string | { error: string } {
 	let p = path.trim();
@@ -80,6 +81,8 @@ export const fileWriteTool = buildTool({
 	execute: async (input, ctx) => {
 		const { path, content, overwrite } = input;
 		if (!ctx.workingDir) return "Error: no workspace directory configured";
+		// v0.8 (P1 §10.1): block agent writes to the wiki memory store.
+		if (isWikiDiskPath(path, ctx.workingDir)) return wikiPathRejectMessage(path);
 		const resolved = resolvePath(path, ctx.workingDir);
 		if (typeof resolved === "object") return resolved.error;
 

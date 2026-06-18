@@ -36,6 +36,13 @@ export function buildContextMessage(config: {
 	guidelines?: string[];
 	ragContext?: string;
 	memoryContext?: string;
+	/**
+	 * v0.8 (P1 §10.6): pre-rendered wiki anchor block for the `context`
+	 * channel (project anchor outline + memory anchor index). Computed per
+	 * turn by renderContextAnchors in wiki-anchor-injection.ts; injected
+	 * here so it lands inside <context> (every turn, NOT in message history).
+	 */
+	wikiAnchorsContext?: string;
 }): string | null {
 	const parts: string[] = [];
 
@@ -52,6 +59,10 @@ export function buildContextMessage(config: {
 
 	if (config.ragContext) {
 		parts.push("## Knowledge Base\n" + config.ragContext);
+	}
+
+	if (config.wikiAnchorsContext) {
+		parts.push("## Wiki Anchors (context)\n" + config.wikiAnchorsContext);
 	}
 
 	return `<context>\n${parts.join("\n\n")}\n</context>\n`;

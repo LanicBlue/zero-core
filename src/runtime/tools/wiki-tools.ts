@@ -105,10 +105,13 @@ export const expandNodeTool = buildTool({
 		if (!node) {
 			return `Wiki node not visible from this view: ${input.nodeId}`;
 		}
-		if (node.detail) return node.detail;
+		// v0.8 (P1 §10.1): node body content lives on disk; read it through
+		// the WikiStore (never expose the file path to the agent).
+		const detail = wiki.readNodeDetail(input.nodeId);
+		if (detail) return detail;
 		const flags = node.flags?.length ? `\nFlags: ${node.flags.join(", ")}` : "";
 		const prov = node.provenance ? `\nProvenance: ${node.provenance}` : "";
-		const ptr = node.docPointer ? `\nDoc pointer: ${node.docPointer}` : "";
+		const ptr = node.docPointer ? `\nDoc pointer: (internal)` : "";
 		return `Node: ${node.title}\nPath: ${node.path}\nType: ${node.type}${prov}${ptr}\nSummary: ${node.summary || "No summary"}${flags}\n\n(Detail not yet expanded. Use UpdateWikiNode to add detail.)`;
 	},
 });
@@ -167,10 +170,12 @@ export const updateWikiNodeTool = buildTool({
 		"- path (required) — node path, e.g. 'header:src/runtime/agent-loop.ts'\n" +
 		"- title — display title\n" +
 		"- summary / detail — node content\n" +
-		"- docPointer — leaf pointer to the actual document on disk\n" +
 		"- provenance — structure | derived | confirmed (§2.17a)\n" +
 		"- requirementIds — traceability (§4.6)\n" +
-		"- flags — divergence flags (rarely set by you; archivist-service normally does)",
+		"- flags — divergence flags (rarely set by you; archivist-service normally does)\n\n" +
+		"docPointer is NOT an input — it is a code-internal cache of the node's " +
+		"body content file path, derived by the store (P1 §10.1). Project-file " +
+		"references belong in the node body as markdown links.",
 
 	meta: { category: "agent", isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
 
@@ -181,7 +186,6 @@ export const updateWikiNodeTool = buildTool({
 		title: z.string().optional().describe("Display title"),
 		summary: z.string().optional().describe("Shallow summary"),
 		detail: z.string().optional().describe("Detailed content"),
-		docPointer: z.string().optional().describe("Leaf pointer to actual document"),
 		provenance: z.enum(["structure", "derived", "confirmed"]).optional(),
 		requirementIds: z.array(z.string()).optional(),
 		flags: z.array(z.string()).optional(),
@@ -201,7 +205,6 @@ export const updateWikiNodeTool = buildTool({
 				title: input.title ?? input.path,
 				summary: input.summary,
 				detail: input.detail,
-				docPointer: input.docPointer,
 				provenance: input.provenance,
 				requirementIds: input.requirementIds,
 				flags: input.flags,

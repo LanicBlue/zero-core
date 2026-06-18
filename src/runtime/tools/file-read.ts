@@ -41,6 +41,7 @@ import {
 	formatBytes,
 	MAX_FILE_SIZE,
 } from "./file-read-helpers.js";
+import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 
 function resolvePath(path: string, workingDir: string | undefined, restrictToWorkspace: boolean): string | { error: string } {
 	if (!workingDir) return path;
@@ -98,6 +99,8 @@ export const fileReadTool = buildTool({
 		const maxBytes = maxFileSize > 0 ? maxFileSize * 1024 : 0;
 		const mode = (offset != null) ? "full" : (input.mode ?? config.default_mode ?? "full");
 		const restrictToWorkspace = ctx.readScope === "workspace";
+		// v0.8 (P1 §10.1): block agent reads of the wiki memory store.
+		if (isWikiDiskPath(path, ctx.workingDir)) return wikiPathRejectMessage(path);
 		const resolved = resolvePath(path, ctx.workingDir, restrictToWorkspace);
 		if (typeof resolved === "object") return resolved.error;
 

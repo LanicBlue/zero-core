@@ -90,12 +90,16 @@ export class MemoryRecall {
 
 			for (const n of wikiNodes) {
 				// M5 wiki memory nodes carry (subject, type, content) in their
-				// `detail` JSON (written by extractor A). Fall back to title.
+				// body file (written by extractor A through WikiStore, which
+				// serializes the JSON payload as the .md body). v0.8 (P1 §10.1)
+				// moved this off the DB `detail` column onto disk — read it via
+				// WikiStore.readNodeDetail. Fall back to title/summary.
 				let subject = n.title ?? "(unknown)";
 				let type = "memory";
 				let content = n.summary ?? "";
 				try {
-					const parsed = JSON.parse(n.detail ?? "{}");
+					const body = this.opts?.wikiStore?.readNodeDetail?.(n.id) ?? "";
+					const parsed = body ? JSON.parse(body) : {};
 					if (parsed.subject) subject = String(parsed.subject);
 					if (parsed.type) type = String(parsed.type);
 					if (parsed.content) content = String(parsed.content);

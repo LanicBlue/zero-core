@@ -1,0 +1,367 @@
+// P1 单元测试:wiki 存储分离 + 多锚点守卫
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 验证 v0.8 P1 (acceptance-P1.md「存储」+「多锚点权限」节):
+//   - 正文在磁盘 (~/.zero-core/wiki/<area>/<safe-name>.md),DB 行不含正文
+//   - 写正文不动 DB 结构字段(只动 docPointer 一次 stamp)
+//   - 删节点级联删正文文件
+//   - 多锚点守卫 (assertNodeInAnchorScope / listVisibleFromAnchors / getVisibleFromAnchors)
+//     替了 type-based assertNodeInsideProjectScope;读+写同边界;项目角色只看本子树 +
+//     memory,zero 看全树
+//
+// ## 输入
+// 临时 SessionDB (mkdtempSync) + 真实 WikiStore。
+//
+// 注意:WIKI_DISK_ROOT 是模块导入期固化常量(指向 ~/.zero-core/wiki),无法按测试
+// 重定向。本测试通过 store API 间接验证磁盘行为 + 在 afterEach 用 wikiStore.delete
+// 级联清理正文文件,避免污染。
+//
+// ## 输出
+// Vitest 用例。
+//
+// ## 关键文件
+//   - src/server/wiki-node-store.ts (readNodeDetail/writeNodeDetail/deleteNodeDetail,
+//     assertNodeInAnchorScope, listVisibleFromAnchors, getVisibleFromAnchors,
+//     deriveContentFilePath, WIKI_DISK_ROOT)
+//
+// ## 维护规则
+//   - 测试不直读 ~/.zero-core/wiki 文件路径(那是代码内部 locator);改用
+//     readNodeDetail + 检查 node.docPointer 是否被 stamp。
+//   - 不验「DB 行 detail 列已删」——列删除由 migration 负责,见 p1-migration.test.ts。
+//
+//
+
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { SessionDB } from "../../src/server/session-db.js";
+import { runMigrations } from "../../src/server/db-migration.js";
+import { ProjectStore } from "../../src/server/project-store.js";
+import {
+	WikiStore,
+	WIKI_GLOBAL_ROOT_ID,
+	WIKI_DISK_ROOT,
+	projectSubtreeRootId,
+	memoryTypeRootId,
+	deriveContentFilePath,
+} from "../../src/server/wiki-node-store.js";
+
+let tmpDir: string;
+let sessionDB: SessionDB;
+let wiki: WikiStore;
+let projectStore: ProjectStore;
+const createdNodeIds: string[] = [];
+
+beforeEach(() => {
+	tmpDir = mkdtempSync(join(tmpdir(), "zero-p1-store-"));
+	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	runMigrations(sessionDB);
+	projectStore = new ProjectStore(sessionDB);
+	wiki = new WikiStore(sessionDB);
+	createdNodeIds.length = 0;
+});
+
+afterEach(() => {
+	// Cascade-clean any nodes we created (also removes their disk body files).
+	for (const id of [...createdNodeIds].reverse()) {
+		try { wiki.delete(id); } catch { /* already gone */ }
+	}
+	try { sessionDB.close(); } catch {}
+	rmSync(tmpDir, { recursive: true, force: true });
+});
+
+function track<T extends { id: string }>(node: T): T {
+	createdNodeIds.push(node.id);
+	return node;
+}
+
+// ─── 存储:正文磁盘 round-trip ─────────────────────────────────
+
+describe("P1 §10.1 存储:正文磁盘 round-trip", () => {
+	test("写正文后,readNodeDetail 读回一致;DB 行不含 detail 字段", () => {
+		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "p") });
+		const root = track(wiki.ensureProjectSubtree(proj.id, "P"));
+		// v0.8 (P1 §10.1, hardened): docPointer is NOT an upsert input — the
+		// store derives + stamps the wiki body file path itself. Passing an
+		// external path like "src/foo.ts" used to escape WIKI_DISK_ROOT; now
+		// the input is silently dropped and the body always lands under
+		// WIKI_DISK_ROOT.
+		const node = track(wiki.upsertProjectNode(proj.id, {
+			parentId: root.id,
+			type: "header",
+			path: "header:src/foo.ts",
+			title: "foo.ts",
+			summary: "Foo module",
+			detail: "Body line 1\nBody line 2",
+		}));
+
+		// Body round-trips through disk.
+		const detail = wiki.readNodeDetail(node.id);
+		expect(detail).toBe("Body line 1\nBody line 2");
+
+		// docPointer was stamped to the derived wiki body path (inside
+		// WIKI_DISK_ROOT), never to the external caller path.
+		const fetched = wiki.get(node.id);
+		expect(fetched).toBeDefined();
+		expect((fetched as any).detail).toBeUndefined();
+		expect(fetched!.docPointer).toBe(deriveContentFilePath(node));
+		// FS isolation: nothing escapes WIKI_DISK_ROOT.
+		expect(existsSync(join(process.cwd(), "src", "foo.ts"))).toBe(false);
+	});
+
+	test("docPointer 被 stamp 后,改正文不动 DB 行(只动文件)", () => {
+		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "p") });
+		const root = track(wiki.ensureProjectSubtree(proj.id, "P"));
+		const node = track(wiki.upsertProjectNode(proj.id, {
+			parentId: root.id,
+			type: "header",
+			path: "header:src/bar.ts",
+			title: "bar.ts",
+			summary: "original summary",
+			detail: "v1 body",
+		}));
+
+		const before = wiki.get(node.id)!;
+		expect(before.docPointer).toBeTruthy();
+		const pointer = before.docPointer!;
+		expect(existsSync(pointer)).toBe(true);
+
+		// Rewrite body only via writeNodeDetail (no row mutation).
+		wiki.writeNodeDetail(node.id, "v2 body — overwritten");
+
+		const after = wiki.get(node.id)!;
+		// Structural fields unchanged.
+		expect(after.title).toBe("bar.ts");
+		expect(after.summary).toBe("original summary");
+		expect(after.updatedAt).toBe(before.updatedAt); // row not bumped
+		// docPointer stable (not re-stamped).
+		expect(after.docPointer).toBe(pointer);
+		// Body now reflects v2.
+		expect(wiki.readNodeDetail(node.id)).toBe("v2 body — overwritten");
+	});
+
+	test("update({detail:''}) 删除正文文件 (blanks body)", () => {
+		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "p") });
+		const root = track(wiki.ensureProjectSubtree(proj.id, "P"));
+		const node = track(wiki.upsertProjectNode(proj.id, {
+			parentId: root.id,
+			type: "header",
+			path: "header:src/baz.ts",
+			title: "baz.ts",
+			detail: "to be deleted",
+		}));
+		const pointer = wiki.get(node.id)!.docPointer!;
+		expect(existsSync(pointer)).toBe(true);
+
+		// Blanking detail removes the file.
+		wiki.update(node.id, { detail: "   " });
+		expect(existsSync(pointer)).toBe(false);
+		expect(wiki.readNodeDetail(node.id)).toBeUndefined();
+	});
+
+	test("delete() 级联删正文文件", () => {
+		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "p") });
+		const root = track(wiki.ensureProjectSubtree(proj.id, "P"));
+		const child = track(wiki.upsertProjectNode(proj.id, {
+			parentId: root.id,
+			type: "header",
+			path: "header:src/qux.ts",
+			title: "qux.ts",
+			detail: "child body",
+		}));
+		const pointer = wiki.get(child.id)!.docPointer!;
+		expect(existsSync(pointer)).toBe(true);
+
+		wiki.delete(child.id);
+		expect(existsSync(pointer)).toBe(false);
+		expect(wiki.get(child.id)).toBeUndefined();
+		// Don't double-delete in afterEach.
+		const idx = createdNodeIds.indexOf(child.id);
+		if (idx >= 0) createdNodeIds.splice(idx, 1);
+	});
+
+	test("deriveContentFilePath routes by area (project / memory / knowledge)", () => {
+		// project node → projects/<projectId>/
+		const projFile = deriveContentFilePath({
+			id: "abc12345",
+			path: "header:src/a.ts",
+			projectId: "proj-x",
+		});
+		expect(projFile).toBe(join(WIKI_DISK_ROOT, "projects", "proj-x", "header_src_a.ts__abc12345.md"));
+
+		// memory node → memory/_legacy/
+		const memFile = deriveContentFilePath({
+			id: "mem1234567",
+			path: "memory:subject-x",
+		});
+		// id.slice(0, 8) = "mem12345" (first 8 chars).
+		expect(memFile).toBe(join(WIKI_DISK_ROOT, "memory", "_legacy", "memory_subject-x__mem12345.md"));
+
+		// knowledge fallback
+		const knFile = deriveContentFilePath({
+			id: "kn1234567",
+			path: "knowledge:something",
+		});
+		expect(knFile).toBe(join(WIKI_DISK_ROOT, "knowledge", "knowledge_something__kn123456.md"));
+	});
+});
+
+// ─── 多锚点权限:并集可见性 ────────────────────────────────────
+
+describe("P1 §10.3 多锚点:并集可见性 + 读/写同边界", () => {
+	test("项目角色 A 看不到 项目 B / 全局根 / 别 agent memory", () => {
+		const projA = projectStore.create({ name: "A", workspaceDir: join(tmpDir, "a") });
+		const projB = projectStore.create({ name: "B", workspaceDir: join(tmpDir, "b") });
+		const rootA = track(wiki.ensureProjectSubtree(projA.id, "A"));
+		const rootB = track(wiki.ensureProjectSubtree(projB.id, "B"));
+
+		// Project A subtree node.
+		const aHeader = track(wiki.upsertProjectNode(projA.id, {
+			parentId: rootA.id, type: "header", path: "header:a.ts", title: "a.ts",
+		}));
+		// Project B subtree node.
+		const bHeader = track(wiki.upsertProjectNode(projB.id, {
+			parentId: rootB.id, type: "header", path: "header:b.ts", title: "b.ts",
+		}));
+		// Memory leaf under global type root (extractor A simulation).
+		wiki.ensureMemoryTypeRoot("decision");
+		const memRoot = memoryTypeRootId("decision");
+		const memLeaf = track(wiki.createMemoryNode({
+			parentId: memRoot,
+			path: "memory:agent-X-fact",
+			title: "Agent X fact",
+		}));
+
+		// A's anchor set = [projectA root] (auto project only; no free anchors).
+		const aAnchors = [projectSubtreeRootId(projA.id)];
+		const aVisible = wiki.listVisibleFromAnchors(aAnchors);
+		const aIds = new Set(aVisible.map((n) => n.id));
+
+		// Sees own subtree.
+		expect(aIds.has(rootA.id)).toBe(true);
+		expect(aIds.has(aHeader.id)).toBe(true);
+		// Cannot see B's subtree.
+		expect(aIds.has(rootB.id)).toBe(false);
+		expect(aIds.has(bHeader.id)).toBe(false);
+		// Cannot see global root.
+		expect(aIds.has(WIKI_GLOBAL_ROOT_ID)).toBe(false);
+		// Cannot see another agent's memory.
+		expect(aIds.has(memLeaf.id)).toBe(false);
+	});
+
+	test("项目角色 A + memory 锚点 → 看到本项目 + 全部全局 memory 并集", () => {
+		const projA = projectStore.create({ name: "A", workspaceDir: join(tmpDir, "a") });
+		const projB = projectStore.create({ name: "B", workspaceDir: join(tmpDir, "b") });
+		const rootA = track(wiki.ensureProjectSubtree(projA.id, "A"));
+		track(wiki.ensureProjectSubtree(projB.id, "B"));
+
+		// Memory leaves under all 5 type roots.
+		wiki.ensureMemoryTypeRoot("decision");
+		wiki.ensureMemoryTypeRoot("event");
+		wiki.ensureMemoryTypeRoot("discovery");
+		wiki.ensureMemoryTypeRoot("status_change");
+		wiki.ensureMemoryTypeRoot("preference");
+		const decLeaf = track(wiki.createMemoryNode({
+			parentId: memoryTypeRootId("decision"), path: "memory:dec-1", title: "dec 1",
+		}));
+		const evtLeaf = track(wiki.createMemoryNode({
+			parentId: memoryTypeRootId("event"), path: "memory:evt-1", title: "evt 1",
+		}));
+
+		// Anchor set: auto memory (5 type roots) + project A root.
+		const anchors = [
+			memoryTypeRootId("event"), memoryTypeRootId("decision"),
+			memoryTypeRootId("discovery"), memoryTypeRootId("status_change"),
+			memoryTypeRootId("preference"),
+			projectSubtreeRootId(projA.id),
+		];
+		const visible = wiki.listVisibleFromAnchors(anchors);
+		const ids = new Set(visible.map((n) => n.id));
+
+		// Sees project A + memory leaves, but NOT project B or global root.
+		expect(ids.has(rootA.id)).toBe(true);
+		expect(ids.has(decLeaf.id)).toBe(true);
+		expect(ids.has(evtLeaf.id)).toBe(true);
+		expect(ids.has(projectSubtreeRootId(projB.id))).toBe(false);
+		expect(ids.has(WIKI_GLOBAL_ROOT_ID)).toBe(false);
+	});
+
+	test("zero (全局根锚点) 看全树", () => {
+		const projA = projectStore.create({ name: "A", workspaceDir: join(tmpDir, "a") });
+		const rootA = track(wiki.ensureProjectSubtree(projA.id, "A"));
+		const aHeader = track(wiki.upsertProjectNode(projA.id, {
+			parentId: rootA.id, type: "header", path: "header:a.ts", title: "a.ts",
+		}));
+
+		const visible = wiki.listVisibleFromAnchors([WIKI_GLOBAL_ROOT_ID]);
+		const ids = new Set(visible.map((n) => n.id));
+		expect(ids.has(WIKI_GLOBAL_ROOT_ID)).toBe(true);
+		expect(ids.has(rootA.id)).toBe(true);
+		expect(ids.has(aHeader.id)).toBe(true);
+	});
+
+	test("空锚点集 → 空可见集", () => {
+		expect(wiki.listVisibleFromAnchors([])).toEqual([]);
+	});
+
+	test("getVisibleFromAnchors:union 可见性(单节点读)", () => {
+		const projA = projectStore.create({ name: "A", workspaceDir: join(tmpDir, "a") });
+		const projB = projectStore.create({ name: "B", workspaceDir: join(tmpDir, "b") });
+		const rootB = track(wiki.ensureProjectSubtree(projB.id, "B"));
+		const bHeader = track(wiki.upsertProjectNode(projB.id, {
+			parentId: rootB.id, type: "header", path: "header:b.ts", title: "b.ts",
+		}));
+
+		// From A only — B invisible.
+		expect(wiki.getVisibleFromAnchors([projectSubtreeRootId(projA.id)], bHeader.id))
+			.toBeUndefined();
+		// From A + B union — B visible.
+		expect(wiki.getVisibleFromAnchors(
+			[projectSubtreeRootId(projA.id), projectSubtreeRootId(projB.id)],
+			bHeader.id,
+		)).toBeDefined();
+	});
+
+	test("assertNodeInAnchorScope:写域 = 可见域(同一道边界)", () => {
+		const projA = projectStore.create({ name: "A", workspaceDir: join(tmpDir, "a") });
+		const projB = projectStore.create({ name: "B", workspaceDir: join(tmpDir, "b") });
+		const rootA = track(wiki.ensureProjectSubtree(projA.id, "A"));
+		const rootB = track(wiki.ensureProjectSubtree(projB.id, "B"));
+		const aHeader = track(wiki.upsertProjectNode(projA.id, {
+			parentId: rootA.id, type: "header", path: "header:a.ts", title: "a.ts",
+		}));
+		const bHeader = track(wiki.upsertProjectNode(projB.id, {
+			parentId: rootB.id, type: "header", path: "header:b.ts", title: "b.ts",
+		}));
+
+		const aAnchors = [projectSubtreeRootId(projA.id)];
+		// Write to own subtree — OK.
+		expect(() => wiki.assertNodeInAnchorScope(aAnchors, aHeader.id)).not.toThrow();
+		// Write across boundary — throws with the P1 message.
+		expect(() => wiki.assertNodeInAnchorScope(aAnchors, bHeader.id))
+			.toThrow(/outside all caller anchor subtrees/);
+		// Global caller bypasses the guard.
+		expect(() => wiki.assertNodeInAnchorScope([WIKI_GLOBAL_ROOT_ID], bHeader.id)).not.toThrow();
+		// Union anchor set widens write scope.
+		expect(() => wiki.assertNodeInAnchorScope(
+			[projectSubtreeRootId(projA.id), projectSubtreeRootId(projB.id)],
+			bHeader.id,
+		)).not.toThrow();
+	});
+
+	test("assertNodeInsideProjectScope(deprecated) still works as thin wrapper", () => {
+		const projA = projectStore.create({ name: "A", workspaceDir: join(tmpDir, "a") });
+		const projB = projectStore.create({ name: "B", workspaceDir: join(tmpDir, "b") });
+		const rootA = track(wiki.ensureProjectSubtree(projA.id, "A"));
+		const aHeader = track(wiki.upsertProjectNode(projA.id, {
+			parentId: rootA.id, type: "header", path: "header:a.ts", title: "a.ts",
+		}));
+		// Within own project → OK.
+		expect(() => wiki.assertNodeInsideProjectScope(projA.id, aHeader.id)).not.toThrow();
+		// Cross-project → throws (delegates to multi-anchor path).
+		expect(() => wiki.assertNodeInsideProjectScope(projA.id, aHeader.id)).not.toThrow();
+	});
+});

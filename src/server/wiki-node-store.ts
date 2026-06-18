@@ -38,6 +38,9 @@
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { WikiNode, WikiNodeTypeGlobal } from "../shared/types.js";
+import { join, resolve, normalize, isAbsolute } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { ZERO_CORE_DIR } from "../core/config.js";
 
 // ---------------------------------------------------------------------------
 // Column definitions — MUST stay in sync with db-migration.ts PROJECT_WIKI_COLUMNS
@@ -45,19 +48,26 @@ import type { WikiNode, WikiNodeTypeGlobal } from "../shared/types.js";
 
 const COLUMNS: ColumnDef[] = [
 	{ key: "parentId", column: "parent_id" },
-	{ key: "type" },
+	// v0.8 (P1 §10.1): `type` column DROPPED — position is now the type. Rows
+	// are classified on read by deriveTypeFromPosition (project subtree →
+	// project/header/intent/structure; global memory type roots + leaves →
+	// memory; synthetic roots → project). Legacy `node_type` kept below for
+	// back-compat rows.
 	{ key: "path" },
 	{ key: "title" },
 	{ key: "summary" },
-	{ key: "detail" },
+	// v0.8 (P1 §10.1): `detail` column DROPPED — wiki body content lives on
+	// disk at `~/.zero-core/wiki/<area>/<safe-name>.md`. `docPointer` carries
+	// that per-node body file path (code-internal locator; NOT exposed to
+	// agents — they address by nodeId). detail read/write goes through
+	// readNodeDetail / writeNodeDetail; list/get do NOT populate detail.
 	{ key: "docPointer", column: "doc_pointer" },
 	{ key: "provenance" },
 	{ key: "requirementIds", column: "requirement_ids", json: true },
 	{ key: "projectId", column: "project_id" },
 	{ key: "relations", json: true },
 	// v0.8 (P0 §3.3 / §10.1): undirected sibling links (nodeId array). NULL
-	// coalesces to [] on read (see rowToWikiNode). type/detail stay in this
-	// phase — P1 moves detail to disk.
+	// coalesces to [] on read (see rowToWikiNode).
 	{ key: "links", json: true },
 	{ key: "flags", json: true },
 	{ key: "lastUpdatedBy", column: "last_updated_by" },
@@ -115,6 +125,87 @@ export function memoryTypeRootId(type: MemoryFactType): string {
 }
 
 // ---------------------------------------------------------------------------
+// v0.8 (P1 §10.1): wiki body content lives on disk — path helpers + FS
+// isolation root. Exported so the FS tool guard (wiki-path-guard) reuses the
+// same canonical root. agent FS tools (Shell/Read/Grep/Glob/Write/Edit) MUST
+// reject any path that resolves inside WIKI_DISK_ROOT.
+// ---------------------------------------------------------------------------
+
+/**
+ * The on-disk root of the wiki body content store. Body files live under
+ * `<WIKI_DISK_ROOT>/<area>/<safe-name>.md`; the DB row only carries the
+ * per-node `docPointer` (= the absolute path to its body file). Agents never
+ * touch this directory directly — they address nodes by nodeId and the wiki
+ * tools (ExpandNode / UpdateWikiNode) read/write through WikiStore.
+ */
+export const WIKI_DISK_ROOT = join(ZERO_CORE_DIR, "wiki");
+
+/**
+ * Compute the canonical disk path for a node's body content file. The area
+ * bucket is decided by position (P1 §10.1.5):
+ *   - node carries `projectId`        → projects/<projectId>/
+ *   - node's path signals memory      → memory/_legacy/   (legacy; future
+ *                                          extractor writes per-agent under
+ *                                          memory/<agentId>/ via createMemoryNode)
+ *   - otherwise                       → knowledge/
+ *
+ * The leaf filename is derived from node.path (path-separator/colon sanitized)
+ * + a short id suffix to guarantee uniqueness within the area directory.
+ */
+export function deriveContentFilePath(input: {
+	id: string;
+	path?: string;
+	projectId?: string;
+}): string {
+	const area = input.projectId
+		? join("projects", input.projectId)
+		: input.path && input.path.startsWith("memory")
+			? join("memory", "_legacy")
+			: "knowledge";
+	const raw = (input.path ?? input.id).replace(/[:/\\]+/g, "_").replace(/^_+|_+$/g, "");
+	const tail = input.id.length >= 8 ? input.id.slice(0, 8) : input.id;
+	const safe = `${raw || "node"}__${tail}.md`;
+	return join(WIKI_DISK_ROOT, area, safe);
+}
+
+/**
+ * v0.8 (P1 §10.1): canonicalize a path and check whether it resolves inside
+ * WIKI_DISK_ROOT. This is the same canonicalization logic wiki-path-guard
+ * uses (kept inline here so the store has no runtime/tools/ dependency — the
+ * guard imports FROM this module, not the other way around). Used to harden
+ * readNodeDetail / writeNodeDetail / deleteNodeDetail against `node.docPointer`
+ * values that escaped WIKI_DISK_ROOT (legacy rows or buggy upsert inputs).
+ *
+ * Returns false for empty/non-string input.
+ */
+export function isInsideWikiDisk(p: string | undefined | null): boolean {
+	if (!p || typeof p !== "string") return false;
+	const canon = (s: string): string => {
+		const abs = isAbsolute(s) ? s : resolve(process.cwd(), s);
+		const norm = normalize(abs);
+		return process.platform === "win32"
+			? norm.replace(/\\/g, "/").toLowerCase()
+			: norm;
+	};
+	const c = canon(p.trim());
+	const root = canon(WIKI_DISK_ROOT);
+	const rootWithSlash = root.endsWith("/") ? root : root + "/";
+	return c === root || c.startsWith(rootWithSlash);
+}
+
+/**
+ * v0.8 (P1 §10.1): the synthetic memory-anchor node id for a given agent.
+ * Sessions whose agentId = X derive `memory-anchor:<X>` as one of their
+ * automatic anchors; the anchor is matched against nodes whose path starts
+ * with `memory:` AND were written by that agent (lastUpdatedBy = X), or — for
+ * the legacy global memory roots — against the 5 `wiki-root:memory:<type>`
+ * type roots. The id itself is synthetic (no row is created with it).
+ */
+export function memoryAnchorIdForAgent(agentId: string): string {
+	return `memory-anchor:${agentId}`;
+}
+
+// ---------------------------------------------------------------------------
 // WikiStore — the single global wiki memory tree
 // ---------------------------------------------------------------------------
 
@@ -142,14 +233,14 @@ export class WikiStore {
 		if (!this._insertWithIdStmt) {
 			// Column list kept in sync manually with COLUMNS above (the
 			// backing SqliteStore keeps allColumns private, so we redeclare).
+			// v0.8 (P1 §10.1): `type` and `detail` removed; type is positional,
+			// detail lives on disk (writeNodeDetail handles body export).
 			const cols = [
 				"id",
 				"parent_id",
-				"type",
 				"path",
 				"title",
 				"summary",
-				"detail",
 				"doc_pointer",
 				"provenance",
 				"requirement_ids",
@@ -173,11 +264,9 @@ export class WikiStore {
 		const vals = [
 			record.id,
 			record.parentId ?? null,
-			record.type ?? null,
 			record.path,
 			record.title,
 			record.summary ?? null,
-			record.detail ?? null,
 			record.docPointer ?? null,
 			record.provenance ?? null,
 			record.requirementIds ? JSON.stringify(record.requirementIds) : null,
@@ -232,25 +321,129 @@ export class WikiStore {
 	}
 
 	create(input: Omit<WikiNode, "id" | "createdAt" | "updatedAt">): WikiNode {
-		const created = this.store.create(input as any);
-		return rowToWikiNode(created)!;
+		// v0.8 (P1 §10.1): `detail` is not a DB column anymore — peel it off
+		// and write to disk after the row exists (so docPointer can be set).
+		const { detail, ...rowInput } = input as Omit<WikiNode, "id" | "createdAt" | "updatedAt"> & { detail?: string };
+		const created = this.store.create(rowInput as any);
+		const node = rowToWikiNode(created)!;
+		if (detail && detail.trim().length > 0) {
+			this.writeNodeDetail(node.id, detail);
+			// Re-fetch so the returned node carries the stamped docPointer
+			// (writeNodeDetail mutates the row; the original `node` snapshot
+			// is pre-stamp). Matches the round-trip callers expect.
+			return this.get(node.id)!;
+		}
+		return node;
 	}
 
 	update(id: string, input: Partial<Omit<WikiNode, "id" | "createdAt">>): WikiNode {
-		return rowToWikiNode(this.store.update(id, input as any))!;
+		// v0.8 (P1 §10.1): `detail` is peeled off and routed to disk; the
+		// remaining fields (title/summary/path/provenance/...) update the row.
+		const { detail, ...rowPatch } = input as Partial<WikiNode> & { detail?: string };
+		const updated = rowToWikiNode(this.store.update(id, rowPatch as any))!;
+		if (detail !== undefined) {
+			// Empty/blank detail deletes the body file; non-empty writes it.
+			if (detail.trim().length === 0) {
+				this.deleteNodeDetail(id);
+			} else {
+				this.writeNodeDetail(id, detail);
+			}
+		}
+		return updated;
 	}
 
 	delete(id: string): void {
-		// Cascade-delete children (recursive).
+		// Cascade-delete children (recursive). Detail files are also removed.
 		const children = this.getChildren(id);
 		for (const child of children) {
 			this.delete(child.id);
 		}
+		this.deleteNodeDetail(id);
 		this.store.delete(id);
 	}
 
 	getChildren(parentId: string): WikiNode[] {
 		return this.store.list().filter((n) => n.parentId === parentId).map(rowToWikiNode);
+	}
+
+	// ─── Disk body content (v0.8 P1 §10.1) ──────────────────────────
+
+	/**
+	 * Read a node's body content from disk. Returns undefined when the node
+	 * has no body file (synthetic roots, structure-only nodes, or content not
+	 * yet written). This is the canonical "expand a node" path — list/get do
+	 * NOT populate `detail`; callers that need the body call here.
+	 *
+	 * v0.8 (P1 §10.1, hardened): the body file path is ALWAYS the derived
+	 * path from `deriveContentFilePath(node)`. `docPointer` is a code-internal
+	 * cache that the store stamps itself; we never trust a caller-set or
+	 * legacy-row `docPointer` value here, because such values can escape
+	 * WIKI_DISK_ROOT (FS isolation §10.1). If `docPointer` is set AND inside
+	 * WIKI_DISK_ROOT we still prefer the derived path (canonical, position-
+	 * stable) — the cache is informational only.
+	 */
+	readNodeDetail(nodeId: string): string | undefined {
+		const node = this.get(nodeId);
+		if (!node) return undefined;
+		const file = deriveContentFilePath(node);
+		try {
+			if (!existsSync(file)) return undefined;
+			return readFileSync(file, "utf-8");
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * Write (or overwrite) a node's body content on disk. Stamps `docPointer`
+	 * on the row so future reads go straight to the file. The DB row is NOT
+	 * otherwise touched (no summary / title change here) — this is the
+	 * "改正文不动 DB" guarantee from acceptance-P1.
+	 *
+	 * v0.8 (P1 §10.1, hardened): the file path is ALWAYS derived from the
+	 * node's position; we never write to `node.docPointer` directly, even when
+	 * it is set. This is the FS-isolation lock: a legacy/corrupt/benign
+	 * `docPointer` value pointing outside WIKI_DISK_ROOT (e.g. an external
+	 * relative path like "src/foo.ts") cannot cause a write to escape the
+	 * wiki disk root. After writing, `docPointer` is stamped to the derived
+	 * path so callers that read it see the canonical body locator.
+	 */
+	writeNodeDetail(nodeId: string, content: string): void {
+		const node = this.get(nodeId);
+		if (!node) {
+			throw new Error(`writeNodeDetail: node not found: ${nodeId}`);
+		}
+		const file = deriveContentFilePath(node);
+		// Defensive: never let a future change to deriveContentFilePath produce
+		// an out-of-root path silently.
+		if (!isInsideWikiDisk(file)) {
+			throw new Error(
+				`writeNodeDetail: derived body path escapes WIKI_DISK_ROOT (FS isolation §10.1): ${file}`,
+			);
+		}
+		mkdirSync(join(file, ".."), { recursive: true });
+		writeFileSync(file, content, "utf-8");
+		// Stamp docPointer to the derived path. We re-stamp even when the row
+		// already had a docPointer, so any stale/escaping cache value is
+		// overwritten with the canonical locator (cheap UPDATE; no content
+		// round-trip).
+		if (node.docPointer !== file) {
+			this.store.update(nodeId, { docPointer: file } as any);
+		}
+	}
+
+	/** Delete a node's body file (used by WikiStore.delete cascade). */
+	private deleteNodeDetail(nodeId: string): void {
+		const node = this.get(nodeId);
+		if (!node) return;
+		// v0.8 (P1 §10.1, hardened): always delete the derived path; never
+		// trust node.docPointer (it may be a stale escaping value).
+		const file = deriveContentFilePath(node);
+		try {
+			if (existsSync(file)) rmSync(file, { force: true });
+		} catch {
+			// best-effort; never let disk cleanup block a delete
+		}
 	}
 
 	// ─── Project subtree management ─────────────────────────────────
@@ -353,28 +546,92 @@ export class WikiStore {
 		return visible.find((n) => n.id === nodeId);
 	}
 
+	// ─── View-truncated queries (v0.8 P1 §10.3 — multi-anchor scope) ──
+
+	/**
+	 * v0.8 (P1 §10.3): list all wiki nodes visible from a SET of anchor node
+	 * ids. This is the multi-anchor generalization of listVisibleFromRoot —
+	 * the caller passes every anchor (auto memory/project anchors + free
+	 * wikiAnchors), and the result is the UNION of each anchor's subtree.
+	 *
+	 * Special cases:
+	 *   - anchors includes WIKI_GLOBAL_ROOT_ID → returns the whole tree
+	 *     (zero / global-scope sessions). The single-anchor convenience
+	 *     listVisibleFromRoot still works for that case.
+	 *   - empty anchor list → empty result.
+	 *
+	 * The anchors are *node ids in the tree*; for memory anchors the caller
+	 * typically passes the five `wiki-root:memory:<type>` type roots (every
+	 * memory leaf is reachable from one of them).
+	 */
+	listVisibleFromAnchors(anchorNodeIds: string[]): WikiNode[] {
+		if (anchorNodeIds.length === 0) return [];
+		// Fast path: global root anchor = whole tree.
+		if (anchorNodeIds.includes(WIKI_GLOBAL_ROOT_ID)) {
+			return this.list();
+		}
+		const visibleIds = new Set<string>();
+		for (const anchorId of anchorNodeIds) {
+			const subtreeIds = this.collectSubtreeIdsSafe(anchorId);
+			for (const id of subtreeIds) visibleIds.add(id);
+		}
+		return this.store.list().filter((n) => visibleIds.has(n.id)).map(rowToWikiNode);
+	}
+
+	/**
+	 * v0.8 (P1 §10.3): read a single node, but only if it is visible from the
+	 * caller's anchor set. Multi-anchor version of getVisible.
+	 */
+	getVisibleFromAnchors(anchorNodeIds: string[], nodeId: string): WikiNode | undefined {
+		return this.listVisibleFromAnchors(anchorNodeIds).find((n) => n.id === nodeId);
+	}
+
+	/**
+	 * collectSubtreeIds that returns an empty set (rather than throwing) when
+	 * the anchor id doesn't exist as a node yet. Synthetic anchors like
+	 * `memory-anchor:<agentId>` aren't backed by a row; they're matched by
+	 * convention against matching nodes elsewhere (handled at the
+	 * anchor-resolution layer, not here).
+	 */
+	private collectSubtreeIdsSafe(rootId: string): Set<string> {
+		const root = this.get(rootId);
+		if (!root) return new Set<string>();
+		return this.collectSubtreeIds(root.id);
+	}
+
 	// ─── Write guards (decision 39 — store-layer scope enforcement) ──
 
 	/**
-	 * Assert that a node lives inside a specific project subtree. Used by
-	 * archivist's wiki-write tools to enforce "only my project subtree" —
-	 * the prompt self-restraint + tool-capability guard from RFC §2.16/OQ1.
+	 * v0.8 (P1 §10.3): assert that a node lives inside ANY of the caller's
+	 * anchor subtrees. This is the multi-anchor replacement for the legacy
+	 * type-based `assertNodeInsideProjectScope` — read + write use the SAME
+	 * boundary (write scope = visible scope, acceptance-P1).
 	 *
-	 * Throws if the node is outside the scope (so the writer fails loudly
-	 * rather than silently writing across the boundary).
+	 * Throws if the node is outside every anchor's subtree (so the writer
+	 * fails loudly rather than silently writing across the boundary).
+	 */
+	assertNodeInAnchorScope(anchorNodeIds: string[], nodeId: string): void {
+		if (anchorNodeIds.includes(WIKI_GLOBAL_ROOT_ID)) return; // global caller
+		for (const anchorId of anchorNodeIds) {
+			const ids = this.collectSubtreeIdsSafe(anchorId);
+			if (ids.has(nodeId)) return;
+		}
+		throw new Error(
+			`Node ${nodeId} is outside all caller anchor subtrees ` +
+				`(anchors: ${anchorNodeIds.join(", ") || "(none)"}; ` +
+				`write scope violation, RFC §2.16/OQ2 + P1 §10.3).`,
+		);
+	}
+
+	/**
+	 * @deprecated v0.8 (P1 §10.3): replaced by assertNodeInAnchorScope. Kept
+	 * as a thin wrapper for legacy callers (archivist-service, wiki-tools)
+	 * that still operate in single-project mode — they pass the project
+	 * subtree root id as the sole anchor. Internally delegates to the
+	 * multi-anchor path. New code should pass the full anchor set.
 	 */
 	assertNodeInsideProjectScope(projectId: string, nodeId: string): void {
-		const root = this.get(projectSubtreeRootId(projectId));
-		if (!root) {
-			throw new Error(`Project subtree not initialized: ${projectId}`);
-		}
-		const ids = this.collectSubtreeIds(root.id);
-		if (!ids.has(nodeId)) {
-			throw new Error(
-				`Node ${nodeId} is outside project ${projectId}'s wiki subtree ` +
-					`(archivist write scope violation, RFC §2.16/OQ2).`,
-			);
-		}
+		this.assertNodeInAnchorScope([projectSubtreeRootId(projectId)], nodeId);
 	}
 
 	/**
@@ -392,7 +649,6 @@ export class WikiStore {
 			title: string;
 			summary?: string;
 			detail?: string;
-			docPointer?: string;
 			provenance?: "structure" | "derived" | "confirmed";
 			requirementIds?: string[];
 			relations?: Array<{ kind: string; targetId: string }>;
@@ -400,8 +656,10 @@ export class WikiStore {
 			lastUpdatedBy?: string;
 		},
 	): WikiNode {
-		// Enforce parent is inside this project subtree.
-		this.assertNodeInsideProjectScope(projectId, input.parentId);
+		// Enforce parent is inside this project subtree (multi-anchor guard
+		// with the project subtree root as the sole anchor; new code passes
+		// the full anchor set via assertNodeInAnchorScope directly).
+		this.assertNodeInAnchorScope([projectSubtreeRootId(projectId)], input.parentId);
 
 		// Type is constrained by the input signature to header | intent |
 		// structure. memory nodes belong to extractor A (M5); project subtree
@@ -409,24 +667,37 @@ export class WikiStore {
 		// through here. (The check is structurally enforced by the type; no
 		// runtime re-check needed.)
 
-		const existing = this.getByParentAndPath(input.parentId, input.path);
+		// v0.8 (P1 §10.1, hardened): `docPointer` is NOT accepted on input.
+		// It is a code-internal cache of the node's body content file path
+		// (always derived by deriveContentFilePath + stamped by
+		// writeNodeDetail). External/caller-supplied paths — including
+		// workspace-relative paths like "src/foo.ts" — must NOT be able to set
+		// it, otherwise writeNodeDetail could be coerced into writing outside
+		// WIKI_DISK_ROOT. The strip below is defensive in case a caller still
+		// passes the field via `...input`.
+		const { docPointer: _ignoredDocPointer, ...rowInput } = input as typeof input & {
+			docPointer?: string;
+		};
+		void _ignoredDocPointer;
+
+		const existing = this.getByParentAndPath(rowInput.parentId, rowInput.path);
 		if (existing) {
 			return this.update(existing.id, {
-				...input,
+				...rowInput,
 				projectId,
-				lastUpdatedBy: input.lastUpdatedBy ?? "archivist",
+				lastUpdatedBy: rowInput.lastUpdatedBy ?? "archivist",
 			});
 		}
 		return this.create({
-			...input,
+			...rowInput,
 			projectId,
-			lastUpdatedBy: input.lastUpdatedBy ?? "archivist",
+			lastUpdatedBy: rowInput.lastUpdatedBy ?? "archivist",
 		});
 	}
 
 	/**
 	 * Append a flag to a node (archivist divergence signal, RFC §2.16).
-	 * Enforces project-scope membership.
+	 * Enforces project-scope membership (single-anchor legacy guard).
 	 */
 	addFlag(projectId: string, nodeId: string, flag: string): void {
 		this.assertNodeInsideProjectScope(projectId, nodeId);
@@ -522,9 +793,12 @@ export class WikiStore {
 
 	/** List all known project subtree root nodes. */
 	listProjects(): string[] {
+		// v0.8 (P1 §10.1): project subtree roots are now identified by id
+		// prefix (`wiki-root:<projectId>`) rather than the dropped `type`
+		// column. Rows with a projectId AND a wiki-root id are project roots.
 		return this.store
 			.list()
-			.filter((n) => n.type === "project" && n.projectId)
+			.filter((n) => n.projectId && n.id.startsWith("wiki-root:") && n.id !== WIKI_GLOBAL_ROOT_ID && !n.id.startsWith("wiki-root:memory:"))
 			.map((n) => n.projectId!) as string[];
 	}
 
@@ -539,10 +813,14 @@ export class WikiStore {
 	 * reads of pre-M5 data.
 	 */
 	listMemoryNodes(): WikiNode[] {
+		// v0.8 (P1 §10.1): the `type` column was dropped — rows no longer
+		// carry `type`, so we must run rowToWikiNode (which calls
+		// deriveTypeFromPosition) BEFORE filtering. Filtering the raw row
+		// yields an empty set because row.type is undefined.
 		return this.store
 			.list()
-			.filter((n) => n.type === "memory")
-			.map(rowToWikiNode);
+			.map(rowToWikiNode)
+			.filter((n) => n.type === "memory");
 	}
 
 	/**
@@ -550,6 +828,12 @@ export class WikiStore {
 	 * Splits the query on whitespace and ANDs the terms. NOT FTS5 — extractor
 	 * A's volume is small enough that a linear scan is fine for v1, and we
 	 * avoid coupling memory nodes to a second FTS table.
+	 *
+	 * v0.8 (P1 §10.1): `detail` no longer lives on the row — the body file is
+	 * loaded lazily (readNodeDetail) only for the surviving matches, so the
+	 * search now scans title + summary on the row, then re-checks the disk
+	 * body for any candidate that didn't match on row fields. This keeps the
+	 * scan cheap while still finding terms that only appear in the body.
 	 *
 	 * Sorts by updatedAt DESC (most-recently-evolved first). Excludes the
 	 * five memory-type roots themselves (they have empty summaries).
@@ -564,16 +848,30 @@ export class WikiStore {
 			"wiki-root:memory:status_change",
 			"wiki-root:memory:preference",
 		]);
-		const matches = this.store.list().filter((n) => {
-			if (n.type !== "memory") return false;
-			if (typeRootIds.has(n.id)) return false; // skip type roots
-			const hay = (
-				(n.title ?? "") + " " + (n.summary ?? "") + " " + (n.detail ?? "")
-			).toLowerCase();
-			return terms.every(t => hay.includes(t));
+		// v0.8 (P1 §10.1): rows no longer carry `type` — derive via
+		// rowToWikiNode first, then filter by the synthesized type. The
+		// fallback readNodeDetail(n.id) below is unaffected because it keys
+		// off n.id, which is present on the raw row and the WikiNode.
+		const candidates = this.store
+			.list()
+			.map(rowToWikiNode)
+			.filter((n) => {
+				if (n.type !== "memory") return false;
+				if (typeRootIds.has(n.id)) return false; // skip type roots
+				return true;
+			});
+		const matches = candidates.filter((n) => {
+			const hay = ((n.title ?? "") + " " + (n.summary ?? "")).toLowerCase();
+			if (terms.every(t => hay.includes(t))) return true;
+			// Fall back to the disk body for terms not in title/summary.
+			const detail = this.readNodeDetail(n.id) ?? "";
+			if (!detail) return false;
+			const detailHay = detail.toLowerCase();
+			return terms.every(t => detailHay.includes(t));
 		});
 		matches.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
-		return matches.slice(0, limit).map(rowToWikiNode);
+		// candidates already ran through rowToWikiNode above — no re-map.
+		return matches.slice(0, limit);
 	}
 
 	/** Collect a node id and all its descendants. */
@@ -598,17 +896,22 @@ export class WikiStore {
 // ---------------------------------------------------------------------------
 
 /**
- * Normalize a stored row into a WikiNode. Back-compat rows from the legacy
- * `project_wiki` schema may have `type` empty (filled by older code as
- * `nodeType`); synthesize `type` from `nodeType` so the new API keeps working
- * on legacy data without a migration script (RFC decision 23).
+ * Normalize a stored row into a WikiNode. v0.8 (P1 §10.1): the `type` column
+ * is GONE — type is now derived from POSITION (project subtree membership →
+ * project/header/intent/structure; global memory type roots + their leaves →
+ * memory; synthetic roots → project). Back-compat rows still carrying
+ * `nodeType` ("directory"/"file"/...) get type synthesized from that legacy
+ * discriminator (decision 23, refined in P1).
+ *
+ * `detail` is NOT populated here — body content lives on disk and is loaded
+ * only on demand via WikiStore.readNodeDetail (the ExpandNode path).
  *
  * Returns WikiNode & { nodeType? } — the legacy `nodeType` is kept on the
  * row object so the back-compat ProjectWikiStore view round-trips it through
  * SqliteStore's update path without dropping the column value.
  */
 function rowToWikiNode(row: any): WikiNode & { nodeType?: string } {
-	const type: WikiNodeTypeGlobal = (row.type as WikiNodeTypeGlobal) ?? legacyTypeToGlobal(row.nodeType);
+	const type = deriveTypeFromPosition(row);
 	return {
 		id: row.id,
 		parentId: row.parentId,
@@ -616,7 +919,7 @@ function rowToWikiNode(row: any): WikiNode & { nodeType?: string } {
 		path: row.path,
 		title: row.title,
 		summary: row.summary,
-		detail: row.detail,
+		// detail intentionally NOT populated — see readNodeDetail (P1 §10.1).
 		docPointer: row.docPointer,
 		provenance: row.provenance,
 		requirementIds: row.requirementIds,
@@ -634,21 +937,52 @@ function rowToWikiNode(row: any): WikiNode & { nodeType?: string } {
 }
 
 /**
- * Map the legacy `nodeType` discriminator ("directory"/"file"/...) to the new
- * global-tree `type`. Used for back-compat rows that predate M2. Forward
- * mapping lives in ProjectWikiStore's view projection.
+ * v0.8 (P1 §10.1): derive a node's type from its position in the tree. Rules
+ * (in priority order):
+ *   1. synthetic root ids (`wiki-root:global`, `wiki-root:<projectId>`,
+ *      `wiki-root:memory:<type>`) → `project` (subtree root) or `memory`
+ *      (memory type root).
+ *   2. row carries `projectId` → `project` subtree member; if its nodeType
+ *      legacy discriminator says file/function/class → header, intent docs are
+ *      flagged via path prefix `intent:` → intent; otherwise structure.
+ *   3. row's path or parent signals memory (path starts with `memory` / parent
+ *      is a memory type root) → memory.
+ *   4. legacy `nodeType` discriminator → header/structure (back-compat).
+ *   5. fallback → structure.
+ *
+ * The store is the ONLY caller, so position resolution can read the row's
+ * parentId chain lazily. To keep this pure + cheap, we lean on signals already
+ * on the row (id / path / projectId / nodeType) and only fall back to a
+ * parent-chain walk when none of them is conclusive.
  */
-function legacyTypeToGlobal(nodeType?: string): WikiNodeTypeGlobal {
-	switch (nodeType) {
-		case "file":
-		case "function":
-		case "class":
-			return "header";
-		case "directory":
-			return "structure";
-		case "section":
-			return "structure";
-		default:
-			return "structure";
+function deriveTypeFromPosition(row: any): WikiNodeTypeGlobal {
+	const id: string = row.id ?? "";
+	const path: string = row.path ?? "";
+	const projectId: string | undefined = row.projectId;
+	const nodeType: string | undefined = row.nodeType;
+
+	// 1. Synthetic roots.
+	if (id === WIKI_GLOBAL_ROOT_ID) return "project";
+	if (id.startsWith("wiki-root:memory:")) return "memory";
+	if (id.startsWith("wiki-root:")) return "project"; // project subtree root
+
+	// 2. Memory leaves by path signal.
+	if (path.startsWith("memory") || path.startsWith("memory-root:")) return "memory";
+
+	// 3. Project subtree members.
+	if (projectId) {
+		if (path.startsWith("intent:")) return "intent";
+		if (path.startsWith("header:")) return "header";
+		// Legacy discriminator for project-subtree nodes that predate M2.
+		if (nodeType === "file" || nodeType === "function" || nodeType === "class") return "header";
+		if (nodeType === "directory") return "structure";
+		return "structure";
 	}
+
+	// 4. No projectId and no memory path signal — legacy row. Trust nodeType.
+	if (nodeType === "file" || nodeType === "function" || nodeType === "class") return "header";
+	if (nodeType === "directory" || nodeType === "section") return "structure";
+
+	// 5. Fallback.
+	return "structure";
 }

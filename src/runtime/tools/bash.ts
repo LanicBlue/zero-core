@@ -31,6 +31,7 @@ import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import { buildTool } from "./tool-factory.js";
 import { EXEC_MAX_BUFFER_BYTES } from "../../core/constants.js";
+import { findWikiPathInShellCommand, wikiPathRejectMessage } from "./wiki-path-guard.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -251,6 +252,11 @@ export const bashTool = buildTool({
 		const config = ctx.toolConfig?.Shell ?? {};
 		const timeoutSec = inputTimeout ?? config.timeout;
 		const timeout = timeoutSec ? timeoutSec * 1000 : undefined;
+
+		// v0.8 (P1 §10.1): block agent shell access to the wiki memory store.
+		// Best-effort token scan; flags clear `.zero-core/wiki/` references.
+		const blockedPath = findWikiPathInShellCommand(command, ctx.workingDir);
+		if (blockedPath) return wikiPathRejectMessage(blockedPath);
 
 		const info = detectShell();
 

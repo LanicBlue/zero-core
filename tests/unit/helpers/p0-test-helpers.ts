@@ -182,3 +182,52 @@ export function buildLegacyCronRow(db: Database.Database, row: {
 		row.updatedAt ?? now,
 	);
 }
+
+// v0.8 (P1 §10.1): wiki body content migration helper. buildLegacyWikiRow
+// inserts a project_wiki row WITH the legacy `detail` + `type` columns, mirroring
+// the pre-P1 (M2-era) shape. Used by p1-migration.test.ts to verify
+// migrateWikiDetailToDisk exports detail to disk before dropping the columns.
+
+/**
+ * Insert one legacy project_wiki row carrying both `type` AND `detail`
+ * (pre-P1 schema). The migration's job is to:
+ *   - export non-empty `detail` to ~/.zero-core/wiki/<area>/<safe-name>.md,
+ *   - stamp `doc_pointer` on the row,
+ *   - DROP both `detail` and `type` columns.
+ */
+export function buildLegacyWikiRow(db: Database.Database, row: {
+	id: string;
+	parentId?: string | null;
+	projectId?: string | null;
+	type?: string; // legacy discriminator (header/intent/structure/memory/project)
+	nodeType?: string;
+	path: string;
+	title: string;
+	summary?: string;
+	detail?: string; // legacy body content (TEXT)
+	docPointer?: string;
+	provenance?: string;
+	lastUpdatedBy?: string;
+	createdAt?: string;
+	updatedAt?: string;
+}): void {
+	const now = new Date().toISOString();
+	const cols = "(id, parent_id, project_id, type, node_type, path, title, summary, detail, doc_pointer, provenance, last_updated_by, created_at, updated_at)";
+	const placeholders = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+	db.prepare(`INSERT INTO project_wiki ${cols} VALUES ${placeholders}`).run(
+		row.id,
+		row.parentId ?? null,
+		row.projectId ?? null,
+		row.type ?? null,
+		row.nodeType ?? null,
+		row.path,
+		row.title,
+		row.summary ?? null,
+		row.detail ?? null,
+		row.docPointer ?? null,
+		row.provenance ?? null,
+		row.lastUpdatedBy ?? "analyst",
+		row.createdAt ?? now,
+		row.updatedAt ?? now,
+	);
+}

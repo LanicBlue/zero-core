@@ -302,6 +302,14 @@ export interface SessionConfig {
 	 */
 	contextBundle?: SessionContextBundle;
 	/**
+	 * v0.8 (P1 §10.6): the agent's free wiki anchors (copied from
+	 * AgentRecord.wikiAnchors at session build time). Combined with the
+	 * auto-derived memory + project anchors (from contextBundle) this forms
+	 * the session's full anchor set — used by both the scope guard (visible
+	 * nodeId union) and the prompt injector (system + context channels).
+	 */
+	wikiAnchors?: import("../shared/types.js").AgentRecord["wikiAnchors"];
+	/**
 	 * v0.8 (M0): ZeroAdminService handle for the zero role's management tools.
 	 * Only set on zero sessions.
 	 */

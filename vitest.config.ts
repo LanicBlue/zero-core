@@ -28,5 +28,13 @@ export default defineConfig({
 		include: ["tests/unit/**/*.test.ts"],
 		environment: "node",
 		globals: false,
+		// v0.8 (sub2 P1): Vitest 4.x default `threads` pool fails to inject
+		// `globalThis.__vitest_worker__` on Node 24 + Windows, surfacing as
+		// "Cannot read properties of undefined (reading 'config')" at the first
+		// `describe(...)` call. The `vmThreads` pool runs tests in the main
+		// thread's VM context where the worker state IS available. Tracked at
+		// cloudflare/workers-sdk#10977 / vitest-dev/vitest (Node 24 worker
+		// pool regression). Swap back to `threads` once Vitest fixes it.
+		pool: "vmThreads",
 	},
 });

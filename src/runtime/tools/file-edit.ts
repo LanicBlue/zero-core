@@ -30,6 +30,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { buildTool } from "./tool-factory.js";
 import { checkSyntax, formatDiagnostics } from "./syntax-check.js";
+import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 
 export const fileEditTool = buildTool({
 	name: "Edit",
@@ -62,6 +63,8 @@ export const fileEditTool = buildTool({
 	execute: async (input, ctx) => {
 		const { path, oldText, newText } = input;
 		if (!ctx.workingDir) return "Error: no workspace directory configured";
+		// v0.8 (P1 §10.1): block agent edits to the wiki memory store.
+		if (isWikiDiskPath(path, ctx.workingDir)) return wikiPathRejectMessage(path);
 		const filePath = resolve(ctx.workingDir, path);
 		if (!filePath.startsWith(resolve(ctx.workingDir))) {
 			return `Access denied: path outside workspace (${path})`;

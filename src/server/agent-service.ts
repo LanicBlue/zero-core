@@ -432,6 +432,11 @@ export class AgentService {
 		// reaches config.wikiStoreGlobal for searchMemoryNodes.
 		if (this.wikiStoreGlobal) (sessionConfig as any).wikiStoreGlobal = this.wikiStoreGlobal;
 		if (this.extractorsConfig) (sessionConfig as any).extractors = this.extractorsConfig;
+		// v0.8 (P1 §10.6): copy the agent's free wikiAnchors onto the session
+		// config so the loop can resolve + inject them (system + context
+		// channels). Auto anchors (memory + project) are derived from the
+		// contextBundle inside the loop.
+		if (agent?.wikiAnchors) (sessionConfig as any).wikiAnchors = agent.wikiAnchors;
 		// Initialize run state for this session
 		if (!this.runStates.has(sessionId)) {
 			this.runStates.set(sessionId, { agentId, isBusy: false, streamingText: "", toolCalls: [] });
@@ -573,6 +578,12 @@ export class AgentService {
 		(sessionConfig as any).orchestratePlanStore = context.orchestratePlanStore;
 		(sessionConfig as any).orchestrateManifestStore = context.orchestrateManifestStore;
 		(sessionConfig as any).gitIntegration = context.gitIntegration;
+		// v0.8 (P1 §10.6): wiki anchor injection — surface the global
+		// WikiStore + the agent's free wikiAnchors so the role-prompt loop can
+		// resolve + render anchors (system + context channels). Auto anchors
+		// (memory + project) are derived from the contextBundle.
+		if (this.wikiStoreGlobal) (sessionConfig as any).wikiStoreGlobal = this.wikiStoreGlobal;
+		if (agent?.wikiAnchors) (sessionConfig as any).wikiAnchors = agent.wikiAnchors;
 
 		let loop = this.loops.get(sessionId);
 		if (!loop) {

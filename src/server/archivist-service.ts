@@ -403,7 +403,11 @@ export class ArchivistService {
 			moduleMap.get(modulePath)!.push(relPath);
 
 			if (isCode) {
-				// Header node: describes one code file. Pointer → the file on disk.
+				// Header node: describes one code file.
+				// v0.8 (P1 §10.1): docPointer is no longer a per-call input —
+				// the store derives + stamps the body file path itself. The
+				// reference to the actual workspace file lives in the node's
+				// body (markdown link) and in the path (`header:<relPath>`).
 				const summary = this.summarizeCodeFile(abs, relPath) ?? "(unreadable)";
 				const moduleNode = this.ensureModuleNode(projectId, subtreeRoot.id, modulePath);
 				const existing = this.findHeader(projectId, moduleNode.id, relPath);
@@ -414,7 +418,6 @@ export class ArchivistService {
 					path: `header:${relPath}`,
 					title: basenameOf(relPath),
 					summary,
-					docPointer: relPath,
 					provenance: "structure",
 					lastUpdatedBy: "archivist",
 				});
@@ -438,7 +441,8 @@ export class ArchivistService {
 						path: `intent:${relPath}`,
 						title: basenameOf(relPath),
 						summary,
-						docPointer: relPath,
+						// v0.8 (P1 §10.1): docPointer is code-internal, derived
+						// by the store — not an upsert input.
 						provenance: "confirmed",
 						requirementIds: requirementId ? [requirementId] : undefined,
 						lastUpdatedBy: "archivist",
@@ -492,7 +496,14 @@ export class ArchivistService {
 
 	private findHeader(projectId: string, moduleId: string, relPath: string): WikiNode | undefined {
 		const children = this.wiki.getChildren(moduleId);
-		return children.find((c) => c.type === "header" && c.docPointer === relPath);
+		// v0.8 (P1 §10.1): look up by node path, NOT docPointer. docPointer is
+		// now a code-internal cache of the node's body content file path
+		// (derived + stamped by the store); it is never set to the workspace
+		// relPath anymore. The (parentId, path) pair is the canonical upsert
+		// key — `header:<relPath>` uniquely identifies one code file under
+		// this module.
+		const headerPath = `header:${relPath}`;
+		return children.find((c) => c.type === "header" && c.path === headerPath);
 	}
 
 	private summarizeCodeFile(absPath: string, relPath: string): string | undefined {

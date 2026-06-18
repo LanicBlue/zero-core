@@ -30,6 +30,7 @@ import { resolve, relative, normalize } from "node:path";
 import { stat } from "node:fs/promises";
 import { glob } from "node:fs/promises";
 import { buildTool } from "./tool-factory.js";
+import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 
 // Directories to always skip
 const SKIP_DIRS = new Set([
@@ -96,6 +97,8 @@ export const globTool = buildTool({
 			if ((p.startsWith('"') && p.endsWith('"')) || (p.startsWith("'") && p.endsWith("'"))) {
 				p = p.slice(1, -1);
 			}
+			// v0.8 (P1 §10.1): block agent globbing inside the wiki memory store.
+			if (isWikiDiskPath(p, workingDir)) return wikiPathRejectMessage(p);
 			searchPath = workingDir ? normalize(resolve(workingDir, p)) : normalize(resolve(p));
 			if (restrictToWorkspace && workingDir && !searchPath.startsWith(normalize(resolve(workingDir)))) {
 				return `Access denied: search path outside workspace (${path})`;

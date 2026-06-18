@@ -29,6 +29,7 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 import { buildTool } from "./tool-factory.js";
 import { EXEC_MAX_BUFFER_BYTES } from "../../core/constants.js";
+import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -81,6 +82,8 @@ export const grepTool = buildTool({
 
 		let searchPath: string;
 		if (path) {
+			// v0.8 (P1 §10.1): block agent greps inside the wiki memory store.
+			if (isWikiDiskPath(path, workingDir)) return wikiPathRejectMessage(path);
 			searchPath = workingDir ? resolve(workingDir, path) : path;
 			if (restrictToWorkspace && workingDir && !searchPath.startsWith(resolve(workingDir))) {
 				return `Access denied: search path outside workspace (${path})`;
