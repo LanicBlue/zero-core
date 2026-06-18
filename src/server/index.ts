@@ -193,6 +193,19 @@ export async function startServer(options?: StartServerOptions) {
 	const management = new ManagementService({ agentStore, projectStore, agentToolStore, cronStore });
 	agentService.setManagement(management);
 
+	// v0.8 (P6 §7.1): fresh-DB seed — zero agent + software-dev wiki node.
+	// Both are protected (cannot be deleted). Runs at startup, after all
+	// stores are ready and before restoreAllSessions. RFC §7.1 / §7.5.
+	//
+	// Trigger: the literal spec condition is `agentStore.list().length === 0`,
+	// but AgentStore's constructor seeds a legacy default "Zero" agent on a
+	// fresh DB, so we instead use the seed module's idempotent guards (which
+	// recognize the seed by name/path and no-op on re-run). This produces the
+	// spec-required "fresh DB has zero + software-dev" state without colliding
+	// with the legacy default. (P7 will retire the legacy default.)
+	const { seedFreshDbDefaults } = await import("./fresh-db-seed.js");
+	seedFreshDbDefaults({ agentStore, wikiStore: wikiStoreGlobal, management });
+
 	agentService.subscribe((event: any) => {
 		// Forward all agent events to WebSocket clients
 		const msg = JSON.stringify(event);
@@ -585,9 +598,10 @@ export async function startServer(options?: StartServerOptions) {
 	});
 	app.use("/api/archivist", archivistRouter);
 
-	// v0.8 (M0): role presets — list + one-click instantiate
-	const { createPresetRouter } = await import("./preset-router.js");
-	app.use("/api/presets", createPresetRouter(management));
+	// v0.8 (M0/P6): role templates — list + one-click instantiate
+	// (P6 renamed from preset-router / /api/presets; RFC §7.2)
+	const { createRoleTemplateRouter } = await import("./role-template-router.js");
+	app.use("/api/role-templates", createRoleTemplateRouter(management));
 
 	// Tool execute
 	app.post("/api/tool-execute", async (req, res) => {

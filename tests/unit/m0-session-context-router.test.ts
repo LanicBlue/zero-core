@@ -33,7 +33,7 @@ import {
 	defaultWikiRootResolver,
 } from "../../src/server/session-context-router.js";
 import { ManagementService } from "../../src/server/management-service.js";
-import { ROLE_PRESETS, getPreset, listPresets, buildAgentFromPreset } from "../../src/runtime/role-presets.js";
+import { ROLE_PRESETS, getPreset, listPresets, buildAgentFromPreset } from "../../src/runtime/role-templates.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 // v0.8 P0 (§1.4 过渡期): roleTag 不再走 store round-trip;测试需要带 role_tag
 // 的 agent 时直接写物理列。
@@ -217,10 +217,14 @@ describe("role presets", () => {
 		expect(archivist?.whitelistedRoleTags).toEqual(["analyzer"]);
 	});
 
-	test("buildAgentFromPreset produces AgentRecord-shaped input with roleTag", () => {
+	test("buildAgentFromPreset produces AgentRecord-shaped input (no roleTag — RFC §1.4)", () => {
+		// v0.8 P6 (RFC §1.4): agent identity = name + systemPrompt; the template's
+		// roleTag is organization metadata and is NOT propagated onto the built
+		// agent. The deprecated `buildAgentFromPreset` alias forwards to
+		// `buildAgentFromTemplate` which omits roleTag.
 		const input = buildAgentFromPreset("pm", { name: "MyPM" });
 		expect(input.name).toBe("MyPM");
-		expect(input.roleTag).toBe("pm");
+		expect((input as any).roleTag).toBeUndefined();
 		expect(input.systemPrompt).toContain("PM");
 		expect(input.toolPolicy).toBeDefined();
 	});

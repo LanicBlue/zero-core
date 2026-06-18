@@ -510,6 +510,11 @@ describe("ipc-proxy route mapping completeness", () => {
 		"templates:delete":        { method: "DELETE", path: "/api/templates/:id" },
 		"templates:export":        { method: "POST", path: "/api/templates/:id/export" },
 		"templates:import":        { method: "POST", path: "/api/templates/import" },
+		// v0.8 P6 (RFC §7.2) — role identity templates (distinct from DB
+		// PromptTemplate /api/templates above).
+		"role-templates:list":         { method: "GET",  path: "/api/role-templates" },
+		"role-templates:get":          { method: "GET",  path: "/api/role-templates/:id" },
+		"role-templates:instantiate":  { method: "POST", path: "/api/role-templates/:id/instantiate" },
 		"tools:list":              { method: "GET",  path: "/api/config/tools" },
 		"tool-config:get":         { method: "GET",  path: "/api/config/tool-config" },
 		"tool-config:save":        { method: "PUT",  path: "/api/config/tool-config" },

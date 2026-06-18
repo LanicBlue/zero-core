@@ -121,6 +121,12 @@ const R: Record<string, RouteMapping> = {
 	"templates:export": { method: "POST", path: "/api/templates/:id/export", buildReq: (id) => ({ params: { id } }) },
 	"templates:import": { method: "POST", path: "/api/templates/import", buildReq: (json) => ({ body: { json } }) },
 
+	// Role Templates (v0.8 P6 — RFC §7.2; distinct from the DB TemplateStore
+	// /api/templates above. These are the role identity templates.)
+	"role-templates:list":         { method: "GET", path: "/api/role-templates", buildReq: (roleTag?) => ({ query: roleTag ? { roleTag } : {} }) },
+	"role-templates:get":          { method: "GET", path: "/api/role-templates/:id", buildReq: (id) => ({ params: { id } }) },
+	"role-templates:instantiate":  { method: "POST", path: "/api/role-templates/:id/instantiate", buildReq: (id, input) => ({ params: { id }, body: input ?? {} }) },
+
 	// Tools (list + config already in /api/config/tools)
 	"tools:list":       { method: "GET", path: "/api/config/tools", buildReq: () => ({}) },
 	"tool-config:get":  { method: "GET", path: "/api/config/tool-config", buildReq: () => ({}) },

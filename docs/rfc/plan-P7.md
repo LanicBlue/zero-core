@@ -38,6 +38,7 @@
 ### service roleTag 清理
 
 10. 删 pm-service `findPmAgent`(按 roleTag)、ProjectNotificationRouter 里的 role-based 查找;所有寻址改用 req 记录的 agentId(§1.5)。
+11. **清 AgentStore legacy "Zero" 默认 seed**(`agent-store.ts` 构造函数的 `DEFAULT_AGENT` + 默认 seed 逻辑):P6 的 fresh-db-seed 用幂等 name="zero" guard 绕开它,本阶段清掉 legacy 默认,让 `agentStore.list().length===0` 在真正空库成立。
 
 ## 风险
 

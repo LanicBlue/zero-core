@@ -167,6 +167,12 @@ const api: WindowApi = {
 	templatesDelete: (id) => ipcRenderer.invoke("templates:delete", id),
 	templatesExport: (id) => ipcRenderer.invoke("templates:export", id),
 	templatesImport: (json) => ipcRenderer.invoke("templates:import", json),
+
+	// ─── Role Templates (v0.8 P6 — RFC §7.2) ────────
+	roleTemplatesList: (roleTag?: string) => ipcRenderer.invoke("role-templates:list", roleTag),
+	roleTemplatesGet: (id: string) => ipcRenderer.invoke("role-templates:get", id),
+	roleTemplatesInstantiate: (id: string, input?: { name?: string; model?: string; provider?: string; workspaceDir?: string; bindToolPolicy?: boolean }) =>
+		ipcRenderer.invoke("role-templates:instantiate", id, input),
 	templatesGithubPreview: (url, subdir) => ipcRenderer.invoke("templates:github-preview", url, subdir),
 	templatesImportGithub: (url, selectedPaths) => ipcRenderer.invoke("templates:import-github", url, selectedPaths),
 

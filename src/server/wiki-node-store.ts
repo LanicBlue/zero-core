@@ -112,6 +112,16 @@ export function projectSubtreeRootId(projectId: string): string {
 }
 
 /**
+ * v0.8 (P6 §7.1 / §7.5): path constants for the fresh-DB seed knowledge
+ * subtree. The seed writes:
+ *   wiki-root:global / knowledge (KNOWLEDGE_ROOT_PATH_SEED)
+ *                  └── software-dev (SOFTWARE_DEV_NODE_PATH_SEED)
+ * Both are protected (cannot be deleted — see assertNotProtected).
+ */
+export const KNOWLEDGE_ROOT_PATH_SEED = "knowledge";
+export const SOFTWARE_DEV_NODE_PATH_SEED = "software-dev";
+
+/**
  * v0.8 (M5): stable synthetic id of one of the five global memory-type
  * roots (RFC §2.16 N2 / decision 46). Memory leaves written by extractor A
  * hang under their matching type root. These ids are shared with
@@ -375,6 +385,10 @@ export class WikiStore {
 	}
 
 	delete(id: string): void {
+		// v0.8 (P6 §7.1): protect the fresh-DB seed nodes — knowledge root and
+		// the software-dev playbook leaf. Deleting them would orphan zero's
+		// playbook and the auto-bootstrap path. RFC §7.5.
+		this.assertNotProtected(id);
 		// Cascade-delete children (recursive). Detail files are also removed.
 		const children = this.getChildren(id);
 		for (const child of children) {
@@ -382,6 +396,36 @@ export class WikiStore {
 		}
 		this.deleteNodeDetail(id);
 		this.store.delete(id);
+	}
+
+	/**
+	 * v0.8 (P6 §7.1 / §7.5): protected wiki nodes that cannot be deleted.
+	 * Identified by (parentId, path) so they survive DB id changes. The
+	 * knowledge root and its software-dev child are the fresh-DB seed.
+	 */
+	private assertNotProtected(id: string): void {
+		const node = this.get(id);
+		if (!node) return;
+		// software-dev playbook leaf — under the knowledge root.
+		if (node.path === SOFTWARE_DEV_NODE_PATH_SEED) {
+			const parent = node.parentId ? this.get(node.parentId) : undefined;
+			if (parent && parent.path === KNOWLEDGE_ROOT_PATH_SEED && parent.parentId === WIKI_GLOBAL_ROOT_ID) {
+				throw new Error(
+					"Cannot delete the protected 'knowledge/software-dev' playbook node (fresh-DB seed, RFC §7.1)",
+				);
+			}
+		}
+		// knowledge root — directly under the global root. Protecting it keeps
+		// the playbook anchored (zero / future HR manage its contents via
+		// upsert, not by deleting the root).
+		if (
+			node.path === KNOWLEDGE_ROOT_PATH_SEED &&
+			node.parentId === WIKI_GLOBAL_ROOT_ID
+		) {
+			throw new Error(
+				"Cannot delete the protected 'knowledge' subtree root (RFC §7.5)",
+			);
+		}
 	}
 
 	getChildren(parentId: string): WikiNode[] {

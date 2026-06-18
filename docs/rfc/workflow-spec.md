@@ -266,6 +266,8 @@ seed 触发点：`startServer` 内、所有 store 建好后、`restoreAllSession
 
 全仓统一用 **Template**：`role-presets.ts` → `role-templates.ts`，`ROLE_PRESETS` → `ROLE_TEMPLATES`，`getPreset`/`listPresets` → `getTemplate`/`listTemplates`，`instantiatePreset` → 废弃（由 `Agent create + template 字段` 替代）。Template 是**只读身份蓝图**（systemPrompt + base toolPolicy + 默认 workingScope），不是运行时实体。template 不定义 subagents/委派——那是 zero 在实例化时按合作关系配的（§1.5）。
 
+> **REST/IPC 命名空间**：路由用 `/api/role-templates`、IPC `role-templates:*`（非字面 `templates`）——既有 `/api/templates`（TemplateStore，DB prompt 模板）是不同概念，撞名会歧义。`role-templates` 语义一致且不破坏 TemplateStore。
+
 ### 7.3 工具分类：4 个 action 化工具
 
 zero 的工具按功能域压缩为 **4 个**，每个靠 `action` 字段路由输入（判别联合 schema）。

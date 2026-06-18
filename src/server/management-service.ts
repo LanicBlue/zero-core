@@ -49,11 +49,11 @@ import type { AgentToolStore } from "./agent-tool-store.js";
 import type { CronStore } from "./cron-store.js";
 import type { AgentRecord, ProjectRecord, CronRecord } from "../shared/types.js";
 import {
-	buildAgentFromPreset,
-	getPreset,
-	listPresets,
-	type RolePreset,
-} from "../runtime/role-presets.js";
+	buildAgentFromTemplate,
+	getTemplate,
+	listTemplates,
+	type RoleTemplate,
+} from "../runtime/role-templates.js";
 import { log } from "../core/logger.js";
 
 export interface ManagementDeps {
@@ -158,41 +158,42 @@ export class ManagementService {
 
 	// ─── Templates (§7.3) ────────────────────────────────────────
 	//
-	// Templates = role presets (role-presets.ts). Agent create with
-	// `template=<presetId>` copies the preset's identity (systemPrompt /
-	// model / toolPolicy) into the new agent. listTemplates / getTemplate
-	// are read-only views so the LLM (and UI) can enumerate them.
+	// Templates = role templates (role-templates.ts, RFC §7.2 — formerly the
+	// `role-presets.ts` / `ROLE_PRESETS` table). Agent create with
+	// `template=<templateId>` copies the template's identity (systemPrompt /
+	// model / toolPolicy) into the new agent. listTemplates / getTemplate are
+	// read-only views so the LLM (and UI) can enumerate them.
 
-	listTemplates(roleTag?: string): RolePreset[] {
-		return listPresets(roleTag);
+	listTemplates(roleTag?: string): RoleTemplate[] {
+		return listTemplates(roleTag);
 	}
 
-	getTemplate(templateId: string): RolePreset | undefined {
-		return getPreset(templateId);
+	getTemplate(templateId: string): RoleTemplate | undefined {
+		return getTemplate(templateId);
 	}
 
 	/**
-	 * Instantiate a role template as a global Agent. Resolves the preset's
+	 * Instantiate a role template as a global Agent. Resolves the template's
 	 * `whitelistedRoleTags` against currently-exposed agent-tools and merges
 	 * them into `toolPolicy.tools` keyed by entry.id (stable policy key).
 	 *
 	 * This is the Agent.create + template path. Also used by the REST
-	 * /api/presets/:id/instantiate entry (parallel to the Agent tool).
+	 * /api/role-templates/:id/instantiate entry (parallel to the Agent tool).
 	 */
 	instantiateTemplate(
 		templateId: string,
-		overrides?: Parameters<typeof buildAgentFromPreset>[1],
+		overrides?: Parameters<typeof buildAgentFromTemplate>[1],
 		options: { bindToolPolicy?: boolean } = {},
 	): AgentRecord {
-		const preset = getPreset(templateId);
-		if (!preset) throw new Error(`Unknown role template: ${templateId}`);
+		const template = getTemplate(templateId);
+		if (!template) throw new Error(`Unknown role template: ${templateId}`);
 
-		const baseInput = buildAgentFromPreset(templateId, overrides);
+		const baseInput = buildAgentFromTemplate(templateId, overrides);
 		const bindToolPolicy = options.bindToolPolicy ?? true;
 
-		if (bindToolPolicy && preset.whitelistedRoleTags && preset.whitelistedRoleTags.length > 0) {
+		if (bindToolPolicy && template.whitelistedRoleTags && template.whitelistedRoleTags.length > 0) {
 			const tools = { ...(baseInput.toolPolicy?.tools ?? {}) };
-			for (const roleTag of preset.whitelistedRoleTags) {
+			for (const roleTag of template.whitelistedRoleTags) {
 				const targetAgent = this.ensureRoleAgentExposed(roleTag);
 				if (targetAgent) {
 					tools[targetAgent.entry.id] = { enabled: true };
@@ -288,8 +289,8 @@ export class ManagementService {
 	// (Agent update consolidates toolPolicy mutations).
 
 	/**
-	 * Merge toolPolicy fields onto an agent. Retained for preset-router and
-	 * tests; the runtime path is Agent.update with a `toolPolicy` patch.
+	 * Merge toolPolicy fields onto an agent. Retained for role-template-router
+	 * and tests; the runtime path is Agent.update with a `toolPolicy` patch.
 	 */
 	mergeToolPolicy(agentId: string, patch: NonNullable<AgentRecord["toolPolicy"]>): AgentRecord {
 		const agent = this.agentStore.get(agentId);
@@ -326,9 +327,10 @@ export class ManagementService {
 	}
 
 	/**
-	 * Expose an agent as an internal agent-tool. Retained for template/preset
-	 * instantiation and the REST preset router; runtime tools do not call this
-	 * (agent-as-tool retired in P2 — delegation flows through AgentRecord.subagents).
+	 * Expose an agent as an internal agent-tool. Retained for template
+	 * instantiation and the REST role-template router; runtime tools do not
+	 * call this (agent-as-tool retired in P2 — delegation flows through
+	 * AgentRecord.subagents).
 	 */
 	exposeAgentAsTool(
 		agentId: string,
