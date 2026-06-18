@@ -4,9 +4,12 @@
 > 规范是「为什么/是什么」,本文档是「按什么顺序做、怎么算 done」。
 
 ## 推进方式
-- **sub1 实现**每一阶段(按下面顺序)。
-- **sub2 独立验收** + **写测试 + 跑测试**(unit + 已有 e2e 基建,见 `project-e2e-test-setup`)。
-- 验收通过 → commit git → 下一阶段;不通过 → 把 sub2 的理由喂回 sub1 迭代到通过。
+- **sub1 实现**每一阶段(按下面顺序,对照该阶段 `plan-Px.md`)。
+- **sub2 三步验收**(按该阶段 `acceptance-Px.md`):
+  1. **review 代码** —— 读 sub1 的实际改动,对照 acceptance 清单逐条核对(实现是否到位、有无越界、是否符合契约)。
+  2. **写测试脚本** —— 针对该阶段验收项写测试,**包含 unit 测试(数据/store/migration/逻辑)和 e2e 测试(UI/端到端流程,用已有 e2e 基建 `ZERO_CORE_TEST_FIXTURE`,见 `project-e2e-test-setup`)**。每条 acceptance 验收项都要有对应测试覆盖。
+  3. **执行测试** —— 跑测试,确认绿。
+- 验收(含 review + 测试)通过 → commit git → 下一阶段;不通过 → 把 sub2 的 review 意见 + 测试失败喂回 sub1 迭代到通过。
 - 每阶段宣称完成前:`npm run build:lib`(tsc 类型检查,契约见 `feedback-build-verification`)+ 测试绿。
 - schema 变更走显式 migration + 同步 `*_COLUMNS`(契约 1.2)。
 - 遇到规范没覆盖或无法解决的问题,停下来问用户。
