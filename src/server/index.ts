@@ -187,10 +187,11 @@ export async function startServer(options?: StartServerOptions) {
 	agentService.setAgentStore(agentStore);
 	agentService.setAgentToolStore(agentToolStore);
 
-	// v0.8 (M0): ZeroAdminService — zero global-management role's tool backend.
-	const { ZeroAdminService } = await import("./zero-admin-service.js");
-	const zeroAdmin = new ZeroAdminService({ agentStore, projectStore, agentToolStore, cronStore });
-	agentService.setZeroAdmin(zeroAdmin);
+	// v0.8 (P3): ManagementService (renamed from ZeroAdminService) —
+	// capability backend for the Project/Agent/Cron action tools.
+	const { ManagementService } = await import("./management-service.js");
+	const management = new ManagementService({ agentStore, projectStore, agentToolStore, cronStore });
+	agentService.setManagement(management);
 
 	agentService.subscribe((event: any) => {
 		// Forward all agent events to WebSocket clients
@@ -361,6 +362,11 @@ export async function startServer(options?: StartServerOptions) {
 	// AgentService (loaded via loadConfig in its constructor).
 	agentService.setWikiStoreGlobal(wikiStoreGlobal);
 
+	// v0.8 (P3 §7.7 #4): tool-call usage log — one row per tool invocation,
+	// surfaced onto every session so tool-factory can record it. Best-effort.
+	const { ToolUsageStore } = await import("./tool-usage-store.js");
+	agentService.setToolUsageStore(new ToolUsageStore(sessionDB));
+
 	analystService.setGitIntegration(gitIntegration);
 
 	registerRequirementHooks({
@@ -414,7 +420,7 @@ export async function startServer(options?: StartServerOptions) {
 
 	// v0.8 (M1): cron REST router — create/update/delete/list cron entries.
 	const { createCronRouter } = await import("./cron-router.js");
-	app.use("/api/crons", createCronRouter({ zeroAdmin, cronManager }));
+	app.use("/api/crons", createCronRouter({ management, cronManager }));
 
 	// Requirements — with M5 verify/archive/report + notifications
 	const requirementRouter = createRequirementRouter({ requirementStore, taskStepStore, notificationService });
@@ -581,7 +587,7 @@ export async function startServer(options?: StartServerOptions) {
 
 	// v0.8 (M0): role presets — list + one-click instantiate
 	const { createPresetRouter } = await import("./preset-router.js");
-	app.use("/api/presets", createPresetRouter(zeroAdmin));
+	app.use("/api/presets", createPresetRouter(management));
 
 	// Tool execute
 	app.post("/api/tool-execute", async (req, res) => {

@@ -26,7 +26,7 @@
 // - ../../shared/types.js：CronRecord
 //
 // ## 维护规则
-// - IPC 模式下不依赖 ZeroAdminService（它只在 server 模式装配），直接走 store
+// - IPC 模式下不依赖 ManagementService（它只在 server 模式装配），直接走 store
 // - 字段变更需同步 cron-store COLUMNS + db-migration CRON_COLUMNS
 //
 

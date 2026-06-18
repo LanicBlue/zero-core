@@ -46,7 +46,7 @@ export type ToolCategory =
 	| "assistant"
 	| "interaction"
 	| "agent"
-	| "zero-admin";
+	| "management";
 
 export interface ToolMeta {
 	category: ToolCategory;
@@ -77,6 +77,75 @@ export function truncateResult(result: string, maxSize: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Tool usage logging (v0.8 P3 §7.7 #4) — best-effort per-call log
+// ---------------------------------------------------------------------------
+
+/**
+ * Record one tool invocation to the tool_usage table. Best-effort: any error
+ * is swallowed (logging must never break the tool path). Params are redacted
+ * to a short summary to avoid write amplification + avoid leaking secrets in
+ * inputs (e.g. Read/Write path strings).
+ *
+ * The ToolUsageStore is injected through ctx.toolUsageStore (only present on
+ * sessions that wired it — server mode). When absent, this is a no-op.
+ */
+function recordToolUsage(
+	toolName: string,
+	input: unknown,
+	startTs: number,
+	ctx: ToolExecutionContext | { agentId?: string; sessionId?: string },
+	success: boolean,
+	_errorMsg?: string,
+): void {
+	try {
+		const store = (ctx as any)?.toolUsageStore as
+			| { record: (input: any) => unknown }
+			| undefined;
+		if (!store) return;
+		store.record({
+			toolName,
+			agentId: (ctx as any).agentId,
+			sessionId: (ctx as any).sessionId,
+			calledAt: new Date(startTs).toISOString(),
+			params: summarizeParams(input),
+			success,
+			durationMs: Date.now() - startTs,
+		});
+	} catch {
+		// best-effort — never break the tool call on logging failure
+	}
+}
+
+/**
+ * Reduce a tool input to a compact, secret-safe summary for the usage log.
+ * Strategy: keep action + a few scalar identifiers, drop large blobs
+ * (system prompts, doc bodies, etc.). Capped at ~500 chars.
+ */
+function summarizeParams(input: unknown): unknown {
+	if (input == null || typeof input !== "object") return input;
+	const src = input as Record<string, unknown>;
+	const out: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(src)) {
+		if (v == null) continue;
+		if (typeof v === "string") {
+			out[k] = v.length > 200 ? v.slice(0, 200) + "…(truncated)" : v;
+		} else if (typeof v === "number" || typeof v === "boolean") {
+			out[k] = v;
+		} else {
+			// objects/arrays — store a length hint only (avoid leaking nested
+			// prompt content / large toolPolicy blobs).
+			try {
+				const json = JSON.stringify(v);
+				out[k] = json.length > 200 ? `(${json.length} chars)` : JSON.parse(json);
+			} catch {
+				out[k] = "(unserializable)";
+			}
+		}
+	}
+	return out;
+}
+
+// ---------------------------------------------------------------------------
 // buildTool — factory that wraps AI SDK's tool() with metadata
 // ---------------------------------------------------------------------------
 
@@ -104,6 +173,8 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 			const ctx = opts?.experimental_context as ToolExecutionContext | undefined;
 			const ctxOrEmpty = ctx ?? { workingDir: "", agentId: "", emit: () => {} };
 			const toolCallId = (opts?.toolCallId ?? opts?.id ?? "") as string;
+			// v0.8 (P3 §7.7 #4): wall-clock the tool call for tool_usage log.
+			const startTs = Date.now();
 
 			// PreToolUse hook — can block execution
 			const preResult = await triggerHooks("PreToolUse", {
@@ -142,6 +213,7 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 					toolCallId,
 				});
 				if (limiter && rlConfig) limiter.release(options.name);
+				recordToolUsage(options.name, input, startTs, ctxOrEmpty, true);
 				return truncateResult(result, meta.maxResultSize);
 			} catch (err) {
 				await triggerHooks("PostToolUseFailure", {
@@ -154,6 +226,7 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 					toolCallId,
 				});
 				if (limiter && rlConfig) limiter.release(options.name);
+				recordToolUsage(options.name, input, startTs, ctxOrEmpty, false, (err as Error).message);
 				throw err;
 			}
 		},

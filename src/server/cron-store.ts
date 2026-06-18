@@ -15,7 +15,7 @@
 // - CronRecord CRUD
 //
 // ## 定位
-// 服务层存储，被 CronAnalysisManager (调度消费端)、ZeroAdminService、
+// 服务层存储，被 CronAnalysisManager (调度消费端)、ManagementService、
 // cron IPC handler 使用。
 //
 // ## 依赖

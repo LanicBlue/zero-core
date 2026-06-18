@@ -315,10 +315,13 @@ export interface SessionConfig {
 	 */
 	wikiAnchors?: import("../shared/types.js").AgentRecord["wikiAnchors"];
 	/**
-	 * v0.8 (M0): ZeroAdminService handle for the zero role's management tools.
-	 * Only set on zero sessions.
+	 * v0.8 (P3): ManagementService handle for the domain action tools
+	 * (Project/Agent/Cron). Only set on zero sessions.
+	 *
+	 * (Renamed from `zeroAdmin` in P3 — RFC §7.3 硬原则: capability lives in
+	 * tools named by function, not by agent. The legacy field name is gone.)
 	 */
-	zeroAdmin?: any;
+	management?: any;
 }
 
 // ---------------------------------------------------------------------------
@@ -387,12 +390,12 @@ export interface ToolExecutionContext {
 	/** v0.8 (M0): session context bundle (D-B) carried by this loop. */
 	contextBundle?: SessionContextBundle;
 	/**
-	 * v0.8 (M0): ZeroAdminService handle for the zero global-management
-	 * role's tools (create/update/delete project, agent, set toolPolicy,
-	 * expose-as-tool). Only present on zero sessions; absent elsewhere so
-	 * the tools gate themselves out via CONDITIONAL_TOOLS.
+	 * v0.8 (P3): ManagementService handle for the zero global-management
+	 * role's action tools (Project/Agent/Cron). Only present on zero
+	 * sessions; absent elsewhere so the tools gate themselves out via
+	 * CONDITIONAL_TOOLS. (Renamed from `zeroAdmin` in P3.)
 	 */
-	zeroAdmin?: any;
+	management?: any;
 	/**
 	 * v0.8 (P2 §11.5): this caller's subagents list (mirrors SessionConfig.
 	 * subagents). Surfaced so the Orchestrate engine can resolve a DSL `task`

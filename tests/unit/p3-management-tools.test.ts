@@ -1,0 +1,500 @@
+// P3 单元测试:工具重组 — 4 action 工具 + verify + tool_usage
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 验证 P3 核心交付 (acceptance-P3.md):
+//   - 四个判别联合 action 工具各 action 的 schema + 行为 (每个 action 一个用例)
+//       * Project (create/update/delete/get/list)
+//       * AgentRegistry (create/update/delete/get/list/listTemplates/getTemplate)
+//       * Cron (create/update/delete/get/list/trigger)
+//       * Wiki (expand/read/upsert/search)
+//   - Agent delete zero role agent 被 reject (§7.3 protected)
+//   - verify 工具 end-to-end (lead 提交 → PM 判 APPROVED → verdict 返回;
+//                              lead 提交 → PM 判 REJECTED → 意见返回,mock delegateTask)
+//   - tool_usage 记录写入 (tool-factory recordToolUsage 经 ctx.toolUsageStore)
+//
+// ## 输入
+// 临时 SessionDB (mkdtempSync) + 真实 stores + mock delegateTask。
+//
+// ## 输出
+// Vitest 用例。
+//
+// ## 边界
+// - Cron 三模式调度触发 → P4 (本测试只验 store CRUD + trigger 入口)
+// - verify→PM→archivist 端到端闭环 → P7 (本测试 mock delegateTask,不验 archivist)
+//
+
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { SessionDB } from "../../src/server/session-db.js";
+import { ProjectStore } from "../../src/server/project-store.js";
+import { AgentStore } from "../../src/server/agent-store.js";
+import { AgentToolStore } from "../../src/server/agent-tool-store.js";
+import { CronStore } from "../../src/server/cron-store.js";
+import { ManagementService } from "../../src/server/management-service.js";
+import { WikiStore } from "../../src/server/wiki-node-store.js";
+import { ProjectWikiStore } from "../../src/server/project-wiki-store.js";
+import { RequirementStore } from "../../src/server/requirement-store.js";
+import { ToolUsageStore } from "../../src/server/tool-usage-store.js";
+import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { projectTool } from "../../src/runtime/tools/project-tool.js";
+import { agentTool } from "../../src/runtime/tools/agent-tool.js";
+import { cronTool } from "../../src/runtime/tools/cron-tool.js";
+import { wikiTool } from "../../src/runtime/tools/wiki-tool.js";
+import { verifyTool } from "../../src/runtime/tools/verify-tool.js";
+import { runMigrations } from "../../src/server/db-migration.js";
+import { seedAgentWithRoleTag } from "./helpers/p0-test-helpers.js";
+import type { CronSchedule } from "../../src/shared/types.js";
+
+let tmpDir: string;
+let sessionDB: SessionDB;
+let projectStore: ProjectStore;
+let agentStore: AgentStore;
+let agentToolStore: AgentToolStore;
+let cronStore: CronStore;
+let management: ManagementService;
+let wikiStoreGlobal: WikiStore;
+let wikiStore: ProjectWikiStore;
+let requirementStore: RequirementStore;
+let toolUsageStore: ToolUsageStore;
+
+// Get the inner execute (bypasses AI SDK wrapper + hooks/rate-limit, so the
+// test drives the action switch directly and asserts on its return string).
+const execProject = getToolExecute(projectTool)!;
+const execAgent = getToolExecute(agentTool)!;
+const execCron = getToolExecute(cronTool)!;
+const execWiki = getToolExecute(wikiTool)!;
+const execVerify = getToolExecute(verifyTool)!;
+
+const SCHED_DAILY: CronSchedule = { mode: "interval", everyMs: 86_400_000 };
+
+function parse(s: unknown): any {
+	return typeof s === "string" ? JSON.parse(s) : s;
+}
+
+beforeEach(() => {
+	tmpDir = mkdtempSync(join(tmpdir(), "zero-p3-"));
+	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	runMigrations(sessionDB);
+	projectStore = new ProjectStore(sessionDB);
+	agentStore = new AgentStore(sessionDB);
+	agentToolStore = new AgentToolStore(sessionDB);
+	cronStore = new CronStore(sessionDB);
+	wikiStoreGlobal = new WikiStore(sessionDB);
+	wikiStore = new ProjectWikiStore(wikiStoreGlobal);
+	requirementStore = new RequirementStore(sessionDB);
+	toolUsageStore = new ToolUsageStore(sessionDB);
+	management = new ManagementService({ agentStore, projectStore, agentToolStore, cronStore });
+});
+
+afterEach(() => {
+	sessionDB.close();
+	rmSync(tmpDir, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// Project tool — 5 actions (§8.2)
+// ---------------------------------------------------------------------------
+
+describe("Project action tool", () => {
+	function ctx(): any {
+		return { management };
+	}
+
+	test("create", async () => {
+		const r = parse(await execProject(
+			{ action: "create", name: "P1", workspaceDir: join(tmpDir, "ws1") },
+			ctx(),
+		));
+		expect(r.name).toBe("P1");
+		expect(r.id).toBeTruthy();
+	});
+
+	test("update (rename)", async () => {
+		const p = management.createProject({ name: "P", workspaceDir: join(tmpDir, "ws") });
+		const r = parse(await execProject({ action: "update", id: p.id, name: "P2" }, ctx()));
+		expect(r.name).toBe("P2");
+	});
+
+	test("delete", async () => {
+		const p = management.createProject({ name: "P", workspaceDir: join(tmpDir, "ws") });
+		const r = parse(await execProject({ action: "delete", id: p.id }, ctx()));
+		expect(r.success).toBe(true);
+		expect(management.listProjects().length).toBe(0);
+	});
+
+	test("get", async () => {
+		const p = management.createProject({ name: "P", workspaceDir: join(tmpDir, "ws") });
+		const r = parse(await execProject({ action: "get", id: p.id }, ctx()));
+		expect(r.id).toBe(p.id);
+		// includeContext=true in P3 still returns metadata only (P5 aggregates).
+		const r2 = parse(await execProject({ action: "get", id: p.id, includeContext: true }, ctx()));
+		expect(r2.id).toBe(p.id);
+	});
+
+	test("list", async () => {
+		management.createProject({ name: "A", workspaceDir: join(tmpDir, "a") });
+		management.createProject({ name: "B", workspaceDir: join(tmpDir, "b") });
+		const r = parse(await execProject({ action: "list" }, ctx()));
+		expect(r.length).toBe(2);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// AgentRegistry tool — 7 actions (§7.3), incl. create-with-template
+// ---------------------------------------------------------------------------
+
+describe("AgentRegistry action tool", () => {
+	function ctx(): any {
+		return { management };
+	}
+
+	test("create", async () => {
+		const r = parse(await execAgent({ action: "create", name: "MyRole" }, ctx()));
+		expect(r.name).toBe("MyRole");
+	});
+
+	test("create with template copies identity from preset (replaces InstantiatePreset)", async () => {
+		// Template path = the new shape of InstantiatePreset. Requires callee
+		// role agents for whitelisted tags to be exposed — seed a few.
+		for (const [name, tag] of [["A1", "analyzer"], ["P1", "planner"], ["D1", "developer"], ["R1", "reviewer"], ["Q1", "qa"]] as const) {
+			const a = management.createAgent({ name } as any);
+			seedAgentWithRoleTag(sessionDB, a.id, tag);
+		}
+		const r = parse(await execAgent(
+			{ action: "create", name: "MyLead", template: "lead" },
+			ctx(),
+		));
+		expect(r.name).toBe("MyLead");
+		// Template brings the lead system prompt (copied identity).
+		expect(r.systemPrompt).toBeTruthy();
+	});
+
+	test("update merges toolPolicy/subagents/wikiAnchors (replaces SetToolPolicy/SetToolEnabled)", async () => {
+		const a = management.createAgent({ name: "A" } as any);
+		const r = parse(await execAgent({
+			action: "update",
+			id: a.id,
+			toolPolicy: { executionMode: "parallel", tools: { Read: { enabled: true } } },
+			subagents: [{ agentId: "other-agent", name: "Helper" }],
+			wikiAnchors: [{ nodeId: "n1", inject: "system" }],
+		}, ctx()));
+		expect(r.toolPolicy.executionMode).toBe("parallel");
+		expect(r.toolPolicy.tools.Read.enabled).toBe(true);
+		expect(r.subagents.length).toBe(1);
+		expect(r.wikiAnchors.length).toBe(1);
+	});
+
+	test("delete zero role agent is rejected (§7.3 protected)", async () => {
+		const zero = management.createAgent({ name: "zero" } as any);
+		seedAgentWithRoleTag(sessionDB, zero.id, "zero");
+		const r = await execAgent({ action: "delete", id: zero.id }, ctx());
+		// safe() wraps thrown errors as "Error: …" string (does not reject).
+		expect(String(r)).toMatch(/protected.*zero/i);
+		expect(management.getAgent(zero.id)).toBeDefined();
+	});
+
+	test("get", async () => {
+		const a = management.createAgent({ name: "A" } as any);
+		const r = parse(await execAgent({ action: "get", id: a.id }, ctx()));
+		expect(r.id).toBe(a.id);
+	});
+
+	test("list", async () => {
+		const a = management.createAgent({ name: "A-list-target" } as any);
+		const r = parse(await execAgent({ action: "list" }, ctx()));
+		expect(r.map((x: any) => x.id)).toContain(a.id);
+	});
+
+	test("listTemplates + getTemplate", async () => {
+		const list = parse(await execAgent({ action: "listTemplates" }, ctx()));
+		expect(list.find((p: any) => p.roleTag === "lead")).toBeTruthy();
+		const one = parse(await execAgent({ action: "getTemplate", templateId: "lead" }, ctx()));
+		expect(one.roleTag).toBe("lead");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Cron tool — 6 actions (§9.4); trigger is a P3 stub (P4 lands the run)
+// ---------------------------------------------------------------------------
+
+describe("Cron action tool", () => {
+	function ctx(): any {
+		return { management };
+	}
+
+	function mkAgent(): string {
+		const a = management.createAgent({ name: "PM" } as any);
+		seedAgentWithRoleTag(sessionDB, a.id, "pm");
+		return a.id;
+	}
+	function mkScope(projectId?: string) {
+		return { projectId, workspaceDir: join(tmpDir, "ws"), wikiRootNodeId: "wiki-root:test" };
+	}
+
+	test("create", async () => {
+		const agentId = mkAgent();
+		const r = parse(await execCron({
+			action: "create", agentId, workingScope: mkScope(), schedule: SCHED_DAILY,
+		}, ctx()));
+		expect(r.agentId).toBe(agentId);
+		expect(r.enabled).toBe(true);
+	});
+
+	test("update", async () => {
+		const agentId = mkAgent();
+		const c = management.createCron({ agentId, workingScope: mkScope(), schedule: SCHED_DAILY });
+		const r = parse(await execCron({
+			action: "update", id: c.id, enabled: false,
+		}, ctx()));
+		expect(r.enabled).toBe(false);
+	});
+
+	test("delete (unbind, agent stays)", async () => {
+		const agentId = mkAgent();
+		const c = management.createCron({ agentId, workingScope: mkScope(), schedule: SCHED_DAILY });
+		const r = parse(await execCron({ action: "delete", id: c.id }, ctx()));
+		expect(r.success).toBe(true);
+		expect(management.listCrons().length).toBe(0);
+		expect(management.getAgent(agentId)).toBeDefined();
+	});
+
+	test("get", async () => {
+		const agentId = mkAgent();
+		const c = management.createCron({ agentId, workingScope: mkScope(), schedule: SCHED_DAILY });
+		const r = parse(await execCron({ action: "get", id: c.id }, ctx()));
+		expect(r.id).toBe(c.id);
+	});
+
+	test("list (with agentId filter)", async () => {
+		const a1 = mkAgent();
+		const a2 = mkAgent();
+		management.createCron({ agentId: a1, workingScope: mkScope(), schedule: SCHED_DAILY });
+		management.createCron({ agentId: a2, workingScope: mkScope(), schedule: SCHED_DAILY });
+		expect(parse(await execCron({ action: "list" }, ctx())).length).toBe(2);
+		expect(parse(await execCron({ action: "list", agentId: a1 }, ctx())).length).toBe(1);
+	});
+
+	test("trigger is a P3 stub (records intent, P4 runs)", async () => {
+		const agentId = mkAgent();
+		const c = management.createCron({ agentId, workingScope: mkScope(), schedule: SCHED_DAILY });
+		const r = parse(await execCron({ action: "trigger", id: c.id }, ctx()));
+		expect(r.accepted).toBe(true);
+		expect(r.scheduledBy).toBe("P4"); // marker — actual run is P4
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Wiki tool — 4 actions (§10.7), scope = caller anchor union
+// ---------------------------------------------------------------------------
+
+describe("Wiki action tool", () => {
+	let projWs: string;
+	let projectId: string;
+
+	beforeEach(() => {
+		projWs = join(tmpDir, "ws");
+		mkdirSync(projWs, { recursive: true });
+		const proj = management.createProject({ name: "P", workspaceDir: projWs });
+		projectId = proj.id;
+		// Lazily create the project subtree root so wiki upsert has a valid
+		// parent scope (the tool's wiki scope = this subtree).
+		wikiStoreGlobal.ensureProjectSubtree(projectId, "P");
+	});
+
+	function ctx(): any {
+		return {
+			wikiStore,
+			projectId,
+			agentRole: "lead",
+			workingDir: projWs,
+			contextBundle: { workspaceDir: projWs, wikiRootNodeId: `wiki-root:${projectId}` },
+		};
+	}
+
+	test("upsert writes into the caller's project subtree", async () => {
+		const r = await execWiki({
+			action: "upsert",
+			parentId: `wiki-root:${projectId}`,
+			type: "intent",
+			path: "intent/feature-x",
+			title: "Feature X",
+			summary: "Why we built it",
+		}, ctx());
+		expect(r).toMatch(/upserted/i);
+	});
+
+	test("read reads a workspace file (read-only)", async () => {
+		writeFileSync(join(projWs, "notes.md"), "# hello world");
+		const r = await execWiki({ action: "read", path: "notes.md" }, ctx());
+		expect(r).toContain("hello world");
+	});
+
+	test("expand returns node detail for a visible node", async () => {
+		// Seed a node via the tool itself, then expand.
+		await execWiki({
+			action: "upsert",
+			parentId: `wiki-root:${projectId}`,
+			type: "intent",
+			path: "intent/y",
+			title: "Y",
+			summary: "sum-y",
+		}, ctx());
+		// Find the seeded node id by search (single-source way that doesn't
+		// depend on store internals).
+		const searched = await execWiki({ action: "search", query: "sum-y" }, ctx());
+		expect(searched).toMatch(/sum-y/);
+		// extract the leading id token "<id> | …"
+		const nodeId = searched.split("\n")[0].split("|")[0].trim();
+		const r = await execWiki({ action: "expand", nodeId }, ctx());
+		expect(r).toMatch(/Y|sum-y|intent/);
+	});
+
+	test("search substring match across visible nodes", async () => {
+		await execWiki({
+			action: "upsert",
+			parentId: `wiki-root:${projectId}`,
+			type: "structure",
+			path: "structure/alpha",
+			title: "Alpha",
+			summary: "alpha-beta-gamma",
+		}, ctx());
+		const r = await execWiki({ action: "search", query: "alpha-beta" }, ctx());
+		expect(r).toMatch(/Alpha/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// verify tool (§4.5 / §11.4) — blocking; PM verdict via delegateTask
+// ---------------------------------------------------------------------------
+
+describe("verify tool (lead submit → PM verdict)", () => {
+	let pmAgentId: string;
+	let requirementId: string;
+	let projectId: string;
+
+	beforeEach(() => {
+		pmAgentId = management.createAgent({ name: "PM" } as any).id;
+		seedAgentWithRoleTag(sessionDB, pmAgentId, "pm");
+		// Create a real Project so RequirementStore.create's projectId FK holds.
+		const proj = management.createProject({ name: "VerifyProj", workspaceDir: join(tmpDir, "vws") });
+		projectId = proj.id;
+		const req = requirementStore.create({
+			projectId,
+			title: "Test Req",
+			description: "intent",
+			status: "ready" as any,
+			source: "user" as any,
+			priority: "p1" as any,
+			reviewer: "analyst",
+			reviewerAgentId: pmAgentId,
+		} as any);
+		requirementId = req.id;
+	});
+
+	function ctx(delegateTask: (task: string, opts?: any) => Promise<string>): any {
+		return {
+			requirementStore,
+			delegateTask,
+			management,
+			projectId,
+		};
+	}
+
+	test("PM APPROVED → verdict returned; requirement status='verify'", async () => {
+		const delegateTask = vi.fn(async (_task: string, _opts?: any) =>
+			"VERDICT: APPROVED — change covers the intent");
+		const r = await execVerify({ requirementId }, ctx(delegateTask));
+		expect(r).toMatch(/APPROVED/i);
+		expect(delegateTask).toHaveBeenCalled();
+		// verify set status to "verify" + added an audit message.
+		const updated = requirementStore.get(requirementId) as any;
+		expect(updated?.status).toBe("verify");
+	});
+
+	test("PM REJECTED → gap reason returned (mock PM)", async () => {
+		const delegateTask = vi.fn(async (_task: string, _opts?: any) =>
+			"VERDICT: REJECTED — missing test coverage for the error path");
+		const r = await execVerify({ requirementId }, ctx(delegateTask));
+		expect(r).toMatch(/REJECTED/i);
+		expect(r).toMatch(/error path/);
+	});
+
+	test("delegateTask targets PM agent (targetAgentId passed)", async () => {
+		const delegateTask = vi.fn(async (_task: string, _opts?: any) =>
+			"VERDICT: APPROVED — ok");
+		await execVerify({ requirementId }, ctx(delegateTask));
+		const opts = delegateTask.mock.calls[0]?.[1];
+		expect(opts?.targetAgentId).toBe(pmAgentId);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// tool_usage logging (§7.7 #4) — one row per tool invocation via ctx.toolUsageStore
+// ---------------------------------------------------------------------------
+
+describe("tool_usage record", () => {
+	// tool_usage is written by the AI SDK wrapper in tool-factory (not by the
+	// inner options.execute). To exercise it, drive the wrapper directly:
+	// toolDef.execute(input, { experimental_context: ctx }). The wrapper unwraps
+	// opts.experimental_context into the inner execute's ctx and calls
+	// recordToolUsage on completion.
+	function callViaWrapper(toolDef: any, input: any, ctx: any): Promise<unknown> {
+		return toolDef.execute(input, { experimental_context: ctx, toolCallId: "test-call" });
+	}
+
+	test("successful tool call writes a row with success=true", async () => {
+		const ctx: any = {
+			management,
+			toolUsageStore,
+			agentId: "agent-1",
+			sessionId: "sess-1",
+		};
+		await callViaWrapper(projectTool, { action: "create", name: "P", workspaceDir: join(tmpDir, "ws") }, ctx);
+		const rows = toolUsageStore.listByTool("Project");
+		expect(rows.length).toBe(1);
+		expect(rows[0].success).toBe(true);
+		expect(rows[0].agentId).toBe("agent-1");
+		expect(rows[0].sessionId).toBe("sess-1");
+		// params summary present (action recorded, workspaceDir recorded).
+		expect(rows[0].params).toBeTruthy();
+	});
+
+	test("failed tool call writes a row with success=false", async () => {
+		// The management tools swallow service errors via safe() (return
+		// "Error: …" string, never throw). The tool-factory wrapper only
+		// records success=false when the tool execute() actually throws. So
+		// to exercise the failure path we build a minimal throwing tool with
+		// the same wrapper and drive it.
+		const { buildTool } = await import("../../src/runtime/tools/tool-factory.js");
+		const z = await import("zod");
+		const throwingTool = buildTool({
+			name: "ThrowingTool",
+			description: "test-only tool that throws",
+			meta: { category: "management" as const, isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
+			inputSchema: z.object({}),
+			execute: async () => { throw new Error("boom"); },
+		});
+		const ctx: any = { toolUsageStore, agentId: "agent-1", sessionId: "sess-1" };
+		await expect(
+			throwingTool.execute({}, { experimental_context: ctx, toolCallId: "c1" }),
+		).rejects.toThrow(/boom/);
+		const rows = toolUsageStore.listByTool("ThrowingTool");
+		expect(rows.length).toBe(1);
+		expect(rows[0].success).toBe(false);
+	});
+
+	test("params summary truncates long string inputs (≤200 + …)", async () => {
+		const longName = "x".repeat(500);
+		const ctx: any = { management, toolUsageStore, agentId: "a", sessionId: "s" };
+		await callViaWrapper(projectTool, { action: "create", name: longName, workspaceDir: join(tmpDir, "ws") }, ctx);
+		const row = toolUsageStore.listByTool("Project")[0];
+		const params = row.params as Record<string, unknown>;
+		// String reduced to ≤200 chars + truncation marker (per summarizeParams).
+		expect((params.name as string).length).toBeLessThanOrEqual(220);
+		expect(params.name as string).toMatch(/…\(truncated\)/);
+	});
+});

@@ -14,7 +14,7 @@
 // 创建/更新/删除后调 cronManager.refreshCron(id) 让定时器与持久化状态同步。
 //
 // ## 输入
-// - ZeroAdminService (cron CRUD + 校验)
+// - ManagementService (cron CRUD + 校验) (P3: renamed from ZeroAdminService)
 // - CronAnalysisManager (调度同步)
 //
 // ## 输出
@@ -25,31 +25,31 @@
 //
 // ## 依赖
 // - express
-// - ./zero-admin-service
+// - ./management-service (P3: renamed from ./zero-admin-service)
 // - ./cron-analysis
 //
 
 import { Router } from "express";
-import type { ZeroAdminService } from "./zero-admin-service.js";
+import type { ManagementService } from "./management-service.js";
 import type { CronAnalysisManager } from "./cron-analysis.js";
 import type { CronRecord } from "../shared/types.js";
 
 export function createCronRouter(deps: {
-	zeroAdmin: ZeroAdminService;
+	management: ManagementService;
 	cronManager: CronAnalysisManager;
 }): Router {
 	const router = Router();
-	const { zeroAdmin, cronManager } = deps;
+	const { management, cronManager } = deps;
 
 	/** GET / — list crons (optional ?agentId filter) */
 	router.get("/", (req, res) => {
 		const agentId = req.query.agentId as string | undefined;
-		res.json(zeroAdmin.listCrons(agentId ? { agentId } : undefined));
+		res.json(management.listCrons(agentId ? { agentId } : undefined));
 	});
 
 	/** GET /:id — get a single cron */
 	router.get("/:id", (req, res) => {
-		const cron = zeroAdmin.getCron(req.params.id);
+		const cron = management.getCron(req.params.id);
 		if (!cron) return res.status(404).json({ error: `Cron not found: ${req.params.id}` });
 		res.json(cron);
 	});
@@ -58,7 +58,7 @@ export function createCronRouter(deps: {
 	router.post("/", (req, res) => {
 		try {
 			const input = pickCreateInput(req.body);
-			const cron = zeroAdmin.createCron(input);
+			const cron = management.createCron(input);
 			cronManager.refreshCron(cron.id);
 			res.status(201).json(cron);
 		} catch (e) {
@@ -70,7 +70,7 @@ export function createCronRouter(deps: {
 	router.put("/:id", (req, res) => {
 		try {
 			const input = pickUpdateInput(req.body);
-			const cron = zeroAdmin.updateCron(req.params.id, input);
+			const cron = management.updateCron(req.params.id, input);
 			cronManager.refreshCron(cron.id);
 			res.json(cron);
 		} catch (e) {
@@ -81,7 +81,7 @@ export function createCronRouter(deps: {
 	/** DELETE /:id — delete a cron entry (unbind, not cascade) */
 	router.delete("/:id", (req, res) => {
 		try {
-			zeroAdmin.deleteCron(req.params.id);
+			management.deleteCron(req.params.id);
 			cronManager.refreshCron(req.params.id); // unschedules
 			res.status(204).end();
 		} catch (e) {

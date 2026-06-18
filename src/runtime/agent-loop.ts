@@ -170,8 +170,8 @@ export class AgentLoop implements AgentRuntime {
 			// so workflow tools (and downstream M1 cron / M3 notification) can
 			// read the current (projectId, workspaceDir, wikiRootNodeId).
 			contextBundle: config.contextBundle,
-			// v0.8 (M0): ZeroAdminService handle for the zero role's tools.
-			zeroAdmin: config.zeroAdmin,
+			// v0.8 (P3): ManagementService handle for the zero role's action tools.
+			management: config.management,
 			// v0.8 (P2 §11.5): subagents + resolver surfaced so the Orchestrate
 			// engine can resolve a DSL `task` node's agentTool name → target
 			// agent (replaces retired getAgentToolEntries resolver).

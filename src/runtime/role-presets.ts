@@ -435,7 +435,7 @@ export function listPresets(roleTag?: string): RolePreset[] {
  */
 /**
  * v0.8 (P0 §1.4): the preset's `roleTag` is preserved on the built agent as a
- * *legacy* side-channel so the runtime callers (zero-admin-service preset
+ * *legacy* side-channel so the runtime callers (management-service template
  * instantiation, runtime dispatch by role) keep working through the P0 → P2
  * transition. It is NOT on AgentRecord itself anymore; the cross-product is
  * expressed via this returned-shape intersection. P2/P7 will move dispatch

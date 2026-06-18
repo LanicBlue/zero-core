@@ -4,10 +4,10 @@
 //
 // ## 核心功能
 // 暴露角色预设列表 + 一键实例化接口,供 UI 和测试使用。
-// zero 全局管理 agent 也可通过 InstantiatePreset 工具达成同样效果 (并行入口)。
+// zero 全局管理 agent 也可通过 Agent create + template 达成同样效果 (并行入口)。
 //
 // ## 输入
-// - ZeroAdminService
+// - ManagementService (P3: renamed from ZeroAdminService)
 //
 // ## 输出
 // - GET /presets        —— 列出预设 (含 M0 降级备注)
@@ -18,15 +18,15 @@
 //
 // ## 依赖
 // - express
-// - ./zero-admin-service
+// - ./management-service (P3: renamed from ./zero-admin-service)
 // - ../runtime/role-presets
 //
 
 import { Router } from "express";
-import type { ZeroAdminService } from "./zero-admin-service.js";
+import type { ManagementService } from "./management-service.js";
 import { getPreset, listPresets } from "../runtime/role-presets.js";
 
-export function createPresetRouter(zeroAdmin: ZeroAdminService): Router {
+export function createPresetRouter(management: ManagementService): Router {
 	const router = Router();
 
 	/** GET / — list presets (optionally filtered by roleTag) */
@@ -45,7 +45,7 @@ export function createPresetRouter(zeroAdmin: ZeroAdminService): Router {
 	/** POST /:id/instantiate — instantiate as a global agent */
 	router.post("/:id/instantiate", (req, res) => {
 		try {
-			const agent = zeroAdmin.instantiatePreset(
+			const agent = management.instantiateTemplate(
 				req.params.id,
 				{
 					name: req.body?.name,

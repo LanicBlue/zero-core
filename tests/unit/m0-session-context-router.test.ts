@@ -8,8 +8,8 @@
 //   - bundle 继承 (per-call override)
 //   - SessionDB context 列持久化
 //   - role-presets (lead/PM/archivist/analyzer/planner/dev/review/qa/zero)
-//   - ZeroAdminService.instantiatePreset (一键实例化 + toolPolicy 接好)
-//   - ZeroAdminService.setToolPolicy / exposeAgentAsTool
+//   - ManagementService.instantiateTemplate (一键实例化 + toolPolicy 接好)
+//   - ManagementService.updateAgent (consolidates toolPolicy) / exposeAgentAsTool
 //   - ProjectStore workspaceDir 唯一约束 + 不可改
 //
 // ## 输入
@@ -32,7 +32,7 @@ import {
 	buildProjectBundle,
 	defaultWikiRootResolver,
 } from "../../src/server/session-context-router.js";
-import { ZeroAdminService } from "../../src/server/zero-admin-service.js";
+import { ManagementService } from "../../src/server/management-service.js";
 import { ROLE_PRESETS, getPreset, listPresets, buildAgentFromPreset } from "../../src/runtime/role-presets.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 // v0.8 P0 (§1.4 过渡期): roleTag 不再走 store round-trip;测试需要带 role_tag
@@ -44,7 +44,7 @@ let sessionDB: SessionDB;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
 let agentToolStore: AgentToolStore;
-let zeroAdmin: ZeroAdminService;
+let management: ManagementService;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-m0-"));
@@ -53,7 +53,7 @@ beforeEach(() => {
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);
 	agentToolStore = new AgentToolStore(sessionDB);
-	zeroAdmin = new ZeroAdminService({ agentStore, projectStore, agentToolStore });
+	management = new ManagementService({ agentStore, projectStore, agentToolStore });
 });
 
 afterEach(() => {
@@ -235,26 +235,29 @@ describe("role presets", () => {
 	});
 });
 
-// ─── ZeroAdminService ───────────────────────────────────────
+// ─── ManagementService ───────────────────────────────────────
 
-describe("ZeroAdminService", () => {
+describe("ManagementService", () => {
 	test("createProject / listProjects / deleteProject", () => {
-		const p = zeroAdmin.createProject({ name: "P", workspaceDir: join(tmpDir, "x") });
-		expect(zeroAdmin.listProjects().length).toBe(1);
-		zeroAdmin.deleteProject(p.id);
-		expect(zeroAdmin.listProjects().length).toBe(0);
+		const p = management.createProject({ name: "P", workspaceDir: join(tmpDir, "x") });
+		expect(management.listProjects().length).toBe(1);
+		management.deleteProject(p.id);
+		expect(management.listProjects().length).toBe(0);
 	});
 
-	test("createAgent / setToolPolicy / setToolEnabled", () => {
-		const a = zeroAdmin.createAgent({ name: "A", roleTag: "pm" } as any);
-		zeroAdmin.setToolPolicy(a.id, { executionMode: "parallel" });
-		zeroAdmin.setToolEnabled(a.id, "Read", true);
-		const updated = zeroAdmin.getAgent(a.id);
+	test("createAgent + updateAgent (consolidates toolPolicy — P3 §7.3 replaces setToolPolicy/setToolEnabled)", () => {
+		const a = management.createAgent({ name: "A" } as any);
+		// v0.8 P3: setToolPolicy + setToolEnabled collapsed into a single
+		// updateAgent toolPolicy patch (the Agent update action surface).
+		management.updateAgent(a.id, {
+			toolPolicy: { executionMode: "parallel", tools: { Read: { enabled: true } } },
+		});
+		const updated = management.getAgent(a.id);
 		expect(updated?.toolPolicy?.executionMode).toBe("parallel");
 		expect(updated?.toolPolicy?.tools?.Read?.enabled).toBe(true);
 	});
 
-	test("instantiatePreset wires whitelisted callee roles into toolPolicy (by entry.id)", () => {
+	test("instantiateTemplate wires whitelisted callee roles into toolPolicy (by entry.id)", () => {
 		// First create some callee role agents (analyzer, planner, dev, etc.)
 		// v0.8 P0 (§1.4): roleTag no longer round-trips via store; seed the
 		// physical column so ensureRoleAgentExposed's listByRoleTag finds them.
@@ -265,12 +268,14 @@ describe("ZeroAdminService", () => {
 			["Reviewer-A", "reviewer"],
 			["QA-A", "qa"],
 		] as const) {
-			const a = zeroAdmin.createAgent({ name } as any);
+			const a = management.createAgent({ name } as any);
 			seedAgentWithRoleTag(sessionDB, a.id, tag);
 		}
 
 		// Expose them (lead's toolPolicy references expose entries)
-		const lead = zeroAdmin.instantiatePreset("lead", { name: "MyLead" });
+		// v0.8 P3: instantiatePreset renamed to instantiateTemplate (the
+		// Agent.create + template path's service-side counterpart).
+		const lead = management.instantiateTemplate("lead", { name: "MyLead" });
 		// v0.8 P0 (§1.4): roleTag is gone from AgentRecord; lead's identity is
 		// name+systemPrompt. The built preset still carries roleTag as a legacy
 		// side-channel via buildAgentFromPreset, but it is NOT on the persisted
@@ -295,17 +300,17 @@ describe("ZeroAdminService", () => {
 	});
 
 	test("exposeAgentAsTool is idempotent", () => {
-		const a = zeroAdmin.createAgent({ name: "Exposed", roleTag: "analyzer" } as any);
-		const e1 = zeroAdmin.exposeAgentAsTool(a.id, { name: "exposed-tool" });
-		const e2 = zeroAdmin.exposeAgentAsTool(a.id, { name: "exposed-tool" });
+		const a = management.createAgent({ name: "Exposed" } as any);
+		const e1 = management.exposeAgentAsTool(a.id, { name: "exposed-tool" });
+		const e2 = management.exposeAgentAsTool(a.id, { name: "exposed-tool" });
 		expect(e1.id).toBe(e2.id);
 	});
 
 	test("deleteAgent cascades agent-tool entries", () => {
-		const a = zeroAdmin.createAgent({ name: "Cascade", roleTag: "analyzer" } as any);
-		zeroAdmin.exposeAgentAsTool(a.id, { name: "cascade-tool" });
+		const a = management.createAgent({ name: "Cascade" } as any);
+		management.exposeAgentAsTool(a.id, { name: "cascade-tool" });
 		expect(agentToolStore.list().length).toBeGreaterThanOrEqual(1);
-		zeroAdmin.deleteAgent(a.id);
+		management.deleteAgent(a.id);
 		expect(agentToolStore.list().find((e) => e.agentId === a.id)).toBeUndefined();
 	});
 });

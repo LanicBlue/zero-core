@@ -92,8 +92,9 @@ export class AgentService {
 	private agentToolStore: import("./agent-tool-store.js").AgentToolStore | null = null;
 	private sessionManager: SessionManager | null = null;
 	private metricsAdapter: EventMetricsAdapter | null = null;
-	// v0.8 (M0): ZeroAdminService handle, injected into zero sessions only.
-	private zeroAdmin: import("./zero-admin-service.js").ZeroAdminService | null = null;
+	// v0.8 (P3): ManagementService handle (renamed from ZeroAdminService),
+	// injected into zero sessions only.
+	private management: import("./management-service.js").ManagementService | null = null;
 	// v0.8 (M4): PmService + RequirementStore handles, injected into PM
 	// (roleTag='pm') sessions so the CreateRequirementWithDoc tool can call
 	// PmService.createRequirementWithDoc from a cron-triggered sendPrompt loop.
@@ -112,6 +113,10 @@ export class AgentService {
 	// overrides + checkpointThresholds). Threaded into every session config
 	// so the extraction hook can gate + build extractor services.
 	private extractorsConfig: any = null;
+	// v0.8 (P3 §7.7 #4): tool-call usage log. Surfaced onto every session
+	// config so tool-factory can record one row per tool invocation. Best-effort
+	// (logging failures are swallowed in tool-factory).
+	private toolUsageStore: any = null;
 
 	// Module readiness — modules notify when loaded, deferred actions wait until ready
 	private readyModules = new Set<string>();
@@ -155,9 +160,10 @@ export class AgentService {
 		this.sessionManager = sm;
 		this.metricsAdapter = createEventMetricsAdapter(sm);
 	}
-	/** v0.8 (M0): inject the ZeroAdminService, gated to zero sessions only. */
-	setZeroAdmin(svc: import("./zero-admin-service.js").ZeroAdminService): void {
-		this.zeroAdmin = svc;
+	/** v0.8 (P3): inject the ManagementService (renamed from ZeroAdminService),
+	 * gated to zero sessions only. */
+	setManagement(svc: import("./management-service.js").ManagementService): void {
+		this.management = svc;
 	}
 	/**
 	 * v0.8 (M4): inject the PmService + RequirementStore + wikiStore. These are
@@ -181,6 +187,10 @@ export class AgentService {
 	setWikiStoreGlobal(wikiStoreGlobal: any): void {
 		this.wikiStoreGlobal = wikiStoreGlobal ?? null;
 		this.extractorsConfig = (this.config as any).extractors ?? null;
+	}
+	/** v0.8 (P3 §7.7 #4): inject the tool-call usage log store. */
+	setToolUsageStore(store: any): void {
+		this.toolUsageStore = store ?? null;
 	}
 	getSessionManager(): SessionManager | null {
 		return this.sessionManager;
@@ -394,16 +404,16 @@ export class AgentService {
 			},
 			getToolConfig: () => this.registry.getToolConfig(),
 		};
-		// v0.8 (M0): zero sessions get the ZeroAdminService handle so the
-		// CreateProject/CreateAgent/InstantiatePreset/SetToolPolicy/ExposeAgentAsTool
-		// tools are available (gated via CONDITIONAL_TOOLS on ctx.zeroAdmin).
+		// v0.8 (P3): zero sessions get the ManagementService handle so the
+		// Project/Agent/Cron action tools are available (gated via
+		// CONDITIONAL_TOOLS on ctx.management).
 		//
 		// v0.8 (P0 §1.4): roleTag was removed from AgentRecord; these reads
 		// go through @ts-expect-error pending P2/P7 rewrite (PM/zero dispatch
 		// moves off roleTag → identity via name+systemPrompt).
-		// @ts-expect-error — P0 §1.4: legacy roleTag field; P2/P7 cleanup.
-		if (agent?.roleTag === "zero" && this.zeroAdmin) {
-			(sessionConfig as any).zeroAdmin = this.zeroAdmin;
+		// @ts-expect-error — P0 §1.4: legacy roleTag field; P7 cleanup.
+		if (agent?.roleTag === "zero" && this.management) {
+			(sessionConfig as any).management = this.management;
 		}
 		// v0.8 (M4): PM sessions get the PmService + RequirementStore handles
 		// so the CreateRequirementWithDoc tool can call
@@ -426,6 +436,9 @@ export class AgentService {
 		// reaches config.wikiStoreGlobal for searchMemoryNodes.
 		if (this.wikiStoreGlobal) (sessionConfig as any).wikiStoreGlobal = this.wikiStoreGlobal;
 		if (this.extractorsConfig) (sessionConfig as any).extractors = this.extractorsConfig;
+		// v0.8 (P3 §7.7 #4): surface the tool-call usage log on every session
+		// so tool-factory records one row per tool invocation.
+		if (this.toolUsageStore) (sessionConfig as any).toolUsageStore = this.toolUsageStore;
 		// v0.8 (P1 §10.6): copy the agent's free wikiAnchors onto the session
 		// config so the loop can resolve + inject them (system + context
 		// channels). Auto anchors (memory + project) are derived from the

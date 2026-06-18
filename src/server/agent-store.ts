@@ -108,7 +108,7 @@ export class AgentStore {
 	 * `role_tag` column is retained for legacy data; this method reads it raw
 	 * (it's not in COLUMNS, so SqliteStore won't surface it). Runtime/service
 	 * callers (pm-service findPmAgent, project-notification-router
-	 * findRoleAgent, zero-admin-service ensureRoleAgentExposed) still depend
+	 * findRoleAgent, management-service ensureRoleAgentExposed) still depend
 	 * on this — P2/P7 moves them off roleTag. Kept as-is to avoid breaking
 	 * those callers in P0.
 	 */

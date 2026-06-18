@@ -49,7 +49,13 @@ import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
 import { expandNodeTool, updateWikiNodeTool, listWikiTreeTool, readDocTool } from "./wiki-tools.js";
 import { createRequirementTool, createRequirementWithDocTool } from "./requirement-tools.js";
 import { orchestrateTool } from "./orchestrate-tool.js";
-import { ZERO_ADMIN_TOOLS } from "./zero-admin-tools.js";
+// v0.8 (P3 §7.3): the four domain action tools + verify, replacing the retired
+// zero-admin-tools.ts (CreateProject/CreateAgent/.../InstantiatePreset/SetToolPolicy/...).
+import { projectTool } from "./project-tool.js";
+import { agentTool } from "./agent-tool.js";
+import { cronTool } from "./cron-tool.js";
+import { wikiTool } from "./wiki-tool.js";
+import { verifyTool } from "./verify-tool.js";
 import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";
 
@@ -94,10 +100,17 @@ export const ALL_TOOLS: Record<string, any> = {
 	// landing in one shot (PmService.createRequirementWithDoc).
 	CreateRequirementWithDoc: createRequirementWithDocTool,
 	Orchestrate: orchestrateTool,
-
-	// v0.8 (M0): zero global-management tools. Gated on ctx.zeroAdmin
-	// (only zero sessions carry the ZeroAdminService handle).
-	...ZERO_ADMIN_TOOLS,
+	// v0.8 (P3 §7.3): four action-switched domain tools (Project/AgentRegistry/
+	// Cron/Wiki) + the lead verify tool, replacing the retired zero-admin tools
+	// (CreateProject/CreateAgent/.../InstantiatePreset/SetToolPolicy/...).
+	// Capability lives in tools; agents are just tool-config bundles.
+	// Note: the management tool is named `AgentRegistry` (not `Agent`) to avoid
+	// collision with the long-existing `Agent` sub-agent delegation tool.
+	Project: projectTool,
+	AgentRegistry: agentTool,
+	Cron: cronTool,
+	Wiki: wikiTool,
+	verify: verifyTool,
 
 	...getAssistantTools(),
 };
@@ -117,13 +130,16 @@ const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> 
 	// v0.8 (M4): PM-only — gated on ctx.pmService (only PM sessions carry it).
 	CreateRequirementWithDoc: (ctx) => !!(ctx as any).pmService,
 	Orchestrate: (ctx) => !!ctx.delegateTask,
+	// v0.8 (P3): domain action tools. Project/AgentRegistry/Cron need the
+	// management service handle (zero sessions only). Wiki needs the wiki
+	// store (every project-role session). verify needs delegate + requirement
+	// store (lead).
+	Project: (ctx) => !!(ctx as any).management,
+	AgentRegistry: (ctx) => !!(ctx as any).management,
+	Cron: (ctx) => !!(ctx as any).management,
+	Wiki: (ctx) => !!ctx.wikiStore,
+	verify: (ctx) => !!ctx.delegateTask && !!ctx.requirementStore,
 };
-
-// v0.8 (M0): all zero-admin tools require ctx.zeroAdmin (only present on zero
-// sessions). Generate gate entries from ZERO_ADMIN_TOOLS keys.
-for (const name of Object.keys(ZERO_ADMIN_TOOLS)) {
-	CONDITIONAL_TOOLS[name] = (ctx) => !!ctx.zeroAdmin;
-}
 
 
 

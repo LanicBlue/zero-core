@@ -10,7 +10,7 @@
 //     observation cron 走 agentId-keyed main session
 //   - enabled=false / schedule="off" 的 cron 不调度不触发
 //   - 删 cron 不级联删 agent (解绑)
-//   - ZeroAdminService.createCron / updateCron / deleteCron / listCrons
+//   - ManagementService.createCron / updateCron / deleteCron / listCrons
 //
 // ## 输入
 // 临时 SessionDB (mkdtempSync) + 真实 stores + stub AgentService (capture sendPrompt)。
@@ -29,7 +29,7 @@ import { AgentStore } from "../../src/server/agent-store.js";
 import { AgentToolStore } from "../../src/server/agent-tool-store.js";
 import { CronStore } from "../../src/server/cron-store.js";
 import { CronAnalysisManager } from "../../src/server/cron-analysis.js";
-import { ZeroAdminService } from "../../src/server/zero-admin-service.js";
+import { ManagementService } from "../../src/server/management-service.js";
 import { resolveSessionByRoleProject } from "../../src/server/session-context-router.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import type { CronRecord, CronSchedule } from "../../src/shared/types.js";
@@ -49,7 +49,7 @@ let projectStore: ProjectStore;
 let agentStore: AgentStore;
 let agentToolStore: AgentToolStore;
 let cronStore: CronStore;
-let zeroAdmin: ZeroAdminService;
+let zeroAdmin: ManagementService;
 
 // Stub AgentService that captures sendPrompt calls.
 function makeStubAgentService() {
@@ -71,7 +71,7 @@ beforeEach(() => {
 	agentStore = new AgentStore(sessionDB);
 	agentToolStore = new AgentToolStore(sessionDB);
 	cronStore = new CronStore(sessionDB);
-	zeroAdmin = new ZeroAdminService({ agentStore, projectStore, agentToolStore, cronStore });
+	zeroAdmin = new ManagementService({ agentStore, projectStore, agentToolStore, cronStore });
 });
 
 afterEach(() => {
@@ -292,9 +292,9 @@ describe("CronAnalysisManager", () => {
 	});
 });
 
-// ─── ZeroAdminService cron methods ───────────────────────────
+// ─── ManagementService cron methods ───────────────────────────
 
-describe("ZeroAdminService cron methods", () => {
+describe("ManagementService cron methods", () => {
 	test("createCron validates agent + project refs", () => {
 		expect(() => zeroAdmin.createCron({
 			agentId: "nonexistent",
@@ -346,39 +346,53 @@ describe("ZeroAdminService cron methods", () => {
 
 // ─── cron tools ──────────────────────────────────────────────
 
-describe("cron admin tools", () => {
-	test("CreateCron / UpdateCron / DeleteCron / ListCrons invoke ZeroAdminService via ctx.zeroAdmin", async () => {
-		const { ZERO_ADMIN_TOOLS } = await import("../../src/runtime/tools/zero-admin-tools.js");
+describe("cron action tool (Cron)", () => {
+	test("create/update/list/delete actions invoke ManagementService via ctx.management", async () => {
+		// v0.8 P3 (§7.3): the four retired per-action cron tools
+		// (CreateCron/UpdateCron/DeleteCron/ListCrons) are merged into one
+		// action-switched `Cron` tool. Each action is one switch branch.
+		const { cronTool } = await import("../../src/runtime/tools/cron-tool.js");
+		const { getToolExecute } = await import("../../src/runtime/tools/tool-factory.js");
+		const execute = getToolExecute(cronTool)!;
 		const agent = (() => { const _a = agentStore.create({ name: "PM" } as any); seedAgentWithRoleTag(sessionDB, _a.id, "pm"); return _a; })();
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws") });
 		// AI SDK tool() execute receives (input, opts); ctx lives at opts.experimental_context.
-		const ctx = { experimental_context: { zeroAdmin } } as any;
+		// v0.8 P3: ctx.zeroAdmin renamed → ctx.management.
+		// v0.8 P3: getToolExecute returns the inner options.execute, which
+		// receives the ToolExecutionContext directly (no experimental_context
+		// wrapper — that unwrapping is the AI SDK tool()'s job at call time).
+		const ctx = { management: zeroAdmin } as any;
 
-		const created = JSON.parse(await ZERO_ADMIN_TOOLS.CreateCron.execute({
+		const created = JSON.parse(await execute({
+			action: "create",
 			agentId: agent.id,
 			workingScope: scope(proj.id, proj.workspaceDir),
 			schedule: SCHED_INTERVAL_DAILY,
 		}, ctx));
 		expect(created.agentId).toBe(agent.id);
 
-		const updated = JSON.parse(await ZERO_ADMIN_TOOLS.UpdateCron.execute({
+		const updated = JSON.parse(await execute({
+			action: "update",
 			id: created.id, schedule: SCHED_INTERVAL_WEEKLY,
 		}, ctx));
 		expect(updated.schedule).toEqual(SCHED_INTERVAL_WEEKLY);
 
-		const list = JSON.parse(await ZERO_ADMIN_TOOLS.ListCrons.execute({}, ctx));
+		const list = JSON.parse(await execute({ action: "list" }, ctx));
 		expect(list.length).toBe(1);
 
-		const del = JSON.parse(await ZERO_ADMIN_TOOLS.DeleteCron.execute({ id: created.id }, ctx));
+		const del = JSON.parse(await execute({ action: "delete", id: created.id }, ctx));
 		expect(del.success).toBe(true);
 		expect(zeroAdmin.listCrons().length).toBe(0);
 	});
 
-	test("CreateCron without ctx.zeroAdmin returns error string (fail-soft)", async () => {
-		const { ZERO_ADMIN_TOOLS } = await import("../../src/runtime/tools/zero-admin-tools.js");
-		const result = await ZERO_ADMIN_TOOLS.CreateCron.execute({
+	test("create action without ctx.management returns error string (fail-soft)", async () => {
+		const { cronTool } = await import("../../src/runtime/tools/cron-tool.js");
+		const { getToolExecute } = await import("../../src/runtime/tools/tool-factory.js");
+		const execute = getToolExecute(cronTool)!;
+		const result = await execute({
+			action: "create",
 			agentId: "x", workingScope: scope(undefined, "/x", "r"), schedule: SCHED_INTERVAL_DAILY,
-		}, { experimental_context: {} } as any);
+		}, {} as any);
 		expect(String(result)).toMatch(/Error:/);
 	});
 });
