@@ -46,7 +46,6 @@ import {
 	_resetExtractionScheduler,
 } from "../../src/runtime/hooks/extraction-hooks.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
-import { MemoryRecall } from "../../src/runtime/memory-recall.js";
 
 let tmpDir: string;
 let sessionDB: SessionDB;
@@ -554,12 +553,13 @@ describe("Mechanism 1 — raw turn persistence (resume gets full history)", () =
 		const sess = new AgentSession("sys", 128000, newSessionId, sessionDB);
 		expect(sess.getMessages().length).toBe(0);
 
-		// Recall should still find the wiki memory written earlier.
-		const recall = new MemoryRecall(null, { wikiStore: wiki });
-		const result = await recall.recall("ImportantThing");
-		expect(result).not.toBeNull();
-		expect(result!.nodes.length).toBeGreaterThan(0);
-		expect(result!.nodes[0].subject).toBe("ImportantThing");
+		// v0.8 (P2 §11.6): MemoryRecall is retired — memory is now a wiki
+		// per-agent subtree. Reading goes through WikiStore.searchMemoryNodes
+		// (title+summary+body scan) + WikiStore.readNodeDetail (body).
+		const hits = wiki.searchMemoryNodes("ImportantThing");
+		expect(hits.length).toBeGreaterThan(0);
+		const detail = wiki.readNodeDetail(hits[0].id) ?? "";
+		expect(detail).toContain("ImportantThing");
 	});
 });
 

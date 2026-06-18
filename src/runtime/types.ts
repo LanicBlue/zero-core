@@ -254,21 +254,26 @@ export interface SessionConfig {
 	};
 	getMcpTools?: (agentId?: string) => Promise<Record<string, any>>;
 	getRagContext?: (agentId: string, query: string) => Promise<string | undefined>;
-	getAgentToolEntries?: () => Promise<{
-		entries: Array<import("../shared/types.js").AgentToolEntry>;
-		/**
-		 * v0.8 (M0): carries target agent's full identity + toolPolicy so the
-		 * agent-tool path can pass them to delegateTask (decision 16 — identity
-		 * / toolPolicy / history use the target agent's own config).
-		 */
-		agents: Map<string, {
-			id: string;
-			name: string;
-			systemPrompt?: string;
-			model?: string;
-			toolPolicy?: SessionConfig["toolPolicy"];
-		}>;
-	}>;
+	/**
+	 * v0.8 (P2 §11.5): this agent's delegation subagents (copied from
+	 * AgentRecord.subagents at session build time). Each entry references a
+	 * global agent by id; the loop turns each into a caller-only delegation
+	 * tool via subagents-delegation.ts. Empty/undefined → no delegation tools.
+	 */
+	subagents?: Array<{ agentId: string; name?: string; description?: string }>;
+	/**
+	 * v0.8 (P2 §11.5): resolve a subagent target agent's identity by id, so
+	 * the delegation entry can pass systemPrompt/model/toolPolicy to
+	 * delegateTask. Optional — when absent, only targetAgentId is forwarded
+	 * and the sub-loop inherits the caller's identity.
+	 */
+	resolveSubagentTarget?: (agentId: string) => {
+		id: string;
+		name?: string;
+		systemPrompt?: string;
+		model?: string;
+		toolPolicy?: SessionConfig["toolPolicy"];
+	} | undefined;
 	getToolConfig?: () => Record<string, Record<string, any>>;
 	compression?: {
 		enabled?: boolean;
@@ -389,21 +394,19 @@ export interface ToolExecutionContext {
 	 */
 	zeroAdmin?: any;
 	/**
-	 * v0.8 (M3): agent-tool entries resolver, surfaced onto the tool context
-	 * so the Orchestrate engine can resolve a DSL `task` node's `agentTool`
-	 * (user-facing name) → target agent id + identity. Mirrors the
-	 * SessionConfig.getAgentToolEntries callback the loop already uses.
+	 * v0.8 (P2 §11.5): this caller's subagents list (mirrors SessionConfig.
+	 * subagents). Surfaced so the Orchestrate engine can resolve a DSL `task`
+	 * node's `agentTool` (user-facing name) → target agent id.
 	 */
-	getAgentToolEntries?: () => Promise<{
-		entries: Array<import("../shared/types.js").AgentToolEntry>;
-		agents: Map<string, {
-			id: string;
-			name: string;
-			systemPrompt?: string;
-			model?: string;
-			toolPolicy?: SessionConfig["toolPolicy"];
-		}>;
-	}>;
+	subagents?: Array<{ agentId: string; name?: string; description?: string }>;
+	/** v0.8 (P2 §11.5): resolve a subagent target's identity by id. */
+	resolveSubagentTarget?: (agentId: string) => {
+		id: string;
+		name?: string;
+		systemPrompt?: string;
+		model?: string;
+		toolPolicy?: SessionConfig["toolPolicy"];
+	} | undefined;
 	/**
 	 * v0.8 (M3): Orchestrate plan store — persists lead-submitted DSL flows +
 	 * confirm gate state. Only present on lead sessions.

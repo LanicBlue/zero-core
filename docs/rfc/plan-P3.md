@@ -15,6 +15,7 @@
 3. **`Cron`**:action=create/update/delete/get/list/trigger(§9.4)。本阶段接 P0 的三模式 schedule(调度逻辑 P4)。
 4. **`Wiki`**:action=expand/read/upsert/search(§10.7),scope=caller 锚点并集(P1)。
 5. 四个工具都 `buildTool` + 判别联合 inputSchema(zod discriminatedUnion)。
+6. **工具按功能命名,不按 agent 命名**(§7.3 硬原则):`zero-admin-tools.ts` 拆成按域命名的文件(`project-tool.ts`/`agent-tool.ts`/`cron-tool.ts`/`wiki-tool.ts`,或合一个 `domain-tools.ts` 但内部按域分组);`ZeroAdminService` 改功能化名(如 `DomainService` 或按域拆 `ProjectService`/`AgentService`...);`zero-admin` category → `domain`/按功能。能力在工具,agent 只是工具的配置组合。
 
 ### 平台原语(扁平,不动)
 

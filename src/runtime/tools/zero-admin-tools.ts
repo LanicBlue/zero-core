@@ -9,8 +9,12 @@
 //   - InstantiatePreset (从 role-presets 一键实例化全局角色 + 接好 toolPolicy)
 //   - ListPresets
 //   - SetToolPolicy / SetToolEnabled
-//   - ExposeAgentAsTool / UnexposeAgentAsTool
 //   - CreateCron / UpdateCron / DeleteCron / ListCrons (M1 — first-class cron)
+//
+// v0.8 (P2 §11.5): ExposeAgentAsTool / UnexposeAgentAsTool 已废 (agent-as-tool
+// 整体下线;委派改走 AgentRecord.subagents + subagents-delegation.ts)。Service
+// 侧的 ZeroAdminService.exposeAgentAsTool / unexposeAgentAsTool 保留 (P7/P9
+// 清理 store/router 时一起删) — runtime 不再消费。
 //
 // ## 输入
 // - ToolExecutionContext.zeroAdmin (ZeroAdminService 实例,只在 zero session 注入)
@@ -215,34 +219,9 @@ export const setToolEnabledTool = buildTool({
 });
 
 // ---------------------------------------------------------------------------
-// expose-as-tool
+// expose-as-tool — REMOVED in P2 §11.5 (agent-as-tool retired; delegation now
+// flows through AgentRecord.subagents + subagents-delegation.ts).
 // ---------------------------------------------------------------------------
-
-export const exposeAgentAsToolTool = buildTool({
-	name: "ExposeAgentAsTool",
-	description: "Expose an agent as an internal agent-tool so other agents can call it. Idempotent: if already exposed, updates settings.",
-	prompt: "Expose an agent as a callable agent-tool. Inputs: agentId, name? (tool name, defaults to kebab of agent name), description?, enabled? (default true), blocking? (default true).",
-	meta: { category: "zero-admin", isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
-	inputSchema: z.object({
-		agentId: z.string(),
-		name: z.string().optional(),
-		description: z.string().optional(),
-		enabled: z.boolean().optional(),
-		blocking: z.boolean().optional(),
-	}),
-	execute: async (input, ctx) => safe(() => admin(ctx).exposeAgentAsTool(input.agentId, input)),
-});
-
-export const unexposeAgentAsToolTool = buildTool({
-	name: "UnexposeAgentAsTool",
-	description: "Stop exposing an agent as a tool (deletes its internal AgentToolEntry).",
-	prompt: "Un-expose an agent. Input: agentId.",
-	meta: { category: "zero-admin", isReadOnly: false, isConcurrencySafe: false, isDestructive: true },
-	inputSchema: z.object({
-		agentId: z.string(),
-	}),
-	execute: async (input, ctx) => safe(async () => { admin(ctx).unexposeAgentAsTool(input.agentId); return { success: true }; }),
-});
 
 // ---------------------------------------------------------------------------
 // Cron management tools (v0.8 M1 — first-class cron entity)
@@ -331,8 +310,8 @@ export const ZERO_ADMIN_TOOLS: Record<string, any> = {
 	ListPresets: listPresetsTool,
 	SetToolPolicy: setToolPolicyTool,
 	SetToolEnabled: setToolEnabledTool,
-	ExposeAgentAsTool: exposeAgentAsToolTool,
-	UnexposeAgentAsTool: unexposeAgentAsToolTool,
+	// v0.8 (P2 §11.5): ExposeAgentAsTool / UnexposeAgentAsTool removed —
+	// delegation now flows through AgentRecord.subagents.
 	CreateCron: createCronTool,
 	UpdateCron: updateCronTool,
 	DeleteCron: deleteCronTool,

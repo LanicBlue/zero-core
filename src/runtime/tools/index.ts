@@ -42,9 +42,8 @@ import { buildMcpTools } from "./mcp-tool.js";
 import { webSearchTool } from "./web-search.js";
 import { askUserTool } from "./ask-user.js";
 import { todoWriteTool } from "./todo-write.js";
-import { getToolMeta, getToolName, getToolConfigSchema, getToolDescription, getToolPrompt, getToolInputFields, getToolExecute } from "./tool-factory.js";
+import { getToolMeta, getToolConfigSchema, getToolDescription, getToolPrompt, getToolInputFields, getToolExecute } from "./tool-factory.js";
 import { webFetchTool } from "../mcp-tools/fetch-tools.js";
-import { memoryRecallTool, memoryNoteTool } from "../mcp-tools/memory-node-tools.js";
 import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
 import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
 import { expandNodeTool, updateWikiNodeTool, listWikiTreeTool, readDocTool } from "./wiki-tools.js";
@@ -79,8 +78,10 @@ export const ALL_TOOLS: Record<string, any> = {
 	AskUser: askUserTool,
 	TodoWrite: todoWriteTool,
 	WebFetch: webFetchTool,
-	MemoryRecall: memoryRecallTool,
-	MemoryNote: memoryNoteTool,
+	// v0.8 (P2 §11.6): MemoryRecall / MemoryNote tools removed — memory is
+	// now a wiki per-agent subtree; agents read it via ExpandNode/ListWikiTree
+	// and search via the wiki tree. The legacy MemoryNodeStore-backed tools
+	// are retired.
 	SequentialThinking: sequentialThinkingTool,
 	ExpandNode: expandNodeTool,
 	UpdateWikiNode: updateWikiNodeTool,
@@ -164,14 +165,20 @@ export function buildToolsSet(
 	},
 	context: ToolExecutionContext,
 	mcpTools?: Record<string, any>,
-	agentTools?: Record<string, any>,
+	/**
+	 * v0.8 (P2 §11.5): caller-only subagent delegation tools, built from
+	 * AgentRecord.subagents by subagents-delegation.ts. Keyed by user-facing
+	 * tool name (one tool per subagent entry). These are NOT registered into
+	 * ALL_TOOLS / ToolRegistry (no global UI); they only appear in this
+	 * caller's tool set.
+	 *
+	 * Separate channel from policy.tools (that gates built-in tools). The
+	 * caller opts in by listing the subagent on AgentRecord.subagents; the
+	 * only runtime gate here is blockedTools (caller may still hard-block a
+	 * delegation name).
+	 */
+	subagentsTools?: Record<string, any>,
 ): Record<string, any> {
-	// v0.8 (M0): agent-tools are keyed by AgentToolEntry.id in `policy.tools`.
-	// Built-in tools (Shell/Read/…) stay keyed by name. We need the set of
-	// agent-tool ids so the isEnabled resolver can treat id-keys specially
-	// (an agent-tool is NOT in DEFAULT_ENABLED — opt-in only, decision 2).
-	const agentToolIds = new Set(agentTools ? Object.keys(agentTools) : []);
-
 	// Migrate legacy lowercase tool keys to PascalCase
 	if (policy.tools) {
 		const migrated: Record<string, { enabled: boolean }> = {};
@@ -186,21 +193,20 @@ export function buildToolsSet(
 	// Tools enabled by default — core filesystem/shell tools only
 	const DEFAULT_ENABLED = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);
 
-	// Determine enabled check: prefer tools map, fall back to autoApprove
+	// Determine enabled check: prefer tools map, fall back to autoApprove.
+	// v0.8 (P2): the tools map ONLY gates built-in (hard-coded) tools. Subagent
+	// delegation tools live in a separate channel (subagentsTools) — they are
+	// never implicitly enabled via autoApprove=* either; presence in
+	// subagentsTools IS the opt-in.
 	const toolsMap = policy.tools;
 	const autoApprove = new Set(policy.autoApprove ?? []);
 	const isEnabled = (name: string): boolean => {
-		// Explicit tools map takes priority
 		if (toolsMap) {
 			if (name in toolsMap) return toolsMap[name].enabled;
-			// Agent-tools (id-keyed) are opt-in only — never implicitly enabled
-			if (agentToolIds.has(name)) return false;
 			return DEFAULT_ENABLED.has(name);
 		}
-		// Legacy autoApprove
 		if (autoApprove.has("*")) return true;
 		if (autoApprove.size > 0) return autoApprove.has(name);
-		// No config — basic tools only
 		return DEFAULT_ENABLED.has(name);
 	};
 
@@ -226,38 +232,12 @@ export function buildToolsSet(
 		}
 	}
 
-	// Merge agent tools (keyed by AgentToolEntry.id; user-facing name lives
-	// inside the tool def). Policy map lookup is by id (decision 2).
-	if (agentTools) {
-		for (const [entryId, def] of Object.entries(agentTools)) {
-			// Block by user-facing name AND by id (defensive — either works)
-			const toolName = getToolName(def);
-			if (toolName && blocked.has(toolName)) continue;
-			if (blocked.has(entryId)) continue;
-
-			// Resolve enabled: prefer id-keyed policy entry, fall back to
-			// legacy name-keyed entry (old data still keyed by name).
-			let enabled: boolean;
-			if (toolsMap && entryId in toolsMap) {
-				enabled = toolsMap[entryId].enabled;
-			} else if (toolsMap && toolName && toolName in toolsMap) {
-				// Legacy: policy keyed by name. Honor it (decision 2 is forward-
-				// looking; old data shouldn't break).
-				enabled = toolsMap[toolName].enabled;
-			} else if (toolsMap) {
-				// Not present in policy map → agent-tools are opt-in only
-				enabled = false;
-			} else if (autoApprove.has("*") || (toolName && autoApprove.has(toolName))) {
-				enabled = true;
-			} else {
-				enabled = false;
-			}
-
-			if (enabled) {
-				// Register under the user-facing name so the model calls it by
-				// name; policy resolution used the entry.id key above.
-				tools[toolName ?? entryId] = def;
-			}
+	// v0.8 (P2 §11.5): merge subagent delegation tools. Caller-only —
+	// presence is the opt-in. Only blockedTools can suppress them.
+	if (subagentsTools) {
+		for (const [name, def] of Object.entries(subagentsTools)) {
+			if (blocked.has(name)) continue;
+			tools[name] = def;
 		}
 	}
 

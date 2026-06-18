@@ -6,6 +6,7 @@
 - [ ] `Project`(create/update/delete/get/list)、`Agent`(create/update/delete/get/list/listTemplates/getTemplate)、`Cron`(create/update/delete/get/list/trigger)、`Wiki`(expand/read/upsert/search)四个判别联合 schema 工具存在
 - [ ] Agent create 接 template 拷身份;update 改 toolPolicy/subagents/wikiAnchors;delete zero protected(reject)
 - [ ] Wiki 工具 scope = caller 锚点并集
+- [ ] **工具按功能命名**(§7.3):`zero-admin-tools.ts` 拆按域命名;`ZeroAdminService` 改功能化名;无 `zero-admin` 命名残留(注释除外)
 
 ### 平台原语
 - [ ] Shell/Read/Write/Edit/Grep/Glob 扁平独立,按 toolPolicy 开关,未被合并

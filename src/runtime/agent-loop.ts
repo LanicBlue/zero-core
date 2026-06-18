@@ -42,7 +42,7 @@ import type {
 import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
 import { buildToolsSet } from "./tools/index.js";
-import { buildAgentTools } from "./tools/agent-tool.js";
+import { buildSubagentTools } from "./tools/subagents-delegation.js";
 import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
 import { classifyError, isTransientError, userFriendlyMessage, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
@@ -172,9 +172,24 @@ export class AgentLoop implements AgentRuntime {
 			contextBundle: config.contextBundle,
 			// v0.8 (M0): ZeroAdminService handle for the zero role's tools.
 			zeroAdmin: config.zeroAdmin,
-			// v0.8 (M3): surface the agent-tool resolver so Orchestrate can
-			// dispatch DSL task nodes by user-facing agent-tool name.
-			getAgentToolEntries: config.getAgentToolEntries,
+			// v0.8 (P2 §11.5): subagents + resolver surfaced so the Orchestrate
+			// engine can resolve a DSL `task` node's agentTool name → target
+			// agent (replaces retired getAgentToolEntries resolver).
+			subagents: config.subagents,
+			resolveSubagentTarget: config.resolveSubagentTarget
+				? (id) => {
+					const t = config.resolveSubagentTarget!(id);
+					return t
+						? {
+							id: t.id,
+							name: t.name,
+							systemPrompt: t.systemPrompt,
+							model: t.model,
+							toolPolicy: t.toolPolicy,
+						}
+						: undefined;
+				}
+				: undefined,
 			// v0.8 (M3): Orchestrate plan/manifest stores for the lead's
 			// Orchestrate tool (confirm gate + manifest persistence).
 			orchestratePlanStore: (config as any).orchestratePlanStore,
@@ -430,15 +445,28 @@ export class AgentLoop implements AgentRuntime {
 			taskRegistry: this.delegator.taskRegistry,
 		});
 
+		// v0.8 (P2 §11.6): memoryContext is always undefined now — the legacy
+		// FTS5 recall hook (registerMemoryHooks) is retired. Memory indexing
+		// flows through wikiAnchorsContext below (per-agent memory subtree).
+		// Kept as a read for forward compatibility (a future semantic-recall
+		// hook may repopulate it).
 		const memoryContext = preResult.memoryContext as string | undefined;
 		const ragContext = preResult.ragContext as string | undefined;
 		const providerOptions = (preResult.providerOptions as Record<string, Record<string, any>>) ?? {};
 
 		// v0.8 (P1 §10.6): render context-channel wiki anchors every turn
 		// (system-channel anchors already live in the cached system prompt).
+		// v0.8 (P2 §11.6): the memory anchor inside this set is the session
+		// agent's per-agent memory subtree index (memory/<agentId>/).
 		const wikiAnchorsContext = this.wikiStoreGlobal
 			? renderContextAnchors({ wiki: this.wikiStoreGlobal, anchors: this.wikiAnchors })
 			: "";
+
+		// v0.8 (P2 §11.7): current-task — the active requirement id (when the
+		// session is bound to a project + requirement). Re-evaluated every turn;
+		// does not enter message history. Rendered in buildContextMessage under
+		// ## Current Task so the model always knows what it is doing right now.
+		const currentTask = this.resolveCurrentTask();
 
 		const ctx = buildContextMessage({
 			workspaceDir: this.config.workspaceDir,
@@ -446,6 +474,7 @@ export class AgentLoop implements AgentRuntime {
 			ragContext,
 			memoryContext,
 			wikiAnchorsContext: wikiAnchorsContext || undefined,
+			currentTask: currentTask || undefined,
 		});
 		const messages = this.prependContext(this.session.getMessages(), ctx);
 
@@ -476,14 +505,36 @@ export class AgentLoop implements AgentRuntime {
 			try { mcpTools = await this.config.getMcpTools(this.config.agentId); }
 			catch { /* MCP tools unavailable */ }
 		}
-		let agentTools: Record<string, any> | undefined;
-		if (this.config.getAgentToolEntries) {
+		// v0.8 (P2 §11.5): build caller-only subagent delegation tools from
+		// AgentRecord.subagents (replaces the retired getAgentToolEntries →
+		// buildAgentTools path). The tools are caller-only — they do NOT enter
+		// the global ToolRegistry / ALL_TOOLS; buildToolsSet injects them via
+		// its subagentsTools channel (separate from toolPolicy.tools).
+		let subagentsTools: Record<string, any> | undefined;
+		const subagents = this.config.subagents;
+		if (subagents && subagents.length > 0) {
 			try {
-				const { entries, agents } = await this.config.getAgentToolEntries();
-				agentTools = buildAgentTools(entries, agents, this.toolContext);
-			} catch { /* agent tools unavailable */ }
+				subagentsTools = buildSubagentTools({
+					subagents,
+					resolveTarget: this.config.resolveSubagentTarget
+						? (id) => {
+							const t = this.config.resolveSubagentTarget!(id);
+							return t
+								? {
+									id: t.id,
+									name: t.name,
+									systemPrompt: t.systemPrompt,
+									model: t.model,
+									toolPolicy: t.toolPolicy,
+								}
+								: undefined;
+						}
+						: undefined,
+					context: this.toolContext,
+				});
+			} catch { /* subagent tools unavailable */ }
 		}
-		return buildToolsSet(this.config.toolPolicy, this.toolContext, mcpTools, agentTools);
+		return buildToolsSet(this.config.toolPolicy, this.toolContext, mcpTools, subagentsTools);
 	}
 
 	private async assembleSystemPrompt(): Promise<string> {
@@ -521,6 +572,33 @@ export class AgentLoop implements AgentRuntime {
 			return raw as WikiStore;
 		}
 		return null;
+	}
+
+	/**
+	 * v0.8 (P2 §11.7): resolve the session's current task for the context
+	 * block. Source: the active requirement id on the session's project
+	 * context. When a RequirementStore is available, the requirement's title
+	 * is also pulled so the model sees a human-readable handle. Returns "" when
+	 * the session isn't bound to an active requirement (non-project sessions,
+	 * global crons, etc.) — buildContextMessage drops the section in that case.
+	 *
+	 * Re-evaluated every turn (the active requirement may switch mid-session).
+	 * Never throws — store lookups are best-effort.
+	 */
+	private resolveCurrentTask(): string {
+		const ctx = this.config.projectContext;
+		const reqId = ctx?.activeRequirementId;
+		if (!reqId) return "";
+		const store = (this.config as any).requirementStore;
+		let title: string | undefined;
+		try {
+			const req = store?.get?.(reqId) ?? store?.getRequirement?.(reqId);
+			title = req?.title ?? req?.name;
+		} catch { /* best-effort */ }
+		const project = ctx?.projectName ? ` (project: ${ctx.projectName})` : "";
+		return title
+			? `Active requirement: ${title} [${reqId}]${project}`
+			: `Active requirement id: ${reqId}${project}`;
 	}
 
 

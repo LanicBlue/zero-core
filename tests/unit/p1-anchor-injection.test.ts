@@ -33,7 +33,7 @@ import {
 	WikiStore,
 	WIKI_GLOBAL_ROOT_ID,
 	projectSubtreeRootId,
-	memoryTypeRootId,
+	memoryAgentRootId,
 } from "../../src/server/wiki-node-store.js";
 import {
 	resolveAnchors,
@@ -75,17 +75,14 @@ function track<T extends { id: string }>(n: T): T {
 // ─── resolveAnchors:auto memory + auto project + free ─────────
 
 describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
-	test("auto memory = 5 global type roots (context channel, depth=1)", () => {
+	test("auto memory = per-agent subtree root (context channel, depth=2)", () => {
+		// v0.8 (P2 §11.6): memory anchor is now ONE per-agent subtree root
+		// (wiki-root:memory-agent:<agentId>), not the 5 shared type roots.
+		// The 5 shared type roots are retired as auto anchors.
 		const anchors = resolveAnchors({ wiki, agentId: "agent-x" });
 		const memAnchors = anchors.filter((a) => a.kind === "memory");
-		expect(memAnchors.length).toBe(5);
-		// All 5 type roots present.
-		const ids = new Set(memAnchors.map((a) => a.nodeId));
-		expect(ids.has(memoryTypeRootId("event"))).toBe(true);
-		expect(ids.has(memoryTypeRootId("decision"))).toBe(true);
-		expect(ids.has(memoryTypeRootId("discovery"))).toBe(true);
-		expect(ids.has(memoryTypeRootId("status_change"))).toBe(true);
-		expect(ids.has(memoryTypeRootId("preference"))).toBe(true);
+		expect(memAnchors.length).toBe(1);
+		expect(memAnchors[0].nodeId).toBe(memoryAgentRootId("agent-x"));
 		// Default channel for auto-memory = context.
 		expect(memAnchors.every((a) => a.inject === "context")).toBe(true);
 	});
@@ -110,7 +107,8 @@ describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
 	test("zero (no projectId) → only memory + free anchors, no project anchor", () => {
 		const anchors = resolveAnchors({ wiki, agentId: "zero" });
 		expect(anchors.some((a) => a.kind === "project")).toBe(false);
-		expect(anchors.filter((a) => a.kind === "memory").length).toBe(5);
+		// v0.8 (P2 §11.6): one per-agent memory anchor (was 5 type roots).
+		expect(anchors.filter((a) => a.kind === "memory").length).toBe(1);
 	});
 
 	test("free anchors override inject channel (free wins over auto)", () => {
@@ -129,20 +127,17 @@ describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
 		expect(projAnchor!.inject).toBe("off");
 	});
 
-	test("anchorNodeIds: dedupes the union", () => {
-		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "p") });
-		track(wiki.ensureProjectSubtree(proj.id, "P"));
-		const bundle = { projectId: proj.id, workspaceDir: join(tmpDir, "p") } as SessionContextBundle;
+	test("anchorNodeIds: dedupes the union (free + auto memory)", () => {
+		// v0.8 (P2 §11.6): the auto memory anchor is now the per-agent root.
+		// A free entry pointing at the same per-agent root dedupes against it.
+		const agentId = "x";
 		const freeAnchors: AgentRecord["wikiAnchors"] = [
-			// Duplicate of the auto memory decision anchor.
-			{ nodeId: memoryTypeRootId("decision"), inject: "context" },
+			{ nodeId: memoryAgentRootId(agentId), inject: "context" },
 		];
-		const anchors = resolveAnchors({
-			wiki, agentId: "x", contextBundle: bundle, wikiAnchors: freeAnchors,
-		});
+		const anchors = resolveAnchors({ wiki, agentId, wikiAnchors: freeAnchors });
 		const ids = anchorNodeIds(anchors);
-		// decision appears once even though free + auto both list it.
-		expect(ids.filter((id) => id === memoryTypeRootId("decision")).length).toBe(1);
+		// Per-agent root appears once even though free + auto both list it.
+		expect(ids.filter((id) => id === memoryAgentRootId(agentId)).length).toBe(1);
 	});
 });
 
@@ -188,17 +183,15 @@ describe("P1 §10.6 渲染:project 2 层 outline + memory 索引", () => {
 	});
 
 	test("memory anchor 渲染:索引 (title + nodeId 链接,不展开内容)", () => {
-		wiki.ensureMemoryTypeRoot("decision");
-		wiki.ensureMemoryTypeRoot("event");
-		const decLeaf = track(wiki.createMemoryNode({
-			parentId: memoryTypeRootId("decision"),
-			path: "memory:dec-subject-1",
+		// v0.8 (P2 §11.6): memory leaves live under the per-agent subtree
+		// root for the resolving agent. We seed leaves under agent "x"'s root.
+		const decLeaf = track(wiki.createMemoryNodeForAgent({
+			agentId: "x", type: "decision", subject: "dec-subject-1",
 			title: "Decided on SQLite",
 			summary: "internal rationale that must NOT leak",
 		}));
-		const evtLeaf = track(wiki.createMemoryNode({
-			parentId: memoryTypeRootId("event"),
-			path: "memory:evt-subject-1",
+		const evtLeaf = track(wiki.createMemoryNodeForAgent({
+			agentId: "x", type: "event", subject: "evt-subject-1",
 			title: "Initial scan completed",
 		}));
 
@@ -263,11 +256,11 @@ describe("P1 §10.6 system vs context 通道分离", () => {
 		track(wiki.upsertProjectNode(proj.id, {
 			parentId: root.id, type: "header", path: "header:s.ts", title: "s.ts",
 		}));
-		// Memory anchor exists by default.
-		wiki.ensureMemoryTypeRoot("decision");
-		track(wiki.createMemoryNode({
-			parentId: memoryTypeRootId("decision"),
-			path: "memory:dec-1", title: "dec 1",
+		// v0.8 (P2 §11.6): memory anchor is per-agent. Seed a leaf under agent
+		// "x"'s root so renderContextAnchors finds it.
+		track(wiki.createMemoryNodeForAgent({
+			agentId: "x", type: "decision", subject: "dec-1",
+			title: "dec 1",
 		}));
 
 		const anchors = resolveAnchors({
@@ -279,8 +272,9 @@ describe("P1 §10.6 system vs context 通道分离", () => {
 
 		// Project anchor → system;memory anchor → context.
 		expect(sys).toContain("Project: P");
-		expect(sys).not.toContain("Memory: Decisions");
-		expect(ctx).toContain("Memory: Decisions");
+		expect(sys).not.toContain("Memory: x");
+		expect(ctx).toContain("Memory: x");
+		expect(ctx).toContain("dec 1");
 		expect(ctx).not.toContain("Project: P");
 	});
 });

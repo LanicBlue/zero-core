@@ -194,15 +194,37 @@ export function isInsideWikiDisk(p: string | undefined | null): boolean {
 }
 
 /**
- * v0.8 (P1 §10.1): the synthetic memory-anchor node id for a given agent.
+ * v0.8 (P2 §11.6): the synthetic memory-anchor node id for a given agent.
  * Sessions whose agentId = X derive `memory-anchor:<X>` as one of their
- * automatic anchors; the anchor is matched against nodes whose path starts
- * with `memory:` AND were written by that agent (lastUpdatedBy = X), or — for
- * the legacy global memory roots — against the 5 `wiki-root:memory:<type>`
- * type roots. The id itself is synthetic (no row is created with it).
+ * automatic anchors; the anchor is resolved against the per-agent memory
+ * subtree root `wiki-root:memory:<agentId>` (a real row, created lazily by
+ * ensureMemoryAgentRoot). Memory leaves for that agent hang directly under
+ * the per-agent root (path: `memory:<agentId>:<type>:<subject>`).
+ *
+ * The id is synthetic (no row is created with this exact id) — it is the
+ * anchor handle used by wiki-anchor-injection to render the per-agent memory
+ * index; the actual subtree lives at memoryAgentRootId(agentId).
  */
 export function memoryAnchorIdForAgent(agentId: string): string {
 	return `memory-anchor:${agentId}`;
+}
+
+/**
+ * v0.8 (P2 §11.6): stable synthetic id of an agent's per-agent memory
+ * subtree root. Real row, created lazily by ensureMemoryAgentRoot(). The
+ * root hangs directly under WIKI_GLOBAL_ROOT_ID (memory is global to the
+ * agent — cross-project, per RFC §11.6 risk note).
+ *
+ * Replaces the M5 scheme (5 global type roots shared by all agents). Old
+ * data under `wiki-root:memory:<type>` is left in place — P9 cleanup will
+ * DROP it together with the agent-tool-entries table.
+ */
+export function memoryAgentRootId(agentId: string): string {
+	// Sanitize agentId into a path-safe segment to keep the synthetic id stable
+	// even for weird agent ids (slashes / colons would clash with the wiki id
+	// grammar). Keep it recognizable for the common case (uuid / slug ids).
+	const safe = agentId.replace(/[:/\\]+/g, "_");
+	return `wiki-root:memory-agent:${safe}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -789,6 +811,84 @@ export class WikiStore {
 		return this.get(id)!;
 	}
 
+	/**
+	 * v0.8 (P2 §11.6): ensure an agent's per-agent memory subtree root exists.
+	 * One root per agent, hanging directly under WIKI_GLOBAL_ROOT_ID. Memory is
+	 * GLOBAL to the agent (cross-project) — the same agent's memory spans every
+	 * project it touches (RFC §11.6 risk note). Idempotent.
+	 *
+	 * Replaces the M5 scheme where every agent's memories lived under the 5
+	 * shared type roots. The per-agent root is the single anchor handle that
+	 * wiki-anchor-injection renders as the agent's MEMORY.md-style index.
+	 */
+	ensureMemoryAgentRoot(agentId: string): WikiNode {
+		const id = memoryAgentRootId(agentId);
+		const existing = this.get(id);
+		if (existing) return existing;
+		const now = new Date().toISOString();
+		this.insertWithId({
+			id,
+			parentId: WIKI_GLOBAL_ROOT_ID,
+			type: "memory",
+			nodeType: "section",
+			path: `memory-agent:${agentId}`,
+			title: `Memory: ${agentId}`,
+			summary: `Per-agent memory subtree for agent ${agentId} (P2 §11.6).`,
+			lastUpdatedBy: "extractor-A",
+			createdAt: now,
+			updatedAt: now,
+		} as any);
+		return this.get(id)!;
+	}
+
+	/**
+	 * v0.8 (P2 §11.6): upsert a memory leaf under an agent's per-agent subtree.
+	 * Replaces the M5 `createMemoryNode`-under-type-root path. Same upsert
+	 * semantics (by parent + path); type is encoded in the path so the index
+	 * renderer can still bucket by type when needed.
+	 *
+	 * `type` is preserved on the leaf so consumers reading the body JSON still
+	 * see event/decision/discovery/status_change/preference.
+	 */
+	createMemoryNodeForAgent(input: {
+		agentId: string;
+		type: "event" | "decision" | "discovery" | "status_change" | "preference";
+		subject: string;
+		title: string;
+		summary?: string;
+		detail?: string;
+		provenance?: "structure" | "derived" | "confirmed";
+		lastUpdatedBy?: string;
+	}): WikiNode {
+		const root = this.ensureMemoryAgentRoot(input.agentId);
+		// Path encodes type + subject for stable upsert + bucket rendering.
+		const slug = input.subject
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-+|-+$/g, "")
+			.slice(0, 64) || "unnamed";
+		const path = `memory:${input.agentId}:${input.type}:${slug}`;
+		const existing = this.getByParentAndPath(root.id, path);
+		if (existing) {
+			return this.update(existing.id, {
+				title: input.title,
+				summary: input.summary,
+				type: "memory",
+				lastUpdatedBy: input.lastUpdatedBy ?? "extractor-A",
+			});
+		}
+		return this.create({
+			parentId: root.id,
+			path,
+			title: input.title,
+			summary: input.summary,
+			detail: input.detail,
+			type: "memory",
+			provenance: input.provenance ?? "derived",
+			lastUpdatedBy: input.lastUpdatedBy ?? "extractor-A",
+		});
+	}
+
 	// ─── Project registry / helpers ─────────────────────────────────
 
 	/** List all known project subtree root nodes. */
@@ -963,10 +1063,23 @@ function deriveTypeFromPosition(row: any): WikiNodeTypeGlobal {
 
 	// 1. Synthetic roots.
 	if (id === WIKI_GLOBAL_ROOT_ID) return "project";
-	if (id.startsWith("wiki-root:memory:")) return "memory";
+	// v0.8 (P2 §11.6): the per-agent memory subtree root
+	// (`wiki-root:memory-agent:<id>`, path `memory-agent:<id>`) is an
+	// INDEX/anchor container — it must NOT be counted as a memory leaf by
+	// listMemoryNodes / searchMemoryNodes (which filter type === "memory").
+	// The leaves under it (path `memory:<agentId>:<type>:<slug>`) are the
+	// actual memory rows. Anchor injection resolves the root by its id
+	// prefix directly (wiki-anchor-injection.ts:classifyAnchorKind), so the
+	// root does not need type === "memory" to render. Fall through: its
+	// nodeType is "section" → "structure" (rule 4).
+	if (id.startsWith("wiki-root:memory:")) return "memory"; // legacy shared type root
 	if (id.startsWith("wiki-root:")) return "project"; // project subtree root
 
 	// 2. Memory leaves by path signal.
+	// P2 leaves: `memory:<agentId>:<type>:<slug>` (per-agent, under a
+	// wiki-root:memory-agent: root). Legacy M5 leaves: `memory:<type>/<subject>`
+	// under a wiki-root:memory:<type> root. Both match `path.startsWith("memory")`.
+	// `memory-root:` covers the legacy type-root path namespace as memory too.
 	if (path.startsWith("memory") || path.startsWith("memory-root:")) return "memory";
 
 	// 3. Project subtree members.

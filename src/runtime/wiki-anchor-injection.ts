@@ -39,18 +39,13 @@ import type { WikiStore } from "../server/wiki-node-store.js";
 import {
 	WIKI_GLOBAL_ROOT_ID,
 	projectSubtreeRootId,
-	memoryTypeRootId,
-	type MemoryFactType,
+	memoryAgentRootId,
 } from "../server/wiki-node-store.js";
 import type {
 	AgentRecord,
 	SessionContextBundle,
 	WikiNode,
 } from "../shared/types.js";
-
-const MEMORY_FACT_TYPES: MemoryFactType[] = [
-	"event", "decision", "discovery", "status_change", "preference",
-];
 
 /** Default depth for project-anchor subtree expansion (plan-P1 §12). */
 export const DEFAULT_PROJECT_ANCHOR_DEPTH = 2;
@@ -72,7 +67,8 @@ export interface ResolvedAnchor {
  * v0.8 (P1 §10.3.1): resolve a session's full anchor set:
  *
  *   auto = [
- *     memory anchor (5 global memory type roots: wiki-root:memory:<type>),
+ *     memory anchor (this agent's per-agent memory subtree root:
+ *                    wiki-root:memory-agent:<agentId>, P2 §11.6),
  *     project anchor (wiki-root:<projectId>) if contextBundle.projectId set,
  *   ]
  *   free = AgentRecord.wikiAnchors (each entry classified project vs memory
@@ -96,18 +92,20 @@ export function resolveAnchors(opts: {
 	const { wiki, contextBundle, wikiAnchors } = opts;
 	const out: ResolvedAnchor[] = [];
 
-	// 1. Auto memory anchor — the 5 global memory-type roots. Every memory
-	//    leaf written by extractor A hangs under one of these, so the union
-	//    of their subtrees = "this session sees global memory".(Future
-	//    per-agent memory scoping can swap these for memory-anchor:<agentId>
-	//    subtrees without changing the render API.)
-	// TODO(P2): per-agent memory anchor (memory/<agentId> subtree)
-	for (const t of MEMORY_FACT_TYPES) {
+	// 1. Auto memory anchor — this session's agent's per-agent memory subtree
+	//    root (P2 §11.6). Memory is global to the agent (cross-project): the
+	//    same agent's memory spans every project it touches. Extractor A
+	//    writes here; the anchor renders the subtree as a MEMORY.md-style
+	//    index in the context channel.
+	//
+	//    (Pre-P2 used the 5 shared global type roots; that scheme is retired
+	//    but old data under those roots is left in place — P9 cleanup.)
+	if (opts.agentId) {
 		out.push({
-			nodeId: memoryTypeRootId(t),
+			nodeId: memoryAgentRootId(opts.agentId),
 			inject: "context", // memory anchor default channel
 			kind: "memory",
-			depth: 1,
+			depth: 2,
 		});
 	}
 
@@ -146,7 +144,9 @@ export function anchorNodeIds(anchors: ResolvedAnchor[]): string[] {
 }
 
 function classifyAnchorKind(nodeId: string, node: WikiNode | undefined): "project" | "memory" {
-	// Memory-type roots + any descendant of one → memory.
+	// v0.8 (P2 §11.6): per-agent memory roots (`wiki-root:memory-agent:<id>`)
+	// + legacy global type roots (`wiki-root:memory:<type>`) → memory.
+	if (nodeId.startsWith("wiki-root:memory-agent:")) return "memory";
 	if (nodeId.startsWith("wiki-root:memory:")) return "memory";
 	if (node && node.type === "memory") return "memory";
 	if (node && node.path && node.path.startsWith("memory")) return "memory";

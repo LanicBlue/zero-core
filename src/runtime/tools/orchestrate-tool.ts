@@ -208,17 +208,18 @@ async function dispatchAgentTool(
 		return `Error: delegateTask not available — cannot dispatch ${agentToolName}`;
 	}
 
-	// Resolve the agent-tool's target agent by name via getAgentToolEntries.
-	// getAgentToolEntries is on SessionConfig, not ToolExecutionContext — but the
-	// loop populates toolContext with delegateTask; the agent-tool registry is
-	// built into the loop's tools set, not directly accessible from the tool
-	// execution context. So we look up the entry via the SessionConfig-derived
-	// resolver if present, otherwise we fall back to a name-derived target id.
-	const resolver = (ctx as any).getAgentToolEntries as
-		| (() => Promise<{
-				entries: Array<{ id: string; name: string; enabled: boolean; agentId?: string }>;
-				agents: Map<string, { id: string; systemPrompt?: string; model?: string; toolPolicy?: any }>;
-		  }>)
+	// v0.8 (P2 §11.5): resolve the agentTool name → target agent via this
+	// session's subagents list (AgentRecord.subagents, surfaced as
+	// ctx.subagents). Each entry's user-facing name (or agentId) is matched
+	// against agentToolName; identity comes from ctx.resolveSubagentTarget
+	// when available. The legacy getAgentToolEntries path is retired.
+	const subagents = (ctx as any).subagents as
+		| Array<{ agentId: string; name?: string; description?: string }>
+		| undefined;
+	const resolveTarget = (ctx as any).resolveSubagentTarget as
+		| ((agentId: string) =>
+			| { id: string; systemPrompt?: string; model?: string; toolPolicy?: any }
+			| undefined)
 		| undefined;
 
 	let targetAgentId: string | undefined;
@@ -226,21 +227,16 @@ async function dispatchAgentTool(
 	let model: string | undefined;
 	let toolPolicy: any;
 
-	if (resolver) {
-		try {
-			const { entries, agents } = await resolver();
-			const entry = entries.find((e) => e.enabled && (e.name === agentToolName || e.id === agentToolName));
-			if (entry?.agentId) {
-				targetAgentId = entry.agentId;
-				const ag = agents.get(entry.agentId);
-				if (ag) {
-					systemPrompt = ag.systemPrompt;
-					model = ag.model;
-					toolPolicy = ag.toolPolicy;
-				}
-			}
-		} catch (err) {
-			log.debug("orchestrate", `agent-tool resolver failed for ${agentToolName}: ${(err as Error).message}`);
+	const entry = subagents?.find(
+		(s) => (s.name && s.name === agentToolName) || s.agentId === agentToolName,
+	);
+	if (entry?.agentId) {
+		targetAgentId = entry.agentId;
+		const target = resolveTarget?.(entry.agentId);
+		if (target) {
+			systemPrompt = target.systemPrompt;
+			model = target.model;
+			toolPolicy = target.toolPolicy;
 		}
 	}
 

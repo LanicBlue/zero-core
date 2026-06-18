@@ -377,29 +377,23 @@ export class AgentService {
 					this.mcp.callTool(serverId, toolName, args),
 				);
 			},
-		getAgentToolEntries: async () => {
-					if (!this.agentToolStore || !this.agentStore) {
-						return { entries: [], agents: new Map() };
-					}
-					const entries = this.agentToolStore.list().filter((e) => {
-						if (!e.enabled) return false;
-						if (e.type === "internal") return e.agentId !== agentId;
-						return true;
-					});
-					const agentMap = new Map<string, { id: string; name: string; systemPrompt?: string; model?: string; toolPolicy?: any }>();
-					for (const agent of this.agentStore.list()) {
-						agentMap.set(agent.id, {
-							id: agent.id,
-							name: agent.name,
-							systemPrompt: agent.systemPrompt,
-							model: agent.model,
-							toolPolicy: agent.toolPolicy,
-						});
-					}
-					return { entries, agents: agentMap };
-				},
+			// v0.8 (P2 §11.5): subagents + target resolver (replaces retired
+			// getAgentToolEntries). subagents come from AgentRecord.subagents;
+			// the resolver reads the target agent's identity from agentStore.
+			subagents: agent?.subagents ?? [],
+			resolveSubagentTarget: (targetId: string) => {
+				const a = this.agentStore?.get(targetId);
+				if (!a) return undefined;
+				return {
+					id: a.id,
+					name: a.name,
+					systemPrompt: a.systemPrompt,
+					model: a.model,
+					toolPolicy: a.toolPolicy,
+				};
+			},
 			getToolConfig: () => this.registry.getToolConfig(),
-			};
+		};
 		// v0.8 (M0): zero sessions get the ZeroAdminService handle so the
 		// CreateProject/CreateAgent/InstantiatePreset/SetToolPolicy/ExposeAgentAsTool
 		// tools are available (gated via CONDITIONAL_TOOLS on ctx.zeroAdmin).
@@ -546,20 +540,19 @@ export class AgentService {
 					this.mcp.callTool(serverId, toolName, args),
 				);
 			},
-			getAgentToolEntries: async () => {
-				if (!this.agentToolStore || !this.agentStore) {
-					return { entries: [], agents: new Map() };
-				}
-				const entries = this.agentToolStore.list().filter((e) => {
-					if (!e.enabled) return false;
-					if (e.type === "internal") return e.agentId !== agentId;
-					return true;
-				});
-				const agentMap = new Map<string, { id: string; name: string; systemPrompt?: string; model?: string; toolPolicy?: any }>();
-				for (const a of this.agentStore!.list()) {
-					agentMap.set(a.id, { id: a.id, name: a.name, systemPrompt: a.systemPrompt, model: a.model, toolPolicy: a.toolPolicy });
-				}
-				return { entries, agents: agentMap };
+			// v0.8 (P2 §11.5): subagents + target resolver (replaces retired
+			// getAgentToolEntries).
+			subagents: agent.subagents ?? [],
+			resolveSubagentTarget: (targetId: string) => {
+				const a = this.agentStore?.get(targetId);
+				if (!a) return undefined;
+				return {
+					id: a.id,
+					name: a.name,
+					systemPrompt: a.systemPrompt,
+					model: a.model,
+					toolPolicy: a.toolPolicy,
+				};
 			},
 			getToolConfig: () => this.registry.getToolConfig(),
 			agentRole: role,

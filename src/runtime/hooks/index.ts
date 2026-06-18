@@ -3,9 +3,13 @@
 // # 文件说明书
 //
 // ## 核心功能
-// registerAllRuntimeHooks 按固定顺序注册 turn 持久化、通知、记忆召回、RAG 注入、provider options、
+// registerAllRuntimeHooks 按固定顺序注册 turn 持久化、通知、RAG 注入、provider options、
 // 压缩等钩子；由 agent-service.ts 在启动时与 registerDurableHooks 一并调用。注册顺序敏感
-// （notification → memory → rag → providerOptions → compression）。
+// （notification → rag → providerOptions → compression）。
+//
+// v0.8 (P2 §11.6): registerMemoryHooks 已废 (memory 合并到 wiki per-agent 子树,
+// 召回改由 wiki-anchor-injection 注入 + Wiki(search) 查询)。memoryContext 不再由
+// 独立 hook 注入 —— 上下文构建见 buildContextMessage + renderContextAnchors。
 //
 // ## 输入
 // - 可选 db：ISessionStore，仅在传入时注册 turn-hooks（步骤级持久化）
@@ -27,7 +31,6 @@
 
 import { registerCompressionHooks } from "./compression-hooks.js";
 import { registerExtractionHooks, type ExtractionHooksDeps } from "./extraction-hooks.js";
-import { registerMemoryHooks } from "./memory-hooks.js";
 import { registerNotificationHooks } from "./notification-hooks.js";
 import { registerProviderOptionsHooks } from "./provider-options-hooks.js";
 import { registerRagHooks } from "./rag-hooks.js";
@@ -43,7 +46,9 @@ import { log } from "../../core/logger.js";
 export function registerAllRuntimeHooks(db?: ISessionStore, extractionDeps?: ExtractionHooksDeps): void {
 	if (db) registerTurnHooks(db);
 	registerNotificationHooks();
-	registerMemoryHooks();
+	// v0.8 (P2 §11.6): registerMemoryHooks() removed — memory now lives in
+	// wiki per-agent subtrees and is injected via wiki-anchor-injection +
+	// renderContextAnchors. No standalone recall hook.
 	registerRagHooks();
 	registerProviderOptionsHooks();
 	registerCompressionHooks();

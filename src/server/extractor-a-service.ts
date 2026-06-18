@@ -49,7 +49,6 @@ import { generateText } from "ai";
 import type { RuntimeProviderConfig } from "../runtime/types.js";
 import { resolveModel } from "../runtime/provider-factory.js";
 import type { WikiStore } from "./wiki-node-store.js";
-import { memoryTypeRootId } from "./wiki-node-store.js";
 import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -166,16 +165,24 @@ export class ExtractorAService {
 
 		let created = 0;
 		let updated = 0;
+		// v0.8 (P2 §11.6): per-agent memory subtree. delta.agentId picks the
+		// subtree; falls back to a sentinel "unknown" agent root so the write
+		// never silently lands in the wrong place.
+		const agentId = delta.agentId ?? "unknown";
 		for (const fact of facts) {
 			try {
-				// Ensure the matching type root exists (idempotent).
-				this.opts.wiki.ensureMemoryTypeRoot(fact.type);
-				const parentId = memoryTypeRootId(fact.type);
-				const path = `memory:${subjectSlug(fact.subject)}`;
-				const before = this.opts.wiki.getByParentAndPath(parentId, path);
-				this.opts.wiki.createMemoryNode({
-					parentId,
-					path,
+				// createMemoryNodeForAgent upserts under the agent's own subtree
+				// root (memory-agent:<agentId>), hanging directly under
+				// WIKI_GLOBAL_ROOT_ID (memory is global to the agent — cross-
+				// project, per RFC §11.6 risk note).
+				const before = this.opts.wiki.getByParentAndPath(
+					this.opts.wiki.ensureMemoryAgentRoot(agentId).id,
+					`memory:${agentId}:${fact.type}:${subjectSlug(fact.subject)}`,
+				);
+				this.opts.wiki.createMemoryNodeForAgent({
+					agentId,
+					type: fact.type,
+					subject: fact.subject,
 					title: `${fact.subject} (${fact.type})`,
 					summary: fact.content,
 					detail: JSON.stringify({
@@ -183,7 +190,7 @@ export class ExtractorAService {
 						type: fact.type,
 						content: fact.content,
 						sourceSessionId: delta.sessionId,
-						sourceAgentId: delta.agentId,
+						sourceAgentId: agentId,
 						sourceSeqRange: [delta.fromSeq, delta.toSeq],
 					}, null, 2),
 					provenance: "derived",

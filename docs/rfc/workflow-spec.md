@@ -270,6 +270,8 @@ seed 触发点：`startServer` 内、所有 store 建好后、`restoreAllSession
 
 zero 的工具按功能域压缩为 **4 个**，每个靠 `action` 字段路由输入（判别联合 schema）。
 
+> **工具按功能命名/分组,不按 agent 命名（硬原则）**：能力在工具,agent 只是被配了工具才有能力。`zero-admin-tools.ts` / `ZeroAdminService` 这种「按谁用来命名」是错的——应按功能域命名(拆成 `project-tool`/`agent-tool`/`cron-tool`/`wiki-tool`,服务按功能命名)。**工具是能力的主体,agent 是工具的配置组合。** 改名在 P3 落地。
+>
 > **工具是硬编码的**：4 个域工具 + 平台工具（Shell/Read/Grep/Glob/Write/Edit/委派）的**定义都在代码里，不入库**。
 > 但**工具的默认参数配置、使用记录需要 DB 表**：每个工具的默认 config、每次调用的 usage 记录都持久化（审计 + 复用配置）。
 > 「agent as tool」**不再是工具** —— 见 §7.4，改用 caller 侧 `subagents` 列表。
