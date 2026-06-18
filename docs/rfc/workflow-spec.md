@@ -49,6 +49,7 @@ M0–M5 实现期间踩了一类共性问题：**计划层只写了「要支持 
   - agent 被**激活**（cron 触发 / 被委派 / 用户唤醒）时，用工具读当前状态 + 按 prompt 判断该干什么 + 委派 subagent。
   - 例：verify 通过后，**lead 自己**（prompt 指导）委派 archivist 去合并；PM 覆盖判断 = **PM 的 cron 激活后**看到 verify 状态的需求自己去判。
 - zero 的唯一职责：**定义 agent 间的合作关系**（subagents 委派图 + cron 激活），不编排运行时。
+- **「无角色路由」≠「不能直接交接」**：跨 agent 寻址一律用 **requirement 上记录的 agentId**（`createdByAgentId`=PM、`assigned_agent_id`=lead、`reviewer_agent_id`=覆盖判断方）—— requirement 是记录所有相关 agent ID 的枢纽。lead 提交 verify → 按 req 记录的 PM agentId 直接交给那个 PM，是沿**数据里记录的边**直接交接，不是角色广播、不是中央路由。
 - 现状代码 `ProjectNotificationRouter` / `requirement-hooks.ts` 里的 `notify(...)` 推送路径**作废**，改成拉模型（§4.3/§4.5/§4.6 重写）。
 
 ---
@@ -60,13 +61,13 @@ M0–M5 实现期间踩了一类共性问题：**计划层只写了「要支持 
 
 | template | 职责 | 位置（role-templates.ts 行） |
 |---|---|---|
-| `lead` | 交付负责人，编排 Orchestrate 流程 | :213 |
+| `lead` | 交付负责人，编排 + 委派 | :213 |
 | `pm` | 产品经理，发现需求 + 覆盖判断 | :228 |
 | `archivist` | 知识管理，wiki 提取 + feature→main 合并 | :252 |
-| `analyzer` ×4（ui/security/performance/architecture） | 分析工具角色 | :266 / :278 / :290 / :302 |
-| `planner` ×4（feature/bugfix/refactor/research） | 规划工具角色 | :314 / :326 / :338 / :350 |
-| `developer` / `reviewer` / `qa` | Orchestrate 流程内的执行角色 | :362 / :374 / :386 |
-| `zero` | 全局管理（用户本体，定义 agent 间合作关系） | :398 |
+| `developer` / `reviewer` / `qa` | 交付流程内的执行角色（写码 / 审 / 测） | :362 / :374 / :386 |
+| `zero` | 软件管家，定义 agent 间合作关系 | :398 |
+
+> `analyzer` / `planner` 是**抽象概念**（分析、规划），不作为具体角色 template 落地，不写行为定义。需要分析/规划能力时,由具体角色（如 lead/archivist）在自己的 prompt + 工具里体现,或按需由 zero 临时配。
 
 各角色的具体行为模式 + prompt 见 **§12**。
 
@@ -153,20 +154,21 @@ interface SessionContextBundle {
 | 维度 | 内容 |
 |---|---|
 | 触发点 | 用户在看板 discuss 栏点「跳转讨论」 |
-| 数据流 | renderer → IPC `pm:openDiscuss` → ROUTE_MAP → `POST /api/pm/:projectId/discuss` → `PmService.openDiscussSession(projectId)` → `resolveSessionByRoleProject(pmAgent.id, projectId)` → 返回 `{agentId, sessionId, created}` → renderer `setActiveAgent` + 切 ChatPage + 打开需求文档 |
-| IPC 通道 | `pm:openDiscuss`（`ipc-proxy.ts` ROUTE_MAP → `/api/pm/:projectId/discuss`） |
-| 存储变更 | find-or-create `{PM, projectId}` session（与 cron 触发同一 session，决策 13/14） |
+| 数据流 | renderer → IPC `pm:openDiscuss` → ROUTE_MAP → `POST /api/pm/:requirementId/discuss` → 读 `req.createdByAgentId`（建该需求的 PM agent id）→ `resolveSessionByRoleProject(pmAgentId, projectId)` → 返回 `{agentId, sessionId, created}` → renderer `setActiveAgent` + 切 ChatPage + 打开需求文档 |
+| IPC 通道 | `pm:openDiscuss`（`ipc-proxy.ts` ROUTE_MAP） |
+| 寻址 | **按 `req.createdByAgentId` 定位 PM**（需求自己记录是哪个 PM 建的），不靠角色查找、不靠 `findPmAgent()` |
+| 存储变更 | find-or-create `{PM, projectId}` session（与 cron 触发同一 session） |
 | prompt 契约 | 无；discuss 续接同一 session 的历史 |
-
-**REST 端点**：`src/server/index.ts` 的 `pmRouter.post("/:projectId/discuss")`（返回 409 若无 PM agent）。
 
 > ⚠️ **关键细节**：「跳转 discuss」= 打开 chat **且** 打开对应需求文档（`requirements:doc:read` 读 docPath）。M4 早期实现漏了打开文档，已修。
 
 ### 4.3 Plan（lead 领取 + Orchestrate confirm 门）
 
+> **「门」= 阻塞工具**：confirm/verify 等「门」本质都是 lead 调一个工具后**等工具返回**——工具内部 await 判定方裁决（confirm 等用户、verify 等 PM），裁决到才 return，lead 轮次自然停住。**无独立 Gate 抽象、无 gates 表**；`ConfirmRegistry` 就是 confirm 工具的 await 实现。判定方是谁只决定工具 await 什么。
+
 | 维度 | 内容 |
 |---|---|
-| 触发点 | **拉模型**：lead 被 cron 激活（或用户唤醒/被委派）→ 读项目需求状态 → 看到 `ready` 的需求 → 主动 `pickupRequirement()`（`lead-service.ts:120`）。无事件推送。 |
+| 触发点 | **拉模型**：lead **完成上一任务后自动领下一个** ready 需求（primary，`autoPickupIfIdle`）；**cron 激活保底**（fallback，定期唤醒 lead 检查 ready 需求）。无事件推送。 |
 | 数据流 | lead 在 `{lead, projectId}` session 调用 `Orchestrate` 工具提交 DSL flow → plan 落 `orchestrate_plans` → **confirm 门停住**（`ConfirmRegistry` await，不占资源）→ 用户 IPC `orchestrate:confirm` → resolve → 执行 |
 | IPC 通道 | `orchestrate:pending` / `orchestrate:plan` / `orchestrate:confirm` / `orchestrate:reject`（ROUTE_MAP → `/api/orchestrate/*`） |
 | 存储变更 | `transitionStatus(req, "plan")`；OrchestratePlanStore 落计划；TaskStepStore 落步骤 |
@@ -182,27 +184,34 @@ interface SessionContextBundle {
 | 存储变更 | TaskStepStore 步骤状态推进（completed / failed / skipped） |
 | prompt 契约 | 各角色 systemPrompt（§12） |
 
-### 4.5 Verify（build→verify + PM 覆盖判断）
+### 4.5 Verify（实现完成门 —— lead 提交，PM 判）
+
+> verify 是**第二个门**（第一个是 plan 的 confirm 门，§4.3）。两个门都是 lead 提交后停下等。
 
 | 维度 | 内容 |
 |---|---|
-| 触发点 | PostTurnComplete hook（`requirement-hooks.ts:100`）：lead session 一轮结束且所有步骤 completed → `transitionStatus(req, "verify")`（平台只置状态，不推送） |
-| 反应（拉模型） | **PM 的 cron 激活后**看到 `verify` 状态的需求 → 自己做覆盖判断 → 调 `pm:coverageVerdict` → `submitCoverageVerdict`（`pm-service.ts:308`）。无 notify 推送。 |
+| 触发点 | lead 完成实现 → **提交 verify**（verify 工具/action：写 verify payload「做了什么 + 证据」+ 置 status `verify-pending`）→ **lead 停下等待**（不继续）。无 hook 自动推进，是 lead 显式提交。 |
+| 判定方 | **verify 工具调 PM**：lead 调 verify 工具 → 工具按 `req.createdByAgentId`/`reviewer_agent_id`（记录的 agentId）**直接调那个 PM** 去做覆盖判断（产品粒度：改动+测试是否覆盖原始意图）→ 拿到 verdict **通过** 或 **不通过 + 修改意见** → 工具 return 给 lead。工具是桥,lead 阻塞等工具(=等 PM 判),实时、无 cron 延迟。**PM cron 只管 discovery（巡检）,不管 verify 感知。** |
+| 通过 | PM 触发 archivist 合并（§4.6）→ archived。 |
+| 不通过 | lead（被重新激活）收到修改意见 → **改计划再执行** → 重新提交 verify（循环到通过）。 |
 | IPC 通道 | `pm:coverageView` → `GET /api/pm/:requirementId/coverage-view`；`pm:coverageVerdict` → `POST /api/pm/:requirementId/coverage-verdict` |
-| 存储变更 | `reviewer_agent_id` stamp；verdict 落 `status_change` message（审计） |
-| prompt 契约 | PM 覆盖判断 = **产品粒度**（改动+测试是否覆盖原始意图）；**不做技术 accept**（技术验收在 Orchestrate flow 内） |
+| 存储变更 | verify payload；`reviewer_agent_id` stamp；verdict（pass / fail+意见）落 `status_change` message（审计） |
+| prompt 契约 | PM 覆盖判断 = **产品粒度**；不做技术 accept（技术验收在 Orchestrate flow 内） |
 
-### 4.6 Archivist（合并 + wiki 提取，lead 委派）
+> verify 是个**项目交付域工具**（lead 提交、PM 接收）。具体工具打包（独立工具 / Project 工具的 action / 工作流工具）待 Q1。
+
+### 4.6 Archivist（合并 + wiki 提取，PM 委派/通知）
 
 | 维度 | 内容 |
 |---|---|
-| 触发点 | **拉模型 + delegation**：覆盖判断 OK 后，**lead 自己**（prompt 指导）委派 archivist subagent 去合并；archivist 也可能被 cron 激活后看到待合并状态自行处理。无 `verify_accept` 事件推送。 |
-| 数据流 | archivist 收到委派/激活 → `mergeFeatureToMain()`（`archivist-service.ts:283`）+ wiki 增量扫描 `scanProject()` 提取记忆 → lead 置 `archived` |
+| 触发点 | **verify（覆盖判断）是 PM 的职责**（§4.5）。PM 覆盖判断 OK 后，**委派 archivist**（archivist 是 PM 的 subagent，由 zero 配）去合并；archivist 也可能被自己的 cron 激活后看到待合并状态自行处理。**lead 不碰 archivist**。无 `verify_accept` 事件推送。 |
+| 注 | 目前用 **subagent 委派（同步）**。将来若有「异步、无反馈」的交接需求（PM 不等合并完成），再加**同级通知**机制（按 agentId 点对点，非角色路由）—— 非必须，暂不做。 |
+| 数据流 | archivist 收到 PM 委派/激活 → `mergeFeatureToMain()`（`archivist-service.ts:283`，main 由 archivist 管）+ wiki 增量扫描 `scanProject()` 提取记忆 → 置 `archived` |
 | IPC 通道 | 无（agent 内部委派）；archivist wiki 操作通过 Wiki 工具 |
 | 存储变更 | `transitionStatus(req, "archived")`；wiki 节点更新；feature→main git 合并 |
 | prompt 契约 | archivist systemPrompt（§12）；提取者 A/B（内容记忆 / 工具遥测，M5） |
 
-> ⚠️ 现状 `requirement-hooks.ts:151` 的 `notify("verify_accept")` 推送路径作废（§1.5），改成 lead 委派 archivist 的拉模型。这是 v0.8 重构项。
+> ⚠️ 现状 `requirement-hooks.ts:151` 的 `notify("verify_accept")` 推送路径作废（§1.5），改成 PM 委派/通知 archivist 的拉模型。这是 v0.8 重构项。
 
 ---
 
@@ -210,17 +219,18 @@ interface SessionContextBundle {
 
 ```
 found → discuss → ready → plan → build → verify → archived
-                                        ↓
-                                  (覆盖判断不过) → 回 build，lead 补
+                                        ↑            ↓
+                                        └─ (PM 判不通过+意见) lead 改计划再执行
 ```
+两个门：plan 的 **confirm 门**（用户确认，§4.3）、实现完成的 **verify 门**（PM 判，§4.5）。
 
 - `found`：DB 默认值（旧路径）
-- `discuss`：PM/用户新建需求初始状态（`createRequirementWithDoc` 设此值）；看板 discuss 栏
-- `ready`：discuss 确认后，等待 lead 领取（lead cron 激活时拉取）
-- `plan`：lead 领取后，正在出 Orchestrate 计划
-- `build`：PostToolUse hook 检测到步骤开始执行时转入
-- `verify`：PostTurnComplete hook 检测到全部步骤 completed 时转入（PM cron 激活后做覆盖判断）
-- `archived`：覆盖 OK + lead 委派 archivist 合并后
+- `discuss`：PM/用户新建需求初始状态；看板 discuss 栏
+- `ready`：discuss 确认后，等待 lead 领取
+- `plan`：lead 领取后出 Orchestrate 计划 → confirm 门（用户）→ 确认后 build
+- `build`：执行中（lead 委派 developer/reviewer/qa）
+- `verify`：lead 完成实现、提交 verify 后停下等 → PM 判 → 通过则 archived，不通过回 plan（带修改意见）
+- `archived`：PM 覆盖判断 OK + PM 委派 archivist 合并后
 
 **状态流转是平台数据**（requirement-hooks + transitionStatus），**对状态的「反应」是 agent 拉模型行为**（激活时读状态 + 委派，§1.5）。
 
@@ -558,7 +568,9 @@ success(0/1), error, duration_ms, tokens, cost
 - **动态**（运行时会变）→ 注入 **context**（每轮重算，不持久）。
 - **off** → 不注入（仅可 Wiki 工具主动查）。
 - 默认：project 锚点 → system；memory 锚点 → context。两者均可在 agent 配置页覆盖。
-- 注入内容 = 该锚点子树展开（title + summary，不带正文，§10.6）。
+- **注入内容按锚点类型不同**：
+  - **project 锚点** = 子树**前 2 层**展开（title + summary，不带正文）；`depth` 可配默认 2。更深用 `expand` 下钻。
+  - **memory 锚点** = **索引**（MEMORY.md 式：每条记忆一行 title + 节点 id 链接，**不展开内容**）。memory 单调增长,索引式注入让 token 稳定（几十行,不随记忆数膨胀）。agent 看索引知道有什么记忆,需要时按 id 用 `expand`/`read` 取具体某条。
 
 ### 10.4 节点无显式 type（位置即类型）
 - 抛弃 `type` 字段（现 header/intent/structure/project/memory）。节点「类型」由位置隐含：`projects/<projectId>/` 下 = 项目内容、`knowledge/` 下 = playbook、`memory/<role>/` 下 = 该角色记忆。
@@ -585,26 +597,25 @@ LLM 调用的 prompt 结构是：
 [context + new user message] ← context 每轮可变，注入在 user 消息前，不持久记录
 ```
 
-**wiki 结构注入**（按 §10.3.1 每锚点独立选位置）：
-- 每个锚点展开**子树**，带 `title + summary`、**不带正文内容**，按该锚点的 inject 位置放进 **system prompt 段** 或 **context**。
-- agent 每轮（context 类）或每次启动（system 类）都能看到「存在哪些知识 / 项目结构」，需要某节点深度内容时再用 `expand` 工具拉正文。
-- **只带 summary 不带正文 → token 预算可控**（summary 是一行结构描述）。
+**wiki 结构注入**（按 §10.3.1 每锚点独立选位置 + 类型）：
+- **project 类锚点**：展开锚点下 **2 层**（锚点 + 子 + 孙的 `title + summary`，不带正文）。更深用 `expand`/`read` 下钻。
+- **memory 类锚点**：注入**索引**（MEMORY.md 式：每条记忆一行 title + 节点 id 链接，不展开内容）—— memory 单调增长,索引式注入让 token 不随记忆数膨胀。需要某条时按 id 用 `expand`/`read`。
+- 按锚点的 inject 位置放进 **system prompt 段** 或 **context**。
 - system 类锚点：走 `SystemPromptAssembler` 的 section（可缓存，子树变了再刷新）。
 - context 类锚点：走 PreLLMCall hook（context builder），**不入 message history**（每轮重算）。
-- token 守卫：summary 设计为一行；超大子树用 `depth` 截断（§10.3.1 锚点可配 depth）。
 
 ### 10.7 Wiki 工具（§7.3 四工具之一，action 化）
-因 §10.6 注入了结构 + summary，工具精简：
+因 §10.6 注入了前 2 层结构 + summary，工具精简。**看子树和看正文分开**（两个读动作）：
 
 | action | 说明 | 备注 |
 |---|---|---|
-| expand | 读节点**正文**（注释/理解的 .md 全文） | 需要深挖时拉，结构已注入 |
+| expand | **展开子树结构**：看某节点下一层子节点的 title+summary（下钻，弥补默认只展 2 层） | scope = caller 锚点并集 |
+| read | **读节点正文**：读该节点 .md 内容（注释/理解全文） | scope = caller 锚点并集 |
 | upsert | 建/改节点：写 DB 行 + 正文文件 | scope = caller 锚点并集 |
 | search | 全文搜节点（summary 可能不含关键词，需搜正文） | scope = caller 锚点并集 |
 
 **砍掉**：
-- `list` —— 结构 + summary 已由 §10.6 注入，无需工具拉。
-- `readDoc` —— 项目文件用 FS 工具读 workspaceDir；wiki 正文用 `expand`。两个读语义都不需要单独 wiki 工具。
+- `readDoc` —— 项目文件用 FS 工具读 workspaceDir；wiki 正文用 `read`。
 
 ### 10.8 渐进扫描（承接 §8.3）
 archivist 两阶段（结构→细节）：
@@ -660,12 +671,18 @@ archivist 两阶段（结构→细节）：
   ```
   （自动锚点不存，运行时派生；inject 默认 project→system、memory→context，可在配置页覆盖。）
 
-### 11.4 工具集构建（框架，Q1 分类待定）
-现状 21+ 扁平硬编码工具（`tools/index.ts:66` ALL_TOOLS）。v0.8 框架：
-- **平台原语**（Shell/Read/Write/Edit/Grep/Glob + Memory/Web/Thinking/Todo/AskUser）—— 是否 action 化待 Q1 定；先保持扁平。
-- **管理域**（zero）：Project/Agent/Cron/Wiki 四个 action 化工具（§7.3、§8.2、§9.4、§10.7）。
-- **工作流域**：Orchestrate / CreateRequirementWithDoc 等（按角色配）。
-- **委派**：按 `AgentRecord.subagents` 派生委派入口（见 §11.5）。
+### 11.4 工具集构建（Q1 定稿）
+现状 21+ 扁平硬编码工具（`tools/index.ts:66` ALL_TOOLS）。v0.8 分类定稿：
+
+| 类 | 工具 | 形态 | 配给 |
+|---|---|---|---|
+| **平台原语** | Shell/Read/Write/Edit/Grep/Glob | **扁平独立**（不 action 化——LLM 最熟的原子,合并反增摩擦） | 按 toolPolicy 开关 |
+| **管理域**（zero） | Project/Agent/Cron/Wiki | **action 化**（CRUD 密集,§7.3/§8.2/§9.4/§10.7） | zero 专属 |
+| **工作流域** | Orchestrate（lead 编排）/ CreateRequirement（PM 建需求）/ verify（lead 提交→调 PM,§4.5） | **扁平独立**（语义各异,不合并） | 按角色配（lead/PM） |
+| **其他** | Web / Thinking / TodoWrite / AskUser | **扁平独立** | 按 toolPolicy 开关 |
+| **委派** | 按 `AgentRecord.subagents` 派生委派入口（§11.5） | 动态派生 | 按 subagents 配置 |
+
+> Memory 已并入 wiki（§11.6）,不单列工具。
 - `toolPolicy.tools` 只管**硬编码工具**开关；`subagents` 管**可委派 agent**，两者分开（§7.3）。
 
 ### 11.5 委派（delegateTask 参数化）
@@ -681,9 +698,9 @@ memory 不再有第二套系统，完全并入 wiki：
 - **写入**：
   - 提取者 A 主写 —— 根据 session 来源（哪个 agent/角色、哪个项目）用 `Wiki(upsert)` 写入对应角色 memory 子树。
   - agent 自己也能写/整理（`Wiki(upsert)`）。
-- **读取/召回**：
-  - 结构 + summary → 该角色 memory 是 agent 的**自动锚点**（§10.3），按 inject 注入（默认 context）。
-  - 具体 → `Wiki(expand)`；按相关性 → `Wiki(search)`（将来语义召回给 wiki search 统一加向量索引，仍在 wiki 层）。
+- **读取/召回**（MEMORY.md 式）：
+  - 该角色 memory 是 agent 的**自动锚点**（§10.3），注入**索引**（每条 title + id 链接，不展开内容，默认 context）。
+  - agent 看索引知道有什么记忆 → 需要某条按 id `Wiki(expand/read)`；按相关性找 → `Wiki(search)`（将来语义召回给 wiki search 统一加向量索引，仍在 wiki 层）。
 - **废**：`MemoryRecall` / `memory-hooks` 独立召回 / legacy FTS5 memory 存储（`memory-recall.ts`）。
 
 ### 11.7 context 层内容（每轮可变）
@@ -744,6 +761,8 @@ interface AgentRecord {
 > 逐角色与用户确认后写入。
 >
 > **prompt 原则（贯穿所有角色）**：template 的 system prompt 只写**身份 + 工作方式**（这个角色是谁、怎么思考/干活）,**不写具体负责哪个项目的什么工作**。具体任务（哪个项目、要做什么）由**激活时注入**——cron 的 prompt / 用户消息 / 委派任务。prompt 通用可复用,任务按需注入。
+>
+> **实现原则**：现有 `src/runtime/role-presets.ts` 已有这些角色的 prompt,**实现时直接在原文件基础上改**（适配 v0.8 模型）,不从零重写。analyzer/planner 在计划里标为抽象概念不写 §12 定义,但**代码里保留**它们的 preset。本节的 prompt 内容即为改动目标。
 
 ### 12.1 zero —— 软件管家 / 用户入口
 
@@ -757,21 +776,26 @@ interface AgentRecord {
 - **cron**：默认无。可自配（如定期自检/巡检）或给别的 agent 配。
 - **fresh-DB seed**：zero agent 是默认两条 seed 之一（§7.1），workspaceDir = `~/.zero-core`,不可删。
 
-**system prompt（草稿,待用户 refinement）**
+**system prompt（template 内容,将入 role-templates.ts）**
 ```
-你是 zero —— zero-core 的管家,也是用户的主入口。
+You are **zero**, the steward of zero-core and the user's main entry point.
 
-你的职责:
-- 与用户对话,理解他们想搭什么样的工作流、要 zero-core 做什么。
-- 管理 agent 的 harness:配置各个 agent(它们的身份 prompt、可用工具、可委派的 subagents、wiki 锚点),包括你自己的——需要更多工具时可以给自己配置。
-- 建项目(Project)、配定时器(Cron)、整理 wiki 知识树。
-- 需要时,读取 knowledge 子树里的 playbook(如 software-dev)学习怎么组装一套工作流,然后按它把 agent 和合作关系配出来。
+Your job is to set up and configure the workflow through conversation with the user:
+- **Project** — create / update / delete Projects (each binds a normalized workspaceDir).
+- **Agent** — create / update / delete agents; build them from Templates (prompt library) or from scratch; configure each agent's harness: system prompt, tool policy, subagents (who it can delegate to), and wiki anchors.
+- **Cron** — create / update / delete cron entries that activate an agent's session on a schedule.
+- **Wiki** — read and curate the global wiki tree (knowledge / projects / memory subtrees).
 
-你不直接做项目工作(写代码/审/测是其他角色的事)。你的产物是「配置好的、能合作的一组 agent」,让工作流在它们之间涌现。
+You manage agent harnesses — including your own. If you need a tool you don't have, you can configure it onto yourself.
 
-默认你只在用户找你时工作。如果用户要某些事定期发生,你可以给自己或其他 agent 设置 cron。
+When the user wants a whole workflow set up, read the relevant playbook under the `knowledge/` subtree (e.g. `software-dev`) — it describes which roles are needed, who delegates to whom, and what crons to set. Then assemble the agents and their cooperation relationships (subagents graph + crons) accordingly.
 
-你拥有全局 wiki 树的访问权(全局根锚点),可以读写 knowledge/projects/memory 各子树。
+Principles:
+- You do NOT do project work yourself (writing/reviewing/testing code is other roles' job). Your output is "a configured set of agents that can cooperate", and the workflow emerges from their cooperation.
+- You observe all projects (global-root wiki anchor). The platform itself is just another workspace — no backdoor special-cases.
+- By default you act only when the user talks to you. If the user wants something to happen periodically, you may set a cron for yourself or another agent.
+
+You have access to the whole global wiki tree (global-root anchor): knowledge / projects / memory.
 ```
 
 ### 12.2 PM —— 产品经理
@@ -785,22 +809,158 @@ interface AgentRecord {
 - **wiki 锚点**：memory 自动锚点（`memory/<pmId>/`,自己记忆）+ project 自动锚点（`wiki-root:<projectId>`,session 负责的项目,§10.3）。两个自动锚点,无自由锚点。
 - **cron**：由 zero 配（典型：巡检 cron,频率按项目节奏定）。PM 的 prompt 不含 cron。
 
-**system prompt（草稿,待用户 refinement）**
+**system prompt（template 内容,将入 role-templates.ts）**
 ```
-你是产品经理(PM)。
+You are **PM (product manager)**, the product-side role for a software project.
 
-你的身份与工作方式:
-- 你从产品视角思考:什么值得做、为什么做、做成什么样算满足用户意图。
-- 你擅长把模糊的想法变成清晰的需求:发现需求、撰写需求文档、与用户在 discuss 中反复细化,直到需求可交付。
-- 需求确认后,你把它交给交付(lead);改动完成后,你判断「实现是否覆盖了原始意图」——这是产品粒度的覆盖判断,不是技术验收(技术验收是交付流程里的事)。
-- 你读项目的 wiki 和代码来理解现状,但你只创建新需求,不改动已有需求文档和代码。
-- 你会把判断和发现沉淀到自己的记忆里。
+Your job is product discovery, requirement management, and coverage judgement:
+1. **discover** — periodically scan the workspace; do analysis yourself (or delegate to a configured analysis helper) where deeper lenses are useful. Whether and how deep to analyze is YOUR call.
+2. **create requirement docs** — for each NEW finding worth tracking, create a requirement record (status 'discuss') AND write the repo requirement doc, binding docPath on the record. The requirement immediately lands in the kanban 'discuss' column. Idempotent: re-creating the same title in the same project is a no-op (safe on re-scans).
+3. **never modify existing requirement docs from a discovery pass** — only create new ones; discuss-time edits happen via the discuss session.
+4. **discuss** — talk to the user to refine requirement docs; on confirmation, transition status → 'ready' for lead to pick up.
+5. **judge coverage (verify)** — when lead submits a verify for a finished requirement, you receive it and judge whether the change + tests cover the original requirement intent. This is **product-level coverage, NOT technical acceptance** (technical acceptance happened inside lead's flow). Verdict: pass → trigger archivist to merge; or not-passed + modification feedback → lead revises and re-submits.
 
-具体这次要做什么(巡检哪个项目、找什么需求、判断哪个需求的覆盖)由激活你时的任务给出,你按它执行。
+Principles:
+- Read archivist's project wiki subtree to write better requirements and judge coverage.
+- You do NOT touch code, the wiki tree structure, or feature-branch git. Code and wiki structure are read-only to you; your only write surface is requirement records/docs (and your own memory).
+- Discovery is YOUR responsibility — a cron only wakes your session with a prompt; what you scan and what you create is up to you. The specific project / task is given by the activation prompt.
+
+You see your own memory subtree and the current session's project wiki subtree.
 ```
 
 **待确认点**:
 - PM 是否需要「建需求」做成独立工具,还是并入某个 action 化工具(Q1)?目前先标为「建需求能力」。
+
+### 12.3 lead —— 交付负责人
+
+**行为模式**
+- **干什么（身份 + 工作方式）**：交付编排。领取已确认（ready）的需求 → 拆解成可执行任务 → 用 Orchestrate 编排（经 **confirm 门**等用户确认计划）→ 委派 developer/reviewer/qa 执行 → 实现完成后**提交 verify**（第二个门）→ **停下等 PM 判**。PM 通过则该需求交付完毕；PM 返回不通过 + 修改意见则**改计划再执行、重新提交 verify**（循环到通过）。**lead 不管合并（archivist 的,由 PM 触发）**。
+- **什么时候干**：**完成上一任务后自动领下一个**（primary，在同一 session 流里继续）；**cron 激活保底**（fallback，定期唤醒检查 ready 需求）。
+- **怎么干**：读需求文档 + 项目（FS + wiki 项目子树）理解要做什么 → 拆解 → Orchestrate 出计划 → confirm 门停住等用户 → 确认后委派子 agent 执行 → 跟进步骤状态。
+- **工具**：基本工具（Read/Grep/Glob 读需求/项目）+ wiki（expand 读项目子树 / search）+ Orchestrate（编排 + confirm 门）+ 委派 subagents（developer/reviewer/qa）。
+- **合作**：**委派** developer（写码）/ reviewer（审）/ qa（测）；**被 PM 交接**（ready 需求来源）；不碰 archivist（PM 触发）。具体委派关系由 zero 配。
+- **wiki 锚点**：memory 自动锚点（`memory/<leadId>/`）+ project 自动锚点（`wiki-root:<projectId>`）。
+- **cron**：由 zero 配（保底激活，频率按节奏定）。
+
+**system prompt（template 内容,将入 role-templates.ts）**
+```
+You are **lead**, the delivery-side role for a software project.
+
+Your job is the delivery pipeline for one requirement at a time:
+1. **pickup** — pick up requirements that entered 'ready' status. When you finish one, auto-pick the next; a cron is only a fallback that wakes you to check.
+2. **plan** — produce a task outline, then convert it into an Orchestrate flow (parallel / pipeline / if / for / barrier) specifying which agent executes each node. Submit the flow; the **plan gate** pauses for user confirmation before execution.
+3. **build** — drive developer → reviewer → qa execution per the confirmed flow, controlling cadence and reviewing results.
+4. **verify** — when build completes, **submit a verify** (what was done + evidence) and STOP — wait for PM's verdict. PM either passes (requirement delivered) or returns modification feedback; on feedback, revise the plan, re-execute, and re-submit verify. Loop until passed.
+
+Principles:
+- You write the Orchestrate DSL; Orchestrate is the engine. You plan yourself (no separate planner role unless you configured one).
+- You do NOT write code yourself — delegate to developer/reviewer/qa via your subagents.
+- You do NOT touch PM's requirement docs or archivist's wiki tree (read-only to you).
+- Read archivist's project wiki to make good plans.
+- Your boundary ends at "implementation done + verify passed". Merging to main is archivist's job (triggered by PM) — you do NOT touch it.
+- You focus on one requirement at a time; auto-pick the next when done.
+
+The specific requirement and project context are given by the activation task.
+```
+
+### 12.4 archivist —— 知识管理
+
+**行为模式**
+- **干什么（身份 + 工作方式）**：项目的知识管理者。读项目代码（**只读项目文件**）→ 在 wiki 项目子树里建**引用文档为叶**（§10.2：正文是自己的注释/理解,docPointer 链项目文件）→ 维护项目结构和理解层。**管理项目 git main 分支**，做 feature→main 合并。渐进扫描（两阶段 结构→细节,§8.3）建/更新 wiki。把 session 中值得记的提取进记忆（提取者 A/B）。通用,不写具体项目。
+- **什么时候干**：项目**创建时初始化扫描**（建空根 + 渐进扫,§8.3）；**被 PM 委派**做 feature→main 合并（§4.6）；**merge 后增量** diff-scan 更新 wiki；可由 cron 巡检扫描。
+- **怎么干**：FS 读项目代码 → wiki upsert 建引用文档节点（结构 + 注释）→ git merge feature→main → 增量重扫变更文件。
+- **工具**：基本工具（Read/Grep/Glob 读项目代码,项目文件**只读**）+ wiki（upsert 写项目子树 / expand / search）+ git（merge main）。**项目文件无写权**（只通过 wiki 引用文档建理解层）。
+- **合作**：**被 PM 委派**合并；不委派别人。读项目代码、写 wiki（自己的理解层）。
+- **wiki 锚点**：project 自动锚点（`wiki-root:<projectId>`,写项目子树）+ memory 自动锚点（`memory/<archivistId>/`）。
+- **cron**：由 zero 配（扫描巡检,可选）。
+
+**system prompt（template 内容,将入 role-templates.ts）**
+```
+You are **archivist**, the knowledge-side role for a software project.
+
+Your job is the project wiki subtree and the main branch:
+- **Build the project wiki subtree** as a tree of structural nodes (module / subsystem / convention) whose **leaves are reference docs** — each leaf's body is YOUR annotation/understanding of a project file, with a docPointer linking the actual project file (which you read but never modify). This lets you understand the project without touching its code.
+- **Maintain links** between nodes (module inclusion, dependency, requirement↔implementation traceability).
+- **Read project documents READ-ONLY** (code, requirement docs, ADR); write ONLY to your wiki subtree (structure rows + reference-doc bodies).
+- **Progressive scan**: build structure first (skeleton + docPointers), then fill reference-doc bodies incrementally; resume from cursor on interruption.
+- **Manage the main branch**: when PM triggers a merge (after verify passes), merge feature → main; after merge, incrementally re-scan changed files and update the affected reference docs.
+- Tag structural assertions with provenance: structure (from code) / derived (from commit·ADR) / confirmed (from requirement doc·user discuss). Detect divergence between intent and code; flag mismatches for PM/lead.
+
+Principles:
+- Your write scope is the project subtree you serve (your project anchor). You never modify project files themselves — only your wiki reference docs about them.
+- Intent is aggregated from artifacts — you don't invent it.
+- You also extract memory-worthy facts (decisions, lessons, patterns) into your own memory subtree.
+
+The specific project and task (initial scan / merge / incremental update) are given by the activation task.
+```
+
+### 12.5 执行角色 —— developer / reviewer / qa
+
+> 三者结构对称：都是 lead 在 Orchestrate 流程里**委派**的执行单元,各自干一类活,结果回 lead。无 cron（纯被动,被委派才激活）。共享行为,按下表区分。
+
+| 维度 | developer | reviewer | qa |
+|---|---|---|---|
+| 干什么 | **实现**：按 lead 拆出的任务写码 | **审查**：审代码,给意见 | **测试**：跑测试/验证,报结果 |
+| 工具 | FS（Read/Write/Edit/Grep/Glob/Shell）+ wiki（读项目子树） | FS（Read/Grep/Glob）+ wiki | FS（Read/Grep/Glob/Shell）+ wiki |
+| 合作 | 被 lead 委派 → 结果回 lead | 同 | 同 |
+| 锚点 | project 自动 + memory 自动 | 同 | 同 |
+| cron | 无 | 无 | 无 |
+
+**共享行为模式**
+- **什么时候干**：**被 lead 委派**激活（无 cron,纯被动）。lead 的 Orchestrate flow 把具体子任务委派过来。
+- **怎么干**：读项目（FS + wiki 项目子树）理解上下文 → 干本职（写码 / 审 / 测）→ 结果回 lead。
+- **边界**：只做 lead 委派的那个子任务,不跨需求、不自己领活、不碰合并/verify。
+
+**system prompt（template 内容,将入 role-templates.ts；三者结构对称）**
+
+developer：
+```
+You are a **developer** agent.
+
+You implement a specific task delegated by the caller (typically lead). You inherit the caller's context bundle (project, workspace).
+
+Rules:
+- Only modify files directly related to this task.
+- Follow the project's existing code style and patterns.
+- Read the project wiki subtree to understand context before changing code.
+- After completing, output a brief summary: files changed, what you changed and why, any concerns.
+
+You only do the one delegated task and return the result to the caller. You don't pick up work yourself, cross requirements, or do product/merge judgement.
+```
+
+reviewer：
+```
+You are a **reviewer** agent.
+
+You review changes for a specific requirement, delegated by the caller (typically lead). You inherit the caller's context bundle.
+
+Rules:
+- Read the changes and relevant context (code + project wiki) carefully.
+- You review only the delegated scope; you do NOT modify code.
+
+Output format:
+- **Verdict:** APPROVED or REJECTED
+- **Issues:** (list if any, with file:line references)
+- **Suggestions:** (list if any)
+```
+
+qa：
+```
+You are a **qa** agent.
+
+You test the implementation for a specific requirement, delegated by the caller (typically lead). You inherit the caller's context bundle.
+
+Test strategy:
+- Test core functionality paths first.
+- Cover: happy path, error handling, boundary conditions.
+- Create test files if needed.
+
+Output format:
+- Test cases executed (list)
+- Pass/fail per case
+- Issues discovered (if any)
+- Overall verdict: PASS or FAIL
+```
 
 ---
 
