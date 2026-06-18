@@ -1,39 +1,37 @@
-// verify 工具 (v0.8 P3 — §4.5 / §11.4)
+// verify 工具 (v0.8 P7 端到端闭环 — §4.5 / §4.6 / §11.4)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// "verify" 是 lead 提交产物时调用的阻塞工具(§4.5)。流程:
-//   1. lead 在 Orchestrate 跑完、自验通过后,调 verify(requirementId)
+// "verify" 是 lead 提交产物时调用的阻塞工具(§4.5 第二道门)。流程:
+//   1. lead 在 Orchestrate 跑完、自验通过后,调 verify(requirementId, summary?)
 //   2. 工具把 requirement.status 置为 "verify" + 写 verify payload(消息)
 //   3. 工具按 requirement.createdByAgentId / reviewer_agent_id 解析 PM agent
-//   4. 通过 delegateTask 激活 {PM, projectId} session 跑产品覆盖判断(P3 用
-//      同步 delegateTask 阻塞 await;P7 走 project-notification-router 端到端
-//      闭环)
-//   5. PM verdict 文本回灌给 lead。verdict 不通过 → 返回意见,lead 据此改
-//      计划重提(P7 闭环,P3 是机制就绪)
+//   4. 通过 delegateTask 激活 {PM, projectId} session 跑产品覆盖判断(同步
+//      delegateTask 阻塞 await;caller bundle 继承,§4.5)
+//   5. PM verdict 回灌:verdict APPROVED → 调 PmService.submitCoverageVerdict
+//      (covered=true) → archivist mergeFeatureToMain + 增量扫描 → 置 closed
+//      (§4.6);verdict REJECTED → submitCoverageVerdict(covered=false) →
+//      意见写回 requirement.addMessage → 工具返回意见给 lead,lead 据此改
+//      计划重提。
+//
+// ## v0.8 P7 闭环关键点(plan-P7.md #3 #4)
+// - 不走 project-notification-router(已废,§1.5)。
+// - 通过 req.createdByAgentId / reviewer_agent_id 寻址 PM(§4.5)。
+// - submitCoverageVerdict 直接驱动 archivistService.mergeFeatureToMain(§4.6)。
+// - PM 失败/超时降级:delegateTask 抛错 → 返回 fail+意见让 lead 重提,不卡死。
+// - archivist 不在或 merge 失败 → status 留在 verify,archivist cron 兜底拉。
 //
 // ## 阻塞语义
 // 工具 execute 内 await delegateTask。delegateTask 已 await caller 拿结果,
 // 工具未返回 → agent-loop 已 await 工具,自然停在这里不发 LLM call。真正的
 // 挂起,不是忙等(同 Orchestrate confirm 门模式)。
 //
-// ## 调 PM 的机制(plan-P3.md §9.4)
-// "激活 PM 的 {PM, projectId} session 跑覆盖判断(复用 delegateTask 或
-// session 激活),拿 verdict"。P3 用 delegateTask(targetAgentId=PM agent id)
-// —— delegateTask 已经接受 targetAgentId(§2.11/decision 16),在 caller
-// bundle 继承下,PM 跑覆盖判断的同 {PM, projectId} session 与 PM 自己的
-// cron 巡检 session 同一个(resolveSessionByRoleProject 复用)。
-//
-// ## 边界 (plan-P3.md 末尾)
-// verify→PM→archivist 端到端闭环 → P7。本工具只让"lead 提交 → PM 判 →
-// verdict 回 lead"的机制就绪(不接 archivist 合并、不写 manifest 完整流程)。
-//
 // ## 输入
-// - ctx.delegateTask
+// - ctx.delegateTask (调 PM)
 // - ctx.requirementStore
-// - ctx.management (用于 fallback 找 PM agent)
-// - ctx.projectId
+// - ctx.pmService (P7: verify→archivist 闭环)
+// - ctx.projectId (用于 delegateTask 默认 bundle)
 //
 // ## 输出
 // - export const verifyTool
@@ -70,7 +68,7 @@ export const verifyTool = buildTool({
 		"  1. sets the requirement status to 'verify';\n" +
 		"  2. activates the {PM, projectId} session to run product-granularity coverage judgement (does the change+tests cover the original intent — NOT technical accept, that lived in the Orchestrate flow);\n" +
 		"  3. BLOCKS until PM returns a verdict.\n\n" +
-		"On APPROVED → the requirement moves toward merge (P7 wires the archivist step). On REJECTED → PM's gap reason is returned; revise your plan and re-submit.\n\n" +
+		"On APPROVED → PM triggers archivist to merge feature→main and the requirement is closed (archived). On REJECTED → PM's gap reason is returned; revise your plan and re-submit.\n\n" +
 		"Inputs:\n" +
 		"- requirementId (required) — the requirement you just built.\n" +
 		"- summary (optional) — short note for PM (canonical evidence is the Orchestrate manifest).",
@@ -90,12 +88,12 @@ export const verifyTool = buildTool({
 		if (!req) return `Error: requirement not found: ${input.requirementId}`;
 
 		// 1. Set status to verify + record verify payload as a message (audit).
+		//    v0.8 P7 (§4.5): lead submits verify explicitly; this status write
+		//    is the gate, not a hook auto-transition.
 		try {
 			reqStore.update(input.requirementId, { status: "verify" } as any);
 		} catch (err) {
 			// best-effort: status write must not block the verdict loop
-			// (some requirement store impls reject status transitions; P7
-			// tightens the state machine).
 		}
 		try {
 			reqStore.addMessage(
@@ -108,13 +106,15 @@ export const verifyTool = buildTool({
 			// best-effort
 		}
 
-		// 2. Resolve the PM agent: prefer reviewerAgentId, then createdByAgentId,
-		//    then fall back to the global PM via management service.
-		const targetAgentId =
-			req.reviewerAgentId ?? req.createdByAgentId ?? findPmAgentId(ctx);
+		// 2. Resolve the PM agent by req-recorded agentId (§4.5). Prefer
+		//    reviewerAgentId, then createdByAgentId. No roleTag scan.
+		const targetAgentId = req.reviewerAgentId ?? req.createdByAgentId;
 
 		if (!targetAgentId) {
-			return "Error: no PM agent resolvable for coverage judgement (set requirement.reviewerAgentId or create a PM agent)";
+			return (
+				"Error: requirement has no reviewerAgentId / createdByAgentId — cannot resolve PM " +
+				"for coverage judgement (P7 addresses PM by req-recorded agentId, not by role scan)."
+			);
 		}
 
 		// 3. Dispatch to PM via delegateTask. Blocking — agent-loop awaits the
@@ -136,39 +136,79 @@ export const verifyTool = buildTool({
 		try {
 			pmOutput = await ctx.delegateTask(pmTask, { targetAgentId });
 		} catch (err: any) {
-			return `PM coverage dispatch failed: ${err.message ?? String(err)}`;
+			// PM dispatch failure → degrade to fail-safe: tell lead to retry.
+			// Do NOT silently advance status. Status stays in "verify"; lead
+			// (or its cron fallback) will re-attempt.
+			return `PM coverage dispatch failed: ${err.message ?? String(err)}\n\nThe requirement is in 'verify' status; you can re-submit verify to retry, or your cron fallback will wake you.`;
 		}
 
 		// 4. Parse verdict — be liberal: lead needs the reason either way.
 		const verdict = parseVerdict(pmOutput);
 
-		// P3: we do NOT call PmService.submitCoverageVerdict / notification router
-		// here (that's P7's end-to-end close — archivist merge etc.). P3 only
-		// returns the verdict + reason to lead. P7 will route approved →
-		// verify_accept → archivist; rejected → coverage-reject → lead loop.
-		if (verdict.approved) {
-			return `PM APPROVED — ${verdict.reason}\n\n(P3 stub: end-to-end verify→archivist close wires in P7. The requirement is now in 'verify' status; PM/cron will pick up the manifest.)`;
+		// 5. v0.8 P7 end-to-end close: drive PmService.submitCoverageVerdict.
+		//    This stamps reviewerAgentId, records the verdict as a status_change
+		//    message (audit), and on APPROVED triggers archivist
+		//    mergeFeatureToMain + 增量扫描 → transition to closed (§4.6).
+		const pmSvc: any = (ctx as any).pmService;
+		if (pmSvc?.submitCoverageVerdict) {
+			try {
+				const outcome = await pmSvc.submitCoverageVerdict(
+					input.requirementId,
+					{ covered: verdict.approved, reason: verdict.reason },
+					{ reviewerAgentId: targetAgentId },
+				);
+				if (verdict.approved) {
+					if (outcome?.merge?.ok) {
+						return (
+							`PM APPROVED — ${verdict.reason}\n\n` +
+							`Archivist merged feature→main (ref ${outcome.merge.ref ?? "?"}); ` +
+							`requirement status → ${outcome.finalStatus}. Delivery complete.`
+						);
+					}
+					// Merge failed or archivist not wired: leave status in verify.
+					return (
+						`PM APPROVED — ${verdict.reason}\n\n` +
+						`Archivist merge ${outcome?.merge?.ok === false ? "FAILED" : "not wired"} ` +
+						`(${outcome?.merge?.error ?? "no archivist"}). Requirement stays in 'verify'; ` +
+						`archivist cron will retry the merge. You can re-submit verify if needed.`
+					);
+				}
+				return (
+					`PM REJECTED — ${verdict.reason}\n\n` +
+					`Feedback recorded on the requirement. Revise your plan and re-submit verify when ready.\n\n` +
+					`(Original PM output follows.)\n\n${pmOutput.slice(0, 1500)}`
+				);
+			} catch (err: any) {
+				// submitCoverageVerdict threw — degrade. Verdict text is still
+				// returned to lead so the loop isn't stuck.
+				return (
+					`PM verdict: ${verdict.approved ? "APPROVED" : "REJECTED"} — ${verdict.reason}\n\n` +
+					`submitCoverageVerdict failed: ${err.message ?? String(err)}. ` +
+					`Requirement stays in 'verify'; you can re-submit or wait for cron fallback.\n\n` +
+					`(Original PM output follows.)\n\n${pmOutput.slice(0, 1500)}`
+				);
+			}
 		}
-		return `PM REJECTED — ${verdict.reason}\n\nRevise your plan and re-submit. (Original PM output follows.)\n\n${pmOutput.slice(0, 1500)}`;
+
+		// pmService not wired (e.g. legacy ctx). Return verdict text + note.
+		// Status stays in 'verify'; no archivist merge.
+		if (verdict.approved) {
+			return (
+				`PM APPROVED — ${verdict.reason}\n\n` +
+				`(pmService not wired on this ctx — end-to-end close skipped. Requirement is in 'verify'; ` +
+				`PM/archivist cron will pick it up.)`
+			);
+		}
+		return (
+			`PM REJECTED — ${verdict.reason}\n\n` +
+			`Revise your plan and re-submit. (Original PM output follows.)\n\n${pmOutput.slice(0, 1500)}`
+		);
 	},
 });
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function findPmAgentId(ctx: any): string | undefined {
-	const mgmt = ctx?.management;
-	if (!mgmt) return undefined;
-	try {
-		const agents = mgmt.listAgents("pm") as Array<{ id: string; createdAt?: string }>;
-		if (agents.length === 0) return undefined;
-		agents.sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
-		return agents[0].id;
-	} catch {
-		return undefined;
-	}
-}
 
 interface ParsedVerdict {
 	approved: boolean;

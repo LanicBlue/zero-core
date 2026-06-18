@@ -73,9 +73,9 @@ let _cronStore: any = null;
 let _cronManager: any = null;
 let _gitIntegration: any = null;
 let _notificationService: any = null;
-// v0.8 (M3): Orchestrate plan store + project notification router.
+// v0.8 (M3): Orchestrate plan store.
 let _orchestratePlanStore: any = null;
-let _projectNotificationRouter: any = null;
+// v0.8 P7 (§1.5): ProjectNotificationRouter deleted — pull model.
 // v0.8 (M4): PM service + supporting stores (requirement doc repo store,
 // shared manifest store for coverage evidence, wiki-node store for PM
 // read-only project context).
@@ -120,9 +120,9 @@ const _ctx: IpcContext = {
 	get cronManager() { return _cronManager; },
 	get gitIntegration() { return _gitIntegration; },
 	get notificationService() { return _notificationService; },
-	// v0.8 (M3): Orchestrate plan store + project notification router.
+	// v0.8 (M3): Orchestrate plan store.
 	get orchestratePlanStore() { return _orchestratePlanStore; },
-	get projectNotificationRouter() { return _projectNotificationRouter; },
+	// v0.8 P7 (§1.5): ProjectNotificationRouter deleted — pull model.
 	// v0.8 (M4): PM service + supporting stores.
 	get pmService() { return _pmService; },
 	get requirementDocStore() { return _requirementDocStore; },
@@ -453,39 +453,44 @@ export async function loadCoreModules(): Promise<void> {
 			cronStore: _cronStore,
 		});
 
-		// v0.8 (M3): Orchestrate plan store + project notification router.
-		// Plan store backs the kanban plan-gate pending entry + confirm/reject
-		// IPC channels; the router fires verify_accept → archivist on verify
-		// PASSED (acceptance-M3 item 6).
+		// v0.8 (M3): Orchestrate plan store. Plan store backs the kanban
+		// plan-gate pending entry + confirm/reject IPC channels.
+		// v0.8 P7 (§1.5): ProjectNotificationRouter deleted — pull model.
+		// ready→lead pickup is driven by LeadService.autoPickupIfIdle + lead
+		// cron fallback; verify is lead's explicit verify tool call; PM
+		// verdicts drive ArchivistService directly via PmService.
 		const orchStoreMod = await import(toFileURL(join(_distServer, "orchestrate-store.js")));
-		const notifRouterMod = await import(toFileURL(join(_distServer, "project-notification-router.js")));
 		// v0.8 (M4): single shared manifest store — PM reads it for coverage
-		// evidence, the notification router reads it for the verify prompt.
+		// evidence.
 		_manifestStore = new orchStoreMod.OrchestrateManifestStore(_sessionDb);
 		_orchestratePlanStore = new orchStoreMod.OrchestratePlanStore(_sessionDb);
 		_leadService.setOrchestrateStores(_orchestratePlanStore, _manifestStore);
-		_projectNotificationRouter = new notifRouterMod.ProjectNotificationRouter({
-			agentService: _agentService,
-			agentStore: _agentStore,
+
+		// v0.8 P7 (§4.6): construct ArchivistService so PM coverage verdicts
+		// can drive archivist mergeFeatureToMain + 增量扫描 → status closed.
+		// Mirrors the server/index.ts wiring (wikiScanCursorStore +
+		// archivistGit).
+		const archivistSvcMod = await import(toFileURL(join(_distServer, "archivist-service.js")));
+		const archivistGitMod = await import(toFileURL(join(_distServer, "archivist-git.js")));
+		const wikiScanCursorMod = await import(toFileURL(join(_distServer, "wiki-scan-cursor-store.js")));
+		const archivistService = new archivistSvcMod.ArchivistService({
+			wikiStore: _wikiNodeStore,
+			cursorStore: new wikiScanCursorMod.WikiScanCursorStore(_sessionDb),
+			git: new archivistGitMod.ArchivistGit(),
 			projectStore: _projectStore,
 			requirementStore: _requirementStore,
-			sessionDB: _sessionDb,
-			leadService: _leadService,
-			manifestStore: _manifestStore,
 		});
 
-		// v0.8 (M4): PM service (RFC §2.5 / §2.10 / §2.17b). Wired after the
-		// notification router so PM coverage verdicts can drive
-		// notify("verify_accept" | "verify_reject"). RequirementDocStore writes
-		// repo docs under {workspace}/.zero/requirements/{projectId}/; wiki
-		// node store gives PM read-only project context.
+		// v0.8 (M4): PM service (RFC §2.5 / §2.10 / §2.17b). RequirementDocStore
+		// writes repo docs under {workspace}/.zero/requirements/{projectId}/;
+		// wiki node store gives PM read-only project context.
+		// v0.8 P7: PmService.submitCoverageVerdict drives ArchivistService
+		// directly (covered=true → mergeFeatureToMain → closed). No router.
 		const pmSvcMod = await import(toFileURL(join(_distServer, "pm-service.js")));
 		const reqDocStoreMod = await import(toFileURL(join(_distServer, "requirement-doc-store.js")));
-		const wikiNodeStoreMod = await import(toFileURL(join(_distServer, "wiki-node-store.js")));
 		_requirementDocStore = new reqDocStoreMod.RequirementDocStore({
 			getWorkspaceDir: (projectId: string) => _projectStore.get(projectId)?.workspaceDir,
 		});
-		_wikiNodeStore = new wikiNodeStoreMod.WikiStore(_sessionDb);
 		_pmService = new pmSvcMod.PmService({
 			agentService: _agentService,
 			agentStore: _agentStore,
@@ -494,7 +499,7 @@ export async function loadCoreModules(): Promise<void> {
 			requirementDocStore: _requirementDocStore,
 			wikiNodeStore: _wikiNodeStore,
 			manifestStore: _manifestStore,
-			projectNotificationRouter: _projectNotificationRouter,
+			archivistService,
 			sessionDB: _sessionDb,
 		});
 
@@ -502,19 +507,16 @@ export async function loadCoreModules(): Promise<void> {
 		_analystService.setGitIntegration(_gitIntegration);
 		_leadService.setGitIntegration(_gitIntegration);
 
-		// Register requirement hooks with M5/M3 dependencies.
-		// projectNotificationRouter is needed so the verify PASSED branch can
-		// fire notify("verify_accept", ...) → archivist merge.
+		// Register requirement hooks (v0.8 P7 — pull-model slimmed version:
+		// plan→build PostToolUse + lead autoPickupIfIdle chain PostTurnComplete;
+		// no auto build→verify, no notify pushes).
 		reqHooksMod.registerRequirementHooks({
 			requirementStore: _requirementStore,
 			taskStepStore: _taskStepStore,
 			leadService: _leadService,
-			analystService: _analystService,
-			notificationService: _notificationService,
-			projectNotificationRouter: _projectNotificationRouter,
 		});
 
-		log.ipc("Workflow services initialized (M2/M3/M5)");
+		log.ipc("Workflow services initialized (M2/M3/M5; P7 pull-model)");
 	} catch (err) {
 		log.error("ipc", "Phase 5c failed (workflow services):", (err as Error).message);
 	}

@@ -4,17 +4,24 @@
 //
 // ## 核心功能
 // 验证 acceptance-M3 第 4 条(看板 pending plan 入口)和第 6 条(verify accept
-// → archivist 通知触发)在最新修复后成立:
+// → archivist)在最新修复后成立:
 //   - 缺陷 1 修复后:OrchestratePlanStore.list({ state: "pending" }) 可作为
 //     看板 IPC pending 入口的数据源;ConfirmRegistry.confirm/reject 唤醒挂起
 //     的 Orchestrate 工具。
-//   - 缺陷 2 修复后:requirement-hooks 的 verify PASSED 分支会调
-//     projectNotificationRouter.notify("verify_accept", ...)。
+//
+// ## v0.8 P7 适配
+//   - 缺陷 2 (verify_accept → archivist) 由 P7 拉模型重做接通:verify-tool 调
+//     PM(delegateTask)拿 verdict → PmService.submitCoverageVerdict →
+//     ArchivistService.mergeFeatureToMain + 状态 → closed。ProjectNotificationRouter
+//     已废;requirement-hooks 只保留 plan→build + lead autoPickupIfIdle。
+//   - 这里的测试改为:① 确认 requirement-hooks 不再自动 build→verify(P7 显式提交)
+//     ② 端到端 verify-tool → archivist merge 闭环见 p7-end-to-end.test.ts。
 //
 // ## 关键文件
 //   - src/server/orchestrate-store.ts (plan store + ConfirmRegistry)
-//   - src/server/project-notification-router.ts (verify_accept → archivist)
-//   - src/server/requirement-hooks.ts (verify PASSED → notify verify_accept)
+//   - src/server/requirement-hooks.ts (plan→build + autoPickupIfIdle)
+//   - src/runtime/tools/verify-tool.ts (verify-tool → submitCoverageVerdict)
+//   - src/server/pm-service.ts (submitCoverageVerdict → archivist merge)
 //
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -128,132 +135,175 @@ describe("kanban plan-gate pending entry (defect 1 fix)", () => {
 	});
 });
 
-// ─── 缺陷 2:verify accept → archivist notification (acceptance-M3 item 6) ──
 
-describe("verify accept → notify archivist (defect 2 fix)", () => {
-	test("ProjectNotificationRouter.notify('verify_accept') resolves an archivist role session + sends prompt", async () => {
-		const { ProjectNotificationRouter } = await import("../../src/server/project-notification-router.js");
+// ─── v0.8 P7:verify-tool → archivist merge 端到端(取代缺陷 2 router 路径)──
+//
+// P7 重做后,缺陷 2(verify accept → archivist)的机制完全变了:
+//   - ProjectNotificationRouter 已删;requirement-hooks 不再自动 build→verify。
+//   - lead 显式调 verify 工具 → delegateTask 给 PM → PM verdict 回灌 →
+//     PmService.submitCoverageVerdict → ArchivistService.mergeFeatureToMain +
+//     状态 → closed。
+//
+// 这一节直接驱动 verify-tool.execute(),mock delegateTask 返回 APPROVED/
+// REJECTED,断言 PmService → ArchivistService 链路 + 终态正确。
 
-		// Register an archivist agent (roleTag='archivist').
-		// v0.8 P0 (§1.4): roleTag removed from AgentRecord; seed the physical
-		// column so findRoleAgent('archivist') finds it.
-		const archivistAgent = agentStore.create({
-			name: "Archivist",
-			workspaceDir: join(tmpDir, "ws"),
-		});
-		seedAgentWithRoleTag(sessionDB, archivistAgent.id, "archivist");
+import { verifyTool } from "../../src/runtime/tools/verify-tool.js";
+import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { PmService } from "../../src/server/pm-service.js";
+import { RequirementDocStore } from "../../src/server/requirement-doc-store.js";
+import { WikiStore } from "../../src/server/wiki-node-store.js";
 
-		const project = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws") });
-		const req = requirementStore.create({
-			projectId: project.id, title: "V", status: "verify",
-			source: "user", priority: "normal", reviewer: "user",
-		} as any);
-
-		const sent: Array<{ agentId: string; sessionId: string; prompt: string }> = [];
-		const router = new ProjectNotificationRouter({
-			agentService: {
-				sendPrompt: async (prompt: string, agent: any, sessionId: string) => {
-					sent.push({ agentId: agent.id, sessionId, prompt });
-				},
-			} as any,
-			agentStore,
-			projectStore,
-			requirementStore,
-			sessionDB,
-			leadService: { pickupRequirement: async () => "x" } as any,
-			manifestStore,
-		});
-
-		// Top-level dispatch should route verify_accept → archivist session.
-		await router.notify("verify_accept", req.id, project.id);
-
-		expect(sent.length).toBe(1);
-		const target = sent[0];
-		// Prompt mentions the merge task + requirementId (archivist must merge feature→main).
-		expect(target.prompt).toMatch(/merge/i);
-		expect(target.prompt).toContain(req.id);
-		// The role-session-resolved agentId is the archivist's.
-		expect(target.agentId).toBe(archivistAgent.id);
+function buildPmForP7(archivistService: any, pmAgentId: string): PmService {
+	return new PmService({
+		agentService: { sendPrompt: async () => {} } as any,
+		agentStore,
+		projectStore,
+		requirementStore,
+		requirementDocStore: new RequirementDocStore({
+			getWorkspaceDir: (pid: string) => projectStore.get(pid)?.workspaceDir,
+		}),
+		wikiNodeStore: new WikiStore(sessionDB),
+		manifestStore,
+		archivistService,
+		sessionDB,
+		// @ts-ignore — pmAgentId unused here, kept for parity with future wiring
+		...({} as any),
 	});
+}
 
-	test("verify_accept with no archivist agent does NOT throw (cron fallback will retry)", async () => {
-		const { ProjectNotificationRouter } = await import("../../src/server/project-notification-router.js");
-		const project = projectStore.create({ name: "P2", workspaceDir: join(tmpDir, "ws2") });
-
-		const router = new ProjectNotificationRouter({
-			agentService: { sendPrompt: async () => {} } as any,
-			agentStore,
-			projectStore,
-			requirementStore,
-			sessionDB,
-			leadService: { pickupRequirement: async () => "x" } as any,
-			manifestStore,
-		});
-
-		// No archivist agent registered — notify must not throw; it logs + returns.
-		await expect(router.notify("verify_accept", "req-missing", project.id)).resolves.toBeUndefined();
-	});
-
-	test("requirement-hooks verify PASSED fires notify('verify_accept') before archiveRequirement", async () => {
-		// Register the hooks with mocked analystService + projectNotificationRouter
-		// and verify the verify_accept notify is invoked when reviewer=analyst and
-		// verifyRequirement resolves to passed:true.
-		const { registerRequirementHooks } = await import("../../src/server/requirement-hooks.js");
-		const { HookRegistry } = await import("../../src/core/hook-registry.js");
-
-		const project = projectStore.create({ name: "P3", workspaceDir: join(tmpDir, "ws3") });
+describe("v0.8 P7 — verify-tool → PM verdict → archivist merge (defect 2 P7 重做)", () => {
+	function setupReadyRequirement(opts: { pmAgentId: string; projectWorkspace: string }) {
+		const project = projectStore.create({ name: "P7P", workspaceDir: opts.projectWorkspace } as any);
+		// PM agent that "created" the requirement (route-by-agentId).
 		const req = requirementStore.create({
-			projectId: project.id, title: "H", status: "build",
-			source: "user", priority: "normal", reviewer: "analyst",
+			projectId: project.id,
+			title: "Verify-me",
+			status: "discuss",
+			source: "analyst",
+			priority: "normal",
+			createdByAgentId: opts.pmAgentId,
+			reviewerAgentId: opts.pmAgentId,
 		} as any);
+		// Advance to verify (real flow: ready→plan→build→verify).
+		requirementStore.transitionStatus(req.id, "ready", "user", "discuss → ready");
+		requirementStore.transitionStatus(req.id, "plan", "lead", "ready → plan");
+		requirementStore.transitionStatus(req.id, "build", "lead", "plan → build");
+		requirementStore.transitionStatus(req.id, "verify", "system", "build → verify (lead submitted)");
+		return { project, req };
+	}
 
-		const notifyCalls: Array<{ kind: string; reqId: string; projectId: string }> = [];
-		const projectNotificationRouter = {
-			notify: async (kind: string, reqId: string, projectId: string) => {
-				notifyCalls.push({ kind, reqId, projectId });
+	test("verify-tool APPROVED → PmService.submitCoverageVerdict → archivistService.mergeFeatureToMain → status closed", async () => {
+		const merges: Array<{ projectId: string; requirementId: string }> = [];
+		const archivist = {
+			mergeFeatureToMain: async (projectId: string, requirementId: string) => {
+				merges.push({ projectId, requirementId });
+				return { ok: true, ref: "main-merged-1" };
 			},
 		};
+		const pm = buildPmForP7(archivist, "pm-agent-xyz");
+		const pmAgent = agentStore.create({ name: "PM" } as any);
 
-		const archivedCalls: string[] = [];
-		const analystService = {
-			verifyRequirement: async () => ({ passed: true, report: "PASSED" }),
-			archiveRequirement: async (id: string) => { archivedCalls.push(id); },
-		};
+		const { req, project } = setupReadyRequirement({ pmAgentId: pmAgent.id, projectWorkspace: join(tmpDir, "ws-p7-1") });
 
-		// Build a minimal hook registry and register the hooks against it.
-		const registryInst = new HookRegistry();
-		registerRequirementHooks({
-			requirementStore,
-			taskStepStore: {
-				listByRequirement: () => [
-					{ id: "s1", status: "completed", role: "developer", title: "step", output: "" } as any,
-				],
+		const execute = getToolExecute(verifyTool)!;
+		const out = await execute(
+			{ requirementId: req.id, summary: "ready" },
+			{
+				workingDir: project.workspaceDir,
+				agentId: "lead-1",
+				emit: () => {},
+				requirementStore,
+				pmService: pm,
+				delegateTask: async () => "VERDICT: APPROVED — covers the intent",
 			} as any,
-			leadService: { autoPickupIfIdle: async () => null } as any,
-			analystService: analystService as any,
-			notificationService: undefined,
-			projectNotificationRouter: projectNotificationRouter as any,
-			hookRegistry: registryInst,
-		});
+		);
 
-		// Simulate the PostTurnComplete firing for a Lead session bound to the build req.
-		// The hook's name-pattern guard requires agentId to start with "Lead-".
-		const leadAgent = agentStore.create({
-			name: "Lead-P3", roleTag: "lead",
-			workspaceDir: project.workspaceDir,
+		expect(merges).toEqual([{ projectId: project.id, requirementId: req.id }]);
+		expect(out).toMatch(/APPROVED/);
+		expect(out).toMatch(/main-merged-1/);
+		expect(requirementStore.get(req.id)!.status).toBe("closed");
+	});
+
+	test("verify-tool REJECTED → no merge; feedback recorded; status stays 'verify'", async () => {
+		const merges: any[] = [];
+		const archivist = {
+			mergeFeatureToMain: async () => { merges.push("called"); return { ok: true }; },
+		};
+		const pm = buildPmForP7(archivist, "pm-agent-xyz");
+		const pmAgent = agentStore.create({ name: "PM" } as any);
+		const { req, project } = setupReadyRequirement({ pmAgentId: pmAgent.id, projectWorkspace: join(tmpDir, "ws-p7-2") });
+
+		const execute = getToolExecute(verifyTool)!;
+		const out = await execute(
+			{ requirementId: req.id, summary: "ready" },
+			{
+				workingDir: project.workspaceDir,
+				agentId: "lead-1",
+				emit: () => {},
+				requirementStore,
+				pmService: pm,
+				delegateTask: async () => "VERDICT: REJECTED — missing tests for X",
+			} as any,
+		);
+
+		expect(merges).toEqual([]);
+		expect(out).toMatch(/REJECTED/);
+		expect(out).toMatch(/missing tests for X/);
+		expect(requirementStore.get(req.id)!.status).toBe("verify");
+		// Feedback message recorded on the requirement (audit + lead surface).
+		const msgs = requirementStore.getMessages(req.id);
+		expect(msgs.some((m) => m.content.includes("NOT_COVERED"))).toBe(true);
+	});
+
+	test("verify-tool PM dispatch failure → degrade to fail-safe (no merge, no advance)", async () => {
+		const merges: any[] = [];
+		const archivist = {
+			mergeFeatureToMain: async () => { merges.push("called"); return { ok: true }; },
+		};
+		const pm = buildPmForP7(archivist, "pm-agent-xyz");
+		const pmAgent = agentStore.create({ name: "PM" } as any);
+		const { req, project } = setupReadyRequirement({ pmAgentId: pmAgent.id, projectWorkspace: join(tmpDir, "ws-p7-3") });
+
+		const execute = getToolExecute(verifyTool)!;
+		const out = await execute(
+			{ requirementId: req.id },
+			{
+				workingDir: project.workspaceDir,
+				agentId: "lead-1",
+				emit: () => {},
+				requirementStore,
+				pmService: pm,
+				delegateTask: async () => { throw new Error("PM session crashed"); },
+			} as any,
+		);
+
+		expect(merges).toEqual([]);
+		expect(out).toMatch(/PM coverage dispatch failed/i);
+		expect(requirementStore.get(req.id)!.status).toBe("verify");
+	});
+
+	test("verify-tool with no req.createdByAgentId → returns error (P7 addresses PM by req-recorded agentId)", async () => {
+		const archivist = { mergeFeatureToMain: async () => ({ ok: true }) };
+		const pm = buildPmForP7(archivist, "pm-agent-xyz");
+		const project = projectStore.create({ name: "P7-noPM", workspaceDir: join(tmpDir, "ws-p7-4") } as any);
+		// No createdByAgentId, no reviewerAgentId.
+		const req = requirementStore.create({
+			projectId: project.id, title: "Orphan", status: "build",
+			source: "user", priority: "normal",
 		} as any);
-		requirementStore.update(req.id, { assignedLeadSessionId: "sess-lead" } as any);
 
-		await registryInst.trigger("PostTurnComplete", {
-			agentId: "Lead-P3",  // match the name-pattern guard in requirement-hooks
-			sessionId: "sess-lead",
-		} as any);
-
-		// Wait one microtask round — verifyRequirement + notify + archive are chained.
-		await new Promise((r) => setTimeout(r, 30));
-
-		// verify_accept notify must have fired before archive.
-		expect(notifyCalls).toContainEqual({ kind: "verify_accept", reqId: req.id, projectId: project.id });
-		expect(archivedCalls).toContain(req.id);
+		const execute = getToolExecute(verifyTool)!;
+		const out = await execute(
+			{ requirementId: req.id },
+			{
+				workingDir: project.workspaceDir,
+				agentId: "lead-1",
+				emit: () => {},
+				requirementStore,
+				pmService: pm,
+				delegateTask: async () => "VERDICT: APPROVED",
+			} as any,
+		);
+		expect(out).toMatch(/no reviewerAgentId/i);
 	});
 });

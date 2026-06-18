@@ -242,10 +242,15 @@ export interface IpcChannelDefs {
 	"requirements:doc:list":   { params: [projectId: string];                         result: string[] };
 	// PM creates a requirement + its repo doc in one shot (decision 12/14).
 	"pm:createRequirement":    { params: [input: { projectId: string; title: string; summary?: string; body?: string; priority?: string; source?: "pm" | "user" }]; result: RequirementRecord | Err };
-	// Open the {PM, projectId} discuss session (kanban "讨论" entry → chat page).
-	"pm:openDiscuss":          { params: [projectId: string];                         result: { agentId: string; sessionId: string; created: boolean } | Err };
+	// v0.8 P7 (§4.2): open the {PM, projectId} discuss session — route by
+	// requirement.createdByAgentId (the PM agent that created this requirement),
+	// NOT by roleTag scan. Caller passes the requirementId; backend reads the
+	// requirement + resolves PM via createdByAgentId.
+	"pm:openDiscuss":          { params: [requirementId: string];                     result: { agentId: string; sessionId: string; created: boolean } | Err };
 	// PM coverage judgement view: requirement intent doc + latest manifest.
 	"pm:coverageView":         { params: [requirementId: string];                     result: { requirement?: RequirementRecord; intentDoc?: string; manifest?: OrchestrateManifestRecord } };
-	// Submit PM coverage verdict → drives notify("verify_accept" | "verify_reject").
-	"pm:coverageVerdict":      { params: [requirementId: string, covered: boolean, reason?: string]; result: { success: boolean; requirementId: string; kind: "verify_accept" | "verify_reject" } | Err };
+	// v0.8 P7 (§4.6): submit PM coverage verdict → drives ArchivistService
+	// mergeFeatureToMain + 增量扫描 → status closed (covered=true); or writes
+	// feedback onto the requirement (covered=false) for lead to read.
+	"pm:coverageVerdict":      { params: [requirementId: string, covered: boolean, reason?: string]; result: { success: boolean; requirementId: string; kind: "verify_accept" | "verify_reject"; finalStatus?: string; mergeOk?: boolean } | Err };
 }

@@ -5,6 +5,13 @@
 // ## 核心功能
 // Agent 数据持久化，基于 SqliteStore 的 CRUD 操作。
 //
+// ## v0.8 P7 重做要点
+// - **删 legacy "Zero" 默认 seed**(P6 留给本阶段清掉)。store 不再在构造函数
+//   里塞一个名为 "Zero" 的默认 agent;真正空库时 `agentStore.list().length===0`
+//   成立。fresh-DB 的真正默认 seed(zero agent + software-dev wiki 节点)由
+//   `fresh-db-seed.ts` 在服务层(startServer 内、所有 store 建好后)按
+//   `agentStore.list().length === 0` 判断写入(RFC §7.1),不再埋在 store 里。
+//
 // ## 输入
 // - SessionDB 实例
 // - Agent 数据
@@ -17,7 +24,6 @@
 //
 // ## 依赖
 // - ./sqlite-store - 通用存储
-// - ../core/default-prompt - 默认提示词
 //
 // ## 维护规则
 // - 新增字段时需更新列定义
@@ -26,7 +32,6 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { SessionDB } from "./session-db.js";
-import { buildDefaultPrompt } from "../core/default-prompt.js";
 import type { AgentRecord } from "../shared/types.js";
 import { ZERO_CORE_DIR } from "../core/config.js";
 
@@ -58,11 +63,6 @@ const COLUMNS: ColumnDef[] = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-const DEFAULT_AGENT: Omit<AgentRecord, "id" | "createdAt" | "updatedAt"> = {
-	name: "Zero",
-	systemPrompt: buildDefaultPrompt("Zero"),
-};
-
 function normalizeWorkspaceDir(dir: string | undefined): string | undefined {
 	if (!dir) return join(ZERO_CORE_DIR, "workspace");
 	let d = dir.startsWith("~") ? dir.replace(/^~/, homedir()) : dir;
@@ -81,8 +81,11 @@ export class AgentStore {
 	/**
 	 * v0.8 (P0 §1.4): prepared statement to read the legacy `role_tag` column
 	 * for listByRoleTag. The column is not in COLUMNS so SqliteStore doesn't
-	 * round-trip it; we read it raw here for the runtime/service callers still
-	 * using role-tag filtering (P2/P7 will move them off roleTag entirely).
+	 * round-trip it; we read it raw here for any runtime/service callers that
+	 * still depend on role-tag filtering. P7 removed the major callers
+	 * (findPmAgent / ProjectNotificationRouter); the workflow path no longer
+	 * uses roleTag, addressing goes through req-recorded agentIds. Retained
+	 * as a low-level escape hatch for diagnostics / future callers.
 	 */
 	private _roleTagStmt?: import("better-sqlite3").Statement;
 
@@ -90,11 +93,11 @@ export class AgentStore {
 		this.db = sessionDB;
 		this.store = new SqliteStore<AgentRecord>(sessionDB.getDb(), "agents", COLUMNS);
 
-		// Ensure at least one default agent exists
-		if (this.store.list().length === 0) {
-			const defaultWs = join(ZERO_CORE_DIR, "workspace");
-			this.store.create({ ...DEFAULT_AGENT, workspaceDir: defaultWs } as any);
-		}
+		// v0.8 P7: NO legacy "Zero" default seed. A truly-empty agents table
+		// yields `list().length === 0`. Fresh-DB defaults (zero agent +
+		// software-dev wiki node) are seeded by fresh-db-seed.ts at the
+		// service layer (RFC §7.1). Removing this lets fresh-db-seed's
+		// `agentStore.list().length === 0` guard fire correctly.
 	}
 
 	list(): AgentRecord[] {
@@ -106,11 +109,12 @@ export class AgentStore {
 	 *
 	 * v0.8 (P0 §1.4): roleTag was removed from AgentRecord. The physical
 	 * `role_tag` column is retained for legacy data; this method reads it raw
-	 * (it's not in COLUMNS, so SqliteStore won't surface it). Runtime/service
-	 * callers (pm-service findPmAgent, project-notification-router
-	 * findRoleAgent, management-service ensureRoleAgentExposed) still depend
-	 * on this — P2/P7 moves them off roleTag. Kept as-is to avoid breaking
-	 * those callers in P0.
+	 * (it's not in COLUMNS, so SqliteStore won't surface it). v0.8 P7 removed
+	 * the workflow-path callers (findPmAgent / ProjectNotificationRouter);
+	 * cross-agent addressing now goes through req-recorded agentIds
+	 * (req.createdByAgentId / reviewerAgentId). Retained as a low-level
+	 * escape hatch for diagnostics / future callers — NOT used by the
+	 * requirement lifecycle (§1.5).
 	 */
 	listByRoleTag(roleTag: string): AgentRecord[] {
 		if (!this._roleTagStmt) {

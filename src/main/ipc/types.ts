@@ -47,7 +47,6 @@ import type { CronStore } from "../../server/cron-store.js";
 import type { GitIntegration } from "../../server/git-integration.js";
 import type { NotificationService } from "../../server/notification-service.js";
 import type { OrchestratePlanStore } from "../../server/orchestrate-store.js";
-import type { ProjectNotificationRouter } from "../../server/project-notification-router.js";
 import type { PmService } from "../../server/pm-service.js";
 import type { RequirementDocStore } from "../../server/requirement-doc-store.js";
 import type { OrchestrateManifestStore } from "../../server/orchestrate-store.js";
@@ -84,10 +83,9 @@ export interface IpcContext {
 	// v0.8 (M3): Orchestrate plan store — for the kanban plan-gate pending
 	// entry + confirm/reject IPC channels.
 	orchestratePlanStore: OrchestratePlanStore | null;
-	// v0.8 (M3): project-scoped cross-role notification router (accept→archivist
-	// and friends). Wired into requirement-hooks so verify PASSED fires the
-	// archivist merge notification (acceptance-M3 item 6).
-	projectNotificationRouter: ProjectNotificationRouter | null;
+	// v0.8 P7 (§1.5): ProjectNotificationRouter deleted — pull model. Cross-
+	// role reactions go through agent activation + req-recorded agentIds, no
+	// central router.
 	// v0.8 (M4): PM service + supporting stores.
 	pmService: PmService | null;
 	requirementDocStore: RequirementDocStore | null;

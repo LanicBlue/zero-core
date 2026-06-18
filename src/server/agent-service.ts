@@ -429,6 +429,15 @@ export class AgentService {
 			// structure (no UpdateWikiNode in its toolPolicy).
 			if (this.wikiStore) (sessionConfig as any).wikiStore = this.wikiStore;
 		}
+		// v0.8 (P7): lead sessions get PmService so the verify tool can call
+		// PmService.submitCoverageVerdict → archivist merge (§4.5 / §4.6
+		// end-to-end close). The verify tool guards each call with
+		// pmService?.submitCoverageVerdict, so absent is OK (legacy ctx); this
+		// just makes the close path available on lead sessions.
+		// @ts-expect-error — P0 §1.4: legacy roleTag field; P2/P7 cleanup.
+		if (agent?.roleTag === "lead" && this.pmService) {
+			(sessionConfig as any).pmService = this.pmService;
+		}
 		// v0.8 (M5): surface the global WikiStore + extractors config onto
 		// EVERY session (memory written by extractor A is global/cross-project,
 		// so even non-project sessions need access). The extraction hook reads

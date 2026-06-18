@@ -306,14 +306,23 @@ export class LeadService {
 	}
 
 	/**
-	 * 构建 Lead 的领取 prompt (v0.8 M3 — Orchestrate-DSL-author flow).
+	 * 构建 Lead 的领取 prompt (v0.8 P7 — Orchestrate + verify 显式提交流).
 	 *
-	 * Decision 11/48: lead is the DSL author. The pickup prompt walks lead
-	 * through: planner outline → author Orchestrate DSL (specify per-node
-	 * agent) → submit via Orchestrate (confirm gate) → run → manifest.
+	 * 角色风格/工具规则已在 §12 lead system prompt(P6 已适配 v0.8)。这里只
+	 * 携带具体对象(哪个需求 + 范围/上下文),不重写任务 framing。
+	 *
+	 * 流程(§4.3 / §4.4 / §4.5):
+	 *   1. 读需求文档 + 项目代码/wiki 做 plan;
+	 *   2. 用 Orchestrate 工具编 DSL flow 并提交(mode=confirm,等用户确认门);
+	 *   3. confirm 后 flow 跑 → 委派 developer/reviewer/qa subagents;
+	 *   4. 跑完 + 自验通过后,**显式调用 verify 工具**(不靠 hook 自动推进)。
+	 *      verify 工具会置 status=verify + 调 PM 做产品粒度覆盖判断 + 阻塞等
+	 *      verdict。verdict APPROVED → PM 触发 archivist 合并 + 置 closed;
+	 *      REJECTED → 意见回灌,你改计划重提。
+	 *   5. 完成后 autoPickupIfIdle 自动领下一个 ready 需求(本 service 内置)。
 	 */
 	private buildPickupPrompt(requirement: RequirementRecord): string {
-		return `需求「${requirement.title}」(id ${requirement.id}) 已确认就绪,请按交付流程推进。
+		return `需求「${requirement.title}」(id ${requirement.id}) 已确认就绪,请按 §4.3-§4.5 交付流程推进。
 
 需求描述:
 ${requirement.description || "(无描述)"}
@@ -324,24 +333,25 @@ ${requirement.description || "(无描述)"}
 相关上下文:
 ${requirement.context || "(无附加上下文)"}
 
-交付流程(决策 11/48 — 你是 Orchestrate DSL 作者,Orchestrate 工具是执行引擎):
+交付步骤(对应 §4.3 plan 门 / §4.4 build / §4.5 verify 门):
 
-1. 用 Read/Grep/Glob/ExpandNode 了解相关代码现状 + 读 archivist wiki 做好 plan。
-2. 调用 planner agent-tool 出执行大纲(任务队列)。
-3. 把大纲拆成 Orchestrate DSL flow:
-   - 用 parallel/pipeline/if/for/barrier 节点表达执行逻辑;
-   - 每个 task 节点指定一个你 toolPolicy 放行的 agent-tool(developer/reviewer/qa/...);
-   - 末尾追加 verify 节点跑测试 + 派 reviewer agent-tool(决策 34 — 验收在流程内自动执行)。
-4. 调用 Orchestrate({ flow, mode: "confirm" }) 提交流程:
-   - 工具会停住等用户确认(看板 plan 待审入口)。确认后才 run;驳回会返回 "false: <reason>",
-     你据此自重 Orchestrate flow(同角色,mode="run" 重交)。
-5. run 完后 Orchestrate 自动产出 manifest(改了哪些文件 + 跑了哪些测试 + 审查结果)。
-   PM 后续读这份 manifest 做覆盖判断(决策 34),你不用管 PM 那一步。
+1. 用 Read/Grep/Glob + wiki(expand)读项目代码现状 + archivist wiki 做 plan。
+2. 用 Orchestrate 工具编排 DSL flow(parallel/pipeline/if/for/barrier),每个 task
+   节点指定一个你 subagents 列表里的执行角色(developer/reviewer/qa)。
+3. 调 Orchestrate({ flow, mode: "confirm" }) 提交 —— **plan 门**:工具停住等用户
+   确认。确认后 flow 跑;驳回返回 "false: <reason>",你据此自重 Orchestrate flow
+   再交(同角色,mode="run")。
+4. flow 跑完 + 自验通过后,**显式调用 verify 工具**提交覆盖判断:
+   - verify 工具置 status=verify + 阻塞调 PM(按 req.createdByAgentId)做产品粒度
+     覆盖判断;
+   - PM APPROVED → PM 触发 archivist 合并 feature→main + 置 closed(你不用碰合并,
+     §4.6);
+   - PM REJECTED → 意见回灌,你改计划重提 verify,循环到通过。
 
 注意:
 - commit 引用 requirementId,格式如 "feat: ... [req-${shortIdForPrompt(requirement.id)}]"(决策 21,喂 traceability)。
 - 在 feature 分支(req-${shortIdForPrompt(requirement.id)})上每步 commit。
-- 默认串行(一次一个需求),最多重试 3 次/步。`;
+- 默认串行(一次一个需求);完成后本 service 自动领下一个 ready 需求(autoPickupIfIdle)。`;
 	}
 }
 

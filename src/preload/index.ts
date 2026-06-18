@@ -276,7 +276,7 @@ const api: WindowApi = {
 	requirementsDocWrite: (projectId, requirementId, content) => ipcRenderer.invoke("requirements:doc:write", projectId, requirementId, content),
 	requirementsDocList: (projectId) => ipcRenderer.invoke("requirements:doc:list", projectId),
 	pmCreateRequirement: (input) => ipcRenderer.invoke("pm:createRequirement", input),
-	pmOpenDiscuss: (projectId) => ipcRenderer.invoke("pm:openDiscuss", projectId),
+	pmOpenDiscuss: (requirementId) => ipcRenderer.invoke("pm:openDiscuss", requirementId),
 	pmCoverageView: (requirementId) => ipcRenderer.invoke("pm:coverageView", requirementId),
 	pmCoverageVerdict: (requirementId, covered, reason) => ipcRenderer.invoke("pm:coverageVerdict", requirementId, covered, reason),
 };

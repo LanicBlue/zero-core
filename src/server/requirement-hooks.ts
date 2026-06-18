@@ -1,28 +1,38 @@
-// 需求状态流转 Hook
+// 需求状态流转 Hook (v0.8 P7 — 拉模型重做)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 注册 PostToolUse 和 PostTurnComplete Hook，自动推进需求状态。
+// 注册 PostToolUse Hook 自动推进需求状态:**仅 plan→build**(lead 调 Orchestrate
+// 工具,步骤>0 时 build)。
+//
+// ## v0.8 P7 重做要点(RFC §1.5 / §4)
+// - 删 ProjectNotificationRouter 依赖(无中央路由,§1.5)。
+// - 删 PostTurnComplete 自动 build→verify(verify 是 lead 显式提交,P3 的
+//   verify 工具置 status=verify 并阻塞等 PM 判,§4.5)。
+// - 删 verify_accept/verify_reject 推送(PM 判通过 → PM 委派/触发 archivist
+//   合并;不通过 → 意见回 lead,lead 改计划重提;§4.6)。
+// - 删 notify("ready") 推送(lead 完成上一需求 autoPickupIfIdle 自动领下一个
+//   primary;cron 保底 fallback;§4.3)。
+// - 删 M5 analyst 自动 verify 路径(verify 门由 PM 接管,§4.5)。
 //
 // ## 输入
-// - PostToolUse Hook context
-// - PostTurnComplete Hook context
+// - hook-registry
+// - requirement-store / task-step-store
 //
 // ## 输出
-// - 需求状态自动流转（plan→build→verify）
+// - 注册的 PostToolUse hook(plan→build)
 //
 // ## 定位
-// 服务层 Hook，被 server/index.ts 调用注册。
+// 服务层 Hook,被 server/index.ts 调用注册。
 //
 // ## 依赖
-// - hook-registry — Hook 注册
-// - requirement-store — 需求存储
-// - task-step-store — 步骤存储
-// - lead-service — Lead 服务（用于自动领取）
+// - ../core/hook-registry
+// - ./requirement-store, ./task-step-store
+// - ../core/logger
 //
 // ## 维护规则
-// - Hook 逻辑需幂等（同一事件多次触发不产生副作用）
+// - hook 逻辑幂等(同一事件多次触发无副作用)
 // - 异常不阻塞主流程
 //
 
@@ -30,9 +40,6 @@ import { HookRegistry } from "../core/hook-registry.js";
 import type { RequirementStore } from "./requirement-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import type { LeadService } from "./lead-service.js";
-import type { AnalystService } from "./analyst-service.js";
-import type { NotificationService } from "./notification-service.js";
-import type { ProjectNotificationRouter } from "./project-notification-router.js";
 import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -40,155 +47,105 @@ import { log } from "../core/logger.js";
 // ---------------------------------------------------------------------------
 
 /**
- * Register requirement status transition hooks.
+ * Register requirement status transition hooks (v0.8 P7 — pull model).
  *
- * PostToolUse: when Orchestrate tool is used by Lead, check if plan→build transition needed.
- * PostTurnComplete: when Lead session turn completes, check if all steps done → verify transition.
- *   M5: if reviewer='analyst', auto-trigger verifyRequirement + archiveRequirement.
+ * Two hooks remain in the hook layer:
+ *   1. PostToolUse (Orchestrate) → plan→build when lead records its first
+ *      task step (§4.4).
+ *   2. PostTurnComplete → lead auto-pickup chain: when a lead session's turn
+ *      ends and the project has no active requirement, pick the next ready
+ *      one (§4.3 — "完成上一任务后自动领下一个 primary;cron 保底 fallback").
+ *
+ * Everything else is now explicit:
+ *   - build→verify: lead calls the verify tool (§4.5).
+ *   - verify→closed: PmService.submitCoverageVerdict (driven by the verify
+ *     tool's verdict) → archivist merge → status (§4.6).
+ *   - cross-role: pull model — agents read requirement state on activation,
+ *     no central router (§1.5).
  */
 export function registerRequirementHooks(deps: {
 	requirementStore: RequirementStore;
 	taskStepStore: TaskStepStore;
 	leadService: LeadService;
 	hookRegistry?: HookRegistry;
-	analystService?: AnalystService;
-	notificationService?: NotificationService;
-	// v0.8 (M3): project-scoped cross-role notification router (ready→lead,
-	// verify→PM, accept→archivist). Falls back to NotificationService if absent
-	// (legacy path).
-	projectNotificationRouter?: ProjectNotificationRouter;
 }): void {
 	const registry = deps.hookRegistry ?? HookRegistry.getInstance();
 
-	// Hook 1: PostToolUse — track Orchestrate tool calls for plan→build transition
+	// PostToolUse: track Orchestrate tool calls for plan→build transition.
+	// v0.8 P7: lead's agentId is the global role agent id (no "Lead-<project>"
+	// name prefix in v0.8 identity model — agents are global). We resolve the
+	// requirement by the lead session it was assigned to, which is the
+	// authoritative binding regardless of agent id shape.
 	registry.register("PostToolUse", async (ctx) => {
 		if (ctx.toolName !== "Orchestrate") return;
 
-		// Guard: only Lead agents should trigger this hook
-		const agentId = ctx.agentId ?? "";
-		if (!agentId.startsWith("Lead-")) return;
-
-		// Find the specific requirement assigned to this Lead session
 		const sessionId = ctx.sessionId;
-		const planReqs = deps.requirementStore.listByStatus("plan" as any);
-		const targetReq = sessionId
-			? planReqs.find(r => r.assignedLeadSessionId === sessionId)
-			: planReqs[0]; // fallback: first plan requirement
+		if (!sessionId) return;
 
+		// Find the requirement assigned to this lead session in plan state.
+		const planReqs = deps.requirementStore.listByStatus("plan" as any);
+		const targetReq = planReqs.find((r) => r.assignedLeadSessionId === sessionId);
 		if (!targetReq) return;
 
 		const steps = deps.taskStepStore.listByRequirement(targetReq.id);
 		if (steps.length > 0) {
 			try {
-				deps.requirementStore.transitionStatus(targetReq.id, "build", "lead", "Lead 开始执行步骤");
-			} catch (err) {
-				// Transition may fail if already moved — ignore
-				log.debug("requirement-hooks", "plan→build transition failed:", (err as Error).message);
-			}
-
-			// M5: Notify plan review required on plan→build transition
-			if (deps.notificationService) {
-				deps.notificationService.notifyPlanReviewRequired(
+				deps.requirementStore.transitionStatus(
 					targetReq.id,
-					targetReq.projectId,
-				).catch(() => {});
+					"build",
+					"lead",
+					"Lead 开始执行步骤",
+				);
+			} catch (err) {
+				// Transition may fail if already moved — idempotent, ignore.
+				log.debug(
+					"requirement-hooks",
+					"plan→build transition failed:",
+					(err as Error).message,
+				);
 			}
 		}
 	});
 
-	// Hook 2: PostTurnComplete — check step status when Lead session turn completes
+	// PostTurnComplete: lead auto-pickup chain (§4.3). After a lead session's
+	// turn ends, if its project has no active (plan/build) requirement, pick
+	// the next ready one. v0.8 P7 — pure pull-model chain (no notify("ready")
+	// push). v0.8 P7 explicitly DROPPED the build→verify auto-transition
+	// that used to live here (verify is now lead's explicit verify tool call,
+	// §4.5), and the verify_accept push (covered → PmService drives archivist
+	// merge directly, §4.6).
 	registry.register("PostTurnComplete", async (ctx) => {
-		// Guard: only Lead agents should trigger this hook
-		const agentId = ctx.agentId ?? "";
-		if (!agentId.startsWith("Lead-")) return;
-
-		// Find the specific requirement assigned to this Lead session
 		const sessionId = ctx.sessionId;
+		if (!sessionId) return;
+
+		// Identify the project this lead session was working on. Look across
+		// plan/build requirements assigned to this session — if any, the lead
+		// is still mid-flight on one and we don't auto-pick.
+		const planReqs = deps.requirementStore.listByStatus("plan" as any);
 		const buildReqs = deps.requirementStore.listByStatus("build" as any);
-		const targetReq = sessionId
-			? buildReqs.find(r => r.assignedLeadSessionId === sessionId)
-			: buildReqs[0]; // fallback: first build requirement
-
-		if (!targetReq) return;
-
-		const steps = deps.taskStepStore.listByRequirement(targetReq.id);
-		if (steps.length === 0) return;
-
-		const allCompleted = steps.every(
-			(s) => s.status === "completed" || s.status === "skipped",
+		const stillActive = [...planReqs, ...buildReqs].some(
+			(r) => r.assignedLeadSessionId === sessionId,
 		);
-		const hasFailed = steps.some((s) => s.status === "failed");
+		if (stillActive) return;
 
-		if (allCompleted) {
-			try {
-				deps.requirementStore.transitionStatus(targetReq.id, "verify", "system", "所有步骤已完成");
-			} catch (err) {
-				log.debug("requirement-hooks", "build→verify transition failed:", (err as Error).message);
-			}
+		// Find the project: the most recent requirement this session touched
+		// (any status), so we know which project to chain into.
+		const allReqs = deps.requirementStore.list();
+		const lastForSession = allReqs
+			.filter((r) => r.assignedLeadSessionId === sessionId)
+			.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0];
+		if (!lastForSession?.projectId) return;
 
-			// v0.8 (M3): notify PM session for coverage judgement (decision 10/34).
-			// PM reads the latest Orchestrate manifest and judges coverage.
-			// Non-blocking; cron fallback will retry if this notification fails.
-			if (deps.projectNotificationRouter) {
-				deps.projectNotificationRouter.notify("verify", targetReq.id, targetReq.projectId).catch(() => {});
-			}
-
-			// M5: Auto-verify if reviewer is 'analyst'
-			if (targetReq.reviewer === "analyst" && deps.analystService) {
-				log.agent("M5 auto-verify: reviewer=analyst, triggering verification for:", targetReq.id);
-				// Non-blocking — don't await to avoid blocking the hook
-				deps.analystService.verifyRequirement(targetReq.id).then((result) => {
-					if (result.passed) {
-						log.agent("M5 auto-verify: PASSED for:", targetReq.id);
-						// v0.8 (M3): verify accept → notify archivist to merge
-						// feature→main (RFC §2.9 / §2.15, acceptance-M3 item 6).
-						// Decisions 10/25 — the archivist session owns the merge;
-						// cron fallback retries if this notification is lost.
-						// Fire BEFORE archiveRequirement closes the requirement so
-						// the archivist still sees a verify-state requirement to
-						// merge. Notifications are best-effort and never throw
-						// (see ProjectNotificationRouter.notify catch-all).
-						if (deps.projectNotificationRouter) {
-							deps.projectNotificationRouter
-								.notify("verify_accept", targetReq.id, targetReq.projectId)
-								.catch(() => {});
-						}
-						log.agent("M5 auto-verify: PASSED, archiving:", targetReq.id);
-						return deps.analystService!.archiveRequirement(targetReq.id);
-					} else {
-						log.agent("M5 auto-verify: FAILED for:", targetReq.id);
-						// Notify verification failure
-						if (deps.notificationService) {
-							return deps.notificationService.notifyVerificationFailure(
-								targetReq.id,
-								targetReq.projectId,
-								result.report,
-							);
-						}
-					}
-				}).catch((err) => {
-					log.error("requirement-hooks", "M5 auto-verify error:", (err as Error).message);
-				});
-			}
-
-			// After completing current requirement, auto-pickup next if idle
-			// Don't await — non-blocking
-			if (targetReq.projectId) {
-				deps.leadService.autoPickupIfIdle(targetReq.projectId).catch(() => {});
-			}
-		} else if (hasFailed) {
-			// M5: Notify step failure
-			log.agent("Requirement has failed steps:", targetReq.id, targetReq.title);
-			const failedSteps = steps.filter((s) => s.status === "failed");
-			if (deps.notificationService) {
-				for (const step of failedSteps) {
-					deps.notificationService.notifyStepFailure(
-						targetReq.id,
-						targetReq.projectId,
-						step,
-					).catch(() => {});
-				}
-			}
+		// Best-effort: pick the next ready requirement for this project.
+		// Errors are non-fatal — cron fallback will cover any miss.
+		try {
+			await deps.leadService.autoPickupIfIdle(lastForSession.projectId);
+		} catch (err) {
+			log.debug(
+				"requirement-hooks",
+				"autoPickupIfIdle failed (cron will retry):",
+				(err as Error).message,
+			);
 		}
 	});
 }

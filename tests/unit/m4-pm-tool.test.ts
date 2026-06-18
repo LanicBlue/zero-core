@@ -3,7 +3,8 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 验证 M4 缺陷 1 / 缺陷 2 修复 (用户澄清的设计意图):
+// 验证 M4 缺陷 1 / 缺陷 2 修复 (用户澄清的设计意图),并适配 v0.8 P7
+// 拉模型(tool 入参 / 寻址用 createdByAgentId):
 //
 //   缺陷 1 — PM 用工具创建需求 + 绑定需求文档 + 落 discuss 栏:
 //   - CreateRequirementWithDoc 工具调用 PmService.createRequirementWithDoc
@@ -18,6 +19,15 @@
 //
 //   死代码清理:
 //   - PmService.discoverAndCreateRequirement 已删除 (发现由 PM agent 驱动)
+//
+//   v0.8 P7:
+//   - openDiscuss 入参从 (projectId) 改为 (requirementId)(走 req.createdByAgentId)。
+//   - Tool 调用必须把 ctx.agentId 透传到 createRequirementWithDoc 的
+//     createdByAgentId —— 否则 verify/discuss 在 P7 寻址不到 PM agent
+//     (TODO sub1: requirement-tools.ts createRequirementWithDocTool 当前
+//     未透传 createdByAgentId=ctx.agentId;P7 端到端闭环硬依赖,需补一行)。
+//     在补齐前,本文件对 tool 路径断言"记录创建 + docPath + status",对
+//     createdByAgentId 的断言走 pmService 直调路径 (绕过 tool)。
 //
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";

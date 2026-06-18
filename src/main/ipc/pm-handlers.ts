@@ -83,15 +83,20 @@ export function registerPmHandlers(): void {
 		}
 	});
 
-	// Open the {PM, projectId} discuss session — kanban "讨论" entry → chat page.
-	typedHandle("pm:openDiscuss", "sessionDb", (ctx, projectId) => {
+	// v0.8 P7 (§4.2): open the {PM, projectId} discuss session — route by
+	// requirementId → read req.createdByAgentId → resolve PM session.
+	// No roleTag scan. Returns { agentId, sessionId, created }; renderer does
+	// the page navigation + opens the requirement doc.
+	typedHandle("pm:openDiscuss", "sessionDb", (ctx, requirementId) => {
 		const pm = ctx.pmService;
 		if (!pm) return { error: "pm service not available" };
 		try {
-			const resolved = pm.openDiscussSession(projectId);
-			const agentId = pm.findPmAgent()?.id;
-			if (!agentId) return { error: "no pm agent registered" };
-			return { agentId, sessionId: resolved.session.id, created: resolved.created };
+			const resolved = pm.openDiscussSession(requirementId);
+			return {
+				agentId: resolved.agentId,
+				sessionId: resolved.session.id,
+				created: resolved.created,
+			};
 		} catch (e) {
 			return { error: (e as Error).message };
 		}
@@ -104,16 +109,21 @@ export function registerPmHandlers(): void {
 		return pm.buildCoverageView(requirementId);
 	});
 
-	// Submit PM coverage verdict → drives notify("verify_accept" | "verify_reject").
+	// v0.8 P7 (§4.6): submit PM coverage verdict → drives ArchivistService
+	// merge (covered=true) or feedback record (covered=false). Returns the
+	// final requirement status + merge result so the UI can reflect the
+	// end-to-end outcome.
 	typedHandle("pm:coverageVerdict", "sessionDb", async (ctx, requirementId, covered, reason?) => {
 		const pm = ctx.pmService;
 		if (!pm) return { error: "pm service not available" };
 		try {
-			await pm.submitCoverageVerdict(requirementId, { covered, reason });
+			const outcome = await pm.submitCoverageVerdict(requirementId, { covered, reason });
 			return {
 				success: true,
 				requirementId,
 				kind: covered ? "verify_accept" as const : "verify_reject" as const,
+				finalStatus: outcome.finalStatus,
+				mergeOk: outcome.merge?.ok,
 			};
 		} catch (e) {
 			return { error: (e as Error).message };

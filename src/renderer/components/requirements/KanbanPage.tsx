@@ -155,17 +155,19 @@ export default function KanbanPage() {
 		}
 	}, [fetchPendingPlans, selectedProjectId]);
 
-	// v0.8 (M4): open the {PM, projectId} discuss session — kanban "讨论" entry
-	// → chat page (decision 13/14). Routes via pm:openDiscuss, then activates the
-	// PM agent + session in the chat store so the existing chat page renders it,
-	// AND opens the requirement's doc in the DocViewerPanel (user wants to see
-	// the requirement doc + talk to PM in the same view).
+	// v0.8 P7 (§4.2): open the {PM, projectId} discuss session — kanban "讨论"
+	// entry → chat page. Routes via pm:openDiscuss(requirementId) so the
+	// backend can address the PM by req.createdByAgentId (P7 pull model — no
+	// roleTag scan). Then activates the PM agent + session in the chat store
+	// so the existing chat page renders it, AND opens the requirement's doc in
+	// the DocViewerPanel (user wants to see the requirement doc + talk to PM in
+	// the same view).
 	const [coverageReqId, setCoverageReqId] = useState<string | null>(null);
 	const handleDiscuss = useCallback(async (req: RequirementRecord) => {
 		const api = (window as any).api;
 		if (!api?.pmOpenDiscuss) return;
 		try {
-			const r = await api.pmOpenDiscuss(req.projectId);
+			const r = await api.pmOpenDiscuss(req.id);
 			if (r?.error) { alert(`Discuss failed: ${r.error}`); return; }
 			const chatStore = (await import("../../store/chat-store.js")).useChatStore.getState();
 			chatStore.setActiveAgent(r.agentId, r.sessionId);

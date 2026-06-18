@@ -27,6 +27,11 @@ import {
 	OrchestrateManifestStore,
 	ConfirmRegistry,
 } from "../../src/server/orchestrate-store.js";
+import { TaskStepStore } from "../../src/server/task-step-store.js";
+import { ProjectWikiStore } from "../../src/server/project-wiki-store.js";
+import { WikiStore } from "../../src/server/wiki-node-store.js";
+import { TemplateStore } from "../../src/server/template-store.js";
+import { LeadService } from "../../src/server/lead-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { isValidTransition } from "../../src/server/requirement-state-machine.js";
 import { featureWorktreePath, featureBranchName } from "../../src/server/archivist-git.js";
@@ -329,84 +334,6 @@ describe("feature worktree + commit reference convention", () => {
 	});
 });
 
-// ─── cron fallback — backfillPendingNotifications ────────────────
-
-describe("ProjectNotificationRouter cron fallback (with mocked LeadService)", async () => {
-	// We import after beforeEach setup so the router can use the live stores.
-	const { ProjectNotificationRouter } = await import("../../src/server/project-notification-router.js");
-
-	function makeRouter(leadServiceMock: any) {
-		return new ProjectNotificationRouter({
-			agentService: { sendPrompt: async () => {} } as any,
-			agentStore,
-			projectStore,
-			requirementStore,
-			sessionDB,
-			leadService: leadServiceMock,
-			manifestStore,
-		});
-	}
-
-	test("backfill picks up unassigned ready requirements (idempotent on second pass)", async () => {
-		const project = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws") });
-		const req = requirementStore.create({
-			projectId: project.id, title: "T", status: "ready",
-			source: "user", priority: "normal", reviewer: "user",
-		} as any);
-
-		const pickups: string[] = [];
-		const leadMock = {
-			pickupRequirement: async (id: string) => {
-				pickups.push(id);
-				// Simulate LeadService writing assignedLeadSessionId.
-				requirementStore.update(id, { assignedLeadSessionId: "sess-x" } as any);
-				return "sess-x";
-			},
-		};
-		const router = makeRouter(leadMock);
-
-		// First backfill — picks up the unassigned ready req.
-		const r1 = await router.backfillPendingNotifications(project.id);
-		expect(r1.pickedUp).toBe(1);
-		expect(pickups).toEqual([req.id]);
-
-		// Second backfill — req is now assignedLeadSessionId set, findReady excludes it.
-		const r2 = await router.backfillPendingNotifications(project.id);
-		expect(r2.pickedUp).toBe(0);
-	});
-
-	test("backfill re-notifies verify-status requirements (no pm agent → no send, but attempt counted, no crash)", async () => {
-		const project = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws2") });
-		requirementStore.create({
-			projectId: project.id, title: "V", status: "verify",
-			source: "user", priority: "normal", reviewer: "user",
-		} as any);
-
-		const router = makeRouter({ pickupRequirement: async () => "x" });
-		// No pm agent registered → notifyVerifyReadyForCoverage logs + returns
-		// (no throw); backfill still counts the attempt (cron fallback will
-		// retry once a PM agent is registered).
-		const r = await router.backfillPendingNotifications(project.id);
-		expect(r.verifyNotified).toBe(1);
-	});
-
-	test("ready→lead notification swallows 'already assigned' (idempotent no-op)", async () => {
-		const project = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws3") });
-		const req = requirementStore.create({
-			projectId: project.id, title: "T", status: "ready",
-			source: "user", priority: "normal", reviewer: "user",
-		} as any);
-
-		const leadMock = {
-			pickupRequirement: async () => {
-				throw new Error("Requirement already assigned to session: x");
-			},
-		};
-		const router = makeRouter(leadMock);
-		// Should NOT throw — router treats "already assigned" as success.
-		await expect(router.notify("ready", req.id, project.id)).resolves.toBeUndefined();
-	});
-});
 
 // ─── Orchestrate tool execute — end-to-end confirm gate ──────────
 
@@ -685,5 +612,105 @@ describe("createOrchestrateRouter (IPC)", () => {
 		} finally {
 			server.close();
 		}
+	});
+});
+
+// ─── v0.8 P7 — lead 自动领取拉模型(取代 router backfillPendingNotifications)──
+//
+// P7 重做后,旧 ProjectNotificationRouter.backfillPendingNotifications 的角色
+// (扫描 ready 需求 → 调 leadService.pickupRequirement)被两路取代:
+//   - 主路径:lead 完成上一需求后,PostTurnComplete hook 调
+//     LeadService.autoPickupIfIdle(primary);
+//   - 兜底:lead cron fallback。
+//
+// 这里直接驱动 LeadService.autoPickupIfIdle,断言它把 ready→plan,
+// 同时不会重复领取(active plan/build 跳过),不再需要 router。
+
+describe("v0.8 P7 — LeadService.autoPickupIfIdle (取代 router backfill)", () => {
+	function makeLeadService(): LeadService {
+		const taskStepStore = new TaskStepStore(sessionDB);
+		const wikiStoreGlobal = new WikiStore(sessionDB);
+		const wikiStore = new ProjectWikiStore(wikiStoreGlobal);
+		const templateStore = new TemplateStore(sessionDB);
+		return new LeadService({
+			agentService: {
+				getDB: () => sessionDB,
+				sendRolePrompt: async () => {},
+			} as any,
+			agentStore,
+			requirementStore,
+			taskStepStore,
+			wikiStore,
+			projectStore,
+			templateStore,
+			orchestratePlanStore: planStore,
+			orchestrateManifestStore: manifestStore,
+		});
+	}
+
+	test("picks the highest-priority ready requirement and transitions it to 'plan'", async () => {
+		const lead = makeLeadService();
+		const project = projectStore.create({ name: "P7", workspaceDir: join(tmpDir, "ws-p7") } as any);
+		// Two ready reqs — low priority first, critical second.
+		const low = requirementStore.create({
+			projectId: project.id, title: "Low", status: "ready",
+			source: "user", priority: "low", reviewer: "user",
+		} as any);
+		const crit = requirementStore.create({
+			projectId: project.id, title: "Crit", status: "ready",
+			source: "user", priority: "critical", reviewer: "user",
+		} as any);
+
+		// autoPickupIfIdle returns the lead sessionId (not the reqId). The
+		// observability is in the requirement status: the critical one was
+		// picked → plan; the low one stays ready.
+		const pickedSession = await lead.autoPickupIfIdle(project.id);
+		expect(pickedSession).toBeTruthy();
+		expect(requirementStore.get(crit.id)!.status).toBe("plan");
+		expect(requirementStore.get(crit.id)!.assignedLeadSessionId).toBe(pickedSession);
+		// Low stays ready (lead is single-flight per project).
+		expect(requirementStore.get(low.id)!.status).toBe("ready");
+	});
+
+	test("returns null when there is already an active (plan/build) requirement for the project", async () => {
+		const lead = makeLeadService();
+		const project = projectStore.create({ name: "P7-busy", workspaceDir: join(tmpDir, "ws-p7-b") } as any);
+		// A build-status req occupies the lead.
+		const active = requirementStore.create({
+			projectId: project.id, title: "Active", status: "plan",
+			source: "user", priority: "normal", reviewer: "user",
+			assignedLeadSessionId: "sess-x",
+		} as any);
+		// A second ready req waiting.
+		requirementStore.create({
+			projectId: project.id, title: "Wait", status: "ready",
+			source: "user", priority: "normal", reviewer: "user",
+		} as any);
+
+		const picked = await lead.autoPickupIfIdle(project.id);
+		expect(picked).toBeNull();
+		// The active one is untouched; the waiting one is NOT picked up.
+		expect(requirementStore.get(active.id)!.status).toBe("plan");
+	});
+
+	test("returns null when no ready requirements exist", async () => {
+		const lead = makeLeadService();
+		const project = projectStore.create({ name: "P7-empty", workspaceDir: join(tmpDir, "ws-p7-e") } as any);
+		const picked = await lead.autoPickupIfIdle(project.id);
+		expect(picked).toBeNull();
+	});
+
+	test("skips ready reqs that already have an assignedLeadSessionId (idempotent)", async () => {
+		const lead = makeLeadService();
+		const project = projectStore.create({ name: "P7-assigned", workspaceDir: join(tmpDir, "ws-p7-a") } as any);
+		// ready but already claimed by another session.
+		requirementStore.create({
+			projectId: project.id, title: "Taken", status: "ready",
+			source: "user", priority: "normal", reviewer: "user",
+			assignedLeadSessionId: "other-session",
+		} as any);
+
+		const picked = await lead.autoPickupIfIdle(project.id);
+		expect(picked).toBeNull();
 	});
 });

@@ -246,7 +246,7 @@ const R: Record<string, RouteMapping> = {
 		// ─── Requirements doc + PM (M4) ──────────────────────
 		// backend /api/pm (pmRouter in server/index.ts). doc = repo markdown
 		// read/write/list; coverageView = intent doc + latest manifest; verdict
-		// drives notify(verify_accept|verify_reject).
+		// drives ArchivistService merge (covered=true) / feedback (covered=false).
 		"requirements:doc:read":  { method: "GET",    path: "/api/pm/:projectId/requirements/:requirementId/doc", buildReq: (projectId, requirementId) => ({ params: { projectId, requirementId } }) },
 		"requirements:doc:write": { method: "PUT",    path: "/api/pm/:projectId/requirements/:requirementId/doc", buildReq: (projectId, requirementId, content) => ({ params: { projectId, requirementId }, body: { content } }) },
 		"requirements:doc:list":  { method: "GET",    path: "/api/pm/:projectId/requirements",                   buildReq: (projectId) => ({ params: { projectId } }) },
@@ -254,12 +254,13 @@ const R: Record<string, RouteMapping> = {
 		"pm:coverageView":        { method: "GET",    path: "/api/pm/:requirementId/coverage-view",              buildReq: (requirementId) => ({ params: { requirementId } }) },
 		"pm:coverageVerdict":     { method: "POST",   path: "/api/pm/:requirementId/coverage-verdict",           buildReq: (requirementId, covered, reason) => ({ params: { requirementId }, body: { covered, reason } }) },
 
-		// ─── pm:openDiscuss (M4) ─────────────────────────────
-		// backend POST /api/pm/:projectId/discuss resolves the {PM, projectId}
-		// session via PmService.openDiscussSession + findPmAgent. Returns
-		// { agentId, sessionId, created }; renderer then setActiveAgent/ Page.
-		// (UI navigation stays renderer-side; backend only resolves session.)
-		"pm:openDiscuss":         { method: "POST",   path: "/api/pm/:projectId/discuss",                        buildReq: (projectId) => ({ params: { projectId } }) },
+		// ─── pm:openDiscuss (v0.8 P7 §4.2) ──────────────────────
+		// backend POST /api/pm/:requirementId/discuss reads the requirement +
+		// resolves the {PM, projectId} session via PmService.openDiscussSession
+		// (routes by req.createdByAgentId, NOT by roleTag scan). Returns
+		// { agentId, sessionId, created }; renderer then setActiveAgent/Page
+		// + opens the requirement doc (decision 13/14).
+		"pm:openDiscuss":         { method: "POST",   path: "/api/pm/:requirementId/discuss",                    buildReq: (requirementId) => ({ params: { requirementId } }) },
 };
 
 // ─── Proxy Registration ─────────────────────────────────────

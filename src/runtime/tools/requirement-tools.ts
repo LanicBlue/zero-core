@@ -144,6 +144,13 @@ export const createRequirementWithDocTool = buildTool({
 				body: input.body,
 				priority: input.priority,
 				source: "pm",
+				// v0.8 P7 (§4.5): the PM agent that creates this requirement —
+				// used by verify-tool (req.createdByAgentId / reviewerAgentId)
+				// and openDiscussSession to address the PM without a roleTag scan.
+				// Falls back through reviewerAgentId → createdByAgentId inside
+				// PmService when not supplied, but the canonical path always
+				// carries ctx.agentId so the binding is explicit.
+				createdByAgentId: ctx.agentId,
 			});
 			return `Requirement created: ${req.id}\nTitle: ${req.title}\nStatus: ${req.status}\nDoc: ${req.docPath ?? "(none)"}`;
 		} catch (err) {

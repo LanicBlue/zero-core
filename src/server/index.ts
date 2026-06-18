@@ -292,7 +292,6 @@ export async function startServer(options?: StartServerOptions) {
 	const { LeadService } = await import("./lead-service.js");
 	const { registerRequirementHooks } = await import("./requirement-hooks.js");
 	const { OrchestratePlanStore, OrchestrateManifestStore } = await import("./orchestrate-store.js");
-	const { ProjectNotificationRouter } = await import("./project-notification-router.js");
 
 	// v0.8 (M3): Orchestrate plan/manifest stores — confirm gate persistence
 	// (decision 11) + per-run manifest (decision 34).
@@ -332,21 +331,15 @@ export async function startServer(options?: StartServerOptions) {
 		cronStore,
 	});
 
-	// v0.8 (M3): project-scoped cross-role notification router (decision 10).
-	// Routes ready→lead, verify→PM, accept→archivist via resolveSessionByRoleProject.
-	const projectNotificationRouter = new ProjectNotificationRouter({
-		agentService,
-		agentStore,
-		projectStore,
-		requirementStore,
-		sessionDB,
-		leadService,
-		manifestStore: orchestrateManifestStore,
-	});
+	// v0.8 P7 (RFC §1.5): NO ProjectNotificationRouter — cross-role reactions
+	// are pull-model. ready → lead autoPickupIfIdle + cron fallback;
+	// verify → lead's verify tool calls PM via delegateTask + PmService.
+	// .submitCoverageVerdict drives archivist merge directly (§4.6).
 
 	// v0.8 (M4): PM service + requirement doc store (RFC §2.5 / §2.10 / §2.17b).
 	// PM cron-driven discovery + discuss-as-document + coverage judgement.
-	// Coverage verdicts drive the notification router (verify_accept/reject).
+	// v0.8 P7: PmService.submitCoverageVerdict drives ArchivistService
+	// directly (covered=true → mergeFeatureToMain + 增量扫描 → closed).
 	const { PmService } = await import("./pm-service.js");
 	const { RequirementDocStore } = await import("./requirement-doc-store.js");
 	const requirementDocStore = new RequirementDocStore({
@@ -360,7 +353,7 @@ export async function startServer(options?: StartServerOptions) {
 		requirementDocStore,
 		wikiNodeStore: wikiStoreGlobal,
 		manifestStore: orchestrateManifestStore,
-		projectNotificationRouter,
+		archivistService,
 		sessionDB,
 	});
 	// v0.8 (M4): surface PmService + RequirementStore + wikiStore onto PM
@@ -386,13 +379,11 @@ export async function startServer(options?: StartServerOptions) {
 		requirementStore,
 		taskStepStore,
 		leadService,
-		analystService,
-		notificationService,
-		projectNotificationRouter,
 	});
 
-	// M5: Run workflow state recovery
-	recoverWorkflowState({ projectStore, requirementStore, taskStepStore, cronManager, agentService, projectNotificationRouter });
+	// v0.8 P7 (§1.5): no projectNotificationRouter — pull model.
+	// Run workflow state recovery (cron schedules + plan/build/verify reqs).
+	recoverWorkflowState({ projectStore, requirementStore, taskStepStore, cronManager, agentService });
 
 	// ─── Mount API routers ───────────────────────────────────────
 
@@ -510,16 +501,19 @@ export async function startServer(options?: StartServerOptions) {
 			res.status(201).json(r);
 		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
 	});
-	// v0.8 (M4): kanban 「讨论」entry — resolve the {PM, projectId} session.
-	// Server-side only resolves the session (findPmAgent + resolveSessionByRoleProject);
-	// the renderer is responsible for setActiveAgent / page navigation. Mirrors the
-	// pm:openDiscuss IPC handler behaviour (openDiscussSession + findPmAgent).
-	pmRouter.post("/:projectId/discuss", (req, res) => {
+	// v0.8 P7 (§4.2): kanban 「讨论」entry — route by requirementId → read
+	// req.createdByAgentId → resolve {PM, projectId} session. The renderer is
+	// responsible for setActiveAgent / page navigation + opening the
+	// requirement doc (see CoverageJudgementModal / KanbanPage for the doc
+	// open path).
+	pmRouter.post("/:requirementId/discuss", (req, res) => {
 		try {
-			const resolved = pmService.openDiscussSession(req.params.projectId);
-			const agentId = pmService.findPmAgent()?.id;
-			if (!agentId) return res.status(409).json({ error: "no pm agent registered" });
-			res.json({ agentId, sessionId: resolved.session.id, created: resolved.created });
+			const resolved = pmService.openDiscussSession(req.params.requirementId);
+			res.json({
+				agentId: resolved.agentId,
+				sessionId: resolved.session.id,
+				created: resolved.created,
+			});
 		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
 	});
 	// Coverage verdict → notify(verify_accept | verify_reject).
