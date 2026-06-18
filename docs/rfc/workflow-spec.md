@@ -47,7 +47,7 @@ M0–M5 实现期间踩了一类共性问题：**计划层只写了「要支持 
 - **平台只维护数据状态**（requirement 状态机 plan→build→verify 等，§5），不做跨 agent 事件分发。
 - 跨 agent 反应是**拉模型**：
   - agent 被**激活**（cron 触发 / 被委派 / 用户唤醒）时，用工具读当前状态 + 按 prompt 判断该干什么 + 委派 subagent。
-  - 例：verify 通过后，**lead 自己**（prompt 指导）委派 archivist 去合并；PM 覆盖判断 = **PM 的 cron 激活后**看到 verify 状态的需求自己去判。
+  - 例：lead 提交 verify → **verify 工具**按 `req.createdByAgentId` 直接调 PM 判（#4，不走 cron 轮询）；PM 判通过 → **PM 委派** archivist（PM 的 subagent）合并（#3）。全程沿 req 记录的 agentId + subagents 图交接，无中央路由。
 - zero 的唯一职责：**定义 agent 间的合作关系**（subagents 委派图 + cron 激活），不编排运行时。
 - **「无角色路由」≠「不能直接交接」**：跨 agent 寻址一律用 **requirement 上记录的 agentId**（`createdByAgentId`=PM、`assigned_agent_id`=lead、`reviewer_agent_id`=覆盖判断方）—— requirement 是记录所有相关 agent ID 的枢纽。lead 提交 verify → 按 req 记录的 PM agentId 直接交给那个 PM，是沿**数据里记录的边**直接交接，不是角色广播、不是中央路由。
 - 现状代码 `ProjectNotificationRouter` / `requirement-hooks.ts` 里的 `notify(...)` 推送路径**作废**，改成拉模型（§4.3/§4.5/§4.6 重写）。
@@ -101,7 +101,7 @@ interface SessionContextBundle {
 | AgentStore | `src/server/agent-store.ts` | agents |
 | SessionDB | `src/server/session-db.ts` | sessions / messages |
 | CronStore | `src/server/cron-store.ts` | crons |
-| WikiStore | `src/server/wiki-node-store.ts` | project_wiki（全局树） |
+| WikiStore | `src/server/wiki-node-store.ts` | wiki_nodes（全局树，原 project_wiki） |
 | RequirementStore | `src/server/requirement-store.ts` | requirements |
 | TaskStepStore | `src/server/task-step-store.ts` | task_steps |
 | OrchestratePlanStore / ManifestStore | `src/server/orchestrate-store.ts` | orchestrate_* |
@@ -121,7 +121,8 @@ interface SessionContextBundle {
 **升级路径**由 `migrateWikiTableSchema(db)` 处理（`db-migration.ts`）：检测旧 schema 的 NOT NULL `project_id`，空表则 DROP+rebuild，非空表告警留待人工。
 
 ### 3.4 crons 表
-字段：`id, agentId, enabled, schedule（off/hourly/daily/weekly 或毫秒）, prompt?, workingScope{projectId?, workspaceDir, wikiRootNodeId}`。一个 agent 可有多条 cron（各带不同 scope）。
+字段（现状）：`id, agentId, enabled, schedule（off/hourly/daily/weekly 或毫秒）, prompt?, workingScope{projectId?, workspaceDir, wikiRootNodeId}`。一个 agent 可有多条 cron（各带不同 scope）。
+> v0.8 重设计见 §9：schedule 改三模式（once/alarm/interval）+ 扩展列（trigger_mode/last_run_at/last_status/next_run_at）+ 新 `cron_runs` 表。
 
 ---
 
@@ -190,7 +191,7 @@ interface SessionContextBundle {
 
 | 维度 | 内容 |
 |---|---|
-| 触发点 | lead 完成实现 → **提交 verify**（verify 工具/action：写 verify payload「做了什么 + 证据」+ 置 status `verify-pending`）→ **lead 停下等待**（不继续）。无 hook 自动推进，是 lead 显式提交。 |
+| 触发点 | lead 完成实现 → **提交 verify**（verify 工具/action：写 verify payload「做了什么 + 证据」+ 置 status `verify`）→ **lead 停下等待**（不继续）。无 hook 自动推进，是 lead 显式提交。 |
 | 判定方 | **verify 工具调 PM**：lead 调 verify 工具 → 工具按 `req.createdByAgentId`/`reviewer_agent_id`（记录的 agentId）**直接调那个 PM** 去做覆盖判断（产品粒度：改动+测试是否覆盖原始意图）→ 拿到 verdict **通过** 或 **不通过 + 修改意见** → 工具 return 给 lead。工具是桥,lead 阻塞等工具(=等 PM 判),实时、无 cron 延迟。**PM cron 只管 discovery（巡检）,不管 verify 感知。** |
 | 通过 | PM 触发 archivist 合并（§4.6）→ archived。 |
 | 不通过 | lead（被重新激活）收到修改意见 → **改计划再执行** → 重新提交 verify（循环到通过）。 |
@@ -255,7 +256,7 @@ found → discuss → ready → plan → build → verify → archived
 真正的 fresh DB **默认只写入两样东西**（无 seed 则连 zero 都没有，自动路径进不去）：
 
 1. **一个 `zero` agent**（从 `zero` template 实例化）—— 全局管理角色，用户与它对话搭建工作流。**workspaceDir = 平台全局 `~/.zero-core`**（不绑单个项目，观察所有项目）。
-2. **wiki 树里的 `software-dev` 节点**（路径 `wiki-root:global / agent-group / software-dev`）—— 这个节点**包含 software-dev 工作流的全部配置**（需要哪些角色、谁 expose 给谁、谁配 cron）。zero 读它来学习怎么搭这套工作流。
+2. **wiki 树里的 `software-dev` 节点**（路径 `wiki-root:global / knowledge / software-dev`）—— 这个节点**包含 software-dev 工作流的全部配置**（需要哪些角色、谁 expose 给谁、谁配 cron）。zero 读它来学习怎么搭这套工作流。
 
 seed 触发点：`startServer` 内、所有 store 建好后、`restoreAllSessions` 之前，检查 `agentStore.list().length === 0` → seed。业务语义，放服务层不放 migration 层。
 
@@ -306,13 +307,15 @@ subagents?: Array<{
 | create | agentId, workingScope{projectId?, workspaceDir, wikiRootNodeId}, schedule, prompt?, enabled? | 一个 agent 可挂 N 条 cron |
 | update / delete / get / list | — | — |
 
-#### `Wiki`（全局记忆树读写，按角色写域）
-| action | 字段 | 写权 scope |
+#### `Wiki`（全局记忆树读写，多锚点写域）
+| action | 字段 | scope |
 |---|---|---|
-| list / expand / readDoc | nodeId / nodeId / path | 读：按 session viewRoot 截断（项目角色只看本子树，全局角色看全树） |
-| upsert | nodeId, type, title, summary?, detail?, ... | 写：**archivist→项目子树**；**zero→全局 knowledge 子树** |
+| expand | nodeId | 展开子树结构（下钻一层 title+summary）—— caller 锚点并集 |
+| read | nodeId | 读节点正文（.md）—— caller 锚点并集 |
+| upsert | nodeId, path, title, summary?, ... | 建/改节点（写 DB 行 + 正文文件）—— caller 锚点并集 |
+| search | query | 全文搜节点 —— caller 锚点并集 |
 
-> 写域按锚点分配（§10.3 多锚点模型）：archivist 写项目子树，zero 写全局 knowledge 子树。store 层 scope guard 按 caller 的锚点并集放行。将来把 knowledge 子树交给 HR 时，调 HR agent 的自由锚点即可，无需角色判断。
+> 详见 §10.7。写域按锚点分配（§10.3 多锚点模型）：archivist 写项目子树，zero 写全局 knowledge 子树。store 层 scope guard 按 caller 的锚点并集放行。将来把 knowledge 子树交给 HR 时，调 HR agent 的自由锚点即可，无需角色判断。正文只走 wiki 工具，禁 FS 直访 `~/.zero-core/wiki/`（§10.1）。
 
 ### 7.4 委派关系 = caller 的 subagents 列表（拆掉 "agent as tool"）
 
@@ -329,27 +332,27 @@ subagents?: Array<{
 
 > 一句话区别：**「工具」是平台硬编码的能力；「subagent」是 caller 声明的可委派 agent 列表**。两者不混在一个 tool registry 里。
 
-### 7.5 全局 wiki 的 agent-group 子树
+### 7.5 全局 wiki 的 knowledge 子树
 
 全局 wiki 树结构（工作流配置的归宿）：
 
 ```
 wiki-root:global              ← 全局根（zero 全局视角）
-└── agent-group               ← 工作流配置子树根
+└── knowledge                 ← 工作流配置子树根
     └── software-dev          ← software-dev 工作流的全部配置（fresh-DB seed）
     └── <future>              ← 后续更多工作流（软件继续预置，或 agent 写入）
 ```
 
 - **`software-dev` 节点**包含该工作流的**全部配置**：需要哪些角色、谁 expose 给谁、谁配 cron、各角色的协作关系。zero 读它来搭工作流。
-- **写权**：`agent-group` 子树由 **zero** 管理（store 层 scope guard 按 caller role 放行）。
-- **将来**：knowledge/agent-group 子树写权可从 zero 收回、交给 HR 角色。
-- ⚠️ fresh-DB seed `software-dev` 节点时，store 层写域需对 seed 路径放行（seed 是启动期特权写入，不走运行时角色 scope guard）。运行时只有 zero（及其后继角色）能写该子树。
+- **写权**：`knowledge` 子树由 **zero** 管理（store 层 scope guard 按 caller 锚点并集放行）。
+- **将来**：knowledge 子树写权可从 zero 收回、交给 HR 角色。
+- ⚠️ fresh-DB seed `software-dev` 节点时，store 层写域需对 seed 路径放行（seed 是启动期特权写入，不走运行时 scope guard）。运行时只有 zero（及其后继角色）能写该子树。
 
 ### 7.6 两条引导路径
 
 | 路径 | 流程 | 优点 | 缺点 |
 |---|---|---|---|
-| **手动** | 用户在 UI 一个个建：建 Project → 从 template 建 agent → expose → 配 caller toolPolicy → 配 cron | 自由度高 | 麻烦 |
+| **手动** | 用户在 UI 一个个建：建 Project → 从 template 建 agent → 配 subagents → 配 cron | 自由度高 | 麻烦 |
 | **自动** | 用户跟 zero 对话给项目目录 → zero 读 playbook + 读相关 template → 链式调 4 工具搭全套 → 用户之后可改 | 快 | 依赖 zero 推理正确（靠 playbook + template 知识兜底） |
 
 两条路径**用同一套原子工具**（手动走 UI IPC → 同样的 create/update；自动走 zero 工具调用）。没有「一键 bootstrap」复合工具——组装是预设知识，不是一次性动作。
@@ -361,9 +364,9 @@ wiki-root:global              ← 全局根（zero 全局视角）
 4. 工具默认参数配置 + 使用记录入库（**新表**：`tool_configs` 默认 config、`tool_usage` 调用记录）；工具定义本身仍硬编码。
 5. 17+ 扁平工具 → 4 个 action 化工具（Project / Agent / Cron / Wiki，判别联合 schema）。
 6. `toolPolicy` 不再单独成工具（并入 `Agent update`）。
-7. store 层 wiki 写域 scope guard：按 caller role 放行（zero → 全局 `agent-group` 子树；archivist → 项目子树）。
+7. store 层 wiki 写域 scope guard：按 caller 锚点并集放行（zero → 全局 `knowledge` 子树；archivist → 项目子树）。
 8. fresh-DB seed：zero agent（workspaceDir=`~/.zero-core`）+ `software-dev` 节点；两者**不可删**（protected，delete reject）。
-9. zero toolPolicy 加 wiki 读工具（ListWikiTree / ExpandNode / ReadDoc）。
+9. zero 配 Wiki 工具（expand/read/upsert/search，§10.7）。
 
 ---
 
@@ -573,7 +576,7 @@ success(0/1), error, duration_ms, tokens, cost
   - **memory 锚点** = **索引**（MEMORY.md 式：每条记忆一行 title + 节点 id 链接，**不展开内容**）。memory 单调增长,索引式注入让 token 稳定（几十行,不随记忆数膨胀）。agent 看索引知道有什么记忆,需要时按 id 用 `expand`/`read` 取具体某条。
 
 ### 10.4 节点无显式 type（位置即类型）
-- 抛弃 `type` 字段（现 header/intent/structure/project/memory）。节点「类型」由位置隐含：`projects/<projectId>/` 下 = 项目内容、`knowledge/` 下 = playbook、`memory/<role>/` 下 = 该角色记忆。
+- 抛弃 `type` 字段（现 header/intent/structure/project/memory）。节点「类型」由位置隐含：`projects/<projectId>/` 下 = 项目内容、`knowledge/` 下 = playbook、`memory/<agentId>/` 下 = 该 agent 的记忆。
 - 「节点有没有正文」由 docPointer / 正文文件存在区分（结构/目录节点可能只有 summary 无正文）。
 
 ### 10.5 全局树结构
