@@ -264,7 +264,12 @@ export const createCronTool = buildTool({
 		prompt: z.string().optional(),
 		enabled: z.boolean().optional(),
 	}),
-	execute: async (input, ctx) => safe(() => admin(ctx).createCron(input)),
+	// v0.8 (P0 §3.4): schedule is structured JSON (CronSchedule union) at the
+	// store/type layer; this tool's input schema still accepts the legacy
+	// string form (off|hourly|daily|weekly|<ms>) for caller back-compat. The
+	// `as any` cast is the P0 interim — P4 lands the structured input schema
+	// and the migration mapping at the tool layer.
+	execute: async (input, ctx) => safe(() => admin(ctx).createCron(input as any)),
 });
 
 export const updateCronTool = buildTool({
@@ -283,7 +288,8 @@ export const updateCronTool = buildTool({
 		prompt: z.string().optional(),
 		enabled: z.boolean().optional(),
 	}),
-	execute: async (input, ctx) => safe(() => admin(ctx).updateCron(input.id, input)),
+	// v0.8 (P0 §3.4): see createCronTool — `as any` is the P0 interim.
+	execute: async (input, ctx) => safe(() => admin(ctx).updateCron(input.id, input as any)),
 });
 
 export const deleteCronTool = buildTool({

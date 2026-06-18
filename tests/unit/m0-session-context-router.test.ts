@@ -35,6 +35,9 @@ import {
 import { ZeroAdminService } from "../../src/server/zero-admin-service.js";
 import { ROLE_PRESETS, getPreset, listPresets, buildAgentFromPreset } from "../../src/runtime/role-presets.js";
 import { runMigrations } from "../../src/server/db-migration.js";
+// v0.8 P0 (§1.4 过渡期): roleTag 不再走 store round-trip;测试需要带 role_tag
+// 的 agent 时直接写物理列。
+import { seedAgentWithRoleTag } from "./helpers/p0-test-helpers.js";
 
 let tmpDir: string;
 let sessionDB: SessionDB;
@@ -61,16 +64,24 @@ afterEach(() => {
 // ─── Data layer ─────────────────────────────────────────────
 
 describe("M0 data layer", () => {
-	test("AgentRecord persists roleTag", () => {
-		const agent = agentStore.create({ name: "Test PM", roleTag: "pm" } as any);
-		const fetched = agentStore.get(agent.id);
-		expect(fetched?.roleTag).toBe("pm");
+	test("AgentRecord persists roleTag (legacy physical column)", () => {
+		// v0.8 P0 (§1.4): roleTag removed from AgentRecord type; store no
+		// longer round-trips it. The physical `role_tag` column is retained
+		// and AgentStore.listByRoleTag reads it raw. Test seeds it directly.
+		const agent = agentStore.create({ name: "Test PM" } as any);
+		seedAgentWithRoleTag(sessionDB, agent.id, "pm");
+		// Type no longer exposes roleTag — but listByRoleTag finds the row
+		// via the legacy physical column.
+		expect(agentStore.listByRoleTag("pm").map((a) => a.id)).toContain(agent.id);
 	});
 
 	test("AgentStore.listByRoleTag filters by tag", () => {
-		agentStore.create({ name: "PM1", roleTag: "pm" } as any);
-		agentStore.create({ name: "Lead1", roleTag: "lead" } as any);
-		agentStore.create({ name: "PM2", roleTag: "pm" } as any);
+		const a1 = agentStore.create({ name: "PM1" } as any);
+		seedAgentWithRoleTag(sessionDB, a1.id, "pm");
+		const a2 = agentStore.create({ name: "Lead1" } as any);
+		seedAgentWithRoleTag(sessionDB, a2.id, "lead");
+		const a3 = agentStore.create({ name: "PM2" } as any);
+		seedAgentWithRoleTag(sessionDB, a3.id, "pm");
 		expect(agentStore.listByRoleTag("pm").length).toBe(2);
 		expect(agentStore.listByRoleTag("lead").length).toBe(1);
 	});
@@ -245,15 +256,25 @@ describe("ZeroAdminService", () => {
 
 	test("instantiatePreset wires whitelisted callee roles into toolPolicy (by entry.id)", () => {
 		// First create some callee role agents (analyzer, planner, dev, etc.)
-		zeroAdmin.createAgent({ name: "Analyzer-A", roleTag: "analyzer" } as any);
-		zeroAdmin.createAgent({ name: "Planner-A", roleTag: "planner" } as any);
-		zeroAdmin.createAgent({ name: "Dev-A", roleTag: "developer" } as any);
-		zeroAdmin.createAgent({ name: "Reviewer-A", roleTag: "reviewer" } as any);
-		zeroAdmin.createAgent({ name: "QA-A", roleTag: "qa" } as any);
+		// v0.8 P0 (§1.4): roleTag no longer round-trips via store; seed the
+		// physical column so ensureRoleAgentExposed's listByRoleTag finds them.
+		for (const [name, tag] of [
+			["Analyzer-A", "analyzer"],
+			["Planner-A", "planner"],
+			["Dev-A", "developer"],
+			["Reviewer-A", "reviewer"],
+			["QA-A", "qa"],
+		] as const) {
+			const a = zeroAdmin.createAgent({ name } as any);
+			seedAgentWithRoleTag(sessionDB, a.id, tag);
+		}
 
 		// Expose them (lead's toolPolicy references expose entries)
 		const lead = zeroAdmin.instantiatePreset("lead", { name: "MyLead" });
-		expect(lead.roleTag).toBe("lead");
+		// v0.8 P0 (§1.4): roleTag is gone from AgentRecord; lead's identity is
+		// name+systemPrompt. The built preset still carries roleTag as a legacy
+		// side-channel via buildAgentFromPreset, but it is NOT on the persisted
+		// record. Skip the roleTag assertion on the persisted record.
 
 		// toolPolicy.tools should now have entries keyed by AgentToolEntry.id
 		// (at least one for each whitelisted roleTag)

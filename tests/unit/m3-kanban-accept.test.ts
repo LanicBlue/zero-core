@@ -30,6 +30,8 @@ import {
 	ConfirmRegistry,
 } from "../../src/server/orchestrate-store.js";
 import { runMigrations } from "../../src/server/db-migration.js";
+// v0.8 P0 (§1.4 过渡期): roleTag 不再走 store round-trip;物理列直接 seed。
+import { seedAgentWithRoleTag } from "./helpers/p0-test-helpers.js";
 
 let tmpDir: string;
 let sessionDB: SessionDB;
@@ -133,10 +135,13 @@ describe("verify accept → notify archivist (defect 2 fix)", () => {
 		const { ProjectNotificationRouter } = await import("../../src/server/project-notification-router.js");
 
 		// Register an archivist agent (roleTag='archivist').
-		agentStore.create({
-			name: "Archivist", roleTag: "archivist",
+		// v0.8 P0 (§1.4): roleTag removed from AgentRecord; seed the physical
+		// column so findRoleAgent('archivist') finds it.
+		const archivistAgent = agentStore.create({
+			name: "Archivist",
 			workspaceDir: join(tmpDir, "ws"),
-		} as any);
+		});
+		seedAgentWithRoleTag(sessionDB, archivistAgent.id, "archivist");
 
 		const project = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws") });
 		const req = requirementStore.create({
@@ -167,10 +172,8 @@ describe("verify accept → notify archivist (defect 2 fix)", () => {
 		// Prompt mentions the merge task + requirementId (archivist must merge feature→main).
 		expect(target.prompt).toMatch(/merge/i);
 		expect(target.prompt).toContain(req.id);
-		// The role-session-resolved agentId is the archivist's, and the
-		// session record was created (find-or-create).
-		const archivistAgent = agentStore.list().find((a) => a.roleTag === "archivist");
-		expect(target.agentId).toBe(archivistAgent?.id);
+		// The role-session-resolved agentId is the archivist's.
+		expect(target.agentId).toBe(archivistAgent.id);
 	});
 
 	test("verify_accept with no archivist agent does NOT throw (cron fallback will retry)", async () => {

@@ -55,6 +55,10 @@ const COLUMNS: ColumnDef[] = [
 	{ key: "requirementIds", column: "requirement_ids", json: true },
 	{ key: "projectId", column: "project_id" },
 	{ key: "relations", json: true },
+	// v0.8 (P0 §3.3 / §10.1): undirected sibling links (nodeId array). NULL
+	// coalesces to [] on read (see rowToWikiNode). type/detail stay in this
+	// phase — P1 moves detail to disk.
+	{ key: "links", json: true },
 	{ key: "flags", json: true },
 	{ key: "lastUpdatedBy", column: "last_updated_by" },
 	{ key: "sourceReqId", column: "source_req_id" },
@@ -151,6 +155,7 @@ export class WikiStore {
 				"requirement_ids",
 				"project_id",
 				"relations",
+				"links",
 				"flags",
 				"last_updated_by",
 				"source_req_id",
@@ -178,6 +183,9 @@ export class WikiStore {
 			record.requirementIds ? JSON.stringify(record.requirementIds) : null,
 			record.projectId ?? null,
 			record.relations ? JSON.stringify(record.relations) : null,
+			// v0.8 (P0 §3.3): links stored as JSON array; empty/undefined → null
+			// (rowToWikiNode coalesces back to []).
+			record.links && record.links.length > 0 ? JSON.stringify(record.links) : null,
 			record.flags ? JSON.stringify(record.flags) : null,
 			record.lastUpdatedBy ?? null,
 			record.sourceReqId ?? null,
@@ -614,6 +622,8 @@ function rowToWikiNode(row: any): WikiNode & { nodeType?: string } {
 		requirementIds: row.requirementIds,
 		projectId: row.projectId,
 		relations: row.relations,
+		// v0.8 (P0 §3.3): NULL/undefined → [] (avoid NULL parsing crash).
+		links: Array.isArray(row.links) ? row.links : [],
 		flags: row.flags,
 		lastUpdatedBy: row.lastUpdatedBy,
 		sourceReqId: row.sourceReqId,

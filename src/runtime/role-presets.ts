@@ -433,10 +433,23 @@ export function listPresets(roleTag?: string): RolePreset[] {
  *
  * `overrides` lets the caller set name / model / workspaceDir / etc.
  */
+/**
+ * v0.8 (P0 §1.4): the preset's `roleTag` is preserved on the built agent as a
+ * *legacy* side-channel so the runtime callers (zero-admin-service preset
+ * instantiation, runtime dispatch by role) keep working through the P0 → P2
+ * transition. It is NOT on AgentRecord itself anymore; the cross-product is
+ * expressed via this returned-shape intersection. P2/P7 will move dispatch
+ * off roleTag entirely.
+ */
+export type BuiltAgentFromPreset = Omit<AgentRecord, "id" | "createdAt" | "updatedAt"> & {
+	/** Legacy side-channel — see P0 §1.4. */
+	roleTag?: string;
+};
+
 export function buildAgentFromPreset(
 	presetId: string,
 	overrides?: Partial<Pick<AgentRecord, "name" | "model" | "provider" | "workspaceDir" | "thinkingLevel">>,
-): Omit<AgentRecord, "id" | "createdAt" | "updatedAt"> {
+): BuiltAgentFromPreset {
 	const preset = getPreset(presetId);
 	if (!preset) throw new Error(`Unknown role preset: ${presetId}`);
 

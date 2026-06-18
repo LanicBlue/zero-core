@@ -50,7 +50,20 @@ const AGENT_COLUMNS = [
 	{ key: "toolPolicy", column: "tool_policy", json: true },
 	{ key: "skillPolicy", column: "skill_policy", json: true },
 	{ key: "knowledgeBaseIds", column: "knowledge_base_ids", json: true },
-	{ key: "roleTag", column: "role_tag" },
+	// v0.8 (P0 §2.2): subagents + wikiAnchors — JSON-stored as single TEXT
+	// columns (parity with knowledgeBaseIds). Migration ALTERs these onto
+	// upgraded DBs; fresh DBs get them via the SqliteStore ensureTable()
+	// self-heal below.
+	{ key: "subagents", json: true },
+	{ key: "wikiAnchors", json: true },
+	// v0.8 (P0 §1.4): roleTag was REMOVED from the AgentRecord type. The
+	// physical `role_tag` column is INTENTIONALLY KEPT (legacy) — dropping it
+	// would risk data loss / rollback pain (plan-P0 §1.4 + acceptance-P0).
+	// AgentStore no longer reads or writes it; runtime callers that still
+	// reference `.roleTag` are tagged with `@ts-expect-error` for P2/P7
+	// cleanup. The mapping entry below is DELIBERATELY OMITTED so the store
+	// never round-trips it (omitting from *_COLUMNS removes it from SELECT /
+	// INSERT / UPDATE — see sqlite-store.initStatements).
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
 ];
@@ -116,6 +129,10 @@ const PROJECT_WIKI_COLUMNS = [
 	{ key: "requirementIds", column: "requirement_ids", json: true },
 	// v0.8 (M2): free-form relations (module contains / depends-on / implements).
 	{ key: "relations", json: true },
+	// v0.8 (P0 §3.3 / §10.1): undirected sibling links (nodeId array). NULL on
+	// read coalesces to [] in WikiStore. type/detail stay in this phase (P1
+	// moves detail to disk).
+	{ key: "links", json: true },
 	// v0.8 (M2): archivist divergence flags (req unimplemented / code capability
 	// not covered by any req), RFC §2.16.
 	{ key: "flags", json: true },
@@ -206,14 +223,64 @@ const REQUIREMENT_MESSAGES_COLUMNS = [
 // v0.8 (M1): CronRecord — cron becomes a first-class entity. One agent can
 // carry N cron entries (one per workingScope). workingScope is JSON-stored as
 // the full SessionContextBundle. MUST stay in sync with cron-store.ts COLUMNS.
+//
+// v0.8 (P0 §3.4): `schedule` is now JSON (CronSchedule union: once|alarm|
+// interval). The store writes it through the `json:true` flag. Legacy string
+// rows are migrated by migrateCronScheduleToString below. `triggerMode` is a
+// redundant copy of `schedule.mode` for cheap WHERE filtering.
 const CRON_COLUMNS = [
 	{ key: "agentId", column: "agent_id" },
 	{ key: "workingScope", column: "working_scope", json: true },
-	{ key: "schedule" },
+	{ key: "schedule", json: true },
+	{ key: "triggerMode", column: "trigger_mode" },
+	{ key: "lastRunAt", column: "last_run_at" },
+	{ key: "lastStatus", column: "last_status" },
+	{ key: "lastError", column: "last_error" },
+	{ key: "nextRunAt", column: "next_run_at" },
 	{ key: "prompt" },
 	{ key: "enabled", bool: true },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
+];
+
+// v0.8 (P0 §3.4 / §9.3): cron_runs — per-fire audit log. PK id is uuid.
+// `success` is INTEGER 0/1. Mirrors CronRunRecord in shared/types.ts. The
+// createdAt/updatedAt columns are kept for SqliteStore parity (the generic
+// store requires them); canonical fire time is fired_at.
+const CRON_RUNS_COLUMNS = [
+	{ key: "cronId", column: "cron_id" },
+	{ key: "firedAt", column: "fired_at" },
+	{ key: "agentId", column: "agent_id" },
+	{ key: "sessionId", column: "session_id" },
+	{ key: "success", bool: true },
+	{ key: "error" },
+	{ key: "durationMs", column: "duration_ms" },
+	{ key: "tokens" },
+	{ key: "cost" },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+// v0.8 (P0 §7.7 #4): tool_configs — per-tool default-param config. PK =
+// tool_name (no id column; the SqliteStore auto-adds id/createdAt/updatedAt
+// but tool_configs is keyed by tool_name, so we use a dedicated store path).
+// Defined here for parity; the actual table DDL is below.
+const TOOL_CONFIGS_COLUMNS = [
+	{ key: "toolName", column: "tool_name" },
+	{ key: "config", json: true },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+// v0.8 (P0 §7.7 #4): tool_usage — per-call log (the tool-call log, NOT the
+// sessions-level token-resource accounting, RFC §8.5).
+const TOOL_USAGE_COLUMNS = [
+	{ key: "toolName", column: "tool_name" },
+	{ key: "agentId", column: "agent_id" },
+	{ key: "sessionId", column: "session_id" },
+	{ key: "calledAt", column: "called_at" },
+	{ key: "params", json: true },
+	{ key: "success", bool: true },
+	{ key: "durationMs", column: "duration_ms" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -238,6 +305,114 @@ function safeAddIndex(db: Database.Database, table: string, indexName: string, c
 	} catch { /* already exists */ }
 }
 
+// v0.8 (P0 §3.4): convert legacy string schedule values in `crons.schedule`
+// to structured CronSchedule JSON. Idempotent — rows already carrying JSON
+// (i.e. the value parses as an object with a `mode` field) are skipped.
+//
+// Mapping rules (plan-P0 §11):
+//   "off"      → enabled=false + schedule = {mode:"interval",everyMs:0}
+//   "hourly"   → {mode:"interval",everyMs:3600000}
+//   "daily"    → {mode:"alarm",time:"09:00",days:[],tz:<local>}
+//   "weekly"   → {mode:"alarm",time:"09:00",days:[<today>],tz:<local>}
+//   "<digits>" → {mode:"interval",everyMs:<n>}
+//
+// The `trigger_mode` column is backfilled in the same pass to mirror
+// schedule.mode. `enabled` is left untouched except for the "off" case where
+// the cron was implicitly disabled by the string sentinel.
+function migrateCronScheduleToJson(db: Database.Database): void {
+	try {
+		const tableInfo = db.pragma("table_info(crons)") as Array<{ name: string }> | undefined;
+		if (!tableInfo || tableInfo.length === 0) return; // table not created yet
+		const colNames = new Set(tableInfo.map((c) => c.name));
+		if (!colNames.has("schedule")) return;
+
+		const localTz: string = (() => {
+			try {
+				return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+			} catch {
+				return "UTC";
+			}
+		})();
+		const todayIsoWeekday = (((new Date().getDay() + 6) % 7) + 1); // 1=Mon … 7=Sun
+
+		const rows = db.prepare("SELECT id, schedule, enabled FROM crons").all() as Array<{
+			id: string;
+			schedule: string | null;
+			enabled: number;
+		}>;
+
+		const updateStmt = db.prepare(
+			"UPDATE crons SET schedule = ?, trigger_mode = ?, enabled = ? WHERE id = ?",
+		);
+
+		for (const row of rows) {
+			const raw = row.schedule;
+			if (raw == null) continue;
+			// Already JSON-shaped? Skip — idempotent.
+			const trimmed = raw.trim();
+			if (trimmed.startsWith("{")) {
+				try {
+					const parsed = JSON.parse(trimmed);
+					if (parsed && typeof parsed === "object" && typeof parsed.mode === "string") {
+						// Backfill trigger_mode if empty.
+						if (colNames.has("trigger_mode")) {
+							const existing = (
+								db.prepare("SELECT trigger_mode AS m FROM crons WHERE id = ?").get(row.id) as { m?: string } | undefined
+							)?.m;
+							if (!existing) {
+								updateStmt.run(trimmed, parsed.mode, row.enabled, row.id);
+							}
+						}
+						continue;
+					}
+				} catch {
+					// fall through — treat as legacy string
+				}
+			}
+
+			// Legacy string cadence — convert.
+			let newSchedule: import("../shared/types.js").CronSchedule;
+			let newEnabled = row.enabled !== 0; // preserve existing
+
+			const asNumber = Number(trimmed);
+			if (!Number.isNaN(asNumber) && trimmed !== "" && /^\d+$/.test(trimmed)) {
+				// Pure digit string → interval ms.
+				newSchedule = { mode: "interval", everyMs: asNumber };
+			} else {
+				switch (trimmed.toLowerCase()) {
+					case "off":
+						newSchedule = { mode: "interval", everyMs: 0 };
+						newEnabled = false; // "off" sentinel = disabled
+						break;
+					case "hourly":
+						newSchedule = { mode: "interval", everyMs: 3_600_000 };
+						break;
+					case "daily":
+						newSchedule = { mode: "alarm", time: "09:00", days: [], tz: localTz };
+						break;
+					case "weekly":
+						newSchedule = { mode: "alarm", time: "09:00", days: [todayIsoWeekday], tz: localTz };
+						break;
+					default:
+						// Unknown string — keep as interval 0 so the row is inert
+						// rather than crashing the P4 scheduler with a non-JSON
+						// value. Log loudly so the operator can fix it.
+						console.warn(
+							`[db-migration] crons.id=${row.id} has unrecognized schedule "${trimmed}" — coercing to interval everyMs=0.`,
+						);
+						newSchedule = { mode: "interval", everyMs: 0 };
+						break;
+				}
+			}
+
+			const json = JSON.stringify(newSchedule);
+			updateStmt.run(json, newSchedule.mode, newEnabled ? 1 : 0, row.id);
+		}
+	} catch (e) {
+		console.warn("[db-migration] cron schedule JSON migration skipped:", (e as Error).message);
+	}
+}
+
 // v0.8 (M2): rebuild project_wiki when an upgraded DB still carries the
 // pre-M2 schema (`project_id TEXT NOT NULL` + UNIQUE(project_id, path)).
 // The global wiki tree needs project_id = NULL for the global root and
@@ -260,7 +435,8 @@ function migrateWikiTableSchema(db: Database.Database): void {
 			parent_id TEXT REFERENCES project_wiki(id),
 			type TEXT, node_type TEXT, path TEXT, title TEXT,
 			summary TEXT, detail TEXT, doc_pointer TEXT, provenance TEXT,
-			requirement_ids TEXT, relations TEXT, flags TEXT,
+			requirement_ids TEXT, relations TEXT, links TEXT,
+			flags TEXT,
 			last_updated_by TEXT DEFAULT 'analyst',
 			source_req_id TEXT, created_at TEXT, updated_at TEXT
 		)`);
@@ -281,10 +457,23 @@ export function runMigrations(sessionDB: SessionDB): void {
 
 	// Agent columns
 	safeAddColumn(db, "agents", "knowledge_base_ids", "TEXT");
-	// v0.8 (M0): AgentRecord slimmed — add roleTag (project binding / cron
-	// schedule / wikiRootNodeId / lastScannedRef never lived on agents in
-	// this version; their columns are simply not added here).
+	// v0.8 (M0): legacy role_tag column — physically added on upgraded DBs so
+	// pre-P0 rows keep their data, but AgentStore no longer reads/writes it
+	// (AGENT_COLUMNS omits the mapping). P0 §1.4: physical column is INTENT-
+	// IONALLY retained to avoid data loss / rollback pain.
 	safeAddColumn(db, "agents", "role_tag", "TEXT");
+	// v0.8 (P0 §2.2): subagents + wikiAnchors — new JSON columns. ALTER for
+	// upgraded DBs; fresh DBs also pick them up via SqliteStore.ensureTable()
+	// self-heal. AGENT_COLUMNS above lists both so SELECT/INSERT/UPDATE
+	// round-trip them.
+	safeAddColumn(db, "agents", "subagents", "TEXT");
+	safeAddColumn(db, "agents", "wiki_anchors", "TEXT");
+
+	// Wiki columns
+	// v0.8 (P0 §3.3): project_wiki.links — undirected sibling nodeId array
+	// (JSON TEXT). NULL on read coalesces to [] in WikiStore. ALTER for
+	// upgraded DBs; fresh DBs get it from the CREATE TABLE block above.
+	safeAddColumn(db, "project_wiki", "links", "TEXT");
 
 	// Agent tool columns (table may exist from older versions with fewer columns)
 	for (const col of AGENT_TOOL_COLUMNS) {
@@ -355,7 +544,8 @@ export function runMigrations(sessionDB: SessionDB): void {
 		parent_id TEXT REFERENCES project_wiki(id),
 		type TEXT, node_type TEXT, path TEXT, title TEXT,
 		summary TEXT, detail TEXT, doc_pointer TEXT, provenance TEXT,
-		requirement_ids TEXT, relations TEXT, flags TEXT,
+		requirement_ids TEXT, relations TEXT, links TEXT,
+		flags TEXT,
 		last_updated_by TEXT DEFAULT 'analyst',
 		source_req_id TEXT, created_at TEXT, updated_at TEXT
 	)`);
@@ -428,18 +618,82 @@ export function runMigrations(sessionDB: SessionDB): void {
 	// v0.8 (M1): crons table — first-class cron entity. workingScope stored as
 	// JSON (SessionContextBundle). agentId is a soft reference (no FK) so cron
 	// deletion never cascades to the agent and the agent is the canonical owner.
+	//
+	// v0.8 (P0 §3.4): `schedule` is now structured JSON (CronSchedule union).
+	// Legacy string rows are converted by migrateCronScheduleToJson below.
+	// `trigger_mode` / `last_run_at` / `last_status` / `last_error` /
+	// `next_run_at` are scheduler telemetry columns (populated by P4; this
+	// phase only adds them).
 	db.exec(`CREATE TABLE IF NOT EXISTS crons (
 		id TEXT PRIMARY KEY,
 		agent_id TEXT NOT NULL,
 		working_scope TEXT,
 		schedule TEXT,
+		trigger_mode TEXT,
+		last_run_at TEXT,
+		last_status TEXT,
+		last_error TEXT,
+		next_run_at TEXT,
 		prompt TEXT,
 		enabled INTEGER DEFAULT 1,
 		created_at TEXT,
 		updated_at TEXT
 	)`);
+	// Cover upgraded DBs whose pre-P0 crons table lacks the new telemetry
+	// columns (CREATE TABLE IF NOT EXISTS won't alter an existing row).
+	safeAddColumn(db, "crons", "trigger_mode", "TEXT");
+	safeAddColumn(db, "crons", "last_run_at", "TEXT");
+	safeAddColumn(db, "crons", "last_status", "TEXT");
+	safeAddColumn(db, "crons", "last_error", "TEXT");
+	safeAddColumn(db, "crons", "next_run_at", "TEXT");
+	migrateCronScheduleToJson(db);
 	safeAddIndex(db, "crons", "idx_crons_agent", "agent_id");
 	safeAddIndex(db, "crons", "idx_crons_enabled", "enabled");
+
+	// v0.8 (P0 §3.4 / §9.3): cron_runs — per-fire audit log. PK id is uuid
+	// (CronRunStore mints it). success is INTEGER 0/1. created_at/updated_at
+	// are kept for SqliteStore parity (the generic store expects them; the
+	// canonical fire timestamp is fired_at).
+	db.exec(`CREATE TABLE IF NOT EXISTS cron_runs (
+		id TEXT PRIMARY KEY,
+		cron_id TEXT NOT NULL,
+		fired_at TEXT NOT NULL,
+		agent_id TEXT,
+		session_id TEXT,
+		success INTEGER NOT NULL DEFAULT 0,
+		error TEXT,
+		duration_ms INTEGER,
+		tokens INTEGER,
+		cost REAL,
+		created_at TEXT,
+		updated_at TEXT
+	)`);
+	safeAddIndex(db, "cron_runs", "idx_cron_runs_cron", "cron_id");
+
+	// v0.8 (P0 §7.7 #4): tool_configs — per-tool default-param config. PK =
+	// tool_name (no surrogate id). The SqliteStore constructor always injects
+	// id/createdAt/updatedAt columns, but this table is keyed by tool_name, so
+	// we hand-roll DDL + use a dedicated ToolConfigStore below.
+	db.exec(`CREATE TABLE IF NOT EXISTS tool_configs (
+		tool_name TEXT PRIMARY KEY,
+		config TEXT,
+		updated_at TEXT
+	)`);
+
+	// v0.8 (P0 §7.7 #4): tool_usage — per-call log (the tool-call log, NOT the
+	// sessions-level token accounting, RFC §8.5). PK id is uuid.
+	db.exec(`CREATE TABLE IF NOT EXISTS tool_usage (
+		id TEXT PRIMARY KEY,
+		tool_name TEXT NOT NULL,
+		agent_id TEXT,
+		session_id TEXT,
+		called_at TEXT NOT NULL,
+		params TEXT,
+		success INTEGER NOT NULL DEFAULT 0,
+		duration_ms INTEGER
+	)`);
+	safeAddIndex(db, "tool_usage", "idx_tool_usage_tool", "tool_name");
+	safeAddIndex(db, "tool_usage", "idx_tool_usage_session", "session_id");
 
 	// v0.8 (M3): orchestrate_plans — lead-submitted DSL flows + confirm gate
 	// state (decision 11). flow stored as JSON. leadSessionId is the routing
@@ -481,6 +735,16 @@ export function runMigrations(sessionDB: SessionDB): void {
 	// Now safe to create SqliteStore instances with all columns
 	const agents = new SqliteStore<AgentRecord>(db, "agents", AGENT_COLUMNS);
 	const agentTools = new SqliteStore<any>(db, "agent_tools", AGENT_TOOL_COLUMNS);
+
+	// v0.8 (P0 §1.4): ensure the legacy `role_tag` physical column exists on
+	// the agents table. The earlier safeAddColumn (above) handles upgraded DBs
+	// where the table already exists, but on a fresh DB the agents table is
+	// only created by SqliteStore.ensureTable() just now — and role_tag is
+	// deliberately NOT in AGENT_COLUMNS (store no longer round-trips it), so
+	// ensureTable won't add it. Re-adding it here keeps the physical column
+	// alive on fresh DBs too, so AgentStore.listByRoleTag's raw SQL works and
+	// legacy data is preserved (acceptance-P0: "roleTag 列还在").
+	agents.ensureColumn("role_tag", "TEXT");
 
 	// ─── 2. JSON file → SQLite migrations ────────────────────────
 

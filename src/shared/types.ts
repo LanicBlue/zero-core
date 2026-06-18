@@ -53,12 +53,36 @@ export interface AgentRecord {
 	};
 	knowledgeBaseIds?: string[];
 	/**
-	 * v0.8 (M0): optional role tag for UI grouping and preset entry points.
-	 * Not a runtime type — workflow emerges from prompt + toolPolicy + caller
-	 * context, not from this field. Common values: lead | pm | archivist |
-	 * analyzer | planner | developer | reviewer | qa | zero.
+	 * v0.8 (P0 §2.2 / §11.9): subagents this agent may delegate to. Each entry
+	 * references a global agent by id (soft ref — no cascade). name/description
+	 * are optional display overrides; the canonical name lives on the target
+	 * AgentRecord. JSON-stored as a single TEXT column (see AGENT_COLUMNS).
 	 */
-	roleTag?: string;
+	subagents?: Array<{ agentId: string; name?: string; description?: string }>;
+	/**
+	 * v0.8 (P0 §2.2 / §11.9): wiki nodes this agent anchors into its context.
+	 * `inject` controls how the node enters the prompt — `system` (always in
+	 * system prompt), `context` (in the turn context bundle), or `off` (stored
+	 * but not injected). `depth` = how many levels of children to pull in.
+	 * JSON-stored as a single TEXT column.
+	 */
+	wikiAnchors?: Array<{
+		nodeId: string;
+		inject: "system" | "context" | "off";
+		depth?: number;
+	}>;
+	/**
+	 * v0.8 (P0 §1.4 / §2.2): roleTag was REMOVED from the type. Identity in
+	 * v0.8 = name + systemPrompt (RFC §1.4); UI grouping / preset entry now
+	 * flows through subagents + wikiAnchors + toolPolicy, not a string tag.
+	 *
+	 * The physical `role_tag` column is KEPT on the agents table (legacy —
+	 * dropping it would risk data loss / rollback pain, see plan-P0.md §1.4
+	 * + acceptance-P0.md). AgentStore no longer reads or writes it. Runtime/
+	 * service code that still references `.roleTag` is left intact with
+	 * `@ts-expect-error` and slated for P2/P7 cleanup. Field intentionally
+	 * absent here.
+	 */
 	createdAt: string;
 	updatedAt: string;
 }
@@ -574,6 +598,14 @@ export interface WikiNode {
 	/** Free-form relations (module contains / depends-on / implements). */
 	relations?: Array<{ kind: string; targetId: string }>;
 	/**
+	 * v0.8 (P0 §3.3 / §10.1): undirected sibling links — array of nodeIds this
+	 * node is connected to (no direction / no kind, unlike `relations`). Used
+	 * by the cross-cutting graph view (e.g. "this header is also referenced by
+	 * these intent nodes"). JSON-stored as a TEXT column; NULL/coalesce to `[]`
+	 * on read. type/detail columns stay in this phase (P1 moves detail → disk).
+	 */
+	links?: string[];
+	/**
 	 * Flag set when archivist detected a divergence it couldn't auto-resolve
 	 * (e.g. "no recorded intent for this code capability" / "intent with no
 	 * implementation"). PM/lead reads this to surface to the user.
@@ -645,7 +677,58 @@ export type UpdateRequirementInput = Partial<Omit<RequirementRecord, "id" | "cre
 export type CreateWikiNodeInput = Omit<ProjectWikiNode, "id" | "createdAt" | "updatedAt">;
 export type UpdateWikiNodeInput = Partial<Omit<ProjectWikiNode, "id" | "createdAt" | "updatedAt">>;
 
-// ── Cron (v0.8 M1 — cron becomes a first-class entity) ────────
+// ── Cron (v0.8 M1 — cron becomes a first-class entity; P0 §3.4 schedule JSON) ──
+
+/**
+ * v0.8 (P0 §3.4 / §9.1 / §9.3): the structured schedule for a cron entry.
+ *
+ * Three modes (the scheduler reads `mode` to pick the firing rule):
+ *  - `interval` — fire every `everyMs` milliseconds (e.g. hourly = 3_600_000).
+ *  - `alarm`    — fire daily at `time` (HH:MM, local zone) on the listed
+ *                 ISO weekday numbers in `days` (1=Mon … 7=Sun; empty = every
+ *                 day). `tz` is the IANA timezone the alarm is expressed in.
+ *  - `once`     — fire exactly once at `at` (ISO timestamp); after firing the
+ *                 scheduler marks the cron disabled.
+ *
+ * The `enabled` flag on the CronRecord (NOT inside the schedule) gates
+ * firing — `schedule = { mode: "interval", everyMs: 0 }` is just an inert
+ * shape; enabled=false is the real "off".
+ *
+ * Migration (plan-P0 §11) maps the legacy string cadences:
+ *   "off"     → enabled=false (schedule = { mode:"interval", everyMs:0 })
+ *   "hourly"  → { mode:"interval", everyMs:3_600_000 }
+ *   "daily"   → { mode:"alarm", time:"09:00", days:[], tz:<local> }
+ *   "weekly"  → { mode:"alarm", time:"09:00", days:[<today>], tz:<local> }
+ *   "<digits>"→ { mode:"interval", everyMs:<n> }
+ */
+export type CronScheduleMode = "once" | "alarm" | "interval";
+
+export interface CronScheduleOnce {
+	mode: "once";
+	/** ISO 8601 timestamp the cron should fire once at. */
+	at: string;
+}
+
+export interface CronScheduleAlarm {
+	mode: "alarm";
+	/** Local-time-of-day "HH:MM". */
+	time: string;
+	/** ISO weekday numbers 1=Mon … 7=Sun. Empty array = every day. */
+	days: number[];
+	/** IANA timezone, e.g. "Asia/Shanghai". Required so alarm survives host TZ drift. */
+	tz: string;
+}
+
+export interface CronScheduleInterval {
+	mode: "interval";
+	/** Firing period in milliseconds. 0 = inert (rely on `enabled=false` for real off). */
+	everyMs: number;
+}
+
+export type CronSchedule = CronScheduleOnce | CronScheduleAlarm | CronScheduleInterval;
+
+/** Last-run outcome for a cron entry, mirrored onto the crons row for fast reads. */
+export type CronLastStatus = "ok" | "failed" | "missed";
 
 /**
  * v0.8 (M1): a CronRecord is one scheduled recurring run of a *global* agent
@@ -655,27 +738,110 @@ export type UpdateWikiNodeInput = Partial<Omit<ProjectWikiNode, "id" | "createdA
  * trigger it routes to a session via resolveSessionByRoleProject (or, for
  * observation cron with no projectId, a session keyed by agentId).
  *
- * schedule is one of the named cadences or a custom cron/interval string
- * (kept opaque here; CronAnalysisManager parses it).
+ * P0 §3.4: `schedule` is now the structured `CronSchedule` union (JSON column),
+ * NOT the legacy string cadence. The three new columns (`triggerMode`,
+ * `lastRunAt`, `lastStatus`, `lastError`, `nextRunAt`) are scheduler telemetry
+ * — populated by the P4 scheduler; this phase only carries the columns.
  */
 export interface CronRecord {
 	id: string;
 	agentId: string;
 	/** Session-context bundle the cron resolves to on each trigger. */
 	workingScope: SessionContextBundle;
-	/** "off" disables the cron but keeps the row. */
+	/** Structured schedule (three-mode JSON). See CronSchedule. */
 	schedule: CronSchedule;
+	/**
+	 * Redundant copy of `schedule.mode` for cheap WHERE filtering without
+	 * JSON parsing. Kept in sync by the store on every schedule write.
+	 */
+	triggerMode?: CronScheduleMode;
+	/** Telemetry: last fire timestamp (ISO). Set by P4 scheduler. */
+	lastRunAt?: string;
+	/** Telemetry: outcome of the last fire. */
+	lastStatus?: CronLastStatus;
+	/** Telemetry: error string from the last failed fire. */
+	lastError?: string;
+	/** Telemetry: next fire timestamp the scheduler computed (ISO). */
+	nextRunAt?: string;
 	prompt?: string;
 	enabled: boolean;
 	createdAt: string;
 	updatedAt: string;
 }
 
-/** Named cadence presets; arbitrary cron/interval strings also allowed. */
-export type CronSchedule = "off" | "hourly" | "daily" | "weekly" | (string & {});
-
 export type CreateCronInput = Omit<CronRecord, "id" | "createdAt" | "updatedAt">;
 export type UpdateCronInput = Partial<Omit<CronRecord, "id" | "createdAt" | "updatedAt">>;
+
+// ── cron_runs (P0 §3.4 / §9.3 — execution audit log) ───────────────
+
+/**
+ * v0.8 (P0 §9.3): one row per actual cron fire. Written by the P4 scheduler
+ * after each run; this phase only carries the table + types. PK id is a uuid.
+ * `success` mirrors `lastStatus` but as a boolean for cheap filtering.
+ */
+export interface CronRunRecord {
+	id: string;
+	cronId: string;
+	/** ISO timestamp the fire actually happened (scheduler wake time). */
+	firedAt: string;
+	/** Agent the cron routed to (denormalized from CronRecord.agentId). */
+	agentId?: string;
+	/** Session the cron ran in (resolved by workingScope routing). */
+	sessionId?: string;
+	success: boolean;
+	error?: string;
+	/** Wall-clock duration of the run, milliseconds. */
+	durationMs?: number;
+	/** Token usage of the run (input+output summed). */
+	tokens?: number;
+	/** Estimated USD cost of the run. */
+	cost?: number;
+	/**
+	 * SqliteStore parity fields (the generic store requires createdAt/
+	 * updatedAt). For cron_runs these mirror firedAt on insert; updated_at
+	 * bumps if the row is ever patched (error correction / cost revision).
+	 */
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type CreateCronRunInput = Omit<CronRunRecord, "id">;
+
+// ── tool_configs / tool_usage (P0 §7.7 — per-tool config + call log) ──
+
+/**
+ * v0.8 (P0 §7.7 #4): per-tool default-parameters config. One row per tool
+ * name; `config` is a JSON blob the tool reads at call time to fill its
+ * defaults. Distinct from sessions-level token usage (§8.5) — this table is
+ * the tool's static default config, not a call log.
+ */
+export interface ToolConfigRecord {
+	toolName: string;
+	config: unknown;
+	updatedAt: string;
+}
+
+/**
+ * v0.8 (P0 §7.7 #4): one row per tool invocation (the tool-call log). Used
+ * by the telemetry consumer to compute per-tool usage stats. Note this is
+ * the *call log*, separate from the per-session token-resource accounting
+ * that lives on the sessions table (RFC §8.5).
+ */
+export interface ToolUsageRecord {
+	id: string;
+	toolName: string;
+	agentId?: string;
+	sessionId?: string;
+	/** ISO timestamp the call was made. */
+	calledAt: string;
+	/** JSON-serialized parameter summary (input redacted/truncated as needed). */
+	params?: unknown;
+	success: boolean;
+	/** Wall-clock duration of the call, milliseconds. */
+	durationMs?: number;
+}
+
+export type CreateToolUsageInput = Omit<ToolUsageRecord, "id">;
 
 // ── M3: Orchestrate DSL + lead delivery pipeline (RFC §2.6/§2.9/§2.15) ────
 

@@ -115,7 +115,11 @@ export class PmService {
 	 * createdAt) wins (same convention as ProjectNotificationRouter).
 	 */
 	findPmAgent(): AgentRecord | undefined {
-		const matches = this.deps.agentStore.list().filter((a) => a.roleTag === "pm");
+		// v0.8 (P0 §1.4): roleTag removed from AgentRecord. Use
+		// AgentStore.listByRoleTag (reads the retained `role_tag` physical
+		// column directly) so we don't lose the legacy filter while P2/P7
+		// migrates identity off roleTag.
+		const matches = this.deps.agentStore.listByRoleTag("pm");
 		if (matches.length === 0) return undefined;
 		matches.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 		return matches[0];

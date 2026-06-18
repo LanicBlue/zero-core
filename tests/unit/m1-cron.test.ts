@@ -32,7 +32,16 @@ import { CronAnalysisManager } from "../../src/server/cron-analysis.js";
 import { ZeroAdminService } from "../../src/server/zero-admin-service.js";
 import { resolveSessionByRoleProject } from "../../src/server/session-context-router.js";
 import { runMigrations } from "../../src/server/db-migration.js";
-import type { CronRecord } from "../../src/shared/types.js";
+import type { CronRecord, CronSchedule } from "../../src/shared/types.js";
+// v0.8 P0: roleTag 不再走 store round-trip;schedule 改为结构化 JSON。
+import { seedAgentWithRoleTag } from "./helpers/p0-test-helpers.js";
+
+// v0.8 P0 (§3.4): schedule is now structured JSON. These helpers build the
+// three-mode shapes so the test reads naturally.
+const SCHED_INTERVAL_HOURLY: CronSchedule = { mode: "interval", everyMs: 3_600_000 };
+const SCHED_INTERVAL_DAILY: CronSchedule = { mode: "interval", everyMs: 86_400_000 };
+const SCHED_INTERVAL_WEEKLY: CronSchedule = { mode: "interval", everyMs: 7 * 86_400_000 };
+const SCHED_OFF_INERT: CronSchedule = { mode: "interval", everyMs: 0 };
 
 let tmpDir: string;
 let sessionDB: SessionDB;
@@ -78,18 +87,20 @@ function scope(projectId: string | undefined, workspaceDir: string, wiki = `wiki
 
 describe("CronStore", () => {
 	test("create + get round-trips workingScope as JSON", () => {
-		const agent = agentStore.create({ name: "PM", roleTag: "pm" } as any);
+		const agent = agentStore.create({ name: "PM" } as any);
+		seedAgentWithRoleTag(sessionDB, agent.id, "pm");
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws") });
 		const cron = cronStore.create({
 			agentId: agent.id,
 			workingScope: scope(proj.id, proj.workspaceDir),
-			schedule: "hourly",
+			schedule: SCHED_INTERVAL_HOURLY,
 			prompt: "check in",
 			enabled: true,
 		});
 		const fetched = cronStore.get(cron.id)!;
 		expect(fetched.agentId).toBe(agent.id);
-		expect(fetched.schedule).toBe("hourly");
+		expect(fetched.schedule).toEqual(SCHED_INTERVAL_HOURLY);
+		expect(fetched.triggerMode).toBe("interval"); // v0.8 P0: redundant mode mirror
 		expect(fetched.workingScope.projectId).toBe(proj.id);
 		expect(fetched.workingScope.workspaceDir).toBe(proj.workspaceDir);
 		expect(fetched.workingScope.wikiRootNodeId).toBe(`wiki-root:${proj.id}`);
@@ -97,35 +108,43 @@ describe("CronStore", () => {
 	});
 
 	test("create rejects workingScope missing workspaceDir/wikiRootNodeId", () => {
-		const agent = agentStore.create({ name: "PM", roleTag: "pm" } as any);
+		const agent = agentStore.create({ name: "PM" } as any);
+		seedAgentWithRoleTag(sessionDB, agent.id, "pm");
 		expect(() => cronStore.create({
 			agentId: agent.id,
 			workingScope: { workspaceDir: "/x" } as any,
-			schedule: "daily",
+			schedule: SCHED_INTERVAL_DAILY,
 			enabled: true,
 		})).toThrow(/workspaceDir and wikiRootNodeId/);
 	});
 
-	test("listEnabled excludes disabled and off crons", () => {
-		const agent = agentStore.create({ name: "PM", roleTag: "pm" } as any);
-		cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/a", "r-a"), schedule: "hourly", enabled: true });
-		cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/b", "r-b"), schedule: "daily", enabled: false });
-		cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/c", "r-c"), schedule: "off", enabled: true });
+	test("listEnabled excludes disabled and off(inert) crons", () => {
+		// v0.8 P0 (§3.4): "off" is now `enabled=false` (the real gate).
+		// An inert schedule ({mode:"interval",everyMs:0}) with enabled=true is
+		// still considered enabled at the store layer (cadence firing is P4).
+		const agent = agentStore.create({ name: "PM" } as any);
+		seedAgentWithRoleTag(sessionDB, agent.id, "pm");
+		cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/a", "r-a"), schedule: SCHED_INTERVAL_HOURLY, enabled: true });
+		cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/b", "r-b"), schedule: SCHED_INTERVAL_DAILY, enabled: false });
+		cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/c", "r-c"), schedule: SCHED_OFF_INERT, enabled: false });
 		expect(cronStore.listEnabled().length).toBe(1);
 		expect(cronStore.listEnabled()[0].workingScope.workspaceDir).toBe("/a");
 	});
 
 	test("listByAgent filters by agent", () => {
-		const a1 = agentStore.create({ name: "PM1", roleTag: "pm" } as any);
-		const a2 = agentStore.create({ name: "PM2", roleTag: "pm" } as any);
-		cronStore.create({ agentId: a1.id, workingScope: scope(undefined, "/a", "r-a"), schedule: "hourly", enabled: true });
-		cronStore.create({ agentId: a2.id, workingScope: scope(undefined, "/b", "r-b"), schedule: "hourly", enabled: true });
+		const a1 = agentStore.create({ name: "PM1" } as any);
+		seedAgentWithRoleTag(sessionDB, a1.id, "pm");
+		const a2 = agentStore.create({ name: "PM2" } as any);
+		seedAgentWithRoleTag(sessionDB, a2.id, "pm");
+		cronStore.create({ agentId: a1.id, workingScope: scope(undefined, "/a", "r-a"), schedule: SCHED_INTERVAL_HOURLY, enabled: true });
+		cronStore.create({ agentId: a2.id, workingScope: scope(undefined, "/b", "r-b"), schedule: SCHED_INTERVAL_HOURLY, enabled: true });
 		expect(cronStore.listByAgent(a1.id).length).toBe(1);
 	});
 
 	test("delete is unbind — referenced agent stays intact", () => {
-		const agent = agentStore.create({ name: "PM", roleTag: "pm" } as any);
-		const cron = cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/a", "r-a"), schedule: "hourly", enabled: true });
+		const agent = agentStore.create({ name: "PM" } as any);
+		seedAgentWithRoleTag(sessionDB, agent.id, "pm");
+		const cron = cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/a", "r-a"), schedule: SCHED_INTERVAL_HOURLY, enabled: true });
 		cronStore.delete(cron.id);
 		expect(cronStore.get(cron.id)).toBeUndefined();
 		// Agent untouched.
@@ -133,9 +152,10 @@ describe("CronStore", () => {
 	});
 
 	test("deleteByAgent removes all crons for an agent", () => {
-		const agent = agentStore.create({ name: "PM", roleTag: "pm" } as any);
-		cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/a", "r-a"), schedule: "hourly", enabled: true });
-		cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/b", "r-b"), schedule: "daily", enabled: true });
+		const agent = agentStore.create({ name: "PM" } as any);
+		seedAgentWithRoleTag(sessionDB, agent.id, "pm");
+		cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/a", "r-a"), schedule: SCHED_INTERVAL_HOURLY, enabled: true });
+		cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/b", "r-b"), schedule: SCHED_INTERVAL_DAILY, enabled: true });
 		expect(cronStore.listByAgent(agent.id).length).toBe(2);
 		cronStore.deleteByAgent(agent.id);
 		expect(cronStore.listByAgent(agent.id).length).toBe(0);
@@ -143,10 +163,12 @@ describe("CronStore", () => {
 
 	test("CRON_COLUMNS present on fresh DB (no migration script)", () => {
 		// Fresh DB should have the crons table after runMigrations.
-		const agent = agentStore.create({ name: "PM", roleTag: "pm" } as any);
-		const cron = cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/a", "r-a"), schedule: "weekly", prompt: "p", enabled: false });
+		const agent = agentStore.create({ name: "PM" } as any);
+		seedAgentWithRoleTag(sessionDB, agent.id, "pm");
+		const cron = cronStore.create({ agentId: agent.id, workingScope: scope(undefined, "/a", "r-a"), schedule: SCHED_INTERVAL_WEEKLY, prompt: "p", enabled: false });
 		expect(cron.prompt).toBe("p");
-		expect(cron.schedule).toBe("weekly");
+		expect(cron.schedule).toEqual(SCHED_INTERVAL_WEEKLY);
+		expect(cron.triggerMode).toBe("interval");
 	});
 });
 
@@ -167,17 +189,17 @@ describe("CronAnalysisManager", () => {
 			sessionDB,
 			cronStore,
 		});
-		pmAgent = agentStore.create({ name: "GlobalPM", roleTag: "pm" } as any);
+		pmAgent = (() => { const _a = agentStore.create({ name: "GlobalPM" } as any); seedAgentWithRoleTag(sessionDB, _a.id, "pm"); return _a; })();
 		projA = projectStore.create({ name: "ProjA", workspaceDir: join(tmpDir, "wsA") });
 		projB = projectStore.create({ name: "ProjB", workspaceDir: join(tmpDir, "wsB") });
 	});
 
 	test("project cron trigger routes via resolveSessionByRoleProject → two crons → two sessions", async () => {
 		const cronA = cronStore.create({
-			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: "hourly", enabled: true,
+			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: SCHED_INTERVAL_HOURLY, enabled: true,
 		});
 		const cronB = cronStore.create({
-			agentId: pmAgent.id, workingScope: scope(projB.id, projB.workspaceDir), schedule: "daily", enabled: true,
+			agentId: pmAgent.id, workingScope: scope(projB.id, projB.workspaceDir), schedule: SCHED_INTERVAL_DAILY, enabled: true,
 		});
 
 		await manager.triggerCron(cronA.id);
@@ -194,7 +216,7 @@ describe("CronAnalysisManager", () => {
 
 	test("re-triggering same cron reuses the same session (续接)", async () => {
 		const cron = cronStore.create({
-			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: "hourly", enabled: true,
+			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: SCHED_INTERVAL_HOURLY, enabled: true,
 		});
 		await manager.triggerCron(cron.id);
 		await manager.triggerCron(cron.id);
@@ -204,15 +226,19 @@ describe("CronAnalysisManager", () => {
 
 	test("enabled=false cron is not triggered", async () => {
 		const cron = cronStore.create({
-			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: "hourly", enabled: false,
+			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: SCHED_INTERVAL_HOURLY, enabled: false,
 		});
 		await manager.triggerCron(cron.id);
 		expect(stubAgentService.calls.length).toBe(0);
 	});
 
-	test("schedule=off cron is not triggered", async () => {
+	test("disabled (off) cron is not triggered", async () => {
+		// v0.8 P0 (§3.4): "off" is now encoded as enabled=false (the real gate).
+		// An inert schedule with enabled=true is still considered enabled at the
+		// store layer; cadence firing is P4. To assert the no-trigger path we
+		// disable the cron, mirroring what the legacy schedule="off" meant.
 		const cron = cronStore.create({
-			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: "off", enabled: true,
+			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: SCHED_OFF_INERT, enabled: false,
 		});
 		await manager.triggerCron(cron.id);
 		expect(stubAgentService.calls.length).toBe(0);
@@ -222,7 +248,7 @@ describe("CronAnalysisManager", () => {
 		const cron = cronStore.create({
 			agentId: pmAgent.id,
 			workingScope: scope(undefined, "/global/ws", "wiki-root:global"),
-			schedule: "hourly", enabled: true,
+			schedule: SCHED_INTERVAL_HOURLY, enabled: true,
 		});
 		await manager.triggerCron(cron.id);
 		expect(stubAgentService.calls.length).toBe(1);
@@ -234,7 +260,7 @@ describe("CronAnalysisManager", () => {
 
 	test("refreshCron reconciles timer: enabled→scheduled, disabled→unscheduled", () => {
 		const cron = cronStore.create({
-			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: "hourly", enabled: true,
+			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: SCHED_INTERVAL_HOURLY, enabled: true,
 		});
 		manager.refreshCron(cron.id);
 		expect(manager.getScheduledCronIds()).toContain(cron.id);
@@ -245,10 +271,12 @@ describe("CronAnalysisManager", () => {
 	});
 
 	test("restoreSchedules scans cron table (not project table / agentStore.cronSchedule)", () => {
-		// One enabled, one disabled, one off.
-		const c1 = cronStore.create({ agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: "hourly", enabled: true });
-		cronStore.create({ agentId: pmAgent.id, workingScope: scope(projB.id, projB.workspaceDir), schedule: "daily", enabled: false });
-		cronStore.create({ agentId: pmAgent.id, workingScope: scope(projB.id, projB.workspaceDir), schedule: "off", enabled: true });
+		// One enabled, two disabled (one via enabled=false, one via off+disabled).
+		// v0.8 P0 (§3.4): off is enabled=false; an inert schedule + enabled=true
+		// still counts as enabled at the store layer (firing is P4).
+		const c1 = cronStore.create({ agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: SCHED_INTERVAL_HOURLY, enabled: true });
+		cronStore.create({ agentId: pmAgent.id, workingScope: scope(projB.id, projB.workspaceDir), schedule: SCHED_INTERVAL_DAILY, enabled: false });
+		cronStore.create({ agentId: pmAgent.id, workingScope: scope(projB.id, projB.workspaceDir), schedule: SCHED_OFF_INERT, enabled: false });
 
 		manager.restoreSchedules();
 		const scheduled = manager.getScheduledCronIds();
@@ -257,7 +285,7 @@ describe("CronAnalysisManager", () => {
 
 	test("deleting a cron does not delete the global agent", () => {
 		const cron = cronStore.create({
-			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: "hourly", enabled: true,
+			agentId: pmAgent.id, workingScope: scope(projA.id, projA.workspaceDir), schedule: SCHED_INTERVAL_HOURLY, enabled: true,
 		});
 		cronStore.delete(cron.id);
 		expect(agentStore.get(pmAgent.id)).toBeDefined();
@@ -271,32 +299,32 @@ describe("ZeroAdminService cron methods", () => {
 		expect(() => zeroAdmin.createCron({
 			agentId: "nonexistent",
 			workingScope: scope(undefined, "/x", "r"),
-			schedule: "daily",
+			schedule: SCHED_INTERVAL_DAILY,
 		})).toThrow(/Agent not found/);
 
-		const agent = agentStore.create({ name: "PM", roleTag: "pm" } as any);
+		const agent = (() => { const _a = agentStore.create({ name: "PM" } as any); seedAgentWithRoleTag(sessionDB, _a.id, "pm"); return _a; })();
 		expect(() => zeroAdmin.createCron({
 			agentId: agent.id,
 			workingScope: scope("nonexistent-project", "/x", "r"),
-			schedule: "daily",
+			schedule: SCHED_INTERVAL_DAILY,
 		})).toThrow(/Project not found/);
 	});
 
 	test("createCron + listCrons + updateCron + deleteCron lifecycle", () => {
-		const agent = agentStore.create({ name: "PM", roleTag: "pm" } as any);
+		const agent = (() => { const _a = agentStore.create({ name: "PM" } as any); seedAgentWithRoleTag(sessionDB, _a.id, "pm"); return _a; })();
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws") });
 
 		const cron = zeroAdmin.createCron({
 			agentId: agent.id,
 			workingScope: scope(proj.id, proj.workspaceDir),
-			schedule: "daily",
+			schedule: SCHED_INTERVAL_DAILY,
 		});
 		expect(cron.enabled).toBe(true); // default
 		expect(zeroAdmin.listCrons().length).toBe(1);
 		expect(zeroAdmin.listCrons({ agentId: agent.id }).length).toBe(1);
 
-		const updated = zeroAdmin.updateCron(cron.id, { schedule: "weekly", enabled: false });
-		expect(updated.schedule).toBe("weekly");
+		const updated = zeroAdmin.updateCron(cron.id, { schedule: SCHED_INTERVAL_WEEKLY, enabled: false });
+		expect(updated.schedule).toEqual(SCHED_INTERVAL_WEEKLY);
 		expect(updated.enabled).toBe(false);
 
 		zeroAdmin.deleteCron(cron.id);
@@ -306,10 +334,10 @@ describe("ZeroAdminService cron methods", () => {
 	});
 
 	test("deleteAgent cascades its cron entries (reverse direction)", () => {
-		const agent = agentStore.create({ name: "PM", roleTag: "pm" } as any);
+		const agent = (() => { const _a = agentStore.create({ name: "PM" } as any); seedAgentWithRoleTag(sessionDB, _a.id, "pm"); return _a; })();
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws") });
-		zeroAdmin.createCron({ agentId: agent.id, workingScope: scope(proj.id, proj.workspaceDir), schedule: "daily" });
-		zeroAdmin.createCron({ agentId: agent.id, workingScope: scope(proj.id, proj.workspaceDir, "r2"), schedule: "hourly" });
+		zeroAdmin.createCron({ agentId: agent.id, workingScope: scope(proj.id, proj.workspaceDir), schedule: SCHED_INTERVAL_DAILY });
+		zeroAdmin.createCron({ agentId: agent.id, workingScope: scope(proj.id, proj.workspaceDir, "r2"), schedule: SCHED_INTERVAL_HOURLY });
 		expect(cronStore.listByAgent(agent.id).length).toBe(2);
 		zeroAdmin.deleteAgent(agent.id);
 		expect(cronStore.listByAgent(agent.id).length).toBe(0);
@@ -321,7 +349,7 @@ describe("ZeroAdminService cron methods", () => {
 describe("cron admin tools", () => {
 	test("CreateCron / UpdateCron / DeleteCron / ListCrons invoke ZeroAdminService via ctx.zeroAdmin", async () => {
 		const { ZERO_ADMIN_TOOLS } = await import("../../src/runtime/tools/zero-admin-tools.js");
-		const agent = agentStore.create({ name: "PM", roleTag: "pm" } as any);
+		const agent = (() => { const _a = agentStore.create({ name: "PM" } as any); seedAgentWithRoleTag(sessionDB, _a.id, "pm"); return _a; })();
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws") });
 		// AI SDK tool() execute receives (input, opts); ctx lives at opts.experimental_context.
 		const ctx = { experimental_context: { zeroAdmin } } as any;
@@ -329,14 +357,14 @@ describe("cron admin tools", () => {
 		const created = JSON.parse(await ZERO_ADMIN_TOOLS.CreateCron.execute({
 			agentId: agent.id,
 			workingScope: scope(proj.id, proj.workspaceDir),
-			schedule: "daily",
+			schedule: SCHED_INTERVAL_DAILY,
 		}, ctx));
 		expect(created.agentId).toBe(agent.id);
 
 		const updated = JSON.parse(await ZERO_ADMIN_TOOLS.UpdateCron.execute({
-			id: created.id, schedule: "weekly",
+			id: created.id, schedule: SCHED_INTERVAL_WEEKLY,
 		}, ctx));
-		expect(updated.schedule).toBe("weekly");
+		expect(updated.schedule).toEqual(SCHED_INTERVAL_WEEKLY);
 
 		const list = JSON.parse(await ZERO_ADMIN_TOOLS.ListCrons.execute({}, ctx));
 		expect(list.length).toBe(1);
@@ -349,7 +377,7 @@ describe("cron admin tools", () => {
 	test("CreateCron without ctx.zeroAdmin returns error string (fail-soft)", async () => {
 		const { ZERO_ADMIN_TOOLS } = await import("../../src/runtime/tools/zero-admin-tools.js");
 		const result = await ZERO_ADMIN_TOOLS.CreateCron.execute({
-			agentId: "x", workingScope: scope(undefined, "/x", "r"), schedule: "daily",
+			agentId: "x", workingScope: scope(undefined, "/x", "r"), schedule: SCHED_INTERVAL_DAILY,
 		}, { experimental_context: {} } as any);
 		expect(String(result)).toMatch(/Error:/);
 	});

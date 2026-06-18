@@ -193,6 +193,10 @@ export function CronSettings() {
 						<select className="default-model-select" value={form.agentId} onChange={(e) => setForm((f) => ({ ...f, agentId: e.target.value }))}>
 							<option value="">— Select agent —</option>
 							{agents.map((a) => (
+								// v0.8 (P0 §1.4): roleTag removed from AgentRecord;
+								// legacy tag still carried on the row for display
+								// via cast until P2/P7 lands UI migration.
+								// @ts-expect-error — P0 §1.4: legacy roleTag field; P2/P7 cleanup.
 								<option key={a.id} value={a.id}>{a.name}{a.roleTag ? ` (${a.roleTag})` : ""}</option>
 							))}
 						</select>

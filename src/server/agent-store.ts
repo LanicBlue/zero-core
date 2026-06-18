@@ -45,7 +45,11 @@ const COLUMNS: ColumnDef[] = [
 	{ key: "toolPolicy", column: "tool_policy", json: true },
 	{ key: "skillPolicy", column: "skill_policy", json: true },
 	{ key: "knowledgeBaseIds", column: "knowledge_base_ids", json: true },
-	{ key: "roleTag", column: "role_tag" },
+	// v0.8 (P0 §2.2): subagents + wikiAnchors — JSON single-column round-trip
+	// (parity with knowledgeBaseIds). role_tag is INTENTIONALLY OMITTED — the
+	// physical column is retained (legacy) but store no longer round-trips it.
+	{ key: "subagents", json: true },
+	{ key: "wikiAnchors", json: true },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
 ];
@@ -74,6 +78,13 @@ function normalizeWorkspaceDir(dir: string | undefined): string | undefined {
 export class AgentStore {
 	private store: SqliteStore<AgentRecord>;
 	private db: SessionDB;
+	/**
+	 * v0.8 (P0 §1.4): prepared statement to read the legacy `role_tag` column
+	 * for listByRoleTag. The column is not in COLUMNS so SqliteStore doesn't
+	 * round-trip it; we read it raw here for the runtime/service callers still
+	 * using role-tag filtering (P2/P7 will move them off roleTag entirely).
+	 */
+	private _roleTagStmt?: import("better-sqlite3").Statement;
 
 	constructor(sessionDB: SessionDB) {
 		this.db = sessionDB;
@@ -90,9 +101,28 @@ export class AgentStore {
 		return this.store.list();
 	}
 
-	/** List agents by roleTag (preset entry grouping). */
+	/**
+	 * List agents by legacy roleTag (preset entry grouping).
+	 *
+	 * v0.8 (P0 §1.4): roleTag was removed from AgentRecord. The physical
+	 * `role_tag` column is retained for legacy data; this method reads it raw
+	 * (it's not in COLUMNS, so SqliteStore won't surface it). Runtime/service
+	 * callers (pm-service findPmAgent, project-notification-router
+	 * findRoleAgent, zero-admin-service ensureRoleAgentExposed) still depend
+	 * on this — P2/P7 moves them off roleTag. Kept as-is to avoid breaking
+	 * those callers in P0.
+	 */
 	listByRoleTag(roleTag: string): AgentRecord[] {
-		return this.store.list().filter((a) => a.roleTag === roleTag);
+		if (!this._roleTagStmt) {
+			this._roleTagStmt = this.db.getDb().prepare(
+				"SELECT id FROM agents WHERE role_tag = ?",
+			);
+		}
+		const matchingIds = new Set(
+			(this._roleTagStmt.all(roleTag) as Array<{ id: string }>).map((r) => r.id),
+		);
+		if (matchingIds.size === 0) return [];
+		return this.store.list().filter((a) => matchingIds.has(a.id));
 	}
 
 	get(id: string): AgentRecord | undefined {

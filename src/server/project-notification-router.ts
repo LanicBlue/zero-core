@@ -78,7 +78,11 @@ export interface ProjectNotificationRouterDeps {
  * same roleTag, the first (by createdAt) wins — that's the canonical setup.
  */
 function findRoleAgent(agentStore: AgentStore, roleTag: string) {
-	const matches = agentStore.list().filter((a) => a.roleTag === roleTag);
+	// v0.8 (P0 §1.4): roleTag removed from AgentRecord. Route the legacy
+	// filter through AgentStore.listByRoleTag (reads the retained `role_tag`
+	// physical column directly) so P2/P7 can rewrite identity without
+	// touching every caller here.
+	const matches = agentStore.listByRoleTag(roleTag);
 	if (matches.length === 0) return undefined;
 	matches.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 	return matches[0];

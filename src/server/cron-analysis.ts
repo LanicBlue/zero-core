@@ -106,16 +106,38 @@ export class CronAnalysisManager {
 
 	/**
 	 * 为单条 cron 注册定时触发。先清已有,再注册新的。
-	 * schedule === "off" 或 enabled === false 时只清不注册。
+	 *
+	 * v0.8 (P0 §3.4): schedule is now structured JSON (CronSchedule union), not
+	 * a string. The full three-mode firing logic (interval / alarm / once) is
+	 * P4's job — P0 only landed the type + columns. The branch below still
+	 * reads `cron.schedule` as if it were a string sentinel so the file keeps
+	 * compiling under the new type via `@ts-expect-error`; the actual firing
+	 * semantics will be rewritten in P4. Until then, an enabled cron with a
+	 * structured schedule may not fire — that's an accepted P0 interim.
 	 */
 	scheduleCron(cron: CronRecord): void {
 		this.unscheduleCron(cron.id);
 
-		if (!cron.enabled || cron.schedule === "off") {
+		if (!cron.enabled) {
+			return;
+		}
+		// Legacy "off" sentinel check — no longer reachable under the new
+		// structured type (off is now encoded as enabled=false). Kept as a
+		// defensive no-op; the @ts-expect-error silences the type narrowing
+		// that says schedule can't be "off" anymore.
+		// @ts-expect-error — P0 §3.4: legacy string compare; P4 rewrites this.
+		if (cron.schedule === "off") {
 			return;
 		}
 
-		const ms = parseSchedule(cron.schedule);
+		// P0 interim: parseSchedule still expects a string. CronSchedule is now
+		// a structured object, so this returns the default 24h interval for
+		// every row. The real three-mode firing lands in P4.
+		const ms = parseSchedule(
+			// @ts-expect-error — P0 §3.4: schedule is structured JSON now; P4 will
+			// replace parseSchedule with mode-aware firing logic.
+			cron.schedule,
+		);
 		if (ms <= 0) return;
 
 		const timer = setInterval(() => {
@@ -129,7 +151,7 @@ export class CronAnalysisManager {
 		if (timer.unref) timer.unref();
 
 		this.scheduledJobs.set(cron.id, timer);
-		log.debug("cron", `Scheduled cron ${cron.id} (agent ${cron.agentId}, ${cron.schedule} = ${ms / 1000}s)`);
+		log.debug("cron", `Scheduled cron ${cron.id} (agent ${cron.agentId}, ${ms / 1000}s)`);
 	}
 
 	/** 移除一条 cron 的定时任务。 */
@@ -218,8 +240,9 @@ export class CronAnalysisManager {
 			this.unscheduleCron(cronId);
 			return;
 		}
-		if (!cron.enabled || cron.schedule === "off") {
-			// Defensive: row changed under us.
+		if (!cron.enabled) {
+			// Defensive: row changed under us. (P0 §3.4: the legacy
+			// `schedule === "off"` sentinel is gone — off is enabled=false now.)
 			this.unscheduleCron(cronId);
 			return;
 		}

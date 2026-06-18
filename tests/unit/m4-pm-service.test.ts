@@ -34,6 +34,8 @@ import {
 import { PmService } from "../../src/server/pm-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { WikiStore } from "../../src/server/wiki-node-store.js";
+// v0.8 P0 (§1.4 过渡期): roleTag 不再走 store round-trip;PM agent 物理列直接 seed。
+import { seedAgentWithRoleTag } from "./helpers/p0-test-helpers.js";
 
 let tmpDir: string;
 let workspaceDir: string;
@@ -67,12 +69,14 @@ beforeEach(() => {
 
 	// Register the global PM agent (roleTag=pm). AgentStore.create auto-mints
 	// the id; capture it for downstream assertions.
+	// v0.8 P0 (§1.4): roleTag removed from AgentRecord; seed the physical
+	// column so PmService.findPmAgent (listByRoleTag('pm')) resolves it.
 	const pmAgent = agentStore.create({
 		name: "PM",
-		roleTag: "pm",
 		systemPrompt: "pm",
 		toolPolicy: { tools: {} },
 	} as any);
+	seedAgentWithRoleTag(sessionDB, pmAgent.id, "pm");
 	PM_AGENT_ID = pmAgent.id;
 
 	docStore = new RequirementDocStore({

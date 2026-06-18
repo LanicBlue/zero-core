@@ -403,6 +403,11 @@ export class AgentService {
 		// v0.8 (M0): zero sessions get the ZeroAdminService handle so the
 		// CreateProject/CreateAgent/InstantiatePreset/SetToolPolicy/ExposeAgentAsTool
 		// tools are available (gated via CONDITIONAL_TOOLS on ctx.zeroAdmin).
+		//
+		// v0.8 (P0 §1.4): roleTag was removed from AgentRecord; these reads
+		// go through @ts-expect-error pending P2/P7 rewrite (PM/zero dispatch
+		// moves off roleTag → identity via name+systemPrompt).
+		// @ts-expect-error — P0 §1.4: legacy roleTag field; P2/P7 cleanup.
 		if (agent?.roleTag === "zero" && this.zeroAdmin) {
 			(sessionConfig as any).zeroAdmin = this.zeroAdmin;
 		}
@@ -411,6 +416,7 @@ export class AgentService {
 		// PmService.createRequirementWithDoc (gated via CONDITIONAL_TOOLS on
 		// ctx.pmService). Required because cron-triggered PM sessions go
 		// through sendPrompt → createLoopForSession, not sendRolePrompt.
+		// @ts-expect-error — P0 §1.4: legacy roleTag field; P2/P7 cleanup.
 		if (agent?.roleTag === "pm") {
 			if (this.pmService) (sessionConfig as any).pmService = this.pmService;
 			if (this.requirementStore) (sessionConfig as any).requirementStore = this.requirementStore;
