@@ -256,10 +256,19 @@ export class ManagementService {
 		this.requireCronStore().delete(id);
 	}
 
-	listCrons(filter?: { agentId?: string }): CronRecord[] {
+	/**
+	 * List crons with optional filters. §9.4: projectId filters on
+	 * workingScope.projectId; enabled filters on the enabled flag.
+	 */
+	listCrons(filter?: { agentId?: string; projectId?: string; enabled?: boolean }): CronRecord[] {
 		const store = this.requireCronStore();
-		if (filter?.agentId) return store.listByAgent(filter.agentId);
-		return store.list();
+		const all = store.list();
+		return all.filter((c) => {
+			if (filter?.agentId && c.agentId !== filter.agentId) return false;
+			if (filter?.projectId && c.workingScope.projectId !== filter.projectId) return false;
+			if (filter?.enabled !== undefined && c.enabled !== filter.enabled) return false;
+			return true;
+		});
 	}
 
 	getCron(id: string): CronRecord | undefined {
@@ -267,19 +276,18 @@ export class ManagementService {
 	}
 
 	/**
-	 * Trigger a cron immediately (manual fire). P3 only wires the entry-point;
-	 * the actual scheduling run + cron_runs write lands in P4. Returns the
-	 * cron row + a marker so the caller knows the trigger was accepted.
+	 * v0.8 (P4): the P3 manual-trigger stub is obsolete — the real run path is
+	 * CronAnalysisManager.triggerCron (writes cron_runs, leaves next_run
+	 * untouched per §9.4). ManagementService no longer owns a trigger entry;
+	 * callers (REST router / action tool) go straight to the cron manager.
+	 * Kept here only for the action-tool capability backend signature; it just
+	 * resolves the cron and surfaces it so the tool layer can decide.
 	 */
-	triggerCron(id: string): { accepted: boolean; cron: CronRecord; scheduledBy: "P4" } {
+	triggerCron(id: string): { cron: CronRecord } {
 		const store = this.requireCronStore();
 		const cron = store.get(id);
 		if (!cron) throw new Error(`Cron not found: ${id}`);
-		// P3 stub: actual scheduler dispatch is P4. We surface the intent so
-		// the tool layer is wired; the cron-analysis manager (P4) will be
-		// extended to accept this manual-trigger signal.
-		log.warn("management", `Cron trigger requested for ${id} (P3 stub — P4 scheduler will run it)`);
-		return { accepted: true, cron, scheduledBy: "P4" };
+		return { cron };
 	}
 
 	// ─── Internal: policy binding helpers ────────────────────────

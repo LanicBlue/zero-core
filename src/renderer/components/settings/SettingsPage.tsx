@@ -33,8 +33,8 @@ import { DeviceContextSettings } from "./DeviceContextSettings.js";
 import { GuidelinesSettings } from "./GuidelinesSettings.js";
 import { WorkspaceSettings } from "./WorkspaceSettings.js";
 import { ThemeSettings } from "./ThemeSettings.js";
-import { CronSettings } from "./CronSettings.js";
-
+// v0.8 (P4 §9.5): CronSettings moved to a top-level page (CronDashboard);
+// no longer rendered as a Settings section.
 import { ProxySettings } from "./ProxySettings.js";
 import { MemorySettings } from "./MemorySettings.js";
 
@@ -54,7 +54,7 @@ export default function SettingsPage() {
 		{ key: "guidelines", label: "Guidelines" },
 		{ key: "theme", label: "Theme" },
 		{ key: "workspace", label: "Workspace" },
-		{ key: "cron", label: "Cron" },
+		// v0.8 (P4 §9.5): Cron moved to its own top-level page (sidebar → Cron).
 		{ key: "proxy", label: "Proxy" },
 		{ key: "memory", label: "Memory" },
 	];
@@ -137,13 +137,6 @@ export default function SettingsPage() {
 						<>
 							<div className="section-title-row"><h3>Workspace</h3></div>
 							<WorkspaceSettings />
-						</>
-					)}
-
-					{activeSection === "cron" && (
-						<>
-							<div className="section-title-row"><h3>Cron</h3></div>
-							<CronSettings />
 						</>
 					)}
 

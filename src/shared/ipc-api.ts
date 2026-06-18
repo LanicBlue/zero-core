@@ -40,7 +40,7 @@ import type {
 	ProjectRecord, CreateProjectInput, UpdateProjectInput,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
-	CronRecord, CreateCronInput, UpdateCronInput,
+	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord,
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
 } from "./types.js";
@@ -212,18 +212,20 @@ export interface IpcChannelDefs {
 	"requirements:archive":    { params: [id: string];                               result: Ok | Err };
 	"requirements:report":     { params: [id: string];                               result: { report: string | null } };
 
-	// ── M5: Project pause/resume/interval ──
-	"projects:updateInterval": { params: [id: string, interval: string];             result: Ok };
-	"projects:pause":          { params: [id: string];                                result: Ok };
-	"projects:resume":         { params: [id: string];                                result: Ok };
+	// v0.8 (P4 §8.6): dead project schedule channels deleted. Cron is
+	// agent-scoped (§9); project lifecycle no longer owns a schedule. The
+	// IPC surface now lives under crons:* only.
 
-	// ── M1: Cron (first-class cron entity) ──────────────────
-	"crons:list":    { params: [filter?: { agentId?: string }];                       result: CronRecord[] };
-	"crons:get":     { params: [id: string];                                          result: CronRecord | undefined };
-	"crons:create":  { params: [input: CreateCronInput];                              result: CronRecord | Err };
-	"crons:update":  { params: [id: string, input: UpdateCronInput];                  result: CronRecord | Err };
-	"crons:delete":  { params: [id: string];                                          result: Ok };
-	"crons:trigger": { params: [id: string];                                          result: Ok | Err };
+	// ── M1: Cron (first-class cron entity; P4 §9.4 list filter + runs) ───
+	// list filter: projectId (workingScope.projectId), agentId, enabled.
+	"crons:list":     { params: [filter?: { agentId?: string; projectId?: string; enabled?: boolean }]; result: CronRecord[] };
+	"crons:get":      { params: [id: string];                                          result: CronRecord | undefined };
+	"crons:create":   { params: [input: CreateCronInput];                              result: CronRecord | Err };
+	"crons:update":   { params: [id: string, input: UpdateCronInput];                  result: CronRecord | Err };
+	"crons:delete":   { params: [id: string];                                          result: Ok };
+	"crons:trigger":  { params: [id: string];                                          result: Ok | Err };
+	// §9.3: cron_runs audit log (newest-first). limit defaults to 50.
+	"crons:listRuns": { params: [cronId: string, limit?: number];                      result: CronRunRecord[] };
 
 	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
 	// RFC §2.9 / decision 11 — the kanban surfaces pending plans to the user

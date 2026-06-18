@@ -189,14 +189,13 @@ const R: Record<string, RouteMapping> = {
 	// Misc
 
 		// ─── Projects (M1) ─────────────────────────────────
+		// v0.8 (P4 §8.6): projects pause/resume/updateInterval removed (dead
+		// project schedule channels — cron is agent-scoped now).
 		"projects:list":           { method: "GET",    path: "/api/projects",                 buildReq: (filter?) => ({ query: filter ?? {} }) },
 		"projects:get":            { method: "GET",    path: "/api/projects/:id",             buildReq: (id) => ({ params: { id } }) },
 		"projects:create":         { method: "POST",   path: "/api/projects",                 buildReq: (input) => ({ body: input }) },
 		"projects:update":         { method: "PUT",    path: "/api/projects/:id",             buildReq: (id, input) => ({ params: { id }, body: input }) },
 		"projects:delete":         { method: "DELETE", path: "/api/projects/:id",             buildReq: (id) => ({ params: { id } }) },
-		"projects:updateInterval": { method: "PUT",    path: "/api/projects/:id/interval",    buildReq: (id, interval) => ({ params: { id }, body: { interval } }) },
-		"projects:pause":          { method: "POST",   path: "/api/projects/:id/pause",       buildReq: (id) => ({ params: { id } }) },
-		"projects:resume":         { method: "POST",   path: "/api/projects/:id/resume",      buildReq: (id) => ({ params: { id } }) },
 
 		// ─── Requirements (M1) ──────────────────────────────
 		"requirements:list":       { method: "GET",    path: "/api/requirements",              buildReq: (filter?) => ({ query: filter ?? {} }) },
@@ -225,15 +224,16 @@ const R: Record<string, RouteMapping> = {
 		"lead:pickup":             { method: "POST",   path: "/api/requirements/:id/pickup",   buildReq: (requirementId) => ({ params: { id: requirementId } }) },
 		"lead:progress":           { method: "GET",    path: "/api/requirements/:id/progress", buildReq: (requirementId) => ({ params: { id: requirementId } }) },
 
-		// ─── Crons (M1) ──────────────────────────────────────
-		// backend /api/crons (cron-router.ts). list reads ?agentId from filter;
-		// trigger fires a manual run via cronManager.triggerCron.
-		"crons:list":    { method: "GET",    path: "/api/crons",            buildReq: (filter?) => ({ query: filter ?? {} }) },
-		"crons:get":     { method: "GET",    path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },
-		"crons:create":  { method: "POST",   path: "/api/crons",            buildReq: (input) => ({ body: input }) },
-		"crons:update":  { method: "PUT",    path: "/api/crons/:id",        buildReq: (id, input) => ({ params: { id }, body: input }) },
-		"crons:delete":  { method: "DELETE", path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },
-		"crons:trigger": { method: "POST",   path: "/api/crons/:id/trigger",buildReq: (id) => ({ params: { id } }) },
+		// ─── Crons (M1; P4 list filter + runs) ──────────────
+		// backend /api/crons (cron-router.ts). list reads ?agentId/?projectId/
+		// ?enabled from filter; trigger fires a manual run via cronManager.
+		"crons:list":     { method: "GET",    path: "/api/crons",            buildReq: (filter?) => ({ query: filter ?? {} }) },
+		"crons:get":      { method: "GET",    path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },
+		"crons:listRuns": { method: "GET",    path: "/api/crons/:id/runs",   buildReq: (cronId, limit?) => ({ params: { id: cronId }, query: limit ? { limit } : {} }) },
+		"crons:create":   { method: "POST",   path: "/api/crons",            buildReq: (input) => ({ body: input }) },
+		"crons:update":   { method: "PUT",    path: "/api/crons/:id",        buildReq: (id, input) => ({ params: { id }, body: input }) },
+		"crons:delete":   { method: "DELETE", path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },
+		"crons:trigger":  { method: "POST",   path: "/api/crons/:id/trigger",buildReq: (id) => ({ params: { id } }) },
 
 		// ─── Orchestrate (M3) ────────────────────────────────
 		// backend /api/orchestrate (orchestrate-router.ts). pending is the

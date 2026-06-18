@@ -69,6 +69,8 @@ let _analystService: any;
 let _leadService: any;
 // v0.8 (M1): cron store — first-class cron entity.
 let _cronStore: any = null;
+// v0.8 (P4 §9.3): cron_runs audit sink — one row per actual cron fire.
+let _cronRunStore: any = null;
 // M5 services
 let _cronManager: any = null;
 let _gitIntegration: any = null;
@@ -116,6 +118,8 @@ const _ctx: IpcContext = {
 	get leadService() { return _leadService; },
 	// v0.8 (M1): cron store
 	get cronStore() { return _cronStore; },
+	// v0.8 (P4): cron_runs audit store (used by IPC handlers + cron-manager).
+	get cronRunStore() { return _cronRunStore; },
 	// M5 services
 	get cronManager() { return _cronManager; },
 	get gitIntegration() { return _gitIntegration; },
@@ -282,7 +286,9 @@ export async function loadCoreModules(): Promise<void> {
 			_wikiStore = new wikiStoreMod.ProjectWikiStore(_sessionDb);
 			_taskStepStore = new taskStepStoreMod.TaskStepStore(_sessionDb);
 			// v0.8 (M1): cron store — first-class cron entity.
+			// v0.8 (P4): cron_runs audit store (per-fire log).
 			_cronStore = new cronStoreMod.CronStore(_sessionDb);
+			_cronRunStore = new cronStoreMod.CronRunStore(_sessionDb);
 
 			console.log("[startup] workspaceConfig:", JSON.stringify(_workspaceConfig));
 			// Apply proxy config
@@ -451,6 +457,7 @@ export async function loadCoreModules(): Promise<void> {
 			projectStore: _projectStore,
 			sessionDB: _sessionDb,
 			cronStore: _cronStore,
+			cronRunStore: _cronRunStore,
 		});
 
 		// v0.8 (M3): Orchestrate plan store. Plan store backs the kanban

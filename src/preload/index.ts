@@ -252,18 +252,19 @@ const api: WindowApi = {
 	requirementsArchive: (id) => ipcRenderer.invoke("requirements:archive", id),
 	requirementsReport: (id) => ipcRenderer.invoke("requirements:report", id),
 
-	// ── M5: Project pause/resume/interval ──
-	projectsUpdateInterval: (id, interval) => ipcRenderer.invoke("projects:updateInterval", id, interval),
-	projectsPause: (id) => ipcRenderer.invoke("projects:pause", id),
-	projectsResume: (id) => ipcRenderer.invoke("projects:resume", id),
+	// v0.8 (P4 §8.6): projects pause/resume/updateInterval removed — dead
+	// project schedule channels (cron is agent-scoped now). The cron surface
+	// under crons:* is the single source of scheduling truth.
 
-	// ── M1: Cron (first-class cron entity) ──
+	// ── M1: Cron (first-class cron entity; P4 §9.4 list filter + runs) ──
 	cronsList: (filter?) => ipcRenderer.invoke("crons:list", filter),
 	cronsGet: (id) => ipcRenderer.invoke("crons:get", id),
 	cronsCreate: (input) => ipcRenderer.invoke("crons:create", input),
 	cronsUpdate: (id, input) => ipcRenderer.invoke("crons:update", id, input),
 	cronsDelete: (id) => ipcRenderer.invoke("crons:delete", id),
 	cronsTrigger: (id) => ipcRenderer.invoke("crons:trigger", id),
+	// §9.3: cron_runs audit log (newest-first, default 50).
+	cronsListRuns: (cronId, limit?) => ipcRenderer.invoke("crons:listRuns", cronId, limit),
 
 	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
 	orchestratePending: (filter?) => ipcRenderer.invoke("orchestrate:pending", filter),

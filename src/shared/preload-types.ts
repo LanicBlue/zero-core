@@ -40,7 +40,7 @@ import type {
 	ProjectRecord, CreateProjectInput, UpdateProjectInput,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
-	CronRecord, CreateCronInput, UpdateCronInput,
+	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord,
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
 } from "./types.js";
@@ -258,18 +258,17 @@ export interface WindowApi {
 	requirementsArchive: (id: string) => Promise<{ success: true } | { error: string }>;
 	requirementsReport: (id: string) => Promise<{ report: string | null }>;
 
-	// ── M5: Project pause/resume/interval ──
-	projectsUpdateInterval: (id: string, interval: string) => Promise<{ success: true }>;
-	projectsPause: (id: string) => Promise<{ success: true }>;
-	projectsResume: (id: string) => Promise<{ success: true }>;
+	// v0.8 (P4 §8.6): projects pause/resume/updateInterval removed (dead
+	// project schedule channels — cron is agent-scoped now).
 
-	// ── M1: Cron (first-class cron entity) ──
-	cronsList: (filter?: { agentId?: string }) => Promise<CronRecord[]>;
+	// ── M1: Cron (first-class cron entity; P4 §9.4 list filter + runs) ──
+	cronsList: (filter?: { agentId?: string; projectId?: string; enabled?: boolean }) => Promise<CronRecord[]>;
 	cronsGet: (id: string) => Promise<CronRecord | undefined>;
 	cronsCreate: (input: CreateCronInput) => Promise<CronRecord | { error: string }>;
 	cronsUpdate: (id: string, input: UpdateCronInput) => Promise<CronRecord | { error: string }>;
 	cronsDelete: (id: string) => Promise<{ success: true }>;
 	cronsTrigger: (id: string) => Promise<{ success: true } | { error: string }>;
+	cronsListRuns: (cronId: string, limit?: number) => Promise<CronRunRecord[]>;
 
 	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
 	orchestratePending: (filter?: { projectId?: string }) => Promise<OrchestratePlanRecord[]>;

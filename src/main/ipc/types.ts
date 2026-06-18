@@ -43,7 +43,7 @@ import type { TaskStepStore } from "../../server/task-step-store.js";
 import type { AnalystService } from "../../server/analyst-service.js";
 import type { LeadService } from "../../server/lead-service.js";
 import type { CronAnalysisManager } from "../../server/cron-analysis.js";
-import type { CronStore } from "../../server/cron-store.js";
+import type { CronStore, CronRunStore } from "../../server/cron-store.js";
 import type { GitIntegration } from "../../server/git-integration.js";
 import type { NotificationService } from "../../server/notification-service.js";
 import type { OrchestratePlanStore } from "../../server/orchestrate-store.js";
@@ -77,6 +77,8 @@ export interface IpcContext {
 	analystService: AnalystService;
 	leadService: LeadService;
 	cronStore: CronStore | null;
+	/** v0.8 (P4 §9.3): per-fire audit log store (cron_runs). */
+	cronRunStore: CronRunStore | null;
 	cronManager: CronAnalysisManager | null;
 	gitIntegration: GitIntegration | null;
 	notificationService: NotificationService | null;

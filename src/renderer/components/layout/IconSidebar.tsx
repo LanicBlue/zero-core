@@ -86,6 +86,19 @@ export default function IconSidebar() {
 					</svg>
 				</button>
 				<button
+					type="button"
+					className={`icon-btn ${activePage === "cron" ? "active" : ""}`}
+					onClick={() => setActivePage("cron")}
+					title="Cron Scheduling Console"
+				>
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+						<circle cx="12" cy="13" r="8" />
+						<path d="M12 9v4l2 2" />
+						<path d="M5 3 2 6" />
+						<path d="M19 3l3 3" />
+					</svg>
+				</button>
+				<button
 						type="button"
 						className={`icon-btn ${activePage === "tools" ? "active" : ""}`}
 						onClick={() => setActivePage("tools")}

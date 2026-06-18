@@ -5,10 +5,11 @@
 // ## 核心功能
 // 注册 `crons:*` 系列 IPC 通道，落地到 ctx.cronStore：
 //   - crons:list / crons:get / crons:create / crons:update / crons:delete
-//   - crons:trigger —— 立即手动触发一次（调试用）
+//   - crons:listRuns —— 取 cron_runs 审计记录 (§9.3, newest-first, 默认 50 条)
+//   - crons:trigger —— 立即手动触发一次（调试用, §9.4 不推进 next_run）
 //
 // 创建/更新/删除后调 ctx.cronManager.refreshCron(id) 同步调度定时器。
-// 校验 agent + project 引用存在，workingScope 字段齐全。
+// §9.4: list 支持 projectId / agentId / enabled 过滤。校验 agent + project 引用存在，workingScope 字段齐全。
 //
 // ## 输入
 // - IpcContext：cronStore、可选 cronManager、agentStore、projectStore
@@ -50,14 +51,32 @@ function validateScope(input: { workingScope?: CronRecord["workingScope"] }, ctx
 }
 
 export function registerCronHandlers(ctx: IpcContext): void {
+	// §9.4 list supports projectId / agentId / enabled filters. projectId
+	// filters on workingScope.projectId (observation crons with no projectId
+	// only show under the (global) bucket, not under every project).
 	typedHandle("crons:list", "sessionDb", (_ctx, filter) => {
 		const all = ctx.cronStore!.list() as CronRecord[];
-		if (filter?.agentId) return all.filter((c) => c.agentId === filter.agentId);
-		return all;
+		return all.filter((c) => {
+			if (filter?.agentId && c.agentId !== filter.agentId) return false;
+			if (filter?.projectId) {
+				if (c.workingScope.projectId !== filter.projectId) return false;
+			}
+			if (filter?.enabled !== undefined && c.enabled !== filter.enabled) return false;
+			return true;
+		});
 	});
 
 	typedHandle("crons:get", "sessionDb", (_ctx, id) => {
 		return ctx.cronStore!.get(id) as CronRecord | undefined;
+	});
+
+	// §9.3: cron_runs audit log (newest-first, limited to keep payload small).
+	// Default limit 50; callers can ask for fewer.
+	typedHandle("crons:listRuns", "sessionDb", (_ctx, cronId: string, limit?: number) => {
+		if (!ctx.cronRunStore) return [];
+		const rows = ctx.cronRunStore.listByCron(cronId);
+		const cap = typeof limit === "number" && limit > 0 ? limit : 50;
+		return rows.slice(0, cap);
 	});
 
 	typedHandle("crons:create", "sessionDb", (_ctx, input: CreateCronInput) => {
@@ -82,6 +101,7 @@ export function registerCronHandlers(ctx: IpcContext): void {
 				if (scopeErr) return err(scopeErr);
 			}
 			const cron = ctx.cronStore!.update(id, input) as CronRecord;
+			// §9.4: update tool → refreshCron → next_run 重算.
 			ctx.cronManager?.refreshCron(cron.id);
 			return cron;
 		} catch (e) {
@@ -92,6 +112,9 @@ export function registerCronHandlers(ctx: IpcContext): void {
 	typedHandle("crons:delete", "sessionDb", (_ctx, id: string) => {
 		try {
 			ctx.cronStore!.delete(id);
+			// Also drop cron_runs rows for the deleted cron — they're audit
+			// history for a now-gone schedule, no longer reachable from UI.
+			ctx.cronRunStore?.deleteByCron(id);
 			ctx.cronManager?.refreshCron(id); // unschedules
 			return { success: true as const };
 		} catch (e) {
@@ -102,6 +125,7 @@ export function registerCronHandlers(ctx: IpcContext): void {
 	typedHandle("crons:trigger", "sessionDb", async (_ctx, id: string) => {
 		try {
 			if (!ctx.cronManager) return err("Cron manager not available");
+			// §9.4: trigger = immediate manual run, does NOT advance next_run.
 			await ctx.cronManager.triggerCron(id);
 			return { success: true as const };
 		} catch (e) {

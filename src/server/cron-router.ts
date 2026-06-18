@@ -1,11 +1,12 @@
-// Cron REST API 路由 (v0.8 M1)
+// Cron REST API 路由 (v0.8 M1;P4 加 cron_runs 读)
 //
 // # 文件说明书
 //
 // ## 核心功能
 // 暴露 CronRecord 的 CRUD 接口,并联动 CronAnalysisManager 同步调度:
-//   - GET    /             —— 列出 cron (可选 ?agentId 过滤)
+//   - GET    /             —— 列出 cron (?agentId / ?projectId / ?enabled 过滤)
 //   - GET    /:id          —— 取单条 cron
+//   - GET    /:id/runs     —— 取该 cron 的 cron_runs 审计记录 (newest-first)
 //   - POST   /             —— 创建 cron (校验 agent + project 引用)
 //   - PUT    /:id          —— 更新 cron (scope / schedule / prompt / enabled)
 //   - DELETE /:id          —— 删除 cron (解绑,不级联删 agent)
@@ -16,6 +17,7 @@
 // ## 输入
 // - ManagementService (cron CRUD + 校验) (P3: renamed from ZeroAdminService)
 // - CronAnalysisManager (调度同步)
+// - CronRunStore (P4 §9.3 audit read)
 //
 // ## 输出
 // - Express Router,挂载于 /api/crons
@@ -27,24 +29,43 @@
 // - express
 // - ./management-service (P3: renamed from ./zero-admin-service)
 // - ./cron-analysis
+// - ./cron-store (CronRunStore)
 //
 
 import { Router } from "express";
 import type { ManagementService } from "./management-service.js";
 import type { CronAnalysisManager } from "./cron-analysis.js";
+import type { CronRunStore } from "./cron-store.js";
 import type { CronRecord } from "../shared/types.js";
 
 export function createCronRouter(deps: {
 	management: ManagementService;
 	cronManager: CronAnalysisManager;
+	cronRunStore?: CronRunStore;
 }): Router {
 	const router = Router();
-	const { management, cronManager } = deps;
+	const { management, cronManager, cronRunStore } = deps;
 
-	/** GET / — list crons (optional ?agentId filter) */
+	/** GET / — list crons (?agentId / ?projectId / ?enabled filter, §9.4) */
 	router.get("/", (req, res) => {
 		const agentId = req.query.agentId as string | undefined;
-		res.json(management.listCrons(agentId ? { agentId } : undefined));
+		const projectId = req.query.projectId as string | undefined;
+		const enabledRaw = req.query.enabled as string | undefined;
+		const enabled = enabledRaw === undefined ? undefined : enabledRaw === "true";
+		res.json(management.listCrons({
+			...(agentId ? { agentId } : {}),
+			...(projectId ? { projectId } : {}),
+			...(enabled !== undefined ? { enabled } : {}),
+		}));
+	});
+
+	/** GET /:id/runs — cron_runs audit log for one cron (newest-first). */
+	router.get("/:id/runs", (req, res) => {
+		if (!cronRunStore) return res.json([]);
+		const limitRaw = parseInt((req.query.limit as string) ?? "50", 10);
+		const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 50;
+		const rows = cronRunStore.listByCron(req.params.id).slice(0, limit);
+		res.json(rows);
 	});
 
 	/** GET /:id — get a single cron */
@@ -78,10 +99,12 @@ export function createCronRouter(deps: {
 		}
 	});
 
-	/** DELETE /:id — delete a cron entry (unbind, not cascade) */
+	/** DELETE /:id — delete a cron entry (unbind, not cascade). P4 also
+	 *  drops cron_runs rows (audit history for a now-gone schedule). */
 	router.delete("/:id", (req, res) => {
 		try {
 			management.deleteCron(req.params.id);
+			cronRunStore?.deleteByCron(req.params.id);
 			cronManager.refreshCron(req.params.id); // unschedules
 			res.status(204).end();
 		} catch (e) {

@@ -163,7 +163,9 @@ export async function startServer(options?: StartServerOptions) {
 	const wikiScanCursorStore = new WikiScanCursorStore(sessionDB);
 	const taskStepStore = new TaskStepStore(sessionDB);
 	// v0.8 (M1): cron store — first-class cron entity (one agent → N cron).
+	// v0.8 (P4 §9.3): cron_runs audit sink — one row per actual cron fire.
 	const cronStore = new (await import("./cron-store.js")).CronStore(sessionDB);
+	const cronRunStore = new (await import("./cron-store.js")).CronRunStore(sessionDB);
 
 	// Register workflow context hook (T2 context injection via PreLLMCall)
 	registerWorkflowContextHook({ projectStore, requirementStore, wikiStore, taskStepStore });
@@ -322,13 +324,15 @@ export async function startServer(options?: StartServerOptions) {
 	leadService.setGitIntegration(gitIntegration);
 	const notificationService = new NotificationService({ wss, requirementStore });
 	// v0.8 (M1): cron manager now scans the cron table (one agent → N cron),
-	// routes triggers via resolveSessionByRoleProject + sendPrompt.
+	// routes triggers via resolveSessionByRoleProject + sendPrompt. P4: mode-
+	// aware firing + cron_runs audit (cronRunStore injected).
 	const cronManager = new CronAnalysisManager({
 		agentService,
 		agentStore,
 		projectStore,
 		sessionDB,
 		cronStore,
+		cronRunStore,
 	});
 
 	// v0.8 P7 (RFC §1.5): NO ProjectNotificationRouter — cross-role reactions
@@ -412,19 +416,17 @@ export async function startServer(options?: StartServerOptions) {
 	// Multi-Agent Workflow routers
 
 	// Projects — v0.8 M1: cron is agent-scoped, not project-scoped, so the
-	// project lifecycle no longer auto-registers a per-project cron. The
-	// /interval /pause /resume endpoints stay as no-op compat shims (their
-	// per-project cron concept is gone; cron entries are managed via the cron
-	// tools / cron editor / /api/crons).
+	// project lifecycle no longer auto-registers a per-project cron. v0.8 P4
+	// (§8.6): the dead /interval /pause /resume compat shims are deleted;
+	// scheduling lives entirely under /api/crons (cron entries are managed
+	// via the cron tools / cron editor / /api/crons).
 	const projectRouter = createProjectRouter({ projectStore, requirementStore, wikiStore, taskStepStore, analystService });
-	projectRouter.put("/:id/interval", (_req, res) => res.json({ ok: true }));
-	projectRouter.post("/:id/pause", (_req, res) => res.json({ ok: true }));
-	projectRouter.post("/:id/resume", (_req, res) => res.json({ ok: true }));
 	app.use("/api/projects", projectRouter);
 
 	// v0.8 (M1): cron REST router — create/update/delete/list cron entries.
+	// v0.8 (P4): also exposes GET /:id/runs for cron_runs audit history.
 	const { createCronRouter } = await import("./cron-router.js");
-	app.use("/api/crons", createCronRouter({ management, cronManager }));
+	app.use("/api/crons", createCronRouter({ management, cronManager, cronRunStore }));
 
 	// Requirements — with M5 verify/archive/report + notifications
 	const requirementRouter = createRequirementRouter({ requirementStore, taskStepStore, notificationService });

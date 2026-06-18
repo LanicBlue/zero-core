@@ -278,12 +278,16 @@ describe("Cron action tool", () => {
 		expect(parse(await execCron({ action: "list", agentId: a1 }, ctx())).length).toBe(1);
 	});
 
-	test("trigger is a P3 stub (records intent, P4 runs)", async () => {
+	test("trigger resolves the cron (P4: tool capability backend just surfaces the row; the real run goes through CronAnalysisManager.triggerCron)", async () => {
 		const agentId = mkAgent();
 		const c = management.createCron({ agentId, workingScope: mkScope(), schedule: SCHED_DAILY });
+		// v0.8 P4: ManagementService.triggerCron no longer owns the run path —
+		// it resolves the cron row and surfaces it so the tool/IPC/REST layer
+		// can hand off to CronAnalysisManager.triggerCron (which writes
+		// cron_runs + leaves next_run untouched per §9.4).
 		const r = parse(await execCron({ action: "trigger", id: c.id }, ctx()));
-		expect(r.accepted).toBe(true);
-		expect(r.scheduledBy).toBe("P4"); // marker — actual run is P4
+		expect(r.cron).toBeDefined();
+		expect(r.cron.id).toBe(c.id);
 	});
 });
 

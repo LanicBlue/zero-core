@@ -1,18 +1,20 @@
-// Cron 状态管理 (v0.8 M1)
+// Cron 状态管理 (v0.8 M1;P4 §9.3 加 cron_runs 历史拉取)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// CronRecord 相关的 Zustand 状态管理：列表拉取 + create/update/delete/trigger。
+// CronRecord 相关的 Zustand 状态管理：列表拉取 + create/update/delete/trigger
+// + cron_runs 历史拉取 (P4 §9.3, 调度台卡片展开 history 用)。
 //
 // ## 输入
-// - IPC 调用（crons:list / crons:create / crons:update / crons:delete / crons:trigger）
+// - IPC 调用（crons:list / crons:create / crons:update / crons:delete /
+//   crons:trigger / crons:listRuns）
 //
 // ## 输出
-// - cron 列表 + CRUD 方法
+// - cron 列表 + CRUD 方法 + runsByCron (cronId → CronRunRecord[])
 //
 // ## 定位
-// 渲染进程状态管理，被 CronEditor / CronList 组件使用。
+// 渲染进程状态管理，被 CronDashboard (P4 调度台) 使用。
 //
 // ## 依赖
 // - zustand
@@ -21,15 +23,29 @@
 //
 
 import { create } from "zustand";
-import type { CronRecord, CreateCronInput, UpdateCronInput } from "../../shared/types.js";
+import type {
+	CronRecord,
+	CronRunRecord,
+	CreateCronInput,
+	UpdateCronInput,
+} from "../../shared/types.js";
 import { useNotificationStore } from "./notification-store.js";
 
 const api = () => (window as any).api;
 
+interface CronListFilter {
+	agentId?: string;
+	projectId?: string;
+	enabled?: boolean;
+}
+
 interface CronState {
 	crons: CronRecord[];
 	loading: boolean;
-	fetchCrons: (filter?: { agentId?: string }) => Promise<void>;
+	/** v0.8 (P4 §9.3): per-cron audit log, keyed by cronId. Newest-first. */
+	runsByCron: Record<string, CronRunRecord[]>;
+	fetchCrons: (filter?: CronListFilter) => Promise<void>;
+	fetchRuns: (cronId: string, limit?: number) => Promise<void>;
 	createCron: (input: CreateCronInput) => Promise<CronRecord | undefined>;
 	updateCron: (id: string, input: UpdateCronInput) => Promise<CronRecord | undefined>;
 	removeCron: (id: string) => Promise<void>;
@@ -39,6 +55,7 @@ interface CronState {
 export const useCronStore = create<CronState>((set) => ({
 	crons: [],
 	loading: false,
+	runsByCron: {},
 
 	fetchCrons: async (filter?) => {
 		set({ loading: true });
@@ -48,6 +65,15 @@ export const useCronStore = create<CronState>((set) => ({
 		} catch (err: any) {
 			set({ loading: false });
 			useNotificationStore.getState().addError(err?.message || "Failed to fetch crons");
+		}
+	},
+
+	fetchRuns: async (cronId, limit?) => {
+		try {
+			const rows = await api().cronsListRuns(cronId, limit);
+			set((s) => ({ runsByCron: { ...s.runsByCron, [cronId]: rows ?? [] } }));
+		} catch (err: any) {
+			useNotificationStore.getState().addError(err?.message || "Failed to fetch cron runs");
 		}
 	},
 

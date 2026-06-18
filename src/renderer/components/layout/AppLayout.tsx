@@ -32,6 +32,7 @@ import FileTreePanel from "./FileTreePanel.js";
 import DocViewerPanel from "./DocViewerPanel.js";
 import ResizableLayout from "./ResizableLayout.js";
 import AgentsPage from "../agents/AgentsPage.js";
+import CronDashboard from "../cron/CronDashboard.js";
 import SettingsPage from "../settings/SettingsPage.js";
 import McpSettingsPage from "../mcp/McpSettingsPage.js";
 import SkillsPage from "../skills/SkillsPage.js";
@@ -202,6 +203,7 @@ export default function AppLayout() {
 				{activePage !== "chat" && (
 					<div className="page-overlay">
 						{activePage === "dashboard" && <DashboardPage />}
+						{activePage === "cron" && <CronDashboard />}
 						{activePage === "settings" && <SettingsPage />}
 						{activePage === "mcp" && <McpSettingsPage />}
 						{activePage === "skills" && <SkillsPage />}
