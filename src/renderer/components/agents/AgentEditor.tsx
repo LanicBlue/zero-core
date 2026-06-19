@@ -30,7 +30,6 @@ import { useProviderStore } from "../../store/provider-store.js";
 import { useWikiStore } from "../../store/wiki-store.js";
 import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
 import { ConfirmModal } from "../common/ConfirmModal.js";
-import { ExposeAsToolSection } from "./ExposeAsToolSection.js";
 import { BasicSection } from "./BasicSection.js";
 import { PromptSection } from "./PromptSection.js";
 import { ToolsSection } from "./ToolsSection.js";
@@ -256,10 +255,6 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		{ key: "subagents", label: "委派 (subagents)" },
 		{ key: "anchors", label: "Wiki 锚点" },
 		{ key: "permissions", label: "权限模式" },
-		// §11.5 deprecated agent-as-tool in favor of subagents; kept as a
-		// legacy tab so existing AgentToolEntry rows remain editable until the
-		// P9 cleanup drops the table.
-		{ key: "expose", label: "作为工具 (legacy)" },
 	];
 
 	const promptTokenCount = useMemo(() => {
@@ -366,10 +361,6 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 							wikiNodes={wikiNodes}
 							onChange={updateWikiAnchors}
 						/>
-					)}
-
-					{section === "expose" && agent && (
-						<ExposeAsToolSection agentId={agent.id} agentName={form.name} />
 					)}
 
 					{section === "permissions" && (

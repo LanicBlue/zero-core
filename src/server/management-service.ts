@@ -20,16 +20,15 @@
 //   - 类别 `zero-admin` → `management`
 //   - 上下文句柄 `ctx.zeroAdmin` → `ctx.management`
 //
-// ## 删除的能力 (v0.8 P3 / §7.7)
+// ## 删除的能力 (v0.8 P3 / §7.7 + §11.5 收尾)
 //   - `InstantiatePreset`            —— 由 Agent create + template 替代
 //   - `SetToolPolicy`/`SetToolEnabled`—— 并入 Agent update
-//   - `ExposeAgentAsTool`/`UnexposeAgentAsTool`(P2 已废)
-//   - 本服务对应的 exposeAgentAsTool / unexposeAgentAsTool / setToolPolicy /
-//     setToolEnabled / instantiatePreset 方法保留为 internal,只给 preset
-//     REST 路由(并行入口)和 template create 用;runtime 工具不再消费。
+//   - `ExposeAgentAsTool`/`UnexposeAgentAsTool`(P2 已废 expose;§11.5 彻底删
+//     AgentToolStore + exposeAgentAsTool / ensureRoleAgentExposed)
+//   - 残留的 internal 方法已全部删除。template create 走 subagents(AgentRecord)。
 //
 // ## 输入
-// - AgentStore / ProjectStore / AgentToolStore / CronStore
+// - AgentStore / ProjectStore / CronStore
 //
 // ## 输出
 // - ManagementService 实例,被 management tools (runtime/tools) 使用
@@ -39,13 +38,12 @@
 //
 // ## 维护规则
 // - 不持久化任何状态(纯封装 stores)
-// - template create 时同步接好 toolPolicy 的 agent-tool 引用(按 entry.id keyed)
+// - template create 时同步把 whitelistedRoleTags 解析为 subagents(按 agentId keyed)
 // - delete zero agent / delete referenced agent 拒绝
 //
 
 import type { AgentStore } from "./agent-store.js";
 import type { ProjectStore } from "./project-store.js";
-import type { AgentToolStore } from "./agent-tool-store.js";
 import type { CronStore } from "./cron-store.js";
 import type { RequirementStore } from "./requirement-store.js";
 import type { SessionDB } from "./session-db.js";
@@ -71,7 +69,6 @@ import { log } from "../core/logger.js";
 export interface ManagementDeps {
 	agentStore: AgentStore;
 	projectStore: ProjectStore;
-	agentToolStore: AgentToolStore;
 	/** v0.8 M1: cron store — optional so M0 callers (and tests) still work. */
 	cronStore?: CronStore;
 	/**
@@ -104,7 +101,6 @@ const CONTAINER_REQUIREMENT_STATUSES: RequirementStatus[] = [
 export class ManagementService {
 	private agentStore: AgentStore;
 	private projectStore: ProjectStore;
-	private agentToolStore: AgentToolStore;
 	private cronStore: CronStore | null;
 	// v0.8 P5 (§8.4 / §8.5): container view + resource usage deps. Late-bound
 	// via setters so production wiring order (server/index.ts constructs the
@@ -117,7 +113,6 @@ export class ManagementService {
 	constructor(deps: ManagementDeps) {
 		this.agentStore = deps.agentStore;
 		this.projectStore = deps.projectStore;
-		this.agentToolStore = deps.agentToolStore;
 		this.cronStore = deps.cronStore ?? null;
 		this.requirementStore = deps.requirementStore ?? null;
 		this.sessionDB = deps.sessionDB ?? null;
@@ -366,7 +361,8 @@ export class ManagementService {
 		if (agent.roleTag === "zero" || agent.name === "zero") {
 			throw new Error("Cannot delete the protected 'zero' management agent");
 		}
-		this.agentToolStore.deleteByAgentId(id);
+		// v0.8 §11.5: agent-as-tool retired — no AgentToolStore rows to cascade.
+		// subagents are soft refs (no cascade on agent delete by design).
 		this.cronStore?.deleteByAgent(id);
 		this.agentStore.delete(id);
 	}
@@ -397,8 +393,10 @@ export class ManagementService {
 
 	/**
 	 * Instantiate a role template as a global Agent. Resolves the template's
-	 * `whitelistedRoleTags` against currently-exposed agent-tools and merges
-	 * them into `toolPolicy.tools` keyed by entry.id (stable policy key).
+	 * `whitelistedRoleTags` against existing agents with that roleTag and
+	 * merges them into `AgentRecord.subagents` (v0.8 §11.5 — delegation now
+	 * flows through subagents keyed by agentId, NOT toolPolicy.tools[entryId]
+	 * which was the retired agent-as-tool path).
 	 *
 	 * This is the Agent.create + template path. Also used by the REST
 	 * /api/role-templates/:id/instantiate entry (parallel to the Agent tool).
@@ -415,19 +413,19 @@ export class ManagementService {
 		const bindToolPolicy = options.bindToolPolicy ?? true;
 
 		if (bindToolPolicy && template.whitelistedRoleTags && template.whitelistedRoleTags.length > 0) {
-			const tools = { ...(baseInput.toolPolicy?.tools ?? {}) };
+			const subagents = [...(baseInput.subagents ?? [])];
 			for (const roleTag of template.whitelistedRoleTags) {
-				const targetAgent = this.ensureRoleAgentExposed(roleTag);
-				if (targetAgent) {
-					tools[targetAgent.entry.id] = { enabled: true };
-				} else {
+				const targetAgent = this.findAgentByRoleTag(roleTag);
+				if (targetAgent && !subagents.some((s) => s.agentId === targetAgent.id)) {
+					subagents.push({ agentId: targetAgent.id });
+				} else if (!targetAgent) {
 					log.warn(
 						"management",
 						`No agent found for whitelisted roleTag "${roleTag}" during template "${templateId}" instantiation; skipping.`,
 					);
 				}
 			}
-			baseInput.toolPolicy = { ...(baseInput.toolPolicy as any), tools };
+			baseInput.subagents = subagents;
 		}
 
 		return this.agentStore.create(baseInput);
@@ -535,66 +533,12 @@ export class ManagementService {
 	}
 
 	/**
-	 * Ensure some agent with the given roleTag is exposed as an internal
-	 * agent-tool, returning its { agentId, entry } so callers can wire policy
-	 * by entry.id. Used by template instantiation (legacy compat).
+	 * Find the first agent with the given roleTag (legacy physical column).
+	 * Used by `instantiateTemplate` to resolve `whitelistedRoleTags` into
+	 * subagent references (v0.8 §11.5 — delegation via subagents).
 	 */
-	private ensureRoleAgentExposed(
-		roleTag: string,
-	): { agentId: string; entry: import("../shared/types.js").AgentToolEntry } | undefined {
+	private findAgentByRoleTag(roleTag: string): AgentRecord | undefined {
 		const agents = this.agentStore.listByRoleTag(roleTag);
-		if (agents.length === 0) return undefined;
-
-		for (const a of agents) {
-			const entry = this.agentToolStore.list().find(
-				(e) => e.type === "internal" && e.agentId === a.id && e.enabled,
-			);
-			if (entry) return { agentId: a.id, entry };
-		}
-
-		const first = agents[0];
-		const entry = this.exposeAgentAsTool(first.id, { enabled: true });
-		return { agentId: first.id, entry };
+		return agents[0];
 	}
-
-	/**
-	 * Expose an agent as an internal agent-tool. Retained for template
-	 * instantiation and the REST role-template router; runtime tools do not
-	 * call this (agent-as-tool retired in P2 — delegation flows through
-	 * AgentRecord.subagents).
-	 */
-	exposeAgentAsTool(
-		agentId: string,
-		opts: { name?: string; description?: string; enabled?: boolean; blocking?: boolean } = {},
-	): import("../shared/types.js").AgentToolEntry {
-		const agent = this.agentStore.get(agentId);
-		if (!agent) throw new Error(`Agent not found: ${agentId}`);
-
-		const existing = this.agentToolStore.list().find(
-			(e) => e.type === "internal" && e.agentId === agentId,
-		);
-		const name = opts.name ?? kebab(agent.name);
-
-		if (existing) {
-			return this.agentToolStore.update(existing.id, {
-				name,
-				description: opts.description,
-				enabled: opts.enabled ?? true,
-				blocking: opts.blocking,
-			});
-		}
-
-		return this.agentToolStore.create({
-			name,
-			description: opts.description,
-			type: "internal",
-			enabled: opts.enabled ?? true,
-			agentId,
-			blocking: opts.blocking ?? true,
-		});
-	}
-}
-
-function kebab(s: string): string {
-	return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }

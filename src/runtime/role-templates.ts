@@ -71,14 +71,15 @@ export interface RoleTemplate {
 	systemPrompt: string;
 	/**
 	 * toolPolicy to seed the agent with. `tools` is keyed by built-in tool
-	 * name (Shell/Read/Write/Edit/Grep/Glob) or by legacy agent-tool entry id
-	 * (instantiation-time binding, used by `instantiateTemplate`).
+	 * name (Shell/Read/Write/Edit/Grep/Glob). v0.8 §11.5 retired the agent-as-
+	 * tool path — callee roles are now wired via `subagents` (keyed by agentId),
+	 * NOT via `toolPolicy.tools[entryId]`.
 	 */
 	toolPolicy: AgentRecord["toolPolicy"];
 	/**
-	 * Optional list of roleTags whose agents should be auto-exposed as
-	 * internal agent-tools during template instantiation (caller→callee edges
-	 * in the call graph). Resolved by `ManagementService.instantiateTemplate`.
+	 * Optional list of roleTags whose agents should be auto-resolved into
+	 * `subagents` during template instantiation (caller→callee edges in the
+	 * call graph). Resolved by `ManagementService.instantiateTemplate`.
 	 */
 	whitelistedRoleTags?: string[];
 }
@@ -439,8 +440,8 @@ export type BuiltAgentFromTemplate = Omit<AgentRecord, "id" | "createdAt" | "upd
  *
  * The caller (management-service `instantiateTemplate`) is responsible for:
  *  - generating a stable id (or letting AgentStore mint one),
- *  - resolving `whitelistedRoleTags` to actual AgentToolEntry ids and merging
- *    them into `toolPolicy.tools` (keyed by entry id).
+ *  - resolving `whitelistedRoleTags` to actual AgentRecord ids and merging
+ *    them into `subagents` (keyed by agentId).
  *
  * v0.8 P6 / RFC §1.4: the template's `roleTag` is NOT copied onto the built
  * agent — agent identity is name + systemPrompt. (Earlier builds carried it

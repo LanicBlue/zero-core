@@ -111,28 +111,6 @@ export interface Provider {
 	updatedAt: string;
 }
 
-export interface AgentToolEntry {
-	id: string;
-	name: string;
-	description?: string;
-	type: "internal" | "external";
-	enabled: boolean;
-	agentId?: string;
-	transport?: "cli" | "http";
-	command?: string;
-	argsTemplate?: string;
-	url?: string;
-	method?: string;
-	headers?: Record<string, string>;
-	bodyTemplate?: string;
-	responsePath?: string;
-	timeout?: number;
-	blocking?: boolean;
-	auto_background_timeout?: number;
-	createdAt: string;
-	updatedAt: string;
-}
-
 export interface KbFileInfo {
 	path: string;
 	name: string;
@@ -250,8 +228,6 @@ export type UpdateAgentInput = Partial<Omit<AgentRecord, "id" | "createdAt" | "u
 export type CreateProviderInput = Omit<Provider, "id" | "createdAt" | "updatedAt">;
 export type UpdateProviderInput = Partial<Omit<Provider, "id" | "createdAt" | "updatedAt">>;
 
-export type CreateAgentToolInput = Omit<AgentToolEntry, "id" | "createdAt" | "updatedAt">;
-export type UpdateAgentToolInput = Partial<Omit<AgentToolEntry, "id" | "createdAt" | "updatedAt">>;
 
 export type CreateKbInput = Omit<KnowledgeBase, "id" | "createdAt" | "updatedAt">;
 export type UpdateKbInput = Partial<Omit<KnowledgeBase, "id" | "createdAt" | "updatedAt">>;

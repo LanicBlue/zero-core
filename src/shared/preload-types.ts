@@ -28,7 +28,6 @@
 import type {
 	AgentRecord, CreateAgentInput, UpdateAgentInput,
 	Provider, CreateProviderInput, UpdateProviderInput, ProviderModel, FetchedModel,
-	AgentToolEntry, CreateAgentToolInput, UpdateAgentToolInput,
 	KnowledgeBase, CreateKbInput, UpdateKbInput, KbSearchResult, KbFileIngestResult,
 	McpServerConfig, CreateMcpInput, UpdateMcpInput, McpStatus,
 	PromptTemplate, CreateTemplateInput, UpdateTemplateInput,
@@ -147,14 +146,6 @@ export interface WindowApi {
 	kbRemoveFile: (kbId: string, filePath: string) => Promise<{ success: true }>;
 	kbSearch: (kbIds: string[], query: string) => Promise<KbSearchResult[]>;
 	kbChunkCount: (kbId: string) => Promise<number>;
-
-	// ── Agent Tools ──
-	agentToolsList: () => Promise<AgentToolEntry[]>;
-	agentToolsGet: (id: string) => Promise<AgentToolEntry | undefined>;
-	agentToolsGetByAgent: (agentId: string) => Promise<AgentToolEntry | undefined>;
-	agentToolsCreate: (input: CreateAgentToolInput) => Promise<AgentToolEntry>;
-	agentToolsUpdate: (id: string, input: UpdateAgentToolInput) => Promise<AgentToolEntry | { error: string }>;
-	agentToolsDelete: (id: string) => Promise<{ success: true }>;
 
 	// ── MCP ──
 	mcpList: () => Promise<McpServerConfig[]>;

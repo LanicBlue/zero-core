@@ -77,8 +77,10 @@ test.describe("P8 — agent config page (harness fields round-trip)", () => {
 		const navText = await nav.textContent({ timeout: 5_000 });
 		expect(navText).toContain("委派");
 		expect(navText).toContain("Wiki 锚点");
-		// Legacy expose-as-tool tab kept (P9 will drop it).
-		expect(navText).toContain("作为工具");
+		// v0.8 §11.5: agent-as-tool retired — the "作为工具 (legacy)" nav tab
+		// was removed from AgentEditor.tsx along with the AgentToolStore/ExposeAsToolSection
+		// delete. Assert the retirement: the tab MUST NOT be present.
+		expect(navText).not.toContain("作为工具");
 	});
 
 	test("subagents section: add a delegation entry and round-trip via autosave", async () => {

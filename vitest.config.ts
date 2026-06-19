@@ -28,13 +28,16 @@ export default defineConfig({
 		include: ["tests/unit/**/*.test.ts"],
 		environment: "node",
 		globals: false,
-		// v0.8 (sub2 P1): Vitest 4.x default `threads` pool fails to inject
-		// `globalThis.__vitest_worker__` on Node 24 + Windows, surfacing as
-		// "Cannot read properties of undefined (reading 'config')" at the first
-		// `describe(...)` call. The `vmThreads` pool runs tests in the main
-		// thread's VM context where the worker state IS available. Tracked at
-		// cloudflare/workers-sdk#10977 / vitest-dev/vitest (Node 24 worker
-		// pool regression). Swap back to `threads` once Vitest fixes it.
-		pool: "vmThreads",
+		// v0.8 (sub2 P1, updated §11.5 cleanup): pool is `forks`. The earlier
+		// `vmThreads` choice worked around a Vitest 4.x / Node 24 worker-
+		// injection regression, but vmThreads runs tests under Vite's CJS-
+		// interop loader which chokes on @exodus/bytes (shipped as ESM,
+		// require()'d via CJS by html-encoding-sniffer — a transitive dep of
+		// jsdom, pulled in through fetch-tools → config-router). The `forks`
+		// pool uses Node's native module loader and handles the mixed ESM/CJS
+		// graph correctly, which also unblocks the rest-routers memory-config
+		// tests. Re-evaluate if the original Node 24 worker regression
+		// resurfaces (cloudflare/workers-sdk#10977).
+		pool: "forks",
 	},
 });

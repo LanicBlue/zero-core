@@ -32,7 +32,6 @@ import { join } from "node:path";
 import { SessionDB } from "../../src/server/session-db.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
-import { AgentToolStore } from "../../src/server/agent-tool-store.js";
 import { CronStore } from "../../src/server/cron-store.js";
 import { ManagementService } from "../../src/server/management-service.js";
 import { WikiStore } from "../../src/server/wiki-node-store.js";
@@ -53,7 +52,6 @@ let tmpDir: string;
 let sessionDB: SessionDB;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
-let agentToolStore: AgentToolStore;
 let cronStore: CronStore;
 let management: ManagementService;
 let wikiStoreGlobal: WikiStore;
@@ -81,13 +79,12 @@ beforeEach(() => {
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);
-	agentToolStore = new AgentToolStore(sessionDB);
 	cronStore = new CronStore(sessionDB);
 	wikiStoreGlobal = new WikiStore(sessionDB);
 	wikiStore = new ProjectWikiStore(wikiStoreGlobal);
 	requirementStore = new RequirementStore(sessionDB);
 	toolUsageStore = new ToolUsageStore(sessionDB);
-	management = new ManagementService({ agentStore, projectStore, agentToolStore, cronStore });
+	management = new ManagementService({ agentStore, projectStore, cronStore });
 });
 
 afterEach(() => {

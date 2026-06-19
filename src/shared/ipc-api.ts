@@ -28,7 +28,6 @@
 import type {
 	AgentRecord, CreateAgentInput, UpdateAgentInput,
 	Provider, CreateProviderInput, UpdateProviderInput, ProviderModel, FetchedModel,
-	AgentToolEntry, CreateAgentToolInput, UpdateAgentToolInput,
 	KnowledgeBase, CreateKbInput, UpdateKbInput, KbSearchResult, KbFileIngestResult,
 	McpServerConfig, CreateMcpInput, UpdateMcpInput, McpStatus,
 	PromptTemplate, CreateTemplateInput, UpdateTemplateInput,
@@ -68,14 +67,6 @@ export interface IpcChannelDefs {
 	"agents:create":  { params: [input: CreateAgentInput];   result: AgentRecord };
 	"agents:update":  { params: [id: string, input: UpdateAgentInput]; result: AgentRecord | Err };
 	"agents:delete":  { params: [id: string];                result: Ok };
-
-	// ── Agent Tools (CRUD + get-by-agent) ────────────────────
-	"agent-tools:list":         { params: [];                                  result: AgentToolEntry[] };
-	"agent-tools:get":          { params: [id: string];                        result: AgentToolEntry | undefined };
-	"agent-tools:get-by-agent": { params: [agentId: string];                   result: AgentToolEntry | undefined };
-	"agent-tools:create":       { params: [input: CreateAgentToolInput];       result: AgentToolEntry };
-	"agent-tools:update":       { params: [id: string, input: UpdateAgentToolInput]; result: AgentToolEntry | Err };
-	"agent-tools:delete":       { params: [id: string];                        result: Ok };
 
 	// ── Providers (CRUD + model ops) ─────────────────────────
 	"providers:list":          { params: [];                                  result: Provider[] };

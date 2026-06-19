@@ -26,7 +26,6 @@ import { join } from "node:path";
 import { SessionDB } from "../../src/server/session-db.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
-import { AgentToolStore } from "../../src/server/agent-tool-store.js";
 import { CronStore } from "../../src/server/cron-store.js";
 import { CronAnalysisManager } from "../../src/server/cron-analysis.js";
 import { ManagementService } from "../../src/server/management-service.js";
@@ -47,7 +46,6 @@ let tmpDir: string;
 let sessionDB: SessionDB;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
-let agentToolStore: AgentToolStore;
 let cronStore: CronStore;
 let zeroAdmin: ManagementService;
 
@@ -69,9 +67,8 @@ beforeEach(() => {
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);
-	agentToolStore = new AgentToolStore(sessionDB);
 	cronStore = new CronStore(sessionDB);
-	zeroAdmin = new ManagementService({ agentStore, projectStore, agentToolStore, cronStore });
+	zeroAdmin = new ManagementService({ agentStore, projectStore, cronStore });
 });
 
 afterEach(() => {

@@ -136,14 +136,6 @@ const api: WindowApi = {
 	kbSearch: (kbIds, query) => ipcRenderer.invoke("kb:search", kbIds, query),
 	kbChunkCount: (kbId) => ipcRenderer.invoke("kb:chunk-count", kbId),
 
-	// ─── Agent Tools ─────────────────────────────────
-	agentToolsList: () => ipcRenderer.invoke("agent-tools:list"),
-	agentToolsGet: (id) => ipcRenderer.invoke("agent-tools:get", id),
-	agentToolsGetByAgent: (agentId) => ipcRenderer.invoke("agent-tools:get-by-agent", agentId),
-	agentToolsCreate: (input) => ipcRenderer.invoke("agent-tools:create", input),
-	agentToolsUpdate: (id, input) => ipcRenderer.invoke("agent-tools:update", id, input),
-	agentToolsDelete: (id) => ipcRenderer.invoke("agent-tools:delete", id),
-
 	// ─── MCP ─────────────────────────────────────────
 	mcpList: () => ipcRenderer.invoke("mcp:list"),
 	mcpGet: (id) => ipcRenderer.invoke("mcp:get", id),

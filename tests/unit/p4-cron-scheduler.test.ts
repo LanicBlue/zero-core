@@ -35,7 +35,6 @@ import { join } from "node:path";
 import { SessionDB } from "../../src/server/session-db.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
-import { AgentToolStore } from "../../src/server/agent-tool-store.js";
 import { CronStore, CronRunStore } from "../../src/server/cron-store.js";
 import { CronAnalysisManager } from "../../src/server/cron-analysis.js";
 import { runMigrations } from "../../src/server/db-migration.js";
@@ -82,7 +81,6 @@ let tmpDir: string;
 let sessionDB: SessionDB;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
-let agentToolStore: AgentToolStore;
 let cronStore: CronStore;
 let cronRunStore: CronRunStore;
 let agent: CronRecord["agentId"] extends never ? never : { id: string };
@@ -96,7 +94,6 @@ beforeEach(() => {
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);
-	agentToolStore = new AgentToolStore(sessionDB);
 	cronStore = new CronStore(sessionDB);
 	cronRunStore = new CronRunStore(sessionDB);
 

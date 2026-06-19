@@ -29,13 +29,12 @@ import { fileURLToPath } from "url";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { AgentStore } from "./agent-store.js";
-import { AgentToolStore } from "./agent-tool-store.js";
 import { ProviderStore } from "./provider-store.js";
 import { TemplateStore } from "./template-store.js";
 import { McpStore } from "./mcp-store.js";
 import { KbStore } from "./kb-store.js";
 import { KbDB } from "./kb-db.js";
-import { createAgentService, registerAgentToolEntries } from "./agent-service.js";
+import { createAgentService } from "./agent-service.js";
 import { SessionDB } from "./session-db.js";
 import { runMigrations } from "./db-migration.js";
 import { loadWorkspaceConfig } from "./workspace-config.js";
@@ -43,7 +42,6 @@ import { buildDefaultPrompt } from "../core/default-prompt.js";
 import { ToolRegistry } from "../core/tool-registry.js";
 import { MCPManager } from "./mcp-manager.js";
 import { createAgentRouter } from "./agent-router.js";
-import { createAgentToolRouter } from "./agent-tool-router.js";
 import { createProviderRouter } from "./provider-router.js";
 import { createTemplateRouter } from "./template-router.js";
 import { createMcpRouter } from "./mcp-router.js";
@@ -149,9 +147,6 @@ export async function startServer(options?: StartServerOptions) {
 	registerRuntimeTools(registry);
 	const mcp = new MCPManager(registry);
 	const agentStore = new AgentStore(sessionDB);
-	const agentToolStore = new AgentToolStore(sessionDB);
-	agentToolStore.cleanupOrphans();
-	registerAgentToolEntries(agentToolStore, registry);
 	const providerStore = new ProviderStore(sessionDB);
 	const templateStore = new TemplateStore(sessionDB);
 	const mcpStore = new McpStore(sessionDB);
@@ -191,7 +186,6 @@ export async function startServer(options?: StartServerOptions) {
 
 	const agentService = createAgentService(workspaceConfig.workspaceDir, sessionDB, undefined, registry, mcp);
 	agentService.setAgentStore(agentStore);
-	agentService.setAgentToolStore(agentToolStore);
 
 	// v0.8 (P3): ManagementService (renamed from ZeroAdminService) —
 	// capability backend for the Project/Agent/Cron action tools.
@@ -200,7 +194,7 @@ export async function startServer(options?: StartServerOptions) {
 	// are wired below after their constructor runs.
 	const { ManagementService } = await import("./management-service.js");
 	const management = new ManagementService({
-		agentStore, projectStore, agentToolStore, cronStore,
+		agentStore, projectStore, cronStore,
 		requirementStore, sessionDB, wikiStore: wikiStoreGlobal,
 	});
 	agentService.setManagement(management);
@@ -410,8 +404,7 @@ export async function startServer(options?: StartServerOptions) {
 		buildDefaultPrompt,
 	}));
 
-	app.use("/api/agents", createAgentRouter({ agentStore, agentToolStore, agentService, sessionDB }));
-	app.use("/api/agent-tools", createAgentToolRouter(agentToolStore));
+	app.use("/api/agents", createAgentRouter({ agentStore, agentService, sessionDB }));
 	app.use("/api/providers", createProviderRouter(providerStore));
 	app.use("/api/templates", createTemplateRouter(templateStore, sessionDB));
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
@@ -664,6 +657,22 @@ export async function startServer(options?: StartServerOptions) {
 	app.get("/api/webfetch/cookies", (_req, res) => res.json(getCookieCount()));
 	app.delete("/api/webfetch/cookies", (req, res) => {
 		clearCookies(req.query.domain as string | undefined);
+		res.json({ success: true });
+	});
+
+	// v0.8: ask-user response bridge. ask-user tool (runtime/tools/ask-user.ts)
+	// runs in the backend-spawn process and waits on the in-process
+	// pendingResponses singleton; the renderer resolves via this endpoint
+	// (arch/04-tools-subsystem.md: api.askUserRespond → HTTP → server →
+	// pendingResponses.resolveRequest).
+	const { pendingResponses } = await import("../runtime/pending-responses.js");
+	app.post("/api/ask-user/respond", (req, res) => {
+		const { requestId, answers } = (req.body ?? {}) as { requestId?: string; answers?: Record<string, string> };
+		if (!requestId || !answers) {
+			res.status(400).json({ error: "requestId + answers required" });
+			return;
+		}
+		pendingResponses.resolveRequest(requestId, answers);
 		res.json({ success: true });
 	});
 

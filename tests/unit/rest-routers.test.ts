@@ -450,110 +450,27 @@ describe("tool-execution-router", () => {
 // has a corresponding mapping in ipc-proxy.ts.
 
 describe("ipc-proxy route mapping completeness", () => {
-	const ROUTE_MAP: Record<string, { method: string; path: string }> = {
-		"config:get":              { method: "GET",  path: "/api/config" },
-		"config:update":           { method: "PUT",  path: "/api/config" },
-		"config:get-theme":        { method: "GET",  path: "/api/config/theme" },
-		"config:set-theme":        { method: "PUT",  path: "/api/config/theme" },
-		"device-context:get":      { method: "GET",  path: "/api/config/device-context" },
-		"device-context:generate": { method: "POST", path: "/api/config/device-context/generate" },
-		"device-context:save":     { method: "PUT",  path: "/api/config/device-context" },
-		"guidelines:get":          { method: "GET",  path: "/api/config/guidelines" },
-		"guidelines:save":         { method: "PUT",  path: "/api/config/guidelines" },
-		"agents:list":             { method: "GET",  path: "/api/agents" },
-		"agents:get":              { method: "GET",  path: "/api/agents/:id" },
-		"agents:create":           { method: "POST", path: "/api/agents" },
-		"agents:update":           { method: "PUT",  path: "/api/agents/:id" },
-		"agents:delete":           { method: "DELETE", path: "/api/agents/:id" },
-		"agent-tools:list":        { method: "GET",  path: "/api/agent-tools" },
-		"agent-tools:get":         { method: "GET",  path: "/api/agent-tools/:id" },
-		"agent-tools:get-by-agent":{ method: "GET",  path: "/api/agent-tools" },
-		"agent-tools:create":      { method: "POST", path: "/api/agent-tools" },
-		"agent-tools:update":      { method: "PUT",  path: "/api/agent-tools/:id" },
-		"agent-tools:delete":      { method: "DELETE", path: "/api/agent-tools/:id" },
-		"providers:list":          { method: "GET",  path: "/api/providers" },
-		"providers:get":           { method: "GET",  path: "/api/providers/:id" },
-		"providers:create":        { method: "POST", path: "/api/providers" },
-		"providers:update":        { method: "PUT",  path: "/api/providers/:id" },
-		"providers:delete":        { method: "DELETE", path: "/api/providers/:id" },
-		"providers:add-model":     { method: "POST", path: "/api/providers/:id/models" },
-		"providers:remove-model":  { method: "DELETE", path: "/api/providers/:id/models/:modelId" },
-		"providers:fetch-models":  { method: "POST", path: "/api/providers/:id/fetch-models" },
-		"models:list":             { method: "GET",  path: "/api/models" },
-		"mcp:list":                { method: "GET",  path: "/api/mcp" },
-		"mcp:get":                 { method: "GET",  path: "/api/mcp/:id" },
-		"mcp:create":              { method: "POST", path: "/api/mcp" },
-		"mcp:update":              { method: "PUT",  path: "/api/mcp/:id" },
-		"mcp:delete":              { method: "DELETE", path: "/api/mcp/:id" },
-		"mcp:test":                { method: "POST", path: "/api/mcp/test" },
-		"mcp:tools":               { method: "GET",  path: "/api/mcp/:id/tools" },
-		"mcp:connect":             { method: "POST", path: "/api/mcp/:id/connect" },
-		"mcp:disconnect":          { method: "POST", path: "/api/mcp/:id/disconnect" },
-		"mcp:status":              { method: "GET",  path: "/api/mcp/status" },
-			"mcp:scan":                { method: "POST", path: "/api/mcp/scan" },
-			"mcp:presets":             { method: "GET",  path: "/api/mcp/presets" },
-			"mcp:add-preset":          { method: "POST", path: "/api/mcp/add-preset" },
-			"skills:list":             { method: "GET",  path: "/api/skills" },
-		"kb:list":                 { method: "GET",  path: "/api/kb" },
-		"kb:get":                  { method: "GET",  path: "/api/kb/:id" },
-		"kb:create":               { method: "POST", path: "/api/kb" },
-		"kb:update":               { method: "PUT",  path: "/api/kb/:id" },
-		"kb:delete":               { method: "DELETE", path: "/api/kb/:id" },
-		"kb:add-files":            { method: "POST", path: "/api/kb/:id/files" },
-		"kb:remove-file":          { method: "DELETE", path: "/api/kb/:id/files" },
-		"kb:search":               { method: "POST", path: "/api/kb/search" },
-		"kb:chunk-count":          { method: "GET",  path: "/api/kb/:id/chunks" },
-		"templates:list":          { method: "GET",  path: "/api/templates" },
-		"templates:get":           { method: "GET",  path: "/api/templates/:id" },
-		"templates:create":        { method: "POST", path: "/api/templates" },
-		"templates:update":        { method: "PUT",  path: "/api/templates/:id" },
-		"templates:delete":        { method: "DELETE", path: "/api/templates/:id" },
-		"templates:export":        { method: "POST", path: "/api/templates/:id/export" },
-		"templates:import":        { method: "POST", path: "/api/templates/import" },
-		// v0.8 P6 (RFC §7.2) — role identity templates (distinct from DB
-		// PromptTemplate /api/templates above).
-		"role-templates:list":         { method: "GET",  path: "/api/role-templates" },
-		"role-templates:get":          { method: "GET",  path: "/api/role-templates/:id" },
-		"role-templates:instantiate":  { method: "POST", path: "/api/role-templates/:id/instantiate" },
-		"tools:list":              { method: "GET",  path: "/api/config/tools" },
-		"tool-config:get":         { method: "GET",  path: "/api/config/tool-config" },
-		"tool-config:save":        { method: "PUT",  path: "/api/config/tool-config" },
-		"tool:execute":            { method: "POST", path: "/api/tool-execute" },
-		"sessions:list":           { method: "GET",  path: "/api/sessions/:agentId" },
-		"sessions:new":            { method: "POST", path: "/api/sessions/:agentId/new" },
-		"sessions:switch":         { method: "PUT",  path: "/api/sessions/:agentId/switch/:sessionId" },
-		"sessions:activate":       { method: "POST", path: "/api/sessions/:agentId/activate" },
-		"sessions:current":        { method: "GET",  path: "/api/sessions/:agentId/current" },
-		"sessions:delete":         { method: "DELETE", path: "/api/sessions/:agentId/:sessionId" },
-		"sessions:metrics":        { method: "GET",  path: "/api/sessions/metrics" },
-		"messages:clear":          { method: "DELETE", path: "/api/sessions/:agentId/messages" },
-		"messages:edit":           { method: "PUT",  path: "/api/sessions/:agentId/messages/:seq" },
-		"messages:delete":         { method: "DELETE", path: "/api/sessions/:agentId/messages/:seq" },
-		"chat:send":               { method: "POST", path: "/api/chat/send" },
-		"chat:abort":              { method: "POST", path: "/api/chat/abort" },
-		"files:tree":              { method: "GET",  path: "/api/files/tree" },
-		"files:content":           { method: "GET",  path: "/api/files/content" },
-		"files:resolve-path":      { method: "GET",  path: "/api/files/resolve-path" },
-		"files:save":              { method: "PUT",  path: "/api/files/save" },
-		"logs:list-files":         { method: "GET",  path: "/api/logs/files" },
-		"logs:read":               { method: "GET",  path: "/api/logs/read" },
-		"logs:get-config":         { method: "GET",  path: "/api/logs/config" },
-		"logs:set-config":         { method: "PUT",  path: "/api/logs/config" },
-		"tool-executions:query":   { method: "POST", path: "/api/tool-executions/query" },
-		"tool-executions:stats":   { method: "GET",  path: "/api/tool-executions/stats" },
-		"tool-executions:cleanup": { method: "POST", path: "/api/tool-executions/cleanup" },
-		"tool-executions:analyze": { method: "POST", path: "/api/tool-executions/analyze" },
-		"webfetch:cookies":        { method: "GET",  path: "/api/webfetch/cookies" },
-		"webfetch:clear-cookies":  { method: "DELETE", path: "/api/webfetch/cookies" },
-		"ask-user:respond":        { method: "POST", path: "/api/ask-user/respond" },
-		"memory-nodes:nodes":          { method: "GET",  path: "/api/memory-nodes/nodes" },
-		"memory-nodes:subjects":       { method: "GET",  path: "/api/memory-nodes/subjects" },
-		"memory-nodes:subject-nodes":  { method: "GET",  path: "/api/memory-nodes/subject/:name" },
-		"memory-nodes:search":         { method: "GET",  path: "/api/memory-nodes/search" },
-		"memory-nodes:delete":         { method: "DELETE", path: "/api/memory-nodes/nodes/:id" },
-		"config:memory-get":    { method: "GET",  path: "/api/config/memory-config" },
-		"config:memory-update": { method: "PUT",  path: "/api/config/memory-config" },
-	};
+	// v0.8 (§11.5 cleanup): derive ROUTE_MAP from ipc-proxy.ts source so the
+	// test stays in sync as channels are added/removed (previously a hand-
+	// maintained literal that rotted whenever preload gained a new channel —
+	// the original rest-routers failures). Each entry in ipc-proxy.ts has the
+	// shape `"<channel>": { method: "GET"|"POST"|..., path: "/api/...", buildReq: ... }`.
+	// We parse that with a tolerant regex.
+	const ROUTE_MAP: Record<string, { method: string; path: string }> = (() => {
+		const fs = require("fs") as typeof import("fs");
+		const src = fs.readFileSync("src/main/ipc-proxy.ts", "utf-8");
+		const out: Record<string, { method: string; path: string }> = {};
+		// Match:  "<channel>":  { method: "GET", path: "/api/...",
+		// Tolerant to leading whitespace / tabs (file uses tabs). Channel names
+		// are kebab-case but may carry camelCase suffixes (e.g. getResourceUsage),
+		// so the name char class includes uppercase.
+		const re = /^\s*"([a-zA-Z][a-zA-Z0-9:-]*)":\s*\{\s*method:\s*"(GET|POST|PUT|DELETE)"\s*,\s*path:\s*"(\/[^"]+)"/gm;
+		let m: RegExpExecArray | null;
+		while ((m = re.exec(src)) !== null) {
+			out[m[1]] = { method: m[2], path: m[3] };
+		}
+		return out;
+	})();
 
 	// Channels handled locally by Electron (not proxied to HTTP)
 	const LOCAL_CHANNELS = new Set([
@@ -646,6 +563,71 @@ describe("ipc-proxy route mapping completeness", () => {
 		// Verify the R map has the right structure (method + path + buildReq)
 		const routeCount = (proxySource.match(/buildReq:/g) || []).length;
 		expect(routeCount).toBeGreaterThanOrEqual(Object.keys(ROUTE_MAP).length);
+	});
+
+	// v0.8 §11.5 debt-1 contract: agent-as-tool channels MUST be absent from
+	// both ROUTE_MAP (derived from ipc-proxy source) and preload. Catches any
+	// accidental re-introduction of the retired /api/agent-tools surface.
+	test("agent-as-tool channels are retired (not in ROUTE_MAP or preload)", async () => {
+		const retired = [
+			"agent-tools:list",
+			"agent-tools:get",
+			"agent-tools:get-by-agent",
+			"agent-tools:create",
+			"agent-tools:update",
+			"agent-tools:delete",
+		];
+		for (const ch of retired) {
+			expect(
+				ROUTE_MAP[ch],
+				`retired channel "${ch}" must not appear in ROUTE_MAP`,
+			).toBeUndefined();
+		}
+
+		const preloadSource = await import("fs").then(fs =>
+			fs.readFileSync("src/preload/index.ts", "utf-8")
+		);
+		expect(
+			preloadSource,
+			"preload must not reference the retired agentToolsList/Get/Create family",
+		).not.toMatch(/agentTools(List|Get|GetByAgent|Create|Update|Delete)/);
+	});
+});
+
+// v0.8 §11.5 debt-1 contract: the agent_tools table is dropped (idempotent)
+// and the runtime never instantiates AgentToolStore. Verified by sourcing
+// db-migration.ts source.
+describe("agent-as-tool retirement: db-migration + ask-user endpoint", () => {
+	test("db-migration drops agent_tools idempotently and has no AGENT_TOOL_COLUMNS", async () => {
+		const fs = await import("fs");
+		const src = fs.readFileSync("src/server/db-migration.ts", "utf-8");
+
+		// The DROP must be present and use IF EXISTS (idempotent for fresh DBs
+		// that never had the table, and for already-dropped upgraded DBs).
+		expect(src).toMatch(/DROP TABLE IF EXISTS agent_tools/);
+
+		// The retired column block must be gone.
+		expect(src).not.toMatch(/AGENT_TOOL_COLUMNS/);
+
+		// No SqliteStore instance for agent_tools survives.
+		expect(src).not.toMatch(/new SqliteStore<[^>]*>\(db,\s*"agent_tools"/);
+	});
+
+	test("ask-user:respond endpoint is wired (POST /api/ask-user/respond)", async () => {
+		// v0.8 §11.5 debt-2 contract: the new ask-user response bridge must
+		// exist in ROUTE_MAP with the right method+path so preload's
+		// askUserRespond round-trips through ipc-proxy to the server endpoint.
+		const fs = await import("fs");
+		const proxySrc = fs.readFileSync("src/main/ipc-proxy.ts", "utf-8");
+		expect(proxySrc).toContain('"ask-user:respond"');
+		expect(proxySrc).toContain('"/api/ask-user/respond"');
+
+		const serverSrc = fs.readFileSync("src/server/index.ts", "utf-8");
+		expect(
+			serverSrc,
+			"server must register POST /api/ask-user/respond that calls pendingResponses.resolveRequest",
+		).toMatch(/app\.post\(["']\/api\/ask-user\/respond["']/);
+		expect(serverSrc).toContain("pendingResponses.resolveRequest");
 	});
 });
 

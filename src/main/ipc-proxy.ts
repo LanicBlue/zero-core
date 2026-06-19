@@ -67,14 +67,6 @@ const R: Record<string, RouteMapping> = {
 	"agents:update":  { method: "PUT",  path: "/api/agents/:id", buildReq: (id, input) => ({ params: { id }, body: input }) },
 	"agents:delete":  { method: "DELETE", path: "/api/agents/:id", buildReq: (id) => ({ params: { id } }) },
 
-	// Agent Tools
-	"agent-tools:list":         { method: "GET", path: "/api/agent-tools", buildReq: () => ({}) },
-	"agent-tools:get":          { method: "GET", path: "/api/agent-tools/:id", buildReq: (id) => ({ params: { id } }) },
-	"agent-tools:get-by-agent": { method: "GET", path: "/api/agent-tools", buildReq: (agentId) => ({ query: { agentId } }) },
-	"agent-tools:create":       { method: "POST", path: "/api/agent-tools", buildReq: (input) => ({ body: input }) },
-	"agent-tools:update":       { method: "PUT", path: "/api/agent-tools/:id", buildReq: (id, input) => ({ params: { id }, body: input }) },
-	"agent-tools:delete":       { method: "DELETE", path: "/api/agent-tools/:id", buildReq: (id) => ({ params: { id } }) },
-
 	// Providers
 	"providers:list":          { method: "GET", path: "/api/providers", buildReq: () => ({}) },
 	"providers:get":           { method: "GET", path: "/api/providers/:id", buildReq: (id) => ({ params: { id } }) },
@@ -172,6 +164,10 @@ const R: Record<string, RouteMapping> = {
 	// WebFetch (login stays in Electron, cookies go to backend)
 	"webfetch:cookies":       { method: "GET", path: "/api/webfetch/cookies", buildReq: () => ({}) },
 	"webfetch:clear-cookies": { method: "DELETE", path: "/api/webfetch/cookies", buildReq: (domain?) => ({ query: domain ? { domain } : {} }) },
+
+	// ask-user response bridge (arch/04 — resolves the backend in-process
+	// pendingResponses singleton that ask-user.ts waits on).
+	"ask-user:respond":       { method: "POST", path: "/api/ask-user/respond", buildReq: (requestId, answers) => ({ body: { requestId, answers } }) },
 
 	// Skills
 	"skills:list":    { method: "GET", path: "/api/skills", buildReq: () => ({}) },

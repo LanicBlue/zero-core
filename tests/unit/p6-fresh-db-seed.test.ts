@@ -33,7 +33,6 @@ import { homedir } from "node:os";
 import { SessionDB } from "../../src/server/session-db.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { ProjectStore } from "../../src/server/project-store.js";
-import { AgentToolStore } from "../../src/server/agent-tool-store.js";
 import { CronStore } from "../../src/server/cron-store.js";
 import { WikiStore, WIKI_GLOBAL_ROOT_ID } from "../../src/server/wiki-node-store.js";
 import { ManagementService } from "../../src/server/management-service.js";
@@ -53,10 +52,9 @@ beforeEach(() => {
 	runMigrations(sessionDB);
 	agentStore = new AgentStore(sessionDB);
 	const projectStore = new ProjectStore(sessionDB);
-	const agentToolStore = new AgentToolStore(sessionDB);
 	const cronStore = new CronStore(sessionDB);
 	wikiStore = new WikiStore(sessionDB);
-	management = new ManagementService({ agentStore, projectStore, agentToolStore, cronStore });
+	management = new ManagementService({ agentStore, projectStore, cronStore });
 });
 
 afterEach(() => {

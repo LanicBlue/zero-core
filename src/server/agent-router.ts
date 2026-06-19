@@ -22,18 +22,16 @@
 //
 import { Router } from "express";
 import type { AgentStore } from "./agent-store.js";
-import type { AgentToolStore } from "./agent-tool-store.js";
 import type { createAgentService } from "./agent-service.js";
 import type { SessionDB } from "./session-db.js";
 
 export function createAgentRouter(deps: {
 	agentStore: AgentStore;
-	agentToolStore: AgentToolStore;
 	agentService: ReturnType<typeof createAgentService>;
 	sessionDB: SessionDB;
 }): Router {
 	const router = Router();
-	const { agentStore, agentToolStore, agentService, sessionDB } = deps;
+	const { agentStore, agentService, sessionDB } = deps;
 
 	// -----------------------------------------------------------------------
 	// Agent CRUD
@@ -69,7 +67,7 @@ export function createAgentRouter(deps: {
 
 	/** DELETE /:id — delete agent */
 	router.delete("/:id", (req, res) => {
-		agentToolStore.deleteByAgentId(req.params.id);
+		// v0.8 §11.5: agent-as-tool retired — no AgentToolStore rows to cascade.
 		agentStore.delete(req.params.id);
 		res.json({ success: true });
 	});

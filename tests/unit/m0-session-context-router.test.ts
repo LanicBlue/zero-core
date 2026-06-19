@@ -8,8 +8,8 @@
 //   - bundle 继承 (per-call override)
 //   - SessionDB context 列持久化
 //   - role-presets (lead/PM/archivist/analyzer/planner/dev/review/qa/zero)
-//   - ManagementService.instantiateTemplate (一键实例化 + toolPolicy 接好)
-//   - ManagementService.updateAgent (consolidates toolPolicy) / exposeAgentAsTool
+//   - ManagementService.instantiateTemplate (一键实例化 + subagents 接好)
+//   - ManagementService.updateAgent (consolidates toolPolicy)
 //   - ProjectStore workspaceDir 唯一约束 + 不可改
 //
 // ## 输入
@@ -26,7 +26,6 @@ import { join } from "node:path";
 import { SessionDB } from "../../src/server/session-db.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
-import { AgentToolStore } from "../../src/server/agent-tool-store.js";
 import {
 	resolveSessionByRoleProject,
 	buildProjectBundle,
@@ -43,7 +42,6 @@ let tmpDir: string;
 let sessionDB: SessionDB;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
-let agentToolStore: AgentToolStore;
 let management: ManagementService;
 
 beforeEach(() => {
@@ -52,8 +50,7 @@ beforeEach(() => {
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);
-	agentToolStore = new AgentToolStore(sessionDB);
-	management = new ManagementService({ agentStore, projectStore, agentToolStore });
+	management = new ManagementService({ agentStore, projectStore });
 });
 
 afterEach(() => {
@@ -261,10 +258,11 @@ describe("ManagementService", () => {
 		expect(updated?.toolPolicy?.tools?.Read?.enabled).toBe(true);
 	});
 
-	test("instantiateTemplate wires whitelisted callee roles into toolPolicy (by entry.id)", () => {
-		// First create some callee role agents (analyzer, planner, dev, etc.)
-		// v0.8 P0 (§1.4): roleTag no longer round-trips via store; seed the
-		// physical column so ensureRoleAgentExposed's listByRoleTag finds them.
+	test("instantiateTemplate wires whitelisted callee roles into subagents (by agentId)", () => {
+		// v0.8 §11.5: agent-as-tool retired — instantiateTemplate now resolves
+		// whitelistedRoleTags into AgentRecord.subagents (keyed by agentId),
+		// NOT toolPolicy.tools[entryId]. Seed callee role agents.
+		const created: Record<string, string> = {};
 		for (const [name, tag] of [
 			["Analyzer-A", "analyzer"],
 			["Planner-A", "planner"],
@@ -274,47 +272,34 @@ describe("ManagementService", () => {
 		] as const) {
 			const a = management.createAgent({ name } as any);
 			seedAgentWithRoleTag(sessionDB, a.id, tag);
+			created[tag] = a.id;
 		}
 
-		// Expose them (lead's toolPolicy references expose entries)
-		// v0.8 P3: instantiatePreset renamed to instantiateTemplate (the
-		// Agent.create + template path's service-side counterpart).
 		const lead = management.instantiateTemplate("lead", { name: "MyLead" });
-		// v0.8 P0 (§1.4): roleTag is gone from AgentRecord; lead's identity is
-		// name+systemPrompt. The built preset still carries roleTag as a legacy
-		// side-channel via buildAgentFromPreset, but it is NOT on the persisted
-		// record. Skip the roleTag assertion on the persisted record.
 
-		// toolPolicy.tools should now have entries keyed by AgentToolEntry.id
-		// (at least one for each whitelisted roleTag)
+		// subagents should include at least one entry per whitelisted roleTag
+		// that had a matching agent. The lead template whitelists several callee
+		// roleTags; verify each resolves to the seeded agent id.
+		const subagentIds = new Set((lead.subagents ?? []).map((s) => s.agentId));
+		const whitelistedTags = ["analyzer", "planner", "developer", "reviewer", "qa"];
+		let matched = 0;
+		for (const tag of whitelistedTags) {
+			const id = created[tag];
+			if (id && subagentIds.has(id)) matched++;
+		}
+		expect(matched, "at least one whitelisted roleTag should resolve to a subagent").toBeGreaterThanOrEqual(1);
+
+		// toolPolicy.tools should NOT contain agent-tool entry keys (built-in
+		// tools only — agent-tool path is retired).
 		const tools = lead.toolPolicy?.tools ?? {};
-		const enabledKeys = Object.keys(tools).filter((k) => tools[k].enabled);
-
-		// Built-in tools (Shell/Read/Grep/Glob) are name-keyed; the agent-tool
-		// callee references are keyed by entry.id (decision 2). Separate them.
 		const BUILTIN = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);
-		const agentToolKeys = enabledKeys.filter((k) => !BUILTIN.has(k));
-		expect(agentToolKeys.length).toBeGreaterThanOrEqual(4); // planner/dev/review/qa
-
-		// Each agent-tool policy key should correspond to a real AgentToolEntry id
-		const allEntries = agentToolStore.list();
-		for (const key of agentToolKeys) {
-			expect(allEntries.find((e) => e.id === key), `key ${key} should match an AgentToolEntry id`).toBeDefined();
+		for (const key of Object.keys(tools)) {
+			// Every tools key should be a built-in tool name; legacy agent-tool
+			// entry ids are gone.
+			expect(BUILTIN.has(key) || key.startsWith("__"), `unexpected tools key ${key}`).toBe(true);
 		}
 	});
 
-	test("exposeAgentAsTool is idempotent", () => {
-		const a = management.createAgent({ name: "Exposed" } as any);
-		const e1 = management.exposeAgentAsTool(a.id, { name: "exposed-tool" });
-		const e2 = management.exposeAgentAsTool(a.id, { name: "exposed-tool" });
-		expect(e1.id).toBe(e2.id);
-	});
-
-	test("deleteAgent cascades agent-tool entries", () => {
-		const a = management.createAgent({ name: "Cascade" } as any);
-		management.exposeAgentAsTool(a.id, { name: "cascade-tool" });
-		expect(agentToolStore.list().length).toBeGreaterThanOrEqual(1);
-		management.deleteAgent(a.id);
-		expect(agentToolStore.list().find((e) => e.agentId === a.id)).toBeUndefined();
-	});
+	// v0.8 §11.5: exposeAgentAsTool / cascade-agent-tool-entries tests removed
+	// (agent-as-tool retired; AgentToolStore dropped).
 });

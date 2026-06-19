@@ -68,27 +68,6 @@ const AGENT_COLUMNS = [
 	{ key: "updatedAt", column: "updated_at" },
 ];
 
-const AGENT_TOOL_COLUMNS = [
-	{ key: "name" },
-	{ key: "description" },
-	{ key: "type" },
-	{ key: "enabled", bool: true },
-	{ key: "agentId", column: "agent_id" },
-	{ key: "transport" },
-	{ key: "command" },
-	{ key: "argsTemplate", column: "args_template" },
-	{ key: "url" },
-	{ key: "method" },
-	{ key: "headers", json: true },
-	{ key: "bodyTemplate", column: "body_template" },
-	{ key: "responsePath", column: "response_path" },
-	{ key: "timeout" },
-	{ key: "blocking", bool: true },
-	{ key: "auto_background_timeout" },
-	{ key: "createdAt", column: "created_at" },
-	{ key: "updatedAt", column: "updated_at" },
-];
-
 const PROJECT_COLUMNS = [
 	{ key: "name" },
 	{ key: "workspaceDir", column: "workspace_dir" },
@@ -606,15 +585,10 @@ export function runMigrations(sessionDB: SessionDB): void {
 	// upgraded DBs; fresh DBs get it from the CREATE TABLE block above.
 	safeAddColumn(db, "project_wiki", "links", "TEXT");
 
-	// Agent tool columns (table may exist from older versions with fewer columns)
-	for (const col of AGENT_TOOL_COLUMNS) {
-		const colName = col.column || col.key;
-		const isJson = col.json;
-		const isBool = col.bool;
-		const type = isJson ? "TEXT" : isBool ? "INTEGER" : "TEXT";
-		const def = isBool ? `${type} DEFAULT 1` : type;
-		safeAddColumn(db, "agent_tools", colName, def);
-	}
+	// v0.8 (§11.5): agent-as-tool retired — DROP the agent_tools table on
+	// upgraded DBs. Fresh DBs never had it. Empty on production (no callers
+	// since P2 retired the runtime path), so DROP is lossless. Idempotent.
+	db.exec(`DROP TABLE IF EXISTS agent_tools`);
 
 	// Provider columns
 	safeAddColumn(db, "providers", "enable_concurrency_limit", "INTEGER DEFAULT 0");
@@ -877,7 +851,6 @@ export function runMigrations(sessionDB: SessionDB): void {
 
 	// Now safe to create SqliteStore instances with all columns
 	const agents = new SqliteStore<AgentRecord>(db, "agents", AGENT_COLUMNS);
-	const agentTools = new SqliteStore<any>(db, "agent_tools", AGENT_TOOL_COLUMNS);
 
 	// v0.8 (P0 §1.4): ensure the legacy `role_tag` physical column exists on
 	// the agents table. The earlier safeAddColumn (above) handles upgraded DBs
@@ -924,8 +897,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 	});
 	migratePersonas(db, agents, join(zeroDir, "personas.json"), join(zeroDir, "agents.json"));
 
-	// Agent tools
-	agentTools.migrateFromJson(join(zeroDir, "agent-tools.json"), "entries");
+	// v0.8 (§11.5): agent-tools.json migration removed — table dropped above.
 
 	// Templates
 	const templates = new SqliteStore<any>(db, "templates", [

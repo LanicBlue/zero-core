@@ -89,7 +89,6 @@ export class AgentService {
 	private mcp: MCPManager;
 	private concurrencyManager = new ProviderConcurrencyManager();
 	private agentStore: AgentStore | null = null;
-	private agentToolStore: import("./agent-tool-store.js").AgentToolStore | null = null;
 	private sessionManager: SessionManager | null = null;
 	private metricsAdapter: EventMetricsAdapter | null = null;
 	// v0.8 (P3): ManagementService handle (renamed from ZeroAdminService),
@@ -152,9 +151,6 @@ export class AgentService {
 	setAgentStore(store: AgentStore): void {
 		this.agentStore = store;
 		this.notifyReady("agentStore");
-	}
-	setAgentToolStore(store: import("./agent-tool-store.js").AgentToolStore): void {
-		this.agentToolStore = store;
 	}
 	setSessionManager(sm: SessionManager): void {
 		this.sessionManager = sm;
@@ -1050,27 +1046,4 @@ export class AgentService {
 }
 export function createAgentService(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore, registry?: ToolRegistry, mcp?: MCPManager): AgentService {
 	return new AgentService(workspaceDir, sessionDb, kb, registry, mcp);
-}
-export function registerAgentToolEntries(agentToolStore: import("./agent-tool-store.js").AgentToolStore, registry: ToolRegistry): void {
-	registry.unregister("agent");
-	for (const entry of agentToolStore.list()) {
-		if (!entry.enabled) continue;
-		registry.register({
-			name: entry.name,
-			description: entry.description || `Run the "${entry.name}" agent`,
-			category: "agent",
-			source: "agent",
-			agentToolId: entry.id,
-			configSchema: [],
-			// v0.8 (M0): carry the stable entry id on the tool info so the UI
-			// can resolve toggle state by id (decision 2) while showing name.
-			meta: {
-				isReadOnly: entry.type === "internal" || entry.transport === "http",
-				isDestructive: entry.type === "external" && entry.transport === "cli",
-				isConcurrencySafe: false,
-				requiresConfirmation: false,
-			},
-		});
-	}
-	registry.notifyChange();
 }
