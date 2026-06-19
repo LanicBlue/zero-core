@@ -39,7 +39,9 @@ import SkillsPage from "../skills/SkillsPage.js";
 import KnowledgeBasePage from "../kb/KnowledgeBasePage.js";
 import ToolsPage from "../tools/ToolsPage.js";
 import DashboardPage from "../dashboard/DashboardPage.js";
-import KanbanPage from "../requirements/KanbanPage.js";
+// v0.8 (P5 §8.5): KanbanPage replaced by ProjectPage (project list + 3 tabs:
+// dashboard+activity / project view / kanban). The kanban lives on as a tab.
+import ProjectPage from "../requirements/ProjectPage.js";
 import WikiPage from "../wiki/WikiPage.js";
 
 import { usePageStore } from "../../store/page-store.js";
@@ -210,7 +212,7 @@ export default function AppLayout() {
 						{activePage === "tools" && <ToolsPage />}
 						{activePage === "knowledge" && <KnowledgeBasePage />}
 						{activePage === "agents" && <AgentsPage />}
-						{activePage === "requirements" && <KanbanPage />}
+						{activePage === "requirements" && <ProjectPage />}
 						{activePage === "wiki" && <WikiPage />}
 					</div>
 				)}

@@ -88,8 +88,14 @@ export function seedTestEnvironment(
 		defaultProvider: providerName,
 	});
 
-	const agents = agentStore.list();
-	const target = agents[0];
+	// v0.8 P7 removed the legacy "Zero" default agent that AgentStore used to
+	// seed in its constructor. On a truly-fresh test DB (agentStore.list()
+	// empty), create a test agent first; otherwise patch the first existing
+	// one. Either way the seed leaves exactly one ready-to-use "TestAgent".
+	let target = agentStore.list()[0];
+	if (!target) {
+		target = agentStore.create({ name: "TestAgent" } as any);
+	}
 	const updated = agentStore.update(target.id, {
 		name: "TestAgent",
 		provider: providerName,

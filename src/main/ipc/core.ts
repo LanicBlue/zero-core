@@ -85,6 +85,11 @@ let _pmService: any = null;
 let _requirementDocStore: any = null;
 let _manifestStore: any = null;
 let _wikiNodeStore: any = null;
+// v0.8 (P5 §8.3 / §8.4 / §8.5): archivist + management services. Used by the
+// project IPC handlers for create side-effects (kick scan) + container view +
+// resource-usage aggregation. Lazily set after Phase 5c.
+let _archivistService: any = null;
+let _managementService: any = null;
 
 // ─── Expose current state as IpcContext (reactive) ──────────
 
@@ -132,6 +137,8 @@ const _ctx: IpcContext = {
 	get requirementDocStore() { return _requirementDocStore; },
 	get manifestStore() { return _manifestStore; },
 	get wikiNodeStore() { return _wikiNodeStore; },
+	get archivistService() { return _archivistService; },
+	get managementService() { return _managementService; },
 	get modulesReady() { return _modulesReady; },
 	set modulesReady(v: boolean) { _modulesReady = v; },
 	whenReady: (name: ModuleName) => moduleReadiness.whenReady(name),
@@ -487,6 +494,31 @@ export async function loadCoreModules(): Promise<void> {
 			projectStore: _projectStore,
 			requirementStore: _requirementStore,
 		});
+		// v0.8 (P5 §8.3): expose the archivist service so the project IPC
+		// create handler can kick the background scan.
+		_archivistService = archivistService;
+
+		// v0.8 (P5 §8.4 / §8.5): construct ManagementService with all
+		// container-view + resource-usage deps wired. Exposed so the project
+		// IPC handlers reach getProjectContainerView / getProjectResourceUsage
+		// + the create-side-effects path (ensureProjectSubtree + archivist
+		// background scan kick). Late-bind archivist after construction.
+		const mgmtSvcMod = await import(toFileURL(join(_distServer, "management-service.js")));
+		_managementService = new mgmtSvcMod.ManagementService({
+			agentStore: _agentStore,
+			projectStore: _projectStore,
+			agentToolStore: _agentToolStore,
+			cronStore: _cronStore,
+			requirementStore: _requirementStore,
+			sessionDB: _sessionDb,
+			wikiStore: _wikiNodeStore,
+			archivistService,
+		});
+		// Mirror server/index.ts: surface management on AgentService so the
+		// runtime Project tool can call container-view methods.
+		if (typeof _agentService.setManagement === "function") {
+			_agentService.setManagement(_managementService);
+		}
 
 		// v0.8 (M4): PM service (RFC §2.5 / §2.10 / §2.17b). RequirementDocStore
 		// writes repo docs under {workspace}/.zero/requirements/{projectId}/;

@@ -191,11 +191,15 @@ const R: Record<string, RouteMapping> = {
 		// ─── Projects (M1) ─────────────────────────────────
 		// v0.8 (P4 §8.6): projects pause/resume/updateInterval removed (dead
 		// project schedule channels — cron is agent-scoped now).
-		"projects:list":           { method: "GET",    path: "/api/projects",                 buildReq: (filter?) => ({ query: filter ?? {} }) },
-		"projects:get":            { method: "GET",    path: "/api/projects/:id",             buildReq: (id) => ({ params: { id } }) },
-		"projects:create":         { method: "POST",   path: "/api/projects",                 buildReq: (input) => ({ body: input }) },
-		"projects:update":         { method: "PUT",    path: "/api/projects/:id",             buildReq: (id, input) => ({ params: { id }, body: input }) },
-		"projects:delete":         { method: "DELETE", path: "/api/projects/:id",             buildReq: (id) => ({ params: { id } }) },
+		// v0.8 (P5 §8.4 / §8.5): projects:get now takes includeContext (boolean)
+		// → maps to ?includeContext=1 on the REST side; new projects:getResourceUsage
+		// channel for the dashboard's resource-consumption card.
+		"projects:list":             { method: "GET",    path: "/api/projects",                 buildReq: (filter?) => ({ query: filter ?? {} }) },
+		"projects:get":              { method: "GET",    path: "/api/projects/:id",             buildReq: (id, includeContext?) => ({ params: { id }, query: includeContext ? { includeContext: "1" } : {} }) },
+		"projects:create":           { method: "POST",   path: "/api/projects",                 buildReq: (input) => ({ body: input }) },
+		"projects:update":           { method: "PUT",    path: "/api/projects/:id",             buildReq: (id, input) => ({ params: { id }, body: input }) },
+		"projects:delete":           { method: "DELETE", path: "/api/projects/:id",             buildReq: (id) => ({ params: { id } }) },
+		"projects:getResourceUsage": { method: "GET",    path: "/api/projects/:id/resource-usage", buildReq: (id) => ({ params: { id } }) },
 
 		// ─── Requirements (M1) ──────────────────────────────
 		"requirements:list":       { method: "GET",    path: "/api/requirements",              buildReq: (filter?) => ({ query: filter ?? {} }) },

@@ -451,6 +451,51 @@ export type RequirementStatus =
 export type RequirementPriority = "low" | "normal" | "high" | "critical";
 export type RequirementSource = "analyst" | "user";
 
+// ── v0.8 (P5 §8.4): Project container view ───────────────────────────────
+
+/**
+ * Aggregated view of a Project (RFC §8.4). One fetch returns the project
+ * metadata plus its requirements grouped by status, project-scoped crons,
+ * wiki subtree summary, and currently-active sessions for that project.
+ *
+ * Intentionally does NOT include an agent list — agents are global roles
+ * (§2.4 / §7), not members of any project. activeSessions is the
+ * "currently-active sessions for this project" view, filtered by
+ * session.context.projectId.
+ */
+export interface ProjectContainerView {
+	project: ProjectRecord;
+	requirementsByStatus: Record<RequirementStatus, RequirementRecord[]>;
+	crons: CronRecord[];
+	wikiSummary: {
+		nodeCount: number;
+		lastUpdated: string | null;
+		/** Phase of the in-flight archivist scan, if any ("structure" | "detail" | null). */
+		scanPhase: string | null;
+		/** 0..1 — fraction of expected top-level structure nodes scanned, if known. */
+		scanProgress: number | null;
+	};
+	activeSessions: Array<{ agentId: string; name: string; sessionId: string }>;
+}
+
+/**
+ * v0.8 (P5 §8.5): aggregated resource consumption for one project.
+ * `SUM(sessions.{input,output,total,cache_read,cache_write,reasoning}_tokens,
+ *       estimated_cost_usd) WHERE context.projectId = ?`.
+ * Sessions without a projectId (global/zero) never contribute to any project.
+ */
+export interface ProjectResourceUsage {
+	projectId: string;
+	inputTokens: number;
+	outputTokens: number;
+	totalTokens: number;
+	cacheReadTokens: number;
+	cacheWriteTokens: number;
+	reasoningTokens: number;
+	estimatedCostUsd: number;
+	sessionCount: number;
+}
+
 export interface RequirementRecord {
 	id: string;
 	projectId: string;

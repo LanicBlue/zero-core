@@ -38,6 +38,7 @@ import type {
 	ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats,
 	DiscoveredSkill,
 	ProjectRecord, CreateProjectInput, UpdateProjectInput,
+	ProjectContainerView, ProjectResourceUsage,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord,
@@ -225,11 +226,14 @@ export interface WindowApi {
 	memoryConfigUpdate: (data: { compression?: any; memory?: any }) => Promise<{ success: true }>;
 
 	// ── Projects ──
+	// v0.8 (P5 §8.4): projectsGet supports includeContext → ProjectContainerView.
+	// v0.8 (P5 §8.5): projectsGetResourceUsage — sessions token/cost SUM.
 	projectsList: (filter?: { status?: string }) => Promise<ProjectRecord[]>;
-	projectsGet: (id: string) => Promise<ProjectRecord | undefined>;
+	projectsGet: (id: string, includeContext?: boolean) => Promise<ProjectRecord | ProjectContainerView | undefined>;
 	projectsCreate: (input: CreateProjectInput) => Promise<ProjectRecord>;
 	projectsUpdate: (id: string, input: UpdateProjectInput) => Promise<ProjectRecord | { error: string }>;
 	projectsDelete: (id: string) => Promise<{ success: true }>;
+	projectsGetResourceUsage: (id: string) => Promise<ProjectResourceUsage>;
 
 	// ── Requirements ──
 	requirementsList: (filter?: { projectId?: string; status?: string; priority?: string }) => Promise<RequirementRecord[]>;

@@ -1,15 +1,16 @@
-// Project action 工具 (v0.8 P3 — §8.2)
+// Project action 工具 (v0.8 P5 — §8.2)
 //
 // # 文件说明书
 //
 // ## 核心功能
 // "Project" 是 v0.8 P3 的四个判别联合 action 工具之一。一个工具 + action
 // 字段切换 5 个操作 (§8.2):
-//   - create  同步建 ProjectRecord(P3 不做 ensureProjectSubtree 异步扫描;
-//              wiki subtree 兜底由 archivist 兜底建)
+//   - create  同步建 ProjectRecord + ensureProjectSubtree(空根) + 异步 kick
+//             archivist 渐进扫描(§8.3,P5 接入;扫描两阶段完整逻辑在 P1/P7)
 //   - update  改 name (workspaceDir immutable)
 //   - delete  metadata-only delete(workspace files 不动)
-//   - get     读元数据。includeContext=true 的容器视图聚合留 P5。
+//   - get     读元数据。includeContext=true → 容器视图聚合(§8.4,P5):
+//             requirementsByStatus + crons + wikiSummary + activeSessions
 //   - list    列所有 Project
 //
 // ## 命名 (§7.3 硬原则)
@@ -73,9 +74,9 @@ const projectActionSchema = z.discriminatedUnion("action", [
 		action: z.literal("get"),
 		id: z.string(),
 		/**
-		 * v0.8 P3 §8.2: container view toggle. P3 returns metadata only;
-		 * the aggregated view (wiki subtree + active sessions + open
-		 * requirements) lands in P5.
+		 * v0.8 P5 §8.2 / §8.4: container view toggle. `false` (default) →
+		 * pure metadata; `true` → aggregated container view
+		 * (requirementsByStatus + crons + wikiSummary + activeSessions).
 		 */
 		includeContext: z.boolean().optional(),
 	}),
@@ -95,10 +96,10 @@ export const projectTool = buildTool({
 	prompt:
 		"Manage Projects via a single action-switched tool.\n\n" +
 		"Actions:\n" +
-		"- { action:'create', name, workspaceDir } — bind a workspace dir to a Project. One workspaceDir → one Project.\n" +
+		"- { action:'create', name, workspaceDir } — bind a workspace dir to a Project. One workspaceDir → one Project. Side-effects: synchronously creates an empty wiki subtree root + asynchronously kicks an archivist background scan (§8.3).\n" +
 		"- { action:'update', id, name? } — rename. workspaceDir is immutable.\n" +
 		"- { action:'delete', id } — metadata-only delete (workspace files untouched).\n" +
-		"- { action:'get', id, includeContext? } — read one Project. includeContext=true is a container view (P5 aggregates wiki/sessions/requirements; P3 returns metadata only).\n" +
+		"- { action:'get', id, includeContext? } — read one Project. includeContext=true returns the container view (§8.4: requirementsByStatus + crons + wikiSummary + activeSessions). Default returns metadata only.\n" +
 		"- { action:'list' } — list all Projects.",
 	meta: {
 		category: "management",
@@ -119,7 +120,9 @@ export const projectTool = buildTool({
 					svc.deleteProject(input.id);
 					return { success: true };
 				case "get":
-					// P3: metadata only. includeContext aggregation is P5.
+					if (input.includeContext) {
+						return svc.getProjectContainerView(input.id);
+					}
 					return svc.getProject(input.id) ?? { error: `Project not found: ${input.id}` };
 				case "list":
 					return svc.listProjects();

@@ -130,9 +130,12 @@ describe("Project action tool", () => {
 		const p = management.createProject({ name: "P", workspaceDir: join(tmpDir, "ws") });
 		const r = parse(await execProject({ action: "get", id: p.id }, ctx()));
 		expect(r.id).toBe(p.id);
-		// includeContext=true in P3 still returns metadata only (P5 aggregates).
+		// v0.8 (P5 §8.4): includeContext=true now returns the container view
+		// (was metadata-only in P3). The container view's `project.id` matches.
 		const r2 = parse(await execProject({ action: "get", id: p.id, includeContext: true }, ctx()));
-		expect(r2.id).toBe(p.id);
+		expect(r2.project.id).toBe(p.id);
+		expect(r2.requirementsByStatus).toBeDefined();
+		expect(r2.wikiSummary).toBeDefined();
 	});
 
 	test("list", async () => {

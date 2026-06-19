@@ -51,6 +51,8 @@ import type { PmService } from "../../server/pm-service.js";
 import type { RequirementDocStore } from "../../server/requirement-doc-store.js";
 import type { OrchestrateManifestStore } from "../../server/orchestrate-store.js";
 import type { WikiStore } from "../../server/wiki-node-store.js";
+import type { ArchivistService } from "../../server/archivist-service.js";
+import type { ManagementService } from "../../server/management-service.js";
 
 export interface IpcContext {
 	win: BrowserWindow;
@@ -93,6 +95,18 @@ export interface IpcContext {
 	requirementDocStore: RequirementDocStore | null;
 	manifestStore: OrchestrateManifestStore | null;
 	wikiNodeStore: WikiStore | null;
+	/**
+	 * v0.8 (P5 §8.3): archivist service — used by the project create IPC
+	 * handler to kick the background wiki scan. Null in tests / when archivist
+	 * wiring fails (project create still succeeds, scan just doesn't fire).
+	 */
+	archivistService: ArchivistService | null;
+	/**
+	 * v0.8 (P5 §8.4 / §8.5): management service — used by the project IPC
+	 * handlers for container-view aggregation + resource-usage SUM + create
+	 * side-effects. Null in tests when only bare CRUD is exercised.
+	 */
+	managementService: ManagementService | null;
 	modulesReady: boolean;
 	whenReady: (name: ModuleName) => Promise<void>;
 	isModuleReady: (name: ModuleName) => boolean;

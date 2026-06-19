@@ -38,6 +38,7 @@ import type {
 	Ok, Err, OkOrErr,
 	ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats,
 	ProjectRecord, CreateProjectInput, UpdateProjectInput,
+	ProjectContainerView, ProjectResourceUsage,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord,
@@ -179,11 +180,14 @@ export interface IpcChannelDefs {
 	"tool-executions:analyze": { params: [agentId?: string];                          result: { analysis: string; stats: ToolExecutionStats[]; recentErrors: ToolExecutionRecord[] } | Err };
 
 	// ── Projects (CRUD) ──────────────────────────────────────
-	"projects:list":   { params: [filter?: { status?: string }];                     result: ProjectRecord[] };
-	"projects:get":    { params: [id: string];                                       result: ProjectRecord | undefined };
-	"projects:create": { params: [input: CreateProjectInput];                        result: ProjectRecord };
-	"projects:update": { params: [id: string, input: UpdateProjectInput];            result: ProjectRecord | Err };
-	"projects:delete": { params: [id: string];                                       result: Ok };
+	// v0.8 (P5 §8.4): projects:get supports includeContext → container view.
+	// v0.8 (P5 §8.5): projects:getResourceUsage — sessions token/cost SUM.
+	"projects:list":             { params: [filter?: { status?: string }];           result: ProjectRecord[] };
+	"projects:get":              { params: [id: string, includeContext?: boolean];   result: ProjectRecord | ProjectContainerView | undefined };
+	"projects:create":           { params: [input: CreateProjectInput];              result: ProjectRecord };
+	"projects:update":           { params: [id: string, input: UpdateProjectInput];  result: ProjectRecord | Err };
+	"projects:delete":           { params: [id: string];                             result: Ok };
+	"projects:getResourceUsage": { params: [id: string];                             result: ProjectResourceUsage };
 
 	// ── Requirements (CRUD + transitions + messages + steps) ─
 	"requirements:list":       { params: [filter?: { projectId?: string; status?: string; priority?: string }]; result: RequirementRecord[] };

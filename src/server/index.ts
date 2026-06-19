@@ -191,8 +191,14 @@ export async function startServer(options?: StartServerOptions) {
 
 	// v0.8 (P3): ManagementService (renamed from ZeroAdminService) —
 	// capability backend for the Project/Agent/Cron action tools.
+	// v0.8 (P5 §8.4 / §8.5): also carries the Project container-view +
+	// resource-usage aggregation backends. Late-bound deps (archivistService)
+	// are wired below after their constructor runs.
 	const { ManagementService } = await import("./management-service.js");
-	const management = new ManagementService({ agentStore, projectStore, agentToolStore, cronStore });
+	const management = new ManagementService({
+		agentStore, projectStore, agentToolStore, cronStore,
+		requirementStore, sessionDB, wikiStore: wikiStoreGlobal,
+	});
 	agentService.setManagement(management);
 
 	// v0.8 (P6 §7.1): fresh-DB seed — zero agent + software-dev wiki node.
@@ -289,6 +295,9 @@ export async function startServer(options?: StartServerOptions) {
 		projectStore,
 		requirementStore,
 	});
+	// v0.8 (P5 §8.3): ManagementService.createProject kicks the archivist
+	// background scan; wire it now that archivistService exists.
+	management.setArchivistService(archivistService);
 
 	// ─── LeadService + Requirement Hooks (M3) ────────────────────────
 	const { LeadService } = await import("./lead-service.js");
@@ -420,7 +429,13 @@ export async function startServer(options?: StartServerOptions) {
 	// (§8.6): the dead /interval /pause /resume compat shims are deleted;
 	// scheduling lives entirely under /api/crons (cron entries are managed
 	// via the cron tools / cron editor / /api/crons).
-	const projectRouter = createProjectRouter({ projectStore, requirementStore, wikiStore, taskStepStore, analystService });
+	// v0.8 P5 (§8.4/§8.5): router now consumes the cron store (cascade-delete
+	// crons on project delete) and ManagementService (container view + create
+	// side-effects + resource usage).
+	const projectRouter = createProjectRouter({
+		projectStore, requirementStore, wikiStore, taskStepStore,
+		cronStore, management,
+	});
 	app.use("/api/projects", projectRouter);
 
 	// v0.8 (M1): cron REST router — create/update/delete/list cron entries.

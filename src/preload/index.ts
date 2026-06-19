@@ -220,10 +220,12 @@ const api: WindowApi = {
 
 	// ── Projects ──
 	projectsList: (filter?) => ipcRenderer.invoke("projects:list", filter),
-	projectsGet: (id) => ipcRenderer.invoke("projects:get", id),
+	projectsGet: (id, includeContext?) => ipcRenderer.invoke("projects:get", id, includeContext),
 	projectsCreate: (input) => ipcRenderer.invoke("projects:create", input),
 	projectsUpdate: (id, input) => ipcRenderer.invoke("projects:update", id, input),
 	projectsDelete: (id) => ipcRenderer.invoke("projects:delete", id),
+	// v0.8 (P5 §8.5): sessions token/cost SUM by projectId.
+	projectsGetResourceUsage: (id) => ipcRenderer.invoke("projects:getResourceUsage", id),
 
 	// ── Requirements ──
 	requirementsList: (filter?) => ipcRenderer.invoke("requirements:list", filter),
