@@ -22,7 +22,7 @@
 // ## 定位
 // 主进程桥接层；被 src/main/index.ts 在窗口创建后调用 registerProxyHandlers 与
 // connectEventBridge。本地不处理的通道（dialog、webfetch:login 等）由
-// src/main/ipc/*-handlers.ts 接管。
+// src/main/index.ts 的 registerLocalHandlers 直接在 Electron 进程内处理。
 //
 // ## 依赖
 // - electron：ipcMain、BrowserWindow
