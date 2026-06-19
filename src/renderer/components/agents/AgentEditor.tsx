@@ -27,6 +27,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useAgentStore } from "../../store/agent-store.js";
 import { useProviderStore } from "../../store/provider-store.js";
+import { useWikiStore } from "../../store/wiki-store.js";
 import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
 import { ConfirmModal } from "../common/ConfirmModal.js";
 import { ExposeAsToolSection } from "./ExposeAsToolSection.js";
@@ -34,6 +35,8 @@ import { BasicSection } from "./BasicSection.js";
 import { PromptSection } from "./PromptSection.js";
 import { ToolsSection } from "./ToolsSection.js";
 import { PermissionsSection } from "./PermissionsSection.js";
+import { SubagentsSection } from "./SubagentsSection.js";
+import { WikiAnchorsSection } from "./WikiAnchorsSection.js";
 import {
 	DEFAULT_ENABLED_TOOLS,
 	agentToForm,
@@ -56,7 +59,12 @@ interface Props {
 const api = () => (window as any).api;
 
 export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefillTemplate }: Props) {
-	const { create, update, tools } = useAgentStore();
+	const { create, update, tools, agents } = useAgentStore();
+	// v0.8 (P8): wiki nodes for the anchors picker (global tree — anchors can
+	// reference any node, including the global root for zero-style agents).
+	const wikiNodes = useWikiStore((s) => s.nodes);
+	const refreshWiki = useWikiStore((s) => s.refresh);
+	useEffect(() => { void refreshWiki(); }, [refreshWiki]);
 	const { providers, fetchProviders } = useProviderStore();
 	const [section, setSection] = useState<Section>("basic");
 	const [globalWorkspace, setGlobalWorkspace] = useState("");
@@ -228,12 +236,30 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		if (agent) autoSave(next);
 	};
 
+	// v0.8 (P8 §11.10): subagents + wikiAnchors harness-field editors.
+	const updateSubagents = (next: FormState["subagents"]) => {
+		const f: FormState = { ...form, subagents: next && next.length > 0 ? next : undefined };
+		setForm(f);
+		if (agent) autoSave(f);
+	};
+
+	const updateWikiAnchors = (next: FormState["wikiAnchors"]) => {
+		const f: FormState = { ...form, wikiAnchors: next && next.length > 0 ? next : undefined };
+		setForm(f);
+		if (agent) autoSave(f);
+	};
+
 	const SECTIONS: { key: Section; label: string }[] = [
 		{ key: "basic", label: "基础设置" },
 		{ key: "prompt", label: "提示词设置" },
 		{ key: "tools", label: "工具" },
-		{ key: "expose", label: "作为工具" },
+		{ key: "subagents", label: "委派 (subagents)" },
+		{ key: "anchors", label: "Wiki 锚点" },
 		{ key: "permissions", label: "权限模式" },
+		// §11.5 deprecated agent-as-tool in favor of subagents; kept as a
+		// legacy tab so existing AgentToolEntry rows remain editable until the
+		// P9 cleanup drops the table.
+		{ key: "expose", label: "作为工具 (legacy)" },
 	];
 
 	const promptTokenCount = useMemo(() => {
@@ -323,6 +349,22 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 							tools={tools}
 							toggleTool={toggleTool}
 							toolsTokenEstimate={toolsTokenEstimate}
+						/>
+					)}
+
+					{section === "subagents" && (
+						<SubagentsSection
+							form={form}
+							agents={agents.filter((a) => a.id !== agent?.id)}
+							onChange={updateSubagents}
+						/>
+					)}
+
+					{section === "anchors" && (
+						<WikiAnchorsSection
+							form={form}
+							wikiNodes={wikiNodes}
+							onChange={updateWikiAnchors}
 						/>
 					)}
 

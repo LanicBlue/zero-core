@@ -224,6 +224,16 @@ const R: Record<string, RouteMapping> = {
 		"wiki:updateNode":         { method: "PUT",    path: "/api/project-wiki/node/:id",         buildReq: (id, input) => ({ params: { id }, body: input }) },
 		"wiki:deleteNode":         { method: "DELETE", path: "/api/project-wiki/node/:id",         buildReq: (id) => ({ params: { id } }) },
 
+		// ─── Wiki (v0.8 P8 §10.9) — global-tree browser surface ───────
+		// backend /api/wiki/* (wiki-router.ts) against the global WikiStore.
+		// These are NOT the legacy project-wiki CRUD above; they drive the new
+		// wiki browser (multi-anchor scope + disk body detail + workspace-doc
+		// jump-to-original + substring search). Preload arg order is authoritative.
+		"wiki:listByAnchors":    { method: "POST", path: "/api/wiki/list-by-anchors",                       buildReq: (anchorIds) => ({ body: { anchorIds: anchorIds ?? [] } }) },
+		"wiki:readDetail":       { method: "GET",  path: "/api/wiki/nodes/:nodeId/detail",                  buildReq: (nodeId) => ({ params: { nodeId } }) },
+		"wiki:readWorkspaceDoc": { method: "GET",  path: "/api/projects/:projectId/workspace-doc",          buildReq: (projectId, relPath) => ({ params: { projectId }, query: { relPath } }) },
+		"wiki:search":           { method: "GET",  path: "/api/wiki/search",                                buildReq: (query, anchorIds?) => ({ query: { query, ...(anchorIds?.length ? { anchorIds: anchorIds.join(",") } : {}) } }) },
+
 		// ─── Lead (M3) ──────────────────────────────────────
 		"lead:pickup":             { method: "POST",   path: "/api/requirements/:id/pickup",   buildReq: (requirementId) => ({ params: { id: requirementId } }) },
 		"lead:progress":           { method: "GET",    path: "/api/requirements/:id/progress", buildReq: (requirementId) => ({ params: { id: requirementId } }) },

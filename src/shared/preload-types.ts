@@ -41,6 +41,7 @@ import type {
 	ProjectContainerView, ProjectResourceUsage,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
+	WikiNode,
 	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord,
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
@@ -252,6 +253,11 @@ export interface WindowApi {
 	wikiCreateNode: (projectId: string, input: CreateWikiNodeInput) => Promise<ProjectWikiNode>;
 	wikiUpdateNode: (id: string, input: UpdateWikiNodeInput) => Promise<ProjectWikiNode | { error: string }>;
 	wikiDeleteNode: (id: string) => Promise<{ success: true }>;
+	// v0.8 (P8 §10.9): global-tree browser surface.
+	wikiListByAnchors: (anchorIds: string[]) => Promise<WikiNode[]>;
+	wikiReadDetail: (nodeId: string) => Promise<{ nodeId: string; detail?: string }>;
+	wikiReadWorkspaceDoc: (projectId: string, relPath: string) => Promise<{ content?: string; error?: string }>;
+	wikiSearch: (query: string, anchorIds?: string[]) => Promise<WikiNode[]>;
 
 	// ── Lead ──
 	leadPickup: (requirementId: string) => Promise<{ sessionId: string } | { error: string }>;

@@ -41,6 +41,7 @@ import type {
 	ProjectContainerView, ProjectResourceUsage,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
+	WikiNode,
 	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord,
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
@@ -206,6 +207,17 @@ export interface IpcChannelDefs {
 	"wiki:createNode":    { params: [projectId: string, input: CreateWikiNodeInput]; result: ProjectWikiNode };
 	"wiki:updateNode":    { params: [id: string, input: UpdateWikiNodeInput];       result: ProjectWikiNode | Err };
 	"wiki:deleteNode":    { params: [id: string];                                  result: Ok };
+	// v0.8 (P8 §10.9): global-tree browser surface. The renderer drives the
+	// whole wiki tree from a SET of anchor nodeIds (session's anchor union).
+	// listByAnchors returns the union of each anchor's subtree (or the whole
+	// tree if WIKI_GLOBAL_ROOT_ID is in the set). readDetail loads a node's
+	// on-disk body (the "expand" path). readWorkspaceDoc jumps to a project
+	// source/requirement file by workspace-relative path. search is a
+	// substring scan scoped to the caller's anchors.
+	"wiki:listByAnchors":     { params: [anchorIds: string[]];                              result: WikiNode[] };
+	"wiki:readDetail":        { params: [nodeId: string];                                    result: { nodeId: string; detail?: string } };
+	"wiki:readWorkspaceDoc":  { params: [projectId: string, relPath: string];               result: { content?: string; error?: string } };
+	"wiki:search":            { params: [query: string, anchorIds?: string[]];              result: WikiNode[] };
 
 	// ── Lead (internal — backend auto-pickup, manual retry) ──
 	"lead:pickup":    { params: [requirementId: string];                            result: { sessionId: string } | Err };

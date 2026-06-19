@@ -68,6 +68,10 @@ import { TaskStepStore } from "./task-step-store.js";
 import { createProjectRouter } from "./project-router.js";
 import { createRequirementRouter } from "./requirement-router.js";
 import { createWikiRouter } from "./project-wiki-router.js";
+// v0.8 (P8 §10.9): global wiki memory-tree browser endpoints
+// (list-by-anchors / nodes/:id/detail / search + project-scoped workspace-doc).
+// Mirrors wiki-handlers.ts; production route is ipc-proxy ROUTE_MAP → these.
+import { createWikiRouter as createWikiBrowserRouter, createWorkspaceDocHandler } from "./wiki-router.js";
 import { AnalystService } from "./analyst-service.js";
 import { registerWorkflowContextHook } from "./workflow-context-hook.js";
 import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
@@ -549,6 +553,20 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/pm", pmRouter);
 
 	app.use("/api/project-wiki", createWikiRouter({ wikiStore }));
+
+	// v0.8 (P8 §10.9): wiki browser endpoints — global memory tree surface.
+	// Three wiki-tree endpoints under /api/wiki (list-by-anchors / nodes/:id/
+	// detail / search) + one project-scoped workspace-doc endpoint. Mirrors
+	// wiki-handlers.ts (logic identical; this is the REST port the IPC proxy
+	// ROUTE_MAP routes to). wikiStoreGlobal is the canonical WikiStore;
+	// projectStore resolves workspaceDir for the workspace-doc sandbox.
+	// Mounted AFTER /api/projects/:id so the explicit /workspace-doc segment
+	// matches first (Express takes the first matching route per method+path).
+	app.use("/api/wiki", createWikiBrowserRouter({ wikiStore: wikiStoreGlobal }));
+	app.get(
+		"/api/projects/:projectId/workspace-doc",
+		createWorkspaceDocHandler({ projectStore }),
+	);
 
 	// v0.8 (M2): archivist endpoints — scan / rescan / divergence / git ops.
 	// Routes the project-notification / cron / requirement-accept flows into

@@ -1,42 +1,64 @@
-// Wiki 详情组件
+// Wiki 详情组件 (v0.8 P8 升级为全局树右节点正文)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 显示选中 Wiki 节点的详情，包括摘要、关键函数、依赖等信息。
+// 显示选中 Wiki 节点的正文。P8 起:
+//   - 正文走 store.expandNode → wiki:readDetail(磁盘懒加载),首次展开
+//     自动拉取;之后缓存。
+//   - docPointer 跳转原文:对项目子树节点(header/intent/docPointer 指向
+//     工作区文件),提供「Open original」按钮,读 workspaceDir 下的相对
+//     路径(wiki:readWorkspaceDoc,FS 沙箱在主进程强制)。
+//   - 编辑保留 legacy upsert(wiki:updateNode),只对项目子树节点启用。
 //
 // ## 输入
-// - ProjectWikiNode | null
-// - onExpand 回调
-// - onEdit 回调
+// - node: WikiNode | null
+// - detail: string | undefined(已懒加载;undefined = 未加载/无正文)
+// - onExpand / onEdit / onOpenOriginal 回调
 //
 // ## 输出
 // - 渲染的详情面板
 //
 // ## 定位
-// 渲染进程组件，被 WikiPage 使用。
+// 渲染进程组件,被 WikiPage 使用。
 //
 // ## 依赖
 // - react
-// - ../../shared/types
+// - ../../../shared/types (WikiNode, UpdateWikiNodeInput)
 //
-// ## 维护规则
-// - ProjectWikiNode 展示字段或编辑回调变更时同步本组件
-// - 节点类型渲染分支变更需同步 onExpand/onEdit 契约
+// ## 维维护规则
+// - WikiNode 展示字段或编辑/展开回调变更时同步本组件
+// - docPointer 跳转路径解析变更需同步主进程 wiki:readWorkspaceDoc
 //
-import React, { useState } from "react";
-import type { ProjectWikiNode, UpdateWikiNodeInput } from "../../../shared/types.js";
+import React, { useEffect, useState } from "react";
+import type { WikiNode } from "../../../shared/types.js";
 
 interface WikiDetailProps {
-	node: ProjectWikiNode | null;
+	node: WikiNode | null;
+	/** Lazy-loaded body content (undefined = not loaded or no body). */
+	detail: string | undefined;
 	onExpand: (nodeId: string) => void;
-	onEdit: (nodeId: string, data: UpdateWikiNodeInput) => void;
+	onOpenOriginal: (node: WikiNode) => void;
+	onEdit: (nodeId: string, data: { summary?: string; detail?: string }) => void;
 }
 
-export default function WikiDetail({ node, onExpand, onEdit }: WikiDetailProps) {
+export default function WikiDetail({ node, detail, onExpand, onOpenOriginal, onEdit }: WikiDetailProps) {
 	const [editing, setEditing] = useState(false);
 	const [editSummary, setEditSummary] = useState("");
 	const [editDetail, setEditDetail] = useState("");
+
+	// Auto-expand body when a node is selected (P8: detail is lazy).
+	useEffect(() => {
+		if (node) onExpand(node.id);
+	}, [node?.id]);
+
+	// Editing form syncs to the selected node.
+	useEffect(() => {
+		if (node) {
+			setEditSummary(node.summary ?? "");
+			setEditDetail(detail ?? "");
+		}
+	}, [node?.id, detail]);
 
 	if (!node) {
 		return (
@@ -51,27 +73,29 @@ export default function WikiDetail({ node, onExpand, onEdit }: WikiDetailProps) 
 		);
 	}
 
+	const isProjectLeaf = node.projectId && (node.type === "header" || node.type === "intent");
+	const hasOriginalPath = isProjectLeaf && !!docPointerRelPath(node);
+
 	const startEdit = () => {
-		setEditSummary(node.summary || "");
-		setEditDetail(node.detail || "");
+		setEditSummary(node.summary ?? "");
+		setEditDetail(detail ?? "");
 		setEditing(true);
 	};
 
-	const cancelEdit = () => {
+	const cancelEdit = () => setEditing(false);
+
+	const saveEdit = () => {
+		onEdit(node.id, { summary: editSummary, detail: editDetail });
 		setEditing(false);
 	};
 
-	const saveEdit = () => {
-		onEdit(node.id, {
-			summary: editSummary,
-			detail: editDetail,
-		});
-		setEditing(false);
+	const handleOpenOriginal = () => {
+		onOpenOriginal(node);
 	};
 
 	return (
 		<div style={{ padding: 16, overflowY: "auto", height: "100%" }}>
-			{/* Path / Title */}
+			{/* Title */}
 			<div style={{
 				fontSize: 14,
 				fontWeight: 600,
@@ -79,6 +103,14 @@ export default function WikiDetail({ node, onExpand, onEdit }: WikiDetailProps) 
 				marginBottom: 4,
 				fontFamily: "monospace",
 				wordBreak: "break-all",
+			}}>
+				{node.title || node.path}
+			</div>
+			<div style={{
+				fontSize: 11,
+				color: "var(--text-tertiary, #555)",
+				fontFamily: "monospace",
+				marginBottom: 4,
 			}}>
 				{node.path}
 			</div>
@@ -96,37 +128,19 @@ export default function WikiDetail({ node, onExpand, onEdit }: WikiDetailProps) 
 					<textarea
 						value={editSummary}
 						onChange={(e) => setEditSummary(e.target.value)}
-						style={{
-							width: "100%",
-							minHeight: 60,
-							padding: 8,
-							background: "var(--bg-secondary, #1c1c1e)",
-							border: "1px solid var(--border-color, #333)",
-							borderRadius: 4,
-							color: "var(--text-primary, #e0e0e0)",
-							fontSize: 12,
-							resize: "vertical",
-							boxSizing: "border-box",
-						}}
+						style={textareaStyle}
+						aria-label="Wiki node summary"
+						placeholder="Short summary of this node"
 					/>
 					<label style={{ display: "block", fontSize: 12, color: "var(--text-secondary, #888)", marginBottom: 4, marginTop: 8 }}>
-						Detail
+						Detail (body)
 					</label>
 					<textarea
 						value={editDetail}
 						onChange={(e) => setEditDetail(e.target.value)}
-						style={{
-							width: "100%",
-							minHeight: 120,
-							padding: 8,
-							background: "var(--bg-secondary, #1c1c1e)",
-							border: "1px solid var(--border-color, #333)",
-							borderRadius: 4,
-							color: "var(--text-primary, #e0e0e0)",
-							fontSize: 12,
-							resize: "vertical",
-							boxSizing: "border-box",
-						}}
+						style={{ ...textareaStyle, minHeight: 200 }}
+						aria-label="Wiki node body detail"
+						placeholder="Full body content (markdown)"
 					/>
 					<div style={{ marginTop: 8, display: "flex", gap: 8 }}>
 						<button type="button" onClick={saveEdit} style={btnStyle}>Save</button>
@@ -148,8 +162,8 @@ export default function WikiDetail({ node, onExpand, onEdit }: WikiDetailProps) 
 						</div>
 					)}
 
-					{/* Detail */}
-					{node.detail ? (
+					{/* Body (lazy-loaded from disk) */}
+					{detail ? (
 						<div style={{
 							fontSize: 12,
 							color: "var(--text-primary, #e0e0e0)",
@@ -158,28 +172,40 @@ export default function WikiDetail({ node, onExpand, onEdit }: WikiDetailProps) 
 							background: "var(--bg-secondary, #1c1c1e)",
 							padding: 12,
 							borderRadius: 6,
+							maxHeight: 400,
+							overflowY: "auto",
 						}}>
-							{node.detail}
+							{detail}
 						</div>
 					) : (
-						<button
-							type="button"
-							onClick={() => onExpand(node.id)}
-							style={{
-								...btnStyle,
-								display: "block",
-								margin: "16px auto",
-							}}
-						>
-							Expand Full Content
-						</button>
+						<div style={{
+							fontSize: 11,
+							color: "var(--text-tertiary, #555)",
+							fontStyle: "italic",
+							padding: 8,
+						}}>
+							No body content on disk for this node.
+						</div>
 					)}
 
-					{/* Actions */}
+					{/* docPointer jump to original */}
+					{hasOriginalPath && (
+						<div style={{ marginTop: 16 }}>
+							<button
+								type="button"
+								onClick={handleOpenOriginal}
+								style={{ ...btnStyle, background: "#2a7a2a" }}
+							>
+								{"\u{1F4C2}"} Open original file
+							</button>
+						</div>
+					)}
+
+					{/* Actions — editing only for project subtree nodes (write scope). */}
 					<div style={{ marginTop: 16, display: "flex", gap: 8 }}>
-						<button type="button" onClick={startEdit} style={btnStyle}>
-							Edit
-						</button>
+						{node.projectId && (
+							<button type="button" onClick={startEdit} style={btnStyle}>Edit</button>
+						)}
 					</div>
 
 					{/* Metadata */}
@@ -190,13 +216,33 @@ export default function WikiDetail({ node, onExpand, onEdit }: WikiDetailProps) 
 						fontSize: 11,
 						color: "var(--text-tertiary, #555)",
 					}}>
-						<div>Type: {node.nodeType} | Updated by: {node.lastUpdatedBy}</div>
+						<div>Type: {node.type}{node.projectId ? ` | Project: ${node.projectId}` : ""}{node.lastUpdatedBy ? ` | By: ${node.lastUpdatedBy}` : ""}</div>
+						{node.provenance && <div>Provenance: {node.provenance}</div>}
+						{node.flags && node.flags.length > 0 && <div>Flags: {node.flags.join(", ")}</div>}
 						<div>Updated: {new Date(node.updatedAt).toLocaleString()}</div>
 					</div>
 				</>
 			)}
 		</div>
 	);
+}
+
+/**
+ * Extract the workspace-relative path from a header/intent node's path. The
+ * wiki path encodes the scope prefix:
+ *   "header:src/runtime/agent-loop.ts" → "src/runtime/agent-loop.ts"
+ *   "intent:docs/req-foo.md"           → "docs/req-foo.md"
+ * Returns undefined when there's no usable relPath (memory / structure /
+ * synthetic roots).
+ */
+function docPointerRelPath(node: WikiNode): string | undefined {
+	const p = node.path ?? "";
+	const idx = p.indexOf(":");
+	if (idx < 0) return undefined;
+	const prefix = p.slice(0, idx);
+	const rest = p.slice(idx + 1);
+	if ((prefix === "header" || prefix === "intent") && rest) return rest;
+	return undefined;
 }
 
 const btnStyle: React.CSSProperties = {
@@ -207,4 +253,17 @@ const btnStyle: React.CSSProperties = {
 	color: "#fff",
 	fontSize: 12,
 	cursor: "pointer",
+};
+
+const textareaStyle: React.CSSProperties = {
+	width: "100%",
+	minHeight: 80,
+	padding: 8,
+	background: "var(--bg-secondary, #1c1c1e)",
+	border: "1px solid var(--border-color, #333)",
+	borderRadius: 4,
+	color: "var(--text-primary, #e0e0e0)",
+	fontSize: 12,
+	resize: "vertical",
+	boxSizing: "border-box",
 };

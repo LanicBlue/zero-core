@@ -244,6 +244,11 @@ const api: WindowApi = {
 	wikiCreateNode: (projectId, input) => ipcRenderer.invoke("wiki:createNode", projectId, input),
 	wikiUpdateNode: (id, input) => ipcRenderer.invoke("wiki:updateNode", id, input),
 	wikiDeleteNode: (id) => ipcRenderer.invoke("wiki:deleteNode", id),
+	// v0.8 (P8 §10.9): global-tree browser surface.
+	wikiListByAnchors: (anchorIds) => ipcRenderer.invoke("wiki:listByAnchors", anchorIds),
+	wikiReadDetail: (nodeId) => ipcRenderer.invoke("wiki:readDetail", nodeId),
+	wikiReadWorkspaceDoc: (projectId, relPath) => ipcRenderer.invoke("wiki:readWorkspaceDoc", projectId, relPath),
+	wikiSearch: (query, anchorIds?) => ipcRenderer.invoke("wiki:search", query, anchorIds),
 
 	// ── Lead ──
 	leadPickup: (requirementId) => ipcRenderer.invoke("lead:pickup", requirementId),

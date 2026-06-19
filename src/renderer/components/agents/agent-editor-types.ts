@@ -24,7 +24,7 @@ import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
 
 export type FormState = Omit<AgentRecord, "id" | "createdAt" | "updatedAt">;
 
-export type Section = "basic" | "prompt" | "tools" | "expose" | "permissions";
+export type Section = "basic" | "prompt" | "tools" | "expose" | "permissions" | "subagents" | "anchors";
 
 export const DEFAULT_ENABLED_TOOLS = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);
 
@@ -49,6 +49,11 @@ export function agentToForm(a: AgentRecord): FormState {
 		systemPrompt: a.systemPrompt ?? "",
 		toolPolicy: a.toolPolicy,
 		skillPolicy: a.skillPolicy,
+		// v0.8 (P2 §11.9 / §11.5 / §11.3): harness fields surfaced in the
+		// agent config page. Copy through so the subagents + wikiAnchors
+		// editors round-trip with the server record.
+		subagents: a.subagents,
+		wikiAnchors: a.wikiAnchors,
 	};
 }
 
