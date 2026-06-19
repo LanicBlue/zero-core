@@ -25,7 +25,7 @@
 import type Database from "better-sqlite3";
 import type { SessionDB } from "./session-db.js";
 import { join } from "node:path";
-import { existsSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { ZERO_CORE_DIR } from "../core/config.js";
 import { SqliteStore } from "./sqlite-store.js";
@@ -511,11 +511,11 @@ function migrateWikiDetailToDisk(db: Database.Database): void {
 			project_id: string | null;
 			detail: string | null;
 			doc_pointer: string | null;
-		}>;
+	}>;
 
-		const { mkdirSync, writeFileSync } = require("node:fs") as typeof import("node:fs");
-		let exported = 0;
-		let pointerFilled = 0;
+	// mkdirSync / writeFileSync come from the top-level ESM import (node:fs).
+	let exported = 0;
+	let pointerFilled = 0;
 		for (const row of rows) {
 			// Skip synthetic roots — they carry no body content.
 			if (row.id.startsWith("wiki-root:")) continue;
