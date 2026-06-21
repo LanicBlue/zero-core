@@ -26,6 +26,7 @@
 //
 import React, { useState, Component, type ErrorInfo, type ReactNode } from "react";
 import { useAgentStore } from "../../store/agent-store.js";
+import { useNotificationStore } from "../../store/notification-store.js";
 import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
 import AgentEditor from "./AgentEditor.js";
 import TemplateGallery from "./TemplateGallery.js";
@@ -58,6 +59,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
 
 export default function AgentsPage() {
 	const { agents, loading, remove } = useAgentStore();
+	const addError = useNotificationStore((s) => s.addError);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
 	const [tab, setTab] = useState<Tab>("agents");
@@ -66,8 +68,12 @@ export default function AgentsPage() {
 	const selected = selectedId ? agents.find((a) => a.id === selectedId) : null;
 
 	const handleDelete = async (id: string) => {
-		await remove(id);
-		if (selectedId === id) setSelectedId(null);
+		try {
+			await remove(id);
+			if (selectedId === id) setSelectedId(null);
+		} catch (err: any) {
+			addError(err?.message || "Failed to delete agent");
+		}
 	};
 
 	const handleSaved = (agent: AgentRecord) => {

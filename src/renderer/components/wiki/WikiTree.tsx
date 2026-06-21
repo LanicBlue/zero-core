@@ -33,7 +33,7 @@
 // - 新增节点 type 时补 NODE_TYPE_ICONS
 // - 树渲染/交互变更同步此组件
 //
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { WikiNode, WikiNodeTypeGlobal } from "../../../shared/types.js";
 
 const NODE_TYPE_ICONS: Record<string, string> = {
@@ -61,12 +61,21 @@ interface WikiTreeProps {
 export default function WikiTree({ nodes, selectedNodeId, onSelect }: WikiTreeProps) {
 	// Index children by parentId once per refresh — O(n) build, O(1) lookup.
 	// This is the key perf fix vs. the legacy per-node `nodes.filter(...)`.
+	//
+	// BUG FIX (v0.8 dev): the backend sends `parentId: null` for the synthetic
+	// global root (DB column stores NULL, rowToWikiNode passes it through as
+	// null), but the WikiNode type declares it `string | undefined`. The old
+	// code keyed childrenByParent on `n.parentId` directly, so the root landed
+	// under key `null` while rootNodes read key `undefined` — mismatch, root
+	// bucket was always empty, walk(undefined) found nothing, the whole tree
+	// rendered blank. Normalize null → undefined so both keys agree.
 	const childrenByParent = useMemo(() => {
 		const map = new Map<string | undefined, WikiNode[]>();
 		for (const n of nodes) {
-			const arr = map.get(n.parentId) ?? [];
+			const key = n.parentId ?? undefined;
+			const arr = map.get(key) ?? [];
 			arr.push(n);
-			map.set(n.parentId, arr);
+			map.set(key, arr);
 		}
 		// Sort each bucket by title for stable display.
 		for (const arr of map.values()) {
@@ -79,6 +88,13 @@ export default function WikiTree({ nodes, selectedNodeId, onSelect }: WikiTreePr
 
 	// Track expanded node ids in local state. Root is expanded by default so
 	// the user sees the top-level knowledge/projects/memory buckets.
+	//
+	// BUG FIX (v0.8 dev): the useState initializer runs ONCE on first render,
+	// when `nodes=[]` (refresh hasn't completed) → `rootNodes=[]` → the global
+	// root was never added to `expanded`. Result: after refresh, the root row
+	// rendered but its children (knowledge/projects/memory skeleton) stayed
+	// hidden because expanded was empty. The auto-expand effect below restores
+	// the intended "open on global root on first appearance" behavior.
 	const [expanded, setExpanded] = useState<Set<string>>(() => {
 		const s = new Set<string>();
 		for (const r of rootNodes) {
@@ -86,6 +102,15 @@ export default function WikiTree({ nodes, selectedNodeId, onSelect }: WikiTreePr
 		}
 		return s;
 	});
+
+	// Auto-expand the global root the first time it shows up in the node pool.
+	// Runs whenever `nodes` changes; no-op once already expanded.
+	useEffect(() => {
+		const hasGlobalRoot = rootNodes.some((r) => r.id === "wiki-root:global");
+		if (hasGlobalRoot && !expanded.has("wiki-root:global")) {
+			setExpanded((prev) => new Set(prev).add("wiki-root:global"));
+		}
+	}, [rootNodes, expanded]);
 
 	const toggle = (id: string) => {
 		setExpanded((prev) => {

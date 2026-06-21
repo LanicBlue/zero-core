@@ -315,6 +315,26 @@ export function registerProxyHandlers(port: number): void {
 
 				const resp = await fetch(url, fetchOpts);
 				const text = await resp.text();
+				// v0.8: surface non-2xx as a rejection so renderer `await
+				// ipcRenderer.invoke` throws (callers can try/catch). Previously
+				// we always resolved, which swallowed backend 4xx/5xx bodies and
+				// let optimistic callers (e.g. agent delete) proceed on failure.
+				// The thrown Error carries status + a short body excerpt so the
+				// UI can show something useful.
+				if (!resp.ok) {
+					const excerpt = text.length > 500 ? text.slice(0, 500) + "..." : text;
+					let detail = excerpt;
+					// Best-effort: pull backend { error } payload for the message.
+					try {
+						const parsed = JSON.parse(text);
+						if (parsed && typeof parsed === "object" && typeof parsed.error === "string") {
+							detail = parsed.error;
+						}
+					} catch { /* keep raw excerpt */ }
+					throw new Error(
+						`${channel} → ${route.method} ${route.path} failed: HTTP ${resp.status} ${resp.statusText}: ${detail}`,
+					);
+				}
 				try {
 					return JSON.parse(text);
 				} catch {
@@ -322,7 +342,7 @@ export function registerProxyHandlers(port: number): void {
 				}
 			} catch (err: any) {
 				log.error("ipc-proxy", `${channel} failed:`, err.message);
-				return { error: err.message };
+				throw err;
 			}
 		});
 	}

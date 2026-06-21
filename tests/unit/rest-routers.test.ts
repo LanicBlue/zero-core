@@ -565,6 +565,52 @@ describe("ipc-proxy route mapping completeness", () => {
 		expect(routeCount).toBeGreaterThanOrEqual(Object.keys(ROUTE_MAP).length);
 	});
 
+	// v0.8 (sub2 fix verification): ipc-proxy MUST surface backend non-2xx as a
+	// rejection (so renderer `await ipcRenderer.invoke` throws). Previously the
+	// proxy always resolved, swallowing 4xx/5xx bodies — this let optimistic
+	// callers (e.g. agent delete → agentStore.remove) advance on failure. The
+	// fix is twofold: (a) `if (!resp.ok) throw new Error(...)` right after
+	// `await fetch`, and (b) the outer `catch` rethrows instead of returning
+	// `{error}`. Source-level contract since ipc-proxy.ts imports `electron`
+	// (ipcMain/BrowserWindow) + `ws`, which makes a full unit harness expensive.
+	test("ipc-proxy rejects on non-2xx (resp.ok check + rethrow, no {error} return)", async () => {
+		const fs = await import("fs");
+		const proxySource = fs.readFileSync("src/main/ipc-proxy.ts", "utf-8");
+
+		// (a) Right after fetch + text(), check resp.ok and throw.
+		expect(proxySource).toContain("resp.ok");
+		expect(proxySource).toMatch(/if\s*\(\s*!\s*resp\.ok\s*\)\s*\{[\s\S]*?throw\s+new\s+Error/);
+
+		// The thrown error must carry status so the UI can branch on it.
+		expect(proxySource).toContain("resp.status");
+
+		// (b) The outer catch block must rethrow, not return {error}.
+		// Match: `} catch (err: any) { ... throw err; }` — and assert the
+		// catch body does NOT `return { error` (the old swallow-the-failure
+		// shape).
+		expect(proxySource).toMatch(/catch\s*\(\s*err:\s*any\s*\)\s*\{[\s\S]*?throw\s+err\s*;?\s*\}/);
+		expect(proxySource).not.toContain("return { error"); // legacy shape removed
+	});
+
+	// v0.8 (sub2 fix verification): agentStore.remove depends on the reject
+	// contract above — the optimistic UI filter only runs if agentsDelete
+	// resolves. Sanity-check the store source still awaits before mutating.
+	test("agent-store.remove awaits delete before optimistic UI update", async () => {
+		const fs = await import("fs");
+		const store = fs.readFileSync("src/renderer/store/agent-store.ts", "utf-8");
+
+		// remove must: (1) await agentsDelete, (2) only then set the filter.
+		// If a future refactor reordered these, the fix would silently regress.
+		const removeBlock = store.match(/remove:\s*async\s*\([\s\S]*?\n\t\},/);
+		expect(removeBlock, "agent-store.remove block not found").not.toBeNull();
+		const body = removeBlock![0];
+		const awaitIdx = body.indexOf("await api().agentsDelete");
+		const filterIdx = body.indexOf(".filter(");
+		expect(awaitIdx, "remove must await api().agentsDelete").toBeGreaterThan(-1);
+		expect(filterIdx, "remove must call .filter to drop the agent").toBeGreaterThan(-1);
+		expect(awaitIdx, "agentsDelete must precede the optimistic filter").toBeLessThan(filterIdx);
+	});
+
 	// v0.8 §11.5 debt-1 contract: agent-as-tool channels MUST be absent from
 	// both ROUTE_MAP (derived from ipc-proxy source) and preload. Catches any
 	// accidental re-introduction of the retired /api/agent-tools surface.
