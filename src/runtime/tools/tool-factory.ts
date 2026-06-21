@@ -46,7 +46,8 @@ export type ToolCategory =
 	| "assistant"
 	| "interaction"
 	| "agent"
-	| "management";
+	| "management"
+	| "workflow";
 
 export interface ToolMeta {
 	category: ToolCategory;

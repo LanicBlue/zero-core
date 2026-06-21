@@ -73,7 +73,7 @@ export const verifyTool = buildTool({
 		"- requirementId (required) — the requirement you just built.\n" +
 		"- summary (optional) — short note for PM (canonical evidence is the Orchestrate manifest).",
 	meta: {
-		category: "management",
+		category: "workflow",
 		isReadOnly: false,
 		isConcurrencySafe: false,
 		isDestructive: false,

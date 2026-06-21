@@ -75,7 +75,7 @@ export function createAssistantTools(getAppVersion?: () => string) {
 				"'source' — read a source file from the app directory; " +
 				"'providers' — list configured AI providers; " +
 				"'files' — list files in a data directory.",
-			meta: { category: "assistant", isReadOnly: true },
+			meta: { category: "management", isReadOnly: true },
 			inputSchema: z.object({
 				resource: z.enum(["info", "logs", "config", "source", "providers", "files"])
 					.describe("Which diagnostic resource to access"),

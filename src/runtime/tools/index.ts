@@ -46,7 +46,6 @@ import { getToolMeta, getToolConfigSchema, getToolDescription, getToolPrompt, ge
 import { webFetchTool } from "../mcp-tools/fetch-tools.js";
 import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
 import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
-import { expandNodeTool, updateWikiNodeTool, listWikiTreeTool, readDocTool } from "./wiki-tools.js";
 import { createRequirementTool, createRequirementWithDocTool } from "./requirement-tools.js";
 import { orchestrateTool } from "./orchestrate-tool.js";
 // v0.8 (P3 §7.3): the four domain action tools + verify, replacing the retired
@@ -85,16 +84,10 @@ export const ALL_TOOLS: Record<string, any> = {
 	TodoWrite: todoWriteTool,
 	WebFetch: webFetchTool,
 	// v0.8 (P2 §11.6): MemoryRecall / MemoryNote tools removed — memory is
-	// now a wiki per-agent subtree; agents read it via ExpandNode/ListWikiTree
-	// and search via the wiki tree. The legacy MemoryNodeStore-backed tools
-	// are retired.
+	// now a wiki per-agent subtree; agents read it via the Wiki action tool
+	// (expand/read/upsert/search) and search via the wiki tree. The legacy
+	// MemoryNodeStore-backed tools are retired.
 	SequentialThinking: sequentialThinkingTool,
-	ExpandNode: expandNodeTool,
-	UpdateWikiNode: updateWikiNodeTool,
-	// v0.8 (M2): archivist wiki tree tools — read-only view (ListWikiTree),
-	// scoped upsert (UpdateWikiNode), and read-only doc access (ReadDoc).
-	ListWikiTree: listWikiTreeTool,
-	ReadDoc: readDocTool,
 	CreateRequirement: createRequirementTool,
 	// v0.8 (M4): PM-only tool — creates a requirement + repo doc + discuss
 	// landing in one shot (PmService.createRequirementWithDoc).
@@ -122,10 +115,6 @@ const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> 
 	TaskList: (ctx) => !!ctx.listTasks,
 	TaskStop: (ctx) => !!ctx.stopTask,
 	Wait: (ctx) => !!ctx.suspendUntilWake,
-	ExpandNode: (ctx) => !!ctx.wikiStore,
-	UpdateWikiNode: (ctx) => !!ctx.wikiStore,
-	ListWikiTree: (ctx) => !!ctx.wikiStore,
-	ReadDoc: (ctx) => !!(ctx.contextBundle?.workspaceDir ?? ctx.workingDir),
 	CreateRequirement: (ctx) => !!ctx.requirementStore,
 	// v0.8 (M4): PM-only — gated on ctx.pmService (only PM sessions carry it).
 	CreateRequirementWithDoc: (ctx) => !!(ctx as any).pmService,

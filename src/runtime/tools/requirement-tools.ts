@@ -51,7 +51,7 @@ export const createRequirementTool = buildTool({
 		"  - normal: architecture improvements\n" +
 		"  - low: maintainability concerns\n" +
 		"- impactScope — affected scope, e.g. 'payment module'",
-	meta: { category: "agent", isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
+	meta: { category: "workflow", isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
 
 	inputSchema: z.object({
 		title: z.string().describe("Requirement title, concise and clear"),
@@ -115,7 +115,7 @@ export const createRequirementWithDocTool = buildTool({
 		"- summary — one-line intent (also seeds the doc's Intent section)\n" +
 		"- body — optional full markdown body for the doc (default template used if omitted)\n" +
 		"- priority — 'low' | 'normal' | 'high' | 'critical' (default 'normal')",
-	meta: { category: "agent", isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
+	meta: { category: "workflow", isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
 
 	inputSchema: z.object({
 		title: z.string().describe("Requirement title (unique within the project)"),

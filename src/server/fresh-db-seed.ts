@@ -125,11 +125,12 @@ template 表里,由 zero 按用户对话按需实例化。
 /**
  * Seed the fresh-DB defaults (RFC §7.1).
  *
- * Idempotent: if the zero agent or software-dev node already exists, the
- * corresponding seed is a no-op. The trigger condition
- * (agentStore.list().length === 0) is checked by the caller, but this
- * function additionally guards each piece so a re-seed after a partial
- * state is safe.
+ * STRICT FRESH-ONLY (v0.8 P7): the function is a hard no-op whenever
+ * `agentStore.list().length > 0`. The caller (server/index.ts) already
+ * gates on this condition; we re-check here as the authoritative guard
+ * so a re-seed can never write a duplicate on a partially-populated DB.
+ * The wiki-side helpers below remain individually idempotent (safe if
+ * re-invoked by callers that pre-seeded the wiki subtree).
  *
  * Both records are protected:
  * - zero agent: AgentRegistry delete rejects (management-service.ts).
@@ -143,23 +144,33 @@ export function seedFreshDbDefaults(deps: {
 	const { agentStore, wikiStore, management } = deps;
 
 	// ─── 1. zero agent ─────────────────────────────────────────────
-	// Identity in v0.8 = name + systemPrompt (RFC §1.4); we recognize the
-	// seed zero by name. Re-running on a non-empty DB is a no-op.
-	const hasZero = agentStore.list().some((a) => a.name === "zero");
-	if (!hasZero) {
-		try {
-			management.instantiateTemplate(
-				"zero",
-				{
-					name: "zero",
-					workspaceDir: join(homedir(), ".zero-core"),
-				},
-				{ bindToolPolicy: false },
-			);
-			console.log("[seed] instantiated zero agent (fresh-DB seed)");
-		} catch (err) {
-			console.warn("[seed] failed to seed zero agent:", (err as Error).message);
-		}
+	// Identity in v0.8 = name + systemPrompt (RFC §1.4).
+	//
+	// STRICT FRESH-ONLY guard (v0.8 P7). Before P7, AgentStore's constructor
+	// seeded a legacy default "Zero" agent, so a "truly empty" DB still had
+	// length > 0 and a name==='zero' workaround guard was used to coexist.
+	// P7 retired the legacy default (agent-store.ts), so
+	// `agentStore.list().length === 0` now correctly identifies a fresh DB.
+	// The caller (server/index.ts) already gates on this condition, but we
+	// re-check here as a hard guarantee: this function ONLY writes on a truly
+	// empty table. On any non-empty DB (legacy data, partial state, a prior
+	// "Zero" capitalized record) we are a no-op — we never seed a duplicate.
+	const currentAgents = agentStore.list();
+	if (currentAgents.length > 0) {
+		return;
+	}
+	try {
+		management.instantiateTemplate(
+			"zero",
+			{
+				name: "zero",
+				workspaceDir: join(homedir(), ".zero-core"),
+			},
+			{ bindToolPolicy: false },
+		);
+		console.log("[seed] instantiated zero agent (fresh-DB seed)");
+	} catch (err) {
+		console.warn("[seed] failed to seed zero agent:", (err as Error).message);
 	}
 
 	// ─── 2. knowledge/software-dev wiki node ──────────────────────

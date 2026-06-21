@@ -15,9 +15,9 @@
 //
 // ## 命名 (§7.3 硬原则)
 // 原 ExpandNode / ReadDoc / UpdateWikiNode / ListWikiTree 四个分散工具
-// 合并到此 "Wiki"。注意:这些原工具仍保留在 wiki-tools.ts 中导出(供
-// archivist session 用同名字面调用,P3 不强制改 archivist 的 toolPolicy);
-// 本工具是给 zero / lead / PM 用的"统一入口"。
+// 合并到此 "Wiki"。v0.8 P7: wiki-tools.ts has been deleted; the four named
+// tools are fully replaced by this action-switched "Wiki" tool. All sessions
+// (zero / lead / PM / archivist) now go through this single entry point.
 //
 // ## 输入
 // - ctx.wikiStore (ProjectWikiStore 兼容层 → .getWikiStore() 取真 WikiStore)
@@ -37,8 +37,8 @@ import {
 } from "../../server/wiki-node-store.js";
 
 // ---------------------------------------------------------------------------
-// Helpers (mirror wiki-tools.ts; P3 doesn't merge that file — archivist still
-// uses the named tools there. P5 may consolidate.)
+// Helpers — local to this tool (the old wiki-tools.ts was deleted in v0.8 P7;
+// the helpers were inlined here when the four named tools merged into "Wiki").
 // ---------------------------------------------------------------------------
 
 function resolveWikiStore(ctx: any): WikiStore | undefined {

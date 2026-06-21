@@ -203,12 +203,11 @@ export async function startServer(options?: StartServerOptions) {
 	// Both are protected (cannot be deleted). Runs at startup, after all
 	// stores are ready and before restoreAllSessions. RFC §7.1 / §7.5.
 	//
-	// Trigger: the literal spec condition is `agentStore.list().length === 0`,
-	// but AgentStore's constructor seeds a legacy default "Zero" agent on a
-	// fresh DB, so we instead use the seed module's idempotent guards (which
-	// recognize the seed by name/path and no-op on re-run). This produces the
-	// spec-required "fresh DB has zero + software-dev" state without colliding
-	// with the legacy default. (P7 will retire the legacy default.)
+	// Trigger: `agentStore.list().length === 0` (strict fresh-only). v0.8 P7
+	// retired AgentStore's legacy "Zero" constructor seed, so this condition
+	// is now true exactly on a truly-empty DB. fresh-db-seed.ts re-checks the
+	// condition internally and no-ops on any non-empty table, so a re-seed
+	// can never duplicate.
 	const { seedFreshDbDefaults } = await import("./fresh-db-seed.js");
 	seedFreshDbDefaults({ agentStore, wikiStore: wikiStoreGlobal, management });
 

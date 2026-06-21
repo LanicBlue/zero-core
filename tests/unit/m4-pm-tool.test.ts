@@ -222,12 +222,17 @@ describe("PM role preset (defect 1 — tool allowlist)", () => {
 		expect(preset.whitelistedRoleTags).toContain("analyzer");
 	});
 
-	test("PM preset enables read-only wiki tools (read archivist wiki, no writes)", () => {
+	test("PM preset enables the unified Wiki tool (read archivist wiki, no writes)", () => {
+		// v0.8 P7: the four retired tools (ExpandNode / ListWikiTree / ReadDoc /
+		// UpdateWikiNode) merged into a single action-switched `Wiki` tool. PM
+		// gets it enabled (read + search; upsert is unused since PM is read-only,
+		// and the store-layer scope guard rejects writes outside PM's own subtree).
 		const preset = getPreset("pm")!;
-		expect(preset.toolPolicy.tools?.ListWikiTree).toEqual({ enabled: true });
-		expect(preset.toolPolicy.tools?.ReadDoc).toEqual({ enabled: true });
-		expect(preset.toolPolicy.tools?.ExpandNode).toEqual({ enabled: true });
-		// PM must NOT be able to write wiki structure (archivist's job).
+		expect(preset.toolPolicy.tools?.Wiki).toEqual({ enabled: true });
+		// The four retired tool names must NOT appear anywhere in the preset.
+		expect(preset.toolPolicy.tools?.ExpandNode).toBeUndefined();
+		expect(preset.toolPolicy.tools?.ListWikiTree).toBeUndefined();
+		expect(preset.toolPolicy.tools?.ReadDoc).toBeUndefined();
 		expect(preset.toolPolicy.tools?.UpdateWikiNode).toBeUndefined();
 	});
 

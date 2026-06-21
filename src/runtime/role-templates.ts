@@ -238,13 +238,15 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
 			// PM is read-only to the filesystem (no Write/Edit), but is allowed
 			// to create requirement records + repo docs via this dedicated tool
 			// (M4 decision 7/12/14 — PM owns requirement docs, not code), and
-			// to read archivist's wiki (read-only view tools, no UpdateWikiNode).
+			// to read archivist's wiki. Wiki access is via the unified `Wiki`
+			// action tool (expand/read/search — read-only PM does not upsert,
+			// so the upsert action will simply never be invoked by PM's prompt;
+			// if it is, the store-layer scope guard rejects writes outside the
+			// PM's own subtree).
 			tools: {
 				...FS_READ_TOOLS,
 				CreateRequirementWithDoc: { enabled: true },
-				ListWikiTree: { enabled: true },
-				ReadDoc: { enabled: true },
-				ExpandNode: { enabled: true },
+				Wiki: { enabled: true },
 			},
 			executionMode: "sequential",
 			readScope: "filesystem",

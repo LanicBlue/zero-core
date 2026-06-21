@@ -37,7 +37,7 @@ export const delegateTool = buildTool({
 		"Use model parameter to override the model for the sub-agent.\n" +
 		"Use systemPrompt to give the sub-agent specialized instructions.\n\n" +
 		"For non-blocking tasks, use Wait to be notified when done, or TaskStatus to poll progress.",
-	meta: { category: "runtime", isReadOnly: false, isConcurrencySafe: false },
+	meta: { category: "agent", isReadOnly: false, isConcurrencySafe: false },
 	configSchema: [
 		{ key: "auto_background", type: "boolean", label: "自动转后台", description: "阻塞超时后自动转为非阻塞后台执行" },
 		{ key: "auto_background_timeout", type: "number", label: "超时 (s)", description: "阻塞等待秒数，超时后转后台；设为 0 则立即非阻塞", default: 0 },

@@ -68,7 +68,7 @@ const ANALYST_CONFIG: WorkflowRoleConfig = {
 	toolPolicy: {
 		blockedTools: ["Orchestrate"],
 		autoApprove: ["Read", "Write", "Edit", "Grep", "Glob", "Shell",
-			"ExpandNode", "UpdateWikiNode", "CreateRequirement"],
+			"Wiki", "CreateRequirement"],
 	},
 
 	promptAppend: `
@@ -93,8 +93,7 @@ You are the resident analyst for this project. Your responsibilities:
    - Every requirement must have clear title, description, and impactScope
 
 Available workflow tools:
-- ExpandNode(path) — Read a Wiki node's detail
-- UpdateWikiNode(path, ...) — Create or update a Wiki node (upsert)
+- Wiki(action, ...) — Unified wiki tool: expand/read/search nodes (read) or upsert them (write).
 - CreateRequirement(title, description, priority, impactScope) — Add a requirement to the pool`,
 
 	contextPolicy: {
@@ -116,7 +115,7 @@ const LEAD_CONFIG: WorkflowRoleConfig = {
 
 	toolPolicy: {
 		blockedTools: ["Write", "Edit"],
-		autoApprove: ["Read", "Grep", "Glob", "Shell", "ExpandNode", "Orchestrate"],
+		autoApprove: ["Read", "Grep", "Glob", "Shell", "Wiki", "Orchestrate"],
 	},
 
 	promptAppend: `
@@ -139,11 +138,14 @@ You are the task lead for this requirement. Your responsibilities:
 
 4. **Rules:**
    - Do NOT write or edit code directly — always delegate via Orchestrate
+   - Use Wiki only for read actions (expand / read / search); leave wiki
+     structure writes to the Archivist
    - Collect all step results before declaring done
    - Summarize final outcome
 
 Available workflow tools:
-- ExpandNode(path) — Read a Wiki node's detail
+- Wiki(action, ...) — Unified wiki tool. For this role use the read actions
+  (expand / read / search) to gather context.
 - Orchestrate(role, task, wikiNodes?, relatedFiles?) — Dispatch a sub-agent`,
 
 	contextPolicy: {
@@ -164,7 +166,7 @@ const DEVELOPER_CONFIG: WorkflowRoleConfig = {
 	recommendedModel: "",
 
 	toolPolicy: {
-		blockedTools: ["Orchestrate", "CreateRequirement", "UpdateWikiNode", "ExpandNode"],
+		blockedTools: ["Orchestrate", "CreateRequirement", "Wiki"],
 		autoApprove: ["Read", "Write", "Edit", "Shell", "Grep", "Glob"],
 	},
 
@@ -199,7 +201,7 @@ const REVIEWER_CONFIG: WorkflowRoleConfig = {
 	recommendedModel: "",
 
 	toolPolicy: {
-		blockedTools: ["Write", "Edit", "Orchestrate", "CreateRequirement", "UpdateWikiNode", "ExpandNode"],
+		blockedTools: ["Write", "Edit", "Orchestrate", "CreateRequirement", "Wiki"],
 		autoApprove: ["Read", "Grep", "Glob", "Shell"],
 	},
 
@@ -231,7 +233,7 @@ const QA_CONFIG: WorkflowRoleConfig = {
 	recommendedModel: "",
 
 	toolPolicy: {
-		blockedTools: ["Edit", "Orchestrate", "CreateRequirement", "UpdateWikiNode", "ExpandNode"],
+		blockedTools: ["Edit", "Orchestrate", "CreateRequirement", "Wiki"],
 		autoApprove: ["Read", "Write", "Shell", "Grep", "Glob"],
 	},
 
@@ -277,17 +279,16 @@ const ARCHIVIST_CONFIG: WorkflowRoleConfig = {
 	toolPolicy: {
 		// Write guard = tool capability. The archivist has NO Write/Edit/Shell
 		// (it can't modify code or requirement docs). Its only writable surface
-		// is UpdateWikiNode, which the store further scopes to its own project
-		// subtree + types {header, intent, structure}. RFC §2.16 / OQ1 / decision 39.
+		// is the unified Wiki tool's upsert action, which the store further
+		// scopes to its own project subtree + types {header, intent, structure}.
+		// RFC §2.16 / OQ1 / decision 39.
 		blockedTools: [
 			"Write", "Edit", "Shell", "Orchestrate", "CreateRequirement",
 		],
 		autoApprove: [
 			"Read", "Grep", "Glob",
 			// Wiki tree (scoped to own project subtree at the store layer).
-			"ExpandNode", "ListWikiTree", "UpdateWikiNode",
-			// Read-only project document access.
-			"ReadDoc",
+			"Wiki",
 		],
 	},
 
@@ -344,10 +345,10 @@ When you spot:
 
 ### Available workflow tools
 
-- ListWikiTree() — list visible wiki subtree (scoped to your project).
-- ExpandNode(nodeId) — read a node's detail.
-- UpdateWikiNode(...) — upsert a node inside your project subtree.
-- ReadDoc(path) — read a project document (read-only).`,
+- Wiki(action, ...) — unified wiki tool. Read actions (list / expand / search)
+  browse the subtree scoped to your project; upsert writes a node inside your
+  project subtree (subject to the type rules above). For project documents
+  (code / requirement / ADR), use the read actions — they are read-only to you.`,
 
 	contextPolicy: {
 		injectProjectInfo: true,
