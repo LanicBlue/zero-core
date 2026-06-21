@@ -148,6 +148,15 @@ export class AgentStore {
 	}
 
 	delete(id: string): void {
+		// v0.8 P7 §7.3: zero agent is protected at the STORE layer so every
+		// deletion path (agent-router REST DELETE, management tool, any future
+		// caller) is uniformly blocked. Identity in v0.8 = name + systemPrompt
+		// (RFC §1.4); the fresh-DB seed instantiates it as name "zero"
+		// (lowercase). Match case-insensitively to absorb display variants.
+		const agent = this.store.get(id);
+		if (agent && typeof agent.name === "string" && agent.name.toLowerCase() === "zero") {
+			throw new Error("Cannot delete the protected 'zero' management agent");
+		}
 		this.store.delete(id);
 	}
 }

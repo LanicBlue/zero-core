@@ -122,6 +122,27 @@ export const KNOWLEDGE_ROOT_PATH_SEED = "knowledge";
 export const SOFTWARE_DEV_NODE_PATH_SEED = "software-dev";
 
 /**
+ * v0.8 (§10.5): path constants for the fresh-DB seed subtree-root skeleton.
+ * Alongside the knowledge subtree, the global root also carries empty
+ * container roots for the two other §10.5 top-level branches so the wiki
+ * browser opens with a clear skeleton:
+ *
+ *   wiki-root:global
+ *     ├── knowledge          (KNOWLEDGE_ROOT_PATH_SEED)        — protected
+ *     │     └── software-dev (SOFTWARE_DEV_NODE_PATH_SEED)     — protected
+ *     ├── projects           (PROJECTS_ROOT_PATH_SEED)         — empty container
+ *     └── memory             (MEMORY_ROOT_PATH_SEED)           — empty container
+ *
+ * These are NOT protected (they are navigation skeletons, not anchors);
+ * the per-project subtree roots (`wiki-root:<projectId>`) and per-agent
+ * memory roots (`wiki-root:memory-agent:<agentId>`) are still created
+ * lazily by ensureProjectSubtree / ensureMemoryAgentRoot and live as
+ * siblings of these skeleton roots.
+ */
+export const PROJECTS_ROOT_PATH_SEED = "projects";
+export const MEMORY_ROOT_PATH_SEED = "memory";
+
+/**
  * v0.8 (M5): stable synthetic id of one of the five global memory-type
  * roots (RFC §2.16 N2 / decision 46). Memory leaves written by extractor A
  * hang under their matching type root. These ids are shared with

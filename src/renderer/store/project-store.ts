@@ -3,14 +3,16 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 项目相关的 Zustand 状态管理，自动从 Agent 同步项目。
+// 项目相关的 Zustand 状态管理。
+//
+// v0.8 (§8): 项目不再从 Agent 自动同步 — 每个项目必须显式建(Project
+// 工具 / 项目页新建)。本 store 只负责 list/update/remove。
 //
 // ## 输入
-// - IPC 调用（projects:list, agents:list 等）
+// - IPC 调用（projects:list 等）
 //
 // ## 输出
 // - 项目列表
-// - 自动同步方法
 //
 // ## 定位
 // 渲染进程状态管理，被 KanbanPage 等组件使用。
@@ -20,7 +22,7 @@
 // - ../../shared/types - 共享类型
 //
 // ## 维护规则
-// - 项目自动从 Agent 同步，不需要手动创建
+// - 项目必须显式建，不再自动从 Agent 同步（v0.7 syncFromAgents 已移除）
 //
 import { create } from "zustand";
 import type { ProjectRecord, CreateProjectInput, UpdateProjectInput } from "../../shared/types.js";
@@ -32,49 +34,23 @@ interface ProjectState {
 	projects: ProjectRecord[];
 	loading: boolean;
 	fetchProjects: (filter?: { status?: string }) => Promise<void>;
-	syncFromAgents: () => Promise<void>;
 	updateProject: (id: string, input: UpdateProjectInput) => Promise<void>;
 	removeProject: (id: string) => Promise<void>;
 }
 
-export const useProjectStore = create<ProjectState>((set, get) => ({
+export const useProjectStore = create<ProjectState>((set) => ({
 	projects: [],
 	loading: false,
 
 	/**
-	 * 自动从 Agent 列表同步项目。
-	 * 每个 Agent 的 workspaceDir 对应一个 Project。
-	 * 如果 Agent 还没有对应的 Project，自动创建。
+	 * 拉取项目列表。v0.8 (§8): 项目必须显式建(Project 工具 / 项目页新建),
+	 * 这里只 list 显式建的项目,不再像 v0.7 那样从 Agent workspaceDir 自动同步
+	 * 创建(旧逻辑会把 zero agent 的 ~/.zero-core 平台目录误建成 "zero" 项目
+	 * 并触发 archivist 扫出 structure:wiki/structure:workspace 垃圾 wiki 节点)。
 	 */
-	syncFromAgents: async () => {
-		try {
-			const agents = await api().agentsList();
-			const projects = await api().projectsList();
-			// v0.8 (M0): ProjectRecord uses workspaceDir (was: path)
-			const existingPaths = new Set(projects.map((p: ProjectRecord) => p.workspaceDir));
-
-			for (const agent of agents) {
-				if (agent.workspaceDir && !existingPaths.has(agent.workspaceDir)) {
-					try {
-						await api().projectsCreate({
-							name: agent.name,
-							workspaceDir: agent.workspaceDir,
-						} as any);
-					} catch {
-						// 可能路径冲突或其他错误，跳过
-					}
-				}
-			}
-		} catch {
-			// 同步失败不阻塞
-		}
-	},
-
 	fetchProjects: async (filter?) => {
 		set({ loading: true });
 		try {
-			// 先同步，再拉列表
-			await get().syncFromAgents();
 			const data = await api().projectsList(filter);
 			set({ projects: data, loading: false });
 		} catch (err: any) {

@@ -344,26 +344,20 @@ export class ManagementService {
 	}
 
 	/**
-	 * Delete an Agent. Refuses to delete the protected "zero" role agent
-	 * (the platform-management agent — deleting it would orphan the only
-	 * session that can manage the platform).
+	 * Delete an Agent. Refuses to delete the protected "zero" management
+	 * agent — the protection lives at the STORE layer (AgentStore.delete),
+	 * so EVERY deletion path (REST router, this tool, any future caller)
+	 * is uniformly blocked. No roleTag/name check here on purpose.
 	 *
-	 * Cascade-cleans agent-tool entries that referenced this agent and any
-	 * cron entries bound to it.
+	 * Cascade-cleans any cron entries bound to it.
 	 */
 	deleteAgent(id: string): void {
 		const agent = this.agentStore.get(id);
 		if (!agent) throw new Error(`Agent not found: ${id}`);
-		// v0.8 P3 §7.3: zero agent is protected. Identity in v0.8 is name +
-		// systemPrompt; the legacy role_tag column still carries "zero" — we
-		// read it via @ts-expect-error pending the P7 roleTag purge.
-		// @ts-expect-error — P0 §1.4: legacy roleTag field; P7 cleanup.
-		if (agent.roleTag === "zero" || agent.name === "zero") {
-			throw new Error("Cannot delete the protected 'zero' management agent");
-		}
 		// v0.8 §11.5: agent-as-tool retired — no AgentToolStore rows to cascade.
 		// subagents are soft refs (no cascade on agent delete by design).
 		this.cronStore?.deleteByAgent(id);
+		// AgentStore.delete throws if the agent is the protected "zero".
 		this.agentStore.delete(id);
 	}
 
