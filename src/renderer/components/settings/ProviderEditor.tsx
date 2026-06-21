@@ -20,7 +20,7 @@
 // ## 维护规则
 // Provider 字段变更需同步更新表单
 //
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useProviderStore } from "../../store/provider-store.js";
 import type { Provider, ProviderModel } from "../../../shared/types.js";
 import { DEFAULT_URLS } from "../../../core/constants.js";
@@ -43,6 +43,14 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 	const [fetchingModels, setFetchingModels] = useState(false);
 	const [models, setModels] = useState<ProviderModel[]>(provider?.models ?? []);
 	const [saving, setSaving] = useState(false);
+
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") onClose();
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [onClose]);
 
 	const currentModels = isEdit ? (useProviderStore.getState().providers.find((p) => p.id === provider!.id)?.models ?? []) : models;
 
@@ -150,7 +158,7 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 		: models;
 
 	return (
-		<div className="provider-editor-overlay" onClick={onClose}>
+		<div className="modal-overlay" onClick={onClose}>
 			<div className="provider-editor" onClick={(e) => e.stopPropagation()}>
 				<div className="editor-header">
 					<h3>{isEdit ? `Edit: ${provider!.name}` : "Add Provider"}</h3>
