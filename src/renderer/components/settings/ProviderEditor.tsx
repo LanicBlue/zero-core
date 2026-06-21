@@ -158,8 +158,8 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 		: models;
 
 	return (
-		<div className="modal-overlay" onClick={onClose}>
-			<div className="provider-editor" onClick={(e) => e.stopPropagation()}>
+		<div className="modal-overlay">
+			<div className="provider-editor">
 				<div className="editor-header">
 					<h3>{isEdit ? `Edit: ${provider!.name}` : "Add Provider"}</h3>
 					<button type="button" className="btn-ghost" onClick={onClose}>Close</button>
