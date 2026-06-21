@@ -55,13 +55,19 @@ test.describe("Context usage indicator", () => {
 		const text = window.locator(".context-usage-text");
 		await expect(text).toBeVisible();
 		const content = await text.textContent();
-		expect(content).toMatch(/\d+[KMG]?\s*\/\s*\d+[KMG]?/);
+		// When the mock returns non-zero inputTokens, the panel renders
+		// "N in · M out | WK" (ChatPanel inputTokens>0 path). When inputTokens
+		// is 0 (legacy), it renders "X / WK". Accept both.
+		expect(content).toMatch(/\d+[KMG]?(\s*\/\s*\d+[KMG]?|\s+in\s*·\s*\d+\s+out\s*\|\s*\d+[KMG]?)/);
 
 		const bar = window.locator(".context-usage-bar");
 		await expect(bar).toBeVisible();
 
+		// The fill element is always attached once contextInfo exists; with
+		// mock-usage of 5 tokens / 128K window the rendered width is sub-pixel
+		// (~0.004%), so toBeVisible flaps. Use attached + style assertion.
 		const fill = window.locator(".context-usage-fill");
-		await expect(fill).toBeVisible();
+		await expect(fill).toBeAttached();
 		const width = await fill.evaluate((el) => el.style.width);
 		expect(parseFloat(width)).toBeGreaterThanOrEqual(0);
 		expect(parseFloat(width)).toBeLessThanOrEqual(100);
@@ -78,8 +84,11 @@ test.describe("Context usage indicator", () => {
 	test("context usage bar is green when usage is low", async () => {
 		await sendChatMessage(window, "short message");
 
+		// Fill width is sub-pixel at 5-token mock usage, so use attached not
+		// visible. The color decision in ChatPanel only depends on the
+		// usage ratio, which is < 0.5 here → green.
 		const fill = window.locator(".context-usage-fill");
-		await expect(fill).toBeVisible({ timeout: 10_000 });
+		await expect(fill).toBeAttached({ timeout: 10_000 });
 		const bg = await fill.evaluate((el) => el.style.background);
 		expect(bg).toMatch(/7ee787|success|green/i);
 	});
@@ -98,6 +107,7 @@ test.describe("Context usage indicator", () => {
 		await expect(window.locator(".context-usage")).toBeVisible({ timeout: 10_000 });
 
 		const text = await window.locator(".context-usage-text").textContent();
-		expect(text).toMatch(/\d+[KMG]?\s*\/\s*\d+[KMG]?/);
+		// See note above — accept either "X / WK" or "N in · M out | WK".
+		expect(text).toMatch(/\d+[KMG]?(\s*\/\s*\d+[KMG]?|\s+in\s*·\s*\d+\s+out\s*\|\s*\d+[KMG]?)/);
 	});
 });

@@ -51,7 +51,10 @@ export function loadFixture(path: string): MockFixture {
 let idCounter = 0;
 const nextId = () => `mock-${++idCounter}`;
 
-function toStreamPart(chunk: MockFixture["chunks"][number]): LanguageModelV2StreamPart[] {
+function toStreamPart(
+	chunk: MockFixture["chunks"][number],
+	fixtureUsage?: MockFixture["usage"],
+): LanguageModelV2StreamPart[] {
 	switch (chunk.type) {
 		case "thinking": {
 			const id = nextId();
@@ -70,13 +73,21 @@ function toStreamPart(chunk: MockFixture["chunks"][number]): LanguageModelV2Stre
 			];
 		}
 		case "finish": {
+			// Honor the fixture's usage block so downstream context-usage UI
+			// (ChatPanel contextInfo) renders non-zero token counts in E2E.
+			// Previously this hardcoded all-zero usage, which caused the
+			// context-usage indicator to render "0 in · 0 out" and let tests
+			// that assert on token counts fail.
+			const inputTokens = fixtureUsage?.inputTokens ?? 0;
+			const outputTokens = fixtureUsage?.outputTokens ?? 0;
+			const fixtureTotal = fixtureUsage?.totalTokens;
 			return [{
 				type: "finish",
 				finishReason: chunk.finishReason ?? "stop",
 				usage: {
-					inputTokens: 0,
-					outputTokens: 0,
-					totalTokens: 0,
+					inputTokens,
+					outputTokens,
+					totalTokens: fixtureTotal ?? inputTokens + outputTokens,
 				},
 			}];
 		}
@@ -117,7 +128,7 @@ export function createMockLanguageModel(fixturePath: string, modelId = "mock-mod
 				async start(controller) {
 					controller.enqueue({ type: "stream-start", warnings: [] });
 					for (const chunk of fixture.chunks) {
-						for (const part of toStreamPart(chunk)) {
+						for (const part of toStreamPart(chunk, fixture.usage)) {
 							controller.enqueue(part);
 							if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
 						}

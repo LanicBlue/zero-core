@@ -33,6 +33,14 @@ import { mkdirSync } from "node:fs";
 import type { SessionDB } from "../server/session-db.js";
 import type { AgentStore } from "../server/agent-store.js";
 import type { ProviderStore } from "../server/provider-store.js";
+import type { WikiStore } from "../server/wiki-node-store.js";
+import type { ProjectStore } from "../server/project-store.js";
+import {
+	ensureKnowledgeRoot,
+	ensureSoftwareDevNode,
+	ensureProjectsRoot,
+	ensureMemoryRoot,
+} from "../server/fresh-db-seed.js";
 import { ZERO_CORE_DIR } from "./config.js";
 import { log } from "./logger.js";
 
@@ -52,12 +60,20 @@ export function seedTestEnvironment(
 	sessionDb: SessionDB,
 	agentStore: AgentStore,
 	providerStore: ProviderStore,
+	wikiStore?: WikiStore,
+	projectStore?: ProjectStore,
 ): TestSeedResult | null {
 	const fixturePath = process.env.ZERO_CORE_TEST_FIXTURE;
 	if (!fixturePath) return null;
 
 	const workspaceDir = join(ZERO_CORE_DIR, "workspace");
 	mkdirSync(workspaceDir, { recursive: true });
+
+	// Dedicated workspace dir for the seeded TestProject so its workspaceDir
+	// never collides with the agent workspaceDir uniqueness key. The wiki
+	// project subtree is created lazily below via ensureProjectSubtree.
+	const testProjectDir = join(workspaceDir, "test-project");
+	mkdirSync(testProjectDir, { recursive: true });
 
 	const providerName = "Mock";
 	const existing = providerStore.list().find((p) => p.type === "mock");
@@ -103,7 +119,69 @@ export function seedTestEnvironment(
 		workspaceDir,
 	} as any);
 
+	// Seed a SECOND test agent ("TestAgent2") so the P8 agent-config e2e
+	// "subagents round-trip" test has a non-self target to pick in the
+	// delegation dropdown. The subagents picker filters out the agent being
+	// edited, so with only one agent in the DB there is nothing to delegate
+	// to and the test cannot exercise the round-trip.
+	if (agentStore.list().filter((a) => a.name === "TestAgent2").length === 0) {
+		const second = agentStore.create({ name: "TestAgent2" } as any);
+		agentStore.update(second.id, {
+			name: "TestAgent2",
+			provider: providerName,
+			model: modelId,
+			workspaceDir,
+		} as any);
+	}
+
+	// Seed a real Project so the P8 wiki-browser "project scope" test has a
+	// genuine project option to pick in the scope dropdown (the dropdown
+	// option value = project.id; only "global" otherwise). The projectStore
+	// uniqueness is keyed by workspaceDir, so we use a dedicated subdir.
+	let testProjectId: string | undefined;
+	if (projectStore) {
+		try {
+			const existing = projectStore.getByWorkspaceDir(testProjectDir);
+			const project = existing
+				? projectStore.get(existing.id)!
+				: projectStore.create({
+					name: "TestProject",
+					workspaceDir: testProjectDir,
+				});
+			testProjectId = project.id;
+		} catch (err) {
+			log.session("test", `TestProject seed failed: ${(err as Error).message}`);
+		}
+	}
+
 	log.session("test", `Test environment seeded: agent=${updated.id}, fixture=${fixturePath}`);
+
+	// §10.5 wiki skeleton — same shape fresh-db-seed.ts plants on a truly-empty
+	// DB. In test mode we create a TestAgent ABOVE, so by the time
+	// seedFreshDbDefaults runs it sees agentStore.list().length > 0 and short-
+	// circuits, skipping the wiki skeleton. The skeleton is idempotent
+	// (ensure* helpers early-return on existing nodes), so we can safely plant
+	// it here unconditionally. Without this, the P8 wiki-browser e2e opens an
+	// empty tree even with the correct selectors.
+	if (wikiStore) {
+		try {
+			ensureKnowledgeRoot(wikiStore);
+			ensureSoftwareDevNode(wikiStore);
+			ensureProjectsRoot(wikiStore);
+			ensureMemoryRoot(wikiStore);
+			// Materialize the seeded TestProject's wiki subtree so a
+			// project-scoped wiki view returns a real (non-empty) tree rooted
+			// at wiki-root:<projectId>. The P8 project-scope e2e asserts the
+			// GLOBAL root disappears from the project view — having the
+			// project subtree present makes the fixture a faithful
+			// representation of a project with wiki content. Idempotent.
+			if (testProjectId) {
+				wikiStore.ensureProjectSubtree(testProjectId, "TestProject");
+			}
+		} catch (err) {
+			log.session("test", `wiki skeleton seed failed: ${(err as Error).message}`);
+		}
+	}
 
 	return {
 		agentId: updated.id,

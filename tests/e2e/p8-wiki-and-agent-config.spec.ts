@@ -211,10 +211,17 @@ test.describe("P8 — wiki browser render", () => {
 		// Wiki Browser heading.
 		await expect(window.getByText("Wiki Browser", { exact: false }).first()).toBeVisible({ timeout: 10_000 });
 
-		// Default scope = global. The tree should render the global root.
-		// (At minimum the seeded global root node exists — fresh-db-seed.)
-		const tree = window.locator(".wiki-tree, [class*='wiki-tree']").first();
-		await tree.waitFor({ state: "visible", timeout: 10_000 });
+		// Default scope = global. The tree should render the global root + the
+		// §10.5 skeleton (knowledge / projects / memory). We assert against the
+		// stable data-testid hooks (WikiTree.tsx renders rows with
+		// data-testid="wiki-tree-node" and data-node-id) — there is no CSS class
+		// on the tree container.
+		const tree = window.locator("[data-testid='wiki-tree']").first();
+		await tree.waitFor({ state: "visible", timeout: 15_000 });
+
+		// The global synthetic root must be present in global scope.
+		const globalRoot = tree.locator("[data-testid='wiki-tree-node'][data-node-id='wiki-root:global']");
+		await expect(globalRoot).toBeVisible({ timeout: 10_000 });
 
 		// Scope selector defaults to "Global (all)".
 		const scopeSelect = window.locator("select[aria-label='Wiki view scope']");
@@ -234,26 +241,36 @@ test.describe("P8 — wiki browser render", () => {
 
 		// If a project option exists, switch to it and verify the global root
 		// is NO LONGER in the tree (project-scoped view excludes the global root).
+		//
+		// NOTE: do NOT use `Array.find(async ...)` — the async predicate always
+		// returns a Promise (truthy), so find short-circuits on the FIRST option
+		// regardless of its value. Pre-v0.8 this silently picked the "global"
+		// placeholder option, the scope never switched to a real project, and
+		// the global root stayed in the tree → assertion failed. Iterate
+		// sequentially with awaited value checks instead.
 		const projectOptions = await scopeSelect.locator("option").all();
-		const realProject = projectOptions.find(async (opt) => {
+		let realProjectValue: string | null = null;
+		for (const opt of projectOptions) {
 			const v = await opt.getAttribute("value");
-			return v && v !== "global";
-		});
-		if (!realProject) {
+			if (v && v !== "global") {
+				realProjectValue = v;
+				break;
+			}
+		}
+		if (!realProjectValue) {
 			// No seeded project in this fixture — acceptable, skip the assertion.
 			test.skip(true, "no seeded project in fixture");
 			return;
 		}
-		const projectValue = await realProject.getAttribute("value");
-		await scopeSelect.selectOption(projectValue!);
+		await scopeSelect.selectOption(realProjectValue);
 		await window.waitForTimeout(500);
 
 		// Global root must NOT appear in a project-scoped view.
-		const treeText = await window.locator(".page-overlay").first().textContent({ timeout: 5_000 });
-		// The synthetic global root is rendered with the 🌐 icon + "wiki-root:global".
-		// After scope switch, neither should appear in the tree (the project subtree
-		// root is wiki-root:<projectId>, which is different).
-		expect(treeText).not.toContain("wiki-root:global");
+		const tree = window.locator("[data-testid='wiki-tree']").first();
+		// The synthetic global root is rendered with node id "wiki-root:global".
+		// After scope switch, that row must be gone (the project subtree root is
+		// wiki-root:<projectId>, which is different).
+		await expect(tree.locator("[data-testid='wiki-tree-node'][data-node-id='wiki-root:global']")).toHaveCount(0);
 	});
 
 	test("permissions: UI does not render foreign-project nodes (store-level scope guard)", async () => {

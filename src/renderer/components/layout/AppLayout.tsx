@@ -111,11 +111,19 @@ export default function AppLayout() {
 			message_end: (d, key) => {
 				if (!d.contextWindow) return;
 				const prev = useChatStore.getState().contextInfoBySession[key];
+				// MessageEndEvent does NOT carry a `usage` field (see
+				// runtime/types.ts). The previous code read `d.usage.inputTokens`
+				// here, which threw "Cannot read properties of undefined
+				// (reading 'inputTokens')" and crashed the React tree on every
+				// turn. Use the prior usage record's inputTokens if available,
+				// else fall back to the estimator. The authoritative usage
+				// update arrives via the separate "usage" event below.
+				const prevInput = prev?.inputTokens ?? 0;
 				updateContextInfo(key, {
-					usedTokens: prev?.inputTokens ?? d.estimatedTokens ?? 0,
+					usedTokens: prevInput || d.estimatedTokens || 0,
 					contextWindow: d.contextWindow,
-					usage: prev ? d.usage.inputTokens / prev.contextWindow : 0,
-					inputTokens: prev?.inputTokens ?? 0,
+					usage: prev ? prevInput / prev.contextWindow : 0,
+					inputTokens: prevInput,
 					outputTokens: prev?.outputTokens ?? 0,
 					totalTokens: prev?.totalTokens ?? 0,
 				});

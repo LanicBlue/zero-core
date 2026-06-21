@@ -206,7 +206,13 @@ export function seedFreshDbDefaults(deps: {
 	}
 }
 
-function ensureKnowledgeRoot(wikiStore: WikiStore): void {
+/**
+ * Exported so non-fresh environments (e.g. the E2E test-mode seed in
+ * src/core/test-seed.ts) can also ensure the §10.5 wiki skeleton exists. The
+ * helpers are individually idempotent (return early if the node already
+ * exists), so calling them from a non-fresh DB is safe and never duplicates.
+ */
+export function ensureKnowledgeRoot(wikiStore: WikiStore): void {
 	const existing = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH_SEED);
 	if (existing) return;
 	wikiStore.create({
@@ -218,7 +224,7 @@ function ensureKnowledgeRoot(wikiStore: WikiStore): void {
 	});
 }
 
-function ensureSoftwareDevNode(wikiStore: WikiStore): void {
+export function ensureSoftwareDevNode(wikiStore: WikiStore): void {
 	const knowledgeRoot = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH_SEED);
 	if (!knowledgeRoot) {
 		throw new Error("knowledge root missing — ensureKnowledgeRoot must run first");
@@ -245,7 +251,7 @@ function ensureSoftwareDevNode(wikiStore: WikiStore): void {
  * per-project subtree roots (`wiki-root:<projectId>`) are created lazily by
  * ensureProjectSubtree and live as siblings of this node. NOT protected.
  */
-function ensureProjectsRoot(wikiStore: WikiStore): void {
+export function ensureProjectsRoot(wikiStore: WikiStore): void {
 	const existing = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, PROJECTS_ROOT_PATH_SEED);
 	if (existing) return;
 	wikiStore.create({
@@ -264,7 +270,7 @@ function ensureProjectsRoot(wikiStore: WikiStore): void {
  * created lazily by ensureMemoryAgentRoot and live as siblings of this node.
  * NOT protected.
  */
-function ensureMemoryRoot(wikiStore: WikiStore): void {
+export function ensureMemoryRoot(wikiStore: WikiStore): void {
 	const existing = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, MEMORY_ROOT_PATH_SEED);
 	if (existing) return;
 	wikiStore.create({

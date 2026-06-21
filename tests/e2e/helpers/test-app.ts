@@ -34,7 +34,7 @@
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 
 export interface TestApp {
 	app: ElectronApplication;
@@ -61,6 +61,46 @@ export async function launchApp(fixtureAbsPath: string): Promise<TestApp> {
 		},
 	});
 
+	return finishLaunch(app, zeroDir, /* keepTmpDir */ false);
+}
+
+/**
+ * Real-API launcher — used by context-usage-real-api.spec.ts.
+ *
+ * Differences from launchApp:
+ *   - Does NOT set ZERO_CORE_TEST_FIXTURE (we want the DB's actual default
+ *     provider/model, not the seeded Mock provider).
+ *   - Does NOT create a fresh tmp ZERO_CORE_DIR — reuses the user's real
+ *     ZERO_CORE_DIR (resolved from env or the default ~/.zero-core) so the
+ *     real provider config / apiKey is present. Caller still gets cleanup,
+ *     but cleanup only closes the app (no tmp dir removal).
+ */
+export async function launchAppRealApi(): Promise<TestApp> {
+	const { ELECTRON_RUN_AS_NODE, ...cleanEnv } = process.env;
+	const zeroDir = process.env.ZERO_CORE_DIR ?? join(homedir(), ".zero-core");
+
+	const app = await electron.launch({
+		args: ["./out/main/index.cjs"],
+		cwd: process.cwd(),
+		env: {
+			...cleanEnv,
+			// Intentionally omit ZERO_CORE_TEST_FIXTURE so test-seed.ts does
+			// not run and the DB's real provider/model survives.
+			NODE_ENV: "test",
+		},
+	});
+
+	return finishLaunch(app, zeroDir, /* keepTmpDir */ true);
+}
+
+// Shared tail of both launchers: wire stdio, grab the first window, surface
+// renderer console errors, build cleanup.
+async function finishLaunch(
+	app: ElectronApplication,
+	zeroDir: string,
+	keepTmpDir: boolean,
+): Promise<TestApp> {
+
 	app.process().stdout?.on("data", (chunk) => process.stdout.write(`[electron:stdout] ${chunk}`));
 	app.process().stderr?.on("data", (chunk) => process.stderr.write(`[electron:stderr] ${chunk}`));
 
@@ -83,7 +123,10 @@ export async function launchApp(fixtureAbsPath: string): Promise<TestApp> {
 		zeroDir,
 		cleanup: async () => {
 			try { await app.close(); } catch {}
-			try { rmSync(zeroDir, { recursive: true, force: true }); } catch {}
+			// Real-API mode reuses the user's actual ZERO_CORE_DIR — never wipe it.
+			if (!keepTmpDir) {
+				try { rmSync(zeroDir, { recursive: true, force: true }); } catch {}
+			}
 		},
 	};
 }

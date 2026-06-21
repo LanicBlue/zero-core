@@ -174,7 +174,7 @@ export async function startServer(options?: StartServerOptions) {
 	// Test-mode seed — populate mock provider + agent when ZERO_CORE_TEST_FIXTURE is set
 	if (process.env.ZERO_CORE_TEST_FIXTURE) {
 		const { seedTestEnvironment } = await import("../core/test-seed.js");
-		seedTestEnvironment(sessionDB, agentStore, providerStore);
+		seedTestEnvironment(sessionDB, agentStore, providerStore, wikiStoreGlobal, projectStore);
 		workspaceConfig = loadWorkspaceConfig(sessionDB);
 	}
 

@@ -123,7 +123,7 @@ export default function WikiTree({ nodes, selectedNodeId, onSelect }: WikiTreePr
 
 	if (nodes.length === 0) {
 		return (
-			<div style={{
+			<div data-testid="wiki-tree" style={{
 				padding: 20,
 				textAlign: "center",
 				fontSize: 12,
@@ -152,7 +152,7 @@ export default function WikiTree({ nodes, selectedNodeId, onSelect }: WikiTreePr
 	walk(undefined, 0);
 
 	return (
-		<div style={{ overflowY: "auto", padding: "4px 0" }}>
+		<div data-testid="wiki-tree" style={{ overflowY: "auto", padding: "4px 0" }}>
 			{rows.map(({ node, depth }) => {
 				const hasChildren = (childrenByParent.get(node.id)?.length ?? 0) > 0;
 				const isExpanded = expanded.has(node.id);
@@ -160,6 +160,9 @@ export default function WikiTree({ nodes, selectedNodeId, onSelect }: WikiTreePr
 				return (
 					<div
 						key={node.id}
+						data-testid="wiki-tree-node"
+						data-node-id={node.id}
+						data-node-type={node.type}
 						onClick={() => onSelect(node.id)}
 						style={{
 							display: "flex",
