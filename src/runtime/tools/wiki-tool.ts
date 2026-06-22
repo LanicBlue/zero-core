@@ -153,8 +153,9 @@ export const wikiTool = buildTool({
 		"- { action:'docWrite', nodeId? | path?, content } — overwrite the whole body (like Write).\n" +
 		"- { action:'docEdit', nodeId? | path?, oldString, newString, replaceAll? } — exact string replace (like Edit). oldString must exist and be unique (or set replaceAll:true to replace every occurrence). No-op/rejected if oldString not found.\n\n" +
 		"Rules:\n" +
-		"- Identity is nodeId (the primary key). Get nodeIds from expand/search. Doc ops also accept a title path as a convenience.\n" +
-		"- Scope = your project subtree. The GLOBAL ROOT is read-only (expand/search only). Writes require a projectId in your session.\n" +
+		"- Identity is nodeId (the primary key). Get nodeIds from expand/search results — this is the reliable way to address a node. Doc ops also accept a title path as a convenience.\n" +
+		"- Title path (doc ops) is HIERARCHICAL and RELATIVE to your scope root, walking child→grandchild by TITLE: 'Knowledge/software-dev 工作流'. The root's own title is NOT part of the path, and a bare leaf name ('software-dev 工作流') only works if that node is a DIRECT child of your scope root. Every segment must match an ancestor along the way — if you don't know the full ancestry, use expand to walk down or search to find the nodeId instead of guessing the path.\n" +
+		"- Scope = your project subtree (or the global root for global sessions). The GLOBAL ROOT is read-only (expand/search only). Writes require a projectId in your session.\n" +
 		"- To edit a node's body, use docEdit/docWrite — never update (update is metadata-only).",
 	meta: {
 		category: "management",
