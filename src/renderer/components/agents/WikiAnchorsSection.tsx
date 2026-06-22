@@ -204,11 +204,16 @@ export function WikiAnchorsSection({ form, wikiNodes, onChange }: Props) {
 							    anchor at the whole tree (zero pattern) even when that root isn't
 							    in the current visible set. */}
 							<option value="wiki-root:global">wiki-root:global (whole tree)</option>
-							{wikiNodes.map((n) => (
-								<option key={n.id} value={n.id}>
-									{n.title || n.path} ({n.id})
-								</option>
-							))}
+							{wikiNodes
+								// The global root is already offered explicitly above; the global-scope
+								// refresh returns the whole tree (root included), so skip it here to
+								// avoid a duplicate "wiki-root:global" entry in the dropdown.
+								.filter((n) => n.id !== "wiki-root:global")
+								.map((n) => (
+									<option key={n.id} value={n.id}>
+										{n.title || n.path} ({n.id})
+									</option>
+								))}
 						</select>
 					)}
 				</div>

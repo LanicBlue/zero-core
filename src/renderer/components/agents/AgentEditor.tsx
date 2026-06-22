@@ -236,14 +236,20 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 	};
 
 	// v0.8 (P8 §11.10): subagents + wikiAnchors harness-field editors.
+	// NOTE: when the list becomes empty we set `[]` (NOT undefined). The autosave
+	// payload is JSON.stringify'd before hitting the backend (ipc-proxy), and
+	// JSON drops undefined properties — so `undefined` would never reach the
+	// store, and the backend's `{...existing, ...input}` merge would silently
+	// keep the OLD list (removing the last anchor/subagent would not persist).
+	// `[]` survives serialization and explicitly clears the field.
 	const updateSubagents = (next: FormState["subagents"]) => {
-		const f: FormState = { ...form, subagents: next && next.length > 0 ? next : undefined };
+		const f: FormState = { ...form, subagents: next && next.length > 0 ? next : [] };
 		setForm(f);
 		if (agent) autoSave(f);
 	};
 
 	const updateWikiAnchors = (next: FormState["wikiAnchors"]) => {
-		const f: FormState = { ...form, wikiAnchors: next && next.length > 0 ? next : undefined };
+		const f: FormState = { ...form, wikiAnchors: next && next.length > 0 ? next : [] };
 		setForm(f);
 		if (agent) autoSave(f);
 	};

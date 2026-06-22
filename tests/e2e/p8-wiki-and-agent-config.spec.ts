@@ -179,6 +179,48 @@ test.describe("P8 — agent config page (harness fields round-trip)", () => {
 		const persistedInject = window.locator(".anchors-table tbody tr select[aria-label*='Inject']").first();
 		await expect(persistedInject).toHaveValue("system", { timeout: 5_000 });
 	});
+
+	test("wikiAnchors section: removing the LAST anchor persists across reload (regression: undefined dropped in JSON)", async () => {
+		// Regression guard: clearing wikiAnchors to empty must send an explicit
+		// signal (`[]`), not `undefined` — JSON.stringify drops undefined, so the
+		// backend merge would keep the old list and the anchor would reappear.
+		await window.locator("button[title='Agents']").click();
+		await expect(window.locator(".page-overlay").first()).toBeVisible({ timeout: 10_000 });
+
+		const agentItem = window.locator(".agents-list-item").first();
+		await agentItem.waitFor({ state: "visible", timeout: 10_000 });
+		await agentItem.click();
+		await expect(window.locator(".agent-editor").first()).toBeVisible({ timeout: 10_000 });
+
+		await window.locator(".editor-nav-item", { hasText: "Wiki 锚点" }).click();
+
+		// Add one anchor (so there's exactly one to remove).
+		await window.locator("input[type='checkbox']").first().check();
+		await window.locator("input[aria-label='Manual wiki node id']").fill("wiki-root:global");
+		await window.getByRole("button", { name: "Add", exact: true }).click();
+		await expect(window.locator(".anchors-table tbody tr").first()).toBeVisible({ timeout: 5_000 });
+
+		// Remove it — this clears wikiAnchors to empty (the bug scenario).
+		await window.locator(".anchors-table tbody tr").first()
+			.getByRole("button", { name: "Remove" }).click();
+
+		// Table empties → the "No free anchors" hint shows.
+		await expect(window.getByText(/No free anchors/i).first()).toBeVisible({ timeout: 5_000 });
+
+		// Reload the editor (close + reopen) and verify the anchor STAYS gone.
+		// (Pre-fix, the undefined-clear was dropped in JSON, the backend kept the
+		// old list, and the row reappeared here.)
+		await window.locator("button[title='Agents']").click();
+		await expect(window.locator(".page-overlay").first()).toBeVisible({ timeout: 10_000 });
+		const agentItem2 = window.locator(".agents-list-item").first();
+		await agentItem2.waitFor({ state: "visible", timeout: 10_000 });
+		await agentItem2.click();
+		await expect(window.locator(".agent-editor").first()).toBeVisible({ timeout: 10_000 });
+		await window.locator(".editor-nav-item", { hasText: "Wiki 锚点" }).click();
+
+		await expect(window.getByText(/No free anchors/i).first()).toBeVisible({ timeout: 5_000 });
+		await expect(window.locator(".anchors-table tbody tr")).toHaveCount(0);
+	});
 });
 
 // ── Wiki browser rendering — ROUTE_MAP + backend router fixed ──────────
