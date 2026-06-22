@@ -212,6 +212,14 @@ function buildPrompt(): string {
 			"Use purpose-built tools (Glob, Grep, Read, Edit, Write) instead of Unix shell commands.",
 			"For && chaining: cmd.exe supports && natively.",
 		);
+	} else if (process.platform === "win32") {
+		lines.push(
+			"",
+			"# IMPORTANT: Current shell is bash (Git Bash on Windows), NOT cmd.exe or PowerShell.",
+			"Use BASH syntax: `rm -f` (not `del`), `ls` (not `dir`), `cp`/`mv`, `cat`, forward-slash paths. " +
+				"Windows cmd commands (`del`, `dir`, `type`, `copy`, `move`) and backslash paths will FAIL. " +
+				"Path-style flags differ too — prefer POSIX style.",
+		);
 	}
 
 	lines.push(
