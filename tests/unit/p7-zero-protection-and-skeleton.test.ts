@@ -202,6 +202,27 @@ describe("P7 wiki §10.5 skeleton — fresh-DB seeds all four top-level nodes", 
 		expect(softwareDev, "software-dev leaf expected under knowledge/workflow").toBeDefined();
 	});
 
+	test("structural/container nodes carry an explanatory detail doc", () => {
+		seedFreshDbDefaults({ agentStore, wikiStore, management });
+		// Folders aren't opaque — each has a body so an agent expanding it gets
+		// context. Detail is backfilled only when absent (never clobbers user edits).
+		const knowledgeRoot = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH_SEED)!;
+		const workflow = wikiStore.getByParentAndPath(knowledgeRoot.id, WORKFLOW_PATH_SEED)!;
+		const projectsRoot = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, PROJECTS_ROOT_PATH_SEED)!;
+		const memoryRoot = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, MEMORY_ROOT_PATH_SEED)!;
+		for (const [label, id] of [
+			["global root", WIKI_GLOBAL_ROOT_ID],
+			["knowledge", knowledgeRoot.id],
+			["workflow", workflow.id],
+			["projects", projectsRoot.id],
+			["memory", memoryRoot.id],
+		] as const) {
+			const body = wikiStore.readNodeDetail(id);
+			expect(body, `${label} container should have a detail doc`).toBeDefined();
+			expect((body ?? "").trim().length).toBeGreaterThan(0);
+		}
+	});
+
 	test("projects / memory skeleton roots are NOT protected (deletable navigation)", () => {
 		// Spec: these are navigation skeletons, NOT anchors — they should be
 		// deletable so a user can clean up if desired (contrast with knowledge

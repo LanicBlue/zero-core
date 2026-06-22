@@ -67,6 +67,54 @@ export const WORKFLOW_PATH = WORKFLOW_PATH_SEED;
 export const SOFTWARE_DEV_NODE_PATH = SOFTWARE_DEV_NODE_PATH_SEED;
 
 /**
+ * Backfill a node's body detail ONLY when it has none yet — never clobbers a
+ * body the user/agent has written or refined. Used by the ensure* seed helpers
+ * so container/structural nodes get an explanatory doc on both fresh and
+ * existing DBs (ensureWikiSkeleton runs on every startup).
+ */
+function ensureNodeDetail(wikiStore: WikiStore, nodeId: string, body: string): void {
+	if (wikiStore.readNodeDetail(nodeId) === undefined) {
+		wikiStore.writeNodeDetail(nodeId, body);
+	}
+}
+
+// Body docs for the structural/container nodes (so the tree isn't opaque when
+// an agent expands a folder — each folder explains what lives under it).
+const GLOBAL_ROOT_DETAIL = `# Global Wiki Root
+
+This is the root of zero-core's single global wiki memory tree. Three top-level branches live directly under here:
+
+- **knowledge/** — general knowledge base. Any agent with node permission can read; zero maintains it by default. Organized by topic (e.g. \`workflow/\` holds playbooks).
+- **projects/** — per-project wiki subtrees. Each project gets a \`wiki-root:<projectId>\` subtree, created lazily; project-role sessions auto-anchor into their own subtree.
+- **memory/** — per-agent memory. Each agent gets a \`wiki-root:memory-agent:<agentId>\` subtree; extractor A writes, the agent itself can curate.
+
+A project-role session sees only its own project subtree (+ its memory). Global-scope sessions (zero) anchor at this root and see the whole tree.`;
+
+const KNOWLEDGE_DETAIL = `# Knowledge
+
+General knowledge base — not tied to any single project. Topics are organized into category folders (e.g. \`workflow/\` for playbooks).
+
+Visibility: any agent whose session anchors include this subtree can read it. Write scope is enforced in the store layer (a session needs an explicit anchor here to upsert).`;
+
+const WORKFLOW_DETAIL = `# Workflow
+
+Playbooks describing how to assemble agent cooperation workflows. Each playbook under here specifies a roster of roles, their subagents/delegation graph, suggested crons, gates, and state machines.
+
+\`software-dev\` is the software-development workflow playbook (the fresh-DB default seed). zero reads the relevant playbook when the user asks to set up a workflow, then instantiates the agents + their cooperation relationships.`;
+
+const PROJECTS_DETAIL = `# Projects
+
+Container for per-project wiki subtrees. Each project gets its own subtree root \`wiki-root:<projectId>\`, created lazily by ensureProjectSubtree when a session first references the project.
+
+A project-role session is scoped to (and auto-anchored into) its own project subtree — it cannot see other projects' subtrees.`;
+
+const MEMORY_DETAIL = `# Memory
+
+Container for per-agent memory subtrees. Each agent gets \`wiki-root:memory-agent:<agentId>\`, created lazily by ensureMemoryAgentRoot. Extractor A writes memory leaves here (event/decision/discovery/status_change/preference); the agent can also curate its own memory.
+
+Memory is global to an agent (spans every project that agent touches), keyed by agentId, not by project.`;
+
+/**
  * software-dev playbook body (草稿,后续可 refine;RFC §7.1 验收:含角色清单 +
  * subagents 关系 + cron 建议)。
  */
@@ -184,29 +232,16 @@ export function seedFreshDbDefaults(deps: {
 		console.warn("[seed] failed to seed zero agent:", (err as Error).message);
 	}
 
-	// ─── 2. knowledge/software-dev wiki node ──────────────────────
-	// Ensure the knowledge subtree root exists (directly under the global
-	// root), then create the software-dev leaf with the playbook body.
+	// ─── 2. wiki skeleton ─────────────────────────────────────────
+	// knowledge/workflow/software-dev + projects/memory container roots, each
+	// with an explanatory detail doc. ensureWikiSkeleton is idempotent and
+	// also runs unconditionally from server startup (so existing DBs get
+	// structural changes without a re-seed); calling it here covers the
+	// fresh path + unit tests that invoke seedFreshDbDefaults directly.
 	try {
-		ensureKnowledgeRoot(wikiStore);
-		ensureWorkflowNode(wikiStore);
-		ensureSoftwareDevNode(wikiStore);
+		ensureWikiSkeleton(wikiStore);
 	} catch (err) {
-		console.warn("[seed] failed to seed software-dev wiki node:", (err as Error).message);
-	}
-
-	// ─── 3. §10.5 wiki subtree-root skeleton ──────────────────────
-	// Alongside the knowledge subtree, ensure empty container roots for the
-	// two other §10.5 top-level branches so the wiki browser opens with the
-	// full skeleton:
-	//   global → knowledge (→ software-dev) / projects / memory
-	// These roots are NOT protected (navigation only). Per-project /
-	// per-agent subtree roots are created lazily as siblings.
-	try {
-		ensureProjectsRoot(wikiStore);
-		ensureMemoryRoot(wikiStore);
-	} catch (err) {
-		console.warn("[seed] failed to seed §10.5 wiki skeleton roots:", (err as Error).message);
+		console.warn("[seed] failed to seed wiki skeleton:", (err as Error).message);
 	}
 }
 
@@ -231,18 +266,24 @@ export function ensureWikiSkeleton(wikiStore: WikiStore): void {
 	ensureSoftwareDevNode(wikiStore);
 	ensureProjectsRoot(wikiStore);
 	ensureMemoryRoot(wikiStore);
+	// Global root detail (the root itself is ensured by the store constructor;
+	// backfill its explanatory doc here so the tree root isn't opaque).
+	ensureNodeDetail(wikiStore, WIKI_GLOBAL_ROOT_ID, GLOBAL_ROOT_DETAIL);
 }
 
 export function ensureKnowledgeRoot(wikiStore: WikiStore): void {
 	const existing = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH_SEED);
-	if (existing) return;
-	wikiStore.create({
-		parentId: WIKI_GLOBAL_ROOT_ID,
-		path: KNOWLEDGE_ROOT_PATH_SEED,
-		title: "Knowledge",
-		summary: "工作流配置 playbook 子树(zero 管;将来 HR)。",
-		type: "knowledge" as any,
-	});
+	if (!existing) {
+		wikiStore.create({
+			parentId: WIKI_GLOBAL_ROOT_ID,
+			path: KNOWLEDGE_ROOT_PATH_SEED,
+			title: "Knowledge",
+			summary: "工作流配置 playbook 子树(zero 管;将来 HR)。",
+			type: "knowledge" as any,
+		});
+	}
+	const node = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH_SEED)!;
+	ensureNodeDetail(wikiStore, node.id, KNOWLEDGE_DETAIL);
 }
 
 /**
@@ -255,14 +296,17 @@ export function ensureWorkflowNode(wikiStore: WikiStore): void {
 		throw new Error("knowledge root missing — ensureKnowledgeRoot must run first");
 	}
 	const existing = wikiStore.getByParentAndPath(knowledgeRoot.id, WORKFLOW_PATH_SEED);
-	if (existing) return;
-	wikiStore.create({
-		parentId: knowledgeRoot.id,
-		path: WORKFLOW_PATH_SEED,
-		title: "Workflow",
-		summary: "工作流 playbook 文档分类(software-dev 等)。",
-		type: "knowledge" as any,
-	});
+	if (!existing) {
+		wikiStore.create({
+			parentId: knowledgeRoot.id,
+			path: WORKFLOW_PATH_SEED,
+			title: "Workflow",
+			summary: "工作流 playbook 文档分类(software-dev 等)。",
+			type: "knowledge" as any,
+		});
+	}
+	const node = wikiStore.getByParentAndPath(knowledgeRoot.id, WORKFLOW_PATH_SEED)!;
+	ensureNodeDetail(wikiStore, node.id, WORKFLOW_DETAIL);
 }
 
 export function ensureSoftwareDevNode(wikiStore: WikiStore): void {
@@ -315,14 +359,17 @@ export function ensureSoftwareDevNode(wikiStore: WikiStore): void {
  */
 export function ensureProjectsRoot(wikiStore: WikiStore): void {
 	const existing = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, PROJECTS_ROOT_PATH_SEED);
-	if (existing) return;
-	wikiStore.create({
-		parentId: WIKI_GLOBAL_ROOT_ID,
-		path: PROJECTS_ROOT_PATH_SEED,
-		title: "Projects",
-		summary: "项目 wiki 子树根;每个项目一个 wiki-root:<projectId> 子树。",
-		type: "project" as any,
-	});
+	if (!existing) {
+		wikiStore.create({
+			parentId: WIKI_GLOBAL_ROOT_ID,
+			path: PROJECTS_ROOT_PATH_SEED,
+			title: "Projects",
+			summary: "项目 wiki 子树根;每个项目一个 wiki-root:<projectId> 子树。",
+			type: "project" as any,
+		});
+	}
+	const node = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, PROJECTS_ROOT_PATH_SEED)!;
+	ensureNodeDetail(wikiStore, node.id, PROJECTS_DETAIL);
 }
 
 /**
@@ -334,12 +381,15 @@ export function ensureProjectsRoot(wikiStore: WikiStore): void {
  */
 export function ensureMemoryRoot(wikiStore: WikiStore): void {
 	const existing = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, MEMORY_ROOT_PATH_SEED);
-	if (existing) return;
-	wikiStore.create({
-		parentId: WIKI_GLOBAL_ROOT_ID,
-		path: MEMORY_ROOT_PATH_SEED,
-		title: "Memory",
-		summary: "全局记忆子树;每个 agent 一个 memory/<agentId> 子树。",
-		type: "memory" as any,
-	});
+	if (!existing) {
+		wikiStore.create({
+			parentId: WIKI_GLOBAL_ROOT_ID,
+			path: MEMORY_ROOT_PATH_SEED,
+			title: "Memory",
+			summary: "全局记忆子树;每个 agent 一个 memory/<agentId> 子树。",
+			type: "memory" as any,
+		});
+	}
+	const node = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, MEMORY_ROOT_PATH_SEED)!;
+	ensureNodeDetail(wikiStore, node.id, MEMORY_DETAIL);
 }
