@@ -261,10 +261,10 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
 			// to create requirement records + repo docs via this dedicated tool
 			// (M4 decision 7/12/14 — PM owns requirement docs, not code), and
 			// to read archivist's wiki. Wiki access is via the unified `Wiki`
-			// action tool (expand/read/search — read-only PM does not upsert,
-			// so the upsert action will simply never be invoked by PM's prompt;
-			// if it is, the store-layer scope guard rejects writes outside the
-			// PM's own subtree).
+			// action tool — read-only PM uses expand/search/docRead; write actions
+			// (create/update/delete/docWrite/docEdit) will simply never be invoked
+			// by PM's prompt, and if they are, the store-layer scope guard rejects
+			// writes outside the PM's own subtree.
 			tools: {
 				...FS_READ_TOOLS,
 				CreateRequirementWithDoc: { enabled: true },

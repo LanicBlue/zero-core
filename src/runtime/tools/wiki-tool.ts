@@ -1,44 +1,46 @@
-// Wiki action 工具 (v0.8 P3 — §10.7)
+// Wiki action 工具 (v0.8 — 结构操作 / 文档操作 拆分)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// "Wiki" 是 v0.8 P3 四个判别联合 action 工具之一。一个工具 + action 字段
-// 切换 4 个操作 (§10.7):
-//   - expand   读节点详情(P1 ExpandNode)
-//   - read     读项目文档(P1 ReadDoc)
-//   - upsert   upsert 项目子树节点(P1 UpdateWikiNode)
-//   - search   简单子串搜索(P3 新增;P5 全文检索细化)
+// "Wiki" 把项目知识树的操作拆成两组:
+//   结构操作(节点树)— expand / search / create / update / delete
+//   文档操作(节点正文)— docRead / docWrite / docEdit
 //
-// scope = caller 锚点并集(P1 §10.6 + 决策 38):由 WikiStore.listVisibleFromRoot
-// 在 store 层强制,session 的 wikiRootNodeId 之外不可见。
+// 身份统一用 nodeId(表主键)。节点名用 title;type 不收(从 parent 在树里的
+// 位置继承),path 不收(工具层内部合成,agent 永不可见)。同 parent 下 title
+// 唯一(强制)→ title 层级 path 寻址无歧义。
 //
-// ## 命名 (§7.3 硬原则)
-// 原 ExpandNode / ReadDoc / UpdateWikiNode / ListWikiTree 四个分散工具
-// 合并到此 "Wiki"。v0.8 P7: wiki-tools.ts has been deleted; the four named
-// tools are fully replaced by this action-switched "Wiki" tool. All sessions
-// (zero / lead / PM / archivist) now go through this single entry point.
+// doc 三件套对标 Read/Write/Edit 工具语义,唯一区别是寻址从「文件路径」换成
+// 「wiki nodeId 或 title 层级 path」。detail 是磁盘纯文本文件,docEdit 用
+// read-modify-write 做精确字符串替换(无 markdown 解析)。
+//
+// ## 设计依据
+// - schema 必须顶层 z.object(非 discriminatedUnion):LLM 函数调用协议要求
+//   顶层 type:object。见 project-v08-tool-hardening §2。
+// - scope 在 store 层强制(assertNodeInsideProjectScope);全局根只读。
+// - 子代理/无 project 的 session 不能写(create/update/delete/docWrite/docEdit
+//   要求 ctx.projectId)。
 //
 // ## 输入
 // - ctx.wikiStore (ProjectWikiStore 兼容层 → .getWikiStore() 取真 WikiStore)
+// - ctx.projectId / ctx.contextBundle.wikiRootNodeId (scope 根)
 //
 // ## 输出
-// - export const wikiTool
+// - export const wikiTool / wikiActionSchema
 //
 
 import { z } from "zod";
-import { resolve, relative, isAbsolute } from "node:path";
-import { readFileSync } from "node:fs";
 import { buildTool } from "./tool-factory.js";
 import type { WikiStore } from "../../server/wiki-node-store.js";
+import type { WikiNode } from "../../shared/types.js";
 import {
 	WIKI_GLOBAL_ROOT_ID,
 	projectSubtreeRootId,
 } from "../../server/wiki-node-store.js";
 
 // ---------------------------------------------------------------------------
-// Helpers — local to this tool (the old wiki-tools.ts was deleted in v0.8 P7;
-// the helpers were inlined here when the four named tools merged into "Wiki").
+// Helpers — wiki store resolution + scope root + node addressing
 // ---------------------------------------------------------------------------
 
 function resolveWikiStore(ctx: any): WikiStore | undefined {
@@ -56,6 +58,48 @@ function resolveViewRoot(ctx: any): string | undefined {
 	return WIKI_GLOBAL_ROOT_ID;
 }
 
+/**
+ * Synthesize a node's internal `path` from its parent + title. The path carries
+ * a type prefix (intent:/header:) inherited from the parent so deriveTypeFromPosition
+ * classifies the node correctly; structure nodes (no prefixed ancestor) get a bare
+ * title. Title is unique per parent (enforced) → path is unique per parent; the
+ * on-disk body filename gets an id suffix in deriveContentFilePath, so no collision.
+ * Agent never sees this path.
+ */
+function synthesizePath(parentPath: string | undefined, title: string): string {
+	const m = parentPath?.match(/^(intent|header):/);
+	const prefix = m ? `${m[1]}:` : "";
+	return `${prefix}${title}`;
+}
+
+/**
+ * Resolve a doc-op target to a node, accepting EITHER a nodeId (direct) OR a
+ * hierarchical title path like "Parent/Child/Leaf" (walked from the scope root,
+ * matching each segment against a child's title). Titles are unique per parent
+ * (enforced on create/update) so each segment matches at most one child.
+ */
+function resolveNode(
+	target: { nodeId?: string; path?: string },
+	viewRoot: string,
+	wiki: WikiStore,
+): WikiNode | undefined {
+	if (target.nodeId) {
+		return wiki.getVisible(viewRoot, target.nodeId);
+	}
+	if (target.path) {
+		const segments = target.path.split("/").map((s) => s.trim()).filter(Boolean);
+		let cursor: string | undefined = viewRoot;
+		for (const seg of segments) {
+			const children = wiki.listVisibleFromRoot(viewRoot).filter((n) => n.parentId === cursor);
+			const next = children.find((n) => n.title === seg);
+			if (!next) return undefined;
+			cursor = next.id;
+		}
+		return cursor ? wiki.getVisible(viewRoot, cursor) : undefined;
+	}
+	return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Flat action schema
 // ---------------------------------------------------------------------------
@@ -67,23 +111,25 @@ function resolveViewRoot(ctx: any): string | undefined {
 // checked at runtime in execute.
 
 export const wikiActionSchema = z.object({
-	action: z.enum(["expand", "read", "upsert", "search"]),
-	// expand
+	action: z.enum(["expand", "search", "create", "update", "delete", "docRead", "docWrite", "docEdit"]),
+	// expand / docRead / docWrite / docEdit / update / delete — direct addressing
 	nodeId: z.string().optional(),
-	// read
-	path: z.string().optional().describe("Workspace-relative path or wiki docPointer (action:'read')"),
-	// upsert
-	parentId: z.string().optional(),
-	type: z.enum(["header", "intent", "structure"]).optional(),
+	// docRead / docWrite / docEdit — hierarchical title path addressing (alt to nodeId)
+	path: z.string().optional().describe("Hierarchical title path (e.g. 'Parent/Child') for doc ops — alt to nodeId"),
+	// search
+	query: z.string().optional().describe("Substring query (action:'search')"),
+	limit: z.number().optional(),
+	// create / update
+	parentId: z.string().optional().describe("Parent nodeId (action:'create')"),
 	title: z.string().optional(),
 	summary: z.string().optional(),
-	detail: z.string().optional(),
-	provenance: z.enum(["structure", "derived", "confirmed"]).optional(),
-	requirementIds: z.array(z.string()).optional(),
 	flags: z.array(z.string()).optional(),
-	// search
-	query: z.string().optional().describe("Substring or simple keyword query (action:'search')"),
-	limit: z.number().optional(),
+	// create (initial body) / docWrite
+	content: z.string().optional(),
+	// docEdit (mirrors Edit: oldString → newString)
+	oldString: z.string().optional(),
+	newString: z.string().optional(),
+	replaceAll: z.boolean().optional().describe("Replace all occurrences (action:'docEdit', default false)"),
 });
 
 // ---------------------------------------------------------------------------
@@ -93,15 +139,23 @@ export const wikiActionSchema = z.object({
 export const wikiTool = buildTool({
 	name: "Wiki",
 	description:
-		"Read + write the project Wiki tree. Action-switched: expand/read/upsert/search. Scope = caller's anchor union (project subtree).",
+		"Operate on the project Wiki. Two groups: STRUCTURE ops (expand/search/create/update/delete nodes) and DOC ops (docRead/docWrite/docEdit a node's body — mirror Read/Write/Edit). Identity by nodeId (or title path for doc ops).",
 	prompt:
-		"Operate on the project Wiki via a single action-switched tool.\n\n" +
-		"Actions:\n" +
-		"- { action:'expand', nodeId } — read a node's detail (scoped to your wikiRootNodeId); the response also lists the node's visible children (id + type + title), so you can browse the tree by expanding children without a separate search.\n" +
-		"- { action:'read', path } — read a project document (code/requirement/ADR) by workspace-relative path or wiki docPointer. Read-only.\n" +
-		"- { action:'upsert', parentId, type, path, title?, summary?, detail?, ... } — upsert a node in YOUR project subtree. type ∈ header|intent|structure. Write scope is hard-enforced in the store layer.\n" +
-		"- { action:'search', query, limit? } — substring search across visible wiki nodes (title/summary/path). P3 simple match; P5 lands full-text.\n\n" +
-		"Scope is the caller's anchor union — you cannot see other projects' subtrees.",
+		"Operate on the project Wiki. Two groups of actions:\n\n" +
+		"STRUCTURE (node tree):\n" +
+		"- { action:'expand', nodeId } — read a node (summary + body + its children ids/titles). Primary way to navigate and discover nodeIds.\n" +
+		"- { action:'search', query, limit? } — substring search across visible nodes (title/summary).\n" +
+		"- { action:'create', parentId, title, summary?, content? } — create a node under a parent. NO type, NO path: type is inherited from the parent's position; the node name IS the title. Titles must be unique under the same parent (rejected otherwise). content?, if given, is the initial body.\n" +
+		"- { action:'update', nodeId, title?, summary?, flags? } — edit a node's metadata. Does NOT touch the body. Changing title must keep it unique among siblings.\n" +
+		"- { action:'delete', nodeId } — delete a node (cascades children + body).\n\n" +
+		"DOC (a node's body document — mirror Read/Write/Edit, addressed by nodeId OR title path):\n" +
+		"- { action:'docRead', nodeId? | path? } — read the node's body. path is a hierarchical title path like 'Parent/Child'.\n" +
+		"- { action:'docWrite', nodeId? | path?, content } — overwrite the whole body (like Write).\n" +
+		"- { action:'docEdit', nodeId? | path?, oldString, newString, replaceAll? } — exact string replace (like Edit). oldString must exist and be unique (or set replaceAll:true to replace every occurrence). No-op/rejected if oldString not found.\n\n" +
+		"Rules:\n" +
+		"- Identity is nodeId (the primary key). Get nodeIds from expand/search. Doc ops also accept a title path as a convenience.\n" +
+		"- Scope = your project subtree. The GLOBAL ROOT is read-only (expand/search only). Writes require a projectId in your session.\n" +
+		"- To edit a node's body, use docEdit/docWrite — never update (update is metadata-only).",
 	meta: {
 		category: "management",
 		isReadOnly: false,
@@ -115,11 +169,11 @@ export const wikiTool = buildTool({
 		if (!wiki || !viewRoot) return "Error: wiki context not available";
 
 		switch (input.action) {
+			// ── STRUCTURE ────────────────────────────────────────────────
 			case "expand": {
+				if (!input.nodeId) return "Error: nodeId required for expand";
 				const node = wiki.getVisible(viewRoot, input.nodeId);
 				if (!node) return `Wiki node not visible from this view: ${input.nodeId}`;
-				// S5: list scope-respecting children so the agent can browse the tree
-				// (expand child by id) without a separate search to discover ids.
 				const children = wiki
 					.listVisibleFromRoot(viewRoot)
 					.filter((n) => n.parentId === input.nodeId)
@@ -131,48 +185,12 @@ export const wikiTool = buildTool({
 				if (detail) return detail + childrenLine;
 				const flags = node.flags?.length ? `\nFlags: ${node.flags.join(", ")}` : "";
 				const prov = node.provenance ? `\nProvenance: ${node.provenance}` : "";
-				return `Node: ${node.title}\nPath: ${node.path}\nType: ${node.type}${prov}\nSummary: ${node.summary || "No summary"}${flags}${childrenLine}`;
+				const summary = node.summary ? `\nSummary: ${node.summary}` : "";
+				return ` nodeId: ${node.id}\nTitle: ${node.title}\nType: ${node.type}${prov}${summary}${flags}${childrenLine}`;
 			}
-			case "read": {
-				const workspaceDir = ctx?.contextBundle?.workspaceDir ?? ctx?.workingDir ?? "";
-				if (!workspaceDir) return "Error: workspace dir not available";
-				const rel = input.path.replace(/^(header|intent|structure|memory|project):/, "");
-				const abs = resolve(workspaceDir, rel);
-				const relCheck = relative(workspaceDir, abs);
-				if (isAbsolute(relCheck) || relCheck.startsWith("..")) {
-					return `Read rejected: '${rel}' is outside the workspace.`;
-				}
-				try {
-					const content = readFileSync(abs, "utf-8");
-					const max = 20000;
-					if (content.length <= max) return content;
-					return content.slice(0, max) + `\n\n[truncated: ${content.length} → ${max} chars]`;
-				} catch (err) {
-					return `Read failed: ${(err as Error).message}`;
-				}
-			}
-			case "upsert": {
-				const projectId = ctx?.projectId;
-				if (!projectId) return "Error: projectId not available";
-				try {
-					wiki.upsertProjectNode(projectId, {
-						parentId: input.parentId,
-						type: input.type,
-						path: input.path,
-						title: input.title ?? input.path,
-						summary: input.summary,
-						detail: input.detail,
-						provenance: input.provenance,
-						requirementIds: input.requirementIds,
-						flags: input.flags,
-						lastUpdatedBy: ctx.agentRole ?? "agent",
-					});
-					return `Wiki node upserted: ${input.path}`;
-				} catch (err) {
-					return `Write rejected: ${(err as Error).message}`;
-				}
-			}
+
 			case "search": {
+				if (!input.query) return "Error: query required for search";
 				const q = input.query.toLowerCase();
 				const limit = input.limit ?? 50;
 				const nodes = wiki.listVisibleFromRoot(viewRoot);
@@ -185,8 +203,153 @@ export const wikiTool = buildTool({
 				const sliced = hits.slice(0, limit);
 				if (sliced.length === 0) return `(no wiki nodes match "${input.query}")`;
 				return sliced
-					.map((n) => `${n.id} | ${n.type} | ${n.path} | ${n.title}\n   ${n.summary ?? ""}`)
+					.map((n) => `${n.id} | ${n.type} | ${n.title}\n   ${n.summary ?? ""}`)
 					.join("\n");
+			}
+
+			case "create": {
+				const projectId = ctx?.projectId;
+				if (!projectId) return "Error: projectId not available (create requires project context)";
+				if (!input.parentId) return "Error: parentId required for create";
+				if (!input.title) return "Error: title required for create";
+				// Parent must be visible in scope.
+				const parent = wiki.getVisible(viewRoot, input.parentId);
+				if (!parent) return `Error: parent not in scope: ${input.parentId}`;
+				// Enforce title uniqueness among siblings (keeps title-path addressing unambiguous).
+				const siblings = wiki
+					.listVisibleFromRoot(viewRoot)
+					.filter((n) => n.parentId === input.parentId);
+				if (siblings.some((n) => n.title === input.title)) {
+					return `Error: a sibling already has the title "${input.title}" — titles must be unique under the same parent`;
+				}
+				const path = synthesizePath(parent.path, input.title);
+				// type column was dropped; position (path prefix) now carries type.
+				// upsertProjectNode's signature still requires a type — pass the
+				// parent-inherited type so the row is consistent with its path.
+				const inheritedType: "header" | "intent" | "structure" = parent.path?.startsWith("intent:")
+					? "intent"
+					: parent.path?.startsWith("header:")
+						? "header"
+						: "structure";
+				try {
+					const created = wiki.upsertProjectNode(projectId, {
+						parentId: input.parentId,
+						type: inheritedType,
+						path,
+						title: input.title,
+						summary: input.summary,
+						detail: input.content,
+						lastUpdatedBy: ctx.agentRole ?? "agent",
+					});
+					return `Wiki node created: ${created.id} | ${created.title}`;
+				} catch (err) {
+					return `Create rejected: ${(err as Error).message}`;
+				}
+			}
+
+			case "update": {
+				const projectId = ctx?.projectId;
+				if (!projectId) return "Error: projectId not available (update requires project context)";
+				if (!input.nodeId) return "Error: nodeId required for update";
+				const node = wiki.getVisible(viewRoot, input.nodeId);
+				if (!node) return `Error: node not in scope: ${input.nodeId}`;
+				const patch: Record<string, unknown> = {};
+				if (input.title !== undefined) patch.title = input.title;
+				if (input.summary !== undefined) patch.summary = input.summary;
+				if (input.flags !== undefined) patch.flags = input.flags;
+				if (Object.keys(patch).length === 0) {
+					return "Error: nothing to update — provide title/summary/flags";
+				}
+				// If renaming, enforce sibling title uniqueness.
+				if (patch.title !== undefined && patch.title !== node.title) {
+					const siblings = wiki
+						.listVisibleFromRoot(viewRoot)
+						.filter((n) => n.parentId === node.parentId && n.id !== node.id);
+					if (siblings.some((n) => n.title === patch.title)) {
+						return `Error: a sibling already has the title "${patch.title}" — titles must be unique under the same parent`;
+					}
+				}
+				try {
+					const updated = wiki.updateNodeMetadata(projectId, input.nodeId, {
+						...patch,
+						lastUpdatedBy: ctx.agentRole ?? "agent",
+					});
+					return `Wiki node updated: ${updated.id} | ${updated.title}`;
+				} catch (err) {
+					return `Update rejected: ${(err as Error).message}`;
+				}
+			}
+
+			case "delete": {
+				const projectId = ctx?.projectId;
+				if (!projectId) return "Error: projectId not available (delete requires project context)";
+				if (!input.nodeId) return "Error: nodeId required for delete";
+				const node = wiki.getVisible(viewRoot, input.nodeId);
+				if (!node) return `Error: node not in scope: ${input.nodeId}`;
+				try {
+					wiki.deleteNode(projectId, input.nodeId);
+					return `Wiki node deleted: ${input.nodeId}`;
+				} catch (err) {
+					return `Delete rejected: ${(err as Error).message}`;
+				}
+			}
+
+			// ── DOC (body document) ──────────────────────────────────────
+			case "docRead": {
+				if (!input.nodeId && !input.path) return "Error: nodeId or path required for docRead";
+				const node = resolveNode(input, viewRoot, wiki);
+				if (!node) return `Error: node not found (${input.nodeId ?? input.path})`;
+				const body = wiki.readNodeDetail(node.id);
+				if (body === undefined) return `(node "${node.title}" has no body document yet — use docWrite to create one)`;
+				return body;
+			}
+
+			case "docWrite": {
+				const projectId = ctx?.projectId;
+				if (!projectId) return "Error: projectId not available (docWrite requires project context)";
+				if (!input.nodeId && !input.path) return "Error: nodeId or path required for docWrite";
+				if (input.content === undefined) return "Error: content required for docWrite";
+				const node = resolveNode(input, viewRoot, wiki);
+				if (!node) return `Error: node not found (${input.nodeId ?? input.path})`;
+				try {
+					wiki.writeNodeDetail(node.id, input.content);
+					return `Document written: ${node.id} | ${node.title}`;
+				} catch (err) {
+					return `docWrite rejected: ${(err as Error).message}`;
+				}
+			}
+
+			case "docEdit": {
+				const projectId = ctx?.projectId;
+				if (!projectId) return "Error: projectId not available (docEdit requires project context)";
+				if (!input.nodeId && !input.path) return "Error: nodeId or path required for docEdit";
+				if (input.oldString === undefined || input.newString === undefined) {
+					return "Error: oldString and newString required for docEdit";
+				}
+				const node = resolveNode(input, viewRoot, wiki);
+				if (!node) return `Error: node not found (${input.nodeId ?? input.path})`;
+				const body = wiki.readNodeDetail(node.id) ?? "";
+				const { oldString, newString } = input;
+				if (oldString === "") return "Error: oldString must be non-empty";
+				if (!body.includes(oldString)) {
+					return `Error: oldString not found in document — no edit applied`;
+				}
+				const count = body.split(oldString).length - 1;
+				if (count > 1 && !input.replaceAll) {
+					return `Error: oldString is not unique (${count} occurrences) — set replaceAll:true to replace all, or provide more context to make it unique`;
+				}
+				let next: string;
+				if (input.replaceAll) {
+					next = body.split(oldString).join(newString);
+				} else {
+					next = body.replace(oldString, newString);
+				}
+				try {
+					wiki.writeNodeDetail(node.id, next);
+					return `Document edited: ${node.id} | ${node.title} (${input.replaceAll ? count : 1} replacement${input.replaceAll && count !== 1 ? "s" : ""})`;
+				} catch (err) {
+					return `docEdit rejected: ${(err as Error).message}`;
+				}
 			}
 		}
 		// Exhaustiveness fallback (unreachable if schema validates).

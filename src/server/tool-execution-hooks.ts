@@ -59,6 +59,10 @@ export function registerToolExecutionHooks(sessionDb: SessionDB): void {
 			const input = entry?.args ?? ctx.args;
 			if (toolCallId) pendingExecutions.delete(toolCallId);
 
+			// 子代理 sessionId=undefined(隔离父会话,不持久化)——审计表 session_id NOT NULL,
+			// 无 session 则跳过写库,工具结果已由 TaskRegistry 持有。详见 project-v08-tool-hardening §3。
+			if (!sessionId) return;
+
 			const inputPreview = truncatePreview(input, 500);
 			const outputStr = typeof ctx.result === "string" ? ctx.result : JSON.stringify(ctx.result);
 			const outputPreview = truncateStr(outputStr, 500);
@@ -89,6 +93,9 @@ export function registerToolExecutionHooks(sessionDb: SessionDB): void {
 			const durationMs = entry ? Date.now() - entry.startTime : 0;
 			const input = entry?.args ?? ctx.args;
 			if (toolCallId) pendingExecutions.delete(toolCallId);
+
+			// 子代理 sessionId=undefined → 跳过审计写库(同 PostToolUse)。
+			if (!sessionId) return;
 
 			const inputPreview = truncatePreview(input, 500);
 			const errorStr = typeof ctx.error === "string" ? ctx.error : String(ctx.error ?? "");

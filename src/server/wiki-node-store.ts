@@ -783,6 +783,38 @@ export class WikiStore {
 	}
 
 	/**
+	 * Update a node's METADATA (title/summary/flags/...) — scope-guarded.
+	 * Does NOT touch the body document (use writeNodeDetail / the doc ops for
+	 * that). Mirrors the scope enforcement in upsertProjectNode so the Wiki
+	 * tool can update by nodeId without bypassing the store-layer scope lock.
+	 * Returns the updated node (without detail — list/get never populate it).
+	 */
+	updateNodeMetadata(
+		projectId: string,
+		nodeId: string,
+		patch: Partial<Pick<WikiNode, "title" | "summary" | "flags" | "provenance">> & {
+			lastUpdatedBy?: string;
+		},
+	): WikiNode {
+		this.assertNodeInsideProjectScope(projectId, nodeId);
+		return this.update(nodeId, {
+			...patch,
+			lastUpdatedBy: patch.lastUpdatedBy ?? "agent",
+		});
+	}
+
+	/**
+	 * Delete a node (cascade children + body file) — scope-guarded. The
+	 * existing delete() protects the fresh-DB seed nodes (knowledge root +
+	 * software-dev playbook) and cascades; this wrapper only adds the project-
+	 * scope assertion so the Wiki tool can delete by nodeId safely.
+	 */
+	deleteNode(projectId: string, nodeId: string): void {
+		this.assertNodeInsideProjectScope(projectId, nodeId);
+		this.delete(nodeId);
+	}
+
+	/**
 	 * Append a flag to a node (archivist divergence signal, RFC §2.16).
 	 * Enforces project-scope membership (single-anchor legacy guard).
 	 */

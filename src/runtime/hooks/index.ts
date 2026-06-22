@@ -53,7 +53,7 @@ export function registerAllRuntimeHooks(db?: ISessionStore, extractionDeps?: Ext
 	registerRagHooks();
 	registerProviderOptionsHooks();
 	registerCompressionHooks();
-	// Clear all-completed todos at the start of the next turn (UI auto-hide).
+	// Clear all-completed todos at the end of the current turn (UI auto-hide).
 	registerTodoCleanupHooks();
 	if (extractionDeps) registerExtractionHooks(extractionDeps);
 	log.debug("hooks", "All runtime feature hooks registered");

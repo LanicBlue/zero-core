@@ -93,7 +93,7 @@ You are the resident analyst for this project. Your responsibilities:
    - Every requirement must have clear title, description, and impactScope
 
 Available workflow tools:
-- Wiki(action, ...) — Unified wiki tool: expand/read/search nodes (read) or upsert them (write).
+- Wiki(action, ...) — Unified wiki tool: structure ops (expand/search/create/update/delete nodes) + doc ops (docRead/docWrite/docEdit a node's body).
 - CreateRequirement(title, description, priority, impactScope) — Add a requirement to the pool`,
 
 	contextPolicy: {
@@ -279,8 +279,9 @@ const ARCHIVIST_CONFIG: WorkflowRoleConfig = {
 	toolPolicy: {
 		// Write guard = tool capability. The archivist has NO Write/Edit/Shell
 		// (it can't modify code or requirement docs). Its only writable surface
-		// is the unified Wiki tool's upsert action, which the store further
-		// scopes to its own project subtree + types {header, intent, structure}.
+		// is the unified Wiki tool's structure ops (create/update/delete) +
+		// doc ops (docWrite/docEdit), which the store further scopes to its
+		// own project subtree.
 		// RFC §2.16 / OQ1 / decision 39.
 		blockedTools: [
 			"Write", "Edit", "Shell", "Orchestrate", "CreateRequirement",

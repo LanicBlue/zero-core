@@ -3,7 +3,8 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 显示 Agent 提问并提供选项供用户回复的交互卡片
+// 显示 Agent 提问并提供选项供用户回复的交互卡片。即使 Agent 只给了固定选项,
+// 也永远附带一个 "Other" 入口,用户可输入任意自定义文本作为回答。
 //
 // ## 输入
 // AskUserQuestion（问题、选项、描述）
@@ -20,6 +21,7 @@
 // ## 维护规则
 // 交互选项格式变更需同步 interaction-store
 //
+
 import React, { useState } from "react";
 import type { AskUserQuestion } from "../../store/interaction-store.js";
 
@@ -31,17 +33,23 @@ interface Props {
 	onDone: () => void;
 }
 
+// Sentinel marking "Other" selection (real answer lives in customInput).
+const OTHER = "__other__";
+
 export default function AskUserCard({ requestId, questions, onDone }: Props) {
 	const [answers, setAnswers] = useState<Record<string, string>>({});
 	const [customInput, setCustomInput] = useState<Record<string, string>>({});
+
+	const answerFor = (qi: number) => answers[`q${qi}`];
 
 	const handleSelect = (qIdx: number, label: string) => {
 		setAnswers((prev) => ({ ...prev, [`q${qIdx}`]: label }));
 	};
 
-	const handleCustomSubmit = (qIdx: number) => {
+	const handleOtherSubmit = (qIdx: number) => {
 		const val = customInput[qIdx.toString()]?.trim();
 		if (!val) return;
+		// Store the real custom value (not the sentinel) as the answer.
 		setAnswers((prev) => ({ ...prev, [`q${qIdx}`]: val }));
 	};
 
@@ -56,7 +64,10 @@ export default function AskUserCard({ requestId, questions, onDone }: Props) {
 	return (
 		<div className="ask-user-card">
 			<div className="ask-user-header">Agent is asking a question</div>
-			{questions.map((q, qi) => (
+			{questions.map((q, qi) => {
+				const ans = answerFor(qi);
+				const isOtherSelected = ans !== undefined && ans !== OTHER && q.options?.some((o) => o.label === ans) === false;
+				return (
 				<div key={qi} className="ask-user-question">
 					{q.header && <span className="ask-user-chip">{q.header}</span>}
 					<p className="ask-user-q-text">{q.question}</p>
@@ -65,13 +76,37 @@ export default function AskUserCard({ requestId, questions, onDone }: Props) {
 							{q.options.map((opt, oi) => (
 								<button
 									key={oi}
-									className={`ask-user-option ${answers[`q${qi}`] === opt.label ? "selected" : ""}`}
+									className={`ask-user-option ${ans === opt.label ? "selected" : ""}`}
 									onClick={() => handleSelect(qi, opt.label)}
 								>
 									<span className="ask-user-opt-label">{opt.label}</span>
 									{opt.description && <span className="ask-user-opt-desc">{opt.description}</span>}
 								</button>
 							))}
+							{/* Always-present "Other" escape hatch — user can type any answer. */}
+							<button
+								className={`ask-user-option other ${isOtherSelected ? "selected" : ""}`}
+								onClick={() => handleSelect(qi, OTHER)}
+							>
+								<span className="ask-user-opt-label">Other…</span>
+							</button>
+							{ans === OTHER && (
+								<div className="ask-user-other-input">
+									<input
+										type="text"
+										placeholder="Type your answer..."
+										value={customInput[qi.toString()] ?? ""}
+										autoFocus
+										onChange={(e) =>
+											setCustomInput((prev) => ({ ...prev, [qi.toString()]: e.target.value }))
+										}
+										onKeyDown={(e) => {
+											if (e.key === "Enter") handleOtherSubmit(qi);
+										}}
+									/>
+									<button onClick={() => handleOtherSubmit(qi)}>Submit</button>
+								</div>
+							)}
 						</div>
 					) : (
 						<div className="ask-user-free-input">
@@ -83,14 +118,15 @@ export default function AskUserCard({ requestId, questions, onDone }: Props) {
 									setCustomInput((prev) => ({ ...prev, [qi.toString()]: e.target.value }))
 								}
 								onKeyDown={(e) => {
-									if (e.key === "Enter") handleCustomSubmit(qi);
+									if (e.key === "Enter") handleOtherSubmit(qi);
 								}}
 							/>
-							<button onClick={() => handleCustomSubmit(qi)}>Submit</button>
+							<button onClick={() => handleOtherSubmit(qi)}>Submit</button>
 						</div>
 					)}
 				</div>
-			))}
+				);
+			})}
 			<button
 				className={`ask-user-submit ${allAnswered ? "ready" : ""}`}
 				onClick={handleSubmit}

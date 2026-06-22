@@ -8,7 +8,7 @@
 //       * Project (create/update/delete/get/list)
 //       * AgentRegistry (create/update/delete/get/list/listTemplates/getTemplate)
 //       * Cron (create/update/delete/get/list/trigger)
-//       * Wiki (expand/read/upsert/search)
+//       * Wiki (expand/search/create/update/delete + docRead/docWrite/docEdit)
 //   - Agent delete zero role agent 被 reject (§7.3 protected)
 //   - verify 工具 end-to-end (lead 提交 → PM 判 APPROVED → verdict 返回;
 //                              lead 提交 → PM 判 REJECTED → 意见返回,mock delegateTask)
@@ -292,7 +292,9 @@ describe("Cron action tool", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Wiki tool — 4 actions (§10.7), scope = caller anchor union
+// Wiki tool — structure ops (expand/search/create/update/delete) + doc ops
+// (docRead/docWrite/docEdit). Identity by nodeId; type inherited from parent;
+// titles unique per parent. scope = caller anchor union.
 // ---------------------------------------------------------------------------
 
 describe("Wiki action tool", () => {
@@ -304,7 +306,7 @@ describe("Wiki action tool", () => {
 		mkdirSync(projWs, { recursive: true });
 		const proj = management.createProject({ name: "P", workspaceDir: projWs });
 		projectId = proj.id;
-		// Lazily create the project subtree root so wiki upsert has a valid
+		// Lazily create the project subtree root so wiki create has a valid
 		// parent scope (the tool's wiki scope = this subtree).
 		wikiStoreGlobal.ensureProjectSubtree(projectId, "P");
 	});
@@ -318,56 +320,130 @@ describe("Wiki action tool", () => {
 			contextBundle: { workspaceDir: projWs, wikiRootNodeId: `wiki-root:${projectId}` },
 		};
 	}
+	const root = () => `wiki-root:${projectId}`;
 
-	test("upsert writes into the caller's project subtree", async () => {
+	// Parse "Wiki node created: <id> | <title>" → id
+	const createdId = (r: string) => r.split("created:")[1].split("|")[0].trim();
+
+	test("create creates a node under the project subtree root", async () => {
 		const r = await execWiki({
-			action: "upsert",
-			parentId: `wiki-root:${projectId}`,
-			type: "intent",
-			path: "intent/feature-x",
+			action: "create",
+			parentId: root(),
 			title: "Feature X",
 			summary: "Why we built it",
 		}, ctx());
-		expect(r).toMatch(/upserted/i);
+		expect(r).toMatch(/created/i);
+		// discoverable via search
+		const searched = await execWiki({ action: "search", query: "Feature X" }, ctx());
+		expect(searched).toMatch(/Feature X/);
 	});
 
-	test("read reads a workspace file (read-only)", async () => {
-		writeFileSync(join(projWs, "notes.md"), "# hello world");
-		const r = await execWiki({ action: "read", path: "notes.md" }, ctx());
-		expect(r).toContain("hello world");
+	test("create rejects a duplicate title under the same parent", async () => {
+		await execWiki({ action: "create", parentId: root(), title: "Same" }, ctx());
+		const r = await execWiki({ action: "create", parentId: root(), title: "Same" }, ctx());
+		expect(r).toMatch(/unique|sibling/i);
 	});
 
-	test("expand returns node detail for a visible node", async () => {
-		// Seed a node via the tool itself, then expand.
-		await execWiki({
-			action: "upsert",
-			parentId: `wiki-root:${projectId}`,
+	test("create inherits type from the parent's position (intent parent → intent child)", async () => {
+		// Seed an intent-prefixed parent directly via the store (the tool would
+		// produce structure under the bare-root path; this isolates inheritance).
+		const parent = wikiStoreGlobal.upsertProjectNode(projectId, {
+			parentId: root(),
 			type: "intent",
-			path: "intent/y",
-			title: "Y",
-			summary: "sum-y",
-		}, ctx());
-		// Find the seeded node id by search (single-source way that doesn't
-		// depend on store internals).
-		const searched = await execWiki({ action: "search", query: "sum-y" }, ctx());
-		expect(searched).toMatch(/sum-y/);
-		// extract the leading id token "<id> | …"
-		const nodeId = searched.split("\n")[0].split("|")[0].trim();
-		const r = await execWiki({ action: "expand", nodeId }, ctx());
-		expect(r).toMatch(/Y|sum-y|intent/);
+			path: "intent:bucket",
+			title: "Bucket",
+			lastUpdatedBy: "test",
+		});
+		const r = await execWiki({ action: "create", parentId: parent.id, title: "Child" }, ctx());
+		const childId = createdId(r);
+		const child = wikiStoreGlobal.get(childId);
+		expect(child?.type).toBe("intent");
+	});
+
+	test("expand returns node metadata + children for a visible node", async () => {
+		const r = await execWiki({ action: "create", parentId: root(), title: "Y", summary: "sum-y" }, ctx());
+		const nodeId = createdId(r);
+		const expanded = await execWiki({ action: "expand", nodeId }, ctx());
+		expect(expanded).toMatch(/Y/);
+		expect(expanded).toMatch(/sum-y/);
 	});
 
 	test("search substring match across visible nodes", async () => {
-		await execWiki({
-			action: "upsert",
-			parentId: `wiki-root:${projectId}`,
-			type: "structure",
-			path: "structure/alpha",
-			title: "Alpha",
-			summary: "alpha-beta-gamma",
-		}, ctx());
+		await execWiki({ action: "create", parentId: root(), title: "Alpha", summary: "alpha-beta-gamma" }, ctx());
 		const r = await execWiki({ action: "search", query: "alpha-beta" }, ctx());
 		expect(r).toMatch(/Alpha/);
+	});
+
+	test("update changes metadata without touching the body", async () => {
+		const r = await execWiki({ action: "create", parentId: root(), title: "Orig", content: "body-v1" }, ctx());
+		const nodeId = createdId(r);
+		const upd = await execWiki({ action: "update", nodeId, title: "Renamed", summary: "new-sum" }, ctx());
+		expect(upd).toMatch(/updated/i);
+		// body untouched
+		const body = await execWiki({ action: "docRead", nodeId }, ctx());
+		expect(body).toContain("body-v1");
+	});
+
+	test("update rejects a duplicate sibling title on rename", async () => {
+		const a = await execWiki({ action: "create", parentId: root(), title: "A" }, ctx());
+		await execWiki({ action: "create", parentId: root(), title: "B" }, ctx());
+		const r = await execWiki({ action: "update", nodeId: createdId(a), title: "B" }, ctx());
+		expect(r).toMatch(/unique|sibling/i);
+	});
+
+	test("delete removes a node", async () => {
+		const r = await execWiki({ action: "create", parentId: root(), title: "Gone" }, ctx());
+		const nodeId = createdId(r);
+		const del = await execWiki({ action: "delete", nodeId }, ctx());
+		expect(del).toMatch(/deleted/i);
+		expect(wikiStoreGlobal.get(nodeId)).toBeUndefined();
+	});
+
+	test("docWrite + docRead round-trip by nodeId", async () => {
+		const r = await execWiki({ action: "create", parentId: root(), title: "Doc" }, ctx());
+		const nodeId = createdId(r);
+		await execWiki({ action: "docWrite", nodeId, content: "# Title\nhello world" }, ctx());
+		const body = await execWiki({ action: "docRead", nodeId }, ctx());
+		expect(body).toContain("hello world");
+	});
+
+	test("docEdit replaces a unique substring (Edit semantics)", async () => {
+		const r = await execWiki({ action: "create", parentId: root(), title: "Ed" }, ctx());
+		const nodeId = createdId(r);
+		await execWiki({ action: "docWrite", nodeId, content: "version is v0.7 final" }, ctx());
+		const edit = await execWiki({ action: "docEdit", nodeId, oldString: "v0.7", newString: "v0.8" }, ctx());
+		expect(edit).toMatch(/edited/i);
+		const body = await execWiki({ action: "docRead", nodeId }, ctx());
+		expect(body).toContain("v0.8");
+		expect(body).not.toContain("v0.7");
+	});
+
+	test("docEdit rejects a missing oldString", async () => {
+		const r = await execWiki({ action: "create", parentId: root(), title: "Miss" }, ctx());
+		const nodeId = createdId(r);
+		await execWiki({ action: "docWrite", nodeId, content: "nothing here" }, ctx());
+		const edit = await execWiki({ action: "docEdit", nodeId, oldString: "absent", newString: "x" }, ctx());
+		expect(edit).toMatch(/not found|no edit/i);
+	});
+
+	test("docEdit rejects a non-unique oldString without replaceAll, and replaces all with replaceAll", async () => {
+		const r = await execWiki({ action: "create", parentId: root(), title: "Dup" }, ctx());
+		const nodeId = createdId(r);
+		await execWiki({ action: "docWrite", nodeId, content: "foo bar foo bar" }, ctx());
+		const reject = await execWiki({ action: "docEdit", nodeId, oldString: "foo", newString: "baz" }, ctx());
+		expect(reject).toMatch(/unique|not unique/i);
+		const all = await execWiki({ action: "docEdit", nodeId, oldString: "foo", newString: "baz", replaceAll: true }, ctx());
+		expect(all).toMatch(/edited/i);
+		const body = await execWiki({ action: "docRead", nodeId }, ctx());
+		expect(body).toBe("baz bar baz bar");
+	});
+
+	test("doc ops resolve by hierarchical title path", async () => {
+		const parentId = createdId(await execWiki({ action: "create", parentId: root(), title: "Parent" }, ctx()));
+		await execWiki({ action: "create", parentId, title: "Child" }, ctx());
+		await execWiki({ action: "docWrite", path: "Parent/Child", content: "via-path" }, ctx());
+		const body = await execWiki({ action: "docRead", path: "Parent/Child" }, ctx());
+		expect(body).toContain("via-path");
 	});
 });
 

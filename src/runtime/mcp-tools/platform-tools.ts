@@ -61,11 +61,15 @@ export function createPlatformTools(getAppVersion?: () => string) {
 			description: "Inspect the zero-core platform runtime: version/paths/memory (info), logs, workspace config, AI providers. Read-only diagnostics backed by the SQLite DB.",
 			prompt:
 				"Inspect the zero-core platform runtime (read-only diagnostics). Resources:\n" +
-				"- 'info' — app version, data dir, cwd, pid, node version, platform, memory usage, uptime\n" +
+				"- 'info' — app version, paths (see below), pid, node version, platform, memory usage, uptime\n" +
 				"- 'logs' — recent log entries (lines?, level?: all|error|warn)\n" +
 				"- 'config' — workspace config from the DB (defaultModel, defaultProvider, proxy, workspaceDir)\n" +
 				"- 'providers' — AI providers from the DB (name, type, enabled, modelCount, baseUrl, redacted apiKey)\n\n" +
-				"This tool is for platform self-introspection only. To read files, list directories, or search content, use Read / Glob / Grep instead.",
+				"This tool is for platform self-introspection only. To read files, list directories, or search content, use Read / Glob / Grep instead.\n\n" +
+				"Three distinct paths reported across resources — do NOT confuse them:\n" +
+				"- info.paths.dataDir   — the .zero-core HOME: DB (sessions.db), logs/, app config. Persistent app data.\n" +
+				"- info.paths.processCwd — where the process was LAUNCHED. In dev = the source repo root; in a packaged build = the exe install dir. NOT the agent's working dir.\n" +
+				"- config.workspaceDir   — the agent's FILE-WORKING directory (where agents read/write project files). This is the path you almost always want when talking about 'the workspace'.",
 			meta: { category: "management", isReadOnly: true },
 			inputSchema: z.object({
 				resource: z.enum(["info", "logs", "config", "providers"])
@@ -79,8 +83,10 @@ export function createPlatformTools(getAppVersion?: () => string) {
 						const mem = process.memoryUsage();
 						return JSON.stringify({
 							version,
-							zeroCoreDir: ZERO_CORE_DIR,
-							cwd: process.cwd(),
+							paths: {
+								dataDir: ZERO_CORE_DIR,
+								processCwd: process.cwd(),
+							},
 							pid: process.pid,
 							nodeVersion: process.version,
 							platform: process.platform,

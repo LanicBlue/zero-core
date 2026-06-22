@@ -249,6 +249,7 @@ export class AgentLoop implements AgentRuntime {
 				providers: this.providers,
 				contextUsage: this.session.getContextUsage(),
 				resultText: this.resultText,
+				emit: (event: any) => this.emit(event),
 			});
 
 		} finally {

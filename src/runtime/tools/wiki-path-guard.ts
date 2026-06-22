@@ -84,9 +84,11 @@ export function wikiPathRejectMessage(p: string): string {
 		`Access denied: '${p}' is inside the wiki memory store (~/.zero-core/wiki/), ` +
 		`which is read/write only through the Wiki tool. ` +
 		`Use Wiki { action:'search', query } to find a node, ` +
-		`{ action:'expand', nodeId } to read a node's body, or ` +
-		`{ action:'upsert', ... } to write — never access the wiki directory ` +
-		`directly via Read/Grep/Shell/Write/Edit. (P1 §10.1)`
+		`{ action:'expand', nodeId } to read a node + its children, ` +
+		`{ action:'docRead', nodeId|path } to read a node's body, ` +
+		`{ action:'create'/'update'/'delete' } to edit the tree, or ` +
+		`{ action:'docWrite'/'docEdit' } to edit a node's body — never access ` +
+		`the wiki directory directly via Read/Grep/Shell/Write/Edit. (P1 §10.1)`
 	);
 }
 
