@@ -63,7 +63,7 @@ Zero-Core 是一个 **本地优先的 AI Agent 运行时**，通过 Electron 桌
 
 ### 3.3 主 IPC ↔ 后端 HTTP（**这是关键的桥**）
 
-`src/main/ipc-proxy.ts`（262 行）维护一个 49 通道的映射表 `R`，将每个 IPC 调用翻译成对 `http://localhost:<port>/api/...` 的 HTTP 请求。**只有 `dialog:openDirectory` 与 `webfetch:login` 两个通道保留在主进程本地处理**（需要原生对话框 / BrowserWindow）。
+`src/main/ipc-proxy.ts` 当前维护一个约 140 项的映射表 `R`，将大多数业务 IPC 调用翻译成对 `http://localhost:<port>/api/...` 的 HTTP 请求。主进程本地仅保留 5 个必须使用 Electron 原生能力的通道：3 个窗口控制、`dialog:openDirectory`、`webfetch:login`。`app:ready` 是健康检查通道。
 
 WebSocket 反向：`src/main/ipc-proxy.ts` 的 `connectEventBridge()` 维护 `ws://localhost:<port>/ws`，订阅后端推送事件（`text_delta` / `tool_start` / `tool_end` / `session_init` / `lifecycle` 等），并转译为 Electron 的 IPC 事件发到渲染进程。
 
@@ -268,7 +268,7 @@ Electron Desktop
 │   └─ Native (dialog, login)
 │
 └─ Backend (Node, better-sqlite3)
-    ├─ Express routers ── 14 个 createXxxRouter()
+    ├─ Express routers ── 20+ 个 HTTP surfaces / createXxxRouter()
     ├─ WebSocketServer (/ws) ── stream events
     ├─ AgentService ──┬─ AgentLoop[] (per session)
     │                 ├─ SessionManager ── lifecycle state machine
@@ -277,8 +277,8 @@ Electron Desktop
     ├─ HookRegistry (singleton) ── 30 events
     │   ├─ turn-hooks: SQLite turn 持久化
     │   ├─ compression-hooks: L1 摘要 + L2 记忆节点
-    │   ├─ memory-hooks: PreLLMCall 召回
-    │   ├─ rag-hooks: KB 检索注入
+    │   ├─ wiki-anchor-injection: system/context Wiki anchors
+    │   ├─ rag-hooks: legacy optional，默认未接 getRagContext
     │   └─ durable-hooks: turn_state 检查点
     └─ SQLite (db.sqlite) ── 11 张业务表 + kv_store
 ```

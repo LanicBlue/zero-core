@@ -74,10 +74,13 @@ case "my-provider":
 
 ### 1.6 IPC Channel
 
-新增 IPC channel = 三处改动：
+新增 IPC channel = 至少三处改动：
 1. `src/shared/preload-types.ts` `WindowApi` 接口加方法
-2. `src/main/ipc-proxy.ts` `R` 映射表加一行
+2. `src/main/ipc-proxy.ts` `R` 映射表加一行，除非该通道必须留在 main 本地
 3. 后端 `src/server/<x>-router.ts` 加 Express 路由
+4. 必要时更新 `src/shared/ipc-api.ts` 与 `tests/unit/rest-routers.test.ts` 的契约校验
+
+当前 `preload/index.ts` 约 150 个 invoke 通道，`ipc-proxy.ts` 约 140 个代理通道。新增通道时应优先让测试捕获遗漏，而不是把例外加入白名单。
 
 ### 1.7 SQLite 表
 
@@ -92,17 +95,17 @@ case "my-provider":
 
 ### 1.9 KB / RAG
 
-注册 KB → KB 配置 Provider/Model → 启动 ingest → tool `getRagContext` 自动接入。
+注册 KB → KB 配置 Provider/Model → 启动 ingest → 通过 `/api/kb` 手动检索/管理。当前默认 Agent 会话不会自动接入 `getRagContext`；如需自动 RAG，应作为显式 KB binding 能力重新设计。
 
 ---
 
 ## 2. 架构决策记录（ADR）
 
-### 2.0 17 个 ADR 总览（timeline + 分类）
+### 2.0 18 个 ADR 总览（timeline + 分类）
 
 ```mermaid
 timeline
-    title 17 个 ADR 的决策焦点分布
+    title 18 个 ADR 的决策焦点分布
     进程模型 : ADR-001 Electron + 后端子进程
              : ADR-002 IPC → HTTP 桥
              : ADR-003 WebSocket 反向
@@ -112,11 +115,12 @@ timeline
              : ADR-007 turns 表为权威
              : ADR-009 config.ts 耦合
              : ADR-014 Zustand 单 Store
-    工具与协议 : ADR-008 RAG query 缺失 ⚠
+    工具与协议 : ADR-008 legacy KB RAG hook
                 : ADR-010 buildTool 工厂
                 : ADR-011 mcp-tools 改名
-                : ADR-012 main/ipc 死代码
+                : ADR-012 main/ipc 清理完成
                 : ADR-013 双 Memory
+                : ADR-018 IPC 契约漂移
     Provider : ADR-015 默认 6 工具
              : ADR-016 Ollama = OpenAI
     L18N    : ADR-017 中文注释
@@ -138,11 +142,12 @@ graph TB
         B5[ADR-014 Zustand 单 store]
     end
     subgraph "工具与协议（5）"
-        C1[ADR-008 RAG query ⚠]
+        C1[ADR-008 legacy KB RAG]
         C2[ADR-010 buildTool]
         C3[ADR-011 mcp-tools 改名]
-        C4[ADR-012 main/ipc 死代码]
+        C4[ADR-012 main/ipc 清理完成]
         C5[ADR-013 双 Memory]
+        C6[ADR-018 IPC 契约漂移]
     end
     subgraph "Provider（2）"
         D1[ADR-015 默认 6 工具]
@@ -155,14 +160,17 @@ graph TB
     style B1 fill:#34d399,color:#000
     style C1 fill:#f87171,color:#000
     style C3 fill:#fbbf24,color:#000
-    style C4 fill:#fbbf24,color:#000
+    style C4 fill:#34d399,color:#000
     style C5 fill:#fbbf24,color:#000
+    style C6 fill:#f87171,color:#000
 ```
 
 **关键标记**：
 - 🟢 **ADR-005 Hook 提取** — 项目**最成功**的架构改进
-- 🔴 **ADR-008 RAG query 缺失** — 当前**最严重**的设计 bug
-- 🟠 **ADR-011/012/013** — 三个"清理债"决策待落地
+- 🟡 **ADR-008 legacy KB RAG hook** — 默认运行路径未接通，建议退役或产品化重接
+- 🟢 **ADR-012** — main/ipc 死代码已清理并由测试固化
+- 🟠 **ADR-011/013** — 两个"清理债"决策待落地
+- 🔴 **ADR-018** — 当前最实际的 IPC 契约漂移风险
 
 ### ADR-001 · 进程模型：Electron + 后端子进程
 
@@ -191,7 +199,7 @@ graph TB
 
 **Context**：Electron 的 IPC 是同步请求-响应模式，与后端的 REST 风格一致。
 
-**Decision**：所有 49 个 IPC 通道（除 3 个本地）通过 `ipc-proxy.ts` 翻译为对 `http://localhost:<port>/api/...` 的 HTTP 请求。
+**Decision**：绝大多数业务 IPC 通道通过 `ipc-proxy.ts` 的 `R` 表翻译为对 `http://localhost:<port>/api/...` 的 HTTP 请求。当前 `R` 表约 140 个代理通道；main 本地保留 5 个必须使用 Electron 原生能力的通道。
 
 **Alternatives**：
 - 直接在 main 进程跑后端逻辑：把 main 进程变成上帝对象。
@@ -200,7 +208,7 @@ graph TB
 **Consequences**：
 - ✅ 后端可以独立测试（用 curl 直接打）。
 - ✅ 后端逻辑与 main 进程解耦，可单独部署。
-- ✅ 47 个通道走统一路径。
+- ✅ 大多数业务通道走统一路径，并由 `tests/unit/rest-routers.test.ts` 做契约校验。
 - ❌ 进程间多一跳，约 2-10ms 延迟。
 - ❌ 需要起 HTTP server + 端口管理。
 
@@ -260,7 +268,7 @@ graph TB
 - 用 AOP / decorator：TS 生态不成熟。
 
 **Consequences**：
-- ✅ AgentLoop 从 800+ 行降至 646 行。
+- ✅ Hook 提取仍然有效，但 AgentLoop 当前又增长到约 700 行，需要继续控制流式事件翻译和工具执行分支。
 - ✅ 每个 hook 可独立测试。
 - ✅ 扩展点明确。
 - ❌ 23 个 hook 事件定义但未装载（幽灵 hook）。
@@ -287,7 +295,7 @@ graph TB
 **Consequences**：
 - ✅ 单文件备份 / 迁移简单。
 - ✅ KV 灵活补丁 + 业务表结构化并存。
-- ❌ `session-db.ts` 类持有 4 个独立存储后端，类太大（812 行）。
+- ❌ `session-db.ts` 类持有多个独立存储后端，类太大（当前约 850 行）。
 - ❌ KB 向量搜索 O(M×D) 是性能瓶颈。
 
 **Code evidence**：`server/sqlite-store.ts:43-273`、`server/key-value-store.ts:32-116`。
@@ -314,27 +322,20 @@ graph TB
 
 ---
 
-### ADR-008 · RAG 上下文注入 PreLLMCall 但 query 缺失
+### ADR-008 · KB RAG hook 保留但默认运行路径未接通
 
-**Context**：KB 检索需要"查询文本"才能返回相关 chunks。
+**Status**：accepted as legacy cleanup。
 
-**Decision**：`rag-hooks.ts` 调用 `config.getRagContext(agentId, "")`（空 query）。
+**Context**：`runtime/hooks/rag-hooks.ts` 仍注册在 PreLLMCall，但它只有在 `SessionConfig.getRagContext` 存在时才会工作。当前 `AgentService.createLoopForSession()` 构造普通 Agent 会话时没有注入 `getRagContext`，所以 KB 内容不会默认进入 `ctx.ragContext`。
 
-**Alternatives**：
-- 注入"agent 配置时的固定 query"：KB 是预加载而非实时检索。
-- 在 hook 中取 last user message 后调用：正确的做法。
+**Decision**：把该路径视为 legacy optional hook，而不是当前主记忆/RAG 链路。当前长期记忆主线是 Wiki tree + wiki anchors；KB 仍保留导入、chunk、embedding、手动检索能力。
 
-**Decision 的现实**：
-- ❌ **当前实现有 bug**。`config.getRagContext` 的签名是 `(agentId, query)`，但实际实现似乎只用 agentId，没用 query。
-- 后果：所有 turn 拿到相同的 RAG 上下文（要么 KB 太大被截断，要么没有意义）。
-- **修复方向**：让 `getRagContext(agentId, query)` 从 ctx 中读取当前 user message 作为 query。
+**Consequences**：
+- ✅ 避免维护者误以为 KB 会自动参与每轮 Agent 上下文。
+- ✅ Wiki memory 与 KB document search 的边界更清晰。
+- ⚠️ 如果产品需要自动 RAG，需要重新设计 KB binding、query planner、上下文预算与 Wiki 去重策略。
 
-**Code evidence**：`runtime/hooks/rag-hooks.ts:13-25`、`agent-service.ts` 中 `getRagContext` 的实现。
-
-**Severity**：Medium（功能不正确，但不是崩溃 bug）。
-
----
-
+**Code evidence**：`runtime/hooks/rag-hooks.ts:13-25`、`server/agent-service.ts:createLoopForSession()`、`runtime/wiki-anchor-injection.ts`。
 ### ADR-009 · config.ts 三件套耦合
 
 **Context**：单一文件同时承担 schema、默认、加载逻辑。
@@ -394,40 +395,35 @@ graph TB
 
 ---
 
-### ADR-012 · `main/ipc/*-handlers.ts` 文件未装载
+### ADR-012 · `main/ipc*` 死代码已清理
 
-**Context**：`src/main/ipc/` 下有 18 个 `*-handlers.ts` 文件，似乎是设计来"在主进程处理 IPC handler"的。
+**Context**：早期文档记录过 `src/main/ipc/` 下存在一组未装载 handler，生产路径实际由 `ipc-proxy.ts` 接管。
 
-**Decision**：**当前未装载**（`registerProxyHandlers` 走 HTTP 路径）。
-
-**可能意图**：
-- 早期版本设计：在 main 直接调后端函数而非 HTTP。
-- 测试 fixture：被 E2E 复用。
-- 历史遗留：被 ipc-proxy.ts 取代后忘记清理。
+**Decision**：P9 已删除这组遗留路径。当前 `src/main/ipc.ts` 与 `src/main/ipc/` 均不存在。
 
 **Consequences**：
-- ❌ 死代码：~2,246 行未用代码。
-- ❌ 误导：让新工程师困惑。
+- ✅ main 进程 IPC 入口更清晰：批量业务通道只走 `registerProxyHandlers()`，少量本地能力走 `registerLocalHandlers()`。
+- ✅ `tests/unit/p9-dead-path-removal.test.ts` 固化了删除结果，避免死代码回流。
+- ⚠️ 清理死代码不等于 IPC 契约完全一致；preload/proxy 的例外见 ADR-018。
 
-**Code evidence**：`main/index.ts` 仅 `registerProxyHandlers(port)` + `registerLocalHandlers(mainWindow!)`，未引用 `main/ipc/*`。
+**Code evidence**：`main/index.ts`、`main/ipc-proxy.ts`、`tests/unit/p9-dead-path-removal.test.ts`。
 
 ---
 
-### ADR-013 · 双 Memory 系统并存
+### ADR-013 · Legacy Memory 与 Wiki Tree 迁移残留
 
-**Context**：项目同时存在 `memory-store.ts`（旧版 实体-关系图谱）和 `memory-node-store.ts`（新版 Wiki）。
+**Status**：accepted, cleanup needed。
 
-**Decision**：保留两者，**新版**默认装载（`runtime/mcp-tools/memory-node-tools.ts` 注册到 ALL_TOOLS）。旧版的工具 `MemoryRead / MemoryWrite` **未注册**。
+**Context**：项目仍存在 `memory-store.ts`、`memory-node-store.ts`、`runtime/memory-recall.ts` 和旧 `runtime/mcp-tools/memory-tools.ts`。但当前 `runtime/tools/index.ts` 已移除 `MemoryRecall` / `MemoryNote`，普通 Agent 的记忆读写走 `Wiki` 工具与 Wiki anchors。
+
+**Decision**：把旧 memory 代码标注为兼容/迁移残留。当前默认长期记忆路径是全局 Wiki tree：Extractor 与 compression 优先写入 Wiki，AgentLoop 通过 `wiki-anchor-injection.ts` 注入项目/Agent 锚点。
 
 **Consequences**：
-- ⚠️ DB 写入路径分裂：用户工具调用新版，但旧版数据可能在 DB 中。
-- ⚠️ 工具 UI 显示不一致。
-- ✅ 迁移路径安全：旧数据不会被新版破坏。
+- ✅ 文档和运行路径一致，避免把旧 FTS5 recall 当成主路径。
+- ⚠️ 仍需确认旧表中是否有用户数据，再决定迁移或删除。
+- ⚠️ `SessionDB` 仍持有旧 store，会继续增加认知负担。
 
-**Code evidence**：`runtime/tools/index.ts:62-83`（无 MemoryRead/Write）vs `runtime/mcp-tools/memory-tools.ts`（旧版存在）。
-
----
-
+**Code evidence**：`runtime/tools/index.ts`、`runtime/wiki-anchor-injection.ts`、`runtime/hooks/compression-hooks.ts`、`runtime/hooks/extraction-hooks.ts`。
 ### ADR-014 · Zustand 单 Store 单关注点
 
 **Context**：渲染层有多个交互域（聊天 / Agent / MCP / KB / 设置 / 主题 / 页面 / 交互）。
@@ -504,8 +500,8 @@ graph TB
 
 ## 3. 总结
 
-- 17 个 ADR，集中在数据驻留、并发控制、扩展点。
-- 4 个 ADR 标记为"建议修改"：008 (RAG query)、011 (mcp-tools 改名)、012 (main/ipc/* 清理)、013 (memory 双系统清理)。
+- 18 个 ADR，集中在数据驻留、并发控制、扩展点。
+- 当前建议优先处理：018 (IPC 契约漂移)、011 (mcp-tools 改名)、013 (legacy memory 清理)、008 (legacy KB RAG hook 标注/退役)。ADR-012 已解决。
 - 整个架构遵循"interfaces up, implementations down" 的依赖倒置；`ISessionStore` / `IKVStore` 是教科书级示范。
 - "Hook 提取"是**最大的**架构改进（ADR-005），把 AgentLoop 从膨胀中拯救出来。
 - 单 SQLite 文件 + KV store 的双重存储（ADR-006）是项目**最勇敢**的决定。

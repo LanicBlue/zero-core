@@ -34,6 +34,13 @@ export interface MockFixture {
 	chunks: Array<
 		| { type: "thinking"; text: string }
 		| { type: "text"; text: string }
+		| {
+				type: "tool-call";
+				toolName: string;
+				/** Tool input as a plain object; stringified for the AI SDK stream. */
+				input: object;
+				toolCallId?: string;
+		  }
 		| { type: "finish"; finishReason?: "stop" | "length" | "tool-calls" | "error" }
 	>;
 	usage?: {
@@ -70,6 +77,21 @@ function toStreamPart(
 				{ type: "text-start", id },
 				{ type: "text-delta", id, delta: chunk.text },
 				{ type: "text-end", id },
+			];
+		}
+		case "tool-call": {
+			// AI SDK v2 tool-call stream: a 4-part sequence. `tool-call.input`
+			// MUST be a stringified JSON object — the SDK parses + schema-
+			// validates it, then runs the tool's execute and injects a
+			// `tool-result` into fullStream. The tool-input-* parts feed the
+			// UI's progressive tool-input rendering.
+			const id = chunk.toolCallId ?? nextId();
+			const inputStr = JSON.stringify(chunk.input);
+			return [
+				{ type: "tool-input-start", id, toolName: chunk.toolName },
+				{ type: "tool-input-delta", id, delta: inputStr },
+				{ type: "tool-input-end", id },
+				{ type: "tool-call", toolCallId: id, toolName: chunk.toolName, input: inputStr },
 			];
 		}
 		case "finish": {

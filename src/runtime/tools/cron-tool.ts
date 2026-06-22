@@ -55,61 +55,38 @@ const workingScopeSchema = z.object({
 	wikiRootNodeId: z.string(),
 });
 
-const scheduleSchema = z.discriminatedUnion("mode", [
-	z.object({
-		mode: z.literal("once"),
-		at: z.string().describe("ISO 8601 timestamp the cron fires once at"),
-	}),
-	z.object({
-		mode: z.literal("alarm"),
-		time: z.string().describe('Local time-of-day "HH:MM"'),
-		days: z.array(z.number()).describe("ISO weekday 1=Mon … 7=Sun; [] = every day"),
-		tz: z.string().describe('IANA timezone, e.g. "Asia/Shanghai"'),
-	}),
-	z.object({
-		mode: z.literal("interval"),
-		everyMs: z.number().describe("Firing period in milliseconds (0 = inert)"),
-	}),
-]);
+// Schedule: flat object with mode discriminator (not discriminatedUnion).
+// Same provider-compat reason as the action schema below — nested oneOf is also
+// poorly supported by some providers; flatten to one object keyed by `mode`.
+const scheduleSchema = z.object({
+	mode: z.enum(["once", "alarm", "interval"]),
+	// once
+	at: z.string().optional().describe("ISO 8601 timestamp the cron fires once at (mode:'once')"),
+	// alarm
+	time: z.string().optional().describe('Local time-of-day "HH:MM" (mode:\'alarm\')'),
+	days: z.array(z.number()).optional().describe("ISO weekday 1=Mon … 7=Sun; [] = every day (mode:'alarm')"),
+	tz: z.string().optional().describe('IANA timezone, e.g. "Asia/Shanghai" (mode:\'alarm\')'),
+	// interval
+	everyMs: z.number().optional().describe("Firing period in milliseconds (mode:'interval')"),
+});
 
 // ---------------------------------------------------------------------------
-// Discriminated-union schema
+// Flat action schema
 // ---------------------------------------------------------------------------
+// NOTE: deliberately a FLAT z.object, not z.discriminatedUnion. LLM tool-calling
+// protocols require a top-level `type: object` parameters schema; a top-level
+// oneOf/discriminated union is dropped/mis-parsed by most providers, so the
+// model calls the tool with `{}`. The action enum validates the discriminator.
 
-const cronActionSchema = z.discriminatedUnion("action", [
-	z.object({
-		action: z.literal("create"),
-		agentId: z.string(),
-		workingScope: workingScopeSchema,
-		schedule: scheduleSchema,
-		prompt: z.string().optional(),
-		enabled: z.boolean().optional(),
-	}),
-	z.object({
-		action: z.literal("update"),
-		id: z.string(),
-		workingScope: workingScopeSchema.optional(),
-		schedule: scheduleSchema.optional(),
-		prompt: z.string().optional(),
-		enabled: z.boolean().optional(),
-	}),
-	z.object({
-		action: z.literal("delete"),
-		id: z.string(),
-	}),
-	z.object({
-		action: z.literal("get"),
-		id: z.string(),
-	}),
-	z.object({
-		action: z.literal("list"),
-		agentId: z.string().optional(),
-	}),
-	z.object({
-		action: z.literal("trigger"),
-		id: z.string(),
-	}),
-]);
+export const cronActionSchema = z.object({
+	action: z.enum(["create", "update", "delete", "get", "list", "trigger"]),
+	agentId: z.string().optional(),
+	workingScope: workingScopeSchema.optional(),
+	schedule: scheduleSchema.optional(),
+	prompt: z.string().optional(),
+	enabled: z.boolean().optional(),
+	id: z.string().optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Tool

@@ -54,15 +54,13 @@
 
 ## 勘误修订
 
-本文档集已于 2026-06-12 对照实际代码库进行勘误修订，主要修正包括：
+本文档集已于 2026-06-21 再次对照实际代码库进行勘误修订。当前版本优先采用"代码事实 + 测试契约"描述，避免把易变的行号当作架构事实。主要修正包括：
 
-1. **Hook 事件数**：29 → 30（InstructionsLoaded 事件此前遗漏）
-2. **内置工具数**：18 → 21（工具清单统计更正）
-3. **agent-service.ts 行数**：639 → 773
-4. **session-db.ts 行数**：633 → 812
-5. **agent-loop.ts 行数**：583 → 646
-6. **D-013 SQLite WAL**：标记为已解决（session-db.ts:56 和 kb-db.ts:52 已执行 `db.pragma("journal_mode = WAL")`）
-7. **D-007 ToolRateLimiter**：标记为已解决（已在 agent-loop.ts:53 导入、line 117 实例化、tool-factory.ts:121-156 调用 acquire/release）
-8. **D-004 死代码行数**：520 行 → ~2,246 行
-9. **ToolRateLimiter 状态**：从"未装载"更正为"已装载运行"
-10. **IPC 通道描述**：从"49 通道"更正为"49 路由 + 3 本地通道"
+1. **P9 IPC 死代码清理已完成**：`src/main/ipc.ts` 与 `src/main/ipc/` 目录当前均不存在，`tests/unit/p9-dead-path-removal.test.ts` 已把这一点固化为契约。
+2. **IPC 代理规模更新**：`src/main/ipc-proxy.ts` 当前约 350 行，`R` 映射表约 140 个后端代理通道；main 进程另有 5 个本地 `ipcMain.handle` 通道（3 个窗口控制 + `dialog:openDirectory` + `webfetch:login`），`app:ready` 是健康检查通道。
+3. **preload 契约规模更新**：`src/preload/index.ts` 当前暴露约 150 个 `ipcRenderer.invoke` 通道。`rest-routers.test.ts` 已检查大多数 preload invoke 都必须有 proxy/local 映射。
+4. **仍存在的 IPC 漂移**：测试中显式放行了 `search-provider:get/set`、`templates:github-preview/import-github` 这 4 个未走 `R` 映射的通道；其中 template GitHub 后端路由存在，search provider 后端入口仍待确认。
+5. **核心大文件规模更新**：`wiki-node-store.ts`、`agent-service.ts`、`db-migration.ts`、`session-db.ts`、`server/index.ts`、`agent-loop.ts` 均已进入大文件区间，架构债务不再只集中于 AgentService / SessionDB。
+6. **记忆主线已切到 Wiki tree**：当前默认 Agent 会话通过 Wiki anchors 注入项目/Agent 记忆；`rag-hooks.ts` 仍注册但普通会话未注入 `getRagContext`，应视为 legacy optional hook，而不是当前主线功能缺陷。
+7. **D-013 SQLite WAL**：保持为已解决（`session-db.ts` 和 `kb-db.ts` 均执行 `db.pragma("journal_mode = WAL")`）。
+8. **D-007 ToolRateLimiter**：保持为已解决（已在 AgentLoop / tool-factory 执行路径中运行）。

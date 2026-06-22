@@ -398,7 +398,7 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 
 ## 4. SessionDB — 业务核心
 
-`src/server/session-db.ts:43-812` 是最大的 Store（812 行）。除了 sessions / messages / turns / turn_state / tool_executions 之外，还持有：
+`src/server/session-db.ts` 当前约 850 行，是 DB lifecycle + 多业务表门面的重型文件。除了 sessions / messages / turns / turn_state / tool_executions 之外，还持有：
 
 - `KeyValueStore`
 - `MemoryStore`（旧版知识图谱）
@@ -580,7 +580,7 @@ flowchart LR
 
 ### 11.2 可以改进的
 
-- **session-db.ts 太大**（812 行）。可拆为：sessions / messages / turns / turn_state / tool_executions 各一个文件。
+- **session-db.ts 太大**（当前约 850 行）。可拆为：sessions / messages / turns / turn_state / tool_executions 各一个文件，并让 SessionDB 退化为 DB lifecycle + store factory。
 - **KB 搜索** 在大库时性能崩塌（O(M×D) 客户端循环）。
 - **message-store.ts** 是已迁移完成的历史遗留物，应删除或迁移到 `legacy/`。
 - **内存节点** 与 **旧版知识图谱** 同时存在——需要明确"哪个是默认"，否则用户数据写错地方。

@@ -57,36 +57,34 @@ function resolveViewRoot(ctx: any): string | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Discriminated-union schema
+// Flat action schema
 // ---------------------------------------------------------------------------
+// NOTE: deliberately a FLAT z.object, not z.discriminatedUnion. LLM tool-calling
+// protocols require a top-level `type: object` parameters schema; a top-level
+// oneOf/discriminated union is dropped/mis-parsed by most providers (OpenAI/GLM/
+// Anthropic), so the model calls the tool with `{}` and zod rejects it. The
+// action enum validates the discriminator; per-action required fields are
+// checked at runtime in execute.
 
-const wikiActionSchema = z.discriminatedUnion("action", [
-	z.object({
-		action: z.literal("expand"),
-		nodeId: z.string(),
-	}),
-	z.object({
-		action: z.literal("read"),
-		path: z.string().describe("Workspace-relative path or wiki docPointer"),
-	}),
-	z.object({
-		action: z.literal("upsert"),
-		parentId: z.string(),
-		type: z.enum(["header", "intent", "structure"]),
-		path: z.string(),
-		title: z.string().optional(),
-		summary: z.string().optional(),
-		detail: z.string().optional(),
-		provenance: z.enum(["structure", "derived", "confirmed"]).optional(),
-		requirementIds: z.array(z.string()).optional(),
-		flags: z.array(z.string()).optional(),
-	}),
-	z.object({
-		action: z.literal("search"),
-		query: z.string().describe("Substring or simple keyword query"),
-		limit: z.number().optional(),
-	}),
-]);
+export const wikiActionSchema = z.object({
+	action: z.enum(["expand", "read", "upsert", "search"]),
+	// expand
+	nodeId: z.string().optional(),
+	// read
+	path: z.string().optional().describe("Workspace-relative path or wiki docPointer (action:'read')"),
+	// upsert
+	parentId: z.string().optional(),
+	type: z.enum(["header", "intent", "structure"]).optional(),
+	title: z.string().optional(),
+	summary: z.string().optional(),
+	detail: z.string().optional(),
+	provenance: z.enum(["structure", "derived", "confirmed"]).optional(),
+	requirementIds: z.array(z.string()).optional(),
+	flags: z.array(z.string()).optional(),
+	// search
+	query: z.string().optional().describe("Substring or simple keyword query (action:'search')"),
+	limit: z.number().optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Tool
@@ -99,7 +97,7 @@ export const wikiTool = buildTool({
 	prompt:
 		"Operate on the project Wiki via a single action-switched tool.\n\n" +
 		"Actions:\n" +
-		"- { action:'expand', nodeId } — read a node's detail (scoped to your wikiRootNodeId).\n" +
+		"- { action:'expand', nodeId } — read a node's detail (scoped to your wikiRootNodeId); the response also lists the node's visible children (id + type + title), so you can browse the tree by expanding children without a separate search.\n" +
 		"- { action:'read', path } — read a project document (code/requirement/ADR) by workspace-relative path or wiki docPointer. Read-only.\n" +
 		"- { action:'upsert', parentId, type, path, title?, summary?, detail?, ... } — upsert a node in YOUR project subtree. type ∈ header|intent|structure. Write scope is hard-enforced in the store layer.\n" +
 		"- { action:'search', query, limit? } — substring search across visible wiki nodes (title/summary/path). P3 simple match; P5 lands full-text.\n\n" +
@@ -120,11 +118,20 @@ export const wikiTool = buildTool({
 			case "expand": {
 				const node = wiki.getVisible(viewRoot, input.nodeId);
 				if (!node) return `Wiki node not visible from this view: ${input.nodeId}`;
+				// S5: list scope-respecting children so the agent can browse the tree
+				// (expand child by id) without a separate search to discover ids.
+				const children = wiki
+					.listVisibleFromRoot(viewRoot)
+					.filter((n) => n.parentId === input.nodeId)
+					.map((n) => `${n.id} [${n.type}] ${n.title}`);
+				const childrenLine = children.length
+					? `\nChildren (${children.length}):\n  ` + children.join("\n  ")
+					: "\nChildren: (none)";
 				const detail = wiki.readNodeDetail(input.nodeId);
-				if (detail) return detail;
+				if (detail) return detail + childrenLine;
 				const flags = node.flags?.length ? `\nFlags: ${node.flags.join(", ")}` : "";
 				const prov = node.provenance ? `\nProvenance: ${node.provenance}` : "";
-				return `Node: ${node.title}\nPath: ${node.path}\nType: ${node.type}${prov}\nSummary: ${node.summary || "No summary"}${flags}`;
+				return `Node: ${node.title}\nPath: ${node.path}\nType: ${node.type}${prov}\nSummary: ${node.summary || "No summary"}${flags}${childrenLine}`;
 			}
 			case "read": {
 				const workspaceDir = ctx?.contextBundle?.workspaceDir ?? ctx?.workingDir ?? "";

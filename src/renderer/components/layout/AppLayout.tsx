@@ -147,6 +147,16 @@ export default function AppLayout() {
 			todos_update: (d) => {
 				useInteractionStore.getState().setTodos(d.agentId, d.todos);
 			},
+			ask_user: (d) => {
+				// AskUser tool emitted a question — surface it as a pending card so
+				// ChatPanel renders <AskUserCard>. The tool blocks on pendingResponses
+				// until the user responds via the card (askUserRespond IPC).
+				useInteractionStore.getState().setPendingQuestions({
+					requestId: d.requestId,
+					agentId: d.agentId,
+					questions: d.questions,
+				});
+			},
 			error: (d, key) => {
 				setError(key, d.error);
 				lastErrorKey.current = key;

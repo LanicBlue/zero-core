@@ -21,12 +21,12 @@
 // 新增内置工具需在此添加开关选项
 //
 import { useState } from "react";
-import type { ModelInfo } from "../../store/agent-store.js";
+import type { ToolInfo } from "../../store/agent-store.js";
 import { DEFAULT_ENABLED_TOOLS, type FormState } from "./agent-editor-types.js";
 
 interface Props {
 	form: FormState;
-	tools: ModelInfo[];
+	tools: ToolInfo[];
 	toggleTool: (toolName: string) => void;
 	toolsTokenEstimate: string;
 }
@@ -48,7 +48,7 @@ const GROUP_LABELS: Record<string, string> = {
  * by name. Returns the key to look up in `toolsMap`, or the name if the
  * agent-tool has no id (legacy / external).
  */
-function policyKeyFor(t: ModelInfo): string {
+function policyKeyFor(t: ToolInfo): string {
 	return (t as any).agentToolId ?? t.name;
 }
 

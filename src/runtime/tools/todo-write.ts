@@ -45,6 +45,23 @@ export function clearAgentTodos(agentId: string): void {
 	agentTodos.delete(agentId);
 }
 
+/**
+ * Render the agent's current todo list as a context block (null if empty).
+ * Called by agent-loop each turn so the agent SEES its todo state (not just
+ * writes blindly). Rendering lives here (the todo module); agent-loop only
+ * wires the result into buildContextMessage — keeps tool/loop concerns separate.
+ */
+export function renderTodosContext(agentId: string): string | null {
+	const todos = agentTodos.get(agentId);
+	if (!todos || todos.length === 0) return null;
+	const lines = todos.map((t) => {
+		const mark = t.status === "completed" ? "[x]" : t.status === "in_progress" ? "[~]" : "[ ]";
+		return `- ${mark} ${t.content}`;
+	});
+	const completed = todos.filter((t) => t.status === "completed").length;
+	return `${completed}/${todos.length} done\n` + lines.join("\n");
+}
+
 export const todoWriteTool = buildTool({
 	name: "TodoWrite",
 	description: "Update the task list to track progress on multi-step work.",
@@ -67,8 +84,11 @@ export const todoWriteTool = buildTool({
 			todos,
 		} as any);
 
-		const completed = todos.filter((t: TodoItem) => t.status === "completed").length;
+		// Return the FULL list (not just a summary) so the agent sees the actual
+		// items + statuses it just committed. Previously returned only "X/Y done",
+		// which told the agent nothing about the contents.
+		const rendered = renderTodosContext(ctx.agentId) ?? "(empty list)";
 		const inProgress = todos.filter((t: TodoItem) => t.status === "in_progress").length;
-		return `Task list updated: ${completed}/${todos.length} completed, ${inProgress} in progress.`;
+		return `Task list updated (${inProgress} in progress).\n${rendered}`;
 	},
 });

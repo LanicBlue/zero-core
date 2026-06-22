@@ -34,6 +34,7 @@ import { registerExtractionHooks, type ExtractionHooksDeps } from "./extraction-
 import { registerNotificationHooks } from "./notification-hooks.js";
 import { registerProviderOptionsHooks } from "./provider-options-hooks.js";
 import { registerRagHooks } from "./rag-hooks.js";
+import { registerTodoCleanupHooks } from "./todo-cleanup-hooks.js";
 import { registerTurnHooks } from "./turn-hooks.js";
 import type { ISessionStore } from "../session-store-interface.js";
 import { log } from "../../core/logger.js";
@@ -52,6 +53,8 @@ export function registerAllRuntimeHooks(db?: ISessionStore, extractionDeps?: Ext
 	registerRagHooks();
 	registerProviderOptionsHooks();
 	registerCompressionHooks();
+	// Clear all-completed todos at the start of the next turn (UI auto-hide).
+	registerTodoCleanupHooks();
 	if (extractionDeps) registerExtractionHooks(extractionDeps);
 	log.debug("hooks", "All runtime feature hooks registered");
 }

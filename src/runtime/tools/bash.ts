@@ -192,14 +192,14 @@ function buildPrompt(): string {
 		"",
 		"Each Shell call runs in a separate subprocess — `cd` does NOT persist across calls. The working directory is set to the workspace root on every invocation. Always use absolute paths, or chain `cd && command` in a single call.",
 		"",
-		"IMPORTANT: Avoid using this tool to run `find`, `ls`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, " +
+		"IMPORTANT: Avoid using this tool to run `find`, `ls`, `grep`, `cat`, `head`, `tail`, `sed`, or `awk`, " +
 		"unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. " +
 		"Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:",
 		"- File search and directory listing: Use `Glob` tool (NOT find, ls, or dir)",
 		"- Content search: Use `Grep` tool (NOT shell grep or rg)",
 		"- Read files: Use `Read` tool (NOT cat, head, tail)",
 		"- Edit files: Use `Edit` tool (NOT sed, awk)",
-		"- Write files: Use `Write` tool (NOT echo >, cat <<EOF)",
+		"- Write files: Use `Write` tool (NOT `echo > file`, `cat <<EOF > file`)",
 		"",
 		"While the Shell tool can do similar things, it's better to use the built-in tools as they provide a much better experience for the user.",
 	];
@@ -278,6 +278,13 @@ export const bashTool = buildTool({
 				return "Error: Background execution is not available in this context.";
 			}
 			const taskId = ctx.runBackground(processedCommand, timeoutSec);
+			// A synchronous launch failure (bad shell, missing binary) is recorded
+			// against the task immediately — surface it now with the task_id so the
+			// model can tell "launch failed" from "running" without a separate poll.
+			const launched = ctx.getTaskResult?.(taskId);
+			if (launched?.status === "failed") {
+				return `Background command failed to launch.\ntask_id: ${taskId}\nError: ${launched.result ?? "unknown launch error"}`;
+			}
 			return `Command running in background.\ntask_id: ${taskId}\nUse Wait or TaskStatus to check progress and retrieve the result.`;
 		}
 

@@ -26,24 +26,169 @@
 import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { resolve } from "node:path";
+import { resolve, relative, extname, sep } from "node:path";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { buildTool } from "./tool-factory.js";
 import { EXEC_MAX_BUFFER_BYTES } from "../../core/constants.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 
 const execFileAsync = promisify(execFile);
 
+// ---------------------------------------------------------------------------
+// Node-native grep fallback (v0.8: Windows + systems without ripgrep)
+// ---------------------------------------------------------------------------
+// When `rg` is absent (ENOENT — common on Windows where ripgrep isn't on Node's
+// PATH), the old code fell back to system `grep`, which ALSO isn't on Windows,
+// so Grep was completely broken there. This pure-Node walker replaces that
+// broken fallback so Grep works cross-platform with no external binary. Output
+// mirrors ripgrep's content/files_with_matches/count modes closely enough for
+// the model to consume.
+
+const TYPE_EXTENSIONS: Record<string, string[]> = {
+	js: ["js", "mjs", "cjs", "jsx"], ts: ["ts", "tsx", "mts", "cts"],
+	py: ["py", "pyw"], rust: ["rs"], go: ["go"], java: ["java"],
+	rb: ["rb"], php: ["php"], c: ["c", "h"], cpp: ["cpp", "cc", "cxx", "hpp", "hh", "hxx"],
+	cs: ["cs"], swift: ["swift"], kt: ["kt", "kts"], scala: ["scala"],
+	sh: ["sh", "bash"], md: ["md", "markdown"], json: ["json", "jsonc"],
+	yml: ["yaml", "yml"], toml: ["toml"], html: ["html", "htm", "xhtml"],
+	css: ["css", "scss", "less"], vue: ["vue"], svelte: ["svelte"],
+};
+
+const BINARY_EXTENSIONS = new Set([
+	".png", ".jpg", ".jpeg", ".gif", ".ico", ".bmp", ".webp",
+	".zip", ".gz", ".tar", ".bz2", ".7z", ".rar",
+	".exe", ".dll", ".so", ".dylib", ".bin", ".obj", ".o", ".a",
+	".woff", ".woff2", ".ttf", ".otf", ".eot",
+	".pdf", ".sqlite", ".db", ".wasm", ".mp3", ".mp4", ".avi", ".mov",
+]);
+
+// Convert a user glob like "*.js" / "*.{ts,tsx}" / "**/*.spec.ts" into a
+// function testing a path relative to searchPath.
+function compileGlob(glob?: string): (relPath: string) => boolean {
+	if (!glob) return () => true;
+	const re = new RegExp(
+		"^(?:" + glob
+			.split(",")
+			.map((part) => {
+				let p = part.trim().replace(/^\.\//, "");
+				// escape regex specials except our wildcard chars
+				p = p.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+				p = p.replace(/\*\*/g, "\0GLOBSTAR\0").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(/\0GLOBSTAR\0/g, ".*");
+				return p;
+			})
+			.join("|") + ")$",
+		"i",
+	);
+	return (relPath: string) => re.test(relPath.replace(/\\/g, "/"));
+}
+
+async function* walkFiles(root: string, skipDirs: Set<string>): AsyncIterable<string> {
+	let entries: import("node:fs").Dirent[];
+	try { entries = await readdir(root, { withFileTypes: true }); }
+	catch { return; }
+	for (const ent of entries) {
+		if (ent.name === ".git" || skipDirs.has(ent.name)) continue;
+		const full = root + sep + ent.name;
+		if (ent.isDirectory()) {
+			yield* walkFiles(full, skipDirs);
+		} else if (ent.isFile()) {
+			yield full;
+		}
+	}
+}
+
+export async function nativeGrepSearch(opts: {
+	pattern: string; searchPath: string; glob?: string; type?: string;
+	output_mode: "content" | "files_with_matches" | "count";
+	caseInsensitive?: boolean; context?: number; after?: number; before?: number;
+	head_limit: number; max_columns: number;
+}): Promise<string> {
+	const { pattern, searchPath, output_mode, head_limit, max_columns } = opts;
+	let regex: RegExp;
+	try {
+		regex = new RegExp(pattern, opts.caseInsensitive ? "i" : "");
+	} catch {
+		return `Invalid regex: ${pattern}`;
+	}
+
+	const globOk = compileGlob(opts.glob);
+	const typeExts = opts.type ? new Set(TYPE_EXTENSIONS[opts.type] ?? [opts.type]) : null;
+	const skipDirs = new Set(["node_modules", ".git"]);
+	const ctxBefore = opts.context ?? opts.before ?? 0;
+	const ctxAfter = opts.context ?? opts.after ?? 0;
+
+	const matchedFiles: string[] = [];
+	const contentLines: string[] = [];
+	const countLines: string[] = [];
+	let totalMatches = 0;
+	let filesScanned = 0;
+	const FILE_SCAN_CAP = 8000;
+
+	for await (const file of walkFiles(searchPath, skipDirs)) {
+		if (filesScanned++ > FILE_SCAN_CAP) break;
+		if (totalMatches >= head_limit && output_mode !== "count") break;
+		const relPath = relative(searchPath, file);
+		if (!globOk(relPath)) continue;
+		const ext = extname(file).toLowerCase();
+		if (typeExts && !typeExts.has(ext.slice(1))) continue;
+		if (BINARY_EXTENSIONS.has(ext)) continue;
+
+		let content: string;
+		try { content = await readFile(file, "utf-8"); } catch { continue; }
+		if (content.includes("\0")) continue; // binary
+
+		const lines = content.split(/\r?\n/);
+		let fileMatchCount = 0;
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i];
+			if (!regex.test(line)) continue;
+			totalMatches++;
+			fileMatchCount++;
+			if (output_mode === "files_with_matches") {
+				matchedFiles.push(relPath);
+				break; // one hit per file is enough for this mode
+			}
+			if (output_mode === "content") {
+				const display = line.length > max_columns ? line.slice(0, max_columns) + " ..." : line;
+				if (ctxBefore > 0 || ctxAfter > 0) {
+					for (let j = Math.max(0, i - ctxBefore); j <= Math.min(lines.length - 1, i + ctxAfter); j++) {
+						const prefix = j === i ? `${relPath}-${j + 1}-` : `${relPath}-${j + 1}-`;
+						const dl = lines[j].length > max_columns ? lines[j].slice(0, max_columns) + " ..." : lines[j];
+						contentLines.push(`${prefix}${dl}`);
+					}
+					contentLines.push(""); // blank between groups (rg style)
+				} else {
+					contentLines.push(`${relPath}:${i + 1}:${display}`);
+				}
+				if (contentLines.length >= head_limit) break;
+			}
+		}
+		if (output_mode === "count" && fileMatchCount > 0) {
+			countLines.push(`${relPath}:${fileMatchCount}`);
+		}
+	}
+
+	if (output_mode === "files_with_matches") {
+		return matchedFiles.length ? matchedFiles.join("\n") : "No matches found.";
+	}
+	if (output_mode === "count") {
+		return countLines.length ? countLines.join("\n") : "No matches found.";
+	}
+	if (contentLines.length === 0) return "No matches found.";
+	return contentLines.slice(0, head_limit).join("\n");
+}
+
 export const grepTool = buildTool({
 	name: "Grep",
-	description: "Search file contents using ripgrep with regex support and multiple output modes.",
+	description: "Search file contents with regex (ripgrep when available, else a built-in fallback) and multiple output modes.",
 	prompt:
-		"A powerful search tool built on ripgrep.\n\n" +
+		"A powerful content-search tool. Uses ripgrep when available; falls back to a built-in Node-native search on systems without ripgrep (e.g. Windows), so it works cross-platform regardless.\n\n" +
 		"Usage:\n" +
 		"- ALWAYS use Grep for search tasks. NEVER run shell grep or rg in Bash. The Grep tool handles encoding, truncation, and formatting.\n" +
 		"- Supports full regex syntax (e.g., \"log.*Error\", \"function\\s+\\w+\").\n" +
 		"- Filter files with glob parameter (e.g., \"*.js\", \"**/*.tsx\") or type parameter (e.g., \"js\", \"py\", \"rust\").\n" +
 		"- Use output_mode to control output: \"content\" shows matching lines, \"files_with_matches\" shows only file paths (default), \"count\" shows match counts.\n" +
-		"- Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\\{\\}` to find `interface{}` in Go code).\n" +
+		"- Pattern syntax: full regex (ripgrep or the built-in fallback engine — both standard regex). Literal braces need escaping (use `interface\\{\\}` to find `interface{}`).\n" +
 		"- Multiline matching: By default patterns match within single lines only. For cross-line patterns, use `multiline: true`.",
 	configSchema: [
 		{ key: "head_limit", type: "number", label: "默认结果上限 (items)", default: 250, description: "搜索结果最大返回条数" },
@@ -169,27 +314,15 @@ export const grepTool = buildTool({
 				if (rgErr.stdout) return truncateColumns(rgErr.stdout);
 				if (rgErr.code === 1) return "No matches found.";
 				if (rgErr.code === 2) return `Search error: ${rgErr.stderr || rgErr.message}`;
+				// rg not installed (ENOENT on Windows, etc.) → Node-native fallback
+				// (replaces the old `grep` fallback, which is also absent on Windows).
 			}
 
-			// Fallback to grep
-			const grepArgs = ["-rn"];
-			if (caseInsensitive) grepArgs.push("-i");
-			if (context) { grepArgs.push("-C", String(context)); }
-			else {
-				if (after) grepArgs.push("-A", String(after));
-				if (before) grepArgs.push("-B", String(before));
-			}
-			if (glob) grepArgs.push("--include", glob);
-			if (output_mode === "count") grepArgs.push("-c");
-			grepArgs.push("-m", String(resolved_head_limit));
-			grepArgs.push("--", pattern, searchPath);
-
-			const { stdout } = await execFileAsync("grep", grepArgs, {
-				cwd: workingDir,
-				timeout: 20000,
-				maxBuffer: EXEC_MAX_BUFFER_BYTES,
+			return nativeGrepSearch({
+				pattern, searchPath, glob, type, output_mode,
+				caseInsensitive, context, after, before,
+				head_limit: resolved_head_limit, max_columns: resolved_max_columns,
 			});
-			return truncateColumns(stdout || "No matches found.");
 		} catch (err: any) {
 			if (err.code === 1) return "No matches found.";
 			return `Error searching: ${err.message}`;

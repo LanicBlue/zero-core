@@ -35,7 +35,7 @@ import { useInteractionStore } from "../../store/interaction-store.js";
 import { usePageStore } from "../../store/page-store.js";
 import { useRequirementStore } from "../../store/requirement-store.js";
 import RequirementHeader from "../requirements/RequirementHeader.js";
-import type { RequirementStatus } from "../../shared/types.js";
+import type { RequirementStatus } from "../../../shared/types.js";
 
 const api = () => (window as any).api;
 
@@ -284,7 +284,7 @@ export default function ChatPanel() {
 	const isStreaming = useChatStore(selectIsStreaming);
 	const contextInfo = useChatStore(selectContextInfo);
 	const { agents } = useAgentStore();
-	const { pendingQuestions, todosByAgent } = useInteractionStore();
+	const { pendingQuestions, setPendingQuestions, todosByAgent } = useInteractionStore();
 	const { activeRequirementId, setActiveRequirementId, setActivePage } = usePageStore();
 	const { requirements, transitionStatus, sendMessage: sendReqMessage } = useRequirementStore();
 	const activeRequirement = activeRequirementId
@@ -574,6 +574,14 @@ export default function ChatPanel() {
 			</div>
 
 			{todos.length > 0 && <TodosList todos={todos} />}
+
+			{pendingQuestions && pendingQuestions.agentId === activeAgentId && (
+				<AskUserCard
+					requestId={pendingQuestions.requestId}
+					questions={pendingQuestions.questions}
+					onDone={() => setPendingQuestions(null)}
+				/>
+			)}
 
 			<div className="chat-input-bar">
 				<textarea

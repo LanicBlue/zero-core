@@ -70,6 +70,30 @@ interface AgentRunState {
 	toolCalls: { name: string; status: "running" | "done" | "error" }[];
 }
 // ---------------------------------------------------------------------------
+// toolEnabled — mirror of buildToolsSet.isEnabled
+// ---------------------------------------------------------------------------
+// Single source of truth lives in src/runtime/tools/index.ts (buildToolsSet).
+// Duplicated here as a pure reader so the server layer can decide which domain
+// service handles to inject WITHOUT importing the runtime tool layer (would
+// create a server→runtime/tools cycle). Keep these two in sync if the
+// enabled-check rule changes.
+const DEFAULT_ENABLED_TOOLS = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);
+function toolEnabled(
+	policy: { tools?: Record<string, { enabled?: boolean } | null> | null; autoApprove?: string[] } | null | undefined,
+	name: string,
+): boolean {
+	if (!policy) return DEFAULT_ENABLED_TOOLS.has(name);
+	if (policy.tools) {
+		if (name in policy.tools) return policy.tools[name]?.enabled === true;
+		return DEFAULT_ENABLED_TOOLS.has(name);
+	}
+	const aa = new Set(policy.autoApprove ?? []);
+	if (aa.has("*")) return true;
+	if (aa.size > 0) return aa.has(name);
+	return DEFAULT_ENABLED_TOOLS.has(name);
+}
+
+// ---------------------------------------------------------------------------
 // Agent Service — supports concurrent multi-agent execution
 // ---------------------------------------------------------------------------
 export class AgentService {
@@ -353,6 +377,12 @@ export class AgentService {
 		this.activeSessions.set(agentId, sessionId);
 	}
 	private createLoopForSession(agentId: string, sessionId: string, agent?: AgentRecord): AgentLoop {
+		// v0.8: context handles are injected by CONFIG (which domain tools the
+		// agent's toolPolicy enables), NOT by identity/roleTag. toolPolicy is the
+		// single source of truth; buildToolsSet still makes the final tool
+		// visibility call downstream, so injecting a handle that goes unused is
+		// harmless — this only opens the door, policy walks through it. See the
+		// injection block below (replaces the retired roleTag dispatch).
 		const cwd = agent?.workspaceDir || this.workspaceDir;
 		log.agent("Creating runtime for agent:", agentId, "session:", sessionId, "cwd:", cwd);
 		const systemPrompt = agent?.systemPrompt ?? "";
@@ -400,38 +430,24 @@ export class AgentService {
 			},
 			getToolConfig: () => this.registry.getToolConfig(),
 		};
-		// v0.8 (P3): zero sessions get the ManagementService handle so the
-		// Project/Agent/Cron action tools are available (gated via
-		// CONDITIONAL_TOOLS on ctx.management).
-		//
-		// v0.8 (P0 §1.4): roleTag was removed from AgentRecord; these reads
-		// go through @ts-expect-error pending P2/P7 rewrite (PM/zero dispatch
-		// moves off roleTag → identity via name+systemPrompt).
-		// @ts-expect-error — P0 §1.4: legacy roleTag field; P7 cleanup.
-		if (agent?.roleTag === "zero" && this.management) {
+		// v0.8: inject context handles by CONFIG. `on(name)` mirrors
+		// buildToolsSet's enabled-check (toolPolicy.tools → autoApprove →
+		// DEFAULT_ENABLED). Domain tools declare the capability; the matching
+		// service handle is surfaced so CONDITIONAL_TOOLS lets the tool through.
+		const on = (name: string): boolean => toolEnabled(sessionConfig.toolPolicy, name);
+		// management domain → Project / AgentRegistry / Cron
+		if (this.management && (on("Project") || on("AgentRegistry") || on("Cron"))) {
 			(sessionConfig as any).management = this.management;
 		}
-		// v0.8 (M4): PM sessions get the PmService + RequirementStore handles
-		// so the CreateRequirementWithDoc tool can call
-		// PmService.createRequirementWithDoc (gated via CONDITIONAL_TOOLS on
-		// ctx.pmService). Required because cron-triggered PM sessions go
-		// through sendPrompt → createLoopForSession, not sendRolePrompt.
-		// @ts-expect-error — P0 §1.4: legacy roleTag field; P2/P7 cleanup.
-		if (agent?.roleTag === "pm") {
-			if (this.pmService) (sessionConfig as any).pmService = this.pmService;
-			if (this.requirementStore) (sessionConfig as any).requirementStore = this.requirementStore;
-			// wikiStore lets PM read the project wiki (ListWikiTree / ReadDoc /
-			// ExpandNode) — acceptance-M4 line 3. PM is read-only to the wiki
-			// structure (no UpdateWikiNode in its toolPolicy).
-			if (this.wikiStore) (sessionConfig as any).wikiStore = this.wikiStore;
+		// wiki → Wiki tool (viewRoot scopes visibility per session)
+		if (this.wikiStore && on("Wiki")) {
+			(sessionConfig as any).wikiStore = this.wikiStore;
 		}
-		// v0.8 (P7): lead sessions get PmService so the verify tool can call
-		// PmService.submitCoverageVerdict → archivist merge (§4.5 / §4.6
-		// end-to-end close). The verify tool guards each call with
-		// pmService?.submitCoverageVerdict, so absent is OK (legacy ctx); this
-		// just makes the close path available on lead sessions.
-		// @ts-expect-error — P0 §1.4: legacy roleTag field; P2/P7 cleanup.
-		if (agent?.roleTag === "lead" && this.pmService) {
+		// requirement / PM domain → CreateRequirement / CreateRequirementWithDoc / verify
+		if (this.requirementStore && (on("CreateRequirement") || on("CreateRequirementWithDoc") || on("verify"))) {
+			(sessionConfig as any).requirementStore = this.requirementStore;
+		}
+		if (this.pmService && (on("CreateRequirementWithDoc") || on("verify"))) {
 			(sessionConfig as any).pmService = this.pmService;
 		}
 		// v0.8 (M5): surface the global WikiStore + extractors config onto

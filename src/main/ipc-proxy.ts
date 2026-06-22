@@ -115,7 +115,7 @@ const R: Record<string, RouteMapping> = {
 
 	// Role Templates (v0.8 P6 — RFC §7.2; distinct from the DB TemplateStore
 	// /api/templates above. These are the role identity templates.)
-	"role-templates:list":         { method: "GET", path: "/api/role-templates", buildReq: (roleTag?) => ({ query: roleTag ? { roleTag } : {} }) },
+	"role-templates:list":         { method: "GET", path: "/api/role-templates", buildReq: (roleTag?: string) => ({ query: roleTag ? { roleTag } : undefined }) },
 	"role-templates:get":          { method: "GET", path: "/api/role-templates/:id", buildReq: (id) => ({ params: { id } }) },
 	"role-templates:instantiate":  { method: "POST", path: "/api/role-templates/:id/instantiate", buildReq: (id, input) => ({ params: { id }, body: input ?? {} }) },
 
@@ -144,7 +144,7 @@ const R: Record<string, RouteMapping> = {
 	"chat:abort": { method: "POST", path: "/api/chat/abort", buildReq: () => ({}) },
 
 	// Files
-	"files:tree":         { method: "GET", path: "/api/files/tree", buildReq: (root?) => ({ query: root ? { root } : {} }) },
+	"files:tree":         { method: "GET", path: "/api/files/tree", buildReq: (root?: string) => ({ query: root ? { root } : undefined }) },
 	"files:content":      { method: "GET", path: "/api/files/content", buildReq: (filePath, root?) => ({ query: { path: filePath, ...(root ? { root } : {}) } }) },
 	"files:resolve-path": { method: "GET", path: "/api/files/resolve-path", buildReq: (filePath, root?) => ({ query: { path: filePath, ...(root ? { root } : {}) } }) },
 	"files:save":         { method: "PUT", path: "/api/files/save", buildReq: (filePath, content, root?) => ({ body: { filePath, content, root } }) },
@@ -157,13 +157,13 @@ const R: Record<string, RouteMapping> = {
 
 	// Tool Executions
 	"tool-executions:query":   { method: "POST", path: "/api/tool-executions/query", buildReq: (filter) => ({ body: filter }) },
-	"tool-executions:stats":   { method: "GET", path: "/api/tool-executions/stats", buildReq: (agentId?) => ({ query: agentId ? { agentId } : {} }) },
+	"tool-executions:stats":   { method: "GET", path: "/api/tool-executions/stats", buildReq: (agentId?: string) => ({ query: agentId ? { agentId } : undefined }) },
 	"tool-executions:cleanup": { method: "POST", path: "/api/tool-executions/cleanup", buildReq: (maxAgeMs) => ({ body: { maxAgeMs } }) },
 	"tool-executions:analyze": { method: "POST", path: "/api/tool-executions/analyze", buildReq: (agentId?) => ({ body: { agentId } }) },
 
 	// WebFetch (login stays in Electron, cookies go to backend)
 	"webfetch:cookies":       { method: "GET", path: "/api/webfetch/cookies", buildReq: () => ({}) },
-	"webfetch:clear-cookies": { method: "DELETE", path: "/api/webfetch/cookies", buildReq: (domain?) => ({ query: domain ? { domain } : {} }) },
+	"webfetch:clear-cookies": { method: "DELETE", path: "/api/webfetch/cookies", buildReq: (domain?: string) => ({ query: domain ? { domain } : undefined }) },
 
 	// ask-user response bridge (arch/04 — resolves the backend in-process
 	// pendingResponses singleton that ask-user.ts waits on).
@@ -173,7 +173,7 @@ const R: Record<string, RouteMapping> = {
 	"skills:list":    { method: "GET", path: "/api/skills", buildReq: () => ({}) },
 
 		// Memory Nodes
-		"memory-nodes:nodes":          { method: "GET", path: "/api/memory-nodes/nodes", buildReq: (limit?) => ({ query: limit ? { limit: String(limit) } : {} }) },
+		"memory-nodes:nodes":          { method: "GET", path: "/api/memory-nodes/nodes", buildReq: (limit?: number) => ({ query: limit ? { limit: String(limit) } : undefined }) },
 		"memory-nodes:subjects":       { method: "GET", path: "/api/memory-nodes/subjects", buildReq: () => ({}) },
 		"memory-nodes:subject-nodes":  { method: "GET", path: "/api/memory-nodes/subject/:name", buildReq: (name) => ({ params: { name } }) },
 		"memory-nodes:search":         { method: "GET", path: "/api/memory-nodes/search", buildReq: (q, limit?) => ({ query: { q, ...(limit ? { limit: String(limit) } : {}) } }) },
@@ -191,7 +191,7 @@ const R: Record<string, RouteMapping> = {
 		// → maps to ?includeContext=1 on the REST side; new projects:getResourceUsage
 		// channel for the dashboard's resource-consumption card.
 		"projects:list":             { method: "GET",    path: "/api/projects",                 buildReq: (filter?) => ({ query: filter ?? {} }) },
-		"projects:get":              { method: "GET",    path: "/api/projects/:id",             buildReq: (id, includeContext?) => ({ params: { id }, query: includeContext ? { includeContext: "1" } : {} }) },
+		"projects:get":              { method: "GET",    path: "/api/projects/:id",             buildReq: (id: string, includeContext?: boolean) => ({ params: { id }, query: includeContext ? { includeContext: "1" } : undefined }) },
 		"projects:create":           { method: "POST",   path: "/api/projects",                 buildReq: (input) => ({ body: input }) },
 		"projects:update":           { method: "PUT",    path: "/api/projects/:id",             buildReq: (id, input) => ({ params: { id }, body: input }) },
 		"projects:delete":           { method: "DELETE", path: "/api/projects/:id",             buildReq: (id) => ({ params: { id } }) },
@@ -239,7 +239,7 @@ const R: Record<string, RouteMapping> = {
 		// ?enabled from filter; trigger fires a manual run via cronManager.
 		"crons:list":     { method: "GET",    path: "/api/crons",            buildReq: (filter?) => ({ query: filter ?? {} }) },
 		"crons:get":      { method: "GET",    path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },
-		"crons:listRuns": { method: "GET",    path: "/api/crons/:id/runs",   buildReq: (cronId, limit?) => ({ params: { id: cronId }, query: limit ? { limit } : {} }) },
+		"crons:listRuns": { method: "GET",    path: "/api/crons/:id/runs",   buildReq: (cronId: string, limit?: number) => ({ params: { id: cronId }, query: limit ? { limit: String(limit) } : undefined }) },
 		"crons:create":   { method: "POST",   path: "/api/crons",            buildReq: (input) => ({ body: input }) },
 		"crons:update":   { method: "PUT",    path: "/api/crons/:id",        buildReq: (id, input) => ({ params: { id }, body: input }) },
 		"crons:delete":   { method: "DELETE", path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },

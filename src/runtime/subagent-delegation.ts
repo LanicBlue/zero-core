@@ -29,6 +29,7 @@ import type {
 } from "./types.js";
 import { TaskRegistry } from "./task-registry.js";
 import { AgentLoop } from "./agent-loop.js";
+import { spawn } from "node:child_process";
 import { triggerHooks } from "../core/hook-registry.js";
 import { EXEC_MAX_BUFFER_BYTES, OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
 
@@ -263,9 +264,8 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 
 		taskRegistry.create(taskId, "bash", command);
 
-		const child = require("node:child_process").spawn(shell, shellArgs, {
+		const child: any = spawn(shell, shellArgs, {
 			cwd: config.workspaceDir,
-			maxBuffer: EXEC_MAX_BUFFER_BYTES,
 		});
 		let stdout = "";
 		let stderr = "";

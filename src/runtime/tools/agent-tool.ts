@@ -75,61 +75,38 @@ const toolPolicyShape = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Discriminated-union schema
+// Flat action schema
 // ---------------------------------------------------------------------------
+// NOTE: deliberately a FLAT z.object, not z.discriminatedUnion. LLM tool-calling
+// protocols require a top-level `type: object` parameters schema; a top-level
+// oneOf/discriminated union is dropped/mis-parsed by most providers (OpenAI/GLM/
+// Anthropic), so the model calls the tool with `{}` and zod rejects it. The
+// action enum still validates the discriminator; per-action required fields are
+// enforced at runtime in execute (wrapped by `safe()`).
 
-const agentActionSchema = z.discriminatedUnion("action", [
-	// create — accepts a template (preset id) to copy identity from
-	z.object({
-		action: z.literal("create"),
-		name: z.string(),
-		systemPrompt: z.string().optional(),
-		model: z.string().optional(),
-		provider: z.string().optional(),
-		/**
-		 * Optional role template id (e.g. "lead"/"pm"/"archivist"). When
-		 * set, the new agent's identity (systemPrompt / model / toolPolicy)
-		 * is copied from the template — replaces the retired InstantiatePreset
-		 * tool. Overrides (name/model/provider) still apply.
-		 */
-		template: z.string().optional(),
-		toolPolicy: toolPolicyShape.optional(),
-		subagents: subagentsShape.optional(),
-		wikiAnchors: wikiAnchorsShape.optional(),
-	}),
-	// update — single mutation surface (consolidates SetToolPolicy/SetToolEnabled)
-	z.object({
-		action: z.literal("update"),
-		id: z.string(),
-		name: z.string().optional(),
-		systemPrompt: z.string().optional(),
-		model: z.string().optional(),
-		provider: z.string().optional(),
-		toolPolicy: toolPolicyShape.optional(),
-		subagents: subagentsShape.optional(),
-		wikiAnchors: wikiAnchorsShape.optional(),
-	}),
-	z.object({
-		action: z.literal("delete"),
-		id: z.string(),
-	}),
-	z.object({
-		action: z.literal("get"),
-		id: z.string(),
-	}),
-	z.object({
-		action: z.literal("list"),
-		roleTag: z.string().optional(),
-	}),
-	z.object({
-		action: z.literal("listTemplates"),
-		roleTag: z.string().optional(),
-	}),
-	z.object({
-		action: z.literal("getTemplate"),
-		templateId: z.string(),
-	}),
-]);
+export const agentActionSchema = z.object({
+	action: z.enum(["create", "update", "delete", "get", "list", "listTemplates", "getTemplate"]),
+	// create
+	name: z.string().optional(),
+	/**
+	 * Optional role template id (e.g. "lead"/"pm"/"archivist"). On `create`,
+	 * copies identity (systemPrompt/model/toolPolicy) from the template —
+	 * replaces the retired InstantiatePreset tool.
+	 */
+	template: z.string().optional(),
+	systemPrompt: z.string().optional(),
+	model: z.string().optional(),
+	provider: z.string().optional(),
+	toolPolicy: toolPolicyShape.optional(),
+	subagents: subagentsShape.optional(),
+	wikiAnchors: wikiAnchorsShape.optional(),
+	// update/delete/get
+	id: z.string().optional(),
+	// list / listTemplates filter
+	roleTag: z.string().optional(),
+	// getTemplate
+	templateId: z.string().optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Tool

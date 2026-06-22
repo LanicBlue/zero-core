@@ -116,9 +116,9 @@ export default function McpSettingsPage() {
 		refreshStatus();
 	};
 
-	const handleTest = async (id: string) => {
+	const handleTest = async (id: string): Promise<{ tools: { name: string; description?: string }[]; error?: string }> => {
 		const server = servers.find((s) => s.id === id);
-		if (!server) return;
+		if (!server) return { tools: [], error: "server not found" };
 		setTesting(true);
 		setTestResult(null);
 		try {
@@ -133,8 +133,11 @@ export default function McpSettingsPage() {
 				enabled: server.enabled,
 			});
 			setTestResult(result);
+			return result;
 		} catch (err: any) {
-			setTestResult({ tools: [], error: err.message });
+			const r = { tools: [], error: err.message };
+			setTestResult(r);
+			return r;
 		} finally {
 			setTesting(false);
 		}

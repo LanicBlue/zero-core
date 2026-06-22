@@ -6,7 +6,7 @@
 
 | 组件 | 角色 | 行数 |
 |------|------|------|
-| `AgentLoop` | 单次会话的执行驱动：把 messages + tools + provider 喂给 `streamText()`，处理流式事件，emit StreamEvent | 646 |
+| `AgentLoop` | 单次会话的执行驱动：把 messages + tools + provider 喂给 `streamText()`，处理流式事件，emit StreamEvent | 约 700 |
 | `AgentSession` | 该会话的**纯内存**消息数组 + token 估算 + pruning | 391 |
 | `ProviderFactory.resolveModel()` | 根据 provider 名 + API key + baseUrl 创建并缓存 AI SDK LanguageModel 实例 | 165 |
 
@@ -343,12 +343,12 @@ sequenceDiagram
 - **接口隔离**：`ISessionStore` 让 runtime 完全无感于 SQLite。这是一个教科书般的"dependency inversion"。
 - **流式事件即契约**：`StreamEvent` 是单一类型表，前后端都用它，无须定制 IPC envelope。
 - **错误分类先于重试**：8 类错误 + 4 类 transient 是精心选的，足够覆盖大多数 LLM Provider 错误模式。
-- **Hook 提取**：`turn-hooks` / `compression-hooks` / `memory-hooks` / `rag-hooks` 把"附加行为"从 loop 里拿出来，loop 不再肥胖。
+- **Hook 与上下文提取**：`turn-hooks` / `compression-hooks` / `extraction-hooks` / `wiki-anchor-injection` 把持久化、压缩、抽取、Wiki 记忆注入从 loop 主流程中拆出。`rag-hooks` 仍是 legacy optional hook，默认会话不会生效。
 
 ### 10.2 可以改进的
 
-- `agent-loop.ts` 仍然 646 行。`processStreamEvents` 的 switch 可以拆出独立的"事件翻译器"模块（类似 Redux reducer）。
+- `agent-loop.ts` 当前约 700 行。`processStreamEvents` 的 switch 可以拆出独立的"事件翻译器"模块（类似 Redux reducer）。
 - `runWithRetry` 与 `executeStream` 是耦合的。如果以后想用 `generateText()` 走非流式路径，需要复制逻辑。可抽象成 `interface TurnDriver`。
 - `AgentLoop` 直接依赖 `TurnRecorder`、`CheckpointManager`、`CompressionEngine` 五个以上 collaborator。可以做 DI 容器。
 - 错误重试时**整个** prompt 重新发送，没有"上次已经成功"的标记。如果 Provider 支持 `idempotency-key`，应当利用。
-- `MemoryRecall` 只在 `PreLLMCall` hook 里被调用一次，没有充分利用多轮对话的累积相关性。
+- Wiki anchors 当前以索引/轮廓为主，节点内容读取依赖 `Wiki` 工具；后续可以增加更明确的节点选择和上下文预算策略。

@@ -32,7 +32,7 @@
 //   both of which have a compatible better-sqlite3.
 
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
 
@@ -61,6 +61,29 @@ export async function launchApp(fixtureAbsPath: string): Promise<TestApp> {
 		},
 	});
 
+	return finishLaunch(app, zeroDir, /* keepTmpDir */ false);
+}
+
+/**
+ * Fresh-DB launcher — no ZERO_CORE_TEST_FIXTURE, so test-seed.ts does NOT run.
+ * Instead fresh-db-seed runs on the empty DB and plants the REAL "zero" agent
+ * (with the management toolPolicy) + the software-dev wiki node. The test then
+ * bootstraps the Mock provider itself at runtime (via the providers IPC) and
+ * drives the real zero agent — the most realistic path, with zero dependence on
+ * static test-seed data. Used by tool-wiring.spec.ts.
+ */
+export async function launchAppFresh(): Promise<TestApp> {
+	const zeroDir = mkdtempSync(join(tmpdir(), "zc-e2e-"));
+	const { ELECTRON_RUN_AS_NODE, ...cleanEnv } = process.env;
+	const app = await electron.launch({
+		args: ["./out/main/index.cjs"],
+		cwd: process.cwd(),
+		env: {
+			...cleanEnv,
+			ZERO_CORE_DIR: zeroDir,
+			NODE_ENV: "test",
+		},
+	});
 	return finishLaunch(app, zeroDir, /* keepTmpDir */ false);
 }
 
@@ -157,4 +180,31 @@ export async function sendChatMessage(window: Page, text: string): Promise<void>
 	// Wait for streaming to begin, then for it to end
 	await window.waitForSelector(".cursor-blink", { timeout: 5_000, state: "attached" }).catch(() => {});
 	await window.waitForSelector(".cursor-blink", { timeout: 30_000, state: "detached" });
+}
+
+// Select an agent in the chat dropdown by its display name. Used by tool-wiring
+// E2E to target the seeded "TestManager" agent (whose toolPolicy carries the
+// management-domain tools). Waits for the activation round-trip to settle.
+export async function selectAgentByName(window: Page, name: string): Promise<void> {
+	const dropdown = window.locator(".chat-agent-select");
+	await dropdown.waitFor({ state: "visible", timeout: 15_000 });
+	const option = dropdown.locator(`option`, { hasText: name }).first();
+	await option.waitFor({ state: "attached", timeout: 15_000 });
+	const value = await option.getAttribute("value");
+	if (!value) throw new Error(`Agent option not found: ${name}`);
+	await dropdown.selectOption(value);
+	await window.waitForSelector(`.chat-panel[data-session-id]:not([data-session-id=""])`, { timeout: 15_000 });
+}
+
+// Write a MockFixture (as { chunks, usage?, delayMs? }) to a temp JSON file and
+// return its absolute path, suitable for `launchApp(...)`. Lets each test compose
+// its own tool-call fixture inline instead of committing many JSON files. Typed
+// loosely (any[]) to avoid coupling the test layer to the runtime MockFixture type.
+let _fixtureCounter = 0;
+export function writeFixture(chunks: any[], opts?: { usage?: object; delayMs?: number }): string {
+	const fixture = { chunks, usage: opts?.usage, delayMs: opts?.delayMs ?? 5 };
+	const dir = mkdtempSync(join(tmpdir(), "zc-fixture-"));
+	const path = join(dir, `fixture-${process.pid}-${++_fixtureCounter}.json`);
+	writeFileSync(path, JSON.stringify(fixture), "utf-8");
+	return path;
 }

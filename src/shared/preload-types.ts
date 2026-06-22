@@ -285,4 +285,15 @@ export interface WindowApi {
 	pmOpenDiscuss: (projectId: string) => Promise<{ agentId: string; sessionId: string; created: boolean } | { error: string }>;
 	pmCoverageView: (requirementId: string) => Promise<{ requirement?: RequirementRecord; intentDoc?: string; manifest?: OrchestrateManifestRecord }>;
 	pmCoverageVerdict: (requirementId: string, covered: boolean, reason?: string) => Promise<{ success: boolean; requirementId: string; kind: "verify_accept" | "verify_reject" } | { error: string }>;
+
+	// ── MCP presets / search provider / webfetch (preload impls existed; the
+	// WindowApi contract lagged — params were implicit any). Returns are loose
+	// (any) where the backend shape isn't typed here. ──
+	mcpPresets: () => Promise<any>;
+	mcpAddPreset: (presetId: string, envValues: Record<string, string>) => Promise<any>;
+	getSearchProvider: () => Promise<any>;
+	setSearchProvider: (config: { type?: string; searxngUrl?: string; serpApiKey?: string; braveApiKey?: string }) => Promise<any>;
+	webfetchLogin: (url: string) => Promise<any>;
+	webfetchCookies: () => Promise<any>;
+	webfetchClearCookies: (domain?: string) => Promise<any>;
 }

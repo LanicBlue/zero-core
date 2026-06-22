@@ -38,6 +38,7 @@ import { createAgentService } from "./agent-service.js";
 import { SessionDB } from "./session-db.js";
 import { runMigrations } from "./db-migration.js";
 import { loadWorkspaceConfig } from "./workspace-config.js";
+import { applyProxy } from "../runtime/proxy-manager.js";
 import { buildDefaultPrompt } from "../core/default-prompt.js";
 import { ToolRegistry } from "../core/tool-registry.js";
 import { MCPManager } from "./mcp-manager.js";
@@ -183,6 +184,24 @@ export async function startServer(options?: StartServerOptions) {
 	}
 
 	console.log("[server] Workspace:", workspaceConfig.workspaceDir);
+
+	// Apply persisted proxy config at startup. Without this, the proxy saved in
+	// Settings only takes effect reactively (config-router on save) and is LOST
+	// on every backend restart — so Brave Search / provider calls go direct and
+	// fail behind a firewall. Fall back to *_PROXY env vars so a system-level
+	// proxy also works (Node's fetch ignores both system proxy and these env
+	// vars by default; undici's global dispatcher is the only lever).
+	{
+		const persisted = workspaceConfig.proxy;
+		const envUrl =
+			process.env.HTTPS_PROXY || process.env.https_proxy ||
+			process.env.HTTP_PROXY || process.env.http_proxy;
+		if (persisted?.enabled && persisted.url) {
+			applyProxy(persisted);
+		} else if (envUrl) {
+			applyProxy({ enabled: true, url: envUrl });
+		}
+	}
 
 	const agentService = createAgentService(workspaceConfig.workspaceDir, sessionDB, undefined, registry, mcp);
 	agentService.setAgentStore(agentStore);

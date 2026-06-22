@@ -29,6 +29,7 @@ import type {
 	AgentRuntime,
 } from "./types.js";
 import type { SessionContextBundle } from "../shared/types.js";
+import { spawn } from "node:child_process";
 import { TaskRegistry } from "./task-registry.js";
 import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
@@ -114,6 +115,13 @@ export class SubagentDelegator {
 		const subConfig: SessionConfig = {
 			...this.config,
 			agentId: `${targetAgentId}-${Date.now()}`,
+			// v0.8: sub-agents run in an ISOLATED, ephemeral context. Do NOT
+			// inherit the parent's sessionId — AgentSession would otherwise
+			// rebuildFromTurns() the parent's full history (leak + token cost).
+			// undefined sessionId → no DB load, no persist (all DB ops are gated
+			// on `db && sessionId`). The sub-task's result is held by the
+			// TaskRegistry, so TaskStatus/Wait still return it.
+			sessionId: undefined,
 			// Identity / prompt / model / toolPolicy all come from the target
 			// agent (passed via options). Fall back to caller config when not
 			// supplied (legacy 2-arg call shape).
@@ -239,6 +247,12 @@ export class SubagentDelegator {
 		const subConfig: SessionConfig = {
 			...this.config,
 			agentId: `${this.config.agentId}:${taskId}`,
+			// v0.8: ISOLATED ephemeral context — see delegateTask() for rationale.
+			// Without this, non_blocking sub-agents (deferred via setImmediate)
+			// inherit the parent sessionId and rebuildFromTurns() the parent's
+			// full history, producing main-conversation output instead of the
+			// assigned task.
+			sessionId: undefined,
 			systemPrompt: options?.systemPrompt ?? this.config.systemPrompt,
 			modelId: options?.model ?? this.config.modelId,
 			timeoutSec: toolConfig?.Agent?.timeout,
@@ -342,10 +356,20 @@ export class SubagentDelegator {
 		// [Batch 2] TaskCreated hook
 		triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task: command }).catch(() => {});
 
-		const child = require("node:child_process").spawn(shell, shellArgs, {
-			cwd: this.config.workspaceDir,
-			maxBuffer: EXEC_MAX_BUFFER_BYTES,
-		});
+		// v0.8 (S3): wrap spawn so a synchronous launch failure (bad shell path,
+		// missing binary, etc.) is recorded against the task and the task_id is
+		// still returned — so the caller can关联 + TaskStatus sees status=failed
+		// instead of getting a raw error with no task_id and a stuck "running" task.
+		let child: any;
+		try {
+			child = spawn(shell, shellArgs, { cwd: this.config.workspaceDir });
+		} catch (err: any) {
+			const msg = `Launch failed: ${(err as Error).message}`;
+			registry.fail(taskId, msg);
+			parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: msg });
+			triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: msg }).catch(() => {});
+			return taskId;
+		}
 		let stdout = "";
 		let stderr = "";
 		child.stdout.on("data", (d: Buffer) => { stdout += d.toString("utf-8"); });

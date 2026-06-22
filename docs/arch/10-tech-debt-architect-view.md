@@ -1,6 +1,6 @@
 # 10 · 架构级 Tech Debt
 
-> 从架构师视角看，技术债不仅是"丑代码"，更是"未来 6-18 个月内会让改动变贵的设计选择"。本文列出当前最影响演进能力的 12 个架构级债务。
+> 从架构师视角看，技术债不仅是"丑代码"，更是"未来 6-18 个月内会让改动变贵的设计选择"。本文列出当前最影响演进能力的架构级债务，并标注已被代码或测试契约解决的旧债。
 
 ## 1. 评估方法
 
@@ -16,7 +16,7 @@
 
 ### D-001 · AgentService 上帝对象（影响 5 / 成本 4 / 紧迫 4）
 
-**位置**：`server/agent-service.ts` 773 行。
+**位置**：`server/agent-service.ts`，当前约 1,010 行。
 
 **症状**：
 - 同时管理 AgentLoop 生命周期、会话状态、Provider 配置、并发控制、ready 协调、事件广播、状态查询。
@@ -41,7 +41,7 @@ agent-service.ts (orchestrator, 200 行)
 
 ### D-002 · session-db.ts 巨型 Store（影响 4 / 成本 3 / 紧迫 3）
 
-**位置**：`server/session-db.ts` 812 行。
+**位置**：`server/session-db.ts`，当前约 850 行。
 
 **症状**：一张表一个类本应 < 200 行，这里塞了：
 - sessions CRUD
@@ -72,33 +72,31 @@ session-db.ts (orchestrator, 100 行)
 
 ---
 
-### D-003 · RAG query 缺失（影响 4 / 成本 1 / 紧迫 5）
+### D-003 · Legacy KB RAG hook 未接通/待退役（影响 2 / 成本 1 / 紧迫 2）
 
-**位置**：`runtime/hooks/rag-hooks.ts:13-25`、`agent-service.ts` 中的 `getRagContext` 实现。
+**位置**：`runtime/hooks/rag-hooks.ts:13-25`、`server/agent-service.ts:createLoopForSession()`。
 
-**症状**：`getRagContext(agentId, "")` 传空 query，导致 KB 检索不针对当前问题。
+**症状**：`rag-hooks.ts` 仍被注册，但普通 Agent 会话的 `SessionConfig` 没有注入 `getRagContext`，所以 hook 默认直接返回，不会把 KB 内容注入 `ctx.ragContext`。旧文档曾把它描述为“自动 RAG 查询未带当前问题”，但从当前实际运行路径看，它更像是迁移后留下的可选扩展点。
 
-**风险**：RAG 功能形同虚设。
+**风险**：维护者会误以为 KB 自动 RAG 仍在生产路径中，进而在错误的位置修功能；产品层也容易混淆“KB 手动检索”和“Wiki 记忆注入”。
 
 **修复**：
-1. 让 `getRagContext(agentId, query)` 在 `rag-hooks.ts` 中先取 `session.getMessages().filter(user).pop()` 作为 query。
-2. 在 `agent-loop.executeStream()` 里把 ctx.ragContext 注入到 messages。
+1. 若短期不做自动 RAG：停止注册 `rag-hooks.ts` 或加 feature flag，并在代码注释中标明 legacy optional。
+2. 若要恢复自动 RAG：重新设计 KB binding、query planner、上下文预算、与 Wiki anchors 的去重策略，而不是只补 `getRagContext(agentId, query)`。
 
-**优先级**：4 × 5 / 1 = **20.0**（最高）。
+**优先级**：2 × 2 / 1 = **4.0**。
 
 ---
 
-### D-004 · main/ipc/* 死代码（影响 2 / 成本 1 / 紧迫 3）
+### D-004 · main/ipc/* 死代码 ✅ **已解决**
 
-**位置**：`src/main/ipc/` 下 20 个 `*-handlers.ts` 文件。
+**原位置**：`src/main/ipc.ts` 与 `src/main/ipc/`。
 
-**症状**：未被 `main/index.ts` 装载，似乎是早期版本遗留。
+**当前状态**：P9 已清理。当前工作树中 `src/main/ipc.ts` 与 `src/main/ipc/` 均不存在，`tests/unit/p9-dead-path-removal.test.ts` 明确校验这一点，并校验 `ipc-proxy.ts` 是 main 进程唯一批量 IPC 注册路径。
 
-**风险**：新工程师困惑；维护成本。
+**剩余风险**：死代码本身已解决，但 IPC 契约仍有漂移风险，见 D-016。
 
-**修复决策**：删除 / 移入 `tests/fixtures/` / 重新启用。**建议删除**。
-
-**优先级**：2 × 3 / 1 = **6.0**。
+**原优先级**：2 × 3 / 1 = **6.0**。→ ✅ 已解决。
 
 ---
 
@@ -249,18 +247,41 @@ session-db.ts (orchestrator, 100 行)
 
 ---
 
+### D-016 · preload/proxy IPC 契约漂移（影响 3 / 成本 1 / 紧迫 4）
+
+**位置**：`preload/index.ts`、`main/ipc-proxy.ts`、`shared/ipc-api.ts`、`tests/unit/rest-routers.test.ts`。
+
+**症状**：preload 暴露约 150 个 invoke 通道，`ipc-proxy.ts` 的 `R` 表约 140 个代理通道。测试已检查大多数通道必须有映射，但当前显式放行了 4 个例外：
+- `templates:github-preview`
+- `templates:import-github`
+- `search-provider:get`
+- `search-provider:set`
+
+其中 GitHub template 后端路由已经存在于 `server/template-router.ts`，但 `R` 表未映射；search provider 通道只在 preload 出现，后端入口待确认。
+
+**风险**：UI 调用这些 API 时可能挂起/失败；新通道继续靠手写同步，容易再次漂移。
+
+**修复**：
+1. 对 template GitHub 两个通道补齐 `ipc-proxy.ts` 映射，或明确改成非 proxy 路径并在测试中说明原因。
+2. 对 search provider 两个通道做产品决策：删除废弃 preload 方法，或补后端路由与 proxy 映射。
+3. 中期从 `shared/ipc-api.ts` 生成 preload wrapper / proxy 校验，减少三处手写漂移。
+
+**优先级**：3 × 4 / 1 = **12.0**。
+
+---
 ## 3. 优先级矩阵
 
 | 优先级 | 债务 | 影响 × 紧迫 / 成本 |
 |--------|------|-------------------|
-| 🔴 20.0 | D-003 RAG query 缺失 | 4 × 5 / 1 |
+| 🔴 12.0 | D-016 preload/proxy IPC 契约漂移 | 3 × 4 / 1 |
 | 🔴 9.0 | D-015 IPC 无 retry | 3 × 3 / 1 |
-| 🔴 6.0 | D-004 main/ipc 死代码 | 2 × 3 / 1 |
+| ~~🔴 6.0~~ | ~~D-004 main/ipc 死代码~~ | ~~2 × 3 / 1~~ ✅ 已解决 |
 | ~~🔴 6.0~~ | ~~D-013 SQLite 未启用 WAL~~ | ~~3 × 2 / 1~~ ✅ 已解决 |
 | ~~🟠 4.5~~ | ~~D-007 ToolRateLimiter 未装~~ | ~~3 × 3 / 2~~ ✅ 已解决 |
 | 🟠 4.5 | D-009 requiresConfirmation 未通 | 3 × 3 / 2 |
 | 🟠 4.0 | D-001 AgentService 上帝对象 | 5 × 4 / 4 |
 | 🟠 4.0 | D-002 session-db 巨型 | 4 × 3 / 3 |
+| 🟠 4.0 | D-003 legacy KB RAG hook | 2 × 2 / 1 |
 | 🟡 3.0 | D-005 mcp-tools 改名 | 2 × 3 / 2 |
 | 🟡 3.0 | D-006 双 Memory 系统 | 3 × 3 / 3 |
 | 🟡 3.0 | D-011 ChatPanel 虚拟化 | 3 × 2 / 2 |
@@ -280,9 +301,9 @@ quadrantChart
     quadrant-2 立即清理<br/>(低成本 + 高紧迫)
     quadrant-3 忽略<br/>(低成本 + 低紧迫)
     quadrant-4 计划清理<br/>(高成本 + 低紧迫)
-    D-003 RAG query: [0.10, 0.95]
+    D-003 legacy KB RAG: [0.10, 0.35]
     D-015 IPC retry: [0.10, 0.65]
-    D-004 main/ipc 死代码: [0.10, 0.60]
+    D-016 IPC 契约漂移: [0.10, 0.80]
     D-009 confirmation: [0.45, 0.60]
     D-001 AgentService: [0.85, 0.75]
     D-002 session-db: [0.70, 0.55]
@@ -297,9 +318,9 @@ quadrantChart
 
 **解读**：
 - ~~D-013 SQLite WAL~~ 和 ~~D-007 ToolRateLimiter~~ 已解决，从活跃债务中移除
-- **第二象限（立即清理）**：3 条 — 低成本高紧迫的"零成本 bug 修复"，建议 1 个月内全部处理
+- **第二象限（立即清理）**：2 条 — D-016 与 D-015 都是低成本且会影响前后端调用可靠性的基础设施债，建议 1 个月内处理
 - **第一象限（暂缓）**：D-001（影响最大但成本 4 周）+ D-002（拆分巨型类）— 需要稳定期才能动
-- **第四象限（计划清理）**：D-005 / D-009 / D-011-014 — 1 个月内分批
+- **第四象限（计划清理）**：D-003 / D-005 / D-009 / D-011 / D-012 / D-014 — 1 个月内分批
 - **第三象限（忽略）**：D-010（23 个 hook 未装）— 视产品方向决定
 
 ### 3.2 风险-影响气泡图
@@ -307,11 +328,11 @@ quadrantChart
 ```mermaid
 graph LR
     subgraph "Q1 立即清理"
-        D003["D-003<br/>优先级 20.0<br/>RAG query 缺失"]
         D015["D-015<br/>9.0<br/>IPC retry"]
-        D004["D-004<br/>6.0<br/>main/ipc 死代码"]
+        D016["D-016<br/>12.0<br/>IPC 契约漂移"]
     end
     subgraph "Q2 计划清理"
+        D003["D-003<br/>4.0<br/>legacy KB RAG"]
         D009["D-009<br/>4.5<br/>confirmation"]
         D005["D-005<br/>3.0<br/>mcp-tools 改名"]
         D006["D-006<br/>3.0<br/>Memory 双系统"]
@@ -328,13 +349,14 @@ graph LR
         D010["D-010<br/>1.0<br/>23 Hook 未装"]
     end
     subgraph "✅ 已解决"
+        D004s["D-004<br/>main/ipc 死代码<br/>✅ 已清理"]
         D007s["D-007<br/>ToolRateLimiter<br/>✅ 已装载运行"]
         D013s["D-013<br/>SQLite WAL<br/>✅ 已启用"]
     end
 
-    style D003 fill:#f87171,color:#000
+    style D003 fill:#fbbf24,color:#000
     style D015 fill:#f87171,color:#000
-    style D004 fill:#f87171,color:#000
+    style D016 fill:#f87171,color:#000
     style D009 fill:#fbbf24,color:#000
     style D005 fill:#fbbf24,color:#000
     style D006 fill:#fbbf24,color:#000
@@ -345,6 +367,7 @@ graph LR
     style D002 fill:#60a5fa,color:#000
     style D008 fill:#60a5fa,color:#000
     style D010 fill:#9ba0a8,color:#000
+    style D004s fill:#34d399,color:#000
     style D007s fill:#34d399,color:#000
     style D013s fill:#34d399,color:#000
 ```
@@ -362,16 +385,17 @@ gantt
     section 第 1 月：基础设施
     D-013 WAL 模式           :done, t1, 2026-06-15, 1d
     D-007 ToolRateLimiter    :done, t1b, 2026-06-15, 1d
-    D-015 IPC retry          :active, t2, 2026-06-15, 3d
-    D-003 RAG query 修复     :t3, 2026-06-18, 5d
+    D-016 IPC 契约漂移       :active, t0, 2026-06-21, 1d
+    D-015 IPC retry          :t2, after t0, 3d
+    D-003 legacy RAG 标注/退役 :t3, after t2, 1d
     D-012 日志脱敏           :t4, 2026-06-23, 3d
 
     section 第 2 月：性能 + 安全
     D-009 confirmation       :t6, after t3, 5d
 
     section 第 3 月：清理债
-    D-004 删除死代码         :t7, after t4, 1d
-    D-005 mcp-tools 改名     :t8, after t7, 2d
+    D-004 删除死代码         :done, t7, 2026-06-21, 1d
+    D-005 mcp-tools 改名     :t8, after t4, 2d
     D-006 合并 Memory        :crit, t9, after t8, 7d
     D-014 WS 重连            :t10, after t9, 3d
 ```
@@ -383,7 +407,7 @@ gantt
 1. ~~**D-013 WAL 模式**：1 小时，零风险。~~ ✅ 已完成
 2. ~~**D-007 ToolRateLimiter 装载**：已在 agent-loop.ts 导入并实例化，tool-factory.ts 中调用 acquire/release。~~ ✅ 已完成
 3. **D-015 IPC retry**：半天，需要小心不破坏已有调用语义。
-4. **D-003 RAG query 修复**：1 天，影响产品功能。
+4. **D-003 legacy RAG 标注/退役**：1 天，降低文档与运行路径误判。
 
 #### 第 2 个月：性能 + 安全债
 
@@ -392,7 +416,7 @@ gantt
 
 #### 第 3 个月：清理债
 
-7. **D-004 删除 main/ipc 死代码**：1 天。
+7. ~~**D-004 删除 main/ipc 死代码**：1 天。~~ ✅ 已完成
 8. **D-005 mcp-tools 改名**：半天，全局 rename。
 9. **D-006 合并 Memory 系统**：1 周（迁移 + 测试）。
 10. **D-014 WS 重连事件回放**：2 天。
@@ -415,7 +439,7 @@ gantt
 
 **次严重的是"未完成的扩展点"**：
 - 23 个 hook 等待 handler。
-- 3 个 IPC handler 文件等待启用决策。
+- `src/main/ipc*` 死代码已清理；当前剩余的是 preload/proxy 契约漂移。
 - tool meta `requiresConfirmation` 等待 UI 闭环。
 - ~~ToolRateLimiter 等待装载。~~ ✅ 已装载运行
 

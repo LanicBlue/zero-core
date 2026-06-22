@@ -3,13 +3,18 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 提供任务状态查询能力，显示特定任务的详细状态。
+// 提供任务状态查询能力，返回**结构化 JSON**(便于模型可靠解析)。
 //
-// ## 输入
-// - 任务 ID
+// ## 输出形态
+// { task_id, status, elapsed_s, steps, current_tool?, result? }
+//   - status ∈ running|completed|failed|killed
+//   - current_tool 仅 running 时出现
+//   - result 仅 completed/failed 时出现(子代理输出 / 错误信息)
 //
-// ## 输出
-// - 任务详细状态
+// ## 设计说明
+// 结果来自 TaskRegistry(info.result),不再查 messages DB——子代理(v0.8 起
+// ephemeral,sessionId=undefined)和 bash 后台任务都不写 messages 表,旧的
+// db.getMainSession activity 查找对它们恒为空,故移除。
 //
 // ## 定位
 // Runtime 工具，被 Agent 调用。
@@ -18,82 +23,24 @@
 // - zod - 数据验证
 //
 // ## 维护规则
-// - 保持状态信息准确
-// - 处理无效任务引用
+// - TaskInfo 字段变更需同步本输出
 //
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 
-
-function formatTurn(turn: { role: string; content: string | null }, limit: number): string {
-	const clip = (s: string) => s.length > limit ? s.slice(0, limit - 3) + "..." : s;
-
-	if (turn.role === "user") return "[user] " + clip(turn.content ?? "");
-
-	try {
-		const blocks = JSON.parse(turn.content ?? "[]");
-		return blocks.map((b: any) => {
-			if (b.type === "text") return clip(b.text);
-			if (b.type === "tool_use") return "[tool] " + b.name;
-			if (b.type === "tool_result") return "[result] " + clip(typeof b.content === "string" ? b.content : JSON.stringify(b.content));
-			if (b.type === "tool") return "[tool] " + b.name + (b.status === "error" ? " (error)" : "");
-			return "";
-		}).filter(Boolean).join("\n");
-	} catch {
-		return clip(turn.content ?? "");
-	}
-}
-
-/** Format a group of steps as a single turn for display. */
-function formatStepGroup(steps: Array<{ role: string; content: string | null }>, limit: number): string {
-	const userStep = steps.find(s => s.role === "user");
-	if (userStep) return formatTurn(userStep, limit);
-
-	// Merge all assistant steps
-	const allText: string[] = [];
-	for (const step of steps) {
-		if (step.role !== "assistant") continue;
-		try {
-			const blocks = JSON.parse(step.content ?? "[]");
-			for (const b of blocks) {
-				if (b.type === "text") allText.push(b.text);
-				if (b.type === "tool") allText.push("[tool] " + b.name + (b.status === "error" ? " (error)" : ""));
-			}
-		} catch {
-			if (step.content) allText.push(step.content);
-		}
-	}
-	const clip = (s: string) => s.length > limit ? s.slice(0, limit - 3) + "..." : s;
-	return allText.map(clip).join("\n");
-}
-
 export const taskStatusTool = buildTool({
 	name: "TaskStatus",
-	description: "Check the status and recent activity of a background task.",
+	description: "Check the status and result of a background task. Returns structured JSON.",
 	prompt: "Check the status and output of a background task (Agent non-blocking or Bash background).\n\n" +
-		"Returns: task status (running/completed/killed), elapsed time, and recent conversation turns.\n\n" +
+		"Returns JSON: { task_id, status (running|completed|failed|killed), elapsed_s, steps, current_tool?, result? }.\n" +
+		"- `current_tool` appears only while running.\n" +
+		"- `result` appears on completed/failed (the sub-agent's output or the error text).\n\n" +
 		"When to use:\n" +
 		"- After Wait wakes you up, check the specific task result\n" +
 		"- To monitor progress of a long-running background task\n" +
 		"- To retrieve the output of a completed task\n\n" +
 		"Prefer Wait over polling TaskStatus in a loop — Wait is event-driven.",
 	meta: { category: "task", isReadOnly: true, isConcurrencySafe: true, isDestructive: false },
-	configSchema: [
-		{
-			key: "recent_turns",
-			type: "number",
-			label: "Recent Turns (items)",
-			default: 6,
-			description: "显示的最近 turn 条数",
-		},
-		{
-			key: "turn_length",
-			type: "number",
-			label: "Turn Length (chars)",
-			default: 500,
-			description: "每条 turn 的最大字符数",
-		},
-	],
 	inputSchema: z.object({
 		task_id: z.string().describe("The task ID to check"),
 	}),
@@ -103,53 +50,22 @@ export const taskStatusTool = buildTool({
 		}
 
 		const info = ctx.getTaskResult(input.task_id);
-		if (!info) return `Task ${input.task_id} not found.`;
+		if (!info) return JSON.stringify({ task_id: input.task_id, status: "not_found" });
 
 		const elapsed = info.completedAt
-			? Math.round((info.completedAt - info.startedAt) / 1000) + "s"
-			: Math.round((Date.now() - info.startedAt) / 1000) + "s";
-		const header = [
-			`task_id: ${info.id}`,
-			`Status: ${info.status}`,
-			`Elapsed: ${elapsed}`,
-			`Steps: ${info.step}`,
-		];
-		if (info.currentTool) header.push(`Current tool: ${info.currentTool}`);
+			? Math.round((info.completedAt - info.startedAt) / 1000)
+			: Math.round((Date.now() - info.startedAt) / 1000);
 
-		const db = ctx.db;
-		if (!db) return header.join("\n");
-
-		const subAgentId = `${ctx.agentId}:${input.task_id}`;
-		const session = db.getMainSession(subAgentId);
-		if (!session) return header.join("\n");
-
-		const config = ctx.toolConfig?.TaskStatus ?? {};
-		const n = config.recent_turns ?? 6;
-		const turnLimit = config.turn_length ?? 500;
-
-		// Use step-level data if available, group by turnGroup
-		if (db.hasStepSchema()) {
-			const steps = db.getSteps(session.id);
-			// Group by turnGroup
-			const groups = new Map<number, Array<{ role: string; content: string | null }>>();
-			for (const s of steps) {
-				let group = groups.get(s.turnGroup);
-				if (!group) {
-					group = [];
-					groups.set(s.turnGroup, group);
-				}
-				group.push({ role: s.role, content: s.content });
-			}
-			const groupEntries = [...groups.entries()].slice(-n);
-			if (!groupEntries.length) return header.join("\n");
-			const activity = groupEntries.map(([, g]) => formatStepGroup(g, turnLimit)).join("\n---\n");
-			return header.join("\n") + "\n\n" + activity;
+		const out: Record<string, unknown> = {
+			task_id: info.id,
+			status: info.status,
+			elapsed_s: elapsed,
+			steps: info.step,
+		};
+		if (info.currentTool) out.current_tool = info.currentTool;
+		if (info.status === "completed" || info.status === "failed") {
+			out.result = info.result ?? "";
 		}
-
-		// Legacy fallback
-		const turns = db.getTurns(session.id).slice(-n);
-		if (!turns.length) return header.join("\n");
-		const activity = turns.map((t: any) => formatTurn({ role: t.role, content: t.content }, turnLimit)).join("\n---\n");
-		return header.join("\n") + "\n\n" + activity;
+		return JSON.stringify(out, null, 2);
 	},
 });

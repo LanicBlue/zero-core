@@ -142,6 +142,7 @@ function registerLocalHandlers(win: BrowserWindow) {
 			});
 
 			const relevant = capturedCookies.filter((c) => {
+				if (!c.domain) return false;
 				const d = c.domain.replace(/^\./, "");
 				return d === hostname || hostname.endsWith("." + d);
 			});
@@ -149,7 +150,7 @@ function registerLocalHandlers(win: BrowserWindow) {
 			let totalImported = 0;
 			const byDomain = new Map<string, Electron.Cookie[]>();
 			for (const c of relevant) {
-				const d = c.domain.replace(/^\./, "");
+				const d = (c.domain ?? "").replace(/^\./, "");
 				if (!byDomain.has(d)) byDomain.set(d, []);
 				byDomain.get(d)!.push(c);
 			}

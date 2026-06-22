@@ -14,7 +14,7 @@ graph TB
     B --> B2[Read/Write/Edit]
     B --> B3[Grep/Glob]
     B --> B4[WebSearch/WebFetch]
-    B --> B5[Memory/Note]
+    B --> B5[Wiki]
     B --> B6[TodoWrite/AskUser]
     B --> B7[TaskList/Status/Stop/Wait]
     B --> B8[SequentialThinking]
@@ -95,12 +95,13 @@ ToolExecutionContext {
 | Wait | task | ❌ | ❌ | ✅ | 事件驱动等待 |
 | WebSearch | web | ❌ | ❌ | ✅ | 4 后端 |
 | WebFetch | web | ❌ | ❌ | ✅ | Markdown + Cookie + 浏览器渲染 |
-| MemoryRecall | memory | ❌ | ❌ | ✅ | Wiki 检索 |
-| MemoryNote | memory | ✅ 写 | ❌ | ❌ | Wiki 写入 |
+| Wiki | memory | ✅ 写 | ❌ | 视 action 而定 | Wiki tree 读取、搜索、写入、维护 |
 | SequentialThinking | thinking | ❌ | ❌ | ✅ | 思维链 |
 | TodoWrite | interaction | ✅ 写 | ❌ | ❌ | todo 状态机 |
 | AskUser | interaction | ❌ | ❌ | ✅ | 提问双向通道 |
 | Assistant | assistant | ❌ | ❌ | ✅ | 应用诊断 |
+
+> 说明：`MemoryRecall` / `MemoryNote` 已从 `ALL_TOOLS` 移除；当前记忆操作统一通过 `Wiki` 工具进入 Wiki tree。`runtime/mcp-tools/memory-tools.ts` 中的旧 `MemoryRead` / `MemoryWrite` 文件仍存在，但不是默认运行工具。
 
 ## 4. MCP 工具的接入
 

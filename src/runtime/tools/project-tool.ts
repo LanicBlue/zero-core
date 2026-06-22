@@ -52,38 +52,28 @@ async function safe(fn: () => any): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Discriminated-union schema — one tool, five actions
+// Flat action schema — one tool, five actions
 // ---------------------------------------------------------------------------
+// NOTE: deliberately a FLAT z.object (not z.discriminatedUnion). LLM tool-calling
+// protocols (OpenAI/GLM/Anthropic function-calling) require the top-level
+// parameters schema to be `type: object`; a top-level `oneOf`/discriminated
+// union is dropped or mis-parsed by most providers, so the model calls the tool
+// with `{}` and zod then rejects it ("Invalid discriminator value"). The action
+// enum still validates the discriminator; per-action required fields are checked
+// at runtime in execute (wrapped by `safe()`).
 
-const projectActionSchema = z.discriminatedUnion("action", [
-	z.object({
-		action: z.literal("create"),
-		name: z.string(),
-		workspaceDir: z.string(),
-	}),
-	z.object({
-		action: z.literal("update"),
-		id: z.string(),
-		name: z.string().optional(),
-	}),
-	z.object({
-		action: z.literal("delete"),
-		id: z.string(),
-	}),
-	z.object({
-		action: z.literal("get"),
-		id: z.string(),
-		/**
-		 * v0.8 P5 §8.2 / §8.4: container view toggle. `false` (default) →
-		 * pure metadata; `true` → aggregated container view
-		 * (requirementsByStatus + crons + wikiSummary + activeSessions).
-		 */
-		includeContext: z.boolean().optional(),
-	}),
-	z.object({
-		action: z.literal("list"),
-	}),
-]);
+export const projectActionSchema = z.object({
+	action: z.enum(["create", "update", "delete", "get", "list"]),
+	name: z.string().optional(),
+	workspaceDir: z.string().optional(),
+	id: z.string().optional(),
+	/**
+	 * v0.8 P5 §8.2 / §8.4: container view toggle for `get`. `false` (default) →
+	 * pure metadata; `true` → aggregated container view
+	 * (requirementsByStatus + crons + wikiSummary + activeSessions).
+	 */
+	includeContext: z.boolean().optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Tool

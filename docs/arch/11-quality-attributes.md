@@ -252,7 +252,7 @@ IPC invoke (5ms)
 
 ### 8.1 当前边界
 
-- **Renderer 沙箱**：contextIsolation=true / nodeIntegration=false / contextBridge 限定 49 路由 + 3 本地通道。
+- **Renderer 沙箱**：contextIsolation=true / nodeIntegration=false / contextBridge 限定到约 140 个代理通道 + 5 个本地通道；当前仍有 4 个 preload/proxy 例外需收敛。
 - **文件路径**：默认不限制 workspace（`restrictToWorkspace = false` 默认）。
 - **Shell**：无黑名单。
 - **WebFetch Cookie**：本地 `~/.zero-core/webfetch/cookies.json`，权限 0600 假设。

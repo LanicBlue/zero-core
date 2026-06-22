@@ -8,7 +8,7 @@
 graph LR
     subgraph "进程 / IPC"
         P1[Electron 三进程]
-        P2[IPC Proxy 49 路由 + 3 本地通道]
+        P2[IPC Proxy 约 140 代理通道 + 5 本地通道]
         P3[WebSocket 桥]
         P4[contextBridge]
     end
@@ -200,7 +200,7 @@ graph TB
 
 - **IKVStore**：键值存储抽象接口。`core/kv-store-interface.ts`。
 - **input-handler**：用户输入预处理，自定义 `/command` 扩展。`core/input-handler.ts`。
-- **IPC channel**：Electron IPC 通道名称，49 路由通过 ipc-proxy 桥接到 HTTP + 3 本地通道。
+- **IPC channel**：Electron IPC 通道名称；大多数业务通道通过 `ipc-proxy` 桥接到 HTTP，少量窗口/对话框/登录态能力保留在 main 本地。
 - **isEnabled**：工具启用判断函数，定义在 `runtime/tools/index.ts:154-165`。
 
 ## J
@@ -209,7 +209,7 @@ graph TB
 
 ## K
 
-- **KB (Knowledge Base)**：本地文档检索系统（RAG），由文件 → chunks → embedding → SQLite。
+- **KB (Knowledge Base)**：本地文档导入与检索系统，由文件 → chunks → embedding → SQLite；当前默认 Agent 会话不会自动注入 KB RAG。
 - **KbDB**：kb_chunks 表的存储层。`server/kb-db.ts`。
 - **KeyValueStore**：通用 KV 存储，替换散落的 JSON 配置文件。`server/key-value-store.ts`。
 
@@ -226,9 +226,9 @@ graph TB
 - **MCP**：Model Context Protocol，外部工具接入协议。
 - **MCPManager**：MCP 连接池 + 工具缓存。`server/mcp-manager.ts`。
 - **MCPScanner**：扫描外部应用配置（Claude Desktop / Cursor / ...）。
-- **MemoryRecall / MemoryNote**：Wiki 风格记忆的工具。`runtime/mcp-tools/memory-node-tools.ts`。
+- **MemoryRecall / MemoryNote**：已退役的旧记忆工具名；当前 `ALL_TOOLS` 不再注册，记忆操作走 `Wiki` 工具。
 - **MemoryStore**：旧版知识图谱存储（实体-关系）。`server/memory-store.ts`。
-- **MemoryNodeStore**：新版 Wiki 节点存储。`server/memory-node-store.ts`。
+- **MemoryNodeStore**：旧节点记忆存储/兼容层。当前长期记忆主写路径优先进入全局 Wiki tree。
 - **MockLanguageModel**：测试用 mock LLM。`runtime/mock-language-model.ts`。
 - **ModelRegistry**：模型元数据（context window / max tokens），OpenRouter + 本地正则回填。
 
@@ -273,7 +273,7 @@ graph TB
 ## S
 
 - **SessionConfig**：单个会话的完整配置。`runtime/types.ts`。
-- **SessionDB**：业务核心表（sessions / messages / turns / turn_state / tool_executions） + KV + Memory 持有的"大"Store。812 行。
+- **SessionDB**：业务核心表（sessions / messages / turns / turn_state / tool_executions） + KV + Memory 持有的 DB 门面，当前约 850 行。
 - **SessionLifecycleState**：状态机枚举（created / idle / queued / streaming / executing_tools / error / disposed）。
 - **SessionManager**：会话生命周期状态管理 + 指标聚合 + TTL 清理。`server/session-manager.ts`。
 - **SessionStoreInterface**：运行时对 DB 的抽象接口。
@@ -324,3 +324,6 @@ graph TB
 - **ZERO_CORE_DIR**：`~/.zero-core`（可被 `ZERO_CORE_DIR` 环境变量覆盖）。
 - **Zod**：TypeScript 优先的 schema 验证库，用于工具 inputSchema + IPC 类型。
 - **Zustand**：React 状态管理库，10 个 store。
+
+- **Wiki Anchors**：当前 Agent 记忆与项目知识的实际注入机制，由 wiki-anchor-injection.ts 渲染到 system/context。
+- **RAG hooks**：legacy optional KB 注入 hook；默认 Agent 会话未注入 getRagContext 时不生效。

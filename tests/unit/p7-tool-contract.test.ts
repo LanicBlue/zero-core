@@ -23,7 +23,7 @@
 //   - src/runtime/tools/wiki-tool.ts (统一 Wiki 工具)
 //   - src/core/tool-registry.ts (ToolCategory 类型)
 //   - src/runtime/tools/tool-factory.ts (ToolCategory 镜像)
-//   - src/runtime/mcp-tools/assistant-tools.ts (category=management)
+//   - src/runtime/mcp-tools/platform-tools.ts (category=management)
 //   - src/runtime/tools/orchestrate-tool.ts / requirement-tools.ts / verify-tool.ts
 //     (category=workflow)
 //   - src/runtime/tools/agent.ts (delegate category=agent)
@@ -42,7 +42,7 @@ import { wikiTool } from "../../src/runtime/tools/wiki-tool.js";
 import { projectTool } from "../../src/runtime/tools/project-tool.js";
 import { agentTool } from "../../src/runtime/tools/agent-tool.js";
 import { cronTool } from "../../src/runtime/tools/cron-tool.js";
-import { createAssistantTools } from "../../src/runtime/mcp-tools/assistant-tools.js";
+import { createPlatformTools } from "../../src/runtime/mcp-tools/platform-tools.js";
 
 // ─── ① wiki-tools.ts 已删除 + ALL_TOOLS 无残留 ────────────────
 
@@ -94,12 +94,12 @@ describe("P7 工具分类正确", () => {
 		expect(getToolMeta(verifyTool)?.category).toBe("workflow");
 	});
 
-	test("Assistant (createAssistantTools 的 Assistant) 是 management,不是 assistant", () => {
-		const assistantTools = createAssistantTools();
-		// assistantTools 是一个 record;取任意一个 assistant 工具,验证 category。
-		const firstKey = Object.keys(assistantTools)[0];
-		expect(firstKey, "createAssistantTools should return at least one tool").toBeDefined();
-		const meta = getToolMeta(assistantTools[firstKey!]);
+	test("Platform (createPlatformTools 的 Platform) 是 management,不是 assistant", () => {
+		const platformTools = createPlatformTools();
+		// platformTools 是一个 record;取任意一个工具,验证 category。
+		const firstKey = Object.keys(platformTools)[0];
+		expect(firstKey, "createPlatformTools should return at least one tool").toBeDefined();
+		const meta = getToolMeta(platformTools[firstKey!]);
 		expect(meta?.category).toBe("management");
 		expect(meta?.category).not.toBe("assistant");
 	});

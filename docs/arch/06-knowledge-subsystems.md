@@ -1,351 +1,165 @@
-# 06 · 知识子系统
+# 06 - 知识子系统
 
-> Zero-Core 有三套"知识"基础设施：**MCP**（外部工具）、**KB**（本地 RAG）、**Memory**（跨会话记忆）。本文从架构师视角剖析它们的职责与互操作。
+> 本文以当前代码的实际运行路径为准。Zero-Core 现在的记忆主线不是旧的 MemoryRecall/RAG 自动召回，而是全局 Wiki tree：启动时创建 `WikiStore`，AgentLoop 通过 wiki anchors 把项目/Agent 记忆注入 system/context，提取与压缩流程继续向 Wiki 写入长期记忆。
 
-## 1. 三套系统的定位
+## 1. 当前实际分层
 
-| 系统 | 角色 | 范围 | 生命周期 | 谁写入 |
-|------|------|------|----------|--------|
-| **MCP** | 外部工具接入协议 | 跨进程 stdio/SSE | 应用会话期 | 用户配置 + 自动重连 |
-| **KB** | 本地文档检索（RAG） | 当前 KB 配置的所有文件 | 永久（除非删除） | 用户手动导入 |
-| **Memory** | 跨会话知识沉淀 | 全局 Wiki | 永久 | LLM 自动提取 + 用户手动 |
+| 子系统 | 当前定位 | 是否在默认 Agent 会话主链路 | 主要入口 |
+|------|------|------|------|
+| MCP | 外部工具协议接入 | 是，以工具形式暴露 | `MCPManager` + `ToolRegistry` |
+| Wiki tree | 项目知识、Agent 记忆、自由锚点 | 是，默认上下文/系统提示注入 | `WikiStore` + `wiki-anchor-injection.ts` + `Wiki` 工具 |
+| KB | 本地文档导入、chunk、embedding、检索 | 否，当前主要是手动 API/UI 能力 | `/api/kb` + `kb-search.ts` |
+| Legacy memory | 旧实体/节点记忆存储与旧工具文件 | 否，保留兼容/迁移痕迹 | `memory-store.ts`、`memory-node-store.ts`、`runtime/mcp-tools/memory-tools.ts` |
+| Legacy RAG hook | 可选的 PreLLMCall RAG 注入点 | 默认不生效 | `runtime/hooks/rag-hooks.ts` |
 
-它们**互不依赖**但**都通过 ToolRegistry 暴露为工具**给 LLM。
+实际运行图：
 
-```
-                        ┌─────────────────────────┐
-                        │      ToolRegistry       │
-                        │  ToolDescriptor.source: │
-                        │  "mcp" | "runtime" | "agent" │
-                        └─────────────────────────┘
-                          ▲           ▲           ▲
-                          │           │           │
-                  ┌───────┴──┐  ┌─────┴────┐  ┌───┴────┐
-                  │   MCP    │  │   KB     │  │ Memory │
-                  │ Manager  │  │ KbDB     │  │NodeStore│
-                  │          │  │ KbStore  │  │ + FTS5 │
-                  └──────────┘  └──────────┘  └────────┘
-                       │              │              │
-                  ~/.mcp-servers   文件读取       SQLite
-                  + stdio/SSE      + Embedding     memory_nodes
-                  transports       API             memory_subjects
-```
-
-## 2. MCP 子系统
-
-### 2.1 模块清单
-
-| 文件 | 行 | 角色 |
-|------|----|------|
-| `server/mcp-manager.ts` | 241 | MCP 连接池 + 工具缓存 + ToolRegistry 注册 |
-| `server/mcp-scanner.ts` | 193 | 从外部应用配置扫描可用 MCP 服务器 |
-| `server/mcp-presets.ts` | 112 | 预设服务器（Z.AI 3 个） |
-| `server/mcp-store.ts` | n/a | mcp_servers 表 CRUD |
-| `server/mcp-router.ts` | 197 | REST API：list/create/update/delete/test/reconnect |
-| `runtime/mcp-tool.ts` | 127 | MCP tool → AI SDK tool 适配 |
-
-### 2.2 连接生命周期
-
-```
-mcp-manager.connect(config):
-  ├─ 若已连接 → disconnect
-  ├─ 选择 transport
-  │   ├─ stdio: StdioClientTransport({command, args, env})
-  │   └─ sse/streamable-http: SSEClientTransport(URL, {headers})
-  ├─ client.connect(transport)
-  ├─ client.listTools() → McpToolInfo[]
-  ├─ 缓存 tools（5 分钟）
-  ├─ 注册到 ToolRegistry（source="mcp", mcpServerId）
-  └─ 返回 {tools}
-
-mcp-manager.disconnect(serverId):
-  ├─ client.close()
-  ├─ transport.close() (stdio 还需 kill 子进程)
-  ├─ 删除缓存
-  └─ ToolRegistry.unregister("mcp", serverId)
+```mermaid
+graph TB
+    Start["server/index.ts startup"] --> DB["SessionDB + migrations"]
+    DB --> WikiStore["WikiStore(sessionDB)"]
+    WikiStore --> Extractors["ExtractorA/B deps"]
+    WikiStore --> ProjectCompat["ProjectWikiStore compatibility wrapper"]
+    WikiStore --> AgentService["AgentService.setWikiStoreGlobal"]
+    AgentService --> Loop["AgentLoop"]
+    Loop --> Anchors["resolveAnchors(agentId, projectId, wikiAnchors)"]
+    Anchors --> System["renderSystemAnchors -> cached system prompt"]
+    Anchors --> Context["renderContextAnchors -> context message"]
+    WikiStore --> WikiTool["Wiki runtime tool"]
+    Extractors --> MemoryNodes["Extractor/compression writes memory nodes to Wiki"]
+    KB["KB ingest/search"] --> KBApi["/api/kb"]
+    RagHook["rag-hooks.ts"] -. requires getRagContext .-> Context
 ```
 
-### 2.3 启动流程
+## 2. Wiki Tree 是当前记忆主线
 
-`server/index.ts:158-165` 启动期：
+### 2.1 启动与依赖注入
 
-```
-const mcp = new MCPManager(registry);
-await scanExternalMcpConfigs(workspaceDir);  // 仅返回 DetectedMcpServer[]
-mergeDetectedServers();                       // 写入 mcp_servers 表
-const configs = mcpStore.list();
-await mcp.reconnectEnabled(configs);          // 并行 connect enabled ones
+`src/server/index.ts` 在启动早期创建全局 `WikiStore`：
+
+```ts
+const wikiStoreGlobal = new WikiStore(sessionDB);
 ```
 
-**关键**：`scanExternalMcpConfigs` 只探测不连接，真正连接在 `reconnectEnabled`。
+随后它被注入到三个关键位置：
 
-### 2.4 路由 API（mcp-router.ts）
+- `ExtractorAService({ ..., wiki: wikiStoreGlobal })`：后处理提取结果写入 Wiki。
+- `new ProjectWikiStore(wikiStoreGlobal)`：保留旧 project-wiki API 的兼容视图。
+- `agentService.setWikiStoreGlobal(wikiStoreGlobal)`：每个 AgentLoop 都可以解析 Wiki anchors。
 
-| 方法 | 路径 | 作用 |
+这说明 Wiki 不是附属功能，而是运行时上下文系统的一等依赖。
+
+### 2.2 AgentLoop 中的注入方式
+
+`src/runtime/agent-loop.ts` 构造时从 `config.wikiStoreGlobal ?? config.wikiStore` 解析 Wiki，并调用 `resolveAnchors()` 得到本轮会话的锚点集合。
+
+默认锚点来自 `src/runtime/wiki-anchor-injection.ts`：
+
+| 锚点 | 来源 | 注入位置 | 作用 |
+|------|------|------|------|
+| Agent memory root | `memoryAgentRootId(agentId)` | context | Agent 私有记忆索引 |
+| Project subtree root | `projectSubtreeRootId(projectId)` | system | 项目级知识轮廓 |
+| Free anchors | `AgentRecord.wikiAnchors` | system/context/tool | 手动绑定的 Wiki 节点或子树 |
+
+`renderSystemAnchors()` 会把 system-channel 的项目/记忆轮廓拼入系统提示词。`renderContextAnchors()` 会在每轮 LLM 调用前生成 `## Wiki Anchors (context)` 段落，再由 `buildContextMessage()` 注入 `<context>`。
+
+当前 Agent 记忆默认不是把全文塞入上下文，而是渲染成 MEMORY.md 风格索引：
+
+```md
+- title [nodeId]
+```
+
+这会给模型一个可导航的记忆目录，具体内容再通过 `Wiki` 工具读取。
+
+### 2.3 写入路径
+
+当前长期记忆写入主要来自两条后台路径：
+
+- `runtime/hooks/extraction-hooks.ts`：PostTurnComplete 后按阈值调度 Extractor A/B，Extractor A 将结构化记忆写入 Wiki。
+- `runtime/hooks/compression-hooks.ts`：压缩流程提取的 memory nodes 优先写入 `wikiStoreGlobal`，仅在 Wiki 不可用时回退旧 `MemoryNodeStore`。
+
+这也是为什么“wiki 树作为记忆”不是概念层描述，而是实际写路径。
+
+### 2.4 手动操作路径
+
+运行时工具里当前暴露的是 `Wiki` 工具。`src/runtime/tools/index.ts` 已明确移除 `MemoryRecall` / `MemoryNote`，注释说明记忆现在位于每个 Agent 的 Wiki 子树中，Agent 通过 `Wiki` action 工具读取/搜索/维护。
+
+旧文件 `runtime/mcp-tools/memory-tools.ts` 仍存在，但没有进入 `ALL_TOOLS`，因此普通 Agent 会话不会拿到 `MemoryRead` / `MemoryWrite`。
+
+## 3. KB 子系统的当前位置
+
+KB 仍然是有效的本地知识库能力，但它当前不是默认 Agent 自动 RAG 主链路。
+
+### 3.1 仍在使用的代码
+
+| 文件 | 作用 |
+|------|------|
+| `server/kb-store.ts` | KB 条目 CRUD |
+| `server/kb-db.ts` | `kb_chunks` 与 embedding 存储 |
+| `server/kb-ingest.ts` | 文件读取、分块、embedding、写入 |
+| `server/kb-search.ts` | cosine 相似度检索 |
+| `server/kb-router.ts` | `/api/kb` REST API |
+
+`server/index.ts` 仍挂载 `/api/kb`，所以 KB 的导入、检索、管理路径仍是活跃功能。
+
+### 3.2 默认 Agent 会话没有接入自动 RAG
+
+`runtime/hooks/rag-hooks.ts` 仍被 `registerAllRuntimeHooks()` 注册，但 hook 的第一步是：
+
+```ts
+if (!config.getRagContext) return;
+```
+
+而 `AgentService.createLoopForSession()` 当前构造 `sessionConfig` 时没有注入 `getRagContext`。因此普通 Agent 会话里这个 hook 会直接返回，不会向 `ctx.ragContext` 写入 KB 内容。
+
+旧文档把这里描述成“自动 RAG 查询没有带上当前问题”。从现在的实际代码看，更准确的描述是：**KB 自动 RAG 是保留的 legacy/可选扩展点，但默认生产路径没有接通**。
+
+如果以后要恢复自动 RAG，应该作为显式产品能力重新设计：明确哪些 Agent 绑定哪些 KB、何时检索、query 从哪来、结果如何与 Wiki anchors 去重，而不是简单恢复 `getRagContext(agentId, query)`。
+
+## 4. Legacy Memory 的状态
+
+当前仓库还保留几套历史记忆代码：
+
+| 模块 | 状态 | 说明 |
 |------|------|------|
-| GET | `/` | 列出所有 |
-| POST | `/` | 创建 |
-| PUT | `/:id` | 更新 |
-| DELETE | `/:id` | 删除 + disconnect |
-| POST | `/:id/test` | 一次性连接测试 |
-| POST | `/:id/reconnect` | 断开重连 |
-| GET | `/presets` | 列出预设 |
-| POST | `/presets/:presetId` | 从预设创建 |
-| POST | `/scan` | 重新扫描外部配置 |
-| POST | `/import` | 合并扫描结果到 mcp_servers |
-| GET | `/status` | 连接状态 |
+| `server/memory-store.ts` | legacy | 旧实体-关系图谱式 memory |
+| `server/memory-node-store.ts` | legacy/back-compat | 旧节点记忆存储，压缩流程在 Wiki 不可用时回退 |
+| `runtime/mcp-tools/memory-tools.ts` | legacy 未注册 | `MemoryRead` / `MemoryWrite` 旧工具 |
+| `runtime/memory-recall.ts` | legacy 未接主链路 | FTS5 召回逻辑残留 |
+| `runtime/hooks/memory-hooks.ts` | 已退役/不再注册 | 当前 `registerMemoryHooks()` 已移除 |
 
-### 2.5 工具调用桥
+这批代码不应再被文档称为“当前 Memory 子系统主路径”。更合适的处理方向是迁移确认后删除，或保留但统一标注为兼容层。
 
-`runtime/mcp-tool.ts:34-60`：
-
-```
-createMcpTool(qualifiedName, description, inputSchema, serverId, serverName, callTool):
-  toolName = qualifiedName.split("__").slice(2).join("__")
-  zodSchema = inputSchemaToZod(inputSchema)   ← MCP JSONSchema → Zod
-  return tool({
-    description: description ?? `MCP tool from ${serverName}: ${toolName}`,
-    inputSchema: zodSchema,
-    execute: async (params) => {
-      const { result, error } = await callTool(serverId, toolName, params)
-      if error: return `Error: ${error}`
-      if typeof result === 'string': return result
-      return JSON.stringify(result)
-    }
-  })
-```
-
-**JSONSchema → Zod 转换器**（lines 66-104）支持 string/number/integer/boolean/array/object/unknown 七种类型。复杂嵌套 schema 会降级到 `z.unknown()`。
-
-### 2.6 失败模式
-
-- **stdio 进程崩溃**：`StdioClientTransport` 不会自动重连。`mcp-manager.connect()` 被显式调用才恢复。`reconnectEnabled` 在启动时跑一次。
-- **SSE 连接断开**：同样需要重连。
-- **callTool 抛错**：被 catch，返回 `Error: ...` 字符串给 LLM。
-
-## 3. KB（Knowledge Base）子系统
-
-### 3.1 模块清单
-
-| 文件 | 行 | 角色 |
-|------|----|------|
-| `server/kb-store.ts` | n/a | kb_entries 表 CRUD |
-| `server/kb-db.ts` | 130 | kb_chunks 表 + 嵌入向量 |
-| `server/kb-embeddings.ts` | n/a | EmbeddingProvider 接口 + 工厂 |
-| `server/kb-ingest.ts` | 198 | 文件读取 → 分块 → 嵌入 → 存储 |
-| `server/kb-search.ts` | n/a | cosine 相似度搜索 |
-| `server/kb-router.ts` | 202 | REST API |
-
-### 3.2 摄入管线
-
-```
-ingestFile(kbId, filePath, kbDb, embedder):
-  ├─ 读文件
-  │   ├─ .pdf → pdf-parse
-  │   └─ 其他 → fs.readFileSync(utf-8)
-  ├─ splitIntoChunks(text, 800 char, 200 overlap)
-  │   ├─ 先按段落分割
-  │   └─ 超长段落再按行切
-  ├─ 删旧 chunks (kbId, filePath)
-  ├─ embed batch=20 (并发)
-  │   └─ 嵌入失败 → 存 null（仍可关键词搜）
-  └─ insertChunksBatch
-```
-
-**chunk 大小**：800 字符 ≈ 200 tokens。重叠 200 字符 ≈ 50 tokens。这是经验值，没有根据模型 tokenizer 调整。
-
-### 3.3 嵌入提供器
-
-`kb-embeddings.ts` 抽象三种：
-- **OpenAI** 兼容（Ollama 也走这条路）
-- **本地**（Ollama /api/embeddings）
-- **远程**（通过 ProviderStore 的 baseUrl + apiKey）
-
-`kb-router.ts:41-51` `resolveEmbedder()` 决定 KB 使用哪个 embedding：
-
-```
-if kb.embeddingProvider === 'ollama':
-  baseUrl = DEFAULT_URLS.ollama  ← localhost:11434
-  apiKey  = ''
-else:
-  baseUrl = firstEnabledNonOllamaProvider.baseUrl
-  apiKey  = firstEnabledNonOllamaProvider.apiKey
-```
-
-**架构师提醒**：KB embedding 复用 Chat Provider 的 API key。这是个节省配置的设计，但耦合了"对话模型"与"嵌入模型"的 quota。
-
-### 3.4 搜索
-
-```
-kbSearch(kbIds, query, embedder, kbDb, topK=5):
-  queryEmbedding = await embedder.embed([query])
-  chunks = kbDb.getAllChunksForSearch(kbIds)  ← 全量加载
-  scores = chunks.map(cosine(queryEmbedding, c.embedding))
-  top = scores.sort(desc).slice(0, topK)
-  return top.map({chunkId, filePath, content, score})
-```
-
-**复杂度 O(M × D)**：M 是 chunks 数量，D 是 embedding 维度（OpenAI 1536 / Ollama 768）。
-
-### 3.5 触发点（RAG）
-
-`runtime/hooks/rag-hooks.ts`：
-
-```
-registry.register("PreLLMCall", async (ctx) => {
-  const config = ctx.config as SessionConfig;
-  if (!config.getRagContext) return;
-  const ragContext = await config.getRagContext(config.agentId, "");
-  if (ragContext) ctx.ragContext = ragContext;
-});
-```
-
-**当前实现**：`config.getRagContext(agentId, query)` 只传了 agentId，未传 query。这意味着 KB 检索是"无查询"的——即使用户的消息不同，也会返回**同一个 RAG 上下文**。
-
-**这是一个 bug**（详见 ADR-008）。应该是 `getRagContext(agentId, queryString)`，调用方应该在 PreLLMCall hook 内**先**取得当前用户消息，再传入 query。
-
-## 4. Memory 子系统
-
-### 4.1 两套并行实现
-
-| | `memory-store.ts` | `memory-node-store.ts` |
-|---|---|---|
-| 模型 | 实体-关系图谱（MCP Memory 风格）| Wiki 节点 + 主题聚合 |
-| 表 | `memory_entities` + `memory_relations` | `memory_nodes` + `memory_subjects` + `memory_edges` + `memory_nodes_fts` |
-| 工具 | `MemoryRead` / `MemoryWrite` | `MemoryRecall` / `MemoryNote` |
-| 检索 | LIKE / 简单正则 | FTS5 + BM25 |
-| 提取 | 用户手动 | 自动（CompressionEngine L2） |
-
-**注意**：实际暴露给 LLM 的工具是新版 `MemoryRecall` / `MemoryNote`（来自 `runtime/mcp-tools/memory-node-tools.ts`）。旧版 `MemoryRead` / `MemoryWrite` 仍存在于 `mcp-tools/memory-tools.ts` 但**未被 ALL_TOOLS 注册**（见 `runtime/tools/index.ts:62-83`）。
-
-### 4.2 自动提取管线
-
-`runtime/compression-engine.ts`：
-
-```
-CompressionEngine.compressIfNeeded(messages, contextUsage, opts):
-  if contextUsage > l1Threshold (default 0.7):
-    L1 = 对最旧的 N 个 assistant turn 调 LLM 生成"意图→问题→结果"摘要
-  if contextUsage > l2Threshold (default 0.5):
-    L2 = 对 L1 摘要调 LLM 提取 memory nodes
-        prompt: "输出 [{subject, type, content}] 数组"
-    upsertNodes(sessionId, nodes)
-  return { messages, memoryNodes, didCompress, didExtract }
-```
-
-`compression-hooks.ts`：
-
-```
-registry.register("PostTurnComplete", async (ctx) => {
-  if (!compression.enabled) return;
-  if (contextUsage <= 0.7) return;
-  result = engine.compressIfNeeded(...)
-  if result.didCompress: session.replaceMessages(result.messages); session.saveToDb();
-  if result.memoryNodes.length > 0: upsertNodes(...)
-});
-```
-
-**设计要点**：压缩是**后台异步**的，不阻塞用户。失败时记录 warn 但不抛出。
-
-### 4.3 自动召回管线
-
-`runtime/memory-recall.ts` + `runtime/hooks/memory-hooks.ts`：
-
-```
-PreLLMCall hook:
-  if memory.enabled && memory.autoRecall !== false:
-    lastUserMessage = messages.filter(role='user').pop()
-    recall = store.searchNodes(lastUserMessage.text)
-    ctx.memoryContext = formatForContext(recall)
-```
-
-随后 `agent-loop.executeStream()` 调用 `prependContext(messages, memoryContext)`，把召回内容**插入到最后一条 user message 之前**。
-
-### 4.4 节点类型与合并策略
-
-```typescript
-type NodeType = "event" | "decision" | "discovery" | "status_change" | "preference"
-
-upsertNode(sessionId, {subject, type, content}):
-  existing = find by (subject, type)
-  if existing:
-    evolvedFrom = existing.id
-    update content
-  else:
-    create new
-```
-
-**演化链**：`evolvedFrom` 字段形成节点链表，可追溯"同主题节点的历史版本"。
-
-### 4.5 主题聚合
-
-`memory_subjects` 表按 `subject` 聚合：`subject / kind / nodeCount / summary / created_at / updated_at`。
-
-`memory_edges` 表是 `(subject_a, subject_b, relation_type)` 三元组，可构建主题间关系图。
-
-## 5. 三套系统的横向对比
+## 5. 三类知识能力的边界
 
 ```mermaid
 graph LR
-    subgraph "三套知识系统"
-        MCP["MCP<br/>外部工具"]
-        KB["KB<br/>本地 RAG"]
-        MEM["Memory<br/>跨会话"]
-    end
-
-    subgraph "数据形态"
-        MCP_D["stdin/stdout<br/>JSON-RPC"]
-        KB_D["chunks +<br/>embedding BLOB"]
-        MEM_D["memory_nodes<br/>+ FTS5"]
-    end
-
-    subgraph "检索机制"
-        MCP_R["MCP 协议<br/>callTool()"]
-        KB_R["cosine 相似度<br/>O(M×D)"]
-        MEM_R["FTS5 + BM25<br/>O(log N)"]
-    end
-
-    subgraph "LLM 注入路径"
-        MCP_I["通过 ToolRegistry<br/>暴露为工具"]
-        KB_I["PreLLMCall hook<br/>注入 ctx.ragContext"]
-        MEM_I["PreLLMCall hook<br/>注入 ctx.memoryContext"]
-    end
-
-    MCP --> MCP_D --> MCP_R --> MCP_I
-    KB --> KB_D --> KB_R --> KB_I
-    MEM --> MEM_D --> MEM_R --> MEM_I
-
-    style MCP fill:#60a5fa,color:#000
-    style KB fill:#34d399,color:#000
-    style MEM fill:#a78bfa,color:#000
+    MCP["MCP tools"] --> Tools["ToolRegistry / streamText tools"]
+    Wiki["Wiki tree"] --> Anchors["system/context anchors"]
+    Wiki --> WikiTool["Wiki tool"]
+    KB["KB documents + embeddings"] --> KBApi["/api/kb manual search/API"]
+    Legacy["legacy memory/RAG"] -. not default .-> Runtime["runtime hooks/files"]
 ```
 
-| 维度 | MCP | KB | Memory |
-|------|-----|----|--------|
-| 写入时机 | 用户配置 | 用户导入 | 自动 + 用户手动 |
-| 数据形态 | 进程外工具 | 文档 chunks + 向量 | 节点 + 主题 + FTS |
-| 检索方式 | 协议查询 | cosine 相似度 | FTS5 BM25 |
-| 上下文注入 | 通过 ToolRegistry | 通过 PreLLMCall hook | 通过 PreLLMCall hook |
-| 失败容忍 | disconnect 即可 | 嵌入失败 → 仅关键词 | recall 失败 → silently skip |
-| 横向扩展 | 任何 MCP server | 取决于 Provider quota | 受限于 SQLite |
+| 维度 | MCP | Wiki tree | KB | Legacy memory/RAG |
+|------|-----|-----------|----|-------------------|
+| 默认会话可见性 | 作为工具可见 | system/context anchors + Wiki 工具 | 不默认注入 | 不默认注入 |
+| 写入时机 | 用户配置外部 server | 用户/工具/Extractor/Compression | 用户导入文档 | 历史路径或回退 |
+| 数据形态 | 外部工具协议 | 树形节点/子树/锚点 | chunk + embedding | entity/node/FTS |
+| 推荐演进 | 增强健康检查与重连 | 强化版本、权限、检索体验 | 保持手动库或显式 RAG 产品化 | 清理或迁移 |
 
-## 6. 架构师视角
+## 6. 架构建议
 
-### 6.1 做对了的
+### 6.1 近期建议
 
-- **职责清晰**：三套系统面向不同的"知识获取"场景。
-- **失败容忍**：嵌入失败、recall 失败、stdio 进程崩溃都被 catch 并降级。
-- **FTS5 触发器同步**：memory_nodes 与 FTS 表自动一致。
-- **自动记忆提取**：通过 L2 压缩 hook 让 agent 主动积累知识。
+- 把 Wiki tree 明确作为唯一长期记忆主线：文档、UI、工具命名都围绕 Wiki anchors / Wiki memory 组织。
+- 将 `rag-hooks.ts` 标注为 legacy optional hook；如果短期没有自动 RAG 计划，可以停止注册或加特性开关，避免误导维护者。
+- 清点 `memory-store.ts`、`memory-node-store.ts`、`memory-recall.ts`、`memory-tools.ts` 的真实数据依赖，再决定迁移或删除。
+- 为 `Wiki` 工具补足面向 Agent 的操作说明：什么时候读索引、什么时候读节点详情、什么时候写入新节点。
 
-### 6.2 可以改进的
+### 6.2 中期建议
 
-- **RAG query 缺失**：`getRagContext(agentId, "")` 没有把当前 query 传进去。需要重构为 `(agentId, query)` 并由 PreLLMCall hook 计算 query 再调用。
-- **KB 搜索性能**：100K+ chunks 性能崩塌。需要 HNSW 或外置向量库。
-- **Memory 双系统并存**：旧版 `MemoryRead/Write` 与新版 `MemoryRecall/Note` 共存但前者未注册。应该清理或迁移。
-- **压缩是 LLM 调用**：每次 PostTurnComplete 都可能调一次 LLM。在低速 Provider 上会让用户感受到"卡顿"。
-- **Memory 节点清理策略缺失**：节点无限增长。需要 TTL 或用户主动清理 UI。
-- **KB 文件变更不感知**：用户修改磁盘上的 KB 文件后，应用不会自动重新嵌入。需要 fs.watch + debounce 重摄入。
-- **MCP stdio 崩溃不自愈**：除非用户手动重连或重启。需要在 mcp-manager 增加 on('exit') handler。
-
-详见 ADR-007, ADR-008, ADR-013。
+- 给 Wiki 节点建立更清晰的作用域模型：global / project / agent / session，避免所有长期知识最终都堆在同一棵树上。
+- 引入 Wiki 节点的版本/来源元数据：由用户写入、Extractor 写入、Compression 写入应能区分，便于回滚和信任判断。
+- 如果 KB 要重新进入 Agent 自动上下文，应以“显式 KB binding + query planner + 去重预算”的方式接入，而不是复用旧 `ragContext` 空槽。
+- 将旧 memory 表迁移成 Wiki 子树后，删除旧工具和旧 hook，降低维护者误判概率。

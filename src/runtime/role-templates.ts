@@ -206,6 +206,28 @@ const FS_WRITE_TOOLS = {
 	Write: { enabled: true },
 	Edit: { enabled: true },
 };
+// v0.8: zero's management capability is declared HERE (the config), not granted
+// by identity. Enabling Project/AgentRegistry/Cron/Wiki is what makes the
+// matching service handles get injected (agent-service.ts reads toolPolicy).
+// Mirrors the live-DB zero policy; fresh installs seed this verbatim.
+const MANAGEMENT_TOOLS = {
+	...FS_READ_TOOLS,
+	Wait: { enabled: true },
+	Agent: { enabled: true },
+	WebSearch: { enabled: true },
+	WebFetch: { enabled: true },
+	Project: { enabled: true },
+	AgentRegistry: { enabled: true },
+	Cron: { enabled: true },
+	Wiki: { enabled: true },
+	Platform: { enabled: true },
+	AskUser: { enabled: true },
+	TodoWrite: { enabled: true },
+	TaskStatus: { enabled: true },
+	TaskList: { enabled: true },
+	TaskStop: { enabled: true },
+	SequentialThinking: { enabled: true },
+};
 
 // ---------------------------------------------------------------------------
 // Template table
@@ -407,8 +429,9 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
 		m0DegradedNote: "cron 管理工具在 M1 落地。",
 		systemPrompt: ZERO_PROMPT,
 		toolPolicy: {
-			// Zero needs broad read access; management happens via dedicated tools.
-			tools: { ...FS_READ_TOOLS },
+			// v0.8: zero configures the management-domain tools; capability is
+			// declared by config and injected by agent-service.ts accordingly.
+			tools: { ...MANAGEMENT_TOOLS },
 			executionMode: "sequential",
 			readScope: "filesystem",
 		},

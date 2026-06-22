@@ -45,7 +45,7 @@ import { todoWriteTool } from "./todo-write.js";
 import { getToolMeta, getToolConfigSchema, getToolDescription, getToolPrompt, getToolInputFields, getToolExecute } from "./tool-factory.js";
 import { webFetchTool } from "../mcp-tools/fetch-tools.js";
 import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
-import { createAssistantTools } from "../mcp-tools/assistant-tools.js";
+import { createPlatformTools } from "../mcp-tools/platform-tools.js";
 import { createRequirementTool, createRequirementWithDocTool } from "./requirement-tools.js";
 import { orchestrateTool } from "./orchestrate-tool.js";
 // v0.8 (P3 §7.3): the four domain action tools + verify, replacing the retired
@@ -58,13 +58,13 @@ import { verifyTool } from "./verify-tool.js";
 import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";
 
-// Built-in tools (assistant needs getAppVersion, so lazy init)
-let _assistantTools: Record<string, any> | null = null;
-function getAssistantTools(): Record<string, any> {
-	if (!_assistantTools) {
-		_assistantTools = createAssistantTools();
+// Built-in tools (platform tool needs getAppVersion, so lazy init)
+let _platformTools: Record<string, any> | null = null;
+function getPlatformTools(): Record<string, any> {
+	if (!_platformTools) {
+		_platformTools = createPlatformTools();
 	}
-	return _assistantTools;
+	return _platformTools;
 }
 
 export const ALL_TOOLS: Record<string, any> = {
@@ -105,7 +105,7 @@ export const ALL_TOOLS: Record<string, any> = {
 	Wiki: wikiTool,
 	verify: verifyTool,
 
-	...getAssistantTools(),
+	...getPlatformTools(),
 };
 
 // Tools that require special context capabilities

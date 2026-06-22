@@ -376,7 +376,7 @@ getProviderAdapter(config, provider): { systemPromptAppend?, maxSystemPromptToke
 
 | 维度 | 当前实现 | 评价 |
 |------|----------|------|
-| Renderer ↔ Backend | contextBridge + 49 路由 + 3 本地通道 | ✅ 最小暴露 |
+| Renderer ↔ Backend | contextBridge + 约 140 个代理通道 + 5 个本地通道 | ✅ 主进程能力仍保持最小暴露；需关注 preload/proxy 契约漂移 |
 | 文件路径 | `resolvePath()` 前缀检查 | ⚠️ 默认不限制 workspace |
 | Shell | Git Bash 检测 / cmd.exe 翻译 | ❌ 不构成黑名单 |
 | WebFetch Cookie | 持久化到 `~/.zero-core/webfetch/cookies.json` | ⚠️ 路径权限需确认 |

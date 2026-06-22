@@ -59,7 +59,6 @@ export default function CreateRequirementModal({ onClose }: CreateRequirementMod
 				status: "found",
 				source: "user",
 				reviewer: "analyst",
-				analysisInterval: "daily",
 			});
 			onClose();
 		} catch (err: any) {

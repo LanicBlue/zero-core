@@ -116,11 +116,13 @@ describe("P1 §10.1 FS 隔离:isWikiDiskPath", () => {
 // ─── wikiPathRejectMessage:错误文本 ───────────────────────────
 
 describe("P1 §10.1 FS 隔离:wikiPathRejectMessage", () => {
-	test("错误文本引导 agent 改用 wiki 工具(ExpandNode/UpdateWikiNode)", () => {
+	test("错误文本引导 agent 改用 Wiki 工具(expand/upsert)", () => {
 		const msg = wikiPathRejectMessage("/some/path/foo.md");
 		expect(msg).toMatch(/Access denied/i);
-		expect(msg).toContain("ExpandNode");
-		expect(msg).toContain("UpdateWikiNode");
+		// Points to the live `Wiki` action tool (ExpandNode/UpdateWikiNode retired in P1/P3).
+		expect(msg).toContain("Wiki");
+		expect(msg).toContain("expand");
+		expect(msg).toContain("upsert");
 		expect(msg).toContain("nodeId");
 		// Must reference P1 spec anchor for traceability.
 		expect(msg).toContain("P1 §10.1");

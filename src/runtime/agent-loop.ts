@@ -43,6 +43,7 @@ import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
 import { buildToolsSet } from "./tools/index.js";
 import { buildSubagentTools } from "./tools/subagents-delegation.js";
+import { renderTodosContext } from "./tools/todo-write.js";
 import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
 import { classifyError, isTransientError, userFriendlyMessage, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
@@ -443,6 +444,9 @@ export class AgentLoop implements AgentRuntime {
 			config: this.config,
 			providers: this.providers,
 			taskRegistry: this.delegator.taskRegistry,
+			// Generic: let hooks surface UI/runtime events (e.g. the todo-cleanup
+			// hook emits todos_update([]) to clear the completed list at turn start).
+			emit: (event: any) => this.emit(event),
 		});
 
 		// v0.8 (P2 §11.6): memoryContext is always undefined now — the legacy
@@ -475,6 +479,9 @@ export class AgentLoop implements AgentRuntime {
 			memoryContext,
 			wikiAnchorsContext: wikiAnchorsContext || undefined,
 			currentTask: currentTask || undefined,
+			// Inject the agent's current todo list so it can read its own state
+			// across turns (not just write blindly). Renderer lives in todo-write.ts.
+			todosContext: renderTodosContext(this.config.agentId) ?? undefined,
 		});
 		const messages = this.prependContext(this.session.getMessages(), ctx);
 

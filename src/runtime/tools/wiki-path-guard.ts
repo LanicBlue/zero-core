@@ -4,8 +4,8 @@
 //
 // ## 核心功能
 // agent FS 工具(Shell/Read/Grep/Glob/Write/Edit)在执行前拦截一切会落在
-// `~/.zero-core/wiki/` 下的路径访问。wiki 正文只能通过 wiki 工具(ExpandNode /
-// UpdateWikiNode / ReadDoc)以 nodeId 操作;agent 永远拿不到正文文件的真实路径。
+// `~/.zero-core/wiki/` 下的路径访问。wiki 正文只能通过 `Wiki` action 工具
+// (expand/search 读,upsert 写)以 nodeId 操作;agent 永远拿不到正文文件的真实路径。
 //
 // ## 输入
 // - 单条 path 字符串(如 Read/Write 的 file_path)
@@ -82,9 +82,11 @@ export function isWikiDiskPath(p: string, workingDir?: string): boolean {
 export function wikiPathRejectMessage(p: string): string {
 	return (
 		`Access denied: '${p}' is inside the wiki memory store (~/.zero-core/wiki/), ` +
-		`which is read/write only through wiki tools. ` +
-		`Use ExpandNode (read a node's body) or UpdateWikiNode (write a node's ` +
-		`body) with a nodeId — never access the wiki directory directly. (P1 §10.1)`
+		`which is read/write only through the Wiki tool. ` +
+		`Use Wiki { action:'search', query } to find a node, ` +
+		`{ action:'expand', nodeId } to read a node's body, or ` +
+		`{ action:'upsert', ... } to write — never access the wiki directory ` +
+		`directly via Read/Grep/Shell/Write/Edit. (P1 §10.1)`
 	);
 }
 

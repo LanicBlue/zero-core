@@ -68,7 +68,7 @@ src/
 | 文件 | 行 | 职责 |
 |------|----|------|
 | types.ts | 351 | **核心事件 + 会话 + 任务类型**（被全栈引用） |
-| agent-loop.ts | 646 | 单会话执行循环：`run()` / `resume()` / `executeStream()` / retry / abort |
+| agent-loop.ts | 约 700 | 单会话执行循环：`run()` / `resume()` / `executeStream()` / retry / abort |
 | session.ts | 391 | `AgentSession`：消息数组、token 估算、pruning、turn 重建 |
 | provider-factory.ts | 165 | 按 `RuntimeProviderConfig` 解析 `LanguageModel`，含缓存 |
 | provider-concurrency-manager.ts | 78 | 每个 Provider 一个 FIFO 信号量 |
@@ -138,7 +138,7 @@ runtime/hooks/
 
 ### 3.3 边界约束
 
-- `runtime/` 通过 `ISessionStore` 与 `IKVStore` **接口**间接依赖 `server/` 的实现（实际运行时还依赖 MemoryNodeStore 等 store 类型用于 context 注入）。
+- `runtime/` 原本通过 `ISessionStore` 与 `IKVStore` **接口**间接依赖 `server/` 的实现；当前 Wiki / Memory / Management / Orchestrate 相关代码已出现直接 `server/` 类型或常量 import，边界正在变薄。
 - **不直接** `import better-sqlite3`。
 - 通过 `runtime/types.ts` 暴露给渲染进程的 `StreamEvent` 等，是 IPC 契约的事实源头。
 
@@ -148,17 +148,20 @@ runtime/hooks/
 
 ## 4. 服务层 `src/server/`
 
-服务层是后端进程的"业务核心"。两个最重的文件：
+服务层是后端进程的"业务核心"。截至 2026-06-21，最重的文件已经不只两个：
 
-| 文件 | 行 | 角色 |
-|------|----|------|
-| index.ts | 360 | 服务启动编排（startServer） |
-| agent-service.ts | 773 | 多 Agent 生命周期 + 会话循环管理 |
-| session-db.ts | 812 | SQLite 业务表：sessions / messages / turns / turn_state / tool_executions |
-| session-manager.ts | 420 | 会话生命周期状态机 + 指标聚合 + TTL 清理 |
-| session-lifecycle.ts | 45 | 状态枚举 + VALID_TRANSITIONS |
-| session-metrics.ts | n/a | 指标记录结构 |
-| session-router.ts | 121 | 会话 CRUD REST API |
+| 文件 | 当前规模 | 角色 |
+|------|----------|------|
+| wiki-node-store.ts | 约 1,090 行 | 全局 Wiki / Memory tree 的核心 store，包含节点、主体、边、FTS、磁盘文档索引等 |
+| agent-service.ts | 约 1,010 行 | 多 Agent 生命周期 + 会话循环管理 + provider/runtime 编排 |
+| db-migration.ts | 约 930 行 | SQLite schema 演进、历史数据清理和兼容迁移 |
+| session-db.ts | 约 850 行 | SQLite 连接生命周期 + sessions/messages/turns/tool_executions 聚合门面 |
+| index.ts | 约 700 行 | 后端组合根：初始化 DB、hooks、stores、services、routers、cron、archivist |
+| session-manager.ts | 约 350 行 | 会话生命周期状态机 + 指标聚合 + TTL 清理 |
+| session-lifecycle.ts | 约 45 行 | 状态枚举 + VALID_TRANSITIONS |
+| session-router.ts | 约 120 行 | 会话 CRUD REST API |
+
+**架构判断**：服务层的复杂度正在向组合根、Agent 编排、Wiki/Memory 持久化、迁移脚本四个热点集中。后续拆分不应只盯 `AgentService`，也要把 `WikiStore` 和 `db-migration` 纳入计划。
 
 ### 4.1 Stores
 
@@ -176,27 +179,18 @@ runtime/hooks/
 
 它们都基于 `sqlite-store.ts`（297）的通用 CRUD。
 
-### 4.2 Routers（14 个 createXxxRouter）
+### 4.2 Routers（当前约 20+ 个 HTTP router / router-like 模块）
 
 ```
-server/index.ts:65-180 注入所有 router
-                ├─ createAgentRouter        → /api/agents/*
-                ├─ createAgentToolRouter    → /api/agent-tools/*
-                ├─ createChatRouter         → /api/chat/{send,abort}
-                ├─ createConfigRouter       → /api/config/* + /api/tools + /api/tool-config
-                ├─ createFileRouter         → /api/files/{tree,content,save,resolve-path}
-                ├─ createKbRouter           → /api/kb/*
-                ├─ createLogRouter          → /api/logs/{files,read,config}
-                ├─ createMcpRouter          → /api/mcp/*
-                ├─ createMemoryNodeRouter   → /api/memory-nodes/*
-                ├─ createProviderRouter     → /api/providers/*
-                ├─ createSessionRouter      → /api/sessions/*
-                ├─ createSkillRouter        → /api/skills
-                ├─ createTemplateRouter     → /api/templates/*
-                └─ createToolExecutionRouter → /api/tool-executions/{query,stats,cleanup,analyze}
+server/index.ts 注入主要 HTTP 表面：
+  基础配置：/api/config, /api/providers, /api/templates, /api/role-templates
+  Agent/会话：/api/agents, /api/chat, /api/sessions
+  工具/执行：/api/mcp, /api/tool-executions, /api/skills, /api/memory-nodes
+  文件/日志/知识库：/api/files, /api/logs, /api/kb, /api/wiki, /api/project-wiki
+  工作流：/api/projects, /api/requirements, /api/orchestrate, /api/pm, /api/crons, /api/archivist
 ```
 
-每个 router 都是纯函数 `(deps) => Router`，**没有模块级单例**。这是良好的依赖注入习惯。
+多数 router 都是纯函数 `(deps) => Router`，**没有模块级单例**。这是良好的依赖注入习惯。
 
 ### 4.3 Managers
 
@@ -231,50 +225,36 @@ server/index.ts:65-180 注入所有 router
 
 ## 6. 主进程 `src/main/`
 
-| 文件 | 行 | 角色 |
-|------|----|------|
-| index.ts | 226 | Electron 入口：窗口 + 后端 spawn + IPC 代理 + WS bridge |
-| backend-spawn.ts | 128 | 后端子进程生命周期（fork/spawn 切换 + 自动重启）|
-| ipc-proxy.ts | 262 | IPC↔HTTP 映射表 `R`（49 路由 + 3 本地）+ WebSocket 重连 |
-| ipc.ts | n/a | 本地 IPC 通道声明 |
-| ipc-proxy.ts | 262 | 真正的代理实现 |
-| typed-ipc.ts | n/a | 类型化 IPC helpers |
-| types.ts | n/a | 本地类型 |
-| core.ts | n/a | 本地核心 helpers |
-| module-readiness.ts | n/a | 主进程端模块 readiness 跟踪 |
+| 文件 | 当前规模 | 角色 |
+|------|----------|------|
+| index.ts | 约 220 行 | Electron 入口：窗口 + 后端 spawn + IPC 代理 + WS bridge + 少量本地 IPC |
+| backend-spawn.ts | 约 130 行 | 后端子进程生命周期（dev spawn / packaged fork + 自动重启）|
+| ipc-proxy.ts | 约 350 行 | IPC↔HTTP 映射表 `R`（约 140 个代理通道）+ `app:ready` 健康检查 + WebSocket 重连 |
 | test-setup.ts | n/a | E2E 测试 fixture |
 
-### 6.1 ipc 子目录
+### 6.1 IPC 现状（P9 后）
 
-```
-main/ipc/
-├── core.ts                  # 基础 IPC helpers
-├── module-readiness.ts      # 模块就绪事件
-├── typed-ipc.ts             # 类型化封装
-├── types.ts                 # 本地类型
-├── dialog-handlers.ts       # 仅在主进程的对话框
-├── chat-handlers.ts         # chat IPC handler 骨架
-├── agent-handlers.ts
-├── agent-tool-handlers.ts
-├── config-handlers.ts
-├── file-handlers.ts
-├── kb-handlers.ts
-├── log-handlers.ts
-├── mcp-handlers.ts
-├── message-handlers.ts
-├── provider-handlers.ts
-├── session-handlers.ts
-├── template-handlers.ts
-├── tool-handlers.ts
-├── tool-execution-handlers.ts
-└── github-template-handlers.ts
-```
+当前 `src/main/ipc.ts` 与 `src/main/ipc/` 目录均不存在。生产路径只有两类 IPC handler：
 
-**警告**：观察 `main/index.ts` 与 `main/ipc-proxy.ts` 的实际行为，所有 IPC 通道都由 `registerProxyHandlers()` 通过 HTTP 调用后端路由器处理，**`main/ipc/*.ts` 这些 handler 文件目前未被主进程装载**。它们似乎是历史遗留 / 测试用脚手架。详见 ADR-012。
+1. `registerProxyHandlers(port)` 在 `ipc-proxy.ts` 中批量注册 `R` 表，把大多数通道转成后端 HTTP 请求。
+2. `registerLocalHandlers(win)` 在 `main/index.ts` 中保留 5 个必须在 Electron main 内执行的本地通道：`window:minimize`、`window:maximize`、`window:close`、`dialog:openDirectory`、`webfetch:login`。
+
+`tests/unit/p9-dead-path-removal.test.ts` 已把"无 `src/main/ipc*` 遗留路径"和"`ipc-proxy.ts` 是 main 进程唯一批量 IPC 注册路径"固化为测试契约。旧文档中关于 `main/ipc/*` 未装载死代码的描述已经过时。
+
+### 6.2 当前 IPC 漂移风险
+
+`src/preload/index.ts` 暴露约 150 个 `ipcRenderer.invoke` 通道，`src/main/ipc-proxy.ts` 的 `R` 表约 140 个代理通道。`tests/unit/rest-routers.test.ts` 会检查大多数 preload 通道必须有 proxy/local 映射，但当前显式放行了 4 个例外：
+
+- `templates:github-preview`
+- `templates:import-github`
+- `search-provider:get`
+- `search-provider:set`
+
+其中 GitHub template 后端路由已在 `server/template-router.ts` 中存在，search provider 通道只在 preload 出现。下一步应决定：补齐 `R` 映射 / 实现后端路由 / 从 preload 删除废弃通道。
 
 ## 7. 预加载 `src/preload/`
 
-只有一个 `index.ts`（218 行）。它通过 `contextBridge.exposeInMainWorld("api", api)` 暴露 `window.api`，实现 `WindowApi` 接口。**没有 Node.js 业务逻辑**，纯粹做 IPC 转发。
+只有一个 `index.ts`（当前约 300+ 行）。它通过 `contextBridge.exposeInMainWorld("api", api)` 暴露 `window.api`，实现 `WindowApi` 接口。**没有 Node.js 业务逻辑**，纯粹做 IPC 转发。
 
 ## 8. 渲染层 `src/renderer/`
 
@@ -352,7 +332,7 @@ components/
 | preload           | ✗    | ✗       | ✗      | ✓      | ✗    | ✓       | ✗        |
 | renderer          | ✗    | ✗       | ✗      | ✓      | ✗    | ✗       | ✗        |
 
-¹ runtime 通过 `ISessionStore` / `IKVStore` 接口使用 server 的实现，实际运行时还依赖 MemoryNodeStore 等 store 类型；接口本身定义在 runtime/ 与 core/，实现注入点为 `AgentService.createLoopForSession()`。
+¹ runtime 原本设计为通过 `ISessionStore` / `IKVStore` 接口使用 server 实现；当前代码已出现多处 `runtime -> server` 的类型/常量 import（WikiStore、MemoryNodeInput、ManagementService、orchestrate-store 等）。这是边界侵蚀，不是理想依赖方向。
 
 ### 9.1 依赖关系图（graph TB）
 
@@ -372,7 +352,7 @@ graph TB
     end
 
     subgraph "服务层"
-        Server["server/<br/>agent-service · session-db · 14 routers<br/>mcp-manager · kb-store · memory-node-store"]
+        Server["server/<br/>agent-service · session-db · wiki-node-store<br/>20+ HTTP surfaces · mcp-manager"]
     end
 
     subgraph "进程壳"
@@ -413,7 +393,7 @@ graph TB
 **关键观察**：
 - `shared/` 被所有层引用，但 `ipc-api.ts` 有对 `server/` 的 import（非纯零依赖）
 - `core/` 是"基础内核"，被所有上层引用，自身不依赖任何上层（**单向依赖**）
-- `runtime/` 与 `server/` 之间通过**接口倒置**：runtime 定义 `ISessionStore`，server 实现它，main 进程注入
+- `runtime/` 与 `server/` 之间原本通过**接口倒置**隔离，但当前 Wiki / Memory / Management / Orchestrate 相关代码已经出现直接依赖，需要后续把 domain 类型下沉到 `shared/` 或 `core/domain/`
 - `renderer/` 是**孤岛**：只通过 `preload/contextBridge` 与外界通信
 
 ## 10. 模块边界成熟度评分（架构师主观）
@@ -424,8 +404,8 @@ graph TB
 | core/hook | ★★★★★ | 高 | 接口 + 单例 + 触发器，教科书级 |
 | runtime/tools | ★★★★ | 高 | buildTool 工厂统一所有工具 |
 | runtime/mcp-tools | ★★★ | 中 | 目录名误导 |
-| server/agent-service | ★★★ | 中 | 773 行，承担了"上帝对象"角色 |
-| server/session-db | ★★★ | 中 | 812 行，schema 化但与 message-store 历史共存 |
+| server/agent-service | ★★☆ | 中 | 约 1,010 行，承担了"上帝对象"角色 |
+| server/session-db | ★★★ | 中 | 约 850 行，DB 门面偏重 |
 | renderer/store/chat | ★★★★★ | 高 | 极致声明式 + 选择器稳定引用 |
 
 ```mermaid
@@ -454,14 +434,14 @@ graph LR
     classDef ok fill:#a78bfa,color:#000
     classDef warn fill:#fbbf24,color:#000
 ```
-| main/ipc-proxy | ★★★★ | 高 | 49 路由 + 3 本地通道，清晰的翻译层 |
-| main/ipc/* | ★★ | 低 | 似乎未被装载 |
+| main/ipc-proxy | ★★★★ | 高 | 约 140 个代理通道 + 5 个本地通道，清晰但需生成/校验契约 |
+| main/ipc/* | ✅ | 已清理 | P9 后目录不存在，测试已固化 |
 
 ## 11. 演进建议（结论先行）
 
 1. 把 `runtime/mcp-tools/` 改名 `runtime/advanced-tools/`，把 `core/`, `runtime/`, `server/` 三层共有的 `tool-policy` / `persona` 等概念挪到 `core/domain/`。
-2. `agent-service.ts` 需要拆分：会话循环管理 → `loop-supervisor.ts`，AgentStore 代理 → `agent-registry.ts`，并发控制 → `provider-throttle.ts`。
-3. `main/ipc/*` 这组文件应做清理决策：删除 / 装载 / 重命名为 `test-fixtures/`。
-4. `session-db.ts` + `message-store.ts` 共存是过渡态，应该彻底删除文件存储。
+2. `agent-service.ts` 需要拆分：会话循环管理 → `loop-supervisor.ts`，事件广播 → `event-broadcaster.ts`，provider/runtime 配置 → `provider-runtime.ts`，并发控制 → `provider-throttle.ts`。
+3. IPC 契约应继续收敛：补齐或删除 `templates:github-preview/import-github` 与 `search-provider:get/set` 这 4 个 preload 例外，并考虑从 `shared/ipc-api.ts` 生成 preload/proxy 校验。
+4. `session-db.ts` 应逐步退化为 DB lifecycle + store factory；`db-migration.ts` 和 `wiki-node-store.ts` 也需要拆出更小的 schema/domain/service 单元。
 
-详见 ADR-001 ~ ADR-013。
+详见 ADR-001 ~ ADR-018。

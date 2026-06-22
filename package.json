@@ -16,11 +16,12 @@
   },
   "scripts": {
     "dev": "node scripts/dev.js",
-    "build": "npm run build:lib && electron-vite build",
+    "build": "npm run typecheck && electron-vite build",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "preview": "electron-vite preview",
     "build:lib": "tsc -p tsconfig.cli.json",
+    "typecheck": "tsc -p tsconfig.cli.json && tsc -p tsconfig.web.json && tsc -p tsconfig.node.json",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:e2e": "npm run build && playwright test",
