@@ -22,6 +22,21 @@
 // 新增测试环境（如 jsdom）需在此文件中配置
 //
 import { defineConfig } from "vitest/config";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// Isolate ZERO_CORE_DIR for unit tests. WIKI_DISK_ROOT (= ZERO_CORE_DIR/wiki)
+// is a GLOBAL path resolved at module load (core/config.ts), independent of each
+// test's temp SQLite DB — so without this, every unit test that creates a wiki
+// node leaks its body file into the REAL ~/.zero-core/wiki/, keyed by a fresh
+// nodeId that outlives the throwaway test DB. This accumulated 447 orphan files
+// + 164 orphan project dirs in ~/.zero-core (cleaned 2026-06). Pinning ZERO_CORE_DIR
+// to a per-run temp dir here (before any test module imports config.ts) routes
+// those files to OS temp instead. Set only when not already overridden.
+if (!process.env.ZERO_CORE_DIR) {
+	process.env.ZERO_CORE_DIR = mkdtempSync(join(tmpdir(), "zc-unit-"));
+}
 
 export default defineConfig({
 	test: {
