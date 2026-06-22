@@ -289,6 +289,30 @@ async function fetchUrl(url: string, headers: Record<string, string>, timeoutSec
 	}
 }
 
+// Transient throttling (429) / maintenance (503) and network blips deserve a
+// couple of automatic retries with backoff before surfacing the error — many
+// sites (httpbin, etc.) rate-limit the first hit then recover. Wraps fetchUrl
+// (which throws on !ok) and retries on transient HTTP statuses / net errors.
+async function fetchWithRetry(url: string, headers: Record<string, string>, timeoutSec: number, cookies?: Record<string, string>): Promise<Response> {
+	const MAX_RETRIES = 2;
+	let lastErr: unknown;
+	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+		try {
+			return await fetchUrl(url, headers, timeoutSec, cookies);
+		} catch (err: any) {
+			lastErr = err;
+			const msg = err?.message ?? String(err);
+			const transient = /HTTP (429|503)|abort|ECONNRESET|ETIMEDOUT|ENETUNREACH|socket hang up/i.test(msg);
+			if (attempt < MAX_RETRIES && transient) {
+				await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+				continue;
+			}
+			throw err;
+		}
+	}
+	throw lastErr instanceof Error ? lastErr : new Error(`Failed to fetch ${url} after retries`);
+}
+
 // ---------------------------------------------------------------------------
 // Cookie jar — persisted to ~/.zero-core/webfetch/cookies.json
 // Structure: { domain: { name: { value, expires, path } } }
@@ -456,7 +480,10 @@ export const webFetchTool = buildTool({
 		"Combine with WebSearch: search first, then fetch the most promising results.\n" +
 		"Use headers parameter for APIs requiring authentication or specific content types.\n\n" +
 		"Cookie support: WebFetch automatically sends saved cookies for matching domains. " +
-		"Use the login feature in the Tools page to save cookies by logging into websites through a browser window.",
+		"Use the login feature in the Tools page to save cookies by logging into websites through a browser window.\n\n" +
+		"Transient errors (HTTP 429 rate-limiting, 503 maintenance, network blips) are retried automatically " +
+		"(up to 2 times with backoff). If a fetch still fails after retries, the error will say so — then " +
+		"wait and retry, or try a different URL.",
 	meta: { category: "web", isReadOnly: true },
 	configSchema: [
 		{ key: "format", type: "select", label: "Default format", default: "markdown", options: ["markdown", "html", "text", "json"], description: "默认输出格式" },
@@ -516,7 +543,7 @@ export const webFetchTool = buildTool({
 				// HTTP fetch (fetch or auto mode)
 				const useCookies = config.useCookies !== false;
 				const cookies = useCookies ? getCookiesForUrl(url) : undefined;
-				const resp = await fetchUrl(url, headers ?? {}, timeoutSec, cookies);
+				const resp = await fetchWithRetry(url, headers ?? {}, timeoutSec, cookies);
 				if (useCookies) storeCookiesFromResponse(url, resp);
 				const ct = resp.headers.get("content-type") ?? "";
 
