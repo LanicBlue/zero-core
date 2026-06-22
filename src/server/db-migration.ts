@@ -446,7 +446,7 @@ function migrateWikiTableSchema(db: Database.Database): void {
 //
 // Path scheme (mirrors WikiStore.deriveContentFilePath):
 //   - node has project_id        → projects/<projectId>/<safeName>.md
-//   - node is under memory:* (parent path / own path) → memory/_legacy/<safeName>.md
+//   - node is under memory:* (parent path / own path) → memory/<agentId>/<safeName>.md
 //   - otherwise                  → knowledge/<safeName>.md
 //
 // `type` column is dropped in the same pass; positions are already correct
@@ -479,6 +479,13 @@ function migrateWikiDetailToDisk(db: Database.Database): void {
 
 		// Walk up to decide area: any ancestor with path "memory-root:*" or own
 		// project_id set tells us the area.
+		// Memory area is per-agent: memory/<agentId>/ (agentId = 2nd colon segment
+		// of the leaf's own path, e.g. `memory:<agentId>:<type>:<slug>`).
+		function memoryArea(row: { path: string | null }): string {
+			const agent = row.path ? row.path.split(":")[1] ?? "" : "";
+			const clean = agent.replace(/[:/\\]+/g, "_").replace(/^_+|_+$/g, "");
+			return join("memory", clean || "_shared");
+		}
 		function areaOf(
 			row: { id: string; parent_id: string | null; path: string | null; project_id: string | null },
 		): string {
@@ -493,12 +500,12 @@ function migrateWikiDetailToDisk(db: Database.Database): void {
 				if (!parent) break;
 				if (parent.project_id) return join("projects", parent.project_id);
 				if (parent.path && (parent.path.startsWith("memory-root:") || parent.id.startsWith("wiki-root:memory:"))) {
-					return join("memory", "_legacy");
+					return memoryArea(row);
 				}
 				cur = parent.parent_id;
 			}
 			// Own path signals memory too.
-			if (row.path && row.path.startsWith("memory")) return join("memory", "_legacy");
+			if (row.path && row.path.startsWith("memory")) return memoryArea(row);
 			return "knowledge";
 		}
 

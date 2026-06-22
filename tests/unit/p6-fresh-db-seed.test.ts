@@ -37,7 +37,7 @@ import { CronStore } from "../../src/server/cron-store.js";
 import { WikiStore, WIKI_GLOBAL_ROOT_ID } from "../../src/server/wiki-node-store.js";
 import { ManagementService } from "../../src/server/management-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
-import { seedFreshDbDefaults, KNOWLEDGE_ROOT_PATH, SOFTWARE_DEV_NODE_PATH } from "../../src/server/fresh-db-seed.js";
+import { seedFreshDbDefaults, KNOWLEDGE_ROOT_PATH, WORKFLOW_PATH, SOFTWARE_DEV_NODE_PATH } from "../../src/server/fresh-db-seed.js";
 import { getTemplate } from "../../src/runtime/role-templates.js";
 
 let tmpDir: string;
@@ -80,10 +80,12 @@ describe("P6 fresh-DB seed", () => {
 		// systemPrompt carries the zero identity (§12).
 		expect(zeroAgent!.systemPrompt).toMatch(/zero/i);
 
-		// knowledge/software-dev wiki node present under the global root.
+		// knowledge/workflow/software-dev wiki node present under the global root.
 		const knowledgeRoot = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH);
 		expect(knowledgeRoot, "knowledge root expected").toBeDefined();
-		const softwareDevNode = wikiStore.getByParentAndPath(knowledgeRoot!.id, SOFTWARE_DEV_NODE_PATH);
+		const workflowNode = wikiStore.getByParentAndPath(knowledgeRoot!.id, WORKFLOW_PATH);
+		expect(workflowNode, "workflow node expected").toBeDefined();
+		const softwareDevNode = wikiStore.getByParentAndPath(workflowNode!.id, SOFTWARE_DEV_NODE_PATH);
 		expect(softwareDevNode, "software-dev node expected").toBeDefined();
 		// playbook body present and references the role roster.
 		const body = wikiStore.readNodeDetail(softwareDevNode!.id);
@@ -114,7 +116,8 @@ describe("P6 fresh-DB seed", () => {
 	test("seeding is idempotent even if a user refined the software-dev playbook body", () => {
 		seedFreshDbDefaults({ agentStore, wikiStore, management });
 		const knowledgeRoot = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH)!;
-		const node = wikiStore.getByParentAndPath(knowledgeRoot.id, SOFTWARE_DEV_NODE_PATH)!;
+		const workflowNode = wikiStore.getByParentAndPath(knowledgeRoot.id, WORKFLOW_PATH)!;
+		const node = wikiStore.getByParentAndPath(workflowNode.id, SOFTWARE_DEV_NODE_PATH)!;
 		// Simulate zero/user refining the playbook.
 		wikiStore.writeNodeDetail(node.id, "# user-customized playbook\n\nzero wrote this.");
 
@@ -150,7 +153,8 @@ describe("P6 protected-delete", () => {
 
 	test("deleting the protected software-dev node is rejected (WikiStore.delete)", () => {
 		const knowledgeRoot = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH)!;
-		const softwareDevNode = wikiStore.getByParentAndPath(knowledgeRoot.id, SOFTWARE_DEV_NODE_PATH)!;
+		const workflowNode = wikiStore.getByParentAndPath(knowledgeRoot.id, WORKFLOW_PATH)!;
+		const softwareDevNode = wikiStore.getByParentAndPath(workflowNode.id, SOFTWARE_DEV_NODE_PATH)!;
 		expect(() => wikiStore.delete(softwareDevNode.id)).toThrow(/protected/);
 		expect(wikiStore.get(softwareDevNode.id)).toBeDefined();
 	});

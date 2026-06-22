@@ -183,7 +183,7 @@ describe("P1 migration — legacy DB upgrade path (detail → disk)", () => {
 		try { rmSync(row1.doc_pointer!, { force: true }); } catch { /* ok */ }
 	});
 
-	test("旧 DB 的 detail 路由按 area:project → projects/<projectId>/, memory → memory/_legacy/, knowledge → knowledge/", () => {
+	test("旧 DB 的 detail 路由按 area:project → projects/<projectId>/, memory → memory/<agentId>/, knowledge → knowledge/", () => {
 		const dbPath = join(tmpDir, "legacy-areas.db");
 		const legacy = new Database(dbPath);
 		createLegacySchemaDb(legacy);
@@ -195,7 +195,8 @@ describe("P1 migration — legacy DB upgrade path (detail → disk)", () => {
 			path: "header:src/x.ts", title: "x.ts",
 			detail: "project body",
 		});
-		// Memory node → memory/_legacy/ (path signals memory).
+		// Memory node → memory/<agentId>/ (path signals memory; agentId is the
+		// 2nd colon segment — here "legacy-fact").
 		buildLegacyWikiRow(legacy, {
 			id: "node-mem-area",
 			type: "memory", nodeType: "section",
@@ -224,7 +225,7 @@ describe("P1 migration — legacy DB upgrade path (detail → disk)", () => {
 
 		// Area routing.
 		expect(projPtr.replace(/\\/g, "/")).toContain("projects/p-area/");
-		expect(memPtr.replace(/\\/g, "/")).toContain("memory/_legacy/");
+		expect(memPtr.replace(/\\/g, "/")).toContain("memory/legacy-fact/");
 		expect(knPtr.replace(/\\/g, "/")).toContain("knowledge/");
 
 		// Each body actually exported to disk.

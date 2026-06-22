@@ -192,20 +192,35 @@ describe("P1 §10.1 存储:正文磁盘 round-trip", () => {
 		});
 		expect(projFile).toBe(join(WIKI_DISK_ROOT, "projects", "proj-x", "header_src_a.ts__abc12345.md"));
 
-		// memory node → memory/_legacy/
+		// memory node → memory/<agentId>/ (per-agent subdir; agentId is the 2nd
+		// colon segment of the path).
 		const memFile = deriveContentFilePath({
 			id: "mem1234567",
 			path: "memory:subject-x",
 		});
 		// id.slice(0, 8) = "mem12345" (first 8 chars).
-		expect(memFile).toBe(join(WIKI_DISK_ROOT, "memory", "_legacy", "memory_subject-x__mem12345.md"));
+		expect(memFile).toBe(join(WIKI_DISK_ROOT, "memory", "subject-x", "memory_subject-x__mem12345.md"));
 
-		// knowledge fallback
+		// knowledge fallback (no "/" → flat)
 		const knFile = deriveContentFilePath({
 			id: "kn1234567",
 			path: "knowledge:something",
 		});
 		expect(knFile).toBe(join(WIKI_DISK_ROOT, "knowledge", "knowledge_something__kn123456.md"));
+
+		// knowledge NESTS on "/" (workflow/software-dev → workflow/software-dev__<id>.md)
+		const nestedFile = deriveContentFilePath({
+			id: "sd1234567",
+			path: "workflow/software-dev",
+		});
+		expect(nestedFile).toBe(join(WIKI_DISK_ROOT, "knowledge", "workflow", "software-dev__sd123456.md"));
+
+		// knowledge nesting is path-traversal safe (".." dropped)
+		const safeFile = deriveContentFilePath({
+			id: "xx1234567",
+			path: "workflow/../etc",
+		});
+		expect(safeFile).toBe(join(WIKI_DISK_ROOT, "knowledge", "workflow", "etc__xx123456.md"));
 	});
 });
 

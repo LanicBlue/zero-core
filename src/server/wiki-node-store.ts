@@ -119,7 +119,20 @@ export function projectSubtreeRootId(projectId: string): string {
  * Both are protected (cannot be deleted — see assertNotProtected).
  */
 export const KNOWLEDGE_ROOT_PATH_SEED = "knowledge";
-export const SOFTWARE_DEV_NODE_PATH_SEED = "software-dev";
+/**
+ * Category node under knowledge — groups playbooks/workflow docs. The
+ * software-dev playbook lives under it. (Pure tree organization; not
+ * protected itself.)
+ */
+export const WORKFLOW_PATH_SEED = "workflow";
+/**
+ * software-dev playbook leaf. Path is HIERARCHICAL ("workflow/software-dev"):
+ * the knowledge area preserves "/" as disk nesting, so the body file lands at
+ * knowledge/workflow/software-dev__<id>.md. Parent is the workflow node.
+ */
+export const SOFTWARE_DEV_NODE_PATH_SEED = "workflow/software-dev";
+/** Legacy seed path (pre-workflow) — kept for one-time migration of existing DBs. */
+export const SOFTWARE_DEV_NODE_PATH_SEED_LEGACY = "software-dev";
 
 /**
  * v0.8 (§10.5): path constants for the fresh-DB seed subtree-root skeleton.
@@ -183,20 +196,43 @@ export const WIKI_DISK_ROOT = join(ZERO_CORE_DIR, "wiki");
  * The leaf filename is derived from node.path (path-separator/colon sanitized)
  * + a short id suffix to guarantee uniqueness within the area directory.
  */
+/** Sanitize a single path segment for use as a disk dir/file name (no seps, trimmed). */
+function sanitizeSeg(s: string): string {
+	return s.replace(/[:/\\]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
 export function deriveContentFilePath(input: {
 	id: string;
 	path?: string;
 	projectId?: string;
 }): string {
-	const area = input.projectId
-		? join("projects", input.projectId)
-		: input.path && input.path.startsWith("memory")
-			? join("memory", "_legacy")
-			: "knowledge";
-	const raw = (input.path ?? input.id).replace(/[:/\\]+/g, "_").replace(/^_+|_+$/g, "");
+	const pathStr = input.path ?? input.id;
 	const tail = input.id.length >= 8 ? input.id.slice(0, 8) : input.id;
-	const safe = `${raw || "node"}__${tail}.md`;
-	return join(WIKI_DISK_ROOT, area, safe);
+	// Area + name-shape per category. Knowledge is the only area that NESTS on
+	// "/" in the path (so a knowledge doc with path "workflow/software-dev"
+	// lands at knowledge/workflow/software-dev__<id>.md). Project + memory keep
+	// FLAT names (project file-anchored paths contain "/" from the workspace
+	// file path and must not nest; memory is already bucketed per-agent by area).
+	// "." / ".." segments are dropped so a malformed path can't escape the area.
+	let area: string;
+	let nameRel: string; // path under <area>, ending in __<tail>.md
+	if (input.projectId) {
+		area = join("projects", input.projectId);
+		nameRel = `${sanitizeSeg(pathStr) || "node"}__${tail}.md`;
+	} else if (input.path && input.path.startsWith("memory")) {
+		// Per-agent subdir: agentId is the 2nd colon segment of the path.
+		area = join("memory", sanitizeSeg(input.path.split(":")[1] ?? "") || "_shared");
+		nameRel = `${sanitizeSeg(pathStr) || "node"}__${tail}.md`;
+	} else {
+		area = "knowledge";
+		const segs = pathStr
+			.split("/")
+			.map(sanitizeSeg)
+			.filter((s) => s && s !== "." && s !== "..");
+		const nested = segs.length ? segs.join("/") : "node";
+		nameRel = `${nested}__${tail}.md`;
+	}
+	return join(WIKI_DISK_ROOT, area, nameRel);
 }
 
 /**
@@ -427,12 +463,21 @@ export class WikiStore {
 	private assertNotProtected(id: string): void {
 		const node = this.get(id);
 		if (!node) return;
-		// software-dev playbook leaf — under the knowledge root.
-		if (node.path === SOFTWARE_DEV_NODE_PATH_SEED) {
+		// software-dev playbook leaf — lives under knowledge/workflow/ (new) or
+		// directly under knowledge (legacy, pre-workflow). Protected in both
+		// positions so migration doesn't expose it to deletion.
+		if (node.path === SOFTWARE_DEV_NODE_PATH_SEED || node.path === SOFTWARE_DEV_NODE_PATH_SEED_LEGACY) {
 			const parent = node.parentId ? this.get(node.parentId) : undefined;
-			if (parent && parent.path === KNOWLEDGE_ROOT_PATH_SEED && parent.parentId === WIKI_GLOBAL_ROOT_ID) {
+			const grand = parent?.parentId ? this.get(parent.parentId) : undefined;
+			const underKnowledgeLegacy =
+				parent && parent.path === KNOWLEDGE_ROOT_PATH_SEED && parent.parentId === WIKI_GLOBAL_ROOT_ID;
+			const underKnowledgeWorkflow =
+				parent?.path === WORKFLOW_PATH_SEED &&
+				grand?.path === KNOWLEDGE_ROOT_PATH_SEED &&
+				grand?.parentId === WIKI_GLOBAL_ROOT_ID;
+			if (underKnowledgeLegacy || underKnowledgeWorkflow) {
 				throw new Error(
-					"Cannot delete the protected 'knowledge/software-dev' playbook node (fresh-DB seed, RFC §7.1)",
+					"Cannot delete the protected 'knowledge/workflow/software-dev' playbook node (fresh-DB seed, RFC §7.1)",
 				);
 			}
 		}

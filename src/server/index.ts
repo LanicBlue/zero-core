@@ -227,8 +227,13 @@ export async function startServer(options?: StartServerOptions) {
 	// is now true exactly on a truly-empty DB. fresh-db-seed.ts re-checks the
 	// condition internally and no-ops on any non-empty table, so a re-seed
 	// can never duplicate.
-	const { seedFreshDbDefaults } = await import("./fresh-db-seed.js");
+	const { seedFreshDbDefaults, ensureWikiSkeleton } = await import("./fresh-db-seed.js");
 	seedFreshDbDefaults({ agentStore, wikiStore: wikiStoreGlobal, management });
+	// Unconditionally ensure the wiki skeleton on every startup (idempotent).
+	// seedFreshDbDefaults above is fresh-only; this reaches EXISTING DBs so
+	// structural seed changes (e.g. knowledge/workflow/software-dev reorg,
+	// legacy-position migration) apply without a re-seed.
+	ensureWikiSkeleton(wikiStoreGlobal);
 
 	agentService.subscribe((event: any) => {
 		// Forward all agent events to WebSocket clients

@@ -50,6 +50,7 @@ import {
 	PROJECTS_ROOT_PATH_SEED,
 	MEMORY_ROOT_PATH_SEED,
 	KNOWLEDGE_ROOT_PATH_SEED,
+	WORKFLOW_PATH_SEED,
 	SOFTWARE_DEV_NODE_PATH_SEED,
 } from "../../src/server/wiki-node-store.js";
 import { ManagementService } from "../../src/server/management-service.js";
@@ -182,18 +183,23 @@ describe("P7 wiki §10.5 skeleton — fresh-DB seeds all four top-level nodes", 
 		).toBeDefined();
 	});
 
-	test("software-dev node hangs under the knowledge root (regression guard)", () => {
+	test("software-dev node hangs under knowledge/workflow (regression guard)", () => {
 		seedFreshDbDefaults({ agentStore, wikiStore, management });
 
 		const knowledgeRoot = wikiStore.getByParentAndPath(
 			WIKI_GLOBAL_ROOT_ID,
 			KNOWLEDGE_ROOT_PATH_SEED,
 		)!;
-		const softwareDev = wikiStore.getByParentAndPath(
+		const workflow = wikiStore.getByParentAndPath(
 			knowledgeRoot.id,
+			WORKFLOW_PATH_SEED,
+		);
+		expect(workflow, "workflow category node expected under knowledge root").toBeDefined();
+		const softwareDev = wikiStore.getByParentAndPath(
+			workflow!.id,
 			SOFTWARE_DEV_NODE_PATH_SEED,
 		);
-		expect(softwareDev, "software-dev leaf expected under knowledge root").toBeDefined();
+		expect(softwareDev, "software-dev leaf expected under knowledge/workflow").toBeDefined();
 	});
 
 	test("projects / memory skeleton roots are NOT protected (deletable navigation)", () => {

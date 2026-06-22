@@ -50,7 +50,9 @@ import type { WikiStore } from "./wiki-node-store.js";
 import {
 	WIKI_GLOBAL_ROOT_ID,
 	KNOWLEDGE_ROOT_PATH_SEED,
+	WORKFLOW_PATH_SEED,
 	SOFTWARE_DEV_NODE_PATH_SEED,
+	SOFTWARE_DEV_NODE_PATH_SEED_LEGACY,
 	PROJECTS_ROOT_PATH_SEED,
 	MEMORY_ROOT_PATH_SEED,
 } from "./wiki-node-store.js";
@@ -61,6 +63,7 @@ import type { ManagementService } from "./management-service.js";
  * with the protected-delete check, which keys off the same strings).
  */
 export const KNOWLEDGE_ROOT_PATH = KNOWLEDGE_ROOT_PATH_SEED;
+export const WORKFLOW_PATH = WORKFLOW_PATH_SEED;
 export const SOFTWARE_DEV_NODE_PATH = SOFTWARE_DEV_NODE_PATH_SEED;
 
 /**
@@ -186,6 +189,7 @@ export function seedFreshDbDefaults(deps: {
 	// root), then create the software-dev leaf with the playbook body.
 	try {
 		ensureKnowledgeRoot(wikiStore);
+		ensureWorkflowNode(wikiStore);
 		ensureSoftwareDevNode(wikiStore);
 	} catch (err) {
 		console.warn("[seed] failed to seed software-dev wiki node:", (err as Error).message);
@@ -212,6 +216,23 @@ export function seedFreshDbDefaults(deps: {
  * helpers are individually idempotent (return early if the node already
  * exists), so calling them from a non-fresh DB is safe and never duplicates.
  */
+
+/**
+ * Idempotently ensure the full §10.5 wiki skeleton (knowledge/workflow +
+ * software-dev + projects/memory roots). Safe to call on EVERY startup — on a
+ * fresh DB it builds the skeleton; on an existing DB it no-ops (and migrates
+ * legacy-positioned nodes, e.g. software-dev from knowledge/ → knowledge/workflow/).
+ * Called unconditionally from server startup so structural seed changes
+ * (like the workflow reorg) reach existing DBs without a re-seed.
+ */
+export function ensureWikiSkeleton(wikiStore: WikiStore): void {
+	ensureKnowledgeRoot(wikiStore);
+	ensureWorkflowNode(wikiStore);
+	ensureSoftwareDevNode(wikiStore);
+	ensureProjectsRoot(wikiStore);
+	ensureMemoryRoot(wikiStore);
+}
+
 export function ensureKnowledgeRoot(wikiStore: WikiStore): void {
 	const existing = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH_SEED);
 	if (existing) return;
@@ -224,25 +245,66 @@ export function ensureKnowledgeRoot(wikiStore: WikiStore): void {
 	});
 }
 
+/**
+ * Ensure the "workflow" category node exists under knowledge. software-dev
+ * (and future playbook docs) hang under it. Pure organization — not protected.
+ */
+export function ensureWorkflowNode(wikiStore: WikiStore): void {
+	const knowledgeRoot = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH_SEED);
+	if (!knowledgeRoot) {
+		throw new Error("knowledge root missing — ensureKnowledgeRoot must run first");
+	}
+	const existing = wikiStore.getByParentAndPath(knowledgeRoot.id, WORKFLOW_PATH_SEED);
+	if (existing) return;
+	wikiStore.create({
+		parentId: knowledgeRoot.id,
+		path: WORKFLOW_PATH_SEED,
+		title: "Workflow",
+		summary: "工作流 playbook 文档分类(software-dev 等)。",
+		type: "knowledge" as any,
+	});
+}
+
 export function ensureSoftwareDevNode(wikiStore: WikiStore): void {
 	const knowledgeRoot = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH_SEED);
 	if (!knowledgeRoot) {
 		throw new Error("knowledge root missing — ensureKnowledgeRoot must run first");
 	}
-	const existing = wikiStore.getByParentAndPath(knowledgeRoot.id, SOFTWARE_DEV_NODE_PATH_SEED);
+	const workflowRoot = wikiStore.getByParentAndPath(knowledgeRoot.id, WORKFLOW_PATH_SEED);
+	if (!workflowRoot) {
+		throw new Error("workflow node missing — ensureWorkflowNode must run first");
+	}
+	// Migrate legacy position: pre-workflow DBs have software-dev directly under
+	// knowledge with path "software-dev". Reparent it under workflow + update its
+	// path so the body file re-derives to knowledge/workflow/software-dev__<id>.md.
+	const legacy = wikiStore.getByParentAndPath(knowledgeRoot.id, SOFTWARE_DEV_NODE_PATH_SEED_LEGACY);
+	if (legacy) {
+		const oldDetail = wikiStore.readNodeDetail(legacy.id);
+		wikiStore.update(legacy.id, {
+			parentId: workflowRoot.id,
+			path: SOFTWARE_DEV_NODE_PATH_SEED,
+		});
+		// update() doesn't relocate the body file; rewrite it at the new derived
+		// path so readNodeDetail finds it post-migration.
+		if (oldDetail !== undefined) {
+			wikiStore.writeNodeDetail(legacy.id, oldDetail);
+		}
+		console.log("[seed] migrated software-dev node under knowledge/workflow/");
+	}
+	const existing = wikiStore.getByParentAndPath(workflowRoot.id, SOFTWARE_DEV_NODE_PATH_SEED);
 	if (existing) {
 		// Body may have been refined by zero/user since seed — don't clobber.
 		return;
 	}
 	const node = wikiStore.create({
-		parentId: knowledgeRoot.id,
+		parentId: workflowRoot.id,
 		path: SOFTWARE_DEV_NODE_PATH_SEED,
 		title: "software-dev 工作流",
 		summary: "software-dev 工作流的全部配置:角色清单、subagents 关系、cron 建议、两道门、状态机。",
 		type: "knowledge" as any,
 	});
 	wikiStore.writeNodeDetail(node.id, SOFTWARE_DEV_PLAYBOOK);
-	console.log("[seed] created knowledge/software-dev wiki node (fresh-DB seed)");
+	console.log("[seed] created knowledge/workflow/software-dev wiki node (fresh-DB seed)");
 }
 
 /**

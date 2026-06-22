@@ -36,10 +36,7 @@ import type { ProviderStore } from "../server/provider-store.js";
 import type { WikiStore } from "../server/wiki-node-store.js";
 import type { ProjectStore } from "../server/project-store.js";
 import {
-	ensureKnowledgeRoot,
-	ensureSoftwareDevNode,
-	ensureProjectsRoot,
-	ensureMemoryRoot,
+	ensureWikiSkeleton,
 } from "../server/fresh-db-seed.js";
 import { ZERO_CORE_DIR } from "./config.js";
 import { log } from "./logger.js";
@@ -165,10 +162,7 @@ export function seedTestEnvironment(
 	// empty tree even with the correct selectors.
 	if (wikiStore) {
 		try {
-			ensureKnowledgeRoot(wikiStore);
-			ensureSoftwareDevNode(wikiStore);
-			ensureProjectsRoot(wikiStore);
-			ensureMemoryRoot(wikiStore);
+			ensureWikiSkeleton(wikiStore);
 			// Materialize the seeded TestProject's wiki subtree so a
 			// project-scoped wiki view returns a real (non-empty) tree rooted
 			// at wiki-root:<projectId>. The P8 project-scope e2e asserts the
