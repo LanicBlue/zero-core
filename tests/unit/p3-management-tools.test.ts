@@ -169,23 +169,41 @@ describe("AgentRegistry action tool", () => {
 			ctx(),
 		));
 		expect(r.name).toBe("MyLead");
-		// Template brings the lead system prompt (copied identity).
-		expect(r.systemPrompt).toBeTruthy();
+		// create returns a compact summary; verify copied identity via get.
+		expect(r).not.toHaveProperty("systemPrompt");
+		const full = parse(await execAgent({ action: "get", id: r.id }, ctx()));
+		expect(full.systemPrompt).toBeTruthy();
 	});
 
-	test("update merges toolPolicy/subagents/wikiAnchors (replaces SetToolPolicy/SetToolEnabled)", async () => {
-		const a = management.createAgent({ name: "A" } as any);
-		const r = parse(await execAgent({
+	test("update returns compact summary + merges toolPolicy (toggling one tool keeps the rest)", async () => {
+		// Seed an agent with several tools enabled.
+		const a = management.createAgent({
+			name: "A",
+			toolPolicy: {
+				executionMode: "sequential",
+				tools: { Read: { enabled: true }, Shell: { enabled: true }, WebSearch: { enabled: true } },
+			},
+		} as any);
+		// Update disables ONLY WebSearch.
+		const upd = parse(await execAgent({
 			action: "update",
 			id: a.id,
-			toolPolicy: { executionMode: "parallel", tools: { Read: { enabled: true } } },
+			toolPolicy: { tools: { WebSearch: { enabled: false } } },
 			subagents: [{ agentId: "other-agent", name: "Helper" }],
 			wikiAnchors: [{ nodeId: "n1", inject: "system" }],
 		}, ctx()));
-		expect(r.toolPolicy.executionMode).toBe("parallel");
-		expect(r.toolPolicy.tools.Read.enabled).toBe(true);
-		expect(r.subagents.length).toBe(1);
-		expect(r.wikiAnchors.length).toBe(1);
+		// update returns a compact summary — no systemPrompt/toolPolicy dump.
+		expect(upd.id).toBe(a.id);
+		expect(upd.subagents).toBe(1); // count, not the array
+		expect(upd.wikiAnchors).toBe(1);
+		expect(upd).not.toHaveProperty("systemPrompt");
+		expect(upd).not.toHaveProperty("toolPolicy");
+		// Verify the MERGE via get (full record): WebSearch disabled, others kept.
+		const full = parse(await execAgent({ action: "get", id: a.id }, ctx()));
+		expect(full.toolPolicy.tools.WebSearch.enabled).toBe(false);
+		expect(full.toolPolicy.tools.Read.enabled).toBe(true);   // preserved
+		expect(full.toolPolicy.tools.Shell.enabled).toBe(true);  // preserved
+		expect(full.toolPolicy.executionMode).toBe("sequential"); // preserved (not in patch)
 	});
 
 	test("delete zero role agent is rejected (§7.3 protected)", async () => {

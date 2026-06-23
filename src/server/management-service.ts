@@ -340,6 +340,23 @@ export class ManagementService {
 	}
 
 	updateAgent(id: string, input: Partial<Omit<AgentRecord, "id" | "createdAt">>): AgentRecord {
+		// toolPolicy is a nested config you toggle per-tool, so a partial update
+		// (e.g. disable one tool) must MERGE — otherwise passing {tools:{WebSearch:
+		// {enabled:false}}} wipes every other tool. Other fields are scalar/arrays
+		// and stay replace. See mergeToolPolicy for the same merge logic.
+		if (input.toolPolicy !== undefined) {
+			const agent = this.agentStore.get(id);
+			if (agent) {
+				const merged = {
+					...(agent.toolPolicy ?? {}),
+					...input.toolPolicy,
+					tools: { ...(agent.toolPolicy?.tools ?? {}), ...(input.toolPolicy.tools ?? {}) },
+				};
+				const { toolPolicy: _drop, ...rest } = input;
+				void _drop;
+				return this.agentStore.update(id, { ...rest, toolPolicy: merged });
+			}
+		}
 		return this.agentStore.update(id, input);
 	}
 

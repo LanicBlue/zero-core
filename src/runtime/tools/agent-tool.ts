@@ -45,6 +45,25 @@ async function safe(fn: () => any): Promise<string> {
 	}
 }
 
+/**
+ * Compact agent summary for mutation/list results. The full record (incl. the
+ * multi-KB systemPrompt) is only useful via `get` — dumping it on every
+ * create/update floods the model's context. `get` still returns the full record.
+ */
+function summaryOf(a: any): any {
+	return {
+		id: a.id,
+		name: a.name,
+		model: a.model ?? null,
+		provider: a.provider ?? null,
+		workspaceDir: a.workspaceDir ?? null,
+		thinkingLevel: a.thinkingLevel ?? null,
+		subagents: a.subagents?.length ?? 0,
+		wikiAnchors: a.wikiAnchors?.length ?? 0,
+		updatedAt: a.updatedAt ?? null,
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Reusable shapes
 // ---------------------------------------------------------------------------
@@ -121,7 +140,7 @@ export const agentTool = buildTool({
 		"(Note: 'AgentRegistry' manages role-agent records. The separate 'Agent' tool delegates a task to a sub-agent — different capability.)\n\n" +
 		"Actions:\n" +
 		"- { action:'create', name, systemPrompt?, model?, template?, toolPolicy?, subagents?, wikiAnchors? } — create a global agent. `template` (e.g. 'lead'/'pm'/'archivist') copies the role preset's identity+toolPolicy (replaces InstantiatePreset).\n" +
-		"- { action:'update', id, name?/systemPrompt?/model?/toolPolicy?/subagents?/wikiAnchors? } — single mutation surface. Set/merge toolPolicy here (replaces SetToolPolicy/SetToolEnabled).\n" +
+		"- { action:'update', id, name?/systemPrompt?/model?/toolPolicy?/subagents?/wikiAnchors? } — single mutation surface. toolPolicy is MERGED (toggle one tool without wiping the rest: {toolPolicy:{tools:{WebSearch:{enabled:false}}}} only disables WebSearch); subagents/wikiAnchors are replaced wholesale. create/update/list return a compact summary — use `get` for full detail.\n" +
 		"- { action:'delete', id } — delete. The 'zero' management agent is protected and cannot be deleted.\n" +
 		"- { action:'get', id } — read one.\n" +
 		"- { action:'list', roleTag? } — list, optionally filtered by roleTag.\n" +
@@ -139,27 +158,22 @@ export const agentTool = buildTool({
 			const svc = mgmt(ctx);
 			switch (input.action) {
 				case "create": {
-					if (input.template) {
-						// Template path replaces InstantiatePreset.
-						return svc.instantiateTemplate(
+					const created = input.template
+						? svc.instantiateTemplate(
 							input.template,
-							{
-								name: input.name,
-								model: input.model,
-								provider: input.provider,
-							},
+							{ name: input.name, model: input.model, provider: input.provider },
 							{ bindToolPolicy: true },
-						);
-					}
-					return svc.createAgent({
-						name: input.name,
-						systemPrompt: input.systemPrompt,
-						model: input.model,
-						provider: input.provider,
-						toolPolicy: input.toolPolicy as any,
-						subagents: input.subagents,
-						wikiAnchors: input.wikiAnchors,
-					});
+						)
+						: svc.createAgent({
+							name: input.name,
+							systemPrompt: input.systemPrompt,
+							model: input.model,
+							provider: input.provider,
+							toolPolicy: input.toolPolicy as any,
+							subagents: input.subagents,
+							wikiAnchors: input.wikiAnchors,
+						});
+					return summaryOf(created);
 				}
 				case "update": {
 					const patch: any = {};
@@ -167,10 +181,12 @@ export const agentTool = buildTool({
 					if (input.systemPrompt !== undefined) patch.systemPrompt = input.systemPrompt;
 					if (input.model !== undefined) patch.model = input.model;
 					if (input.provider !== undefined) patch.provider = input.provider;
+					// toolPolicy is MERGED (not replaced) inside updateAgent —
+					// toggling one tool won't wipe the rest.
 					if (input.toolPolicy !== undefined) patch.toolPolicy = input.toolPolicy;
 					if (input.subagents !== undefined) patch.subagents = input.subagents;
 					if (input.wikiAnchors !== undefined) patch.wikiAnchors = input.wikiAnchors;
-					return svc.updateAgent(input.id, patch);
+					return summaryOf(svc.updateAgent(input.id, patch));
 				}
 				case "delete":
 					svc.deleteAgent(input.id);
@@ -181,17 +197,7 @@ export const agentTool = buildTool({
 					// List returns a COMPACT summary (full systemPrompt/toolPolicy
 					// would flood the result). Use `get` for full detail.
 					const agents = svc.listAgents(input.roleTag);
-					return agents.map((a: any) => ({
-						id: a.id,
-						name: a.name,
-						model: a.model ?? null,
-						provider: a.provider ?? null,
-						workspaceDir: a.workspaceDir ?? null,
-						thinkingLevel: a.thinkingLevel ?? null,
-						subagents: a.subagents?.length ?? 0,
-						wikiAnchors: a.wikiAnchors?.length ?? 0,
-						updatedAt: a.updatedAt ?? null,
-					}));
+					return agents.map(summaryOf);
 				}
 				case "listTemplates":
 					return svc.listTemplates(input.roleTag);
