@@ -324,3 +324,10 @@ export const useChatStore = create<ChatState>((set) => ({
 	clearError: () =>
 		set(() => ({ lastError: null })),
 }));
+
+// Test-only hook: expose the store so E2E tests (Playwright) can read message
+// state directly — guarded by __ZC_TEST__ which the preload sets only when
+// ZERO_CORE_TEST_FIXTURE is present (i.e. never in a normal production run).
+if (typeof window !== "undefined" && (window as any).__ZC_TEST__) {
+	(window as any).__chatStore = useChatStore;
+}

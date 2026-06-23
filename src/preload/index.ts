@@ -282,3 +282,11 @@ const api: WindowApi = {
 };
 
 contextBridge.exposeInMainWorld("api", api);
+
+// Test-only flag: lets the renderer expose its internal stores (e.g. the chat
+// zustand store) so E2E tests can assert on state directly. Absent in normal
+// production runs — ZERO_CORE_TEST_FIXTURE is set only by the Playwright
+// launcher (helpers/test-app.ts launchApp).
+if (process.env.ZERO_CORE_TEST_FIXTURE) {
+	contextBridge.exposeInMainWorld("__ZC_TEST__", true);
+}

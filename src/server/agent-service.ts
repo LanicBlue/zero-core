@@ -842,7 +842,13 @@ export class AgentService {
 			// User message
 			if (userStep) {
 				result.push({
-					id: `m${tg}`,
+					// id prefix distinguishes role so user/assistant in the same
+					// turnGroup get DIFFERENT React keys. Editing/deleting parses
+					// the trailing number via parseInt(id.slice(1)), so the prefix
+					// letter is opaque to the router. Duplicate keys (both `m${tg}`)
+					// caused React to mis-reconcile on session switch and leave
+					// stale DOM bubbles — see tests/e2e/session-switch-repeated.
+					id: `u${tg}`,
 					role: "user",
 					text: userStep.content ?? "",
 					timestamp: new Date(userStep.createdAt).getTime(),
@@ -879,7 +885,7 @@ export class AgentService {
 					.join("");
 
 				result.push({
-					id: `m${tg}`,
+					id: `a${tg}`,
 					role: "assistant",
 					text,
 					blocks: allBlocks,
@@ -901,7 +907,7 @@ export class AgentService {
 					.map((b: any) => b.text || "")
 					.join("");
 				result.push({
-					id: "m-streaming",
+					id: "a-streaming",
 					role: "assistant",
 					text,
 					blocks: recorderBlocks,
@@ -926,7 +932,7 @@ export class AgentService {
 			const isLastAssistant = (i === turns.length - 1) && t.role === "assistant";
 			if (t.role === "user") {
 				result.push({
-					id: `m${t.seq}`,
+					id: `u${t.seq}`,
 					role: "user",
 					text: t.content ?? "",
 					timestamp: new Date(t.createdAt).getTime(),
@@ -954,7 +960,7 @@ export class AgentService {
 					.map((b: any) => b.text || "")
 					.join("");
 				result.push({
-					id: `m${t.seq}`,
+					id: `a${t.seq}`,
 					role: "assistant",
 					text,
 					blocks,
@@ -974,7 +980,7 @@ export class AgentService {
 						.map((b: any) => b.text || "")
 						.join("");
 					result.push({
-						id: "m-streaming",
+						id: "a-streaming",
 						role: "assistant",
 						text,
 						blocks: recorderBlocks,
