@@ -128,4 +128,12 @@ if (!_fetched) {
 	const unsub = api().onToolsChanged(() => {
 		useAgentStore.getState().fetchTools();
 	});
+
+	// v0.8: refetch agents when the registry is mutated from the backend
+	// (e.g. the AgentRegistry tool creating/editing an agent). The UI's own
+	// edits update local state optimistically; this keeps it in sync when the
+	// change originates server-side.
+	api().onAgentsChanged(() => {
+		useAgentStore.getState().fetchAgents();
+	});
 }

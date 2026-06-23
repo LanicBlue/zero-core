@@ -92,6 +92,11 @@ const api: WindowApi = {
 		ipcRenderer.on("tools:changed", handler);
 		return () => { ipcRenderer.removeListener("tools:changed", handler); };
 	},
+	onAgentsChanged: (callback) => {
+		const handler = () => { callback(); };
+		ipcRenderer.on("agents:changed", handler);
+		return () => { ipcRenderer.removeListener("agents:changed", handler); };
+	},
 	onSessionLifecycle: (callback) => {
 		const handler = (_e: any, data: any) => callback(data);
 		ipcRenderer.on("session:lifecycle", handler);

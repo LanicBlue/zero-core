@@ -245,6 +245,19 @@ export async function startServer(options?: StartServerOptions) {
 		}
 	});
 
+	// v0.8: broadcast an `agents:changed` ping whenever the agent registry is
+	// mutated (create/update/delete) so the renderer refetches its agent list.
+	// Covers BOTH mutation surfaces (AgentRegistry tool via management-service,
+	// and the REST agent-router via the UI) since they both go through agentStore.
+	// Without this, agents created/edited by the tool only show after restart.
+	const broadcast = (event: any) => {
+		const msg = JSON.stringify(event);
+		for (const ws of wss.clients) {
+			if (ws.readyState === ws.OPEN) ws.send(msg);
+		}
+	};
+	agentStore.onChange(() => broadcast({ type: "agents:changed" }));
+
 
 	// Load providers from DB for backend-spawn mode.
 	// In IPC mode, main process calls setProviders later via Phase 5 — notifyReady deduplicates.

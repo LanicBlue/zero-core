@@ -362,10 +362,12 @@ export function connectEventBridge(win: BrowserWindow, port: number): void {
 			try {
 				const event = JSON.parse(data.toString());
 				if (win && !win.isDestroyed()) {
-					// Map WS events back to Electron IPC events
+					// Map WS events back to Electron IPC events. Data-change pings
+					// (agents:changed, …) get their own channel so they don't pollute
+					// the chat `agent:event` stream.
 					const eventType = event.type;
-					if (eventType === "reconnect") {
-						win.webContents.send("agent:event", event);
+					if (eventType === "agents:changed") {
+						win.webContents.send("agents:changed");
 					} else {
 						win.webContents.send("agent:event", event);
 					}

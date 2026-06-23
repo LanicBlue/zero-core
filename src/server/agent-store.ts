@@ -89,6 +89,15 @@ export class AgentStore {
 	 */
 	private _roleTagStmt?: import("better-sqlite3").Statement;
 
+	/**
+	 * v0.8: change-notification listeners. Fired after any create/update/delete
+	 * so the renderer can refetch its agent list — covers BOTH mutation
+	 * surfaces (the AgentRegistry tool via management-service, and the REST
+	 * agent-router via the UI), since they both go through this store. Without
+	 * this, agents created/edited by the tool only appear after restart.
+	 */
+	private readonly _changeListeners = new Set<() => void>();
+
 	constructor(sessionDB: SessionDB) {
 		this.db = sessionDB;
 		this.store = new SqliteStore<AgentRecord>(sessionDB.getDb(), "agents", COLUMNS);
@@ -98,6 +107,18 @@ export class AgentStore {
 		// software-dev wiki node) are seeded by fresh-db-seed.ts at the
 		// service layer (RFC §7.1). Removing this lets fresh-db-seed's
 		// `agentStore.list().length === 0` guard fire correctly.
+	}
+
+	/** Subscribe to agent-data changes (create/update/delete). Returns an unsubscribe. */
+	onChange(cb: () => void): () => void {
+		this._changeListeners.add(cb);
+		return () => { this._changeListeners.delete(cb); };
+	}
+
+	private notifyChanged(): void {
+		for (const cb of this._changeListeners) {
+			try { cb(); } catch { /* listener errors must not break the mutation */ }
+		}
 	}
 
 	list(): AgentRecord[] {
@@ -136,7 +157,9 @@ export class AgentStore {
 	create(input: Omit<AgentRecord, "id" | "createdAt" | "updatedAt">): AgentRecord {
 		const normalized = { ...input };
 		normalized.workspaceDir = normalizeWorkspaceDir(normalized.workspaceDir);
-		return this.store.create(normalized as any);
+		const created = this.store.create(normalized as any);
+		this.notifyChanged();
+		return created;
 	}
 
 	update(id: string, input: Partial<Omit<AgentRecord, "id" | "createdAt">>): AgentRecord {
@@ -144,7 +167,9 @@ export class AgentStore {
 		if (patched.workspaceDir !== undefined) {
 			patched.workspaceDir = normalizeWorkspaceDir(patched.workspaceDir);
 		}
-		return this.store.update(id, patched as any);
+		const updated = this.store.update(id, patched as any);
+		this.notifyChanged();
+		return updated;
 	}
 
 	delete(id: string): void {
@@ -158,5 +183,6 @@ export class AgentStore {
 			throw new Error("Cannot delete the protected 'zero' management agent");
 		}
 		this.store.delete(id);
+		this.notifyChanged();
 	}
 }
