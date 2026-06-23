@@ -157,18 +157,20 @@ describe("AgentRegistry action tool", () => {
 		expect(r.name).toBe("MyRole");
 	});
 
-	test("create with template copies identity from preset (replaces InstantiatePreset)", async () => {
-		// Template path = the new shape of InstantiatePreset. Requires callee
-		// role agents for whitelisted tags to be exposed — seed a few.
+	test("create with template = pure instantiation (other params ignored, name from template)", async () => {
+		// Template path requires callee role agents for whitelisted tags — seed a few.
 		for (const [name, tag] of [["A1", "analyzer"], ["P1", "planner"], ["D1", "developer"], ["R1", "reviewer"], ["Q1", "qa"]] as const) {
 			const a = management.createAgent({ name } as any);
 			seedAgentWithRoleTag(sessionDB, a.id, tag);
 		}
+		// Pass template + a stray `name`/`model` — they must be IGNORED; the
+		// agent's name comes from the template's displayName.
 		const r = parse(await execAgent(
-			{ action: "create", name: "MyLead", template: "lead" },
+			{ action: "create", template: "lead", name: "IGNORED", model: "IGNORED" },
 			ctx(),
 		));
-		expect(r.name).toBe("MyLead");
+		expect(r.name).toBe("Lead (交付)");
+		expect(r.model).not.toBe("IGNORED");
 		// create returns a compact summary; verify copied identity via get.
 		expect(r).not.toHaveProperty("systemPrompt");
 		const full = parse(await execAgent({ action: "get", id: r.id }, ctx()));
@@ -241,7 +243,7 @@ describe("AgentRegistry action tool", () => {
 	});
 
 	test("missing required fields return clear errors (not cryptic DB errors)", async () => {
-		// create without name
+		// create without name (and no template)
 		expect(String(await execAgent({ action: "create" }, ctx()))).toMatch(/create requires `name`/);
 		// update without id
 		expect(String(await execAgent({ action: "update", name: "X" }, ctx()))).toMatch(/update requires `id`/);
@@ -251,6 +253,11 @@ describe("AgentRegistry action tool", () => {
 		expect(String(await execAgent({ action: "get" }, ctx()))).toMatch(/get requires `id`/);
 		// getTemplate without templateId
 		expect(String(await execAgent({ action: "getTemplate" }, ctx()))).toMatch(/getTemplate requires `templateId`/);
+	});
+
+	test("not-found returns uniform 'Error: …' (not an {error} object)", async () => {
+		expect(String(await execAgent({ action: "get", id: "nope" }, ctx()))).toMatch(/^Error: Agent not found: nope/);
+		expect(String(await execAgent({ action: "getTemplate", templateId: "nope" }, ctx()))).toMatch(/^Error: Template not found: nope/);
 	});
 });
 

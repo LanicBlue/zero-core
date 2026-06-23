@@ -86,6 +86,16 @@ function requireField(value: unknown, field: string, action: string): void {
 	}
 }
 
+/**
+ * Return the value, or throw a not-found error. Throwing (rather than returning
+ * an `{error}` object) keeps the result style uniform across all actions —
+ * safe() formats every failure as `"Error: …"`.
+ */
+function notFound<T>(value: T | undefined, message: string): T {
+	if (value === undefined) throw new Error(message);
+	return value;
+}
+
 // ---------------------------------------------------------------------------
 // Reusable shapes
 // ---------------------------------------------------------------------------
@@ -161,13 +171,15 @@ export const agentTool = buildTool({
 		"Manage the global Agent registry via a single action-switched tool.\n\n" +
 		"(Note: 'AgentRegistry' manages role-agent records. The separate 'Agent' tool delegates a task to a sub-agent — different capability.)\n\n" +
 		"Actions:\n" +
-		"- { action:'create', name, systemPrompt?, model?, template?, toolPolicy?, subagents?, wikiAnchors? } — create a global agent. `template` (e.g. 'lead'/'pm'/'archivist') copies the role preset's identity+toolPolicy (replaces InstantiatePreset).\n" +
+		"- { action:'create', name, systemPrompt?, model?, provider?, toolPolicy?, subagents?, wikiAnchors? } — create a global agent from scratch. `name` is required.\n" +
+		"- { action:'create', template } — instantiate a role template (e.g. 'lead'/'pm'/'archivist') PURELY: identity (name from the template/systemPrompt/model/toolPolicy) all come from the template; any other params are IGNORED. Customize afterward via `update`.\n" +
 		"- { action:'update', id, name?/systemPrompt?/model?/toolPolicy?/subagents?/wikiAnchors? } — single mutation surface. toolPolicy is MERGED (toggle one tool without wiping the rest: {toolPolicy:{tools:{WebSearch:{enabled:false}}}} only disables WebSearch); subagents/wikiAnchors are replaced wholesale. create/update/list return a compact summary — use `get` for full detail.\n" +
 		"- { action:'delete', id } — delete. The 'zero' management agent is protected and cannot be deleted.\n" +
-		"- { action:'get', id } — read one.\n" +
-		"- { action:'list', roleTag? } — list, optionally filtered by roleTag.\n" +
-		"- { action:'listTemplates', roleTag? } — list available role templates (presets). Returns compact summaries (roleTag/displayName/description/tools/subagents); use getTemplate for the full systemPrompt.\n" +
-		"- { action:'getTemplate', templateId } — read one template.",
+		"- { action:'get', id } — read one (full record).\n" +
+		"- { action:'list' } — list all agents (compact summary). No role filter — v0.8 agents carry no roleTag.\n" +
+		"- { action:'listTemplates', roleTag? } — list available role templates. Returns compact summaries (roleTag/displayName/description/tools/subagents); use getTemplate for the full systemPrompt.\n" +
+		"- { action:'getTemplate', templateId } — read one template (full).\n" +
+		"Errors are uniform: any failure (not found, missing required field) returns `\"Error: …\"`.",
 	meta: {
 		category: "management",
 		isReadOnly: false,
@@ -180,22 +192,24 @@ export const agentTool = buildTool({
 			const svc = mgmt(ctx);
 			switch (input.action) {
 				case "create": {
+					if (input.template) {
+						// Template path = PURE instantiation: identity (name/systemPrompt/
+						// model/toolPolicy) all come from the template; any other params
+						// passed alongside are ignored. To customize, create from the
+						// template then `update`.
+						const created = svc.instantiateTemplate(input.template, {}, { bindToolPolicy: true });
+						return summaryOf(created);
+					}
 					requireField(input.name, "name", "create");
-					const created = input.template
-						? svc.instantiateTemplate(
-							input.template,
-							{ name: input.name, model: input.model, provider: input.provider },
-							{ bindToolPolicy: true },
-						)
-						: svc.createAgent({
-							name: input.name,
-							systemPrompt: input.systemPrompt,
-							model: input.model,
-							provider: input.provider,
-							toolPolicy: input.toolPolicy as any,
-							subagents: input.subagents,
-							wikiAnchors: input.wikiAnchors,
-						});
+					const created = svc.createAgent({
+						name: input.name,
+						systemPrompt: input.systemPrompt,
+						model: input.model,
+						provider: input.provider,
+						toolPolicy: input.toolPolicy as any,
+						subagents: input.subagents,
+						wikiAnchors: input.wikiAnchors,
+					});
 					return summaryOf(created);
 				}
 				case "update": {
@@ -218,12 +232,13 @@ export const agentTool = buildTool({
 					return { success: true };
 				case "get":
 					requireField(input.id, "id", "get");
-					return svc.getAgent(input.id) ?? { error: `Agent not found: ${input.id}` };
+					return notFound(svc.getAgent(input.id), `Agent not found: ${input.id}`);
 				case "list": {
 					// List returns a COMPACT summary (full systemPrompt/toolPolicy
 					// would flood the result). Use `get` for full detail.
-					const agents = svc.listAgents(input.roleTag);
-					return agents.map(summaryOf);
+					// (No roleTag filter — v0.8 agents don't carry roleTag; identity
+					// is name + systemPrompt. Templates still have roleTag → listTemplates.)
+					return svc.listAgents().map(summaryOf);
 				}
 				case "listTemplates": {
 					// Compact summary — full systemPrompt/toolPolicy via getTemplate.
@@ -231,7 +246,7 @@ export const agentTool = buildTool({
 				}
 				case "getTemplate":
 					requireField(input.templateId, "templateId", "getTemplate");
-					return svc.getTemplate(input.templateId) ?? { error: `Template not found: ${input.templateId}` };
+					return notFound(svc.getTemplate(input.templateId), `Template not found: ${input.templateId}`);
 			}
 		}),
 });
