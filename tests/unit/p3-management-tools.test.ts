@@ -315,6 +315,10 @@ describe("Wiki action tool", () => {
 		return {
 			wikiStore,
 			projectId,
+			// v0.8 (读写同界): the Wiki tool now reads/writes against the session's
+			// resolved anchor set. Scope this project-role ctx to its own subtree
+			// root (= the legacy wikiRootNodeId).
+			wikiAnchorNodeIds: [`wiki-root:${projectId}`],
 			agentRole: "lead",
 			workingDir: projWs,
 			contextBundle: { workspaceDir: projWs, wikiRootNodeId: `wiki-root:${projectId}` },

@@ -385,6 +385,8 @@ getProviderAdapter(config, provider): { systemPromptAppend?, maxSystemPromptToke
 | 权限请求 | `PermissionRequest` hook | ⚠️ 未注册 handler |
 | 代理 | undici ProxyAgent 全局 | ✅ 标准做法 |
 | 日志 | 控制台 + 文件，无敏感字段过滤 | ⚠️ 可能泄露 API key |
+| Wiki 读写 | anchor 集合 = 读边界 = 写边界(store 层 `assertNodeInAnchorScope` 强制) | ✅ 读写同界;zero/全局会话锚全局根→整树可写 |
+| 子进程输出编码 | `decodeShellBuffer` 先 fatal-UTF-8 校验、失败回退 GBK(iconv-lite) | ✅ 修 Windows 原生命令中文乱码 |
 
 **架构师建议**：
 1. `log-router.ts` 的"redact sensitive"已经在 `assistant-tools.ts:52` 实现，搬到 logger.ts

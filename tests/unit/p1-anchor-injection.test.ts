@@ -104,10 +104,12 @@ describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
 		expect(projAnchor.depth).toBe(2);
 	});
 
-	test("zero (no projectId) → only memory + free anchors, no project anchor", () => {
+	test("zero (no projectId) → memory anchor + GLOBAL ROOT scope anchor (read=write=whole tree)", () => {
 		const anchors = resolveAnchors({ wiki, agentId: "zero" });
-		expect(anchors.some((a) => a.kind === "project")).toBe(false);
-		// v0.8 (P2 §11.6): one per-agent memory anchor (was 5 type roots).
+		// v0.8 (读写同界): a session with no project anchor gets the GLOBAL ROOT
+		// as an inject:"off" scope anchor so its read scope == write scope == the
+		// whole tree. Plus one per-agent memory anchor (P2 §11.6).
+		expect(anchors.some((a) => a.nodeId === WIKI_GLOBAL_ROOT_ID && a.inject === "off")).toBe(true);
 		expect(anchors.filter((a) => a.kind === "memory").length).toBe(1);
 	});
 

@@ -441,3 +441,86 @@ describe("P1 §10.3 多锚点:并集可见性 + 读/写同边界", () => {
 		expect(() => wiki.assertNodeInsideProjectScope(projA.id, aHeader.id)).not.toThrow();
 	});
 });
+
+// ─── v0.8 读写同界:*InScope 写原语(读写共用 anchor 边界) ───────
+describe("anchor-scoped writes (*InScope) — read scope = write scope", () => {
+	test("upsertNodeInScope: 项目 agent 能写自己子树;跨项目被拒", () => {
+		const projA = projectStore.create({ name: "A", workspaceDir: join(tmpDir, "a") });
+		const projB = projectStore.create({ name: "B", workspaceDir: join(tmpDir, "b") });
+		const rootA = track(wiki.ensureProjectSubtree(projA.id, "A"));
+		const rootB = track(wiki.ensureProjectSubtree(projB.id, "B"));
+		const aAnchors = [projectSubtreeRootId(projA.id)];
+
+		// 写自己子树 → OK,且 projectId 从 parent 继承 = projA.id
+		const n = track(wiki.upsertNodeInScope(aAnchors, {
+			parentId: rootA.id, type: "structure", path: "note", title: "Note A",
+		}));
+		expect(n.projectId).toBe(projA.id);
+		// 跨项目写 → 抛
+		expect(() => wiki.upsertNodeInScope(aAnchors, {
+			parentId: rootB.id, type: "structure", path: "spy", title: "Spy",
+		})).toThrow(/outside all caller anchor subtrees/);
+	});
+
+	test("upsertNodeInScope: zero(全局根 anchor)能写任意位置,projectId 不带", () => {
+		const projA = projectStore.create({ name: "A", workspaceDir: join(tmpDir, "a") });
+		const rootA = track(wiki.ensureProjectSubtree(projA.id, "A"));
+		// zero 的 anchor 集含全局根
+		const zeroAnchors = [WIKI_GLOBAL_ROOT_ID];
+		// 写进项目 A 的子树 → 放行(全局根 bypass);projectId 仍从 parent 继承
+		const inProj = track(wiki.upsertNodeInScope(zeroAnchors, {
+			parentId: rootA.id, type: "structure", path: "global-note", title: "Global Note",
+		}));
+		expect(inProj.projectId).toBe(projA.id);
+		// 写到全局根下 → projectId 为空(全局/knowledge 区不归属任何项目)
+		const globalChild = track(wiki.upsertNodeInScope(zeroAnchors, {
+			parentId: WIKI_GLOBAL_ROOT_ID, type: "structure", path: "k1", title: "K1",
+		}));
+		expect(globalChild.projectId).toBeFalsy();
+	});
+
+	test("updateNodeInScope / deleteNodeInScope / writeNodeDetailInScope 遵守 anchor 边界", () => {
+		const projA = projectStore.create({ name: "A", workspaceDir: join(tmpDir, "a") });
+		const projB = projectStore.create({ name: "B", workspaceDir: join(tmpDir, "b") });
+		const rootA = track(wiki.ensureProjectSubtree(projA.id, "A"));
+		const rootB = track(wiki.ensureProjectSubtree(projB.id, "B"));
+		const aNode = track(wiki.upsertProjectNode(projA.id, {
+			parentId: rootA.id, type: "structure", path: "a1", title: "A1",
+		}));
+		const aAnchors = [projectSubtreeRootId(projA.id)];
+
+		// 自己的节点 → update/delete/write 都 OK
+		expect(() => wiki.updateNodeInScope(aAnchors, aNode.id, { title: "A1-renamed" })).not.toThrow();
+		expect(() => wiki.writeNodeDetailInScope(aAnchors, aNode.id, "body")).not.toThrow();
+		expect(wiki.readNodeDetail(aNode.id)).toBe("body");
+		expect(() => wiki.deleteNodeInScope(aAnchors, aNode.id)).not.toThrow();
+		expect(wiki.get(aNode.id)).toBeUndefined();
+
+		// 重新建一个 aNode 用来测跨项目拒绝
+		const aNode2 = track(wiki.upsertProjectNode(projA.id, {
+			parentId: rootA.id, type: "structure", path: "a2", title: "A2",
+		}));
+		// 用 A 的 anchor 去写 B 的节点 → 抛(writeNodeDetailInScope 堵住了既有洞)
+		expect(() => wiki.writeNodeDetailInScope(aAnchors, aNode2.id, "x")).not.toThrow(); // 自己的,OK
+		const bNode = track(wiki.upsertProjectNode(projB.id, {
+			parentId: rootB.id, type: "structure", path: "b1", title: "B1",
+		}));
+		expect(() => wiki.writeNodeDetailInScope(aAnchors, bNode.id, "x")).toThrow(/outside all caller anchor subtrees/);
+		expect(() => wiki.updateNodeInScope(aAnchors, bNode.id, { title: "X" })).toThrow(/outside all caller anchor subtrees/);
+		expect(() => wiki.deleteNodeInScope(aAnchors, bNode.id)).toThrow(/outside all caller anchor subtrees/);
+	});
+
+	test("free wikiAnchor 授予的子树同样可写(读写同界)", () => {
+		const projA = projectStore.create({ name: "A", workspaceDir: join(tmpDir, "a") });
+		const rootA = track(wiki.ensureProjectSubtree(projA.id, "A"));
+		const child = track(wiki.upsertProjectNode(projA.id, {
+			parentId: rootA.id, type: "structure", path: "shared", title: "Shared",
+		}));
+		// 另一个 agent 通过 free anchor 拿到 child 子树 → 能在 child 下写
+		const freeAnchors = [child.id];
+		const n = track(wiki.upsertNodeInScope(freeAnchors, {
+			parentId: child.id, type: "structure", path: "under-shared", title: "Under Shared",
+		}));
+		expect(n.parentId).toBe(child.id);
+	});
+});

@@ -23,6 +23,17 @@
 import { execSync } from "node:child_process";
 import { arch, cpus, hostname, networkInterfaces, platform, release, totalmem, type } from "node:os";
 import type { IKVStore } from "./kv-store-interface.js";
+import { decodeShellBuffer } from "./encoding.js";
+
+/**
+ * Run a shell command and decode its stdout with the shared UTF-8/GBK fallback.
+ * Windows native commands (wmic...) default to GBK(CP936); using encoding:"buffer"
+ * + decodeShellBuffer avoids garbled non-ASCII output. UTF-8/ASCII passes through.
+ */
+function execDecode(cmd: string, timeoutMs: number): string {
+	const buf = execSync(cmd, { encoding: "buffer", timeout: timeoutMs });
+	return decodeShellBuffer(buf as unknown as Buffer);
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,10 +69,7 @@ function detectGpu(): string | null {
 	try {
 		const p = platform();
 		if (p === "win32") {
-			const out = execSync("wmic path win32_VideoController get name", {
-				encoding: "utf-8",
-				timeout: 5000,
-			});
+			const out = execDecode("wmic path win32_VideoController get name", 5000);
 			const lines = out.split("\n").map((l) => l.trim()).filter(Boolean);
 			// First line is "Name", subsequent lines are GPU names
 			const gpus = lines.slice(1).filter((l) => l && l !== "Name");
@@ -93,10 +101,7 @@ function detectDisks(): Array<{ mount: string; totalGB: string; freeGB: string }
 	const disks: Array<{ mount: string; totalGB: string; freeGB: string }> = [];
 	try {
 		if (platform() === "win32") {
-			const out = execSync("wmic logicaldisk get caption,size,freespace", {
-				encoding: "utf-8",
-				timeout: 5000,
-			});
+			const out = execDecode("wmic logicaldisk get caption,size,freespace", 5000);
 			const lines = out.split("\n").map((l) => l.trim()).filter(Boolean);
 			for (const line of lines.slice(1)) {
 				const parts = line.split(/\s+/);

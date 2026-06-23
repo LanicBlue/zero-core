@@ -55,6 +55,7 @@ import { ToolRateLimiter } from "./tool-rate-limiter.js";
 import type { WikiStore } from "../server/wiki-node-store.js";
 import {
 	resolveAnchors,
+	anchorNodeIds,
 	renderSystemAnchors,
 	renderContextAnchors,
 	type ResolvedAnchor,
@@ -162,6 +163,10 @@ export class AgentLoop implements AgentRuntime {
 			pmService: (config as any).pmService,
 			taskStepStore: (config as any).taskStepStore,
 			projectId: config.projectContext?.projectId,
+			// v0.8 (读写同界): resolved wiki anchor node ids = read scope = write
+			// scope for the Wiki tool. Zero/global sessions include the global
+			// root here → whole-tree read+write; project sessions stay scoped.
+			wikiAnchorNodeIds: anchorNodeIds(this.wikiAnchors),
 			agentRole: config.agentRole,
 			projectPath: config.projectContext?.projectPath,
 			activeRequirementId: config.projectContext?.activeRequirementId,

@@ -59,9 +59,23 @@ const wikiStoreGlobal = new WikiStore(sessionDB);
 |------|------|------|------|
 | Agent memory root | `memoryAgentRootId(agentId)` | context | Agent 私有记忆索引 |
 | Project subtree root | `projectSubtreeRootId(projectId)` | system | 项目级知识轮廓 |
+| Global root | `WIKI_GLOBAL_ROOT_ID`(无 projectId 时自动) | off(只作 scope,不注入) | zero/全局会话的整树读写授权 |
 | Free anchors | `AgentRecord.wikiAnchors` | system/context/tool | 手动绑定的 Wiki 节点或子树 |
 
 `renderSystemAnchors()` 会把 system-channel 的项目/记忆轮廓拼入系统提示词。`renderContextAnchors()` 会在每轮 LLM 调用前生成 `## Wiki Anchors (context)` 段落，再由 `buildContextMessage()` 注入 `<context>`。
+
+#### 权限模型(读写同界 / pure anchor model)
+
+`resolveAnchors()` 解析出的 anchor 节点 id 并集,**既是读边界也是写边界**:
+
+- AgentLoop 把 `anchorNodeIds(wikiAnchors)` 注入 tool context 的 `wikiAnchorNodeIds`。
+- `Wiki` 工具([`runtime/tools/wiki-tool.ts`](../../src/runtime/tools/wiki-tool.ts))的 expand/search/docRead 用 `listVisibleFromAnchors` / `getVisibleFromAnchors`;create/update/delete/docWrite/docEdit 用 store 层 `upsertNodeInScope` / `updateNodeInScope` / `deleteNodeInScope` / `writeNodeDetailInScope`,全部经 `assertNodeInAnchorScope` 校验。**能读 = 能写**。
+- 项目 Agent 的 anchor 集 = 自己项目子树 + 自己 memory + free,看不到也写不到别项目/全局知识。
+- zero / 全局会话(无 projectId)的 anchor 集含全局根 → 整棵树可读可写。
+- free wikiAnchors 授予的子树同样可写(不再像旧版「projectId 闸门只读不写」)。
+- 旧的 projectId-based 写方法(`upsertProjectNode`/`updateNodeMetadata`/`deleteNode`/`assertNodeInsideProjectScope`)标 `@deprecated`,archivist/extractor 继续用。
+
+权限强制在 store 层([`server/wiki-node-store.ts`](../../src/server/wiki-node-store.ts));工具层只透传 anchor 集。
 
 当前 Agent 记忆默认不是把全文塞入上下文，而是渲染成 MEMORY.md 风格索引：
 

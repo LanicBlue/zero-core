@@ -31,6 +31,7 @@ import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import { buildTool } from "./tool-factory.js";
 import { EXEC_MAX_BUFFER_BYTES } from "../../core/constants.js";
+import { decodeExecBuffers } from "../../core/encoding.js";
 import { findWikiPathInShellCommand, wikiPathRejectMessage } from "./wiki-path-guard.js";
 
 const execFileAsync = promisify(execFile);
@@ -298,18 +299,19 @@ export const bashTool = buildTool({
 
 		// Foreground mode
 		const cwd = ctx.workingDir ?? ".";
-		const execOpts: any = { cwd, maxBuffer: EXEC_MAX_BUFFER_BYTES };
+		// encoding:"buffer" → stdout/stderr 以 Buffer 返回,交给 decodeExecBuffers
+		// 做 UTF-8(优先)/ GBK(Windows 原生命令回退)解码,避免中文乱码。
+		const execOpts: any = { cwd, maxBuffer: EXEC_MAX_BUFFER_BYTES, encoding: "buffer" };
 		if (timeout) execOpts.timeout = timeout;
 		const t0 = Date.now();
 
 		try {
-			const result = await execFileAsync(info.shell, shellArgs, execOpts) as unknown as { stdout: string; stderr: string };
+			const result = await execFileAsync(info.shell, shellArgs, execOpts) as unknown as { stdout: Buffer; stderr: Buffer };
 			const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-			const stdout = (result.stdout ?? "").trim();
-			const stderr = (result.stderr ?? "").trim();
+			const { stdout, stderr } = decodeExecBuffers(result);
 			let out = "";
-			if (stdout) out += stdout;
-			if (stderr) out += "\n[stderr] " + stderr;
+			if (stdout) out += stdout.trim();
+			if (stderr) out += "\n[stderr] " + stderr.trim();
 			out += `\n[Completed in ${elapsed}s]`;
 			return out;
 		} catch (err: any) {
@@ -317,13 +319,14 @@ export const bashTool = buildTool({
 				throw new Error(`Command timed out after ${timeoutSec}s\nCommand: ${command}`);
 			}
 			const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-			const stdout = (err.stdout ?? "").trim();
-			const stderr = postprocessError((err.stderr ?? "").trim(), command, info.type);
+			const { stdout, stderr } = decodeExecBuffers(err);
+			const stderrText = postprocessError(stderr.trim(), command, info.type);
 			const exitCode = err.status ?? err.code ?? 1;
 			let out = `Exit code ${exitCode}`;
 			if (command.length <= 200) out += `\nCommand: ${command}`;
-			if (stdout) out += "\n" + stdout;
-			if (stderr) out += "\n[stderr] " + stderr;
+			const stdoutTrim = stdout.trim();
+			if (stdoutTrim) out += "\n" + stdoutTrim;
+			if (stderrText) out += "\n[stderr] " + stderrText;
 			out += `\n[Completed in ${elapsed}s]`;
 			throw new Error(out);
 		}

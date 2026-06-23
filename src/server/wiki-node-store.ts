@@ -981,6 +981,93 @@ export class WikiStore {
 		this.assertNodeInAnchorScope([projectSubtreeRootId(projectId)], nodeId);
 	}
 
+	// ─── Anchor-scoped writes (v0.8 读写同界 / pure anchor model) ──
+	//
+	// These take the caller's RESOLVED anchor node-id set (auto memory +
+	// auto project/global + free wikiAnchors) and enforce write scope ==
+	// read scope via assertNodeInAnchorScope. The Wiki tool uses these so an
+	// agent can write exactly what it can read (free wikiAnchors grant write
+	// under their subtrees; zero/global sessions include the global root and
+	// can therefore write anywhere). The archivist/extractor keep using the
+	// legacy projectId-based methods further below.
+	//
+	// projectId is INHERITED from the parent node: nodes inside a project
+	// subtree stay tagged with that project (preserving isolation); nodes
+	// under global/knowledge/memory areas carry no projectId. The tool layer
+	// no longer needs to supply a projectId to write.
+
+	upsertNodeInScope(
+		anchorIds: string[],
+		input: {
+			parentId: string;
+			type: "header" | "intent" | "structure";
+			path: string;
+			title: string;
+			summary?: string;
+			detail?: string;
+			provenance?: "structure" | "derived" | "confirmed";
+			requirementIds?: string[];
+			relations?: Array<{ kind: string; targetId: string }>;
+			flags?: string[];
+			lastUpdatedBy?: string;
+		},
+	): WikiNode {
+		this.assertNodeInAnchorScope(anchorIds, input.parentId);
+		const parent = this.get(input.parentId);
+		const projectId = parent?.projectId;
+		// Strip any caller-supplied docPointer (FS-isolation lock, §10.1) —
+		// the body path is always derived from the node's position.
+		const { docPointer: _ignoredDocPointer, ...rowInput } = input as typeof input & {
+			docPointer?: string;
+		};
+		void _ignoredDocPointer;
+		const existing = this.getByParentAndPath(rowInput.parentId, rowInput.path);
+		if (existing) {
+			return this.update(existing.id, {
+				...rowInput,
+				projectId,
+				lastUpdatedBy: rowInput.lastUpdatedBy ?? "agent",
+			});
+		}
+		return this.create({
+			...rowInput,
+			projectId,
+			lastUpdatedBy: rowInput.lastUpdatedBy ?? "agent",
+		});
+	}
+
+	updateNodeInScope(
+		anchorIds: string[],
+		nodeId: string,
+		patch: Partial<Pick<WikiNode, "title" | "summary" | "flags" | "provenance">> & {
+			lastUpdatedBy?: string;
+		},
+	): WikiNode {
+		this.assertNodeInAnchorScope(anchorIds, nodeId);
+		return this.update(nodeId, {
+			...patch,
+			lastUpdatedBy: patch.lastUpdatedBy ?? "agent",
+		});
+	}
+
+	deleteNodeInScope(anchorIds: string[], nodeId: string): void {
+		this.assertNodeInAnchorScope(anchorIds, nodeId);
+		this.delete(nodeId);
+	}
+
+	/**
+	 * Write a node's body, scoped to the caller's anchors. Mirrors
+	 * writeNodeDetail but adds the anchor-scope assertion (writeNodeDetail
+	 * itself is unscoped — it's the trusted primitive used internally by
+	 * upsertNodeInScope / the archivist). The Wiki tool's docWrite/docEdit
+	 * go through here so a nodeId from outside the agent's visible scope
+	 * cannot be written.
+	 */
+	writeNodeDetailInScope(anchorIds: string[], nodeId: string, content: string): void {
+		this.assertNodeInAnchorScope(anchorIds, nodeId);
+		this.writeNodeDetail(nodeId, content);
+	}
+
 	/**
 	 * Upsert a node inside a project subtree (archivist's write primitive).
 	 * Enforces: target parent MUST already live in the project subtree, and

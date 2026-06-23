@@ -82,7 +82,7 @@ ToolExecutionContext {
 
 | 工具 | Category | 副作用 | 危险 | 并发安全 | 关键能力 |
 |------|----------|--------|------|----------|----------|
-| Shell | runtime | ✅ 写 | ❌ | ✅ | Git Bash 检测 / cmd.exe 翻译 |
+| Shell | runtime | ✅ 写 | ❌ | ✅ | Git Bash 检测 / cmd.exe 翻译 / GBK→UTF-8 自动解码 |
 | Read | runtime | ❌ | ❌ | ✅ | 文本 / 图片 / PDF / ipynb / outline |
 | Write | runtime | ✅ 写 | ⚠️ | ❌ | syntax check 阻断破坏性写入 |
 | Edit | runtime | ✅ 写 | ⚠️ | ❌ | 精确匹配 + 错误诊断（空白/换行提示）|

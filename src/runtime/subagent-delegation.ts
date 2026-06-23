@@ -32,6 +32,7 @@ import { AgentLoop } from "./agent-loop.js";
 import { spawn } from "node:child_process";
 import { triggerHooks } from "../core/hook-registry.js";
 import { EXEC_MAX_BUFFER_BYTES, OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
+import { decodeShellBuffer } from "../core/encoding.js";
 
 // ---------------------------------------------------------------------------
 // Subagent / task delegation factory
@@ -267,12 +268,15 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 		const child: any = spawn(shell, shellArgs, {
 			cwd: config.workspaceDir,
 		});
-		let stdout = "";
-		let stderr = "";
-		child.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-		child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+		// 累积原始 Buffer,close 时一次性解码(UTF-8 优先,Windows 原生命令回退 GBK)。
+		const stdoutChunks: Buffer[] = [];
+		const stderrChunks: Buffer[] = [];
+		child.stdout.on("data", (d: Buffer) => { stdoutChunks.push(d); });
+		child.stderr.on("data", (d: Buffer) => { stderrChunks.push(d); });
 
 		child.on("close", (code: number) => {
+			const stdout = decodeShellBuffer(Buffer.concat(stdoutChunks));
+			const stderr = decodeShellBuffer(Buffer.concat(stderrChunks));
 			let result = "";
 			if (stdout) result += stdout;
 			if (stderr) result += (result ? "\n" : "") + "[stderr] " + stderr;

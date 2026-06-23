@@ -79,9 +79,9 @@ export interface ResolvedAnchor {
  * exist as rows are kept (they may exist later; the scope guard just returns
  * an empty subtree for them).
  *
- * Special case: zero (no projectId) relies on memory + free anchors only.
- * If wikiAnchors explicitly lists WIKI_GLOBAL_ROOT_ID, the caller gets the
- * whole tree.
+ * Special case: zero / global sessions (no projectId) get the GLOBAL ROOT as
+ * an auto scope anchor (inject:"off") so their read scope == write scope ==
+ * the whole tree. Free anchors can still extend or narrow specific subtrees.
  */
 export function resolveAnchors(opts: {
 	wiki: WikiStore;
@@ -117,6 +117,20 @@ export function resolveAnchors(opts: {
 			inject: "system", // project anchor default channel
 			kind: "project",
 			depth: DEFAULT_PROJECT_ANCHOR_DEPTH,
+		});
+	} else {
+		// v0.8 (读写同界 / pure anchor model): a session with NO project anchor
+		// (zero / global sessions) gets the GLOBAL ROOT as its scope anchor so
+		// its read scope == write scope == the whole tree. inject:"off" → it
+		// counts toward the scope-guard anchor set but is NOT rendered into the
+		// prompt (the whole tree would be absurd to inject). This preserves the
+		// legacy "zero viewRoot = global root" read behavior and extends it to
+		// writes, matching the design "拥有所配置 anchor 节点以下的所有权限".
+		out.push({
+			nodeId: WIKI_GLOBAL_ROOT_ID,
+			inject: "off",
+			kind: "project",
+			depth: 0,
 		});
 	}
 

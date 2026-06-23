@@ -34,6 +34,7 @@ import { TaskRegistry } from "./task-registry.js";
 import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
 import { EXEC_MAX_BUFFER_BYTES, OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
+import { decodeShellBuffer } from "../core/encoding.js";
 
 type LoopFactory = (
 	config: SessionConfig,
@@ -348,7 +349,9 @@ export class SubagentDelegator {
 		const taskId = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 		const isWin = process.platform === "win32";
 		const shell = isWin ? "cmd.exe" : "/bin/bash";
-		const shellArgs = isWin ? ["/c", "chcp 65001 >/dev/null && " + command] : ["-c", command];
+		// 不再用 chcp 65001 强转(/dev/null 在 cmd 无效,且不覆盖所有原生 exe);
+		// 改为拿到原始 Buffer,close 时由 decodeShellBuffer 做 UTF-8/GBK 自动解码。
+		const shellArgs = isWin ? ["/c", command] : ["-c", command];
 		const registry = this.taskRegistry;
 		const parentEmit = (event: StreamEvent) => this.emit(event);
 
@@ -370,12 +373,16 @@ export class SubagentDelegator {
 			triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: msg }).catch(() => {});
 			return taskId;
 		}
-		let stdout = "";
-		let stderr = "";
-		child.stdout.on("data", (d: Buffer) => { stdout += d.toString("utf-8"); });
-		child.stderr.on("data", (d: Buffer) => { stderr += d.toString("utf-8"); });
+		// 累积原始 Buffer chunk,close 时一次性解码 —— 避免多字节字符(UTF-8/GBK)
+		// 被 chunk 边界切断,并在含非法 UTF-8 序列时回退 GBK(Windows 原生命令)。
+		const stdoutChunks: Buffer[] = [];
+		const stderrChunks: Buffer[] = [];
+		child.stdout.on("data", (d: Buffer) => { stdoutChunks.push(d); });
+		child.stderr.on("data", (d: Buffer) => { stderrChunks.push(d); });
 
 		child.on("close", (code: number) => {
+			const stdout = decodeShellBuffer(Buffer.concat(stdoutChunks));
+			const stderr = decodeShellBuffer(Buffer.concat(stderrChunks));
 			let result = "";
 			if (stdout) result += stdout;
 			if (stderr) result += (result ? "\n" : "") + "[stderr] " + stderr;

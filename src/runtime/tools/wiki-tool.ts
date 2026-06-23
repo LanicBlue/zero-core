@@ -1,4 +1,4 @@
-// Wiki action 工具 (v0.8 — 结构操作 / 文档操作 拆分)
+// Wiki action 工具 (v0.8 — 结构操作 / 文档操作 拆分;读写同界 / pure anchor model)
 //
 // # 文件说明书
 //
@@ -15,16 +15,24 @@
 // 「wiki nodeId 或 title 层级 path」。detail 是磁盘纯文本文件,docEdit 用
 // read-modify-write 做精确字符串替换(无 markdown 解析)。
 //
+// ## 权限模型(读写同界 / pure anchor model)
+// 读和写**共用同一道边界** = agent 的 resolved anchor 节点集(ctx.
+// wikiAnchorNodeIds:auto memory + auto project/global + free wikiAnchors)。
+//   - 能读 = 能写:anchor 子树内的节点既可 expand 也可 create/update/delete。
+//   - free wikiAnchors 授予的子树同样可写(不再像旧版只读不写)。
+//   - zero / 全局 session(无 projectId)的 anchor 集含全局根 → 整棵树可读可写。
+//   - 项目 agent 的 anchor 集 = 自己项目子树 + memory + free,看不到也写不到
+//     别项目 / 全局知识(隔离不变)。
+// scope 在 store 层强制(assertNodeInAnchorScope);工具层只负责把 anchor 集
+// 透传给 *InScope 写原语。空 anchor 集 → 拒绝(无 wiki 上下文)。
+//
 // ## 设计依据
 // - schema 必须顶层 z.object(非 discriminatedUnion):LLM 函数调用协议要求
 //   顶层 type:object。见 project-v08-tool-hardening §2。
-// - scope 在 store 层强制(assertNodeInsideProjectScope);全局根只读。
-// - 子代理/无 project 的 session 不能写(create/update/delete/docWrite/docEdit
-//   要求 ctx.projectId)。
 //
 // ## 输入
 // - ctx.wikiStore (ProjectWikiStore 兼容层 → .getWikiStore() 取真 WikiStore)
-// - ctx.projectId / ctx.contextBundle.wikiRootNodeId (scope 根)
+// - ctx.wikiAnchorNodeIds (读写同界的 scope 锚点集)
 //
 // ## 输出
 // - export const wikiTool / wikiActionSchema
@@ -34,13 +42,9 @@ import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 import type { WikiStore } from "../../server/wiki-node-store.js";
 import type { WikiNode } from "../../shared/types.js";
-import {
-	WIKI_GLOBAL_ROOT_ID,
-	projectSubtreeRootId,
-} from "../../server/wiki-node-store.js";
 
 // ---------------------------------------------------------------------------
-// Helpers — wiki store resolution + scope root + node addressing
+// Helpers — wiki store resolution + anchor scope + node addressing
 // ---------------------------------------------------------------------------
 
 function resolveWikiStore(ctx: any): WikiStore | undefined {
@@ -51,11 +55,15 @@ function resolveWikiStore(ctx: any): WikiStore | undefined {
 	return undefined;
 }
 
-function resolveViewRoot(ctx: any): string | undefined {
-	const fromBundle = ctx?.contextBundle?.wikiRootNodeId;
-	if (typeof fromBundle === "string" && fromBundle) return fromBundle;
-	if (ctx?.projectId) return projectSubtreeRootId(ctx.projectId);
-	return WIKI_GLOBAL_ROOT_ID;
+/**
+ * v0.8 (读写同界): the session's resolved wiki anchor node ids — the SINGLE
+ * boundary for both read and write. Falls back to [] when the context didn't
+ * supply anchors (the tool then refuses with a clear error rather than
+ * accidentally reading/writing the whole tree).
+ */
+function resolveAnchorsCtx(ctx: any): string[] {
+	const ids = ctx?.wikiAnchorNodeIds;
+	return Array.isArray(ids) ? ids : [];
 }
 
 /**
@@ -74,28 +82,32 @@ function synthesizePath(parentPath: string | undefined, title: string): string {
 
 /**
  * Resolve a doc-op target to a node, accepting EITHER a nodeId (direct) OR a
- * hierarchical title path like "Parent/Child/Leaf" (walked from the scope root,
- * matching each segment against a child's title). Titles are unique per parent
- * (enforced on create/update) so each segment matches at most one child.
+ * hierarchical title path like "Parent/Child/Leaf" (walked from the anchor
+ * scope, matching each segment against a child's title). Titles are unique per
+ * parent (enforced on create/update) so each segment matches at most one child.
  */
 function resolveNode(
 	target: { nodeId?: string; path?: string },
-	viewRoot: string,
+	anchors: string[],
 	wiki: WikiStore,
 ): WikiNode | undefined {
 	if (target.nodeId) {
-		return wiki.getVisible(viewRoot, target.nodeId);
+		return wiki.getVisibleFromAnchors(anchors, target.nodeId);
 	}
 	if (target.path) {
 		const segments = target.path.split("/").map((s) => s.trim()).filter(Boolean);
-		let cursor: string | undefined = viewRoot;
+		let cursor: string | undefined = undefined;
 		for (const seg of segments) {
-			const children = wiki.listVisibleFromRoot(viewRoot).filter((n) => n.parentId === cursor);
+			const children = wiki.listVisibleFromAnchors(anchors).filter((n) =>
+				// First segment: direct child of any anchor (the scope roots).
+				// Subsequent segments: child of the previously matched node.
+				cursor === undefined ? anchors.includes(n.parentId ?? "") : n.parentId === cursor,
+			);
 			const next = children.find((n) => n.title === seg);
 			if (!next) return undefined;
 			cursor = next.id;
 		}
-		return cursor ? wiki.getVisible(viewRoot, cursor) : undefined;
+		return cursor ? wiki.getVisibleFromAnchors(anchors, cursor) : undefined;
 	}
 	return undefined;
 }
@@ -155,7 +167,7 @@ export const wikiTool = buildTool({
 		"Rules:\n" +
 		"- Identity is nodeId (the primary key). Get nodeIds from expand/search results — this is the reliable way to address a node. Doc ops also accept a title path as a convenience.\n" +
 		"- Title path (doc ops) is HIERARCHICAL and RELATIVE to your scope root, walking child→grandchild by TITLE: 'Knowledge/software-dev 工作流'. The root's own title is NOT part of the path, and a bare leaf name ('software-dev 工作流') only works if that node is a DIRECT child of your scope root. Every segment must match an ancestor along the way — if you don't know the full ancestry, use expand to walk down or search to find the nodeId instead of guessing the path.\n" +
-		"- Scope = your project subtree (or the global root for global sessions). The GLOBAL ROOT is read-only (expand/search only). Writes require a projectId in your session.\n" +
+		"- Scope = your wiki anchors (your project subtree + your memory + any free anchors you were granted; the GLOBAL ROOT for global/zero sessions). Read and write share the SAME boundary: you can create/update/delete/docWrite/docEdit exactly the nodes you can expand. Nodes outside your anchors are invisible and unwritable.\n" +
 		"- To edit a node's body, use docEdit/docWrite — never update (update is metadata-only).",
 	meta: {
 		category: "management",
@@ -166,17 +178,18 @@ export const wikiTool = buildTool({
 	inputSchema: wikiActionSchema,
 	execute: async (input, ctx) => {
 		const wiki = resolveWikiStore(ctx);
-		const viewRoot = resolveViewRoot(ctx);
-		if (!wiki || !viewRoot) return "Error: wiki context not available";
+		const anchors = resolveAnchorsCtx(ctx);
+		if (!wiki) return "Error: wiki context not available";
+		if (anchors.length === 0) return "Error: no wiki anchors in this session (scope is empty)";
 
 		switch (input.action) {
 			// ── STRUCTURE ────────────────────────────────────────────────
 			case "expand": {
 				if (!input.nodeId) return "Error: nodeId required for expand";
-				const node = wiki.getVisible(viewRoot, input.nodeId);
-				if (!node) return `Wiki node not visible from this view: ${input.nodeId}`;
+				const node = wiki.getVisibleFromAnchors(anchors, input.nodeId);
+				if (!node) return `Wiki node not visible from your scope: ${input.nodeId}`;
 				const children = wiki
-					.listVisibleFromRoot(viewRoot)
+					.listVisibleFromAnchors(anchors)
 					.filter((n) => n.parentId === input.nodeId)
 					.map((n) => `${n.id} [${n.type}] ${n.title}`);
 				const childrenLine = children.length
@@ -194,7 +207,7 @@ export const wikiTool = buildTool({
 				if (!input.query) return "Error: query required for search";
 				const q = input.query.toLowerCase();
 				const limit = input.limit ?? 50;
-				const nodes = wiki.listVisibleFromRoot(viewRoot);
+				const nodes = wiki.listVisibleFromAnchors(anchors);
 				const hits = nodes.filter(
 					(n) =>
 						(n.title?.toLowerCase().includes(q) ?? false) ||
@@ -209,31 +222,29 @@ export const wikiTool = buildTool({
 			}
 
 			case "create": {
-				const projectId = ctx?.projectId;
-				if (!projectId) return "Error: projectId not available (create requires project context)";
 				if (!input.parentId) return "Error: parentId required for create";
 				if (!input.title) return "Error: title required for create";
 				// Parent must be visible in scope.
-				const parent = wiki.getVisible(viewRoot, input.parentId);
+				const parent = wiki.getVisibleFromAnchors(anchors, input.parentId);
 				if (!parent) return `Error: parent not in scope: ${input.parentId}`;
 				// Enforce title uniqueness among siblings (keeps title-path addressing unambiguous).
 				const siblings = wiki
-					.listVisibleFromRoot(viewRoot)
+					.listVisibleFromAnchors(anchors)
 					.filter((n) => n.parentId === input.parentId);
 				if (siblings.some((n) => n.title === input.title)) {
 					return `Error: a sibling already has the title "${input.title}" — titles must be unique under the same parent`;
 				}
 				const path = synthesizePath(parent.path, input.title);
 				// type column was dropped; position (path prefix) now carries type.
-				// upsertProjectNode's signature still requires a type — pass the
-				// parent-inherited type so the row is consistent with its path.
+				// Inherit the type from the parent's path prefix so the row is
+				// consistent with its position.
 				const inheritedType: "header" | "intent" | "structure" = parent.path?.startsWith("intent:")
 					? "intent"
 					: parent.path?.startsWith("header:")
 						? "header"
 						: "structure";
 				try {
-					const created = wiki.upsertProjectNode(projectId, {
+					const created = wiki.upsertNodeInScope(anchors, {
 						parentId: input.parentId,
 						type: inheritedType,
 						path,
@@ -249,10 +260,8 @@ export const wikiTool = buildTool({
 			}
 
 			case "update": {
-				const projectId = ctx?.projectId;
-				if (!projectId) return "Error: projectId not available (update requires project context)";
 				if (!input.nodeId) return "Error: nodeId required for update";
-				const node = wiki.getVisible(viewRoot, input.nodeId);
+				const node = wiki.getVisibleFromAnchors(anchors, input.nodeId);
 				if (!node) return `Error: node not in scope: ${input.nodeId}`;
 				const patch: Record<string, unknown> = {};
 				if (input.title !== undefined) patch.title = input.title;
@@ -264,14 +273,14 @@ export const wikiTool = buildTool({
 				// If renaming, enforce sibling title uniqueness.
 				if (patch.title !== undefined && patch.title !== node.title) {
 					const siblings = wiki
-						.listVisibleFromRoot(viewRoot)
+						.listVisibleFromAnchors(anchors)
 						.filter((n) => n.parentId === node.parentId && n.id !== node.id);
 					if (siblings.some((n) => n.title === patch.title)) {
 						return `Error: a sibling already has the title "${patch.title}" — titles must be unique under the same parent`;
 					}
 				}
 				try {
-					const updated = wiki.updateNodeMetadata(projectId, input.nodeId, {
+					const updated = wiki.updateNodeInScope(anchors, input.nodeId, {
 						...patch,
 						lastUpdatedBy: ctx.agentRole ?? "agent",
 					});
@@ -282,13 +291,11 @@ export const wikiTool = buildTool({
 			}
 
 			case "delete": {
-				const projectId = ctx?.projectId;
-				if (!projectId) return "Error: projectId not available (delete requires project context)";
 				if (!input.nodeId) return "Error: nodeId required for delete";
-				const node = wiki.getVisible(viewRoot, input.nodeId);
+				const node = wiki.getVisibleFromAnchors(anchors, input.nodeId);
 				if (!node) return `Error: node not in scope: ${input.nodeId}`;
 				try {
-					wiki.deleteNode(projectId, input.nodeId);
+					wiki.deleteNodeInScope(anchors, input.nodeId);
 					return `Wiki node deleted: ${input.nodeId}`;
 				} catch (err) {
 					return `Delete rejected: ${(err as Error).message}`;
@@ -298,7 +305,7 @@ export const wikiTool = buildTool({
 			// ── DOC (body document) ──────────────────────────────────────
 			case "docRead": {
 				if (!input.nodeId && !input.path) return "Error: nodeId or path required for docRead";
-				const node = resolveNode(input, viewRoot, wiki);
+				const node = resolveNode(input, anchors, wiki);
 				if (!node) return `Error: node not found (${input.nodeId ?? input.path})`;
 				const body = wiki.readNodeDetail(node.id);
 				if (body === undefined) return `(node "${node.title}" has no body document yet — use docWrite to create one)`;
@@ -306,14 +313,12 @@ export const wikiTool = buildTool({
 			}
 
 			case "docWrite": {
-				const projectId = ctx?.projectId;
-				if (!projectId) return "Error: projectId not available (docWrite requires project context)";
 				if (!input.nodeId && !input.path) return "Error: nodeId or path required for docWrite";
 				if (input.content === undefined) return "Error: content required for docWrite";
-				const node = resolveNode(input, viewRoot, wiki);
+				const node = resolveNode(input, anchors, wiki);
 				if (!node) return `Error: node not found (${input.nodeId ?? input.path})`;
 				try {
-					wiki.writeNodeDetail(node.id, input.content);
+					wiki.writeNodeDetailInScope(anchors, node.id, input.content);
 					return `Document written: ${node.id} | ${node.title}`;
 				} catch (err) {
 					return `docWrite rejected: ${(err as Error).message}`;
@@ -321,13 +326,11 @@ export const wikiTool = buildTool({
 			}
 
 			case "docEdit": {
-				const projectId = ctx?.projectId;
-				if (!projectId) return "Error: projectId not available (docEdit requires project context)";
 				if (!input.nodeId && !input.path) return "Error: nodeId or path required for docEdit";
 				if (input.oldString === undefined || input.newString === undefined) {
 					return "Error: oldString and newString required for docEdit";
 				}
-				const node = resolveNode(input, viewRoot, wiki);
+				const node = resolveNode(input, anchors, wiki);
 				if (!node) return `Error: node not found (${input.nodeId ?? input.path})`;
 				const body = wiki.readNodeDetail(node.id) ?? "";
 				const { oldString, newString } = input;
@@ -346,7 +349,7 @@ export const wikiTool = buildTool({
 					next = body.replace(oldString, newString);
 				}
 				try {
-					wiki.writeNodeDetail(node.id, next);
+					wiki.writeNodeDetailInScope(anchors, node.id, next);
 					return `Document edited: ${node.id} | ${node.title} (${input.replaceAll ? count : 1} replacement${input.replaceAll && count !== 1 ? "s" : ""})`;
 				} catch (err) {
 					return `docEdit rejected: ${(err as Error).message}`;

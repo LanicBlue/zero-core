@@ -381,6 +381,14 @@ export interface ToolExecutionContext {
 	pmService?: any;                    // PmService
 	taskStepStore?: any;                // TaskStepStore
 	projectId?: string;                 // Current project ID
+	/**
+	 * v0.8 (读写同界 / pure anchor model): this session's resolved wiki anchor
+	 * node ids (auto memory + auto project/global + free wikiAnchors). The Wiki
+	 * tool uses this set as BOTH its read scope and write scope — what you can
+	 * see is what you can edit. Zero/global sessions (no projectId) include
+	 * WIKI_GLOBAL_ROOT_ID here → whole tree read+write. See wiki-anchor-injection.
+	 */
+	wikiAnchorNodeIds?: string[];
 	agentRole?: string;                 // Current agent role (analyst | lead | developer | reviewer | qa)
 	projectPath?: string;               // Project root directory path
 	activeRequirementId?: string;       // Current requirement ID for orchestration
