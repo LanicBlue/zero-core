@@ -791,6 +791,20 @@ export class AgentService {
 	 *
 	 * Legacy (no turnGroup): each turn is one UI message, ID uses `seq`.
 	 */
+	/**
+	 * Normalize tool-call blocks' `args` to a JSON STRING. The renderer's
+	 * ToolBlock treats `block.args` as a string (JSON.parse(block.args)) and the
+	 * ToolCallBlock type declares `args?: string`. But the DB stores args as a
+	 * raw OBJECT (turn-recorder.addToolStart stores e.input verbatim, and the
+	 * stringify/parse round-trip preserves the object shape) — so on session
+	 * restore, JSON.parse(object) throws and the UI silently drops the call
+	 * arguments (only the result shows). The live path avoids this because
+	 * AppLayout stringifies args before addToolCall. This restores parity.
+	 */
+	private normalizeBlockArgs(blocks: any[]): any[] {
+		return normalizeBlockArgsForUi(blocks);
+	}
+
 	private buildSessionInitMessages(agentId: string, sessionId: string, loop: AgentLoop): any[] {
 		// Read from runtime, NOT from DB — runtime is the single source of truth for UI.
 		const turns = loop.getSessionTurns();
@@ -879,6 +893,8 @@ export class AgentService {
 					allBlocks.push(...recorderBlocks);
 				}
 
+				this.normalizeBlockArgs(allBlocks);
+
 				const text = allBlocks
 					.filter((b: any) => b.type === "text")
 					.map((b: any) => b.text || "")
@@ -902,7 +918,8 @@ export class AgentService {
 			const lastGroupSteps = lastGroup !== undefined ? groups.get(lastGroup) : undefined;
 			const lastIsUser = !lastGroupSteps || lastGroupSteps.every(s => s.role === "user");
 			if (lastIsUser) {
-				const text = recorderBlocks
+				const liveBlocks = this.normalizeBlockArgs(recorderBlocks.map((b: any) => ({ ...b })));
+				const text = liveBlocks
 					.filter((b: any) => b.type === "text")
 					.map((b: any) => b.text || "")
 					.join("");
@@ -910,7 +927,7 @@ export class AgentService {
 					id: "a-streaming",
 					role: "assistant",
 					text,
-					blocks: recorderBlocks,
+					blocks: liveBlocks,
 					timestamp: Date.now(),
 					streaming: true,
 				});
@@ -955,6 +972,7 @@ export class AgentService {
 				if (isLastAssistant && recorderBlocks.length > 0) {
 					blocks = recorderBlocks;
 				}
+				this.normalizeBlockArgs(blocks);
 				const text = blocks
 					.filter((b: any) => b.type === "text")
 					.map((b: any) => b.text || "")
@@ -1068,4 +1086,29 @@ export class AgentService {
 }
 export function createAgentService(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore, registry?: ToolRegistry, mcp?: MCPManager): AgentService {
 	return new AgentService(workspaceDir, sessionDb, kb, registry, mcp);
+}
+
+/**
+ * Normalize tool-call blocks' `args` to a JSON STRING (mutates + returns).
+ *
+ * Contract gap this closes: the renderer's ToolBlock treats `block.args` as a
+ * STRING and does `JSON.parse(block.args)`, and `ToolCallBlock.args?: string`.
+ * But the DB stores args as a raw OBJECT (turn-recorder.addToolStart stores
+ * e.input verbatim; the JSON.stringify/parse round-trip preserves object
+ * shape). So on session restore JSON.parse(object) throws → the UI silently
+ * drops the call arguments (only the result shows). The live path avoids this
+ * because AppLayout stringifies args in the tool_start handler. This restores
+ * parity for the restore path. Exported so the contract is unit-testable.
+ */
+export function normalizeBlockArgsForUi(blocks: any[]): any[] {
+	for (const b of blocks) {
+		if (b && b.type === "tool" && b.args !== undefined && typeof b.args !== "string") {
+			try {
+				b.args = JSON.stringify(b.args);
+			} catch {
+				b.args = String(b.args);
+			}
+		}
+	}
+	return blocks;
 }
