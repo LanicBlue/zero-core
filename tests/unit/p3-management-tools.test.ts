@@ -229,9 +229,28 @@ describe("AgentRegistry action tool", () => {
 
 	test("listTemplates + getTemplate", async () => {
 		const list = parse(await execAgent({ action: "listTemplates" }, ctx()));
-		expect(list.find((p: any) => p.roleTag === "lead")).toBeTruthy();
+		const lead = list.find((p: any) => p.roleTag === "lead");
+		expect(lead).toBeTruthy();
+		// listTemplates returns a COMPACT summary — no systemPrompt dump.
+		expect(lead).not.toHaveProperty("systemPrompt");
+		expect(lead).not.toHaveProperty("toolPolicy");
+		// getTemplate returns the full record (with systemPrompt).
 		const one = parse(await execAgent({ action: "getTemplate", templateId: "lead" }, ctx()));
 		expect(one.roleTag).toBe("lead");
+		expect(one.systemPrompt).toBeTruthy();
+	});
+
+	test("missing required fields return clear errors (not cryptic DB errors)", async () => {
+		// create without name
+		expect(String(await execAgent({ action: "create" }, ctx()))).toMatch(/create requires `name`/);
+		// update without id
+		expect(String(await execAgent({ action: "update", name: "X" }, ctx()))).toMatch(/update requires `id`/);
+		// delete without id
+		expect(String(await execAgent({ action: "delete" }, ctx()))).toMatch(/delete requires `id`/);
+		// get without id
+		expect(String(await execAgent({ action: "get" }, ctx()))).toMatch(/get requires `id`/);
+		// getTemplate without templateId
+		expect(String(await execAgent({ action: "getTemplate" }, ctx()))).toMatch(/getTemplate requires `templateId`/);
 	});
 });
 

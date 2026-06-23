@@ -64,6 +64,28 @@ function summaryOf(a: any): any {
 	};
 }
 
+/**
+ * Compact role-template summary for listTemplates. The full template (incl. the
+ * multi-KB systemPrompt + toolPolicy) is only useful via getTemplate.
+ */
+function templateSummaryOf(t: any): any {
+	return {
+		id: t.id,
+		roleTag: t.roleTag,
+		displayName: t.displayName,
+		description: t.description,
+		tools: t.toolPolicy?.tools ? Object.keys(t.toolPolicy.tools) : [],
+		subagents: t.whitelistedRoleTags ?? [],
+	};
+}
+
+/** Throw a clear, actionable error for a missing required field. */
+function requireField(value: unknown, field: string, action: string): void {
+	if (value === undefined || value === null || value === "") {
+		throw new Error(`${action} requires \`${field}\``);
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Reusable shapes
 // ---------------------------------------------------------------------------
@@ -144,7 +166,7 @@ export const agentTool = buildTool({
 		"- { action:'delete', id } — delete. The 'zero' management agent is protected and cannot be deleted.\n" +
 		"- { action:'get', id } — read one.\n" +
 		"- { action:'list', roleTag? } — list, optionally filtered by roleTag.\n" +
-		"- { action:'listTemplates', roleTag? } — list available role templates (presets).\n" +
+		"- { action:'listTemplates', roleTag? } — list available role templates (presets). Returns compact summaries (roleTag/displayName/description/tools/subagents); use getTemplate for the full systemPrompt.\n" +
 		"- { action:'getTemplate', templateId } — read one template.",
 	meta: {
 		category: "management",
@@ -158,6 +180,7 @@ export const agentTool = buildTool({
 			const svc = mgmt(ctx);
 			switch (input.action) {
 				case "create": {
+					requireField(input.name, "name", "create");
 					const created = input.template
 						? svc.instantiateTemplate(
 							input.template,
@@ -176,6 +199,7 @@ export const agentTool = buildTool({
 					return summaryOf(created);
 				}
 				case "update": {
+					requireField(input.id, "id", "update");
 					const patch: any = {};
 					if (input.name !== undefined) patch.name = input.name;
 					if (input.systemPrompt !== undefined) patch.systemPrompt = input.systemPrompt;
@@ -189,9 +213,11 @@ export const agentTool = buildTool({
 					return summaryOf(svc.updateAgent(input.id, patch));
 				}
 				case "delete":
+					requireField(input.id, "id", "delete");
 					svc.deleteAgent(input.id);
 					return { success: true };
 				case "get":
+					requireField(input.id, "id", "get");
 					return svc.getAgent(input.id) ?? { error: `Agent not found: ${input.id}` };
 				case "list": {
 					// List returns a COMPACT summary (full systemPrompt/toolPolicy
@@ -199,9 +225,12 @@ export const agentTool = buildTool({
 					const agents = svc.listAgents(input.roleTag);
 					return agents.map(summaryOf);
 				}
-				case "listTemplates":
-					return svc.listTemplates(input.roleTag);
+				case "listTemplates": {
+					// Compact summary — full systemPrompt/toolPolicy via getTemplate.
+					return svc.listTemplates(input.roleTag).map(templateSummaryOf);
+				}
 				case "getTemplate":
+					requireField(input.templateId, "templateId", "getTemplate");
 					return svc.getTemplate(input.templateId) ?? { error: `Template not found: ${input.templateId}` };
 			}
 		}),
