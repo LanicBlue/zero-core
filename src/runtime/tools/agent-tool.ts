@@ -177,8 +177,22 @@ export const agentTool = buildTool({
 					return { success: true };
 				case "get":
 					return svc.getAgent(input.id) ?? { error: `Agent not found: ${input.id}` };
-				case "list":
-					return svc.listAgents(input.roleTag);
+				case "list": {
+					// List returns a COMPACT summary (full systemPrompt/toolPolicy
+					// would flood the result). Use `get` for full detail.
+					const agents = svc.listAgents(input.roleTag);
+					return agents.map((a: any) => ({
+						id: a.id,
+						name: a.name,
+						model: a.model ?? null,
+						provider: a.provider ?? null,
+						workspaceDir: a.workspaceDir ?? null,
+						thinkingLevel: a.thinkingLevel ?? null,
+						subagents: a.subagents?.length ?? 0,
+						wikiAnchors: a.wikiAnchors?.length ?? 0,
+						updatedAt: a.updatedAt ?? null,
+					}));
+				}
 				case "listTemplates":
 					return svc.listTemplates(input.roleTag);
 				case "getTemplate":
