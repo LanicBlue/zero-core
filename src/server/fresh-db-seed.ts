@@ -269,6 +269,9 @@ export function ensureWikiSkeleton(wikiStore: WikiStore): void {
 	// Global root detail (the root itself is ensured by the store constructor;
 	// backfill its explanatory doc here so the tree root isn't opaque).
 	ensureNodeDetail(wikiStore, WIKI_GLOBAL_ROOT_ID, GLOBAL_ROOT_DETAIL);
+	// One-time disk-layout migration: move body files from the legacy flat
+	// layout to the tree-mirror layout. Idempotent (no-op once migrated).
+	wikiStore.migrateWikiDiskLayout();
 }
 
 export function ensureKnowledgeRoot(wikiStore: WikiStore): void {

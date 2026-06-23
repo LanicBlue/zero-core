@@ -34,7 +34,6 @@ import {
 	WikiStore,
 	WIKI_GLOBAL_ROOT_ID,
 	projectSubtreeRootId,
-	deriveContentFilePath,
 	isInsideWikiDisk,
 } from "../../src/server/wiki-node-store.js";
 import { WikiScanCursorStore } from "../../src/server/wiki-scan-cursor-store.js";
@@ -150,7 +149,7 @@ describe("WikiStore: global memory tree structure", () => {
 		// path (inside WIKI_DISK_ROOT). It MUST NOT equal any external
 		// caller-supplied path like "src/foo.ts".
 		expect(node.docPointer).toBeDefined();
-		const expectedDerived = deriveContentFilePath(node);
+		const expectedDerived = wikiStore.diskPathFor(node.id).detailFile;
 		expect(node.docPointer).toBe(expectedDerived);
 		expect(isInsideWikiDisk(node.docPointer)).toBe(true);
 		expect(node.docPointer).not.toBe("src/foo.ts");

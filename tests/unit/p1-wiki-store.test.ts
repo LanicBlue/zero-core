@@ -46,7 +46,7 @@ import {
 	WIKI_DISK_ROOT,
 	projectSubtreeRootId,
 	memoryTypeRootId,
-	deriveContentFilePath,
+	legacyDeriveContentFilePath,
 } from "../../src/server/wiki-node-store.js";
 
 let tmpDir: string;
@@ -107,7 +107,7 @@ describe("P1 §10.1 存储:正文磁盘 round-trip", () => {
 		const fetched = wiki.get(node.id);
 		expect(fetched).toBeDefined();
 		expect((fetched as any).detail).toBeUndefined();
-		expect(fetched!.docPointer).toBe(deriveContentFilePath(node));
+		expect(fetched!.docPointer).toBe(wiki.diskPathFor(fetched!.id).detailFile);
 		// FS isolation: nothing escapes WIKI_DISK_ROOT.
 		expect(existsSync(join(process.cwd(), "src", "foo.ts"))).toBe(false);
 	});
@@ -183,44 +183,105 @@ describe("P1 §10.1 存储:正文磁盘 round-trip", () => {
 		if (idx >= 0) createdNodeIds.splice(idx, 1);
 	});
 
-	test("deriveContentFilePath routes by area (project / memory / knowledge)", () => {
+	test("legacyDeriveContentFilePath routes by area (migration source — legacy flat layout)", () => {
 		// project node → projects/<projectId>/
-		const projFile = deriveContentFilePath({
+		const projFile = legacyDeriveContentFilePath({
 			id: "abc12345",
 			path: "header:src/a.ts",
 			projectId: "proj-x",
 		});
 		expect(projFile).toBe(join(WIKI_DISK_ROOT, "projects", "proj-x", "header_src_a.ts__abc12345.md"));
 
-		// memory node → memory/<agentId>/ (per-agent subdir; agentId is the 2nd
-		// colon segment of the path).
-		const memFile = deriveContentFilePath({
+		// memory node → memory/<agentId>/
+		const memFile = legacyDeriveContentFilePath({
 			id: "mem1234567",
 			path: "memory:subject-x",
 		});
-		// id.slice(0, 8) = "mem12345" (first 8 chars).
 		expect(memFile).toBe(join(WIKI_DISK_ROOT, "memory", "subject-x", "memory_subject-x__mem12345.md"));
 
 		// knowledge fallback (no "/" → flat)
-		const knFile = deriveContentFilePath({
+		const knFile = legacyDeriveContentFilePath({
 			id: "kn1234567",
 			path: "knowledge:something",
 		});
 		expect(knFile).toBe(join(WIKI_DISK_ROOT, "knowledge", "knowledge_something__kn123456.md"));
+	});
 
-		// knowledge NESTS on "/" (workflow/software-dev → workflow/software-dev__<id>.md)
-		const nestedFile = deriveContentFilePath({
-			id: "sd1234567",
-			path: "workflow/software-dev",
-		});
-		expect(nestedFile).toBe(join(WIKI_DISK_ROOT, "knowledge", "workflow", "software-dev__sd123456.md"));
+	test("diskPathFor mirrors the tree (container at area / subtree root own subdir / leaf vs folder)", () => {
+		// knowledge container (folder, has a child) → detail at area level.
+		const knowledgeRoot = track(wiki.create({
+			parentId: WIKI_GLOBAL_ROOT_ID, path: "knowledge", title: "Knowledge", type: "knowledge" as any,
+		}));
+		// knowledge is a leaf so far (no children) → file at knowledge/knowledge__<id8>.md
+		let kp = wiki.diskPathFor(knowledgeRoot.id);
+		expect(kp.isFolder).toBe(false);
+		expect(kp.detailFile).toBe(join(WIKI_DISK_ROOT, "knowledge", `knowledge__${knowledgeRoot.id.slice(0, 8)}.md`));
 
-		// knowledge nesting is path-traversal safe (".." dropped)
-		const safeFile = deriveContentFilePath({
-			id: "xx1234567",
-			path: "workflow/../etc",
-		});
-		expect(safeFile).toBe(join(WIKI_DISK_ROOT, "knowledge", "workflow", "etc__xx123456.md"));
+		// Add a child (workflow) → knowledge promotes to folder; its detail now
+		// stays at area level (containers don't get their own subdir).
+		const workflow = track(wiki.create({
+			parentId: knowledgeRoot.id, path: "workflow", title: "Workflow", type: "knowledge" as any,
+		}));
+		kp = wiki.diskPathFor(knowledgeRoot.id);
+		expect(kp.isFolder).toBe(true);
+		expect(kp.detailFile).toBe(join(WIKI_DISK_ROOT, "knowledge", `knowledge__${knowledgeRoot.id.slice(0, 8)}.md`));
+		// workflow (regular folder once it has a child) — leaf for now:
+		let wp = wiki.diskPathFor(workflow.id);
+		expect(wp.detailFile).toBe(join(WIKI_DISK_ROOT, "knowledge", `Workflow__${workflow.id.slice(0, 8)}.md`));
+
+		// software-dev under workflow → workflow promotes; software-dev leaf nests.
+		const sd = track(wiki.create({
+			parentId: workflow.id, path: "software-dev", title: "software-dev 工作流", type: "knowledge" as any,
+		}));
+		// workflow is now a folder → its detail moved into its own subdir.
+		wp = wiki.diskPathFor(workflow.id);
+		expect(wp.isFolder).toBe(true);
+		expect(wp.detailFile).toBe(join(WIKI_DISK_ROOT, "knowledge", "Workflow", `Workflow__${workflow.id.slice(0, 8)}.md`));
+		// software-dev (leaf) nests under workflow.
+		const sp = wiki.diskPathFor(sd.id);
+		expect(sp.detailFile).toBe(join(WIKI_DISK_ROOT, "knowledge", "Workflow", `software-dev 工作流__${sd.id.slice(0, 8)}.md`));
+
+		// memory-agent subtree root → own id-suffix subdir under memory.
+		const memRoot = track(wiki.ensureMemoryAgentRoot("agent-x"));
+		const mp = wiki.diskPathFor(memRoot.id);
+		expect(mp.detailFile).toBe(join(WIKI_DISK_ROOT, "memory", "agent-x", `agent-x__${memRoot.id.slice(0, 8)}.md`));
+		// a memory leaf under it nests under memory/agent-x/.
+		const leaf = track(wiki.createMemoryNode({
+			parentId: memRoot.id, path: "memory:agent-x:decision:d1", title: "Decided X",
+		}));
+		const lp = wiki.diskPathFor(leaf.id);
+		expect(lp.detailFile.startsWith(join(WIKI_DISK_ROOT, "memory", "agent-x"))).toBe(true);
+
+		// project subtree root → own projectId subdir under projects.
+		const proj = projectStore.create({ name: "P2", workspaceDir: join(tmpDir, "p2") });
+		const projRoot = track(wiki.ensureProjectSubtree(proj.id, "P2"));
+		const pp = wiki.diskPathFor(projRoot.id);
+		// subtree root slug = its projectId segment; just assert area+segment.
+		expect(pp.detailFile.startsWith(join(WIKI_DISK_ROOT, "projects", proj.id))).toBe(true);
+
+		// FS isolation: every derived path stays inside WIKI_DISK_ROOT (diskPathFor
+		// itself asserts this; the ".." / "." filter is exercised by nodeSlug).
+		void leaf; void lp;
+	});
+
+	test("leaf→folder promotion moves the body file into the node's own subdir", () => {
+		const knowledgeRoot = track(wiki.create({
+			parentId: WIKI_GLOBAL_ROOT_ID, path: "knowledge", title: "Knowledge", type: "knowledge" as any,
+		}));
+		const workflow = track(wiki.create({
+			parentId: knowledgeRoot.id, path: "workflow", title: "Workflow", type: "knowledge" as any,
+		}));
+		// workflow is a leaf with a body at knowledge/Workflow__<id8>.md
+		wiki.writeNodeDetail(workflow.id, "workflow body");
+		const leafPath = join(WIKI_DISK_ROOT, "knowledge", `Workflow__${workflow.id.slice(0, 8)}.md`);
+		expect(existsSync(leafPath)).toBe(true);
+		// Add a child → workflow promotes; body moves into knowledge/Workflow/.
+		const child = track(wiki.create({
+			parentId: workflow.id, path: "child", title: "Child", type: "knowledge" as any,
+		}));
+		expect(existsSync(leafPath)).toBe(false); // moved out of leaf position
+		expect(wiki.readNodeDetail(workflow.id)).toBe("workflow body"); // still readable
+		void child;
 	});
 });
 

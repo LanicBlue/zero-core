@@ -39,7 +39,7 @@ import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { WikiNode, WikiNodeTypeGlobal } from "../shared/types.js";
 import { join, resolve, normalize, isAbsolute } from "node:path";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, renameSync } from "node:fs";
 import { ZERO_CORE_DIR } from "../core/config.js";
 
 // ---------------------------------------------------------------------------
@@ -201,26 +201,40 @@ function sanitizeSeg(s: string): string {
 	return s.replace(/[:/\\]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
-export function deriveContentFilePath(input: {
+/** Short id suffix used in body filenames (first 8 chars of the node id). */
+function id8(id: string): string {
+	return id.length >= 8 ? id.slice(0, 8) : id;
+}
+
+/**
+ * Disk slug for a regular (non-synthetic) node: sanitized title, Chinese
+ * preserved, "." / ".." dropped (path-traversal guard), fallback to id8 when
+ * empty. Synthetic roots use id/type-derived segments (see diskPathFor).
+ */
+function nodeSlug(node: { id: string; title?: string }): string {
+	const s = sanitizeSeg(node.title ?? "");
+	if (s && s !== "." && s !== "..") return s;
+	return id8(node.id);
+}
+
+/**
+ * @deprecated Legacy flat path derivation (pre tree-mirror layout). Kept ONLY
+ * for the one-time migrateWikiDiskLayout to locate old body files. New code
+ * uses WikiStore.diskPathFor (ancestor-walk, folder=dir / leaf=file).
+ */
+export function legacyDeriveContentFilePath(input: {
 	id: string;
 	path?: string;
 	projectId?: string;
 }): string {
 	const pathStr = input.path ?? input.id;
-	const tail = input.id.length >= 8 ? input.id.slice(0, 8) : input.id;
-	// Area + name-shape per category. Knowledge is the only area that NESTS on
-	// "/" in the path (so a knowledge doc with path "workflow/software-dev"
-	// lands at knowledge/workflow/software-dev__<id>.md). Project + memory keep
-	// FLAT names (project file-anchored paths contain "/" from the workspace
-	// file path and must not nest; memory is already bucketed per-agent by area).
-	// "." / ".." segments are dropped so a malformed path can't escape the area.
+	const tail = id8(input.id);
 	let area: string;
-	let nameRel: string; // path under <area>, ending in __<tail>.md
+	let nameRel: string;
 	if (input.projectId) {
 		area = join("projects", input.projectId);
 		nameRel = `${sanitizeSeg(pathStr) || "node"}__${tail}.md`;
 	} else if (input.path && input.path.startsWith("memory")) {
-		// Per-agent subdir: agentId is the 2nd colon segment of the path.
 		area = join("memory", sanitizeSeg(input.path.split(":")[1] ?? "") || "_shared");
 		nameRel = `${sanitizeSeg(pathStr) || "node"}__${tail}.md`;
 	} else {
@@ -410,6 +424,14 @@ export class WikiStore {
 	}
 
 	create(input: Omit<WikiNode, "id" | "createdAt" | "updatedAt">): WikiNode {
+		// v0.8 (tree-mirror layout): if this node is the first child of its
+		// parent, promote the parent from leaf (file) to folder (directory)
+		// position BEFORE inserting — so the parent's existing body file moves
+		// out of the way before this child's directory is created.
+		if (input.parentId) {
+			const willBeFirstChild = this.getChildren(input.parentId).length === 0;
+			if (willBeFirstChild) this.promoteLeafToFolder(input.parentId);
+		}
 		// v0.8 (P1 §10.1): `detail` is not a DB column anymore — peel it off
 		// and write to disk after the row exists (so docPointer can be set).
 		const { detail, ...rowInput } = input as Omit<WikiNode, "id" | "createdAt" | "updatedAt"> & { detail?: string };
@@ -429,7 +451,28 @@ export class WikiStore {
 		// v0.8 (P1 §10.1): `detail` is peeled off and routed to disk; the
 		// remaining fields (title/summary/path/provenance/...) update the row.
 		const { detail, ...rowPatch } = input as Partial<WikiNode> & { detail?: string };
+		// diskPathFor depends on title (nodeSlug) + parentId (ancestor chain).
+		// A rename or reparent relocates the body file — compute the OLD path
+		// before the row change so we can move the body to its NEW path after.
+		let oldDetailFile: string | undefined;
+		try { oldDetailFile = this.diskPathFor(id).detailFile; } catch { /* node may not exist yet */ }
 		const updated = rowToWikiNode(this.store.update(id, rowPatch as any))!;
+		// If the disk path changed (title/parentId), relocate the existing body.
+		if (oldDetailFile) {
+			let newDetailFile: string | undefined;
+			try { newDetailFile = this.diskPathFor(id).detailFile; } catch { /* ignore */ }
+			if (newDetailFile && newDetailFile !== oldDetailFile) {
+				try {
+					if (existsSync(oldDetailFile)) {
+						mkdirSync(join(newDetailFile, ".."), { recursive: true });
+						renameSync(oldDetailFile, newDetailFile);
+						if (updated.docPointer !== newDetailFile) {
+							this.store.update(id, { docPointer: newDetailFile } as any);
+						}
+					}
+				} catch { /* best-effort; writeNodeDetail below can re-create */ }
+			}
+		}
 		if (detail !== undefined) {
 			// Empty/blank detail deletes the body file; non-empty writes it.
 			if (detail.trim().length === 0) {
@@ -498,6 +541,178 @@ export class WikiStore {
 		return this.store.list().filter((n) => n.parentId === parentId).map(rowToWikiNode);
 	}
 
+	// ─── Disk path derivation (tree-mirror layout) ───────────────────
+	//
+	// Disk mirrors the tree. A node's BODY FILE location:
+	//   - container root (knowledge/projects/memory, child of global): detail at
+	//     <area>/<path>__<id8>.md (the area IS its position — no own subdir).
+	//   - synthetic subtree root (wiki-root:<projectId> / wiki-root:memory-agent:<id>
+	//     / wiki-root:memory:<type>): determines the area (projects/memory) AND
+	//     contributes its own id-suffix subdir; detail inside it:
+	//     <area>/<seg>/<seg>__<id8>.md.
+	//   - regular node: <area>/<ancestor-segs>/<slug>__<id8>.md (leaf) or
+	//     <area>/<ancestor-segs>/<slug>/<slug>__<id8>.md (folder — detail inside
+	//     its own subdir, alongside children).
+	// Segments filter "." / ".." (path-traversal guard); result validated via
+	// isInsideWikiDisk.
+
+	private isContainerRoot(node: WikiNode): boolean {
+		return (
+			node.parentId === WIKI_GLOBAL_ROOT_ID &&
+			(node.path === "knowledge" || node.path === "projects" || node.path === "memory")
+		);
+	}
+	private isSubtreeRoot(node: WikiNode): boolean {
+		return node.id.startsWith("wiki-root:") && node.id !== WIKI_GLOBAL_ROOT_ID;
+	}
+	private subtreeArea(node: WikiNode): "projects" | "memory" {
+		return node.id.startsWith("wiki-root:memory") ? "memory" : "projects";
+	}
+	private subtreeSeg(node: WikiNode): string {
+		if (node.id.startsWith("wiki-root:memory-agent:")) return node.id.slice("wiki-root:memory-agent:".length);
+		if (node.id.startsWith("wiki-root:memory:")) return node.id.slice("wiki-root:memory:".length);
+		return node.id.slice("wiki-root:".length); // project subtree root → projectId
+	}
+
+	/**
+	 * Resolve the area + intermediate ancestor segments for a regular (non-area-
+	 * root) node. Walks parents up to the area boundary (container root or
+	 * subtree root or global), collecting a dir segment per intermediate ancestor.
+	 */
+	private resolveAreaAndSegs(node: WikiNode): { area: string; segs: string[] } {
+		const segs: string[] = [];
+		const visited = new Set<string>([node.id]);
+		let cur = node.parentId ? this.get(node.parentId) : undefined;
+		let area = "knowledge"; // fallback for orphans hanging off global directly
+		while (cur && !visited.has(cur.id)) {
+			visited.add(cur.id);
+			if (cur.id === WIKI_GLOBAL_ROOT_ID) break;
+			if (this.isContainerRoot(cur)) {
+				area = cur.path!;
+				break;
+			}
+			if (this.isSubtreeRoot(cur)) {
+				area = this.subtreeArea(cur);
+				segs.unshift(this.subtreeSeg(cur));
+				break;
+			}
+			const seg = nodeSlug(cur);
+			if (seg && seg !== "." && seg !== "..") segs.unshift(seg);
+			cur = cur.parentId ? this.get(cur.parentId) : undefined;
+		}
+		return { area, segs };
+	}
+
+	/**
+	 * Canonical disk path for a node's BODY FILE, mirroring the tree. Folder
+	 * nodes (regular, with children) keep their detail inside their own subdir;
+	 * containers keep it at the area level; subtree roots inside their own
+	 * id-suffix subdir. Cycle-guarded + FS-isolation-validated.
+	 */
+	diskPathFor(nodeId: string): { detailFile: string; isFolder: boolean } {
+		const node = this.get(nodeId);
+		if (!node) throw new Error(`diskPathFor: node not found: ${nodeId}`);
+		const tail = id8(node.id);
+		const isFolder = this.getChildren(nodeId).length > 0;
+
+		let detailFile: string;
+		if (node.id === WIKI_GLOBAL_ROOT_ID) {
+			// global root: top-level file under WIKI_DISK_ROOT (rarely has a body)
+			detailFile = join(WIKI_DISK_ROOT, `global-root__${tail}.md`);
+		} else if (this.isContainerRoot(node)) {
+			// container → detail at area level (no own subdir)
+			detailFile = join(WIKI_DISK_ROOT, node.path!, `${node.path}__${tail}.md`);
+		} else if (this.isSubtreeRoot(node)) {
+			// subtree root → own id-suffix subdir (holds memory leaves / project nodes)
+			const area = this.subtreeArea(node);
+			const seg = this.subtreeSeg(node);
+			detailFile = join(WIKI_DISK_ROOT, area, seg, `${seg}__${tail}.md`);
+		} else {
+			// regular node → walk ancestors for area + intermediate segs
+			const { area, segs } = this.resolveAreaAndSegs(node);
+			const slug = nodeSlug(node);
+			const chainDir = join(WIKI_DISK_ROOT, area, ...segs);
+			detailFile = isFolder
+				? join(chainDir, slug, `${slug}__${tail}.md`)
+				: join(chainDir, `${slug}__${tail}.md`);
+		}
+		if (!isInsideWikiDisk(detailFile)) {
+			throw new Error(
+				`diskPathFor: derived body path escapes WIKI_DISK_ROOT (FS isolation): ${detailFile}`,
+			);
+		}
+		return { detailFile, isFolder };
+	}
+
+	/**
+	 * Promote a regular node from leaf (file) to folder (directory) position
+	 * when it gains its first child: move its body file from
+	 * <chainDir>/<slug>__<id8>.md into <chainDir>/<slug>/<slug>__<id8>.md.
+	 * No-op for container/subtree roots (their layout doesn't change with
+	 * children) and for nodes with no body file to move.
+	 */
+	private promoteLeafToFolder(nodeId: string): void {
+		const node = this.get(nodeId);
+		if (!node) return;
+		if (this.isContainerRoot(node) || this.isSubtreeRoot(node)) return; // layout-independent
+		const { area, segs } = this.resolveAreaAndSegs(node);
+		const slug = nodeSlug(node);
+		const tail = id8(node.id);
+		const chainDir = join(WIKI_DISK_ROOT, area, ...segs);
+		const leafFile = join(chainDir, `${slug}__${tail}.md`);
+		try {
+			if (!existsSync(leafFile)) return;
+		} catch {
+			return;
+		}
+		const folderDir = join(chainDir, slug);
+		try {
+			mkdirSync(folderDir, { recursive: true });
+			renameSync(leafFile, join(folderDir, `${slug}__${tail}.md`));
+		} catch {
+			// best-effort; writeNodeDetail will re-derive if needed
+		}
+	}
+
+	/**
+	 * One-time migration: move body files from the legacy flat layout
+	 * (legacyDeriveContentFilePath) to the tree-mirror layout (diskPathFor).
+	 * Idempotent — skips nodes whose old file is already absent. Called from
+	 * ensureWikiSkeleton on startup.
+	 */
+	migrateWikiDiskLayout(): { moved: number; skipped: number } {
+		let moved = 0;
+		let skipped = 0;
+		for (const node of this.list()) {
+			if (node.id === WIKI_GLOBAL_ROOT_ID) continue;
+			const oldFile = legacyDeriveContentFilePath(node);
+			let nextFile: string;
+			try {
+				nextFile = this.diskPathFor(node.id).detailFile;
+			} catch {
+				continue;
+			}
+			if (oldFile === nextFile) continue;
+			let oldExists = false;
+			try { oldExists = existsSync(oldFile); } catch { /* ignore */ }
+			if (!oldExists) {
+				skipped++;
+				continue;
+			}
+			try {
+				mkdirSync(join(nextFile, ".."), { recursive: true });
+				renameSync(oldFile, nextFile);
+				if (node.docPointer !== nextFile) {
+					this.store.update(node.id, { docPointer: nextFile } as any);
+				}
+				moved++;
+			} catch {
+				// best-effort; leave at old location
+			}
+		}
+		return { moved, skipped };
+	}
+
 	// ─── Disk body content (v0.8 P1 §10.1) ──────────────────────────
 
 	/**
@@ -506,8 +721,8 @@ export class WikiStore {
 	 * yet written). This is the canonical "expand a node" path — list/get do
 	 * NOT populate `detail`; callers that need the body call here.
 	 *
-	 * v0.8 (P1 §10.1, hardened): the body file path is ALWAYS the derived
-	 * path from `deriveContentFilePath(node)`. `docPointer` is a code-internal
+	 * v0.8 (tree-mirror layout): the body file path is ALWAYS the derived
+	 * path from `diskPathFor(nodeId)`. `docPointer` is a code-internal
 	 * cache that the store stamps itself; we never trust a caller-set or
 	 * legacy-row `docPointer` value here, because such values can escape
 	 * WIKI_DISK_ROOT (FS isolation §10.1). If `docPointer` is set AND inside
@@ -517,7 +732,7 @@ export class WikiStore {
 	readNodeDetail(nodeId: string): string | undefined {
 		const node = this.get(nodeId);
 		if (!node) return undefined;
-		const file = deriveContentFilePath(node);
+		const file = this.diskPathFor(nodeId).detailFile;
 		try {
 			if (!existsSync(file)) return undefined;
 			return readFileSync(file, "utf-8");
@@ -545,8 +760,8 @@ export class WikiStore {
 		if (!node) {
 			throw new Error(`writeNodeDetail: node not found: ${nodeId}`);
 		}
-		const file = deriveContentFilePath(node);
-		// Defensive: never let a future change to deriveContentFilePath produce
+		const file = this.diskPathFor(nodeId).detailFile;
+		// Defensive: never let a future change to diskPathFor produce
 		// an out-of-root path silently.
 		if (!isInsideWikiDisk(file)) {
 			throw new Error(
@@ -570,7 +785,7 @@ export class WikiStore {
 		if (!node) return;
 		// v0.8 (P1 §10.1, hardened): always delete the derived path; never
 		// trust node.docPointer (it may be a stale escaping value).
-		const file = deriveContentFilePath(node);
+		const file = this.diskPathFor(nodeId).detailFile;
 		try {
 			if (existsSync(file)) rmSync(file, { force: true });
 		} catch {
@@ -801,7 +1016,7 @@ export class WikiStore {
 
 		// v0.8 (P1 §10.1, hardened): `docPointer` is NOT accepted on input.
 		// It is a code-internal cache of the node's body content file path
-		// (always derived by deriveContentFilePath + stamped by
+		// (always derived by diskPathFor + stamped by
 		// writeNodeDetail). External/caller-supplied paths — including
 		// workspace-relative paths like "src/foo.ts" — must NOT be able to set
 		// it, otherwise writeNodeDetail could be coerced into writing outside

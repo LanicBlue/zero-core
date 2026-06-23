@@ -259,6 +259,10 @@ describe("P1 migration — legacy DB upgrade path (detail → disk)", () => {
 		const sessionDB = new SessionDB(dbPath);
 		runMigrations(sessionDB);
 		const wiki = new WikiStore(sessionDB);
+		// runMigrations writes bodies to the LEGACY flat layout; the tree-mirror
+		// disk layout migration (run by ensureWikiSkeleton on startup) moves them
+		// to diskPathFor locations so readNodeDetail finds them.
+		wiki.migrateWikiDiskLayout();
 
 		// readNodeDetail finds the migrated body.
 		const body = wiki.readNodeDetail("rb-1");
