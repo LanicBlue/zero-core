@@ -33,6 +33,67 @@ interface Props {
 	className?: string;
 }
 
+/**
+ * Box-drawing + box-element characters (U+2500–U+257F): ─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼
+ * ╭ ╮ ╰ ╯ … These only align in a MONOSPACE font. When the model emits a tree /
+ * ASCII-art diagram as plain text (not in a code fence), Markdown renders it as a
+ * normal paragraph in the proportional body font → the connectors and spaces
+ * don't share column widths → the tree renders jagged/misaligned. detectAsciiArt
+ * wraps such runs in a `text` code fence so CodeBlock renders them in <pre>
+ * (monospace, whitespace preserved).
+ */
+const BOX_DRAWING = /[─-╿]/;
+const FENCE_OPEN = /^\s*(`{3,}|~{3,})/;
+
+/**
+ * Wrap runs of box-drawing lines in a `text` code fence. Fence-aware: lines
+ * already inside a ``` / ~~~ block pass through untouched (so we never nest
+ * fences). Captures the single preceding non-blank line as the tree's root
+ * label (e.g. "wiki-root:global") so it stays with its children.
+ */
+function wrapAsciiArt(md: string): string {
+	const lines = md.split("\n");
+	const out: string[] = [];
+	let inFence = false;
+	let i = 0;
+	while (i < lines.length) {
+		const line = lines[i];
+		if (FENCE_OPEN.test(line)) {
+			inFence = !inFence;
+			out.push(line);
+			i++;
+			continue;
+		}
+		if (inFence) {
+			out.push(line);
+			i++;
+			continue;
+		}
+		if (BOX_DRAWING.test(line)) {
+			const block: string[] = [];
+			// Pull the preceding root label into the block so it isn't stranded
+			// as a separate paragraph above the fenced tree.
+			if (out.length > 0) {
+				const prev = out[out.length - 1];
+				if (prev && prev.trim() !== "" && prev.length <= 80 && !/[.。!?！？]$/.test(prev.trim())) {
+					block.push(out.pop()!);
+				}
+			}
+			while (i < lines.length && BOX_DRAWING.test(lines[i])) {
+				block.push(lines[i]);
+				i++;
+			}
+			out.push("```text");
+			out.push(...block);
+			out.push("```");
+		} else {
+			out.push(line);
+			i++;
+		}
+	}
+	return out.join("\n");
+}
+
 export default function MarkdownRenderer({ content, streaming, className }: Props) {
 	// remark-breaks turns single newlines into <br> so author-intended line
 	// breaks survive rendering. Without it, Markdown treats a single \n as a
@@ -42,7 +103,8 @@ export default function MarkdownRenderer({ content, streaming, className }: Prop
 	// regardless). Applies uniformly to chat messages, tool results, and the
 	// doc viewer.
 	const cleaned = useMemo(() => {
-		return content.replace(/\n{3,}/g, "\n\n").trim();
+		const collapsed = content.replace(/\n{3,}/g, "\n\n").trim();
+		return wrapAsciiArt(collapsed);
 	}, [content]);
 
 	const components = useMemo(() => ({
