@@ -54,6 +54,7 @@ import {
 	SOFTWARE_DEV_NODE_PATH_SEED,
 } from "../../src/server/wiki-node-store.js";
 import { ManagementService } from "../../src/server/management-service.js";
+import { TemplateStore } from "../../src/server/template-store.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { seedFreshDbDefaults } from "../../src/server/fresh-db-seed.js";
 
@@ -73,7 +74,7 @@ beforeEach(() => {
 	projectStore = new ProjectStore(sessionDB);
 	cronStore = new CronStore(sessionDB);
 	wikiStore = new WikiStore(sessionDB);
-	management = new ManagementService({ agentStore, projectStore, cronStore, wikiStore });
+	management = new ManagementService({ agentStore, projectStore, cronStore, wikiStore, templateStore: new TemplateStore(sessionDB) });
 });
 
 afterEach(() => {

@@ -175,15 +175,6 @@ export interface WindowApi {
 	templatesGithubPreview: (url: string, subdir?: string) => Promise<{ items: any[]; sourceUrl: string; cached?: boolean } | { error: string }>;
 	templatesImportGithub: (url: string, selectedPaths: string[]) => Promise<{ imported: number; updated: number; total: number } | { error: string }>;
 
-	// ── Role Templates (v0.8 P6 — RFC §7.2) ──
-	// Role identity templates (systemPrompt + toolPolicy), distinct from the
-	// DB-backed PromptTemplate CRUD above. Used by zero to enumerate / one-
-	// click-instantiate role agents. Returned shapes are the role template /
-	// agent records as-is (no separate summary type yet).
-	roleTemplatesList: (roleTag?: string) => Promise<unknown[]>;
-	roleTemplatesGet: (id: string) => Promise<unknown | undefined>;
-	roleTemplatesInstantiate: (id: string, input?: { name?: string; model?: string; provider?: string; workspaceDir?: string; bindToolPolicy?: boolean }) => Promise<AgentRecord | { error: string }>;
-
 	// ── Device Context ──
 	deviceContextGet: () => Promise<{ content: string }>;
 	deviceContextGenerate: () => Promise<{ content: string; error?: string }>;

@@ -34,6 +34,7 @@ import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { CronStore } from "../../src/server/cron-store.js";
 import { ManagementService } from "../../src/server/management-service.js";
+import { TemplateStore } from "../../src/server/template-store.js";
 import { WikiStore } from "../../src/server/wiki-node-store.js";
 import { ProjectWikiStore } from "../../src/server/project-wiki-store.js";
 import { RequirementStore } from "../../src/server/requirement-store.js";
@@ -84,7 +85,7 @@ beforeEach(() => {
 	wikiStore = new ProjectWikiStore(wikiStoreGlobal);
 	requirementStore = new RequirementStore(sessionDB);
 	toolUsageStore = new ToolUsageStore(sessionDB);
-	management = new ManagementService({ agentStore, projectStore, cronStore });
+	management = new ManagementService({ agentStore, projectStore, cronStore, templateStore: new TemplateStore(sessionDB) });
 });
 
 afterEach(() => {
@@ -158,18 +159,14 @@ describe("AgentRegistry action tool", () => {
 	});
 
 	test("create with template = pure instantiation (other params ignored, name from template)", async () => {
-		// Template path requires callee role agents for whitelisted tags — seed a few.
-		for (const [name, tag] of [["A1", "analyzer"], ["P1", "planner"], ["D1", "developer"], ["R1", "reviewer"], ["Q1", "qa"]] as const) {
-			const a = management.createAgent({ name } as any);
-			seedAgentWithRoleTag(sessionDB, a.id, tag);
-		}
-		// Pass template + a stray `name`/`model` — they must be IGNORED; the
-		// agent's name comes from the template's displayName.
+		// 用一条能力画廊模板(按 name 查到其 uuid id)。Pass template + stray
+		// name/model —— 它们必须被忽略;agent 名取自模板名。
+		const coder = management.listTemplates().find((t) => t.name === "Coder")!;
 		const r = parse(await execAgent(
-			{ action: "create", template: "lead", name: "IGNORED", model: "IGNORED" },
+			{ action: "create", template: coder.id, name: "IGNORED", model: "IGNORED" },
 			ctx(),
 		));
-		expect(r.name).toBe("Lead (交付)");
+		expect(r.name).toBe("Coder");
 		expect(r.model).not.toBe("IGNORED");
 		// create returns a compact summary; verify copied identity via get.
 		expect(r).not.toHaveProperty("systemPrompt");
@@ -229,16 +226,17 @@ describe("AgentRegistry action tool", () => {
 		expect(r.map((x: any) => x.id)).toContain(a.id);
 	});
 
-	test("listTemplates + getTemplate", async () => {
+	test("listTemplates + getTemplate (capability gallery)", async () => {
 		const list = parse(await execAgent({ action: "listTemplates" }, ctx()));
-		const lead = list.find((p: any) => p.roleTag === "lead");
-		expect(lead).toBeTruthy();
+		// 能力画廊:按 name 找一条(模板用 uuid id,非固定)。
+		const coder = list.find((p: any) => p.name === "Coder");
+		expect(coder).toBeTruthy();
 		// listTemplates returns a COMPACT summary — no systemPrompt dump.
-		expect(lead).not.toHaveProperty("systemPrompt");
-		expect(lead).not.toHaveProperty("toolPolicy");
+		expect(coder).not.toHaveProperty("systemPrompt");
+		expect(coder).not.toHaveProperty("toolPolicy");
 		// getTemplate returns the full record (with systemPrompt).
-		const one = parse(await execAgent({ action: "getTemplate", templateId: "lead" }, ctx()));
-		expect(one.roleTag).toBe("lead");
+		const one = parse(await execAgent({ action: "getTemplate", templateId: coder.id }, ctx()));
+		expect(one.id).toBe(coder.id);
 		expect(one.systemPrompt).toBeTruthy();
 	});
 

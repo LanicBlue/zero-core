@@ -171,6 +171,19 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 		return record;
 	}
 
+	/**
+	 * Create a record with a **caller-supplied id** (instead of an auto-generated
+	 * uuid). Used by TemplateStore to seed built-in templates with stable ids so
+	 * they can be referenced deterministically (e.g. `instantiateTemplate("zero")`).
+	 * Callers must ensure the id is unique within the table.
+	 */
+	createWithId(id: string, input: Omit<T, "id" | "createdAt" | "updatedAt">): T {
+		const now = new Date().toISOString();
+		const record = { ...input, id, createdAt: now, updatedAt: now } as unknown as T;
+		this.insertRow(record);
+		return record;
+	}
+
 	update(id: string, input: Partial<Omit<T, "id" | "createdAt">>): T {
 		const existing = this.get(id);
 		if (!existing) throw new Error(`${this.table} record not found: ${id}`);

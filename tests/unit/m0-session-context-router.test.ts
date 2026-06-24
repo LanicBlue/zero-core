@@ -32,7 +32,7 @@ import {
 	defaultWikiRootResolver,
 } from "../../src/server/session-context-router.js";
 import { ManagementService } from "../../src/server/management-service.js";
-import { ROLE_PRESETS, getPreset, listPresets, buildAgentFromPreset } from "../../src/runtime/role-templates.js";
+import { TemplateStore } from "../../src/server/template-store.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 // v0.8 P0 (§1.4 过渡期): roleTag 不再走 store round-trip;测试需要带 role_tag
 // 的 agent 时直接写物理列。
@@ -42,6 +42,7 @@ let tmpDir: string;
 let sessionDB: SessionDB;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
+let templateStore: TemplateStore;
 let management: ManagementService;
 
 beforeEach(() => {
@@ -50,7 +51,8 @@ beforeEach(() => {
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);
-	management = new ManagementService({ agentStore, projectStore });
+	templateStore = new TemplateStore(sessionDB);
+	management = new ManagementService({ agentStore, projectStore, templateStore });
 });
 
 afterEach(() => {
@@ -176,63 +178,41 @@ describe("resolveSessionByRoleProject", () => {
 	});
 });
 
-// ─── Role presets ───────────────────────────────────────────
+// ─── Templates (能力模板) vs Roles (工作流角色) ──────────────
 
-describe("role presets", () => {
-	test("all expected coding-scenario presets exist", () => {
-		const ids = ROLE_PRESETS.map((p) => p.roleTag);
-		expect(new Set(ids)).toEqual(new Set([
-			"lead", "pm", "archivist", "analyzer", "planner", "developer", "reviewer", "qa", "zero",
-		]));
-	});
-
-	test("analyzer has multiple lenses", () => {
-		const analyzers = listPresets("analyzer");
-		expect(analyzers.length).toBeGreaterThanOrEqual(4);
-		expect(analyzers.map((a) => a.id)).toContain("analyzer-architecture");
-	});
-
-	test("planner has multiple domains", () => {
-		const planners = listPresets("planner");
-		expect(planners.length).toBeGreaterThanOrEqual(4);
-	});
-
-	test("lead whitelists planner/dev/review/qa", () => {
-		const lead = getPreset("lead");
-		expect(lead?.whitelistedRoleTags).toEqual(
-			expect.arrayContaining(["planner", "developer", "reviewer", "qa"]),
-		);
-	});
-
-	test("PM whitelists analyzer", () => {
-		const pm = getPreset("pm");
-		expect(pm?.whitelistedRoleTags).toEqual(["analyzer"]);
-	});
-
-	test("archivist whitelists analyzer", () => {
-		const archivist = getPreset("archivist");
-		expect(archivist?.whitelistedRoleTags).toEqual(["analyzer"]);
-	});
-
-	test("buildAgentFromPreset produces AgentRecord-shaped input (no roleTag — RFC §1.4)", () => {
-		// v0.8 P6 (RFC §1.4): agent identity = name + systemPrompt; the template's
-		// roleTag is organization metadata and is NOT propagated onto the built
-		// agent. The deprecated `buildAgentFromPreset` alias forwards to
-		// `buildAgentFromTemplate` which omits roleTag.
-		const input = buildAgentFromPreset("pm", { name: "MyPM" });
-		expect(input.name).toBe("MyPM");
-		expect((input as any).roleTag).toBeUndefined();
-		expect(input.systemPrompt).toContain("PM");
-		expect(input.toolPolicy).toBeDefined();
-	});
-
-	test("presets carry M0 degradation notes for incomplete-mechanism roles", () => {
-		// PM/lead/archivist/zero have downstream M dependencies; their presets
-		// should honestly flag the M0 degradation.
-		for (const id of ["lead", "pm", "archivist", "zero"]) {
-			const preset = getPreset(id);
-			expect(preset?.m0DegradedNote, `${id} should have m0DegradedNote`).toBeTruthy();
+describe("capability templates (gallery) — no workflow roles mixed in", () => {
+	test("gallery holds the 16 capability templates (general + domain experts)", () => {
+		const names = new Set(templateStore.list().map((t) => t.name));
+		// 通用能力(12)
+		for (const n of ["Coder", "Writer", "Translator", "Reviewer", "Analyst", "Tutor",
+			"Creative", "Researcher", "Collector", "DevOps", "Product Manager", "Architect"]) {
+			expect(names.has(n), `${n} should be in gallery`).toBe(true);
 		}
+		// 领域专家(4,由 analyzer/qa 重构)
+		for (const n of ["Security Expert", "UI/UX Expert", "Performance Expert", "QA Engineer"]) {
+			expect(names.has(n), `${n} should be in gallery`).toBe(true);
+		}
+		expect(templateStore.list().length).toBe(16);
+	});
+
+	test("workflow roles are NOT in the gallery (templates unrelated to roles)", () => {
+		const names = new Set(templateStore.list().map((t) => t.name));
+		// zero/lead/archivist 是工作流角色,退出画廊;developer/reviewer/pm/qa 已由
+		// 同名能力等价物覆盖,不再作为独立 role 出现。
+		for (const n of ["Zero (管理)", "Lead (交付)", "Archivist (知识)", "Developer", "Reviewer (workflow)"]) {
+			expect(names.has(n), `${n} should NOT be in gallery`).toBe(false);
+		}
+	});
+
+	test("built-in capability templates are idempotent across repeated TemplateStore construction", () => {
+		const beforeCount = templateStore.list().length;
+		const store2 = new TemplateStore(sessionDB);
+		expect(store2.list().length).toBe(beforeCount);
+	});
+
+	test("domain-expert capability templates carry toolPolicy.autoApprove", () => {
+		const sec = templateStore.list().find((t) => t.name === "Security Expert");
+		expect(sec?.toolPolicy?.autoApprove).toContain("Read");
 	});
 });
 
@@ -258,46 +238,28 @@ describe("ManagementService", () => {
 		expect(updated?.toolPolicy?.tools?.Read?.enabled).toBe(true);
 	});
 
-	test("instantiateTemplate wires whitelisted callee roles into subagents (by agentId)", () => {
-		// v0.8 §11.5: agent-as-tool retired — instantiateTemplate now resolves
-		// whitelistedRoleTags into AgentRecord.subagents (keyed by agentId),
-		// NOT toolPolicy.tools[entryId]. Seed callee role agents.
-		const created: Record<string, string> = {};
-		for (const [name, tag] of [
-			["Analyzer-A", "analyzer"],
-			["Planner-A", "planner"],
-			["Dev-A", "developer"],
-			["Reviewer-A", "reviewer"],
-			["QA-A", "qa"],
-		] as const) {
-			const a = management.createAgent({ name } as any);
-			seedAgentWithRoleTag(sessionDB, a.id, tag);
-			created[tag] = a.id;
-		}
+	test("instantiateRole seeds the platform role (zero) — general, no workflow specifics", () => {
+		// v0.8 ADR-020:代码只留平台级角色(zero)。software-dev 工作流角色
+		// (lead/archivist/...)是工作流知识,在 wiki playbook 里,不在代码;
+		// instantiateRole 只认平台角色。
+		const zero = management.instantiateRole("zero", { name: "MyZero" });
 
-		const lead = management.instantiateTemplate("lead", { name: "MyLead" });
+		expect(zero.name).toBe("MyZero");
+		expect(zero.systemPrompt).toContain("zero");
+		// zero 是通用平台管家,不硬编码 software-dev 工作流细节。
+		expect(zero.systemPrompt).toMatch(/general workflow/i);
+		expect(zero.toolPolicy?.tools?.AgentRegistry?.enabled).toBe(true);
+		expect(zero.subagents ?? []).toEqual([]);
+	});
 
-		// subagents should include at least one entry per whitelisted roleTag
-		// that had a matching agent. The lead template whitelists several callee
-		// roleTags; verify each resolves to the seeded agent id.
-		const subagentIds = new Set((lead.subagents ?? []).map((s) => s.agentId));
-		const whitelistedTags = ["analyzer", "planner", "developer", "reviewer", "qa"];
-		let matched = 0;
-		for (const tag of whitelistedTags) {
-			const id = created[tag];
-			if (id && subagentIds.has(id)) matched++;
-		}
-		expect(matched, "at least one whitelisted roleTag should resolve to a subagent").toBeGreaterThanOrEqual(1);
+	test("instantiateRole throws on a software-dev role id (those live in wiki, not code)", () => {
+		// lead/archivist 是 software-dev 工作流角色,代码里没有。
+		expect(() => management.instantiateRole("lead")).toThrow(/Unknown workflow role/);
+		expect(() => management.instantiateRole("archivist")).toThrow(/Unknown workflow role/);
+	});
 
-		// toolPolicy.tools should NOT contain agent-tool entry keys (built-in
-		// tools only — agent-tool path is retired).
-		const tools = lead.toolPolicy?.tools ?? {};
-		const BUILTIN = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);
-		for (const key of Object.keys(tools)) {
-			// Every tools key should be a built-in tool name; legacy agent-tool
-			// entry ids are gone.
-			expect(BUILTIN.has(key) || key.startsWith("__"), `unexpected tools key ${key}`).toBe(true);
-		}
+	test("instantiateTemplate (capability gallery) throws on a role id (roles are not templates)", () => {
+		expect(() => management.instantiateTemplate("zero")).toThrow(/Unknown template/);
 	});
 
 	// v0.8 §11.5: exposeAgentAsTool / cascade-agent-tool-entries tests removed

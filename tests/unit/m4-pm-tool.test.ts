@@ -48,7 +48,6 @@ import { runMigrations } from "../../src/server/db-migration.js";
 import { WikiStore } from "../../src/server/wiki-node-store.js";
 import { createRequirementWithDocTool } from "../../src/runtime/tools/requirement-tools.js";
 import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
-import { getPreset } from "../../src/runtime/role-templates.js";
 // v0.8 P0 (§1.4 过渡期): roleTag 不再走 store round-trip;PM agent 物理列直接 seed。
 import { seedAgentWithRoleTag } from "./helpers/p0-test-helpers.js";
 
@@ -206,49 +205,6 @@ describe("CreateRequirementWithDoc tool (defect 1 — PM creates requirement + d
 		);
 		expect(out).toMatch(/Requirement created:/);
 		expect(requirementStore.listByProject(PROJECT_ID).length).toBe(1);
-	});
-});
-
-// ─── PM role preset allowlist ─────────────────────────────────
-
-describe("PM role preset (defect 1 — tool allowlist)", () => {
-	test("PM preset enables CreateRequirementWithDoc and whitelists analyzer", () => {
-		const preset = getPreset("pm")!;
-		expect(preset.toolPolicy.tools?.CreateRequirementWithDoc).toEqual({ enabled: true });
-		// PM stays read-only to the filesystem (no Write/Edit).
-		expect(preset.toolPolicy.tools?.Write).toBeUndefined();
-		expect(preset.toolPolicy.tools?.Edit).toBeUndefined();
-		// Analyzer agent-tool edge still declared (PM may call analyzer).
-		expect(preset.whitelistedRoleTags).toContain("analyzer");
-	});
-
-	test("PM preset enables the unified Wiki tool (read archivist wiki, no writes)", () => {
-		// v0.8 P7: the four retired tools (ExpandNode / ListWikiTree / ReadDoc /
-		// UpdateWikiNode) merged into a single action-switched `Wiki` tool. PM
-		// gets it enabled (read + search; upsert is unused since PM is read-only,
-		// and the store-layer scope guard rejects writes outside PM's own subtree).
-		const preset = getPreset("pm")!;
-		expect(preset.toolPolicy.tools?.Wiki).toEqual({ enabled: true });
-		// The four retired tool names must NOT appear anywhere in the preset.
-		expect(preset.toolPolicy.tools?.ExpandNode).toBeUndefined();
-		expect(preset.toolPolicy.tools?.ListWikiTree).toBeUndefined();
-		expect(preset.toolPolicy.tools?.ReadDoc).toBeUndefined();
-		expect(preset.toolPolicy.tools?.UpdateWikiNode).toBeUndefined();
-	});
-
-	test("PM system prompt covers requirement creation + coverage judgement + discovery ownership (v0.8 P6 / §12)", () => {
-		// v0.8 P6 (RFC §12 三层原则): system prompt 携带身份 + 工作方式,
-		// 不携带具体工具名(任务规则/输出格式在工具里)。原断言要求 prompt 提到
-		// `CreateRequirementWithDoc` 字面工具名 —— 与 §12 冲突,改为断言语义
-		// (创建需求记录 + 写 repo doc + 覆盖判断 + 巡检自主)。
-		const preset = getPreset("pm")!;
-		// 创建需求记录 + 写 repo doc (具体工具名不在 prompt 里)。
-		expect(preset.systemPrompt).toMatch(/create a requirement record/i);
-		expect(preset.systemPrompt).toMatch(/requirement doc/i);
-		// 覆盖判断 (§4.5)。
-		expect(preset.systemPrompt).toMatch(/coverage/i);
-		// 巡检是 PM 自己的职责 (不是 cron 直调 service)。
-		expect(preset.systemPrompt).toMatch(/YOUR responsibility/i);
 	});
 });
 

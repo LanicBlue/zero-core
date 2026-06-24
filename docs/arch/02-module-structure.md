@@ -169,7 +169,7 @@ runtime/hooks/
 - `agent-store.ts`（114）— agents 表
 - `agent-tool-store.ts` — agent_tools 表
 - `provider-store.ts`（186）— providers 表（含 SYSTEM_PROVIDERS 模板）
-- `template-store.ts` — templates 表
+- `template-store.ts` — templates 表(v0.8 模板/角色分离:能力模板画廊,16 条 = 12 通用 + 4 领域专家;工作流角色在 `builtin-role-templates.ts` 独立,不进画廊)
 - `mcp-store.ts` — mcp_servers 表
 - `kb-store.ts` — kb_entries 表
 - `persona-store.ts` — personas（与 agents 共表）
@@ -183,7 +183,7 @@ runtime/hooks/
 
 ```
 server/index.ts 注入主要 HTTP 表面：
-  基础配置：/api/config, /api/providers, /api/templates, /api/role-templates
+  基础配置：/api/config, /api/providers, /api/templates
   Agent/会话：/api/agents, /api/chat, /api/sessions
   工具/执行：/api/mcp, /api/tool-executions, /api/skills, /api/memory-nodes
   文件/日志/知识库：/api/files, /api/logs, /api/kb, /api/wiki, /api/project-wiki

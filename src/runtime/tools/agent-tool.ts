@@ -65,17 +65,17 @@ function summaryOf(a: any): any {
 }
 
 /**
- * Compact role-template summary for listTemplates. The full template (incl. the
+ * Compact template summary for listTemplates. The full template (incl. the
  * multi-KB systemPrompt + toolPolicy) is only useful via getTemplate.
  */
 function templateSummaryOf(t: any): any {
 	return {
 		id: t.id,
-		roleTag: t.roleTag,
-		displayName: t.displayName,
+		name: t.name,
 		description: t.description,
+		tags: t.tags ?? [],
 		tools: t.toolPolicy?.tools ? Object.keys(t.toolPolicy.tools) : [],
-		subagents: t.whitelistedRoleTags ?? [],
+		isBuiltIn: t.isBuiltIn ?? false,
 	};
 }
 
@@ -140,9 +140,9 @@ export const agentActionSchema = z.object({
 	// create
 	name: z.string().optional(),
 	/**
-	 * Optional role template id (e.g. "lead"/"pm"/"archivist"). On `create`,
-	 * copies identity (systemPrompt/model/toolPolicy) from the template —
-	 * replaces the retired InstantiatePreset tool.
+	 * Optional template id (e.g. "zero"/"lead"/"pm"). On `create`, copies
+	 * identity (systemPrompt/model/toolPolicy) from the template — replaces the
+	 * retired InstantiatePreset tool. Use `listTemplates` to discover ids.
 	 */
 	template: z.string().optional(),
 	systemPrompt: z.string().optional(),
@@ -153,8 +153,6 @@ export const agentActionSchema = z.object({
 	wikiAnchors: wikiAnchorsShape.optional(),
 	// update/delete/get
 	id: z.string().optional(),
-	// list / listTemplates filter
-	roleTag: z.string().optional(),
 	// getTemplate
 	templateId: z.string().optional(),
 });
@@ -172,12 +170,12 @@ export const agentTool = buildTool({
 		"(Note: 'AgentRegistry' manages role-agent records. The separate 'Agent' tool delegates a task to a sub-agent — different capability.)\n\n" +
 		"Actions:\n" +
 		"- { action:'create', name, systemPrompt?, model?, provider?, toolPolicy?, subagents?, wikiAnchors? } — create a global agent from scratch. `name` is required.\n" +
-		"- { action:'create', template } — instantiate a role template (e.g. 'lead'/'pm'/'archivist') PURELY: identity (name from the template/systemPrompt/model/toolPolicy) all come from the template; any other params are IGNORED. Customize afterward via `update`.\n" +
+		"- { action:'create', template } — instantiate a template (e.g. 'zero'/'lead'/'pm') PURELY: identity (name from the template/systemPrompt/model/toolPolicy) all come from the template; any other params are IGNORED. Customize afterward via `update`. Discover template ids via `listTemplates`.\n" +
 		"- { action:'update', id, name?/systemPrompt?/model?/toolPolicy?/subagents?/wikiAnchors? } — single mutation surface. toolPolicy is MERGED (toggle one tool without wiping the rest: {toolPolicy:{tools:{WebSearch:{enabled:false}}}} only disables WebSearch); subagents/wikiAnchors are replaced wholesale. create/update/list return a compact summary — use `get` for full detail.\n" +
 		"- { action:'delete', id } — delete. The 'zero' management agent is protected and cannot be deleted.\n" +
 		"- { action:'get', id } — read one (full record).\n" +
-		"- { action:'list' } — list all agents (compact summary). No role filter — v0.8 agents carry no roleTag.\n" +
-		"- { action:'listTemplates', roleTag? } — list available role templates. Returns compact summaries (roleTag/displayName/description/tools/subagents); use getTemplate for the full systemPrompt.\n" +
+		"- { action:'list' } — list all agents (compact summary).\n" +
+		"- { action:'listTemplates' } — list ALL templates (built-in role identities like zero/lead/pm + user-created). Returns the SAME list the UI Templates page shows; compact summaries (id/name/description/tags/tools). Use getTemplate for the full systemPrompt.\n" +
 		"- { action:'getTemplate', templateId } — read one template (full).\n" +
 		"Errors are uniform: any failure (not found, missing required field) returns `\"Error: …\"`.",
 	meta: {
@@ -197,7 +195,7 @@ export const agentTool = buildTool({
 						// model/toolPolicy) all come from the template; any other params
 						// passed alongside are ignored. To customize, create from the
 						// template then `update`.
-						const created = svc.instantiateTemplate(input.template, {}, { bindToolPolicy: true });
+						const created = svc.instantiateTemplate(input.template);
 						return summaryOf(created);
 					}
 					requireField(input.name, "name", "create");
@@ -236,13 +234,13 @@ export const agentTool = buildTool({
 				case "list": {
 					// List returns a COMPACT summary (full systemPrompt/toolPolicy
 					// would flood the result). Use `get` for full detail.
-					// (No roleTag filter — v0.8 agents don't carry roleTag; identity
-					// is name + systemPrompt. Templates still have roleTag → listTemplates.)
 					return svc.listAgents().map(summaryOf);
 				}
 				case "listTemplates": {
 					// Compact summary — full systemPrompt/toolPolicy via getTemplate.
-					return svc.listTemplates(input.roleTag).map(templateSummaryOf);
+					// Returns the SAME templates the UI Templates page shows (single
+					// template concept after the v0.8 模板统一).
+					return svc.listTemplates().map(templateSummaryOf);
 				}
 				case "getTemplate":
 					requireField(input.templateId, "templateId", "getTemplate");

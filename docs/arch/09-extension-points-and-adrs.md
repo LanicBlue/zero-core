@@ -498,9 +498,67 @@ graph TB
 
 ---
 
+### ADR-019 · 模板与工作流角色分离(模板按能力取向)
+
+**Context**:历史上存在两套并行、互不感知的「模板」系统:
+- **role template**(`runtime/role-templates.ts` `ROLE_TEMPLATES`,15 条硬编码 lead/pm/...):带 `toolPolicy` + `whitelistedRoleTags`(委派图),被 `AgentRegistry` 工具 + REST `/api/role-templates` + IPC `role-templates:*` 消费。
+- **prompt template**(`server/template-store.ts`,DB `templates` 表,`PromptTemplate`):12 条内置 + 用户自建/GitHub 导入,被 UI Templates 页面消费(REST `/api/templates` + IPC `templates:*`)。
+
+两者都用作 agent 身份种子,只是入口不同 → `AgentRegistry.listTemplates` 列出的模板与 UI Templates 页面**对不上**。
+
+**Decision 演进**:先尝试「完全合并为一套」(把 role 塞进 PromptTemplate 画廊,27 条),但很快发现违背一条更根本的原则——**模板按能力/知识领域取向,与工作流角色无关**。最终改为**两个概念彻底分离**:
+
+- **能力模板**(PromptTemplate 画廊,TemplateStore):按能力/领域专长取向,用户面向。**16 条** = 12 通用(Coder/Writer/Translator/Reviewer/Analyst/Tutor/Creative/Researcher/Collector/DevOps/Product Manager/Architect)+ 4 领域专家(Security/UI-UX/Performance Expert + QA Engineer,由原 analyzer lens / qa 重构为「懂什么」的领域专家,能分析也能设计,不绑死动作)。UI 画廊 + `AgentRegistry.listTemplates` 共看 → 对齐。
+- **工作流角色注册表**(`server/builtin-role-templates.ts` `BUILTIN_WORKFLOW_ROLES`):交付工作流的位置,**与模板无关,不进画廊**。仅保留 `zero/lead/archivist` 3 个无能力等价物的纯工作流位置。`developer/reviewer/pm/qa` 不再单独定义——工作流里直接用同名能力模板建 agent(Coder/Reviewer/Product Manager/QA Engineer),其工作流专属工具(如 PM 的 CreateRequirementWithDoc)由 zero 在 setup 时配 toolPolicy。
+
+**丢弃**:`whitelistedRoleTags` 委派自动装配(依赖失效的 `role_tag` 物理列,fresh DB 上是 no-op);`analyzer×4`(→ 3 领域专家 + 架构并入通用 Architect);`planner×4`(Feature/Bugfix/Refactor/Research 是工作类型,不是能力/领域,丢弃)。
+
+**入口拆分**:`management.instantiateTemplate(id)`(能力画廊,AgentRegistry `create template=` 用)/ `instantiateRole(id)`(角色注册表,fresh-db seed 的 zero 用)。
+
+**移除的并行通道**:`role-template-router.ts`、IPC `role-templates:list/get/instantiate`、preload `roleTemplatesList/Get/Instantiate`(renderer 从未使用)。
+
+**Alternatives**:
+- 完全合并为一套(27 条):违背「模板与角色无关」,画廊混入工作流角色。
+- 角色也当模板留在画廊:同上,概念混乱。
+
+**Consequences**:
+- ✅ 画廊纯能力取向(16 条),UI 与 LLM 工具天然一致。
+- ✅ 工作流角色与模板解耦,各自演进。
+- ⚠️ 工作流专属工具(如 CreateRequirementWithDoc)不再由 role 模板声明,改由 zero setup 时配 toolPolicy(声明式 → 配置式)。
+- ⚠️ lead 委派对象从 role 名(developer/reviewer/qa)改为能力模板名(Coder/Reviewer/QA Engineer)。
+
+**Code evidence**:`server/builtin-role-templates.ts`(BUILTIN_WORKFLOW_ROLES)、`server/template-store.ts:mergeBuiltInTemplates`(只合并能力 builtin)、`server/management-service.ts:instantiateTemplate/instantiateRole`、`runtime/tools/agent-tool.ts`、`server/fresh-db-seed.ts:instantiateRole("zero")`。
+
+---
+
+### ADR-020 · 工作流知识只在 wiki,代码是通用工作流平台
+
+**Context**:ADR-019 把模板与工作流角色分离后,代码里(`builtin-role-templates.ts`)仍硬编码了 lead/archivist/zero 的**工作流程序性 prompt**——lead 的交付管线(pickup→plan→build→verify)、archivist 的 wiki/git 程序、verify 门、角色清单、subagents 图。这些都是「软件开发」这个**具体工作流**的知识,混在通用平台代码里,违背定位。
+
+**Decision**:**项目代码是通用工作流平台,只提供机制**(agents / tools / cron / wiki 知识树 / Orchestrate / 委派)。具体工作流的**知识**——角色清单、各角色身份与程序、管线、门、合作图——**只在 wiki `knowledge/workflow/` 里**。软件开发是**默认自带的示例工作流**,其知识 seed 进 `knowledge/workflow/software-dev` playbook;要别的工作流照此另写一份 playbook。
+
+- **代码角色注册表只剩 `zero`**(平台管家 / 用户入口,通用基础设施,不属于任何具体工作流)。lead/archivist/pm/developer/... 是 software-dev 工作流的角色,**不在代码**,在 playbook 里。
+- **zero 通过读 wiki 知道怎么搭某个工作流**:用户要搭 software-dev 时,zero 读 `knowledge/workflow/software-dev` playbook,按其中描述的角色身份/程序/图,用 AgentRegistry 建成 agent(systemPrompt 由 zero 基于 playbook 撰写,能力底座优先用能力画廊模板 Coder/Reviewer/QA Engineer/Product Manager)。
+- **SOFTWARE_DEV_PLAYBOOK**(`fresh-db-seed.ts`)是该工作流的**唯一知识源**:已迁入 lead 的四步管线、archivist 的渐进扫描+合并程序、PM 的发现/建需求/覆盖判断、角色清单(含能力底座映射)、subagents 图、cron 建议、两道门、状态机。
+- **机制(非知识)仍在代码**:Orchestrate 引擎、verify/requirement 工具、cron、wiki、委派——这些是任何工作流都用的通用机制。
+
+**Alternatives**:
+- 代码里保留各工作流的角色 prompt:违背「通用平台」定位,每加一个工作流都要改代码。
+- zero 不读 wiki、工作流知识硬编码在 zero prompt:同上,且 zero 无法支持多工作流。
+
+**Consequences**:
+- ✅ 平台通用,新工作流=新 playbook(wiki 内容),不改代码。
+- ✅ 工作流知识单一源(playbook),用户/zero 可在 wiki 里 refine。
+- ⚠️ zero 搭工作流的质量依赖 playbook 写得多详细(以及 zero 的综合能力)——playbook 越完整,zero 建的角色越准。
+- ⚠️ lead/archivist 等不再有代码里的固定 systemPrompt;同一工作流不同安装可能产出略有差异的 agent prompt(zero 综合),失去「逐字一致」的可重现性。
+
+**Code evidence**:`server/builtin-role-templates.ts`(只剩 zero)、`server/fresh-db-seed.ts:SOFTWARE_DEV_PLAYBOOK`(software-dev 工作流唯一知识源)、`server/management-service.ts:instantiateRole`(仅 zero)。
+
+---
+
 ## 3. 总结
 
-- 18 个 ADR，集中在数据驻留、并发控制、扩展点。
+- 20 个 ADR，集中在数据驻留、并发控制、扩展点。
 - 当前建议优先处理：018 (IPC 契约漂移)、011 (mcp-tools 改名)、013 (legacy memory 清理)、008 (legacy KB RAG hook 标注/退役)。ADR-012 已解决。
 - 整个架构遵循"interfaces up, implementations down" 的依赖倒置；`ISessionStore` / `IKVStore` 是教科书级示范。
 - "Hook 提取"是**最大的**架构改进（ADR-005），把 AgentLoop 从膨胀中拯救出来。

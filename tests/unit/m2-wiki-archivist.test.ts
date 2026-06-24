@@ -506,7 +506,7 @@ describe("archivist role preset (decision 39: write guard = tool capability)", (
 		expect(blocked.has("Shell")).toBe(true);
 		// archivist DOES have the wiki tool — its only writable surface
 		// (v0.8 工具分类清理:ExpandNode/ListWikiTree/UpdateWikiNode/ReadDoc
-		// 已统一归入 `Wiki`,见 agent-roles.ts / role-templates.ts)。
+		// 已统一归入 `Wiki`,见 builtin-role-templates.ts)。
 		expect(cfg.toolPolicy.autoApprove).toContain("Wiki");
 	});
 

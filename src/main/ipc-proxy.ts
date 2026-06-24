@@ -113,11 +113,8 @@ const R: Record<string, RouteMapping> = {
 	"templates:export": { method: "POST", path: "/api/templates/:id/export", buildReq: (id) => ({ params: { id } }) },
 	"templates:import": { method: "POST", path: "/api/templates/import", buildReq: (json) => ({ body: { json } }) },
 
-	// Role Templates (v0.8 P6 — RFC §7.2; distinct from the DB TemplateStore
-	// /api/templates above. These are the role identity templates.)
-	"role-templates:list":         { method: "GET", path: "/api/role-templates", buildReq: (roleTag?: string) => ({ query: roleTag ? { roleTag } : undefined }) },
-	"role-templates:get":          { method: "GET", path: "/api/role-templates/:id", buildReq: (id) => ({ params: { id } }) },
-	"role-templates:instantiate":  { method: "POST", path: "/api/role-templates/:id/instantiate", buildReq: (id, input) => ({ params: { id }, body: input ?? {} }) },
+	// v0.8 模板统一:role-templates:* 通道已移除 —— role 身份模板并入
+	// TemplateStore(/api/templates,即上面的 templates:* 通道)。
 
 	// Tools (list + config already in /api/config/tools)
 	"tools:list":       { method: "GET", path: "/api/config/tools", buildReq: () => ({}) },

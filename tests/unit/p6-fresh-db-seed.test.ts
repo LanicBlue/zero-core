@@ -36,9 +36,14 @@ import { ProjectStore } from "../../src/server/project-store.js";
 import { CronStore } from "../../src/server/cron-store.js";
 import { WikiStore, WIKI_GLOBAL_ROOT_ID } from "../../src/server/wiki-node-store.js";
 import { ManagementService } from "../../src/server/management-service.js";
+import { TemplateStore } from "../../src/server/template-store.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { seedFreshDbDefaults, KNOWLEDGE_ROOT_PATH, WORKFLOW_PATH, SOFTWARE_DEV_NODE_PATH } from "../../src/server/fresh-db-seed.js";
-import { getTemplate } from "../../src/runtime/role-templates.js";
+// v0.8 模板/角色分离:zero/lead/archivist 是工作流角色(角色注册表),
+// §12 prompts 在角色注册表里。pm/developer/reviewer/qa 已并入能力画廊,不在此。
+import { BUILTIN_WORKFLOW_ROLES } from "../../src/server/builtin-role-templates.js";
+
+const getRole = (id: string) => BUILTIN_WORKFLOW_ROLES.find((r) => r.id === id);
 
 let tmpDir: string;
 let sessionDB: SessionDB;
@@ -54,7 +59,7 @@ beforeEach(() => {
 	const projectStore = new ProjectStore(sessionDB);
 	const cronStore = new CronStore(sessionDB);
 	wikiStore = new WikiStore(sessionDB);
-	management = new ManagementService({ agentStore, projectStore, cronStore });
+	management = new ManagementService({ agentStore, projectStore, cronStore, templateStore: new TemplateStore(sessionDB) });
 });
 
 afterEach(() => {
@@ -181,50 +186,47 @@ describe("P6 protected-delete", () => {
 	});
 });
 
-// ─── §12 prompt content assertions ───────────────────────────
+// ─── 工作流知识只在 wiki(ADR-020)─────────────────────────────
 
-describe("P6 §12 prompt content", () => {
-	test("lead prompt: pickup → plan → build → verify, with verify-gate stop and no merge to main", () => {
-		const lead = getTemplate("lead")!;
-		// lead submits verify and stops (no self-merge).
-		expect(lead.systemPrompt).toMatch(/verify/i);
-		expect(lead.systemPrompt).toMatch(/STOP|wait for/i);
-		// Merging to main is archivist's job, not lead's.
-		expect(lead.systemPrompt).toMatch(/merge.*archivist|archivist.*merge|Merging to main is archivist/i);
+describe("software-dev workflow knowledge lives in the wiki playbook (not code)", () => {
+	// v0.8 ADR-020:代码是通用工作流平台;software-dev 工作流知识(角色身份/程序、
+	// 管线、门、图)只在 wiki software-dev playbook。代码角色注册表只剩 zero。
+	function playbookBody(): string {
+		seedFreshDbDefaults({ agentStore, wikiStore, management });
+		const knowledgeRoot = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, KNOWLEDGE_ROOT_PATH)!;
+		const workflowNode = wikiStore.getByParentAndPath(knowledgeRoot.id, WORKFLOW_PATH)!;
+		const node = wikiStore.getByParentAndPath(workflowNode.id, SOFTWARE_DEV_NODE_PATH)!;
+		return wikiStore.readNodeDetail(node.id) ?? "";
+	}
+
+	test("playbook carries the lead delivery pipeline (pickup → plan → build → verify)", () => {
+		const body = playbookBody();
+		expect(body).toMatch(/pickup.*plan.*build.*verify|pickup/i);
+		expect(body).toMatch(/verify/i);
+		// lead 不自合 main(交给 archivist)。
+		expect(body).toMatch(/archivist/i);
 	});
 
-	test("PM prompt: product-level coverage judgement on verify, owns discovery", () => {
-		const pm = getTemplate("pm")!;
-		// PM judges coverage (§4.5).
-		expect(pm.systemPrompt).toMatch(/coverage/i);
-		// Verdict triggers archivist merge (not PM merging itself).
-		expect(pm.systemPrompt).toMatch(/trigger archivist to merge|archivist.*merge/i);
-		// Discovery is PM's own responsibility (not cron's).
-		expect(pm.systemPrompt).toMatch(/YOUR responsibility|your call/i);
+	test("playbook carries archivist's wiki-subtree + main-branch procedure", () => {
+		const body = playbookBody();
+		expect(body).toMatch(/reference docs|项目文件|wiki 子树|wiki subtree/i);
+		expect(body).toMatch(/main 分支|main branch|merge.*main|Manage the main/i);
 	});
 
-	test("archivist prompt: builds project wiki subtree AND manages the main branch", () => {
-		const archivist = getTemplate("archivist")!;
-		// References project files in wiki leaves (read-only).
-		expect(archivist.systemPrompt).toMatch(/reference docs|project file|wiki subtree/i);
-		// Manages the main branch (merge feature → main triggered by PM).
-		expect(archivist.systemPrompt).toMatch(/main branch|merge.*main|Manage the main/i);
+	test("playbook carries PM's coverage-judgement + discovery ownership", () => {
+		const body = playbookBody();
+		expect(body).toMatch(/coverage|覆盖判断/i);
+		expect(body).toMatch(/自己决定|自己定|your call|YOUR responsibility|PM 自己/i);
 	});
 
-	test("dev/reviewer/qa prompts: identity-only, no task Rules/Output-format in system prompt (§12.5)", () => {
-		for (const id of ["developer", "reviewer", "qa"] as const) {
-			const t = getTemplate(id)!;
-			// Carries identity (the role name).
-			expect(t.systemPrompt.toLowerCase()).toContain(id);
-			// Does NOT prescribe task-level Rules / Output format headers
-			// (those live in the calling tool, per §12.5).
-			expect(t.systemPrompt).not.toMatch(/^#{1,3}\s*(Rules|Output format|Output Format)/m);
-			expect(t.systemPrompt).not.toMatch(/\bOutput format\b/i);
-		}
-	});
-
-	test("zero prompt: global management identity, references software-dev playbook under knowledge/", () => {
-		const zero = getTemplate("zero")!;
-		expect(zero.systemPrompt).toMatch(/knowledge\/ subtree|knowledge\/.*software-dev/i);
+	test("code role registry holds only zero (software-dev roles are NOT hardcoded)", () => {
+		// lead/archivist 是 software-dev 工作流角色 → 在 wiki,不在代码角色注册表。
+		expect(getRole("lead")).toBeUndefined();
+		expect(getRole("archivist")).toBeUndefined();
+		expect(getRole("pm")).toBeUndefined();
+		// zero 是平台角色,代码里有(通用身份)。
+		const zero = getRole("zero")!;
+		expect(zero.systemPrompt).toMatch(/general workflow/i);
+		expect(zero.systemPrompt).toMatch(/knowledge\/ workflow|knowledge\/workflow/i);
 	});
 });

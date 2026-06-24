@@ -46,7 +46,7 @@
 		},
 		{
 			"path": "src/main/ipc-proxy.ts",
-			"lines": 405,
+			"lines": 402,
 			"dir": "src/main",
 			"exports": [
 				"registerProxyHandlers",
@@ -56,10 +56,10 @@
 				"src/core/logger.ts"
 			],
 			"functions": [
-				"src/main/ipc-proxy.ts/registerProxyHandlers:278",
-				"src/main/ipc-proxy.ts/connectEventBridge:355",
-				"src/main/ipc-proxy.ts/connect:358",
-				"src/main/ipc-proxy.ts/pollReady:391"
+				"src/main/ipc-proxy.ts/registerProxyHandlers:275",
+				"src/main/ipc-proxy.ts/connectEventBridge:352",
+				"src/main/ipc-proxy.ts/connect:355",
+				"src/main/ipc-proxy.ts/pollReady:388"
 			],
 			"description": ""
 		},
@@ -74,7 +74,7 @@
 		},
 		{
 			"path": "src/preload/index.ts",
-			"lines": 298,
+			"lines": 293,
 			"dir": "src/preload",
 			"exports": [],
 			"imports": [
@@ -716,29 +716,6 @@
 			"description": ""
 		},
 		{
-			"path": "src/runtime/role-templates.ts",
-			"lines": 517,
-			"dir": "src/runtime",
-			"exports": [
-				"getTemplate",
-				"listTemplates",
-				"buildAgentFromTemplate",
-				"buildAgentFromPreset"
-			],
-			"imports": [
-				"src/shared/types.ts"
-			],
-			"functions": [
-				"src/runtime/role-templates.ts/ANALYZER_PROMPT:147",
-				"src/runtime/role-templates.ts/PLANNER_PROMPT:156",
-				"src/runtime/role-templates.ts/getTemplate:446",
-				"src/runtime/role-templates.ts/listTemplates:451",
-				"src/runtime/role-templates.ts/buildAgentFromTemplate:475",
-				"src/runtime/role-templates.ts/buildAgentFromPreset:511"
-			],
-			"description": ""
-		},
-		{
 			"path": "src/runtime/session-store-interface.ts",
 			"lines": 83,
 			"dir": "src/runtime",
@@ -978,7 +955,7 @@
 		},
 		{
 			"path": "src/runtime/tools/agent-tool.ts",
-			"lines": 253,
+			"lines": 251,
 			"dir": "src/runtime/tools",
 			"exports": [],
 			"imports": [
@@ -2570,6 +2547,17 @@
 			"description": ""
 		},
 		{
+			"path": "src/server/builtin-role-templates.ts",
+			"lines": 121,
+			"dir": "src/server",
+			"exports": [],
+			"imports": [
+				"src/shared/types.ts"
+			],
+			"functions": [],
+			"description": ""
+		},
+		{
 			"path": "src/server/chat-router.ts",
 			"lines": 81,
 			"dir": "src/server",
@@ -2864,7 +2852,7 @@
 		},
 		{
 			"path": "src/server/fresh-db-seed.ts",
-			"lines": 399,
+			"lines": 456,
 			"dir": "src/server",
 			"exports": [
 				"seedFreshDbDefaults",
@@ -2882,13 +2870,13 @@
 			],
 			"functions": [
 				"src/server/fresh-db-seed.ts/ensureNodeDetail:75",
-				"src/server/fresh-db-seed.ts/seedFreshDbDefaults:198",
-				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:263",
-				"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:277",
-				"src/server/fresh-db-seed.ts/ensureWorkflowNode:296",
-				"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:315",
-				"src/server/fresh-db-seed.ts/ensureProjectsRoot:363",
-				"src/server/fresh-db-seed.ts/ensureMemoryRoot:385"
+				"src/server/fresh-db-seed.ts/seedFreshDbDefaults:259",
+				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320",
+				"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:334",
+				"src/server/fresh-db-seed.ts/ensureWorkflowNode:353",
+				"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:372",
+				"src/server/fresh-db-seed.ts/ensureProjectsRoot:420",
+				"src/server/fresh-db-seed.ts/ensureMemoryRoot:442"
 			],
 			"description": ""
 		},
@@ -2923,7 +2911,7 @@
 		},
 		{
 			"path": "src/server/index.ts",
-			"lines": 818,
+			"lines": 817,
 			"dir": "src/server",
 			"exports": [
 				"startServer"
@@ -2979,7 +2967,7 @@
 			"functions": [
 				"src/server/index.ts/expandHome:83",
 				"src/server/index.ts/startServer:102",
-				"src/server/index.ts/broadcast:253"
+				"src/server/index.ts/broadcast:254"
 			],
 			"description": "服务器入口：初始化所有 store/service/router，HTTP API 模式启动"
 		},
@@ -3217,9 +3205,11 @@
 		},
 		{
 			"path": "src/server/management-service.ts",
-			"lines": 556,
+			"lines": 575,
 			"dir": "src/server",
 			"exports": [
+				"ManagementService.setTemplateStore",
+				"ManagementService.requireTemplateStore",
 				"ManagementService.setCronStore",
 				"ManagementService.setRequirementStore",
 				"ManagementService.setSessionDB",
@@ -3241,14 +3231,14 @@
 				"ManagementService.listTemplates",
 				"ManagementService.getTemplate",
 				"ManagementService.instantiateTemplate",
+				"ManagementService.instantiateRole",
 				"ManagementService.createCron",
 				"ManagementService.updateCron",
 				"ManagementService.deleteCron",
 				"ManagementService.listCrons",
 				"ManagementService.getCron",
 				"ManagementService.triggerCron",
-				"ManagementService.mergeToolPolicy",
-				"ManagementService.findAgentByRoleTag"
+				"ManagementService.mergeToolPolicy"
 			],
 			"imports": [
 				"src/server/agent-store.ts",
@@ -3259,39 +3249,42 @@
 				"src/server/wiki-node-store.ts",
 				"src/server/archivist-service.ts",
 				"src/shared/types.ts",
-				"src/runtime/role-templates.ts",
+				"src/server/template-store.ts",
+				"src/server/builtin-role-templates.ts",
 				"src/core/logger.ts"
 			],
 			"functions": [
-				"src/server/management-service.ts/ManagementService.setCronStore:124",
-				"src/server/management-service.ts/ManagementService.setRequirementStore:129",
-				"src/server/management-service.ts/ManagementService.setSessionDB:130",
-				"src/server/management-service.ts/ManagementService.setWikiStore:131",
-				"src/server/management-service.ts/ManagementService.setArchivistService:132",
-				"src/server/management-service.ts/ManagementService.requireCronStore:134",
-				"src/server/management-service.ts/ManagementService.createProject:152",
-				"src/server/management-service.ts/ManagementService.updateProject:179",
-				"src/server/management-service.ts/ManagementService.deleteProject:183",
-				"src/server/management-service.ts/ManagementService.listProjects:187",
-				"src/server/management-service.ts/ManagementService.getProject:191",
-				"src/server/management-service.ts/ManagementService.getProjectContainerView:205",
-				"src/server/management-service.ts/ManagementService.getProjectResourceUsage:300",
-				"src/server/management-service.ts/ManagementService.createAgent:338",
-				"src/server/management-service.ts/ManagementService.updateAgent:342",
-				"src/server/management-service.ts/ManagementService.deleteAgent:371",
-				"src/server/management-service.ts/ManagementService.listAgents:381",
-				"src/server/management-service.ts/ManagementService.getAgent:385",
-				"src/server/management-service.ts/ManagementService.listTemplates:397",
-				"src/server/management-service.ts/ManagementService.getTemplate:401",
-				"src/server/management-service.ts/ManagementService.instantiateTemplate:415",
-				"src/server/management-service.ts/ManagementService.createCron:449",
-				"src/server/management-service.ts/ManagementService.updateCron:476",
-				"src/server/management-service.ts/ManagementService.deleteCron:487",
-				"src/server/management-service.ts/ManagementService.listCrons:495",
-				"src/server/management-service.ts/ManagementService.getCron:506",
-				"src/server/management-service.ts/ManagementService.triggerCron:518",
-				"src/server/management-service.ts/ManagementService.mergeToolPolicy:535",
-				"src/server/management-service.ts/ManagementService.findAgentByRoleTag:551"
+				"src/server/management-service.ts/ManagementService.setTemplateStore:131",
+				"src/server/management-service.ts/ManagementService.requireTemplateStore:133",
+				"src/server/management-service.ts/ManagementService.setCronStore:139",
+				"src/server/management-service.ts/ManagementService.setRequirementStore:144",
+				"src/server/management-service.ts/ManagementService.setSessionDB:145",
+				"src/server/management-service.ts/ManagementService.setWikiStore:146",
+				"src/server/management-service.ts/ManagementService.setArchivistService:147",
+				"src/server/management-service.ts/ManagementService.requireCronStore:149",
+				"src/server/management-service.ts/ManagementService.createProject:167",
+				"src/server/management-service.ts/ManagementService.updateProject:194",
+				"src/server/management-service.ts/ManagementService.deleteProject:198",
+				"src/server/management-service.ts/ManagementService.listProjects:202",
+				"src/server/management-service.ts/ManagementService.getProject:206",
+				"src/server/management-service.ts/ManagementService.getProjectContainerView:220",
+				"src/server/management-service.ts/ManagementService.getProjectResourceUsage:315",
+				"src/server/management-service.ts/ManagementService.createAgent:353",
+				"src/server/management-service.ts/ManagementService.updateAgent:357",
+				"src/server/management-service.ts/ManagementService.deleteAgent:386",
+				"src/server/management-service.ts/ManagementService.listAgents:396",
+				"src/server/management-service.ts/ManagementService.getAgent:400",
+				"src/server/management-service.ts/ManagementService.listTemplates:414",
+				"src/server/management-service.ts/ManagementService.getTemplate:418",
+				"src/server/management-service.ts/ManagementService.instantiateTemplate:431",
+				"src/server/management-service.ts/ManagementService.instantiateRole:456",
+				"src/server/management-service.ts/ManagementService.createCron:478",
+				"src/server/management-service.ts/ManagementService.updateCron:505",
+				"src/server/management-service.ts/ManagementService.deleteCron:516",
+				"src/server/management-service.ts/ManagementService.listCrons:524",
+				"src/server/management-service.ts/ManagementService.getCron:535",
+				"src/server/management-service.ts/ManagementService.triggerCron:547",
+				"src/server/management-service.ts/ManagementService.mergeToolPolicy:564"
 			],
 			"description": ""
 		},
@@ -4021,22 +4014,6 @@
 			"description": ""
 		},
 		{
-			"path": "src/server/role-template-router.ts",
-			"lines": 80,
-			"dir": "src/server",
-			"exports": [
-				"createRoleTemplateRouter"
-			],
-			"imports": [
-				"src/server/management-service.ts",
-				"src/runtime/role-templates.ts"
-			],
-			"functions": [
-				"src/server/role-template-router.ts/createRoleTemplateRouter:43"
-			],
-			"description": ""
-		},
-		{
 			"path": "src/server/session-context-router.ts",
 			"lines": 152,
 			"dir": "src/server",
@@ -4355,7 +4332,7 @@
 		},
 		{
 			"path": "src/server/sqlite-store.ts",
-			"lines": 297,
+			"lines": 310,
 			"dir": "src/server",
 			"exports": [
 				"SqliteStore.columnDef",
@@ -4365,6 +4342,7 @@
 				"SqliteStore.list",
 				"SqliteStore.get",
 				"SqliteStore.create",
+				"SqliteStore.createWithId",
 				"SqliteStore.update",
 				"SqliteStore.delete",
 				"SqliteStore.migrateFromJson",
@@ -4384,14 +4362,15 @@
 				"src/server/sqlite-store.ts/SqliteStore.list:158",
 				"src/server/sqlite-store.ts/SqliteStore.get:162",
 				"src/server/sqlite-store.ts/SqliteStore.create:167",
-				"src/server/sqlite-store.ts/SqliteStore.update:174",
-				"src/server/sqlite-store.ts/SqliteStore.delete:188",
-				"src/server/sqlite-store.ts/SqliteStore.migrateFromJson:196",
-				"src/server/sqlite-store.ts/SqliteStore.insertRow:232",
-				"src/server/sqlite-store.ts/SqliteStore.updateRow:237",
-				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:244",
-				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:255",
-				"src/server/sqlite-store.ts/camelToSnake:294"
+				"src/server/sqlite-store.ts/SqliteStore.createWithId:180",
+				"src/server/sqlite-store.ts/SqliteStore.update:187",
+				"src/server/sqlite-store.ts/SqliteStore.delete:201",
+				"src/server/sqlite-store.ts/SqliteStore.migrateFromJson:209",
+				"src/server/sqlite-store.ts/SqliteStore.insertRow:245",
+				"src/server/sqlite-store.ts/SqliteStore.updateRow:250",
+				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:257",
+				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:268",
+				"src/server/sqlite-store.ts/camelToSnake:307"
 			],
 			"description": "SqliteStore 基类：通用 SQLite 表管理，ensureTable + self-heal（ALTER ADD COLUMN if missing）"
 		},
@@ -4473,7 +4452,7 @@
 		},
 		{
 			"path": "src/server/template-store.ts",
-			"lines": 846,
+			"lines": 1017,
 			"dir": "src/server",
 			"exports": [
 				"TemplateStore.mergeBuiltInTemplates",
@@ -4492,15 +4471,15 @@
 				"src/shared/types.ts"
 			],
 			"functions": [
-				"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:772",
-				"src/server/template-store.ts/TemplateStore.list:792",
-				"src/server/template-store.ts/TemplateStore.get:796",
-				"src/server/template-store.ts/TemplateStore.create:800",
-				"src/server/template-store.ts/TemplateStore.update:804",
-				"src/server/template-store.ts/TemplateStore.delete:808",
-				"src/server/template-store.ts/TemplateStore.exportTemplate:814",
-				"src/server/template-store.ts/TemplateStore.importTemplate:820",
-				"src/server/template-store.ts/TemplateStore.findByNameAndSource:840"
+				"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
+				"src/server/template-store.ts/TemplateStore.list:963",
+				"src/server/template-store.ts/TemplateStore.get:967",
+				"src/server/template-store.ts/TemplateStore.create:971",
+				"src/server/template-store.ts/TemplateStore.update:975",
+				"src/server/template-store.ts/TemplateStore.delete:979",
+				"src/server/template-store.ts/TemplateStore.exportTemplate:985",
+				"src/server/template-store.ts/TemplateStore.importTemplate:991",
+				"src/server/template-store.ts/TemplateStore.findByNameAndSource:1011"
 			],
 			"description": "TemplateStore：agent 模板持久化（SQLite）"
 		},
@@ -5251,7 +5230,7 @@
 		},
 		{
 			"path": "src/shared/preload-types.ts",
-			"lines": 301,
+			"lines": 292,
 			"dir": "src/shared",
 			"exports": [],
 			"imports": [
@@ -5262,7 +5241,7 @@
 		},
 		{
 			"path": "src/shared/types.ts",
-			"lines": 1008,
+			"lines": 1009,
 			"dir": "src/shared",
 			"exports": [],
 			"imports": [],
@@ -5376,12 +5355,12 @@
 			]
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/registerProxyHandlers:278",
+			"id": "src/main/ipc-proxy.ts/registerProxyHandlers:275",
 			"name": "registerProxyHandlers",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 278,
-			"endLine": 349,
+			"line": 275,
+			"endLine": 346,
 			"statementCount": 38,
 			"exported": true,
 			"signature": "function registerProxyHandlers(port: number)",
@@ -5389,28 +5368,28 @@
 			"callees": []
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/connectEventBridge:355",
+			"id": "src/main/ipc-proxy.ts/connectEventBridge:352",
 			"name": "connectEventBridge",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 355,
-			"endLine": 404,
+			"line": 352,
+			"endLine": 401,
 			"statementCount": 25,
 			"exported": true,
 			"signature": "function connectEventBridge(win: BrowserWindow, port: number)",
 			"description": "",
 			"callees": [
-				"src/main/ipc-proxy.ts/connect:358",
-				"src/main/ipc-proxy.ts/pollReady:391"
+				"src/main/ipc-proxy.ts/connect:355",
+				"src/main/ipc-proxy.ts/pollReady:388"
 			]
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/connect:358",
+			"id": "src/main/ipc-proxy.ts/connect:355",
 			"name": "connect",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 358,
-			"endLine": 386,
+			"line": 355,
+			"endLine": 383,
 			"statementCount": 14,
 			"exported": false,
 			"signature": "function connect()",
@@ -5418,12 +5397,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/pollReady:391",
+			"id": "src/main/ipc-proxy.ts/pollReady:388",
 			"name": "pollReady",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 391,
-			"endLine": 402,
+			"line": 388,
+			"endLine": 399,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function pollReady()",
@@ -7555,88 +7534,6 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/role-templates.ts/ANALYZER_PROMPT:147",
-			"name": "ANALYZER_PROMPT",
-			"kind": "arrow",
-			"file": "src/runtime/role-templates.ts",
-			"line": 147,
-			"endLine": 154,
-			"statementCount": 0,
-			"exported": false,
-			"signature": "fn (lens: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/runtime/role-templates.ts/PLANNER_PROMPT:156",
-			"name": "PLANNER_PROMPT",
-			"kind": "arrow",
-			"file": "src/runtime/role-templates.ts",
-			"line": 156,
-			"endLine": 163,
-			"statementCount": 0,
-			"exported": false,
-			"signature": "fn (domain: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/runtime/role-templates.ts/getTemplate:446",
-			"name": "getTemplate",
-			"kind": "function",
-			"file": "src/runtime/role-templates.ts",
-			"line": 446,
-			"endLine": 448,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "function getTemplate(id: string)",
-			"description": "Get a role template by id.",
-			"callees": []
-		},
-		{
-			"id": "src/runtime/role-templates.ts/listTemplates:451",
-			"name": "listTemplates",
-			"kind": "function",
-			"file": "src/runtime/role-templates.ts",
-			"line": 451,
-			"endLine": 453,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "function listTemplates(roleTag?: string)",
-			"description": "List role templates, optionally filtered by roleTag.",
-			"callees": []
-		},
-		{
-			"id": "src/runtime/role-templates.ts/buildAgentFromTemplate:475",
-			"name": "buildAgentFromTemplate",
-			"kind": "function",
-			"file": "src/runtime/role-templates.ts",
-			"line": 475,
-			"endLine": 491,
-			"statementCount": 4,
-			"exported": true,
-			"signature": "function buildAgentFromTemplate(templateId: string, overrides?: Partial<Pick<AgentRecord, \"name\" | \"model\" | \"provider\" | \"workspaceDir\" | \"thinkingLevel\">>)",
-			"description": "Build a CreateAgentInput-shaped object from a role template.\r",
-			"callees": [
-				"src/runtime/role-templates.ts/getTemplate:446"
-			]
-		},
-		{
-			"id": "src/runtime/role-templates.ts/buildAgentFromPreset:511",
-			"name": "buildAgentFromPreset",
-			"kind": "function",
-			"file": "src/runtime/role-templates.ts",
-			"line": 511,
-			"endLine": 516,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "function buildAgentFromPreset(templateId: string, overrides?: Partial<Pick<AgentRecord, \"name\" | \"model\" | \"provider\" | \"workspaceDir\" | \"thinkingLevel\">>)",
-			"description": "",
-			"callees": [
-				"src/runtime/role-templates.ts/buildAgentFromTemplate:475"
-			]
-		},
-		{
 			"id": "src/runtime/session.ts/AgentSession.getSessionId:78",
 			"name": "AgentSession.getSessionId",
 			"kind": "method",
@@ -8764,7 +8661,7 @@
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function templateSummaryOf(t: any)",
-			"description": "Compact role-template summary for listTemplates. The full template (incl. the\r",
+			"description": "Compact template summary for listTemplates. The full template (incl. the\r",
 			"callees": []
 		},
 		{
@@ -14580,47 +14477,47 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/seedFreshDbDefaults:198",
+			"id": "src/server/fresh-db-seed.ts/seedFreshDbDefaults:259",
 			"name": "seedFreshDbDefaults",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 198,
-			"endLine": 246,
+			"line": 259,
+			"endLine": 303,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "function seedFreshDbDefaults(deps: {\r\n\tagentStore: AgentStore;\r\n\twikiStore: WikiStore;\r\n\tmanagement: ManagementService;\r\n})",
 			"description": "Seed the fresh-DB defaults (RFC §7.1).\r",
 			"callees": [
-				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:263"
+				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
 			]
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureWikiSkeleton:263",
+			"id": "src/server/fresh-db-seed.ts/ensureWikiSkeleton:320",
 			"name": "ensureWikiSkeleton",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 263,
-			"endLine": 275,
+			"line": 320,
+			"endLine": 332,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "function ensureWikiSkeleton(wikiStore: WikiStore)",
 			"description": "Idempotently ensure the full §10.5 wiki skeleton (knowledge/workflow +\r",
 			"callees": [
-				"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:277",
-				"src/server/fresh-db-seed.ts/ensureWorkflowNode:296",
-				"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:315",
-				"src/server/fresh-db-seed.ts/ensureProjectsRoot:363",
-				"src/server/fresh-db-seed.ts/ensureMemoryRoot:385",
+				"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:334",
+				"src/server/fresh-db-seed.ts/ensureWorkflowNode:353",
+				"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:372",
+				"src/server/fresh-db-seed.ts/ensureProjectsRoot:420",
+				"src/server/fresh-db-seed.ts/ensureMemoryRoot:442",
 				"src/server/fresh-db-seed.ts/ensureNodeDetail:75"
 			]
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureKnowledgeRoot:277",
+			"id": "src/server/fresh-db-seed.ts/ensureKnowledgeRoot:334",
 			"name": "ensureKnowledgeRoot",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 277,
-			"endLine": 290,
+			"line": 334,
+			"endLine": 347,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "function ensureKnowledgeRoot(wikiStore: WikiStore)",
@@ -14630,12 +14527,12 @@
 			]
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureWorkflowNode:296",
+			"id": "src/server/fresh-db-seed.ts/ensureWorkflowNode:353",
 			"name": "ensureWorkflowNode",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 296,
-			"endLine": 313,
+			"line": 353,
+			"endLine": 370,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "function ensureWorkflowNode(wikiStore: WikiStore)",
@@ -14645,12 +14542,12 @@
 			]
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureSoftwareDevNode:315",
+			"id": "src/server/fresh-db-seed.ts/ensureSoftwareDevNode:372",
 			"name": "ensureSoftwareDevNode",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 315,
-			"endLine": 355,
+			"line": 372,
+			"endLine": 412,
 			"statementCount": 19,
 			"exported": true,
 			"signature": "function ensureSoftwareDevNode(wikiStore: WikiStore)",
@@ -14658,12 +14555,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureProjectsRoot:363",
+			"id": "src/server/fresh-db-seed.ts/ensureProjectsRoot:420",
 			"name": "ensureProjectsRoot",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 363,
-			"endLine": 376,
+			"line": 420,
+			"endLine": 433,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "function ensureProjectsRoot(wikiStore: WikiStore)",
@@ -14673,12 +14570,12 @@
 			]
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureMemoryRoot:385",
+			"id": "src/server/fresh-db-seed.ts/ensureMemoryRoot:442",
 			"name": "ensureMemoryRoot",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 385,
-			"endLine": 398,
+			"line": 442,
+			"endLine": 455,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "function ensureMemoryRoot(wikiStore: WikiStore)",
@@ -14838,8 +14735,8 @@
 			"kind": "function",
 			"file": "src/server/index.ts",
 			"line": 102,
-			"endLine": 817,
-			"statementCount": 305,
+			"endLine": 816,
+			"statementCount": 303,
 			"exported": true,
 			"signature": "function startServer(options?: StartServerOptions)",
 			"description": "",
@@ -14850,7 +14747,7 @@
 				"src/server/workspace-config.ts/loadWorkspaceConfig:40",
 				"src/runtime/proxy-manager.ts/applyProxy:30",
 				"src/server/agent-service.ts/createAgentService:1137",
-				"src/server/index.ts/broadcast:253",
+				"src/server/index.ts/broadcast:254",
 				"src/server/mcp-scanner.ts/scanExternalMcpConfigs:156",
 				"src/server/mcp-scanner.ts/mergeDetectedServers:202",
 				"src/server/config-router.ts/createConfigRouter:41",
@@ -14878,12 +14775,12 @@
 			]
 		},
 		{
-			"id": "src/server/index.ts/broadcast:253",
+			"id": "src/server/index.ts/broadcast:254",
 			"name": "broadcast",
 			"kind": "arrow",
 			"file": "src/server/index.ts",
-			"line": 253,
-			"endLine": 258,
+			"line": 254,
+			"endLine": 259,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "fn (event: any)",
@@ -15568,12 +15465,38 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setCronStore:124",
+			"id": "src/server/management-service.ts/ManagementService.setTemplateStore:131",
+			"name": "ManagementService.setTemplateStore",
+			"kind": "method",
+			"file": "src/server/management-service.ts",
+			"line": 131,
+			"endLine": 131,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method setTemplateStore(store: TemplateStore)",
+			"description": "v0.8 (模板统一): late-bind the template store (server/index.ts wiring order).",
+			"callees": []
+		},
+		{
+			"id": "src/server/management-service.ts/ManagementService.requireTemplateStore:133",
+			"name": "ManagementService.requireTemplateStore",
+			"kind": "method",
+			"file": "src/server/management-service.ts",
+			"line": 133,
+			"endLine": 136,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method requireTemplateStore()",
+			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/management-service.ts/ManagementService.setCronStore:139",
 			"name": "ManagementService.setCronStore",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 124,
-			"endLine": 126,
+			"line": 139,
+			"endLine": 141,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setCronStore(cronStore: CronStore)",
@@ -15581,12 +15504,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setRequirementStore:129",
+			"id": "src/server/management-service.ts/ManagementService.setRequirementStore:144",
 			"name": "ManagementService.setRequirementStore",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 129,
-			"endLine": 129,
+			"line": 144,
+			"endLine": 144,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setRequirementStore(store: RequirementStore)",
@@ -15594,12 +15517,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setSessionDB:130",
+			"id": "src/server/management-service.ts/ManagementService.setSessionDB:145",
 			"name": "ManagementService.setSessionDB",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 130,
-			"endLine": 130,
+			"line": 145,
+			"endLine": 145,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setSessionDB(db: SessionDB)",
@@ -15607,12 +15530,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setWikiStore:131",
+			"id": "src/server/management-service.ts/ManagementService.setWikiStore:146",
 			"name": "ManagementService.setWikiStore",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 131,
-			"endLine": 131,
+			"line": 146,
+			"endLine": 146,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setWikiStore(wiki: WikiStore)",
@@ -15620,12 +15543,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setArchivistService:132",
+			"id": "src/server/management-service.ts/ManagementService.setArchivistService:147",
 			"name": "ManagementService.setArchivistService",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 132,
-			"endLine": 132,
+			"line": 147,
+			"endLine": 147,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setArchivistService(svc: ArchivistService)",
@@ -15633,12 +15556,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.requireCronStore:134",
+			"id": "src/server/management-service.ts/ManagementService.requireCronStore:149",
 			"name": "ManagementService.requireCronStore",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 134,
-			"endLine": 137,
+			"line": 149,
+			"endLine": 152,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method requireCronStore()",
@@ -15646,12 +15569,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.createProject:152",
+			"id": "src/server/management-service.ts/ManagementService.createProject:167",
 			"name": "ManagementService.createProject",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 152,
-			"endLine": 177,
+			"line": 167,
+			"endLine": 192,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method createProject(input: { name: string; workspaceDir: string })",
@@ -15659,12 +15582,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.updateProject:179",
+			"id": "src/server/management-service.ts/ManagementService.updateProject:194",
 			"name": "ManagementService.updateProject",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 179,
-			"endLine": 181,
+			"line": 194,
+			"endLine": 196,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method updateProject(id: string, input: Partial<Omit<ProjectRecord, \"id\" | \"createdAt\">>)",
@@ -15672,12 +15595,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.deleteProject:183",
+			"id": "src/server/management-service.ts/ManagementService.deleteProject:198",
 			"name": "ManagementService.deleteProject",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 183,
-			"endLine": 185,
+			"line": 198,
+			"endLine": 200,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method deleteProject(id: string)",
@@ -15685,12 +15608,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.listProjects:187",
+			"id": "src/server/management-service.ts/ManagementService.listProjects:202",
 			"name": "ManagementService.listProjects",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 187,
-			"endLine": 189,
+			"line": 202,
+			"endLine": 204,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method listProjects()",
@@ -15698,12 +15621,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getProject:191",
+			"id": "src/server/management-service.ts/ManagementService.getProject:206",
 			"name": "ManagementService.getProject",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 191,
-			"endLine": 193,
+			"line": 206,
+			"endLine": 208,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getProject(id: string)",
@@ -15711,12 +15634,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getProjectContainerView:205",
+			"id": "src/server/management-service.ts/ManagementService.getProjectContainerView:220",
 			"name": "ManagementService.getProjectContainerView",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 205,
-			"endLine": 287,
+			"line": 220,
+			"endLine": 302,
 			"statementCount": 45,
 			"exported": true,
 			"signature": "method getProjectContainerView(projectId: string)",
@@ -15724,12 +15647,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getProjectResourceUsage:300",
+			"id": "src/server/management-service.ts/ManagementService.getProjectResourceUsage:315",
 			"name": "ManagementService.getProjectResourceUsage",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 300,
-			"endLine": 334,
+			"line": 315,
+			"endLine": 349,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getProjectResourceUsage(projectId: string)",
@@ -15737,12 +15660,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.createAgent:338",
+			"id": "src/server/management-service.ts/ManagementService.createAgent:353",
 			"name": "ManagementService.createAgent",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 338,
-			"endLine": 340,
+			"line": 353,
+			"endLine": 355,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method createAgent(input: Omit<AgentRecord, \"id\" | \"createdAt\" | \"updatedAt\">)",
@@ -15750,12 +15673,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.updateAgent:342",
+			"id": "src/server/management-service.ts/ManagementService.updateAgent:357",
 			"name": "ManagementService.updateAgent",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 342,
-			"endLine": 361,
+			"line": 357,
+			"endLine": 376,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method updateAgent(id: string, input: Partial<Omit<AgentRecord, \"id\" | \"createdAt\">>)",
@@ -15763,12 +15686,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.deleteAgent:371",
+			"id": "src/server/management-service.ts/ManagementService.deleteAgent:386",
 			"name": "ManagementService.deleteAgent",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 371,
-			"endLine": 379,
+			"line": 386,
+			"endLine": 394,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method deleteAgent(id: string)",
@@ -15776,12 +15699,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.listAgents:381",
+			"id": "src/server/management-service.ts/ManagementService.listAgents:396",
 			"name": "ManagementService.listAgents",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 381,
-			"endLine": 383,
+			"line": 396,
+			"endLine": 398,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method listAgents(roleTag?: string)",
@@ -15789,12 +15712,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getAgent:385",
+			"id": "src/server/management-service.ts/ManagementService.getAgent:400",
 			"name": "ManagementService.getAgent",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 385,
-			"endLine": 387,
+			"line": 400,
+			"endLine": 402,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getAgent(id: string)",
@@ -15802,166 +15725,164 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.listTemplates:397",
+			"id": "src/server/management-service.ts/ManagementService.listTemplates:414",
 			"name": "ManagementService.listTemplates",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 397,
-			"endLine": 399,
+			"line": 414,
+			"endLine": 416,
 			"statementCount": 1,
 			"exported": true,
-			"signature": "method listTemplates(roleTag?: string)",
+			"signature": "method listTemplates()",
 			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).\r",
 			"callees": [
-				"src/runtime/role-templates.ts/listTemplates:451"
+				"src/server/management-service.ts/ManagementService.requireTemplateStore:133"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getTemplate:401",
+			"id": "src/server/management-service.ts/ManagementService.getTemplate:418",
 			"name": "ManagementService.getTemplate",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 401,
-			"endLine": 403,
+			"line": 418,
+			"endLine": 420,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getTemplate(templateId: string)",
 			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).\r",
 			"callees": [
-				"src/runtime/role-templates.ts/getTemplate:446"
+				"src/server/management-service.ts/ManagementService.requireTemplateStore:133"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.instantiateTemplate:415",
+			"id": "src/server/management-service.ts/ManagementService.instantiateTemplate:431",
 			"name": "ManagementService.instantiateTemplate",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 415,
-			"endLine": 443,
-			"statementCount": 15,
+			"line": 431,
+			"endLine": 447,
+			"statementCount": 4,
 			"exported": true,
-			"signature": "method instantiateTemplate(templateId: string, overrides?: Parameters<typeof buildAgentFromTemplate>[1], options: { bindToolPolicy?: boolean } = {})",
-			"description": "Instantiate a role template as a global Agent. Resolves the template's\r",
+			"signature": "method instantiateTemplate(templateId: string, overrides?: Partial<Pick<AgentRecord, \"name\" | \"model\" | \"provider\" | \"workspaceDir\" | \"thinkingLevel\">>)",
+			"description": "Instantiate a **capability template** as a global Agent: copies identity\r",
 			"callees": [
-				"src/runtime/role-templates.ts/getTemplate:446",
-				"src/runtime/role-templates.ts/buildAgentFromTemplate:475",
-				"src/server/management-service.ts/ManagementService.findAgentByRoleTag:551"
+				"src/server/management-service.ts/ManagementService.requireTemplateStore:133"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.createCron:449",
+			"id": "src/server/management-service.ts/ManagementService.instantiateRole:456",
+			"name": "ManagementService.instantiateRole",
+			"kind": "method",
+			"file": "src/server/management-service.ts",
+			"line": 456,
+			"endLine": 472,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method instantiateRole(roleId: string, overrides?: Partial<Pick<AgentRecord, \"name\" | \"model\" | \"provider\" | \"workspaceDir\" | \"thinkingLevel\">>)",
+			"description": "Instantiate a **workflow role** (zero / lead / archivist) as a global\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/management-service.ts/ManagementService.createCron:478",
 			"name": "ManagementService.createCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 449,
-			"endLine": 474,
+			"line": 478,
+			"endLine": 503,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method createCron(input: {\r\n\t\tagentId: string;\r\n\t\tworkingScope: CronRecord[\"workingScope\"];\r\n\t\tschedule: CronRecord[\"schedule\"];\r\n\t\tprompt?: string;\r\n\t\tenabled?: boolean;\r\n\t})",
 			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).\r",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:134"
+				"src/server/management-service.ts/ManagementService.requireCronStore:149"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.updateCron:476",
+			"id": "src/server/management-service.ts/ManagementService.updateCron:505",
 			"name": "ManagementService.updateCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 476,
-			"endLine": 484,
+			"line": 505,
+			"endLine": 513,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method updateCron(id: string, input: Partial<Omit<CronRecord, \"id\" | \"createdAt\" | \"updatedAt\" | \"agentId\">>)",
 			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).\r",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:134"
+				"src/server/management-service.ts/ManagementService.requireCronStore:149"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.deleteCron:487",
+			"id": "src/server/management-service.ts/ManagementService.deleteCron:516",
 			"name": "ManagementService.deleteCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 487,
-			"endLine": 489,
+			"line": 516,
+			"endLine": 518,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method deleteCron(id: string)",
 			"description": "Unbind — the agent it referenced stays intact (acceptance-M1).",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:134"
+				"src/server/management-service.ts/ManagementService.requireCronStore:149"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.listCrons:495",
+			"id": "src/server/management-service.ts/ManagementService.listCrons:524",
 			"name": "ManagementService.listCrons",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 495,
-			"endLine": 504,
+			"line": 524,
+			"endLine": 533,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method listCrons(filter?: { agentId?: string; projectId?: string; enabled?: boolean })",
 			"description": "List crons with optional filters. §9.4: projectId filters on\r",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:134"
+				"src/server/management-service.ts/ManagementService.requireCronStore:149"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getCron:506",
+			"id": "src/server/management-service.ts/ManagementService.getCron:535",
 			"name": "ManagementService.getCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 506,
-			"endLine": 508,
+			"line": 535,
+			"endLine": 537,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getCron(id: string)",
 			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).\r",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:134"
+				"src/server/management-service.ts/ManagementService.requireCronStore:149"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.triggerCron:518",
+			"id": "src/server/management-service.ts/ManagementService.triggerCron:547",
 			"name": "ManagementService.triggerCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 518,
-			"endLine": 523,
+			"line": 547,
+			"endLine": 552,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method triggerCron(id: string)",
 			"description": "v0.8 (P4): the P3 manual-trigger stub is obsolete — the real run path is\r",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:134"
+				"src/server/management-service.ts/ManagementService.requireCronStore:149"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.mergeToolPolicy:535",
+			"id": "src/server/management-service.ts/ManagementService.mergeToolPolicy:564",
 			"name": "ManagementService.mergeToolPolicy",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 535,
-			"endLine": 544,
+			"line": 564,
+			"endLine": 573,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method mergeToolPolicy(agentId: string, patch: NonNullable<AgentRecord[\"toolPolicy\"]>)",
 			"description": "Merge toolPolicy fields onto an agent. Retained for role-template-router\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/management-service.ts/ManagementService.findAgentByRoleTag:551",
-			"name": "ManagementService.findAgentByRoleTag",
-			"kind": "method",
-			"file": "src/server/management-service.ts",
-			"line": 551,
-			"endLine": 554,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method findAgentByRoleTag(roleTag: string)",
-			"description": "Find the first agent with the given roleTag (legacy physical column).\r",
 			"callees": []
 		},
 		{
@@ -18278,22 +18199,6 @@
 			]
 		},
 		{
-			"id": "src/server/role-template-router.ts/createRoleTemplateRouter:43",
-			"name": "createRoleTemplateRouter",
-			"kind": "function",
-			"file": "src/server/role-template-router.ts",
-			"line": 43,
-			"endLine": 79,
-			"statementCount": 15,
-			"exported": true,
-			"signature": "function createRoleTemplateRouter(management: ManagementService)",
-			"description": "",
-			"callees": [
-				"src/runtime/role-templates.ts/listTemplates:451",
-				"src/runtime/role-templates.ts/getTemplate:446"
-			]
-		},
-		{
 			"id": "src/server/session-context-router.ts/defaultWikiRootResolver:53",
 			"name": "defaultWikiRootResolver",
 			"kind": "arrow",
@@ -19747,7 +19652,7 @@
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method columnDef(snakeCol: string)",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": []
 		},
 		{
@@ -19760,7 +19665,7 @@
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method ensureTable()",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
 				"src/server/sqlite-store.ts/SqliteStore.columnDef:100"
 			]
@@ -19788,7 +19693,7 @@
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method initStatements()",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": []
 		},
 		{
@@ -19801,9 +19706,9 @@
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method list()",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:255"
+				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:268"
 			]
 		},
 		{
@@ -19816,10 +19721,10 @@
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method get(id: string)",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
 				"src/server/sqlite-store.ts/SqliteStore.get:162",
-				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:255"
+				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:268"
 			]
 		},
 		{
@@ -19832,118 +19737,133 @@
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method create(input: Omit<T, \"id\" | \"createdAt\" | \"updatedAt\">)",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.insertRow:232"
+				"src/server/sqlite-store.ts/SqliteStore.insertRow:245"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.update:174",
+			"id": "src/server/sqlite-store.ts/SqliteStore.createWithId:180",
+			"name": "SqliteStore.createWithId",
+			"kind": "method",
+			"file": "src/server/sqlite-store.ts",
+			"line": 180,
+			"endLine": 185,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method createWithId(id: string, input: Omit<T, \"id\" | \"createdAt\" | \"updatedAt\">)",
+			"description": "Create a record with a **caller-supplied id** (instead of an auto-generated\r",
+			"callees": [
+				"src/server/sqlite-store.ts/SqliteStore.insertRow:245"
+			]
+		},
+		{
+			"id": "src/server/sqlite-store.ts/SqliteStore.update:187",
 			"name": "SqliteStore.update",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 174,
-			"endLine": 186,
+			"line": 187,
+			"endLine": 199,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method update(id: string, input: Partial<Omit<T, \"id\" | \"createdAt\">>)",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
 				"src/server/sqlite-store.ts/SqliteStore.get:162",
-				"src/server/sqlite-store.ts/SqliteStore.updateRow:237"
+				"src/server/sqlite-store.ts/SqliteStore.updateRow:250"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.delete:188",
+			"id": "src/server/sqlite-store.ts/SqliteStore.delete:201",
 			"name": "SqliteStore.delete",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 188,
-			"endLine": 190,
+			"line": 201,
+			"endLine": 203,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method delete(id: string)",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": []
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.migrateFromJson:196",
+			"id": "src/server/sqlite-store.ts/SqliteStore.migrateFromJson:209",
 			"name": "SqliteStore.migrateFromJson",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 196,
-			"endLine": 228,
+			"line": 209,
+			"endLine": 241,
 			"statementCount": 18,
 			"exported": true,
 			"signature": "method migrateFromJson(jsonPath: string, arrayKey: string, transform?: (raw: any) => any)",
-			"description": "Bulk insert from a JSON file migration.",
+			"description": "Bulk insert from a JSON file migration.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.insertRow:232"
+				"src/server/sqlite-store.ts/SqliteStore.insertRow:245"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.insertRow:232",
+			"id": "src/server/sqlite-store.ts/SqliteStore.insertRow:245",
 			"name": "SqliteStore.insertRow",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 232,
-			"endLine": 235,
+			"line": 245,
+			"endLine": 248,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method insertRow(record: T)",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:244"
+				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:257"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.updateRow:237",
+			"id": "src/server/sqlite-store.ts/SqliteStore.updateRow:250",
 			"name": "SqliteStore.updateRow",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 237,
-			"endLine": 242,
+			"line": 250,
+			"endLine": 255,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method updateRow(id: string, record: T)",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:244"
+				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:257"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.toColumnValue:244",
+			"id": "src/server/sqlite-store.ts/SqliteStore.toColumnValue:257",
 			"name": "SqliteStore.toColumnValue",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 244,
-			"endLine": 253,
+			"line": 257,
+			"endLine": 266,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method toColumnValue(record: T, snakeCol: string)",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": []
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.rowToRecord:255",
+			"id": "src/server/sqlite-store.ts/SqliteStore.rowToRecord:268",
 			"name": "SqliteStore.rowToRecord",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 255,
-			"endLine": 272,
+			"line": 268,
+			"endLine": 285,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method rowToRecord(row: Record<string, any>)",
-			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.",
+			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": []
 		},
 		{
-			"id": "src/server/sqlite-store.ts/camelToSnake:294",
+			"id": "src/server/sqlite-store.ts/camelToSnake:307",
 			"name": "camelToSnake",
 			"kind": "function",
 			"file": "src/server/sqlite-store.ts",
-			"line": 294,
-			"endLine": 296,
+			"line": 307,
+			"endLine": 309,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function camelToSnake(s: string)",
@@ -20218,142 +20138,142 @@
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:772",
+			"id": "src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
 			"name": "TemplateStore.mergeBuiltInTemplates",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 772,
-			"endLine": 790,
-			"statementCount": 8,
+			"line": 927,
+			"endLine": 961,
+			"statementCount": 13,
 			"exported": true,
 			"signature": "method mergeBuiltInTemplates()",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.list:792",
-				"src/server/template-store.ts/TemplateStore.get:796",
-				"src/server/template-store.ts/TemplateStore.create:800",
-				"src/server/template-store.ts/TemplateStore.update:804"
+				"src/server/template-store.ts/TemplateStore.list:963",
+				"src/server/template-store.ts/TemplateStore.get:967",
+				"src/server/template-store.ts/TemplateStore.create:971",
+				"src/server/template-store.ts/TemplateStore.update:975"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.list:792",
+			"id": "src/server/template-store.ts/TemplateStore.list:963",
 			"name": "TemplateStore.list",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 792,
-			"endLine": 794,
+			"line": 963,
+			"endLine": 965,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method list()",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.list:792"
+				"src/server/template-store.ts/TemplateStore.list:963"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.get:796",
+			"id": "src/server/template-store.ts/TemplateStore.get:967",
 			"name": "TemplateStore.get",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 796,
-			"endLine": 798,
+			"line": 967,
+			"endLine": 969,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method get(id: string)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.get:796"
+				"src/server/template-store.ts/TemplateStore.get:967"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.create:800",
+			"id": "src/server/template-store.ts/TemplateStore.create:971",
 			"name": "TemplateStore.create",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 800,
-			"endLine": 802,
+			"line": 971,
+			"endLine": 973,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method create(input: Omit<PromptTemplate, \"id\" | \"createdAt\" | \"updatedAt\">)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.create:800"
+				"src/server/template-store.ts/TemplateStore.create:971"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.update:804",
+			"id": "src/server/template-store.ts/TemplateStore.update:975",
 			"name": "TemplateStore.update",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 804,
-			"endLine": 806,
+			"line": 975,
+			"endLine": 977,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method update(id: string, input: Partial<Omit<PromptTemplate, \"id\" | \"createdAt\">>)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.update:804"
+				"src/server/template-store.ts/TemplateStore.update:975"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.delete:808",
+			"id": "src/server/template-store.ts/TemplateStore.delete:979",
 			"name": "TemplateStore.delete",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 808,
-			"endLine": 812,
+			"line": 979,
+			"endLine": 983,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method delete(id: string)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.get:796",
-				"src/server/template-store.ts/TemplateStore.delete:808"
+				"src/server/template-store.ts/TemplateStore.get:967",
+				"src/server/template-store.ts/TemplateStore.delete:979"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.exportTemplate:814",
+			"id": "src/server/template-store.ts/TemplateStore.exportTemplate:985",
 			"name": "TemplateStore.exportTemplate",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 814,
-			"endLine": 818,
+			"line": 985,
+			"endLine": 989,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method exportTemplate(id: string)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.get:796"
+				"src/server/template-store.ts/TemplateStore.get:967"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.importTemplate:820",
+			"id": "src/server/template-store.ts/TemplateStore.importTemplate:991",
 			"name": "TemplateStore.importTemplate",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 820,
-			"endLine": 838,
+			"line": 991,
+			"endLine": 1009,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method importTemplate(json: string)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.create:800"
+				"src/server/template-store.ts/TemplateStore.create:971"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.findByNameAndSource:840",
+			"id": "src/server/template-store.ts/TemplateStore.findByNameAndSource:1011",
 			"name": "TemplateStore.findByNameAndSource",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 840,
-			"endLine": 844,
+			"line": 1011,
+			"endLine": 1015,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method findByNameAndSource(name: string, sourceUrl: string)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.list:792"
+				"src/server/template-store.ts/TemplateStore.list:963"
 			]
 		},
 		{
@@ -22683,7 +22603,7 @@
 			"signature": "function seedTestEnvironment(sessionDb: SessionDB, agentStore: AgentStore, providerStore: ProviderStore, wikiStore?: WikiStore, projectStore?: ProjectStore)",
 			"description": "",
 			"callees": [
-				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:263"
+				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
 			]
 		},
 		{
@@ -22974,11 +22894,11 @@
 		"src/runtime/mcp-tools/cookie-jar.ts/importCookies:73": [
 			"src/main/index.ts/registerLocalHandlers:96"
 		],
-		"src/main/ipc-proxy.ts/connect:358": [
-			"src/main/ipc-proxy.ts/connectEventBridge:355"
+		"src/main/ipc-proxy.ts/connect:355": [
+			"src/main/ipc-proxy.ts/connectEventBridge:352"
 		],
-		"src/main/ipc-proxy.ts/pollReady:391": [
-			"src/main/ipc-proxy.ts/connectEventBridge:355"
+		"src/main/ipc-proxy.ts/pollReady:388": [
+			"src/main/ipc-proxy.ts/connectEventBridge:352"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:818": [
 			"src/runtime/agent-loop.ts/AgentLoop.run:213",
@@ -23303,16 +23223,6 @@
 		],
 		"src/runtime/mock-language-model.ts/createMockLanguageModel:119": [
 			"src/runtime/provider-factory.ts/getOrCreateProvider:120"
-		],
-		"src/runtime/role-templates.ts/getTemplate:446": [
-			"src/runtime/role-templates.ts/buildAgentFromTemplate:475",
-			"src/server/management-service.ts/ManagementService.getTemplate:401",
-			"src/server/management-service.ts/ManagementService.instantiateTemplate:415",
-			"src/server/role-template-router.ts/createRoleTemplateRouter:43"
-		],
-		"src/runtime/role-templates.ts/buildAgentFromTemplate:475": [
-			"src/runtime/role-templates.ts/buildAgentFromPreset:511",
-			"src/server/management-service.ts/ManagementService.instantiateTemplate:415"
 		],
 		"src/runtime/session.ts/AgentSession.getTurns:118": [
 			"src/runtime/session.ts/AgentSession.refreshTurnsCache:103",
@@ -24336,31 +24246,31 @@
 			"src/server/file-router.ts/createFileRouter:41",
 			"src/shared/file-utils.ts/buildTree:41"
 		],
-		"src/server/fresh-db-seed.ts/ensureWikiSkeleton:263": [
-			"src/server/fresh-db-seed.ts/seedFreshDbDefaults:198",
+		"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320": [
+			"src/server/fresh-db-seed.ts/seedFreshDbDefaults:259",
 			"src/core/test-seed.ts/seedTestEnvironment:56"
 		],
-		"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:277": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:263"
+		"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:334": [
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
 		],
-		"src/server/fresh-db-seed.ts/ensureWorkflowNode:296": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:263"
+		"src/server/fresh-db-seed.ts/ensureWorkflowNode:353": [
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
 		],
-		"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:315": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:263"
+		"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:372": [
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
 		],
-		"src/server/fresh-db-seed.ts/ensureProjectsRoot:363": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:263"
+		"src/server/fresh-db-seed.ts/ensureProjectsRoot:420": [
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
 		],
-		"src/server/fresh-db-seed.ts/ensureMemoryRoot:385": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:263"
+		"src/server/fresh-db-seed.ts/ensureMemoryRoot:442": [
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
 		],
 		"src/server/fresh-db-seed.ts/ensureNodeDetail:75": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:263",
-			"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:277",
-			"src/server/fresh-db-seed.ts/ensureWorkflowNode:296",
-			"src/server/fresh-db-seed.ts/ensureProjectsRoot:363",
-			"src/server/fresh-db-seed.ts/ensureMemoryRoot:385"
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320",
+			"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:334",
+			"src/server/fresh-db-seed.ts/ensureWorkflowNode:353",
+			"src/server/fresh-db-seed.ts/ensureProjectsRoot:420",
+			"src/server/fresh-db-seed.ts/ensureMemoryRoot:442"
 		],
 		"src/server/git-integration.ts/slugify:46": [
 			"src/server/git-integration.ts/GitIntegration.createRequirementBranch:67"
@@ -24389,7 +24299,7 @@
 		"src/server/agent-service.ts/createAgentService:1137": [
 			"src/server/index.ts/startServer:102"
 		],
-		"src/server/index.ts/broadcast:253": [
+		"src/server/index.ts/broadcast:254": [
 			"src/server/index.ts/startServer:102"
 		],
 		"src/server/mcp-scanner.ts/scanExternalMcpConfigs:156": [
@@ -24540,20 +24450,18 @@
 		"src/core/logger.ts/configureLogging:118": [
 			"src/server/log-router.ts/createLogRouter:55"
 		],
-		"src/runtime/role-templates.ts/listTemplates:451": [
-			"src/server/management-service.ts/ManagementService.listTemplates:397",
-			"src/server/role-template-router.ts/createRoleTemplateRouter:43"
+		"src/server/management-service.ts/ManagementService.requireTemplateStore:133": [
+			"src/server/management-service.ts/ManagementService.listTemplates:414",
+			"src/server/management-service.ts/ManagementService.getTemplate:418",
+			"src/server/management-service.ts/ManagementService.instantiateTemplate:431"
 		],
-		"src/server/management-service.ts/ManagementService.findAgentByRoleTag:551": [
-			"src/server/management-service.ts/ManagementService.instantiateTemplate:415"
-		],
-		"src/server/management-service.ts/ManagementService.requireCronStore:134": [
-			"src/server/management-service.ts/ManagementService.createCron:449",
-			"src/server/management-service.ts/ManagementService.updateCron:476",
-			"src/server/management-service.ts/ManagementService.deleteCron:487",
-			"src/server/management-service.ts/ManagementService.listCrons:495",
-			"src/server/management-service.ts/ManagementService.getCron:506",
-			"src/server/management-service.ts/ManagementService.triggerCron:518"
+		"src/server/management-service.ts/ManagementService.requireCronStore:149": [
+			"src/server/management-service.ts/ManagementService.createCron:478",
+			"src/server/management-service.ts/ManagementService.updateCron:505",
+			"src/server/management-service.ts/ManagementService.deleteCron:516",
+			"src/server/management-service.ts/ManagementService.listCrons:524",
+			"src/server/management-service.ts/ManagementService.getCron:535",
+			"src/server/management-service.ts/ManagementService.triggerCron:547"
 		],
 		"src/server/mcp-manager.ts/MCPManager.disconnect:146": [
 			"src/server/mcp-manager.ts/MCPManager.connect:65",
@@ -24947,24 +24855,25 @@
 		"src/server/sqlite-store.ts/SqliteStore.columnDef:100": [
 			"src/server/sqlite-store.ts/SqliteStore.ensureTable:108"
 		],
-		"src/server/sqlite-store.ts/SqliteStore.rowToRecord:255": [
+		"src/server/sqlite-store.ts/SqliteStore.rowToRecord:268": [
 			"src/server/sqlite-store.ts/SqliteStore.list:158",
 			"src/server/sqlite-store.ts/SqliteStore.get:162"
 		],
 		"src/server/sqlite-store.ts/SqliteStore.get:162": [
 			"src/server/sqlite-store.ts/SqliteStore.get:162",
-			"src/server/sqlite-store.ts/SqliteStore.update:174"
+			"src/server/sqlite-store.ts/SqliteStore.update:187"
 		],
-		"src/server/sqlite-store.ts/SqliteStore.insertRow:232": [
+		"src/server/sqlite-store.ts/SqliteStore.insertRow:245": [
 			"src/server/sqlite-store.ts/SqliteStore.create:167",
-			"src/server/sqlite-store.ts/SqliteStore.migrateFromJson:196"
+			"src/server/sqlite-store.ts/SqliteStore.createWithId:180",
+			"src/server/sqlite-store.ts/SqliteStore.migrateFromJson:209"
 		],
-		"src/server/sqlite-store.ts/SqliteStore.updateRow:237": [
-			"src/server/sqlite-store.ts/SqliteStore.update:174"
+		"src/server/sqlite-store.ts/SqliteStore.updateRow:250": [
+			"src/server/sqlite-store.ts/SqliteStore.update:187"
 		],
-		"src/server/sqlite-store.ts/SqliteStore.toColumnValue:244": [
-			"src/server/sqlite-store.ts/SqliteStore.insertRow:232",
-			"src/server/sqlite-store.ts/SqliteStore.updateRow:237"
+		"src/server/sqlite-store.ts/SqliteStore.toColumnValue:257": [
+			"src/server/sqlite-store.ts/SqliteStore.insertRow:245",
+			"src/server/sqlite-store.ts/SqliteStore.updateRow:250"
 		],
 		"src/server/task-step-store.ts/TaskStepStore.list:65": [
 			"src/server/task-step-store.ts/TaskStepStore.list:65",
@@ -25009,28 +24918,28 @@
 		"src/shared/github-template-utils.ts/extractTag:39": [
 			"src/server/template-router.ts/createTemplateRouter:47"
 		],
-		"src/server/template-store.ts/TemplateStore.list:792": [
-			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:772",
-			"src/server/template-store.ts/TemplateStore.list:792",
-			"src/server/template-store.ts/TemplateStore.findByNameAndSource:840"
+		"src/server/template-store.ts/TemplateStore.list:963": [
+			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
+			"src/server/template-store.ts/TemplateStore.list:963",
+			"src/server/template-store.ts/TemplateStore.findByNameAndSource:1011"
 		],
-		"src/server/template-store.ts/TemplateStore.get:796": [
-			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:772",
-			"src/server/template-store.ts/TemplateStore.get:796",
-			"src/server/template-store.ts/TemplateStore.delete:808",
-			"src/server/template-store.ts/TemplateStore.exportTemplate:814"
+		"src/server/template-store.ts/TemplateStore.get:967": [
+			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
+			"src/server/template-store.ts/TemplateStore.get:967",
+			"src/server/template-store.ts/TemplateStore.delete:979",
+			"src/server/template-store.ts/TemplateStore.exportTemplate:985"
 		],
-		"src/server/template-store.ts/TemplateStore.create:800": [
-			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:772",
-			"src/server/template-store.ts/TemplateStore.create:800",
-			"src/server/template-store.ts/TemplateStore.importTemplate:820"
+		"src/server/template-store.ts/TemplateStore.create:971": [
+			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
+			"src/server/template-store.ts/TemplateStore.create:971",
+			"src/server/template-store.ts/TemplateStore.importTemplate:991"
 		],
-		"src/server/template-store.ts/TemplateStore.update:804": [
-			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:772",
-			"src/server/template-store.ts/TemplateStore.update:804"
+		"src/server/template-store.ts/TemplateStore.update:975": [
+			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
+			"src/server/template-store.ts/TemplateStore.update:975"
 		],
-		"src/server/template-store.ts/TemplateStore.delete:808": [
-			"src/server/template-store.ts/TemplateStore.delete:808"
+		"src/server/template-store.ts/TemplateStore.delete:979": [
+			"src/server/template-store.ts/TemplateStore.delete:979"
 		],
 		"src/server/tool-execution-hooks.ts/truncatePreview:129": [
 			"src/server/tool-execution-hooks.ts/registerToolExecutionHooks:35"
@@ -25574,6 +25483,7 @@
 			"src/server/analyst-service.ts",
 			"src/server/index.ts",
 			"src/server/lead-service.ts",
+			"src/server/management-service.ts",
 			"src/server/template-router.ts"
 		],
 		"src/runtime/session-store-interface.ts": [
@@ -25705,7 +25615,6 @@
 		],
 		"src/shared/types.ts": [
 			"src/runtime/proxy-manager.ts",
-			"src/runtime/role-templates.ts",
 			"src/runtime/subagent-delegator.ts",
 			"src/runtime/tools/orchestrate-tool.ts",
 			"src/runtime/tools/wiki-tool.ts",
@@ -25715,6 +25624,7 @@
 			"src/server/agent-store.ts",
 			"src/server/analyst-service.ts",
 			"src/server/archivist-service.ts",
+			"src/server/builtin-role-templates.ts",
 			"src/server/cron-analysis.ts",
 			"src/server/cron-router.ts",
 			"src/server/cron-store.ts",
@@ -25775,8 +25685,7 @@
 			"src/runtime/tools/project-tool.ts",
 			"src/server/cron-router.ts",
 			"src/server/fresh-db-seed.ts",
-			"src/server/project-router.ts",
-			"src/server/role-template-router.ts"
+			"src/server/project-router.ts"
 		],
 		"src/runtime/tools/wiki-path-guard.ts": [
 			"src/runtime/tools/bash.ts",
@@ -26324,9 +26233,8 @@
 			"src/server/log-router.ts",
 			"src/core/logger.ts"
 		],
-		"src/runtime/role-templates.ts": [
-			"src/server/management-service.ts",
-			"src/server/role-template-router.ts"
+		"src/server/builtin-role-templates.ts": [
+			"src/server/management-service.ts"
 		],
 		"src/server/mcp-presets.ts": [
 			"src/server/mcp-router.ts"

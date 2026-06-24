@@ -57,18 +57,23 @@ import type {
 	ProjectResourceUsage,
 	RequirementRecord,
 	RequirementStatus,
+	PromptTemplate,
 } from "../shared/types.js";
-import {
-	buildAgentFromTemplate,
-	getTemplate,
-	listTemplates,
-	type RoleTemplate,
-} from "../runtime/role-templates.js";
+import type { TemplateStore } from "./template-store.js";
+import { BUILTIN_WORKFLOW_ROLES } from "./builtin-role-templates.js";
 import { log } from "../core/logger.js";
 
 export interface ManagementDeps {
 	agentStore: AgentStore;
 	projectStore: ProjectStore;
+	/**
+	 * v0.8 (模板统一): the single template store. Role-identity templates
+	 * (lead/pm/zero/...) now live here as built-in PromptTemplate seeds, so
+	 * `AgentRegistry.listTemplates` and the UI Templates page read the same
+	 * table. Optional so legacy callers/tests that only need project/agent CRUD
+	 * still construct without it; the template actions require it, though.
+	 */
+	templateStore?: TemplateStore;
 	/** v0.8 M1: cron store — optional so M0 callers (and tests) still work. */
 	cronStore?: CronStore;
 	/**
@@ -101,6 +106,7 @@ const CONTAINER_REQUIREMENT_STATUSES: RequirementStatus[] = [
 export class ManagementService {
 	private agentStore: AgentStore;
 	private projectStore: ProjectStore;
+	private templateStore: TemplateStore | null;
 	private cronStore: CronStore | null;
 	// v0.8 P5 (§8.4 / §8.5): container view + resource usage deps. Late-bound
 	// via setters so production wiring order (server/index.ts constructs the
@@ -113,11 +119,20 @@ export class ManagementService {
 	constructor(deps: ManagementDeps) {
 		this.agentStore = deps.agentStore;
 		this.projectStore = deps.projectStore;
+		this.templateStore = deps.templateStore ?? null;
 		this.cronStore = deps.cronStore ?? null;
 		this.requirementStore = deps.requirementStore ?? null;
 		this.sessionDB = deps.sessionDB ?? null;
 		this.wikiStore = deps.wikiStore ?? null;
 		this.archivistService = deps.archivistService ?? null;
+	}
+
+	/** v0.8 (模板统一): late-bind the template store (server/index.ts wiring order). */
+	setTemplateStore(store: TemplateStore): void { this.templateStore = store; }
+
+	private requireTemplateStore(): TemplateStore {
+		if (!this.templateStore) throw new Error("TemplateStore not wired into ManagementService");
+		return this.templateStore;
 	}
 
 	/** v0.8 M1: late-bind the cron store. */
@@ -386,60 +401,74 @@ export class ManagementService {
 		return this.agentStore.get(id);
 	}
 
-	// ─── Templates (§7.3) ────────────────────────────────────────
+	// ─── Templates (能力模板) + Roles (工作流角色) ───────────────
 	//
-	// Templates = role templates (role-templates.ts, RFC §7.2 — formerly the
-	// `role-presets.ts` / `ROLE_PRESETS` table). Agent create with
-	// `template=<templateId>` copies the template's identity (systemPrompt /
-	// model / toolPolicy) into the new agent. listTemplates / getTemplate are
-	// read-only views so the LLM (and UI) can enumerate them.
+	// v0.8 模板/角色分离(ADR-019):两个独立概念。
+	//   - **能力模板**(PromptTemplate,TemplateStore 画廊):按能力/领域专长取
+	//     向,用户面向。UI 画廊 + AgentRegistry.listTemplates 共看 → 对齐。
+	//     Agent create with `template=<id>` 把模板身份拷进新 agent。
+	//   - **工作流角色**(zero/lead/archivist,角色注册表):交付工作流的位置,
+	//     与模板无关,不进画廊。fresh-db seed 的 zero、按需的 lead/archivist
+	//     走 instantiateRole。
 
-	listTemplates(roleTag?: string): RoleTemplate[] {
-		return listTemplates(roleTag);
+	listTemplates(): PromptTemplate[] {
+		return this.requireTemplateStore().list();
 	}
 
-	getTemplate(templateId: string): RoleTemplate | undefined {
-		return getTemplate(templateId);
+	getTemplate(templateId: string): PromptTemplate | undefined {
+		return this.requireTemplateStore().get(templateId);
 	}
 
 	/**
-	 * Instantiate a role template as a global Agent. Resolves the template's
-	 * `whitelistedRoleTags` against existing agents with that roleTag and
-	 * merges them into `AgentRecord.subagents` (v0.8 §11.5 — delegation now
-	 * flows through subagents keyed by agentId, NOT toolPolicy.tools[entryId]
-	 * which was the retired agent-as-tool path).
+	 * Instantiate a **capability template** as a global Agent: copies identity
+	 * (systemPrompt / model / provider / thinkingLevel / toolPolicy) from the
+	 * PromptTemplate gallery. This is the Agent.create + template path.
 	 *
-	 * This is the Agent.create + template path. Also used by the REST
-	 * /api/role-templates/:id/instantiate entry (parallel to the Agent tool).
+	 * v0.8:旧的 `whitelistedRoleTags` 委派自动装配已移除(依赖失效的 role_tag
+	 * 物理列,fresh DB 上是 no-op)。subagents 由用户手动配(UI / AgentRegistry
+	 * update)。
 	 */
 	instantiateTemplate(
 		templateId: string,
-		overrides?: Parameters<typeof buildAgentFromTemplate>[1],
-		options: { bindToolPolicy?: boolean } = {},
+		overrides?: Partial<Pick<AgentRecord, "name" | "model" | "provider" | "workspaceDir" | "thinkingLevel">>,
 	): AgentRecord {
-		const template = getTemplate(templateId);
-		if (!template) throw new Error(`Unknown role template: ${templateId}`);
+		const template = this.requireTemplateStore().get(templateId);
+		if (!template) throw new Error(`Unknown template: ${templateId}`);
 
-		const baseInput = buildAgentFromTemplate(templateId, overrides);
-		const bindToolPolicy = options.bindToolPolicy ?? true;
+		return this.agentStore.create({
+			name: overrides?.name ?? template.name,
+			model: overrides?.model ?? template.model,
+			provider: overrides?.provider ?? template.provider,
+			workspaceDir: overrides?.workspaceDir,
+			thinkingLevel: overrides?.thinkingLevel ?? template.thinkingLevel,
+			systemPrompt: template.systemPrompt,
+			toolPolicy: template.toolPolicy as AgentRecord["toolPolicy"],
+		});
+	}
 
-		if (bindToolPolicy && template.whitelistedRoleTags && template.whitelistedRoleTags.length > 0) {
-			const subagents = [...(baseInput.subagents ?? [])];
-			for (const roleTag of template.whitelistedRoleTags) {
-				const targetAgent = this.findAgentByRoleTag(roleTag);
-				if (targetAgent && !subagents.some((s) => s.agentId === targetAgent.id)) {
-					subagents.push({ agentId: targetAgent.id });
-				} else if (!targetAgent) {
-					log.warn(
-						"management",
-						`No agent found for whitelisted roleTag "${roleTag}" during template "${templateId}" instantiation; skipping.`,
-					);
-				}
-			}
-			baseInput.subagents = subagents;
-		}
+	/**
+	 * Instantiate a **workflow role** (zero / lead / archivist) as a global
+	 * Agent. Roles are NOT capability templates — they're delivery-workflow
+	 * positions with no gallery equivalent, defined in the role registry
+	 * (builtin-role-templates.ts). Used by fresh-db seed (zero) and on-demand
+	 * workflow setup (lead / archivist).
+	 */
+	instantiateRole(
+		roleId: string,
+		overrides?: Partial<Pick<AgentRecord, "name" | "model" | "provider" | "workspaceDir" | "thinkingLevel">>,
+	): AgentRecord {
+		const role = BUILTIN_WORKFLOW_ROLES.find((r) => r.id === roleId);
+		if (!role) throw new Error(`Unknown workflow role: ${roleId}`);
 
-		return this.agentStore.create(baseInput);
+		return this.agentStore.create({
+			name: overrides?.name ?? role.name,
+			model: overrides?.model,
+			provider: overrides?.provider,
+			workspaceDir: overrides?.workspaceDir,
+			thinkingLevel: overrides?.thinkingLevel,
+			systemPrompt: role.systemPrompt,
+			toolPolicy: role.toolPolicy,
+		});
 	}
 
 	// ─── Cron (§9.4) ─────────────────────────────────────────────
@@ -541,15 +570,5 @@ export class ManagementService {
 			tools: { ...(agent.toolPolicy?.tools ?? {}), ...(patch.tools ?? {}) },
 		};
 		return this.agentStore.update(agentId, { toolPolicy: merged });
-	}
-
-	/**
-	 * Find the first agent with the given roleTag (legacy physical column).
-	 * Used by `instantiateTemplate` to resolve `whitelistedRoleTags` into
-	 * subagent references (v0.8 §11.5 — delegation via subagents).
-	 */
-	private findAgentByRoleTag(roleTag: string): AgentRecord | undefined {
-		const agents = this.agentStore.listByRoleTag(roleTag);
-		return agents[0];
 	}
 }

@@ -214,6 +214,7 @@ export async function startServer(options?: StartServerOptions) {
 	const { ManagementService } = await import("./management-service.js");
 	const management = new ManagementService({
 		agentStore, projectStore, cronStore,
+		templateStore,
 		requirementStore, sessionDB, wikiStore: wikiStoreGlobal,
 	});
 	agentService.setManagement(management);
@@ -656,10 +657,8 @@ export async function startServer(options?: StartServerOptions) {
 	});
 	app.use("/api/archivist", archivistRouter);
 
-	// v0.8 (M0/P6): role templates — list + one-click instantiate
-	// (P6 renamed from preset-router / /api/presets; RFC §7.2)
-	const { createRoleTemplateRouter } = await import("./role-template-router.js");
-	app.use("/api/role-templates", createRoleTemplateRouter(management));
+	// v0.8 模板统一:role-template 通道已移除 —— role 身份模板并入 TemplateStore
+	// (/api/templates),AgentRegistry 工具与 UI Templates 页面读同一张表。
 
 	// Tool execute
 	app.post("/api/tool-execute", async (req, res) => {

@@ -159,6 +159,7 @@ export interface PromptTemplate {
 	toolPolicy?: {
 		autoApprove?: string[];
 		blockedTools?: string[];
+		tools?: Record<string, { enabled: boolean }>;
 		executionMode?: "sequential" | "parallel";
 		resultMaxTokens?: number;
 		readScope?: "filesystem" | "workspace";

@@ -115,25 +115,85 @@ Container for per-agent memory subtrees. Each agent gets \`wiki-root:memory-agen
 Memory is global to an agent (spans every project that agent touches), keyed by agentId, not by project.`;
 
 /**
- * software-dev playbook body (草稿,后续可 refine;RFC §7.1 验收:含角色清单 +
- * subagents 关系 + cron 建议)。
+ * software-dev playbook body —— 软件开发示例工作流的**唯一知识源**。
+ *
+ * v0.8 ADR-020:项目代码是通用工作流平台(只提供机制),软件开发只是默认 seed
+ * 进 wiki 的示例工作流。本 playbook 承载全部 software-dev 工作流知识(角色身份
+ * +程序、管线、门、subagents 图、cron、状态机)。zero 读它来搭这套工作流;
+ * lead/archivist/... 不在代码里硬编码,由 zero 读本 playbook 后用 AgentRegistry
+ * 实例化(systemPrompt 由 zero 基于此处描述撰写)。
  */
 const SOFTWARE_DEV_PLAYBOOK = `# software-dev 工作流配置
 
-> 这是 fresh-DB 默认 seed 写入的 software-dev playbook 草稿(RFC §7.1)。zero
-> 读它来学习怎么搭这套工作流。后续可由 zero / 用户 refine。
+> 这是 fresh-DB 默认 seed 写入的 **software-dev playbook**(示例工作流)。zero 读
+> 它来学习怎么搭这套工作流。本节点是该工作流的**唯一知识源**——角色身份/程序、
+> 管线、门、subagents 图、cron 都在这里,代码里不硬编码。后续可由 zero / 用户 refine。
 
-## 角色清单 (role templates)
+## 平台定位
 
-| template | 职责 |
-|---|---|
-| \`zero\` | 软件管家 / 用户入口。配置其他 agent 与合作关系。**默认 seed**(fresh-DB 自动实例化)。 |
-| \`pm\` | 产品经理。cron 巡检发现需求、discuss 细化、**verify 覆盖判断**。 |
-| \`lead\` | 交付负责人。领 ready 需求 → Orchestrate 编排 → 委派 dev/review/qa → 提交 verify。 |
-| \`developer\` / \`reviewer\` / \`qa\` | 交付流程执行角色(写码 / 审 / 测)。被 lead 委派,无 cron。 |
-| \`archivist\` | 知识管理。**管 git main**、wiki 项目子树、feature→main 合并。 |
+zero-core 是**通用工作流引擎**:提供 agents、tools、cron、wiki 知识树、Orchestrate
+编排、委派。它不绑定任何具体工作流。software-dev 是默认自带的**示例工作流**;若要
+别的工作流(研究、内容生产、运维……),照此结构另写一份 playbook 即可。
 
-> analyzer / planner 是抽象概念,不作为独立角色 template 落地。
+## 角色清单
+
+> 这些角色**不在代码里**;zero 读完本表后,用 AgentRegistry 把它们建成 agent
+> (systemPrompt 基于下面各角色的「身份 + 程序」撰写,toolPolicy 按需配,subagents
+> 按「subagents 图」连)。能力底座优先用能力画廊里的模板(Coder / Reviewer /
+> QA Engineer / Product Manager 等)。
+
+| 角色 | 能力底座(画廊模板) | 职责 | cron |
+|---|---|---|---|
+| \`zero\` | (平台自带,已 seed) | 平台管家 / 用户入口;读 playbook 搭工作流、配置 agent 与合作。 | 按需 |
+| \`pm\` | Product Manager | 产品侧:cron 巡检发现需求、discuss 细化、**verify 产品粒度覆盖判断**。 | interval 巡检 |
+| \`lead\` | (自建,FS 只读) | 交付侧:领 ready 需求 → Orchestrate 编排 → 委派 dev/review/qa → 提交 verify。 | fallback |
+| \`developer\` | Coder | 实现(被 lead 委派,继承 caller bundle)。 | 无 |
+| \`reviewer\` | Reviewer | 评审(被 lead 委派,只读,返回 verdict)。 | 无 |
+| \`qa\` | QA Engineer | 测试(被 lead 委派)。 | 无 |
+| \`archivist\` | (自建,FS 只读) | 知识侧:**管 git main**、wiki 项目子树、feature→main 合并。 | alarm 巡检 |
+
+> analyzer / planner 是抽象概念,不作为独立角色落地;需要深度分析/规划时,lead
+> 或 pm 直接用能力画廊里的领域专家(Security/UI-UX/Performance Expert 等)委派。
+
+## 各角色身份与程序(写 systemPrompt 的依据)
+
+### pm(产品经理)
+产品发现、需求管理、覆盖判断:
+1. **discover** —— 周期巡检工作区;是否分析、分析多深,自己定。cron 只是唤醒,发现什么、建什么由 PM 自己决定。
+2. **create requirement** —— 对每个值得跟踪的新发现,建需求记录(status 'discuss')并写 repo 需求文档,绑定 docPath。幂等:同项目同名重建是 no-op。**只在发现 pass 建新需求,绝不改已存在需求文档**(discuss 期改动走 discuss session)。
+3. **discuss** —— 与用户细化需求;确认后状态 → 'ready' 交给 lead。
+4. **judge coverage (verify)** —— lead 提交 verify 后,PM 判断变更+测试是否覆盖原始需求意图。这是**产品粒度覆盖,不是技术验收**(技术验收在 lead flow 内已完成)。判定:pass → 触发 archivist 合并;not pass + 修改意见 → lead 改计划重提 verify。
+- 读 archivist 的项目 wiki 子树,把需求写得更好、覆盖判断更准。
+- 不碰代码、wiki 树结构、feature-branch git(对 PM 只读);PM 唯一写面是需求记录/文档(+ 自己的 memory)。
+- 巡检是 PM 自己的职责,不是 cron 直调 service。
+- 工具:启用 CreateRequirementWithDoc + Wiki(读 archivist wiki)+ FS 只读。
+
+### lead(交付负责人)
+交付管线,一次一个需求:
+1. **pickup** —— 领进入 'ready' 的需求;完成一个自动领下一个,cron 只是兜底唤醒。
+2. **plan** —— 出任务大纲,转成 Orchestrate flow(parallel / pipeline / if / for / barrier),指定每个节点由哪个 agent 执行。提交 flow;**plan 门**等用户确认后才执行。
+3. **build** —— 按确认的 flow 驱动 developer → reviewer → qa 执行,控制节奏、审结果。
+4. **verify** —— build 完成后**提交 verify**(做了什么 + 证据)并停下等 PM 判定。PM pass 即交付;not pass + 意见 → 改计划、重执行、重提 verify,直到 pass。
+- lead 写 Orchestrate DSL,自己 plan(除非另配 planner)。
+- **不自己写代码**——委派给 developer/reviewer/qa。
+- 不碰 PM 的需求文档和 archivist 的 wiki 树(对 lead 只读);读 archivist wiki 做 plan。
+- 边界止于「实现完成 + verify 通过」;合 main 是 archivist 的活(PM 触发),lead 不碰。
+- 一次只做一个需求,做完自动领下一个。
+- 工具:FS 只读(不写码)。
+
+### archivist(知识管理)
+项目 wiki 子树 + main 分支:
+- 把项目 wiki 子树建成结构节点树(module / subsystem / convention),**叶子是参考文档**——每片叶子的正文(你的理解/注释)**在正文里链接到真实项目文件**(你读但绝不改);项目文件本身不在 wiki 里,只被引用。这样不碰代码也能理解项目。
+- 维护节点间链接(模块包含、依赖、需求↔实现追溯)。
+- 项目文档**只读**(代码、需求文档、ADR);只写自己的 wiki 子树(结构行 + 参考文档正文)。
+- **渐进扫描**:先建结构(骨架 + docPointer),再增量填参考文档正文;中断后从 cursor 续。
+- **管 main 分支**:PM 触发合并时(verify 通过后)把 feature → main;合并后增量重扫变更文件、更新受影响参考文档。
+- 给结构断言打 provenance:structure(来自代码)/ derived(来自 commit·ADR)/ confirmed(来自需求文档·用户 discuss)。检测意图与代码的偏离,标给 PM/lead。
+- 写面是自己服务的项目子树(项目 anchor);绝不改项目文件本身。意图从制品聚合,不发明。把值得记的事实(决策、教训、模式)抽进自己 memory 子树。
+- 工具:FS 只读 + Wiki(写自己子树)。
+
+### developer / reviewer / qa(交付执行角色)
+被 lead 委派,继承 caller bundle,做完一个委派任务就返回,不自主领活、不跨需求、不做产品/合并判断。systemPrompt 直接用能力画廊的 Coder / Reviewer / QA Engineer(身份 + 工作方式已在画廊 prompt 里;任务框架由 Orchestrate dispatch 模板带)。
 
 ## subagents 关系图 (caller → callee)
 
@@ -144,22 +204,21 @@ pm  ─── 委派 ───► archivist  (verify 通过 → 触发 archivist
 lead ─── 委派 ──► developer / reviewer / qa  (Orchestrate flow 节点)
 \`\`\`
 
-- **lead** 的 subagents: \`[developer, reviewer, qa]\`
+- **lead** 的 subagents: \`[developer, reviewer, qa]\`(zero 用能力模板 Coder/Reviewer/QA Engineer 建)
 - **pm** 的 subagents: \`[archivist]\`
 - **archivist** 不委派(只被 PM 委派)
 - **zero** 是顶层配置者,不参与运行时委派
 
-## cron 建议 (PM / archivist 巡检,由 zero 配)
+## cron 建议(由 zero 配)
 
-- **PM** — interval 巡检 cron(默认每 2-4 小时一次,按项目节奏调):
-  scope = 项目 \`{projectId, workspaceDir, wikiRootNodeId}\`;prompt 触发 PM
-  自主发现/创建/细化需求。
+- **PM** — interval 巡检 cron(默认每 2-4 小时,按项目节奏调):
+  scope = 项目 \`{projectId, workspaceDir, wikiRootNodeId}\`;prompt 触发 PM 自主发现/创建/细化需求。
 - **archivist** — alarm 巡检 cron(可选,默认每天 1 次):
   scope = 项目;触发 archivist 增量扫描更新 wiki。
-- **lead** — fallback cron(可选,默认每 30 分钟一次):
-  仅作 idle 兜底;lead 主要靠「完成上一任务后自动领下一个」。
+- **lead** — fallback cron(可选,默认每 30 分钟):
+  仅 idle 兜底;lead 主要靠「完成上一任务后自动领下一个」。
 
-## 两道门 (RFC §4.3 / §4.5)
+## 两道门
 
 1. **plan confirm 门** —— lead 提交 Orchestrate flow 后停下,等用户确认。
 2. **verify 门** —— lead 完成实现后提交 verify 停下,**PM 做产品粒度覆盖判断**:
@@ -174,11 +233,13 @@ found → discuss → ready → plan → build → verify → archived
                                         └─ (PM 判不通过+意见) lead 改计划再执行
 \`\`\`
 
-## fresh-DB seed(本节点 + zero agent)
+## fresh-DB seed
 
-zero agent + \`knowledge/software-dev\` 节点是 fresh-DB 默认两条 seed,**不可删**
-(protected)。其余角色(pm/lead/archivist/dev/...)永不 seed,永远留在
-template 表里,由 zero 按用户对话按需实例化。
+- **zero agent**:平台自带,fresh-DB 自动实例化(平台基础设施,不是工作流知识)。
+- **本 playbook 节点**(\`knowledge/workflow/software-dev\`):software-dev 工作流
+  的唯一知识源,protected 不可删。
+- pm/lead/archivist/developer/reviewer/qa **永不自动 seed**:它们是 software-dev
+  工作流的角色,知识在本 playbook 里,由 zero 读出后用 AgentRegistry 按需建成 agent。
 `;
 
 /**
@@ -219,14 +280,10 @@ export function seedFreshDbDefaults(deps: {
 		return;
 	}
 	try {
-		management.instantiateTemplate(
-			"zero",
-			{
-				name: "zero",
-				workspaceDir: join(homedir(), ".zero-core"),
-			},
-			{ bindToolPolicy: false },
-		);
+		management.instantiateRole("zero", {
+			name: "zero",
+			workspaceDir: join(homedir(), ".zero-core"),
+		});
 		console.log("[seed] instantiated zero agent (fresh-DB seed)");
 	} catch (err) {
 		console.warn("[seed] failed to seed zero agent:", (err as Error).message);

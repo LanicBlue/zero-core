@@ -46,10 +46,11 @@ export default function AskUserCard({ requestId, questions, onDone }: Props) {
 		setAnswers((prev) => ({ ...prev, [`q${qIdx}`]: label }));
 	};
 
-	const handleOtherSubmit = (qIdx: number) => {
-		const val = customInput[qIdx.toString()]?.trim();
-		if (!val) return;
-		// Store the real custom value (not the sentinel) as the answer.
+	// Live-update the custom "Other" answer as the user types — no separate
+	// per-input Submit needed. The answer is always current; Enter or the card's
+	// "Send Response" button sends it.
+	const handleCustomChange = (qIdx: number, val: string) => {
+		setCustomInput((prev) => ({ ...prev, [qIdx.toString()]: val }));
 		setAnswers((prev) => ({ ...prev, [`q${qIdx}`]: val }));
 	};
 
@@ -66,7 +67,12 @@ export default function AskUserCard({ requestId, questions, onDone }: Props) {
 			<div className="ask-user-header">Agent is asking a question</div>
 			{questions.map((q, qi) => {
 				const ans = answerFor(qi);
-				const isOtherSelected = ans !== undefined && ans !== OTHER && q.options?.some((o) => o.label === ans) === false;
+				// "Other mode" = the Other button is the active choice. True both for
+				// the sentinel (just clicked Other, nothing typed yet) and for a
+				// custom value that doesn't match any fixed option. Stays true while
+				// the user types, so the input box never disappears mid-entry.
+				const isFixedChoice = !!q.options && q.options.some((o) => o.label === ans);
+				const otherMode = ans !== undefined && !isFixedChoice;
 				return (
 				<div key={qi} className="ask-user-question">
 					{q.header && <span className="ask-user-chip">{q.header}</span>}
@@ -75,6 +81,7 @@ export default function AskUserCard({ requestId, questions, onDone }: Props) {
 						<div className="ask-user-options">
 							{q.options.map((opt, oi) => (
 								<button
+									type="button"
 									key={oi}
 									className={`ask-user-option ${ans === opt.label ? "selected" : ""}`}
 									onClick={() => handleSelect(qi, opt.label)}
@@ -85,26 +92,24 @@ export default function AskUserCard({ requestId, questions, onDone }: Props) {
 							))}
 							{/* Always-present "Other" escape hatch — user can type any answer. */}
 							<button
-								className={`ask-user-option other ${isOtherSelected ? "selected" : ""}`}
+								type="button"
+								className={`ask-user-option other ${otherMode ? "selected" : ""}`}
 								onClick={() => handleSelect(qi, OTHER)}
 							>
 								<span className="ask-user-opt-label">Other…</span>
 							</button>
-							{ans === OTHER && (
+							{otherMode && (
 								<div className="ask-user-other-input">
 									<input
 										type="text"
 										placeholder="Type your answer..."
 										value={customInput[qi.toString()] ?? ""}
 										autoFocus
-										onChange={(e) =>
-											setCustomInput((prev) => ({ ...prev, [qi.toString()]: e.target.value }))
-										}
+										onChange={(e) => handleCustomChange(qi, e.target.value)}
 										onKeyDown={(e) => {
-											if (e.key === "Enter") handleOtherSubmit(qi);
+											if (e.key === "Enter") { e.preventDefault(); void handleSubmit(); }
 										}}
 									/>
-									<button onClick={() => handleOtherSubmit(qi)}>Submit</button>
 								</div>
 							)}
 						</div>
@@ -114,14 +119,12 @@ export default function AskUserCard({ requestId, questions, onDone }: Props) {
 								type="text"
 								placeholder="Type your answer..."
 								value={customInput[qi.toString()] ?? ""}
-								onChange={(e) =>
-									setCustomInput((prev) => ({ ...prev, [qi.toString()]: e.target.value }))
-								}
+								autoFocus
+								onChange={(e) => handleCustomChange(qi, e.target.value)}
 								onKeyDown={(e) => {
-									if (e.key === "Enter") handleOtherSubmit(qi);
+									if (e.key === "Enter") { e.preventDefault(); void handleSubmit(); }
 								}}
 							/>
-							<button onClick={() => handleOtherSubmit(qi)}>Submit</button>
 						</div>
 					)}
 				</div>
