@@ -211,7 +211,7 @@ function ThinkingBlockComponent({ text, streaming }: { text: string; streaming: 
 						{block.result && (
 							<div className="tool-block-result">
 								<div className="tool-block-section-label">Result</div>
-								<MarkdownRenderer content={block.result} softBreak />
+								<MarkdownRenderer content={block.result} />
 							</div>
 						)}
 					</div>
@@ -220,15 +220,85 @@ function ThinkingBlockComponent({ text, streaming }: { text: string; streaming: 
 		);
 	}
 
+/**
+ * Group of consecutive tool calls from one assistant turn, collapsed into a
+ * single foldable card so a batch of N parallel calls doesn't produce N
+ * separate collapsed rows cluttering the chat. The group header summarizes
+ * the batch (count + aggregate status); expanding reveals the individual
+ * ToolBlocks, each still independently expandable for args/result.
+ */
+function ToolCallGroup({ blocks, streaming }: { blocks: ToolCallBlock[]; streaming: boolean }) {
+	const [expanded, setExpanded] = useState(false);
+
+	// Aggregate status: running beats error beats done.
+	const aggregate = useMemo(() => {
+		const statuses = blocks.map((b) => b.status);
+		if (statuses.includes("running")) return "running";
+		if (statuses.includes("error")) return "error";
+		return "done";
+	}, [blocks]);
+
+	const statusClass = aggregate === "running" ? "tool-running"
+		: aggregate === "error" ? "tool-error" : "tool-done";
+	const statusLabel = aggregate === "running" ? "Running…"
+		: aggregate === "error" ? "Error" : "Done";
+
+	// Distinct tool-name count for the collapsed preview (e.g. "Read × 3, Write").
+	const nameSummary = useMemo(() => {
+		const counts = new Map<string, number>();
+		for (const b of blocks) counts.set(b.name, (counts.get(b.name) ?? 0) + 1);
+		return Array.from(counts.entries())
+			.map(([n, c]) => `${TOOL_DISPLAY_NAMES[n] ?? n}${c > 1 ? ` × ${c}` : ""}`)
+			.join(", ");
+	}, [blocks]);
+
+	return (
+		<div className={`tool-call-group ${statusClass}`}>
+			<div className="tool-call-group-header" onClick={() => setExpanded(!expanded)}>
+				<span className="tool-block-chevron">{expanded ? "▾" : "▸"}</span>
+				<span className="tool-call-group-title">
+					{blocks.length} tool call{blocks.length !== 1 ? "s" : ""}
+				</span>
+				{!expanded && <span className="tool-call-group-summary">{nameSummary}</span>}
+				<span className={`tool-block-status ${statusClass}`}>{statusLabel}</span>
+			</div>
+			{expanded && (
+				<div className="tool-call-group-body">
+					{blocks.map((b, i) => (
+						<ToolBlock key={i} block={b} streaming={streaming} />
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
 function renderBlocks(blocks: MessageBlock[], streaming: boolean) {
 	const elements: React.ReactNode[] = [];
 	let ti = 0, ki = 0, xi = 0;
 
+	// Collect runs of consecutive tool blocks so a batch of parallel tool calls
+	// from one assistant turn renders as ONE collapsible group (see
+	// ToolCallGroup) instead of N separate collapsed cards.
+	let toolRun: ToolCallBlock[] = [];
+	const flushToolRun = (keyPrefix: string) => {
+		if (toolRun.length === 0) return;
+		if (toolRun.length === 1) {
+			elements.push(<ToolBlock key={keyPrefix + (ki++)} block={toolRun[0]} streaming={streaming} />);
+		} else {
+			elements.push(<ToolCallGroup key={keyPrefix + (ki++)} blocks={toolRun} streaming={streaming} />);
+		}
+		toolRun = [];
+	};
+
 	for (const block of blocks) {
+		if (block.type === "tool") {
+			toolRun.push(block as ToolCallBlock);
+			continue;
+		}
+		flushToolRun("k");
 		if (block.type === "thinking") {
 			elements.push(<ThinkingBlockComponent key={"t" + (ti++)} text={(block as ThinkingBlock).text} streaming={streaming} />);
-		} else if (block.type === "tool") {
-			elements.push(<ToolBlock key={"k" + (ki++)} block={block as ToolCallBlock} streaming={streaming} />);
 		} else if (block.type === "text") {
 			const text = (block as { text: string }).text;
 			if (!text) continue;
@@ -243,6 +313,7 @@ function renderBlocks(blocks: MessageBlock[], streaming: boolean) {
 			}
 		}
 	}
+	flushToolRun("k");
 
 	return elements;
 }

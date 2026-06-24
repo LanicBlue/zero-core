@@ -26,9 +26,16 @@ import { join } from "node:path";
 export const IGNORED_DIRS = new Set(["node_modules", ".git", "dist", ".next", "__pycache__", ".cache"]);
 
 export const TEXT_EXTS = new Set([
-	".ts", ".tsx", ".js", ".jsx", ".json", ".md", ".css", ".html",
+	".ts", ".tsx", ".js", ".jsx", ".json", ".md", ".mdx", ".css", ".html", ".htm",
 	".yaml", ".yml", ".toml", ".py", ".rs", ".go", ".java", ".txt",
 	".sh", ".bash", ".env", ".gitignore", ".sql",
+	// Common text/config/log formats — without these the doc viewer treats the
+	// file as binary ("(binary file)") because the extension isn't whitelisted.
+	".log", ".csv", ".tsv", ".ini", ".conf", ".cfg", ".properties",
+	".xml", ".svg", ".diff", ".patch", ".lock",
+	".c", ".h", ".cpp", ".cc", ".hpp", ".cs", ".rb", ".php", ".kt", ".swift",
+	".scala", ".clj", ".lua", ".r", ".dart", ".vue", ".svelte",
+	".dockerfile", ".tf", ".dockerignore", ".editorconfig", ".prettierrc", ".eslintrc",
 ]);
 
 export interface FileTreeNode {

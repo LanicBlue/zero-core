@@ -851,6 +851,61 @@ body {
   font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }
+
+/* ─── Tool Call Group (batch of parallel calls from one turn) ─── */
+
+.tool-call-group {
+  margin: 6px 0;
+  border-left: 2px solid var(--border-muted);
+  background: var(--bg-subtle);
+  border-radius: 0 6px 6px 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+.tool-call-group.tool-running { border-left-color: var(--color-warning); }
+.tool-call-group.tool-done { border-left-color: var(--color-success); }
+.tool-call-group.tool-error { border-left-color: var(--color-danger); }
+
+.tool-call-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.tool-call-group-header:hover { background: var(--bg-hover); }
+.tool-call-group.tool-done .tool-call-group-header { color: var(--color-success-fg); }
+.tool-call-group.tool-running .tool-call-group-header { color: var(--color-warning-fg); }
+.tool-call-group.tool-error .tool-call-group-header { color: var(--color-danger-fg); }
+
+.tool-call-group-title {
+  font-weight: 600;
+  color: var(--fg-default);
+  white-space: nowrap;
+}
+
+.tool-call-group-summary {
+  flex: 1;
+  color: var(--fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-call-group-body {
+  padding: 0 8px 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* Inner tool blocks sit flush inside the group, not as standalone cards. */
+.tool-call-group-body .tool-block {
+  margin: 2px 0;
+  border-radius: 4px;
+}
+
 .tool-block-running { border-left-color: var(--color-warning); }
 .tool-block-done { border-left-color: var(--color-success); }
 .tool-block-error { border-left-color: var(--color-danger); }

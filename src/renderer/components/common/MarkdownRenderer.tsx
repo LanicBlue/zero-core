@@ -23,6 +23,7 @@
 import React, { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import rehypeRaw from "rehype-raw";
 import CodeBlock from "./CodeBlock.js";
 
@@ -30,15 +31,19 @@ interface Props {
 	content: string;
 	streaming?: boolean;
 	className?: string;
-	softBreak?: boolean;
 }
 
-export default function MarkdownRenderer({ content, streaming, className, softBreak }: Props) {
+export default function MarkdownRenderer({ content, streaming, className }: Props) {
+	// remark-breaks turns single newlines into <br> so author-intended line
+	// breaks survive rendering. Without it, Markdown treats a single \n as a
+	// soft wrap and collapses it — which eats the structure of ASCII / tree
+	// diagrams the model emits as plain text (not in a code fence), scrambling
+	// their alignment. Code blocks are unaffected (they preserve newlines
+	// regardless). Applies uniformly to chat messages, tool results, and the
+	// doc viewer.
 	const cleaned = useMemo(() => {
-		let s = content;
-		if (softBreak) s = s.replace(/\n/g, "  \n");
-		return s.replace(/\n{3,}/g, "\n\n").trim();
-	}, [content, softBreak]);
+		return content.replace(/\n{3,}/g, "\n\n").trim();
+	}, [content]);
 
 	const components = useMemo(() => ({
 		code({ className: codeClassName, children, ...rest }: React.HTMLAttributes<HTMLElement> & { node?: any }) {
@@ -59,7 +64,7 @@ export default function MarkdownRenderer({ content, streaming, className, softBr
 	return (
 		<div className={`markdown-body${streaming ? " streaming" : ""}${className ? ` ${className}` : ""}`}>
 			<ReactMarkdown
-				remarkPlugins={[remarkGfm]}
+				remarkPlugins={[remarkGfm, remarkBreaks]}
 				rehypePlugins={[rehypeRaw]}
 				components={components}
 			>
