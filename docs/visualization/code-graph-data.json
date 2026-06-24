@@ -1960,25 +1960,6 @@
 			"description": ""
 		},
 		{
-			"path": "src/runtime/tools/subagents-delegation.ts",
-			"lines": 143,
-			"dir": "src/runtime/tools",
-			"exports": [
-				"buildSubagentTools"
-			],
-			"imports": [
-				"src/runtime/tools/tool-factory.ts",
-				"src/runtime/types.ts",
-				"src/core/constants.ts"
-			],
-			"functions": [
-				"src/runtime/tools/subagents-delegation.ts/slugify:69",
-				"src/runtime/tools/subagents-delegation.ts/truncate:77",
-				"src/runtime/tools/subagents-delegation.ts/buildSubagentTools:90"
-			],
-			"description": ""
-		},
-		{
 			"path": "src/runtime/tools/syntax-check.ts",
 			"lines": 187,
 			"dir": "src/runtime/tools",
@@ -11089,49 +11070,6 @@
 			"signature": "function safe(fn: () => any)",
 			"description": "",
 			"callees": []
-		},
-		{
-			"id": "src/runtime/tools/subagents-delegation.ts/slugify:69",
-			"name": "slugify",
-			"kind": "function",
-			"file": "src/runtime/tools/subagents-delegation.ts",
-			"line": 69,
-			"endLine": 75,
-			"statementCount": 2,
-			"exported": false,
-			"signature": "function slugify(s: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/runtime/tools/subagents-delegation.ts/truncate:77",
-			"name": "truncate",
-			"kind": "function",
-			"file": "src/runtime/tools/subagents-delegation.ts",
-			"line": 77,
-			"endLine": 80,
-			"statementCount": 3,
-			"exported": false,
-			"signature": "function truncate(text: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/runtime/tools/subagents-delegation.ts/buildSubagentTools:90",
-			"name": "buildSubagentTools",
-			"kind": "function",
-			"file": "src/runtime/tools/subagents-delegation.ts",
-			"line": 90,
-			"endLine": 142,
-			"statementCount": 22,
-			"exported": true,
-			"signature": "function buildSubagentTools(opts: BuildSubagentToolsOptions)",
-			"description": "Build one delegation tool per subagent entry. The tools are returned as a\r",
-			"callees": [
-				"src/runtime/tools/subagents-delegation.ts/slugify:69",
-				"src/runtime/tools/tool-factory.ts/buildTool:163",
-				"src/runtime/tools/subagents-delegation.ts/truncate:77"
-			]
 		},
 		{
 			"id": "src/runtime/tools/syntax-check.ts/checkSyntax:57",
@@ -23328,8 +23266,7 @@
 			"src/runtime/mcp-tools/platform-tools.ts/createPlatformTools:55"
 		],
 		"src/runtime/tools/tool-factory.ts/buildTool:163": [
-			"src/runtime/mcp-tools/platform-tools.ts/createPlatformTools:55",
-			"src/runtime/tools/subagents-delegation.ts/buildSubagentTools:90"
+			"src/runtime/mcp-tools/platform-tools.ts/createPlatformTools:55"
 		],
 		"src/runtime/mcp-tools/platform-tools.ts/getLatestLogFile:30": [
 			"src/runtime/mcp-tools/platform-tools.ts/createPlatformTools:55"
@@ -23834,12 +23771,6 @@
 		"src/runtime/tools/outline/renderer.ts/renderNode:162": [
 			"src/runtime/tools/outline/renderer.ts/renderOutline:30",
 			"src/runtime/tools/outline/renderer.ts/renderNode:162"
-		],
-		"src/runtime/tools/subagents-delegation.ts/slugify:69": [
-			"src/runtime/tools/subagents-delegation.ts/buildSubagentTools:90"
-		],
-		"src/runtime/tools/subagents-delegation.ts/truncate:77": [
-			"src/runtime/tools/subagents-delegation.ts/buildSubagentTools:90"
 		],
 		"src/runtime/tools/syntax-check.ts/checkUnterminatedStrings:128": [
 			"src/runtime/tools/syntax-check.ts/checkSyntax:57"
@@ -25473,7 +25404,6 @@
 			"src/runtime/tools/agent.ts",
 			"src/runtime/tools/bash.ts",
 			"src/runtime/tools/grep.ts",
-			"src/runtime/tools/subagents-delegation.ts",
 			"src/runtime/tools/web-search.ts",
 			"src/server/kb-embeddings.ts",
 			"src/server/kb-router.ts",
@@ -25546,7 +25476,6 @@
 			"src/runtime/terminal-adapter.ts",
 			"src/runtime/tools/index.ts",
 			"src/runtime/tools/orchestrate-tool.ts",
-			"src/runtime/tools/subagents-delegation.ts",
 			"src/runtime/tools/task-list.ts",
 			"src/runtime/tools/tool-factory.ts",
 			"src/server/agent-service.ts",
@@ -25728,7 +25657,6 @@
 			"src/runtime/tools/orchestrate-tool.ts",
 			"src/runtime/tools/project-tool.ts",
 			"src/runtime/tools/requirement-tools.ts",
-			"src/runtime/tools/subagents-delegation.ts",
 			"src/runtime/tools/task-list.ts",
 			"src/runtime/tools/task-status.ts",
 			"src/runtime/tools/task-stop.ts",

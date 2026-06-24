@@ -23,7 +23,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildSubagentTools } from "../../src/runtime/tools/subagents-delegation.js";
 import { SubagentDelegator } from "../../src/runtime/subagent-delegator.js";
 import { buildContextMessage } from "../../src/runtime/context-message.js";
 import { ToolRegistry } from "../../src/core/tool-registry.js";
@@ -32,41 +31,6 @@ import type { ToolExecutionContext, SessionConfig, RuntimeCallbacks, AgentRuntim
 import type { SessionContextBundle } from "../../src/shared/types.js";
 
 // ─── Helpers ──────────────────────────────────────────────
-
-function makeContext(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionContext {
-	return {
-		workingDir: "/caller/wd",
-		agentId: "caller-1",
-		emit: () => {},
-		...overrides,
-	} as ToolExecutionContext;
-}
-
-/** Captures the subConfig passed to createSubLoop so tests can assert bundle inheritance. */
-function makeCapturingDelegate(): {
-	ctx: ToolExecutionContext;
-	captured: SessionConfig[];
-	delegateTask: (task: string, options?: any) => Promise<string>;
-} {
-	const captured: SessionConfig[] = [];
-	const delegateTask = vi.fn(async (_task: string, options?: any) => {
-		// Mimic SubagentDelegator.delegateTask just enough to capture subConfig
-		// shape — we record the inherited bundle + workspace + identity pieces.
-		captured.push({
-			agentId: options?.targetAgentId
-				? `${options.targetAgentId}-${Date.now()}`
-				: "caller-1:sub",
-			workspaceDir: options?.workspaceDir ?? "/caller/wd",
-			systemPrompt: options?.systemPrompt ?? "(caller)",
-			modelId: options?.model ?? "(caller)",
-			toolPolicy: options?.toolPolicy ?? {},
-			...(options?.contextOverride ? { contextBundle: options.contextOverride } : {}),
-		} as SessionConfig);
-		return `result-for-${options?.targetAgentId ?? "sub"}`;
-	});
-	const ctx = makeContext({ delegateTask });
-	return { ctx, captured, delegateTask };
-}
 
 function readSrc(rel: string): string {
 	return readFileSync(resolve(__dirname, rel), "utf-8");
@@ -205,10 +169,9 @@ describe("agent-loop prependContext (D-B — context never in history)", () => {
 describe("delegateTask bundle inheritance (D-B / decision 16)", () => {
 	test("caller contextBundle.projectId is forwarded via contextOverride path", () => {
 		// SubagentDelegator inheritance contract: caller bundle → inheritedBundle
-		// → sub-loop config. The buildSubagentTools tool does not pass
-		// contextOverride directly; the delegator does, but the contract is:
-		// callerBundle present on the caller config → sub-loop sees the same
-		// projectId. This test pins the contract.
+		// → sub-loop config. The delegator merges callerBundle with any
+		// contextOverride; the contract is: callerBundle present on the caller
+		// config → sub-loop sees the same projectId. This test pins the contract.
 		const callerBundle: SessionContextBundle = {
 			projectId: "proj-42",
 			workspaceDir: "/proj-42",
@@ -238,43 +201,14 @@ describe("delegateTask bundle inheritance (D-B / decision 16)", () => {
 		expect(inherited.projectId).toBe("proj-42"); // still inherited
 		expect(inherited.workspaceDir).toBe("/proj-42/sub"); // narrowed
 	});
-
-	test("subagent-delegation.ts forwards targetAgentId so delegator can inherit caller bundle", () => {
-		// Source contract: the tool always passes targetAgentId (real agentId
-		// when resolved, slug otherwise) — that's how SubagentDelegator builds
-		// the sub-loop against the target agent while still inheriting the
-		// caller bundle.
-		const src = readSrc("../../src/runtime/tools/subagents-delegation.ts");
-		expect(src).toMatch(/targetAgentId: capturedAgentId/);
-	});
 });
 
 // ─── 6. runtime does not read roleTag ────────────────────
 
 describe("runtime roleTag isolation (P2 §11.4)", () => {
-	test("subagents-delegation + context-message do not reference roleTag", () => {
-		const subSrc = readSrc("../../src/runtime/tools/subagents-delegation.ts");
-		expect(subSrc).not.toMatch(/\broleTag\b/);
-
+	test("context-message does not reference roleTag", () => {
 		const ctxSrc = readSrc("../../src/runtime/context-message.ts");
 		expect(ctxSrc).not.toMatch(/\broleTag\b/);
-	});
-
-	test("buildSubagentTools output is identical for callers of any role (roleTag-agnostic)", () => {
-		// roleTag is not even a field on ToolExecutionContext; the tool only
-		// consumes subagents[] + delegateTask. Two callers with different
-		// (hypothetical) roleTags build identical tool sets.
-		const { ctx: ctx1 } = makeCapturingDelegate();
-		const { ctx: ctx2 } = makeCapturingDelegate();
-		const t1 = buildSubagentTools({
-			subagents: [{ agentId: "x", name: "x" }],
-			context: ctx1,
-		});
-		const t2 = buildSubagentTools({
-			subagents: [{ agentId: "x", name: "x" }],
-			context: ctx2,
-		});
-		expect(Object.keys(t1)).toEqual(Object.keys(t2));
 	});
 });
 

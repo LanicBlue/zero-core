@@ -257,8 +257,8 @@ export interface SessionConfig {
 	/**
 	 * v0.8 (P2 §11.5): this agent's delegation subagents (copied from
 	 * AgentRecord.subagents at session build time). Each entry references a
-	 * global agent by id; the loop turns each into a caller-only delegation
-	 * tool via subagents-delegation.ts. Empty/undefined → no delegation tools.
+	 * global agent by id; the `Agent` action tool resolves them live by name
+	 * at delegate time. Empty/undefined → no named delegation targets.
 	 */
 	subagents?: Array<{ agentId: string; name?: string; description?: string }>;
 	/**
