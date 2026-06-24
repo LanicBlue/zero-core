@@ -109,16 +109,26 @@ export default function MarkdownRenderer({ content, streaming, className }: Prop
 
 	const components = useMemo(() => ({
 		code({ className: codeClassName, children, ...rest }: React.HTMLAttributes<HTMLElement> & { node?: any }) {
+			const text = String(children);
 			const match = /language-(\w+)/.exec(codeClassName || "");
-			const code = String(children).replace(/\n$/, "");
-
-			if (match) {
-				return <CodeBlock code={code} language={match[1]} />;
+			// BLOCK code (a fenced ``` block) routes through CodeBlock so it
+			// renders in a monospace <pre> with whitespace preserved. Block code
+			// is identified by EITHER a language info string OR a newline —
+			// react-markdown v10 no longer passes an `inline` flag, but inline
+			// code is a single line with no language class, so "multiline OR
+			// has-language" cleanly separates the two. Without this, a
+			// language-less fence (e.g. the model wrapping an ASCII tree in
+			// ``` with no language) fell through to inline `<code>`, the `<pre>`
+			// wrapper got stripped, leading spaces collapsed, and the tree's
+			// indentation/alignment was destroyed.
+			if (match || text.includes("\n")) {
+				return <CodeBlock code={text.replace(/\n$/, "")} language={match ? match[1] : undefined} />;
 			}
 
 			return <code className="md-inline-code" {...rest}>{children}</code>;
 		},
 		pre({ children }: React.HTMLAttributes<HTMLPreElement>) {
+			// CodeBlock renders its own container; don't add a wrapping <pre>.
 			return <>{children}</>;
 		},
 	}), []);
