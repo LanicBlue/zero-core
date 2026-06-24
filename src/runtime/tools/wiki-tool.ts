@@ -128,6 +128,9 @@ export const wikiActionSchema = z.object({
 	nodeId: z.string().optional(),
 	// docRead / docWrite / docEdit — hierarchical title path addressing (alt to nodeId)
 	path: z.string().optional().describe("Hierarchical title path (e.g. 'Parent/Child') for doc ops — alt to nodeId"),
+	// expand — how many descendant levels to include (1 = direct children only,
+	// the default; capped at 5). expand NEVER returns node bodies — use docRead.
+	depth: z.number().optional().describe("expand: descendant levels to include (1=direct children, default 1, max 5)"),
 	// search
 	query: z.string().optional().describe("Substring query (action:'search')"),
 	limit: z.number().optional(),
@@ -155,16 +158,17 @@ export const wikiTool = buildTool({
 	prompt:
 		"Operate on the project Wiki. Two groups of actions:\n\n" +
 		"STRUCTURE (node tree):\n" +
-		"- { action:'expand', nodeId } — read a node (summary + body + its children ids/titles). Primary way to navigate and discover nodeIds.\n" +
+		"- { action:'expand', nodeId, depth? } — read a node's STRUCTURE: its metadata (summary/flags) plus its descendants as an indented tree, `depth` levels deep (1 = direct children only, default; max 5). Primary way to navigate and discover nodeIds. Does NOT return any node's body.\n" +
 		"- { action:'search', query, limit? } — substring search across visible nodes (title/summary).\n" +
 		"- { action:'create', parentId, title, summary?, content? } — create a node under a parent. NO type, NO path: type is inherited from the parent's position; the node name IS the title. Titles must be unique under the same parent (rejected otherwise). content?, if given, is the initial body.\n" +
 		"- { action:'update', nodeId, title?, summary?, flags? } — edit a node's metadata. Does NOT touch the body. Changing title must keep it unique among siblings.\n" +
 		"- { action:'delete', nodeId } — delete a node (cascades children + body).\n\n" +
 		"DOC (a node's body document — mirror Read/Write/Edit, addressed by nodeId OR title path):\n" +
-		"- { action:'docRead', nodeId? | path? } — read the node's body. path is a hierarchical title path like 'Parent/Child'.\n" +
+		"- { action:'docRead', nodeId? | path? } — read the node's body. THE ONLY way to read a node's full body — expand does not include it. path is a hierarchical title path like 'Parent/Child'.\n" +
 		"- { action:'docWrite', nodeId? | path?, content } — overwrite the whole body (like Write).\n" +
 		"- { action:'docEdit', nodeId? | path?, oldString, newString, replaceAll? } — exact string replace (like Edit). oldString must exist and be unique (or set replaceAll:true to replace every occurrence). No-op/rejected if oldString not found.\n\n" +
 		"Rules:\n" +
+		"- expand is for STRUCTURE only (metadata + child tree). To read a node's BODY, use docRead — never expect expand to return body content.\n" +
 		"- Identity is nodeId (the primary key). Get nodeIds from expand/search results — this is the reliable way to address a node. Doc ops also accept a title path as a convenience.\n" +
 		"- Title path (doc ops) is HIERARCHICAL and RELATIVE to your scope root, walking child→grandchild by TITLE: 'Knowledge/software-dev 工作流'. The root's own title is NOT part of the path, and a bare leaf name ('software-dev 工作流') only works if that node is a DIRECT child of your scope root. Every segment must match an ancestor along the way — if you don't know the full ancestry, use expand to walk down or search to find the nodeId instead of guessing the path.\n" +
 		"- Scope = your wiki anchors (your project subtree + your memory + any free anchors you were granted; the GLOBAL ROOT for global/zero sessions). Read and write share the SAME boundary: you can create/update/delete/docWrite/docEdit exactly the nodes you can expand. Nodes outside your anchors are invisible and unwritable.\n" +
@@ -188,19 +192,58 @@ export const wikiTool = buildTool({
 				if (!input.nodeId) return "Error: nodeId required for expand";
 				const node = wiki.getVisibleFromAnchors(anchors, input.nodeId);
 				if (!node) return `Wiki node not visible from your scope: ${input.nodeId}`;
-				const children = wiki
-					.listVisibleFromAnchors(anchors)
-					.filter((n) => n.parentId === input.nodeId)
-					.map((n) => `${n.id} [${n.type}] ${n.title}`);
-				const childrenLine = children.length
-					? `\nChildren (${children.length}):\n  ` + children.join("\n  ")
-					: "\nChildren: (none)";
-				const detail = wiki.readNodeDetail(input.nodeId);
-				if (detail) return detail + childrenLine;
+				// expand is STRUCTURE-only: metadata + a descendant subtree, `depth`
+				// levels deep. It deliberately does NOT return any node's body —
+				// that's docRead's job. (Previously this dumped the node's full
+				// body via readNodeDetail, which duplicated docRead and flooded
+				// the result whenever a node had a large document.)
+				const depth = Math.max(1, Math.min(input.depth ?? 1, 5));
+				const allVisible = wiki.listVisibleFromAnchors(anchors);
+				const byParent = new Map<string, WikiNode[]>();
+				for (const n of allVisible) {
+					const key = n.parentId ?? "";
+					const arr = byParent.get(key);
+					if (arr) arr.push(n);
+					else byParent.set(key, [n]);
+				}
+				const treeLines: string[] = [];
+				let descendantCount = 0;
+				// Nodes hidden by the depth cap: any node at the deepest shown
+				// level that itself has children. Surfacing the count tells the
+				// agent there's more to expand (raise depth, or expand that node),
+				// so a truncated subtree isn't mistaken for a leaf.
+				let hiddenNodes = 0;
+				const walk = (parentId: string, level: number) => {
+					if (level > depth) return;
+					const kids = byParent.get(parentId) ?? [];
+					for (const k of kids) {
+						descendantCount++;
+						// Markdown nested list: `- item` with 2-space indent per
+						// level renders as a real hierarchical list in the UI
+						// (bare leading-space indentation gets collapsed by
+						// Markdown and the tree looked flat). Clear to the agent
+						// reading raw text too.
+						treeLines.push(`${"  ".repeat(level - 1)}- ${k.id} [${k.type}] ${k.title}`);
+						if (level === depth) {
+							// At the cap: count this node's children as hidden
+							// (they won't be walked) so we can warn they exist.
+							hiddenNodes += (byParent.get(k.id) ?? []).length;
+						} else {
+							walk(k.id, level + 1);
+						}
+					}
+				};
+				walk(node.id, 1);
+				const hiddenNote = hiddenNodes > 0
+					? `\n(${hiddenNodes} more node${hiddenNodes !== 1 ? "s" : ""} hidden below depth ${depth} — raise depth, or expand a specific nodeId to see deeper)`
+					: "";
+				const subtreeLine = treeLines.length
+					? `\nSubtree (depth ${depth}, ${descendantCount} descendant${descendantCount !== 1 ? "s" : ""}):\n` + treeLines.join("\n") + hiddenNote
+					: "\nSubtree: (no children)";
 				const flags = node.flags?.length ? `\nFlags: ${node.flags.join(", ")}` : "";
 				const prov = node.provenance ? `\nProvenance: ${node.provenance}` : "";
 				const summary = node.summary ? `\nSummary: ${node.summary}` : "";
-				return ` nodeId: ${node.id}\nTitle: ${node.title}\nType: ${node.type}${prov}${summary}${flags}${childrenLine}`;
+				return `nodeId: ${node.id}\nTitle: ${node.title}\nType: ${node.type}${prov}${summary}${flags}${subtreeLine}`;
 			}
 
 			case "search": {

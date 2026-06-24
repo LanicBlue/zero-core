@@ -452,12 +452,51 @@ describe("Wiki action tool", () => {
 		expect(child?.type).toBe("intent");
 	});
 
-	test("expand returns node metadata + children for a visible node", async () => {
+	test("expand returns node metadata + direct children (default depth 1), NOT the body", async () => {
 		const r = await execWiki({ action: "create", parentId: root(), title: "Y", summary: "sum-y" }, ctx());
 		const nodeId = createdId(r);
+		// Give the node a body — expand must NOT surface it (docRead's job).
+		await execWiki({ action: "docWrite", nodeId, content: "SECRET-BODY-should-not-leak-via-expand" }, ctx());
 		const expanded = await execWiki({ action: "expand", nodeId }, ctx());
 		expect(expanded).toMatch(/Y/);
 		expect(expanded).toMatch(/sum-y/);
+		// Body stays out of expand — only docRead returns it.
+		expect(expanded).not.toMatch(/SECRET-BODY/);
+		// docRead is the body channel.
+		const body = await execWiki({ action: "docRead", nodeId }, ctx());
+		expect(body).toMatch(/SECRET-BODY/);
+	});
+
+	test("expand depth controls how many descendant levels are included", async () => {
+		// Build parent → child → grandchild.
+		const parent = createdId(await execWiki({ action: "create", parentId: root(), title: "Parent" }, ctx()));
+		const child = createdId(await execWiki({ action: "create", parentId: parent, title: "Child" }, ctx()));
+		await execWiki({ action: "create", parentId: child, title: "Grandchild" }, ctx());
+
+		// depth 1 (default): direct children only — Child visible, Grandchild not.
+		const d1 = await execWiki({ action: "expand", nodeId: parent }, ctx());
+		expect(d1).toMatch(/Child/);
+		expect(d1).not.toMatch(/Grandchild/);
+		// Grandchild exists but is hidden by the depth cap → surface it.
+		expect(d1).toMatch(/1 more node hidden below depth 1/);
+
+		// depth 2: includes grandchildren.
+		const d2 = await execWiki({ action: "expand", nodeId: parent, depth: 2 }, ctx());
+		expect(d2).toMatch(/Child/);
+		expect(d2).toMatch(/Grandchild/);
+		// Structure is a markdown nested list (not bare-space indent, which
+		// Markdown collapses and makes the tree look flat): Child is a top
+		// `- ` item, Grandchild an indented nested item under it.
+		const d2lines = d2.split("\n");
+		const childLine = d2lines.find((l) => /Child/.test(l))!;
+		const grandLine = d2lines.find((l) => /Grandchild/.test(l))!;
+		expect(childLine).toMatch(/^- /);
+		expect(grandLine).toMatch(/^  - /);
+		expect(grandLine.indexOf("-")).toBeGreaterThan(childLine.indexOf("-"));
+
+		// depth is capped at 5 (a huge value behaves like 5, not an error).
+		const dCap = await execWiki({ action: "expand", nodeId: parent, depth: 99 }, ctx());
+		expect(dCap).toMatch(/Grandchild/);
 	});
 
 	test("search substring match across visible nodes", async () => {
