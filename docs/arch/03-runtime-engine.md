@@ -18,7 +18,7 @@
 - `memory-recall.ts`（64）：FTS5 召回
 - `tool-rate-limiter.ts`（122）：单工具并发 + 间隔门控（已装载，在生产路径运行）
 - `task-registry.ts`（186）：异步任务表
-- `subagent-delegation.ts`（326）：子 Agent 委派工厂
+- `subagent-delegation.ts`（326）：子 Agent 委派工厂(**已废**,v0.8 委派重构后委派统一走 `Agent` action 工具,见下;文件保留作历史参考)
 
 ## 2. AgentLoop 状态机
 
@@ -54,6 +54,18 @@ stateDiagram-v2
 - `SystemPromptAssembler` — 用于动态拼装系统提示词
 - `TurnRecorder` — 流式 block 累积
 - `AbortController = null` — 直到 `run()` 才创建
+
+#### 委派模型(v0.8 重构)
+
+委派统一走**单个 `Agent` action 工具**([tools/agent.ts](../../src/runtime/tools/agent.ts)),取代旧的 per-subagent 工具机制:
+
+- `{action:"list"}` — 现查 `ctx.resolveAgent(callerId)` 列出 caller 当前可委派的 subagent(name/description/model)。模型靠这个自发现,**不注入 system prompt**。
+- `{action:"delegate", task, subagent?, mode?}` — `subagent`(name)→ 在 caller 现查的 subagents 里按名解析 → `resolveAgent(agentId)` **现查**对方身份(systemPrompt/model/toolPolicy)→ `delegateTask`。白名单语义:只能委派给自己 subagents 里的;name 不匹配或目标被删 → 报错(不静默回落 caller)。不传 `subagent` → 临时委派(继承 caller 身份)。`mode` 支持 blocking/non_blocking。
+- 工具名恒为 `Agent`(合法、不冲突);身份/列表现查 → 改 agent 配置不用重启 loop。
+
+#### running loop 配置热同步
+
+AgentLoop 的 `config`(systemPrompt/toolPolicy/subagents/wikiAnchors)在会话激活时读一次,但 `AgentStore.onChange(agentId)` 触发时,agentService 会对该 agent 的所有 running loop 调 `loop.applyConfigUpdate(...)`,热抹新配置:systemPrompt 经 `AgentSession.updateSystemPrompt` + invalidate base 缓存(偶发,cache 打破可接受);toolPolicy/subagents 下轮 buildTools 现读;wikiAnchors 重跑 resolveAnchors + invalidate wiki 段。→ 用 AgentRegistry 工具或 UI 改 agent 配置后,正在跑的 session 下一轮即生效,无需重启。
 
 ### 3.2 run() 入口（lines 122-173）
 

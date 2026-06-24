@@ -42,7 +42,6 @@ import type {
 import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
 import { buildToolsSet } from "./tools/index.js";
-import { buildSubagentTools } from "./tools/subagents-delegation.js";
 import { renderTodosContext } from "./tools/todo-write.js";
 import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
@@ -196,6 +195,9 @@ export class AgentLoop implements AgentRuntime {
 						: undefined;
 				}
 				: undefined,
+			// v0.8 (delegation refactor): live agent resolver — passed through
+			// so the Agent tool can list/resolve delegation targets fresh.
+			resolveAgent: (config as any).resolveAgent,
 			// v0.8 (M3): Orchestrate plan/manifest stores for the lead's
 			// Orchestrate tool (confirm gate + manifest persistence).
 			orchestratePlanStore: (config as any).orchestratePlanStore,
@@ -367,6 +369,55 @@ export class AgentLoop implements AgentRuntime {
 		this.promptAssembler.invalidate();
 	}
 
+	/** The agent id this loop is bound to (for agentService config-sync targeting). */
+	getConfigAgentId(): string {
+		return this.config.agentId;
+	}
+
+	/**
+	 * v0.8 (delegation refactor): hot-apply an agent-config update to a RUNNING
+	 * loop, so edits made via the AgentRegistry tool (or UI) take effect on the
+	 * next turn without restarting the session. Safe to call while busy — only
+	 * mutates config/cache; the in-flight turn is untouched.
+	 *
+	 * - systemPrompt → updates the session prompt + invalidates the "base"
+	 *   prompt section (cache break is acceptable; this is infrequent).
+	 * - toolPolicy / subagents → assigned in place; buildTools() reads them
+	 *   fresh every turn, so the next turn picks them up.
+	 * - wikiAnchors → re-resolved + injected section invalidated + tool ctx
+	 *   anchor ids updated.
+	 */
+	applyConfigUpdate(patch: {
+		systemPrompt?: string;
+		toolPolicy?: SessionConfig["toolPolicy"];
+		subagents?: SessionConfig["subagents"];
+		wikiAnchors?: SessionConfig["wikiAnchors"];
+	}): void {
+		if (patch.systemPrompt !== undefined && patch.systemPrompt !== this.config.systemPrompt) {
+			this.config.systemPrompt = patch.systemPrompt;
+			this.session.updateSystemPrompt(patch.systemPrompt);
+			this.promptAssembler.invalidate("base");
+		}
+		if (patch.toolPolicy !== undefined) {
+			this.config.toolPolicy = patch.toolPolicy;
+		}
+		if (patch.subagents !== undefined) {
+			this.config.subagents = patch.subagents;
+			this.toolContext.subagents = patch.subagents;
+		}
+		if (patch.wikiAnchors !== undefined && this.wikiStoreGlobal) {
+			this.config.wikiAnchors = patch.wikiAnchors;
+			this.wikiAnchors = resolveAnchors({
+				wiki: this.wikiStoreGlobal,
+				agentId: this.config.agentId,
+				contextBundle: this.config.contextBundle,
+				wikiAnchors: this.config.wikiAnchors,
+			});
+			this.toolContext.wikiAnchorNodeIds = anchorNodeIds(this.wikiAnchors);
+			this.promptAssembler.invalidate("wiki-system-anchors");
+		}
+	}
+
 
 
 	// ─── Retry loop (shared by run and resume) ──────────────────
@@ -518,36 +569,10 @@ export class AgentLoop implements AgentRuntime {
 			try { mcpTools = await this.config.getMcpTools(this.config.agentId); }
 			catch { /* MCP tools unavailable */ }
 		}
-		// v0.8 (P2 §11.5): build caller-only subagent delegation tools from
-		// AgentRecord.subagents (replaces the retired getAgentToolEntries →
-		// buildAgentTools path). The tools are caller-only — they do NOT enter
-		// the global ToolRegistry / ALL_TOOLS; buildToolsSet injects them via
-		// its subagentsTools channel (separate from toolPolicy.tools).
-		let subagentsTools: Record<string, any> | undefined;
-		const subagents = this.config.subagents;
-		if (subagents && subagents.length > 0) {
-			try {
-				subagentsTools = buildSubagentTools({
-					subagents,
-					resolveTarget: this.config.resolveSubagentTarget
-						? (id) => {
-							const t = this.config.resolveSubagentTarget!(id);
-							return t
-								? {
-									id: t.id,
-									name: t.name,
-									systemPrompt: t.systemPrompt,
-									model: t.model,
-									toolPolicy: t.toolPolicy,
-								}
-								: undefined;
-						}
-						: undefined,
-					context: this.toolContext,
-				});
-			} catch { /* subagent tools unavailable */ }
-		}
-		return buildToolsSet(this.config.toolPolicy, this.toolContext, mcpTools, subagentsTools);
+		// v0.8 (delegation refactor): subagent delegation is now the single
+		// action-based `Agent` tool (list/delegate-by-name, resolves targets
+		// live via ctx.resolveAgent). No per-subagent tools are generated here.
+		return buildToolsSet(this.config.toolPolicy, this.toolContext, mcpTools);
 	}
 
 	private async assembleSystemPrompt(): Promise<string> {

@@ -170,19 +170,6 @@ export function buildToolsSet(
 	},
 	context: ToolExecutionContext,
 	mcpTools?: Record<string, any>,
-	/**
-	 * v0.8 (P2 §11.5): caller-only subagent delegation tools, built from
-	 * AgentRecord.subagents by subagents-delegation.ts. Keyed by user-facing
-	 * tool name (one tool per subagent entry). These are NOT registered into
-	 * ALL_TOOLS / ToolRegistry (no global UI); they only appear in this
-	 * caller's tool set.
-	 *
-	 * Separate channel from policy.tools (that gates built-in tools). The
-	 * caller opts in by listing the subagent on AgentRecord.subagents; the
-	 * only runtime gate here is blockedTools (caller may still hard-block a
-	 * delegation name).
-	 */
-	subagentsTools?: Record<string, any>,
 ): Record<string, any> {
 	// Migrate legacy lowercase tool keys to PascalCase
 	if (policy.tools) {
@@ -199,10 +186,10 @@ export function buildToolsSet(
 	const DEFAULT_ENABLED = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);
 
 	// Determine enabled check: prefer tools map, fall back to autoApprove.
-	// v0.8 (P2): the tools map ONLY gates built-in (hard-coded) tools. Subagent
-	// delegation tools live in a separate channel (subagentsTools) — they are
-	// never implicitly enabled via autoApprove=* either; presence in
-	// subagentsTools IS the opt-in.
+	// v0.8 (delegation refactor): the tools map gates built-in (hard-coded)
+	// tools. Subagent delegation is the single `Agent` action tool (in
+	// ALL_TOOLS, gated like any built-in) — there is no separate per-subagent
+	// tool channel anymore.
 	const toolsMap = policy.tools;
 	const autoApprove = new Set(policy.autoApprove ?? []);
 	const isEnabled = (name: string): boolean => {
@@ -237,14 +224,9 @@ export function buildToolsSet(
 		}
 	}
 
-	// v0.8 (P2 §11.5): merge subagent delegation tools. Caller-only —
-	// presence is the opt-in. Only blockedTools can suppress them.
-	if (subagentsTools) {
-		for (const [name, def] of Object.entries(subagentsTools)) {
-			if (blocked.has(name)) continue;
-			tools[name] = def;
-		}
-	}
+	// v0.8 (delegation refactor): subagent delegation is the single
+	// action-based `Agent` tool (already in ALL_TOOLS) — no per-subagent tools
+	// to merge here anymore.
 
 	// Config injection into descriptions is now handled by ToolRegistry.getAll()
 	// via buildEffectiveDescription() - UI and runtime see the same prompt.

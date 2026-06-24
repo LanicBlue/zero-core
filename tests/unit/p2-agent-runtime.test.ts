@@ -72,186 +72,28 @@ function readSrc(rel: string): string {
 	return readFileSync(resolve(__dirname, rel), "utf-8");
 }
 
-// ─── 1. buildSubagentTools ────────────────────────────────
-
-describe("buildSubagentTools (P2 §11.5)", () => {
-	test("empty subagents → empty tools (no error)", () => {
-		const { ctx } = makeCapturingDelegate();
-		const tools = buildSubagentTools({ subagents: [], context: ctx });
-		expect(Object.keys(tools)).toHaveLength(0);
-	});
-
-	test("undefined subagents → empty tools (no error)", () => {
-		const { ctx } = makeCapturingDelegate();
-		const tools = buildSubagentTools({ subagents: undefined as any, context: ctx });
-		expect(Object.keys(tools)).toHaveLength(0);
-	});
-
-	test("no delegateTask in context → empty tools (delegation unavailable)", () => {
-		const ctx = makeContext({}); // no delegateTask
-		const tools = buildSubagentTools({
-			subagents: [{ agentId: "dev-1", name: "developer" }],
-			context: ctx,
-		});
-		expect(Object.keys(tools)).toHaveLength(0);
-	});
-
-	test("one subagent → one tool keyed by entry.name", () => {
-		const { ctx } = makeCapturingDelegate();
-		const tools = buildSubagentTools({
-			subagents: [{ agentId: "dev-1", name: "developer", description: "Delegate to dev" }],
-			context: ctx,
-		});
-		expect(Object.keys(tools)).toEqual(["developer"]);
-		expect(tools.developer.description).toContain("dev");
-	});
-
-	test("falls back to slug(agentId) when name not set", () => {
-		const { ctx } = makeCapturingDelegate();
-		const tools = buildSubagentTools({
-			subagents: [{ agentId: "Dev-Role_1" }],
-			context: ctx,
-		});
-		expect(Object.keys(tools)).toEqual(["dev_role_1"]);
-	});
-
-	test("multiple subagents → one tool each, keyed by name", () => {
-		const { ctx } = makeCapturingDelegate();
-		const tools = buildSubagentTools({
-			subagents: [
-				{ agentId: "qa-id", name: "qa" },
-				{ agentId: "rev-id", name: "reviewer" },
-			],
-			context: ctx,
-		});
-		expect(Object.keys(tools).sort()).toEqual(["qa", "reviewer"]);
-	});
-
-	test("tool execute calls delegateTask with targetAgentId + identity from resolveTarget", async () => {
-		const { ctx, captured, delegateTask } = makeCapturingDelegate();
-		const tools = buildSubagentTools({
-			subagents: [{ agentId: "dev-1", name: "developer" }],
-			resolveTarget: (id) => ({
-				id,
-				name: "Developer Agent",
-				systemPrompt: "You are a developer.",
-				model: "gpt-dev",
-				toolPolicy: { autoApprove: ["Shell"] },
-			}),
-			context: ctx,
-		});
-		const out = await tools.developer.execute({ task: "write tests" });
-		expect(delegateTask).toHaveBeenCalledWith("write tests", expect.objectContaining({
-			targetAgentId: "dev-1",
-			systemPrompt: "You are a developer.",
-			model: "gpt-dev",
-		}));
-		expect(out).toContain("result-for-dev-1");
-		// Captured subConfig gets the target identity.
-		expect(captured[0].systemPrompt).toBe("You are a developer.");
-		expect(captured[0].modelId).toBe("gpt-dev");
-	});
-
-	test("without resolveTarget, only targetAgentId forwarded (caller identity inherited)", async () => {
-		const { ctx, delegateTask } = makeCapturingDelegate();
-		const tools = buildSubagentTools({
-			subagents: [{ agentId: "qa-1", name: "qa" }],
-			context: ctx,
-		});
-		await tools.qa.execute({ task: "test it" });
-		expect(delegateTask).toHaveBeenCalledWith("test it", expect.objectContaining({
-			targetAgentId: "qa-1",
-		}));
-		// Identity fields should be undefined → delegator inherits caller.
-		const callOpts = delegateTask.mock.calls[0][1];
-		expect(callOpts.systemPrompt).toBeUndefined();
-		expect(callOpts.model).toBeUndefined();
-	});
-
-	test("tool execute surfaces sub-agent errors as a string result (no throw)", async () => {
-		const ctx = makeContext({
-			delegateTask: vi.fn(async () => { throw new Error("boom"); }),
-		});
-		const tools = buildSubagentTools({
-			subagents: [{ agentId: "x-1", name: "x" }],
-			context: ctx,
-		});
-		const out = await tools.x.execute({ task: "anything" });
-		expect(out).toContain("Sub-agent error");
-		expect(out).toContain("boom");
-	});
-
-	test("subagent with falsy agentId is skipped", () => {
-		const { ctx } = makeCapturingDelegate();
-		const tools = buildSubagentTools({
-			subagents: [
-				{ agentId: "", name: "empty" },
-				{ agentId: "ok-1", name: "ok" },
-			] as any,
-			context: ctx,
-		});
-		expect(Object.keys(tools)).toEqual(["ok"]);
-	});
-});
-
-// ─── 2. subagent delegation tools are caller-only ─────────
+// ─── 1. Agent delegation tool (v0.8 refactor: single action tool) ─
 //
-// tools/index.ts transitively imports jsdom (via mcp-tools/fetch-tools), and
-// jsdom pulls @exodus/bytes — an ESM file shipped in a CJS package — which the
-// vitest vmThreads pool can't parse. So we cannot load ALL_TOOLS / buildToolsSet
-// at runtime here. Instead we (a) assert the source contract on tools/index.ts
-// directly (caller-only merge + toolPolicy.tools gate), and (b) assert that a
-// freshly-built ToolRegistry seeded from ALL_TOOLS definitions would not have a
-// subagent tool name registered (the subagent tool we just built never goes
-// through registerRuntimeTools).
+// Per-subagent tools (buildSubagentTools) were RETIRED. Delegation is now the
+// single action-based `Agent` tool in ALL_TOOLS (list / delegate-by-name /
+// ephemeral), resolving targets live via ctx.resolveAgent. These tests pin the
+// source contract.
 
-describe("subagent delegation tools are caller-only (P2 §11.5)", () => {
-	test("tools/index.ts source: subagentsTools merged as 4th arg, gated only by blockedTools", () => {
+describe("Agent delegation — single action tool (no per-subagent tools)", () => {
+	test("tools/index.ts buildToolsSet has NO subagentsTools channel anymore", () => {
 		const src = readSrc("../../src/runtime/tools/index.ts");
-		// 4th param is the subagentsTools channel.
-		expect(src).toMatch(/subagentsTools\?: Record<string, any>/);
-		// The merge path iterates subagentsTools and only honors blockedTools.
-		expect(src).toMatch(/if \(subagentsTools\)[\s\S]*?for \(const \[name, def\] of Object\.entries\(subagentsTools\)\)[\s\S]*?if \(blocked\.has\(name\)\) continue/);
-		// The subagentsTools channel is NOT consulted in the built-in isEnabled
-		// path (which gates via toolPolicy.tools / autoApprove). We confirm the
-		// built-in loop is bounded by ALL_TOOLS.
-		expect(src).toMatch(/for \(const \[name, def\] of Object\.entries\(ALL_TOOLS\)\)/);
+		expect(src).not.toMatch(/subagentsTools/);
+		expect(src).toMatch(/Object\.entries\(ALL_TOOLS\)/);
 	});
 
-	test("registerRuntimeTools only registers entries from ALL_TOOLS — subagent tools never enter", () => {
-		// Simulate: build a subagent tool, build a ToolRegistry with only
-		// built-in-style descriptors, assert the subagent tool name is absent.
-		const { ctx } = makeCapturingDelegate();
-		const tools = buildSubagentTools({
-			subagents: [{ agentId: "dev-1", name: "developer" }],
-			context: ctx,
-		});
-		const registry = new ToolRegistry();
-		// Built-in descriptors we'd typically get from registerRuntimeTools.
-		registry.register({
-			name: "Shell", description: "", prompt: "",
-			category: "runtime", source: "runtime", configSchema: [],
-			meta: { isReadOnly: true, isDestructive: false, isConcurrencySafe: true },
-		});
-		for (const name of Object.keys(tools)) {
-			expect(registry.getByName(name)).toBeUndefined();
-		}
+	test("agent-loop buildTools no longer builds per-subagent tools", () => {
+		const src = readSrc("../../src/runtime/agent-loop.ts");
+		expect(src).not.toMatch(/buildSubagentTools/);
 	});
 
-	test("subagents-delegation.ts source: no global ToolRegistry / ALL_TOOLS import", () => {
-		const src = readSrc("../../src/runtime/tools/subagents-delegation.ts");
-		// The factory returns a Record — it never pokes a global registry. The
-		// doc comment mentions "ToolRegistry" by name (as a NEGATIVE claim),
-		// so we check for the absence of any registration CALL or ALL_TOOLS
-		// import, not the bare word.
-		expect(src).not.toMatch(/import.*ALL_TOOLS/);
-		expect(src).not.toMatch(/import.*ToolRegistry/);
-		expect(src).not.toMatch(/registry\.register/);
-	});
-
-	test("subagents-delegation.ts source: doc string states caller-only / not in global UI", () => {
-		const src = readSrc("../../src/runtime/tools/subagents-delegation.ts");
-		expect(src).toMatch(/不进全局工具 UI|NOT registered into the global ToolRegistry/i);
+	test("Agent tool is the single delegation surface (in ALL_TOOLS)", () => {
+		const src = readSrc("../../src/runtime/tools/index.ts");
+		expect(src).toMatch(/Agent:\s*delegateTool/);
 	});
 });
 

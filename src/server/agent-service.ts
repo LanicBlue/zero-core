@@ -174,6 +174,24 @@ export class AgentService {
 	}
 	setAgentStore(store: AgentStore): void {
 		this.agentStore = store;
+		// v0.8 (delegation refactor): when an agent record changes, hot-apply
+		// the new config (prompt/toolPolicy/subagents/wikiAnchors) to every
+		// running loop bound to that agent — so edits via the AgentRegistry
+		// tool or UI take effect on the next turn without restarting. System-
+		// prompt changes invalidate the prompt cache (acceptable, infrequent).
+		store.onChange((agentId) => {
+			const agent = store.get(agentId);
+			for (const loop of this.loops.values()) {
+				if (loop.getConfigAgentId() !== agentId) continue;
+				if (!agent) continue; // deleted: nothing to apply (loop will fail fast on next use)
+				loop.applyConfigUpdate({
+					systemPrompt: agent.systemPrompt,
+					toolPolicy: agent.toolPolicy,
+					subagents: agent.subagents,
+					wikiAnchors: agent.wikiAnchors,
+				});
+			}
+		});
 		this.notifyReady("agentStore");
 	}
 	setSessionManager(sm: SessionManager): void {
@@ -428,6 +446,22 @@ export class AgentService {
 					toolPolicy: a.toolPolicy,
 				};
 			},
+			// v0.8 (delegation refactor): LIVE resolver — same source as
+			// resolveSubagentTarget but also surfaces subagents, so the Agent
+			// tool can list the caller's delegatable set + resolve named targets
+			// fresh every call (independent of the loop-build-time snapshot).
+			resolveAgent: (agentId: string) => {
+				const a = this.agentStore?.get(agentId);
+				if (!a) return undefined;
+				return {
+					id: a.id,
+					name: a.name,
+					systemPrompt: a.systemPrompt,
+					model: a.model,
+					toolPolicy: a.toolPolicy,
+					subagents: a.subagents,
+				};
+			},
 			getToolConfig: () => this.registry.getToolConfig(),
 		};
 		// v0.8: inject context handles by CONFIG. `on(name)` mirrors
@@ -586,6 +620,22 @@ export class AgentService {
 					systemPrompt: a.systemPrompt,
 					model: a.model,
 					toolPolicy: a.toolPolicy,
+				};
+			},
+			// v0.8 (delegation refactor): LIVE resolver — same source as
+			// resolveSubagentTarget but also surfaces subagents, so the Agent
+			// tool can list the caller's delegatable set + resolve named targets
+			// fresh every call (independent of the loop-build-time snapshot).
+			resolveAgent: (agentId: string) => {
+				const a = this.agentStore?.get(agentId);
+				if (!a) return undefined;
+				return {
+					id: a.id,
+					name: a.name,
+					systemPrompt: a.systemPrompt,
+					model: a.model,
+					toolPolicy: a.toolPolicy,
+					subagents: a.subagents,
 				};
 			},
 			getToolConfig: () => this.registry.getToolConfig(),

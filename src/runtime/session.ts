@@ -83,6 +83,17 @@ export class AgentSession {
 		return this.systemPrompt;
 	}
 
+	/**
+	 * v0.8 (delegation refactor / loop hot-sync): replace the system prompt
+	 * mid-session. The caller (AgentLoop.applyConfigUpdate) is responsible for
+	 * invalidating the prompt cache so the next turn reassembles with the new
+	 * prompt. Infrequent operation (agent edits its own prompt) — cache break
+	 * is acceptable.
+	 */
+	updateSystemPrompt(prompt: string): void {
+		(this as unknown as { systemPrompt: string }).systemPrompt = prompt;
+	}
+
 	getMessages(): ModelMessage[] {
 		return this.messages;
 	}

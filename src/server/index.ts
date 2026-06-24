@@ -256,7 +256,7 @@ export async function startServer(options?: StartServerOptions) {
 			if (ws.readyState === ws.OPEN) ws.send(msg);
 		}
 	};
-	agentStore.onChange(() => broadcast({ type: "agents:changed" }));
+	agentStore.onChange((_agentId) => broadcast({ type: "agents:changed" }));
 
 
 	// Load providers from DB for backend-spawn mode.

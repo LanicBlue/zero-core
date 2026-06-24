@@ -96,7 +96,7 @@ export class AgentStore {
 	 * agent-router via the UI), since they both go through this store. Without
 	 * this, agents created/edited by the tool only appear after restart.
 	 */
-	private readonly _changeListeners = new Set<() => void>();
+	private readonly _changeListeners = new Set<(agentId: string) => void>();
 
 	constructor(sessionDB: SessionDB) {
 		this.db = sessionDB;
@@ -109,15 +109,19 @@ export class AgentStore {
 		// `agentStore.list().length === 0` guard fire correctly.
 	}
 
-	/** Subscribe to agent-data changes (create/update/delete). Returns an unsubscribe. */
-	onChange(cb: () => void): () => void {
+	/**
+	 * Subscribe to agent-data changes (create/update/delete). The callback
+	 * receives the changed agent's id so subscribers can target affected
+	 * running loops. Returns an unsubscribe.
+	 */
+	onChange(cb: (agentId: string) => void): () => void {
 		this._changeListeners.add(cb);
 		return () => { this._changeListeners.delete(cb); };
 	}
 
-	private notifyChanged(): void {
+	private notifyChanged(agentId: string): void {
 		for (const cb of this._changeListeners) {
-			try { cb(); } catch { /* listener errors must not break the mutation */ }
+			try { cb(agentId); } catch { /* listener errors must not break the mutation */ }
 		}
 	}
 
@@ -158,7 +162,7 @@ export class AgentStore {
 		const normalized = { ...input };
 		normalized.workspaceDir = normalizeWorkspaceDir(normalized.workspaceDir);
 		const created = this.store.create(normalized as any);
-		this.notifyChanged();
+		this.notifyChanged(created.id);
 		return created;
 	}
 
@@ -168,7 +172,7 @@ export class AgentStore {
 			patched.workspaceDir = normalizeWorkspaceDir(patched.workspaceDir);
 		}
 		const updated = this.store.update(id, patched as any);
-		this.notifyChanged();
+		this.notifyChanged(id);
 		return updated;
 	}
 
@@ -183,6 +187,6 @@ export class AgentStore {
 			throw new Error("Cannot delete the protected 'zero' management agent");
 		}
 		this.store.delete(id);
-		this.notifyChanged();
+		this.notifyChanged(id);
 	}
 }

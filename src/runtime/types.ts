@@ -274,6 +274,15 @@ export interface SessionConfig {
 		model?: string;
 		toolPolicy?: SessionConfig["toolPolicy"];
 	} | undefined;
+	/** v0.8 (delegation refactor): live agent resolver for the Agent tool. */
+	resolveAgent?: (agentId: string) => {
+		id: string;
+		name?: string;
+		systemPrompt?: string;
+		model?: string;
+		toolPolicy?: SessionConfig["toolPolicy"];
+		subagents?: Array<{ agentId: string; name?: string; description?: string }>;
+	} | undefined;
 	getToolConfig?: () => Record<string, Record<string, any>>;
 	compression?: {
 		enabled?: boolean;
@@ -417,6 +426,22 @@ export interface ToolExecutionContext {
 		systemPrompt?: string;
 		model?: string;
 		toolPolicy?: SessionConfig["toolPolicy"];
+	} | undefined;
+	/**
+	 * v0.8 (delegation refactor): LIVE agent-record resolver — reads from
+	 * agentStore at CALL time (not loop-build time). Returns the agent's
+	 * identity + its own subagents list. Used by the action-based Agent tool
+	 * to (a) list the CALLER's current delegatable subagents and (b) resolve a
+	 * named subagent to fresh identity, so edits to an agent (prompt/tools/
+	 * subagents) take effect without restarting the running loop.
+	 */
+	resolveAgent?: (agentId: string) => {
+		id: string;
+		name?: string;
+		systemPrompt?: string;
+		model?: string;
+		toolPolicy?: SessionConfig["toolPolicy"];
+		subagents?: Array<{ agentId: string; name?: string; description?: string }>;
 	} | undefined;
 	/**
 	 * v0.8 (M3): Orchestrate plan store — persists lead-submitted DSL flows +

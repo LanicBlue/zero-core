@@ -29,30 +29,32 @@ afterEach(() => {
 });
 
 describe("AgentStore onChange — mutation notifies listeners", () => {
-	test("create fires change listeners", () => {
+	test("create fires change listeners with the new agent's id", () => {
 		const calls: number[] = [];
-		const unsub = store.onChange(() => calls.push(1));
-		store.create({ name: "A" } as any);
+		const seenIds: string[] = [];
+		const unsub = store.onChange((id) => { calls.push(1); seenIds.push(id); });
+		const created = store.create({ name: "A" } as any);
 		expect(calls.length).toBe(1);
+		expect(seenIds).toContain(created.id);
 		unsub();
 		store.create({ name: "B" } as any);
 		expect(calls.length).toBe(1); // unsubscribed → no more
 	});
 
-	test("update fires change listeners", () => {
+	test("update fires change listeners with the updated agent's id", () => {
 		const a = store.create({ name: "A" } as any);
-		let calls = 0;
-		store.onChange(() => calls++);
+		let seenId = "";
+		store.onChange((id) => { seenId = id; });
 		store.update(a.id, { name: "A2" });
-		expect(calls).toBe(1);
+		expect(seenId).toBe(a.id);
 	});
 
-	test("delete fires change listeners", () => {
+	test("delete fires change listeners with the deleted agent's id", () => {
 		const a = store.create({ name: "A" } as any);
-		let calls = 0;
-		store.onChange(() => calls++);
+		let seenId = "";
+		store.onChange((id) => { seenId = id; });
 		store.delete(a.id);
-		expect(calls).toBe(1);
+		expect(seenId).toBe(a.id);
 	});
 
 	test("multiple listeners all fire; a throwing listener doesn't block others", () => {
