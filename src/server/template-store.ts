@@ -956,7 +956,22 @@ export class TemplateStore {
 					tags: seed.tags,
 					icon: seed.icon,
 				} as any);
-			}
+		}
+		}
+
+		// Reconcile: remove built-in templates no longer in the seed list. Earlier
+		// v0.8 iterations seeded workflow-role built-ins (lead/pm/archivist/
+		// developer/reviewer/qa/analyzer×N/planner×N/zero) into this table; the
+		// 模板/角色分离 moved those out of the gallery. Delete the stale built-in
+		// rows so the gallery matches the current seed. User-created templates
+		// (is_built_in=0) are NEVER touched here.
+		const seedNames = new Set(allSeeds.map((s) => s.name));
+		const stale = builtIns.filter((t) => !seedNames.has(t.name));
+		for (const t of stale) {
+			this.store.delete(t.id);
+		}
+		if (stale.length > 0) {
+			console.log(`[templates] reconciled gallery: removed ${stale.length} stale built-in(s) no longer in seed`);
 		}
 	}
 
@@ -966,6 +981,20 @@ export class TemplateStore {
 
 	get(id: string): PromptTemplate | undefined {
 		return this.store.get(id);
+	}
+
+	/**
+	 * Resolve a template by id OR name. id wins (deterministic, unique); if no
+	 * id matches, fall back to a case-insensitive name match. Lets the
+	 * AgentRegistry tool's `template` param accept either the uuid from
+	 * `listTemplates` or the human-readable name ("Coder" / "coder"). If two
+	 * templates share a name, the id path disambiguates — pass the id.
+	 */
+	resolve(identifier: string): PromptTemplate | undefined {
+		const byId = this.store.get(identifier);
+		if (byId) return byId;
+		const lower = identifier.toLowerCase();
+		return this.store.list().find((t) => t.name.toLowerCase() === lower);
 	}
 
 	create(input: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">): PromptTemplate {

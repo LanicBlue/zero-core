@@ -416,13 +416,17 @@ export class ManagementService {
 	}
 
 	getTemplate(templateId: string): PromptTemplate | undefined {
-		return this.requireTemplateStore().get(templateId);
+		return this.requireTemplateStore().resolve(templateId);
 	}
 
 	/**
 	 * Instantiate a **capability template** as a global Agent: copies identity
 	 * (systemPrompt / model / provider / thinkingLevel / toolPolicy) from the
 	 * PromptTemplate gallery. This is the Agent.create + template path.
+	 *
+	 * `templateId` accepts either the template's uuid OR its (case-insensitive)
+	 * name — see TemplateStore.resolve. systemPrompt + toolPolicy ALWAYS come
+	 * from the template; `overrides` only retunes name/model/provider/...
 	 *
 	 * v0.8:旧的 `whitelistedRoleTags` 委派自动装配已移除(依赖失效的 role_tag
 	 * 物理列,fresh DB 上是 no-op)。subagents 由用户手动配(UI / AgentRegistry
@@ -432,7 +436,7 @@ export class ManagementService {
 		templateId: string,
 		overrides?: Partial<Pick<AgentRecord, "name" | "model" | "provider" | "workspaceDir" | "thinkingLevel">>,
 	): AgentRecord {
-		const template = this.requireTemplateStore().get(templateId);
+		const template = this.requireTemplateStore().resolve(templateId);
 		if (!template) throw new Error(`Unknown template: ${templateId}`);
 
 		return this.agentStore.create({

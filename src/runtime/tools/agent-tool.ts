@@ -140,9 +140,10 @@ export const agentActionSchema = z.object({
 	// create
 	name: z.string().optional(),
 	/**
-	 * Optional template id (e.g. "zero"/"lead"/"pm"). On `create`, copies
+	 * Optional template id OR name (case-insensitive). On `create`, copies
 	 * identity (systemPrompt/model/toolPolicy) from the template — replaces the
-	 * retired InstantiatePreset tool. Use `listTemplates` to discover ids.
+	 * retired InstantiatePreset tool. Use `listTemplates` to discover ids/names;
+	 * id wins if a name is ambiguous.
 	 */
 	template: z.string().optional(),
 	systemPrompt: z.string().optional(),
@@ -170,13 +171,13 @@ export const agentTool = buildTool({
 		"(Note: 'AgentRegistry' manages role-agent records. The separate 'Agent' tool delegates a task to a sub-agent — different capability.)\n\n" +
 		"Actions:\n" +
 		"- { action:'create', name, systemPrompt?, model?, provider?, toolPolicy?, subagents?, wikiAnchors? } — create a global agent from scratch. `name` is required.\n" +
-		"- { action:'create', template } — instantiate a template (e.g. 'zero'/'lead'/'pm') PURELY: identity (name from the template/systemPrompt/model/toolPolicy) all come from the template; any other params are IGNORED. Customize afterward via `update`. Discover template ids via `listTemplates`.\n" +
+		"- { action:'create', template, name?, model?, provider? } — instantiate a template. `template` accepts the id OR (case-insensitive) name from `listTemplates` (e.g. 'Coder' or its uuid). systemPrompt + toolPolicy come from the template; the optional `name`/`model`/`provider` override the template defaults (use `name` so each instance is distinguishable). Further customize via `update`.\n" +
 		"- { action:'update', id, name?/systemPrompt?/model?/toolPolicy?/subagents?/wikiAnchors? } — single mutation surface. toolPolicy is MERGED (toggle one tool without wiping the rest: {toolPolicy:{tools:{WebSearch:{enabled:false}}}} only disables WebSearch); subagents/wikiAnchors are replaced wholesale. create/update/list return a compact summary — use `get` for full detail.\n" +
 		"- { action:'delete', id } — delete. The 'zero' management agent is protected and cannot be deleted.\n" +
 		"- { action:'get', id } — read one (full record).\n" +
 		"- { action:'list' } — list all agents (compact summary).\n" +
 		"- { action:'listTemplates' } — list ALL templates (built-in role identities like zero/lead/pm + user-created). Returns the SAME list the UI Templates page shows; compact summaries (id/name/description/tags/tools). Use getTemplate for the full systemPrompt.\n" +
-		"- { action:'getTemplate', templateId } — read one template (full).\n" +
+		"- { action:'getTemplate', templateId } — read one template (full). Accepts id OR case-insensitive name.\n" +
 		"Errors are uniform: any failure (not found, missing required field) returns `\"Error: …\"`.",
 	meta: {
 		category: "management",
@@ -191,11 +192,17 @@ export const agentTool = buildTool({
 			switch (input.action) {
 				case "create": {
 					if (input.template) {
-						// Template path = PURE instantiation: identity (name/systemPrompt/
-						// model/toolPolicy) all come from the template; any other params
-						// passed alongside are ignored. To customize, create from the
-						// template then `update`.
-						const created = svc.instantiateTemplate(input.template);
+						// Template path: systemPrompt + toolPolicy come from the
+						// template (pure identity), but name/model/provider are
+						// tunable overrides — the caller's `name` wins over the
+						// template's default name so each instance is distinguishable.
+						// `template` accepts the template's id OR (case-insensitive)
+						// name; discover both via `listTemplates`.
+						const created = svc.instantiateTemplate(input.template, {
+							name: input.name,
+							model: input.model,
+							provider: input.provider,
+						});
 						return summaryOf(created);
 					}
 					requireField(input.name, "name", "create");

@@ -228,10 +228,15 @@ lead ─── 委派 ──► developer / reviewer / qa  (Orchestrate flow 节
 ## 状态机
 
 \`\`\`
-found → discuss → ready → plan → build → verify → archived
+found → discuss → ready → plan → build → verify → closed
                                         ↑            ↓
                                         └─ (PM 判不通过+意见) lead 改计划再执行
+
+cancelled ←─ (用户/PM 取消;任意状态可达)
 \`\`\`
+
+> 状态值对齐代码 \`RequirementStatus\`(shared/types.ts):found / discuss /
+> ready / plan / build / verify / closed / cancelled。
 
 ## fresh-DB seed
 
@@ -397,7 +402,16 @@ export function ensureSoftwareDevNode(wikiStore: WikiStore): void {
 	}
 	const existing = wikiStore.getByParentAndPath(workflowRoot.id, SOFTWARE_DEV_NODE_PATH_SEED);
 	if (existing) {
-		// Body may have been refined by zero/user since seed — don't clobber.
+		// One-time refresh: earlier v0.8 seeds wrote a shorter playbook (roster +
+		// graph + gates only). ADR-020 migrated the full per-role procedures into
+		// the playbook. If the body lacks the new-version marker, it's the stale
+		// seed — refresh it. A user-refined body would differ and is left alone
+		// (best-effort: the marker is specific to the new seed structure).
+		const body = wikiStore.readNodeDetail(existing.id);
+		if (body !== undefined && !/平台定位|各角色身份与程序/.test(body)) {
+			wikiStore.writeNodeDetail(existing.id, SOFTWARE_DEV_PLAYBOOK);
+			console.log("[seed] refreshed stale software-dev playbook to the ADR-020 version");
+		}
 		return;
 	}
 	const node = wikiStore.create({

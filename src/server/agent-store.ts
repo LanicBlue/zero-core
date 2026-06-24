@@ -186,6 +186,20 @@ export class AgentStore {
 		if (agent && typeof agent.name === "string" && agent.name.toLowerCase() === "zero") {
 			throw new Error("Cannot delete the protected 'zero' management agent");
 		}
+		// Cascade-clean STALE SUBAGENT REFERENCES. `subagents` is a soft ref
+		// (no FK); deleting an agent left every agent that delegated to it with
+		// a dangling entry → "subagent X no longer exists" at delegation time.
+		// Sweep all agents and drop references to `id` BEFORE the row is gone
+		// (same store-layer choke point as the zero protection above, so BOTH
+		// deletion surfaces — REST DELETE and the management tool — get it).
+		const referrers = this.store
+			.list()
+			.filter((a) => Array.isArray(a.subagents) && a.subagents.some((s) => s.agentId === id));
+		for (const r of referrers) {
+			const cleaned = (r.subagents ?? []).filter((s) => s.agentId !== id);
+			this.store.update(r.id, { subagents: cleaned } as any);
+			this.notifyChanged(r.id);
+		}
 		this.store.delete(id);
 		this.notifyChanged(id);
 	}

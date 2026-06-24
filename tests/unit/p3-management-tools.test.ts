@@ -158,20 +158,39 @@ describe("AgentRegistry action tool", () => {
 		expect(r.name).toBe("MyRole");
 	});
 
-	test("create with template = pure instantiation (other params ignored, name from template)", async () => {
-		// 用一条能力画廊模板(按 name 查到其 uuid id)。Pass template + stray
-		// name/model —— 它们必须被忽略;agent 名取自模板名。
+	test("create with template copies identity, but name/model/provider override the template defaults", async () => {
+		// v0.8 fix: user's `name` used to be silently dropped (agent got the
+		// template's name "Coder"). Now name/model/provider are tunable overrides
+		// so each instance is distinguishable; systemPrompt + toolPolicy still
+		// come purely from the template.
 		const coder = management.listTemplates().find((t) => t.name === "Coder")!;
 		const r = parse(await execAgent(
-			{ action: "create", template: coder.id, name: "IGNORED", model: "IGNORED" },
+			{ action: "create", template: coder.id, name: "tool-test-agent", model: "gpt-test", provider: "openai" },
 			ctx(),
 		));
-		expect(r.name).toBe("Coder");
-		expect(r.model).not.toBe("IGNORED");
-		// create returns a compact summary; verify copied identity via get.
+		expect(r.name).toBe("tool-test-agent");
+		expect(r.model).toBe("gpt-test");
+		expect(r.provider).toBe("openai");
+		// systemPrompt + toolPolicy are still the template's (not in the summary;
+		// verify via get that identity was copied).
 		expect(r).not.toHaveProperty("systemPrompt");
 		const full = parse(await execAgent({ action: "get", id: r.id }, ctx()));
-		expect(full.systemPrompt).toBeTruthy();
+		expect(full.systemPrompt).toBe(coder.systemPrompt);
+	});
+
+	test("create with template accepts template NAME (case-insensitive), not just id", async () => {
+		// v0.8 fix: `template: "coder"` used to fail with "Unknown template"
+		// because only id lookup was supported. Now name (case-insensitive) also
+		// resolves — discoverable alongside the id via listTemplates.
+		const r = parse(await execAgent({ action: "create", template: "coder" }, ctx()));
+		expect(r.name).toBe("Coder");
+		const full = parse(await execAgent({ action: "get", id: r.id }, ctx()));
+		expect(full.systemPrompt).toMatch(/senior software developer/i);
+	});
+
+	test("create with an unknown template returns a clear error", async () => {
+		const r = await execAgent({ action: "create", template: "does-not-exist" }, ctx());
+		expect(String(r)).toMatch(/^Error: Unknown template: does-not-exist/);
 	});
 
 	test("update returns compact summary + merges toolPolicy (toggling one tool keeps the rest)", async () => {
@@ -238,6 +257,33 @@ describe("AgentRegistry action tool", () => {
 		const one = parse(await execAgent({ action: "getTemplate", templateId: coder.id }, ctx()));
 		expect(one.id).toBe(coder.id);
 		expect(one.systemPrompt).toBeTruthy();
+		// v0.8 fix: getTemplate also accepts the template NAME (case-insensitive).
+		const byName = parse(await execAgent({ action: "getTemplate", templateId: "coder" }, ctx()));
+		expect(byName.id).toBe(coder.id);
+	});
+
+	test("deleting an agent cascade-cleans stale subagent references on other agents", async () => {
+		// v0.8 fix: subagents is a soft ref. Deleting an agent used to leave
+		// dangling entries → "subagent X no longer exists" at delegation time.
+		// Now delete sweeps every agent's subagents list and drops the gone id
+		// (both the management tool path AND the REST DELETE path — cleanup is
+		// in AgentStore.delete, the store-layer choke point).
+		const keepChild = management.createAgent({ name: "kept" } as any);
+		const goneChild = management.createAgent({ name: "gone" } as any);
+		const parent = management.createAgent({
+			name: "Parent",
+			subagents: [
+				{ agentId: keepChild.id, name: "Kept" },
+				{ agentId: goneChild.id, name: "Gone" },
+			],
+		} as any);
+		// Also exercise the REST path: agentStore.delete is what the router calls.
+		agentStore.delete(goneChild.id);
+		const after = management.getAgent(parent.id);
+		expect(after?.subagents?.map((s) => s.agentId)).toEqual([keepChild.id]);
+		// Deleting the last referenced child empties the list (no dangling ref).
+		agentStore.delete(keepChild.id);
+		expect(management.getAgent(parent.id)?.subagents).toEqual([]);
 	});
 
 	test("missing required fields return clear errors (not cryptic DB errors)", async () => {
