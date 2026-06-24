@@ -39,6 +39,7 @@
 import { create } from "zustand";
 import type { WikiNode } from "../../shared/types.js";
 import { useNotificationStore } from "./notification-store.js";
+import { subscribeDataChange } from "./data-sync.js";
 
 const api = () => (window as any).api;
 
@@ -161,3 +162,10 @@ export const useWikiStore = create<WikiState>((set, get) => ({
 		return nodes.find((n) => n.id === selectedNodeId);
 	},
 }));
+
+// v0.8: refresh the wiki tree when nodes are mutated from the backend (e.g.
+// the Wiki tool via the session wikiStore, or the archivist background scan).
+// Rides the unified data:changed channel (collection = the project_wiki table).
+subscribeDataChange("project_wiki", () => {
+	useWikiStore.getState().refresh();
+});

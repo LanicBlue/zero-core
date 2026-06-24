@@ -29,6 +29,7 @@ import { readFileSync, existsSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { log } from "../core/logger.js";
+import { emitDataChange } from "./data-change-hub.js";
 
 // ---------------------------------------------------------------------------
 // SqliteStore — generic CRUD over a single SQLite table
@@ -200,6 +201,7 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 
 	delete(id: string): void {
 		this._deleteStmt.run(id);
+		emitDataChange(this.table);
 	}
 
 	/**
@@ -245,6 +247,7 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 	private insertRow(record: T): void {
 		const values = this.allColumns.map((snakeCol) => this.toColumnValue(record, snakeCol));
 		this._insertStmt.run(...values);
+		emitDataChange(this.table);
 	}
 
 	private updateRow(id: string, record: T): void {
@@ -252,6 +255,7 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 		const values = nonIdCols.map((snakeCol) => this.toColumnValue(record, snakeCol));
 		values.push(id); // WHERE id = ?
 		this._updateStmt.run(...values);
+		emitDataChange(this.table);
 	}
 
 	private toColumnValue(record: T, snakeCol: string): any {

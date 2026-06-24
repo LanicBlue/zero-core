@@ -123,7 +123,8 @@ export interface WindowApi {
 	// ── Streaming events ──
 	onAgentEvent: (callback: (event: any) => void) => () => void;
 	onToolsChanged: (callback: () => void) => () => void;
-	onAgentsChanged: (callback: () => void) => () => void;
+	/** Unified UI-sync: fires { collection } when a whitelisted table changes. Filter by the collections you render. */
+	onDataChanged: (callback: (event: { collection: string }) => void) => () => void;
 	onSessionLifecycle: (callback: (event: { sessionId: string; from: string; to: string }) => void) => () => void;
 	onAppReady: (callback: () => void) => () => void;
 	onGithubImportProgress: (callback: (progress: { current: number; total: number }) => void) => () => void;

@@ -29,6 +29,7 @@ import { fileURLToPath } from "url";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { AgentStore } from "./agent-store.js";
+import { onDataChange } from "./data-change-hub.js";
 import { ProviderStore } from "./provider-store.js";
 import { TemplateStore } from "./template-store.js";
 import { McpStore } from "./mcp-store.js";
@@ -246,18 +247,24 @@ export async function startServer(options?: StartServerOptions) {
 		}
 	});
 
-	// v0.8: broadcast an `agents:changed` ping whenever the agent registry is
-	// mutated (create/update/delete) so the renderer refetches its agent list.
-	// Covers BOTH mutation surfaces (AgentRegistry tool via management-service,
-	// and the REST agent-router via the UI) since they both go through agentStore.
-	// Without this, agents created/edited by the tool only show after restart.
+	// v0.8: broadcast a single unified `data:changed` ping whenever any UI-
+	// synced collection is mutated. The data-change-hub listens at the
+	// SqliteStore primitive layer (insertRow/updateRow/delete), so EVERY store
+	// derived from it — agents / projects / crons / requirements / project_wiki —
+	// is covered with zero per-store wiring, regardless of which surface mutated
+	// it (management tools, REST routers, archivist, extractors). The hub
+	// whitelists UI collections (so high-frequency tables like messages/turns
+	// don't flood) and coalesces bursts into one refresh per collection.
 	const broadcast = (event: any) => {
 		const msg = JSON.stringify(event);
 		for (const ws of wss.clients) {
 			if (ws.readyState === ws.OPEN) ws.send(msg);
 		}
 	};
-	agentStore.onChange((_agentId) => broadcast({ type: "agents:changed" }));
+	onDataChange((e) => broadcast({ type: "data:changed", collection: e.collection }));
+	// AgentStore.onChange is retained SEPARATELY for agent-service's live
+	// config hot-reload (agent-service.ts) — that is an internal consumer, not
+	// UI sync. UI sync for agents rides the unified data:changed channel above.
 
 
 	// Load providers from DB for backend-spawn mode.

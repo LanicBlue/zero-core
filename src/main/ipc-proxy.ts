@@ -363,8 +363,11 @@ export function connectEventBridge(win: BrowserWindow, port: number): void {
 					// (agents:changed, …) get their own channel so they don't pollute
 					// the chat `agent:event` stream.
 					const eventType = event.type;
-					if (eventType === "agents:changed") {
-						win.webContents.send("agents:changed");
+					if (eventType === "data:changed") {
+						// Unified UI-sync ping: { collection } tells the renderer
+						// which store to refetch. Replaces the former per-domain
+						// agents:changed / projects:changed channels.
+						win.webContents.send("data:changed", { collection: event.collection });
 					} else {
 						win.webContents.send("agent:event", event);
 					}

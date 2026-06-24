@@ -92,10 +92,13 @@ const api: WindowApi = {
 		ipcRenderer.on("tools:changed", handler);
 		return () => { ipcRenderer.removeListener("tools:changed", handler); };
 	},
-	onAgentsChanged: (callback) => {
-		const handler = () => { callback(); };
-		ipcRenderer.on("agents:changed", handler);
-		return () => { ipcRenderer.removeListener("agents:changed", handler); };
+	// Unified UI-sync channel. The server emits { collection } whenever a
+	// whitelisted table changes; subscribe and filter by the collections you
+	// care about (agents/projects/crons/requirements/project_wiki).
+	onDataChanged: (callback) => {
+		const handler = (_e: any, data: { collection: string }) => { callback(data); };
+		ipcRenderer.on("data:changed", handler);
+		return () => { ipcRenderer.removeListener("data:changed", handler); };
 	},
 	onSessionLifecycle: (callback) => {
 		const handler = (_e: any, data: any) => callback(data);
