@@ -265,6 +265,24 @@ export class SessionDB {
 		return row ? this.rowToRecord(row) : undefined;
 	}
 
+	/**
+	 * The most-recently-active session for an agent, by `updated_at`. Every
+	 * turn/message/tool write refreshes `updated_at`, so this is the session the
+	 * user last chatted in — what should open when they pick the agent again.
+	 * Diverges from `getMainSession` (a sticky `is_main=1` flag only changed on
+	 * new/switch/clear): chatting in a non-main session bumps its `updated_at`
+	 * but leaves `is_main` pointing elsewhere, so re-opening the agent via the
+	 * main flag shows a stale session. Excludes the `__recovered__` bookkeeping
+	 * pseudo-agent. Returns undefined if the agent has no sessions yet.
+	 */
+	getMostRecentSession(agentId: string): SessionRecord | undefined {
+		const row = this.db.prepare(
+			"SELECT * FROM sessions WHERE agent_id = ? AND agent_id != '__recovered__' " +
+			"ORDER BY updated_at DESC LIMIT 1",
+		).get(agentId) as any;
+		return row ? this.rowToRecord(row) : undefined;
+	}
+
 	setMainSession(agentId: string, sessionId: string): void {
 		const tx = this.db.transaction(() => {
 			this.db.prepare("UPDATE sessions SET is_main = 0 WHERE agent_id = ?").run(agentId);

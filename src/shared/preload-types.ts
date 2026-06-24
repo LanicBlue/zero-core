@@ -98,7 +98,7 @@ export interface WindowApi {
 	sessionsNew: (agentId: string) => Promise<SessionRecord>;
 	sessionsSwitch: (agentId: string, sessionId: string) => Promise<{ success: true; sessionId: string }>;
 	sessionsCurrent: (agentId: string) => Promise<SessionRecord | null>;
-	sessionsActivate: (agentId: string, sessionId?: string) => Promise<{ success: true }>;
+	sessionsActivate: (agentId: string, sessionId?: string) => Promise<{ success: true; sessionId: string }>;
 	sessionsDelete: (agentId: string, sessionId: string) => Promise<{ success: true; newSessionId?: string }>;
 	sessionsMetrics: () => Promise<{
 		sessions: Record<string, {

@@ -774,13 +774,25 @@ export class AgentService {
 		const allSessions = this.db.listAllSessions();
 		console.error(`[server] Restoring ${allSessions.length} session(s) into runtime`);
 
+		// listAllSessions is ordered by updated_at DESC, so for each agent the
+		// FIRST session we encounter is its most-recently-active one. Track
+		// which agents we've already anchored so the loop (which iterates
+		// oldest→newest within later agents) doesn't overwrite the most-recent
+		// anchor with a stale session — that was the bug: every iteration did
+		// `activeSessions.set(agentId, session.id)`, leaving each agent pointing
+		// at whatever session the loop visited LAST (the oldest).
+		const anchoredAgents = new Set<string>();
+
 		for (const session of allSessions) {
 			try {
 				if (this.loops.has(session.id)) continue;
 
 				const agent = this.agentStore?.list().find((a) => a.id === session.agentId);
 				this.createLoopForSession(session.agentId, session.id, agent ?? undefined);
-				this.activeSessions.set(session.agentId, session.id);
+				if (!anchoredAgents.has(session.agentId)) {
+					this.activeSessions.set(session.agentId, session.id);
+					anchoredAgents.add(session.agentId);
+				}
 			} catch (err) {
 				log.error("recovery", `Failed to restore ${session.id}:`, (err as Error).message);
 			}
@@ -789,12 +801,26 @@ export class AgentService {
 
 	// ─── Session activation — runtime as single source of truth for UI ───
 	async activateSession(agentId: string, sessionId?: string): Promise<string> {
-		// Resolve target session: explicit id, active session, main session, or create new
+		// Resolve target session. Precedence:
+		//   1. explicit sessionId (switch)
+		//   2. the session already live in memory for this agent
+		//   3. the MOST RECENTLY ACTIVE session (by updated_at) — i.e. the one
+		//      the user last chatted in. This is what should open when they
+		//      pick the agent again.
+		//   4. the sticky main session (legacy fallback)
+		//   5. create a new session
+		// (3) is the fix: previously this fell straight to (4) getMainSession,
+		// whose is_main flag only moves on new/switch/clear — so chatting in a
+		// non-main session bumped its updated_at but left is_main pointing
+		// elsewhere, and re-opening the agent showed the stale main.
 		const candidate = sessionId ?? this.activeSessions.get(agentId);
 		let resolvedSessionId: string;
 		let session: { id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string; inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
 		if (candidate) {
 			session = this.db.getSession(candidate);
+		}
+		if (!session) {
+			session = this.db.getMostRecentSession(agentId);
 		}
 		if (!session) {
 			session = this.db.getMainSession(agentId);
