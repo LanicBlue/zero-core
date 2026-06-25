@@ -60,6 +60,7 @@ import type {
 	PromptTemplate,
 } from "../shared/types.js";
 import type { TemplateStore } from "./template-store.js";
+import type { TaskStepStore } from "./task-step-store.js";
 import { BUILTIN_WORKFLOW_ROLES } from "./builtin-role-templates.js";
 import { log } from "../core/logger.js";
 
@@ -85,6 +86,8 @@ export interface ManagementDeps {
 	sessionDB?: SessionDB;
 	wikiStore?: WikiStore;
 	archivistService?: ArchivistService;
+	/** v0.8 §8.6: task-step store for the project-delete cascade. */
+	taskStepStore?: TaskStepStore;
 }
 
 /**
@@ -115,6 +118,8 @@ export class ManagementService {
 	private sessionDB: SessionDB | null;
 	private wikiStore: WikiStore | null;
 	private archivistService: ArchivistService | null;
+	// v0.8: task-step store for the project-delete cascade (§8.6). Late-bound.
+	private taskStepStore: TaskStepStore | null;
 
 	constructor(deps: ManagementDeps) {
 		this.agentStore = deps.agentStore;
@@ -125,6 +130,7 @@ export class ManagementService {
 		this.sessionDB = deps.sessionDB ?? null;
 		this.wikiStore = deps.wikiStore ?? null;
 		this.archivistService = deps.archivistService ?? null;
+		this.taskStepStore = deps.taskStepStore ?? null;
 	}
 
 	/** v0.8 (模板统一): late-bind the template store (server/index.ts wiring order). */
@@ -145,6 +151,8 @@ export class ManagementService {
 	setSessionDB(db: SessionDB): void { this.sessionDB = db; }
 	setWikiStore(wiki: WikiStore): void { this.wikiStore = wiki; }
 	setArchivistService(svc: ArchivistService): void { this.archivistService = svc; }
+	/** v0.8 §8.6: late-bind the task-step store (server/index.ts wiring order). */
+	setTaskStepStore(store: TaskStepStore): void { this.taskStepStore = store; }
 
 	private requireCronStore(): CronStore {
 		if (!this.cronStore) throw new Error("CronStore not wired into ManagementService");
@@ -195,8 +203,78 @@ export class ManagementService {
 		return this.projectStore.update(id, input);
 	}
 
-	deleteProject(id: string): void {
-		this.projectStore.delete(id);
+	/**
+	 * v0.8 §8.6 (bugfix): purge orphan wiki project subtrees — subtree roots
+	 * (`wiki-root:<projectId>`) whose projectId no longer exists in the
+	 * `projects` table. These accumulate when a project was deleted through a
+	 * path that didn't cascade (pre-fix tool delete). Idempotent — call at
+	 * startup; a no-op once no orphans remain. Returns the count removed.
+	 */
+	purgeOrphanProjectSubtrees(): number {
+		if (!this.wikiStore) return 0;
+		const liveProjectIds = new Set(this.projectStore.list().map((p) => p.id));
+		let removed = 0;
+		for (const node of this.wikiStore.list()) {
+			if (
+				node.id.startsWith("wiki-root:") &&
+				node.id !== "wiki-root:global" &&
+				node.id !== "wiki-root:projects" &&
+				!node.id.startsWith("wiki-root:memory") &&
+				node.projectId &&
+				!liveProjectIds.has(node.projectId)
+			) {
+				this.wikiStore.deleteByProject(node.projectId);
+				removed++;
+			}
+		}
+		return removed;
+	}
+
+	/**
+	 * Delete a Project with the FULL cascade (§8.6). This is the single source
+	 * of truth for project deletion — both the REST router and the Project tool
+	 * go through here, so the cascade can never drift between entry points
+	 * (which previously left orphan wiki subtrees / requirements / crons when a
+	 * project was deleted via the tool path).
+	 *
+	 * Cascade: requirements (→ task_steps + status_history + messages inside
+	 * RequirementStore.delete) + task_steps + wiki subtree + project-scoped
+	 * crons + the project row. Optional deps that aren't wired (tests) simply
+	 * contribute nothing; the project row is always deleted.
+	 *
+	 * Runs as one transaction when a SessionDB is available so a partial
+	 * failure can't leave the project half-deleted.
+	 */
+	deleteProject(id: string): void {		const doDelete = () => {
+			// task_steps for this project's requirements (RequirementStore.delete
+			// does NOT cascade task_steps; clean them explicitly first).
+			if (this.requirementStore && this.taskStepStore) {
+				for (const r of this.requirementStore.listByProject(id)) {
+					this.taskStepStore.deleteByRequirement(r.id);
+				}
+			}
+			// requirements (cascades status_history + messages inside .delete)
+			if (this.requirementStore) {
+				for (const r of this.requirementStore.listByProject(id)) {
+					this.requirementStore.delete(r.id);
+				}
+			}
+			// wiki subtree (root + all descendants + body files)
+			this.wikiStore?.deleteByProject(id);
+			// project-scoped crons
+			if (this.cronStore) {
+				for (const c of this.cronStore.list()) {
+					if (c.workingScope?.projectId === id) this.cronStore.delete(c.id);
+				}
+			}
+			// the project row itself
+			this.projectStore.delete(id);
+		};
+		if (this.sessionDB) {
+			this.sessionDB.getDb().transaction(doDelete)();
+			return;
+		}
+		doDelete();
 	}
 
 	listProjects(): ProjectRecord[] {

@@ -218,6 +218,7 @@ export async function startServer(options?: StartServerOptions) {
 		templateStore,
 		requirementStore, sessionDB, wikiStore: wikiStoreGlobal,
 	});
+	management.setTaskStepStore(taskStepStore);
 	agentService.setManagement(management);
 
 	// v0.8 (P6 §7.1): fresh-DB seed — zero agent + software-dev wiki node.
@@ -340,6 +341,11 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 (P5 §8.3): ManagementService.createProject kicks the archivist
 	// background scan; wire it now that archivistService exists.
 	management.setArchivistService(archivistService);
+	// v0.8 §8.6 (bugfix): purge orphan wiki subtrees left by pre-fix project
+	// deletes (tool path used to skip the cascade). Idempotent — no-op once
+	// clean. Runs after wikiStore + management are fully wired.
+	const purged = management.purgeOrphanProjectSubtrees();
+	if (purged > 0) console.error(`[server] Purged ${purged} orphan project wiki subtree(s)`);
 
 	// ─── LeadService + Requirement Hooks (M3) ────────────────────────
 	const { LeadService } = await import("./lead-service.js");
@@ -439,6 +445,14 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 P7 (§1.5): no projectNotificationRouter — pull model.
 	// Run workflow state recovery (cron schedules + plan/build/verify reqs).
 	recoverWorkflowState({ projectStore, requirementStore, taskStepStore, cronManager, agentService });
+
+	// v0.8 §2.13 (structure rework): the archivist now builds a directory-
+	// mirror tree (every dir = structure node) instead of the old flat
+	// top-level-module grouping. Detect project subtrees still on the OLD
+	// layout (a header node whose `path` nests deeper than its parent
+	// structure node's dir) and rebuild them once. Idempotent — a no-op once
+	// every subtree is on the new layout. Runs after archivistService is wired.
+	void rebuildStaleStructureLayouts(archivistService, projectStore, wikiStoreGlobal);
 
 	// ─── Mount API routers ───────────────────────────────────────
 
@@ -599,7 +613,7 @@ export async function startServer(options?: StartServerOptions) {
 	// projectStore resolves workspaceDir for the workspace-doc sandbox.
 	// Mounted AFTER /api/projects/:id so the explicit /workspace-doc segment
 	// matches first (Express takes the first matching route per method+path).
-	app.use("/api/wiki", createWikiBrowserRouter({ wikiStore: wikiStoreGlobal }));
+	app.use("/api/wiki", createWikiBrowserRouter({ wikiStore: wikiStoreGlobal, archivistService }));
 	app.get(
 		"/api/projects/:projectId/workspace-doc",
 		createWorkspaceDocHandler({ projectStore }),
@@ -619,6 +633,15 @@ export async function startServer(options?: StartServerOptions) {
 	archivistRouter.post("/:projectId/rescan-full", async (req, res) => {
 		try {
 			const result = await archivistService.rescanProjectFull(req.params.projectId);
+			res.json(result);
+		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	});
+	// v0.8 §2.13 (structure rework): wipe + full rescan with the current
+	// directory-mirror structure logic. Use when the structure semantics
+	// changed and stale flat-module nodes need clearing.
+	archivistRouter.post("/:projectId/rebuild-subtree", async (req, res) => {
+		try {
+			const result = await archivistService.rebuildProjectSubtree(req.params.projectId);
 			res.json(result);
 		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
 	});
@@ -820,4 +843,46 @@ export async function startServer(options?: StartServerOptions) {
 	});
 
 	return { server, agentService };
+}
+
+/**
+ * v0.8 §2.13 (structure rework): detect project subtrees still laid out
+ * under the OLD archivist grouping (flat top-level module — a header node's
+ * parent structure node names only the file's TOP directory, not its
+ * immediate parent dir) and rebuild them with the directory-mirror logic.
+ *
+ * Detection: a header node `header:<dirA>/<dirB>/file` is on the OLD layout
+ * if its parent is a `structure:<dirA>` node (top dir only) while the file
+ * lives ≥2 dirs deep. On the new layout the parent would be
+ * `structure:<dirA>/<dirB>`. Idempotent — no-op once clean.
+ */
+async function rebuildStaleStructureLayouts(
+	archivistService: import("./archivist-service.js").ArchivistService,
+	projectStore: import("./project-store.js").ProjectStore,
+	wikiStore: import("./wiki-node-store.js").WikiStore,
+): Promise<void> {
+	try {
+		for (const project of projectStore.list()) {
+			const nodes = wikiStore.listByProject(project.id);
+			let stale = false;
+			for (const n of nodes) {
+				if (n.type !== "header" || !n.path.startsWith("header:")) continue;
+				const fileRel = n.path.slice("header:".length).replace(/\\/g, "/");
+				const fileSegs = fileRel.split("/").filter(Boolean);
+				if (fileSegs.length < 3) continue; // ≤2 deep: top-dir grouping is correct
+				const parent = nodes.find((p) => p.id === n.parentId);
+				if (!parent || !parent.path.startsWith("structure:")) continue;
+				// New layout: parent dir = all-but-last seg. Old (flat): top seg only.
+				const expectedParentDir = fileSegs.slice(0, -1).join("/");
+				const actualParentDir = parent.path.slice("structure:".length).replace(/\\/g, "/");
+				if (actualParentDir !== expectedParentDir) { stale = true; break; }
+			}
+			if (stale) {
+				console.error(`[server] Rebuilding stale wiki structure for project ${project.name} (${project.id})`);
+				await archivistService.rebuildProjectSubtree(project.id);
+			}
+		}
+	} catch (err) {
+		console.error("[server] structure-rebuild migration failed:", (err as Error).message);
+	}
 }

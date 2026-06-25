@@ -132,39 +132,16 @@ export function createProjectRouter(deps: {
 		if (!project) return res.status(404).json({ error: "Project not found" });
 
 		try {
-			const db = (projectStore as any).store?.db;
-			if (db) {
-				const tx = db.transaction(() => {
-					// Delete task_steps for this project's requirements
-					const reqs = requirementStore.listByProject(id);
-					for (const r of reqs) {
-						taskStepStore.deleteByRequirement(r.id);
-					}
-					// Delete requirements (cascades to history + messages inside RequirementStore.delete)
-					for (const r of reqs) {
-						requirementStore.delete(r.id);
-					}
-					// Delete wiki nodes
-					wikiStore.deleteByProject(id);
-					// v0.8 (P5 §8.6): delete crons scoped to this project.
-					if (cronStore) {
-						for (const c of cronStore.list()) {
-							if (c.workingScope?.projectId === id) cronStore.delete(c.id);
-						}
-					}
-					// Delete project
-					projectStore.delete(id);
-				});
-				tx();
+			// v0.8 §8.6: delegate the cascade to ManagementService so the REST
+			// path and the Project tool share one source of truth (no drift).
+			// The inline fallback below only runs when management isn't wired
+			// (tests).
+			if (management) {
+				management.deleteProject(id);
 			} else {
-				// Fallback without transaction
 				const reqs = requirementStore.listByProject(id);
-				for (const r of reqs) {
-					taskStepStore.deleteByRequirement(r.id);
-				}
-				for (const r of reqs) {
-					requirementStore.delete(r.id);
-				}
+				for (const r of reqs) taskStepStore.deleteByRequirement(r.id);
+				for (const r of reqs) requirementStore.delete(r.id);
 				wikiStore.deleteByProject(id);
 				if (cronStore) {
 					for (const c of cronStore.list()) {

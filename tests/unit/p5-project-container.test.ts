@@ -100,6 +100,7 @@ beforeEach(() => {
 		requirementStore,
 		sessionDB,
 		wikiStore: wikiStoreGlobal,
+		taskStepStore,
 	});
 });
 
@@ -298,18 +299,9 @@ describe("P5 §8.6 — delete cascade incl. project-scoped crons", () => {
 		// Sanity: 4 crons total before delete.
 		expect(cronStore.list().length).toBe(4);
 
-		// Drive delete through ManagementService (the IPC handler uses the same
-		// cascade sequence; project-router drives it via a transaction).
-		// ManagementService.deleteProject is metadata-only by design, so we
-		// exercise the IPC cascade sequence directly (mirrors project-handlers).
-		const reqs = requirementStore.listByProject(p.id);
-		for (const r of reqs) taskStepStore.deleteByRequirement(r.id);
-		for (const r of reqs) requirementStore.delete(r.id);
-		wikiStoreGlobal.deleteByProject(p.id);
-		for (const c of cronStore.list()) {
-			if (c.workingScope?.projectId === p.id) cronStore.delete(c.id);
-		}
-		projectStore.delete(p.id);
+		// Drive delete through ManagementService — the single source of truth
+		// for the cascade (REST router + Project tool both go through here).
+		management.deleteProject(p.id);
 
 		// Project gone.
 		expect(projectStore.get(p.id)).toBeUndefined();
