@@ -33,6 +33,7 @@ import { RequirementStore } from "../../src/server/requirement-store.js";
 import {
 	WikiStore,
 	WIKI_GLOBAL_ROOT_ID,
+	WIKI_PROJECTS_ROOT_ID,
 	projectSubtreeRootId,
 	isInsideWikiDisk,
 } from "../../src/server/wiki-node-store.js";
@@ -106,6 +107,65 @@ describe("WikiStore: global memory tree structure", () => {
 		expect(root!.type).toBe("project");
 	});
 
+	test("§10.5 Projects container is ensured on construction", () => {
+		const container = wikiStore.get(WIKI_PROJECTS_ROOT_ID);
+		expect(container).toBeDefined();
+		expect(container!.parentId).toBe(WIKI_GLOBAL_ROOT_ID);
+		expect(container!.projectId).toBeFalsy();
+	});
+
+	test("§10.5 dedup: a legacy UUID Projects container is merged into the stable one", () => {
+		// Simulate the pre-fix state: a Projects container with a UUID id (the
+		// old fresh-db-seed layout) coexisting with the stable-id one. Its
+		// children must move onto the stable container, and the dupe row deleted.
+		const legacyId = "legacy-projects-uuid";
+		const stable = wikiStore.get(WIKI_PROJECTS_ROOT_ID)!;
+		// legacy dupe container, with a child hanging off it.
+		sessionDB.getDb().prepare(
+			`INSERT INTO project_wiki (id, parent_id, path, title, project_id, last_updated_by, created_at, updated_at)
+			 VALUES (?, ?, 'projects', 'Projects', NULL, 'system', ?, ?)`,
+		).run(legacyId, WIKI_GLOBAL_ROOT_ID, "t", "t");
+		const childId = "legacy-child";
+		sessionDB.getDb().prepare(
+			`INSERT INTO project_wiki (id, parent_id, path, title, project_id, last_updated_by, created_at, updated_at)
+			 VALUES (?, ?, 'legacy:child', 'Child', NULL, 'system', ?, ?)`,
+		).run(childId, legacyId, "t", "t");
+
+		// Re-construct: ensureProjectsRoot runs mergeDuplicateProjectsContainers.
+		const store2 = new WikiStore(sessionDB);
+		// Dupe is gone; only the stable container remains under the slot.
+		const slot = store2.list().filter(
+			(n) => n.parentId === WIKI_GLOBAL_ROOT_ID && n.path === "projects",
+		);
+		expect(slot).toHaveLength(1);
+		expect(slot[0]!.id).toBe(WIKI_PROJECTS_ROOT_ID);
+		expect(store2.get(legacyId)).toBeUndefined();
+		// The dupe's child was re-parented onto the stable container.
+		const child = store2.get(childId);
+		expect(child).toBeDefined();
+		expect(child!.parentId).toBe(stable.id);
+	});
+
+	test("§10.5 reparent: a misplaced project root is moved under the Projects container", () => {
+		// Simulate an older DB row: a project subtree root still parented to the
+		// global root (the pre-fixbug layout). Drop it under global directly,
+		// then re-construct the store — the constructor migration must move it.
+		const proj = projectStore.create({ name: "Legacy", workspaceDir: join(tmpDir, "legacy") });
+		const id = projectSubtreeRootId(proj.id);
+		sessionDB
+			.getDb()
+			.prepare(
+				`INSERT INTO project_wiki (id, parent_id, path, title, project_id, last_updated_by, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, 'archivist', ?, ?)`,
+			)
+			.run(id, WIKI_GLOBAL_ROOT_ID, `project:${proj.id}`, "Legacy", proj.id, "t", "t");
+		// Re-construct: constructor runs reparentProjectSubtrees().
+		const store2 = new WikiStore(sessionDB);
+		const moved = store2.get(id);
+		expect(moved).toBeDefined();
+		expect(moved!.parentId).toBe(WIKI_PROJECTS_ROOT_ID);
+	});
+
 	test("ensureProjectSubtree is idempotent and returns stable id", () => {
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "p") });
 		const root1 = wikiStore.ensureProjectSubtree(proj.id, "P");
@@ -113,7 +173,9 @@ describe("WikiStore: global memory tree structure", () => {
 		expect(root1.id).toBe(root2.id);
 		expect(root1.id).toBe(projectSubtreeRootId(proj.id));
 		expect(root1.type).toBe("project");
-		expect(root1.parentId).toBe(WIKI_GLOBAL_ROOT_ID);
+		// §10.5: each project subtree root is a CHILD of the "Projects" container,
+		// not a sibling of it.
+		expect(root1.parentId).toBe(WIKI_PROJECTS_ROOT_ID);
 		expect(root1.projectId).toBe(proj.id);
 	});
 
@@ -307,6 +369,59 @@ describe("ArchivistService: incremental git scan", () => {
 		// code-internal cache the archivist never sets directly (the store
 		// derives + stamps it when a body is written via writeNodeDetail).
 		expect(headers.every((h) => h.path.startsWith("header:"))).toBe(true);
+	});
+
+	test("structure mirrors the directory layout (nested dir chain)", async () => {
+		// A deeply-nested file produces a chain of directory structure nodes,
+		// and the header leaf hangs under its IMMEDIATE parent dir — not the
+		// top-level module (flat-module design was retired).
+		writeFile(ws, "apps/desktop/src/main/index.ts", "export function main() {}\n");
+		writeFile(ws, "apps/desktop/src/util.ts", "export const u = 1;\n");
+		writeFile(ws, "pkg/x.ts", "export const x = 1;\n");
+		gitCommit(ws, "feat: nested layout");
+
+		await archivistService.scanProject(proj.id);
+
+		const nodes = wikiStore.listByProject(proj.id);
+		const struct = (dirRel: string) => nodes.find((n) => n.type === "structure" && n.path === `structure:${dirRel}`);
+		// every intermediate dir exists
+		expect(struct("apps")).toBeDefined();
+		expect(struct("apps/desktop")).toBeDefined();
+		expect(struct("apps/desktop/src")).toBeDefined();
+		expect(struct("apps/desktop/src/main")).toBeDefined();
+		expect(struct("pkg")).toBeDefined();
+		// nesting: apps/desktop's parent is apps, not the project root
+		const appsDesktop = struct("apps/desktop")!;
+		const apps = struct("apps")!;
+		expect(appsDesktop.parentId).toBe(apps.id);
+		// header index.ts hangs under its immediate parent (apps/desktop/src/main)
+		const mainDir = struct("apps/desktop/src/main")!;
+		const idx = nodes.find((n) => n.path === "header:apps/desktop/src/main/index.ts")!;
+		expect(idx.parentId).toBe(mainDir.id);
+		// no flat top-level-only grouping: a 'desktop' node directly under root would be wrong
+		const subtreeRoot = nodes.find((m) => m.id.startsWith("wiki-root:") && m.id !== "wiki-root:global" && m.id !== "wiki-root:projects")!;
+		const rootChildren = nodes.filter((n) => n.parentId === subtreeRoot.id);
+		expect(rootChildren.some((n) => n.path === "structure:apps")).toBe(true);
+		expect(rootChildren.some((n) => n.path === "structure:desktop")).toBe(false);
+	});
+
+	test("rebuildProjectSubtree wipes + rescans cleanly", async () => {
+		writeFile(ws, "src/a.ts", "export const X = 1;\n");
+		gitCommit(ws, "feat: a");
+		await archivistService.scanProject(proj.id);
+		const before = wikiStore.listByProject(proj.id).length;
+		expect(before).toBeGreaterThan(0);
+
+		// Change the tree (add a deeper file) and rebuild — old flat nodes gone.
+		writeFile(ws, "src/deep/b.ts", "export const Y = 2;\n");
+		gitCommit(ws, "feat: deep");
+		const r = await archivistService.rebuildProjectSubtree(proj.id);
+		expect(r.filesScanned).toBeGreaterThanOrEqual(2);
+		const nodes = wikiStore.listByProject(proj.id);
+		// both files present, deep dir node created
+		expect(nodes.find((n) => n.path === "header:src/a.ts")).toBeDefined();
+		expect(nodes.find((n) => n.path === "header:src/deep/b.ts")).toBeDefined();
+		expect(nodes.find((n) => n.path === "structure:src/deep")).toBeDefined();
 	});
 
 	test("second scan with no changes is a no-op", async () => {

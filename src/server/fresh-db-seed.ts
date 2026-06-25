@@ -11,10 +11,11 @@
 //      (角色清单 + subagents 关系 + cron 建议),zero 读它学习怎么搭工作流。
 //      protected:不可删。
 //   3. **wiki §10.5 子树根骨架** —— 在 global root 下 ensure 三个顶层分支:
-//      `knowledge`(已有)/ `projects`(空容器)/ `memory`(空容器)。
-//      projects/memory 根不 protected(仅导航骨架);真正的 per-project /
-//      per-agent 子树根仍由 ensureProjectSubtree / ensureMemoryAgentRoot
-//      按需 lazy 创建,与这些骨架根并存。
+//      `knowledge`(已有)/ `projects`(容器)/ `memory`(空容器)。
+//      projects/memory 根不 protected(仅导航骨架);真正的 per-project 子树根
+//      由 ensureProjectSubtree 按需 lazy 创建,作为 projects 容器的子节点;
+//      per-agent memory 子树根由 ensureMemoryAgentRoot lazy 创建,与 memory
+//      容器并列(memory 是 agent 全局的)。
 //
 // ## 触发点
 // `server/index.ts` 的 `startServer` 内、所有 store 建好后、`restoreAllSessions`
@@ -53,7 +54,6 @@ import {
 	WORKFLOW_PATH_SEED,
 	SOFTWARE_DEV_NODE_PATH_SEED,
 	SOFTWARE_DEV_NODE_PATH_SEED_LEGACY,
-	PROJECTS_ROOT_PATH_SEED,
 	MEMORY_ROOT_PATH_SEED,
 } from "./wiki-node-store.js";
 import type { ManagementService } from "./management-service.js";
@@ -427,22 +427,16 @@ export function ensureSoftwareDevNode(wikiStore: WikiStore): void {
 
 /**
  * v0.8 (§10.5): ensure the empty container root for project wiki subtrees.
- * Hangs directly under the global root as a navigation skeleton; the actual
- * per-project subtree roots (`wiki-root:<projectId>`) are created lazily by
- * ensureProjectSubtree and live as siblings of this node. NOT protected.
+ * The actual per-project subtree roots (`wiki-root:<projectId>`) are created
+ * lazily by ensureProjectSubtree and live as CHILDREN of this node. NOT
+ * protected.
+ *
+ * The row itself is ensured by `wikiStore.ensureProjectsRoot()` (stable
+ * synthetic id WIKI_PROJECTS_ROOT_ID); this wrapper backfills the container's
+ * explanatory doc so the node isn't opaque.
  */
 export function ensureProjectsRoot(wikiStore: WikiStore): void {
-	const existing = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, PROJECTS_ROOT_PATH_SEED);
-	if (!existing) {
-		wikiStore.create({
-			parentId: WIKI_GLOBAL_ROOT_ID,
-			path: PROJECTS_ROOT_PATH_SEED,
-			title: "Projects",
-			summary: "项目 wiki 子树根;每个项目一个 wiki-root:<projectId> 子树。",
-			type: "project" as any,
-		});
-	}
-	const node = wikiStore.getByParentAndPath(WIKI_GLOBAL_ROOT_ID, PROJECTS_ROOT_PATH_SEED)!;
+	const node = wikiStore.ensureProjectsRoot();
 	ensureNodeDetail(wikiStore, node.id, PROJECTS_DETAIL);
 }
 

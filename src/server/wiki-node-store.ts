@@ -91,6 +91,15 @@ const COLUMNS: ColumnDef[] = [
 export const WIKI_GLOBAL_ROOT_ID = "wiki-root:global";
 
 /**
+ * v0.8 (§10.5): stable synthetic id of the "Projects" navigation container —
+ * the §10.5 skeleton node that groups every per-project wiki subtree root.
+ * Each project's subtree root (`wiki-root:<projectId>`, minted by
+ * ensureProjectSubtree) is a CHILD of this container, not a sibling. Idempotent
+ * container, ensured by the store constructor + fresh-db seed.
+ */
+export const WIKI_PROJECTS_ROOT_ID = "wiki-root:projects";
+
+/**
  * Stable path prefix scheme (also used as path-internal scope key):
  *   project subtree root → "project:<projectId>"
  *   header leaf          → "header:<relPath>"
@@ -143,14 +152,17 @@ export const SOFTWARE_DEV_NODE_PATH_SEED_LEGACY = "software-dev";
  *   wiki-root:global
  *     ├── knowledge          (KNOWLEDGE_ROOT_PATH_SEED)        — protected
  *     │     └── software-dev (SOFTWARE_DEV_NODE_PATH_SEED)     — protected
- *     ├── projects           (PROJECTS_ROOT_PATH_SEED)         — empty container
+ *     ├── projects           (PROJECTS_ROOT_PATH_SEED)         — container
+ *     │     └── wiki-root:<projectId>  (per-project subtree)   — created lazily
  *     └── memory             (MEMORY_ROOT_PATH_SEED)           — empty container
  *
- * These are NOT protected (they are navigation skeletons, not anchors);
- * the per-project subtree roots (`wiki-root:<projectId>`) and per-agent
- * memory roots (`wiki-root:memory-agent:<agentId>`) are still created
- * lazily by ensureProjectSubtree / ensureMemoryAgentRoot and live as
- * siblings of these skeleton roots.
+ * The knowledge / projects / memory containers are NOT protected (they are
+ * navigation skeletons, not anchors). Per-project subtree roots
+ * (`wiki-root:<projectId>`) are created lazily by ensureProjectSubtree and
+ * live as CHILDREN of the projects container. Per-agent memory roots
+ * (`wiki-root:memory-agent:<agentId>`) are created lazily by
+ * ensureMemoryAgentRoot and currently live as siblings of the memory
+ * container (memory is global to the agent — see ensureMemoryAgentRoot).
  */
 export const PROJECTS_ROOT_PATH_SEED = "projects";
 export const MEMORY_ROOT_PATH_SEED = "memory";
@@ -325,6 +337,12 @@ export class WikiStore {
 			COLUMNS,
 		);
 		this.ensureGlobalRoot();
+		// §10.5 skeleton container for per-project subtrees. Ensured in the
+		// constructor so it always exists (even before the fresh-db seed runs),
+		// then reparent any project subtrees from older DBs where they hung
+		// directly under the global root as siblings of this container.
+		this.ensureProjectsRoot();
+		this.reparentProjectSubtrees();
 	}
 
 	/**
@@ -405,9 +423,12 @@ export class WikiStore {
 	 * (parent=project subtree root, path="header:src/foo.ts").
 	 */
 	getByParentAndPath(parentId: string | undefined, path: string): WikiNode | undefined {
-		return this.store
-			.list()
-			.find((n) => (n.parentId ?? undefined) === (parentId ?? undefined) && n.path === path);
+		// Indexed SELECT (idx_wiki_parent_path) — NOT list().find(). This is on
+		// the archivist's per-file hot path (upsertProjectNode calls it ~once
+		// per workspace file); a full-table scan per call made large-repo scans
+		// take minutes.
+		const row = this.store.findByColumns({ parentId: parentId ?? undefined, path });
+		return row ? rowToWikiNode(row) : undefined;
 	}
 
 	/**
@@ -538,7 +559,11 @@ export class WikiStore {
 	}
 
 	getChildren(parentId: string): WikiNode[] {
-		return this.store.list().filter((n) => n.parentId === parentId).map(rowToWikiNode);
+		// Indexed SELECT (idx_wiki_parent) — NOT list().filter(). WikiStore.create
+		// calls this on every insert (leaf→folder promotion check), and the
+		// archivist inserts thousands of nodes per scan, so a per-insert full
+		// table scan made large-repo scans take minutes.
+		return this.store.findAllByColumns({ parentId }).map(rowToWikiNode);
 	}
 
 	// ─── Disk path derivation (tree-mirror layout) ───────────────────
@@ -819,20 +844,117 @@ export class WikiStore {
 	}
 
 	/**
+	 * Ensure the §10.5 "Projects" navigation container exists. Synthetic stable
+	 * id (WIKI_PROJECTS_ROOT_ID) so it's idempotent across runs and every
+	 * per-project subtree root can hang under it as a child. The container has
+	 * no projectId (it's a global navigation skeleton, not a project).
+	 *
+	 * Dedup: the previous fresh-db-seed created this container with a UUID id
+	 * (plain `create`). When this stable-id version runs on such a DB, it would
+	 * leave a SECOND "Projects" node (uuid one + stable one) both under the
+	 * global root with path "projects" — confusing the tree browser. So after
+	 * ensuring the stable container, any stray duplicate (same path + parent,
+	 * different id) is merged away: its children are re-parented onto the
+	 * stable container, then the duplicate row is deleted.
+	 */
+	ensureProjectsRoot(): WikiNode {
+		const existing = this.store.get(WIKI_PROJECTS_ROOT_ID);
+		if (!existing) {
+			const now = new Date().toISOString();
+			this.insertWithId({
+				id: WIKI_PROJECTS_ROOT_ID,
+				parentId: WIKI_GLOBAL_ROOT_ID,
+				type: "project" as WikiNodeTypeGlobal,
+				nodeType: "directory",
+				path: PROJECTS_ROOT_PATH_SEED,
+				title: "Projects",
+				summary: "项目 wiki 子树根;每个项目一个 wiki-root:<projectId> 子树。",
+				lastUpdatedBy: "system",
+				createdAt: now,
+				updatedAt: now,
+			} as any);
+		}
+		this.mergeDuplicateProjectsContainers();
+		return this.get(WIKI_PROJECTS_ROOT_ID)!;
+	}
+
+	/**
+	 * v0.8 §10.5 (bugfix): collapse any stray "Projects" container that shares
+	 * the canonical (parent=global root, path="projects") slot but carries a
+	 * different id (legacy UUID-seeded one). Re-parents its children onto the
+	 * stable WIKI_PROJECTS_ROOT_ID, then deletes the duplicate. Idempotent — a
+	 * no-op once only the stable container remains.
+	 */
+	private mergeDuplicateProjectsContainers(): number {
+		const dupes = this.store
+			.list()
+			.filter(
+				(n) =>
+					n.id !== WIKI_PROJECTS_ROOT_ID &&
+					n.parentId === WIKI_GLOBAL_ROOT_ID &&
+					n.path === PROJECTS_ROOT_PATH_SEED,
+			);
+		for (const dupe of dupes) {
+			// Move any children (e.g. legacy project subtrees) onto the stable container.
+			this.db
+				.prepare("UPDATE project_wiki SET parent_id = ? WHERE parent_id = ?")
+				.run(WIKI_PROJECTS_ROOT_ID, dupe.id);
+			// Delete the duplicate row directly (it's not a SqliteStore-managed
+			// record we want to re-broadcast; this runs at startup pre-WS).
+			this.db.prepare("DELETE FROM project_wiki WHERE id = ?").run(dupe.id);
+		}
+		return dupes.length;
+	}
+
+	/**
+	 * v0.8 §10.5 (bugfix): one-time reparent of per-project subtree roots that
+	 * predate this fix. Older DBs created project subtree roots with
+	 * parentId = WIKI_GLOBAL_ROOT_ID, leaving them as siblings of the (empty)
+	 * "Projects" container instead of children. This moves them under the
+	 * container. Idempotent — a no-op once every project root is parented.
+	 *
+	 * Identifies a project subtree root by: synthetic id (`wiki-root:...`), a
+	 * non-null projectId, and parentId currently the global root. Excludes the
+	 * container itself (no projectId) and the memory roots (id prefix).
+	 */
+	private reparentProjectSubtrees(): number {
+		const r = this.db
+			.prepare(
+				`UPDATE project_wiki
+				 SET parent_id = ?
+				 WHERE id LIKE 'wiki-root:%'
+				   AND id <> ?
+				   AND id <> ?
+				   AND project_id IS NOT NULL
+				   AND parent_id = ?`,
+			)
+			.run(
+				WIKI_PROJECTS_ROOT_ID,
+				WIKI_GLOBAL_ROOT_ID,
+				WIKI_PROJECTS_ROOT_ID,
+				WIKI_GLOBAL_ROOT_ID,
+			);
+		return r.changes;
+	}
+
+	/**
 	 * Ensure the `project` subtree root node exists for a given project.
 	 * Idempotent. Returns the project-subtree root node. The node's id is
 	 * `wiki-root:<projectId>` — the value the session context bundle carries
-	 * as wikiRootNodeId for project-role sessions.
+	 * as wikiRootNodeId for project-role sessions. The node is a CHILD of the
+	 * §10.5 "Projects" container (not a sibling of it), so the wiki browser
+	 * nests each project under Projects.
 	 */
 	ensureProjectSubtree(projectId: string, projectName?: string): WikiNode {
 		const id = projectSubtreeRootId(projectId);
 		const existing = this.store.get(id);
 		if (existing) return rowToWikiNode(existing)!;
 
+		const parent = this.ensureProjectsRoot();
 		const now = new Date().toISOString();
 		this.insertWithId({
 			id,
-			parentId: WIKI_GLOBAL_ROOT_ID,
+			parentId: parent.id,
 			type: "project" as WikiNodeTypeGlobal,
 			nodeType: "directory",
 			path: projectSubtreeRootPath(projectId),
@@ -959,9 +1081,19 @@ export class WikiStore {
 	 */
 	assertNodeInAnchorScope(anchorNodeIds: string[], nodeId: string): void {
 		if (anchorNodeIds.includes(WIKI_GLOBAL_ROOT_ID)) return; // global caller
-		for (const anchorId of anchorNodeIds) {
-			const ids = this.collectSubtreeIdsSafe(anchorId);
-			if (ids.has(nodeId)) return;
+		const anchorSet = new Set(anchorNodeIds);
+		// Walk the parent chain up from nodeId; if any ancestor is an anchor,
+		// the node is in scope. This is O(depth) indexed PK lookups instead of
+		// the old collectSubtreeIds (an O(subtree-size) scan per call) — the
+		// archivist calls this once per file, so the scan version made large
+		// repos take ~50s just for scope checks.
+		let cur = this.get(nodeId);
+		const seen = new Set<string>();
+		while (cur) {
+			if (anchorSet.has(cur.id)) return;
+			if (seen.has(cur.id)) break; // cycle guard
+			seen.add(cur.id);
+			cur = cur.parentId ? this.get(cur.parentId) : undefined;
 		}
 		throw new Error(
 			`Node ${nodeId} is outside all caller anchor subtrees ` +
@@ -1418,17 +1550,38 @@ export class WikiStore {
 		return matches.slice(0, limit);
 	}
 
-	/** Collect a node id and all its descendants. */
+	/**
+	 * Collect a node id and all its descendants.
+	 *
+	 * Performance: builds a parent→children index from a SINGLE `store.list()`
+	 * snapshot, then walks it. The previous implementation called
+	 * `store.list()` (an uncached SQL SELECT) once per dequeued node — O(N²)
+	 * full-table scans, which made `listByProject` / `listVisibleFromRoot` take
+	 * multiple seconds on a ~600-node subtree (and stall the event loop under
+	 * concurrency). Now O(N) edges built once + O(subtree) walk.
+	 */
 	private collectSubtreeIds(rootId: string): Set<string> {
 		const out = new Set<string>([rootId]);
+		// One snapshot of every node, grouped by parent. Only the parentId is
+		// needed for the traversal, so we project it out to avoid holding row
+		// objects and keep the working set small.
+		const byParent = new Map<string, string[]>();
+		for (const n of this.store.list()) {
+			const p = n.parentId;
+			if (!p) continue;
+			let bucket = byParent.get(p);
+			if (!bucket) { bucket = []; byParent.set(p, bucket); }
+			bucket.push(n.id);
+		}
 		const stack = [rootId];
 		while (stack.length > 0) {
 			const cur = stack.pop()!;
-			for (const child of this.store.list()) {
-				if (child.parentId === cur && !out.has(child.id)) {
-					out.add(child.id);
-					stack.push(child.id);
-				}
+			const kids = byParent.get(cur);
+			if (!kids) continue;
+			for (const childId of kids) {
+				if (out.has(childId)) continue;
+				out.add(childId);
+				stack.push(childId);
 			}
 		}
 		return out;
