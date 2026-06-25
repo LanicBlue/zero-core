@@ -680,6 +680,9 @@ export function runMigrations(sessionDB: SessionDB): void {
 	migrateWikiDetailToDisk(db);
 	safeAddIndex(db, "project_wiki", "idx_wiki_project", "project_id");
 	safeAddIndex(db, "project_wiki", "idx_wiki_parent", "parent_id");
+	// v0.8 §2.13: composite index for getByParentAndPath — the archivist's
+	// per-file upsert hot path. Without it each lookup scanned the whole table.
+	safeAddIndex(db, "project_wiki", "idx_wiki_parent_path", "parent_id, path");
 	// v0.8 (P1): idx_wiki_type referenced the now-dropped `type` column. Drop
 	// it explicitly (SQLite does not cascade DROP COLUMN to dependent indexes
 	// reliably across versions). Idempotent via try/catch.

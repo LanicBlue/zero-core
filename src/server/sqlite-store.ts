@@ -165,6 +165,45 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 		return row ? this.rowToRecord(row) : undefined;
 	}
 
+	/**
+	 * Find a single record by an equality filter on one or more columns, using
+	 * an indexed SELECT (not a full-table `list().find()`). Callers pass record
+	 * KEYS (camelCase); they map to snake_case columns. Use this on indexed
+	 * column combos (e.g. parent_id + path) to avoid the O(N) scan that
+	 * `list().find()` would do per call — critical for hot paths like the
+	 * archivist scan, which upserts thousands of nodes and previously spent
+	 * minutes re-scanning the whole table on each upsert.
+	 */
+	findByColumns(filter: Partial<Record<string, string | undefined>>): T | undefined {
+		const entries = Object.entries(filter).filter(([, v]) => v !== undefined);
+		if (entries.length === 0) return undefined;
+		const where = entries
+			.map(([key]) => `${this.columnMap[key] ?? key} = ?`)
+			.join(" AND ");
+		const row = this.db
+			.prepare(`SELECT ${this.allColumns.join(", ")} FROM ${this.table} WHERE ${where}`)
+			.get(...entries.map(([, v]) => v)) as Record<string, any> | undefined;
+		return row ? this.rowToRecord(row) : undefined;
+	}
+
+	/**
+	 * Find ALL records matching an equality filter, via an indexed SELECT
+	 * (counterpart to findByColumns for multi-row results). Use this instead of
+	 * `list().filter(...)` on hot paths — e.g. getChildren(parentId) is called
+	 * once per wiki-node insert and must hit idx_wiki_parent, not scan the table.
+	 */
+	findAllByColumns(filter: Partial<Record<string, string | undefined>>): T[] {
+		const entries = Object.entries(filter).filter(([, v]) => v !== undefined);
+		if (entries.length === 0) return this.list();
+		const where = entries
+			.map(([key]) => `${this.columnMap[key] ?? key} = ?`)
+			.join(" AND ");
+		const rows = this.db
+			.prepare(`SELECT ${this.allColumns.join(", ")} FROM ${this.table} WHERE ${where}`)
+			.all(...entries.map(([, v]) => v)) as Record<string, any>[];
+		return rows.map((r) => this.rowToRecord(r));
+	}
+
 	create(input: Omit<T, "id" | "createdAt" | "updatedAt">): T {
 		const now = new Date().toISOString();
 		const record = { ...input, id: uuidv4(), createdAt: now, updatedAt: now } as unknown as T;

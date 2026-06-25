@@ -249,6 +249,23 @@ export class ArchivistService {
 		};
 	}
 
+	/**
+	 * Clean rebuild — drop the project's entire wiki subtree + scan cursor,
+	 * then run a fresh full scan with the CURRENT structure-node logic. Use
+	 * when the structure semantics changed (e.g. flat-module → directory-mirror)
+	 * and the old nodes would otherwise persist as stale siblings. The project
+	 * row itself is untouched.
+	 */
+	async rebuildProjectSubtree(projectId: string): Promise<ScanResult> {
+		const project = this.projectStore.get(projectId);
+		if (!project) return this.emptyResult(projectId, "project not found");
+		// Wipe the old subtree (root + all descendants + body files) and the
+		// scan cursor so the next scan is treated as initial.
+		this.wiki.deleteByProject(projectId);
+		this.cursors.delete(this.archivistId, projectId);
+		return this.rescanProjectFull(projectId);
+	}
+
 	// ─── Git management (RFC §2.15) ─────────────────────────────────
 
 	/** Commit PM-written requirement docs to main. */
@@ -376,9 +393,32 @@ export class ArchivistService {
 		let flagsRaised = 0;
 		let filesScanned = 0;
 
-		// Group files by their top-level module directory so we can build
-		// structure nodes (module / subsystem) above the leaf header nodes.
-		const moduleMap = new Map<string, string[]>(); // modulePath → files
+		// Fresh per-scan cache of directory structure nodes so the chain is
+		// built once per distinct directory across the whole file list.
+		this._dirNodeCache = new Map();
+
+		// Per-scan children-by-parent index. Built ONCE from the existing
+		// subtree and maintained incrementally as we upsert nodes. This avoids
+		// the O(N²) trap of calling `getChildren` (a full table scan) once per
+		// file — the previous scan took minutes on a ~2800-file repo because
+		// findHeader/intent-lookup each did store.list().filter per file.
+		const childrenByParent = new Map<string, WikiNode[]>();
+		const indexExisting = childrenByParent; // alias for clarity below
+		for (const n of this.wiki.listByProject(projectId)) {
+			if (!n.parentId) continue;
+			const arr = indexExisting.get(n.parentId) ?? [];
+			arr.push(n);
+			indexExisting.set(n.parentId, arr);
+		}
+		const indexAdd = (parentId: string, node: WikiNode) => {
+			const arr = childrenByParent.get(parentId) ?? [];
+			arr.push(node);
+			childrenByParent.set(parentId, arr);
+		};
+
+		// Tally file counts per directory so we can stamp a directory summary
+		// (mirrors the old module-summary, now per directory).
+		const dirFileCount = new Map<string, number>();
 
 		for (const relPath of files) {
 			if (this.isIgnoredPath(relPath)) continue;
@@ -397,10 +437,13 @@ export class ArchivistService {
 			const isDoc = DOC_SUFFIXES.has(extOf(relPath));
 			if (!isCode && !isDoc) continue;
 
-			// Build / fetch the containing module structure node.
-			const modulePath = topModuleOf(relPath);
-			if (!moduleMap.has(modulePath)) moduleMap.set(modulePath, []);
-			moduleMap.get(modulePath)!.push(relPath);
+			// The file's immediate parent directory (relPath, slash-joined) —
+			// the node its header/intent leaf hangs under. Empty for repo-root
+			// files (they hang directly under the project subtree root).
+			const norm = relPath.split(sep).join("/");
+			const lastSlash = norm.lastIndexOf("/");
+			const dirRelPath = lastSlash >= 0 ? norm.slice(0, lastSlash) : "";
+			dirFileCount.set(dirRelPath, (dirFileCount.get(dirRelPath) ?? 0) + 1);
 
 			if (isCode) {
 				// Header node: describes one code file.
@@ -408,19 +451,34 @@ export class ArchivistService {
 				// the store derives + stamps the body file path itself. The
 				// reference to the actual workspace file lives in the node's
 				// body (markdown link) and in the path (`header:<relPath>`).
-				const summary = this.summarizeCodeFile(abs, relPath) ?? "(unreadable)";
-				const moduleNode = this.ensureModuleNode(projectId, subtreeRoot.id, modulePath);
-				const existing = this.findHeader(projectId, moduleNode.id, relPath);
+				//
+				// Performance: the rich summary (exports / head / line count) is
+				// NOT computed at scan time — that would readFileSync EVERY
+				// workspace file on each scan, blocking startup for large repos
+				// (2800+ files). The summary is a cheap placeholder here and is
+				// materialized lazily on first expand via ensureSummary (which
+				// reads the file once, then caches). The tree only renders
+				// title/path, so the empty summary costs nothing until expand.
+				const dirNode = this.ensureDirectoryChain(projectId, subtreeRoot.id, dirRelPath);
+				const existing = this.findHeader(projectId, dirNode.id, relPath, childrenByParent);
 				const wasFlagged = existing?.flags?.includes("intent:no-recorded-reason");
-				this.wiki.upsertProjectNode(projectId, {
-					parentId: moduleNode.id,
+				const upserted = this.wiki.upsertProjectNode(projectId, {
+					parentId: dirNode.id,
 					type: "header",
 					path: `header:${relPath}`,
 					title: basenameOf(relPath),
-					summary,
+					summary: existing?.summary ?? "",
 					provenance: "structure",
 					lastUpdatedBy: "archivist",
 				});
+				if (existing && existing.id === upserted.id) {
+					// update in place — replace the indexed copy
+					const arr = childrenByParent.get(dirNode.id) ?? [];
+					const i = arr.findIndex((c) => c.id === upserted.id);
+					if (i >= 0) arr[i] = upserted;
+				} else {
+					indexAdd(dirNode.id, upserted);
+				}
 				nodesUpserted++;
 
 				// If the previous run flagged "no recorded reason" and this
@@ -430,48 +488,65 @@ export class ArchivistService {
 			} else if (isDoc) {
 				// Intent node — describes a requirement / design / ADR doc.
 				// Intention: derive from commit log + doc content; flag if absent.
+				// Summary is lazy (see code branch above) — not read at scan time.
 				const intent = this.classifyIntentDoc(relPath);
 				if (intent) {
-					const summary = this.summarizeDocFile(abs) ?? "(unreadable)";
 					const requirementId = this.lookupRequirementId(projectId, relPath);
-					const moduleNode = this.ensureModuleNode(projectId, subtreeRoot.id, modulePath);
-					this.wiki.upsertProjectNode(projectId, {
-						parentId: moduleNode.id,
+					const dirNode = this.ensureDirectoryChain(projectId, subtreeRoot.id, dirRelPath);
+					const intentPath = `intent:${relPath}`;
+					const existingIntent = (childrenByParent.get(dirNode.id) ?? [])
+						.find((c) => c.type === "intent" && c.path === intentPath);
+					const upserted = this.wiki.upsertProjectNode(projectId, {
+						parentId: dirNode.id,
 						type: "intent",
-						path: `intent:${relPath}`,
+						path: intentPath,
 						title: basenameOf(relPath),
-						summary,
+						summary: existingIntent?.summary ?? "",
 						// v0.8 (P1 §10.1): docPointer is code-internal, derived
 						// by the store — not an upsert input.
 						provenance: "confirmed",
 						requirementIds: requirementId ? [requirementId] : undefined,
 						lastUpdatedBy: "archivist",
 					});
+					if (existingIntent && existingIntent.id === upserted.id) {
+						const arr = childrenByParent.get(dirNode.id) ?? [];
+						const i = arr.findIndex((c) => c.id === upserted.id);
+						if (i >= 0) arr[i] = upserted;
+					} else {
+						indexAdd(dirNode.id, upserted);
+					}
 					nodesUpserted++;
 				}
 			}
 		}
 
-		// Build module-level structure summaries (provenance=structure).
-		for (const [modulePath, moduleFiles] of moduleMap.entries()) {
-			const moduleNode = this.ensureModuleNode(projectId, subtreeRoot.id, modulePath);
-			const summary = `Module ${modulePath}: ${moduleFiles.length} tracked file(s).`;
-			this.wiki.update(moduleNode.id, { summary, provenance: "structure" });
+		// Stamp per-directory file counts into each directory node's summary so
+		// the tree browser shows how many code/doc files live under each folder.
+		for (const [dirRelPath, count] of dirFileCount.entries()) {
+			const node = dirRelPath === ""
+				? this.wiki.get(subtreeRoot.id)
+				: this._dirNodeCache?.get(dirRelPath);
+			if (node) {
+				this.wiki.update(node.id, {
+					summary: dirRelPath === "" ? `Project root: ${count} file(s).` : `Directory ${dirRelPath}: ${count} file(s).`,
+					provenance: "structure",
+				});
+			}
 		}
 
 		// For any code header without a sibling intent, flag "no recorded reason".
 		// This is RFC §2.13's "intent only from where humans wrote it; missing →
-		// flag「无记录理由」".
-		const nodes = this.wiki.listByProject(projectId);
-		for (const n of nodes) {
-			if (n.type !== "header") continue;
-			const moduleChildren = this.wiki.getChildren(n.parentId!);
-			const hasIntentSibling = moduleChildren.some((c) => c.type === "intent");
-			const alreadyFlagged = n.flags?.includes("intent:no-recorded-reason");
-			if (!hasIntentSibling && !alreadyFlagged) {
-				this.wiki.addFlag(projectId, n.id, "intent:no-recorded-reason");
+		// flag「无记录理由」". Uses the scan-local children index (O(children))
+		// instead of getChildren (a full table scan per header).
+		for (const [, siblings] of childrenByParent) {
+			const hasIntent = siblings.some((c) => c.type === "intent");
+			if (hasIntent) continue;
+			for (const h of siblings) {
+				if (h.type !== "header") continue;
+				if (h.flags?.includes("intent:no-recorded-reason")) continue;
+				this.wiki.addFlag(projectId, h.id, "intent:no-recorded-reason");
 				flagsRaised++;
-				notes.push(`flagged ${n.path}: no recorded intent (RFC §2.13)`);
+				notes.push(`flagged ${h.path}: no recorded intent (RFC §2.13)`);
 			}
 		}
 
@@ -480,30 +555,103 @@ export class ArchivistService {
 
 	// ─── Internal: helpers ──────────────────────────────────────────
 
-	private ensureModuleNode(projectId: string, subtreeRootId: string, modulePath: string): WikiNode {
-		const existing = this.wiki.getByParentAndPath(subtreeRootId, `structure:${modulePath}`);
-		if (existing) return existing;
-		return this.wiki.upsertProjectNode(projectId, {
-			parentId: subtreeRootId,
-			type: "structure",
-			path: `structure:${modulePath}`,
-			title: modulePath === "." ? "(root)" : modulePath,
-			summary: `Module ${modulePath}.`,
-			provenance: "structure",
-			lastUpdatedBy: "archivist",
-		});
+	/**
+	 * Ensure the chain of directory structure nodes for a file's containing
+	 * directory, mirroring the on-disk layout. `apps/desktop/src/main/index.ts`
+	 * produces/refreshes the chain `apps → desktop → src → main` (each a
+	 * `structure:<dirRelPath>` node parented to its parent dir), and returns
+	 * the **immediate parent dir** node (`main`) so the caller hangs the file
+	 * leaf directly under it.
+	 *
+	 * Replaces the old `topModuleOf` flat module grouping (which collapsed
+	 * every file under its top-level directory only). The node `path` is the
+	 * full directory relPath (slash-joined), which is unique per dir, and the
+	 * store's `(parentId, path)` upsert key makes this idempotent across scans.
+	 */
+	private ensureDirectoryChain(projectId: string, subtreeRootId: string, dirRelPath: string): WikiNode {
+		if (dirRelPath === "" || dirRelPath === ".") return this.wiki.get(subtreeRootId)!;
+		// Build bottom-up, caching so a deep tree is one pass per distinct dir.
+		const cache = this._dirNodeCache ??= new Map();
+		const cached = cache.get(dirRelPath);
+		if (cached) return cached;
+		const segs = dirRelPath.split("/").filter(Boolean);
+		let parentId = subtreeRootId;
+		let built = parentId;
+		let acc = "";
+		for (const seg of segs) {
+			acc = acc ? `${acc}/${seg}` : seg;
+			let node = cache.get(acc);
+			if (!node) {
+				const path = `structure:${acc}`;
+				node = this.wiki.getByParentAndPath(parentId, path);
+				if (!node) {
+					node = this.wiki.upsertProjectNode(projectId, {
+						parentId,
+						type: "structure",
+						path,
+						title: seg,
+						summary: `Directory ${acc}.`,
+						provenance: "structure",
+						lastUpdatedBy: "archivist",
+					});
+				}
+				cache.set(acc, node);
+			}
+			parentId = node.id;
+			built = node.id;
+		}
+		const result = this.wiki.get(built)!;
+		cache.set(dirRelPath, result);
+		return result;
 	}
+	private _dirNodeCache: Map<string, WikiNode> | null = null;
 
-	private findHeader(projectId: string, moduleId: string, relPath: string): WikiNode | undefined {
-		const children = this.wiki.getChildren(moduleId);
+	private findHeader(projectId: string, moduleId: string, relPath: string, childrenByParent?: Map<string, WikiNode[]>): WikiNode | undefined {
 		// v0.8 (P1 §10.1): look up by node path, NOT docPointer. docPointer is
 		// now a code-internal cache of the node's body content file path
 		// (derived + stamped by the store); it is never set to the workspace
 		// relPath anymore. The (parentId, path) pair is the canonical upsert
 		// key — `header:<relPath>` uniquely identifies one code file under
-		// this module.
+		// this directory.
 		const headerPath = `header:${relPath}`;
+		// Prefer the scan-local index (O(children)) over a fresh getChildren
+		// (which is a full table scan — O(N) per call, O(N²) per scan).
+		const children = childrenByParent
+			? (childrenByParent.get(moduleId) ?? [])
+			: this.wiki.getChildren(moduleId);
 		return children.find((c) => c.type === "header" && c.path === headerPath);
+	}
+
+	/**
+	 * Lazily compute + persist a node's rich summary on first expand. Scan
+	 * time leaves summary empty (it would otherwise readFileSync every
+	* workspace file); this reads the source file ONCE when the user actually
+	 * opens the node, caches it back onto the row, and returns it. Subsequent
+	 * expands / listings get the cached summary with no file read.
+	 *
+	 * Only header (code) / intent (doc) nodes have a source file to summarize;
+	 * structure/project/memory nodes return their existing summary unchanged.
+	 */
+	ensureSummary(nodeId: string): string | undefined {
+		const node = this.wiki.get(nodeId);
+		if (!node) return undefined;
+		// Already materialized — nothing to do.
+		if (node.summary && node.summary.trim() !== "") return node.summary;
+		let relPath: string | undefined;
+		if (node.path.startsWith("header:")) relPath = node.path.slice("header:".length);
+		else if (node.path.startsWith("intent:")) relPath = node.path.slice("intent:".length);
+		if (!relPath || !node.projectId) return node.summary;
+		const project = this.projectStore.get(node.projectId);
+		if (!project) return node.summary;
+		const abs = resolve(project.workspaceDir, relPath);
+		if (!existsSync(abs)) return node.summary;
+		const summary = node.path.startsWith("header:")
+			? (this.summarizeCodeFile(abs, relPath) ?? "")
+			: (this.summarizeDocFile(abs) ?? "");
+		if (summary) {
+			this.wiki.update(node.id, { summary } as any);
+		}
+		return summary || node.summary;
 	}
 
 	private summarizeCodeFile(absPath: string, relPath: string): string | undefined {
@@ -592,12 +740,6 @@ function extOf(p: string): string {
 function basenameOf(p: string): string {
 	const norm = p.split(sep).join("/");
 	return norm.slice(norm.lastIndexOf("/") + 1) || p;
-}
-
-function topModuleOf(relPath: string): string {
-	const norm = relPath.split(sep).join("/");
-	const slash = norm.indexOf("/");
-	return slash >= 0 ? norm.slice(0, slash) : ".";
 }
 
 function extractExports(content: string): string[] {

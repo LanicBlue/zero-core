@@ -57,9 +57,13 @@ import type { ProjectStore } from "./project-store.js";
  * `wiki:search` typedHandle (logic identical; this is the REST port so the
  * IPC proxy ROUTE_MAP can route to the backend).
  */
-export function createWikiRouter(deps: { wikiStore: WikiStore }): Router {
+export function createWikiRouter(deps: {
+	wikiStore: WikiStore;
+	/** v0.8 §2.13: lazy summary materialization on expand (optional). */
+	archivistService?: import("./archivist-service.js").ArchivistService;
+}): Router {
 	const router = Router();
-	const { wikiStore } = deps;
+	const { wikiStore, archivistService } = deps;
 
 	/**
 	 * POST /api/wiki/list-by-anchors
@@ -83,6 +87,23 @@ export function createWikiRouter(deps: { wikiStore: WikiStore }): Router {
 	});
 
 	/**
+	 * GET /api/wiki/nodes/:nodeId/children
+	 *
+	 * Returns the DIRECT children of a node (indexed by idx_wiki_parent). This
+	 * is the lazy tree-load primitive: the renderer fetches only the root's
+	 * children initially, then a node's children on expand — instead of pulling
+	 * the whole subtree in one shot.
+	 */
+	router.get("/nodes/:nodeId/children", (req, res) => {
+		try {
+			const nodes = wikiStore.getChildren(req.params.nodeId);
+			res.json(nodes);
+		} catch (err) {
+			res.status(500).json({ error: (err as Error).message });
+		}
+	});
+
+	/**
 	 * GET /api/wiki/nodes/:nodeId/detail
 	 *
 	 * Reads a node's on-disk body content (the "expand" path). detail is NOT on
@@ -94,7 +115,10 @@ export function createWikiRouter(deps: { wikiStore: WikiStore }): Router {
 		try {
 			const nodeId = req.params.nodeId;
 			const detail = wikiStore.readNodeDetail(nodeId);
-			res.json({ nodeId, detail });
+			// Materialize the rich summary lazily on first expand (scan leaves
+			// it empty so it doesn't readFileSync every file at startup).
+			const summary = archivistService?.ensureSummary(nodeId);
+			res.json({ nodeId, detail, summary });
 		} catch (err) {
 			res.status(500).json({ error: (err as Error).message });
 		}
