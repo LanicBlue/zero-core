@@ -37,6 +37,7 @@ import { fork, spawn, type ChildProcess } from "child_process";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { app } from "electron";
+import { log as logger } from "../core/logger.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -102,17 +103,29 @@ export function spawnBackend(): Promise<BackendHandle> {
 		});
 
 		child.stderr!.on("data", (data: Buffer) => {
-			console.error(`[backend:stderr] ${data.toString().trim()}`);
+			const text = data.toString().trim();
+			if (!text) return;
+			// Route the backend child's stderr through the shared logger so a
+			// hard crash (the child dies before its own logger can flush) is
+			// still captured in the daily log file — console.error alone only
+			// reaches the launching terminal, which is invisible once the app
+			// is launched detached.
+			console.error(`[backend:stderr] ${text}`);
+			logger.error("backend", `stderr: ${text}`);
 		});
 
 		child.on("exit", (code) => {
 			clearTimeout(timeout);
 			if (!_shuttingDown && !ready) {
+				logger.error("backend", `exited with code ${code} before becoming ready`);
 				reject(new Error(`Backend process exited with code ${code} before becoming ready`));
 			} else if (!_shuttingDown) {
-				log(`Backend process exited unexpectedly with code ${code}, restarting...`);
+				logger.warn("backend", `process exited unexpectedly with code ${code}, restarting...`);
 				_handle = null;
-				spawnBackend().catch((err) => console.error(`[backend] Restart failed: ${err.message}`));
+				spawnBackend().catch((err) => {
+					logger.error("backend", `Restart failed: ${err.message}`);
+					console.error(`[backend] Restart failed: ${err.message}`);
+				});
 			}
 		});
 	});

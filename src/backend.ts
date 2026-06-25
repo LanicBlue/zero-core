@@ -32,6 +32,37 @@
 // - 任何顶层未捕获错误必须以非零码退出，触发父进程重启
 
 import { startServer } from "./server/index.js";
+import { log } from "./core/logger.js";
+
+// ─── Global async-error capture ──────────────────────────────────────────
+//
+// A long-running server MUST NOT die silently from a stray async error. Node
+// 15+ terminates the process on any unhandled promise rejection by default —
+// which (before these handlers) killed the whole backend on a single rejecting
+// promise, surfacing in the parent as an unexplained ECONNRESET with NO trace
+// in the daily log (the rejection text went only to stderr → the launching
+// terminal, invisible once the app runs detached).
+//
+// Strategy:
+//   - unhandledRejection: LOG the full reason + stack to the file sink, then
+//     CONTINUE. A server should survive one bad promise; the log now carries
+//     the root cause for diagnosis. (If a rejection indicates fatal state, the
+//     code path can still call process.exit explicitly.)
+//   - uncaughtException:  LOG the full error + stack, then exit non-zero so the
+//     parent (backend-spawn.ts) restarts the backend cleanly. Sync exceptions
+//     may leave state inconsistent, so we don't keep running — but the stack is
+//     now in the log instead of vanishing.
+process.on("unhandledRejection", (reason) => {
+	const msg = reason instanceof Error ? `${reason.message}\n${reason.stack ?? ""}` : String(reason);
+	log.error("backend", `unhandledRejection: ${msg}`);
+	console.error("[backend] unhandledRejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+	log.error("backend", `uncaughtException: ${err.message}\n${err.stack ?? ""}`);
+	console.error("[backend] uncaughtException:", err);
+	// Exit non-zero so backend-spawn.ts auto-restarts; the stack is now logged.
+	process.exit(1);
+});
 
 function parsePort(): number {
 	const arg = process.argv.find(a => a.startsWith("--port="));
