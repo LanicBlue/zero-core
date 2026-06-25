@@ -41,6 +41,8 @@ export interface McpPreset {
 interface McpState {
 	servers: McpServerConfig[];
 	loading: boolean;
+	/** True after the first successful fetch — guards against re-fetching on page re-mount. */
+	loaded: boolean;
 	fetchServers: () => Promise<void>;
 	create: (input: Omit<McpServerConfig, "id" | "createdAt" | "updatedAt">) => Promise<McpServerConfig>;
 	update: (id: string, input: Partial<McpServerConfig>) => Promise<McpServerConfig>;
@@ -57,11 +59,15 @@ interface McpState {
 export const useMcpStore = create<McpState>((set, get) => ({
 	servers: [],
 	loading: true,
+	loaded: false,
 
 	fetchServers: async () => {
+		// Page-driven fetch (McpSettingsPage useEffect). The create/update
+		// helpers below call this to refresh AFTER a mutation — those need a
+		// forced re-fetch, so they reset `loaded` first (see create/update).
 		try {
 			const data = await api().mcpList();
-			set({ servers: data, loading: false });
+			set({ servers: data, loading: false, loaded: true });
 		} catch {
 			set({ loading: false });
 		}
@@ -69,13 +75,13 @@ export const useMcpStore = create<McpState>((set, get) => ({
 
 	create: async (input) => {
 		const created = await api().mcpCreate(input);
-		await get().fetchServers();
+		set({ loaded: false }); await get().fetchServers();
 		return created;
 	},
 
 	update: async (id, input) => {
 		const updated = await api().mcpUpdate(id, input);
-		await get().fetchServers();
+		set({ loaded: false }); await get().fetchServers();
 		return updated;
 	},
 
@@ -110,13 +116,7 @@ export const useMcpStore = create<McpState>((set, get) => ({
 
 	addPreset: async (presetId, envValues) => {
 		const created = await api().mcpAddPreset(presetId, envValues);
-		await get().fetchServers();
+		set({ loaded: false }); await get().fetchServers();
 		return created;
 	},
 }));
-
-let _fetched = false;
-if (!_fetched) {
-	_fetched = true;
-	useMcpStore.getState().fetchServers();
-}

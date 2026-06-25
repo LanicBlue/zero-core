@@ -238,8 +238,8 @@ export interface WindowApi {
 	wikiUpdateNode: (id: string, input: UpdateWikiNodeInput) => Promise<ProjectWikiNode | { error: string }>;
 	wikiDeleteNode: (id: string) => Promise<{ success: true }>;
 	// v0.8 (P8 §10.9): global-tree browser surface.
-	wikiListByAnchors: (anchorIds: string[]) => Promise<WikiNode[]>;
-	wikiReadDetail: (nodeId: string) => Promise<{ nodeId: string; detail?: string }>;
+	wikiGetChildren: (nodeId: string) => Promise<WikiNode[]>;
+	wikiReadDetail: (nodeId: string) => Promise<{ nodeId: string; detail?: string; summary?: string }>;
 	wikiReadWorkspaceDoc: (projectId: string, relPath: string) => Promise<{ content?: string; error?: string }>;
 	wikiSearch: (query: string, anchorIds?: string[]) => Promise<WikiNode[]>;
 

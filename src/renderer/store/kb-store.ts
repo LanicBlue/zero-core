@@ -28,6 +28,8 @@ const api = () => (window as any).api;
 interface KbState {
 	knowledgeBases: KnowledgeBase[];
 	loading: boolean;
+	/** True after the first successful fetch — guards against re-fetching on page re-mount. */
+	loaded: boolean;
 	fetchList: () => Promise<void>;
 	create: (input: Omit<KnowledgeBase, "id" | "createdAt" | "updatedAt">) => Promise<KnowledgeBase>;
 	update: (id: string, input: Partial<KnowledgeBase>) => Promise<KnowledgeBase>;
@@ -41,11 +43,15 @@ interface KbState {
 export const useKbStore = create<KbState>((set, get) => ({
 	knowledgeBases: [],
 	loading: true,
+	loaded: false,
 
 	fetchList: async () => {
+		// Page-driven fetch (KnowledgeBasePage useEffect). Skip if already loaded
+		// so re-mounting the page doesn't re-request.
+		if (get().loaded) return;
 		try {
 			const data = await api().kbList();
-			set({ knowledgeBases: data, loading: false });
+			set({ knowledgeBases: data, loading: false, loaded: true });
 		} catch {
 			set({ loading: false });
 		}
@@ -87,9 +93,3 @@ export const useKbStore = create<KbState>((set, get) => ({
 		return api().kbChunkCount(kbId);
 	},
 }));
-
-let _fetched = false;
-if (!_fetched) {
-	_fetched = true;
-	useKbStore.getState().fetchList();
-}

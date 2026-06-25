@@ -59,11 +59,14 @@ const api = () => (window as any).api;
 
 export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefillTemplate }: Props) {
 	const { create, update, tools, agents } = useAgentStore();
-	// v0.8 (P8): wiki nodes for the anchors picker (global tree — anchors can
-	// reference any node, including the global root for zero-style agents).
-	const wikiNodes = useWikiStore((s) => s.nodes);
+	// v0.8 (P8): wiki nodes for the anchors picker. The wiki store is now
+	// lazy (loads the root's children on refresh); the anchors dropdown shows
+	// what's loaded so far + the global root is always offered explicitly.
+	// Users can also type any node id manually (WikiAnchorsSection).
+	const wikiNodeById = useWikiStore((s) => s.nodeById);
 	const refreshWiki = useWikiStore((s) => s.refresh);
 	useEffect(() => { void refreshWiki(); }, [refreshWiki]);
+	const wikiNodes = useMemo(() => Object.values(wikiNodeById), [wikiNodeById]);
 	const { providers, fetchProviders } = useProviderStore();
 	const [section, setSection] = useState<Section>("basic");
 	const [globalWorkspace, setGlobalWorkspace] = useState("");

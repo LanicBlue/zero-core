@@ -56,7 +56,12 @@ function docPointerRelPath(node: WikiNode): string | undefined {
 }
 
 export default function WikiPage() {
-	const { nodes, scope, setScope, refresh, selectedNodeId, selectNode, expandNode, detailByNode, readWorkspaceDoc, search, loading } = useWikiStore();
+	const {
+		childrenByNode, childrenLoaded, loadingChildren, nodeById, rootLoaded,
+		scope, setScope, refresh,
+		selectedNodeId, selectNode, expandNode, readDetail, detailByNode,
+		readWorkspaceDoc, search,
+	} = useWikiStore();
 	const { projects, fetchProjects } = useProjectStore();
 	const { activeWikiProjectId, setActiveWikiProjectId } = usePageStore();
 	const addError = useNotificationStore((s) => s.addError);
@@ -82,8 +87,12 @@ export default function WikiPage() {
 		}
 	}, [projects]);
 
-	const selectedNode = nodes.find((n) => n.id === selectedNodeId);
+	const selectedNode = selectedNodeId ? nodeById[selectedNodeId] : undefined;
 	const selectedDetail = selectedNodeId ? detailByNode[selectedNodeId] : undefined;
+	// Lazy-load the detail (body + summary) when a node is selected.
+	useEffect(() => {
+		if (selectedNodeId) void readDetail(selectedNodeId);
+	}, [selectedNodeId, readDetail]);
 
 	const handleScopeChange = (value: string) => {
 		setOriginalDoc(null);
@@ -139,10 +148,9 @@ export default function WikiPage() {
 
 	const scopeValue = scope.kind === "global" ? "global" : scope.projectId;
 
-	// When search results are showing, render them as the tree's node set so
-	// the user can click into them. Searching across the WHOLE visible domain
-	// (store.search uses scopeAnchors).
-	const treeNodes = searchHits ?? nodes;
+	// When search results are showing, render them as a flat list (the lazy
+	// tree is hidden during search). Searching uses store.search (scope root).
+	const showSearch = searchHits !== null;
 
 	return (
 		<div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-primary, #1a1a1c)" }}>
@@ -185,11 +193,11 @@ export default function WikiPage() {
 				<button
 					type="button"
 					onClick={handleRefresh}
-					disabled={loading}
+					disabled={!rootLoaded}
 					style={smallBtnStyle}
 					aria-label="Refresh wiki tree"
 				>
-					{loading ? "..." : "\u{1F504}"}
+					{!rootLoaded ? "..." : "\u{1F504}"}
 				</button>
 			</div>
 			{searchHits && (
@@ -207,11 +215,38 @@ export default function WikiPage() {
 					borderRight: "1px solid var(--border-color, #333)",
 					overflowY: "auto",
 				}}>
-					<WikiTree
-						nodes={treeNodes}
-						selectedNodeId={selectedNodeId}
-						onSelect={selectNode}
-					/>
+					{showSearch ? (
+						<div style={{ padding: 8 }}>
+							{searchHits!.length === 0 ? (
+								<div style={{ fontSize: 12, color: "var(--text-tertiary, #555)", padding: 8 }}>No matches.</div>
+							) : searchHits!.map((n) => (
+								<div
+									key={n.id}
+									data-testid="wiki-search-hit"
+									onClick={() => selectNode(n.id)}
+									style={{
+										padding: "4px 8px", cursor: "pointer", fontSize: 12,
+										color: selectedNodeId === n.id ? "var(--text-primary, #e0e0e0)" : "var(--text-secondary, #888)",
+										background: selectedNodeId === n.id ? "var(--bg-active, #2a2a2e)" : "transparent",
+										borderRadius: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+									}}
+									title={n.path}
+								>
+									{n.title || n.path}
+								</div>
+							))}
+						</div>
+					) : (
+						<WikiTree
+							childrenByNode={childrenByNode}
+							childrenLoaded={childrenLoaded}
+							loadingChildren={loadingChildren}
+							rootId={scope.kind === "global" ? "wiki-root:global" : `wiki-root:${scope.projectId}`}
+							selectedNodeId={selectedNodeId}
+							onSelect={selectNode}
+							onExpand={expandNode}
+						/>
+					)}
 				</div>
 
 				{/* Right: Detail (or original-doc viewer) */}
@@ -244,7 +279,7 @@ export default function WikiPage() {
 						<WikiDetail
 							node={selectedNode ?? null}
 							detail={selectedDetail}
-							onExpand={expandNode}
+							onExpand={readDetail}
 							onOpenOriginal={handleOpenOriginal}
 							onEdit={handleEdit}
 						/>

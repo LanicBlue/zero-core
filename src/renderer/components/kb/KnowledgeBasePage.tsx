@@ -25,7 +25,7 @@
 // - 记忆节点接口或 kbStore 行为变化时同步本组件。
 // - 新增知识库字段（如 chunk 策略）时需要扩展创建表单与详情展示。
 //
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useKbStore } from "../../store/kb-store.js";
 import type { KnowledgeBase, KbFileInfo } from "../../../shared/types.js";
 
@@ -48,7 +48,9 @@ interface MemorySubject {
 }
 
 export default function KnowledgeBasePage() {
-	const { knowledgeBases, loading, create, remove, addFiles, removeFile } = useKbStore();
+	const { knowledgeBases, loading, create, remove, addFiles, removeFile, fetchList } = useKbStore();
+	// Fetch the KB list on page mount (lazy, not at app startup).
+	useEffect(() => { void fetchList(); }, [fetchList]);
 	const [tab, setTab] = useState<Tab>("list");
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [form, setForm] = useState({

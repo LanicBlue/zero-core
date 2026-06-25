@@ -253,17 +253,14 @@ test.describe("P8 — wiki browser render", () => {
 		// Wiki Browser heading.
 		await expect(window.getByText("Wiki Browser", { exact: false }).first()).toBeVisible({ timeout: 10_000 });
 
-		// Default scope = global. The tree should render the global root + the
-		// §10.5 skeleton (knowledge / projects / memory). We assert against the
-		// stable data-testid hooks (WikiTree.tsx renders rows with
-		// data-testid="wiki-tree-node" and data-node-id) — there is no CSS class
-		// on the tree container.
+		// Default scope = global. The lazy tree loads the global root's DIRECT
+		// children (the §10.5 skeleton: knowledge / projects / memory) — the
+		// global root itself is the (invisible) anchor, not a rendered row.
 		const tree = window.locator("[data-testid='wiki-tree']").first();
 		await tree.waitFor({ state: "visible", timeout: 15_000 });
 
-		// The global synthetic root must be present in global scope.
-		const globalRoot = tree.locator("[data-testid='wiki-tree-node'][data-node-id='wiki-root:global']");
-		await expect(globalRoot).toBeVisible({ timeout: 10_000 });
+		// The global-root row must NOT render (lazy tree shows children only).
+		await expect(tree.locator("[data-testid='wiki-tree-node'][data-node-id='wiki-root:global']")).toHaveCount(0);
 
 		// Scope selector defaults to "Global (all)".
 		const scopeSelect = window.locator("select[aria-label='Wiki view scope']");
@@ -307,11 +304,10 @@ test.describe("P8 — wiki browser render", () => {
 		await scopeSelect.selectOption(realProjectValue);
 		await window.waitForTimeout(500);
 
-		// Global root must NOT appear in a project-scoped view.
+		// In a project-scoped view the anchor is wiki-root:<projectId>, so the
+		// global root's children must not render here. (The lazy tree renders the
+		// anchor's children; the global root is never a rendered row regardless.)
 		const tree = window.locator("[data-testid='wiki-tree']").first();
-		// The synthetic global root is rendered with node id "wiki-root:global".
-		// After scope switch, that row must be gone (the project subtree root is
-		// wiki-root:<projectId>, which is different).
 		await expect(tree.locator("[data-testid='wiki-tree-node'][data-node-id='wiki-root:global']")).toHaveCount(0);
 	});
 

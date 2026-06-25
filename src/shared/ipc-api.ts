@@ -205,7 +205,7 @@ export interface IpcChannelDefs {
 	// on-disk body (the "expand" path). readWorkspaceDoc jumps to a project
 	// source/requirement file by workspace-relative path. search is a
 	// substring scan scoped to the caller's anchors.
-	"wiki:listByAnchors":     { params: [anchorIds: string[]];                              result: WikiNode[] };
+	"wiki:getChildren":       { params: [nodeId: string];                                    result: WikiNode[] };
 	"wiki:readDetail":        { params: [nodeId: string];                                    result: { nodeId: string; detail?: string } };
 	"wiki:readWorkspaceDoc":  { params: [projectId: string, relPath: string];               result: { content?: string; error?: string } };
 	"wiki:search":            { params: [query: string, anchorIds?: string[]];              result: WikiNode[] };

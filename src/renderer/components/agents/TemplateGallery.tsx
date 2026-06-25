@@ -20,7 +20,7 @@
 // ## 维护规则
 // 搜索/筛选逻辑变更需确保性能
 //
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useTemplateStore } from "../../store/template-store.js";
 import type { PromptTemplate } from "../../../shared/types.js";
 import TemplateCard from "./TemplateCard.js";
@@ -32,7 +32,9 @@ interface Props {
 }
 
 export default function TemplateGallery({ onUseTemplate }: Props) {
-	const { templates, loading, importTemplate, githubPreview, importFromGithub } = useTemplateStore();
+	const { templates, loading, fetchTemplates, importTemplate, githubPreview, importFromGithub } = useTemplateStore();
+	// Fetch templates on mount (lazy, not at app startup).
+	useEffect(() => { void fetchTemplates(); }, [fetchTemplates]);
 	const [search, setSearch] = useState("");
 	const [activeTag, setActiveTag] = useState<string | null>(null);
 	const [showGithubModal, setShowGithubModal] = useState(false);

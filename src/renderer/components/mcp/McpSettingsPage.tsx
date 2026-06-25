@@ -50,7 +50,7 @@ const EMPTY_FORM = {
 };
 
 export default function McpSettingsPage() {
-	const { servers, loading, create, update, remove, testConnection, connect, disconnect, getStatus, scan, presets, addPreset } = useMcpStore();
+	const { servers, loading, fetchServers, create, update, remove, testConnection, connect, disconnect, getStatus, scan, presets, addPreset } = useMcpStore();
 	const [showForm, setShowForm] = useState(false);
 	const [form, setForm] = useState(EMPTY_FORM);
 	const [statuses, setStatuses] = useState<ServerStatus[]>([]);
@@ -61,9 +61,11 @@ export default function McpSettingsPage() {
 	const [apiKey, setApiKey] = useState("");
 	const [addingPreset, setAddingPreset] = useState<string | null>(null);
 
+	// Fetch server list + presets on page mount (lazy, not at app startup).
 	useEffect(() => {
+		void fetchServers();
 		presets().then(setPresetList).catch(() => {});
-	}, []);
+	}, [fetchServers]);
 
 	const refreshStatus = async () => {
 		try {

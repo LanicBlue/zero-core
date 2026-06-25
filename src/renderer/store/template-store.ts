@@ -28,6 +28,8 @@ const api = () => (window as any).api;
 interface TemplateState {
 	templates: PromptTemplate[];
 	loading: boolean;
+	/** True after the first successful fetch — guards against re-fetching on page re-mount. */
+	loaded: boolean;
 	fetchTemplates: () => Promise<void>;
 	create: (input: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">) => Promise<PromptTemplate>;
 	update: (id: string, input: Partial<PromptTemplate>) => Promise<PromptTemplate>;
@@ -41,11 +43,14 @@ interface TemplateState {
 export const useTemplateStore = create<TemplateState>((set, get) => ({
 	templates: [],
 	loading: true,
+	loaded: false,
 
 	fetchTemplates: async () => {
+		// Page-driven fetch (TemplateGallery useEffect). Skip if already loaded.
+		if (get().loaded) return;
 		try {
 			const data = await api().templatesList();
-			set({ templates: data, loading: false });
+			set({ templates: data, loading: false, loaded: true });
 		} catch {
 			set({ loading: false });
 		}
@@ -84,14 +89,8 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
 
 		importFromGithub: async (url: string, selectedPaths: string[]) => {
 			const result = await api().templatesImportGithub(url, selectedPaths);
-			await useTemplateStore.getState().fetchTemplates();
+			set({ loaded: false }); await get().fetchTemplates();
 			return result;
 		},
 }));
 
-// Auto-fetch on first import
-let _fetched = false;
-if (!_fetched) {
-	_fetched = true;
-	useTemplateStore.getState().fetchTemplates();
-}

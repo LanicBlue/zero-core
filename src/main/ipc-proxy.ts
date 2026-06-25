@@ -222,7 +222,7 @@ const R: Record<string, RouteMapping> = {
 		// These are NOT the legacy project-wiki CRUD above; they drive the new
 		// wiki browser (multi-anchor scope + disk body detail + workspace-doc
 		// jump-to-original + substring search). Preload arg order is authoritative.
-		"wiki:listByAnchors":    { method: "POST", path: "/api/wiki/list-by-anchors",                       buildReq: (anchorIds) => ({ body: { anchorIds: anchorIds ?? [] } }) },
+		"wiki:getChildren":      { method: "GET",  path: "/api/wiki/nodes/:nodeId/children",                buildReq: (nodeId) => ({ params: { nodeId } }) },
 		"wiki:readDetail":       { method: "GET",  path: "/api/wiki/nodes/:nodeId/detail",                  buildReq: (nodeId) => ({ params: { nodeId } }) },
 		"wiki:readWorkspaceDoc": { method: "GET",  path: "/api/projects/:projectId/workspace-doc",          buildReq: (projectId, relPath) => ({ params: { projectId }, query: { relPath } }) },
 		"wiki:search":           { method: "GET",  path: "/api/wiki/search",                                buildReq: (query, anchorIds?) => ({ query: { query, ...(anchorIds?.length ? { anchorIds: anchorIds.join(",") } : {}) } }) },

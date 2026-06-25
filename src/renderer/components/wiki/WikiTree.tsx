@@ -1,40 +1,22 @@
-// Wiki 树组件 (v0.8 P8 升级为全局树浏览器左树)
+// Wiki 树组件 (v0.8 P8 全局树浏览器 · 懒加载渲染)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 渲染全局 wiki 记忆树的左树。按视角可见域(由 wiki-store 的 scope 决定,
-// 经 wiki:listByAnchors 在 store 层截断)展示节点。支持展开/收起、选中。
-//
-// 性能(规避大 wiki 树卡顿,plan-P8 风险):
-//   - 子节点查找用按 parentId 的索引(O(1)),不做每节点全表 filter。
-//   - 展开按需:初始只渲染根节点;点击展开才递归拉子节点。配合 store 的
-//     全量 nodes 池(已经 store 层权限截断),只渲染「已展开路径」的可见行,
-//     未展开子树的孙节点不被访问。
-//   - 行渲染用 key=id 的 div;超大树(>2000 行)时此处可再切虚拟滚动,
-//     但当前按需 expand 已把可见行数压到合理范围。
+// 渲染全局 wiki 记忆树的左树。**逐层懒加载**:从根锚点的直接子节点开始
+// 渲染,点展开才请求并渲染下一层(由 store 的 expandNode 拉取)。未展开的
+// 子树不请求、不渲染。
 //
 // ## 输入
-// - nodes: WikiNode[](已按 scope 截断)
-// - selectedNodeId
-// - onSelect / onToggleExpand 回调
+// - childrenByNode / childrenLoaded / loadingChildren(store 状态)
+// - rootId(当前 scope 根锚点)
+// - selectedNodeId / onSelect / onExpand
 //
 // ## 输出
-// - 渲染的树
+// - 渲染的树(只含已展开路径的可见行)
 //
-// ## 定位
-// 渲染进程组件,被 WikiPage 使用。
-//
-// ## 依赖
-// - react
-// - ../../../shared/types (WikiNode, WikiNodeTypeGlobal)
-//
-// ## 维护规则
-// - 新增节点 type 时补 NODE_TYPE_ICONS
-// - 树渲染/交互变更同步此组件
-//
-import React, { useEffect, useMemo, useState } from "react";
-import type { WikiNode, WikiNodeTypeGlobal } from "../../../shared/types.js";
+import React, { useState, useEffect } from "react";
+import type { WikiNode } from "../../../shared/types.js";
 
 const NODE_TYPE_ICONS: Record<string, string> = {
 	project: "\u{1F4C2}",
@@ -45,74 +27,41 @@ const NODE_TYPE_ICONS: Record<string, string> = {
 };
 
 function iconFor(node: WikiNode): string {
-	// Synthetic roots get a distinct marker so the user can tell the global
-	// root / project subtree roots / memory roots apart at a glance.
 	if (node.id === "wiki-root:global") return "\u{1F310}";
 	if (node.id.startsWith("wiki-root:")) return "\u{1F4C2}";
 	return NODE_TYPE_ICONS[node.type] || "\u{1F4C4}";
 }
 
 interface WikiTreeProps {
-	nodes: WikiNode[];
+	childrenByNode: Record<string, WikiNode[]>;
+	childrenLoaded: Record<string, boolean>;
+	loadingChildren: Record<string, boolean>;
+	rootId: string;
 	selectedNodeId: string | null;
 	onSelect: (nodeId: string) => void;
+	onExpand: (nodeId: string) => void;
 }
 
-export default function WikiTree({ nodes, selectedNodeId, onSelect }: WikiTreeProps) {
-	// Index children by parentId once per refresh — O(n) build, O(1) lookup.
-	// This is the key perf fix vs. the legacy per-node `nodes.filter(...)`.
-	//
-	// BUG FIX (v0.8 dev): the backend sends `parentId: null` for the synthetic
-	// global root (DB column stores NULL, rowToWikiNode passes it through as
-	// null), but the WikiNode type declares it `string | undefined`. The old
-	// code keyed childrenByParent on `n.parentId` directly, so the root landed
-	// under key `null` while rootNodes read key `undefined` — mismatch, root
-	// bucket was always empty, walk(undefined) found nothing, the whole tree
-	// rendered blank. Normalize null → undefined so both keys agree.
-	const childrenByParent = useMemo(() => {
-		const map = new Map<string | undefined, WikiNode[]>();
-		for (const n of nodes) {
-			const key = n.parentId ?? undefined;
-			const arr = map.get(key) ?? [];
-			arr.push(n);
-			map.set(key, arr);
-		}
-		// Sort each bucket by title for stable display.
-		for (const arr of map.values()) {
-			arr.sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
-		}
-		return map;
-	}, [nodes]);
+export default function WikiTree({
+	childrenByNode, childrenLoaded, loadingChildren, rootId,
+	selectedNodeId, onSelect, onExpand,
+}: WikiTreeProps) {
+	// Expanded node ids (local UI state). Root is expanded by default once its
+	// children have loaded.
+	const [expanded, setExpanded] = useState<Set<string>>(() => new Set([rootId]));
 
-	const rootNodes = childrenByParent.get(undefined) ?? [];
-
-	// Track expanded node ids in local state. Root is expanded by default so
-	// the user sees the top-level knowledge/projects/memory buckets.
-	//
-	// BUG FIX (v0.8 dev): the useState initializer runs ONCE on first render,
-	// when `nodes=[]` (refresh hasn't completed) → `rootNodes=[]` → the global
-	// root was never added to `expanded`. Result: after refresh, the root row
-	// rendered but its children (knowledge/projects/memory skeleton) stayed
-	// hidden because expanded was empty. The auto-expand effect below restores
-	// the intended "open on global root on first appearance" behavior.
-	const [expanded, setExpanded] = useState<Set<string>>(() => {
-		const s = new Set<string>();
-		for (const r of rootNodes) {
-			if (r.id === "wiki-root:global") s.add(r.id);
-		}
-		return s;
-	});
-
-	// Auto-expand the global root the first time it shows up in the node pool.
-	// Runs whenever `nodes` changes; no-op once already expanded.
+	// If the root changes (scope switch) or root children land, auto-expand it.
 	useEffect(() => {
-		const hasGlobalRoot = rootNodes.some((r) => r.id === "wiki-root:global");
-		if (hasGlobalRoot && !expanded.has("wiki-root:global")) {
-			setExpanded((prev) => new Set(prev).add("wiki-root:global"));
-		}
-	}, [rootNodes, expanded]);
+		setExpanded(new Set([rootId]));
+	}, [rootId]);
 
-	const toggle = (id: string) => {
+	const toggle = (id: string, hasKids: boolean) => {
+		if (!hasKids && !childrenLoaded[id]) {
+			// Directory not yet loaded → expanding must fetch first.
+			onExpand(id);
+			setExpanded((prev) => new Set(prev).add(id));
+			return;
+		}
 		setExpanded((prev) => {
 			const next = new Set(prev);
 			if (next.has(id)) next.delete(id);
@@ -121,40 +70,45 @@ export default function WikiTree({ nodes, selectedNodeId, onSelect }: WikiTreePr
 		});
 	};
 
-	if (nodes.length === 0) {
+	const rows: Array<{ node: WikiNode; depth: number }> = [];
+	const walk = (parentId: string, depth: number) => {
+		const kids = childrenByNode[parentId] ?? [];
+		for (const child of kids) {
+			rows.push({ node: child, depth });
+			if (expanded.has(child.id)) {
+				// If expanded but children not yet loaded → show a Loading row
+				// (the store fetches them; this re-renders when they arrive).
+				if (childrenLoaded[child.id]) {
+					walk(child.id, depth + 1);
+				} else {
+					rows.push({ node: { id: `__loading_${child.id}`, title: "Loading…", type: "header", path: "" } as WikiNode, depth: depth + 1 });
+					onExpand(child.id);
+				}
+			}
+		}
+	};
+	walk(rootId, 0);
+
+	if (rows.length === 0) {
 		return (
 			<div data-testid="wiki-tree" style={{
-				padding: 20,
-				textAlign: "center",
-				fontSize: 12,
+				padding: 20, textAlign: "center", fontSize: 12,
 				color: "var(--text-tertiary, #555)",
 			}}>
-				No wiki nodes in this view.
-				<br />
-				Try switching scope or refreshing.
+				{loadingChildren[rootId] ? "Loading…" : "No wiki nodes in this view."}
 			</div>
 		);
 	}
 
-	// Flatten the expanded subtree into visible rows. We walk depth-first,
-	// only descending into expanded nodes — unexpanded subtrees contribute
-	// zero rows, which is what keeps huge trees snappy.
-	const rows: Array<{ node: WikiNode; depth: number }> = [];
-	const walk = (parentId: string | undefined, depth: number) => {
-		const kids = childrenByParent.get(parentId) ?? [];
-		for (const child of kids) {
-			rows.push({ node: child, depth });
-			if (expanded.has(child.id)) {
-				walk(child.id, depth + 1);
-			}
-		}
-	};
-	walk(undefined, 0);
-
 	return (
 		<div data-testid="wiki-tree" style={{ overflowY: "auto", padding: "4px 0" }}>
 			{rows.map(({ node, depth }) => {
-				const hasChildren = (childrenByParent.get(node.id)?.length ?? 0) > 0;
+				const isLoader = node.id.startsWith("__loading_");
+				const hasChildrenLoaded = childrenLoaded[node.id];
+				const childrenCount = (childrenByNode[node.id]?.length ?? 0);
+				// A node can be expanded if it's a container type OR its children
+				// have been loaded (even if currently empty — empty dirs collapse).
+				const canExpand = node.type === "structure" || node.type === "project" || hasChildrenLoaded || childrenCount > 0;
 				const isExpanded = expanded.has(node.id);
 				const isSelected = node.id === selectedNodeId;
 				return (
@@ -163,40 +117,31 @@ export default function WikiTree({ nodes, selectedNodeId, onSelect }: WikiTreePr
 						data-testid="wiki-tree-node"
 						data-node-id={node.id}
 						data-node-type={node.type}
-						onClick={() => onSelect(node.id)}
+						onClick={() => !isLoader && onSelect(node.id)}
 						style={{
-							display: "flex",
-							alignItems: "center",
-							gap: 4,
-							padding: "3px 8px",
-							paddingLeft: depth * 14 + 8,
-							cursor: "pointer",
+							display: "flex", alignItems: "center", gap: 4,
+							padding: "3px 8px", paddingLeft: depth * 14 + 8,
+							cursor: isLoader ? "default" : "pointer",
 							background: isSelected ? "var(--bg-active, #2a2a2e)" : "transparent",
-							borderRadius: 4,
-							fontSize: 12,
-							color: isSelected ? "var(--text-primary, #e0e0e0)" : "var(--text-secondary, #888)",
-							whiteSpace: "nowrap",
-							overflow: "hidden",
-							textOverflow: "ellipsis",
+							borderRadius: 4, fontSize: 12,
+							color: isSelected ? "var(--text-primary, #e0e0e0)" : isLoader ? "var(--text-tertiary, #666)" : "var(--text-secondary, #888)",
+							whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+							fontStyle: isLoader ? "italic" : "normal",
 						}}
-						onMouseEnter={(e) => {
-							if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover, #252528)";
-						}}
-						onMouseLeave={(e) => {
-							if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = "transparent";
-						}}
+						onMouseEnter={(e) => { if (!isSelected && !isLoader) (e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover, #252528)"; }}
+						onMouseLeave={(e) => { if (!isSelected && !isLoader) (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
 					>
-						{hasChildren ? (
+						{canExpand ? (
 							<span
-								onClick={(e) => { e.stopPropagation(); toggle(node.id); }}
+								onClick={(e) => { e.stopPropagation(); toggle(node.id, childrenCount > 0); }}
 								style={{ fontSize: 10, width: 12, textAlign: "center", flexShrink: 0, userSelect: "none" }}
 							>
-								{isExpanded ? "▾" : "▸"}
+								{loadingChildren[node.id] ? "⋯" : isExpanded ? "▾" : "▸"}
 							</span>
 						) : (
 							<span style={{ width: 12, flexShrink: 0 }} />
 						)}
-						<span style={{ flexShrink: 0 }}>{iconFor(node)}</span>
+						<span style={{ flexShrink: 0 }}>{isLoader ? "" : iconFor(node)}</span>
 						<span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
 							{node.title || node.path}
 						</span>
