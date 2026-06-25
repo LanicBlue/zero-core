@@ -123,8 +123,8 @@ export interface WindowApi {
 	// ── Streaming events ──
 	onAgentEvent: (callback: (event: any) => void) => () => void;
 	onToolsChanged: (callback: () => void) => () => void;
-	/** Unified UI-sync: fires { collection, changes:[{id,op}] } when a whitelisted table changes. Patch only the changed records. */
-	onDataChanged: (callback: (event: { collection: string; changes: Array<{ id: string; op: string }> }) => void) => () => void;
+	/** Unified UI-sync: fires { collection, changes:[{id,op,record?}] } — create/update push the full record so the renderer patches without a round-trip. */
+	onDataChanged: (callback: (event: { collection: string; changes: Array<{ id: string; op: string; record?: any }> }) => void) => () => void;
 	onSessionLifecycle: (callback: (event: { sessionId: string; from: string; to: string }) => void) => () => void;
 	onAppReady: (callback: () => void) => () => void;
 	onGithubImportProgress: (callback: (progress: { current: number; total: number }) => void) => () => void;

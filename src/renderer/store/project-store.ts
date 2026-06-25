@@ -88,10 +88,10 @@ export const useProjectStore = create<ProjectState>((set) => ({
 // Project tool). Single create/update → fetch one + patch; delete → remove;
 // burst → full refetch.
 subscribeListDataChange("projects", {
-	fetchOne: (id) => api().projectsGet(id),
-	patch: (id, record) => useProjectStore.setState((s) => {
-		const others = s.projects.filter((p) => p.id !== id);
-		return record ? { projects: [...others, record as ProjectRecord] } : { projects: others };
-	}),
+	patch: (id, record) => {
+		const others = useProjectStore.getState().projects.filter((p) => p.id !== id);
+		useProjectStore.setState({ projects: record ? [...others, record as ProjectRecord] : others });
+		return true; // 非过滤列表:新 id 直接 append
+	},
 	refetchAll: () => { useProjectStore.getState().fetchProjects(); },
 });

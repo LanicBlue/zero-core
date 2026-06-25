@@ -269,7 +269,7 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 	private insertRow(record: T): void {
 		const values = this.allColumns.map((snakeCol) => this.toColumnValue(record, snakeCol));
 		this._insertStmt.run(...values);
-		emitDataChange(this.table, record.id, "create");
+		emitDataChange(this.table, record.id, "create", record);
 	}
 
 	private updateRow(id: string, record: T): void {
@@ -277,7 +277,7 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 		const values = nonIdCols.map((snakeCol) => this.toColumnValue(record, snakeCol));
 		values.push(id); // WHERE id = ?
 		this._updateStmt.run(...values);
-		emitDataChange(this.table, id, "update");
+		emitDataChange(this.table, id, "update", record);
 	}
 
 	private toColumnValue(record: T, snakeCol: string): any {

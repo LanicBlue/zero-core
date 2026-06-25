@@ -182,10 +182,17 @@ export const useRequirementStore = create<RequirementState>((set, get) => ({
 // CreateRequirement / verify tools, status transitions). Single create/update
 // → fetch one + patch; delete → remove; burst → full refetch.
 subscribeListDataChange("requirements", {
-	fetchOne: (id) => api().requirementsGet(id),
-	patch: (id, record) => useRequirementStore.setState((s) => {
-		const others = s.requirements.filter((r) => r.id !== id);
-		return record ? { requirements: [...others, record as RequirementRecord] } : { requirements: others };
-	}),
+	patch: (id, record) => {
+		const cur = useRequirementStore.getState().requirements;
+		// 过滤列表:仅替换已存在的;不在当前视图(如别项目的需求)返回 false,
+		// 让 helper 回退一次 refetchAll 重新套用 filter。
+		if (!cur.some((r) => r.id === id)) return false;
+		useRequirementStore.setState({
+			requirements: record
+				? cur.map((r) => (r.id === id ? record as RequirementRecord : r))
+				: cur.filter((r) => r.id !== id),
+		});
+		return true;
+	},
 	refetchAll: () => { useRequirementStore.getState().fetchRequirements(); },
 });

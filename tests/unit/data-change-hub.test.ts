@@ -47,17 +47,28 @@ describe("data-change-hub", () => {
 		expect(collections).toEqual(["agents", "project_wiki", "projects"]);
 	});
 
-	test("carries per-record {id, op} so renderers can patch incrementally", async () => {
+	test("carries the pushed record so renderers patch without a GET", async () => {
 		const cb = vi.fn();
 		onDataChange(cb);
 
-		emitDataChange("agents", "a1", "create");
+		const rec = { id: "a1", name: "zero", createdAt: "t", updatedAt: "t" };
+		emitDataChange("agents", "a1", "create", rec);
 		await new Promise((r) => setTimeout(r, 0));
 
 		expect(cb).toHaveBeenCalledTimes(1);
 		const evt = cb.mock.calls[0][0];
 		expect(evt.collection).toBe("agents");
-		expect(evt.changes).toEqual([{ id: "a1", op: "create" }]);
+		expect(evt.changes).toEqual([{ id: "a1", op: "create", record: rec }]);
+	});
+
+	test("delete carries no record", async () => {
+		const cb = vi.fn();
+		onDataChange(cb);
+
+		emitDataChange("agents", "a1", "delete");
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(cb.mock.calls[0][0].changes).toEqual([{ id: "a1", op: "delete" }]);
 	});
 
 	test("coalesce: many writes to one collection in a tick → one flush", async () => {
@@ -65,7 +76,7 @@ describe("data-change-hub", () => {
 		onDataChange(cb);
 
 		// Simulate a bulk write (e.g. archivist scanning 50 wiki nodes).
-		for (let i = 0; i < 50; i++) emitDataChange("project_wiki", `w${i}`, "create");
+		for (let i = 0; i < 50; i++) emitDataChange("project_wiki", `w${i}`, "create", { id: `w${i}` });
 
 		await new Promise((r) => setTimeout(r, 0));
 
@@ -76,13 +87,13 @@ describe("data-change-hub", () => {
 		expect(evt.changes.length).toBe(50);
 	});
 
-	test("coalesce dedupes by id, keeping the latest op", async () => {
+	test("coalesce dedupes by id, keeping the latest op+record (delete drops record)", async () => {
 		const cb = vi.fn();
 		onDataChange(cb);
 
-		emitDataChange("agents", "a1", "create");
-		emitDataChange("agents", "a1", "update"); // same id → overwrites op
-		emitDataChange("agents", "a1", "delete");  // latest wins
+		emitDataChange("agents", "a1", "create", { id: "a1", v: 1 });
+		emitDataChange("agents", "a1", "update", { id: "a1", v: 2 }); // overwrites
+		emitDataChange("agents", "a1", "delete");                     // latest wins, no record
 
 		await new Promise((r) => setTimeout(r, 0));
 

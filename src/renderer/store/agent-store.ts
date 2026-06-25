@@ -134,11 +134,11 @@ if (!_fetched) {
 	// AgentRegistry tool). Single create/update → fetch just that record and
 	// patch the array; delete → remove; burst → full refetch.
 	subscribeListDataChange("agents", {
-		fetchOne: (id) => api().agentsGet(id),
-		patch: (id, record) => useAgentStore.setState((s) => {
-			const others = s.agents.filter((a) => a.id !== id);
-			return record ? { agents: [...others, record as AgentRecord] } : { agents: others };
-		}),
+		patch: (id, record) => {
+			const others = useAgentStore.getState().agents.filter((a) => a.id !== id);
+			useAgentStore.setState({ agents: record ? [...others, record as AgentRecord] : others });
+			return true; // 非过滤列表:新 id 直接 append
+		},
 		refetchAll: () => { useAgentStore.getState().fetchAgents(); },
 	});
 }

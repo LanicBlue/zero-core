@@ -125,10 +125,10 @@ export const useCronStore = create<CronState>((set) => ({
 // tool). Single create/update → fetch one + patch; delete → remove; burst →
 // full refetch.
 subscribeListDataChange("crons", {
-	fetchOne: (id) => api().cronsGet(id),
-	patch: (id, record) => useCronStore.setState((s) => {
-		const others = s.crons.filter((c) => c.id !== id);
-		return record ? { crons: [...others, record as CronRecord] } : { crons: others };
-	}),
+	patch: (id, record) => {
+		const others = useCronStore.getState().crons.filter((c) => c.id !== id);
+		useCronStore.setState({ crons: record ? [...others, record as CronRecord] : others });
+		return true; // 非过滤列表:新 id 直接 append
+	},
 	refetchAll: () => { useCronStore.getState().fetchCrons(); },
 });

@@ -42,11 +42,13 @@ export type DataChangeOp = "create" | "update" | "delete";
 export interface DataChangeRecord {
 	id: string;
 	op: DataChangeOp;
+	/** create/update 推送完整记录,renderer 直接 patch 免再 GET;delete 无。 */
+	record?: unknown;
 }
 
 export interface DataChangeEvent {
 	collection: string;
-	/** 该 collection 在本 tick 内的全部变更明细(已按 id 去重,保留最新 op)。 */
+	/** 该 collection 在本 tick 内的全部变更明细(已按 id 去重,保留最新 op+record)。 */
 	changes: DataChangeRecord[];
 }
 
@@ -54,8 +56,8 @@ type Listener = (e: DataChangeEvent) => void;
 
 const listeners = new Set<Listener>();
 
-/** pending: collection → (id → 最新 op)。 */
-let pending = new Map<string, Map<string, DataChangeOp>>();
+/** pending: collection → (id → 最新 {op, record?})。 */
+let pending = new Map<string, Map<string, { op: DataChangeOp; record?: unknown }>>();
 let scheduled = false;
 
 function flush(): void {
@@ -64,7 +66,10 @@ function flush(): void {
 	pending = new Map();
 	for (const [collection, byId] of ready) {
 		const changes: DataChangeRecord[] = [];
-		for (const [id, op] of byId) changes.push({ id, op });
+		for (const [id, entry] of byId) {
+			// delete 不带 record(create/update 后再 delete → record 清掉)。
+			changes.push(entry.op === "delete" ? { id, op: "delete" } : { id, op: entry.op, record: entry.record });
+		}
 		const e: DataChangeEvent = { collection, changes };
 		for (const cb of listeners) {
 			try { cb(e); } catch { /* 一个监听者出错不能中断其它 */ }
@@ -74,14 +79,14 @@ function flush(): void {
 
 /**
  * SqliteStore 写原语调此发变更。非 UI collection 直接忽略;UI collection 把
- * (id, op) 记入待 flush 队列(同 id 后写覆盖前写的 op),下一个 tick 合并
- * 广播。
+ * (id, op, record?) 记入待 flush 队列(同 id 后写覆盖前写),下一个 tick 合并
+ * 广播。create/update 带 record(renderer 直接 patch,免 GET /:id);delete 不带。
  */
-export function emitDataChange(table: string, id: string, op: DataChangeOp): void {
+export function emitDataChange(table: string, id: string, op: DataChangeOp, record?: unknown): void {
 	if (!UI_COLLECTIONS.has(table)) return;
 	let byId = pending.get(table);
 	if (!byId) { byId = new Map(); pending.set(table, byId); }
-	byId.set(id, op);
+	byId.set(id, { op, record });
 	if (!scheduled) {
 		scheduled = true;
 		setTimeout(flush, 0);
