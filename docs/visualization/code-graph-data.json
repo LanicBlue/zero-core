@@ -46,7 +46,7 @@
 		},
 		{
 			"path": "src/main/ipc-proxy.ts",
-			"lines": 402,
+			"lines": 404,
 			"dir": "src/main",
 			"exports": [
 				"registerProxyHandlers",
@@ -59,7 +59,7 @@
 				"src/main/ipc-proxy.ts/registerProxyHandlers:275",
 				"src/main/ipc-proxy.ts/connectEventBridge:352",
 				"src/main/ipc-proxy.ts/connect:355",
-				"src/main/ipc-proxy.ts/pollReady:388"
+				"src/main/ipc-proxy.ts/pollReady:390"
 			],
 			"description": ""
 		},
@@ -74,7 +74,7 @@
 		},
 		{
 			"path": "src/preload/index.ts",
-			"lines": 293,
+			"lines": 296,
 			"dir": "src/preload",
 			"exports": [],
 			"imports": [
@@ -83,11 +83,11 @@
 			"functions": [
 				"src/preload/index.ts/handler:86",
 				"src/preload/index.ts/handler:91",
-				"src/preload/index.ts/handler:96",
-				"src/preload/index.ts/handler:101",
-				"src/preload/index.ts/handler:106",
-				"src/preload/index.ts/handler:112",
-				"src/preload/index.ts/handler:117"
+				"src/preload/index.ts/handler:99",
+				"src/preload/index.ts/handler:104",
+				"src/preload/index.ts/handler:109",
+				"src/preload/index.ts/handler:115",
+				"src/preload/index.ts/handler:120"
 			],
 			"description": "contextBridge 暴露 85 个 IPC 方法和 4 个事件订阅给 renderer"
 		},
@@ -955,7 +955,7 @@
 		},
 		{
 			"path": "src/runtime/tools/agent-tool.ts",
-			"lines": 251,
+			"lines": 258,
 			"dir": "src/runtime/tools",
 			"exports": [],
 			"imports": [
@@ -2121,7 +2121,7 @@
 		},
 		{
 			"path": "src/runtime/tools/wiki-tool.ts",
-			"lines": 363,
+			"lines": 406,
 			"dir": "src/runtime/tools",
 			"exports": [],
 			"imports": [
@@ -2133,7 +2133,8 @@
 				"src/runtime/tools/wiki-tool.ts/resolveWikiStore:50",
 				"src/runtime/tools/wiki-tool.ts/resolveAnchorsCtx:64",
 				"src/runtime/tools/wiki-tool.ts/synthesizePath:77",
-				"src/runtime/tools/wiki-tool.ts/resolveNode:89"
+				"src/runtime/tools/wiki-tool.ts/resolveNode:89",
+				"src/runtime/tools/wiki-tool.ts/walk:216"
 			],
 			"description": ""
 		},
@@ -2261,7 +2262,7 @@
 		},
 		{
 			"path": "src/server/agent-service.ts",
-			"lines": 1165,
+			"lines": 1191,
 			"dir": "src/server",
 			"exports": [
 				"AgentService.getDB",
@@ -2356,25 +2357,25 @@
 				"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:711",
 				"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:716",
 				"src/server/agent-service.ts/AgentService.restoreAllSessions:773",
-				"src/server/agent-service.ts/AgentService.activateSession:791",
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:854",
-				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:858",
-				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:875",
-				"src/server/agent-service.ts/AgentService.buildLegacyMessages:991",
-				"src/server/agent-service.ts/AgentService.dispose:1063",
-				"src/server/agent-service.ts/AgentService.invalidateLoops:1079",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1090",
-				"src/server/agent-service.ts/AgentService.findStateByAgentId:1125",
-				"src/server/agent-service.ts/AgentService.emit:1131",
+				"src/server/agent-service.ts/AgentService.activateSession:803",
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:880",
+				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:884",
+				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:901",
+				"src/server/agent-service.ts/AgentService.buildLegacyMessages:1017",
+				"src/server/agent-service.ts/AgentService.dispose:1089",
+				"src/server/agent-service.ts/AgentService.invalidateLoops:1105",
+				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1116",
+				"src/server/agent-service.ts/AgentService.findStateByAgentId:1151",
+				"src/server/agent-service.ts/AgentService.emit:1157",
 				"src/server/agent-service.ts/AgentService.on:471",
-				"src/server/agent-service.ts/createAgentService:1137",
-				"src/server/agent-service.ts/normalizeBlockArgsForUi:1153"
+				"src/server/agent-service.ts/createAgentService:1163",
+				"src/server/agent-service.ts/normalizeBlockArgsForUi:1179"
 			],
 			"description": "AgentService 类：全局调度入口，sendPrompt → createLoop → loop.run，session 管理，事件分发，recovery"
 		},
 		{
 			"path": "src/server/agent-store.ts",
-			"lines": 193,
+			"lines": 207,
 			"dir": "src/server",
 			"exports": [
 				"AgentStore.onChange",
@@ -2722,6 +2723,24 @@
 			"description": ""
 		},
 		{
+			"path": "src/server/data-change-hub.ts",
+			"lines": 108,
+			"dir": "src/server",
+			"exports": [
+				"emitDataChange",
+				"onDataChange",
+				"_resetDataChangeHubForTest"
+			],
+			"imports": [],
+			"functions": [
+				"src/server/data-change-hub.ts/flush:63",
+				"src/server/data-change-hub.ts/emitDataChange:85",
+				"src/server/data-change-hub.ts/onDataChange:97",
+				"src/server/data-change-hub.ts/_resetDataChangeHubForTest:103"
+			],
+			"description": ""
+		},
+		{
 			"path": "src/server/db-migration.ts",
 			"lines": 1020,
 			"dir": "src/server",
@@ -2852,7 +2871,7 @@
 		},
 		{
 			"path": "src/server/fresh-db-seed.ts",
-			"lines": 456,
+			"lines": 470,
 			"dir": "src/server",
 			"exports": [
 				"seedFreshDbDefaults",
@@ -2870,13 +2889,13 @@
 			],
 			"functions": [
 				"src/server/fresh-db-seed.ts/ensureNodeDetail:75",
-				"src/server/fresh-db-seed.ts/seedFreshDbDefaults:259",
-				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320",
-				"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:334",
-				"src/server/fresh-db-seed.ts/ensureWorkflowNode:353",
-				"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:372",
-				"src/server/fresh-db-seed.ts/ensureProjectsRoot:420",
-				"src/server/fresh-db-seed.ts/ensureMemoryRoot:442"
+				"src/server/fresh-db-seed.ts/seedFreshDbDefaults:264",
+				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325",
+				"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:339",
+				"src/server/fresh-db-seed.ts/ensureWorkflowNode:358",
+				"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:377",
+				"src/server/fresh-db-seed.ts/ensureProjectsRoot:434",
+				"src/server/fresh-db-seed.ts/ensureMemoryRoot:456"
 			],
 			"description": ""
 		},
@@ -2911,13 +2930,14 @@
 		},
 		{
 			"path": "src/server/index.ts",
-			"lines": 817,
+			"lines": 824,
 			"dir": "src/server",
 			"exports": [
 				"startServer"
 			],
 			"imports": [
 				"src/server/agent-store.ts",
+				"src/server/data-change-hub.ts",
 				"src/server/provider-store.ts",
 				"src/server/template-store.ts",
 				"src/server/mcp-store.ts",
@@ -2965,9 +2985,9 @@
 				"src/runtime/mcp-tools/fetch-tools.ts"
 			],
 			"functions": [
-				"src/server/index.ts/expandHome:83",
-				"src/server/index.ts/startServer:102",
-				"src/server/index.ts/broadcast:254"
+				"src/server/index.ts/expandHome:84",
+				"src/server/index.ts/startServer:103",
+				"src/server/index.ts/broadcast:258"
 			],
 			"description": "服务器入口：初始化所有 store/service/router，HTTP API 模式启动"
 		},
@@ -3205,7 +3225,7 @@
 		},
 		{
 			"path": "src/server/management-service.ts",
-			"lines": 575,
+			"lines": 579,
 			"dir": "src/server",
 			"exports": [
 				"ManagementService.setTemplateStore",
@@ -3276,15 +3296,15 @@
 				"src/server/management-service.ts/ManagementService.getAgent:400",
 				"src/server/management-service.ts/ManagementService.listTemplates:414",
 				"src/server/management-service.ts/ManagementService.getTemplate:418",
-				"src/server/management-service.ts/ManagementService.instantiateTemplate:431",
-				"src/server/management-service.ts/ManagementService.instantiateRole:456",
-				"src/server/management-service.ts/ManagementService.createCron:478",
-				"src/server/management-service.ts/ManagementService.updateCron:505",
-				"src/server/management-service.ts/ManagementService.deleteCron:516",
-				"src/server/management-service.ts/ManagementService.listCrons:524",
-				"src/server/management-service.ts/ManagementService.getCron:535",
-				"src/server/management-service.ts/ManagementService.triggerCron:547",
-				"src/server/management-service.ts/ManagementService.mergeToolPolicy:564"
+				"src/server/management-service.ts/ManagementService.instantiateTemplate:435",
+				"src/server/management-service.ts/ManagementService.instantiateRole:460",
+				"src/server/management-service.ts/ManagementService.createCron:482",
+				"src/server/management-service.ts/ManagementService.updateCron:509",
+				"src/server/management-service.ts/ManagementService.deleteCron:520",
+				"src/server/management-service.ts/ManagementService.listCrons:528",
+				"src/server/management-service.ts/ManagementService.getCron:539",
+				"src/server/management-service.ts/ManagementService.triggerCron:551",
+				"src/server/management-service.ts/ManagementService.mergeToolPolicy:568"
 			],
 			"description": ""
 		},
@@ -4035,7 +4055,7 @@
 		},
 		{
 			"path": "src/server/session-db.ts",
-			"lines": 943,
+			"lines": 961,
 			"dir": "src/server",
 			"exports": [
 				"SessionDB.getDb",
@@ -4052,6 +4072,7 @@
 				"SessionDB.createSession",
 				"SessionDB.getSession",
 				"SessionDB.getMainSession",
+				"SessionDB.getMostRecentSession",
 				"SessionDB.setMainSession",
 				"SessionDB.listSessions",
 				"SessionDB.listAllSessions",
@@ -4123,51 +4144,52 @@
 				"src/server/session-db.ts/SessionDB.createSession:242",
 				"src/server/session-db.ts/SessionDB.getSession:258",
 				"src/server/session-db.ts/SessionDB.getMainSession:263",
-				"src/server/session-db.ts/SessionDB.setMainSession:268",
-				"src/server/session-db.ts/SessionDB.listSessions:276",
-				"src/server/session-db.ts/SessionDB.listAllSessions:283",
-				"src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:299",
-				"src/server/session-db.ts/SessionDB.updateSessionContext:308",
-				"src/server/session-db.ts/SessionDB.getSessionContext:323",
-				"src/server/session-db.ts/SessionDB.deleteSession:334",
-				"src/server/session-db.ts/SessionDB.updateSessionUsage:338",
-				"src/server/session-db.ts/SessionDB.getMessages:349",
-				"src/server/session-db.ts/SessionDB.getMessagesWithSeq:356",
-				"src/server/session-db.ts/SessionDB.getMessageCount:362",
-				"src/server/session-db.ts/SessionDB.saveTurn:369",
-				"src/server/session-db.ts/SessionDB.deleteMessage:396",
-				"src/server/session-db.ts/SessionDB.updateMessageContent:405",
-				"src/server/session-db.ts/SessionDB.ensureSession:417",
-				"src/server/session-db.ts/SessionDB.migrateMessageFiles:430",
-				"src/server/session-db.ts/SessionDB.appendTurn:470",
-				"src/server/session-db.ts/SessionDB.getTurns:482",
-				"src/server/session-db.ts/SessionDB.getTurnCount:495",
-				"src/server/session-db.ts/SessionDB.clearTurns:500",
-				"src/server/session-db.ts/SessionDB.deleteTurn:504",
-				"src/server/session-db.ts/SessionDB.updateTurnContent:508",
-				"src/server/session-db.ts/SessionDB.upsertAssistantTurn:520",
-				"src/server/session-db.ts/SessionDB.getSteps:542",
-				"src/server/session-db.ts/SessionDB.getStepGroup:563",
-				"src/server/session-db.ts/SessionDB.appendStep:584",
-				"src/server/session-db.ts/SessionDB.upsertStep:607",
-				"src/server/session-db.ts/SessionDB.updateStepContent:641",
-				"src/server/session-db.ts/SessionDB.deleteStepGroup:662",
-				"src/server/session-db.ts/SessionDB.getTurnGroupCount:671",
-				"src/server/session-db.ts/SessionDB.replaceStepsFromMessages:680",
-				"src/server/session-db.ts/SessionDB.createTurnState:711",
-				"src/server/session-db.ts/SessionDB.updateTurnPhase:723",
-				"src/server/session-db.ts/SessionDB.completeTurnState:735",
-				"src/server/session-db.ts/SessionDB.failTurnState:747",
-				"src/server/session-db.ts/SessionDB.getIncompleteTurns:759",
-				"src/server/session-db.ts/SessionDB.cleanOldTurnState:777",
-				"src/server/session-db.ts/SessionDB.deleteTurnState:795",
-				"src/server/session-db.ts/SessionDB.recordToolExecution:803",
-				"src/server/session-db.ts/SessionDB.queryToolExecutions:830",
-				"src/server/session-db.ts/SessionDB.getToolExecutionStats:846",
-				"src/server/session-db.ts/SessionDB.cleanOldToolExecutions:866",
-				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:875",
-				"src/server/session-db.ts/SessionDB.close:895",
-				"src/server/session-db.ts/SessionDB.rowToRecord:903"
+				"src/server/session-db.ts/SessionDB.getMostRecentSession:278",
+				"src/server/session-db.ts/SessionDB.setMainSession:286",
+				"src/server/session-db.ts/SessionDB.listSessions:294",
+				"src/server/session-db.ts/SessionDB.listAllSessions:301",
+				"src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:317",
+				"src/server/session-db.ts/SessionDB.updateSessionContext:326",
+				"src/server/session-db.ts/SessionDB.getSessionContext:341",
+				"src/server/session-db.ts/SessionDB.deleteSession:352",
+				"src/server/session-db.ts/SessionDB.updateSessionUsage:356",
+				"src/server/session-db.ts/SessionDB.getMessages:367",
+				"src/server/session-db.ts/SessionDB.getMessagesWithSeq:374",
+				"src/server/session-db.ts/SessionDB.getMessageCount:380",
+				"src/server/session-db.ts/SessionDB.saveTurn:387",
+				"src/server/session-db.ts/SessionDB.deleteMessage:414",
+				"src/server/session-db.ts/SessionDB.updateMessageContent:423",
+				"src/server/session-db.ts/SessionDB.ensureSession:435",
+				"src/server/session-db.ts/SessionDB.migrateMessageFiles:448",
+				"src/server/session-db.ts/SessionDB.appendTurn:488",
+				"src/server/session-db.ts/SessionDB.getTurns:500",
+				"src/server/session-db.ts/SessionDB.getTurnCount:513",
+				"src/server/session-db.ts/SessionDB.clearTurns:518",
+				"src/server/session-db.ts/SessionDB.deleteTurn:522",
+				"src/server/session-db.ts/SessionDB.updateTurnContent:526",
+				"src/server/session-db.ts/SessionDB.upsertAssistantTurn:538",
+				"src/server/session-db.ts/SessionDB.getSteps:560",
+				"src/server/session-db.ts/SessionDB.getStepGroup:581",
+				"src/server/session-db.ts/SessionDB.appendStep:602",
+				"src/server/session-db.ts/SessionDB.upsertStep:625",
+				"src/server/session-db.ts/SessionDB.updateStepContent:659",
+				"src/server/session-db.ts/SessionDB.deleteStepGroup:680",
+				"src/server/session-db.ts/SessionDB.getTurnGroupCount:689",
+				"src/server/session-db.ts/SessionDB.replaceStepsFromMessages:698",
+				"src/server/session-db.ts/SessionDB.createTurnState:729",
+				"src/server/session-db.ts/SessionDB.updateTurnPhase:741",
+				"src/server/session-db.ts/SessionDB.completeTurnState:753",
+				"src/server/session-db.ts/SessionDB.failTurnState:765",
+				"src/server/session-db.ts/SessionDB.getIncompleteTurns:777",
+				"src/server/session-db.ts/SessionDB.cleanOldTurnState:795",
+				"src/server/session-db.ts/SessionDB.deleteTurnState:813",
+				"src/server/session-db.ts/SessionDB.recordToolExecution:821",
+				"src/server/session-db.ts/SessionDB.queryToolExecutions:848",
+				"src/server/session-db.ts/SessionDB.getToolExecutionStats:864",
+				"src/server/session-db.ts/SessionDB.cleanOldToolExecutions:884",
+				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:893",
+				"src/server/session-db.ts/SessionDB.close:913",
+				"src/server/session-db.ts/SessionDB.rowToRecord:921"
 			],
 			"description": "SessionDB：SQLite CRUD（sessions/messages/turns/turn_state），cleanOldTurnState 24h 清理"
 		},
@@ -4332,7 +4354,7 @@
 		},
 		{
 			"path": "src/server/sqlite-store.ts",
-			"lines": 310,
+			"lines": 355,
 			"dir": "src/server",
 			"exports": [
 				"SqliteStore.columnDef",
@@ -4352,25 +4374,27 @@
 				"SqliteStore.rowToRecord"
 			],
 			"imports": [
-				"src/core/logger.ts"
+				"src/core/logger.ts",
+				"src/server/data-change-hub.ts"
 			],
 			"functions": [
-				"src/server/sqlite-store.ts/SqliteStore.columnDef:100",
-				"src/server/sqlite-store.ts/SqliteStore.ensureTable:108",
-				"src/server/sqlite-store.ts/SqliteStore.ensureColumn:126",
-				"src/server/sqlite-store.ts/SqliteStore.initStatements:135",
-				"src/server/sqlite-store.ts/SqliteStore.list:158",
-				"src/server/sqlite-store.ts/SqliteStore.get:162",
-				"src/server/sqlite-store.ts/SqliteStore.create:167",
-				"src/server/sqlite-store.ts/SqliteStore.createWithId:180",
-				"src/server/sqlite-store.ts/SqliteStore.update:187",
-				"src/server/sqlite-store.ts/SqliteStore.delete:201",
-				"src/server/sqlite-store.ts/SqliteStore.migrateFromJson:209",
-				"src/server/sqlite-store.ts/SqliteStore.insertRow:245",
-				"src/server/sqlite-store.ts/SqliteStore.updateRow:250",
-				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:257",
-				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:268",
-				"src/server/sqlite-store.ts/camelToSnake:307"
+				"src/server/sqlite-store.ts/SqliteStore.columnDef:101",
+				"src/server/sqlite-store.ts/SqliteStore.ensureTable:109",
+				"src/server/sqlite-store.ts/SqliteStore.ensureColumn:127",
+				"src/server/sqlite-store.ts/SqliteStore.initStatements:136",
+				"src/server/sqlite-store.ts/SqliteStore.list:159",
+				"src/server/sqlite-store.ts/SqliteStore.get:163",
+				"src/server/sqlite-store.ts/SqliteStore.create:168",
+				"src/server/sqlite-store.ts/SqliteStore.createWithId:181",
+				"src/server/sqlite-store.ts/SqliteStore.update:188",
+				"src/server/sqlite-store.ts/SqliteStore.delete:224",
+				"src/server/sqlite-store.ts/SqliteStore.migrateFromJson:233",
+				"src/server/sqlite-store.ts/SqliteStore.insertRow:269",
+				"src/server/sqlite-store.ts/SqliteStore.updateRow:275",
+				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:283",
+				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:294",
+				"src/server/sqlite-store.ts/camelToSnake:333",
+				"src/server/sqlite-store.ts/scalarEqual:343"
 			],
 			"description": "SqliteStore 基类：通用 SQLite 表管理，ensureTable + self-heal（ALTER ADD COLUMN if missing）"
 		},
@@ -4452,12 +4476,13 @@
 		},
 		{
 			"path": "src/server/template-store.ts",
-			"lines": 1017,
+			"lines": 1046,
 			"dir": "src/server",
 			"exports": [
 				"TemplateStore.mergeBuiltInTemplates",
 				"TemplateStore.list",
 				"TemplateStore.get",
+				"TemplateStore.resolve",
 				"TemplateStore.create",
 				"TemplateStore.update",
 				"TemplateStore.delete",
@@ -4472,14 +4497,15 @@
 			],
 			"functions": [
 				"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
-				"src/server/template-store.ts/TemplateStore.list:963",
-				"src/server/template-store.ts/TemplateStore.get:967",
-				"src/server/template-store.ts/TemplateStore.create:971",
-				"src/server/template-store.ts/TemplateStore.update:975",
-				"src/server/template-store.ts/TemplateStore.delete:979",
-				"src/server/template-store.ts/TemplateStore.exportTemplate:985",
-				"src/server/template-store.ts/TemplateStore.importTemplate:991",
-				"src/server/template-store.ts/TemplateStore.findByNameAndSource:1011"
+				"src/server/template-store.ts/TemplateStore.list:978",
+				"src/server/template-store.ts/TemplateStore.get:982",
+				"src/server/template-store.ts/TemplateStore.resolve:993",
+				"src/server/template-store.ts/TemplateStore.create:1000",
+				"src/server/template-store.ts/TemplateStore.update:1004",
+				"src/server/template-store.ts/TemplateStore.delete:1008",
+				"src/server/template-store.ts/TemplateStore.exportTemplate:1014",
+				"src/server/template-store.ts/TemplateStore.importTemplate:1020",
+				"src/server/template-store.ts/TemplateStore.findByNameAndSource:1040"
 			],
 			"description": "TemplateStore：agent 模板持久化（SQLite）"
 		},
@@ -5188,14 +5214,14 @@
 		},
 		{
 			"path": "src/shared/file-utils.ts",
-			"lines": 68,
+			"lines": 75,
 			"dir": "src/shared",
 			"exports": [
 				"buildTree"
 			],
 			"imports": [],
 			"functions": [
-				"src/shared/file-utils.ts/buildTree:41"
+				"src/shared/file-utils.ts/buildTree:48"
 			],
 			"description": "FileTreeNode 类型 + 文件树构建工具"
 		},
@@ -5230,7 +5256,7 @@
 		},
 		{
 			"path": "src/shared/preload-types.ts",
-			"lines": 292,
+			"lines": 293,
 			"dir": "src/shared",
 			"exports": [],
 			"imports": [
@@ -5373,14 +5399,14 @@
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
 			"line": 352,
-			"endLine": 401,
+			"endLine": 403,
 			"statementCount": 25,
 			"exported": true,
 			"signature": "function connectEventBridge(win: BrowserWindow, port: number)",
 			"description": "",
 			"callees": [
 				"src/main/ipc-proxy.ts/connect:355",
-				"src/main/ipc-proxy.ts/pollReady:388"
+				"src/main/ipc-proxy.ts/pollReady:390"
 			]
 		},
 		{
@@ -5389,7 +5415,7 @@
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
 			"line": 355,
-			"endLine": 383,
+			"endLine": 385,
 			"statementCount": 14,
 			"exported": false,
 			"signature": "function connect()",
@@ -5397,12 +5423,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/pollReady:388",
+			"id": "src/main/ipc-proxy.ts/pollReady:390",
 			"name": "pollReady",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 388,
-			"endLine": 399,
+			"line": 390,
+			"endLine": 401,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function pollReady()",
@@ -5436,25 +5462,25 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:96",
+			"id": "src/preload/index.ts/handler:99",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 96,
-			"endLine": 96,
+			"line": 99,
+			"endLine": 99,
 			"statementCount": 1,
 			"exported": false,
-			"signature": "fn ()",
+			"signature": "fn (_e: any, data: { collection: string; changes: Array<{ id: string; op: string }> })",
 			"description": "",
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:101",
+			"id": "src/preload/index.ts/handler:104",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 101,
-			"endLine": 101,
+			"line": 104,
+			"endLine": 104,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (_e: any, data: any)",
@@ -5462,12 +5488,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:106",
+			"id": "src/preload/index.ts/handler:109",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 106,
-			"endLine": 106,
+			"line": 109,
+			"endLine": 109,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "fn ()",
@@ -5475,12 +5501,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:112",
+			"id": "src/preload/index.ts/handler:115",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 112,
-			"endLine": 112,
+			"line": 115,
+			"endLine": 115,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (_e: any, data: any)",
@@ -5488,12 +5514,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:117",
+			"id": "src/preload/index.ts/handler:120",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 117,
-			"endLine": 117,
+			"line": 120,
+			"endLine": 120,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (_e: any, data: any)",
@@ -11499,6 +11525,21 @@
 			"callees": []
 		},
 		{
+			"id": "src/runtime/tools/wiki-tool.ts/walk:216",
+			"name": "walk",
+			"kind": "arrow",
+			"file": "src/runtime/tools/wiki-tool.ts",
+			"line": 216,
+			"endLine": 235,
+			"statementCount": 9,
+			"exported": false,
+			"signature": "fn (parentId: string, level: number)",
+			"description": "",
+			"callees": [
+				"src/runtime/tools/wiki-tool.ts/walk:216"
+			]
+		},
+		{
 			"id": "src/runtime/transcript-delta.ts/sliceTranscriptDelta:53",
 			"name": "sliceTranscriptDelta",
 			"kind": "function",
@@ -11978,7 +12019,7 @@
 			"signature": "method setWorkspaceDir(dir: string)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.invalidateLoops:1079"
+				"src/server/agent-service.ts/AgentService.invalidateLoops:1105"
 			]
 		},
 		{
@@ -11995,7 +12036,7 @@
 			"callees": [
 				"src/runtime/provider-factory.ts/clearProviderCache:162",
 				"src/runtime/provider-factory.ts/setConcurrencyManager:40",
-				"src/server/agent-service.ts/AgentService.invalidateLoops:1079",
+				"src/server/agent-service.ts/AgentService.invalidateLoops:1105",
 				"src/server/agent-service.ts/AgentService.notifyReady:238"
 			]
 		},
@@ -12258,7 +12299,7 @@
 			"callees": [
 				"src/runtime/tools/mcp-tool.ts/buildMcpTools:110",
 				"src/server/agent-service.ts/toolEnabled:81",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1090"
+				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1116"
 			]
 		},
 		{
@@ -12275,7 +12316,7 @@
 			"callees": [
 				"src/server/agent-service.ts/AgentService.createLoopForSession:397",
 				"src/server/agent-service.ts/AgentService.getOrCreateLoop:374",
-				"src/server/agent-service.ts/AgentService.emit:1131"
+				"src/server/agent-service.ts/AgentService.emit:1157"
 			]
 		},
 		{
@@ -12292,8 +12333,8 @@
 			"callees": [
 				"src/runtime/agent-roles.ts/getRoleConfig:385",
 				"src/runtime/tools/mcp-tool.ts/buildMcpTools:110",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1090",
-				"src/server/agent-service.ts/AgentService.emit:1131"
+				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1116",
+				"src/server/agent-service.ts/AgentService.emit:1157"
 			]
 		},
 		{
@@ -12348,8 +12389,8 @@
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
 			"line": 773,
-			"endLine": 788,
-			"statementCount": 10,
+			"endLine": 800,
+			"statementCount": 13,
 			"exported": true,
 			"signature": "method restoreAllSessions()",
 			"description": "",
@@ -12358,106 +12399,106 @@
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.activateSession:791",
+			"id": "src/server/agent-service.ts/AgentService.activateSession:803",
 			"name": "AgentService.activateSession",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 791,
-			"endLine": 832,
-			"statementCount": 20,
+			"line": 803,
+			"endLine": 858,
+			"statementCount": 22,
 			"exported": true,
 			"signature": "method activateSession(agentId: string, sessionId?: string)",
 			"description": "",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.createLoopForSession:397",
-				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:858",
-				"src/server/agent-service.ts/AgentService.emit:1131"
+				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:884",
+				"src/server/agent-service.ts/AgentService.emit:1157"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.normalizeBlockArgs:854",
+			"id": "src/server/agent-service.ts/AgentService.normalizeBlockArgs:880",
 			"name": "AgentService.normalizeBlockArgs",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 854,
-			"endLine": 856,
+			"line": 880,
+			"endLine": 882,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method normalizeBlockArgs(blocks: any[])",
 			"description": "Normalize tool-call blocks' `args` to a JSON STRING. The renderer's\r",
 			"callees": [
-				"src/server/agent-service.ts/normalizeBlockArgsForUi:1153"
+				"src/server/agent-service.ts/normalizeBlockArgsForUi:1179"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildSessionInitMessages:858",
+			"id": "src/server/agent-service.ts/AgentService.buildSessionInitMessages:884",
 			"name": "AgentService.buildSessionInitMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 858,
-			"endLine": 872,
+			"line": 884,
+			"endLine": 898,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method buildSessionInitMessages(agentId: string, sessionId: string, loop: AgentLoop)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:875",
-				"src/server/agent-service.ts/AgentService.buildLegacyMessages:991"
+				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:901",
+				"src/server/agent-service.ts/AgentService.buildLegacyMessages:1017"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildStepLevelMessages:875",
+			"id": "src/server/agent-service.ts/AgentService.buildStepLevelMessages:901",
 			"name": "AgentService.buildStepLevelMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 875,
-			"endLine": 988,
+			"line": 901,
+			"endLine": 1014,
 			"statementCount": 47,
 			"exported": true,
 			"signature": "method buildStepLevelMessages(turns: Array<{ seq: number; role: string; content: string | null; createdAt: string; turnGroup?: number }>, isBusy: boolean, recorderBlocks: any[])",
 			"description": "Build UI messages from step-level data, grouping by turnGroup.",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:854"
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:880"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildLegacyMessages:991",
+			"id": "src/server/agent-service.ts/AgentService.buildLegacyMessages:1017",
 			"name": "AgentService.buildLegacyMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 991,
-			"endLine": 1062,
+			"line": 1017,
+			"endLine": 1088,
 			"statementCount": 27,
 			"exported": true,
 			"signature": "method buildLegacyMessages(turns: Array<{ seq: number; role: string; content: string | null; createdAt: string }>, isBusy: boolean, recorderBlocks: any[])",
 			"description": "Legacy path: no turnGroup, each turn is one UI message.",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:854"
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:880"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.dispose:1063",
+			"id": "src/server/agent-service.ts/AgentService.dispose:1089",
 			"name": "AgentService.dispose",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1063,
-			"endLine": 1078,
+			"line": 1089,
+			"endLine": 1104,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method dispose()",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.dispose:1063",
+				"src/server/agent-service.ts/AgentService.dispose:1089",
 				"src/server/agent-service.ts/AgentService.abort:699"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.invalidateLoops:1079",
+			"id": "src/server/agent-service.ts/AgentService.invalidateLoops:1105",
 			"name": "AgentService.invalidateLoops",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1079,
-			"endLine": 1088,
+			"line": 1105,
+			"endLine": 1114,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method invalidateLoops()",
@@ -12467,28 +12508,28 @@
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.handleRuntimeEvent:1090",
+			"id": "src/server/agent-service.ts/AgentService.handleRuntimeEvent:1116",
 			"name": "AgentService.handleRuntimeEvent",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1090,
-			"endLine": 1124,
+			"line": 1116,
+			"endLine": 1150,
 			"statementCount": 21,
 			"exported": true,
 			"signature": "method handleRuntimeEvent(agentId: string, event: StreamEvent)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.findStateByAgentId:1125",
-				"src/server/agent-service.ts/AgentService.emit:1131"
+				"src/server/agent-service.ts/AgentService.findStateByAgentId:1151",
+				"src/server/agent-service.ts/AgentService.emit:1157"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.findStateByAgentId:1125",
+			"id": "src/server/agent-service.ts/AgentService.findStateByAgentId:1151",
 			"name": "AgentService.findStateByAgentId",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1125,
-			"endLine": 1130,
+			"line": 1151,
+			"endLine": 1156,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method findStateByAgentId(agentId: string)",
@@ -12496,12 +12537,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.emit:1131",
+			"id": "src/server/agent-service.ts/AgentService.emit:1157",
 			"name": "AgentService.emit",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1131,
-			"endLine": 1135,
+			"line": 1157,
+			"endLine": 1161,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method emit(event: { type: string; [key: string]: unknown })",
@@ -12524,12 +12565,12 @@
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/createAgentService:1137",
+			"id": "src/server/agent-service.ts/createAgentService:1163",
 			"name": "createAgentService",
 			"kind": "function",
 			"file": "src/server/agent-service.ts",
-			"line": 1137,
-			"endLine": 1139,
+			"line": 1163,
+			"endLine": 1165,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function createAgentService(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore, registry?: ToolRegistry, mcp?: MCPManager)",
@@ -12537,12 +12578,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/normalizeBlockArgsForUi:1153",
+			"id": "src/server/agent-service.ts/normalizeBlockArgsForUi:1179",
 			"name": "normalizeBlockArgsForUi",
 			"kind": "function",
 			"file": "src/server/agent-service.ts",
-			"line": 1153,
-			"endLine": 1164,
+			"line": 1179,
+			"endLine": 1190,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "function normalizeBlockArgsForUi(blocks: any[])",
@@ -12675,15 +12716,17 @@
 			"kind": "method",
 			"file": "src/server/agent-store.ts",
 			"line": 179,
-			"endLine": 191,
-			"statementCount": 5,
+			"endLine": 205,
+			"statementCount": 10,
 			"exported": true,
 			"signature": "method delete(id: string)",
 			"description": "",
 			"callees": [
 				"src/server/agent-store.ts/AgentStore.get:157",
-				"src/server/agent-store.ts/AgentStore.delete:179",
-				"src/server/agent-store.ts/AgentStore.notifyChanged:122"
+				"src/server/agent-store.ts/AgentStore.list:128",
+				"src/server/agent-store.ts/AgentStore.update:169",
+				"src/server/agent-store.ts/AgentStore.notifyChanged:122",
+				"src/server/agent-store.ts/AgentStore.delete:179"
 			]
 		},
 		{
@@ -14087,6 +14130,58 @@
 			]
 		},
 		{
+			"id": "src/server/data-change-hub.ts/flush:63",
+			"name": "flush",
+			"kind": "function",
+			"file": "src/server/data-change-hub.ts",
+			"line": 63,
+			"endLine": 78,
+			"statementCount": 11,
+			"exported": false,
+			"signature": "function flush()",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/data-change-hub.ts/emitDataChange:85",
+			"name": "emitDataChange",
+			"kind": "function",
+			"file": "src/server/data-change-hub.ts",
+			"line": 85,
+			"endLine": 94,
+			"statementCount": 10,
+			"exported": true,
+			"signature": "function emitDataChange(table: string, id: string, op: DataChangeOp, record?: unknown)",
+			"description": "SqliteStore 写原语调此发变更。非 UI collection 直接忽略;UI collection 把",
+			"callees": []
+		},
+		{
+			"id": "src/server/data-change-hub.ts/onDataChange:97",
+			"name": "onDataChange",
+			"kind": "function",
+			"file": "src/server/data-change-hub.ts",
+			"line": 97,
+			"endLine": 100,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "function onDataChange(cb: Listener)",
+			"description": "订阅 data:changed。返回取消订阅。server/index.ts 用它接到 WS broadcast。",
+			"callees": []
+		},
+		{
+			"id": "src/server/data-change-hub.ts/_resetDataChangeHubForTest:103",
+			"name": "_resetDataChangeHubForTest",
+			"kind": "function",
+			"file": "src/server/data-change-hub.ts",
+			"line": 103,
+			"endLine": 107,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "function _resetDataChangeHubForTest()",
+			"description": "测试用:重置 hub 状态。",
+			"callees": []
+		},
+		{
 			"id": "src/server/db-migration.ts/safeAddColumn:274",
 			"name": "safeAddColumn",
 			"kind": "function",
@@ -14445,7 +14540,7 @@
 			"callees": [
 				"src/server/file-router.ts/expandHome:39",
 				"src/server/file-router.ts/getRoot:44",
-				"src/shared/file-utils.ts/buildTree:41"
+				"src/shared/file-utils.ts/buildTree:48"
 			]
 		},
 		{
@@ -14477,47 +14572,47 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/seedFreshDbDefaults:259",
+			"id": "src/server/fresh-db-seed.ts/seedFreshDbDefaults:264",
 			"name": "seedFreshDbDefaults",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 259,
-			"endLine": 303,
+			"line": 264,
+			"endLine": 308,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "function seedFreshDbDefaults(deps: {\r\n\tagentStore: AgentStore;\r\n\twikiStore: WikiStore;\r\n\tmanagement: ManagementService;\r\n})",
 			"description": "Seed the fresh-DB defaults (RFC §7.1).\r",
 			"callees": [
-				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
+				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325"
 			]
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureWikiSkeleton:320",
+			"id": "src/server/fresh-db-seed.ts/ensureWikiSkeleton:325",
 			"name": "ensureWikiSkeleton",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 320,
-			"endLine": 332,
+			"line": 325,
+			"endLine": 337,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "function ensureWikiSkeleton(wikiStore: WikiStore)",
 			"description": "Idempotently ensure the full §10.5 wiki skeleton (knowledge/workflow +\r",
 			"callees": [
-				"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:334",
-				"src/server/fresh-db-seed.ts/ensureWorkflowNode:353",
-				"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:372",
-				"src/server/fresh-db-seed.ts/ensureProjectsRoot:420",
-				"src/server/fresh-db-seed.ts/ensureMemoryRoot:442",
+				"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:339",
+				"src/server/fresh-db-seed.ts/ensureWorkflowNode:358",
+				"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:377",
+				"src/server/fresh-db-seed.ts/ensureProjectsRoot:434",
+				"src/server/fresh-db-seed.ts/ensureMemoryRoot:456",
 				"src/server/fresh-db-seed.ts/ensureNodeDetail:75"
 			]
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureKnowledgeRoot:334",
+			"id": "src/server/fresh-db-seed.ts/ensureKnowledgeRoot:339",
 			"name": "ensureKnowledgeRoot",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 334,
-			"endLine": 347,
+			"line": 339,
+			"endLine": 352,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "function ensureKnowledgeRoot(wikiStore: WikiStore)",
@@ -14527,12 +14622,12 @@
 			]
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureWorkflowNode:353",
+			"id": "src/server/fresh-db-seed.ts/ensureWorkflowNode:358",
 			"name": "ensureWorkflowNode",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 353,
-			"endLine": 370,
+			"line": 358,
+			"endLine": 375,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "function ensureWorkflowNode(wikiStore: WikiStore)",
@@ -14542,25 +14637,25 @@
 			]
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureSoftwareDevNode:372",
+			"id": "src/server/fresh-db-seed.ts/ensureSoftwareDevNode:377",
 			"name": "ensureSoftwareDevNode",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 372,
-			"endLine": 412,
-			"statementCount": 19,
+			"line": 377,
+			"endLine": 426,
+			"statementCount": 23,
 			"exported": true,
 			"signature": "function ensureSoftwareDevNode(wikiStore: WikiStore)",
 			"description": "",
 			"callees": []
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureProjectsRoot:420",
+			"id": "src/server/fresh-db-seed.ts/ensureProjectsRoot:434",
 			"name": "ensureProjectsRoot",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 420,
-			"endLine": 433,
+			"line": 434,
+			"endLine": 447,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "function ensureProjectsRoot(wikiStore: WikiStore)",
@@ -14570,12 +14665,12 @@
 			]
 		},
 		{
-			"id": "src/server/fresh-db-seed.ts/ensureMemoryRoot:442",
+			"id": "src/server/fresh-db-seed.ts/ensureMemoryRoot:456",
 			"name": "ensureMemoryRoot",
 			"kind": "function",
 			"file": "src/server/fresh-db-seed.ts",
-			"line": 442,
-			"endLine": 455,
+			"line": 456,
+			"endLine": 469,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "function ensureMemoryRoot(wikiStore: WikiStore)",
@@ -14717,12 +14812,12 @@
 			]
 		},
 		{
-			"id": "src/server/index.ts/expandHome:83",
+			"id": "src/server/index.ts/expandHome:84",
 			"name": "expandHome",
 			"kind": "arrow",
 			"file": "src/server/index.ts",
-			"line": 83,
-			"endLine": 83,
+			"line": 84,
+			"endLine": 84,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (p: string)",
@@ -14730,12 +14825,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/index.ts/startServer:102",
+			"id": "src/server/index.ts/startServer:103",
 			"name": "startServer",
 			"kind": "function",
 			"file": "src/server/index.ts",
-			"line": 102,
-			"endLine": 816,
+			"line": 103,
+			"endLine": 823,
 			"statementCount": 303,
 			"exported": true,
 			"signature": "function startServer(options?: StartServerOptions)",
@@ -14746,8 +14841,9 @@
 				"src/server/workflow-context-hook.ts/registerWorkflowContextHook:67",
 				"src/server/workspace-config.ts/loadWorkspaceConfig:40",
 				"src/runtime/proxy-manager.ts/applyProxy:30",
-				"src/server/agent-service.ts/createAgentService:1137",
-				"src/server/index.ts/broadcast:254",
+				"src/server/agent-service.ts/createAgentService:1163",
+				"src/server/data-change-hub.ts/onDataChange:97",
+				"src/server/index.ts/broadcast:258",
 				"src/server/mcp-scanner.ts/scanExternalMcpConfigs:156",
 				"src/server/mcp-scanner.ts/mergeDetectedServers:202",
 				"src/server/config-router.ts/createConfigRouter:41",
@@ -14771,16 +14867,16 @@
 				"src/runtime/tools/tool-factory.ts/getToolExecute:316",
 				"src/runtime/mcp-tools/fetch-tools.ts/getCookieCount:421",
 				"src/runtime/mcp-tools/fetch-tools.ts/clearCookies:429",
-				"src/server/index.ts/expandHome:83"
+				"src/server/index.ts/expandHome:84"
 			]
 		},
 		{
-			"id": "src/server/index.ts/broadcast:254",
+			"id": "src/server/index.ts/broadcast:258",
 			"name": "broadcast",
 			"kind": "arrow",
 			"file": "src/server/index.ts",
-			"line": 254,
-			"endLine": 259,
+			"line": 258,
+			"endLine": 263,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "fn (event: any)",
@@ -15755,12 +15851,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.instantiateTemplate:431",
+			"id": "src/server/management-service.ts/ManagementService.instantiateTemplate:435",
 			"name": "ManagementService.instantiateTemplate",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 431,
-			"endLine": 447,
+			"line": 435,
+			"endLine": 451,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method instantiateTemplate(templateId: string, overrides?: Partial<Pick<AgentRecord, \"name\" | \"model\" | \"provider\" | \"workspaceDir\" | \"thinkingLevel\">>)",
@@ -15770,12 +15866,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.instantiateRole:456",
+			"id": "src/server/management-service.ts/ManagementService.instantiateRole:460",
 			"name": "ManagementService.instantiateRole",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 456,
-			"endLine": 472,
+			"line": 460,
+			"endLine": 476,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method instantiateRole(roleId: string, overrides?: Partial<Pick<AgentRecord, \"name\" | \"model\" | \"provider\" | \"workspaceDir\" | \"thinkingLevel\">>)",
@@ -15783,12 +15879,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.createCron:478",
+			"id": "src/server/management-service.ts/ManagementService.createCron:482",
 			"name": "ManagementService.createCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 478,
-			"endLine": 503,
+			"line": 482,
+			"endLine": 507,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method createCron(input: {\r\n\t\tagentId: string;\r\n\t\tworkingScope: CronRecord[\"workingScope\"];\r\n\t\tschedule: CronRecord[\"schedule\"];\r\n\t\tprompt?: string;\r\n\t\tenabled?: boolean;\r\n\t})",
@@ -15798,12 +15894,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.updateCron:505",
+			"id": "src/server/management-service.ts/ManagementService.updateCron:509",
 			"name": "ManagementService.updateCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 505,
-			"endLine": 513,
+			"line": 509,
+			"endLine": 517,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method updateCron(id: string, input: Partial<Omit<CronRecord, \"id\" | \"createdAt\" | \"updatedAt\" | \"agentId\">>)",
@@ -15813,12 +15909,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.deleteCron:516",
+			"id": "src/server/management-service.ts/ManagementService.deleteCron:520",
 			"name": "ManagementService.deleteCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 516,
-			"endLine": 518,
+			"line": 520,
+			"endLine": 522,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method deleteCron(id: string)",
@@ -15828,12 +15924,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.listCrons:524",
+			"id": "src/server/management-service.ts/ManagementService.listCrons:528",
 			"name": "ManagementService.listCrons",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 524,
-			"endLine": 533,
+			"line": 528,
+			"endLine": 537,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method listCrons(filter?: { agentId?: string; projectId?: string; enabled?: boolean })",
@@ -15843,12 +15939,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getCron:535",
+			"id": "src/server/management-service.ts/ManagementService.getCron:539",
 			"name": "ManagementService.getCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 535,
-			"endLine": 537,
+			"line": 539,
+			"endLine": 541,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getCron(id: string)",
@@ -15858,12 +15954,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.triggerCron:547",
+			"id": "src/server/management-service.ts/ManagementService.triggerCron:551",
 			"name": "ManagementService.triggerCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 547,
-			"endLine": 552,
+			"line": 551,
+			"endLine": 556,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method triggerCron(id: string)",
@@ -15873,12 +15969,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.mergeToolPolicy:564",
+			"id": "src/server/management-service.ts/ManagementService.mergeToolPolicy:568",
 			"name": "ManagementService.mergeToolPolicy",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 564,
-			"endLine": 573,
+			"line": 568,
+			"endLine": 577,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method mergeToolPolicy(agentId: string, patch: NonNullable<AgentRecord[\"toolPolicy\"]>)",
@@ -18411,7 +18507,7 @@
 			"signature": "method getSession(sessionId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:903"
+				"src/server/session-db.ts/SessionDB.rowToRecord:921"
 			]
 		},
 		{
@@ -18426,16 +18522,31 @@
 			"signature": "method getMainSession(agentId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:903"
+				"src/server/session-db.ts/SessionDB.rowToRecord:921"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.setMainSession:268",
+			"id": "src/server/session-db.ts/SessionDB.getMostRecentSession:278",
+			"name": "SessionDB.getMostRecentSession",
+			"kind": "method",
+			"file": "src/server/session-db.ts",
+			"line": 278,
+			"endLine": 284,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method getMostRecentSession(agentId: string)",
+			"description": "The most-recently-active session for an agent, by `updated_at`. Every\r",
+			"callees": [
+				"src/server/session-db.ts/SessionDB.rowToRecord:921"
+			]
+		},
+		{
+			"id": "src/server/session-db.ts/SessionDB.setMainSession:286",
 			"name": "SessionDB.setMainSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 268,
-			"endLine": 274,
+			"line": 286,
+			"endLine": 292,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method setMainSession(agentId: string, sessionId: string)",
@@ -18443,57 +18554,57 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.listSessions:276",
+			"id": "src/server/session-db.ts/SessionDB.listSessions:294",
 			"name": "SessionDB.listSessions",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 276,
-			"endLine": 281,
+			"line": 294,
+			"endLine": 299,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method listSessions(agentId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:903"
+				"src/server/session-db.ts/SessionDB.rowToRecord:921"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.listAllSessions:283",
+			"id": "src/server/session-db.ts/SessionDB.listAllSessions:301",
 			"name": "SessionDB.listAllSessions",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 283,
-			"endLine": 288,
+			"line": 301,
+			"endLine": 306,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method listAllSessions()",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:903"
+				"src/server/session-db.ts/SessionDB.rowToRecord:921"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:299",
+			"id": "src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:317",
 			"name": "SessionDB.findSessionByAgentAndProject",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 299,
-			"endLine": 305,
+			"line": 317,
+			"endLine": 323,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method findSessionByAgentAndProject(agentId: string, projectId: string)",
 			"description": "v0.8 (M0): find-or-create routing key for `{role(agentId), projectId} → session`.\r",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:903"
+				"src/server/session-db.ts/SessionDB.rowToRecord:921"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateSessionContext:308",
+			"id": "src/server/session-db.ts/SessionDB.updateSessionContext:326",
 			"name": "SessionDB.updateSessionContext",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 308,
-			"endLine": 320,
+			"line": 326,
+			"endLine": 338,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method updateSessionContext(sessionId: string, context: SessionRecord[\"context\"])",
@@ -18501,12 +18612,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getSessionContext:323",
+			"id": "src/server/session-db.ts/SessionDB.getSessionContext:341",
 			"name": "SessionDB.getSessionContext",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 323,
-			"endLine": 333,
+			"line": 341,
+			"endLine": 351,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method getSessionContext(sessionId: string)",
@@ -18514,12 +18625,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteSession:334",
+			"id": "src/server/session-db.ts/SessionDB.deleteSession:352",
 			"name": "SessionDB.deleteSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 334,
-			"endLine": 336,
+			"line": 352,
+			"endLine": 354,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method deleteSession(sessionId: string)",
@@ -18527,12 +18638,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateSessionUsage:338",
+			"id": "src/server/session-db.ts/SessionDB.updateSessionUsage:356",
 			"name": "SessionDB.updateSessionUsage",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 338,
-			"endLine": 343,
+			"line": 356,
+			"endLine": 361,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method updateSessionUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number; estimatedCostUsd: number })",
@@ -18540,12 +18651,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getMessages:349",
+			"id": "src/server/session-db.ts/SessionDB.getMessages:367",
 			"name": "SessionDB.getMessages",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 349,
-			"endLine": 354,
+			"line": 367,
+			"endLine": 372,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getMessages(sessionId: string)",
@@ -18553,12 +18664,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getMessagesWithSeq:356",
+			"id": "src/server/session-db.ts/SessionDB.getMessagesWithSeq:374",
 			"name": "SessionDB.getMessagesWithSeq",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 356,
-			"endLine": 360,
+			"line": 374,
+			"endLine": 378,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getMessagesWithSeq(sessionId: string)",
@@ -18566,12 +18677,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getMessageCount:362",
+			"id": "src/server/session-db.ts/SessionDB.getMessageCount:380",
 			"name": "SessionDB.getMessageCount",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 362,
-			"endLine": 367,
+			"line": 380,
+			"endLine": 385,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getMessageCount(sessionId: string)",
@@ -18579,12 +18690,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.saveTurn:369",
+			"id": "src/server/session-db.ts/SessionDB.saveTurn:387",
 			"name": "SessionDB.saveTurn",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 369,
-			"endLine": 394,
+			"line": 387,
+			"endLine": 412,
 			"statementCount": 15,
 			"exported": true,
 			"signature": "method saveTurn(sessionId: string, messages: any[])",
@@ -18592,12 +18703,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteMessage:396",
+			"id": "src/server/session-db.ts/SessionDB.deleteMessage:414",
 			"name": "SessionDB.deleteMessage",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 396,
-			"endLine": 403,
+			"line": 414,
+			"endLine": 421,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method deleteMessage(sessionId: string, seq: number)",
@@ -18605,12 +18716,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateMessageContent:405",
+			"id": "src/server/session-db.ts/SessionDB.updateMessageContent:423",
 			"name": "SessionDB.updateMessageContent",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 405,
-			"endLine": 414,
+			"line": 423,
+			"endLine": 432,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method updateMessageContent(sessionId: string, seq: number, content: string, msgJson: string)",
@@ -18618,12 +18729,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.ensureSession:417",
+			"id": "src/server/session-db.ts/SessionDB.ensureSession:435",
 			"name": "SessionDB.ensureSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 417,
-			"endLine": 424,
+			"line": 435,
+			"endLine": 442,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method ensureSession(sessionId: string)",
@@ -18631,44 +18742,44 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.migrateMessageFiles:430",
+			"id": "src/server/session-db.ts/SessionDB.migrateMessageFiles:448",
 			"name": "SessionDB.migrateMessageFiles",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 430,
-			"endLine": 464,
+			"line": 448,
+			"endLine": 482,
 			"statementCount": 22,
 			"exported": true,
 			"signature": "method migrateMessageFiles()",
 			"description": "",
 			"callees": [
 				"src/server/session-db.ts/SessionDB.createSession:242",
-				"src/server/session-db.ts/SessionDB.setMainSession:268",
-				"src/server/session-db.ts/SessionDB.saveTurn:369"
+				"src/server/session-db.ts/SessionDB.setMainSession:286",
+				"src/server/session-db.ts/SessionDB.saveTurn:387"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.appendTurn:470",
+			"id": "src/server/session-db.ts/SessionDB.appendTurn:488",
 			"name": "SessionDB.appendTurn",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 470,
-			"endLine": 480,
+			"line": 488,
+			"endLine": 498,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method appendTurn(sessionId: string, seq: number, role: string, content: string | null)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:417"
+				"src/server/session-db.ts/SessionDB.ensureSession:435"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getTurns:482",
+			"id": "src/server/session-db.ts/SessionDB.getTurns:500",
 			"name": "SessionDB.getTurns",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 482,
-			"endLine": 493,
+			"line": 500,
+			"endLine": 511,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getTurns(sessionId: string)",
@@ -18676,12 +18787,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getTurnCount:495",
+			"id": "src/server/session-db.ts/SessionDB.getTurnCount:513",
 			"name": "SessionDB.getTurnCount",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 495,
-			"endLine": 498,
+			"line": 513,
+			"endLine": 516,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getTurnCount(sessionId: string)",
@@ -18689,12 +18800,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.clearTurns:500",
+			"id": "src/server/session-db.ts/SessionDB.clearTurns:518",
 			"name": "SessionDB.clearTurns",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 500,
-			"endLine": 502,
+			"line": 518,
+			"endLine": 520,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method clearTurns(sessionId: string)",
@@ -18702,12 +18813,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteTurn:504",
+			"id": "src/server/session-db.ts/SessionDB.deleteTurn:522",
 			"name": "SessionDB.deleteTurn",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 504,
-			"endLine": 506,
+			"line": 522,
+			"endLine": 524,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method deleteTurn(sessionId: string, seq: number)",
@@ -18715,12 +18826,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateTurnContent:508",
+			"id": "src/server/session-db.ts/SessionDB.updateTurnContent:526",
 			"name": "SessionDB.updateTurnContent",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 508,
-			"endLine": 517,
+			"line": 526,
+			"endLine": 535,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method updateTurnContent(sessionId: string, seq: number, content: string)",
@@ -18728,27 +18839,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.upsertAssistantTurn:520",
+			"id": "src/server/session-db.ts/SessionDB.upsertAssistantTurn:538",
 			"name": "SessionDB.upsertAssistantTurn",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 520,
-			"endLine": 536,
+			"line": 538,
+			"endLine": 554,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method upsertAssistantTurn(sessionId: string, seq: number, content: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:417"
+				"src/server/session-db.ts/SessionDB.ensureSession:435"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getSteps:542",
+			"id": "src/server/session-db.ts/SessionDB.getSteps:560",
 			"name": "SessionDB.getSteps",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 542,
-			"endLine": 561,
+			"line": 560,
+			"endLine": 579,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getSteps(sessionId: string)",
@@ -18756,12 +18867,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getStepGroup:563",
+			"id": "src/server/session-db.ts/SessionDB.getStepGroup:581",
 			"name": "SessionDB.getStepGroup",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 563,
-			"endLine": 582,
+			"line": 581,
+			"endLine": 600,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getStepGroup(sessionId: string, turnGroup: number)",
@@ -18769,42 +18880,42 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.appendStep:584",
+			"id": "src/server/session-db.ts/SessionDB.appendStep:602",
 			"name": "SessionDB.appendStep",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 584,
-			"endLine": 605,
+			"line": 602,
+			"endLine": 623,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method appendStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number })",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:417"
+				"src/server/session-db.ts/SessionDB.ensureSession:435"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.upsertStep:607",
+			"id": "src/server/session-db.ts/SessionDB.upsertStep:625",
 			"name": "SessionDB.upsertStep",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 607,
-			"endLine": 639,
+			"line": 625,
+			"endLine": 657,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method upsertStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number })",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:417"
+				"src/server/session-db.ts/SessionDB.ensureSession:435"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateStepContent:641",
+			"id": "src/server/session-db.ts/SessionDB.updateStepContent:659",
 			"name": "SessionDB.updateStepContent",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 641,
-			"endLine": 660,
+			"line": 659,
+			"endLine": 678,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method updateStepContent(sessionId: string, seq: number, content: string, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number })",
@@ -18812,12 +18923,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteStepGroup:662",
+			"id": "src/server/session-db.ts/SessionDB.deleteStepGroup:680",
 			"name": "SessionDB.deleteStepGroup",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 662,
-			"endLine": 669,
+			"line": 680,
+			"endLine": 687,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method deleteStepGroup(sessionId: string, turnGroup: number)",
@@ -18825,12 +18936,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getTurnGroupCount:671",
+			"id": "src/server/session-db.ts/SessionDB.getTurnGroupCount:689",
 			"name": "SessionDB.getTurnGroupCount",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 671,
-			"endLine": 676,
+			"line": 689,
+			"endLine": 694,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getTurnGroupCount(sessionId: string)",
@@ -18838,12 +18949,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.replaceStepsFromMessages:680",
+			"id": "src/server/session-db.ts/SessionDB.replaceStepsFromMessages:698",
 			"name": "SessionDB.replaceStepsFromMessages",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 680,
-			"endLine": 705,
+			"line": 698,
+			"endLine": 723,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method replaceStepsFromMessages(sessionId: string, steps: Array<{\r\n\t\t\tseq: number; turnGroup: number; role: string;\r\n\t\t\tcontent: string | null;\r\n\t\t\tusage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };\r\n\t\t}>)",
@@ -18851,12 +18962,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.createTurnState:711",
+			"id": "src/server/session-db.ts/SessionDB.createTurnState:729",
 			"name": "SessionDB.createTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 711,
-			"endLine": 721,
+			"line": 729,
+			"endLine": 739,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method createTurnState(sessionId: string, turnSeq: number)",
@@ -18864,12 +18975,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateTurnPhase:723",
+			"id": "src/server/session-db.ts/SessionDB.updateTurnPhase:741",
 			"name": "SessionDB.updateTurnPhase",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 723,
-			"endLine": 733,
+			"line": 741,
+			"endLine": 751,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method updateTurnPhase(sessionId: string, turnSeq: number, phase: string, checkpoint?: any)",
@@ -18877,12 +18988,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.completeTurnState:735",
+			"id": "src/server/session-db.ts/SessionDB.completeTurnState:753",
 			"name": "SessionDB.completeTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 735,
-			"endLine": 745,
+			"line": 753,
+			"endLine": 763,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method completeTurnState(sessionId: string, turnSeq: number)",
@@ -18890,12 +19001,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.failTurnState:747",
+			"id": "src/server/session-db.ts/SessionDB.failTurnState:765",
 			"name": "SessionDB.failTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 747,
-			"endLine": 757,
+			"line": 765,
+			"endLine": 775,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method failTurnState(sessionId: string, turnSeq: number, error: string)",
@@ -18903,12 +19014,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurns:759",
+			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurns:777",
 			"name": "SessionDB.getIncompleteTurns",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 759,
-			"endLine": 775,
+			"line": 777,
+			"endLine": 793,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getIncompleteTurns()",
@@ -18916,12 +19027,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.cleanOldTurnState:777",
+			"id": "src/server/session-db.ts/SessionDB.cleanOldTurnState:795",
 			"name": "SessionDB.cleanOldTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 777,
-			"endLine": 793,
+			"line": 795,
+			"endLine": 811,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method cleanOldTurnState(maxAgeMs: number)",
@@ -18929,12 +19040,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteTurnState:795",
+			"id": "src/server/session-db.ts/SessionDB.deleteTurnState:813",
 			"name": "SessionDB.deleteTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 795,
-			"endLine": 797,
+			"line": 813,
+			"endLine": 815,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method deleteTurnState(sessionId: string)",
@@ -18942,12 +19053,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.recordToolExecution:803",
+			"id": "src/server/session-db.ts/SessionDB.recordToolExecution:821",
 			"name": "SessionDB.recordToolExecution",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 803,
-			"endLine": 828,
+			"line": 821,
+			"endLine": 846,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method recordToolExecution(exec: {\r\n\t\tsessionId: string;\r\n\t\tagentId: string;\r\n\t\ttoolName: string;\r\n\t\tsuccess: boolean;\r\n\t\terrorMessage?: string;\r\n\t\tinputPreview?: string;\r\n\t\toutputPreview?: string;\r\n\t\tdurationMs: number;\r\n\t\tturnSeq?: number;\r\n\t})",
@@ -18955,27 +19066,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.queryToolExecutions:830",
+			"id": "src/server/session-db.ts/SessionDB.queryToolExecutions:848",
 			"name": "SessionDB.queryToolExecutions",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 830,
-			"endLine": 844,
+			"line": 848,
+			"endLine": 862,
 			"statementCount": 19,
 			"exported": true,
 			"signature": "method queryToolExecutions(filter: ToolExecutionFilter)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:875"
+				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:893"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getToolExecutionStats:846",
+			"id": "src/server/session-db.ts/SessionDB.getToolExecutionStats:864",
 			"name": "SessionDB.getToolExecutionStats",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 846,
-			"endLine": 864,
+			"line": 864,
+			"endLine": 882,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method getToolExecutionStats(agentId?: string)",
@@ -18983,12 +19094,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.cleanOldToolExecutions:866",
+			"id": "src/server/session-db.ts/SessionDB.cleanOldToolExecutions:884",
 			"name": "SessionDB.cleanOldToolExecutions",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 866,
-			"endLine": 873,
+			"line": 884,
+			"endLine": 891,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method cleanOldToolExecutions(maxAgeMs: number)",
@@ -18996,12 +19107,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.toolExecRowToRecord:875",
+			"id": "src/server/session-db.ts/SessionDB.toolExecRowToRecord:893",
 			"name": "SessionDB.toolExecRowToRecord",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 875,
-			"endLine": 889,
+			"line": 893,
+			"endLine": 907,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method toolExecRowToRecord(row: any)",
@@ -19009,27 +19120,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.close:895",
+			"id": "src/server/session-db.ts/SessionDB.close:913",
 			"name": "SessionDB.close",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 895,
-			"endLine": 897,
+			"line": 913,
+			"endLine": 915,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method close()",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.close:895"
+				"src/server/session-db.ts/SessionDB.close:913"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.rowToRecord:903",
+			"id": "src/server/session-db.ts/SessionDB.rowToRecord:921",
 			"name": "SessionDB.rowToRecord",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 903,
-			"endLine": 941,
+			"line": 921,
+			"endLine": 959,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method rowToRecord(row: any)",
@@ -19643,12 +19754,12 @@
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.columnDef:100",
+			"id": "src/server/sqlite-store.ts/SqliteStore.columnDef:101",
 			"name": "SqliteStore.columnDef",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 100,
-			"endLine": 106,
+			"line": 101,
+			"endLine": 107,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method columnDef(snakeCol: string)",
@@ -19656,27 +19767,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.ensureTable:108",
+			"id": "src/server/sqlite-store.ts/SqliteStore.ensureTable:109",
 			"name": "SqliteStore.ensureTable",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 108,
-			"endLine": 123,
+			"line": 109,
+			"endLine": 124,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method ensureTable()",
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.columnDef:100"
+				"src/server/sqlite-store.ts/SqliteStore.columnDef:101"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.ensureColumn:126",
+			"id": "src/server/sqlite-store.ts/SqliteStore.ensureColumn:127",
 			"name": "SqliteStore.ensureColumn",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 126,
-			"endLine": 133,
+			"line": 127,
+			"endLine": 134,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method ensureColumn(columnName: string, columnDef: string)",
@@ -19684,12 +19795,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.initStatements:135",
+			"id": "src/server/sqlite-store.ts/SqliteStore.initStatements:136",
 			"name": "SqliteStore.initStatements",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 135,
-			"endLine": 154,
+			"line": 136,
+			"endLine": 155,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method initStatements()",
@@ -19697,147 +19808,152 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.list:158",
+			"id": "src/server/sqlite-store.ts/SqliteStore.list:159",
 			"name": "SqliteStore.list",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 158,
-			"endLine": 160,
+			"line": 159,
+			"endLine": 161,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method list()",
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:268"
+				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:294"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.get:162",
+			"id": "src/server/sqlite-store.ts/SqliteStore.get:163",
 			"name": "SqliteStore.get",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 162,
-			"endLine": 165,
+			"line": 163,
+			"endLine": 166,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method get(id: string)",
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.get:162",
-				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:268"
+				"src/server/sqlite-store.ts/SqliteStore.get:163",
+				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:294"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.create:167",
+			"id": "src/server/sqlite-store.ts/SqliteStore.create:168",
 			"name": "SqliteStore.create",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 167,
-			"endLine": 172,
+			"line": 168,
+			"endLine": 173,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method create(input: Omit<T, \"id\" | \"createdAt\" | \"updatedAt\">)",
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.insertRow:245"
+				"src/server/sqlite-store.ts/SqliteStore.insertRow:269"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.createWithId:180",
+			"id": "src/server/sqlite-store.ts/SqliteStore.createWithId:181",
 			"name": "SqliteStore.createWithId",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 180,
-			"endLine": 185,
+			"line": 181,
+			"endLine": 186,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method createWithId(id: string, input: Omit<T, \"id\" | \"createdAt\" | \"updatedAt\">)",
 			"description": "Create a record with a **caller-supplied id** (instead of an auto-generated\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.insertRow:245"
+				"src/server/sqlite-store.ts/SqliteStore.insertRow:269"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.update:187",
+			"id": "src/server/sqlite-store.ts/SqliteStore.update:188",
 			"name": "SqliteStore.update",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 187,
-			"endLine": 199,
-			"statementCount": 6,
+			"line": 188,
+			"endLine": 222,
+			"statementCount": 19,
 			"exported": true,
 			"signature": "method update(id: string, input: Partial<Omit<T, \"id\" | \"createdAt\">>)",
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.get:162",
-				"src/server/sqlite-store.ts/SqliteStore.updateRow:250"
+				"src/server/sqlite-store.ts/SqliteStore.get:163",
+				"src/server/sqlite-store.ts/scalarEqual:343",
+				"src/server/sqlite-store.ts/SqliteStore.updateRow:275"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.delete:201",
+			"id": "src/server/sqlite-store.ts/SqliteStore.delete:224",
 			"name": "SqliteStore.delete",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 201,
-			"endLine": 203,
-			"statementCount": 1,
+			"line": 224,
+			"endLine": 227,
+			"statementCount": 2,
 			"exported": true,
 			"signature": "method delete(id: string)",
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
-			"callees": []
+			"callees": [
+				"src/server/data-change-hub.ts/emitDataChange:85"
+			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.migrateFromJson:209",
+			"id": "src/server/sqlite-store.ts/SqliteStore.migrateFromJson:233",
 			"name": "SqliteStore.migrateFromJson",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 209,
-			"endLine": 241,
+			"line": 233,
+			"endLine": 265,
 			"statementCount": 18,
 			"exported": true,
 			"signature": "method migrateFromJson(jsonPath: string, arrayKey: string, transform?: (raw: any) => any)",
 			"description": "Bulk insert from a JSON file migration.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.insertRow:245"
+				"src/server/sqlite-store.ts/SqliteStore.insertRow:269"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.insertRow:245",
+			"id": "src/server/sqlite-store.ts/SqliteStore.insertRow:269",
 			"name": "SqliteStore.insertRow",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 245,
-			"endLine": 248,
-			"statementCount": 2,
+			"line": 269,
+			"endLine": 273,
+			"statementCount": 3,
 			"exported": true,
 			"signature": "method insertRow(record: T)",
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:257"
+				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:283",
+				"src/server/data-change-hub.ts/emitDataChange:85"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.updateRow:250",
+			"id": "src/server/sqlite-store.ts/SqliteStore.updateRow:275",
 			"name": "SqliteStore.updateRow",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 250,
-			"endLine": 255,
-			"statementCount": 4,
+			"line": 275,
+			"endLine": 281,
+			"statementCount": 5,
 			"exported": true,
 			"signature": "method updateRow(id: string, record: T)",
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:257"
+				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:283",
+				"src/server/data-change-hub.ts/emitDataChange:85"
 			]
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.toColumnValue:257",
+			"id": "src/server/sqlite-store.ts/SqliteStore.toColumnValue:283",
 			"name": "SqliteStore.toColumnValue",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 257,
-			"endLine": 266,
+			"line": 283,
+			"endLine": 292,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method toColumnValue(record: T, snakeCol: string)",
@@ -19845,12 +19961,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/sqlite-store.ts/SqliteStore.rowToRecord:268",
+			"id": "src/server/sqlite-store.ts/SqliteStore.rowToRecord:294",
 			"name": "SqliteStore.rowToRecord",
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
-			"line": 268,
-			"endLine": 285,
+			"line": 294,
+			"endLine": 311,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method rowToRecord(row: Record<string, any>)",
@@ -19858,16 +19974,29 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/sqlite-store.ts/camelToSnake:307",
+			"id": "src/server/sqlite-store.ts/camelToSnake:333",
 			"name": "camelToSnake",
 			"kind": "function",
 			"file": "src/server/sqlite-store.ts",
-			"line": 307,
-			"endLine": 309,
+			"line": 333,
+			"endLine": 335,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function camelToSnake(s: string)",
 			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/sqlite-store.ts/scalarEqual:343",
+			"name": "scalarEqual",
+			"kind": "function",
+			"file": "src/server/sqlite-store.ts",
+			"line": 343,
+			"endLine": 354,
+			"statementCount": 5,
+			"exported": false,
+			"signature": "function scalarEqual(a: unknown, b: unknown)",
+			"description": "Compare two scalar values for the SqliteStore no-op check. Numbers compare\r",
 			"callees": []
 		},
 		{
@@ -20143,137 +20272,154 @@
 			"kind": "method",
 			"file": "src/server/template-store.ts",
 			"line": 927,
-			"endLine": 961,
-			"statementCount": 13,
+			"endLine": 976,
+			"statementCount": 19,
 			"exported": true,
 			"signature": "method mergeBuiltInTemplates()",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.list:963",
-				"src/server/template-store.ts/TemplateStore.get:967",
-				"src/server/template-store.ts/TemplateStore.create:971",
-				"src/server/template-store.ts/TemplateStore.update:975"
+				"src/server/template-store.ts/TemplateStore.list:978",
+				"src/server/template-store.ts/TemplateStore.get:982",
+				"src/server/template-store.ts/TemplateStore.create:1000",
+				"src/server/template-store.ts/TemplateStore.update:1004",
+				"src/server/template-store.ts/TemplateStore.delete:1008"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.list:963",
+			"id": "src/server/template-store.ts/TemplateStore.list:978",
 			"name": "TemplateStore.list",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 963,
-			"endLine": 965,
+			"line": 978,
+			"endLine": 980,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method list()",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.list:963"
+				"src/server/template-store.ts/TemplateStore.list:978"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.get:967",
+			"id": "src/server/template-store.ts/TemplateStore.get:982",
 			"name": "TemplateStore.get",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 967,
-			"endLine": 969,
+			"line": 982,
+			"endLine": 984,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method get(id: string)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.get:967"
+				"src/server/template-store.ts/TemplateStore.get:982"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.create:971",
+			"id": "src/server/template-store.ts/TemplateStore.resolve:993",
+			"name": "TemplateStore.resolve",
+			"kind": "method",
+			"file": "src/server/template-store.ts",
+			"line": 993,
+			"endLine": 998,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method resolve(identifier: string)",
+			"description": "Resolve a template by id OR name. id wins (deterministic, unique); if no\r",
+			"callees": [
+				"src/server/template-store.ts/TemplateStore.get:982",
+				"src/server/template-store.ts/TemplateStore.list:978"
+			]
+		},
+		{
+			"id": "src/server/template-store.ts/TemplateStore.create:1000",
 			"name": "TemplateStore.create",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 971,
-			"endLine": 973,
+			"line": 1000,
+			"endLine": 1002,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method create(input: Omit<PromptTemplate, \"id\" | \"createdAt\" | \"updatedAt\">)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.create:971"
+				"src/server/template-store.ts/TemplateStore.create:1000"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.update:975",
+			"id": "src/server/template-store.ts/TemplateStore.update:1004",
 			"name": "TemplateStore.update",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 975,
-			"endLine": 977,
+			"line": 1004,
+			"endLine": 1006,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method update(id: string, input: Partial<Omit<PromptTemplate, \"id\" | \"createdAt\">>)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.update:975"
+				"src/server/template-store.ts/TemplateStore.update:1004"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.delete:979",
+			"id": "src/server/template-store.ts/TemplateStore.delete:1008",
 			"name": "TemplateStore.delete",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 979,
-			"endLine": 983,
+			"line": 1008,
+			"endLine": 1012,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method delete(id: string)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.get:967",
-				"src/server/template-store.ts/TemplateStore.delete:979"
+				"src/server/template-store.ts/TemplateStore.get:982",
+				"src/server/template-store.ts/TemplateStore.delete:1008"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.exportTemplate:985",
+			"id": "src/server/template-store.ts/TemplateStore.exportTemplate:1014",
 			"name": "TemplateStore.exportTemplate",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 985,
-			"endLine": 989,
+			"line": 1014,
+			"endLine": 1018,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method exportTemplate(id: string)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.get:967"
+				"src/server/template-store.ts/TemplateStore.get:982"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.importTemplate:991",
+			"id": "src/server/template-store.ts/TemplateStore.importTemplate:1020",
 			"name": "TemplateStore.importTemplate",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 991,
-			"endLine": 1009,
+			"line": 1020,
+			"endLine": 1038,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method importTemplate(json: string)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.create:971"
+				"src/server/template-store.ts/TemplateStore.create:1000"
 			]
 		},
 		{
-			"id": "src/server/template-store.ts/TemplateStore.findByNameAndSource:1011",
+			"id": "src/server/template-store.ts/TemplateStore.findByNameAndSource:1040",
 			"name": "TemplateStore.findByNameAndSource",
 			"kind": "method",
 			"file": "src/server/template-store.ts",
-			"line": 1011,
-			"endLine": 1015,
+			"line": 1040,
+			"endLine": 1044,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method findByNameAndSource(name: string, sourceUrl: string)",
 			"description": "",
 			"callees": [
-				"src/server/template-store.ts/TemplateStore.list:963"
+				"src/server/template-store.ts/TemplateStore.list:978"
 			]
 		},
 		{
@@ -22603,7 +22749,7 @@
 			"signature": "function seedTestEnvironment(sessionDb: SessionDB, agentStore: AgentStore, providerStore: ProviderStore, wikiStore?: WikiStore, projectStore?: ProjectStore)",
 			"description": "",
 			"callees": [
-				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
+				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325"
 			]
 		},
 		{
@@ -22824,18 +22970,18 @@
 			"callees": []
 		},
 		{
-			"id": "src/shared/file-utils.ts/buildTree:41",
+			"id": "src/shared/file-utils.ts/buildTree:48",
 			"name": "buildTree",
 			"kind": "function",
 			"file": "src/shared/file-utils.ts",
-			"line": 41,
-			"endLine": 67,
+			"line": 48,
+			"endLine": 74,
 			"statementCount": 14,
 			"exported": true,
 			"signature": "function buildTree(dir: string, basePath: string)",
 			"description": "",
 			"callees": [
-				"src/shared/file-utils.ts/buildTree:41"
+				"src/shared/file-utils.ts/buildTree:48"
 			]
 		},
 		{
@@ -22897,7 +23043,7 @@
 		"src/main/ipc-proxy.ts/connect:355": [
 			"src/main/ipc-proxy.ts/connectEventBridge:352"
 		],
-		"src/main/ipc-proxy.ts/pollReady:388": [
+		"src/main/ipc-proxy.ts/pollReady:390": [
 			"src/main/ipc-proxy.ts/connectEventBridge:352"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:818": [
@@ -23717,6 +23863,9 @@
 		"src/runtime/tools/wiki-path-guard.ts/isWikiDiskPath:68": [
 			"src/runtime/tools/wiki-path-guard.ts/findWikiPathInShellCommand:105"
 		],
+		"src/runtime/tools/wiki-tool.ts/walk:216": [
+			"src/runtime/tools/wiki-tool.ts/walk:216"
+		],
 		"src/runtime/transcript-delta.ts/renderStep:86": [
 			"src/runtime/transcript-delta.ts/sliceTranscriptDelta:53"
 		],
@@ -23773,7 +23922,7 @@
 			"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:307",
 			"src/runtime/wiki-anchor-injection.ts/visit:309"
 		],
-		"src/server/agent-service.ts/AgentService.invalidateLoops:1079": [
+		"src/server/agent-service.ts/AgentService.invalidateLoops:1105": [
 			"src/server/agent-service.ts/AgentService.setWorkspaceDir:159",
 			"src/server/agent-service.ts/AgentService.setProviders:165"
 		],
@@ -23795,8 +23944,8 @@
 		],
 		"src/server/agent-service.ts/AgentService.abort:699": [
 			"src/server/agent-service.ts/AgentService.evictSessionFromMemory:267",
-			"src/server/agent-service.ts/AgentService.dispose:1063",
-			"src/server/agent-service.ts/AgentService.invalidateLoops:1079"
+			"src/server/agent-service.ts/AgentService.dispose:1089",
+			"src/server/agent-service.ts/AgentService.invalidateLoops:1105"
 		],
 		"src/server/agent-service.ts/AgentService.createLoopForSession:397": [
 			"src/server/agent-service.ts/AgentService.getOrCreateLoop:374",
@@ -23804,7 +23953,7 @@
 			"src/server/agent-service.ts/AgentService.sendPrompt:523",
 			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:716",
 			"src/server/agent-service.ts/AgentService.restoreAllSessions:773",
-			"src/server/agent-service.ts/AgentService.activateSession:791"
+			"src/server/agent-service.ts/AgentService.activateSession:803"
 		],
 		"src/runtime/tools/mcp-tool.ts/buildMcpTools:110": [
 			"src/server/agent-service.ts/AgentService.createLoopForSession:397",
@@ -23814,18 +23963,18 @@
 			"src/server/agent-service.ts/AgentService.createLoopForSession:397",
 			"src/server/agent-service.ts/AgentService.on:471"
 		],
-		"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1090": [
+		"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1116": [
 			"src/server/agent-service.ts/AgentService.createLoopForSession:397",
 			"src/server/agent-service.ts/AgentService.sendRolePrompt:556"
 		],
 		"src/server/agent-service.ts/AgentService.getOrCreateLoop:374": [
 			"src/server/agent-service.ts/AgentService.sendPrompt:523"
 		],
-		"src/server/agent-service.ts/AgentService.emit:1131": [
+		"src/server/agent-service.ts/AgentService.emit:1157": [
 			"src/server/agent-service.ts/AgentService.sendPrompt:523",
 			"src/server/agent-service.ts/AgentService.sendRolePrompt:556",
-			"src/server/agent-service.ts/AgentService.activateSession:791",
-			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1090"
+			"src/server/agent-service.ts/AgentService.activateSession:803",
+			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1116"
 		],
 		"src/server/agent-service.ts/AgentService.whenReady:256": [
 			"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:711"
@@ -23839,27 +23988,27 @@
 		"src/runtime/hooks/turn-hooks.ts/setTurnSeq:37": [
 			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:716"
 		],
-		"src/server/agent-service.ts/AgentService.buildSessionInitMessages:858": [
-			"src/server/agent-service.ts/AgentService.activateSession:791"
+		"src/server/agent-service.ts/AgentService.buildSessionInitMessages:884": [
+			"src/server/agent-service.ts/AgentService.activateSession:803"
 		],
-		"src/server/agent-service.ts/normalizeBlockArgsForUi:1153": [
-			"src/server/agent-service.ts/AgentService.normalizeBlockArgs:854"
+		"src/server/agent-service.ts/normalizeBlockArgsForUi:1179": [
+			"src/server/agent-service.ts/AgentService.normalizeBlockArgs:880"
 		],
-		"src/server/agent-service.ts/AgentService.buildStepLevelMessages:875": [
-			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:858"
+		"src/server/agent-service.ts/AgentService.buildStepLevelMessages:901": [
+			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:884"
 		],
-		"src/server/agent-service.ts/AgentService.buildLegacyMessages:991": [
-			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:858"
+		"src/server/agent-service.ts/AgentService.buildLegacyMessages:1017": [
+			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:884"
 		],
-		"src/server/agent-service.ts/AgentService.normalizeBlockArgs:854": [
-			"src/server/agent-service.ts/AgentService.buildStepLevelMessages:875",
-			"src/server/agent-service.ts/AgentService.buildLegacyMessages:991"
+		"src/server/agent-service.ts/AgentService.normalizeBlockArgs:880": [
+			"src/server/agent-service.ts/AgentService.buildStepLevelMessages:901",
+			"src/server/agent-service.ts/AgentService.buildLegacyMessages:1017"
 		],
-		"src/server/agent-service.ts/AgentService.dispose:1063": [
-			"src/server/agent-service.ts/AgentService.dispose:1063"
+		"src/server/agent-service.ts/AgentService.dispose:1089": [
+			"src/server/agent-service.ts/AgentService.dispose:1089"
 		],
-		"src/server/agent-service.ts/AgentService.findStateByAgentId:1125": [
-			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1090"
+		"src/server/agent-service.ts/AgentService.findStateByAgentId:1151": [
+			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1116"
 		],
 		"src/server/agent-store.ts/AgentStore.delete:179": [
 			"src/server/agent-store.ts/AgentStore.onChange:117",
@@ -23867,7 +24016,8 @@
 		],
 		"src/server/agent-store.ts/AgentStore.list:128": [
 			"src/server/agent-store.ts/AgentStore.list:128",
-			"src/server/agent-store.ts/AgentStore.listByRoleTag:144"
+			"src/server/agent-store.ts/AgentStore.listByRoleTag:144",
+			"src/server/agent-store.ts/AgentStore.delete:179"
 		],
 		"src/server/agent-store.ts/AgentStore.get:157": [
 			"src/server/agent-store.ts/AgentStore.get:157",
@@ -23886,7 +24036,8 @@
 			"src/server/agent-store.ts/AgentStore.delete:179"
 		],
 		"src/server/agent-store.ts/AgentStore.update:169": [
-			"src/server/agent-store.ts/AgentStore.update:169"
+			"src/server/agent-store.ts/AgentStore.update:169",
+			"src/server/agent-store.ts/AgentStore.delete:179"
 		],
 		"src/server/analyst-service.ts/AnalystService.runIncrementalAnalysis:127": [
 			"src/server/analyst-service.ts/AnalystService.runFullAnalysis:91"
@@ -24031,7 +24182,7 @@
 		],
 		"src/server/workspace-config.ts/loadWorkspaceConfig:40": [
 			"src/server/config-router.ts/createConfigRouter:41",
-			"src/server/index.ts/startServer:102",
+			"src/server/index.ts/startServer:103",
 			"src/server/workspace-config.ts/saveWorkspaceConfig:48"
 		],
 		"src/server/workspace-config.ts/saveWorkspaceConfig:48": [
@@ -24242,35 +24393,35 @@
 		"src/server/file-router.ts/getRoot:44": [
 			"src/server/file-router.ts/createFileRouter:41"
 		],
-		"src/shared/file-utils.ts/buildTree:41": [
+		"src/shared/file-utils.ts/buildTree:48": [
 			"src/server/file-router.ts/createFileRouter:41",
-			"src/shared/file-utils.ts/buildTree:41"
+			"src/shared/file-utils.ts/buildTree:48"
 		],
-		"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320": [
-			"src/server/fresh-db-seed.ts/seedFreshDbDefaults:259",
+		"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325": [
+			"src/server/fresh-db-seed.ts/seedFreshDbDefaults:264",
 			"src/core/test-seed.ts/seedTestEnvironment:56"
 		],
-		"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:334": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
+		"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:339": [
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325"
 		],
-		"src/server/fresh-db-seed.ts/ensureWorkflowNode:353": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
+		"src/server/fresh-db-seed.ts/ensureWorkflowNode:358": [
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325"
 		],
-		"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:372": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
+		"src/server/fresh-db-seed.ts/ensureSoftwareDevNode:377": [
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325"
 		],
-		"src/server/fresh-db-seed.ts/ensureProjectsRoot:420": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
+		"src/server/fresh-db-seed.ts/ensureProjectsRoot:434": [
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325"
 		],
-		"src/server/fresh-db-seed.ts/ensureMemoryRoot:442": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320"
+		"src/server/fresh-db-seed.ts/ensureMemoryRoot:456": [
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325"
 		],
 		"src/server/fresh-db-seed.ts/ensureNodeDetail:75": [
-			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:320",
-			"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:334",
-			"src/server/fresh-db-seed.ts/ensureWorkflowNode:353",
-			"src/server/fresh-db-seed.ts/ensureProjectsRoot:420",
-			"src/server/fresh-db-seed.ts/ensureMemoryRoot:442"
+			"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325",
+			"src/server/fresh-db-seed.ts/ensureKnowledgeRoot:339",
+			"src/server/fresh-db-seed.ts/ensureWorkflowNode:358",
+			"src/server/fresh-db-seed.ts/ensureProjectsRoot:434",
+			"src/server/fresh-db-seed.ts/ensureMemoryRoot:456"
 		],
 		"src/server/git-integration.ts/slugify:46": [
 			"src/server/git-integration.ts/GitIntegration.createRequirementBranch:67"
@@ -24285,96 +24436,99 @@
 			"src/server/git-integration.ts/GitIntegration.createPullRequest:222"
 		],
 		"src/server/db-migration.ts/runMigrations:566": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/runtime/tools/index.ts/registerRuntimeTools:140": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/workflow-context-hook.ts/registerWorkflowContextHook:67": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/runtime/proxy-manager.ts/applyProxy:30": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
-		"src/server/agent-service.ts/createAgentService:1137": [
-			"src/server/index.ts/startServer:102"
+		"src/server/agent-service.ts/createAgentService:1163": [
+			"src/server/index.ts/startServer:103"
 		],
-		"src/server/index.ts/broadcast:254": [
-			"src/server/index.ts/startServer:102"
+		"src/server/data-change-hub.ts/onDataChange:97": [
+			"src/server/index.ts/startServer:103"
+		],
+		"src/server/index.ts/broadcast:258": [
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/mcp-scanner.ts/scanExternalMcpConfigs:156": [
-			"src/server/index.ts/startServer:102",
+			"src/server/index.ts/startServer:103",
 			"src/server/mcp-router.ts/createMcpRouter:29"
 		],
 		"src/server/mcp-scanner.ts/mergeDetectedServers:202": [
-			"src/server/index.ts/startServer:102",
+			"src/server/index.ts/startServer:103",
 			"src/server/mcp-router.ts/createMcpRouter:29"
 		],
 		"src/server/config-router.ts/createConfigRouter:41": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/agent-router.ts/createAgentRouter:28": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/provider-router.ts/createProviderRouter:36": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/template-router.ts/createTemplateRouter:47": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/mcp-router.ts/createMcpRouter:29": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/kb-router.ts/createKbRouter:34": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/skill-router.ts/createSkillRouter:30": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/memory-node-router.ts/createMemoryNodeRouter:38": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/chat-router.ts/createChatRouter:37": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/session-router.ts/createSessionRouter:37": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/log-router.ts/createLogRouter:55": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/file-router.ts/createFileRouter:41": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/tool-execution-router.ts/createToolExecutionRouter:39": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/project-router.ts/createProjectRouter:36": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/requirement-router.ts/createRequirementRouter:28": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/project-wiki-router.ts/createWikiRouter:26": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/wiki-router.ts/createWikiRouter:60": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/wiki-router.ts/createWorkspaceDocHandler:152": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolExecute:316": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/runtime/mcp-tools/fetch-tools.ts/getCookieCount:421": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
 		"src/runtime/mcp-tools/fetch-tools.ts/clearCookies:429": [
-			"src/server/index.ts/startServer:102"
+			"src/server/index.ts/startServer:103"
 		],
-		"src/server/index.ts/expandHome:83": [
-			"src/server/index.ts/startServer:102"
+		"src/server/index.ts/expandHome:84": [
+			"src/server/index.ts/startServer:103"
 		],
 		"src/server/kb-db.ts/KbDB.close:126": [
 			"src/server/kb-db.ts/KbDB.close:126"
@@ -24453,15 +24607,15 @@
 		"src/server/management-service.ts/ManagementService.requireTemplateStore:133": [
 			"src/server/management-service.ts/ManagementService.listTemplates:414",
 			"src/server/management-service.ts/ManagementService.getTemplate:418",
-			"src/server/management-service.ts/ManagementService.instantiateTemplate:431"
+			"src/server/management-service.ts/ManagementService.instantiateTemplate:435"
 		],
 		"src/server/management-service.ts/ManagementService.requireCronStore:149": [
-			"src/server/management-service.ts/ManagementService.createCron:478",
-			"src/server/management-service.ts/ManagementService.updateCron:505",
-			"src/server/management-service.ts/ManagementService.deleteCron:516",
-			"src/server/management-service.ts/ManagementService.listCrons:524",
-			"src/server/management-service.ts/ManagementService.getCron:535",
-			"src/server/management-service.ts/ManagementService.triggerCron:547"
+			"src/server/management-service.ts/ManagementService.createCron:482",
+			"src/server/management-service.ts/ManagementService.updateCron:509",
+			"src/server/management-service.ts/ManagementService.deleteCron:520",
+			"src/server/management-service.ts/ManagementService.listCrons:528",
+			"src/server/management-service.ts/ManagementService.getCron:539",
+			"src/server/management-service.ts/ManagementService.triggerCron:551"
 		],
 		"src/server/mcp-manager.ts/MCPManager.disconnect:146": [
 			"src/server/mcp-manager.ts/MCPManager.connect:65",
@@ -24769,33 +24923,34 @@
 		"src/server/session-db.ts/SessionDB.migrateToolNames:225": [
 			"src/server/session-db.ts/SessionDB.initSchema:114"
 		],
-		"src/server/session-db.ts/SessionDB.rowToRecord:903": [
+		"src/server/session-db.ts/SessionDB.rowToRecord:921": [
 			"src/server/session-db.ts/SessionDB.getSession:258",
 			"src/server/session-db.ts/SessionDB.getMainSession:263",
-			"src/server/session-db.ts/SessionDB.listSessions:276",
-			"src/server/session-db.ts/SessionDB.listAllSessions:283",
-			"src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:299"
+			"src/server/session-db.ts/SessionDB.getMostRecentSession:278",
+			"src/server/session-db.ts/SessionDB.listSessions:294",
+			"src/server/session-db.ts/SessionDB.listAllSessions:301",
+			"src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:317"
 		],
 		"src/server/session-db.ts/SessionDB.createSession:242": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:430"
+			"src/server/session-db.ts/SessionDB.migrateMessageFiles:448"
 		],
-		"src/server/session-db.ts/SessionDB.setMainSession:268": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:430"
+		"src/server/session-db.ts/SessionDB.setMainSession:286": [
+			"src/server/session-db.ts/SessionDB.migrateMessageFiles:448"
 		],
-		"src/server/session-db.ts/SessionDB.saveTurn:369": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:430"
+		"src/server/session-db.ts/SessionDB.saveTurn:387": [
+			"src/server/session-db.ts/SessionDB.migrateMessageFiles:448"
 		],
-		"src/server/session-db.ts/SessionDB.ensureSession:417": [
-			"src/server/session-db.ts/SessionDB.appendTurn:470",
-			"src/server/session-db.ts/SessionDB.upsertAssistantTurn:520",
-			"src/server/session-db.ts/SessionDB.appendStep:584",
-			"src/server/session-db.ts/SessionDB.upsertStep:607"
+		"src/server/session-db.ts/SessionDB.ensureSession:435": [
+			"src/server/session-db.ts/SessionDB.appendTurn:488",
+			"src/server/session-db.ts/SessionDB.upsertAssistantTurn:538",
+			"src/server/session-db.ts/SessionDB.appendStep:602",
+			"src/server/session-db.ts/SessionDB.upsertStep:625"
 		],
-		"src/server/session-db.ts/SessionDB.toolExecRowToRecord:875": [
-			"src/server/session-db.ts/SessionDB.queryToolExecutions:830"
+		"src/server/session-db.ts/SessionDB.toolExecRowToRecord:893": [
+			"src/server/session-db.ts/SessionDB.queryToolExecutions:848"
 		],
-		"src/server/session-db.ts/SessionDB.close:895": [
-			"src/server/session-db.ts/SessionDB.close:895"
+		"src/server/session-db.ts/SessionDB.close:913": [
+			"src/server/session-db.ts/SessionDB.close:913"
 		],
 		"src/server/session-manager.ts/SessionManager.transition:400": [
 			"src/server/session-manager.ts/SessionManager.trackSessionCreated:93",
@@ -24852,28 +25007,36 @@
 		"src/server/skill-scanner.ts/scanDir:116": [
 			"src/server/skill-scanner.ts/scanSkills:167"
 		],
-		"src/server/sqlite-store.ts/SqliteStore.columnDef:100": [
-			"src/server/sqlite-store.ts/SqliteStore.ensureTable:108"
+		"src/server/sqlite-store.ts/SqliteStore.columnDef:101": [
+			"src/server/sqlite-store.ts/SqliteStore.ensureTable:109"
 		],
-		"src/server/sqlite-store.ts/SqliteStore.rowToRecord:268": [
-			"src/server/sqlite-store.ts/SqliteStore.list:158",
-			"src/server/sqlite-store.ts/SqliteStore.get:162"
+		"src/server/sqlite-store.ts/SqliteStore.rowToRecord:294": [
+			"src/server/sqlite-store.ts/SqliteStore.list:159",
+			"src/server/sqlite-store.ts/SqliteStore.get:163"
 		],
-		"src/server/sqlite-store.ts/SqliteStore.get:162": [
-			"src/server/sqlite-store.ts/SqliteStore.get:162",
-			"src/server/sqlite-store.ts/SqliteStore.update:187"
+		"src/server/sqlite-store.ts/SqliteStore.get:163": [
+			"src/server/sqlite-store.ts/SqliteStore.get:163",
+			"src/server/sqlite-store.ts/SqliteStore.update:188"
 		],
-		"src/server/sqlite-store.ts/SqliteStore.insertRow:245": [
-			"src/server/sqlite-store.ts/SqliteStore.create:167",
-			"src/server/sqlite-store.ts/SqliteStore.createWithId:180",
-			"src/server/sqlite-store.ts/SqliteStore.migrateFromJson:209"
+		"src/server/sqlite-store.ts/SqliteStore.insertRow:269": [
+			"src/server/sqlite-store.ts/SqliteStore.create:168",
+			"src/server/sqlite-store.ts/SqliteStore.createWithId:181",
+			"src/server/sqlite-store.ts/SqliteStore.migrateFromJson:233"
 		],
-		"src/server/sqlite-store.ts/SqliteStore.updateRow:250": [
-			"src/server/sqlite-store.ts/SqliteStore.update:187"
+		"src/server/sqlite-store.ts/scalarEqual:343": [
+			"src/server/sqlite-store.ts/SqliteStore.update:188"
 		],
-		"src/server/sqlite-store.ts/SqliteStore.toColumnValue:257": [
-			"src/server/sqlite-store.ts/SqliteStore.insertRow:245",
-			"src/server/sqlite-store.ts/SqliteStore.updateRow:250"
+		"src/server/sqlite-store.ts/SqliteStore.updateRow:275": [
+			"src/server/sqlite-store.ts/SqliteStore.update:188"
+		],
+		"src/server/data-change-hub.ts/emitDataChange:85": [
+			"src/server/sqlite-store.ts/SqliteStore.delete:224",
+			"src/server/sqlite-store.ts/SqliteStore.insertRow:269",
+			"src/server/sqlite-store.ts/SqliteStore.updateRow:275"
+		],
+		"src/server/sqlite-store.ts/SqliteStore.toColumnValue:283": [
+			"src/server/sqlite-store.ts/SqliteStore.insertRow:269",
+			"src/server/sqlite-store.ts/SqliteStore.updateRow:275"
 		],
 		"src/server/task-step-store.ts/TaskStepStore.list:65": [
 			"src/server/task-step-store.ts/TaskStepStore.list:65",
@@ -24918,28 +25081,31 @@
 		"src/shared/github-template-utils.ts/extractTag:39": [
 			"src/server/template-router.ts/createTemplateRouter:47"
 		],
-		"src/server/template-store.ts/TemplateStore.list:963": [
+		"src/server/template-store.ts/TemplateStore.list:978": [
 			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
-			"src/server/template-store.ts/TemplateStore.list:963",
-			"src/server/template-store.ts/TemplateStore.findByNameAndSource:1011"
+			"src/server/template-store.ts/TemplateStore.list:978",
+			"src/server/template-store.ts/TemplateStore.resolve:993",
+			"src/server/template-store.ts/TemplateStore.findByNameAndSource:1040"
 		],
-		"src/server/template-store.ts/TemplateStore.get:967": [
+		"src/server/template-store.ts/TemplateStore.get:982": [
 			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
-			"src/server/template-store.ts/TemplateStore.get:967",
-			"src/server/template-store.ts/TemplateStore.delete:979",
-			"src/server/template-store.ts/TemplateStore.exportTemplate:985"
+			"src/server/template-store.ts/TemplateStore.get:982",
+			"src/server/template-store.ts/TemplateStore.resolve:993",
+			"src/server/template-store.ts/TemplateStore.delete:1008",
+			"src/server/template-store.ts/TemplateStore.exportTemplate:1014"
 		],
-		"src/server/template-store.ts/TemplateStore.create:971": [
+		"src/server/template-store.ts/TemplateStore.create:1000": [
 			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
-			"src/server/template-store.ts/TemplateStore.create:971",
-			"src/server/template-store.ts/TemplateStore.importTemplate:991"
+			"src/server/template-store.ts/TemplateStore.create:1000",
+			"src/server/template-store.ts/TemplateStore.importTemplate:1020"
 		],
-		"src/server/template-store.ts/TemplateStore.update:975": [
+		"src/server/template-store.ts/TemplateStore.update:1004": [
 			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
-			"src/server/template-store.ts/TemplateStore.update:975"
+			"src/server/template-store.ts/TemplateStore.update:1004"
 		],
-		"src/server/template-store.ts/TemplateStore.delete:979": [
-			"src/server/template-store.ts/TemplateStore.delete:979"
+		"src/server/template-store.ts/TemplateStore.delete:1008": [
+			"src/server/template-store.ts/TemplateStore.mergeBuiltInTemplates:927",
+			"src/server/template-store.ts/TemplateStore.delete:1008"
 		],
 		"src/server/tool-execution-hooks.ts/truncatePreview:129": [
 			"src/server/tool-execution-hooks.ts/registerToolExecutionHooks:35"
@@ -26141,6 +26307,10 @@
 		"src/shared/file-utils.ts": [
 			"src/server/file-router.ts",
 			"src/shared/ipc-api.ts"
+		],
+		"src/server/data-change-hub.ts": [
+			"src/server/index.ts",
+			"src/server/sqlite-store.ts"
 		],
 		"src/server/mcp-store.ts": [
 			"src/server/index.ts",

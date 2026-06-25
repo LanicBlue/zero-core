@@ -556,9 +556,45 @@ graph TB
 
 ---
 
+### ADR-021 · UI 数据同步:SqliteStore 写出口统一捕获 + 推全对象
+
+**Context**:四个突变面会改同一份持久数据——UI(REST router)、agent 工具(ManagementService)、后台服务(archivist/提取者/cron)、启动恢复。早期每个域(agent/project/cron/requirement/wiki)各自手写 `onChange/notifyChanged` + 各自一条事件通道(`agents:changed`/`projects:changed`...)+ 各自 renderer 订阅,**逐模块改、易漏入口**(writeNodeDetail / transitionStatus / upsertProjectNode 等非标准突变)。且 agent 工具改的数据 UI 不刷新(要重启)。
+
+**Decision**:**DB 是唯一真源,所有突变面收敛到 `SqliteStore` 三个写原语(`insertRow`/`updateRow`/`delete`);在这唯一的写出口统一发 `data:changed` 事件,renderer 增量订阅。**
+
+- **`data-change-hub`**(`server/data-change-hub.ts`):
+  - **白名单** `UI_COLLECTIONS`(agents/projects/crons/requirements/project_wiki)——`messages`/`turns`/`tool_usage` 等高频表(流式每 chunk 写)不广播,避免刷屏。
+  - **coalesce**——同 tick 内按 `(collection,id)` 去重(保留最新 op+record),批量写(archivist 扫数百节点)只触发一次 flush。
+  - **推全对象**——create/update emit 时带 `record`(store 本就返回记录),renderer 收到直接 patch,**免 `GET /:id` 那一跳**;delete 只带 id。
+- **`SqliteStore`**:`insertRow/updateRow/delete` 调 `emitDataChange(table, id, op, record?)`;`update` 做 **no-op 检测**(patch 字段全等于现值 → 跳过写+不发通知,标量按数值比以兼容"数字存 TEXT 读回 `'2.0'`"的 round-trip 怪癖)。
+- **单通道** `data:changed`:server WS broadcast → `main/ipc-proxy` 桥接到 IPC → `preload.onDataChanged`。取代原每域一条通道。
+- **renderer `data-sync.ts`**:
+  - `subscribeDataChange(collection, refetchAll)`——树形 store(wiki)用,任意变更全量 refetch。
+  - `subscribeListDataChange(collection, {patch, refetchAll})`——列表 store 用。`patch(id, record|null): boolean` 原地替换/移除;非过滤 store(agents/projects/crons)新 id 直接 append;过滤 store(requirements)仅替换已存在、不在则返回 false→helper 回退一次 `refetchAll` 重新套用 filter。delete 在就移除、不在 no-op。
+
+**运行时执行态 vs 持久数据(两条通道,职责分离)**:
+- `data:changed` = 持久域数据变更(低频、按记录),消费方 = list/tree stores。
+- `agent:event` = 运行时执行事件(text_delta / tool_start / session_init / ask_user / todos / error / usage,高频流式),消费方 = chat-store。messages/turns **故意不在** `data:changed` 白名单——流式每 chunk 都写,会刷屏;改走 `agent:event` 实时推 + 切 session 时 `session_init` 批量灌。
+
+**Alternatives**:
+- 运行时内存数据权威 + DB 落盘/恢复(`{ui,工具} ↔ 内存 → DB`):对**单写者 + 无后台**的应用更简单;但本应用有自主 agent + 后台服务和并发写,内存权威要自管持久化/恢复/并发冲突,等于重造 SQLite 的事务,DB 权威更稳。且服务端 store 不缓存(每次 read DB,better-sqlite3 自带页缓存),DB 权威没额外对账成本。Electron 双进程逼出 renderer 缓存 + 同步通道,这部分复杂度两边都逃不掉。
+- 每 store 手写 onChange + 每域一条通道:逐模块改、易漏入口,已被取代(见 Context)。
+- refetch 模式(发 `{id,op}` → renderer 再 `GET /:id`):多一跳,已改成推全对象。
+
+**Consequences**:
+- ✅ 新增 UI 同步域 = hub 白名单加表名 + store 调一次 `subscribeDataChange/subscribeListDataChange`,两处各一行,四个突变面自动覆盖。
+- ✅ agent 工具改数据 → UI 实时刷新(与 UI 自改同一条回流);单条更新零额外请求(no-op 不发,create/update 推全对象)。
+- ✅ 多写者并发收敛(谁先提交谁赢,SQLite 事务保证);崩溃/重启 DB 始终一致。
+- ⚠️ renderer 缓存(DB 之外第二份副本)是 Electron 双进程的必然,需 hub 同步——这是固有成本,非 DB 权威选择带来。
+- ⚠️ wiki 树全量刷新(结构变更需重算);archivist 后台批量扫描由 coalesce 合并成每 tick 一次刷新,但跨 tick 的长扫描仍会多次刷新(可接受)。
+
+**Code evidence**:`server/data-change-hub.ts`(白名单+coalesce+推全对象)、`server/sqlite-store.ts`(写出口 emit + no-op 检测)、`server/index.ts`(`onDataChange→broadcast`)、`main/ipc-proxy.ts`(WS→IPC 桥)、`preload/index.ts:onDataChanged`、`renderer/store/data-sync.ts`(订阅 helper)、各 renderer store 的 `subscribeListDataChange`。
+
+---
+
 ## 3. 总结
 
-- 20 个 ADR，集中在数据驻留、并发控制、扩展点。
+- 21 个 ADR，集中在数据驻留、并发控制、扩展点、UI 同步。
 - 当前建议优先处理：018 (IPC 契约漂移)、011 (mcp-tools 改名)、013 (legacy memory 清理)、008 (legacy KB RAG hook 标注/退役)。ADR-012 已解决。
 - 整个架构遵循"interfaces up, implementations down" 的依赖倒置；`ISessionStore` / `IKVStore` 是教科书级示范。
 - "Hook 提取"是**最大的**架构改进（ADR-005），把 AgentLoop 从膨胀中拯救出来。

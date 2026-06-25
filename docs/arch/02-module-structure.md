@@ -177,7 +177,7 @@ runtime/hooks/
 - `memory-node-store.ts`（324）— memory_nodes / memory_subjects / memory_edges + FTS5
 - `message-store.ts`（97）— 文件存储（旧，已被 SQLite 替代）
 
-它们都基于 `sqlite-store.ts`（297）的通用 CRUD。
+它们都基于 `sqlite-store.ts`（297）的通用 CRUD。SqliteStore 的三个写原语(`insertRow`/`updateRow`/`delete`)是**唯一写出口**,也是 `data-change-hub.ts` 的唯一 emit 点 —— 所有 store 的写都由此被 renderer 自动感知(UI 同步,见 ADR-021),无需逐 store 加通知。
 
 ### 4.2 Routers（当前约 20+ 个 HTTP router / router-like 模块）
 

@@ -379,6 +379,17 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 
 每行都自动有 `id` / `created_at` / `updated_at`，由 `create()` 自动注入。
 
+#### 3.0.1 写出口 = UI 同步捕获点
+
+`insertRow` / `updateRow` / `delete` 是 SqliteStore **唯一的写原语**,也是 `data-change-hub` 的唯一 emit 点(见 ADR-021)。所有领域 store(AgentStore/ProjectStore/CronStore/RequirementStore/WikiStore/...)的写都收敛到这里,因此四个突变面(UI REST / agent 工具 / 后台服务 / 启动恢复)改的数据都能被 renderer 自动感知,无需逐 store 加通知:
+
+- `insertRow(record)` → `emitDataChange(table, record.id, "create", record)`
+- `updateRow(id, record)` → `emitDataChange(table, id, "update", record)`
+- `delete(id)` → `emitDataChange(table, id, "delete")`
+- `update()` 做 **no-op 检测**:patch 字段全等于现值 → 跳过写 + 不 emit(标量按数值比,兼容"数字存 TEXT 读回 `'2.0'`"的 round-trip 怪癖)。
+
+非白名单表(`messages`/`turns`/`tool_executions` 等高频表)的 emit 在 hub 层被忽略。
+
 ### 3.1 ColumnDef 设计
 
 ```typescript

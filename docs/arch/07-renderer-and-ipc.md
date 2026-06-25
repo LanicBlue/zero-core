@@ -68,6 +68,27 @@ renderer: api.onAgentEvent(handler) → chat-store.update*
 
 WS 客户端自动 2 秒重连（`on('close') → setTimeout(connect, 2000)`）。`pollReady()` 同时轮询 `/api/ready`，等后端就绪后发 `app:ready` IPC。
 
+#### 2.3.1 `data:changed` —— 持久数据 UI 同步通道
+
+除 `agent:event`(运行时执行流)外,WS 还承载一条**持久数据同步**通道。后端在持久数据被任一突变面(UI REST / agent 工具 / 后台服务 / 启动恢复)改动时广播:
+
+```
+SqliteStore insertRow/updateRow/delete  (唯一写出口)
+   ↓ emitDataChange(table, id, op, record?)
+data-change-hub  (白名单 UI_COLLECTIONS + coalesce 同 tick 按 (collection,id) 去重)
+   ↓ onDataChange → WS broadcast {type:'data:changed', collection, changes:[{id,op,record?}]}
+main ipc-proxy → win.webContents.send('data:changed', {collection, changes})
+   ↓
+renderer: api.onDataChanged → data-sync.subscribeDataChange / subscribeListDataChange
+   ↓
+zustand store: create/update 推来 record 直接 patch(免 GET /:id);delete 移除;
+              新 id 不在(过滤)视图 → 回退一次 refetchAll 重新套用 filter
+```
+
+- **白名单**:`agents/projects/crons/requirements/project_wiki`。`messages/turns/tool_usage` 等高频表不入(流式每 chunk 写 messages,会刷屏——这些走 `agent:event`)。
+- **推全对象**:create/update 带 `record`,renderer 原地替换,无额外请求;`update` 在 SqliteStore 做 no-op 检测(字段全等于现值 → 不写不发)。
+- 详细决策见 ADR-021。新增 UI 同步域 = hub 白名单加表名 + store 一行订阅。
+
 ### 2.4 本地保留的 IPC 通道
 
 `src/main/index.ts:96-172` `registerLocalHandlers(win)`：
