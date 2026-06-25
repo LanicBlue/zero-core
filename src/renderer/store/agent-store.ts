@@ -25,7 +25,7 @@
 //
 import { create } from "zustand";
 import type { AgentRecord } from "../../shared/types.js";
-import { subscribeDataChange } from "./data-sync.js";
+import { subscribeListDataChange } from "./data-sync.js";
 
 export interface ModelInfo {
 	provider: string;
@@ -130,11 +130,15 @@ if (!_fetched) {
 		useAgentStore.getState().fetchTools();
 	});
 
-	// v0.8: refetch agents when the registry is mutated from the backend (e.g.
-	// the AgentRegistry tool creating/editing an agent). Rides the unified
-	// data:changed channel (collection "agents"); the UI's own edits update
-	// local state optimistically, this keeps it in sync on server-side changes.
-	subscribeDataChange("agents", () => {
-		useAgentStore.getState().fetchAgents();
+	// v0.8: incrementally sync agents when mutated from the backend (e.g. the
+	// AgentRegistry tool). Single create/update → fetch just that record and
+	// patch the array; delete → remove; burst → full refetch.
+	subscribeListDataChange("agents", {
+		fetchOne: (id) => api().agentsGet(id),
+		patch: (id, record) => useAgentStore.setState((s) => {
+			const others = s.agents.filter((a) => a.id !== id);
+			return record ? { agents: [...others, record as AgentRecord] } : { agents: others };
+		}),
+		refetchAll: () => { useAgentStore.getState().fetchAgents(); },
 	});
 }

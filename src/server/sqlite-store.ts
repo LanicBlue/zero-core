@@ -189,6 +189,28 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 		const existing = this.get(id);
 		if (!existing) throw new Error(`${this.table} record not found: ${id}`);
 
+		// No-op detection: if every field in the patch already equals the
+		// existing value, there's nothing to change — skip the write AND the
+		// change notification. This prevents spurious UI refreshes (and
+		// updatedAt churn) from updates that change nothing.
+		//
+		// Scalars are stored as TEXT and read back as strings, and a JS number
+		// round-trips as its REAL text form (2 → "2.0"). So a naive JSON/String
+		// compare wrongly flags 1 ≠ "1.0" as a change. JSON columns compare
+		// structurally; scalars compare numerically when both sides are numeric
+		// (so 2 and "2.0" match), else as strings.
+		const patchKeys = Object.keys(input as object);
+		const isNoOp = patchKeys.every((k) => {
+			const v = (input as any)[k];
+			if (v === undefined) return true;
+			const cur = (existing as any)[k];
+			if (this.jsonColumns.has(k)) {
+				try { return JSON.stringify(cur) === JSON.stringify(v); } catch { return false; }
+			}
+			return scalarEqual(cur, v);
+		});
+		if (isNoOp) return existing;
+
 		const merged = {
 			...existing,
 			...input,
@@ -201,7 +223,7 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 
 	delete(id: string): void {
 		this._deleteStmt.run(id);
-		emitDataChange(this.table);
+		emitDataChange(this.table, id, "delete");
 	}
 
 	/**
@@ -247,7 +269,7 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 	private insertRow(record: T): void {
 		const values = this.allColumns.map((snakeCol) => this.toColumnValue(record, snakeCol));
 		this._insertStmt.run(...values);
-		emitDataChange(this.table);
+		emitDataChange(this.table, record.id, "create");
 	}
 
 	private updateRow(id: string, record: T): void {
@@ -255,7 +277,7 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 		const values = nonIdCols.map((snakeCol) => this.toColumnValue(record, snakeCol));
 		values.push(id); // WHERE id = ?
 		this._updateStmt.run(...values);
-		emitDataChange(this.table);
+		emitDataChange(this.table, id, "update");
 	}
 
 	private toColumnValue(record: T, snakeCol: string): any {
@@ -310,4 +332,23 @@ export interface ColumnDef {
 
 function camelToSnake(s: string): string {
 	return s.replace(/[A-Z]/g, (ch) => "_" + ch.toLowerCase());
+}
+
+/**
+ * Compare two scalar values for the SqliteStore no-op check. Numbers compare
+ * numerically (a JS 2 and its stored TEXT form "2.0" are equal — SQLite stores
+ * numbers as their REAL text representation in TEXT-affinity columns); empty
+ * string is NOT treated as 0; everything else compares as strings.
+ */
+function scalarEqual(a: unknown, b: unknown): boolean {
+	const na = Number(a);
+	const nb = Number(b);
+	if (
+		a !== "" && b !== "" &&
+		!Number.isNaN(na) && !Number.isNaN(nb) &&
+		Number.isFinite(na) && Number.isFinite(nb)
+	) {
+		return na === nb;
+	}
+	return String(a) === String(b);
 }

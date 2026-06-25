@@ -92,11 +92,11 @@ const api: WindowApi = {
 		ipcRenderer.on("tools:changed", handler);
 		return () => { ipcRenderer.removeListener("tools:changed", handler); };
 	},
-	// Unified UI-sync channel. The server emits { collection } whenever a
-	// whitelisted table changes; subscribe and filter by the collections you
-	// care about (agents/projects/crons/requirements/project_wiki).
+	// Unified UI-sync channel. The server emits { collection, changes:[{id,op}] }
+	// when a whitelisted table changes; subscribe and filter by collection, then
+	// patch only the changed records.
 	onDataChanged: (callback) => {
-		const handler = (_e: any, data: { collection: string }) => { callback(data); };
+		const handler = (_e: any, data: { collection: string; changes: Array<{ id: string; op: string }> }) => { callback(data); };
 		ipcRenderer.on("data:changed", handler);
 		return () => { ipcRenderer.removeListener("data:changed", handler); };
 	},

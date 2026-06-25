@@ -30,7 +30,7 @@ import type {
 	UpdateCronInput,
 } from "../../shared/types.js";
 import { useNotificationStore } from "./notification-store.js";
-import { subscribeDataChange } from "./data-sync.js";
+import { subscribeListDataChange } from "./data-sync.js";
 
 const api = () => (window as any).api;
 
@@ -121,8 +121,14 @@ export const useCronStore = create<CronState>((set) => ({
 	},
 }));
 
-// v0.8: refetch crons when mutated from the backend (e.g. the Cron tool via
-// management-service). Rides the unified data:changed channel.
-subscribeDataChange("crons", () => {
-	useCronStore.getState().fetchCrons();
+// v0.8: incrementally sync crons when mutated from the backend (e.g. the Cron
+// tool). Single create/update → fetch one + patch; delete → remove; burst →
+// full refetch.
+subscribeListDataChange("crons", {
+	fetchOne: (id) => api().cronsGet(id),
+	patch: (id, record) => useCronStore.setState((s) => {
+		const others = s.crons.filter((c) => c.id !== id);
+		return record ? { crons: [...others, record as CronRecord] } : { crons: others };
+	}),
+	refetchAll: () => { useCronStore.getState().fetchCrons(); },
 });

@@ -27,7 +27,7 @@
 import { create } from "zustand";
 import type { ProjectRecord, CreateProjectInput, UpdateProjectInput } from "../../shared/types.js";
 import { useNotificationStore } from "./notification-store.js";
-import { subscribeDataChange } from "./data-sync.js";
+import { subscribeListDataChange } from "./data-sync.js";
 
 const api = () => (window as any).api;
 
@@ -84,10 +84,14 @@ export const useProjectStore = create<ProjectState>((set) => ({
 	},
 }));
 
-// v0.8: refetch projects when mutated from the backend (e.g. the Project tool
-// via management-service, or the REST project-router). Rides the unified
-// data:changed channel (collection "projects"); the UI's own edits update
-// local state optimistically, this keeps it in sync on server-side changes.
-subscribeDataChange("projects", () => {
-	useProjectStore.getState().fetchProjects();
+// v0.8: incrementally sync projects when mutated from the backend (e.g. the
+// Project tool). Single create/update → fetch one + patch; delete → remove;
+// burst → full refetch.
+subscribeListDataChange("projects", {
+	fetchOne: (id) => api().projectsGet(id),
+	patch: (id, record) => useProjectStore.setState((s) => {
+		const others = s.projects.filter((p) => p.id !== id);
+		return record ? { projects: [...others, record as ProjectRecord] } : { projects: others };
+	}),
+	refetchAll: () => { useProjectStore.getState().fetchProjects(); },
 });

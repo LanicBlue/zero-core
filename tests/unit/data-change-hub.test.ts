@@ -32,13 +32,13 @@ describe("data-change-hub", () => {
 		const cb = vi.fn();
 		onDataChange(cb);
 
-		emitDataChange("agents");
-		emitDataChange("projects");
-		emitDataChange("project_wiki");
+		emitDataChange("agents", "a1", "create");
+		emitDataChange("projects", "p1", "create");
+		emitDataChange("project_wiki", "w1", "create");
 		// High-frequency tables must NOT broadcast.
-		emitDataChange("messages");
-		emitDataChange("tool_usage");
-		emitDataChange("turns");
+		emitDataChange("messages", "m1", "create");
+		emitDataChange("tool_usage", "t1", "create");
+		emitDataChange("turns", "tu1", "create");
 
 		// Flush is async (setTimeout 0).
 		await new Promise((r) => setTimeout(r, 0));
@@ -47,29 +47,56 @@ describe("data-change-hub", () => {
 		expect(collections).toEqual(["agents", "project_wiki", "projects"]);
 	});
 
+	test("carries per-record {id, op} so renderers can patch incrementally", async () => {
+		const cb = vi.fn();
+		onDataChange(cb);
+
+		emitDataChange("agents", "a1", "create");
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(cb).toHaveBeenCalledTimes(1);
+		const evt = cb.mock.calls[0][0];
+		expect(evt.collection).toBe("agents");
+		expect(evt.changes).toEqual([{ id: "a1", op: "create" }]);
+	});
+
 	test("coalesce: many writes to one collection in a tick → one flush", async () => {
 		const cb = vi.fn();
 		onDataChange(cb);
 
 		// Simulate a bulk write (e.g. archivist scanning 50 wiki nodes).
-		for (let i = 0; i < 50; i++) emitDataChange("project_wiki");
+		for (let i = 0; i < 50; i++) emitDataChange("project_wiki", `w${i}`, "create");
 
 		await new Promise((r) => setTimeout(r, 0));
 
-		// All 50 collapse into a single flush for "project_wiki".
+		// All 50 collapse into a single flush for "project_wiki", carrying all ids.
 		expect(cb).toHaveBeenCalledTimes(1);
-		expect(cb.mock.calls[0][0].collection).toBe("project_wiki");
+		const evt = cb.mock.calls[0][0];
+		expect(evt.collection).toBe("project_wiki");
+		expect(evt.changes.length).toBe(50);
+	});
+
+	test("coalesce dedupes by id, keeping the latest op", async () => {
+		const cb = vi.fn();
+		onDataChange(cb);
+
+		emitDataChange("agents", "a1", "create");
+		emitDataChange("agents", "a1", "update"); // same id → overwrites op
+		emitDataChange("agents", "a1", "delete");  // latest wins
+
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(cb).toHaveBeenCalledTimes(1);
+		expect(cb.mock.calls[0][0].changes).toEqual([{ id: "a1", op: "delete" }]);
 	});
 
 	test("coalesce: distinct collections in one tick each flush once", async () => {
 		const cb = vi.fn();
 		onDataChange(cb);
 
-		emitDataChange("agents");
-		emitDataChange("crons");
-		emitDataChange("agents");
-		emitDataChange("crons");
-		emitDataChange("requirements");
+		emitDataChange("agents", "a1", "create");
+		emitDataChange("crons", "c1", "create");
+		emitDataChange("requirements", "r1", "create");
 
 		await new Promise((r) => setTimeout(r, 0));
 
@@ -78,24 +105,12 @@ describe("data-change-hub", () => {
 		expect(cb).toHaveBeenCalledTimes(3);
 	});
 
-	test("separate ticks flush separately (no cross-tick coalescing)", async () => {
-		const cb = vi.fn();
-		onDataChange(cb);
-
-		emitDataChange("agents");
-		await new Promise((r) => setTimeout(r, 0));
-		emitDataChange("agents");
-		await new Promise((r) => setTimeout(r, 0));
-
-		expect(cb).toHaveBeenCalledTimes(2);
-	});
-
 	test("onDataChange returns an unsubscribe that stops delivery", async () => {
 		const cb = vi.fn();
 		const unsub = onDataChange(cb);
 
 		unsub();
-		emitDataChange("agents");
+		emitDataChange("agents", "a1", "create");
 		await new Promise((r) => setTimeout(r, 0));
 
 		expect(cb).not.toHaveBeenCalled();

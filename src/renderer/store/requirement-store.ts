@@ -33,7 +33,7 @@ import type {
 	CreateRequirementInput,
 } from "../../shared/types.js";
 import { useNotificationStore } from "./notification-store.js";
-import { subscribeDataChange } from "./data-sync.js";
+import { subscribeListDataChange } from "./data-sync.js";
 
 const api = () => (window as any).api;
 
@@ -178,9 +178,14 @@ export const useRequirementStore = create<RequirementState>((set, get) => ({
 	},
 }));
 
-// v0.8: refetch requirements when mutated from the backend (e.g. the
-// CreateRequirement / verify tools via pmService, or status transitions). Rides
-// the unified data:changed channel.
-subscribeDataChange("requirements", () => {
-	useRequirementStore.getState().fetchRequirements();
+// v0.8: incrementally sync requirements when mutated from the backend (e.g.
+// CreateRequirement / verify tools, status transitions). Single create/update
+// → fetch one + patch; delete → remove; burst → full refetch.
+subscribeListDataChange("requirements", {
+	fetchOne: (id) => api().requirementsGet(id),
+	patch: (id, record) => useRequirementStore.setState((s) => {
+		const others = s.requirements.filter((r) => r.id !== id);
+		return record ? { requirements: [...others, record as RequirementRecord] } : { requirements: others };
+	}),
+	refetchAll: () => { useRequirementStore.getState().fetchRequirements(); },
 });
