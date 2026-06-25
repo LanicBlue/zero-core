@@ -181,9 +181,19 @@ export class AgentService {
 		// prompt changes invalidate the prompt cache (acceptable, infrequent).
 		store.onChange((agentId) => {
 			const agent = store.get(agentId);
+			if (!agent) return;
+
+			const activeSessionId = this.activeSessions.get(agentId) ?? this.db.getMainSession(agentId)?.id;
+			const activeState = activeSessionId ? this.runStates.get(activeSessionId) : undefined;
+			if (activeSessionId && !activeState?.isBusy) {
+				this.loops.delete(activeSessionId);
+				this.createLoopForSession(agentId, activeSessionId, agent);
+				this.activeSessions.set(agentId, activeSessionId);
+				return;
+			}
+
 			for (const loop of this.loops.values()) {
 				if (loop.getConfigAgentId() !== agentId) continue;
-				if (!agent) continue; // deleted: nothing to apply (loop will fail fast on next use)
 				loop.applyConfigUpdate({
 					systemPrompt: agent.systemPrompt,
 					toolPolicy: agent.toolPolicy,

@@ -201,8 +201,10 @@ export async function selectAgentByName(window: Page, name: string): Promise<voi
 // its own tool-call fixture inline instead of committing many JSON files. Typed
 // loosely (any[]) to avoid coupling the test layer to the runtime MockFixture type.
 let _fixtureCounter = 0;
-export function writeFixture(chunks: any[], opts?: { usage?: object; delayMs?: number }): string {
-	const fixture = { chunks, usage: opts?.usage, delayMs: opts?.delayMs ?? 5 };
+export function writeFixture(chunks: any[], opts?: { usage?: object; delayMs?: number; steps?: any[][] }): string {
+	const fixture = opts?.steps
+		? { steps: opts.steps, usage: opts?.usage, delayMs: opts?.delayMs ?? 5 }
+		: { chunks, usage: opts?.usage, delayMs: opts?.delayMs ?? 5 };
 	const dir = mkdtempSync(join(tmpdir(), "zc-fixture-"));
 	const path = join(dir, `fixture-${process.pid}-${++_fixtureCounter}.json`);
 	writeFileSync(path, JSON.stringify(fixture), "utf-8");

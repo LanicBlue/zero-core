@@ -29,20 +29,24 @@ import type { LanguageModelV2, LanguageModelV2StreamPart, LanguageModelV2CallOpt
 // Intended for E2E tests. Activated via provider type "mock" in provider-factory.
 // ---------------------------------------------------------------------------
 
+export type MockChunk =
+	| { type: "thinking"; text: string }
+	| { type: "text"; text: string }
+	| {
+			type: "tool-call";
+			toolName: string;
+			/** Tool input as a plain object; stringified for the AI SDK stream. */
+			input: object;
+			toolCallId?: string;
+	  }
+	| { type: "finish"; finishReason?: "stop" | "length" | "tool-calls" | "error" };
+
 export interface MockFixture {
 	error?: { message: string };
-	chunks: Array<
-		| { type: "thinking"; text: string }
-		| { type: "text"; text: string }
-		| {
-				type: "tool-call";
-				toolName: string;
-				/** Tool input as a plain object; stringified for the AI SDK stream. */
-				input: object;
-				toolCallId?: string;
-		  }
-		| { type: "finish"; finishReason?: "stop" | "length" | "tool-calls" | "error" }
-	>;
+	/** Back-compat single response, replayed for every model call. */
+	chunks?: MockChunk[];
+	/** Optional per-model-call responses for multi-step tool-call tests. */
+	steps?: MockChunk[][];
 	usage?: {
 		inputTokens?: number;
 		outputTokens?: number;
@@ -50,7 +54,6 @@ export interface MockFixture {
 	};
 	delayMs?: number;
 }
-
 export function loadFixture(path: string): MockFixture {
 	return JSON.parse(readFileSync(path, "utf8"));
 }
@@ -59,7 +62,7 @@ let idCounter = 0;
 const nextId = () => `mock-${++idCounter}`;
 
 function toStreamPart(
-	chunk: MockFixture["chunks"][number],
+	chunk: MockChunk,
 	fixtureUsage?: MockFixture["usage"],
 ): LanguageModelV2StreamPart[] {
 	switch (chunk.type) {
@@ -119,6 +122,15 @@ function toStreamPart(
 export function createMockLanguageModel(fixturePath: string, modelId = "mock-model"): LanguageModelV2 {
 	const fixture = loadFixture(fixturePath);
 	const delayMs = fixture.delayMs ?? 5;
+	let streamCallCount = 0;
+	const chunksForStreamCall = (): MockChunk[] => {
+		if (fixture.steps?.length) {
+			const index = Math.min(streamCallCount++, fixture.steps.length - 1);
+			return fixture.steps[index] ?? [];
+		}
+		return fixture.chunks ?? [];
+	};
+	const allFixtureChunks = (): MockChunk[] => fixture.steps?.flat() ?? fixture.chunks ?? [];
 
 	return {
 		specificationVersion: "v2",
@@ -128,7 +140,7 @@ export function createMockLanguageModel(fixturePath: string, modelId = "mock-mod
 
 		async doGenerate(_options: LanguageModelV2CallOptions) {
 			if (fixture.error) throw new Error(fixture.error.message);
-			const textParts = fixture.chunks
+			const textParts = allFixtureChunks()
 				.filter((c) => c.type === "text")
 				.map((c) => (c as { text: string }).text)
 				.join("");
@@ -149,7 +161,7 @@ export function createMockLanguageModel(fixturePath: string, modelId = "mock-mod
 			const stream = new ReadableStream<LanguageModelV2StreamPart>({
 				async start(controller) {
 					controller.enqueue({ type: "stream-start", warnings: [] });
-					for (const chunk of fixture.chunks) {
+					for (const chunk of chunksForStreamCall()) {
 						for (const part of toStreamPart(chunk, fixture.usage)) {
 							controller.enqueue(part);
 							if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));

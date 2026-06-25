@@ -78,7 +78,7 @@ function createWindow() {
 
 	log("BrowserWindow created");
 
-	if (isDev && !process.env.ZERO_CORE_TEST_FIXTURE) {
+	if (isDev && process.env.NODE_ENV !== "test" && !process.env.ZERO_CORE_TEST_FIXTURE) {
 		mainWindow.loadURL(DEV_SERVER_URL);
 	} else {
 		mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
@@ -207,7 +207,7 @@ app.whenReady().then(async () => {
 	// 4. Connect WebSocket event bridge
 	connectEventBridge(mainWindow!, port);
 
-	if (isDev && !process.env.ZERO_CORE_TEST_FIXTURE) {
+	if (isDev && process.env.NODE_ENV !== "test" && !process.env.ZERO_CORE_TEST_FIXTURE) {
 		mainWindow?.webContents.openDevTools({ mode: "detach" });
 	}
 });

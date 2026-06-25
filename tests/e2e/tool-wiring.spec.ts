@@ -64,9 +64,12 @@ async function bootstrapRealistic(window: Page, fixturePath: string): Promise<vo
 
 for (const tc of TOOL_CASES) {
 	test(`tool-wiring: ${tc.label}`, async () => {
-		const fixturePath = writeFixture(
-			[{ type: "tool-call", toolName: tc.toolName, input: tc.args }, { type: "finish", finishReason: "stop" }],
-		);
+		const fixturePath = writeFixture([], {
+			steps: [
+				[{ type: "tool-call", toolName: tc.toolName, input: tc.args }, { type: "finish", finishReason: "tool-calls" }],
+				[{ type: "text", text: "Done." }, { type: "finish", finishReason: "stop" }],
+			],
+		});
 		const app = await launchAppFresh();
 		const window = app.window;
 		try {
