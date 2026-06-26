@@ -509,47 +509,156 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 - JSON 列没有 schema 校验，存入任意结构。
 - 没有"软删除"机制。
 
-## 4. SessionDB — 业务核心
+## 4. SessionDB — 会话核心(不是业务核心)
 
-`src/server/session-db.ts` 当前约 850 行，是 DB lifecycle + 多业务表门面的重型文件。除了 sessions / messages / turns / turn_state / tool_executions 之外，还持有：
+`src/server/session-db.ts` 当前约 960 行(v0.8 后从 ~850 长到 960),定位是**会话核心 + DB lifecycle + 内核 store 工厂**,
+**不是**全业务 store 的聚合根。它的职责被刻意收窄:
 
-- `KeyValueStore`
-- `MemoryStore`（旧版知识图谱）
-- `MemoryNodeStore`（新版 Wiki）
+#### 4.0.1 SessionDB 自己持有的表(5 张,全部在 `initSchema()` 里 `CREATE TABLE IF NOT EXISTS`)
 
-**关注点**：一个类持有 4 个独立的存储后端。这增加了耦合度。详见 ADR-006。
+| 表 | 角色 | 写入入口 |
+|----|------|---------|
+| `sessions` | 会话根(含 v0.8 D-B `context_*` 列 + token 核算列) | `createSession` / `updateSessionUsage` / `updateSessionContext` |
+| `messages` | write-through 缓存(turns 才是 source of truth) | `saveTurn` |
+| `turns` | **source of truth**(v0.8 加 `turn_group` 做 step 聚合) | `appendTurn` / `appendStep` / `upsertStep` |
+| `turn_state` | durable execution 检查点 | `createTurnState` / `updateTurnPhase` |
+| `tool_executions` | 会话级工具调用日志(旧版,见 §2.1 与 §11.2 关于与 `tool_usage` 重叠的讨论) | `recordToolExecution` |
+
+#### 4.0.2 SessionDB 直接聚合的 store(6 个,分两批)
+
+`SessionDB` 在构造函数里 **eager** 实例化 3 个内核 store,在 v0.8 (M5) 又加了 2 个 **lazy** store + 1 个全局 wiki store 入口:
+
+| store | 实例化时机 | 用途 | getter |
+|-------|-----------|------|--------|
+| `KeyValueStore` | eager(构造函数 :69) | 项目"软状态"总线(见 §2.4 / §7) | `getKVStore()` |
+| `MemoryStore` | eager(:70) | 旧版知识图谱(memory_entities/relations) | `getMemoryStore()` |
+| `MemoryNodeStore` | eager(:71) | Wiki 风格记忆节点(memory_nodes + FTS5) | `getMemoryNodeStore()` |
+| `ExtractionCursorStore` | **lazy**(v0.8 M5,首次 `getExtractionCursorStore()` 才 new) | extractor A 增量游标(见 §2.13b) | `getExtractionCursorStore()` |
+| `TelemetryStore` | **lazy**(v0.8 M5) | extractor B 独立遥测写入 | `getTelemetryStore()` |
+
+> lazy 是有意为之 —— 这样不碰 M5 路径的代码(如 compression engine 单测)不必为这两个 store 付初始化成本;它们的两张表(`extraction_cursors` / `tool_telemetry`)由各自构造函数 `CREATE TABLE IF NOT EXISTS` 自建,**故意不进 `db-migration.ts` 的 `*_COLUMNS` 数组**(注释 session-db.ts:37-43 说明)。
+
+#### 4.0.3 SessionDB **不**聚合 v0.8 工作流域 store —— 关键边界
+
+v0.8 (M0~M3) 引入的 9 张工作流域表(`projects` / `project_wiki` / `requirements` ×3 / `task_steps` / `crons` / `cron_runs` / `project_jobs` / `orchestrate_*` / `tool_usage` / `tool_configs`)
+对应的 Store **全部在 `src/server/index.ts:148-171` 里独立 `new`**,不挂在 `SessionDB` 上:
+
+```typescript
+// src/server/index.ts:159-171
+const projectStore       = new ProjectStore(sessionDB);       // SqliteStore<project>
+const requirementStore   = new RequirementStore(sessionDB);   // SqliteStore<requirements>
+const wikiStore          = new ProjectWikiStore(wikiStoreGlobal);
+const wikiScanCursorStore= new WikiScanCursorStore(sessionDB);
+const taskStepStore      = new TaskStepStore(sessionDB);
+const cronStore          = new CronStore(sessionDB);
+const cronRunStore       = new CronRunStore(sessionDB);
+const projectJobStore    = new ProjectJobStore(sessionDB);
+// ToolUsageStore 走 agentService.setToolUsageStore(new ToolUsageStore(sessionDB)) 注入
+```
+
+这些 Store 全部继承 `SqliteStore<T>`,构造时只接 `sessionDB` 一个参数 —— `SqliteStore` 的构造函数
+(`sqlite-store.ts:43-67`)从 `sessionDB.getDb()` 拿底层 `Database.Database` 句柄,**不依赖 SessionDB 的任何
+聚合关系**。换句话说:`SessionDB` 在这里降级为"DB 句柄 + 5 张自持表 + 6 个内核 store"的提供者,
+v0.8 工作流域 store 把它当 **`getDb()` 提供者** 用,而不是当父聚合根。
+
+**这个边界是 v0.8 刻意的取舍**:
+- SessionDB 仍是会话核心(sessions/messages/turns/turn_state/tool_executions)的唯一权威,会话域不会
+  被工作流域的写入拖累(如 cron 后台写 `cron_runs` 不会撞 session 主路径)。
+- v0.8 工作流域 store 各自独立 new,各自管自己的表与索引,新增 store 不必改 SessionDB。
+- 代价是 `server/index.ts` 的启动序列手动编排 12+ 个 store —— 没有统一的 store registry(见 §11.2)。
+
+#### 4.0.4 旧叙事更正
+
+此前本文写"SessionDB 持有 KeyValueStore / MemoryStore / MemoryNodeStore **4 个独立的存储后端**"。
+两个问题:① 计数已过时(v0.8 M5 加了 2 个 lazy store → 实际 5 个,加上 §4.0.3 提到的 v0.8 工作流域
+store 并不被 SessionDB 聚合,所以"4 个后端"既漏了新 store 又误把工作流域 store 算进来);
+② 更根本的是它把 SessionDB 描述成"全业务聚合根",而 v0.8 已经把它降级为会话核心 + DB 句柄提供者
+(§4.0.3)。本节重写以反映这层架构演变。
 
 ### 4.1 关键不变量
 
-- `messages` 表是 `turns` 的 write-through 缓存；删除会话/清空 turns 时**应同时**清理 messages。
-- `turns.seq` 单调递增；用户消息从偶数 seq 开始。
-- `tool_executions.duration_ms` 总是真实测量值，不允许估算。
+- `messages` 表是 `turns` 的 write-through 缓存;删除会话/清空 turns 时**应同时**清理 messages。
+- `turns.seq` 单调递增;用户消息从偶数 seq 开始。
+- `tool_executions.duration_ms` 总是真实测量值,不允许估算。
 
-### 4.2 迁移机制
+### 4.2 迁移机制(`db-migration.ts:584` `runMigrations`)
 
-`db-migration.ts:91-223` `runMigrations(sessionDB)` 启动期必跑：
+> 行号更正:此前本文写 `db-migration.ts:91-223`,但 v0.8 后 `runMigrations` 已扩到 **584–1004**(420 行),
+> 函数体在 `db-migration.ts:584` 定义、`:1004` 结束。整个 `db-migration.ts` 文件本身已 1059 行(见 §11.2 关于
+> "DDL 应下沉各 store"的讨论)。下面按实际 5 个阶段重写,并把 v0.8 表 DDL 单独列出来(原叙事只覆盖旧 JSON 迁移,
+> 完全漏了 9 张 v0.8 表是怎么被创建的)。
 
-1. **列添加**（必须先于 SqliteStore 构造）：
-   - `safeAddColumn("agents", "knowledge_base_ids", "TEXT")`
-   - `safeAddColumn("sessions", "input_tokens", ...)` × 6 个 token 列
-   - agent_tools 表的 13 个新列
+`runMigrations(sessionDB)` 在 `SessionDB` 构造完(`initSchema()` 跑过、内核 5 张表 + 内核 store 就绪)之后、
+任何 `SqliteStore` 工作流域 store 构造之前**启动期必跑一次**。它分 5 个阶段:
 
-2. **构造 SqliteStore**（此时已包含所有列）
+#### 阶段 1:列补齐(`safeAddColumn`,必须先于 SqliteStore 构造)
 
-3. **JSON 文件 → SQLite**：
-   - providers.json → providers 表
-   - agents.json → agents 表（含 personas.json 合并）
-   - agent-tools.json → agent_tools 表
-   - templates.json → templates 表
-   - mcp-servers.json → mcp_servers 表
-   - knowledge-bases.json → kb_entries 表
+为什么必须先:`SqliteStore` 构造函数 `initStatements()` 会 SELECT 所有声明的列,如果列在表里不存在就会
+prepare 失败。所以补列永远在第 1 步。涵盖:
 
-4. **KV 迁移**（6 个文件）：
-   - workspace/tool-config/theme/device-context/github-cache/global-config → kv_store
+- `agents`:`knowledge_base_ids` + v0.8 `role_tag` / `subagents` / `wiki_anchors`(P0 §1.4 / §2.2)
+- `project_wiki`:`links`(P0 §3.3)
+- `providers`:`enable_concurrency_limit` / `max_concurrency`
+- `sessions`:6 个 token 列 + v0.8 D-B `context_*` 列(走 `SESSION_COLUMNS` 循环)+ `idx_sessions_agent_project`
+- `turns`:`turn_group` + 3 个 step 级 token 列 + `idx_turns_session_group`,然后 `migrateTurnsToSteps` 把旧行回填
+- **`DROP TABLE IF EXISTS agent_tools`**(v0.8 §11.5 agent-as-tool 退役,空表无损)
 
-5. **Memory 迁移**：`memory.migrateFromJson()` 把旧的 memory.json → memory_entities/relations
+#### 阶段 2:v0.8 工作流域表 DDL(`CREATE TABLE IF NOT EXISTS` + `safeAddIndex`)
 
-每步都做了"源文件存在性检查"+"读取验证"，且**重复启动是幂等的**（`migrateFromJson` 内部判断目标表已有则跳过）。
+9 张表全部在这一阶段内联建表 + 建索引,**严格按依赖顺序**:
+
+1. `projects`(M0)+ `idx_projects_workspace`(回填 `workspace_dir` from legacy `path`)
+2. `project_wiki`(M2)→ 先 `migrateWikiTableSchema`(拆掉 legacy `UNIQUE(project_id, path)` / `project_id NOT NULL`
+   约束,否则全局 root 装不进去)→ 再 `migrateWikiDetailToDisk`(把 `detail` 列正文下沉到
+   `~/.zero-core/wiki/<area>/<safe-name>.md`,然后 DROP `detail` + `type` 列)→ 建三个索引
+   (`idx_wiki_project` / `idx_wiki_parent` / `idx_wiki_parent_path` —— archivist upsert 热路径)
+3. `wiki_scan_cursors`(M2)→ `idx_scan_cursor_arch_proj`
+4. `requirements` + `requirement_status_history` + `requirement_messages`(M1)→ 各自索引
+5. `task_steps`(M1)
+6. `crons`(M1 / P0 §3.4)→ 补 5 个 telemetry 列 + `migrateCronScheduleToJson`(旧 string 行转结构化
+   `CronSchedule` union)+ `idx_crons_agent` / `idx_crons_enabled`
+7. `cron_runs`(P0 §9.3)→ `idx_cron_runs_cron`
+8. `project_jobs`(M3)→ `idx_project_jobs_project` / `idx_project_jobs_status`
+9. `tool_configs`(P0 §7.7 #4)—— PK 是 `tool_name` 而非 surrogate id,**所以这张表不进 SqliteStore**,
+   由专门的 `ToolConfigStore`(手写 SQL,见 §2.2b)管理
+10. `tool_usage`(P0 §7.7 #4)→ `idx_tool_usage_tool` / `idx_tool_usage_session`
+11. `orchestrate_plans`(M3) / `orchestrate_manifests`(M3 D34)→ 各自索引
+
+> 关键依赖:`project_wiki` 必须在 `migrateWikiDetailToDisk` 之前先 `migrateWikiTableSchema`,因为后者要
+> 读 `detail` 列导出到磁盘然后 DROP —— 如果表还带着 legacy NOT NULL 约束,导出+DROP 会丢全局节点。
+> 这两步的顺序在源码注释里被反复强调(db-migration.ts:683-698)。
+
+#### 阶段 3:构造 `SqliteStore`(此时所有列都已就位)
+
+`runMigrations` 内部就地 `new SqliteStore<T>(db, table, COLUMNS)` 构造旧业务 store
+(`agents` / `providers` / `templates` / `mcp_servers` / `kb_entries`),并 `agents.ensureColumn("role_tag", "TEXT")`
+显式补回 v0.8 故意从 `AGENT_COLUMNS` 拿掉的 `role_tag` 物理列(fresh DB 上 `ensureTable` 不会加它,
+但 acceptance-P0 要求"roleTag 列还在")。
+
+#### 阶段 4:JSON 文件 → SQLite(`migrateFromJson`,旧版软启动路径)
+
+只对 **6 个 v0.7 时代的 JSON 文件** 跑(每个都先存在性检查 + 已有则跳过,幂等):
+
+- `providers.json` → providers
+- `agents.json` → agents(含 `personas.json` 合并,见 `migratePersonas`)
+- ~~`agent-tools.json`~~ —— v0.8 §11.5 已删(`agent_tools` 表已 DROP)
+- `templates.json` → templates
+- `mcp-servers.json` → mcp_servers
+- `knowledge-bases.json` → kb_entries
+
+#### 阶段 5:KV 迁移 + Memory 迁移
+
+- **KV**:6 个文件(`workspace` / `tool-config` / `theme` / `device-context` / `github-cache` / `global-config`)
+  → `kv_store`,走 `kv.migrateFromJsonFile(key, path)`
+- **Memory**:`memory.migrateFromJson()` 把旧 `memory.json` → `memory_entities` / `memory_relations`
+
+> **v0.8 表没有任何 JSON 前身** —— `projects` / `project_wiki` / `requirements` / `crons` / `orchestrate_*`
+> / `tool_usage` 等都是 DB-native 的,阶段 4 / 5 完全不涉及它们。这就是 §11.1 评的"v0.8 工作流域表
+> 全部 DB-native,省掉一类迁移路径":升级 DB 与 fresh DB 都只走阶段 1 + 阶段 2 的幂等 `CREATE TABLE IF NOT EXISTS`
+> + `safeAddColumn`。
+
+每步都做了"源文件存在性检查"+"读取验证",且**重复启动是幂等的**(`migrateFromJson` 内部判断目标表已有则跳过;
+`CREATE TABLE IF NOT EXISTS` / `safeAddColumn` / `safeAddIndex` 三件套对已存在对象全部 no-op)。
 
 ## 5. MemoryNodeStore — Wiki 风格记忆
 
@@ -698,7 +807,7 @@ flowchart LR
 
 ### 11.2 可以改进的
 
-- **session-db.ts 太大**（当前约 850 行）。可拆为：sessions / messages / turns / turn_state / tool_executions 各一个文件，并让 SessionDB 退化为 DB lifecycle + store factory。
+- **session-db.ts 太大**(当前约 960 行,v0.8 后从 ~850 长到 960)。可拆为:sessions / messages / turns / turn_state / tool_executions 各一个文件,并让 SessionDB 退化为 DB lifecycle + 内核 store factory。注意 §4.0.3:v0.8 工作流域 store(ProjectStore / RequirementStore / CronStore / ...)已经在 `server/index.ts` 独立 new、**不**挂在 SessionDB 上,所以拆分压力其实只剩会话核心 5 张表 + 6 个内核 store。
 - **KB 搜索** 在大库时性能崩塌（O(M×D) 客户端循环）。
 - **message-store.ts** 是已迁移完成的历史遗留物，应删除或迁移到 `legacy/`。
 - **内存节点** 与 **旧版知识图谱** 同时存在——需要明确"哪个是默认"，否则用户数据写错地方。v0.8 又新增 `project_wiki`(第三套 wiki 系统)—— 目前它走 archivist 摘要 + 磁盘镜像树,**与 kb_*(RAG) / memory_nodes(主题聚合) 三路并存**,需要文档与 UI 明确各自适用场景(见 06 §2)。
