@@ -360,7 +360,7 @@ const unsubscribe = api().onAgentEvent((data) => {
 
 - 列出 agents
 - 创建 / 编辑 / 删除
-- AgentEditor 含 5 个 section：Basic / Prompt / Tools / Permissions / ExposeAsTool
+- AgentEditor 含 6 个 section：Basic / Prompt / Tools / Permissions / Subagents / WikiAnchors（详见 [02 §8.3](./02-module-structure.md#83-业务页面)；早期文档写"5 个 + ExposeAsTool"已过时）
 - TemplateGallery：GitHub 模板导入
 
 ### 5.3 McpSettingsPage
@@ -371,15 +371,14 @@ const unsubscribe = api().onAgentEvent((data) => {
 
 ### 5.4 SettingsPage（设置）
 
-9 个 section：
-- Provider（API key + baseUrl + 模型列表）
+SettingsPage + 7 个 section（与 02 §8.3 一致；早期文档写"9 个 section"是过时计数）：
+- Provider（ProviderCard + ProviderEditor：API key + baseUrl + 模型列表）
 - Workspace
 - Theme
 - DeviceContext
 - Guidelines
-- MemorySettings
-- ProxySettings
-- ThemeSettings / DeviceContextSettings 等
+- Memory
+- Proxy
 
 ### 5.5 ToolsPage
 

@@ -365,21 +365,28 @@ AppLayout.tsx (184)   →  TitleBar + IconSidebar + ResizableLayout + page overl
 - `FileTreePanel.tsx` — 文件树（依赖 `/api/files/tree`）
 - `DocViewerPanel.tsx` — 文档预览（依赖 `/api/files/content`）
 
+> 注：`AppLayout.tsx` 也放在 `layout/` 下（见 §8.1 入口表），与上面 5 个面板组件同目录，共 6 个文件。
+
 ### 8.3 业务页面
+
+`components/` 下共 **13 个子目录**（v0.8 加了 `cron` / `requirements` / `skills` / `wiki` 4 个工作流域目录；早期文档写"11 个"是 v0.7 计数，且误把不存在的 `workspace/` 列了进去 —— 实际 `ls src/renderer/components/` 无 `workspace/` 目录）：
 
 ```
 components/
-├── agents/        AgentsPage + AgentEditor (5 个 section) + TemplateGallery/GithubImportModal
+├── agents/        AgentsPage + AgentEditor (6 个 section: Basic/Prompt/Permissions/Subagents/Tools/WikiAnchors)
+│                  + TemplateGallery/TemplateCard/TemplateDetailModal + GithubImportModal + agent-editor-types.ts
 ├── chat/          AskUserCard / TodosList
-├── common/        CodeBlock (Shiki) / ConfirmModal / LogViewer / MarkdownRenderer (react-markdown + remark-gfm + rehype-raw)
-├── dashboard/     DashboardPage (待规划中)
+├── common/        CodeBlock (Shiki) / ConfirmModal / LogViewer / MarkdownRenderer (react-markdown + remark-gfm + rehype-raw) / NotificationToast (v0.8 通知)
+├── cron/          CronDashboard (v0.8 M1,单文件入口)
+├── dashboard/     DashboardPage (v0.8 工作流域总览,不再是"待规划")
 ├── kb/            KnowledgeBasePage
-├── layout/        AppLayout + 5 个面板
+├── layout/        AppLayout + 5 个面板 (见 §8.2)
 ├── mcp/           McpSettingsPage + McpServerCard
-├── settings/      SettingsPage (9 个 Section)
+├── requirements/  KanbanPage + KanbanBoard + RequirementCard/Header + ExecutionDetailPanel + CreateRequirementModal + CoverageJudgementModal + ProjectPage (v0.8 M0,8 个文件,需求/项目两套视图)
+├── settings/      SettingsPage + 8 个 Section (Theme/Proxy/Memory/Guidelines/DeviceContext/Workspace + Provider Card/Editor)
 ├── skills/        SkillsPage
 ├── tools/         ToolsPage
-└── workspace/     (空目录，可能规划中)
+└── wiki/          WikiPage + WikiTree + WikiDetail (v0.8 M2,详见 06 §2.5-2.6)
 ```
 
 ### 8.4 Zustand stores (`store/`)
