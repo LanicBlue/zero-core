@@ -161,32 +161,101 @@ runtime/hooks/
 
 | 文件 | 当前规模 | 角色 |
 |------|----------|------|
-| wiki-node-store.ts | 约 1,090 行 | 全局 Wiki / Memory tree 的核心 store，包含节点、主体、边、FTS、磁盘文档索引等 |
-| agent-service.ts | 约 1,010 行 | 多 Agent 生命周期 + 会话循环管理 + provider/runtime 编排 |
-| db-migration.ts | 约 930 行 | SQLite schema 演进、历史数据清理和兼容迁移 |
-| session-db.ts | 约 850 行 | SQLite 连接生命周期 + sessions/messages/turns/tool_executions 聚合门面 |
-| index.ts | 约 700 行 | 后端组合根：初始化 DB、hooks、stores、services、routers、cron、archivist |
+| wiki-node-store.ts | 约 1,700 行 | 全局 Wiki / Memory tree 的核心 store，包含节点、主体、边、FTS、磁盘文档索引、v0.8 磁盘镜像树布局（`diskPathFor`/`leaf↔folder promote`/`migrateWikiDiskLayout`）等 |
+| agent-service.ts | 约 1,200 行 | 多 Agent 生命周期 + 会话循环管理 + provider/runtime 编排 |
+| db-migration.ts | 约 1,060 行 | SQLite schema 演进、历史数据清理和兼容迁移（v0.8 后 5 阶段：列补齐 → 9 张工作流域表 DDL → SqliteStore 构造 → JSON→SQLite → KV+Memory，详见 [05 §4.2](./05-persistence.md#42-迁移机制)） |
+| index.ts | 约 900 行 | 后端组合根：初始化 DB、hooks、**手动编排 12+ store**（见 §4.1.1）、services、routers、cron、archivist |
+| session-db.ts | 约 960 行 | SQLite 连接生命周期 + **会话核心 5 表 + 5 个聚合 store**（3 eager 内核 + 2 v0.8 M5 lazy）的门面，详见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store) |
 | session-manager.ts | 约 350 行 | 会话生命周期状态机 + 指标聚合 + TTL 清理 |
 | session-lifecycle.ts | 约 45 行 | 状态枚举 + VALID_TRANSITIONS |
 | session-router.ts | 约 120 行 | 会话 CRUD REST API |
 
-**架构判断**：服务层的复杂度正在向组合根、Agent 编排、Wiki/Memory 持久化、迁移脚本四个热点集中。后续拆分不应只盯 `AgentService`，也要把 `WikiStore` 和 `db-migration` 纳入计划。
+> **v0.8 关键更正**：早期文档把 `session-db.ts` 描述成"所有 store 的聚合门面"——**已不准确**。v0.8 后 SessionDB 只聚合 3 个 eager 内核 store（`KeyValueStore`/`MemoryStore`/`MemoryNodeStore`）+ 2 个 M5 lazy store（`ExtractionCursorStore`/`TelemetryStore`），共 5 个；而 9 个工作流域 store（`ProjectStore`/`RequirementStore`/`CronStore`/`WikiScanCursorStore`/`TaskStepStore`/`ProjectJobStore`/`CronRunStore`/...）在 `index.ts:151-171` **独立 new**，只把 SessionDB 当 `getDb()` 提供者。详见 [05 §4.0.3](./05-persistence.md#403-关键边界sessiondb-不是聚合根) 与下方 §4.1.1。
+
+**架构判断**：服务层的复杂度正在向**组合根（store 编排）**、Agent 编排、Wiki/Memory 持久化、迁移脚本四个热点集中。后续拆分不应只盯 `AgentService`，也要把 `WikiStore`、`db-migration` 以及 `index.ts` 内 12+ store 的手动编排（应引入 store registry）纳入计划。
 
 ### 4.1 Stores
 
-11 个 SqliteStore 包装类：
-- `agent-store.ts`（114）— agents 表
-- `agent-tool-store.ts` — agent_tools 表
-- `provider-store.ts`（186）— providers 表（含 SYSTEM_PROVIDERS 模板）
-- `template-store.ts` — templates 表(v0.8 模板/角色分离:能力模板画廊,16 条 = 12 通用 + 4 领域专家;工作流角色在 `builtin-role-templates.ts` 独立,不进画廊)
-- `mcp-store.ts` — mcp_servers 表
-- `kb-store.ts` — kb_entries 表
-- `persona-store.ts` — personas（与 agents 共表）
-- `memory-store.ts`（266）— memory_entities + memory_relations
-- `memory-node-store.ts`（324）— memory_nodes / memory_subjects / memory_edges + FTS5
-- `message-store.ts`（97）— 文件存储（旧，已被 SQLite 替代）
+v0.8 后共 **~26 个 store 类、分布在 21 个文件**（不含 `sqlite-store.ts` 抽象基类 / `key-value-store.ts` KV 接口实现 / `message-store.ts` 已废文件存储）。按归属方式分三类：
 
-它们都基于 `sqlite-store.ts`（297）的通用 CRUD。SqliteStore 的三个写原语(`insertRow`/`updateRow`/`delete`)是**唯一写出口**,也是 `data-change-hub.ts` 的唯一 emit 点 —— 所有 store 的写都由此被 renderer 自动感知(UI 同步,见 ADR-021),无需逐 store 加通知。
+**A. SessionDB 直接聚合 store**（5 个，`session-db.ts:69-105` 持有引用 + getter）—— 详见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store)：
+
+| Store | 行 | eager/lazy | 表 |
+|-------|----|-----------|-----|
+| `key-value-store.ts` KeyValueStore | — | eager | kv(key/value) |
+| `memory-store.ts` MemoryStore | 266 | eager | memory_entities / memory_relations |
+| `memory-node-store.ts` MemoryNodeStore | 324 | eager | memory_nodes / memory_subjects / memory_edges + FTS5 |
+| `extraction-cursor-store.ts` ExtractionCursorStore | 77 | **lazy**（M5）| extraction_cursors |
+| `telemetry-store.ts` TelemetryStore | 97 | **lazy**（M5）| tool_telemetry |
+
+> **lazy 的设计动机**：不碰 M5 抽取路径的代码不付初始化成本；两表也故意**不进** `db-migration.ts` 的 `*_COLUMNS` 数组（独立 DDL，见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store)）。
+
+**B. 旧业务实体 store**（在 `index.ts:151-156` 独立 new，构造时传 SessionDB 当 `getDb()`）：
+
+| Store | 行 | 表 |
+|-------|----|----|
+| `agent-store.ts` AgentStore | 114 | agents |
+| `provider-store.ts` ProviderStore | 186 | providers（含 SYSTEM_PROVIDERS 模板） |
+| `template-store.ts` TemplateStore | — | templates（v0.8 模板/角色分离:能力模板画廊,16 条 = 12 通用 + 4 领域专家;工作流角色在 `builtin-role-templates.ts` 独立,不进画廊） |
+| `mcp-store.ts` McpStore | — | mcp_servers |
+| `kb-store.ts` KbStore | — | kb_entries |
+| `persona-store.ts` PersonaStore | — | personas（与 agents 共表） |
+
+**C. v0.8 工作流域 store**（9 个，`index.ts:159-171` 独立 new，**不挂 SessionDB**）—— 详见 [05 §2.2b](./05-persistence.md#22b-v08-多-agent-工作流域表)：
+
+| Store | 行 | 阶段 | 表 |
+|-------|----|------|----|
+| `project-store.ts` ProjectStore | 78 | M0 | projects |
+| `requirement-store.ts` RequirementStore | 85 | M0 | requirements / requirement_history / requirement_messages |
+| `requirement-doc-store.ts` RequirementDocStore | — | M0 | requirement_docs |
+| `wiki-node-store.ts` WikiStore | 1698 | M0/M2 | project_wiki（详见 [06 §2.5](./06-knowledge-subsystems.md#25-wiki-体的磁盘镜像树布局v08-p1-§101)）|
+| `project-wiki-store.ts` ProjectWikiStore | — | M2 | project_wiki 的 legacy 视图（委托给 WikiStore）|
+| `wiki-scan-cursor-store.ts` WikiScanCursorStore | 62 | M2 | wiki_scan_cursors |
+| `task-step-store.ts` TaskStepStore | 58 | M0 | task_steps |
+| `cron-store.ts` CronStore + CronRunStore | 176 | M1 | crons / cron_runs |
+| `orchestrate-store.ts` OrchestratePlanStore + OrchestrateManifestStore + ConfirmRegistry | 79 | M3 | orchestrate_plans / orchestrate_manifests |
+| `project-job-store.ts` ProjectJobStore | 47 | M2 | project_jobs |
+| `tool-usage-store.ts` ToolConfigStore + ToolUsageStore | 129 | P0/P3 | tool_configs（**手写 SQL**，PK=tool_name 非 surrogate id，未用 SqliteStore）/ tool_usage |
+
+> **同名陷阱**：文件名 `tool-usage-store.ts` 内含 **两个** store（`ToolConfigStore` 写 `tool_configs` 表 / `ToolUsageStore` 写 `tool_usage` 表），且 `ToolConfigStore` 走手写 SQL 而非 `SqliteStore<T>`，是唯一一个不基于 `SqliteStore` 的可写 store。
+
+**D. 已废 / 特殊**：
+- `message-store.ts`（97）— 文件存储（旧，已被 SQLite 替代，仅遗留代码路径）
+- `wiki-node-store.ts` 既是 v0.8 工作流域（C 类），也是全局 memory tree 的实现（跨域 store）
+
+它们大多基于 `sqlite-store.ts`（393）的通用 CRUD。SqliteStore 的三个写原语(`insertRow`/`updateRow`/`delete`)是**唯一写出口**,也是 `data-change-hub.ts` 的唯一 emit 点 —— 所有 store 的写都由此被 renderer 自动感知(UI 同步,见 ADR-021),无需逐 store 加通知。**例外**：`ToolConfigStore` 与 v0.8 M5 的两个 lazy store 用独立 DDL/手写 SQL，绕过 `SqliteStore` 抽象，因此也不进 `db-migration.ts` 的 `*_COLUMNS` 数组。
+
+#### 4.1.1 store 编排：SessionDB 不是聚合根（v0.8 重要边界）
+
+旧文档（含本文早期版本）把 SessionDB 描述为"所有 store 的聚合根 / 聚合门面"——**这是 v0.7 叙事，已不准确**。v0.8 M0~M3 落地工作流域后，store 编排变成两层：
+
+1. **SessionDB 自持 5 个内核 store**（§4.1.A 表，eager 3 + lazy 2），其余什么也不聚合。
+2. **`index.ts:151-171` 手动 new 15+ store**（§4.1.B + C），全部把 SessionDB 当作 `getDb()` 提供者传入（store 内部读 `sessionDB.db` 直接操作 SQLite），但 SessionDB **不持有这些 store 的引用**。
+
+```ts
+// index.ts:115-171 摘录(简化)
+const sessionDB = new SessionDB();           // 内部 eager new 3 个内核 store
+runMigrations(sessionDB);
+const wikiStoreGlobal = new WikiStore(sessionDB);   // C 类,独立 new
+// ...
+const agentStore        = new AgentStore(sessionDB);        // B 类
+const projectStore      = new ProjectStore(sessionDB);     // C 类(v0.8 M0)
+const requirementStore  = new RequirementStore(sessionDB); // C 类
+const wikiStore         = new ProjectWikiStore(wikiStoreGlobal);  // 视图包装
+const wikiScanCursorStore = new WikiScanCursorStore(sessionDB);
+const taskStepStore     = new TaskStepStore(sessionDB);
+const cronStore         = new CronStore(sessionDB);
+const cronRunStore      = new CronRunStore(sessionDB);
+const projectJobStore   = new ProjectJobStore(sessionDB);
+```
+
+**为什么这么设计**（v0.8 刻意取舍）：
+- ✅ 会话核心（5 表）不被工作流域写入拖累 / 不被工作域 schema 变更耦合。
+- ✅ 新增工作流域 store **不必改 SessionDB**（SessionDB 已 960 行，再加会撑）。
+- ✅ 工作域 store 之间可独立演化（cron 不必知道 wiki 存在）。
+- ⚠️ 代价：`index.ts` 手动编排 15+ store，**无 registry / 无自动依赖注入**，加一个 store 要改 `index.ts` 多处（new + 注入 router + 注入 service）。
+
+> 详见 [05 §4.0.3](./05-persistence.md#403-关键边界sessiondb-不是聚合根) 与 [ADR-021](./09-extension-points-and-adrs.md)（data-change-hub）。
 
 ### 4.2 Routers（当前约 20+ 个 HTTP router / router-like 模块）
 
@@ -213,7 +282,19 @@ server/index.ts 注入主要 HTTP 表面：
 ### 4.4 边界约束
 
 - `server/` 是顶层入口，不被 `core/`、`runtime/`、`shared/` 反向依赖。
-- 启动顺序固定：`SessionDB → runMigrations → ToolRegistry → Stores → AgentService → Hooks → startServer`。
+- 启动顺序（`index.ts:113-150` 实际序列，比早期"SessionDB→runMigrations→...→Stores"线性模型复杂）：
+  1. `new SessionDB()` —— 内部 eager new 3 个内核 store（KV/Memory/MemoryNode）
+  2. `runMigrations(sessionDB)` —— 5 阶段 schema 演进，详见 [05 §4.2](./05-persistence.md#42-迁移机制)
+  3. `new WikiStore(sessionDB)` —— v0.8 M2 全局 memory tree，**早于 hooks 注册**（M5 抽取器要引用它）
+  4. `registerDurableHooks(sessionDB)` + `registerToolExecutionHooks(sessionDB)` —— turn 持久化 + 工具执行回写
+  5. M5 抽取依赖装配（`ExtractionCursorStore` / `ExtractorA/BService`），首次访问触发 lazy new
+  6. `registerAllRuntimeHooks(sessionDB, extractionDeps)` —— 注册 7 个 runtime feature hook
+  7. `new ToolRegistry + registerRuntimeTools` —— 25 个内置工具注册
+  8. **手动 new 15+ store**（B + C 类，§4.1.1）—— 不挂 SessionDB，只在 `index.ts` 局部变量
+  9. 各 `*-router(deps)` 注入 + `app.use(...)` —— 20 个 HTTP router
+  10. `startServer()`
+  
+  **关键约束**：WikiStore 必须在 hooks 注册之前 new（否则 M5 抽取器拿不到 writer）；CronStore/ProjectStore 等工作域 store 之间无顺序依赖（互不引用）。
 
 ## 5. 共享层 `src/shared/`
 
@@ -303,24 +384,31 @@ components/
 
 ### 8.4 Zustand stores (`store/`)
 
-10 个 store，对应各业务域：
+v0.8 后共 **14 个 store + 1 个 helper**（`data-sync.ts`，详见下表注），覆盖会话、Agent 管理、模板、v0.8 工作流域、UI 状态五个域：
 
-| Store | 文件 | 关注点 |
-|-------|------|--------|
-| chat-store | 327 | 会话、消息、流式状态、contextInfo（最强逻辑） |
-| agent-store | 132 | Agent CRUD + 模型/工具列表缓存 |
-| agent-tool-store | 86 | Agent 自定义工具 CRUD |
-| mcp-store | n/a | MCP 服务器状态 |
-| kb-store | n/a | KB CRUD |
-| provider-store | n/a | Provider 配置 |
-| template-store | n/a | 模板库 |
-| page-store | n/a | 当前页面 / 活动 Agent / 活动会话 |
-| interaction-store | n/a | TodoWrite 临时状态 + AskUser 弹窗 |
-| theme-store | n/a | 主题（dark/light + 自定义色） |
+| Store | 行 | 关注点 |
+|-------|----|--------|
+| chat-store | 347 | 会话、消息、流式状态、contextInfo（最强逻辑） |
+| agent-store | 144 | Agent CRUD + 模型/工具列表缓存 |
+| mcp-store | 122 | MCP 服务器状态 |
+| kb-store | 95 | KB CRUD |
+| provider-store | 92 | Provider 配置 |
+| template-store | 96 | 模板库 |
+| page-store | 44 | 当前页面 / 活动 Agent / 活动会话 |
+| interaction-store | 70 | TodoWrite 临时状态 + AskUser 弹窗 |
+| theme-store | 105 | 主题（dark/light + 自定义色） |
+| **project-store**（v0.8 M0） | 97 | 项目 CRUD + 当前活动项目 |
+| **requirement-store**（v0.8 M0） | 198 | 需求 CRUD + 历史 + 消息流 |
+| **wiki-store**（v0.8 M2） | 206 | Wiki 节点树 + 懒加载摘要（详见 [06 §2.5-2.6](./06-knowledge-subsystems.md)） |
+| **cron-store**（v0.8 M1） | 134 | Cron 任务 CRUD + 启停 |
+| **notification-store**（v0.8 M1） | 84 | requirement/cron/verification 通知队列 |
+| data-sync.ts（**helper，不是 store**） | 70 | `subscribeDataChange`/`subscribeListDataChange` —— 连接 `data-change-hub` 推送与各 store 的本地状态，详见 [07 §2.3.1](./07-renderer-and-ipc.md#231-data-change-hub) |
+
+> 注：早期文档写"10 个 store"是 v0.7 计数；v0.8 加了 4 个工作流域 store（project/requirement/wiki/cron）+ 1 个 notification store = 14 个。`data-sync.ts` 命名带 `store` 后缀但**不是 Zustand store**，是订阅 helper。
 
 每个 store 的特点是：
-- 模块级副作用（自动 `fetchAgents()` 一次）
-- 通过 `(window as any).api` 调用 IPC
+- 模块级副作用（自动 `fetchAgents()` / `fetchProjects()` 一次）
+- 通过 `(window as any).api` 调用 IPC，或经 `data-sync` 订阅 `data:changed` 增量更新
 - 选择器返回稳定引用，避免 React 重渲染
 
 ### 8.5 utils / styles / types
