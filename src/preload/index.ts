@@ -75,6 +75,8 @@ const api: WindowApi = {
 	// ─── Sessions ────────────────────────────────────
 	sessionsList: (agentId) => ipcRenderer.invoke("sessions:list", agentId),
 	sessionsNew: (agentId) => ipcRenderer.invoke("sessions:new", agentId),
+	// M4: find-or-create 一个 (agentId, projectId) session(project chat 入口)。
+	sessionsEnsureForProject: (agentId, projectId) => ipcRenderer.invoke("sessions:ensureForProject", agentId, projectId),
 	sessionsSwitch: (agentId, sessionId) => ipcRenderer.invoke("sessions:switch", agentId, sessionId),
 	sessionsCurrent: (agentId) => ipcRenderer.invoke("sessions:current", agentId),
 	sessionsActivate: (agentId, sessionId?) => ipcRenderer.invoke("sessions:activate", agentId, sessionId),
@@ -221,6 +223,7 @@ const api: WindowApi = {
 	projectsGetResourceUsage: (id) => ipcRenderer.invoke("projects:getResourceUsage", id),
 	// 手动起 archivist agent 深度充实 wiki(后台、非阻塞)。
 	projectsEnrich: (id, via?) => ipcRenderer.invoke("projects:enrich", id, via),
+	projectsListJobs: (id) => ipcRenderer.invoke("projects:listJobs", id),
 
 	// ── Requirements ──
 	requirementsList: (filter?) => ipcRenderer.invoke("requirements:list", filter),

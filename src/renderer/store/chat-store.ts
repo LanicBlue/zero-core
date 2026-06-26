@@ -76,6 +76,12 @@ interface ChatState {
 	messagesBySession: Record<string, ChatMessage[]>;
 	activeAgentId: string | null;
 	activeSessionId: string | null;
+	/**
+	 * M5: 当前 chat 的项目语境。null = General(非项目单例);非空 = 该 project 的
+	 * (agentId, projectId) session。切 agent 时重置为 null(落 General,防误输入),
+	 * 跳转 project 时设为该 project → 激活对应 session。
+	 */
+	activeProjectId: string | null;
 	streamingSessions: Set<string>;
 	sessionsByAgent: Record<string, SessionRecord[]>;
 	lastError: { sessionId: string; message: string } | null;
@@ -90,6 +96,8 @@ interface ChatState {
 	finishStreaming: (sessionId: string) => void;
 	updateSessionLifecycle: (sessionId: string, state: SessionLifecycleState) => void;
 	setActiveAgent: (id: string | null, sessionId?: string | null) => void;
+	/** M5: 切换项目语境(null = 回到 General)。调用方负责随后激活对应 session。 */
+	setActiveProject: (id: string | null) => void;
 	loadMessages: (sessionId: string, messages: ChatMessage[]) => void;
 	initSession: (sessionId: string, payload: { messages: ChatMessage[]; activeAgentId?: string | null }) => void;
 	clearMessages: (sessionId: string) => void;
@@ -143,6 +151,7 @@ export const useChatStore = create<ChatState>((set) => ({
 	messagesBySession: {},
 	activeAgentId: null,
 	activeSessionId: null,
+	activeProjectId: null,
 	streamingSessions: new Set(),
 	sessionsByAgent: {},
 	lastError: null,
@@ -257,9 +266,12 @@ export const useChatStore = create<ChatState>((set) => ({
 		}),
 
 	setActiveAgent: (_id, sessionId?) =>
+		// M5: 切 agent → 重置到 General(非项目单例),防止在上一 agent 的 project
+		// session 里误输入。调用方可显式传 sessionId 覆盖。
 		set(() => ({
 			activeAgentId: _id,
 			activeSessionId: sessionId ?? null,
+			activeProjectId: null,
 		})),
 
 	loadMessages: (sessionId, msgs) =>
@@ -292,6 +304,8 @@ export const useChatStore = create<ChatState>((set) => ({
 
 	setActiveSessionId: (sessionId) =>
 		set(() => ({ activeSessionId: sessionId })),
+	setActiveProject: (id) =>
+		set(() => ({ activeProjectId: id })),
 
 	editMessage: (sessionId, msgId, newText) =>
 		set((state) => {

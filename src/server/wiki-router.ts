@@ -60,7 +60,7 @@ import type { ProjectStore } from "./project-store.js";
 export function createWikiRouter(deps: {
 	wikiStore: WikiStore;
 	/** v0.8 §2.13: lazy summary materialization on expand (optional). */
-	archivistService?: import("./archivist-service.js").ArchivistService;
+	archivistService?: import("./wiki-skeleton-service.js").WikiSkeletonService;
 }): Router {
 	const router = Router();
 	const { wikiStore, archivistService } = deps;

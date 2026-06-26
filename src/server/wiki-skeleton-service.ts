@@ -1,4 +1,9 @@
-// Archivist 服务 (v0.8 M2)
+// Wiki 骨架扫描服务 (v0.8 M2)
+//
+// v0.8 重命名澄清:原 `WikiSkeletonService` 正名为 `WikiSkeletonService` ——
+// "archivist" 名字让给 agent 角色(archivist role,做深度充实);本服务是无 LLM
+// 的静态骨架扫描器(建结构节点 + 启发式简摘),由 createProject 在后台触发、
+// 也由 archivist agent 充实前提供骨架。方法 scanProject → buildSkeleton。
 //
 // # 文件说明书
 //
@@ -35,7 +40,7 @@
 // - archivistId(全局 archivist agent 的 id)
 //
 // ## 输出
-// - scanProject(projectId):扫描 + 增量更新 wiki
+// - buildSkeleton(projectId):扫描 + 增量更新 wiki 骨架
 // - rescanProjectFull(projectId):周期全量 rescan 兜底漂移
 // - commitRequirementDoc / mergeFeatureToMain / cleanupWorktree:git 管理
 // - detectDivergence(projectId):意图↔结构分歧信号
@@ -132,10 +137,10 @@ export interface DivergenceReport {
 }
 
 // ---------------------------------------------------------------------------
-// ArchivistService
+// WikiSkeletonService
 // ---------------------------------------------------------------------------
 
-export class ArchivistService {
+export class WikiSkeletonService {
 	private wiki: WikiStore;
 	private cursors: WikiScanCursorStore;
 	private git: ArchivistGit;
@@ -169,7 +174,7 @@ export class ArchivistService {
 	 *
 	 * Feature-branch WIP is NEVER picked up here — only main.
 	 */
-	async scanProject(projectId: string): Promise<ScanResult> {
+	async buildSkeleton(projectId: string): Promise<ScanResult> {
 		const project = this.projectStore.get(projectId);
 		if (!project) {
 			return this.emptyResult(projectId, "project not found");
@@ -288,7 +293,7 @@ export class ArchivistService {
 			// PM wrote the doc → archivist re-scans to ingest the new intent
 			// node and (potentially) the divergence baseline.
 			try {
-				await this.scanProject(projectId);
+				await this.buildSkeleton(projectId);
 			} catch (err) {
 				log.warn("archivist", `post-commit scan failed: ${(err as Error).message}`);
 			}
@@ -306,7 +311,7 @@ export class ArchivistService {
 			// main advanced → re-scan (RFC §2.15: "合并后 main 前进 → 通知 archivist
 			// 刷新 wiki/traceability").
 			try {
-				await this.scanProject(projectId);
+				await this.buildSkeleton(projectId);
 			} catch (err) {
 				log.warn("archivist", `post-merge scan failed: ${(err as Error).message}`);
 			}

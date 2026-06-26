@@ -63,7 +63,7 @@ import { ProjectWikiStore } from "./project-wiki-store.js";
 import { WikiStore } from "./wiki-node-store.js";
 import { WikiScanCursorStore } from "./wiki-scan-cursor-store.js";
 import { ArchivistGit } from "./archivist-git.js";
-import { ArchivistService } from "./archivist-service.js";
+import { WikiSkeletonService } from "./wiki-skeleton-service.js";
 import { TaskStepStore } from "./task-step-store.js";
 import { createProjectRouter } from "./project-router.js";
 import { createRequirementRouter } from "./requirement-router.js";
@@ -334,7 +334,7 @@ export async function startServer(options?: StartServerOptions) {
 	// subtree (store-layer enforced). Manages main-branch git (commit PM
 	// docs / merge feature→main / non-repo auto-init / worktree cleanup).
 	const archivistGit = new ArchivistGit();
-	const archivistService = new ArchivistService({
+	const archivistService = new WikiSkeletonService({
 		wikiStore: wikiStoreGlobal,
 		cursorStore: wikiScanCursorStore,
 		git: archivistGit,
@@ -488,7 +488,7 @@ export async function startServer(options?: StartServerOptions) {
 
 	// New routers
 	app.use("/api/chat", createChatRouter({ agentService, agentStore, providerStore, workspaceConfig }));
-	app.use("/api/sessions", createSessionRouter({ agentService, agentStore }));
+	app.use("/api/sessions", createSessionRouter({ agentService, agentStore, management }));
 	app.use("/api/logs", createLogRouter({ sessionDb: sessionDB }));
 	app.use("/api/files", createFileRouter({ workspaceConfig }));
 	app.use("/api/tool-executions", createToolExecutionRouter({ sessionDb: sessionDB, agentService, providerStore, workspaceConfig }));
@@ -642,7 +642,7 @@ export async function startServer(options?: StartServerOptions) {
 	const archivistRouter = express.Router();
 	archivistRouter.post("/:projectId/scan", async (req, res) => {
 		try {
-			const result = await archivistService.scanProject(req.params.projectId);
+			const result = await archivistService.buildSkeleton(req.params.projectId);
 			res.json(result);
 		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
 	});
@@ -873,7 +873,7 @@ export async function startServer(options?: StartServerOptions) {
  * `structure:<dirA>/<dirB>`. Idempotent — no-op once clean.
  */
 async function rebuildStaleStructureLayouts(
-	archivistService: import("./archivist-service.js").ArchivistService,
+	archivistService: import("./wiki-skeleton-service.js").WikiSkeletonService,
 	projectStore: import("./project-store.js").ProjectStore,
 	wikiStore: import("./wiki-node-store.js").WikiStore,
 ): Promise<void> {

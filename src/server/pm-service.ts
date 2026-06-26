@@ -70,7 +70,7 @@ import type { RequirementStore } from "./requirement-store.js";
 import type { RequirementDocStore } from "./requirement-doc-store.js";
 import type { WikiStore } from "./wiki-node-store.js";
 import type { OrchestrateManifestStore } from "./orchestrate-store.js";
-import type { ArchivistService } from "./archivist-service.js";
+import type { WikiSkeletonService } from "./wiki-skeleton-service.js";
 import type { SessionDB } from "./session-db.js";
 import type {
 	AgentRecord,
@@ -97,7 +97,7 @@ export interface PmServiceDeps {
 	wikiNodeStore: WikiStore;
 	manifestStore?: OrchestrateManifestStore;
 	/** v0.8 P7: archivist 合并入口(verify 通过 → mergeFeatureToMain + 增量扫描)。 */
-	archivistService?: ArchivistService;
+	archivistService?: WikiSkeletonService;
 	sessionDB: SessionDB;
 	resolveWikiRoot?: WikiRootResolver;
 }

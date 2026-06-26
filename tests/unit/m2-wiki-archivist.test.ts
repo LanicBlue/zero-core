@@ -40,7 +40,7 @@ import {
 import { WikiScanCursorStore } from "../../src/server/wiki-scan-cursor-store.js";
 import { ProjectWikiStore } from "../../src/server/project-wiki-store.js";
 import { ArchivistGit, featureBranchName, featureWorktreePath } from "../../src/server/archivist-git.js";
-import { ArchivistService } from "../../src/server/archivist-service.js";
+import { WikiSkeletonService } from "../../src/server/wiki-skeleton-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { WORKFLOW_ROLES } from "../../src/runtime/agent-roles.js";
 
@@ -51,7 +51,7 @@ let projectStore: ProjectStore;
 let requirementStore: RequirementStore;
 let cursorStore: WikiScanCursorStore;
 let archivistGit: ArchivistGit;
-let archivistService: ArchivistService;
+let archivistService: WikiSkeletonService;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-m2-"));
@@ -62,7 +62,7 @@ beforeEach(() => {
 	wikiStore = new WikiStore(sessionDB);
 	cursorStore = new WikiScanCursorStore(sessionDB);
 	archivistGit = new ArchivistGit();
-	archivistService = new ArchivistService({
+	archivistService = new WikiSkeletonService({
 		wikiStore,
 		cursorStore,
 		git: archivistGit,
@@ -354,7 +354,7 @@ describe("ArchivistService: incremental git scan", () => {
 		writeFile(ws, "src/b.ts", "export const X = 2;\n");
 		gitCommit(ws, "feat: initial code");
 
-		const result = await archivistService.scanProject(proj.id);
+		const result = await archivistService.buildSkeleton(proj.id);
 
 		expect(result.isInitial).toBe(true);
 		expect(result.filesScanned).toBeGreaterThanOrEqual(2);
@@ -376,7 +376,7 @@ describe("ArchivistService: incremental git scan", () => {
 		writeFile(ws, "packages/core/node_modules/bad.ts", "export const bad = 1;\n");
 		gitCommit(ws, "feat: tracked package with nested ignored dir");
 
-		await archivistService.scanProject(proj.id);
+		await archivistService.buildSkeleton(proj.id);
 
 		const nodes = wikiStore.listByProject(proj.id);
 		expect(nodes.find((n) => n.path === "header:packages/core/src/index.ts")).toBeDefined();
@@ -393,7 +393,7 @@ describe("ArchivistService: incremental git scan", () => {
 		// must not appear in the project wiki.
 		writeFile(ws, "apps/desktop/src/main.ts", "export const untracked = 1;\n");
 
-		const result = await archivistService.scanProject(proj.id);
+		const result = await archivistService.buildSkeleton(proj.id);
 
 		expect(result.isInitial).toBe(true);
 		const nodes = wikiStore.listByProject(proj.id);
@@ -411,7 +411,7 @@ describe("ArchivistService: incremental git scan", () => {
 		writeFile(ws, "pkg/x.ts", "export const x = 1;\n");
 		gitCommit(ws, "feat: nested layout");
 
-		await archivistService.scanProject(proj.id);
+		await archivistService.buildSkeleton(proj.id);
 
 		const nodes = wikiStore.listByProject(proj.id);
 		const struct = (dirRel: string) => nodes.find((n) => n.type === "structure" && n.path === `structure:${dirRel}`);
@@ -439,7 +439,7 @@ describe("ArchivistService: incremental git scan", () => {
 	test("rebuildProjectSubtree wipes + rescans cleanly", async () => {
 		writeFile(ws, "src/a.ts", "export const X = 1;\n");
 		gitCommit(ws, "feat: a");
-		await archivistService.scanProject(proj.id);
+		await archivistService.buildSkeleton(proj.id);
 		const before = wikiStore.listByProject(proj.id).length;
 		expect(before).toBeGreaterThan(0);
 
@@ -458,9 +458,9 @@ describe("ArchivistService: incremental git scan", () => {
 	test("second scan with no changes is a no-op", async () => {
 		writeFile(ws, "src/a.ts", "export const X = 1;\n");
 		gitCommit(ws, "feat: a");
-		await archivistService.scanProject(proj.id);
+		await archivistService.buildSkeleton(proj.id);
 
-		const result2 = await archivistService.scanProject(proj.id);
+		const result2 = await archivistService.buildSkeleton(proj.id);
 		expect(result2.filesScanned).toBe(0);
 		expect(result2.nodesUpserted).toBe(0);
 		expect(result2.notes).toContain("no changes since last scan");
@@ -469,13 +469,13 @@ describe("ArchivistService: incremental git scan", () => {
 	test("incremental scan only re-reads changed files (decision 19)", async () => {
 		writeFile(ws, "src/a.ts", "export const X = 1;\n");
 		gitCommit(ws, "feat: a");
-		await archivistService.scanProject(proj.id);
+		await archivistService.buildSkeleton(proj.id);
 
 		// Add a new file, advance main.
 		writeFile(ws, "src/b.ts", "export const Y = 2;\n");
 		gitCommit(ws, "feat: b");
 
-		const result2 = await archivistService.scanProject(proj.id);
+		const result2 = await archivistService.buildSkeleton(proj.id);
 		expect(result2.isInitial).toBe(false);
 		// b.ts is the only changed file (and not in IGNORED).
 		expect(result2.filesScanned).toBeGreaterThanOrEqual(1);
@@ -486,7 +486,7 @@ describe("ArchivistService: incremental git scan", () => {
 	test("cursor is recorded per (archivist, project)", async () => {
 		writeFile(ws, "src/a.ts", "export const X = 1;\n");
 		gitCommit(ws, "feat: a");
-		await archivistService.scanProject(proj.id);
+		await archivistService.buildSkeleton(proj.id);
 
 		const cursor = cursorStore.get("archivist", proj.id);
 		expect(cursor).toBeDefined();
@@ -496,7 +496,7 @@ describe("ArchivistService: incremental git scan", () => {
 	test("feature-branch WIP is not picked up (decision 26)", async () => {
 		writeFile(ws, "src/a.ts", "export const X = 1;\n");
 		gitCommit(ws, "feat: a on main");
-		await archivistService.scanProject(proj.id);
+		await archivistService.buildSkeleton(proj.id);
 
 		// Create a feature branch with WIP that does NOT merge.
 		execSync("git checkout -b feat-wip", { cwd: ws, stdio: "ignore" });
@@ -504,7 +504,7 @@ describe("ArchivistService: incremental git scan", () => {
 		gitCommit(ws, "wip: not merged");
 		execSync("git checkout main", { cwd: ws, stdio: "ignore" });
 
-		const result = await archivistService.scanProject(proj.id);
+		const result = await archivistService.buildSkeleton(proj.id);
 		// No new files on main → no new header node for wip.ts.
 		const nodes = wikiStore.listByProject(proj.id);
 		expect(nodes.find((n) => n.path === "header:src/wip.ts")).toBeUndefined();
@@ -529,7 +529,7 @@ describe("ArchivistService: intent aggregation + divergence signals", () => {
 		writeFile(ws, "docs/requirements/req-foo.md", "# Foo requirement\nMake foo work.\n");
 		gitCommit(ws, "feat: foo");
 
-		await archivistService.scanProject(proj.id);
+		await archivistService.buildSkeleton(proj.id);
 
 		const nodes = wikiStore.listByProject(proj.id);
 		const intent = nodes.find((n) => n.type === "intent");
@@ -548,7 +548,7 @@ describe("ArchivistService: intent aggregation + divergence signals", () => {
 		writeFile(ws, "src/orphan.ts", "export const X = 1;\n");
 		gitCommit(ws, "feat: orphan");
 
-		await archivistService.scanProject(proj.id);
+		await archivistService.buildSkeleton(proj.id);
 
 		const nodes = wikiStore.listByProject(proj.id);
 		const header = nodes.find((n) => n.type === "header" && n.path === "header:src/orphan.ts");
@@ -563,7 +563,7 @@ describe("ArchivistService: intent aggregation + divergence signals", () => {
 		writeFile(ws, "docs/requirements/req-unmet.md", "# Unmet requirement\n");
 		gitCommit(ws, "feat: mix");
 
-		await archivistService.scanProject(proj.id);
+		await archivistService.buildSkeleton(proj.id);
 		const report = await archivistService.detectDivergence(proj.id);
 
 		expect(report.uncoveredCode.length).toBeGreaterThan(0);

@@ -41,7 +41,7 @@ import type {
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	WikiNode,
-	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord,
+	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord, ProjectJobRecord,
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
 } from "./types.js";
@@ -135,6 +135,7 @@ export interface IpcChannelDefs {
 	"messages:delete":  { params: [agentId: string, msgSeq: number];               result: Ok | Err };
 	"sessions:list":    { params: [agentId: string];                              result: SessionRecord[] };
 	"sessions:new":     { params: [agentId: string];                              result: SessionRecord };
+	"sessions:ensureForProject": { params: [agentId: string, projectId: string];      result: { sessionId: string; created: boolean } };
 	"sessions:switch":  { params: [agentId: string, sessionId: string];           result: Ok & { sessionId: string } };
 	"sessions:current": { params: [agentId: string];                              result: SessionRecord | null };
 	"sessions:activate":{ params: [agentId: string, sessionId?: string];          result: Ok };
@@ -181,6 +182,7 @@ export interface IpcChannelDefs {
 	"projects:delete":           { params: [id: string];                             result: Ok };
 	"projects:getResourceUsage": { params: [id: string];                             result: ProjectResourceUsage };
 	"projects:enrich":           { params: [id: string, via?: AgentVia];             result: { jobId: string; sessionId: string } };
+	"projects:listJobs":         { params: [id: string];                             result: ProjectJobRecord[] };
 
 	// ── Requirements (CRUD + transitions + messages + steps) ─
 	"requirements:list":       { params: [filter?: { projectId?: string; status?: string; priority?: string }]; result: RequirementRecord[] };

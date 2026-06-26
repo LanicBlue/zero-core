@@ -92,6 +92,15 @@ export function createProjectRouter(deps: {
 		res.json(p);
 	});
 
+	/** GET /:id/jobs — 列出该项目的后台任务记录(wiki 充实等),供 chat 输入锁判断。 */
+	router.get("/:id/jobs", (req, res) => {
+		const p = projectStore.get(req.params.id);
+		if (!p) return res.status(404).json({ error: "Project not found" });
+		const store = management?.getProjectJobStore();
+		if (!store) return res.json([]);
+		res.json(store.listByProject(p.id));
+	});
+
 	/** GET /:id/resource-usage — v0.8 P5 §8.5 (sessions token/cost SUM by projectId). */
 	router.get("/:id/resource-usage", (req, res) => {
 		const p = projectStore.get(req.params.id);

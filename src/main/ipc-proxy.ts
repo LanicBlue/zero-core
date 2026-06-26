@@ -125,6 +125,7 @@ const R: Record<string, RouteMapping> = {
 	// Sessions
 	"sessions:list":    { method: "GET", path: "/api/sessions/:agentId", buildReq: (agentId) => ({ params: { agentId } }) },
 	"sessions:new":     { method: "POST", path: "/api/sessions/:agentId/new", buildReq: (agentId) => ({ params: { agentId } }) },
+	"sessions:ensureForProject": { method: "POST", path: "/api/sessions/for-project", buildReq: (agentId, projectId) => ({ body: { agentId, projectId } }) },
 	"sessions:switch":  { method: "PUT", path: "/api/sessions/:agentId/switch/:sessionId", buildReq: (agentId, sessionId) => ({ params: { agentId, sessionId } }) },
 	"sessions:activate": { method: "POST", path: "/api/sessions/:agentId/activate", buildReq: (agentId, sessionId?) => ({ params: { agentId }, body: { sessionId } }) },
 	"sessions:current": { method: "GET", path: "/api/sessions/:agentId/current", buildReq: (agentId) => ({ params: { agentId } }) },
@@ -194,6 +195,7 @@ const R: Record<string, RouteMapping> = {
 		"projects:delete":           { method: "DELETE", path: "/api/projects/:id",             buildReq: (id) => ({ params: { id } }) },
 		"projects:getResourceUsage": { method: "GET",    path: "/api/projects/:id/resource-usage", buildReq: (id) => ({ params: { id } }) },
 		"projects:enrich":           { method: "POST",   path: "/api/projects/:id/enrich",       buildReq: (id, via?) => ({ params: { id }, body: via ? { via } : {} }) },
+		"projects:listJobs":         { method: "GET",    path: "/api/projects/:id/jobs",         buildReq: (id) => ({ params: { id } }) },
 
 		// ─── Requirements (M1) ──────────────────────────────
 		"requirements:list":       { method: "GET",    path: "/api/requirements",              buildReq: (filter?) => ({ query: filter ?? {} }) },

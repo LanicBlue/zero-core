@@ -41,7 +41,7 @@ import type {
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	WikiNode,
-	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord,
+	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord, ProjectJobRecord,
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
 } from "./types.js";
@@ -96,6 +96,8 @@ export interface WindowApi {
 	// ── Sessions ──
 	sessionsList: (agentId: string) => Promise<SessionRecord[]>;
 	sessionsNew: (agentId: string) => Promise<SessionRecord>;
+	/** M4: find-or-create 一个 (agentId, projectId) session(project chat 入口)。 */
+	sessionsEnsureForProject: (agentId: string, projectId: string) => Promise<{ sessionId: string; created: boolean }>;
 	sessionsSwitch: (agentId: string, sessionId: string) => Promise<{ success: true; sessionId: string }>;
 	sessionsCurrent: (agentId: string) => Promise<SessionRecord | null>;
 	sessionsActivate: (agentId: string, sessionId?: string) => Promise<{ success: true; sessionId: string }>;
@@ -221,6 +223,8 @@ export interface WindowApi {
 	projectsGetResourceUsage: (id: string) => Promise<ProjectResourceUsage>;
 	/** 手动起 archivist agent 深度充实 wiki(后台、非阻塞)。 */
 	projectsEnrich: (id: string, via?: AgentVia) => Promise<{ jobId: string; sessionId: string }>;
+	/** 列该项目的后台任务记录(供 chat 输入锁判断)。 */
+	projectsListJobs: (id: string) => Promise<ProjectJobRecord[]>;
 
 	// ── Requirements ──
 	requirementsList: (filter?: { projectId?: string; status?: string; priority?: string }) => Promise<RequirementRecord[]>;

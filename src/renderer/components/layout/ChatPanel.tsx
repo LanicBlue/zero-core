@@ -28,6 +28,7 @@
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { useChatStore, selectActiveMessages, selectIsStreaming, selectLastError, selectContextInfo, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
+import { useProjectStore } from "../../store/project-store.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
 import AskUserCard from "../chat/AskUserCard.js";
 import TodosList from "../chat/TodosList.js";
@@ -35,7 +36,7 @@ import { useInteractionStore } from "../../store/interaction-store.js";
 import { usePageStore } from "../../store/page-store.js";
 import { useRequirementStore } from "../../store/requirement-store.js";
 import RequirementHeader from "../requirements/RequirementHeader.js";
-import type { RequirementStatus } from "../../../shared/types.js";
+import type { RequirementStatus, ProjectJobRecord, SessionRecord } from "../../../shared/types.js";
 
 const api = () => (window as any).api;
 
@@ -345,9 +346,9 @@ function ErrorBanner() {
 
 export default function ChatPanel() {
 	const {
-				activeAgentId, activeSessionId, sessionsByAgent,
+				activeAgentId, activeSessionId, activeProjectId, sessionsByAgent,
 				addMessage, finishStreaming, setActiveAgent,
-				setSessions, setActiveSessionId, clearMessages,
+				setSessions, setActiveSessionId, setActiveProject, clearMessages,
 				editMessage, deleteMessage, setIsStreaming,
 				updateContextInfo,
 			} = useChatStore();
@@ -355,6 +356,7 @@ export default function ChatPanel() {
 	const isStreaming = useChatStore(selectIsStreaming);
 	const contextInfo = useChatStore(selectContextInfo);
 	const { agents } = useAgentStore();
+	const { projects, fetchProjects } = useProjectStore();
 	const { pendingQuestions, setPendingQuestions, todosByAgent } = useInteractionStore();
 	const { activeRequirementId, setActiveRequirementId, setActivePage } = usePageStore();
 	const { requirements, transitionStatus, sendMessage: sendReqMessage } = useRequirementStore();
@@ -369,13 +371,62 @@ export default function ChatPanel() {
 	const [showSessions, setShowSessions] = useState(false);
 	const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
 	const [editText, setEditText] = useState("");
+	// M5: 当前 project 的后台任务记录(供输入锁:running → 临时锁;sessionId 命中 → worker session 永久只读)。
+	const [activeProjectJobs, setActiveProjectJobs] = useState<ProjectJobRecord[]>([]);
 
 	const refreshSessionData = useCallback(async (agentId: string) => {
-		const result = await api().sessionsActivate(agentId);
-		if (result?.sessionId) setActiveSessionId(result.sessionId);
 		const sessions = await api().sessionsList(agentId);
 		setSessions(agentId, sessions);
+		// M5: agent 载入 → 落 General(非项目单例)。找已有的非项目 session,
+		// 没有则建一个。与 activeProjectId=null 保持一致(切 agent 默认 General)。
+		let general = sessions.find((s: SessionRecord) => !s.context?.projectId);
+		if (!general) {
+			general = await api().sessionsNew(agentId);
+			const sessions2 = await api().sessionsList(agentId);
+			setSessions(agentId, sessions2);
+		}
+		await api().sessionsActivate(agentId, general.id);
+		setActiveSessionId(general.id);
 	}, []);
+
+	// M5: 拉当前 project 的后台任务记录(输入锁用)。
+	const refreshProjectJobs = useCallback(async (projectId: string | null) => {
+		if (!projectId) { setActiveProjectJobs([]); return; }
+		try {
+			const jobs = await api().projectsListJobs(projectId);
+			setActiveProjectJobs(jobs);
+		} catch { /* project_jobs 端点可能未就绪,静默 */ }
+	}, []);
+
+	// M5: 跳转到某 project 的 chat —— find-or-create (agentId, projectId) session 并激活。
+	const handleSelectProject = useCallback(async (projectId: string | null) => {
+		if (!activeAgentId) return;
+		setActiveProject(projectId);
+		if (!projectId) {
+			// 回到 General:找已有的非项目 session,没有则新建一个。
+			const existing = (sessionsByAgent[activeAgentId] ?? []).find((s) => !s.context?.projectId);
+			if (existing) {
+				await api().sessionsSwitch(activeAgentId, existing.id);
+				setActiveSessionId(existing.id);
+			} else {
+				const session = await api().sessionsNew(activeAgentId);
+				setActiveSessionId(session.id);
+				clearMessages(session.id);
+			}
+			await refreshProjectJobs(null);
+			return;
+		}
+		// 进 project session:ensureForProject find-or-create。
+		const { sessionId } = await api().sessionsEnsureForProject(activeAgentId, projectId);
+		await api().sessionsSwitch(activeAgentId, sessionId);
+		setActiveSessionId(sessionId);
+		const sessions = await api().sessionsList(activeAgentId);
+		setSessions(activeAgentId, sessions);
+		await refreshProjectJobs(projectId);
+	}, [activeAgentId, sessionsByAgent, setActiveProject, setActiveSessionId, clearMessages, setSessions, refreshProjectJobs]);
+
+	// 初次挂载拉一次 projects(供 project 选择器)。
+	useEffect(() => { fetchProjects(); }, [fetchProjects]);
 
 	// Load message history + sessions when agent changes
 	useEffect(() => {
@@ -396,7 +447,7 @@ export default function ChatPanel() {
 
 	const send = async () => {
 		const text = input.trim();
-		if (!text || !activeAgentId || isStreaming) return;
+		if (!text || !activeAgentId || isStreaming || isInputLocked) return;
 
 		const sid = activeSessionId ?? activeAgentId;
 		addMessage(sid, { id: nextMsgId(), role: "user", text, timestamp: Date.now() });
@@ -422,21 +473,22 @@ export default function ChatPanel() {
 
 	const handleNewSession = async () => {
 		if (!activeAgentId) return;
-		const session = await api().sessionsNew(activeAgentId);
-		setActiveSessionId(session.id);
-		clearMessages(session.id);
+		// M5: "+" 现在意味"回到 General 单例"(不再每次新建,违反"非项目只一个")。
 		setShowSessions(false);
-		const sessions = await api().sessionsList(activeAgentId);
-		setSessions(activeAgentId, sessions);
+		await handleSelectProject(null);
 	};
 
 	const handleSwitchSession = async (sessionId: string) => {
 		if (!activeAgentId) return;
 		await api().sessionsSwitch(activeAgentId, sessionId);
 		setActiveSessionId(sessionId);
-		setShowSessions(false);
+		// M5: 同步 project 选择器 —— 从该 session 的 context 推 activeProjectId。
 		const sessions = await api().sessionsList(activeAgentId);
 		setSessions(activeAgentId, sessions);
+		const target = sessions.find((s: SessionRecord) => s.id === sessionId);
+		setActiveProject(target?.context?.projectId ?? null);
+		await refreshProjectJobs(target?.context?.projectId ?? null);
+		setShowSessions(false);
 	};
 
 	const handleDeleteSession = async (sessionId: string) => {
@@ -461,6 +513,25 @@ export default function ChatPanel() {
 
 	const activeAgent = agents.find((a) => a.id === activeAgentId);
 	const sessions = activeAgentId ? (sessionsByAgent[activeAgentId] ?? []) : [];
+
+	// M5: 对话保护(工作时的开关,非写死)。
+	//   - hasRunningJob: 当前 project 有 running 任务 → 临时锁输入(防干扰运行中的充实)。
+	//   - activeSessionIsWorker: 当前 session 关联了 job 记录 → 它是 worker session(充实现场),
+	//     永久只读(用户只看不聊)。两条都从 project_jobs 派生,不硬编码角色判断。
+	const hasRunningJob = activeProjectJobs.some((j) => j.status === "running");
+	const activeSessionIsWorker = activeProjectJobs.some((j) => j.sessionId === activeSessionId);
+	const isInputLocked = hasRunningJob || activeSessionIsWorker;
+
+	// M5: session 显示名 = project 名 / "General"。
+	const projectNameById = useMemo(() => {
+		const m = new Map<string, string>();
+		for (const p of projects) m.set(p.id, p.name);
+		return m;
+	}, [projects]);
+	const sessionLabel = (s: typeof sessions[number]) => {
+		const pid = s.context?.projectId;
+		return pid ? (projectNameById.get(pid) ?? "Project") : "General";
+	};
 
 	const startEdit = (msg: typeof messages[number]) => {
 		setEditingMsgId(msg.id);
@@ -541,13 +612,33 @@ export default function ChatPanel() {
 					className="chat-agent-select"
 					aria-label="Select Agent"
 					value={activeAgentId ?? ""}
-					onChange={(e) => setActiveAgent(e.target.value || null)}
+					onChange={(e) => {
+						// M5: 切 agent → setActiveAgent 已重置 activeProjectId=null(→ General)。
+						// 这里清掉本组件的 job 视图,并落 General session。
+						setActiveAgent(e.target.value || null);
+						refreshProjectJobs(null);
+					}}
 				>
 					<option value="">-- Select Agent --</option>
 					{agents.map((a) => (
 						<option key={a.id} value={a.id}>{a.name}</option>
 					))}
 				</select>
+
+				{activeAgentId && (
+					<select
+						className="chat-agent-select"
+						aria-label="Select Project context"
+						title="项目语境:General = 非项目单例;选某 project = 进该 project 的 session"
+						value={activeProjectId ?? ""}
+						onChange={(e) => handleSelectProject(e.target.value || null)}
+					>
+						<option value="">General</option>
+						{projects.map((p) => (
+							<option key={p.id} value={p.id}>{p.name}</option>
+						))}
+					</select>
+				)}
 
 				{contextInfo && (
 					<div className="context-usage">
@@ -589,8 +680,7 @@ export default function ChatPanel() {
 											className="session-item-label"
 											onClick={() => handleSwitchSession(s.id)}
 										>
-											{s.title ?? new Date(s.createdAt).toLocaleString()}
-											{s.isMain && <span className="session-main"> *</span>}
+											{sessionLabel(s)}
 										</button>
 										<button
 											type="button"
@@ -659,14 +749,18 @@ export default function ChatPanel() {
 					value={input}
 					onChange={(e) => setInput(e.target.value)}
 					onKeyDown={handleKeyDown}
-					placeholder={activeAgentId ? "Type a message..." : "Select an agent first..."}
-					disabled={!activeAgentId || isStreaming}
+					placeholder={
+						!activeAgentId ? "Select an agent first..."
+						: isInputLocked ? (activeSessionIsWorker ? "只读 session(archivist 工作现场,用户只看不聊)" : "任务运行中,暂停输入...")
+						: "Type a message..."
+					}
+					disabled={!activeAgentId || isStreaming || isInputLocked}
 					rows={1}
 				/>
 				{isStreaming ? (
 					<button type="button" onClick={abort} className="btn-abort">Stop</button>
 				) : (
-					<button type="button" onClick={send} disabled={!activeAgentId || !input.trim()}>Send</button>
+					<button type="button" onClick={send} disabled={!activeAgentId || !input.trim() || isInputLocked}>Send</button>
 				)}
 			</div>
 		</main>

@@ -48,8 +48,9 @@ import type { CronStore } from "./cron-store.js";
 import type { RequirementStore } from "./requirement-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { WikiStore } from "./wiki-node-store.js";
-import type { ArchivistService } from "./archivist-service.js";
+import type { WikiSkeletonService } from "./wiki-skeleton-service.js";
 import type { ProjectJobStore } from "./project-job-store.js";
+import { resolveSessionByRoleProject } from "./session-context-router.js";
 import type {
 	AgentRecord,
 	ProjectRecord,
@@ -87,7 +88,7 @@ export interface ManagementDeps {
 	requirementStore?: RequirementStore;
 	sessionDB?: SessionDB;
 	wikiStore?: WikiStore;
-	archivistService?: ArchivistService;
+	archivistService?: WikiSkeletonService;
 	/** v0.8 §8.6: task-step store for the project-delete cascade. */
 	taskStepStore?: TaskStepStore;
 }
@@ -119,7 +120,7 @@ export class ManagementService {
 	private requirementStore: RequirementStore | null;
 	private sessionDB: SessionDB | null;
 	private wikiStore: WikiStore | null;
-	private archivistService: ArchivistService | null;
+	private archivistService: WikiSkeletonService | null;
 	// v0.8: task-step store for the project-delete cascade (§8.6). Late-bound.
 	private taskStepStore: TaskStepStore | null;
 	/** project_jobs store (wiki 充实等后台任务的 run 记录). Late-bound. */
@@ -158,7 +159,7 @@ export class ManagementService {
 	setRequirementStore(store: RequirementStore): void { this.requirementStore = store; }
 	setSessionDB(db: SessionDB): void { this.sessionDB = db; }
 	setWikiStore(wiki: WikiStore): void { this.wikiStore = wiki; }
-	setArchivistService(svc: ArchivistService): void { this.archivistService = svc; }
+	setArchivistService(svc: WikiSkeletonService): void { this.archivistService = svc; }
 	/** v0.8 §8.6: late-bind the task-step store (server/index.ts wiring order). */
 	setTaskStepStore(store: TaskStepStore): void { this.taskStepStore = store; }
 	/** Late-bind the project_jobs store. */
@@ -202,7 +203,7 @@ export class ManagementService {
 		// project creation.
 		if (this.archivistService) {
 			this.archivistService
-				.scanProject(project.id)
+				.buildSkeleton(project.id)
 				.then((r) => {
 					if (r.notes && r.notes.length > 0) {
 						log.debug("management", `archivist scan ${project.id}: ${r.notes.join("; ")}`);
@@ -236,6 +237,24 @@ export class ManagementService {
 		}
 		const via: AgentVia = opts.via ?? { role: "archivist" };
 		return this.enrichmentRunner(projectId, { via, prompt: opts.prompt });
+	}
+
+	/**
+	 * M4: find-or-create 一个 agent 在指定 project 上的 session。session 模型从
+	 * main-session 改为 `(agentId, projectId?)` 路由后,这是渲染端"跳转到某 project
+	 * 的 chat"所需的后端原语 —— 复用 resolveSessionByRoleProject (find-or-create,
+	 * 续接语义)。无 projectId 的 General 单例由渲染端自行用 sessionsNew 保证。
+	 *
+	 * 需 sessionDB 已注入。
+	 */
+	ensureProjectSession(agentId: string, projectId: string): { sessionId: string; created: boolean } {
+		if (!this.sessionDB) throw new Error("SessionDB not wired into ManagementService");
+		const { session, created } = resolveSessionByRoleProject(
+			{ sessionDB: this.sessionDB, projectStore: this.projectStore },
+			agentId,
+			projectId,
+		);
+		return { sessionId: session.id, created };
 	}
 
 	updateProject(id: string, input: Partial<Omit<ProjectRecord, "id" | "createdAt">>): ProjectRecord {

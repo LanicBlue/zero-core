@@ -237,7 +237,7 @@ describe("P5 §8.3 — createProject side-effects", () => {
 	test("kicks the archivist background scan asynchronously (best-effort)", async () => {
 		const scanCalls: string[] = [];
 		const archivistStub = {
-			scanProject: vi.fn(async (projectId: string) => {
+			buildSkeleton: vi.fn(async (projectId: string) => {
 				scanCalls.push(projectId);
 				return { notes: [] };
 			}),
@@ -247,8 +247,8 @@ describe("P5 §8.3 — createProject side-effects", () => {
 		const p = management.createProject({ name: "Scanned", workspaceDir: join(tmpDir, "ws") });
 		// createProject returns before the scan completes; flush microtasks.
 		await new Promise((r) => setTimeout(r, 10));
-		expect(archivistStub.scanProject).toHaveBeenCalledTimes(1);
-		expect(archivistStub.scanProject).toHaveBeenCalledWith(p.id);
+		expect(archivistStub.buildSkeleton).toHaveBeenCalledTimes(1);
+		expect(archivistStub.buildSkeleton).toHaveBeenCalledWith(p.id);
 		expect(scanCalls).toEqual([p.id]);
 	});
 
@@ -259,7 +259,7 @@ describe("P5 §8.3 — createProject side-effects", () => {
 
 	test("archivist scan failure does not block project creation", async () => {
 		const archivistStub = {
-			scanProject: vi.fn(async () => { throw new Error("scan failed"); }),
+			buildSkeleton: vi.fn(async () => { throw new Error("scan failed"); }),
 		};
 		management.setArchivistService(archivistStub as any);
 		// createProject returns synchronously regardless of scan outcome.
@@ -267,7 +267,7 @@ describe("P5 §8.3 — createProject side-effects", () => {
 		expect(p.id).toBeTruthy();
 		// Let the rejected promise settle (no uncaught throw escaping to test).
 		await new Promise((r) => setTimeout(r, 10));
-		expect(archivistStub.scanProject).toHaveBeenCalled();
+		expect(archivistStub.buildSkeleton).toHaveBeenCalled();
 	});
 });
 

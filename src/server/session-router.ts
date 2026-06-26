@@ -33,13 +33,16 @@
 import { Router } from "express";
 import type { createAgentService } from "./agent-service.js";
 import type { AgentStore } from "./agent-store.js";
+import type { ManagementService } from "./management-service.js";
 
 export function createSessionRouter(deps: {
 	agentService: ReturnType<typeof createAgentService>;
 	agentStore: AgentStore;
+	/** M4: 注入 ManagementService 以支持 ensureProjectSession (project 路由 session)。 */
+	management?: ManagementService;
 }): Router {
 	const router = Router();
-	const { agentService, agentStore } = deps;
+	const { agentService, agentStore, management } = deps;
 
 	const getDb = () => agentService.getDB();
 
@@ -60,6 +63,25 @@ export function createSessionRouter(deps: {
 			sessions[id] = { ...m, toolCallCounts: Object.fromEntries(m.toolCallCounts), toolCallErrors: Object.fromEntries(m.toolCallErrors) };
 		}
 		res.json({ ...aggregate, concurrencySnapshot: Object.fromEntries(Object.entries(aggregate.concurrencySnapshot)), sessions });
+	});
+
+	/**
+	 * POST /for-project — M4: find-or-create 一个 (agentId, projectId) session。
+	 * body: { agentId, projectId }。session 模型 (agentId, projectId?) 路由下,这是
+	 * 渲染端"跳转到某 project chat"的后端原语(General 单例由渲染端用 /new 保证)。
+	 * 必须放在 /:agentId 之前以免被参数捕获。
+	 */
+	router.post("/for-project", (req, res) => {
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		const agentId = req.body?.agentId;
+		const projectId = req.body?.projectId;
+		if (!agentId || !projectId) return res.status(400).json({ error: "agentId and projectId required" });
+		try {
+			const result = management.ensureProjectSession(agentId, projectId);
+			res.json(result);
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
+		}
 	});
 
 	// Sessions
