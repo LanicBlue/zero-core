@@ -22,6 +22,8 @@
 
 ### 2.0 SLO 仪表盘（gauge-style bar chart）
 
+> **v0.8 更正**：旧表第 6 行 "Memory 召回 100ms" 已废 —— MemoryRecall / MemoryNote 工具在 v0.8 P2 §11.6 从 `ALL_TOOLS` 取消注册（`src/runtime/tools/index.ts:79-83` 注释明示，"memory is now a wiki per-agent subtree"），对应后端 `MemoryStore` 变成**僵尸**（构造但零运行时写入者，见 12-glossary + 06 §2.7 矩阵）。当前主线知识检索走 **Wiki**（每 agent 一个 wiki 子树，`WikiStore` + Wiki action 工具的 expand/read/search），其延迟特性与旧的 Memory 召回（FTS5 MATCH）完全不同 —— 见下表第 6 行。KB 检索路径不变（独立 `knowledge.db`，余弦相似度）。
+
 ```mermaid
 graph LR
     subgraph "P50 延迟目标（ms）"
@@ -30,7 +32,7 @@ graph LR
         L3["Shell<br/>500ms"]:::good
         L4["WebFetch<br/>1000ms"]:::warn
         L5["KB 检索<br/>500ms"]:::good
-        L6["Memory 召回<br/>100ms"]:::good
+        L6["Wiki 检索<br/>200ms"]:::good
         L7["会话恢复<br/>2000ms"]:::good
         L8["应用启动<br/>3000ms"]:::warn
     end
@@ -49,8 +51,8 @@ graph LR
 | 文本 delta 间隔 | < 100ms | < 300ms | WS 推送速度 |
 | 工具调用（Shell 简单命令）| < 500ms | < 2s | 取决于命令 |
 | 工具调用（WebFetch）| < 1s | < 5s | 取决于目标网站 |
-| 工具调用（KB 检索）| < 500ms | < 2s | 取决于 KB 大小 |
-| 工具调用（Memory 召回）| < 100ms | < 300ms | FTS5 本地查询 |
+| 工具调用（KB 检索）| < 500ms | < 2s | `knowledge.db` 余弦相似度 O(M×D)，M=chunks |
+| 工具调用（Wiki 检索）| < 200ms | < 1s | `WikiStore` 树遍历 + FTS5 MATCH（`memory_nodes_fts`），live 路径仅在会话压缩 wiki 写失败时回退写入 |
 | 会话恢复 | < 2s | < 5s | DB 读取 + UI 渲染 |
 | 应用启动 | < 3s | < 6s | Electron + 后端 spawn |
 
@@ -102,7 +104,8 @@ IPC invoke (5ms)
 
 ### 3.4 优化机会
 
-- WAL 模式已启用（session-db.ts:56 和 kb-db.ts:52），读写不互斥。
+- WAL 模式已启用（session-db.ts:56 / kb-db.ts:52），读写不互斥。
+- v0.8 引入 14 张工作流域表 + 9 个独立 `new` 的 store（05 §2.2b + 02 §4.1.1）—— 单 `sessions.db` 写锁仍是全局串行点，但工作流域写入分散在不同 store / 路由，热点表竞争压力小于 v0.7（单一 AgentToolStore）。
 - 读多写少场景可考虑只读副本（但 better-sqlite3 不支持）。
 - AI SDK fetch 池设置 `dispatcher` 限流。
 
@@ -134,16 +137,16 @@ IPC invoke (5ms)
 
 ### 5.1 当前保证
 
-- **后端进程崩溃自动重启**：`backend-spawn.ts:84-88` 检测到 exit code 非零就重启。
-- **IPC 自动重连**：`main/ipc-proxy.ts:235-238` WS 2 秒重连。
-- **会话恢复**：`recovery.ts` 启动时扫描未完成 turn。
+- **后端进程崩溃自动重启**：`backend-spawn.ts:117-130`（`_shuttingDown` flag 防 shutdown 竞争 + fire-and-forget 重启；详见 08 §12.3 自愈机制）。⚠️ 当前**无重启计数 / 无退避**，连续崩溃会无限静默重启（见 open questions）。
+- **IPC 自动重连**：`main/ipc-proxy.ts:380-382` WS 关闭后 2 秒重连（`setTimeout(connect, 2000)`）。
+- **会话恢复**：在 `server/agent-service.ts`（不是独立 `recovery.ts` 文件）的恢复路径 —— 启动时扫描 `turn_state` 表找未完成 turn，逐个 `loop.resume(turnSeq)`（`agent-service.ts:729-775`）。`turn_state` 的 durable handler 在 `src/server/durable-hooks.ts` 写入。
 - **MCP 服务器断开**：不会自动重连，需要手动 `POST /api/mcp/:id/reconnect`。
 
 ### 5.2 不保证的场景
 
 - **MCP stdio 进程崩溃**：仅在用户重连时恢复。
 - **KB 文件删除**：chunks 仍存在直到用户手动删除 KB。
-- **LLM Provider 配额耗尽**：返回 `rate_limit` 错误，重试 3 次后失败。
+- **LLM Provider 配额耗尽**：返回 `rate_limit` 错误，`agent-loop.ts:427-454` 仅对 transient 错误重试，最多 `MAX_RETRIES=3`（`agent-utils.ts:29`），指数退避 base 1000ms。耗尽后 turn 标记为失败。
 
 ### 5.3 优化机会
 
@@ -155,13 +158,13 @@ IPC invoke (5ms)
 ### 6.1 加一个新工具的成本
 
 **当前**：30 分钟
-- 写工具文件（10 min）
-- 注册到 `ALL_TOOLS`（1 min）
+- 写工具文件（10 min）—— v0.8 后 `buildTool`（04 §2.0）自动注入 PreToolUse 阻断 hook + rateLimiter + recordToolUsage 遥测 + truncateResult，新工具无需手写这些横切关注点。
+- 注册到 `ALL_TOOLS`（1 min）+ 若需 ctx 能力门控，加 `CONDITIONAL_TOOLS` 谓词（5 min）。
 - 写单元测试（10 min）
 - 更新 ToolsPage UI（如果需要新字段）（5 min）
 - E2E 测试（如果关键路径）（5 min）
 
-**评估**：✅ 良好。
+**评估**：✅ 良好。当前 25 entries / 9 categories（04 §3 矩阵）。
 
 ### 6.2 加一个新 Provider 的成本
 
@@ -187,23 +190,23 @@ IPC invoke (5ms)
 ### 6.4 加一个新 IPC Channel 的成本
 
 **当前**：30 分钟
-- `shared/preload-types.ts` 加方法签名（5 min）
-- `main/ipc-proxy.ts` 加映射（5 min）
-- `server/*-router.ts` 加路由（10 min）
+- `main/ipc-proxy.ts` 的 `R: Record<string, RouteMapping>` 表加一行（5 min）—— 这是单一真值源，preload 方法的类型从 ROUTE_MAP 派生（07 §2.5）。
+- `server/*-router.ts` 加路由（10 min）—— 自动进 `ROUTE_MAP` 派生。
 - 渲染层调用（10 min）
+- 若是 LOCAL 通道（不经 HTTP proxy，目前 7 个：`window:minimize/maximize/close` + `dialog:openDirectory` + `webfetch:login` + `templates:github-preview/import-github`），需在 main 进程单独 `ipcMain.handle` 注册（5 min）。
 
 **评估**：✅ 良好。
 
 ### 6.5 加一种新的持久化表的成本
 
 **当前**：2 小时
-- `db-migration.ts` 加列（10 min）
-- 写 SqliteStore（30 min）
-- 写 Router（30 min）
-- 写 Store（30 min）
+- `db-migration.ts` 阶段 2 加 `CREATE TABLE` DDL（10 min）—— v0.8 工作流域表（projects / requirements / project_wiki / crons / orchestrate_* / tool_configs / tool_usage 等 14 张）走批 A 阶段 2 显式 DDL，不是简单的"加列"（详见 05 §4.2 + §2.2b）。两个例外 `ToolConfigStore` + `ToolUsageStore` 手写 SQL 不基于 SqliteStore。
+- 写 SqliteStore（30 min）—— 复用通用 CRUD，`server/index.ts:148-171` 独立 `new`（不挂 SessionDB，详见 05 §4.0.3 + 02 §4.1.1）。
+- 写 Router（30 min）—— `*-router.ts` 挂到 `server/index.ts:475+`，自动进 `ROUTE_MAP` 派生（07 §2.5）。
+- 写前端 Store + 5 个 store 之一订阅 `data:changed`（30 min）—— 走 `subscribeListDataChange`（增量 patch）或 `subscribeDataChange`（全量 refetch，树形数据用）。
 - 测试（30 min）
 
-**评估**：✅ 良好（基于 SqliteStore 通用 CRUD）。
+**评估**：✅ 良好（基于 SqliteStore 通用 CRUD + ROUTE_MAP 自动派生）。
 
 ### 6.6 跨层重构的成本评估
 
@@ -224,20 +227,21 @@ IPC invoke (5ms)
 - 单用户单机
 - 消息数：~10K turns / session
 - 工具调用：~1K / day
-- KB chunks：~5K
-- Memory nodes：~500
+- KB chunks：~5K（独立 `knowledge.db`）
+- Memory nodes：~500（v0.8 后写入路径仅会话压缩 wiki 写失败时回退，正常情况增长极慢；主线知识走 `project_wiki` 磁盘镜像树，按项目维度独立增长）
 - MCP servers：~5
 - Agents：~10
+- 项目（v0.8 工作流域）：~5 个活跃项目，每个项目下 requirements / wiki 节点 / crons / orchestrate plans 按需增长
 
 ### 7.2 容量天花板（粗估）
 
 | 资源 | 天花板 | 瓶颈 |
 |------|--------|------|
 | 消息数 | ~100K turns | turns 表全量重建时间 |
-| KB chunks | ~50K | 搜索 O(M×D) |
-| Memory nodes | ~10K | FTS5 OK，更新 trigger 慢 |
+| KB chunks | ~50K | 搜索 O(M×D)（`knowledge.db` 独立库，余弦相似度） |
+| Wiki / Memory nodes | ~10K | FTS5 MATCH OK；**注意**：FTS5 同步**没有 DB trigger**，由 `memory-node-store.ts:128/131/134` 的 prepared statement 在 store 方法里手动 upsert/delete（详见 05 §2.5 + 06 §2.7）—— 高频写时同步成本在 store 层不在 DB 层 |
 | Agent 并发 | ~50 | event loop + SQLite 锁 |
-| LLM 并发 | 1-10 per Provider | Provider 配额 |
+| LLM 并发 | 1-10 per Provider | Provider 配额（`provider-concurrency-manager.ts` clamp 1-10） |
 | 日志大小 | ~1MB / day | 默认 7 天保留 |
 
 ### 7.3 扩容路径
@@ -252,27 +256,30 @@ IPC invoke (5ms)
 
 ### 8.1 当前边界
 
-- **Renderer 沙箱**：contextIsolation=true / nodeIntegration=false / contextBridge 限定到约 140 个代理通道 + 5 个本地通道；当前仍有 4 个 preload/proxy 例外需收敛。
-- **文件路径**：默认不限制 workspace（`restrictToWorkspace = false` 默认）。
+- **Renderer 沙箱**：contextIsolation=true / nodeIntegration=false / contextBridge 限定到 **141 个 HTTP 代理通道**（`main/ipc-proxy.ts` 的 `R` 表项数，自动派生 preload 方法类型）+ **7 个 LOCAL invoke 通道**（不经 HTTP proxy，在主进程直接 `ipcMain.handle`：`window:minimize/maximize/close` + `dialog:openDirectory` + `webfetch:login` + `templates:github-preview/import-github`）+ **若干 receive-only event 通道**（`agent:event` / `data:changed` / `app:ready` / `tools:changed` / `session:lifecycle` / 2 个 github 进度）。详见 07 §2.5（ROUTE_MAP 派生 + 三组例外集合）。
+- **文件路径**：v0.8 后由 `ctx.readScope === "workspace"` 控制（`file-read.ts:101` / `glob.ts:91` / `grep.ts:225`）—— 当 `readScope=workspace` 时硬限制在 `workingDir` 子树，否则放开。不是简单的 "默认 false" 布尔。
 - **Shell**：无黑名单。
 - **WebFetch Cookie**：本地 `~/.zero-core/webfetch/cookies.json`，权限 0600 假设。
 - **代理**：undici 全局 dispatcher。
+- **数据通道隔离**：`data:changed` 走独立 IPC 通道（不污染 `agent:event` 流，07 §2.3.1），避免工作流域高频 store 刷新淹没 chat 流。
 
 ### 8.2 风险评估
 
 | 风险 | 等级 | 修复 |
 |------|------|------|
-| 文件路径越权 | 中 | 默认 restrict + 用户白名单 |
-| Shell 危险命令 | 中 | 黑名单 + `requiresConfirmation` |
+| 文件路径越权 | 中 | 默认 restrict + 用户白名单（v0.8 已部分落地：`readScope=workspace` 门控） |
+| Shell 危险命令 | 中 | 黑名单 + PreToolUse 阻断 hook（v0.8 `buildTool` 内置，04 §2.0）|
 | 日志泄漏 API key | 中 | logger 层脱敏 |
 | Cookie 泄漏 | 低 | 文件权限 + 加密 |
 | LLM 注入 | 中 | 系统 prompt + guidelines |
 | Prompt injection from tool result | 中 | PreToolUse 校验 |
 
+> **注意**：旧的 "`requiresConfirmation` 接通" 修复项已下线 —— `meta.requiresConfirmation` 字段在 buildTool / tool-registry / registerRuntimeTools 三处都已贯穿，但 `agent-loop.ts` **不读它**，是死字段（见 04 §12.2 + open questions）。要真正接通需要一个 PreToolUse handler 在执行前弹 AskUser，但这会改变工具"自动执行"的默认体感，需用户拍板。
+
 ### 8.3 优化路径
 
-短期（1 周）：D-012 日志脱敏 + D-009 requiresConfirmation 接通。
-中期（1 月）：文件路径默认限制 workspace。
+短期（1 周）：日志脱敏 + 把 `requiresConfirmation` 真正接起来（需用户拍板默认行为）。
+中期（1 月）：文件路径默认限制 workspace（v0.8 已部分落地）。
 长期（持续）：建立 threat model + 定期 audit。
 
 ## 9. 一图总结（架构师的取舍）
