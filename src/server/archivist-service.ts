@@ -709,7 +709,7 @@ export class ArchivistService {
 	}
 
 	private isIgnoredPath(relPath: string): boolean {
-		const parts = relPath.split(sep);
+		const parts = relPath.split(/[\\/]+/);
 		if (parts.some((p) => IGNORED_DIRS.has(p))) return true;
 		if (IGNORED_FILE_SUFFIXES.some((s) => relPath.endsWith(s))) return true;
 		return false;

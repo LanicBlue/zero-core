@@ -371,6 +371,37 @@ describe("ArchivistService: incremental git scan", () => {
 		expect(headers.every((h) => h.path.startsWith("header:"))).toBe(true);
 	});
 
+	test("scan ignores nested common directories from git slash paths", async () => {
+		writeFile(ws, "packages/core/src/index.ts", "export const tracked = 1;\n");
+		writeFile(ws, "packages/core/node_modules/bad.ts", "export const bad = 1;\n");
+		gitCommit(ws, "feat: tracked package with nested ignored dir");
+
+		await archivistService.scanProject(proj.id);
+
+		const nodes = wikiStore.listByProject(proj.id);
+		expect(nodes.find((n) => n.path === "header:packages/core/src/index.ts")).toBeDefined();
+		expect(nodes.find((n) => n.path === "structure:packages/core/node_modules")).toBeUndefined();
+		expect(nodes.find((n) => n.path === "header:packages/core/node_modules/bad.ts")).toBeUndefined();
+	});
+
+	test("initial scan excludes untracked workspace files", async () => {
+		writeFile(ws, "packages/core/src/index.ts", "export const tracked = 1;\n");
+		gitCommit(ws, "feat: tracked package");
+
+		// Wiki structure follows the git-tracked project boundary. Untracked files
+		// may be editor output, generated artifacts, or unrelated local work and
+		// must not appear in the project wiki.
+		writeFile(ws, "apps/desktop/src/main.ts", "export const untracked = 1;\n");
+
+		const result = await archivistService.scanProject(proj.id);
+
+		expect(result.isInitial).toBe(true);
+		const nodes = wikiStore.listByProject(proj.id);
+		expect(nodes.find((n) => n.path === "structure:packages")).toBeDefined();
+		expect(nodes.find((n) => n.path === "structure:apps")).toBeUndefined();
+		expect(nodes.find((n) => n.path === "header:apps/desktop/src/main.ts")).toBeUndefined();
+	});
+
 	test("structure mirrors the directory layout (nested dir chain)", async () => {
 		// A deeply-nested file produces a chain of directory structure nodes,
 		// and the header leaf hangs under its IMMEDIATE parent dir — not the
