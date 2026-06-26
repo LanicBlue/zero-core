@@ -185,12 +185,27 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 				toolName: options.name,
 				args: input,
 				toolCallId,
+				toolMeta: meta,
+				toolPolicy: ctxOrEmpty.toolPolicy,
 				});
 			if (preResult?.blocked) {
-				return `Tool blocked: ${preResult.reason}`;
+				const msg = String(preResult.reason ?? "Blocked by PreToolUse hook");
+				await triggerHooks("PostToolUseFailure", {
+					agentId: ctxOrEmpty.agentId ?? "",
+					sessionId: ctxOrEmpty.sessionId,
+					turnSeq: ctxOrEmpty.turnSeq,
+					toolName: options.name,
+					error: msg,
+					args: input,
+					toolCallId,
+				});
+				recordToolUsage(options.name, input, startTs, ctxOrEmpty, false, msg);
+				throw new Error(msg);
 			}
-
-			// Rate limiting — acquire slot before execution
+			if (preResult?.modifiedArgs) {
+				input = preResult.modifiedArgs;
+			}
+			// Rate limiting - acquire slot before execution
 			const limiter = ctxOrEmpty.rateLimiter;
 			const rlConfig = ctxOrEmpty.toolConfig?.[options.name];
 			if (limiter && rlConfig && (rlConfig.minInterval > 0 || rlConfig.maxConcurrent > 0)) {

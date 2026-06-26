@@ -30,6 +30,7 @@
 // - 调整注册顺序前需评估 PreLLMCall 之间对返回值 merge 的影响（memoryContext / ragContext / providerOptions）。
 
 import { registerCompressionHooks } from "./compression-hooks.js";
+import { registerExecutionApprovalHooks } from "./execution-approval-hooks.js";
 import { registerExtractionHooks, type ExtractionHooksDeps } from "./extraction-hooks.js";
 import { registerNotificationHooks } from "./notification-hooks.js";
 import { registerProviderOptionsHooks } from "./provider-options-hooks.js";
@@ -46,6 +47,7 @@ import { log } from "../../core/logger.js";
  */
 export function registerAllRuntimeHooks(db?: ISessionStore, extractionDeps?: ExtractionHooksDeps): void {
 	if (db) registerTurnHooks(db);
+	registerExecutionApprovalHooks();
 	registerNotificationHooks();
 	// v0.8 (P2 §11.6): registerMemoryHooks() removed — memory now lives in
 	// wiki per-agent subtrees and is injected via wiki-anchor-injection +

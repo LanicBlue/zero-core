@@ -171,6 +171,8 @@ export function buildToolsSet(
 	context: ToolExecutionContext,
 	mcpTools?: Record<string, any>,
 ): Record<string, any> {
+	context.toolPolicy = policy;
+
 	// Migrate legacy lowercase tool keys to PascalCase
 	if (policy.tools) {
 		const migrated: Record<string, { enabled: boolean }> = {};
