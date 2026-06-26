@@ -227,57 +227,88 @@ useEffect(() => {
 
 ### 3.7 Zustand Store 拓扑（graph LR）
 
+> **v0.8 更正**:此前的拓扑图只画了 StreamEvent 经 AppLayout 路由一条边,且漏了 v0.8 工作流域 5 个 store(project / requirement / wiki / cron / notification)。实际**有两条独立的事件路径**同时驱动 store:
+> 1. **StreamEvent(WS 反向,见 §2.3)** → 全部走 `AppLayout.onAgentEvent` 中央路由,只更新 chat / interaction / notification / requirement 4 个 store。
+> 2. **`data:changed`(WS 反向,见 §2.3.1)** → 各 store **自己**在模块副作用里调 `data-sync.ts` 的 `subscribeDataChange` / `subscribeListDataChange` 订阅,与 AppLayout **完全无关**。这是 v0.8 工作流域 store 的主动同步机制,5 个 collection(`agents` / `projects` / `requirements` / `crons` / `project_wiki`)分别由对应 store 各自订阅。
+
 ```mermaid
 graph LR
-    Backend["Backend WS<br/>StreamEvent"]
-    Backend -->|"text_delta<br/>message_end<br/>usage"| AppLayout
+    subgraph WS["Backend WebSocket 反向通道"]
+        SE["StreamEvent<br/>(14 类)"]
+        DC["data:changed<br/>(5 collection)"]
+    end
 
-    Backend -->|"todos_update"| InteractionStore
-    Backend -. "代理" .-> AppLayout
+    SE --> AppLayout
+    DC -. "各 store 自订阅<br/>(模块副作用)" .-> AgentStore
+    DC -.-> ProjectStore
+    DC -.-> RequirementStore
+    DC -.-> CronStore
+    DC -.-> WikiStore
 
-    AppLayout["AppLayout<br/>中央 IPC 路由<br/>(mount once)"]
+    AppLayout["AppLayout<br/>中央 IPC 路由<br/>(mount once)<br/>AppLayout.tsx:196-202"]
+    SE -->|"session_init / text_delta<br/>thinking_delta / retry_attempt"| AppLayout
+    SE -->|"tool_start / tool_end"| AppLayout
+    SE -->|"usage / message_end"| AppLayout
+    SE -->|"agent_end / error"| AppLayout
+    SE -->|"todos_update"| AppLayout
+    SE -->|"ask_user"| AppLayout
+    SE -->|"requirement_notification<br/>step_failure<br/>verification_failure"| AppLayout
 
-    AppLayout -->|"session_init<br/>text_delta<br/>thinking_delta"| ChatStore
-    AppLayout -->|"tool_start<br/>tool_end"| ChatStore
-    AppLayout -->|"error<br/>agent_end"| ChatStore
-    AppLayout -->|"usage<br/>message_end"| ChatStore
+    AppLayout --> ChatStore["ChatStore<br/>(8 字段)"]
+    AppLayout --> InteractionStore
+    AppLayout --> NotificationStore
+    AppLayout -->|"fetchRequirements()"| RequirementStore
 
-    AppLayout -->|"session_lifecycle"| ChatStore
-
-    ChatStore -->|"selectActiveMessages<br/>selectIsStreaming"| ChatPanel
-    ChatStore -->|"contextInfo"| ChatPanel
+    ChatStore -->|"messages / contextInfo<br/>toolCalls"| ChatPanel
+    InteractionStore -->|"todos, askUser"| ChatPanel
+    NotificationStore -->|"toasts"| ToastHost
 
     AgentStore -->|"agents, models, tools"| AgentsPage
     AgentStore -->|"models, tools"| ChatPanel
     AgentStore -->|"tools, models"| ToolsPage
+    TemplateStore -->|"templates"| AgentsPage
 
-    AgentToolStore -->|"entries"| ToolsPage
+    ProjectStore -->|"projects"| DashboardPage
+    RequirementStore -->|"requirements"| RequirementsPage
+    WikiStore -->|"wiki tree / detail"| WikiPage
+    CronStore -->|"crons"| CronPage
 
     KBStore -->|"kbs"| KBPage
     McpStore -->|"servers"| McpPage
     ProviderStore -->|"providers"| SettingsPage
-    TemplateStore -->|"templates"| AgentsPage
     PageStore -->|"activePage<br/>activeAgentId<br/>activeSessionId"| AppLayout
     ThemeStore -->|"theme"| AppLayout
-    InteractionStore -->|"todos, askUser"| ChatPanel
 
-    style Backend fill:#f472b6,color:#000
+    style WS fill:#fef3c7,color:#000
+    style SE fill:#f472b6,color:#000
+    style DC fill:#f9a8d4,color:#000
     style AppLayout fill:#a78bfa,color:#000
     style ChatStore fill:#60a5fa,color:#000
     style AgentStore fill:#60a5fa,color:#000
+    style ProjectStore fill:#93c5fd,color:#000
+    style RequirementStore fill:#93c5fd,color:#000
+    style WikiStore fill:#93c5fd,color:#000
+    style CronStore fill:#93c5fd,color:#000
+    style NotificationStore fill:#93c5fd,color:#000
     style ChatPanel fill:#34d399,color:#000
     style AgentsPage fill:#34d399,color:#000
     style ToolsPage fill:#34d399,color:#000
     style KBPage fill:#34d399,color:#000
     style McpPage fill:#34d399,color:#000
     style SettingsPage fill:#34d399,color:#000
+    style RequirementsPage fill:#6ee7b7,color:#000
+    style WikiPage fill:#6ee7b7,color:#000
+    style CronPage fill:#6ee7b7,color:#000
+    style DashboardPage fill:#6ee7b7,color:#000
 ```
 
-**关键观察**：
-- **`AppLayout` 是唯一的事件订阅者**，所有 StreamEvent 集中路由
-- **`ChatStore` 是最重的 store**（11 个字段，6 种流式事件）
-- **`AgentStore` 与其他 5 个 store 并列**，但被多个页面共用
-- **`ThemeStore` / `PageStore` / `InteractionStore` 几乎独立**，与其他 store 零耦合
+**关键观察**(核对后修正):
+- **两条事件路径并行,互不替代**:`AppLayout` 是 StreamEvent 的**唯一**订阅者(集中路由 chat 流 + 工作流通知);但 `data:changed` **不走** AppLayout,各工作流域 store 自己用 `data-sync.ts` 订阅各自 collection。前者推"事件 + 增量字段"(流式 token、todo 列表、通知),后者推"完整记录"(create/update 推来整条 record,delete 推 id)。
+- **`ChatStore` 是最重的 store** —— 8 个状态字段(`messagesBySession` / `activeAgentId` / `activeSessionId` / `activeProjectId` / `streamingSessions` Set / `sessionsByAgent` / `lastError` / `contextInfoBySession`),消费 6+ 种流式事件(`session_init` / `text_delta` / `thinking_delta` / `tool_start` / `tool_end` / `usage` / `message_end` / `agent_end` / `error` / `retry_attempt`)。注:此前的"11 个字段"计数已过时,实际 8 个。
+- **v0.8 工作流域 5 个 store 形成独立的"工作流域子网"**:`ProjectStore` / `RequirementStore` / `WikiStore` / `CronStore` 都通过 `data:changed` 自订阅,`NotificationStore` 通过 StreamEvent 收 3 类工作流通知(requirement_notification / step_failure / verification_failure)。它们与 `ChatStore` 唯一的耦合点是 `AppLayout` 在收到 `requirement_notification` 时顺手调一次 `RequirementStore.fetchRequirements()`(冗余刷新,因为 data:changed 也会推)。
+- **`WikiStore` 是唯一用 `subscribeDataChange`(全量 refetch)而非 `subscribeListDataChange`(增量 patch)的 store** —— 因为 wiki 是树形结构,局部 patch 不够,收到任意变更就重拉整树(见 §2.3.1 实际订阅矩阵)。
+- **`ThemeStore` / `PageStore` / `InteractionStore` 几乎独立** —— 不订阅任何后端事件,纯前端状态。
+- **旧图错误**:`AgentToolStore` 是 v0.7 残留(v0.8 工具配置下沉到服务端 `tool_configs` 表 + `agents.tools` JSON 列,前端不再有独立 `AgentToolStore`,工具列表由 `AgentStore.fetchTools()` 从 `agents/{id}/tools` 拉来),拓扑已删除该节点。
 
 ## 4. AppLayout — 全局 IPC 中央路由
 
