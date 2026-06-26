@@ -54,7 +54,7 @@
 // - 意图缺失时 flag「无记录理由」,不发明
 //
 
-import { resolve, relative } from "node:path";
+import { resolve } from "node:path";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import type { WikiStore } from "./wiki-node-store.js";
 import { projectSubtreeRootId } from "./wiki-node-store.js";
