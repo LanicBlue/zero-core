@@ -56,14 +56,6 @@ export interface PreToolUseContext extends BaseHookContext {
 	toolName: string;
 	args: Record<string, unknown>;
 	toolCallId?: string;
-	/** Wrapper-side tool metadata; absent on AgentLoop's stream-observation event. */
-	toolMeta?: { requiresConfirmation?: boolean; isDestructive?: boolean };
-	/** Current agent/session policy used by PreToolUse hooks for execution approval. */
-	toolPolicy?: {
-		autoApprove?: string[];
-		blockedTools?: string[];
-		tools?: Record<string, { enabled?: boolean }>;
-	};
 }
 
 export interface PostToolUseContext extends BaseHookContext {

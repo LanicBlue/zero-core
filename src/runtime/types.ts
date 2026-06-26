@@ -381,10 +381,6 @@ export interface ToolExecutionContext {
 	runBackground?: (command: string, timeout?: number) => string;
 	readScope?: "filesystem" | "workspace";
 	toolConfig?: Record<string, Record<string, any>>;
-	/** Current agent/session execution policy. Used by the tool wrapper to
-	 * enforce pre-authorized execution for dangerous tools without prompting
-	 * the user for each action. */
-	toolPolicy?: SessionConfig["toolPolicy"];
 	rateLimiter?: import("./tool-rate-limiter.js").ToolRateLimiter;
 	// Multi-Agent Workflow context
 	wikiStore?: any;                    // ProjectWikiStore
