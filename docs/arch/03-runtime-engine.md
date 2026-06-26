@@ -18,7 +18,8 @@
 - `memory-recall.ts`（64）：FTS5 召回
 - `tool-rate-limiter.ts`（122）：单工具并发 + 间隔门控（已装载，在生产路径运行）
 - `task-registry.ts`（186）：异步任务表
-- `subagent-delegation.ts`（326）：子 Agent 委派工厂(**已废**,v0.8 委派重构后委派统一走 `Agent` action 工具,见下;文件保留作历史参考)
+- `subagent-delegator.ts`（413）：**当前**子 Agent 委派调度器(`SubagentDelegator` 类,见 [02 §3](./02-module-structure.md#3-运行时层-srcruntime) 与下文 §3.1「委派模型」)
+- `subagent-delegation.ts`（329）：**死代码** —— 旧的 `createSubagentDelegation()` 闭包工厂,v0.8 委派重构(迁到 `SubagentDelegator` 类)后**全仓零 importer**,保留作历史参考(✅ 删除候选)
 
 ## 2. AgentLoop 状态机
 
@@ -57,11 +58,12 @@ stateDiagram-v2
 
 #### 委派模型(v0.8 重构)
 
-委派统一走**单个 `Agent` action 工具**([tools/agent.ts](../../src/runtime/tools/agent.ts)),取代旧的 per-subagent 工具机制:
+委派统一走**单个 `Agent` action 工具**([tools/agent.ts](../../src/runtime/tools/agent.ts)),取代旧的 per-subagent 工具机制。注意"统一走 Agent 工具"指的是**对外工具接口**;工具内部仍然调用 `SubagentDelegator.delegateTask()`(见上 §1,该类由 `AgentLoop` 在构造期实例化,持自己的 `TaskRegistry`),`SubagentDelegator` 才是真正创建子 loop、跑子任务、收集结果的运行时组件。换句话说:**Agent 工具(协议层)→ SubagentDelegator(运行时层)** 两层分工。
 
 - `{action:"list"}` — 现查 `ctx.resolveAgent(callerId)` 列出 caller 当前可委派的 subagent(name/description/model)。模型靠这个自发现,**不注入 system prompt**。
 - `{action:"delegate", task, subagent?, mode?}` — `subagent`(name)→ 在 caller 现查的 subagents 里按名解析 → `resolveAgent(agentId)` **现查**对方身份(systemPrompt/model/toolPolicy)→ `delegateTask`。白名单语义:只能委派给自己 subagents 里的;name 不匹配或目标被删 → 报错(不静默回落 caller)。不传 `subagent` → 临时委派(继承 caller 身份)。`mode` 支持 blocking/non_blocking。
 - 工具名恒为 `Agent`(合法、不冲突);身份/列表现查 → 改 agent 配置不用重启 loop。
+- **子 Agent 上下文隔离(v0.8 关键修复,见 [04 §5.1](./04-tools-subsystem.md))**:`SubagentDelegator` 构造子 `SessionConfig` 时**显式置 `sessionId: undefined`**,使子 loop 走"无 DB session"路径(所有 DB 操作 gated on `db && sessionId`)→ 不 `rebuildFromTurns()` 父会话历史、不向父 turn 表写,从根上消除旧 internal 模式跨 agent 写竞争。caller 通过 `DelegateTaskOptions.contextOverride` 显式传 projectId / wikiRootNodeId / workspaceDir;身份(systemPrompt/model/toolPolicy)由 `targetAgentId` 驱动。
 
 #### running loop 配置热同步
 

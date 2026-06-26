@@ -279,7 +279,8 @@ graph TB
 - **SessionStoreInterface**：运行时对 DB 的抽象接口。
 - **SSE**：Server-Sent Events，MCP transport 之一。
 - **StreamEvent**：运行时事件契约（text_delta / thinking_delta / tool_start / tool_end / ...）。
-- **subagent-delegation**：子 Agent 委派工厂。
+- **subagent-delegator**：`SubagentDelegator` 类(`src/runtime/subagent-delegator.ts`),v0.8 当前的子 Agent 委派调度器,由 `AgentLoop` 在构造期实例化,被 `Agent` action 工具(`action="delegate"`)调用;持自己的 `TaskRegistry`,跑同步/后台子任务并触发 `SubagentStart`/`SubagentStop`/`TaskCreated`/`TaskCompleted` hook。
+- **subagent-delegation**(历史):`createSubagentDelegation()` 闭包工厂(`src/runtime/subagent-delegation.ts`),v0.8 委派重构前 API,**死代码(零 importer)**,保留作历史参考,删除候选。不要与 `subagent-delegator` 混淆。
 
 ## T
 

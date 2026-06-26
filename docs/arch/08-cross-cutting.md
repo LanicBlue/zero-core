@@ -165,7 +165,7 @@ sequenceDiagram
 | 用户输入 | UserPromptSubmit | run 开始 |
 | 工具 | PreToolUse / PostToolUse / PostToolUseFailure | tool.execute 前/后 |
 | 权限 | PermissionRequest / PermissionDenied | （未装载）|
-| 子 agent | SubagentStart / SubagentStop | subagent-delegation |
+| 子 agent | SubagentStart / SubagentStop | subagent-delegator(`delegateTask`/`delegateTaskBackground`/`stopTask` 内 `triggerHooks`) |
 | 压缩 | PreCompact / PostCompact | session.pruneIfNeeded |
 | LLM | PreLLMCall / PostTurnComplete | executeStream / turn 收尾 |
 | 任务 | TeammateIdle / TaskCreated / TaskCompleted | （未装载）|

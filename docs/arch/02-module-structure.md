@@ -45,13 +45,17 @@ src/
 | project-context.ts | n/a | 项目级上下文注入 (mini-plan) |
 | device-context.ts | n/a | 设备环境信息（OS / shell / 时间） |
 | default-prompt.ts | n/a | Agent 默认 system prompt 模板 |
-| test-seed.ts | n/a | 测试种子 |
+| test-seed.ts | 187 | 测试种子（`ZERO_CORE_TEST_FIXTURE` gated,见 §2.1） |
 | custom-tools.ts | n/a | 自定义工具模板 |
 
 ### 2.1 边界约束
 
-- **不依赖** `server/`、`runtime/`（`test-seed.ts` 有 type-only import，属于测试辅助例外）。
-- **依赖** `typebox`、`node:fs`、`./kv-store-interface`（类型 only）、`./hook-types`。
+- **理想边界**:不依赖 `server/`、`runtime/`(它们依赖 `core/`,反向依赖会形成环)。
+- **实际例外** —— `test-seed.ts` 是这条边界的**两处轻微泄漏**,但是测试辅助代码:
+  - **类型层**:import type 多个 `../server/*-store.js`(`SessionDB`/`AgentStore`/`ProviderStore`/`WikiStore`/`ProjectStore`),编译时擦除,**不产生运行时依赖边**。
+  - **值层**:从 `../server/fresh-db-seed.js` 导入 `ensureWikiSkeleton`(值导入)。这是真正的运行时边,但因为 `test-seed.ts` 全文由 `ZERO_CORE_TEST_FIXTURE` 环境变量门控(生产代码路径永不进),且仅在 backend 子进程内执行,所以这条边在**生产拓扑上不可达**。架构上把它视作"测试夹具自带的旁路",而非 `core/` 对 `server/` 的真实依赖。
+  - 为什么不挪到 `tests/`:`test-seed.ts` 必须在 backend 子进程内(用 system Node.js / packaged Electron fork 加载 better-sqlite3,确保 ABI 一致),放进 `tests/` 会让测试夹具难以复用 backend 启动路径。
+- **依赖** `typebox`、`node:fs`、`node:path`、`./kv-store-interface`(类型 only)、`./hook-types`、`./config`、`./logger`。
 - 导出形式：纯函数（`buildSystemPrompt`、`evaluateToolCall`、`shouldPrune`）+ 类（`ToolRegistry`、`HookRegistry`）+ 接口（`IKVStore`）。
 
 ### 2.2 反模式警告
@@ -85,8 +89,8 @@ src/
 | mock-language-model.ts | n/a | 测试用 mock |
 | tool-rate-limiter.ts | 122 | 每工具并发 + 最小间隔门控 |
 | task-registry.ts | 186 | 异步任务表（agent / bash background）|
-| subagent-delegation.ts | 326 | 子 Agent 委派工厂（delegateTask / listTasks / stopTask / suspendUntilWake）|
-| subagent-delegator.ts | n/a | 旧的同义文件（被 subagent-delegation 替代）|
+| subagent-delegator.ts | 413 | **当前**子 Agent 委派调度器(`SubagentDelegator` 类,`delegateTask`/`delegateTaskBackground`/`getTaskResult`/`listTasks`/`stopTask`/`suspendUntilWake`/`runBackground`)。被 `agent-loop.ts` 在构造期实例化(见 [03 §3.1](./03-runtime-engine.md#31-构造lines-77-118)),`delegateTask` 暴露给 `Agent` action 工具([04-tools-subsystem §5.1](./04-tools-subsystem.md))。v0.8 关键修复:子 Agent `sessionId=undefined` 实现隔离(详见 §subagent 隔离 与 [03](./03-runtime-engine.md#委派模型v08-重构))。 |
+| subagent-delegation.ts | 329 | **死代码** —— `createSubagentDelegation()` 工厂(`SubagentDelegationConfig` → 7 个闭包函数)。v0.8 委派重构前的旧 API,**全仓零 importer**(已 grep 确认,仅在 `encoding.ts`/`session-context-router.ts` 的中文注释里作为历史术语被提及)。保留作历史参考,**✅ 删除候选**;真正落地的是 `subagent-delegator.ts`(类形式,状态显式持在实例而非闭包)。 |
 | proxy-manager.ts | 59 | undici ProxyAgent 全局 dispatcher |
 
 ### 3.1 工具与 MCP 子目录
