@@ -501,8 +501,6 @@ describe("ipc-proxy route mapping completeness", () => {
 	// Channels that use ipcRenderer.invoke but are event-like (not proxied)
 	const INVOKE_BUT_NOT_PROXIED = new Set([
 		"app:ready",         // polled via /api/ready, not a direct proxy
-		"search-provider:get",  // TODO: needs backend route
-		"search-provider:set",
 		"templates:github-preview",   // WS streaming, complex
 		"templates:import-github",    // WS streaming, complex
 	]);

@@ -284,8 +284,6 @@ export interface WindowApi {
 	// (any) where the backend shape isn't typed here. ──
 	mcpPresets: () => Promise<any>;
 	mcpAddPreset: (presetId: string, envValues: Record<string, string>) => Promise<any>;
-	getSearchProvider: () => Promise<any>;
-	setSearchProvider: (config: { type?: string; searxngUrl?: string; serpApiKey?: string; braveApiKey?: string }) => Promise<any>;
 	webfetchLogin: (url: string) => Promise<any>;
 	webfetchCookies: () => Promise<any>;
 	webfetchClearCookies: (domain?: string) => Promise<any>;

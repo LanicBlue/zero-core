@@ -188,8 +188,6 @@ const api: WindowApi = {
 
 	// ─── Ask User / Search ──────────────────────────
 	askUserRespond: (requestId, answers) => ipcRenderer.invoke("ask-user:respond", requestId, answers),
-	getSearchProvider: () => ipcRenderer.invoke("search-provider:get"),
-	setSearchProvider: (config) => ipcRenderer.invoke("search-provider:set", config),
 
 	// ── Tool Executions ──
 	toolExecutionsQuery: (filter) => ipcRenderer.invoke("tool-executions:query", filter),

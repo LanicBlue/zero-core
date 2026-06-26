@@ -75,7 +75,7 @@ class DuckDuckGoProvider implements SearchProvider {
 			},
 		});
 		const html = await resp.text();
-		if (isDDGCaptcha(html)) throw new Error("DuckDuckGo returned a CAPTCHA challenge — try another search provider (SearXNG, Brave, SerpAPI) in Settings > Search");
+		if (isDDGCaptcha(html)) throw new Error("DuckDuckGo returned a CAPTCHA challenge — try another search provider (SearXNG, Brave, SerpAPI) in Tools > WebSearch");
 
 		const linkRegex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
 		const snippetRegex = /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
@@ -109,7 +109,7 @@ class DuckDuckGoProvider implements SearchProvider {
 			body: body.toString(),
 		});
 		const html = await resp.text();
-		if (isDDGCaptcha(html)) throw new Error("DuckDuckGo returned a CAPTCHA challenge — try another search provider (SearXNG, Brave, SerpAPI) in Settings > Search");
+		if (isDDGCaptcha(html)) throw new Error("DuckDuckGo returned a CAPTCHA challenge — try another search provider (SearXNG, Brave, SerpAPI) in Tools > WebSearch");
 
 		// Generic table parsing: extract external links from table rows
 		const rowRegex = /<tr>([\s\S]*?)<\/tr>/gi;
@@ -271,14 +271,6 @@ export function createSearchProvider(config?: {
 // Singleton provider (configurable at runtime)
 let currentProvider: SearchProvider = new DuckDuckGoProvider();
 
-export function setSearchProvider(provider: SearchProvider): void {
-	currentProvider = provider;
-}
-
-export function getSearchProvider(): SearchProvider {
-	return currentProvider;
-}
-
 // ---------------------------------------------------------------------------
 // WebSearch tool
 // ---------------------------------------------------------------------------
@@ -323,7 +315,7 @@ export const webSearchTool = buildTool({
 		});
 
 		if (results.length === 0) {
-			throw new Error(`No search results found for: "${query}". DuckDuckGo may be blocked in your network — configure a different search provider (SearXNG, Brave, SerpAPI) in Settings > Search.`);
+			throw new Error(`No search results found for: "${query}". DuckDuckGo may be blocked in your network — configure a different search provider (SearXNG, Brave, SerpAPI) in Tools > WebSearch.`);
 		}
 
 		const lines: string[] = [];

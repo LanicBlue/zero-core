@@ -80,7 +80,7 @@ test.describe("Project page (P5 §8.5)", () => {
 	test("switching tabs renders each tab body", async () => {
 		await window.locator("button[title='Requirements']").click();
 		await expect(window.locator(".page-overlay")).toBeVisible({ timeout: 10_000 });
-		await expect(window.getByText("Projects", { exact: false }).first()).toBeVisible({ timeout: 10_000 });
+		await expect(window.locator(".page-overlay").getByText("Projects", { exact: false }).first()).toBeVisible({ timeout: 10_000 });
 
 		// Wait for fetchProjects + auto-select to settle before clicking tabs.
 		await window.waitForTimeout(1000);
@@ -91,13 +91,13 @@ test.describe("Project page (P5 §8.5)", () => {
 		// heading stays visible.
 		await window.getByRole("button", { name: "Project View" }).first().click();
 		await window.waitForTimeout(500);
-		await expect(window.getByText("Projects", { exact: false }).first()).toBeVisible({ timeout: 10_000 });
+		await expect(window.locator(".page-overlay").getByText("Projects", { exact: false }).first()).toBeVisible({ timeout: 10_000 });
 
 		// Kanban tab body shows the kanban toolbar.
 		await window.getByRole("button", { name: "Kanban" }).first().click();
 		await window.waitForTimeout(500);
 		// KanbanBoard toolbar (slim): "Kanban" heading.
-		await expect(window.getByText("Kanban", { exact: false }).first()).toBeVisible({ timeout: 10_000 });
+		await expect(window.locator(".page-overlay").getByText("Kanban", { exact: false }).first()).toBeVisible({ timeout: 10_000 });
 		// + New Requirement button (kanban tab functionality preserved — the
 		// original KanbanPage had this button and it must survive the refactor).
 		await expect(window.getByRole("button", { name: "+ New Requirement" })).toBeVisible({ timeout: 10_000 });
@@ -106,7 +106,7 @@ test.describe("Project page (P5 §8.5)", () => {
 	test("creating a project via the + New Project modal adds it to the left list", async () => {
 		await window.locator("button[title='Requirements']").click();
 		await expect(window.locator(".page-overlay")).toBeVisible({ timeout: 10_000 });
-		await expect(window.getByText("Projects", { exact: false }).first()).toBeVisible({ timeout: 10_000 });
+		await expect(window.locator(".page-overlay").getByText("Projects", { exact: false }).first()).toBeVisible({ timeout: 10_000 });
 		// Let fetchProjects finish + auto-select settle before interacting.
 		await window.waitForTimeout(500);
 
