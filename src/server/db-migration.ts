@@ -245,6 +245,24 @@ const CRON_RUNS_COLUMNS = [
 	{ key: "updatedAt", column: "updated_at" },
 ];
 
+// v0.8: project_jobs — 项目级后台 agent 任务(如 wiki 充实)。PK id 是 uuid
+// (ProjectJobStore mints)。与 cron_runs 不同:这是 on-demand 显式踢一次的
+// 长任务生命周期记录,跨 session/重启可追踪。MUST stay in sync with
+// project-job-store.ts PROJECT_JOBS_COLUMNS.
+const PROJECT_JOBS_COLUMNS = [
+	{ key: "jobType", column: "job_type" },
+	{ key: "projectId", column: "project_id" },
+	{ key: "agentId", column: "agent_id" },
+	{ key: "sessionId", column: "session_id" },
+	{ key: "status" },
+	{ key: "startedAt", column: "started_at" },
+	{ key: "finishedAt", column: "finished_at" },
+	{ key: "error" },
+	{ key: "promptSummary", column: "prompt_summary" },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
 // v0.8 (P0 §7.7 #4): tool_configs — per-tool default-param config. PK =
 // tool_name (no id column; the SqliteStore auto-adds id/createdAt/updatedAt
 // but tool_configs is keyed by tool_name, so we use a dedicated store path).
@@ -796,6 +814,25 @@ export function runMigrations(sessionDB: SessionDB): void {
 		updated_at TEXT
 	)`);
 	safeAddIndex(db, "cron_runs", "idx_cron_runs_cron", "cron_id");
+
+	// project_jobs — 项目级后台 agent 任务(wiki 充实等)。on-demand 显式踢一次
+	// 的长任务生命周期记录。PK id 是 uuid (ProjectJobStore mints)。
+	db.exec(`CREATE TABLE IF NOT EXISTS project_jobs (
+		id TEXT PRIMARY KEY,
+		job_type TEXT NOT NULL,
+		project_id TEXT NOT NULL,
+		agent_id TEXT,
+		session_id TEXT,
+		status TEXT NOT NULL DEFAULT 'running',
+		started_at TEXT NOT NULL,
+		finished_at TEXT,
+		error TEXT,
+		prompt_summary TEXT,
+		created_at TEXT,
+		updated_at TEXT
+	)`);
+	safeAddIndex(db, "project_jobs", "idx_project_jobs_project", "project_id");
+	safeAddIndex(db, "project_jobs", "idx_project_jobs_status", "status");
 
 	// v0.8 (P0 §7.7 #4): tool_configs — per-tool default-param config. PK =
 	// tool_name (no surrogate id). The SqliteStore constructor always injects

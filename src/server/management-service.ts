@@ -49,6 +49,7 @@ import type { RequirementStore } from "./requirement-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { WikiStore } from "./wiki-node-store.js";
 import type { ArchivistService } from "./archivist-service.js";
+import type { ProjectJobStore } from "./project-job-store.js";
 import type {
 	AgentRecord,
 	ProjectRecord,
@@ -58,6 +59,7 @@ import type {
 	RequirementRecord,
 	RequirementStatus,
 	PromptTemplate,
+	AgentVia,
 } from "../shared/types.js";
 import type { TemplateStore } from "./template-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
@@ -120,6 +122,10 @@ export class ManagementService {
 	private archivistService: ArchivistService | null;
 	// v0.8: task-step store for the project-delete cascade (§8.6). Late-bound.
 	private taskStepStore: TaskStepStore | null;
+	/** project_jobs store (wiki 充实等后台任务的 run 记录). Late-bound. */
+	private projectJobStore: ProjectJobStore | null;
+	/** EnrichmentRunner (M2 注入) — 拉 archivist agent 后台充实 wiki. Late-bound. */
+	private enrichmentRunner: ((projectId: string, opts: { via: AgentVia; prompt?: string }) => Promise<{ jobId: string; sessionId: string }>) | null;
 
 	constructor(deps: ManagementDeps) {
 		this.agentStore = deps.agentStore;
@@ -131,6 +137,8 @@ export class ManagementService {
 		this.wikiStore = deps.wikiStore ?? null;
 		this.archivistService = deps.archivistService ?? null;
 		this.taskStepStore = deps.taskStepStore ?? null;
+		this.projectJobStore = null;
+		this.enrichmentRunner = null;
 	}
 
 	/** v0.8 (模板统一): late-bind the template store (server/index.ts wiring order). */
@@ -153,6 +161,14 @@ export class ManagementService {
 	setArchivistService(svc: ArchivistService): void { this.archivistService = svc; }
 	/** v0.8 §8.6: late-bind the task-step store (server/index.ts wiring order). */
 	setTaskStepStore(store: TaskStepStore): void { this.taskStepStore = store; }
+	/** Late-bind the project_jobs store. */
+	setProjectJobStore(store: ProjectJobStore): void { this.projectJobStore = store; }
+	/** M2 注入 enrichment runner(把 archivist agent 拉起来充实 wiki)。 */
+	setEnrichmentRunner(fn: (projectId: string, opts: { via: AgentVia; prompt?: string }) => Promise<{ jobId: string; sessionId: string }>): void {
+		this.enrichmentRunner = fn;
+	}
+
+	getProjectJobStore(): ProjectJobStore | null { return this.projectJobStore; }
 
 	private requireCronStore(): CronStore {
 		if (!this.cronStore) throw new Error("CronStore not wired into ManagementService");
@@ -172,7 +188,7 @@ export class ManagementService {
 	 * `wiki-root:<projectId>` root. The async kick is best-effort — a
 	 * missing archivist service (e.g. in tests) is silently skipped.
 	 */
-	createProject(input: { name: string; workspaceDir: string }): ProjectRecord {
+	createProject(input: { name: string; workspaceDir: string; enrich?: boolean; via?: AgentVia }): ProjectRecord {
 		const project = this.projectStore.create(input);
 		// §8.3 synchronous: ensure the empty wiki subtree root exists so the
 		// project is immediately usable (archivist fills it in the background).
@@ -196,7 +212,30 @@ export class ManagementService {
 					log.warn("management", `archivist background scan failed for ${project.id}:`, (err as Error).message);
 				});
 		}
+		// 可选:起 archivist agent 深度充实 wiki(骨架扫描无 LLM,充实才调 LLM)。
+		// enrichProject 内部 fire-and-forget,立即返回;runner 未注入时静默跳过。
+		if (input.enrich && this.enrichmentRunner) {
+			void this.enrichProject(project.id, { via: input.via }).catch((err) => {
+				log.warn("management", `enrich kick failed for ${project.id}:`, (err as Error).message);
+			});
+		}
 		return project;
+	}
+
+	/**
+	 * 起一个 wiki 充实 agent run(archivist agent 读代码,给每个文件/目录节点写
+	 * 详 doc + 准确 summary)。非阻塞 —— 内部 fire-and-forget,立即返回 jobId/
+	 * sessionId,run 在后台跑,完成/失败写回 project_jobs。via 决定"谁来充实"
+	 * (默认 { role: "archivist" }),代码不硬绑具体角色。
+	 *
+	 * 需先注入 enrichment runner(M2 setEnrichmentRunner),否则抛错。
+	 */
+	async enrichProject(projectId: string, opts: { via?: AgentVia; prompt?: string } = {}): Promise<{ jobId: string; sessionId: string }> {
+		if (!this.enrichmentRunner) {
+			throw new Error("EnrichmentRunner not wired into ManagementService");
+		}
+		const via: AgentVia = opts.via ?? { role: "archivist" };
+		return this.enrichmentRunner(projectId, { via, prompt: opts.prompt });
 	}
 
 	updateProject(id: string, input: Partial<Omit<ProjectRecord, "id" | "createdAt">>): ProjectRecord {

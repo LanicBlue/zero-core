@@ -167,6 +167,8 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 (P4 §9.3): cron_runs audit sink — one row per actual cron fire.
 	const cronStore = new (await import("./cron-store.js")).CronStore(sessionDB);
 	const cronRunStore = new (await import("./cron-store.js")).CronRunStore(sessionDB);
+	// 项目级后台 agent 任务(wiki 充实等)的 run 记录。
+	const projectJobStore = new (await import("./project-job-store.js")).ProjectJobStore(sessionDB);
 
 	// Register workflow context hook (T2 context injection via PreLLMCall)
 	registerWorkflowContextHook({ projectStore, requirementStore, wikiStore, taskStepStore });
@@ -219,6 +221,7 @@ export async function startServer(options?: StartServerOptions) {
 		requirementStore, sessionDB, wikiStore: wikiStoreGlobal,
 	});
 	management.setTaskStepStore(taskStepStore);
+	management.setProjectJobStore(projectJobStore);
 	agentService.setManagement(management);
 
 	// v0.8 (P6 §7.1): fresh-DB seed — zero agent + software-dev wiki node.
@@ -341,6 +344,19 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 (P5 §8.3): ManagementService.createProject kicks the archivist
 	// background scan; wire it now that archivistService exists.
 	management.setArchivistService(archivistService);
+	// wiki 充实 runner —— 把 archivist agent 后台拉起来深度充实 wiki 树。
+	// management.enrichProject(create 的 enrich 选项 / "Run archivist" 按钮)走这里。
+	const { EnrichmentRunner } = await import("./enrichment-runner.js");
+	const enrichmentRunner = new EnrichmentRunner({
+		agentService,
+		agentStore,
+		templateStore,
+		sessionDB,
+		projectStore,
+		wikiStore: wikiStoreGlobal,
+		projectJobStore,
+	});
+	management.setEnrichmentRunner((projectId, opts) => enrichmentRunner.runProjectEnrichment(projectId, opts));
 	// v0.8 §8.6 (bugfix): purge orphan wiki subtrees left by pre-fix project
 	// deletes (tool path used to skip the cascade). Idempotent — no-op once
 	// clean. Runs after wikiStore + management are fully wired.

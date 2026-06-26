@@ -690,7 +690,10 @@ export interface RequirementMessage {
 
 // ── Multi-Agent Workflow Input Types ──────────────────────────
 
-export type CreateProjectInput = Omit<ProjectRecord, "id" | "createdAt" | "updatedAt">;
+export type CreateProjectInput = Omit<ProjectRecord, "id" | "createdAt" | "updatedAt"> & {
+	/** create 时是否顺带起 archivist agent 深度充实 wiki(可选,默认 false)。 */
+	enrich?: boolean;
+};
 export type UpdateProjectInput = Partial<Omit<ProjectRecord, "id" | "createdAt" | "updatedAt">>;
 
 export type CreateRequirementInput = Omit<RequirementRecord, "id" | "createdAt" | "updatedAt">;
@@ -828,6 +831,59 @@ export interface CronRunRecord {
 }
 
 export type CreateCronRunInput = Omit<CronRunRecord, "id">;
+
+// ── project_jobs (项目级后台 agent 任务,如 wiki 充实) ──
+
+/**
+ * 项目作用域的后台 agent 任务。第一类是 `wiki-enrich`(archivist agent 深度
+ * 充实 wiki 树);后续可扩展 "重新生成 wiki" / "一致性检查" 等同类长任务。
+ *
+ * 与 cron_runs 的区别:cron_runs 是 cron 每次触发的审计日志(定时驱动);
+ * project_jobs 是用户/创建流程**显式踢一次**的项目级任务(on-demand 驱动),
+ * 生命周期更长、跨 session/重启仍可追踪(一个 job = 一次充实全过程)。
+ *
+ * status 流转:running → completed | failed | cancelled。
+ */
+export type ProjectJobStatus = "running" | "completed" | "failed" | "cancelled";
+
+export interface ProjectJobRecord {
+	id: string;
+	/** 任务类型,如 "wiki-enrich"。决定 UI 文案与默认 via/prompt。 */
+	jobType: string;
+	projectId: string;
+	/** 解析出来执行该任务的 agent(via 解析后)。 */
+	agentId?: string;
+	/** 任务跑在哪个 session(经 resolveSessionByRoleProject 路由)。 */
+	sessionId?: string;
+	status: ProjectJobStatus;
+	startedAt: string;
+	/** 完成时间(completed/failed/cancelled 时填)。 */
+	finishedAt?: string;
+	error?: string;
+	/** 传给 agent 的 prompt 摘要(便于 UI 展示 + 审计)。 */
+	promptSummary?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type CreateProjectJobInput = Omit<ProjectJobRecord, "id" | "createdAt" | "updatedAt">;
+
+/**
+ * 指派"哪个 agent 来执行一项项目级任务"(如 wiki 充实)的配置。配置驱动,
+ * 代码不硬绑任何具体角色/agent —— 默认 `{ role: "archivist" }` 由调用方传入。
+ *
+ * 解析规则(见 EnrichmentRunner.resolveAgent):
+ * - `role` — 按角色解析:getRoleConfig(role) 拿 systemPrompt/toolPolicy/contextPolicy/
+ *   interactive,临时拼一个该角色的 agent 跑。
+ * - `agentId` — 按具体 agent 实例解析:读 AgentRecord 的 systemPrompt/model/toolPolicy。
+ *   若同时给 role,role 决定 interactive 标志;否则从 agent 推不出 role,默认 interactive。
+ * - `model` — 顶层覆盖,优先于 role.recommendedModel / agent.model。
+ */
+export interface AgentVia {
+	role?: string;
+	agentId?: string;
+	model?: string;
+}
 
 // ── tool_configs / tool_usage (P0 §7.7 — per-tool config + call log) ──
 

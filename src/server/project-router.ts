@@ -65,8 +65,9 @@ export function createProjectRouter(deps: {
 			// v0.8 (P5 §8.3): create through ManagementService when available
 			// so the wiki subtree root + archivist background scan fire. Fall
 			// back to the bare store when management isn't wired (tests).
+			// enrich=true 时顺带起 archivist agent 深度充实 wiki。
 			const p = management
-				? management.createProject({ name: req.body.name, workspaceDir })
+				? management.createProject({ name: req.body.name, workspaceDir, enrich: req.body.enrich === true })
 				: projectStore.create({ name: req.body.name, workspaceDir });
 			res.status(201).json(p);
 		} catch (e) {
@@ -100,6 +101,22 @@ export function createProjectRouter(deps: {
 		}
 		try {
 			res.json(management.getProjectResourceUsage(p.id));
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
+		}
+	});
+
+	/**
+	 * POST /:id/enrich — 手动起 archivist agent 深度充实 wiki(后台、非阻塞)。
+	 * 立即返回 { jobId, sessionId };run 在后台跑,完成/失败写回 project_jobs。
+	 */
+	router.post("/:id/enrich", async (req, res) => {
+		const p = projectStore.get(req.params.id);
+		if (!p) return res.status(404).json({ error: "Project not found" });
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			const result = await management.enrichProject(p.id, req.body?.via ? { via: req.body.via } : {});
+			res.status(202).json(result);
 		} catch (e) {
 			res.status(500).json({ error: (e as Error).message });
 		}

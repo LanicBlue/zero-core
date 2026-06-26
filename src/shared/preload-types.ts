@@ -37,7 +37,7 @@ import type {
 	ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats,
 	DiscoveredSkill,
 	ProjectRecord, CreateProjectInput, UpdateProjectInput,
-	ProjectContainerView, ProjectResourceUsage,
+	ProjectContainerView, ProjectResourceUsage, AgentVia,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	WikiNode,
@@ -219,6 +219,8 @@ export interface WindowApi {
 	projectsUpdate: (id: string, input: UpdateProjectInput) => Promise<ProjectRecord | { error: string }>;
 	projectsDelete: (id: string) => Promise<{ success: true }>;
 	projectsGetResourceUsage: (id: string) => Promise<ProjectResourceUsage>;
+	/** 手动起 archivist agent 深度充实 wiki(后台、非阻塞)。 */
+	projectsEnrich: (id: string, via?: AgentVia) => Promise<{ jobId: string; sessionId: string }>;
 
 	// ── Requirements ──
 	requirementsList: (filter?: { projectId?: string; status?: string; priority?: string }) => Promise<RequirementRecord[]>;

@@ -53,6 +53,15 @@ export interface WorkflowRoleConfig {
 	};
 	/** 是否需要持久化 AgentRecord（true = Analyst/Lead, false = sub-agent） */
 	persistent: boolean;
+	/**
+	 * 该角色的 session 在 chat UI 里是否允许用户直接输入对话。
+	 * - true（默认）= 对话角色（analyst/lead/developer/...），用户可聊天；
+	 *   但该 session 上有后台 job 在跑时，输入临时锁定（防干扰运行中的任务）。
+	 * - false = worker 角色（archivist 这类只干活的），session 永久只读 ——
+	 *   用户只能看着它运行，不能跟它聊天。这是「对话保护」的配置开关，
+	 *   不是写死在 UI 里的判断。
+	 */
+	interactive: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +114,7 @@ Available workflow tools:
 	},
 
 	persistent: true,
+	interactive: true,
 };
 
 const LEAD_CONFIG: WorkflowRoleConfig = {
@@ -157,6 +167,7 @@ Available workflow tools:
 	},
 
 	persistent: true,
+	interactive: true,
 };
 
 const DEVELOPER_CONFIG: WorkflowRoleConfig = {
@@ -192,6 +203,7 @@ Rules:
 	},
 
 	persistent: false,
+	interactive: true,
 };
 
 const REVIEWER_CONFIG: WorkflowRoleConfig = {
@@ -224,6 +236,7 @@ Output format:
 	},
 
 	persistent: false,
+	interactive: true,
 };
 
 const QA_CONFIG: WorkflowRoleConfig = {
@@ -262,6 +275,7 @@ Output format:
 	},
 
 	persistent: false,
+	interactive: true,
 };
 
 // v0.8 (M2): archivist — global role, serves a project via session context.
@@ -361,6 +375,9 @@ When you spot:
 	},
 
 	persistent: true,
+	// archivist 是 worker 角色：它的 session 是 wiki 充实/维护的执行现场，
+	// 用户只看不聊 → chat UI 永久禁用输入（对话保护）。
+	interactive: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -386,6 +403,17 @@ export function getRoleConfig(role: string): WorkflowRoleConfig {
 	const config = WORKFLOW_ROLES[role];
 	if (!config) throw new Error(`Unknown workflow role: ${role}`);
 	return config;
+}
+
+/**
+ * Whether a role's session accepts user input in the chat UI.
+ * Unknown roles default to interactive (true) — only declared worker roles
+ * (interactive:false) are read-only. Used by the 对话保护 mechanism.
+ */
+export function isRoleInteractive(role: string | undefined | null): boolean {
+	if (!role) return true;
+	const config = WORKFLOW_ROLES[role];
+	return config ? config.interactive : true;
 }
 
 /**

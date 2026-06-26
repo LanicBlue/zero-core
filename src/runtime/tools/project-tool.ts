@@ -63,7 +63,7 @@ async function safe(fn: () => any): Promise<string> {
 // at runtime in execute (wrapped by `safe()`).
 
 export const projectActionSchema = z.object({
-	action: z.enum(["create", "update", "delete", "get", "list"]),
+	action: z.enum(["create", "update", "delete", "get", "list", "enrich"]),
 	name: z.string().optional(),
 	workspaceDir: z.string().optional(),
 	id: z.string().optional(),
@@ -73,6 +73,11 @@ export const projectActionSchema = z.object({
 	 * (requirementsByStatus + crons + wikiSummary + activeSessions).
 	 */
 	includeContext: z.boolean().optional(),
+	/**
+	 * create 时是否顺带起 archivist agent 深度充实 wiki(可选,默认 false)。
+	 * 不传 = 只建骨架扫描(无 LLM);传 true = 骨架 + 后台拉 archivist 充实。
+	 */
+	enrich: z.boolean().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -90,7 +95,9 @@ export const projectTool = buildTool({
 		"- { action:'update', id, name? } — rename. workspaceDir is immutable.\n" +
 		"- { action:'delete', id } — metadata-only delete (workspace files untouched).\n" +
 		"- { action:'get', id, includeContext? } — read one Project. includeContext=true returns the container view (§8.4: requirementsByStatus + crons + wikiSummary + activeSessions). Default returns metadata only.\n" +
-		"- { action:'list' } — list all Projects.",
+		"- { action:'list' } — list all Projects.\n" +
+		"- { action:'create', ..., enrich:true } — also kick an archivist agent to deeply enrich the wiki (LLM detail docs). Omit enrich = skeleton scan only.\n" +
+		"- { action:'enrich', id } — manually kick archivist enrichment on an existing project (background, non-blocking; returns { jobId, sessionId }).",
 	meta: {
 		category: "management",
 		isReadOnly: false,
@@ -103,7 +110,9 @@ export const projectTool = buildTool({
 			const svc = mgmt(ctx);
 			switch (input.action) {
 				case "create":
-					return svc.createProject({ name: input.name, workspaceDir: input.workspaceDir });
+					return svc.createProject({ name: input.name, workspaceDir: input.workspaceDir, enrich: input.enrich });
+				case "enrich":
+					return svc.enrichProject(input.id);
 				case "update":
 					return svc.updateProject(input.id, { name: input.name });
 				case "delete":

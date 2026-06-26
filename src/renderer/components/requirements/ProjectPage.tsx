@@ -74,6 +74,7 @@ export default function ProjectPage() {
 	// Create form state
 	const [newName, setNewName] = useState("");
 	const [newDir, setNewDir] = useState("");
+	const [newEnrich, setNewEnrich] = useState(false);
 	const [creating, setCreating] = useState(false);
 	const [createErr, setCreateErr] = useState<string>("");
 
@@ -124,18 +125,20 @@ export default function ProjectPage() {
 			const p = (await api().projectsCreate({
 				name: newName.trim() || "Untitled",
 				workspaceDir: newDir.trim(),
+				enrich: newEnrich,
 			})) as ProjectRecord;
 			await fetchProjects();
 			setSelectedProjectId(p.id);
 			setShowCreate(false);
 			setNewName("");
 			setNewDir("");
+			setNewEnrich(false);
 		} catch (e) {
 			setCreateErr((e as Error).message ?? String(e));
 		} finally {
 			setCreating(false);
 		}
-	}, [newName, newDir, fetchProjects]);
+	}, [newName, newDir, newEnrich, fetchProjects]);
 
 	const handleDelete = useCallback(async (id: string) => {
 		if (!confirm("Delete this project? Cascade-deletes requirements, wiki subtree, and project-scoped crons. Workspace files are NOT touched.")) return;
@@ -146,6 +149,17 @@ export default function ProjectPage() {
 			alert(`Delete failed: ${(e as Error).message}`);
 		}
 	}, [removeProject, fetchProjects]);
+
+	// 手动起 archivist agent 深度充实 wiki(后台、非阻塞)。
+	const handleEnrich = useCallback(async (id: string) => {
+		try {
+			const r = await api().projectsEnrich(id);
+			alert(`已起 archivist 充实任务(后台运行)。\njob: ${r.jobId}\nsession: ${r.sessionId}`);
+			refreshContainer(id);
+		} catch (e) {
+			alert(`Enrich failed: ${(e as Error).message}`);
+		}
+	}, [refreshContainer]);
 
 	const selectedProject = useMemo(
 		() => projects.find((p) => p.id === selectedProjectId) ?? null,
@@ -247,6 +261,19 @@ export default function ProjectPage() {
 								<div style={{ flex: 1 }} />
 								<button
 									type="button"
+									onClick={() => handleEnrich(selectedProject.id)}
+									title="起 archivist agent 深度充实 wiki(后台)"
+									style={{
+										alignSelf: "center", marginRight: 8,
+										padding: "3px 10px", background: "transparent",
+										border: "1px solid #2196F3", borderRadius: 4,
+										color: "#2196F3", fontSize: 11, cursor: "pointer",
+									}}
+								>
+									Run archivist
+								</button>
+								<button
+									type="button"
 									onClick={() => handleDelete(selectedProject.id)}
 									style={{
 										alignSelf: "center", marginRight: 8,
@@ -321,6 +348,14 @@ export default function ProjectPage() {
 								style={inputStyle}
 							/>
 						</div>
+						<label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary, #aaa)", marginBottom: 12, cursor: "pointer" }}>
+							<input
+								type="checkbox"
+								checked={newEnrich}
+								onChange={(e) => setNewEnrich(e.target.checked)}
+							/>
+							创建后立即深度充实 wiki(起 archivist agent,LLM 给每个节点写详 doc)
+						</label>
 						{createErr && (
 							<div style={{ fontSize: 11, color: "#f44336", marginBottom: 8 }}>{createErr}</div>
 						)}

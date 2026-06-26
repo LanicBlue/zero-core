@@ -219,6 +219,8 @@ const api: WindowApi = {
 	projectsDelete: (id) => ipcRenderer.invoke("projects:delete", id),
 	// v0.8 (P5 §8.5): sessions token/cost SUM by projectId.
 	projectsGetResourceUsage: (id) => ipcRenderer.invoke("projects:getResourceUsage", id),
+	// 手动起 archivist agent 深度充实 wiki(后台、非阻塞)。
+	projectsEnrich: (id, via?) => ipcRenderer.invoke("projects:enrich", id, via),
 
 	// ── Requirements ──
 	requirementsList: (filter?) => ipcRenderer.invoke("requirements:list", filter),
