@@ -524,9 +524,11 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 | `turn_state` | durable execution 检查点 | `createTurnState` / `updateTurnPhase` |
 | `tool_executions` | 会话级工具调用日志(旧版,见 §2.1 与 §11.2 关于与 `tool_usage` 重叠的讨论) | `recordToolExecution` |
 
-#### 4.0.2 SessionDB 直接聚合的 store(6 个,分两批)
+#### 4.0.2 SessionDB 直接聚合的 store(5 个,分两批)
 
-`SessionDB` 在构造函数里 **eager** 实例化 3 个内核 store,在 v0.8 (M5) 又加了 2 个 **lazy** store + 1 个全局 wiki store 入口:
+`SessionDB` 在构造函数里 **eager** 实例化 3 个内核 store,在 v0.8 (M5) 又加了 2 个 **lazy** store:
+
+> ⚠️ **更正**:本文此前写"6 个,分两批 + 1 个全局 wiki store 入口",这是**错的**。`WikiStore`(`wiki-node-store.ts:327` 的 `WikiStore` 类)在 `server/index.ts:122` 以 `wikiStoreGlobal = new WikiStore(sessionDB)` **独立 new** —— SessionDB 只是被当 `getDb()` 提供者传进去,本身**不**持有 `WikiStore` 字段、不暴露 getter(在 `session-db.ts` 里 grep `WikiStore` 零命中)。`WikiStore` 与 §4.0.3 的 9 个工作流域 store 同属"在 server/index.ts 独立 new、不挂 SessionDB"那一类,只是它实例化得更早(必须在 hooks 注册前,以便 M5 抽取器拿到 writer)。详见 §4.0.3 与 [02-module-structure.md §4.1.1](02-module-structure.md)。
 
 | store | 实例化时机 | 用途 | getter |
 |-------|-----------|------|--------|
@@ -558,8 +560,8 @@ const projectJobStore    = new ProjectJobStore(sessionDB);
 
 这些 Store 全部继承 `SqliteStore<T>`,构造时只接 `sessionDB` 一个参数 —— `SqliteStore` 的构造函数
 (`sqlite-store.ts:43-67`)从 `sessionDB.getDb()` 拿底层 `Database.Database` 句柄,**不依赖 SessionDB 的任何
-聚合关系**。换句话说:`SessionDB` 在这里降级为"DB 句柄 + 5 张自持表 + 6 个内核 store"的提供者,
-v0.8 工作流域 store 把它当 **`getDb()` 提供者** 用,而不是当父聚合根。
+聚合关系**。换句话说:`SessionDB` 在这里降级为"DB 句柄 + 5 张自持表 + 5 个内核 store"的提供者,
+v0.8 工作流域 store(以及 §4.0.2 更正块提到的 `WikiStore`)把它当 **`getDb()` 提供者** 用,而不是当父聚合根。
 
 **这个边界是 v0.8 刻意的取舍**:
 - SessionDB 仍是会话核心(sessions/messages/turns/turn_state/tool_executions)的唯一权威,会话域不会
@@ -807,7 +809,7 @@ flowchart LR
 
 ### 11.2 可以改进的
 
-- **session-db.ts 太大**(当前约 960 行,v0.8 后从 ~850 长到 960)。可拆为:sessions / messages / turns / turn_state / tool_executions 各一个文件,并让 SessionDB 退化为 DB lifecycle + 内核 store factory。注意 §4.0.3:v0.8 工作流域 store(ProjectStore / RequirementStore / CronStore / ...)已经在 `server/index.ts` 独立 new、**不**挂在 SessionDB 上,所以拆分压力其实只剩会话核心 5 张表 + 6 个内核 store。
+- **session-db.ts 太大**(当前约 960 行,v0.8 后从 ~850 长到 960)。可拆为:sessions / messages / turns / turn_state / tool_executions 各一个文件,并让 SessionDB 退化为 DB lifecycle + 内核 store factory。注意 §4.0.3:v0.8 工作流域 store(ProjectStore / RequirementStore / CronStore / ...)已经在 `server/index.ts` 独立 new、**不**挂在 SessionDB 上,所以拆分压力其实只剩会话核心 5 张表 + 5 个内核 store。
 - **KB 搜索** 在大库时性能崩塌（O(M×D) 客户端循环）。
 - **message-store.ts** 是已迁移完成的历史遗留物，应删除或迁移到 `legacy/`。
 - **内存节点** 与 **旧版知识图谱** 同时存在——需要明确"哪个是默认"，否则用户数据写错地方。v0.8 又新增 `project_wiki`(第三套 wiki 系统)—— 目前它走 archivist 摘要 + 磁盘镜像树,**与 kb_*(RAG) / memory_nodes(主题聚合) 三路并存**,需要文档与 UI 明确各自适用场景(见 06 §2)。

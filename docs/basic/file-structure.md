@@ -105,9 +105,9 @@ renderer / runtime 四个独立 JS 上下文**。
 
 ### 数据存储(按域分组)
 
-**会话核心(SessionDB 自持,5 张表 + 6 个聚合 store)**:
+**会话核心(SessionDB 自持,5 张表 + 5 个聚合 store)**:
 
-- `session-db.ts` — SessionDB,会话核心聚合根(960 行,**不**聚合工作流域 store,见 05 §4.0.3)
+- `session-db.ts` — SessionDB,会话核心 + DB 句柄提供者(960 行,**不**聚合工作流域 store 也不聚合 WikiStore,见 05 §4.0.2 更正块 / §4.0.3)
 - `message-store.ts` / `turn-recorder`(runtime) — messages / turns / turn_state / tool_executions
 - `sqlite-store.ts` — SqliteStore 通用 CRUD 基类(列补齐 + JSON 序列化)
 - `key-value-store.ts` — KeyValueStore(KV,SessionDB eager 聚合)
