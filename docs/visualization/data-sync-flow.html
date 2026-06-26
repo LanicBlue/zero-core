@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>v0.8 UI 同步:data-change-hub 双路径推送</title>
+<style>
+:root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--dim:#484f58;--blue:#58a6ff;--green:#3fb950;--purple:#bc8cff;--orange:#d29922;--red:#f85149;--cyan:#39d2c0;--pink:#f778ba;--yellow:#e3b341}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px 20px 80px;line-height:1.55;font-size:13px}
+h1{text-align:center;font-size:21px;margin-bottom:2px;background:linear-gradient(90deg,var(--cyan),var(--blue),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{text-align:center;color:var(--muted);font-size:12px;margin-bottom:6px}
+.sub code{background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:11px;color:var(--text);border:1px solid var(--border)}
+.tags{text-align:center;margin-bottom:18px}
+.tag{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;margin:0 2px;font-weight:600;letter-spacing:.3px}
+.tag.src{background:#1f6feb22;color:var(--blue);border:1px solid var(--blue)}
+.tag.hub{background:#bc8cff1a;color:var(--purple);border:1px solid var(--purple)}
+.tag.sub{background:#3fb9501a;color:var(--green);border:1px solid var(--green)}
+.tag.warn{background:#d299221a;color:var(--orange);border:1px solid var(--orange)}
+
+/* ── 控制条 ── */
+.ctrl{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin:0 auto 20px;max-width:1080px}
+.ctrl .lbl{font-size:11px;color:var(--muted);margin-right:2px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.ctrl select,.ctrl button{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:5px;font-family:inherit;font-size:12px;cursor:pointer}
+.ctrl button:hover{border-color:var(--blue);color:var(--blue)}
+.ctrl button.act{background:var(--blue);color:#fff;border-color:var(--blue)}
+.ctrl .sp{width:1px;height:18px;background:var(--border);margin:0 4px}
+.ctrl .stat{font-size:11px;color:var(--muted);margin-left:auto}
+.ctrl .stat b{color:var(--text)}
+
+/* ── 主图 ── */
+.diag{max-width:1080px;margin:0 auto 24px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px 14px 10px;position:relative;overflow:hidden}
+.diag .title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;font-weight:600}
+
+/* 5 列泳道 */
+.lanes{display:grid;grid-template-columns:170px 130px 100px 110px 180px;gap:10px;align-items:start;position:relative}
+.lane-h{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;text-align:center;padding:6px 4px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);font-weight:600}
+.lane-h.s1{border-color:var(--pink);color:var(--pink)}
+.lane-h.s2{border-color:var(--orange);color:var(--orange)}
+.lane-h.s3{border-color:var(--purple);color:var(--purple)}
+.lane-h.s4{border-color:var(--blue);color:var(--blue)}
+.lane-h.s5{border-color:var(--green);color:var(--green)}
+
+.node{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 9px;margin:6px 0;font-size:11px;cursor:pointer;transition:all .15s;position:relative}
+.node:hover{border-color:var(--muted);transform:translateY(-1px)}
+.node.active{border-color:var(--cyan);box-shadow:0 0 0 2px #39d2c033}
+.node .nm{font-weight:600;color:var(--text);font-size:11.5px;font-family:'SF Mono',Consolas,monospace}
+.node .ds{color:var(--muted);font-size:9.5px;margin-top:2px;line-height:1.4}
+.node .ln{position:absolute;top:3px;right:5px;font-size:8px;color:var(--dim);font-family:'SF Mono',Consolas,monospace}
+
+/* 边(纯 CSS,svg overlay) */
+.edges{position:absolute;inset:0;pointer-events:none;z-index:0}
+.edges path{fill:none;stroke-width:1.5;opacity:.5;transition:opacity .2s,stroke-width .2s}
+.edges path.hot{opacity:1;stroke-width:2.5}
+.lanes > *{position:relative;z-index:1}
+
+/* ── 演练区 ── */
+.replay{max-width:1080px;margin:0 auto 24px;display:grid;grid-template-columns:1.05fr 1fr;gap:14px}
+@media(max-width:920px){.replay{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.panel h3{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px;font-weight:700;display:flex;align-items:center;gap:6px}
+.panel h3 .dotc{display:inline-block;width:8px;height:8px;border-radius:50%}
+.panel.write h3 .dotc{background:var(--pink)}
+.panel.read h3 .dotc{background:var(--green)}
+
+/* 写侧:emit 序列 */
+.tick-list{font-family:'SF Mono',Consolas,monospace;font-size:10.5px;line-height:1.7;max-height:280px;overflow-y:auto;padding-right:4px}
+.tick-list .tk{padding:4px 6px;border-radius:3px;margin-bottom:3px;background:var(--surface2);border-left:2px solid var(--dim);transition:all .2s}
+.tick-list .tk.flashing{border-left-color:var(--cyan);background:#39d2c00f}
+.tick-list .tk.flush{border-left-color:var(--purple);background:#bc8cff0f;font-weight:600}
+.tick-list .tk.empty{opacity:.4;font-style:italic}
+.tick-list .ops{display:block;font-size:9.5px;color:var(--muted);margin-top:1px;padding-left:8px}
+.tick-list .op{display:inline-block;padding:0 4px;border-radius:2px;margin-right:3px;font-size:8.5px;font-weight:700}
+.op.c{background:#3fb9502a;color:var(--green)}
+.op.u{background:#58a6ff2a;color:var(--blue)}
+.op.d{background:#f851492a;color:var(--red)}
+.op.drop{background:#484f58;color:var(--muted)}
+.tick-list .coa{color:var(--orange);font-size:9px;margin-left:6px}
+
+/* 读侧:store 列表 */
+.stores{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;padding-right:4px}
+.st{background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:10.5px;transition:all .2s}
+.st.flash{border-color:var(--green);box-shadow:0 0 0 2px #3fb95022;background:#3fb9500d}
+.st .hd{display:flex;align-items:center;gap:6px;font-family:'SF Mono',Consolas,monospace;font-weight:600;color:var(--text)}
+.st .hd .col{font-size:8px;padding:1px 5px;border-radius:8px;font-weight:700;letter-spacing:.3px}
+.st .hd .cnt{margin-left:auto;font-size:9px;color:var(--muted)}
+.st .strat{font-size:9.5px;color:var(--muted);margin-top:2px}
+.st .strat code{background:var(--bg);padding:0 4px;border-radius:2px;color:var(--cyan)}
+
+/* ── 详情卡 ── */
+.detail{max-width:1080px;margin:0 auto 24px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 18px}
+.detail h3{font-size:13px;margin-bottom:8px;color:var(--text);font-weight:700}
+.detail h3 .tag{vertical-align:middle;margin-left:6px}
+.detail p{color:var(--muted);font-size:12px;margin-bottom:6px}
+.detail code{background:var(--surface2);padding:1px 5px;border-radius:3px;color:var(--cyan);font-size:11px;border:1px solid var(--border)}
+.detail ul{margin:6px 0 6px 18px;color:var(--muted);font-size:12px}
+.detail ul li{margin-bottom:3px}
+.detail ul li b{color:var(--text)}
+.detail .src{font-family:'SF Mono',Consolas,monospace;font-size:10.5px;color:var(--yellow);background:#0d1117;border:1px solid var(--border);border-radius:5px;padding:8px 10px;margin-top:6px;overflow-x:auto;line-height:1.5}
+.detail .src .cmt{color:var(--muted)}
+
+/* ── 脚注 ── */
+.foot{max-width:1080px;margin:0 auto;font-size:11px;color:var(--muted);text-align:center;border-top:1px solid var(--border);padding-top:12px;line-height:1.7}
+.foot a{color:var(--blue);text-decoration:none}
+.foot a:hover{text-decoration:underline}
+.foot code{background:var(--surface2);padding:1px 4px;border-radius:3px;color:var(--text);font-size:10px;border:1px solid var(--border)}
+
+/* 滚动条 */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--surface)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+
+.legend{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;font-size:10px;color:var(--muted);margin-bottom:14px}
+.legend span{display:flex;align-items:center;gap:4px}
+.legend i{display:inline-block;width:10px;height:2px;border-radius:1px}
+</style>
+</head>
+<body>
+
+<h1>v0.8 UI 同步:data-change-hub 双路径推送</h1>
+<p class="sub">渲染层刷新机制的可视化演练 &mdash; <code>SqliteStore</code> 写原语 → 白名单/coalesce → <code>data:changed</code> WS 推送 → 各 store <strong>自订阅</strong>增量 patch</p>
+<div class="tags">
+  <span class="tag src">写原语层 emit</span>
+  <span class="tag hub">hub coalesce</span>
+  <span class="tag sub">各 store 自订阅</span>
+  <span class="tag warn">非 StreamEvent 路径</span>
+</div>
+
+<div class="legend">
+  <span><i style="background:var(--pink)"></i>SqliteStore 写原语</span>
+  <span><i style="background:var(--orange)"></i>非 UI 表(被丢弃)</span>
+  <span><i style="background:var(--purple)"></i>hub coalesce/flush</span>
+  <span><i style="background:var(--blue)"></i>WS→IPC 桥</span>
+  <span><i style="background:var(--green)"></i>store 增量 patch</span>
+</div>
+
+<!-- ── 控制条 ── -->
+<div class="ctrl">
+  <span class="lbl">情景</span>
+  <select id="scenario">
+    <option value="single">单次写(agent 改名)</option>
+    <option value="coalesce">同 tick 多写合并(批量扫描)</option>
+    <option value="burst">burst 太大 → 全量 refetch</option>
+    <option value="drop">非白名单表(messages/turns)静默丢</option>
+    <option value="delete">delete 不带 record</option>
+    <option value="filter">过滤列表(requirement 别项目,新 id 不在)</option>
+  </select>
+  <span class="sp"></span>
+  <button id="play">▶ 自动播放</button>
+  <button id="step">⏭ 单步</button>
+  <button id="reset">↺ 重置</button>
+  <span class="sp"></span>
+  <span class="stat">step <b id="stepN">0</b>/<b id="stepMax">0</b></span>
+</div>
+
+<!-- ── 主图 ── -->
+<div class="diag">
+  <div class="title">五段推送路径</div>
+  <div class="lanes" id="lanes">
+    <div>
+      <div class="lane-h s1">① 写源 SqliteStore</div>
+      <div class="node" data-stage="1" data-key="agent"><span class="ln">265,311,319</span><div class="nm">emitDataChange(table,id,"delete"/"create"/"update",record?)</div><div class="ds">在 SqliteStore 三个写原语里 emit,所有领域 store 自动覆盖</div></div>
+      <div class="node" data-stage="1" data-key="drop"><span class="ln">emit→非白名单</span><div class="nm">messages / turns / tool_executions</div><div class="ds">高频写表会被 emit 但 hub 在白名单 gate 处丢弃</div></div>
+    </div>
+    <div>
+      <div class="lane-h s2">② 白名单 gate</div>
+      <div class="node" data-stage="2" data-key="wl"><span class="ln">86</span><div class="nm">UI_COLLECTIONS.has(table)?</div><div class="ds">5 collection: agents/projects/crons/requirements/project_wiki</div></div>
+      <div class="node" data-stage="2" data-key="coalesce"><span class="ln">87-94</span><div class="nm">pending.set(table,id,op,record)</div><div class="ds">同 tick 同 (collection,id) 后写覆盖前写</div></div>
+    </div>
+    <div>
+      <div class="lane-h s3">③ hub flush</div>
+      <div class="node" data-stage="3" data-key="flush"><span class="ln">63-78</span><div class="nm">setTimeout(flush,0)</div><div class="ds">下一 tick 把 pending 全发出去;delete 不带 record</div></div>
+    </div>
+    <div>
+      <div class="lane-h s4">④ WS→IPC 桥</div>
+      <div class="node" data-stage="4" data-key="broadcast"><span class="ln">index.ts:268</span><div class="nm">onDataChange → broadcast({type:"data:changed",collection})</div><div class="ds">server 只广播 collection 名(不带 changes 数组)</div></div>
+      <div class="node" data-stage="4" data-key="ipc"><span class="ln">ipc-proxy:369</span><div class="nm">WS msg → win.send("data:changed",...)</div><div class="ds">data:changed 走独立通道,不污染 agent:event 流</div></div>
+    </div>
+    <div>
+      <div class="lane-h s5">⑤ store 自订阅</div>
+      <div class="node" data-stage="5" data-key="agent-st"><span class="ln">agent-store:136</span><div class="nm">subscribeListDataChange("agents",...)</div><div class="ds">非过滤列表:新 id append + 返 true</div></div>
+      <div class="node" data-stage="5" data-key="project-st"><span class="ln">project-store:90</span><div class="nm">subscribeListDataChange("projects",...)</div><div class="ds">非过滤列表:append</div></div>
+      <div class="node" data-stage="5" data-key="cron-st"><span class="ln">cron-store:127</span><div class="nm">subscribeListDataChange("crons",...)</div><div class="ds">非过滤列表:append</div></div>
+      <div class="node" data-stage="5" data-key="req-st"><span class="ln">requirement-store:184</span><div class="nm">subscribeListDataChange("requirements",...)</div><div class="ds">过滤列表:仅替换已存在;不在 → 返 false → helper 回退 refetchAll</div></div>
+      <div class="node" data-stage="5" data-key="wiki-st"><span class="ln">wiki-store:198</span><div class="nm">subscribeDataChange("project_wiki",...)</div><div class="ds">树形 → 不增量,直接 drop tree + refresh root</div></div>
+    </div>
+
+    <svg class="edges" id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+</div>
+
+<!-- ── 演练区 ── -->
+<div class="replay">
+  <div class="panel write">
+    <h3><span class="dotc"></span>服务端 emit 序列(每 tick 一行)</h3>
+    <div class="tick-list" id="tickList"></div>
+  </div>
+  <div class="panel read">
+    <h3><span class="dotc"></span>渲染层 store 接收</h3>
+    <div class="stores" id="storeList"></div>
+  </div>
+</div>
+
+<!-- ── 详情卡(随选中节点变) ── -->
+<div class="detail" id="detail">
+  <h3>点上方任一节点查看详情<span class="tag src" id="dT">写原语</span></h3>
+  <div id="dBody"><p style="color:var(--muted)">选左侧主图的节点或情景演练,这里会展开对应源码片段与设计取舍。</p></div>
+</div>
+
+<div class="foot">
+  v0.8 P2 落地 · 取代 v0.7 "每个域一条事件通道 / 每个 store 手写 onChange / 整表 refetch" 的旧模式 ·
+  两路径并行不互替:<code>StreamEvent</code>(集中路由 chat 流)+ <code>data:changed</code>(各 store 自订阅)<br>
+  详见 <code>docs/arch/07-renderer-and-ipc.md</code> §2.3.1 / §3.7 · 源码 <code>src/server/data-change-hub.ts</code> + <code>src/renderer/store/data-sync.ts</code>
+</div>
+
+<script>
+"use strict";
+
+/* ──────────────────────────────
+ * 数据模型:5 个 UI collection 的 store 元信息
+ * ────────────────────────────── */
+const STORES = [
+  {col:"agents",       coll:"agents",       strat:"list",   cls:"subscribeListDataChange", note:"非过滤:patch 返 true,新 id append",       line:"agent-store:136"},
+  {col:"projects",     coll:"projects",     strat:"list",   cls:"subscribeListDataChange", note:"非过滤:append",                          line:"project-store:90"},
+  {col:"crons",        coll:"crons",        strat:"list",   cls:"subscribeListDataChange", note:"非过滤:append",                          line:"cron-store:127"},
+  {col:"requirements", coll:"requirements", strat:"list-f", cls:"subscribeListDataChange", note:"过滤列表:不在当前视图 → 回退 refetchAll",line:"requirement-store:184"},
+  {col:"wiki",         coll:"project_wiki", strat:"tree",   cls:"subscribeDataChange",     note:"树形:drop tree + refresh root",          line:"wiki-store:198"},
+];
+
+const COL_COLOR = {agents:"var(--blue)", projects:"var(--purple)", crons:"var(--orange)", requirements:"var(--pink)", wiki:"var(--green)"};
+const COL_CHIP  = {agents:"#58a6ff2a", projects:"#bc8cff1a", crons:"#d299221a", requirements:"#f778ba1a", wiki:"#3fb9501a"};
+const NON_UI = ["messages","turns","tool_executions","tool_usage","extraction_cursors"];
+
+/* ──────────────────────────────
+ * 情景:每个情景是按 tick 排列的 emit 序列
+ * 每 tick = 一组同 tick 的 emit(会被 coalesce 合并到下一 tick 一次 flush)
+ * ────────────────────────────── */
+const SCENARIOS = {
+  single: {
+    name:"单次写(agent 改名)",
+    desc:"management REST 改了 agent 的 prompt → SqliteStore.updateRow → emit 一次 → 下一 tick flush → AgentStore 增量 patch 这一行",
+    ticks:[
+      [{table:"agents", id:"ag-7", op:"update", record:{id:"ag-7",name:"researcher",prompt:"..."}}],
+    ],
+  },
+  coalesce: {
+    name:"同 tick 多写合并(archivist 批量扫描)",
+    desc:"archivist 一个 tick 内改了 project_wiki 200 个节点的 summary,同 (collection,id) 的多次写被合并;但因 id 各不相同,flush 时 changes 数组会很大;wiki store 是树形,直接 drop+refresh root,不分发到 200 个 patch",
+    ticks:[
+      [
+        {table:"project_wiki", id:"wn-1", op:"update", record:{id:"wn-1",summary:"..."}},
+        {table:"project_wiki", id:"wn-1", op:"update", record:{id:"wn-1",summary:"(覆盖前写)"}},
+        {table:"project_wiki", id:"wn-2", op:"update", record:{id:"wn-2",summary:"..."}},
+        {table:"project_wiki", id:"wn-3", op:"update", record:{id:"wn-3",summary:"..."}},
+      ],
+    ],
+    note:"同 id 后写覆盖 → flush 出去 (wn-1, wn-2, wn-3) 3 条 change",
+  },
+  burst: {
+    name:"burst 太大 → 全量 refetch",
+    desc:"migrateFromJson 一次性 import 几百条 agent。emit 在同一 tick 内对 N 个新 id 各触发一次 create;helper 因新 id 不在列表 → 每个 create 都返 false → 但 subscribeListDataChange 在第一个 false 就 refetchAll 并 return(后续不再处理),所以实际只 refetch 一次",
+    ticks:[
+      [
+        {table:"agents", id:"ag-a", op:"create", record:{id:"ag-a",name:"a"}},
+        {table:"agents", id:"ag-b", op:"create", record:{id:"ag-b",name:"b"}},
+        {table:"agents", id:"ag-c", op:"create", record:{id:"ag-c",name:"c"}},
+      ],
+    ],
+    note:"patch(ag-a) 返 false(refetchAll 触发,return)→ ag-b/ag-c 不再处理",
+  },
+  drop: {
+    name:"非白名单表(messages/turns)静默丢",
+    desc:"流式 LLM 每 chunk 都 append messages 表 → SqliteStore.emit → 但 messages 不在 UI_COLLECTIONS → hub 第 86 行直接 return。否则全量广播每秒几十条会把 IPC 流刷爆",
+    ticks:[
+      [
+        {table:"messages", id:"m-101", op:"create", record:{role:"assistant",content:"..."}},
+        {table:"turns", id:"t-21", op:"create", record:{turn_group:21}},
+        {table:"tool_usage", id:"tu-9", op:"create", record:{tool:"Bash"}},
+        {table:"agents", id:"ag-7", op:"update", record:{id:"ag-7",name:"x"}},  // 这个会被广播
+      ],
+    ],
+    note:"前 3 个 emit 在白名单 gate 处丢,只有 agents 一条会过到 hub",
+  },
+  delete: {
+    name:"delete 不带 record",
+    desc:"删除 agent → emit op=delete 不带 record;store 的 patch 收到 record=null → 从数组 filter 掉该 id;delete 的 patch 返回值被忽略(不在就 no-op)",
+    ticks:[
+      [{table:"agents", id:"ag-old", op:"delete"}],
+    ],
+  },
+  filter: {
+    name:"过滤列表(requirement 别项目,新 id 不在)",
+    desc:"在项目 A 视图,后端为项目 B 创建了一条 requirement 并 emit;AgentStore 不会收(只订阅 agents);RequirementStore 收到,但 patch 时发现该 id 不在当前列表(被项目 filter 过滤掉)→ 返 false → helper 触发 refetchAll 重新套用 filter(仍然过滤掉,只是确保 filter 一致)",
+    ticks:[
+      [{table:"requirements", id:"rq-B-1", op:"create", record:{id:"rq-B-1",project_id:"B",title:"..."}}],
+    ],
+  },
+};
+
+/* ──────────────────────────────
+ * 渲染:演练区
+ * ────────────────────────────── */
+const tickListEl = document.getElementById("tickList");
+const storeListEl = document.getElementById("storeList");
+
+function renderTickList(scenario, stepIdx){
+  tickListEl.innerHTML = "";
+  const ticks = scenario.ticks;
+  ticks.forEach((ops, ti) => {
+    const isFlushing = ti < stepIdx;             // 已经 flush 过
+    const isCurrent  = ti === stepIdx;           // 当前正在 flush
+    const div = document.createElement("div");
+    div.className = "tk" + (isCurrent ? " flashing" : isFlushing ? " flush" : (ops.length===0 ? " empty" : ""));
+    let label;
+    if (ops.length === 0) {
+      label = `<span class="op drop">∅</span> empty tick`;
+    } else {
+      const byCol = {};
+      const dropped = [];
+      ops.forEach(o => {
+        if (o.table === "agents" || o.table === "projects" || o.table === "crons" || o.table === "requirements" || o.table === "project_wiki") {
+          (byCol[o.table] = byCol[o.table] || []).push(o);
+        } else {
+          dropped.push(o.table);
+        }
+      });
+      let parts = [];
+      Object.keys(byCol).forEach(col => {
+        const uniq = {};
+        byCol[col].forEach(o => { uniq[o.id] = o; });
+        const ids = Object.keys(uniq);
+        ids.forEach(id => {
+          const o = uniq[id];
+          const opC = o.op[0]; // c/u/d
+          parts.push(`<span class="op ${opC}">${o.op}</span>${col}:${id.slice(0,8)}`);
+        });
+      });
+      dropped.forEach(t => parts.push(`<span class="op drop">drop</span>${t}`));
+      label = parts.join(" &nbsp; ");
+    }
+    div.innerHTML = `tick #${ti+1}: ${label}` +
+      (isCurrent ? `<span class="coa">← flush</span>` : "");
+    tickListEl.appendChild(div);
+  });
+  if (stepIdx >= ticks.length && ticks.length > 0) {
+    const done = document.createElement("div");
+    done.className = "tk flush";
+    done.innerHTML = `<span class="op drop">✓</span> 所有 tick 已 flush,演练结束`;
+    tickListEl.appendChild(done);
+  }
+}
+
+function renderStores(scenario, stepIdx){
+  storeListEl.innerHTML = "";
+  // 计算每个 store 收到了什么(基于 stepIdx)
+  const received = {};
+  STORES.forEach(s => received[s.col] = []);
+  for (let ti = 0; ti < stepIdx; ti++) {
+    const ops = scenario.ticks[ti] || [];
+    ops.forEach(o => {
+      const target = STORES.find(s => s.coll === o.table);
+      if (target) {
+        // 同 id coalesce(后写覆盖前写)
+        const arr = received[target.col];
+        const idx = arr.findIndex(x => x.id === o.id);
+        if (idx >= 0) arr[idx] = o; else arr.push(o);
+      }
+    });
+  }
+  STORES.forEach(s => {
+    const flash = (received[s.col].length > 0);
+    const div = document.createElement("div");
+    div.className = "st" + (flash ? " flash" : "");
+    const cnt = received[s.col].length;
+    const ops = received[s.col].map(o => {
+      const c = o.op[0];
+      return `<span class="op ${c}">${o.op}</span>${o.id.slice(0,8)}`;
+    }).join(" ");
+    div.innerHTML = `
+      <div class="hd">
+        <span class="col" style="background:${COL_CHIP[s.col]};color:${COL_COLOR[s.col]}">${s.coll}</span>
+        ${s.cls}<span style="color:var(--muted);font-weight:400">(${s.line})</span>
+        <span class="cnt">${cnt} change${cnt===1?"":"s"}</span>
+      </div>
+      <div class="strat">${s.note}${cnt>0 ? `<br><span style="color:var(--green)">收到: ${ops}</span>` : ""}</div>
+    `;
+    storeListEl.appendChild(div);
+  });
+}
+
+/* ──────────────────────────────
+ * 渲染:主图节点高亮 + 边
+ * ────────────────────────────── */
+const lanesEl = document.getElementById("lanes");
+const edgesSvg = document.getElementById("edges");
+
+function layoutEdges(){
+  // 根据 stepIdx 决定哪些边"hot"
+  // 简化:总画一组基础边(stepIdx>=1 才点亮),用 SVG 在 lanes 容器内画
+  const rect = lanesEl.getBoundingClientRect();
+  edgesSvg.setAttribute("width", rect.width);
+  edgesSvg.setAttribute("height", rect.height);
+  edgesSvg.innerHTML = "";
+
+  // 5 个 stage 的节点(用 data-key 查)
+  const nodePos = {};
+  lanesEl.querySelectorAll(".node").forEach(n => {
+    const k = n.getAttribute("data-key");
+    const stage = parseInt(n.getAttribute("data-stage"),10);
+    const r = n.getBoundingClientRect();
+    nodePos[stage + ":" + k] = {
+      x: r.left - rect.left,
+      y: r.top - rect.top + r.height/2,
+      x2: r.right - rect.left,
+    };
+  });
+
+  // 边定义:[from_stage, from_key, to_stage, to_key, color]
+  const EDGES = [
+    [1,"agent",2,"wl","var(--pink)"],
+    [1,"drop",2,"wl","var(--dim)"],
+    [2,"wl",2,"coalesce","var(--cyan)"],
+    [2,"coalesce",3,"flush","var(--purple)"],
+    [3,"flush",4,"broadcast","var(--purple)"],
+    [4,"broadcast",4,"ipc","var(--blue)"],
+    [4,"ipc",5,"agent-st","var(--blue)"],
+    [4,"ipc",5,"project-st","var(--blue)"],
+    [4,"ipc",5,"cron-st","var(--blue)"],
+    [4,"ipc",5,"req-st","var(--blue)"],
+    [4,"ipc",5,"wiki-st","var(--blue)"],
+  ];
+
+  EDGES.forEach(([fs,fk,ts,tk,col]) => {
+    const a = nodePos[fs + ":" + fk];
+    const b = nodePos[ts + ":" + tk];
+    if (!a || !b) return;
+    const x1 = a.x2, y1 = a.y, x2 = b.x, y2 = b.y;
+    const mx = (x1 + x2) / 2;
+    const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d", `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`);
+    path.setAttribute("stroke", col);
+    path.setAttribute("data-from", fs + ":" + fk);
+    path.setAttribute("data-to",   ts + ":" + tk);
+    edgesSvg.appendChild(path);
+  });
+}
+
+function highlightStep(stepIdx, scenario){
+  // 清所有 active
+  lanesEl.querySelectorAll(".node.active").forEach(n => n.classList.remove("active"));
+  edgesSvg.querySelectorAll("path.hot").forEach(p => p.classList.remove("hot"));
+
+  if (stepIdx <= 0) return;
+  // 看 stepIdx 对应的 tick 有什么写入,按 stage 顺序点亮
+  const ops = (scenario.ticks[stepIdx - 1] || []);
+  const hasUI = ops.some(o => o.table==="agents"||o.table==="projects"||o.table==="crons"||o.table==="requirements"||o.table==="project_wiki");
+  const hasNonUI = ops.some(o => !(o.table==="agents"||o.table==="projects"||o.table==="crons"||o.table==="requirements"||o.table==="project_wiki"));
+
+  function act(key){ const n = lanesEl.querySelector(`.node[data-key="${key}"]`); if (n) n.classList.add("active"); }
+  function hot(fromKey, toKey){
+    edgesSvg.querySelectorAll("path").forEach(p => {
+      if (p.getAttribute("data-from") === fromKey && p.getAttribute("data-to") === toKey) p.classList.add("hot");
+    });
+  }
+
+  // Stage 1
+  if (hasUI)   { act("agent");  hot("1:agent",  "2:wl"); }
+  if (hasNonUI){ act("drop");   hot("1:drop",   "2:wl"); }
+  // Stage 2
+  if (hasUI)   { act("wl"); hot("2:wl","2:coalesce"); act("coalesce"); hot("2:coalesce","3:flush"); }
+  // Stage 3
+  if (hasUI)   { act("flush"); hot("3:flush","4:broadcast"); }
+  // Stage 4
+  if (hasUI)   { act("broadcast"); hot("4:broadcast","4:ipc"); act("ipc");
+    // Stage 5:看哪些 store 收
+    const cols = new Set(ops.filter(o=>o.table==="agents"||o.table==="projects"||o.table==="crons"||o.table==="requirements"||o.table==="project_wiki").map(o=>o.table));
+    if (cols.has("agents"))       { act("agent-st");   hot("4:ipc","5:agent-st"); }
+    if (cols.has("projects"))     { act("project-st"); hot("4:ipc","5:project-st"); }
+    if (cols.has("crons"))        { act("cron-st");    hot("4:ipc","5:cron-st"); }
+    if (cols.has("requirements")) { act("req-st");     hot("4:ipc","5:req-st"); }
+    if (cols.has("project_wiki")) { act("wiki-st");    hot("4:ipc","5:wiki-st"); }
+  }
+}
+
+/* ──────────────────────────────
+ * 详情卡内容(按 node key / scenario)
+ * ────────────────────────────── */
+const DETAIL = {
+  "agent": {
+    tag:"写原语 emit", cls:"src",
+    title:"① SqliteStore.emitDataChange —— 写原语层埋点",
+    body:`
+<p>所有领域 store 都包装同一个 <code>SqliteStore</code>。在它的三个写原语里 emit,意味着任何上层调用方(REST router / management 工具 / archivist / extractor / Wiki 工具)的写入都自动获得 UI 同步,零样板、不漏入口。</p>
+<ul>
+  <li><b>insertRow</b> → <code>emitDataChange(table, id, "create", record)</code></li>
+  <li><b>updateRow</b> → <code>emitDataChange(table, id, "update", record)</code></li>
+  <li><b>deleteRow</b> → <code>emitDataChange(table, id, "delete")</code> <span style="color:var(--muted)">(无 record)</span></li>
+</ul>
+<p class="src">sqlite-store.ts:265,311,319<br><span class="cmt">// create/update 带 record(renderer 直接 patch,免 GET /:id);delete 不带</span></p>`,
+  },
+  "drop": {
+    tag:"gate 丢弃", cls:"warn",
+    title:"① 非 UI 表的写会被 emit,但在 gate 处丢弃",
+    body:`
+<p>高频写表(<code>messages</code> / <code>turns</code> / <code>tool_executions</code> / <code>tool_usage</code> / <code>extraction_cursors</code> 等)的写照样经过 <code>emitDataChange</code>,但 hub 第 86 行 <code>UI_COLLECTIONS.has(table)</code> 返 false → 直接 return,不入 pending。</p>
+<p>这是 v0.8 的关键设计取舍:<b>emit 在最底层(SqliteStore)</b>,意味着 gate 也必须在最底层就近做,否则高频表会把 IPC 通道刷爆(流式 LLM 每 chunk 一条 messages 写入 = 几十 Hz)。</p>
+<p class="src">data-change-hub.ts:85-94<br><span class="cmt">// UI_COLLECTIONS = {agents, projects, crons, requirements, project_wiki}</span></p>`,
+  },
+  "wl": {
+    tag:"白名单 gate", cls:"hub",
+    title:"② 白名单 gate —— 只放行 5 个 collection",
+    body:`
+<p>白名单是 hub 设计的<strong>第一道防线</strong>。把"哪些表值得推 UI"集中在一处,而不是让每个 store 自己判断要不要广播(那样会漏)。</p>
+<p>当前 5 个:<code>agents</code> / <code>projects</code> / <code>crons</code> / <code>requirements</code> / <code>project_wiki</code>。</p>
+<p>新增一个 UI 同步域只要两步:① 把表名加进 <code>UI_COLLECTIONS</code>;② 该 renderer store 调 <code>subscribeDataChange</code> / <code>subscribeListDataChange</code> 订阅。两处,各一行。</p>
+<p class="src">data-change-hub.ts:32-38</p>`,
+  },
+  "coalesce": {
+    tag:"coalesce", cls:"hub",
+    title:"② coalesce —— 同 tick 同 (collection,id) 后写覆盖前写",
+    body:`
+<p>同一个 tick 内,如果对 <code>(agents, ag-7)</code> 连续写了 3 次(例如先 update prompt,再 update name,再 update tools),hub 只保留最新一次的 <code>{op, record}</code>,flush 时只发 1 条 change。</p>
+<p>批量写(archivist 扫描数百 wiki 节点 / migrateFromJson import 全表)的 burst 也走同样的合并机制 —— 不同 id 各保留一条,但整个 burst 在下一 tick 一次 flush 完成。</p>
+<p class="src">data-change-hub.ts:87-94<br>byId.set(id, { op, record }); <span class="cmt">// 后写覆盖前写</span></p>`,
+  },
+  "flush": {
+    tag:"flush", cls:"hub",
+    title:"③ flush —— 下一 tick 一次发出全部 pending",
+    body:`
+<p><code>emitDataChange</code> 不直接调 listener,而是 <code>setTimeout(flush, 0)</code> 把发送推到下一 tick。整个 tick 内所有 emit 累积进 <code>pending</code> Map,flush 时一次性遍历发出。</p>
+<p>delete 不带 record(create/update 后再 delete → record 被清掉);listener 出错不能中断其它 listener(<code>try/catch</code>)。</p>
+<p class="src">data-change-hub.ts:63-78<br><span class="cmt">// 一个监听者出错不能中断其它</span></p>`,
+  },
+  "broadcast": {
+    tag:"WS 广播", cls:"src",
+    title:"④ server onDataChange → broadcast",
+    body:`
+<p>server 在启动时把 hub 的 <code>onDataChange</code> 接到一个 broadcast 函数,把事件 <code>JSON.stringify</code> 后 fan-out 到所有 WS 客户端。</p>
+<p class="src">server/index.ts:262-268<br>onDataChange((e) =&gt; broadcast({ type: "data:changed", collection: e.collection }));</p>
+<p style="margin-top:6px"><b style="color:var(--orange)">⚠️ 注意</b>:server 这里只转发了 <code>collection</code>,<strong>没有</strong>转发 <code>changes</code> 数组。preload 的 <code>onDataChanged</code> 类型签名仍带 <code>changes</code>,ipc-proxy:372 转发时也引用 <code>event.changes</code> —— 实际运行时 <code>changes</code> 是 <code>undefined</code>,data-sync.ts:56 用 <code>e.changes ?? []</code> 优雅兜底。这是一个文档已记的 v0.8 不对称点(<code>changes</code> 字段在端到端类型里存在但实际不发)。</p>`,
+  },
+  "ipc": {
+    tag:"WS→IPC 桥", cls:"src",
+    title:"④ ipc-proxy 把 WS msg 映射回 Electron IPC",
+    body:`
+<p>主进程的 ipc-proxy 维护一条到 backend 的 WS。收到 msg 后按 <code>event.type</code> 路由:<code>data:changed</code> 走独立 IPC 通道 <code>data:changed</code>,其它都丢进 <code>agent:event</code>。</p>
+<p style="color:var(--cyan)"><b>关键</b>:data:changed 故意用独立通道,<strong>不污染</strong> chat 的 agent:event 流。后者由 AppLayout 集中处理 chat 增量;data:changed 由各 store 自己订阅,与 AppLayout 完全无关。</p>
+<p class="src">ipc-proxy.ts:361-377<br>if (eventType === "data:changed") { win.webContents.send("data:changed", ...) } else { win.webContents.send("agent:event", event) }</p>`,
+  },
+  "agent-st": {
+    tag:"store 自订阅", cls:"sub",
+    title:"⑤ AgentStore.subscribeListDataChange(\"agents\", ...) —— 非过滤列表 append",
+    body:`
+<p>AgentStore 是<strong>非过滤</strong>列表(显示所有 agent)。patch 策略:把 id 从数组里 filter 掉,然后把 record append 到末尾;返回 true(永远表示"已处理")。</p>
+<p>新 id(别处创建的 agent)直接 append,不会触发 refetchAll。delete 时 record 为 null → filter 掉该 id。</p>
+<p class="src">agent-store.ts:136-143<br>patch: (id, record) =&gt; {<br>&nbsp;&nbsp;const others = useAgentStore.getState().agents.filter(a =&gt; a.id !== id);<br>&nbsp;&nbsp;useAgentStore.setState({ agents: record ? [...others, record] : others });<br>&nbsp;&nbsp;return true; <span class="cmt">// 非过滤列表:新 id 直接 append</span><br>}</p>`,
+  },
+  "project-st": {
+    tag:"store 自订阅", cls:"sub",
+    title:"⑤ ProjectStore.subscribeListDataChange(\"projects\", ...) —— 非过滤",
+    body:`
+<p>ProjectStore 同 AgentStore,非过滤列表,新 id append,delete filter 掉。</p>
+<p class="src">project-store.ts:90</p>`,
+  },
+  "cron-st": {
+    tag:"store 自订阅", cls:"sub",
+    title:"⑤ CronStore.subscribeListDataChange(\"crons\", ...) —— 非过滤",
+    body:`
+<p>CronStore 同 AgentStore/ProjectStore,非过滤列表。</p>
+<p class="src">cron-store.ts:127</p>`,
+  },
+  "req-st": {
+    tag:"过滤列表", cls:"sub",
+    title:"⑤ RequirementStore.subscribeListDataChange(\"requirements\", ...) —— 过滤列表 + refetchAll 兜底",
+    body:`
+<p>RequirementStore 显示<strong>当前项目</strong>的需求(被 project_id 过滤)。当后端为<strong>别的项目</strong>创建 requirement 并 emit 时,该 id 不在当前列表 → patch 返 false → helper 触发一次 <code>refetchAll</code> 重新套用 filter(虽然还是过滤掉,但确保 filter 一致性)。</p>
+<p>delete 的 patch 返回值被忽略(不在就 no-op)。</p>
+<p class="src">requirement-store.ts:184-198<br>patch: (id, record) =&gt; {<br>&nbsp;&nbsp;const cur = useRequirementStore.getState().requirements;<br>&nbsp;&nbsp;if (!cur.some(r =&gt; r.id === id)) return false; <span class="cmt">// 不在当前视图</span><br>&nbsp;&nbsp;useRequirementStore.setState({ requirements: record ? cur.map(...) : cur.filter(...) });<br>&nbsp;&nbsp;return true;<br>}<br><br><span class="cmt">// data-sync.ts:63 — if (!handled) { opts.refetchAll(); return; }</span></p>`,
+  },
+  "wiki-st": {
+    tag:"树形 store", cls:"sub",
+    title:"⑤ WikiStore.subscribeDataChange(\"project_wiki\", ...) —— 树形 drop+refresh root",
+    body:`
+<p>WikiStore 是<strong>树形</strong>(节点有父子关系,增量 patch 单个节点需要知道父节点的 children 数组)。当前简化策略:收到任意 project_wiki 变更 → 直接 drop 整棵 childrenByNode/nodeById 缓存 + 重置 rootLoaded → 触发一次 <code>refresh()</code> 重拉根。</p>
+<p>这是 5 个 store 里<strong>唯一</strong>用 <code>subscribeDataChange</code>(而非 <code>subscribeListDataChange</code>)的 —— 因为树形无法简单 patch,全量 refetch 更稳妥。代价:大型 wiki 树频繁写入会反复 drop+refresh;但 wiki 写入不频繁(archivist 扫描是批量,coalesce 后只触发一次)。</p>
+<p class="src">wiki-store.ts:198-206<br>subscribeDataChange("project_wiki", () =&gt; {<br>&nbsp;&nbsp;useWikiStore.setState({ childrenByNode:{}, childrenLoaded:{}, nodeById:{}, rootLoaded:false });<br>&nbsp;&nbsp;void useWikiStore.getState().refresh();<br>});</p>`,
+  },
+};
+
+function showDetail(key){
+  const d = DETAIL[key];
+  if (!d) return;
+  document.getElementById("dT").textContent = d.tag;
+  document.getElementById("dT").className = "tag " + d.cls;
+  document.querySelector("#detail h3").innerHTML = "节点详情<span class=\"tag " + d.cls + "\" id=\"dT\">" + d.tag + "</span>";
+  document.getElementById("dBody").innerHTML = `<h3 style="margin-top:0">${d.title}</h3>${d.body}`;
+}
+
+/* ──────────────────────────────
+ * 交互:scenario + step
+ * ────────────────────────────── */
+let state = { scenarioKey:"single", stepIdx:0, playing:false, timer:null };
+
+function currentScenario(){ return SCENARIOS[state.scenarioKey]; }
+
+function refresh(){
+  const sc = currentScenario();
+  document.getElementById("stepN").textContent = state.stepIdx;
+  document.getElementById("stepMax").textContent = sc.ticks.length;
+  renderTickList(sc, state.stepIdx);
+  renderStores(sc, state.stepIdx);
+  highlightStep(state.stepIdx, sc);
+}
+
+function step(){
+  const sc = currentScenario();
+  if (state.stepIdx < sc.ticks.length) {
+    state.stepIdx++;
+    refresh();
+  } else {
+    pause();
+  }
+}
+function play(){
+  if (state.playing) { pause(); return; }
+  state.playing = true;
+  document.getElementById("play").textContent = "⏸ 暂停";
+  document.getElementById("play").classList.add("act");
+  state.timer = setInterval(() => {
+    const sc = currentScenario();
+    if (state.stepIdx >= sc.ticks.length) { pause(); return; }
+    step();
+  }, 900);
+}
+function pause(){
+  state.playing = false;
+  document.getElementById("play").textContent = "▶ 自动播放";
+  document.getElementById("play").classList.remove("act");
+  if (state.timer) { clearInterval(state.timer); state.timer = null; }
+}
+function reset(){
+  state.stepIdx = 0;
+  pause();
+  refresh();
+}
+function setScenario(key){
+  state.scenarioKey = key;
+  state.stepIdx = 0;
+  pause();
+  refresh();
+  // 详情卡显示 scenario 描述
+  const sc = currentScenario();
+  document.getElementById("dT").textContent = "情景";
+  document.getElementById("dT").className = "tag warn";
+  document.querySelector("#detail h3").innerHTML = "情景说明<span class=\"tag warn\" id=\"dT\">情景</span>";
+  let extra = sc.note ? `<p style="color:var(--orange)"><b>本情景关键点:</b>${sc.note}</p>` : "";
+  document.getElementById("dBody").innerHTML = `<h3 style="margin-top:0">${sc.name}</h3><p>${sc.desc}</p>${extra}<p style="color:var(--muted);margin-top:8px">点 <code>单步</code> 或 <code>自动播放</code> 看一次完整的 emit→coalesce→flush→broadcast→patch 流。点主图任一节点查看该节点源码。</p>`;
+}
+
+/* 绑定 */
+document.getElementById("scenario").addEventListener("change", e => setScenario(e.target.value));
+document.getElementById("play").addEventListener("click", play);
+document.getElementById("step").addEventListener("click", step);
+document.getElementById("reset").addEventListener("click", reset);
+
+lanesEl.querySelectorAll(".node").forEach(n => {
+  n.addEventListener("click", () => showDetail(n.getAttribute("data-key")));
+});
+
+window.addEventListener("resize", () => { layoutEdges(); refresh(); });
+
+/* 初始化 */
+layoutEdges();
+setScenario("single");
+</script>
+</body>
+</html>

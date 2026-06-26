@@ -106,6 +106,7 @@ zustand store: create/update 推来 record 直接 patch(免 GET /:id);delete 移
   | `project_wiki` | `wiki-store.ts:198` | `subscribeDataChange` | 任意变更全量 refetch(树形结构,增量 patch 复杂度过高) |
 
 - 详细决策见 ADR-021。**新增一个 UI 同步域 = 两处各一行**:① `data-change-hub.ts` 的 `UI_COLLECTIONS` Set 加表名;② 该 renderer store 调 `subscribeDataChange` / `subscribeListDataChange` 订阅。
+- 🎮 **可交互演练**:[`docs/visualization/data-sync-flow.html`](../visualization/data-sync-flow.html) —— 把上面五段路径(SqliteStore emit → 白名单 gate → coalesce/flush → WS→IPC 桥 → 各 store 自订阅)做成可点选的主图 + 6 个情景演练(单次写 / 同 tick 多写合并 / burst→refetchAll / 非白名单表静默丢 / delete 不带 record / 过滤列表新 id 不在),每步可单步或自动播放,点主图任一节点查看对应源码片段。
 
 ### 2.4 本地保留的 IPC 通道
 
