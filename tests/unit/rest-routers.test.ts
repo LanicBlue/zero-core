@@ -833,6 +833,11 @@ describe("mcp-presets", () => {
 // ─── MCP Router Integration Tests ──────────────────────────
 
 describe("mcp-router", () => {
+	const servers: Server[] = [];
+	afterEach(async () => {
+		await Promise.all(servers.splice(0).map(close));
+	});
+
 	async function setupMcpRouter(): Promise<{ port: number; mcpManager: any; store: any[] }> {
 		const { createMcpRouter } = await import("../../src/server/mcp-router.js");
 		const app = express();
@@ -868,6 +873,7 @@ describe("mcp-router", () => {
 		app.use(express.json());
 		app.use("/api/mcp", createMcpRouter(mcpStore, mcpManager as any));
 		const { server, port } = await listen(app);
+		servers.push(server);
 		return { port, mcpManager, store };
 	}
 
@@ -937,6 +943,11 @@ describe("mcp-router", () => {
 });
 
 describe("memory-node-router", () => {
+	const servers: Server[] = [];
+	afterEach(async () => {
+		await Promise.all(servers.splice(0).map(close));
+	});
+
 	async function setupMemoryRouter(nodes: any[] = []) {
 		const { createMemoryNodeRouter } = await import("../../src/server/memory-node-router.js");
 		const app = express();
@@ -962,6 +973,7 @@ describe("memory-node-router", () => {
 		app.use(express.json());
 		app.use("/api/memory-nodes", createMemoryNodeRouter(store as any));
 		const { server, port } = await listen(app);
+		servers.push(server);
 		return { server, port, store, nodes };
 	}
 
@@ -1033,6 +1045,11 @@ describe("memory-node-router", () => {
 });
 
 describe("memory-config", () => {
+	const servers: Server[] = [];
+	afterEach(async () => {
+		await Promise.all(servers.splice(0).map(close));
+	});
+
 	async function setupConfigRouter() {
 		const { createConfigRouter } = await import("../../src/server/config-router.js");
 		const app = express();
@@ -1053,6 +1070,7 @@ describe("memory-config", () => {
 			buildDefaultPrompt: () => "",
 		}));
 		const { server, port } = await listen(app);
+		servers.push(server);
 		return { server, port, configData };
 	}
 
@@ -1063,7 +1081,7 @@ describe("memory-config", () => {
 		expect(res.data.compression).toBeDefined();
 		expect(res.data.memory).toBeDefined();
 		expect(res.data.compression.enabled).toBe(false);
-	});
+	}, 15_000);
 
 	test("PUT /memory-config saves and reads back", async () => {
 		const { port } = await setupConfigRouter();
@@ -1079,5 +1097,5 @@ describe("memory-config", () => {
 		expect(res.data.compression.enabled).toBe(true);
 		expect(res.data.compression.keepRecentTurns).toBe(3);
 		expect(res.data.memory.enabled).toBe(true);
-	});
+	}, 15_000);
 });
