@@ -5,9 +5,9 @@
 1. **启动流程**
    - Electron 主进程启动（`src/main/index.ts`）
    - 初始化数据库、运行迁移（`db-migration.ts`）
-   - 注册 Hook 系统 + 持久化 Hook + 工具执行记录 Hook + 运行时 feature hooks（compression、memory、RAG）
+   - 注册 Hook 系统 + 持久化 Hook + 工具执行记录 Hook + 运行时 feature hooks（**7 个**：turn / notification / rag / provider-options / compression / todo-cleanup / extraction；v0.7 的 `memory-hooks` 已在 v0.8 P2 §11.6 删除）
    - 创建 ToolRegistry、MCPManager
-   - 启动时清理孤儿 agent-tool 条目（`agentToolStore.cleanupOrphans()`）
+   - 启动时清理孤儿 **project_wiki 子树**（`server/index.ts:360-364`，v0.8 §8.6 bugfix —— 原 `agentToolStore.cleanupOrphans()` 随 v0.8 §11.5 Agent-as-Tool 退役一并下线）
    - 扫描中断的 turn 并恢复（`recovery.ts`）
    - 创建主窗口，加载渲染进程
 
@@ -17,7 +17,7 @@
    - AgentLoop 启动，组装 system prompt（base + tool_policy）
    - PreLLMCall hooks 注入动态上下文（memory recall、RAG、环境信息）
    - `streamText()` 调用 AI SDK，处理流式事件
-   - PostTurnComplete hooks 执行后处理（compression、memory extraction）
+   - PostTurnComplete hooks 执行后处理（compression、extraction —— 内容记忆 / 工具遥测双提取者，v0.8 M5）
    - 工具调用：`tool-call` 事件 → PreToolUse hook → ToolRateLimiter.acquire() → execute → release → PostToolUse hook
    - 并行工具调用通过 `toolCallId` 匹配结果，避免混淆
    - 结果通过 IPC 流式返回渲染进程
@@ -33,8 +33,8 @@
    - `AgentLoop.resume()` 加载已完成的 turn，继续执行
 
 5. **Agent 删除流程**
-   - 删除 Agent → `afterDelete` 回调级联删除关联 agent-tool 条目
-   - 启动时 `cleanupOrphans()` 清理引用已删除 Agent 的 agent-tool 记录
+   - 删除 Agent → `agent-router.ts` 直接删 `agents` 表行（v0.8 §11.5：原 `afterDelete` 回调级联删 `agent-tool` 条目的机制已随 `AgentToolStore` 退役 —— `agent-router.ts:70` 注释明示「no AgentToolStore rows to cascade」）
+   - 启动时清理的孤儿数据从 v0.7 的 `agent-tool` 记录改为 v0.8 的 `project_wiki` 子树（见上文启动流程）
 
 ## 用户路径
 
