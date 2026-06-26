@@ -33,7 +33,7 @@ src/
 | system-prompt.ts | 78 | 拼接 deviceContext + base + tool snippets + skills |
 | tool-policy.ts | 142 | evaluateToolCall / requiresApproval / transformToolResult |
 | tool-registry.ts | 212 | 工具目录：register / unregister / getAll / 配置持久化 |
-| hook-registry.ts | 96 | 单例 Hook 注册表，first-writer-wins 触发 |
+| hook-registry.ts | 96 | 单例 Hook 注册表，**last-writer-wins merge** + `blocked` 短路（详见 [03-runtime-engine §Hook 系统](./03-runtime-engine.md#hook-系统)）|
 | hook-types.ts | 143 | 30 个 HookEventName + 每事件的 context 类型 |
 | logger.ts | 121 | 双 sink：console + file（按日期轮转）；DEBUG=1 开启 debug |
 | file-log-sink.ts | 133 | 日志文件输出与保留策略 |
@@ -129,12 +129,17 @@ runtime/
 
 ```
 runtime/hooks/
-├── index.ts (20)           # registerAllRuntimeHooks(db)
-├── turn-hooks.ts (126)     # SessionStart / Stop / StopFailure 写 turns 表
-├── compression-hooks.ts (71) # PostTurnComplete 渐进压缩
-├── memory-hooks.ts (43)    # PreLLMCall FTS5 召回
-└── rag-hooks.ts (29)       # PreLLMCall KB 检索注入
+├── index.ts (60)                  # registerAllRuntimeHooks(db, extractionDeps?) —— 注册顺序敏感
+├── turn-hooks.ts (183)            # SessionStart / PostStep / Stop / StopFailure → turns 表步骤级持久化
+├── notification-hooks.ts (68)     # PreLLMCall: 已完成后台任务结果回灌为 user 消息 + 触发 Notification
+├── rag-hooks.ts (49)              # PreLLMCall: config.getRagContext() 注入 ragContext
+├── provider-options-hooks.ts (40) # PreLLMCall: 按 thinkingLevel 注入 providerOptions
+├── compression-hooks.ts (259)     # PostTurnComplete: contextUsage 超阈值时渐进压缩
+├── todo-cleanup-hooks.ts (43)     # PostTurnComplete: 清理已完成 todo(UI 自动隐藏)
+└── extraction-hooks.ts (297)      # PostTurnComplete(M5): 增量内容/工具遥测抽取 + flush
 ```
+
+> **v0.8 变更**：`memory-hooks.ts` 已删除(memory 合并进 wiki per-agent 子树,召回改由 wiki-anchor-injection 注入)。注册顺序固定为 `turn → notification → rag → providerOptions → compression → todoCleanup → extraction`,调整顺序前需评估 PreLLMCall 之间对返回值 merge 的影响(`memoryContext` / `ragContext` / `providerOptions` 都是 last-writer-wins)。
 
 ### 3.3 边界约束
 
