@@ -69,10 +69,16 @@
 			"path": "src/main/test-setup.ts",
 			"lines": 31,
 			"dir": "src/main",
-			"exports": [],
-			"imports": [],
+			"exports": [
+				"isTestMode",
+				"seedTestEnvironment",
+				"TestSeedResult"
+			],
+			"imports": [
+				"src/core/test-seed.ts"
+			],
 			"functions": [],
-			"description": "E2E 测试环境初始化：seed 测试 agent + mock provider + fixture 数据"
+			"description": "src/main 入口侧的测试 facade：透传 isTestMode / seedTestEnvironment / TestSeedResult（实际实现在 src/core/test-seed.ts）"
 		},
 		{
 			"path": "src/preload/index.ts",
@@ -829,7 +835,9 @@
 				"src/runtime/subagent-delegation.ts/suspendUntilWake:252",
 				"src/runtime/subagent-delegation.ts/runBackground:260"
 			],
-			"description": "子 agent 委派工厂：blocking / auto-background 模式创建和管理子任务"
+			"description": "⚠️ 死代码：v0.8 委派重构前的旧实现，src/ 内零 importer（仅注释提及）。当前委派走 subagent-delegator.ts 的 SubagentDelegator 类（被 agent-loop.ts:52 import）",
+			"dead": true,
+			"supersededBy": "src/runtime/subagent-delegator.ts"
 		},
 		{
 			"path": "src/runtime/subagent-delegator.ts",
