@@ -54,7 +54,7 @@
 // - 意图缺失时 flag「无记录理由」,不发明
 //
 
-import { resolve, relative, sep } from "node:path";
+import { resolve, relative } from "node:path";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import type { WikiStore } from "./wiki-node-store.js";
 import { projectSubtreeRootId } from "./wiki-node-store.js";
@@ -440,7 +440,7 @@ export class ArchivistService {
 			// The file's immediate parent directory (relPath, slash-joined) —
 			// the node its header/intent leaf hangs under. Empty for repo-root
 			// files (they hang directly under the project subtree root).
-			const norm = relPath.split(sep).join("/");
+			const norm = relPath.split(/[\\/]+/).join("/");
 			const lastSlash = norm.lastIndexOf("/");
 			const dirRelPath = lastSlash >= 0 ? norm.slice(0, lastSlash) : "";
 			dirFileCount.set(dirRelPath, (dirFileCount.get(dirRelPath) ?? 0) + 1);
@@ -738,7 +738,7 @@ function extOf(p: string): string {
 }
 
 function basenameOf(p: string): string {
-	const norm = p.split(sep).join("/");
+	const norm = p.split(/[\\/]+/).join("/");
 	return norm.slice(norm.lastIndexOf("/") + 1) || p;
 }
 
