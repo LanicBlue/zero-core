@@ -27,7 +27,7 @@
 
 ## Progress log(最新在上)
 <!-- 每次触发追加一行: #N | <time> | <做了什么> | files | <commit> -->
-- #1 | 2026-06-26 19:45 | 新增 Hook 系统专节(执行模型 last-writer-wins + blocked 短路 + 错误吞掉、事件→触发点→handler 全景表、PreLLMCall 现查+注入模式、含 mermaid 时序图);修正 02 §3.2 hooks 文件清单(删 memory-hooks、补 notification/provider-options/todo-cleanup/extraction、改注释为实际注册顺序)与 §2 表 hook-registry 描述(改 "first-writer-wins" 为正确的 "last-writer-wins merge + blocked 短路");02 §3.2 加 v0.8 memory-hooks 删除说明。源码核对:hook-registry.ts:78-91 / hook-types.ts:29-39 / hooks/index.ts:47-59 / agent-loop.ts:228,251,296,312,466,497,678,705,726,766 | docs/arch/02-module-structure.md, docs/arch/03-runtime-engine.md | (pending)
+- #1 | 2026-06-26 19:45 | 新增 Hook 系统专节(执行模型 last-writer-wins + blocked 短路 + 错误吞掉、事件→触发点→handler 全景表、PreLLMCall 现查+注入模式、含 mermaid 时序图);修正 02 §3.2 hooks 文件清单(删 memory-hooks、补 notification/provider-options/todo-cleanup/extraction、改注释为实际注册顺序)与 §2 表 hook-registry 描述(改 "first-writer-wins" 为正确的 "last-writer-wins merge + blocked 短路");02 §3.2 加 v0.8 memory-hooks 删除说明。源码核对:hook-registry.ts:78-91 / hook-types.ts:29-39 / hooks/index.ts:47-59 / agent-loop.ts:228,251,296,312,466,497,678,705,726,766 | docs/arch/02-module-structure.md, docs/arch/03-runtime-engine.md | 08117f6
 
 ## Open questions(给用户的)
 <!-- 拿不准的写这里 -->
