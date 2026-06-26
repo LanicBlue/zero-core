@@ -574,6 +574,8 @@
 			"path": "src/runtime/mcp-tools/memory-tools.ts",
 			"lines": 151,
 			"dir": "src/runtime/mcp-tools",
+			"dead": true,
+			"supersededBy": "src/runtime/mcp-tools/platform-tools.ts",
 			"exports": [],
 			"imports": [
 				"src/runtime/tools/tool-factory.ts"
@@ -581,7 +583,7 @@
 			"functions": [
 				"src/runtime/mcp-tools/memory-tools.ts/getMemoryStore:26"
 			],
-			"description": "知识图谱记忆工具：读取/写入实体和关系"
+			"description": "⚠️ 僵尸(zombie)：src/ 内零 importer(`grep -r 'from .*memory-tools' src/` 零命中)。本文件定义的 memoryReadTool/memoryWriteTool 在 v0.7 通过 ALL_TOOLS 注册对外暴露；v0.8 P2 §11.6 注释明示 'MemoryRecall / MemoryNote tools removed — memory is now a wiki per-agent subtree'(见 tools/index.ts:86)后，从 ALL_TOOLS 取消注册。文件本身没删，所以静态 import 图里还有 tool-factory.ts 的边，但运行时永不进入工具清单。它是僵尸 store memory-store.ts(上)的唯一消费者，二者构成一组完整死链：删 memory-tools.ts → 删 memory-store.ts + 两表 → 删 db-migration.ts 的 memory.json 迁移分支。详见 12-glossary MemoryStore 条目。"
 		},
 		{
 			"path": "src/runtime/mcp-tools/platform-tools.ts",
@@ -3484,6 +3486,8 @@
 			"path": "src/server/memory-store.ts",
 			"lines": 266,
 			"dir": "src/server",
+			"dead": true,
+			"supersededBy": "src/server/wiki-node-store.ts",
 			"exports": [
 				"MemoryStore.init",
 				"MemoryStore.loadGraph",
@@ -3518,7 +3522,7 @@
 				"src/server/memory-store.ts/MemoryStore.deleteRelations:221",
 				"src/server/memory-store.ts/MemoryStore.migrateFromJson:232"
 			],
-			"description": "MemoryStore：agent 记忆持久化（SQLite）"
+			"description": "⚠️ 僵尸(zombie)：src/ 内零运行时写入者。唯一消费者 memory-tools.ts(下)自 v0.8 P2 §11.6 从 ALL_TOOLS 取消注册，生产 Agent 永不写它；唯一写入路径是 v0.7 memory.json 的一次性迁移(db-migration.ts:586)。SessionDB 仍 eager new 它(:70)但只是为了 getDb() 链路稳定，并非业务活跃。v0.8 主线知识系统已迁到 WikiStore(wiki-node-store.ts，每 agent 一个 wiki 子树)，本类仅作 legacy 兼容存在。不要与 MemoryNodeStore(压缩回退路径，仍活跃)混淆——二者是兄弟而非父子，表结构无关联、数据不互通。详见 12-glossary MemoryStore 条目与 06 §2.7 矩阵。"
 		},
 		{
 			"path": "src/server/message-store.ts",
