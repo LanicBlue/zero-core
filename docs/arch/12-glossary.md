@@ -266,7 +266,6 @@ graph TB
 - **Recovery**：启动期扫描未完成 turn 的机制。`server/recovery.ts`。
 - **Renderer**：Electron 渲染进程（React + Zustand）。
 - **RENAMED_TOOLS**：旧 lowercase 工具名到 PascalCase 的映射，用于兼容。
-- **requiresConfirmation**：tool meta 字段，标识需要用户确认（**未接通 UI**）。
 - **ResolveModel**：把 providerName + modelId 解析为 AI SDK LanguageModel。
 - **RetryStrategy**：3 次重试 + 指数退避。
 - **RunState**：会话运行时状态（busy / streamingText / toolCalls）。

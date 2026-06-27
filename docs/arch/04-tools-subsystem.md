@@ -29,7 +29,7 @@ graph TB
 证据(行号相对当前 src/)：
 - `core/tool-registry.ts:65-76` `ToolMeta` 含 `category` 字段；`RENAMED_TOOLS` 同文件 `:76` 起定义(含 `Assistant → Platform` 迁移映射)。
 - `runtime/tools/index.ts:70-110` `ALL_TOOLS` 字典(25 个条目)。
-- `runtime/tools/index.ts:140-160` `registerRuntimeTools(registry)` —— 注册时把 `meta.requiresConfirmation ?? false` 一并写入 ToolMeta(`:157`)。
+- `runtime/tools/index.ts:140-160` `registerRuntimeTools(registry)` —— 注册时把 ToolMeta 一并写入(`:157`)。
 - `runtime/tools/index.ts:112-126` `CONDITIONAL_TOOLS` —— 按 ctx 能力(delegateTask / management / wikiStore / pmService / requirementStore)门控的工具白名单。
 - `runtime/mcp-tool.ts` `createMcpTool()` + `MCPManager.callTool()` 桥(见 §4)。
 - `runtime/tools/agent.ts:46` `delegateTool`(name=`Agent`，子 Agent 委派，action=list/delegate)。
@@ -44,7 +44,7 @@ buildTool({
   name:        "Shell",
   description: "Execute a shell command",
   prompt:      "<工具应该何时调用、如何调用的多行提示>",
-  meta:        { category, isReadOnly, isDestructive, isConcurrencySafe, requiresConfirmation },
+  meta:        { category, isReadOnly, isDestructive, isConcurrencySafe },
   configSchema: [{key, type, label, default, options, required}],
   inputSchema: z.object({...}),     ← Zod schema，AI SDK 校验
   execute:     async (args, ctx) => {...},
@@ -312,7 +312,6 @@ sequenceDiagram
 | 敏感文件读取 | **历史**有过 `BLOCKED_FILES` 列表(.env / credentials.json / secret)挂在 Assistant 工具里；**v0.8 Platform 改名重构后该列表已删除**(原 `assistant-tools.ts` 已不存在)。`Platform` 工具自己用 `redactSensitive()` 在输出 providers / config 时屏蔽 apiKey/secret/password/token 字段 | ⚠️ 仅 Platform 输出层 redact；其他工具(Read/Grep)读敏感文件无统一拦截 |
 | Shell 黑名单 | `bash.ts:89` `CMD_TRANSLATIONS` 和 `bash.ts:102` `UNIX_ONLY_COMMANDS` 提示 | ❌ 不构成黑名单，只是翻译/警告 |
 | 工具白名单 | `core/tool-policy.ts:37` `evaluateToolCall(config, toolName)`：blockedTools 硬拒 → allowedTools 白名单 → category block → autoApprove | ✅ 配置可强制；buildToolsSet 内部也读 blockedTools(双保险) |
-| 工具确认 | `meta.requiresConfirmation` 字段已声明；`tool-factory.ts:58-67` 默认 false；`registerRuntimeTools` 注册时透传(`index.ts:157`) | ⚠️ 字段已贯穿到 ToolMeta，但 `agent-loop.ts` 当前不读它——只在 UI 展示，未真正实现"执行前弹窗" |
 | 权限请求 | `PermissionRequest` / `PermissionDenied` hook 已在 `core/hook-types.ts:32` 定义 | ⚠️ 当前未注册 handler(见 08-cross-cutting §2 hook 清单) |
 | PreToolUse 阻断 | `buildTool` 包装层调 `triggerHooks("PreToolUse", …)`，handler 返回 `{blocked: true, reason}` 即拒 | ⚠️ 管线就位，但当前无 handler 注册(同上，留作扩展点) |
 | 重试风暴 | 错误分类 + MAX_RETRIES + 指数退避(AI SDK 层) | ✅ 良好 |
@@ -321,7 +320,6 @@ sequenceDiagram
 
 **架构师建议**：
 - 补一份"工具安全矩阵"清单，给出每个工具的"默认允许 / 默认拒绝 / 需要确认"决策。
-- 落地一个 PreToolUse handler 把 `meta.requiresConfirmation` 真正接起来——目前是死字段。可与 AskUser 通道复用(§10)实现 HITL 弹窗。
 - 敏感文件读取拦截下沉到 `resolvePath()` 层(所有 FS 工具共用)，而非每个工具各自维护。
 
 ## 10. AskUser — 跨进程双向通道
@@ -370,7 +368,6 @@ thoughtHistories: Map<agentId, [{thought, thoughtNumber, totalThoughts, status}]
 
 ### 12.2 可以改进的
 
-- `meta.requiresConfirmation` 已贯穿到 ToolMeta，但 `agent-loop.ts` 不读它——字段是死的。需要落地一个 PreToolUse handler 把它真正接起来(可复用 AskUser 通道做 HITL 弹窗，见 §10)。
 - 25 个工具按 category 已经分了 9 类，但文档/UI 仍倾向平铺。可考虑把"workflow + management"(15 个 v0.8 新工具)单独分到"工作流域"和"管理域"两栏，与基础工具(runtime/task/web/interaction/thinking)视觉隔离。
 - 同名陷阱：`Agent`(委派) vs `AgentRegistry`(注册表) 对 LLM 仍然容易混淆，工具描述里靠一句话提醒。长期看 `AgentRegistry` 改名为 `RoleRegistry` / `ManageAgents` 可能更直观，但要权衡 RENAMED_TOOLS 的迁移成本。
 - **Platform 工具的 redactSensitive 是输出层补丁**——只在 Platform 自己返回时屏蔽敏感字段。Read/Grep 读 `.env`/`secret.json` 时无统一拦截(§9)。建议下沉到 `resolvePath()` 层。
