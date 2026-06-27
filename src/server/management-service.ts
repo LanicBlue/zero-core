@@ -55,8 +55,10 @@ import type {
 	AgentRecord,
 	ProjectRecord,
 	CronRecord,
+	CronSchedule,
 	ProjectContainerView,
 	ProjectResourceUsage,
+	ProjectArchivistBinding,
 	RequirementRecord,
 	RequirementStatus,
 	PromptTemplate,
@@ -65,7 +67,7 @@ import type {
 import type { TemplateStore } from "./template-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import { BUILTIN_WORKFLOW_ROLES } from "./builtin-role-templates.js";
-import type { WikiOperationId } from "./wiki-operations.js";
+import { resolveOperationPrompt, agentHasWikiTool, WIKI_OPERATIONS, type WikiOperationId } from "./wiki-operations.js";
 import { log } from "../core/logger.js";
 
 export interface ManagementDeps {
@@ -444,6 +446,7 @@ export class ManagementService {
 			crons,
 			wikiSummary: { nodeCount, lastUpdated, scanPhase, scanProgress },
 			activeSessions,
+			archivistBinding: this.getProjectArchivistBinding(project.id),
 		};
 	}
 
@@ -684,6 +687,106 @@ export class ManagementService {
 
 	getCron(id: string): CronRecord | undefined {
 		return this.requireCronStore().get(id);
+	}
+
+	// ── v0.8 archivist 长期绑定(阶段2) ──────────────────────────────
+	// 绑定 = 该 project 的 archivist cron 集合(每操作一条,共用 agentId)。
+	// 识别:prompt 匹配 WIKI_OPERATIONS 的 cron = 绑定操作 cron;custom prompt
+	// 的 cron 不归入绑定(用户手动建的,无法可靠反查操作)。
+
+	/**
+	 * 绑定一个 archivist agent 到 project:对每个 operation 建一条 project-scoped
+	 * cron(prompt = 操作默认 prompt)。校验 agent 配了 Wiki 工具(无 fallback)。
+	 * 注:不清理旧绑定 cron —— 调用方需先 unbindProjectArchivist。
+	 */
+	bindProjectArchivist(projectId: string, opts: { agentId: string; operations: WikiOperationId[]; schedule: CronSchedule }): CronRecord[] {
+		const project = this.projectStore.get(projectId);
+		if (!project) throw new Error(`Project not found: ${projectId}`);
+		const agent = this.agentStore.get(opts.agentId);
+		if (!agent) throw new Error(`Agent not found: ${opts.agentId}`);
+		if (!agentHasWikiTool(agent)) {
+			throw new Error(`Agent "${agent.name}" has the Wiki tool blocked — cannot bind. Use an agent with the Wiki tool (e.g. create one from the Archivist template).`);
+		}
+		const workingScope = { projectId, workspaceDir: project.workspaceDir, wikiRootNodeId: `wiki-root:${projectId}` };
+		return opts.operations.map((opId) =>
+			this.createCron({
+				agentId: opts.agentId,
+				workingScope,
+				schedule: opts.schedule,
+				prompt: resolveOperationPrompt(opId, undefined, project.name),
+				enabled: true,
+			}),
+		);
+	}
+
+	/** 解绑:删该 project 所有 archivist 绑定 cron(prompt 匹配 WIKI_OPERATIONS 的)。 */
+	unbindProjectArchivist(projectId: string): void {
+		const store = this.requireCronStore();
+		for (const c of this.listCrons({ projectId })) {
+			if (this.cronOperationId(c) !== null) store.delete(c.id);
+		}
+	}
+
+	/** 切换管理者 agent:批量更新该 project 所有绑定 cron 的 agentId。 */
+	switchProjectArchivistAgent(projectId: string, newAgentId: string): void {
+		const agent = this.agentStore.get(newAgentId);
+		if (!agent) throw new Error(`Agent not found: ${newAgentId}`);
+		if (!agentHasWikiTool(agent)) throw new Error(`Agent "${agent.name}" has the Wiki tool blocked — cannot bind.`);
+		const store = this.requireCronStore();
+		for (const c of this.listCrons({ projectId })) {
+			if (this.cronOperationId(c) !== null) store.update(c.id, { agentId: newAgentId } as any);
+		}
+	}
+
+	/** 暂停/恢复:批量更新该 project 所有绑定 cron 的 enabled。 */
+	setProjectArchivistEnabled(projectId: string, enabled: boolean): void {
+		const store = this.requireCronStore();
+		for (const c of this.listCrons({ projectId })) {
+			if (this.cronOperationId(c) !== null) store.update(c.id, { enabled } as any);
+		}
+	}
+
+	/** 聚合该 project 的 archivist 绑定视图(供 container view / 单独查询)。 */
+	getProjectArchivistBinding(projectId: string): ProjectArchivistBinding {
+		const crons = this.listCrons({ projectId });
+		const ops: Array<{ operationId: WikiOperationId; cronId: string; schedule: CronSchedule; enabled: boolean; lastRunAt?: string; nextRunAt?: string; lastStatus?: string; agentId: string }> = [];
+		for (const c of crons) {
+			const opId = this.cronOperationId(c);
+			if (opId === null) continue;
+			ops.push({
+				operationId: opId,
+				cronId: c.id,
+				schedule: c.schedule,
+				enabled: c.enabled,
+				lastRunAt: c.lastRunAt,
+				nextRunAt: c.nextRunAt,
+				lastStatus: c.lastStatus,
+				agentId: c.agentId,
+			});
+		}
+		const agentId = ops[0]?.agentId ?? null;
+		const agentName = agentId ? (this.agentStore.get(agentId)?.name ?? null) : null;
+		return {
+			projectId,
+			agentId,
+			agentName,
+			operations: ops.map(({ agentId: _agentId, ...rest }) => rest),
+		};
+	}
+
+	/**
+	 * 反查 cron 是否为 archivist 绑定操作(prompt 匹配 WIKI_OPERATIONS 的操作 prompt,
+	 * 含 projectName 替换)。custom prompt 或观察 cron 返回 null(不归入绑定)。
+	 */
+	private cronOperationId(cron: CronRecord): WikiOperationId | null {
+		if (!cron.prompt) return null;
+		const project = cron.workingScope.projectId ? this.projectStore.get(cron.workingScope.projectId) : undefined;
+		const name = project?.name;
+		for (const op of WIKI_OPERATIONS) {
+			const expected = name ? op.prompt.replaceAll("{projectName}", name) : op.prompt;
+			if (cron.prompt === expected) return op.id;
+		}
+		return null;
 	}
 
 	/**

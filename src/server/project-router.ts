@@ -138,6 +138,55 @@ export function createProjectRouter(deps: {
 		}
 	});
 
+	// ── v0.8 archivist 长期绑定(阶段2) ──────────────────────────────
+	router.post("/:id/archivist/bind", (req, res) => {
+		const p = projectStore.get(req.params.id);
+		if (!p) return res.status(404).json({ error: "Project not found" });
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			const { agentId, operations, schedule } = req.body ?? {};
+			if (!agentId || !Array.isArray(operations) || !schedule) {
+				return res.status(400).json({ error: "agentId, operations[], schedule required" });
+			}
+			management.bindProjectArchivist(p.id, { agentId, operations, schedule });
+			res.status(201).json({ binding: management.getProjectArchivistBinding(p.id) });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	router.delete("/:id/archivist/bind", (req, res) => {
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			management.unbindProjectArchivist(req.params.id);
+			res.json({ success: true });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	router.put("/:id/archivist/agent", (req, res) => {
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			const agentId = req.body?.agentId;
+			if (!agentId) return res.status(400).json({ error: "agentId required" });
+			management.switchProjectArchivistAgent(req.params.id, agentId);
+			res.json({ binding: management.getProjectArchivistBinding(req.params.id) });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	router.put("/:id/archivist/enabled", (req, res) => {
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			management.setProjectArchivistEnabled(req.params.id, !!req.body?.enabled);
+			res.json({ binding: management.getProjectArchivistBinding(req.params.id) });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
 	/** PUT /:id — update project */
 	router.put("/:id", (req, res) => {
 		try {

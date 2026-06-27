@@ -406,6 +406,7 @@ export async function startServer(options?: StartServerOptions) {
 		sessionDB,
 		cronStore,
 		cronRunStore,
+		wikiStore: wikiStoreGlobal,
 	});
 
 	// v0.8 P7 (RFC §1.5): NO ProjectNotificationRouter — cross-role reactions

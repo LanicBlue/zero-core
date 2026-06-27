@@ -43,6 +43,9 @@ import type {
 	ProjectResourceUsage,
 	RequirementStatus,
 	WikiOperationId,
+	CronSchedule,
+	ProjectArchivistBinding,
+	AgentRecord,
 } from "../../../shared/types.js";
 import { useProjectStore } from "../../store/project-store.js";
 import { useRequirementStore } from "../../store/requirement-store.js";
@@ -314,12 +317,20 @@ export default function ProjectPage() {
 						{!selectedProject ? (
 							<EmptyState />
 						) : tab === "dashboard" ? (
-							<DashboardTab
-								project={selectedProject}
-								container={container}
-								usage={usage}
-								onRefresh={() => refreshContainer(selectedProject.id)}
-							/>
+							<>
+								<ArchivistBindingCard
+									projectId={selectedProject.id}
+									binding={container?.archivistBinding}
+									agents={agents}
+									onRefresh={() => refreshContainer(selectedProject.id)}
+								/>
+								<DashboardTab
+									project={selectedProject}
+									container={container}
+									usage={usage}
+									onRefresh={() => refreshContainer(selectedProject.id)}
+								/>
+							</>
 						) : tab === "view" ? (
 							<ProjectViewTab project={selectedProject} container={container} />
 						) : (
@@ -667,3 +678,123 @@ const ghostBtnStyle: React.CSSProperties = {
 	border: "1px solid var(--border-color, #333)", borderRadius: 4,
 	color: "var(--text-secondary, #888)", fontSize: 11, cursor: "pointer",
 };
+
+// ─── v0.8 archivist 长期绑定卡片(阶段2) ────────────────────────────
+// 未绑定 → "绑定 Archivist" 按钮(弹窗选 agent + 操作 + 每日定时);
+// 已绑定 → 显示管理者 + 各操作 cron 状态 + 切换/暂停/解绑。
+function ArchivistBindingCard({ projectId, binding, agents, onRefresh }: {
+	projectId: string;
+	binding: ProjectArchivistBinding | undefined;
+	agents: AgentRecord[];
+	onRefresh: () => void;
+}) {
+	const [showBind, setShowBind] = useState(false);
+	const [bindAgentId, setBindAgentId] = useState("");
+	const [bindOps, setBindOps] = useState<WikiOperationId[]>(["wiki-enrich"]);
+	const [bindTime, setBindTime] = useState("09:00");
+
+	const ops = binding?.operations ?? [];
+	const bound = !!binding?.agentId;
+	const allEnabled = ops.length > 0 && ops.every((o) => o.enabled);
+	const wikiAgents = agents.filter((a) => !a.toolPolicy?.blockedTools?.includes("Wiki"));
+
+	const openBind = () => {
+		setBindAgentId(wikiAgents[0]?.id ?? agents[0]?.id ?? "");
+		setBindOps(["wiki-enrich"]);
+		setBindTime("09:00");
+		setShowBind(true);
+	};
+	const doBind = async () => {
+		if (!bindAgentId || bindOps.length === 0) return;
+		try {
+			await api().projectsArchivistBind(projectId, {
+				agentId: bindAgentId,
+				operations: bindOps,
+				schedule: { mode: "alarm", time: bindTime, days: [], tz: "Asia/Shanghai" } as CronSchedule,
+			});
+			setShowBind(false);
+			onRefresh();
+		} catch (e) { alert(`Bind failed: ${(e as Error).message}`); }
+	};
+	const doUnbind = async () => {
+		if (!confirm("解绑该 project 的 archivist?将删除其绑定 cron(操作记录保留)。")) return;
+		try { await api().projectsArchivistUnbind(projectId); onRefresh(); }
+		catch (e) { alert(`Unbind failed: ${(e as Error).message}`); }
+	};
+	const doSwitch = async () => {
+		const name = prompt("切换到哪个 agent?(输入 agent 名)", binding?.agentName ?? "");
+		if (!name) return;
+		const target = agents.find((a) => a.name === name);
+		if (!target) { alert(`未找到 agent: ${name}`); return; }
+		if (target.toolPolicy?.blockedTools?.includes("Wiki")) { alert(`Agent "${name}" 无 Wiki 工具,无法绑定`); return; }
+		try { await api().projectsArchivistSwitchAgent(projectId, target.id); onRefresh(); }
+		catch (e) { alert(`Switch failed: ${(e as Error).message}`); }
+	};
+	const doToggle = async () => {
+		try { await api().projectsArchivistSetEnabled(projectId, !allEnabled); onRefresh(); }
+		catch (e) { alert(`Toggle failed: ${(e as Error).message}`); }
+	};
+
+	const cardStyle: React.CSSProperties = { border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 12, marginBottom: 12, background: "var(--bg-secondary, #1c1c1e)" };
+	const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--text-secondary, #888)" };
+
+	return (
+		<div style={cardStyle}>
+			<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+				<span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary, #e0e0e0)" }}>📚 Archivist 长期绑定</span>
+				<div style={{ flex: 1 }} />
+				{bound ? (
+					<>
+						<button type="button" onClick={doSwitch} style={ghostBtnStyle}>切换 agent</button>
+						<button type="button" onClick={doToggle} style={ghostBtnStyle}>{allEnabled ? "暂停" : "恢复"}</button>
+						<button type="button" onClick={doUnbind} style={{ ...ghostBtnStyle, color: "#f44336", borderColor: "#f44336" }}>解绑</button>
+					</>
+				) : (
+					<button type="button" onClick={openBind} style={primaryBtnStyle}>绑定 Archivist</button>
+				)}
+			</div>
+			{bound ? (
+				<div>
+					<div style={{ fontSize: 12, color: "var(--text-primary, #e0e0e0)", marginBottom: 6 }}>
+						当前管理者: <strong>{binding!.agentName}</strong>
+						{!allEnabled && <span style={{ color: "var(--warning, #d29922)" }}> (已暂停)</span>}
+					</div>
+					{ops.map((op) => (
+						<div key={op.cronId} style={{ fontSize: 11, color: "var(--text-secondary, #888)", marginBottom: 2 }}>
+							{op.operationId} — {op.enabled ? "启用" : "暂停"} · 上次:{op.lastStatus ?? "—"} {op.lastRunAt ?? ""} · 下次:{op.nextRunAt ?? "—"}
+						</div>
+					))}
+				</div>
+			) : (
+				<div style={labelStyle}>未绑定。绑定后,所选 agent 按计划定时维护 wiki(去-role,用 agent 自带 Wiki 工具)。</div>
+			)}
+
+			{showBind && (
+				<div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setShowBind(false)}>
+					<div onClick={(e) => e.stopPropagation()} style={{ width: 400, background: "var(--bg-secondary, #1c1c1e)", border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 20 }}>
+						<div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary, #e0e0e0)", marginBottom: 12 }}>绑定 Archivist — 长期 wiki 维护</div>
+						<label style={labelStyle}>Agent(需有 Wiki 工具)</label>
+						<select aria-label="Select agent for archivist binding" value={bindAgentId} onChange={(e) => setBindAgentId(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }}>
+							{wikiAgents.length === 0 && <option value="">(无带 Wiki 工具的 agent — 先从 Archivist 模板创建)</option>}
+							{wikiAgents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+						</select>
+						<label style={labelStyle}>操作(可多选,各建一条 cron)</label>
+						<div style={{ marginBottom: 12 }}>
+							{(["wiki-enrich", "doc-rebuild", "git-update"] as WikiOperationId[]).map((op) => (
+								<label key={op} style={{ fontSize: 12, color: "var(--text-primary, #e0e0e0)", display: "block" }}>
+									<input type="checkbox" checked={bindOps.includes(op)} onChange={(e) => setBindOps(e.target.checked ? [...bindOps, op] : bindOps.filter((o) => o !== op))} /> {op}
+								</label>
+							))}
+						</div>
+						<label style={labelStyle}>每日定时(alarm)</label>
+						<input type="time" aria-label="Schedule time" value={bindTime} onChange={(e) => setBindTime(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+						<div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+							<button type="button" onClick={() => setShowBind(false)} style={cancelBtnStyle}>Cancel</button>
+							<button type="button" disabled={!bindAgentId || bindOps.length === 0 || wikiAgents.length === 0} onClick={doBind} style={{ ...primaryBtnStyle, opacity: (!bindAgentId || bindOps.length === 0 || wikiAgents.length === 0) ? 0.5 : 1 }}>绑定</button>
+						</div>
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}

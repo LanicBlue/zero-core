@@ -38,6 +38,7 @@ import type {
 	DiscoveredSkill,
 	ProjectRecord, CreateProjectInput, UpdateProjectInput,
 	ProjectContainerView, ProjectResourceUsage, AgentVia, EnrichProjectBody,
+	ProjectArchivistBinding, CronSchedule, WikiOperationId,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	WikiNode,
@@ -225,6 +226,10 @@ export interface WindowApi {
 	projectsGetResourceUsage: (id: string) => Promise<ProjectResourceUsage>;
 	/** 手动起 archivist agent 深度充实 wiki(后台、非阻塞)。 */
 	projectsEnrich: (id: string, body?: EnrichProjectBody) => Promise<{ jobId: string; sessionId: string }>;
+	projectsArchivistBind: (id: string, body: { agentId: string; operations: WikiOperationId[]; schedule: CronSchedule }) => Promise<{ binding: ProjectArchivistBinding }>;
+	projectsArchivistUnbind: (id: string) => Promise<{ success: true }>;
+	projectsArchivistSwitchAgent: (id: string, agentId: string) => Promise<{ binding: ProjectArchivistBinding }>;
+	projectsArchivistSetEnabled: (id: string, enabled: boolean) => Promise<{ binding: ProjectArchivistBinding }>;
 	/** 列该项目的后台任务记录(供 chat 输入锁判断)。 */
 	projectsListJobs: (id: string) => Promise<ProjectJobRecord[]>;
 

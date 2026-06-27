@@ -42,6 +42,7 @@
 import type { AgentService } from "./agent-service.js";
 import type { AgentStore } from "./agent-store.js";
 import type { ProjectStore } from "./project-store.js";
+import type { WikiStore } from "./wiki-node-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { CronStore, CronRunStore } from "./cron-store.js";
 import type {
@@ -52,6 +53,7 @@ import type {
 	CronScheduleOnce,
 	CronLastStatus,
 	SessionContextBundle,
+	AgentRecord,
 } from "../shared/types.js";
 import {
 	resolveSessionByRoleProject,
@@ -303,6 +305,12 @@ export interface CronAnalysisDeps {
 	/** Optional override; defaults to M0's placeholder resolver. */
 	resolveWikiRoot?: WikiRootResolver;
 	/**
+	 * v0.8 archivist 长期绑定:project-scoped cron 用 sendProjectPrompt 注入
+	 * wikiStore/projectContext(去-role)。未注入时 project cron 退回 sendPrompt
+	 * (无 wiki 维护能力,仅观察/巡检)。
+	 */
+	wikiStore?: WikiStore;
+	/**
 	 * Optional clock override (defaults to Date.now). Injected by tests to
 	 * drive the scheduler without waiting on real time; production callers
 	 * leave it unset.
@@ -545,7 +553,7 @@ export class CronAnalysisManager {
 			sessionId = this.resolveSessionForCron(cron);
 			const prompt = cron.prompt ?? this.defaultPromptFor(cron);
 			log.debug("cron", `Triggering cron ${cron.id} → agent ${cron.agentId} session ${sessionId}`);
-			await this.deps.agentService.sendPrompt(prompt, agent, sessionId);
+			await this.fireAgent(cron, agent, prompt, sessionId);
 		} catch (err) {
 			status = "failed";
 			errorMsg = (err as Error).message;
@@ -637,7 +645,7 @@ export class CronAnalysisManager {
 			sessionId = this.resolveSessionForCron(cron);
 			const prompt = cron.prompt ?? this.defaultPromptFor(cron);
 			log.debug("cron", `Manually triggering cron ${cron.id} → agent ${cron.agentId} session ${sessionId}`);
-			await this.deps.agentService.sendPrompt(prompt, agent, sessionId);
+			await this.fireAgent(cron, agent, prompt, sessionId);
 		} catch (err) {
 			status = "failed";
 			errorMsg = (err as Error).message;
@@ -677,6 +685,27 @@ export class CronAnalysisManager {
 			this.deps.cronStore.update(cronId, { nextRunAt: value } as any);
 		} catch (err) {
 			log.debug("cron", `Skipped next_run_at write for ${cronId}: ${(err as Error).message}`);
+		}
+	}
+
+	/**
+	 * 触发执行(去-role 分支):
+	 * - project-scoped cron + 注入了 wikiStore → sendProjectPrompt,注入
+	 *   wikiStore/projectContext(archivist 长期绑定能干 wiki 维护活的关键)。
+	 * - 否则(观察 cron 或未注入 wikiStore) → sendPrompt(原行为)。
+	 */
+	private async fireAgent(cron: CronRecord, agent: AgentRecord, prompt: string, sessionId: string): Promise<void> {
+		const scope = cron.workingScope;
+		if (scope.projectId && this.deps.wikiStore) {
+			const project = this.deps.projectStore.get(scope.projectId);
+			await this.deps.agentService.sendProjectPrompt(agent.id, sessionId, prompt, {
+				projectId: scope.projectId,
+				projectPath: project?.workspaceDir ?? scope.workspaceDir,
+				projectName: project?.name ?? "",
+				wikiStore: this.deps.wikiStore,
+			});
+		} else {
+			await this.deps.agentService.sendPrompt(prompt, agent, sessionId);
 		}
 	}
 

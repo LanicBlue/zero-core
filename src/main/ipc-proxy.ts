@@ -196,6 +196,10 @@ const R: Record<string, RouteMapping> = {
 		"projects:delete":           { method: "DELETE", path: "/api/projects/:id",             buildReq: (id) => ({ params: { id } }) },
 		"projects:getResourceUsage": { method: "GET",    path: "/api/projects/:id/resource-usage", buildReq: (id) => ({ params: { id } }) },
 		"projects:enrich":           { method: "POST",   path: "/api/projects/:id/enrich",       buildReq: (id, body?) => ({ params: { id }, body: body ?? {} }) },
+		"projects:archivistBind":      { method: "POST",   path: "/api/projects/:id/archivist/bind",   buildReq: (id, body) => ({ params: { id }, body }) },
+		"projects:archivistUnbind":    { method: "DELETE", path: "/api/projects/:id/archivist/bind",   buildReq: (id) => ({ params: { id } }) },
+		"projects:archivistSwitchAgent": { method: "PUT", path: "/api/projects/:id/archivist/agent",  buildReq: (id, agentId) => ({ params: { id }, body: { agentId } }) },
+		"projects:archivistSetEnabled": { method: "PUT",  path: "/api/projects/:id/archivist/enabled", buildReq: (id, enabled) => ({ params: { id }, body: { enabled } }) },
 		"projects:listJobs":         { method: "GET",    path: "/api/projects/:id/jobs",         buildReq: (id) => ({ params: { id } }) },
 
 		// ─── Requirements (M1) ──────────────────────────────

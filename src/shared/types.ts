@@ -459,6 +459,27 @@ export interface ProjectContainerView {
 		scanProgress: number | null;
 	};
 	activeSessions: Array<{ agentId: string; name: string; sessionId: string }>;
+	/** v0.8 archivist 长期绑定(阶段2):该 project 绑定的 archivist agent + 各操作 cron 状态。 */
+	archivistBinding?: ProjectArchivistBinding;
+}
+
+/**
+ * v0.8 archivist 长期绑定视图。agentId=null 表示未绑定。operations 为该 project
+ * 的 archivist cron(prompt 匹配 WIKI_OPERATIONS 的视为绑定操作;custom 为自定义)。
+ */
+export interface ProjectArchivistBinding {
+	projectId: string;
+	agentId: string | null;
+	agentName: string | null;
+	operations: Array<{
+		operationId: WikiOperationId | "custom";
+		cronId: string;
+		schedule: CronSchedule;
+		enabled: boolean;
+		lastRunAt?: string;
+		nextRunAt?: string;
+		lastStatus?: string;
+	}>;
 }
 
 /**

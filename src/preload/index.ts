@@ -224,6 +224,10 @@ const api: WindowApi = {
 	projectsGetResourceUsage: (id) => ipcRenderer.invoke("projects:getResourceUsage", id),
 	// 手动起 archivist agent 深度充实 wiki(后台、非阻塞)。
 	projectsEnrich: (id, body?) => ipcRenderer.invoke("projects:enrich", id, body),
+	projectsArchivistBind: (id, body) => ipcRenderer.invoke("projects:archivistBind", id, body),
+	projectsArchivistUnbind: (id) => ipcRenderer.invoke("projects:archivistUnbind", id),
+	projectsArchivistSwitchAgent: (id, agentId) => ipcRenderer.invoke("projects:archivistSwitchAgent", id, agentId),
+	projectsArchivistSetEnabled: (id, enabled) => ipcRenderer.invoke("projects:archivistSetEnabled", id, enabled),
 	projectsListJobs: (id) => ipcRenderer.invoke("projects:listJobs", id),
 
 	// ── Requirements ──
