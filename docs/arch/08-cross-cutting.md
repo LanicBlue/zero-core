@@ -434,7 +434,6 @@ getProviderAdapter(config, provider): { systemPromptAppend?, maxSystemPromptToke
 | Shell | Git Bash 检测 / cmd.exe 翻译 | ❌ 不构成黑名单 |
 | WebFetch Cookie | 持久化到 `~/.zero-core/webfetch/cookies.json` | ⚠️ 路径权限需确认 |
 | 工具策略 | `blockedTools` / `allowedTools` | ✅ 配置可强制 |
-| 工具确认 | `meta.requiresConfirmation` 字段 | ⚠️ 未实现弹窗 |
 | 权限请求 | `PermissionRequest` hook | ⚠️ 未注册 handler |
 | 代理 | undici ProxyAgent 全局 | ✅ 标准做法 |
 | 日志 | 控制台 + 文件，无敏感字段过滤 | ⚠️ 可能泄露 API key |
@@ -443,8 +442,7 @@ getProviderAdapter(config, provider): { systemPromptAppend?, maxSystemPromptToke
 
 **架构师建议**：
 1. `log-router.ts` 的"redact sensitive"已经在 `assistant-tools.ts:52` 实现，搬到 logger.ts
-2. 把 `meta.requiresConfirmation` 真正接通（前端弹窗 + PreToolUse 阻断）
-3. 文件路径默认限制 workspace，但允许用户配置"绝对路径白名单"
+2. 文件路径默认限制 workspace，但允许用户配置"绝对路径白名单"
 
 ## 12. 后端子进程生命周期与全局错误兜底(v0.8)
 
@@ -517,8 +515,9 @@ child.on("exit", (code) => {
 
 - **`_shuttingDown` flag 防竞争**:正常 `shutdownBackend()` 期间子进程也会 exit,但此时
   `_shuttingDown=true`,不会触发重启 —— 避免关闭与自愈打架。
-- **重启是 fire-and-forget**:重启失败只 log,不向上抛。代价是连续崩溃会静默 —— 目前没有
-  "N 次重启失败后弹用户提示"的退避策略(**open question**:用户感知不到 backend 死了)。
+- **重启计数 + 指数退避**(master commit 843e28a 已实现):60s 滑动窗口内最多重启 5 次;
+  每次重启前等待指数退避(1s → 30s 上限,翻倍增长)。超过阈值后 `dialog.showErrorBox`
+  通知用户"backend 反复崩溃,已停止自动重启",并停止自愈 —— 不再静默、不再无限重启。
 - **端口会变**:重启后 OS 重新分配端口,`getBackendPort()` 读的是新 `_handle.port`,
   `ipc-proxy.ts` 每次都现读,所以前端无感 —— 但任何缓存了端口的代码都会失效(目前没有这种缓存)。
 
@@ -553,15 +552,17 @@ process.on("uncaughtException", (err) => {
 });
 ```
 
-**重要语义**:这两个 handler **只 log,不 exit**。Node 默认行为是 unhandledRejection 打 warning、
-uncaughtException 触发进程退出 —— 这里覆盖成"吞掉 + log",所以 backend 即使有未捕获异常也**不会崩**,
-继续服务。设计取舍:
+**重要语义**:`unhandledRejection` handler **只 log**(让 Node 默认的 rejection 警告降级为可控 log);
+`uncaughtException` handler 是 **log + `process.exit(1)`**。Node 默认行为是 uncaughtException
+触发进程退出 —— 这里保留 log 然后显式 `exit(1)`,把退出动作交给 §12.3 的自愈路径接管。
 
-- ✅ **可用性优先**:单次工具调用的异常不应该拖垮整个 backend(会打断所有并发 session)。
-- ⚠️ **状态可能已损坏**:uncaughtException 意味着 JS 运行时状态不可预测,继续跑可能产生脏数据。
-  更稳健的做法是"log + 触发自愈重启"(让 §12.3 的 exit 路径接管),但当前实现选择不重启。
-  (**open question**:是否应在 uncaughtException 后主动 `process.exit(1)` 让 §12.3 自愈?权衡是
-  频繁重启比脏跑更糟。)
+设计取舍:
+
+- ✅ **可用性优先**:unhandledRejection 不致命,吞掉后继续服务不打断并发 session。
+- ✅ **脏状态兜底**:uncaughtException 意味着 JS 运行时状态不可预测,继续跑可能产生脏数据;
+  退出后由 §12.3 的自愈重启路径接管(60s 内 5 次 + 指数退避,见 master commit 843e28a),
+  短暂中断后恢复干净进程。之前 "**open question**: 是否应在 uncaughtException 后主动 exit
+  让自愈接管" **已解决**(早已实现 exit,文档此前误写为"只 log")。
 
 由于这两个 handler 写的是 `console.error` 而非 logger,在 detached 启动时这些兜底日志
 **只到 backend 自己的 stderr** —— 但 §12.2 已把 backend stderr 桥接到主进程 logger,所以
@@ -621,13 +622,13 @@ flowchart LR
 - **握手用 stdout JSON 行**:简单、无额外依赖、跨 fork/spawn 都工作。
 - **stderr 桥接到 logger**:detached 启动也能留尸检信息,这是 v0.8 补的关键细节。
 - **端口现读**:无缓存 → 自愈重启换端口前端无感。
+- **自愈退避**(master commit 843e28a):60s 窗口 + 5 次上限 + 指数退避(1s→30s) + 超阈值
+  `dialog.showErrorBox` 通知用户并停止自愈 —— 解决了"无限静默重启"的开放问题。
+- **uncaughtException 触发自愈**:backend 内部 `process.exit(1)` 让 §12.3 路径接管,
+  避免脏状态续跑;§12.5 的 open question 已解决。
 
 **可以改进的**:
 
-- **自愈无退避**:连续崩溃会无限重启 + 静默,用户无感知。建议加重启计数 + N 次失败后通知主进程
-  弹用户提示。
-- **uncaughtException 不 exit**:吞掉后状态可能已脏。建议至少对"明确不可恢复"的异常
-  (如 SQLite 损坏)主动 exit 触发自愈。
 - **Windows 上 SIGTERM/SIGKILL 无语义**:三段式关闭在 Windows 退化成两段,文档应明确标注
   (避免开发者误以为 SIGTERM handler 能在 Windows 上跑)。
 - **stdout 协议通道与日志冲突**:虽然 backend 现在用 stderr/logger,但没有强制约束 ——
@@ -651,5 +652,5 @@ flowchart LR
 | 模型元数据 | `core/model-registry.ts` | ✅ 国内模型覆盖好 |
 | 错误分类 | `runtime/agent-utils.ts` | ✅ 8 类 |
 | 安全 | 分散在多个文件 | ⚠️ 缺统一策略 |
-| 后端子进程生命周期 | `main/backend-spawn.ts` | ✅ v0.8:握手 + 自愈 + 三段式关闭(见 §12) |
-| 全局错误兜底 | `server/index.ts:86-96` process.on | ⚠️ v0.8:只 log 不 exit,可能脏跑(见 §12.5 open question) |
+| 后端子进程生命周期 | `main/backend-spawn.ts` | ✅ v0.8:握手 + 自愈(60s/5次+指数退避) + 三段式关闭(见 §12) |
+| 全局错误兜底 | `server/index.ts:86-96` process.on | ✅ uncaughtException log + exit(1) 触发自愈;unhandledRejection 只 log(见 §12.5) |
