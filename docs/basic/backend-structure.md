@@ -62,7 +62,13 @@ HTTP/WS 服务由 `src/server/index.ts` 的 `startServer()` 创建（`npm run se
 | `/api/webfetch/cookies` | （内联于 index.ts） | WebFetch cookie 查询 / 清理 |
 | `/api/ready` | （内联于 index.ts） | 健康检查 |
 
-- **IPC 接入面**（Electron 桌面模式独有）：v0.8 起由 `src/main/ipc-proxy.ts` 的 `registerProxyHandlers(port)` 统一注册 `ipcMain.handle`，每个通道在内部 `R` 表（`RouteMapping`）里映射到一条 REST 路由（method / path / buildReq），主进程通过 `fetch` 调本地 backend 的 HTTP 端口（**不是**直接调用 store / service）。preload 侧的 `WindowApi` 暴露约 155 个方法。三组例外集合（详见 07-renderer-and-ipc.md §2.5）：① `LOCAL_CHANNELS` ~17 项在主进程内直接处理（orchestrate/pm-handlers 等流式或主进程单例）；② `INVOKE_BUT_NOT_PROXIED` 3 项（健康检查 / WS 流式）；③ v0.8 §11.5 退役的 `agent-as-tool` 系列（测试反向断言不得出现）。`ROUTE_MAP` 不是手写常量，而是测试 `rest-routers.test.ts` 从 `ipc-proxy.ts` 源码正则派生。旧版 `typed-ipc.ts` + `registerCrud` 已不存在。
+- **IPC 接入面**（Electron 桌面模式独有）：v0.8 起由 `src/main/ipc-proxy.ts` 的 `registerProxyHandlers(port)` 统一注册 `ipcMain.handle`，主进程通过 `fetch` 调本地 backend 的 HTTP 端口（**不是**直接调用 store / service）。preload 侧的 `WindowApi` 暴露 **155 个 API 方法**，按通道类型显式分为三类（口径与 07 §2.5 / 11 §6 对齐）：
+  - **141 个 HTTP 代理通道**（invoke→fetch）：对应 `ipc-proxy.ts` 的 `R` 表（`RouteMapping`），每项映射一条 REST 路由（method / path / buildReq）。
+  - **7 个 LOCAL invoke 通道**（不走 HTTP，主进程内 `ipcMain.handle` 直接处理）：`window:minimize` / `window:maximize` / `window:close` + `dialog:openDirectory` + `webfetch:login` + `templates:github-preview` + `templates:import-github`。
+  - **7 个 receive-only event 通道**（main → renderer 单向 `webContents.send`，preload 用 `ipcRenderer.on` 订阅）：`agent:event` / `data:changed` / `app:ready` / `tools:changed` / `session:lifecycle` + `templates:github-preview-progress` + `templates:import-github-progress`（两条 GitHub 进度事件）。
+  - 155 = 131 invoke（141 代理 + 7 LOCAL − 因 `app:ready` 既是 invoke 轮询又是 receive 推送，去重后计入 invoke 侧）+ 7 on receive + 其余工具/订阅 helper。
+  - **`app:ready` 双重身份**：renderer `invoke('app:ready')` 触发 main 内部 `fetch('/api/ready')` 轮询（INVOKE_BUT_NOT_PROXIED），就绪后又经 WS→IPC 反向推 `app:ready` event 给所有窗口（receive-only），同通道名两种语义。
+  - 三组例外集合（详见 07-renderer-and-ipc.md §2.5）：① `LOCAL_CHANNELS` 7 项在主进程内直接处理；② `INVOKE_BUT_NOT_PROXIED` 3 项（`app:ready` 健康检查 + `templates:github-preview/import-github` WS 流式）；③ v0.8 §11.5 退役的 `agent-as-tool` 系列（测试反向断言不得出现）。`ROUTE_MAP` 不是手写常量，而是测试 `rest-routers.test.ts` 从 `ipc-proxy.ts` 源码正则派生。旧版 `typed-ipc.ts` + `registerCrud` 已不存在。
 - **WebSocket**：`/ws` 端点用于实时 Agent 事件流（`text_delta` / `tool_start` / `tool_end` 等），server 在 `wss.on("connection")` 里接收 `send` / `abort` 消息并把 AgentService 订阅的事件转发给所有已连接 client；client 重连时若 server busy 会回送 `reconnect` 消息带当前 streamingText 和 toolCalls。
 - **静态资源**：`serveStatic=true` 时挂载 renderer 产物（`out/renderer/`），非 API 请求 fallback 到 `index.html`，支持单端口同时提供前后端。
 
@@ -70,17 +76,32 @@ HTTP/WS 服务由 `src/server/index.ts` 的 `startServer()` 创建（`npm run se
 
 zero-core 有两种数据流模式，对应两种部署，但运行时（AgentLoop / 工具 / Hook）是共享的：
 
-### IPC 模式（桌面 Electron）
+### IPC 模式（桌面 Electron，v0.8 两跳架构）
+
+v0.7 的 "typed-ipc + 直接调 store" 单跳路径已退役。v0.8 走**两跳**：第一跳是 Electron IPC（renderer → main），第二跳是 HTTP（main → backend）—— main 进程不再持有业务逻辑，仅做 `ipcRenderer.invoke` → `fetch` 翻译。
 
 ```
+请求路径（invoke→response）：
 用户操作 → renderer component → store action
-  → preload 暴露的 IPC API（ipcRenderer.invoke）
-  → main process IPC handler（typed-ipc / *-handlers.ts）
-  → server store / AgentService（直接函数调用，同进程）
-  → AgentLoop.run() / tools / hooks
-  → 事件通过 ipcMain → renderer 推送（onAgentEvent）
-  → store dispatcher 更新 block
+  → preload 暴露的 IPC API（ipcRenderer.invoke("chat:send", ...)）
+  → [第一跳：Electron IPC]
+  → main: ipc-proxy.ts registerProxyHandlers 注册的 ipcMain.handle
+       └ 查 R 表（RouteMapping）→ fetch("http://localhost:<port>/api/chat/send", {...})
+  → [第二跳：HTTP loopback]
+  → backend Express REST router（chat-router.ts）
+  → server store / AgentService → AgentLoop.run() / tools / hooks
+  → 返回 JSON 沿原路回：router → fetch resp → ipcMain.handle resolve → store action
+
+事件路径（main → renderer，receive-only，不经 invoke）：
+AgentService.subscribe → backend WS broadcast {type:'text_delta'|'data:changed'|...}
+  → main: connectEventBridge WS client 收到事件
+       └ 按 eventType 分流：'agent:event' / 'data:changed' / 'app:ready' / 'tools:changed' /
+         'session:lifecycle' / 'templates:*-progress' 各自 webContents.send
+  → [Electron IPC event]
+  → renderer preload: api.onAgentEvent / onDataChanged / ... → 对应 zustand store 更新
 ```
+
+141 个 HTTP 代理通道走请求路径；7 个 LOCAL invoke 通道在第一跳后直接由 main 处理（不走第二跳）；7 个 receive-only event 通道只走事件路径。
 
 ### HTTP/WS 模式（远程 / server）
 
@@ -156,7 +177,7 @@ tool-call 事件
 > [`07-renderer-and-ipc.md`](../arch/07-renderer-and-ipc.md) §2.5 / §2.6。
 
 - 注册入口：`src/main/ipc-proxy.ts` 的 `registerProxyHandlers(port)`，遍历 `R` 表（`RouteMapping`）对每个通道 `ipcMain.handle(channel, fetch→backend)`。
-- 通道总数：preload `WindowApi` 暴露约 155 个方法；其中 ~120+ 走代理，~17 个在 `LOCAL_CHANNELS` 主进程内处理，3 个 `INVOKE_BUT_NOT_PROXIED`。
+- 通道总数：preload `WindowApi` 暴露 155 个 API 方法，分类见上文「API 接入面」—— 141 HTTP 代理 + 7 LOCAL invoke + 7 receive-only event（+ 其余工具/订阅 helper）；3 个 `INVOKE_BUT_NOT_PROXIED`（`app:ready` 轮询 + `templates:github-preview/import-github` WS 流式）。
 - **已退役**：v0.7 的 `typed-ipc.ts` + `registerCrud` + `afterDelete` 回调机制已不存在；v0.8 §11.5 退役的 `agent-as-tool` 系列通道由测试反向断言不得出现。
 - 级联删除：旧 `AgentToolStore` 通过 `afterDelete` 做的 Agent→agent-tool 级联已随 store 退役（`agent-router.ts:70` 注释明示「no AgentToolStore rows to cascade」）。
 
