@@ -3,18 +3,23 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 把"深度充实项目 wiki"作为一个 archivist agent run 拉起来(后台、非阻塞):
+// 把"深度充实项目 wiki"作为一个 agent run 拉起来(后台、非阻塞):
 // resolveAgent(via) → resolveSessionByRoleProject(agentId, projectId) → 起 job
-// 记 → fire-and-forget sendRolePrompt → 完成/失败写回 project_jobs。
+// 记 → fire-and-forget sendProjectPrompt → 完成/失败写回 project_jobs。
 //
-// 这是"配置驱动、不硬绑 archivist"的落点:via 决定谁来充实(默认
-// { role: "archivist" }),本文件不出现对具体角色的硬编码假设 —— 只通过
-// getRoleConfig(via.role) 解析。换角色/换 agent = 改 via 配置,代码不变。
+// v0.8 推动弃用工作流角色 —— archivist 率先去 role:
+// - **无 fallback**:via.agentId 必填(必须选已存在的 agent),不再自动建角色 agent。
+// - **工具校验**:入口核实 agent 配了 Wiki 工具,否则拒绝(提醒用户从 Archivist
+//   模板创建一个带 Wiki 工具的 agent)。
+// - **去-role 触发**:用 sendProjectPrompt(身份/toolPolicy 全用 agent 自带,
+//   按 session.projectId 注入 wikiStore/projectContext),不调 sendRolePrompt/
+//   getRoleConfig。lead/pm/analyst 仍用各自 service 的 sendRolePrompt。
 //
 // ## 输入
 // - projectId
-// - opts.via (AgentVia: role | agentId | model)
+// - opts.via.agentId(必填) —— 已存在、配了 Wiki 工具的 agent
 // - opts.prompt (可选,默认用内置充实任务 prompt)
+// - opts.operationId (可选,阶段 1 多操作)
 //
 // ## 输出
 // - { jobId, sessionId } —— 立即返回,run 在后台跑
@@ -24,11 +29,11 @@
 // 构造并经 management.setEnrichmentRunner 注入。
 //
 // ## 依赖
-// - ./agent-service (sendRolePrompt)
+// - ./agent-service (sendProjectPrompt)
 // - ./agent-store / ./template-store (resolveAgent)
 // - ./session-context-router (resolveSessionByRoleProject)
 // - ./project-job-store (run 记录)
-// - ../runtime/agent-roles (getRoleConfig / buildWorkflowSystemPrompt)
+// - ./wiki-operations (agentHasWikiTool 校验)
 //
 
 import type { AgentService } from "./agent-service.js";
@@ -40,7 +45,7 @@ import type { WikiStore } from "./wiki-node-store.js";
 import type { ProjectJobStore } from "./project-job-store.js";
 import type { AgentVia } from "../shared/types.js";
 import { resolveSessionByRoleProject, type WikiRootResolver } from "./session-context-router.js";
-import { getRoleConfig, buildWorkflowSystemPrompt } from "../runtime/agent-roles.js";
+import { agentHasWikiTool } from "./wiki-operations.js";
 import { log } from "../core/logger.js";
 
 export interface EnrichmentRunnerDeps {
@@ -54,15 +59,10 @@ export interface EnrichmentRunnerDeps {
 	resolveWikiRoot?: WikiRootResolver;
 }
 
-/** resolveAgent 的产物:身份 + 路由键 + 对话保护标志。 */
+/** resolveAgent 的产物:只剩 agentId(role 已弃用)。 */
 export interface ResolvedAgent {
 	agentId: string;
-	role: string;
-	/** 该角色 session 是否允许用户输入(worker=false)。 */
-	interactive: boolean;
 }
-
-const DEFAULT_ENRICH_ROLE = "archivist";
 
 export class EnrichmentRunner {
 	private deps: EnrichmentRunnerDeps;
@@ -72,48 +72,23 @@ export class EnrichmentRunner {
 	}
 
 	/**
-	 * 解析 via → { agentId, role, interactive }。配置驱动:
-	 * - via.role 给定 → 按角色解析,ensure 一个全局角色 agent(name = displayName)。
-	 * - via.agentId 给定 → 直接用该 agent(必须存在);role 取 via.role ?? 默认。
-	 * 代码不硬编码具体角色 —— 默认值 DEFAULT_ENRICH_ROLE 由调用方语义决定。
+	 * 解析 via → { agentId }。**无 fallback**:via.agentId 必填,且必须存在、
+	 * 配了 Wiki 工具。不再自动建角色 agent(推动弃用工作流角色)。
 	 */
 	resolveAgent(via: AgentVia): ResolvedAgent {
-		const role = via.role ?? DEFAULT_ENRICH_ROLE;
-		const roleConfig = getRoleConfig(role);
-
-		let agentId: string;
-		if (via.agentId) {
-			const agent = this.deps.agentStore.get(via.agentId);
-			if (!agent) throw new Error(`Agent not found: ${via.agentId}`);
-			agentId = agent.id;
-		} else {
-			agentId = this.ensureRoleAgent(role);
+		if (!via.agentId) {
+			throw new Error("via.agentId is required — select an existing agent (no fallback). Tip: create one from the Archivist template.");
 		}
-
-		return { agentId, role, interactive: roleConfig.interactive };
-	}
-
-	/**
-	 * Ensure a global role agent exists (lookup by displayName; create from
-	 * role config if missing). Mirrors lead-service.ensureLeadAgent, but
-	 * global (not per-project) — 一个角色一个全局 agent,服务所有 project。
-	 */
-	private ensureRoleAgent(role: string): string {
-		const roleConfig = getRoleConfig(role);
-		const existing = this.deps.agentStore.list().find((a) => a.name === roleConfig.displayName);
-		if (existing) return existing.id;
-
-		const systemPrompt = buildWorkflowSystemPrompt(role, this.deps.templateStore);
-		const agent = this.deps.agentStore.create({
-			name: roleConfig.displayName,
-			systemPrompt,
-			toolPolicy: {
-				autoApprove: roleConfig.toolPolicy.autoApprove,
-				blockedTools: roleConfig.toolPolicy.blockedTools,
-			},
-		} as any);
-		log.debug("enrichment", `ensured global role agent '${roleConfig.displayName}' (${agent.id})`);
-		return agent.id;
+		const agent = this.deps.agentStore.get(via.agentId);
+		if (!agent) {
+			throw new Error(`Agent not found: ${via.agentId}`);
+		}
+		if (!agentHasWikiTool(agent)) {
+			throw new Error(
+				`Agent "${agent.name}" has the Wiki tool blocked — cannot enrich/maintain wiki. Use an agent with the Wiki tool (e.g. create one from the Archivist template).`,
+			);
+		}
+		return { agentId: agent.id };
 	}
 
 	/**
@@ -129,7 +104,7 @@ export class EnrichmentRunner {
 		const project = projectStore.get(projectId);
 		if (!project) throw new Error(`Project not found: ${projectId}`);
 
-		// 1. 解析身份(配置驱动,不硬绑 archivist)
+		// 1. 解析 agent(必填 + Wiki 工具校验,无 fallback)
 		const resolved = this.resolveAgent(opts.via);
 
 		// 2. 路由出项目 session(find-or-create by (agentId, projectId))
@@ -152,13 +127,13 @@ export class EnrichmentRunner {
 			promptSummary: prompt.slice(0, 500),
 		});
 
-		// 4. fire-and-forget 起充实 run。范式同 cron-analysis 的 void fireCron().catch()。
-		//    sendRolePrompt 注入 role + project 上下文(含 wikiStore),archivist 在该
-		//    session 里调 Wiki docWrite/docEdit 时 anchor 天然 = 本项目子树根(写入
-		//    守卫放行)。完成/失败写回 job。
+		// 4. fire-and-forget 起充实 run。去-role:sendProjectPrompt 注入
+		//    wikiStore/projectContext(按 session.projectId),archivist 在该
+		//    session 里调 Wiki docWrite/docEdit 时 anchor = 本项目子树根。
+		//    完成/失败写回 job。
 		void Promise.resolve()
 			.then(() =>
-				agentService.sendRolePrompt(resolved.agentId, session.id, resolved.role, prompt, {
+				agentService.sendProjectPrompt(resolved.agentId, session.id, prompt, {
 					projectId: project.id,
 					projectPath: project.workspaceDir,
 					projectName: project.name,

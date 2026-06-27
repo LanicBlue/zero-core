@@ -702,6 +702,115 @@ export class AgentService {
 			this.emit({ type: "error", error: (err as Error).message, agentId });
 		}
 	}
+
+	/**
+	 * v0.8 推动弃用工作流角色 —— archivist 率先去 role。本方法是 sendRolePrompt
+	 * 的去-role 版:身份 prompt + toolPolicy 全用 agent 自带(来自模板),不调
+	 * getRoleConfig;但保留 wikiStore/projectContext/wikiAnchors 注入,注入键是
+	 * session 的 projectId(不是 role)。archivist 的 wiki 维护(enrichment / cron
+	 * 绑定触发)走这里。lead/pm/analyst 仍用 sendRolePrompt。
+	 */
+	async sendProjectPrompt(
+		agentId: string,
+		sessionId: string,
+		prompt: string,
+		context: {
+			projectId?: string;
+			projectPath?: string;
+			projectName?: string;
+			wikiStore?: any;
+			activeRequirementId?: string;
+		},
+	): Promise<void> {
+		const agent = this.agentStore?.get(agentId);
+		if (!agent) throw new Error(`Agent not found: ${agentId}`);
+
+		const systemPrompt = agent.systemPrompt || "";
+		const cwd = context.projectPath || agent.workspaceDir || this.workspaceDir;
+
+		const sessionConfig: SessionConfig = {
+			agentId,
+			workspaceDir: cwd,
+			systemPrompt,
+			guidelines: this.config.systemPrompt?.guidelines,
+			compression: this.config.compression,
+			memory: this.config.memory,
+			modelId: agent.model || this.defaultModel || "",
+			providerName: agent.provider || this.defaultProvider || "",
+			thinkingLevel: agent.thinkingLevel,
+			sessionId,
+			db: this.db,
+			// 去-role:toolPolicy 全用 agent 自带(来自模板),不再 roleConfig 覆盖。
+			toolPolicy: {
+				autoApprove: agent.toolPolicy?.autoApprove ?? this.config.toolPolicy.autoApprove ?? [],
+				blockedTools: agent.toolPolicy?.blockedTools ?? this.config.toolPolicy.blockedTools ?? [],
+				tools: agent.toolPolicy?.tools ?? this.config.toolPolicy.tools,
+				executionMode: agent.toolPolicy?.executionMode ?? this.config.toolPolicy.executionMode,
+				resultMaxTokens: agent.toolPolicy?.resultMaxTokens ?? this.config.toolPolicy.resultMaxTokens,
+				readScope: agent.toolPolicy?.readScope ?? "filesystem",
+			},
+			getMcpTools: async (aid?: string) => {
+				const mcpToolInfos = this.mcp.getToolsForAgent(aid);
+				return buildMcpTools(mcpToolInfos, (serverId, toolName, args) =>
+					this.mcp.callTool(serverId, toolName, args),
+				);
+			},
+			subagents: agent.subagents ?? [],
+			resolveSubagentTarget: (targetId: string) => {
+				const a = this.agentStore?.get(targetId);
+				if (!a) return undefined;
+				return { id: a.id, name: a.name, systemPrompt: a.systemPrompt, model: a.model, toolPolicy: a.toolPolicy };
+			},
+			resolveAgent: (otherId: string) => {
+				const a = this.agentStore?.get(otherId);
+				if (!a) return undefined;
+				return { id: a.id, name: a.name, systemPrompt: a.systemPrompt, model: a.model, toolPolicy: a.toolPolicy, subagents: a.subagents };
+			},
+			getToolConfig: () => this.registry.getToolConfig(),
+			// agentRole 不设 —— 去 role。
+			projectContext: context.projectId ? {
+				projectId: context.projectId,
+				projectName: context.projectName || "",
+				projectPath: context.projectPath || "",
+				activeRequirementId: context.activeRequirementId,
+			} : undefined,
+			wikiStore: context.wikiStore,
+		} as any;
+
+		// P1 §10.6 wiki anchor injection —— archivist 写 wiki 靠它解析锚点。
+		if (this.wikiStoreGlobal) (sessionConfig as any).wikiStoreGlobal = this.wikiStoreGlobal;
+		if (agent?.wikiAnchors) (sessionConfig as any).wikiAnchors = agent.wikiAnchors;
+
+		let loop = this.loops.get(sessionId);
+		if (!loop) {
+			loop = new AgentLoop(sessionConfig, this.providerConfigs, {
+				onEvent: (event: StreamEvent) => {
+					this.handleRuntimeEvent(agentId, event);
+				},
+			});
+			this.loops.set(sessionId, loop);
+		}
+
+		this.activeSessions.set(agentId, sessionId);
+		if (!this.runStates.has(sessionId)) {
+			this.runStates.set(sessionId, { agentId, isBusy: false, streamingText: "", toolCalls: [] });
+		}
+
+		const state = this.runStates.get(sessionId)!;
+		state.isBusy = true;
+		state.streamingText = "";
+		state.toolCalls = [];
+
+		log.agent("Sending project prompt to:", agentId, "session:", sessionId);
+
+		try {
+			await loop.run(prompt);
+			log.agent("Project prompt completed for:", agentId);
+		} catch (err) {
+			log.error("agent", "Project prompt error:", (err as Error).message);
+			this.emit({ type: "error", error: (err as Error).message, agentId });
+		}
+	}
 	// v0.8 (M0): createRoleLoopFactory removed. Sub-agent dispatch now flows
 	// through delegateTask (extended signature carries target agent full
 	// config + per-call override + caller bundle inheritance). Lead/orchestrate

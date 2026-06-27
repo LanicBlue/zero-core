@@ -24,6 +24,7 @@
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { PromptTemplate } from "../shared/types.js";
+import { WORKFLOW_ROLES } from "../runtime/agent-roles.js";
 
 // ---------------------------------------------------------------------------
 // Built-in templates
@@ -931,10 +932,30 @@ export class TemplateStore {
 		const byName = new Map(builtIns.map((t) => [t.name, t] as const));
 
 		// Capability built-ins only (no fixed id → uuid, keyed by name). v0.8
-		// 模板/角色分离:工作流角色(zero/lead/archivist)不进画廊,由独立的
-		// 角色注册表管理(builtin-role-templates.ts),不在此合并。
+		// 模板/角色分离:工作流角色(zero/lead/pm/analyst)不进画廊,由独立的
+		// 角色注册表管理(builtin-role-templates.ts)。**例外:archivist 进画廊**
+		// —— 推动弃用工作流角色第一步,archivist 率先去 role,用户从画廊创建
+		// 一个预配好 Wiki 工具的 agent 用于 project 绑定(enrichment/cron 不再
+		// 自动 fallback 建角色 agent)。systemPrompt/toolPolicy 从 WORKFLOW_ROLES
+		// 取以避免漂移,但运行时(enrichment/cron)不再读 WORKFLOW_ROLES。
+		const archivistRole = WORKFLOW_ROLES.archivist;
+		const researcherBase = BUILT_IN_TEMPLATES.find((t) => t.name === "Researcher")?.systemPrompt ?? "";
+		const archivistSeed: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt"> = {
+			name: "Archivist",
+			description: "Resident archivist — maintains a project's wiki subtree (code/requirement/ADR intent nodes). Read-only to project docs; writes only its project wiki subtree. Bind to a project for long-term wiki maintenance.",
+			icon: "📚",
+			systemPrompt: researcherBase + "\n\n" + archivistRole.promptAppend,
+			toolPolicy: {
+				autoApprove: [...archivistRole.toolPolicy.autoApprove],
+				blockedTools: [...archivistRole.toolPolicy.blockedTools],
+				readScope: "filesystem",
+			},
+			tags: ["wiki", "archivist", "knowledge", "documentation"],
+			isBuiltIn: true,
+		};
 		const allSeeds: Array<{ id?: string } & Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">> = [
 			...BUILT_IN_TEMPLATES,
+			archivistSeed,
 		];
 
 		for (const seed of allSeeds) {

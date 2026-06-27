@@ -180,8 +180,8 @@ describe("resolveSessionByRoleProject", () => {
 
 // ─── Templates (能力模板) vs Roles (工作流角色) ──────────────
 
-describe("capability templates (gallery) — no workflow roles mixed in", () => {
-	test("gallery holds the 16 capability templates (general + domain experts)", () => {
+describe("capability templates (gallery) — archivist 作为例外进画廊", () => {
+	test("gallery holds the 16 capability templates + Archivist(推动弃用工作流角色例外)", () => {
 		const names = new Set(templateStore.list().map((t) => t.name));
 		// 通用能力(12)
 		for (const n of ["Coder", "Writer", "Translator", "Reviewer", "Analyst", "Tutor",
@@ -192,13 +192,16 @@ describe("capability templates (gallery) — no workflow roles mixed in", () => 
 		for (const n of ["Security Expert", "UI/UX Expert", "Performance Expert", "QA Engineer"]) {
 			expect(names.has(n), `${n} should be in gallery`).toBe(true);
 		}
-		expect(templateStore.list().length).toBe(16);
+		// v0.8 推动弃用工作流角色:archivist 率先去 role,破例进画廊
+		// (用户从画廊创建带 Wiki 工具的 agent 用于 project 绑定)。
+		expect(names.has("Archivist"), "Archivist should be in gallery (去-role 例外)").toBe(true);
+		expect(templateStore.list().length).toBe(17);
 	});
 
-	test("workflow roles are NOT in the gallery (templates unrelated to roles)", () => {
+	test("workflow roles are NOT in the gallery (除 archivist 例外)", () => {
 		const names = new Set(templateStore.list().map((t) => t.name));
-		// zero/lead/archivist 是工作流角色,退出画廊;developer/reviewer/pm/qa 已由
-		// 同名能力等价物覆盖,不再作为独立 role 出现。
+		// zero/lead 仍是工作流角色,退出画廊;archivist 已破例进画廊(名 "Archivist")。
+		// developer/reviewer/pm/qa 已由同名能力等价物覆盖,不作为独立 role 出现。
 		for (const n of ["Zero (管理)", "Lead (交付)", "Archivist (知识)", "Developer", "Reviewer (workflow)"]) {
 			expect(names.has(n), `${n} should NOT be in gallery`).toBe(false);
 		}
