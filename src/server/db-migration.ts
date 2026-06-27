@@ -221,6 +221,7 @@ const CRON_COLUMNS = [
 	{ key: "lastError", column: "last_error" },
 	{ key: "nextRunAt", column: "next_run_at" },
 	{ key: "lastGitRef", column: "last_git_ref" },
+	{ key: "source" },
 	{ key: "prompt" },
 	{ key: "enabled", bool: true },
 	{ key: "createdAt", column: "created_at" },
@@ -785,6 +786,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 		next_run_at TEXT,
 		last_git_ref TEXT,
 		prompt TEXT,
+		source TEXT,
 		enabled INTEGER DEFAULT 1,
 		created_at TEXT,
 		updated_at TEXT
@@ -797,6 +799,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 	safeAddColumn(db, "crons", "last_error", "TEXT");
 	safeAddColumn(db, "crons", "next_run_at", "TEXT");
 	safeAddColumn(db, "crons", "last_git_ref", "TEXT");
+	safeAddColumn(db, "crons", "source", "TEXT");
 	migrateCronScheduleToJson(db);
 	safeAddIndex(db, "crons", "idx_crons_agent", "agent_id");
 	safeAddIndex(db, "crons", "idx_crons_enabled", "enabled");

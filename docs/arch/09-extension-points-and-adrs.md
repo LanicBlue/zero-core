@@ -607,7 +607,7 @@ graph TB
 - enrichment/cron 触发改走 sendProjectPrompt。**无 fallback**:必须选已存在、配了 Wiki 工具的 agent(入口校验 `agentHasWikiTool`,无则拒绝)。
 - **画廊例外**:Archivist 破例进 template-store(ADR-019 的例外),systemPrompt = Researcher base + ARCHIVIST_CONFIG.promptAppend(从 WORKFLOW_ROLES 取避免漂移)。作用 = 方便用户一键创建预配好 Wiki 工具的 agent,不是自动 fallback 源。
 - 操作 prompt 绑操作(`wiki-operations.ts`: doc重建/git更新/wiki充实 三操作),不绑角色。多操作拆分,各自可按键或 cron。
-- 长期绑定 = 该 project 的 archivist cron 集合(每操作一条,共用 agentId),不新建 project 字段;识别靠 `cronOperationId`(prompt 匹配 WIKI_OPERATIONS)。
+- 长期绑定 = 该 project 的 archivist cron 集合(每操作一条,共用 agentId),不新建 project 字段;识别靠 `cron.source`(=`archivist-bind:<operationId>`,稳定,不依赖 prompt 文本)。
 - 双触发:定时 cron(alarm) + git-aware cron(interval,prompt 带 sentinel,fireAgent 检查 git ref 变化才跑,无变化跳过;`last_git_ref` 列记录上次 ref)。
 
 **Consequences**:
@@ -616,7 +616,7 @@ graph TB
 - ✅ 无 fallback 避免幽灵角色 agent;用户显式选 agent + 校验 Wiki 工具。
 - ⚠️ WORKFLOW_ROLES.archivist 配置保留(m2 测试断言),但运行时不再读 —— 待全面弃用 epic 时清理。
 - ⚠️ git-aware 是轮询(默认 10min)非真事件;真 post-commit hook 标后续(侵入 .git/hooks)。
-- ⚠️ cronOperationId 靠 prompt 反查,custom prompt 的 cron 不归入绑定(可接受)。
+- ⚠️ cronOperationId 靠 prompt 反查,custom prompt 的 cron 不归入绑定(可接受)。**已修复**:改用 `cron.source` 列(=`archivist-bind:<opId>`)标记绑定 cron,稳定 —— prompt 改/自定义都不影响识别。
 
 **Code evidence**:`server/agent-service.ts:sendProjectPrompt`、`server/enrichment-runner.ts`(去-role+无 fallback)、`server/template-store.ts:mergeBuiltInTemplates`(Archivist 画廊例外)、`server/wiki-operations.ts`(WIKI_OPERATIONS + agentHasWikiTool + git-aware sentinel)、`server/cron-analysis.ts:fireAgent`(project-scoped 走 sendProjectPrompt + git-aware 检查)、`server/management-service.ts`(bind/unbind/switch/enabled/binding)。
 

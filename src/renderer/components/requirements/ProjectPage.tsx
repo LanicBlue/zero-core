@@ -77,11 +77,6 @@ export default function ProjectPage() {
 	const [container, setContainer] = useState<ProjectContainerView | null>(null);
 	const [usage, setUsage] = useState<ProjectResourceUsage | null>(null);
 	const [showCreate, setShowCreate] = useState(false);
-	// Run archivist agent picker (v0.8: enrich 可选 agent 实例 + 操作 + 自定义 prompt)
-	const [showEnrichPicker, setShowEnrichPicker] = useState(false);
-	const [enrichAgentId, setEnrichAgentId] = useState<string>("");
-	const [enrichOperationId, setEnrichOperationId] = useState<WikiOperationId>("wiki-enrich");
-	const [enrichCustomPrompt, setEnrichCustomPrompt] = useState<string>("");
 	// Create form state
 	const [newName, setNewName] = useState("");
 	const [newDir, setNewDir] = useState("");
@@ -161,28 +156,11 @@ export default function ProjectPage() {
 		}
 	}, [removeProject, fetchProjects]);
 
-	// 手动起 agent 做 wiki 维护(后台、非阻塞)。v0.8 去-role + 无 fallback:
-	// agentId 必填(必须选已存在、配了 Wiki 工具的 agent),operationId 选操作,
-	// customPrompt 覆盖操作默认 prompt。
-	const handleEnrich = useCallback(async (id: string, agentId: string, operationId: WikiOperationId, customPrompt?: string) => {
-		setShowEnrichPicker(false);
-		try {
-			const r = await api().projectsEnrich(id, { via: { agentId }, operationId, prompt: customPrompt || undefined });
-			alert(`已起 wiki 维护任务(后台运行)。\njob: ${r.jobId}\nsession: ${r.sessionId}`);
-			refreshContainer(id);
-		} catch (e) {
-			alert(`Enrich failed: ${(e as Error).message}`);
-		}
-	}, [refreshContainer]);
 
 	const selectedProject = useMemo(
 		() => projects.find((p) => p.id === selectedProjectId) ?? null,
 		[projects, selectedProjectId],
 	);
-
-	// enrich picker:当前选中 agent 的 Wiki 工具校验(无 Wiki 工具 → 禁用 Run + 提醒)。
-	const enrichSelectedAgent = agents.find((a) => a.id === enrichAgentId);
-	const enrichWikiOk = !!enrichSelectedAgent && !enrichSelectedAgent.toolPolicy?.blockedTools?.includes("Wiki");
 
 	return (
 		<div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-primary, #1a1a1c)" }}>
@@ -277,25 +255,6 @@ export default function ProjectPage() {
 						{selectedProject && (
 							<>
 								<div style={{ flex: 1 }} />
-								<button
-									type="button"
-									onClick={() => {
-									const firstWikiAgent = agents.find((a) => !a.toolPolicy?.blockedTools?.includes("Wiki"));
-									setEnrichAgentId(firstWikiAgent?.id ?? agents[0]?.id ?? "");
-									setEnrichOperationId("wiki-enrich");
-									setEnrichCustomPrompt("");
-									setShowEnrichPicker(true);
-								}}
-									title="起 agent 维护 wiki(后台,可选 agent/操作/自定义 prompt)"
-									style={{
-										alignSelf: "center", marginRight: 8,
-										padding: "3px 10px", background: "transparent",
-										border: "1px solid #2196F3", borderRadius: 4,
-										color: "#2196F3", fontSize: 11, cursor: "pointer",
-									}}
-								>
-									Run archivist
-								</button>
 								<button
 									type="button"
 									onClick={() => handleDelete(selectedProject.id)}
@@ -406,64 +365,6 @@ export default function ProjectPage() {
 				</div>
 			)}
 
-			{showEnrichPicker && selectedProject && (
-				<div
-					style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
-					onClick={() => setShowEnrichPicker(false)}
-				>
-					<div
-						onClick={(e) => e.stopPropagation()}
-						style={{ width: 380, background: "var(--bg-secondary, #1c1c1e)", border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 20 }}
-					>
-						<div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary, #e0e0e0)", marginBottom: 8 }}>
-							Run archivist — wiki 维护
-						</div>
-						<div style={{ fontSize: 11, color: "var(--text-secondary, #888)", marginBottom: 12 }}>
-							选一个配置了 Wiki 工具的 agent + 操作。无 fallback —— 必须选已存在的 agent。
-						</div>
-
-						<label style={{ fontSize: 11, color: "var(--text-secondary, #888)" }}>Agent</label>
-						<select aria-label="Select agent for archivist" value={enrichAgentId} onChange={(e) => setEnrichAgentId(e.target.value)} style={{ ...inputStyle, marginBottom: 4 }}>
-							<option value="">-- 选择 agent --</option>
-							{agents.map((a) => {
-								const ok = !a.toolPolicy?.blockedTools?.includes("Wiki");
-								return <option key={a.id} value={a.id}>{a.name}{ok ? "" : " (无 Wiki 工具)"}</option>;
-							})}
-						</select>
-						<div style={{ fontSize: 11, marginBottom: 12, color: enrichWikiOk ? "var(--success, #7ee787)" : "var(--danger, #f85149)" }}>
-							{enrichAgentId ? (enrichWikiOk ? "✓ 已配置 Wiki 工具" : "✗ 未配置 Wiki 工具,无法维护 wiki(从 Archivist 模板创建一个)") : "请选择 agent"}
-						</div>
-
-						<label style={{ fontSize: 11, color: "var(--text-secondary, #888)" }}>操作</label>
-						<select aria-label="Select wiki operation" value={enrichOperationId} onChange={(e) => setEnrichOperationId(e.target.value as WikiOperationId)} style={{ ...inputStyle, marginBottom: 12 }}>
-							<option value="wiki-enrich">Wiki 充实(给空节点写详 doc)</option>
-							<option value="doc-rebuild">Doc 重建(全量重扫 + LLM 写 summary)</option>
-							<option value="git-update">Git 增量更新(只更新变化文件)</option>
-						</select>
-
-						<label style={{ fontSize: 11, color: "var(--text-secondary, #888)" }}>自定义 prompt(可选,覆盖操作默认)</label>
-						<textarea
-							aria-label="Custom prompt"
-							value={enrichCustomPrompt}
-							onChange={(e) => setEnrichCustomPrompt(e.target.value)}
-							placeholder="留空用所选操作的默认 prompt"
-							rows={3}
-							style={{ ...inputStyle, width: "100%", marginBottom: 12, resize: "vertical" }}
-						/>
-						<div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
-							<button type="button" onClick={() => setShowEnrichPicker(false)} style={cancelBtnStyle}>Cancel</button>
-							<button
-								type="button"
-								disabled={!enrichAgentId || !enrichWikiOk}
-								onClick={() => handleEnrich(selectedProject.id, enrichAgentId, enrichOperationId, enrichCustomPrompt || undefined)}
-								style={{ ...primaryBtnStyle, opacity: (!enrichAgentId || !enrichWikiOk) ? 0.5 : 1, cursor: (!enrichAgentId || !enrichWikiOk) ? "not-allowed" : "pointer" }}
-							>
-								Run
-							</button>
-						</div>
-					</div>
-				</div>
-			)}
 		</div>
 	);
 }
@@ -737,6 +638,10 @@ function ArchivistBindingCard({ projectId, binding, agents, onRefresh }: {
 		try { await api().projectsArchivistSetEnabled(projectId, !allEnabled); onRefresh(); }
 		catch (e) { alert(`Toggle failed: ${(e as Error).message}`); }
 	};
+	const doTrigger = async (cronId: string) => {
+		try { await api().cronsTrigger(cronId); alert("已触发,后台运行(完成写回 cron_runs)"); }
+		catch (e) { alert(`Trigger failed: ${(e as Error).message}`); }
+	};
 
 	const cardStyle: React.CSSProperties = { border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 12, marginBottom: 12, background: "var(--bg-secondary, #1c1c1e)" };
 	const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--text-secondary, #888)" };
@@ -764,8 +669,9 @@ function ArchivistBindingCard({ projectId, binding, agents, onRefresh }: {
 						{binding!.gitAware && <span style={{ color: "var(--success, #7ee787)" }}> (git 变更触发)</span>}
 					</div>
 					{ops.map((op) => (
-						<div key={op.cronId} style={{ fontSize: 11, color: "var(--text-secondary, #888)", marginBottom: 2 }}>
-							{op.operationId} — {op.enabled ? "启用" : "暂停"} · 上次:{op.lastStatus ?? "—"} {op.lastRunAt ?? ""} · 下次:{op.nextRunAt ?? "—"}
+						<div key={op.cronId} style={{ fontSize: 11, color: "var(--text-secondary, #888)", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
+							<span>{op.operationId} — {op.enabled ? "启用" : "暂停"} · 上次:{op.lastStatus ?? "—"} {op.lastRunAt ?? ""} · 下次:{op.nextRunAt ?? "—"}</span>
+							<button type="button" onClick={() => doTrigger(op.cronId)} style={ghostBtnStyle}>立即触发</button>
 						</div>
 					))}
 				</div>

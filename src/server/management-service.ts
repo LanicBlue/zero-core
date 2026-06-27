@@ -67,7 +67,7 @@ import type {
 import type { TemplateStore } from "./template-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import { BUILTIN_WORKFLOW_ROLES } from "./builtin-role-templates.js";
-import { resolveOperationPrompt, agentHasWikiTool, WIKI_OPERATIONS, type WikiOperationId, wrapGitAwarePrompt, isGitAwarePrompt, stripGitAwareSentinel } from "./wiki-operations.js";
+import { resolveOperationPrompt, agentHasWikiTool, WIKI_OPERATIONS, type WikiOperationId, wrapGitAwarePrompt, isGitAwarePrompt } from "./wiki-operations.js";
 import { log } from "../core/logger.js";
 
 export interface ManagementDeps {
@@ -633,6 +633,7 @@ export class ManagementService {
 		workingScope: CronRecord["workingScope"];
 		schedule: CronRecord["schedule"];
 		prompt?: string;
+		source?: string;
 		enabled?: boolean;
 	}): CronRecord {
 		const store = this.requireCronStore();
@@ -651,6 +652,7 @@ export class ManagementService {
 			workingScope: scope,
 			schedule: input.schedule,
 			prompt: input.prompt,
+			source: input.source,
 			enabled: input.enabled ?? true,
 		});
 	}
@@ -713,13 +715,14 @@ export class ManagementService {
 		const crons: CronRecord[] = [];
 		for (const opId of opts.operations) {
 			const opPrompt = resolveOperationPrompt(opId, undefined, project.name);
-			crons.push(this.createCron({ agentId: opts.agentId, workingScope, schedule: opts.schedule, prompt: opPrompt, enabled: true }));
+			crons.push(this.createCron({ agentId: opts.agentId, workingScope, schedule: opts.schedule, prompt: opPrompt, source: `archivist-bind:${opId}`, enabled: true }));
 			if (opts.gitAware && (opId === "doc-rebuild" || opId === "git-update")) {
 				crons.push(this.createCron({
 					agentId: opts.agentId,
 					workingScope,
 					schedule: { mode: "interval", everyMs: opts.gitEveryMs ?? 600000 } as CronSchedule,
 					prompt: wrapGitAwarePrompt(opPrompt),
+					source: `archivist-bind:${opId}`,
 					enabled: true,
 				}));
 			}
@@ -785,19 +788,15 @@ export class ManagementService {
 	}
 
 	/**
-	 * 反查 cron 是否为 archivist 绑定操作(prompt 匹配 WIKI_OPERATIONS 的操作 prompt,
-	 * 含 projectName 替换)。custom prompt 或观察 cron 返回 null(不归入绑定)。
+	 * 判定 cron 是否为 archivist 绑定操作,返回其 operationId。靠 cron.source
+	 * (`archivist-bind:<operationId>`) —— 不再 prompt 反查(稳定,prompt 改/自定义
+	 * prompt 都不影响识别)。非绑定 cron(无 source 或后缀非合法 operationId)返回 null。
 	 */
 	private cronOperationId(cron: CronRecord): WikiOperationId | null {
-		if (!cron.prompt) return null;
-		const raw = stripGitAwareSentinel(cron.prompt);
-		const project = cron.workingScope.projectId ? this.projectStore.get(cron.workingScope.projectId) : undefined;
-		const name = project?.name;
-		for (const op of WIKI_OPERATIONS) {
-			const expected = name ? op.prompt.replaceAll("{projectName}", name) : op.prompt;
-			if (raw === expected) return op.id;
-		}
-		return null;
+		const prefix = "archivist-bind:";
+		if (!cron.source || !cron.source.startsWith(prefix)) return null;
+		const opId = cron.source.slice(prefix.length) as WikiOperationId;
+		return WIKI_OPERATIONS.some((o) => o.id === opId) ? opId : null;
 	}
 
 	/**

@@ -823,6 +823,11 @@ export interface CronRecord {
 	 */
 	lastGitRef?: string;
 	prompt?: string;
+	/**
+	 * v0.8 cron 来源标记。archivist 绑定 cron = `archivist-bind:<operationId>`
+	 * (同时编码"是绑定 cron" + 哪个操作,摆脱 prompt 反查)。其他 cron 留空。
+	 */
+	source?: string;
 	enabled: boolean;
 	createdAt: string;
 	updatedAt: string;
