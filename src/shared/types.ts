@@ -480,6 +480,8 @@ export interface ProjectArchivistBinding {
 		nextRunAt?: string;
 		lastStatus?: string;
 	}>;
+	/** 是否有 git-aware cron(git 变更触发)。 */
+	gitAware: boolean;
 }
 
 /**
@@ -815,6 +817,11 @@ export interface CronRecord {
 	lastError?: string;
 	/** Telemetry: next fire timestamp the scheduler computed (ISO). */
 	nextRunAt?: string;
+	/**
+	 * v0.8 git-aware cron(阶段3):上次触发时的 git main ref。下次触发前对比,
+	 * 无变化则跳过(实现"git 变更即时响应",复用 cron 轮询,零事件机制)。
+	 */
+	lastGitRef?: string;
 	prompt?: string;
 	enabled: boolean;
 	createdAt: string;

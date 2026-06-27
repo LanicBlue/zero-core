@@ -136,3 +136,26 @@ export function resolveOperationPrompt(
 	const prompt = op.prompt;
 	return projectName ? prompt.replaceAll("{projectName}", projectName) : prompt;
 }
+
+// ---------------------------------------------------------------------------
+// git-aware cron(阶段3)—— "git 变更触发"用 sentinel 标记 cron.prompt,
+// cron-analysis 触发前检查 git ref 变化,无变化跳过。复用 cron 轮询,零事件机制。
+// ---------------------------------------------------------------------------
+
+/** cron.prompt 前缀 sentinel,标记该 cron 为 git-aware(变更才触发)。 */
+export const GIT_AWARE_SENTINEL = "<!-- zero:git-aware:1 -->";
+
+/** 把操作 prompt 包装成 git-aware(sentinel 前缀,LLM 会忽略 HTML 注释)。 */
+export function wrapGitAwarePrompt(prompt: string): string {
+	return `${GIT_AWARE_SENTINEL}\n${prompt}`;
+}
+
+/** cron.prompt 是否标记为 git-aware。 */
+export function isGitAwarePrompt(prompt: string | undefined): boolean {
+	return !!prompt && prompt.startsWith(GIT_AWARE_SENTINEL);
+}
+
+/** 去掉 sentinel,返回传给 LLM 的纯操作 prompt。 */
+export function stripGitAwareSentinel(prompt: string): string {
+	return prompt.startsWith(GIT_AWARE_SENTINEL) ? prompt.slice(GIT_AWARE_SENTINEL.length).replace(/^\n/, "") : prompt;
+}

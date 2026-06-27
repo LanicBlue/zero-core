@@ -43,6 +43,8 @@ import type { AgentService } from "./agent-service.js";
 import type { AgentStore } from "./agent-store.js";
 import type { ProjectStore } from "./project-store.js";
 import type { WikiStore } from "./wiki-node-store.js";
+import type { ArchivistGit } from "./archivist-git.js";
+import { isGitAwarePrompt, stripGitAwareSentinel } from "./wiki-operations.js";
 import type { SessionDB } from "./session-db.js";
 import type { CronStore, CronRunStore } from "./cron-store.js";
 import type {
@@ -310,6 +312,11 @@ export interface CronAnalysisDeps {
 	 * (无 wiki 维护能力,仅观察/巡检)。
 	 */
 	wikiStore?: WikiStore;
+	/**
+	 * v0.8 阶段3 git-aware cron:触发前用 archivistGit.getCurrentMainRef 检查
+	 * git main ref 变化,无变化跳过(实现"git 变更即时响应",复用 cron 轮询)。
+	 */
+	archivistGit?: ArchivistGit;
 	/**
 	 * Optional clock override (defaults to Date.now). Injected by tests to
 	 * drive the scheduler without waiting on real time; production callers
@@ -690,22 +697,43 @@ export class CronAnalysisManager {
 
 	/**
 	 * 触发执行(去-role 分支):
-	 * - project-scoped cron + 注入了 wikiStore → sendProjectPrompt,注入
-	 *   wikiStore/projectContext(archivist 长期绑定能干 wiki 维护活的关键)。
+	 * - 阶段3 git-aware:prompt 带 sentinel + 注入了 archivistGit → 触发前检查
+	 *   git main ref,与 cron.lastGitRef 相同则跳过(无变化);有变化则 strip sentinel
+	 *   跑,跑成功后回写 lastGitRef(下次同 ref 跳过)。
+	 * - project-scoped cron + 注入了 wikiStore → sendProjectPrompt(注入
+	 *   wikiStore/projectContext,archivist 长期绑定能干 wiki 维护活的关键)。
 	 * - 否则(观察 cron 或未注入 wikiStore) → sendPrompt(原行为)。
 	 */
 	private async fireAgent(cron: CronRecord, agent: AgentRecord, prompt: string, sessionId: string): Promise<void> {
 		const scope = cron.workingScope;
+		let effectivePrompt = prompt;
+		let newGitRef: string | undefined;
+		if (isGitAwarePrompt(prompt) && this.deps.archivistGit && scope.workspaceDir) {
+			const ref = await this.deps.archivistGit.getCurrentMainRef(scope.workspaceDir);
+			if (ref && ref === cron.lastGitRef) {
+				log.debug("cron", `git-aware cron ${cron.id} skipped: no git changes (ref=${ref})`);
+				return;
+			}
+			effectivePrompt = stripGitAwareSentinel(prompt);
+			newGitRef = ref; // 跑成功后回写
+		}
 		if (scope.projectId && this.deps.wikiStore) {
 			const project = this.deps.projectStore.get(scope.projectId);
-			await this.deps.agentService.sendProjectPrompt(agent.id, sessionId, prompt, {
+			await this.deps.agentService.sendProjectPrompt(agent.id, sessionId, effectivePrompt, {
 				projectId: scope.projectId,
 				projectPath: project?.workspaceDir ?? scope.workspaceDir,
 				projectName: project?.name ?? "",
 				wikiStore: this.deps.wikiStore,
 			});
 		} else {
-			await this.deps.agentService.sendPrompt(prompt, agent, sessionId);
+			await this.deps.agentService.sendPrompt(effectivePrompt, agent, sessionId);
+		}
+		if (newGitRef) {
+			try {
+				this.deps.cronStore.update(cron.id, { lastGitRef: newGitRef } as any);
+			} catch (e) {
+				log.warn("cron", `git-aware lastGitRef update failed for ${cron.id}: ${(e as Error).message}`);
+			}
 		}
 	}
 

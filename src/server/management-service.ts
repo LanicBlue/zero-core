@@ -67,7 +67,7 @@ import type {
 import type { TemplateStore } from "./template-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import { BUILTIN_WORKFLOW_ROLES } from "./builtin-role-templates.js";
-import { resolveOperationPrompt, agentHasWikiTool, WIKI_OPERATIONS, type WikiOperationId } from "./wiki-operations.js";
+import { resolveOperationPrompt, agentHasWikiTool, WIKI_OPERATIONS, type WikiOperationId, wrapGitAwarePrompt, isGitAwarePrompt, stripGitAwareSentinel } from "./wiki-operations.js";
 import { log } from "../core/logger.js";
 
 export interface ManagementDeps {
@@ -699,7 +699,7 @@ export class ManagementService {
 	 * cron(prompt = 操作默认 prompt)。校验 agent 配了 Wiki 工具(无 fallback)。
 	 * 注:不清理旧绑定 cron —— 调用方需先 unbindProjectArchivist。
 	 */
-	bindProjectArchivist(projectId: string, opts: { agentId: string; operations: WikiOperationId[]; schedule: CronSchedule }): CronRecord[] {
+	bindProjectArchivist(projectId: string, opts: { agentId: string; operations: WikiOperationId[]; schedule: CronSchedule; gitAware?: boolean; gitEveryMs?: number }): CronRecord[] {
 		const project = this.projectStore.get(projectId);
 		if (!project) throw new Error(`Project not found: ${projectId}`);
 		const agent = this.agentStore.get(opts.agentId);
@@ -708,15 +708,23 @@ export class ManagementService {
 			throw new Error(`Agent "${agent.name}" has the Wiki tool blocked — cannot bind. Use an agent with the Wiki tool (e.g. create one from the Archivist template).`);
 		}
 		const workingScope = { projectId, workspaceDir: project.workspaceDir, wikiRootNodeId: `wiki-root:${projectId}` };
-		return opts.operations.map((opId) =>
-			this.createCron({
-				agentId: opts.agentId,
-				workingScope,
-				schedule: opts.schedule,
-				prompt: resolveOperationPrompt(opId, undefined, project.name),
-				enabled: true,
-			}),
-		);
+		// 阶段3:gitAware 时对 doc-rebuild/git-update 额外建一条 interval cron
+		// (prompt 带 sentinel,cron-analysis 触发前检查 git ref 变化才跑)。
+		const crons: CronRecord[] = [];
+		for (const opId of opts.operations) {
+			const opPrompt = resolveOperationPrompt(opId, undefined, project.name);
+			crons.push(this.createCron({ agentId: opts.agentId, workingScope, schedule: opts.schedule, prompt: opPrompt, enabled: true }));
+			if (opts.gitAware && (opId === "doc-rebuild" || opId === "git-update")) {
+				crons.push(this.createCron({
+					agentId: opts.agentId,
+					workingScope,
+					schedule: { mode: "interval", everyMs: opts.gitEveryMs ?? 600000 } as CronSchedule,
+					prompt: wrapGitAwarePrompt(opPrompt),
+					enabled: true,
+				}));
+			}
+		}
+		return crons;
 	}
 
 	/** 解绑:删该 project 所有 archivist 绑定 cron(prompt 匹配 WIKI_OPERATIONS 的)。 */
@@ -766,11 +774,13 @@ export class ManagementService {
 		}
 		const agentId = ops[0]?.agentId ?? null;
 		const agentName = agentId ? (this.agentStore.get(agentId)?.name ?? null) : null;
+		const gitAware = crons.some((c) => isGitAwarePrompt(c.prompt));
 		return {
 			projectId,
 			agentId,
 			agentName,
 			operations: ops.map(({ agentId: _agentId, ...rest }) => rest),
+			gitAware,
 		};
 	}
 
@@ -780,11 +790,12 @@ export class ManagementService {
 	 */
 	private cronOperationId(cron: CronRecord): WikiOperationId | null {
 		if (!cron.prompt) return null;
+		const raw = stripGitAwareSentinel(cron.prompt);
 		const project = cron.workingScope.projectId ? this.projectStore.get(cron.workingScope.projectId) : undefined;
 		const name = project?.name;
 		for (const op of WIKI_OPERATIONS) {
 			const expected = name ? op.prompt.replaceAll("{projectName}", name) : op.prompt;
-			if (cron.prompt === expected) return op.id;
+			if (raw === expected) return op.id;
 		}
 		return null;
 	}

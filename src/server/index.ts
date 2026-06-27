@@ -407,6 +407,7 @@ export async function startServer(options?: StartServerOptions) {
 		cronStore,
 		cronRunStore,
 		wikiStore: wikiStoreGlobal,
+		archivistGit,
 	});
 
 	// v0.8 P7 (RFC §1.5): NO ProjectNotificationRouter — cross-role reactions

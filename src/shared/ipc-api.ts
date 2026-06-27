@@ -184,7 +184,7 @@ export interface IpcChannelDefs {
 	"projects:delete":           { params: [id: string];                             result: Ok };
 	"projects:getResourceUsage": { params: [id: string];                             result: ProjectResourceUsage };
 	"projects:enrich":           { params: [id: string, body?: EnrichProjectBody];   result: { jobId: string; sessionId: string } };
-	"projects:archivistBind":      { params: [id: string, body: { agentId: string; operations: WikiOperationId[]; schedule: CronSchedule }]; result: { binding: ProjectArchivistBinding } };
+	"projects:archivistBind":      { params: [id: string, body: { agentId: string; operations: WikiOperationId[]; schedule: CronSchedule; gitAware?: boolean; gitEveryMs?: number }]; result: { binding: ProjectArchivistBinding } };
 	"projects:archivistUnbind":    { params: [id: string];                              result: Ok };
 	"projects:archivistSwitchAgent": { params: [id: string, agentId: string];          result: { binding: ProjectArchivistBinding } };
 	"projects:archivistSetEnabled": { params: [id: string, enabled: boolean];         result: { binding: ProjectArchivistBinding } };

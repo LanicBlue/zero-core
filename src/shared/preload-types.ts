@@ -226,7 +226,7 @@ export interface WindowApi {
 	projectsGetResourceUsage: (id: string) => Promise<ProjectResourceUsage>;
 	/** 手动起 archivist agent 深度充实 wiki(后台、非阻塞)。 */
 	projectsEnrich: (id: string, body?: EnrichProjectBody) => Promise<{ jobId: string; sessionId: string }>;
-	projectsArchivistBind: (id: string, body: { agentId: string; operations: WikiOperationId[]; schedule: CronSchedule }) => Promise<{ binding: ProjectArchivistBinding }>;
+	projectsArchivistBind: (id: string, body: { agentId: string; operations: WikiOperationId[]; schedule: CronSchedule; gitAware?: boolean; gitEveryMs?: number }) => Promise<{ binding: ProjectArchivistBinding }>;
 	projectsArchivistUnbind: (id: string) => Promise<{ success: true }>;
 	projectsArchivistSwitchAgent: (id: string, agentId: string) => Promise<{ binding: ProjectArchivistBinding }>;
 	projectsArchivistSetEnabled: (id: string, enabled: boolean) => Promise<{ binding: ProjectArchivistBinding }>;

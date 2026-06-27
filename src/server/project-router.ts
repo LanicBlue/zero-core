@@ -144,11 +144,11 @@ export function createProjectRouter(deps: {
 		if (!p) return res.status(404).json({ error: "Project not found" });
 		if (!management) return res.status(503).json({ error: "ManagementService not available" });
 		try {
-			const { agentId, operations, schedule } = req.body ?? {};
+			const { agentId, operations, schedule, gitAware, gitEveryMs } = req.body ?? {};
 			if (!agentId || !Array.isArray(operations) || !schedule) {
 				return res.status(400).json({ error: "agentId, operations[], schedule required" });
 			}
-			management.bindProjectArchivist(p.id, { agentId, operations, schedule });
+			management.bindProjectArchivist(p.id, { agentId, operations, schedule, gitAware, gitEveryMs });
 			res.status(201).json({ binding: management.getProjectArchivistBinding(p.id) });
 		} catch (e) {
 			res.status(400).json({ error: (e as Error).message });

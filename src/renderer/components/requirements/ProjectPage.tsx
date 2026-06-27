@@ -692,6 +692,7 @@ function ArchivistBindingCard({ projectId, binding, agents, onRefresh }: {
 	const [bindAgentId, setBindAgentId] = useState("");
 	const [bindOps, setBindOps] = useState<WikiOperationId[]>(["wiki-enrich"]);
 	const [bindTime, setBindTime] = useState("09:00");
+	const [bindGitAware, setBindGitAware] = useState(false);
 
 	const ops = binding?.operations ?? [];
 	const bound = !!binding?.agentId;
@@ -702,6 +703,7 @@ function ArchivistBindingCard({ projectId, binding, agents, onRefresh }: {
 		setBindAgentId(wikiAgents[0]?.id ?? agents[0]?.id ?? "");
 		setBindOps(["wiki-enrich"]);
 		setBindTime("09:00");
+		setBindGitAware(false);
 		setShowBind(true);
 	};
 	const doBind = async () => {
@@ -711,6 +713,7 @@ function ArchivistBindingCard({ projectId, binding, agents, onRefresh }: {
 				agentId: bindAgentId,
 				operations: bindOps,
 				schedule: { mode: "alarm", time: bindTime, days: [], tz: "Asia/Shanghai" } as CronSchedule,
+				gitAware: bindGitAware,
 			});
 			setShowBind(false);
 			onRefresh();
@@ -758,6 +761,7 @@ function ArchivistBindingCard({ projectId, binding, agents, onRefresh }: {
 					<div style={{ fontSize: 12, color: "var(--text-primary, #e0e0e0)", marginBottom: 6 }}>
 						当前管理者: <strong>{binding!.agentName}</strong>
 						{!allEnabled && <span style={{ color: "var(--warning, #d29922)" }}> (已暂停)</span>}
+						{binding!.gitAware && <span style={{ color: "var(--success, #7ee787)" }}> (git 变更触发)</span>}
 					</div>
 					{ops.map((op) => (
 						<div key={op.cronId} style={{ fontSize: 11, color: "var(--text-secondary, #888)", marginBottom: 2 }}>
@@ -788,6 +792,9 @@ function ArchivistBindingCard({ projectId, binding, agents, onRefresh }: {
 						</div>
 						<label style={labelStyle}>每日定时(alarm)</label>
 						<input type="time" aria-label="Schedule time" value={bindTime} onChange={(e) => setBindTime(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+						<label style={{ fontSize: 12, color: "var(--text-primary, #e0e0e0)", display: "block", marginBottom: 12 }}>
+							<input type="checkbox" checked={bindGitAware} onChange={(e) => setBindGitAware(e.target.checked)} /> git 变更触发(额外建高频轮询 cron,git 无变化时自动跳过 —— doc重建/git更新)
+						</label>
 						<div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
 							<button type="button" onClick={() => setShowBind(false)} style={cancelBtnStyle}>Cancel</button>
 							<button type="button" disabled={!bindAgentId || bindOps.length === 0 || wikiAgents.length === 0} onClick={doBind} style={{ ...primaryBtnStyle, opacity: (!bindAgentId || bindOps.length === 0 || wikiAgents.length === 0) ? 0.5 : 1 }}>绑定</button>

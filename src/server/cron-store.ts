@@ -50,6 +50,7 @@ const COLUMNS: ColumnDef[] = [
 	{ key: "lastStatus", column: "last_status" },
 	{ key: "lastError", column: "last_error" },
 	{ key: "nextRunAt", column: "next_run_at" },
+	{ key: "lastGitRef", column: "last_git_ref" },
 	{ key: "prompt" },
 	{ key: "enabled", bool: true },
 	{ key: "createdAt", column: "created_at" },
