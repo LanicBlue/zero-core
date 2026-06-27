@@ -176,7 +176,9 @@ runtime/hooks/
 
 ### 4.1 Stores
 
-v0.8 后共 **~26 个 store 类、分布在 21 个文件**（不含 `sqlite-store.ts` 抽象基类 / `key-value-store.ts` KV 接口实现 / `message-store.ts` 已废文件存储）。按归属方式分三类：
+v0.8 后共 **~26 个 store 类、分布在 21 个文件**（不含 `sqlite-store.ts` 抽象基类 / `key-value-store.ts` KV 接口实现 / `message-store.ts` 已废文件存储）。按归属方式分四类（A/B/C/D）：
+
+> **切分视角说明**：这里的 A/B/C/D 是按**归属方式**（是否挂 SessionDB + v0.8 阶段）切的；[`file-structure.md`](../basic/file-structure.md) 的 server 章节（§"数据存储"）则按**业务域**切（会话核心 / 旧业务实体 / 工作流域，再分路由层 + 服务编排）。两种切分是**正交**的，不强行统一：本节关心"谁持有 store 引用、store 怎么被 new 出来"，`file-structure.md` 关心"store 属于哪个业务域、跟哪些 router/service 配套"。同一 store 在两种视角下归类可能不同（例如 `wiki-node-store.ts` 在本节属 C 类工作流域，但在域视角下跨"会话核心回退 + Wiki 镜像"两个域），这是预期的。
 
 **A. SessionDB 直接聚合 store**（5 个，`session-db.ts:69-105` 持有引用 + getter）—— 详见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store)：
 
