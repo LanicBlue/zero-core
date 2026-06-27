@@ -10,7 +10,7 @@
 //
 // ## 输出
 // - 配置相关：loadConfig, DEFAULT_CONFIG, ZeroCoreConfigSchema 等
-// - 核心逻辑：buildSystemPrompt, shouldPrune, evaluateToolCall 等
+// - 核心逻辑：buildSystemPrompt, shouldPrune 等
 // - 运行时：AgentLoop, StreamEvent, RuntimeProviderConfig 等
 //
 // ## 定位
@@ -36,7 +36,7 @@ export type { ZeroCoreConfig } from "./core/config.js";
 // Core logic
 export { buildSystemPrompt } from "./core/system-prompt.js";
 export { shouldPrune, pruneMessages } from "./core/context-manager.js";
-export { evaluateToolCall, requiresApproval, transformToolResult } from "./core/tool-policy.js";
+export { transformToolResult } from "./core/tool-policy.js";
 
 // Runtime
 export { AgentLoop } from "./runtime/agent-loop.js";

@@ -34,60 +34,11 @@ export interface ToolCallDecision {
 	autoApprove?: boolean;
 }
 
-export function evaluateToolCall(
-	config: ZeroCoreConfig,
-	toolName: string,
-): ToolCallDecision {
-	const policy = config.toolPolicy;
-
-	// 1. Blocked tools — hard deny
-	if (policy.blockedTools?.length && policy.blockedTools.includes(toolName)) {
-		return { block: true, reason: `Tool "${toolName}" is blocked by policy` };
-	}
-
-	// 2. Allowed list — if set, only these are permitted
-	if (policy.allowedTools?.length && !policy.allowedTools.includes(toolName)) {
-		return { block: true, reason: `Tool "${toolName}" is not in the allowed list` };
-	}
-
-	// 3. Category-level block
-	if (policy.toolCategories) {
-		for (const [, cat] of Object.entries(policy.toolCategories)) {
-			if (cat.blocked) {
-				// Category-level block applies to tools matching the category name
-				// (categories are matched by prefix, e.g. "bash" blocks "Bash" tool)
-				if (toolName.startsWith(Object.keys(policy.toolCategories).find(
-					(k) => policy.toolCategories![k] === cat,
-				) ?? "")) {
-					return { block: true, reason: `Tool "${toolName}" is in a blocked category` };
-				}
-			}
-		}
-	}
-
-	// 4. Auto-approve
-	const autoApprove = policy.autoApprove?.includes(toolName) ?? false;
-
-	return { block: false, autoApprove };
-}
-
-export function requiresApproval(config: ZeroCoreConfig, toolName: string): boolean {
-	// If explicitly auto-approved, no approval needed
-	if (config.toolPolicy.autoApprove?.includes(toolName)) {
-		return false;
-	}
-
-	// Check toolCategories for requireApproval
-	if (config.toolPolicy.toolCategories) {
-		for (const [catName, cat] of Object.entries(config.toolPolicy.toolCategories)) {
-			if (cat.requireApproval && toolName.startsWith(catName)) {
-				return true;
-			}
-		}
-	}
-
-	return false;
-}
+// ---------------------------------------------------------------------------
+// NOTE: evaluateToolCall / requiresApproval were removed — they were dead code
+// (exported but never called). The actual tool filter is buildToolsSet
+// (src/runtime/tools/index.ts), which reads blockedTools once when building the
+// toolset passed to the LLM. There is no separate runtime re-check.
 
 // ---------------------------------------------------------------------------
 // Tool result transform

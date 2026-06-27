@@ -30,7 +30,6 @@ import { homedir } from "node:os";
 import { ZERO_CORE_DIR } from "../core/config.js";
 import { SqliteStore } from "./sqlite-store.js";
 import { KeyValueStore } from "./key-value-store.js";
-import { MemoryStore } from "./memory-store.js";
 import { log } from "../core/logger.js";
 import { buildDefaultPrompt } from "../core/default-prompt.js";
 import type { AgentRecord } from "../shared/types.js";
@@ -583,7 +582,6 @@ function migrateWikiDetailToDisk(db: Database.Database): void {
 
 export function runMigrations(sessionDB: SessionDB): void {
 	const kv = sessionDB.getKVStore();
-	const memory = sessionDB.getMemoryStore();
 	const db = sessionDB.getDb();
 
 	// ─── 1. Column migrations for existing tables ────────────────
@@ -998,9 +996,14 @@ export function runMigrations(sessionDB: SessionDB): void {
 		}
 	}
 
-	// ─── 4. Memory graph migration ───────────────────────────────
-
-	memory.migrateFromJson();
+	// ─── 4. Drop legacy v0.7 memory graph tables ────────────────
+	// MemoryStore (memory_entities/memory_relations) removed in v0.8 — it was
+	// a zombie (memory-tools.ts unregistered in P2 §11.6, zero runtime
+	// writers). MemoryNodeStore (memory_nodes/_subjects/_edges/_fts) is alive
+	// and NOT dropped. v0.7 users' memory.json data lived here but nothing
+	// reads it anymore; v0.8 wiki memory fully replaces it.
+	db.exec(`DROP TABLE IF EXISTS memory_relations`);
+	db.exec(`DROP TABLE IF EXISTS memory_entities`);
 }
 
 // ---------------------------------------------------------------------------

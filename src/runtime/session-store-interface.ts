@@ -55,7 +55,6 @@ export interface ISessionStore {
 	deleteTurn(sessionId: string, seq: number): void;
 	clearTurns(sessionId: string): void;
 	getKVStore(): IKVStore;
-	getMemoryStore(): any;
 	getMemoryNodeStore(): any;
 	recordToolExecution(exec: {
 		sessionId: string;

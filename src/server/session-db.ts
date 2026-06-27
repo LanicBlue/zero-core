@@ -12,7 +12,6 @@
 // ## 输出
 // - SessionDB 实例
 // - KeyValueStore
-// - MemoryStore
 //
 // ## 定位
 // 服务层数据库，被 agent-service 使用。
@@ -32,7 +31,6 @@ import { v4 as uuidv4 } from "uuid";
 import { log } from "../core/logger.js";
 import type { SessionRecord, ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats } from "../shared/types.js";
 import { KeyValueStore } from "./key-value-store.js";
-import { MemoryStore } from "./memory-store.js";
 import { MemoryNodeStore } from "./memory-node-store.js";
 // v0.8 (M5): extractor cursor + tool telemetry stores. These back
 // extractor A's incremental cursor (mechanism 2) and extractor B's
@@ -50,7 +48,6 @@ import { ZERO_CORE_DIR } from "../core/config.js";
 export class SessionDB {
 	private db: Database.Database;
 	private kvStore: KeyValueStore;
-	private memoryStore: MemoryStore;
 	private memoryNodeStore: MemoryNodeStore;
 	// v0.8 (M5): extractor cursor + telemetry stores (lazy-init below).
 	private extractionCursorStore: ExtractionCursorStore | null = null;
@@ -67,7 +64,6 @@ export class SessionDB {
 		this.db.pragma("foreign_keys = ON");
 
 		this.kvStore = new KeyValueStore(this.db);
-		this.memoryStore = new MemoryStore(this.db);
 		this.memoryNodeStore = new MemoryNodeStore(this.db);
 
 		this.initSchema();
@@ -81,10 +77,6 @@ export class SessionDB {
 
 	getKVStore(): KeyValueStore {
 		return this.kvStore;
-	}
-
-	getMemoryStore(): MemoryStore {
-		return this.memoryStore;
 	}
 
 	getMemoryNodeStore(): MemoryNodeStore {
