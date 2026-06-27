@@ -626,6 +626,11 @@ export function runMigrations(sessionDB: SessionDB): void {
 	safeAddColumn(db, "sessions", "reasoning_tokens", "INTEGER DEFAULT 0");
 	safeAddColumn(db, "sessions", "estimated_cost_usd", "REAL DEFAULT 0");
 
+	// v0.8: archived flag — soft-delete sessions (excluded from active
+	// routing/listing/main lookup, row retained). Added here with the other
+	// sessions columns; SessionDB.initSchema also adds it idempotently.
+	safeAddColumn(db, "sessions", "archived", "INTEGER NOT NULL DEFAULT 0");
+
 	// v0.8 (M0): SessionRecord context bundle (D-B) + routing columns.
 	for (const col of SESSION_COLUMNS) {
 		const colName = col.column || col.key;

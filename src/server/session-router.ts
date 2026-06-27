@@ -128,6 +128,25 @@ export function createSessionRouter(deps: {
 		res.json({ success: true });
 	});
 
+	// Archive (soft-delete): mark the session archived=1, then create a clean
+	// replacement with the SAME (agentId, projectId) context so routing lands on
+	// a fresh session. The archived row is retained (excluded by the archived=0
+	// filters in SessionDB). If the archived one was main, hand main to the new one.
+	router.post("/:agentId/:sessionId/archive", (req, res) => {
+		const db = getDb();
+		const old = db.getSession(req.params.sessionId);
+		if (!old) return res.status(404).json({ error: "session not found" });
+		db.archiveSession(req.params.sessionId);
+		const ns = db.createSession(req.params.agentId, undefined, old.context);
+		const main = db.getMainSession(req.params.agentId); // already excludes archived
+		if (!main || main.id === req.params.sessionId) {
+			db.setMainSession(req.params.agentId, ns.id);
+		}
+		const agent = agentStore.get(req.params.agentId);
+		agentService.recreateLoop(req.params.agentId, ns.id, agent);
+		res.json({ success: true, newSessionId: ns.id });
+	});
+
 	// Messages
 	router.delete("/:agentId/messages", (req, res) => {
 		const db = getDb();

@@ -45,6 +45,7 @@ import type {
 } from "../../../shared/types.js";
 import { useProjectStore } from "../../store/project-store.js";
 import { useRequirementStore } from "../../store/requirement-store.js";
+import { useAgentStore } from "../../store/agent-store.js";
 import KanbanBoard from "./KanbanBoard.js";
 
 const api = () => (window as any).api;
@@ -65,12 +66,16 @@ type Tab = "dashboard" | "view" | "kanban";
 export default function ProjectPage() {
 	const { projects, fetchProjects, removeProject } = useProjectStore();
 	const { fetchRequirements } = useRequirementStore();
+	const { agents } = useAgentStore();
 
 	const [selectedProjectId, setSelectedProjectId] = useState<string>("");
 	const [tab, setTab] = useState<Tab>("dashboard");
 	const [container, setContainer] = useState<ProjectContainerView | null>(null);
 	const [usage, setUsage] = useState<ProjectResourceUsage | null>(null);
 	const [showCreate, setShowCreate] = useState(false);
+	// Run archivist agent picker (v0.8: enrich 可选 agent 实例)
+	const [showEnrichPicker, setShowEnrichPicker] = useState(false);
+	const [enrichAgentId, setEnrichAgentId] = useState<string>("");
 	// Create form state
 	const [newName, setNewName] = useState("");
 	const [newDir, setNewDir] = useState("");
@@ -151,10 +156,13 @@ export default function ProjectPage() {
 	}, [removeProject, fetchProjects]);
 
 	// 手动起 archivist agent 深度充实 wiki(后台、非阻塞)。
-	const handleEnrich = useCallback(async (id: string) => {
+	// agentId 可选:不传 = 用默认 archivist 角色;传 = 用指定 agent 实例(via.agentId)。
+	const handleEnrich = useCallback(async (id: string, agentId?: string) => {
+		setShowEnrichPicker(false);
 		try {
-			const r = await api().projectsEnrich(id);
-			alert(`已起 archivist 充实任务(后台运行)。\njob: ${r.jobId}\nsession: ${r.sessionId}`);
+			const via = agentId ? { agentId } : undefined;
+			const r = await api().projectsEnrich(id, via);
+			alert(`已起充实任务(后台运行)。\njob: ${r.jobId}\nsession: ${r.sessionId}`);
 			refreshContainer(id);
 		} catch (e) {
 			alert(`Enrich failed: ${(e as Error).message}`);
@@ -261,8 +269,8 @@ export default function ProjectPage() {
 								<div style={{ flex: 1 }} />
 								<button
 									type="button"
-									onClick={() => handleEnrich(selectedProject.id)}
-									title="起 archivist agent 深度充实 wiki(后台)"
+									onClick={() => { setEnrichAgentId(agents[0]?.id ?? ""); setShowEnrichPicker(true); }}
+									title="起 agent 深度充实 wiki(后台,可选 agent 实例)"
 									style={{
 										alignSelf: "center", marginRight: 8,
 										padding: "3px 10px", background: "transparent",
@@ -368,6 +376,41 @@ export default function ProjectPage() {
 								style={primaryBtnStyle}
 							>
 								{creating ? "Creating…" : "Create"}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{showEnrichPicker && selectedProject && (
+				<div
+					style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+					onClick={() => setShowEnrichPicker(false)}
+				>
+					<div
+						onClick={(e) => e.stopPropagation()}
+						style={{ width: 380, background: "var(--bg-secondary, #1c1c1e)", border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 20 }}
+					>
+						<div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary, #e0e0e0)", marginBottom: 8 }}>
+							Run archivist — 选择 agent 实例
+						</div>
+						<div style={{ fontSize: 11, color: "var(--text-secondary, #888)", marginBottom: 12 }}>
+							选一个 agent 来深度充实 wiki(用其自身的工具与设定)。留空 = 用默认 archivist 角色。
+						</div>
+						<select aria-label="Select agent for archivist" value={enrichAgentId} onChange={(e) => setEnrichAgentId(e.target.value)} style={inputStyle}>
+							<option value="">-- 默认 archivist 角色 --</option>
+							{agents.map((a) => (
+								<option key={a.id} value={a.id}>{a.name}</option>
+							))}
+						</select>
+						<div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+							<button type="button" onClick={() => setShowEnrichPicker(false)} style={cancelBtnStyle}>Cancel</button>
+							<button
+								type="button"
+								onClick={() => handleEnrich(selectedProject.id, enrichAgentId || undefined)}
+								style={primaryBtnStyle}
+							>
+								Run
 							</button>
 						</div>
 					</div>

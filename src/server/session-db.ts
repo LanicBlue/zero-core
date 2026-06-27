@@ -181,6 +181,9 @@ export class SessionDB {
 		this.safeAddColumn("sessions", "context_project_id", "TEXT");
 		this.safeAddColumn("sessions", "context_workspace_dir", "TEXT");
 		this.safeAddColumn("sessions", "context_wiki_root_node_id", "TEXT");
+		// v0.8: archived flag — archived sessions are excluded from active
+		// routing/listing/main lookup but kept in DB for the archive area.
+		this.safeAddColumn("sessions", "archived", "INTEGER NOT NULL DEFAULT 0");
 		// Routing index — must come AFTER context_project_id exists.
 		this.safeAddIndex("sessions", "idx_sessions_agent_project", "agent_id, context_project_id");
 
@@ -253,7 +256,7 @@ export class SessionDB {
 	}
 
 	getMainSession(agentId: string): SessionRecord | undefined {
-		const row = this.db.prepare("SELECT * FROM sessions WHERE agent_id = ? AND is_main = 1").get(agentId) as any;
+		const row = this.db.prepare("SELECT * FROM sessions WHERE agent_id = ? AND is_main = 1 AND archived = 0").get(agentId) as any;
 		return row ? this.rowToRecord(row) : undefined;
 	}
 
@@ -269,7 +272,7 @@ export class SessionDB {
 	 */
 	getMostRecentSession(agentId: string): SessionRecord | undefined {
 		const row = this.db.prepare(
-			"SELECT * FROM sessions WHERE agent_id = ? AND agent_id != '__recovered__' " +
+			"SELECT * FROM sessions WHERE agent_id = ? AND agent_id != '__recovered__' AND archived = 0 " +
 			"ORDER BY updated_at DESC LIMIT 1",
 		).get(agentId) as any;
 		return row ? this.rowToRecord(row) : undefined;
@@ -285,14 +288,14 @@ export class SessionDB {
 
 	listSessions(agentId: string): SessionRecord[] {
 		const rows = this.db.prepare(
-			"SELECT * FROM sessions WHERE agent_id = ? ORDER BY updated_at DESC",
+			"SELECT * FROM sessions WHERE agent_id = ? AND archived = 0 ORDER BY updated_at DESC",
 		).all(agentId) as any[];
 		return rows.map((r) => this.rowToRecord(r));
 	}
 
 	listAllSessions(): SessionRecord[] {
 		const rows = this.db.prepare(
-			"SELECT * FROM sessions WHERE agent_id != '__recovered__' ORDER BY updated_at DESC",
+			"SELECT * FROM sessions WHERE agent_id != '__recovered__' AND archived = 0 ORDER BY updated_at DESC",
 		).all() as any[];
 		return rows.map((r) => this.rowToRecord(r));
 	}
@@ -308,7 +311,7 @@ export class SessionDB {
 	 */
 	findSessionByAgentAndProject(agentId: string, projectId: string): SessionRecord | undefined {
 		const row = this.db.prepare(
-			"SELECT * FROM sessions WHERE agent_id = ? AND context_project_id = ? " +
+			"SELECT * FROM sessions WHERE agent_id = ? AND context_project_id = ? AND archived = 0 " +
 			"ORDER BY updated_at DESC LIMIT 1",
 		).get(agentId, projectId) as any;
 		return row ? this.rowToRecord(row) : undefined;
@@ -343,6 +346,17 @@ export class SessionDB {
 	}
 	deleteSession(sessionId: string): void {
 		this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+	}
+
+	/**
+	 * Mark a session as archived (soft delete). Archived sessions are excluded
+	 * from active routing/listing/main lookup (the WHERE archived = 0 filters
+	 * above) but the row is kept in DB. The caller is responsible for creating
+	 * a replacement session with the same (agentId, projectId) context.
+	 */
+	archiveSession(sessionId: string): void {
+		this.db.prepare("UPDATE sessions SET archived = 1, updated_at = ? WHERE id = ?")
+			.run(new Date().toISOString(), sessionId);
 	}
 
 	updateSessionUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number; estimatedCostUsd: number }): void {
@@ -947,6 +961,7 @@ export class SessionDB {
 			reasoningTokens: row.reasoning_tokens ?? 0,
 			estimatedCostUsd: row.estimated_cost_usd ?? 0,
 			context,
+			archived: row.archived === 1,
 		};
 	}
 }

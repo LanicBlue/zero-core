@@ -102,6 +102,8 @@ export interface WindowApi {
 	sessionsCurrent: (agentId: string) => Promise<SessionRecord | null>;
 	sessionsActivate: (agentId: string, sessionId?: string) => Promise<{ success: true; sessionId: string }>;
 	sessionsDelete: (agentId: string, sessionId: string) => Promise<{ success: true; newSessionId?: string }>;
+	/** Archive (soft-delete) a session; returns the replacement session id. */
+	sessionsArchive: (agentId: string, sessionId: string) => Promise<{ success: true; newSessionId: string }>;
 	sessionsMetrics: () => Promise<{
 		sessions: Record<string, {
 			sessionId: string;

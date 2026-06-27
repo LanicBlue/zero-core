@@ -493,85 +493,20 @@ body {
   transition: width 0.3s ease;
 }
 
-.session-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  position: relative;
-}
-.btn-new-session {
-  background: var(--border-default);
+.btn-archive-session {
+  background: transparent;
   color: var(--fg-subtle);
   border: 1px solid var(--border-muted);
   border-radius: 6px;
-  padding: 2px 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  line-height: 1.4;
-}
-.btn-new-session:hover { background: var(--border-muted); color: var(--fg-muted); }
-.btn-sessions {
-  background: var(--border-default);
-  color: var(--fg-subtle);
-  border: 1px solid var(--border-muted);
-  border-radius: 6px;
-  padding: 2px 8px;
+  padding: 2px 10px;
   font-size: 12px;
   cursor: pointer;
 }
-.btn-sessions:hover { background: var(--border-muted); color: var(--fg-muted); }
-.session-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 4px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border-muted);
-  border-radius: 8px;
-  min-width: 200px;
-  max-height: 240px;
-  overflow-y: auto;
-  z-index: 100;
-  box-shadow: 0 8px 24px var(--bg-overlay);
+.btn-archive-session:hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
+  border-color: var(--color-danger-fg);
 }
-.session-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  background: none;
-  border: none;
-  color: var(--fg-muted);
-  padding: 0;
-  font-size: 12px;
-  border-bottom: 1px solid var(--border-default);
-}
-.session-item:last-child { border-bottom: none; }
-.session-item:hover { background: var(--border-default); }
-.session-item.active { background: var(--bg-active); }
-.session-item.active .session-item-label { color: var(--color-primary-fg); }
-.session-item-label {
-  flex: 1;
-  text-align: left;
-  background: none;
-  border: none;
-  color: inherit;
-  padding: 8px 12px;
-  font-size: inherit;
-  cursor: pointer;
-}
-.session-item-delete {
-  background: none;
-  border: none;
-  color: var(--fg-faint);
-  padding: 4px 8px;
-  font-size: 11px;
-  cursor: pointer;
-  border-radius: 3px;
-}
-.session-item-delete:hover { color: var(--color-danger-fg); background: var(--color-danger-bg); }
-.session-main { color: var(--color-warning-fg); font-weight: 600; }
 
 .chat-messages {
   flex: 1;

@@ -130,6 +130,7 @@ const R: Record<string, RouteMapping> = {
 	"sessions:activate": { method: "POST", path: "/api/sessions/:agentId/activate", buildReq: (agentId, sessionId?) => ({ params: { agentId }, body: { sessionId } }) },
 	"sessions:current": { method: "GET", path: "/api/sessions/:agentId/current", buildReq: (agentId) => ({ params: { agentId } }) },
 	"sessions:delete":  { method: "DELETE", path: "/api/sessions/:agentId/:sessionId", buildReq: (agentId, sessionId) => ({ params: { agentId, sessionId } }) },
+	"sessions:archive": { method: "POST", path: "/api/sessions/:agentId/:sessionId/archive", buildReq: (agentId, sessionId) => ({ params: { agentId, sessionId } }) },
 	"sessions:metrics": { method: "GET", path: "/api/sessions/metrics", buildReq: () => ({}) },
 
 	// Messages

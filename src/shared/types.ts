@@ -195,6 +195,12 @@ export interface SessionRecord {
 	 * find-or-create routing key for discuss/notification/cron.
 	 */
 	context?: SessionContextBundle;
+	/**
+	 * v0.8: archived flag. Archived sessions are soft-deleted — excluded from
+	 * active routing/listing/main lookup but the row is retained. Undefined on
+	 * legacy rows means not archived (falsy).
+	 */
+	archived?: boolean;
 }
 
 /**

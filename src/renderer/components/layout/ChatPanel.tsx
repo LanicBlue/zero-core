@@ -30,6 +30,7 @@ import { useChatStore, selectActiveMessages, selectIsStreaming, selectLastError,
 import { useAgentStore } from "../../store/agent-store.js";
 import { useProjectStore } from "../../store/project-store.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
+import { ConfirmModal } from "../common/ConfirmModal.js";
 import AskUserCard from "../chat/AskUserCard.js";
 import TodosList from "../chat/TodosList.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
@@ -368,7 +369,7 @@ export default function ChatPanel() {
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const messagesContainerRef = useRef<HTMLDivElement>(null);
 	const loadedAgentRef = useRef<string | null>(null);
-	const [showSessions, setShowSessions] = useState(false);
+	const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
 	const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
 	const [editText, setEditText] = useState("");
 	// M5: 当前 project 的后台任务记录(供输入锁:running → 临时锁;sessionId 命中 → worker session 永久只读)。
@@ -471,34 +472,27 @@ export default function ChatPanel() {
 		api().chatAbort();
 	};
 
-	const handleNewSession = async () => {
-		if (!activeAgentId) return;
-		// M5: "+" 现在意味"回到 General 单例"(不再每次新建,违反"非项目只一个")。
-		setShowSessions(false);
-		await handleSelectProject(null);
-	};
-
-	const handleSwitchSession = async (sessionId: string) => {
-		if (!activeAgentId) return;
-		await api().sessionsSwitch(activeAgentId, sessionId);
-		setActiveSessionId(sessionId);
-		// M5: 同步 project 选择器 —— 从该 session 的 context 推 activeProjectId。
-		const sessions = await api().sessionsList(activeAgentId);
-		setSessions(activeAgentId, sessions);
-		const target = sessions.find((s: SessionRecord) => s.id === sessionId);
-		setActiveProject(target?.context?.projectId ?? null);
-		await refreshProjectJobs(target?.context?.projectId ?? null);
-		setShowSessions(false);
-	};
-
-	const handleDeleteSession = async (sessionId: string) => {
-		if (!activeAgentId) return;
-		const result = await api().sessionsDelete(activeAgentId, sessionId);
-		const sessions = await api().sessionsList(activeAgentId);
-		setSessions(activeAgentId, sessions);
-		if (result.newSessionId) {
+	const handleArchiveSession = async () => {
+		if (!activeAgentId || !activeSessionId) return;
+		setShowArchiveConfirm(false);
+		// 运行中先中断(防 runtime loop 残留 + 丢弃未完成输出)
+		if (isStreaming) {
+			api().chatAbort();
+			finishStreaming(activeSessionId);
+		}
+		try {
+			const oldSessionId = activeSessionId;
+			const result = await api().sessionsArchive(activeAgentId, oldSessionId);
+			// 清前端老 session 消息,切到接替的新 session,刷新列表
+			clearMessages(oldSessionId);
+			const sessions = await api().sessionsList(activeAgentId);
+			setSessions(activeAgentId, sessions);
 			const activateResult = await api().sessionsActivate(activeAgentId, result.newSessionId);
-			if (activateResult?.sessionId) setActiveSessionId(activateResult.sessionId);
+			const newId = activateResult?.sessionId ?? result.newSessionId;
+			setActiveSessionId(newId);
+			clearMessages(newId);
+		} catch (e) {
+			console.error("archive session failed:", e);
 		}
 	};
 
@@ -512,7 +506,6 @@ export default function ChatPanel() {
 	const parseMsgSeq = (id: string) => parseInt(id.slice(1), 10);
 
 	const activeAgent = agents.find((a) => a.id === activeAgentId);
-	const sessions = activeAgentId ? (sessionsByAgent[activeAgentId] ?? []) : [];
 
 	// M5: 对话保护(工作时的开关,非写死)。
 	//   - hasRunningJob: 当前 project 有 running 任务 → 临时锁输入(防干扰运行中的充实)。
@@ -521,17 +514,6 @@ export default function ChatPanel() {
 	const hasRunningJob = activeProjectJobs.some((j) => j.status === "running");
 	const activeSessionIsWorker = activeProjectJobs.some((j) => j.sessionId === activeSessionId);
 	const isInputLocked = hasRunningJob || activeSessionIsWorker;
-
-	// M5: session 显示名 = project 名 / "General"。
-	const projectNameById = useMemo(() => {
-		const m = new Map<string, string>();
-		for (const p of projects) m.set(p.id, p.name);
-		return m;
-	}, [projects]);
-	const sessionLabel = (s: typeof sessions[number]) => {
-		const pid = s.context?.projectId;
-		return pid ? (projectNameById.get(pid) ?? "Project") : "General";
-	};
 
 	const startEdit = (msg: typeof messages[number]) => {
 		setEditingMsgId(msg.id);
@@ -659,42 +641,15 @@ export default function ChatPanel() {
 					</div>
 				)}
 
-				{activeAgentId && (
-					<div className="session-controls">
-						<button type="button" className="btn-new-session" onClick={handleNewSession} title="New Chat">
-							+
-						</button>
-						<button
-							type="button"
-							className="btn-sessions"
-							onClick={() => setShowSessions(!showSessions)}
-						>
-							{sessions.length} session{sessions.length !== 1 ? "s" : ""}
-						</button>
-						{showSessions && (
-							<div className="session-dropdown">
-								{sessions.map((s) => (
-									<div key={s.id} className={`session-item ${s.id === activeSessionId ? "active" : ""}`}>
-										<button
-											type="button"
-											className="session-item-label"
-											onClick={() => handleSwitchSession(s.id)}
-										>
-											{sessionLabel(s)}
-										</button>
-										<button
-											type="button"
-											className="session-item-delete"
-											onClick={(e) => { e.stopPropagation(); handleDeleteSession(s.id); }}
-											title="Delete session"
-										>
-											x
-										</button>
-									</div>
-								))}
-							</div>
-						)}
-					</div>
+				{activeAgentId && activeSessionId && (
+					<button
+						type="button"
+						className="btn-archive-session"
+						onClick={() => setShowArchiveConfirm(true)}
+						title="归档当前会话(移到归档区,新建一个干净的同项目 session 接替)"
+					>
+						归档
+					</button>
 				)}
 			</div>
 
@@ -763,6 +718,20 @@ export default function ChatPanel() {
 					<button type="button" onClick={send} disabled={!activeAgentId || !input.trim() || isInputLocked}>Send</button>
 				)}
 			</div>
+
+			{showArchiveConfirm && (
+				<ConfirmModal
+					title="归档当前会话"
+					message={
+						isStreaming
+							? "该会话正在运行,归档将中断当前任务并丢弃未完成输出。会话记录会保留在归档区,系统会新建一个干净的会话接替。确认归档?"
+							: "归档后该会话从列表移除(记录保留),系统会新建一个干净的同项目会话接替。确认归档?"
+					}
+					confirmLabel="归档"
+					onConfirm={handleArchiveSession}
+					onCancel={() => setShowArchiveConfirm(false)}
+				/>
+			)}
 		</main>
 	);
 }

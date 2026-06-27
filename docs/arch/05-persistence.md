@@ -352,6 +352,7 @@ erDiagram
         string agent_id FK
         string context_project_id FK_v0.8
         bool is_main
+        bool archived "v0.8 soft-delete 过滤"
         int input_tokens
         int output_tokens
     }
@@ -528,7 +529,10 @@ erDiagram
 
 **关键关系**：
 - **`SESSIONS` 是会话域枢纽**：5 张表通过 session_id 与之关联;v0.8 后 `sessions.context_project_id`
-  把 session 反向挂到 `projects`(D-B 路由依据,见 02 §3 / 03 §3.1)。
+  把 session 反向挂到 `projects`(D-B 路由依据,见 02 §3 / 03 §3.1)。`archived` 列(v0.8 软删)
+  让"归档当前 session"把行标记 `archived=1` 并从活跃视图移除——`getMainSession`/`listSessions`/
+  `listAllSessions`/`getMostRecentSession`/`findSessionByAgentAndProject` 及资源聚合 raw SQL
+  均 `WHERE archived = 0`;row 保留,由同 `(agentId, projectId)` 的新 session 接替路由(`POST /api/sessions/:agentId/:sessionId/archive`)。
 - **`PROJECTS` 是工作流域枢纽**(v0.8 新增):1:N → requirements / project_wiki / project_jobs。
 - **`REQUIREMENTS` 是流程枢纽**:1:N → task_steps / history / messages / orchestrate_plans。
 - **`turns` 是 source of truth**，`messages` 是 write-through 缓存（双写）;v0.8 加 `turn_group`

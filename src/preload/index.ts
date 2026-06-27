@@ -81,6 +81,7 @@ const api: WindowApi = {
 	sessionsCurrent: (agentId) => ipcRenderer.invoke("sessions:current", agentId),
 	sessionsActivate: (agentId, sessionId?) => ipcRenderer.invoke("sessions:activate", agentId, sessionId),
 	sessionsDelete: (agentId, sessionId) => ipcRenderer.invoke("sessions:delete", agentId, sessionId),
+	sessionsArchive: (agentId, sessionId) => ipcRenderer.invoke("sessions:archive", agentId, sessionId),
 	sessionsMetrics: () => ipcRenderer.invoke("sessions:metrics"),
 
 	// ─── Streaming events ────────────────────────────

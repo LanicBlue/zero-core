@@ -469,7 +469,7 @@ export class ManagementService {
 				COALESCE(SUM(estimated_cost_usd), 0)  AS estimatedCostUsd,
 				COUNT(*)                              AS sessionCount
 			 FROM sessions
-			 WHERE context_project_id = ?`,
+			 WHERE context_project_id = ? AND archived = 0`,
 		).get(projectId) as any;
 		return {
 			projectId,
