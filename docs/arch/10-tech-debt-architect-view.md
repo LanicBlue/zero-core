@@ -16,11 +16,11 @@
 
 ### D-001 · AgentService 上帝对象（影响 5 / 成本 4 / 紧迫 4）
 
-**位置**：`server/agent-service.ts`，当前约 1,010 行。
+**位置**：`server/agent-service.ts`，当前约 1,200 行。
 
 **症状**：
 - 同时管理 AgentLoop 生命周期、会话状态、Provider 配置、并发控制、ready 协调、事件广播、状态查询。
-- 字段 14 个：`loops / runStates / activeSessions / subscribers / config / workspaceDir / providerConfigs / defaultModel / defaultProvider / db / kbStore / kbDb / registry / mcp / concurrencyManager / agentStore / agentToolStore / sessionManager / metricsAdapter / readyModules / deferredActions`。
+- 字段 25 个：`loops / runStates / activeSessions / subscribers / config / workspaceDir / providerConfigs / defaultModel / defaultProvider / db / kbStore / kbDb / registry / mcp / concurrencyManager / agentStore / sessionManager / metricsAdapter / management / pmService / requirementStore / wikiStore / wikiStoreGlobal / extractorsConfig / toolUsageStore / readyModules / deferredActions`（v0.8 注入 7 个工作流域服务：`management / pmService / requirementStore / wikiStore / wikiStoreGlobal / extractorsConfig / toolUsageStore`）。
 
 **风险**：任何 Agent 相关改动都要碰这个文件，merge conflict 概率高。
 
@@ -29,7 +29,7 @@
 ```
 agent-service.ts (orchestrator, 200 行)
 ├─ loop-supervisor.ts     (loops Map + createLoop/recreateLoop)
-├─ agent-registry.ts      (agentStore + agentToolStore 代理)
+├─ agent-registry.ts      (agentStore 代理)
 ├─ provider-throttle.ts   (concurrencyManager 注入)
 ├─ readiness-coordinator.ts (notifyReady / whenReady)
 └─ event-broadcaster.ts   (subscribers Set + emit)
@@ -41,7 +41,7 @@ agent-service.ts (orchestrator, 200 行)
 
 ### D-002 · session-db.ts 巨型 Store（影响 4 / 成本 3 / 紧迫 3）
 
-**位置**：`server/session-db.ts`，当前约 850 行。
+**位置**：`server/session-db.ts`，当前约 960 行。
 
 **症状**：一张表一个类本应 < 200 行，这里塞了：
 - sessions CRUD
@@ -64,8 +64,8 @@ session-db.ts (orchestrator, 100 行)
 ├─ turns-store.ts       (turns + turn_state)
 ├─ tool-executions-store.ts
 ├─ key-value-store.ts   (已独立)
-├─ memory-store.ts      (已独立，旧版)
-└─ memory-node-store.ts (已独立，新版)
+├─ memory-store.ts      (已拆为独立文件但仍由 SessionDB 实例化（`session-db.ts:70-71`），旧版)
+└─ memory-node-store.ts (已拆为独立文件但仍由 SessionDB 实例化（`session-db.ts:70-71`），新版)
 ```
 
 **优先级**：4 × 3 / 3 = **4.0**。
@@ -114,9 +114,9 @@ session-db.ts (orchestrator, 100 行)
 
 ### D-006 · 双 Memory 系统（影响 3 / 成本 3 / 紧迫 3）
 
-**位置**：`server/memory-store.ts` (266) + `server/memory-node-store.ts` (324)。
+**位置**：`server/memory-store.ts` (266) + `server/memory-node-store.ts` (352)。
 
-**症状**：两套并存，旧版 tools 不装载，但数据可能在 DB 中。
+**症状**：两套并存。`MemoryStore` 是**僵尸**——零运行时写入者，且其唯一消费者 `runtime/mcp-tools/memory-tools.ts` 零 importer（已从工具注册表移除）。`MemoryNodeStore` 仍被 `wiki-anchor-injection` / `wiki-search` 间接读取。旧表数据可能在 DB 中。
 
 **修复**：
 - 把旧版数据 migrate 到新版
@@ -156,24 +156,22 @@ session-db.ts (orchestrator, 100 行)
 
 ---
 
-### D-009 · `meta.requiresConfirmation` 未接通（影响 3 / 成本 2 / 紧迫 3）
+### D-009 · `meta.requiresConfirmation` 字段已删除 ✅ **已解决**
 
-**位置**：所有 `buildTool({meta:{requiresConfirmation: true}})`。
+**原位置**：所有 `buildTool({meta:{requiresConfirmation: true}})`。
 
-**症状**：字段已定义，无 UI 弹窗，无 hook 阻断。
+**当前状态**：字段已从 `src` 删除（v0.8 hook-first）。工具确认 UX 改走 `PreToolUse` hook + permission 机制，不需要工具 meta 的 boolean 字段。原描述的"meta 字段未完全接通"已不成立——根本就不该有这个 meta。
 
-**修复**：
-1. 前端渲染时根据 `requiresConfirmation` 显示"确认"按钮。
-2. 后端 PreToolUse hook 检查 tool meta，弹出确认。
-3. 用户拒绝 → return blocked。
+**原描述**（保留供参考）：
+- 字段已定义，无 UI 弹窗，无 hook 阻断。
 
-**优先级**：3 × 3 / 2 = **4.5**。
+**原优先级**：3 × 3 / 2 = **4.5**。→ ✅ 已解决（字段删除，无需"接通"）。
 
 ---
 
 ### D-010 · 23 个 Hook 未装载（影响 2 / 成本 4 / 紧迫 2）
 
-**位置**：`core/hook-types.ts:28-39` 30 个事件，实际只用了 7 个。
+**位置**：`core/hook-types.ts:28-39` 30 个事件，实际注册 7 个事件类型（剩余 19 个 emit 点无 handler）。
 
 **症状**：`PermissionRequest / TeammateIdle / TaskCreated / TaskCompleted / Elicitation / ElicitationResult / ConfigChange / CwdChanged / FileChanged / WorktreeCreate / WorktreeRemove / InstructionsLoaded / Notification` 等未注册。
 
@@ -211,9 +209,9 @@ session-db.ts (orchestrator, 100 行)
 
 ### D-013 · SQLite 未启用 WAL ✅ **已解决**
 
-**位置**：`server/session-db.ts:49-65` `constructor`。
+**位置**：`server/session-db.ts:59-75` `constructor`。
 
-**解决说明**：`session-db.ts:56` 和 `kb-db.ts:52` 已执行 `db.pragma('journal_mode = WAL')`。WAL 模式已启用，读写不再互斥。
+**解决说明**：`session-db.ts:66` 和 `kb-db.ts:52` 已执行 `db.pragma('journal_mode = WAL')`。WAL 模式已启用，读写不再互斥。
 
 **原描述**（保留供参考）：
 - `better-sqlite3` 默认 `journal_mode=DELETE`。崩溃可能丢失最后一笔。
@@ -251,7 +249,7 @@ session-db.ts (orchestrator, 100 行)
 
 **位置**：`preload/index.ts`、`main/ipc-proxy.ts`、`shared/ipc-api.ts`、`tests/unit/rest-routers.test.ts`。
 
-**症状**：preload 暴露约 150 个 invoke 通道，`ipc-proxy.ts` 的 `R` 表约 140 个代理通道。测试已检查大多数通道必须有映射，但当前显式放行了 4 个例外：
+**症状**：`preload/index.ts` 暴露 155 个 preload API（138 个唯一通道），`ipc-proxy.ts` 的 `R` 表代理 141 个通道。测试已检查大多数通道必须有映射，但当前显式放行了 4 个例外：
 - `templates:github-preview`
 - `templates:import-github`
 - `search-provider:get`
@@ -278,7 +276,7 @@ session-db.ts (orchestrator, 100 行)
 | ~~🔴 6.0~~ | ~~D-004 main/ipc 死代码~~ | ~~2 × 3 / 1~~ ✅ 已解决 |
 | ~~🔴 6.0~~ | ~~D-013 SQLite 未启用 WAL~~ | ~~3 × 2 / 1~~ ✅ 已解决 |
 | ~~🟠 4.5~~ | ~~D-007 ToolRateLimiter 未装~~ | ~~3 × 3 / 2~~ ✅ 已解决 |
-| 🟠 4.5 | D-009 requiresConfirmation 未通 | 3 × 3 / 2 |
+| ~~🟠 4.5~~ | ~~D-009 requiresConfirmation 未通~~ | ~~3 × 3 / 2~~ ✅ 已解决（字段删除） |
 | 🟠 4.0 | D-001 AgentService 上帝对象 | 5 × 4 / 4 |
 | 🟠 4.0 | D-002 session-db 巨型 | 4 × 3 / 3 |
 | 🟠 4.0 | D-003 legacy KB RAG hook | 2 × 2 / 1 |
@@ -304,7 +302,6 @@ quadrantChart
     D-003 legacy KB RAG: [0.10, 0.35]
     D-015 IPC retry: [0.10, 0.65]
     D-016 IPC 契约漂移: [0.10, 0.80]
-    D-009 confirmation: [0.45, 0.60]
     D-001 AgentService: [0.85, 0.75]
     D-002 session-db: [0.70, 0.55]
     D-005 mcp-tools 改名: [0.40, 0.55]
@@ -317,10 +314,10 @@ quadrantChart
 ```
 
 **解读**：
-- ~~D-013 SQLite WAL~~ 和 ~~D-007 ToolRateLimiter~~ 已解决，从活跃债务中移除
+- ~~D-013 SQLite WAL~~、~~D-007 ToolRateLimiter~~、~~D-009 requiresConfirmation~~ 已解决，从活跃债务中移除
 - **第二象限（立即清理）**：2 条 — D-016 与 D-015 都是低成本且会影响前后端调用可靠性的基础设施债，建议 1 个月内处理
 - **第一象限（暂缓）**：D-001（影响最大但成本 4 周）+ D-002（拆分巨型类）— 需要稳定期才能动
-- **第四象限（计划清理）**：D-003 / D-005 / D-009 / D-011 / D-012 / D-014 — 1 个月内分批
+- **第四象限（计划清理）**：D-003 / D-005 / D-011 / D-012 / D-014 — 1 个月内分批
 - **第三象限（忽略）**：D-010（23 个 hook 未装）— 视产品方向决定
 
 ### 3.2 风险-影响气泡图
@@ -333,7 +330,6 @@ graph LR
     end
     subgraph "Q2 计划清理"
         D003["D-003<br/>4.0<br/>legacy KB RAG"]
-        D009["D-009<br/>4.5<br/>confirmation"]
         D005["D-005<br/>3.0<br/>mcp-tools 改名"]
         D006["D-006<br/>3.0<br/>Memory 双系统"]
         D011["D-011<br/>3.0<br/>ChatPanel 虚拟化"]
@@ -352,12 +348,12 @@ graph LR
         D004s["D-004<br/>main/ipc 死代码<br/>✅ 已清理"]
         D007s["D-007<br/>ToolRateLimiter<br/>✅ 已装载运行"]
         D013s["D-013<br/>SQLite WAL<br/>✅ 已启用"]
+        D009s["D-009<br/>requiresConfirmation<br/>✅ 字段已删除"]
     end
 
     style D003 fill:#fbbf24,color:#000
     style D015 fill:#f87171,color:#000
     style D016 fill:#f87171,color:#000
-    style D009 fill:#fbbf24,color:#000
     style D005 fill:#fbbf24,color:#000
     style D006 fill:#fbbf24,color:#000
     style D011 fill:#fbbf24,color:#000
@@ -370,6 +366,7 @@ graph LR
     style D004s fill:#34d399,color:#000
     style D007s fill:#34d399,color:#000
     style D013s fill:#34d399,color:#000
+    style D009s fill:#34d399,color:#000
 ```
 
 ## 4. 推荐的 3 个月路线图
@@ -391,7 +388,7 @@ gantt
     D-012 日志脱敏           :t4, 2026-06-23, 3d
 
     section 第 2 月：性能 + 安全
-    D-009 confirmation       :t6, after t3, 5d
+    D-009 confirmation       :done, t6, after t3, 1d
 
     section 第 3 月：清理债
     D-004 删除死代码         :done, t7, 2026-06-21, 1d
@@ -411,7 +408,7 @@ gantt
 
 #### 第 2 个月：性能 + 安全债
 
-5. **D-009 requiresConfirmation 接通**：2-3 天，提升安全 UX。
+5. ~~**D-009 requiresConfirmation 接通**：~~ ✅ 已完成（v0.8 改为 hook-first，字段已从 `src` 删除，工具确认 UX 走 PreToolUse hook + permission，无需 meta boolean）。
 6. **D-012 日志脱敏**：1 天，避免泄漏 API key。
 
 #### 第 3 个月：清理债
@@ -438,9 +435,9 @@ gantt
 - 没有"性能预算"或"SLO"。
 
 **次严重的是"未完成的扩展点"**：
-- 23 个 hook 等待 handler。
+- 23 个 hook 等待 handler（其中 10 个连 emit 都没有，纯死定义）。
 - `src/main/ipc*` 死代码已清理；当前剩余的是 preload/proxy 契约漂移。
-- tool meta `requiresConfirmation` 等待 UI 闭环。
+- ~~tool meta `requiresConfirmation` 等待 UI 闭环。~~ ✅ 已删除（v0.8 hook-first，确认 UX 走 PreToolUse hook + permission）
 - ~~ToolRateLimiter 等待装载。~~ ✅ 已装载运行
 
 **第三严重的是"安全债"**：
