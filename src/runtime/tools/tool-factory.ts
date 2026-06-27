@@ -55,7 +55,6 @@ export interface ToolMeta {
 	isConcurrencySafe: boolean;
 	isDestructive: boolean;
 	maxResultSize: number;
-	requiresConfirmation: boolean;
 }
 
 const DEFAULT_META: ToolMeta = {
@@ -64,7 +63,6 @@ const DEFAULT_META: ToolMeta = {
 	isConcurrencySafe: true,
 	isDestructive: false,
 	maxResultSize: 30000,
-	requiresConfirmation: false,
 };
 
 // ---------------------------------------------------------------------------

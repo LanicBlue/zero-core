@@ -131,7 +131,6 @@ export class MCPManager {
 						isReadOnly: true,
 						isDestructive: false,
 						isConcurrencySafe: true,
-						requiresConfirmation: false,
 					},
 				});
 			}

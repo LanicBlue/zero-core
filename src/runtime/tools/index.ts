@@ -51,7 +51,7 @@ import { orchestrateTool } from "./orchestrate-tool.js";
 // v0.8 (P3 §7.3): the four domain action tools + verify, replacing the retired
 // zero-admin-tools.ts (CreateProject/CreateAgent/.../InstantiatePreset/SetToolPolicy/...).
 import { projectTool } from "./project-tool.js";
-import { agentTool } from "./agent-tool.js";
+import { agentRegistryTool } from "./agent-registry.js";
 import { cronTool } from "./cron-tool.js";
 import { wikiTool } from "./wiki-tool.js";
 import { verifyTool } from "./verify-tool.js";
@@ -100,7 +100,7 @@ export const ALL_TOOLS: Record<string, any> = {
 	// Note: the management tool is named `AgentRegistry` (not `Agent`) to avoid
 	// collision with the long-existing `Agent` sub-agent delegation tool.
 	Project: projectTool,
-	AgentRegistry: agentTool,
+	AgentRegistry: agentRegistryTool,
 	Cron: cronTool,
 	Wiki: wikiTool,
 	verify: verifyTool,
@@ -154,7 +154,6 @@ export function registerRuntimeTools(registry: ToolRegistry): void {
 				isReadOnly: meta?.isReadOnly ?? true,
 				isDestructive: meta?.isDestructive ?? false,
 				isConcurrencySafe: meta?.isConcurrencySafe ?? true,
-				requiresConfirmation: meta?.requiresConfirmation ?? false,
 			},
 		});
 	}

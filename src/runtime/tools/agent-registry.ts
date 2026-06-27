@@ -23,7 +23,7 @@
 // - ctx.management (ManagementService,只在 zero session 注入)
 //
 // ## 输出
-// - export const agentTool
+// - export const agentRegistryTool
 //
 
 import { z } from "zod";
@@ -135,7 +135,7 @@ const toolPolicyShape = z.object({
 // action enum still validates the discriminator; per-action required fields are
 // enforced at runtime in execute (wrapped by `safe()`).
 
-export const agentActionSchema = z.object({
+export const agentRegistryActionSchema = z.object({
 	action: z.enum(["create", "update", "delete", "get", "list", "listTemplates", "getTemplate"]),
 	// create
 	name: z.string().optional(),
@@ -162,7 +162,7 @@ export const agentActionSchema = z.object({
 // Tool
 // ---------------------------------------------------------------------------
 
-export const agentTool = buildTool({
+export const agentRegistryTool = buildTool({
 	name: "AgentRegistry",
 	description:
 		"Manage global Agent records (the role identities). Action-switched: create/update/delete/get/list + listTemplates/getTemplate. (Distinct from the 'Agent' sub-agent delegation tool — this manages the registry of role agents.)",
@@ -185,7 +185,7 @@ export const agentTool = buildTool({
 		isConcurrencySafe: false,
 		isDestructive: false,
 	},
-	inputSchema: agentActionSchema,
+	inputSchema: agentRegistryActionSchema,
 	execute: async (input, ctx) =>
 		safe(() => {
 			const svc = mgmt(ctx);

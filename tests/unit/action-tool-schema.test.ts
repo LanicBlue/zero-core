@@ -21,7 +21,7 @@
 
 import { describe, it, expect } from "vitest";
 import { projectActionSchema } from "../../src/runtime/tools/project-tool.js";
-import { agentActionSchema } from "../../src/runtime/tools/agent-tool.js";
+import { agentRegistryActionSchema } from "../../src/runtime/tools/agent-registry.js";
 import { cronActionSchema } from "../../src/runtime/tools/cron-tool.js";
 import { wikiActionSchema } from "../../src/runtime/tools/wiki-tool.js";
 import { z } from "zod";
@@ -30,7 +30,7 @@ import { z } from "zod";
 // top level, its JSON schema becomes { oneOf: [...] } with no top-level type.
 const ACTION_SCHEMAS: Record<string, z.ZodTypeAny> = {
 	Project: projectActionSchema,
-	AgentRegistry: agentActionSchema,
+	AgentRegistry: agentRegistryActionSchema,
 	Cron: cronActionSchema,
 	Wiki: wikiActionSchema,
 };

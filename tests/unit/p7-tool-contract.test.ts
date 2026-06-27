@@ -40,7 +40,7 @@ import { verifyTool } from "../../src/runtime/tools/verify-tool.js";
 import { delegateTool } from "../../src/runtime/tools/agent.js";
 import { wikiTool } from "../../src/runtime/tools/wiki-tool.js";
 import { projectTool } from "../../src/runtime/tools/project-tool.js";
-import { agentTool } from "../../src/runtime/tools/agent-tool.js";
+import { agentRegistryTool } from "../../src/runtime/tools/agent-registry.js";
 import { cronTool } from "../../src/runtime/tools/cron-tool.js";
 import { createPlatformTools } from "../../src/runtime/mcp-tools/platform-tools.js";
 
@@ -82,7 +82,7 @@ describe("P7 ToolCategory 加 workflow", () => {
 describe("P7 工具分类正确", () => {
 	test("Project/AgentRegistry/Cron/Wiki 全是 management", () => {
 		expect(getToolMeta(projectTool)?.category).toBe("management");
-		expect(getToolMeta(agentTool)?.category).toBe("management");
+		expect(getToolMeta(agentRegistryTool)?.category).toBe("management");
 		expect(getToolMeta(cronTool)?.category).toBe("management");
 		expect(getToolMeta(wikiTool)?.category).toBe("management");
 	});

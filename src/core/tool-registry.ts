@@ -64,7 +64,6 @@ export interface ToolDescriptor {
 		isReadOnly: boolean;
 		isDestructive: boolean;
 		isConcurrencySafe: boolean;
-		requiresConfirmation: boolean;
 	};
 }
 

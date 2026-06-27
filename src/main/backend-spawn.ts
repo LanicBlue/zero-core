@@ -36,7 +36,7 @@
 import { fork, spawn, type ChildProcess } from "child_process";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { app } from "electron";
+import { app, dialog } from "electron";
 import { log as logger } from "../core/logger.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -52,6 +52,23 @@ export interface BackendHandle {
 
 let _handle: BackendHandle | null = null;
 let _shuttingDown = false;
+
+// ─── 自愈重启节流 ───────────────────────────────────────────
+// 子进程意外退出时，按指数退避重启；窗口内超阈值则停止自愈并弹窗告知用户，
+// 避免致命错误（DB 损坏等）导致静默无限重启循环。
+let _restartCount = 0;
+let _lastRestartAt = 0;
+const RESTART_WINDOW_MS = 60_000; // 60s 计数窗口
+const RESTART_MAX = 5; // 窗口内重启上限
+
+/**
+ * 第 n 次重启的延迟 ms（指数退避，上限 30s）。
+ * 超过 RESTART_MAX 返回 null —— 停止自愈，由调用方弹窗。导出供单测。
+ */
+export function computeBackoff(count: number): number | null {
+	if (count > RESTART_MAX) return null;
+	return Math.min(1000 * 2 ** (count - 1), 30_000);
+}
 
 export function spawnBackend(): Promise<BackendHandle> {
 	return new Promise((resolve, reject) => {
@@ -120,12 +137,39 @@ export function spawnBackend(): Promise<BackendHandle> {
 				logger.error("backend", `exited with code ${code} before becoming ready`);
 				reject(new Error(`Backend process exited with code ${code} before becoming ready`));
 			} else if (!_shuttingDown) {
-				logger.warn("backend", `process exited unexpectedly with code ${code}, restarting...`);
+				const now = Date.now();
+				// 计数窗口外归零（恢复正常后重新计数）
+				if (_lastRestartAt > 0 && now - _lastRestartAt > RESTART_WINDOW_MS) {
+					_restartCount = 0;
+				}
+				_restartCount += 1;
+				_lastRestartAt = now;
+
+				const delay = computeBackoff(_restartCount);
+				if (delay === null) {
+					logger.error(
+						"backend",
+						`restart count ${_restartCount} exceeded ${RESTART_MAX} within ${RESTART_WINDOW_MS / 1000}s — aborting auto-restart`,
+					);
+					_handle = null;
+					dialog.showErrorBox(
+						"后端持续崩溃",
+						`后端进程在 ${RESTART_WINDOW_MS / 1000} 秒内已重启 ${_restartCount} 次仍崩溃，已停止自动重启。\n请检查日志后重启应用。`,
+					);
+					return;
+				}
+
+				logger.warn(
+					"backend",
+					`process exited unexpectedly with code ${code}, restarting in ${delay}ms (attempt ${_restartCount}/${RESTART_MAX})`,
+				);
 				_handle = null;
-				spawnBackend().catch((err) => {
-					logger.error("backend", `Restart failed: ${err.message}`);
-					console.error(`[backend] Restart failed: ${err.message}`);
-				});
+				setTimeout(() => {
+					spawnBackend().catch((err) => {
+						logger.error("backend", `Restart failed: ${err.message}`);
+						console.error(`[backend] Restart failed: ${err.message}`);
+					});
+				}, delay);
 			}
 		});
 	});
@@ -160,6 +204,7 @@ export async function shutdownBackend(): Promise<void> {
 
 	_handle = null;
 	_shuttingDown = false;
+	_restartCount = 0;
 	log("Backend process stopped");
 }
 

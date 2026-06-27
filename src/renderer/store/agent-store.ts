@@ -47,7 +47,6 @@ export interface ToolInfo {
 		isReadOnly: boolean;
 		isDestructive: boolean;
 		isConcurrencySafe: boolean;
-		requiresConfirmation: boolean;
 	};
 }
 

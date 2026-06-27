@@ -41,7 +41,7 @@ import { RequirementStore } from "../../src/server/requirement-store.js";
 import { ToolUsageStore } from "../../src/server/tool-usage-store.js";
 import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
 import { projectTool } from "../../src/runtime/tools/project-tool.js";
-import { agentTool } from "../../src/runtime/tools/agent-tool.js";
+import { agentRegistryTool } from "../../src/runtime/tools/agent-registry.js";
 import { cronTool } from "../../src/runtime/tools/cron-tool.js";
 import { wikiTool } from "../../src/runtime/tools/wiki-tool.js";
 import { verifyTool } from "../../src/runtime/tools/verify-tool.js";
@@ -63,7 +63,7 @@ let toolUsageStore: ToolUsageStore;
 // Get the inner execute (bypasses AI SDK wrapper + hooks/rate-limit, so the
 // test drives the action switch directly and asserts on its return string).
 const execProject = getToolExecute(projectTool)!;
-const execAgent = getToolExecute(agentTool)!;
+const execAgent = getToolExecute(agentRegistryTool)!;
 const execCron = getToolExecute(cronTool)!;
 const execWiki = getToolExecute(wikiTool)!;
 const execVerify = getToolExecute(verifyTool)!;
