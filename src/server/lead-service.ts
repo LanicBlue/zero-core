@@ -40,10 +40,9 @@ import type { TaskStepStore } from "./task-step-store.js";
 import type { TemplateStore } from "./template-store.js";
 import type { GitIntegration } from "./git-integration.js";
 import type { OrchestratePlanStore, OrchestrateManifestStore } from "./orchestrate-store.js";
-import type { ProjectRecord, RequirementRecord, TaskStepRecord } from "../shared/types.js";
-import { buildWorkflowSystemPrompt, getRoleConfig } from "../runtime/agent-roles.js";
+import type { ProjectWorkStore } from "./project-work-store.js";
+import type { ProjectRecord, RequirementRecord, TaskStepRecord, ProjectWorkRecord, AgentRecord } from "../shared/types.js";
 import { log } from "../core/logger.js";
-import type { ToolExecutionContext } from "../runtime/types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,6 +73,8 @@ export class LeadService {
 	// tool context so the Orchestrate tool persists plans + manifests.
 	private orchestratePlanStore?: OrchestratePlanStore;
 	private orchestrateManifestStore?: OrchestrateManifestStore;
+	/** v0.8 project-work:需求管理工位(去-role,agent+prompt 从 work 取)。Late-bound。 */
+	private projectWorkStore?: ProjectWorkStore;
 
 	constructor(deps: {
 		agentService: AgentService;
@@ -111,6 +112,10 @@ export class LeadService {
 	setGitIntegration(gi: GitIntegration): void {
 		this.gitIntegration = gi;
 	}
+	/** v0.8 project-work:注入 project_work store(去-role,需求管理工位)。 */
+	setProjectWorkStore(store: ProjectWorkStore): void {
+		this.projectWorkStore = store;
+	}
 
 	// ─── Public API ──────────────────────────────────────────────────
 
@@ -136,8 +141,8 @@ export class LeadService {
 			throw new Error(`Project not found: ${req.projectId}`);
 		}
 
-		// 3. Create or reuse Lead AgentRecord
-		const agent = this.ensureLeadAgent(project);
+		// 3. 解析"需求管理"工位(去-role:agent + actionPrompt 从 work 取)
+		const { work, agent } = this.resolveLeadWork(project);
 
 		// 4. Create session via agentService
 		const session = this.agentService.getDB().createSession(agent.id);
@@ -168,38 +173,29 @@ export class LeadService {
 			}
 		}
 
-		// 7. Build tool context (v0.8 M0: no createRoleLoop — Orchestrate now
-		// dispatches via delegateTask + toolPolicy, see orchestrate-tool.ts)
-		const toolContext = this.buildLeadToolContext(project, req);
+		// 7+8. prompt = work.actionPrompt(需求 detail 由 T2 hook 按 work.contextPolicy 注入)
+		const prompt = work.actionPrompt.replaceAll("{projectName}", project.name);
 
-		// 8. Build pickup prompt
-		const prompt = this.buildPickupPrompt(req);
+		log.agent("Lead: picking up requirement:", req.title, "work:", work.name, "agent:", agent.id, "session:", sessionId);
 
-		log.agent("Lead: picking up requirement:", req.title, "agent:", agent.id, "session:", sessionId);
-
-		// 9. Execute via sendRolePrompt with injected tool context (M3: also
-		// surface the Orchestrate plan/manifest stores so the Orchestrate tool
-		// persists confirm-gate state + per-run manifests). projectPath points
-		// at the feature worktree so sub-agent dispatches (delegateTask) inherit
-		// the worktree as their cwd (决策 25).
-		await this.agentService.sendRolePrompt(
+		// 9. Execute via sendProjectPrompt(去-role,带 workId)。projectPath 指
+		// feature worktree,sub-agent dispatch 继承其为 cwd(决策 25)。M3 stores
+		// (Orchestrate plan/manifest + git)透传给 Orchestrate 工具。
+		await this.agentService.sendProjectPrompt(
 			agent.id,
 			sessionId,
-			"lead",
 			prompt,
 			{
 				projectId: project.id,
 				projectPath: featureWorkspace,
 				projectName: project.name,
-				wikiStore: toolContext.wikiStore,
-				requirementStore: toolContext.requirementStore,
-				taskStepStore: toolContext.taskStepStore,
+				wikiStore: this.wikiStore,
+				requirementStore: this.requirementStore,
+				taskStepStore: this.taskStepStore,
 				activeRequirementId: requirementId,
+				workId: work.id,
 				orchestratePlanStore: this.orchestratePlanStore,
 				orchestrateManifestStore: this.orchestrateManifestStore,
-				// v0.8 (M3): hand GitIntegration to the Orchestrate tool so each
-				// task node commits on the feature worktree with [req-<short>]
-				// reference (decision 21 / RFC §2.15 / acceptance-M3 item 10).
 				gitIntegration: this.gitIntegration ?? undefined,
 			},
 		);
@@ -261,100 +257,22 @@ export class LeadService {
 	// ─── Private helpers ─────────────────────────────────────────────
 
 	/**
-	 * 确保 Lead AgentRecord 存在。
+	 * v0.8 project-work(去-role):解析 project 的"需求管理"工位,取其 agent +
+	 * actionPrompt。空岗/未配置 → throw(无 fallback,提醒先分配 agent)。
 	 */
-	private ensureLeadAgent(project: ProjectRecord) {
-		const leadName = `Lead-${project.name}`;
-		const existing = this.agentStore.list().find((a) => a.name === leadName);
-		if (existing) return existing;
-
-		const systemPrompt = buildWorkflowSystemPrompt("lead", this.templateStore);
-		const roleConfig = getRoleConfig("lead");
-
-		const agent = this.agentStore.create({
-			name: leadName,
-			workspaceDir: project.workspaceDir,
-			systemPrompt,
-			toolPolicy: {
-				autoApprove: roleConfig.toolPolicy.autoApprove,
-				blockedTools: roleConfig.toolPolicy.blockedTools,
-			},
-		} as any);
-
-		return agent;
+	private resolveLeadWork(project: ProjectRecord): { work: ProjectWorkRecord; agent: AgentRecord } {
+		if (!this.projectWorkStore) throw new Error("LeadService: projectWorkStore not wired (去-role 需要 需求管理 工位)");
+		const works = this.projectWorkStore.listByProject(project.id);
+		const work = works.find((w) => w.name === "需求管理" && w.enabled);
+		if (!work) {
+			throw new Error(`项目「${project.name}」未配置启用的"需求管理"工位。请在项目页创建/启用该工位(project-work 取代了 lead 角色)。`);
+		}
+		if (!work.agentId) {
+			throw new Error(`"需求管理"工位未分配 agent(空岗)。请在项目页给该工位分配一个带 Orchestrate+Wiki 工具的 agent。`);
+		}
+		const agent = this.agentStore.get(work.agentId);
+		if (!agent) throw new Error(`"需求管理"工位引用的 agent ${work.agentId} 不存在`);
+		return { work, agent };
 	}
 
-	/**
-	 * 构建 Lead 的工具上下文。
-	 * v0.8 (M0): no longer creates a role-loop factory. Sub-agent dispatch
-	 * (developer/reviewer/qa) is delegated to agent-as-tool + toolPolicy —
-	 * lead's toolPolicy whitelists the relevant role agent-tools.
-	 */
-	private buildLeadToolContext(
-		project: ProjectRecord,
-		requirement: RequirementRecord,
-	): Partial<ToolExecutionContext> {
-		return {
-			wikiStore: this.wikiStore,
-			requirementStore: this.requirementStore,
-			taskStepStore: this.taskStepStore,
-			projectId: project.id,
-			agentRole: "lead",
-			projectPath: project.workspaceDir,
-			activeRequirementId: requirement.id,
-		};
-	}
-
-	/**
-	 * 构建 Lead 的领取 prompt (v0.8 P7 — Orchestrate + verify 显式提交流).
-	 *
-	 * 角色风格/工具规则已在 §12 lead system prompt(P6 已适配 v0.8)。这里只
-	 * 携带具体对象(哪个需求 + 范围/上下文),不重写任务 framing。
-	 *
-	 * 流程(§4.3 / §4.4 / §4.5):
-	 *   1. 读需求文档 + 项目代码/wiki 做 plan;
-	 *   2. 用 Orchestrate 工具编 DSL flow 并提交(mode=confirm,等用户确认门);
-	 *   3. confirm 后 flow 跑 → 委派 developer/reviewer/qa subagents;
-	 *   4. 跑完 + 自验通过后,**显式调用 verify 工具**(不靠 hook 自动推进)。
-	 *      verify 工具会置 status=verify + 调 PM 做产品粒度覆盖判断 + 阻塞等
-	 *      verdict。verdict APPROVED → PM 触发 archivist 合并 + 置 closed;
-	 *      REJECTED → 意见回灌,你改计划重提。
-	 *   5. 完成后 autoPickupIfIdle 自动领下一个 ready 需求(本 service 内置)。
-	 */
-	private buildPickupPrompt(requirement: RequirementRecord): string {
-		return `需求「${requirement.title}」(id ${requirement.id}) 已确认就绪,请按 §4.3-§4.5 交付流程推进。
-
-需求描述:
-${requirement.description || "(无描述)"}
-
-优先级: ${requirement.priority}
-影响范围: ${requirement.impactScope || "N/A"}
-
-相关上下文:
-${requirement.context || "(无附加上下文)"}
-
-交付步骤(对应 §4.3 plan 门 / §4.4 build / §4.5 verify 门):
-
-1. 用 Read/Grep/Glob + wiki(expand)读项目代码现状 + archivist wiki 做 plan。
-2. 用 Orchestrate 工具编排 DSL flow(parallel/pipeline/if/for/barrier),每个 task
-   节点指定一个你 subagents 列表里的执行角色(developer/reviewer/qa)。
-3. 调 Orchestrate({ flow, mode: "confirm" }) 提交 —— **plan 门**:工具停住等用户
-   确认。确认后 flow 跑;驳回返回 "false: <reason>",你据此自重 Orchestrate flow
-   再交(同角色,mode="run")。
-4. flow 跑完 + 自验通过后,**显式调用 verify 工具**提交覆盖判断:
-   - verify 工具置 status=verify + 阻塞调 PM(按 req.createdByAgentId)做产品粒度
-     覆盖判断;
-   - PM APPROVED → PM 触发 archivist 合并 feature→main + 置 closed(你不用碰合并,
-     §4.6);
-   - PM REJECTED → 意见回灌,你改计划重提 verify,循环到通过。
-
-注意:
-- commit 引用 requirementId,格式如 "feat: ... [req-${shortIdForPrompt(requirement.id)}]"(决策 21,喂 traceability)。
-- 在 feature 分支(req-${shortIdForPrompt(requirement.id)})上每步 commit。
-- 默认串行(一次一个需求);完成后本 service 自动领下一个 ready 需求(autoPickupIfIdle)。`;
-	}
-}
-
-function shortIdForPrompt(id: string): string {
-	return id.substring(0, 8);
 }

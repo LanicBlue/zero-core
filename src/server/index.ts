@@ -169,9 +169,11 @@ export async function startServer(options?: StartServerOptions) {
 	const cronRunStore = new (await import("./cron-store.js")).CronRunStore(sessionDB);
 	// 项目级后台 agent 任务(wiki 充实等)的 run 记录。
 	const projectJobStore = new (await import("./project-job-store.js")).ProjectJobStore(sessionDB);
+	// v0.8 project-work(取代工作流角色的"工位"系统):早构造,T2 hook + 后续 cron/runner 共用。
+	const projectWorkStore = new (await import("./project-work-store.js")).ProjectWorkStore(sessionDB);
 
 	// Register workflow context hook (T2 context injection via PreLLMCall)
-	registerWorkflowContextHook({ projectStore, requirementStore, wikiStore, taskStepStore });
+	registerWorkflowContextHook({ projectStore, requirementStore, wikiStore, taskStepStore, projectWorkStore });
 
 	let workspaceConfig = loadWorkspaceConfig(sessionDB);
 
@@ -395,13 +397,17 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 (M3): inject git into LeadService so it can create feature worktrees
 	// and commit steps with the [req-<shortId>] reference (decision 21/25).
 	leadService.setGitIntegration(gitIntegration);
+	// v0.8 project-work(去-role):LeadService 从"需求管理"工位取 agent+prompt。
+	leadService.setProjectWorkStore(projectWorkStore);
 	const notificationService = new NotificationService({ wss, requirementStore });
 	// v0.8 project-work 系统(取代工作流角色):project_work 表 + 触发执行器 +
 	// hook 管理器。cron 触发由 CronAnalysisManager 内联解析 work;手动/hook 触发
-	// 走 ProjectWorkRunner。ProjectWorkStore 先于 cronManager 构造,注入其 deps。
-	const { ProjectWorkStore } = await import("./project-work-store.js");
-	const projectWorkStore = new ProjectWorkStore(sessionDB);
+	// 走 ProjectWorkRunner。projectWorkStore 早构造(供 T2 hook),此处复用。
 	management.setProjectWorkStore(projectWorkStore);
+	// 存量 project(Phase-1 前创建)补 seed 默认工位(幂等:已有 work 跳过)。
+	for (const p of projectStore.list()) {
+		try { management.seedDefaultProjectWorks(p.id); } catch (e) { console.warn(`[server] seed works for ${p.id}:`, (e as Error).message); }
+	}
 	// v0.8 (M1): cron manager now scans the cron table (one agent → N cron),
 	// routes triggers via resolveSessionByRoleProject + sendPrompt. P4: mode-
 	// aware firing + cron_runs audit (cronRunStore injected).
@@ -475,6 +481,8 @@ export async function startServer(options?: StartServerOptions) {
 	agentService.setToolUsageStore(new ToolUsageStore(sessionDB));
 
 	analystService.setGitIntegration(gitIntegration);
+	// v0.8 project-work(去-role):AnalystService 从"技术调研"工位取 agent。
+	analystService.setProjectWorkStore(projectWorkStore);
 
 	registerRequirementHooks({
 		requirementStore,

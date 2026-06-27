@@ -32,6 +32,7 @@ import { ProjectWikiStore } from "../../src/server/project-wiki-store.js";
 import { WikiStore } from "../../src/server/wiki-node-store.js";
 import { TemplateStore } from "../../src/server/template-store.js";
 import { LeadService } from "../../src/server/lead-service.js";
+import { ProjectWorkStore } from "../../src/server/project-work-store.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { isValidTransition } from "../../src/server/requirement-state-machine.js";
 import { featureWorktreePath, featureBranchName } from "../../src/server/archivist-git.js";
@@ -632,10 +633,12 @@ describe("v0.8 P7 — LeadService.autoPickupIfIdle (取代 router backfill)", ()
 		const wikiStoreGlobal = new WikiStore(sessionDB);
 		const wikiStore = new ProjectWikiStore(wikiStoreGlobal);
 		const templateStore = new TemplateStore(sessionDB);
-		return new LeadService({
+		const projectWorkStore = new ProjectWorkStore(sessionDB);
+		const lead = new LeadService({
 			agentService: {
 				getDB: () => sessionDB,
-				sendRolePrompt: async () => {},
+				// v0.8 project-work 去-role:lead 走 sendProjectPrompt(不再 sendRolePrompt)。
+				sendProjectPrompt: async () => {},
 			} as any,
 			agentStore,
 			requirementStore,
@@ -646,6 +649,23 @@ describe("v0.8 P7 — LeadService.autoPickupIfIdle (取代 router backfill)", ()
 			orchestratePlanStore: planStore,
 			orchestrateManifestStore: manifestStore,
 		});
+		lead.setProjectWorkStore(projectWorkStore);
+		return lead;
+	}
+
+	/** v0.8 project-work 去-role:给 project seed 一个"需求管理"工位 + 分配 agent。 */
+	function seedLeadWork(projectId: string): string {
+		const projectWorkStore = new ProjectWorkStore(sessionDB);
+		const agent = agentStore.create({ name: `Lead-${projectId}`, workspaceDir: tmpDir } as any);
+		projectWorkStore.create({
+			projectId,
+			name: "需求管理",
+			actionPrompt: "接手需求并推进交付。",
+			requiredTools: [],
+			agentId: agent.id,
+			enabled: true,
+		} as any);
+		return agent.id;
 	}
 
 	test("picks the highest-priority ready requirement and transitions it to 'plan'", async () => {
@@ -660,6 +680,9 @@ describe("v0.8 P7 — LeadService.autoPickupIfIdle (取代 router backfill)", ()
 			projectId: project.id, title: "Crit", status: "ready",
 			source: "user", priority: "critical", reviewer: "user",
 		} as any);
+
+		// v0.8 project-work 去-role:lead 从"需求管理"工位取 agent(先 seed)。
+		seedLeadWork(project.id);
 
 		// autoPickupIfIdle returns the lead sessionId (not the reqId). The
 		// observability is in the requirement status: the critical one was

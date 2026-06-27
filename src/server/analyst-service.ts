@@ -40,8 +40,8 @@ import type { RequirementStore } from "./requirement-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import type { TemplateStore } from "./template-store.js";
 import type { GitIntegration } from "./git-integration.js";
-import type { ProjectRecord } from "../shared/types.js";
-import { buildWorkflowSystemPrompt, getRoleConfig } from "../runtime/agent-roles.js";
+import type { ProjectWorkStore } from "./project-work-store.js";
+import type { ProjectRecord, AgentRecord, ProjectWorkRecord } from "../shared/types.js";
 import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -57,6 +57,8 @@ export class AnalystService {
 	private taskStepStore: TaskStepStore | null;
 	private templateStore: TemplateStore;
 	private gitIntegration: GitIntegration | null;
+	/** v0.8 project-work:技术调研工位(去-role,agent 从 work 取)。Late-bound。 */
+	private projectWorkStore?: ProjectWorkStore;
 
 	constructor(deps: {
 		agentService: AgentService;
@@ -81,6 +83,10 @@ export class AnalystService {
 	setGitIntegration(gi: GitIntegration): void {
 		this.gitIntegration = gi;
 	}
+	/** v0.8 project-work:注入 project_work store(去-role,技术调研工位)。 */
+	setProjectWorkStore(store: ProjectWorkStore): void {
+		this.projectWorkStore = store;
+	}
 
 	// ─── Public API ──────────────────────────────────────────────────
 
@@ -102,11 +108,11 @@ export class AnalystService {
 			return this.runIncrementalAnalysis(projectId);
 		}
 
-		// Ensure analyst agent exists
-		const agent = this.ensureAnalystAgent(project);
+		// v0.8 project-work(去-role):agent 从"技术调研"工位取
+		const { work, agent } = this.resolveAnalystWork(project);
 
-		// Build cold-start prompt
-		const prompt = this.buildColdStartPrompt(project);
+		// 动作 prompt:工位 actionPrompt 优先,空则回退冷启动 prompt
+		const prompt = work.actionPrompt.trim() ? work.actionPrompt.replaceAll("{projectName}", project.name) : this.buildColdStartPrompt(project);
 
 		log.agent("Analyst: starting full analysis for project:", project.name, "agent:", agent.id);
 
@@ -138,8 +144,8 @@ export class AnalystService {
 			return;
 		}
 
-		// Ensure analyst agent exists
-		const agent = this.ensureAnalystAgent(project);
+		// v0.8 project-work(去-role):agent 从"技术调研"工位取
+		const { agent } = this.resolveAnalystWork(project);
 
 		// Build incremental prompt
 		const prompt = this.buildIncrementalPrompt(project, diff);
@@ -158,37 +164,21 @@ export class AnalystService {
 	// ─── Private helpers ─────────────────────────────────────────────
 
 	/**
-	 * 确保 Analyst AgentRecord 存在（不存在则创建）。
-	 * 返回已存在或新创建的 AgentRecord。
+	 * v0.8 project-work(去-role):解析 project 的"技术调研"工位,取其 agent。
+	 * 空岗/未配置 → throw(无 fallback,提醒先分配 agent)。
 	 */
-	private ensureAnalystAgent(project: ProjectRecord) {
-		// Lookup by name pattern — AgentRecord has no metadata field,
-		// so we rely on the naming convention "Analyst-{projectName}".
-		const analystName = `Analyst-${project.name}`;
-		const existing = this.agentStore.list().find(a => a.name === analystName);
-		if (existing) return existing;
-
-		// Build T1 systemPrompt = base template + role append
-		const systemPrompt = buildWorkflowSystemPrompt("analyst", this.templateStore);
-		const roleConfig = getRoleConfig("analyst");
-
-		// Create AgentRecord
-		const agent = this.agentStore.create({
-			name: `Analyst-${project.name}`,
-			workspaceDir: project.workspaceDir,
-			systemPrompt,
-			toolPolicy: {
-				autoApprove: roleConfig.toolPolicy.autoApprove,
-				blockedTools: roleConfig.toolPolicy.blockedTools,
-			},
-		} as any);
-
-		// Store role metadata in a way that survives reload.
-		// AgentRecord doesn't have a metadata field natively, so we use knowledgeBaseIds
-		// as a workaround — or better, just match by name pattern in the future.
-		// For now, the agent exists and sendPrompt will use its systemPrompt + toolPolicy.
-
-		return agent;
+	private resolveAnalystWork(project: ProjectRecord): { work: ProjectWorkRecord; agent: AgentRecord } {
+		if (!this.projectWorkStore) throw new Error("AnalystService: projectWorkStore not wired (去-role 需要 技术调研 工位)");
+		const work = this.projectWorkStore.listByProject(project.id).find((w) => w.name === "技术调研" && w.enabled);
+		if (!work) {
+			throw new Error(`项目「${project.name}」未配置启用的"技术调研"工位(project-work 取代了 analyst 角色)。`);
+		}
+		if (!work.agentId) {
+			throw new Error(`"技术调研"工位未分配 agent(空岗)。请在项目页给该工位分配一个带 Wiki 工具的 agent。`);
+		}
+		const agent = this.agentStore.get(work.agentId);
+		if (!agent) throw new Error(`"技术调研"工位引用的 agent ${work.agentId} 不存在`);
+		return { work, agent };
 	}
 
 	/**
@@ -328,10 +318,10 @@ Output format:
 - Conclusion: PASSED / FAILED
 - Detailed report`;
 
-		// 5. Execute verification via analyst agent
+		// 5. Execute verification via analyst agent(去-role:从技术调研工位取)
 		let result = "";
 		try {
-			const agent = project ? this.ensureAnalystAgent(project) : undefined;
+			const agent = project ? this.resolveAnalystWork(project).agent : undefined;
 			if (agent) {
 				await this.agentService.sendPrompt(prompt, agent);
 				// Read back the last assistant message from the session
@@ -398,7 +388,7 @@ Output format:
 ${changedFiles.map(f => `- ${f}`).join("\n")}`;
 
 				try {
-					const agent = this.ensureAnalystAgent(project);
+					const agent = this.resolveAnalystWork(project).agent;
 					await this.agentService.sendPrompt(wikiPrompt, agent);
 				} catch (err) {
 					log.error("analyst", `Wiki update failed during archive: ${(err as Error).message}`);

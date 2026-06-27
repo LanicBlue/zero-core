@@ -108,6 +108,7 @@ export class ProjectWorkRunner {
 			projectName,
 			wikiStore: this.deps.wikiStore,
 			activeRequirementId: opts.requirementId,
+			workId: work.id,
 		});
 		return { status: "ok", sessionId };
 	}

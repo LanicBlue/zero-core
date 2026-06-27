@@ -720,6 +720,14 @@ export class AgentService {
 			projectName?: string;
 			wikiStore?: any;
 			activeRequirementId?: string;
+			/** v0.8 project-work:触发本 turn 的工位(workflow-context-hook 据此注入 T2)。 */
+			workId?: string;
+			/** 可选注入(需求管理工位等需要):工具上下文 stores + git。 */
+			requirementStore?: any;
+			taskStepStore?: any;
+			orchestratePlanStore?: any;
+			orchestrateManifestStore?: any;
+			gitIntegration?: any;
 		},
 	): Promise<void> {
 		const agent = this.agentStore?.get(agentId);
@@ -767,7 +775,8 @@ export class AgentService {
 				return { id: a.id, name: a.name, systemPrompt: a.systemPrompt, model: a.model, toolPolicy: a.toolPolicy, subagents: a.subagents };
 			},
 			getToolConfig: () => this.registry.getToolConfig(),
-			// agentRole 不设 —— 去 role。
+			// agentRole 不设 —— 去 role。workId 由 project-work 触发器传入(供 T2 hook)。
+			workId: context.workId,
 			projectContext: context.projectId ? {
 				projectId: context.projectId,
 				projectName: context.projectName || "",
@@ -776,6 +785,13 @@ export class AgentService {
 			} : undefined,
 			wikiStore: context.wikiStore,
 		} as any;
+
+		// 可选工具上下文 stores + git(需求管理工位等需要,与 sendRolePrompt 对齐)。
+		(sessionConfig as any).requirementStore = context.requirementStore;
+		(sessionConfig as any).taskStepStore = context.taskStepStore;
+		(sessionConfig as any).orchestratePlanStore = context.orchestratePlanStore;
+		(sessionConfig as any).orchestrateManifestStore = context.orchestrateManifestStore;
+		(sessionConfig as any).gitIntegration = context.gitIntegration;
 
 		// P1 §10.6 wiki anchor injection —— archivist 写 wiki 靠它解析锚点。
 		if (this.wikiStoreGlobal) (sessionConfig as any).wikiStoreGlobal = this.wikiStoreGlobal;

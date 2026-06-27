@@ -762,6 +762,7 @@ export class CronAnalysisManager {
 				projectPath: project?.workspaceDir ?? scope.workspaceDir,
 				projectName: project?.name ?? "",
 				wikiStore: this.deps.wikiStore,
+				workId: cron.workId,
 			});
 		} else {
 			await this.deps.agentService.sendPrompt(effectivePrompt, activeAgent, sessionId);

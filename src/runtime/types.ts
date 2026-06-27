@@ -299,7 +299,9 @@ export interface SessionConfig {
 		recallLimit?: number;
 	};
 	// Multi-Agent Workflow
-	agentRole?: string;                    // analyst | lead | developer | reviewer | qa
+	agentRole?: string;                    // analyst | lead | developer | reviewer | qa (legacy,阶段3 删)
+	/** v0.8 project-work:触发该 turn 的工位 id。workflow-context-hook 据此读 work.contextPolicy。 */
+	workId?: string;
 	projectContext?: {
 		projectId: string;
 		projectName: string;

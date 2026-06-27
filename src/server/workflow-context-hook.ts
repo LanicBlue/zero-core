@@ -27,10 +27,12 @@
 
 import { HookRegistry } from "../core/hook-registry.js";
 import { getRoleConfig } from "../runtime/agent-roles.js";
+import type { WorkContextPolicy } from "../shared/types.js";
 import type { ProjectStore } from "./project-store.js";
 import type { ProjectWikiStore } from "./project-wiki-store.js";
 import type { RequirementStore } from "./requirement-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
+import type { ProjectWorkStore } from "./project-work-store.js";
 
 // ---------------------------------------------------------------------------
 // Wiki baseline helper
@@ -69,19 +71,32 @@ export function registerWorkflowContextHook(deps: {
 	requirementStore: RequirementStore;
 	wikiStore: ProjectWikiStore;
 	taskStepStore: TaskStepStore;
+	/** v0.8 project-work:按 config.workId 反查 work.contextPolicy(去-role 主路径)。 */
+	projectWorkStore?: ProjectWorkStore;
 	hookRegistry?: HookRegistry;
 }): void {
 	const registry = deps.hookRegistry ?? HookRegistry.getInstance();
 
 	registry.register("PreLLMCall", async (ctx) => {
 		const config = ctx.config as any;
-		const role = config?.agentRole as string | undefined;
-		if (!role) return; // Non-workflow session, skip
-
-		const roleConfig = getRoleConfig(role);
-		const policy = roleConfig.contextPolicy;
 		const projectId = config?.projectContext?.projectId as string | undefined;
 		const requirementId = config?.projectContext?.activeRequirementId as string | undefined;
+
+		// 解析 contextPolicy:优先 project-work(config.workId → work.contextPolicy,
+		// 去-role 主路径);回退 legacy agentRole(阶段3 删)。
+		let policy: WorkContextPolicy | undefined;
+		const workId = config?.workId as string | undefined;
+		if (workId && deps.projectWorkStore) {
+			const work = deps.projectWorkStore.get(workId);
+			policy = work?.contextPolicy;
+		} else {
+			const role = config?.agentRole as string | undefined;
+			if (role) {
+				try { policy = getRoleConfig(role).contextPolicy; } catch { /* unknown role → no policy */ }
+			}
+		}
+		if (!policy) return; // 非 work/role session,跳过
+
 		const parts: string[] = [];
 
 		// Project info (common to all roles)
