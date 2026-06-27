@@ -140,6 +140,7 @@ graph TB
 - **AgentSession**：单个会话的内存状态（messages / tokens / pruning）。`runtime/session.ts`。
 - **AgentTool**：把另一个 Agent 暴露为工具的能力。`runtime/tools/agent-tool.ts`。
 - **ALL_TOOLS**：所有内置工具的字典。`runtime/tools/index.ts:62`。
+- **Archivist 长期绑定**：project 级长期 wiki 维护。绑定 = 该 project 的 archivist cron 集合(每操作一条,共用 agentId,不新建 project 字段)。去-role(ADR-022):archivist 率先脱离 WORKFLOW_ROLES,身份/toolPolicy 来自画廊 Archivist 模板,触发走 `AgentService.sendProjectPrompt`(注入键 `session.projectId` 而非 role)。无 fallback —— 必须选已存在、配了 Wiki 工具的 agent(入口校验 `agentHasWikiTool`)。双触发:定时 cron(alarm)+ git-aware cron(interval,git ref 无变化时跳过)。操作 prompt 绑操作(`wiki-operations.ts`: doc重建/git更新/wiki充实),不绑角色。
 
 ## B
 

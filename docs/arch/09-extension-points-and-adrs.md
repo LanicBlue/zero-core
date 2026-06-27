@@ -598,9 +598,33 @@ graph TB
 
 ---
 
+### ADR-022 · Archivist 率先去工作流角色 + 长期绑定(画廊例外)
+
+**Context**:工作流角色(WORKFLOW_ROLES / sendRolePrompt)是 lead/pm/analyst/archivist 共用的运行时枢纽(身份 prompt + toolPolicy + 上下文注入)。ADR-019 把模板与角色分离(工作流角色不进画廊),ADR-020 把工作流知识下沉到 playbook。但 archivist 的 wiki 维护是 project 级长期任务,需要:(1) 从画廊创建带 Wiki 工具的 agent;(2) 操作 prompt 绑操作不绑角色;(3) 长期绑定 + 双触发(定时 cron + git 变更)。
+
+**Decision**:**archivist 率先完全脱离 WORKFLOW_ROLES**(推动弃用工作流角色的第一步),lead/pm/analyst 保留(后续 epic)。去-role 的支点 = 注入键从 role 转 `session.projectId`:
+- 新触发器 `AgentService.sendProjectPrompt`(sendRolePrompt 的去-role 版):身份/toolPolicy 全用 agent 自带(来自模板),不调 getRoleConfig;保留 wikiStore/projectContext 注入(按 session.projectId)。
+- enrichment/cron 触发改走 sendProjectPrompt。**无 fallback**:必须选已存在、配了 Wiki 工具的 agent(入口校验 `agentHasWikiTool`,无则拒绝)。
+- **画廊例外**:Archivist 破例进 template-store(ADR-019 的例外),systemPrompt = Researcher base + ARCHIVIST_CONFIG.promptAppend(从 WORKFLOW_ROLES 取避免漂移)。作用 = 方便用户一键创建预配好 Wiki 工具的 agent,不是自动 fallback 源。
+- 操作 prompt 绑操作(`wiki-operations.ts`: doc重建/git更新/wiki充实 三操作),不绑角色。多操作拆分,各自可按键或 cron。
+- 长期绑定 = 该 project 的 archivist cron 集合(每操作一条,共用 agentId),不新建 project 字段;识别靠 `cronOperationId`(prompt 匹配 WIKI_OPERATIONS)。
+- 双触发:定时 cron(alarm) + git-aware cron(interval,prompt 带 sentinel,fireAgent 检查 git ref 变化才跑,无变化跳过;`last_git_ref` 列记录上次 ref)。
+
+**Consequences**:
+- ✅ archivist 全链路(创建+触发)不依赖 WORKFLOW_ROLES,为全面弃用铺路。
+- ✅ 注入键 session.projectId 比 role 更自然(session 本带 projectId)。
+- ✅ 无 fallback 避免幽灵角色 agent;用户显式选 agent + 校验 Wiki 工具。
+- ⚠️ WORKFLOW_ROLES.archivist 配置保留(m2 测试断言),但运行时不再读 —— 待全面弃用 epic 时清理。
+- ⚠️ git-aware 是轮询(默认 10min)非真事件;真 post-commit hook 标后续(侵入 .git/hooks)。
+- ⚠️ cronOperationId 靠 prompt 反查,custom prompt 的 cron 不归入绑定(可接受)。
+
+**Code evidence**:`server/agent-service.ts:sendProjectPrompt`、`server/enrichment-runner.ts`(去-role+无 fallback)、`server/template-store.ts:mergeBuiltInTemplates`(Archivist 画廊例外)、`server/wiki-operations.ts`(WIKI_OPERATIONS + agentHasWikiTool + git-aware sentinel)、`server/cron-analysis.ts:fireAgent`(project-scoped 走 sendProjectPrompt + git-aware 检查)、`server/management-service.ts`(bind/unbind/switch/enabled/binding)。
+
+---
+
 ## 3. 总结
 
-- 21 个 ADR，集中在数据驻留、并发控制、扩展点、UI 同步。
+- 22 个 ADR，集中在数据驻留、并发控制、扩展点、UI 同步、角色演进。
 - 当前建议优先处理：018 (IPC 契约漂移)、011 (mcp-tools 改名)、013 (legacy memory 清理)、008 (legacy KB RAG hook 标注/退役)。ADR-012 已解决。
 - 整个架构遵循"interfaces up, implementations down" 的依赖倒置；`ISessionStore` / `IKVStore` 是教科书级示范。
 - "Hook 提取"是**最大的**架构改进（ADR-005），把 AgentLoop 从膨胀中拯救出来。
