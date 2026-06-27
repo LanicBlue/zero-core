@@ -970,7 +970,7 @@
 			"description": ""
 		},
 		{
-			"path": "src/runtime/tools/agent-tool.ts",
+			"path": "src/runtime/tools/agent-registry.ts",
 			"lines": 258,
 			"dir": "src/runtime/tools",
 			"exports": [],
@@ -979,12 +979,12 @@
 				"src/server/management-service.ts"
 			],
 			"functions": [
-				"src/runtime/tools/agent-tool.ts/mgmt:33",
-				"src/runtime/tools/agent-tool.ts/safe:39",
-				"src/runtime/tools/agent-tool.ts/summaryOf:53",
-				"src/runtime/tools/agent-tool.ts/templateSummaryOf:71",
-				"src/runtime/tools/agent-tool.ts/requireField:83",
-				"src/runtime/tools/agent-tool.ts/notFound:94"
+				"src/runtime/tools/agent-registry.ts/mgmt:33",
+				"src/runtime/tools/agent-registry.ts/safe:39",
+				"src/runtime/tools/agent-registry.ts/summaryOf:53",
+				"src/runtime/tools/agent-registry.ts/templateSummaryOf:71",
+				"src/runtime/tools/agent-registry.ts/requireField:83",
+				"src/runtime/tools/agent-registry.ts/notFound:94"
 			],
 			"description": "AgentTool 基类：output truncation，max result size，tool result 格式化"
 		},
@@ -1197,7 +1197,7 @@
 				"src/runtime/tools/requirement-tools.ts",
 				"src/runtime/tools/orchestrate-tool.ts",
 				"src/runtime/tools/project-tool.ts",
-				"src/runtime/tools/agent-tool.ts",
+				"src/runtime/tools/agent-registry.ts",
 				"src/runtime/tools/cron-tool.ts",
 				"src/runtime/tools/wiki-tool.ts",
 				"src/runtime/tools/verify-tool.ts",
@@ -8798,10 +8798,10 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/mgmt:33",
+			"id": "src/runtime/tools/agent-registry.ts/mgmt:33",
 			"name": "mgmt",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 33,
 			"endLine": 37,
 			"statementCount": 4,
@@ -8811,10 +8811,10 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/safe:39",
+			"id": "src/runtime/tools/agent-registry.ts/safe:39",
 			"name": "safe",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 39,
 			"endLine": 46,
 			"statementCount": 4,
@@ -8824,10 +8824,10 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/summaryOf:53",
+			"id": "src/runtime/tools/agent-registry.ts/summaryOf:53",
 			"name": "summaryOf",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 53,
 			"endLine": 65,
 			"statementCount": 1,
@@ -8837,10 +8837,10 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/templateSummaryOf:71",
+			"id": "src/runtime/tools/agent-registry.ts/templateSummaryOf:71",
 			"name": "templateSummaryOf",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 71,
 			"endLine": 80,
 			"statementCount": 1,
@@ -8850,10 +8850,10 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/requireField:83",
+			"id": "src/runtime/tools/agent-registry.ts/requireField:83",
 			"name": "requireField",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 83,
 			"endLine": 87,
 			"statementCount": 2,
@@ -8863,10 +8863,10 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/notFound:94",
+			"id": "src/runtime/tools/agent-registry.ts/notFound:94",
 			"name": "notFound",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 94,
 			"endLine": 97,
 			"statementCount": 3,
@@ -9484,7 +9484,7 @@
 			"endLine": 261,
 			"statementCount": 22,
 			"exported": false,
-			"signature": "function dispatchAgentTool(ctx: ToolExecutionContext, agentToolName: string, task: string)",
+			"signature": "function dispatchAgentTool(ctx: ToolExecutionContext, agentRegistryToolName: string, task: string)",
 			"description": "",
 			"callees": []
 		},
@@ -26393,7 +26393,7 @@
 			"src/runtime/mcp-tools/memory-tools.ts",
 			"src/runtime/mcp-tools/platform-tools.ts",
 			"src/runtime/mcp-tools/sequential-thinking-tools.ts",
-			"src/runtime/tools/agent-tool.ts",
+			"src/runtime/tools/agent-registry.ts",
 			"src/runtime/tools/agent.ts",
 			"src/runtime/tools/ask-user.ts",
 			"src/runtime/tools/bash.ts",
@@ -26522,7 +26522,7 @@
 			"src/runtime/tools/ask-user.ts"
 		],
 		"src/server/management-service.ts": [
-			"src/runtime/tools/agent-tool.ts",
+			"src/runtime/tools/agent-registry.ts",
 			"src/runtime/tools/cron-tool.ts",
 			"src/runtime/tools/project-tool.ts",
 			"src/server/cron-router.ts",
@@ -26613,7 +26613,7 @@
 		"src/runtime/tools/project-tool.ts": [
 			"src/runtime/tools/index.ts"
 		],
-		"src/runtime/tools/agent-tool.ts": [
+		"src/runtime/tools/agent-registry.ts": [
 			"src/runtime/tools/index.ts"
 		],
 		"src/runtime/tools/cron-tool.ts": [
