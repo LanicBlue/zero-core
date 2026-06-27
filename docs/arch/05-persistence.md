@@ -10,7 +10,7 @@
 
 ```
 ~/.zero-core/
-├── sessions.db            ← 主数据库 (SessionDB,better-sqlite3,§2 全部表 ≈33 张 = 批 A db-migration 管理 24 张 [5 会话核心 + 5 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 9 张 [6 memory_* + kv_store + extraction_cursors + tool_telemetry],§2 顶部"表计数的口径"块有详细切分)
+├── sessions.db            ← 主数据库 (SessionDB,better-sqlite3,§2 全部表 ≈31 张 = 批 A db-migration 管理 24 张 [5 会话核心 + 5 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 7 张 [4 memory_* (MemoryNodeStore) + kv_store + extraction_cursors + tool_telemetry],v0.8 已 DROP memory_entities/memory_relations 2 表;§2 顶部"表计数的口径"块有详细切分)
 ├── knowledge.db           ← 向量库 (KbDB 独立连接,只存 kb_chunks,§2.3)
 ├── webfetch/
 │   ├── cache/<hash>.json  ← URL 抓取缓存
@@ -45,18 +45,23 @@
 
 证据：`src/core/config.ts:233` `ZERO_CORE_DIR = process.env.ZERO_CORE_DIR ?? join(homedir(), ".zero-core")`；迁移路径见 `src/server/db-migration.ts:130-218`(旧 JSON 迁移) + `:653-897`(v0.8 工作流域表 DDL)。
 
-## 2. SQLite Schema（sessions.db 实际 ≈33 张表 = 批 A db-migration 管理 24 张 [5 会话核心 + 5 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 9 张 [6 memory_* + kv_store + extraction_cursors + tool_telemetry];另有 1 张 kb_chunks 在独立 knowledge.db）
+## 2. SQLite Schema（sessions.db 实际 ≈31 张表 = 批 A db-migration 管理 24 张 [5 会话核心 + 5 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 7 张 [4 memory_* (MemoryNodeStore) + kv_store + extraction_cursors + tool_telemetry];另有 1 张 kb_chunks 在独立 knowledge.db。v0.8 清理僵尸 MemoryStore 时已 DROP `memory_entities` / `memory_relations` 2 表,见 §2.2 末)
 
 > v0.8 落地后,持久化层从"会话核心 + 配置/记忆"扩展为"会话核心 + 项目/需求/工作流 + cron/wiki
 > 副本"。本节按"会话核心 → 旧业务实体 → v0.8 工作流域 → 构造自建(不进 db-migration)"四组分别列出。
 >
-> **关于表计数的口径**(由 #20 修正):此前本文写"30 张表 + memory_* 4 张自建表",但这个数字
-> 经 `grep` 全量核对源码后**三处都对不上**:① "11 业务表"把 v0.8 §11.5 已 `DROP TABLE` 的
-> `agent_tools`(`db-migration.ts:616`)也算了进去,实际存活只有 10;② "9 张 v0.8 工作流域表"
-> 漏数了 `wiki_scan_cursors` / `requirement_status_history` / `requirement_messages` /
-> `tool_configs` / `tool_usage` 5 张,实际 14 张(见 §2.2b);③ "memory_* 4 张自建表"只数了
-> `MemoryNodeStore` 的 4 张,漏数了 `MemoryStore.init()` 自建的 `memory_entities` /
-> `memory_relations` 2 张(§2.2 里其实列出来了,但计数的 callout 把它们排除在外)。
+> **关于表计数的口径**(由 #20 修正,并在 v0.8 清理僵尸 MemoryStore 后再修正一次):
+> 此前本文写"30 张表 + memory_* 4 张自建表",但这个数字经 `grep` 全量核对源码后**三处都对不上**:
+> ① "11 业务表"把 v0.8 §11.5 已 `DROP TABLE` 的 `agent_tools`(`db-migration.ts:616`)也算了进去,
+> 实际存活只有 10;② "9 张 v0.8 工作流域表"漏数了 `wiki_scan_cursors` / `requirement_status_history` /
+> `requirement_messages` / `tool_configs` / `tool_usage` 5 张,实际 14 张(见 §2.2b);
+> ③ "memory_* 4 张自建表"只数了 `MemoryNodeStore` 的 4 张,漏数了 `MemoryStore.init()` 自建的
+> `memory_entities` / `memory_relations` 2 张(§2.2 里其实列出来了,但计数的 callout 把它们排除在外)。
+> **v0.8 后续修正**:僵尸 `MemoryStore`(`memory_entities`/`memory_relations`)已被 master 本批
+> 清理 —— `src/server/memory-store.ts` + `src/runtime/mcp-tools/memory-tools.ts` 文件已删,
+> `db-migration.ts` 加了 `DROP TABLE IF EXISTS memory_entities / memory_relations`(§2.2 末有
+> 标注)。**所以 memory_* 现在只剩 `MemoryNodeStore` 的 4 张**(nodes/subjects/edges/fts),
+> 总表数从 ≈33 降到 **≈31**(批 B 自建表从 9 张降到 7 张)。本节计数全部按这个新口径更正。
 >
 > **正确口径**:`sessions.db` 的表分两批管理 ——
 > **批 A · db-migration.ts 管理**(对应 §4.2 迁移机制的 5 阶段,共 24 张):
@@ -65,12 +70,14 @@
 > 见 §2.2b)+ 阶段 3 通过 `new SqliteStore(...)` 构造时自动 `CREATE TABLE` 5 张(agents /
 > providers / templates / mcp_servers / kb_entries,见 §2.2 业务实体表前 5 行)。
 >
-> **批 B · 构造自建(Store 在自己的 `init()` / 构造函数里 `CREATE TABLE IF NOT EXISTS`,共 9 张,
-> 不进 db-migration,改 schema 要去 store 文件)**:`kv_store`(`key-value-store.ts:53`)/
-> `memory_entities` + `memory_relations`(`memory-store.ts:97/104`)/ `memory_nodes` +
-> `memory_subjects` + `memory_edges` + `memory_nodes_fts`(`memory-node-store.ts:140/154/163/181`,
-> 共 6 张)/ `extraction_cursors`(`extraction-cursor-store.ts:77`,v0.8 M5)/
+> **批 B · 构造自建(Store 在自己的 `init()` / 构造函数里 `CREATE TABLE IF NOT EXISTS`,v0.8 清理
+> MemoryStore 后**共 7 张**,不进 db-migration,改 schema 要去 store 文件)**:`kv_store`
+> (`key-value-store.ts:53`)/ `memory_nodes` + `memory_subjects` + `memory_edges` +
+> `memory_nodes_fts`(`memory-node-store.ts:140/154/163/181`,共 4 张 —— **活,保留**)/
+> `extraction_cursors`(`extraction-cursor-store.ts:77`,v0.8 M5)/
 > `tool_telemetry`(`telemetry-store.ts:97`,v0.8 M5)。
+> (~~`memory_entities` + `memory_relations`~~ —— ~~`memory-store.ts:97/104`~~ 已删:见下文 v0.8
+> 清理说明。)
 >
 > 此外 `kb_chunks` 表**根本不在 sessions.db**,而在独立的 `knowledge.db`(§2.3),不要把它
 > 算进 sessions.db 的表数。06 §2.7 "三套知识系统对比矩阵"有跨库横向对照。
@@ -148,7 +155,7 @@ started_at    TEXT
 
 由 `tool-execution-router.ts:14-91` 的 `query/stats/cleanup/analyze` API 消费。
 
-### 2.2 业务实体表(10 张存活 + 1 张已退役)
+### 2.2 业务实体表(10 张存活 + 3 张已退役)
 
 | 表 | Store | 列数 | 备注 |
 |----|-------|------|------|
@@ -158,28 +165,30 @@ started_at    TEXT
 | `templates` | template-store | 14 | is_built_in 不可删 |
 | `mcp_servers` | mcp-store | 11 | source_app 标记来源 |
 | `kb_entries` | kb-store | 8 | 嵌入配置 + 文件列表 |
-| `memory_entities` | memory-store | 4 | 知识图谱(MCP memory-tools 后端) ⚠️ 构造自建,见下 |
-| `memory_relations` | memory-store | 4 | 知识图谱(MCP memory-tools 后端) ⚠️ 构造自建,见下 |
-| `memory_nodes` | memory-node-store | 9 | Wiki 风格记忆节点 ⚠️ 构造自建,见下 |
-| `memory_subjects` | memory-node-store | 6 | 主题聚合 ⚠️ 构造自建,见下 |
-| `memory_edges` | memory-node-store | 4 | 主题间关系 ⚠️ 构造自建,见下 |
+| ~~`memory_entities`~~ | ~~memory-store~~ | ~~4~~ | ⚠️ **v0.8 清理僵尸 MemoryStore 已删**:`src/server/memory-store.ts` + `src/runtime/mcp-tools/memory-tools.ts` 已删,`db-migration.ts` 加 `DROP TABLE IF EXISTS memory_entities`。原是 MCP memory-tools 知识图谱后端,零运行时写入者。 |
+| ~~`memory_relations`~~ | ~~memory-store~~ | ~~4~~ | ⚠️ **v0.8 清理僵尸 MemoryStore 已删**(同上),`db-migration.ts` 加 `DROP TABLE IF EXISTS memory_relations`。 |
+| `memory_nodes` | memory-node-store | 9 | Wiki 风格记忆节点 ⚠️ 构造自建,见下(**活,保留**) |
+| `memory_subjects` | memory-node-store | 6 | 主题聚合 ⚠️ 构造自建,见下(**活,保留**) |
+| `memory_edges` | memory-node-store | 4 | 主题间关系 ⚠️ 构造自建,见下(**活,保留**) |
 
-> ⚠️ **构造自建表不进 db-migration**。上表里 6 张 memory_* 表(2 张 `memory_entities` /
-> `memory_relations` 由 `MemoryStore.init()` 自建,4 张 `memory_nodes` / `memory_subjects` /
-> `memory_edges` / `memory_nodes_fts` 由 `MemoryNodeStore.init()` 自建)全部在各自 store 的
-> `init()` 里 `CREATE TABLE IF NOT EXISTS` 自建 —— **`grep "memory_" db-migration.ts` 零命中
-> 验证**(只在 v0.7 的 JSON 迁移注释里被提到)。注意这两套 memory 表是**两个并行系统**:
-> `MemoryStore`(`memory_entities`/`memory_relations`)是 MCP `memory-tools` 的知识图谱后端,
-> `MemoryNodeStore`(`memory_nodes`+`memory_subjects`+`memory_edges`+FTS)是会话压缩回退路径
-> 的主题聚合后端,二者数据不互通(§11.3 有对比矩阵)。改 memory_* schema 要去对应 store 的
-> `init()`,不要去 `db-migration.ts`(那会漏掉 FTS 重建逻辑:`init()` 检测到旧 FTS 列结构时会
-> DROP 重建,db-migration 没这个能力)。详见 06 §2.7 "三套知识系统对比矩阵"的"建表机制"列。
+> ⚠️ **构造自建表不进 db-migration**。上表里**存活**的 4 张 memory_* 表(`memory_nodes` /
+> `memory_subjects` / `memory_edges` / `memory_nodes_fts`,全部由 `MemoryNodeStore.init()`
+> 自建)在 store 的 `init()` 里 `CREATE TABLE IF NOT EXISTS` 自建。**v0.8 清理僵尸 MemoryStore
+> 之后,`MemoryNodeStore` 是唯一的 memory 自建后端** —— 另一套 `MemoryStore`
+> (`memory_entities`/`memory_relations`,MCP `memory-tools` 知识图谱后端)是零运行时写入者的
+> 僵尸,master 本批已删(`memory-store.ts` + `mcp-tools/memory-tools.ts` 文件已删,`db-migration.ts`
+> 加 `DROP TABLE IF EXISTS memory_entities / memory_relations`)。所以现在是单系统,不再是"两个
+> 并行 memory 后端"(旧版 §11.3 对比矩阵已随删除而失效)。改 memory_* schema 要去
+> `memory-node-store.ts` 的 `init()`,不要去 `db-migration.ts`(那会漏掉 FTS 重建逻辑:`init()`
+> 检测到旧 FTS 列结构时会 DROP 重建,db-migration 没这个能力)。详见 06 §2.7 "三套知识系统对比
+> 矩阵"的"建表机制"列。
 >
-> **批 B 构造自建表全清单(共 9 张,§2 顶部"表计数口径"块已列出)**:除上述 6 张 memory_* 表外,
-> 还有 3 张同类表也由 store 自建、不进 db-migration:`kv_store`(`key-value-store.ts:53`)/
-> `extraction_cursors`(`extraction-cursor-store.ts:77`,v0.8 M5 lazy store)/
-> `tool_telemetry`(`telemetry-store.ts:97`,v0.8 M5 lazy store)。改这三张表的 schema 同样
-> 要去 store 文件而不是 db-migration.ts。
+> **批 B 构造自建表全清单(v0.8 清理 MemoryStore 后共 7 张,§2 顶部"表计数口径"块已列出)**:
+> 4 张 memory_* 表(全属 `MemoryNodeStore`)+ 3 张同类 store 自建、不进 db-migration 的表:
+> `kv_store`(`key-value-store.ts:53`)/ `extraction_cursors`(`extraction-cursor-store.ts:77`,
+> v0.8 M5 lazy store)/ `tool_telemetry`(`telemetry-store.ts:97`,v0.8 M5 lazy store)。改这
+> 些表的 schema 同样要去 store 文件而不是 db-migration.ts。(~~原 9 张里的 `memory_entities` +
+> `memory_relations`~~ 已 v0.8 删除,见上。)
 
 ### 2.2b v0.8 多 Agent 工作流域表（src/server/db-migration.ts:653-897，共 14 张表）
 
@@ -300,7 +309,7 @@ insertFtsStmt(双保险,即使 FTS5 外部内容表本应自动同步),`deleteNo
 
 ### 2.13 表关系图（erDiagram）
 
-> v0.8 后表数从 ≈15 张扩到 ≈33 张(口径见 §2 顶部块)。下图分两个 mermaid 块:**①会话/旧业务/记忆** +
+> v0.8 后表数从 ≈15 张扩到 ≈31 张(v0.8 清理僵尸 MemoryStore 后口径,详见 §2 顶部块)。下图分两个 mermaid 块:**①会话/旧业务/记忆** +
 > **②v0.8 工作流域**(projects→requirements→orchestrate)。两者通过 `agents.id ↔
 > crons.agent_id` 与 `sessions.context_project_id`(v0.8 D-B)弱关联。
 >
@@ -323,7 +332,7 @@ erDiagram
     SESSIONS ||--o{ TURN_STATE : "checkpoint"
     SESSIONS ||--o{ TOOL_EXECUTIONS : "logs"
     KB_ENTRIES ||--o{ KB_CHUNKS : "1 KB → N chunks"
-    MEMORY_ENTITIES ||--o{ MEMORY_RELATIONS : "old graph"
+    %% MEMORY_ENTITIES ||--o{ MEMORY_RELATIONS : "old graph"   %% v0.8 清理僵尸 MemoryStore:已 DROP 2 表,本边从图中移除
     MEMORY_NODES ||--o{ MEMORY_NODES : "evolvedFrom (self-ref)"
     MEMORY_NODES ||--o{ MEMORY_SUBJECTS : "grouped by subject"
     MEMORY_NODES }o--o{ MEMORY_EDGES : "subject-to-subject"
@@ -616,16 +625,17 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 | `turn_state` | durable execution 检查点 | `createTurnState` / `updateTurnPhase` |
 | `tool_executions` | 会话级工具调用日志(旧版,见 §2.1 与 §11.2 关于与 `tool_usage` 重叠的讨论) | `recordToolExecution` |
 
-#### 4.0.2 SessionDB 直接聚合的 store(5 个,分两批)
+#### 4.0.2 SessionDB 直接聚合的 store(v0.8 清理 MemoryStore 后剩 4 个,分两批)
 
-`SessionDB` 在构造函数里 **eager** 实例化 3 个内核 store,在 v0.8 (M5) 又加了 2 个 **lazy** store:
+`SessionDB` 在构造函数里 **eager** 实例化 2 个内核 store(KeyValueStore + MemoryNodeStore;
+~~MemoryStore~~ 已随 v0.8 僵尸清理删除),在 v0.8 (M5) 又加了 2 个 **lazy** store:
 
 > ⚠️ **更正**:本文此前写"6 个,分两批 + 1 个全局 wiki store 入口",这是**错的**。`WikiStore`(`wiki-node-store.ts:327` 的 `WikiStore` 类)在 `server/index.ts:122` 以 `wikiStoreGlobal = new WikiStore(sessionDB)` **独立 new** —— SessionDB 只是被当 `getDb()` 提供者传进去,本身**不**持有 `WikiStore` 字段、不暴露 getter(在 `session-db.ts` 里 grep `WikiStore` 零命中)。`WikiStore` 与 §4.0.3 的 9 个工作流域 store 同属"在 server/index.ts 独立 new、不挂 SessionDB"那一类,只是它实例化得更早(必须在 hooks 注册前,以便 M5 抽取器拿到 writer)。详见 §4.0.3 与 [02-module-structure.md §4.1.1](02-module-structure.md)。
 
 | store | 实例化时机 | 用途 | getter |
 |-------|-----------|------|--------|
 | `KeyValueStore` | eager(构造函数 :69) | 项目"软状态"总线(见 §2.4 / §7) | `getKVStore()` |
-| `MemoryStore` | eager(:70) | 旧版知识图谱(memory_entities/relations) | `getMemoryStore()` |
+| ~~`MemoryStore`~~ | ~~eager(:70)~~ | ~~旧版知识图谱(memory_entities/relations)~~ ⚠️ **v0.8 已删**:`memory-store.ts` + `mcp-tools/memory-tools.ts` 文件已删,`db-migration.ts` DROP 2 表。`getMemoryStore()` getter 已随类移除。 | ~~`getMemoryStore()`~~ |
 | `MemoryNodeStore` | eager(:71) | Wiki 风格记忆节点(memory_nodes + FTS5) | `getMemoryNodeStore()` |
 | `ExtractionCursorStore` | **lazy**(v0.8 M5,首次 `getExtractionCursorStore()` 才 new) | extractor A 增量游标(见 §2.13b) | `getExtractionCursorStore()` |
 | `TelemetryStore` | **lazy**(v0.8 M5) | extractor B 独立遥测写入 | `getTelemetryStore()` |
@@ -671,7 +681,9 @@ v0.8 工作流域 store(以及 §4.0.2 更正块提到的 `WikiStore`)把它当 
 两个问题:① 计数已过时(v0.8 M5 加了 2 个 lazy store → 实际 5 个,加上 §4.0.3 提到的 v0.8 工作流域
 store 并不被 SessionDB 聚合,所以"4 个后端"既漏了新 store 又误把工作流域 store 算进来);
 ② 更根本的是它把 SessionDB 描述成"全业务聚合根",而 v0.8 已经把它降级为会话核心 + DB 句柄提供者
-(§4.0.3)。本节重写以反映这层架构演变。
+(§4.0.3)。**v0.8 后续修正**:僵尸 `MemoryStore` 已被 master 本批删除(见 §4.0.2),
+所以当前 SessionDB 直接聚合的 store 实际是 **4 个**(KeyValueStore + MemoryNodeStore + 2 个
+v0.8 M5 lazy store),不再是 5 个。本节重写以反映这层架构演变。
 
 ### 4.1 关键不变量
 
@@ -748,7 +760,10 @@ prepare 失败。所以补列永远在第 1 步。涵盖:
 
 - **KV**:6 个文件(`workspace` / `tool-config` / `theme` / `device-context` / `github-cache` / `global-config`)
   → `kv_store`,走 `kv.migrateFromJsonFile(key, path)`
-- **Memory**:`memory.migrateFromJson()` 把旧 `memory.json` → `memory_entities` / `memory_relations`
+- **Memory**:~~`memory.migrateFromJson()` 把旧 `memory.json` → `memory_entities` / `memory_relations`~~
+  —— **v0.8 清理僵尸 MemoryStore 后此迁移已失效**:`memory-store.ts` 文件已删,目标表
+  `memory_entities`/`memory_relations` 已被 `db-migration.ts` DROP。当前 memory.json 迁移
+  路径(若仍存在)不再写入任何表;MemoryNodeStore 是唯一存活的 memory 后端(见 §5)。
 
 > **v0.8 表没有任何 JSON 前身** —— `projects` / `project_wiki` / `requirements` / `crons` / `orchestrate_*`
 > / `tool_usage` 等都是 DB-native 的,阶段 4 / 5 完全不涉及它们。这就是 §11.1 评的"v0.8 工作流域表
@@ -760,12 +775,14 @@ prepare 失败。所以补列永远在第 1 步。涵盖:
 
 ## 5. MemoryNodeStore — Wiki 风格记忆
 
-`src/server/memory-node-store.ts:43-323` 是**两个并行记忆系统中的新版**：
+`src/server/memory-node-store.ts:43-323` 是**当前唯一存活的 memory 后端**(v0.8 清理僵尸
+`MemoryStore` 之后)。下表把已删除的旧版列出供历史对照:
 
-| | 旧版 memory-store | 新版 memory-node-store |
+| | ~~旧版 memory-store~~ (已删) | 当前 memory-node-store |
 |---|---|---|
+| 状态 | ⚠️ **v0.8 已删**:`memory-store.ts` + `mcp-tools/memory-tools.ts` 文件已删,`db-migration.ts` DROP `memory_entities` / `memory_relations` 2 表 | **活**(唯一 memory 后端) |
 | 模型 | 实体-关系图谱 | Wiki 节点 + 主题聚合 |
-| 表 | memory_entities + memory_relations | memory_nodes + memory_subjects + memory_edges |
+| 表 | ~~memory_entities + memory_relations~~(已 DROP) | memory_nodes + memory_subjects + memory_edges + memory_nodes_fts |
 | 检索 | LIKE / 简单匹配 | FTS5 + BM25 |
 | 写入 | 全量替换 | 增量 upsert，支持演化 |
 
@@ -909,7 +926,7 @@ flowchart LR
 - **KB 搜索** 在大库时性能崩塌（O(M×D) 客户端循环）。
 - **message-store.ts** 是已迁移完成的历史遗留物，应删除或迁移到 `legacy/`。
 - **内存节点** 与 **旧版知识图谱** 同时存在——需要明确"哪个是默认"，否则用户数据写错地方。v0.8 又新增 `project_wiki`(第三套 wiki 系统)—— 目前它走 archivist 摘要 + 磁盘镜像树,**与 kb_*(RAG) / memory_nodes(主题聚合) 三路并存**,需要文档与 UI 明确各自适用场景(见 06 §2)。
-- **没有数据导出**。用户无法迁移到新机器。v0.8 把表数翻倍(≈15→≈33 张,见 §2 顶部口径块),导出/导入的紧迫性更高。
+- **没有数据导出**。用户无法迁移到新机器。v0.8 把表数翻倍(≈15→≈31 张,v0.8 清理僵尸 MemoryStore 后口径,见 §2 顶部口径块),导出/导入的紧迫性更高。
 - **`tool_usage`(P0) 与 `tool_executions`(旧) 并存**:两张表语义高度重叠(都是工具调用日志),只是字段集与归属不同(`tool_usage` 含 params/独立 session_id,`tool_executions` 含 input/output_preview)。长期应合并为一张 + 视图。
 - **`db-migration.ts` 已 1059 行**:14 张 v0.8 工作流域表的 DDL 全部内联在这个文件里(没有拆到各 store)。每次新增表都让这个文件更长。可考虑把每张表的 `CREATE TABLE` + 列定义下沉到对应 store 文件顶部(migration 只负责调度顺序)。
 

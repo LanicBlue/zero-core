@@ -121,7 +121,7 @@ runtime/
 │
 └── mcp-tools/              # 高级工具（虽然叫 "mcp-tools"，但都是 built-in）
     ├── fetch-tools.ts (654) # WebFetch + Cookie jar + 持久化 + 浏览器渲染
-    ├── memory-tools.ts (151) # 旧版 Knowledge Graph 工具（已被 memory-node-tools 替代）
+    ├── memory-tools.ts          # ❌ 已删（v0.8 清理僵尸 MemoryStore：memoryReadTool/memoryWriteTool + 类）
     ├── memory-node-tools.ts (140) # 新版 Wiki 风格 memory 工具
     ├── sequential-thinking-tools.ts (76) # 思维链
     ├── assistant-tools.ts (220) # 应用诊断（info / logs / config / source）
@@ -165,30 +165,31 @@ runtime/hooks/
 | agent-service.ts | 约 1,200 行 | 多 Agent 生命周期 + 会话循环管理 + provider/runtime 编排 |
 | db-migration.ts | 约 1,060 行 | SQLite schema 演进、历史数据清理和兼容迁移（v0.8 后 5 阶段：列补齐 → 9 张工作流域表 DDL → SqliteStore 构造 → JSON→SQLite → KV+Memory，详见 [05 §4.2](./05-persistence.md#42-迁移机制)） |
 | index.ts | 约 900 行 | 后端组合根：初始化 DB、hooks、**手动编排 12+ store**（见 §4.1.1）、services、routers、cron、archivist |
-| session-db.ts | 约 960 行 | SQLite 连接生命周期 + **会话核心 5 表 + 5 个聚合 store**（3 eager 内核 + 2 v0.8 M5 lazy）的门面，详见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store) |
+| session-db.ts | 约 960 行 | SQLite 连接生命周期 + **会话核心 5 表 + 4 个聚合 store**（2 eager 内核 + 2 v0.8 M5 lazy；MemoryStore 已删除，原 3 eager 内核降为 2）的门面，详见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store) |
 | session-manager.ts | 约 350 行 | 会话生命周期状态机 + 指标聚合 + TTL 清理 |
 | session-lifecycle.ts | 约 45 行 | 状态枚举 + VALID_TRANSITIONS |
 | session-router.ts | 约 120 行 | 会话 CRUD REST API |
 
-> **v0.8 关键更正**：早期文档把 `session-db.ts` 描述成"所有 store 的聚合门面"——**已不准确**。v0.8 后 SessionDB 只聚合 3 个 eager 内核 store（`KeyValueStore`/`MemoryStore`/`MemoryNodeStore`）+ 2 个 M5 lazy store（`ExtractionCursorStore`/`TelemetryStore`），共 5 个；而 9 个工作流域 store（`ProjectStore`/`RequirementStore`/`CronStore`/`WikiScanCursorStore`/`TaskStepStore`/`ProjectJobStore`/`CronRunStore`/...）在 `index.ts:151-171` **独立 new**，只把 SessionDB 当 `getDb()` 提供者。详见 [05 §4.0.3](./05-persistence.md#403-关键边界sessiondb-不是聚合根) 与下方 §4.1.1。
+> **v0.8 关键更正**：早期文档把 `session-db.ts` 描述成"所有 store 的聚合门面"——**已不准确**。v0.8 后 SessionDB 只聚合 2 个 eager 内核 store（`KeyValueStore`/`MemoryNodeStore`；原 3 个里的 `MemoryStore` 已作为僵尸清理删除）+ 2 个 M5 lazy store（`ExtractionCursorStore`/`TelemetryStore`），共 4 个；而 9 个工作流域 store（`ProjectStore`/`RequirementStore`/`CronStore`/`WikiScanCursorStore`/`TaskStepStore`/`ProjectJobStore`/`CronRunStore`/...）在 `index.ts:151-171` **独立 new**，只把 SessionDB 当 `getDb()` 提供者。详见 [05 §4.0.3](./05-persistence.md#403-关键边界sessiondb-不是聚合根) 与下方 §4.1.1。
 
 **架构判断**：服务层的复杂度正在向**组合根（store 编排）**、Agent 编排、Wiki/Memory 持久化、迁移脚本四个热点集中。后续拆分不应只盯 `AgentService`，也要把 `WikiStore`、`db-migration` 以及 `index.ts` 内 12+ store 的手动编排（应引入 store registry）纳入计划。
 
 ### 4.1 Stores
 
-v0.8 后共 **~26 个 store 类、分布在 21 个文件**（不含 `sqlite-store.ts` 抽象基类 / `key-value-store.ts` KV 接口实现 / `message-store.ts` 已废文件存储）。按归属方式分四类（A/B/C/D）：
+v0.8 后共 **~25 个 store 类、分布在 20 个文件**（不含 `sqlite-store.ts` 抽象基类 / `key-value-store.ts` KV 接口实现 / `message-store.ts` 已废文件存储；v0.8 清理僵尸 MemoryStore 后从 ~26/21 下调）。按归属方式分四类（A/B/C/D）：
 
 > **切分视角说明**：这里的 A/B/C/D 是按**归属方式**（是否挂 SessionDB + v0.8 阶段）切的；[`file-structure.md`](../basic/file-structure.md) 的 server 章节（§"数据存储"）则按**业务域**切（会话核心 / 旧业务实体 / 工作流域，再分路由层 + 服务编排）。两种切分是**正交**的，不强行统一：本节关心"谁持有 store 引用、store 怎么被 new 出来"，`file-structure.md` 关心"store 属于哪个业务域、跟哪些 router/service 配套"。同一 store 在两种视角下归类可能不同（例如 `wiki-node-store.ts` 在本节属 C 类工作流域，但在域视角下跨"会话核心回退 + Wiki 镜像"两个域），这是预期的。
 
-**A. SessionDB 直接聚合 store**（5 个，`session-db.ts:69-105` 持有引用 + getter）—— 详见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store)：
+**A. SessionDB 直接聚合 store**（4 个，`session-db.ts:69-105` 持有引用 + getter；原 5 个中的 `MemoryStore` 已作僵尸清理删除）—— 详见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store)：
 
 | Store | 行 | eager/lazy | 表 |
 |-------|----|-----------|-----|
 | `key-value-store.ts` KeyValueStore | — | eager | kv(key/value) |
-| `memory-store.ts` MemoryStore | 266 | eager | memory_entities / memory_relations |
 | `memory-node-store.ts` MemoryNodeStore | 324 | eager | memory_nodes / memory_subjects / memory_edges + FTS5 |
 | `extraction-cursor-store.ts` ExtractionCursorStore | 77 | **lazy**（M5）| extraction_cursors |
 | `telemetry-store.ts` TelemetryStore | 97 | **lazy**（M5）| tool_telemetry |
+
+> **删除记录**：原 `memory-store.ts` MemoryStore（266 行，持有 `memory_entities` / `memory_relations` 表）因运行时零写入者、唯一消费者 `memory-tools.ts` 早已取消注册，已于 v0.8 清理僵尸时删除，对应两表由 db-migration DROP。活的兄弟是 `memory-node-store.ts` MemoryNodeStore（仍在 compression 回退路径 + `/api/memory-nodes` REST 被调用），**不要混淆**。
 
 > **lazy 的设计动机**：不碰 M5 抽取路径的代码不付初始化成本；两表也故意**不进** `db-migration.ts` 的 `*_COLUMNS` 数组（独立 DDL，见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store)）。
 
@@ -231,12 +232,12 @@ v0.8 后共 **~26 个 store 类、分布在 21 个文件**（不含 `sqlite-stor
 
 旧文档（含本文早期版本）把 SessionDB 描述为"所有 store 的聚合根 / 聚合门面"——**这是 v0.7 叙事，已不准确**。v0.8 M0~M3 落地工作流域后，store 编排变成两层：
 
-1. **SessionDB 自持 5 个内核 store**（§4.1.A 表，eager 3 + lazy 2），其余什么也不聚合。
+1. **SessionDB 自持 4 个内核 store**（§4.1.A 表，eager 2 + lazy 2；原 eager 3 中的 MemoryStore 已删），其余什么也不聚合。
 2. **`index.ts:151-171` 手动 new 15+ store**（§4.1.B + C），全部把 SessionDB 当作 `getDb()` 提供者传入（store 内部读 `sessionDB.db` 直接操作 SQLite），但 SessionDB **不持有这些 store 的引用**。
 
 ```ts
 // index.ts:115-171 摘录(简化)
-const sessionDB = new SessionDB();           // 内部 eager new 3 个内核 store
+const sessionDB = new SessionDB();           // 内部 eager new 2 个内核 store（KV/MemoryNode；MemoryStore 已删）
 runMigrations(sessionDB);
 const wikiStoreGlobal = new WikiStore(sessionDB);   // C 类,独立 new
 // ...
@@ -285,7 +286,7 @@ server/index.ts 注入主要 HTTP 表面：
 
 - `server/` 是顶层入口，不被 `core/`、`runtime/`、`shared/` 反向依赖。
 - 启动顺序（`index.ts:113-150` 实际序列，比早期"SessionDB→runMigrations→...→Stores"线性模型复杂）：
-  1. `new SessionDB()` —— 内部 eager new 3 个内核 store（KV/Memory/MemoryNode）
+  1. `new SessionDB()` —— 内部 eager new 2 个内核 store（KV/MemoryNode；MemoryStore 已作僵尸删除）
   2. `runMigrations(sessionDB)` —— 5 阶段 schema 演进，详见 [05 §4.2](./05-persistence.md#42-迁移机制)
   3. `new WikiStore(sessionDB)` —— v0.8 M2 全局 memory tree，**早于 hooks 注册**（M5 抽取器要引用它）
   4. `registerDurableHooks(sessionDB)` + `registerToolExecutionHooks(sessionDB)` —— turn 持久化 + 工具执行回写

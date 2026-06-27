@@ -87,16 +87,17 @@ renderer / runtime 四个独立 JS 上下文**。
 - MCP/Platform 工具:`mcp-tool.ts`(动态 MCP 工具适配);Platform 工具由 `mcp-tools/platform-tools.ts` 的 `getPlatformTools()` 注入(内部 Assistant 等)
 - `outline/` — 代码大纲系统:`extractors/`(27 种语言提取器)、`renderer.ts`、`stripper.ts`、`types.ts`
 
-### mcp-tools/(6 个内置 MCP/Platform 工具文件)
+### mcp-tools/(5 个内置 MCP/Platform 工具文件)
 
 | 文件 | 作用 |
 |------|------|
 | `browser-render.ts` | BrowserRender(headless 浏览器渲染) |
 | `fetch-tools.ts` | WebFetch + cookie 处理(与 `tools/fetch-tools.ts` 路径关系见源码) |
 | `cookie-jar.ts` | fetch 共享 cookie jar |
-| `memory-tools.ts` | **legacy 未注册**(`MemoryRead`/`MemoryWrite`,v0.8 已退役,未进 ALL_TOOLS) |
 | `platform-tools.ts` | `getPlatformTools()` → Platform 工具(redactSensitive 输出层) |
 | `sequential-thinking-tools.ts` | SequentialThinking 工具 |
+
+> **已删(本批清理僵尸)**:`memory-tools.ts`(`MemoryRead`/`MemoryWrite`,v0.8 P2 §11.6 取消注册,本批删文件)。原 6 个 → 现 5 个。
 
 ## server/ 详细结构
 
@@ -119,7 +120,7 @@ renderer / runtime 四个独立 JS 上下文**。
 
 - `agent-store.ts`、`provider-store.ts`、`template-store.ts`、`mcp-store.ts`、`persona-store.ts`
 - KB:`kb-store.ts`、`kb-db.ts`、`kb-embeddings.ts`、`kb-ingest.ts`、`kb-search.ts`(本地文档 + chunk + embedding + cosine 检索,见 06 §3)
-- `memory-store.ts` — legacy 实体-关系图谱 memory
+- `memory-store.ts` — **已删(本批清理僵尸)**:legacy 实体-关系图谱 memory(`MemoryStore`,零运行时写入者,本批删文件)。`MemoryNodeStore` 保留(见上方会话核心区)。
 
 **v0.8 工作流域(9 张表 + 对应 store,在 `server/index.ts` 独立 new,不挂 SessionDB)**:
 

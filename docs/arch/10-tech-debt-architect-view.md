@@ -50,8 +50,8 @@ agent-service.ts (orchestrator, 200 行)
 - turn_state CRUD
 - tool_executions CRUD
 - KeyValueStore 持有
-- MemoryStore 持有（旧）
-- MemoryNodeStore 持有（新）
+- ~~MemoryStore 持有（旧）~~ ✅ **v0.8 已删**(僵尸清理,见 D-006)
+- MemoryNodeStore 持有（新,**当前唯一 memory 后端**)
 
 **风险**：业务表增长后单文件不可维护。
 
@@ -64,8 +64,8 @@ session-db.ts (orchestrator, 100 行)
 ├─ turns-store.ts       (turns + turn_state)
 ├─ tool-executions-store.ts
 ├─ key-value-store.ts   (已独立)
-├─ memory-store.ts      (已拆为独立文件但仍由 SessionDB 实例化（`session-db.ts:70-71`），旧版)
-└─ memory-node-store.ts (已拆为独立文件但仍由 SessionDB 实例化（`session-db.ts:70-71`），新版)
+├─ ~~memory-store.ts~~      (~~旧版~~ v0.8 已删,见 D-006;SessionDB 不再持有)
+└─ memory-node-store.ts (已拆为独立文件但仍由 SessionDB 实例化（`session-db.ts:70-71`），新版,**唯一 memory 后端**)
 ```
 
 **优先级**：4 × 3 / 3 = **4.0**。
@@ -112,18 +112,29 @@ session-db.ts (orchestrator, 100 行)
 
 ---
 
-### D-006 · 双 Memory 系统（影响 3 / 成本 3 / 紧迫 3）
+### D-006 · 双 Memory 系统 ✅ **已清理**
 
-**位置**：`server/memory-store.ts` (266) + `server/memory-node-store.ts` (352)。
+**原位置**：~~`server/memory-store.ts` (266)~~ + `server/memory-node-store.ts` (352)。
 
-**症状**：两套并存。`MemoryStore` 是**僵尸**——零运行时写入者，且其唯一消费者 `runtime/mcp-tools/memory-tools.ts` 零 importer（已从工具注册表移除）。`MemoryNodeStore` 仍被 `wiki-anchor-injection` / `wiki-search` 间接读取。旧表数据可能在 DB 中。
+**当前状态**：master 本批已清理僵尸 `MemoryStore`。具体删除:
+- `src/server/memory-store.ts`(`MemoryStore` 类)文件已删
+- `src/runtime/mcp-tools/memory-tools.ts`(唯一消费者,零 importer)文件已删
+- `db-migration.ts` 加 `DROP TABLE IF EXISTS memory_entities` + `DROP TABLE IF EXISTS memory_relations`
 
-**修复**：
-- 把旧版数据 migrate 到新版
-- 删除旧版 + `mcp-tools/memory-tools.ts`
-- 或反之：删除新版
+`MemoryNodeStore`(4 张表:`memory_nodes` / `memory_subjects` / `memory_edges` / `memory_nodes_fts`)
+**保留**,仍是 `wiki-anchor-injection` / `wiki-search` 间接读取的唯一 memory 后端。
+05-persistence.md §2 / §4.0.2 / §5 已同步更正表计数(sessions.db 总表 ≈31,memory_* 只剩 4 张)。
 
-**优先级**：3 × 3 / 3 = **3.0**。
+**剩余风险**:无新风险。若旧 DB 残留 `memory_entities` / `memory_relations` 行数据,
+`db-migration.ts` 的 `DROP TABLE IF EXISTS` 会直接丢弃(僵尸零运行时写入者,数据无业务价值)。
+
+**原描述**（保留供参考）:
+- **症状**：两套并存。`MemoryStore` 是**僵尸**——零运行时写入者,且其唯一消费者
+  `runtime/mcp-tools/memory-tools.ts` 零 importer(已从工具注册表移除)。`MemoryNodeStore`
+  仍被 `wiki-anchor-injection` / `wiki-search` 间接读取。旧表数据可能在 DB 中。
+- **修复方案**:删除旧版 + `mcp-tools/memory-tools.ts`(已执行)。
+
+**原优先级**：3 × 3 / 3 = **3.0**。→ ✅ 已清理(master 本批删除 memory-store.ts + memory-tools.ts + DROP 2 表)。
 
 ---
 

@@ -9,7 +9,7 @@
 | MCP | 外部工具协议接入 | 是，以工具形式暴露 | `MCPManager` + `ToolRegistry` |
 | Wiki tree | 项目知识、Agent 记忆、自由锚点 | 是，默认上下文/系统提示注入 | `WikiStore` + `wiki-anchor-injection.ts` + `Wiki` 工具 |
 | KB | 本地文档导入、chunk、embedding、检索 | 否，当前主要是手动 API/UI 能力 | `/api/kb` + `kb-search.ts` |
-| Legacy memory | 旧实体/节点记忆存储与旧工具文件 | 否，保留兼容/迁移痕迹 | `memory-store.ts`、`memory-node-store.ts`、`runtime/mcp-tools/memory-tools.ts` |
+| Legacy memory | 节点记忆存储（`memory-node-store.ts` 仍活）；旧实体记忆 store 已删 | 否，保留兼容/迁移痕迹 | `memory-node-store.ts`（活）；`memory-store.ts` + `runtime/mcp-tools/memory-tools.ts` **v0.8 已删** |
 | Legacy RAG hook | 可选的 PreLLMCall RAG 注入点 | 默认不生效 | `runtime/hooks/rag-hooks.ts` |
 
 实际运行图：
@@ -98,7 +98,7 @@ const wikiStoreGlobal = new WikiStore(sessionDB);
 
 运行时工具里当前暴露的是 `Wiki` 工具。`src/runtime/tools/index.ts` 已明确移除 `MemoryRecall` / `MemoryNote`，注释说明记忆现在位于每个 Agent 的 Wiki 子树中，Agent 通过 `Wiki` action 工具读取/搜索/维护。
 
-旧文件 `runtime/mcp-tools/memory-tools.ts` 仍存在，但没有进入 `ALL_TOOLS`，因此普通 Agent 会话不会拿到 `MemoryRead` / `MemoryWrite`。
+旧文件 `runtime/mcp-tools/memory-tools.ts`（`memoryReadTool` / `memoryWriteTool`）v0.8 已作为僵尸清理删除（连同其消费者 `server/memory-store.ts` 的 `MemoryStore` 类 + `memory_entities` / `memory_relations` 两表 db-migration DROP）。删前它也早已从 `ALL_TOOLS` 取消注册，普通 Agent 会话从未拿到 `MemoryRead` / `MemoryWrite`。
 
 ### 2.5 Wiki 体的磁盘镜像树布局（v0.8 P1 §10.1）
 
@@ -266,7 +266,7 @@ graph LR
 | **表所在文件** | sessions.db | `kb_entries` in sessions.db + `kb_chunks` in **knowledge.db** (独立) | sessions.db |
 | **建表机制** | `db-migration.ts:672` `CREATE TABLE IF NOT EXISTS` (db-migration 管理) | `kb_chunks`: `KbDB.initSchema()` 构造时自建 (`kb-db.ts:53-69`);`kb_entries`: SqliteStore 包装 (`kb-store.ts:51`) | `MemoryNodeStore.init()` 构造时自建 (`memory-node-store.ts:138-180`),**不进 db-migration** |
 | **行规模量级** | 节点级(每个 wiki 节点 1 行,正文下沉磁盘) | chunk 级(单文档拆数十~数百行,每行带 embedding blob) | 节点级(实体-关系图,每节点 1 行 + FTS 索引) |
-| **写入触发器** | ① `fresh-db-seed.ts` 初始骨架;② `project-wiki-router.ts` 用户 REST CRUD;③ `WikiSkeletonService` (archivist 增量扫描,§2.6);④ `Wiki` runtime 工具 (Agent 运行时 create/update);⑤ extractor/compression hooks | **仅** `kb-ingest.ts` (用户显式导入文档 → 分块 → embedding → 写 chunks + entries) | **仅** legacy 压缩流程回退路径(Wiki 不可用时),`MemoryWrite` 工具当前**未注册** (§4) |
+| **写入触发器** | ① `fresh-db-seed.ts` 初始骨架;② `project-wiki-router.ts` 用户 REST CRUD;③ `WikiSkeletonService` (archivist 增量扫描,§2.6);④ `Wiki` runtime 工具 (Agent 运行时 create/update);⑤ extractor/compression hooks | **仅** `kb-ingest.ts` (用户显式导入文档 → 分块 → embedding → 写 chunks + entries) | **仅** legacy 压缩流程回退路径(Wiki 不可用时);原 `MemoryWrite` 工具 v0.8 已**整文件删除**(§4) |
 | **写入约束** | scope+type 护栏 (`WikiSkeletonService` 单一入口,§2.6 护栏;`Wiki` 工具带 provenance) | 文件分块策略固定,无业务护栏 | 无护栏(legacy 设计) |
 | **检索方式** | **树遍历 + 路径定位** (`wiki-anchor-injection.ts` 按 anchor nodeId 取子树;`Wiki` 工具按 path/title 找子节点) | **向量相似度 top-K** (`kb-search.ts` cosine similarity over embeddings) | **FTS5 MATCH** (`memory_nodes_fts`, `memory-node-store.ts:128`) + LIKE 兜底 (`:281`) |
 | **谁来读** | `AgentLoop` 构造时 + `updateConfig` 时调 `resolveAnchors` → `renderSystemAnchors` 注入 system prompt (默认链路,§2 顶部 mermaid) | `kb-search.ts` 经 `/api/kb` REST **手动**调用;`rag-hooks.ts` 是 PreLLMCall 注入点但**默认未接通** (§3.2) | `runtime/memory-recall.ts` 是 FTS 召回残留,**未接主链路** (§4) |
@@ -278,11 +278,11 @@ graph LR
 
 这三套不是设计出来的分层,而是**三代演进留下的地层**:
 
-1. **`memory_*` (最老)**:实体-关系图谱式 memory + FTS 召回,设计上想模仿 Claude Code 的 memory 机制。问题是写入无业务护栏、检索用 FTS 召回噪声大、与 AgentLoop 注入没有干净接口。v0.8 决定退役(`memory-hooks.ts` 已从 `registerAllRuntimeHooks` 移除),但 store / recall / tools 文件还在,作为压缩流程的回退路径留着(§4)。
+1. **`memory_*` (最老)**:实体-关系图谱式 memory(`memory_entities` / `memory_relations`,即原 `MemoryStore`)+ 节点记忆(`memory_nodes` / `_subjects` / `_edges`,即 `MemoryNodeStore`) + FTS 召回,设计上想模仿 Claude Code 的 memory 机制。问题是写入无业务护栏、检索用 FTS 召回噪声大、与 AgentLoop 注入没有干净接口。v0.8 已清理僵尸一半:**实体-关系图谱 store（`MemoryStore` 类 + 两表）+ 其 tools（`memory-tools.ts`）已删除**；`memory-hooks.ts` 早已从 `registerAllRuntimeHooks` 移除；**仍在的**只有节点记忆 store `MemoryNodeStore`（活的，作为压缩流程回退路径，见 §4）+ `memory-recall.ts`（未接主链路）。
 2. **`kb_*` (中间)**:本地文档 RAG,设计上想给 Agent 配私有知识库。技术栈完整(SqliteStore 元数据 + 独立 knowledge.db 存向量 + cosine 检索 + /api/kb),但**产品接入没做完**:`getRagContext` 从未被 `AgentService.createLoopForSession` 注入(§3.2),所以普通 Agent 会话根本不查它。当前是"能用手动 API 检索,但 Agent 不会自动用"的半成品。
 3. **`project_wiki` (最新,当前主线)**:把上述两套的教训吸收后重做的结构化记忆 —— 树形结构(支持 path 定位 + scope 隔离)、磁盘镜像(git 友好 + 人工可编辑)、anchor 注入(干净的 AgentLoop 接口)、增量扫描(archivist git diff,不全量重建)、provenance 元数据(区分 confirmed/derived)。v0.8 是核心增强目标(§2.5/§2.6)。
 
-**为什么不一刀切删掉前两套**:`memory_*` 的压缩回退路径目前还在用(Wiki 不可用时会写 memory_nodes);`kb_*` 是"代码完整但产品没接",如果未来要做显式 RAG 产品化,基础设施已经就绪,不必重写。所以 v0.8 的取舍是:**只把 `project_wiki` 推为主线并继续加固,前两套标 legacy 但不删**,等 `memory_*` 的压缩回退路径迁移完成、`kb_*` 的产品决策(显式 RAG 还是彻底删除)落地后再清理。这也呼应 §6.2 的中期建议。
+**为什么不一刀切删掉前两套**:`memory_*` 节点侧（`MemoryNodeStore`，活的）的压缩回退路径目前还在用（Wiki 不可用时会写 `memory_nodes`）；而 `memory_*` 实体侧（`MemoryStore` + `memory-tools.ts`）已作为僵尸在 v0.8 清理删除。`kb_*` 是"代码完整但产品没接",如果未来要做显式 RAG 产品化,基础设施已经就绪,不必重写。所以 v0.8 的取舍是:**只把 `project_wiki` 推为主线并继续加固,前两套标 legacy 但不删**（实体侧 MemoryStore 已破例先删）,等 `MemoryNodeStore` 的压缩回退路径迁移完成、`kb_*` 的产品决策(显式 RAG 还是彻底删除)落地后再清理。这也呼应 §6.2 的中期建议。
 
 #### 维护者提示
 
@@ -323,17 +323,17 @@ if (!config.getRagContext) return;
 
 ## 4. Legacy Memory 的状态
 
-当前仓库还保留几套历史记忆代码：
+当前仓库的历史记忆代码已经部分清理：
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| `server/memory-store.ts` | legacy | 旧实体-关系图谱式 memory |
-| `server/memory-node-store.ts` | legacy/back-compat | 旧节点记忆存储，压缩流程在 Wiki 不可用时回退 |
-| `runtime/mcp-tools/memory-tools.ts` | legacy 未注册 | `MemoryRead` / `MemoryWrite` 旧工具 |
-| `runtime/memory-recall.ts` | legacy 未接主链路 | FTS5 召回逻辑残留 |
-| `runtime/hooks/memory-hooks.ts` | 已退役/不再注册 | 当前 `registerMemoryHooks()` 已移除 |
+| `server/memory-store.ts` | ❌ **已删（v0.8 清理僵尸）** | 旧实体-关系图谱式 memory。运行时零写入者、唯一消费者 memory-tools 早已取消注册，已删除类 + 两表（`memory_entities` / `memory_relations` 由 db-migration DROP）+ `memory.json` 迁移分支 + SessionDB getter |
+| `server/memory-node-store.ts` | ✅ 活 / back-compat | 旧节点记忆存储，**仍在运行时被调用**：压缩流程在 Wiki 不可用时回退写它（`compression-hooks.ts:153`）+ `/api/memory-nodes` REST。与已删的 MemoryStore 是兄弟表，**不要混淆** |
+| `runtime/mcp-tools/memory-tools.ts` | ❌ **已删（v0.8 清理僵尸）** | `MemoryRead` / `MemoryWrite` 旧工具，随 `memory-store.ts` 一并删除（删前已从 `ALL_TOOLS` 取消注册） |
+| `runtime/memory-recall.ts` | legacy 未接主链路 | FTS5 召回逻辑残留（仍在仓库） |
+| `runtime/hooks/memory-hooks.ts` | 已退役/不再注册 | `registerMemoryHooks()` 已移除 |
 
-这批代码不应再被文档称为“当前 Memory 子系统主路径”。更合适的处理方向是迁移确认后删除，或保留但统一标注为兼容层。
+注意：已删的 `memory-store.ts` / `memory-tools.ts` 不应再被文档称为“当前 Memory 子系统主路径”或“保留兼容代码”。**活着的** legacy 路径只剩 `memory-node-store.ts`（compression 回退）+ `memory-recall.ts`（未接主链路）。
 
 ## 5. 三类知识能力的边界
 
@@ -359,7 +359,7 @@ graph LR
 
 - 把 Wiki tree 明确作为唯一长期记忆主线：文档、UI、工具命名都围绕 Wiki anchors / Wiki memory 组织。
 - 将 `rag-hooks.ts` 标注为 legacy optional hook；如果短期没有自动 RAG 计划，可以停止注册或加特性开关，避免误导维护者。
-- 清点 `memory-store.ts`、`memory-node-store.ts`、`memory-recall.ts`、`memory-tools.ts` 的真实数据依赖，再决定迁移或删除。
+- ~~清点 `memory-store.ts`、`memory-node-store.ts`、`memory-recall.ts`、`memory-tools.ts` 的真实数据依赖，再决定迁移或删除。~~ ✅ **部分完成**：`memory-store.ts` + `memory-tools.ts`（僵尸 MemoryStore）已于 v0.8 清理删除（含两表 DROP）。剩余活着的 `memory-node-store.ts`（compression 回退）+ `memory-recall.ts`（未接主链路）数据依赖仍需在后续迁移到 Wiki 子树后清理。
 - 为 `Wiki` 工具补足面向 Agent 的操作说明：什么时候读索引、什么时候读节点详情、什么时候写入新节点。
 
 ### 6.2 中期建议

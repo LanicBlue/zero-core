@@ -385,7 +385,7 @@ graph TB
 
 ### ADR-011 · `runtime/mcp-tools/` 目录名误导
 
-**Context**：目录名暗示"通过 MCP 接入的工具"，但实际是 6 个 built-in 高级工具（WebFetch / Memory / SequentialThinking / Assistant / Cookie）。
+**Context**：目录名暗示"通过 MCP 接入的工具"，但实际是 5 个 built-in 高级工具（WebFetch / SequentialThinking / Platform / Cookie / BrowserRender）。原 6 个里的 `memory-tools.ts`(Memory) 本批清理僵尸已删(零 importer)。
 
 **Decision**：保留目录名（**已建议改名**）。
 
@@ -397,7 +397,7 @@ graph TB
 - ⚠️ 当前新工程师会被"目录名 ≠ 内容"误导。
 - ⚠️ IDE 搜索 `mcp-tools` 会混入 built-in。
 
-**Code evidence**：`runtime/mcp-tools/{fetch,memory,node,seq,assistant,cookie,browser-render}.ts`。
+**Code evidence**：`runtime/mcp-tools/{fetch,seq,platform,cookie,browser-render}.ts`(`memory` / `node` / `assistant` 已删/改名;`memory-tools.ts` 本批清理僵尸)。
 
 ---
 
@@ -420,7 +420,7 @@ graph TB
 
 **Status**：accepted, cleanup needed。
 
-**Context**：项目仍存在 `memory-store.ts`、`memory-node-store.ts` 和旧 `runtime/mcp-tools/memory-tools.ts`。但当前 `runtime/tools/index.ts` 已移除 `MemoryRecall` / `MemoryNote`，普通 Agent 的记忆读写走 `Wiki` 工具与 Wiki anchors。（历史 ADR 曾引用 `runtime/memory-recall.ts`，该文件已不存在；记忆召回由 `wiki-anchor-injection` 取代。）
+**Context**：项目曾存在 `memory-store.ts`(MemoryStore)、`memory-node-store.ts` 和旧 `runtime/mcp-tools/memory-tools.ts`(memoryReadTool/memoryWriteTool)。本批清理僵尸:`memory-store.ts` 与 `memory-tools.ts` 已删除(零 importer / 零运行时写入者);`memory-node-store.ts`(MemoryNodeStore)保留(wiki 不可用时压缩流程回退)。当前 `runtime/tools/index.ts` 已移除 `MemoryRecall` / `MemoryNote`,普通 Agent 的记忆读写走 `Wiki` 工具与 Wiki anchors。(历史 ADR 曾引用 `runtime/memory-recall.ts`,该文件已不存在;记忆召回由 `wiki-anchor-injection` 取代。)
 
 **Decision**：把旧 memory 代码标注为兼容/迁移残留。当前默认长期记忆路径是全局 Wiki tree：Extractor 与 compression 优先写入 Wiki，AgentLoop 通过 `wiki-anchor-injection.ts` 注入项目/Agent 锚点。
 
@@ -429,7 +429,7 @@ graph TB
 - ⚠️ 仍需确认旧表中是否有用户数据，再决定迁移或删除。
 - ⚠️ `SessionDB` 仍持有旧 store，会继续增加认知负担。
 
-**Code evidence**：`runtime/tools/index.ts`、`runtime/wiki-anchor-injection.ts`、`runtime/hooks/extraction-hooks.ts`。`runtime/mcp-tools/memory-tools.ts` 零 importer（已从工具注册表移除，文件本身仍留在树上等待随 memory-store 一并清理）。
+**Code evidence**：`runtime/tools/index.ts`、`runtime/wiki-anchor-injection.ts`、`runtime/hooks/extraction-hooks.ts`。`runtime/mcp-tools/memory-tools.ts`(memoryReadTool/memoryWriteTool)+ `server/memory-store.ts`(MemoryStore) 本批已删除(零 importer / 零运行时写入者,僵尸清理)。`memory-node-store.ts`(MemoryNodeStore) 保留。
 ### ADR-014 · Zustand 单 Store 单关注点
 
 **Context**：渲染层有多个交互域（聊天 / Agent / MCP / KB / 设置 / 主题 / 页面 / 交互）。

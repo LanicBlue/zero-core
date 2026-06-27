@@ -121,7 +121,7 @@ ToolExecutionContext {
 | **Platform** | management | ❌ | ❌ | ✅ | — | 平台自省(info/logs/config/providers)，读 SQLite 不读 config.json（原 `Assistant`，v0.8 改名）|
 
 > 说明：
-> - **`MemoryRecall` / `MemoryNote`** 已从 `ALL_TOOLS` 移除(v0.8 P2 §11.6)；记忆统一为 per-agent Wiki 子树，通过 `Wiki` 工具进入。`runtime/mcp-tools/memory-tools.ts` 旧文件已删除。
+> - **`MemoryRecall` / `MemoryNote`** 已从 `ALL_TOOLS` 移除(v0.8 P2 §11.6);记忆统一为 per-agent Wiki 子树,通过 `Wiki` 工具进入。`runtime/mcp-tools/memory-tools.ts`(memoryReadTool/memoryWriteTool)+ `server/memory-store.ts`(MemoryStore) 本批清理僵尸已删;`MemoryNodeStore` 保留(wiki 不可用时压缩流程回退)。
 > - **`Assistant`** 已重命名为 **`Platform`**（语义更准——只做平台自省，不做通用助手）。`RENAMED_TOOLS["Assistant"] = "Platform"` 把旧 toolPolicy 的键运行时迁移过来。
 > - **8 个旧 zero-admin 工具**(CreateAgent / UpdateAgent / DeleteAgent / InstantiatePreset / ListPresets / SetToolPolicy / SetToolEnabled / CreateProject…)已合并为 4 个 action 工具(`AgentRegistry` / `Project` / `Cron` / `Wiki`)。Capability 在工具里，zero agent 只是 toolPolicy 组合。
 > - **CONDITIONAL 门控** = `CONDITIONAL_TOOLS[name](ctx)` 必须返回 true 才会出现在 `buildToolsSet` 的输出里(见 §6)。这是"按角色自动收口工具集"的核心机制：PM session 才有 `pmService`，zero session 才有 `management`，普通 role session 自动看不到这些管理工具。
@@ -311,7 +311,7 @@ sequenceDiagram
 | 文件路径 | `file-read` / `file-write` / `file-edit` 的 `resolvePath()` 检查 workspaceDir 前缀 | ⚠️ 默认 `restrictToWorkspace = false`，需要按 agent 显式开启 |
 | 敏感文件读取 | **历史**有过 `BLOCKED_FILES` 列表(.env / credentials.json / secret)挂在 Assistant 工具里；**v0.8 Platform 改名重构后该列表已删除**(原 `assistant-tools.ts` 已不存在)。`Platform` 工具自己用 `redactSensitive()` 在输出 providers / config 时屏蔽 apiKey/secret/password/token 字段 | ⚠️ 仅 Platform 输出层 redact；其他工具(Read/Grep)读敏感文件无统一拦截 |
 | Shell 黑名单 | `bash.ts:89` `CMD_TRANSLATIONS` 和 `bash.ts:102` `UNIX_ONLY_COMMANDS` 提示 | ❌ 不构成黑名单，只是翻译/警告 |
-| 工具白名单 | `core/tool-policy.ts:37` `evaluateToolCall(config, toolName)`：blockedTools 硬拒 → allowedTools 白名单 → category block → autoApprove | ✅ 配置可强制；buildToolsSet 内部也读 blockedTools(双保险) |
+| 工具白名单 | `runtime/tools/index.ts` 的 `buildToolsSet`(单一过滤)—— 构建工具集时按 `policy.blockedTools` 过滤,LLM 根本看不到被阻工具;无运行时再检查。`core/tool-policy.ts` 的 `evaluateToolCall` / `requiresApproval` 是死代码(零调用,本批已删) | ✅ 单一过滤真值源,无 drift 风险 |
 | 权限请求 | `PermissionRequest` / `PermissionDenied` hook 已在 `core/hook-types.ts:32` 定义 | ⚠️ 当前未注册 handler(见 08-cross-cutting §2 hook 清单) |
 | PreToolUse 阻断 | `buildTool` 包装层调 `triggerHooks("PreToolUse", …)`，handler 返回 `{blocked: true, reason}` 即拒 | ⚠️ 管线就位，但当前无 handler 注册(同上，留作扩展点) |
 | 重试风暴 | 错误分类 + MAX_RETRIES + 指数退避(AI SDK 层) | ✅ 良好 |
@@ -371,7 +371,7 @@ thoughtHistories: Map<agentId, [{thought, thoughtNumber, totalThoughts, status}]
 - 25 个工具按 category 已经分了 9 类，但文档/UI 仍倾向平铺。可考虑把"workflow + management"(15 个 v0.8 新工具)单独分到"工作流域"和"管理域"两栏，与基础工具(runtime/task/web/interaction/thinking)视觉隔离。
 - 同名陷阱：`Agent`(委派) vs `AgentRegistry`(注册表) 对 LLM 仍然容易混淆，工具描述里靠一句话提醒。长期看 `AgentRegistry` 改名为 `RoleRegistry` / `ManageAgents` 可能更直观，但要权衡 RENAMED_TOOLS 的迁移成本。
 - **Platform 工具的 redactSensitive 是输出层补丁**——只在 Platform 自己返回时屏蔽敏感字段。Read/Grep 读 `.env`/`secret.json` 时无统一拦截(§9)。建议下沉到 `resolvePath()` 层。
-- `evaluateToolCall`(tool-policy.ts) 与 `buildToolsSet`(tools/index.ts) **两处独立**读 blockedTools，存在"是否同步"的隐含风险——`buildToolsSet` 在 streamText 前过滤，`evaluateToolCall` 在调用时再判一次。当前两者数据源一致(policy)，但维护时若改一处忘另一处会有微妙 drift。
+- ~~`evaluateToolCall`(tool-policy.ts) 与 `buildToolsSet`(tools/index.ts) 两处独立读 blockedTools,存在 drift 风险~~ —— **已解决(本批清理)**:`evaluateToolCall` / `requiresApproval` 是死代码(导出但零调用),本批已删;实际工具过滤只剩 `buildToolsSet`(构建工具集时按 `blockedTools` 过滤)单一真值源,LLM 看不到被阻工具,无运行时再检查,drift 隐患消除。
 
 ## 13. 一图总览
 
