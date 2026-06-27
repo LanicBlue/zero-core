@@ -26,7 +26,6 @@
 //
 
 import { HookRegistry } from "../core/hook-registry.js";
-import { getRoleConfig } from "../runtime/agent-roles.js";
 import type { WorkContextPolicy } from "../shared/types.js";
 import type { ProjectStore } from "./project-store.js";
 import type { ProjectWikiStore } from "./project-wiki-store.js";
@@ -61,10 +60,10 @@ function getWikiBaseline(wikiStore: ProjectWikiStore, projectId: string): string
 /**
  * Register the workflow context PreLLMCall hook.
  *
- * For workflow sessions (agentRole set), injects project info, Wiki baseline,
- * requirement detail, step progress, or git diff based on the role's contextPolicy.
- * Returns injected context as memoryContext, which agent-loop.ts:370 already
- * merges into buildContextMessage — no changes to agent-loop.ts needed.
+ * For project-work sessions (workId set), injects project info, Wiki baseline,
+ * requirement detail, or step progress based on the work's contextPolicy.
+ * Returns injected context as memoryContext, which agent-loop.ts already merges
+ * into buildContextMessage — no changes to agent-loop.ts needed.
  */
 export function registerWorkflowContextHook(deps: {
 	projectStore: ProjectStore;
@@ -82,20 +81,13 @@ export function registerWorkflowContextHook(deps: {
 		const projectId = config?.projectContext?.projectId as string | undefined;
 		const requirementId = config?.projectContext?.activeRequirementId as string | undefined;
 
-		// 解析 contextPolicy:优先 project-work(config.workId → work.contextPolicy,
-		// 去-role 主路径);回退 legacy agentRole(阶段3 删)。
-		let policy: WorkContextPolicy | undefined;
+		// 解析 contextPolicy:project-work(config.workId → work.contextPolicy,去-role)。
 		const workId = config?.workId as string | undefined;
+		let policy: WorkContextPolicy | undefined;
 		if (workId && deps.projectWorkStore) {
-			const work = deps.projectWorkStore.get(workId);
-			policy = work?.contextPolicy;
-		} else {
-			const role = config?.agentRole as string | undefined;
-			if (role) {
-				try { policy = getRoleConfig(role).contextPolicy; } catch { /* unknown role → no policy */ }
-			}
+			policy = deps.projectWorkStore.get(workId)?.contextPolicy;
 		}
-		if (!policy) return; // 非 work/role session,跳过
+		if (!policy) return; // 非 work session,跳过
 
 		const parts: string[] = [];
 

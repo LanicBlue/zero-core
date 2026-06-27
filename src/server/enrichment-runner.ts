@@ -12,8 +12,9 @@
 // - **工具校验**:入口核实 agent 配了 Wiki 工具,否则拒绝(提醒用户从 Archivist
 //   模板创建一个带 Wiki 工具的 agent)。
 // - **去-role 触发**:用 sendProjectPrompt(身份/toolPolicy 全用 agent 自带,
-//   按 session.projectId 注入 wikiStore/projectContext),不调 sendRolePrompt/
-//   getRoleConfig。lead/pm/analyst 仍用各自 service 的 sendRolePrompt。
+//   按 session.projectId 注入 wikiStore/projectContext)。sendRolePrompt/
+//   getRoleConfig/WORKFLOW_ROLES 已退役(阶段3),lead/analyst 走各自 service +
+//   project-work 工位。
 //
 // ## 输入
 // - projectId

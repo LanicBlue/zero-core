@@ -294,7 +294,7 @@ export const wikiTool = buildTool({
 						title: input.title,
 						summary: input.summary,
 						detail: input.content,
-						lastUpdatedBy: ctx.agentRole ?? "agent",
+						lastUpdatedBy: "agent",
 					});
 					return `Wiki node created: ${created.id} | ${created.title}`;
 				} catch (err) {
@@ -325,7 +325,7 @@ export const wikiTool = buildTool({
 				try {
 					const updated = wiki.updateNodeInScope(anchors, input.nodeId, {
 						...patch,
-						lastUpdatedBy: ctx.agentRole ?? "agent",
+						lastUpdatedBy: "agent",
 					});
 					return `Wiki node updated: ${updated.id} | ${updated.title}`;
 				} catch (err) {

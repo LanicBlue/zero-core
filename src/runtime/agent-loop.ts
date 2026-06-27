@@ -166,7 +166,6 @@ export class AgentLoop implements AgentRuntime {
 			// scope for the Wiki tool. Zero/global sessions include the global
 			// root here → whole-tree read+write; project sessions stay scoped.
 			wikiAnchorNodeIds: anchorNodeIds(this.wikiAnchors),
-			agentRole: config.agentRole,
 			projectPath: config.projectContext?.projectPath,
 			activeRequirementId: config.projectContext?.activeRequirementId,
 			// v0.8 (M0): createRoleLoop removed — sub-agent dispatch flows

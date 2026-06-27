@@ -1014,17 +1014,14 @@ export interface ProjectJobRecord {
 export type CreateProjectJobInput = Omit<ProjectJobRecord, "id" | "createdAt" | "updatedAt">;
 
 /**
- * 指派"哪个 agent 来执行一项项目级任务"(如 wiki 充实)的配置。配置驱动,
- * 代码不硬绑任何具体角色/agent —— 默认 `{ role: "archivist" }` 由调用方传入。
+ * 指派"哪个 agent 来执行一项项目级任务"(如 wiki 充实)的配置。
  *
- * 解析规则(见 EnrichmentRunner.resolveAgent):
- * - `role` — 按角色解析:getRoleConfig(role) 拿 systemPrompt/toolPolicy/contextPolicy/
- *   interactive,临时拼一个该角色的 agent 跑。
- * - `agentId` — 按具体 agent 实例解析:读 AgentRecord 的 systemPrompt/model/toolPolicy。
- *   若同时给 role,role 决定 interactive 标志;否则从 agent 推不出 role,默认 interactive。
- * - `model` — 顶层覆盖,优先于 role.recommendedModel / agent.model。
+ * v0.8 project-work 去-role后:**agentId 必填**(无 fallback),role 字段为 legacy
+ * 残留、已忽略。解析见 EnrichmentRunner.resolveAgent(读 AgentRecord 的
+ * systemPrompt/model/toolPolicy,并校验 Wiki 工具)。
  */
 export interface AgentVia {
+	/** legacy/忽略 —— 去-role 后一律用 agentId。 */
 	role?: string;
 	agentId?: string;
 	model?: string;

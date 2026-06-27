@@ -624,7 +624,7 @@ graph TB
 
 ### ADR-023 · project-work 系统:取代工作流角色(身份/行为分离 + 工位化)
 
-**Status**:Accepted(阶段1 已落地:基座 + archivist-binding 迁移)
+**Status**:Accepted(3 阶段全部落地:基座 + lead/analyst 去-role + WORKFLOW_ROLES 退役)
 
 **Context**:ADR-022 让 archivist 率先脱离 WORKFLOW_ROLES,证明了"把做什么工作从 agent 身份剥离、绑到 project 级可触发单元"的模式。本 ADR 把该模式**推广到全部工作流角色**,一次性解决历史问题:agentRole 同时承载身份(T1 systemPrompt)+ 场景(T2 上下文注入)+ 任务(T3 prompt)三件事,散落在 agent/role/template/binding 四处。
 
@@ -636,13 +636,18 @@ graph TB
 - **没有"委派类"**:developer/reviewer/qa 不是独立类别,就是 lead 运行时拉起的 subagent(delegation 路径**已经是 agent-based**,orchestrate-tool 用目标 agent 自己的 toolPolicy)。
 - 默认 work 按具体职责命名(需求管理/技术调研/文档充实/文档重建/git 同步),不用抽象角色头衔。dev/reviewer/qa 不进 work 集(画廊已有 Coder/Reviewer 模板)。
 
-**阶段1 落地范围**(本提交):project_work 表 + store + ProjectWorkRunner + ProjectWorkHookManager + cron fireAgent 的 workId 分支(agent/prompt 从 work 解析)+ management-service work CRUD/分配/触发 + 默认 work 种子 + REST/IPC 四层 + 前端 ProjectWorkCard + 把存量 archivist-bind cron 迁移回填到 work。WORKFLOW_ROLES **暂不删**(阶段2 改 lead/analyst,阶段3 才退役)。
+**阶段1 落地范围**:project_work 表 + store + ProjectWorkRunner + ProjectWorkHookManager + cron fireAgent 的 workId 分支(agent/prompt 从 work 解析)+ management-service work CRUD/分配/触发 + 默认 work 种子 + REST/IPC 四层 + 前端 ProjectWorkCard + 把存量 archivist-bind cron 迁移回填到 work。
+
+**阶段2 落地范围**:workflow-context-hook 改按 config.workId → work.contextPolicy 注入(linchpin,agentRole 从运行时逻辑消失);LeadService/AnalystService 瘦身(resolveLeadWork/resolveAnalystWork 取代 ensureLeadAgent/ensureAnalystAgent,pickup 走 sendProjectPrompt+workId,状态机 plumbing 保留);sendProjectPrompt 扩展接受可选 stores + workId。
+
+**阶段3 落地范围**(WORKFLOW_ROLES 彻底退役):删除 `src/runtime/agent-roles.ts`(WORKFLOW_ROLES/getRoleConfig/buildWorkflowSystemPrompt/isRoleInteractive + 6 个 *_CONFIG);删 `agentService.sendRolePrompt`;删 SessionConfig/ToolExecutionContext.agentRole + agent-loop 透传 + wiki-tool lastUpdatedBy;Archivist 画廊种子 prompt/toolPolicy 内联到 template-store(不再 import WORKFLOW_ROLES)。
 
 **Consequences**:
-- ✅ T2 上下文注入的 linchpin(workflow-context-hook 按 agentRole 注入)将在阶段2 改为按 work.contextPolicy 注入,agentRole 从运行时逻辑中消失。
+- ✅ T2 上下文注入的 linchpin(workflow-context-hook)改按 work.contextPolicy 注入,agentRole 从运行时逻辑消失。
 - ✅ archivist 长期绑定(ADR-022)被 project-work **泛化吸收**——文档充实/重建/git 同步各成一个 work,不再有"archivist 专属"绑定概念。`source=archivist-bind:*` cron 由 db-migration 回填 `work_id`。
-- ⚠️ 阶段2 触及 requirement lifecycle(LeadService/AnalystService 瘦身),是风险最高一步;阶段3 机械删除 WORKFLOW_ROLES/sendRolePrompt/roleTag。
+- ⚠️ **roleTag 物理列 + listByRoleTag + seedAgentWithRoleTag 测试 helper 暂留**(legacy,已与运行时解耦,无害)——后续单独清扫。
 - ✅ BUILTIN_WORKFLOW_ROLES(zero 平台角色)**不动**——平台管家与软件开发工作流角色是两套。
+- ✅ dev/reviewer/qa 不留 work(画廊 Coder/Reviewer 模板供委派),delegation 本就 agent-based。
 
 **Code evidence**:`server/project-work-store.ts`、`server/project-work-runner.ts`(fireProjectWork)、`server/project-work-hook-manager.ts`(订阅 data-change-hub)、`server/cron-analysis.ts:fireAgent`(cron.workId 分支)、`server/management-service.ts`(createProjectWork/assignProjectWork/triggerProjectWork/getProjectWorks/seedDefaultProjectWorks)、`server/builtin-work-templates.ts`(默认 work 种子)、`server/db-migration.ts`(project_work 表 + crons.work_id 5 处同步 + migrateArchivistBindToProjectWork 回填)、`renderer/components/requirements/ProjectPage.tsx:ProjectWorkCard`。
 

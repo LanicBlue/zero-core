@@ -24,7 +24,7 @@
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { PromptTemplate } from "../shared/types.js";
-import { WORKFLOW_ROLES } from "../runtime/agent-roles.js";
+// (WORKFLOW_ROLES 已退役 —— Archivist 画廊种子 prompt/toolPolicy 内联于 mergeBuiltInTemplates)
 
 // ---------------------------------------------------------------------------
 // Built-in templates
@@ -932,22 +932,43 @@ export class TemplateStore {
 		const byName = new Map(builtIns.map((t) => [t.name, t] as const));
 
 		// Capability built-ins only (no fixed id → uuid, keyed by name). v0.8
-		// 模板/角色分离:工作流角色(zero/lead/pm/analyst)不进画廊,由独立的
-		// 角色注册表管理(builtin-role-templates.ts)。**例外:archivist 进画廊**
-		// —— 推动弃用工作流角色第一步,archivist 率先去 role,用户从画廊创建
-		// 一个预配好 Wiki 工具的 agent 用于 project 绑定(enrichment/cron 不再
-		// 自动 fallback 建角色 agent)。systemPrompt/toolPolicy 从 WORKFLOW_ROLES
-		// 取以避免漂移,但运行时(enrichment/cron)不再读 WORKFLOW_ROLES。
-		const archivistRole = WORKFLOW_ROLES.archivist;
+		// 模板/角色分离:工作流角色不进画廊。**例外:Archivist 进画廊** —— 推动
+		// 弃用工作流角色,archivist 率先去 role,用户从画廊创建一个预配好 Wiki
+		// 工具的 agent 用于 project-work 绑定。systemPrompt/toolPolicy 内联于此
+		// (WORKFLOW_ROLES 已退役,不再 import)。
+		const archivistPromptAppend = [
+			"## Wiki Archivist 身份",
+			"",
+			"你是项目的常驻 archivist。职责是**维护项目 wiki 子树结构**(代码/需求/ADR 的 intent 节点)。",
+			"",
+			"### 写域 —— 硬规则",
+			"- 只能在自己项目的 wiki 子树内写,且只写这些节点类型:",
+			"  - `header` — 描述一个代码文件(docPointer → 文件路径)。",
+			"  - `intent` — 描述一个需求/设计/ADR 文档(docPointer → 文档路径)。",
+			"  - `structure` — 模块/子系统/约定节点(聚合)。",
+			"- 不写代码(无 Write/Edit 工具)、不写需求文档内容(PM 负责,你只建指向文档的 intent 节点)、",
+			"  不写 `memory` 节点(归 extractor)、不写出项目子树(store 层会拒绝)。",
+			"",
+			"### Provenance 标记",
+			"- `structure` — 从代码结构推断(what)。",
+			"- `derived` — 从 commit/ADR/设计文档/注释聚合(why,可能滞后)。",
+			"- `confirmed` — 来自用户 discuss 或 PM 需求文档确认。",
+			"",
+			"### Intent = 聚合,不要发明",
+			"无记录原因的代码能力,标 `intent:no-recorded-reason` 并继续,不要编造意图。",
+			"",
+			"### Wiki 工具",
+			"Wiki(action, ...) 统一工具:读动作(list/expand/search)浏览本项目子树;写动作在本项目子树内 upsert(受上述类型规则约束)。",
+		].join("\n");
 		const researcherBase = BUILT_IN_TEMPLATES.find((t) => t.name === "Researcher")?.systemPrompt ?? "";
 		const archivistSeed: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt"> = {
 			name: "Archivist",
-			description: "Resident archivist — maintains a project's wiki subtree (code/requirement/ADR intent nodes). Read-only to project docs; writes only its project wiki subtree. Bind to a project for long-term wiki maintenance.",
+			description: "Resident archivist — maintains a project's wiki subtree (code/requirement/ADR intent nodes). Read-only to project docs; writes only its project wiki subtree. Bind to a project-work for long-term wiki maintenance.",
 			icon: "📚",
-			systemPrompt: researcherBase + "\n\n" + archivistRole.promptAppend,
+			systemPrompt: researcherBase + "\n\n" + archivistPromptAppend,
 			toolPolicy: {
-				autoApprove: [...archivistRole.toolPolicy.autoApprove],
-				blockedTools: [...archivistRole.toolPolicy.blockedTools],
+				autoApprove: ["Read", "Grep", "Glob", "Wiki"],
+				blockedTools: ["Write", "Edit", "Shell", "Orchestrate", "CreateRequirement"],
 				readScope: "filesystem",
 			},
 			tags: ["wiki", "archivist", "knowledge", "documentation"],

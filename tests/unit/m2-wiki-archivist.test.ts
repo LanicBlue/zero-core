@@ -42,7 +42,6 @@ import { ProjectWikiStore } from "../../src/server/project-wiki-store.js";
 import { ArchivistGit, featureBranchName, featureWorktreePath } from "../../src/server/archivist-git.js";
 import { WikiSkeletonService } from "../../src/server/wiki-skeleton-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
-import { WORKFLOW_ROLES } from "../../src/runtime/agent-roles.js";
 
 let tmpDir: string;
 let sessionDB: SessionDB;
@@ -640,26 +639,11 @@ describe("ArchivistGit: main-branch management (§2.15)", () => {
 	});
 });
 
-// ─── archivist role preset: write guard via toolPolicy ───────
-
-describe("archivist role preset (decision 39: write guard = tool capability)", () => {
-	test("archivist has no Write/Edit/Shell — write guard enforced by tool absence", () => {
-		const cfg = WORKFLOW_ROLES.archivist;
-		expect(cfg).toBeDefined();
-		const blocked = new Set(cfg.toolPolicy.blockedTools);
-		expect(blocked.has("Write")).toBe(true);
-		expect(blocked.has("Edit")).toBe(true);
-		expect(blocked.has("Shell")).toBe(true);
-		// archivist DOES have the wiki tool — its only writable surface
-		// (v0.8 工具分类清理:ExpandNode/ListWikiTree/UpdateWikiNode/ReadDoc
-		// 已统一归入 `Wiki`,见 builtin-role-templates.ts)。
-		expect(cfg.toolPolicy.autoApprove).toContain("Wiki");
-	});
-
-	test("archivist is a persistent global role", () => {
-		expect(WORKFLOW_ROLES.archivist.persistent).toBe(true);
-	});
-});
+// ─── archivist 写域保护(原 WORKFLOW_ROLES.archivist 已退役)─────────
+// archivist 的 Write/Edit/Shell 缺失(write guard = tool capability)现在由画廊
+// "Archivist" 模板的 toolPolicy 承担(见 template-store mergeBuiltInTemplates,
+// 在 m0-session-context-router 画廊测试中断言)。project-work 的文档工位亦要求
+// Wiki 工具。WORKFLOW_ROLES / getRoleConfig 已删除,此处不再断言 role config。
 
 // ─── ProjectWikiStore back-compat view ───────────────────────
 

@@ -46,7 +46,8 @@ import type { SessionManager } from "./session-manager.js";
 import { createEventMetricsAdapter, type EventMetricsAdapter } from "./metrics-events.js";
 import { setSessionTurnSeq } from "./durable-hooks.js";
 import { setTurnSeq } from "../runtime/hooks/turn-hooks.js";
-import { buildWorkflowSystemPrompt, getRoleConfig } from "../runtime/agent-roles.js";
+// (WORKFLOW_ROLES / sendRolePrompt 已退役 —— 去-role 统一走 sendProjectPrompt)
+
 // ---------------------------------------------------------------------------
 // Ensure zero-core dirs
 // ---------------------------------------------------------------------------
@@ -218,7 +219,7 @@ export class AgentService {
 	 * surfaced onto PM (roleTag='pm') session tool contexts so the
 	 * CreateRequirementWithDoc tool (and the read-only wiki tools) can call
 	 * PmService / read the project wiki from a cron-triggered sendPrompt loop
-	 * — without requiring the caller to thread them through sendRolePrompt.
+	 * — without requiring the caller to thread them through sendProjectPrompt.
 	 */
 	setPmService(pmService: any, requirementStore: any, wikiStore?: any): void {
 		this.pmService = pmService;
@@ -557,158 +558,10 @@ export class AgentService {
 		}
 	}
 	/**
-	 * Send a prompt with workflow role awareness.
-	 * Injects role-specific system prompt, tool policy, and workflow context
-	 * (wikiStore, requirementStore, projectId, taskStepStore) into the session.
-	 * v0.8 (M0): createRoleLoop removed; sub-agent dispatch flows through
-	 * delegateTask via agent-as-tool + toolPolicy.
-	 */
-	async sendRolePrompt(
-		agentId: string,
-		sessionId: string,
-		role: string,
-		prompt: string,
-		context: {
-			projectId?: string;
-			projectPath?: string;
-			projectName?: string;
-			wikiStore?: any;
-			requirementStore?: any;
-			taskStepStore?: any;
-			activeRequirementId?: string;
-			// v0.8 (M3): lead-only stores for the Orchestrate tool.
-			orchestratePlanStore?: any;
-			orchestrateManifestStore?: any;
-			// v0.8 (M3): lead-only git integration — Orchestrate tool uses it to
-			// commit each task step on the feature worktree with the [req-<short>]
-			// reference (decision 21 / RFC §2.15).
-			gitIntegration?: any;
-		},
-	): Promise<void> {
-		const agent = this.agentStore?.get(agentId);
-		if (!agent) throw new Error(`Agent not found: ${agentId}`);
-
-		const roleConfig = getRoleConfig(role);
-		const systemPrompt = agent.systemPrompt || "";
-		const cwd = context.projectPath || agent.workspaceDir || this.workspaceDir;
-
-		const sessionConfig: SessionConfig = {
-			agentId,
-			workspaceDir: cwd,
-			systemPrompt,
-			guidelines: this.config.systemPrompt?.guidelines,
-			compression: this.config.compression,
-			memory: this.config.memory,
-			modelId: agent.model || this.defaultModel || "",
-			providerName: agent.provider || this.defaultProvider || "",
-			thinkingLevel: agent.thinkingLevel,
-			sessionId,
-			db: this.db,
-			toolPolicy: {
-				autoApprove: roleConfig.toolPolicy.autoApprove,
-				blockedTools: roleConfig.toolPolicy.blockedTools,
-				tools: agent.toolPolicy?.tools ?? this.config.toolPolicy.tools,
-				executionMode: agent.toolPolicy?.executionMode ?? this.config.toolPolicy.executionMode,
-				resultMaxTokens: agent.toolPolicy?.resultMaxTokens ?? this.config.toolPolicy.resultMaxTokens,
-				readScope: agent.toolPolicy?.readScope ?? "filesystem",
-			},
-			getMcpTools: async (aid?: string) => {
-				const mcpToolInfos = this.mcp.getToolsForAgent(aid);
-				return buildMcpTools(mcpToolInfos, (serverId, toolName, args) =>
-					this.mcp.callTool(serverId, toolName, args),
-				);
-			},
-			// v0.8 (P2 §11.5): subagents + target resolver (replaces retired
-			// getAgentToolEntries).
-			subagents: agent.subagents ?? [],
-			resolveSubagentTarget: (targetId: string) => {
-				const a = this.agentStore?.get(targetId);
-				if (!a) return undefined;
-				return {
-					id: a.id,
-					name: a.name,
-					systemPrompt: a.systemPrompt,
-					model: a.model,
-					toolPolicy: a.toolPolicy,
-				};
-			},
-			// v0.8 (delegation refactor): LIVE resolver — same source as
-			// resolveSubagentTarget but also surfaces subagents, so the Agent
-			// tool can list the caller's delegatable set + resolve named targets
-			// fresh every call (independent of the loop-build-time snapshot).
-			resolveAgent: (agentId: string) => {
-				const a = this.agentStore?.get(agentId);
-				if (!a) return undefined;
-				return {
-					id: a.id,
-					name: a.name,
-					systemPrompt: a.systemPrompt,
-					model: a.model,
-					toolPolicy: a.toolPolicy,
-					subagents: a.subagents,
-				};
-			},
-			getToolConfig: () => this.registry.getToolConfig(),
-			agentRole: role,
-			projectContext: context.projectId ? {
-				projectId: context.projectId,
-				projectName: context.projectName || "",
-				projectPath: context.projectPath || "",
-				activeRequirementId: context.activeRequirementId,
-			} : undefined,
-			wikiStore: context.wikiStore,
-			requirementStore: context.requirementStore,
-		} as any;
-
-		// Inject M3 fields into sessionConfig (via `as any` since SessionConfig doesn't have them typed)
-		(sessionConfig as any).taskStepStore = context.taskStepStore;
-		(sessionConfig as any).orchestratePlanStore = context.orchestratePlanStore;
-		(sessionConfig as any).orchestrateManifestStore = context.orchestrateManifestStore;
-		(sessionConfig as any).gitIntegration = context.gitIntegration;
-		// v0.8 (P1 §10.6): wiki anchor injection — surface the global
-		// WikiStore + the agent's free wikiAnchors so the role-prompt loop can
-		// resolve + render anchors (system + context channels). Auto anchors
-		// (memory + project) are derived from the contextBundle.
-		if (this.wikiStoreGlobal) (sessionConfig as any).wikiStoreGlobal = this.wikiStoreGlobal;
-		if (agent?.wikiAnchors) (sessionConfig as any).wikiAnchors = agent.wikiAnchors;
-
-		let loop = this.loops.get(sessionId);
-		if (!loop) {
-			loop = new AgentLoop(sessionConfig, this.providerConfigs, {
-				onEvent: (event: StreamEvent) => {
-					this.handleRuntimeEvent(agentId, event);
-				},
-			});
-			this.loops.set(sessionId, loop);
-		}
-
-		this.activeSessions.set(agentId, sessionId);
-		if (!this.runStates.has(sessionId)) {
-			this.runStates.set(sessionId, { agentId, isBusy: false, streamingText: "", toolCalls: [] });
-		}
-
-		const state = this.runStates.get(sessionId)!;
-		state.isBusy = true;
-		state.streamingText = "";
-		state.toolCalls = [];
-
-		log.agent("Sending role prompt to:", agentId, "role:", role, "session:", sessionId);
-
-		try {
-			await loop.run(prompt);
-			log.agent("Role prompt completed for:", agentId, "role:", role);
-		} catch (err) {
-			log.error("agent", "Role prompt error:", (err as Error).message);
-			this.emit({ type: "error", error: (err as Error).message, agentId });
-		}
-	}
-
-	/**
-	 * v0.8 推动弃用工作流角色 —— archivist 率先去 role。本方法是 sendRolePrompt
-	 * 的去-role 版:身份 prompt + toolPolicy 全用 agent 自带(来自模板),不调
-	 * getRoleConfig;但保留 wikiStore/projectContext/wikiAnchors 注入,注入键是
-	 * session 的 projectId(不是 role)。archivist 的 wiki 维护(enrichment / cron
-	 * 绑定触发)走这里。lead/pm/analyst 仍用 sendRolePrompt。
+	 * v0.8 project-work(取代工作流角色的去-role 触发器):身份 prompt + toolPolicy
+	 * 全用 agent 自带(来自模板),不调任何 role config。注入 wikiStore/projectContext/
+	 * wikiAnchors + 可选 stores(req/task/orchestrate/git)+ workId(供 T2 hook 按
+	 * work.contextPolicy 注入)。所有可触发工作(cron/hook/手动 + lead/analyst)走这里。
 	 */
 	async sendProjectPrompt(
 		agentId: string,
@@ -775,7 +628,7 @@ export class AgentService {
 				return { id: a.id, name: a.name, systemPrompt: a.systemPrompt, model: a.model, toolPolicy: a.toolPolicy, subagents: a.subagents };
 			},
 			getToolConfig: () => this.registry.getToolConfig(),
-			// agentRole 不设 —— 去 role。workId 由 project-work 触发器传入(供 T2 hook)。
+			// workId 由 project-work 触发器传入(供 T2 hook 按 work.contextPolicy 注入)。
 			workId: context.workId,
 			projectContext: context.projectId ? {
 				projectId: context.projectId,

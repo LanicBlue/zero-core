@@ -299,7 +299,6 @@ export interface SessionConfig {
 		recallLimit?: number;
 	};
 	// Multi-Agent Workflow
-	agentRole?: string;                    // analyst | lead | developer | reviewer | qa (legacy,阶段3 删)
 	/** v0.8 project-work:触发该 turn 的工位 id。workflow-context-hook 据此读 work.contextPolicy。 */
 	workId?: string;
 	projectContext?: {
@@ -400,7 +399,6 @@ export interface ToolExecutionContext {
 	 * WIKI_GLOBAL_ROOT_ID here → whole tree read+write. See wiki-anchor-injection.
 	 */
 	wikiAnchorNodeIds?: string[];
-	agentRole?: string;                 // Current agent role (analyst | lead | developer | reviewer | qa)
 	projectPath?: string;               // Project root directory path
 	activeRequirementId?: string;       // Current requirement ID for orchestration
 	// v0.8 (M0): createRoleLoop removed from context. Sub-agent dispatch
