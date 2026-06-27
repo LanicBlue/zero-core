@@ -32,7 +32,15 @@ contextBridge.exposeInMainWorld("api", api);
 
 ### 2.2 main → backend（IPC ↔ HTTP 翻译）
 
-`src/main/ipc-proxy.ts` 维护一份映射表 `R: Record<channel, RouteMapping>`，按域分块注释（Config / Agents / Providers / MCP / KB / Templates / Tools / Sessions / Messages / Chat / Files / Logs / Tool-Executions / WebFetch / ask-user / Skills / Memory-Nodes / Memory-Config / Projects / Requirements(+M5) / Wiki(legacy CRUD) / Wiki(v0.8 global-tree) / Lead / Crons / Orchestrate / PM），当前约 120+ 项：
+`src/main/ipc-proxy.ts` 维护一份映射表 `R: Record<channel, RouteMapping>`，按域分块注释（Config / Agents / Providers / MCP / KB / Templates / Tools / Sessions / Messages / Chat / Files / Logs / Tool-Executions / WebFetch / ask-user / Skills / Memory-Nodes / Memory-Config / Projects / Requirements(+M5) / Wiki(legacy CRUD) / Wiki(v0.8 global-tree) / Lead / Crons / Orchestrate / PM）。**三个独立计数，不要混为一谈**：
+
+| 计数 | 当前值 | 含义 | 来源 |
+|------|--------|------|------|
+| R 表项数 | **141** | `"<channel>": { method, path, buildReq }` 三元组数（即 IPC 通道→REST 路径的代理映射条数） | `ipc-proxy.ts` 正则 `^\s*"<channel>":\s*\{\s*method:\s*"..."` 匹配 |
+| 唯一 REST 路径 | **102** | R 表里 `path` 字段的去重值（多个通道可映到同一路径，如 GET 与 PUT 同 path） | R 表 `path` 字段 sort -u |
+| 域分块注释 | **≈20** | `// Config` / `// ─── Projects (M1)` 风格的 section 头注释 | `ipc-proxy.ts` R 表区段 |
+
+> **C9 澄清**：早期文档笼统写"约 120+ 项"容易让读者把"141（R 表条目）"和"REST 路径数"当冲突。三者是不同维度：141 是 IPC 通道数（每个 invoke 一个）、102 是后端实际暴露的去重 REST 端点、20 是源码分块阅读单位。/backend 一侧的 `app.use("/api/...")` 路由挂载共 21 个 router + 7 个直接 `app.get/post`（见 `server/index.ts:481-704`），与 R 表的去重路径数不严格相等（少数 router 内部多端点，少数 invoke 走 main 进程本地不走 REST，见 §2.5）。
 
 ```typescript
 {
@@ -121,33 +129,54 @@ zustand store: create/update 推来 record 直接 patch(免 GET /:id);delete 移
 这 5 个通道不走 HTTP。另有 `app:ready` 健康检查在 `ipc-proxy.ts` 中直接轮询 `/api/ready`，不属于业务 REST proxy。**架构师评价**：主进程本地能力仍然收敛，边界清晰。
 
 
-### 2.5 当前契约例外(preload invoke → proxy/local 的强制对齐)
+### 2.5 当前契约:preload invoke → R 表 / 本地的强制对齐
 
 `tests/unit/rest-routers.test.ts` 用三组集合把 preload 中所有 `ipcRenderer.invoke("…")` 通道强制对齐到 `ipc-proxy.ts` 的 `R` 表或本地处理器,**新增通道不改这些集合会让测试红**。
 
-关键:**`ROUTE_MAP` 不是手写常量,而是测试从 `src/main/ipc-proxy.ts` 源码正则派生的**(`rest-routers.test.ts:459`),所以"R 表里有的通道必须出现在源码里、源码里的通道必须 preload 也调用"是同一份事实的两面。三组例外集合:
+关键:**`ROUTE_MAP` 不是手写常量,而是测试从 `src/main/ipc-proxy.ts` 源码正则派生的**(`rest-routers.test.ts:459`),所以"R 表里有的通道必须出现在源码里、源码里的通道必须 preload 也调用"是同一份事实的两面。
 
-**① `LOCAL_CHANNELS`** —— 走 `ipcMain.handle` 在主进程内直接处理,不进 `R` 表(共 ~17 项):
+#### 2.5.1 preload 暴露的通道分类(口径与 11 §8.1 一致)
 
-| 通道 | 处理位置 | 原因 |
-|------|----------|------|
-| `window:minimize` / `window:maximize` / `window:close` | `main/index.ts` | 操作 BrowserWindow |
-| `dialog:openDirectory` | `main/index.ts` | 原生 `dialog.showOpenDialog` |
-| `webfetch:login` | `main/index.ts` | 打开 BrowserWindow 做 cookie 登录 |
-| `orchestrate:pending` / `:plan` / `:confirm` / `:reject` | `orchestrate-handlers.ts` (M3) | 持有 main 进程 ConfirmRegistry 单例,不能下放 REST |
-| `requirements:doc:read` / `:write` / `:list`、`pm:createRequirement`、`pm:openDiscuss`、`pm:coverageView`、`pm:coverageVerdict` | `pm-handlers.ts` (M4) | 直接操作 PmService + RequirementDocStore,不走 REST |
+| 类别 | 数量 | 通道 | 说明 |
+|------|------|------|------|
+| **HTTP 代理(R 表)** | **141** | `config:*` / `agents:*` / `providers:*` / `mcp:*` / `kb:*` / `templates:list/get/create/update/delete/export/import` / `tools:list` / `tool-config:*` / `tool:execute` / `sessions:*` / `messages:*` / `chat:*` / `files:*` / `logs:*` / `tool-executions:*` / `webfetch:cookies` / `webfetch:clear-cookies` / `ask-user:respond` / `skills:list` / `memory-nodes:*` / `config:memory-*` / `projects:*` / `requirements:list/get/create/update/transition/history/messages/addMessage/steps/verify/archive/report` / `wiki:*` / `lead:*` / `crons:*` / `orchestrate:pending/plan/confirm/reject` / `requirements:doc:read/write/list` / `pm:createRequirement/openDiscuss/coverageView/coverageVerdict` | 每个走 `fetch(http://localhost:<port><path>)`,§2.2 的 R 表 |
+| **LOCAL invoke**(主进程内 `ipcMain.handle`,不走 HTTP) | **7** | `window:minimize` / `window:maximize` / `window:close` / `dialog:openDirectory` / `webfetch:login` / `templates:github-preview` / `templates:import-github` | 操作 BrowserWindow / 原生对话框 / cookie 登录窗 / GitHub 流式导入(WS-like 复杂语义,主进程持有流) |
+| **receive-only event**(`ipcRenderer.on`,renderer 仅订阅) | **7** | `agent:event` / `data:changed` / `app:ready` / `tools:changed` / `session:lifecycle` / `github-import:progress` / `github-preview:progress` | WS 反向事件经 main 转发(§2.3 / §2.3.1) |
 
-**② `INVOKE_BUT_NOT_PROXIED`** —— invoke 但本质是事件流/健康检查,不映射 REST(共 3 项):
+> **app:ready 的双重身份**:`app:ready` 既是 receive-only event(`ipcRenderer.on("app:ready")` 监听 main 在后端就绪后推送),也是 invoke(`ipcRenderer.invoke("app:ready")` 在 mount 时主动轮询一次,见 `preload/index.ts:112-113`)。invoke 形态在 main 内部走 `pollReady()` 轮询 `/api/ready`,**不是 REST proxy**(没有 buildReq → fetch 模式),所以不进 R 表。
+
+#### 2.5.2 测试侧的三组例外集合
+
+测试文件 `rest-routers.test.ts` 为了"每个 invoke 通道要么在 R 表、要么在 LOCAL、要么在 INVOKE_BUT_NOT_PROXIED"的断言,维护了三个集合。**注意集合粒度与 §2.5.1 的口径不同**(测试为契约断言用,§2.5.1 为架构阅读用):
+
+**① `LOCAL_CHANNELS`**(`rest-routers.test.ts:476-499`,共 16 项)—— 测试**显式放行**不参与"必须有 R 表映射"断言的通道:
+
+| 通道 | 处理位置 |
+|------|----------|
+| `window:minimize` / `window:maximize` / `window:close` | `main/index.ts` |
+| `dialog:openDirectory` | `main/index.ts` |
+| `webfetch:login` | `main/index.ts` |
+| `orchestrate:pending` / `:plan` / `:confirm` / `:reject` | `orchestrate-handlers.ts` (M3) |
+| `requirements:doc:read` / `:write` / `:list` | `pm-handlers.ts` (M4) |
+| `pm:createRequirement` / `:openDiscuss` / `:coverageView` / `:coverageVerdict` | `pm-handlers.ts` (M4) |
+
+> **与 §2.5.1 口径的差异**:`orchestrate:*` / `pm:*` / `requirements:doc:*` 在 R 表里**同时有映射**(见 `ipc-proxy.ts:251-273` 的 `/api/orchestrate/*` 与 `/api/pm/*` 条目),但测试把它们放在 `LOCAL_CHANNELS` 里"放行"——这是 M3/M4 引入 ConfirmRegistry / PmService 单例时为避免双重处理(`ipcMain.handle` + REST proxy 同时跑)的**保守放行**,实际 main 进程走 `orchestrate-handlers.ts` / `pm-handlers.ts` 而非 fetch。因此 §2.5.1 的"7 个 LOCAL invoke"是**架构阅读口径**(只数没有 REST 后端实现的纯本地通道),测试集合的 16 项是**契约放行口径**(包含这些"名义在 R 表但实际本地处理"的)。读者注意两个口径不要混。
+
+**② `INVOKE_BUT_NOT_PROXIED`**(`rest-routers.test.ts:502-506`,共 3 项)—— invoke 但本质是事件流/健康检查,不映射 REST:
 
 | 通道 | 原因 |
 |------|------|
-| `app:ready` | 在 `registerProxyHandlers` 内轮询 `/api/ready`,非直接 proxy |
-| `templates:github-preview` | GitHub 流式预览,WS-like 复杂语义 |
+| `app:ready` | 在 `registerProxyHandlers` 内轮询 `/api/ready`,非直接 proxy(见 §2.5.1 双重身份) |
+| `templates:github-preview` | GitHub 流式预览,主进程持流不走 REST |
 | `templates:import-github` | 同上 |
 
-**③ 退役通道** —— `agent-as-tool` 系列在 v0.8 已退役,测试显式断言它们**不得**出现在 `ROUTE_MAP` 或 preload 中(`agent-as-tool channels are retired`)。
+> **与 §2.5.1 口径的差异**:§2.5.1 把 `templates:github-preview/import-github` 算进"LOCAL invoke"(主进程持流、不走 REST proxy 的 invoke),测试把它们单独分到 `INVOKE_BUT_NOT_PROXIED`。两者描述的是同一事实(test 的命名更精确:它们是 invoke 但不 proxy;§2.5.1 把它们与 window/dialog 类合并统称 LOCAL)。读者看到测试里的 `INVOKE_BUT_NOT_PROXIED` 即是 §2.5.1 "LOCAL invoke" 中后 2 个。
+
+**③ 退役通道** —— `agent-as-tool` 系列在 v0.8 已退役,测试显式断言它们**不得**出现在 `ROUTE_MAP` 或 preload 中(`agent-as-tool channels are retired`,见 `rest-routers.test.ts:615-638`)。同时 `db-migration.ts` 的 `DROP TABLE IF EXISTS agent_tools` 与 `AGENT_TOOL_COLUMNS` 移除有源码级断言(`rest-routers.test.ts:644-658`)。
 
 > 历史漂移已清理:早期文档提到的 `search-provider:get / set` 已从 preload 删除,不再在例外集合里。
+>
+> **C9 漂移修正**:本文档早期版本曾写"17 LOCAL + 3 INVOKE_NOT_PROXIED"——`17` 在 `ipc-proxy.ts` 里**无对应常量**(grep 零命中,系对测试集合 `LOCAL_CHANNELS` 实际 16 项的误读 + 把 `INVOKE_BUT_NOT_PROXIED` 的 3 项错加),`INVOKE_NOT_PROXIED` 也是拼写错(测试常量名是 `INVOKE_BUT_NOT_PROXIED`)。已替换为 §2.5.1 的显式分类与 §2.5.2 的测试集合实数。
 
 ### 2.6 v0.8 关键修复:non-2xx 现在抛 reject(过去静默 resolve)
 
@@ -410,7 +439,9 @@ declare global {
 }
 ```
 
-`WindowApi` 接口当前暴露约 149 个 `ipcRenderer.invoke` 通道(加若干 `ipcRenderer.on` 事件订阅,如 `onAgentEvent` / `onDataChanged` / `onSessionLifecycle` / `onAppReady` / `onGithubPreviewProgress`),每个 invoke 方法都标注了参数和返回类型。**这是渲染层唯一的对外契约**,所有的 store / 组件都通过它与后端对话。
+`WindowApi` 接口当前暴露 **149 个 `ipcRenderer.invoke` 通道** + **7 个 `ipcRenderer.on` 事件订阅**(`onAgentEvent` = `agent:event` / `onDataChanged` = `data:changed` / `onSessionLifecycle` = `session:lifecycle` / `onAppReady` = `app:ready` / `onToolsChanged` = `tools:changed` / `onGithubImportProgress` = `github-import:progress` / `onGithubPreviewProgress` = `github-preview:progress`),每个 invoke 方法都标注了参数和返回类型。**这是渲染层唯一的对外契约**,所有的 store / 组件都通过它与后端对话。
+
+149 个 invoke 的分解 = **141 R 表代理** + **7 LOCAL invoke**(`window×3` + `dialog:openDirectory` + `webfetch:login` + `templates:github-preview/import-github`) + **1** `app:ready` 双重身份的 invoke 形态(见 §2.5.1)。
 
 契约对齐**不是手写**:`tests/unit/rest-routers.test.ts` 从 `src/main/ipc-proxy.ts` 源码**正则派生** `ROUTE_MAP`,再断言每个 preload invoke 通道要么在 `ROUTE_MAP`、要么在 `LOCAL_CHANNELS`、要么在 `INVOKE_BUT_NOT_PROXIED`(详见 §2.5)。新增通道漏改任一一处,测试即红。退役通道(agent-as-tool 系列)另有反向断言:不得出现在 ROUTE_MAP 或 preload。
 
@@ -483,7 +514,7 @@ ReactDOM renders new text delta
 - **没有错误边界**：单个组件崩溃会让整个 AppLayout 崩溃。
 - **没有 PWA / 离线**：Electron 是必须的。
 - **没有国际化**：UI 全英文（虽然配置可扩展）。
-- **IPC 类型是约 150 个 preload 方法 + 约 140 个 proxy 路由的扁平结构**——未来可能需要分组（如 `api.agents.create(...)`）或由 `shared/ipc-api.ts` 生成 wrapper，以改善命名空间并减少漂移。
+- **IPC 类型是 149 个 preload invoke 方法 + 141 个 R 表代理路由的扁平结构**（详见 §2.5.1）——未来可能需要分组（如 `api.agents.create(...)`）或由 `shared/ipc-api.ts` 生成 wrapper，以改善命名空间并减少漂移。
 
 ## 12. 架构师视角
 
