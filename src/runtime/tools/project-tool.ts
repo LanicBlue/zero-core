@@ -110,9 +110,9 @@ export const projectTool = buildTool({
 			const svc = mgmt(ctx);
 			switch (input.action) {
 				case "create":
-					return svc.createProject({ name: input.name, workspaceDir: input.workspaceDir, enrich: input.enrich });
+					return svc.createProject({ name: input.name, workspaceDir: input.workspaceDir, enrich: input.enrich, via: { agentId: ctx.agentId } });
 				case "enrich":
-					return svc.enrichProject(input.id);
+					return svc.enrichProject(input.id, { via: { agentId: ctx.agentId } });
 				case "update":
 					return svc.updateProject(input.id, { name: input.name });
 				case "delete":

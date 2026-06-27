@@ -195,7 +195,7 @@ const R: Record<string, RouteMapping> = {
 		"projects:update":           { method: "PUT",    path: "/api/projects/:id",             buildReq: (id, input) => ({ params: { id }, body: input }) },
 		"projects:delete":           { method: "DELETE", path: "/api/projects/:id",             buildReq: (id) => ({ params: { id } }) },
 		"projects:getResourceUsage": { method: "GET",    path: "/api/projects/:id/resource-usage", buildReq: (id) => ({ params: { id } }) },
-		"projects:enrich":           { method: "POST",   path: "/api/projects/:id/enrich",       buildReq: (id, via?) => ({ params: { id }, body: via ? { via } : {} }) },
+		"projects:enrich":           { method: "POST",   path: "/api/projects/:id/enrich",       buildReq: (id, body?) => ({ params: { id }, body: body ?? {} }) },
 		"projects:listJobs":         { method: "GET",    path: "/api/projects/:id/jobs",         buildReq: (id) => ({ params: { id } }) },
 
 		// ─── Requirements (M1) ──────────────────────────────

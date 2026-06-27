@@ -65,6 +65,7 @@ import type {
 import type { TemplateStore } from "./template-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import { BUILTIN_WORKFLOW_ROLES } from "./builtin-role-templates.js";
+import type { WikiOperationId } from "./wiki-operations.js";
 import { log } from "../core/logger.js";
 
 export interface ManagementDeps {
@@ -126,7 +127,7 @@ export class ManagementService {
 	/** project_jobs store (wiki 充实等后台任务的 run 记录). Late-bound. */
 	private projectJobStore: ProjectJobStore | null;
 	/** EnrichmentRunner (M2 注入) — 拉 archivist agent 后台充实 wiki. Late-bound. */
-	private enrichmentRunner: ((projectId: string, opts: { via: AgentVia; prompt?: string }) => Promise<{ jobId: string; sessionId: string }>) | null;
+	private enrichmentRunner: ((projectId: string, opts: { via: AgentVia; prompt?: string; operationId?: WikiOperationId }) => Promise<{ jobId: string; sessionId: string }>) | null;
 
 	constructor(deps: ManagementDeps) {
 		this.agentStore = deps.agentStore;
@@ -165,7 +166,7 @@ export class ManagementService {
 	/** Late-bind the project_jobs store. */
 	setProjectJobStore(store: ProjectJobStore): void { this.projectJobStore = store; }
 	/** M2 注入 enrichment runner(把 archivist agent 拉起来充实 wiki)。 */
-	setEnrichmentRunner(fn: (projectId: string, opts: { via: AgentVia; prompt?: string }) => Promise<{ jobId: string; sessionId: string }>): void {
+	setEnrichmentRunner(fn: (projectId: string, opts: { via: AgentVia; prompt?: string; operationId?: WikiOperationId }) => Promise<{ jobId: string; sessionId: string }>): void {
 		this.enrichmentRunner = fn;
 	}
 
@@ -213,12 +214,17 @@ export class ManagementService {
 					log.warn("management", `archivist background scan failed for ${project.id}:`, (err as Error).message);
 				});
 		}
-		// 可选:起 archivist agent 深度充实 wiki(骨架扫描无 LLM,充实才调 LLM)。
-		// enrichProject 内部 fire-and-forget,立即返回;runner 未注入时静默跳过。
+		// 可选:起 agent 深度充实 wiki(骨架扫描无 LLM,充实才调 LLM)。
+		// v0.8 去 fallback:必须 via.agentId(已存在、配了 Wiki 工具的 agent)。
+		// 无 via.agentId 时跳过 + warn(创建 project 时若未指定 agent,不自动充实)。
 		if (input.enrich && this.enrichmentRunner) {
-			void this.enrichProject(project.id, { via: input.via }).catch((err) => {
-				log.warn("management", `enrich kick failed for ${project.id}:`, (err as Error).message);
-			});
+			if (!input.via?.agentId) {
+				log.warn("management", `enrich skipped for ${project.id}: via.agentId required (no fallback) — Run archivist with an agent that has the Wiki tool.`);
+			} else {
+				void this.enrichProject(project.id, { via: input.via }).catch((err) => {
+					log.warn("management", `enrich kick failed for ${project.id}:`, (err as Error).message);
+				});
+			}
 		}
 		return project;
 	}
@@ -231,12 +237,16 @@ export class ManagementService {
 	 *
 	 * 需先注入 enrichment runner(M2 setEnrichmentRunner),否则抛错。
 	 */
-	async enrichProject(projectId: string, opts: { via?: AgentVia; prompt?: string } = {}): Promise<{ jobId: string; sessionId: string }> {
+	async enrichProject(projectId: string, opts: { via?: AgentVia; prompt?: string; operationId?: WikiOperationId } = {}): Promise<{ jobId: string; sessionId: string }> {
 		if (!this.enrichmentRunner) {
 			throw new Error("EnrichmentRunner not wired into ManagementService");
 		}
-		const via: AgentVia = opts.via ?? { role: "archivist" };
-		return this.enrichmentRunner(projectId, { via, prompt: opts.prompt });
+		// 无 fallback:via.agentId 必填(必须选已存在的、配了 Wiki 工具的 agent)。
+		// 默认 { role: "archivist" } 自动建 agent 的路径已删(推动弃用工作流角色)。
+		if (!opts.via?.agentId) {
+			throw new Error("enrichProject requires via.agentId — select an existing agent with the Wiki tool (no fallback).");
+		}
+		return this.enrichmentRunner(projectId, { via: opts.via, prompt: opts.prompt, operationId: opts.operationId });
 	}
 
 	/**

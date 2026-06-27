@@ -45,7 +45,8 @@ import type { WikiStore } from "./wiki-node-store.js";
 import type { ProjectJobStore } from "./project-job-store.js";
 import type { AgentVia } from "../shared/types.js";
 import { resolveSessionByRoleProject, type WikiRootResolver } from "./session-context-router.js";
-import { agentHasWikiTool } from "./wiki-operations.js";
+import { agentHasWikiTool, resolveOperationPrompt } from "./wiki-operations.js";
+import type { WikiOperationId } from "./wiki-operations.js";
 import { log } from "../core/logger.js";
 
 export interface EnrichmentRunnerDeps {
@@ -97,7 +98,7 @@ export class EnrichmentRunner {
 	 */
 	async runProjectEnrichment(
 		projectId: string,
-		opts: { via: AgentVia; prompt?: string },
+		opts: { via: AgentVia; prompt?: string; operationId?: WikiOperationId },
 	): Promise<{ jobId: string; sessionId: string }> {
 		const { agentService, sessionDB, projectStore, wikiStore, projectJobStore } = this.deps;
 
@@ -115,8 +116,8 @@ export class EnrichmentRunner {
 			{ title: `enrich:${project.name}` },
 		);
 
-		// 3. 起 job 记录(running)
-		const prompt = opts.prompt ?? this.buildDefaultPrompt(project.name);
+		// 3. 起 job 记录(running)。操作 prompt 绑操作层(自定义 > operationId > wiki-enrich)。
+		const prompt = resolveOperationPrompt(opts.operationId, opts.prompt, project.name);
 		const job = projectJobStore.create({
 			jobType: "wiki-enrich",
 			projectId,
@@ -150,26 +151,5 @@ export class EnrichmentRunner {
 			});
 
 		return { jobId: job.id, sessionId: session.id };
-	}
-
-	/** 默认充实任务 prompt:遍历骨架,给空 detail 的节点写详 doc + 准 summary。 */
-	private buildDefaultPrompt(projectName: string): string {
-		return [
-			`深度充实项目 "${projectName}" 的 wiki 树。`,
-			"",
-			"骨架扫描已经建好了结构节点(header/intent/structure)和启发式简摘。",
-			"你的任务是把它们做实:",
-			"",
-			"1. 用 Wiki(expand) 从项目子树根开始遍历整棵骨架。",
-			"2. 对每个 header 节点(代码文件):用 Read 读源文件,然后用 Wiki(docWrite/docEdit)",
-			"   写一段详实的 detail —— 讲清这个文件/模块的职责、关键导出、依赖关系、",
-			"   设计意图(为什么这么写),并更新 summary 成准确的一句话概括。",
-			"3. 对每个 intent 节点(需求/设计/ADR 文档):读文档,写 detail 概述其内容。",
-			"4. 对 structure 节点(模块/子系统):聚合子节点信息,写 detail 说明该层的组织。",
-			"5. 持续直到没有 detail 为空的 header/intent 节点。provenance 标 structure/derived/confirmed。",
-			"",
-			"硬约束:只在本项目 wiki 子树内写、只写 header/intent/structure 类型(你已有的规则)。",
-			"遇到读不到/拿不准的,留 flags 不要瞎编。完成后简述你充实了多少节点。",
-		].join("\n");
 	}
 }

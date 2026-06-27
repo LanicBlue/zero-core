@@ -223,7 +223,7 @@ const api: WindowApi = {
 	// v0.8 (P5 §8.5): sessions token/cost SUM by projectId.
 	projectsGetResourceUsage: (id) => ipcRenderer.invoke("projects:getResourceUsage", id),
 	// 手动起 archivist agent 深度充实 wiki(后台、非阻塞)。
-	projectsEnrich: (id, via?) => ipcRenderer.invoke("projects:enrich", id, via),
+	projectsEnrich: (id, body?) => ipcRenderer.invoke("projects:enrich", id, body),
 	projectsListJobs: (id) => ipcRenderer.invoke("projects:listJobs", id),
 
 	// ── Requirements ──

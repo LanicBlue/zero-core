@@ -891,6 +891,23 @@ export interface AgentVia {
 	model?: string;
 }
 
+/**
+ * v0.8 wiki 构建操作 id(操作 prompt 绑操作,不绑角色)。放 shared 以避免
+ * server/renderer 循环引用。详见 server/wiki-operations.ts WIKI_OPERATIONS。
+ */
+export type WikiOperationId = "doc-rebuild" | "git-update" | "wiki-enrich";
+
+/**
+ * v0.8 enrich / archivist 绑定的请求体。via.agentId 必填(无 fallback —— 必须
+ * 选已存在、配了 Wiki 工具的 agent);operationId 选预设操作;prompt 自定义
+ * (覆盖操作默认 prompt)。
+ */
+export interface EnrichProjectBody {
+	via?: AgentVia;
+	operationId?: WikiOperationId;
+	prompt?: string;
+}
+
 // ── tool_configs / tool_usage (P0 §7.7 — per-tool config + call log) ──
 
 /**

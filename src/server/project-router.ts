@@ -32,6 +32,7 @@ import type { ProjectWikiStore } from "./project-wiki-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import type { CronStore } from "./cron-store.js";
 import type { ManagementService } from "./management-service.js";
+import type { WikiOperationId } from "../shared/types.js";
 
 export function createProjectRouter(deps: {
 	projectStore: ProjectStore;
@@ -124,10 +125,16 @@ export function createProjectRouter(deps: {
 		if (!p) return res.status(404).json({ error: "Project not found" });
 		if (!management) return res.status(503).json({ error: "ManagementService not available" });
 		try {
-			const result = await management.enrichProject(p.id, req.body?.via ? { via: req.body.via } : {});
+			// v0.8:透传 via(必填,无 fallback)+ operationId(操作 prompt)+ prompt(自定义)。
+			// management.enrichProject 校验 via.agentId + Wiki 工具。
+			const opts: { via?: any; operationId?: WikiOperationId; prompt?: string } = {};
+			if (req.body?.via) opts.via = req.body.via;
+			if (req.body?.operationId) opts.operationId = req.body.operationId;
+			if (req.body?.prompt) opts.prompt = req.body.prompt;
+			const result = await management.enrichProject(p.id, opts);
 			res.status(202).json(result);
 		} catch (e) {
-			res.status(500).json({ error: (e as Error).message });
+			res.status(400).json({ error: (e as Error).message });
 		}
 	});
 
