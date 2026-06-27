@@ -18,7 +18,8 @@
 - `memory-recall.ts`（64）：FTS5 召回
 - `tool-rate-limiter.ts`（122）：单工具并发 + 间隔门控（已装载，在生产路径运行）
 - `task-registry.ts`（186）：异步任务表
-- `subagent-delegation.ts`（326）：子 Agent 委派工厂(**已废**,v0.8 委派重构后委派统一走 `Agent` action 工具,见下;文件保留作历史参考)
+- `subagent-delegator.ts`（413）：**当前**子 Agent 委派调度器(`SubagentDelegator` 类,见 [02 §3](./02-module-structure.md#3-运行时层-srcruntime) 与下文 §3.1「委派模型」)
+- `subagent-delegation.ts`（329）：**死代码** —— 旧的 `createSubagentDelegation()` 闭包工厂,v0.8 委派重构(迁到 `SubagentDelegator` 类)后**全仓零 importer**,保留作历史参考(✅ 删除候选)
 
 ## 2. AgentLoop 状态机
 
@@ -57,11 +58,12 @@ stateDiagram-v2
 
 #### 委派模型(v0.8 重构)
 
-委派统一走**单个 `Agent` action 工具**([tools/agent.ts](../../src/runtime/tools/agent.ts)),取代旧的 per-subagent 工具机制:
+委派统一走**单个 `Agent` action 工具**([tools/agent.ts](../../src/runtime/tools/agent.ts)),取代旧的 per-subagent 工具机制。注意"统一走 Agent 工具"指的是**对外工具接口**;工具内部仍然调用 `SubagentDelegator.delegateTask()`(见上 §1,该类由 `AgentLoop` 在构造期实例化,持自己的 `TaskRegistry`),`SubagentDelegator` 才是真正创建子 loop、跑子任务、收集结果的运行时组件。换句话说:**Agent 工具(协议层)→ SubagentDelegator(运行时层)** 两层分工。
 
 - `{action:"list"}` — 现查 `ctx.resolveAgent(callerId)` 列出 caller 当前可委派的 subagent(name/description/model)。模型靠这个自发现,**不注入 system prompt**。
 - `{action:"delegate", task, subagent?, mode?}` — `subagent`(name)→ 在 caller 现查的 subagents 里按名解析 → `resolveAgent(agentId)` **现查**对方身份(systemPrompt/model/toolPolicy)→ `delegateTask`。白名单语义:只能委派给自己 subagents 里的;name 不匹配或目标被删 → 报错(不静默回落 caller)。不传 `subagent` → 临时委派(继承 caller 身份)。`mode` 支持 blocking/non_blocking。
 - 工具名恒为 `Agent`(合法、不冲突);身份/列表现查 → 改 agent 配置不用重启 loop。
+- **子 Agent 上下文隔离(v0.8 关键修复,见 [04 §5.1](./04-tools-subsystem.md))**:`SubagentDelegator` 构造子 `SessionConfig` 时**显式置 `sessionId: undefined`**,使子 loop 走"无 DB session"路径(所有 DB 操作 gated on `db && sessionId`)→ 不 `rebuildFromTurns()` 父会话历史、不向父 turn 表写,从根上消除旧 internal 模式跨 agent 写竞争。caller 通过 `DelegateTaskOptions.contextOverride` 显式传 projectId / wikiRootNodeId / workspaceDir;身份(systemPrompt/model/toolPolicy)由 `targetAgentId` 驱动。
 
 #### running loop 配置热同步
 
@@ -348,6 +350,112 @@ sequenceDiagram
 
 **好处**：AgentLoop 不需要知道 SQLite 的存在。如果以后想换 MySQL / Postgres，只需要改 `server/session-db.ts`。
 
+## Hook 系统
+
+> "挂在循环上,不写进循环里" —— AgentLoop 的所有**功能代码**(持久化、压缩、通知、抽取、Wiki 记忆注入)都不在 loop 里,而是通过 hook 注册。loop 本身只保留**心跳逻辑**(流式事件翻译、重试、abort)。这是 v0.8 的硬约束(见 `feedback-agent-loop-hooks-only`):**新增功能必须加 hook,不许改 AgentLoop**。
+
+### 核心抽象:HookRegistry([core/hook-registry.ts](../../src/core/hook-registry.ts))
+
+单例注册表,30 个 `HookEventName`(见 [hook-types.ts](../../src/core/hook-types.ts))。两个原语:
+
+- `register(event, handler) → unsubscribe` —— 按注册顺序 append 到 `Map<event, handler[]>`。
+- `trigger(event, ctx) → AggregatedHookResult` —— **顺序执行**所有 handler,聚合返回值。
+
+**执行模型(关键,容易记错)**:
+
+1. **顺序执行,非并发**。handler 一个个 `await`,注册顺序就是执行顺序。
+2. **last-writer-wins merge**。每个 handler 返回的对象字段被 merge 进总结果,**同 key 后写覆盖前写**(`memoryContext` / `ragContext` / `providerOptions` 都遵循此规则)。⚠ 旧文档曾写成 "first-writer-wins",**错误**,以源码 `hook-registry.ts:78-91` 为准。
+3. **`{ blocked: true }` 短路**。任何 handler 返回 `blocked: true`,立即停止后续 handler,返回 `{ blocked: true, reason }`。这是 PreToolUse / UserPromptSubmit 拒绝调用的唯一机制。
+4. **错误吞掉不冒泡**。handler 抛错只 `log.error`,不影响后续 handler 或 loop 主流程(`hook-registry.ts:92-94`)。这是**故意**的:hook 是扩展点,一个扩展挂掉不该让 agent 停摆。
+5. **ctx 自动加 `timestamp`**。`triggerHooks` wrapper 会 spread ctx 并补 `timestamp: Date.now()`。
+
+### 事件 → 触发点 → 主要 handler 映射
+
+下表把"AgentLoop 在哪一行 trigger"与"谁注册了 handler"对上。**这是 hook 系统的全景图**,改 hook 时先看这里。
+
+| 事件 | 触发点(agent-loop.ts) | handler(注册在 [runtime/hooks/](../../src/runtime/hooks/)) | handler 能改什么 |
+|------|------------------------|----------------------------------------------------------|------------------|
+| `UserPromptSubmit` | run() 入口 line 228 | (无内置,可被外部拦截) | `modifiedMessage` / `blocked` |
+| `SessionStart` | run() line 236 / resume() line 296 | **turn-hooks**: 写 user turn 到 turns 表,自增 turn_seq | 副作用(写 DB) |
+| `PreLLMCall` | executeStream() line 497 | **notification-hooks**: 后台任务结果回灌为 user 消息<br/>**rag-hooks**: 注入 `ragContext`<br/>**provider-options-hooks**: 注入 `providerOptions`(thinkingLevel) | `memoryContext` / `ragContext` / `providerOptions` |
+| `PreToolUse` | 工具执行前 line 678 | (无内置) | `blocked` / `modifiedArgs` |
+| `PostToolUse` | 工具成功后 line 705 | (无内置,可被观测/审计订阅) | `modifiedResult` / `modifiedIsError` |
+| `PostToolUseFailure` | 工具失败后 line 726 | (无内置) | `modifiedError` |
+| `PostStep` | 每个 step 结束 line 766 / 798 | **turn-hooks**: 写 assistant step 到 turns 表(步骤级持久化) | `inputTokens`(触发 token 校准) |
+| `PostTurnComplete` | run() line 251 | **compression-hooks**: contextUsage 超阈值 → L1 摘要 + L2 记忆节点<br/>**todo-cleanup-hooks**: 清理已完成 todo<br/>**extraction-hooks**(M5): 增量内容/工具遥测抽取 | 副作用(压缩/抽取/清理) |
+| `Stop` | run() line 268 / resume() line 312 | **turn-hooks**: 写最终 assistant turn + seal | 副作用 |
+| `StopFailure` | catch 块 line 466 | **turn-hooks**: 记录失败 turn | 副作用 |
+| `SessionEnd` | run() line 269 | (无内置) | — |
+| `Notification` | notification-hooks 内部触发 | (UI/日志订阅) | — |
+
+> 其余 18 个事件(`SubagentStart/Stop`、`PreCompact/PostCompact`、`PermissionRequest/Denied`、`TaskCreated/Completed`、`Elicitation*`、`ConfigChange`、`CwdChanged`、`FileChanged`、`WorktreeCreate/Remove`、`InstructionsLoaded`、`TeammateIdle`)目前**没有内置 handler**,是给未来扩展(MCP 桥接、审计、worktree 集成等)预留的接口面。
+
+### 注册:统一入口,顺序敏感
+
+[runtime/hooks/index.ts](../../src/runtime/hooks/index.ts) 的 `registerAllRuntimeHooks(db?, extractionDeps?)` 是**唯一**注册入口,由 `agent-service.ts` 启动时调用。注册顺序固定:
+
+```
+turn(db?) → notification → rag → providerOptions → compression → todoCleanup → extraction(deps?)
+```
+
+**顺序为什么重要**:PreLLMCall 有 3 个 handler(notification / rag / providerOptions),它们返回的对象被 last-writer-wins merge。若两个都写 `providerOptions`,后注册的覆盖前面的。当前各 handler 写的字段不重叠(notification 写 session 消息、rag 写 `ragContext`、providerOptions 写 `providerOptions`),所以无冲突;但**新增 PreLLMCall handler 时必须检查字段冲突**。
+
+### 时序:一次 turn 里 hook 的穿插点
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant L as AgentLoop
+    participant H as HookRegistry
+    participant TH as turn-hooks
+    participant NH as notification-hooks
+    participant RH as rag-hooks
+    participant PO as provider-options-hooks
+    participant CH as compression-hooks
+    participant DB as turns 表
+
+    L->>H: trigger SessionStart {userMessage}
+    H->>TH: handler
+    TH->>DB: 写 user turn(turn_seq++)
+    L->>L: executeStream()
+    L->>H: trigger PreLLMCall {session, taskRegistry}
+    H->>NH: 已完成后台任务 → session.addMessage(user 通知)
+    H->>NH: trigger Notification(观测)
+    H->>RH: 注入 ragContext
+    H->>PO: 注入 providerOptions(thinkingLevel)
+    H-->>L: merge{ragContext, providerOptions}(last-writer-wins)
+    L->>L: streamText(messages + context + options)
+    Note over L: 每个 step 内:tool-call → PreToolUse → 执行 → PostToolUse/Failure
+    L->>H: trigger PostStep {stepOffset, usage}
+    H->>TH: 写 assistant step 到 turns(步骤级持久化)
+    L->>H: trigger PostTurnComplete {contextUsage, blocks}
+    H->>CH: 超阈值? → 渐进压缩(L1 摘要 + L2 记忆节点)
+    H->>CH: (可选)trigger PreCompact / PostCompact
+    L->>H: trigger Stop {resultText, blocks}
+    H->>TH: 写最终 assistant turn + seal
+    L->>H: trigger SessionEnd
+```
+
+### PreLLMCall 的"现查 + 注入"模式(易踩坑)
+
+`PreLLMCall` 是**上下文注入的唯一官方入口**。handler 不直接改 messages 数组,而是返回 `{ memoryContext?, ragContext?, providerOptions? }`,AgentLoop 在 `executeStream()`(line 496-540)拿到 merged 结果后,由自己决定怎么 prepend/merge:
+
+```
+preResult = await triggerHooks("PreLLMCall", { agentId, sessionId, session, taskRegistry, ... })
+if preResult.memoryContext: session.prependContext(preResult.memoryContext)
+if preResult.ragContext:    session.prependContext(preResult.ragContext)
+if preResult.providerOptions: 合并进 streamText 的 providerOptions
+```
+
+**坑**:如果两个 handler 都返回 `memoryContext`,只有**后注册**的那个生效(last-writer-wins)。v0.8 删 `memory-hooks` 就是为了避免与 wiki-anchor-injection 在 `memoryContext` 字段上打架 —— 现在 memory 走完全独立的路径(`buildContextMessage` + `renderContextAnchors`,不经 PreLLMCall)。
+
+### 设计取舍
+
+- **顺序执行而非并发**:hook 之间有隐式依赖(notification 要先于 rag,因为 notification 改了 session 消息)。并发会让 merge 顺序不确定。
+- **last-writer-wins 而非 first-writer-wins**:更符合"后注册的扩展覆盖前面的"直觉(类似中间件栈)。代价是字段冲突时要靠注册顺序隐式协调,没有显式优先级。
+- **错误吞掉**:hook 是扩展点,挂了不该影响 agent 主流程。代价是 hook bug 静默 —— 需要靠 `log.error` + 日志面板发现。
+- **PostStep 步骤级持久化**:`turn-hooks` 在每个 step 而非每个 turn 写 turns 表,让 UI 实时看到 assistant 输出,且中断后能从最近 step 恢复。代价是写放大(一个多 step turn 会写多行 turns)。
+
 ## 10. 架构师视角：这块做对了什么 & 可以改进什么
 
 ### 10.1 做对了的
@@ -355,7 +463,7 @@ sequenceDiagram
 - **接口隔离**：`ISessionStore` 让 runtime 完全无感于 SQLite。这是一个教科书般的"dependency inversion"。
 - **流式事件即契约**：`StreamEvent` 是单一类型表，前后端都用它，无须定制 IPC envelope。
 - **错误分类先于重试**：8 类错误 + 4 类 transient 是精心选的，足够覆盖大多数 LLM Provider 错误模式。
-- **Hook 与上下文提取**：`turn-hooks` / `compression-hooks` / `extraction-hooks` / `wiki-anchor-injection` 把持久化、压缩、抽取、Wiki 记忆注入从 loop 主流程中拆出。`rag-hooks` 仍是 legacy optional hook，默认会话不会生效。
+- **Hook 与上下文提取**：`turn-hooks` / `compression-hooks` / `extraction-hooks` / `wiki-anchor-injection` 把持久化、压缩、抽取、Wiki 记忆注入从 loop 主流程中拆出(完整机制见上方 [Hook 系统](#hook-系统) 一节)。`rag-hooks` 仍是 legacy optional hook,默认会话不会生效。
 
 ### 10.2 可以改进的
 

@@ -4,7 +4,7 @@
 
 ## 1. 一句话定义
 
-Zero-Core 是一个 **本地优先的 AI Agent 运行时**，通过 Electron 桌面壳运行：主进程壳 + 子进程 HTTP/WS 后端 + Chromium 渲染进程。后端用 Vercel AI SDK 统一多 LLM Provider，使用 SQLite 持久化全部状态（消息、知识、MCP 配置、Agent 配置）。Agent 通过内置 21 个工具 + MCP 协议接入的外部工具 + Agent-as-a-Tool 委派工具完成任务。
+Zero-Core 是一个 **本地优先的 AI Agent 运行时**，通过 Electron 桌面壳运行：主进程壳 + 子进程 HTTP/WS 后端 + Chromium 渲染进程。后端用 Vercel AI SDK 统一多 LLM Provider，状态分散落在多个 SQLite 文件 + 磁盘镜像树：会话核心与配置在 `sessions.db`、KB 向量分片在独立的 `knowledge.db`、Wiki 正文下沉到 `~/.zero-core/wiki/` 镜像树（详见 §9）。Agent 通过内置 25 个工具（分 9 个语义 category，详见 `docs/arch/04-tools-subsystem.md` §3 矩阵）+ MCP 协议接入的外部工具完成任务；v0.8 后旧 "Agent-as-a-Tool" 第三层已下线，改为统一的 `Agent` 委派工具 + `AgentRegistry` 注册表 CRUD（详见 04 §5）。
 
 ## 2. 进程模型
 
@@ -18,7 +18,7 @@ Zero-Core 是一个 **本地优先的 AI Agent 运行时**，通过 Electron 桌
 │  │                  │                 │  Express + WebSocket          │ │
 │  │  BrowserWindow   │                 │                               │ │
 │  │  IPC 代理         │  HTTP + WS       │  SQLite (better-sqlite3)     │ │
-│  │  Electron hooks  │────────────────▶│  ~/.zero-core/db.sqlite       │ │
+│  │  Electron hooks  │────────────────▶│  ~/.zero-core/sessions.db     │ │
 │  │                  │                 │                               │ │
 │  └──────────────────┘                 │  持久化:                      │ │
 │          │                            │  - 会话 / 消息 / 轮次          │ │
@@ -106,9 +106,9 @@ WebSocket 反向：`src/main/ipc-proxy.ts` 的 `connectEventBridge()` 维护 `ws
 │  src/runtime/agent-loop.ts   ←  streamText() driver          │
 │  src/runtime/session.ts      ←  message array + pruning      │
 │  src/runtime/provider-factory ←  AI SDK model instances      │
-│  src/runtime/tools/*         ←  21 tools (file/shell/web/...)│
+│  src/runtime/tools/*         ←  25 tools (file/shell/web/...)│
 │  src/runtime/mcp-tools/*     ←  advanced tools               │
-│  src/runtime/hooks/*         ←  turn / compression / RAG     │
+│  src/runtime/hooks/*         ←  7 handler 注册中心            │
 ├──────────────────────────────────────────────────────────────┤
 │                  Core / Foundation                            │
 │  src/core/config.ts          ←  TypeBox schema + loader      │
@@ -127,10 +127,14 @@ WebSocket 反向：`src/main/ipc-proxy.ts` 的 `connectEventBridge()` 维护 `ws
 │                  →  server/session-db.ts   (sessions/messages│
 │                                             /turns/tool exec)│
 │                  →  server/key-value-store.ts                │
-│                  →  server/kb-db.ts        (chunks+embeddings)│
+│                  →  server/kb-db.ts        (knowledge.db:    │
+│                                             chunks+embeddings)│
 │                  →  server/memory-node-store.ts              │
 │                  →  server/memory-store.ts                   │
-│  db-migration.ts (启动期迁移 + JSON→SQLite 导入)             │
+│                  →  v0.8 工作流域 9 store (project/requirement│
+│                     /cron/orchestrate/wiki/...)独立 new,     │
+│                     不挂 SessionDB(见 05 §4.0.3)             │
+│  db-migration.ts (启动期 5 阶段迁移 + JSON→SQLite 导入)      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -191,13 +195,13 @@ sequenceDiagram
 
 ## 6. 技术栈速览
 
-证据来自 `package.json`（77 行）。
+证据来自 `package.json`（78 行）。
 
 | 层 | 选型 | 备注 |
 |----|------|------|
 | 壳 | Electron 41.6 | 主/渲染/preload 三进程 |
 | 渲染 | React 19.2 + Vite 6.4 | TypeScript TSX |
-| 状态 | Zustand 5.0 | 10 个 store 文件 |
+| 状态 | Zustand 5.0 | 14 个 store + 1 个 data-sync helper |
 | 构建 | electron-vite 5 + electron-builder 26 | Win/Mac 产物 |
 | 后端 | Express + ws 8 | HTTP + WebSocket |
 | 数据库 | better-sqlite3 12 | 同步驱动，避免回调地狱 |
@@ -248,15 +252,19 @@ sequenceDiagram
 
 存储根目录：`~/.zero-core/`（可通过 `ZERO_CORE_DIR` 覆盖）。关键文件：
 
-| 文件 | 来源 | 内容 |
+| 文件 / 目录 | 来源 | 内容 |
 |------|------|------|
-| `db.sqlite` | SessionDB 持有 | sessions / messages / turns / turn_state / tool_executions / kv_store / memory_entities / memory_relations / memory_nodes / memory_subjects / memory_edges |
+| `sessions.db` | SessionDB 持有 | **30+ 张表**：会话核心 5 表（sessions/messages/turns/turn_state/tool_executions）+ 旧业务实体 11 表（agents/providers/mcp_servers/...）+ v0.8 工作流域 9 表（projects/requirements/crons/orchestrate_*/project_wiki/wiki_scan_cursors/tool_configs/tool_usage/project_jobs，详见 `05-persistence.md` §2.2b 矩阵）+ kv_store + memory_nodes/memory_subjects/memory_edges（构造自建，不进 db-migration）+ memory_nodes_fts（FTS5 虚拟表） |
+| `knowledge.db` | KbDB 独立连接 | 仅 `kb_chunks`（含 embedding 向量 blob）+ 2 个索引。**不在 sessions.db**：`KbDB` 在 `kb-db.ts:46-51` 自己 `new Database()` 开连接，原因是 embedding blob 大且写入频繁，隔离后不拖慢主库 WAL checkpoint。`kb_entries`（元数据）仍在 sessions.db，跨库靠应用层按 `kb_id` 关联（详见 `06-knowledge-subsystems.md` §2.7 三套系统对比矩阵） |
+| `wiki/` | WikiStore 磁盘镜像树 | v0.8 P1 §10.1 引入：每个 wiki 节点的正文下沉为 `.md` 文件（`WIKI_DISK_ROOT`，`wiki-node-store.ts:197`），DB 行只存元数据 + `docPointer`。目录结构与 `project_wiki` 表的 `path` 列镜像（详见 `06-knowledge-subsystems.md` §2.5） |
 | `webfetch/` | fetch-tools.ts | 抓取缓存、二进制持久化、cookies.json |
 | `logs/<date>.log` | file-log-sink.ts | 按天轮转日志 |
 | `messages/<persona>.json` | message-store.ts | 旧版遗留，迁移完成后改名为 `.migrated.bak` |
 | `workspace/` | 默认 workspace | 未指定工作区时使用 |
 
-迁移策略：见 `src/server/db-migration.ts`（268 行）。列添加顺序敏感（必须先 `safeAddColumn` 再 `new SqliteStore`），JSON 文件 → SQLite 数据搬运在迁移函数末尾。
+> ⚠️ **v0.8 更正**：旧版本节把主库文件名写成 `db.sqlite` 且只列 11 张业务表 + kv_store —— 两处都不准。源码里 `session-db.ts:63` 写的是 `sessions.db`（`grep "db\.sqlite" src/` 零命中），且 v0.8 工作流域 9 张表 + memory_* 4 张自建表此前都漏列。备份策略相应从"复制单个 sqlite 文件"改为"备份整个 `~/.zero-core/`（只复制 sessions.db 会丢 wiki 正文 + kb 向量）"，详见 `05-persistence.md` §9。
+
+迁移策略：见 `src/server/db-migration.ts`（1059 行）。`runMigrations` 分 5 阶段（`05-persistence.md` §4.2）：① 列补齐（`safeAddColumn` 必须先于 `new SqliteStore`）→ ② v0.8 表 DDL（按依赖顺序，`project_wiki` 必须先 `migrateWikiTableSchema` 再 `migrateWikiDetailToDisk`）→ ③ 构造各 `SqliteStore` → ④ 旧 JSON → SQLite 搬运 → ⑤ KV + Memory 搬运。注意 v0.8 表无 JSON 前身，阶段 ④/⑤ 完全不涉及它们。
 
 ## 10. 单图总结
 
@@ -280,5 +288,5 @@ Electron Desktop
     │   ├─ wiki-anchor-injection: system/context Wiki anchors
     │   ├─ rag-hooks: legacy optional，默认未接 getRagContext
     │   └─ durable-hooks: turn_state 检查点
-    └─ SQLite (db.sqlite) ── 11 张业务表 + kv_store
+    └─ SQLite ── sessions.db (30+ 张表) + knowledge.db (kb_chunks) + wiki/ 镜像树
 ```

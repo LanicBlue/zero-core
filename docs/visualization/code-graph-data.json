@@ -69,10 +69,16 @@
 			"path": "src/main/test-setup.ts",
 			"lines": 31,
 			"dir": "src/main",
-			"exports": [],
-			"imports": [],
+			"exports": [
+				"isTestMode",
+				"seedTestEnvironment",
+				"TestSeedResult"
+			],
+			"imports": [
+				"src/core/test-seed.ts"
+			],
 			"functions": [],
-			"description": "E2E 测试环境初始化：seed 测试 agent + mock provider + fixture 数据"
+			"description": "src/main 入口侧的测试 facade：透传 isTestMode / seedTestEnvironment / TestSeedResult（实际实现在 src/core/test-seed.ts）"
 		},
 		{
 			"path": "src/preload/index.ts",
@@ -568,6 +574,8 @@
 			"path": "src/runtime/mcp-tools/memory-tools.ts",
 			"lines": 151,
 			"dir": "src/runtime/mcp-tools",
+			"dead": true,
+			"supersededBy": "src/runtime/mcp-tools/platform-tools.ts",
 			"exports": [],
 			"imports": [
 				"src/runtime/tools/tool-factory.ts"
@@ -575,7 +583,7 @@
 			"functions": [
 				"src/runtime/mcp-tools/memory-tools.ts/getMemoryStore:26"
 			],
-			"description": "知识图谱记忆工具：读取/写入实体和关系"
+			"description": "⚠️ 僵尸(zombie)：src/ 内零 importer(`grep -r 'from .*memory-tools' src/` 零命中)。本文件定义的 memoryReadTool/memoryWriteTool 在 v0.7 通过 ALL_TOOLS 注册对外暴露；v0.8 P2 §11.6 注释明示 'MemoryRecall / MemoryNote tools removed — memory is now a wiki per-agent subtree'(见 tools/index.ts:86)后，从 ALL_TOOLS 取消注册。文件本身没删，所以静态 import 图里还有 tool-factory.ts 的边，但运行时永不进入工具清单。它是僵尸 store memory-store.ts(上)的唯一消费者，二者构成一组完整死链：删 memory-tools.ts → 删 memory-store.ts + 两表 → 删 db-migration.ts 的 memory.json 迁移分支。详见 12-glossary MemoryStore 条目。"
 		},
 		{
 			"path": "src/runtime/mcp-tools/platform-tools.ts",
@@ -829,7 +837,9 @@
 				"src/runtime/subagent-delegation.ts/suspendUntilWake:252",
 				"src/runtime/subagent-delegation.ts/runBackground:260"
 			],
-			"description": "子 agent 委派工厂：blocking / auto-background 模式创建和管理子任务"
+			"description": "⚠️ 死代码：v0.8 委派重构前的旧实现，src/ 内零 importer（仅注释提及）。当前委派走 subagent-delegator.ts 的 SubagentDelegator 类（被 agent-loop.ts:52 import）",
+			"dead": true,
+			"supersededBy": "src/runtime/subagent-delegator.ts"
 		},
 		{
 			"path": "src/runtime/subagent-delegator.ts",
@@ -960,7 +970,7 @@
 			"description": ""
 		},
 		{
-			"path": "src/runtime/tools/agent-tool.ts",
+			"path": "src/runtime/tools/agent-registry.ts",
 			"lines": 258,
 			"dir": "src/runtime/tools",
 			"exports": [],
@@ -969,12 +979,12 @@
 				"src/server/management-service.ts"
 			],
 			"functions": [
-				"src/runtime/tools/agent-tool.ts/mgmt:33",
-				"src/runtime/tools/agent-tool.ts/safe:39",
-				"src/runtime/tools/agent-tool.ts/summaryOf:53",
-				"src/runtime/tools/agent-tool.ts/templateSummaryOf:71",
-				"src/runtime/tools/agent-tool.ts/requireField:83",
-				"src/runtime/tools/agent-tool.ts/notFound:94"
+				"src/runtime/tools/agent-registry.ts/mgmt:33",
+				"src/runtime/tools/agent-registry.ts/safe:39",
+				"src/runtime/tools/agent-registry.ts/summaryOf:53",
+				"src/runtime/tools/agent-registry.ts/templateSummaryOf:71",
+				"src/runtime/tools/agent-registry.ts/requireField:83",
+				"src/runtime/tools/agent-registry.ts/notFound:94"
 			],
 			"description": "AgentTool 基类：output truncation，max result size，tool result 格式化"
 		},
@@ -1187,7 +1197,7 @@
 				"src/runtime/tools/requirement-tools.ts",
 				"src/runtime/tools/orchestrate-tool.ts",
 				"src/runtime/tools/project-tool.ts",
-				"src/runtime/tools/agent-tool.ts",
+				"src/runtime/tools/agent-registry.ts",
 				"src/runtime/tools/cron-tool.ts",
 				"src/runtime/tools/wiki-tool.ts",
 				"src/runtime/tools/verify-tool.ts",
@@ -3476,6 +3486,8 @@
 			"path": "src/server/memory-store.ts",
 			"lines": 266,
 			"dir": "src/server",
+			"dead": true,
+			"supersededBy": "src/server/wiki-node-store.ts",
 			"exports": [
 				"MemoryStore.init",
 				"MemoryStore.loadGraph",
@@ -3510,7 +3522,7 @@
 				"src/server/memory-store.ts/MemoryStore.deleteRelations:221",
 				"src/server/memory-store.ts/MemoryStore.migrateFromJson:232"
 			],
-			"description": "MemoryStore：agent 记忆持久化（SQLite）"
+			"description": "⚠️ 僵尸(zombie)：src/ 内零运行时写入者。唯一消费者 memory-tools.ts(下)自 v0.8 P2 §11.6 从 ALL_TOOLS 取消注册，生产 Agent 永不写它；唯一写入路径是 v0.7 memory.json 的一次性迁移(db-migration.ts:586)。SessionDB 仍 eager new 它(:70)但只是为了 getDb() 链路稳定，并非业务活跃。v0.8 主线知识系统已迁到 WikiStore(wiki-node-store.ts，每 agent 一个 wiki 子树)，本类仅作 legacy 兼容存在。不要与 MemoryNodeStore(压缩回退路径，仍活跃)混淆——二者是兄弟而非父子，表结构无关联、数据不互通。详见 12-glossary MemoryStore 条目与 06 §2.7 矩阵。"
 		},
 		{
 			"path": "src/server/message-store.ts",
@@ -8786,10 +8798,10 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/mgmt:33",
+			"id": "src/runtime/tools/agent-registry.ts/mgmt:33",
 			"name": "mgmt",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 33,
 			"endLine": 37,
 			"statementCount": 4,
@@ -8799,10 +8811,10 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/safe:39",
+			"id": "src/runtime/tools/agent-registry.ts/safe:39",
 			"name": "safe",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 39,
 			"endLine": 46,
 			"statementCount": 4,
@@ -8812,10 +8824,10 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/summaryOf:53",
+			"id": "src/runtime/tools/agent-registry.ts/summaryOf:53",
 			"name": "summaryOf",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 53,
 			"endLine": 65,
 			"statementCount": 1,
@@ -8825,10 +8837,10 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/templateSummaryOf:71",
+			"id": "src/runtime/tools/agent-registry.ts/templateSummaryOf:71",
 			"name": "templateSummaryOf",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 71,
 			"endLine": 80,
 			"statementCount": 1,
@@ -8838,10 +8850,10 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/requireField:83",
+			"id": "src/runtime/tools/agent-registry.ts/requireField:83",
 			"name": "requireField",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 83,
 			"endLine": 87,
 			"statementCount": 2,
@@ -8851,10 +8863,10 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/agent-tool.ts/notFound:94",
+			"id": "src/runtime/tools/agent-registry.ts/notFound:94",
 			"name": "notFound",
 			"kind": "function",
-			"file": "src/runtime/tools/agent-tool.ts",
+			"file": "src/runtime/tools/agent-registry.ts",
 			"line": 94,
 			"endLine": 97,
 			"statementCount": 3,
@@ -9472,7 +9484,7 @@
 			"endLine": 261,
 			"statementCount": 22,
 			"exported": false,
-			"signature": "function dispatchAgentTool(ctx: ToolExecutionContext, agentToolName: string, task: string)",
+			"signature": "function dispatchAgentTool(ctx: ToolExecutionContext, agentRegistryToolName: string, task: string)",
 			"description": "",
 			"callees": []
 		},
@@ -26381,7 +26393,7 @@
 			"src/runtime/mcp-tools/memory-tools.ts",
 			"src/runtime/mcp-tools/platform-tools.ts",
 			"src/runtime/mcp-tools/sequential-thinking-tools.ts",
-			"src/runtime/tools/agent-tool.ts",
+			"src/runtime/tools/agent-registry.ts",
 			"src/runtime/tools/agent.ts",
 			"src/runtime/tools/ask-user.ts",
 			"src/runtime/tools/bash.ts",
@@ -26510,7 +26522,7 @@
 			"src/runtime/tools/ask-user.ts"
 		],
 		"src/server/management-service.ts": [
-			"src/runtime/tools/agent-tool.ts",
+			"src/runtime/tools/agent-registry.ts",
 			"src/runtime/tools/cron-tool.ts",
 			"src/runtime/tools/project-tool.ts",
 			"src/server/cron-router.ts",
@@ -26601,7 +26613,7 @@
 		"src/runtime/tools/project-tool.ts": [
 			"src/runtime/tools/index.ts"
 		],
-		"src/runtime/tools/agent-tool.ts": [
+		"src/runtime/tools/agent-registry.ts": [
 			"src/runtime/tools/index.ts"
 		],
 		"src/runtime/tools/cron-tool.ts": [

@@ -100,6 +100,197 @@ const wikiStoreGlobal = new WikiStore(sessionDB);
 
 旧文件 `runtime/mcp-tools/memory-tools.ts` 仍存在，但没有进入 `ALL_TOOLS`，因此普通 Agent 会话不会拿到 `MemoryRead` / `MemoryWrite`。
 
+### 2.5 Wiki 体的磁盘镜像树布局（v0.8 P1 §10.1）
+
+> 这一节是 v0.8 (`bff7821` / `cb0b05a` / `a196338`) 的关键改动，旧文档完全没提。Wiki 节点的 **结构**（id/parent/title/path/...）在数据库 `project_wiki` 表，但节点的 **正文**（detail，可能是几千字的 Markdown）落磁盘。布局规则不再是平铺，而是 **镜像树结构** —— 文件系统目录就是 Wiki 的中间节点，文件就是叶子，肉眼打开 `<repo>/wiki/` 就能直接看到树。
+
+#### 存储根与隔离
+
+[`src/server/wiki-node-store.ts`](../../src/server/wiki-node-store.ts) 顶部定义全局磁盘根：
+
+```ts
+export const WIKI_DISK_ROOT = join(ZERO_CORE_DIR, "wiki");
+```
+
+所有 Wiki 正文文件都落在这棵目录树里。这是一个 **强隔离根**：
+
+- `readNodeDetail` / `writeNodeDetail` / `deleteNodeDetail` / `diskPathFor` 全部在返回前过一遍 [`isInsideWikiDisk()`](../../src/server/wiki-node-store.ts) —— 如果算出的路径以任何形式逃出 `WIKI_DISK_ROOT`（legacy 行、buggy upsert、外部相对路径如 `src/foo.ts`），直接 throw，绝不写。
+- agent 的 FS 工具（Shell / Read / Grep / Glob / Write / Edit）通过 `wiki-path-guard` **反向** 复用同一个根，**拒绝** 任何解析进 `WIKI_DISK_ROOT` 的路径 —— Agent 永远碰不到正文文件，只能通过 nodeId 走 `Wiki` 工具的 `ExpandNode` / `UpdateWikiNode`，由 store 层代为读写。
+
+#### 路径推导：folder = 目录，leaf = 文件
+
+正文路径由节点的 **位置** 推导，不是查表。核心函数 [`WikiStore.diskPathFor(nodeId)`](../../src/server/wiki-node-store.ts)：
+
+```text
+节点类型                    磁盘路径
+─────────────────────────  ────────────────────────────────────────────────────────
+global root (WIKI_GLOBAL)  <ROOT>/global-root__<id8>.md
+container root             <ROOT>/<path>/<path>__<id8>.md          （area 级，无自己的 subdir）
+  (knowledge/projects/memory)
+subtree root (wiki-root:*) <ROOT>/<area>/<seg>/<seg>__<id8>.md     （自带 id-suffix subdir）
+regular leaf (无子节点)     <ROOT>/<area>/<...segs>/<slug>__<id8>.md
+regular folder (有子节点)   <ROOT>/<area>/<...segs>/<slug>/<slug>__<id8>.md   ← 正文移进同名子目录
+```
+
+要点：
+
+- `area` 由位置决定：`projects/<projectId>/` / `memory/_legacy/`（旧）/ `knowledge/`。memory 的 per-agent 子树 root（`wiki-root:memory-agent:<agentId>`）由 `subtreeArea()` 归到 `memory`，`subtreeSeg()` 取 `<agentId>` 作目录段。
+- `segs` 由 `resolveAreaAndSegs()` 从节点 **向上走 parent 链** 收集（cycle-guarded，`visited` set 防环），每经过一个普通中间祖先压一个 `nodeSlug(cur)` 段；遇到 container root / subtree root / global root 即停。
+- `nodeSlug(node)` = `sanitizeSeg(title)`（`: / \` → `_`，去首尾 `_`，保留中文，`.` / `..` 被 drop 作 path-traversal 防护），空则 fallback 到 `id8(id)`。
+- `id8(id)` = id 前 8 字符，作文件名后缀保证 area 目录内唯一。
+- **folder ≠ leaf**：当一个普通节点 **有子节点**（`getChildren().length > 0`），它的正文文件被搬进 **同名子目录**，子节点的目录链才接得上。这是 `diskPathFor` 里 `isFolder` 分支的目的。
+
+#### leaf → folder 提升（首次有子节点时）
+
+[`create()`](../../src/server/wiki-node-store.ts) 在 INSERT 前先检查：如果新节点将是它 parent 的 **第一个子节点**，调 `promoteLeafToFolder(parentId)` 把 parent 的正文从 `<chainDir>/<slug>__<id8>.md` `renameSync` 进 `<chainDir>/<slug>/<slug>__<id8>.md` —— **在** 创建 child 的目录之前搬，避免子目录创建撞上还在原位的文件。container / subtree root layout 不随 children 变，跳过。失败 best-effort（`writeNodeDetail` 会按新位置重推导兜底）。
+
+#### 改名 / reparent 时正文跟着搬
+
+[`update()`](../../src/server/wiki-node-store.ts) 改 title 或 parentId 会改变 `diskPathFor` 推导结果（slug 变、segs 变）。流程：先用 **旧行** 算出 `oldDetailFile` → 写新行 → 用 **新行** 算出 `newDetailFile` → 若两者不同，`mkdirSync` + `renameSync` 把正文搬到新位置。**正文永远跟着节点走，不会丢在旧路径成孤儿**（除非 rename 失败，best-effort）。
+
+#### 启动一次性迁移
+
+旧库的正文文件是 **平铺布局**（`legacyDeriveContentFilePath`：`<ROOT>/<area>/<path>__<id8>.md`，全在一个 area 目录里）。[`fresh-db-seed.ts`](../../src/server/fresh-db-seed.ts) 的 `ensureWikiSkeleton()` 在 **每次启动** 末尾调 [`wikiStore.migrateWikiDiskLayout()`](../../src/server/wiki-node-store.ts)：
+
+- 遍历所有节点，算 `legacyDeriveContentFilePath(node)` 和 `diskPathFor(node.id)`，相同跳过；
+- 旧文件不存在 → `skipped++`（已迁移过 / 从未有正文）；
+- 旧文件存在 → `mkdirSync(newFile/..)` + `renameSync(oldFile, newFile)`，并 `UPDATE doc_pointer` 到新路径，`moved++`；
+- 幂等：跑过的库再跑全是 skipped。
+
+这就是为什么 `software-dev` 节点会从 `knowledge/` 自动挪到 `knowledge/workflow/` —— 它在 v0.8 改了 parent，迁移用新位置的 `diskPathFor` 把正文挪过去。
+
+#### 写入 / 读取原语
+
+- [`writeNodeDetail(nodeId, content)`](../../src/server/wiki-node-store.ts)：永远写 **推导路径**，绝不写 `node.docPointer`；写完才把 `docPointer` 盖成推导路径（当 cache，防 legacy/逃逸值）。`mkdirSync(file/..)` 保证父目录存在。**改正文不动 DB 其他列**（acceptance-P1 保证）—— 想改 title/summary 走 `update()`。
+- [`readNodeDetail(nodeId)`](../../src/server/wiki-node-store.ts)：永远读 **推导路径**，`docPointer` 只在缓存命中时省一次 `diskPathFor`，**绝不** 直接读它（legacy 行可能指向库外）。
+
+#### 为什么要拆库 + 镜像树（动机）
+
+- **正文大、读得少**：几千字的 Markdown 正文塞 SQLite blob 让 `list()` / `getChildren()` 每次都拉一坨没必要的数据。拆出去后 DB 行只有结构字段，list/expand 才按需读盘。
+- **肉眼可读 + git 友好**：`<repo>/wiki/knowledge/workflow/software-dev__abcd1234.md` 这种路径，人开 IDE 就能读，diff 也好看；平铺的 `<area>/<path>__<id8>.md` 没有层级信息。
+- **跟结构强一致**：folder = 目录这个不变量让 "树" 不止在 DB 里，文件系统就是它的镜像 —— 删子节点腾出目录、加子节点建子目录、改名移文件，全是对称的。
+
+### 2.6 archivist 增量扫描与摘要懒加载（v0.8 M2）
+
+> Wiki 的 **项目子树结构**（header=代码文件 / intent=需求文档 / structure=模块）不是手写的，是 [`WikiSkeletonService`](../../src/server/wiki-skeleton-service.ts)（v0.8 把原 "archivist" 服务改名澄清 —— "archivist" 名字让给 agent 角色，本服务是无 LLM 的静态扫描器）扫 workspace 建出来、增量维护的。
+
+#### 入口与触发
+
+- `buildSkeleton(projectId)` —— 增量扫描入口。由 `createProject` 在后台触发，cron / requirement-hooks / 项目通知分发也会调。
+- `rescanProjectFull(projectId)` —— 周期全量 rescan，作漂移兜底（RFC §2.13），跑完把 cursor 重置到 main 当前 HEAD 并盖 `lastFullScanAt`。
+
+两个入口都先 `git.ensureRepo(workspaceDir)`（非 repo 自动 `git init`），再 `wiki.ensureProjectSubtree(projectId, name)`。
+
+#### 增量：git diff，不是全目录遍历
+
+`buildSkeleton` 的核心是 **按 (archivist, project) 维度的 git 游标**（`WikiScanCursorStore`，游标不挂 agent 上 —— RFC §4.2，agent 可能换人/被删）：
+
+```mermaid
+sequenceDiagram
+    participant T as trigger (createProject/cron)
+    participant S as WikiSkeletonService
+    participant G as ArchivistGit
+    participant C as WikiScanCursorStore
+    participant W as WikiStore
+
+    T->>S: buildSkeleton(projectId)
+    S->>G: ensureRepo(workspaceDir)
+    S->>W: ensureProjectSubtree(projectId)
+    S->>C: get(archivistId, projectId).lastScannedRef
+    S->>G: changesSince(workspaceDir, lastScannedRef)
+    alt isInitial=false AND files.length=0
+        S-->>T: { filesScanned: 0, notes: ["no changes since last scan"] }
+    else 有变化
+        S->>S: ingestFiles(projectId, files)
+        S->>C: setLastScannedRef(archivistId, projectId, changeSet.ref)
+        S-->>T: ScanResult
+    end
+```
+
+`changesSince` 跑 `git log/diff <last>..main` 给出变化文件清单 —— **只重读变化部分**（决策 19/26）。**Feature-branch WIP 永远不进 wiki**（决策 26），只跟 main。没有变化直接 no-op 返回。
+
+#### 摘要懒加载：扫描时不读源码
+
+扫描时 **不读源码** —— `ingestFiles` 对每个文件 upsert 一个 `header:<relPath>` / `intent:<relPath>` 节点，`summary` 留空字符串（代码注释原话："the rich summary (exports / head / line count) is ... readFileSync every workspace file ... 2800+ files"，扫描期读盘会让大仓库扫一次几分钟）。目录节点扫完盖一个 placeholder summary（`Project root: N file(s).` / `Directory <rel>: N file(s).`）。
+
+真正读源码算 rich summary 推迟到 **第一次 expand**，由 [`ensureSummary(nodeId)`](../../src/server/wiki-skeleton-service.ts) 触发：
+
+1. `summary` 已非空 → 直接返回（已物化，零 IO）；
+2. `header:` / `intent:` 节点 → 从 path 切出 relPath，`resolve(workspaceDir, relPath)` 算绝对路径，`existsSync` 校验；
+3. `header:` 调 `summarizeCodeFile`：`readFileSync` → 行数 / exports（`extractExports`）/ 头 3 行 head，拼成 `<relPath> — N line(s). Exports: ... Head: ...`；
+4. `intent:` 调 `summarizeDocFile`：读文件、抽标题/段；
+5. 算出来非空 → `wiki.update(id, { summary })` 写回行（**lazy 物化**：第一次读付钱，以后命中 row summary 零 IO）。
+
+structure / project / memory 节点没有源文件，原样返回现有 summary。
+
+这个设计让 **建骨架**（O(文件数) 的 upsert，但零读盘）和 **看节点**（O(1) per expand，只读被点的那一个）的代价解耦，大仓库扫骨架从分钟级降到秒级。
+
+#### 写入权限护栏
+
+`WikiSkeletonService` 是 `WikiStore.upsertProjectNode` 的 **唯一调用方**。store 层强制：scope = 自己 project 子树、type 只能是 `header` / `intent` / `structure`。archivist agent 角色不直接写库 —— 它经这个服务建骨架（决策 9/18/39），需要深度充实的内容走 `Wiki` 工具的 create/update（带 provenance 标 `confirmed` / `derived`）。
+
+### 2.7 三套数据库知识系统的对比矩阵
+
+§2.1~§2.6 已经把 `project_wiki` 讲透，但它并不是 zero-core 数据库里唯一的"知识表"。当前 `sessions.db` 里**并存三套**面向知识/记忆的存储后端,加上 `kb_*` 还跨了另一个文件。这一节把它们摆在一起对照,避免维护者在三套表之间脑补映射。
+
+> 范围说明:本节只对比**持久化在 SQLite 里的知识系统**(即 §1 表里的 Wiki tree / KB / Legacy memory 三行的存储后端)。MCP 是外部协议不在库内、`rag-hooks.ts` 是注入点不是存储,两者不进本表。
+
+#### 物理位置
+
+```mermaid
+graph LR
+    subgraph sessions["sessions.db  (主库,db-migration 管理)"]
+        PW["project_wiki<br/>+ wiki_scan_cursors"]
+        KE["kb_entries<br/>(KB 元数据)"]
+        MN["memory_nodes<br/>memory_subjects<br/>memory_edges<br/>memory_nodes_fts"]
+    end
+    subgraph knowledge["~/.zero-core/knowledge.db  (独立文件)"]
+        KC["kb_chunks<br/>+ embedding 向量"]
+    end
+    subgraph disk["~/.zero-core/wiki/  (磁盘镜像树,§2.5)"]
+        WT["每个 leaf 节点 = 一个 .md/.json"]
+    end
+    PW -. 正文同步 .-> WT
+    KE -. kbId 关联 .-> KC
+    KBINGEST["kb-ingest.ts<br/>(分块+embedding)"] --> KC
+    KBINGEST --> KE
+```
+
+三套系统在物理上是**故意分开**的:`project_wiki` 正文在 sessions.db 但**镜像到磁盘**便于 git 友好与人工编辑;`kb_chunks` 因为携带 embedding 向量(每行数 KB blob)**单独开 knowledge.db** 避免拖慢主库的 WAL checkpoint;`memory_*` 是 legacy 但仍在 sessions.db 里占位(因为 MemoryNodeStore 在构造函数里 `init()` 自建表,不走 db-migration,所以 05 §2.2 的"30 张表"清单里看不到它们)。
+
+#### 横向对比矩阵
+
+| 维度 | `project_wiki` (Wiki tree) | `kb_entries` + `kb_chunks` (KB) | `memory_nodes` / `_subjects` / `_edges` (Legacy memory) |
+|------|------|------|------|
+| **当前定位** | **唯一长期记忆主线** (§1) | 手动文档库,可选 RAG 扩展点 (§3.2) | legacy/compat,压缩流程回退路径 (§4) |
+| **表所在文件** | sessions.db | `kb_entries` in sessions.db + `kb_chunks` in **knowledge.db** (独立) | sessions.db |
+| **建表机制** | `db-migration.ts:672` `CREATE TABLE IF NOT EXISTS` (db-migration 管理) | `kb_chunks`: `KbDB.initSchema()` 构造时自建 (`kb-db.ts:53-69`);`kb_entries`: SqliteStore 包装 (`kb-store.ts:51`) | `MemoryNodeStore.init()` 构造时自建 (`memory-node-store.ts:138-180`),**不进 db-migration** |
+| **行规模量级** | 节点级(每个 wiki 节点 1 行,正文下沉磁盘) | chunk 级(单文档拆数十~数百行,每行带 embedding blob) | 节点级(实体-关系图,每节点 1 行 + FTS 索引) |
+| **写入触发器** | ① `fresh-db-seed.ts` 初始骨架;② `project-wiki-router.ts` 用户 REST CRUD;③ `WikiSkeletonService` (archivist 增量扫描,§2.6);④ `Wiki` runtime 工具 (Agent 运行时 create/update);⑤ extractor/compression hooks | **仅** `kb-ingest.ts` (用户显式导入文档 → 分块 → embedding → 写 chunks + entries) | **仅** legacy 压缩流程回退路径(Wiki 不可用时),`MemoryWrite` 工具当前**未注册** (§4) |
+| **写入约束** | scope+type 护栏 (`WikiSkeletonService` 单一入口,§2.6 护栏;`Wiki` 工具带 provenance) | 文件分块策略固定,无业务护栏 | 无护栏(legacy 设计) |
+| **检索方式** | **树遍历 + 路径定位** (`wiki-anchor-injection.ts` 按 anchor nodeId 取子树;`Wiki` 工具按 path/title 找子节点) | **向量相似度 top-K** (`kb-search.ts` cosine similarity over embeddings) | **FTS5 MATCH** (`memory_nodes_fts`, `memory-node-store.ts:128`) + LIKE 兜底 (`:281`) |
+| **谁来读** | `AgentLoop` 构造时 + `updateConfig` 时调 `resolveAnchors` → `renderSystemAnchors` 注入 system prompt (默认链路,§2 顶部 mermaid) | `kb-search.ts` 经 `/api/kb` REST **手动**调用;`rag-hooks.ts` 是 PreLLMCall 注入点但**默认未接通** (§3.2) | `runtime/memory-recall.ts` 是 FTS 召回残留,**未接主链路** (§4) |
+| **默认 Agent 会话可见?** | ✅ 是 (anchor 注入 + Wiki 工具) | ❌ 否 (getRagContext 未注入,§3.2) | ❌ 否 (工具未注册,recall 未接) |
+| **v0.8 状态** | **核心增强** (磁盘镜像树 §2.5 + archivist 增量扫描 §2.6 + project scope) | **冻结** (代码活跃但无产品化接入) | **退役中** (`memory-hooks.ts` 已删除注册,§4 表) |
+| **是否进 05 §2.2 表** | ✅ 进 (db-migration CREATE) | ⚠️ 部分 (`kb_chunks` 不进,因为它不在 sessions.db;`kb_entries` 进) | ❌ 不进 (构造时自建,不在 db-migration) |
+
+#### 三套并存的历史与取舍
+
+这三套不是设计出来的分层,而是**三代演进留下的地层**:
+
+1. **`memory_*` (最老)**:实体-关系图谱式 memory + FTS 召回,设计上想模仿 Claude Code 的 memory 机制。问题是写入无业务护栏、检索用 FTS 召回噪声大、与 AgentLoop 注入没有干净接口。v0.8 决定退役(`memory-hooks.ts` 已从 `registerAllRuntimeHooks` 移除),但 store / recall / tools 文件还在,作为压缩流程的回退路径留着(§4)。
+2. **`kb_*` (中间)**:本地文档 RAG,设计上想给 Agent 配私有知识库。技术栈完整(SqliteStore 元数据 + 独立 knowledge.db 存向量 + cosine 检索 + /api/kb),但**产品接入没做完**:`getRagContext` 从未被 `AgentService.createLoopForSession` 注入(§3.2),所以普通 Agent 会话根本不查它。当前是"能用手动 API 检索,但 Agent 不会自动用"的半成品。
+3. **`project_wiki` (最新,当前主线)**:把上述两套的教训吸收后重做的结构化记忆 —— 树形结构(支持 path 定位 + scope 隔离)、磁盘镜像(git 友好 + 人工可编辑)、anchor 注入(干净的 AgentLoop 接口)、增量扫描(archivist git diff,不全量重建)、provenance 元数据(区分 confirmed/derived)。v0.8 是核心增强目标(§2.5/§2.6)。
+
+**为什么不一刀切删掉前两套**:`memory_*` 的压缩回退路径目前还在用(Wiki 不可用时会写 memory_nodes);`kb_*` 是"代码完整但产品没接",如果未来要做显式 RAG 产品化,基础设施已经就绪,不必重写。所以 v0.8 的取舍是:**只把 `project_wiki` 推为主线并继续加固,前两套标 legacy 但不删**,等 `memory_*` 的压缩回退路径迁移完成、`kb_*` 的产品决策(显式 RAG 还是彻底删除)落地后再清理。这也呼应 §6.2 的中期建议。
+
+#### 维护者提示
+
+- **改 `project_wiki` schema** → 改 `db-migration.ts`(`migrateWikiTableSchema` / `migrateWikiDetailToDisk` 子函数,§2.5 启动迁移)。
+- **改 `kb_chunks` schema** → 改 `KbDB.initSchema()`(`kb-db.ts:53`),**不要去 db-migration.ts 找**,那里没有;FTS 表不能 ALTER,改 schema 要 DROP 重建。
+- **改 `memory_*` schema** → 改 `MemoryNodeStore.init()`(`memory-node-store.ts:138`),同样不进 db-migration。
+- **三套之间的数据不互通**:`agents.knowledgeBaseIds` 是 agent 配置里挂的 KB id(对应 `kb_entries`),与 `project_wiki` 是**两套并行的 wiki/知识** —— 不要假设读 wiki 时会带上 KB 内容(那是 `rag-hooks.ts` 的事,默认没接)。
+
 ## 3. KB 子系统的当前位置
 
 KB 仍然是有效的本地知识库能力，但它当前不是默认 Agent 自动 RAG 主链路。

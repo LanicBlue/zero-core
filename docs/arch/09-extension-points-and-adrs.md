@@ -21,10 +21,15 @@ HookRegistry.getInstance().register("PreToolUse", async (ctx) => {
 | 文件 | 装载时机 | 注册的事件 |
 |------|----------|------------|
 | `server/durable-hooks.ts` | `agent-service.ts` 构造时 | SessionStart / PostToolUse / Stop / StopFailure |
-| `runtime/hooks/turn-hooks.ts` | `registerAllRuntimeHooks(db)` | SessionStart / Stop / StopFailure |
+| `runtime/hooks/turn-hooks.ts` | `registerAllRuntimeHooks(db)` | SessionStart / PostStep / Stop / StopFailure |
 | `runtime/hooks/compression-hooks.ts` | 同上 | PostTurnComplete |
-| `runtime/hooks/memory-hooks.ts` | 同上 | PreLLMCall |
 | `runtime/hooks/rag-hooks.ts` | 同上 | PreLLMCall |
+| `runtime/hooks/notification-hooks.ts` | 同上 | PreLLMCall |
+| `runtime/hooks/provider-options-hooks.ts` | 同上 | PreLLMCall |
+| `runtime/hooks/todo-cleanup-hooks.ts` | 同上 | PostTurnComplete |
+| `runtime/hooks/extraction-hooks.ts` | 同上（注入 deps 时） | PostTurnComplete |
+
+> v0.8 (P2 §11.6)：`runtime/hooks/memory-hooks.ts` 已删除。memory 合并进 per-agent wiki 子树，召回改由 `wiki-anchor-injection` 注入 + `Wiki(search)` 查询，不再走独立 recall hook。
 
 ### 1.2 工具（最直接）
 
@@ -80,7 +85,7 @@ case "my-provider":
 3. 后端 `src/server/<x>-router.ts` 加 Express 路由
 4. 必要时更新 `src/shared/ipc-api.ts` 与 `tests/unit/rest-routers.test.ts` 的契约校验
 
-当前 `preload/index.ts` 约 150 个 invoke 通道，`ipc-proxy.ts` 约 140 个代理通道。新增通道时应优先让测试捕获遗漏，而不是把例外加入白名单。
+当前 `preload/index.ts` 暴露 155 个 preload API（131 个 `invoke` + 7 个 `on` receive + 余下为同步属性/常量），`ipc-proxy.ts` 的 `R` 表代理 141 个通道；main 本地保留 6 个 `ipcMain.handle`（window/dialog/webfetch/app:ready，必须用 Electron 原生能力）。新增通道时应优先让测试捕获遗漏，而不是把例外加入白名单。
 
 ### 1.7 SQLite 表
 
@@ -101,11 +106,13 @@ case "my-provider":
 
 ## 2. 架构决策记录（ADR）
 
-### 2.0 18 个 ADR 总览（timeline + 分类）
+### 2.0 21 个 ADR 总览（timeline + 分类）
+
+> 实际 21 个 ADR（ADR-018 无独立章节，并入 ADR-012 / D-016 的契约漂移讨论）。
 
 ```mermaid
 timeline
-    title 18 个 ADR 的决策焦点分布
+    title 21 个 ADR 的决策焦点分布
     进程模型 : ADR-001 Electron + 后端子进程
              : ADR-002 IPC → HTTP 桥
              : ADR-003 WebSocket 反向
@@ -141,7 +148,7 @@ graph TB
         B4[ADR-009 config 耦合]
         B5[ADR-014 Zustand 单 store]
     end
-    subgraph "工具与协议（5）"
+    subgraph "工具与协议（6）"
         C1[ADR-008 legacy KB RAG]
         C2[ADR-010 buildTool]
         C3[ADR-011 mcp-tools 改名]
@@ -199,7 +206,7 @@ graph TB
 
 **Context**：Electron 的 IPC 是同步请求-响应模式，与后端的 REST 风格一致。
 
-**Decision**：绝大多数业务 IPC 通道通过 `ipc-proxy.ts` 的 `R` 表翻译为对 `http://localhost:<port>/api/...` 的 HTTP 请求。当前 `R` 表约 140 个代理通道；main 本地保留 5 个必须使用 Electron 原生能力的通道。
+**Decision**：绝大多数业务 IPC 通道通过 `ipc-proxy.ts` 的 `R` 表翻译为对 `http://localhost:<port>/api/...` 的 HTTP 请求。当前 `R` 表代理 141 个通道；main 本地保留 6 个 `ipcMain.handle`（必须使用 Electron 原生能力）。
 
 **Alternatives**：
 - 直接在 main 进程跑后端逻辑：把 main 进程变成上帝对象。
@@ -271,7 +278,7 @@ graph TB
 - ✅ Hook 提取仍然有效，但 AgentLoop 当前又增长到约 700 行，需要继续控制流式事件翻译和工具执行分支。
 - ✅ 每个 hook 可独立测试。
 - ✅ 扩展点明确。
-- ❌ 23 个 hook 事件定义但未装载（幽灵 hook）。
+- ❌ 23 个 hook 事件定义但未装载（幽灵 hook），其中 10 个连 `emit` 都没有（死定义，纯噪音）。
 - ❌ 调用顺序依赖注册时机。
 
 **Code evidence**：`runtime/hooks/index.ts`、`core/hook-registry.ts`。
@@ -295,7 +302,7 @@ graph TB
 **Consequences**：
 - ✅ 单文件备份 / 迁移简单。
 - ✅ KV 灵活补丁 + 业务表结构化并存。
-- ❌ `session-db.ts` 类持有多个独立存储后端，类太大（当前约 850 行）。
+- ❌ `session-db.ts` 类持有多个独立存储后端，类太大（当前约 960 行；v0.8 仅聚合 5 个内核 store，9 个工作流域 store 已在 `server/index.ts` 独立 `new`）。
 - ❌ KB 向量搜索 O(M×D) 是性能瓶颈。
 
 **Code evidence**：`server/sqlite-store.ts:43-273`、`server/key-value-store.ts:32-116`。
@@ -357,7 +364,7 @@ graph TB
 
 ### ADR-010 · Tool 抽象：buildTool 工厂 + meta 反射
 
-**Context**：21 个工具异构（fs / shell / web / db / mcp），但需要统一的元数据（category / isReadOnly / configSchema / prompt）。
+**Context**：25 个工具（9 categories：fs / shell / web / db / mcp / task / agent / orchestration / project-management）异构，但需要统一的元数据（category / isReadOnly / configSchema / prompt）。
 
 **Decision**：`buildTool()` 工厂接受 `{name, description, prompt, meta, configSchema, inputSchema, execute}`，把 `meta` / `configSchema` / `prompt` 挂在 AI SDK `tool()` 对象的私有符号上。
 
@@ -371,7 +378,6 @@ graph TB
 - ✅ meta 字段驱动 UI（红/绿/灰按钮 + 工具分类树）。
 - ✅ 工具配置值自动注入 prompt（prompt-as-config）。
 - ❌ 元数据存在私有符号上，类型签名看不到，需要 `getToolMeta(def)` 等反射函数。
-- ❌ meta 字段（如 `requiresConfirmation`）未完全接通。
 
 **Code evidence**：`runtime/tools/tool-factory.ts:92-211`、`core/tool-registry.ts:50-67`。
 
@@ -414,7 +420,7 @@ graph TB
 
 **Status**：accepted, cleanup needed。
 
-**Context**：项目仍存在 `memory-store.ts`、`memory-node-store.ts`、`runtime/memory-recall.ts` 和旧 `runtime/mcp-tools/memory-tools.ts`。但当前 `runtime/tools/index.ts` 已移除 `MemoryRecall` / `MemoryNote`，普通 Agent 的记忆读写走 `Wiki` 工具与 Wiki anchors。
+**Context**：项目仍存在 `memory-store.ts`、`memory-node-store.ts` 和旧 `runtime/mcp-tools/memory-tools.ts`。但当前 `runtime/tools/index.ts` 已移除 `MemoryRecall` / `MemoryNote`，普通 Agent 的记忆读写走 `Wiki` 工具与 Wiki anchors。（历史 ADR 曾引用 `runtime/memory-recall.ts`，该文件已不存在；记忆召回由 `wiki-anchor-injection` 取代。）
 
 **Decision**：把旧 memory 代码标注为兼容/迁移残留。当前默认长期记忆路径是全局 Wiki tree：Extractor 与 compression 优先写入 Wiki，AgentLoop 通过 `wiki-anchor-injection.ts` 注入项目/Agent 锚点。
 
@@ -423,7 +429,7 @@ graph TB
 - ⚠️ 仍需确认旧表中是否有用户数据，再决定迁移或删除。
 - ⚠️ `SessionDB` 仍持有旧 store，会继续增加认知负担。
 
-**Code evidence**：`runtime/tools/index.ts`、`runtime/wiki-anchor-injection.ts`、`runtime/hooks/compression-hooks.ts`、`runtime/hooks/extraction-hooks.ts`。
+**Code evidence**：`runtime/tools/index.ts`、`runtime/wiki-anchor-injection.ts`、`runtime/hooks/extraction-hooks.ts`。`runtime/mcp-tools/memory-tools.ts` 零 importer（已从工具注册表移除，文件本身仍留在树上等待随 memory-store 一并清理）。
 ### ADR-014 · Zustand 单 Store 单关注点
 
 **Context**：渲染层有多个交互域（聊天 / Agent / MCP / KB / 设置 / 主题 / 页面 / 交互）。
@@ -440,7 +446,7 @@ graph TB
 - ✅ 性能：选择器返回稳定引用。
 - ❌ 跨域状态需要手动同步（activeAgentId 在 page-store 和 chat-store 各有一份）。
 
-**Code evidence**：`renderer/store/*.ts` 共 10 个。
+**Code evidence**：`renderer/store/*.ts` 共 14 个 store + `data-sync.ts`（DB→store 增量同步 helper，见 ADR-021）。
 
 ---
 
@@ -501,7 +507,7 @@ graph TB
 ### ADR-019 · 模板与工作流角色分离(模板按能力取向)
 
 **Context**:历史上存在两套并行、互不感知的「模板」系统:
-- **role template**(`runtime/role-templates.ts` `ROLE_TEMPLATES`,15 条硬编码 lead/pm/...):带 `toolPolicy` + `whitelistedRoleTags`(委派图),被 `AgentRegistry` 工具 + REST `/api/role-templates` + IPC `role-templates:*` 消费。
+- **role template**(`runtime/role-templates.ts` `ROLE_TEMPLATES`,15 条硬编码 lead/pm/...):带 `toolPolicy` + `whitelistedRoleTags`(委派图),被 `AgentRegistry` 工具 + REST `/api/role-templates` + IPC `role-templates:*` 消费。**（`runtime/role-templates.ts` 已删除，见 ADR-020；本段为历史背景描述。）**
 - **prompt template**(`server/template-store.ts`,DB `templates` 表,`PromptTemplate`):12 条内置 + 用户自建/GitHub 导入,被 UI Templates 页面消费(REST `/api/templates` + IPC `templates:*`)。
 
 两者都用作 agent 身份种子,只是入口不同 → `AgentRegistry.listTemplates` 列出的模板与 UI Templates 页面**对不上**。
@@ -509,7 +515,7 @@ graph TB
 **Decision 演进**:先尝试「完全合并为一套」(把 role 塞进 PromptTemplate 画廊,27 条),但很快发现违背一条更根本的原则——**模板按能力/知识领域取向,与工作流角色无关**。最终改为**两个概念彻底分离**:
 
 - **能力模板**(PromptTemplate 画廊,TemplateStore):按能力/领域专长取向,用户面向。**16 条** = 12 通用(Coder/Writer/Translator/Reviewer/Analyst/Tutor/Creative/Researcher/Collector/DevOps/Product Manager/Architect)+ 4 领域专家(Security/UI-UX/Performance Expert + QA Engineer,由原 analyzer lens / qa 重构为「懂什么」的领域专家,能分析也能设计,不绑死动作)。UI 画廊 + `AgentRegistry.listTemplates` 共看 → 对齐。
-- **工作流角色注册表**(`server/builtin-role-templates.ts` `BUILTIN_WORKFLOW_ROLES`):交付工作流的位置,**与模板无关,不进画廊**。仅保留 `zero/lead/archivist` 3 个无能力等价物的纯工作流位置。`developer/reviewer/pm/qa` 不再单独定义——工作流里直接用同名能力模板建 agent(Coder/Reviewer/Product Manager/QA Engineer),其工作流专属工具(如 PM 的 CreateRequirementWithDoc)由 zero 在 setup 时配 toolPolicy。
+- **工作流角色注册表**(`server/builtin-role-templates.ts` `BUILTIN_WORKFLOW_ROLES`):交付工作流的位置,**与模板无关,不进画廊**。当时保留 `zero/lead/archivist` 3 个无能力等价物的纯工作流位置。`developer/reviewer/pm/qa` 不再单独定义——工作流里直接用同名能力模板建 agent(Coder/Reviewer/Product Manager/QA Engineer),其工作流专属工具(如 PM 的 CreateRequirementWithDoc)由 zero 在 setup 时配 toolPolicy。（后续 ADR-020 进一步精简：**代码角色注册表只剩 `zero`**，lead/archivist/pm/developer 改为 software-dev playbook 的 wiki 知识，由 zero 读出后实例化。）
 
 **丢弃**:`whitelistedRoleTags` 委派自动装配(依赖失效的 `role_tag` 物理列,fresh DB 上是 no-op);`analyzer×4`(→ 3 领域专家 + 架构并入通用 Architect);`planner×4`(Feature/Bugfix/Refactor/Research 是工作类型,不是能力/领域,丢弃)。
 

@@ -40,12 +40,13 @@ graph LR
         K1[ToolRegistry]
         K2[ToolFactory]
         K3[MCPManager]
-        K4[MemoryNodeStore]
-        K5[MemoryStore 旧]
+        K4["MemoryNodeStore<br/>(压缩回退)"]
+        K5["MemoryStore<br/>(僵尸)"]
+        K6["WikiStore<br/>(主线)"]
         K1 --> K2
         K1 --> K3
-        K1 --> K4
-        K4 --> K5
+        K1 --> K6
+        K4 -. 兄弟并存,数据不互通 .-> K5
     end
 
     P2 --> R1
@@ -177,7 +178,7 @@ graph TB
 ## F
 
 - **fetch-tools**：WebFetch 工具的实现。`runtime/mcp-tools/fetch-tools.ts`。
-- **first-writer-wins**：hook 触发语义，第一个返回非空结果的 handler 决定后续行为。
+- **first-writer-wins**：⚠️ **旧叙事已废**。v0.7 文档用这个词描述 hook 触发语义,但源码核对(`hook-registry.ts:78-91`)实际是 **last-writer-wins merge + blocked 短路**:多个 handler 的同名字段**逐个 merge**(后写覆盖先写),任一 handler 返回 `{blocked: true}` 立即短路停止后续 handler。详见 [03 §3 hook 执行模型](./03-runtime-engine.md) 与 [02 §3.2](./02-module-structure.md)。保留本条仅为反向澄清,避免读者看到旧文档以为 hook 是"先到先得"。
 - **fs-watcher**：当前**未实现**。应该监听 workspace 文件变化。
 - **FTS5**：SQLite 全文搜索扩展，被 memory_nodes_fts 用。
 
@@ -227,8 +228,8 @@ graph TB
 - **MCPManager**：MCP 连接池 + 工具缓存。`server/mcp-manager.ts`。
 - **MCPScanner**：扫描外部应用配置（Claude Desktop / Cursor / ...）。
 - **MemoryRecall / MemoryNote**：已退役的旧记忆工具名；当前 `ALL_TOOLS` 不再注册，记忆操作走 `Wiki` 工具。
-- **MemoryStore**：旧版知识图谱存储（实体-关系）。`server/memory-store.ts`。
-- **MemoryNodeStore**：旧节点记忆存储/兼容层。当前长期记忆主写路径优先进入全局 Wiki tree。
+- **MemoryStore**：⚠️ **僵尸 store**(zombie)。`server/memory-store.ts`,持有 `memory_entities` / `memory_relations` 两张构造自建表(见 [05 §2.2](./05-persistence.md#22-业务实体表10-张存活--1-张已退役) 末"批 B 构造自建表全清单")。**构造时 eager new**(`session-db.ts:70`)+ v0.7 `memory.json` 一次性迁移(`db-migration.ts:586`)是**唯一写入路径**;**运行时零写入者** —— 唯一消费者 `runtime/mcp-tools/memory-tools.ts` 的 `memoryReadTool`/`memoryWriteTool` 自 v0.8 P2 §11.6 起从 `tools/index.ts` **取消注册**(`grep "memory-tools" src/runtime/tools/` 零命中),所以 `getMemoryStore()` 在生产环境永远不会被 Agent 工具调到。这是删除候选(清理顺序:删 `memory-tools.ts` → 删 `MemoryStore` 类 + 两表 + `memory.json` 迁移分支 + SessionDB getter)。**不要**把它当活跃系统,也不要与 MemoryNodeStore 混为一谈 —— 二者数据不互通、互不引用、互不依赖。详见 [06 §2.7](./06-knowledge-subsystems.md) "三套数据库知识系统的对比矩阵"。
+- **MemoryNodeStore**：`server/memory-node-store.ts`,持有 `memory_nodes` / `memory_subjects` / `memory_edges` / `memory_nodes_fts`(FTS5) 四张构造自建表(`init()` 自建,不进 db-migration)。与 MemoryStore **是兄弟而非父子** —— 二者各自 eager new、各自 `init()`、表结构无任何关联。MemoryNodeStore **仍在运行时被调用**(`runtime/hooks/compression-hooks.ts:153` 在 wiki 写失败时回退写它 + `server/memory-node-router.ts` 暴露 `/api/memory-nodes` REST),所以是 legacy 但**活**;MemoryStore 是 legacy 且**僵尸**(构造但永不写)。两个 store 都**不进** db-migration.ts 的 `*_COLUMNS` 数组,改 schema 要去各自 `init()`。
 - **MockLanguageModel**：测试用 mock LLM。`runtime/mock-language-model.ts`。
 - **ModelRegistry**：模型元数据（context window / max tokens），OpenRouter + 本地正则回填。
 
@@ -265,7 +266,6 @@ graph TB
 - **Recovery**：启动期扫描未完成 turn 的机制。`server/recovery.ts`。
 - **Renderer**：Electron 渲染进程（React + Zustand）。
 - **RENAMED_TOOLS**：旧 lowercase 工具名到 PascalCase 的映射，用于兼容。
-- **requiresConfirmation**：tool meta 字段，标识需要用户确认（**未接通 UI**）。
 - **ResolveModel**：把 providerName + modelId 解析为 AI SDK LanguageModel。
 - **RetryStrategy**：3 次重试 + 指数退避。
 - **RunState**：会话运行时状态（busy / streamingText / toolCalls）。
@@ -279,7 +279,8 @@ graph TB
 - **SessionStoreInterface**：运行时对 DB 的抽象接口。
 - **SSE**：Server-Sent Events，MCP transport 之一。
 - **StreamEvent**：运行时事件契约（text_delta / thinking_delta / tool_start / tool_end / ...）。
-- **subagent-delegation**：子 Agent 委派工厂。
+- **subagent-delegator**：`SubagentDelegator` 类(`src/runtime/subagent-delegator.ts`),v0.8 当前的子 Agent 委派调度器,由 `AgentLoop` 在构造期实例化,被 `Agent` action 工具(`action="delegate"`)调用;持自己的 `TaskRegistry`,跑同步/后台子任务并触发 `SubagentStart`/`SubagentStop`/`TaskCreated`/`TaskCompleted` hook。
+- **subagent-delegation**(历史):`createSubagentDelegation()` 闭包工厂(`src/runtime/subagent-delegation.ts`),v0.8 委派重构前 API,**死代码(零 importer)**,保留作历史参考,删除候选。不要与 `subagent-delegator` 混淆。
 
 ## T
 

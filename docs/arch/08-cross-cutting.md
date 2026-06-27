@@ -109,13 +109,18 @@ class HookRegistry {
   static getInstance(): HookRegistry  ← 单例
   register(event, handler): () => void  ← 返回 unsubscribe
   trigger(event, ctx): Promise<HookResult>
-    ├─ for each handler:
+    ├─ for each handler (按注册顺序):
     │   try { result = await handler(ctx) }
     │   catch { log.error(...) }     ← 永不抛出
-    │   if result: return result      ← first-writer-wins
-    └─ return undefined
+    │   if result?.blocked: return result   ← blocked 短路,立即返回
+    │   if result: mergeInto(acc, result)   ← 非 blocked 结果按字段 merge(last-writer-wins)
+    └─ return acc                            ← 合并后的结果(可能含 forceContinue / 注入字段)
 }
 ```
+
+> 语义澄清(与 02 §3.2 / 03 §Hook 系统 一致):**不是** first-writer-wins。blocked 短路是真的
+> (任何 handler 返回 `{blocked:true}` 立即终止),但非 blocked 结果会**按字段 merge** 到累加器,
+> 后注册的 handler 写同名字段会覆盖先注册的 —— 这就是为什么 §2.5 强调注册顺序敏感。
 
 ### 2.3 触发点
 
@@ -134,73 +139,121 @@ sequenceDiagram
     AL->>T: triggerHooks("PreLLMCall", ctx)
     T->>T: 加 timestamp
     T->>R: getInstance().trigger("PreLLMCall", ctx)
+    R->>R: acc = {} (累加器)
     R->>H1: handler₁(ctx)
     Note over R,H1: 异常被 catch + log
-    alt 返回非空结果
-        H1-->>R: { blocked: true } / { forceContinue: true }
-        R-->>AL: 首个非空结果 (first-writer-wins)
-    else 返回 void
+    alt 返回 {blocked:true}
+        H1-->>R: blocked
+        R-->>AL: blocked (短路,不再调 H2/H3)
+    else 返回注入字段
+        H1-->>R: { ragContext: ... }
+        R->>R: acc.ragContext = ...
         R->>H2: handler₂(ctx)
-        alt 返回非空结果
-            H2-->>R: 阻断
-            R-->>AL: 阻断
-        else
-            R->>H3: handler₃(ctx)
-            R-->>AL: undefined (放行)
-        end
+        H2-->>R: { providerOptions: ... }
+        R->>R: acc.providerOptions = ... (last-writer-wins)
+        R->>H3: handler₃(ctx)
+        H3-->>R: void
+        R-->>AL: acc (合并后的注入字段)
     end
 ```
 
-### 2.4 30 个事件分类
+### 2.4 30 个事件分类(类型定义见 `core/hook-types.ts:29-39`)
 
-| 类别 | 事件 | 触发位置 |
-|------|------|----------|
-| Session 生命周期 | SessionStart / SessionEnd / Stop / StopFailure / Setup | agent-loop.run / .finalizeStream |
-| 用户输入 | UserPromptSubmit | run 开始 |
-| 工具 | PreToolUse / PostToolUse / PostToolUseFailure | tool.execute 前/后 |
-| 权限 | PermissionRequest / PermissionDenied | （未装载）|
-| 子 agent | SubagentStart / SubagentStop | subagent-delegation |
-| 压缩 | PreCompact / PostCompact | session.pruneIfNeeded |
-| LLM | PreLLMCall / PostTurnComplete | executeStream / turn 收尾 |
-| 任务 | TeammateIdle / TaskCreated / TaskCompleted | （未装载）|
-| 询问 | Elicitation / ElicitationResult | AskUser 工具 |
-| 配置变更 | ConfigChange / CwdChanged / FileChanged | （未装载）|
-| Worktree | WorktreeCreate / WorktreeRemove | （未装载）|
-| 通知 | Notification | TaskRegistry |
-| 提示 | InstructionsLoaded | （未装载）|
+下表把 30 个事件名与 **实际触发点**(`grep triggerHooks\|HookRegistry.getInstance().trigger` 在 `src/` 内的命中)逐行核对过,与 §2.5 的 handler 清单交叉一致。类别是文档分组用的,与代码无关。
 
-**装载状态**：
-- ✅ 活跃：`SessionStart / Stop / StopFailure / PostToolUse / PostTurnComplete / PreLLMCall / SubagentStart / SubagentStop`
-- ⚠️ 定义但未装载：`PermissionRequest / TeammateIdle / ConfigChange` 等 23 个
+| 类别 | 事件 | 是否实际触发 | 实际触发位置(file:line) |
+|------|------|--------------|------------------------|
+| Session 生命周期 | `SessionStart` | ✅ | `agent-loop.ts:236`（首轮）、`:296`（续轮） |
+| Session 生命周期 | `SessionEnd` | ✅ | `agent-loop.ts:269`（正常）、`:313`（Stop 路径） |
+| Session 生命周期 | `Stop` | ✅ | `agent-loop.ts:268`、`:312` |
+| Session 生命周期 | `StopFailure` | ✅ | `agent-loop.ts:466` |
+| Session 生命周期 | `Setup` | ⚠️ **仅定义,零触发** | — |
+| 用户输入 | `UserPromptSubmit` | ✅ | `agent-loop.ts:228` |
+| LLM | `PreLLMCall` | ✅ | `agent-loop.ts:497` |
+| LLM | `PostTurnComplete` | ✅ | `agent-loop.ts:251` |
+| LLM | `PostStep` | ✅ | `agent-loop.ts:766`、`:798` |
+| 工具 | `PreToolUse` | ✅ | `tool-factory.ts:181`（buildTool 包装层,真正入口);`agent-loop.ts:678`（遗留直调) |
+| 工具 | `PostToolUse` | ✅ | `tool-factory.ts:206`;`agent-loop.ts:705` |
+| 工具 | `PostToolUseFailure` | ✅ | `tool-factory.ts:220`;`agent-loop.ts:726` |
+| 压缩 | `PreCompact` | ✅ | `session.ts:156` |
+| 压缩 | `PostCompact` | ✅ | `session.ts:220`、`:229` |
+| 子 agent | `SubagentStart` | ✅ | `subagent-delegator.ts:140`（同步委派）、`:270`（后台） |
+| 子 agent | `SubagentStop` | ✅ | `subagent-delegator.ts:177/187/211/217/228/306/318/338` |
+| 任务 | `TaskCreated` | ✅ | `subagent-delegator.ts:199/269/360` |
+| 任务 | `TaskCompleted` | ✅ | `subagent-delegator.ts:212/218/307/319/339/373/397/404` |
+| 任务 | `TeammateIdle` | ⚠️ **仅定义,零触发** | — |
+| 询问 | `Elicitation` | ✅ | `tools/ask-user.ts:56` |
+| 询问 | `ElicitationResult` | ✅ | `tools/ask-user.ts:70` |
+| 通知 | `Notification` | ✅ | `notification-hooks.ts:60`(`HookRegistry.getInstance().trigger`,**不经 triggerHooks 包装**) |
+| 权限 | `PermissionRequest` | ⚠️ **仅定义,零触发** | — |
+| 权限 | `PermissionDenied` | ⚠️ **仅定义,零触发** | — |
+| 配置变更 | `ConfigChange` | ⚠️ **仅定义,零触发** | — |
+| 配置变更 | `CwdChanged` | ⚠️ **仅定义,零触发** | — |
+| 配置变更 | `FileChanged` | ⚠️ **仅定义,零触发** | — |
+| Worktree | `WorktreeCreate` | ⚠️ **仅定义,零触发** | — |
+| Worktree | `WorktreeRemove` | ⚠️ **仅定义,零触发** | — |
+| 提示 | `InstructionsLoaded` | ⚠️ **仅定义,零触发** | — |
+
+**装载状态**(2026-06-27 与 src 实际核对):
+- ✅ **实际触发 + 至少有一个注册 handler**:20 个 —— `SessionStart / SessionEnd / Stop / StopFailure / UserPromptSubmit / PreLLMCall / PostTurnComplete / PostStep / PreToolUse / PostToolUse / PostToolUseFailure / PreCompact / PostCompact / SubagentStart / SubagentStop / TaskCreated / TaskCompleted / Elicitation / ElicitationResult / Notification`。
+- ⚠️ **在 `HookEventName` 联合类型里定义但代码里 `grep` 零触发**:10 个 —— `Setup / TeammateIdle / PermissionRequest / PermissionDenied / ConfigChange / CwdChanged / FileChanged / WorktreeCreate / WorktreeRemove / InstructionsLoaded`。这些是参考 Claude Code 的 27 事件点提前占位的扩展点,目前**连触发都没有**,更别说 handler。删类型会让 `HookEventName` 联合收缩,需评估是否有外部消费方。
+
+> **过去版本的描述错在哪**:本节早期写 "✅ 活跃 8 个 / ⚠️ 未装载 23 个" —— 既漏算(`PostStep` / `PreCompact` / `PostCompact` / `TaskCreated` / `TaskCompleted` / `UserPromptSubmit` / `SessionEnd` / `Notification` / `Elicitation` / `ElicitationResult` 都已活跃,实际是 20 个),又把 "未装载" 等同于 "未触发"。真正的"幽灵事件"是连 `triggerHooks` / `HookRegistry.trigger` 调用都没有的 10 个,而不是 23 个。
+
+> **同名陷阱**:`TaskCreated` / `TaskCompleted` 是 v0.8 子 Agent 委派(`subagent-delegator.ts`)的事件,**不是**早期文档暗示的 "TeammateIdle 同类的未实现占位"——它们是活跃的。真正占位的是 `TeammateIdle` 本身。
 
 ### 2.5 已注册的 Handler
 
+> v0.8 同步:`memory-hooks.ts` 已废(memory 合并进 wiki per-agent 子树,召回改由
+> wiki-anchor-injection + `renderContextAnchors` 注入,见 06 §2.6)。下表是 `src/runtime/hooks/` +
+> `src/server/*-hooks.ts` 现存 handler 的**全量**清单。
+
+**Runtime hooks**(`src/runtime/hooks/index.ts` → `registerAllRuntimeHooks`,注册顺序敏感):
+
 | Handler 文件 | 事件 | 副作用 |
 |--------------|------|--------|
-| `turn-hooks.ts` | SessionStart / Stop / StopFailure | 写入 turns 表 |
+| `turn-hooks.ts` | SessionStart / Stop / StopFailure | 写入 turns 表(仅当传入 db) |
+| `notification-hooks.ts` | (注册优先) | 通知派发(在 rag/providerOptions 之前注册,避免被覆盖) |
+| `rag-hooks.ts` | PreLLMCall | KB 检索,注入 ctx.ragContext |
+| `provider-options-hooks.ts` | PreLLMCall | 按 provider 注入 ctx.providerOptions(temperature 等) |
 | `compression-hooks.ts` | PostTurnComplete | L1 摘要 + L2 记忆节点 |
-| `memory-hooks.ts` | PreLLMCall | FTS5 召回，注入 ctx.memoryContext |
-| `rag-hooks.ts` | PreLLMCall | KB 检索，注入 ctx.ragContext |
-| `durable-hooks.ts` | SessionStart / PostToolUse / Stop / StopFailure | turn_state 检查点 |
+| `todo-cleanup-hooks.ts` | PostTurnComplete | 清理本回合已完成的 todo(UI 自动收起) |
+| `extraction-hooks.ts` | PostTurnComplete(等) | v0.8 M5:双提取者(内容记忆/工具遥测)增量写 wiki,**仅当传入 extractionDeps 才注册** |
 
-**Hook 注册入口**：
+**Server-side durable hooks**(`src/server/`):
 
-- `agent-service.ts:388` `registerDurableHooks(this.db)`
-- `runtime/hooks/index.ts:13` `registerAllRuntimeHooks(db)` —— 4 个 runtime hook
-- `agent-service.ts` 创建 AgentLoop 时，会通过 hook 系统**间接**触发以上 handler
+| Handler 文件 | 事件 | 副作用 |
+|--------------|------|--------|
+| `durable-hooks.ts` | SessionStart / PostToolUse / Stop / StopFailure | turn_state 检查点(durable 执行) |
+| `tool-execution-hooks.ts` | PostToolUse 等 | 工具执行的持久化追踪 |
+
+**Hook 注册入口**(backend 启动期 `src/server/index.ts:127-128`):
+
+```typescript
+registerDurableHooks(sessionDB);          // src/server/durable-hooks.ts
+registerToolExecutionHooks(sessionDB);    // src/server/tool-execution-hooks.ts
+// 然后 agent-service 构造 AgentLoop 时:
+registerAllRuntimeHooks(db, extractionDeps);  // src/runtime/hooks/index.ts:47
+```
+
+注册顺序是 **notification → rag → providerOptions → compression → todoCleanup → (可选)extraction**。
+PreLLMCall 之间按 last-writer-wins merge(见 03 §Hook 系统),所以顺序决定哪个 handler 的
+`memoryContext` / `ragContext` / `providerOptions` 字段最终胜出 —— 改顺序前要评估 merge 影响。
 
 ### 2.6 架构师评价
 
 #### 做对了的
 
-- **first-writer-wins 语义**：适合"PreToolUse 阻断"这类决策。
-- **永不抛出**：handler 异常被 catch + log，不影响主流程。
-- **timestamp 自动注入**：让 handler 不需要重复获取时间。
-- **turn 持久化完全在 hook 中**：`turn-hooks.ts` 是 AgentLoop 与 DB 之间的唯一桥梁。
+- **blocked 短路 + 字段 merge 语义**:`{blocked:true}` 立即终止,非 blocked 结果按字段 merge
+  (last-writer-wins) —— 既支持"PreToolUse 阻断"这类决策,又支持"PreLLMCall 多个 handler 各自注入
+  ragContext / providerOptions"这类累积注入(见 03 §Hook 系统)。
+- **永不抛出**:handler 异常被 catch + log,不影响主流程。
+- **timestamp 自动注入**:让 handler 不需要重复获取时间。
+- **turn 持久化完全在 hook 中**:`turn-hooks.ts` 是 AgentLoop 与 DB 之间的唯一桥梁。
 
 #### 可以改进的
 
-- **23 个 hook 定义但未实现**：`PermissionRequest`、`Elicitation`、`ConfigChange` 等看起来是规划中的扩展点，但当前没有 UI/handler。需要清理"幽灵 hook"或补充实现。
+- **10 个 hook 在类型里定义但代码零触发**(§2.4 已逐行核对)：`Setup / TeammateIdle / PermissionRequest / PermissionDenied / ConfigChange / CwdChanged / FileChanged / WorktreeCreate / WorktreeRemove / InstructionsLoaded`。这些是参考 Claude Code 27 事件点提前占位的扩展点,既无 `triggerHooks` 调用也无 handler。要么清理,要么补实现 —— 留着会让读者以为这些事件已经在跑。
 - **注册时机耦合**：`registerDurableHooks` 在 agent-service 构造时调一次，`registerAllRuntimeHooks` 在 backend 启动时调一次。如果之后想支持"插件式 hook"，需要更通用的注册机制。
 - **缺乏优先级**：`handlers.get(event)` 是数组，但调用按注册顺序，无优先级字段。如果两个 handler 都想"阻断 PreToolUse"，第二个永远得不到机会。
 - **无异步编排**：`trigger()` 是顺序 await。如果某个 handler 慢，会阻塞后续 handler。对于"PostToolUse 写日志"这种"应该 fire-and-forget"的场景，应该有 `triggerAsync()`。
@@ -376,12 +429,11 @@ getProviderAdapter(config, provider): { systemPromptAppend?, maxSystemPromptToke
 
 | 维度 | 当前实现 | 评价 |
 |------|----------|------|
-| Renderer ↔ Backend | contextBridge + 约 140 个代理通道 + 5 个本地通道 | ✅ 主进程能力仍保持最小暴露；需关注 preload/proxy 契约漂移 |
+| Renderer ↔ Backend | contextBridge + 约 120+ 个代理通道(按 26 域分块,见 07 §2.2) + 17 个 LOCAL_CHANNELS + 3 个 INVOKE_BUT_NOT_PROXIED | ✅ 主进程能力仍保持最小暴露;ROUTE_MAP 从 ipc-proxy.ts 源码正则派生(非手写),契约漂移有测试护栏 |
 | 文件路径 | `resolvePath()` 前缀检查 | ⚠️ 默认不限制 workspace |
 | Shell | Git Bash 检测 / cmd.exe 翻译 | ❌ 不构成黑名单 |
 | WebFetch Cookie | 持久化到 `~/.zero-core/webfetch/cookies.json` | ⚠️ 路径权限需确认 |
 | 工具策略 | `blockedTools` / `allowedTools` | ✅ 配置可强制 |
-| 工具确认 | `meta.requiresConfirmation` 字段 | ⚠️ 未实现弹窗 |
 | 权限请求 | `PermissionRequest` hook | ⚠️ 未注册 handler |
 | 代理 | undici ProxyAgent 全局 | ✅ 标准做法 |
 | 日志 | 控制台 + 文件，无敏感字段过滤 | ⚠️ 可能泄露 API key |
@@ -390,10 +442,200 @@ getProviderAdapter(config, provider): { systemPromptAppend?, maxSystemPromptToke
 
 **架构师建议**：
 1. `log-router.ts` 的"redact sensitive"已经在 `assistant-tools.ts:52` 实现，搬到 logger.ts
-2. 把 `meta.requiresConfirmation` 真正接通（前端弹窗 + PreToolUse 阻断）
-3. 文件路径默认限制 workspace，但允许用户配置"绝对路径白名单"
+2. 文件路径默认限制 workspace，但允许用户配置"绝对路径白名单"
 
-## 12. 全局横切点清单
+## 12. 后端子进程生命周期与全局错误兜底(v0.8)
+
+> v0.8 新增。zero-core 的 Express 后端不是跑在 Electron 主进程里,而是由主进程
+> (`src/main/index.ts`)通过 `src/main/backend-spawn.ts` 拉起的**独立 Node 子进程**
+> (开发态 `spawn(node)` / 打包态 `fork()`)。本节讲清这条进程边界的握手、自愈、优雅关闭,
+> 以及 backend 进程内部的两个 `process.on` 全局兜底 —— 这些是 v0.8 之前散落在源码、
+> 文档里没集中讲过的横切关注点。
+
+### 12.1 为什么后端是子进程
+
+better-sqlite3 是 native 模块,**ABI 必须与宿主 Node 匹配**。Electron 主进程跑在
+Electron ABI 上,而后端依赖的 better-sqlite3 在两种环境各有一份编译产物:
+
+- **开发态**:`npm install` 编译给**系统 Node** → 必须用系统 `node` spawn 后端
+  (`backend-spawn.ts:72`),否则 ABI 不匹配直接崩。
+- **打包态**:electron-builder `npmRebuild=true` 把 better-sqlite3 重编给 **Electron ABI**
+  → 用 `fork()`(`backend-spawn.ts:66`),用户机器无需装 Node。
+
+这条边界决定了:**主进程不能直接 `import` 后端代码**(会触发 ABI 冲突),所有后端调用必须走
+HTTP/WS(`http://localhost:<backendPort>`),这也是 `ipc-proxy.ts` 存在的根本原因
+(见 07 §2.5 ①)。
+
+### 12.2 启动握手协议
+
+```
+主进程                       backend 子进程
+   │
+   │  spawn/fork(dist/backend.js --port=0)
+   │───────────────────────────────────────▶│
+   │                                         │  bind 0 → OS 分配真实 port
+   │  ◀──────────────── stdout: JSON ────────│  {"type":"ready","port":34567}
+   │  解析 port,记入 _handle                  │
+   │  resolve(BackendHandle)                 │
+   │                                         │
+   │  30s 未收到 ready → child.kill() + reject │
+```
+
+要点(`backend-spawn.ts:56-132`):
+
+- `--port=0` 让 OS 分配空闲端口,backend 在 `server.listen(0)` 后把**真实 port** 通过 stdout
+  以 **JSON 行** `{"type":"ready","port":N}` 回传 —— 主进程不预设端口,避免冲突。
+- **stdout 是协议通道**:backend 任何非 JSON 的 stdout 输出都会被握手解析器忽略
+  (`catch { /* not JSON, ignore */ }`),所以 backend 的日志必须走 stderr 或 logger,
+  不能直接 `console.log`(否则握手解析噪音)。这正是 backend 用 `console.error`/logger 的原因。
+- **30s 就绪超时**:`backend-spawn.ts:81-86`,冷启动慢机器的兜底;超时杀进程并 reject,
+  主进程的 `app.whenReady` 链会拿到错误。
+- backend 的 **stderr 被主进程转投到共享 logger**(`backend-spawn.ts:105-115`):因为 backend
+  硬崩溃时自己的 logger 可能来不及 flush,只有把 stderr 也写进 `~/.zero-core/logs/<date>.log`
+  才能在 detached 启动(无 terminal)时留下尸检信息。
+
+### 12.3 自愈:意外退出自动重启
+
+```typescript
+// backend-spawn.ts:117-130
+child.on("exit", (code) => {
+  if (!_shuttingDown && !ready) {
+    // 启动期崩 → reject,让主进程知道
+    reject(new Error(`Backend exited with code ${code} before becoming ready`));
+  } else if (!_shuttingDown) {
+    // 运行期意外退出 → 自动 spawnBackend() 重启
+    logger.warn("backend", `process exited unexpectedly with code ${code}, restarting...`);
+    _handle = null;
+    spawnBackend().catch(...);
+  }
+});
+```
+
+设计要点:
+
+- **`_shuttingDown` flag 防竞争**:正常 `shutdownBackend()` 期间子进程也会 exit,但此时
+  `_shuttingDown=true`,不会触发重启 —— 避免关闭与自愈打架。
+- **重启计数 + 指数退避**(master commit 843e28a 已实现):60s 滑动窗口内最多重启 5 次;
+  每次重启前等待指数退避(1s → 30s 上限,翻倍增长)。超过阈值后 `dialog.showErrorBox`
+  通知用户"backend 反复崩溃,已停止自动重启",并停止自愈 —— 不再静默、不再无限重启。
+- **端口会变**:重启后 OS 重新分配端口,`getBackendPort()` 读的是新 `_handle.port`,
+  `ipc-proxy.ts` 每次都现读,所以前端无感 —— 但任何缓存了端口的代码都会失效(目前没有这种缓存)。
+
+### 12.4 优雅关闭三段式
+
+`shutdownBackend()`(`backend-spawn.ts:134-164`)按"越往后越暴力"的顺序:
+
+1. **stdin 写 `{"type":"shutdown"}`** —— 让 backend 自己 `server.close()` 干净收尾
+   (关 WS 连接、flush WAL、跑 onClose)。
+2. **等 5s,超时发 `SIGTERM`** —— POSIX 软终止信号,backend 还能 catch 做最后清理。
+3. **再等 3s,发 `SIGKILL`** —— 不可 catch,内核直接回收。
+
+这套兜底是因为 backend 有 **better-sqlite3 WAL**:粗暴 kill 可能留下未 checkpoint 的 WAL
+(见 `feedback-sessions-db-readonly.md` 的数据丢失陷阱),所以优先给 backend 自己关闭的机会。
+但 Windows 上 **`SIGTERM`/`SIGKILL` 等价于 `TerminateProcess`**(无信号语义),所以 Windows
+用户实际上只有"stdin shutdown → 5s → 强杀"两段有效。
+
+### 12.5 Backend 进程内的全局错误兜底
+
+`src/server/index.ts:86-96` 顶层挂了两个 `process.on`:
+
+```typescript
+process.on("unhandledRejection", (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  console.error(`[server] Unhandled rejection: ${msg}`);
+  if (stack) console.error(stack);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error(`[server] Uncaught exception: ${err.message}`);
+  if (err.stack) console.error(err.stack);
+});
+```
+
+**重要语义**:`unhandledRejection` handler **只 log**(让 Node 默认的 rejection 警告降级为可控 log);
+`uncaughtException` handler 是 **log + `process.exit(1)`**。Node 默认行为是 uncaughtException
+触发进程退出 —— 这里保留 log 然后显式 `exit(1)`,把退出动作交给 §12.3 的自愈路径接管。
+
+设计取舍:
+
+- ✅ **可用性优先**:unhandledRejection 不致命,吞掉后继续服务不打断并发 session。
+- ✅ **脏状态兜底**:uncaughtException 意味着 JS 运行时状态不可预测,继续跑可能产生脏数据;
+  退出后由 §12.3 的自愈重启路径接管(60s 内 5 次 + 指数退避,见 master commit 843e28a),
+  短暂中断后恢复干净进程。之前 "**open question**: 是否应在 uncaughtException 后主动 exit
+  让自愈接管" **已解决**(早已实现 exit,文档此前误写为"只 log")。
+
+由于这两个 handler 写的是 `console.error` 而非 logger,在 detached 启动时这些兜底日志
+**只到 backend 自己的 stderr** —— 但 §12.2 已把 backend stderr 桥接到主进程 logger,所以
+最终还是会进 `~/.zero-core/logs/<date>.log`,链路是通的。
+
+### 12.6 端口暴露与 ipc-proxy 的关系
+
+`getBackendPort()`(`backend-spawn.ts:166-168`)是主进程持有 backend 端口的唯一出口,
+`ipc-proxy.ts` 每次代理渲染层 invoke 时现读:
+
+```
+渲染层 invoke("agent:list")
+  → preload 透传
+  → 主进程 ipc-proxy
+  → http://localhost:<getBackendPort()>/api/agents
+  → backend Express router
+```
+
+所以从渲染层看,backend 是"一个永远在 localhost 上、端口透明"的服务;从主进程看,backend 是
+"一个可重启的子进程";从 backend 自己看,它就是一个普通 Express app,完全不感知自己被 spawn。
+这种**进程边界对 backend 透明**的设计让 backend 代码可以在不 spawn 的测试环境里直接跑
+(`ZERO_CORE_TEST_FIXTURE` 模式,见 E2E 测试基础设施)。
+
+```mermaid
+flowchart LR
+    subgraph Main["Electron 主进程"]
+      BS["backend-spawn.ts<br/>spawn/fork + 握手 + 自愈 + 关闭"]
+      IP["ipc-proxy.ts<br/>getBackendPort() 现读"]
+    end
+    subgraph Backend["Backend 子进程 (Node)"]
+      SRV["index.ts<br/>Express + WS"]
+      PE["process.on<br/>unhandledRejection<br/>uncaughtException (只 log)"]
+    end
+    Rend["渲染层"]
+    OS["OS<br/>port=0 分配"]
+
+    BS -- "spawn --port=0" --> Backend
+    Backend -- "stdout {ready,port}" --> BS
+    SRV -- "listen(0)" --> OS
+    OS -- "真实 port" --> SRV
+    Rend -- "invoke" --> IP
+    IP -- "http://localhost:N" --> SRV
+    BS -. "stderr 桥接到 logger" .-> BS
+    PE -- "console.error" --> BS
+
+    style BS fill:#a78bfa,color:#000
+    style SRV fill:#34d399,color:#000
+    style IP fill:#60a5fa,color:#000
+```
+
+### 12.7 架构师评价
+
+**做对了的**:
+
+- **ABI 隔离**:dev/packaged 两套 spawn 策略正确解决了 better-sqlite3 的 ABI 痛点(见
+  `feedback-native-module-rebuild.md` 的历史教训)。
+- **握手用 stdout JSON 行**:简单、无额外依赖、跨 fork/spawn 都工作。
+- **stderr 桥接到 logger**:detached 启动也能留尸检信息,这是 v0.8 补的关键细节。
+- **端口现读**:无缓存 → 自愈重启换端口前端无感。
+- **自愈退避**(master commit 843e28a):60s 窗口 + 5 次上限 + 指数退避(1s→30s) + 超阈值
+  `dialog.showErrorBox` 通知用户并停止自愈 —— 解决了"无限静默重启"的开放问题。
+- **uncaughtException 触发自愈**:backend 内部 `process.exit(1)` 让 §12.3 路径接管,
+  避免脏状态续跑;§12.5 的 open question 已解决。
+
+**可以改进的**:
+
+- **Windows 上 SIGTERM/SIGKILL 无语义**:三段式关闭在 Windows 退化成两段,文档应明确标注
+  (避免开发者误以为 SIGTERM handler 能在 Windows 上跑)。
+- **stdout 协议通道与日志冲突**:虽然 backend 现在用 stderr/logger,但没有强制约束 ——
+  任何人不小心 `console.log` JSON 行就会被握手解析器吞掉。建议在 backend 入口 redirect stdout
+  或加 lint 规则。
+
+## 13. 全局横切点清单
 
 | 横切点 | 模块 | 状态 |
 |--------|------|------|
@@ -410,3 +652,5 @@ getProviderAdapter(config, provider): { systemPromptAppend?, maxSystemPromptToke
 | 模型元数据 | `core/model-registry.ts` | ✅ 国内模型覆盖好 |
 | 错误分类 | `runtime/agent-utils.ts` | ✅ 8 类 |
 | 安全 | 分散在多个文件 | ⚠️ 缺统一策略 |
+| 后端子进程生命周期 | `main/backend-spawn.ts` | ✅ v0.8:握手 + 自愈(60s/5次+指数退避) + 三段式关闭(见 §12) |
+| 全局错误兜底 | `server/index.ts:86-96` process.on | ✅ uncaughtException log + exit(1) 触发自愈;unhandledRejection 只 log(见 §12.5) |
