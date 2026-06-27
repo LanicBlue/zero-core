@@ -39,6 +39,7 @@ import type {
 	ProjectRecord, CreateProjectInput, UpdateProjectInput,
 	ProjectContainerView, ProjectResourceUsage, AgentVia, EnrichProjectBody,
 	ProjectArchivistBinding, CronSchedule, WikiOperationId,
+	ProjectWorkRecord, ProjectWorkView, CreateProjectWorkBody, FireProjectWorkResult,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	WikiNode,
@@ -230,6 +231,14 @@ export interface WindowApi {
 	projectsArchivistUnbind: (id: string) => Promise<{ success: true }>;
 	projectsArchivistSwitchAgent: (id: string, agentId: string) => Promise<{ binding: ProjectArchivistBinding }>;
 	projectsArchivistSetEnabled: (id: string, enabled: boolean) => Promise<{ binding: ProjectArchivistBinding }>;
+	/** v0.8 project-work:列出该项目的全部工位(含空岗)。 */
+	projectsListWorks: (id: string) => Promise<{ works: ProjectWorkView[] }>;
+	projectsCreateWork: (id: string, body: CreateProjectWorkBody) => Promise<{ work: ProjectWorkRecord }>;
+	projectsUpdateWork: (id: string, workId: string, body: Partial<CreateProjectWorkBody>) => Promise<{ work: ProjectWorkRecord }>;
+	projectsDeleteWork: (id: string, workId: string) => Promise<{ success: true }>;
+	projectsAssignWorkAgent: (id: string, workId: string, agentId: string) => Promise<{ work: ProjectWorkRecord }>;
+	projectsSetWorkEnabled: (id: string, workId: string, enabled: boolean) => Promise<{ work: ProjectWorkRecord }>;
+	projectsTriggerWork: (id: string, workId: string) => Promise<{ result: FireProjectWorkResult }>;
 	/** 列该项目的后台任务记录(供 chat 输入锁判断)。 */
 	projectsListJobs: (id: string) => Promise<ProjectJobRecord[]>;
 

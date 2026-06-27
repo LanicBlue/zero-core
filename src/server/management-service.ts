@@ -63,11 +63,18 @@ import type {
 	RequirementStatus,
 	PromptTemplate,
 	AgentVia,
+	ProjectWorkRecord,
+	ProjectWorkView,
+	CreateProjectWorkBody,
+	FireProjectWorkResult,
 } from "../shared/types.js";
 import type { TemplateStore } from "./template-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
+import type { ProjectWorkStore } from "./project-work-store.js";
+import type { ProjectWorkRunner } from "./project-work-runner.js";
 import { BUILTIN_WORKFLOW_ROLES } from "./builtin-role-templates.js";
-import { resolveOperationPrompt, agentHasWikiTool, WIKI_OPERATIONS, type WikiOperationId, wrapGitAwarePrompt, isGitAwarePrompt } from "./wiki-operations.js";
+import { resolveOperationPrompt, agentHasWikiTool, agentHasTool, WIKI_OPERATIONS, type WikiOperationId, wrapGitAwarePrompt, isGitAwarePrompt } from "./wiki-operations.js";
+import { DEFAULT_PROJECT_WORKS } from "./builtin-work-templates.js";
 import { log } from "../core/logger.js";
 
 export interface ManagementDeps {
@@ -130,6 +137,10 @@ export class ManagementService {
 	private projectJobStore: ProjectJobStore | null;
 	/** EnrichmentRunner (M2 注入) — 拉 archivist agent 后台充实 wiki. Late-bound. */
 	private enrichmentRunner: ((projectId: string, opts: { via: AgentVia; prompt?: string; operationId?: WikiOperationId }) => Promise<{ jobId: string; sessionId: string }>) | null;
+	/** project_work store(取代工作流角色的"工位/工作"系统). Late-bound. */
+	private projectWorkStore: ProjectWorkStore | null;
+	/** ProjectWorkRunner(手动/hook 触发执行). Late-bound. */
+	private projectWorkRunner: ProjectWorkRunner | null;
 
 	constructor(deps: ManagementDeps) {
 		this.agentStore = deps.agentStore;
@@ -143,6 +154,8 @@ export class ManagementService {
 		this.taskStepStore = deps.taskStepStore ?? null;
 		this.projectJobStore = null;
 		this.enrichmentRunner = null;
+		this.projectWorkStore = null;
+		this.projectWorkRunner = null;
 	}
 
 	/** v0.8 (模板统一): late-bind the template store (server/index.ts wiring order). */
@@ -170,6 +183,19 @@ export class ManagementService {
 	/** M2 注入 enrichment runner(把 archivist agent 拉起来充实 wiki)。 */
 	setEnrichmentRunner(fn: (projectId: string, opts: { via: AgentVia; prompt?: string; operationId?: WikiOperationId }) => Promise<{ jobId: string; sessionId: string }>): void {
 		this.enrichmentRunner = fn;
+	}
+	/** v0.8 project-work: late-bind the project_work store. */
+	setProjectWorkStore(store: ProjectWorkStore): void { this.projectWorkStore = store; }
+	/** v0.8 project-work: late-bind the runner(手动/hook 触发). */
+	setProjectWorkRunner(runner: ProjectWorkRunner): void { this.projectWorkRunner = runner; }
+
+	private requireProjectWorkStore(): ProjectWorkStore {
+		if (!this.projectWorkStore) throw new Error("ProjectWorkStore not wired into ManagementService");
+		return this.projectWorkStore;
+	}
+	private requireProjectWorkRunner(): ProjectWorkRunner {
+		if (!this.projectWorkRunner) throw new Error("ProjectWorkRunner not wired into ManagementService");
+		return this.projectWorkRunner;
 	}
 
 	getProjectJobStore(): ProjectJobStore | null { return this.projectJobStore; }
@@ -227,6 +253,12 @@ export class ManagementService {
 					log.warn("management", `enrich kick failed for ${project.id}:`, (err as Error).message);
 				});
 			}
+		}
+		// v0.8 project-work:seed 默认工位(全空岗)。projectWorkStore 未注入(测试)
+		// 时跳过。幂等:已有 work 不重 seed。
+		if (this.projectWorkStore) {
+			try { this.seedDefaultProjectWorks(project.id); }
+			catch (err) { log.warn("management", `seedDefaultProjectWorks failed for ${project.id}:`, (err as Error).message); }
 		}
 		return project;
 	}
@@ -447,6 +479,7 @@ export class ManagementService {
 			wikiSummary: { nodeCount, lastUpdated, scanPhase, scanProgress },
 			activeSessions,
 			archivistBinding: this.getProjectArchivistBinding(project.id),
+			projectWorks: this.projectWorkStore ? this.getProjectWorks(project.id) : undefined,
 		};
 	}
 
@@ -634,10 +667,12 @@ export class ManagementService {
 		schedule: CronRecord["schedule"];
 		prompt?: string;
 		source?: string;
+		/** project-work 引用;带 workId 时 agent 在 fire 时从 work 解析,跳过 agent 校验。 */
+		workId?: string;
 		enabled?: boolean;
 	}): CronRecord {
 		const store = this.requireCronStore();
-		if (!this.agentStore.get(input.agentId)) {
+		if (!input.workId && !this.agentStore.get(input.agentId)) {
 			throw new Error(`Agent not found: ${input.agentId}`);
 		}
 		const scope = input.workingScope;
@@ -653,6 +688,7 @@ export class ManagementService {
 			schedule: input.schedule,
 			prompt: input.prompt,
 			source: input.source,
+			workId: input.workId,
 			enabled: input.enabled ?? true,
 		});
 	}
@@ -797,6 +833,190 @@ export class ManagementService {
 		if (!cron.source || !cron.source.startsWith(prefix)) return null;
 		const opId = cron.source.slice(prefix.length) as WikiOperationId;
 		return WIKI_OPERATIONS.some((o) => o.id === opId) ? opId : null;
+	}
+
+	// ── v0.8 project-work(取代工作流角色的"工位/工作"系统)──────────────
+	//
+	// 一个 project_work = 项目里定义的一项工作(name + actionPrompt + requiredTools
+	// + agentId[可空] + contextPolicy + hooks)。触发源:cron(复用 crons 表,带
+	// workId)/hook(inline)/手动。一个 work = 一个动作(扁平)。详见 ADR。
+
+	/** 新 project 创建时 seed 默认工位(全空岗)。幂等:已有 work 不重 seed。 */
+	seedDefaultProjectWorks(projectId: string): void {
+		const store = this.requireProjectWorkStore();
+		if (store.listByProject(projectId).length > 0) return;
+		const project = this.projectStore.get(projectId);
+		const projectName = project?.name ?? "";
+		for (const seed of DEFAULT_PROJECT_WORKS(projectId, projectName)) {
+			store.create(seed);
+		}
+	}
+
+	/**
+	 * 创建一个 project-work(+ 可选 cron 触发器)。校验:agent 存在(若指定)+
+	 * 满足 requiredTools(无 fallback)。runOnce=true 时创建后立刻手动触发一次。
+	 */
+	createProjectWork(projectId: string, body: CreateProjectWorkBody): ProjectWorkRecord {
+		const project = this.projectStore.get(projectId);
+		if (!project) throw new Error(`Project not found: ${projectId}`);
+		const requiredTools = body.requiredTools ?? [];
+		let agentId: string | null = body.agentId ?? null;
+		if (agentId) {
+			const agent = this.agentStore.get(agentId);
+			if (!agent) throw new Error(`Agent not found: ${agentId}`);
+			this.assertAgentMeetsTools(agent, requiredTools);
+		}
+		const store = this.requireProjectWorkStore();
+		const work = store.create({
+			projectId,
+			name: body.name,
+			actionPrompt: body.actionPrompt ?? "",
+			requiredTools,
+			agentId,
+			contextPolicy: body.contextPolicy,
+			hooks: body.hooks,
+			enabled: body.enabled ?? true,
+		});
+		// cron 触发器:每条建一条带 workId 的 cron(prompt 留空,fire 时从 work 解析;
+		// gitAware 变体用 sentinel 标记 cron.prompt)。
+		const workingScope = { projectId, workspaceDir: project.workspaceDir, wikiRootNodeId: `wiki-root:${projectId}` };
+		for (const t of body.cronTriggers ?? []) {
+			this.createCron({
+				agentId: agentId ?? "",
+				workingScope,
+				schedule: t.schedule,
+				prompt: t.gitAware ? wrapGitAwarePrompt("") : undefined,
+				workId: work.id,
+				enabled: true,
+			});
+		}
+		if (body.runOnce) {
+			void this.requireProjectWorkRunner().fireProjectWork(work.id).catch((e) =>
+				log.warn("project-work", `runOnce fire failed for ${work.id}: ${(e as Error).message}`),
+			);
+		}
+		return work;
+	}
+
+	/** 更新 work(actionPrompt/requiredTools/hooks/enabled 等)。改 requiredTools 重校验 agent。 */
+	updateProjectWork(workId: string, patch: Partial<CreateProjectWorkBody>): ProjectWorkRecord {
+		const store = this.requireProjectWorkStore();
+		const existing = store.get(workId);
+		if (!existing) throw new Error(`project-work not found: ${workId}`);
+		const nextRequired = patch.requiredTools ?? existing.requiredTools;
+		const nextAgent = patch.agentId !== undefined ? patch.agentId : existing.agentId;
+		if (nextAgent) {
+			const agent = this.agentStore.get(nextAgent);
+			if (!agent) throw new Error(`Agent not found: ${nextAgent}`);
+			this.assertAgentMeetsTools(agent, nextRequired);
+		}
+		const updated = store.update(workId, {
+			name: patch.name,
+			actionPrompt: patch.actionPrompt,
+			requiredTools: patch.requiredTools,
+			agentId: nextAgent,
+			contextPolicy: patch.contextPolicy,
+			hooks: patch.hooks,
+			enabled: patch.enabled,
+		});
+		// agent 变更 → 同步其 cron 触发器的 agentId(session 路由用)。
+		if (patch.agentId !== undefined) this.syncWorkCrons(workId, { agentId: patch.agentId ?? "" });
+		return updated;
+	}
+
+	/** 删除 work + 其全部 cron 触发器。 */
+	deleteProjectWork(workId: string): void {
+		const store = this.requireProjectWorkStore();
+		const cronStore = this.cronStore;
+		if (cronStore) {
+			for (const c of cronStore.list()) {
+				if (c.workId === workId) cronStore.delete(c.id);
+			}
+		}
+		store.delete(workId);
+	}
+
+	/** 分配/切换 work 的 agent(校验 requiredTools)。同步 cron.agentId。 */
+	assignProjectWorkAgent(workId: string, agentId: string): ProjectWorkRecord {
+		const store = this.requireProjectWorkStore();
+		const work = store.get(workId);
+		if (!work) throw new Error(`project-work not found: ${workId}`);
+		const agent = this.agentStore.get(agentId);
+		if (!agent) throw new Error(`Agent not found: ${agentId}`);
+		this.assertAgentMeetsTools(agent, work.requiredTools);
+		const updated = store.update(workId, { agentId });
+		this.syncWorkCrons(workId, { agentId });
+		return updated;
+	}
+
+	/** 暂停/恢复 work + 其 cron 触发器。 */
+	setProjectWorkEnabled(workId: string, enabled: boolean): ProjectWorkRecord {
+		const store = this.requireProjectWorkStore();
+		const updated = store.update(workId, { enabled });
+		this.syncWorkCrons(workId, { enabled });
+		return updated;
+	}
+
+	/** 手动触发 work 一次(走 ProjectWorkRunner)。 */
+	async triggerProjectWork(workId: string): Promise<FireProjectWorkResult> {
+		return this.requireProjectWorkRunner().fireProjectWork(workId);
+	}
+
+	/** 聚合 project 的全部 work 为 UI 视图(+ cron 触发器状态)。 */
+	getProjectWorks(projectId: string): ProjectWorkView[] {
+		const store = this.requireProjectWorkStore();
+		const works = store.listByProject(projectId);
+		const crons = this.listCrons({ projectId });
+		return works.map((w) => {
+			const workCrons = crons.filter((c) => c.workId === w.id);
+			const cronTriggers = workCrons.map((c) => ({
+				cronId: c.id,
+				schedule: c.schedule,
+				gitAware: isGitAwarePrompt(c.prompt),
+				enabled: c.enabled,
+				lastRunAt: c.lastRunAt,
+				nextRunAt: c.nextRunAt,
+				lastStatus: c.lastStatus,
+			}));
+			const lastRunAt = workCrons
+				.map((c) => c.lastRunAt ?? "")
+				.filter(Boolean)
+				.sort()
+				.pop();
+			return {
+				id: w.id,
+				projectId: w.projectId,
+				name: w.name,
+				actionPrompt: w.actionPrompt,
+				requiredTools: w.requiredTools,
+				agentId: w.agentId,
+				agentName: w.agentId ? (this.agentStore.get(w.agentId)?.name ?? null) : null,
+				contextPolicy: w.contextPolicy,
+				hooks: w.hooks,
+				enabled: w.enabled,
+				cronTriggers,
+				hasHookTrigger: Array.isArray(w.hooks) && w.hooks.some((h) => h.enabled),
+				lastRunAt,
+			};
+		});
+	}
+
+	/** 校验 agent 满足 tools 任一不满足 throw(供前端 catch 提醒)。 */
+	private assertAgentMeetsTools(agent: AgentRecord, tools: string[]): void {
+		for (const t of tools) {
+			if (!agentHasTool(agent, t)) {
+				throw new Error(`Agent "${agent.name}" 缺少必需工具 ${t}(被 blocked) — 无法分配到该工位。请改用配置了 ${t} 工具的 agent。`);
+			}
+		}
+	}
+
+	/** 把 work 的 cron 触发器的 agentId/enabled 同步成 work 当前值。 */
+	private syncWorkCrons(workId: string, patch: { agentId?: string; enabled?: boolean }): void {
+		if (!this.cronStore) return;
+		for (const c of this.cronStore.list()) {
+			if (c.workId !== workId) continue;
+			this.cronStore.update(c.id, patch as any);
+		}
 	}
 
 	/**

@@ -200,6 +200,13 @@ const R: Record<string, RouteMapping> = {
 		"projects:archivistUnbind":    { method: "DELETE", path: "/api/projects/:id/archivist/bind",   buildReq: (id) => ({ params: { id } }) },
 		"projects:archivistSwitchAgent": { method: "PUT", path: "/api/projects/:id/archivist/agent",  buildReq: (id, agentId) => ({ params: { id }, body: { agentId } }) },
 		"projects:archivistSetEnabled": { method: "PUT",  path: "/api/projects/:id/archivist/enabled", buildReq: (id, enabled) => ({ params: { id }, body: { enabled } }) },
+		"projects:listWorks":        { method: "GET",    path: "/api/projects/:id/works",                buildReq: (id) => ({ params: { id } }) },
+		"projects:createWork":       { method: "POST",   path: "/api/projects/:id/works",                buildReq: (id, body) => ({ params: { id }, body }) },
+		"projects:updateWork":       { method: "PUT",    path: "/api/projects/:id/works/:workId",        buildReq: (id, workId, body) => ({ params: { id, workId }, body }) },
+		"projects:deleteWork":       { method: "DELETE", path: "/api/projects/:id/works/:workId",        buildReq: (id, workId) => ({ params: { id, workId } }) },
+		"projects:assignWorkAgent":  { method: "PUT",    path: "/api/projects/:id/works/:workId/agent",  buildReq: (id, workId, agentId) => ({ params: { id, workId }, body: { agentId } }) },
+		"projects:setWorkEnabled":   { method: "PUT",    path: "/api/projects/:id/works/:workId/enabled", buildReq: (id, workId, enabled) => ({ params: { id, workId }, body: { enabled } }) },
+		"projects:triggerWork":      { method: "POST",   path: "/api/projects/:id/works/:workId/trigger", buildReq: (id, workId) => ({ params: { id, workId } }) },
 		"projects:listJobs":         { method: "GET",    path: "/api/projects/:id/jobs",         buildReq: (id) => ({ params: { id } }) },
 
 		// ─── Requirements (M1) ──────────────────────────────

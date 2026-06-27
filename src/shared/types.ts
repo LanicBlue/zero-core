@@ -461,6 +461,8 @@ export interface ProjectContainerView {
 	activeSessions: Array<{ agentId: string; name: string; sessionId: string }>;
 	/** v0.8 archivist 长期绑定(阶段2):该 project 绑定的 archivist agent + 各操作 cron 状态。 */
 	archivistBinding?: ProjectArchivistBinding;
+	/** v0.8 project-work 系统:该 project 的全部工位(含空岗)+ cron/hook 触发器状态。 */
+	projectWorks?: ProjectWorkView[];
 }
 
 /**
@@ -482,6 +484,102 @@ export interface ProjectArchivistBinding {
 	}>;
 	/** 是否有 git-aware cron(git 变更触发)。 */
 	gitAware: boolean;
+}
+
+// ── project_work(取代工作流角色的"工位/工作"系统)──────────────────
+//
+// 一个 project_work = 项目里定义的一项工作(具体职责,如"需求管理"/"文档充实"),
+// 带:动作 prompt(触发时作 user message)、requiredTools(分配 agent 时校验)、
+// agentId(可空 = 空岗)、contextPolicy(T2 注入策略,从 roleConfig 迁来)、
+// hooks(hook 触发器 inline)。触发源:cron(复用 crons 表,带 workId)、
+// hook(data-change-hub 事件)、手动。一个 work = 一个动作(扁平)。
+
+/** T2 上下文注入策略(从 roleConfig.contextPolicy 迁移到 work 级)。 */
+export interface WorkContextPolicy {
+	injectProjectInfo?: boolean;
+	injectWikiBaseline?: boolean;
+	injectRequirementDetail?: boolean;
+	injectStepsProgress?: boolean;
+	injectGitDiff?: boolean;
+}
+
+/** project-work 的 hook 触发器(inline JSON)。event 形如 "requirement.created"。 */
+export interface WorkHookTrigger {
+	event: string;
+	/** 触发该 hook 的 data-change-hub collection,如 "requirements"。 */
+	collection: string;
+	enabled: boolean;
+}
+
+export interface ProjectWorkRecord {
+	id: string;
+	projectId: string;
+	/** 具体职责名(如"需求管理"/"文档充实"),不用抽象角色头衔。 */
+	name: string;
+	/** 动作 prompt:本次工作具体做什么、按什么顺序。触发时作为 user message。 */
+	actionPrompt: string;
+	/** 工具要求;分配 agent 时校验 agent.toolPolicy 满足(未满足则拒绝+提醒)。 */
+	requiredTools: string[];
+	/** 负责执行的 agent;null = 空岗(工位存在但无人执行)。 */
+	agentId: string | null;
+	contextPolicy?: WorkContextPolicy;
+	hooks?: WorkHookTrigger[];
+	enabled: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type CreateProjectWorkInput = Omit<ProjectWorkRecord, "id" | "createdAt" | "updatedAt">;
+export type UpdateProjectWorkInput = Partial<Omit<ProjectWorkRecord, "id" | "createdAt" | "updatedAt">>;
+
+/** UI 视图:project-work + 其 cron 触发器状态(从 crons 表聚合)。 */
+export interface ProjectWorkCronTriggerView {
+	cronId: string;
+	schedule: CronSchedule;
+	gitAware: boolean;
+	enabled: boolean;
+	lastRunAt?: string;
+	nextRunAt?: string;
+	lastStatus?: string;
+}
+
+export interface ProjectWorkView {
+	id: string;
+	projectId: string;
+	name: string;
+	actionPrompt: string;
+	requiredTools: string[];
+	agentId: string | null;
+	agentName: string | null;
+	contextPolicy?: WorkContextPolicy;
+	hooks?: WorkHookTrigger[];
+	enabled: boolean;
+	/** 该 work 的 cron 触发器(带 workId 的 crons)。 */
+	cronTriggers: ProjectWorkCronTriggerView[];
+	/** 是否有 hook 触发器。手动触发恒可用,不在此列。 */
+	hasHookTrigger: boolean;
+	lastRunAt?: string;
+}
+
+/** 触发 project-work 的结果(手动/hook 触发)。cron 触发走 cron_runs 审计不返回此。 */
+export type FireProjectWorkResult =
+	| { status: "ok"; sessionId: string }
+	| { status: "skipped"; reason: string }
+	| { status: "error"; error: string };
+
+/** POST /projects/:id/works 绑定/创建 body。 */
+export interface CreateProjectWorkBody {
+	name: string;
+	actionPrompt?: string;
+	requiredTools?: string[];
+	agentId?: string | null;
+	contextPolicy?: WorkContextPolicy;
+	hooks?: WorkHookTrigger[];
+	/** cron 触发器(可多个);每条建一条带 workId 的 cron。 */
+	cronTriggers?: Array<{ schedule: CronSchedule; gitAware?: boolean }>;
+	/** 保存后立刻执行一次。 */
+	runOnce?: boolean;
+	enabled?: boolean;
 }
 
 /**
@@ -828,6 +926,14 @@ export interface CronRecord {
 	 * (同时编码"是绑定 cron" + 哪个操作,摆脱 prompt 反查)。其他 cron 留空。
 	 */
 	source?: string;
+	/**
+	 * project-work 引用。带 workId 的 cron = 某 project-work 的 cron 触发器:
+	 * fire 时 agentId/prompt 从 work 解析(work.agentId + work.actionPrompt),
+	 * 不再用 cron 自带的 prompt(work 的 prompt 改动即时生效)。cron.agentId
+	 * 仍同步 work.agentId 以便 session 路由。git-aware 变体靠 cron.prompt
+	 * 的 sentinel 标记(见 wiki-operations GIT_AWARE_SENTINEL)。
+	 */
+	workId?: string;
 	enabled: boolean;
 	createdAt: string;
 	updatedAt: string;

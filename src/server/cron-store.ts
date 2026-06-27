@@ -52,6 +52,7 @@ const COLUMNS: ColumnDef[] = [
 	{ key: "nextRunAt", column: "next_run_at" },
 	{ key: "lastGitRef", column: "last_git_ref" },
 	{ key: "source" },
+	{ key: "workId", column: "work_id" },
 	{ key: "prompt" },
 	{ key: "enabled", bool: true },
 	{ key: "createdAt", column: "created_at" },

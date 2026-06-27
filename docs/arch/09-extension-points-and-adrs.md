@@ -622,9 +622,35 @@ graph TB
 
 ---
 
+### ADR-023 · project-work 系统:取代工作流角色(身份/行为分离 + 工位化)
+
+**Status**:Accepted(阶段1 已落地:基座 + archivist-binding 迁移)
+
+**Context**:ADR-022 让 archivist 率先脱离 WORKFLOW_ROLES,证明了"把做什么工作从 agent 身份剥离、绑到 project 级可触发单元"的模式。本 ADR 把该模式**推广到全部工作流角色**,一次性解决历史问题:agentRole 同时承载身份(T1 systemPrompt)+ 场景(T2 上下文注入)+ 任务(T3 prompt)三件事,散落在 agent/role/template/binding 四处。
+
+**Decision**:**身份在 agent,行为在 project-work**。两者平行、自由搭配。
+- Agent systemPrompt = 身份(角色/特长/规则偏好);project-work actionPrompt = 行为(做什么、按什么顺序)。
+- **一个 project-work = 一个动作**(扁平,不套"工位→多操作"两层)。动作 prompt 在触发时作 **user message** 发送(不动 systemPrompt)。
+- project-work **inline 在 project**(单表 `project_work`,projectId 外键),不跨项目复用;可**空岗**(无 agent)。同 project 同 work 单占,一个 agent 可兼多 work。
+- 触发源:**cron**(复用 `crons` 表加 `work_id`)/ **项目 hook**(订阅 `data-change-hub` 的 requirements/projects/... 事件,**非净新增基础设施**)/ **手动**(运行时按钮 + 配置时"立刻执行一次")。三源共用 `ProjectWorkRunner.fireProjectWork`(resolveSessionByRoleProject + requiredTools 校验 + sendProjectPrompt)。
+- **没有"委派类"**:developer/reviewer/qa 不是独立类别,就是 lead 运行时拉起的 subagent(delegation 路径**已经是 agent-based**,orchestrate-tool 用目标 agent 自己的 toolPolicy)。
+- 默认 work 按具体职责命名(需求管理/技术调研/文档充实/文档重建/git 同步),不用抽象角色头衔。dev/reviewer/qa 不进 work 集(画廊已有 Coder/Reviewer 模板)。
+
+**阶段1 落地范围**(本提交):project_work 表 + store + ProjectWorkRunner + ProjectWorkHookManager + cron fireAgent 的 workId 分支(agent/prompt 从 work 解析)+ management-service work CRUD/分配/触发 + 默认 work 种子 + REST/IPC 四层 + 前端 ProjectWorkCard + 把存量 archivist-bind cron 迁移回填到 work。WORKFLOW_ROLES **暂不删**(阶段2 改 lead/analyst,阶段3 才退役)。
+
+**Consequences**:
+- ✅ T2 上下文注入的 linchpin(workflow-context-hook 按 agentRole 注入)将在阶段2 改为按 work.contextPolicy 注入,agentRole 从运行时逻辑中消失。
+- ✅ archivist 长期绑定(ADR-022)被 project-work **泛化吸收**——文档充实/重建/git 同步各成一个 work,不再有"archivist 专属"绑定概念。`source=archivist-bind:*` cron 由 db-migration 回填 `work_id`。
+- ⚠️ 阶段2 触及 requirement lifecycle(LeadService/AnalystService 瘦身),是风险最高一步;阶段3 机械删除 WORKFLOW_ROLES/sendRolePrompt/roleTag。
+- ✅ BUILTIN_WORKFLOW_ROLES(zero 平台角色)**不动**——平台管家与软件开发工作流角色是两套。
+
+**Code evidence**:`server/project-work-store.ts`、`server/project-work-runner.ts`(fireProjectWork)、`server/project-work-hook-manager.ts`(订阅 data-change-hub)、`server/cron-analysis.ts:fireAgent`(cron.workId 分支)、`server/management-service.ts`(createProjectWork/assignProjectWork/triggerProjectWork/getProjectWorks/seedDefaultProjectWorks)、`server/builtin-work-templates.ts`(默认 work 种子)、`server/db-migration.ts`(project_work 表 + crons.work_id 5 处同步 + migrateArchivistBindToProjectWork 回填)、`renderer/components/requirements/ProjectPage.tsx:ProjectWorkCard`。
+
+---
+
 ## 3. 总结
 
-- 22 个 ADR，集中在数据驻留、并发控制、扩展点、UI 同步、角色演进。
+- 23 个 ADR，集中在数据驻留、并发控制、扩展点、UI 同步、角色演进。
 - 当前建议优先处理：018 (IPC 契约漂移)、011 (mcp-tools 改名)、013 (legacy memory 清理)、008 (legacy KB RAG hook 标注/退役)。ADR-012 已解决。
 - 整个架构遵循"interfaces up, implementations down" 的依赖倒置；`ISessionStore` / `IKVStore` 是教科书级示范。
 - "Hook 提取"是**最大的**架构改进（ADR-005），把 AgentLoop 从膨胀中拯救出来。

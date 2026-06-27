@@ -245,6 +245,7 @@ graph TB
 ## P
 
 - **Persona**：角色定义（CommunicationStyle + PERSONA_TEMPLATES）。
+- **project-work（工位）**：取代工作流角色的"工作"单元。一个 project-work = 项目里定义的一项工作(具体职责,如"需求管理"/"文档充实"):带动作 prompt(触发时作 user message)+ requiredTools(分配 agent 时校验)+ agentId(可空=空岗)+ contextPolicy + hooks。身份在 agent(systemPrompt),行为在 work(actionPrompt),两者平行。触发源:cron(复用 crons 表,带 workId)/ 项目 hook(data-change-hub 事件)/ 手动。一个 work = 一个动作(扁平)。见 ADR-023。
 - **Preload**：Electron 预加载脚本，contextBridge 暴露 `window.api`。
 - **PretoolUse**：hook 事件，工具执行前触发（可阻断）。
 - **ProcessStreamEvents**：AgentLoop 处理 streamText 输出事件的函数。

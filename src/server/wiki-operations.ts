@@ -24,8 +24,16 @@ export type { WikiOperationId };
  * archivist 绑定/enrichment 的前置校验 —— 无 Wiki 工具直接拒绝。
  */
 export function agentHasWikiTool(agent: AgentRecord): boolean {
+	return agentHasTool(agent, "Wiki");
+}
+
+/**
+ * 通用:agent 是否可用某工具(没被 blockedTools 禁用即可用)。project-work 分配
+ * agent 时的前置校验 —— work.requiredTools 逐项检查,不满足则拒绝+提醒(无 fallback)。
+ */
+export function agentHasTool(agent: AgentRecord, tool: string): boolean {
 	const blocked = agent.toolPolicy?.blockedTools;
-	if (Array.isArray(blocked) && blocked.includes("Wiki")) return false;
+	if (Array.isArray(blocked) && blocked.includes(tool)) return false;
 	return true;
 }
 

@@ -45,6 +45,7 @@ import type {
 	WikiOperationId,
 	CronSchedule,
 	ProjectArchivistBinding,
+	ProjectWorkView,
 	AgentRecord,
 } from "../../../shared/types.js";
 import { useProjectStore } from "../../store/project-store.js";
@@ -277,9 +278,9 @@ export default function ProjectPage() {
 							<EmptyState />
 						) : tab === "dashboard" ? (
 							<>
-								<ArchivistBindingCard
+								<ProjectWorkCard
 									projectId={selectedProject.id}
-									binding={container?.archivistBinding}
+									works={container?.projectWorks}
 									agents={agents}
 									onRefresh={() => refreshContainer(selectedProject.id)}
 								/>
@@ -580,130 +581,161 @@ const ghostBtnStyle: React.CSSProperties = {
 	color: "var(--text-secondary, #888)", fontSize: 11, cursor: "pointer",
 };
 
-// ─── v0.8 archivist 长期绑定卡片(阶段2) ────────────────────────────
-// 未绑定 → "绑定 Archivist" 按钮(弹窗选 agent + 操作 + 每日定时);
-// 已绑定 → 显示管理者 + 各操作 cron 状态 + 切换/暂停/解绑。
-function ArchivistBindingCard({ projectId, binding, agents, onRefresh }: {
+
+// ─── v0.8 project-work 卡片(取代工作流角色的"工位/工作"系统)──────────
+// 列出 project 全部工位(默认 5 个空岗 + 自定义),每行:name / agent(空岗显
+// "未分配"+分配按钮)/ 触发源(cron·hook·手动)/ 状态 / 操作(触发·暂停·删除)。
+// 分配 agent 时校验 requiredTools(无该工具则禁用+提醒,无 fallback)。
+function ProjectWorkCard({ projectId, works, agents, onRefresh }: {
 	projectId: string;
-	binding: ProjectArchivistBinding | undefined;
+	works: ProjectWorkView[] | undefined;
 	agents: AgentRecord[];
 	onRefresh: () => void;
 }) {
-	const [showBind, setShowBind] = useState(false);
-	const [bindAgentId, setBindAgentId] = useState("");
-	const [bindOps, setBindOps] = useState<WikiOperationId[]>(["wiki-enrich"]);
-	const [bindTime, setBindTime] = useState("09:00");
-	const [bindGitAware, setBindGitAware] = useState(false);
+	const [creating, setCreating] = useState(false);
+	const [nName, setNName] = useState("");
+	const [nPrompt, setNPrompt] = useState("");
+	const [nAgent, setNAgent] = useState("");
+	const [nCron, setNCron] = useState(false);
+	const [nTime, setNTime] = useState("09:00");
 
-	const ops = binding?.operations ?? [];
-	const bound = !!binding?.agentId;
-	const allEnabled = ops.length > 0 && ops.every((o) => o.enabled);
-	const wikiAgents = agents.filter((a) => !a.toolPolicy?.blockedTools?.includes("Wiki"));
+	const list = works ?? [];
 
-	const openBind = () => {
-		setBindAgentId(wikiAgents[0]?.id ?? agents[0]?.id ?? "");
-		setBindOps(["wiki-enrich"]);
-		setBindTime("09:00");
-		setBindGitAware(false);
-		setShowBind(true);
-	};
-	const doBind = async () => {
-		if (!bindAgentId || bindOps.length === 0) return;
-		try {
-			await api().projectsArchivistBind(projectId, {
-				agentId: bindAgentId,
-				operations: bindOps,
-				schedule: { mode: "alarm", time: bindTime, days: [], tz: "Asia/Shanghai" } as CronSchedule,
-				gitAware: bindGitAware,
-			});
-			setShowBind(false);
-			onRefresh();
-		} catch (e) { alert(`Bind failed: ${(e as Error).message}`); }
-	};
-	const doUnbind = async () => {
-		if (!confirm("解绑该 project 的 archivist?将删除其绑定 cron(操作记录保留)。")) return;
-		try { await api().projectsArchivistUnbind(projectId); onRefresh(); }
-		catch (e) { alert(`Unbind failed: ${(e as Error).message}`); }
-	};
-	const doSwitch = async () => {
-		const name = prompt("切换到哪个 agent?(输入 agent 名)", binding?.agentName ?? "");
+	const agentMeets = (agent: AgentRecord, tools: string[]) =>
+		!tools.some((t) => agent.toolPolicy?.blockedTools?.includes(t));
+
+	const doAssign = async (workId: string, requiredTools: string[]) => {
+		const name = prompt("分配哪个 agent?(输入 agent 名)");
 		if (!name) return;
 		const target = agents.find((a) => a.name === name);
 		if (!target) { alert(`未找到 agent: ${name}`); return; }
-		if (target.toolPolicy?.blockedTools?.includes("Wiki")) { alert(`Agent "${name}" 无 Wiki 工具,无法绑定`); return; }
-		try { await api().projectsArchivistSwitchAgent(projectId, target.id); onRefresh(); }
-		catch (e) { alert(`Switch failed: ${(e as Error).message}`); }
+		if (!agentMeets(target, requiredTools)) { alert(`Agent "${name}" 缺少必需工具 ${requiredTools.join("/")}(被 blocked),无法分配`); return; }
+		try { await api().projectsAssignWorkAgent(projectId, workId, target.id); onRefresh(); }
+		catch (e) { alert(`Assign failed: ${(e as Error).message}`); }
 	};
-	const doToggle = async () => {
-		try { await api().projectsArchivistSetEnabled(projectId, !allEnabled); onRefresh(); }
+	const doTrigger = async (workId: string) => {
+		try {
+			const { result } = await api().projectsTriggerWork(projectId, workId);
+			if (result.status === "ok") alert("已触发,后台运行");
+			else if (result.status === "skipped") alert(`未触发:${result.reason}`);
+			else alert(`触发失败:${result.error}`);
+		} catch (e) { alert(`Trigger failed: ${(e as Error).message}`); }
+	};
+	const doToggle = async (workId: string, enabled: boolean) => {
+		try { await api().projectsSetWorkEnabled(projectId, workId, !enabled); onRefresh(); }
 		catch (e) { alert(`Toggle failed: ${(e as Error).message}`); }
 	};
-	const doTrigger = async (cronId: string) => {
-		try { await api().cronsTrigger(cronId); alert("已触发,后台运行(完成写回 cron_runs)"); }
-		catch (e) { alert(`Trigger failed: ${(e as Error).message}`); }
+	const doDelete = async (workId: string, name: string) => {
+		if (!confirm(`删除工位「${name}」?(含其 cron 触发器)`)) return;
+		try { await api().projectsDeleteWork(projectId, workId); onRefresh(); }
+		catch (e) { alert(`Delete failed: ${(e as Error).message}`); }
+	};
+	const doCreate = async () => {
+		if (!nName.trim()) return;
+		try {
+			await api().projectsCreateWork(projectId, {
+				name: nName.trim(),
+				actionPrompt: nPrompt.trim() || undefined,
+				agentId: nAgent || null,
+				requiredTools: ["Wiki"],
+				cronTriggers: nCron ? [{ schedule: { mode: "alarm", time: nTime, days: [], tz: "Asia/Shanghai" } as CronSchedule }] : undefined,
+				runOnce: true,
+			});
+			setCreating(false); setNName(""); setNPrompt(""); setNAgent(""); setNCron(false);
+			onRefresh();
+		} catch (e) { alert(`Create failed: ${(e as Error).message}`); }
 	};
 
 	const cardStyle: React.CSSProperties = { border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 12, marginBottom: 12, background: "var(--bg-secondary, #1c1c1e)" };
 	const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--text-secondary, #888)" };
+	const wikiAgents = agents.filter((a) => !a.toolPolicy?.blockedTools?.includes("Wiki"));
+
+	const triggerLabel = (w: ProjectWorkView): string => {
+		const parts: string[] = [];
+		if (w.cronTriggers.length > 0) parts.push(`cron·${w.cronTriggers.length}`);
+		if (w.hasHookTrigger) parts.push("hook");
+		parts.push("手动");
+		return parts.join("/");
+	};
+	const scheduleLabel = (c: ProjectWorkView["cronTriggers"][number]): string => {
+		const s = c.schedule;
+		if (s.mode === "alarm") return `alarm ${s.time}`;
+		if (s.mode === "interval") return `interval ${((s.everyMs ?? 0) / 60000)}min`;
+		if (s.mode === "once") return `once ${s.at}`;
+		return "schedule";
+	};
 
 	return (
 		<div style={cardStyle}>
 			<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-				<span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary, #e0e0e0)" }}>📚 Archivist 长期绑定</span>
+				<span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary, #e0e0e0)" }}>{"\u{1F9F0}"} 工位(project-work)</span>
 				<div style={{ flex: 1 }} />
-				{bound ? (
-					<>
-						<button type="button" onClick={doSwitch} style={ghostBtnStyle}>切换 agent</button>
-						<button type="button" onClick={doToggle} style={ghostBtnStyle}>{allEnabled ? "暂停" : "恢复"}</button>
-						<button type="button" onClick={doUnbind} style={{ ...ghostBtnStyle, color: "#f44336", borderColor: "#f44336" }}>解绑</button>
-					</>
-				) : (
-					<button type="button" onClick={openBind} style={primaryBtnStyle}>绑定 Archivist</button>
-				)}
+				<button type="button" onClick={() => setCreating(true)} style={primaryBtnStyle}>+ 新建工位</button>
 			</div>
-			{bound ? (
-				<div>
-					<div style={{ fontSize: 12, color: "var(--text-primary, #e0e0e0)", marginBottom: 6 }}>
-						当前管理者: <strong>{binding!.agentName}</strong>
-						{!allEnabled && <span style={{ color: "var(--warning, #d29922)" }}> (已暂停)</span>}
-						{binding!.gitAware && <span style={{ color: "var(--success, #7ee787)" }}> (git 变更触发)</span>}
+			<div style={{ ...labelStyle, marginBottom: 6 }}>身份在 agent,行为在工位。默认 5 个空岗工位(需求管理/技术调研/文档充实/文档重建/git 同步),分配 agent 后即可触发。</div>
+			{list.length === 0 ? (
+				<div style={labelStyle}>暂无工位(新 project 会自动 seed 默认工位)。</div>
+			) : list.map((w) => (
+				<div key={w.id} style={{ border: "1px solid var(--border-color, #2a2a2a)", borderRadius: 6, padding: 8, marginBottom: 6 }}>
+					<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+						<strong style={{ fontSize: 12, color: "var(--text-primary, #e0e0e0)" }}>{w.name}</strong>
+						{!w.enabled && <span style={{ color: "var(--warning, #d29922)", fontSize: 11 }}>(已暂停)</span>}
+						<div style={{ flex: 1 }} />
+						<button type="button" onClick={() => doTrigger(w.id)} style={ghostBtnStyle}>立即触发</button>
+						<button type="button" onClick={() => doToggle(w.id, w.enabled)} style={ghostBtnStyle}>{w.enabled ? "暂停" : "恢复"}</button>
+						<button type="button" onClick={() => doDelete(w.id, w.name)} style={{ ...ghostBtnStyle, color: "#f44336", borderColor: "#f44336" }}>删除</button>
 					</div>
-					{ops.map((op) => (
-						<div key={op.cronId} style={{ fontSize: 11, color: "var(--text-secondary, #888)", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
-							<span>{op.operationId} — {op.enabled ? "启用" : "暂停"} · 上次:{op.lastStatus ?? "—"} {op.lastRunAt ?? ""} · 下次:{op.nextRunAt ?? "—"}</span>
-							<button type="button" onClick={() => doTrigger(op.cronId)} style={ghostBtnStyle}>立即触发</button>
-						</div>
-					))}
-				</div>
-			) : (
-				<div style={labelStyle}>未绑定。绑定后,所选 agent 按计划定时维护 wiki(去-role,用 agent 自带 Wiki 工具)。</div>
-			)}
-
-			{showBind && (
-				<div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setShowBind(false)}>
-					<div onClick={(e) => e.stopPropagation()} style={{ width: 400, background: "var(--bg-secondary, #1c1c1e)", border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 20 }}>
-						<div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary, #e0e0e0)", marginBottom: 12 }}>绑定 Archivist — 长期 wiki 维护</div>
-						<label style={labelStyle}>Agent(需有 Wiki 工具)</label>
-						<select aria-label="Select agent for archivist binding" value={bindAgentId} onChange={(e) => setBindAgentId(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }}>
-							{wikiAgents.length === 0 && <option value="">(无带 Wiki 工具的 agent — 先从 Archivist 模板创建)</option>}
-							{wikiAgents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-						</select>
-						<label style={labelStyle}>操作(可多选,各建一条 cron)</label>
-						<div style={{ marginBottom: 12 }}>
-							{(["wiki-enrich", "doc-rebuild", "git-update"] as WikiOperationId[]).map((op) => (
-								<label key={op} style={{ fontSize: 12, color: "var(--text-primary, #e0e0e0)", display: "block" }}>
-									<input type="checkbox" checked={bindOps.includes(op)} onChange={(e) => setBindOps(e.target.checked ? [...bindOps, op] : bindOps.filter((o) => o !== op))} /> {op}
-								</label>
+					<div style={{ fontSize: 11, color: "var(--text-secondary, #888)", marginTop: 4 }}>
+						负责 agent:{" "}
+						{w.agentName ? (
+							<strong>{w.agentName}</strong>
+						) : (
+							<>
+								<span style={{ color: "var(--warning, #d29922)" }}>未分配</span>
+								<button type="button" onClick={() => doAssign(w.id, w.requiredTools)} style={{ ...ghostBtnStyle, marginLeft: 6, fontSize: 10 }}>分配</button>
+							</>
+						)}
+						{" · 触发:" + triggerLabel(w)}
+						{" · 需 " + (w.requiredTools.join("/") || "—")}
+						{w.lastRunAt && " · 上次 " + w.lastRunAt}
+					</div>
+					{w.cronTriggers.length > 0 && (
+						<div style={{ fontSize: 10, color: "var(--text-tertiary, #666)", marginTop: 2 }}>
+							{w.cronTriggers.map((c) => (
+								<span key={c.cronId} style={{ marginRight: 12 }}>
+									{c.gitAware ? "git-aware " : ""}{scheduleLabel(c)}{!c.enabled ? " (暂停)" : ""}{c.lastStatus ? ` · ${c.lastStatus}` : ""}
+								</span>
 							))}
 						</div>
-						<label style={labelStyle}>每日定时(alarm)</label>
-						<input type="time" aria-label="Schedule time" value={bindTime} onChange={(e) => setBindTime(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
-						<label style={{ fontSize: 12, color: "var(--text-primary, #e0e0e0)", display: "block", marginBottom: 12 }}>
-							<input type="checkbox" checked={bindGitAware} onChange={(e) => setBindGitAware(e.target.checked)} /> git 变更触发(额外建高频轮询 cron,git 无变化时自动跳过 —— doc重建/git更新)
+					)}
+				</div>
+			))}
+
+			{creating && (
+				<div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setCreating(false)}>
+					<div onClick={(e) => e.stopPropagation()} style={{ width: 440, background: "var(--bg-secondary, #1c1c1e)", border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 20 }}>
+						<div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary, #e0e0e0)", marginBottom: 12 }}>新建工位</div>
+						<label style={labelStyle}>工位名(具体职责)</label>
+						<input value={nName} onChange={(e) => setNName(e.target.value)} placeholder="如:接口评审 / 依赖升级" style={{ ...inputStyle, marginBottom: 12 }} />
+						<label style={labelStyle}>动作 prompt(做什么;留空则后续编辑)</label>
+						<textarea value={nPrompt} onChange={(e) => setNPrompt(e.target.value)} rows={4} placeholder="描述这项工作要做什么、按什么顺序..." style={{ ...inputStyle, marginBottom: 12, fontFamily: "monospace" }} />
+						<label style={labelStyle}>分配 agent(可选,需有 Wiki 工具;留空=空岗)</label>
+						<select value={nAgent} onChange={(e) => setNAgent(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }}>
+							<option value="">(空岗 — 暂不分配)</option>
+							{wikiAgents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+						</select>
+						<label style={{ fontSize: 12, color: "var(--text-primary, #e0e0e0)", display: "block", marginBottom: 4 }}>
+							<input type="checkbox" checked={nCron} onChange={(e) => setNCron(e.target.checked)} /> 加 cron 触发器(每日 alarm)
+						</label>
+						{nCron && (
+							<input type="time" value={nTime} onChange={(e) => setNTime(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+						)}
+						<label style={{ fontSize: 12, color: "var(--text-secondary, #888)", display: "block", marginBottom: 12 }}>
+							<input type="checkbox" checked readOnly /> 创建后立刻执行一次
 						</label>
 						<div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-							<button type="button" onClick={() => setShowBind(false)} style={cancelBtnStyle}>Cancel</button>
-							<button type="button" disabled={!bindAgentId || bindOps.length === 0 || wikiAgents.length === 0} onClick={doBind} style={{ ...primaryBtnStyle, opacity: (!bindAgentId || bindOps.length === 0 || wikiAgents.length === 0) ? 0.5 : 1 }}>绑定</button>
+							<button type="button" onClick={() => setCreating(false)} style={cancelBtnStyle}>Cancel</button>
+							<button type="button" disabled={!nName.trim()} onClick={doCreate} style={{ ...primaryBtnStyle, opacity: nName.trim() ? 1 : 0.5 }}>创建</button>
 						</div>
 					</div>
 				</div>

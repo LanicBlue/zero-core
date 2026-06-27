@@ -222,6 +222,7 @@ const CRON_COLUMNS = [
 	{ key: "nextRunAt", column: "next_run_at" },
 	{ key: "lastGitRef", column: "last_git_ref" },
 	{ key: "source" },
+	{ key: "workId", column: "work_id" },
 	{ key: "prompt" },
 	{ key: "enabled", bool: true },
 	{ key: "createdAt", column: "created_at" },
@@ -260,6 +261,23 @@ const PROJECT_JOBS_COLUMNS = [
 	{ key: "finishedAt", column: "finished_at" },
 	{ key: "error" },
 	{ key: "promptSummary", column: "prompt_summary" },
+	{ key: "createdAt", column: "created_at" },
+	{ key: "updatedAt", column: "updated_at" },
+];
+
+// v0.8 project_work —— 取代工作流角色的"工位/工作"系统。每行 = 项目里定义的
+// 一项工作(具体职责):动作 prompt + requiredTools + agentId(可空)+ contextPolicy
+// + hooks(inline JSON)。触发源:cron(复用 crons 表,带 work_id)、hook、手动。
+// MUST stay in sync with project-work-store.ts PROJECT_WORK_COLUMNS.
+const PROJECT_WORK_COLUMNS = [
+	{ key: "projectId", column: "project_id" },
+	{ key: "name" },
+	{ key: "actionPrompt", column: "action_prompt" },
+	{ key: "requiredTools", column: "required_tools", json: true },
+	{ key: "agentId", column: "agent_id" },
+	{ key: "contextPolicy", column: "context_policy", json: true },
+	{ key: "hooks", json: true },
+	{ key: "enabled", bool: true },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
 ];
@@ -582,6 +600,57 @@ function migrateWikiDetailToDisk(db: Database.Database): void {
 	}
 }
 
+/**
+ * 把存量 archivist 长期绑定 cron(source=`archivist-bind:<op>`)迁移到 project_work。
+ * 策略:每 project 的绑定 cron 共用一个 agentId,把它们按 operationId 归并成 1~3 个
+ * work(文档充实/文档重建/git 同步),回填对应 cron.work_id。已迁移(work_id 非空)跳过。
+ * 低风险:archivist-binding 是 v0.8 阶段2 才建的,存量数据少;任何异常都外层 catch 吞掉。
+ */
+function migrateArchivistBindToProjectWork(db: Database.Database): void {
+	const tableInfo = db.pragma("table_info(crons)") as Array<{ name: string }> | undefined;
+	if (!tableInfo || tableInfo.length === 0) return;
+	const colNames = new Set(tableInfo.map((c) => c.name));
+	if (!colNames.has("work_id") || !colNames.has("source")) return;
+
+	const workTableInfo = db.pragma("table_info(project_work)") as Array<{ name: string }> | undefined;
+	if (!workTableInfo || workTableInfo.length === 0) return;
+
+	const PREFIX = "archivist-bind:";
+	const rows = db.prepare("SELECT id, agent_id, working_scope, source, work_id FROM crons WHERE source LIKE ?")
+		.all(`${PREFIX}%`) as Array<{ id: string; agent_id: string; working_scope: string | null; source: string; work_id: string | null }>;
+
+	// 按 (projectId, operationId) 分组,归并成 work。
+	type Group = { projectId: string; opId: string; agentId: string; cronIds: string[] };
+	const groups = new Map<string, Group>();
+	const opName: Record<string, string> = { "wiki-enrich": "文档充实", "doc-rebuild": "文档重建", "git-update": "git 同步" };
+	for (const r of rows) {
+		if (r.work_id) continue; // 已迁移
+		const opId = r.source.slice(PREFIX.length);
+		let projectId = "";
+		try { projectId = (JSON.parse(r.working_scope ?? "{}") as { projectId?: string }).projectId ?? ""; } catch { /* ignore */ }
+		if (!projectId) continue;
+		const key = `${projectId}::${opId}`;
+		const g = groups.get(key) ?? { projectId, opId, agentId: r.agent_id, cronIds: [] };
+		g.cronIds.push(r.id);
+		groups.set(key, g);
+	}
+
+	for (const g of groups.values()) {
+		const workId = `pw-migr-${g.projectId}-${g.opId}`;
+		const name = opName[g.opId] ?? g.opId;
+		// 幂等:work 已存在则跳过 insert。
+		const exists = db.prepare("SELECT 1 FROM project_work WHERE id = ?").get(workId);
+		if (!exists) {
+			db.prepare(`INSERT INTO project_work (id, project_id, name, action_prompt, required_tools, agent_id, enabled, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`).run(
+				workId, g.projectId, name, "", JSON.stringify(["Wiki"]), g.agentId, new Date().toISOString(), new Date().toISOString(),
+			);
+		}
+		const upd = db.prepare("UPDATE crons SET work_id = ? WHERE id = ?");
+		for (const cid of g.cronIds) upd.run(workId, cid);
+	}
+}
+
 export function runMigrations(sessionDB: SessionDB): void {
 	const kv = sessionDB.getKVStore();
 	const db = sessionDB.getDb();
@@ -787,6 +856,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 		last_git_ref TEXT,
 		prompt TEXT,
 		source TEXT,
+		work_id TEXT,
 		enabled INTEGER DEFAULT 1,
 		created_at TEXT,
 		updated_at TEXT
@@ -800,6 +870,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 	safeAddColumn(db, "crons", "next_run_at", "TEXT");
 	safeAddColumn(db, "crons", "last_git_ref", "TEXT");
 	safeAddColumn(db, "crons", "source", "TEXT");
+	safeAddColumn(db, "crons", "work_id", "TEXT");
 	migrateCronScheduleToJson(db);
 	safeAddIndex(db, "crons", "idx_crons_agent", "agent_id");
 	safeAddIndex(db, "crons", "idx_crons_enabled", "enabled");
@@ -842,6 +913,34 @@ export function runMigrations(sessionDB: SessionDB): void {
 	)`);
 	safeAddIndex(db, "project_jobs", "idx_project_jobs_project", "project_id");
 	safeAddIndex(db, "project_jobs", "idx_project_jobs_status", "status");
+
+	// project_work —— 取代工作流角色的"工位/工作"系统。PK id 是 uuid
+	// (ProjectWorkStore mints)。agent_id 可空(空岗)。required_tools /
+	// context_policy / hooks 是 JSON 列。cron 触发器不在此表,复用 crons 表
+	// (crons.work_id 引用本表 id)。
+	db.exec(`CREATE TABLE IF NOT EXISTS project_work (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		action_prompt TEXT,
+		required_tools TEXT,
+		agent_id TEXT,
+		context_policy TEXT,
+		hooks TEXT,
+		enabled INTEGER DEFAULT 1,
+		created_at TEXT,
+		updated_at TEXT
+	)`);
+	safeAddIndex(db, "project_work", "idx_project_work_project", "project_id");
+	safeAddIndex(db, "project_work", "idx_project_work_agent", "agent_id");
+	// 回填:把存量 archivist-bind cron(source=`archivist-bind:<op>`)迁移到
+	// project_work。每 project 按操作建一个 work,回填对应 cron.work_id。
+	// 低风险(archivist-binding 本 session 才建),失败不阻断启动。
+	try {
+		migrateArchivistBindToProjectWork(db);
+	} catch (err) {
+		console.warn("[db-migration] project_work backfill skipped:", (err as Error).message);
+	}
 
 	// v0.8 (P0 §7.7 #4): tool_configs — per-tool default-param config. PK =
 	// tool_name (no surrogate id). The SqliteStore constructor always injects

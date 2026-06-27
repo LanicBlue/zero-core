@@ -187,6 +187,85 @@ export function createProjectRouter(deps: {
 		}
 	});
 
+	// ── v0.8 project-work(取代工作流角色的"工位/工作"系统)──────────────
+	// 一个 work = 一个动作(prompt)+ 触发源(cron/hook/手动)。CRUD + 分配 agent
+	// + 暂停 + 手动触发。详见 management-service createProjectWork 等。
+	router.get("/:id/works", (_req, res) => {
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			res.json({ works: management.getProjectWorks(_req.params.id) });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	router.post("/:id/works", (req, res) => {
+		const p = projectStore.get(req.params.id);
+		if (!p) return res.status(404).json({ error: "Project not found" });
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			const { name, actionPrompt, requiredTools, agentId, contextPolicy, hooks, cronTriggers, runOnce, enabled } = req.body ?? {};
+			if (!name || typeof name !== "string") return res.status(400).json({ error: "name required" });
+			const work = management.createProjectWork(p.id, { name, actionPrompt, requiredTools, agentId, contextPolicy, hooks, cronTriggers, runOnce, enabled });
+			res.status(201).json({ work });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	router.put("/:id/works/:workId", (req, res) => {
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			const { name, actionPrompt, requiredTools, agentId, contextPolicy, hooks, enabled } = req.body ?? {};
+			const work = management.updateProjectWork(req.params.workId, { name, actionPrompt, requiredTools, agentId, contextPolicy, hooks, enabled });
+			res.json({ work });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	router.delete("/:id/works/:workId", (req, res) => {
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			management.deleteProjectWork(req.params.workId);
+			res.json({ success: true });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	router.put("/:id/works/:workId/agent", (req, res) => {
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			const agentId = req.body?.agentId;
+			if (!agentId) return res.status(400).json({ error: "agentId required" });
+			const work = management.assignProjectWorkAgent(req.params.workId, agentId);
+			res.json({ work });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	router.put("/:id/works/:workId/enabled", (req, res) => {
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			const work = management.setProjectWorkEnabled(req.params.workId, !!req.body?.enabled);
+			res.json({ work });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
+	router.post("/:id/works/:workId/trigger", async (req, res) => {
+		if (!management) return res.status(503).json({ error: "ManagementService not available" });
+		try {
+			const result = await management.triggerProjectWork(req.params.workId);
+			res.status(result.status === "ok" ? 200 : 202).json({ result });
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
 	/** PUT /:id — update project */
 	router.put("/:id", (req, res) => {
 		try {

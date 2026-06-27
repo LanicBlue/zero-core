@@ -396,6 +396,12 @@ export async function startServer(options?: StartServerOptions) {
 	// and commit steps with the [req-<shortId>] reference (decision 21/25).
 	leadService.setGitIntegration(gitIntegration);
 	const notificationService = new NotificationService({ wss, requirementStore });
+	// v0.8 project-work 系统(取代工作流角色):project_work 表 + 触发执行器 +
+	// hook 管理器。cron 触发由 CronAnalysisManager 内联解析 work;手动/hook 触发
+	// 走 ProjectWorkRunner。ProjectWorkStore 先于 cronManager 构造,注入其 deps。
+	const { ProjectWorkStore } = await import("./project-work-store.js");
+	const projectWorkStore = new ProjectWorkStore(sessionDB);
+	management.setProjectWorkStore(projectWorkStore);
 	// v0.8 (M1): cron manager now scans the cron table (one agent → N cron),
 	// routes triggers via resolveSessionByRoleProject + sendPrompt. P4: mode-
 	// aware firing + cron_runs audit (cronRunStore injected).
@@ -408,7 +414,23 @@ export async function startServer(options?: StartServerOptions) {
 		cronRunStore,
 		wikiStore: wikiStoreGlobal,
 		archivistGit,
+		projectWorkStore,
 	});
+	// project-work 触发执行器(手动/hook 触发共享路径)+ hook 管理器(订阅
+	// data-change-hub,domain 事件 → 命中的 work)。会话期内常驻。
+	const { ProjectWorkRunner } = await import("./project-work-runner.js");
+	const projectWorkRunner = new ProjectWorkRunner({
+		agentService,
+		agentStore,
+		projectStore,
+		projectWorkStore,
+		sessionDB,
+		wikiStore: wikiStoreGlobal,
+	});
+	management.setProjectWorkRunner(projectWorkRunner);
+	const { ProjectWorkHookManager } = await import("./project-work-hook-manager.js");
+	const projectWorkHookManager = new ProjectWorkHookManager({ projectWorkStore, projectWorkRunner });
+	projectWorkHookManager.start();
 
 	// v0.8 P7 (RFC §1.5): NO ProjectNotificationRouter — cross-role reactions
 	// are pull-model. ready → lead autoPickupIfIdle + cron fallback;

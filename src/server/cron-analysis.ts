@@ -44,7 +44,7 @@ import type { AgentStore } from "./agent-store.js";
 import type { ProjectStore } from "./project-store.js";
 import type { WikiStore } from "./wiki-node-store.js";
 import type { ArchivistGit } from "./archivist-git.js";
-import { isGitAwarePrompt, stripGitAwareSentinel } from "./wiki-operations.js";
+import { isGitAwarePrompt, stripGitAwareSentinel, agentHasTool } from "./wiki-operations.js";
 import type { SessionDB } from "./session-db.js";
 import type { CronStore, CronRunStore } from "./cron-store.js";
 import type {
@@ -317,6 +317,11 @@ export interface CronAnalysisDeps {
 	 * git main ref 变化,无变化跳过(实现"git 变更即时响应",复用 cron 轮询)。
 	 */
 	archivistGit?: ArchivistGit;
+	/**
+	 * v0.8 project-work 系统:带 workId 的 cron 触发时,agent + actionPrompt 从
+	 * work 解析(覆盖 cron 自带的)。未注入时 workId cron 退回 cron 自带 prompt。
+	 */
+	projectWorkStore?: import("./project-work-store.js").ProjectWorkStore;
 	/**
 	 * Optional clock override (defaults to Date.now). Injected by tests to
 	 * drive the scheduler without waiting on real time; production callers
@@ -706,7 +711,40 @@ export class CronAnalysisManager {
 	 */
 	private async fireAgent(cron: CronRecord, agent: AgentRecord, prompt: string, sessionId: string): Promise<void> {
 		const scope = cron.workingScope;
-		let effectivePrompt = prompt;
+		// project-work:带 workId 的 cron → agent + actionPrompt 从 work 解析
+		// (覆盖 cron 自带)。work 空岗/禁用/缺工具 → 跳过。
+		let activeAgent: AgentRecord = agent;
+		let basePrompt = prompt;
+		if (cron.workId && this.deps.projectWorkStore) {
+			const work = this.deps.projectWorkStore.get(cron.workId);
+			if (!work) {
+				log.warn("cron", `cron ${cron.id} work ${cron.workId} not found; skipping`);
+				return;
+			}
+			if (!work.enabled || !work.agentId) {
+				log.debug("cron", `cron ${cron.id} work ${cron.workId} skipped: ${!work.enabled ? "disabled" : "vacant"}`);
+				return;
+			}
+			const workAgent = this.deps.agentStore.get(work.agentId);
+			if (!workAgent) {
+				log.warn("cron", `cron ${cron.id} work agent ${work.agentId} not found; skipping`);
+				return;
+			}
+			if (Array.isArray(work.requiredTools)) {
+				for (const tool of work.requiredTools) {
+					if (!agentHasTool(workAgent, tool)) {
+						log.warn("cron", `cron ${cron.id} work ${cron.workId} skipped: agent "${workAgent.name}" missing required tool ${tool}`);
+						return;
+					}
+				}
+			}
+			activeAgent = workAgent;
+			const project = scope.projectId ? this.deps.projectStore.get(scope.projectId) : undefined;
+			const resolved = (work.actionPrompt ?? "").replaceAll("{projectName}", project?.name ?? "");
+			if (resolved.trim()) basePrompt = resolved;
+		}
+
+		let effectivePrompt = basePrompt;
 		let newGitRef: string | undefined;
 		if (isGitAwarePrompt(prompt) && this.deps.archivistGit && scope.workspaceDir) {
 			const ref = await this.deps.archivistGit.getCurrentMainRef(scope.workspaceDir);
@@ -714,19 +752,19 @@ export class CronAnalysisManager {
 				log.debug("cron", `git-aware cron ${cron.id} skipped: no git changes (ref=${ref})`);
 				return;
 			}
-			effectivePrompt = stripGitAwareSentinel(prompt);
+			effectivePrompt = stripGitAwareSentinel(basePrompt);
 			newGitRef = ref; // 跑成功后回写
 		}
 		if (scope.projectId && this.deps.wikiStore) {
 			const project = this.deps.projectStore.get(scope.projectId);
-			await this.deps.agentService.sendProjectPrompt(agent.id, sessionId, effectivePrompt, {
+			await this.deps.agentService.sendProjectPrompt(activeAgent.id, sessionId, effectivePrompt, {
 				projectId: scope.projectId,
 				projectPath: project?.workspaceDir ?? scope.workspaceDir,
 				projectName: project?.name ?? "",
 				wikiStore: this.deps.wikiStore,
 			});
 		} else {
-			await this.deps.agentService.sendPrompt(effectivePrompt, agent, sessionId);
+			await this.deps.agentService.sendPrompt(effectivePrompt, activeAgent, sessionId);
 		}
 		if (newGitRef) {
 			try {

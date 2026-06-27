@@ -228,6 +228,13 @@ const api: WindowApi = {
 	projectsArchivistUnbind: (id) => ipcRenderer.invoke("projects:archivistUnbind", id),
 	projectsArchivistSwitchAgent: (id, agentId) => ipcRenderer.invoke("projects:archivistSwitchAgent", id, agentId),
 	projectsArchivistSetEnabled: (id, enabled) => ipcRenderer.invoke("projects:archivistSetEnabled", id, enabled),
+	projectsListWorks: (id) => ipcRenderer.invoke("projects:listWorks", id),
+	projectsCreateWork: (id, body) => ipcRenderer.invoke("projects:createWork", id, body),
+	projectsUpdateWork: (id, workId, body) => ipcRenderer.invoke("projects:updateWork", id, workId, body),
+	projectsDeleteWork: (id, workId) => ipcRenderer.invoke("projects:deleteWork", id, workId),
+	projectsAssignWorkAgent: (id, workId, agentId) => ipcRenderer.invoke("projects:assignWorkAgent", id, workId, agentId),
+	projectsSetWorkEnabled: (id, workId, enabled) => ipcRenderer.invoke("projects:setWorkEnabled", id, workId, enabled),
+	projectsTriggerWork: (id, workId) => ipcRenderer.invoke("projects:triggerWork", id, workId),
 	projectsListJobs: (id) => ipcRenderer.invoke("projects:listJobs", id),
 
 	// ── Requirements ──

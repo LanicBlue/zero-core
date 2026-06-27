@@ -39,6 +39,7 @@ import type {
 	ProjectRecord, CreateProjectInput, UpdateProjectInput,
 	ProjectContainerView, ProjectResourceUsage, AgentVia, EnrichProjectBody,
 	ProjectArchivistBinding, CronSchedule, WikiOperationId,
+	ProjectWorkRecord, ProjectWorkView, CreateProjectWorkBody, FireProjectWorkResult,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
 	WikiNode,
@@ -188,6 +189,13 @@ export interface IpcChannelDefs {
 	"projects:archivistUnbind":    { params: [id: string];                              result: Ok };
 	"projects:archivistSwitchAgent": { params: [id: string, agentId: string];          result: { binding: ProjectArchivistBinding } };
 	"projects:archivistSetEnabled": { params: [id: string, enabled: boolean];         result: { binding: ProjectArchivistBinding } };
+	"projects:listWorks":          { params: [id: string];                             result: { works: ProjectWorkView[] } };
+	"projects:createWork":         { params: [id: string, body: CreateProjectWorkBody]; result: { work: ProjectWorkRecord } };
+	"projects:updateWork":         { params: [id: string, workId: string, body: Partial<CreateProjectWorkBody>]; result: { work: ProjectWorkRecord } };
+	"projects:deleteWork":         { params: [id: string, workId: string];             result: Ok };
+	"projects:assignWorkAgent":    { params: [id: string, workId: string, agentId: string]; result: { work: ProjectWorkRecord } };
+	"projects:setWorkEnabled":     { params: [id: string, workId: string, enabled: boolean]; result: { work: ProjectWorkRecord } };
+	"projects:triggerWork":        { params: [id: string, workId: string];             result: { result: FireProjectWorkResult } };
 	"projects:listJobs":         { params: [id: string];                             result: ProjectJobRecord[] };
 
 	// ── Requirements (CRUD + transitions + messages + steps) ─
