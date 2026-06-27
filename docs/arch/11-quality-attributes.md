@@ -256,7 +256,24 @@ IPC invoke (5ms)
 
 ### 8.1 当前边界
 
-- **Renderer 沙箱**：contextIsolation=true / nodeIntegration=false / contextBridge 限定到 **141 个 HTTP 代理通道**（`main/ipc-proxy.ts` 的 `R` 表项数，自动派生 preload 方法类型）+ **7 个 LOCAL invoke 通道**（不经 HTTP proxy，在主进程直接 `ipcMain.handle`：`window:minimize/maximize/close` + `dialog:openDirectory` + `webfetch:login` + `templates:github-preview/import-github`）+ **若干 receive-only event 通道**（`agent:event` / `data:changed` / `app:ready` / `tools:changed` / `session:lifecycle` / 2 个 github 进度）。详见 07 §2.5（ROUTE_MAP 派生 + 三组例外集合）。
+- **Renderer 沙箱**：contextIsolation=true / nodeIntegration=false / contextBridge 暴露的通道分三类（口径：**invoke 请求-响应 / receive 推送**，详见 07 §2.5 ROUTE_MAP 派生 + 三组例外集合）：
+  - **141 个 HTTP 代理通道**（`main/ipc-proxy.ts` 的 `R: Record<string, RouteMapping>` 表项数）—— renderer `invoke` → preload → HTTP `fetch` 到后端 → 返回值经 IPC 回传。preload 方法类型从 `ROUTE_MAP` 自动派生。
+  - **7 个 LOCAL invoke 通道**（不经 HTTP proxy，主进程直接 `ipcMain.handle`）：
+    1. `window:minimize`
+    2. `window:maximize`
+    3. `window:close`
+    4. `dialog:openDirectory`
+    5. `webfetch:login`
+    6. `templates:github-preview`
+    7. `templates:import-github`
+  - **7 个 receive-only event 通道**（主进程 → renderer 单向推送，renderer 仅 `ipcRenderer.on` 订阅，无 invoke）：
+    1. `agent:event`（chat 流 + turn lifecycle）
+    2. `data:changed`（工作流域 store 增量/全量刷新，独立通道避免淹没 chat 流，见下文 + 07 §2.3.1）
+    3. `app:ready` —— **双重身份**：既是 LOCAL invoke 健康检查（renderer 启动时 invoke 询问主进程就绪状态），又是 receive 推送（主进程就绪后主动 emit 给所有 renderer）
+    4. `tools:changed`（工具清单热更新）
+    5. `session:lifecycle`（session 创建/销毁/切换）
+    6. `templates:github-preview` 进度推送（与同名 LOCAL invoke 配对，invoke 触发拉取、receive 推送进度）
+    7. `templates:import-github` 进度推送（同上）
 - **文件路径**：v0.8 后由 `ctx.readScope === "workspace"` 控制（`file-read.ts:101` / `glob.ts:91` / `grep.ts:225`）—— 当 `readScope=workspace` 时硬限制在 `workingDir` 子树，否则放开。不是简单的 "默认 false" 布尔。
 - **Shell**：无黑名单。
 - **WebFetch Cookie**：本地 `~/.zero-core/webfetch/cookies.json`，权限 0600 假设。
@@ -278,7 +295,7 @@ IPC invoke (5ms)
 
 ### 8.3 优化路径
 
-短期（1 周）：日志脱敏 + 把 `requiresConfirmation` 真正接起来（需用户拍板默认行为）。
+短期（1 周）：日志脱敏（D-012）。
 中期（1 月）：文件路径默认限制 workspace（v0.8 已部分落地）。
 长期（持续）：建立 threat model + 定期 audit。
 
@@ -293,12 +310,14 @@ quadrantChart
     quadrant-2 安全强 + 性能低
     quadrant-3 性能低 + 安全低
     quadrant-4 性能优 + 安全低
-    "可演进性": [0.85, 0.40]
+    "可演进性": [0.88, 0.55]
     "可用性":   [0.55, 0.45]
     "性能":     [0.60, 0.20]
     "安全":     [0.20, 0.30]
     "一致性":   [0.30, 0.55]
-    "DX(开发体验)": [0.85, 0.60]
+    "DX(开发体验)": [0.92, 0.65]
 ```
 
-**结论**：项目在"快速迭代"和"基础可靠"上做了良好平衡。安全与一致性是未来的重点投入方向。
+**坐标说明**：上图为 v0.8 后重评坐标。**DX(开发体验)** 由 v0.7 的 [0.85, 0.60] 右上移至 [0.92, 0.65] —— x 轴（性能/抽象杠杆）右移，因为 v0.8 引入 14 张工作流域表 + 25 工具 + `ROUTE_MAP` 自动派生 preload/路由类型 + `buildTool` 横切注入 PreToolUse 阻断 / rateLimiter / recordToolUsage / truncateResult 后，**加一个新工具 / 加一张新表的边际成本显著下降**（见 §6.1 / §6.4 / §6.5）；y 轴（安全）轻微上移，因为新工具默认获得 rate-limit + 危险命令阻断。**可演进性** 由 [0.85, 0.40] 移至 [0.88, 0.55] —— 主因是工作流域表 + STORE 独立化让"加一种新业务对象"从"改 AgentToolStore 单表"变成"独立 store + 独立路由"，扩展点更分散、耦合更低。
+
+**结论**：项目在"快速迭代"和"基础可靠"上做了良好平衡。安全与一致性是未来的重点投入方向。**v0.8 后 DX 评估应上调**（buildTool 横切 + ROUTE_MAP 派生 + 工作流域表独立化三件套，让加工具/加表的工程师边际成本接近"复制模板 + 改业务字段"）。
