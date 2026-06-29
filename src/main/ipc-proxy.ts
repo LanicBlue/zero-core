@@ -37,20 +37,7 @@
 
 import { ipcMain, type BrowserWindow } from "electron";
 import WebSocket from "ws";
-import { Agent, type Dispatcher } from "undici";
 import { log } from "../core/logger.js";
-
-// ─── 内部请求专用 dispatcher(绝不走代理) ───────────────────
-// 本桥接所有 fetch 都打 http://localhost:<backendPort>(自家后端子进程)。
-// proxy-manager 在开代理时会把全局 dispatcher 换成 ProxyAgent,会连 localhost
-// 请求也送进外部代理 → 代理够不到本机 → 挂到 headersTimeout(5min)→
-// `UND_ERR_HEADERS_TIMEOUT`(曾导致 projects:triggerWork 等 IPC 整体卡死)。
-// 所以内部请求一律用这个独立 Agent,绕开全局代理 dispatcher。
-const internalDispatcher = new Agent();
-/** 给内部 localhost fetch 强制挂上 internalDispatcher。 */
-function internalInit(init: RequestInit = {}): RequestInit & { dispatcher: Dispatcher } {
-	return { ...init, dispatcher: internalDispatcher };
-}
 
 // ─── IPC → HTTP 映射表 ─────────────────────────────────────
 
@@ -309,7 +296,7 @@ export function registerProxyHandlers(port: number): void {
 	// app:ready — simple health check (not a REST route)
 	ipcMain.handle("app:ready", async () => {
 		try {
-			const resp = await fetch(`${baseUrl}/api/ready`, internalInit());
+			const resp = await fetch(`${baseUrl}/api/ready`);
 			const data = await resp.json();
 			return !!data.ready;
 		} catch {
@@ -341,7 +328,7 @@ export function registerProxyHandlers(port: number): void {
 					fetchOpts.body = JSON.stringify(body);
 				}
 
-				const resp = await fetch(url, internalInit(fetchOpts));
+				const resp = await fetch(url, fetchOpts);
 				const text = await resp.text();
 				// v0.8: surface non-2xx as a rejection so renderer `await
 				// ipcRenderer.invoke` throws (callers can try/catch). Previously
@@ -420,7 +407,7 @@ export function connectEventBridge(win: BrowserWindow, port: number): void {
 	// Check if backend is ready
 	async function pollReady() {
 		try {
-			const resp = await fetch(`http://localhost:${port}/api/ready`, internalInit());
+			const resp = await fetch(`http://localhost:${port}/api/ready`);
 			const data = await resp.json();
 			if (data.ready && win && !win.isDestroyed()) {
 				win.webContents.send("app:ready", true);
