@@ -696,13 +696,18 @@ export class AgentService {
 
 		log.agent("Sending project prompt to:", agentId, "session:", sessionId);
 
-		try {
-			await loop.run(prompt);
+		// fire-and-forget(对齐 chat-router 的 sendPrompt):立即返回,长任务
+		// (wiki 充实/重建等几分钟到十几分钟)不再把 trigger 的 HTTP 响应挂到
+		// 整轮跑完 → 修复 UND_ERR_HEADERS_TIMEOUT(主进程 fetch 等响应头到 5min)。
+		// isBusy 由 agent_end 事件复位(见 handleRuntimeEvent),与 await 路径等价;
+		// busy-skip 仍同步生效(state.isBusy 已在上方置 true);错误经 onEvent →
+		// error 事件推前端。
+		void loop.run(prompt).then(() => {
 			log.agent("Project prompt completed for:", agentId);
-		} catch (err) {
+		}).catch((err) => {
 			log.error("agent", "Project prompt error:", (err as Error).message);
 			this.emit({ type: "error", error: (err as Error).message, agentId });
-		}
+		});
 		return {};
 	}
 	// v0.8 (M0): createRoleLoopFactory removed. Sub-agent dispatch now flows
