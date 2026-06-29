@@ -627,7 +627,7 @@
 		},
 		{
 			"path": "src/runtime/provider-concurrency-manager.ts",
-			"lines": 78,
+			"lines": 82,
 			"dir": "src/runtime",
 			"exports": [
 				"ProviderConcurrencyManager.getQueue",
@@ -4466,7 +4466,7 @@
 		},
 		{
 			"path": "src/server/sqlite-store.ts",
-			"lines": 394,
+			"lines": 398,
 			"dir": "src/server",
 			"exports": [
 				"SqliteStore.columnDef",
@@ -4509,8 +4509,8 @@
 				"src/server/sqlite-store.ts/SqliteStore.updateRow:314",
 				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:322",
 				"src/server/sqlite-store.ts/SqliteStore.rowToRecord:333",
-				"src/server/sqlite-store.ts/camelToSnake:372",
-				"src/server/sqlite-store.ts/scalarEqual:382"
+				"src/server/sqlite-store.ts/camelToSnake:376",
+				"src/server/sqlite-store.ts/scalarEqual:386"
 			],
 			"description": "SqliteStore 基类：通用 SQLite 表管理，ensureTable + self-heal（ALTER ADD COLUMN if missing）"
 		},
@@ -7652,10 +7652,10 @@
 			"kind": "function",
 			"file": "src/runtime/provider-concurrency-manager.ts",
 			"line": 73,
-			"endLine": 77,
-			"statementCount": 5,
+			"endLine": 81,
+			"statementCount": 6,
 			"exported": false,
-			"signature": "function clampConcurrency(n?: number)",
+			"signature": "function clampConcurrency(n?: number | string)",
 			"description": "",
 			"callees": []
 		},
@@ -20557,7 +20557,7 @@
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
 				"src/server/sqlite-store.ts/SqliteStore.get:163",
-				"src/server/sqlite-store.ts/scalarEqual:382",
+				"src/server/sqlite-store.ts/scalarEqual:386",
 				"src/server/sqlite-store.ts/SqliteStore.updateRow:314"
 			]
 		},
@@ -20642,7 +20642,7 @@
 			"kind": "method",
 			"file": "src/server/sqlite-store.ts",
 			"line": 333,
-			"endLine": 350,
+			"endLine": 354,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method rowToRecord(row: Record<string, any>)",
@@ -20650,12 +20650,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/sqlite-store.ts/camelToSnake:372",
+			"id": "src/server/sqlite-store.ts/camelToSnake:376",
 			"name": "camelToSnake",
 			"kind": "function",
 			"file": "src/server/sqlite-store.ts",
-			"line": 372,
-			"endLine": 374,
+			"line": 376,
+			"endLine": 378,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function camelToSnake(s: string)",
@@ -20663,12 +20663,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/sqlite-store.ts/scalarEqual:382",
+			"id": "src/server/sqlite-store.ts/scalarEqual:386",
 			"name": "scalarEqual",
 			"kind": "function",
 			"file": "src/server/sqlite-store.ts",
-			"line": 382,
-			"endLine": 393,
+			"line": 386,
+			"endLine": 397,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "function scalarEqual(a: unknown, b: unknown)",
@@ -26243,7 +26243,7 @@
 			"src/server/sqlite-store.ts/SqliteStore.createWithId:220",
 			"src/server/sqlite-store.ts/SqliteStore.migrateFromJson:272"
 		],
-		"src/server/sqlite-store.ts/scalarEqual:382": [
+		"src/server/sqlite-store.ts/scalarEqual:386": [
 			"src/server/sqlite-store.ts/SqliteStore.update:227"
 		],
 		"src/server/sqlite-store.ts/SqliteStore.updateRow:314": [

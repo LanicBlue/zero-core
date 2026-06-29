@@ -36,7 +36,7 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 		baseUrl: provider?.baseUrl ?? DEFAULT_URLS.openai,
 		enabled: provider?.enabled ?? true,
 		enableConcurrencyLimit: provider?.enableConcurrencyLimit ?? false,
-		maxConcurrency: provider?.maxConcurrency ?? 3,
+		maxConcurrency: Number(provider?.maxConcurrency) || 3,
 	});
 	const [newModelId, setNewModelId] = useState("");
 	const [newModelGroup, setNewModelGroup] = useState("");

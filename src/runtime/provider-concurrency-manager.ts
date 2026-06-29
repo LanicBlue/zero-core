@@ -70,8 +70,12 @@ function normalize(name: string): string {
 	return name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
 }
 
-function clampConcurrency(n?: number): number {
-	if (typeof n !== "number" || n < 1) return 1;
-	if (n > 10) return 10;
-	return n;
+function clampConcurrency(n?: number | string): number {
+	// 容忍字符串:TEXT 亲和列会把数字存成 REAL 文本("2"),reconfigure 拿到的
+	// maxConcurrency 可能是字符串。先 Number 化再 clamp,否则 typeof !== "number"
+	// 直接退回 1,用户设的并发数失效。
+	const num = typeof n === "number" ? n : Number(n);
+	if (!Number.isFinite(num) || num < 1) return 1;
+	if (num > 10) return 10;
+	return Math.floor(num);
 }

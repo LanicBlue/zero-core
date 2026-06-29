@@ -341,7 +341,11 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 					record[camelKey] = val;
 				}
 			} else if (this.boolColumns.has(camelKey)) {
-				record[camelKey] = val === 1;
+				// bool 列写的是 1/0,但列若是 TEXT 亲和(未特判为 INTEGER 的列,
+				// 如 enable_concurrency_limit),SQLite 会把 1 存成 REAL 文本 "1.0"。
+				// 严格 === 1 会让 "1.0" 读成 false → checkbox 保存后重置。按数值判定:
+				// 1 / 1.0 / "1" / "1.0" / true → true;0 / "0" / "0.0" / null → false。
+				record[camelKey] = Number(val) === 1;
 			} else {
 				record[camelKey] = val;
 			}
