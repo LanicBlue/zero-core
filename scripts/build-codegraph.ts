@@ -382,8 +382,8 @@ const FUNC_DESC: Record<string, string> = {
 	"src/runtime/tools/web-search.ts/webSearchTool.execute:248": "执行搜索并以 Found N results for: query 格式输出结果摘要",
 	"src/runtime/tools/web-search.ts/decodeHTMLEntities:276": "将 HTML 实体和标签解码为纯文本",
 	// ── runtime/tools/todo-write.ts ──
-	"src/runtime/tools/todo-write.ts/getAgentTodos:17": "获取指定代理的任务列表",
-	"src/runtime/tools/todo-write.ts/clearAgentTodos:21": "清除指定代理的任务列表",
+	"src/runtime/tools/todo-write.ts/getSessionTodos:40": "获取指定 session 的任务列表(按 sessionId 隔离)",
+	"src/runtime/tools/todo-write.ts/clearSessionTodos:44": "清除指定 session 的任务列表",
 	// ── runtime/tools/agent.ts ──
 	"src/runtime/tools/agent.ts/delegateTool.execute:20": "根据模式选择阻塞或非阻塞方式委派子代理任务",
 	// ── runtime/tools/mcp-tool.ts ──

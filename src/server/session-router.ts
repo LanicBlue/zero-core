@@ -85,6 +85,18 @@ export function createSessionRouter(deps: {
 	});
 
 	// Sessions
+	/**
+	 * GET /init/:sessionId — pull-on-display 入口。前端切到某 session 时主动拉
+	 * 完整 init payload(messages + tokens + todos + 未决 AskUser),作为基线渲染,
+	 * 之后只对该 active session 应用增量 push 事件。必须放在 /:agentId 之前,否则
+	 * "init" 会被当成 agentId 捕获。
+	 */
+	router.get("/init/:sessionId", (req, res) => {
+		const payload = agentService.getSessionInitPayload(req.params.sessionId);
+		if (!payload) return res.status(404).json({ error: "session not found" });
+		res.json(payload);
+	});
+
 	router.get("/:agentId", (req, res) => {
 		res.json(getDb().listSessions(req.params.agentId));
 	});

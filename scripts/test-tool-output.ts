@@ -32,7 +32,7 @@ import { grepTool } from "../src/runtime/tools/grep.ts";
 import { globTool } from "../src/runtime/tools/glob.ts";
 import { webSearchTool, setSearchProvider, type SearchProvider } from "../src/runtime/tools/web-search.ts";
 import { webFetchTool } from "../src/runtime/mcp-tools/fetch-tools.ts";
-import { todoWriteTool, clearAgentTodos } from "../src/runtime/tools/todo-write.ts";
+import { todoWriteTool, clearSessionTodos } from "../src/runtime/tools/todo-write.ts";
 import { taskListTool } from "../src/runtime/tools/task-list.ts";
 import { taskStatusTool } from "../src/runtime/tools/task-status.ts";
 import { taskStopTool } from "../src/runtime/tools/task-stop.ts";
@@ -436,7 +436,7 @@ const results: Record<string, T[]> = {};
 	]}, ctx());
 	t.push({ scenario: "all completed", result: r, pass: r.includes("1/1 completed") && r.includes("0 in progress"), note: "1/1 done" });
 
-	clearAgentTodos("test-agent");
+	clearSessionTodos("test-agent");
 }
 
 // ═══════════════════════════════════════════

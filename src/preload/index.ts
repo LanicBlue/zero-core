@@ -74,6 +74,8 @@ const api: WindowApi = {
 
 	// ─── Sessions ────────────────────────────────────
 	sessionsList: (agentId) => ipcRenderer.invoke("sessions:list", agentId),
+	// pull-on-display: 拉 session 完整 init payload(messages + todos + 未决 AskUser)。
+	sessionsGetInit: (sessionId) => ipcRenderer.invoke("sessions:getInit", sessionId),
 	sessionsNew: (agentId) => ipcRenderer.invoke("sessions:new", agentId),
 	// M4: find-or-create 一个 (agentId, projectId) session(project chat 入口)。
 	sessionsEnsureForProject: (agentId, projectId) => ipcRenderer.invoke("sessions:ensureForProject", agentId, projectId),

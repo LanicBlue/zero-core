@@ -21,22 +21,25 @@
 //
 
 import { HookRegistry } from "../../core/hook-registry.js";
-import { getAgentTodos, clearAgentTodos } from "../tools/todo-write.js";
+import { getSessionTodos, clearSessionTodos } from "../tools/todo-write.js";
 
 export function registerTodoCleanupHooks(): void {
 	HookRegistry.getInstance().register("PostTurnComplete", async (ctx: any) => {
+		// 按 sessionId 隔离:同一 agent 的不同 session 各自清各自的 todo,
+		// 避免一个 session 完成清空连累另一个 session 的列表。
+		const sessionId = ctx?.sessionId as string | undefined;
 		const agentId = ctx?.agentId as string | undefined;
-		if (!agentId) return;
-		const todos = getAgentTodos(agentId);
+		if (!sessionId) return;
+		const todos = getSessionTodos(sessionId);
 		if (todos.length === 0) return;
 		const allDone = todos.every((t) => t.status === "completed");
 		if (!allDone) return;
 		// All completed → clear immediately at the end of this turn.
-		clearAgentTodos(agentId);
+		clearSessionTodos(sessionId);
 		// Notify the frontend so the widget hides (reuses the existing
-		// todos_update → setTodos(agentId, []) → TodosList returns null path).
+		// todos_update → setTodos(sessionId, []) → TodosList returns null path).
 		if (typeof ctx.emit === "function") {
-			ctx.emit({ type: "todos_update", agentId, todos: [] });
+			ctx.emit({ type: "todos_update", agentId, sessionId, todos: [] });
 		}
 		return;
 	});

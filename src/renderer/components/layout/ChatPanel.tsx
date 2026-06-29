@@ -351,20 +351,22 @@ export default function ChatPanel() {
 				addMessage, finishStreaming, setActiveAgent,
 				setSessions, setActiveSessionId, setActiveProject, clearMessages,
 				editMessage, deleteMessage, setIsStreaming,
-				updateContextInfo,
+				updateContextInfo, loadMessages,
 			} = useChatStore();
 	const messages = useChatStore(selectActiveMessages);
 	const isStreaming = useChatStore(selectIsStreaming);
 	const contextInfo = useChatStore(selectContextInfo);
 	const { agents } = useAgentStore();
 	const { projects, fetchProjects } = useProjectStore();
-	const { pendingQuestions, setPendingQuestions, todosByAgent } = useInteractionStore();
+	const { pendingBySession, todosBySession, setPending, setTodos } = useInteractionStore();
 	const { activeRequirementId, setActiveRequirementId, setActivePage } = usePageStore();
 	const { requirements, transitionStatus, sendMessage: sendReqMessage } = useRequirementStore();
 	const activeRequirement = activeRequirementId
 		? requirements.find((r) => r.id === activeRequirementId)
 		: undefined;
-	const todos = activeAgentId ? (todosByAgent[activeAgentId] ?? []) : [];
+	// 按 sessionId 取本 session 的 todos / 未决 AskUser(同 agent 多 session 不串显)。
+	const todos = activeSessionId ? (todosBySession[activeSessionId] ?? []) : [];
+	const activePending = activeSessionId ? (pendingBySession[activeSessionId] ?? null) : null;
 	const [input, setInput] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -439,6 +441,44 @@ export default function ChatPanel() {
 			// session_init event may still arrive later
 		});
 	}, [activeAgentId]);
+
+	// ─── Pull-on-display ───────────────────────────────────────────
+	// 切到某 session 时主动拉完整 init payload(messages + tokens + todos + 未决
+	// AskUser)作为基线渲染,然后只对该 active session 收增量 push(AppLayout 已对
+	// 非 active session 断 push)。这是"有 session 就一定能看到消息"的根基 ——
+	// 服务端触发的 run(work/cron)没经 chat send(),user 消息只能靠这里拉回来。
+	// 防回归:响应回来时若用户已切走(activeSessionId 变了)就不覆盖,切回会再 pull。
+	useEffect(() => {
+		if (!activeSessionId) return;
+		const sid = activeSessionId;
+		let cancelled = false;
+		api().sessionsGetInit(sid).then((payload: any) => {
+			if (cancelled || !payload) return;
+			if (useChatStore.getState().activeSessionId !== sid) return;
+			loadMessages(sid, payload.messages ?? []);
+			updateContextInfo(sid, {
+				usedTokens: payload.inputTokens ?? 0,
+				contextWindow: payload.contextWindow ?? 128000,
+				usage: payload.contextUsage ?? 0,
+				inputTokens: payload.inputTokens ?? 0,
+				outputTokens: payload.outputTokens ?? 0,
+				totalTokens: payload.totalTokens ?? 0,
+			});
+			setTodos(sid, payload.todos ?? []);
+			setPending(
+				sid,
+				payload.pendingQuestion
+					? {
+							requestId: payload.pendingQuestion.requestId,
+							agentId: activeAgentId ?? "",
+							questions: payload.pendingQuestion.questions,
+						}
+					: null,
+			);
+		}).catch(() => { /* session 可能刚归档/不存在,静默 */ });
+		return () => { cancelled = true; };
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [activeSessionId]);
 
 	// Sync scroll to bottom — no animation, before paint
 	useLayoutEffect(() => {
@@ -691,11 +731,11 @@ export default function ChatPanel() {
 
 			{todos.length > 0 && <TodosList todos={todos} />}
 
-			{pendingQuestions && pendingQuestions.agentId === activeAgentId && (
+			{activePending && (
 				<AskUserCard
-					requestId={pendingQuestions.requestId}
-					questions={pendingQuestions.questions}
-					onDone={() => setPendingQuestions(null)}
+					requestId={activePending.requestId}
+					questions={activePending.questions}
+					onDone={() => activeSessionId && setPending(activeSessionId, null)}
 				/>
 			)}
 

@@ -20,12 +20,14 @@
 // ## 维护规则
 // - 保持任务状态准确
 // - 处理并发更新
+// - 按 sessionId 隔离(同一 agent 的不同 project session 各自独立 todo 列表,
+//   避免"Tasks 在一个 agent 内跨 session 串显")
 //
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 
 // ---------------------------------------------------------------------------
-// TodoWrite — per-agent task list management
+// TodoWrite — per-session task list management
 // ---------------------------------------------------------------------------
 
 export interface TodoItem {
@@ -34,25 +36,31 @@ export interface TodoItem {
 	activeForm: string;
 }
 
-// Per-agent in-memory todo store
-const agentTodos = new Map<string, TodoItem[]>();
+// Per-session in-memory todo store. Keyed by sessionId(同一 agent 的 General /
+// 各 project session 互不干扰)。ctx 没有 sessionId 时退化为 agentId,保证旧路径
+// 不崩。
+const sessionTodos = new Map<string, TodoItem[]>();
 
-export function getAgentTodos(agentId: string): TodoItem[] {
-	return agentTodos.get(agentId) ?? [];
+function todoKey(sessionId: string | undefined, agentId: string | undefined): string {
+	return sessionId ?? agentId ?? "_default";
 }
 
-export function clearAgentTodos(agentId: string): void {
-	agentTodos.delete(agentId);
+export function getSessionTodos(sessionId: string): TodoItem[] {
+	return sessionTodos.get(sessionId) ?? [];
+}
+
+export function clearSessionTodos(sessionId: string): void {
+	sessionTodos.delete(sessionId);
 }
 
 /**
- * Render the agent's current todo list as a context block (null if empty).
+ * Render the session's current todo list as a context block (null if empty).
  * Called by agent-loop each turn so the agent SEES its todo state (not just
  * writes blindly). Rendering lives here (the todo module); agent-loop only
  * wires the result into buildContextMessage — keeps tool/loop concerns separate.
  */
-export function renderTodosContext(agentId: string): string | null {
-	const todos = agentTodos.get(agentId);
+export function renderTodosContext(sessionId: string | undefined, agentId?: string): string | null {
+	const todos = sessionTodos.get(todoKey(sessionId, agentId));
 	if (!todos || todos.length === 0) return null;
 	const lines = todos.map((t) => {
 		const mark = t.status === "completed" ? "[x]" : t.status === "in_progress" ? "[~]" : "[ ]";
@@ -76,18 +84,20 @@ export const todoWriteTool = buildTool({
 		})).describe("Complete task list — replaces the previous list entirely"),
 	}),
 	execute: async ({ todos }, ctx) => {
-		agentTodos.set(ctx.agentId, todos);
+		const key = todoKey(ctx.sessionId, ctx.agentId);
+		sessionTodos.set(key, todos);
 
 		ctx.emit({
 			type: "todos_update",
 			agentId: ctx.agentId,
+			sessionId: ctx.sessionId,
 			todos,
 		} as any);
 
 		// Return the FULL list (not just a summary) so the agent sees the actual
 		// items + statuses it just committed. Previously returned only "X/Y done",
 		// which told the agent nothing about the contents.
-		const rendered = renderTodosContext(ctx.agentId) ?? "(empty list)";
+		const rendered = renderTodosContext(ctx.sessionId, ctx.agentId) ?? "(empty list)";
 		const inProgress = todos.filter((t: TodoItem) => t.status === "in_progress").length;
 		return `Task list updated (${inProgress} in progress).\n${rendered}`;
 	},

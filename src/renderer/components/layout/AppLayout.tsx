@@ -150,13 +150,17 @@ export default function AppLayout() {
 			agent_end: (_d, key) => finishStreaming(key),
 			retry_attempt: (d, key) => updateAssistantText(key, `Retrying (${d.attempt}/${d.maxAttempts})...`),
 			todos_update: (d) => {
-				useInteractionStore.getState().setTodos(d.agentId, d.todos);
+				// 按 sessionId 路由(同 agent 多 session 不串显)。
+				if (!d.sessionId) return;
+				useInteractionStore.getState().setTodos(d.sessionId, d.todos);
 			},
 			ask_user: (d) => {
-				// AskUser tool emitted a question — surface it as a pending card so
-				// ChatPanel renders <AskUserCard>. The tool blocks on pendingResponses
-				// until the user responds via the card (askUserRespond IPC).
-				useInteractionStore.getState().setPendingQuestions({
+				// AskUser tool emitted a question — 按 sessionId 路由成 pending 卡片,
+				// ChatPanel 渲染 <AskUserCard>。工具在 pendingResponses 上阻塞到用户
+				// 经卡片(askUserRespond IPC)回复。非 active session 的事件在下方
+				// dispatcher 统一丢弃,切到该 session 时由 pull 拉回。
+				if (!d.sessionId) return;
+				useInteractionStore.getState().setPending(d.sessionId, {
 					requestId: d.requestId,
 					agentId: d.agentId,
 					questions: d.questions,
@@ -198,10 +202,24 @@ export default function AppLayout() {
 			},
 		};
 
+		// per-session push 事件:只对 active session 应用,切走即"断 push"。
+		// 这些事件都带 sessionId;text_delta/tool_*/todos_update/ask_user 等若来自
+		// 别的 session 一律丢弃 —— 切回时由 ChatPanel 的 pull(sessionsGetInit)拉基线。
+		// 没带 sessionId 的事件(理论残留)按 key fallback 落到 active。
+		const PER_SESSION_PUSH = new Set([
+			"text_delta", "thinking_delta", "tool_start", "tool_end",
+			"message_end", "usage", "agent_end", "retry_attempt", "error",
+			"session_init", "todos_update", "ask_user",
+		]);
+
 		const unsubscribe = api().onAgentEvent((data: any) => {
 			if (!data.agentId) return;
-			const currentSessionId = useChatStore.getState().activeSessionId;
-			const key = data.sessionId || currentSessionId || data.agentId;
+			const activeSessionId = useChatStore.getState().activeSessionId;
+			// disconnect-on-leave:带 sessionId 且不是当前 active session → 丢弃。
+			if (PER_SESSION_PUSH.has(data.type) && data.sessionId && data.sessionId !== activeSessionId) {
+				return;
+			}
+			const key = data.sessionId || activeSessionId || data.agentId;
 			const handler = handlers[data.type];
 			if (handler) handler(data, key);
 		});

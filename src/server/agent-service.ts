@@ -46,6 +46,8 @@ import type { SessionManager } from "./session-manager.js";
 import { createEventMetricsAdapter, type EventMetricsAdapter } from "./metrics-events.js";
 import { setSessionTurnSeq } from "./durable-hooks.js";
 import { setTurnSeq } from "../runtime/hooks/turn-hooks.js";
+import { getSessionTodos } from "../runtime/tools/todo-write.js";
+import { pendingResponses } from "../runtime/pending-responses.js";
 // (WORKFLOW_ROLES / sendRolePrompt 已退役 —— 去-role 统一走 sendProjectPrompt)
 
 // ---------------------------------------------------------------------------
@@ -842,31 +844,66 @@ export class AgentService {
 		}
 		resolvedSessionId = session.id;
 		this.activeSessions.set(agentId, resolvedSessionId);
-		// Ensure loop exists — this also creates runState
-		let loop = this.loops.get(resolvedSessionId);
-		if (!loop) {
-			const agent = this.agentStore
-				? this.agentStore.list().find((a) => a.id === agentId)
-				: undefined;
-			loop = this.createLoopForSession(agentId, resolvedSessionId, agent);
-		}
-		// Refresh turns cache so incremental persists are visible
-		loop.refreshTurnsCache();
-		const messages = this.buildSessionInitMessages(agentId, resolvedSessionId, loop);
+		// Build the full init payload (messages + tokens + todos + pending AskUser)
+		// and emit session_init. getSessionInitPayload is also the pull path used
+		// by GET /api/sessions/init/:sessionId — push and pull share ONE builder
+		// so they can never drift.
+		const payload = this.getSessionInitPayload(resolvedSessionId);
+		if (payload) {
 			this.emit({
 				type: "session_init",
 				agentId,
 				sessionId: resolvedSessionId,
-				messages,
-				// Context info from runtime (rebuilt from DB turns), not from DB session record
-				inputTokens: loop.getEstimatedTokens(),
-				outputTokens: session?.outputTokens ?? 0,
-				totalTokens: (session?.outputTokens ?? 0) + loop.getEstimatedTokens(),
-				contextWindow: loop.getContextWindow(),
-				contextUsage: loop.getContextUsage(),
+				...payload,
 			});
-			return resolvedSessionId;
 		}
+		return resolvedSessionId;
+	}
+
+	/**
+	 * 构建 session 的完整 init payload(messages + token 信息 + todos + 未决
+	 * AskUser 问题)。供两条路径共用,保证 push(activateSession 的 session_init)
+	 * 与 pull(前端显示时 GET /api/sessions/init/:sessionId)永不漂移。
+	 *
+	 * 纯读:确保 loop 存在(读 DB turns + 实时 streaming 状态),不改 active 指针。
+	 * 找不到 session 返回 null。
+	 */
+	getSessionInitPayload(sessionId: string): {
+		messages: any[];
+		inputTokens: number;
+		outputTokens: number;
+		totalTokens: number;
+		contextWindow: number;
+		contextUsage: number;
+		todos: any[];
+		pendingQuestion: { requestId: string; questions: any[] } | null;
+	} | null {
+		const session = this.db.getSession(sessionId);
+		if (!session) return null;
+		const agentId = session.agentId;
+		// Ensure loop exists — this also creates runState
+		let loop = this.loops.get(sessionId);
+		if (!loop) {
+			const agent = this.agentStore
+				? this.agentStore.list().find((a) => a.id === agentId)
+				: undefined;
+			loop = this.createLoopForSession(agentId, sessionId, agent);
+		}
+		// Refresh turns cache so incremental persists are visible
+		loop.refreshTurnsCache();
+		const messages = this.buildSessionInitMessages(agentId, sessionId, loop);
+		const pendingQuestion = pendingResponses.getPendingForSession(sessionId);
+		return {
+			messages,
+			inputTokens: loop.getEstimatedTokens(),
+			outputTokens: session.outputTokens ?? 0,
+			totalTokens: (session.outputTokens ?? 0) + loop.getEstimatedTokens(),
+			contextWindow: loop.getContextWindow(),
+			contextUsage: loop.getContextUsage(),
+			todos: getSessionTodos(sessionId),
+			pendingQuestion,
+		};
+	}
 
 
 	/**

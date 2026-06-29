@@ -124,6 +124,8 @@ const R: Record<string, RouteMapping> = {
 
 	// Sessions
 	"sessions:list":    { method: "GET", path: "/api/sessions/:agentId", buildReq: (agentId) => ({ params: { agentId } }) },
+	// pull-on-display: 切到某 session 时拉完整 init payload(messages + todos + 未决 AskUser)。
+	"sessions:getInit": { method: "GET", path: "/api/sessions/init/:sessionId", buildReq: (sessionId) => ({ params: { sessionId } }) },
 	"sessions:new":     { method: "POST", path: "/api/sessions/:agentId/new", buildReq: (agentId) => ({ params: { agentId } }) },
 	"sessions:ensureForProject": { method: "POST", path: "/api/sessions/for-project", buildReq: (agentId, projectId) => ({ body: { agentId, projectId } }) },
 	"sessions:switch":  { method: "PUT", path: "/api/sessions/:agentId/switch/:sessionId", buildReq: (agentId, sessionId) => ({ params: { agentId, sessionId } }) },

@@ -55,16 +55,19 @@ export const askUserTool = buildTool({
 			// Hook: Elicitation
 			triggerHooks("Elicitation", { agentId: ctx.agentId, questions });
 
-		// Emit ask_user event for renderer to pick up
+		// Emit ask_user event for renderer to pick up. 带 sessionId:前端按 session
+		// 路由卡片(同 agent 多 session 不串显),pendingResponses 也按 session 索引,
+		// 供"显示时 pull"拉回未决问题。
 		ctx.emit({
 			type: "ask_user",
 			agentId: ctx.agentId,
+			sessionId: ctx.sessionId,
 			requestId,
 			questions,
 		} as any);
 
 		// Wait for user response
-		const answers = await pendingResponses.createRequest(requestId);
+		const answers = await pendingResponses.createRequest(requestId, { sessionId: ctx.sessionId, questions });
 
 			// Hook: ElicitationResult
 			triggerHooks("ElicitationResult", { agentId: ctx.agentId, response: answers });

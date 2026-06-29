@@ -97,6 +97,21 @@ export interface WindowApi {
 
 	// ── Sessions ──
 	sessionsList: (agentId: string) => Promise<SessionRecord[]>;
+	/**
+	 * pull-on-display: 切到某 session 时拉的完整 init payload。messages 是渲染端
+	 * ChatMessage 形状(由后端 buildSessionInitMessages 产出);todos + pendingQuestion
+	 * 让显示时一并恢复 Tasks 与未决 AskUser 卡片。
+	 */
+	sessionsGetInit: (sessionId: string) => Promise<{
+		messages: any[];
+		inputTokens: number;
+		outputTokens: number;
+		totalTokens: number;
+		contextWindow: number;
+		contextUsage: number;
+		todos: Array<{ content: string; status: "pending" | "in_progress" | "completed"; activeForm: string }>;
+		pendingQuestion: { requestId: string; questions: Array<{ question: string; header?: string; options?: Array<{ label: string; description?: string }>; multiSelect?: boolean }> } | null;
+	} | null>;
 	sessionsNew: (agentId: string) => Promise<SessionRecord>;
 	/** M4: find-or-create 一个 (agentId, projectId) session(project chat 入口)。 */
 	sessionsEnsureForProject: (agentId: string, projectId: string) => Promise<{ sessionId: string; created: boolean }>;

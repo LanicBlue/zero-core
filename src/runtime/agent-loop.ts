@@ -537,7 +537,7 @@ export class AgentLoop implements AgentRuntime {
 			currentTask: currentTask || undefined,
 			// Inject the agent's current todo list so it can read its own state
 			// across turns (not just write blindly). Renderer lives in todo-write.ts.
-			todosContext: renderTodosContext(this.config.agentId) ?? undefined,
+			todosContext: renderTodosContext(this.config.sessionId, this.config.agentId) ?? undefined,
 		});
 		const messages = this.prependContext(this.session.getMessages(), ctx);
 
