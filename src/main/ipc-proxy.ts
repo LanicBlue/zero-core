@@ -241,6 +241,7 @@ const R: Record<string, RouteMapping> = {
 		"wiki:readDetail":       { method: "GET",  path: "/api/wiki/nodes/:nodeId/detail",                  buildReq: (nodeId) => ({ params: { nodeId } }) },
 		"wiki:readWorkspaceDoc": { method: "GET",  path: "/api/projects/:projectId/workspace-doc",          buildReq: (projectId, relPath) => ({ params: { projectId }, query: { relPath } }) },
 		"wiki:search":           { method: "GET",  path: "/api/wiki/search",                                buildReq: (query, anchorIds?) => ({ query: { query, ...(anchorIds?.length ? { anchorIds: anchorIds.join(",") } : {}) } }) },
+		"wiki:resolvedAnchors":  { method: "GET",  path: "/api/wiki/anchors",                              buildReq: (agentId, projectId?) => ({ query: { agentId, ...(projectId ? { projectId } : {}) } }) },
 
 		// ─── Lead (M3) ──────────────────────────────────────
 		"lead:pickup":             { method: "POST",   path: "/api/requirements/:id/pickup",   buildReq: (requirementId) => ({ params: { id: requirementId } }) },

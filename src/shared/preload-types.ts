@@ -42,7 +42,7 @@ import type {
 	ProjectWorkRecord, ProjectWorkView, CreateProjectWorkBody, FireProjectWorkResult,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
 	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
-	WikiNode,
+	WikiNode, ResolvedAnchorView,
 	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord, ProjectJobRecord,
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
@@ -264,6 +264,7 @@ export interface WindowApi {
 	wikiReadDetail: (nodeId: string) => Promise<{ nodeId: string; detail?: string; summary?: string }>;
 	wikiReadWorkspaceDoc: (projectId: string, relPath: string) => Promise<{ content?: string; error?: string }>;
 	wikiSearch: (query: string, anchorIds?: string[]) => Promise<WikiNode[]>;
+	wikiResolvedAnchors: (agentId: string, projectId?: string) => Promise<ResolvedAnchorView[]>;
 
 	// ── Lead ──
 	leadPickup: (requirementId: string) => Promise<{ sessionId: string } | { error: string }>;

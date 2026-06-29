@@ -46,9 +46,14 @@ export default function FileTreePanel() {
 	const lastRootRef = useRef<string>("");
 
 	const activeAgentId = useChatStore((s) => s.activeAgentId);
+	const activeSessionId = useChatStore((s) => s.activeSessionId);
+	const sessionsByAgent = useChatStore((s) => s.sessionsByAgent);
 	const agents = useAgentStore((s) => s.agents);
 	const activeAgent = agents.find((a: AgentRecord) => a.id === activeAgentId) ?? null;
-	const effectiveRoot = activeAgent?.workspaceDir || globalWorkspace;
+	// project session → 用项目工作区(右侧目录即项目目录,方便观察 agent 操作);
+	// general session(无 context.workspaceDir)→ 退到 agent 默认 / 全局 workspace。
+	const activeSession = (sessionsByAgent[activeAgentId ?? ""] ?? []).find((s: { id: string }) => s.id === activeSessionId);
+	const effectiveRoot = activeSession?.context?.workspaceDir || activeAgent?.workspaceDir || globalWorkspace;
 
 	useEffect(() => {
 		api().configGet()

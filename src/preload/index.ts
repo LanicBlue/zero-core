@@ -259,6 +259,7 @@ const api: WindowApi = {
 	wikiReadDetail: (nodeId) => ipcRenderer.invoke("wiki:readDetail", nodeId),
 	wikiReadWorkspaceDoc: (projectId, relPath) => ipcRenderer.invoke("wiki:readWorkspaceDoc", projectId, relPath),
 	wikiSearch: (query, anchorIds?) => ipcRenderer.invoke("wiki:search", query, anchorIds),
+	wikiResolvedAnchors: (agentId, projectId?) => ipcRenderer.invoke("wiki:resolvedAnchors", agentId, projectId),
 
 	// ── Lead ──
 	leadPickup: (requirementId) => ipcRenderer.invoke("lead:pickup", requirementId),

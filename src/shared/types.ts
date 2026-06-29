@@ -458,7 +458,7 @@ export interface ProjectContainerView {
 		/** 0..1 — fraction of expected top-level structure nodes scanned, if known. */
 		scanProgress: number | null;
 	};
-	activeSessions: Array<{ agentId: string; name: string; sessionId: string }>;
+	activeSessions: Array<{ agentId: string; name: string; sessionId: string; running: boolean }>;
 	/** v0.8 archivist 长期绑定(阶段2):该 project 绑定的 archivist agent + 各操作 cron 状态。 */
 	archivistBinding?: ProjectArchivistBinding;
 	/** v0.8 project-work 系统:该 project 的全部工位(含空岗)+ cron/hook 触发器状态。 */
@@ -566,6 +566,19 @@ export type FireProjectWorkResult =
 	| { status: "ok"; sessionId: string }
 	| { status: "skipped"; reason: string }
 	| { status: "error"; error: string };
+
+/**
+ * 解析后的 wiki 锚点(供 chat 侧栏显示"实际注入了哪些根")。镜像 runtime 层
+ * ResolvedAnchor,加 title/injectLabel 便于直接渲染。inject 标明注入通道:
+ * system(进 system prompt,可缓存)/ context(每轮重算)/ off(只算 scope,不注入)。
+ */
+export interface ResolvedAnchorView {
+	nodeId: string;
+	title: string;
+	kind: "project" | "memory";
+	inject: "system" | "context" | "off";
+	depth: number;
+}
 
 /** POST /projects/:id/works 绑定/创建 body。 */
 export interface CreateProjectWorkBody {

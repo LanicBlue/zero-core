@@ -29,6 +29,7 @@ import TitleBar from "./TitleBar.js";
 import IconSidebar from "./IconSidebar.js";
 import ChatPanel from "./ChatPanel.js";
 import FileTreePanel from "./FileTreePanel.js";
+import MiddlePanel from "./MiddlePanel.js";
 import DocViewerPanel from "./DocViewerPanel.js";
 import ResizableLayout from "./ResizableLayout.js";
 import AgentsPage from "../agents/AgentsPage.js";
@@ -92,10 +93,14 @@ export default function AppLayout() {
 		const handlers: Record<string, (data: any, key: string) => void> = {
 			session_init: (d, key) => {
 					const sid = d.sessionId || key;
-					// Don't overwrite a session that is actively streaming.
-					// Real-time events have already been keeping the store up to date.
+					// Don't overwrite a session that is actively streaming AND already
+					// has messages in the store (real-time events keep it current).
+					// BUT for server-triggered runs (work trigger / cron) the chat
+					// send() never ran, so the store is empty — load session_init
+					// anyway so switching to that session shows the run's messages.
 					const state = useChatStore.getState();
-					if (state.streamingSessions.has(sid)) return;
+					const hasMsgs = (state.messagesBySession[sid]?.length ?? 0) > 0;
+					if (state.streamingSessions.has(sid) && hasMsgs) return;
 					initSession(sid, { messages: d.messages || [] });
 						// Restore context window and token usage from backend
 						updateContextInfo(d.sessionId || key, {
@@ -216,7 +221,7 @@ export default function AppLayout() {
 						mins={[280, 160, 200]}
 					>
 						<ChatPanel />
-						<FileTreePanel />
+						<MiddlePanel />
 						<DocViewerPanel />
 					</ResizableLayout>
 				</div>

@@ -48,6 +48,9 @@ import { resolve, relative, isAbsolute } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import type { WikiStore } from "./wiki-node-store.js";
 import type { ProjectStore } from "./project-store.js";
+import type { AgentStore } from "./agent-store.js";
+import type { ResolvedAnchorView } from "../shared/types.js";
+import { resolveAnchors } from "../runtime/wiki-anchor-injection.js";
 
 /**
  * Build the 3 wiki-tree endpoints (list-by-anchors / nodes/:id/detail / search).
@@ -59,11 +62,47 @@ import type { ProjectStore } from "./project-store.js";
  */
 export function createWikiRouter(deps: {
 	wikiStore: WikiStore;
+	agentStore: AgentStore;
 	/** v0.8 §2.13: lazy summary materialization on expand (optional). */
 	archivistService?: import("./wiki-skeleton-service.js").WikiSkeletonService;
 }): Router {
 	const router = Router();
-	const { wikiStore, archivistService } = deps;
+	const { wikiStore, agentStore, archivistService } = deps;
+
+	/**
+	 * GET /api/wiki/anchors?agentId=...&projectId=...
+	 *
+	 * 返回该 (agent, project) 会**实际注入**的 wiki 锚点(复用 runtime
+	 * resolveAnchors,与 AgentLoop 构造时解析的锚点同源)。chat 侧栏据此显示
+	 * 真实根节点 + 注入通道(system/context/off),与上下文注入一一对应。
+	 */
+	router.get("/anchors", (req, res) => {
+		try {
+			const agentId = (req.query.agentId as string | undefined) ?? "";
+			const projectId = (req.query.projectId as string | undefined) ?? "";
+			if (!agentId) {
+				res.status(400).json({ error: "agentId query parameter is required" });
+				return;
+			}
+			const agent = agentStore.get(agentId);
+			const anchors = resolveAnchors({
+				wiki: wikiStore,
+				agentId,
+				contextBundle: projectId ? { projectId, workspaceDir: "", wikiRootNodeId: "" } : undefined,
+				wikiAnchors: agent?.wikiAnchors,
+			});
+			const views: ResolvedAnchorView[] = anchors.map((a) => ({
+				nodeId: a.nodeId,
+				title: wikiStore.get(a.nodeId)?.title ?? a.nodeId,
+				kind: a.kind,
+				inject: a.inject,
+				depth: a.depth,
+			}));
+			res.json(views);
+		} catch (err) {
+			res.status(500).json({ error: (err as Error).message });
+		}
+	});
 
 	/**
 	 * POST /api/wiki/list-by-anchors

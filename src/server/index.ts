@@ -434,6 +434,7 @@ export async function startServer(options?: StartServerOptions) {
 		wikiStore: wikiStoreGlobal,
 	});
 	management.setProjectWorkRunner(projectWorkRunner);
+	management.setAgentService(agentService);
 	const { ProjectWorkHookManager } = await import("./project-work-hook-manager.js");
 	const projectWorkHookManager = new ProjectWorkHookManager({ projectWorkStore, projectWorkRunner });
 	projectWorkHookManager.start();
@@ -661,7 +662,7 @@ export async function startServer(options?: StartServerOptions) {
 	// projectStore resolves workspaceDir for the workspace-doc sandbox.
 	// Mounted AFTER /api/projects/:id so the explicit /workspace-doc segment
 	// matches first (Express takes the first matching route per method+path).
-	app.use("/api/wiki", createWikiBrowserRouter({ wikiStore: wikiStoreGlobal, archivistService }));
+	app.use("/api/wiki", createWikiBrowserRouter({ wikiStore: wikiStoreGlobal, agentStore, archivistService }));
 	app.get(
 		"/api/projects/:projectId/workspace-doc",
 		createWorkspaceDocHandler({ projectStore }),

@@ -45,6 +45,8 @@ export default function DocViewerPanel() {
 	const [loading, setLoading] = useState(false);
 	const [resolvedPath, setResolvedPath] = useState<string>("");
 	const [viewMode, setViewMode] = useState<ViewMode>("preview");
+	const [wikiMode, setWikiMode] = useState(false);
+	const [wikiSummary, setWikiSummary] = useState("");
 	const webviewRef = useRef<Electron.WebviewTag | null>(null);
 
 	const loadFile = useCallback(async (path: string, root: string) => {
@@ -93,11 +95,30 @@ export default function DocViewerPanel() {
 			setSelectedFile(path);
 			setFileRoot(root);
 			setResolvedPath("");
+			setWikiMode(false);
+			setWikiSummary("");
 			setLoading(true);
 			await loadFile(path, root);
 		};
 		window.addEventListener("zero-file-select", handler);
-		return () => window.removeEventListener("zero-file-select", handler);
+		/** wiki node body (WikiTreePanel dispatches zero-wiki-select): read-only markdown. */
+		const wikiHandler = (e: Event) => {
+			const d = (e as CustomEvent).detail as { title: string; summary?: string; content: string };
+			setSelectedFile(d.title);
+			setWikiSummary(d.summary ?? "");
+			setFileRoot("");
+			setFileRoot("");
+			setResolvedPath("");
+			setContent(d.content ?? "");
+			setWikiMode(true);
+			setViewMode("preview");
+			setLoading(false);
+		};
+		window.addEventListener("zero-wiki-select", wikiHandler);
+		return () => {
+			window.removeEventListener("zero-file-select", handler);
+			window.removeEventListener("zero-wiki-select", wikiHandler);
+		};
 	}, [loadFile]);
 
 	const fileName = selectedFile?.split("/").pop()?.split("\\").pop() ?? "";
@@ -151,22 +172,22 @@ export default function DocViewerPanel() {
 				<>
 					<div className="doc-viewer-panel-header">
 						<span className="doc-viewer-filename" title={selectedFile}>
-							{fileName}
+							{wikiMode ? "📘 " : ""}{fileName}
 						</span>
 						<div className="doc-viewer-toolbar">
-							{canEdit && viewMode === "preview" && (
+							{!wikiMode && canEdit && viewMode === "preview" && (
 								<>
 									<button type="button" className="doc-toolbar-btn" onClick={switchToSource}>Source</button>
 									<button type="button" className="doc-toolbar-btn" onClick={switchToEdit}>Edit</button>
 								</>
 							)}
-							{canEdit && viewMode === "source" && (
+							{!wikiMode && canEdit && viewMode === "source" && (
 								<>
 									<button type="button" className="doc-toolbar-btn" onClick={switchToPreview}>Preview</button>
 									<button type="button" className="doc-toolbar-btn" onClick={switchToEdit}>Edit</button>
 								</>
 							)}
-							{canEdit && viewMode === "edit" && (
+							{!wikiMode && canEdit && viewMode === "edit" && (
 								<>
 									<button type="button" className="doc-toolbar-btn doc-toolbar-save" onClick={handleSave}>Save</button>
 									<button type="button" className="doc-toolbar-btn" onClick={switchToPreview}>Cancel</button>
@@ -188,6 +209,13 @@ export default function DocViewerPanel() {
 						/>
 					) : viewMode === "source" ? (
 						<pre className="doc-viewer-panel-content doc-viewer-code">{content}</pre>
+					) : wikiMode ? (
+						<div className="doc-viewer-panel-content">
+							{wikiSummary ? (
+								<div className="doc-wiki-summary">{wikiSummary}</div>
+							) : null}
+							<MarkdownRenderer content={content} />
+						</div>
 					) : fileType === "markdown" ? (
 						<div className="doc-viewer-panel-content">
 							<MarkdownRenderer content={content} />
@@ -204,7 +232,7 @@ export default function DocViewerPanel() {
 				</>
 			) : (
 				<div className="doc-viewer-panel-empty">
-					<p>Select a file to view</p>
+					<p>Select a file or wiki node to view</p>
 				</div>
 			)}
 		</div>
