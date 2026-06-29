@@ -2236,7 +2236,7 @@
 		},
 		{
 			"path": "src/server/agent-service.ts",
-			"lines": 1245,
+			"lines": 1249,
 			"dir": "src/server",
 			"exports": [
 				"AgentService.getDB",
@@ -2337,18 +2337,18 @@
 				"src/server/agent-service.ts/AgentService.restoreAllSessions:791",
 				"src/server/agent-service.ts/AgentService.activateSession:821",
 				"src/server/agent-service.ts/AgentService.getSessionInitPayload:876",
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:934",
-				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:938",
-				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:955",
-				"src/server/agent-service.ts/AgentService.buildLegacyMessages:1071",
-				"src/server/agent-service.ts/AgentService.dispose:1143",
-				"src/server/agent-service.ts/AgentService.invalidateLoops:1159",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1170",
-				"src/server/agent-service.ts/AgentService.findStateByAgentId:1205",
-				"src/server/agent-service.ts/AgentService.emit:1211",
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:938",
+				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:942",
+				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:959",
+				"src/server/agent-service.ts/AgentService.buildLegacyMessages:1075",
+				"src/server/agent-service.ts/AgentService.dispose:1147",
+				"src/server/agent-service.ts/AgentService.invalidateLoops:1163",
+				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1174",
+				"src/server/agent-service.ts/AgentService.findStateByAgentId:1209",
+				"src/server/agent-service.ts/AgentService.emit:1215",
 				"src/server/agent-service.ts/AgentService.on:495",
-				"src/server/agent-service.ts/createAgentService:1217",
-				"src/server/agent-service.ts/normalizeBlockArgsForUi:1233"
+				"src/server/agent-service.ts/createAgentService:1221",
+				"src/server/agent-service.ts/normalizeBlockArgsForUi:1237"
 			],
 			"description": "AgentService 类：全局调度入口，sendPrompt → createLoop → loop.run，session 管理，事件分发，recovery"
 		},
@@ -5466,7 +5466,7 @@
 		},
 		{
 			"path": "src/shared/preload-types.ts",
-			"lines": 329,
+			"lines": 330,
 			"dir": "src/shared",
 			"exports": [],
 			"imports": [
@@ -12230,7 +12230,7 @@
 			"signature": "method setWorkspaceDir(dir: string)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.invalidateLoops:1159"
+				"src/server/agent-service.ts/AgentService.invalidateLoops:1163"
 			]
 		},
 		{
@@ -12247,7 +12247,7 @@
 			"callees": [
 				"src/runtime/provider-factory.ts/clearProviderCache:162",
 				"src/runtime/provider-factory.ts/setConcurrencyManager:40",
-				"src/server/agent-service.ts/AgentService.invalidateLoops:1159",
+				"src/server/agent-service.ts/AgentService.invalidateLoops:1163",
 				"src/server/agent-service.ts/AgentService.notifyReady:251"
 			]
 		},
@@ -12524,7 +12524,7 @@
 			"callees": [
 				"src/runtime/tools/mcp-tool.ts/buildMcpTools:110",
 				"src/server/agent-service.ts/toolEnabled:84",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1170"
+				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1174"
 			]
 		},
 		{
@@ -12541,7 +12541,7 @@
 			"callees": [
 				"src/server/agent-service.ts/AgentService.createLoopForSession:416",
 				"src/server/agent-service.ts/AgentService.getOrCreateLoop:393",
-				"src/server/agent-service.ts/AgentService.emit:1211"
+				"src/server/agent-service.ts/AgentService.emit:1215"
 			]
 		},
 		{
@@ -12557,8 +12557,8 @@
 			"description": "v0.8 project-work(取代工作流角色的去-role 触发器):身份 prompt + toolPolicy",
 			"callees": [
 				"src/runtime/tools/mcp-tool.ts/buildMcpTools:110",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1170",
-				"src/server/agent-service.ts/AgentService.emit:1211"
+				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1174",
+				"src/server/agent-service.ts/AgentService.emit:1215"
 			]
 		},
 		{
@@ -12635,7 +12635,7 @@
 			"description": "",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.getSessionInitPayload:876",
-				"src/server/agent-service.ts/AgentService.emit:1211"
+				"src/server/agent-service.ts/AgentService.emit:1215"
 			]
 		},
 		{
@@ -12644,102 +12644,102 @@
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
 			"line": 876,
-			"endLine": 911,
+			"endLine": 915,
 			"statementCount": 12,
 			"exported": true,
 			"signature": "method getSessionInitPayload(sessionId: string)",
 			"description": "构建 session 的完整 init payload(messages + token 信息 + todos + 未决",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.createLoopForSession:416",
-				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:938",
+				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:942",
 				"src/runtime/pending-responses.ts/PendingResponseManager.getPendingForSession:93",
 				"src/runtime/tools/todo-write.ts/getSessionTodos:48"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.normalizeBlockArgs:934",
+			"id": "src/server/agent-service.ts/AgentService.normalizeBlockArgs:938",
 			"name": "AgentService.normalizeBlockArgs",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 934,
-			"endLine": 936,
+			"line": 938,
+			"endLine": 940,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method normalizeBlockArgs(blocks: any[])",
 			"description": "Normalize tool-call blocks' `args` to a JSON STRING. The renderer's",
 			"callees": [
-				"src/server/agent-service.ts/normalizeBlockArgsForUi:1233"
+				"src/server/agent-service.ts/normalizeBlockArgsForUi:1237"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildSessionInitMessages:938",
+			"id": "src/server/agent-service.ts/AgentService.buildSessionInitMessages:942",
 			"name": "AgentService.buildSessionInitMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 938,
-			"endLine": 952,
+			"line": 942,
+			"endLine": 956,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method buildSessionInitMessages(agentId: string, sessionId: string, loop: AgentLoop)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:955",
-				"src/server/agent-service.ts/AgentService.buildLegacyMessages:1071"
+				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:959",
+				"src/server/agent-service.ts/AgentService.buildLegacyMessages:1075"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildStepLevelMessages:955",
+			"id": "src/server/agent-service.ts/AgentService.buildStepLevelMessages:959",
 			"name": "AgentService.buildStepLevelMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 955,
-			"endLine": 1068,
+			"line": 959,
+			"endLine": 1072,
 			"statementCount": 47,
 			"exported": true,
 			"signature": "method buildStepLevelMessages(turns: Array<{ seq: number; role: string; content: string | null; createdAt: string; turnGroup?: number }>, isBusy: boolean, recorderBlocks: any[])",
 			"description": "Build UI messages from step-level data, grouping by turnGroup.",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:934"
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:938"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildLegacyMessages:1071",
+			"id": "src/server/agent-service.ts/AgentService.buildLegacyMessages:1075",
 			"name": "AgentService.buildLegacyMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1071,
-			"endLine": 1142,
+			"line": 1075,
+			"endLine": 1146,
 			"statementCount": 27,
 			"exported": true,
 			"signature": "method buildLegacyMessages(turns: Array<{ seq: number; role: string; content: string | null; createdAt: string }>, isBusy: boolean, recorderBlocks: any[])",
 			"description": "Legacy path: no turnGroup, each turn is one UI message.",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:934"
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:938"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.dispose:1143",
+			"id": "src/server/agent-service.ts/AgentService.dispose:1147",
 			"name": "AgentService.dispose",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1143,
-			"endLine": 1158,
+			"line": 1147,
+			"endLine": 1162,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method dispose()",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.dispose:1143",
+				"src/server/agent-service.ts/AgentService.dispose:1147",
 				"src/server/agent-service.ts/AgentService.abort:717"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.invalidateLoops:1159",
+			"id": "src/server/agent-service.ts/AgentService.invalidateLoops:1163",
 			"name": "AgentService.invalidateLoops",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1159,
-			"endLine": 1168,
+			"line": 1163,
+			"endLine": 1172,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method invalidateLoops()",
@@ -12749,28 +12749,28 @@
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.handleRuntimeEvent:1170",
+			"id": "src/server/agent-service.ts/AgentService.handleRuntimeEvent:1174",
 			"name": "AgentService.handleRuntimeEvent",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1170,
-			"endLine": 1204,
+			"line": 1174,
+			"endLine": 1208,
 			"statementCount": 21,
 			"exported": true,
 			"signature": "method handleRuntimeEvent(agentId: string, event: StreamEvent)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.findStateByAgentId:1205",
-				"src/server/agent-service.ts/AgentService.emit:1211"
+				"src/server/agent-service.ts/AgentService.findStateByAgentId:1209",
+				"src/server/agent-service.ts/AgentService.emit:1215"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.findStateByAgentId:1205",
+			"id": "src/server/agent-service.ts/AgentService.findStateByAgentId:1209",
 			"name": "AgentService.findStateByAgentId",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1205,
-			"endLine": 1210,
+			"line": 1209,
+			"endLine": 1214,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method findStateByAgentId(agentId: string)",
@@ -12778,12 +12778,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.emit:1211",
+			"id": "src/server/agent-service.ts/AgentService.emit:1215",
 			"name": "AgentService.emit",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1211,
-			"endLine": 1215,
+			"line": 1215,
+			"endLine": 1219,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method emit(event: { type: string; [key: string]: unknown })",
@@ -12806,12 +12806,12 @@
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/createAgentService:1217",
+			"id": "src/server/agent-service.ts/createAgentService:1221",
 			"name": "createAgentService",
 			"kind": "function",
 			"file": "src/server/agent-service.ts",
-			"line": 1217,
-			"endLine": 1219,
+			"line": 1221,
+			"endLine": 1223,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function createAgentService(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore, registry?: ToolRegistry, mcp?: MCPManager)",
@@ -12819,12 +12819,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/normalizeBlockArgsForUi:1233",
+			"id": "src/server/agent-service.ts/normalizeBlockArgsForUi:1237",
 			"name": "normalizeBlockArgsForUi",
 			"kind": "function",
 			"file": "src/server/agent-service.ts",
-			"line": 1233,
-			"endLine": 1244,
+			"line": 1237,
+			"endLine": 1248,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "function normalizeBlockArgsForUi(blocks: any[])",
@@ -14851,7 +14851,7 @@
 				"src/server/workflow-context-hook.ts/registerWorkflowContextHook:68",
 				"src/server/workspace-config.ts/loadWorkspaceConfig:40",
 				"src/runtime/proxy-manager.ts/applyProxy:30",
-				"src/server/agent-service.ts/createAgentService:1217",
+				"src/server/agent-service.ts/createAgentService:1221",
 				"src/server/data-change-hub.ts/onDataChange:97",
 				"src/server/index.ts/broadcast:264",
 				"src/server/mcp-scanner.ts/scanExternalMcpConfigs:156",
@@ -25035,7 +25035,7 @@
 			"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:310",
 			"src/runtime/wiki-anchor-injection.ts/visit:312"
 		],
-		"src/server/agent-service.ts/AgentService.invalidateLoops:1159": [
+		"src/server/agent-service.ts/AgentService.invalidateLoops:1163": [
 			"src/server/agent-service.ts/AgentService.setWorkspaceDir:162",
 			"src/server/agent-service.ts/AgentService.setProviders:168"
 		],
@@ -25066,8 +25066,8 @@
 		],
 		"src/server/agent-service.ts/AgentService.abort:717": [
 			"src/server/agent-service.ts/AgentService.evictSessionFromMemory:280",
-			"src/server/agent-service.ts/AgentService.dispose:1143",
-			"src/server/agent-service.ts/AgentService.invalidateLoops:1159"
+			"src/server/agent-service.ts/AgentService.dispose:1147",
+			"src/server/agent-service.ts/AgentService.invalidateLoops:1163"
 		],
 		"src/runtime/tools/mcp-tool.ts/buildMcpTools:110": [
 			"src/server/agent-service.ts/AgentService.createLoopForSession:416",
@@ -25077,18 +25077,18 @@
 			"src/server/agent-service.ts/AgentService.createLoopForSession:416",
 			"src/server/agent-service.ts/AgentService.on:495"
 		],
-		"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1170": [
+		"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1174": [
 			"src/server/agent-service.ts/AgentService.createLoopForSession:416",
 			"src/server/agent-service.ts/AgentService.sendProjectPrompt:579"
 		],
 		"src/server/agent-service.ts/AgentService.getOrCreateLoop:393": [
 			"src/server/agent-service.ts/AgentService.sendPrompt:547"
 		],
-		"src/server/agent-service.ts/AgentService.emit:1211": [
+		"src/server/agent-service.ts/AgentService.emit:1215": [
 			"src/server/agent-service.ts/AgentService.sendPrompt:547",
 			"src/server/agent-service.ts/AgentService.sendProjectPrompt:579",
 			"src/server/agent-service.ts/AgentService.activateSession:821",
-			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1170"
+			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1174"
 		],
 		"src/server/agent-service.ts/AgentService.whenReady:269": [
 			"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:729"
@@ -25105,30 +25105,30 @@
 		"src/server/agent-service.ts/AgentService.getSessionInitPayload:876": [
 			"src/server/agent-service.ts/AgentService.activateSession:821"
 		],
-		"src/server/agent-service.ts/AgentService.buildSessionInitMessages:938": [
+		"src/server/agent-service.ts/AgentService.buildSessionInitMessages:942": [
 			"src/server/agent-service.ts/AgentService.getSessionInitPayload:876"
 		],
 		"src/runtime/pending-responses.ts/PendingResponseManager.getPendingForSession:93": [
 			"src/server/agent-service.ts/AgentService.getSessionInitPayload:876"
 		],
-		"src/server/agent-service.ts/normalizeBlockArgsForUi:1233": [
-			"src/server/agent-service.ts/AgentService.normalizeBlockArgs:934"
+		"src/server/agent-service.ts/normalizeBlockArgsForUi:1237": [
+			"src/server/agent-service.ts/AgentService.normalizeBlockArgs:938"
 		],
-		"src/server/agent-service.ts/AgentService.buildStepLevelMessages:955": [
-			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:938"
+		"src/server/agent-service.ts/AgentService.buildStepLevelMessages:959": [
+			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:942"
 		],
-		"src/server/agent-service.ts/AgentService.buildLegacyMessages:1071": [
-			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:938"
+		"src/server/agent-service.ts/AgentService.buildLegacyMessages:1075": [
+			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:942"
 		],
-		"src/server/agent-service.ts/AgentService.normalizeBlockArgs:934": [
-			"src/server/agent-service.ts/AgentService.buildStepLevelMessages:955",
-			"src/server/agent-service.ts/AgentService.buildLegacyMessages:1071"
+		"src/server/agent-service.ts/AgentService.normalizeBlockArgs:938": [
+			"src/server/agent-service.ts/AgentService.buildStepLevelMessages:959",
+			"src/server/agent-service.ts/AgentService.buildLegacyMessages:1075"
 		],
-		"src/server/agent-service.ts/AgentService.dispose:1143": [
-			"src/server/agent-service.ts/AgentService.dispose:1143"
+		"src/server/agent-service.ts/AgentService.dispose:1147": [
+			"src/server/agent-service.ts/AgentService.dispose:1147"
 		],
-		"src/server/agent-service.ts/AgentService.findStateByAgentId:1205": [
-			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1170"
+		"src/server/agent-service.ts/AgentService.findStateByAgentId:1209": [
+			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1174"
 		],
 		"src/server/agent-store.ts/AgentStore.delete:179": [
 			"src/server/agent-store.ts/AgentStore.onChange:117",
@@ -25537,7 +25537,7 @@
 		"src/runtime/proxy-manager.ts/applyProxy:30": [
 			"src/server/index.ts/startServer:103"
 		],
-		"src/server/agent-service.ts/createAgentService:1217": [
+		"src/server/agent-service.ts/createAgentService:1221": [
 			"src/server/index.ts/startServer:103"
 		],
 		"src/server/data-change-hub.ts/onDataChange:97": [

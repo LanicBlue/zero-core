@@ -882,6 +882,7 @@ export class AgentService {
 		contextUsage: number;
 		todos: any[];
 		pendingQuestion: { requestId: string; questions: any[] } | null;
+		isRunning: boolean;
 	} | null {
 		const session = this.db.getSession(sessionId);
 		if (!session) return null;
@@ -907,6 +908,9 @@ export class AgentService {
 			contextUsage: loop.getContextUsage(),
 			todos: getSessionTodos(sessionId),
 			pendingQuestion,
+			// 该 session 当前是否在跑。前端 pull-on-display 据此自愈清掉残留的
+			// streaming 指示(后台报错停止后 agent_end 若被丢会卡 streaming → Send 禁用)。
+			isRunning: !!this.runStates.get(sessionId)?.isBusy,
 		};
 	}
 

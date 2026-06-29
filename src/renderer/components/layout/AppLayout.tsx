@@ -205,9 +205,12 @@ export default function AppLayout() {
 		// 这些事件都带 sessionId;text_delta/tool_*/todos_update/ask_user 等若来自
 		// 别的 session 一律丢弃 —— 切回时由 ChatPanel 的 pull(sessionsGetInit)拉基线。
 		// 没带 sessionId 的事件(理论残留)按 key fallback 落到 active。
+		// 注意:`agent_end` 是**终态事件**(只清 streaming 状态),必须全局生效 ——
+		// 否则后台 session 报错停止时 agent_end 被丢 → streamingSessions 卡住 →
+		// 切回该 session 时 Send 一直禁用,"无法继续"。terminal state ≠ 增量内容。
 		const PER_SESSION_PUSH = new Set([
 			"text_delta", "thinking_delta", "tool_start", "tool_end",
-			"message_end", "usage", "agent_end", "retry_attempt", "error",
+			"message_end", "usage", "retry_attempt", "error",
 			"session_init", "todos_update", "ask_user",
 		]);
 

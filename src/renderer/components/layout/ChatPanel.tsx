@@ -475,6 +475,12 @@ export default function ChatPanel() {
 				}
 			}
 			loadMessages(sid, messages);
+			// 自愈 streaming 指示:若后端说该 session 已不在跑,却残留 streaming 标志
+			// (后台报错停止时 agent_end 一旦被丢就会卡住),这里清掉 —— 否则切回该
+			// session 时 Send 一直禁用,"无法继续"。
+			if (payload.isRunning === false) {
+				useChatStore.getState().setIsStreaming(sid, false);
+			}
 			updateContextInfo(sid, {
 				usedTokens: payload.inputTokens ?? 0,
 				contextWindow: payload.contextWindow ?? 128000,
