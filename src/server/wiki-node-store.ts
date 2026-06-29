@@ -1397,10 +1397,20 @@ export class WikiStore {
 	 * shared type roots. The per-agent root is the single anchor handle that
 	 * wiki-anchor-injection renders as the agent's MEMORY.md-style index.
 	 */
-	ensureMemoryAgentRoot(agentId: string): WikiNode {
+	ensureMemoryAgentRoot(agentId: string, agentName?: string): WikiNode {
 		const id = memoryAgentRootId(agentId);
+		// title 以 agent 名字命名(可读);id 仍按 agentId(不可变),所以 rename
+		// agent 不会换节点,只同步 title。
+		const expectedTitle = `Memory: ${agentName ?? agentId}`;
 		const existing = this.get(id);
-		if (existing) return existing;
+		if (existing) {
+			// sync:agent 改名后 management-service 传入新 agentName,这里把 title
+			// 同步过来(存量 DB 里旧 title 是 "Memory: <agentId>" 也会被纠成名字)。
+			if (agentName && existing.title !== expectedTitle) {
+				return this.update(existing.id, { title: expectedTitle, lastUpdatedBy: "extractor-A" });
+			}
+			return existing;
+		}
 		const now = new Date().toISOString();
 		this.insertWithId({
 			id,
@@ -1408,8 +1418,8 @@ export class WikiStore {
 			type: "memory",
 			nodeType: "section",
 			path: `memory-agent:${agentId}`,
-			title: `Memory: ${agentId}`,
-			summary: `Per-agent memory subtree for agent ${agentId} (P2 §11.6).`,
+			title: expectedTitle,
+			summary: `Per-agent memory subtree for ${agentName ?? agentId} (P2 §11.6).`,
 			lastUpdatedBy: "extractor-A",
 			createdAt: now,
 			updatedAt: now,

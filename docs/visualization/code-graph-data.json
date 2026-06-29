@@ -3192,7 +3192,7 @@
 		},
 		{
 			"path": "src/server/management-service.ts",
-			"lines": 1117,
+			"lines": 1136,
 			"dir": "src/server",
 			"exports": [
 				"ManagementService.setTemplateStore",
@@ -3285,61 +3285,61 @@
 				"src/server/management-service.ts/ManagementService.setSessionDB:177",
 				"src/server/management-service.ts/ManagementService.setAgentService:179",
 				"src/server/management-service.ts/ManagementService.setWikiStore:180",
-				"src/server/management-service.ts/ManagementService.setArchivistService:181",
-				"src/server/management-service.ts/ManagementService.setTaskStepStore:183",
-				"src/server/management-service.ts/ManagementService.setProjectJobStore:185",
-				"src/server/management-service.ts/ManagementService.setEnrichmentRunner:187",
-				"src/server/management-service.ts/ManagementService.setProjectWorkStore:191",
-				"src/server/management-service.ts/ManagementService.setProjectWorkRunner:193",
-				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:195",
-				"src/server/management-service.ts/ManagementService.requireProjectWorkRunner:199",
-				"src/server/management-service.ts/ManagementService.getProjectJobStore:204",
-				"src/server/management-service.ts/ManagementService.requireCronStore:206",
-				"src/server/management-service.ts/ManagementService.createProject:224",
-				"src/server/management-service.ts/ManagementService.enrichProject:277",
-				"src/server/management-service.ts/ManagementService.ensureProjectSession:297",
-				"src/server/management-service.ts/ManagementService.updateProject:307",
-				"src/server/management-service.ts/ManagementService.purgeOrphanProjectSubtrees:318",
-				"src/server/management-service.ts/ManagementService.deleteProject:353",
-				"src/server/management-service.ts/ManagementService.listProjects:385",
-				"src/server/management-service.ts/ManagementService.getProject:389",
-				"src/server/management-service.ts/ManagementService.getProjectContainerView:403",
-				"src/server/management-service.ts/ManagementService.getProjectResourceUsage:501",
-				"src/server/management-service.ts/ManagementService.createAgent:539",
-				"src/server/management-service.ts/ManagementService.updateAgent:543",
-				"src/server/management-service.ts/ManagementService.deleteAgent:572",
-				"src/server/management-service.ts/ManagementService.listAgents:596",
-				"src/server/management-service.ts/ManagementService.getAgent:600",
-				"src/server/management-service.ts/ManagementService.listTemplates:614",
-				"src/server/management-service.ts/ManagementService.getTemplate:618",
-				"src/server/management-service.ts/ManagementService.instantiateTemplate:635",
-				"src/server/management-service.ts/ManagementService.instantiateRole:660",
-				"src/server/management-service.ts/ManagementService.createCron:682",
-				"src/server/management-service.ts/ManagementService.updateCron:714",
-				"src/server/management-service.ts/ManagementService.deleteCron:725",
-				"src/server/management-service.ts/ManagementService.listCrons:733",
-				"src/server/management-service.ts/ManagementService.getCron:744",
-				"src/server/management-service.ts/ManagementService.bindProjectArchivist:758",
-				"src/server/management-service.ts/ManagementService.unbindProjectArchivist:788",
-				"src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:796",
-				"src/server/management-service.ts/ManagementService.setProjectArchivistEnabled:807",
-				"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:815",
-				"src/server/management-service.ts/ManagementService.cronOperationId:849",
-				"src/server/management-service.ts/ManagementService.seedDefaultProjectWorks:863",
-				"src/server/management-service.ts/ManagementService.createProjectWork:877",
-				"src/server/management-service.ts/ManagementService.updateProjectWork:920",
-				"src/server/management-service.ts/ManagementService.deleteProjectWork:948",
-				"src/server/management-service.ts/ManagementService.assignProjectWorkAgent:960",
-				"src/server/management-service.ts/ManagementService.setProjectWorkEnabled:973",
-				"src/server/management-service.ts/ManagementService.triggerProjectWork:981",
-				"src/server/management-service.ts/ManagementService.getProjectWorks:986",
-				"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1025",
-				"src/server/management-service.ts/ManagementService.syncWorkCrons:1034",
-				"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1047",
-				"src/server/management-service.ts/ManagementService.triggerCron:1089",
-				"src/server/management-service.ts/ManagementService.mergeToolPolicy:1106",
-				"src/server/management-service.ts/ManagementService.doDelete:353",
-				"src/server/management-service.ts/ManagementService.sig:1055"
+				"src/server/management-service.ts/ManagementService.setArchivistService:188",
+				"src/server/management-service.ts/ManagementService.setTaskStepStore:190",
+				"src/server/management-service.ts/ManagementService.setProjectJobStore:192",
+				"src/server/management-service.ts/ManagementService.setEnrichmentRunner:194",
+				"src/server/management-service.ts/ManagementService.setProjectWorkStore:198",
+				"src/server/management-service.ts/ManagementService.setProjectWorkRunner:200",
+				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:202",
+				"src/server/management-service.ts/ManagementService.requireProjectWorkRunner:206",
+				"src/server/management-service.ts/ManagementService.getProjectJobStore:211",
+				"src/server/management-service.ts/ManagementService.requireCronStore:213",
+				"src/server/management-service.ts/ManagementService.createProject:231",
+				"src/server/management-service.ts/ManagementService.enrichProject:284",
+				"src/server/management-service.ts/ManagementService.ensureProjectSession:304",
+				"src/server/management-service.ts/ManagementService.updateProject:314",
+				"src/server/management-service.ts/ManagementService.purgeOrphanProjectSubtrees:325",
+				"src/server/management-service.ts/ManagementService.deleteProject:360",
+				"src/server/management-service.ts/ManagementService.listProjects:392",
+				"src/server/management-service.ts/ManagementService.getProject:396",
+				"src/server/management-service.ts/ManagementService.getProjectContainerView:410",
+				"src/server/management-service.ts/ManagementService.getProjectResourceUsage:508",
+				"src/server/management-service.ts/ManagementService.createAgent:546",
+				"src/server/management-service.ts/ManagementService.updateAgent:553",
+				"src/server/management-service.ts/ManagementService.deleteAgent:591",
+				"src/server/management-service.ts/ManagementService.listAgents:615",
+				"src/server/management-service.ts/ManagementService.getAgent:619",
+				"src/server/management-service.ts/ManagementService.listTemplates:633",
+				"src/server/management-service.ts/ManagementService.getTemplate:637",
+				"src/server/management-service.ts/ManagementService.instantiateTemplate:654",
+				"src/server/management-service.ts/ManagementService.instantiateRole:679",
+				"src/server/management-service.ts/ManagementService.createCron:701",
+				"src/server/management-service.ts/ManagementService.updateCron:733",
+				"src/server/management-service.ts/ManagementService.deleteCron:744",
+				"src/server/management-service.ts/ManagementService.listCrons:752",
+				"src/server/management-service.ts/ManagementService.getCron:763",
+				"src/server/management-service.ts/ManagementService.bindProjectArchivist:777",
+				"src/server/management-service.ts/ManagementService.unbindProjectArchivist:807",
+				"src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:815",
+				"src/server/management-service.ts/ManagementService.setProjectArchivistEnabled:826",
+				"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:834",
+				"src/server/management-service.ts/ManagementService.cronOperationId:868",
+				"src/server/management-service.ts/ManagementService.seedDefaultProjectWorks:882",
+				"src/server/management-service.ts/ManagementService.createProjectWork:896",
+				"src/server/management-service.ts/ManagementService.updateProjectWork:939",
+				"src/server/management-service.ts/ManagementService.deleteProjectWork:967",
+				"src/server/management-service.ts/ManagementService.assignProjectWorkAgent:979",
+				"src/server/management-service.ts/ManagementService.setProjectWorkEnabled:992",
+				"src/server/management-service.ts/ManagementService.triggerProjectWork:1000",
+				"src/server/management-service.ts/ManagementService.getProjectWorks:1005",
+				"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1044",
+				"src/server/management-service.ts/ManagementService.syncWorkCrons:1053",
+				"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1066",
+				"src/server/management-service.ts/ManagementService.triggerCron:1108",
+				"src/server/management-service.ts/ManagementService.mergeToolPolicy:1125",
+				"src/server/management-service.ts/ManagementService.doDelete:360",
+				"src/server/management-service.ts/ManagementService.sig:1074"
 			],
 			"description": ""
 		},
@@ -4696,7 +4696,7 @@
 		},
 		{
 			"path": "src/server/wiki-node-store.ts",
-			"lines": 1699,
+			"lines": 1709,
 			"dir": "src/server",
 			"exports": [
 				"projectSubtreeRootPath",
@@ -4824,13 +4824,13 @@
 				"src/server/wiki-node-store.ts/WikiStore.createMemoryNode:1320",
 				"src/server/wiki-node-store.ts/WikiStore.ensureMemoryTypeRoot:1363",
 				"src/server/wiki-node-store.ts/WikiStore.ensureMemoryAgentRoot:1400",
-				"src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1429",
-				"src/server/wiki-node-store.ts/WikiStore.listProjects:1471",
-				"src/server/wiki-node-store.ts/WikiStore.listMemoryNodes:1491",
-				"src/server/wiki-node-store.ts/WikiStore.searchMemoryNodes:1517",
-				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1563",
-				"src/server/wiki-node-store.ts/rowToWikiNode:1610",
-				"src/server/wiki-node-store.ts/deriveTypeFromPosition:1655"
+				"src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1439",
+				"src/server/wiki-node-store.ts/WikiStore.listProjects:1481",
+				"src/server/wiki-node-store.ts/WikiStore.listMemoryNodes:1501",
+				"src/server/wiki-node-store.ts/WikiStore.searchMemoryNodes:1527",
+				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1573",
+				"src/server/wiki-node-store.ts/rowToWikiNode:1620",
+				"src/server/wiki-node-store.ts/deriveTypeFromPosition:1665"
 			],
 			"description": ""
 		},
@@ -15635,20 +15635,20 @@
 			"kind": "method",
 			"file": "src/server/management-service.ts",
 			"line": 180,
-			"endLine": 180,
-			"statementCount": 1,
+			"endLine": 187,
+			"statementCount": 3,
 			"exported": true,
 			"signature": "method setWikiStore(wiki: WikiStore)",
 			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).",
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setArchivistService:181",
+			"id": "src/server/management-service.ts/ManagementService.setArchivistService:188",
 			"name": "ManagementService.setArchivistService",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 181,
-			"endLine": 181,
+			"line": 188,
+			"endLine": 188,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setArchivistService(svc: WikiSkeletonService)",
@@ -15656,12 +15656,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setTaskStepStore:183",
+			"id": "src/server/management-service.ts/ManagementService.setTaskStepStore:190",
 			"name": "ManagementService.setTaskStepStore",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 183,
-			"endLine": 183,
+			"line": 190,
+			"endLine": 190,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setTaskStepStore(store: TaskStepStore)",
@@ -15669,12 +15669,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setProjectJobStore:185",
+			"id": "src/server/management-service.ts/ManagementService.setProjectJobStore:192",
 			"name": "ManagementService.setProjectJobStore",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 185,
-			"endLine": 185,
+			"line": 192,
+			"endLine": 192,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setProjectJobStore(store: ProjectJobStore)",
@@ -15682,12 +15682,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setEnrichmentRunner:187",
+			"id": "src/server/management-service.ts/ManagementService.setEnrichmentRunner:194",
 			"name": "ManagementService.setEnrichmentRunner",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 187,
-			"endLine": 189,
+			"line": 194,
+			"endLine": 196,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setEnrichmentRunner(fn: (projectId: string, opts: { via: AgentVia; prompt?: string; operationId?: WikiOperationId }) => Promise<{ jobId: string; sessionId: string }>)",
@@ -15695,12 +15695,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setProjectWorkStore:191",
+			"id": "src/server/management-service.ts/ManagementService.setProjectWorkStore:198",
 			"name": "ManagementService.setProjectWorkStore",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 191,
-			"endLine": 191,
+			"line": 198,
+			"endLine": 198,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setProjectWorkStore(store: ProjectWorkStore)",
@@ -15708,12 +15708,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setProjectWorkRunner:193",
+			"id": "src/server/management-service.ts/ManagementService.setProjectWorkRunner:200",
 			"name": "ManagementService.setProjectWorkRunner",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 193,
-			"endLine": 193,
+			"line": 200,
+			"endLine": 200,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setProjectWorkRunner(runner: ProjectWorkRunner)",
@@ -15721,12 +15721,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.requireProjectWorkStore:195",
+			"id": "src/server/management-service.ts/ManagementService.requireProjectWorkStore:202",
 			"name": "ManagementService.requireProjectWorkStore",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 195,
-			"endLine": 198,
+			"line": 202,
+			"endLine": 205,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method requireProjectWorkStore()",
@@ -15734,12 +15734,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.requireProjectWorkRunner:199",
+			"id": "src/server/management-service.ts/ManagementService.requireProjectWorkRunner:206",
 			"name": "ManagementService.requireProjectWorkRunner",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 199,
-			"endLine": 202,
+			"line": 206,
+			"endLine": 209,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method requireProjectWorkRunner()",
@@ -15747,12 +15747,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getProjectJobStore:204",
+			"id": "src/server/management-service.ts/ManagementService.getProjectJobStore:211",
 			"name": "ManagementService.getProjectJobStore",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 204,
-			"endLine": 204,
+			"line": 211,
+			"endLine": 211,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getProjectJobStore()",
@@ -15760,12 +15760,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.requireCronStore:206",
+			"id": "src/server/management-service.ts/ManagementService.requireCronStore:213",
 			"name": "ManagementService.requireCronStore",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 206,
-			"endLine": 209,
+			"line": 213,
+			"endLine": 216,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method requireCronStore()",
@@ -15773,28 +15773,28 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.createProject:224",
+			"id": "src/server/management-service.ts/ManagementService.createProject:231",
 			"name": "ManagementService.createProject",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 224,
-			"endLine": 267,
+			"line": 231,
+			"endLine": 274,
 			"statementCount": 19,
 			"exported": true,
 			"signature": "method createProject(input: { name: string; workspaceDir: string; enrich?: boolean; via?: AgentVia })",
 			"description": "v0.8 (P5 §8.3): create a Project + the synchronous wiki subtree root",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.enrichProject:277",
-				"src/server/management-service.ts/ManagementService.seedDefaultProjectWorks:863"
+				"src/server/management-service.ts/ManagementService.enrichProject:284",
+				"src/server/management-service.ts/ManagementService.seedDefaultProjectWorks:882"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.enrichProject:277",
+			"id": "src/server/management-service.ts/ManagementService.enrichProject:284",
 			"name": "ManagementService.enrichProject",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 277,
-			"endLine": 287,
+			"line": 284,
+			"endLine": 294,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method enrichProject(projectId: string, opts: { via?: AgentVia; prompt?: string; operationId?: WikiOperationId } = {})",
@@ -15802,12 +15802,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.ensureProjectSession:297",
+			"id": "src/server/management-service.ts/ManagementService.ensureProjectSession:304",
 			"name": "ManagementService.ensureProjectSession",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 297,
-			"endLine": 305,
+			"line": 304,
+			"endLine": 312,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method ensureProjectSession(agentId: string, projectId: string)",
@@ -15817,12 +15817,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.updateProject:307",
+			"id": "src/server/management-service.ts/ManagementService.updateProject:314",
 			"name": "ManagementService.updateProject",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 307,
-			"endLine": 309,
+			"line": 314,
+			"endLine": 316,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method updateProject(id: string, input: Partial<Omit<ProjectRecord, \"id\" | \"createdAt\">>)",
@@ -15830,12 +15830,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.purgeOrphanProjectSubtrees:318",
+			"id": "src/server/management-service.ts/ManagementService.purgeOrphanProjectSubtrees:325",
 			"name": "ManagementService.purgeOrphanProjectSubtrees",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 318,
-			"endLine": 336,
+			"line": 325,
+			"endLine": 343,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method purgeOrphanProjectSubtrees()",
@@ -15843,12 +15843,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.deleteProject:353",
+			"id": "src/server/management-service.ts/ManagementService.deleteProject:360",
 			"name": "ManagementService.deleteProject",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 353,
-			"endLine": 383,
+			"line": 360,
+			"endLine": 390,
 			"statementCount": 17,
 			"exported": true,
 			"signature": "method deleteProject(id: string)",
@@ -15856,12 +15856,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.listProjects:385",
+			"id": "src/server/management-service.ts/ManagementService.listProjects:392",
 			"name": "ManagementService.listProjects",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 385,
-			"endLine": 387,
+			"line": 392,
+			"endLine": 394,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method listProjects()",
@@ -15869,12 +15869,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getProject:389",
+			"id": "src/server/management-service.ts/ManagementService.getProject:396",
 			"name": "ManagementService.getProject",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 389,
-			"endLine": 391,
+			"line": 396,
+			"endLine": 398,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getProject(id: string)",
@@ -15882,28 +15882,28 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getProjectContainerView:403",
+			"id": "src/server/management-service.ts/ManagementService.getProjectContainerView:410",
 			"name": "ManagementService.getProjectContainerView",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 403,
-			"endLine": 488,
+			"line": 410,
+			"endLine": 495,
 			"statementCount": 45,
 			"exported": true,
 			"signature": "method getProjectContainerView(projectId: string)",
 			"description": "v0.8 (P5 §8.4): the container view. Aggregates the project's requirements",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:815",
-				"src/server/management-service.ts/ManagementService.getProjectWorks:986"
+				"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:834",
+				"src/server/management-service.ts/ManagementService.getProjectWorks:1005"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getProjectResourceUsage:501",
+			"id": "src/server/management-service.ts/ManagementService.getProjectResourceUsage:508",
 			"name": "ManagementService.getProjectResourceUsage",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 501,
-			"endLine": 535,
+			"line": 508,
+			"endLine": 542,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getProjectResourceUsage(projectId: string)",
@@ -15911,38 +15911,38 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.createAgent:539",
+			"id": "src/server/management-service.ts/ManagementService.createAgent:546",
 			"name": "ManagementService.createAgent",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 539,
-			"endLine": 541,
-			"statementCount": 1,
+			"line": 546,
+			"endLine": 551,
+			"statementCount": 3,
 			"exported": true,
 			"signature": "method createAgent(input: Omit<AgentRecord, \"id\" | \"createdAt\" | \"updatedAt\">)",
 			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).",
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.updateAgent:543",
+			"id": "src/server/management-service.ts/ManagementService.updateAgent:553",
 			"name": "ManagementService.updateAgent",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 543,
-			"endLine": 562,
-			"statementCount": 8,
+			"line": 553,
+			"endLine": 581,
+			"statementCount": 13,
 			"exported": true,
 			"signature": "method updateAgent(id: string, input: Partial<Omit<AgentRecord, \"id\" | \"createdAt\">>)",
 			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).",
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.deleteAgent:572",
+			"id": "src/server/management-service.ts/ManagementService.deleteAgent:591",
 			"name": "ManagementService.deleteAgent",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 572,
-			"endLine": 594,
+			"line": 591,
+			"endLine": 613,
 			"statementCount": 12,
 			"exported": true,
 			"signature": "method deleteAgent(id: string)",
@@ -15950,12 +15950,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.listAgents:596",
+			"id": "src/server/management-service.ts/ManagementService.listAgents:615",
 			"name": "ManagementService.listAgents",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 596,
-			"endLine": 598,
+			"line": 615,
+			"endLine": 617,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method listAgents(roleTag?: string)",
@@ -15963,12 +15963,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getAgent:600",
+			"id": "src/server/management-service.ts/ManagementService.getAgent:619",
 			"name": "ManagementService.getAgent",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 600,
-			"endLine": 602,
+			"line": 619,
+			"endLine": 621,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getAgent(id: string)",
@@ -15976,12 +15976,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.listTemplates:614",
+			"id": "src/server/management-service.ts/ManagementService.listTemplates:633",
 			"name": "ManagementService.listTemplates",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 614,
-			"endLine": 616,
+			"line": 633,
+			"endLine": 635,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method listTemplates()",
@@ -15991,12 +15991,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getTemplate:618",
+			"id": "src/server/management-service.ts/ManagementService.getTemplate:637",
 			"name": "ManagementService.getTemplate",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 618,
-			"endLine": 620,
+			"line": 637,
+			"endLine": 639,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getTemplate(templateId: string)",
@@ -16006,12 +16006,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.instantiateTemplate:635",
+			"id": "src/server/management-service.ts/ManagementService.instantiateTemplate:654",
 			"name": "ManagementService.instantiateTemplate",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 635,
-			"endLine": 651,
+			"line": 654,
+			"endLine": 670,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method instantiateTemplate(templateId: string, overrides?: Partial<Pick<AgentRecord, \"name\" | \"model\" | \"provider\" | \"workspaceDir\" | \"thinkingLevel\">>)",
@@ -16021,12 +16021,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.instantiateRole:660",
+			"id": "src/server/management-service.ts/ManagementService.instantiateRole:679",
 			"name": "ManagementService.instantiateRole",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 660,
-			"endLine": 676,
+			"line": 679,
+			"endLine": 695,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method instantiateRole(roleId: string, overrides?: Partial<Pick<AgentRecord, \"name\" | \"model\" | \"provider\" | \"workspaceDir\" | \"thinkingLevel\">>)",
@@ -16034,87 +16034,87 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.createCron:682",
+			"id": "src/server/management-service.ts/ManagementService.createCron:701",
 			"name": "ManagementService.createCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 682,
-			"endLine": 712,
+			"line": 701,
+			"endLine": 731,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method createCron(input: {\n\t\tagentId: string;\n\t\tworkingScope: CronRecord[\"workingScope\"];\n\t\tschedule: CronRecord[\"schedule\"];\n\t\tprompt?: string;\n\t\tsource?: string;\n\t\t/** project-work 引用;带 workId 时 agent 在 fire 时从 work 解析,跳过 agent 校验。 */\n\t\tworkId?: string;\n\t\tenabled?: boolean;\n\t})",
 			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:206"
+				"src/server/management-service.ts/ManagementService.requireCronStore:213"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.updateCron:714",
+			"id": "src/server/management-service.ts/ManagementService.updateCron:733",
 			"name": "ManagementService.updateCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 714,
-			"endLine": 722,
+			"line": 733,
+			"endLine": 741,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method updateCron(id: string, input: Partial<Omit<CronRecord, \"id\" | \"createdAt\" | \"updatedAt\" | \"agentId\">>)",
 			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:206"
+				"src/server/management-service.ts/ManagementService.requireCronStore:213"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.deleteCron:725",
+			"id": "src/server/management-service.ts/ManagementService.deleteCron:744",
 			"name": "ManagementService.deleteCron",
-			"kind": "method",
-			"file": "src/server/management-service.ts",
-			"line": 725,
-			"endLine": 727,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "method deleteCron(id: string)",
-			"description": "Unbind — the agent it referenced stays intact (acceptance-M1).",
-			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:206"
-			]
-		},
-		{
-			"id": "src/server/management-service.ts/ManagementService.listCrons:733",
-			"name": "ManagementService.listCrons",
-			"kind": "method",
-			"file": "src/server/management-service.ts",
-			"line": 733,
-			"endLine": 742,
-			"statementCount": 10,
-			"exported": true,
-			"signature": "method listCrons(filter?: { agentId?: string; projectId?: string; enabled?: boolean })",
-			"description": "List crons with optional filters. §9.4: projectId filters on",
-			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:206"
-			]
-		},
-		{
-			"id": "src/server/management-service.ts/ManagementService.getCron:744",
-			"name": "ManagementService.getCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
 			"line": 744,
 			"endLine": 746,
 			"statementCount": 1,
 			"exported": true,
-			"signature": "method getCron(id: string)",
-			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).",
+			"signature": "method deleteCron(id: string)",
+			"description": "Unbind — the agent it referenced stays intact (acceptance-M1).",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:206"
+				"src/server/management-service.ts/ManagementService.requireCronStore:213"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.bindProjectArchivist:758",
+			"id": "src/server/management-service.ts/ManagementService.listCrons:752",
+			"name": "ManagementService.listCrons",
+			"kind": "method",
+			"file": "src/server/management-service.ts",
+			"line": 752,
+			"endLine": 761,
+			"statementCount": 10,
+			"exported": true,
+			"signature": "method listCrons(filter?: { agentId?: string; projectId?: string; enabled?: boolean })",
+			"description": "List crons with optional filters. §9.4: projectId filters on",
+			"callees": [
+				"src/server/management-service.ts/ManagementService.requireCronStore:213"
+			]
+		},
+		{
+			"id": "src/server/management-service.ts/ManagementService.getCron:763",
+			"name": "ManagementService.getCron",
+			"kind": "method",
+			"file": "src/server/management-service.ts",
+			"line": 763,
+			"endLine": 765,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method getCron(id: string)",
+			"description": "v0.8 P3: ManagementService (renamed from ZeroAdminService).",
+			"callees": [
+				"src/server/management-service.ts/ManagementService.requireCronStore:213"
+			]
+		},
+		{
+			"id": "src/server/management-service.ts/ManagementService.bindProjectArchivist:777",
 			"name": "ManagementService.bindProjectArchivist",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 758,
-			"endLine": 785,
+			"line": 777,
+			"endLine": 804,
 			"statementCount": 16,
 			"exported": true,
 			"signature": "method bindProjectArchivist(projectId: string, opts: { agentId: string; operations: WikiOperationId[]; schedule: CronSchedule; gitAware?: boolean; gitEveryMs?: number })",
@@ -16122,86 +16122,86 @@
 			"callees": [
 				"src/server/wiki-operations.ts/agentHasWikiTool:26",
 				"src/server/wiki-operations.ts/resolveOperationPrompt:149",
-				"src/server/management-service.ts/ManagementService.createCron:682",
+				"src/server/management-service.ts/ManagementService.createCron:701",
 				"src/server/wiki-operations.ts/wrapGitAwarePrompt:169"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.unbindProjectArchivist:788",
+			"id": "src/server/management-service.ts/ManagementService.unbindProjectArchivist:807",
 			"name": "ManagementService.unbindProjectArchivist",
-			"kind": "method",
-			"file": "src/server/management-service.ts",
-			"line": 788,
-			"endLine": 793,
-			"statementCount": 4,
-			"exported": true,
-			"signature": "method unbindProjectArchivist(projectId: string)",
-			"description": "解绑:删该 project 所有 archivist 绑定 cron(prompt 匹配 WIKI_OPERATIONS 的)。",
-			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:206",
-				"src/server/management-service.ts/ManagementService.listCrons:733",
-				"src/server/management-service.ts/ManagementService.cronOperationId:849"
-			]
-		},
-		{
-			"id": "src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:796",
-			"name": "ManagementService.switchProjectArchivistAgent",
-			"kind": "method",
-			"file": "src/server/management-service.ts",
-			"line": 796,
-			"endLine": 804,
-			"statementCount": 9,
-			"exported": true,
-			"signature": "method switchProjectArchivistAgent(projectId: string, newAgentId: string)",
-			"description": "切换管理者 agent:批量更新该 project 所有绑定 cron 的 agentId。",
-			"callees": [
-				"src/server/wiki-operations.ts/agentHasWikiTool:26",
-				"src/server/management-service.ts/ManagementService.requireCronStore:206",
-				"src/server/management-service.ts/ManagementService.listCrons:733",
-				"src/server/management-service.ts/ManagementService.cronOperationId:849"
-			]
-		},
-		{
-			"id": "src/server/management-service.ts/ManagementService.setProjectArchivistEnabled:807",
-			"name": "ManagementService.setProjectArchivistEnabled",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
 			"line": 807,
 			"endLine": 812,
 			"statementCount": 4,
 			"exported": true,
-			"signature": "method setProjectArchivistEnabled(projectId: string, enabled: boolean)",
-			"description": "暂停/恢复:批量更新该 project 所有绑定 cron 的 enabled。",
+			"signature": "method unbindProjectArchivist(projectId: string)",
+			"description": "解绑:删该 project 所有 archivist 绑定 cron(prompt 匹配 WIKI_OPERATIONS 的)。",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:206",
-				"src/server/management-service.ts/ManagementService.listCrons:733",
-				"src/server/management-service.ts/ManagementService.cronOperationId:849"
+				"src/server/management-service.ts/ManagementService.requireCronStore:213",
+				"src/server/management-service.ts/ManagementService.listCrons:752",
+				"src/server/management-service.ts/ManagementService.cronOperationId:868"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getProjectArchivistBinding:815",
-			"name": "ManagementService.getProjectArchivistBinding",
+			"id": "src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:815",
+			"name": "ManagementService.switchProjectArchivistAgent",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
 			"line": 815,
-			"endLine": 842,
+			"endLine": 823,
+			"statementCount": 9,
+			"exported": true,
+			"signature": "method switchProjectArchivistAgent(projectId: string, newAgentId: string)",
+			"description": "切换管理者 agent:批量更新该 project 所有绑定 cron 的 agentId。",
+			"callees": [
+				"src/server/wiki-operations.ts/agentHasWikiTool:26",
+				"src/server/management-service.ts/ManagementService.requireCronStore:213",
+				"src/server/management-service.ts/ManagementService.listCrons:752",
+				"src/server/management-service.ts/ManagementService.cronOperationId:868"
+			]
+		},
+		{
+			"id": "src/server/management-service.ts/ManagementService.setProjectArchivistEnabled:826",
+			"name": "ManagementService.setProjectArchivistEnabled",
+			"kind": "method",
+			"file": "src/server/management-service.ts",
+			"line": 826,
+			"endLine": 831,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method setProjectArchivistEnabled(projectId: string, enabled: boolean)",
+			"description": "暂停/恢复:批量更新该 project 所有绑定 cron 的 enabled。",
+			"callees": [
+				"src/server/management-service.ts/ManagementService.requireCronStore:213",
+				"src/server/management-service.ts/ManagementService.listCrons:752",
+				"src/server/management-service.ts/ManagementService.cronOperationId:868"
+			]
+		},
+		{
+			"id": "src/server/management-service.ts/ManagementService.getProjectArchivistBinding:834",
+			"name": "ManagementService.getProjectArchivistBinding",
+			"kind": "method",
+			"file": "src/server/management-service.ts",
+			"line": 834,
+			"endLine": 861,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method getProjectArchivistBinding(projectId: string)",
 			"description": "聚合该 project 的 archivist 绑定视图(供 container view / 单独查询)。",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.listCrons:733",
-				"src/server/management-service.ts/ManagementService.cronOperationId:849",
+				"src/server/management-service.ts/ManagementService.listCrons:752",
+				"src/server/management-service.ts/ManagementService.cronOperationId:868",
 				"src/server/wiki-operations.ts/isGitAwarePrompt:174"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.cronOperationId:849",
+			"id": "src/server/management-service.ts/ManagementService.cronOperationId:868",
 			"name": "ManagementService.cronOperationId",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 849,
-			"endLine": 854,
+			"line": 868,
+			"endLine": 873,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method cronOperationId(cron: CronRecord)",
@@ -16209,144 +16209,144 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.seedDefaultProjectWorks:863",
+			"id": "src/server/management-service.ts/ManagementService.seedDefaultProjectWorks:882",
 			"name": "ManagementService.seedDefaultProjectWorks",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 863,
-			"endLine": 871,
+			"line": 882,
+			"endLine": 890,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method seedDefaultProjectWorks(projectId: string)",
 			"description": "新 project 创建时 seed 默认工位(全空岗)。幂等:已有 work 不重 seed。",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:195"
+				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:202"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.createProjectWork:877",
+			"id": "src/server/management-service.ts/ManagementService.createProjectWork:896",
 			"name": "ManagementService.createProjectWork",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 877,
-			"endLine": 917,
+			"line": 896,
+			"endLine": 936,
 			"statementCount": 18,
 			"exported": true,
 			"signature": "method createProjectWork(projectId: string, body: CreateProjectWorkBody)",
 			"description": "创建一个 project-work(+ 可选 cron 触发器)。校验:agent 存在(若指定)+",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1025",
-				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:195",
-				"src/server/management-service.ts/ManagementService.createCron:682",
+				"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1044",
+				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:202",
+				"src/server/management-service.ts/ManagementService.createCron:701",
 				"src/server/wiki-operations.ts/wrapGitAwarePrompt:169",
-				"src/server/management-service.ts/ManagementService.requireProjectWorkRunner:199"
+				"src/server/management-service.ts/ManagementService.requireProjectWorkRunner:206"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.updateProjectWork:920",
+			"id": "src/server/management-service.ts/ManagementService.updateProjectWork:939",
 			"name": "ManagementService.updateProjectWork",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 920,
-			"endLine": 945,
+			"line": 939,
+			"endLine": 964,
 			"statementCount": 17,
 			"exported": true,
 			"signature": "method updateProjectWork(workId: string, patch: Partial<CreateProjectWorkBody>)",
 			"description": "更新 work(actionPrompt/requiredTools/hooks/enabled 等)。改 requiredTools 重校验 agent。",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:195",
-				"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1025",
-				"src/server/management-service.ts/ManagementService.syncWorkCrons:1034",
-				"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1047"
+				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:202",
+				"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1044",
+				"src/server/management-service.ts/ManagementService.syncWorkCrons:1053",
+				"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1066"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.deleteProjectWork:948",
+			"id": "src/server/management-service.ts/ManagementService.deleteProjectWork:967",
 			"name": "ManagementService.deleteProjectWork",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 948,
-			"endLine": 957,
+			"line": 967,
+			"endLine": 976,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method deleteProjectWork(workId: string)",
 			"description": "删除 work + 其全部 cron 触发器。",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:195"
+				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:202"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.assignProjectWorkAgent:960",
+			"id": "src/server/management-service.ts/ManagementService.assignProjectWorkAgent:979",
 			"name": "ManagementService.assignProjectWorkAgent",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 960,
-			"endLine": 970,
+			"line": 979,
+			"endLine": 989,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method assignProjectWorkAgent(workId: string, agentId: string)",
 			"description": "分配/切换 work 的 agent(校验 requiredTools)。同步 cron.agentId。",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:195",
-				"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1025",
-				"src/server/management-service.ts/ManagementService.syncWorkCrons:1034"
+				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:202",
+				"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1044",
+				"src/server/management-service.ts/ManagementService.syncWorkCrons:1053"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setProjectWorkEnabled:973",
+			"id": "src/server/management-service.ts/ManagementService.setProjectWorkEnabled:992",
 			"name": "ManagementService.setProjectWorkEnabled",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 973,
-			"endLine": 978,
+			"line": 992,
+			"endLine": 997,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method setProjectWorkEnabled(workId: string, enabled: boolean)",
 			"description": "暂停/恢复 work + 其 cron 触发器。",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:195",
-				"src/server/management-service.ts/ManagementService.syncWorkCrons:1034"
+				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:202",
+				"src/server/management-service.ts/ManagementService.syncWorkCrons:1053"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.triggerProjectWork:981",
+			"id": "src/server/management-service.ts/ManagementService.triggerProjectWork:1000",
 			"name": "ManagementService.triggerProjectWork",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 981,
-			"endLine": 983,
+			"line": 1000,
+			"endLine": 1002,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method triggerProjectWork(workId: string)",
 			"description": "手动触发 work 一次(走 ProjectWorkRunner)。",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireProjectWorkRunner:199"
+				"src/server/management-service.ts/ManagementService.requireProjectWorkRunner:206"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.getProjectWorks:986",
+			"id": "src/server/management-service.ts/ManagementService.getProjectWorks:1005",
 			"name": "ManagementService.getProjectWorks",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 986,
-			"endLine": 1022,
+			"line": 1005,
+			"endLine": 1041,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method getProjectWorks(projectId: string)",
 			"description": "聚合 project 的全部 work 为 UI 视图(+ cron 触发器状态)。",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:195",
-				"src/server/management-service.ts/ManagementService.listCrons:733",
+				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:202",
+				"src/server/management-service.ts/ManagementService.listCrons:752",
 				"src/server/wiki-operations.ts/isGitAwarePrompt:174"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1025",
+			"id": "src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1044",
 			"name": "ManagementService.assertAgentMeetsTools",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 1025,
-			"endLine": 1031,
+			"line": 1044,
+			"endLine": 1050,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method assertAgentMeetsTools(agent: AgentRecord, tools: string[])",
@@ -16356,12 +16356,12 @@
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.syncWorkCrons:1034",
+			"id": "src/server/management-service.ts/ManagementService.syncWorkCrons:1053",
 			"name": "ManagementService.syncWorkCrons",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 1034,
-			"endLine": 1040,
+			"line": 1053,
+			"endLine": 1059,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method syncWorkCrons(workId: string, patch: { agentId?: string; enabled?: boolean })",
@@ -16369,45 +16369,45 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setWorkCronTriggers:1047",
+			"id": "src/server/management-service.ts/ManagementService.setWorkCronTriggers:1066",
 			"name": "ManagementService.setWorkCronTriggers",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 1047,
-			"endLine": 1079,
+			"line": 1066,
+			"endLine": 1098,
 			"statementCount": 20,
 			"exported": true,
 			"signature": "method setWorkCronTriggers(workId: string, triggers: Array<{ schedule: CronSchedule; gitAware?: boolean }>)",
 			"description": "全量设定 work 的 cron 触发器列表。按 {schedule, gitAware} 签名 diff:",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:195",
+				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:202",
 				"src/server/wiki-operations.ts/isGitAwarePrompt:174",
-				"src/server/management-service.ts/ManagementService.createCron:682",
+				"src/server/management-service.ts/ManagementService.createCron:701",
 				"src/server/wiki-operations.ts/wrapGitAwarePrompt:169"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.triggerCron:1089",
+			"id": "src/server/management-service.ts/ManagementService.triggerCron:1108",
 			"name": "ManagementService.triggerCron",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 1089,
-			"endLine": 1094,
+			"line": 1108,
+			"endLine": 1113,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method triggerCron(id: string)",
 			"description": "v0.8 (P4): the P3 manual-trigger stub is obsolete — the real run path is",
 			"callees": [
-				"src/server/management-service.ts/ManagementService.requireCronStore:206"
+				"src/server/management-service.ts/ManagementService.requireCronStore:213"
 			]
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.mergeToolPolicy:1106",
+			"id": "src/server/management-service.ts/ManagementService.mergeToolPolicy:1125",
 			"name": "ManagementService.mergeToolPolicy",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
-			"line": 1106,
-			"endLine": 1115,
+			"line": 1125,
+			"endLine": 1134,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method mergeToolPolicy(agentId: string, patch: NonNullable<AgentRecord[\"toolPolicy\"]>)",
@@ -16415,12 +16415,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.doDelete:353",
+			"id": "src/server/management-service.ts/ManagementService.doDelete:360",
 			"name": "ManagementService.doDelete",
 			"kind": "arrow",
 			"file": "src/server/management-service.ts",
-			"line": 353,
-			"endLine": 377,
+			"line": 360,
+			"endLine": 384,
 			"statementCount": 12,
 			"exported": false,
 			"signature": "fn ()",
@@ -16428,12 +16428,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.sig:1055",
+			"id": "src/server/management-service.ts/ManagementService.sig:1074",
 			"name": "ManagementService.sig",
 			"kind": "arrow",
 			"file": "src/server/management-service.ts",
-			"line": 1055,
-			"endLine": 1056,
+			"line": 1074,
+			"endLine": 1075,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (t: { schedule: CronSchedule; gitAware?: boolean })",
@@ -21490,7 +21490,7 @@
 			"description": "",
 			"callees": [
 				"src/server/wiki-node-store.ts/WikiStore.get:415",
-				"src/server/wiki-node-store.ts/rowToWikiNode:1610"
+				"src/server/wiki-node-store.ts/rowToWikiNode:1620"
 			]
 		},
 		{
@@ -21505,7 +21505,7 @@
 			"signature": "method getByParentAndPath(parentId: string | undefined, path: string)",
 			"description": "Find a node by (parentId, path). Used as the upsert key within a parent\r",
 			"callees": [
-				"src/server/wiki-node-store.ts/rowToWikiNode:1610"
+				"src/server/wiki-node-store.ts/rowToWikiNode:1620"
 			]
 		},
 		{
@@ -21522,7 +21522,7 @@
 			"callees": [
 				"src/server/wiki-node-store.ts/WikiStore.get:415",
 				"src/server/wiki-node-store.ts/projectSubtreeRootId:119",
-				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1563",
+				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1573",
 				"src/server/wiki-node-store.ts/WikiStore.list:411"
 			]
 		},
@@ -21541,7 +21541,7 @@
 				"src/server/wiki-node-store.ts/WikiStore.getChildren:561",
 				"src/server/wiki-node-store.ts/WikiStore.promoteLeafToFolder:679",
 				"src/server/wiki-node-store.ts/WikiStore.create:447",
-				"src/server/wiki-node-store.ts/rowToWikiNode:1610",
+				"src/server/wiki-node-store.ts/rowToWikiNode:1620",
 				"src/server/wiki-node-store.ts/WikiStore.writeNodeDetail:783",
 				"src/server/wiki-node-store.ts/WikiStore.get:415"
 			]
@@ -21559,7 +21559,7 @@
 			"description": "",
 			"callees": [
 				"src/server/wiki-node-store.ts/WikiStore.diskPathFor:637",
-				"src/server/wiki-node-store.ts/rowToWikiNode:1610",
+				"src/server/wiki-node-store.ts/rowToWikiNode:1620",
 				"src/server/wiki-node-store.ts/WikiStore.update:471",
 				"src/server/wiki-node-store.ts/WikiStore.deleteNodeDetail:808",
 				"src/server/wiki-node-store.ts/WikiStore.writeNodeDetail:783"
@@ -21870,7 +21870,7 @@
 			"callees": [
 				"src/server/wiki-node-store.ts/projectSubtreeRootId:119",
 				"src/server/wiki-node-store.ts/WikiStore.get:415",
-				"src/server/wiki-node-store.ts/rowToWikiNode:1610",
+				"src/server/wiki-node-store.ts/rowToWikiNode:1620",
 				"src/server/wiki-node-store.ts/WikiStore.ensureProjectsRoot:860",
 				"src/server/wiki-node-store.ts/WikiStore.insertWithId:353",
 				"src/server/wiki-node-store.ts/projectSubtreeRootPath:110"
@@ -21907,7 +21907,7 @@
 			"callees": [
 				"src/server/wiki-node-store.ts/WikiStore.get:415",
 				"src/server/wiki-node-store.ts/projectSubtreeRootId:119",
-				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1563",
+				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1573",
 				"src/server/wiki-node-store.ts/WikiStore.list:411"
 			]
 		},
@@ -21925,7 +21925,7 @@
 			"callees": [
 				"src/server/wiki-node-store.ts/WikiStore.list:411",
 				"src/server/wiki-node-store.ts/WikiStore.get:415",
-				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1563"
+				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1573"
 			]
 		},
 		{
@@ -21987,7 +21987,7 @@
 			"description": "collectSubtreeIds that returns an empty set (rather than throwing) when\r",
 			"callees": [
 				"src/server/wiki-node-store.ts/WikiStore.get:415",
-				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1563"
+				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1573"
 			]
 		},
 		{
@@ -22184,8 +22184,8 @@
 			"signature": "method createMemoryNode(input: {\r\n\t\tparentId: string;\r\n\t\tpath: string;\r\n\t\ttitle: string;\r\n\t\tsummary?: string;\r\n\t\tdetail?: string;\r\n\t\tprovenance?: \"structure\" | \"derived\" | \"confirmed\";\r\n\t\tlastUpdatedBy?: string;\r\n\t})",
 			"description": "Create a global memory node (M5 extractor A writes here, NOT under any\r",
 			"callees": [
-				"src/server/wiki-node-store.ts/WikiStore.listProjects:1471",
-				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1563",
+				"src/server/wiki-node-store.ts/WikiStore.listProjects:1481",
+				"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1573",
 				"src/server/wiki-node-store.ts/projectSubtreeRootId:119",
 				"src/server/wiki-node-store.ts/WikiStore.getByParentAndPath:425",
 				"src/server/wiki-node-store.ts/WikiStore.update:471",
@@ -22215,24 +22215,25 @@
 			"kind": "method",
 			"file": "src/server/wiki-node-store.ts",
 			"line": 1400,
-			"endLine": 1418,
-			"statementCount": 7,
+			"endLine": 1428,
+			"statementCount": 10,
 			"exported": true,
-			"signature": "method ensureMemoryAgentRoot(agentId: string)",
+			"signature": "method ensureMemoryAgentRoot(agentId: string, agentName?: string)",
 			"description": "v0.8 (P2 §11.6): ensure an agent's per-agent memory subtree root exists.\r",
 			"callees": [
 				"src/server/wiki-node-store.ts/memoryAgentRootId:315",
 				"src/server/wiki-node-store.ts/WikiStore.get:415",
+				"src/server/wiki-node-store.ts/WikiStore.update:471",
 				"src/server/wiki-node-store.ts/WikiStore.insertWithId:353"
 			]
 		},
 		{
-			"id": "src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1429",
+			"id": "src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1439",
 			"name": "WikiStore.createMemoryNodeForAgent",
 			"kind": "method",
 			"file": "src/server/wiki-node-store.ts",
-			"line": 1429,
-			"endLine": 1466,
+			"line": 1439,
+			"endLine": 1476,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method createMemoryNodeForAgent(input: {\r\n\t\tagentId: string;\r\n\t\ttype: \"event\" | \"decision\" | \"discovery\" | \"status_change\" | \"preference\";\r\n\t\tsubject: string;\r\n\t\ttitle: string;\r\n\t\tsummary?: string;\r\n\t\tdetail?: string;\r\n\t\tprovenance?: \"structure\" | \"derived\" | \"confirmed\";\r\n\t\tlastUpdatedBy?: string;\r\n\t})",
@@ -22245,12 +22246,12 @@
 			]
 		},
 		{
-			"id": "src/server/wiki-node-store.ts/WikiStore.listProjects:1471",
+			"id": "src/server/wiki-node-store.ts/WikiStore.listProjects:1481",
 			"name": "WikiStore.listProjects",
 			"kind": "method",
 			"file": "src/server/wiki-node-store.ts",
-			"line": 1471,
-			"endLine": 1479,
+			"line": 1481,
+			"endLine": 1489,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method listProjects()",
@@ -22260,12 +22261,12 @@
 			]
 		},
 		{
-			"id": "src/server/wiki-node-store.ts/WikiStore.listMemoryNodes:1491",
+			"id": "src/server/wiki-node-store.ts/WikiStore.listMemoryNodes:1501",
 			"name": "WikiStore.listMemoryNodes",
 			"kind": "method",
 			"file": "src/server/wiki-node-store.ts",
-			"line": 1491,
-			"endLine": 1500,
+			"line": 1501,
+			"endLine": 1510,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method listMemoryNodes()",
@@ -22275,12 +22276,12 @@
 			]
 		},
 		{
-			"id": "src/server/wiki-node-store.ts/WikiStore.searchMemoryNodes:1517",
+			"id": "src/server/wiki-node-store.ts/WikiStore.searchMemoryNodes:1527",
 			"name": "WikiStore.searchMemoryNodes",
 			"kind": "method",
 			"file": "src/server/wiki-node-store.ts",
-			"line": 1517,
-			"endLine": 1551,
+			"line": 1527,
+			"endLine": 1561,
 			"statementCount": 21,
 			"exported": true,
 			"signature": "method searchMemoryNodes(query: string, limit: number = 10)",
@@ -22291,12 +22292,12 @@
 			]
 		},
 		{
-			"id": "src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1563",
+			"id": "src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1573",
 			"name": "WikiStore.collectSubtreeIds",
 			"kind": "method",
 			"file": "src/server/wiki-node-store.ts",
-			"line": 1563,
-			"endLine": 1588,
+			"line": 1573,
+			"endLine": 1598,
 			"statementCount": 23,
 			"exported": true,
 			"signature": "method collectSubtreeIds(rootId: string)",
@@ -22307,27 +22308,27 @@
 			]
 		},
 		{
-			"id": "src/server/wiki-node-store.ts/rowToWikiNode:1610",
+			"id": "src/server/wiki-node-store.ts/rowToWikiNode:1620",
 			"name": "rowToWikiNode",
 			"kind": "function",
 			"file": "src/server/wiki-node-store.ts",
-			"line": 1610,
-			"endLine": 1634,
+			"line": 1620,
+			"endLine": 1644,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "function rowToWikiNode(row: any)",
 			"description": "Normalize a stored row into a WikiNode. v0.8 (P1 §10.1): the `type` column\r",
 			"callees": [
-				"src/server/wiki-node-store.ts/deriveTypeFromPosition:1655"
+				"src/server/wiki-node-store.ts/deriveTypeFromPosition:1665"
 			]
 		},
 		{
-			"id": "src/server/wiki-node-store.ts/deriveTypeFromPosition:1655",
+			"id": "src/server/wiki-node-store.ts/deriveTypeFromPosition:1665",
 			"name": "deriveTypeFromPosition",
 			"kind": "function",
 			"file": "src/server/wiki-node-store.ts",
-			"line": 1655,
-			"endLine": 1698,
+			"line": 1665,
+			"endLine": 1708,
 			"statementCount": 27,
 			"exported": false,
 			"signature": "function deriveTypeFromPosition(row: any)",
@@ -25340,15 +25341,15 @@
 		],
 		"src/server/wiki-operations.ts/agentHasTool:38": [
 			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:712",
-			"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1025",
+			"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1044",
 			"src/server/project-work-runner.ts/ProjectWorkRunner.fireProjectWork:62",
 			"src/server/wiki-operations.ts/agentHasWikiTool:26"
 		],
 		"src/server/wiki-operations.ts/isGitAwarePrompt:174": [
 			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:712",
-			"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:815",
-			"src/server/management-service.ts/ManagementService.getProjectWorks:986",
-			"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1047"
+			"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:834",
+			"src/server/management-service.ts/ManagementService.getProjectWorks:1005",
+			"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1066"
 		],
 		"src/server/wiki-operations.ts/stripGitAwareSentinel:179": [
 			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:712"
@@ -25356,7 +25357,7 @@
 		"src/server/session-context-router.ts/resolveSessionByRoleProject:98": [
 			"src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:789",
 			"src/server/enrichment-runner.ts/EnrichmentRunner.runProjectEnrichment:100",
-			"src/server/management-service.ts/ManagementService.ensureProjectSession:297",
+			"src/server/management-service.ts/ManagementService.ensureProjectSession:304",
 			"src/server/pm-service.ts/PmService.openDiscussSession:275",
 			"src/server/project-work-runner.ts/ProjectWorkRunner.fireProjectWork:62"
 		],
@@ -25451,15 +25452,15 @@
 		],
 		"src/server/wiki-operations.ts/agentHasWikiTool:26": [
 			"src/server/enrichment-runner.ts/EnrichmentRunner.resolveAgent:80",
-			"src/server/management-service.ts/ManagementService.bindProjectArchivist:758",
-			"src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:796"
+			"src/server/management-service.ts/ManagementService.bindProjectArchivist:777",
+			"src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:815"
 		],
 		"src/server/enrichment-runner.ts/EnrichmentRunner.resolveAgent:80": [
 			"src/server/enrichment-runner.ts/EnrichmentRunner.runProjectEnrichment:100"
 		],
 		"src/server/wiki-operations.ts/resolveOperationPrompt:149": [
 			"src/server/enrichment-runner.ts/EnrichmentRunner.runProjectEnrichment:100",
-			"src/server/management-service.ts/ManagementService.bindProjectArchivist:758"
+			"src/server/management-service.ts/ManagementService.bindProjectArchivist:777"
 		],
 		"src/server/extraction-cursor-store.ts/ExtractionCursorStore.get:88": [
 			"src/server/extraction-cursor-store.ts/ExtractionCursorStore.get:88",
@@ -25688,83 +25689,83 @@
 		"src/core/logger.ts/configureLogging:118": [
 			"src/server/log-router.ts/createLogRouter:55"
 		],
-		"src/server/management-service.ts/ManagementService.enrichProject:277": [
-			"src/server/management-service.ts/ManagementService.createProject:224"
+		"src/server/management-service.ts/ManagementService.enrichProject:284": [
+			"src/server/management-service.ts/ManagementService.createProject:231"
 		],
-		"src/server/management-service.ts/ManagementService.seedDefaultProjectWorks:863": [
-			"src/server/management-service.ts/ManagementService.createProject:224"
+		"src/server/management-service.ts/ManagementService.seedDefaultProjectWorks:882": [
+			"src/server/management-service.ts/ManagementService.createProject:231"
 		],
-		"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:815": [
-			"src/server/management-service.ts/ManagementService.getProjectContainerView:403"
+		"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:834": [
+			"src/server/management-service.ts/ManagementService.getProjectContainerView:410"
 		],
-		"src/server/management-service.ts/ManagementService.getProjectWorks:986": [
-			"src/server/management-service.ts/ManagementService.getProjectContainerView:403"
+		"src/server/management-service.ts/ManagementService.getProjectWorks:1005": [
+			"src/server/management-service.ts/ManagementService.getProjectContainerView:410"
 		],
 		"src/server/management-service.ts/ManagementService.requireTemplateStore:165": [
-			"src/server/management-service.ts/ManagementService.listTemplates:614",
-			"src/server/management-service.ts/ManagementService.getTemplate:618",
-			"src/server/management-service.ts/ManagementService.instantiateTemplate:635"
+			"src/server/management-service.ts/ManagementService.listTemplates:633",
+			"src/server/management-service.ts/ManagementService.getTemplate:637",
+			"src/server/management-service.ts/ManagementService.instantiateTemplate:654"
 		],
-		"src/server/management-service.ts/ManagementService.requireCronStore:206": [
-			"src/server/management-service.ts/ManagementService.createCron:682",
-			"src/server/management-service.ts/ManagementService.updateCron:714",
-			"src/server/management-service.ts/ManagementService.deleteCron:725",
-			"src/server/management-service.ts/ManagementService.listCrons:733",
-			"src/server/management-service.ts/ManagementService.getCron:744",
-			"src/server/management-service.ts/ManagementService.unbindProjectArchivist:788",
-			"src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:796",
-			"src/server/management-service.ts/ManagementService.setProjectArchivistEnabled:807",
-			"src/server/management-service.ts/ManagementService.triggerCron:1089"
+		"src/server/management-service.ts/ManagementService.requireCronStore:213": [
+			"src/server/management-service.ts/ManagementService.createCron:701",
+			"src/server/management-service.ts/ManagementService.updateCron:733",
+			"src/server/management-service.ts/ManagementService.deleteCron:744",
+			"src/server/management-service.ts/ManagementService.listCrons:752",
+			"src/server/management-service.ts/ManagementService.getCron:763",
+			"src/server/management-service.ts/ManagementService.unbindProjectArchivist:807",
+			"src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:815",
+			"src/server/management-service.ts/ManagementService.setProjectArchivistEnabled:826",
+			"src/server/management-service.ts/ManagementService.triggerCron:1108"
 		],
-		"src/server/management-service.ts/ManagementService.createCron:682": [
-			"src/server/management-service.ts/ManagementService.bindProjectArchivist:758",
-			"src/server/management-service.ts/ManagementService.createProjectWork:877",
-			"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1047"
+		"src/server/management-service.ts/ManagementService.createCron:701": [
+			"src/server/management-service.ts/ManagementService.bindProjectArchivist:777",
+			"src/server/management-service.ts/ManagementService.createProjectWork:896",
+			"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1066"
 		],
 		"src/server/wiki-operations.ts/wrapGitAwarePrompt:169": [
-			"src/server/management-service.ts/ManagementService.bindProjectArchivist:758",
-			"src/server/management-service.ts/ManagementService.createProjectWork:877",
-			"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1047"
+			"src/server/management-service.ts/ManagementService.bindProjectArchivist:777",
+			"src/server/management-service.ts/ManagementService.createProjectWork:896",
+			"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1066"
 		],
-		"src/server/management-service.ts/ManagementService.listCrons:733": [
-			"src/server/management-service.ts/ManagementService.unbindProjectArchivist:788",
-			"src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:796",
-			"src/server/management-service.ts/ManagementService.setProjectArchivistEnabled:807",
-			"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:815",
-			"src/server/management-service.ts/ManagementService.getProjectWorks:986"
+		"src/server/management-service.ts/ManagementService.listCrons:752": [
+			"src/server/management-service.ts/ManagementService.unbindProjectArchivist:807",
+			"src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:815",
+			"src/server/management-service.ts/ManagementService.setProjectArchivistEnabled:826",
+			"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:834",
+			"src/server/management-service.ts/ManagementService.getProjectWorks:1005"
 		],
-		"src/server/management-service.ts/ManagementService.cronOperationId:849": [
-			"src/server/management-service.ts/ManagementService.unbindProjectArchivist:788",
-			"src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:796",
-			"src/server/management-service.ts/ManagementService.setProjectArchivistEnabled:807",
-			"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:815"
+		"src/server/management-service.ts/ManagementService.cronOperationId:868": [
+			"src/server/management-service.ts/ManagementService.unbindProjectArchivist:807",
+			"src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:815",
+			"src/server/management-service.ts/ManagementService.setProjectArchivistEnabled:826",
+			"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:834"
 		],
-		"src/server/management-service.ts/ManagementService.requireProjectWorkStore:195": [
-			"src/server/management-service.ts/ManagementService.seedDefaultProjectWorks:863",
-			"src/server/management-service.ts/ManagementService.createProjectWork:877",
-			"src/server/management-service.ts/ManagementService.updateProjectWork:920",
-			"src/server/management-service.ts/ManagementService.deleteProjectWork:948",
-			"src/server/management-service.ts/ManagementService.assignProjectWorkAgent:960",
-			"src/server/management-service.ts/ManagementService.setProjectWorkEnabled:973",
-			"src/server/management-service.ts/ManagementService.getProjectWorks:986",
-			"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1047"
+		"src/server/management-service.ts/ManagementService.requireProjectWorkStore:202": [
+			"src/server/management-service.ts/ManagementService.seedDefaultProjectWorks:882",
+			"src/server/management-service.ts/ManagementService.createProjectWork:896",
+			"src/server/management-service.ts/ManagementService.updateProjectWork:939",
+			"src/server/management-service.ts/ManagementService.deleteProjectWork:967",
+			"src/server/management-service.ts/ManagementService.assignProjectWorkAgent:979",
+			"src/server/management-service.ts/ManagementService.setProjectWorkEnabled:992",
+			"src/server/management-service.ts/ManagementService.getProjectWorks:1005",
+			"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1066"
 		],
-		"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1025": [
-			"src/server/management-service.ts/ManagementService.createProjectWork:877",
-			"src/server/management-service.ts/ManagementService.updateProjectWork:920",
-			"src/server/management-service.ts/ManagementService.assignProjectWorkAgent:960"
+		"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1044": [
+			"src/server/management-service.ts/ManagementService.createProjectWork:896",
+			"src/server/management-service.ts/ManagementService.updateProjectWork:939",
+			"src/server/management-service.ts/ManagementService.assignProjectWorkAgent:979"
 		],
-		"src/server/management-service.ts/ManagementService.requireProjectWorkRunner:199": [
-			"src/server/management-service.ts/ManagementService.createProjectWork:877",
-			"src/server/management-service.ts/ManagementService.triggerProjectWork:981"
+		"src/server/management-service.ts/ManagementService.requireProjectWorkRunner:206": [
+			"src/server/management-service.ts/ManagementService.createProjectWork:896",
+			"src/server/management-service.ts/ManagementService.triggerProjectWork:1000"
 		],
-		"src/server/management-service.ts/ManagementService.syncWorkCrons:1034": [
-			"src/server/management-service.ts/ManagementService.updateProjectWork:920",
-			"src/server/management-service.ts/ManagementService.assignProjectWorkAgent:960",
-			"src/server/management-service.ts/ManagementService.setProjectWorkEnabled:973"
+		"src/server/management-service.ts/ManagementService.syncWorkCrons:1053": [
+			"src/server/management-service.ts/ManagementService.updateProjectWork:939",
+			"src/server/management-service.ts/ManagementService.assignProjectWorkAgent:979",
+			"src/server/management-service.ts/ManagementService.setProjectWorkEnabled:992"
 		],
-		"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1047": [
-			"src/server/management-service.ts/ManagementService.updateProjectWork:920"
+		"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1066": [
+			"src/server/management-service.ts/ManagementService.updateProjectWork:939"
 		],
 		"src/server/mcp-manager.ts/MCPManager.disconnect:145": [
 			"src/server/mcp-manager.ts/MCPManager.connect:65",
@@ -26334,10 +26335,10 @@
 			"src/server/wiki-node-store.ts/WikiStore.listByProject:978",
 			"src/server/wiki-node-store.ts/WikiStore.listVisibleFromRoot:997",
 			"src/server/wiki-node-store.ts/WikiStore.listVisibleFromAnchors:1036",
-			"src/server/wiki-node-store.ts/WikiStore.listProjects:1471",
-			"src/server/wiki-node-store.ts/WikiStore.listMemoryNodes:1491",
-			"src/server/wiki-node-store.ts/WikiStore.searchMemoryNodes:1517",
-			"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1563"
+			"src/server/wiki-node-store.ts/WikiStore.listProjects:1481",
+			"src/server/wiki-node-store.ts/WikiStore.listMemoryNodes:1501",
+			"src/server/wiki-node-store.ts/WikiStore.searchMemoryNodes:1527",
+			"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1573"
 		],
 		"src/server/wiki-node-store.ts/WikiStore.get:415": [
 			"src/server/wiki-node-store.ts/WikiStore.get:415",
@@ -26362,16 +26363,16 @@
 			"src/server/wiki-node-store.ts/WikiStore.addFlag:1300",
 			"src/server/wiki-node-store.ts/WikiStore.ensureMemoryTypeRoot:1363",
 			"src/server/wiki-node-store.ts/WikiStore.ensureMemoryAgentRoot:1400",
-			"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1563"
+			"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1573"
 		],
-		"src/server/wiki-node-store.ts/rowToWikiNode:1610": [
+		"src/server/wiki-node-store.ts/rowToWikiNode:1620": [
 			"src/server/wiki-node-store.ts/WikiStore.get:415",
 			"src/server/wiki-node-store.ts/WikiStore.getByParentAndPath:425",
 			"src/server/wiki-node-store.ts/WikiStore.create:447",
 			"src/server/wiki-node-store.ts/WikiStore.update:471",
 			"src/server/wiki-node-store.ts/WikiStore.ensureProjectSubtree:948"
 		],
-		"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1563": [
+		"src/server/wiki-node-store.ts/WikiStore.collectSubtreeIds:1573": [
 			"src/server/wiki-node-store.ts/WikiStore.getByProjectPath:439",
 			"src/server/wiki-node-store.ts/WikiStore.listByProject:978",
 			"src/server/wiki-node-store.ts/WikiStore.listVisibleFromRoot:997",
@@ -26391,7 +26392,7 @@
 			"src/server/wiki-node-store.ts/WikiStore.upsertNodeInScope:1131",
 			"src/server/wiki-node-store.ts/WikiStore.upsertProjectNode:1209",
 			"src/server/wiki-node-store.ts/WikiStore.createMemoryNode:1320",
-			"src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1429"
+			"src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1439"
 		],
 		"src/server/wiki-node-store.ts/WikiStore.writeNodeDetail:783": [
 			"src/server/wiki-node-store.ts/WikiStore.create:447",
@@ -26416,7 +26417,8 @@
 			"src/server/wiki-node-store.ts/WikiStore.addFlag:1300",
 			"src/server/wiki-node-store.ts/WikiStore.clearFlags:1310",
 			"src/server/wiki-node-store.ts/WikiStore.createMemoryNode:1320",
-			"src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1429"
+			"src/server/wiki-node-store.ts/WikiStore.ensureMemoryAgentRoot:1400",
+			"src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1439"
 		],
 		"src/server/wiki-node-store.ts/WikiStore.deleteNodeDetail:808": [
 			"src/server/wiki-node-store.ts/WikiStore.update:471",
@@ -26502,7 +26504,7 @@
 			"src/server/wiki-node-store.ts/WikiStore.upsertNodeInScope:1131",
 			"src/server/wiki-node-store.ts/WikiStore.upsertProjectNode:1209",
 			"src/server/wiki-node-store.ts/WikiStore.createMemoryNode:1320",
-			"src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1429"
+			"src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1439"
 		],
 		"src/server/wiki-node-store.ts/WikiStore.assertNodeInsideProjectScope:1112": [
 			"src/server/wiki-node-store.ts/WikiStore.updateNodeMetadata:1271",
@@ -26510,17 +26512,17 @@
 			"src/server/wiki-node-store.ts/WikiStore.addFlag:1300",
 			"src/server/wiki-node-store.ts/WikiStore.clearFlags:1310"
 		],
-		"src/server/wiki-node-store.ts/WikiStore.listProjects:1471": [
+		"src/server/wiki-node-store.ts/WikiStore.listProjects:1481": [
 			"src/server/wiki-node-store.ts/WikiStore.createMemoryNode:1320"
 		],
 		"src/server/wiki-node-store.ts/WikiStore.ensureMemoryAgentRoot:1400": [
-			"src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1429"
+			"src/server/wiki-node-store.ts/WikiStore.createMemoryNodeForAgent:1439"
 		],
 		"src/server/wiki-node-store.ts/WikiStore.readNodeDetail:757": [
-			"src/server/wiki-node-store.ts/WikiStore.searchMemoryNodes:1517"
+			"src/server/wiki-node-store.ts/WikiStore.searchMemoryNodes:1527"
 		],
-		"src/server/wiki-node-store.ts/deriveTypeFromPosition:1655": [
-			"src/server/wiki-node-store.ts/rowToWikiNode:1610"
+		"src/server/wiki-node-store.ts/deriveTypeFromPosition:1665": [
+			"src/server/wiki-node-store.ts/rowToWikiNode:1620"
 		],
 		"src/server/wiki-scan-cursor-store.ts/WikiScanCursorStore.get:74": [
 			"src/server/wiki-scan-cursor-store.ts/WikiScanCursorStore.setLastScannedRef:84",

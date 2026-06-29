@@ -177,7 +177,14 @@ export class ManagementService {
 	setSessionDB(db: SessionDB): void { this.sessionDB = db; }
 	private agentService: AgentService | null = null;
 	setAgentService(a: AgentService): void { this.agentService = a; }
-	setWikiStore(wiki: WikiStore): void { this.wikiStore = wiki; }
+	setWikiStore(wiki: WikiStore): void {
+		this.wikiStore = wiki;
+		// backfill:把存量 agent 的 memory 根 title 同步成 agent 名字(旧 DB 里
+		// 可能还是 "Memory: <agentId>")。幂等,新建的由 createAgent 处理。
+		for (const a of this.agentStore.list()) {
+			this.wikiStore?.ensureMemoryAgentRoot(a.id, a.name);
+		}
+	}
 	setArchivistService(svc: WikiSkeletonService): void { this.archivistService = svc; }
 	/** v0.8 §8.6: late-bind the task-step store (server/index.ts wiring order). */
 	setTaskStepStore(store: TaskStepStore): void { this.taskStepStore = store; }
@@ -537,7 +544,10 @@ export class ManagementService {
 	// ─── Agents (§7.3) ────────────────────────────────────────────
 
 	createAgent(input: Omit<AgentRecord, "id" | "createdAt" | "updatedAt">): AgentRecord {
-		return this.agentStore.create(input);
+		const rec = this.agentStore.create(input);
+		// 立刻建 memory 根并按 agent 名字命名(不等 extractor 懒建)。
+		this.wikiStore?.ensureMemoryAgentRoot(rec.id, rec.name);
+		return rec;
 	}
 
 	updateAgent(id: string, input: Partial<Omit<AgentRecord, "id" | "createdAt">>): AgentRecord {
@@ -545,6 +555,7 @@ export class ManagementService {
 		// (e.g. disable one tool) must MERGE — otherwise passing {tools:{WebSearch:
 		// {enabled:false}}} wipes every other tool. Other fields are scalar/arrays
 		// and stay replace. See mergeToolPolicy for the same merge logic.
+		let updated: AgentRecord;
 		if (input.toolPolicy !== undefined) {
 			const agent = this.agentStore.get(id);
 			if (agent) {
@@ -555,10 +566,18 @@ export class ManagementService {
 				};
 				const { toolPolicy: _drop, ...rest } = input;
 				void _drop;
-				return this.agentStore.update(id, { ...rest, toolPolicy: merged });
+				updated = this.agentStore.update(id, { ...rest, toolPolicy: merged });
+			} else {
+				updated = this.agentStore.update(id, input);
 			}
+		} else {
+			updated = this.agentStore.update(id, input);
 		}
-		return this.agentStore.update(id, input);
+		// rename 同步:agent 改名 → memory 根 title 跟着改。
+		if (input.name !== undefined) {
+			this.wikiStore?.ensureMemoryAgentRoot(id, input.name);
+		}
+		return updated;
 	}
 
 	/**
