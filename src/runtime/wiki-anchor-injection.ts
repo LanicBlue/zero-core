@@ -119,19 +119,20 @@ export function resolveAnchors(opts: {
 			depth: DEFAULT_PROJECT_ANCHOR_DEPTH,
 		});
 	} else {
-		// v0.8 (读写同界 / pure anchor model): a session with NO project anchor
-		// (zero / global sessions) gets the GLOBAL ROOT as its scope anchor so
-		// its read scope == write scope == the whole tree. inject:"off" → it
-		// counts toward the scope-guard anchor set but is NOT rendered into the
-		// prompt (the whole tree would be absurd to inject). This preserves the
-		// legacy "zero viewRoot = global root" read behavior and extends it to
-		// writes, matching the design "拥有所配置 anchor 节点以下的所有权限".
-		out.push({
-			nodeId: WIKI_GLOBAL_ROOT_ID,
-			inject: "off",
-			kind: "project",
-			depth: 0,
-		});
+		// v0.8 (读写同界 / pure anchor model): GLOBAL ROOT 作为 scope 锚点只给
+		// **zero**(平台管家,需跨项目巡视整棵 wiki 树,read=write=whole tree)。
+		// 其他 agent 的 general session 默认**不**放开整棵全局树 —— 只有自己的
+		// memory 根(上面已加)+ 显式 free wikiAnchors。需要碰某 project 的 wiki
+		// 就走该 project 的 session(拿到 project 子树锚点)。inject:"off" → 算
+		// scope 锚点但不进 prompt(整树注入没意义)。
+		if (opts.agentId === "zero") {
+			out.push({
+				nodeId: WIKI_GLOBAL_ROOT_ID,
+				inject: "off",
+				kind: "project",
+				depth: 0,
+			});
+		}
 	}
 
 	// 3. Free anchors (AgentRecord.wikiAnchors). Override kind/inject/depth as

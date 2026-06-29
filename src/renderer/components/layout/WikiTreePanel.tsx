@@ -27,7 +27,6 @@
 import React, { useEffect, useState } from "react";
 import { useChatStore } from "../../store/chat-store.js";
 import { useWikiStore } from "../../store/wiki-store.js";
-import { subscribeDataChange } from "../../store/data-sync.js";
 import WikiTree from "../wiki/WikiTree.js";
 import type { ResolvedAnchorView } from "../../../shared/types.js";
 
@@ -68,26 +67,17 @@ export default function WikiTreePanel() {
 		return () => { cancelled = true; };
 	}, [activeAgentId, projectId]);
 
-	// agent 用 Wiki 工具改了节点 → 后端推 data:changed(project_wiki) →
-	// wiki-store 的全局订阅会把 childrenByNode 整个清空重拉 scope 根,但本面板
-	// 用的是 anchors 列表(不走 scope),清空后若不重新 expand,树就"丢失"了。
-	// 这里订阅同一个事件,bump 一个 version 让下面的 expand effect 重跑,逐根
-	// 重新拉子节点(childrenLoaded 已被清空,expandNode 会真正再请求)。
-	const [wikiVersion, setWikiVersion] = useState(0);
-	useEffect(() => {
-		return subscribeDataChange("project_wiki", () => setWikiVersion((v) => v + 1));
-	}, []);
-
 	const rootsKey = anchors.map((a) => a.nodeId).join(",");
 
-	// 逐根懒加载直接子节点(expandNode 幂等:已加载/加载中则跳过)。wikiVersion
-	// 变化(wiki 被改)时强制重跑 —— 全局订阅已清空 loaded,所以会真正重拉。
+	// 逐根懒加载直接子节点(expandNode 幂等:已加载/加载中则跳过)。wiki 被
+	// 改时 wiki-store 的增量订阅只刷新受影响分支的 childrenByNode,本组件响应
+	// 式读取即可更新,无需这里重跑。
 	useEffect(() => {
 		for (const a of anchors) {
 			void expandNode(a.nodeId);
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [rootsKey, wikiVersion, expandNode]);
+	}, [rootsKey, expandNode]);
 
 	// 选中节点 → 读摘要+正文。
 	useEffect(() => {

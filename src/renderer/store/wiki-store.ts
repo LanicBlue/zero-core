@@ -26,7 +26,6 @@
 import { create } from "zustand";
 import type { WikiNode } from "../../shared/types.js";
 import { useNotificationStore } from "./notification-store.js";
-import { subscribeDataChange } from "./data-sync.js";
 
 const api = () => (window as any).api;
 
@@ -192,15 +191,56 @@ export const useWikiStore = create<WikiState>((set, get) => ({
 	},
 }));
 
-// Refresh the tree when nodes are mutated from the backend (archivist scan /
-// Wiki tool). Simplified strategy: drop the loaded tree and re-fetch the root.
-// (Could be refined to refresh only the affected branch later.)
-subscribeDataChange("project_wiki", () => {
-	useWikiStore.setState({
-		childrenByNode: {},
-		childrenLoaded: {},
-		nodeById: {},
-		rootLoaded: false,
+// Incremental refresh when nodes are mutated from the backend (archivist scan /
+// Wiki tool). v0.8 原则:不全量重置,只更新变化的分支 —— 该节点的父分支失效重拉,
+// 该节点正文缓存清掉(下次点选重读),其余已加载的分支原样保留。未显示(未展开)
+// 的分支不管,展开时自然拿最新。只获取需要显示的节点,与"显示时拉/展开时拉子/点
+// 选时拉正文"的懒模型一致。
+function refreshWikiBranch(parentId: string): void {
+	const s = useWikiStore.getState();
+	// 只刷新"已显示"的父分支;未加载的不管(展开时拿最新)。
+	if (!s.childrenLoaded[parentId]) return;
+	// 失效该父的 children 缓存 → expandNode 见 loaded=false 会真正重请求。
+	useWikiStore.setState((st) => {
+		const cl = { ...st.childrenLoaded };
+		delete cl[parentId];
+		return { childrenLoaded: cl };
 	});
-	void useWikiStore.getState().refresh();
-});
+	void s.expandNode(parentId);
+}
+
+if (typeof window !== "undefined") {
+	api().onDataChanged((e: { collection: string; changes?: Array<{ id: string; op: string; record?: any }> }) => {
+		if (e.collection !== "project_wiki") return;
+		const s = useWikiStore.getState();
+		for (const c of e.changes ?? []) {
+			if (c.op === "delete") {
+				const node = s.nodeById[c.id];
+				const parentId = node?.parentId;
+				useWikiStore.setState((st) => {
+					const nodeById = { ...st.nodeById };
+					delete nodeById[c.id];
+					const detailByNode = { ...st.detailByNode };
+					delete detailByNode[c.id];
+					return { nodeById, detailByNode };
+				});
+				if (parentId) refreshWikiBranch(parentId);
+				continue;
+			}
+			// create / update:record 可能是 DB 行,只用其 parentId 定位父分支
+			// (真正的 WikiNode 形状由父分支重拉时补全,不直接塞 record 进 nodeById)。
+			const rec = c.record ?? {};
+			const parentId = rec.parentId ?? rec.parent_id;
+			// 清该节点正文缓存,下次点选重读(docWrite 后内容变了)。
+			useWikiStore.setState((st) => {
+				if (!(c.id in st.detailByNode)) return st;
+				const detailByNode = { ...st.detailByNode };
+				delete detailByNode[c.id];
+				return { detailByNode };
+			});
+			if (parentId) refreshWikiBranch(parentId);
+			// 节点自己被展开过 → 也刷它自己的 children(rename/move 后顺序/身份可能变)。
+			if (s.childrenLoaded[c.id]) refreshWikiBranch(c.id);
+		}
+	});
+}

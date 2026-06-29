@@ -113,6 +113,16 @@ describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
 		expect(anchors.filter((a) => a.kind === "memory").length).toBe(1);
 	});
 
+	test("非 zero agent 的 general session → 只有 memory 根,不默认放开 GLOBAL ROOT", () => {
+		// 平台管家 zero 才默认巡视整棵全局树;普通 agent 的 general session 默认只
+		// 有自己的 memory 根(需要碰某 project 的 wiki 就走该 project 的 session)。
+		const anchors = resolveAnchors({ wiki, agentId: "archivist-x" });
+		expect(anchors.some((a) => a.nodeId === WIKI_GLOBAL_ROOT_ID)).toBe(false);
+		expect(anchors.filter((a) => a.kind === "memory").length).toBe(1);
+		// memory 根仍在 → agent 在 general session 仍能读写自己的记忆。
+		expect(anchors.some((a) => a.nodeId === memoryAgentRootId("archivist-x"))).toBe(true);
+	});
+
 	test("free anchors override inject channel (free wins over auto)", () => {
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "p") });
 		track(wiki.ensureProjectSubtree(proj.id, "P"));

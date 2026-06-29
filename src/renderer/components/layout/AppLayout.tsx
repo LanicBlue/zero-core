@@ -93,14 +93,13 @@ export default function AppLayout() {
 		const handlers: Record<string, (data: any, key: string) => void> = {
 			session_init: (d, key) => {
 					const sid = d.sessionId || key;
-					// Don't overwrite a session that is actively streaming AND already
-					// has messages in the store (real-time events keep it current).
-					// BUT for server-triggered runs (work trigger / cron) the chat
-					// send() never ran, so the store is empty — load session_init
-					// anyway so switching to that session shows the run's messages.
+					// pull-on-display 后 session_init 的 push 只作 fallback:本 session
+					// 已经有消息(ChatPanel pull 或 live 事件填的)就别再用 push 覆盖,
+					// 否则可能与正在流式的 live 内容竞态、回退。store 为空(pull 还没
+					// 回或失败)时才用 push 兜底加载。
 					const state = useChatStore.getState();
 					const hasMsgs = (state.messagesBySession[sid]?.length ?? 0) > 0;
-					if (state.streamingSessions.has(sid) && hasMsgs) return;
+					if (hasMsgs) return;
 					initSession(sid, { messages: d.messages || [] });
 						// Restore context window and token usage from backend
 						updateContextInfo(d.sessionId || key, {

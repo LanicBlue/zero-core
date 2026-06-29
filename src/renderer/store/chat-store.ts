@@ -86,6 +86,13 @@ interface ChatState {
 	sessionsByAgent: Record<string, SessionRecord[]>;
 	lastError: { sessionId: string; message: string } | null;
 	contextInfoBySession: Record<string, ContextInfo>;
+	/**
+	 * sessionId → 最近一次"内容型"增量事件(text_delta / tool 调用 / thinking)到达的时间。
+	 * pull-on-display 防回归用:pull 响应回来时若本 session 在 pull 发出后被 live
+	 * 事件更新过,说明 live tail 更新,不能拿旧快照整覆盖(会回退流式内容、丢正在
+	 * 进行的一轮)。见 ChatPanel 的 pull effect 合并逻辑。
+	 */
+	lastEventAt: Record<string, number>;
 
 	addMessage: (sessionId: string, msg: ChatMessage) => void;
 	updateAssistantText: (sessionId: string, text: string) => void;
@@ -171,6 +178,7 @@ export const useChatStore = create<ChatState>((set) => ({
 	sessionsByAgent: {},
 	lastError: null,
 	contextInfoBySession: {},
+	lastEventAt: {},
 
 	addMessage: (sessionId, msg) =>
 		set((state) => ({
@@ -194,6 +202,7 @@ export const useChatStore = create<ChatState>((set) => ({
 			});
 			return {
 				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
+				lastEventAt: { ...state.lastEventAt, [sessionId]: Date.now() },
 			};
 		}),
 
@@ -211,6 +220,7 @@ export const useChatStore = create<ChatState>((set) => ({
 			});
 			return {
 				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
+				lastEventAt: { ...state.lastEventAt, [sessionId]: Date.now() },
 			};
 		}),
 
@@ -223,6 +233,7 @@ export const useChatStore = create<ChatState>((set) => ({
 			});
 			return {
 				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
+				lastEventAt: { ...state.lastEventAt, [sessionId]: Date.now() },
 			};
 		}),
 
@@ -247,6 +258,7 @@ export const useChatStore = create<ChatState>((set) => ({
 			});
 			return {
 				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
+				lastEventAt: { ...state.lastEventAt, [sessionId]: Date.now() },
 			};
 		}),
 

@@ -2190,7 +2190,7 @@
 		},
 		{
 			"path": "src/runtime/wiki-anchor-injection.ts",
-			"lines": 329,
+			"lines": 330,
 			"dir": "src/runtime",
 			"exports": [
 				"resolveAnchors",
@@ -2204,16 +2204,16 @@
 			],
 			"functions": [
 				"src/runtime/wiki-anchor-injection.ts/resolveAnchors:86",
-				"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:156",
-				"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:160",
-				"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:172",
-				"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:207",
-				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:237",
-				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:261",
-				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:271",
-				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:293",
-				"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:309",
-				"src/runtime/wiki-anchor-injection.ts/visit:311"
+				"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:157",
+				"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:161",
+				"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:173",
+				"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:208",
+				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:238",
+				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:262",
+				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:272",
+				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:294",
+				"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:310",
+				"src/runtime/wiki-anchor-injection.ts/visit:312"
 			],
 			"description": ""
 		},
@@ -5953,7 +5953,7 @@
 			"description": "v0.8 (delegation refactor): hot-apply an agent-config update to a RUNNING",
 			"callees": [
 				"src/runtime/wiki-anchor-injection.ts/resolveAnchors:86",
-				"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:156"
+				"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:157"
 			]
 		},
 		{
@@ -5993,7 +5993,7 @@
 				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:577",
 				"src/core/hook-registry.ts/triggerHooks:117",
 				"src/runtime/agent-loop.ts/AgentLoop.emit:824",
-				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:237",
+				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:238",
 				"src/runtime/agent-loop.ts/AgentLoop.resolveCurrentTask:625",
 				"src/runtime/context-message.ts/buildContextMessage:38",
 				"src/runtime/tools/todo-write.ts/renderTodosContext:62",
@@ -12021,25 +12021,25 @@
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
 			"line": 86,
-			"endLine": 153,
-			"statementCount": 13,
+			"endLine": 154,
+			"statementCount": 14,
 			"exported": true,
 			"signature": "function resolveAnchors(opts: {\n\twiki: WikiStore;\n\tagentId: string;\n\tcontextBundle?: SessionContextBundle;\n\twikiAnchors?: AgentRecord[\"wikiAnchors\"];\n})",
 			"description": "v0.8 (P1 §10.3.1): resolve a session's full anchor set:",
 			"callees": [
 				"src/server/wiki-node-store.ts/memoryAgentRootId:315",
 				"src/server/wiki-node-store.ts/projectSubtreeRootId:119",
-				"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:160",
-				"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:172"
+				"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:161",
+				"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:173"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/anchorNodeIds:156",
+			"id": "src/runtime/wiki-anchor-injection.ts/anchorNodeIds:157",
 			"name": "anchorNodeIds",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 156,
-			"endLine": 158,
+			"line": 157,
+			"endLine": 159,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function anchorNodeIds(anchors: ResolvedAnchor[])",
@@ -12047,12 +12047,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:160",
+			"id": "src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:161",
 			"name": "classifyAnchorKind",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 160,
-			"endLine": 170,
+			"line": 161,
+			"endLine": 171,
 			"statementCount": 9,
 			"exported": false,
 			"signature": "function classifyAnchorKind(nodeId: string, node: WikiNode | undefined)",
@@ -12060,12 +12060,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/dedupeAnchors:172",
+			"id": "src/runtime/wiki-anchor-injection.ts/dedupeAnchors:173",
 			"name": "dedupeAnchors",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 172,
-			"endLine": 190,
+			"line": 173,
+			"endLine": 191,
 			"statementCount": 7,
 			"exported": false,
 			"signature": "function dedupeAnchors(anchors: ResolvedAnchor[])",
@@ -12073,110 +12073,110 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:207",
+			"id": "src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:208",
 			"name": "renderSystemAnchors",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 207,
-			"endLine": 228,
+			"line": 208,
+			"endLine": 229,
 			"statementCount": 15,
 			"exported": true,
 			"signature": "function renderSystemAnchors(opts: {\n\twiki: WikiStore;\n\tanchors: ResolvedAnchor[];\n})",
 			"description": "Render the system-channel anchors as a single system-prompt section. Output",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:261",
-				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:293"
+				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:262",
+				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:294"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/renderContextAnchors:237",
+			"id": "src/runtime/wiki-anchor-injection.ts/renderContextAnchors:238",
 			"name": "renderContextAnchors",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 237,
-			"endLine": 254,
+			"line": 238,
+			"endLine": 255,
 			"statementCount": 13,
 			"exported": true,
 			"signature": "function renderContextAnchors(opts: {\n\twiki: WikiStore;\n\tanchors: ResolvedAnchor[];\n})",
 			"description": "Render context-channel anchors as a single text block for the PreLLMCall",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:261",
-				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:293"
+				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:262",
+				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:294"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:261",
+			"id": "src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:262",
 			"name": "renderProjectSubtreeOutline",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 261,
-			"endLine": 269,
+			"line": 262,
+			"endLine": 270,
 			"statementCount": 9,
 			"exported": false,
 			"signature": "function renderProjectSubtreeOutline(wiki: WikiStore, rootId: string, depth: number)",
 			"description": "Project anchor render — first N levels of the subtree as title + summary",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:271"
+				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:272"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:271",
+			"id": "src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:272",
 			"name": "renderSubtreeChildren",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 271,
-			"endLine": 286,
+			"line": 272,
+			"endLine": 287,
 			"statementCount": 8,
 			"exported": false,
 			"signature": "function renderSubtreeChildren(wiki: WikiStore, parentId: string, level: number, maxDepth: number, lines: string[])",
 			"description": "",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:271"
+				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:272"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:293",
+			"id": "src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:294",
 			"name": "renderMemoryIndex",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 293,
-			"endLine": 307,
+			"line": 294,
+			"endLine": 308,
 			"statementCount": 12,
 			"exported": false,
 			"signature": "function renderMemoryIndex(wiki: WikiStore, rootId: string, depth: number)",
 			"description": "Memory anchor render — MEMORY.md-style index: each memory leaf is one",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:309"
+				"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:310"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:309",
+			"id": "src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:310",
 			"name": "collectMemoryLeaves",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 309,
-			"endLine": 325,
+			"line": 310,
+			"endLine": 326,
 			"statementCount": 12,
 			"exported": false,
 			"signature": "function collectMemoryLeaves(wiki: WikiStore, rootId: string, maxDepth: number)",
 			"description": "",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/visit:311"
+				"src/runtime/wiki-anchor-injection.ts/visit:312"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/visit:311",
+			"id": "src/runtime/wiki-anchor-injection.ts/visit:312",
 			"name": "visit",
 			"kind": "arrow",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 311,
-			"endLine": 322,
+			"line": 312,
+			"endLine": 323,
 			"statementCount": 8,
 			"exported": false,
 			"signature": "fn (id: string, level: number)",
 			"description": "",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/visit:311"
+				"src/runtime/wiki-anchor-injection.ts/visit:312"
 			]
 		},
 		{
@@ -24216,7 +24216,7 @@
 			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:389",
 			"src/server/wiki-router.ts/createWikiRouter:63"
 		],
-		"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:156": [
+		"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:157": [
 			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:389"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.executeStream:485": [
@@ -24245,7 +24245,7 @@
 		"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:577": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:485"
 		],
-		"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:237": [
+		"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:238": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:485"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.resolveCurrentTask:625": [
@@ -25010,30 +25010,30 @@
 			"src/server/wiki-node-store.ts/WikiStore.upsertProjectNode:1209",
 			"src/server/wiki-node-store.ts/WikiStore.createMemoryNode:1320"
 		],
-		"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:160": [
+		"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:161": [
 			"src/runtime/wiki-anchor-injection.ts/resolveAnchors:86"
 		],
-		"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:172": [
+		"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:173": [
 			"src/runtime/wiki-anchor-injection.ts/resolveAnchors:86"
 		],
-		"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:261": [
-			"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:207",
-			"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:237"
+		"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:262": [
+			"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:208",
+			"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:238"
 		],
-		"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:293": [
-			"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:207",
-			"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:237"
+		"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:294": [
+			"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:208",
+			"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:238"
 		],
-		"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:271": [
-			"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:261",
-			"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:271"
+		"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:272": [
+			"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:262",
+			"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:272"
 		],
-		"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:309": [
-			"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:293"
+		"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:310": [
+			"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:294"
 		],
-		"src/runtime/wiki-anchor-injection.ts/visit:311": [
-			"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:309",
-			"src/runtime/wiki-anchor-injection.ts/visit:311"
+		"src/runtime/wiki-anchor-injection.ts/visit:312": [
+			"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:310",
+			"src/runtime/wiki-anchor-injection.ts/visit:312"
 		],
 		"src/server/agent-service.ts/AgentService.invalidateLoops:1154": [
 			"src/server/agent-service.ts/AgentService.setWorkspaceDir:162",

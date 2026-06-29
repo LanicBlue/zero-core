@@ -451,11 +451,30 @@ export default function ChatPanel() {
 	useEffect(() => {
 		if (!activeSessionId) return;
 		const sid = activeSessionId;
+		const issuedAt = Date.now();
 		let cancelled = false;
 		api().sessionsGetInit(sid).then((payload: any) => {
 			if (cancelled || !payload) return;
 			if (useChatStore.getState().activeSessionId !== sid) return;
-			loadMessages(sid, payload.messages ?? []);
+			let messages: any[] = payload.messages ?? [];
+			// 防回归:pull 发出后若有 live 事件更新过本 session(text_delta/tool_*),
+			// 说明 live tail 比 pull 快照新 —— 不能整覆盖(会回退正在流式的内容)。
+			// 但 pull 的价值是 user 消息/历史轮次(live 不带),所以合并:用 baseline
+			// 的历史(去掉它的最后一条 assistant)+ store 里最新的 assistant 尾消息
+			// (它更新)。这样既保住历史/user 消息,又不回退 live 流式内容。
+			const lastEventAt = useChatStore.getState().lastEventAt[sid] ?? 0;
+			if (lastEventAt > issuedAt) {
+				const storeMsgs = useChatStore.getState().messagesBySession[sid] ?? [];
+				const liveTail = [...storeMsgs].reverse().find((m) => m.role === "assistant");
+				if (liveTail) {
+					const baseNoTail = [...messages];
+					for (let i = baseNoTail.length - 1; i >= 0; i--) {
+						if (baseNoTail[i].role === "assistant") { baseNoTail.splice(i, 1); break; }
+					}
+					messages = [...baseNoTail, liveTail];
+				}
+			}
+			loadMessages(sid, messages);
 			updateContextInfo(sid, {
 				usedTokens: payload.inputTokens ?? 0,
 				contextWindow: payload.contextWindow ?? 128000,
