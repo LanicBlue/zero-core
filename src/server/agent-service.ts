@@ -322,9 +322,10 @@ export class AgentService {
 		const state = this.runStates.get(sessionId);
 		if (state?.agentId) agentId = state.agentId;
 		const agent = this.agentStore?.get(agentId);
+		const sessionRec = this.db.getSession(sessionId);
 		const cfg: import("../runtime/types.js").SessionConfig = {
 			agentId,
-			workspaceDir: agent?.workspaceDir || this.workspaceDir,
+			workspaceDir: sessionRec?.context?.workspaceDir || agent?.workspaceDir || this.workspaceDir,
 			systemPrompt: "",
 			modelId: agent?.model || this.defaultModel || "",
 			providerName: agent?.provider || this.defaultProvider || "",
@@ -353,6 +354,11 @@ export class AgentService {
 		return () => { this.subscribers.delete(cb); };
 	}
 	// ─── State queries — per-agent ─────────────────────────────────
+	/** 该 session 是否正在跑(isBusy)。供 ProjectPage activeSessions 标"running"。 */
+	isSessionRunning(sessionId: string): boolean {
+		return !!this.runStates.get(sessionId)?.isBusy;
+	}
+
 	getState(agentId?: string): { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[]; agentId?: string } {
 		if (agentId) {
 			const sessionId = this.activeSessions.get(agentId);
@@ -412,13 +418,18 @@ export class AgentService {
 		// visibility call downstream, so injecting a handle that goes unused is
 		// harmless — this only opens the door, policy walks through it. See the
 		// injection block below (replaces the retired roleTag dispatch).
-		const cwd = agent?.workspaceDir || this.workspaceDir;
+		// cwd + contextBundle 都从 session 记录取(与右侧文件树同源 session.context)。
+		// 不设 contextBundle → resolveAnchors 退到 GLOBAL_ROOT、不注入项目 wiki outline,
+		// chat 在 project session 发消息时 agent 看不到 wiki → 只好用文件工具探索。
+		const sessionRec = this.db.getSession(sessionId);
+		const cwd = sessionRec?.context?.workspaceDir || agent?.workspaceDir || this.workspaceDir;
 		log.agent("Creating runtime for agent:", agentId, "session:", sessionId, "cwd:", cwd);
 		const systemPrompt = agent?.systemPrompt ?? "";
 		const guidelines = this.config.systemPrompt?.guidelines;
 		const sessionConfig: SessionConfig = {
 			agentId,
 			workspaceDir: cwd,
+			contextBundle: sessionRec?.context,
 			systemPrompt,
 			guidelines,
 			compression: this.config.compression,
@@ -582,7 +593,7 @@ export class AgentService {
 			orchestrateManifestStore?: any;
 			gitIntegration?: any;
 		},
-	): Promise<void> {
+	): Promise<{ skipped?: "busy" }> {
 		const agent = this.agentStore?.get(agentId);
 		if (!agent) throw new Error(`Agent not found: ${agentId}`);
 
@@ -636,6 +647,14 @@ export class AgentService {
 				projectPath: context.projectPath || "",
 				activeRequirementId: context.activeRequirementId,
 			} : undefined,
+			// v0.8 (P1 §10.6): contextBundle 派生自动项目锚点(wiki-root:<projectId>)。
+			// 漏设会让 resolveAnchors 退到 GLOBAL_ROOT → scope=整棵树(跨项目泄露)+
+			// 项目子树 outline 不注入 system prompt → agent 看不到项目节点,只能 search。
+			contextBundle: context.projectId ? {
+				projectId: context.projectId,
+				workspaceDir: cwd,
+				wikiRootNodeId: "wiki-root:" + context.projectId,
+			} : undefined,
 			wikiStore: context.wikiStore,
 		} as any;
 
@@ -666,6 +685,9 @@ export class AgentService {
 		}
 
 		const state = this.runStates.get(sessionId)!;
+		// A 方案:上一 turn 未完成(session 正在跑)→ 干净 skip,不丢/不排,不覆盖
+		// in-flight 的流式状态(work 都有重发源:cron/hook/手动重试,skip 比 heap 排队合理)。
+		if (state.isBusy) return { skipped: "busy" };
 		state.isBusy = true;
 		state.streamingText = "";
 		state.toolCalls = [];
@@ -679,6 +701,7 @@ export class AgentService {
 			log.error("agent", "Project prompt error:", (err as Error).message);
 			this.emit({ type: "error", error: (err as Error).message, agentId });
 		}
+		return {};
 	}
 	// v0.8 (M0): createRoleLoopFactory removed. Sub-agent dispatch now flows
 	// through delegateTask (extended signature carries target agent full
@@ -844,6 +867,7 @@ export class AgentService {
 			});
 			return resolvedSessionId;
 		}
+
 
 	/**
 	 * Build UI messages from runtime turns.

@@ -216,8 +216,8 @@ export function createProjectRouter(deps: {
 	router.put("/:id/works/:workId", (req, res) => {
 		if (!management) return res.status(503).json({ error: "ManagementService not available" });
 		try {
-			const { name, actionPrompt, requiredTools, agentId, contextPolicy, hooks, enabled } = req.body ?? {};
-			const work = management.updateProjectWork(req.params.workId, { name, actionPrompt, requiredTools, agentId, contextPolicy, hooks, enabled });
+			const { name, actionPrompt, requiredTools, agentId, contextPolicy, hooks, cronTriggers, enabled } = req.body ?? {};
+			const work = management.updateProjectWork(req.params.workId, { name, actionPrompt, requiredTools, agentId, contextPolicy, hooks, cronTriggers, enabled });
 			res.json({ work });
 		} catch (e) {
 			res.status(400).json({ error: (e as Error).message });

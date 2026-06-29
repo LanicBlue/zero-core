@@ -251,8 +251,12 @@ export const wikiTool = buildTool({
 				const q = input.query.toLowerCase();
 				const limit = input.limit ?? 50;
 				const nodes = wiki.listVisibleFromAnchors(anchors);
-				const hits = nodes.filter(
-					(n) =>
+				const hits = nodes
+					// 排除合成子树根容器(wiki-root:*):结构容器无正文,出现在 search 结果里只会让
+					// agent 误当内容节点去 docRead 而失败。遍历结构用 expand(根 nodeId 在注入的 outline 里)。
+					.filter((n) => !n.id.startsWith("wiki-root:"))
+					.filter(
+						(n) =>
 						(n.title?.toLowerCase().includes(q) ?? false) ||
 						(n.summary?.toLowerCase().includes(q) ?? false) ||
 						(n.path?.toLowerCase().includes(q) ?? false),

@@ -102,7 +102,7 @@ export class ProjectWorkRunner {
 		const sessionId = resolved.session.id;
 
 		log.debug("project-work", `Firing work "${work.name}" (${workId}) → agent ${agent.name} session ${sessionId}`);
-		await this.deps.agentService.sendProjectPrompt(agent.id, sessionId, actionPrompt, {
+		const result = await this.deps.agentService.sendProjectPrompt(agent.id, sessionId, actionPrompt, {
 			projectId: work.projectId,
 			projectPath: workspaceDir,
 			projectName,
@@ -110,6 +110,10 @@ export class ProjectWorkRunner {
 			activeRequirementId: opts.requirementId,
 			workId: work.id,
 		});
+		if (result?.skipped === "busy") {
+			log.debug("project-work", `work ${workId} (${work.name}) skipped: session ${sessionId} busy(上一 turn 未完成)`);
+			return { status: "skipped", reason: "agent busy(上一 turn 未完成)" };
+		}
 		return { status: "ok", sessionId };
 	}
 }

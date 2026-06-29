@@ -51,6 +51,8 @@ import type {
 import { useProjectStore } from "../../store/project-store.js";
 import { useRequirementStore } from "../../store/requirement-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
+import { useChatStore } from "../../store/chat-store.js";
+import { usePageStore } from "../../store/page-store.js";
 import KanbanBoard from "./KanbanBoard.js";
 
 const api = () => (window as any).api;
@@ -66,7 +68,7 @@ const STATUSES: { status: RequirementStatus; label: string; color: string }[] = 
 	{ status: "cancelled", label: "Cancelled", color: "#444" },
 ];
 
-type Tab = "dashboard" | "view" | "kanban";
+type Tab = "dashboard" | "view" | "kanban" | "works";
 
 export default function ProjectPage() {
 	const { projects, fetchProjects, removeProject } = useProjectStore();
@@ -233,6 +235,7 @@ export default function ProjectPage() {
 						{([
 							["dashboard", "Dashboard + Activity"],
 							["view", "Project View"],
+							["works", "Worker"],
 							["kanban", "Kanban"],
 						] as Array<[Tab, string]>).map(([id, label]) => (
 							<button
@@ -277,22 +280,21 @@ export default function ProjectPage() {
 						{!selectedProject ? (
 							<EmptyState />
 						) : tab === "dashboard" ? (
-							<>
-								<ProjectWorkCard
-									projectId={selectedProject.id}
-									works={container?.projectWorks}
-									agents={agents}
-									onRefresh={() => refreshContainer(selectedProject.id)}
-								/>
-								<DashboardTab
-									project={selectedProject}
-									container={container}
-									usage={usage}
-									onRefresh={() => refreshContainer(selectedProject.id)}
-								/>
-							</>
+							<DashboardTab
+								project={selectedProject}
+								container={container}
+								usage={usage}
+								onRefresh={() => refreshContainer(selectedProject.id)}
+							/>
 						) : tab === "view" ? (
 							<ProjectViewTab project={selectedProject} container={container} />
+						) : tab === "works" ? (
+							<ProjectWorkCard
+								projectId={selectedProject.id}
+								works={container?.projectWorks}
+								agents={agents}
+								onRefresh={() => refreshContainer(selectedProject.id)}
+							/>
 						) : (
 							<div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
 								<KanbanBoard projectId={selectedProject.id} />
@@ -510,7 +512,10 @@ function ProjectViewTab({
 					<div style={{ fontSize: 11, color: "var(--text-tertiary, #555)" }}>No active sessions for this project.</div>
 				) : (
 					container.activeSessions.map((s) => (
-						<div key={s.sessionId} style={{ fontSize: 11, marginBottom: 2 }}>
+						<div key={s.sessionId} style={{ fontSize: 11, marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
+							{s.running ? (
+								<span style={{ color: "#7ee787", fontSize: 10, border: "1px solid #7ee78755", borderRadius: 3, padding: "0 4px" }} title="正在运行">running</span>
+							) : null}
 							<span style={{ color: "var(--text-primary, #e0e0e0)" }}>{s.name}</span>
 							{" — "}
 							<span style={{ color: "var(--text-tertiary, #555)" }}>{s.sessionId}</span>
@@ -598,26 +603,125 @@ function ProjectWorkCard({ projectId, works, agents, onRefresh }: {
 	const [nAgent, setNAgent] = useState("");
 	const [nCron, setNCron] = useState(false);
 	const [nTime, setNTime] = useState("09:00");
+	// 分配 agent 模态(Electron renderer 不支持 window.prompt,改用模态)
+	const [assignTarget, setAssignTarget] = useState<{ workId: string; workName: string; requiredTools: string[] } | null>(null);
+	const [assignAgentId, setAssignAgentId] = useState<string>("");
+	// 编辑工位模态(name / actionPrompt / requiredTools)
+	const [editTarget, setEditTarget] = useState<{ workId: string } | null>(null);
+	const [eName, setEName] = useState("");
+	const [ePrompt, setEPrompt] = useState("");
+	const [eTools, setETools] = useState("");
+	// 触发器编辑模态(cron + hook)
+	const [trigTarget, setTrigTarget] = useState<{ workId: string; workName: string } | null>(null);
+	const [tCrons, setTCrons] = useState<Array<{ schedule: CronSchedule; gitAware: boolean }>>([]);
+	const [tHooks, setTHooks] = useState<Array<{ event: string; collection: string; enabled: boolean }>>([]);
+	const [tNewColl, setTNewColl] = useState("requirements");
+	const [tNewOp, setTNewOp] = useState<"create" | "update" | "delete">("create");
 
 	const list = works ?? [];
 
-	const agentMeets = (agent: AgentRecord, tools: string[]) =>
-		!tools.some((t) => agent.toolPolicy?.blockedTools?.includes(t));
-
-	const doAssign = async (workId: string, requiredTools: string[]) => {
-		const name = prompt("分配哪个 agent?(输入 agent 名)");
-		if (!name) return;
-		const target = agents.find((a) => a.name === name);
-		if (!target) { alert(`未找到 agent: ${name}`); return; }
-		if (!agentMeets(target, requiredTools)) { alert(`Agent "${name}" 缺少必需工具 ${requiredTools.join("/")}(被 blocked),无法分配`); return; }
-		try { await api().projectsAssignWorkAgent(projectId, workId, target.id); onRefresh(); }
-		catch (e) { alert(`Assign failed: ${(e as Error).message}`); }
+	// 镜像 buildToolsSet.isEnabled(blocked → false;否则 tools map > autoApprove > DEFAULT_ENABLED)。
+	// 只查 blockedTools 会放过"没 block 但没启用"的工具(如 Wiki),运行时 CONDITIONAL 不附加。
+	const DEFAULT_ENABLED = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);
+	const toolEnabledFor = (agent: AgentRecord, name: string): boolean => {
+		const p = agent.toolPolicy;
+		if (Array.isArray(p?.blockedTools) && p.blockedTools.includes(name)) return false;
+		if (!p) return DEFAULT_ENABLED.has(name);
+		if (p.tools) {
+			if (name in p.tools) return p.tools[name]?.enabled === true;
+			return DEFAULT_ENABLED.has(name);
+		}
+		const aa = new Set(p.autoApprove ?? []);
+		if (aa.has("*")) return true;
+		if (aa.size > 0) return aa.has(name);
+		return DEFAULT_ENABLED.has(name);
 	};
-	const doTrigger = async (workId: string) => {
+	const agentMeets = (agent: AgentRecord, tools: string[]) => tools.every((t) => toolEnabledFor(agent, t));
+
+	// 打开分配模态(Electron 不支持原生 prompt,改模态 + 下拉)
+	const openAssign = (workId: string, workName: string, requiredTools: string[]) => {
+		setAssignTarget({ workId, workName, requiredTools });
+		setAssignAgentId("");
+	};
+	const openEdit = (w: ProjectWorkView) => {
+		setEditTarget({ workId: w.id });
+		setEName(w.name);
+		setEPrompt(w.actionPrompt ?? "");
+		setETools((w.requiredTools ?? []).join(", "));
+	};
+	const openTriggers = (w: ProjectWorkView) => {
+		setTrigTarget({ workId: w.id, workName: w.name });
+		setTCrons(w.cronTriggers.map((c) => ({ schedule: c.schedule, gitAware: !!c.gitAware })));
+		setTHooks((w.hooks ?? []).map((h) => ({ event: h.event, collection: h.collection, enabled: h.enabled })));
+		setTNewColl("requirements"); setTNewOp("create");
+	};
+	const addCron = () => {
+		setTCrons([...tCrons, { schedule: { mode: "alarm", time: "09:00", days: [], tz: "Asia/Shanghai" }, gitAware: false }]);
+	};
+	const patchCron = (i: number, patch: Partial<{ schedule: CronSchedule; gitAware: boolean }>) => {
+		setTCrons(tCrons.map((c, idx) => (idx === i ? { ...c, gitAware: patch.gitAware !== undefined ? patch.gitAware : c.gitAware, schedule: patch.schedule ? patch.schedule : c.schedule } : c)));
+	};
+	const removeCron = (i: number) => setTCrons(tCrons.filter((_, idx) => idx !== i));
+	const toggleDay = (i: number, day: number) => {
+		setTCrons(tCrons.map((c, idx) => {
+			if (idx !== i || c.schedule.mode !== "alarm") return c;
+			const days = c.schedule.days.includes(day) ? c.schedule.days.filter((d) => d !== day) : [...c.schedule.days, day];
+			return { ...c, schedule: { ...c.schedule, days } };
+		}));
+	};
+	const addHook = () => {
+		setTHooks([...tHooks, { event: tNewColl + "." + tNewOp, collection: tNewColl, enabled: true }]);
+	};
+	const removeHook = (i: number) => setTHooks(tHooks.filter((_, idx) => idx !== i));
+	const saveTriggers = async () => {
+		if (!trigTarget) return;
 		try {
-			const { result } = await api().projectsTriggerWork(projectId, workId);
-			if (result.status === "ok") alert("已触发,后台运行");
-			else if (result.status === "skipped") alert(`未触发:${result.reason}`);
+			await api().projectsUpdateWork(projectId, trigTarget.workId, { cronTriggers: tCrons, hooks: tHooks });
+			setTrigTarget(null);
+			onRefresh();
+		} catch (e) { alert("Update triggers failed: " + (e as Error).message); }
+	};
+	const saveEdit = async () => {
+		if (!editTarget) return;
+		const tools = eTools.split(",").map((t) => t.trim()).filter(Boolean);
+		try {
+			await api().projectsUpdateWork(projectId, editTarget.workId, {
+				name: eName.trim() || undefined,
+				actionPrompt: ePrompt,
+				requiredTools: tools,
+			});
+			setEditTarget(null); setEName(""); setEPrompt(""); setETools("");
+			onRefresh();
+		} catch (e) { alert(`Update failed: ${(e as Error).message}`); }
+	};
+	const confirmAssign = async () => {
+		if (!assignTarget) return;
+		const target = assignAgentId ? agents.find((a) => a.id === assignAgentId) : undefined;
+		if (target && !agentMeets(target, assignTarget.requiredTools)) {
+			alert(`Agent "${target.name}" 缺少必需工具 ${assignTarget.requiredTools.join("/")}(被 blocked),无法分配`);
+			return;
+		}
+		try {
+			await api().projectsAssignWorkAgent(projectId, assignTarget.workId, assignAgentId || null);
+			setAssignTarget(null); setAssignAgentId("");
+			onRefresh();
+		} catch (e) { alert(`Assign failed: ${(e as Error).message}`); }
+	};
+	// 触发成功 → 跳到 chat 该 project session 看运行(否则输出进了用户没在看的 session)。
+	const doTrigger = async (w: ProjectWorkView) => {
+		try {
+			const { result } = await api().projectsTriggerWork(projectId, w.id);
+			if (result.status === "ok") {
+				if (w.agentId && result.sessionId) {
+					await api().sessionsSwitch(w.agentId, result.sessionId);
+					setActiveAgent(w.agentId);
+					setActiveProject(projectId);
+					setActiveSessionId(result.sessionId);
+					setActivePage("chat");
+				} else {
+					alert("已触发(后台运行)。该工位未分配 agent 或无 session id,请在 chat 手动查看。");
+				}
+			} else if (result.status === "skipped") alert(`未触发:${result.reason}`);
 			else alert(`触发失败:${result.error}`);
 		} catch (e) { alert(`Trigger failed: ${(e as Error).message}`); }
 	};
@@ -648,7 +752,11 @@ function ProjectWorkCard({ projectId, works, agents, onRefresh }: {
 
 	const cardStyle: React.CSSProperties = { border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 12, marginBottom: 12, background: "var(--bg-secondary, #1c1c1e)" };
 	const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--text-secondary, #888)" };
-	const wikiAgents = agents.filter((a) => !a.toolPolicy?.blockedTools?.includes("Wiki"));
+	const setActiveAgent = useChatStore((s) => s.setActiveAgent);
+	const setActiveProject = useChatStore((s) => s.setActiveProject);
+	const setActiveSessionId = useChatStore((s) => s.setActiveSessionId);
+	const setActivePage = usePageStore((s) => s.setActivePage);
+	const wikiAgents = agents.filter((a) => toolEnabledFor(a, "Wiki"));
 
 	const triggerLabel = (w: ProjectWorkView): string => {
 		const parts: string[] = [];
@@ -681,18 +789,23 @@ function ProjectWorkCard({ projectId, works, agents, onRefresh }: {
 						<strong style={{ fontSize: 12, color: "var(--text-primary, #e0e0e0)" }}>{w.name}</strong>
 						{!w.enabled && <span style={{ color: "var(--warning, #d29922)", fontSize: 11 }}>(已暂停)</span>}
 						<div style={{ flex: 1 }} />
-						<button type="button" onClick={() => doTrigger(w.id)} style={ghostBtnStyle}>立即触发</button>
+						<button type="button" onClick={() => openEdit(w)} style={ghostBtnStyle}>编辑</button>
+						<button type="button" onClick={() => openTriggers(w)} style={ghostBtnStyle}>触发器</button>
+						<button type="button" onClick={() => doTrigger(w)} style={ghostBtnStyle}>立即触发</button>
 						<button type="button" onClick={() => doToggle(w.id, w.enabled)} style={ghostBtnStyle}>{w.enabled ? "暂停" : "恢复"}</button>
 						<button type="button" onClick={() => doDelete(w.id, w.name)} style={{ ...ghostBtnStyle, color: "#f44336", borderColor: "#f44336" }}>删除</button>
 					</div>
 					<div style={{ fontSize: 11, color: "var(--text-secondary, #888)", marginTop: 4 }}>
 						负责 agent:{" "}
 						{w.agentName ? (
-							<strong>{w.agentName}</strong>
+							<>
+								<strong>{w.agentName}</strong>
+								<button type="button" onClick={() => openAssign(w.id, w.name, w.requiredTools)} style={{ ...ghostBtnStyle, marginLeft: 6, fontSize: 10 }}>改派</button>
+							</>
 						) : (
 							<>
 								<span style={{ color: "var(--warning, #d29922)" }}>未分配</span>
-								<button type="button" onClick={() => doAssign(w.id, w.requiredTools)} style={{ ...ghostBtnStyle, marginLeft: 6, fontSize: 10 }}>分配</button>
+								<button type="button" onClick={() => openAssign(w.id, w.name, w.requiredTools)} style={{ ...ghostBtnStyle, marginLeft: 6, fontSize: 10 }}>分配</button>
 							</>
 						)}
 						{" · 触发:" + triggerLabel(w)}
@@ -736,6 +849,121 @@ function ProjectWorkCard({ projectId, works, agents, onRefresh }: {
 						<div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
 							<button type="button" onClick={() => setCreating(false)} style={cancelBtnStyle}>Cancel</button>
 							<button type="button" disabled={!nName.trim()} onClick={doCreate} style={{ ...primaryBtnStyle, opacity: nName.trim() ? 1 : 0.5 }}>创建</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{trigTarget && (
+				<div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setTrigTarget(null)}>
+					<div onClick={(e) => e.stopPropagation()} style={{ width: 520, maxHeight: "85vh", overflow: "auto", background: "var(--bg-secondary, #1c1c1e)", border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 20 }}>
+						<div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary, #e0e0e0)", marginBottom: 12 }}>{"触发器:「" + trigTarget.workName + "」"}</div>
+						<div style={{ ...labelStyle, marginBottom: 4 }}>Cron 触发器</div>
+						{tCrons.map((c, i) => (
+							<div key={i} style={{ border: "1px solid var(--border-color, #2a2a2a)", borderRadius: 4, padding: 8, marginBottom: 6 }}>
+								<div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+									<select value={c.schedule.mode} onChange={(e) => {
+										const mode = e.target.value as "alarm" | "interval" | "once";
+										const schedule: CronSchedule = mode === "alarm" ? { mode, time: "09:00", days: [], tz: "Asia/Shanghai" } : mode === "interval" ? { mode, everyMs: 3600000 } : { mode, at: new Date().toISOString() };
+										patchCron(i, { schedule });
+									}} style={{ ...inputStyle, width: "auto" }}>
+										<option value="alarm">每日定时</option>
+										<option value="interval">间隔</option>
+										<option value="once">单次</option>
+									</select>
+									<label style={{ fontSize: 11, color: "var(--text-secondary, #888)", display: "flex", alignItems: "center", gap: 4 }}>
+										<input type="checkbox" checked={c.gitAware} onChange={(e) => patchCron(i, { gitAware: e.target.checked })} /> git 变更才触发
+									</label>
+									<div style={{ flex: 1 }} />
+									<button type="button" onClick={() => removeCron(i)} style={{ ...ghostBtnStyle, color: "#f44336", borderColor: "#f44336" }}>删除</button>
+								</div>
+								{c.schedule.mode === "alarm" && (
+									<div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+										<input type="time" value={c.schedule.time} onChange={(e) => patchCron(i, { schedule: { ...c.schedule, time: e.target.value } as CronSchedule })} style={{ ...inputStyle, width: "auto" }} />
+										<label style={{ fontSize: 10, color: "var(--text-secondary, #888)", display: "flex", alignItems: "center", gap: 2 }}><input type="checkbox" checked={c.schedule.mode === "alarm" && c.schedule.days.includes(1)} onChange={() => toggleDay(i, 1)} /> 一</label>
+										<label style={{ fontSize: 10, color: "var(--text-secondary, #888)", display: "flex", alignItems: "center", gap: 2 }}><input type="checkbox" checked={c.schedule.mode === "alarm" && c.schedule.days.includes(2)} onChange={() => toggleDay(i, 2)} /> 二</label>
+										<label style={{ fontSize: 10, color: "var(--text-secondary, #888)", display: "flex", alignItems: "center", gap: 2 }}><input type="checkbox" checked={c.schedule.mode === "alarm" && c.schedule.days.includes(3)} onChange={() => toggleDay(i, 3)} /> 三</label>
+										<label style={{ fontSize: 10, color: "var(--text-secondary, #888)", display: "flex", alignItems: "center", gap: 2 }}><input type="checkbox" checked={c.schedule.mode === "alarm" && c.schedule.days.includes(4)} onChange={() => toggleDay(i, 4)} /> 四</label>
+										<label style={{ fontSize: 10, color: "var(--text-secondary, #888)", display: "flex", alignItems: "center", gap: 2 }}><input type="checkbox" checked={c.schedule.mode === "alarm" && c.schedule.days.includes(5)} onChange={() => toggleDay(i, 5)} /> 五</label>
+										<label style={{ fontSize: 10, color: "var(--text-secondary, #888)", display: "flex", alignItems: "center", gap: 2 }}><input type="checkbox" checked={c.schedule.mode === "alarm" && c.schedule.days.includes(6)} onChange={() => toggleDay(i, 6)} /> 六</label>
+										<label style={{ fontSize: 10, color: "var(--text-secondary, #888)", display: "flex", alignItems: "center", gap: 2 }}><input type="checkbox" checked={c.schedule.mode === "alarm" && c.schedule.days.includes(7)} onChange={() => toggleDay(i, 7)} /> 日</label>
+									</div>
+								)}
+								{c.schedule.mode === "interval" && (
+									<label style={{ fontSize: 11, color: "var(--text-secondary, #888)", display: "flex", alignItems: "center", gap: 6 }}>
+										每隔
+										<input type="number" min={1} value={Math.round((c.schedule.everyMs ?? 0) / 60000)} onChange={(e) => patchCron(i, { schedule: { ...c.schedule, everyMs: Math.max(1, Number(e.target.value) || 1) * 60000 } as CronSchedule })} style={{ ...inputStyle, width: 70 }} />
+										分钟
+									</label>
+								)}
+								{c.schedule.mode === "once" && (
+									<input type="datetime-local" onChange={(e) => { const at = new Date(e.target.value).toISOString(); patchCron(i, { schedule: { ...c.schedule, at } as CronSchedule }); }} style={{ ...inputStyle, width: "auto" }} />
+								)}
+							</div>
+						))}
+						<button type="button" onClick={addCron} style={{ ...ghostBtnStyle, marginBottom: 16 }}>+ 添加 cron</button>
+						<div style={{ ...labelStyle, marginBottom: 4 }}>Hook 触发器(数据变更事件)</div>
+						{tHooks.map((h, i) => (
+							<div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+								<span style={{ fontSize: 11, color: "var(--text-primary, #e0e0e0)" }}>{h.event}</span>
+								<div style={{ flex: 1 }} />
+								<button type="button" onClick={() => removeHook(i)} style={{ ...ghostBtnStyle, color: "#f44336", borderColor: "#f44336", fontSize: 10 }}>删除</button>
+							</div>
+						))}
+						<div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16, marginTop: 4 }}>
+							<select value={tNewColl} onChange={(e) => setTNewColl(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
+								<option value="requirements">requirements</option>
+								<option value="projects">projects</option>
+								<option value="crons">crons</option>
+								<option value="project_wiki">project_wiki</option>
+								<option value="agents">agents</option>
+							</select>
+							<select value={tNewOp} onChange={(e) => setTNewOp(e.target.value as any)} style={{ ...inputStyle, width: "auto" }}>
+								<option value="create">create</option>
+								<option value="update">update</option>
+								<option value="delete">delete</option>
+							</select>
+							<button type="button" onClick={addHook} style={ghostBtnStyle}>+ 添加</button>
+						</div>
+						<div style={{ fontSize: 10, color: "var(--text-tertiary, #555)", marginBottom: 12 }}>手动触发恒可用,不在此列。改 cron 保留未变项的运行历史。</div>
+						<div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+							<button type="button" onClick={() => setTrigTarget(null)} style={cancelBtnStyle}>取消</button>
+							<button type="button" onClick={saveTriggers} style={primaryBtnStyle}>保存</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{editTarget && (
+				<div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setEditTarget(null); setEName(""); setEPrompt(""); setETools(""); }}>
+					<div onClick={(e) => e.stopPropagation()} style={{ width: 480, maxHeight: "80vh", overflow: "auto", background: "var(--bg-secondary, #1c1c1e)", border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 20 }}>
+						<div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary, #e0e0e0)", marginBottom: 12 }}>编辑工位</div>
+						<label style={labelStyle}>工位名</label>
+						<input value={eName} onChange={(e) => setEName(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+						<label style={labelStyle}>动作 prompt(做什么、按什么顺序)</label>
+						<textarea value={ePrompt} onChange={(e) => setEPrompt(e.target.value)} rows={10} placeholder="描述这项工作要做什么..." style={{ ...inputStyle, marginBottom: 12, fontFamily: "monospace" }} />
+						<label style={labelStyle}>必需工具(逗号分隔,如 Wiki, Read, Edit)</label>
+						<input value={eTools} onChange={(e) => setETools(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+						<div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+							<button type="button" onClick={() => { setEditTarget(null); setEName(""); setEPrompt(""); setETools(""); }} style={cancelBtnStyle}>取消</button>
+							<button type="button" onClick={saveEdit} style={primaryBtnStyle}>保存</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{assignTarget && (
+				<div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setAssignTarget(null); setAssignAgentId(""); }}>
+					<div onClick={(e) => e.stopPropagation()} style={{ width: 420, maxHeight: "80vh", overflow: "auto", background: "var(--bg-secondary, #1c1c1e)", border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 20 }}>
+						<div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary, #e0e0e0)", marginBottom: 4 }}>{"分配工位「" + assignTarget.workName + "」"}</div>
+						<div style={{ ...labelStyle, marginBottom: 12 }}>{"需工具:" + (assignTarget.requiredTools.join(" / ") || "—") + "。缺工具的 agent 已禁用。"}</div>
+						<select value={assignAgentId} onChange={(e) => setAssignAgentId(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }}>
+							<option value="">(空岗 — 不分配)</option>
+							{agents.filter((a) => agentMeets(a, assignTarget.requiredTools)).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+						</select>
+						{agents.filter((a) => !agentMeets(a, assignTarget.requiredTools)).length > 0 && (
+							<div style={{ ...labelStyle, marginBottom: 12, color: "var(--warning, #d29922)" }}>{"缺工具(不可选):" + agents.filter((a) => !agentMeets(a, assignTarget.requiredTools)).map((a) => a.name).join("、")}</div>
+						)}
+						<div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+							<button type="button" onClick={() => { setAssignTarget(null); setAssignAgentId(""); }} style={cancelBtnStyle}>取消</button>
+							<button type="button" onClick={confirmAssign} style={primaryBtnStyle}>确定</button>
 						</div>
 					</div>
 				</div>

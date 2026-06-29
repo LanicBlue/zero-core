@@ -222,7 +222,9 @@ export function renderSystemAnchors(opts: {
 		if (rendered) blocks.push(rendered);
 	}
 	if (blocks.length === 0) return "";
-	return "## Wiki Anchors (system)\n" + blocks.join("\n\n");
+	return "## Wiki Anchors (system)\n"
+		+ "用 Wiki 工具操作这些节点(不要用 Glob/Read 去文件系统探索):docRead(nodeId) 读正文、expand(nodeId) 遍历子树、docWrite/docEdit 写。nodeId 是定址主键。\n\n"
+		+ blocks.join("\n\n");
 }
 
 /**
@@ -260,7 +262,7 @@ function renderProjectSubtreeOutline(wiki: WikiStore, rootId: string, depth: num
 	const root = wiki.get(rootId);
 	if (!root) return "";
 	const lines: string[] = [];
-	lines.push(`### ${root.title}`);
+	lines.push(`### ${root.title}  [nodeId: ${root.id}]`);
 	if (root.summary) lines.push(`> ${root.summary}`);
 	renderSubtreeChildren(wiki, rootId, 1, depth, lines);
 	return lines.join("\n");
@@ -278,7 +280,7 @@ function renderSubtreeChildren(
 	for (const child of children) {
 		const indent = "  ".repeat(level) + "- ";
 		const summary = child.summary ? ` — ${child.summary}` : "";
-		lines.push(`${indent}${child.title}${summary}`);
+		lines.push(`${indent}${child.title}${summary} [${child.id}]`);
 		renderSubtreeChildren(wiki, child.id, level + 1, maxDepth, lines);
 	}
 }
