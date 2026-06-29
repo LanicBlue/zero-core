@@ -33,8 +33,14 @@ import { Router } from "express";
 import type { ProviderStore } from "./provider-store.js";
 import { enrichModels } from "../core/model-registry.js";
 
-export function createProviderRouter(providerStore: ProviderStore): Router {
+export function createProviderRouter(providerStore: ProviderStore, onMutate?: () => void): Router {
 	const router = Router();
+
+	// 任何 provider 增删改后触发上层重新 setProviders —— 否则并发限制
+	// (concurrencyManager.reconfigure) / apiKey / baseUrl / models 改了不生效,
+	// 运行时一直用启动时载入的旧配置(并发限制"失效"的真因)。容错:reconfigure
+	// 抛了也不能让写成功的 mutation 路由报错。
+	const mutated = () => { try { onMutate?.(); } catch { /* ignore */ } };
 
 	router.get("/", (_req, res) => {
 		try {
@@ -82,6 +88,7 @@ export function createProviderRouter(providerStore: ProviderStore): Router {
 	router.post("/", (req, res) => {
 		try {
 			const provider = providerStore.create(req.body);
+			mutated();
 			res.status(201).json(provider);
 		} catch (e) {
 			res.status(400).json({ error: (e as Error).message });
@@ -91,6 +98,7 @@ export function createProviderRouter(providerStore: ProviderStore): Router {
 	router.put("/:id", (req, res) => {
 		try {
 			const provider = providerStore.update(req.params.id, req.body);
+			mutated();
 			res.json(provider);
 		} catch (e) {
 			res.status(400).json({ error: (e as Error).message });
@@ -100,6 +108,7 @@ export function createProviderRouter(providerStore: ProviderStore): Router {
 	router.delete("/:id", (req, res) => {
 		try {
 			providerStore.delete(req.params.id);
+			mutated();
 			res.json({ ok: true });
 		} catch (e) {
 			res.status(400).json({ error: (e as Error).message });
@@ -109,6 +118,7 @@ export function createProviderRouter(providerStore: ProviderStore): Router {
 	router.post("/:id/models", (req, res) => {
 		try {
 			const provider = providerStore.addModel(req.params.id, req.body);
+			mutated();
 			res.json(provider);
 		} catch (e) {
 			res.status(400).json({ error: (e as Error).message });
@@ -118,6 +128,7 @@ export function createProviderRouter(providerStore: ProviderStore): Router {
 	router.delete("/:id/models/:modelId", (req, res) => {
 		try {
 			const provider = providerStore.removeModel(req.params.id, req.params.modelId);
+			mutated();
 			res.json(provider);
 		} catch (e) {
 			res.status(400).json({ error: (e as Error).message });
@@ -163,7 +174,7 @@ export function createProviderRouter(providerStore: ProviderStore): Router {
 
 			// Enrich with context window / max tokens from OpenRouter + local fallback
 			const enriched = await enrichModels(mapped);
-			try { providerStore.update(req.params.id, { models: enriched }); } catch {}
+			try { providerStore.update(req.params.id, { models: enriched }); mutated(); } catch {}
 
 			res.json(enriched);
 		} catch {

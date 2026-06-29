@@ -275,7 +275,9 @@ export async function startServer(options?: StartServerOptions) {
 
 	// Load providers from DB for backend-spawn mode.
 	// In IPC mode, main process calls setProviders later via Phase 5 — notifyReady deduplicates.
-	{
+	// reloadProviders 复用于 provider 增删改后即时生效(并发 reconfigure + 清缓存 + 失效 loop),
+	// 否则改了 provider 配置(尤其并发限制)运行时一直用启动时旧值。
+	const reloadProviders = () => {
 		const providerConfigs = providerStore.list()
 			.filter((p) => p.enabled)
 			.map((p) => ({
@@ -286,7 +288,8 @@ export async function startServer(options?: StartServerOptions) {
 				maxConcurrency: p.maxConcurrency ?? 1,
 			}));
 		agentService.setProviders(providerConfigs as any, workspaceConfig.defaultModel, workspaceConfig.defaultProvider);
-	}
+	};
+	reloadProviders();
 
 	// Restore all sessions from DB into runtime (no provider dependency)
 	console.error("[server] Restoring all sessions from DB into runtime...");
@@ -512,7 +515,7 @@ export async function startServer(options?: StartServerOptions) {
 	}));
 
 	app.use("/api/agents", createAgentRouter({ agentStore, agentService, sessionDB }));
-	app.use("/api/providers", createProviderRouter(providerStore));
+	app.use("/api/providers", createProviderRouter(providerStore, reloadProviders));
 	app.use("/api/templates", createTemplateRouter(templateStore, sessionDB));
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
 	app.use("/api/kb", createKbRouter(kbStore, kbDb, providerStore));

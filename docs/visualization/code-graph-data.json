@@ -2900,7 +2900,7 @@
 		},
 		{
 			"path": "src/server/index.ts",
-			"lines": 938,
+			"lines": 941,
 			"dir": "src/server",
 			"exports": [
 				"startServer"
@@ -2958,7 +2958,8 @@
 				"src/server/index.ts/expandHome:84",
 				"src/server/index.ts/startServer:103",
 				"src/server/index.ts/broadcast:264",
-				"src/server/index.ts/rebuildStaleStructureLayouts:908"
+				"src/server/index.ts/reloadProviders:280",
+				"src/server/index.ts/rebuildStaleStructureLayouts:911"
 			],
 			"description": "服务器入口：初始化所有 store/service/router，HTTP API 模式启动"
 		},
@@ -3952,7 +3953,7 @@
 		},
 		{
 			"path": "src/server/provider-router.ts",
-			"lines": 177,
+			"lines": 188,
 			"dir": "src/server",
 			"exports": [
 				"createProviderRouter"
@@ -3962,7 +3963,8 @@
 				"src/core/model-registry.ts"
 			],
 			"functions": [
-				"src/server/provider-router.ts/createProviderRouter:36"
+				"src/server/provider-router.ts/createProviderRouter:36",
+				"src/server/provider-router.ts/mutated:43"
 			],
 			"description": "AI 提供商管理路由：CRUD + 连接测试 + model 管理"
 		},
@@ -14840,8 +14842,8 @@
 			"kind": "function",
 			"file": "src/server/index.ts",
 			"line": 103,
-			"endLine": 895,
-			"statementCount": 333,
+			"endLine": 898,
+			"statementCount": 335,
 			"exported": true,
 			"signature": "function startServer(options?: StartServerOptions)",
 			"description": "",
@@ -14854,9 +14856,10 @@
 				"src/server/agent-service.ts/createAgentService:1221",
 				"src/server/data-change-hub.ts/onDataChange:97",
 				"src/server/index.ts/broadcast:264",
+				"src/server/index.ts/reloadProviders:280",
 				"src/server/mcp-scanner.ts/scanExternalMcpConfigs:156",
 				"src/server/mcp-scanner.ts/mergeDetectedServers:202",
-				"src/server/index.ts/rebuildStaleStructureLayouts:908",
+				"src/server/index.ts/rebuildStaleStructureLayouts:911",
 				"src/server/config-router.ts/createConfigRouter:41",
 				"src/server/agent-router.ts/createAgentRouter:28",
 				"src/server/provider-router.ts/createProviderRouter:36",
@@ -14895,12 +14898,25 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/index.ts/rebuildStaleStructureLayouts:908",
+			"id": "src/server/index.ts/reloadProviders:280",
+			"name": "reloadProviders",
+			"kind": "arrow",
+			"file": "src/server/index.ts",
+			"line": 280,
+			"endLine": 291,
+			"statementCount": 2,
+			"exported": false,
+			"signature": "fn ()",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/index.ts/rebuildStaleStructureLayouts:911",
 			"name": "rebuildStaleStructureLayouts",
 			"kind": "function",
 			"file": "src/server/index.ts",
-			"line": 908,
-			"endLine": 937,
+			"line": 911,
+			"endLine": 940,
 			"statementCount": 23,
 			"exported": false,
 			"signature": "function rebuildStaleStructureLayouts(archivistService: import(\"./wiki-skeleton-service.js\").WikiSkeletonService, projectStore: import(\"./project-store.js\").ProjectStore, wikiStore: import(\"./wiki-node-store.js\").WikiStore)",
@@ -18395,14 +18411,28 @@
 			"kind": "function",
 			"file": "src/server/provider-router.ts",
 			"line": 36,
-			"endLine": 176,
-			"statementCount": 75,
+			"endLine": 187,
+			"statementCount": 84,
 			"exported": true,
-			"signature": "function createProviderRouter(providerStore: ProviderStore)",
+			"signature": "function createProviderRouter(providerStore: ProviderStore, onMutate?: () => void)",
 			"description": "",
 			"callees": [
+				"src/server/provider-router.ts/mutated:43",
 				"src/core/model-registry.ts/enrichModels:174"
 			]
+		},
+		{
+			"id": "src/server/provider-router.ts/mutated:43",
+			"name": "mutated",
+			"kind": "arrow",
+			"file": "src/server/provider-router.ts",
+			"line": 43,
+			"endLine": 43,
+			"statementCount": 2,
+			"exported": false,
+			"signature": "fn ()",
+			"description": "",
+			"callees": []
 		},
 		{
 			"id": "src/server/provider-store.ts/ProviderStore.mergeSystemProviders:123",
@@ -25547,6 +25577,9 @@
 		"src/server/index.ts/broadcast:264": [
 			"src/server/index.ts/startServer:103"
 		],
+		"src/server/index.ts/reloadProviders:280": [
+			"src/server/index.ts/startServer:103"
+		],
 		"src/server/mcp-scanner.ts/scanExternalMcpConfigs:156": [
 			"src/server/index.ts/startServer:103",
 			"src/server/mcp-router.ts/createMcpRouter:29"
@@ -25555,7 +25588,7 @@
 			"src/server/index.ts/startServer:103",
 			"src/server/mcp-router.ts/createMcpRouter:29"
 		],
-		"src/server/index.ts/rebuildStaleStructureLayouts:908": [
+		"src/server/index.ts/rebuildStaleStructureLayouts:911": [
 			"src/server/index.ts/startServer:103"
 		],
 		"src/server/config-router.ts/createConfigRouter:41": [
@@ -26021,6 +26054,9 @@
 		],
 		"src/server/project-work-store.ts/ProjectWorkStore.delete:93": [
 			"src/server/project-work-store.ts/ProjectWorkStore.delete:93"
+		],
+		"src/server/provider-router.ts/mutated:43": [
+			"src/server/provider-router.ts/createProviderRouter:36"
 		],
 		"src/core/model-registry.ts/enrichModels:174": [
 			"src/server/provider-router.ts/createProviderRouter:36",
