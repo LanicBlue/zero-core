@@ -102,10 +102,17 @@ describe("chat-store", () => {
 	});
 
 	describe("updateAssistantText", () => {
-		test("noop when no assistant message exists", () => {
+		test("self-heals (creates assistant) when no assistant message exists", () => {
+			// 服务端触发的 run(cron/hook/work)不经 chat send(),session 在前端是空的。
+			// updateAssistantText 必须自愈建出 assistant 消息,否则 text_delta 被丢弃
+			// → "UI 知道在运行但没消息"。保证"有 session 就一定有可见消息"。
 			useChatStore.getState().setActiveSessionId("sess-a");
 			useChatStore.getState().updateAssistantText("sess-a", "hello");
-			expect(activeMessages()).toEqual([]);
+			const msgs = activeMessages();
+			expect(msgs.length).toBe(1);
+			expect(msgs[0].role).toBe("assistant");
+			expect(msgs[0].streaming).toBe(true);
+			expect(msgs[0].blocks).toEqual([{ type: "text", text: "hello" }]);
 		});
 
 		test("replaces text when last block is text", () => {

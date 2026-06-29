@@ -43,6 +43,7 @@
 //
 
 import type { AgentStore } from "./agent-store.js";
+import type { AgentService } from "./agent-service.js";
 import type { ProjectStore } from "./project-store.js";
 import type { CronStore } from "./cron-store.js";
 import type { RequirementStore } from "./requirement-store.js";
@@ -174,6 +175,8 @@ export class ManagementService {
 	/** v0.8 P5: late-bind container-view dependencies (server/index.ts order). */
 	setRequirementStore(store: RequirementStore): void { this.requirementStore = store; }
 	setSessionDB(db: SessionDB): void { this.sessionDB = db; }
+	private agentService: AgentService | null = null;
+	setAgentService(a: AgentService): void { this.agentService = a; }
 	setWikiStore(wiki: WikiStore): void { this.wikiStore = wiki; }
 	setArchivistService(svc: WikiSkeletonService): void { this.archivistService = svc; }
 	/** v0.8 §8.6: late-bind the task-step store (server/index.ts wiring order). */
@@ -468,6 +471,7 @@ export class ManagementService {
 					agentId: s.agentId,
 					name: agent?.name ?? s.agentId,
 					sessionId: s.id,
+					running: !!this.agentService?.isSessionRunning(s.id),
 				});
 			}
 		}
@@ -571,6 +575,20 @@ export class ManagementService {
 		// v0.8 §11.5: agent-as-tool retired — no AgentToolStore rows to cascade.
 		// subagents are soft refs (no cascade on agent delete by design).
 		this.cronStore?.deleteByAgent(id);
+		// project-work:解绑指向该 agent 的工位(agentId → null = 空岗),否则
+		// 工位会指向已删 agent,ProjectPage 显示原始 id、触发也会失败。
+		if (this.projectWorkStore) {
+			for (const w of this.projectWorkStore.list()) {
+				if (w.agentId === id) this.projectWorkStore.update(w.id, { agentId: null });
+			}
+		}
+		// sessions:归档该 agent 的全部 session(不硬删,保留历史;archived=1 后
+		// 从 activeSessions / 列表 / 路由排除,不再以原始 agent id 露出)。
+		if (this.sessionDB) {
+			for (const s of this.sessionDB.listSessions(id)) {
+				this.sessionDB.archiveSession(s.id);
+			}
+		}
 		// AgentStore.delete throws if the agent is the protected "zero".
 		this.agentStore.delete(id);
 	}
@@ -921,6 +939,8 @@ export class ManagementService {
 		});
 		// agent 变更 → 同步其 cron 触发器的 agentId(session 路由用)。
 		if (patch.agentId !== undefined) this.syncWorkCrons(workId, { agentId: patch.agentId ?? "" });
+		// cron 触发器变更 → diff 同步(保留未变 cron 的 run 历史)。
+		if (patch.cronTriggers !== undefined) this.setWorkCronTriggers(workId, patch.cronTriggers);
 		return updated;
 	}
 
@@ -1016,6 +1036,45 @@ export class ManagementService {
 		for (const c of this.cronStore.list()) {
 			if (c.workId !== workId) continue;
 			this.cronStore.update(c.id, patch as any);
+		}
+	}
+
+	/**
+		 * 全量设定 work 的 cron 触发器列表。按 {schedule, gitAware} 签名 diff:
+		 * 未变的 cron 保留(含 run 历史),多余的删除,新增的创建(带 workId)。
+		 * 每次保存都送全量列表也安全 —— diff 让"只改 prompt"不丢 cron 历史。
+		 */
+	private setWorkCronTriggers(workId: string, triggers: Array<{ schedule: CronSchedule; gitAware?: boolean }>): void {
+		if (!this.cronStore) return;
+		const store = this.requireProjectWorkStore();
+		const work = store.get(workId);
+		if (!work) throw new Error(`project-work not found: ${workId}`);
+		const project = this.projectStore.get(work.projectId);
+		if (!project) throw new Error(`Project not found: ${work.projectId}`);
+		const workingScope = { projectId: project.id, workspaceDir: project.workspaceDir, wikiRootNodeId: `wiki-root:${project.id}` };
+		const sig = (t: { schedule: CronSchedule; gitAware?: boolean }) =>
+			JSON.stringify({ schedule: t.schedule, gitAware: !!t.gitAware });
+		const existing = this.cronStore.list().filter((c) => c.workId === workId);
+		const existingSigs = new Set(existing.map((c) => sig({ schedule: c.schedule, gitAware: isGitAwarePrompt(c.prompt) })));
+		const newSigs = new Set(triggers.map(sig));
+		// 删除:旧有但新列表没有
+		for (const c of existing) {
+			if (!newSigs.has(sig({ schedule: c.schedule, gitAware: isGitAwarePrompt(c.prompt) }))) {
+				this.cronStore.delete(c.id);
+			}
+		}
+		// 新增:新列表有但旧没有
+		for (const t of triggers) {
+			if (!existingSigs.has(sig(t))) {
+				this.createCron({
+					agentId: work.agentId ?? "",
+					workingScope,
+					schedule: t.schedule,
+					prompt: t.gitAware ? wrapGitAwarePrompt("") : undefined,
+					workId,
+					enabled: true,
+				});
+			}
 		}
 	}
 

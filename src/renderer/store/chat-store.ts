@@ -115,12 +115,27 @@ function updateLastAssistantMsg(
 	updater: (msg: ChatMessage) => ChatMessage,
 ): ChatMessage[] {
 	const result = [...msgs];
+	// 有 assistant 消息 → 就地更新最后一条(chat send() 预建的 streaming 占位、
+	// 或既有对话的尾部 assistant)。
 	for (let i = result.length - 1; i >= 0; i--) {
 		if (result[i].role === "assistant") {
 			result[i] = updater(result[i]);
-			break;
+			return result;
 		}
 	}
+	// 自愈:完全没有 assistant 消息(空 session / 仅 user 消息)→ 建一条 streaming
+	// assistant。服务端触发的 run(cron/hook/work)没经 chat send() 预建占位,
+	// text_delta/tool_start 来了找不到 assistant,旧逻辑 no-op 直接丢消息 ——
+	// 这里保证"有 session 就一定能在 UI 看到消息",与触发路径解耦。
+	const created: ChatMessage = {
+		id: nextMsgId(),
+		role: "assistant",
+		text: "",
+		timestamp: Date.now(),
+		streaming: true,
+		blocks: [],
+	};
+	result.push(updater(created));
 	return result;
 }
 
