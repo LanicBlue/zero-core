@@ -46,6 +46,7 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 	private table: string;
 	private jsonColumns: Set<string>;
 	private boolColumns: Set<string>;
+	private numberColumns: Set<string>;
 	private columnMap: Record<string, string>; // camelKey → snake_col
 	private reverseMap: Record<string, string>; // snake_col → camelKey
 	private allColumns: string[]; // snake_case column names
@@ -66,6 +67,7 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 		this.table = table;
 		this.jsonColumns = new Set(columns.filter((c) => c.json).map((c) => c.key));
 		this.boolColumns = new Set(columns.filter((c) => c.bool).map((c) => c.key));
+		this.numberColumns = new Set(columns.filter((c) => c.number).map((c) => c.key));
 		this.columnMap = {};
 		this.reverseMap = {};
 		this.allColumns = [];
@@ -340,6 +342,10 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 				} catch {
 					record[camelKey] = val;
 				}
+			} else if (this.numberColumns.has(camelKey)) {
+				// 数字列:TEXT 亲和会把数字存成 REAL 文本("2.0"),集中在这里强转成
+				// JS number,下游再不必各自 Number() 兜底(过去 maxConcurrency 漏转就出 bug)。
+				record[camelKey] = val == null ? val : Number(val);
 			} else if (this.boolColumns.has(camelKey)) {
 				// bool 列写的是 1/0,但列若是 TEXT 亲和(未特判为 INTEGER 的列,
 				// 如 enable_concurrency_limit),SQLite 会把 1 存成 REAL 文本 "1.0"。
@@ -367,6 +373,8 @@ export interface ColumnDef {
 	json?: boolean;
 	/** If true, convert boolean ↔ INTEGER 0/1 */
 	bool?: boolean;
+	/** If true, coerce read value through Number() → JS number (for numeric TEXT columns whose stored form is "2.0") */
+	number?: boolean;
 }
 
 // ---------------------------------------------------------------------------

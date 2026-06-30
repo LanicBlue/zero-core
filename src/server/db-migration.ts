@@ -1028,7 +1028,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 		{ key: "baseUrl", column: "base_url" }, { key: "models", json: true },
 		{ key: "enabled", bool: true }, { key: "isSystem", column: "is_system", bool: true },
 		{ key: "enableConcurrencyLimit", column: "enable_concurrency_limit", bool: true },
-		{ key: "maxConcurrency", column: "max_concurrency" },
+		{ key: "maxConcurrency", column: "max_concurrency", number: true },
 		{ key: "createdAt", column: "created_at" }, { key: "updatedAt", column: "updated_at" },
 	]);
 	providers.migrateFromJson(join(zeroDir, "providers.json"), "providers", (raw: any) => ({
