@@ -47,6 +47,7 @@ import type { SessionManager } from "./session-manager.js";
 import { createEventMetricsAdapter, type EventMetricsAdapter } from "./metrics-events.js";
 import { setSessionTurnSeq } from "./durable-hooks.js";
 import { setTurnSeq } from "../runtime/hooks/turn-hooks.js";
+import { registerHooksForLoop, type HookWiringDeps } from "../runtime/hooks/index.js";
 import { getSessionTodos } from "../runtime/tools/todo-write.js";
 import { pendingResponses } from "../runtime/pending-responses.js";
 // (WORKFLOW_ROLES / sendRolePrompt 已退役 —— 去-role 统一走 sendProjectPrompt)
@@ -146,6 +147,14 @@ export class AgentService {
 	// config so tool-factory can record one row per tool invocation. Best-effort
 	// (logging failures are swallowed in tool-factory).
 	private toolUsageStore: any = null;
+	/**
+	 * Step 1B: per-loop hook wiring deps. Assembled by server/index.ts (which
+	 * owns the M5 extractor deps + workflow-context stores) and injected here.
+	 * Each loop built by this service registers the main hook set on its own
+	 * registry from these deps; delegated sub-loops inherit the same deps via
+	 * config.hookWiringDeps (threaded through AgentLoop → SubagentDelegator).
+	 */
+	private hookDeps: HookWiringDeps = {};
 
 	// Module readiness — modules notify when loaded, deferred actions wait until ready
 	private readyModules = new Set<string>();
@@ -246,8 +255,32 @@ export class AgentService {
 	setToolUsageStore(store: any): void {
 		this.toolUsageStore = store ?? null;
 	}
+	/**
+	 * Step 1B: inject the per-loop hook wiring deps. Called once by
+	 * server/index.ts after the M5 extractor deps + workflow-context stores
+	 * are built. The service merges its own always-available handles (db /
+	 * sessionManager / inputQueue) on top at read time (buildHookDeps).
+	 */
+	setHookDeps(deps: HookWiringDeps): void {
+		this.hookDeps = deps ?? {};
+	}
 	getSessionManager(): SessionManager | null {
 		return this.sessionManager;
+	}
+	/**
+	 * Step 1B: assemble the per-loop hook wiring deps. Service-owned handles
+	 * (db / sessionDb / sessionManager / inputQueue) are always available and
+	 * override any same-key field injected via setHookDeps; the rest
+	 * (extractionDeps / workflowContext) come from server/index.ts injection.
+	 */
+	private buildHookDeps(): HookWiringDeps {
+		return {
+			...this.hookDeps,
+			db: this.db,
+			sessionDb: this.db,
+			sessionManager: this.sessionManager ?? undefined,
+			inputQueue: this.inputQueue,
+		};
 	}
 
 	/** Mark a module as ready (e.g. "providers", "agentStore"). Triggers deferred actions. */
@@ -526,6 +559,10 @@ export class AgentService {
 		// channels). Auto anchors (memory + project) are derived from the
 		// contextBundle inside the loop.
 		if (agent?.wikiAnchors) (sessionConfig as any).wikiAnchors = agent.wikiAnchors;
+		// Step 1B: attach hook wiring deps so this loop's SubagentDelegator can
+		// register delegated sub-loops with the same set. The main loop's own
+		// registration happens below (right after construction).
+		sessionConfig.hookWiringDeps = this.buildHookDeps();
 		// Initialize run state for this session
 		if (!this.runStates.has(sessionId)) {
 			this.runStates.set(sessionId, { agentId, isBusy: false, streamingText: "", toolCalls: [] });
@@ -540,6 +577,8 @@ export class AgentService {
 				},
 			},
 		);
+		// Step 1B: register the main-loop hook set on the loop's own registry.
+		registerHooksForLoop(loop.registry, "main", this.buildHookDeps());
 		this.loops.set(sessionId, loop);
 		this.sessionManager?.trackSessionCreated(sessionId, agentId);
 		this.sessionManager?.trackSessionActivated(sessionId);
@@ -695,6 +734,8 @@ export class AgentService {
 		// P1 §10.6 wiki anchor injection —— archivist 写 wiki 靠它解析锚点。
 		if (this.wikiStoreGlobal) (sessionConfig as any).wikiStoreGlobal = this.wikiStoreGlobal;
 		if (agent?.wikiAnchors) (sessionConfig as any).wikiAnchors = agent.wikiAnchors;
+		// Step 1B: thread hook wiring deps (subagent-delegator uses them).
+		sessionConfig.hookWiringDeps = this.buildHookDeps();
 
 		let loop = this.loops.get(sessionId);
 		if (!loop) {
@@ -703,6 +744,8 @@ export class AgentService {
 					this.handleRuntimeEvent(agentId, event);
 				},
 			});
+			// Step 1B: register the main-loop hook set on the loop's own registry.
+			registerHooksForLoop(loop.registry, "main", this.buildHookDeps());
 			this.loops.set(sessionId, loop);
 		}
 

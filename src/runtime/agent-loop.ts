@@ -44,7 +44,7 @@ import { AgentSession } from "./session.js";
 import { buildToolsSet } from "./tools/index.js";
 import { renderTodosContext } from "./tools/todo-write.js";
 import { log } from "../core/logger.js";
-import { triggerHooks } from "../core/hook-registry.js";
+import { HookRegistry } from "../core/hook-registry.js";
 import { classifyError, isTransientError, userFriendlyMessage, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
 import { TurnRecorder } from "./turn-recorder.js";
 import { SystemPromptAssembler } from "./prompt-sections.js";
@@ -90,6 +90,14 @@ export class AgentLoop implements AgentRuntime {
 	private wikiAnchors: ResolvedAnchor[] = [];
 	/** v0.8 (P1 §10.6): global WikiStore, resolved from config.wikiStore. */
 	private wikiStoreGlobal: WikiStore | null = null;
+	/**
+	 * Step 1B: this loop's own HookRegistry. Handlers register here (via
+	 * registerHooksForLoop, called by agent-service / subagent-delegator right
+	 * after the loop is built) and only fire for this loop — no cross-loop
+	 * bleed. Exposed readonly so the caller can register the per-kind set.
+	 */
+	private readonly _registry = new HookRegistry();
+	get registry(): HookRegistry { return this._registry; }
 
 	constructor(
 		config: SessionConfig,
@@ -136,6 +144,9 @@ export class AgentLoop implements AgentRuntime {
 			emit: (event) => this.emit(event),
 			createSubLoop: (cfg, prov, cb) => new AgentLoop(cfg, prov, cb),
 			getToolConfig: () => this.toolContext.toolConfig ?? {},
+			// Step 1B: thread per-loop hook deps so delegated sub-loops register
+			// their own hook set on their own registry (loopKind="delegated").
+			hookDeps: config.hookWiringDeps,
 		});
 
 		this.toolContext = {
@@ -226,7 +237,7 @@ export class AgentLoop implements AgentRuntime {
 		try {
 			// [Batch 4] UserPromptSubmit hook fires BEFORE addMessage,
 			// allowing consumers to audit/filter the message
-			await triggerHooks("UserPromptSubmit", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), message: userMessage });
+			await this.triggerLocal("UserPromptSubmit", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), message: userMessage });
 
 			this.session.addMessage({ role: "user", content: userMessage });
 			this.session.saveToDb();
@@ -234,7 +245,7 @@ export class AgentLoop implements AgentRuntime {
 
 			log.loop("Messages after prune:", this.session.getMessages().length, "est tokens:", this.session.getMessages().reduce((s: number, m: any) => s + Math.ceil(JSON.stringify(m).length / 4), 0));
 
-			await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
+			await this.triggerLocal("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
 
 			// SessionStart hook has written user turn; next seq is the first assistant step
 			if (this.config.db && this.config.sessionId) {
@@ -249,7 +260,7 @@ export class AgentLoop implements AgentRuntime {
 
 			await this.runWithRetry();
 
-			await triggerHooks("PostTurnComplete", {
+			await this.triggerLocal("PostTurnComplete", {
 				agentId: this.config.agentId,
 				sessionId: this.session.getSessionId(),
 				session: this.session,
@@ -266,8 +277,8 @@ export class AgentLoop implements AgentRuntime {
 			this.streamText = "";
 			this.delegator.cleanup();
 
-			await triggerHooks("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
-			await triggerHooks("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
+			await this.triggerLocal("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
+			await this.triggerLocal("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
 
 			this.emit({ type: "agent_end", agentId: this.config.agentId });
 		}
@@ -294,7 +305,7 @@ export class AgentLoop implements AgentRuntime {
 			}
 			this.stepOffset = 0;
 
-			await triggerHooks("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)" });
+			await this.triggerLocal("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)" });
 
 			// After SessionStart, the turn count may have increased (if hook wrote a turn)
 			if (this.config.db && this.config.sessionId) {
@@ -310,8 +321,8 @@ export class AgentLoop implements AgentRuntime {
 			this.streamText = "";
 			this.delegator.cleanup();
 
-			await triggerHooks("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
-			await triggerHooks("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
+			await this.triggerLocal("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
+			await this.triggerLocal("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
 
 			this.emit({ type: "agent_end", agentId: this.config.agentId });
 		}
@@ -464,7 +475,7 @@ export class AgentLoop implements AgentRuntime {
 			const cls = classifyError(lastError);
 			log.error("loop", "All retries exhausted:", cls, lastError.message);
 			// [Batch 4] StopFailure with enriched context
-			await triggerHooks("StopFailure", {
+			await this.triggerLocal("StopFailure", {
 				agentId: this.config.agentId,
 				sessionId: this.session.getSessionId(),
 				error: lastError?.message,
@@ -495,7 +506,7 @@ export class AgentLoop implements AgentRuntime {
 		const systemPrompt = await this.assembleSystemPrompt();
 
 		// PreLLMCall: aggregate notification + memory + rag + providerOptions
-		const preResult = await triggerHooks("PreLLMCall", {
+		const preResult = await this.triggerLocal("PreLLMCall", {
 			agentId: this.config.agentId,
 			sessionId: this.session.getSessionId(),
 			session: this.session,
@@ -563,7 +574,7 @@ export class AgentLoop implements AgentRuntime {
 			// append messages (queued user input / delegated-task control
 			// message) for that step. Not feature code — just the hook surface.
 			prepareStep: async ({ stepNumber, messages: stepMessages }) => {
-				const res = await triggerHooks("PrepareStep", {
+				const res = await this.triggerLocal("PrepareStep", {
 					agentId: this.config.agentId,
 					sessionId: this.session.getSessionId(),
 					stepNumber,
@@ -693,7 +704,7 @@ export class AgentLoop implements AgentRuntime {
 					const tcId = e.toolCallId ?? e.id ?? `tc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 					this.recorder.addToolStart(e.toolName, e.input, tcId);
 
-					const preResult = await triggerHooks("PreToolUse", {
+					const preResult = await this.triggerLocal("PreToolUse", {
 						agentId: this.config.agentId,
 						sessionId: this.session.getSessionId(),
 						toolName: e.toolName,
@@ -720,7 +731,7 @@ export class AgentLoop implements AgentRuntime {
 					log.debug("loop", "Tool result:", e.toolName);
 					const resultTcId = e.toolCallId ?? e.id;
 
-					const postResult = await triggerHooks("PostToolUse", {
+					const postResult = await this.triggerLocal("PostToolUse", {
 						agentId: this.config.agentId,
 						sessionId: this.session.getSessionId(),
 						toolName: e.toolName,
@@ -741,7 +752,7 @@ export class AgentLoop implements AgentRuntime {
 					const errTcId = e.toolCallId ?? e.id;
 					let errorStr = String(e.error ?? e.errorText ?? "");
 
-					const failResult = await triggerHooks("PostToolUseFailure", {
+					const failResult = await this.triggerLocal("PostToolUseFailure", {
 						agentId: this.config.agentId,
 						sessionId: this.session.getSessionId(),
 						toolName: e.toolName,
@@ -781,7 +792,7 @@ export class AgentLoop implements AgentRuntime {
 						});
 
 						// Persist all completed steps via PostStep hook
-						await triggerHooks("PostStep", {
+						await this.triggerLocal("PostStep", {
 							agentId: this.config.agentId,
 							sessionId: this.session.getSessionId(),
 							recorder: this.recorder,
@@ -813,7 +824,7 @@ export class AgentLoop implements AgentRuntime {
 
 		this.recorder.sealStep();
 		// Final persist for any remaining blocks via PostStep hook
-		await triggerHooks("PostStep", {
+		await this.triggerLocal("PostStep", {
 			agentId: this.config.agentId,
 			sessionId: this.session.getSessionId(),
 			recorder: this.recorder,
@@ -847,5 +858,19 @@ export class AgentLoop implements AgentRuntime {
 		try {
 			this.callbacks.onEvent(event);
 		} catch { /* ignore subscriber errors */ }
+	}
+
+	/**
+	 * Step 1B: trigger a hook on THIS loop's registry. Automatically attaches
+	 * `loopKind` (defaulting to "main" when SessionConfig.loopKind is unset,
+	 * matching legacy main-loop callers) and `timestamp`, so handlers get a
+	 * stable context shape. Event names are unchanged (renaming is Step 1C).
+	 */
+	private async triggerLocal(event: import("../core/hook-types.js").HookEventName, ctx: Record<string, unknown>): Promise<import("../core/hook-registry.js").AggregatedHookResult> {
+		return this._registry.trigger(event, {
+			...ctx,
+			loopKind: this.config.loopKind ?? "main",
+			timestamp: Date.now(),
+		});
 	}
 }

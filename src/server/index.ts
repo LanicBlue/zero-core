@@ -75,7 +75,6 @@ import { createWikiRouter } from "./project-wiki-router.js";
 // Mirrors wiki-handlers.ts; production route is ipc-proxy ROUTE_MAP → these.
 import { createWikiRouter as createWikiBrowserRouter, createWorkspaceDocHandler } from "./wiki-router.js";
 import { AnalystService } from "./analyst-service.js";
-import { registerWorkflowContextHook } from "./workflow-context-hook.js";
 import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
 import { ALL_TOOLS, registerRuntimeTools } from "../runtime/tools/index.js";
 import { getToolExecute } from "../runtime/tools/tool-factory.js";
@@ -126,20 +125,15 @@ export async function startServer(options?: StartServerOptions) {
 	}
 
 	// v0.8 (M2): single global WikiStore (the memory tree) — created EARLY so
-	// the M5 extraction hooks (registered below) can point at it. The
-	// back-compat ProjectWikiStore view is created alongside; legacy
-	// IPC/router/renderer keep using it.
+	// the M5 extraction hooks (registered per-loop below via setHookDeps) can
+	// point at it. The back-compat ProjectWikiStore view is created alongside;
+	// legacy IPC/router/renderer keep using it.
 	const wikiStoreGlobal = new WikiStore(sessionDB);
 
-	// Initialize hook system + durable execution
-	const { registerDurableHooks } = await import("./durable-hooks.js");
-	const { registerToolExecutionHooks } = await import("./tool-execution-hooks.js");
-	registerDurableHooks(sessionDB);
-	registerToolExecutionHooks(sessionDB);
-
 	// v0.8 (M5): extractor cursor + telemetry stores live on SessionDB (lazy
-	// accessors). The extraction hook deps are wired here so PostTurnComplete
-	// can build extractor A/B with the global WikiStore as writer target.
+	// accessors). The extraction hook deps are assembled here; they're handed
+	// to agent-service.setHookDeps below so registerHooksForLoop wires them
+	// onto each loop's own registry.
 	const { ExtractorAService } = await import("./extractor-a-service.js");
 	const { ExtractorBService } = await import("./extractor-b-service.js");
 	const extractionDeps = {
@@ -152,8 +146,10 @@ export async function startServer(options?: StartServerOptions) {
 				telemetry: sessionDB.getTelemetryStore(),
 			}),
 	};
-	const { registerAllRuntimeHooks } = await import("../runtime/hooks/index.js");
-	registerAllRuntimeHooks(sessionDB, extractionDeps);
+	// Note: Step 1B retired the global registerAllRuntimeHooks / durable /
+	// tool-execution registration here — every loop now registers its own hook
+	// set on its own HookRegistry (agent-service.createLoopForSession +
+	// sendProjectPrompt + subagent-delegator delegated sub-loops).
 
 	const registry = new ToolRegistry(sessionDB.getKVStore());
 	registerRuntimeTools(registry);
@@ -182,8 +178,9 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 project-work(取代工作流角色的"工位"系统):早构造,T2 hook + 后续 cron/runner 共用。
 	const projectWorkStore = new (await import("./project-work-store.js")).ProjectWorkStore(sessionDB);
 
-	// Register workflow context hook (T2 context injection via PreLLMCall)
-	registerWorkflowContextHook({ projectStore, requirementStore, wikiStore, taskStepStore, projectWorkStore });
+	// Step 1B: workflow-context hook (T2 PreLLMCall injection) is no longer
+	// registered globally — it rides the per-loop registry via the deps handed
+	// to agent-service.setHookDeps below.
 
 	let workspaceConfig = loadWorkspaceConfig(sessionDB);
 
@@ -221,10 +218,17 @@ export async function startServer(options?: StartServerOptions) {
 	const agentService = createAgentService(workspaceConfig.workspaceDir, sessionDB, undefined, registry, mcp);
 	agentService.setAgentStore(agentStore);
 
-	// C2: input-queue insert_now injection (PrepareStep hook). Registered after
-	// agentService exists — the queue lives on it (agentService.inputQueue).
-	const { registerInputQueueHooks } = await import("../runtime/hooks/input-queue-hooks.js");
-	registerInputQueueHooks(agentService.inputQueue);
+	// Step 1B: inject per-loop hook wiring deps. The service merges its own
+	// always-available handles (db / sessionManager / inputQueue) on top at
+	// buildHookDeps() time. Each loop built by agent-service registers the
+	// main hook set from these; delegated sub-loops inherit them via
+	// config.hookWiringDeps. This retires the former global
+	// registerAllRuntimeHooks / registerDurableHooks / registerToolExecutionHooks
+	// / registerWorkflowContextHook / registerInputQueueHooks calls.
+	agentService.setHookDeps({
+		extractionDeps,
+		workflowContext: { projectStore, requirementStore, wikiStore, taskStepStore, projectWorkStore },
+	});
 
 	// v0.8 (P3): ManagementService (renamed from ZeroAdminService) —
 	// capability backend for the Project/Agent/Cron action tools.
@@ -385,7 +389,6 @@ export async function startServer(options?: StartServerOptions) {
 
 	// ─── LeadService + Requirement Hooks (M3) ────────────────────────
 	const { LeadService } = await import("./lead-service.js");
-	const { registerRequirementHooks } = await import("./requirement-hooks.js");
 	const { OrchestratePlanStore, OrchestrateManifestStore } = await import("./orchestrate-store.js");
 
 	// v0.8 (M3): Orchestrate plan/manifest stores — confirm gate persistence
@@ -503,11 +506,11 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 project-work(去-role):AnalystService 从"技术调研"工位取 agent。
 	analystService.setProjectWorkStore(projectWorkStore);
 
-	registerRequirementHooks({
-		requirementStore,
-		taskStepStore,
-		leadService,
-	});
+	// Step 1B (hook-redesign §5.5): requirement-hooks is retired — its
+	// plan→build + autoPickupIfIdle logic is workflow-domain and now rides
+	// cron + project-work + the pull model, not session hooks. The import
+	// stays in case other code paths still reference the module, but it is no
+	// longer registered. requirement-hooks.ts is marked legacy.
 
 	// v0.8 P7 (§1.5): no projectNotificationRouter — pull model.
 	// Run workflow state recovery (cron schedules + plan/build/verify reqs).

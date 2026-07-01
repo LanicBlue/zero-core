@@ -23,8 +23,8 @@
 import { HookRegistry } from "../../core/hook-registry.js";
 import { getSessionTodos, clearSessionTodos } from "../tools/todo-write.js";
 
-export function registerTodoCleanupHooks(): void {
-	HookRegistry.getInstance().register("PostTurnComplete", async (ctx: any) => {
+export function registerTodoCleanupHooks(registry: HookRegistry = HookRegistry.getInstance()): void {
+	registry.register("PostTurnComplete", async (ctx: any) => {
 		// 按 sessionId 隔离:同一 agent 的不同 session 各自清各自的 todo,
 		// 避免一个 session 完成清空连累另一个 session 的列表。
 		const sessionId = ctx?.sessionId as string | undefined;

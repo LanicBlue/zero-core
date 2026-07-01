@@ -35,6 +35,7 @@ import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
 import { OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
 import { decodeShellBuffer } from "../core/encoding.js";
+import { registerHooksForLoop, type HookWiringDeps } from "./hooks/index.js";
 
 type LoopFactory = (
 	config: SessionConfig,
@@ -89,6 +90,12 @@ export interface SubagentDelegatorDeps {
 	emit: (event: StreamEvent) => void;
 	createSubLoop: LoopFactory;
 	getToolConfig: () => Record<string, Record<string, any>>;
+	/**
+	 * Step 1B: per-loop hook wiring deps. When provided, every sub-loop gets the
+	 * delegated hook set registered on its own registry right after build.
+	 * Omit only in test stubs that don't run real hooks.
+	 */
+	hookDeps?: HookWiringDeps;
 }
 
 const DEFAULT_FINISH_MESSAGE =
@@ -101,6 +108,7 @@ export class SubagentDelegator {
 	private emit: (event: StreamEvent) => void;
 	private createSubLoop: LoopFactory;
 	private getToolConfig: () => Record<string, Record<string, any>>;
+	private hookDeps: HookWiringDeps | undefined;
 	private runningSubloops = new Map<string, RunningSubloop>();
 
 	constructor(deps: SubagentDelegatorDeps) {
@@ -109,6 +117,7 @@ export class SubagentDelegator {
 		this.emit = deps.emit;
 		this.createSubLoop = deps.createSubLoop;
 		this.getToolConfig = deps.getToolConfig;
+		this.hookDeps = deps.hookDeps;
 	}
 
 	// -----------------------------------------------------------------------
@@ -239,6 +248,10 @@ export class SubagentDelegator {
 			parentSessionId: this.config.sessionId,
 			spawnDepth: (this.config.spawnDepth ?? 0) + 1,
 			timeoutSec: toolConfig?.Agent?.timeout,
+			// Step 1B: mark as a delegated loop so handlers registered on its
+			// own registry know their kind (task-control fires; notification /
+			// input-queue / metrics don't).
+			loopKind: "delegated",
 		};
 
 		await triggerHooks("SubagentStart", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task });
@@ -250,6 +263,7 @@ export class SubagentDelegator {
 		const entry: RunningSubloop = { loop: undefined as unknown as AgentRuntime, abort: subAbort };
 		const telemetryOnEvent = this.buildSubEventHandler(taskId, entry);
 		const subLoop = this.createSubLoop(subConfig, this.providers, { onEvent: telemetryOnEvent });
+		this.registerSubLoopHooks(subLoop);
 		entry.loop = subLoop;
 		this.runningSubloops.set(taskId, entry);
 		subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
@@ -366,6 +380,8 @@ export class SubagentDelegator {
 			timeoutSec: toolConfig?.Agent?.timeout,
 			parentSessionId: this.config.sessionId,
 			spawnDepth: (this.config.spawnDepth ?? 0) + 1,
+			// Step 1B: delegated loop → task-control fires, main-only hooks don't.
+			loopKind: "delegated",
 		};
 
 		const registry = this.taskRegistry;
@@ -380,6 +396,7 @@ export class SubagentDelegator {
 			const entry: RunningSubloop = { loop: undefined as unknown as AgentRuntime, abort: subAbort };
 			const telemetryOnEvent = this.buildSubEventHandler(taskId, entry);
 			const subLoop = this.createSubLoop(subConfig, this.providers, { onEvent: telemetryOnEvent });
+			this.registerSubLoopHooks(subLoop);
 			entry.loop = subLoop;
 			this.runningSubloops.set(taskId, entry);
 			subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
@@ -531,6 +548,19 @@ export class SubagentDelegator {
 		});
 
 		return taskId;
+	}
+
+	/**
+	 * Step 1B: register the delegated hook set on a freshly-built sub-loop's
+	 * own registry. No-op when hookDeps weren't provided (test stubs) or when
+	 * the loop doesn't expose `.registry` (non-AgentLoop runtime). The loop
+	 * config already carries loopKind="delegated" so handlers can self-inspect.
+	 */
+	private registerSubLoopHooks(subLoop: AgentRuntime): void {
+		if (!this.hookDeps) return;
+		const registry = (subLoop as unknown as { registry?: import("../core/hook-registry.js").HookRegistry }).registry;
+		if (!registry) return;
+		registerHooksForLoop(registry, "delegated", this.hookDeps);
 	}
 
 	cleanup(): void {

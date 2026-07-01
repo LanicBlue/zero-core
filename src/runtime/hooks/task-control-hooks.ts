@@ -31,10 +31,9 @@ import { log } from "../../core/logger.js";
  * Register the delegated-task control-message injection hook. Idempotent —
  * safe to call once at startup. No-op when no db is provided.
  */
-export function registerTaskControlHooks(db?: ISessionStore): void {
+export function registerTaskControlHooks(db: ISessionStore | undefined, registry: HookRegistry = HookRegistry.getInstance()): void {
 	if (!db?.listDelegatedTasks) return;
 
-	const registry = HookRegistry.getInstance();
 	registry.register("PrepareStep", async (ctx) => {
 		const sessionId = ctx.sessionId as string | undefined;
 		if (!sessionId) return;

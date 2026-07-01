@@ -24,8 +24,7 @@ import { log } from "../../core/logger.js";
 /**
  * Register the input-queue insert_now injection hook. Idempotent.
  */
-export function registerInputQueueHooks(inputQueue: InputQueueStore): void {
-	const registry = HookRegistry.getInstance();
+export function registerInputQueueHooks(inputQueue: InputQueueStore, registry: HookRegistry = HookRegistry.getInstance()): void {
 	registry.register("PrepareStep", async (ctx) => {
 		const sessionId = ctx.sessionId as string | undefined;
 		if (!sessionId) return;

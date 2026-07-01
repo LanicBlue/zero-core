@@ -36,8 +36,7 @@ export function setSessionTurnSeq(sessionId: string, turnSeq: number): void {
 	sessionTurnSeq.set(sessionId, turnSeq);
 }
 
-export function registerDurableHooks(sessionDb: SessionDB): void {
-	const registry = HookRegistry.getInstance();
+export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistry = HookRegistry.getInstance()): void {
 
 	registry.register("SessionStart", async (ctx) => {
 		try {

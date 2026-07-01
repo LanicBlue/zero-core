@@ -27,7 +27,7 @@ import { log } from "../core/logger.js";
 
 type Ctx = Record<string, unknown>;
 
-export function registerMetricsHooks(sm: SessionManager): () => void {
+export function registerMetricsHooks(sm: SessionManager, registry: HookRegistry = HookRegistry.getInstance()): () => void {
 	// Note: PostToolUse/PostToolUseFailure are NOT included here —
 	// tool call metrics are recorded by metrics-events.ts via stream events
 	// which have accurate duration. Hooks would double-count.
@@ -40,7 +40,6 @@ export function registerMetricsHooks(sm: SessionManager): () => void {
 	];
 
 	const unsubscribes: Array<() => void> = [];
-	const registry = HookRegistry.getInstance();
 
 	const handler = async (ctx: Ctx): Promise<void> => {
 		const sessionId = ctx.sessionId as string | undefined;

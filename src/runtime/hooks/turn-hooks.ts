@@ -38,8 +38,7 @@ export function setTurnSeq(sessionId: string, seq: number): void {
 	sessionTurnSeq.set(sessionId, seq);
 }
 
-export function registerTurnHooks(db: ISessionStore): void {
-	const registry = HookRegistry.getInstance();
+export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = HookRegistry.getInstance()): void {
 
 	// ─── SessionStart: write user turn as step row ─────────────
 

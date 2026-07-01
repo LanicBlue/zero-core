@@ -32,8 +32,7 @@ import { log } from "../core/logger.js";
 // Per-invocation start time + args, keyed by toolCallId
 const pendingExecutions = new Map<string, { startTime: number; args: unknown }>();
 
-export function registerToolExecutionHooks(sessionDb: SessionDB): void {
-	const registry = HookRegistry.getInstance();
+export function registerToolExecutionHooks(sessionDb: SessionDB, registry: HookRegistry = HookRegistry.getInstance()): void {
 
 	registry.register("PreToolUse", async (ctx) => {
 		try {

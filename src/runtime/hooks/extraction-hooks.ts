@@ -166,9 +166,8 @@ async function runExtractionOnDelta(args: {
  * Close-flush (mechanism 3) is exposed via closeFlushSession() — called by
  * agent-service.evictSessionFromMemory.
  */
-export function registerExtractionHooks(deps: ExtractionHooksDeps): void {
+export function registerExtractionHooks(deps: ExtractionHooksDeps, registry: HookRegistry = HookRegistry.getInstance()): void {
 	schedulerDeps = deps;
-	const registry = HookRegistry.getInstance();
 
 	const resolveThresholds = deps.resolveThresholds ?? ((cfg) => {
 		const list = (cfg as any)?.extractors?.checkpointThresholds as number[] | undefined;

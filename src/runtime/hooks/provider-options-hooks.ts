@@ -27,8 +27,8 @@ import { HookRegistry } from "../../core/hook-registry.js";
 import type { SessionConfig } from "../types.js";
 import { log } from "../../core/logger.js";
 
-export function registerProviderOptionsHooks(): void {
-	HookRegistry.getInstance().register("PreLLMCall", async (ctx) => {
+export function registerProviderOptionsHooks(registry: HookRegistry = HookRegistry.getInstance()): void {
+	registry.register("PreLLMCall", async (ctx) => {
 		const config = ctx.config as SessionConfig;
 		if (!config.thinkingLevel || config.thinkingLevel === "none") return;
 

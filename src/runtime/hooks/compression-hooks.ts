@@ -63,8 +63,7 @@ function wikiMemoryTypeRootId(type: string): string {
 	return memoryTypeRootId(type as any);
 }
 
-export function registerCompressionHooks(): void {
-	const registry = HookRegistry.getInstance();
+export function registerCompressionHooks(registry: HookRegistry = HookRegistry.getInstance()): void {
 
 	registry.register("PostTurnComplete", async (ctx) => {
 		const config = ctx.config as SessionConfig;

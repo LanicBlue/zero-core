@@ -25,6 +25,7 @@
 import type { ModelMessage } from "ai";
 import type { ISessionStore } from "./session-store-interface.js";
 import type { DelegatedTaskRecord, SessionContextBundle } from "../shared/types.js";
+import type { HookWiringDeps } from "./hooks/index.js";
 
 // ---------------------------------------------------------------------------
 // Stream events — must match the existing IPC contract
@@ -233,6 +234,15 @@ export interface RuntimeProviderConfig {
 export interface SessionConfig {
 	agentId: string;
 	workspaceDir: string;
+	/**
+	 * v0.8 (Step 1B): which kind of loop owns this config. Used by the
+	 * per-loop HookRegistry wiring (registerHooksForLoop) to pick the right
+	 * handler set. Defaults to "main" when unset (legacy callers). Delegated
+	 * sub-loops set this to "delegated" so the registry registers
+	 * task-control-hooks and skips main-only hooks (notification /
+	 * input-queue / metrics).
+	 */
+	loopKind?: "main" | "delegated";
 	systemPrompt: string;
 	guidelines?: string[];
 	modelId: string;
@@ -332,6 +342,14 @@ export interface SessionConfig {
 	 * tools named by function, not by agent. The legacy field name is gone.)
 	 */
 	management?: any;
+	/**
+	 * Step 1B: per-loop hook wiring deps. Carried on the config so the loop's
+	 * internal SubagentDelegator can build delegated sub-loops with the same
+	 * deps (sub-loops register their own hook set on their own registry). The
+	 * MAIN loop's registration is performed by agent-service right after it
+	 * builds the loop (it owns loopKind="main").
+	 */
+	hookWiringDeps?: HookWiringDeps;
 }
 
 // ---------------------------------------------------------------------------

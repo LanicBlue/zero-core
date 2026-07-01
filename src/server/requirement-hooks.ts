@@ -1,5 +1,12 @@
 // 需求状态流转 Hook (v0.8 P7 — 拉模型重做)
 //
+// ⚠️ LEGACY / RETIRED (Step 1B, hook-redesign §5.5): this module is no longer
+// registered by the per-loop registry (registerHooksForLoop). Requirement
+// status-machine logic is workflow-domain and does not belong on session hooks;
+// it rides cron + project-work + the pull model instead. The file is kept so
+// existing imports / tests keep compiling; it will be deleted once the workflow
+// retirement lands. Do NOT add new callers.
+//
 // # 文件说明书
 //
 // ## 核心功能

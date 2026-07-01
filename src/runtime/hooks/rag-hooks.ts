@@ -28,8 +28,7 @@ import { HookRegistry } from "../../core/hook-registry.js";
 import type { SessionConfig } from "../types.js";
 import { log } from "../../core/logger.js";
 
-export function registerRagHooks(): void {
-	const registry = HookRegistry.getInstance();
+export function registerRagHooks(registry: HookRegistry = HookRegistry.getInstance()): void {
 
 	registry.register("PreLLMCall", async (ctx) => {
 		const config = ctx.config as SessionConfig;

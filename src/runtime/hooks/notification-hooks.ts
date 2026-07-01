@@ -30,8 +30,8 @@ import { log } from "../../core/logger.js";
 import type { AgentSession } from "../session.js";
 import type { TaskRegistry } from "../task-registry.js";
 
-export function registerNotificationHooks(): void {
-	HookRegistry.getInstance().register("PreLLMCall", async (ctx) => {
+export function registerNotificationHooks(registry: HookRegistry = HookRegistry.getInstance()): void {
+	registry.register("PreLLMCall", async (ctx) => {
 		const session = ctx.session as AgentSession;
 		const taskRegistry = ctx.taskRegistry as TaskRegistry | undefined;
 		if (!taskRegistry) return;
@@ -56,8 +56,9 @@ export function registerNotificationHooks(): void {
 
 		session.addMessage({ role: "user", content: notifications.join("\n\n") });
 
-		// Fire separate Notification hook for observability
-		await HookRegistry.getInstance().trigger("Notification", {
+		// Fire separate Notification hook for observability on the same
+		// per-loop registry (so observers scoped to this loop see it).
+		await registry.trigger("Notification", {
 			agentId: ctx.agentId,
 			sessionId: ctx.sessionId,
 			notifications: completedTasks.map((t) => ({ taskId: t.id, status: t.status, result: t.result })),
