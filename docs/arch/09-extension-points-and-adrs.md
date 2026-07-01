@@ -6,30 +6,40 @@
 
 ### 1.1 Hook 系统（最丰富）
 
-30 个 `HookEventName` 事件点（详见 `core/hook-types.ts`）。要扩展行为，最自然的方式是注册一个 hook handler：
+30 个 `HookEventName` 事件点 = **14 个 agent-execution(step-centric 命名,Step 1C)** + 16 个 observability/workflow(详见 `core/hook-types.ts`)。要扩展行为,最自然的方式是注册一个 hook handler:
 
 ```typescript
-HookRegistry.getInstance().register("PreToolUse", async (ctx) => {
+// 注册到 per-loop registry(Step 1B);新代码不要用 HookRegistry.getInstance()
+loop.registry.register("PreToolUse", async (ctx) => {
   if (ctx.toolName === "Shell" && ctx.args.command?.includes("rm -rf /")) {
     return { blocked: true, reason: "Destructive command blocked" };
   }
 });
 ```
 
-**当前活跃 hook 装载点**：
+agent-execution 14 hook 的完整触发点 + handler 映射见 [03 §Hook 系统](03-runtime-engine.md#事件--触发点--主要-handler-映射step-centric-14-hook)。注册通过 `registerHooksForLoop(registry, loopKind, deps)` 按 main/delegated 分组(见 [08 §2.5](08-cross-cutting.md#25-已注册的-handlerper-loopregisterhooksforloop))。
 
-| 文件 | 装载时机 | 注册的事件 |
+**当前活跃 hook 装载点**(per-loop,`registerHooksForLoop` 内):
+
+| 文件 | 装载范围 | 注册的事件 |
 |------|----------|------------|
-| `server/durable-hooks.ts` | `agent-service.ts` 构造时 | SessionStart / PostToolUse / Stop / StopFailure |
-| `runtime/hooks/turn-hooks.ts` | `registerAllRuntimeHooks(db)` | SessionStart / PostStep / Stop / StopFailure |
-| `runtime/hooks/compression-hooks.ts` | 同上 | PostTurnComplete |
-| `runtime/hooks/rag-hooks.ts` | 同上 | PreLLMCall |
-| `runtime/hooks/notification-hooks.ts` | 同上 | PreLLMCall |
-| `runtime/hooks/provider-options-hooks.ts` | 同上 | PreLLMCall |
-| `runtime/hooks/todo-cleanup-hooks.ts` | 同上 | PostTurnComplete |
-| `runtime/hooks/extraction-hooks.ts` | 同上（注入 deps 时） | PostTurnComplete |
+| `runtime/hooks/turn-hooks.ts` | shared | TurnStart / StepEnd / PostToolUse / PostToolUseFailure / TurnEnd / TurnError |
+| `runtime/hooks/compression-hooks.ts` | shared | StepEnd(从 PostTurnComplete 迁来,Step 3A) |
+| `runtime/hooks/extraction-hooks.ts` | shared(注入 deps 时) | StepEnd(M5,从 PostTurnComplete 迁来) |
+| `runtime/hooks/rag-hooks.ts` | shared | PreLLMCall |
+| `runtime/hooks/provider-options-hooks.ts` | shared | PreLLMCall |
+| `runtime/hooks/todo-cleanup-hooks.ts` | shared | StepEnd(从 PostTurnComplete 迁来,Step 3B) |
+| `runtime/hooks/notification-hooks.ts` | **main only** | PreLLMCall |
+| `runtime/hooks/input-queue-hooks.ts` | **main only** | StepStart(insert_now 注入) |
+| `runtime/hooks/task-control-hooks.ts` | **delegated only** | StepStart(request_finish 控制消息) |
+| `server/workflow-context-hook.ts` | shared(work session) | PreLLMCall(T2 项目上下文) |
+| `server/durable-hooks.ts` | shared | PostToolUse / TurnEnd / TurnError 等(turn_state 检查点) |
+| `server/tool-execution-hooks.ts` | shared | PostToolUse 等(工具执行审计) |
+| `server/metrics-hooks.ts` | **main only** | usage 流事件(metrics) |
 
-> v0.8 (P2 §11.6)：`runtime/hooks/memory-hooks.ts` 已删除。memory 合并进 per-agent wiki 子树，召回改由 `wiki-anchor-injection` 注入 + `Wiki(search)` 查询，不再走独立 recall hook。
+> Session 级 `SessionStart` / `SessionClose` 由 **agent-service** 在 loop build/destroy 时 fire(实例生命周期),不在 `registerHooksForLoop` 注册。
+>
+> v0.8 后续(Step 1C):`memory-hooks.ts` / `requirement-hooks.ts` 已退役(见 §5.5 原则,ADR-025)。memory 合并进 per-agent wiki 子树,召回改由 `wiki-anchor-injection` 注入;requirement 工作流改走 project-work hook(订阅 data-change-hub)。
 
 ### 1.2 工具（最直接）
 
@@ -278,8 +288,8 @@ graph TB
 - ✅ Hook 提取仍然有效，但 AgentLoop 当前又增长到约 700 行，需要继续控制流式事件翻译和工具执行分支。
 - ✅ 每个 hook 可独立测试。
 - ✅ 扩展点明确。
-- ❌ 23 个 hook 事件定义但未装载（幽灵 hook），其中 10 个连 `emit` 都没有（死定义，纯噪音）。
-- ❌ 调用顺序依赖注册时机。
+- ❌ ~~23 个 hook 事件定义但未装载(幽灵 hook)~~ —— **ADR-025 已重做**:agent-execution 改为 step-centric 14 hook(全部装载触发),observability/workflow 16 个里只剩 9 个零触发占位(`TeammateIdle` / `PermissionRequest/Denied` / `ConfigChange` / `CwdChanged` / `FileChanged` / `WorktreeCreate/Remove` / `InstructionsLoaded`),见 [08 §2.4](08-cross-cutting.md#24-事件装载状态step-centric-14--observabilityworkflow-16)。
+- ❌ 调用顺序依赖注册时机(per-loop registry 后隔离问题已缓解,但同 loop 内顺序仍敏感)。
 
 **Code evidence**：`runtime/hooks/index.ts`、`core/hook-registry.ts`。
 
@@ -672,14 +682,75 @@ graph TB
 
 **Code evidence**:`runtime/subagent-delegator.ts`(持久化 + turn 预算 + 竞态修复)、`runtime/task-registry.ts`(requestFinish/finishing)、`runtime/agent-loop.ts`(prepareStep 点位)、`runtime/hooks/task-control-hooks.ts` + `input-queue-hooks.ts`、`server/session-db.ts`(delegated_tasks 表 + session 列 + 隔离查询 + markRunningDelegatedTasksInterrupted)、`server/input-queue-store.ts`、`server/delegated-task-router.ts` + `input-queue-router.ts`、`renderer/components/layout/TaskTreePanel.tsx` + `chat/InputQueueStrip.tsx`、`renderer/store/task-store.ts` + `input-queue-store.ts`。
 
-**已知技术债**:HookRegistry 是全局单例,handler 触发跨所有 loop(含子 agent loop),靠 sessionId 自行过滤;PrepareStep 多 handler 的 appendMessages merge 是 last-writer-wins(不 concat)。整理方向:hook context 带 `loopKind`、appendMessages concat、注册归一(见 03 §3.3 末)。
+**已知技术债**:**已解决(见 [ADR-025](#adr-025--hook-重做per-loop-registry--step-中心--去-turn-表--外置重试与-resume--所有权归位))**。原债有三:① HookRegistry 是全局单例,handler 触发跨所有 loop(含子 agent loop),靠 sessionId 自行过滤;② PrepareStep 多 handler 的 appendMessages merge 是 last-writer-wins(不 concat);③ 注册分散(`registerAllRuntimeHooks` / `registerDurableHooks` / `registerToolExecutionHooks` 三处)。ADR-025 用 per-loop registry(①)+ 数组 concat(②)+ `registerHooksForLoop` 归一(③)全部解决。
+
+> **事件名演进(历史记录)**:本 ADR 写于 Phase C,用的是当时的 8 事件名(`SessionStart` per-run / `Stop` / `StopFailure` / `PostStep` / `PrepareStep` / `PostTurnComplete` / `UserPromptSubmit` / `SessionEnd` 空)。Step 1C 把它们重命名为 step-centric 的 14 hook 集(`TurnStart` / `TurnEnd` / `TurnError` / `StepStart` / `StepEnd` / `SessionStart`+`SessionClose` 实例生命周期 / `PreLLMCall`+`PostLLCall`+`OnLLMError` / `PreToolUse`+`PostToolUse`+`PostToolUseFailure`)。本 ADR 下文保留原名作历史记录;当前权威命名见 [03 §Hook 系统](03-runtime-engine.md#hook-系统)。
+
+---
+
+### ADR-025 · hook 重做(per-loop registry + step 中心 + 去 turn 表 + 外置重试与 resume + 所有权归位)
+
+**Status**:Accepted(Phase 1-4 全部合入 refactor/hook-step-centric;5A 文档同步本步)
+
+**Context**:ADR-024(Phase C)给 AgentLoop 加了 `PrepareStep` per-step 注入点,但把三类技术债留了下来:
+1. **HookRegistry 是全局单例** —— handler 触发**跨所有 loop**(含子 agent loop),靠 handler 自行用 ctx 里的 sessionId 过滤。task-control-hooks / input-queue-hooks 都得自己写 session 级过滤,隐式且易漏。
+2. **appendMessages merge 是 last-writer-wins(不 concat)** —— 多个 per-step 注入器(控制消息 + 排队输入)同时返回 `appendMessages` 时,后注册的覆盖前面的,而不是叠加。
+3. **注册分散** —— `registerAllRuntimeHooks` / `registerDurableHooks` / `registerToolExecutionHooks` 三处在不同时机各调一次,没有按 loop kind 分组。
+
+同时 hook 命名与所有权有一层更根本的错位:
+- **命名把"实例生命周期"与"per-run 启动"混在一起**。旧 `SessionStart` 在 AgentLoop.run() 里每 run 触发,但名字暗示"session 实例开始"。`Stop` / `StopFailure` 是 per-run 收尾,却与实例生命周期混在 Session 类。`PostTurnComplete` 同时承载压缩/抽取/todo 三类 turn 级副作用,无法支持 step 级触发。
+- **SDK 拥有多 step 循环**(`streamText({ stopWhen: stepCountIs(200) })` + `prepareStep` 回调),AgentLoop 无法做 step 级重试 / resume / OnLLMError —— 这些都要求循环在 AgentLoop 手里。
+- **turn 表语义模糊**:同一逻辑 turn 的多 step 写多行,但没有 `turn_group` 分组键,重建与聚合都靠 seq 推断,脆弱。
+
+**Decision**:hook-redesign(Phase 1-4),六条主线:
+
+1. **per-loop registry(Step 1A/1B)** —— `HookRegistry` 改为**可实例化**;每个 AgentLoop 持 `this.registry = new HookRegistry()`。handler 注册到本 loop 的 registry,触发**只在本 loop**,不再跨 loop。`registerHooksForLoop(registry, loopKind, deps)` 按 **main / delegated** 分组注册(shared / main-only / delegated-only)。`getInstance()` 保留作过渡默认。`loopKind` 作 ctx 自省字段保留(handler 可按 main/delegated 分支),但不再是跨 loop 隔离的承载点。
+
+2. **数组 concat + 标量 last-writer-wins(Step 1A)** —— registry 的 merge 改为:**数组类型字段跨 handler concat**(`appendMessages` 即如此),**标量字段 last-writer-wins**(`ragContext` / `providerOptions` / `memoryContext`)。这让多个 per-step 注入器(控制消息 + 排队输入 + RAG)的 appendMessages 互不覆盖。
+
+3. **step-centric 14 hook 重命名 + 所有权归位(Step 1C)** —— agent-execution hook 改名为以 step 为中心的 5 级 14 事件:
+   - **Session**(实例生命周期):`SessionStart` / `SessionClose` —— 由 **agent-service** 在 loop build/destroy 时 fire(不是 AgentLoop 在 run() 里 fire)。
+   - **Turn**(一次 user 输入):`TurnStart` / `TurnEnd` / `TurnError` —— AgentLoop.run() 触发。
+   - **Step**(turn 内单步):`StepStart` / `StepEnd` —— 外置 step 循环触发。
+   - **LLMCall**(step 内单次模型调用):`PreLLMCall` / `PostLLCall` / `OnLLMError`。
+   - **Tool**(step 内工具调用):`PreToolUse` / `PostToolUse` / `PostToolUseFailure`。
+
+   **退役/改名对照**:`UserPromptSubmit` 删(无消费者);per-run `SessionStart`→`TurnStart`;`Stop`→`TurnEnd`;`StopFailure`→`TurnError`;`PostStep`→`StepEnd`;`PrepareStep`→`StepStart`;空触发 `SessionEnd` 删;`PostTurnComplete` 删(Step 3B,其副作用拆到 StepEnd 压缩/抽取/todo + TurnEnd 闭合);新增 `SessionStart`/`SessionClose`(实例生命周期,agent-service fire)。
+
+4. **去 turn 表(step 唯一存储,Step 4A)** —— 物理 `turns` 表只存 **step 行**,`turn_group` 是逻辑 turn 分组键(`NOT NULL DEFAULT -1`,迁移期 `migrateTurnsToSteps` 回填:user → 自身 seq,assistant → 最近前置 user seq)。`appendStep` / `upsertStep` / `getSteps` 是当前 API;`appendTurn`(单行写)退役。重建走 `AgentSession.rebuildFromSteps`。
+
+5. **外置 step 循环 + step 级重试/resume(Step 2C/2D)** —— 把 SDK 内部的 `streamText({ stopWhen: stepCountIs(200) })` 循环**外置**到 AgentLoop:显式 `for (stepNumber = 1..MAX_STEPS=200)` 每步一次 `streamText({ stopWhen: stepCountIs(1) })`。这让三件事成为可能:
+   - **per-step 重试**:瞬时错误 / `prompt_too_long` 只重试失败 step(messages 不变),最多 `MAX_RETRIES=3`。
+   - **OnLLMError hook**:handler 可请求"只重试失败 step"+ 对 `prompt_too_long` 触发激进 prune。
+   - **step 级 resume**:从已持久化 step 行续跑,已完成 step 不重跑(`turn_state.last_completed_step_seq` 检查点,case1 重跑 step / case2 工具恢复,dangling 在 rebuildFromSteps 合成 `[interrupted]`)。
+   - per-tool 即时落库(Step 2B):PostToolUse/Failure 即时 upsert 同一 step 行带 result/failure,case2 恢复的前提。
+
+6. **§5.5 session-hook 原则 + requirement-hooks 退役** —— session 级 hook(`SessionStart`/`SessionClose`)**只载 session 实例生命周期**(build/destroy),不承载 turn/step 级注入。per-run "会话开始"归 TurnStart,per-step 注入归 StepStart + PreLLMCall。`requirement-hooks`(把 workflow 域的需求状态机塞进 agent-execution hook)按此原则退役,workflow 域改走 project-work hook(订阅 data-change-hub,非 agent-execution hook)。
+
+**Alternatives**:
+- 保留全局单例 + sessionId 过滤:不解决跨 loop 隐式契约,handler 作者负担重。
+- 保留 SDK 拥有 step 循环:无法做 step 级重试/resume/OnLLMError。
+- 保留 `PostTurnComplete` 单一 turn 级触发点:无法在 step 边界触发压缩/抽取(Step 3A 需要)。
+
+**Consequences**:
+- ✅ handler 不再跨 loop,删了一类隐式过滤契约;per-loop registry 隔离干净。
+- ✅ appendMessages 可叠加,per-step 控制消息 + 排队输入 + RAG 共存。
+- ✅ step 级重试/resume 让失败 turn 不必从头跑;case2 工具恢复让副作用不丢。
+- ✅ 命名诚实:Session=实例生命周期、Turn=user 输入、Step=LLM call、Tool=工具调用,各归其位。
+- ✅ turn 表语义清晰:step 行 + turn_group 分组,重建/聚合都靠显式键。
+- ⚠️ `HookRegistry.getInstance()` 仍保留(过渡),新代码不应依赖,但旧测试/未迁移调用方仍在用。
+- ⚠️ `PostLLCall` 是预留空缝(模型返回与工具执行之间的观测点),Step 2C 未接线 —— 接与否需明确用例。
+- ⚠️ tool-call ↔ task 链接(父侧 Agent tool-call ↔ 子侧 delegated task,经 `parentToolCallId`)的**父侧 scan-backfill 仍是 TODO**;子侧 `resumeTask` 原语已就位。
+- ⚠️ 9 个 observability/workflow hook(`TeammateIdle` / `PermissionRequest/Denied` / `ConfigChange` / `CwdChanged` / `FileChanged` / `WorktreeCreate/Remove` / `InstructionsLoaded`)仍在类型里定义但零触发(占位),未在本 ADR 清理。
+
+**Code evidence**:`core/hook-registry.ts`(可实例化 + 数组 concat + 标量 last-writer-wins)、`core/hook-types.ts`(step-centric 14 hook + 5 级注释)、`runtime/hooks/index.ts`(`registerHooksForLoop` 按 loopKind 分组)、`server/agent-service.ts`(`fireSessionStart`/`fireSessionClose` + `registerHooksForLoop(main)`)、`runtime/subagent-delegator.ts`(`registerHooksForLoop(delegated)`)、`runtime/agent-loop.ts`(`this.registry` + 外置 step 循环 + `runOneStepWithRetry` + `finalizeOneStep` + `resume(lastCompletedStepSeq)` + `triggerLocal`)、`runtime/hooks/turn-hooks.ts`(TurnStart/StepEnd/PostToolUse 即时落库/TurnEnd safety-net+闭合/TurnError)、`runtime/session.ts`(`rebuildFromSteps` + dangling `[interrupted]` 合成)、`server/session-db.ts`(turns step-only + turn_group + last_completed_step_seq + appendStep/upsertStep/getSteps)、`server/db-migration.ts`(`migrateTurnsToSteps` 回填)、`runtime/hooks/compression-hooks.ts` + `extraction-hooks.ts` + `todo-cleanup-hooks.ts`(迁到 StepEnd)、`server/requirement-hooks.ts`(退役,标 legacy)。详见 [03 §Hook 系统](03-runtime-engine.md#hook-系统) 与 [05 §8.1 step 级恢复](05-persistence.md#81-step-级恢复step-2d2e)。
 
 ---
 
 ## 3. 总结
 
-- 23 个 ADR，集中在数据驻留、并发控制、扩展点、UI 同步、角色演进。
-- 当前建议优先处理：018 (IPC 契约漂移)、011 (mcp-tools 改名)、013 (legacy memory 清理)、008 (legacy KB RAG hook 标注/退役)。ADR-012 已解决。
+- 25 个 ADR(ADR-024 技术债已由 ADR-025 解决),集中在数据驻留、并发控制、扩展点、UI 同步、角色演进、hook 重做。
+- 当前建议优先处理:018 (IPC 契约漂移)、011 (mcp-tools 改名)、013 (legacy memory 清理)、008 (legacy KB RAG hook 标注/退役)。ADR-012 / ADR-024 技术债已解决。
 - 整个架构遵循"interfaces up, implementations down" 的依赖倒置；`ISessionStore` / `IKVStore` 是教科书级示范。
 - "Hook 提取"是**最大的**架构改进（ADR-005），把 AgentLoop 从膨胀中拯救出来。
 - 单 SQLite 文件 + KV store 的双重存储（ADR-006）是项目**最勇敢**的决定。

@@ -247,8 +247,11 @@ graph TB
 - **Persona**：角色定义（CommunicationStyle + PERSONA_TEMPLATES）。
 - **project-work（工位）**：取代工作流角色的"工作"单元。一个 project-work = 项目里定义的一项工作(具体职责,如"需求管理"/"文档充实"):带动作 prompt(触发时作 user message)+ requiredTools(分配 agent 时校验)+ agentId(可空=空岗)+ contextPolicy + hooks。身份在 agent(systemPrompt),行为在 work(actionPrompt),两者平行。触发源:cron(复用 crons 表,带 workId)/ 项目 hook(data-change-hub 事件)/ 手动。一个 work = 一个动作(扁平)。见 ADR-023。
 - **Preload**：Electron 预加载脚本，contextBridge 暴露 `window.api`。
-- **PretoolUse**：hook 事件，工具执行前触发（可阻断）。
-- **PrepareStep**：hook 事件(Phase C),`streamText` 每 step 前触发(per-step 注入点,与 per-turn 的 PreLLMCall 互补)。handler 返回 `appendMessages` 注入该 step。投递:request_finish 控制消息(task-control-hooks)、运行中"立即插入"输入(input-queue-hooks)。见 ADR-024。
+- **PreToolUse**：hook 事件(step-centric 14 hook 之一,工具执行前触发,可阻断)。
+- **StepStart**：hook 事件(hook-redesign Step 1C,原 `PrepareStep`),外置 step 循环每步开头触发(per-step 注入点,与 per-step 的 PreLLMCall 互补)。handler 返回 `appendMessages` 注入该 step(registry 数组 concat,不覆盖)。投递:request_finish 控制消息(task-control-hooks,delegated only)、运行中"立即插入"输入(input-queue-hooks,main only)。见 ADR-024 / ADR-025。
+- **StepEnd**：hook 事件(原 `PostStep`),每步 finalizeOneStep 触发:持久化 step 行 + 压缩(原 PostTurnComplete)+ 抽取(M5)+ todo 清理。
+- **TurnStart / TurnEnd / TurnError**：hook 事件(原 `SessionStart`(per-run) / `Stop` / `StopFailure`),AgentLoop.run() 触发。TurnStart 写 user turn,TurnEnd 闭合 turn_group + safety-net,TurnError 记录失败 step。
+- **SessionStart / SessionClose**：hook 事件(实例生命周期,新增),由 **agent-service** 在 loop build/destroy 时 fire(不是 AgentLoop)。§5.5 原则:只载实例生命周期,不承载 turn/step 注入。
 - **ProcessStreamEvents**：AgentLoop 处理 streamText 输出事件的函数。
 - **ProviderAdapter**：每 Provider 的兼容性适配（stripThinkingTags 等）。
 - **ProviderConcurrencyManager**：每 Provider 一个 FIFO semaphore。

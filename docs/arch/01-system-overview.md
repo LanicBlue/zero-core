@@ -228,7 +228,7 @@ sequenceDiagram
     S->>D: new SessionDB() → init schema
     S->>S: runMigrations(sessionDB)
     S->>S: build ToolRegistry + Stores
-    S->>S: createAgentService() + registerAllRuntimeHooks() + registerDurableHooks()
+    S->>S: createAgentService()(内部 per-loop registerHooksForLoop + fireSessionStart)
     S->>M: stdout {type:"ready", port}
     M->>M: createWindow() (BrowserWindow)
     M->>M: registerProxyHandlers(port)

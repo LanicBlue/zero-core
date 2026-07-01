@@ -89,174 +89,162 @@ flowchart LR
 
 ## 2. Hook 系统
 
+> step-centric 重命名 + per-loop registry(Step 1A-1C)后,本节是横切视角的简版;**事件全景、
+> 触发点、时序图以 [03 §Hook 系统](03-runtime-engine.md#hook-系统) 为权威**。本节聚焦横切关注点:
+> registry 的执行模型、observability/workflow 事件的装载状态、注册时机。
+
 ### 2.1 三层抽象
 
 ```
-HookEventName (30 个事件)
+HookEventName (30 个事件 = 14 agent-execution[step-centric] + 16 observability/workflow)
    ↓
-HookContext (BaseHookContext + 事件特定字段)
+HookContext (BaseHookContext[+loopKind] + 事件特定字段)
    ↓
 HookHandler ((ctx) => HookResult | Promise<HookResult>)
    ↓
 HookResult = void | { blocked: true, reason } | { forceContinue: true, message }
+             | 各事件的数据修改结果(appendMessages / ragContext / providerOptions / ...)
 ```
 
-### 2.2 单例注册表
+### 2.2 per-loop registry(Step 1B)
 
 ```typescript
 class HookRegistry {
   private handlers = new Map<HookEventName, HookHandler[]>();
-  static getInstance(): HookRegistry  ← 单例
+  // 可实例化:每个 AgentLoop 持 this.registry = new HookRegistry()
+  static getInstance(): HookRegistry  // @deprecated 过渡默认,新代码用 per-loop 实例
   register(event, handler): () => void  ← 返回 unsubscribe
-  trigger(event, ctx): Promise<HookResult>
+  trigger(event, ctx): Promise<AggregatedHookResult>
     ├─ for each handler (按注册顺序):
     │   try { result = await handler(ctx) }
     │   catch { log.error(...) }     ← 永不抛出
-    │   if result?.blocked: return result   ← blocked 短路,立即返回
-    │   if result: mergeInto(acc, result)   ← 非 blocked 结果按字段 merge(last-writer-wins)
-    └─ return acc                            ← 合并后的结果(可能含 forceContinue / 注入字段)
+    │   if result?.blocked: return { blocked:true, reason }   ← blocked 短路
+    │   for [k,v] of result:
+    │     if Array.isArray(v): merged[k] = [...prev, ...v]    ← 数组 concat(Step 1A)
+    │     else:               merged[k] = v                   ← 标量 last-writer-wins
+    └─ return merged
 }
 ```
 
-> 语义澄清(与 02 §3.2 / 03 §Hook 系统 一致):**不是** first-writer-wins。blocked 短路是真的
-> (任何 handler 返回 `{blocked:true}` 立即终止),但非 blocked 结果会**按字段 merge** 到累加器,
-> 后注册的 handler 写同名字段会覆盖先注册的 —— 这就是为什么 §2.5 强调注册顺序敏感。
+> **merge 语义(Step 1A,关键)**:**数组字段跨 handler concat**(`appendMessages`),**标量字段 last-writer-wins**(`ragContext` / `providerOptions` / `memoryContext`)。blocked 短路在任何 handler 返回 `{blocked:true}` 时立即终止。这与 03 §Hook 系统、`hook-registry.ts:101-111` 一致。
 
 ### 2.3 触发点
 
-`triggerHooks(event, ctx)` 会在 ctx 自动加 `timestamp: Date.now()` 后调用 `HookRegistry.getInstance().trigger()`。
+每个 AgentLoop 用 `loop.triggerLocal(event, ctx)` 在**自己的 registry** 上触发(自动加 `timestamp` + `loopKind`)。agent-service 的 `fireSessionStart` / `fireSessionClose` 在 loop build/destroy 时触发 Session 级事件。全局 `triggerHooks()` wrapper 仍存在(走 `getInstance()`),仅供未迁移代码/测试用。
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant AL as AgentLoop
-    participant T as triggerHooks()
-    participant R as HookRegistry
+    participant T as loop.triggerLocal()
+    participant R as loop.registry
     participant H1 as handler₁
     participant H2 as handler₂
     participant H3 as handler₃
 
-    AL->>T: triggerHooks("PreLLMCall", ctx)
-    T->>T: 加 timestamp
-    T->>R: getInstance().trigger("PreLLMCall", ctx)
-    R->>R: acc = {} (累加器)
+    AL->>T: triggerLocal("PreLLMCall", ctx)
+    T->>T: 加 timestamp + loopKind
+    T->>R: registry.trigger("PreLLMCall", ctx)
+    R->>R: merged = {} (累加器)
     R->>H1: handler₁(ctx)
     Note over R,H1: 异常被 catch + log
     alt 返回 {blocked:true}
         H1-->>R: blocked
-        R-->>AL: blocked (短路,不再调 H2/H3)
+        R-->>AL: {blocked, reason} (短路)
     else 返回注入字段
-        H1-->>R: { ragContext: ... }
-        R->>R: acc.ragContext = ...
+        H1-->>R: { appendMessages: [m1] }
+        R->>R: merged.appendMessages = [m1] (数组)
         R->>H2: handler₂(ctx)
-        H2-->>R: { providerOptions: ... }
-        R->>R: acc.providerOptions = ... (last-writer-wins)
+        H2-->>R: { providerOptions: {...} }
+        R->>R: merged.providerOptions = {...} (标量 last-writer-wins)
         R->>H3: handler₃(ctx)
-        H3-->>R: void
-        R-->>AL: acc (合并后的注入字段)
+        H3-->>R: { appendMessages: [m2] }
+        R->>R: merged.appendMessages = [m1, m2] (concat!)
+        R-->>AL: merged
     end
 ```
 
-### 2.4 30 个事件分类(类型定义见 `core/hook-types.ts:29-39`)
+### 2.4 事件装载状态(step-centric 14 + observability/workflow 16)
 
-下表把 30 个事件名与 **实际触发点**(`grep triggerHooks\|HookRegistry.getInstance().trigger` 在 `src/` 内的命中)逐行核对过,与 §2.5 的 handler 清单交叉一致。类别是文档分组用的,与代码无关。
+agent-execution 的 14 个事件(step-centric 命名,Step 1C)的触发点 + handler 见 [03 §Hook 系统](03-runtime-engine.md#事件--触发点--主要-handler-映射step-centric-14-hook)。本表只列**observability/workflow 16 个事件**的装载状态(这些未在 Step 1C 重命名范围内,代码触发点未变):
 
-| 类别 | 事件 | 是否实际触发 | 实际触发位置(file:line) |
-|------|------|--------------|------------------------|
-| Session 生命周期 | `SessionStart` | ✅ | `agent-loop.ts:236`（首轮）、`:296`（续轮） |
-| Session 生命周期 | `SessionEnd` | ✅ | `agent-loop.ts:269`（正常）、`:313`（Stop 路径） |
-| Session 生命周期 | `Stop` | ✅ | `agent-loop.ts:268`、`:312` |
-| Session 生命周期 | `StopFailure` | ✅ | `agent-loop.ts:466` |
-| Session 生命周期 | `Setup` | ⚠️ **仅定义,零触发** | — |
-| 用户输入 | `UserPromptSubmit` | ✅ | `agent-loop.ts:228` |
-| LLM | `PreLLMCall` | ✅ | `agent-loop.ts:497` |
-| LLM | `PostTurnComplete` | ✅ | `agent-loop.ts:251` |
-| LLM | `PostStep` | ✅ | `agent-loop.ts:766`、`:798` |
-| 工具 | `PreToolUse` | ✅ | `tool-factory.ts:181`（buildTool 包装层,真正入口);`agent-loop.ts:678`（遗留直调) |
-| 工具 | `PostToolUse` | ✅ | `tool-factory.ts:206`;`agent-loop.ts:705` |
-| 工具 | `PostToolUseFailure` | ✅ | `tool-factory.ts:220`;`agent-loop.ts:726` |
-| 压缩 | `PreCompact` | ✅ | `session.ts:156` |
-| 压缩 | `PostCompact` | ✅ | `session.ts:220`、`:229` |
-| 子 agent | `SubagentStart` | ✅ | `subagent-delegator.ts:140`（同步委派）、`:270`（后台） |
-| 子 agent | `SubagentStop` | ✅ | `subagent-delegator.ts:177/187/211/217/228/306/318/338` |
-| 任务 | `TaskCreated` | ✅ | `subagent-delegator.ts:199/269/360` |
-| 任务 | `TaskCompleted` | ✅ | `subagent-delegator.ts:212/218/307/319/339/373/397/404` |
-| 任务 | `TeammateIdle` | ⚠️ **仅定义,零触发** | — |
-| 询问 | `Elicitation` | ✅ | `tools/ask-user.ts:56` |
-| 询问 | `ElicitationResult` | ✅ | `tools/ask-user.ts:70` |
-| 通知 | `Notification` | ✅ | `notification-hooks.ts:60`(`HookRegistry.getInstance().trigger`,**不经 triggerHooks 包装**) |
-| 权限 | `PermissionRequest` | ⚠️ **仅定义,零触发** | — |
-| 权限 | `PermissionDenied` | ⚠️ **仅定义,零触发** | — |
-| 配置变更 | `ConfigChange` | ⚠️ **仅定义,零触发** | — |
-| 配置变更 | `CwdChanged` | ⚠️ **仅定义,零触发** | — |
-| 配置变更 | `FileChanged` | ⚠️ **仅定义,零触发** | — |
-| Worktree | `WorktreeCreate` | ⚠️ **仅定义,零触发** | — |
-| Worktree | `WorktreeRemove` | ⚠️ **仅定义,零触发** | — |
-| 提示 | `InstructionsLoaded` | ⚠️ **仅定义,零触发** | — |
+| 类别 | 事件 | 是否实际触发 | 备注 |
+|------|------|--------------|------|
+| 压缩 | `PreCompact` / `PostCompact` | ✅ | `session.ts`(压缩引擎内部) |
+| 子 agent | `SubagentStart` / `SubagentStop` | ✅ | `subagent-delegator.ts`(同步/后台委派) |
+| 任务 | `TaskCreated` / `TaskCompleted` | ✅ | `subagent-delegator.ts`(**活跃**,非占位) |
+| 任务 | `TeammateIdle` | ⚠️ **仅定义,零触发** | 占位 |
+| 询问 | `Elicitation` / `ElicitationResult` | ✅ | `tools/ask-user.ts` |
+| 通知 | `Notification` | ✅ | `notification-hooks.ts`(main-only)内部触发 |
+| 权限 | `PermissionRequest` / `PermissionDenied` | ⚠️ **仅定义,零触发** | 占位 |
+| 配置变更 | `ConfigChange` / `CwdChanged` / `FileChanged` | ⚠️ **仅定义,零触发** | 占位 |
+| Worktree | `WorktreeCreate` / `WorktreeRemove` | ⚠️ **仅定义,零触发** | 占位 |
+| 提示 | `InstructionsLoaded` | ⚠️ **仅定义,零触发** | 占位 |
 
-**装载状态**(2026-06-27 与 src 实际核对):
-- ✅ **实际触发 + 至少有一个注册 handler**:20 个 —— `SessionStart / SessionEnd / Stop / StopFailure / UserPromptSubmit / PreLLMCall / PostTurnComplete / PostStep / PreToolUse / PostToolUse / PostToolUseFailure / PreCompact / PostCompact / SubagentStart / SubagentStop / TaskCreated / TaskCompleted / Elicitation / ElicitationResult / Notification`。
-- ⚠️ **在 `HookEventName` 联合类型里定义但代码里 `grep` 零触发**:10 个 —— `Setup / TeammateIdle / PermissionRequest / PermissionDenied / ConfigChange / CwdChanged / FileChanged / WorktreeCreate / WorktreeRemove / InstructionsLoaded`。这些是参考 Claude Code 的 27 事件点提前占位的扩展点,目前**连触发都没有**,更别说 handler。删类型会让 `HookEventName` 联合收缩,需评估是否有外部消费方。
+> **同名陷阱**:`TaskCreated` / `TaskCompleted` 是 v0.8 子 Agent 委派的活跃事件,**不是** `TeammateIdle` 同类的占位。
 
-> **过去版本的描述错在哪**:本节早期写 "✅ 活跃 8 个 / ⚠️ 未装载 23 个" —— 既漏算(`PostStep` / `PreCompact` / `PostCompact` / `TaskCreated` / `TaskCompleted` / `UserPromptSubmit` / `SessionEnd` / `Notification` / `Elicitation` / `ElicitationResult` 都已活跃,实际是 20 个),又把 "未装载" 等同于 "未触发"。真正的"幽灵事件"是连 `triggerHooks` / `HookRegistry.trigger` 调用都没有的 10 个,而不是 23 个。
+### 2.5 已注册的 Handler(per-loop,registerHooksForLoop)
 
-> **同名陷阱**:`TaskCreated` / `TaskCompleted` 是 v0.8 子 Agent 委派(`subagent-delegator.ts`)的事件,**不是**早期文档暗示的 "TeammateIdle 同类的未实现占位"——它们是活跃的。真正占位的是 `TeammateIdle` 本身。
+> v0.8 同步:`memory-hooks.ts` / `requirement-hooks.ts` 已退役(见 03 §5.5)。下表是
+> `src/runtime/hooks/` + `src/server/*-hooks.ts` 现存 handler 的**全量**清单,由
+> `registerHooksForLoop(registry, loopKind, deps)` 注册到**本 loop 的 registry**。
 
-### 2.5 已注册的 Handler
-
-> v0.8 同步:`memory-hooks.ts` 已废(memory 合并进 wiki per-agent 子树,召回改由
-> wiki-anchor-injection + `renderContextAnchors` 注入,见 06 §2.6)。下表是 `src/runtime/hooks/` +
-> `src/server/*-hooks.ts` 现存 handler 的**全量**清单。
-
-**Runtime hooks**(`src/runtime/hooks/index.ts` → `registerAllRuntimeHooks`,注册顺序敏感):
+**Shared(main + delegated)**:
 
 | Handler 文件 | 事件 | 副作用 |
 |--------------|------|--------|
-| `turn-hooks.ts` | SessionStart / Stop / StopFailure | 写入 turns 表(仅当传入 db) |
-| `notification-hooks.ts` | (注册优先) | 通知派发(在 rag/providerOptions 之前注册,避免被覆盖) |
+| `turn-hooks.ts` | TurnStart / StepEnd / PostToolUse / PostToolUseFailure / TurnEnd / TurnError | 写 turns 表 step 行(TurnStart user / StepEnd assistant / PostToolUse 即时落库 / TurnEnd safety-net + 闭合) |
 | `rag-hooks.ts` | PreLLMCall | KB 检索,注入 ctx.ragContext |
-| `provider-options-hooks.ts` | PreLLMCall | 按 provider 注入 ctx.providerOptions(temperature 等) |
-| `compression-hooks.ts` | PostTurnComplete | L1 摘要 + L2 记忆节点 |
-| `todo-cleanup-hooks.ts` | PostTurnComplete | 清理本回合已完成的 todo(UI 自动收起) |
-| `extraction-hooks.ts` | PostTurnComplete(等) | v0.8 M5:双提取者(内容记忆/工具遥测)增量写 wiki,**仅当传入 extractionDeps 才注册** |
+| `provider-options-hooks.ts` | PreLLMCall | 按 provider 注入 ctx.providerOptions |
+| `compression-hooks.ts` | StepEnd | L1 摘要 + L2 记忆节点(从 PostTurnComplete 迁来,Step 3A) |
+| `todo-cleanup-hooks.ts` | StepEnd | 清理已完成 todo(从 PostTurnComplete 迁来,Step 3B) |
+| `extraction-hooks.ts` | StepEnd(等) | v0.8 M5:双提取者增量写 wiki(从 PostTurnComplete 迁来) |
+| `workflow-context-hook.ts` | PreLLMCall | work session 的 T2 项目上下文注入 |
+| `durable-hooks.ts`(server/) | PostToolUse / TurnEnd / TurnError 等 | turn_state 检查点(phase + last_completed_step_seq) |
+| `tool-execution-hooks.ts`(server/) | PostToolUse 等 | 工具执行持久化追踪 |
 
-**Server-side durable hooks**(`src/server/`):
+**main only**:
 
 | Handler 文件 | 事件 | 副作用 |
 |--------------|------|--------|
-| `durable-hooks.ts` | SessionStart / PostToolUse / Stop / StopFailure | turn_state 检查点(durable 执行) |
-| `tool-execution-hooks.ts` | PostToolUse 等 | 工具执行的持久化追踪 |
+| `notification-hooks.ts` | PreLLMCall | 后台任务结果回灌为 user 消息(注册优先,避免被覆盖) |
+| `input-queue-hooks.ts` | StepStart | insert_now 排队输入注入下一 step |
+| `metrics-hooks.ts`(server/) | usage 流事件 | token/成本 metrics(粗估;真实 usage 走 metrics-events.ts 流事件) |
 
-**Hook 注册入口**(backend 启动期 `src/server/index.ts:127-128`):
+**delegated only**:
+
+| Handler 文件 | 事件 | 副作用 |
+|--------------|------|--------|
+| `task-control-hooks.ts` | StepStart | request_finish 控制消息投递(查 delegated_tasks 行) |
+
+**注册入口**(agent-service 构造 main loop / subagent-delegator 构造 delegated loop 时):
 
 ```typescript
-registerDurableHooks(sessionDB);          // src/server/durable-hooks.ts
-registerToolExecutionHooks(sessionDB);    // src/server/tool-execution-hooks.ts
-// 然后 agent-service 构造 AgentLoop 时:
-registerAllRuntimeHooks(db, extractionDeps);  // src/runtime/hooks/index.ts:47
+// agent-service.ts:createLoopForSession / subagent-delegator.ts
+const loop = new AgentLoop(...);
+registerHooksForLoop(loop.registry, "main" /* 或 "delegated" */, this.buildHookDeps());
+void this.fireSessionStart(loop, agentId, sessionId, "main");  // 实例生命周期
 ```
 
-注册顺序是 **notification → rag → providerOptions → compression → todoCleanup → (可选)extraction**。
-PreLLMCall 之间按 last-writer-wins merge(见 03 §Hook 系统),所以顺序决定哪个 handler 的
-`memoryContext` / `ragContext` / `providerOptions` 字段最终胜出 —— 改顺序前要评估 merge 影响。
+注册顺序:`turn → tool-execution → durable → rag → providerOptions → compression → todoCleanup → extraction → workflow-context → [main] notification → input-queue → metrics → [delegated] task-control`。
+PreLLMCall 之间标量字段 last-writer-wins / 数组 concat(见 03 §Hook 系统)—— 改顺序前要评估 merge 影响。
 
 ### 2.6 架构师评价
 
 #### 做对了的
 
-- **blocked 短路 + 字段 merge 语义**:`{blocked:true}` 立即终止,非 blocked 结果按字段 merge
-  (last-writer-wins) —— 既支持"PreToolUse 阻断"这类决策,又支持"PreLLMCall 多个 handler 各自注入
-  ragContext / providerOptions"这类累积注入(见 03 §Hook 系统)。
+- **per-loop registry(Step 1B)**:handler 只在本 loop 触发,不再跨 loop(含子 agent loop)。消除了旧版"靠 sessionId 自行过滤"的隐式契约。`loopKind` 仍作自省字段保留。
+- **数组 concat + 标量 last-writer-wins(Step 1A)**:让 appendMessages 类注入可叠加(控制消息 + 排队输入 + RAG),标量字段仍按注册顺序隐式协调。
+- **blocked 短路**:PreToolUse 阻断的唯一机制,立即终止。
 - **永不抛出**:handler 异常被 catch + log,不影响主流程。
-- **timestamp 自动注入**:让 handler 不需要重复获取时间。
-- **turn 持久化完全在 hook 中**:`turn-hooks.ts` 是 AgentLoop 与 DB 之间的唯一桥梁。
+- **step-only 持久化 + per-tool 即时落库**:turn-hooks 是 AgentLoop 与 turns 表之间的唯一桥梁;Step 2B 的即时落库让 case2 恢复(副作用已提交但 StepEnd 未到)可行。
 
 #### 可以改进的
 
-- **10 个 hook 在类型里定义但代码零触发**(§2.4 已逐行核对)：`Setup / TeammateIdle / PermissionRequest / PermissionDenied / ConfigChange / CwdChanged / FileChanged / WorktreeCreate / WorktreeRemove / InstructionsLoaded`。这些是参考 Claude Code 27 事件点提前占位的扩展点,既无 `triggerHooks` 调用也无 handler。要么清理,要么补实现 —— 留着会让读者以为这些事件已经在跑。
-- **注册时机耦合**：`registerDurableHooks` 在 agent-service 构造时调一次，`registerAllRuntimeHooks` 在 backend 启动时调一次。如果之后想支持"插件式 hook"，需要更通用的注册机制。
-- **缺乏优先级**：`handlers.get(event)` 是数组，但调用按注册顺序，无优先级字段。如果两个 handler 都想"阻断 PreToolUse"，第二个永远得不到机会。
-- **无异步编排**：`trigger()` 是顺序 await。如果某个 handler 慢，会阻塞后续 handler。对于"PostToolUse 写日志"这种"应该 fire-and-forget"的场景，应该有 `triggerAsync()`。
+- **9 个 observability/workflow hook 在类型里定义但代码零触发**(§2.4):`TeammateIdle / PermissionRequest/Denied / ConfigChange / CwdChanged / FileChanged / WorktreeCreate/Remove / InstructionsLoaded`。这些是参考 Claude Code 27 事件点提前占位的扩展点,既无触发也无 handler。要么清理,要么补实现 —— 留着会让读者以为已经在跑。
+- **`PostLLCall` 是预留空缝**:模型返回与工具执行之间的观测点,骨架已就位但 Step 2C 未接线 —— 接与否需明确用例。
+- **缺乏优先级**:`handlers.get(event)` 是数组,调用按注册顺序,无优先级字段。如果两个 handler 都想"阻断 PreToolUse",第二个永远得不到机会。
+- **无异步编排**:`trigger()` 是顺序 await。如果某个 handler 慢,会阻塞后续 handler。对于"PostToolUse 写日志"这种"应该 fire-and-forget"的场景,应该有 `triggerAsync()`。
 
 ## 3. 并发与限流
 
@@ -640,7 +628,7 @@ flowchart LR
 | 横切点 | 模块 | 状态 |
 |--------|------|------|
 | Logging | `core/logger.ts` + `core/file-log-sink.ts` | ✅ 良好 |
-| Hooks | `core/hook-registry.ts` + `core/hook-types.ts` | ✅ 良好，23 个 hook 未装载 |
+| Hooks | `core/hook-registry.ts` + `core/hook-types.ts` | ✅ 良好(step-centric 14 + observability/workflow 16;9 个 observability/workflow 事件零触发占位,见 §2.4) |
 | 并发（Provider） | `runtime/provider-concurrency-manager.ts` | ✅ 良好 |
 | 并发（Tool） | `runtime/tool-rate-limiter.ts` | ✅ 已装载运行 |
 | 并发（Session） | `server/session-manager.ts` + `session-lifecycle.ts` | ✅ 良好 |

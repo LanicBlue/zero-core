@@ -116,7 +116,7 @@ parent_session_id / session_id          TEXT   -- 父 chat 会话 / 子隐藏会
 task / status                           TEXT   -- 任务描述 / running|finishing|completed|failed|killed|interrupted
 depth / step / turns / tokens           INTEGER -- 委派深度 / 工具步数 / agent-loop 迭代数 / 累计 token
 current_tool / result / error           TEXT
-control_message / finish_requested_at   TEXT   -- request_finish 的 advisory 控制消息(PrepareStep hook 投递)
+control_message / finish_requested_at   TEXT   -- request_finish 的 advisory 控制消息(StepStart hook 投递,Step 1C 前=PrepareStep)
 created_at / updated_at / completed_at  TEXT
 ```
 > 一条委派 = 一个全局 agent + 一个隐藏 delegated session + 一个任务记录。`markRunningDelegatedTasksInterrupted()`
@@ -135,16 +135,21 @@ created_at   TEXT
 
 注意：**`messages` 表非权威**。`turns` 表是 source of truth。`AgentSession` 构造时从 turns 重建 messages。
 
-#### `turns`（**source of truth**）
+#### `turns`（**source of truth**,Step 4A:step-only 存储)
 ```sql
 session_id   TEXT
-seq          INTEGER   -- 用户消息从 0 开始；assistant 紧跟其后
-role         TEXT    -- 'user' | 'assistant'
-content      TEXT    -- user: 原始字符串；assistant: JSON.stringify(blocks)
+seq          INTEGER   -- 全局单调;user turn 与 assistant step 各占独立行
+turn_group   INTEGER NOT NULL DEFAULT -1  -- Step 4A:必填,同一逻辑 turn 的分组键
+role         TEXT      -- 'user' | 'assistant'
+content      TEXT      -- user: 原始字符串;assistant: JSON.stringify(blocks)
+input_tokens / output_tokens / total_tokens   INTEGER  -- step 级 token(每行独立)
 created_at   TEXT
+-- 索引: idx_turns_session_group(session_id, turn_group)
 ```
 
-`blocks` 形如：
+> **Step 4A:legacy 单行 turn API 退役。** 物理表名仍是 `turns`,但**只存 step 行**。一个逻辑 turn = 一个 user 行(turn_group = 自身 seq,开新组)+ N 个 assistant step 行(turn_group = 该 user 行的 seq,seq 递增)。`turn_group` 是 step 聚合的唯一键(`idx_turns_session_group` 索引)。`appendStep` / `upsertStep` / `getSteps` 是当前 API;`appendTurn`(单行写)已退役。`migrateTurnsToSteps` 在迁移期把旧行回填 `turn_group`(user → 自身 seq,assistant → 最近 user 的 seq,见 §4.2 阶段 1)。
+
+`blocks`(assistant step 的 content)形如:
 ```json
 [
   {"type":"text", "text":"..."},
@@ -153,18 +158,25 @@ created_at   TEXT
 ]
 ```
 
-`appendTurn(sessionId, seq, role, content)` —— `checkpoint-manager.ts:67` / `turn-hooks.ts:59` 是唯一调用点。
+**写入入口(全在 `turn-hooks.ts`,Step 2B/4A)**:
+- `TurnStart` → `appendStep(sessionId, seq, turn_group=seq, "user", userMessage)` —— user turn 开新组。
+- `StepEnd` → `recorder.persistAllSteps(db, sessionId, stepBaseSeq)` —— 每个 assistant step 一行,`upsertStep`(幂等)。
+- `PostToolUse` / `PostToolUseFailure` → `recorder.persistCurrentStep(...)` —— per-tool **即时落库**(Step 2B),upsert 同一 step 行带 result/failure。case2 恢复的前提:副作用已提交但 StepEnd 未到,工具结果不丢。
+- `TurnEnd` → safety-net:若本 turn_group 还无 assistant step 行,补写一行(blocks 原样)。
+- `TurnError` → 同 safety-net,记录失败 step。
 
-#### `turn_state`（durable execution 检查点）
+#### `turn_state`(durable execution 检查点,Step 2D:step 级)
 ```sql
 session_id
 turn_seq
-phase        TEXT    -- 'started' | 'tools_executing' | 'completed' | 'failed'
+phase        TEXT    -- 'pending' | 'tools_executing' | 'completed' | 'failed'
 last_tool    TEXT
+last_completed_step_seq   INTEGER  -- Step 2D:step 级恢复检查点
+checkpoint / error        TEXT
 started_at / completed_at
 ```
 
-由 `durable-hooks.ts` 在 `SessionStart`/`PostToolUse`/`Stop`/`StopFailure` 中维护。`recovery.ts:34` 启动时清理 >24h 的。
+由 `durable-hooks.ts` 维护。`last_completed_step_seq` 是 **step 级恢复**的检查点:每完成一个 step 推进(`UPDATE ... WHERE last_completed_step_seq IS NULL OR < ?`)。`recovery.ts:34` 启动时清理 >24h 的。恢复时读它判断 session 是否有 mid-turn 进度(case1:step 重跑 / case2:工具恢复,见 §5.5)。
 
 #### `tool_executions`（工具调用日志）
 ```sql
@@ -650,8 +662,8 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 |----|------|---------|
 | `sessions` | 会话根(含 v0.8 D-B `context_*` 列 + token 核算列) | `createSession` / `updateSessionUsage` / `updateSessionContext` |
 | `messages` | write-through 缓存(turns 才是 source of truth) | `saveTurn` |
-| `turns` | **source of truth**(v0.8 加 `turn_group` 做 step 聚合) | `appendTurn` / `appendStep` / `upsertStep` |
-| `turn_state` | durable execution 检查点 | `createTurnState` / `updateTurnPhase` |
+| `turns` | **source of truth**(Step 4A:step-only 存储,`turn_group` 必填) | `appendStep` / `upsertStep` / `getSteps`(legacy `appendTurn` 退役,见 §2.1) |
+| `turn_state` | durable execution 检查点(Step 2D:`last_completed_step_seq` step 级) | `createTurnState` / `updateTurnPhase` / `updateLastCompletedStep` |
 | `tool_executions` | 会话级工具调用日志(旧版,见 §2.1 与 §11.2 关于与 `tool_usage` 重叠的讨论) | `recordToolExecution` |
 
 #### 4.0.2 SessionDB 直接聚合的 store(v0.8 清理 MemoryStore 后剩 4 个,分两批)
@@ -717,7 +729,8 @@ v0.8 M5 lazy store),不再是 5 个。本节重写以反映这层架构演变。
 ### 4.1 关键不变量
 
 - `messages` 表是 `turns` 的 write-through 缓存;删除会话/清空 turns 时**应同时**清理 messages。
-- `turns.seq` 单调递增;用户消息从偶数 seq 开始。
+- `turns.seq` 全局单调递增;`turn_group` 是逻辑 turn 分组键(user 行的 `turn_group` = 自身 seq,其 assistant step 行的 `turn_group` = 该 user 行 seq)。Step 4A 起 `turn_group` 必填。
+- step 行的写入是**幂等 upsert**(by `session_id + seq`);PostToolUse 即时落库与 StepEnd 最终持久化写同一行,不重复。
 - `tool_executions.duration_ms` 总是真实测量值,不允许估算。
 
 ### 4.2 迁移机制(`db-migration.ts:584` `runMigrations`)
@@ -739,7 +752,8 @@ prepare 失败。所以补列永远在第 1 步。涵盖:
 - `project_wiki`:`links`(P0 §3.3)
 - `providers`:`enable_concurrency_limit` / `max_concurrency`
 - `sessions`:6 个 token 列 + v0.8 D-B `context_*` 列(走 `SESSION_COLUMNS` 循环)+ `idx_sessions_agent_project`
-- `turns`:`turn_group` + 3 个 step 级 token 列 + `idx_turns_session_group`,然后 `migrateTurnsToSteps` 把旧行回填
+- `turns`:`turn_group`(`NOT NULL DEFAULT -1`,Step 4A 必填)+ 3 个 step 级 token 列 + `idx_turns_session_group`,然后 **`migrateTurnsToSteps`** 把旧行按 session 回填(`turn_group = -1` 的:user → 自身 seq,assistant → 最近前置 user 的 seq)。这是 legacy 单行 turn API → step-only 存储的唯一同步点(详见 §2.1 turns 表)
+- `turn_state`:`last_completed_step_seq`(Step 2D,step 级恢复检查点;见 §2.1 turn_state)
 - **`DROP TABLE IF EXISTS agent_tools`**(v0.8 §11.5 agent-as-tool 退役,空表无损)
 
 #### 阶段 2:v0.8 工作流域表 DDL(`CREATE TABLE IF NOT EXISTS` + `safeAddIndex`)
@@ -867,30 +881,45 @@ Prepared statements 在构造函数中缓存，热路径 O(1) SQL 解析。
 ```
 用户输入 "fix bug"
 │
-├─ Turn 0: user
-│  ├─ turn-hooks:SessionStart
-│  │   ├─ turn_state (session, 0, phase='started')
-│  │   └─ turns (session, 0, 'user', "fix bug")
-│  └─ chat-store.messagesBySession[session][0] = {role:'user', text:'fix bug'}
+├─ Turn N: user(turn_group = N)
+│  ├─ turn-hooks:TurnStart
+│  │   └─ turns.appendStep (session, seq=N, turn_group=N, 'user', "fix bug")
+│  └─ durable-hooks: turn_state (session, phase='pending', last_completed_step_seq=NULL)
 │
-├─ LLM stream
-│  ├─ 每 5K 字符: persistBlocksSnapshot
-│  │   └─ turns (session, 1, 'assistant', JSON.stringify(blocks-so-far))
-│  └─ tool-call "Shell"
-│     ├─ durable-hooks:PostToolUse
-│     │   └─ turn_state.phase = 'tools_executing', last_tool='Shell'
-│     └─ tool_executions (insert)
+├─ 外置 step 循环(step 1..M)
+│  ├─ 每步 streamText(stopWhen: stepCountIs(1)) + 事件消费
+│  ├─ tool-call "Shell"(step 内)
+│  │  ├─ turn-hooks:PostToolUse(Step 2B 即时落库)
+│  │  │   └─ turns.upsertStep (session, seq=N+stepOff, turn_group=N, 'assistant', blocks 含 result)
+│  │  ├─ durable-hooks:PostToolUse
+│  │  │   └─ turn_state.phase = 'tools_executing', last_tool='Shell'
+│  │  └─ tool_executions (insert)
+│  └─ finish-step → finalizeOneStep
+│     ├─ turn-hooks:StepEnd
+│     │   └─ turns.persistAllSteps (session, baseSeq=N, 每个 assistant step 一行,带 usage)
+│     ├─ durable-hooks: turn_state.last_completed_step_seq = N+stepOff(step 级检查点推进)
+│     └─ compression/extraction hooks(超阈值时)
 │
-├─ tool-result
-│  └─ upsertAssistantTurn (session, 1, blocks 含 result)
-│
-└─ message_end
-   ├─ turn-hooks:Stop
-   │   └─ turns (session, 1, 'assistant', final blocks JSON)
-   ├─ durable-hooks:Stop
-   │   └─ turn_state.phase = 'completed'
-   └─ sessions.updated_at = now; sessions.total_tokens += delta
+└─ TurnEnd(run() finally)
+   ├─ turn-hooks:TurnEnd(safety-net:若无 assistant step 行则补写;闭合 turn_group,推进 turn_seq)
+   ├─ durable-hooks: turn_state.phase = 'completed'
+   └─ sessions.updated_at = now; sessions token 列 += delta
 ```
+
+### 8.1 step 级恢复(Step 2D/2E)
+
+恢复以 **step** 而非 turn 为粒度,靠 `turn_state.last_completed_step_seq` + per-tool 即时落库(Step 2B)两个机制支撑。重启时 `recovery.ts` 扫描 `phase NOT IN ('completed','failed')` 的 turn_state,按 `finish-step` 分界判两种 case:
+
+| case | 触发条件 | 恢复动作 |
+|------|----------|----------|
+| **case1(step 重跑)** | `last_completed_step_seq` 指向某 step,但该 step 行不完整 / 模型调用未落地 | `resume(lastCompletedStepSeq)` —— session 从已持久化 step 行 `rebuildFromSteps` 重建 messages,从下一个 seq 续跑。已完成的 step **不重跑**(它们的 step 行已在 turns 表) |
+| **case2(工具恢复)** | finish-step 已 fire(assistant step 行已落库),但 step 内某些工具的副作用已提交、result 未记录 | per-tool 即时落库(PostToolUse/Failure 的 upsertStep)保证 result 已在同一 step 行;rebuild 时 dangling tool-call(无配对 result)由 `rebuildFromSteps` 合成 `[interrupted]` result(Step 2E),不丢副作用痕迹 |
+
+**dangling 合成在 rebuild 侧,不在 persist 侧**(Step 2E):持久化写"真相"(中途 abort 时 tool 合法地停在 `running`),重建时才为任何 dangling tool-call 合成 `{result:"[interrupted]", status:"error"}`,保证重建出的 messages 总带配对的 tool-result(provider 要求 call↔result 配对)。
+
+**延迟消费(Step 2E)**:控制消息(`request_finish` 的 advisory controlMessage)与运行中 `insert_now` 输入不在注入时立即消费,而是排队到 **StepEnd** 才消费 —— 避免在 step 中途注入导致模型行为不确定。
+
+**tool-call ↔ task 链接(Step 2E)**:委派任务的子侧 `resumeTask` 原语已就位(子 agent 遇到 dangling Agent tool-call → 其 delegated task 时,从自己的 `lastCompletedStepSeq` 递归恢复);**父侧 scan-backfill**(父会话反向回填 Agent tool-call ↔ delegated task 的 `parentToolCallId` 链接)仍是 TODO。
 
 ## 9. 备份与一致性
 
@@ -902,16 +931,20 @@ Prepared statements 在构造函数中缓存，热路径 O(1) SQL 解析。
 
 ```mermaid
 flowchart LR
-    A[AgentLoop<br/>streamText 完成] --> B{finalizeStream}
-    B -->|SessionStart hook| T1[turn-hooks.ts<br/>写 turns 表 user turn]
-    B -->|Stop hook| T2[turn-hooks.ts<br/>写 turns 表 assistant turn JSON]
-    B -->|Stop hook| T3[durable-hooks.ts<br/>turn_state completed]
-    T1 --> DB[(SQLite sessions.db)]
+    A[AgentLoop<br/>外置 step 循环] --> B{hook 触发点}
+    B -->|TurnStart| T0[turn-hooks.ts<br/>appendStep user turn]
+    B -->|PostToolUse/Failure| T1[turn-hooks.ts<br/>upsertStep 即时落库]
+    B -->|StepEnd| T2[turn-hooks.ts<br/>persistAllSteps + usage]
+    B -->|TurnEnd| T3[turn-hooks.ts<br/>safety-net + 闭合 turn_group]
+    B -->|PostToolUse / TurnEnd| T4[durable-hooks.ts<br/>turn_state phase + last_completed_step_seq]
+    T0 --> DB[(SQLite sessions.db · turns 表 step 行)]
+    T1 --> DB
     T2 --> DB
     T3 --> DB
-    DB -->|getTurns| R[rebuildFromTurns]
+    T4 --> DB
+    DB -->|getSteps| R[AgentSession.rebuildFromSteps]
     R --> M[AgentSession.messages]
-    M --> N[下一次 streamText input]
+    M --> N[下一 step 的 streamText input]
 
     style A fill:#a78bfa,color:#000
     style DB fill:#34d399,color:#000

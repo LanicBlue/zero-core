@@ -133,17 +133,19 @@ runtime/
 
 ```
 runtime/hooks/
-├── index.ts (60)                  # registerAllRuntimeHooks(db, extractionDeps?) —— 注册顺序敏感
-├── turn-hooks.ts (183)            # SessionStart / PostStep / Stop / StopFailure → turns 表步骤级持久化
-├── notification-hooks.ts (68)     # PreLLMCall: 已完成后台任务结果回灌为 user 消息 + 触发 Notification
-├── rag-hooks.ts (49)              # PreLLMCall: config.getRagContext() 注入 ragContext
-├── provider-options-hooks.ts (40) # PreLLMCall: 按 thinkingLevel 注入 providerOptions
-├── compression-hooks.ts (259)     # PostTurnComplete: contextUsage 超阈值时渐进压缩
-├── todo-cleanup-hooks.ts (43)     # PostTurnComplete: 清理已完成 todo(UI 自动隐藏)
-└── extraction-hooks.ts (297)      # PostTurnComplete(M5): 增量内容/工具遥测抽取 + flush
+├── index.ts                       # registerHooksForLoop(registry, loopKind, deps) —— per-loop 注册,按 main/delegated 分组
+├── turn-hooks.ts                  # TurnStart/StepEnd/PostToolUse/Failure/TurnEnd/TurnError → turns 表 step 级持久化
+├── notification-hooks.ts          # PreLLMCall(main): 后台任务结果回灌 + Notification
+├── rag-hooks.ts                   # PreLLMCall: config.getRagContext() 注入 ragContext
+├── provider-options-hooks.ts      # PreLLMCall: 按 thinkingLevel 注入 providerOptions
+├── compression-hooks.ts           # StepEnd: contextUsage 超阈值时渐进压缩(从 PostTurnComplete 迁来)
+├── todo-cleanup-hooks.ts          # StepEnd: 清理已完成 todo(从 PostTurnComplete 迁来)
+├── extraction-hooks.ts            # StepEnd(M5): 增量内容/工具遥测抽取 + flush(从 PostTurnComplete 迁来)
+├── input-queue-hooks.ts           # StepStart(main): insert_now 排队输入注入下一 step
+└── task-control-hooks.ts          # StepStart(delegated): request_finish 控制消息投递
 ```
 
-> **v0.8 变更**：`memory-hooks.ts` 已删除(memory 合并进 wiki per-agent 子树,召回改由 wiki-anchor-injection 注入)。注册顺序固定为 `turn → notification → rag → providerOptions → compression → todoCleanup → extraction`,调整顺序前需评估 PreLLMCall 之间对返回值 merge 的影响(`memoryContext` / `ragContext` / `providerOptions` 都是 last-writer-wins)。
+> **v0.8 + hook-redesign(Step 1A-1C)变更**:① `memory-hooks.ts` 已删(memory 合并进 wiki per-agent 子树);② `requirement-hooks.ts` 已退役(§5.5,workflow 域);③ hook 改名 step-centric 14 事件集(详见 [03 §Hook 系统](03-runtime-engine.md#hook-系统));④ `HookRegistry` 可实例化,per-loop 注册(`registerHooksForLoop`),不再全局单例;⑤ merge 改为数组 concat + 标量 last-writer-wins。调整注册顺序前需评估 PreLLMCall 之间对返回值 merge 的影响。详见 [ADR-025](09-extension-points-and-adrs.md#adr-025--hook-重做per-loop-registry--step-中心--去-turn-表--外置重试resume--所有权归位)。
 
 ### 3.3 边界约束
 
@@ -289,9 +291,9 @@ server/index.ts 注入主要 HTTP 表面：
   1. `new SessionDB()` —— 内部 eager new 2 个内核 store（KV/MemoryNode；MemoryStore 已作僵尸删除）
   2. `runMigrations(sessionDB)` —— 5 阶段 schema 演进，详见 [05 §4.2](./05-persistence.md#42-迁移机制)
   3. `new WikiStore(sessionDB)` —— v0.8 M2 全局 memory tree，**早于 hooks 注册**（M5 抽取器要引用它）
-  4. `registerDurableHooks(sessionDB)` + `registerToolExecutionHooks(sessionDB)` —— turn 持久化 + 工具执行回写
+  4. (Step 1B 起)durable / tool-execution hook 不再在启动期单独注册 —— 它们由 `registerHooksForLoop` 在每个 AgentLoop 构造时随其他 hook 一起注册到 per-loop registry
   5. M5 抽取依赖装配（`ExtractionCursorStore` / `ExtractorA/BService`），首次访问触发 lazy new
-  6. `registerAllRuntimeHooks(sessionDB, extractionDeps)` —— 注册 7 个 runtime feature hook
+  6. `createAgentService()` —— agent-service 构造 main loop 时调 `registerHooksForLoop(loop.registry, "main", deps)` + `fireSessionStart`(per-loop 注册,按 main/delegated 分组)
   7. `new ToolRegistry + registerRuntimeTools` —— 25 个内置工具注册
   8. **手动 new 15+ store**（B + C 类，§4.1.1）—— 不挂 SessionDB，只在 `index.ts` 局部变量
   9. 各 `*-router(deps)` 注入 + `app.use(...)` —— 20 个 HTTP router
