@@ -325,13 +325,13 @@ describe("Mechanism 2 — low-checkpoint incremental extraction hook", () => {
 		};
 
 		// 0% usage → no trigger.
-		await (registry as any).trigger("PostTurnComplete", {
+		await (registry as any).trigger("StepEnd", {
 			agentId: "dev", sessionId, config, contextUsage: 0.0, providers: [],
 		});
 		expect(aCalled).toBe(0);
 
 		// 20% usage → first threshold crossed → trigger.
-		await (registry as any).trigger("PostTurnComplete", {
+		await (registry as any).trigger("StepEnd", {
 			agentId: "dev", sessionId, config, contextUsage: 0.21, providers: [],
 		});
 		expect(aCalled).toBe(1);
@@ -342,7 +342,7 @@ describe("Mechanism 2 — low-checkpoint incremental extraction hook", () => {
 		expect(cursor.lastExtractedSeq).toBeGreaterThanOrEqual(0);
 
 		// 25% usage (same threshold band) → no new trigger.
-		await (registry as any).trigger("PostTurnComplete", {
+		await (registry as any).trigger("StepEnd", {
 			agentId: "dev", sessionId, config, contextUsage: 0.25, providers: [],
 		});
 		expect(aCalled).toBe(1);
@@ -354,7 +354,7 @@ describe("Mechanism 2 — low-checkpoint incremental extraction hook", () => {
 		]);
 
 		// 45% usage → second threshold crossed → trigger again.
-		await (registry as any).trigger("PostTurnComplete", {
+		await (registry as any).trigger("StepEnd", {
 			agentId: "dev", sessionId, config, contextUsage: 0.46, providers: [],
 		});
 		expect(aCalled).toBe(2);
@@ -367,7 +367,7 @@ describe("Mechanism 2 — low-checkpoint incremental extraction hook", () => {
 		]);
 
 		// 70% usage → third threshold crossed → trigger again.
-		await (registry as any).trigger("PostTurnComplete", {
+		await (registry as any).trigger("StepEnd", {
 			agentId: "dev", sessionId, config, contextUsage: 0.71, providers: [],
 		});
 		expect(aCalled).toBe(3);
@@ -415,7 +415,7 @@ describe("Mechanism 2 — low-checkpoint incremental extraction hook", () => {
 		};
 
 		// Fire at 20% — first 4 steps, cursor was -1, so fromSeq=0.
-		await (registry as any).trigger("PostTurnComplete", {
+		await (registry as any).trigger("StepEnd", {
 			agentId: "dev", sessionId, config, contextUsage: 0.21, providers: [],
 		});
 		expect(sliceSpy.length).toBe(1);
@@ -428,7 +428,7 @@ describe("Mechanism 2 — low-checkpoint incremental extraction hook", () => {
 		]);
 
 		// Fire at 45% — should process only the delta (cursor+1 to current).
-		await (registry as any).trigger("PostTurnComplete", {
+		await (registry as any).trigger("StepEnd", {
 			agentId: "dev", sessionId, config, contextUsage: 0.46, providers: [],
 		});
 		expect(sliceSpy.length).toBe(2);
@@ -659,7 +659,7 @@ describe("M5 regression — explicitly NOT introduced", () => {
 		};
 		// Below 20% → no trigger, regardless of how many "task transitions"
 		// happened in the transcript.
-		await (registry as any).trigger("PostTurnComplete", {
+		await (registry as any).trigger("StepEnd", {
 			agentId: "dev", sessionId, config, contextUsage: 0.1, providers: [],
 		});
 		expect(aCalled).toBe(0);

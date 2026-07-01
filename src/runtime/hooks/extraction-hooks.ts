@@ -4,8 +4,9 @@
 //
 // ## 核心功能
 // 两个职责,都 fire-and-forget(异步,不阻塞工作 session):
-//   ① PostTurnComplete hook — 机制 2:按 token 预算低点(20/45/70)检查是否
-//      触发 extractor A 增量提取(只处理 cursor 后的 delta),并并行调度 B。
+//   ① StepEnd hook (Step 3A 起挂 StepEnd,原 PostTurnComplete) — 机制 2:按
+//      token 预算低点(20/45/70)检查是否触发 extractor A 增量提取(只处理
+//      cursor 后的 delta),并并行调度 B。
 //   ② closeFlushSession(sessionId) — 机制 3:由 agent-service 在 session
 //      被驱逐/关闭时显式调用,对最后一次 checkpoint 之后未提取的尾批跑一次
 //      extractor A delta(尾批也喂给 B)。这是 SessionEnd 的诚实落地 ——
@@ -90,7 +91,7 @@ const knownToolNames = (cfg: SessionConfig): string[] | undefined => {
 
 /**
  * Run extractor A + B on the delta since the cursor, then advance the cursor.
- * Shared by mechanism 2 (PostTurnComplete hook) and mechanism 3 (close flush).
+ * Shared by mechanism 2 (StepEnd hook) and mechanism 3 (close flush).
  *
  * `mode` is "incremental" (mechanism 2 — gate on threshold crossing) or
  * "close-flush" (mechanism 3 — always run on remaining tail, no threshold
@@ -162,7 +163,7 @@ async function runExtractionOnDelta(args: {
 }
 
 /**
- * Register M5 extraction hooks. Currently only PostTurnComplete (mechanism 2).
+ * Register M5 extraction hooks. Currently only StepEnd (mechanism 2).
  * Close-flush (mechanism 3) is exposed via closeFlushSession() — called by
  * agent-service.evictSessionFromMemory.
  */
@@ -174,18 +175,20 @@ export function registerExtractionHooks(deps: ExtractionHooksDeps, registry: Hoo
 		return Array.isArray(list) && list.length > 0 ? [...list].sort((a, b) => a - b) : DEFAULT_THRESHOLDS;
 	});
 
-	// ─── Mechanism 2: PostTurnComplete → incremental extraction ────────
+	// ─── Mechanism 2: StepEnd → incremental extraction ────────────────
 	//
-	// On every turn end, look at contextUsage. If it has crossed the next
-	// un-fired threshold in checkpointThresholds (sorted ascending), run
-	// extractor A on the delta since the cursor and advance the cursor.
-	// Same hook also feeds the delta to extractor B (fire-and-forget).
+	// Step 3A: evaluation moved from PostTurnComplete (turn-end) to StepEnd
+	// (per-step). On every step, look at contextUsage. If it has crossed the
+	// next un-fired threshold in checkpointThresholds (sorted ascending), run
+	// extractor A on the delta since the cursor and advance the cursor. Same
+	// hook also feeds the delta to extractor B (fire-and-forget).
 	//
-	// Critical: trigger is by token-budget threshold, NOT by turn count
+	// Critical: trigger is by token-budget threshold, NOT by turn/step count
 	// (decision 53). The cursor persists which threshold has fired so each
-	// fires at most once per session.
+	// fires at most once per session. Evaluating every step is cheap because
+	// the threshold-crossing check returns early when no new band is entered.
 
-	registry.register("PostTurnComplete", async (ctx) => {
+	registry.register("StepEnd", async (ctx) => {
 		if (!schedulerDeps) return;
 		const config = ctx.config as SessionConfig;
 		const sessionId = ctx.sessionId as string | undefined;
@@ -245,7 +248,7 @@ export function registerExtractionHooks(deps: ExtractionHooksDeps, registry: Hoo
 		});
 	});
 
-	log.debug("hooks", "Extraction hooks registered (M5 mechanism 2 — PostTurnComplete)");
+	log.debug("hooks", "Extraction hooks registered (M5 mechanism 2 — StepEnd)");
 }
 
 /**

@@ -1,12 +1,16 @@
-// PostTurnComplete 钩子：触发渐进式压缩并同步 messages 表与 turns 表。
+// StepEnd 钩子：每步评估 contextUsage 阈值并触发渐进式压缩，同步 messages 表与 turns 表。
 //
 // # 文件说明书
 //
 // ## 核心功能
-// registerCompressionHooks 在 PostTurnComplete 注册处理器：当 contextUsage 超过阈值时调用
-// CompressionEngine.compressIfNeeded；若发生压缩或抽取，则 replaceMessages + saveToDb，再通过
+// registerCompressionHooks 在 StepEnd 注册处理器：每步评估 contextUsage，超过阈值时调用
+// CompressionEngine.compressIfNeeded（compressIfNeeded 内部对未超阈值的情形有廉价 guard，所以
+// 每 step 评估不会真压缩到 thrash）；若发生压缩或抽取，则 replaceMessages + saveToDb，再通过
 // syncTurnsAfterCompression 重建 step-level turns（避免重启 rebuildFromSteps 时丢失压缩效果），
-// 最后把抽出的记忆节点写入 MemoryNodeStore。
+// 最后把抽出的记忆节点写入 wiki memory 树。
+//
+// PreCompact/PostCompact 仍由 session.pruneIfNeeded() / compression-engine 自行处理，作为压缩
+// 子事件不变；本 hook 不 fire 也不 consume 这两个事件。
 //
 // ## 输入
 // - Hook 上下文：config（SessionConfig.compression）、session、contextUsage、providers
@@ -22,7 +26,7 @@
 // ## 依赖
 // - core/hook-registry、core/hook-types、core/logger
 // - runtime/compression-engine、runtime/types、runtime/session
-// - server/memory-node-store、具备 hasStepSchema/replaceStepsFromMessages 的 DB
+// - server/wiki-node-store(memoryTypeRootId)、具备 hasStepSchema/replaceStepsFromMessages 的 DB
 //
 // ## 维护规则
 // - 压缩阈值或 keepRecentTurns 默认值调整时，同步更新 types.ts 的 SessionConfig.compression 注释。
@@ -65,13 +69,18 @@ function wikiMemoryTypeRootId(type: string): string {
 
 export function registerCompressionHooks(registry: HookRegistry = HookRegistry.getInstance()): void {
 
-	registry.register("PostTurnComplete", async (ctx) => {
+	// Step 3A: evaluation moved from PostTurnComplete (turn-end) to StepEnd
+	// (per-step). compressIfNeeded's internal "below threshold → return"
+	// guard prevents thrashing, so evaluating every step is cheap and lets
+	// compression trigger mid-turn instead of waiting for the turn boundary.
+	registry.register("StepEnd", async (ctx) => {
 		const config = ctx.config as SessionConfig;
 		const compressionConfig = config.compression;
 		if (!compressionConfig?.enabled) return;
 
 		const session = ctx.session as AgentSession;
 		const contextUsage = ctx.contextUsage as number;
+		if (contextUsage === undefined) return;
 
 		if (contextUsage <= (compressionConfig.l1Threshold ?? 0.7)) return;
 
@@ -167,7 +176,7 @@ export function registerCompressionHooks(registry: HookRegistry = HookRegistry.g
 		}
 	});
 
-	log.debug("hooks", "Compression hooks registered");
+	log.debug("hooks", "Compression hooks registered (StepEnd)");
 }
 
 /**

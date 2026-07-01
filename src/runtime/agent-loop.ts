@@ -1069,6 +1069,15 @@ export class AgentLoop implements AgentRuntime {
 					outputTokens: usage.outputTokens ?? 0,
 					totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
 				},
+				// Step 3A: per-step operation surfaces (compression + extraction
+				// now evaluate on StepEnd, not PostTurnComplete). session/config/
+				// providers mirror the PostTurnComplete shape so migrated handlers
+				// run unchanged. contextUsage is read AFTER calibrateFromActualUsage
+				// above so it reflects this step's true token impact.
+				session: this.session,
+				config: this.config,
+				providers: this.providers,
+				contextUsage: this.session.getContextUsage(),
 			});
 			this.stepOffset++;
 		} else {
@@ -1082,6 +1091,11 @@ export class AgentLoop implements AgentRuntime {
 				stepBaseSeq: this.stepBaseSeq,
 				stepOffset: this.stepOffset,
 				stepNumber,
+				// Step 3A: per-step operation surfaces (same as the usage branch).
+				session: this.session,
+				config: this.config,
+				providers: this.providers,
+				contextUsage: this.session.getContextUsage(),
 			});
 			this.stepOffset++;
 		}

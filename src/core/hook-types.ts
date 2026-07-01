@@ -178,6 +178,18 @@ export interface StepEndContext extends BaseHookContext {
 		outputTokens: number;
 		totalTokens: number;
 	};
+	// ── Step 3A: per-step operation surfaces (compression + extraction) ──
+	//   PostTurnComplete used to carry these; now StepEnd fires per step and
+	//   both compression (contextUsage threshold) and extraction (token-budget
+	//   cursor) evaluate on every step. session/config/providers mirror the
+	//   PostTurnComplete context shape so the migrated handlers can run
+	//   unchanged at the step boundary. contextUsage is recomputed from the
+	//   step's usage via session.getContextUsage() in finalizeOneStep.
+	session?: unknown;
+	config?: unknown;
+	providers?: unknown;
+	/** 0..1 fraction of the context window in use after this step. */
+	contextUsage?: number;
 }
 
 // ---------------------------------------------------------------------------
