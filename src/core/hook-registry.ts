@@ -1,27 +1,31 @@
-// Hook 注册表
+// Hook registry
 //
-// # 文件说明书
+// # File spec
 //
-// ## 核心功能
-// 单例 Hook 注册表，管理生命周期钩子。
+// ## Core
+// Hook registry. Instantiable — each loop may own its own HookRegistry instance
+// so handlers do not cross loops. Array-typed result fields are concatenated
+// across handlers; scalar fields stay last-writer-wins; `blocked: true` short-
+// circuits. `getInstance()` is kept as a transitional shared default so callers
+// not yet migrated (Step 1B/1C) keep working.
 //
-// ## 输入
-// - HookEventName - 事件名称
-// - HookHandler - 处理函数
+// ## Input
+// - HookEventName - event name
+// - HookHandler - handler function
 //
-// ## 输出
-// - AggregatedHookResult - 所有 handler 返回值的聚合结果
+// ## Output
+// - AggregatedHookResult - merged result from all handlers
 //
-// ## 定位
-// 核心扩展机制，被整个项目使用。
+// ## Position
+// Core extension mechanism, used across the project.
 //
-// ## 依赖
-// - ./hook-types - Hook 类型
-// - ./logger - 日志
+// ## Dependencies
+// - ./hook-types - Hook types
+// - ./logger - logging
 //
-// ## 维护规则
-// - 新增 Hook 事件时需更新类型
-// - 保持 Hook 执行顺序稳定
+// ## Maintenance rules
+// - Update types when adding a hook event
+// - Keep hook execution order stable
 //
 import type { HookEventName, HookHandler } from "./hook-types.js";
 import { log } from "./logger.js";
@@ -34,14 +38,21 @@ import { log } from "./logger.js";
 export type AggregatedHookResult = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
-// HookRegistry — singleton registry for lifecycle hooks
-// "挂在循环上，不写进循环里" — extension points that don't invade the loop
+// HookRegistry — registry for lifecycle hooks
+// "Hooked onto the loop, not written into the loop" — extension points that
+// don't invade the loop. Instantiable; getInstance() returns a shared default
+// for not-yet-migrated callers (transitional).
 // ---------------------------------------------------------------------------
 
 export class HookRegistry {
 	private handlers = new Map<HookEventName, HookHandler[]>();
 	private static instance: HookRegistry | null = null;
 
+	/**
+	 * @deprecated transitional — use a per-loop HookRegistry instance (Step 1B).
+	 * Returns a lazily-created shared default instance so callers not yet
+	 * migrated keep working.
+	 */
 	static getInstance(): HookRegistry {
 		if (!HookRegistry.instance) HookRegistry.instance = new HookRegistry();
 		return HookRegistry.instance;
@@ -64,8 +75,10 @@ export class HookRegistry {
 	 * Trigger all handlers for an event and aggregate their results.
 	 *
 	 * - Each handler's returned object fields are merged into the result.
-	 * - If any handler returns `{ blocked: true }`, aggregation stops immediately
-	 *   and the result includes `blocked: true` + `reason`.
+	 * - Array-typed fields are concatenated across handlers; scalar fields
+	 *   stay last-writer-wins.
+	 * - If any handler returns `{ blocked: true }`, aggregation stops
+	 *   immediately and the result includes `blocked: true` + `reason`.
 	 * - Errors are caught and logged — they never propagate to the caller.
 	 * - Returns an empty object when no handlers are registered or all return void.
 	 */
@@ -85,9 +98,16 @@ export class HookRegistry {
 					return { blocked: true, reason: (result as any).reason ?? "Blocked by hook" };
 				}
 
-				// Merge data fields (last-writer-wins for same key)
+				// Merge fields. Arrays concat across handlers; scalars are
+				// last-writer-wins. undefined values are skipped.
 				for (const [k, v] of Object.entries(result)) {
-					if (v !== undefined) merged[k] = v;
+					if (v === undefined) continue;
+					if (Array.isArray(v)) {
+						const prev = merged[k];
+						merged[k] = [...(Array.isArray(prev) ? prev : []), ...v];
+					} else {
+						merged[k] = v;
+					}
 				}
 			} catch (err) {
 				log.error("hook", `Handler for ${event} threw:`, (err as Error).message);
