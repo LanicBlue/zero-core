@@ -495,13 +495,6 @@ export interface AgentRuntime {
 	getState(): RuntimeState;
 	resetSession(): void;
 	getResult(): string;
-	/**
-	 * Advisory finish request. Stages a control message that the loop injects
-	 * at the next agent-loop boundary (does NOT abort the current step). The
-	 * sub-agent is expected to wrap up; the delegator enforces any maxTurns
-	 * budget. Optional on the interface — callers must null-check.
-	 */
-	requestFinish?(reason?: string): void;
 }
 
 export interface RuntimeState {

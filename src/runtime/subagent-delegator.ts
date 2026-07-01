@@ -445,6 +445,11 @@ export class SubagentDelegator {
 		const entry = this.runningSubloops.get(taskId);
 		const message = options?.message ?? DEFAULT_FINISH_MESSAGE;
 		const marked = this.taskRegistry.requestFinish(taskId, message);
+		// Persist the control message on the delegated_tasks row — a PreLLMCall
+		// hook (task-control hook, Phase C2) reads it by sessionId and injects
+		// it into the sub-agent's context at the next turn boundary. The turn
+		// budget (maxTurns) is enforced here via buildSubEventHandler counting
+		// usage events; reaching the budget force-aborts.
 		this.updateDelegatedTask(taskId, {
 			status: "finishing",
 			controlMessage: message,
@@ -454,7 +459,6 @@ export class SubagentDelegator {
 		if (options?.maxTurns !== undefined && options.maxTurns > 0) {
 			entry.finishState = { maxTurns: options.maxTurns, turnsDone: 0 };
 		}
-		entry.loop.requestFinish?.(message);
 		return true;
 	}
 

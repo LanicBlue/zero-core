@@ -74,8 +74,6 @@ export class AgentLoop implements AgentRuntime {
 	private promptAssembler: SystemPromptAssembler;
 	private abortController: AbortController | null = null;
 	private busy = false;
-	/** Staged advisory finish message (see requestFinish). Consumed by the C2 step-loop. */
-	private pendingFinishReason: string | undefined;
 	private streamText = "";
 	private thinkingText = "";
 	private recorder = new TurnRecorder();
@@ -223,7 +221,6 @@ export class AgentLoop implements AgentRuntime {
 		this.resultText = "";
 		this.recorder.reset();
 		this.abortController = new AbortController();
-		this.pendingFinishReason = undefined;
 		const timeout = this.setupTimeout();
 
 		try {
@@ -286,7 +283,6 @@ export class AgentLoop implements AgentRuntime {
 		this.resultText = "";
 		this.recorder.reset();
 		this.abortController = new AbortController();
-		this.pendingFinishReason = undefined;
 		const timeout = this.setupTimeout();
 
 		try {
@@ -323,24 +319,6 @@ export class AgentLoop implements AgentRuntime {
 
 	abort(): void {
 		this.abortController?.abort();
-	}
-
-	/**
-	 * Advisory finish request (graceful stop). Stages a control message for the
-	 * sub-agent. Does NOT abort the current step.
-	 *
-	 * DELIVERY (Phase A limitation): the agent loop runs all steps of one user
-	 * input inside a single streamText({ stopWhen: stepCountIs(200) }) call,
-	 * which exposes no between-step injection point. So in Phase A the staged
-	 * message is recorded but not delivered to the active stream. The actual
-	 * graceful-stop GUARANTEE in Phase A is the delegator's maxTurns budget —
-	 * it counts `usage` events (one per step) and force-aborts after the budget.
-	 * Pure-advisory request_finish (no maxTurns) becomes effective once the
-	 * step-loop is externalized (plan phase C2 spike), which will consume
-	 * `pendingFinishReason` at each step boundary.
-	 */
-	requestFinish(reason?: string): void {
-		this.pendingFinishReason = reason;
 	}
 
 	getState(): RuntimeState {
