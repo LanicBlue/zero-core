@@ -249,6 +249,12 @@ const R: Record<string, RouteMapping> = {
 		"delegatedTasks:bySession": { method: "GET", path: "/api/delegated-tasks/by-session/:sessionId", buildReq: (sessionId) => ({ params: { sessionId } }) },
 		"delegatedTasks:get":       { method: "GET", path: "/api/delegated-tasks/:id",                   buildReq: (id) => ({ params: { id } }) },
 
+		// ─── Input queue (C2) ─────────────────────────────────
+		"inputQueue:list":    { method: "GET",    path: "/api/input-queue/:sessionId",         buildReq: (sessionId) => ({ params: { sessionId } }) },
+		"inputQueue:enqueue": { method: "POST",   path: "/api/input-queue/:sessionId",         buildReq: (sessionId, content, mode?) => ({ params: { sessionId }, body: { content, ...(mode ? { mode } : {}) } }) },
+		"inputQueue:promote": { method: "POST",   path: "/api/input-queue/:id/promote",        buildReq: (itemId) => ({ params: { id: itemId } }) },
+		"inputQueue:remove":  { method: "DELETE", path: "/api/input-queue/:id",                buildReq: (itemId) => ({ params: { id: itemId } }) },
+
 		// ─── Lead (M3) ──────────────────────────────────────
 		"lead:pickup":             { method: "POST",   path: "/api/requirements/:id/pickup",   buildReq: (requirementId) => ({ params: { id: requirementId } }) },
 		"lead:progress":           { method: "GET",    path: "/api/requirements/:id/progress", buildReq: (requirementId) => ({ params: { id: requirementId } }) },

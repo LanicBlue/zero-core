@@ -35,6 +35,7 @@ import { AgentLoop } from "../runtime/agent-loop.js";
 import type { RuntimeProviderConfig, SessionConfig, StreamEvent } from "../runtime/types.js";
 import { clearProviderCache, setConcurrencyManager } from "../runtime/provider-factory.js";
 import { SessionDB } from "./session-db.js";
+import { InputQueueStore } from "./input-queue-store.js";
 import { MCPManager } from "./mcp-manager.js";
 import { buildMcpTools } from "../runtime/tools/mcp-tool.js";
 import { KbStore } from "./kb-store.js";
@@ -103,6 +104,8 @@ export class AgentService {
 	private loops = new Map<string, AgentLoop>();        // sessionId → loop
 	private runStates = new Map<string, AgentRunState>(); // sessionId → state
 	private activeSessions = new Map<string, string>();    // agentId → active sessionId
+	/** Per-session input queue (C2): inputs submitted while a session is busy. */
+	readonly inputQueue = new InputQueueStore();
 	private subscribers = new Set<StreamCallback>();
 	private config!: ZeroCoreConfig;
 	private workspaceDir: string;
@@ -555,6 +558,14 @@ export class AgentService {
 			loop = this.getOrCreateLoop(agent);
 			sessionId = this.activeSessions.get(agentId) ?? agentId;
 		}
+		// C2 input queue: if this session is already running, enqueue instead of
+		// starting a concurrent run on the same loop (which would clash). The
+		// running sendPrompt drains the queue after its run() returns.
+		if (this.isSessionRunning(sessionId)) {
+			this.inputQueue.enqueue(sessionId, text);
+			log.agent("Session busy — input queued for:", agentId, "session:", sessionId);
+			return;
+		}
 		log.agent("Sending prompt to:", agentId, "session:", sessionId, "length:", text.length);
 		this.sessionManager?.trackSessionQueued(sessionId);
 		const state = this.runStates.get(sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
@@ -568,6 +579,20 @@ export class AgentService {
 		} catch (err) {
 			log.error("agent", "Prompt error:", (err as Error).message);
 			this.emit({ type: "error", error: (err as Error).message, agentId });
+		}
+		// C2 drain: send queued inputs as subsequent turns while any remain.
+		// insert_now items are handled mid-run by the PrepareStep hook; this
+		// drain only handles "queued" items (next-turn semantics).
+		let next = this.inputQueue.drainNextQueued(sessionId);
+		while (next !== undefined) {
+			try {
+				await loop.run(next);
+			} catch (err) {
+				log.error("agent", "Drained prompt error:", (err as Error).message);
+				this.emit({ type: "error", error: (err as Error).message, agentId });
+				break;
+			}
+			next = this.inputQueue.drainNextQueued(sessionId);
 		}
 	}
 	/**

@@ -34,6 +34,8 @@ import { ConfirmModal } from "../common/ConfirmModal.js";
 import AskUserCard from "../chat/AskUserCard.js";
 import TodosList from "../chat/TodosList.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
+import { useInputQueueStore } from "../../store/input-queue-store.js";
+import InputQueueStrip from "../chat/InputQueueStrip.js";
 import { usePageStore } from "../../store/page-store.js";
 import { useRequirementStore } from "../../store/requirement-store.js";
 import RequirementHeader from "../requirements/RequirementHeader.js";
@@ -360,6 +362,13 @@ export default function ChatPanel() {
 	const { projects, fetchProjects } = useProjectStore();
 	const { pendingBySession, todosBySession, setPending, setTodos } = useInteractionStore();
 	const { activeRequirementId, setActiveRequirementId, setActivePage } = usePageStore();
+	// C2 input queue.
+	const { enqueue: enqueueInput, startPolling: startQueuePolling, stopPolling: stopQueuePolling } = useInputQueueStore();
+	useEffect(() => {
+		if (!activeSessionId) return;
+		startQueuePolling(activeSessionId);
+		return () => { stopQueuePolling(activeSessionId); };
+	}, [activeSessionId, startQueuePolling, stopQueuePolling]);
 	const { requirements, transitionStatus, sendMessage: sendReqMessage } = useRequirementStore();
 	const activeRequirement = activeRequirementId
 		? requirements.find((r) => r.id === activeRequirementId)
@@ -513,7 +522,17 @@ export default function ChatPanel() {
 
 	const send = async () => {
 		const text = input.trim();
-		if (!text || !activeAgentId || isStreaming || isInputLocked) return;
+		if (!text || !activeAgentId || isInputLocked) return;
+
+		// C2: if the session is already running, queue the input instead of
+		// starting a concurrent run. The user message is not added to the
+		// transcript optimistically — it appears as a real turn when the agent
+		// drains the queue (or is injected at the next step if promoted).
+		if (isStreaming && activeSessionId) {
+			setInput("");
+			await enqueueInput(activeSessionId, text);
+			return;
+		}
 
 		const sid = activeSessionId ?? activeAgentId;
 		addMessage(sid, { id: nextMsgId(), role: "user", text, timestamp: Date.now() });
@@ -720,6 +739,9 @@ export default function ChatPanel() {
 
 			<ErrorBanner />
 
+			{/* C2: todos pinned to the top so they don't overlap the input queue strip. */}
+			{todos.length > 0 && <TodosList todos={todos} />}
+
 			<div className="chat-messages" ref={messagesContainerRef}>
 				{messages.length === 0 && (
 					<div className="chat-empty">
@@ -754,8 +776,6 @@ export default function ChatPanel() {
 				<div ref={messagesEndRef} />
 			</div>
 
-			{todos.length > 0 && <TodosList todos={todos} />}
-
 			{activePending && (
 				<AskUserCard
 					requestId={activePending.requestId}
@@ -763,6 +783,9 @@ export default function ChatPanel() {
 					onDone={() => activeSessionId && setPending(activeSessionId, null)}
 				/>
 			)}
+
+			{/* C2: queued inputs (submitted while running) — sits right above the input bar. */}
+			<InputQueueStrip />
 
 			<div className="chat-input-bar">
 				<textarea
@@ -772,16 +795,20 @@ export default function ChatPanel() {
 					placeholder={
 						!activeAgentId ? "Select an agent first..."
 						: isInputLocked ? (activeSessionIsWorker ? "只读 session(archivist 工作现场,用户只看不聊)" : "任务运行中,暂停输入...")
+						: isStreaming ? "运行中,回车将加入队列(可立即插入)..."
 						: "Type a message..."
 					}
-					disabled={!activeAgentId || isStreaming || isInputLocked}
+					/* C2: unlocked while streaming — input goes to the queue. Still
+					   locked for read-only worker sessions. */
+					disabled={!activeAgentId || isInputLocked}
 					rows={1}
 				/>
-				{isStreaming ? (
+				{isStreaming && (
 					<button type="button" onClick={abort} className="btn-abort">Stop</button>
-				) : (
-					<button type="button" onClick={send} disabled={!activeAgentId || !input.trim() || isInputLocked}>Send</button>
 				)}
+				<button type="button" onClick={send} disabled={!activeAgentId || !input.trim() || isInputLocked}>
+					{isStreaming ? "入队" : "Send"}
+				</button>
 			</div>
 
 			{showArchiveConfirm && (

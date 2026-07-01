@@ -52,6 +52,7 @@ import { createConfigRouter } from "./config-router.js";
 import { createChatRouter } from "./chat-router.js";
 import { createSessionRouter } from "./session-router.js";
 import { createDelegatedTaskRouter } from "./delegated-task-router.js";
+import { createInputQueueRouter } from "./input-queue-router.js";
 import { createLogRouter } from "./log-router.js";
 import { createFileRouter } from "./file-router.js";
 import { createToolExecutionRouter } from "./tool-execution-router.js";
@@ -219,6 +220,11 @@ export async function startServer(options?: StartServerOptions) {
 
 	const agentService = createAgentService(workspaceConfig.workspaceDir, sessionDB, undefined, registry, mcp);
 	agentService.setAgentStore(agentStore);
+
+	// C2: input-queue insert_now injection (PrepareStep hook). Registered after
+	// agentService exists — the queue lives on it (agentService.inputQueue).
+	const { registerInputQueueHooks } = await import("../runtime/hooks/input-queue-hooks.js");
+	registerInputQueueHooks(agentService.inputQueue);
 
 	// v0.8 (P3): ManagementService (renamed from ZeroAdminService) —
 	// capability backend for the Project/Agent/Cron action tools.
@@ -535,6 +541,7 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/chat", createChatRouter({ agentService, agentStore, providerStore, workspaceConfig }));
 	app.use("/api/sessions", createSessionRouter({ agentService, agentStore, management }));
 	app.use("/api/delegated-tasks", createDelegatedTaskRouter(sessionDB));
+	app.use("/api/input-queue", createInputQueueRouter(agentService));
 	app.use("/api/logs", createLogRouter({ sessionDb: sessionDB }));
 	app.use("/api/files", createFileRouter({ workspaceConfig }));
 	app.use("/api/tool-executions", createToolExecutionRouter({ sessionDb: sessionDB, agentService, providerStore, workspaceConfig }));

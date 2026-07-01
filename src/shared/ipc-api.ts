@@ -256,6 +256,12 @@ export interface IpcChannelDefs {
 	"delegatedTasks:bySession": { params: [sessionId: string]; result: DelegatedTaskRecord[] };
 	"delegatedTasks:get":       { params: [id: string]; result: DelegatedTaskRecord | undefined };
 
+	// ── Input queue (Phase C2 — queue inputs while a session is running) ──
+	"inputQueue:list":    { params: [sessionId: string]; result: Array<{ id: string; sessionId: string; content: string; mode: "queued" | "insert_now"; createdAt: number }> };
+	"inputQueue:enqueue": { params: [sessionId: string, content: string, mode?: "queued" | "insert_now"]; result: { id: string; sessionId: string; content: string; mode: "queued" | "insert_now"; createdAt: number } };
+	"inputQueue:promote": { params: [itemId: string]; result: { ok: boolean } };
+	"inputQueue:remove":  { params: [itemId: string]; result: { ok: boolean } };
+
 	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
 	// RFC §2.9 / decision 11 — the kanban surfaces pending plans to the user
 	// and calls confirm/reject. Resolves the awaiting Orchestrate tool Promise.

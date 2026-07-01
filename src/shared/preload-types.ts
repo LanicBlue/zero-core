@@ -287,6 +287,12 @@ export interface WindowApi {
 	delegatedTasksBySession: (sessionId: string) => Promise<DelegatedTaskRecord[]>;
 	delegatedTasksGet: (id: string) => Promise<DelegatedTaskRecord | undefined>;
 
+	// ── Input queue (C2) ──
+	inputQueueList: (sessionId: string) => Promise<Array<{ id: string; sessionId: string; content: string; mode: "queued" | "insert_now"; createdAt: number }>>;
+	inputQueueEnqueue: (sessionId: string, content: string, mode?: "queued" | "insert_now") => Promise<{ id: string; sessionId: string; content: string; mode: "queued" | "insert_now"; createdAt: number }>;
+	inputQueuePromote: (itemId: string) => Promise<{ ok: boolean }>;
+	inputQueueRemove: (itemId: string) => Promise<{ ok: boolean }>;
+
 	// ── Lead ──
 	leadPickup: (requirementId: string) => Promise<{ sessionId: string } | { error: string }>;
 	leadProgress: (requirementId: string) => Promise<{ requirement: RequirementRecord; steps: TaskStepRecord[]; currentStep: TaskStepRecord | undefined; completedCount: number; totalCount: number } | { error: string }>;

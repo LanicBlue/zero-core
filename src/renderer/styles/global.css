@@ -979,6 +979,88 @@ body {
 
 /* ─── Input Bar ──────────────────────────────────── */
 
+/* C2 input queue strip (sits just above the input bar). */
+.input-queue-strip {
+  border-top: 1px solid var(--border-default);
+  background: var(--bg-subtle, rgba(127, 127, 127, 0.06));
+  padding: 6px 12px 2px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.input-queue-header {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--fg-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+.input-queue-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.7;
+}
+
+.input-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  background: var(--bg-canvas, rgba(0, 0, 0, 0.1));
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.input-queue-mode {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  color: var(--fg-subtle);
+  flex-shrink: 0;
+}
+
+.input-queue-item.mode-insert_now .input-queue-mode {
+  color: var(--accent-warn, #d93);
+}
+
+.input-queue-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.input-queue-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.input-queue-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.input-queue-btn:hover {
+  background: var(--bg-hover, rgba(127, 127, 127, 0.15));
+}
+
+.input-queue-remove {
+  color: var(--fg-subtle);
+  padding: 2px 8px;
+}
+
 .chat-input-bar {
   padding: 12px 20px;
   border-top: 1px solid var(--border-default);

@@ -267,6 +267,12 @@ const api: WindowApi = {
 	delegatedTasksBySession: (sessionId) => ipcRenderer.invoke("delegatedTasks:bySession", sessionId),
 	delegatedTasksGet: (id) => ipcRenderer.invoke("delegatedTasks:get", id),
 
+	// ── Input queue (C2) ──
+	inputQueueList: (sessionId) => ipcRenderer.invoke("inputQueue:list", sessionId),
+	inputQueueEnqueue: (sessionId, content, mode?) => ipcRenderer.invoke("inputQueue:enqueue", sessionId, content, mode),
+	inputQueuePromote: (itemId) => ipcRenderer.invoke("inputQueue:promote", itemId),
+	inputQueueRemove: (itemId) => ipcRenderer.invoke("inputQueue:remove", itemId),
+
 	// ── Lead ──
 	leadPickup: (requirementId) => ipcRenderer.invoke("lead:pickup", requirementId),
 	leadProgress: (requirementId) => ipcRenderer.invoke("lead:progress", requirementId),
