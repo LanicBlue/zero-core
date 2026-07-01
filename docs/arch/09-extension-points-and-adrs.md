@@ -653,6 +653,29 @@ graph TB
 
 ---
 
+### ADR-024 · 委派任务持久化 + per-step 注入 + 输入队列(Phase C)
+
+**Context**:subagent 委派有三个缺口 —— 后台任务不落盘(重启丢)、只有硬 kill、运行中不能通信/chat 输入被锁。
+
+**Decision**:
+1. **持久化** —— 每次委派建 hidden delegated session(`session_kind='delegated'`)+ `delegated_tasks` 行。sub-loop 跑真实 sessionId,turns 自动落盘。delegated 会话从聊天列表查询过滤(隔离)。启动 `markRunningDelegatedTasksInterrupted` 把残留标 interrupted(只标记,人工重启,不自动恢复)。
+2. **优雅停止** —— `request_finish`(advisory controlMessage + 可选 maxTurns turn 预算 force-stop)+ 硬 `stop`。turn 预算纯在 delegator(数 usage turn → abort);controlMessage 投递走 hook(见下)。修了 kill/自然完成竞态。
+3. **per-step 注入点** —— AI SDK 6 `streamText` 的 `prepareStep` 回调暴露 per-step 注入(SDK 仍拥有多 step 循环),触发新 `PrepareStep` hook。补全原 PreLLMCall(per-turn)缺失的 per-step 点位。**注入功能全在 `src/runtime/hooks/`,AgentLoop 只暴露点位**(符合 [[feedback-agent-loop-hooks-only]]):
+   - `task-control-hooks.ts`:request_finish 的 controlMessage 投递(查 delegated_tasks 行)。
+   - `input-queue-hooks.ts`:运行中输入的"立即插入"(注入下一 step)。
+4. **输入队列** —— session 运行时输入不阻塞,进按 sessionId 的 `InputQueueStore`。`queued` 项 run 结束后 drain 为下一 turn;`insert_now` 由 PrepareStep hook 注入下一 step。
+5. **task ≠ work 语义** —— task = 会话级运行实例(delegated_tasks 表,TaskTreePanel);work = 项目级定义(project_work 表,ProjectPage)。绝不混用。
+
+**agentId 归属**:delegated session 的 `agent_id` 写裸 targetAgentId(归属到目标 agent)。sub-loop 不走 agent-service、不写 activeSessions,故无碰撞。
+
+**Phase A 限制(已记)`:AgentLoop.requestFinish` 曾误放在 AgentLoop,后移除 —— 控制消息归 task 管理,hook 投递,AgentLoop 不持有功能/控制状态。
+
+**Code evidence**:`runtime/subagent-delegator.ts`(持久化 + turn 预算 + 竞态修复)、`runtime/task-registry.ts`(requestFinish/finishing)、`runtime/agent-loop.ts`(prepareStep 点位)、`runtime/hooks/task-control-hooks.ts` + `input-queue-hooks.ts`、`server/session-db.ts`(delegated_tasks 表 + session 列 + 隔离查询 + markRunningDelegatedTasksInterrupted)、`server/input-queue-store.ts`、`server/delegated-task-router.ts` + `input-queue-router.ts`、`renderer/components/layout/TaskTreePanel.tsx` + `chat/InputQueueStrip.tsx`、`renderer/store/task-store.ts` + `input-queue-store.ts`。
+
+**已知技术债**:HookRegistry 是全局单例,handler 触发跨所有 loop(含子 agent loop),靠 sessionId 自行过滤;PrepareStep 多 handler 的 appendMessages merge 是 last-writer-wins(不 concat)。整理方向:hook context 带 `loopKind`、appendMessages concat、注册归一(见 03 §3.3 末)。
+
+---
+
 ## 3. 总结
 
 - 23 个 ADR，集中在数据驻留、并发控制、扩展点、UI 同步、角色演进。

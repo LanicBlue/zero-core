@@ -248,6 +248,7 @@ graph TB
 - **project-work（工位）**：取代工作流角色的"工作"单元。一个 project-work = 项目里定义的一项工作(具体职责,如"需求管理"/"文档充实"):带动作 prompt(触发时作 user message)+ requiredTools(分配 agent 时校验)+ agentId(可空=空岗)+ contextPolicy + hooks。身份在 agent(systemPrompt),行为在 work(actionPrompt),两者平行。触发源:cron(复用 crons 表,带 workId)/ 项目 hook(data-change-hub 事件)/ 手动。一个 work = 一个动作(扁平)。见 ADR-023。
 - **Preload**：Electron 预加载脚本，contextBridge 暴露 `window.api`。
 - **PretoolUse**：hook 事件，工具执行前触发（可阻断）。
+- **PrepareStep**：hook 事件(Phase C),`streamText` 每 step 前触发(per-step 注入点,与 per-turn 的 PreLLMCall 互补)。handler 返回 `appendMessages` 注入该 step。投递:request_finish 控制消息(task-control-hooks)、运行中"立即插入"输入(input-queue-hooks)。见 ADR-024。
 - **ProcessStreamEvents**：AgentLoop 处理 streamText 输出事件的函数。
 - **ProviderAdapter**：每 Provider 的兼容性适配（stripThinkingTags 等）。
 - **ProviderConcurrencyManager**：每 Provider 一个 FIFO semaphore。
@@ -284,7 +285,16 @@ graph TB
 
 ## T
 
-- **TaskInfo**：后台任务信息（id / type / status / step / startedAt / completedAt / error）。
+- **task(委派任务,Phase C)**：会话级**运行实例** —— agent 执行时通过 Agent 工具/Orchestrate 派生的子任务。表 `delegated_tasks`,UI 在 chat 中间栏 `TaskTreePanel`(按 session)。一条 task = 一个全局 agent + 一个隐藏 delegated session + 一个任务记录。**与 work 是两个概念,绝不混用**:
+  | | **task** | **work(工位)** |
+  |---|---|---|
+  | 层级 | 会话级运行实例 | 项目级配置定义 |
+  | 表 | `delegated_tasks` | `project_work` |
+  | 产生 | agent 运行时委派 | 人在 ProjectPage 定义 |
+  | UI | TaskTreePanel(chat 中间栏) | ProjectPage |
+  | 关系 | 一个 work fire → 跑 agent → 该 agent 委派出若干 task |
+  见 ADR-024。
+- **TaskInfo**：后台任务信息（id / type / status / step / turns / tokens / startedAt / completedAt / error）。Phase C 加 turns(agent-loop 迭代数)/ tokens(累计)。
 - **TaskRegistry**：后台任务表 + wake 回调。
 - **TerminalAdapter**：CLI 模式 ANSI 渲染。
 - **TextDeltaEvent / ThinkingDeltaEvent / ToolStartEvent / ToolEndEvent / MessageEndEvent / AgentEndEvent**：6 个核心流事件。

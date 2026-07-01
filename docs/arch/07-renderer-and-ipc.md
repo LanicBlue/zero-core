@@ -140,6 +140,8 @@ zustand store: create/update 推来 record 直接 patch(免 GET /:id);delete 移
 | 类别 | 数量 | 通道 | 说明 |
 |------|------|------|------|
 | **HTTP 代理(R 表)** | **141** | `config:*` / `agents:*` / `providers:*` / `mcp:*` / `kb:*` / `templates:list/get/create/update/delete/export/import` / `tools:list` / `tool-config:*` / `tool:execute` / `sessions:*` / `messages:*` / `chat:*` / `files:*` / `logs:*` / `tool-executions:*` / `webfetch:cookies` / `webfetch:clear-cookies` / `ask-user:respond` / `skills:list` / `memory-nodes:*` / `config:memory-*` / `projects:*` / `requirements:list/get/create/update/transition/history/messages/addMessage/steps/verify/archive/report` / `wiki:*` / `lead:*` / `crons:*` / `orchestrate:pending/plan/confirm/reject` / `requirements:doc:read/write/list` / `pm:createRequirement/openDiscuss/coverageView/coverageVerdict` | 每个走 `fetch(http://localhost:<port><path>)`,§2.2 的 R 表 |
+
+> **Phase C 新增(委派任务 + 输入队列)**:R 表新增 6 通道 —— `delegatedTasks:bySession` / `delegatedTasks:get`(TaskTree UI 读委派任务,`/api/delegated-tasks/*`)+ `inputQueue:list` / `inputQueue:enqueue` / `inputQueue:promote` / `inputQueue:remove`(运行中输入队列,`/api/input-queue/*`)。两个 router 在 `server/index.ts` 挂载。R 表条目数随之上升(本表 141 为 Phase C 前快照,实际以 `rest-routers.test.ts` 源码派生为准)。
 | **LOCAL invoke**(主进程内 `ipcMain.handle`,不走 HTTP) | **7** | `window:minimize` / `window:maximize` / `window:close` / `dialog:openDirectory` / `webfetch:login` / `templates:github-preview` / `templates:import-github` | 操作 BrowserWindow / 原生对话框 / cookie 登录窗 / GitHub 流式导入(WS-like 复杂语义,主进程持有流) |
 | **receive-only event**(`ipcRenderer.on`,renderer 仅订阅) | **7** | `agent:event` / `data:changed` / `app:ready` / `tools:changed` / `session:lifecycle` / `github-import:progress` / `github-preview:progress` | WS 反向事件经 main 转发(§2.3 / §2.3.1) |
 
@@ -292,6 +294,12 @@ graph LR
     ChatStore -->|"messages / contextInfo<br/>toolCalls"| ChatPanel
     InteractionStore -->|"todos, askUser"| ChatPanel
     NotificationStore -->|"toasts"| ToastHost
+
+    %% Phase C: 委派任务树 + 输入队列(都 pull-on-display,按 sessionId 路由)
+    TaskStore -->|"tasksBySession"| TaskTreePanel
+    InputQueueStore -->|"itemsBySession"| InputQueueStrip
+    ChatStore -->|"activeSessionId / isStreaming"| TaskTreePanel
+    ChatStore -->|"activeSessionId / isStreaming"| InputQueueStrip
 
     AgentStore -->|"agents, models, tools"| AgentsPage
     AgentStore -->|"models, tools"| ChatPanel

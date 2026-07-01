@@ -88,27 +88,47 @@ async run(userMessage):
 
 ```
 executeStream():
-  messages = session.getMessages()
-  if memoryContext: messages = prependContext(messages, memoryContext)
-  if ragContext:    messages = prependContext(messages, ragContext)
-  if toolNotifications: injectTaskNotifications(messages)
-
-  model = resolveModel(providers, providerName, modelId, concurrencyManager)
+  # PreLLMCall hook (per TURN, 一次): 注入 memoryContext / ragContext /
+  # providerOptions;notification-hooks 也在此把已完成后台任务结果作为
+  # 通知注入。结果拼成 ctx 字符串,prepend 到最后一条 user 消息。
+  preResult = triggerHooks("PreLLMCall", ...)
+  ctx = buildContextMessage({ ragContext, memoryContext, wikiAnchorsContext,
+                              currentTask, todosContext, ... })
+  messages = prependContext(session.getMessages(), ctx)
 
   result = streamText({
     model,
     messages,
     system: assembleSystemPrompt(),
-    tools: await buildTools(),  ← ALL_TOOLS ∪ MCP ∪ Agent
+    tools: await buildTools(),        ← ALL_TOOLS ∪ MCP ∪ Agent
     abortSignal: abortController.signal,
-    stopWhen: stepCountIs(50),
-    providerOptions: { anthropic: {thinking:...}, google: {thinkingConfig:...} },
-    experimental_transform: ...
+    stopWhen: stepCountIs(200),       ← SDK 内部跑最多 200 step
+    providerOptions: { anthropic:{thinking:...}, google:{thinkingConfig:...} },
+    # prepareStep (per STEP, SDK 每 step 前回调): triggerHooks("PrepareStep"),
+    # hook 返回 appendMessages 则并入该 step 发给模型的 messages。
+    # 这是 per-step 注入点(控制消息 / 排队输入),与 per-turn 的 PreLLMCall 互补。
+    prepareStep: async ({ stepNumber, messages }) => {
+        res = triggerHooks("PrepareStep", { stepNumber, messages, ... })
+        return res.appendMessages ? { messages: [...messages, ...res.appendMessages] } : {}
+    },
   })
 
   await processStreamEvents(result)  ← 处理 text_delta/thinking/tool-call/result
   await finalizeStream(result)        ← 提取 messages, 持久化, 收尾
 ```
+
+#### Hook 三层生命周期（session / turn / LLMCall）
+
+一个 AgentLoop 实例 = 一个 session 的运行时。hook 按 три 颗粒度触发:
+
+| 颗粒度 | 事件 | 频率 | 注入? |
+|---|---|---|---|
+| **Session** | `SessionStart` / `SessionEnd` / `Stop` / `StopFailure` | 每 session(每 run) | 观察/收尾 |
+| **Turn**(一次 user 输入 = 一个 executeStream) | `UserPromptSubmit` / `PreLLMCall` / `PostTurnComplete` / `PreCompact` / `PostCompact` | 每 turn | PreLLMCall 注入整轮 context |
+| **LLMCall / Step**(turn 内单步) | `PrepareStep` / `PostStep` | 每 step | PrepareStep 注入该 step 的 appendMessages |
+| **Tool**(step 内工具调用) | `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | 每工具 | 可 block / 改 args / 改 result |
+
+> ⚠️ HookRegistry 当前是**全局单例**,handler 注册是进程级(启动一次),但 handler 触发**跨所有 loop**(包括子 agent loop)。handler 需自行用 ctx 里的 sessionId / loopKind 判断作用域。task-control-hooks / input-queue-hooks 都靠 sessionId 做 session 级过滤。后续整理方向:context 显式带 `loopKind`,见技术债。
 
 ### 3.4 processStreamEvents() — 事件消费（lines 444-540）
 

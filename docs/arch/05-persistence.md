@@ -95,7 +95,32 @@ updated_at   TEXT
 input_tokens / output_tokens / total_tokens    INTEGER
 cache_read_tokens / cache_write_tokens / reasoning_tokens   INTEGER
 estimated_cost_usd                              REAL
+# v0.8 context bundle (M0):
+context / context_project_id / context_workspace_dir / context_wiki_root_node_id   TEXT
+archived   INTEGER (bool)
+# 委派任务持久化(Phase C):delegated 会话隔离 + 归属
+session_kind        TEXT NOT NULL DEFAULT 'chat'   -- 'chat' | 'delegated'
+parent_session_id   TEXT                            -- delegated 会话的父 chat 会话
+parent_task_id      TEXT                            -- 对应 delegated_tasks.id
+visibility          TEXT NOT NULL DEFAULT 'normal'  -- 'normal' | 'hidden' | 'debug'
 ```
+> `session_kind='delegated'` 的会话(委派子 agent 的隐藏会话)从所有聊天列表查询
+> (`getMainSession` / `getMostRecentSession` / `listSessions` / `listAllSessions`)
+> 中过滤掉 —— 它们只为 TaskTree 检视 + 重启恢复而存在,不污染聊天列表。
+
+#### `delegated_tasks`(委派任务,Phase C)
+```sql
+id / parent_task_id / root_task_id      TEXT   -- 委派链(子子 agent)
+owner_agent_id / target_agent_id        TEXT   -- 派发者 / 被委派 agent
+parent_session_id / session_id          TEXT   -- 父 chat 会话 / 子隐藏会话(FK→sessions ON DELETE SET NULL)
+task / status                           TEXT   -- 任务描述 / running|finishing|completed|failed|killed|interrupted
+depth / step / turns / tokens           INTEGER -- 委派深度 / 工具步数 / agent-loop 迭代数 / 累计 token
+current_tool / result / error           TEXT
+control_message / finish_requested_at   TEXT   -- request_finish 的 advisory 控制消息(PrepareStep hook 投递)
+created_at / updated_at / completed_at  TEXT
+```
+> 一条委派 = 一个全局 agent + 一个隐藏 delegated session + 一个任务记录。`markRunningDelegatedTasksInterrupted()`
+> 在启动时把残留 running/finishing 标 `interrupted`(只标记,人工重启,不自动恢复)。
 
 #### `messages`（write-through 缓存）
 ```sql
