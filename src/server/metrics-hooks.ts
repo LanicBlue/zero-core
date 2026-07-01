@@ -31,11 +31,21 @@ export function registerMetricsHooks(sm: SessionManager, registry: HookRegistry 
 	// Note: PostToolUse/PostToolUseFailure are NOT included here —
 	// tool call metrics are recorded by metrics-events.ts via stream events
 	// which have accurate duration. Hooks would double-count.
+	//
+	// Step 1C event mapping:
+	//   SessionStart   — KEPT (new semantics: fired by agent-service at loop
+	//                    build, so trackSessionStreaming now fires once per
+	//                    loop instance instead of every turn — fixes the old
+	//                    misfire where every run() restarted streaming tracking).
+	//   SessionEnd     → SessionClose (agent-service, loop destroy)
+	//   Stop           → TurnEnd (per-run token estimate)
+	//   StopFailure    → TurnError
+	//   PreCompact     — unchanged (compression sub-event)
 	const hooks: HookEventName[] = [
 		"SessionStart",
-		"SessionEnd",
-		"Stop",
-		"StopFailure",
+		"SessionClose",
+		"TurnEnd",
+		"TurnError",
 		"PreCompact",
 	];
 
@@ -51,11 +61,11 @@ export function registerMetricsHooks(sm: SessionManager, registry: HookRegistry 
 					sm.trackSessionStreaming(sessionId);
 					break;
 
-				case "SessionEnd":
+				case "SessionClose":
 					sm.trackSessionIdle(sessionId);
 					break;
 
-				case "Stop": {
+				case "TurnEnd": {
 					const messageCount = ctx.messageCount as number | undefined;
 					const resultText = ctx.resultText as string | undefined;
 					// Rough token estimate: ~4 chars per token
@@ -67,7 +77,7 @@ export function registerMetricsHooks(sm: SessionManager, registry: HookRegistry 
 					break;
 				}
 
-				case "StopFailure": {
+				case "TurnError": {
 					const errorClass = (ctx.errorClass ?? ctx.error ?? "unknown") as string;
 					sm.trackSessionError(sessionId, errorClass);
 					break;

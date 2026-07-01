@@ -22,8 +22,10 @@
 // - deps: HookWiringDeps —— 各 hook 需要的 stores/handles
 //
 // ## 输出
-// - 副作用:向 registry 注册多个处理器(事件名仍为旧名 SessionStart/Stop/PreLLMCall/
-//   PrepareStep/PostStep/PostTurnComplete;重命名在 Step 1C)
+// - 副作用:向 registry 注册多个处理器。Step 1C renamed the agent-execution
+//   events to the step-centric set (TurnStart/TurnEnd/TurnError/StepStart/
+//   StepEnd + kept PreLLMCall/PostTurnComplete/Tool*). Session-level
+//   SessionStart/SessionClose are fired by agent-service (NOT registered here).
 //
 // ## 定位
 // runtime/hooks 的对外门面;新增功能钩子应在此追加调用,而不是让上层各自注册。
@@ -109,7 +111,9 @@ export interface HookWiringDeps {
  *
  * requirement-hooks is NOT registered (retired, §5.5).
  *
- * Event names are unchanged in this step (renaming is Step 1C).
+ * Event names follow the Step 1C step-centric naming (TurnStart/TurnEnd/
+ * TurnError/StepStart/StepEnd). SessionStart/SessionClose are agent-service's
+ * responsibility (instance lifecycle) — not registered here.
  */
 export function registerHooksForLoop(
 	registry: HookRegistry,

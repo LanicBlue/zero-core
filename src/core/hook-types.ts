@@ -1,38 +1,74 @@
-// Hook 事件类型定义
+// Hook event type definitions
 //
-// # 文件说明书
+// # File spec
 //
-// ## 核心功能
-// 定义 30 个 Hook 事件名称和回调函数类型，覆盖 agent 完整生命周期
+// ## Core
+// Defines the lifecycle hook event names + per-event context + result types.
+// Step 1C (hook-redesign): the agent-execution hook surface is renamed to a
+// step-centric, ownership-honest set (Session/Turn/Step/LLMCall/Tool levels).
+// See docs/design/hook-step-redesign.md §3–§4 for the authoritative skeleton.
 //
-// ## 输入
-// 无（纯类型定义）
+// ## Naming (Step 1C mapping)
+// Old → New (agent-execution surface only; workflow/observability events like
+// SubagentStart/TaskCreated/PreCompact keep their names):
+//   UserPromptSubmit          → deleted (no consumer)
+//   SessionStart (per-run)    → TurnStart
+//   Stop                      → TurnEnd
+//   StopFailure               → TurnError
+//   PostStep                  → StepEnd
+//   PrepareStep               → StepStart
+//   SessionEnd (empty trig)   → deleted
+//   PreLLMCall                → unchanged
+//   PostTurnComplete          → TEMPORARILY KEPT (deleted in P3, operations
+//                               move to StepEnd/SessionClose then)
+//   PreToolUse / PostToolUse / PostToolUseFailure → unchanged
+//   SessionStart / SessionClose (NEW semantics, instance lifecycle) → fired
+//   by agent-service at loop build / loop destroy. Distinct from the retired
+//   per-run SessionStart (now TurnStart).
 //
-// ## 输出
-// HookEventName 联合类型、HookCallback 函数类型
+// Levels:
+//   Session : SessionStart / SessionClose           (agent-service · once per loop instance)
+//   Turn    : TurnStart / TurnEnd / TurnError       (AgentLoop.run() · per user input)
+//   Step    : StepStart / StepEnd                   (per LLM call)
+//   LLMCall : PreLLMCall / PostLLCall / OnLLMError  (per LLM call)
+//   Tool    : PreToolUse / PostToolUse / PostToolUseFailure (per tool)
 //
-// ## 定位
-// src/core/ — 核心层，为 hook-registry 提供事件类型基础
+// ## Input
+// none (pure type definitions)
 //
-// ## 依赖
-// 无外部依赖
+// ## Output
+// HookEventName union + HookCallback function type
 //
-// ## 维护规则
-// 新增或删除事件时需确保不破坏已有 hook 注册
+// ## Position
+// src/core/ — core layer; provides event-name basis for hook-registry
 //
-// ---------------------------------------------------------------------------
-// Hook event definitions — 30 events covering the full agent lifecycle
-// Inspired by Claude Code's hook architecture (27 event points)
-// ---------------------------------------------------------------------------
+// ## Dependencies
+// none external
+//
+// ## Maintenance rules
+// Adding/removing an event requires updating all hook modules + the registry.
 
-/** All 30 hook event names */
+/** All hook event names. Agent-execution surface is step-centric (Step 1C). */
 export type HookEventName =
+	// ── Session level (agent-service, once per loop instance) ──────────────
+	| "SessionStart" | "SessionClose"
+	// ── Turn level (AgentLoop.run(), per user input) ───────────────────────
+	| "TurnStart" | "TurnEnd" | "TurnError"
+	// ── Step level (per LLM call) ──────────────────────────────────────────
+	| "StepStart" | "StepEnd"
+	// ── LLMCall level (per LLM call) ───────────────────────────────────────
+	| "PreLLMCall" | "PostLLCall" | "OnLLMError"
+	// ── Tool level (per tool) ──────────────────────────────────────────────
 	| "PreToolUse" | "PostToolUse" | "PostToolUseFailure"
-	| "SessionStart" | "SessionEnd" | "Stop" | "StopFailure" | "Setup"
-	| "UserPromptSubmit" | "Notification" | "PermissionRequest" | "PermissionDenied"
+	// ── TEMPORARY (deleted in P3): kept so the existing PostTurnComplete
+	//    trigger point + handlers keep firing until operations move to
+	//    StepEnd / SessionClose. ────────────────────────────────────────────
+	| "PostTurnComplete"
+	// ── Observability / workflow events (NOT renamed in Step 1C — out of
+	//    scope for the agent-execution hook redesign) ───────────────────────
+	| "Notification" | "PermissionRequest" | "PermissionDenied"
 	| "SubagentStart" | "SubagentStop"
 	| "PreCompact" | "PostCompact"
-	| "PreLLMCall" | "PrepareStep" | "PostStep" | "PostTurnComplete"
 	| "TeammateIdle" | "TaskCreated" | "TaskCompleted"
 	| "Elicitation" | "ElicitationResult"
 	| "ConfigChange" | "CwdChanged" | "FileChanged"
@@ -46,10 +82,18 @@ export interface BaseHookContext {
 	agentId: string;
 	sessionId?: string;
 	timestamp: number;
+	/**
+	 * Which loop kind this event fired on ("main" | "delegated"). Auto-injected
+	 * by AgentLoop.triggerLocal / agent-service fire helpers. Step 1B introduced
+	 * per-loop registries so loopKind is no longer load-bearing for cross-loop
+	 * isolation (handlers only fire for their own loop), but it is kept as a
+	 * self-introspection field for handlers that branch on main vs delegated.
+	 */
+	loopKind?: "main" | "delegated";
 }
 
 // ---------------------------------------------------------------------------
-// Per-event context types (events with extra payload)
+// Tool level (per tool)
 // ---------------------------------------------------------------------------
 
 export interface PreToolUseContext extends BaseHookContext {
@@ -71,29 +115,128 @@ export interface PostToolUseFailureContext extends BaseHookContext {
 	toolCallId?: string;
 }
 
-export interface StopContext extends BaseHookContext {
-	resultText: string;
-	messageCount: number;
+// ---------------------------------------------------------------------------
+// Turn level (per user input)
+// ---------------------------------------------------------------------------
+
+/** TurnStart: fires at the start of each turn (user input → turn-group setup). */
+export interface TurnStartContext extends BaseHookContext {
+	/** The user message that started this turn. "(resumed)" on a resume turn. */
+	userMessage: string;
 }
 
-export interface StopFailureContext extends BaseHookContext {
+/** TurnEnd: fires when a turn completes normally (turn boundary closure). */
+export interface TurnEndContext extends BaseHookContext {
+	resultText: string;
+	messageCount: number;
+	/** Recorder blocks for the safety-net persist path. */
+	blocks?: unknown[];
+}
+
+/** TurnError: fires when a turn fails after all retries. */
+export interface TurnErrorContext extends BaseHookContext {
 	error: string;
 	errorClass?: string;
 	userFriendlyMsg?: string;
 	retryAttempts?: number;
+	/** Recorder blocks for partial-work persistence. */
+	blocks?: unknown[];
 }
 
-export interface UserPromptSubmitContext extends BaseHookContext {
-	message: string;
+// ---------------------------------------------------------------------------
+// Step level (per LLM call)
+// ---------------------------------------------------------------------------
+
+/**
+ * StepStart: per-step setup seam. Currently empty (no consumers); added so the
+ * skeleton is complete. Fires before PreLLMCall of each step once the step
+ * loop is externalized (P2). Not fired in Step 1C.
+ */
+export interface StepStartContext extends BaseHookContext {
+	/** 1-based step number within the current turn. */
+	stepNumber: number;
+	/** Messages already slated for this step (caller-prepared). Append-only. */
+	messages: Array<{ role: string; content: string }>;
 }
 
+/** StepEnd: fires after each step completes (finish-step). Persist step + usage. */
+export interface StepEndContext extends BaseHookContext {
+	/** TurnRecorder instance — handlers persist completed steps from it. */
+	recorder?: unknown;
+	/** Base seq for the current turn group's assistant steps. */
+	stepBaseSeq?: number;
+	/** How many steps have been completed in the current turn group. */
+	stepOffset?: number;
+	usage?: {
+		inputTokens: number;
+		outputTokens: number;
+		totalTokens: number;
+	};
+}
+
+// ---------------------------------------------------------------------------
+// LLMCall level (per LLM call)
+// ---------------------------------------------------------------------------
+
+/** PreLLMCall: per-step injection point (rag / providerOptions / notifications / ...). */
+export interface PreLLMCallContext extends BaseHookContext {
+	session?: unknown;
+	config?: unknown;
+	providers?: unknown;
+	taskRegistry?: unknown;
+	emit?: (event: unknown) => void;
+}
+
+/**
+ * PostLLCall: observation seam between the model returning and tool execution.
+ * Currently empty (no consumers); not fired in Step 1C (P2 will wire it).
+ */
+export interface PostLLCallContext extends BaseHookContext {
+	/** Step number within the current turn. */
+	stepNumber?: number;
+}
+
+/**
+ * OnLLMError: fires when an LLM call fails. Handlers can request a retry of
+ * just the failed step + an aggressive prune for prompt_too_long. Not fired in
+ * Step 1C (P2 will wire it once the step loop is externalized).
+ */
+export interface OnLLMErrorContext extends BaseHookContext {
+	error: string;
+	errorClass?: string;
+	/** Set by a handler to request a retry of the failed step. */
+	retry?: boolean;
+	/** Delay (ms) before the requested retry. */
+	delayMs?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Session level (agent-service, once per loop instance)
+// ---------------------------------------------------------------------------
+
+/**
+ * SessionStart: fires from agent-service when a loop instance is BUILT (new
+ * session created or restored into runtime). Distinct from the retired
+ * per-run SessionStart (now TurnStart). Carries the loop kind (main/delegated).
+ */
 export interface SessionStartContext extends BaseHookContext {
-	userMessage: string;
+	/** "main" for primary chat loops, "delegated" for sub-agent loops. */
+	loopKind: "main" | "delegated";
 }
 
-export interface SessionEndContext extends BaseHookContext {
-	resultText: string;
+/**
+ * SessionClose: fires from agent-service when a loop instance is DESTROYED
+ * (abort / agent delete / session delete / shutdown). Distinct from the
+ * retired empty SessionEnd trigger that used to fire per-run.
+ */
+export interface SessionCloseContext extends BaseHookContext {
+	/** "main" for primary chat loops, "delegated" for sub-agent loops. */
+	loopKind: "main" | "delegated";
 }
+
+// ---------------------------------------------------------------------------
+// Observability / workflow event context types (NOT renamed in Step 1C)
+// ---------------------------------------------------------------------------
 
 export interface SubagentStartContext extends BaseHookContext {
 	taskId: string;
@@ -124,40 +267,17 @@ export interface NotificationContext extends BaseHookContext {
 	notifications: Array<{ taskId: string; status: string; result?: string }>;
 }
 
-export interface PostStepContext extends BaseHookContext {
-	stepOffset: number;
-	usage?: {
-		inputTokens: number;
-		outputTokens: number;
-		totalTokens: number;
-	};
-}
-
-/**
- * PrepareStep: fires before EACH step within the multi-step streamText run
- * (per-step injection point — distinct from PreLLMCall, which fires once per
- * turn before the whole run). Handlers can append messages (e.g. a queued
- * user input, or a delegated task's control message) that will be sent to the
- * model for this step.
- */
-export interface PrepareStepContext extends BaseHookContext {
-	/** 1-based step number within the current turn. */
-	stepNumber: number;
-	/** Messages already slated for this step (caller-prepared). Append-only. */
-	messages: Array<{ role: string; content: string }>;
-}
-
 // ---------------------------------------------------------------------------
 // Hook result types
 // ---------------------------------------------------------------------------
 
-/** Return to block the current operation (e.g. PreToolUse blocking a tool call) */
+/** Return to block the current operation (e.g. PreToolUse blocking a tool call). */
 export interface HookBlockResult {
 	blocked: true;
 	reason: string;
 }
 
-/** Return to force the agent loop to continue instead of stopping */
+/** Return to force the agent loop to continue instead of stopping. */
 export interface HookContinueResult {
 	forceContinue: true;
 	message: string;
@@ -165,50 +285,43 @@ export interface HookContinueResult {
 
 // --- Per-event data-modification results ---
 
-/** PreToolUse: can block or modify tool arguments */
+/** PreToolUse: can block or modify tool arguments. */
 export interface PreToolUseResult {
 	blocked?: boolean;
 	reason?: string;
 	modifiedArgs?: Record<string, unknown>;
 }
 
-/** PostToolUse: can modify tool output */
+/** PostToolUse: can modify tool output. */
 export interface PostToolUseResult {
 	modifiedResult?: unknown;
 	modifiedIsError?: boolean;
 }
 
-/** PostToolUseFailure: can modify error message */
+/** PostToolUseFailure: can modify error message. */
 export interface PostToolUseFailureResult {
 	modifiedError?: string;
 }
 
-/** PreLLMCall: can inject context strings and provider options */
+/** PreLLMCall: can inject context strings and provider options. */
 export interface PreLLMCallResult {
 	memoryContext?: string;
 	ragContext?: string;
 	providerOptions?: Record<string, Record<string, unknown>>;
 }
 
-/** PostStep: can trigger token calibration */
-export interface PostStepResult {
+/** StepEnd: can trigger token calibration. */
+export interface StepEndResult {
 	inputTokens?: number;
 }
 
-/** PrepareStep: can append messages to be sent to the model for this step. */
-export interface PrepareStepResult {
+/** StepStart: can append messages to be sent to the model for this step. */
+export interface StepStartResult {
 	/** Extra messages to append for this step (after the prepared messages). */
 	appendMessages?: Array<{ role: string; content: string }>;
 }
 
-/** UserPromptSubmit: can block or modify user message */
-export interface UserPromptSubmitResult {
-	blocked?: boolean;
-	reason?: string;
-	modifiedMessage?: string;
-}
-
-/** Union of all possible hook return values. void = no action */
+/** Union of all possible hook return values. void = no action. */
 export type HookResult =
 	| void
 	| HookBlockResult
@@ -217,9 +330,8 @@ export type HookResult =
 	| PostToolUseResult
 	| PostToolUseFailureResult
 	| PreLLMCallResult
-	| PostStepResult
-	| PrepareStepResult
-	| UserPromptSubmitResult;
+	| StepEndResult
+	| StepStartResult;
 
-/** Handler function signature */
+/** Handler function signature. */
 export type HookHandler = (ctx: BaseHookContext & Record<string, unknown>) => HookResult | Promise<HookResult>;

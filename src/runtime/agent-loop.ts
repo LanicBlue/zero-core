@@ -235,26 +235,24 @@ export class AgentLoop implements AgentRuntime {
 		const timeout = this.setupTimeout();
 
 		try {
-			// [Batch 4] UserPromptSubmit hook fires BEFORE addMessage,
-			// allowing consumers to audit/filter the message
-			await this.triggerLocal("UserPromptSubmit", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), message: userMessage });
-
+			// Step 1C: UserPromptSubmit is deleted (no consumer; the input-gate
+			// concern merged into TurnStart). addMessage runs unconditionally.
 			this.session.addMessage({ role: "user", content: userMessage });
 			this.session.saveToDb();
 			await this.session.pruneIfNeeded();
 
 			log.loop("Messages after prune:", this.session.getMessages().length, "est tokens:", this.session.getMessages().reduce((s: number, m: any) => s + Math.ceil(JSON.stringify(m).length / 4), 0));
 
-			await this.triggerLocal("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
+			await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
 
-			// SessionStart hook has written user turn; next seq is the first assistant step
+			// TurnStart hook has written user turn; next seq is the first assistant step
 			if (this.config.db && this.config.sessionId) {
 				this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
 			}
 			this.stepOffset = 0;
 
 			// Set the turn group (= user message's seq = stepBaseSeq - 1 for non-resume,
-			// but SessionStart already wrote the user turn so getTurnCount includes it)
+			// but TurnStart already wrote the user turn so getTurnCount includes it)
 			const userSeq = this.stepBaseSeq - 1;
 			this.recorder.startTurnGroup(userSeq);
 
@@ -277,8 +275,10 @@ export class AgentLoop implements AgentRuntime {
 			this.streamText = "";
 			this.delegator.cleanup();
 
-			await this.triggerLocal("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
-			await this.triggerLocal("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
+			await this.triggerLocal("TurnEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
+			// Step 1C: the empty per-run SessionEnd trigger is deleted (session-
+			// lifecycle ownership moved to agent-service: SessionClose fires at
+			// loop destroy). TurnEnd closes the turn boundary above.
 
 			this.emit({ type: "agent_end", agentId: this.config.agentId });
 		}
@@ -305,9 +305,9 @@ export class AgentLoop implements AgentRuntime {
 			}
 			this.stepOffset = 0;
 
-			await this.triggerLocal("SessionStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)" });
+			await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)" });
 
-			// After SessionStart, the turn count may have increased (if hook wrote a turn)
+			// After TurnStart, the turn count may have increased (if hook wrote a turn)
 			if (this.config.db && this.config.sessionId) {
 				this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
 			}
@@ -321,8 +321,8 @@ export class AgentLoop implements AgentRuntime {
 			this.streamText = "";
 			this.delegator.cleanup();
 
-			await this.triggerLocal("Stop", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
-			await this.triggerLocal("SessionEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText });
+			await this.triggerLocal("TurnEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
+			// Step 1C: SessionEnd empty trigger deleted (see run() finally).
 
 			this.emit({ type: "agent_end", agentId: this.config.agentId });
 		}
@@ -474,8 +474,9 @@ export class AgentLoop implements AgentRuntime {
 		if (lastError && !(lastError.name === "AbortError" || this.abortController?.signal.aborted)) {
 			const cls = classifyError(lastError);
 			log.error("loop", "All retries exhausted:", cls, lastError.message);
-			// [Batch 4] StopFailure with enriched context
-			await this.triggerLocal("StopFailure", {
+			// Step 1C: StopFailure → TurnError. Fires with enriched context for
+			// partial-work persistence + failure recording.
+			await this.triggerLocal("TurnError", {
 				agentId: this.config.agentId,
 				sessionId: this.session.getSessionId(),
 				error: lastError?.message,
@@ -570,11 +571,12 @@ export class AgentLoop implements AgentRuntime {
 			experimental_context: this.toolContext,
 			// Per-step injection point (completes the PreLLMCall → … → PreLLMCall
 			// → … chain the architecture intends). SDK owns the multi-step loop;
-			// this callback fires before each step, letting PrepareStep hooks
+			// this callback fires before each step, letting StepStart hooks
 			// append messages (queued user input / delegated-task control
 			// message) for that step. Not feature code — just the hook surface.
+			// (Step 1C: PrepareStep renamed to StepStart.)
 			prepareStep: async ({ stepNumber, messages: stepMessages }) => {
-				const res = await this.triggerLocal("PrepareStep", {
+				const res = await this.triggerLocal("StepStart", {
 					agentId: this.config.agentId,
 					sessionId: this.session.getSessionId(),
 					stepNumber,
@@ -791,8 +793,8 @@ export class AgentLoop implements AgentRuntime {
 							totalTokens: (stepUsage.inputTokens ?? 0) + (stepUsage.outputTokens ?? 0),
 						});
 
-						// Persist all completed steps via PostStep hook
-						await this.triggerLocal("PostStep", {
+						// Persist all completed steps via StepEnd hook (Step 1C: PostStep → StepEnd)
+						await this.triggerLocal("StepEnd", {
 							agentId: this.config.agentId,
 							sessionId: this.session.getSessionId(),
 							recorder: this.recorder,
@@ -823,8 +825,8 @@ export class AgentLoop implements AgentRuntime {
 		} catch { /* usage not available for some providers */ }
 
 		this.recorder.sealStep();
-		// Final persist for any remaining blocks via PostStep hook
-		await this.triggerLocal("PostStep", {
+		// Final persist for any remaining blocks via StepEnd hook (Step 1C: PostStep → StepEnd)
+		await this.triggerLocal("StepEnd", {
 			agentId: this.config.agentId,
 			sessionId: this.session.getSessionId(),
 			recorder: this.recorder,
@@ -864,7 +866,11 @@ export class AgentLoop implements AgentRuntime {
 	 * Step 1B: trigger a hook on THIS loop's registry. Automatically attaches
 	 * `loopKind` (defaulting to "main" when SessionConfig.loopKind is unset,
 	 * matching legacy main-loop callers) and `timestamp`, so handlers get a
-	 * stable context shape. Event names are unchanged (renaming is Step 1C).
+	 * stable context shape. Step 1C renamed the agent-execution events to the
+	 * step-centric set (TurnStart/TurnEnd/TurnError/StepStart/StepEnd + the
+	 * kept PreLLMCall/PostTurnComplete/Tool*). Session-level SessionStart/
+	 * SessionClose are fired by agent-service, NOT here (AgentLoop has no
+	 * per-instance lifecycle hooks of its own).
 	 */
 	private async triggerLocal(event: import("../core/hook-types.js").HookEventName, ctx: Record<string, unknown>): Promise<import("../core/hook-registry.js").AggregatedHookResult> {
 		return this._registry.trigger(event, {

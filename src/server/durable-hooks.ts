@@ -38,7 +38,7 @@ export function setSessionTurnSeq(sessionId: string, turnSeq: number): void {
 
 export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistry = HookRegistry.getInstance()): void {
 
-	registry.register("SessionStart", async (ctx) => {
+	registry.register("TurnStart", async (ctx) => {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
@@ -52,7 +52,7 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 			sessionDb.createTurnState(sessionId, turnSeq);
 			log.debug("durable", `Turn ${turnSeq} created for session ${sessionId}`);
 		} catch (err) {
-			log.error("durable", "SessionStart hook failed:", (err as Error).message);
+			log.error("durable", "TurnStart hook failed:", (err as Error).message);
 		}
 	});
 
@@ -71,7 +71,7 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 		}
 	});
 
-	registry.register("Stop", async (ctx) => {
+	registry.register("TurnEnd", async (ctx) => {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
@@ -81,11 +81,11 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 			log.debug("durable", `Turn ${turnSeq} completed for session ${sessionId}`);
 			sessionTurnSeq.delete(sessionId);
 		} catch (err) {
-			log.error("durable", "Stop hook failed:", (err as Error).message);
+			log.error("durable", "TurnEnd hook failed:", (err as Error).message);
 		}
 	});
 
-	registry.register("StopFailure", async (ctx) => {
+	registry.register("TurnError", async (ctx) => {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
@@ -95,7 +95,7 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 			log.debug("durable", `Turn ${turnSeq} failed for session ${sessionId}`);
 			sessionTurnSeq.delete(sessionId);
 		} catch (err) {
-			log.error("durable", "StopFailure hook failed:", (err as Error).message);
+			log.error("durable", "TurnError hook failed:", (err as Error).message);
 		}
 	});
 

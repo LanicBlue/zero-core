@@ -201,6 +201,11 @@ export class AgentService {
 			const activeSessionId = this.activeSessions.get(agentId) ?? this.db.getMainSession(agentId)?.id;
 			const activeState = activeSessionId ? this.runStates.get(activeSessionId) : undefined;
 			if (activeSessionId && !activeState?.isBusy) {
+				// Step 1C: SessionClose for the loop being torn down before the
+				// fresh rebuild. Fire-and-forget; createLoopForSession fires
+				// SessionStart for the replacement.
+				const oldLoop = this.loops.get(activeSessionId);
+				if (oldLoop) void this.fireSessionClose(oldLoop, agentId, activeSessionId, "main");
 				this.loops.delete(activeSessionId);
 				this.createLoopForSession(agentId, activeSessionId, agent);
 				this.activeSessions.set(agentId, activeSessionId);
@@ -283,6 +288,47 @@ export class AgentService {
 		};
 	}
 
+	/**
+	 * Step 1C: fire the session-lifecycle SessionStart hook on a freshly built
+	 * loop. Fires AFTER the loop is registered + added to `this.loops` so a
+	 * handler that re-enters the service (e.g. metrics via sessionManager) sees
+	 * a consistent map. loopKind defaults to "main" — agent-service only builds
+	 * main loops (delegated sub-loops are built in subagent-delegator and
+	 * register/fire their own lifecycle on their own registry).
+	 */
+	private async fireSessionStart(loop: AgentLoop, agentId: string, sessionId: string, loopKind: "main" | "delegated" = "main"): Promise<void> {
+		try {
+			await loop.registry.trigger("SessionStart", {
+				agentId,
+				sessionId,
+				loopKind,
+				timestamp: Date.now(),
+			});
+		} catch (err) {
+			log.warn("agent", `SessionStart fire failed for ${sessionId}: ${(err as Error)?.message}`);
+		}
+	}
+
+	/**
+	 * Step 1C: fire the session-lifecycle SessionClose hook on a loop about to
+	 * be destroyed. Best-effort — must run BEFORE SessionManager.dispose() /
+	 * db.close() on the shutdown path so handlers (e.g. metrics idle) can still
+	 * touch live stores. Swallows errors so a failing handler can't block
+	 * teardown.
+	 */
+	private async fireSessionClose(loop: AgentLoop, agentId: string, sessionId: string, loopKind: "main" | "delegated" = "main"): Promise<void> {
+		try {
+			await loop.registry.trigger("SessionClose", {
+				agentId,
+				sessionId,
+				loopKind,
+				timestamp: Date.now(),
+			});
+		} catch (err) {
+			log.warn("agent", `SessionClose fire failed for ${sessionId}: ${(err as Error)?.message}`);
+		}
+	}
+
 	/** Mark a module as ready (e.g. "providers", "agentStore"). Triggers deferred actions. */
 	notifyReady(module: string): void {
 		if (this.readyModules.has(module)) return;
@@ -332,7 +378,19 @@ export class AgentService {
 			log.warn("agent", `close flush dispatch failed: ${(err as Error)?.message}`);
 		}
 		const loop = this.loops.get(sessionId);
-		if (loop) { loop.abort(); this.loops.delete(sessionId); }
+		if (loop) {
+			// Resolve the owning agentId BEFORE we clear activeSessions below.
+			let ownerAgentId = "__default__";
+			for (const [aid, sid] of this.activeSessions) {
+				if (sid === sessionId) { ownerAgentId = aid; break; }
+			}
+			// Step 1C: SessionClose for the loop being evicted. Fire-and-forget
+			// (eviction is synchronous from session-manager's POV); metrics idle
+			// + registry teardown must not block eviction.
+			void this.fireSessionClose(loop, ownerAgentId, sessionId, "main");
+			loop.abort();
+			this.loops.delete(sessionId);
+		}
 		this.runStates.delete(sessionId);
 		for (const [agentId, sid] of this.activeSessions) {
 			if (sid === sessionId) { this.activeSessions.delete(agentId); break; }
@@ -583,6 +641,11 @@ export class AgentService {
 		this.sessionManager?.trackSessionCreated(sessionId, agentId);
 		this.sessionManager?.trackSessionActivated(sessionId);
 		log.agent("Runtime ready for:", agentId, "session:", sessionId);
+		// Step 1C: fire session-lifecycle SessionStart now that the loop is
+		// built + registered + tracked. Fire-and-forget: handlers must not
+		// block loop creation (the loop is returned synchronously to callers
+		// like sendPrompt which then drive run()).
+		void this.fireSessionStart(loop, agentId, sessionId, "main");
 		return loop;
 	}
 	// ─── Prompt execution — concurrent ──────────────────────────────
@@ -747,6 +810,9 @@ export class AgentService {
 			// Step 1B: register the main-loop hook set on the loop's own registry.
 			registerHooksForLoop(loop.registry, "main", this.buildHookDeps());
 			this.loops.set(sessionId, loop);
+			// Step 1C: fire session-lifecycle SessionStart for this newly-built
+			// project loop (mirrors createLoopForSession). Fire-and-forget.
+			void this.fireSessionStart(loop, agentId, sessionId, "main");
 		}
 
 		this.activeSessions.set(agentId, sessionId);
@@ -1212,10 +1278,39 @@ export class AgentService {
 		}
 		return result;
 	}
-	dispose(): void {
+	/**
+	 * Step 1C: now async. SessionClose MUST fire BEFORE SessionManager.dispose()
+	 * / db.close() so handlers (e.g. metrics idle, registry teardown) still see
+	 * live stores. We snapshot the live loops + their owning agentIds, await all
+	 * SessionClose fires, then proceed with the existing teardown order:
+	 * SessionManager.dispose() → db.close() → loop.abort() (DB-first keeps
+	 * turn_state rows incomplete for recovery on next startup).
+	 *
+	 * Each SessionClose fire is awaited individually but errors are swallowed
+	 * inside fireSessionClose, so one failing handler can't block shutdown.
+	 */
+	async dispose(): Promise<void> {
+		// Snapshot loops + owning agentIds BEFORE mutating any maps (the fires
+		// below must not race with eviction/invalidation mid-shutdown).
+		const live: Array<{ loop: AgentLoop; agentId: string; sessionId: string }> = [];
+		for (const [sessionId, loop] of this.loops) {
+			const state = this.runStates.get(sessionId);
+			let agentId = state?.agentId;
+			if (!agentId) {
+				for (const [aid, sid] of this.activeSessions) {
+					if (sid === sessionId) { agentId = aid; break; }
+				}
+			}
+			live.push({ loop, agentId: agentId ?? "__default__", sessionId });
+		}
+		// SessionClose first — handlers can still touch SessionManager + DB.
+		await Promise.all(live.map(({ loop, agentId, sessionId }) =>
+			this.fireSessionClose(loop, agentId, sessionId, "main"),
+		));
+
 		this.sessionManager?.stopTtlCleanup();
 		this.sessionManager?.dispose();
-		// Close DB BEFORE aborting loops. This prevents Stop hooks from
+		// Close DB BEFORE aborting loops. This prevents TurnEnd hooks from
 		// completing turn_state rows — they stay incomplete so that
 		// recoverIncompleteSessions() can resume them on next startup.
 		this.db.close();
@@ -1232,6 +1327,9 @@ export class AgentService {
 		for (const [sessionId, loop] of this.loops) {
 			const state = this.runStates.get(sessionId);
 			if (state?.isBusy) continue; // Don't abort busy loops (e.g. recovery in progress)
+			// Step 1C: SessionClose for the loop being invalidated (provider/
+			// workspace change tore it down). Fire-and-forget.
+			void this.fireSessionClose(loop, state?.agentId ?? "__default__", sessionId, "main");
 			loop.abort();
 			this.loops.delete(sessionId);
 			this.runStates.delete(sessionId);

@@ -40,9 +40,11 @@ export function setTurnSeq(sessionId: string, seq: number): void {
 
 export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = HookRegistry.getInstance()): void {
 
-	// ─── SessionStart: write user turn as step row ─────────────
+	// ─── TurnStart: write user turn as step row ─────────────
+	// (Step 1C: renamed from SessionStart — this is a per-run concern, not
+	// the new agent-service-fired instance-lifecycle SessionStart.)
 
-	registry.register("SessionStart", async (ctx) => {
+	registry.register("TurnStart", async (ctx) => {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
@@ -67,18 +69,18 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			}
 			log.debug("turn-hooks", `User turn ${seq} saved for session ${sessionId}`);
 		} catch (err) {
-			log.error("turn-hooks", "SessionStart hook failed:", (err as Error).message);
+			log.error("turn-hooks", "TurnStart hook failed:", (err as Error).message);
 		}
 	});
 
-	// ─── PostStep: persist completed steps to DB ───────────────
+	// ─── StepEnd: persist completed steps to DB ───────────────
 	//
 	// Fires on finish-step (per LLM API call completion) and once
 	// more at finalizeStream for any trailing blocks.
 	// AgentLoop owns recorder state + stepOffset; this hook only
-	// handles the DB write.
+	// handles the DB write. (Step 1C: renamed from PostStep.)
 
-	registry.register("PostStep", async (ctx) => {
+	registry.register("StepEnd", async (ctx) => {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
@@ -88,20 +90,20 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 
 			if (recorder && stepBaseSeq !== undefined && stepBaseSeq >= 0) {
 				recorder.persistAllSteps(db, sessionId, stepBaseSeq);
-				log.debug("turn-hooks", `PostStep: persisted steps for session ${sessionId}, baseSeq=${stepBaseSeq}, offset=${ctx.stepOffset}`);
+				log.debug("turn-hooks", `StepEnd: persisted steps for session ${sessionId}, baseSeq=${stepBaseSeq}, offset=${ctx.stepOffset}`);
 			}
 		} catch (err) {
-			log.error("turn-hooks", "PostStep hook failed:", (err as Error).message);
+			log.error("turn-hooks", "StepEnd hook failed:", (err as Error).message);
 		}
 	});
 
-	// ─── Stop: safety net for final assistant step ──────────────
+	// ─── TurnEnd: safety net for final assistant step ───────────
 	//
-	// Normally, PostStep hook persists steps incrementally during streaming.
+	// Normally, StepEnd hook persists steps incrementally during streaming.
 	// This hook is a safety net for cases where abort occurs before
-	// finish-step fires (e.g., user abort, timeout).
+	// finish-step fires (e.g., user abort, timeout). (Step 1C: Stop → TurnEnd.)
 
-	registry.register("Stop", async (ctx) => {
+	registry.register("TurnEnd", async (ctx) => {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
@@ -137,13 +139,14 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 
 			sessionTurnSeq.delete(sessionId);
 		} catch (err) {
-			log.error("turn-hooks", "Stop hook failed:", (err as Error).message);
+			log.error("turn-hooks", "TurnEnd hook failed:", (err as Error).message);
 		}
 	});
 
-	// ─── StopFailure: save whatever we have ─────────────────────
+	// ─── TurnError: save whatever we have ─────────────────────
+	// (Step 1C: StopFailure → TurnError.)
 
-	registry.register("StopFailure", async (ctx) => {
+	registry.register("TurnError", async (ctx) => {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
@@ -176,7 +179,7 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 
 			sessionTurnSeq.delete(sessionId);
 		} catch (err) {
-			log.error("turn-hooks", "StopFailure hook failed:", (err as Error).message);
+			log.error("turn-hooks", "TurnError hook failed:", (err as Error).message);
 		}
 	});
 }
