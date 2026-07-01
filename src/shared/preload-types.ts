@@ -46,6 +46,7 @@ import type {
 	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord, ProjectJobRecord,
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
+	DelegatedTaskRecord,
 } from "./types.js";
 
 export interface WindowApi {
@@ -281,6 +282,10 @@ export interface WindowApi {
 	wikiReadWorkspaceDoc: (projectId: string, relPath: string) => Promise<{ content?: string; error?: string }>;
 	wikiSearch: (query: string, anchorIds?: string[]) => Promise<WikiNode[]>;
 	wikiResolvedAnchors: (agentId: string, projectId?: string) => Promise<ResolvedAnchorView[]>;
+
+	// ── Delegated tasks (TaskTree) ──
+	delegatedTasksBySession: (sessionId: string) => Promise<DelegatedTaskRecord[]>;
+	delegatedTasksGet: (id: string) => Promise<DelegatedTaskRecord | undefined>;
 
 	// ── Lead ──
 	leadPickup: (requirementId: string) => Promise<{ sessionId: string } | { error: string }>;

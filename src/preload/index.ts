@@ -263,6 +263,10 @@ const api: WindowApi = {
 	wikiSearch: (query, anchorIds?) => ipcRenderer.invoke("wiki:search", query, anchorIds),
 	wikiResolvedAnchors: (agentId, projectId?) => ipcRenderer.invoke("wiki:resolvedAnchors", agentId, projectId),
 
+	// ── Delegated tasks (TaskTree) ──
+	delegatedTasksBySession: (sessionId) => ipcRenderer.invoke("delegatedTasks:bySession", sessionId),
+	delegatedTasksGet: (id) => ipcRenderer.invoke("delegatedTasks:get", id),
+
 	// ── Lead ──
 	leadPickup: (requirementId) => ipcRenderer.invoke("lead:pickup", requirementId),
 	leadProgress: (requirementId) => ipcRenderer.invoke("lead:progress", requirementId),

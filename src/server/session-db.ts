@@ -1118,12 +1118,13 @@ export class SessionDB {
 		return row ? this.delegatedTaskRowToRecord(row) : undefined;
 	}
 
-	listDelegatedTasks(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; status?: DelegatedTaskStatus }): DelegatedTaskRecord[] {
+	listDelegatedTasks(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; parentSessionId?: string; status?: DelegatedTaskStatus }): DelegatedTaskRecord[] {
 		const where: string[] = [];
 		const vals: any[] = [];
 		if (filter?.ownerAgentId) { where.push("owner_agent_id = ?"); vals.push(filter.ownerAgentId); }
 		if (filter?.rootTaskId) { where.push("root_task_id = ?"); vals.push(filter.rootTaskId); }
 		if (filter?.parentTaskId) { where.push("parent_task_id = ?"); vals.push(filter.parentTaskId); }
+		if (filter?.parentSessionId) { where.push("parent_session_id = ?"); vals.push(filter.parentSessionId); }
 		if (filter?.status) { where.push("status = ?"); vals.push(filter.status); }
 		const sql = "SELECT * FROM delegated_tasks" + (where.length ? " WHERE " + where.join(" AND ") : "") + " ORDER BY created_at DESC";
 		const rows = this.db.prepare(sql).all(...vals) as any[];

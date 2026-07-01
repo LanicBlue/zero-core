@@ -51,6 +51,7 @@ import { createKbRouter } from "./kb-router.js";
 import { createConfigRouter } from "./config-router.js";
 import { createChatRouter } from "./chat-router.js";
 import { createSessionRouter } from "./session-router.js";
+import { createDelegatedTaskRouter } from "./delegated-task-router.js";
 import { createLogRouter } from "./log-router.js";
 import { createFileRouter } from "./file-router.js";
 import { createToolExecutionRouter } from "./tool-execution-router.js";
@@ -533,6 +534,7 @@ export async function startServer(options?: StartServerOptions) {
 	// New routers
 	app.use("/api/chat", createChatRouter({ agentService, agentStore, providerStore, workspaceConfig }));
 	app.use("/api/sessions", createSessionRouter({ agentService, agentStore, management }));
+	app.use("/api/delegated-tasks", createDelegatedTaskRouter(sessionDB));
 	app.use("/api/logs", createLogRouter({ sessionDb: sessionDB }));
 	app.use("/api/files", createFileRouter({ workspaceConfig }));
 	app.use("/api/tool-executions", createToolExecutionRouter({ sessionDb: sessionDB, agentService, providerStore, workspaceConfig }));

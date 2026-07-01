@@ -1,57 +1,59 @@
-// 中间栏 —— 上下两段(文件目录 + Wiki 节点)
+// 中间栏 —— 三段可折叠(WORKSPACE 文件目录 / WIKI 锚点 / TASKS 委派任务)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// chat 中间栏垂直分割:上段 FileTreePanel(文件目录),下段 WikiTreePanel
-// (wiki 节点)。中间一条可拖拽的横向分隔条,控制上段高度百分比(15%~85%)。
-// 两段都能把选中项送到右侧 DocViewerPanel(文件走 zero-file-select,wiki
-// 走 zero-wiki-select)。
+// chat 中间栏垂直堆叠三个可折叠段。每段标题点击切换折叠/展开,展开的段平分
+// 可用高度。点文件/wiki/task 选中项分别通过 zero-file-select / zero-wiki-select /
+// zero-task-select 派发到右侧 DocViewerPanel。
 //
 // ## 定位
-// src/renderer/components/layout/ — 被 AppLayout 作为中间栏嵌入(取代裸
-// FileTreePanel)。
+// src/renderer/components/layout/ — 被 AppLayout 作为中间栏嵌入。
 //
-import React, { useCallback, useRef, useState } from "react";
+import React, { useState } from "react";
 import FileTreePanel from "./FileTreePanel.js";
 import WikiTreePanel from "./WikiTreePanel.js";
+import TaskTreePanel from "./TaskTreePanel.js";
+
+type SectionId = "workspace" | "wiki" | "tasks";
+
+const SECTIONS: { id: SectionId; label: string }[] = [
+	{ id: "workspace", label: "WORKSPACE · 文件" },
+	{ id: "wiki", label: "WIKI · 锚点" },
+	{ id: "tasks", label: "TASKS · 委派任务" },
+];
 
 export default function MiddlePanel() {
-	const containerRef = useRef<HTMLDivElement>(null);
-	const [topPct, setTopPct] = useState(50);
+	// Default: workspace + wiki open, tasks collapsed. Sections persist for the
+	// session via local state (no cross-session persistence needed for v1).
+	const [open, setOpen] = useState<Record<SectionId, boolean>>({
+		workspace: true,
+		wiki: true,
+		tasks: false,
+	});
 
-	const onSplitterDown = useCallback((e: React.MouseEvent) => {
-		e.preventDefault();
-		const el = containerRef.current;
-		if (!el) return;
-		const start = { startY: e.clientY, h: el.clientHeight, pct: topPct };
-		const move = (ev: MouseEvent) => {
-			if (!el) return;
-			const dy = ev.clientY - start.startY;
-			const next = Math.min(85, Math.max(15, start.pct + (dy / start.h) * 100));
-			setTopPct(next);
-		};
-		const up = () => {
-			document.removeEventListener("mousemove", move);
-			document.removeEventListener("mouseup", up);
-			document.body.style.cursor = "";
-			document.body.style.userSelect = "";
-		};
-		document.body.style.cursor = "row-resize";
-		document.body.style.userSelect = "none";
-		document.addEventListener("mousemove", move);
-		document.addEventListener("mouseup", up);
-	}, [topPct]);
+	const toggle = (id: SectionId) => setOpen((s) => ({ ...s, [id]: !s[id] }));
 
 	return (
-		<div ref={containerRef} className="middle-panel">
-			<div className="middle-pane" style={{ height: `${topPct}%` }}>
-				<FileTreePanel />
-			</div>
-			<div className="middle-splitter" onMouseDown={onSplitterDown} />
-			<div className="middle-pane" style={{ height: `${100 - topPct}%` }}>
-				<WikiTreePanel />
-			</div>
+		<div className="middle-panel middle-panel-stack">
+			{SECTIONS.map((sec) => {
+				const isOpen = open[sec.id];
+				return (
+					<div key={sec.id} className={`middle-section${isOpen ? " open" : " collapsed"}`}>
+						<button type="button" className="middle-section-header" onClick={() => toggle(sec.id)}>
+							<span className={`middle-section-caret${isOpen ? " open" : ""}`}>▸</span>
+							<span>{sec.label}</span>
+						</button>
+						{isOpen && (
+							<div className="middle-section-body">
+								{sec.id === "workspace" && <FileTreePanel />}
+								{sec.id === "wiki" && <WikiTreePanel />}
+								{sec.id === "tasks" && <TaskTreePanel />}
+							</div>
+						)}
+					</div>
+				);
+			})}
 		</div>
 	);
 }

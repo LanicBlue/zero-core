@@ -115,9 +115,34 @@ export default function DocViewerPanel() {
 			setLoading(false);
 		};
 		window.addEventListener("zero-wiki-select", wikiHandler);
+		/** Delegated task detail (TaskTreePanel dispatches zero-task-select). */
+		const taskHandler = (e: Event) => {
+			const d = (e as CustomEvent).detail as { task: { targetAgentId: string; task: string; status: string; turns: number; tokens: number; currentTool?: string; result?: string; error?: string; controlMessage?: string; sessionId?: string; id: string } };
+			const t = d.task;
+			setSelectedFile(`Task → ${t.targetAgentId}`);
+			setFileRoot("");
+			setResolvedPath("");
+			setWikiMode(true); // reuse read-only markdown rendering path
+			setWikiSummary(`status: ${t.status} · turns: ${t.turns} · tokens: ${t.tokens}${t.currentTool ? ` · tool: ${t.currentTool}` : ""}${t.sessionId ? ` · session: ${t.sessionId.slice(0, 8)}` : ""}`);
+			const body = [
+				`**Task** (${t.id})`,
+				"",
+				t.task,
+				"",
+				t.controlMessage ? `**Control message:** ${t.controlMessage}` : "",
+				t.error ? `**Error:** ${t.error}` : "",
+				t.result ? `**Result:**` : "",
+				t.result ?? "",
+			].filter(Boolean).join("\n");
+			setContent(body);
+			setViewMode("preview");
+			setLoading(false);
+		};
+		window.addEventListener("zero-task-select", taskHandler);
 		return () => {
 			window.removeEventListener("zero-file-select", handler);
 			window.removeEventListener("zero-wiki-select", wikiHandler);
+			window.removeEventListener("zero-task-select", taskHandler);
 		};
 	}, [loadFile]);
 

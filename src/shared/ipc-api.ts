@@ -46,6 +46,7 @@ import type {
 	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord, ProjectJobRecord,
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
+	DelegatedTaskRecord,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -250,6 +251,10 @@ export interface IpcChannelDefs {
 	"crons:trigger":  { params: [id: string];                                          result: Ok | Err };
 	// §9.3: cron_runs audit log (newest-first). limit defaults to 50.
 	"crons:listRuns": { params: [cronId: string, limit?: number];                      result: CronRunRecord[] };
+
+	// ── Delegated tasks (TaskTree UI; read-only, pull-on-display) ──
+	"delegatedTasks:bySession": { params: [sessionId: string]; result: DelegatedTaskRecord[] };
+	"delegatedTasks:get":       { params: [id: string]; result: DelegatedTaskRecord | undefined };
 
 	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
 	// RFC §2.9 / decision 11 — the kanban surfaces pending plans to the user

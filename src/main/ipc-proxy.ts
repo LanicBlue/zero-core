@@ -245,6 +245,10 @@ const R: Record<string, RouteMapping> = {
 		"wiki:search":           { method: "GET",  path: "/api/wiki/search",                                buildReq: (query, anchorIds?) => ({ query: { query, ...(anchorIds?.length ? { anchorIds: anchorIds.join(",") } : {}) } }) },
 		"wiki:resolvedAnchors":  { method: "GET",  path: "/api/wiki/anchors",                              buildReq: (agentId, projectId?) => ({ query: { agentId, ...(projectId ? { projectId } : {}) } }) },
 
+		// ─── Delegated tasks (TaskTree UI) ───────────────────
+		"delegatedTasks:bySession": { method: "GET", path: "/api/delegated-tasks/by-session/:sessionId", buildReq: (sessionId) => ({ params: { sessionId } }) },
+		"delegatedTasks:get":       { method: "GET", path: "/api/delegated-tasks/:id",                   buildReq: (id) => ({ params: { id } }) },
+
 		// ─── Lead (M3) ──────────────────────────────────────
 		"lead:pickup":             { method: "POST",   path: "/api/requirements/:id/pickup",   buildReq: (requirementId) => ({ params: { id: requirementId } }) },
 		"lead:progress":           { method: "GET",    path: "/api/requirements/:id/progress", buildReq: (requirementId) => ({ params: { id: requirementId } }) },
