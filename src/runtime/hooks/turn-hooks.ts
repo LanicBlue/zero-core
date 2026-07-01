@@ -73,12 +73,89 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 		}
 	});
 
+	// ─── PostToolUse: per-tool result immediate persist (Step 2B) ────
+	//
+	// As soon as a tool finishes, upsert the current step row so the tool
+	// block (with its result) is durable. This is the hard precondition for
+	// case2 recovery (side effect committed → crash before StepEnd would
+	// otherwise orphan the result). The AgentLoop fires PostToolUse BEFORE
+	// calling recorder.updateToolResult, so we apply the result to the
+	// recorder here first; AgentLoop's own updateToolResult call afterward
+	// is an idempotent re-set with the same value.
+	//
+	// StepEnd still does the final per-step persist (with usage). Both paths
+	// use upsertStep against the same row (stepBaseSeq + stepOffset) so they
+	// are idempotent: the immediate write lands the tool result, StepEnd
+	// rewrites the same row later with usage attached. No duplication.
+
+	registry.register("PostToolUse", async (ctx) => {
+		try {
+			const sessionId = ctx.sessionId as string;
+			if (!sessionId) return;
+
+			// Sub-agent tool calls carry sessionId=undefined (isolated from the
+			// parent session); nothing to persist for them. Same guard as the
+			// tool-execution audit hook.
+			const recorder = ctx.recorder as TurnRecorder | undefined;
+			const stepBaseSeq = ctx.stepBaseSeq as number | undefined;
+			const stepOffset = ctx.stepOffset as number | undefined;
+			if (!recorder || stepBaseSeq === undefined || stepOffset === undefined) return;
+
+			// Apply the known result to the recorder's tool block so the
+			// persisted row carries result + status (not "running").
+			recorder.updateToolResult(
+				ctx.toolCallId as string | undefined,
+				ctx.toolName as string,
+				ctx.result,
+				(ctx.isError as boolean | undefined) ?? false,
+			);
+
+			recorder.persistCurrentStep(db, sessionId, stepBaseSeq + stepOffset);
+			log.debug("turn-hooks", `PostToolUse: immediate persist for tool ${ctx.toolName}, session ${sessionId}, seq=${stepBaseSeq + stepOffset}`);
+		} catch (err) {
+			log.error("turn-hooks", "PostToolUse immediate-persist hook failed:", (err as Error).message);
+		}
+	});
+
+	// ─── PostToolUseFailure: same immediate persist for failed tools (Step 2B)
+	//
+	// Mirror of PostToolUse for the failure path: persist the tool block with
+	// status=error so a crash before StepEnd still records the failed result.
+
+	registry.register("PostToolUseFailure", async (ctx) => {
+		try {
+			const sessionId = ctx.sessionId as string;
+			if (!sessionId) return;
+
+			const recorder = ctx.recorder as TurnRecorder | undefined;
+			const stepBaseSeq = ctx.stepBaseSeq as number | undefined;
+			const stepOffset = ctx.stepOffset as number | undefined;
+			if (!recorder || stepBaseSeq === undefined || stepOffset === undefined) return;
+
+			recorder.updateToolResult(
+				ctx.toolCallId as string | undefined,
+				ctx.toolName as string,
+				ctx.error as string,
+				true,
+			);
+
+			recorder.persistCurrentStep(db, sessionId, stepBaseSeq + stepOffset);
+			log.debug("turn-hooks", `PostToolUseFailure: immediate persist for tool ${ctx.toolName}, session ${sessionId}, seq=${stepBaseSeq + stepOffset}`);
+		} catch (err) {
+			log.error("turn-hooks", "PostToolUseFailure immediate-persist hook failed:", (err as Error).message);
+		}
+	});
+
 	// ─── StepEnd: persist completed steps to DB ───────────────
 	//
 	// Fires on finish-step (per LLM API call completion) and once
 	// more at finalizeStream for any trailing blocks.
 	// AgentLoop owns recorder state + stepOffset; this hook only
 	// handles the DB write. (Step 1C: renamed from PostStep.)
+	//
+	// Step 2B note: PostToolUse/PostToolUseFailure hooks above have already
+	// upserted the current step row per tool. This handler rewrites the
+	// per-step rows with usage attached (idempotent via upsertStep).
 
 	registry.register("StepEnd", async (ctx) => {
 		try {

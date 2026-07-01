@@ -740,6 +740,13 @@ export class AgentLoop implements AgentRuntime {
 						result: e.output,
 						isError: false,
 						toolCallId: resultTcId,
+						// Step 2B: expose recorder + step coords so the per-tool
+						// persistence hook can upsert the current step row now,
+						// before finish-step (case2 recovery: side effect done but
+						// crash before StepEnd → tool result no longer orphaned).
+						recorder: this.recorder,
+						stepBaseSeq: this.stepBaseSeq,
+						stepOffset: this.stepOffset,
 					});
 					const output = postResult?.modifiedResult !== undefined ? postResult.modifiedResult : e.output;
 					const isError = (postResult?.modifiedIsError as boolean | undefined) ?? false;
@@ -760,6 +767,12 @@ export class AgentLoop implements AgentRuntime {
 						toolName: e.toolName,
 						error: errorStr,
 						toolCallId: errTcId,
+						// Step 2B: same per-tool persistence seam as PostToolUse —
+						// persist the failed tool block (status=error) immediately
+						// so a crash before StepEnd still records the failure.
+						recorder: this.recorder,
+						stepBaseSeq: this.stepBaseSeq,
+						stepOffset: this.stepOffset,
 					});
 					if (failResult?.modifiedError) errorStr = failResult.modifiedError as string;
 					this.recorder.updateToolResult(errTcId, e.toolName, errorStr, true);
