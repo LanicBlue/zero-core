@@ -557,6 +557,23 @@ export class AgentLoop implements AgentRuntime {
 			tools,
 			abortSignal: this.abortController!.signal,
 			experimental_context: this.toolContext,
+			// Per-step injection point (completes the PreLLMCall → … → PreLLMCall
+			// → … chain the architecture intends). SDK owns the multi-step loop;
+			// this callback fires before each step, letting PrepareStep hooks
+			// append messages (queued user input / delegated-task control
+			// message) for that step. Not feature code — just the hook surface.
+			prepareStep: async ({ stepNumber, messages: stepMessages }) => {
+				const res = await triggerHooks("PrepareStep", {
+					agentId: this.config.agentId,
+					sessionId: this.session.getSessionId(),
+					stepNumber,
+					messages: stepMessages,
+				});
+				const extra = (res as any)?.appendMessages as Array<{ role: string; content: string }> | undefined;
+				if (extra && extra.length > 0) {
+					return { messages: [...stepMessages, ...extra] as any };
+				}
+			},
 			...(Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
 		});
 

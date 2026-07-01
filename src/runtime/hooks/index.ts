@@ -35,6 +35,7 @@ import { registerNotificationHooks } from "./notification-hooks.js";
 import { registerProviderOptionsHooks } from "./provider-options-hooks.js";
 import { registerRagHooks } from "./rag-hooks.js";
 import { registerTodoCleanupHooks } from "./todo-cleanup-hooks.js";
+import { registerTaskControlHooks } from "./task-control-hooks.js";
 import { registerTurnHooks } from "./turn-hooks.js";
 import type { ISessionStore } from "../session-store-interface.js";
 import { log } from "../../core/logger.js";
@@ -55,6 +56,9 @@ export function registerAllRuntimeHooks(db?: ISessionStore, extractionDeps?: Ext
 	registerCompressionHooks();
 	// Clear all-completed todos at the end of the current turn (UI auto-hide).
 	registerTodoCleanupHooks();
+	// C2: deliver delegated-task control messages (request_finish) into the
+	// sub-agent's next step. Only fires for delegated sessions.
+	registerTaskControlHooks(db);
 	if (extractionDeps) registerExtractionHooks(extractionDeps);
 	log.debug("hooks", "All runtime feature hooks registered");
 }

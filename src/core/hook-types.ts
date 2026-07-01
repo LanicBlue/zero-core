@@ -32,7 +32,7 @@ export type HookEventName =
 	| "UserPromptSubmit" | "Notification" | "PermissionRequest" | "PermissionDenied"
 	| "SubagentStart" | "SubagentStop"
 	| "PreCompact" | "PostCompact"
-	| "PreLLMCall" | "PostStep" | "PostTurnComplete"
+	| "PreLLMCall" | "PrepareStep" | "PostStep" | "PostTurnComplete"
 	| "TeammateIdle" | "TaskCreated" | "TaskCompleted"
 	| "Elicitation" | "ElicitationResult"
 	| "ConfigChange" | "CwdChanged" | "FileChanged"
@@ -133,6 +133,20 @@ export interface PostStepContext extends BaseHookContext {
 	};
 }
 
+/**
+ * PrepareStep: fires before EACH step within the multi-step streamText run
+ * (per-step injection point — distinct from PreLLMCall, which fires once per
+ * turn before the whole run). Handlers can append messages (e.g. a queued
+ * user input, or a delegated task's control message) that will be sent to the
+ * model for this step.
+ */
+export interface PrepareStepContext extends BaseHookContext {
+	/** 1-based step number within the current turn. */
+	stepNumber: number;
+	/** Messages already slated for this step (caller-prepared). Append-only. */
+	messages: Array<{ role: string; content: string }>;
+}
+
 // ---------------------------------------------------------------------------
 // Hook result types
 // ---------------------------------------------------------------------------
@@ -181,6 +195,12 @@ export interface PostStepResult {
 	inputTokens?: number;
 }
 
+/** PrepareStep: can append messages to be sent to the model for this step. */
+export interface PrepareStepResult {
+	/** Extra messages to append for this step (after the prepared messages). */
+	appendMessages?: Array<{ role: string; content: string }>;
+}
+
 /** UserPromptSubmit: can block or modify user message */
 export interface UserPromptSubmitResult {
 	blocked?: boolean;
@@ -198,6 +218,7 @@ export type HookResult =
 	| PostToolUseFailureResult
 	| PreLLMCallResult
 	| PostStepResult
+	| PrepareStepResult
 	| UserPromptSubmitResult;
 
 /** Handler function signature */
