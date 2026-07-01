@@ -255,6 +255,20 @@ export class TurnRecorder {
 		this.currentStepText = "";
 	}
 
+	/**
+	 * Step 2C: discard the current (in-progress) step's partial state WITHOUT
+	 * touching completed steps. Called before retrying a step whose model call
+	 * failed mid-stream, so the retried attempt does not inherit orphaned
+	 * text/thinking/tool blocks from the failed attempt. completedSteps (prior
+	 * successful steps) are preserved — only the failed step is reset.
+	 */
+	resetCurrentStep(): void {
+		this.currentStepBlocks = [];
+		this.currentStepPersisted = false;
+		this.currentStepThinking = "";
+		this.currentStepText = "";
+	}
+
 	/** Get a snapshot of tool-call blocks (for getState). */
 	getToolCalls(): { name: string; status: string }[] {
 		return this.blocks

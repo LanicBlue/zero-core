@@ -433,62 +433,40 @@ export class AgentLoop implements AgentRuntime {
 
 
 	// ─── Retry loop (shared by run and resume) ──────────────────
+	//
+	// Step 2C: turn-level retry MOVED DOWN to the step level (see executeStream).
+	// runWithRetry is now a thin wrapper that invokes executeStream once and
+	// handles only whole-turn abort/timeout + the terminal TurnError emit. Per-
+	// step transient/prompt_too_long retries live inside executeStream's outer
+	// while, so a flaky model call no longer reruns the whole turn.
 
 	private async runWithRetry(): Promise<void> {
-		let lastError: any;
-		for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-			try {
-				await this.executeStream();
-				return;
-			} catch (err: any) {
-				lastError = err;
-				if (err.name === "AbortError" || this.abortController?.signal.aborted) break;
+		try {
+			await this.executeStream();
+		} catch (err: any) {
+			// Abort (user cancel / turn timeout) is not a failure — emit nothing.
+			if (err?.name === "AbortError" || this.abortController?.signal.aborted) return;
 
-				const cls = classifyError(err);
-				log.error("loop", "Attempt " + (attempt + 1) + " failed:", cls, err.message?.slice(0, 200));
+			const cls = classifyError(err);
+			log.error("loop", "Turn failed (unrecoverable):", cls, err.message?.slice(0, 200));
 
-				this.recorder.reset();
-
-				if (cls === "prompt_too_long") {
-					await this.session.aggressivePrune(0.5);
-					log.loop("Context too long, aggressive prune. Messages:", this.session.getMessages().length);
-					if (attempt < 1) continue;
-				}
-
-				if (!isTransientError(cls) || attempt === MAX_RETRIES) break;
-
-				const delay = BASE_DELAY_MS * Math.pow(2, attempt);
-				log.loop("Retrying in " + delay + "ms (attempt " + (attempt + 1) + "/" + MAX_RETRIES + ")");
-				this.emit({
-					type: "retry_attempt",
-					agentId: this.config.agentId,
-					attempt: attempt + 1,
-					maxAttempts: MAX_RETRIES,
-					delayMs: delay,
-					errorClass: cls,
-				});
-				await new Promise(r => setTimeout(r, delay));
-			}
-		}
-
-		if (lastError && !(lastError.name === "AbortError" || this.abortController?.signal.aborted)) {
-			const cls = classifyError(lastError);
-			log.error("loop", "All retries exhausted:", cls, lastError.message);
-			// Step 1C: StopFailure → TurnError. Fires with enriched context for
-			// partial-work persistence + failure recording.
+			// Step 1C: TurnError. Fires with enriched context for partial-work
+			// persistence + failure recording. By the time we get here the
+			// per-step retry loop has already exhausted its attempts (or hit a
+			// fatal error class), so this is the terminal failure path.
 			await this.triggerLocal("TurnError", {
 				agentId: this.config.agentId,
 				sessionId: this.session.getSessionId(),
-				error: lastError?.message,
+				error: err?.message,
 				errorClass: cls,
-				userFriendlyMsg: userFriendlyMessage(cls, lastError.message),
+				userFriendlyMsg: userFriendlyMessage(cls, err?.message ?? String(err)),
 				retryAttempts: MAX_RETRIES + 1,
 				blocks: this.recorder.blocks.slice(),
 			});
 			this.emit({
 				type: "error",
 				agentId: this.config.agentId,
-				error: userFriendlyMessage(cls, lastError.message),
+				error: userFriendlyMessage(cls, err?.message ?? String(err)),
 				errorClass: cls,
 			});
 		}
@@ -503,30 +481,13 @@ export class AgentLoop implements AgentRuntime {
 			this.toolContext.toolConfig = this.config.getToolConfig();
 		}
 
+		// These are turn-scoped (not per-step): tools, system prompt, and the
+		// context-channel render (wiki anchors / current task / todos) are
+		// resolved once per turn. Per-step injection (appendMessages from
+		// StepStart / PreLLMCall handlers, providerOptions from PreLLMCall) is
+		// merged inside the loop.
 		const tools = await this.buildTools();
 		const systemPrompt = await this.assembleSystemPrompt();
-
-		// PreLLMCall: aggregate notification + memory + rag + providerOptions
-		const preResult = await this.triggerLocal("PreLLMCall", {
-			agentId: this.config.agentId,
-			sessionId: this.session.getSessionId(),
-			session: this.session,
-			config: this.config,
-			providers: this.providers,
-			taskRegistry: this.delegator.taskRegistry,
-			// Generic: let hooks surface UI/runtime events (e.g. the todo-cleanup
-			// hook emits todos_update([]) to clear the completed list at turn start).
-			emit: (event: any) => this.emit(event),
-		});
-
-		// v0.8 (P2 §11.6): memoryContext is always undefined now — the legacy
-		// FTS5 recall hook (registerMemoryHooks) is retired. Memory indexing
-		// flows through wikiAnchorsContext below (per-agent memory subtree).
-		// Kept as a read for forward compatibility (a future semantic-recall
-		// hook may repopulate it).
-		const memoryContext = preResult.memoryContext as string | undefined;
-		const ragContext = preResult.ragContext as string | undefined;
-		const providerOptions = (preResult.providerOptions as Record<string, Record<string, any>>) ?? {};
 
 		// v0.8 (P1 §10.6): render context-channel wiki anchors every turn
 		// (system-channel anchors already live in the cached system prompt).
@@ -542,56 +503,137 @@ export class AgentLoop implements AgentRuntime {
 		// ## Current Task so the model always knows what it is doing right now.
 		const currentTask = this.resolveCurrentTask();
 
-		const ctx = buildContextMessage({
+		// Step 2C: externalized step loop. Each iteration runs ONE model call
+		// via streamText({ stopWhen: stepCountIs(1) }), consumes its events,
+		// finalizes it (seal + usage + StepEnd), then appends the step's
+		// response.messages to the local conversation and continues only when
+		// the model invoked a tool. Transient/prompt_too_long errors retry
+		// JUST this step (messages unchanged) up to MAX_RETRIES; fatal errors
+		// or exhaustion throw out to runWithRetry for the terminal TurnError.
+		// Abort is detected both at the step boundary (signal.aborted) and via
+		// the fullStream "abort" event (2A gotcha #2: abort does NOT throw).
+		const baseCtx = buildContextMessage({
 			workspaceDir: this.config.workspaceDir,
 			guidelines: this.config.guidelines,
-			ragContext,
-			memoryContext,
 			wikiAnchorsContext: wikiAnchorsContext || undefined,
 			currentTask: currentTask || undefined,
 			// Inject the agent's current todo list so it can read its own state
 			// across turns (not just write blindly). Renderer lives in todo-write.ts.
 			todosContext: renderTodosContext(this.config.sessionId, this.config.agentId) ?? undefined,
 		});
-		const messages = this.prependContext(this.session.getMessages(), ctx);
+		let messages = this.prependContext(this.session.getMessages(), baseCtx);
+		// Collect each step's response messages so finalizeStream can persist
+		// them into the session at turn end (matches the old addMessage loop).
+		const pendingPersist: any[] = [];
 
-		log.debug("loop", "streamText called, messages:", messages.length,
-			"model:", this.config.providerName + "/" + this.config.modelId,
-			"tools:", Object.keys(tools).join(","),
-			"lastMsgRole:", messages.at(-1)?.role,
-			"hasContext:", !!ctx);
+		const MAX_STEPS = 200; // guard rail (was stepCountIs(200))
+		for (let stepNumber = 1; stepNumber <= MAX_STEPS; stepNumber++) {
+			// Abort at the step boundary — never start a new model call after cancel.
+			if (this.abortController?.signal.aborted) break;
 
-		const result = streamText({
-			stopWhen: stepCountIs(200),
-			model,
-			system: systemPrompt,
-			messages,
-			tools,
-			abortSignal: this.abortController!.signal,
-			experimental_context: this.toolContext,
-			// Per-step injection point (completes the PreLLMCall → … → PreLLMCall
-			// → … chain the architecture intends). SDK owns the multi-step loop;
-			// this callback fires before each step, letting StepStart hooks
-			// append messages (queued user input / delegated-task control
-			// message) for that step. Not feature code — just the hook surface.
-			// (Step 1C: PrepareStep renamed to StepStart.)
-			prepareStep: async ({ stepNumber, messages: stepMessages }) => {
-				const res = await this.triggerLocal("StepStart", {
-					agentId: this.config.agentId,
-					sessionId: this.session.getSessionId(),
-					stepNumber,
-					messages: stepMessages,
+			// ── StepStart → PreLLMCall: per-step injection seam. ─────────────
+			// Both fire per step now. StepStart carries the queued-input /
+			// delegated-task control-message injectors (input-queue-hooks,
+			// task-control-hooks). PreLLMCall carries RAG / providerOptions /
+			// notification injection. appendMessages from EITHER is merged
+			// (registry concatenates array-typed results) and applied to this
+			// step's outgoing messages only — replaces the retired SDK
+			// prepareStep callback.
+			const stepStartResult = await this.triggerLocal("StepStart", {
+				agentId: this.config.agentId,
+				sessionId: this.session.getSessionId(),
+				stepNumber,
+				messages: messages as Array<{ role: string; content: string }>,
+			});
+			const stepStartExtra = (stepStartResult.appendMessages as Array<{ role: string; content: string }>) ?? [];
+
+			const preResult = await this.triggerLocal("PreLLMCall", {
+				agentId: this.config.agentId,
+				sessionId: this.session.getSessionId(),
+				session: this.session,
+				config: this.config,
+				providers: this.providers,
+				taskRegistry: this.delegator.taskRegistry,
+				// Generic: let hooks surface UI/runtime events (e.g. the todo-cleanup
+				// hook emits todos_update([]) to clear the completed list at turn start).
+				emit: (event: any) => this.emit(event),
+				stepNumber,
+			});
+
+			// v0.8 (P2 §11.6): memoryContext is always undefined now — the legacy
+			// FTS5 recall hook (registerMemoryHooks) is retired. Memory indexing
+			// flows through wikiAnchorsContext above. Kept as a read for forward
+			// compatibility (a future semantic-recall hook may repopulate it).
+			const memoryContext = preResult.memoryContext as string | undefined;
+			const ragContext = preResult.ragContext as string | undefined;
+			const providerOptions = (preResult.providerOptions as Record<string, Record<string, any>>) ?? {};
+			const preExtra = (preResult.appendMessages as Array<{ role: string; content: string }>) ?? [];
+
+			// First step: fold rag/memory context into the prepared context block
+			// (kept as a turn-scoped prefix; subsequent steps reuse the already-
+			// prepended baseCtx). We only re-render on step 1 because the block
+			// is derived from session config + wiki anchors which are stable
+			// within a turn; ragContext/memoryContext hooks may still surface
+			// mid-turn, so we re-fold them into the latest user message when
+			// present.
+			if (stepNumber === 1 || ragContext !== undefined || memoryContext !== undefined) {
+				const ctx = buildContextMessage({
+					workspaceDir: this.config.workspaceDir,
+					guidelines: this.config.guidelines,
+					ragContext,
+					memoryContext,
+					wikiAnchorsContext: wikiAnchorsContext || undefined,
+					currentTask: currentTask || undefined,
+					todosContext: renderTodosContext(this.config.sessionId, this.config.agentId) ?? undefined,
 				});
-				const extra = (res as any)?.appendMessages as Array<{ role: string; content: string }> | undefined;
-				if (extra && extra.length > 0) {
-					return { messages: [...stepMessages, ...extra] as any };
+				if (ctx) {
+					messages = this.prependContext(messages, ctx);
 				}
-			},
-			...(Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
-		});
+			}
 
-		await this.processStreamEvents(result);
-		await this.finalizeStream(result);
+			// Apply appendMessages from StepStart + PreLLMCall to this step only.
+			const stepMessages = [...messages, ...stepStartExtra, ...preExtra];
+
+			log.debug("loop", "streamText called (step " + stepNumber + "), messages:", stepMessages.length,
+				"model:", this.config.providerName + "/" + this.config.modelId,
+				"tools:", Object.keys(tools).join(","),
+				"lastMsgRole:", stepMessages.at(-1)?.role,
+				"injectedMsgs:", stepStartExtra.length + preExtra.length);
+
+			// ── Run one step with per-step retry. ────────────────────────────
+			const step = await this.runOneStepWithRetry({
+				model,
+				system: systemPrompt,
+				messages: stepMessages,
+				tools,
+				providerOptions,
+				stepNumber,
+			});
+
+			// Abort landed mid-step (fullStream "abort" event, signal set) →
+			// break out cleanly without persisting a phantom final step.
+			if (step.aborted || this.abortController?.signal.aborted) break;
+
+			// Finalize this step: seal usage + StepEnd persistence.
+			await this.finalizeOneStep(step.usage);
+
+			// 2A gotcha #1: result.response is a PromiseLike — await the response
+			// first, THEN read .messages. response.messages carries this step's
+			// assistant tool-call(s) and/or text so the next streamText sees the
+			// full conversation. On a retried step the failed attempt's messages
+			// are NOT adopted (runOneStepWithRetry advances messages only on the
+			// successful attempt).
+			messages = [...messages, ...step.responseMessages];
+			pendingPersist.push(...step.responseMessages);
+
+			// No tool call this step → the model produced its final answer; turn done.
+			if (!step.hadToolCall) {
+				this.resultText = step.text;
+				break;
+			}
+		}
+
+		await this.finalizeStream(pendingPersist);
 	}
 
 	private async buildTools(): Promise<Record<string, any>> {
@@ -672,14 +714,174 @@ export class AgentLoop implements AgentRuntime {
 
 
 
-	private async processStreamEvents(result: any): Promise<void> {
+	/**
+	 * Step 2C: run a single step (one streamText with stopWhen: stepCountIs(1))
+	 * with per-step retry on transient / prompt_too_long errors. Throws out to
+	 * runWithRetry on fatal error or when retries are exhausted.
+	 *
+	 * Returns the successful attempt's response messages + usage + text + whether
+	 * a tool call happened + an abort flag. NEVER advances the caller's
+	 * `messages` on a failed attempt — only the successful attempt's
+	 * responseMessages are returned, so a retried step does not replay prior
+	 * steps' tool calls (2A gotcha Q3).
+	 */
+	private async runOneStepWithRetry(opts: {
+		model: any;
+		system: string;
+		messages: any[];
+		tools: Record<string, any>;
+		providerOptions: Record<string, Record<string, any>>;
+		stepNumber: number;
+	}): Promise<{
+		responseMessages: any[];
+		usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+		text: string;
+		hadToolCall: boolean;
+		aborted: boolean;
+	}> {
+		let attempt = 0;
+		// eslint-disable-next-line no-constant-condition
+		while (true) {
+			attempt++;
+			// On retries (attempt > 1) the previous attempt left partial state in
+			// the recorder's current step — discard it so the retried attempt
+			// starts clean. (Prior completed steps are preserved.)
+			if (attempt > 1) this.recorder.resetCurrentStep();
+			// Reset per-attempt streaming accumulators so a retried step does
+			// not double-emit stale deltas into the recorder / UI.
+			this.streamText = "";
+			this.thinkingText = "";
+
+			const result = streamText({
+				stopWhen: stepCountIs(1),
+				model: opts.model,
+				system: opts.system,
+				messages: opts.messages,
+				tools: opts.tools,
+				abortSignal: this.abortController!.signal,
+				experimental_context: this.toolContext,
+				...(Object.keys(opts.providerOptions).length > 0 ? { providerOptions: opts.providerOptions } : {}),
+			});
+
+			let hadToolCall = false;
+			let aborted = false;
+			let stepUsage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
+			let streamError: Error | undefined;
+
+			try {
+				const consumed = await this.processStreamEvents(result, opts.stepNumber);
+				hadToolCall = consumed.hadToolCall;
+				aborted = consumed.aborted;
+				stepUsage = consumed.usage;
+				if (consumed.error) streamError = consumed.error;
+			} catch (err: any) {
+				streamError = err;
+			}
+
+			// Abort: never retry, never persist. Surface to the caller to break.
+			if (aborted || this.abortController?.signal.aborted) {
+				return { responseMessages: [], text: "", hadToolCall: false, aborted: true };
+			}
+
+			if (!streamError) {
+				// 2A gotcha #1: await result.response (PromiseLike) before reading .messages.
+				const response = await result.response;
+				const responseMessages = (response?.messages as any[]) ?? [];
+				let text = "";
+				try { text = await result.text; } catch { /* text unavailable */ }
+				return { responseMessages, usage: stepUsage, text, hadToolCall, aborted: false };
+			}
+
+			// ── Error path: OnLLMError + per-step retry decision. ──────────
+			const errorClass = classifyError(streamError);
+			const errMsg = streamError.message ?? String(streamError);
+
+			// OnLLMError handler may request {retry, delayMs} and observe the
+			// error class. Default policy is applied below; a handler can
+			// override by returning retry:false for a normally-transient class.
+			const onErrorResult = await this.triggerLocal("OnLLMError", {
+				agentId: this.config.agentId,
+				sessionId: this.session.getSessionId(),
+				error: errMsg,
+				errorClass,
+				stepNumber: opts.stepNumber,
+				attempt,
+			});
+
+			const retryRequested = onErrorResult.retry !== false; // default: retry allowed
+			const delayMs = (onErrorResult.delayMs as number | undefined);
+
+			// Determine retryability by error class unless the handler opted out.
+			const isFatal = errorClass === "auth" || errorClass === "unknown";
+			const isPromptTooLong = errorClass === "prompt_too_long";
+			const isTransient = isTransientError(errorClass);
+
+			const canRetry =
+				retryRequested &&
+				!isFatal &&
+				attempt <= MAX_RETRIES &&
+				(isTransient || isPromptTooLong);
+
+			if (!canRetry) {
+				log.error("loop", `Step ${opts.stepNumber} failed (class=${errorClass}, attempt=${attempt}); giving up.`);
+				// Promote to AbortError-neutral: throw so runWithRetry emits TurnError.
+				throw streamError;
+			}
+
+			// prompt_too_long: shrink the live conversation before retrying this
+			// step (operate on opts.messages' source-of-truth = session). The
+			// next attempt will see a pruned context. We do NOT advance messages
+			// for the failed attempt.
+			if (isPromptTooLong) {
+				await this.session.aggressivePrune(0.5);
+				log.loop("Step " + opts.stepNumber + ": prompt_too_long, aggressive prune before retry.");
+			}
+
+			// Backoff for transient classes (handler may override the delay).
+			const delay = delayMs ?? (isTransient ? BASE_DELAY_MS * Math.pow(2, attempt - 1) : 0);
+			log.loop(`Step ${opts.stepNumber} retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES}, class=${errorClass})`);
+			this.emit({
+				type: "retry_attempt",
+				agentId: this.config.agentId,
+				attempt,
+				maxAttempts: MAX_RETRIES,
+				delayMs: delay,
+				errorClass,
+			});
+			if (delay > 0) await new Promise(r => setTimeout(r, delay));
+		}
+	}
+
+	/**
+	 * Step 2C: consume one step's fullStream. Returns a summary (tool-call flag,
+	 * usage from finish-step, abort flag, optional stream error) instead of
+	 * mutating step-finalize state inline — that now lives in finalizeOneStep so
+	 * a retried step does not seal/persist on its failed attempt.
+	 *
+	 * 2A gotcha #2: abort emits an "abort" event on fullStream rather than
+	 * throwing; we detect it here and stop consuming cleanly.
+	 */
+	private async processStreamEvents(result: any, stepNumber: number): Promise<{
+		hadToolCall: boolean;
+		usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+		aborted: boolean;
+		error?: Error;
+	}> {
+		let hadToolCall = false;
+		let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
+		let aborted = false;
+
 		for await (const event of result.fullStream) {
-			if (!this.busy && this.abortController?.signal.aborted) break;
+			// Abort shortcut: stop consuming the moment the signal flips.
+			if (this.abortController?.signal.aborted) { aborted = true; break; }
+
+			// 2A gotcha #2: abort surfaces as an event, not a throw.
+			if ((event as any).type === "abort") { aborted = true; break; }
 
 			if ((event as any).type === "error") {
 				const errEvent = event as any;
 				log.error("loop", "Stream error:", errEvent.error?.message ?? JSON.stringify(errEvent));
-				throw new Error(errEvent.error?.message ?? "Stream error");
+				return { hadToolCall, usage, aborted: false, error: new Error(errEvent.error?.message ?? "Stream error") };
 			}
 
 			switch (event.type) {
@@ -700,6 +902,7 @@ export class AgentLoop implements AgentRuntime {
 				// [Batch 1] PreToolUse hook — 允许 hook 阻断工具调用
 				case "tool-call": {
 					const e = event as any;
+					hadToolCall = true;
 					this.thinkingText = "";
 					this.streamText = "";
 					log.debug("loop", "Tool call:", e.toolName);
@@ -780,79 +983,91 @@ export class AgentLoop implements AgentRuntime {
 					break;
 				}
 				case "finish-step": {
+					// Capture usage for finalizeOneStep. Sealing + StepEnd
+					// persistence moved OUT of here so a failed step (which still
+					// emits finish-step in some error paths) does not persist.
 					const e = event as any;
-					const stepUsage = e.usage;
-					if (stepUsage) {
-						if (stepUsage.inputTokens) {
-							this.session.calibrateFromActualUsage(stepUsage.inputTokens);
-						}
-						this.emit({
-							type: "usage",
-							agentId: this.config.agentId,
-							usage: {
-								inputTokens: stepUsage.inputTokens ?? 0,
-								outputTokens: stepUsage.outputTokens ?? 0,
-								totalTokens: (stepUsage.inputTokens ?? 0) + (stepUsage.outputTokens ?? 0),
-								cacheReadTokens: (stepUsage as any).cacheReadTokens ?? (stepUsage as any).promptCacheReadTokens,
-								cacheWriteTokens: (stepUsage as any).cacheWriteTokens ?? (stepUsage as any).promptCacheWriteTokens,
-								reasoningTokens: (stepUsage as any).reasoningTokens,
-							},
-						});
-
-						// Seal the step, attach usage, persist as individual step row
-						this.recorder.sealAndAdvanceStep({
-							inputTokens: stepUsage.inputTokens ?? 0,
-							outputTokens: stepUsage.outputTokens ?? 0,
-							totalTokens: (stepUsage.inputTokens ?? 0) + (stepUsage.outputTokens ?? 0),
-						});
-
-						// Persist all completed steps via StepEnd hook (Step 1C: PostStep → StepEnd)
-						await this.triggerLocal("StepEnd", {
-							agentId: this.config.agentId,
-							sessionId: this.session.getSessionId(),
-							recorder: this.recorder,
-							stepBaseSeq: this.stepBaseSeq,
-							stepOffset: this.stepOffset,
-							usage: {
-								inputTokens: stepUsage.inputTokens ?? 0,
-								outputTokens: stepUsage.outputTokens ?? 0,
-								totalTokens: (stepUsage.inputTokens ?? 0) + (stepUsage.outputTokens ?? 0),
-							},
-						});
-						this.stepOffset++;
-					}
+					usage = e.usage as { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
 					break;
 				}
 			}
+			// suppress unused-param lint: stepNumber reserved for future PostLLCall.
+			void stepNumber;
+		}
+
+		return { hadToolCall, usage, aborted };
+	}
+
+	/**
+	 * Step 2C: finalize ONE successful step. Seals the recorder step with its
+	 * usage, calibrates the session token estimate, fires StepEnd (which
+	 * persists the step row), and advances the step offset. Mirrors the old
+	 * inline finish-step handler, now called once per successful step from the
+	 * outer while-loop.
+	 */
+	private async finalizeOneStep(usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): Promise<void> {
+		if (usage) {
+			if (usage.inputTokens) {
+				this.session.calibrateFromActualUsage(usage.inputTokens);
+			}
+			this.emit({
+				type: "usage",
+				agentId: this.config.agentId,
+				usage: {
+					inputTokens: usage.inputTokens ?? 0,
+					outputTokens: usage.outputTokens ?? 0,
+					totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+					cacheReadTokens: (usage as any).cacheReadTokens ?? (usage as any).promptCacheReadTokens,
+					cacheWriteTokens: (usage as any).cacheWriteTokens ?? (usage as any).promptCacheWriteTokens,
+					reasoningTokens: (usage as any).reasoningTokens,
+				},
+			});
+
+			this.recorder.sealAndAdvanceStep({
+				inputTokens: usage.inputTokens ?? 0,
+				outputTokens: usage.outputTokens ?? 0,
+				totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+			});
+
+			await this.triggerLocal("StepEnd", {
+				agentId: this.config.agentId,
+				sessionId: this.session.getSessionId(),
+				recorder: this.recorder,
+				stepBaseSeq: this.stepBaseSeq,
+				stepOffset: this.stepOffset,
+				usage: {
+					inputTokens: usage.inputTokens ?? 0,
+					outputTokens: usage.outputTokens ?? 0,
+					totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+				},
+			});
+			this.stepOffset++;
+		} else {
+			// No usage from this step (some providers omit it). Still seal +
+			// persist the step's blocks via StepEnd so the row lands.
+			this.recorder.sealStep();
+			await this.triggerLocal("StepEnd", {
+				agentId: this.config.agentId,
+				sessionId: this.session.getSessionId(),
+				recorder: this.recorder,
+				stepBaseSeq: this.stepBaseSeq,
+				stepOffset: this.stepOffset,
+			});
+			this.stepOffset++;
 		}
 	}
 
-	private async finalizeStream(result: any): Promise<void> {
-		this.resultText = await result.text;
-
-		try {
-			const usage = await result.usage;
-			if (usage?.inputTokens) {
-				this.session.calibrateFromActualUsage(usage.inputTokens);
-			}
-		} catch { /* usage not available for some providers */ }
-
-		this.recorder.sealStep();
-		// Final persist for any remaining blocks via StepEnd hook (Step 1C: PostStep → StepEnd)
-		await this.triggerLocal("StepEnd", {
-			agentId: this.config.agentId,
-			sessionId: this.session.getSessionId(),
-			recorder: this.recorder,
-			stepBaseSeq: this.stepBaseSeq,
-			stepOffset: this.stepOffset,
-		});
-
-		const response = await result.response;
-		if (response.messages) {
-			for (const msg of response.messages) {
-				this.session.addMessage(msg);
-			}
+	private async finalizeStream(pendingPersist: any[]): Promise<void> {
+		// Persist the steps' response.messages into the session + DB. Per-step
+		// usage calibration already happened in finalizeOneStep; here we just
+		// fold the assistant tool-call/tool-result/final-text messages the SDK
+		// returned into session.messages and save once. (Resume-level step
+		// checkpointing is 2D; this turn-end sync is the same shape as the old
+		// finalizeStream addMessage loop.)
+		for (const msg of pendingPersist) {
+			this.session.addMessage(msg);
 		}
+
 		this.session.saveToDb();
 		this.emit({ type: "message_end", agentId: this.config.agentId, text: this.resultText, contextUsage: this.session.getContextUsage(), contextWindow: this.session.getContextWindow(), estimatedTokens: this.session.getEstimatedTokens() });
 	}
