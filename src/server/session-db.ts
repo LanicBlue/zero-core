@@ -149,6 +149,11 @@ export class SessionDB {
 				phase       TEXT NOT NULL DEFAULT 'pending',
 				checkpoint  TEXT,
 				error       TEXT,
+				-- Step 2D: per-session step-level resume checkpoint. The seq of
+				-- the last finish-step that fired StepEnd successfully. resume()
+				-- continues from seq+1, never re-running completed steps. NULL
+				-- means the turn started but no step has completed yet.
+				last_completed_step_seq INTEGER,
 				created_at  TEXT NOT NULL,
 				updated_at  TEXT NOT NULL,
 				PRIMARY KEY (session_id, turn_seq),
@@ -224,6 +229,14 @@ export class SessionDB {
 
 		// Migrate renamed tools (Bash -> Shell, etc.)
 		this.migrateToolNames();
+
+		// Step 2D: turn_state.last_completed_step_seq — step-level resume
+		// checkpoint. CREATE TABLE above adds it on fresh DBs; this ALTER
+		// covers upgraded DBs where the table already exists (CREATE TABLE IF
+		// NOT EXISTS won't alter an existing row). See feedback-fresh-db-
+		// migrations: turn_state is SessionDB-owned (not a SqliteStore table),
+		// so this is the only legacy-DB sync point.
+		this.safeAddColumn("turn_state", "last_completed_step_seq", "INTEGER");
 	}
 
 	/** Check if the turns table has step-level schema (turn_group column). */
@@ -786,8 +799,13 @@ export class SessionDB {
 	createTurnState(sessionId: string, turnSeq: number): void {
 		const now = new Date().toISOString();
 		try {
+			// Step 2D: phase is now a session-level marker (pending → completed/
+			// failed). The fine-grained progress lives in last_completed_step_seq,
+			// advanced per-StepEnd below. INSERT OR REPLACE keeps the row stable
+			// across retries within the same turn; last_completed_step_seq starts
+			// NULL (turn started, no step finished yet).
 			this.db.prepare(
-				`INSERT OR REPLACE INTO turn_state (session_id, turn_seq, phase, created_at, updated_at) VALUES (?, ?, 'pending', ?, ?)`,
+				`INSERT OR REPLACE INTO turn_state (session_id, turn_seq, phase, last_completed_step_seq, created_at, updated_at) VALUES (?, ?, 'pending', NULL, ?, ?)`,
 			).run(sessionId, turnSeq, now, now);
 		} catch (e) {
 			log.error("db", `createTurnState failed (session=${sessionId}, turn=${turnSeq}):`, (e as Error).message);
@@ -795,7 +813,47 @@ export class SessionDB {
 		}
 	}
 
+	/**
+	 * Step 2D: advance the per-session step checkpoint. Called on every
+	 * successful StepEnd with the just-completed step's seq (stepBaseSeq +
+	 * stepOffset). resume() reads lastCompletedStepSeq and continues from +1,
+	 * so completed steps are never re-run. Only moves the cursor FORWARD — a
+	 * regression (older seq) is ignored to protect against out-of-order hook
+	 * firing.
+	 */
+	advanceStepCheckpoint(sessionId: string, turnSeq: number, stepSeq: number): void {
+		const now = new Date().toISOString();
+		try {
+			this.db.prepare(
+				"UPDATE turn_state SET last_completed_step_seq = ?, updated_at = ? " +
+				"WHERE session_id = ? AND turn_seq = ? " +
+				"AND (last_completed_step_seq IS NULL OR last_completed_step_seq < ?)",
+			).run(stepSeq, now, sessionId, turnSeq, stepSeq);
+		} catch (e) {
+			log.error("db", `advanceStepCheckpoint failed (session=${sessionId}, turn=${turnSeq}, step=${stepSeq}):`, (e as Error).message);
+			throw e;
+		}
+	}
+
+	/** Read the per-session step checkpoint (NULL when no step has completed). */
+	getStepCheckpoint(sessionId: string): number | null {
+		try {
+			const row = this.db.prepare(
+				"SELECT last_completed_step_seq AS seq FROM turn_state WHERE session_id = ? " +
+				"ORDER BY turn_seq DESC LIMIT 1",
+			).get(sessionId) as { seq: number | null } | undefined;
+			return row?.seq ?? null;
+		} catch (e) {
+			log.error("db", `getStepCheckpoint failed (session=${sessionId}):`, (e as Error).message);
+			return null;
+		}
+	}
+
 	updateTurnPhase(sessionId: string, turnSeq: number, phase: string, checkpoint?: any): void {
+		// Step 2D: retained for back-compat (no live caller now that durable-
+		// hooks is step-level), but the canonical progress marker is
+		// last_completed_step_seq, not phase. Phase only flips to completed/
+		// failed at TurnEnd/TurnError.
 		const now = new Date().toISOString();
 		try {
 			this.db.prepare(
@@ -831,10 +889,14 @@ export class SessionDB {
 		}
 	}
 
-	getIncompleteTurns(): Array<{ sessionId: string; turnSeq: number; phase: string; checkpoint: any; error: string | null }> {
+	getIncompleteTurns(): Array<{ sessionId: string; turnSeq: number; phase: string; checkpoint: any; error: string | null; lastCompletedStepSeq: number | null }> {
 		try {
+			// Step 2D: surface the step-level checkpoint so recovery can resume
+			// from the next step instead of re-running the whole turn. phase is
+			// still the session-level terminal marker (pending → completed/
+			// failed); lastCompletedStepSeq is the fine-grained progress.
 			const rows = this.db.prepare(
-				`SELECT session_id, turn_seq, phase, checkpoint, error FROM turn_state WHERE phase NOT IN ('completed', 'failed')`,
+				`SELECT session_id, turn_seq, phase, checkpoint, error, last_completed_step_seq FROM turn_state WHERE phase NOT IN ('completed', 'failed')`,
 			).all() as any[];
 			return rows.map((r: any) => ({
 				sessionId: r.session_id,
@@ -842,6 +904,7 @@ export class SessionDB {
 				phase: r.phase,
 				checkpoint: r.checkpoint ? JSON.parse(r.checkpoint) : null,
 				error: r.error,
+				lastCompletedStepSeq: r.last_completed_step_seq ?? null,
 			}));
 		} catch (e) {
 			log.error("db", "getIncompleteTurns failed:", (e as Error).message);

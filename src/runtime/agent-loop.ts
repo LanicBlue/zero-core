@@ -284,9 +284,27 @@ export class AgentLoop implements AgentRuntime {
 		}
 	}
 
-	async resume(interruptedTurnSeq?: number): Promise<void> {
+	/**
+	 * Step 2D: step-level resume. Reads the per-session `lastCompletedStepSeq`
+	 * checkpoint and continues from the next step. Completed steps are NOT
+	 * re-run: their step rows already live in the turns table (2B's per-tool
+	 * immediate persist + StepEnd), and the session rebuilds its messages from
+	 * those rows (rebuildFromTurns), so the model sees the full prior work and
+	 * simply produces the next step.
+	 *
+	 * `lastCompletedStepSeq` is informational for this layer — getTurnCount()
+	 * already returns the correct next seq (it counts the already-persisted
+	 * step rows). The checkpoint is what recovery uses to decide a session had
+	 * mid-turn progress (vs a turn that crashed before any step completed) and
+	 * to drive UI state. Case 2 (finish-step fired, tools incomplete) is 2E.
+	 *
+	 * The optional args preserve the legacy `interruptedTurnSeq` shape so
+	 * existing callers (recovery) keep working while they migrate.
+	 */
+	async resume(interruptedTurnSeq?: number, lastCompletedStepSeq?: number): Promise<void> {
 		if (this.busy) throw new Error("Agent is already busy");
-		log.loop("resume() called, messages:", this.session.getMessages().length);
+		log.loop("resume() called, messages:", this.session.getMessages().length,
+			"lastCompletedStepSeq:", lastCompletedStepSeq ?? "none");
 
 		this.busy = true;
 		this.streamText = "";
@@ -299,7 +317,9 @@ export class AgentLoop implements AgentRuntime {
 		try {
 			await this.session.pruneIfNeeded();
 
-			// For resume, the user turn is already in DB
+			// For resume, the user turn + any completed steps are already in DB.
+			// getTurnCount returns the count INCLUDING those, so the next
+			// appendStep lands at the correct fresh seq.
 			if (this.config.db && this.config.sessionId) {
 				this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
 			}

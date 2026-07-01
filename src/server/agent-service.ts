@@ -889,23 +889,27 @@ export class AgentService {
 					loop = this.createLoopForSession(agentId, turn.sessionId, agent ?? undefined);
 				}
 				this.activeSessions.set(agentId, turn.sessionId);
-				// Pre-populate turn seq so SessionStart hook skips creating a duplicate
+				// Pre-populate turn seq so the TurnStart hook skips creating a
+				// duplicate turn_state row (the existing row carries the step
+				// checkpoint we resume from).
 				setSessionTurnSeq(turn.sessionId, turn.turnSeq);
-					setTurnSeq(turn.sessionId, turn.turnSeq);
-				// Set lifecycle state based on interrupted phase
-				if (turn.phase === "tools_executing") {
-					this.sessionManager?.trackSessionExecutingTools(turn.sessionId);
-				} else {
-					this.sessionManager?.trackSessionStreaming(turn.sessionId);
-				}
+				setTurnSeq(turn.sessionId, turn.turnSeq);
+				// Step 2D: UI state derived from the step checkpoint. The legacy
+				// phase-based "tools_executing" branch is gone (durable phase is
+				// now only a terminal marker). A recovered session always shows
+				// as streaming so the user sees the resume in flight; the step
+				// checkpoint determines resume-from, not UI state.
+				this.sessionManager?.trackSessionStreaming(turn.sessionId);
 				const state = this.runStates.get(turn.sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
 				state.isBusy = true;
 				state.streamingText = "";
 				state.toolCalls = [];
 				this.runStates.set(turn.sessionId, state);
-				log.db(`Recovering agent ${agentId}, session ${turn.sessionId}, phase ${turn.phase}`);
-				// Fire-and-forget: resume in background so we don't block startup
-					loop.resume(turn.turnSeq).then(() => {
+				log.db(`Recovering agent ${agentId}, session ${turn.sessionId}, phase ${turn.phase}, lastStep=${turn.lastCompletedStepSeq ?? "none"}`);
+				// Fire-and-forget: resume in background so we don't block startup.
+				// Pass the step checkpoint so resume() continues from the next
+				// step (completed steps already in messages via turns-table rebuild).
+				loop.resume(turn.turnSeq, turn.lastCompletedStepSeq ?? undefined).then(() => {
 					log.db(`Resumed session ${turn.sessionId} (agent ${agentId})`);
 					// Mark the original incomplete turn as completed
 					this.db.completeTurnState(turn.sessionId, turn.turnSeq);
