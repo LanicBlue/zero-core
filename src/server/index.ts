@@ -115,6 +115,14 @@ export async function startServer(options?: StartServerOptions) {
 	const sessionDB = new SessionDB();
 	runMigrations(sessionDB);
 
+	// Crash recovery: any delegated tasks still marked running/finishing were
+	// interrupted by the previous exit. Mark them interrupted (inspect-only;
+	// not auto-resumed). Decision: human/parent re-triggers.
+	const interruptedDelegatedTasks = sessionDB.markRunningDelegatedTasksInterrupted();
+	if (interruptedDelegatedTasks > 0) {
+		console.error(`[server] Interrupted delegated tasks on startup: ${interruptedDelegatedTasks}`);
+	}
+
 	// v0.8 (M2): single global WikiStore (the memory tree) — created EARLY so
 	// the M5 extraction hooks (registered below) can point at it. The
 	// back-compat ProjectWikiStore view is created alongside; legacy

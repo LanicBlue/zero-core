@@ -46,15 +46,18 @@ function entryDisplayName(entry: { agentId: string; name?: string }, target?: { 
 export const delegateTool = buildTool({
 	name: "Agent",
 	description:
-		"Delegate a task to a sub-agent. Action-switched: 'list' (see who you can delegate to) and 'delegate' (run a task in an isolated sub-agent context).",
+		"Delegate and control sub-agent tasks. Actions: list, delegate, request_finish, stop, tree.",
 	prompt:
-		"Delegate a task to a sub-agent (runs in an isolated context with its own conversation history).\n\n" +
+		"Delegate and control sub-agent tasks (each runs in an isolated context with its own conversation history, persisted for restart-aware inspection).\n\n" +
 		"Actions:\n" +
 		"- { action:'list' } — list the agents YOU can delegate to (your configured subagents), with their name/description/model. Call this first if you don't know who's available.\n" +
 		"- { action:'delegate', task, subagent?, mode?, model?, systemPrompt? } — delegate a task.\n" +
 		"    · `subagent` (name, from list): delegate to that registered agent — it runs with ITS OWN identity (system prompt / tools / model). Use this for role-based handoff (e.g. hand coding work to your 'Developer' subagent).\n" +
 		"    · omit `subagent`: ephemeral delegation — the sub-agent inherits YOUR identity (or the inline `model`/`systemPrompt` overrides). Use for isolated/parallel sub-tasks you'd otherwise do yourself.\n" +
-		"    · `mode`: 'blocking' (default, wait for output) | 'non_blocking' (return a task_id immediately; use Wait/TaskStatus to check later).\n\n" +
+		"    · `mode`: 'blocking' (default, wait for output) | 'non_blocking' (return a task_id immediately; use Wait/TaskStatus to check later).\n" +
+		"- { action:'request_finish', task_id, message?, maxTurns? } — ask a running task to wrap up. Advisory: injects a control message asking the sub-agent to finish. Pass `maxTurns` to force-stop after that many additional agent-loop turns; omit it for a purely advisory request that never force-stops.\n" +
+		"- { action:'stop', task_id } — force-stop a running task immediately (hard stop; the task cannot resume).\n" +
+		"- { action:'tree', task_id? } — list delegated-task records (status/turns/tokens), optionally scoped to a root task. Use this to inspect delegated work, including tasks interrupted by a restart.\n\n" +
 		"When to delegate: parallel work, complex multi-step searches, isolated exploration that shouldn't pollute the main conversation, or handing work to a specialized role agent.\n\n" +
 		"You can ONLY delegate by `subagent` name to agents in your own subagents list (run 'list' to see them).",
 	meta: { category: "agent", isReadOnly: false, isConcurrencySafe: false },
@@ -63,12 +66,15 @@ export const delegateTool = buildTool({
 		{ key: "auto_background_timeout", type: "number", label: "超时 (s)", description: "阻塞等待秒数，超时后转后台；设为 0 则立即非阻塞", default: 0 },
 	],
 	inputSchema: z.object({
-		action: z.enum(["list", "delegate"]).describe("'list' to see delegatable agents; 'delegate' to run a task"),
+		action: z.enum(["list", "delegate", "request_finish", "stop", "tree"]).describe("list / delegate / request_finish / stop / tree"),
 		task: z.string().optional().describe("The task description (action:'delegate')"),
 		subagent: z.string().optional().describe("Name of a registered subagent to delegate to (from 'list'). Omit for ephemeral delegation."),
 		model: z.string().optional().describe("Model ID override (ephemeral delegation only)"),
 		systemPrompt: z.string().optional().describe("Custom system prompt override (ephemeral delegation only)"),
 		mode: z.enum(["blocking", "non_blocking"]).optional().describe("blocking (wait) or non_blocking (return task_id)"),
+		task_id: z.string().optional().describe("Task id (action:'request_finish' / 'stop' / 'tree')"),
+		message: z.string().optional().describe("Control message for action:'request_finish'"),
+		maxTurns: z.number().optional().describe("request_finish: force-stop after this many additional agent-loop turns (omit for purely advisory)"),
 	}),
 	execute: async (input, ctx) => {
 		const { action } = input;
@@ -91,6 +97,43 @@ export const delegateTool = buildTool({
 				};
 			});
 			return JSON.stringify(summary);
+		}
+
+		// ── request_finish (advisory graceful stop) ───────────────
+		if (action === "request_finish") {
+			if (!input.task_id) return "Error: `task_id` required for request_finish";
+			if (!ctx.requestTaskFinish) return "Error: request_finish is not available in this context.";
+			const ok = ctx.requestTaskFinish(input.task_id, { message: input.message, maxTurns: input.maxTurns });
+			if (!ok) return `Task ${input.task_id} not found or not running.`;
+			return input.maxTurns
+				? `Finish requested for ${input.task_id}: advisory message sent, will force-stop after ${input.maxTurns} more turn(s).`
+				: `Finish requested for ${input.task_id}: advisory message sent (no hard turn budget — use 'stop' to force-stop).`;
+		}
+
+		// ── stop (hard stop) ───────────────────────────────────────
+		if (action === "stop") {
+			if (!input.task_id) return "Error: `task_id` required for stop";
+			if (!ctx.stopTask) return "Error: stop is not available in this context.";
+			return ctx.stopTask(input.task_id)
+				? `Task ${input.task_id} has been stopped.`
+				: `Task ${input.task_id} not found or not running.`;
+		}
+
+		// ── tree (inspect delegated task records) ──────────────────
+		if (action === "tree") {
+			if (!ctx.listDelegatedTasks) return "Error: tree is not available in this context.";
+			const tasks = ctx.listDelegatedTasks(input.task_id ? { rootTaskId: input.task_id } : undefined);
+			if (!tasks.length) return input.task_id ? `No delegated tasks under root ${input.task_id}.` : "No delegated tasks.";
+			return JSON.stringify(tasks.map((t) => ({
+				id: t.id,
+				parentTaskId: t.parentTaskId,
+				target: t.targetAgentId,
+				status: t.status,
+				turns: t.turns,
+				tokens: t.tokens,
+				currentTool: t.currentTool,
+				task: t.task.length > 80 ? t.task.slice(0, 80) + "..." : t.task,
+			})), null, 2);
 		}
 
 		// ── delegate ───────────────────────────────────────────────

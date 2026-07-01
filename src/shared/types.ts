@@ -201,6 +201,90 @@ export interface SessionRecord {
 	 * legacy rows means not archived (falsy).
 	 */
 	archived?: boolean;
+	/**
+	 * Session kind. "chat" = a normal conversational session (the only kind
+	 * that appears in chat session lists / main-session routing). "delegated"
+	 * = a hidden session backing a delegated sub-agent task (see
+	 * DelegatedTaskRecord); excluded from chat lists, kept for inspection and
+	 * restart-aware recovery. Undefined on legacy rows means "chat".
+	 */
+	sessionKind?: "chat" | "delegated";
+	/** For delegated sessions: the parent chat session that spawned the task. */
+	parentSessionId?: string;
+	/** For delegated sessions: the delegated_tasks row id backing this session. */
+	parentTaskId?: string;
+	/**
+	 * Visibility hint. "normal" = listable; "hidden" = excluded from all chat
+	 * lists (delegated sessions); "debug" = reserved for future low-level
+	 * inspection views. Undefined on legacy rows means "normal".
+	 */
+	visibility?: "normal" | "hidden" | "debug";
+}
+
+/**
+ * Delegated task lifecycle status.
+ * - running    : sub-agent loop is executing.
+ * - finishing  : request_finish was called; the sub-agent has been asked to
+ *                wrap up (and will be force-stopped after maxTurns if given).
+ * - completed  : finished normally with a result.
+ * - failed     : finished with an error.
+ * - killed     : force-stopped via stop / request_finish turn budget exhausted.
+ * - interrupted: still running/finishing when the process exited; marked on
+ *                next startup by markRunningDelegatedTasksInterrupted.
+ */
+export type DelegatedTaskStatus =
+	| "running"
+	| "finishing"
+	| "completed"
+	| "failed"
+	| "killed"
+	| "interrupted";
+
+/**
+ * A delegated sub-agent task (runtime execution instance — distinct from
+ * project "work", which is a project-level config definition). One row per
+ * Agent-tool delegation / Orchestrate dispatch. Backs the TaskTree UI and
+ * restart-aware inspection. Persisted in the delegated_tasks table.
+ */
+export interface DelegatedTaskRecord {
+	id: string;
+	/** Parent task in a delegation chain (sub-agent of a sub-agent). */
+	parentTaskId?: string;
+	/** Root of the delegation chain (this task if it is the root). */
+	rootTaskId: string;
+	/** Agent that owns/spawned this task (the caller). */
+	ownerAgentId: string;
+	/** Agent the task was delegated to (runs with this agent's identity). */
+	targetAgentId: string;
+	/** Owner's chat session (where the delegation was triggered). */
+	parentSessionId?: string;
+	/** Hidden delegated session backing this task's turn history. */
+	sessionId?: string;
+	/** The task description the sub-agent was asked to perform. */
+	task: string;
+	status: DelegatedTaskStatus;
+	/** Delegation depth (root task = 1). */
+	depth: number;
+	/** Tool invocations started (progress telemetry). */
+	step: number;
+	/** Agent-loop iterations completed (one user input spans many loops). */
+	turns: number;
+	/** Cumulative tokens (input + output) across all loops. */
+	tokens: number;
+	/** Tool currently executing (progress telemetry). */
+	currentTool?: string;
+	/** Sub-agent final output (on completed). */
+	result?: string;
+	/** Error text (on failed/killed). */
+	error?: string;
+	/** Control message injected via request_finish (advisory stop request). */
+	controlMessage?: string;
+	/** ISO timestamp when request_finish was invoked. */
+	finishRequestedAt?: string;
+	createdAt: string;
+	updatedAt: string;
+	/** ISO timestamp when the task reached a terminal state. */
+	completedAt?: string;
 }
 
 /**

@@ -30,10 +30,10 @@ function formatTask(t: TaskInfo): string {
 	const elapsed = t.completedAt
 		? Math.round((t.completedAt - t.startedAt) / 1000) + "s"
 		: Math.round((Date.now() - t.startedAt) / 1000) + "s";
-	const statusIcon = { running: "●", completed: "✓", failed: "✗", killed: "⊘" }[t.status];
+	const statusIcon = { running: "●", finishing: "◐", completed: "✓", failed: "✗", killed: "⊘", interrupted: "⌽" }[t.status as "running" | "finishing" | "completed" | "failed" | "killed" | "interrupted"] ?? "?";
 	const typeLabel = t.type === "bash" ? "bash" : "subagent";
 
-	let line = `${statusIcon} [${t.id}] ${typeLabel}  ${t.status}  step:${t.step}  ${elapsed}`;
+	let line = `${statusIcon} [${t.id}] ${typeLabel}  ${t.status}  step:${t.step}  turns:${t.turns}  tokens:${t.tokens}  ${elapsed}`;
 	if (t.currentTool) line += `  tool:${t.currentTool}`;
 	line += `\n    ${t.task}`;
 	if (t.error) line += `\n    error: ${t.error}`;

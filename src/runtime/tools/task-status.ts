@@ -12,9 +12,7 @@
 //   - result 仅 completed/failed 时出现(子代理输出 / 错误信息)
 //
 // ## 设计说明
-// 结果来自 TaskRegistry(info.result),不再查 messages DB——子代理(v0.8 起
-// ephemeral,sessionId=undefined)和 bash 后台任务都不写 messages 表,旧的
-// db.getMainSession activity 查找对它们恒为空,故移除。
+// 结果来自 TaskRegistry(info.result / info.turns / info.tokens),不再查 messages DB。
 //
 // ## 定位
 // Runtime 工具，被 Agent 调用。
@@ -32,8 +30,9 @@ export const taskStatusTool = buildTool({
 	name: "TaskStatus",
 	description: "Check the status and result of a background task. Returns structured JSON.",
 	prompt: "Check the status and output of a background task (Agent non-blocking or Bash background).\n\n" +
-		"Returns JSON: { task_id, status (running|completed|failed|killed), elapsed_s, steps, current_tool?, result? }.\n" +
-		"- `current_tool` appears only while running.\n" +
+		"Returns JSON: { task_id, status (running|finishing|completed|failed|killed|interrupted), elapsed_s, steps, turns, tokens, current_tool?, result? }.\n" +
+		"- `turns` = agent-loop iterations completed; `tokens` = cumulative input+output tokens. Use both to judge whether a sub-agent has done enough work and should be asked to finish.\n" +
+		"- `current_tool` appears only while running/finishing.\n" +
 		"- `result` appears on completed/failed (the sub-agent's output or the error text).\n\n" +
 		"When to use:\n" +
 		"- After Wait wakes you up, check the specific task result\n" +
@@ -61,6 +60,8 @@ export const taskStatusTool = buildTool({
 			status: info.status,
 			elapsed_s: elapsed,
 			steps: info.step,
+			turns: info.turns,
+			tokens: info.tokens,
 		};
 		if (info.currentTool) out.current_tool = info.currentTool;
 		if (info.status === "completed" || info.status === "failed") {

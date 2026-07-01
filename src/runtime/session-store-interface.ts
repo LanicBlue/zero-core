@@ -21,6 +21,7 @@
 // 接口变更需确保 SessionDB 实现方同步更新
 //
 import type { IKVStore } from "../core/kv-store-interface.js";
+import type { DelegatedTaskRecord, DelegatedTaskStatus, SessionContextBundle } from "../shared/types.js";
 
 /** Step-level row from the turns table. */
 export interface StepRow {
@@ -45,7 +46,12 @@ export interface ISessionStore {
 	appendTurn(sessionId: string, seq: number, role: string, content: string | null): void;
 	getTurnCount(sessionId: string): number;
 	getMainSession(agentId: string): { id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string } | undefined;
-	createSession(agentId: string, title?: string): { id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string };
+	createSession(
+		agentId: string,
+		title?: string,
+		context?: SessionContextBundle,
+		options?: { sessionKind?: "chat" | "delegated"; parentSessionId?: string; parentTaskId?: string; visibility?: "normal" | "hidden" | "debug" },
+	): { id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string; sessionKind?: "chat" | "delegated"; parentSessionId?: string; parentTaskId?: string; visibility?: "normal" | "hidden" | "debug" };
 	setMainSession(agentId: string, sessionId: string): void;
 	listSessions(agentId: string): Array<{ id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string }>;
 	listAllSessions(): Array<{ id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string }>;
@@ -56,6 +62,25 @@ export interface ISessionStore {
 	clearTurns(sessionId: string): void;
 	getKVStore(): IKVStore;
 	getMemoryNodeStore(): any;
+
+	// ── Delegated task persistence (optional — runtime null-checks) ──
+	createDelegatedTask?(input: {
+		id: string;
+		parentTaskId?: string;
+		rootTaskId: string;
+		ownerAgentId: string;
+		targetAgentId: string;
+		parentSessionId?: string;
+		sessionId?: string;
+		task: string;
+		status?: DelegatedTaskStatus;
+		depth?: number;
+	}): DelegatedTaskRecord;
+	updateDelegatedTask?(id: string, patch: Partial<Pick<DelegatedTaskRecord, "status" | "step" | "turns" | "tokens" | "currentTool" | "result" | "error" | "controlMessage" | "finishRequestedAt" | "completedAt" | "sessionId">>): DelegatedTaskRecord | undefined;
+	getDelegatedTask?(id: string): DelegatedTaskRecord | undefined;
+	listDelegatedTasks?(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; status?: DelegatedTaskStatus }): DelegatedTaskRecord[];
+	/** Mark still-running/finishing delegated tasks as interrupted (startup recovery). Returns the count marked. */
+	markRunningDelegatedTasksInterrupted?(): number;
 	recordToolExecution(exec: {
 		sessionId: string;
 		agentId: string;

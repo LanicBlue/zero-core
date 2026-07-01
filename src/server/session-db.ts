@@ -29,7 +29,7 @@ import { join } from "node:path";
 import { existsSync, readdirSync, readFileSync, renameSync, mkdirSync } from "node:fs";
 import { v4 as uuidv4 } from "uuid";
 import { log } from "../core/logger.js";
-import type { SessionRecord, ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats } from "../shared/types.js";
+import type { DelegatedTaskRecord, DelegatedTaskStatus, SessionRecord, ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats } from "../shared/types.js";
 import { KeyValueStore } from "./key-value-store.js";
 import { MemoryNodeStore } from "./memory-node-store.js";
 // v0.8 (M5): extractor cursor + tool telemetry stores. These back
@@ -172,6 +172,34 @@ export class SessionDB {
 			CREATE INDEX IF NOT EXISTS idx_tool_exec_session ON tool_executions(session_id);
 			CREATE INDEX IF NOT EXISTS idx_tool_exec_agent_tool ON tool_executions(agent_id, tool_name);
 			CREATE INDEX IF NOT EXISTS idx_tool_exec_created ON tool_executions(created_at);
+
+			CREATE TABLE IF NOT EXISTS delegated_tasks (
+				id                  TEXT PRIMARY KEY,
+				parent_task_id      TEXT,
+				root_task_id        TEXT NOT NULL,
+				owner_agent_id      TEXT NOT NULL,
+				target_agent_id     TEXT NOT NULL,
+				parent_session_id   TEXT,
+				session_id          TEXT,
+				task                TEXT NOT NULL,
+				status              TEXT NOT NULL,
+				depth               INTEGER NOT NULL DEFAULT 0,
+				step                INTEGER NOT NULL DEFAULT 0,
+				turns               INTEGER NOT NULL DEFAULT 0,
+				tokens              INTEGER NOT NULL DEFAULT 0,
+				current_tool        TEXT,
+				result              TEXT,
+				error               TEXT,
+				control_message     TEXT,
+				finish_requested_at TEXT,
+				created_at          TEXT NOT NULL,
+				updated_at          TEXT NOT NULL,
+				completed_at        TEXT,
+				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
+			);
+			CREATE INDEX IF NOT EXISTS idx_delegated_tasks_owner ON delegated_tasks(owner_agent_id, status);
+			CREATE INDEX IF NOT EXISTS idx_delegated_tasks_parent ON delegated_tasks(parent_task_id);
+			CREATE INDEX IF NOT EXISTS idx_delegated_tasks_root ON delegated_tasks(root_task_id);
 		`);
 
 		// v0.8 (M0): session context bundle columns + routing index.
@@ -184,8 +212,15 @@ export class SessionDB {
 		// v0.8: archived flag — archived sessions are excluded from active
 		// routing/listing/main lookup but kept in DB for the archive area.
 		this.safeAddColumn("sessions", "archived", "INTEGER NOT NULL DEFAULT 0");
+		// Delegated-task session attribution + visibility. session_kind='delegated'
+		// rows back sub-agent tasks and are excluded from all chat list queries.
+		this.safeAddColumn("sessions", "session_kind", "TEXT NOT NULL DEFAULT 'chat'");
+		this.safeAddColumn("sessions", "parent_session_id", "TEXT");
+		this.safeAddColumn("sessions", "parent_task_id", "TEXT");
+		this.safeAddColumn("sessions", "visibility", "TEXT NOT NULL DEFAULT 'normal'");
 		// Routing index — must come AFTER context_project_id exists.
 		this.safeAddIndex("sessions", "idx_sessions_agent_project", "agent_id, context_project_id");
+		this.safeAddIndex("sessions", "idx_sessions_kind", "session_kind, visibility");
 
 		// Migrate renamed tools (Bash -> Shell, etc.)
 		this.migrateToolNames();
@@ -234,20 +269,36 @@ export class SessionDB {
 	// Session CRUD
 	// -----------------------------------------------------------------------
 
-	createSession(agentId: string, title?: string, context?: SessionRecord["context"]): SessionRecord {
+	createSession(
+		agentId: string,
+		title?: string,
+		context?: SessionRecord["context"],
+		options?: { sessionKind?: "chat" | "delegated"; parentSessionId?: string; parentTaskId?: string; visibility?: "normal" | "hidden" | "debug" },
+	): SessionRecord {
 		const now = new Date().toISOString();
 		const id = uuidv4();
 		const ctxJson = context ? JSON.stringify(context) : null;
+		const sessionKind = options?.sessionKind ?? "chat";
+		const visibility = options?.visibility ?? (sessionKind === "delegated" ? "hidden" : "normal");
 		this.db.prepare(
-			"INSERT INTO sessions (id, agent_id, is_main, title, created_at, updated_at, context, context_project_id, context_workspace_dir, context_wiki_root_node_id) " +
-			"VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?)",
+			"INSERT INTO sessions (id, agent_id, is_main, title, created_at, updated_at, context, context_project_id, context_workspace_dir, context_wiki_root_node_id, session_kind, parent_session_id, parent_task_id, visibility) " +
+			"VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		).run(
 			id, agentId, title ?? null, now, now, ctxJson,
 			context?.projectId ?? null,
 			context?.workspaceDir ?? null,
 			context?.wikiRootNodeId ?? null,
+			sessionKind,
+			options?.parentSessionId ?? null,
+			options?.parentTaskId ?? null,
+			visibility,
 		);
-		return { id, agentId, isMain: false, title: title ?? null, createdAt: now, updatedAt: now, context };
+		return {
+			id, agentId, isMain: false, title: title ?? null,
+			sessionKind, parentSessionId: options?.parentSessionId,
+			parentTaskId: options?.parentTaskId, visibility,
+			createdAt: now, updatedAt: now, context,
+		};
 	}
 
 	getSession(sessionId: string): SessionRecord | undefined {
@@ -256,7 +307,7 @@ export class SessionDB {
 	}
 
 	getMainSession(agentId: string): SessionRecord | undefined {
-		const row = this.db.prepare("SELECT * FROM sessions WHERE agent_id = ? AND is_main = 1 AND archived = 0").get(agentId) as any;
+		const row = this.db.prepare("SELECT * FROM sessions WHERE agent_id = ? AND is_main = 1 AND archived = 0 AND session_kind = 'chat'").get(agentId) as any;
 		return row ? this.rowToRecord(row) : undefined;
 	}
 
@@ -272,7 +323,7 @@ export class SessionDB {
 	 */
 	getMostRecentSession(agentId: string): SessionRecord | undefined {
 		const row = this.db.prepare(
-			"SELECT * FROM sessions WHERE agent_id = ? AND agent_id != '__recovered__' AND archived = 0 " +
+			"SELECT * FROM sessions WHERE agent_id = ? AND agent_id != '__recovered__' AND archived = 0 AND session_kind = 'chat' " +
 			"ORDER BY updated_at DESC LIMIT 1",
 		).get(agentId) as any;
 		return row ? this.rowToRecord(row) : undefined;
@@ -288,14 +339,14 @@ export class SessionDB {
 
 	listSessions(agentId: string): SessionRecord[] {
 		const rows = this.db.prepare(
-			"SELECT * FROM sessions WHERE agent_id = ? AND archived = 0 ORDER BY updated_at DESC",
+			"SELECT * FROM sessions WHERE agent_id = ? AND archived = 0 AND session_kind = 'chat' ORDER BY updated_at DESC",
 		).all(agentId) as any[];
 		return rows.map((r) => this.rowToRecord(r));
 	}
 
 	listAllSessions(): SessionRecord[] {
 		const rows = this.db.prepare(
-			"SELECT * FROM sessions WHERE agent_id != '__recovered__' AND archived = 0 ORDER BY updated_at DESC",
+			"SELECT * FROM sessions WHERE agent_id != '__recovered__' AND archived = 0 AND session_kind = 'chat' ORDER BY updated_at DESC",
 		).all() as any[];
 		return rows.map((r) => this.rowToRecord(r));
 	}
@@ -962,6 +1013,129 @@ export class SessionDB {
 			estimatedCostUsd: row.estimated_cost_usd ?? 0,
 			context,
 			archived: row.archived === 1,
+			sessionKind: (row.session_kind as "chat" | "delegated") ?? "chat",
+			parentSessionId: row.parent_session_id ?? undefined,
+			parentTaskId: row.parent_task_id ?? undefined,
+			visibility: (row.visibility as "normal" | "hidden" | "debug") ?? "normal",
 		};
+	}
+
+	// -----------------------------------------------------------------------
+	// Delegated task persistence
+	// -----------------------------------------------------------------------
+
+	private delegatedTaskRowToRecord(row: any): DelegatedTaskRecord {
+		return {
+			id: row.id,
+			parentTaskId: row.parent_task_id ?? undefined,
+			rootTaskId: row.root_task_id,
+			ownerAgentId: row.owner_agent_id,
+			targetAgentId: row.target_agent_id,
+			parentSessionId: row.parent_session_id ?? undefined,
+			sessionId: row.session_id ?? undefined,
+			task: row.task,
+			status: row.status,
+			depth: row.depth ?? 0,
+			step: row.step ?? 0,
+			turns: row.turns ?? 0,
+			tokens: row.tokens ?? 0,
+			currentTool: row.current_tool ?? undefined,
+			result: row.result ?? undefined,
+			error: row.error ?? undefined,
+			controlMessage: row.control_message ?? undefined,
+			finishRequestedAt: row.finish_requested_at ?? undefined,
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+			completedAt: row.completed_at ?? undefined,
+		};
+	}
+
+	createDelegatedTask(input: {
+		id: string;
+		parentTaskId?: string;
+		rootTaskId: string;
+		ownerAgentId: string;
+		targetAgentId: string;
+		parentSessionId?: string;
+		sessionId?: string;
+		task: string;
+		status?: DelegatedTaskStatus;
+		depth?: number;
+	}): DelegatedTaskRecord {
+		const now = new Date().toISOString();
+		const status = input.status ?? "running";
+		this.db.prepare(
+			"INSERT INTO delegated_tasks (id, parent_task_id, root_task_id, owner_agent_id, target_agent_id, parent_session_id, session_id, task, status, depth, step, turns, tokens, created_at, updated_at) " +
+			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)",
+		).run(
+			input.id,
+			input.parentTaskId ?? null,
+			input.rootTaskId,
+			input.ownerAgentId,
+			input.targetAgentId,
+			input.parentSessionId ?? null,
+			input.sessionId ?? null,
+			input.task,
+			status,
+			input.depth ?? 0,
+			now, now,
+		);
+		return this.getDelegatedTask(input.id)!;
+	}
+
+	updateDelegatedTask(id: string, patch: Partial<Pick<DelegatedTaskRecord, "status" | "step" | "turns" | "tokens" | "currentTool" | "result" | "error" | "controlMessage" | "finishRequestedAt" | "completedAt" | "sessionId">>): DelegatedTaskRecord | undefined {
+		const sets: string[] = [];
+		const vals: any[] = [];
+		const colMap: Record<string, string> = {
+			status: "status",
+			step: "step",
+			turns: "turns",
+			tokens: "tokens",
+			currentTool: "current_tool",
+			result: "result",
+			error: "error",
+			controlMessage: "control_message",
+			finishRequestedAt: "finish_requested_at",
+			completedAt: "completed_at",
+			sessionId: "session_id",
+		};
+		for (const [k, v] of Object.entries(patch)) {
+			const col = colMap[k];
+			if (!col) continue;
+			sets.push(`${col} = ?`);
+			vals.push(v ?? null);
+		}
+		if (!sets.length) return this.getDelegatedTask(id);
+		sets.push("updated_at = ?");
+		vals.push(new Date().toISOString());
+		vals.push(id);
+		this.db.prepare(`UPDATE delegated_tasks SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+		return this.getDelegatedTask(id);
+	}
+
+	getDelegatedTask(id: string): DelegatedTaskRecord | undefined {
+		const row = this.db.prepare("SELECT * FROM delegated_tasks WHERE id = ?").get(id) as any;
+		return row ? this.delegatedTaskRowToRecord(row) : undefined;
+	}
+
+	listDelegatedTasks(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; status?: DelegatedTaskStatus }): DelegatedTaskRecord[] {
+		const where: string[] = [];
+		const vals: any[] = [];
+		if (filter?.ownerAgentId) { where.push("owner_agent_id = ?"); vals.push(filter.ownerAgentId); }
+		if (filter?.rootTaskId) { where.push("root_task_id = ?"); vals.push(filter.rootTaskId); }
+		if (filter?.parentTaskId) { where.push("parent_task_id = ?"); vals.push(filter.parentTaskId); }
+		if (filter?.status) { where.push("status = ?"); vals.push(filter.status); }
+		const sql = "SELECT * FROM delegated_tasks" + (where.length ? " WHERE " + where.join(" AND ") : "") + " ORDER BY created_at DESC";
+		const rows = this.db.prepare(sql).all(...vals) as any[];
+		return rows.map((r) => this.delegatedTaskRowToRecord(r));
+	}
+
+	/** Mark still-running/finishing delegated tasks interrupted (startup recovery). */
+	markRunningDelegatedTasksInterrupted(): number {
+		const now = new Date().toISOString();
+		const result = this.db.prepare(
+			"UPDATE delegated_tasks SET status = 'interrupted', updated_at = ? WHERE status IN ('running', 'finishing')",
+		).run(now);
+		return result.changes;
 	}
 }

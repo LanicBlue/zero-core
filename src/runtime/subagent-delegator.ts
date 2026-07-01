@@ -1,25 +1,25 @@
-// 子 Agent 委派调度器
+// Sub-agent delegation orchestrator.
 //
-// # 文件说明书
+// Creates sub-agent loops for delegated tasks, supports blocking/non-blocking
+// execution, graceful finish (request_finish), hard stop, and persistence of
+// each delegated task + its hidden session for restart-aware inspection.
 //
-// ## 核心功能
-// 管理子 Agent 的创建、委派和结果收集，支持并行子任务执行
+// # Persistence model (Q1: always persistent)
+// Every delegation (blocking or background) creates:
+//   1. a hidden "delegated" session (sessionKind="delegated", visibility=
+//      "hidden") so the sub-agent's turn history lands in the turns table and
+//      survives restart — but is excluded from chat session lists.
+//   2. a delegated_tasks row tracking status/turns/tokens/result for the
+//      TaskTree UI and crash recovery (markRunningDelegatedTasksInterrupted).
+// The sub-loop runs with that real sessionId, so session.saveToDb() persists
+// turns automatically (gated on `db && sessionId`).
 //
-// ## 输入
-// 子任务描述、Agent 配置、回调函数
-//
-// ## 输出
-// 子 Agent 运行时实例和执行结果
-//
-// ## 定位
-// src/runtime/ — 运行时层，为 agent-loop 提供子任务委派能力
-//
-// ## 依赖
-// types.ts、task-registry.ts、core/logger.ts
-//
-// ## 维护规则
-// 子 Agent 生命周期变更需确保资源正确释放
-//
+// # agentId
+// The sub-loop's agentId is the bare targetAgentId (e.g. "Developer") so the
+// delegated session is attributed to the target agent. This does NOT collide:
+// sub-loops are built directly here (not via agent-service), so they never
+// touch the only agentId-keyed map (activeSessions). Runtime identity is
+// sessionId + taskId, both unique.
 import type {
 	StreamEvent,
 	RuntimeProviderConfig,
@@ -28,12 +28,12 @@ import type {
 	RuntimeCallbacks,
 	AgentRuntime,
 } from "./types.js";
-import type { SessionContextBundle } from "../shared/types.js";
+import type { SessionContextBundle, DelegatedTaskRecord } from "../shared/types.js";
 import { spawn } from "node:child_process";
 import { TaskRegistry } from "./task-registry.js";
 import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
-import { EXEC_MAX_BUFFER_BYTES, OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
+import { OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
 import { decodeShellBuffer } from "../core/encoding.js";
 
 type LoopFactory = (
@@ -43,18 +43,16 @@ type LoopFactory = (
 ) => AgentRuntime;
 
 /**
- * v0.8 (M0) — extended delegateTask options (RFC §2.11 / decision 16).
+ * Extended delegateTask options (RFC §2.11 / decision 16).
  *
  * Synchronous sub-agent calls inherit the CALLER session's context bundle
- * (workspaceDir / wikiRootNodeId / projectId); the caller may override
- * pieces per-call (e.g. narrow workspace to a subdirectory). Identity,
- * toolPolicy and history come from the target agent itself — passed via
- * `targetAgentId` / `toolPolicy` / `systemPrompt` here so the runtime can
- * build the sub-loop against the target agent's config rather than the
- * caller's.
+ * (workspaceDir / wikiRootNodeId / projectId); the caller may override pieces
+ * per-call. Identity, toolPolicy and history come from the target agent —
+ * passed via targetAgentId / toolPolicy / systemPrompt so the runtime builds
+ * the sub-loop against the target agent's config rather than the caller's.
  */
 export interface DelegateTaskOptions {
-	/** Target agent id (the role/preset agent being delegated to). */
+	/** Target agent id (the agent being delegated to). */
 	targetAgentId?: string;
 	/** Target agent's full system prompt (overrides caller's prompt). */
 	systemPrompt?: string;
@@ -69,6 +67,20 @@ export interface DelegateTaskOptions {
 	 * then to the caller SessionConfig.workspaceDir.
 	 */
 	workspaceDir?: string;
+	/** Parent task in a delegation chain (sub-agent of a sub-agent). */
+	parentTaskId?: string;
+	/** Root of the delegation chain; defaults to parentTaskId or this task. */
+	rootTaskId?: string;
+	/** Title override for the delegated session (default: derived from task). */
+	title?: string;
+}
+
+/** Tracked running sub-loop, for request_finish turn-budget enforcement. */
+interface RunningSubloop {
+	loop: AgentRuntime;
+	abort: AbortController;
+	/** Set when request_finish is called with a maxTurns budget. */
+	finishState?: { maxTurns: number; turnsDone: number };
 }
 
 export interface SubagentDelegatorDeps {
@@ -79,6 +91,9 @@ export interface SubagentDelegatorDeps {
 	getToolConfig: () => Record<string, Record<string, any>>;
 }
 
+const DEFAULT_FINISH_MESSAGE =
+	"Stop expanding work. Return the best available summary of completed work, partial findings, artifacts, and remaining gaps.";
+
 export class SubagentDelegator {
 	readonly taskRegistry = new TaskRegistry();
 	private config: SessionConfig;
@@ -86,6 +101,7 @@ export class SubagentDelegator {
 	private emit: (event: StreamEvent) => void;
 	private createSubLoop: LoopFactory;
 	private getToolConfig: () => Record<string, Record<string, any>>;
+	private runningSubloops = new Map<string, RunningSubloop>();
 
 	constructor(deps: SubagentDelegatorDeps) {
 		this.config = deps.config;
@@ -95,37 +111,126 @@ export class SubagentDelegator {
 		this.getToolConfig = deps.getToolConfig;
 	}
 
+	// -----------------------------------------------------------------------
+	// Persistence helpers
+	// -----------------------------------------------------------------------
+
+	/** Create the hidden delegated session backing a task. Returns its id. */
+	private createDelegatedSession(
+		taskId: string,
+		targetAgentId: string,
+		task: string,
+		inheritedBundle: SessionContextBundle | undefined,
+		options: DelegateTaskOptions | undefined,
+	): string | undefined {
+		const db = this.config.db;
+		if (!db?.createSession) return undefined;
+		const title = options?.title ?? `Delegated: ${task.slice(0, 60)}`;
+		const session = db.createSession(targetAgentId, title, inheritedBundle, {
+			sessionKind: "delegated",
+			parentSessionId: this.config.sessionId,
+			parentTaskId: taskId,
+			visibility: "hidden",
+		});
+		return session.id;
+	}
+
+	/** Insert the delegated_tasks row for a new task. */
+	private createDelegatedTask(
+		taskId: string,
+		targetAgentId: string,
+		task: string,
+		sessionId: string | undefined,
+		options: DelegateTaskOptions | undefined,
+	): void {
+		this.config.db?.createDelegatedTask?.({
+			id: taskId,
+			parentTaskId: options?.parentTaskId,
+			rootTaskId: options?.rootTaskId ?? options?.parentTaskId ?? taskId,
+			ownerAgentId: this.config.agentId,
+			targetAgentId,
+			parentSessionId: this.config.sessionId,
+			sessionId,
+			task,
+			status: "running",
+			depth: (this.config.spawnDepth ?? 0) + 1,
+		});
+	}
+
+	/** Patch a delegated_tasks row (status/progress/result/...). Best-effort. */
+	private updateDelegatedTask(taskId: string, patch: Partial<DelegatedTaskRecord>): void {
+		this.config.db?.updateDelegatedTask?.(taskId, patch as any);
+	}
+
+	/**
+	 * Build an onEvent handler for a sub-loop that threads token/turn telemetry
+	 * into the task registry (if the task is registered) and the delegated_tasks
+	 * row, and enforces the request_finish turn budget.
+	 */
+	private buildSubEventHandler(taskId: string, entry: RunningSubloop) {
+		let tokens = 0;
+		let turns = 0;
+		let step = 0;
+		return (event: StreamEvent) => {
+			const e = event as any;
+			if (e.type === "tool_start") {
+				step += 1;
+				this.taskRegistry.updateProgress(taskId, step, e.toolName);
+				this.updateDelegatedTask(taskId, { step, currentTool: e.toolName });
+				this.emit({
+					type: "subagent_progress",
+					agentId: this.config.agentId,
+					taskId,
+					step,
+					toolName: e.toolName,
+				});
+			} else if (e.type === "usage") {
+				const total: number = e.usage?.totalTokens ?? 0;
+				tokens += total;
+				turns += 1;
+				this.taskRegistry.addUsage(taskId, total, true);
+				this.updateDelegatedTask(taskId, { tokens, turns });
+				// Enforce request_finish turn budget: force-stop after maxTurns.
+				const fs = entry.finishState;
+				if (fs) {
+					fs.turnsDone += 1;
+					if (fs.turnsDone >= fs.maxTurns) {
+						entry.abort.abort();
+						this.updateDelegatedTask(taskId, {
+							status: "killed",
+							error: "request_finish turn budget exhausted; force stopped.",
+						});
+					}
+				}
+			}
+		};
+	}
+
+	// -----------------------------------------------------------------------
+	// delegateTask — blocking sub-agent execution (with auto-background)
+	// -----------------------------------------------------------------------
+
 	async delegateTask(task: string, options?: DelegateTaskOptions): Promise<string> {
 		const toolConfig = this.getToolConfig();
-
-		// v0.8 (M0): inherit caller's context bundle, apply per-call override.
-		// targetAgentId drives the sub-agent's identity (the agent we delegate to);
-		// toolPolicy comes from the target agent unless the caller overrides.
 		const targetAgentId = options?.targetAgentId ?? `${this.config.agentId}:sub`;
+		const taskId = `${targetAgentId}-${Date.now()}`;
 		const callerBundle = this.config.contextBundle;
 		const inheritedBundle: SessionContextBundle | undefined = callerBundle
 			? { ...callerBundle, ...options?.contextOverride }
 			: undefined;
+		const resolvedWorkspaceDir = options?.workspaceDir ?? inheritedBundle?.workspaceDir ?? this.config.workspaceDir;
 
-		// workspaceDir resolution: per-call override → inherited bundle → caller config.
-		const resolvedWorkspaceDir =
-			options?.workspaceDir
-			?? inheritedBundle?.workspaceDir
-			?? this.config.workspaceDir;
+		// Always persistent (Q1): create hidden session + delegated_tasks row.
+		const sessionId = this.createDelegatedSession(taskId, targetAgentId, task, inheritedBundle, options);
+		this.createDelegatedTask(taskId, targetAgentId, task, sessionId, options);
 
 		const subConfig: SessionConfig = {
 			...this.config,
-			agentId: `${targetAgentId}-${Date.now()}`,
-			// v0.8: sub-agents run in an ISOLATED, ephemeral context. Do NOT
-			// inherit the parent's sessionId — AgentSession would otherwise
-			// rebuildFromTurns() the parent's full history (leak + token cost).
-			// undefined sessionId → no DB load, no persist (all DB ops are gated
-			// on `db && sessionId`). The sub-task's result is held by the
-			// TaskRegistry, so TaskStatus/Wait still return it.
-			sessionId: undefined,
-			// Identity / prompt / model / toolPolicy all come from the target
-			// agent (passed via options). Fall back to caller config when not
-			// supplied (legacy 2-arg call shape).
+			agentId: targetAgentId,
+			// Real sessionId → turns auto-persist via saveToDb. This is the
+			// sub-agent's OWN session (not the parent's), so rebuildFromTurns
+			// loads its own (initially empty) history — no parent leak.
+			sessionId,
 			systemPrompt: options?.systemPrompt ?? this.config.systemPrompt,
 			modelId: options?.model ?? this.config.modelId,
 			toolPolicy: options?.toolPolicy ?? this.config.toolPolicy,
@@ -136,20 +241,24 @@ export class SubagentDelegator {
 			timeoutSec: toolConfig?.Agent?.timeout,
 		};
 
-		// [Batch 2] SubagentStart hook
-		await triggerHooks("SubagentStart", {
-			agentId: this.config.agentId,
-			sessionId: this.config.sessionId,
-			taskId: subConfig.agentId,
-			task,
-		});
+		await triggerHooks("SubagentStart", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task });
 
-		const subLoop = this.createSubLoop(subConfig, this.providers, { onEvent: () => {} });
+		const subAbort = new AbortController();
+		// Build entry first so the telemetry handler can close over it (it
+		// uses entry.finishState / entry.abort only — not entry.loop); the loop
+		// is filled in right after createSubLoop returns.
+		const entry: RunningSubloop = { loop: undefined as unknown as AgentRuntime, abort: subAbort };
+		const telemetryOnEvent = this.buildSubEventHandler(taskId, entry);
+		const subLoop = this.createSubLoop(subConfig, this.providers, { onEvent: telemetryOnEvent });
+		entry.loop = subLoop;
+		this.runningSubloops.set(taskId, entry);
+		subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
 
 		const autoBgEnabled = toolConfig?.Agent?.auto_background === true;
 		const autoBgSec = Number(toolConfig?.Agent?.auto_background_timeout) || 0;
+
+		// Auto-background path: race the run against a timeout.
 		if (autoBgEnabled && autoBgSec > 0) {
-			const taskId = `${subConfig.agentId}:bg-${Date.now()}`;
 			const registry = this.taskRegistry;
 			const parentEmit = (event: StreamEvent) => this.emit(event);
 
@@ -165,97 +274,95 @@ export class SubagentDelegator {
 				});
 			});
 
-			const timeout = new Promise<string>((resolve) =>
-				setTimeout(() => resolve("timeout"), autoBgSec * 1000),
-			);
-
+			const timeout = new Promise<string>((resolve) => setTimeout(() => resolve("timeout"), autoBgSec * 1000));
 			const raceResult = await Promise.race([done.then(() => "done"), timeout]);
 
 			if (raceResult === "done") {
+				this.runningSubloops.delete(taskId);
 				if (bgError) {
-					// [Batch 2] SubagentStop hook (inline failure)
-					await triggerHooks("SubagentStop", {
-						agentId: this.config.agentId,
-						sessionId: this.config.sessionId,
-						taskId: subConfig.agentId,
-						status: "failed",
-						result: bgError,
-					});
+					this.updateDelegatedTask(taskId, { status: "failed", error: bgError });
+					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
 					throw new Error(bgError);
 				}
-				// [Batch 2] SubagentStop hook (inline success)
-				await triggerHooks("SubagentStop", {
-					agentId: this.config.agentId,
-					sessionId: this.config.sessionId,
-					taskId: subConfig.agentId,
-					status: "completed",
-					result: bgResult,
-				});
+				this.updateDelegatedTask(taskId, { status: "completed", result: bgResult });
+				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
 				return bgResult || "(sub-agent returned no output)";
 			}
 
-			registry.create(taskId, "subagent", task);
-			// [Batch 2] TaskCreated hook
-			await triggerHooks("TaskCreated", {
-				agentId: this.config.agentId,
-				sessionId: this.config.sessionId,
-				taskId,
-				task,
-			});
-
+			// Timed out still running → register as a background task.
+			registry.create(taskId, "subagent", task, subAbort);
+			await triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task });
 			done.then(async () => {
+				this.runningSubloops.delete(taskId);
 				if (bgError) {
 					registry.fail(taskId, bgError);
+					this.updateDelegatedTask(taskId, { status: "failed", error: bgError });
 					parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: bgError });
-					// [Batch 2] SubagentStop + TaskCompleted hooks
 					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
 					await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
 				} else {
 					registry.complete(taskId, bgResult);
+					this.updateDelegatedTask(taskId, { status: "completed", result: bgResult });
 					parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "completed", result: bgResult });
-					// [Batch 2] SubagentStop + TaskCompleted hooks
 					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
 					await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
 				}
 			});
 
-			return `Sub-agent auto-backgrounded after ${autoBgSec}s (still running)." + NL + "task_id: ${taskId}" + NL + "Use task_status to check progress.`;
+			return `Sub-agent auto-backgrounded after ${autoBgSec}s (still running).\ntask_id: ${taskId}\nUse TaskStatus to check progress.`;
 		}
 
-		await subLoop.run(task);
-		const result = subLoop.getResult();
-		// [Batch 2] SubagentStop hook (synchronous completion)
-		await triggerHooks("SubagentStop", {
-			agentId: this.config.agentId,
-			sessionId: this.config.sessionId,
-			taskId: subConfig.agentId,
-			status: "completed",
-			result,
-		});
-		return result;
+		// Plain blocking path.
+		try {
+			await subLoop.run(task);
+			const result = subLoop.getResult();
+			this.updateDelegatedTask(taskId, { status: "completed", result });
+			await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
+			return result;
+		} catch (err: any) {
+			const message = err.message || "Unknown error";
+			// Race fix: if kill()/request_finish budget already marked the task
+			// killed, don't overwrite with failed.
+			const cur = this.taskRegistry.get(taskId)?.status;
+			if (cur === "killed") {
+				this.updateDelegatedTask(taskId, { status: "killed", error: message });
+			} else {
+				this.updateDelegatedTask(taskId, { status: "failed", error: message });
+			}
+			await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: cur === "killed" ? "killed" : "failed", result: message });
+			throw err;
+		} finally {
+			this.runningSubloops.delete(taskId);
+		}
 	}
 
-	delegateTaskBackground(task: string, options?: { model?: string; systemPrompt?: string }): string {
-		const taskId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-		this.emit({
-			type: "subagent_dispatched",
-			agentId: this.config.agentId,
-			taskId,
-			task,
-		});
+	// -----------------------------------------------------------------------
+	// delegateTaskBackground — non-blocking sub-agent execution
+	// -----------------------------------------------------------------------
 
+	delegateTaskBackground(task: string, options?: DelegateTaskOptions): string {
 		const toolConfig = this.getToolConfig();
+		const targetAgentId = options?.targetAgentId ?? `${this.config.agentId}:sub`;
+		const taskId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+		const callerBundle = this.config.contextBundle;
+		const inheritedBundle: SessionContextBundle | undefined = callerBundle
+			? { ...callerBundle, ...options?.contextOverride }
+			: undefined;
+
+		// Always persistent (Q1).
+		const sessionId = this.createDelegatedSession(taskId, targetAgentId, task, inheritedBundle, options);
+		this.createDelegatedTask(taskId, targetAgentId, task, sessionId, options);
+		this.emit({ type: "subagent_dispatched", agentId: this.config.agentId, taskId, task });
+
 		const subConfig: SessionConfig = {
 			...this.config,
-			agentId: `${this.config.agentId}:${taskId}`,
-			// v0.8: ISOLATED ephemeral context — see delegateTask() for rationale.
-			// Without this, non_blocking sub-agents (deferred via setImmediate)
-			// inherit the parent sessionId and rebuildFromTurns() the parent's
-			// full history, producing main-conversation output instead of the
-			// assigned task.
-			sessionId: undefined,
+			agentId: targetAgentId,
+			sessionId,
 			systemPrompt: options?.systemPrompt ?? this.config.systemPrompt,
 			modelId: options?.model ?? this.config.modelId,
+			toolPolicy: options?.toolPolicy ?? this.config.toolPolicy,
+			workspaceDir: options?.workspaceDir ?? inheritedBundle?.workspaceDir ?? this.config.workspaceDir,
+			contextBundle: inheritedBundle,
 			timeoutSec: toolConfig?.Agent?.timeout,
 			parentSessionId: this.config.sessionId,
 			spawnDepth: (this.config.spawnDepth ?? 0) + 1,
@@ -264,64 +371,50 @@ export class SubagentDelegator {
 		const registry = this.taskRegistry;
 		const subAbort = new AbortController();
 		registry.create(taskId, "subagent", task, subAbort);
-
-		// [Batch 2] TaskCreated + SubagentStart hooks
 		triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task }).catch(() => {});
 		triggerHooks("SubagentStart", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task }).catch(() => {});
 
 		const parentEmit = (event: StreamEvent) => this.emit(event);
 
 		setImmediate(async () => {
-			let stepCount = 0;
-			const subLoop = this.createSubLoop(subConfig, this.providers, {
-				onEvent: (event) => {
-					if (event.type === "tool_start") {
-						stepCount++;
-						registry.updateProgress(taskId, stepCount, event.toolName);
-						parentEmit({
-							type: "subagent_progress",
-							agentId: this.config.agentId,
-							taskId,
-							step: stepCount,
-							toolName: event.toolName,
-						});
-					}
-				},
-			});
-
+			const entry: RunningSubloop = { loop: undefined as unknown as AgentRuntime, abort: subAbort };
+			const telemetryOnEvent = this.buildSubEventHandler(taskId, entry);
+			const subLoop = this.createSubLoop(subConfig, this.providers, { onEvent: telemetryOnEvent });
+			entry.loop = subLoop;
+			this.runningSubloops.set(taskId, entry);
 			subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
 
 			try {
 				await subLoop.run(task);
 				const result = subLoop.getResult();
 				registry.complete(taskId, result);
-				parentEmit({
-					type: "subagent_completed",
-					agentId: this.config.agentId,
-					taskId,
-					status: "completed",
-					result,
-				});
-				// [Batch 2] SubagentStop + TaskCompleted hooks
+				this.updateDelegatedTask(taskId, { status: "completed", result });
+				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "completed", result });
 				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
 				await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
 			} catch (err: any) {
-				registry.fail(taskId, err.message || "Unknown error");
-				parentEmit({
-					type: "subagent_completed",
-					agentId: this.config.agentId,
-					taskId,
-					status: "failed",
-					result: err.message,
-				});
-				// [Batch 2] SubagentStop + TaskCompleted hooks
-				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: err.message });
-				await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: err.message });
+				const message = err.message || "Unknown error";
+				const cur = registry.get(taskId)?.status;
+				if (cur === "killed") {
+					this.updateDelegatedTask(taskId, { status: "killed", error: message });
+				} else {
+					registry.fail(taskId, message);
+					this.updateDelegatedTask(taskId, { status: "failed", error: message });
+				}
+				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: message });
+				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: message });
+				await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: message });
+			} finally {
+				this.runningSubloops.delete(taskId);
 			}
 		});
 
 		return taskId;
 	}
+
+	// -----------------------------------------------------------------------
+	// Task query / control
+	// -----------------------------------------------------------------------
 
 	getTaskResult(taskId: string): TaskInfo | null {
 		return this.taskRegistry.get(taskId) ?? null;
@@ -334,35 +427,68 @@ export class SubagentDelegator {
 	stopTask(taskId: string): boolean {
 		const killed = this.taskRegistry.kill(taskId);
 		if (killed) {
-			// [Batch 2] SubagentStop + TaskCompleted hooks for killed tasks
+			this.updateDelegatedTask(taskId, { status: "killed", error: "Stopped via stop." });
 			triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed" }).catch(() => {});
 			triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed" }).catch(() => {});
 		}
 		return killed;
 	}
 
+	/**
+	 * Advisory finish request (Q3). Marks the task "finishing" and injects a
+	 * control message into the sub-agent's next agent-loop boundary (does NOT
+	 * abort the current step). If `maxTurns` is given, force-stops after that
+	 * many additional turns; without it the request is purely advisory and
+	 * never force-stops (use stopTask for unconditional hard stop).
+	 */
+	requestTaskFinish(taskId: string, options?: { message?: string; maxTurns?: number }): boolean {
+		const entry = this.runningSubloops.get(taskId);
+		const message = options?.message ?? DEFAULT_FINISH_MESSAGE;
+		const marked = this.taskRegistry.requestFinish(taskId, message);
+		this.updateDelegatedTask(taskId, {
+			status: "finishing",
+			controlMessage: message,
+			finishRequestedAt: new Date().toISOString(),
+		});
+		if (!entry) return marked;
+		if (options?.maxTurns !== undefined && options.maxTurns > 0) {
+			entry.finishState = { maxTurns: options.maxTurns, turnsDone: 0 };
+		}
+		entry.loop.requestFinish?.(message);
+		return true;
+	}
+
+	/** List delegated-task records (persisted) for this owner, optionally scoped. */
+	listDelegatedTasks(filter?: { rootTaskId?: string; parentTaskId?: string }): DelegatedTaskRecord[] {
+		return this.config.db?.listDelegatedTasks?.({
+			ownerAgentId: filter?.rootTaskId ? undefined : this.config.agentId,
+			rootTaskId: filter?.rootTaskId,
+			parentTaskId: filter?.parentTaskId,
+		}) ?? [];
+	}
+
 	suspendUntilWake(timeoutMs: number, taskId?: string): Promise<string> {
 		return this.taskRegistry.suspendUntilWake(timeoutMs, taskId);
 	}
+
+	// -----------------------------------------------------------------------
+	// runBackground — spawn a background shell process (NOT a delegated agent;
+	// tracked in TaskRegistry only, no delegated_tasks row)
+	// -----------------------------------------------------------------------
 
 	runBackground(command: string, timeoutSec?: number): string {
 		const taskId = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 		const isWin = process.platform === "win32";
 		const shell = isWin ? "cmd.exe" : "/bin/bash";
-		// 不再用 chcp 65001 强转(/dev/null 在 cmd 无效,且不覆盖所有原生 exe);
-		// 改为拿到原始 Buffer,close 时由 decodeShellBuffer 做 UTF-8/GBK 自动解码。
+		// Accumulate raw Buffer chunks; decode once on close to avoid splitting
+		// multi-byte chars and to fall back to GBK on invalid UTF-8 (Windows).
 		const shellArgs = isWin ? ["/c", command] : ["-c", command];
 		const registry = this.taskRegistry;
 		const parentEmit = (event: StreamEvent) => this.emit(event);
 
 		registry.create(taskId, "bash", command);
-		// [Batch 2] TaskCreated hook
 		triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task: command }).catch(() => {});
 
-		// v0.8 (S3): wrap spawn so a synchronous launch failure (bad shell path,
-		// missing binary, etc.) is recorded against the task and the task_id is
-		// still returned — so the caller can关联 + TaskStatus sees status=failed
-		// instead of getting a raw error with no task_id and a stuck "running" task.
 		let child: any;
 		try {
 			child = spawn(shell, shellArgs, { cwd: this.config.workspaceDir });
@@ -373,8 +499,6 @@ export class SubagentDelegator {
 			triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: msg }).catch(() => {});
 			return taskId;
 		}
-		// 累积原始 Buffer chunk,close 时一次性解码 —— 避免多字节字符(UTF-8/GBK)
-		// 被 chunk 边界切断,并在含非法 UTF-8 序列时回退 GBK(Windows 原生命令)。
 		const stdoutChunks: Buffer[] = [];
 		const stderrChunks: Buffer[] = [];
 		child.stdout.on("data", (d: Buffer) => { stdoutChunks.push(d); });
@@ -393,14 +517,12 @@ export class SubagentDelegator {
 				registry.fail(taskId, `Exit code ${code}: ${result}`);
 			}
 			parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: code === 0 ? "completed" : "failed", result });
-			// [Batch 2] TaskCompleted hook
 			triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: code === 0 ? "completed" : "failed", result }).catch(() => {});
 		});
 
 		child.on("error", (err: Error) => {
 			registry.fail(taskId, err.message);
 			parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: err.message });
-			// [Batch 2] TaskCompleted hook
 			triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: err.message }).catch(() => {});
 		});
 

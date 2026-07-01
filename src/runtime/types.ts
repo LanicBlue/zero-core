@@ -24,7 +24,7 @@
 //
 import type { ModelMessage } from "ai";
 import type { ISessionStore } from "./session-store-interface.js";
-import type { SessionContextBundle } from "../shared/types.js";
+import type { DelegatedTaskRecord, SessionContextBundle } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
 // Stream events — must match the existing IPC contract
@@ -344,8 +344,12 @@ export interface TaskInfo {
 	id: string;
 	type: TaskType;
 	task: string;
-	status: "running" | "completed" | "failed" | "killed";
+	status: "running" | "finishing" | "completed" | "failed" | "killed" | "interrupted";
 	step: number;
+	/** Agent-loop iterations completed (one user input spans many loops). */
+	turns: number;
+	/** Cumulative tokens (input + output) across all loops. */
+	tokens: number;
 	currentTool?: string;
 	result?: string;
 	error?: string;
@@ -374,10 +378,20 @@ export interface ToolExecutionContext {
 	 * the extended fields are all optional.
 	 */
 	delegateTask?: (task: string, options?: import("./subagent-delegator.js").DelegateTaskOptions) => Promise<string>;
-	delegateTaskBackground?: (task: string, options?: { model?: string; systemPrompt?: string }) => string;
+	delegateTaskBackground?: (task: string, options?: import("./subagent-delegator.js").DelegateTaskOptions) => string;
 	getTaskResult?: (taskId: string) => TaskInfo | null;
 	listTasks?: (filter?: "running" | "completed") => TaskInfo[];
 	stopTask?: (taskId: string) => boolean;
+	/**
+	 * Ask a running delegated task to finish soon (advisory). Marks the task
+	 * "finishing", injects a control message into the sub-agent's next loop,
+	 * and — if maxTurns is given — force-stops it after that many agent-loop
+	 * iterations. Without maxTurns the request is purely advisory (never
+	 * force-stops); use stopTask for unconditional hard stop.
+	 */
+	requestTaskFinish?: (taskId: string, options?: { message?: string; maxTurns?: number }) => boolean;
+	/** List delegated-task records (persisted) for this owner, optionally scoped. */
+	listDelegatedTasks?: (filter?: { rootTaskId?: string; parentTaskId?: string }) => DelegatedTaskRecord[];
 	suspendUntilWake?: (timeoutMs: number, taskId?: string) => Promise<string>;
 	runBackground?: (command: string, timeout?: number) => string;
 	readScope?: "filesystem" | "workspace";
@@ -481,6 +495,13 @@ export interface AgentRuntime {
 	getState(): RuntimeState;
 	resetSession(): void;
 	getResult(): string;
+	/**
+	 * Advisory finish request. Stages a control message that the loop injects
+	 * at the next agent-loop boundary (does NOT abort the current step). The
+	 * sub-agent is expected to wrap up; the delegator enforces any maxTurns
+	 * budget. Optional on the interface — callers must null-check.
+	 */
+	requestFinish?(reason?: string): void;
 }
 
 export interface RuntimeState {

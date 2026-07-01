@@ -34,6 +34,8 @@ export class TaskRegistry {
 			task,
 			status: "running",
 			step: 0,
+			turns: 0,
+			tokens: 0,
 			startedAt: Date.now(),
 		});
 		if (abortController) {
@@ -43,9 +45,32 @@ export class TaskRegistry {
 
 	updateProgress(taskId: string, step: number, toolName?: string): void {
 		const info = this.tasks.get(taskId);
-		if (!info || info.status !== "running") return;
+		if (!info || (info.status !== "running" && info.status !== "finishing")) return;
 		info.step = step;
 		if (toolName) info.currentTool = toolName;
+	}
+
+	/** Add accumulated tokens + one completed agent-loop turn to a task. */
+	addUsage(taskId: string, tokensDelta: number, turnCompleted: boolean): void {
+		const info = this.tasks.get(taskId);
+		if (!info) return;
+		info.tokens += tokensDelta;
+		if (turnCompleted) info.turns += 1;
+	}
+
+	/**
+	 * Advisory finish: mark a running task "finishing" and stage a control
+	 * message. Does NOT abort — the sub-agent is expected to wrap up. The
+	 * delegator enforces any turn budget separately. Returns false if the
+	 * task is not running (already terminal or finishing).
+	 */
+	requestFinish(taskId: string, message?: string): boolean {
+		const info = this.tasks.get(taskId);
+		if (!info || info.status !== "running") return false;
+		info.status = "finishing";
+		if (message) info.result = message;
+		this.tryWake();
+		return true;
 	}
 
 	complete(taskId: string, result: string): void {
@@ -72,7 +97,7 @@ export class TaskRegistry {
 
 	kill(taskId: string): boolean {
 		const info = this.tasks.get(taskId);
-		if (!info || info.status !== "running") return false;
+		if (!info || (info.status !== "running" && info.status !== "finishing")) return false;
 		const ac = this.abortControllers.get(taskId);
 		if (ac) {
 			ac.abort();
@@ -113,8 +138,8 @@ export class TaskRegistry {
 
 	async suspendUntilWake(timeoutMs: number, taskId?: string): Promise<string> {
 		const hasRunning = taskId
-			? this.tasks.get(taskId)?.status === "running"
-			: [...this.tasks.values()].some((t) => t.status === "running");
+			? (this.tasks.get(taskId)?.status === "running" || this.tasks.get(taskId)?.status === "finishing")
+			: [...this.tasks.values()].some((t) => t.status === "running" || t.status === "finishing");
 
 		if (!hasRunning) return this.generateSummary(taskId);
 
@@ -127,7 +152,7 @@ export class TaskRegistry {
 			this.wakeCallback = () => {
 				if (taskId) {
 					const info = this.tasks.get(taskId);
-					if (info && info.status !== "running") {
+					if (info && info.status !== "running" && info.status !== "finishing") {
 						clearTimeout(timer);
 						this.wakeCallback = null;
 						resolve();
@@ -149,9 +174,9 @@ export class TaskRegistry {
 		for (const info of this.tasks.values()) {
 			if (filterTaskId && info.id !== filterTaskId) continue;
 
-			if (info.status === "running") {
+			if (info.status === "running" || info.status === "finishing") {
 				const typeLabel = info.type === "bash" ? "bash" : "subagent";
-				running.push(`[${info.id}] ${typeLabel} running${info.currentTool ? " (tool: " + info.currentTool + ")" : ""}`);
+				running.push(`[${info.id}] ${typeLabel} ${info.status} (turns:${info.turns} tokens:${info.tokens})${info.currentTool ? " tool:" + info.currentTool : ""}`);
 			} else if (info.status === "completed") {
 				const r = info.result && info.result.length > 500 ? info.result.slice(0, 500) + "..." : info.result;
 				completed.push(`[${info.id}] completed. Result: ${r}`);
