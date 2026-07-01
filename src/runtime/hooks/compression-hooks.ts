@@ -26,7 +26,7 @@
 // ## 依赖
 // - core/hook-registry、core/hook-types、core/logger
 // - runtime/compression-engine、runtime/types、runtime/session
-// - server/wiki-node-store(memoryTypeRootId)、具备 hasStepSchema/replaceStepsFromMessages 的 DB
+// - server/wiki-node-store(memoryTypeRootId)、具备 replaceStepsFromMessages 的 DB
 //
 // ## 维护规则
 // - 压缩阈值或 keepRecentTurns 默认值调整时，同步更新 types.ts 的 SessionConfig.compression 注释。
@@ -111,7 +111,8 @@ export function registerCompressionHooks(registry: HookRegistry = HookRegistry.g
 				// Sync turns table with compressed messages for step-level storage.
 				// Without this, rebuildFromSteps() on next restart would read
 				// the pre-compression turns, losing the compression effect.
-				if (config.db && config.sessionId && config.db.hasStepSchema()) {
+				// Step 4A: step-only — turns table is always step-level now.
+				if (config.db && config.sessionId) {
 					syncTurnsAfterCompression(config.db, config.sessionId, session);
 				}
 

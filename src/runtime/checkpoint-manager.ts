@@ -58,15 +58,11 @@ export class CheckpointManager {
 	}
 
 	saveAssistantTurn(sessionId: string | null | undefined, recorder: TurnRecorder): void {
-		if (!this.db || !sessionId) return;
-		if (recorder.blocks.length === 0) return;
-		const blocksJson = JSON.stringify(recorder.blocks);
-		if (this.incrementalTurnSeq >= 0) {
-			this.db.updateTurnContent(sessionId, this.incrementalTurnSeq, blocksJson);
-			return;
-		}
-		const seq = this.db.getTurnCount(sessionId);
-		this.db.appendTurn(sessionId, seq, "assistant", blocksJson);
+		// Deprecated. The legacy turn-level write path was retired in Step 4A
+		// (turns table is step-only). This class is unused at runtime — turn
+		// persistence is owned by turn-hooks.ts via the step-level API. Kept as
+		// a no-op for source-level grep cleanliness.
+		void sessionId; void recorder;
 	}
 
 	saveIncrementalCheckpoint(
@@ -76,28 +72,9 @@ export class CheckpointManager {
 		toolCallId: string,
 		_output: any,
 	): void {
-		if (!this.db || !sessionId) return;
-
-		const tc = this.pendingToolCalls.get(toolCallId);
-		if (!tc) return;
-
-		// Save turn blocks to turns table only (not messages table).
-		// The messages table is updated once at the end by finalizeStream's saveToDb.
-		recorder.sealStep();
-		const blocksJson = JSON.stringify(recorder.blocks);
-		try {
-			if (this.incrementalTurnSeq < 0) {
-				this.incrementalTurnSeq = this.db.getTurnCount(sessionId);
-				this.db.appendTurn(sessionId, this.incrementalTurnSeq, "assistant", blocksJson);
-			} else {
-				this.db.updateTurnContent(sessionId, this.incrementalTurnSeq, blocksJson);
-			}
-		} catch (err) {
-			log.error("loop", "Incremental checkpoint turn save failed:", (err as Error).message);
-		}
-
-		this.pendingToolCalls.delete(toolCallId);
-		log.debug("loop", "Incremental checkpoint saved, tool:", tc.name);
+		// Deprecated (see saveAssistantTurn). Step-level persistence now lives
+		// in turn-hooks.ts (PostToolUse / StepEnd). No-op here.
+		void sessionId; void recorder; void toolCallId;
 	}
 
 	deletePartialTurn(sessionId: string | null | undefined): void {

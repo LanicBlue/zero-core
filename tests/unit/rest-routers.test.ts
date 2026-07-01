@@ -75,7 +75,6 @@ function mockSessionDb() {
 		setMainSession: vi.fn(),
 		getMainSession: vi.fn(() => ({ id: "s1", agentId: "a1" })),
 		deleteSession: vi.fn(),
-		updateTurnContent: vi.fn(),
 		getMessagesWithSeq: vi.fn(() => []),
 		updateMessageContent: vi.fn(),
 		deleteTurn: vi.fn(),
@@ -83,8 +82,7 @@ function mockSessionDb() {
 		queryToolExecutions: vi.fn(() => []),
 		getToolExecutionStats: vi.fn(() => []),
 		cleanOldToolExecutions: vi.fn(() => 0),
-		// Step-level storage methods
-		hasStepSchema: vi.fn(() => true),
+		// Step-level storage methods (Step 4A: step-only — legacy turn API retired)
 		getSteps: vi.fn(() => []),
 		getStepGroup: vi.fn(() => []),
 		appendStep: vi.fn(),

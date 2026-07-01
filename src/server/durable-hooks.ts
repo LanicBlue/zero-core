@@ -23,6 +23,39 @@
 import { HookRegistry } from "../core/hook-registry.js";
 import type { SessionDB } from "./session-db.js";
 import { log } from "../core/logger.js";
+// Step 4A (fix): the shared turn_seq Map is OWNED by turn-hooks — it writes the
+// user-step row at TurnStart, so it owns the cursor. durable-hooks READS the
+// shared Map (for createTurnState's seq) but does NOT write to it. Instead it
+// dedups turn_state creation through a local Set (turnStateCreated). This
+// removes the TurnStart ordering dependency that previously caused step-resume
+// regressions: when durable's TurnStart ran first it set the cursor, which
+// made turn-hooks' hasTurnSeq() guard skip the user-row write. With durable
+// out of the writer seat, turn-hooks' TurnStart always writes the user row
+// regardless of registration order.
+import { getTurnSeq, setTurnSeq } from "../runtime/hooks/turn-seq-tracker.js";
+
+// Local turn_state dedup: marks "createTurnState already ran for this session
+// this turn" (either durable's own TurnStart created it, or a resume caller
+// pre-populated it via setSessionTurnSeq). Decoupled from the shared turn_seq
+// Map so durable's dedup can never cause turn-hooks' TurnStart user-row write
+// to be skipped.
+const turnStateCreated = new Set<string>();
+
+/**
+ * Back-compat shim: existing callers (agent-service resume, step-resume test)
+ * import `setSessionTurnSeq` from durable-hooks. Step 4A (fix): this is the
+ * "this turn is being resumed, do NOT re-initialize" signal. It writes BOTH:
+ *   - the shared turn_seq Map (turn-hooks' TurnStart guard consults it to skip
+ *     the user-row write — correct, the row already exists on resume), and
+ *   - durable's local turnStateCreated Set (so durable's TurnStart skips
+ *     createTurnState, preserving the existing turn_state row + checkpoint).
+ * Mirroring the cursor into both dedup mechanisms keeps durable independent of
+ * the shared Map's writer state, while preserving the resume contract.
+ */
+export function setSessionTurnSeq(sessionId: string, turnSeq: number): void {
+	setTurnSeq(sessionId, turnSeq);
+	turnStateCreated.add(sessionId);
+}
 
 // ---------------------------------------------------------------------------
 // Durable execution hooks — step-level checkpoint to the database
@@ -38,27 +71,34 @@ import { log } from "../core/logger.js";
 // flip is gone — phase now only marks terminal session state.
 // ---------------------------------------------------------------------------
 
-// Per-session turn sequence tracking (the turn_state row key)
-const sessionTurnSeq = new Map<string, number>();
-
-export function setSessionTurnSeq(sessionId: string, turnSeq: number): void {
-	sessionTurnSeq.set(sessionId, turnSeq);
-}
-
 export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistry = HookRegistry.getInstance()): void {
 
 	registry.register("TurnStart", async (ctx) => {
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
-			// Skip if already tracked (e.g. recovery scenario — turn_state exists)
-			if (sessionTurnSeq.has(sessionId)) {
-				log.debug("durable", `Turn seq already set for session ${sessionId}, skipping create`);
+			// Local dedup: skip if we already created the turn_state row for
+			// this session this turn (e.g. recovery scenario where
+			// setSessionTurnSeq pre-populated the cursor, or a double-fire).
+			// NOTE: deliberately NOT consulting the shared turn_seq Map here —
+			// doing so would re-introduce the ordering dependency (durable
+			// running first would mark the cursor, causing turn-hooks to skip
+			// the user-row write). The local Set keeps durable's dedup
+			// independent of turn-hooks' writer state.
+			if (turnStateCreated.has(sessionId)) {
+				log.debug("durable", `turn_state already created for session ${sessionId}, skipping`);
 				return;
 			}
-			const turnSeq = sessionDb.getTurnCount(sessionId);
-			sessionTurnSeq.set(sessionId, turnSeq);
+			// Read the turn seq for createTurnState. Prefer turn-hooks' shared
+			// cursor (it has already written the user-step row, so its seq is
+			// authoritative); fall back to db.getTurnCount if turn-hooks has
+			// not run yet (registration order varies across processes).
+			let turnSeq = getTurnSeq(sessionId);
+			if (turnSeq === undefined) {
+				turnSeq = sessionDb.getTurnCount(sessionId);
+			}
 			sessionDb.createTurnState(sessionId, turnSeq);
+			turnStateCreated.add(sessionId);
 			log.debug("durable", `Turn ${turnSeq} created for session ${sessionId}`);
 		} catch (err) {
 			log.error("durable", "TurnStart hook failed:", (err as Error).message);
@@ -74,7 +114,7 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
-			const turnSeq = sessionTurnSeq.get(sessionId);
+			const turnSeq = getTurnSeq(sessionId);
 			if (turnSeq === undefined) return;
 			const stepBaseSeq = ctx.stepBaseSeq as number | undefined;
 			const stepOffset = ctx.stepOffset as number | undefined;
@@ -91,11 +131,23 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
-			const turnSeq = sessionTurnSeq.get(sessionId);
-			if (turnSeq === undefined) return;
-			sessionDb.completeTurnState(sessionId, turnSeq);
-			log.debug("durable", `Turn ${turnSeq} completed for session ${sessionId}`);
-			sessionTurnSeq.delete(sessionId);
+			const turnSeq = getTurnSeq(sessionId);
+			// turn-hooks owns the cursor; it clears it on TurnEnd. Durable only
+			// needs the seq to close the turn_state row. If turn-hooks already
+			// cleared the cursor (its TurnEnd ran first), fall back to the
+			// local dedup sentinel: if turnStateCreated has this session, a
+			// turn_state row exists and we must complete it — read its seq.
+			let seq = turnSeq;
+			if (seq === undefined) {
+				const row = sessionDb.getIncompleteTurns().find(t => t.sessionId === sessionId);
+				seq = row?.turnSeq;
+			}
+			if (seq === undefined) return;
+			sessionDb.completeTurnState(sessionId, seq);
+			log.debug("durable", `Turn ${seq} completed for session ${sessionId}`);
+			// Clear durable's local dedup marker — do NOT touch the shared Map
+			// (turn-hooks owns it).
+			turnStateCreated.delete(sessionId);
 		} catch (err) {
 			log.error("durable", "TurnEnd hook failed:", (err as Error).message);
 		}
@@ -105,11 +157,16 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 		try {
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
-			const turnSeq = sessionTurnSeq.get(sessionId);
-			if (turnSeq === undefined) return;
-			sessionDb.failTurnState(sessionId, turnSeq, ctx.error as string ?? "Unknown error");
-			log.debug("durable", `Turn ${turnSeq} failed for session ${sessionId}`);
-			sessionTurnSeq.delete(sessionId);
+			const turnSeq = getTurnSeq(sessionId);
+			let seq = turnSeq;
+			if (seq === undefined) {
+				const row = sessionDb.getIncompleteTurns().find(t => t.sessionId === sessionId);
+				seq = row?.turnSeq;
+			}
+			if (seq === undefined) return;
+			sessionDb.failTurnState(sessionId, seq, ctx.error as string ?? "Unknown error");
+			log.debug("durable", `Turn ${seq} failed for session ${sessionId}`);
+			turnStateCreated.delete(sessionId);
 		} catch (err) {
 			log.error("durable", "TurnError hook failed:", (err as Error).message);
 		}

@@ -26,17 +26,13 @@ import { HookRegistry } from "../../core/hook-registry.js";
 import type { ISessionStore } from "../session-store-interface.js";
 import { TurnRecorder } from "../turn-recorder.js";
 import { log } from "../../core/logger.js";
+// Step 4A: turn_seq tracking consolidated into a single shared Map
+// (turn-seq-tracker). turn-hooks re-exports the accessors so existing
+// callers (agent-service, tests) keep their import paths; durable-hooks
+// imports the tracker directly so both hooks operate on the same instance.
+import { getTurnSeq, setTurnSeq, hasTurnSeq, deleteTurnSeq } from "./turn-seq-tracker.js";
 
-// Per-session turn sequence tracking
-const sessionTurnSeq = new Map<string, number>();
-
-export function getTurnSeq(sessionId: string): number | undefined {
-	return sessionTurnSeq.get(sessionId);
-}
-
-export function setTurnSeq(sessionId: string, seq: number): void {
-	sessionTurnSeq.set(sessionId, seq);
-}
+export { getTurnSeq, setTurnSeq } from "./turn-seq-tracker.js";
 
 /**
  * Step 2E: dangling synthesis for the safety-net persist path was previously
@@ -60,7 +56,7 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			if (!sessionId) return;
 
 			// Skip if turn seq already set (recovery scenario)
-			if (sessionTurnSeq.has(sessionId)) {
+			if (hasTurnSeq(sessionId)) {
 				log.debug("turn-hooks", `Turn seq already set for session ${sessionId}, skipping user turn`);
 				return;
 			}
@@ -69,14 +65,12 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			if (!userMessage) return;
 
 			const seq = db.getTurnCount(sessionId);
-			sessionTurnSeq.set(sessionId, seq);
+			setTurnSeq(sessionId, seq);
 
-			// Use step-level storage if available, fallback to legacy
-			if (db.hasStepSchema()) {
-				db.appendStep(sessionId, seq, seq, "user", userMessage);
-			} else {
-				db.appendTurn(sessionId, seq, "user", userMessage);
-			}
+			// Step 4A: step-only. The user row's turn_group = its own seq (a
+			// user turn opens a new group); the legacy single-row write path is
+			// retired.
+			db.appendStep(sessionId, seq, seq, "user", userMessage);
 			log.debug("turn-hooks", `User turn ${seq} saved for session ${sessionId}`);
 		} catch (err) {
 			log.error("turn-hooks", "TurnStart hook failed:", (err as Error).message);
@@ -195,38 +189,27 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
 
-			const turnSeq = sessionTurnSeq.get(sessionId);
+			const turnSeq = getTurnSeq(sessionId);
 			if (turnSeq === undefined) return;
 
-			// Safety net: if blocks are provided and we have step-level storage,
-			// ensure they're persisted (abort may have occurred before finish-step)
+			// Safety net: if blocks are provided, ensure they're persisted as an
+			// assistant step (abort may have occurred before finish-step).
 			const blocks = ctx.blocks as any[] | undefined;
 			if (blocks && blocks.length > 0) {
 				// Step 2E: persist writes the truth; dangling synthesis moved to
 				// rebuild (AgentSession.rebuildFromSteps). Serialize verbatim.
 				const blocksJson = JSON.stringify(blocks);
-				if (db.hasStepSchema()) {
-					// Step-level: write as a single assistant step if nothing persisted yet
-					const assistantSeq = turnSeq + 1;
-					const existing = db.getSteps(sessionId).find(s => s.turnGroup === turnSeq && s.role === "assistant");
-					if (!existing) {
-						db.appendStep(sessionId, assistantSeq, turnSeq, "assistant", blocksJson);
-						log.debug("turn-hooks", `Safety net: assistant step ${assistantSeq} saved for session ${sessionId}`);
-					}
-				} else {
-					// Legacy fallback
-					const assistantSeq = turnSeq + 1;
-					const existing = db.getTurns(sessionId).find(t => t.seq === assistantSeq);
-					if (existing) {
-						db.updateTurnContent(sessionId, assistantSeq, blocksJson);
-					} else {
-						db.appendTurn(sessionId, assistantSeq, "assistant", blocksJson);
-					}
-					log.debug("turn-hooks", `Assistant turn ${assistantSeq} saved (${blocks.length} blocks) for session ${sessionId}`);
+				// Step 4A: step-only — write as a single assistant step (in the
+				// current turn_group) if nothing has been persisted yet.
+				const assistantSeq = turnSeq + 1;
+				const existing = db.getSteps(sessionId).find(s => s.turnGroup === turnSeq && s.role === "assistant");
+				if (!existing) {
+					db.appendStep(sessionId, assistantSeq, turnSeq, "assistant", blocksJson);
+					log.debug("turn-hooks", `Safety net: assistant step ${assistantSeq} saved for session ${sessionId}`);
 				}
 			}
 
-			sessionTurnSeq.delete(sessionId);
+			deleteTurnSeq(sessionId);
 		} catch (err) {
 			log.error("turn-hooks", "TurnEnd hook failed:", (err as Error).message);
 		}
@@ -255,7 +238,7 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			if (!sessionId) return;
 			// Unconditional closure. Idempotent: deleting a missing key is fine,
 			// and the safety-net handler may already have deleted it.
-			sessionTurnSeq.delete(sessionId);
+			deleteTurnSeq(sessionId);
 		} catch (err) {
 			log.error("turn-hooks", "TurnEnd closure hook failed:", (err as Error).message);
 		}
@@ -269,7 +252,7 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
 
-			const turnSeq = sessionTurnSeq.get(sessionId);
+			const turnSeq = getTurnSeq(sessionId);
 			if (turnSeq === undefined) return;
 
 			// Keep whatever blocks we have — they represent actual work done
@@ -278,26 +261,17 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 				// Step 2E: persist writes the truth; dangling synthesis moved to
 				// rebuild (AgentSession.rebuildFromSteps). Serialize verbatim.
 				const blocksJson = JSON.stringify(blocks);
-				if (db.hasStepSchema()) {
-					const assistantSeq = turnSeq + 1;
-					const existing = db.getSteps(sessionId).find(s => s.turnGroup === turnSeq && s.role === "assistant");
-					if (!existing) {
-						db.appendStep(sessionId, assistantSeq, turnSeq, "assistant", blocksJson);
-						log.debug("turn-hooks", `Assistant step ${assistantSeq} saved (with error) for session ${sessionId}`);
-					}
-				} else {
-					const assistantSeq = turnSeq + 1;
-					const existing = db.getTurns(sessionId).find(t => t.seq === assistantSeq);
-					if (existing) {
-						db.updateTurnContent(sessionId, assistantSeq, blocksJson);
-					} else {
-						db.appendTurn(sessionId, assistantSeq, "assistant", blocksJson);
-					}
-					log.debug("turn-hooks", `Assistant turn ${assistantSeq} saved (with error) for session ${sessionId}`);
+				// Step 4A: step-only — write as a single assistant step in the
+				// current turn_group if nothing has been persisted yet.
+				const assistantSeq = turnSeq + 1;
+				const existing = db.getSteps(sessionId).find(s => s.turnGroup === turnSeq && s.role === "assistant");
+				if (!existing) {
+					db.appendStep(sessionId, assistantSeq, turnSeq, "assistant", blocksJson);
+					log.debug("turn-hooks", `Assistant step ${assistantSeq} saved (with error) for session ${sessionId}`);
 				}
 			}
 
-			sessionTurnSeq.delete(sessionId);
+			deleteTurnSeq(sessionId);
 		} catch (err) {
 			log.error("turn-hooks", "TurnError hook failed:", (err as Error).message);
 		}

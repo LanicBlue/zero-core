@@ -1123,13 +1123,86 @@ export function runMigrations(sessionDB: SessionDB): void {
 }
 
 // ---------------------------------------------------------------------------
-// Step-level migration: set turn_group = seq for old rows
+// Step-level migration: backfill turn_group for pre-step rows.
+//
+// Step 4A: turn_group is now mandatory. Legacy rows (written before the
+// step-level schema) carry either NULL (column added without default) or
+// the -1 sentinel (added via safeAddColumn with `DEFAULT -1`). Backfill:
+//   - user row      → turn_group = its own seq (a user turn opens a new group)
+//   - assistant row → turn_group = the seq of the most recent preceding user
+//                     row within the same session (it joins that user's group)
+//
+// Per-session ordering is essential: a global UPDATE ... WHERE turn_group = -1
+// would stamp every assistant row with its own seq, breaking the user/assistant
+// grouping that rebuildFromSteps relies on. We scan each session's rows in seq
+// order and track the last user seq seen.
+//
+// Safe on a live DB? Yes — this is a single-pass UPDATE inside one implicit
+// transaction per session, and we never checkpoint (sessions.db readonly
+// invariant, feedback-sessions-db-readonly). Idempotent: rows already carrying
+// a real turn_group (>= 0) are skipped.
 // ---------------------------------------------------------------------------
 
 function migrateTurnsToSteps(db: Database.Database): void {
-	const result = db.prepare("UPDATE turns SET turn_group = seq WHERE turn_group = -1").run();
-	if (result.changes > 0) {
-		log.db(`migrateTurnsToSteps: updated ${result.changes} row(s) with turn_group = seq`);
+	try {
+		const tableInfo = db.pragma("table_info(turns)") as Array<{ name: string }> | undefined;
+		if (!tableInfo || tableInfo.length === 0) return;
+		if (!tableInfo.some((c) => c.name === "turn_group")) return;
+
+		const sessions = db.prepare(
+			"SELECT DISTINCT session_id FROM turns WHERE turn_group IS NULL OR turn_group < 0",
+		).all() as Array<{ session_id: string }>;
+
+		if (sessions.length === 0) return;
+
+		const selectRows = db.prepare(
+			"SELECT seq, role, turn_group FROM turns WHERE session_id = ? ORDER BY seq",
+		);
+		const updateRow = db.prepare(
+			"UPDATE turns SET turn_group = ? WHERE session_id = ? AND seq = ?",
+		);
+
+		let totalUpdated = 0;
+		for (const { session_id } of sessions) {
+			const rows = selectRows.all(session_id) as Array<{
+				seq: number;
+				role: string;
+				turn_group: number | null;
+			}>;
+			let lastUserSeq: number | null = null;
+			const tx = db.transaction(() => {
+				for (const row of rows) {
+					// Skip rows already migrated to a real group.
+					if (row.turn_group !== null && row.turn_group >= 0) {
+						// Keep the running user cursor in sync for already-migrated
+						// rows so subsequent legacy assistant rows still attach to
+						// the right group.
+						if (row.role === "user") lastUserSeq = row.turn_group;
+						continue;
+					}
+					let group: number;
+					if (row.role === "user") {
+						group = row.seq;
+						lastUserSeq = row.seq;
+					} else {
+						// assistant (or any non-user): attach to the most recent
+						// user group. If none has been seen yet (orphan assistant
+						// before any user), fall back to the row's own seq so the
+						// NOT NULL constraint holds and it forms its own group.
+						group = lastUserSeq ?? row.seq;
+					}
+					updateRow.run(group, session_id, row.seq);
+					totalUpdated++;
+				}
+			});
+			tx();
+		}
+
+		if (totalUpdated > 0) {
+			log.db(`migrateTurnsToSteps: backfilled turn_group on ${totalUpdated} row(s)`);
+		}
+	} catch (err) {
+		log.warn("migration", "migrateTurnsToSteps backfill skipped:", (err as Error).message);
 	}
 }
 

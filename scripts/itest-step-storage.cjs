@@ -7,7 +7,7 @@
 // 串联 12 个用例验证 step 级存储：建库+迁移、列与索引存在性、appendStep/
 // getStepGroup/getSteps/upsertStep/updateStepContent/deleteStepGroup/
 // getTurnGroupCount/replaceStepsFromMessages、token 用量统计、旧 schema 迁移、
-// 以及 legacy turn 路径（appendTurn/updateTurnContent/deleteTurn）兼容。
+// 以及 step 级低层 CRUD(Step 4A: legacy appendTurn/updateTurnContent/getTurns 已退役)。
 //
 // ## 输入
 // - 可选 CLI 参数：db-path（默认 ~/.zero-core/itest-test.db）
@@ -168,17 +168,22 @@ async function run() {
 	assert(replaced[0].content === "compressed question", "Replaced user content correct");
 	assert(replaced[1].role === "assistant", "Replaced assistant role correct");
 
-	// ─── Test 11: Legacy path still works ──────────────────────
-	console.log("\n=== Test 11: Legacy compatibility ===");
-	db.appendTurn(sessionId, 10, "user", "legacy turn");
-	db.updateTurnContent(sessionId, 10, "legacy turn updated");
-	const legacyTurns = db.getTurns(sessionId);
-	const legacy = legacyTurns.find(t => t.seq === 10);
-	assert(!!legacy, "Legacy turn exists");
-	assert(legacy.content === "legacy turn updated", "Legacy updateTurnContent works");
-	db.deleteTurn(sessionId, 10);
-	const afterDelete = db.getTurns(sessionId).find(t => t.seq === 10);
-	assert(!afterDelete, "Legacy deleteTurn works");
+	// ─── Test 11: Step-level low-level CRUD (replaces retired legacy path) ────
+	// Step 4A: the legacy appendTurn / updateTurnContent / getTurns API was
+	// retired. This case now exercises the equivalent step-level writes against
+	// the same physical `turns` table: append a step with an explicit
+	// turn_group, update its content, read it back, then delete it.
+	console.log("\n=== Test 11: Step-level low-level CRUD ===");
+	db.appendStep(sessionId, 10, 10, "user", "step turn");
+	db.updateStepContent(sessionId, 10, "step turn updated");
+	const stepTurns = db.getSteps(sessionId);
+	const stepRow = stepTurns.find(t => t.seq === 10);
+	assert(!!stepRow, "Step row exists");
+	assert(stepRow.content === "step turn updated", "updateStepContent works");
+	assert(stepRow.turnGroup === 10, "Step row carries turn_group = 10");
+	db.deleteStepGroup(sessionId, 10);
+	const afterDelete = db.getSteps(sessionId).find(t => t.seq === 10);
+	assert(!afterDelete, "deleteStepGroup removes the row");
 
 	// ─── Test 12: Migration from old schema ────────────────────
 	console.log("\n=== Test 12: Old DB migration simulation ===");

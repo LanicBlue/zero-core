@@ -372,7 +372,7 @@ export class AgentLoop implements AgentRuntime {
 
 	/** Expose session turns for UI rendering — runtime is the single source of truth. */
 	getSessionTurns(): Array<{ seq: number; role: string; content: string | null; createdAt: string; turnGroup?: number }> {
-		return this.session.getTurns();
+		return this.session.getCachedTurns();
 	}
 
 	/** Refresh the cached turns from DB before UI session_init. */

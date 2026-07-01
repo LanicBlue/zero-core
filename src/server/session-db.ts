@@ -240,12 +240,6 @@ export class SessionDB {
 		this.safeAddColumn("turn_state", "last_completed_step_seq", "INTEGER");
 	}
 
-	/** Check if the turns table has step-level schema (turn_group column). */
-	hasStepSchema(): boolean {
-		const cols = (this.db.pragma("table_info(turns)") as Array<{ name: string }>).map(r => r.name);
-		return cols.includes("turn_group");
-	}
-
 	/** Idempotently add a column to an existing table (no-op if present). */
 	private safeAddColumn(table: string, column: string, def: string): void {
 		try {
@@ -553,33 +547,10 @@ export class SessionDB {
 	}
 
 	// -----------------------------------------------------------------------
-	// Turns (unified block storage)
+	// Turns table — step-level storage only (Step 4A: legacy turn API retired).
+	// The physical `turns` table holds step rows (turn_group is the grouping
+	// key). Every write path goes through the step-level methods below.
 	// -----------------------------------------------------------------------
-
-	appendTurn(sessionId: string, seq: number, role: string, content: string | null): void {
-		this.ensureSession(sessionId);
-		const now = new Date().toISOString();
-		const tx = this.db.transaction(() => {
-			this.db.prepare(
-				"INSERT INTO turns (session_id, seq, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
-			).run(sessionId, seq, role, content ?? null, now);
-			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
-		});
-		tx();
-	}
-
-	getTurns(sessionId: string): Array<{ id: number; seq: number; role: string; content: string | null; createdAt: string }> {
-		const rows = this.db.prepare(
-			"SELECT id, seq, role, content, created_at FROM turns WHERE session_id = ? ORDER BY seq",
-		).all(sessionId) as any[];
-		return rows.map((r) => ({
-			id: r.id,
-			seq: r.seq,
-			role: r.role,
-			content: r.content,
-			createdAt: r.created_at,
-		}));
-	}
 
 	getTurnCount(sessionId: string): number {
 		const row = this.db.prepare("SELECT COUNT(*) as cnt FROM turns WHERE session_id = ?").get(sessionId) as any;
@@ -594,38 +565,8 @@ export class SessionDB {
 		this.db.prepare("DELETE FROM turns WHERE session_id = ? AND seq = ?").run(sessionId, seq);
 	}
 
-	updateTurnContent(sessionId: string, seq: number, content: string): void {
-		const now = new Date().toISOString();
-		const tx = this.db.transaction(() => {
-			this.db.prepare(
-				"UPDATE turns SET content = ? WHERE session_id = ? AND seq = ?",
-			).run(content, sessionId, seq);
-			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
-		});
-		tx();
-	}
-
-
-	upsertAssistantTurn(sessionId: string, seq: number, content: string): void {
-		this.ensureSession(sessionId);
-		const now = new Date().toISOString();
-		const existing = this.db.prepare(
-			"SELECT 1 FROM turns WHERE session_id = ? AND seq = ?"
-		).get(sessionId, seq);
-		if (existing) {
-			this.db.prepare(
-				"UPDATE turns SET content = ? WHERE session_id = ? AND seq = ?"
-			).run(content, sessionId, seq);
-		} else {
-			this.db.prepare(
-				"INSERT INTO turns (session_id, seq, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)"
-			).run(sessionId, seq, content, now);
-		}
-		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
-	}
-
 	// -----------------------------------------------------------------------
-	// Step-level storage (new methods, kept alongside legacy turn methods)
+	// Step-level storage — canonical turns-table API (Step 4A: step-only).
 	// -----------------------------------------------------------------------
 
 	getSteps(sessionId: string): Array<{

@@ -42,8 +42,6 @@ export interface StepRow {
 export interface ISessionStore {
 	getMessages(sessionId: string): any[];
 	saveTurn(sessionId: string, messages: any[]): void;
-	getTurns(sessionId: string): Array<{ seq: number; role: string; content: string | null; createdAt: string }>;
-	appendTurn(sessionId: string, seq: number, role: string, content: string | null): void;
 	getTurnCount(sessionId: string): number;
 	getMainSession(agentId: string): { id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string } | undefined;
 	createSession(
@@ -56,8 +54,6 @@ export interface ISessionStore {
 	listSessions(agentId: string): Array<{ id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string }>;
 	listAllSessions(): Array<{ id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string }>;
 	deleteSession(sessionId: string): void;
-	updateTurnContent(sessionId: string, seq: number, content: string): void;
-	upsertAssistantTurn(sessionId: string, seq: number, content: string): void;
 	deleteTurn(sessionId: string, seq: number): void;
 	clearTurns(sessionId: string): void;
 	getKVStore(): IKVStore;
@@ -94,8 +90,8 @@ export interface ISessionStore {
 		turnSeq?: number;
 	}): void;
 
-	// Step-level storage methods (new)
-	hasStepSchema(): boolean;
+	// Step-level storage methods (Step 4A: step-only — turn_group is mandatory,
+	// legacy turn API has been retired; step methods are the only turns-table API).
 	getSteps(sessionId: string): StepRow[];
 	getStepGroup(sessionId: string, turnGroup: number): StepRow[];
 	appendStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void;

@@ -27,7 +27,7 @@
 // ## 维护规则
 // - 新增 GET 端点若路径形如固定段(如 /metrics),必须放在 /:agentId 之前,否则会被 agentId 捕获。
 // - 修改消息后必须 recreateLoop,否则运行时上下文与 DB 不一致。
-// - step 级与 turn 级 schema 同时存在时,优先走 hasStepSchema() 分支,保持向后兼容。
+// - Step 4A: step-only — 消息编辑/删除一律走 step 级(getStepGroup / deleteStepGroup)。
 //
 
 import { Router } from "express";
@@ -178,16 +178,12 @@ export function createSessionRouter(deps: {
 
 		const seqParam = parseInt(req.params.seq);
 
-		if (db.hasStepSchema()) {
-			// Step-level: find the step(s) for this turnGroup and update content
-			const steps = db.getStepGroup(session.id, seqParam);
-			for (const step of steps) {
-				if (step.role === "user") {
-					db.updateStepContent(session.id, step.seq, newText);
-				}
+		// Step 4A: step-only — find the step(s) for this turnGroup and update content.
+		const steps = db.getStepGroup(session.id, seqParam);
+		for (const step of steps) {
+			if (step.role === "user") {
+				db.updateStepContent(session.id, step.seq, newText);
 			}
-		} else {
-			db.updateTurnContent(session.id, seqParam, newText);
 		}
 
 		// Also update messages table for in-memory cache
@@ -211,12 +207,8 @@ export function createSessionRouter(deps: {
 
 		const seqParam = parseInt(req.params.seq);
 
-		if (db.hasStepSchema()) {
-			// Step-level: delete all steps in the turnGroup
-			db.deleteStepGroup(session.id, seqParam);
-		} else {
-			db.deleteTurn(session.id, seqParam);
-		}
+		// Step 4A: step-only — delete all steps in the turnGroup.
+		db.deleteStepGroup(session.id, seqParam);
 		db.deleteMessage(session.id, seqParam);
 		const agent = agentStore.get(req.params.agentId);
 		agentService.recreateLoop(req.params.agentId, session.id, agent);

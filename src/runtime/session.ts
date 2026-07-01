@@ -101,21 +101,24 @@ export class AgentSession {
 	/** Cached raw turns from DB (populated by rebuildFromTurns). Used as runtime source for UI. */
 	/** Refresh the cached turns from DB (e.g. before UI session_init). */
 	refreshTurnsCache(): void {
+		// Step 4A: step-only — turns table is read exclusively via getSteps.
 		if (!this.db || !this.sessionId) return;
-		if (this.db.hasStepSchema()) {
-			this.cachedTurns = this.db.getSteps(this.sessionId).map(s => ({
-				seq: s.seq,
-				role: s.role,
-				content: s.content,
-				createdAt: s.createdAt,
-				turnGroup: s.turnGroup,
-			}));
-		} else {
-			this.cachedTurns = this.db.getTurns(this.sessionId);
-		}
+		this.cachedTurns = this.db.getSteps(this.sessionId).map(s => ({
+			seq: s.seq,
+			role: s.role,
+			content: s.content,
+			createdAt: s.createdAt,
+			turnGroup: s.turnGroup,
+		}));
 	}
 
-	getTurns(): CachedTurnData[] {
+	/**
+	 * Step 4A: renamed from the old turn-reader name — that name collided with
+	 * the now-retired legacy DB row-reader API. This is the UI-facing accessor
+	 * over the in-memory cached step rows (populated by rebuildFromTurns /
+	 * refreshTurnsCache); it does not touch the DB.
+	 */
+	getCachedTurns(): CachedTurnData[] {
 		return this.cachedTurns;
 	}
 
@@ -299,42 +302,25 @@ export class AgentSession {
 	}
 
 	rebuildFromTurns(): ModelMessage[] {
+		// Step 4A: step-only — the turns table is read exclusively via getSteps.
+		// (Physical table name `turns` retained; step rows are the unit of storage.)
 		if (!this.db || !this.sessionId) return [];
 
-		// Prefer step-level storage if available
-		if (this.db.hasStepSchema()) {
-			const steps = this.db.getSteps(this.sessionId);
-			if (steps.length > 0) {
-				// Cache the step data
-				this.cachedTurns = steps.map(s => ({
-					seq: s.seq,
-					role: s.role,
-					content: s.content,
-					createdAt: s.createdAt,
-					turnGroup: s.turnGroup,
-				}));
-				return this.rebuildFromSteps(steps);
-			}
+		const steps = this.db.getSteps(this.sessionId);
+		if (steps.length > 0) {
+			// Cache the step data
+			this.cachedTurns = steps.map(s => ({
+				seq: s.seq,
+				role: s.role,
+				content: s.content,
+				createdAt: s.createdAt,
+				turnGroup: s.turnGroup,
+			}));
+			return this.rebuildFromSteps(steps);
 		}
 
-		// Fallback: legacy turn-level storage
-		this.cachedTurns = this.db.getTurns(this.sessionId);
-		if (this.cachedTurns.length === 0) return [];
-
-		const turns = this.cachedTurns;
-		const messages: ModelMessage[] = [];
-
-		for (const turn of turns) {
-			if (turn.role === "user") {
-				messages.push({ role: "user", content: turn.content ?? "" });
-			} else if (turn.role === "assistant") {
-				let blocks: any[] = [];
-				try { blocks = JSON.parse(turn.content ?? "[]"); } catch { blocks = []; }
-				this.appendAssistantMessages(blocks, messages);
-			}
-		}
-
-		return messages;
+		this.cachedTurns = [];
+		return [];
 	}
 
 	/**
@@ -441,11 +427,6 @@ export class AgentSession {
 
 		// Return updated offset
 		return toolCallOffset + toolCalls.length;
-	}
-
-	/** Legacy: process all blocks from a single turn-level row. */
-	private appendAssistantMessages(blocks: any[], messages: ModelMessage[]): void {
-		this.appendStepMessages(blocks, messages, 0);
 	}
 
 		/** Extract turn blocks from an assistant message's content parts. */private extractBlocks(msg: ModelMessage): any[] {
