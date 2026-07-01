@@ -266,16 +266,11 @@ export class AgentLoop implements AgentRuntime {
 
 			await this.runWithRetry();
 
-			await this.triggerLocal("PostTurnComplete", {
-				agentId: this.config.agentId,
-				sessionId: this.session.getSessionId(),
-				session: this.session,
-				config: this.config,
-				providers: this.providers,
-				contextUsage: this.session.getContextUsage(),
-				resultText: this.resultText,
-				emit: (event: any) => this.emit(event),
-			});
+			// Step 3B: PostTurnComplete was deleted. Its operations moved to
+			// StepEnd (compression/extraction/todo evaluate per step) and the
+			// token estimate was dropped (real usage flows via the `usage`
+			// stream event → metrics-events.ts). The turn boundary is closed by
+			// the TurnEnd hook below.
 
 		} finally {
 			if (timeout) clearTimeout(timeout);
@@ -1078,6 +1073,9 @@ export class AgentLoop implements AgentRuntime {
 				config: this.config,
 				providers: this.providers,
 				contextUsage: this.session.getContextUsage(),
+				// Step 3B: emit surface for StepEnd consumers (todo-cleanup emits
+				// todos_update[] when all todos are completed this step).
+				emit: (event: any) => this.emit(event),
 			});
 			this.stepOffset++;
 		} else {
@@ -1096,6 +1094,7 @@ export class AgentLoop implements AgentRuntime {
 				config: this.config,
 				providers: this.providers,
 				contextUsage: this.session.getContextUsage(),
+				emit: (event: any) => this.emit(event),
 			});
 			this.stepOffset++;
 		}

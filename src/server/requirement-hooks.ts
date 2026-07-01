@@ -56,12 +56,9 @@ import { log } from "../core/logger.js";
 /**
  * Register requirement status transition hooks (v0.8 P7 — pull model).
  *
- * Two hooks remain in the hook layer:
+ * One hook remains in the hook layer:
  *   1. PostToolUse (Orchestrate) → plan→build when lead records its first
  *      task step (§4.4).
- *   2. PostTurnComplete → lead auto-pickup chain: when a lead session's turn
- *      ends and the project has no active requirement, pick the next ready
- *      one (§4.3 — "完成上一任务后自动领下一个 primary;cron 保底 fallback").
  *
  * Everything else is now explicit:
  *   - build→verify: lead calls the verify tool (§4.5).
@@ -69,6 +66,9 @@ import { log } from "../core/logger.js";
  *     tool's verdict) → archivist merge → status (§4.6).
  *   - cross-role: pull model — agents read requirement state on activation,
  *     no central router (§1.5).
+ *   - lead auto-pickup chain (old PostTurnComplete handler): now driven by
+ *     cron + the pull model (§4.3). The PostTurnComplete handler was removed
+ *     in Step 3B when the PostTurnComplete event itself was deleted.
  */
 export function registerRequirementHooks(deps: {
 	requirementStore: RequirementStore;
@@ -114,45 +114,8 @@ export function registerRequirementHooks(deps: {
 		}
 	});
 
-	// PostTurnComplete: lead auto-pickup chain (§4.3). After a lead session's
-	// turn ends, if its project has no active (plan/build) requirement, pick
-	// the next ready one. v0.8 P7 — pure pull-model chain (no notify("ready")
-	// push). v0.8 P7 explicitly DROPPED the build→verify auto-transition
-	// that used to live here (verify is now lead's explicit verify tool call,
-	// §4.5), and the verify_accept push (covered → PmService drives archivist
-	// merge directly, §4.6).
-	registry.register("PostTurnComplete", async (ctx) => {
-		const sessionId = ctx.sessionId;
-		if (!sessionId) return;
-
-		// Identify the project this lead session was working on. Look across
-		// plan/build requirements assigned to this session — if any, the lead
-		// is still mid-flight on one and we don't auto-pick.
-		const planReqs = deps.requirementStore.listByStatus("plan" as any);
-		const buildReqs = deps.requirementStore.listByStatus("build" as any);
-		const stillActive = [...planReqs, ...buildReqs].some(
-			(r) => r.assignedLeadSessionId === sessionId,
-		);
-		if (stillActive) return;
-
-		// Find the project: the most recent requirement this session touched
-		// (any status), so we know which project to chain into.
-		const allReqs = deps.requirementStore.list();
-		const lastForSession = allReqs
-			.filter((r) => r.assignedLeadSessionId === sessionId)
-			.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0];
-		if (!lastForSession?.projectId) return;
-
-		// Best-effort: pick the next ready requirement for this project.
-		// Errors are non-fatal — cron fallback will cover any miss.
-		try {
-			await deps.leadService.autoPickupIfIdle(lastForSession.projectId);
-		} catch (err) {
-			log.debug(
-				"requirement-hooks",
-				"autoPickupIfIdle failed (cron will retry):",
-				(err as Error).message,
-			);
-		}
-	});
+	// (Step 3B) The PostTurnComplete handler that used to live here (lead
+	// auto-pickup chain, §4.3) is removed: the PostTurnComplete event was
+	// deleted, and this module is not registered anyway (retired, §5.5).
+	// Lead auto-pickup is driven by cron + the pull model (§4.3).
 }

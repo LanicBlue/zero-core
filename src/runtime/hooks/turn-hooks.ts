@@ -232,6 +232,35 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 		}
 	});
 
+	// ─── TurnEnd (turn-boundary closure): close the current turn_group and
+	//     advance turn_seq so the next user input's TurnStart reads seq+1.
+	//
+	// Step 3B: turn_seq is read implicitly at TurnStart via db.getTurnCount()
+	// (the user-turn row written at TurnStart makes the next count higher).
+	// The safety-net handler above only clears sessionTurnSeq when it actually
+	// ran its persist path; this dedicated handler closes the boundary
+	// UNCONDITIONALLY so the next TurnStart always re-reads a fresh count,
+	// regardless of which TurnEnd path fired. It runs AFTER the safety net
+	// (registered later → fired later), so the safety net still sees the seq.
+	//
+	// "Closing the turn_group" here means: clear the in-memory turn_seq marker
+	// for this session. The recorder's own turn-group state is reset by the
+	// next run()'s recorder.reset() + startTurnGroup(userSeq) pair, so there is
+	// nothing to close on the recorder at TurnEnd (its blocks were already
+	// either persisted by StepEnd or by the safety-net above).
+
+	registry.register("TurnEnd", async (ctx) => {
+		try {
+			const sessionId = ctx.sessionId as string;
+			if (!sessionId) return;
+			// Unconditional closure. Idempotent: deleting a missing key is fine,
+			// and the safety-net handler may already have deleted it.
+			sessionTurnSeq.delete(sessionId);
+		} catch (err) {
+			log.error("turn-hooks", "TurnEnd closure hook failed:", (err as Error).message);
+		}
+	});
+
 	// ─── TurnError: save whatever we have ─────────────────────
 	// (Step 1C: StopFailure → TurnError.)
 

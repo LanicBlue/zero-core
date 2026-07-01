@@ -1,32 +1,39 @@
-// PostTurnComplete 钩子:全部完成的 todo 在「当前轮结束时」立即清空
+// Todo cleanup hook: clear all-completed todos at the step boundary.
 //
-// # 文件说明书
+// # File spec
 //
-// ## 核心功能
-// registerTodoCleanupHooks 在 PostTurnComplete(每轮 agent loop 结束时触发)检查
-// agent 的 todo 列表:若**全部 completed**,则立即清空后端 store 并 emit
-// todos_update([]),让前端 UI 隐藏。
+// ## Core
+// registerTodoCleanupHooks registers a StepEnd handler that inspects the
+// agent's todo list after each step: when **every** todo is completed it
+// immediately clears the backend store and emits todos_update([]) so the
+// frontend UI collapses the list right away.
 //
-// ## 为什么在 PostTurnComplete(当前轮结束直接清)
-// 早期版本在 PreLLMCall(下一轮开始)清,实测"延迟 clear"体验差——全部完成的
-// 待办会一直挂到 agent 再次说话才消失。改为 PostTurnComplete:本轮把最后一条
-// todo 标完成、turn 一结束就清,UI 即时收起。
+// ## Why StepEnd (per step, not per turn)
+// Originally this ran on PostTurnComplete (turn-end). Step 3B migrates it to
+// StepEnd so the list collapses as soon as the last todo is finished within a
+// step, rather than waiting for the whole turn to end. Behavior for the user
+// is identical to the older PreLLMCall-then-PostTurnComplete progression but
+// fires at the most granular honest boundary (each LLM step).
 //
-// ## 设计
-// 清理 LOGIC 在本 hook + todo-write.ts(模块内);agent-loop 只在 PostTurnComplete
-// ctx 暴露 emit(通用能力)。前端复用既有 todos_update → setTodos → 隐藏,零改动。
+// ## Design
+// Cleanup logic lives here + in todo-write.ts (module-local). The hook only
+// needs sessionId/agentId/emit from the StepEnd context. It runs every step;
+// when not all todos are done (or there are none) it is a fast no-op.
 //
-// ## 定位
-// src/runtime/hooks/ — turn 生命周期钩子,由 hooks/index.ts 统一注册。
-//
+// ## Position
+// src/runtime/hooks/ — step lifecycle hook, registered by hooks/index.ts.
 
 import { HookRegistry } from "../../core/hook-registry.js";
 import { getSessionTodos, clearSessionTodos } from "../tools/todo-write.js";
 
 export function registerTodoCleanupHooks(registry: HookRegistry = HookRegistry.getInstance()): void {
-	registry.register("PostTurnComplete", async (ctx: any) => {
-		// 按 sessionId 隔离:同一 agent 的不同 session 各自清各自的 todo,
-		// 避免一个 session 完成清空连累另一个 session 的列表。
+	// Step 3B: migrated from PostTurnComplete to StepEnd. Per-step check means
+	// the list collapses immediately after the step that finishes the last
+	// todo, instead of waiting for turn end. The check is cheap (in-memory
+	// todo list) so running it every step is fine.
+	registry.register("StepEnd", async (ctx: any) => {
+		// Per-session isolation: each session clears its own todos so one
+		// session finishing does not wipe another session's list.
 		const sessionId = ctx?.sessionId as string | undefined;
 		const agentId = ctx?.agentId as string | undefined;
 		if (!sessionId) return;
@@ -34,7 +41,7 @@ export function registerTodoCleanupHooks(registry: HookRegistry = HookRegistry.g
 		if (todos.length === 0) return;
 		const allDone = todos.every((t) => t.status === "completed");
 		if (!allDone) return;
-		// All completed → clear immediately at the end of this turn.
+		// All completed → clear immediately at the end of this step.
 		clearSessionTodos(sessionId);
 		// Notify the frontend so the widget hides (reuses the existing
 		// todos_update → setTodos(sessionId, []) → TodosList returns null path).

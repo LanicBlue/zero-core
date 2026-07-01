@@ -19,8 +19,9 @@
 //   PrepareStep               → StepStart
 //   SessionEnd (empty trig)   → deleted
 //   PreLLMCall                → unchanged
-//   PostTurnComplete          → TEMPORARILY KEPT (deleted in P3, operations
-//                               move to StepEnd/SessionClose then)
+//   PostTurnComplete          → DELETED (Step 3B): its operations moved to
+//                               StepEnd (compression/extraction/todo) and
+//                               SessionClose. Event + trigger removed.
 //   PreToolUse / PostToolUse / PostToolUseFailure → unchanged
 //   SessionStart / SessionClose (NEW semantics, instance lifecycle) → fired
 //   by agent-service at loop build / loop destroy. Distinct from the retired
@@ -60,10 +61,6 @@ export type HookEventName =
 	| "PreLLMCall" | "PostLLCall" | "OnLLMError"
 	// ── Tool level (per tool) ──────────────────────────────────────────────
 	| "PreToolUse" | "PostToolUse" | "PostToolUseFailure"
-	// ── TEMPORARY (deleted in P3): kept so the existing PostTurnComplete
-	//    trigger point + handlers keep firing until operations move to
-	//    StepEnd / SessionClose. ────────────────────────────────────────────
-	| "PostTurnComplete"
 	// ── Observability / workflow events (NOT renamed in Step 1C — out of
 	//    scope for the agent-execution hook redesign) ───────────────────────
 	| "Notification" | "PermissionRequest" | "PermissionDenied"

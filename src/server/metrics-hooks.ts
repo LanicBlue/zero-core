@@ -1,25 +1,26 @@
-// 指标收集 Hook 注册
+// Metrics collection Hook registration.
 //
-// # 文件说明书
+// # File spec
 //
-// ## 核心功能
-// 将指标收集逻辑注册到 Hook 系统，在会话生命周期事件中自动采集指标
+// ## Core
+// Registers hook handlers that drive SessionManager lifecycle + metrics
+// calls from session/turn/error events.
 //
-// ## 输入
-// SessionManager 实例
+// ## Input
+// SessionManager instance
 //
-// ## 输出
-// 注销函数（cleanup）
+// ## Output
+// unsubscribe function (cleanup)
 //
-// ## 定位
-// src/server/ — 服务层，Hook 系统的指标收集消费者
+// ## Position
+// src/server/ — service layer, metrics consumer on the hook surface.
 //
-// ## 依赖
-// core/hook-registry.ts、core/hook-types.ts、session-manager.ts
+// ## Dependencies
+// core/hook-registry.ts, core/hook-types.ts, session-manager.ts
 //
-// ## 维护规则
-// 新增 hook 事件需评估是否需要在此收集指标
-//
+// ## Maintenance rules
+// Evaluate whether a new hook event needs to collect metrics here.
+
 import { HookRegistry } from "../core/hook-registry.js";
 import type { HookEventName } from "../core/hook-types.js";
 import type { SessionManager } from "./session-manager.js";
@@ -28,23 +29,29 @@ import { log } from "../core/logger.js";
 type Ctx = Record<string, unknown>;
 
 export function registerMetricsHooks(sm: SessionManager, registry: HookRegistry = HookRegistry.getInstance()): () => void {
-	// Note: PostToolUse/PostToolUseFailure are NOT included here —
-	// tool call metrics are recorded by metrics-events.ts via stream events
-	// which have accurate duration. Hooks would double-count.
+	// Note: PostToolUse/PostToolUseFailure are NOT included here — tool call
+	// metrics are recorded by metrics-events.ts via stream events which have
+	// accurate duration. Hooks would double-count.
+	//
+	// Token usage is ALSO not recorded here. Real per-step usage flows through
+	// the `usage` stream event (emitted by AgentLoop.finalizeOneStep alongside
+	// StepEnd) and is recorded by metrics-events.ts → recordTokenUsage. The old
+	// rough estimate (msgCount×50 / len÷4) lived on TurnEnd and was both
+	// inaccurate AND would double-count against the real-usage path — it has
+	// been removed (Step 3B). StepEnd ctx does carry `usage`, but recording it
+	// here would duplicate metrics-events.ts, so this hook intentionally does
+	// NOT read usage.
 	//
 	// Step 1C event mapping:
-	//   SessionStart   — KEPT (new semantics: fired by agent-service at loop
-	//                    build, so trackSessionStreaming now fires once per
-	//                    loop instance instead of every turn — fixes the old
-	//                    misfire where every run() restarted streaming tracking).
-	//   SessionEnd     → SessionClose (agent-service, loop destroy)
-	//   Stop           → TurnEnd (per-run token estimate)
-	//   StopFailure    → TurnError
-	//   PreCompact     — unchanged (compression sub-event)
+	//   SessionStart   — KEPT (agent-service fires it once per loop build;
+	//                    trackSessionStreaming marks the session live).
+	//   SessionClose   — trackSessionIdle (loop destroy).
+	//   TurnError      — trackSessionError.
+	//   PreCompact     — kept (fired by session.pruneIfNeeded; recordTokenEstimate
+	//                    of the pre-compact window). NOT dead code.
 	const hooks: HookEventName[] = [
 		"SessionStart",
 		"SessionClose",
-		"TurnEnd",
 		"TurnError",
 		"PreCompact",
 	];
@@ -65,18 +72,6 @@ export function registerMetricsHooks(sm: SessionManager, registry: HookRegistry 
 					sm.trackSessionIdle(sessionId);
 					break;
 
-				case "TurnEnd": {
-					const messageCount = ctx.messageCount as number | undefined;
-					const resultText = ctx.resultText as string | undefined;
-					// Rough token estimate: ~4 chars per token
-					if (resultText) {
-						const outputTokens = Math.ceil(resultText.length / 4);
-						const inputTokens = (messageCount ?? 0) * 50;
-						sm.recordTokenEstimate(sessionId, inputTokens, outputTokens);
-					}
-					break;
-				}
-
 				case "TurnError": {
 					const errorClass = (ctx.errorClass ?? ctx.error ?? "unknown") as string;
 					sm.trackSessionError(sessionId, errorClass);
@@ -84,6 +79,9 @@ export function registerMetricsHooks(sm: SessionManager, registry: HookRegistry 
 				}
 
 				case "PreCompact": {
+					// PreCompact carries the pre-compact token estimate; record it
+					// as an input-side estimate so the compaction delta is visible
+					// in metrics. (output side is 0 — nothing generated.)
 					const estTokens = ctx.estimatedTokens as number | undefined;
 					if (estTokens) {
 						sm.recordTokenEstimate(sessionId, estTokens, 0);
