@@ -167,6 +167,12 @@ export interface StepEndContext extends BaseHookContext {
 	stepBaseSeq?: number;
 	/** How many steps have been completed in the current turn group. */
 	stepOffset?: number;
+	/**
+	 * Step 2E: 1-based step number within the current turn. Lets StepEnd
+	 * handlers correlate with the matching StepStart (deferred-consume hooks
+	 * key their per-step markers on this).
+	 */
+	stepNumber?: number;
 	usage?: {
 		inputTokens: number;
 		outputTokens: number;

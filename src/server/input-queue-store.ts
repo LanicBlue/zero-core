@@ -25,6 +25,13 @@ export interface InputQueueItem {
 	content: string;
 	mode: InputQueueMode;
 	createdAt: number;
+	/**
+	 * Step 2E: deferred-consume marker. Set when an insert_now item has been
+	 * injected into a step (peekInsertNow) but NOT yet committed out of the
+	 * queue. It stays in the array until that step succeeds (StepEnd), so a
+	 * failed/retried attempt re-injects it. Cleared on commit/rollback.
+	 */
+	deliveredForStep?: number;
 }
 
 export interface InputQueueSnapshot {
@@ -99,6 +106,10 @@ export class InputQueueStore {
 	/**
 	 * PrepareStep hook drain: consume all insert_now items for a session,
 	 * returning their contents as messages to append for this step. FIFO.
+	 *
+	 * @deprecated Step 2E: this drains immediately — a failed attempt would eat
+	 * the injected user input. Use peekInsertNow + commitDeliveredForStep so the
+	 * item only leaves the queue once the step it was injected into succeeds.
 	 */
 	consumeInsertNow(sessionId: string): Array<{ role: string; content: string }> {
 		const arr = this.itemsBySession.get(sessionId);
@@ -110,6 +121,89 @@ export class InputQueueStore {
 		else this.itemsBySession.set(sessionId, remaining);
 		this.emit(sessionId);
 		return taken.map((i) => ({ role: "user", content: i.content }));
+	}
+
+	/**
+	 * Step 2E: peek + MARK delivered for insert_now items, returning their
+	 * contents as messages to append for this step — WITHOUT removing them from
+	 * the queue. Items stay in the array carrying `deliveredForStep = stepNumber`
+	 * until commitDeliveredForStep(stepNumber) is called from a successful
+	 * StepEnd.
+	 *
+	 * Re-injection on retry: a step that fails and is retried must re-inject the
+	 * same items, because the prior attempt never committed (StepEnd only fires
+	 * on success). The marker's sole purpose is to let commitDeliveredForStep
+	 * locate the items to delete on success — it must NOT suppress re-peek.
+	 * Therefore peek returns every insert_now item regardless of an existing
+	 * deliveredForStep marker, and (re)stamps the marker to `stepNumber` so the
+	 * matching commit finds them. A second peek within the same already-
+	 * successful step is a no-op in practice (the items would have been
+	 * committed out by StepEnd), but this method stays idempotent: calling it
+	 * twice with the same stepNumber returns the same items both times without
+	 * harm, since only commit actually removes them.
+	 */
+	peekInsertNow(sessionId: string, stepNumber: number): Array<{ role: string; content: string }> {
+		const arr = this.itemsBySession.get(sessionId);
+		if (!arr || arr.length === 0) return [];
+		const taken: InputQueueItem[] = [];
+		for (const item of arr) {
+			if (item.mode !== "insert_now") continue;
+			// Do NOT skip items already marked for this step — a retried step
+			// (prior StepEnd never fired) MUST re-inject them. The marker is for
+			// commit's benefit, not peek's. Re-stamp unconditionally so commit
+			// for this stepNumber finds exactly these items.
+			item.deliveredForStep = stepNumber;
+			taken.push(item);
+		}
+		if (taken.length === 0) return [];
+		this.emit(sessionId);
+		return taken.map((i) => ({ role: "user", content: i.content }));
+	}
+
+	/**
+	 * Step 2E: commit — actually remove from the queue all insert_now items that
+	 * were marked delivered for `stepNumber`. Called from StepEnd on a successful
+	 * step. Safe to call when nothing is marked (no-op).
+	 */
+	commitDeliveredForStep(sessionId: string, stepNumber: number): number {
+		const arr = this.itemsBySession.get(sessionId);
+		if (!arr || arr.length === 0) return 0;
+		const remaining = arr.filter((i) => !(i.mode === "insert_now" && i.deliveredForStep === stepNumber));
+		const removed = arr.length - remaining.length;
+		if (removed === 0) return 0;
+		// Clear the marker on any insert_now item that was marked for a DIFFERENT
+		// step (e.g. an earlier failed attempt whose StepEnd never fired). Those
+		// items re-enter the pool so the next peekInsertNow re-injects them.
+		for (const item of remaining) {
+			if (item.mode === "insert_now" && item.deliveredForStep !== undefined && item.deliveredForStep !== stepNumber) {
+				item.deliveredForStep = undefined;
+			}
+		}
+		if (remaining.length === 0) this.itemsBySession.delete(sessionId);
+		else this.itemsBySession.set(sessionId, remaining);
+		this.emit(sessionId);
+		return removed;
+	}
+
+	/**
+	 * Step 2E: rollback — clear the delivered marker on every insert_now item
+	 * marked for `stepNumber` WITHOUT removing them, so the next step's
+	 * peekInsertNow re-injects them. Kept for completeness; the success path
+	 * uses commit, and a failed attempt simply never calls StepEnd (so the
+	 * markers are auto-cleared by the next peek/commit cycle).
+	 */
+	rollbackDeliveredForStep(sessionId: string, stepNumber: number): number {
+		const arr = this.itemsBySession.get(sessionId);
+		if (!arr || arr.length === 0) return 0;
+		let cleared = 0;
+		for (const item of arr) {
+			if (item.mode === "insert_now" && item.deliveredForStep === stepNumber) {
+				item.deliveredForStep = undefined;
+				cleared++;
+			}
+		}
+		if (cleared > 0) this.emit(sessionId);
+		return cleared;
 	}
 
 	/**

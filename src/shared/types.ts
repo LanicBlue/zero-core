@@ -281,6 +281,13 @@ export interface DelegatedTaskRecord {
 	controlMessage?: string;
 	/** ISO timestamp when request_finish was invoked. */
 	finishRequestedAt?: string;
+	/**
+	 * Step 2E: the parent step's tool-call id that triggered this delegation
+	 * (the Agent/Orchestrate tool-call block on the parent session). Lets the
+	 * parent resume path find the delegated task backing a dangling Agent
+	 * tool-call and resume it by taskId instead of re-invoking.
+	 */
+	parentToolCallId?: string;
 	createdAt: string;
 	updatedAt: string;
 	/** ISO timestamp when the task reached a terminal state. */

@@ -247,12 +247,23 @@ async function dispatchAgentTool(
 	}
 
 	try {
+		// Step 2E: stamp the parent tool-call id (this Orchestrate tool-call)
+		// onto the delegated task so the parent resume path can resolve a
+		// dangling dispatch → its task. The Orchestrate tool runs a whole flow
+		// under a single tool-call id; each task node shares that id (the link
+		// is best-effort — multiple nodes under one Orchestrate call all map to
+		// the same parent tool-call, which is fine for resume lookup).
+		const parentToolCallId = ctx.currentToolCallId;
 		const result = await ctx.delegateTask(task, {
 			targetAgentId,
 			systemPrompt,
 			model,
 			toolPolicy,
 			workspaceDir: ctx.contextBundle?.workspaceDir ?? ctx.workingDir,
+			parentToolCallId,
+			onDispatched: parentToolCallId
+				? (id) => ctx.setToolCallTaskId?.(parentToolCallId, id)
+				: undefined,
 		});
 		return result || "(no output)";
 	} catch (err: any) {

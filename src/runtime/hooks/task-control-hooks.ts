@@ -1,43 +1,86 @@
-// Task-control injection hook (Phase C2).
+// Task-control injection hook (Phase C2; Step 2E deferred consume).
 //
-// # 文件说明书
+// # File spec
 //
-// ## 核心功能
-// StepStart hook (Step 1C: renamed from PrepareStep): when a delegated
-// sub-agent's task has been asked to finish (request_finish → status="finishing"
-// + controlMessage persisted on the delegated_tasks row), inject that control
-// message into the sub-agent's NEXT step so it actually sees the wrap-up
-// instruction. Then clear the persisted controlMessage (advisory — delivered
-// once).
+// ## Core
+// Two handlers, both keyed on the 1-based step number:
+//
+//   StepStart → find a delegated task backing THIS session that is "finishing"
+//     with an unread control message. Inject it into the step. DO NOT clear the
+//     persisted controlMessage yet — instead remember (in a per-session map)
+//     which taskId was injected for this stepNumber.
+//
+//   StepEnd   → look up the taskId injected for this stepNumber and clear the
+//     persisted controlMessage for it. StepEnd only fires on a SUCCESSFUL step
+//     (runOneStepWithRetry does not call finalizeOneStep on a failed/retried
+//     attempt), so a step that fails and retries re-injects on the next
+//     StepStart (controlMessage is still set). This is the deferred-consume
+//     invariant: "deliver on inject, clear only after the step succeeds."
 //
 // This is the delivery half of request_finish. The force-stop half (maxTurns
 // budget) lives in subagent-delegator.buildSubEventHandler.
 //
-// ## 为什么是 hook
-// request_finish 是 task 管理的事,不是 AgentLoop 的事。AgentLoop 只暴露
-// per-step 注入点(StepStart);本 hook 按 sessionId 查 delegated_tasks 行
-// 读 controlMessage,完全在 hooks/ 下,不内联进 AgentLoop。
+// ## Why deferred
+// The previous hook cleared controlMessage on inject, so a failed attempt ate
+// the wrap-up instruction and the sub-agent never saw it again. Now it survives
+// until the step it was injected into succeeds.
 //
-// ## 输入
-// - db: ISessionStore(getDelegatedTask / listDelegatedTasks / updateDelegatedTask)
+// ## Why a hook
+// request_finish is task management, not AgentLoop. AgentLoop only exposes the
+// per-step injection point (StepStart); this hook reads delegated_tasks by
+// sessionId, fully under hooks/.
 //
-// ## 输出
-// - 副作用:向 HookRegistry 注册一个 StepStart 处理器
+// ## Position
+// src/runtime/hooks/ — delegated-loop only (registered in registerHooksForLoop).
+//
+// ## Dependencies
+// - ISessionStore (listDelegatedTasks / updateDelegatedTask)
 //
 import { HookRegistry } from "../../core/hook-registry.js";
 import type { ISessionStore } from "../session-store-interface.js";
 import { log } from "../../core/logger.js";
 
 /**
- * Register the delegated-task control-message injection hook. Idempotent —
- * safe to call once at startup. No-op when no db is provided.
+ * Per-session mapping: stepNumber → taskId whose control message was injected
+ * into that step but not yet committed. Filled on StepStart, drained on StepEnd.
+ * Cleared defensively at TurnStart so a stale entry from a prior turn can't
+ * survive.
+ */
+const injectedByStep = new Map<string, Map<number, string>>();
+
+function forgetStep(sessionId: string, stepNumber: number): void {
+	const m = injectedByStep.get(sessionId);
+	if (!m) return;
+	m.delete(stepNumber);
+	if (m.size === 0) injectedByStep.delete(sessionId);
+}
+
+function clearSession(sessionId: string): void {
+	injectedByStep.delete(sessionId);
+}
+
+/**
+ * Register the delegated-task control-message injection hook with deferred
+ * consume. Idempotent — safe to call once at startup. No-op when no db is
+ * provided.
  */
 export function registerTaskControlHooks(db: ISessionStore | undefined, registry: HookRegistry = HookRegistry.getInstance()): void {
 	if (!db?.listDelegatedTasks) return;
 
+	registry.register("TurnStart", async (ctx) => {
+		// Defensive cleanup: a control-message injection that never reached
+		// StepEnd (e.g. abort before any step succeeded) shouldn't leak into
+		// the next turn. The row's controlMessage is still set, so a fresh
+		// StepStart will re-inject cleanly.
+		const sessionId = ctx.sessionId as string | undefined;
+		if (sessionId) clearSession(sessionId);
+	});
+
 	registry.register("StepStart", async (ctx) => {
 		const sessionId = ctx.sessionId as string | undefined;
 		if (!sessionId) return;
+		const stepNumber = ctx.stepNumber as number | undefined;
+		if (stepNumber === undefined) return;
 
 		// Find a delegated task backing THIS session (the sub-agent's hidden
 		// delegated session) that is "finishing" with an unread control message.
@@ -45,13 +88,41 @@ export function registerTaskControlHooks(db: ISessionStore | undefined, registry
 		const task = finishing.find((t) => t.sessionId === sessionId && t.controlMessage);
 		if (!task) return;
 
-		log.debug("hooks", `StepStart: injecting control message for task ${task.id}`);
-		// Deliver once, then clear so it doesn't repeat every step.
-		db.updateDelegatedTask?.(task.id, { controlMessage: undefined });
+		log.debug("hooks", `StepStart: injecting control message for task ${task.id} (step ${stepNumber}, deferred)`);
+		// Remember which taskId was injected for THIS step. Do NOT clear the
+		// persisted controlMessage — StepEnd does that once the step succeeds.
+		let m = injectedByStep.get(sessionId);
+		if (!m) { m = new Map(); injectedByStep.set(sessionId, m); }
+		m.set(stepNumber, task.id);
 		return {
 			appendMessages: [{ role: "user", content: `[control] ${task.controlMessage}` }],
 		};
 	});
 
-	log.debug("hooks", "Task-control injection hook registered");
+	registry.register("StepEnd", async (ctx) => {
+		const sessionId = ctx.sessionId as string | undefined;
+		if (!sessionId) return;
+		const stepNumber = ctx.stepNumber as number | undefined;
+		if (stepNumber === undefined) return;
+
+		const taskId = injectedByStep.get(sessionId)?.get(stepNumber);
+		if (!taskId) return;
+
+		// The step that carried this control message succeeded — now it is safe
+		// to clear the persisted message so it doesn't repeat.
+		db.updateDelegatedTask?.(taskId, { controlMessage: undefined });
+		forgetStep(sessionId, stepNumber);
+		log.debug("hooks", `StepEnd: cleared controlMessage for task ${taskId} (step ${stepNumber} succeeded)`);
+	});
+
+	registry.register("TurnEnd", async (ctx) => {
+		const sessionId = ctx.sessionId as string | undefined;
+		if (sessionId) clearSession(sessionId);
+	});
+	registry.register("TurnError", async (ctx) => {
+		const sessionId = ctx.sessionId as string | undefined;
+		if (sessionId) clearSession(sessionId);
+	});
+
+	log.debug("hooks", "Task-control injection hook registered (deferred consume)");
 }

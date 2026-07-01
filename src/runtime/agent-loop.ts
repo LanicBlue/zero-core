@@ -166,6 +166,14 @@ export class AgentLoop implements AgentRuntime {
 			listDelegatedTasks: (filter) => this.delegator.listDelegatedTasks(filter),
 			suspendUntilWake: (timeoutMs, taskId) => this.delegator.suspendUntilWake(timeoutMs, taskId),
 			runBackground: (command, timeoutSec) => this.delegator.runBackground(command, timeoutSec),
+			// Step 2E: tool-call ↔ task link — let the Agent tool stamp the
+			// recorder's tool-call block with the delegated taskId the moment
+			// the delegator mints it, and expose resumeTask for the parent-side
+			// dangling-tool-call re-attach path.
+			setToolCallTaskId: (toolCallId, taskId) => {
+				this.recorder.setToolBlockTaskId(toolCallId, undefined, taskId);
+			},
+			resumeTask: (taskId) => this.delegator.resumeTask(taskId),
 			rateLimiter: new ToolRateLimiter(),
 			// Multi-Agent Workflow context
 			wikiStore: (config as any).wikiStore,
@@ -635,7 +643,7 @@ export class AgentLoop implements AgentRuntime {
 			if (step.aborted || this.abortController?.signal.aborted) break;
 
 			// Finalize this step: seal usage + StepEnd persistence.
-			await this.finalizeOneStep(step.usage);
+			await this.finalizeOneStep(step.usage, stepNumber);
 
 			// 2A gotcha #1: result.response is a PromiseLike — await the response
 			// first, THEN read .messages. response.messages carries this step's
@@ -1025,7 +1033,7 @@ export class AgentLoop implements AgentRuntime {
 	 * inline finish-step handler, now called once per successful step from the
 	 * outer while-loop.
 	 */
-	private async finalizeOneStep(usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): Promise<void> {
+	private async finalizeOneStep(usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }, stepNumber?: number): Promise<void> {
 		if (usage) {
 			if (usage.inputTokens) {
 				this.session.calibrateFromActualUsage(usage.inputTokens);
@@ -1055,6 +1063,7 @@ export class AgentLoop implements AgentRuntime {
 				recorder: this.recorder,
 				stepBaseSeq: this.stepBaseSeq,
 				stepOffset: this.stepOffset,
+				stepNumber,
 				usage: {
 					inputTokens: usage.inputTokens ?? 0,
 					outputTokens: usage.outputTokens ?? 0,
@@ -1072,6 +1081,7 @@ export class AgentLoop implements AgentRuntime {
 				recorder: this.recorder,
 				stepBaseSeq: this.stepBaseSeq,
 				stepOffset: this.stepOffset,
+				stepNumber,
 			});
 			this.stepOffset++;
 		}

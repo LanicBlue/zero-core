@@ -719,6 +719,12 @@ export function runMigrations(sessionDB: SessionDB): void {
 	// Migrate old rows: set turn_group = seq for un-migrated rows
 	migrateTurnsToSteps(db);
 
+	// Step 2E (hook-redesign): parent_tool_call_id on delegated_tasks lets the
+	// parent resume path resolve a dangling Agent tool-call → its delegated task
+	// (tool-call ↔ task link). Fresh DBs get it via CREATE TABLE; upgraded DBs
+	// that already have delegated_tasks need the column added.
+	safeAddColumn(db, "delegated_tasks", "parent_tool_call_id", "TEXT");
+
 	// ─── Multi-Agent Workflow tables ───────────────────────────
 	// v0.8 (M0): projects slimmed to pure metadata + workspaceDir uniqueness.
 	// Legacy columns (path/analyst_cron_id/analyst_session_id/last_analysis_at/

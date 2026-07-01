@@ -385,6 +385,14 @@ export interface ToolExecutionContext {
 	agentId: string;
 	sessionId?: string;
 	turnSeq?: number;
+	/**
+	 * Step 2E: the tool-call id of the currently-executing tool invocation
+	 * (set by buildTool's execute wrapper just before calling the tool's own
+	 * execute). Lets delegation tools (Agent/Orchestrate) stamp the resulting
+	 * delegated task with its parent tool-call id so the parent resume path can
+	 * resolve a dangling Agent tool-call → its delegated task.
+	 */
+	currentToolCallId?: string;
 	emit: (event: StreamEvent) => void;
 	db?: ISessionStore;
 	/**
@@ -412,6 +420,20 @@ export interface ToolExecutionContext {
 	listDelegatedTasks?: (filter?: { rootTaskId?: string; parentTaskId?: string }) => DelegatedTaskRecord[];
 	suspendUntilWake?: (timeoutMs: number, taskId?: string) => Promise<string>;
 	runBackground?: (command: string, timeout?: number) => string;
+	/**
+	 * Step 2E: annotate the recorder's current tool-call block with the
+	 * delegated taskId backing it. Called by the Agent/Orchestrate tools right
+	 * after the delegator mints a taskId, so the parent step's tool-call block
+	 * carries the link (tool-call ↔ task). Wired to TurnRecorder by AgentLoop.
+	 * Best-effort — no-op when the loop has no recorder (test stubs).
+	 */
+	setToolCallTaskId?: (toolCallId: string, taskId: string) => void;
+	/**
+	 * Step 2E: resume a delegated task by taskId from the parent session's
+	 * resume path. Surfaces SubagentDelegator.resumeTask so a future parent-
+	 * side dangling-tool-call scanner can re-attach without re-invoking.
+	 */
+	resumeTask?: (taskId: string) => Promise<string>;
 	readScope?: "filesystem" | "workspace";
 	toolConfig?: Record<string, Record<string, any>>;
 	rateLimiter?: import("./tool-rate-limiter.js").ToolRateLimiter;

@@ -337,6 +337,23 @@ export class AgentSession {
 		return messages;
 	}
 
+	/**
+	 * Step 2E: synthesize a result for every dangling tool block in `blocks` —
+	 * any tool block in status "running" with no result is filled with
+	 * {result:"[interrupted]", status:"error"}. Persist writes the truth (a tool
+	 * legitimately stays "running" mid-step), so this is applied at rebuild time
+	 * to guarantee the rebuilt messages always carry a paired tool-result for
+	 * every tool-call. Idempotent — blocks with a result are untouched.
+	 */
+	private synthesizeDanglingToolResultsInPlace(blocks: any[]): void {
+		for (const b of blocks) {
+			if (b?.type === "tool" && b.status === "running" && b.result === undefined) {
+				b.status = "error";
+				b.result = "[interrupted]";
+			}
+		}
+	}
+
 	/** Rebuild messages from step-level rows. Groups by turnGroup and handles toolCallId offsets. */
 	private rebuildFromSteps(steps: StepRow[]): ModelMessage[] {
 		const messages: ModelMessage[] = [];
@@ -365,6 +382,13 @@ export class AgentSession {
 				if (step.role !== "assistant") continue;
 				let blocks: any[] = [];
 				try { blocks = JSON.parse(step.content ?? "[]"); } catch { blocks = []; }
+				// Step 2E: synthesize dangling tool blocks on rebuild. Persist writes
+				// the truth (a tool legitimately "running" mid-step stays running), so
+				// a persisted row can carry an unmatched tool-call when an abort cut
+				// the step off mid-tool-execution. The rebuilt messages must always
+				// carry a paired tool-result, so fill any status:"running" tool block
+				// with no result here. Idempotent - blocks with a result are untouched.
+				this.synthesizeDanglingToolResultsInPlace(blocks);
 				tcOffset = this.appendStepMessages(blocks, messages, tcOffset);
 			}
 		}

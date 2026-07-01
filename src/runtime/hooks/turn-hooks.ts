@@ -38,6 +38,16 @@ export function setTurnSeq(sessionId: string, seq: number): void {
 	sessionTurnSeq.set(sessionId, seq);
 }
 
+/**
+ * Step 2E: dangling synthesis for the safety-net persist path was previously
+ * applied here in-place before serializing ctx.blocks. It has been moved to the
+ * rebuild path (AgentSession.rebuildFromSteps): persist writes the truth (a
+ * tool legitimately "running" mid-step stays running), rebuild synthesizes
+ * [interrupted] for any dangling tool-call so the rebuilt messages always carry
+ * a paired tool-result. The TurnEnd / TurnError handlers therefore serialize
+ * the blocks verbatim.
+ */
+
 export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = HookRegistry.getInstance()): void {
 
 	// ─── TurnStart: write user turn as step row ─────────────
@@ -192,6 +202,8 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			// ensure they're persisted (abort may have occurred before finish-step)
 			const blocks = ctx.blocks as any[] | undefined;
 			if (blocks && blocks.length > 0) {
+				// Step 2E: persist writes the truth; dangling synthesis moved to
+				// rebuild (AgentSession.rebuildFromSteps). Serialize verbatim.
 				const blocksJson = JSON.stringify(blocks);
 				if (db.hasStepSchema()) {
 					// Step-level: write as a single assistant step if nothing persisted yet
@@ -234,6 +246,8 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			// Keep whatever blocks we have — they represent actual work done
 			const blocks = ctx.blocks as any[] | undefined;
 			if (blocks && blocks.length > 0) {
+				// Step 2E: persist writes the truth; dangling synthesis moved to
+				// rebuild (AgentSession.rebuildFromSteps). Serialize verbatim.
 				const blocksJson = JSON.stringify(blocks);
 				if (db.hasStepSchema()) {
 					const assistantSeq = turnSeq + 1;

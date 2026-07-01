@@ -203,9 +203,16 @@ export const delegateTool = buildTool({
 			if (!ctx.delegateTaskBackground) {
 				return "Error: Non-blocking sub-agent is not available in this context.";
 			}
+			// Step 2E: stamp the parent tool-call id + annotate the recorder
+			// block with the minted taskId (tool-call ↔ task link).
+			const parentToolCallId = ctx.currentToolCallId;
 			const taskId = ctx.delegateTaskBackground(task, {
 				model: delegateOpts.model,
 				systemPrompt: delegateOpts.systemPrompt,
+				parentToolCallId,
+				onDispatched: parentToolCallId
+					? (id) => ctx.setToolCallTaskId?.(parentToolCallId, id)
+					: undefined,
 			});
 			return `Agent dispatched in non-blocking mode.\ntask_id: ${taskId}\nUse TaskStatus to check progress and retrieve the result.`;
 		}
@@ -215,7 +222,18 @@ export const delegateTool = buildTool({
 			return "Error: Sub-agent delegation is not available in this context.";
 		}
 		try {
-			const result = await ctx.delegateTask(task, delegateOpts);
+			// Step 2E: same tool-call ↔ task link as non-blocking. The blocking
+			// path doesn't return a taskId, so we use the onDispatched callback
+			// (fired synchronously inside delegateTask right after the row is
+			// created) to annotate the recorder block before the call awaits.
+			const parentToolCallId = ctx.currentToolCallId;
+			const result = await ctx.delegateTask(task, {
+				...delegateOpts,
+				parentToolCallId,
+				onDispatched: parentToolCallId
+					? (id) => ctx.setToolCallTaskId?.(parentToolCallId, id)
+					: undefined,
+			});
 			return truncate(result || "(sub-agent returned no output)");
 		} catch (err: any) {
 			return `Sub-agent error: ${err.message}`;

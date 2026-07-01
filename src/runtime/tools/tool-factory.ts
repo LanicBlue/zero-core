@@ -200,6 +200,10 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 			}
 
 			try {
+				// Step 2E: surface this invocation's toolCallId to the tool so
+				// delegation tools (Agent/Orchestrate) can stamp the resulting
+				// delegated task with its parent tool-call id.
+				ctxOrEmpty.currentToolCallId = toolCallId || undefined;
 				const result = await options.execute(input, ctxOrEmpty);
 				await triggerHooks("PostToolUse", {
 					agentId: ctxOrEmpty.agentId ?? "",

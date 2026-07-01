@@ -74,6 +74,20 @@ export interface DelegateTaskOptions {
 	rootTaskId?: string;
 	/** Title override for the delegated session (default: derived from task). */
 	title?: string;
+	/**
+	 * Step 2E: the parent step's tool-call id that triggered this delegation.
+	 * Persisted on the delegated_tasks row as parent_tool_call_id so the parent
+	 * resume path can resolve a dangling Agent tool-call → its delegated task.
+	 */
+	parentToolCallId?: string;
+	/**
+	 * Step 2E: callback fired once with the freshly-minted taskId, right after
+	 * the delegated_tasks row is created. Lets the caller (Agent tool) annotate
+	 * its recorder tool-call block with the taskId the moment it is known, even
+	 * on the blocking path where delegateTask awaits completion before
+	 * returning. Best-effort — errors here are swallowed by the caller.
+	 */
+	onDispatched?: (taskId: string) => void;
 }
 
 /** Tracked running sub-loop, for request_finish turn-budget enforcement. */
@@ -163,7 +177,11 @@ export class SubagentDelegator {
 			task,
 			status: "running",
 			depth: (this.config.spawnDepth ?? 0) + 1,
+			parentToolCallId: options?.parentToolCallId,
 		});
+		// Step 2E: notify the caller of the taskId so it can annotate its
+		// recorder tool-call block. Swallow errors — annotation is best-effort.
+		try { options?.onDispatched?.(taskId); } catch { /* best-effort */ }
 	}
 
 	/** Patch a delegated_tasks row (status/progress/result/...). Best-effort. */
@@ -477,6 +495,80 @@ export class SubagentDelegator {
 			entry.finishState = { maxTurns: options.maxTurns, turnsDone: 0 };
 		}
 		return true;
+	}
+
+	/**
+	 * Step 2E: resume a delegated task by taskId. Called from the parent
+	 * session's resume path when it encounters a dangling Agent tool-call whose
+	 * delegated task is still recoverable. The delegated sub-session resumes
+	 * from its own lastCompletedStepSeq (case1/case2 recursive), and the
+	 * resolved result is returned so the parent can back-fill its dangling
+	 * tool-call block — WITHOUT re-invoking the delegation (no new task, no
+	 * reset of the sub-agent's step history).
+	 *
+	 * Returns the delegated task's terminal result text, or throws if the task
+	 * is missing / already terminal / the sub-loop can't be rebuilt. The caller
+	 * is responsible for back-filling the tool-call block from the returned
+	 * value.
+	 *
+	 * NOTE: the full parent-side scan-and-backfill wiring (finding dangling
+	 * Agent tool-calls on parent resume, calling this, and writing the result
+	 * into the parent step row) is intentionally left as a follow-up — the
+	 * building blocks (taskId on the block, resumeTask here, parentToolCallId
+	 * on the row) are in place; the resume loader integration is tracked
+	 * separately.
+	 */
+	async resumeTask(taskId: string): Promise<string> {
+		const db = this.config.db;
+		if (!db?.getDelegatedTask) throw new Error(`resumeTask: db unavailable`);
+		const rec = db.getDelegatedTask(taskId);
+		if (!rec) throw new Error(`resumeTask: task ${taskId} not found`);
+		if (rec.status === "completed") return rec.result ?? "(no output)";
+		if (rec.status === "failed" || rec.status === "killed") {
+			throw new Error(rec.error ?? `task ${taskId} is ${rec.status}`);
+		}
+		// Delegate to the sub-loop's resume via the same loop factory used for
+		// fresh delegations. The sub-session rebuilds its messages from its own
+		// step rows and continues from its lastCompletedStepSeq.
+		const toolConfig = this.getToolConfig();
+		const subConfig: SessionConfig = {
+			...this.config,
+			agentId: rec.targetAgentId,
+			sessionId: rec.sessionId,
+			systemPrompt: this.config.systemPrompt,
+			modelId: this.config.modelId,
+			workspaceDir: this.config.workspaceDir,
+			contextBundle: this.config.contextBundle,
+			parentSessionId: this.config.sessionId,
+			spawnDepth: (this.config.spawnDepth ?? 0) + 1,
+			timeoutSec: toolConfig?.Agent?.timeout,
+			loopKind: "delegated",
+		};
+		const subAbort = new AbortController();
+		const entry: RunningSubloop = { loop: undefined as unknown as AgentRuntime, abort: subAbort };
+		const telemetryOnEvent = this.buildSubEventHandler(taskId, entry);
+		const subLoop = this.createSubLoop(subConfig, this.providers, { onEvent: telemetryOnEvent });
+		this.registerSubLoopHooks(subLoop);
+		entry.loop = subLoop;
+		this.runningSubloops.set(taskId, entry);
+		subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
+		try {
+			// The sub-session's lastCompletedStepSeq lives in its own turn_state
+			// row; AgentLoop.resume reads it. We pass undefined and let the loop
+			// self-resolve.
+			await (subLoop as any).resume?.();
+			const result = subLoop.getResult();
+			this.updateDelegatedTask(taskId, { status: "completed", result });
+			await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
+			return result;
+		} catch (err: any) {
+			const message = err.message || "Unknown error";
+			this.updateDelegatedTask(taskId, { status: "failed", error: message });
+			await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: message });
+			throw err;
+		} finally {
+			this.runningSubloops.delete(taskId);
+		}
 	}
 
 	/** List delegated-task records (persisted) for this owner, optionally scoped. */

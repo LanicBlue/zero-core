@@ -197,6 +197,7 @@ export class SessionDB {
 				error               TEXT,
 				control_message     TEXT,
 				finish_requested_at TEXT,
+				parent_tool_call_id TEXT,
 				created_at          TEXT NOT NULL,
 				updated_at          TEXT NOT NULL,
 				completed_at        TEXT,
@@ -1107,6 +1108,7 @@ export class SessionDB {
 			error: row.error ?? undefined,
 			controlMessage: row.control_message ?? undefined,
 			finishRequestedAt: row.finish_requested_at ?? undefined,
+			parentToolCallId: row.parent_tool_call_id ?? undefined,
 			createdAt: row.created_at,
 			updatedAt: row.updated_at,
 			completedAt: row.completed_at ?? undefined,
@@ -1124,12 +1126,13 @@ export class SessionDB {
 		task: string;
 		status?: DelegatedTaskStatus;
 		depth?: number;
+		parentToolCallId?: string;
 	}): DelegatedTaskRecord {
 		const now = new Date().toISOString();
 		const status = input.status ?? "running";
 		this.db.prepare(
-			"INSERT INTO delegated_tasks (id, parent_task_id, root_task_id, owner_agent_id, target_agent_id, parent_session_id, session_id, task, status, depth, step, turns, tokens, created_at, updated_at) " +
-			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)",
+			"INSERT INTO delegated_tasks (id, parent_task_id, root_task_id, owner_agent_id, target_agent_id, parent_session_id, session_id, task, status, depth, step, turns, tokens, parent_tool_call_id, created_at, updated_at) " +
+			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)",
 		).run(
 			input.id,
 			input.parentTaskId ?? null,
@@ -1141,12 +1144,13 @@ export class SessionDB {
 			input.task,
 			status,
 			input.depth ?? 0,
+			input.parentToolCallId ?? null,
 			now, now,
 		);
 		return this.getDelegatedTask(input.id)!;
 	}
 
-	updateDelegatedTask(id: string, patch: Partial<Pick<DelegatedTaskRecord, "status" | "step" | "turns" | "tokens" | "currentTool" | "result" | "error" | "controlMessage" | "finishRequestedAt" | "completedAt" | "sessionId">>): DelegatedTaskRecord | undefined {
+	updateDelegatedTask(id: string, patch: Partial<Pick<DelegatedTaskRecord, "status" | "step" | "turns" | "tokens" | "currentTool" | "result" | "error" | "controlMessage" | "finishRequestedAt" | "completedAt" | "sessionId" | "parentToolCallId">>): DelegatedTaskRecord | undefined {
 		const sets: string[] = [];
 		const vals: any[] = [];
 		const colMap: Record<string, string> = {
@@ -1161,6 +1165,7 @@ export class SessionDB {
 			finishRequestedAt: "finish_requested_at",
 			completedAt: "completed_at",
 			sessionId: "session_id",
+			parentToolCallId: "parent_tool_call_id",
 		};
 		for (const [k, v] of Object.entries(patch)) {
 			const col = colMap[k];

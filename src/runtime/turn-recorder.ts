@@ -130,6 +130,28 @@ export class TurnRecorder {
 		}
 	}
 
+	/**
+	 * Step 2E: stamp the delegated taskId onto the tool-call block identified by
+	 * `toolCallId`. Persists with the step row so the parent resume path can
+	 * resolve a dangling Agent tool-call → its delegated task. Matches by
+	 * toolCallId (preferred) or by the most recent running tool block of `name`.
+	 * Best-effort — no-op if the block isn't found (e.g. recorder was reset).
+	 */
+	setToolBlockTaskId(toolCallId: string | undefined, name: string | undefined, taskId: string): void {
+		let tb: any | undefined;
+		if (toolCallId) {
+			tb = [...this.currentStepBlocks].reverse().find(
+				(b: any) => b.type === "tool" && b.toolCallId === toolCallId,
+			);
+		}
+		if (!tb && name) {
+			tb = [...this.currentStepBlocks].reverse().find(
+				(b: any) => b.type === "tool" && b.name === name && b.status === "running",
+			);
+		}
+		if (tb) tb.taskId = taskId;
+	}
+
 	/** Record a successful tool result (legacy API — matches by name only). */
 	addToolResult(name: string, output: any): void {
 		const tb = this.findToolBlock(undefined, name);
@@ -160,6 +182,37 @@ export class TurnRecorder {
 		if (this.currentStepText) {
 			for (const b of parseThinkingTags(this.currentStepText)) this.currentStepBlocks.push(b);
 			this.currentStepText = "";
+		}
+	}
+
+	/**
+	 * Step 2E: synthesize a result for every dangling tool block — i.e. any
+	 * tool block still in status "running" with no result. A tool block reaches
+	 * this state legitimately mid-step (a tool that is still executing), or on
+	 * abort when an unfinished tool block couldn't be resumed.
+	 *
+	 * Persist paths write the TRUTH (a running tool stays "running"), so callers
+	 * that persisted mid-step keep an accurate record. This method is therefore
+	 * NOT called from persistCurrentStep / persistAllSteps. It is invoked only
+	 * where a finished record is genuinely needed (kept available for the
+	 * rebuild path; see AgentSession.rebuildFromSteps which synthesizes on read
+	 * so the rebuilt messages always carry a paired tool-result). Idempotent —
+	 * blocks that already have a result are untouched.
+	 */
+	synthesizeDanglingToolResults(): void {
+		for (const b of this.currentStepBlocks) {
+			if (b?.type === "tool" && b.status === "running" && b.result === undefined) {
+				b.status = "error";
+				b.result = "[interrupted]";
+			}
+		}
+		for (const step of this.completedSteps) {
+			for (const b of step.blocks) {
+				if (b?.type === "tool" && b.status === "running" && b.result === undefined) {
+					b.status = "error";
+					b.result = "[interrupted]";
+				}
+			}
 		}
 	}
 
@@ -206,6 +259,13 @@ export class TurnRecorder {
 	persistCurrentStep(db: ISessionStore, sessionId: string, seq: number): void {
 		if (!db || !sessionId) return;
 		this.sealStep();
+		// Step 2E: persist writes the TRUTH. A tool block legitimately stays
+		// "running" mid-step (the tool is still executing) and must NOT be
+		// synthesized to [interrupted] here — that would prematurely mark a
+		// still-running tool as failed and break the per-tool-persist invariant.
+		// Dangling synthesis happens at rebuild time (AgentSession.rebuildFromSteps),
+		// which guarantees the rebuilt messages always carry a paired tool-result
+		// without corrupting the persisted truth.
 		const allBlocks = this.blocks;
 		if (allBlocks.length === 0) return;
 		db.upsertStep(sessionId, seq, this.currentTurnGroup, "assistant", JSON.stringify(allBlocks));
@@ -218,6 +278,8 @@ export class TurnRecorder {
 	persistAllSteps(db: ISessionStore, sessionId: string, baseSeq: number): void {
 		if (!db || !sessionId) return;
 		this.sealStep();
+		// Step 2E: persist writes the truth; dangling synthesis is a rebuild
+		// concern (see persistCurrentStep above), not a persist concern.
 
 		// Persist any completed steps that haven't been written yet
 		for (let i = 0; i < this.completedSteps.length; i++) {
