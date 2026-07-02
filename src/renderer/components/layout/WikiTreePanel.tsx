@@ -30,6 +30,10 @@ import { useWikiStore } from "../../store/wiki-store.js";
 import WikiTree from "../wiki/WikiTree.js";
 import type { ResolvedAnchorView } from "../../../shared/types.js";
 
+// Per-root collapse state lives at module scope so it survives panel re-renders
+// (anchor list refresh) without resetting every time. Roots start expanded.
+const collapsedRoots = new Set<string>();
+
 const api = () => (window as any).api;
 
 const INJECT_LABEL: Record<ResolvedAnchorView["inject"], string> = {
@@ -99,33 +103,50 @@ export default function WikiTreePanel() {
 		}));
 	}, [selectedNodeId, body, summary]);
 
+	// Re-render when a root's collapse state flips (module-scope Set needs a
+	// tick to reflect the change).
+	const [, setTick] = useState(0);
+	const toggleRoot = (nodeId: string) => {
+		if (collapsedRoots.has(nodeId)) collapsedRoots.delete(nodeId);
+		else collapsedRoots.add(nodeId);
+		setTick((t) => t + 1);
+	};
+
 	return (
 		<div className="wiki-tree-panel">
-			<div className="wiki-tree-header">
-				<span>WIKI · 注入锚点</span>
-			</div>
 			<div className="wiki-tree-body">
 				{anchors.length === 0 ? (
 					<div className="doc-placeholder">{activeAgentId ? "无 wiki 锚点。" : "No agent selected."}</div>
-				) : anchors.map((a) => (
-					<div key={a.nodeId} className="wiki-root-section">
-						<div className="wiki-root-label">
-							<span>{a.title || a.nodeId}</span>
-							<span className={`wiki-inject-badge wiki-inject-${a.inject}`} title={INJECT_TITLE[a.inject]}>
-								{INJECT_LABEL[a.inject]}
-							</span>
+				) : anchors.map((a) => {
+					const collapsed = collapsedRoots.has(a.nodeId);
+					return (
+						<div key={a.nodeId} className="wiki-root-section">
+							<button
+								type="button"
+								className="wiki-root-label"
+								onClick={() => toggleRoot(a.nodeId)}
+								title={INJECT_TITLE[a.inject]}
+							>
+								<span className="wiki-root-caret">{collapsed ? "▸" : "▾"}</span>
+								<span className="wiki-root-title">{a.title || a.nodeId}</span>
+								<span className={`wiki-inject-badge wiki-inject-${a.inject}`}>
+									{INJECT_LABEL[a.inject]}
+								</span>
+							</button>
+							{!collapsed && (
+								<WikiTree
+									childrenByNode={childrenByNode}
+									childrenLoaded={childrenLoaded}
+									loadingChildren={loadingChildren}
+									rootId={a.nodeId}
+									selectedNodeId={selectedNodeId}
+									onSelect={selectNode}
+									onExpand={expandNode}
+								/>
+							)}
 						</div>
-						<WikiTree
-							childrenByNode={childrenByNode}
-							childrenLoaded={childrenLoaded}
-							loadingChildren={loadingChildren}
-							rootId={a.nodeId}
-							selectedNodeId={selectedNodeId}
-							onSelect={selectNode}
-							onExpand={expandNode}
-						/>
-					</div>
-				))}
+					);
+				})}
 			</div>
 		</div>
 	);

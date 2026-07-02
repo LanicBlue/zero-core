@@ -2059,20 +2059,6 @@ body {
   overflow: hidden;
 }
 
-.wiki-tree-header {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-default);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--fg-subtle);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-}
-
 .wiki-tree-body {
   flex: 1;
   overflow-y: auto;
@@ -2083,7 +2069,12 @@ body {
   margin-bottom: 4px;
 }
 
+/* Root row = a <button> (whole row toggles collapse). Reset button defaults. */
 .wiki-root-label {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
   padding: 6px 12px 2px;
   font-size: 9px;
   letter-spacing: 0.8px;
@@ -2093,10 +2084,22 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  justify-content: space-between;
+  cursor: pointer;
 }
 
-.wiki-root-label > span:first-child {
+.wiki-root-label:hover {
+  color: var(--text-secondary, #aaa);
+}
+
+.wiki-root-caret {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  font-size: 10px;
+}
+
+.wiki-root-title {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
