@@ -1,17 +1,20 @@
 # 05 · 持久化层
 
 > Zero-Core 是"本地优先"系统。用户数据主要落在 `~/.zero-core/` 下的几个文件里:**主库
-> `sessions.db`**(`SessionDB` 持有,better-sqlite3 单连接) + **向量库 `knowledge.db`**
-> (`KbDB` 独立连接,只存 `kb_chunks`,§2.3) + **Wiki 磁盘镜像树** `wiki/`(v0.8,正文 markdown,
-> 见 06 §2.5) + 一组旧版 JSON 文件(迁移后改 `.migrated.bak`)。本文剖析 sessions.db 这张
-> 表图谱,并标注哪些表"不在主库 / 不进 db-migration"。
+> `sessions.db`**(`SessionDB` 持有,better-sqlite3 单连接) + **Wiki 磁盘镜像树** `wiki/`
+> (v0.8,正文 markdown,见 06 §2.5) + 一组旧版 JSON 文件(迁移后改 `.migrated.bak`)。本文
+> 剖析 sessions.db 这张表图谱,并标注哪些表"不在主库 / 不进 db-migration"。
+>
+> v0.8 后续清理:旧的向量库 `knowledge.db`(`kb_chunks`)、`kb_entries`、以及 Gen1
+> `MemoryNodeStore` 的 4 张表(`memory_nodes`/`memory_subjects`/`memory_edges`/
+> `memory_nodes_fts`)已整体 DROP(见 §2.2 末)。知识与记忆统一以 `project_wiki` wiki 树
+> 承载(06 §2)。`knowledge.db` 不再产生。
 
 ## 1. 数据驻留位置
 
 ```
 ~/.zero-core/
-├── sessions.db            ← 主数据库 (SessionDB,better-sqlite3,§2 全部表 ≈31 张 = 批 A db-migration 管理 24 张 [5 会话核心 + 5 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 7 张 [4 memory_* (MemoryNodeStore) + kv_store + extraction_cursors + tool_telemetry],v0.8 已 DROP memory_entities/memory_relations 2 表;§2 顶部"表计数的口径"块有详细切分)
-├── knowledge.db           ← 向量库 (KbDB 独立连接,只存 kb_chunks,§2.3)
+├── sessions.db            ← 主数据库 (SessionDB,better-sqlite3,§2 全部表 ≈25 张 = 批 A db-migration 管理 23 张 [5 会话核心 + 4 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 2 张 [kv_store + extraction_cursors + tool_telemetry 中 db-migration 未管的];v0.8 已 DROP memory_entities/memory_relations + memory_nodes/_subjects/_edges/_fts + kb_entries/kb_chunks;§2 顶部"表计数的口径"块有详细切分)
 ├── webfetch/
 │   ├── cache/<hash>.json  ← URL 抓取缓存
 │   ├── results/<id>.json ← 大结果/binary 持久化
@@ -267,7 +270,11 @@ JSON 前身)。Store 类多数用 `SqliteStore<T>` 反射 CRUD(见 §3),**两个
 **两个并行的 wiki 系统** —— 旧 `kb_*` 走嵌入向量检索(RAG),新 `project_wiki` 走磁盘镜像树
 + archivist 摘要(见 06 §2)。两者不互转。
 
-### 2.3 KB chunks —— **独立 SQLite 文件 `knowledge.db`**
+### 2.3 KB chunks —— **独立 SQLite 文件 `knowledge.db`**（⚠️ 已退役）
+
+> **v0.8 后续清理:整条退役**。KB 子系统(向量 RAG)已移除:`kb_chunks` + `kb_entries` 表由
+> `runMigrations` `DROP IF EXISTS`,`knowledge.db` 不再产生,`KbDB` / `kb-*` 服务端代码删除。
+> 知识/记忆统一以 `project_wiki` wiki 树承载(06 §2)。本节以下为历史描述,保留备查。
 
 > ⚠️ v0.8 更正:旧版本节写"KbDB 也使用同一个 db.sqlite"是**错的**。`KbDB` 在自己的构造函数里
 > `new Database(path)` 开了一条**独立连接**,指向 `~/.zero-core/knowledge.db`
