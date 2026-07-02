@@ -38,8 +38,6 @@ import { SessionDB } from "./session-db.js";
 import { InputQueueStore } from "./input-queue-store.js";
 import { MCPManager } from "./mcp-manager.js";
 import { buildMcpTools } from "../runtime/tools/mcp-tool.js";
-import { KbStore } from "./kb-store.js";
-import { KbDB } from "./kb-db.js";
 import { log } from "../core/logger.js";
 import { ToolRegistry } from "../core/tool-registry.js";
 import { ProviderConcurrencyManager } from "../runtime/provider-concurrency-manager.js";
@@ -114,8 +112,6 @@ export class AgentService {
 	private defaultModel: string | undefined;
 	private defaultProvider: string | undefined;
 	private db: SessionDB;
-	private kbStore: KbStore;
-	private kbDb: KbDB;
 	private registry: ToolRegistry;
 	private mcp: MCPManager;
 	private concurrencyManager = new ProviderConcurrencyManager();
@@ -159,11 +155,9 @@ export class AgentService {
 	// Module readiness — modules notify when loaded, deferred actions wait until ready
 	private readyModules = new Set<string>();
 	private deferredActions: Array<{ waitFor: string[]; action: () => Promise<void> }> = [];
-	constructor(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore, registry?: ToolRegistry, mcp?: MCPManager) {
+	constructor(workspaceDir: string, sessionDb?: SessionDB, registry?: ToolRegistry, mcp?: MCPManager) {
 		this.workspaceDir = workspaceDir;
 		this.db = sessionDb ?? new SessionDB();
-		this.kbStore = kb ?? new KbStore(this.db);
-		this.kbDb = new KbDB();
 		this.registry = registry ?? new ToolRegistry(this.db.getKVStore());
 		this.mcp = mcp ?? new MCPManager(this.registry);
 		this.config = loadConfig(process.cwd(), undefined, this.db.getKVStore());
@@ -1315,7 +1309,6 @@ export class AgentService {
 		// completing turn_state rows — they stay incomplete so that
 		// recoverIncompleteSessions() can resume them on next startup.
 		this.db.close();
-		this.kbDb.close();
 		for (const loop of this.loops.values()) {
 			loop.abort();
 		}
@@ -1385,8 +1378,8 @@ export class AgentService {
 		}
 	}
 }
-export function createAgentService(workspaceDir: string, sessionDb?: SessionDB, kb?: KbStore, registry?: ToolRegistry, mcp?: MCPManager): AgentService {
-	return new AgentService(workspaceDir, sessionDb, kb, registry, mcp);
+export function createAgentService(workspaceDir: string, sessionDb?: SessionDB, registry?: ToolRegistry, mcp?: MCPManager): AgentService {
+	return new AgentService(workspaceDir, sessionDb, registry, mcp);
 }
 
 /**

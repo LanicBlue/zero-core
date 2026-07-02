@@ -138,17 +138,6 @@ const api: WindowApi = {
 	// ─── Skills
 	skillsList: () => ipcRenderer.invoke("skills:list"),
 
-	// ─── Knowledge Base ──────────────────────────────
-	kbList: () => ipcRenderer.invoke("kb:list"),
-	kbGet: (id) => ipcRenderer.invoke("kb:get", id),
-	kbCreate: (input) => ipcRenderer.invoke("kb:create", input),
-	kbUpdate: (id, input) => ipcRenderer.invoke("kb:update", id, input),
-	kbDelete: (id) => ipcRenderer.invoke("kb:delete", id),
-	kbAddFiles: (kbId, filePaths) => ipcRenderer.invoke("kb:add-files", kbId, filePaths),
-	kbRemoveFile: (kbId, filePath) => ipcRenderer.invoke("kb:remove-file", kbId, filePath),
-	kbSearch: (kbIds, query) => ipcRenderer.invoke("kb:search", kbIds, query),
-	kbChunkCount: (kbId) => ipcRenderer.invoke("kb:chunk-count", kbId),
-
 	// ─── MCP ─────────────────────────────────────────
 	mcpList: () => ipcRenderer.invoke("mcp:list"),
 	mcpGet: (id) => ipcRenderer.invoke("mcp:get", id),

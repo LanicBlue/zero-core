@@ -28,7 +28,6 @@
 import type {
 	AgentRecord, CreateAgentInput, UpdateAgentInput,
 	Provider, CreateProviderInput, UpdateProviderInput, ProviderModel, FetchedModel,
-	KnowledgeBase, CreateKbInput, UpdateKbInput, KbSearchResult, KbFileIngestResult,
 	McpServerConfig, CreateMcpInput, UpdateMcpInput, McpStatus,
 	PromptTemplate, CreateTemplateInput, UpdateTemplateInput,
 	SessionRecord,
@@ -94,16 +93,7 @@ export interface IpcChannelDefs {
 	"mcp:disconnect": { params: [id: string];                  result: Ok };
 	"mcp:status":     { params: [];                             result: McpStatus[] };
 
-	// ── Knowledge Base (CRUD + file ops) ─────────────────────
-	"kb:list":         { params: [];                                     result: KnowledgeBase[] };
-	"kb:get":          { params: [id: string];                           result: KnowledgeBase | undefined };
-	"kb:create":       { params: [input: CreateKbInput];                 result: KnowledgeBase };
-	"kb:update":       { params: [id: string, input: UpdateKbInput];     result: KnowledgeBase | Err };
-	"kb:delete":       { params: [id: string];                           result: Ok };
-	"kb:add-files":    { params: [kbId: string, filePaths: string[]];    result: KbFileIngestResult[] };
-	"kb:remove-file":  { params: [kbId: string, filePath: string];       result: Ok };
-	"kb:search":       { params: [kbIds: string[], query: string];       result: KbSearchResult[] };
-	"kb:chunk-count":  { params: [kbId: string];                         result: number };
+	// ── Knowledge Base — removed (will be redone via wiki-format file splitting). ──
 
 	// ── Templates (CRUD + import/export) ─────────────────────
 	"templates:list":           { params: [];                                          result: PromptTemplate[] };

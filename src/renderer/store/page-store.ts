@@ -23,7 +23,7 @@
 //
 import { create } from "zustand";
 
-type PageType = "dashboard" | "chat" | "agents" | "settings" | "mcp" | "skills" | "knowledge" | "tools" | "requirements" | "wiki" | "cron";
+type PageType = "dashboard" | "chat" | "agents" | "settings" | "mcp" | "skills" | "tools" | "requirements" | "wiki" | "cron";
 
 interface PageState {
 	activePage: PageType;

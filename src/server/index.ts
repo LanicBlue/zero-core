@@ -33,8 +33,6 @@ import { onDataChange } from "./data-change-hub.js";
 import { ProviderStore } from "./provider-store.js";
 import { TemplateStore } from "./template-store.js";
 import { McpStore } from "./mcp-store.js";
-import { KbStore } from "./kb-store.js";
-import { KbDB } from "./kb-db.js";
 import { createAgentService } from "./agent-service.js";
 import { SessionDB } from "./session-db.js";
 import { runMigrations } from "./db-migration.js";
@@ -47,7 +45,6 @@ import { createAgentRouter } from "./agent-router.js";
 import { createProviderRouter } from "./provider-router.js";
 import { createTemplateRouter } from "./template-router.js";
 import { createMcpRouter } from "./mcp-router.js";
-import { createKbRouter } from "./kb-router.js";
 import { createConfigRouter } from "./config-router.js";
 import { createChatRouter } from "./chat-router.js";
 import { createSessionRouter } from "./session-router.js";
@@ -158,8 +155,6 @@ export async function startServer(options?: StartServerOptions) {
 	const providerStore = new ProviderStore(sessionDB);
 	const templateStore = new TemplateStore(sessionDB);
 	const mcpStore = new McpStore(sessionDB);
-	const kbStore = new KbStore(sessionDB);
-	const kbDb = new KbDB();
 
 	// Multi-Agent Workflow stores
 	const projectStore = new ProjectStore(sessionDB);
@@ -215,7 +210,7 @@ export async function startServer(options?: StartServerOptions) {
 		}
 	}
 
-	const agentService = createAgentService(workspaceConfig.workspaceDir, sessionDB, undefined, registry, mcp);
+	const agentService = createAgentService(workspaceConfig.workspaceDir, sessionDB, registry, mcp);
 	agentService.setAgentStore(agentStore);
 
 	// Step 1B: inject per-loop hook wiring deps. The service merges its own
@@ -536,7 +531,6 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/providers", createProviderRouter(providerStore, reloadProviders));
 	app.use("/api/templates", createTemplateRouter(templateStore, sessionDB));
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
-	app.use("/api/kb", createKbRouter(kbStore, kbDb, providerStore));
 	app.use("/api/skills", createSkillRouter());
 	app.use("/api/memory-nodes", createMemoryNodeRouter(sessionDB.getMemoryNodeStore()));
 

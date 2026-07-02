@@ -37,7 +37,6 @@ import CronDashboard from "../cron/CronDashboard.js";
 import SettingsPage from "../settings/SettingsPage.js";
 import McpSettingsPage from "../mcp/McpSettingsPage.js";
 import SkillsPage from "../skills/SkillsPage.js";
-import KnowledgeBasePage from "../kb/KnowledgeBasePage.js";
 import ToolsPage from "../tools/ToolsPage.js";
 import DashboardPage from "../dashboard/DashboardPage.js";
 // v0.8 (P5 §8.5): KanbanPage replaced by ProjectPage (project list + 3 tabs:
@@ -253,7 +252,6 @@ export default function AppLayout() {
 						{activePage === "mcp" && <McpSettingsPage />}
 						{activePage === "skills" && <SkillsPage />}
 						{activePage === "tools" && <ToolsPage />}
-						{activePage === "knowledge" && <KnowledgeBasePage />}
 						{activePage === "agents" && <AgentsPage />}
 						{activePage === "requirements" && <ProjectPage />}
 						{activePage === "wiki" && <WikiPage />}

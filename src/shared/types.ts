@@ -111,26 +111,6 @@ export interface Provider {
 	updatedAt: string;
 }
 
-export interface KbFileInfo {
-	path: string;
-	name: string;
-	size: number;
-	chunks: number;
-	ingestedAt: string;
-}
-
-export interface KnowledgeBase {
-	id: string;
-	name: string;
-	description: string;
-	embeddingProvider: string;
-	embeddingModel: string;
-	agentIds: string[];
-	files: KbFileInfo[];
-	createdAt: string;
-	updatedAt: string;
-}
-
 export interface McpServerConfig {
 	id: string;
 	name: string;
@@ -326,10 +306,6 @@ export type UpdateAgentInput = Partial<Omit<AgentRecord, "id" | "createdAt" | "u
 export type CreateProviderInput = Omit<Provider, "id" | "createdAt" | "updatedAt">;
 export type UpdateProviderInput = Partial<Omit<Provider, "id" | "createdAt" | "updatedAt">>;
 
-
-export type CreateKbInput = Omit<KnowledgeBase, "id" | "createdAt" | "updatedAt">;
-export type UpdateKbInput = Partial<Omit<KnowledgeBase, "id" | "createdAt" | "updatedAt">>;
-
 export type CreateMcpInput = Omit<McpServerConfig, "id" | "createdAt" | "updatedAt">;
 export type UpdateMcpInput = Partial<Omit<McpServerConfig, "id" | "createdAt" | "updatedAt">>;
 
@@ -424,21 +400,6 @@ export interface MessageTurn {
 	text: string;
 	blocks?: any[];
 	timestamp: string;
-}
-
-// ── KB Search ───────────────────────────────────────────────────────────────
-
-export interface KbSearchResult {
-	chunkId: number;
-	filePath: string;
-	content: string;
-	score: number;
-}
-
-export interface KbFileIngestResult {
-	path: string;
-	chunks: number;
-	error?: string;
 }
 
 // ── MCP Status ──────────────────────────────────────────────────────────────

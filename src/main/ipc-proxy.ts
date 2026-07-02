@@ -93,16 +93,7 @@ const R: Record<string, RouteMapping> = {
 	"mcp:presets":    { method: "GET", path: "/api/mcp/presets", buildReq: () => ({}) },
 	"mcp:add-preset": { method: "POST", path: "/api/mcp/add-preset", buildReq: (presetId, envValues) => ({ body: { presetId, envValues } }) },
 
-	// Knowledge Base
-	"kb:list":        { method: "GET", path: "/api/kb", buildReq: () => ({}) },
-	"kb:get":         { method: "GET", path: "/api/kb/:id", buildReq: (id) => ({ params: { id } }) },
-	"kb:create":      { method: "POST", path: "/api/kb", buildReq: (input) => ({ body: input }) },
-	"kb:update":      { method: "PUT", path: "/api/kb/:id", buildReq: (id, input) => ({ params: { id }, body: input }) },
-	"kb:delete":      { method: "DELETE", path: "/api/kb/:id", buildReq: (id) => ({ params: { id } }) },
-	"kb:add-files":   { method: "POST", path: "/api/kb/:id/files", buildReq: (kbId, filePaths) => ({ params: { id: kbId }, body: { filePaths } }) },
-	"kb:remove-file": { method: "DELETE", path: "/api/kb/:id/files", buildReq: (kbId, filePath) => ({ params: { id: kbId }, body: { filePath } }) },
-	"kb:search":      { method: "POST", path: "/api/kb/search", buildReq: (kbIds, query) => ({ body: { kbIds, query } }) },
-	"kb:chunk-count": { method: "GET", path: "/api/kb/:id/chunks", buildReq: (kbId) => ({ params: { id: kbId } }) },
+	// Knowledge Base — removed (will be redone via wiki-format file splitting).
 
 	// Templates
 	"templates:list":   { method: "GET", path: "/api/templates", buildReq: () => ({}) },

@@ -28,7 +28,6 @@
 import type {
 	AgentRecord, CreateAgentInput, UpdateAgentInput,
 	Provider, CreateProviderInput, UpdateProviderInput, ProviderModel, FetchedModel,
-	KnowledgeBase, CreateKbInput, UpdateKbInput, KbSearchResult, KbFileIngestResult,
 	McpServerConfig, CreateMcpInput, UpdateMcpInput, McpStatus,
 	PromptTemplate, CreateTemplateInput, UpdateTemplateInput,
 	SessionRecord,
@@ -161,16 +160,7 @@ export interface WindowApi {
 	windowMaximize: () => Promise<void>;
 	windowClose: () => Promise<void>;
 
-	// ── Knowledge Base ──
-	kbList: () => Promise<KnowledgeBase[]>;
-	kbGet: (id: string) => Promise<KnowledgeBase | undefined>;
-	kbCreate: (input: CreateKbInput) => Promise<KnowledgeBase>;
-	kbUpdate: (id: string, input: UpdateKbInput) => Promise<KnowledgeBase | { error: string }>;
-	kbDelete: (id: string) => Promise<{ success: true }>;
-	kbAddFiles: (kbId: string, filePaths: string[]) => Promise<KbFileIngestResult[]>;
-	kbRemoveFile: (kbId: string, filePath: string) => Promise<{ success: true }>;
-	kbSearch: (kbIds: string[], query: string) => Promise<KbSearchResult[]>;
-	kbChunkCount: (kbId: string) => Promise<number>;
+	// ── Knowledge Base — removed (will be redone via wiki-format file splitting). ──
 
 	// ── MCP ──
 	mcpList: () => Promise<McpServerConfig[]>;
