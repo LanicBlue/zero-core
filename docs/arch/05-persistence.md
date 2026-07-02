@@ -204,31 +204,25 @@ started_at    TEXT
 | `providers` | provider-store | 11 | 含 SYSTEM_PROVIDERS |
 | `templates` | template-store | 14 | is_built_in 不可删 |
 | `mcp_servers` | mcp-store | 11 | source_app 标记来源 |
-| `kb_entries` | kb-store | 8 | 嵌入配置 + 文件列表 |
+| ~~`kb_entries`~~ | ~~kb-store~~ | ~~8~~ | ⚠️ **已删(KB 子系统移除)**:`kb-store.ts` 删除,`db-migration.ts` `DROP TABLE IF EXISTS kb_entries`。原是 KB 元数据,知识与记忆改走 wiki 树(06 §3)。 |
 | ~~`memory_entities`~~ | ~~memory-store~~ | ~~4~~ | ⚠️ **v0.8 清理僵尸 MemoryStore 已删**:`src/server/memory-store.ts` + `src/runtime/mcp-tools/memory-tools.ts` 已删,`db-migration.ts` 加 `DROP TABLE IF EXISTS memory_entities`。原是 MCP memory-tools 知识图谱后端,零运行时写入者。 |
 | ~~`memory_relations`~~ | ~~memory-store~~ | ~~4~~ | ⚠️ **v0.8 清理僵尸 MemoryStore 已删**(同上),`db-migration.ts` 加 `DROP TABLE IF EXISTS memory_relations`。 |
-| `memory_nodes` | memory-node-store | 9 | Wiki 风格记忆节点 ⚠️ 构造自建,见下(**活,保留**) |
-| `memory_subjects` | memory-node-store | 6 | 主题聚合 ⚠️ 构造自建,见下(**活,保留**) |
-| `memory_edges` | memory-node-store | 4 | 主题间关系 ⚠️ 构造自建,见下(**活,保留**) |
+| ~~`memory_nodes`~~ | ~~memory-node-store~~ | ~~9~~ | ⚠️ **已删(Gen1 MemoryNodeStore 移除)**:`memory-node-store.ts` 删除,`db-migration.ts` `DROP TABLE IF EXISTS memory_nodes`。记忆写入迁到 wiki memory 子树(06 §3.2)。 |
+| ~~`memory_subjects`~~ | ~~memory-node-store~~ | ~~6~~ | ⚠️ **已删**(同上),`DROP TABLE IF EXISTS memory_subjects`。 |
+| ~~`memory_edges`~~ | ~~memory-node-store~~ | ~~4~~ | ⚠️ **已删**(同上),`DROP TABLE IF EXISTS memory_edges`。 |
 
-> ⚠️ **构造自建表不进 db-migration**。上表里**存活**的 4 张 memory_* 表(`memory_nodes` /
-> `memory_subjects` / `memory_edges` / `memory_nodes_fts`,全部由 `MemoryNodeStore.init()`
-> 自建)在 store 的 `init()` 里 `CREATE TABLE IF NOT EXISTS` 自建。**v0.8 清理僵尸 MemoryStore
-> 之后,`MemoryNodeStore` 是唯一的 memory 自建后端** —— 另一套 `MemoryStore`
-> (`memory_entities`/`memory_relations`,MCP `memory-tools` 知识图谱后端)是零运行时写入者的
-> 僵尸,master 本批已删(`memory-store.ts` + `mcp-tools/memory-tools.ts` 文件已删,`db-migration.ts`
-> 加 `DROP TABLE IF EXISTS memory_entities / memory_relations`)。所以现在是单系统,不再是"两个
-> 并行 memory 后端"(旧版 §11.3 对比矩阵已随删除而失效)。改 memory_* schema 要去
-> `memory-node-store.ts` 的 `init()`,不要去 `db-migration.ts`(那会漏掉 FTS 重建逻辑:`init()`
-> 检测到旧 FTS 列结构时会 DROP 重建,db-migration 没这个能力)。详见 06 §2.7 "三套知识系统对比
-> 矩阵"的"建表机制"列。
+> ⚠️ **构造自建表不进 db-migration**。
 >
-> **批 B 构造自建表全清单(v0.8 清理 MemoryStore 后共 7 张,§2 顶部"表计数口径"块已列出)**:
-> 4 张 memory_* 表(全属 `MemoryNodeStore`)+ 3 张同类 store 自建、不进 db-migration 的表:
-> `kv_store`(`key-value-store.ts:53`)/ `extraction_cursors`(`extraction-cursor-store.ts:77`,
-> v0.8 M5 lazy store)/ `tool_telemetry`(`telemetry-store.ts:97`,v0.8 M5 lazy store)。改这
-> 些表的 schema 同样要去 store 文件而不是 db-migration.ts。(~~原 9 张里的 `memory_entities` +
-> `memory_relations`~~ 已 v0.8 删除,见上。)
+> **v0.8 后续清理:memory_* 与 kb_* 全部移除**。上表里曾经的 memory_* 表
+> (`memory_nodes` / `memory_subjects` / `memory_edges` / `memory_nodes_fts`,Gen1 MemoryNodeStore)
+> 与 `kb_entries` / `kb_chunks`(KB 子系统)都已删除,`runMigrations` 用 `DROP IF EXISTS`
+> 清掉。`MemoryNodeStore` / `MemoryStore` / `KbDB` / `KbStore` 等 store 文件也不再存在,所以
+> 不再有"构造自建 memory/KB 表"这一类。知识与记忆统一以 `project_wiki` wiki 树承载(06 §2/§3)。
+>
+> **批 B 构造自建表全清单(清理后共 2 张)**:
+> `extraction_cursors`(`extraction-cursor-store.ts`,v0.8 M5 lazy store)/
+> `tool_telemetry`(`telemetry-store.ts`,v0.8 M5 lazy store)。`kv_store` 由 `KeyValueStore`
+> 构造时建。改这些表的 schema 要去 store 文件,而不是 db-migration.ts。
 
 ### 2.2b v0.8 多 Agent 工作流域表（src/server/db-migration.ts:653-897，共 14 张表）
 

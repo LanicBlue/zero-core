@@ -26,7 +26,6 @@ agent-execution 14 hook 的完整触发点 + handler 映射见 [03 §Hook 系统
 | `runtime/hooks/turn-hooks.ts` | shared | TurnStart / StepEnd / PostToolUse / PostToolUseFailure / TurnEnd / TurnError |
 | `runtime/hooks/compression-hooks.ts` | shared | StepEnd(从 PostTurnComplete 迁来,Step 3A) |
 | `runtime/hooks/extraction-hooks.ts` | shared(注入 deps 时) | StepEnd(M5,从 PostTurnComplete 迁来) |
-| `runtime/hooks/rag-hooks.ts` | shared | PreLLMCall |
 | `runtime/hooks/provider-options-hooks.ts` | shared | PreLLMCall |
 | `runtime/hooks/todo-cleanup-hooks.ts` | shared | StepEnd(从 PostTurnComplete 迁来,Step 3B) |
 | `runtime/hooks/notification-hooks.ts` | **main only** | PreLLMCall |
@@ -108,9 +107,9 @@ case "my-provider":
 
 `src/core/persona.ts:56-102` `PERSONA_TEMPLATES`：增删模板即可。
 
-### 1.9 KB / RAG
+### 1.9 KB / RAG（⚠️ 已移除）
 
-注册 KB → KB 配置 Provider/Model → 启动 ingest → 通过 `/api/kb` 手动检索/管理。当前默认 Agent 会话不会自动接入 `getRagContext`；如需自动 RAG，应作为显式 KB binding 能力重新设计。
+独立的 KB 子系统(本地文档 → chunk → embedding → 向量检索)与 RAG 自动注入(`rag-hooks.ts` + `getRagContext`/`ragContext`)已整体移除:它从未接到默认 Agent 会话(`getRagContext` 从不注入),且知识与记忆统一以 wiki 树承载。文件知识库功能以后会以"按 wiki 格式切文件"的方式重做,不走向量 embedding。详见 06 §3、ADR-008(Superseded)。
 
 ---
 
@@ -184,9 +183,9 @@ graph TB
 
 **关键标记**：
 - 🟢 **ADR-005 Hook 提取** — 项目**最成功**的架构改进
-- 🟡 **ADR-008 legacy KB RAG hook** — 默认运行路径未接通，建议退役或产品化重接
+- ✅ **ADR-008 legacy KB RAG hook** — 已整体移除(Superseded),rag-hooks + KB 子系统全删
 - 🟢 **ADR-012** — main/ipc 死代码已清理并由测试固化
-- 🟠 **ADR-011/013** — 两个"清理债"决策待落地
+- ✅ **ADR-011/013** — legacy memory 清理已落地:MemoryNodeStore + 旧表全删,记忆统一走 wiki
 - 🔴 **ADR-018** — 当前最实际的 IPC 契约漂移风险
 
 ### ADR-001 · 进程模型：Electron + 后端子进程
@@ -300,9 +299,9 @@ graph TB
 **Context**：用户场景是单机本地，无分布式需求；但配置项多（主题 / 设备 / 工具配置 / 全局配置 / workspace）。
 
 **Decision**：
-- 业务实体表（agents / providers / mcp_servers / kb_entries / memory_nodes / ...）：SQLite 表。
+- 业务实体表（agents / providers / mcp_servers / ...）：SQLite 表。
 - 软状态配置（workspace / theme / device / tool-config / global-config / ...）：KV 表 `kv_store`。
-- 持久化文档 chunks：同库 `kb_chunks` 表（embedding 作为 BLOB）。
+- ~~持久化文档 chunks：同库 `kb_chunks` 表（embedding 作为 BLOB）~~ —— KB 子系统已移除(06 §3)。
 
 **Alternatives**：
 - 每个对象一个 JSON 文件：早期版本的问题（`agents.json` / `providers.json` 等），查询 O(N)。
@@ -341,18 +340,19 @@ graph TB
 
 ### ADR-008 · KB RAG hook 保留但默认运行路径未接通
 
-**Status**：accepted as legacy cleanup。
+**Status**：**Superseded — 整条已移除**(`rag-hooks.ts` + `getRagContext`/`ragContext` + 整个 KB 子系统删除)。见 ADR-013 收尾与本批清理。
 
 **Context**：`runtime/hooks/rag-hooks.ts` 仍注册在 PreLLMCall，但它只有在 `SessionConfig.getRagContext` 存在时才会工作。当前 `AgentService.createLoopForSession()` 构造普通 Agent 会话时没有注入 `getRagContext`，所以 KB 内容不会默认进入 `ctx.ragContext`。
 
-**Decision**：把该路径视为 legacy optional hook，而不是当前主记忆/RAG 链路。当前长期记忆主线是 Wiki tree + wiki anchors；KB 仍保留导入、chunk、embedding、手动检索能力。
+**Decision**(原)：把该路径视为 legacy optional hook，而不是当前主记忆/RAG 链路。当前长期记忆主线是 Wiki tree + wiki anchors；KB 仍保留导入、chunk、embedding、手动检索能力。
+
+**后续(本批)**:`getRagContext` 自始至终从未被任何调用方注入,hook 是纯死代码;KB 子系统也从未产品化接入。两者整体移除。若以后要做文件知识库,以 wiki 格式切文件重做,不复用向量 embedding 路线。
 
 **Consequences**：
-- ✅ 避免维护者误以为 KB 会自动参与每轮 Agent 上下文。
-- ✅ Wiki memory 与 KB document search 的边界更清晰。
-- ⚠️ 如果产品需要自动 RAG，需要重新设计 KB binding、query planner、上下文预算与 Wiki 去重策略。
+- ✅ 避免维护者误以为 KB 会自动参与每轮 Agent 上下文(现已不存在该路径)。
+- ✅ Wiki memory 是唯一知识/记忆后端,边界单一清晰。
 
-**Code evidence**：`runtime/hooks/rag-hooks.ts:13-25`、`server/agent-service.ts:createLoopForSession()`、`runtime/wiki-anchor-injection.ts`。
+**Code evidence**(已删):`runtime/hooks/rag-hooks.ts`(已移除)、`server/agent-service.ts:createLoopForSession()`、`runtime/wiki-anchor-injection.ts`。
 ### ADR-009 · config.ts 三件套耦合
 
 **Context**：单一文件同时承担 schema、默认、加载逻辑。
@@ -428,18 +428,23 @@ graph TB
 
 ### ADR-013 · Legacy Memory 与 Wiki Tree 迁移残留
 
-**Status**：accepted, cleanup needed。
+**Status**：**Resolved — 全部清理完成**。
 
-**Context**：项目曾存在 `memory-store.ts`(MemoryStore)、`memory-node-store.ts` 和旧 `runtime/mcp-tools/memory-tools.ts`(memoryReadTool/memoryWriteTool)。本批清理僵尸:`memory-store.ts` 与 `memory-tools.ts` 已删除(零 importer / 零运行时写入者);`memory-node-store.ts`(MemoryNodeStore)保留(wiki 不可用时压缩流程回退)。当前 `runtime/tools/index.ts` 已移除 `MemoryRecall` / `MemoryNote`,普通 Agent 的记忆读写走 `Wiki` 工具与 Wiki anchors。(历史 ADR 曾引用 `runtime/memory-recall.ts`,该文件已不存在;记忆召回由 `wiki-anchor-injection` 取代。)
+**Context**：项目曾存在 `memory-store.ts`(MemoryStore)、`memory-node-store.ts`(MemoryNodeStore) 和旧 `runtime/mcp-tools/memory-tools.ts`(memoryReadTool/memoryWriteTool)。
 
-**Decision**：把旧 memory 代码标注为兼容/迁移残留。当前默认长期记忆路径是全局 Wiki tree：Extractor 与 compression 优先写入 Wiki，AgentLoop 通过 `wiki-anchor-injection.ts` 注入项目/Agent 锚点。
+**Decision**(原)：把旧 memory 代码标注为兼容/迁移残留。当前默认长期记忆路径是全局 Wiki tree：Extractor 与 compression 写入 Wiki，AgentLoop 通过 `wiki-anchor-injection.ts` 注入项目/Agent 锚点。
+
+**后续收尾(本批)**:残留全部清理 ——
+- `memory-store.ts` + `memory-tools.ts`(MemoryStore + 旧工具):早已删除(僵尸)。
+- `memory-node-store.ts` + `memory-node-router.ts` + `/api/memory-nodes`(Gen1 MemoryNodeStore):**本批删除**。compression 回退路径去掉,wiki 不可用时跳过抽取。`MemoryNodeInput` 类型搬到 `compression-engine.ts`。
+- 旧表 `memory_entities`/`memory_relations`/`memory_nodes`/`_subjects`/`_edges`/`_fts` 由 `runMigrations` `DROP IF EXISTS`。
+- `SessionDB` 不再持有任何 memory store。
 
 **Consequences**：
-- ✅ 文档和运行路径一致，避免把旧 FTS5 recall 当成主路径。
-- ⚠️ 仍需确认旧表中是否有用户数据，再决定迁移或删除。
-- ⚠️ `SessionDB` 仍持有旧 store，会继续增加认知负担。
+- ✅ 文档和运行路径一致,wiki memory 子树是唯一记忆后端。
+- ✅ `SessionDB` 认知负担消除(不再持旧 store)。
 
-**Code evidence**：`runtime/tools/index.ts`、`runtime/wiki-anchor-injection.ts`、`runtime/hooks/extraction-hooks.ts`。`runtime/mcp-tools/memory-tools.ts`(memoryReadTool/memoryWriteTool)+ `server/memory-store.ts`(MemoryStore) 本批已删除(零 importer / 零运行时写入者,僵尸清理)。`memory-node-store.ts`(MemoryNodeStore) 保留。
+**Code evidence**：`runtime/tools/index.ts`、`runtime/wiki-anchor-injection.ts`、`runtime/hooks/extraction-hooks.ts`、`runtime/compression-engine.ts`(MemoryNodeInput 现居此)。
 ### ADR-014 · Zustand 单 Store 单关注点
 
 **Context**：渲染层有多个交互域（聊天 / Agent / MCP / KB / 设置 / 主题 / 页面 / 交互）。
