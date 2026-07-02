@@ -1,29 +1,33 @@
-// 会话压缩与记忆设置面板
+// 会话压缩设置面板
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 配置会话压缩（L1 摘要阈值 / L2 记忆抽取阈值 / 保留轮数 / 压缩模型）与记忆持久化（开关 / 自动召回 / 召回上限），保存到主进程。
+// 配置会话压缩（L1 摘要阈值 / L2 记忆抽取阈值 / 保留轮数 / 压缩模型），保存到主进程。
+//
+// 注:独立的 memory/autoRecall 配置是 v0.8 前的残留(memory 现以 wiki 子树形式存在),
+// 已移除。本面板只管压缩。
 //
 // ## 输入
-// - providerStore (Zustand)：用于挑选压缩模型的可用 provider/model 列表
-// - window.api.memoryConfigGet / memoryConfigUpdate：读写主进程配置
+// - providerStore (Zustand):用于挑选压缩模型的可用 provider/model 列表
+// - window.api.memoryConfigGet / memoryConfigUpdate:读写主进程配置
 //
 // ## 输出
-// - 渲染的设置面板 DOM（含滑块、开关、模型下拉与保存按钮）
+// - 渲染的设置面板 DOM(含滑块、开关、模型下拉与保存按钮)
 //
 // ## 定位
-// 渲染进程组件，被 SettingsPage 在 Memory 分页下渲染。
+// 渲染进程组件,被 SettingsPage 在 Memory 分页下渲染。
 //
 // ## 依赖
 // - react
 // - ../../store/provider-store
-// - window.api（preload 暴露的 memoryConfig* 接口）
+// - window.api(preload 暴露的 memoryConfig* 接口)
 //
 // ## 维护规则
-// - 压缩或记忆配置字段（阈值/默认值）变化时同步本面板。
+// - 压缩配置字段(阈值/默认值)变化时同步本面板。
 // - 新增模型分组逻辑需要保留按 group 聚合的 optgroup 渲染。
 //
+
 import { useEffect, useState } from "react";
 import { useProviderStore } from "../../store/provider-store.js";
 
@@ -43,23 +47,15 @@ interface CompressionConfig {
 	model?: string;
 }
 
-interface MemoryConfig {
-	enabled?: boolean;
-	autoRecall?: boolean;
-	recallLimit?: number;
-}
-
 export function MemorySettings() {
 	const { providers } = useProviderStore();
 	const [compression, setCompression] = useState<CompressionConfig>({ enabled: false });
-	const [memory, setMemory] = useState<MemoryConfig>({ enabled: false });
 	const [saved, setSaved] = useState(false);
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
 		api().memoryConfigGet().then((data: any) => {
 			setCompression(data.compression ?? { enabled: false });
-			setMemory(data.memory ?? { enabled: false });
 			setLoading(false);
 		}).catch(() => setLoading(false));
 	}, []);
@@ -73,7 +69,7 @@ export function MemorySettings() {
 	}
 
 	const save = async () => {
-		await api().memoryConfigUpdate({ compression, memory });
+		await api().memoryConfigUpdate({ compression });
 		setSaved(true);
 		setTimeout(() => setSaved(false), 2000);
 	};
@@ -177,48 +173,6 @@ export function MemorySettings() {
 						/>
 						<span className="memory-config-slider-val">{Math.round((compression.l2Threshold ?? 0.5) * 100)}%</span>
 					</div>
-				</div>
-			</div>
-
-			<div className="memory-config-section">
-				<h4 className="memory-config-title">Memory (Wiki Nodes)</h4>
-				<p className="memory-config-desc">
-					Persist extracted facts across sessions. Agents can recall memories automatically or via the MemoryRecall tool.
-				</p>
-
-				<div className="memory-config-row">
-					<label className="config-label">Enable Memory</label>
-					<button
-						type="button"
-						className={`toggle-switch ${memory.enabled ? "on" : ""}`}
-						title={memory.enabled ? "Disable memory" : "Enable memory"}
-						onClick={() => setMemory({ ...memory, enabled: !memory.enabled })}
-					/>
-				</div>
-
-				<div className="memory-config-row">
-					<label className="config-label">Auto Recall</label>
-					<button
-						type="button"
-						className={`toggle-switch ${memory.autoRecall !== false ? "on" : ""}`}
-						title={memory.autoRecall !== false ? "Disable auto recall" : "Enable auto recall"}
-						onClick={() => setMemory({ ...memory, autoRecall: memory.autoRecall === false })}
-						disabled={!memory.enabled}
-					/>
-				</div>
-
-				<div className="memory-config-row">
-					<label className="config-label">Recall Limit</label>
-					<input
-						type="number"
-						className="memory-config-number"
-						title="Recall Limit"
-						value={memory.recallLimit ?? 10}
-						min={1}
-						max={50}
-						onChange={(e) => setMemory({ ...memory, recallLimit: parseInt(e.target.value, 10) || 10 })}
-						disabled={!memory.enabled}
-					/>
 				</div>
 			</div>
 

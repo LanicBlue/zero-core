@@ -178,7 +178,10 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 		}
 	});
 
-	// ─── Memory Config ────────────────────────────────────────
+	// ─── Compression Config ──────────────────────────────────
+	// (route name kept as /memory-config for IPC stability; the standalone
+	// memory/autoRecall config was residual — memory lives in the wiki tree.
+	// Only compression is exchanged now.)
 
 	// config:memory-get
 	router.get("/memory-config", (_req, res) => {
@@ -186,7 +189,6 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 			const configData: any = kv().getJson("global_config") ?? {};
 			res.json({
 				compression: configData.compression ?? { enabled: false },
-				memory: configData.memory ?? { enabled: false },
 			});
 		} catch (e) {
 			res.status(500).json({ error: (e as Error).message });
@@ -196,10 +198,9 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 	// config:memory-update
 	router.put("/memory-config", (req, res) => {
 		try {
-			const { compression, memory } = req.body as { compression?: any; memory?: any };
+			const { compression } = req.body as { compression?: any };
 			const configData: any = kv().getJson("global_config") ?? {};
 			if (compression !== undefined) configData.compression = compression;
-			if (memory !== undefined) configData.memory = memory;
 			kv().setJson("global_config", configData);
 			res.json({ success: true });
 		} catch (e) {

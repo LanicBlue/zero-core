@@ -135,15 +135,6 @@ export const ZeroCoreConfigSchema = Type.Object({
 		model: Type.Optional(Type.String()),
 	}),
 
-	// ─── Memory (wiki nodes)
-
-	memory: Type.Object({
-		enabled: Type.Optional(Type.Boolean()),
-		autoExtract: Type.Optional(Type.Boolean()),
-		autoRecall: Type.Optional(Type.Boolean()),
-		recallLimit: Type.Optional(Type.Number()),
-	}),
-
 	// ─── Extractors (v0.8 M5 — archive extractor A + tool telemetry extractor B)
 	//
 	// Two independent post-hoc agents that run async after each turn / on
@@ -236,9 +227,6 @@ export const DEFAULT_CONFIG: ZeroCoreConfig = {
 		strategy: "auto",
 	},
 	compression: {
-		enabled: false,
-	},
-	memory: {
 		enabled: false,
 	},
 	// v0.8 (M5): archive extractors. A is the unified content-memory writer

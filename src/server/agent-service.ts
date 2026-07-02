@@ -439,10 +439,9 @@ export class AgentService {
 		// Re-attach M5 fields used by the extraction hooks.
 		if (this.wikiStoreGlobal) (cfg as any).wikiStoreGlobal = this.wikiStoreGlobal;
 		if (this.extractorsConfig) (cfg as any).extractors = this.extractorsConfig;
-		// Re-attach compression + memory config (the extraction hook doesn't
-		// strictly need these but other code paths might run during the flush).
+		// Re-attach compression config (the extraction hook doesn't strictly
+		// need it but other code paths might run during the flush).
 		(cfg as any).compression = this.config.compression;
-		(cfg as any).memory = this.config.memory;
 		return cfg;
 	}
 	subscribe(cb: StreamCallback): () => void {
@@ -529,7 +528,6 @@ export class AgentService {
 			systemPrompt,
 			guidelines,
 			compression: this.config.compression,
-			memory: this.config.memory,
 			modelId: agent?.model || this.defaultModel || "",
 			providerName: agent?.provider || this.defaultProvider || "",
 			thinkingLevel: agent?.thinkingLevel,
@@ -735,7 +733,6 @@ export class AgentService {
 			systemPrompt,
 			guidelines: this.config.systemPrompt?.guidelines,
 			compression: this.config.compression,
-			memory: this.config.memory,
 			modelId: agent.model || this.defaultModel || "",
 			providerName: agent.provider || this.defaultProvider || "",
 			thinkingLevel: agent.thinkingLevel,

@@ -229,9 +229,9 @@ export interface WindowApi {
 	memoryNodeSearch: (q: string, limit?: number) => Promise<Array<{ id: string; subject: string; type: string; content: string; updatedAt: string }>>;
 	memoryNodeDelete: (id: string) => Promise<{ success: true }>;
 
-	// ── Memory Config ──
-	memoryConfigGet: () => Promise<{ compression: { enabled?: boolean; keepRecentTurns?: number; l1Threshold?: number; l2Threshold?: number }; memory: { enabled?: boolean; autoRecall?: boolean; recallLimit?: number } }>;
-	memoryConfigUpdate: (data: { compression?: any; memory?: any }) => Promise<{ success: true }>;
+	// ── Compression Config ──
+	memoryConfigGet: () => Promise<{ compression: { enabled?: boolean; keepRecentTurns?: number; l1Threshold?: number; l2Threshold?: number } }>;
+	memoryConfigUpdate: (data: { compression?: any }) => Promise<{ success: true }>;
 
 	// ── Projects ──
 	// v0.8 (P5 §8.4): projectsGet supports includeContext → ProjectContainerView.

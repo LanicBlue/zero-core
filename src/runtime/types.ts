@@ -301,12 +301,6 @@ export interface SessionConfig {
 		provider?: string;
 		model?: string;
 	};
-	memory?: {
-		enabled?: boolean;
-		autoExtract?: boolean;
-		autoRecall?: boolean;
-		recallLimit?: number;
-	};
 	// Multi-Agent Workflow
 	/** v0.8 project-work:触发该 turn 的工位 id。workflow-context-hook 据此读 work.contextPolicy。 */
 	workId?: string;
