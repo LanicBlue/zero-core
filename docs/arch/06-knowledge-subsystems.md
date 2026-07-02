@@ -225,6 +225,25 @@ structure / project / memory 节点没有源文件,原样返回现有 summary。
 
 `WikiSkeletonService` 是 `WikiStore.upsertProjectNode` 的 **唯一调用方**。store 层强制:scope = 自己 project 子树、type 只能是 `header` / `intent` / `structure`。archivist agent 角色不直接写库 —— 它经这个服务建骨架(决策 9/18/39),需要深度充实的内容走 `Wiki` 工具的 create/update(带 provenance 标 `confirmed` / `derived`)。
 
+#### 节点 summary / body 语义(工具层约定,面向所有用 Wiki 的 agent)
+
+Wiki 是所有 agent 共用的工具,不是某个角色专属。因此 `summary` 与 `body`(正文 doc)的语义是 **Wiki 工具层的通用约定**,写在 [`wiki-tool.ts` 的 prompt](../../src/runtime/tools/wiki-tool.ts) 里,任何用 Wiki 的 agent 都遵守,不绑定 archivist 等具体角色:
+
+- **`summary`(节点摘要)**= 以该节点为根的 **子树 abstract**(一行,概括这棵子树"是什么")。
+- **非叶节点的 `body`(正文)**= 该子树的 **overview**(子节点们集体做什么、如何配合)。写一个父节点的 body = 写它的子树 overview。
+- **叶节点的 `body`(正文)**= 实际内容。若该叶子镜像一个项目文件(`header:<relPath>`),body 是该文件的 **注释/说明**(它的作用、定位、坑),**不是文件内容的拷贝**(文件在工作区,读它用 Read)。
+- 一致性:父节点的 summary 摘自它的 body,body overview 它的子节点 —— 两者应当吻合。summary 保持一行,body 控制在 overview 的篇幅(一两段),不要整段塞原文。
+
+执行归各 agent 在自己的 work 里按此约定产出;扫描时 `ensureSummary` 的启发式回填仅作 bootstrap fallback,后续 agent 会覆写成符合上述语义的内容。本轮只明确语义,不做代码生成逻辑。
+
+#### 短 id 寻址(降低 token)
+
+注入大纲和工具结果 **不再带完整 nodeId**(叶节点是 36 字符 UUID,合成根 `wiki-root:<projectId>` ~46 字符),改为统一的 8 字符短 id:
+
+- `shortIdOf(nodeId) = sha1(nodeId).slice(0,8)`,显示为 `#xxxxxxxx`([`formatNodeId`](../../src/runtime/wiki-anchor-injection.ts))。确定、跨 session 稳定、无需 per-session 状态;对叶节点和合成根一视同仁,agent 看不到 `wiki-root:` 字面量。
+- agent 在 `expand` / `search` / `create` / `update` / `delete` / `docRead` / `docWrite` / `docEdit` 的 `nodeId` / `parentId` 入参里直接传 `#xxxxxxxx`;工具入口 [`resolveNodeIdArg`](../../src/runtime/tools/wiki-tool.ts) 依次试精确全 id → 短 id 扫描(scope 内 sha1-8 唯一命中)→ 报错。歧义(同短 id 多命中,~65k 节点才可能)时让 agent 改用 title path,不静默猜。
+- 完整 nodeId 仍是 store 主键;**只在 agent 可见的文本层**换短 id。UI 内部 IPC(`/nodes/:nodeId/children`、`/detail`)仍用完整 id,renderer 树渲染不动。
+
 ## 3. 已退役:KB 子系统与 Gen1 Memory
 
 历史上 sessions.db 里曾并存三套知识/记忆后端。v0.8 之后只剩 `project_wiki` 一套;另两套已整体移除。

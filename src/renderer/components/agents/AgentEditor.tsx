@@ -367,6 +367,7 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 					{section === "anchors" && (
 						<WikiAnchorsSection
 							form={form}
+							agentId={agent?.id}
 							wikiNodes={wikiNodes}
 							onChange={updateWikiAnchors}
 						/>

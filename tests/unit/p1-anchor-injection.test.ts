@@ -41,6 +41,9 @@ import {
 	renderContextAnchors,
 	anchorNodeIds,
 	DEFAULT_PROJECT_ANCHOR_DEPTH,
+	formatNodeId,
+	shortIdOf,
+	formatBodySize,
 } from "../../src/runtime/wiki-anchor-injection.js";
 import type { AgentRecord, SessionContextBundle } from "../../src/shared/types.js";
 
@@ -75,7 +78,7 @@ function track<T extends { id: string }>(n: T): T {
 // ─── resolveAnchors:auto memory + auto project + free ─────────
 
 describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
-	test("auto memory = per-agent subtree root (context channel, depth=2)", () => {
+	test("auto memory = per-agent subtree root (context channel, depth=1)", () => {
 		// v0.8 (P2 §11.6): memory anchor is now ONE per-agent subtree root
 		// (wiki-root:memory-agent:<agentId>), not the 5 shared type roots.
 		// The 5 shared type roots are retired as auto anchors.
@@ -87,7 +90,7 @@ describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
 		expect(memAnchors.every((a) => a.inject === "context")).toBe(true);
 	});
 
-	test("auto project = wiki-root:<projectId> (system channel, depth=2)", () => {
+	test("auto project = wiki-root:<projectId> (system channel, depth=1)", () => {
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "p") });
 		const bundle: SessionContextBundle = {
 			projectId: proj.id,
@@ -101,7 +104,7 @@ describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
 		expect(projAnchors.some((a) => a.nodeId === projectSubtreeRootId(proj.id))).toBe(true);
 		const projAnchor = projAnchors.find((a) => a.nodeId === projectSubtreeRootId(proj.id))!;
 		expect(projAnchor.depth).toBe(DEFAULT_PROJECT_ANCHOR_DEPTH);
-		expect(projAnchor.depth).toBe(2);
+		expect(projAnchor.depth).toBe(1);
 	});
 
 	test("zero (no projectId) → memory anchor + GLOBAL ROOT scope anchor (read=write=whole tree)", () => {
@@ -156,27 +159,28 @@ describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
 // ─── 渲染:project 2 层 outline + memory 索引 ──────────────────
 
 describe("P1 §10.6 渲染:project 2 层 outline + memory 索引", () => {
-	test("project anchor 渲染:子树前 2 层 title+summary,不带正文", () => {
+	test("project anchor 渲染:默认 depth=1 只显直接子节点 title+summary,不带正文", () => {
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "p") });
 		const root = track(wiki.ensureProjectSubtree(proj.id, "Project P"));
-		// Level-1 children.
+		// Level-1 child.
 		const mod = track(wiki.upsertProjectNode(proj.id, {
 			parentId: root.id, type: "structure", path: "structure:src",
 			title: "src/", summary: "Source tree",
 			detail: "BODY THAT MUST NOT APPEAR",  // body must be excluded
 		}));
-		// Level-2 grandchildren.
+		// Level-2 grandchild — must NOT render at default depth=1.
 		const header = track(wiki.upsertProjectNode(proj.id, {
 			parentId: mod.id, type: "header", path: "header:src/a.ts",
 			title: "a.ts", summary: "Module a",
 			detail: "DEEP BODY MUST NOT APPEAR",
 		}));
-		// Level-3 great-grandchild — must NOT render (depth=2 truncation).
-		const deep = track(wiki.upsertProjectNode(proj.id, {
+		// Level-3 great-grandchild.
+		track(wiki.upsertProjectNode(proj.id, {
 			parentId: header.id, type: "structure", path: "structure:fn-foo",
-			title: "fn foo", summary: "Should be truncated by depth=2",
+			title: "fn foo", summary: "Should be truncated",
 		}));
 
+		// Default resolveAnchors → project anchor depth=1.
 		const anchors = resolveAnchors({
 			wiki, agentId: "x",
 			contextBundle: { projectId: proj.id, workspaceDir: join(tmpDir, "p") } as SessionContextBundle,
@@ -185,13 +189,38 @@ describe("P1 §10.6 渲染:project 2 层 outline + memory 索引", () => {
 		expect(out).toContain("Project P");
 		expect(out).toContain("src/");
 		expect(out).toContain("Source tree");
-		expect(out).toContain("a.ts");
-		expect(out).toContain("Module a");
+		// Level-2+ truncated by default depth=1.
+		expect(out).not.toContain("a.ts");
+		expect(out).not.toContain("Module a");
+		expect(out).not.toContain("Should be truncated");
 		// Bodies never injected.
 		expect(out).not.toContain("BODY THAT MUST NOT APPEAR");
 		expect(out).not.toContain("DEEP BODY MUST NOT APPEAR");
-		// Level-3 truncated by default depth=2.
-		expect(out).not.toContain("Should be truncated by depth=2");
+		// Short id is shown (#xxxxxxxx); full "wiki-root:" id must NOT leak.
+		expect(out).toMatch(/#[0-9a-f]{8}/);
+		expect(out).not.toContain("wiki-root:");
+	});
+
+	test("project anchor 显式 depth=2 渲染到第 2 层子节点", () => {
+		const proj = projectStore.create({ name: "P2", workspaceDir: join(tmpDir, "p2") });
+		const root = track(wiki.ensureProjectSubtree(proj.id, "Project P2"));
+		const mod = track(wiki.upsertProjectNode(proj.id, {
+			parentId: root.id, type: "structure", path: "structure:src",
+			title: "src/", summary: "Source tree",
+		}));
+		track(wiki.upsertProjectNode(proj.id, {
+			parentId: mod.id, type: "header", path: "header:src/a.ts",
+			title: "a.ts", summary: "Module a",
+		}));
+		// Free anchor with depth=2 overrides the default.
+		const anchors = resolveAnchors({
+			wiki, agentId: "x",
+			wikiAnchors: [{ nodeId: root.id, inject: "system", depth: 2 }],
+		});
+		const out = renderSystemAnchors({ wiki, anchors });
+		expect(out).toContain("src/");
+		expect(out).toContain("a.ts");
+		expect(out).toContain("Module a");
 	});
 
 	test("memory anchor 渲染:索引 (title + nodeId 链接,不展开内容)", () => {
@@ -210,11 +239,13 @@ describe("P1 §10.6 渲染:project 2 层 outline + memory 索引", () => {
 		const anchors = resolveAnchors({ wiki, agentId: "x" });
 		const out = renderContextAnchors({ wiki, anchors });
 
-		// Index includes both leaves' titles + their nodeId links.
+		// Index includes both leaves' titles + their SHORT id handles (full
+		// nodeId no longer leaks to the agent — formatNodeId renders #xxxxxxxx).
 		expect(out).toContain("Decided on SQLite");
-		expect(out).toContain(decLeaf.id);
+		expect(out).toContain(formatNodeId(decLeaf.id));
+		expect(out).not.toContain(decLeaf.id);
 		expect(out).toContain("Initial scan completed");
-		expect(out).toContain(evtLeaf.id);
+		expect(out).toContain(formatNodeId(evtLeaf.id));
 		// Index does NOT expand content.
 		expect(out).not.toContain("internal rationale that must NOT leak");
 	});
@@ -288,5 +319,34 @@ describe("P1 §10.6 system vs context 通道分离", () => {
 		expect(ctx).toContain("Memory: x");
 		expect(ctx).toContain("dec 1");
 		expect(ctx).not.toContain("Project: P");
+	});
+});
+
+// ─── short id + body label helpers ────────────────────────────
+
+describe("wiki short id + body label helpers", () => {
+	test("shortIdOf is deterministic, 8 hex, uniform for uuid + synthetic roots", () => {
+		const a = shortIdOf("11111111-1111-1111-1111-111111111111");
+		const b = shortIdOf("11111111-1111-1111-1111-111111111111");
+		expect(a).toBe(b); // deterministic
+		expect(a).toMatch(/^[0-9a-f]{8}$/);
+		// Synthetic roots get the SAME treatment (no "wiki-root:" special-casing).
+		const root = shortIdOf("wiki-root:global");
+		expect(root).toMatch(/^[0-9a-f]{8}$/);
+		expect(root.startsWith("wiki-root")).toBe(false);
+		// Different ids → (overwhelmingly likely) different short ids.
+		expect(shortIdOf("a")).not.toBe(shortIdOf("b"));
+	});
+
+	test("formatNodeId renders '#xxxxxxxx'", () => {
+		expect(formatNodeId("wiki-root:global")).toBe(`#${shortIdOf("wiki-root:global")}`);
+		expect(formatNodeId("x")).toMatch(/^#[0-9a-f]{8}$/);
+	});
+
+	test("formatBodySize labels body presence explicitly", () => {
+		expect(formatBodySize(0)).toBe("(no doc)");
+		expect(formatBodySize(230)).toBe("(doc 230b)");
+		expect(formatBodySize(1843)).toBe("(doc 1.8kb)");
+		expect(formatBodySize(2 * 1024 * 1024)).toBe("(doc 2.0mb)");
 	});
 });

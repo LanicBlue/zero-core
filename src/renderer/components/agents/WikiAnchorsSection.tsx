@@ -33,7 +33,7 @@
 // - wikiAnchors 结构变更同步此组件 + agent-editor-types
 // - 自动锚点 override 落地后(P0/P2 schema),在此段补 override 行
 //
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { AgentRecord, WikiNode } from "../../../shared/types.js";
 
 type WikiAnchor = NonNullable<AgentRecord["wikiAnchors"]>[number];
@@ -41,6 +41,8 @@ type Inject = WikiAnchor["inject"];
 
 interface Props {
 	form: FormStateLike;
+	/** Saved agent id (undefined while editing a brand-new, unsaved agent). */
+	agentId?: string;
 	wikiNodes: WikiNode[];
 	onChange: (next: AgentRecord["wikiAnchors"]) => void;
 }
@@ -51,13 +53,48 @@ interface FormStateLike {
 
 const INJECT_OPTIONS: Inject[] = ["system", "context", "off"];
 
-export function WikiAnchorsSection({ form, wikiNodes, onChange }: Props) {
+export function WikiAnchorsSection({ form, agentId, wikiNodes, onChange }: Props) {
 	const list: WikiAnchor[] = form.wikiAnchors ?? [];
 	const [newNodeId, setNewNodeId] = useState("");
 	const [newInject, setNewInject] = useState<Inject>("context");
 	const [newDepth, setNewDepth] = useState<string>("");
 	const [manualNodeId, setManualNodeId] = useState("");
 	const [useManual, setUseManual] = useState(false);
+
+	// Live injection preview: re-renders the wiki text this (agent, project) +
+	// the editor's current free anchors would inject, plus token estimates.
+	// Debounced so rapid anchor edits don't spam the backend. Requires a saved
+	// agentId (the auto memory anchor keys off it); for a brand-new unsaved
+	// agent we show a hint instead.
+	const [preview, setPreview] = useState<{
+		systemText: string; contextText: string;
+		systemTokens: number; contextTokens: number;
+	} | null>(null);
+	const [previewLoading, setPreviewLoading] = useState(false);
+	const [previewError, setPreviewError] = useState<string | null>(null);
+
+	useEffect(() => {
+		const api = (window as any).api;
+		if (!api?.wikiPreviewInjection || !agentId) return;
+		setPreviewLoading(true);
+		setPreviewError(null);
+		const handle = setTimeout(() => {
+			api.wikiPreviewInjection({ agentId, wikiAnchors: list })
+				.then((r: any) => {
+					if (!r) { setPreview(null); return; }
+					setPreview({
+						systemText: r.systemText ?? "",
+						contextText: r.contextText ?? "",
+						systemTokens: r.systemTokens ?? 0,
+						contextTokens: r.contextTokens ?? 0,
+					});
+				})
+				.catch((e: any) => setPreviewError((e as Error)?.message ?? "preview failed"))
+				.finally(() => setPreviewLoading(false));
+		}, 300);
+		return () => clearTimeout(handle);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [agentId, list]);
 
 	const handleAdd = () => {
 		const id = (useManual ? manualNodeId : newNodeId).trim();
@@ -251,6 +288,70 @@ export function WikiAnchorsSection({ form, wikiNodes, onChange }: Props) {
 					Add
 				</button>
 			</div>
+
+			{/* Live injection preview + token estimate (debounced). */}
+			<div className="anchor-preview" style={{ marginTop: 16, padding: 10, background: "var(--bg-secondary, #1c1c1e)", borderRadius: 6, fontSize: 11 }}>
+				<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+					<strong style={{ color: "var(--text-secondary, #888)" }}>Injection preview</strong>
+					{previewLoading && <span style={{ color: "var(--text-tertiary, #666)" }}>refreshing…</span>}
+					{preview && !previewLoading && (
+						<span style={{ color: "var(--text-tertiary, #666)" }}>
+							system ~{preview.systemTokens} tok · context ~{preview.contextTokens} tok
+							{preview.systemTokens + preview.contextTokens === 0 && " · (nothing injected at these settings)"}
+						</span>
+					)}
+				</div>
+				{!agentId ? (
+					<p style={{ margin: 0, color: "var(--text-tertiary, #555)" }}>
+						Save the agent first to preview its auto memory anchor + free-anchor injection.
+					</p>
+				) : previewError ? (
+					<p style={{ margin: 0, color: "#f44336" }}>preview error: {previewError}</p>
+				) : preview ? (
+					<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+						{preview.systemText && (
+							<PreviewBlock label={`system (~${preview.systemTokens} tok)`} text={preview.systemText} />
+						)}
+						{preview.contextText && (
+							<PreviewBlock label={`context (~${preview.contextTokens} tok)`} text={preview.contextText} />
+						)}
+						{!preview.systemText && !preview.contextText && (
+							<p style={{ margin: 0, color: "var(--text-tertiary, #555)" }}>
+								No anchors injected (auto anchors resolve empty + no free anchors).
+							</p>
+						)}
+					</div>
+				) : (
+					<p style={{ margin: 0, color: "var(--text-tertiary, #555)" }}>Loading preview…</p>
+				)}
+			</div>
+		</div>
+	);
+}
+
+/** Collapsible text block for one injection channel of the preview. */
+function PreviewBlock({ label, text }: { label: string; text: string }) {
+	const [open, setOpen] = useState(false);
+	const capped = text.length > 2000 ? text.slice(0, 2000) + "\n…(truncated)" : text;
+	return (
+		<div>
+			<button
+				type="button"
+				className="btn-ghost btn-xs"
+				onClick={() => setOpen((o) => !o)}
+				style={{ padding: "2px 6px" }}
+			>
+				{open ? "▾" : "▸"} {label}
+			</button>
+			{open && (
+				<pre style={{
+					margin: "4px 0 0", padding: 8, maxHeight: 240, overflow: "auto",
+					background: "var(--bg-primary, #1a1a1c)", borderRadius: 4,
+					color: "var(--text-secondary, #888)", whiteSpace: "pre-wrap", fontSize: 10,
+				}}>
+					{capped}
+				</pre>
+			)}
 		</div>
 	);
 }

@@ -244,6 +244,9 @@ const api: WindowApi = {
 	wikiReadWorkspaceDoc: (projectId, relPath) => ipcRenderer.invoke("wiki:readWorkspaceDoc", projectId, relPath),
 	wikiSearch: (query, anchorIds?) => ipcRenderer.invoke("wiki:search", query, anchorIds),
 	wikiResolvedAnchors: (agentId, projectId?) => ipcRenderer.invoke("wiki:resolvedAnchors", agentId, projectId),
+	// Live preview of the wiki text this (agent, project) + free wikiAnchors would
+	// inject (system prompt section + per-turn context) + token estimates.
+	wikiPreviewInjection: (body) => ipcRenderer.invoke("wiki:previewInjection", body),
 
 	// ── Delegated tasks (TaskTree) ──
 	delegatedTasksBySession: (sessionId) => ipcRenderer.invoke("delegatedTasks:bySession", sessionId),

@@ -447,9 +447,15 @@ describe("Wiki action tool", () => {
 			lastUpdatedBy: "test",
 		});
 		const r = await execWiki({ action: "create", parentId: parent.id, title: "Child" }, ctx());
-		const childId = createdId(r);
-		const child = wikiStoreGlobal.get(childId);
-		expect(child?.type).toBe("intent");
+		// createdId returns the short id; expand resolves it back and renders
+		// the child line with its inherited [type].
+		const childShort = createdId(r);
+		const expanded = await execWiki({ action: "expand", nodeId: parent.id }, ctx());
+		expect(expanded).toMatch(/Child/);
+		expect(expanded).toMatch(/\[intent\]/);
+		// The short id we round-tripped must resolve to a real node of the right type.
+		const childLine = expanded.split("\n").find((l) => /Child/.test(l))!;
+		expect(childLine).toContain(childShort);
 	});
 
 	test("expand returns node metadata + direct children (default depth 1), NOT the body", async () => {
@@ -497,6 +503,36 @@ describe("Wiki action tool", () => {
 		// depth is capped at 5 (a huge value behaves like 5, not an error).
 		const dCap = await execWiki({ action: "expand", nodeId: parent, depth: 99 }, ctx());
 		expect(dCap).toMatch(/Grandchild/);
+	});
+
+	test("short id round-trip: create returns #xxxxxxxx; docRead/update/expand resolve it; full id never leaks", async () => {
+		const r = await execWiki({ action: "create", parentId: root(), title: "ShortIdTarget", summary: "sm" }, ctx());
+		const short = createdId(r);
+		// Result uses the short-id form (# + 8 hex), not the full uuid.
+		expect(short).toMatch(/^#[0-9a-f]{8}$/);
+		// docWrite + docRead via the short id round-trip.
+		await execWiki({ action: "docWrite", nodeId: short, content: "hello short" }, ctx());
+		const body = await execWiki({ action: "docRead", nodeId: short }, ctx());
+		expect(body).toMatch(/hello short/);
+		// update via short id, then expand to confirm the rename took.
+		await execWiki({ action: "update", nodeId: short, title: "ShortIdRenamed" }, ctx());
+		const expanded = await execWiki({ action: "expand", nodeId: short }, ctx());
+		expect(expanded).toMatch(/ShortIdRenamed/);
+		// The full uuid is never shown to the agent — only the #xxxxxxxx handle.
+		expect(expanded).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/);
+	});
+
+	test("expand child line includes the subtree-abstract summary", async () => {
+		// Create a child with a summary directly under root, then expand root.
+		const childR = await execWiki({
+			action: "create", parentId: root(), title: "SumChild", summary: "child-abstract-xyz",
+		}, ctx());
+		const childShort = createdId(childR);
+		const expanded = await execWiki({ action: "expand", nodeId: root() }, ctx());
+		// The child row carries its summary (not just title + size).
+		const childLine = expanded.split("\n").find((l) => l.includes(childShort))!;
+		expect(childLine).toContain("SumChild");
+		expect(childLine).toContain("child-abstract-xyz");
 	});
 
 	test("search substring match across visible nodes", async () => {
@@ -582,18 +618,18 @@ describe("Wiki action tool", () => {
 		const leaf = createdId(await execWiki({ action: "create", parentId: parent, title: "SizeLeaf" }, ctx()));
 		// Leaf has no body yet; parent has none either.
 		let expanded = await execWiki({ action: "expand", nodeId: parent }, ctx());
-		expect(expanded).toMatch(/Body: \(no body\)/);
+		expect(expanded).toMatch(/Body: \(no doc\)/);
 		// Give the leaf a body and re-expand — its size must surface.
 		await execWiki({ action: "docWrite", nodeId: leaf, content: "x".repeat(2048) }, ctx());
 		expanded = await execWiki({ action: "expand", nodeId: parent }, ctx());
-		expect(expanded).toMatch(/SizeLeaf.*\(2\.0kb\)/);
+		expect(expanded).toMatch(/SizeLeaf.*\(doc 2\.0kb\)/);
 	});
 
 	test("search shows each hit's body size", async () => {
 		const n = createdId(await execWiki({ action: "create", parentId: root(), title: "SearchSize", summary: "sz-sum" }, ctx()));
 		await execWiki({ action: "docWrite", nodeId: n, content: "x".repeat(600) }, ctx());
 		const out = await execWiki({ action: "search", query: "SearchSize" }, ctx());
-		expect(out).toMatch(/SearchSize.*\(600b\)/);
+		expect(out).toMatch(/SearchSize.*\(doc 600b\)/);
 	});
 
 	test("docWrite refuses to clobber a non-empty body without overwrite:true", async () => {

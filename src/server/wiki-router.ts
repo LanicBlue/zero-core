@@ -50,7 +50,7 @@ import type { WikiStore } from "./wiki-node-store.js";
 import type { ProjectStore } from "./project-store.js";
 import type { AgentStore } from "./agent-store.js";
 import type { ResolvedAnchorView } from "../shared/types.js";
-import { resolveAnchors } from "../runtime/wiki-anchor-injection.js";
+import { resolveAnchors, renderSystemAnchors, renderContextAnchors } from "../runtime/wiki-anchor-injection.js";
 
 /**
  * Build the 3 wiki-tree endpoints (list-by-anchors / nodes/:id/detail / search).
@@ -99,6 +99,55 @@ export function createWikiRouter(deps: {
 				depth: a.depth,
 			}));
 			res.json(views);
+		} catch (err) {
+			res.status(500).json({ error: (err as Error).message });
+		}
+	});
+
+	/**
+	 * POST /api/wiki/preview-injection
+	 * body: { agentId, projectId?, wikiAnchors? }
+	 *
+	 * Renders EXACTLY what would be injected into the system prompt and the
+	 * per-turn context for the given (agent, project) + the supplied free
+	 * wikiAnchors (the agent-config editor's live form). Returns the two text
+	 * blocks plus token estimates (len/4 heuristic, same as session.ts), so the
+	 * agent-config UI can show a live preview + token cost before saving.
+	 *
+	 * Reuses the runtime resolveAnchors + render{System,Context}Anchors so the
+	 * preview is byte-identical to what AgentLoop injects.
+	 */
+	router.post("/preview-injection", (req, res) => {
+		try {
+			const agentId = (req.body?.agentId as string | undefined) ?? "";
+			const projectId = (req.body?.projectId as string | undefined) ?? "";
+			const wikiAnchors = req.body?.wikiAnchors;
+			if (!agentId) {
+				res.status(400).json({ error: "agentId is required" });
+				return;
+			}
+			const anchors = resolveAnchors({
+				wiki: wikiStore,
+				agentId,
+				contextBundle: projectId ? { projectId, workspaceDir: "", wikiRootNodeId: "" } : undefined,
+				wikiAnchors,
+			});
+			const systemText = renderSystemAnchors({ wiki: wikiStore, anchors });
+			const contextText = renderContextAnchors({ wiki: wikiStore, anchors });
+			const tok = (s: string) => Math.ceil(s.length / 4) + 4;
+			res.json({
+				systemText,
+				contextText,
+				systemTokens: tok(systemText),
+				contextTokens: tok(contextText),
+				anchors: anchors.map((a) => ({
+					nodeId: a.nodeId,
+					title: wikiStore.get(a.nodeId)?.title ?? a.nodeId,
+					kind: a.kind,
+					inject: a.inject,
+					depth: a.depth,
+				})),
+			});
 		} catch (err) {
 			res.status(500).json({ error: (err as Error).message });
 		}

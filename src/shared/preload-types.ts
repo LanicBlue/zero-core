@@ -266,6 +266,17 @@ export interface WindowApi {
 	wikiReadWorkspaceDoc: (projectId: string, relPath: string) => Promise<{ content?: string; error?: string }>;
 	wikiSearch: (query: string, anchorIds?: string[]) => Promise<WikiNode[]>;
 	wikiResolvedAnchors: (agentId: string, projectId?: string) => Promise<ResolvedAnchorView[]>;
+	wikiPreviewInjection: (body: {
+		agentId: string;
+		projectId?: string;
+		wikiAnchors?: AgentRecord["wikiAnchors"];
+	}) => Promise<{
+		systemText: string;
+		contextText: string;
+		systemTokens: number;
+		contextTokens: number;
+		anchors: ResolvedAnchorView[];
+	}>;
 
 	// ── Delegated tasks (TaskTree) ──
 	delegatedTasksBySession: (sessionId: string) => Promise<DelegatedTaskRecord[]>;

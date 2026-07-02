@@ -230,6 +230,10 @@ const R: Record<string, RouteMapping> = {
 		"wiki:readWorkspaceDoc": { method: "GET",  path: "/api/projects/:projectId/workspace-doc",          buildReq: (projectId, relPath) => ({ params: { projectId }, query: { relPath } }) },
 		"wiki:search":           { method: "GET",  path: "/api/wiki/search",                                buildReq: (query, anchorIds?) => ({ query: { query, ...(anchorIds?.length ? { anchorIds: anchorIds.join(",") } : {}) } }) },
 		"wiki:resolvedAnchors":  { method: "GET",  path: "/api/wiki/anchors",                              buildReq: (agentId, projectId?) => ({ query: { agentId, ...(projectId ? { projectId } : {}) } }) },
+		// Live preview of what the (agent, project) + free wikiAnchors will inject
+		// into the system prompt + per-turn context. Body carries the editor's
+		// current form so the agent-config UI can preview before saving.
+		"wiki:previewInjection": { method: "POST", path: "/api/wiki/preview-injection",                     buildReq: (body) => ({ body: body ?? {} }) },
 
 		// ─── Delegated tasks (TaskTree UI) ───────────────────
 		"delegatedTasks:bySession": { method: "GET", path: "/api/delegated-tasks/by-session/:sessionId", buildReq: (sessionId) => ({ params: { sessionId } }) },

@@ -42,7 +42,7 @@ import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 import type { WikiStore } from "../../server/wiki-node-store.js";
 import type { WikiNode } from "../../shared/types.js";
-import { formatBodySize } from "../wiki-anchor-injection.js";
+import { formatBodySize, formatNodeId, shortIdOf } from "../wiki-anchor-injection.js";
 
 // ---------------------------------------------------------------------------
 // Helpers — wiki store resolution + anchor scope + node addressing
@@ -65,6 +65,47 @@ function resolveWikiStore(ctx: any): WikiStore | undefined {
 function resolveAnchorsCtx(ctx: any): string[] {
 	const ids = ctx?.wikiAnchorNodeIds;
 	return Array.isArray(ids) ? ids : [];
+}
+
+/**
+ * Resolve a nodeId argument the agent supplied back to a real in-scope node.
+ * Accepts, in priority order:
+ *   1. a full nodeId (exact wiki.get) — back-compat / internal callers;
+ *   2. a short id — "#xxxxxxxx" or bare "xxxxxxxx" (8 hex) — by scanning the
+ *      visible-from-anchors set and matching shortIdOf(n.id). Uniform across
+ *      UUID leaves and synthetic roots (the agent never sees "wiki-root:...");
+ *      collisions are rejected with a "use path" hint (sha1-8 is 32-bit, so
+ *      collisions need ~65k nodes in one scope — de facto impossible).
+ * Returns the resolved node, or undefined with a reason string so the caller
+ * can surface a precise error (not found vs ambiguous).
+ */
+function resolveNodeIdArg(
+	raw: string | undefined,
+	anchors: string[],
+	wiki: WikiStore,
+): { node: WikiNode; ok: true } | { ok: false; reason: string } {
+	if (!raw) return { ok: false, reason: "nodeId is required" };
+	// 1. exact full id
+	const exact = wiki.getVisibleFromAnchors(anchors, raw);
+	if (exact) return { node: exact, ok: true };
+	// 2. short id ("#xxxxxxxx" or bare 8 hex)
+	const bare = raw.startsWith("#") ? raw.slice(1) : raw;
+	if (/^[0-9a-f]{8}$/i.test(bare)) {
+		const hits = wiki
+			.listVisibleFromAnchors(anchors)
+			.filter((n) => shortIdOf(n.id).toLowerCase() === bare.toLowerCase());
+		if (hits.length === 1) return { node: hits[0], ok: true };
+		if (hits.length > 1) {
+			return {
+				ok: false,
+				reason: `short id "#${bare.toLowerCase()}" is ambiguous (${hits.length} nodes) — use the title path instead`,
+			};
+		}
+	}
+	return {
+		ok: false,
+		reason: `node not in scope: ${raw} (use expand/search to get a valid id, or pass a title path)`,
+	};
 }
 
 /**
@@ -93,7 +134,9 @@ function resolveNode(
 	wiki: WikiStore,
 ): WikiNode | undefined {
 	if (target.nodeId) {
-		return wiki.getVisibleFromAnchors(anchors, target.nodeId);
+		// Accept a full nodeId OR a short id ("#xxxxxxxx" / bare 8 hex).
+		const r = resolveNodeIdArg(target.nodeId, anchors, wiki);
+		return r.ok ? r.node : undefined;
 	}
 	if (target.path) {
 		const segments = target.path.split("/").map((s) => s.trim()).filter(Boolean);
@@ -158,7 +201,7 @@ export const wikiActionSchema = z.object({
 export const wikiTool = buildTool({
 	name: "Wiki",
 	description:
-		"Operate on the project Wiki. Two groups: STRUCTURE ops (expand/search/create/update/delete nodes) and DOC ops (docRead/docWrite/docEdit a node's body — mirror Read/Write/Edit). Identity by nodeId (or title path for doc ops).",
+		"Operate on the project Wiki. Two groups: STRUCTURE ops (expand/search/create/update/delete nodes) and DOC ops (docRead/docWrite/docEdit a node's body — mirror Read/Write/Edit). Address nodes by their 8-char short id (#xxxxxxxx, shown in expand/search/injected outlines), a full nodeId, or a title path.",
 	prompt:
 		"Operate on the project Wiki. Two groups of actions:\n\n" +
 		"STRUCTURE (node tree):\n" +
@@ -172,11 +215,16 @@ export const wikiTool = buildTool({
 		"- { action:'docWrite', nodeId? | path?, content, overwrite? } — overwrite the whole body (like Write). If the node already has a non-empty body you MUST pass overwrite:true (otherwise it is rejected with the existing body size — use docEdit for a targeted change instead).\n" +
 		"- { action:'docEdit', nodeId? | path?, oldString, newString, replaceAll? } — exact string replace (like Edit). oldString must exist and be unique (or set replaceAll:true to replace every occurrence). No-op/rejected if oldString not found.\n\n" +
 		"Rules:\n" +
-		"- expand is for STRUCTURE only (metadata + child tree). To read a node's BODY, use docRead — never expect expand to return body content.\n" +
-		"- Identity is nodeId (the primary key). Get nodeIds from expand/search results — this is the reliable way to address a node. Doc ops also accept a title path as a convenience.\n" +
-		"- Title path (doc ops) is HIERARCHICAL and RELATIVE to your scope root, walking child→grandchild by TITLE: 'Knowledge/software-dev 工作流'. The root's own title is NOT part of the path, and a bare leaf name ('software-dev 工作流') only works if that node is a DIRECT child of your scope root. Every segment must match an ancestor along the way — if you don't know the full ancestry, use expand to walk down or search to find the nodeId instead of guessing the path.\n" +
+		"- expand is for STRUCTURE only (metadata + child tree, each child shown with its subtree-abstract summary). To read a node's BODY, use docRead — never expect expand to return body content.\n" +
+		"- Identity: every node carries an 8-char short id like #a3f2b1c0 (shown next to the node in expand/search/injected outlines). Pass that short id as nodeId/parentId — it resolves to the node. A full nodeId also works. If two nodes collide on a short id (vanishingly rare), the tool tells you to use the title path instead.\n" +
+		"- Title path (doc ops) is HIERARCHICAL and RELATIVE to your scope root, walking child→grandchild by TITLE: 'Knowledge/software-dev 工作流'. The root's own title is NOT part of the path, and a bare leaf name ('software-dev 工作流') only works if that node is a DIRECT child of your scope root. Every segment must match an ancestor along the way — if you don't know the full ancestry, use expand to walk down or search to find the id instead of guessing the path.\n" +
 		"- Scope = your wiki anchors (your project subtree + your memory + any free anchors you were granted; the GLOBAL ROOT for global/zero sessions). Read and write share the SAME boundary: you can create/update/delete/docWrite/docEdit exactly the nodes you can expand. Nodes outside your anchors are invisible and unwritable.\n" +
-		"- To edit a node's body, use docEdit/docWrite — never update (update is metadata-only).",
+		"- To edit a node's body, use docEdit/docWrite — never update (update is metadata-only).\n\n" +
+		"Node semantics (how to WRITE summary / body — applies to EVERY agent that creates or updates wiki nodes):\n" +
+		"- A node's `summary` is the ABSTRACT of the subtree rooted at that node (one line — the essence of what this subtree is about).\n" +
+		"- A non-leaf node's `body` (doc) is the OVERVIEW of its subtree (what the children collectively do, how they fit together). Writing a parent's body = writing the subtree overview.\n" +
+		"- A leaf node's `body` (doc) is the actual content. For a leaf that mirrors a project file, the body is the file's COMMENTARY/EXPLANATION (what the file is for, its role, gotchas) — NOT a copy of the file itself (the file lives in the workspace; read it with Read).\n" +
+		"- So a parent's summary abstracts its body, and its body overviews its children — the two are meant to agree. Keep summaries short (one line) and bodies as overviews (a paragraph or two), not full dumps.",
 	meta: {
 		category: "management",
 		isReadOnly: false,
@@ -194,8 +242,9 @@ export const wikiTool = buildTool({
 			// ── STRUCTURE ────────────────────────────────────────────────
 			case "expand": {
 				if (!input.nodeId) return "Error: nodeId required for expand";
-				const node = wiki.getVisibleFromAnchors(anchors, input.nodeId);
-				if (!node) return `Wiki node not visible from your scope: ${input.nodeId}`;
+				const resolved = resolveNodeIdArg(input.nodeId, anchors, wiki);
+				if (!resolved.ok) return `Error: ${resolved.reason}`;
+				const node = resolved.node;
 				// expand is STRUCTURE-only: metadata + a descendant subtree, `depth`
 				// levels deep. It deliberately does NOT return any node's body —
 				// that's docRead's job. (Previously this dumped the node's full
@@ -227,7 +276,11 @@ export const wikiTool = buildTool({
 						// (bare leading-space indentation gets collapsed by
 						// Markdown and the tree looked flat). Clear to the agent
 						// reading raw text too.
-						treeLines.push(`${"  ".repeat(level - 1)}- ${k.id} [${k.type}] ${k.title} ${formatBodySize(wiki.getNodeDetailSize(k.id))}`);
+						// Child line carries the subtree-abstract summary so expand
+						// is more than a flat directory listing (summary = the
+						// node's subtree abstract per the Wiki node semantics).
+						const childSummary = k.summary ? ` — ${k.summary}` : "";
+						treeLines.push(`${"  ".repeat(level - 1)}- ${formatNodeId(k.id)} [${k.type}] ${k.title}${childSummary} ${formatBodySize(wiki.getNodeDetailSize(k.id))}`);
 						if (level === depth) {
 							// At the cap: count this node's children as hidden
 							// (they won't be walked) so we can warn they exist.
@@ -248,7 +301,7 @@ export const wikiTool = buildTool({
 				const prov = node.provenance ? `\nProvenance: ${node.provenance}` : "";
 				const summary = node.summary ? `\nSummary: ${node.summary}` : "";
 				const bodySize = `\nBody: ${formatBodySize(wiki.getNodeDetailSize(node.id))}`;
-				return `nodeId: ${node.id}\nTitle: ${node.title}\nType: ${node.type}${prov}${summary}${flags}${bodySize}${subtreeLine}`;
+				return `nodeId: ${formatNodeId(node.id)}\nTitle: ${node.title}\nType: ${node.type}${prov}${summary}${flags}${bodySize}${subtreeLine}`;
 			}
 
 			case "search": {
@@ -269,20 +322,21 @@ export const wikiTool = buildTool({
 				const sliced = hits.slice(0, limit);
 				if (sliced.length === 0) return `(no wiki nodes match "${input.query}")`;
 				return sliced
-					.map((n) => `${n.id} | ${n.type} | ${n.title} ${formatBodySize(wiki.getNodeDetailSize(n.id))}\n   ${n.summary ?? ""}`)
+					.map((n) => `${formatNodeId(n.id)} | ${n.type} | ${n.title} ${formatBodySize(wiki.getNodeDetailSize(n.id))}\n   ${n.summary ?? ""}`)
 					.join("\n");
 			}
 
 			case "create": {
 				if (!input.parentId) return "Error: parentId required for create";
 				if (!input.title) return "Error: title required for create";
-				// Parent must be visible in scope.
-				const parent = wiki.getVisibleFromAnchors(anchors, input.parentId);
-				if (!parent) return `Error: parent not in scope: ${input.parentId}`;
+				// Parent must be visible in scope (accepts short id / full id).
+				const resolvedParent = resolveNodeIdArg(input.parentId, anchors, wiki);
+				if (!resolvedParent.ok) return `Error: parent ${resolvedParent.reason}`;
+				const parent = resolvedParent.node;
 				// Enforce title uniqueness among siblings (keeps title-path addressing unambiguous).
 				const siblings = wiki
 					.listVisibleFromAnchors(anchors)
-					.filter((n) => n.parentId === input.parentId);
+					.filter((n) => n.parentId === parent.id);
 				if (siblings.some((n) => n.title === input.title)) {
 					return `Error: a sibling already has the title "${input.title}" — titles must be unique under the same parent`;
 				}
@@ -297,7 +351,7 @@ export const wikiTool = buildTool({
 						: "structure";
 				try {
 					const created = wiki.upsertNodeInScope(anchors, {
-						parentId: input.parentId,
+						parentId: parent.id,
 						type: inheritedType,
 						path,
 						title: input.title,
@@ -305,7 +359,7 @@ export const wikiTool = buildTool({
 						detail: input.content,
 						lastUpdatedBy: "agent",
 					});
-					return `Wiki node created: ${created.id} | ${created.title}`;
+					return `Wiki node created: ${formatNodeId(created.id)} | ${created.title}`;
 				} catch (err) {
 					return `Create rejected: ${(err as Error).message}`;
 				}
@@ -313,8 +367,9 @@ export const wikiTool = buildTool({
 
 			case "update": {
 				if (!input.nodeId) return "Error: nodeId required for update";
-				const node = wiki.getVisibleFromAnchors(anchors, input.nodeId);
-				if (!node) return `Error: node not in scope: ${input.nodeId}`;
+				const resolved = resolveNodeIdArg(input.nodeId, anchors, wiki);
+				if (!resolved.ok) return `Error: ${resolved.reason}`;
+				const node = resolved.node;
 				const patch: Record<string, unknown> = {};
 				if (input.title !== undefined) patch.title = input.title;
 				if (input.summary !== undefined) patch.summary = input.summary;
@@ -332,11 +387,11 @@ export const wikiTool = buildTool({
 					}
 				}
 				try {
-					const updated = wiki.updateNodeInScope(anchors, input.nodeId, {
+					const updated = wiki.updateNodeInScope(anchors, node.id, {
 						...patch,
 						lastUpdatedBy: "agent",
 					});
-					return `Wiki node updated: ${updated.id} | ${updated.title}`;
+					return `Wiki node updated: ${formatNodeId(updated.id)} | ${updated.title}`;
 				} catch (err) {
 					return `Update rejected: ${(err as Error).message}`;
 				}
@@ -344,11 +399,12 @@ export const wikiTool = buildTool({
 
 			case "delete": {
 				if (!input.nodeId) return "Error: nodeId required for delete";
-				const node = wiki.getVisibleFromAnchors(anchors, input.nodeId);
-				if (!node) return `Error: node not in scope: ${input.nodeId}`;
+				const resolved = resolveNodeIdArg(input.nodeId, anchors, wiki);
+				if (!resolved.ok) return `Error: ${resolved.reason}`;
+				const node = resolved.node;
 				try {
-					wiki.deleteNodeInScope(anchors, input.nodeId);
-					return `Wiki node deleted: ${input.nodeId}`;
+					wiki.deleteNodeInScope(anchors, node.id);
+					return `Wiki node deleted: ${formatNodeId(node.id)}`;
 				} catch (err) {
 					return `Delete rejected: ${(err as Error).message}`;
 				}
@@ -378,7 +434,7 @@ export const wikiTool = buildTool({
 				}
 				try {
 					wiki.writeNodeDetailInScope(anchors, node.id, input.content);
-					return `Document written: ${node.id} | ${node.title}`;
+					return `Document written: ${formatNodeId(node.id)} | ${node.title}`;
 				} catch (err) {
 					return `docWrite rejected: ${(err as Error).message}`;
 				}
@@ -409,7 +465,7 @@ export const wikiTool = buildTool({
 				}
 				try {
 					wiki.writeNodeDetailInScope(anchors, node.id, next);
-					return `Document edited: ${node.id} | ${node.title} (${input.replaceAll ? count : 1} replacement${input.replaceAll && count !== 1 ? "s" : ""})`;
+					return `Document edited: ${formatNodeId(node.id)} | ${node.title} (${input.replaceAll ? count : 1} replacement${input.replaceAll && count !== 1 ? "s" : ""})`;
 				} catch (err) {
 					return `docEdit rejected: ${(err as Error).message}`;
 				}

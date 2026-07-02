@@ -35,6 +35,7 @@
 // - ../shared/types (AgentRecord / SessionContextBundle)
 //
 
+import { createHash } from "node:crypto";
 import type { WikiStore } from "../server/wiki-node-store.js";
 import {
 	WIKI_GLOBAL_ROOT_ID,
@@ -48,19 +49,42 @@ import type {
 } from "../shared/types.js";
 
 /** Default depth for project-anchor subtree expansion (plan-P1 §12). */
-export const DEFAULT_PROJECT_ANCHOR_DEPTH = 2;
+export const DEFAULT_PROJECT_ANCHOR_DEPTH = 1;
 
 /**
  * Format a node body's byte size for compact display next to a node entry.
- * 0 (no body file) ⇒ "(no body)"; small ⇒ "(123b)"; else kb/mb. Lets the
- * agent see at a glance whether a listed node has detail content (and how
- * much) before deciding to docRead it or guard a docWrite.
+ * Labels make body presence EXPLICIT so the agent knows a node has a readable
+ * document (vs being structure-only): 0 (no body file) ⇒ "(no doc)"; has body
+ * ⇒ "(doc 1.8kb)" / "(doc 230b)". mb kept for very large bodies.
  */
 export function formatBodySize(bytes: number): string {
-	if (!bytes || bytes <= 0) return "(no body)";
-	if (bytes < 1024) return `(${bytes}b)`;
-	if (bytes < 1024 * 1024) return `(${(bytes / 1024).toFixed(1)}kb)`;
-	return `(${(bytes / (1024 * 1024)).toFixed(1)}mb)`;
+	if (!bytes || bytes <= 0) return "(no doc)";
+	if (bytes < 1024) return `(doc ${bytes}b)`;
+	if (bytes < 1024 * 1024) return `(doc ${(bytes / 1024).toFixed(1)}kb)`;
+	return `(doc ${(bytes / (1024 * 1024)).toFixed(1)}mb)`;
+}
+
+/**
+ * Derive a short, deterministic, uniform handle for ANY node id (UUID leaves
+ * AND synthetic roots like "wiki-root:global" / "wiki-root:<projectId>").
+ * shortIdOf = first 8 hex of sha1(id) — stable across sessions (no per-session
+ * state), ~32 bits so collision-free for realistic subtrees. The agent sees
+ * and addresses nodes by this 8-char handle instead of the full UUID/"wiki-root:"
+ * id, which were bloating every injected outline / tool result line.
+ */
+export function shortIdOf(nodeId: string): string {
+	return createHash("sha1").update(nodeId).digest("hex").slice(0, 8);
+}
+
+/**
+ * Display form of a node handle: "#a3f2b1c0". Used everywhere a nodeId is shown
+ * to the agent (injected outlines, expand/search/create/update/delete results).
+ * Synthetic roots are displayed the SAME way as leaves — no "wiki-root:" prefix
+ * leaks to the agent. The tool layer resolves a short id back to the full nodeId
+ * via resolveNodeIdArg (exact get first, then short-id scan in scope).
+ */
+export function formatNodeId(nodeId: string): string {
+	return `#${shortIdOf(nodeId)}`;
 }
 
 /**
@@ -118,7 +142,10 @@ export function resolveAnchors(opts: {
 			nodeId: memoryAgentRootId(opts.agentId),
 			inject: "context", // memory anchor default channel
 			kind: "memory",
-			depth: 2,
+			// depth 1: memory leaves hang directly under the per-agent root, so
+			// one level already surfaces the index. Keeps the injected memory
+			// block lean (default expand = 1 layer).
+			depth: 1,
 		});
 	}
 
@@ -237,7 +264,7 @@ export function renderSystemAnchors(opts: {
 	}
 	if (blocks.length === 0) return "";
 	return "## Wiki Anchors (system)\n"
-		+ "用 Wiki 工具操作这些节点(不要用 Glob/Read 去文件系统探索):docRead(nodeId) 读正文、expand(nodeId) 遍历子树、docWrite/docEdit 写。nodeId 是定址主键。\n\n"
+		+ "用 Wiki 工具操作这些节点(不要用 Glob/Read 去文件系统探索):docRead 读正文、expand 遍历子树、docWrite/docEdit 写。每个节点带一个 8 字符短 id(#xxxxxxxx),用它(或 title path)寻址即可,无需完整 nodeId。\n\n"
 		+ blocks.join("\n\n");
 }
 
@@ -276,7 +303,7 @@ function renderProjectSubtreeOutline(wiki: WikiStore, rootId: string, depth: num
 	const root = wiki.get(rootId);
 	if (!root) return "";
 	const lines: string[] = [];
-	lines.push(`### ${root.title}  [nodeId: ${root.id}] ${formatBodySize(wiki.getNodeDetailSize(root.id))}`);
+	lines.push(`### ${root.title}  ${formatNodeId(root.id)} ${formatBodySize(wiki.getNodeDetailSize(root.id))}`);
 	if (root.summary) lines.push(`> ${root.summary}`);
 	renderSubtreeChildren(wiki, rootId, 1, depth, lines);
 	return lines.join("\n");
@@ -295,7 +322,7 @@ function renderSubtreeChildren(
 		const indent = "  ".repeat(level) + "- ";
 		const summary = child.summary ? ` — ${child.summary}` : "";
 		const size = formatBodySize(wiki.getNodeDetailSize(child.id));
-		lines.push(`${indent}${child.title}${summary} ${size} [${child.id}]`);
+		lines.push(`${indent}${child.title}${summary} ${size} ${formatNodeId(child.id)}`);
 		renderSubtreeChildren(wiki, child.id, level + 1, maxDepth, lines);
 	}
 }
@@ -316,7 +343,7 @@ function renderMemoryIndex(wiki: WikiStore, rootId: string, depth: number): stri
 		return lines.join("\n");
 	}
 	for (const leaf of leaves) {
-		lines.push(`- ${leaf.title} ${formatBodySize(wiki.getNodeDetailSize(leaf.id))} [${leaf.id}]`);
+		lines.push(`- ${leaf.title} ${formatBodySize(wiki.getNodeDetailSize(leaf.id))} ${formatNodeId(leaf.id)}`);
 	}
 	return lines.join("\n");
 }
