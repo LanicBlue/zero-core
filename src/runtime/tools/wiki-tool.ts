@@ -42,6 +42,7 @@ import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 import type { WikiStore } from "../../server/wiki-node-store.js";
 import type { WikiNode } from "../../shared/types.js";
+import { formatBodySize } from "../wiki-anchor-injection.js";
 
 // ---------------------------------------------------------------------------
 // Helpers — wiki store resolution + anchor scope + node addressing
@@ -141,6 +142,9 @@ export const wikiActionSchema = z.object({
 	flags: z.array(z.string()).optional(),
 	// create (initial body) / docWrite
 	content: z.string().optional(),
+	// docWrite — must be set to true to overwrite a node that already has a
+	// non-empty body (clobber guard). Empty/new bodies write without it.
+	overwrite: z.boolean().optional().describe("docWrite: allow overwriting an existing non-empty body (default false)"),
 	// docEdit (mirrors Edit: oldString → newString)
 	oldString: z.string().optional(),
 	newString: z.string().optional(),
@@ -165,7 +169,7 @@ export const wikiTool = buildTool({
 		"- { action:'delete', nodeId } — delete a node (cascades children + body).\n\n" +
 		"DOC (a node's body document — mirror Read/Write/Edit, addressed by nodeId OR title path):\n" +
 		"- { action:'docRead', nodeId? | path? } — read the node's body. THE ONLY way to read a node's full body — expand does not include it. path is a hierarchical title path like 'Parent/Child'.\n" +
-		"- { action:'docWrite', nodeId? | path?, content } — overwrite the whole body (like Write).\n" +
+		"- { action:'docWrite', nodeId? | path?, content, overwrite? } — overwrite the whole body (like Write). If the node already has a non-empty body you MUST pass overwrite:true (otherwise it is rejected with the existing body size — use docEdit for a targeted change instead).\n" +
 		"- { action:'docEdit', nodeId? | path?, oldString, newString, replaceAll? } — exact string replace (like Edit). oldString must exist and be unique (or set replaceAll:true to replace every occurrence). No-op/rejected if oldString not found.\n\n" +
 		"Rules:\n" +
 		"- expand is for STRUCTURE only (metadata + child tree). To read a node's BODY, use docRead — never expect expand to return body content.\n" +
@@ -223,7 +227,7 @@ export const wikiTool = buildTool({
 						// (bare leading-space indentation gets collapsed by
 						// Markdown and the tree looked flat). Clear to the agent
 						// reading raw text too.
-						treeLines.push(`${"  ".repeat(level - 1)}- ${k.id} [${k.type}] ${k.title}`);
+						treeLines.push(`${"  ".repeat(level - 1)}- ${k.id} [${k.type}] ${k.title} ${formatBodySize(wiki.getNodeDetailSize(k.id))}`);
 						if (level === depth) {
 							// At the cap: count this node's children as hidden
 							// (they won't be walked) so we can warn they exist.
@@ -243,7 +247,8 @@ export const wikiTool = buildTool({
 				const flags = node.flags?.length ? `\nFlags: ${node.flags.join(", ")}` : "";
 				const prov = node.provenance ? `\nProvenance: ${node.provenance}` : "";
 				const summary = node.summary ? `\nSummary: ${node.summary}` : "";
-				return `nodeId: ${node.id}\nTitle: ${node.title}\nType: ${node.type}${prov}${summary}${flags}${subtreeLine}`;
+				const bodySize = `\nBody: ${formatBodySize(wiki.getNodeDetailSize(node.id))}`;
+				return `nodeId: ${node.id}\nTitle: ${node.title}\nType: ${node.type}${prov}${summary}${flags}${bodySize}${subtreeLine}`;
 			}
 
 			case "search": {
@@ -264,7 +269,7 @@ export const wikiTool = buildTool({
 				const sliced = hits.slice(0, limit);
 				if (sliced.length === 0) return `(no wiki nodes match "${input.query}")`;
 				return sliced
-					.map((n) => `${n.id} | ${n.type} | ${n.title}\n   ${n.summary ?? ""}`)
+					.map((n) => `${n.id} | ${n.type} | ${n.title} ${formatBodySize(wiki.getNodeDetailSize(n.id))}\n   ${n.summary ?? ""}`)
 					.join("\n");
 			}
 
@@ -364,6 +369,13 @@ export const wikiTool = buildTool({
 				if (input.content === undefined) return "Error: content required for docWrite";
 				const node = resolveNode(input, anchors, wiki);
 				if (!node) return `Error: node not found (${input.nodeId ?? input.path})`;
+				// Clobber guard: refuse to overwrite a non-empty body unless the
+				// caller explicitly passes overwrite:true. Surfaces the existing
+				// body's size so the agent can decide to clobber or docEdit.
+				const existing = wiki.readNodeDetail(node.id) ?? "";
+				if (existing.length > 0 && !input.overwrite) {
+					return `Error: node "${node.title}" already has a ${existing.length}-char body (${formatBodySize(wiki.getNodeDetailSize(node.id))}). Set overwrite:true to replace it, or use docEdit for a targeted change.`;
+				}
 				try {
 					wiki.writeNodeDetailInScope(anchors, node.id, input.content);
 					return `Document written: ${node.id} | ${node.title}`;

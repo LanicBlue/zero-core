@@ -576,6 +576,49 @@ describe("Wiki action tool", () => {
 		const body = await execWiki({ action: "docRead", path: "Parent/Child" }, ctx());
 		expect(body).toContain("via-path");
 	});
+
+	test("expand shows each node's body size (no body vs has body)", async () => {
+		const parent = createdId(await execWiki({ action: "create", parentId: root(), title: "SizeParent" }, ctx()));
+		const leaf = createdId(await execWiki({ action: "create", parentId: parent, title: "SizeLeaf" }, ctx()));
+		// Leaf has no body yet; parent has none either.
+		let expanded = await execWiki({ action: "expand", nodeId: parent }, ctx());
+		expect(expanded).toMatch(/Body: \(no body\)/);
+		// Give the leaf a body and re-expand — its size must surface.
+		await execWiki({ action: "docWrite", nodeId: leaf, content: "x".repeat(2048) }, ctx());
+		expanded = await execWiki({ action: "expand", nodeId: parent }, ctx());
+		expect(expanded).toMatch(/SizeLeaf.*\(2\.0kb\)/);
+	});
+
+	test("search shows each hit's body size", async () => {
+		const n = createdId(await execWiki({ action: "create", parentId: root(), title: "SearchSize", summary: "sz-sum" }, ctx()));
+		await execWiki({ action: "docWrite", nodeId: n, content: "x".repeat(600) }, ctx());
+		const out = await execWiki({ action: "search", query: "SearchSize" }, ctx());
+		expect(out).toMatch(/SearchSize.*\(600b\)/);
+	});
+
+	test("docWrite refuses to clobber a non-empty body without overwrite:true", async () => {
+		const n = createdId(await execWiki({ action: "create", parentId: root(), title: "Clobber" }, ctx()));
+		await execWiki({ action: "docWrite", nodeId: n, content: "original" }, ctx());
+		const reject = await execWiki({ action: "docWrite", nodeId: n, content: "replacement" }, ctx());
+		expect(reject).toMatch(/already has a .* body/i);
+		expect(reject).toMatch(/overwrite:true/i);
+		// Body unchanged.
+		expect(await execWiki({ action: "docRead", nodeId: n }, ctx())).toContain("original");
+	});
+
+	test("docWrite with overwrite:true replaces a non-empty body", async () => {
+		const n = createdId(await execWiki({ action: "create", parentId: root(), title: "Overwrite" }, ctx()));
+		await execWiki({ action: "docWrite", nodeId: n, content: "original" }, ctx());
+		const ok = await execWiki({ action: "docWrite", nodeId: n, content: "replacement", overwrite: true }, ctx());
+		expect(ok).toMatch(/written/i);
+		expect(await execWiki({ action: "docRead", nodeId: n }, ctx())).toContain("replacement");
+	});
+
+	test("docWrite on an empty node succeeds without overwrite", async () => {
+		const n = createdId(await execWiki({ action: "create", parentId: root(), title: "Fresh" }, ctx()));
+		const ok = await execWiki({ action: "docWrite", nodeId: n, content: "first body" }, ctx());
+		expect(ok).toMatch(/written/i);
+	});
 });
 
 // ---------------------------------------------------------------------------

@@ -39,7 +39,7 @@ import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { WikiNode, WikiNodeTypeGlobal } from "../shared/types.js";
 import { join, resolve, normalize, isAbsolute } from "node:path";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, renameSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, renameSync, statSync } from "node:fs";
 import { ZERO_CORE_DIR } from "../core/config.js";
 
 // ---------------------------------------------------------------------------
@@ -763,6 +763,26 @@ export class WikiStore {
 			return readFileSync(file, "utf-8");
 		} catch {
 			return undefined;
+		}
+	}
+
+	/**
+	 * Return the node's body file size in bytes WITHOUT reading its content.
+	 * 0 when the node has no body document yet (no file / node missing / stat
+	 * error). Used wherever a node is listed so the agent can tell whether a
+	 * body exists (and how large) before deciding to docRead/docWrite — avoids
+	 * both blind full reads and accidental docWrite clobbers. Mirrors the path
+	 * resolution + FS-isolation stance of readNodeDetail.
+	 */
+	getNodeDetailSize(nodeId: string): number {
+		const node = this.get(nodeId);
+		if (!node) return 0;
+		const file = this.diskPathFor(nodeId).detailFile;
+		try {
+			if (!existsSync(file)) return 0;
+			return statSync(file).size;
+		} catch {
+			return 0;
 		}
 	}
 

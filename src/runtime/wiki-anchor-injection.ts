@@ -51,6 +51,19 @@ import type {
 export const DEFAULT_PROJECT_ANCHOR_DEPTH = 2;
 
 /**
+ * Format a node body's byte size for compact display next to a node entry.
+ * 0 (no body file) ⇒ "(no body)"; small ⇒ "(123b)"; else kb/mb. Lets the
+ * agent see at a glance whether a listed node has detail content (and how
+ * much) before deciding to docRead it or guard a docWrite.
+ */
+export function formatBodySize(bytes: number): string {
+	if (!bytes || bytes <= 0) return "(no body)";
+	if (bytes < 1024) return `(${bytes}b)`;
+	if (bytes < 1024 * 1024) return `(${(bytes / 1024).toFixed(1)}kb)`;
+	return `(${(bytes / (1024 * 1024)).toFixed(1)}mb)`;
+}
+
+/**
  * A resolved anchor entry — combines the auto-derived vs free-origin flag with
  * the anchor's injection channel and target node id. `kind` controls how the
  * anchor is rendered (project-subtree outline vs memory index).
@@ -263,7 +276,7 @@ function renderProjectSubtreeOutline(wiki: WikiStore, rootId: string, depth: num
 	const root = wiki.get(rootId);
 	if (!root) return "";
 	const lines: string[] = [];
-	lines.push(`### ${root.title}  [nodeId: ${root.id}]`);
+	lines.push(`### ${root.title}  [nodeId: ${root.id}] ${formatBodySize(wiki.getNodeDetailSize(root.id))}`);
 	if (root.summary) lines.push(`> ${root.summary}`);
 	renderSubtreeChildren(wiki, rootId, 1, depth, lines);
 	return lines.join("\n");
@@ -281,7 +294,8 @@ function renderSubtreeChildren(
 	for (const child of children) {
 		const indent = "  ".repeat(level) + "- ";
 		const summary = child.summary ? ` — ${child.summary}` : "";
-		lines.push(`${indent}${child.title}${summary} [${child.id}]`);
+		const size = formatBodySize(wiki.getNodeDetailSize(child.id));
+		lines.push(`${indent}${child.title}${summary} ${size} [${child.id}]`);
 		renderSubtreeChildren(wiki, child.id, level + 1, maxDepth, lines);
 	}
 }
@@ -302,7 +316,7 @@ function renderMemoryIndex(wiki: WikiStore, rootId: string, depth: number): stri
 		return lines.join("\n");
 	}
 	for (const leaf of leaves) {
-		lines.push(`- ${leaf.title} [${leaf.id}]`);
+		lines.push(`- ${leaf.title} ${formatBodySize(wiki.getNodeDetailSize(leaf.id))} [${leaf.id}]`);
 	}
 	return lines.join("\n");
 }
