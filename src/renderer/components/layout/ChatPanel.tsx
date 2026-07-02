@@ -387,6 +387,17 @@ export default function ChatPanel() {
 	const refreshSessionData = useCallback(async (agentId: string) => {
 		const sessions = await api().sessionsList(agentId);
 		setSessions(agentId, sessions);
+		// Respect a session already activated externally for this agent
+		// (work-trigger jump / project switch set activeSessionId before this
+		// effect runs). Forcing General here would clobber the jump target, the
+		// pull-on-display response would be discarded by its activeSessionId
+		// guard, and the just-sent instruction would stay invisible until the
+		// user manually re-switches. Only fall back to General when no valid
+		// session is active for this agent (plain dropdown pick).
+		const current = useChatStore.getState().activeSessionId;
+		if (current && sessions.some((s: SessionRecord) => s.id === current)) {
+			return;
+		}
 		// M5: agent 载入 → 落 General(非项目单例)。找已有的非项目 session,
 		// 没有则建一个。与 activeProjectId=null 保持一致(切 agent 默认 General)。
 		let general = sessions.find((s: SessionRecord) => !s.context?.projectId);
@@ -471,12 +482,13 @@ export default function ChatPanel() {
 				}
 			}
 			loadMessages(sid, messages);
-			// 自愈 streaming 指示:若后端说该 session 已不在跑,却残留 streaming 标志
-			// (后台报错停止时 agent_end 一旦被丢就会卡住),这里清掉 —— 否则切回该
-			// session 时 Send 一直禁用,"无法继续"。
-			if (payload.isRunning === false) {
-				useChatStore.getState().setIsStreaming(sid, false);
-			}
+			// Mirror server-truth running state both ways. The streaming flag is
+			// otherwise only flipped optimistically by send() — server-initiated
+			// runs (work trigger / cron) have no path to flip it on the renderer,
+			// so after a work-trigger jump the session looked idle. Pull is the
+			// single authoritative checkpoint: isRunning reflects runStates.isBusy,
+			// which sendProjectPrompt sets synchronously before returning.
+			setIsStreaming(sid, !!payload.isRunning);
 			updateContextInfo(sid, {
 				usedTokens: payload.inputTokens ?? 0,
 				contextWindow: payload.contextWindow ?? 128000,
@@ -524,7 +536,13 @@ export default function ChatPanel() {
 		const sid = activeSessionId ?? activeAgentId;
 		addMessage(sid, { id: nextMsgId(), role: "user", text, timestamp: Date.now() });
 		setInput("");
-		setIsStreaming(sid, true);
+		// NOTE: isStreaming is NOT set optimistically here. The server is the
+		// single source of truth for session running state — agent-service
+		// markRunning emits "session_running" when isBusy flips true, which
+		// AppLayout routes to setIsStreaming(sid, true). The button/Stop state
+		// follows that event so chat / cron / work-trigger / recovery all behave
+		// identically. The empty assistant placeholder below is content
+		// scaffolding (the "Thinking…" bubble), independent of the running flag.
 
 		addMessage(sid, {
 			id: nextMsgId(),
@@ -786,12 +804,13 @@ export default function ChatPanel() {
 					disabled={!activeAgentId}
 					rows={1}
 				/>
-				{isStreaming && (
+				{isStreaming ? (
 					<button type="button" onClick={abort} className="btn-abort">Stop</button>
+				) : (
+					<button type="button" onClick={send} disabled={!activeAgentId || !input.trim()}>
+						Send
+					</button>
 				)}
-				<button type="button" onClick={send} disabled={!activeAgentId || !input.trim()}>
-					{isStreaming ? "入队" : "Send"}
-				</button>
 			</div>
 
 			{showArchiveConfirm && (

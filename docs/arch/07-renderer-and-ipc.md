@@ -364,7 +364,8 @@ const handlers: Record<string, (data, key) => void> = {
   thinking_delta: (d, key) => updateThinking(key, d.text),
   tool_start:     (d, key) => addToolCall(key, d.toolName, d.args, d.toolCallId),
   tool_end:       (d, key) => updateToolCall(key, d.toolName, d.isError?"error":"done", d.result, d.toolCallId),
-  agent_end:      (_d, key) => finishStreaming(key),
+  agent_end:      (_d, key) => finishStreaming(key),                     // 运行态终态 → 停
+  session_running: (_d, key) => setIsStreaming(key, true),               // 运行态起点 → 跑(见下)
   retry_attempt:  (d, key) => updateAssistantText(key, `Retrying (${d.attempt}/${d.maxAttempts})...`),
   error:          (d, key) => { setError(key, d.error); updateAssistantText(key, `\nError: ${d.error}`); finishStreaming(key); },
   // —— 交互态(写 interaction-store)——
@@ -387,6 +388,12 @@ const unsubscribe = api().onAgentEvent((data) => {
 - `key = sessionId || currentSessionId || agentId` 的兜底链,让"未指定 session 时也能定位"。
 - `streamingSessions.has(sid)` 判断:如果会话正在流式,session_init **不覆盖**——避免实时事件与初始快照冲突。
 - **事件分三组写三个 store**:chat 流 → chat-store;交互态(todos/ask_user) → interaction-store;工作流通知(requirement/step/verification) → notification-store(+requirement-store refetch)。`message_end` 不携带 usage 字段(见 `runtime/types.ts` 的 MessageEndEvent),权威 token 用量来自独立的 `usage` 事件——这是一个曾经让 React tree 崩的历史 bug 修复点(直接读 `d.usage.inputTokens` 会 throw)。
+
+**运行态:server 权威 + UI 跟随**。`isStreaming`(→ Stop/Send 按键、placeholder 文案)的真相源是后端 `runStates.isBusy`([`agent-service.ts`](../../src/server/agent-service.ts)),UI 只跟随、不乐观预测。两条路径都从 `isBusy` 派生:
+- **事件(live)**:`agent-service.markRunning(sessionId, agentId)` 是"起一轮"的唯一入口,在 `isBusy` 翻 true 的同一刻发 `session_running` 事件 → `setIsStreaming(key, true)`;`agent_end` → `finishStreaming(key)`。覆盖"当前正盯着的 session 状态变化"。`markRunning` 收口了 `sendPrompt` / `sendProjectPrompt`(work 触发)/ 不完整 session 恢复三处原本分散的 `isBusy=true` 写法。
+- **pull-on-display(切过去对齐)**:切到某 session 时 `ChatPanel` 调 `sessionsGetInit` → `setIsStreaming(sid, !!payload.isRunning)`,`isRunning` 读 `isBusy`。覆盖事件已发过却被错过、或切到一个已在跑的 session 的场景。
+- `send()` **不**再乐观 `setIsStreaming(true)`——按键纯粹由服务端事件驱动,因此 chat / cron / work 触发 / recovery 行为完全一致(早期只有 chat 路径有乐观位,服务端发起的 run 在 UI 上看不到"运行中")。
+- **work 触发跳转不被 General 抢占**:跨 agent 触发 work 时 `doTrigger` 同时改 `activeAgentId` + `activeSessionId`,而 `[activeAgentId]` 的 agent-change effect 会调 `refreshSessionData` 落 General —— 旧逻辑会用 `general.id` 覆盖跳转目标,导致 pull-on-display 响应被 `activeSessionId !== sid` 守卫丢弃,刚发的指令在 UI 里看不到(切走再切回才显示)。现在 `refreshSessionData` 加载 session 列表后,若当前 `activeSessionId` 已属于该 agent(work/项目切换外部设的),就保留它,只在无有效 session 时才落 General。指令消息由 `loop.run` 在首次 await 前 `saveToDb()` 同步落库,故 pull 一定能拉到。
 
 ## 5. 关键 UI 组件
 

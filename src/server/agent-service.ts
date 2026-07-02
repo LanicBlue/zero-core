@@ -493,6 +493,23 @@ export class AgentService {
 		return !!this.runStates.get(sessionId)?.isBusy;
 	}
 
+	/**
+	 * Mark a session as running (isBusy=true) and emit the authoritative
+	 * "turn started" signal. The renderer's streaming flag / button state
+	 * follows this event instead of an optimistic UI flag, so every entry
+	 * point — chat sendPrompt, work trigger (sendProjectPrompt), cron, and
+	 * recovery — flips the UI the same way. Mirrors agent_end clearing
+	 * isBusy in handleRuntimeEvent.
+	 */
+	private markRunning(sessionId: string, agentId: string): void {
+		const state = this.runStates.get(sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
+		state.isBusy = true;
+		state.streamingText = "";
+		state.toolCalls = [];
+		this.runStates.set(sessionId, state);
+		this.emit({ type: "session_running", sessionId, agentId });
+	}
+
 	getState(agentId?: string): { isBusy: boolean; streamingText: string; toolCalls: { name: string; status: string }[]; agentId?: string } {
 		if (agentId) {
 			const sessionId = this.activeSessions.get(agentId);
@@ -696,11 +713,7 @@ export class AgentService {
 		}
 		log.agent("Sending prompt to:", agentId, "session:", sessionId, "length:", text.length);
 		this.sessionManager?.trackSessionQueued(sessionId);
-		const state = this.runStates.get(sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
-		state.isBusy = true;
-		state.streamingText = "";
-		state.toolCalls = [];
-		this.runStates.set(sessionId, state);
+		this.markRunning(sessionId, agentId);
 		try {
 			await loop.run(text);
 			log.agent("Prompt completed for:", agentId);
@@ -849,9 +862,7 @@ export class AgentService {
 		// A 方案:上一 turn 未完成(session 正在跑)→ 干净 skip,不丢/不排,不覆盖
 		// in-flight 的流式状态(work 都有重发源:cron/hook/手动重试,skip 比 heap 排队合理)。
 		if (state.isBusy) return { skipped: "busy" };
-		state.isBusy = true;
-		state.streamingText = "";
-		state.toolCalls = [];
+		this.markRunning(sessionId, agentId);
 
 		log.agent("Sending project prompt to:", agentId, "session:", sessionId);
 
@@ -925,11 +936,7 @@ export class AgentService {
 				// as streaming so the user sees the resume in flight; the step
 				// checkpoint determines resume-from, not UI state.
 				this.sessionManager?.trackSessionStreaming(turn.sessionId);
-				const state = this.runStates.get(turn.sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
-				state.isBusy = true;
-				state.streamingText = "";
-				state.toolCalls = [];
-				this.runStates.set(turn.sessionId, state);
+				this.markRunning(turn.sessionId, agentId);
 				log.db(`Recovering agent ${agentId}, session ${turn.sessionId}, phase ${turn.phase}, lastStep=${turn.lastCompletedStepSeq ?? "none"}`);
 				// Fire-and-forget: resume in background so we don't block startup.
 				// Pass the step checkpoint so resume() continues from the next

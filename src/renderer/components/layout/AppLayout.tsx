@@ -146,6 +146,12 @@ export default function AppLayout() {
 			tool_start: (d, key) => addToolCall(key, d.toolName, d.args ? stringify(d.args) : undefined, d.toolCallId),
 			tool_end: (d, key) => updateToolCall(key, d.toolName, d.isError ? "error" : "done", d.result ? stringify(d.result) : undefined, d.toolCallId),
 			agent_end: (_d, key) => finishStreaming(key),
+			// Authoritative "turn started" signal from the server (agent-service
+			// markRunning). The streaming flag follows the server's isBusy, not an
+			// optimistic UI flag — so chat / cron / work-trigger / recovery all flip
+			// the button to Stop uniformly. Global (not in PER_SESSION_PUSH) so a
+			// background session's running state is tracked even when not active.
+			session_running: (_d, key) => useChatStore.getState().setIsStreaming(key, true),
 			retry_attempt: (d, key) => updateAssistantText(key, `Retrying (${d.attempt}/${d.maxAttempts})...`),
 			todos_update: (d) => {
 				// 按 sessionId 路由(同 agent 多 session 不串显)。
