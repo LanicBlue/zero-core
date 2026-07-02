@@ -96,6 +96,22 @@ function toolEnabled(
 	return DEFAULT_ENABLED_TOOLS.has(name);
 }
 
+/**
+ * The domain capability handles (management / wikiStore / requirementStore /
+ * pmService) a session should surface, given a toolPolicy. A handle is included
+ * only when its domain tool(s) are enabled by the policy AND the backing
+ * service is present. Single source for both loop creation and hot config-sync
+ * (applyConfigUpdate) so enabling e.g. Wiki on a RUNNING loop actually injects
+ * wikiStore — otherwise buildToolsSet would enable the tool but CONDITIONAL_TOOLS
+ * (which gates on ctx.wikiStore) would still filter it out.
+ */
+type CapabilityHandles = {
+	management?: unknown;
+	wikiStore?: unknown;
+	requirementStore?: unknown;
+	pmService?: unknown;
+};
+
 // ---------------------------------------------------------------------------
 // Agent Service — supports concurrent multi-agent execution
 // ---------------------------------------------------------------------------
@@ -213,6 +229,11 @@ export class AgentService {
 					toolPolicy: agent.toolPolicy,
 					subagents: agent.subagents,
 					wikiAnchors: agent.wikiAnchors,
+					// Re-inject capability handles for the NEW policy so a tool
+					// enabled mid-flight (e.g. Wiki turned on while the loop is
+					// running) actually surfaces — CONDITIONAL_TOOLS gates on
+					// these ctx fields, not just toolPolicy.
+					capabilities: this.capabilityHandlesFor(agent.toolPolicy),
 				});
 			}
 		});
@@ -361,6 +382,21 @@ export class AgentService {
 	 */
 	getRuntimeTaskTree(sessionId: string): import("../runtime/types.js").TaskInfo[] {
 		return this.loops.get(sessionId)?.getRuntimeTaskTree() ?? [];
+	}
+
+	/**
+	 * Compute the domain capability handles to surface for a toolPolicy. See
+	 * the CapabilityHandles type above for the rationale (single source shared
+	 * by loop creation and hot config-sync).
+	 */
+	private capabilityHandlesFor(policy: SessionConfig["toolPolicy"] | undefined): CapabilityHandles {
+		const on = (name: string): boolean => toolEnabled(policy, name);
+		const caps: CapabilityHandles = {};
+		if (this.management && (on("Project") || on("AgentRegistry") || on("Cron"))) caps.management = this.management;
+		if (this.wikiStore && on("Wiki")) caps.wikiStore = this.wikiStore;
+		if (this.requirementStore && (on("CreateRequirement") || on("CreateRequirementWithDoc") || on("verify"))) caps.requirementStore = this.requirementStore;
+		if (this.pmService && (on("CreateRequirementWithDoc") || on("verify"))) caps.pmService = this.pmService;
+		return caps;
 	}
 	evictSessionFromMemory(sessionId: string): void {
 		// v0.8 (M5): mechanism 3 — close flush. Fire extractor A on the tail
@@ -587,22 +623,11 @@ export class AgentService {
 		// buildToolsSet's enabled-check (toolPolicy.tools → autoApprove →
 		// DEFAULT_ENABLED). Domain tools declare the capability; the matching
 		// service handle is surfaced so CONDITIONAL_TOOLS lets the tool through.
-		const on = (name: string): boolean => toolEnabled(sessionConfig.toolPolicy, name);
-		// management domain → Project / AgentRegistry / Cron
-		if (this.management && (on("Project") || on("AgentRegistry") || on("Cron"))) {
-			(sessionConfig as any).management = this.management;
-		}
-		// wiki → Wiki tool (viewRoot scopes visibility per session)
-		if (this.wikiStore && on("Wiki")) {
-			(sessionConfig as any).wikiStore = this.wikiStore;
-		}
-		// requirement / PM domain → CreateRequirement / CreateRequirementWithDoc / verify
-		if (this.requirementStore && (on("CreateRequirement") || on("CreateRequirementWithDoc") || on("verify"))) {
-			(sessionConfig as any).requirementStore = this.requirementStore;
-		}
-		if (this.pmService && (on("CreateRequirementWithDoc") || on("verify"))) {
-			(sessionConfig as any).pmService = this.pmService;
-		}
+		const caps = this.capabilityHandlesFor(sessionConfig.toolPolicy);
+		if (caps.management) (sessionConfig as any).management = caps.management;
+		if (caps.wikiStore) (sessionConfig as any).wikiStore = caps.wikiStore;
+		if (caps.requirementStore) (sessionConfig as any).requirementStore = caps.requirementStore;
+		if (caps.pmService) (sessionConfig as any).pmService = caps.pmService;
 		// v0.8 (M5): surface the global WikiStore + extractors config onto
 		// EVERY session (memory written by extractor A is global/cross-project,
 		// so even non-project sessions need access). The extraction hook reads

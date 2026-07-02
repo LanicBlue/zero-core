@@ -448,6 +448,16 @@ export class AgentLoop implements AgentRuntime {
 		toolPolicy?: SessionConfig["toolPolicy"];
 		subagents?: SessionConfig["subagents"];
 		wikiAnchors?: SessionConfig["wikiAnchors"];
+		/**
+		 * Capability service handles (management / wikiStore / requirementStore /
+		 * pmService) recomputed by agent-service against the NEW toolPolicy.
+		 * buildToolsSet reads toolPolicy fresh every turn, so without these the
+		 * policy could enable e.g. Wiki on a running loop while toolContext still
+		 * lacks wikiStore → CONDITIONAL_TOOLS filters Wiki out. The caller passes
+		 * the handles it wants surfaced; we mirror them onto the tool context so
+		 * a tool newly enabled by policy actually appears.
+		 */
+		capabilities?: { management?: unknown; wikiStore?: unknown; requirementStore?: unknown; pmService?: unknown };
 	}): void {
 		if (patch.systemPrompt !== undefined && patch.systemPrompt !== this.config.systemPrompt) {
 			this.config.systemPrompt = patch.systemPrompt;
@@ -456,6 +466,22 @@ export class AgentLoop implements AgentRuntime {
 		}
 		if (patch.toolPolicy !== undefined) {
 			this.config.toolPolicy = patch.toolPolicy;
+		}
+		// Sync capability handles to the new policy so a tool enabled mid-flight
+		// (e.g. Wiki turned on while the loop is running) actually surfaces —
+		// CONDITIONAL_TOOLS gates on these ctx fields, not just policy.
+		if (patch.capabilities) {
+			const caps = patch.capabilities;
+			const apply = (field: "management" | "wikiStore" | "requirementStore" | "pmService"): void => {
+				if (caps[field] !== undefined) {
+					(this.toolContext as any)[field] = caps[field];
+					(this.config as any)[field] = caps[field];
+				}
+			};
+			apply("management");
+			apply("wikiStore");
+			apply("requirementStore");
+			apply("pmService");
 		}
 		if (patch.subagents !== undefined) {
 			this.config.subagents = patch.subagents;
