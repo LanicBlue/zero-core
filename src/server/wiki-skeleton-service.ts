@@ -640,8 +640,13 @@ export class WikiSkeletonService {
 	ensureSummary(nodeId: string): string | undefined {
 		const node = this.wiki.get(nodeId);
 		if (!node) return undefined;
-		// Already materialized — nothing to do.
-		if (node.summary && node.summary.trim() !== "") return node.summary;
+		// Already materialized AND clean — nothing to do. A cached summary that
+		// contains U+FFFD replacement chars is garbled (the file was read with
+		// the wrong encoding on a prior materialization) → treat as stale and
+		// recompute so the bad data self-heals on the next expand.
+		if (node.summary && node.summary.trim() !== "" && !node.summary.includes("�")) {
+			return node.summary;
+		}
 		let relPath: string | undefined;
 		if (node.path.startsWith("header:")) relPath = node.path.slice("header:".length);
 		else if (node.path.startsWith("intent:")) relPath = node.path.slice("intent:".length);
@@ -661,7 +666,7 @@ export class WikiSkeletonService {
 
 	private summarizeCodeFile(absPath: string, relPath: string): string | undefined {
 		try {
-			const content = readFileSync(absPath, "utf-8");
+			const content = readFileText(absPath);
 			const lines = content.split(/\r?\n/);
 			const exportsList = extractExports(content);
 			const head = lines.slice(0, 3).join(" / ");
@@ -678,7 +683,7 @@ export class WikiSkeletonService {
 
 	private summarizeDocFile(absPath: string): string | undefined {
 		try {
-			const content = readFileSync(absPath, "utf-8");
+			const content = readFileText(absPath);
 			// First non-empty heading or first paragraph.
 			const heading = content.split(/\r?\n/).find((l) => /^\s*#\s+/.test(l));
 			if (heading) return heading.replace(/^\s*#\s+/, "").trim().slice(0, 200);
@@ -764,6 +769,28 @@ function extractExports(content: string): string[] {
 		while ((m = p.exec(content)) !== null) out.add(m[1]);
 	}
 	return [...out];
+}
+
+/**
+ * Read a source file as text, tolerant of non-UTF-8 encodings. Tries UTF-8
+ * first; if the result contains U+FFFD replacement chars (bytes invalid as
+ * UTF-8 — typically a legacy CJK file saved as GBK on Chinese Windows), falls
+ * back to GBK decoding (Node ships full ICU, so TextDecoder("gbk") is
+ * available). Returns the UTF-8 best-effort if GBK also fails or is
+ * unavailable. Prevents the mojibake ("Bun??Node ??????") that used to show up
+ * in auto-generated code-file summaries.
+ */
+function readFileText(absPath: string): string {
+	const buf = readFileSync(absPath);
+	const utf8 = buf.toString("utf-8");
+	if (!utf8.includes("�")) return utf8;
+	try {
+		const gbk = new TextDecoder("gbk", { fatal: false }).decode(buf);
+		if (!gbk.includes("�")) return gbk;
+	} catch {
+		// TextDecoder("gbk") unavailable (small-ICU Node build) — fall through.
+	}
+	return utf8;
 }
 
 /** Sentinel re-export so callers can resolve project subtree root ids. */

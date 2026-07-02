@@ -42,7 +42,7 @@ import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 import type { WikiStore } from "../../server/wiki-node-store.js";
 import type { WikiNode } from "../../shared/types.js";
-import { formatBodySize, formatNodeId, shortIdOf } from "../wiki-anchor-injection.js";
+import { formatBodySize, formatNodeId, shortIdOf, sanitizeText } from "../wiki-anchor-injection.js";
 
 // ---------------------------------------------------------------------------
 // Helpers — wiki store resolution + anchor scope + node addressing
@@ -279,7 +279,7 @@ export const wikiTool = buildTool({
 						// Child line carries the subtree-abstract summary so expand
 						// is more than a flat directory listing (summary = the
 						// node's subtree abstract per the Wiki node semantics).
-						const childSummary = k.summary ? ` — ${k.summary}` : "";
+						const childSummary = k.summary ? ` — ${sanitizeText(k.summary)}` : "";
 						treeLines.push(`${"  ".repeat(level - 1)}- ${formatNodeId(k.id)} [${k.type}] ${k.title}${childSummary} ${formatBodySize(wiki.getNodeDetailSize(k.id))}`);
 						if (level === depth) {
 							// At the cap: count this node's children as hidden
@@ -299,7 +299,7 @@ export const wikiTool = buildTool({
 					: "\nSubtree: (no children)";
 				const flags = node.flags?.length ? `\nFlags: ${node.flags.join(", ")}` : "";
 				const prov = node.provenance ? `\nProvenance: ${node.provenance}` : "";
-				const summary = node.summary ? `\nSummary: ${node.summary}` : "";
+				const summary = node.summary ? `\nSummary: ${sanitizeText(node.summary)}` : "";
 				const bodySize = `\nBody: ${formatBodySize(wiki.getNodeDetailSize(node.id))}`;
 				return `nodeId: ${formatNodeId(node.id)}\nTitle: ${node.title}\nType: ${node.type}${prov}${summary}${flags}${bodySize}${subtreeLine}`;
 			}
@@ -322,7 +322,7 @@ export const wikiTool = buildTool({
 				const sliced = hits.slice(0, limit);
 				if (sliced.length === 0) return `(no wiki nodes match "${input.query}")`;
 				return sliced
-					.map((n) => `${formatNodeId(n.id)} | ${n.type} | ${n.title} ${formatBodySize(wiki.getNodeDetailSize(n.id))}\n   ${n.summary ?? ""}`)
+					.map((n) => `${formatNodeId(n.id)} | ${n.type} | ${n.title} ${formatBodySize(wiki.getNodeDetailSize(n.id))}\n   ${sanitizeText(n.summary)}`)
 					.join("\n");
 			}
 

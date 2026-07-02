@@ -88,6 +88,19 @@ export function formatNodeId(nodeId: string): string {
 }
 
 /**
+ * Strip U+FFFD replacement chars (mojibake from a non-UTF-8 source file read
+ * with the wrong encoding) so the agent never sees garbled summary text. Runs
+ * of replacement chars are removed; surrounding whitespace is collapsed. This
+ * is a render-time safety net on top of the root-cause fix in
+ * wiki-skeleton-service.readFileText + ensureSummary self-heal — it covers
+ * stale rows that haven't been recomputed yet.
+ */
+export function sanitizeText(s: string | undefined): string {
+	if (!s) return "";
+	return s.replace(/�+/g, "").replace(/\s{2,}/g, " ").trim();
+}
+
+/**
  * A resolved anchor entry — combines the auto-derived vs free-origin flag with
  * the anchor's injection channel and target node id. `kind` controls how the
  * anchor is rendered (project-subtree outline vs memory index).
@@ -304,7 +317,7 @@ function renderProjectSubtreeOutline(wiki: WikiStore, rootId: string, depth: num
 	if (!root) return "";
 	const lines: string[] = [];
 	lines.push(`### ${root.title}  ${formatNodeId(root.id)} ${formatBodySize(wiki.getNodeDetailSize(root.id))}`);
-	if (root.summary) lines.push(`> ${root.summary}`);
+	if (root.summary) lines.push(`> ${sanitizeText(root.summary)}`);
 	renderSubtreeChildren(wiki, rootId, 1, depth, lines);
 	return lines.join("\n");
 }
@@ -320,7 +333,7 @@ function renderSubtreeChildren(
 	const children = wiki.getChildren(parentId);
 	for (const child of children) {
 		const indent = "  ".repeat(level) + "- ";
-		const summary = child.summary ? ` — ${child.summary}` : "";
+		const summary = child.summary ? ` — ${sanitizeText(child.summary)}` : "";
 		const size = formatBodySize(wiki.getNodeDetailSize(child.id));
 		lines.push(`${indent}${child.title}${summary} ${size} ${formatNodeId(child.id)}`);
 		renderSubtreeChildren(wiki, child.id, level + 1, maxDepth, lines);

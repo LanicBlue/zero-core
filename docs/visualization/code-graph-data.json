@@ -2286,12 +2286,13 @@
 		},
 		{
 			"path": "src/runtime/wiki-anchor-injection.ts",
-			"lines": 371,
+			"lines": 384,
 			"dir": "src/runtime",
 			"exports": [
 				"formatBodySize",
 				"shortIdOf",
 				"formatNodeId",
+				"sanitizeText",
 				"resolveAnchors",
 				"anchorNodeIds",
 				"renderSystemAnchors",
@@ -2305,17 +2306,18 @@
 				"src/runtime/wiki-anchor-injection.ts/formatBodySize:60",
 				"src/runtime/wiki-anchor-injection.ts/shortIdOf:75",
 				"src/runtime/wiki-anchor-injection.ts/formatNodeId:86",
-				"src/runtime/wiki-anchor-injection.ts/resolveAnchors:123",
-				"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:197",
-				"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:201",
-				"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:213",
-				"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:248",
-				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:278",
-				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:302",
-				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:312",
-				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:335",
-				"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:351",
-				"src/runtime/wiki-anchor-injection.ts/visit:353"
+				"src/runtime/wiki-anchor-injection.ts/sanitizeText:98",
+				"src/runtime/wiki-anchor-injection.ts/resolveAnchors:136",
+				"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:210",
+				"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:214",
+				"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:226",
+				"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:261",
+				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:291",
+				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:315",
+				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:325",
+				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:348",
+				"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:364",
+				"src/runtime/wiki-anchor-injection.ts/visit:366"
 			],
 			"description": ""
 		},
@@ -4893,7 +4895,7 @@
 		},
 		{
 			"path": "src/server/wiki-skeleton-service.ts",
-			"lines": 794,
+			"lines": 821,
 			"dir": "src/server",
 			"exports": [
 				"WikiSkeletonService.buildSkeleton",
@@ -4938,19 +4940,20 @@
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureDirectoryChain:576",
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.findHeader:614",
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureSummary:640",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:662",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:679",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:692",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:697",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:706",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:710",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:716",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:723",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:684",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:697",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:702",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:711",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:715",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:721",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728",
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.indexAdd:418",
-				"src/server/wiki-skeleton-service.ts/extOf:740",
-				"src/server/wiki-skeleton-service.ts/basenameOf:745",
-				"src/server/wiki-skeleton-service.ts/extractExports:750",
-				"src/server/wiki-skeleton-service.ts/walkWorkspace:773"
+				"src/server/wiki-skeleton-service.ts/extOf:745",
+				"src/server/wiki-skeleton-service.ts/basenameOf:750",
+				"src/server/wiki-skeleton-service.ts/extractExports:755",
+				"src/server/wiki-skeleton-service.ts/readFileText:783",
+				"src/server/wiki-skeleton-service.ts/walkWorkspace:800"
 			],
 			"description": ""
 		},
@@ -5953,8 +5956,8 @@
 			"signature": "method applyConfigUpdate(patch: {\r\n\t\tsystemPrompt?: string;\r\n\t\ttoolPolicy?: SessionConfig[\"toolPolicy\"];\r\n\t\tsubagents?: SessionConfig[\"subagents\"];\r\n\t\twikiAnchors?: SessionConfig[\"wikiAnchors\"];\r\n\t\t/**\r\n\t\t * Capability service handles (management / wikiStore / requirementStore /\r\n\t\t * pmService) recomputed by agent-service against the NEW toolPolicy.\r\n\t\t * buildToolsSet reads toolPolicy fresh every turn, so without these the\r\n\t\t * policy could enable e.g. Wiki on a running loop while toolContext still\r\n\t\t * lacks wikiStore → CONDITIONAL_TOOLS filters Wiki out. The caller passes\r\n\t\t * the handles it wants surfaced; we mirror them onto the tool context so\r\n\t\t * a tool newly enabled by policy actually appears.\r\n\t\t */\r\n\t\tcapabilities?: { management?: unknown; wikiStore?: unknown; requirementStore?: unknown; pmService?: unknown };\r\n\t})",
 			"description": "v0.8 (delegation refactor): hot-apply an agent-config update to a RUNNING\r",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/resolveAnchors:123",
-				"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:197"
+				"src/runtime/wiki-anchor-injection.ts/resolveAnchors:136",
+				"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:210"
 			]
 		},
 		{
@@ -5991,7 +5994,7 @@
 				"src/runtime/provider-factory.ts/resolveModel:42",
 				"src/runtime/agent-loop.ts/AgentLoop.buildTools:705",
 				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:717",
-				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:278",
+				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:291",
 				"src/runtime/agent-loop.ts/AgentLoop.resolveCurrentTask:765",
 				"src/runtime/context-message.ts/buildContextMessage:36",
 				"src/runtime/tools/todo-write.ts/renderTodosContext:62",
@@ -12109,6 +12112,7 @@
 			"signature": "fn (parentId: string, level: number)",
 			"description": "",
 			"callees": [
+				"src/runtime/wiki-anchor-injection.ts/sanitizeText:98",
 				"src/runtime/wiki-anchor-injection.ts/formatNodeId:86",
 				"src/runtime/wiki-anchor-injection.ts/formatBodySize:60",
 				"src/runtime/tools/wiki-tool.ts/walk:269"
@@ -12460,12 +12464,25 @@
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/resolveAnchors:123",
+			"id": "src/runtime/wiki-anchor-injection.ts/sanitizeText:98",
+			"name": "sanitizeText",
+			"kind": "function",
+			"file": "src/runtime/wiki-anchor-injection.ts",
+			"line": 98,
+			"endLine": 101,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "function sanitizeText(s: string | undefined)",
+			"description": "Strip U+FFFD replacement chars (mojibake from a non-UTF-8 source file read",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/wiki-anchor-injection.ts/resolveAnchors:136",
 			"name": "resolveAnchors",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 123,
-			"endLine": 194,
+			"line": 136,
+			"endLine": 207,
 			"statementCount": 14,
 			"exported": true,
 			"signature": "function resolveAnchors(opts: {\n\twiki: WikiStore;\n\tagentId: string;\n\tcontextBundle?: SessionContextBundle;\n\twikiAnchors?: AgentRecord[\"wikiAnchors\"];\n})",
@@ -12473,17 +12490,17 @@
 			"callees": [
 				"src/server/wiki-node-store.ts/memoryAgentRootId:315",
 				"src/server/wiki-node-store.ts/projectSubtreeRootId:119",
-				"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:201",
-				"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:213"
+				"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:214",
+				"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:226"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/anchorNodeIds:197",
+			"id": "src/runtime/wiki-anchor-injection.ts/anchorNodeIds:210",
 			"name": "anchorNodeIds",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 197,
-			"endLine": 199,
+			"line": 210,
+			"endLine": 212,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function anchorNodeIds(anchors: ResolvedAnchor[])",
@@ -12491,12 +12508,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:201",
+			"id": "src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:214",
 			"name": "classifyAnchorKind",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 201,
-			"endLine": 211,
+			"line": 214,
+			"endLine": 224,
 			"statementCount": 9,
 			"exported": false,
 			"signature": "function classifyAnchorKind(nodeId: string, node: WikiNode | undefined)",
@@ -12504,12 +12521,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/dedupeAnchors:213",
+			"id": "src/runtime/wiki-anchor-injection.ts/dedupeAnchors:226",
 			"name": "dedupeAnchors",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 213,
-			"endLine": 231,
+			"line": 226,
+			"endLine": 244,
 			"statementCount": 7,
 			"exported": false,
 			"signature": "function dedupeAnchors(anchors: ResolvedAnchor[])",
@@ -12517,44 +12534,44 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:248",
+			"id": "src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:261",
 			"name": "renderSystemAnchors",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 248,
-			"endLine": 269,
+			"line": 261,
+			"endLine": 282,
 			"statementCount": 15,
 			"exported": true,
 			"signature": "function renderSystemAnchors(opts: {\n\twiki: WikiStore;\n\tanchors: ResolvedAnchor[];\n})",
 			"description": "Render the system-channel anchors as a single system-prompt section. Output",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:302",
-				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:335"
+				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:315",
+				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:348"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/renderContextAnchors:278",
+			"id": "src/runtime/wiki-anchor-injection.ts/renderContextAnchors:291",
 			"name": "renderContextAnchors",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 278,
-			"endLine": 295,
+			"line": 291,
+			"endLine": 308,
 			"statementCount": 13,
 			"exported": true,
 			"signature": "function renderContextAnchors(opts: {\n\twiki: WikiStore;\n\tanchors: ResolvedAnchor[];\n})",
 			"description": "Render context-channel anchors as a single text block for the PreLLMCall",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:302",
-				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:335"
+				"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:315",
+				"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:348"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:302",
+			"id": "src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:315",
 			"name": "renderProjectSubtreeOutline",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 302,
-			"endLine": 310,
+			"line": 315,
+			"endLine": 323,
 			"statementCount": 9,
 			"exported": false,
 			"signature": "function renderProjectSubtreeOutline(wiki: WikiStore, rootId: string, depth: number)",
@@ -12562,71 +12579,73 @@
 			"callees": [
 				"src/runtime/wiki-anchor-injection.ts/formatNodeId:86",
 				"src/runtime/wiki-anchor-injection.ts/formatBodySize:60",
-				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:312"
+				"src/runtime/wiki-anchor-injection.ts/sanitizeText:98",
+				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:325"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:312",
+			"id": "src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:325",
 			"name": "renderSubtreeChildren",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 312,
-			"endLine": 328,
+			"line": 325,
+			"endLine": 341,
 			"statementCount": 9,
 			"exported": false,
 			"signature": "function renderSubtreeChildren(wiki: WikiStore, parentId: string, level: number, maxDepth: number, lines: string[])",
 			"description": "",
 			"callees": [
+				"src/runtime/wiki-anchor-injection.ts/sanitizeText:98",
 				"src/runtime/wiki-anchor-injection.ts/formatBodySize:60",
 				"src/runtime/wiki-anchor-injection.ts/formatNodeId:86",
-				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:312"
+				"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:325"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:335",
+			"id": "src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:348",
 			"name": "renderMemoryIndex",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 335,
-			"endLine": 349,
+			"line": 348,
+			"endLine": 362,
 			"statementCount": 12,
 			"exported": false,
 			"signature": "function renderMemoryIndex(wiki: WikiStore, rootId: string, depth: number)",
 			"description": "Memory anchor render — MEMORY.md-style index: each memory leaf is one",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:351",
+				"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:364",
 				"src/runtime/wiki-anchor-injection.ts/formatBodySize:60",
 				"src/runtime/wiki-anchor-injection.ts/formatNodeId:86"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:351",
+			"id": "src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:364",
 			"name": "collectMemoryLeaves",
 			"kind": "function",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 351,
-			"endLine": 367,
+			"line": 364,
+			"endLine": 380,
 			"statementCount": 12,
 			"exported": false,
 			"signature": "function collectMemoryLeaves(wiki: WikiStore, rootId: string, maxDepth: number)",
 			"description": "",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/visit:353"
+				"src/runtime/wiki-anchor-injection.ts/visit:366"
 			]
 		},
 		{
-			"id": "src/runtime/wiki-anchor-injection.ts/visit:353",
+			"id": "src/runtime/wiki-anchor-injection.ts/visit:366",
 			"name": "visit",
 			"kind": "arrow",
 			"file": "src/runtime/wiki-anchor-injection.ts",
-			"line": 353,
-			"endLine": 364,
+			"line": 366,
+			"endLine": 377,
 			"statementCount": 8,
 			"exported": false,
 			"signature": "fn (id: string, level: number)",
 			"description": "",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/visit:353"
+				"src/runtime/wiki-anchor-injection.ts/visit:366"
 			]
 		},
 		{
@@ -22631,9 +22650,9 @@
 			"signature": "function createWikiRouter(deps: {\r\n\twikiStore: WikiStore;\r\n\tagentStore: AgentStore;\r\n\t/** v0.8 §2.13: lazy summary materialization on expand (optional). */\r\n\tarchivistService?: import(\"./wiki-skeleton-service.js\").WikiSkeletonService;\r\n})",
 			"description": "Build the 3 wiki-tree endpoints (list-by-anchors / nodes/:id/detail / search).\r",
 			"callees": [
-				"src/runtime/wiki-anchor-injection.ts/resolveAnchors:123",
-				"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:248",
-				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:278",
+				"src/runtime/wiki-anchor-injection.ts/resolveAnchors:136",
+				"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:261",
+				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:291",
 				"src/server/wiki-router.ts/tok:137"
 			]
 		},
@@ -22734,7 +22753,7 @@
 			"signature": "method buildSkeleton(projectId: string)",
 			"description": "Scan a project's main branch and update its wiki subtree incrementally.",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:723",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728",
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
 			]
 		},
@@ -22750,7 +22769,7 @@
 			"signature": "method rescanProjectFull(projectId: string)",
 			"description": "Periodic full rescan — re-walks the workspace and refreshes every wiki",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:723",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728",
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
 			]
 		},
@@ -22766,7 +22785,7 @@
 			"signature": "method rebuildProjectSubtree(projectId: string)",
 			"description": "Clean rebuild — drop the project's entire wiki subtree + scan cursor,",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:723",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728",
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.rescanProjectFull:231"
 			]
 		},
@@ -22829,8 +22848,8 @@
 			"signature": "method detectDivergence(projectId: string)",
 			"description": "Detect wiki-intent ↔ code-structure divergence:",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:706",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:710"
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:711",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:715"
 			]
 		},
 		{
@@ -22845,13 +22864,13 @@
 			"signature": "method ingestFiles(projectId: string, workspaceDir: string, files: string[])",
 			"description": "",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:716",
-				"src/server/wiki-skeleton-service.ts/extOf:740",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:721",
+				"src/server/wiki-skeleton-service.ts/extOf:745",
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureDirectoryChain:576",
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.findHeader:614",
-				"src/server/wiki-skeleton-service.ts/basenameOf:745",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:692",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:697"
+				"src/server/wiki-skeleton-service.ts/basenameOf:750",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:697",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:702"
 			]
 		},
 		{
@@ -22886,51 +22905,54 @@
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
 			"line": 640,
-			"endLine": 660,
+			"endLine": 665,
 			"statementCount": 22,
 			"exported": true,
 			"signature": "method ensureSummary(nodeId: string)",
 			"description": "Lazily compute + persist a node's rich summary on first expand. Scan",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:662",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:679"
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:684"
 			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:662",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667",
 			"name": "WikiSkeletonService.summarizeCodeFile",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 662,
-			"endLine": 677,
+			"line": 667,
+			"endLine": 682,
 			"statementCount": 12,
 			"exported": true,
 			"signature": "method summarizeCodeFile(absPath: string, relPath: string)",
 			"description": "",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/extractExports:750"
+				"src/server/wiki-skeleton-service.ts/readFileText:783",
+				"src/server/wiki-skeleton-service.ts/extractExports:755"
 			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:679",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:684",
 			"name": "WikiSkeletonService.summarizeDocFile",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 679,
-			"endLine": 690,
+			"line": 684,
+			"endLine": 695,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method summarizeDocFile(absPath: string)",
 			"description": "",
-			"callees": []
+			"callees": [
+				"src/server/wiki-skeleton-service.ts/readFileText:783"
+			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:692",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:697",
 			"name": "WikiSkeletonService.classifyIntentDoc",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 692,
-			"endLine": 695,
+			"line": 697,
+			"endLine": 700,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method classifyIntentDoc(relPath: string)",
@@ -22938,27 +22960,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:697",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:702",
 			"name": "WikiSkeletonService.lookupRequirementId",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 697,
-			"endLine": 704,
+			"line": 702,
+			"endLine": 709,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method lookupRequirementId(projectId: string, relPath: string)",
 			"description": "",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/basenameOf:745"
+				"src/server/wiki-skeleton-service.ts/basenameOf:750"
 			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:706",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:711",
 			"name": "WikiSkeletonService.nodeReferences",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 706,
-			"endLine": 708,
+			"line": 711,
+			"endLine": 713,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method nodeReferences(node: WikiNode, targetId: string)",
@@ -22966,12 +22988,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:710",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:715",
 			"name": "WikiSkeletonService.sharesRequirement",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 710,
-			"endLine": 714,
+			"line": 715,
+			"endLine": 719,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method sharesRequirement(a: WikiNode, b: WikiNode)",
@@ -22979,12 +23001,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:716",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:721",
 			"name": "WikiSkeletonService.isIgnoredPath",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 716,
-			"endLine": 721,
+			"line": 721,
+			"endLine": 726,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method isIgnoredPath(relPath: string)",
@@ -22992,12 +23014,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:723",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728",
 			"name": "WikiSkeletonService.emptyResult",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 723,
-			"endLine": 733,
+			"line": 728,
+			"endLine": 738,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method emptyResult(projectId: string, note: string)",
@@ -23018,12 +23040,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/extOf:740",
+			"id": "src/server/wiki-skeleton-service.ts/extOf:745",
 			"name": "extOf",
 			"kind": "function",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 740,
-			"endLine": 743,
+			"line": 745,
+			"endLine": 748,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "function extOf(p: string)",
@@ -23031,12 +23053,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/basenameOf:745",
+			"id": "src/server/wiki-skeleton-service.ts/basenameOf:750",
 			"name": "basenameOf",
 			"kind": "function",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 745,
-			"endLine": 748,
+			"line": 750,
+			"endLine": 753,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "function basenameOf(p: string)",
@@ -23044,12 +23066,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/extractExports:750",
+			"id": "src/server/wiki-skeleton-service.ts/extractExports:755",
 			"name": "extractExports",
 			"kind": "function",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 750,
-			"endLine": 767,
+			"line": 755,
+			"endLine": 772,
 			"statementCount": 7,
 			"exported": false,
 			"signature": "function extractExports(content: string)",
@@ -23057,18 +23079,31 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/walkWorkspace:773",
+			"id": "src/server/wiki-skeleton-service.ts/readFileText:783",
+			"name": "readFileText",
+			"kind": "function",
+			"file": "src/server/wiki-skeleton-service.ts",
+			"line": 783,
+			"endLine": 794,
+			"statementCount": 9,
+			"exported": false,
+			"signature": "function readFileText(absPath: string)",
+			"description": "Read a source file as text, tolerant of non-UTF-8 encodings. Tries UTF-8",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki-skeleton-service.ts/walkWorkspace:800",
 			"name": "walkWorkspace",
 			"kind": "function",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 773,
-			"endLine": 793,
+			"line": 800,
+			"endLine": 820,
 			"statementCount": 17,
 			"exported": true,
 			"signature": "function walkWorkspace(rootDir: string, accumulator: string[] = [], prefix = \"\")",
 			"description": "Convenience for readdir-based fallback scans (when git is unavailable).",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/walkWorkspace:773"
+				"src/server/wiki-skeleton-service.ts/walkWorkspace:800"
 			]
 		},
 		{
@@ -24415,11 +24450,11 @@
 		"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:424": [
 			"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:424"
 		],
-		"src/runtime/wiki-anchor-injection.ts/resolveAnchors:123": [
+		"src/runtime/wiki-anchor-injection.ts/resolveAnchors:136": [
 			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:446",
 			"src/server/wiki-router.ts/createWikiRouter:63"
 		],
-		"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:197": [
+		"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:210": [
 			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:446"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.executeStream:547": [
@@ -24446,7 +24481,7 @@
 		"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:717": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:547"
 		],
-		"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:278": [
+		"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:291": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:547",
 			"src/server/wiki-router.ts/createWikiRouter:63"
 		],
@@ -25268,17 +25303,22 @@
 		"src/runtime/tools/wiki-tool.ts/resolveNodeIdArg:82": [
 			"src/runtime/tools/wiki-tool.ts/resolveNode:131"
 		],
+		"src/runtime/wiki-anchor-injection.ts/sanitizeText:98": [
+			"src/runtime/tools/wiki-tool.ts/walk:269",
+			"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:315",
+			"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:325"
+		],
 		"src/runtime/wiki-anchor-injection.ts/formatNodeId:86": [
 			"src/runtime/tools/wiki-tool.ts/walk:269",
-			"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:302",
-			"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:312",
-			"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:335"
+			"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:315",
+			"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:325",
+			"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:348"
 		],
 		"src/runtime/wiki-anchor-injection.ts/formatBodySize:60": [
 			"src/runtime/tools/wiki-tool.ts/walk:269",
-			"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:302",
-			"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:312",
-			"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:335"
+			"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:315",
+			"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:325",
+			"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:348"
 		],
 		"src/runtime/tools/wiki-tool.ts/walk:269": [
 			"src/runtime/tools/wiki-tool.ts/walk:269"
@@ -25301,11 +25341,11 @@
 			"src/runtime/turn-recorder.ts/TurnRecorder.sealStep:175"
 		],
 		"src/server/wiki-node-store.ts/memoryAgentRootId:315": [
-			"src/runtime/wiki-anchor-injection.ts/resolveAnchors:123",
+			"src/runtime/wiki-anchor-injection.ts/resolveAnchors:136",
 			"src/server/wiki-node-store.ts/WikiStore.ensureMemoryAgentRoot:1420"
 		],
 		"src/server/wiki-node-store.ts/projectSubtreeRootId:119": [
-			"src/runtime/wiki-anchor-injection.ts/resolveAnchors:123",
+			"src/runtime/wiki-anchor-injection.ts/resolveAnchors:136",
 			"src/server/wiki-node-store.ts/WikiStore.getByProjectPath:439",
 			"src/server/wiki-node-store.ts/WikiStore.ensureProjectSubtree:968",
 			"src/server/wiki-node-store.ts/WikiStore.deleteByProject:992",
@@ -25314,30 +25354,30 @@
 			"src/server/wiki-node-store.ts/WikiStore.upsertProjectNode:1229",
 			"src/server/wiki-node-store.ts/WikiStore.createMemoryNode:1340"
 		],
-		"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:201": [
-			"src/runtime/wiki-anchor-injection.ts/resolveAnchors:123"
+		"src/runtime/wiki-anchor-injection.ts/classifyAnchorKind:214": [
+			"src/runtime/wiki-anchor-injection.ts/resolveAnchors:136"
 		],
-		"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:213": [
-			"src/runtime/wiki-anchor-injection.ts/resolveAnchors:123"
+		"src/runtime/wiki-anchor-injection.ts/dedupeAnchors:226": [
+			"src/runtime/wiki-anchor-injection.ts/resolveAnchors:136"
 		],
-		"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:302": [
-			"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:248",
-			"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:278"
+		"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:315": [
+			"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:261",
+			"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:291"
 		],
-		"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:335": [
-			"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:248",
-			"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:278"
+		"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:348": [
+			"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:261",
+			"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:291"
 		],
-		"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:312": [
-			"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:302",
-			"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:312"
+		"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:325": [
+			"src/runtime/wiki-anchor-injection.ts/renderProjectSubtreeOutline:315",
+			"src/runtime/wiki-anchor-injection.ts/renderSubtreeChildren:325"
 		],
-		"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:351": [
-			"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:335"
+		"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:364": [
+			"src/runtime/wiki-anchor-injection.ts/renderMemoryIndex:348"
 		],
-		"src/runtime/wiki-anchor-injection.ts/visit:353": [
-			"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:351",
-			"src/runtime/wiki-anchor-injection.ts/visit:353"
+		"src/runtime/wiki-anchor-injection.ts/visit:366": [
+			"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:364",
+			"src/runtime/wiki-anchor-injection.ts/visit:366"
 		],
 		"src/server/agent-service.ts/AgentService.invalidateLoops:1361": [
 			"src/server/agent-service.ts/AgentService.setWorkspaceDir:184",
@@ -26804,7 +26844,7 @@
 		"src/server/wiki-node-store.ts/deriveTypeFromPosition:1685": [
 			"src/server/wiki-node-store.ts/rowToWikiNode:1640"
 		],
-		"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:248": [
+		"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:261": [
 			"src/server/wiki-router.ts/createWikiRouter:63"
 		],
 		"src/server/wiki-router.ts/tok:137": [
@@ -26818,7 +26858,7 @@
 		"src/server/wiki-scan-cursor-store.ts/WikiScanCursorStore.delete:107": [
 			"src/server/wiki-scan-cursor-store.ts/WikiScanCursorStore.delete:107"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:723": [
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.buildSkeleton:177",
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.rescanProjectFull:231",
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.rebuildProjectSubtree:264"
@@ -26843,16 +26883,16 @@
 		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:323": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:323"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:706": [
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:711": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.detectDivergence:340"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:710": [
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:715": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.detectDivergence:340"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:716": [
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:721": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
 		],
-		"src/server/wiki-skeleton-service.ts/extOf:740": [
+		"src/server/wiki-skeleton-service.ts/extOf:745": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
 		],
 		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureDirectoryChain:576": [
@@ -26861,27 +26901,31 @@
 		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.findHeader:614": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
 		],
-		"src/server/wiki-skeleton-service.ts/basenameOf:745": [
+		"src/server/wiki-skeleton-service.ts/basenameOf:750": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390",
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:697"
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:702"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:692": [
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:697": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:697": [
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:702": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:662": [
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureSummary:640"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:679": [
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:684": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureSummary:640"
 		],
-		"src/server/wiki-skeleton-service.ts/extractExports:750": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:662"
+		"src/server/wiki-skeleton-service.ts/readFileText:783": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667",
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:684"
 		],
-		"src/server/wiki-skeleton-service.ts/walkWorkspace:773": [
-			"src/server/wiki-skeleton-service.ts/walkWorkspace:773"
+		"src/server/wiki-skeleton-service.ts/extractExports:755": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667"
+		],
+		"src/server/wiki-skeleton-service.ts/walkWorkspace:800": [
+			"src/server/wiki-skeleton-service.ts/walkWorkspace:800"
 		],
 		"src/server/workflow-context-hook.ts/getWikiBaseline:41": [
 			"src/server/workflow-context-hook.ts/registerWorkflowContextHook:68"
