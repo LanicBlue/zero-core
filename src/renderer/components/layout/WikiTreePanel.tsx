@@ -25,7 +25,7 @@
 // src/renderer/components/layout/ — 被 MiddlePanel 作为下段嵌入。
 //
 import React, { useEffect, useState } from "react";
-import { useChatStore } from "../../store/chat-store.js";
+import { useChatStore, selectActiveAgentId } from "../../store/chat-store.js";
 import { useWikiStore } from "../../store/wiki-store.js";
 import WikiTree from "../wiki/WikiTree.js";
 import type { ResolvedAnchorView } from "../../../shared/types.js";
@@ -48,7 +48,7 @@ const INJECT_TITLE: Record<ResolvedAnchorView["inject"], string> = {
 };
 
 export default function WikiTreePanel() {
-	const activeAgentId = useChatStore((s) => s.activeAgentId);
+	const activeAgentId = useChatStore(selectActiveAgentId);
 	const activeSessionId = useChatStore((s) => s.activeSessionId);
 	const sessionsByAgent = useChatStore((s) => s.sessionsByAgent);
 

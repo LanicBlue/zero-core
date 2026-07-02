@@ -26,7 +26,7 @@
 // - 保持 UI 响应性
 //
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { useChatStore, selectActiveMessages, selectIsStreaming, selectLastError, selectContextInfo, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
+import { useChatStore, selectActiveMessages, selectIsStreaming, selectLastError, selectContextInfo, selectActiveAgentId, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
 import { useProjectStore } from "../../store/project-store.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
@@ -349,12 +349,19 @@ function ErrorBanner() {
 
 export default function ChatPanel() {
 	const {
-				activeAgentId, activeSessionId, activeProjectId, sessionsByAgent,
-				addMessage, finishStreaming, setActiveAgent,
+				activeSessionId, activeProjectId, sessionsByAgent,
+				addMessage, finishStreaming,
 				setSessions, setActiveSessionId, setActiveProject, clearMessages,
 				editMessage, deleteMessage, setIsStreaming,
 				updateContextInfo, loadMessages,
 			} = useChatStore();
+	// activeAgentId is DERIVED from activeSessionId (single source of truth) —
+	// see selectActiveAgentId. Kept as a local name so the ~20 read sites are
+	// unchanged. pendingAgentId drives the agent-load effect (user picked an
+	// agent but no session has landed yet).
+	const activeAgentId = useChatStore(selectActiveAgentId);
+	const pendingAgentId = useChatStore((s) => s.pendingAgentId);
+	const selectAgent = useChatStore((s) => s.selectAgent);
 	const messages = useChatStore(selectActiveMessages);
 	const isStreaming = useChatStore(selectIsStreaming);
 	const contextInfo = useChatStore(selectContextInfo);
@@ -438,16 +445,23 @@ export default function ChatPanel() {
 	// 初次挂载拉一次 projects(供 project 选择器)。
 	useEffect(() => { fetchProjects(); }, [fetchProjects]);
 
-	// Load message history + sessions when agent changes
+	// Load sessions + land one when the USER picks an agent (pendingAgentId).
+	// Keyed on pendingAgentId — NOT activeAgentId — because activeAgentId is now
+	// derived from activeSessionId, and a programmatic jump (work trigger /
+	// discuss) sets activeSessionId directly without going through selectAgent.
+	// Keying on the derived value would either not fire (session's agentId
+	// unchanged) or fire for the wrong reason and land General, clobbering the
+	// jump target. pendingAgentId is set ONLY by selectAgent (the dropdown),
+	// which is exactly when we want to load + land General.
 	useEffect(() => {
-		if (!activeAgentId) return;
-		if (loadedAgentRef.current === activeAgentId) return;
-		loadedAgentRef.current = activeAgentId;
+		if (!pendingAgentId) return;
+		if (loadedAgentRef.current === pendingAgentId) return;
+		loadedAgentRef.current = pendingAgentId;
 
-		refreshSessionData(activeAgentId).catch(() => {
+		refreshSessionData(pendingAgentId).catch(() => {
 			// session_init event may still arrive later
 		});
-	}, [activeAgentId]);
+	}, [pendingAgentId]);
 
 	// ─── Pull-on-display ───────────────────────────────────────────
 	// 切到某 session 时主动拉完整 init payload(messages + tokens + todos + 未决
@@ -533,7 +547,11 @@ export default function ChatPanel() {
 			return;
 		}
 
-		const sid = activeSessionId ?? activeAgentId;
+		// Messages are sessionId-keyed — never fall back to an agentId bucket
+		// (would leak into a phantom bucket). send is only reachable after a
+		// session is active (UI gating), but guard regardless.
+		if (!activeSessionId) return;
+		const sid = activeSessionId;
 		addMessage(sid, { id: nextMsgId(), role: "user", text, timestamp: Date.now() });
 		setInput("");
 		// NOTE: isStreaming is NOT set optimistically here. The server is the
@@ -612,20 +630,20 @@ export default function ChatPanel() {
 	};
 
 	const saveEdit = async (msg: typeof messages[number]) => {
-		if (!activeAgentId || !editText.trim()) return;
+		if (!activeAgentId || !activeSessionId || !editText.trim()) return;
 		const seq = parseMsgSeq(msg.id);
 		await api().messagesEdit(activeAgentId, seq, editText.trim());
-		editMessage(activeSessionId ?? activeAgentId, msg.id, editText.trim());
+		editMessage(activeSessionId, msg.id, editText.trim());
 		setEditingMsgId(null);
 		setEditText("");
 	};
 
 	const handleDeleteMsg = async (msg: typeof messages[number]) => {
-		if (!activeAgentId) return;
+		if (!activeAgentId || !activeSessionId) return;
 		if (!confirm("Delete this message?")) return;
 		const seq = parseMsgSeq(msg.id);
 		await api().messagesDelete(activeAgentId, seq);
-		deleteMessage(activeSessionId ?? activeAgentId, msg.id);
+		deleteMessage(activeSessionId, msg.id);
 	};
 
 	// Requirement discussion: handle status transitions
@@ -681,9 +699,10 @@ export default function ChatPanel() {
 					aria-label="Select Agent"
 					value={activeAgentId ?? ""}
 					onChange={(e) => {
-						// M5: 切 agent → setActiveAgent 已重置 activeProjectId=null(→ General)。
-						// 这里清掉本组件的 job 视图,并落 General session。
-						setActiveAgent(e.target.value || null);
+						// M5: 切 agent → selectAgent 设 pendingAgentId + 清 activeSessionId/
+						// activeProjectId(null = General)。agent-load effect 随后 land 一个
+						// 该 agent 的 session。
+						selectAgent(e.target.value || null);
 					}}
 				>
 					<option value="">-- Select Agent --</option>

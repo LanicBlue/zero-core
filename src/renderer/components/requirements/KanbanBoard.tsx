@@ -176,7 +176,12 @@ export default function KanbanBoard({ projectId }: { projectId: string }) {
 			const r = await api.pmOpenDiscuss(req.id);
 			if (r?.error) { alert(`Discuss failed: ${r.error}`); return; }
 			const chatStore = (await import("../../store/chat-store.js")).useChatStore.getState();
-			chatStore.setActiveAgent(r.agentId, r.sessionId);
+			// Programmatic jump to a known discuss session: activate it with the
+			// agentId hint (covers the lookup gap). Reset project context (discuss
+			// sessions are non-project). NOT selectAgent — that would trigger the
+			// load effect to land General and clobber the discuss session.
+			chatStore.setActiveProject(null);
+			chatStore.setActiveSessionId(r.sessionId, r.agentId);
 			const page = (await import("../../store/page-store.js")).usePageStore.getState();
 			page.setActivePage("chat");
 			// Open the requirement doc in the DocViewerPanel so the user sees

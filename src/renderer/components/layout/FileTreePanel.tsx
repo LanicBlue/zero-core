@@ -21,7 +21,7 @@
 // 大型目录的懒加载需确保性能
 //
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useChatStore } from "../../store/chat-store.js";
+import { useChatStore, selectActiveAgentId } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
 import type { AgentRecord } from "../../../shared/types.js";
 
@@ -45,7 +45,7 @@ export default function FileTreePanel() {
 	const lastHashRef = useRef<string>("");
 	const lastRootRef = useRef<string>("");
 
-	const activeAgentId = useChatStore((s) => s.activeAgentId);
+	const activeAgentId = useChatStore(selectActiveAgentId);
 	const activeSessionId = useChatStore((s) => s.activeSessionId);
 	const sessionsByAgent = useChatStore((s) => s.sessionsByAgent);
 	const agents = useAgentStore((s) => s.agents);

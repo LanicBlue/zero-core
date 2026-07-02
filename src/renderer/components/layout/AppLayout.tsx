@@ -58,7 +58,6 @@ export default function AppLayout() {
 	const lastErrorKey = useRef<string | null>(null);
 
 	const {
-		activeAgentId, activeSessionId,
 		addMessage, updateAssistantText, updateThinking, addToolCall, updateToolCall,
 		finishStreaming, initSession, updateSessionLifecycle, setError, updateContextInfo,
 	} = useChatStore();

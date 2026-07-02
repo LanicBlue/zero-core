@@ -28,12 +28,13 @@ import {
 	selectActiveMessages,
 	selectIsStreaming,
 	selectContextInfo,
+	selectActiveAgentId,
 } from "../../src/renderer/store/chat-store.js";
 import type { ChatMessage } from "../../src/renderer/store/chat-store.js";
 
 const initialState = {
 	messagesBySession: {},
-	activeAgentId: null as string | null,
+	pendingAgentId: null as string | null,
 	activeSessionId: null as string | null,
 	streamingSessions: new Set<string>(),
 	sessionsByAgent: {},
@@ -69,10 +70,11 @@ describe("chat-store", () => {
 			const s = useChatStore.getState();
 			expect(s.messagesBySession).toEqual({});
 			expect(s.activeSessionId).toBeNull();
-			expect(s.activeAgentId).toBeNull();
+			expect(s.pendingAgentId).toBeNull();
 			expect(s.streamingSessions.size).toBe(0);
 			expect(activeMessages()).toEqual([]);
 			expect(selectIsStreaming(s)).toBe(false);
+			expect(selectActiveAgentId(s)).toBeNull();
 		});
 	});
 
@@ -222,7 +224,7 @@ describe("chat-store", () => {
 		});
 	});
 
-	describe("setActiveAgent / setActiveSessionId", () => {
+	describe("selectAgent / setActiveSessionId", () => {
 		test("setActiveSessionId swaps messages to the new session's history", () => {
 			const { addMessage, setActiveSessionId } = useChatStore.getState();
 			addMessage("sess-a", userMsg("a-1"));
@@ -233,21 +235,46 @@ describe("chat-store", () => {
 			expect(activeMessages().map((m) => m.text)).toEqual(["b-1"]);
 		});
 
-		test("setActiveAgent switches activeAgentId and activeSessionId", () => {
-			useChatStore.getState().setActiveAgent("agent-1", "sess-a");
-			expect(useChatStore.getState().activeAgentId).toBe("agent-1");
-			expect(useChatStore.getState().activeSessionId).toBe("sess-a");
-			useChatStore.getState().setActiveAgent("agent-2", "sess-b");
-			expect(useChatStore.getState().activeAgentId).toBe("agent-2");
-			expect(useChatStore.getState().activeSessionId).toBe("sess-b");
+		test("selectAgent sets pendingAgentId and clears activeSessionId/project", () => {
+			const { selectAgent, setActiveSessionId, setActiveProject } = useChatStore.getState();
+			setActiveSessionId("sess-a");
+			setActiveProject("proj-1");
+			selectAgent("agent-1");
+			const s = useChatStore.getState();
+			expect(s.pendingAgentId).toBe("agent-1");
+			expect(s.activeSessionId).toBeNull();
+			expect(s.activeProjectId).toBeNull();
+			// Derived agentId follows pendingAgentId while no session is active.
+			expect(selectActiveAgentId(s)).toBe("agent-1");
 		});
 
-		test("setActiveAgent preserves messagesBySession across switches", () => {
-			const { addMessage, setActiveAgent, setActiveSessionId } = useChatStore.getState();
-			setActiveAgent("agent-1", "sess-a");
+		test("messages survive a selectAgent switch (sessionId-keyed, not cleared)", () => {
+			const { addMessage, selectAgent, setActiveSessionId } = useChatStore.getState();
+			setActiveSessionId("sess-a");
 			addMessage("sess-a", userMsg("hello"));
-			setActiveAgent("agent-2", "sess-b");
+			selectAgent("agent-2");
 			expect(useChatStore.getState().messagesBySession["sess-a"]).toHaveLength(1);
+		});
+	});
+
+	describe("selectActiveAgentId", () => {
+		test("derives from the active session's record when listed", () => {
+			const { setSessions, setActiveSessionId } = useChatStore.getState();
+			setSessions("agent-1", [{ id: "sess-a", agentId: "agent-1" } as any]);
+			setActiveSessionId("sess-a");
+			expect(selectActiveAgentId(useChatStore.getState())).toBe("agent-1");
+		});
+
+		test("falls back to pendingAgentId when the session record is not loaded", () => {
+			// Simulate a work-trigger jump: session activated with an agentIdHint
+			// before its list is refreshed into sessionsByAgent.
+			const { setActiveSessionId } = useChatStore.getState();
+			setActiveSessionId("sess-x", "agent-9");
+			expect(selectActiveAgentId(useChatStore.getState())).toBe("agent-9");
+		});
+
+		test("returns null when neither session nor pending is set", () => {
+			expect(selectActiveAgentId(useChatStore.getState())).toBeNull();
 		});
 	});
 

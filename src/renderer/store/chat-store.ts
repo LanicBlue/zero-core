@@ -74,7 +74,15 @@ export interface ContextInfo {
 
 interface ChatState {
 	messagesBySession: Record<string, ChatMessage[]>;
-	activeAgentId: string | null;
+	/**
+	 * User picked an agent via the dropdown but no session has landed yet.
+	 * Drives `selectActiveAgentId` until `sessionsByAgent` contains the active
+	 * session record. NOT cleared on session land — it stays as a fallback for
+	 * the lookup gap (a session activated before its list was refreshed) and is
+	 * overwritten on the next `selectAgent`. activeAgentId is NOT stored — it
+	 * is derived (see selectActiveAgentId) so agent/session can never drift.
+	 */
+	pendingAgentId: string | null;
 	activeSessionId: string | null;
 	/**
 	 * M5: 当前 chat 的项目语境。null = General(非项目单例);非空 = 该 project 的
@@ -102,14 +110,28 @@ interface ChatState {
 	setIsStreaming: (sessionId: string, v: boolean) => void;
 	finishStreaming: (sessionId: string) => void;
 	updateSessionLifecycle: (sessionId: string, state: SessionLifecycleState) => void;
-	setActiveAgent: (id: string | null, sessionId?: string | null) => void;
+	/**
+	 * User picked an agent (dropdown). Sets pendingAgentId + resets
+	 * activeSessionId/activeProjectId so selectActiveAgentId reflects the
+	 * choice immediately; the agent-load effect then lands a session for it.
+	 * Programmatic jumps to a KNOWN session should NOT call this — they call
+	 * setActiveSessionId(sid, agentId) directly to avoid the load effect
+	 * landing General and clobbering the target.
+	 */
+	selectAgent: (agentId: string | null) => void;
 	/** M5: 切换项目语境(null = 回到 General)。调用方负责随后激活对应 session。 */
 	setActiveProject: (id: string | null) => void;
 	loadMessages: (sessionId: string, messages: ChatMessage[]) => void;
-	initSession: (sessionId: string, payload: { messages: ChatMessage[]; activeAgentId?: string | null }) => void;
+	initSession: (sessionId: string, payload: { messages: ChatMessage[] }) => void;
 	clearMessages: (sessionId: string) => void;
 	setSessions: (agentId: string, sessions: SessionRecord[]) => void;
-	setActiveSessionId: (sessionId: string | null) => void;
+	/**
+	 * Activate a session. The optional agentIdHint populates pendingAgentId so
+	 * selectActiveAgentId resolves before the session record is loaded into
+	 * sessionsByAgent (e.g. a work-trigger jump that hasn't refreshed the list).
+	 * An undefined/null hint preserves the existing pendingAgentId.
+	 */
+	setActiveSessionId: (sessionId: string | null, agentIdHint?: string | null) => void;
 	editMessage: (sessionId: string, msgId: string, newText: string) => void;
 	deleteMessage: (sessionId: string, msgId: string) => void;
 	setError: (sessionId: string, message: string) => void;
@@ -169,9 +191,35 @@ export const selectContextInfo = (s: ChatState): ContextInfo | null =>
 export const selectLastError = (s: ChatState): ChatState["lastError"] =>
 	s.lastError && s.lastError.sessionId === s.activeSessionId ? s.lastError : null;
 
+/**
+ * Find a session record by id across all agent buckets. sessionsByAgent is the
+ * only session store (no flat index), so this scans — fine at current scale
+ * (few agents × tens of sessions). Returns undefined if not yet loaded.
+ */
+export function findSessionById(s: ChatState, sid: string | null | undefined): SessionRecord | undefined {
+	if (!sid) return undefined;
+	for (const list of Object.values(s.sessionsByAgent)) {
+		const found = list.find((x) => x.id === sid);
+		if (found) return found;
+	}
+	return undefined;
+}
+
+/**
+ * Derived active agent id — the single source of truth is activeSessionId.
+ * Resolves to the active session's agentId; falls back to pendingAgentId when
+ * no session is active OR the session record isn't loaded yet (lookup gap on
+ * a fresh jump). Returns a primitive so useChatStore(selectActiveAgentId) is
+ * referentially stable.
+ */
+export const selectActiveAgentId = (s: ChatState): string | null =>
+	s.activeSessionId
+		? (findSessionById(s, s.activeSessionId)?.agentId ?? s.pendingAgentId)
+		: s.pendingAgentId;
+
 export const useChatStore = create<ChatState>((set) => ({
 	messagesBySession: {},
-	activeAgentId: null,
+	pendingAgentId: null,
 	activeSessionId: null,
 	activeProjectId: null,
 	streamingSessions: new Set(),
@@ -292,12 +340,16 @@ export const useChatStore = create<ChatState>((set) => ({
 			return { streamingSessions: newStreaming };
 		}),
 
-	setActiveAgent: (_id, sessionId?) =>
-		// M5: 切 agent → 重置到 General(非项目单例),防止在上一 agent 的 project
-		// session 里误输入。调用方可显式传 sessionId 覆盖。
+	selectAgent: (agentId) =>
+		// User picked an agent → record intent (pendingAgentId) and clear the
+		// active session so selectActiveAgentId reflects the choice immediately
+		// (otherwise the prior session's record would still win the derivation).
+		// The agent-load effect (ChatPanel) then lands a session for this agent.
+		// M5: reset activeProjectId too (→ General), preventing input into the
+		// previous agent's project session.
 		set(() => ({
-			activeAgentId: _id,
-			activeSessionId: sessionId ?? null,
+			pendingAgentId: agentId,
+			activeSessionId: null,
 			activeProjectId: null,
 		})),
 
@@ -329,8 +381,14 @@ export const useChatStore = create<ChatState>((set) => ({
 			sessionsByAgent: { ...state.sessionsByAgent, [agentId]: sessions },
 		})),
 
-	setActiveSessionId: (sessionId) =>
-		set(() => ({ activeSessionId: sessionId })),
+	setActiveSessionId: (sessionId, agentIdHint?) =>
+		set((s) => ({
+			activeSessionId: sessionId,
+			// Preserve a hint only when landing a session whose record isn't in
+			// sessionsByAgent yet (work-trigger / discuss jump). Don't clobber an
+			// existing pendingAgentId with null/undefined.
+			pendingAgentId: agentIdHint ?? s.pendingAgentId,
+		})),
 	setActiveProject: (id) =>
 		set(() => ({ activeProjectId: id })),
 

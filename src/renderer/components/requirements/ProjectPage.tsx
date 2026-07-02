@@ -714,9 +714,12 @@ function ProjectWorkCard({ projectId, works, agents, onRefresh }: {
 			if (result.status === "ok") {
 				if (w.agentId && result.sessionId) {
 					await api().sessionsSwitch(w.agentId, result.sessionId);
-					setActiveAgent(w.agentId);
 					setActiveProject(projectId);
-					setActiveSessionId(result.sessionId);
+					// Jump straight to the work session with w.agentId as hint (it
+					// may not be in sessionsByAgent yet). NOT selectAgent — that would
+					// clear activeSessionId and trigger the load effect to land
+					// General, clobbering this work session.
+					setActiveSessionId(result.sessionId, w.agentId);
 					setActivePage("chat");
 				} else {
 					alert("已触发(后台运行)。该工位未分配 agent 或无 session id,请在 chat 手动查看。");
@@ -752,7 +755,6 @@ function ProjectWorkCard({ projectId, works, agents, onRefresh }: {
 
 	const cardStyle: React.CSSProperties = { border: "1px solid var(--border-color, #333)", borderRadius: 8, padding: 12, marginBottom: 12, background: "var(--bg-secondary, #1c1c1e)" };
 	const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--text-secondary, #888)" };
-	const setActiveAgent = useChatStore((s) => s.setActiveAgent);
 	const setActiveProject = useChatStore((s) => s.setActiveProject);
 	const setActiveSessionId = useChatStore((s) => s.setActiveSessionId);
 	const setActivePage = usePageStore((s) => s.setActivePage);
