@@ -72,6 +72,15 @@ const wikiStoreGlobal = new WikiStore(sessionDB);
 - free wikiAnchors 授予的子树同样可写(不再像旧版「projectId 闸门只读不写」)。
 - 旧的 projectId-based 写方法(`upsertProjectNode`/`updateNodeMetadata`/`deleteNode`/`assertNodeInsideProjectScope`)标 `@deprecated`,archivist/extractor 继续用。
 
+##### detail 可见性 + 覆盖保护
+
+agent 列出节点时就能看到正文规模,无需盲目全量读:
+
+- `WikiStore.getNodeDetailSize(nodeId)` 只 `statSync`(不读内容)→ 字节数(无文件 = 0)。
+- `formatBodySize(bytes)`(`wiki-anchor-injection.ts`,导出复用)→ `(no body)` / `(123b)` / `(1.2kb)`。
+- 凡「以节点形式列出」处都带 size:`Wiki` 工具的 `expand`(根 + 子树行)/`search`,以及 system/context 注入的渲染(`renderProjectSubtreeOutline` 根+子、`renderMemoryIndex` 叶)。
+- `docWrite` 覆盖非空正文必须显式带 `overwrite:true`,否则拒绝并回显现有正文大小(提示改用 `docEdit` 精确改)。空节点/`create` 的 `content` 不受影响。
+
 权限强制在 store 层([`server/wiki-node-store.ts`](../../src/server/wiki-node-store.ts));工具层只透传 anchor 集。
 
 当前 Agent 记忆默认不是把全文塞入上下文,而是渲染成 MEMORY.md 风格索引:
