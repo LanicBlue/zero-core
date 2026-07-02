@@ -115,17 +115,15 @@ describe("buildContextMessage — P2 sections (snapshot)", () => {
 			guidelines: ["G1", "G2"],
 			currentTask: "task-z",
 			memoryContext: "mem content",
-			ragContext: "rag content",
 			wikiAnchorsContext: "wiki outline",
 		});
 		// Order: Environment, Guidelines, Current Task, Recalled Memories,
-		// Knowledge Base, Wiki Anchors.
+		// Wiki Anchors.
 		const order = [
 			"## Environment",
 			"## Guidelines",
 			"## Current Task",
 			"## Recalled Memories",
-			"## Knowledge Base",
 			"## Wiki Anchors (context)",
 		];
 		const idxs = order.map(h => out!.indexOf(h));

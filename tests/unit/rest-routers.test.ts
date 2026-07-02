@@ -3,7 +3,7 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 通过 Express + Node 内置 http 启动临时 server，测试 chat/session/file/log/tool-execution/mcp/memory-node/memory-config 等 router 的端点行为；并校验 preload 中每个 ipcRenderer.invoke 通道都在 ipc-proxy.ts 与 ROUTE_MAP 中有映射、IPC 代理源码包含全部通道、backend 子进程协议（port 解析、ready/shutdown 消息格式）、session-router 路由顺序（/metrics 不被 /:agentId 捕获）、log-router 配置持久化、mcp-presets 构造
+// 通过 Express + Node 内置 http 启动临时 server，测试 chat/session/file/log/tool-execution/mcp/memory-config 等 router 的端点行为；并校验 preload 中每个 ipcRenderer.invoke 通道都在 ipc-proxy.ts 与 ROUTE_MAP 中有映射、IPC 代理源码包含全部通道、backend 子进程协议（port 解析、ready/shutdown 消息格式）、session-router 路由顺序（/metrics 不被 /:agentId 捕获）、log-router 配置持久化、mcp-presets 构造
 //
 // ## 输入
 // mock 的 sessionDb / agentService / mcpManager / store；preload 与 ipc-proxy 源码（fs.readFileSync 读取）
@@ -940,108 +940,6 @@ describe("mcp-router", () => {
 	});
 });
 
-describe("memory-node-router", () => {
-	const servers: Server[] = [];
-	afterEach(async () => {
-		await Promise.all(servers.splice(0).map(close));
-	});
-
-	async function setupMemoryRouter(nodes: any[] = []) {
-		const { createMemoryNodeRouter } = await import("../../src/server/memory-node-router.js");
-		const app = express();
-
-		const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-		const store = {
-			getRecentNodes: (limit: number) => nodes.slice(0, limit),
-			getNodesForSubject: (subject: string) => nodes.filter((n) => n.subject === subject),
-			getSubject: (subject: string) => {
-				const subjectNodes = nodes.filter((n) => n.subject === subject);
-				return subjectNodes.length > 0 ? { subject, nodeCount: subjectNodes.length, kind: null, summary: null, createdAt: subjectNodes[0].createdAt, updatedAt: subjectNodes[0].updatedAt } : null;
-			},
-			searchNodes: (query: string, limit: number) => {
-				const q = query.toLowerCase();
-				return nodes
-					.filter((n) => n.subject.toLowerCase().includes(q) || n.content.toLowerCase().includes(q))
-					.slice(0, limit)
-					.map((n) => ({ node: n, subject: null }));
-			},
-			deleteNode: (id: string) => { nodeMap.delete(id); const idx = nodes.findIndex((n) => n.id === id); if (idx >= 0) nodes.splice(idx, 1); },
-		};
-
-		app.use(express.json());
-		app.use("/api/memory-nodes", createMemoryNodeRouter(store as any));
-		const { server, port } = await listen(app);
-		servers.push(server);
-		return { server, port, store, nodes };
-	}
-
-	const testNode = { id: "n1", subject: "ProjectX", type: "decision", content: "Decided to use SQLite for storage.", sessionId: null, sourceSeq: null, evolvedFrom: null, createdAt: "2026-06-09T00:00:00.000Z", updatedAt: "2026-06-09T00:00:00.000Z" };
-
-	test("GET /nodes returns empty list initially", async () => {
-		const { port } = await setupMemoryRouter();
-		const res = await request(port, "GET", "/api/memory-nodes/nodes");
-		expect(res.status).toBe(200);
-		expect(Array.isArray(res.data)).toBe(true);
-		expect(res.data.length).toBe(0);
-	});
-
-	test("GET /subjects returns empty list initially", async () => {
-		const { port } = await setupMemoryRouter();
-		const res = await request(port, "GET", "/api/memory-nodes/subjects");
-		expect(res.status).toBe(200);
-		expect(Array.isArray(res.data)).toBe(true);
-	});
-
-	test("GET /search returns empty without results", async () => {
-		const { port } = await setupMemoryRouter();
-		const res = await request(port, "GET", "/api/memory-nodes/search?q=test");
-		expect(res.status).toBe(200);
-		expect(Array.isArray(res.data)).toBe(true);
-		expect(res.data.length).toBe(0);
-	});
-
-	test("GET /nodes returns inserted nodes", async () => {
-		const { port } = await setupMemoryRouter([testNode]);
-		const res = await request(port, "GET", "/api/memory-nodes/nodes");
-		expect(res.status).toBe(200);
-		expect(res.data.length).toBe(1);
-		expect(res.data[0].subject).toBe("ProjectX");
-	});
-
-	test("GET /subjects aggregates nodes by subject", async () => {
-		const { port } = await setupMemoryRouter([testNode]);
-		const res = await request(port, "GET", "/api/memory-nodes/subjects");
-		expect(res.status).toBe(200);
-		expect(res.data.length).toBe(1);
-		expect(res.data[0].subject).toBe("ProjectX");
-		expect(res.data[0].nodeCount).toBe(1);
-	});
-
-	test("GET /search?q= finds matching nodes", async () => {
-		const { port } = await setupMemoryRouter([testNode]);
-		const res = await request(port, "GET", "/api/memory-nodes/search?q=SQLite");
-		expect(res.status).toBe(200);
-		expect(res.data.length).toBe(1);
-		expect(res.data[0].content).toContain("SQLite");
-	});
-
-	test("GET /subject/:name returns nodes for subject", async () => {
-		const { port } = await setupMemoryRouter([testNode]);
-		const res = await request(port, "GET", "/api/memory-nodes/subject/ProjectX");
-		expect(res.status).toBe(200);
-		expect(res.data.nodes.length).toBe(1);
-		expect(res.data.subject).not.toBeNull();
-	});
-
-	test("DELETE /nodes/:id deletes a node", async () => {
-		const { port, nodes } = await setupMemoryRouter([testNode]);
-		const res = await request(port, "DELETE", "/api/memory-nodes/nodes/n1");
-		expect(res.status).toBe(200);
-		expect(res.data.success).toBe(true);
-		expect(nodes.length).toBe(0);
-	});
-});
-
 describe("memory-config", () => {
 	const servers: Server[] = [];
 	afterEach(async () => {
@@ -1077,8 +975,10 @@ describe("memory-config", () => {
 		const res = await request(port, "GET", "/api/config/memory-config");
 		expect(res.status).toBe(200);
 		expect(res.data.compression).toBeDefined();
-		expect(res.data.memory).toBeDefined();
 		expect(res.data.compression.enabled).toBe(false);
+		// v0.8: standalone memory config removed (memory lives in wiki tree);
+		// only compression is exchanged now.
+		expect(res.data.memory).toBeUndefined();
 	}, 15_000);
 
 	test("PUT /memory-config saves and reads back", async () => {
@@ -1086,7 +986,6 @@ describe("memory-config", () => {
 
 		const update = await request(port, "PUT", "/api/config/memory-config", {
 			compression: { enabled: true, keepRecentTurns: 3 },
-			memory: { enabled: true, autoRecall: true },
 		});
 		expect(update.status).toBe(200);
 		expect(update.data.success).toBe(true);
@@ -1094,6 +993,5 @@ describe("memory-config", () => {
 		const res = await request(port, "GET", "/api/config/memory-config");
 		expect(res.data.compression.enabled).toBe(true);
 		expect(res.data.compression.keepRecentTurns).toBe(3);
-		expect(res.data.memory.enabled).toBe(true);
 	}, 15_000);
 });
