@@ -39,7 +39,7 @@ import InputQueueStrip from "../chat/InputQueueStrip.js";
 import { usePageStore } from "../../store/page-store.js";
 import { useRequirementStore } from "../../store/requirement-store.js";
 import RequirementHeader from "../requirements/RequirementHeader.js";
-import type { RequirementStatus, ProjectJobRecord, SessionRecord } from "../../../shared/types.js";
+import type { RequirementStatus, SessionRecord } from "../../../shared/types.js";
 
 const api = () => (window as any).api;
 
@@ -383,8 +383,6 @@ export default function ChatPanel() {
 	const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
 	const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
 	const [editText, setEditText] = useState("");
-	// M5: 当前 project 的后台任务记录(供输入锁:running → 临时锁;sessionId 命中 → worker session 永久只读)。
-	const [activeProjectJobs, setActiveProjectJobs] = useState<ProjectJobRecord[]>([]);
 
 	const refreshSessionData = useCallback(async (agentId: string) => {
 		const sessions = await api().sessionsList(agentId);
@@ -399,15 +397,6 @@ export default function ChatPanel() {
 		}
 		await api().sessionsActivate(agentId, general.id);
 		setActiveSessionId(general.id);
-	}, []);
-
-	// M5: 拉当前 project 的后台任务记录(输入锁用)。
-	const refreshProjectJobs = useCallback(async (projectId: string | null) => {
-		if (!projectId) { setActiveProjectJobs([]); return; }
-		try {
-			const jobs = await api().projectsListJobs(projectId);
-			setActiveProjectJobs(jobs);
-		} catch { /* project_jobs 端点可能未就绪,静默 */ }
 	}, []);
 
 	// M5: 跳转到某 project 的 chat —— find-or-create (agentId, projectId) session 并激活。
@@ -425,7 +414,6 @@ export default function ChatPanel() {
 				setActiveSessionId(session.id);
 				clearMessages(session.id);
 			}
-			await refreshProjectJobs(null);
 			return;
 		}
 		// 进 project session:ensureForProject find-or-create。
@@ -434,8 +422,7 @@ export default function ChatPanel() {
 		setActiveSessionId(sessionId);
 		const sessions = await api().sessionsList(activeAgentId);
 		setSessions(activeAgentId, sessions);
-		await refreshProjectJobs(projectId);
-	}, [activeAgentId, sessionsByAgent, setActiveProject, setActiveSessionId, clearMessages, setSessions, refreshProjectJobs]);
+	}, [activeAgentId, sessionsByAgent, setActiveProject, setActiveSessionId, clearMessages, setSessions]);
 
 	// 初次挂载拉一次 projects(供 project 选择器)。
 	useEffect(() => { fetchProjects(); }, [fetchProjects]);
@@ -522,7 +509,7 @@ export default function ChatPanel() {
 
 	const send = async () => {
 		const text = input.trim();
-		if (!text || !activeAgentId || isInputLocked) return;
+		if (!text || !activeAgentId) return;
 
 		// C2: if the session is already running, queue the input instead of
 		// starting a concurrent run. The user message is not added to the
@@ -591,13 +578,10 @@ export default function ChatPanel() {
 
 	const activeAgent = agents.find((a) => a.id === activeAgentId);
 
-	// M5: 对话保护(工作时的开关,非写死)。
-	//   - hasRunningJob: 当前 project 有 running 任务 → 临时锁输入(防干扰运行中的充实)。
-	//   - activeSessionIsWorker: 当前 session 关联了 job 记录 → 它是 worker session(充实现场),
-	//     永久只读(用户只看不聊)。两条都从 project_jobs 派生,不硬编码角色判断。
-	const hasRunningJob = activeProjectJobs.some((j) => j.status === "running");
-	const activeSessionIsWorker = activeProjectJobs.some((j) => j.sessionId === activeSessionId);
-	const isInputLocked = hasRunningJob || activeSessionIsWorker;
+	// Input is never locked: when the session is running, Enter enqueues the
+	// message (send() routes to enqueueInput) rather than dispatching. The
+	// running vs idle distinction is expressed only by the Send/Stop button
+	// swap and the enqueue-on-Enter behavior — not by disabling the textarea.
 
 	const startEdit = (msg: typeof messages[number]) => {
 		setEditingMsgId(msg.id);
@@ -682,7 +666,6 @@ export default function ChatPanel() {
 						// M5: 切 agent → setActiveAgent 已重置 activeProjectId=null(→ General)。
 						// 这里清掉本组件的 job 视图,并落 General session。
 						setActiveAgent(e.target.value || null);
-						refreshProjectJobs(null);
 					}}
 				>
 					<option value="">-- Select Agent --</option>
@@ -794,19 +777,19 @@ export default function ChatPanel() {
 					onKeyDown={handleKeyDown}
 					placeholder={
 						!activeAgentId ? "Select an agent first..."
-						: isInputLocked ? (activeSessionIsWorker ? "只读 session(archivist 工作现场,用户只看不聊)" : "任务运行中,暂停输入...")
 						: isStreaming ? "运行中,回车将加入队列(可立即插入)..."
 						: "Type a message..."
 					}
-					/* C2: unlocked while streaming — input goes to the queue. Still
-					   locked for read-only worker sessions. */
-					disabled={!activeAgentId || isInputLocked}
+					/* Input is always available once an agent is selected. While the
+					   session is running, Enter enqueues (send() routes to enqueueInput)
+					   instead of dispatching immediately. */
+					disabled={!activeAgentId}
 					rows={1}
 				/>
 				{isStreaming && (
 					<button type="button" onClick={abort} className="btn-abort">Stop</button>
 				)}
-				<button type="button" onClick={send} disabled={!activeAgentId || !input.trim() || isInputLocked}>
+				<button type="button" onClick={send} disabled={!activeAgentId || !input.trim()}>
 					{isStreaming ? "入队" : "Send"}
 				</button>
 			</div>
