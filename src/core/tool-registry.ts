@@ -78,8 +78,7 @@ export const RENAMED_TOOLS: Record<string, string> = {
 	task_status: "TaskStatus", task_list: "TaskList", task_stop: "TaskStop",
 	wait: "Wait", web_search: "WebSearch", ask_user: "AskUser", todo_write: "TodoWrite",
 	subagent: "Agent", assistant: "Platform", "Assistant": "Platform",
-	web_fetch: "WebFetch", memory_read: "MemoryRecall", memory_write: "MemoryNote",
-	memory_recall: "MemoryRecall", memory_note: "MemoryNote",
+	web_fetch: "WebFetch",
 	sequentialthinking: "SequentialThinking",
 };
 
