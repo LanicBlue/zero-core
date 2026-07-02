@@ -321,7 +321,6 @@ export interface PostToolUseFailureResult {
 /** PreLLMCall: can inject context strings and provider options. */
 export interface PreLLMCallResult {
 	memoryContext?: string;
-	ragContext?: string;
 	providerOptions?: Record<string, Record<string, unknown>>;
 }
 

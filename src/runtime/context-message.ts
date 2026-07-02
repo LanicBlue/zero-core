@@ -15,8 +15,7 @@
 // ## 输入
 // - workspaceDir：工作目录，用于提示工具默认路径与 cd 行为
 // - guidelines：字符串数组，逐条列在 ## Guidelines 下
-// - ragContext：知识库召回文本，写入 ## Knowledge Base
-// - memoryContext：记忆召回文本，写入 ## Recalled Memories
+// - ragContext/memoryContext：(已废并移除)旧 FTS5 召回路
 //
 // ## 输出
 // - 拼好的 <context>…</context> 字符串；无任何动态片段时返回 null（由调用方判断是否注入）
@@ -26,7 +25,6 @@
 //
 // ## 依赖
 // - node:os（CPU/RAM/OS 信息）
-// - 上游 hooks（memory-hooks、rag-hooks）产出的 memoryContext/ragContext 文本
 //
 // ## 维护规则
 // - 新增上下文段落时统一在此函数追加 ## 子标题，不要在 agent-loop 里手拼。
@@ -38,7 +36,6 @@ import * as os from "os";
 export function buildContextMessage(config: {
 	workspaceDir?: string;
 	guidelines?: string[];
-	ragContext?: string;
 	memoryContext?: string;
 	/**
 	 * v0.8 (P1 §10.6): pre-rendered wiki anchor block for the `context`
@@ -82,10 +79,6 @@ export function buildContextMessage(config: {
 
 	if (config.memoryContext) {
 		parts.push("## Recalled Memories\n" + config.memoryContext);
-	}
-
-	if (config.ragContext) {
-		parts.push("## Knowledge Base\n" + config.ragContext);
 	}
 
 	if (config.wikiAnchorsContext) {

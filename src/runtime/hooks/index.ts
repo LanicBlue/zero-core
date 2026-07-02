@@ -4,10 +4,10 @@
 //
 // ## 核心功能
 // `registerHooksForLoop(registry, loopKind, deps)` 按 loop 类型往给定 registry 上
-// 注册功能钩子。注册顺序敏感(notification → rag → providerOptions → compression
+// 注册功能钩子。注册顺序敏感(notification → providerOptions → compression
 // 对 PreLLMCall 返回值 merge 顺序)。分组见 spec §6:
 //   - shared (main + delegated): turn-hooks / tool-execution-hooks / durable-hooks
-//     / provider-options-hooks / rag-hooks / extraction-hooks / compression-hooks
+//     / provider-options-hooks / extraction-hooks / compression-hooks
 //     / workflow-context-hook(work session)
 //   - main only:  notification-hooks / input-queue-hooks / metrics-hooks
 //   - delegated only: task-control-hooks
@@ -46,7 +46,6 @@ import { registerCompressionHooks } from "./compression-hooks.js";
 import { registerExtractionHooks, type ExtractionHooksDeps } from "./extraction-hooks.js";
 import { registerNotificationHooks } from "./notification-hooks.js";
 import { registerProviderOptionsHooks } from "./provider-options-hooks.js";
-import { registerRagHooks } from "./rag-hooks.js";
 import { registerTodoCleanupHooks } from "./todo-cleanup-hooks.js";
 import { registerTaskControlHooks } from "./task-control-hooks.js";
 import { registerTurnHooks } from "./turn-hooks.js";
@@ -104,7 +103,7 @@ export interface HookWiringDeps {
  * Register the full feature hook set onto `registry`, scoped by loop kind.
  *
  * Groups (spec §6):
- *   - shared: turn / tool-execution / durable / provider-options / rag /
+ *   - shared: turn / tool-execution / durable / provider-options /
  *     extraction / compression / workflow-context(work session)
  *   - main only: notification / input-queue / metrics
  *   - delegated only: task-control
@@ -132,7 +131,6 @@ export function registerHooksForLoop(
 		registerDurableHooks(sessionDb, registry);
 		registerToolExecutionHooks(sessionDb, registry);
 	}
-	registerRagHooks(registry);
 	registerProviderOptionsHooks(registry);
 	registerCompressionHooks(registry);
 	// Clear all-completed todos at the end of the current turn (UI auto-hide).
@@ -175,7 +173,6 @@ export {
 	registerExtractionHooks,
 	registerNotificationHooks,
 	registerProviderOptionsHooks,
-	registerRagHooks,
 	registerTodoCleanupHooks,
 	registerTaskControlHooks,
 	registerTurnHooks,

@@ -585,27 +585,23 @@ export class AgentLoop implements AgentRuntime {
 				stepNumber,
 			});
 
-			// v0.8 (P2 §11.6): memoryContext is always undefined now — the legacy
-			// FTS5 recall hook (registerMemoryHooks) is retired. Memory indexing
-			// flows through wikiAnchorsContext above. Kept as a read for forward
-			// compatibility (a future semantic-recall hook may repopulate it).
+			// v0.8 (P2 §11.6): memory indexing flows through wikiAnchorsContext
+			// above (per-agent memory subtree). memoryContext is still used as
+			// the transport for T2 workflow-context injection (workflow-context-
+			// hook for work sessions). The legacy ragContext recall hook retired.
 			const memoryContext = preResult.memoryContext as string | undefined;
-			const ragContext = preResult.ragContext as string | undefined;
 			const providerOptions = (preResult.providerOptions as Record<string, Record<string, any>>) ?? {};
 			const preExtra = (preResult.appendMessages as Array<{ role: string; content: string }>) ?? [];
 
-			// First step: fold rag/memory context into the prepared context block
-			// (kept as a turn-scoped prefix; subsequent steps reuse the already-
-			// prepended baseCtx). We only re-render on step 1 because the block
-			// is derived from session config + wiki anchors which are stable
-			// within a turn; ragContext/memoryContext hooks may still surface
-			// mid-turn, so we re-fold them into the latest user message when
-			// present.
-			if (stepNumber === 1 || ragContext !== undefined || memoryContext !== undefined) {
+			// First step: fold the prepared context block into the message list
+			// (turn-scoped prefix; subsequent steps reuse the already-prepended
+			// baseCtx). We re-render on step 1 (block is derived from session
+			// config + wiki anchors, stable within a turn) and also when the
+			// workflow-context hook surfaces memoryContext mid-turn.
+			if (stepNumber === 1 || memoryContext !== undefined) {
 				const ctx = buildContextMessage({
 					workspaceDir: this.config.workspaceDir,
 					guidelines: this.config.guidelines,
-					ragContext,
 					memoryContext,
 					wikiAnchorsContext: wikiAnchorsContext || undefined,
 					currentTask: currentTask || undefined,

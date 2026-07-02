@@ -263,7 +263,6 @@ export interface SessionConfig {
 		readScope?: "filesystem" | "workspace";
 	};
 	getMcpTools?: (agentId?: string) => Promise<Record<string, any>>;
-	getRagContext?: (agentId: string, query: string) => Promise<string | undefined>;
 	/**
 	 * v0.8 (P2 §11.5): this agent's delegation subagents (copied from
 	 * AgentRecord.subagents at session build time). Each entry references a
