@@ -209,7 +209,7 @@ while (应继续):
 **设计变更(Phase 2 必做):**
 
 1. **per-tool result 即时落库**(case 2 硬前提):PostToolUse / PostToolUseFailure 立即写该 tool block(result 已知),不等 finish-step。否则并发工具部分完成时区分不了谁完成 → 被迫全部重跑 → 非幂等工具双重副作用。
-2. **父 tool-call ↔ delegated_tasks 链接持久化**(subagent 恢复):Agent/Orchestrate dispatch 时把 taskId 记到 tool-call block;父 step 恢复时,dangling 的 Agent tool-call → 查 taskId → **resume 委派任务**(子 session 自身用 case1/2 递归恢复),不重新 invoke。`markRunningDelegatedTasksInterrupted` 启动已标 interrupted,这里补父侧按 taskId 接回。
+2. **父 tool-call ↔ delegated_tasks 链接持久化**(subagent 恢复,**父驱动 by design**):Agent/Orchestrate dispatch 时把 taskId 记到 tool-call block + 落 `delegated_tasks.parent_tool_call_id`,**且 taskId 在子 agent loop 建立前就分配+返回父** → 父始终持有 durable handle。`resumeTask(taskId)` 原语就位(查行→重建子 loop→`subLoop.resume()` 从 lastCompletedStepSeq 续→回填,不重新 invoke)。崩溃恢复**父驱动**:`markRunningDelegatedTasksInterrupted` 标 interrupted → 父下一轮 TaskStatus/tree 看到 → **自己决定**调 resumeTask 续跑或接受 interrupted 结果。**不做自动 scan-backfill**(by design)。
 3. **"投递即消费"注入延迟消费到 StepEnd**:control message(task-control)、insert_now(input-queue)注入时只标记已投递、不删;等该 step finish-step 成功(StepEnd)才真正删 control message / 出队列。case 1 重跑 step 时注入仍在,直到成功才消费 —— 避免失败 attempt 吃掉控制消息/用户输入。无状态注入(RAG / providerOptions / workflow-context / notifications)无需此处理,纯重做。
 4. **step 级检查点 `lastCompletedStepSeq`**(per session):每 StepEnd 推进;崩溃从 +1 step 续。case2 的"工具执行中崩溃" = 该 step finish-step 已 fire(LLM 输出已落库)但工具未全完成 → 恢复时重跑该 step 未完成工具,不算新 step。
 5. **dangling tool-call 兜底**:任何落库路径捕获到 `status:"running"`(无 result)的 tool-call,若不能 resume,合成 result `[interrupted]` 保证 rebuild 合法。

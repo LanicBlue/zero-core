@@ -511,12 +511,20 @@ export class SubagentDelegator {
 	 * is responsible for back-filling the tool-call block from the returned
 	 * value.
 	 *
-	 * NOTE: the full parent-side scan-and-backfill wiring (finding dangling
-	 * Agent tool-calls on parent resume, calling this, and writing the result
-	 * into the parent step row) is intentionally left as a follow-up — the
-	 * building blocks (taskId on the block, resumeTask here, parentToolCallId
-	 * on the row) are in place; the resume loader integration is tracked
-	 * separately.
+	 * NOTE (design — parent-driven recovery, NOT a TODO): the taskId is
+	 * allocated + persisted (delegated_tasks row with parentToolCallId) and
+	 * stamped on the parent's tool-call block BEFORE the sub-agent loop is
+	 * created (see delegateTaskBackground / delegateTask). So the parent
+	 * always holds a durable handle to any sub-agent it dispatched.
+	 *
+	 * On parent crash recovery, `markRunningDelegatedTasksInterrupted` marks
+	 * in-flight sub-agents `interrupted`. The PARENT then decides on its next
+	 * turn: TaskStatus / tree shows the interrupted task → the parent calls
+	 * `resumeTask(taskId)` deliberately to continue it (this primitive), or
+	 * accepts the interrupted result. There is NO automatic scan-backfill of
+	 * dangling Agent tool-calls on parent restart — by design. resumeTask is
+	 * the primitive for the parent's deliberate use, not something the resume
+	 * loader invokes automatically.
 	 */
 	async resumeTask(taskId: string): Promise<string> {
 		const db = this.config.db;

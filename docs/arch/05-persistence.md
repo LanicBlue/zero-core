@@ -919,7 +919,7 @@ Prepared statements 在构造函数中缓存，热路径 O(1) SQL 解析。
 
 **延迟消费(Step 2E)**:控制消息(`request_finish` 的 advisory controlMessage)与运行中 `insert_now` 输入不在注入时立即消费,而是排队到 **StepEnd** 才消费 —— 避免在 step 中途注入导致模型行为不确定。
 
-**tool-call ↔ task 链接(Step 2E)**:委派任务的子侧 `resumeTask` 原语已就位(子 agent 遇到 dangling Agent tool-call → 其 delegated task 时,从自己的 `lastCompletedStepSeq` 递归恢复);**父侧 scan-backfill**(父会话反向回填 Agent tool-call ↔ delegated task 的 `parentToolCallId` 链接)仍是 TODO。
+**tool-call ↔ task 链接(Step 2E)**:委派任务的 `resumeTask(taskId)` 原语已就位(查行 → 重建子 loop → `subLoop.resume()` 从 `lastCompletedStepSeq` 续 → 回填结果,不重新 invoke)。**恢复策略是父驱动**(by design):taskId 在子 agent loop 建立前就分配+落库(`delegated_tasks.parent_tool_call_id`)+返回父,父始终持有 durable handle;崩溃时 `markRunningDelegatedTasksInterrupted` 标 interrupted,父下一轮 TaskStatus/tree 看到 → 自己决定调 `resumeTask` 续跑或接受 interrupted 结果。**不做自动 scan-backfill**(父会话反向回填)—— by design。
 
 ## 9. 备份与一致性
 

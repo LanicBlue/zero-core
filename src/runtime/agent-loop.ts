@@ -168,8 +168,10 @@ export class AgentLoop implements AgentRuntime {
 			runBackground: (command, timeoutSec) => this.delegator.runBackground(command, timeoutSec),
 			// Step 2E: tool-call ↔ task link — let the Agent tool stamp the
 			// recorder's tool-call block with the delegated taskId the moment
-			// the delegator mints it, and expose resumeTask for the parent-side
-			// dangling-tool-call re-attach path.
+			// the delegator mints it (before the sub-agent loop starts, so the
+			// parent always holds a durable handle). resumeTask is exposed for
+			// the parent's DELIBERATE use (parent-driven recovery: parent calls
+			// it after TaskStatus shows an interrupted task) — no auto re-attach.
 			setToolCallTaskId: (toolCallId, taskId) => {
 				this.recorder.setToolBlockTaskId(toolCallId, undefined, taskId);
 			},
