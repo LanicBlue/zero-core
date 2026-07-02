@@ -88,12 +88,10 @@ export default function TaskTreePanel() {
 
 	return (
 		<div className="task-tree-panel">
-			<div className="task-tree-header">
-				<span>TASKS · 委派任务</span>
-				{loading && <span className="task-tree-loading">…</span>}
-			</div>
 			<div className="task-tree-body">
-				{!activeSessionId ? (
+				{loading && tasks.length === 0 ? (
+					<div className="doc-placeholder">…</div>
+				) : !activeSessionId ? (
 					<div className="doc-placeholder">No session selected.</div>
 				) : tasks.length === 0 ? (
 					<div className="doc-placeholder">本会话暂无委派任务。</div>
