@@ -2,7 +2,7 @@
 
 > **Status**: Draft v0.8 — 对应 RFC `agent-driven-workflow.md`
 > **Level**: 实现计划(非 RFC 决策层;RFC 已定 54 条决策,本组文件把它们拆成可交付的 milestone)
-> **配套 RFC**: `docs/rfc/agent-driven-workflow.md`
+> **配套 RFC**: `../agent-driven-workflow.md`
 
 ---
 

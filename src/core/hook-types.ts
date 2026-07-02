@@ -6,7 +6,7 @@
 // Defines the lifecycle hook event names + per-event context + result types.
 // Step 1C (hook-redesign): the agent-execution hook surface is renamed to a
 // step-centric, ownership-honest set (Session/Turn/Step/LLMCall/Tool levels).
-// See docs/design/hook-step-redesign.md §3–§4 for the authoritative skeleton.
+// See docs/design/hook-redesign/hook-step-redesign.md §3–§4 for the authoritative skeleton.
 //
 // ## Naming (Step 1C mapping)
 // Old → New (agent-execution surface only; workflow/observability events like

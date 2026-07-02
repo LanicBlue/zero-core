@@ -2,7 +2,7 @@
 
 > **文档定位**：这是 `agent-driven-workflow.md`（设计 RFC）的**执行规范**，补落地细节。
 > 设计 RFC 回答「为什么这么设计」；本文档回答「真实代码里流程怎么走、每一步的触发点 / 数据流 / IPC 通道 / 存储变更 / prompt 契约是什么」。
-> 全部落在已实现代码上（标注 `文件:行号`）。M0–M5 的里程碑级 plan/acceptance 已归档至 `docs/rfc/archive/`。
+> 全部落在已实现代码上（标注 `文件:行号`）。M0–M5 的里程碑级 plan/acceptance 已归档至 `archive/`。
 
 ---
 

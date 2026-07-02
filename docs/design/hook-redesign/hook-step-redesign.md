@@ -11,7 +11,7 @@
 > 1. 按 §9 的 Phase 1 → 2 → 3 → 4 → 5 顺序,每 phase 一个 commit,每 phase typecheck 三层绿 + vitest 绿才进下一。
 > 2. **Phase 2 第一件事 = spike AI SDK**(`stopWhen: stepCountIs(1)` 的 tool-call 续跑 / abort / retry)。不通 → Phase 2 回退(OnLLMError 仅观测,step 外置/重试/resume 列后续),并在 §10 #3 记录,不要硬干。
 > 3. 任一 phase 失败 → **停下、不要继续**,PushNotification 报给用户,等人工。
-> 4. 注释一律英文;commit 带 `Co-Authored-By: Claude <noreply@anthropic.com>`;不碰 `BUILTIN_WORKFLOW_ROLES` / `docs/rfc/*`;code-graph 提交前再生成。
+> 4. 注释一律英文;commit 带 `Co-Authored-By: Claude <noreply@anthropic.com>`;不碰 `BUILTIN_WORKFLOW_ROLES` / `docs/design/agent-driven-workflow/*`;code-graph 提交前再生成。
 > 5. 全程约束见 §12。
 
 ## 1. 问题(四个递进发现)
@@ -256,7 +256,7 @@ while (应继续):
 ## 12. 约束
 
 - 注释一律**英文**;commit 带 `Co-Authored-By: Claude <noreply@anthropic.com>`。
-- 不碰他人代码 / `BUILTIN_WORKFLOW_ROLES` / `docs/rfc/*`。
+- 不碰他人代码 / `BUILTIN_WORKFLOW_ROLES` / `docs/design/agent-driven-workflow/*`。
 - Edit 在 tab/CRLF 易失败 → cat -A 诊断,Write 全文 fallback;commit 用 Bash `-F`。
 - 查 sessions.db readonly;backend 占用时不 checkpoint。
 - DB 列同步 5 处。
