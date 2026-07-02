@@ -46,7 +46,7 @@ function entryDisplayName(entry: { agentId: string; name?: string }, target?: { 
 export const delegateTool = buildTool({
 	name: "Agent",
 	description:
-		"Delegate and control sub-agent tasks. Actions: list, delegate, request_finish, stop, tree.",
+		"Delegate and control sub-agent tasks. Actions: list, delegate, request_finish, stop, complete, tree.",
 	prompt:
 		"Delegate and control sub-agent tasks (each runs in an isolated context with its own conversation history, persisted for restart-aware inspection).\n\n" +
 		"Actions:\n" +
@@ -57,6 +57,7 @@ export const delegateTool = buildTool({
 		"    · `mode`: 'blocking' (default, wait for output) | 'non_blocking' (return a task_id immediately; use Wait/TaskStatus to check later).\n" +
 		"- { action:'request_finish', task_id, message?, maxTurns? } — ask a running task to wrap up. Advisory: injects a control message asking the sub-agent to finish. Pass `maxTurns` to force-stop after that many additional agent-loop turns; omit it for a purely advisory request that never force-stops.\n" +
 		"- { action:'stop', task_id } — force-stop a running task immediately (hard stop; the task cannot resume).\n" +
+		"- { action:'complete', task_id } — acknowledge a FINISHED task (completed/failed/killed) to dismiss it from the task list once you've consumed its result. Running tasks must be stopped first; this only removes finished tasks from the live view.\n" +
 		"- { action:'tree', task_id? } — list delegated-task records (status/turns/tokens), optionally scoped to a root task. Use this to inspect delegated work, including tasks interrupted by a restart.\n\n" +
 		"When to delegate: parallel work, complex multi-step searches, isolated exploration that shouldn't pollute the main conversation, or handing work to a specialized role agent.\n\n" +
 		"You can ONLY delegate by `subagent` name to agents in your own subagents list (run 'list' to see them).",
@@ -66,7 +67,7 @@ export const delegateTool = buildTool({
 		{ key: "auto_background_timeout", type: "number", label: "超时 (s)", description: "阻塞等待秒数，超时后转后台；设为 0 则立即非阻塞", default: 0 },
 	],
 	inputSchema: z.object({
-		action: z.enum(["list", "delegate", "request_finish", "stop", "tree"]).describe("list / delegate / request_finish / stop / tree"),
+		action: z.enum(["list", "delegate", "request_finish", "stop", "complete", "tree"]).describe("list / delegate / request_finish / stop / complete / tree"),
 		task: z.string().optional().describe("The task description (action:'delegate')"),
 		subagent: z.string().optional().describe("Name of a registered subagent to delegate to (from 'list'). Omit for ephemeral delegation."),
 		model: z.string().optional().describe("Model ID override (ephemeral delegation only)"),
@@ -117,6 +118,16 @@ export const delegateTool = buildTool({
 			return ctx.stopTask(input.task_id)
 				? `Task ${input.task_id} has been stopped.`
 				: `Task ${input.task_id} not found or not running.`;
+		}
+
+		// ── complete (acknowledge a finished task → drop from live list) ──
+		if (action === "complete") {
+			if (!input.task_id) return "Error: `task_id` required for complete";
+			if (!ctx.acknowledgeTask) return "Error: complete is not available in this context.";
+			const ok = ctx.acknowledgeTask(input.task_id);
+			return ok
+				? `Task ${input.task_id} acknowledged and removed from the task list.`
+				: `Task ${input.task_id} is still running (or unknown) — stop it first, then complete.`;
 		}
 
 		// ── tree (inspect delegated task records) ──────────────────

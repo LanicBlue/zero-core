@@ -117,19 +117,18 @@ export default function DocViewerPanel() {
 		window.addEventListener("zero-wiki-select", wikiHandler);
 		/** Delegated task detail (TaskTreePanel dispatches zero-task-select). */
 		const taskHandler = (e: Event) => {
-			const d = (e as CustomEvent).detail as { task: { targetAgentId: string; task: string; status: string; turns: number; tokens: number; currentTool?: string; result?: string; error?: string; controlMessage?: string; sessionId?: string; id: string } };
+			const d = (e as CustomEvent).detail as { task: { type: string; task: string; status: string; turns: number; tokens: number; currentTool?: string; result?: string; error?: string; id: string } };
 			const t = d.task;
-			setSelectedFile(`Task → ${t.targetAgentId}`);
+			setSelectedFile(`Task → ${t.type}`);
 			setFileRoot("");
 			setResolvedPath("");
 			setWikiMode(true); // reuse read-only markdown rendering path
-			setWikiSummary(`status: ${t.status} · turns: ${t.turns} · tokens: ${t.tokens}${t.currentTool ? ` · tool: ${t.currentTool}` : ""}${t.sessionId ? ` · session: ${t.sessionId.slice(0, 8)}` : ""}`);
+			setWikiSummary(`status: ${t.status} · turns: ${t.turns} · tokens: ${t.tokens}${t.currentTool ? ` · tool: ${t.currentTool}` : ""}`);
 			const body = [
 				`**Task** (${t.id})`,
 				"",
 				t.task,
 				"",
-				t.controlMessage ? `**Control message:** ${t.controlMessage}` : "",
 				t.error ? `**Error:** ${t.error}` : "",
 				t.result ? `**Result:**` : "",
 				t.result ?? "",

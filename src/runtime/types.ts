@@ -254,6 +254,14 @@ export interface SessionConfig {
 	concurrencyManager?: import("./provider-concurrency-manager.js").ProviderConcurrencyManager;
 	parentSessionId?: string;
 	spawnDepth?: number;
+	/**
+	 * The taskId this loop was spawned under (undefined for a root main
+	 * session). Stamped onto every task this loop's delegator creates as that
+	 * task's parentTaskId, so the live in-memory task tree can be reconstructed
+	 * by walking nested delegators (UI TaskTree + agent TaskList share one
+	 * source). Undefined at the root means "direct child of the session".
+	 */
+	ownerTaskId?: string;
 	toolPolicy: {
 		autoApprove?: string[];
 		blockedTools?: string[];
@@ -356,6 +364,13 @@ export interface TaskInfo {
 	type: TaskType;
 	task: string;
 	status: "running" | "finishing" | "completed" | "failed" | "killed" | "interrupted";
+	/**
+	 * The taskId this task was spawned under (the ownerTaskId of the loop whose
+	 * delegator created it). Undefined for tasks dispatched directly by a root
+	 * main session. Drives the in-memory task tree (UI TaskTree + agent
+	 * TaskList). Not persisted — live view only.
+	 */
+	parentTaskId?: string;
 	step: number;
 	/** Agent-loop iterations completed (one user input spans many loops). */
 	turns: number;
@@ -401,6 +416,12 @@ export interface ToolExecutionContext {
 	getTaskResult?: (taskId: string) => TaskInfo | null;
 	listTasks?: (filter?: "running" | "completed") => TaskInfo[];
 	stopTask?: (taskId: string) => boolean;
+	/**
+	 * Parent-agent "confirm completion": drop a FINISHED (completed/failed/
+	 * killed/interrupted) task from the live registry so it leaves the UI
+	 * TaskTree and the agent's TaskList. Refuses running/finishing tasks.
+	 */
+	acknowledgeTask?: (taskId: string) => boolean;
 	/**
 	 * Ask a running delegated task to finish soon (advisory). Marks the task
 	 * "finishing", injects a control message into the sub-agent's next loop,
@@ -528,6 +549,14 @@ export interface AgentRuntime {
 	getState(): RuntimeState;
 	resetSession(): void;
 	getResult(): string;
+	/**
+	 * Optional: flat list of this loop's live in-memory tasks (its delegator's
+	 * TaskRegistry) plus, recursively, the same for each currently-running
+	 * sub-loop. Each TaskInfo carries a parentTaskId so the caller can rebuild
+	 * the tree. Present on AgentLoop; absent on stubs. Used by the UI TaskTree
+	 * and the agent TaskList so they share one source.
+	 */
+	getRuntimeTaskTree?(): TaskInfo[];
 }
 
 export interface RuntimeState {

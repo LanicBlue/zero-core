@@ -235,7 +235,9 @@ describe("memory as wiki per-agent subtree (P2 §11.6)", () => {
 			expect(rendered).toContain("Subject-A");
 			expect(rendered).toContain("Subject-B");
 			// MEMORY.md convention: each leaf line carries its nodeId link.
-			expect(rendered).toMatch(/- Subject-A \(decision\) \[[^\]]+\]/);
+			// (Body size is shown between title and nodeId since the size-display
+			// change — tolerate it.)
+			expect(rendered).toMatch(/- Subject-A \(decision\) \(no body\) \[[^\]]+\]/);
 		});
 
 		test("renderContextAnchors shows '(no memory leaves yet)' for an empty subtree", () => {

@@ -27,12 +27,13 @@ export class TaskRegistry {
 	private abortControllers = new Map<string, AbortController>();
 	private wakeCallback: (() => void) | null = null;
 
-	create(taskId: string, type: TaskType, task: string, abortController?: AbortController): void {
+	create(taskId: string, type: TaskType, task: string, abortController?: AbortController, parentTaskId?: string): void {
 		this.tasks.set(taskId, {
 			id: taskId,
 			type,
 			task,
 			status: "running",
+			parentTaskId,
 			step: 0,
 			turns: 0,
 			tokens: 0,
@@ -106,6 +107,24 @@ export class TaskRegistry {
 		info.status = "killed";
 		info.completedAt = Date.now();
 		info.currentTool = undefined;
+		this.tryWake();
+		return true;
+	}
+
+	/**
+	 * Acknowledge a FINISHED task (completed/failed/killed/interrupted) and drop
+	 * it from the live registry so it leaves the UI TaskTree and the agent's
+	 * TaskList. Running/finishing tasks are refused (stop them first). This is
+	 * the parent-agent "confirm completion" step: a finished task stays visible
+	 * until the parent explicitly acknowledges it. tryWake() so any Wait blocked
+	 * on this task resolves. Returns false if the task isn't terminal (or absent).
+	 */
+	acknowledge(taskId: string): boolean {
+		const info = this.tasks.get(taskId);
+		if (!info) return false;
+		if (info.status === "running" || info.status === "finishing") return false;
+		this.tasks.delete(taskId);
+		this.abortControllers.delete(taskId);
 		this.tryWake();
 		return true;
 	}

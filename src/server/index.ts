@@ -536,6 +536,11 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/chat", createChatRouter({ agentService, agentStore, providerStore, workspaceConfig }));
 	app.use("/api/sessions", createSessionRouter({ agentService, agentStore, management }));
 	app.use("/api/delegated-tasks", createDelegatedTaskRouter(sessionDB));
+	// Live in-memory task tree (same source the agent's TaskList reads): bash
+	// background tasks visible, status/count identical to the agent's view.
+	app.get("/api/runtime-tasks/by-session/:sessionId", (req, res) => {
+		res.json(agentService.getRuntimeTaskTree(req.params.sessionId));
+	});
 	app.use("/api/input-queue", createInputQueueRouter(agentService));
 	app.use("/api/logs", createLogRouter({ sessionDb: sessionDB }));
 	app.use("/api/files", createFileRouter({ workspaceConfig }));

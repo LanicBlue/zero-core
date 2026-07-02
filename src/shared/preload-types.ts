@@ -46,6 +46,7 @@ import type {
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
 	DelegatedTaskRecord,
+	RuntimeTaskInfo,
 } from "./types.js";
 
 export interface WindowApi {
@@ -269,6 +270,7 @@ export interface WindowApi {
 	// ── Delegated tasks (TaskTree) ──
 	delegatedTasksBySession: (sessionId: string) => Promise<DelegatedTaskRecord[]>;
 	delegatedTasksGet: (id: string) => Promise<DelegatedTaskRecord | undefined>;
+	runtimeTasksBySession: (sessionId: string) => Promise<RuntimeTaskInfo[]>;
 
 	// ── Input queue (C2) ──
 	inputQueueList: (sessionId: string) => Promise<Array<{ id: string; sessionId: string; content: string; mode: "queued" | "insert_now"; createdAt: number }>>;

@@ -38,6 +38,7 @@ import type {
 	AgentRuntime,
 	RuntimeState,
 	ToolExecutionContext,
+	TaskInfo,
 } from "./types.js";
 import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
@@ -162,6 +163,7 @@ export class AgentLoop implements AgentRuntime {
 			getTaskResult: (taskId) => this.delegator.getTaskResult(taskId),
 			listTasks: (filter) => this.delegator.listTasks(filter),
 			stopTask: (taskId) => this.delegator.stopTask(taskId),
+			acknowledgeTask: (taskId) => this.delegator.acknowledgeTask(taskId),
 			requestTaskFinish: (taskId, options) => this.delegator.requestTaskFinish(taskId, options),
 			listDelegatedTasks: (filter) => this.delegator.listDelegatedTasks(filter),
 			suspendUntilWake: (timeoutMs, taskId) => this.delegator.suspendUntilWake(timeoutMs, taskId),
@@ -409,6 +411,23 @@ export class AgentLoop implements AgentRuntime {
 	/** The agent id this loop is bound to (for agentService config-sync targeting). */
 	getConfigAgentId(): string {
 		return this.config.agentId;
+	}
+
+	/**
+	 * Flat list of this loop's live in-memory tasks (its delegator's
+	 * TaskRegistry) plus, recursively, every running sub-loop's tree. Each
+	 * TaskInfo carries a parentTaskId so the caller rebuilds the tree. This is
+	 * the single source the UI TaskTree and the agent TaskList read — they no
+	 * longer diverge (bash tasks included; status/count identical). Only
+	 * RUNNING sub-loops are recursed (finished ones leave the live view).
+	 */
+	getRuntimeTaskTree(): TaskInfo[] {
+		const out: TaskInfo[] = [...this.delegator.taskRegistry.list()];
+		for (const { loop } of this.delegator.getRunningSubloops().values()) {
+			const childTree = loop.getRuntimeTaskTree?.();
+			if (childTree?.length) out.push(...childTree);
+		}
+		return out;
 	}
 
 	/**

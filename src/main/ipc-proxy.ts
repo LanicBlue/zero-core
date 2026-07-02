@@ -234,6 +234,8 @@ const R: Record<string, RouteMapping> = {
 		// ─── Delegated tasks (TaskTree UI) ───────────────────
 		"delegatedTasks:bySession": { method: "GET", path: "/api/delegated-tasks/by-session/:sessionId", buildReq: (sessionId) => ({ params: { sessionId } }) },
 		"delegatedTasks:get":       { method: "GET", path: "/api/delegated-tasks/:id",                   buildReq: (id) => ({ params: { id } }) },
+		// Live in-memory task tree (same source the agent's TaskList reads).
+		"runtimeTasks:bySession":   { method: "GET", path: "/api/runtime-tasks/by-session/:sessionId",   buildReq: (sessionId) => ({ params: { sessionId } }) },
 
 		// ─── Input queue (C2) ─────────────────────────────────
 		"inputQueue:list":    { method: "GET",    path: "/api/input-queue/:sessionId",         buildReq: (sessionId) => ({ params: { sessionId } }) },

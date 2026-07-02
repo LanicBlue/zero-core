@@ -3,29 +3,37 @@
 // # 文件说明书
 //
 // ## 核心功能
-// Per-session delegated task list, pull-on-display: the TaskTreePanel pulls
-// when shown / when the active session switches, and slow-polls while visible
-// so live progress (turns/tokens/currentTool/status) refreshes. No push
-// channel — updateDelegatedTask fires on every tool_start/usage, too hot for
-// the data-change hub.
+// Per-session LIVE task list, pull-on-display: the TaskTreePanel pulls from the
+// agent's IN-MEMORY task registry (same source the agent's TaskList tool reads)
+// so the UI and the agent agree on count/status and bash background tasks are
+// visible. Slow-polls while visible so live progress (turns/tokens/currentTool/
+// status) refreshes. Returned as a flat list with parentTaskId — the panel
+// rebuilds the delegation tree (sub-agent of sub-agent).
+//
+// ## Why in-memory (not the delegated_tasks DB)
+// The DB view (delegatedTasksBySession) diverged from the agent's view: it
+// missed bash background tasks (only in memory), filtered by parent_session_id
+// (only depth-1), and persisted across restart while the agent's registry did
+// not. Reading the same in-memory Map the agent reads eliminates the mismatch.
+// The DB channel is retained elsewhere for restart-aware inspection/history.
 //
 // ## 输入
-// IPC: delegatedTasks:bySession.
+// IPC: runtimeTasks:bySession.
 //
 // ## 输出
-// - tasksBySession(sessionId → DelegatedTaskRecord[])
+// - tasksBySession(sessionId → RuntimeTaskInfo[])
 // - loadingBySession
 // - pull(sessionId), stop(sessionId)
 //
 import { create } from "zustand";
-import type { DelegatedTaskRecord } from "../../shared/types.js";
+import type { RuntimeTaskInfo } from "../../shared/types.js";
 
 const api = () => (window as any).api;
 
 const POLL_MS = 2500;
 
 interface TaskState {
-	tasksBySession: Record<string, DelegatedTaskRecord[]>;
+	tasksBySession: Record<string, RuntimeTaskInfo[]>;
 	loadingBySession: Record<string, boolean>;
 	selectedTaskId?: string;
 	pollTimers: Record<string, ReturnType<typeof setInterval>>;
@@ -43,7 +51,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 	pull: async (sessionId: string) => {
 		set((s) => ({ loadingBySession: { ...s.loadingBySession, [sessionId]: true } }));
 		try {
-			const tasks: DelegatedTaskRecord[] = await api().delegatedTasksBySession(sessionId);
+			const tasks: RuntimeTaskInfo[] = await api().runtimeTasksBySession(sessionId);
 			set((s) => ({ tasksBySession: { ...s.tasksBySession, [sessionId]: tasks ?? [] }, loadingBySession: { ...s.loadingBySession, [sessionId]: false } }));
 		} catch {
 			set((s) => ({ loadingBySession: { ...s.loadingBySession, [sessionId]: false } }));

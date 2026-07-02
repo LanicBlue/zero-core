@@ -275,6 +275,30 @@ export interface DelegatedTaskRecord {
 }
 
 /**
+ * Live in-memory task entry (mirrors the runtime TaskInfo; the shared layer
+ * can't import runtime types). Returned by the `runtimeTasks:bySession` IPC —
+ * the single source the UI TaskTree and the agent TaskList read. Includes bash
+ * background tasks (only in memory, never persisted). `parentTaskId` lets the
+ * caller rebuild the delegation tree (sub-agent of sub-agent). Not persisted —
+ * a live view; lost on restart.
+ */
+export interface RuntimeTaskInfo {
+	id: string;
+	type: "subagent" | "bash";
+	task: string;
+	status: "running" | "finishing" | "completed" | "failed" | "killed" | "interrupted";
+	parentTaskId?: string;
+	step: number;
+	turns: number;
+	tokens: number;
+	currentTool?: string;
+	result?: string;
+	error?: string;
+	startedAt: number;
+	completedAt?: number;
+}
+
+/**
  * v0.8 (M0): the context bundle a session carries. projectId is optional
  * (global/observation sessions have none); workspaceDir and wikiRootNodeId
  * are required so every session has a concrete work location and wiki view.

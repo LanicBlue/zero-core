@@ -115,6 +115,22 @@ export interface SubagentDelegatorDeps {
 const DEFAULT_FINISH_MESSAGE =
 	"Stop expanding work. Return the best available summary of completed work, partial findings, artifacts, and remaining gaps.";
 
+/**
+ * Sub-agent tool policy: inherits the caller's policy but force-blocks AskUser.
+ * A sub-agent runs in a hidden delegated session; its ask_user event carries
+ * that hidden sessionId, which the renderer never displays — so an AskUser from
+ * a sub-agent would hang forever waiting for a reply the user never sees.
+ * Blocking it at the tool-policy level (buildToolsSet honors blockedTools) is
+ * the cleanest knob; no ToolExecutionContext change needed. If parent↔child
+ * communication is added later (route the sub-agent's question up via a hook),
+ * remove this entry.
+ */
+export function delegatedToolPolicy(base: SessionConfig["toolPolicy"]): SessionConfig["toolPolicy"] {
+	const blocked = new Set<string>(base?.blockedTools ?? []);
+	blocked.add("AskUser");
+	return { ...(base ?? {}), blockedTools: [...blocked] };
+}
+
 export class SubagentDelegator {
 	readonly taskRegistry = new TaskRegistry();
 	private config: SessionConfig;
@@ -260,11 +276,14 @@ export class SubagentDelegator {
 			sessionId,
 			systemPrompt: options?.systemPrompt ?? this.config.systemPrompt,
 			modelId: options?.model ?? this.config.modelId,
-			toolPolicy: options?.toolPolicy ?? this.config.toolPolicy,
+			toolPolicy: delegatedToolPolicy(options?.toolPolicy ?? this.config.toolPolicy),
 			workspaceDir: resolvedWorkspaceDir,
 			contextBundle: inheritedBundle,
 			parentSessionId: this.config.sessionId,
 			spawnDepth: (this.config.spawnDepth ?? 0) + 1,
+			// The sub-loop runs UNDER this task → tasks it later dispatches are
+			// children of taskId in the in-memory task tree.
+			ownerTaskId: taskId,
 			timeoutSec: toolConfig?.Agent?.timeout,
 			// Step 1B: mark as a delegated loop so handlers registered on its
 			// own registry know their kind (task-control fires; notification /
@@ -322,7 +341,7 @@ export class SubagentDelegator {
 			}
 
 			// Timed out still running → register as a background task.
-			registry.create(taskId, "subagent", task, subAbort);
+			registry.create(taskId, "subagent", task, subAbort, this.config.ownerTaskId);
 			await triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task });
 			done.then(async () => {
 				this.runningSubloops.delete(taskId);
@@ -392,19 +411,22 @@ export class SubagentDelegator {
 			sessionId,
 			systemPrompt: options?.systemPrompt ?? this.config.systemPrompt,
 			modelId: options?.model ?? this.config.modelId,
-			toolPolicy: options?.toolPolicy ?? this.config.toolPolicy,
+			toolPolicy: delegatedToolPolicy(options?.toolPolicy ?? this.config.toolPolicy),
 			workspaceDir: options?.workspaceDir ?? inheritedBundle?.workspaceDir ?? this.config.workspaceDir,
 			contextBundle: inheritedBundle,
 			timeoutSec: toolConfig?.Agent?.timeout,
 			parentSessionId: this.config.sessionId,
 			spawnDepth: (this.config.spawnDepth ?? 0) + 1,
+			// The sub-loop runs UNDER this task → its dispatched tasks are
+			// children of taskId in the in-memory task tree.
+			ownerTaskId: taskId,
 			// Step 1B: delegated loop → task-control fires, main-only hooks don't.
 			loopKind: "delegated",
 		};
 
 		const registry = this.taskRegistry;
 		const subAbort = new AbortController();
-		registry.create(taskId, "subagent", task, subAbort);
+		registry.create(taskId, "subagent", task, subAbort, this.config.ownerTaskId);
 		triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task }).catch(() => {});
 		triggerHooks("SubagentStart", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task }).catch(() => {});
 
@@ -459,6 +481,20 @@ export class SubagentDelegator {
 		return this.taskRegistry.list(filter);
 	}
 
+	/**
+	 * Read-only view of this delegator's currently-running sub-loops, keyed by
+	 * taskId. Used by AgentLoop.getRuntimeTaskTree to recurse into nested
+	 * delegators so the live in-memory task tree reflects sub-agent-of-sub-agent
+	 * chains. Returns only RUNNING sub-loops (completed ones are removed from
+	 * the map on completion — their tasks vanish with them, matching the
+	 * "finished tasks leave the live view once acknowledged" lifecycle).
+	 */
+	getRunningSubloops(): ReadonlyMap<string, { loop: AgentRuntime }> {
+		const out = new Map<string, { loop: AgentRuntime }>();
+		for (const [id, entry] of this.runningSubloops) out.set(id, { loop: entry.loop });
+		return out;
+	}
+
 	stopTask(taskId: string): boolean {
 		const killed = this.taskRegistry.kill(taskId);
 		if (killed) {
@@ -467,6 +503,15 @@ export class SubagentDelegator {
 			triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed" }).catch(() => {});
 		}
 		return killed;
+	}
+
+	/**
+	 * Parent-agent "confirm completion": drop a FINISHED task from the live
+	 * registry so it leaves the UI TaskTree and the agent's TaskList. Refuses
+	 * running tasks (stop them first). Returns false if not terminal / absent.
+	 */
+	acknowledgeTask(taskId: string): boolean {
+		return this.taskRegistry.acknowledge(taskId);
 	}
 
 	/**
@@ -549,6 +594,11 @@ export class SubagentDelegator {
 			contextBundle: this.config.contextBundle,
 			parentSessionId: this.config.sessionId,
 			spawnDepth: (this.config.spawnDepth ?? 0) + 1,
+			// The resumed sub-loop runs UNDER this task → its dispatched tasks
+			// are children of taskId in the in-memory task tree.
+			ownerTaskId: taskId,
+			// Same AskUser block as fresh delegations (sub-agent hidden session).
+			toolPolicy: delegatedToolPolicy(this.config.toolPolicy),
 			timeoutSec: toolConfig?.Agent?.timeout,
 			loopKind: "delegated",
 		};
@@ -607,7 +657,7 @@ export class SubagentDelegator {
 		const registry = this.taskRegistry;
 		const parentEmit = (event: StreamEvent) => this.emit(event);
 
-		registry.create(taskId, "bash", command);
+		registry.create(taskId, "bash", command, undefined, this.config.ownerTaskId);
 		triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task: command }).catch(() => {});
 
 		let child: any;

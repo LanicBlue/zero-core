@@ -46,6 +46,7 @@ import type {
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
 	DelegatedTaskRecord,
+	RuntimeTaskInfo,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -245,6 +246,9 @@ export interface IpcChannelDefs {
 	// ── Delegated tasks (TaskTree UI; read-only, pull-on-display) ──
 	"delegatedTasks:bySession": { params: [sessionId: string]; result: DelegatedTaskRecord[] };
 	"delegatedTasks:get":       { params: [id: string]; result: DelegatedTaskRecord | undefined };
+
+	// ── Runtime tasks (live in-memory tree; same source as the agent's TaskList) ──
+	"runtimeTasks:bySession":   { params: [sessionId: string]; result: RuntimeTaskInfo[] };
 
 	// ── Input queue (Phase C2 — queue inputs while a session is running) ──
 	"inputQueue:list":    { params: [sessionId: string]; result: Array<{ id: string; sessionId: string; content: string; mode: "queued" | "insert_now"; createdAt: number }> };

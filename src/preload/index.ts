@@ -248,6 +248,7 @@ const api: WindowApi = {
 	// ── Delegated tasks (TaskTree) ──
 	delegatedTasksBySession: (sessionId) => ipcRenderer.invoke("delegatedTasks:bySession", sessionId),
 	delegatedTasksGet: (id) => ipcRenderer.invoke("delegatedTasks:get", id),
+	runtimeTasksBySession: (sessionId) => ipcRenderer.invoke("runtimeTasks:bySession", sessionId),
 
 	// ── Input queue (C2) ──
 	inputQueueList: (sessionId) => ipcRenderer.invoke("inputQueue:list", sessionId),

@@ -1979,6 +1979,12 @@ body {
   font: inherit;
 }
 
+/* Nested delegation tree: each level's children indent under its parent. */
+.task-tree-children {
+  margin-left: 14px;
+  border-left: 1px solid var(--border-default);
+}
+
 .task-card:hover {
   background: var(--bg-hover, rgba(127, 127, 127, 0.1));
 }

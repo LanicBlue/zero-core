@@ -353,6 +353,15 @@ export class AgentService {
 	getActiveSessionsMap(): ReadonlyMap<string, string> {
 		return this.activeSessions;
 	}
+	/**
+	 * Live in-memory task tree for a session (the same source the agent's
+	 * TaskList reads), so the UI TaskTree and the agent agree on count/status
+	 * and bash background tasks are visible. Flat TaskInfo[] with parentTaskId;
+	 * empty when the session has no live loop yet.
+	 */
+	getRuntimeTaskTree(sessionId: string): import("../runtime/types.js").TaskInfo[] {
+		return this.loops.get(sessionId)?.getRuntimeTaskTree() ?? [];
+	}
 	evictSessionFromMemory(sessionId: string): void {
 		// v0.8 (M5): mechanism 3 — close flush. Fire extractor A on the tail
 		// batch (anything after the last extraction cursor) so session death
