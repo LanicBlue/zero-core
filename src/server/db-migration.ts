@@ -1083,16 +1083,9 @@ export function runMigrations(sessionDB: SessionDB): void {
 	]);
 	mcpServers.migrateFromJson(join(zeroDir, "mcp-servers.json"), "servers");
 
-	// Knowledge bases
-	const kbEntries = new SqliteStore<any>(db, "kb_entries", [
-		{ key: "name" }, { key: "description" },
-		{ key: "embeddingProvider", column: "embedding_provider" },
-		{ key: "embeddingModel", column: "embedding_model" },
-		{ key: "agentIds", column: "agent_ids", json: true },
-		{ key: "files", json: true },
-		{ key: "createdAt", column: "created_at" }, { key: "updatedAt", column: "updated_at" },
-	]);
-	kbEntries.migrateFromJson(join(zeroDir, "knowledge-bases.json"), "knowledgeBases");
+	// v0.8: Knowledge bases migration removed — the KB subsystem (vector RAG)
+	// is retired (will be redone via wiki-format file splitting). The
+	// kb_entries/kb_chunks tables are dropped in step 4 below.
 
 	// ─── 3. KV-store JSON migrations ─────────────────────────────
 
@@ -1112,14 +1105,23 @@ export function runMigrations(sessionDB: SessionDB): void {
 		}
 	}
 
-	// ─── 4. Drop legacy v0.7 memory graph tables ────────────────
-	// MemoryStore (memory_entities/memory_relations) removed in v0.8 — it was
-	// a zombie (memory-tools.ts unregistered in P2 §11.6, zero runtime
-	// writers). MemoryNodeStore (memory_nodes/_subjects/_edges/_fts) is alive
-	// and NOT dropped. v0.7 users' memory.json data lived here but nothing
-	// reads it anymore; v0.8 wiki memory fully replaces it.
+	// ─── 4. Drop legacy memory + knowledge-base tables ────────────
+	// All superseded by the v0.8 wiki tree:
+	//  - memory_entities/memory_relations: v0.7 memory graph (zombie since
+	//    P2 §11.6, zero runtime writers).
+	//  - memory_nodes/_subjects/_edges/_fts: Gen1 MemoryNodeStore (M5
+	//    migrated writes to the wiki memory subtree; store removed).
+	//  - kb_entries/kb_chunks: standalone KB vector-RAG subsystem retired
+	//    (will be redone via wiki-format file splitting).
+	// DROP IF EXISTS makes this idempotent on fresh DBs that never had them.
 	db.exec(`DROP TABLE IF EXISTS memory_relations`);
 	db.exec(`DROP TABLE IF EXISTS memory_entities`);
+	db.exec(`DROP TABLE IF EXISTS memory_nodes_fts`);
+	db.exec(`DROP TABLE IF EXISTS memory_edges`);
+	db.exec(`DROP TABLE IF EXISTS memory_subjects`);
+	db.exec(`DROP TABLE IF EXISTS memory_nodes`);
+	db.exec(`DROP TABLE IF EXISTS kb_chunks`);
+	db.exec(`DROP TABLE IF EXISTS kb_entries`);
 }
 
 // ---------------------------------------------------------------------------
