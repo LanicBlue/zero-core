@@ -29,9 +29,19 @@
 
 import { generateText } from "ai";
 import type { RuntimeProviderConfig } from "./types.js";
-import type { MemoryNodeInput } from "../server/memory-node-store.js";
 import { resolveModel } from "./provider-factory.js";
 import { log } from "../core/logger.js";
+
+/**
+ * A memory fact extracted at L2 compression. The producer (CompressionEngine)
+ * owns this shape; consumers (compression-hooks → wiki tree, extractor-A) read
+ * it. Formerly imported from the Gen1 memory-node-store, which is removed.
+ */
+export interface MemoryNodeInput {
+	subject: string;
+	type: "event" | "decision" | "discovery" | "status_change" | "preference";
+	content: string;
+}
 
 // ---------------------------------------------------------------------------
 // Types

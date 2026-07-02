@@ -31,7 +31,6 @@ import { v4 as uuidv4 } from "uuid";
 import { log } from "../core/logger.js";
 import type { DelegatedTaskRecord, DelegatedTaskStatus, SessionRecord, ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats } from "../shared/types.js";
 import { KeyValueStore } from "./key-value-store.js";
-import { MemoryNodeStore } from "./memory-node-store.js";
 // v0.8 (M5): extractor cursor + tool telemetry stores. These back
 // extractor A's incremental cursor (mechanism 2) and extractor B's
 // independent telemetry writes (decision 49). Tables are created in
@@ -48,7 +47,6 @@ import { ZERO_CORE_DIR } from "../core/config.js";
 export class SessionDB {
 	private db: Database.Database;
 	private kvStore: KeyValueStore;
-	private memoryNodeStore: MemoryNodeStore;
 	// v0.8 (M5): extractor cursor + telemetry stores (lazy-init below).
 	private extractionCursorStore: ExtractionCursorStore | null = null;
 	private telemetryStore: TelemetryStore | null = null;
@@ -64,7 +62,6 @@ export class SessionDB {
 		this.db.pragma("foreign_keys = ON");
 
 		this.kvStore = new KeyValueStore(this.db);
-		this.memoryNodeStore = new MemoryNodeStore(this.db);
 
 		this.initSchema();
 		this.migrateMessageFiles();
@@ -77,10 +74,6 @@ export class SessionDB {
 
 	getKVStore(): KeyValueStore {
 		return this.kvStore;
-	}
-
-	getMemoryNodeStore(): MemoryNodeStore {
-		return this.memoryNodeStore;
 	}
 
 	// v0.8 (M5): extractor stores — lazy so existing code paths that never

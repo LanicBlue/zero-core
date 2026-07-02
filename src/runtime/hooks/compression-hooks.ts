@@ -118,17 +118,11 @@ export function registerCompressionHooks(registry: HookRegistry = HookRegistry.g
 
 				if (result.memoryNodes.length > 0 && config.db) {
 					try {
-						// v0.8 (M5): memory nodes are migrated to the global wiki
-						// tree (type=memory). The wiki tree is the canonical
-						// location for content memory (decision 53); the legacy
-						// MemoryNodeStore is kept for back-compat reads of
-						// pre-M5 data, but new writes go to the wiki tree so
-						// extractor A (which also writes there) sees them.
-						//
-						// If config.wikiStoreGlobal is unavailable (e.g. the
-						// session wasn't created via agent-service in tests),
-						// fall back to the legacy MemoryNodeStore so we don't
-						// silently lose the extraction.
+						// v0.8 (M5): memory nodes go to the global wiki tree
+						// (type=memory) — the canonical content-memory store
+						// (decision 53). The legacy MemoryNodeStore is removed;
+						// if wikiStoreGlobal is unavailable (a session not built
+						// via agent-service) the extraction is skipped.
 						const wikiGlobal = (config as any).wikiStoreGlobal;
 						if (wikiGlobal) {
 							for (const fact of result.memoryNodes) {
@@ -157,11 +151,6 @@ export function registerCompressionHooks(registry: HookRegistry = HookRegistry.g
 								} catch (err2) {
 									log.warn("compression", `Memory node wiki write failed for ${fact.subject}:`, (err2 as Error).message);
 								}
-							}
-						} else {
-							const nodeStore = config.db.getMemoryNodeStore();
-							if (nodeStore) {
-								nodeStore.upsertNodes(session.getSessionId() ?? null, result.memoryNodes);
 							}
 						}
 					} catch (err) {

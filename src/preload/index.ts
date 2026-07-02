@@ -194,14 +194,7 @@ const api: WindowApi = {
 	webfetchCookies: () => ipcRenderer.invoke("webfetch:cookies"),
 	webfetchClearCookies: (domain?) => ipcRenderer.invoke("webfetch:clear-cookies", domain),
 
-	// ── Memory Nodes ──
-	memoryNodeList: (limit?) => ipcRenderer.invoke("memory-nodes:nodes", limit),
-	memoryNodeSubjects: () => ipcRenderer.invoke("memory-nodes:subjects"),
-	memoryNodeSubjectNodes: (name) => ipcRenderer.invoke("memory-nodes:subject-nodes", name),
-	memoryNodeSearch: (q, limit?) => ipcRenderer.invoke("memory-nodes:search", q, limit),
-	memoryNodeDelete: (id) => ipcRenderer.invoke("memory-nodes:delete", id),
-
-	// ── Memory Config ──
+	// ── Compression Config ──
 	memoryConfigGet: () => ipcRenderer.invoke("config:memory-get"),
 	memoryConfigUpdate: (data) => ipcRenderer.invoke("config:memory-update", data),
 

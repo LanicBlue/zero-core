@@ -164,12 +164,7 @@ const R: Record<string, RouteMapping> = {
 	// Skills
 	"skills:list":    { method: "GET", path: "/api/skills", buildReq: () => ({}) },
 
-		// Memory Nodes
-		"memory-nodes:nodes":          { method: "GET", path: "/api/memory-nodes/nodes", buildReq: (limit?: number) => ({ query: limit ? { limit: String(limit) } : undefined }) },
-		"memory-nodes:subjects":       { method: "GET", path: "/api/memory-nodes/subjects", buildReq: () => ({}) },
-		"memory-nodes:subject-nodes":  { method: "GET", path: "/api/memory-nodes/subject/:name", buildReq: (name) => ({ params: { name } }) },
-		"memory-nodes:search":         { method: "GET", path: "/api/memory-nodes/search", buildReq: (q, limit?) => ({ query: { q, ...(limit ? { limit: String(limit) } : {}) } }) },
-		"memory-nodes:delete":         { method: "DELETE", path: "/api/memory-nodes/nodes/:id", buildReq: (id) => ({ params: { id } }) },
+		// Memory Nodes — removed (memory lives in the wiki tree).
 
 		// Memory Config
 		"config:memory-get":    { method: "GET", path: "/api/config/memory-config", buildReq: () => ({}) },

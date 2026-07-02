@@ -212,13 +212,6 @@ export interface WindowApi {
 	toolExecutionsCleanup: (maxAgeMs: number) => Promise<number>;
 	toolExecutionsAnalyze: (agentId?: string) => Promise<{ analysis: string; stats: ToolExecutionStats[]; recentErrors: ToolExecutionRecord[] } | { error: string }>;
 
-	// ── Memory Nodes ──
-	memoryNodeList: (limit?: number) => Promise<Array<{ id: string; subject: string; type: string; content: string; updatedAt: string }>>;
-	memoryNodeSubjects: () => Promise<Array<{ subject: string; nodeCount: number; latestUpdate: string }>>;
-	memoryNodeSubjectNodes: (name: string) => Promise<{ nodes: any[]; subject: any | null }>;
-	memoryNodeSearch: (q: string, limit?: number) => Promise<Array<{ id: string; subject: string; type: string; content: string; updatedAt: string }>>;
-	memoryNodeDelete: (id: string) => Promise<{ success: true }>;
-
 	// ── Compression Config ──
 	memoryConfigGet: () => Promise<{ compression: { enabled?: boolean; keepRecentTurns?: number; l1Threshold?: number; l2Threshold?: number } }>;
 	memoryConfigUpdate: (data: { compression?: any }) => Promise<{ success: true }>;

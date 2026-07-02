@@ -57,7 +57,6 @@ export interface ISessionStore {
 	deleteTurn(sessionId: string, seq: number): void;
 	clearTurns(sessionId: string): void;
 	getKVStore(): IKVStore;
-	getMemoryNodeStore(): any;
 
 	// ── Delegated task persistence (optional — runtime null-checks) ──
 	createDelegatedTask?(input: {

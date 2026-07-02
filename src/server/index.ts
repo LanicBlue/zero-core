@@ -54,7 +54,6 @@ import { createLogRouter } from "./log-router.js";
 import { createFileRouter } from "./file-router.js";
 import { createToolExecutionRouter } from "./tool-execution-router.js";
 import { createSkillRouter } from "./skill-router.js";
-import { createMemoryNodeRouter } from "./memory-node-router.js";
 import { ProjectStore } from "./project-store.js";
 import { RequirementStore } from "./requirement-store.js";
 import { ProjectWikiStore } from "./project-wiki-store.js";
@@ -532,7 +531,6 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/templates", createTemplateRouter(templateStore, sessionDB));
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
 	app.use("/api/skills", createSkillRouter());
-	app.use("/api/memory-nodes", createMemoryNodeRouter(sessionDB.getMemoryNodeStore()));
 
 	// New routers
 	app.use("/api/chat", createChatRouter({ agentService, agentStore, providerStore, workspaceConfig }));
