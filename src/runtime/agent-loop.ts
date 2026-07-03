@@ -53,6 +53,7 @@ import { buildContextMessage } from "./context-message.js";
 import { SubagentDelegator } from "./subagent-delegator.js";
 import { ToolRateLimiter } from "./tool-rate-limiter.js";
 import type { WikiStore } from "../server/wiki-node-store.js";
+import type { DelegatedTaskRecord } from "../shared/types.js";
 import {
 	resolveAnchors,
 	anchorNodeIds,
@@ -428,6 +429,34 @@ export class AgentLoop implements AgentRuntime {
 			if (childTree?.length) out.push(...childTree);
 		}
 		return out;
+	}
+
+	/**
+	 * Restore persisted delegated_tasks rows into this loop's live TaskRegistry
+	 * (startup / activate history reload). The read path (getRuntimeTaskTree) is
+	 * memory-only by design; this is the DB→runtime restore that keeps the
+	 * memory view non-empty after restart. Restored tasks are historical (not
+	 * actively running) → no abortController. Bash background tasks aren't
+	 * persisted, so they're correctly absent after restart.
+	 */
+	restoreDelegatedTasks(records: DelegatedTaskRecord[]): void {
+		for (const rec of records) {
+			this.delegator.taskRegistry.seed({
+				id: rec.id,
+				type: "subagent",
+				task: rec.task,
+				status: rec.status,
+				parentTaskId: rec.parentTaskId,
+				step: rec.step,
+				turns: rec.turns,
+				tokens: rec.tokens,
+				currentTool: rec.currentTool,
+				result: rec.result,
+				error: rec.error,
+				startedAt: Date.parse(rec.createdAt) || 0,
+				completedAt: rec.completedAt ? Date.parse(rec.completedAt) || undefined : undefined,
+			});
+		}
 	}
 
 	/**

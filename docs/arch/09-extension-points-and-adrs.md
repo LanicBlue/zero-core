@@ -685,7 +685,7 @@ graph TB
 
 **Phase A 限制(已记)`:AgentLoop.requestFinish` 曾误放在 AgentLoop,后移除 —— 控制消息归 task 管理,hook 投递,AgentLoop 不持有功能/控制状态。
 
-**重启回填(后补)**:本 ADR 写了持久化却漏了重启回读 —— `delegated_tasks` 行落了盘,但 UI 的 `runtimeTasks:bySession` 只读 live TaskRegistry,重启后清空。现已由 `AgentService.getRuntimeTaskTree` 的 live ⊕ DB 合并补齐(详见 [05 §delegated_tasks](05-persistence.md#delegated_tasks委派任务phase-c)):无 live loop 时返回 DB 行,live 存在时覆盖同 id 行 + 补 bash 后台任务。
+**重启回填(后补)**:本 ADR 写了持久化却漏了重启回读 —— `delegated_tasks` 行落了盘,但 UI 的 `runtimeTasks:bySession` 只读 live TaskRegistry,重启后清空。读路径保持纯内存(单源,含 bash 后台任务);恢复挪到 loop 创建路径:`createLoopForSession` 取该 chat session 的根任务,按 `root_task_id` 展开子树,经 `loop.restoreDelegatedTasks` → `TaskRegistry.seed` 灌回 live registry(详见 [05 §delegated_tasks](05-persistence.md#delegated_tasks委派任务phase-c))。`restoreAllSessions` 后内存树即映出历史。
 
 **Wiki 工具迁移缺口(后补)**:v0.8 帕尔斯凯域工具(Wiki/Project/Cron/AgentRegistry)曾缺 `RENAMED_TOOLS` 小写别名,且 `toolEnabled()`(能力注入的判据)不做迁移 → 旧的小写键配置(如 `{wiki:{enabled:true}}`)下,`buildToolsSet` 想启用 Wiki,但能力侧 `on("Wiki")` 返回 false → 不注入 `wikiStore` → `CONDITIONAL_TOOLS["Wiki"]` 把它过滤掉。子代理经 `...this.config` 本会继承 wikiStore,故子代理缺 Wiki 只是父代理的连带。修复:`RENAMED_TOOLS` 补 `wiki→Wiki` 等别名 + `toolEnabled` 与 `buildToolsSet` 走同一套迁移。
 

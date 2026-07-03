@@ -1,90 +1,96 @@
-// 单元测试:重启后委派任务树恢复(getRuntimeTaskTree 的 live ⊕ DB 合并)
+// 单元测试:重启后委派任务树恢复(DB → runtime,在 loop 创建时回填)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 锁死:getRuntimeTaskTree(sessionId) 在无 live loop 时仍返回持久化的
-// delegated_tasks 行(重启恢复),嵌套子代理按 rootTaskId 整树展开;live loop
-// 存在时其条目覆盖同 id 的 DB 行(running 实时态优先)并补上 DB 没有的 bash
-// 后台任务。这是 ADR-024 持久化补的"重启回填"环节。
+// 锁死:读路径 getRuntimeTaskTree 保持纯内存(单源,含 bash 后台任务);重启恢复
+// 发生在 loop 创建时 —— createLoopForSession 把该 chat session 的 delegated_tasks
+// 行(parent_session_id 根 + root_task_id 子树)经 loop.restoreDelegatedTasks 灌进
+// live TaskRegistry。所以 restoreAllSessions 后无 live sub-loop,内存树仍能映出历史。
 //
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { SessionDB } from "../../src/server/session-db.js";
 import { AgentService } from "../../src/server/agent-service.js";
 
-describe("AgentService.getRuntimeTaskTree — live ⊕ DB merge (restart restore)", () => {
-	let tmp: string | undefined;
-	let db: SessionDB | undefined;
-	let svc: AgentService | undefined;
+describe("delegated task restart restore (DB → runtime at loop creation)", () => {
+	let tmp: string;
+	let db: SessionDB;
 
-	function fresh(): void {
+	beforeEach(() => {
 		tmp = mkdtempSync(join(tmpdir(), "zc-tasktree-"));
 		db = new SessionDB(join(tmp, "sessions.db"));
-		svc = new AgentService(tmp, db);
-	}
-
+	});
 	afterEach(() => {
 		db?.close();
-		db = undefined;
-		svc = undefined;
 		if (tmp) rmSync(tmp, { recursive: true, force: true });
-		tmp = undefined;
 	});
 
-	test("returns persisted delegated tasks when no live loop exists (restart)", () => {
-		fresh();
-		db!.createDelegatedTask({
+	test("restoreAllSessions seeds a chat session's task tree from delegated_tasks", async () => {
+		const chat = db.createSession("agent-1", "chat");
+		db.createDelegatedTask({
 			id: "t1", rootTaskId: "t1", ownerAgentId: "lead",
-			targetAgentId: "dev", parentSessionId: "chat-1", task: "do X",
+			targetAgentId: "dev", parentSessionId: chat.id, task: "do X",
 		});
-		const tree = svc!.getRuntimeTaskTree("chat-1");
+		const svc = new AgentService(tmp, db);
+		await svc.restoreAllSessions();
+
+		const tree = svc.getRuntimeTaskTree(chat.id);
 		expect(tree.map((t) => t.id)).toEqual(["t1"]);
 		expect(tree[0].type).toBe("subagent");
 		expect(tree[0].status).toBe("running");
 	});
 
-	test("expands nested sub-agents via rootTaskId (sub-agent of sub-agent)", () => {
-		fresh();
-		db!.createDelegatedTask({
+	test("nested sub-agents restored via root_task_id expansion", async () => {
+		const chat = db.createSession("agent-1", "chat");
+		db.createDelegatedTask({
 			id: "t1", rootTaskId: "t1", ownerAgentId: "lead",
-			targetAgentId: "dev", parentSessionId: "chat-1", task: "root",
+			targetAgentId: "dev", parentSessionId: chat.id, task: "root",
 		});
-		// Nested child: parent_session_id is a delegated session, NOT chat-1, so
-		// only the rootTaskId expansion pulls it in.
-		db!.createDelegatedTask({
+		// Nested child: parent_session_id is a delegated session, NOT the chat,
+		// so only the root_task_id expansion pulls it into the chat session's tree.
+		db.createDelegatedTask({
 			id: "t2", parentTaskId: "t1", rootTaskId: "t1", ownerAgentId: "dev",
 			targetAgentId: "rev", task: "child", depth: 2,
 		});
-		const tree = svc!.getRuntimeTaskTree("chat-1");
+		const svc = new AgentService(tmp, db);
+		await svc.restoreAllSessions();
+
+		const tree = svc.getRuntimeTaskTree(chat.id);
 		expect(tree.map((t) => t.id).sort()).toEqual(["t1", "t2"]);
 	});
 
-	test("empty for a session with no persisted tasks and no live loop", () => {
-		fresh();
-		expect(svc!.getRuntimeTaskTree("chat-empty")).toEqual([]);
+	test("terminal status (interrupted/completed) is preserved on restore", async () => {
+		const chat = db.createSession("agent-1", "chat");
+		db.createDelegatedTask({
+			id: "t1", rootTaskId: "t1", ownerAgentId: "lead",
+			targetAgentId: "dev", parentSessionId: chat.id, task: "x",
+			status: "interrupted",
+		});
+		const svc = new AgentService(tmp, db);
+		await svc.restoreAllSessions();
+
+		const tree = svc.getRuntimeTaskTree(chat.id);
+		expect(tree[0].status).toBe("interrupted");
 	});
 
-	test("live loop entries overlay DB (running wins over completed) and add bash bg tasks", () => {
-		fresh();
-		db!.createDelegatedTask({
-			id: "t1", rootTaskId: "t1", ownerAgentId: "lead",
-			targetAgentId: "dev", parentSessionId: "chat-1", task: "x",
-			status: "completed",
-		});
-		// Inject a fake live loop: t1 still running (overrides DB completed) plus
-		// a bash background task that is live-only (not in delegated_tasks).
-		(svc as any).loops.set("chat-1", {
-			getRuntimeTaskTree: () => [
-				{ id: "t1", type: "subagent", task: "x", status: "running", step: 3, turns: 5, tokens: 100, startedAt: 1 },
-				{ id: "b1", type: "bash", task: "sleep 10", status: "running", step: 0, turns: 0, tokens: 0, startedAt: 2 },
-			],
-		});
-		const tree = svc!.getRuntimeTaskTree("chat-1");
-		const byId = new Map(tree.map((t) => [t.id, t]));
-		expect(byId.get("t1")!.status).toBe("running"); // live overrides DB
-		expect(byId.has("b1")).toBe(true); // bash bg task added (live-only)
+	test("a session with no persisted tasks stays empty", async () => {
+		const chat = db.createSession("agent-1", "chat");
+		const svc = new AgentService(tmp, db);
+		await svc.restoreAllSessions();
+		expect(svc.getRuntimeTaskTree(chat.id)).toEqual([]);
+	});
+
+	test("bash background tasks are not restored (not persisted) — memory-only", async () => {
+		// Bash bg tasks live only in the in-memory registry; they have no
+		// delegated_tasks row, so restart correctly drops them. Verified by the
+		// absence of any non-subagent type after restore.
+		const chat = db.createSession("agent-1", "chat");
+		const svc = new AgentService(tmp, db);
+		await svc.restoreAllSessions();
+		const tree = svc.getRuntimeTaskTree(chat.id);
+		expect(tree.every((t) => t.type === "subagent")).toBe(true);
 	});
 });

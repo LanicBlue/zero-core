@@ -133,6 +133,17 @@ export class TaskRegistry {
 		return this.tasks.get(taskId);
 	}
 
+	/**
+	 * Restore a persisted task as-is into the live registry (startup / activate
+	 * history reload from delegated_tasks). No abortController — restored tasks
+	 * are historical, not actively running. Keeps the memory-only read path
+	 * (getRuntimeTaskTree) reflecting history after restart without changing
+	 * how live tasks are created/updated.
+	 */
+	seed(info: TaskInfo): void {
+		this.tasks.set(info.id, info);
+	}
+
 	list(filter?: "running" | "completed"): TaskInfo[] {
 		const all = [...this.tasks.values()];
 		if (!filter) return all;

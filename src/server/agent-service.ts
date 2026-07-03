@@ -106,31 +106,6 @@ function toolEnabled(
 }
 
 /**
- * Map a persisted delegated_tasks row → runtime TaskInfo so the TaskTree UI can
- * render completed/interrupted history that survives restart (the live
- * TaskRegistry only holds in-memory entries). Field shapes match
- * (DelegatedTaskStatus ≡ TaskInfo status). Bash background tasks have no row —
- * they stay live-only.
- */
-function delegatedRecordToTaskInfo(rec: DelegatedTaskRecord): import("../runtime/types.js").TaskInfo {
-	return {
-		id: rec.id,
-		type: "subagent",
-		task: rec.task,
-		status: rec.status,
-		parentTaskId: rec.parentTaskId,
-		step: rec.step,
-		turns: rec.turns,
-		tokens: rec.tokens,
-		currentTool: rec.currentTool,
-		result: rec.result,
-		error: rec.error,
-		startedAt: Date.parse(rec.createdAt) || 0,
-		completedAt: rec.completedAt ? Date.parse(rec.completedAt) || undefined : undefined,
-	};
-}
-
-/**
  * The domain capability handles (management / wikiStore / requirementStore /
  * pmService) a session should surface, given a toolPolicy. A handle is included
  * only when its domain tool(s) are enabled by the policy AND the backing
@@ -415,32 +390,11 @@ export class AgentService {
 	 * empty when the session has no live loop yet.
 	 */
 	getRuntimeTaskTree(sessionId: string): import("../runtime/types.js").TaskInfo[] {
-		// Persisted delegated tasks first (survive restart). Rebuild the full
-		// delegation tree rooted at this chat session: roots are tasks whose
-		// parent_session_id is this session; expand each by rootTaskId to pull
-		// nested sub-agents (whose parent_session_id is a delegated session,
-		// not this chat). Includes completed/interrupted history across restarts.
-		const byId = new Map<string, import("../runtime/types.js").TaskInfo>();
-		try {
-			const roots = this.db.listDelegatedTasks?.({ parentSessionId: sessionId }) ?? [];
-			const expandedRoots = new Set<string>();
-			for (const root of roots) {
-				const rid = root.rootTaskId ?? root.id;
-				if (expandedRoots.has(rid)) continue;
-				expandedRoots.add(rid);
-				const subtree = this.db.listDelegatedTasks?.({ rootTaskId: rid }) ?? [];
-				for (const rec of (subtree.length ? subtree : [root])) {
-					byId.set(rec.id, delegatedRecordToTaskInfo(rec));
-				}
-			}
-		} catch {
-			// db optional / not yet initialized — fall through to live view.
-		}
-		// Live overlays DB: running/finishing real-time state wins for shared
-		// ids; bash background tasks (live-only, never persisted) are added.
-		const live = this.loops.get(sessionId)?.getRuntimeTaskTree() ?? [];
-		for (const t of live) byId.set(t.id, t);
-		return [...byId.values()];
+		// Memory-only by design (UI TaskTree and agent TaskList share this live
+		// source, including bash background tasks that aren't persisted). The
+		// restart history reload happens at loop creation — see
+		// createLoopForSession → loop.restoreDelegatedTasks — NOT here.
+		return this.loops.get(sessionId)?.getRuntimeTaskTree() ?? [];
 	}
 
 	/**
@@ -740,6 +694,27 @@ export class AgentService {
 		// Step 1B: register the main-loop hook set on the loop's own registry.
 		registerHooksForLoop(loop.registry, "main", this.buildHookDeps());
 		this.loops.set(sessionId, loop);
+		// Restore persisted delegated tasks into the live registry so the
+		// memory-only getRuntimeTaskTree reflects history after restart/eviction.
+		// Roots = tasks this chat session dispatched (parent_session_id); expand
+		// each by root_task_id to pull nested sub-agents (whose parent_session_id
+		// is a delegated session). Bash background tasks aren't persisted — they
+		// stay gone on restart, which is correct.
+		try {
+			const roots = this.db.listDelegatedTasks?.({ parentSessionId: sessionId }) ?? [];
+			const seenRoot = new Set<string>();
+			const toRestore: DelegatedTaskRecord[] = [];
+			for (const root of roots) {
+				const rid = root.rootTaskId ?? root.id;
+				if (seenRoot.has(rid)) continue;
+				seenRoot.add(rid);
+				const subtree = this.db.listDelegatedTasks?.({ rootTaskId: rid }) ?? [];
+				toRestore.push(...(subtree.length ? subtree : [root]));
+			}
+			if (toRestore.length) loop.restoreDelegatedTasks(toRestore);
+		} catch {
+			// db optional / not yet initialized — skip history restore.
+		}
 		this.sessionManager?.trackSessionCreated(sessionId, agentId);
 		this.sessionManager?.trackSessionActivated(sessionId);
 		log.agent("Runtime ready for:", agentId, "session:", sessionId);
