@@ -58,7 +58,13 @@ interface Props {
 const api = () => (window as any).api;
 
 export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefillTemplate }: Props) {
-	const { create, update, tools, agents } = useAgentStore();
+	// N2 render hygiene: selector subscriptions instead of whole-store destruct,
+	// so this editor only re-renders when tools/agents actually change (not on
+	// every unrelated store update). create/update are stable actions.
+	const create = useAgentStore((s) => s.create);
+	const update = useAgentStore((s) => s.update);
+	const tools = useAgentStore((s) => s.tools);
+	const agents = useAgentStore((s) => s.agents);
 	// v0.8 (P8): wiki nodes for the anchors picker. The wiki store is now
 	// lazy (loads the root's children on refresh); the anchors dropdown shows
 	// what's loaded so far + the global root is always offered explicitly.

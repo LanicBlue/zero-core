@@ -15,6 +15,11 @@ import { useChatStore } from "../../store/chat-store.js";
 import { useTaskStore } from "../../store/task-store.js";
 import type { RuntimeTaskInfo } from "../../../shared/types.js";
 
+// Module-level stable empty-array reference: avoids a fresh `[]` (new identity
+// each render) that would force downstream memo/selector consumers to re-render
+// on every parent render even when nothing changed.
+const EMPTY_TASKS: RuntimeTaskInfo[] = [];
+
 const STATUS_ICON: Record<string, string> = {
 	running: "●",
 	finishing: "◐",
@@ -26,17 +31,23 @@ const STATUS_ICON: Record<string, string> = {
 
 export default function TaskTreePanel() {
 	const activeSessionId = useChatStore((s) => s.activeSessionId);
-	const { tasksBySession, loadingBySession, selectedTaskId, selectTask, startPolling, stopPolling } = useTaskStore();
+	// Selector subscriptions (N2 render hygiene): subscribe to the active
+	// session's slice only, so a refresh of another session's slice doesn't
+	// re-render this panel. Action fns are stable across renders (zustand).
+	const tasks = useTaskStore((s) => (activeSessionId ? (s.tasksBySession[activeSessionId] ?? EMPTY_TASKS) : EMPTY_TASKS));
+	const loading = useTaskStore((s) => (activeSessionId ? !!s.loadingBySession[activeSessionId] : false));
+	const selectedTaskId = useTaskStore((s) => s.selectedTaskId);
+	const selectTask = useTaskStore((s) => s.selectTask);
+	const startWatching = useTaskStore((s) => s.startWatching);
+	const stopWatching = useTaskStore((s) => s.stopWatching);
 
-	// Pull-on-display: poll while this session is the active one; stop on switch-away.
+	// Pull-on-display: watch the active session so the runtime:tasks:changed
+	// ping drives refreshes; stop on switch-away (disconnect-on-leave).
 	useEffect(() => {
 		if (!activeSessionId) return;
-		startPolling(activeSessionId);
-		return () => { stopPolling(activeSessionId); };
-	}, [activeSessionId, startPolling, stopPolling]);
-
-	const tasks = activeSessionId ? (tasksBySession[activeSessionId] ?? []) : [];
-	const loading = activeSessionId ? loadingBySession[activeSessionId] : false;
+		startWatching(activeSessionId);
+		return () => { stopWatching(activeSessionId); };
+	}, [activeSessionId, startWatching, stopWatching]);
 
 	// Rebuild the delegation tree from the flat list (parentTaskId links).
 	// Roots = tasks with no parentTaskId; children grouped by parent.

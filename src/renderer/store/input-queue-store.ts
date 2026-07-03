@@ -1,10 +1,24 @@
-// Input queue renderer state (Phase C2).
+// Input queue renderer state.
 //
-// Per-session queue mirror for the chat queue strip. Pulls (polls) the server
-// queue for the active session so the strip stays live while visible. The
-// queue changes server-side on enqueue/promote/remove/drain — a 1s poll is
-// cheap (small array, in-memory) and avoids a push channel.
+// # 文件说明书
 //
+// ## 核心功能
+// Per-session queue mirror for the chat queue strip. The queue changes server-
+// side on enqueue/promote/remove/drain — InputQueueStore (server layer) emits
+// those via the unified hub under the virtual collection `runtime:input-queue`
+// (changes carry the sessionId as `id`). We subscribe ONCE at module load and
+// pull the watched session when its queue changes. There is NO setInterval
+// fallback — gaps are covered by pull-on-display and the `ws:reconnected`
+// resync signal.
+//
+// ## 输入
+// IPC: inputQueueList; data:changed `runtime:input-queue`.
+//
+// ## 输出
+// - itemsBySession(sessionId → InputQueueItemView[])
+// - pull / startWatching / stopWatching / enqueue / promote / remove
+//
+
 import { create } from "zustand";
 
 const api = () => (window as any).api;
@@ -19,20 +33,19 @@ export interface InputQueueItemView {
 
 interface InputQueueState {
 	itemsBySession: Record<string, InputQueueItemView[]>;
-	pollTimers: Record<string, ReturnType<typeof setInterval>>;
+	// Set of sessionIds a visible panel is currently watching.
+	watched: Set<string>;
 	pull: (sessionId: string) => Promise<void>;
-	startPolling: (sessionId: string) => void;
-	stopPolling: (sessionId: string) => void;
+	startWatching: (sessionId: string) => void;
+	stopWatching: (sessionId: string) => void;
 	enqueue: (sessionId: string, content: string, mode?: "queued" | "insert_now") => Promise<void>;
 	promote: (itemId: string) => Promise<void>;
 	remove: (itemId: string) => Promise<void>;
 }
 
-const POLL_MS = 1000;
-
 export const useInputQueueStore = create<InputQueueState>((set, get) => ({
 	itemsBySession: {},
-	pollTimers: {},
+	watched: new Set(),
 
 	pull: async (sessionId: string) => {
 		try {
@@ -41,35 +54,60 @@ export const useInputQueueStore = create<InputQueueState>((set, get) => ({
 		} catch { /* ignore */ }
 	},
 
-	startPolling: (sessionId: string) => {
-		const { pollTimers } = get();
-		if (pollTimers[sessionId]) return;
+	startWatching: (sessionId: string) => {
+		const { watched } = get();
+		if (watched.has(sessionId)) {
+			void get().pull(sessionId);
+			return;
+		}
+		const next = new Set(watched);
+		next.add(sessionId);
+		set({ watched: next });
 		void get().pull(sessionId);
-		const timer = setInterval(() => { void get().pull(sessionId); }, POLL_MS);
-		set((s) => ({ pollTimers: { ...s.pollTimers, [sessionId]: timer } }));
 	},
 
-	stopPolling: (sessionId: string) => {
-		const timer = get().pollTimers[sessionId];
-		if (timer) clearInterval(timer);
-		set((s) => {
-			const next = { ...s.pollTimers };
-			delete next[sessionId];
-			return { pollTimers: next };
-		});
+	stopWatching: (sessionId: string) => {
+		const { watched } = get();
+		if (!watched.has(sessionId)) return;
+		const next = new Set(watched);
+		next.delete(sessionId);
+		set({ watched: next });
 	},
 
 	enqueue: async (sessionId, content, mode) => {
 		await api().inputQueueEnqueue(sessionId, content, mode ?? "queued");
+		// The hub ping will drive the refresh (watched session path); pulling here
+		// too is harmless and keeps enqueue feeling instant even before the ping
+		// arrives.
 		await get().pull(sessionId);
 	},
 
 	promote: async (itemId) => {
 		await api().inputQueuePromote(itemId);
-		// pull happens via poll; no immediate target session known here.
+		// Refresh arrives via the runtime:input-queue ping for the watched
+		// session; no target session is known at this call site.
 	},
 
 	remove: async (itemId) => {
 		await api().inputQueueRemove(itemId);
+		// Refresh arrives via the runtime:input-queue ping for the watched
+		// session; no target session is known at this call site.
 	},
 }));
+
+// ─── Module-load subscription: runtime:input-queue ping → pull (watched only) ───
+// InputQueueStore (server layer) emits through the unified data-change hub with
+// collection="runtime:input-queue" and changes[].id = sessionId. Pull only the
+// watched session; pings for unwatched sessions are dropped.
+if (typeof window !== "undefined") {
+	api().onDataChanged((e: { collection?: string; changes?: Array<{ id?: string }> }) => {
+		if (e?.collection !== "runtime:input-queue") return;
+		const state = useInputQueueStore.getState();
+		for (const c of e.changes ?? []) {
+			const sid = c?.id;
+			if (!sid) continue;
+			if (!state.watched.has(sid)) continue;
+			void state.pull(sid);
+		}
+	});
+}

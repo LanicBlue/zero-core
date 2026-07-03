@@ -370,12 +370,12 @@ export default function ChatPanel() {
 	const { pendingBySession, todosBySession, setPending, setTodos } = useInteractionStore();
 	const { activeRequirementId, setActiveRequirementId, setActivePage } = usePageStore();
 	// C2 input queue.
-	const { enqueue: enqueueInput, startPolling: startQueuePolling, stopPolling: stopQueuePolling } = useInputQueueStore();
+	const { enqueue: enqueueInput, startWatching: startQueueWatching, stopWatching: stopQueueWatching } = useInputQueueStore();
 	useEffect(() => {
 		if (!activeSessionId) return;
-		startQueuePolling(activeSessionId);
-		return () => { stopQueuePolling(activeSessionId); };
-	}, [activeSessionId, startQueuePolling, stopQueuePolling]);
+		startQueueWatching(activeSessionId);
+		return () => { stopQueueWatching(activeSessionId); };
+	}, [activeSessionId, startQueueWatching, stopQueueWatching]);
 	const { requirements, transitionStatus, sendMessage: sendReqMessage } = useRequirementStore();
 	const activeRequirement = activeRequirementId
 		? requirements.find((r) => r.id === activeRequirementId)
@@ -462,6 +462,32 @@ export default function ChatPanel() {
 			// session_init event may still arrive later
 		});
 	}, [pendingAgentId]);
+
+	// ─── Push-driven session list (N2) ────────────────────────────────
+	// Background-created sessions (cron / delegate / project chat) emit a
+	// data:changed `sessions` ping. Refetch the ACTIVE agent's session list on
+	// each ping so the sidebar shows them immediately — no polling. We only
+	// patch the list (setSessions); active-session selection / messages are
+	// untouched (no inline-render wiring changes). Filters out the high-
+	// frequency sessions UPDATEs at the source (SessionDB only emits
+	// create/delete/archive, see N1).
+	useEffect(() => {
+		const unsub = api().onDataChanged((e: { collection?: string; changes?: Array<{ id?: string; op?: string; record?: { agentId?: string; archived?: boolean } }> }) => {
+			if (e?.collection !== "sessions") return;
+			const agentId = useChatStore.getState().activeSessionId
+				? selectActiveAgentId(useChatStore.getState())
+				: null;
+			if (!agentId) return;
+			// Refetch whenever a session touching this agent changes; the record
+			// (when present) carries agentId so we can pre-filter, but a refetch is
+			// cheap and keeps the sidebar canonical regardless.
+			void api().sessionsList(agentId).then((sessions: SessionRecord[]) => {
+				setSessions(agentId, sessions);
+			}).catch(() => { /* ignore — next ping/nav refetches */ });
+		});
+		return () => { if (typeof unsub === "function") unsub(); };
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	// ─── Pull-on-display ───────────────────────────────────────────
 	// 切到某 session 时主动拉完整 init payload(messages + tokens + todos + 未决

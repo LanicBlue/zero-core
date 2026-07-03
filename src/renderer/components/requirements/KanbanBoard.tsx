@@ -89,13 +89,29 @@ export default function KanbanBoard({ projectId }: { projectId: string }) {
 		fetchPendingPlans(projectId || undefined);
 	}, [projectId, fetchPendingPlans, fetchRequirements]);
 
-	// Initial fetch of pending plans on mount + periodic refresh so the user
-	// sees new pending plans as lead submits them (the confirm gate is a
-	// long-lived pause; the user must be able to discover it).
+	// Initial fetch of pending plans on mount. Push-driven (N2): refresh on
+	// orchestrate_plans data:changed (DB write — plan created/confirmed/etc.)
+	// and on the runtime:orchestrate:changed agent:event ping (ConfirmRegistry
+	// in-memory state change — plan registered/dropped). No setInterval.
 	useEffect(() => {
 		fetchPendingPlans();
-		const timer = setInterval(() => fetchPendingPlans(projectId || undefined), 5000);
-		return () => clearInterval(timer);
+		const api = (window as any).api;
+		const unsubs: Array<() => void> = [];
+		if (api?.onDataChanged) {
+			unsubs.push(api.onDataChanged((e: { collection?: string }) => {
+				if (e?.collection === "orchestrate_plans") {
+					void fetchPendingPlans(projectId || undefined);
+				}
+			}));
+		}
+		if (api?.onAgentEvent) {
+			unsubs.push(api.onAgentEvent((e: { type?: string }) => {
+				if (e?.type === "runtime:orchestrate:changed") {
+					void fetchPendingPlans(projectId || undefined);
+				}
+			}));
+		}
+		return () => { for (const u of unsubs) { if (typeof u === "function") u(); } };
 	}, [fetchPendingPlans, projectId]);
 
 	const grouped = getGroupedByStatus();

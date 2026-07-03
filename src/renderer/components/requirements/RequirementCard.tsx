@@ -72,7 +72,10 @@ interface RequirementCardProps {
 	onCoverage?: (req: RequirementRecord) => void;
 }
 
-export default function RequirementCard({ requirement, currentStep, projectName, onClick, onDiscuss, onCoverage }: RequirementCardProps) {
+// N2 render hygiene: the impl is a named export so unit tests can spy on its
+// render count and assert React.memo actually prevents re-renders when props
+// are referentially stable. The default export remains the memo-wrapped card.
+export function RequirementCardImpl({ requirement, currentStep, projectName, onClick, onDiscuss, onCoverage }: RequirementCardProps) {
 	const priorityColor = PRIORITY_COLORS[requirement.priority] || "#9E9E9E";
 	const sourceIcon = SOURCE_ICONS[requirement.source] || "\u{1F4CB}";
 	const showExecution = (requirement.status === "build" || requirement.status === "verify") && currentStep;
@@ -192,3 +195,9 @@ export default function RequirementCard({ requirement, currentStep, projectName,
 		</div>
 	);
 }
+// N2 render hygiene: wrap in React.memo (shallow compare) so a kanban re-render
+// triggered by an unrelated card's data change doesn't re-render this card
+// unless its own props changed. Callbacks from the parent (onClick/onDiscuss/
+// onCoverage) are useCallback-stable, so identity flips only on real changes.
+const RequirementCard = React.memo(RequirementCardImpl);
+export default RequirementCard;

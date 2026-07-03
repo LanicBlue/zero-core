@@ -53,8 +53,14 @@ interface FormStateLike {
 
 const INJECT_OPTIONS: Inject[] = ["system", "context", "off"];
 
+// N2 render hygiene: module-level stable empty-array reference. `form.wikiAnchors
+// ?? []` would create a new [] identity each render, busting the preview-effect
+// deps and re-running the debounced preview fetch on every unrelated re-render.
+// A shared constant keeps the identity stable when there are no anchors.
+const EMPTY_ANCHORS: WikiAnchor[] = [];
+
 export function WikiAnchorsSection({ form, agentId, wikiNodes, onChange }: Props) {
-	const list: WikiAnchor[] = form.wikiAnchors ?? [];
+	const list: WikiAnchor[] = form.wikiAnchors ?? EMPTY_ANCHORS;
 	const [newNodeId, setNewNodeId] = useState("");
 	const [newInject, setNewInject] = useState<Inject>("context");
 	const [newDepth, setNewDepth] = useState<string>("");
@@ -293,8 +299,8 @@ export function WikiAnchorsSection({ form, agentId, wikiNodes, onChange }: Props
 			<div className="anchor-preview" style={{ marginTop: 16, padding: 10, background: "var(--bg-secondary, #1c1c1e)", borderRadius: 6, fontSize: 11 }}>
 				<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
 					<strong style={{ color: "var(--text-secondary, #888)" }}>Injection preview</strong>
-					{previewLoading && <span style={{ color: "var(--text-tertiary, #666)" }}>refreshing…</span>}
-					{preview && !previewLoading && (
+					{previewLoading && <span title="refreshing preview" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--text-tertiary, #666)", display: "inline-block", opacity: 0.6 }} />}
+					{preview && (
 						<span style={{ color: "var(--text-tertiary, #666)" }}>
 							system ~{preview.systemTokens} tok · context ~{preview.contextTokens} tok
 							{preview.systemTokens + preview.contextTokens === 0 && " · (nothing injected at these settings)"}

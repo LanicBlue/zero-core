@@ -150,6 +150,8 @@ export interface WindowApi {
 	onDataChanged: (callback: (event: { collection: string; changes: Array<{ id: string; op: string; record?: any }> }) => void) => () => void;
 	onSessionLifecycle: (callback: (event: { sessionId: string; from: string; to: string }) => void) => () => void;
 	onAppReady: (callback: () => void) => () => void;
+	/** N2 reconnect resync: fires when the main↔backend WebSocket reconnected after a drop (NOT on first connect). The renderer re-pulls visible collections. */
+	onWsReconnected: (callback: () => void) => () => void;
 	onGithubImportProgress: (callback: (progress: { current: number; total: number }) => void) => () => void;
 	onGithubPreviewProgress: (callback: (progress: { current: number; total: number }) => void) => () => void;
 

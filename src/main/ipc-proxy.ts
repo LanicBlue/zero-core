@@ -368,6 +368,10 @@ export function registerProxyHandlers(port: number): void {
 // ─── WebSocket Event Bridge ─────────────────────────────────
 
 let _ws: WebSocket | null = null;
+// N2 reconnect resync: track whether the WS has connected at least once,
+// and whether a reconnect (not first connect) is pending a resync signal.
+let _wsConnectedOnce = false;
+let _wsNeedsResync = false;
 
 export function connectEventBridge(win: BrowserWindow, port: number): void {
 	const url = `ws://localhost:${port}/ws`;
@@ -394,8 +398,25 @@ export function connectEventBridge(win: BrowserWindow, port: number): void {
 			} catch { /* ignore parse errors */ }
 		});
 
+		_ws.on("open", () => {
+			// First connect: just record that we've been up once. Reconnect (an
+			// "open" that follows a "close"): signal the renderer to re-pull its
+			// visible collections — events missed during the drop would otherwise
+			// only show up on next navigation.
+			const wasReconnect = _wsNeedsResync;
+			_wsConnectedOnce = true;
+			_wsNeedsResync = false;
+			if (wasReconnect && win && !win.isDestroyed()) {
+				win.webContents.send("ws:reconnected");
+			}
+		});
+
 		_ws.on("close", () => {
 			log.debug("ipc-proxy", "WebSocket closed, reconnecting in 2s...");
+			// Only schedule a resync if we had been connected before — the initial
+			// connect retry loop (backend not up yet) must NOT trigger a resync,
+			// since there is no prior state to recover (app:ready covers startup).
+			if (_wsConnectedOnce) _wsNeedsResync = true;
 			setTimeout(connect, 2000);
 		});
 

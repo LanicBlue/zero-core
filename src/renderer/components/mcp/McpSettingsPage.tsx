@@ -24,7 +24,7 @@
 // - mcpStore 接口变化时同步本页调用。
 // - 新增 transport 类型或预设字段时需要扩展表单与预设渲染。
 //
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useMcpStore, type McpPreset } from "../../store/mcp-store.js";
 import type { McpServerConfig } from "../../../shared/types.js";
 import McpServerCard from "./McpServerCard.js";
@@ -74,11 +74,18 @@ export default function McpSettingsPage() {
 		} catch { /* ignore */ }
 	};
 
+	// Push-driven (N2): the server MCPManager re-broadcasts its connection-state
+	// change as an agent:event of type `runtime:mcp:changed`. We pull the live
+	// status once on mount / when the server list changes, then again whenever
+	// that ping arrives. No setInterval fallback (gaps covered by the
+	// ws:reconnected resync signal).
 	useEffect(() => {
 		refreshStatus();
-		const interval = setInterval(refreshStatus, 10000);
-		return () => clearInterval(interval);
-	}, [servers]);
+		const unsub = (window as any).api?.onAgentEvent((e: { type?: string }) => {
+			if (e?.type === "runtime:mcp:changed") void refreshStatus();
+		});
+		return () => { if (typeof unsub === "function") unsub(); };
+	}, [servers, refreshStatus]);
 
 	const handleScan = async () => {
 		setScanning(true);
@@ -103,7 +110,7 @@ export default function McpSettingsPage() {
 		}
 	};
 
-	const handleToggle = async (id: string, enabled: boolean) => {
+	const handleToggle = useCallback(async (id: string, enabled: boolean) => {
 		await update(id, { enabled });
 		if (enabled) {
 			await connect(id);
@@ -111,14 +118,14 @@ export default function McpSettingsPage() {
 			await disconnect(id);
 		}
 		refreshStatus();
-	};
+	}, [update, connect, disconnect, refreshStatus]);
 
-	const handleDelete = async (id: string) => {
+	const handleDelete = useCallback(async (id: string) => {
 		await remove(id);
 		refreshStatus();
-	};
+	}, [remove, refreshStatus]);
 
-	const handleTest = async (id: string): Promise<{ tools: { name: string; description?: string }[]; error?: string }> => {
+	const handleTest = useCallback(async (id: string): Promise<{ tools: { name: string; description?: string }[]; error?: string }> => {
 		const server = servers.find((s) => s.id === id);
 		if (!server) return { tools: [], error: "server not found" };
 		setTesting(true);
@@ -143,17 +150,17 @@ export default function McpSettingsPage() {
 		} finally {
 			setTesting(false);
 		}
-	};
+	}, [servers, testConnection]);
 
-	const handleConnect = async (id: string) => {
+	const handleConnect = useCallback(async (id: string) => {
 		await connect(id);
 		refreshStatus();
-	};
+	}, [connect, refreshStatus]);
 
-	const handleDisconnect = async (id: string) => {
+	const handleDisconnect = useCallback(async (id: string) => {
 		await disconnect(id);
 		refreshStatus();
-	};
+	}, [disconnect, refreshStatus]);
 
 	const handleFormTest = async () => {
 		setTesting(true);

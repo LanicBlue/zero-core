@@ -69,10 +69,15 @@ export default function DashboardPage() {
 		}
 	}, []);
 
+	// Push-driven (N2): SessionManager re-broadcasts its metrics change as an
+	// agent:event of type `runtime:metrics:changed`. We pull once on mount, then
+	// again whenever that ping arrives. No setInterval fallback.
 	useEffect(() => {
 		fetchMetrics();
-		const interval = setInterval(fetchMetrics, 2000); // Update every 2 seconds
-		return () => clearInterval(interval);
+		const unsub = (window as any).api?.onAgentEvent((e: { type?: string }) => {
+			if (e?.type === "runtime:metrics:changed") void fetchMetrics();
+		});
+		return () => { if (typeof unsub === "function") unsub(); };
 	}, [fetchMetrics]);
 
 	if (error) {

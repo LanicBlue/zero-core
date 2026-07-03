@@ -38,7 +38,10 @@ interface Props {
 	onDisconnect: (id: string) => Promise<void>;
 }
 
-export default function McpServerCard({
+// N2 render hygiene: the impl is a named export so unit tests can spy on its
+// render count and assert React.memo actually prevents re-renders when props
+// are referentially stable. The default export remains the memo-wrapped card.
+export function McpServerCardImpl({
 	server, connected, toolCount, onToggle, onDelete, onTest, onConnect, onDisconnect,
 }: Props) {
 	const [expanded, setExpanded] = useState(false);
@@ -153,3 +156,8 @@ export default function McpServerCard({
 		</div>
 	);
 }
+// N2 render hygiene: wrap in React.memo (shallow compare) so the server list
+// re-rendering (e.g. on a status refresh from another server's connect) doesn't
+// re-render this card unless its own props changed. Parent callbacks are stable.
+const McpServerCard = React.memo(McpServerCardImpl);
+export default McpServerCard;

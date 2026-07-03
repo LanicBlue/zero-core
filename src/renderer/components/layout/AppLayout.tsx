@@ -75,6 +75,66 @@ export default function AppLayout() {
 		return unsub;
 	}, []);
 
+	// ─── N2 reconnect resync ─────────────────────────────────────────
+	// The main↔backend WS auto-reconnects on drop, but the renderer can't see
+	// it. ipc-proxy sends `ws:reconnected` AFTER a close→reconnect (never on the
+	// first connect — that goes through app:ready). On that signal we re-pull the
+	// currently-visible collections: every push-driven store does pull-on-display,
+	// so re-triggering the same pulls recovers anything missed during the drop.
+	// We read live state inside the handler (not from deps) so this effect mounts
+	// once and always acts on the CURRENT page/session.
+	useEffect(() => {
+		const unsub = api().onWsReconnected?.(() => {
+			console.log("[renderer] ws reconnected — re-pulling visible collections");
+			const chat = useChatStore.getState();
+			const sid = chat.activeSessionId;
+			// Active chat session: re-pull its init baseline (messages/todos/pending).
+			if (sid) {
+				void api().sessionsGetInit(sid).then((payload: any) => {
+					if (!payload) return;
+					if (useChatStore.getState().activeSessionId !== sid) return;
+					initSession(sid, { messages: payload.messages ?? [], isRunning: !!payload.isRunning });
+					if (payload.contextWindow) {
+						updateContextInfo(sid, {
+							usedTokens: payload.inputTokens ?? 0,
+							contextWindow: payload.contextWindow,
+							usage: payload.contextUsage ?? 0,
+							inputTokens: payload.inputTokens ?? 0,
+							outputTokens: payload.outputTokens ?? 0,
+							totalTokens: payload.totalTokens ?? 0,
+						});
+					}
+				}).catch(() => { /* ignore — next ping/nav refetches */ });
+			}
+			// Task tree + input queue for the active session (re-trigger pull; the
+			// stores are push-driven and filter by their watched set, so this is
+			// safe even if the session isn't watched — pull is a no-op guard).
+			void import("../../store/task-store.js").then(({ useTaskStore }) => {
+				const ts = useTaskStore.getState();
+				if (sid && ts.watched.has(sid)) void ts.pull(sid);
+			}).catch(() => {});
+			void import("../../store/input-queue-store.js").then(({ useInputQueueStore }) => {
+				const qs = useInputQueueStore.getState();
+				if (sid && qs.watched.has(sid)) void qs.pull(sid);
+			}).catch(() => {});
+			// Config stores (subscribed, but a refetch recovers any missed patch).
+			void import("../../store/agent-store.js").then(({ useAgentStore }) => useAgentStore.getState().fetchAgents()).catch(() => {});
+			void import("../../store/requirement-store.js").then(({ useRequirementStore }) => useRequirementStore.getState().fetchRequirements()).catch(() => {});
+			void import("../../store/project-store.js").then(({ useProjectStore }) => useProjectStore.getState().fetchProjects()).catch(() => {});
+			void import("../../store/cron-store.js").then(({ useCronStore }) => useCronStore.getState().fetchCrons?.()).catch(() => {});
+			// Page-scoped runtime pings: only refresh the page currently visible.
+			const page = usePageStore.getState().activePage;
+			if (page === "dashboard") {
+				void api().sessionsMetrics?.().then((m: any) => { /* DashboardPage holds its own state; the next ping or remount refetches */ }).catch(() => {});
+			}
+			if (page === "mcp") {
+				void api().mcpStatus?.().then(() => {}).catch(() => {});
+			}
+		});
+		return () => { if (typeof unsub === "function") unsub(); };
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
 	// ─── Session lifecycle events ──────────────────────────────────
 	useEffect(() => {
 		const unsub = api().onSessionLifecycle((data: any) => {

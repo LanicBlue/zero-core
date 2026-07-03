@@ -116,6 +116,12 @@ const api: WindowApi = {
 		ipcRenderer.invoke("app:ready").then((ready) => { if (ready) callback(); });
 		return () => { ipcRenderer.removeListener("app:ready", handler); };
 	},
+	// N2 reconnect resync: main signals after a WS close→reconnect (not first connect).
+	onWsReconnected: (callback) => {
+		const handler = () => { callback(); };
+		ipcRenderer.on("ws:reconnected", handler);
+		return () => { ipcRenderer.removeListener("ws:reconnected", handler); };
+	},
 	onGithubImportProgress: (callback) => {
 		const handler = (_e: any, data: any) => callback(data);
 		ipcRenderer.on("github-import:progress", handler);

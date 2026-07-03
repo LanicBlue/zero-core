@@ -50,7 +50,7 @@
 		},
 		{
 			"path": "src/main/ipc-proxy.ts",
-			"lines": 424,
+			"lines": 445,
 			"dir": "src/main",
 			"exports": [
 				"registerProxyHandlers",
@@ -61,9 +61,9 @@
 			],
 			"functions": [
 				"src/main/ipc-proxy.ts/registerProxyHandlers:295",
-				"src/main/ipc-proxy.ts/connectEventBridge:372",
-				"src/main/ipc-proxy.ts/connect:375",
-				"src/main/ipc-proxy.ts/pollReady:410"
+				"src/main/ipc-proxy.ts/connectEventBridge:376",
+				"src/main/ipc-proxy.ts/connect:379",
+				"src/main/ipc-proxy.ts/pollReady:431"
 			],
 			"description": ""
 		},
@@ -78,7 +78,7 @@
 		},
 		{
 			"path": "src/preload/index.ts",
-			"lines": 310,
+			"lines": 316,
 			"dir": "src/preload",
 			"exports": [],
 			"imports": [
@@ -90,8 +90,9 @@
 				"src/preload/index.ts/handler:104",
 				"src/preload/index.ts/handler:109",
 				"src/preload/index.ts/handler:114",
-				"src/preload/index.ts/handler:120",
-				"src/preload/index.ts/handler:125"
+				"src/preload/index.ts/handler:121",
+				"src/preload/index.ts/handler:126",
+				"src/preload/index.ts/handler:131"
 			],
 			"description": "contextBridge 暴露 85 个 IPC 方法和 4 个事件订阅给 renderer"
 		},
@@ -5491,7 +5492,7 @@
 		},
 		{
 			"path": "src/shared/preload-types.ts",
-			"lines": 337,
+			"lines": 339,
 			"dir": "src/shared",
 			"exports": [],
 			"imports": [
@@ -5643,41 +5644,41 @@
 			"callees": []
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/connectEventBridge:372",
+			"id": "src/main/ipc-proxy.ts/connectEventBridge:376",
 			"name": "connectEventBridge",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 372,
-			"endLine": 423,
-			"statementCount": 25,
+			"line": 376,
+			"endLine": 444,
+			"statementCount": 33,
 			"exported": true,
 			"signature": "function connectEventBridge(win: BrowserWindow, port: number)",
 			"description": "",
 			"callees": [
-				"src/main/ipc-proxy.ts/connect:375",
-				"src/main/ipc-proxy.ts/pollReady:410"
+				"src/main/ipc-proxy.ts/connect:379",
+				"src/main/ipc-proxy.ts/pollReady:431"
 			]
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/connect:375",
+			"id": "src/main/ipc-proxy.ts/connect:379",
 			"name": "connect",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 375,
-			"endLine": 405,
-			"statementCount": 14,
+			"line": 379,
+			"endLine": 426,
+			"statementCount": 22,
 			"exported": false,
 			"signature": "function connect()",
 			"description": "",
 			"callees": []
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/pollReady:410",
+			"id": "src/main/ipc-proxy.ts/pollReady:431",
 			"name": "pollReady",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 410,
-			"endLine": 421,
+			"line": 431,
+			"endLine": 442,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function pollReady()",
@@ -5750,12 +5751,25 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:120",
+			"id": "src/preload/index.ts/handler:121",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 120,
-			"endLine": 120,
+			"line": 121,
+			"endLine": 121,
+			"statementCount": 1,
+			"exported": false,
+			"signature": "fn ()",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/preload/index.ts/handler:126",
+			"name": "handler",
+			"kind": "arrow",
+			"file": "src/preload/index.ts",
+			"line": 126,
+			"endLine": 126,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (_e: any, data: any)",
@@ -5763,12 +5777,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/preload/index.ts/handler:125",
+			"id": "src/preload/index.ts/handler:131",
 			"name": "handler",
 			"kind": "arrow",
 			"file": "src/preload/index.ts",
-			"line": 125,
-			"endLine": 125,
+			"line": 131,
+			"endLine": 131,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (_e: any, data: any)",
@@ -24677,11 +24691,11 @@
 		"src/runtime/mcp-tools/cookie-jar.ts/importCookies:73": [
 			"src/main/index.ts/registerLocalHandlers:96"
 		],
-		"src/main/ipc-proxy.ts/connect:375": [
-			"src/main/ipc-proxy.ts/connectEventBridge:372"
+		"src/main/ipc-proxy.ts/connect:379": [
+			"src/main/ipc-proxy.ts/connectEventBridge:376"
 		],
-		"src/main/ipc-proxy.ts/pollReady:410": [
-			"src/main/ipc-proxy.ts/connectEventBridge:372"
+		"src/main/ipc-proxy.ts/pollReady:431": [
+			"src/main/ipc-proxy.ts/connectEventBridge:376"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1203": [
 			"src/runtime/agent-loop.ts/AgentLoop.run:249",
