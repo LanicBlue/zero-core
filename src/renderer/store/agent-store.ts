@@ -116,13 +116,19 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 	},
 }));
 
-// Auto-fetch on first import
+// Auto-fetch once the backend is ready. Module-import time is too early: the
+// main process is still polling /api/ready, so agentsList() rejects and the
+// catch swallows it, leaving agents=[] permanently (only running sessions stay
+// visible, via the live event path). Gating on app:ready matches AppLayout and
+// fires immediately if already ready.
 let _fetched = false;
 if (!_fetched) {
 	_fetched = true;
-	useAgentStore.getState().fetchAgents();
-	useAgentStore.getState().fetchModels();
-	useAgentStore.getState().fetchTools();
+	api().onAppReady(() => {
+		useAgentStore.getState().fetchAgents();
+		useAgentStore.getState().fetchModels();
+		useAgentStore.getState().fetchTools();
+	});
 
 	// Refresh tools when agent tools change (expose/disable)
 	const unsub = api().onToolsChanged(() => {

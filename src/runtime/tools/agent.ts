@@ -49,18 +49,19 @@ export const delegateTool = buildTool({
 		"Delegate and control sub-agent tasks. Actions: list, delegate, request_finish, stop, complete, tree.",
 	prompt:
 		"Delegate and control sub-agent tasks (each runs in an isolated context with its own conversation history, persisted for restart-aware inspection).\n\n" +
+		"Delegation never requires a configured subagent. The default is to simply omit `subagent`: a sub-agent inherits your identity and runs the task in an isolated context. Name a `subagent` only when you want to hand the work to a specific registered role agent.\n\n" +
 		"Actions:\n" +
-		"- { action:'list' } — list the agents YOU can delegate to (your configured subagents), with their name/description/model. Call this first if you don't know who's available.\n" +
+		"- { action:'list' } — optional. Lists the registered role agents you can hand off to by name (your configured subagents), with name/description/model. Only useful when you want a named `subagent`. An empty list doesn't block delegation — it just means there's no named role agent, so omit `subagent`.\n" +
 		"- { action:'delegate', task, subagent?, mode?, model?, systemPrompt? } — delegate a task.\n" +
-		"    · `subagent` (name, from list): delegate to that registered agent — it runs with ITS OWN identity (system prompt / tools / model). Use this for role-based handoff (e.g. hand coding work to your 'Developer' subagent).\n" +
-		"    · omit `subagent`: ephemeral delegation — the sub-agent inherits YOUR identity (or the inline `model`/`systemPrompt` overrides). Use for isolated/parallel sub-tasks you'd otherwise do yourself.\n" +
+		"    · Omit `subagent` (the default, always available): an ephemeral sub-agent that inherits YOUR identity (or the inline `model`/`systemPrompt` overrides). Good for isolated or parallel sub-tasks you'd otherwise do yourself — and it works whether or not you have any registered subagents.\n" +
+		"    · `subagent` (a name from `list`): hand off to a registered role agent, which runs with ITS OWN identity (system prompt / tools / model). Only needed for role-based handoff to a specialist. If no name fits, just omit `subagent`.\n" +
 		"    · `mode`: 'blocking' (default, wait for output) | 'non_blocking' (return a task_id immediately; use Wait/TaskStatus to check later).\n" +
 		"- { action:'request_finish', task_id, message?, maxTurns? } — ask a running task to wrap up. Advisory: injects a control message asking the sub-agent to finish. Pass `maxTurns` to force-stop after that many additional agent-loop turns; omit it for a purely advisory request that never force-stops.\n" +
 		"- { action:'stop', task_id } — force-stop a running task immediately (hard stop; the task cannot resume).\n" +
 		"- { action:'complete', task_id } — acknowledge a FINISHED task (completed/failed/killed) to dismiss it from the task list once you've consumed its result. Running tasks must be stopped first; this only removes finished tasks from the live view.\n" +
 		"- { action:'tree', task_id? } — list delegated-task records (status/turns/tokens), optionally scoped to a root task. Use this to inspect delegated work, including tasks interrupted by a restart.\n\n" +
 		"When to delegate — for LARGE or MULTI-STEP tasks, prefer delegating to a sub-agent over doing them inline. If a request looks like it will need many tool calls, multiple file edits, or a long exploration, lean toward breaking it into sub-tasks and delegating them (use non_blocking mode for independent sub-tasks so they run in parallel). Delegating keeps your own context lean, lets work proceed in parallel, and keeps exploratory noise out of the main conversation. Use your judgment: tasks that hinge on the context you've already built may be better done inline. Also delegate to hand work to a specialized role agent (a configured subagent).\n\n" +
-		"You can ONLY delegate by `subagent` name to agents in your own subagents list (run 'list' to see them).",
+		"If you name a `subagent`, it must come from your own subagents list (run 'list'). You can always delegate without one by omitting `subagent`.",
 	meta: { category: "agent", isReadOnly: false, isConcurrencySafe: false },
 	configSchema: [
 		{ key: "auto_background", type: "boolean", label: "自动转后台", description: "阻塞超时后自动转为非阻塞后台执行" },
@@ -85,7 +86,7 @@ export const delegateTool = buildTool({
 			const caller = ctx.resolveAgent?.(ctx.agentId);
 			const entries = caller?.subagents ?? [];
 			if (entries.length === 0) {
-				return "(no subagents configured — this agent cannot delegate to any registered agent. Use ephemeral delegation by omitting `subagent`.)";
+				return "(No registered subagents to hand off to by name. You can still delegate — just omit `subagent` and the sub-agent inherits your identity.)";
 			}
 			const summary = entries.map((e) => {
 				const target = ctx.resolveAgent?.(e.agentId);

@@ -1043,7 +1043,7 @@
 		},
 		{
 			"path": "src/runtime/tools/agent.ts",
-			"lines": 254,
+			"lines": 255,
 			"dir": "src/runtime/tools",
 			"exports": [],
 			"imports": [
