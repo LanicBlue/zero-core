@@ -355,22 +355,22 @@ graph LR
 `src/renderer/components/layout/AppLayout.tsx:~80-205` 注册单一 `api().onAgentEvent` 订阅,把 14 类 StreamEvent 路由到对应 store:
 
 ```typescript
-const handlers: Record<string, (data, key) => void> = {
+const handlers: Record<string, (data, sid) => void> = {
   // —— chat 流(写 chat-store)——
-  session_init:   (d, key) => initSession(key, {messages: d.messages, contextInfo: {...}}),
-  text_delta:     (d, key) => updateAssistantText(key, d.text),
-  message_end:    (d, key) => updateContextInfo(key, {...}),  // 注意:不带 usage,走 estimator
-  usage:          (d, key) => updateContextInfo(key, {...}),  // 权威 token 用量来自这里
-  thinking_delta: (d, key) => updateThinking(key, d.text),
-  tool_start:     (d, key) => addToolCall(key, d.toolName, d.args, d.toolCallId),
-  tool_end:       (d, key) => updateToolCall(key, d.toolName, d.isError?"error":"done", d.result, d.toolCallId),
-  agent_end:      (_d, key) => finishStreaming(key),                     // 运行态终态 → 停
-  session_running: (_d, key) => setIsStreaming(key, true),               // 运行态起点 → 跑(见下)
-  retry_attempt:  (d, key) => updateAssistantText(key, `Retrying (${d.attempt}/${d.maxAttempts})...`),
-  error:          (d, key) => { setError(key, d.error); updateAssistantText(key, `\nError: ${d.error}`); finishStreaming(key); },
+  session_init:   (d, sid) => initSession(sid, {messages: d.messages, isRunning: !!d.isRunning, contextInfo: {...}}),
+  text_delta:     (d, sid) => updateAssistantText(sid, d.text),
+  message_end:    (d, sid) => updateContextInfo(sid, {...}),  // 注意:不带 usage,走 estimator
+  usage:          (d, sid) => updateContextInfo(sid, {...}),  // 权威 token 用量来自这里
+  thinking_delta: (d, sid) => updateThinking(sid, d.text),
+  tool_start:     (d, sid) => addToolCall(sid, d.toolName, d.args, d.toolCallId),
+  tool_end:       (d, sid) => updateToolCall(sid, d.toolName, d.isError?"error":"done", d.result, d.toolCallId),
+  agent_end:      (d)     => { const sid = terminalTargetSession(d, activeSessionId); if (sid) finishStreaming(sid); },
+  session_running:(d)     => { if (d.sessionId) setIsStreaming(d.sessionId, true); },        // 运行态起点 → 跑(见下)
+  retry_attempt:  (d, sid) => updateAssistantText(sid, `Retrying (${d.attempt}/${d.maxAttempts})...`),
+  error:          (d)     => { const sid = terminalTargetSession(d, activeSessionId); if (!sid) return; setError(sid, d.error); updateAssistantText(sid, `\nError: ${d.error}`); finishStreaming(sid); },
   // —— 交互态(写 interaction-store)——
-  todos_update:   (d) => interactionStore.setTodos(d.agentId, d.todos),
-  ask_user:       (d) => interactionStore.setPendingQuestions({requestId, agentId, questions}),  // 阻塞在 backend pendingResponses
+  todos_update:   (d) => interactionStore.setTodos(d.sessionId, d.todos),
+  ask_user:       (d) => interactionStore.setPending(d.sessionId, {requestId, agentId, questions}),  // 阻塞在 backend pendingResponses
   // —— 通知/工作流事件(写 notification-store + requirement-store)——
   requirement_notification: (d) => { notificationStore.addNotification({...}); requirementStore.fetchRequirements(); },
   step_failure:         (d) => notificationStore.addNotification({type:"step_failure", priority:"warning", ...}),
@@ -378,21 +378,24 @@ const handlers: Record<string, (data, key) => void> = {
 };
 const unsubscribe = api().onAgentEvent((data) => {
   if (!data.agentId) return;                                  // 守卫:无 agentId 直接丢
-  const currentSessionId = useChatStore.getState().activeSessionId;
-  const key = data.sessionId || currentSessionId || data.agentId;
-  handlers[data.type]?.(data, key);
+  const sid = data.sessionId || null;                         // 严格按 sessionId 归属,无兜底
+  // 增量内容(PER_SESSION_PUSH)只进当前 active session;切走即断 push。
+  if (PER_SESSION_PUSH.has(data.type) && (!sid || sid !== activeSessionId)) return;
+  handlers[data.type]?.(data, sid);
 });
 ```
 
 **亮点**:
-- `key = sessionId || currentSessionId || agentId` 的兜底链,让"未指定 session 时也能定位"。
-- `streamingSessions.has(sid)` 判断:如果会话正在流式,session_init **不覆盖**——避免实时事件与初始快照冲突。
+- **严格 session 归属,无兜底**:旧版 `key = sessionId || currentSessionId || agentId` 的兜底链是跨 session 串显的根源——任何不带 sessionId 的事件(后台 run 报错等)都会落到当前正盯着的 session。现在 `sid = data.sessionId`(无则 null),事件只作用于它显式声明的 session。终态事件(`agent_end`/`error`)用 [`terminalTargetSession`](../../src/renderer/store/event-attribution.ts) 解析:无 sessionId → 返回 null → 不清(绝不误清当前 session)。
+- **事件分两类**:① **增量内容**(text/thinking/tool/message_end/usage/retry/session_init/todos/ask_user)= `PER_SESSION_PUSH`,只对 active session 应用,切走即断(切回由 pull 拉基线);② **终态/状态**(agent_end/error/session_running)= 全局,管理 `streamingSessions`(必须跟踪每个 session,这样切到后台 session 时状态正确)。`error` 因此从 `PER_SESSION_PUSH` 移出——它是终态、要清 streaming,必须全局生效,否则后台 session 报错会让 streaming 卡死。
 - **事件分三组写三个 store**:chat 流 → chat-store;交互态(todos/ask_user) → interaction-store;工作流通知(requirement/step/verification) → notification-store(+requirement-store refetch)。`message_end` 不携带 usage 字段(见 `runtime/types.ts` 的 MessageEndEvent),权威 token 用量来自独立的 `usage` 事件——这是一个曾经让 React tree 崩的历史 bug 修复点(直接读 `d.usage.inputTokens` 会 throw)。
 
-**运行态:server 权威 + UI 跟随**。`isStreaming`(→ Stop/Send 按键、placeholder 文案)的真相源是后端 `runStates.isBusy`([`agent-service.ts`](../../src/server/agent-service.ts)),UI 只跟随、不乐观预测。两条路径都从 `isBusy` 派生:
-- **事件(live)**:`agent-service.markRunning(sessionId, agentId)` 是"起一轮"的唯一入口,在 `isBusy` 翻 true 的同一刻发 `session_running` 事件 → `setIsStreaming(key, true)`;`agent_end` → `finishStreaming(key)`。覆盖"当前正盯着的 session 状态变化"。`markRunning` 收口了 `sendPrompt` / `sendProjectPrompt`(work 触发)/ 不完整 session 恢复三处原本分散的 `isBusy=true` 写法。
-- **pull-on-display(切过去对齐)**:切到某 session 时 `ChatPanel` 调 `sessionsGetInit` → `setIsStreaming(sid, !!payload.isRunning)`,`isRunning` 读 `isBusy`。覆盖事件已发过却被错过、或切到一个已在跑的 session 的场景。
+**运行态:server 权威 + UI 跟随,且初始显示也对齐**。`isStreaming`(→ Stop/Send 按键、placeholder 文案)的真相源是后端 `runStates.isBusy`([`agent-service.ts`](../../src/server/agent-service.ts)),UI 只跟随、不乐观预测。**三条路径全部从 `isBusy`/`isRunning` 派生,口径一致**:
+- **事件(live)**:`agent-service.markRunning(sessionId, agentId)` 是"起一轮"的唯一入口,在 `isBusy` 翻 true 的同一刻发 `session_running` 事件 → `setIsStreaming(sessionId, true)`;`agent_end`(带 sessionId,由 `AgentLoop.emit` 注入)→ `finishStreaming(sessionId)`。覆盖"当前正盯着的 session 状态变化"。`markRunning` 收口了 `sendPrompt` / `sendProjectPrompt`(work 触发)/ 不完整 session 恢复三处原本分散的 `isBusy=true` 写法;三处 `error` 直发([agent-service abort/sendPrompt/sendProjectPrompt](../../src/server/agent-service.ts))也都带 sessionId,避免后台报错串清当前 session。
+- **pull-on-display(切过去对齐)**:切到某 session 时 `ChatPanel` 调 `sessionsGetInit` → `setIsStreaming(sid, !!payload.isRunning)`,`isRunning` 读 `isBusy`。
+- **session_init 初始显示也对齐**:`initSession` **从权威 `isRunning` 同步** streaming(`session_init` 事件经 `activateSession` 带上 `isRunning`,handler 透传)。**不再**按 `message.streaming` 推断——一个在跑的 session 在步骤之间/工具执行中/刚 markRunning 时可能没有任何消息在流,旧逻辑会据此把 Stop 误清成 Send(这是"一开始显示就没同步"的根因)。`isRunning` 未传时不动既有标志,交给 pull / live 事件。
 - `send()` **不**再乐观 `setIsStreaming(true)`——按键纯粹由服务端事件驱动,因此 chat / cron / work 触发 / recovery 行为完全一致(早期只有 chat 路径有乐观位,服务端发起的 run 在 UI 上看不到"运行中")。
+- **abort 按 session,不串停**:`chatAbort(sessionId)` 一路透传 → `agent-service.abort(undefined, sessionId)` 只停 `loops.get(sessionId)`。旧版 `chatAbort()` 无参 → 后端遍历停掉所有 busy session(停一个 = 停全部)。现在 Stop 按键只影响当前 session,同 agent 的其他 session 不受波及。
 - **work 触发跳转不被 General 抢占**:跨 agent 触发 work 时 `doTrigger` 同时改 `activeAgentId` + `activeSessionId`,而 `[activeAgentId]` 的 agent-change effect 会调 `refreshSessionData` 落 General —— 旧逻辑会用 `general.id` 覆盖跳转目标,导致 pull-on-display 响应被 `activeSessionId !== sid` 守卫丢弃,刚发的指令在 UI 里看不到(切走再切回才显示)。现在 `refreshSessionData` 加载 session 列表后,若当前 `activeSessionId` 已属于该 agent(work/项目切换外部设的),就保留它,只在无有效 session 时才落 General。指令消息由 `loop.run` 在首次 await 前 `saveToDb()` 同步落库,故 pull 一定能拉到。
 
 ## 5. 关键 UI 组件

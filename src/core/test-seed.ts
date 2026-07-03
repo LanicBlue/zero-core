@@ -35,6 +35,7 @@ import type { AgentStore } from "../server/agent-store.js";
 import type { ProviderStore } from "../server/provider-store.js";
 import type { WikiStore } from "../server/wiki-node-store.js";
 import type { ProjectStore } from "../server/project-store.js";
+import type { ProjectWorkStore } from "../server/project-work-store.js";
 import {
 	ensureWikiSkeleton,
 } from "../server/fresh-db-seed.js";
@@ -59,6 +60,7 @@ export function seedTestEnvironment(
 	providerStore: ProviderStore,
 	wikiStore?: WikiStore,
 	projectStore?: ProjectStore,
+	projectWorkStore?: ProjectWorkStore,
 ): TestSeedResult | null {
 	const fixturePath = process.env.ZERO_CORE_TEST_FIXTURE;
 	if (!fixturePath) return null;
@@ -152,6 +154,32 @@ export function seedTestEnvironment(
 	}
 
 	log.session("test", `Test environment seeded: agent=${updated.id}, fixture=${fixturePath}`);
+
+	// Seed ONE assigned + enabled project work on TestProject so the
+	// work-trigger e2e (work-jump → chat Stop button) has a triggerable post
+	// without driving the create-work modal. No requiredTools → always
+	// triggerable regardless of the agent's toolPolicy. Idempotent by name.
+	if (projectWorkStore && testProjectId) {
+		try {
+			const existing = projectWorkStore
+				.listByProject(testProjectId)
+				.find((w) => w.name === "E2E Work");
+			if (!existing) {
+				projectWorkStore.create({
+					projectId: testProjectId,
+					name: "E2E Work",
+					actionPrompt: "Run the e2e work step.",
+					requiredTools: [],
+					agentId: updated.id,
+					contextPolicy: {},
+					hooks: [],
+					enabled: true,
+				});
+			}
+		} catch (err) {
+			log.session("test", `E2E work seed failed: ${(err as Error).message}`);
+		}
+	}
 
 	// §10.5 wiki skeleton — same shape fresh-db-seed.ts plants on a truly-empty
 	// DB. In test mode we create a TestAgent ABOVE, so by the time

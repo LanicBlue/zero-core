@@ -71,8 +71,14 @@ export function createChatRouter(deps: {
 		res.json({ success: true });
 	});
 
-	router.post("/abort", async (_req, res) => {
-		await agentService.abort();
+	router.post("/abort", async (req, res) => {
+		// Session-scoped abort: only the named session's loop is stopped. The
+		// renderer always knows the sessionId of the session the user clicked
+		// Stop on — without it we must NOT abort, because the legacy fallback
+		// (abort-by-agent / abort-all-busy) would stop OTHER sessions of the
+		// same agent (or every running session) — session state is independent.
+		const { sessionId } = req.body ?? {};
+		if (sessionId) await agentService.abort(undefined, sessionId);
 		res.json({ success: true });
 	});
 

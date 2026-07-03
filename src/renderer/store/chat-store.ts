@@ -122,7 +122,7 @@ interface ChatState {
 	/** M5: 切换项目语境(null = 回到 General)。调用方负责随后激活对应 session。 */
 	setActiveProject: (id: string | null) => void;
 	loadMessages: (sessionId: string, messages: ChatMessage[]) => void;
-	initSession: (sessionId: string, payload: { messages: ChatMessage[] }) => void;
+	initSession: (sessionId: string, payload: { messages: ChatMessage[]; isRunning?: boolean }) => void;
 	clearMessages: (sessionId: string) => void;
 	setSessions: (agentId: string, sessions: SessionRecord[]) => void;
 	/**
@@ -361,10 +361,17 @@ export const useChatStore = create<ChatState>((set) => ({
 	initSession: (sessionId, payload) =>
 		set((state) => {
 			const newStreaming = new Set(state.streamingSessions);
-			const hasStreaming = payload.messages.some((m) => m.streaming);
-			if (hasStreaming) newStreaming.add(sessionId);
-			else newStreaming.delete(sessionId);
-
+			// Running state is the AUTHORITATIVE backend isRunning (carried in the
+			// session_init payload), NOT per-message streaming flags. A session can
+			// be running — between LLM steps, during tool execution, or just after
+			// markRunning with no assistant message yet — with no message
+			// mid-stream. Deriving from message.streaming wrongly cleared the Stop
+			// button on initial display. Only sync when isRunning is explicitly
+			// provided; otherwise leave the flag to the pull / live events.
+			if (typeof payload.isRunning === "boolean") {
+				if (payload.isRunning) newStreaming.add(sessionId);
+				else newStreaming.delete(sessionId);
+			}
 			return {
 				messagesBySession: { ...state.messagesBySession, [sessionId]: payload.messages },
 				streamingSessions: newStreaming,

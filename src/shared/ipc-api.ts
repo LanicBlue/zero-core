@@ -139,7 +139,7 @@ export interface IpcChannelDefs {
 
 	// ── Chat ─────────────────────────────────────────────────
 	"chat:send":   { params: [text: string, agentId?: string, sessionId?: string];    result: Ok };
-	"chat:abort":  { params: [agentId?: string];                  result: Ok };
+	"chat:abort":  { params: [sessionId?: string];                result: Ok };
 
 	// ── Files ────────────────────────────────────────────────
 	"files:tree":         { params: [root?: string];                              result: FileTreeNode[] | Err };

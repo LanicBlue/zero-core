@@ -146,11 +146,14 @@ describe("chat-router", () => {
 		expect(res.data.success).toBe(true);
 	});
 
-	test("POST /abort returns success", async () => {
-		const res = await request(port, "POST", "/api/chat/abort");
+	test("POST /abort returns success and targets the named session only", async () => {
+		// Session-scoped abort: the route forwards sessionId to agentService.abort
+		// so only THAT session's loop is stopped (never other sessions of the
+		// same agent). Without a sessionId the route must NOT call abort at all.
+		const res = await request(port, "POST", "/api/chat/abort", { sessionId: "sess-A" });
 		expect(res.status).toBe(200);
 		expect(res.data.success).toBe(true);
-		expect(agentService.abort).toHaveBeenCalled();
+		expect(agentService.abort).toHaveBeenCalledWith(undefined, "sess-A");
 	});
 });
 

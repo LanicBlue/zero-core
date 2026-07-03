@@ -59,7 +59,7 @@ export const delegateTool = buildTool({
 		"- { action:'stop', task_id } — force-stop a running task immediately (hard stop; the task cannot resume).\n" +
 		"- { action:'complete', task_id } — acknowledge a FINISHED task (completed/failed/killed) to dismiss it from the task list once you've consumed its result. Running tasks must be stopped first; this only removes finished tasks from the live view.\n" +
 		"- { action:'tree', task_id? } — list delegated-task records (status/turns/tokens), optionally scoped to a root task. Use this to inspect delegated work, including tasks interrupted by a restart.\n\n" +
-		"When to delegate: parallel work, complex multi-step searches, isolated exploration that shouldn't pollute the main conversation, or handing work to a specialized role agent.\n\n" +
+		"When to delegate — for LARGE or MULTI-STEP tasks, prefer delegating to a sub-agent over doing them inline. If a request looks like it will need many tool calls, multiple file edits, or a long exploration, lean toward breaking it into sub-tasks and delegating them (use non_blocking mode for independent sub-tasks so they run in parallel). Delegating keeps your own context lean, lets work proceed in parallel, and keeps exploratory noise out of the main conversation. Use your judgment: tasks that hinge on the context you've already built may be better done inline. Also delegate to hand work to a specialized role agent (a configured subagent).\n\n" +
 		"You can ONLY delegate by `subagent` name to agents in your own subagents list (run 'list' to see them).",
 	meta: { category: "agent", isReadOnly: false, isConcurrencySafe: false },
 	configSchema: [

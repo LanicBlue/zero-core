@@ -576,15 +576,18 @@ export default function ChatPanel() {
 
 	const abort = () => {
 		if (activeSessionId) finishStreaming(activeSessionId);
-		api().chatAbort();
+		// Session-scoped: stop ONLY this session's loop. Passing the sessionId
+		// is mandatory — the backend no-arg/agent fallback would cascade-stop
+		// other sessions of the same agent.
+		if (activeSessionId) api().chatAbort(activeSessionId);
 	};
 
 	const handleArchiveSession = async () => {
 		if (!activeAgentId || !activeSessionId) return;
 		setShowArchiveConfirm(false);
-		// 运行中先中断(防 runtime loop 残留 + 丢弃未完成输出)
+		// 运行中先中断(防 runtime loop 残留 + 丢弃未完成输出)——只停本 session。
 		if (isStreaming) {
-			api().chatAbort();
+			api().chatAbort(activeSessionId);
 			finishStreaming(activeSessionId);
 		}
 		try {

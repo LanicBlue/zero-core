@@ -133,7 +133,7 @@ const R: Record<string, RouteMapping> = {
 
 	// Chat
 	"chat:send":  { method: "POST", path: "/api/chat/send", buildReq: (text, agentId?, sessionId?) => ({ body: { text, agentId, sessionId } }) },
-	"chat:abort": { method: "POST", path: "/api/chat/abort", buildReq: () => ({}) },
+	"chat:abort": { method: "POST", path: "/api/chat/abort", buildReq: (sessionId?: string) => ({ body: { sessionId } }) },
 
 	// Files
 	"files:tree":         { method: "GET", path: "/api/files/tree", buildReq: (root?: string) => ({ query: root ? { root } : undefined }) },

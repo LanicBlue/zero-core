@@ -94,7 +94,7 @@ export interface WindowApi {
 
 	// ── Chat ──
 	chatSend: (text: string, agentId?: string, sessionId?: string) => Promise<{ success: true }>;
-	chatAbort: (agentId?: string) => Promise<{ success: true }>;
+	chatAbort: (sessionId?: string) => Promise<{ success: true }>;
 
 	// ── Sessions ──
 	sessionsList: (agentId: string) => Promise<SessionRecord[]>;

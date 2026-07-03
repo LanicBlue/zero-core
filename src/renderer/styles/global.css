@@ -3820,9 +3820,30 @@ body {
 
 .todos-header {
 	display: flex;
-	justify-content: space-between;
 	align-items: center;
+	gap: 6px;
+	width: 100%;
 	margin-bottom: 6px;
+	padding: 0;
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	-webkit-user-select: none;
+	user-select: none;
+	font: inherit;
+	color: inherit;
+}
+
+.todos-header .todos-progress {
+	margin-left: auto;
+}
+
+.todos-chevron {
+	font-size: 10px;
+	width: 12px;
+	text-align: center;
+	flex-shrink: 0;
+	color: var(--fg-muted);
 }
 
 .todos-title {

@@ -279,7 +279,7 @@ describe("chat-store", () => {
 	});
 
 	describe("initSession", () => {
-		test("seeds messages and detects streaming flag", () => {
+		test("seeds messages and syncs streaming from authoritative isRunning", () => {
 			const streamingMsg: ChatMessage = {
 				id: nextMsgId(),
 				role: "assistant",
@@ -288,19 +288,41 @@ describe("chat-store", () => {
 				timestamp: Date.now(),
 			};
 			useChatStore.getState().setActiveSessionId("sess-a");
-			useChatStore.getState().initSession("sess-a", { messages: [streamingMsg] });
+			// isRunning:true → Stop, regardless of per-message streaming flags.
+			useChatStore.getState().initSession("sess-a", { messages: [streamingMsg], isRunning: true });
 			const s = useChatStore.getState();
 			expect(activeMessages()).toHaveLength(1);
 			expect(s.streamingSessions.has("sess-a")).toBe(true);
 			expect(selectIsStreaming(s)).toBe(true);
 		});
 
-		test("non-streaming payload removes session from streamingSessions", () => {
+		test("isRunning:false clears streaming even if a message is mid-stream", () => {
+			useChatStore.getState().setActiveSessionId("sess-a");
+			useChatStore.getState().initSession("sess-a", {
+				messages: [{ id: "x", role: "assistant", text: "hi", streaming: true, timestamp: 0 }],
+				isRunning: false,
+			});
+			expect(useChatStore.getState().streamingSessions.has("sess-a")).toBe(false);
+		});
+
+		test("a running session with NO streaming message stays running (the bug)", () => {
+			// Regression: previously initSession derived streaming from
+			// message.streaming, so a running session between steps (no message
+			// mid-stream) got cleared on initial display. isRunning is authoritative.
+			useChatStore.getState().setActiveSessionId("sess-a");
+			useChatStore.getState().initSession("sess-a", {
+				messages: [{ id: "x", role: "user", text: "hi", timestamp: 0 }],
+				isRunning: true,
+			});
+			expect(useChatStore.getState().streamingSessions.has("sess-a")).toBe(true);
+		});
+
+		test("without isRunning, leaves streamingSessions unchanged (no clobber)", () => {
 			useChatStore.getState().setIsStreaming("sess-a", true);
 			useChatStore.getState().initSession("sess-a", {
 				messages: [{ id: "x", role: "user", text: "hi", timestamp: 0 }],
 			});
-			expect(useChatStore.getState().streamingSessions.has("sess-a")).toBe(false);
+			expect(useChatStore.getState().streamingSessions.has("sess-a")).toBe(true);
 		});
 	});
 

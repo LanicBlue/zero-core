@@ -719,7 +719,11 @@ export class AgentService {
 			log.agent("Prompt completed for:", agentId);
 		} catch (err) {
 			log.error("agent", "Prompt error:", (err as Error).message);
-			this.emit({ type: "error", error: (err as Error).message, agentId });
+			// sessionId is REQUIRED on terminal events: the renderer keys
+			// finishStreaming off it. Without it, a background run's error would
+			// be attributed to whatever session the user is viewing and wrongly
+			// flip its Stop button back to Send mid-run.
+			this.emit({ type: "error", sessionId, error: (err as Error).message, agentId });
 		}
 		// C2 drain: send queued inputs as subsequent turns while any remain.
 		// insert_now items are handled mid-run by the PrepareStep hook; this
@@ -730,7 +734,7 @@ export class AgentService {
 				await loop.run(next);
 			} catch (err) {
 				log.error("agent", "Drained prompt error:", (err as Error).message);
-				this.emit({ type: "error", error: (err as Error).message, agentId });
+				this.emit({ type: "error", sessionId, error: (err as Error).message, agentId });
 				break;
 			}
 			next = this.inputQueue.drainNextQueued(sessionId);
@@ -876,7 +880,9 @@ export class AgentService {
 			log.agent("Project prompt completed for:", agentId);
 		}).catch((err) => {
 			log.error("agent", "Project prompt error:", (err as Error).message);
-			this.emit({ type: "error", error: (err as Error).message, agentId });
+			// sessionId required so the renderer scopes the error to THIS
+			// session instead of clobbering the viewed session's streaming flag.
+			this.emit({ type: "error", sessionId, error: (err as Error).message, agentId });
 		});
 		return {};
 	}
@@ -884,16 +890,28 @@ export class AgentService {
 	// through delegateTask (extended signature carries target agent full
 	// config + per-call override + caller bundle inheritance). Lead/orchestrate
 	// callers must use the agent-as-tool + toolPolicy path (decision 16).
-	async abort(agentId?: string): Promise<void> {
+	/**
+	 * Abort a running session. sessionId is the authoritative target — session
+	 * state is independent, so stopping one session must never touch another.
+	 * The chat Stop button always passes the sessionId it wants stopped.
+	 *
+	 * Legacy no-arg / agentId calls (raw WS path) abort ALL busy sessions —
+	 * kept for back-comat but intentionally not used by the chat UI, which
+	 * would otherwise cascade-stop other sessions of the same agent.
+	 */
+	async abort(agentId?: string, sessionId?: string): Promise<void> {
+		if (sessionId) {
+			this.loops.get(sessionId)?.abort();
+			return;
+		}
 		if (agentId) {
-			const sessionId = this.activeSessions.get(agentId);
-			if (sessionId) this.loops.get(sessionId)?.abort();
-		} else {
-			for (const [sid, s] of this.runStates) {
-				if (s.isBusy) {
-					this.loops.get(sid)?.abort();
-				}
-			}
+			const sid = this.activeSessions.get(agentId);
+			if (sid) this.loops.get(sid)?.abort();
+			return;
+		}
+		// No target specified (legacy): abort every busy session.
+		for (const [sid, s] of this.runStates) {
+			if (s.isBusy) this.loops.get(sid)?.abort();
 		}
 	}
 	recoverIncompleteSessions(): void {

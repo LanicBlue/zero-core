@@ -70,7 +70,7 @@ const api: WindowApi = {
 
 	// ─── Chat ────────────────────────────────────────
 	chatSend: (text, agentId, sessionId?) => ipcRenderer.invoke("chat:send", text, agentId, sessionId),
-	chatAbort: (agentId) => ipcRenderer.invoke("chat:abort", agentId),
+	chatAbort: (sessionId) => ipcRenderer.invoke("chat:abort", sessionId),
 
 	// ─── Sessions ────────────────────────────────────
 	sessionsList: (agentId) => ipcRenderer.invoke("sessions:list", agentId),

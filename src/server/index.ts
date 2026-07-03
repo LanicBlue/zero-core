@@ -181,7 +181,7 @@ export async function startServer(options?: StartServerOptions) {
 	// Test-mode seed — populate mock provider + agent when ZERO_CORE_TEST_FIXTURE is set
 	if (process.env.ZERO_CORE_TEST_FIXTURE) {
 		const { seedTestEnvironment } = await import("../core/test-seed.js");
-		seedTestEnvironment(sessionDB, agentStore, providerStore, wikiStoreGlobal, projectStore);
+		seedTestEnvironment(sessionDB, agentStore, providerStore, wikiStoreGlobal, projectStore, projectWorkStore);
 		workspaceConfig = loadWorkspaceConfig(sessionDB);
 	}
 
@@ -423,6 +423,17 @@ export async function startServer(options?: StartServerOptions) {
 	for (const p of projectStore.list()) {
 		try { management.seedDefaultProjectWorks(p.id); } catch (e) { console.warn(`[server] seed works for ${p.id}:`, (e as Error).message); }
 	}
+	// One-time: refresh existing default works' actionPrompts to the latest
+	// template. The work prompt is stored at seed time, so template edits (e.g.
+	// Agent-tool guidance on 文档充实/文档重建) otherwise never reach existing
+	// projects. Idempotent + customization-safe (see resyncDefaultWorkPrompts).
+	try {
+		const kv = sessionDB.getKVStore();
+		if (!kv.getJson("work-prompt-resync-agent-tool-v1")) {
+			management.resyncDefaultWorkPrompts();
+			kv.setJson("work-prompt-resync-agent-tool-v1", { doneAt: Date.now() });
+		}
+	} catch (e) { console.warn(`[server] resync default work prompts:`, (e as Error).message); }
 	// v0.8 (M1): cron manager now scans the cron table (one agent → N cron),
 	// routes triggers via resolveSessionByRoleProject + sendPrompt. P4: mode-
 	// aware firing + cron_runs audit (cronRunStore injected).

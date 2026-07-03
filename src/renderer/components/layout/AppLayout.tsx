@@ -45,6 +45,7 @@ import ProjectPage from "../requirements/ProjectPage.js";
 import WikiPage from "../wiki/WikiPage.js";
 
 import { usePageStore } from "../../store/page-store.js";
+import { terminalTargetSession } from "../../store/event-attribution.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
 import { useChatStore } from "../../store/chat-store.js";
 import { useNotificationStore } from "../../store/notification-store.js";
@@ -98,7 +99,9 @@ export default function AppLayout() {
 					const state = useChatStore.getState();
 					const hasMsgs = (state.messagesBySession[sid]?.length ?? 0) > 0;
 					if (hasMsgs) return;
-					initSession(sid, { messages: d.messages || [] });
+					// Sync running state from the authoritative backend isRunning
+					// (carried in the session_init payload) — see chat-store.initSession.
+					initSession(sid, { messages: d.messages || [], isRunning: !!d.isRunning });
 						// Restore context window and token usage from backend
 						updateContextInfo(d.sessionId || key, {
 							usedTokens: d.inputTokens ?? 0,
@@ -144,13 +147,25 @@ export default function AppLayout() {
 			thinking_delta: (d, key) => updateThinking(key, d.text),
 			tool_start: (d, key) => addToolCall(key, d.toolName, d.args ? stringify(d.args) : undefined, d.toolCallId),
 			tool_end: (d, key) => updateToolCall(key, d.toolName, d.isError ? "error" : "done", d.result ? stringify(d.result) : undefined, d.toolCallId),
-			agent_end: (_d, key) => finishStreaming(key),
+			// Terminal events (agent_end / error) only clear streaming for the
+			// session they EXPLICITLY name. A terminal event without sessionId
+			// (e.g. a legacy/raw emit, or a future regression) must NOT fall back
+			// to the active session — otherwise a background run ending/erroring
+			// would flip the viewed session's Stop button to Send mid-run.
+			agent_end: (d, _key) => {
+				const sid = terminalTargetSession(d, useChatStore.getState().activeSessionId);
+				if (sid) finishStreaming(sid);
+			},
 			// Authoritative "turn started" signal from the server (agent-service
 			// markRunning). The streaming flag follows the server's isBusy, not an
 			// optimistic UI flag — so chat / cron / work-trigger / recovery all flip
 			// the button to Stop uniformly. Global (not in PER_SESSION_PUSH) so a
 			// background session's running state is tracked even when not active.
-			session_running: (_d, key) => useChatStore.getState().setIsStreaming(key, true),
+			session_running: (d) => {
+				// Global (background sessions too). Requires explicit sessionId —
+				// never fall back to the active session.
+				if (d.sessionId) useChatStore.getState().setIsStreaming(d.sessionId, true);
+			},
 			retry_attempt: (d, key) => updateAssistantText(key, `Retrying (${d.attempt}/${d.maxAttempts})...`),
 			todos_update: (d) => {
 				// 按 sessionId 路由(同 agent 多 session 不串显)。
@@ -169,11 +184,13 @@ export default function AppLayout() {
 					questions: d.questions,
 				});
 			},
-			error: (d, key) => {
-				setError(key, d.error);
-				lastErrorKey.current = key;
-				updateAssistantText(key, `\nError: ${d.error}`);
-				finishStreaming(key);
+			error: (d, _key) => {
+				const sid = terminalTargetSession(d, useChatStore.getState().activeSessionId);
+				if (!sid) return; // can't safely attribute — don't clobber the viewed session
+				setError(sid, d.error);
+				lastErrorKey.current = sid;
+				updateAssistantText(sid, `\nError: ${d.error}`);
+				finishStreaming(sid);
 			},
 			requirement_notification: (d) => {
 				useNotificationStore.getState().addNotification({
@@ -205,29 +222,40 @@ export default function AppLayout() {
 			},
 		};
 
-		// per-session push 事件:只对 active session 应用,切走即"断 push"。
-		// 这些事件都带 sessionId;text_delta/tool_*/todos_update/ask_user 等若来自
-		// 别的 session 一律丢弃 —— 切回时由 ChatPanel 的 pull(sessionsGetInit)拉基线。
-		// 没带 sessionId 的事件(理论残留)按 key fallback 落到 active。
-		// 注意:`agent_end` 是**终态事件**(只清 streaming 状态),必须全局生效 ——
-		// 否则后台 session 报错停止时 agent_end 被丢 → streamingSessions 卡住 →
-		// 切回该 session 时 Send 一直禁用,"无法继续"。terminal state ≠ 增量内容。
+		// Session attribution is STRICT: an event targets ONLY its explicit
+		// sessionId, never a fallback to activeSessionId/agentId. The old
+		// `data.sessionId || activeSessionId || data.agentId` fallback was the
+		// cross-session bleed bug — an event from a background run that lacked
+		// sessionId landed on whatever session the user was viewing.
+		//
+		// Two classes:
+		//  - INCREMENTAL CONTENT (text_delta / tool_* / todos_update / ask_user /
+		//    session_init / usage / retry_attempt): only applied to the ACTIVE
+		//    session; switch away = stop pushing. Baseline is re-fetched by
+		//    ChatPanel's pull-on-display when switching back.
+		//  - TERMINAL / STATE (agent_end / error / session_running): GLOBAL —
+		//    they manage streamingSessions, which must track EVERY session so a
+		//    background session's stop/error is reflected when the user later
+		//    views it. These carry sessionId and are scoped via
+		//    terminalTargetSession (agent_end/error) or an explicit guard
+		//    (session_running), never by the active session.
 		const PER_SESSION_PUSH = new Set([
 			"text_delta", "thinking_delta", "tool_start", "tool_end",
-			"message_end", "usage", "retry_attempt", "error",
+			"message_end", "usage", "retry_attempt",
 			"session_init", "todos_update", "ask_user",
 		]);
 
 		const unsubscribe = api().onAgentEvent((data: any) => {
 			if (!data.agentId) return;
 			const activeSessionId = useChatStore.getState().activeSessionId;
-			// disconnect-on-leave:带 sessionId 且不是当前 active session → 丢弃。
-			if (PER_SESSION_PUSH.has(data.type) && data.sessionId && data.sessionId !== activeSessionId) {
-				return;
+			// Strict sessionId attribution — no fallback. null = unattributable.
+			const sid = typeof data.sessionId === "string" && data.sessionId ? data.sessionId : null;
+			// disconnect-on-leave: incremental content only for the active session.
+			if (PER_SESSION_PUSH.has(data.type)) {
+				if (!sid || sid !== activeSessionId) return;
 			}
-			const key = data.sessionId || activeSessionId || data.agentId;
 			const handler = handlers[data.type];
-			if (handler) handler(data, key);
+			if (handler) handler(data, sid);
 		});
 
 		return unsubscribe;

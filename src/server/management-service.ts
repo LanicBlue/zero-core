@@ -890,6 +890,51 @@ export class ManagementService {
 	}
 
 	/**
+	 * One-time re-sync of default work actionPrompts to the latest template.
+	 *
+	 * The work prompt is stored at seed time (project creation) and used verbatim
+	 * by fireProjectWork — so a template improvement (e.g. adding Agent-tool
+	 * guidance to 文档充实/文档重建) does NOT reach existing projects. This
+	 * refreshes default-named works whose stored prompt still looks like the OLD
+	 * default: matches the old signature phrase AND lacks the new marker.
+	 *
+	 * Safety: prompts that don't carry the signature (user-customized) and
+	 * prompts that already have the marker (already up-to-date) are NOT touched.
+	 * Only actionPrompt is rewritten; agentId / hooks / requiredTools / etc. stay.
+	 * Caller gates this with a one-time KV flag so it runs exactly once.
+	 */
+	resyncDefaultWorkPrompts(): void {
+		const store = this.requireProjectWorkStore();
+		// name → distinctive phrase that identifies the OLD default prompt.
+		const SIGNATURES: Record<string, string> = {
+			"文档充实": "骨架扫描已经建好了结构节点",
+			"文档重建": "覆盖骨架扫描的启发式简摘",
+		};
+		// Marker the new template carries (Agent-tool guidance block). Its presence
+		// means the prompt is already the latest → skip.
+		const MARKER = "执行策略(递归型任务";
+		for (const project of this.projectStore.list()) {
+			const projectName = project.name ?? "";
+			// Latest default prompts for this project (name → actionPrompt).
+			const latest = new Map<string, string>();
+			for (const seed of DEFAULT_PROJECT_WORKS(project.id, projectName)) {
+				latest.set(seed.name, seed.actionPrompt);
+			}
+			for (const work of store.listByProject(project.id)) {
+				const sig = SIGNATURES[work.name];
+				if (!sig) continue;                         // not a default work we manage
+				const prompt = work.actionPrompt ?? "";
+				if (prompt.includes(MARKER)) continue;      // already up-to-date
+				if (!prompt.includes(sig)) continue;        // looks customized — don't clobber
+				const next = latest.get(work.name);
+				if (next && next !== prompt) {
+					store.update(work.id, { actionPrompt: next });
+				}
+			}
+		}
+	}
+
+	/**
 	 * 创建一个 project-work(+ 可选 cron 触发器)。校验:agent 存在(若指定)+
 	 * 满足 requiredTools(无 fallback)。runOnce=true 时创建后立刻手动触发一次。
 	 */
