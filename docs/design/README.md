@@ -10,7 +10,8 @@
 docs/design/
 ├── README.md                ← 本文
 ├── agent-driven-workflow/   ← v0.8 多 Agent 工作流重构(原 docs/rfc/)
-└── hook-redesign/           ← hook 生命周期重做(per-loop registry + step 中心)
+├── hook-redesign/           ← hook 生命周期重做(per-loop registry + step 中心)
+└── runtime-push-ui-sync/    ← 运行时推送 · UI 窗口(单一真源 · 零轮询)
 ```
 
 ## 各努力说明
@@ -35,6 +36,17 @@ docs/design/
 |------|------|------|
 | `hook-step-redesign.md` | **权威 spec** | per-loop registry + step 中心 + 去 turn 表(背景/命名映射/step 级恢复) |
 | `archive/` | 已完成 | 重做的 per-unit 执行步骤(1A–5B 的 impl/accept),已合并到 master |
+
+### runtime-push-ui-sync/(运行时推送 · UI 窗口)
+
+| 文件 | 性质 | 作用 |
+|------|------|------|
+| `runtime-push-ui-sync.md` | **设计 Draft** | UI 是运行时的展示窗口——四条不变量(所见即所跑 / 只更新变化部分 / 运行时状态变即实时反应 / 架构统一易扩展)+ 两类数据(状态 record / 流 stream)各一套统一契约 |
+| `conventions.md` | 实现规约 | 冷启动 subagent 必读的项目级硬规约(三层 tsc / sessions.db 只读 / commit / Edit 陷阱 / 不动他人代码 / 层级边界) |
+| `plan-N1.md` / `acceptance-N1.md` | 实现路线 / 测试要求 | N1 统一状态流基建(桥 + runtime emit + 白名单 + session emit) |
+| `plan-N2.md` / `acceptance-N2.md` | 实现路线 / 测试要求 | N2 UI 推送驱动 + 消闪烁 + 重连 resync(依赖 N1) |
+| `plan-N3.md` / `acceptance-N3.md` | 实现路线 / 测试要求 | N3 文件系统零轮询(非运行时) |
+| `plan-N4.md` / `acceptance-N4.md` | 实现路线 / 测试要求 | N4 配置字段热更(不变量 1:所见即所跑) |
 
 ## 约定
 
