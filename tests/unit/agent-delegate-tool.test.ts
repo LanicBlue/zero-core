@@ -51,7 +51,7 @@ describe("Agent tool — list", () => {
 
 	test("list 无 subagents → 提示空", async () => {
 		const r = await exec({ action: "list" }, makeCtx());
-		expect(r).toMatch(/no subagents/i);
+		expect(r).toMatch(/no registered subagents/i);
 	});
 
 	test("list 标记目标已被删(stale reference)", async () => {
