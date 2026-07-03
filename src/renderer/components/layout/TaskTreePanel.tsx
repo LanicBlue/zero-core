@@ -10,7 +10,7 @@
 // "task" here is a runtime delegated execution instance — NOT project "work"
 // (which is a project-level config definition, shown in ProjectPage).
 //
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useChatStore } from "../../store/chat-store.js";
 import { useTaskStore } from "../../store/task-store.js";
 import type { RuntimeTaskInfo } from "../../../shared/types.js";
@@ -53,8 +53,23 @@ export default function TaskTreePanel() {
 		window.dispatchEvent(new CustomEvent("zero-task-select", { detail: { task: t } }));
 	};
 
+	// Per-node collapse (fold subtrees). Default = all expanded. Mirrors the
+	// WikiTree pattern: a Set of collapsed task ids; the caret toggles and stops
+	// propagation so clicking it doesn't also select the task.
+	const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+	const toggleCollapse = (taskId: string) => {
+		setCollapsed((prev) => {
+			const next = new Set(prev);
+			if (next.has(taskId)) next.delete(taskId);
+			else next.add(taskId);
+			return next;
+		});
+	};
+
 	const renderNode = (t: RuntimeTaskInfo): React.ReactNode => {
 		const children = byParent.get(t.id) ?? [];
+		const hasChildren = children.length > 0;
+		const isCollapsed = collapsed.has(t.id);
 		return (
 			<div key={t.id} className="task-tree-node">
 				<button
@@ -64,6 +79,12 @@ export default function TaskTreePanel() {
 					title={t.task}
 				>
 					<div className="task-card-row">
+						<span
+							className={`task-caret${hasChildren ? "" : " task-caret-empty"}`}
+							onClick={hasChildren ? (e) => { e.stopPropagation(); toggleCollapse(t.id); } : undefined}
+						>
+							{hasChildren ? (isCollapsed ? "▸" : "▾") : ""}
+						</span>
 						<span className={`task-status-icon task-status-${t.status}`}>{STATUS_ICON[t.status] ?? "?"}</span>
 						<span className="task-card-target">{t.type === "bash" ? "bash" : "subagent"}</span>
 						<span className="task-card-status">{t.status}</span>
@@ -75,7 +96,7 @@ export default function TaskTreePanel() {
 						{t.currentTool && <span>tool:{t.currentTool}</span>}
 					</div>
 				</button>
-				{children.length > 0 && (
+				{hasChildren && !isCollapsed && (
 					<div className="task-tree-children">
 						{children.map((c) => renderNode(c))}
 					</div>

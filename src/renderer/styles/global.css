@@ -2002,6 +2002,25 @@ body {
   font-size: 12px;
 }
 
+/* Collapse caret for nodes with children. Fixed width so leaf rows (empty
+   caret) align with parent rows; pointer cursor + stopPropagation on click so
+   toggling fold doesn't select the task. */
+.task-caret {
+  display: inline-block;
+  width: 12px;
+  flex-shrink: 0;
+  font-size: 10px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--fg-muted);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.task-caret-empty {
+  cursor: default;
+}
+
 .task-status-running { color: var(--accent-primary, #4a9); }
 .task-status-finishing { color: var(--accent-warn, #d93); }
 .task-status-completed { color: var(--accent-ok, #4a9); }
