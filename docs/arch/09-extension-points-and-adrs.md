@@ -685,6 +685,10 @@ graph TB
 
 **Phase A 限制(已记)`:AgentLoop.requestFinish` 曾误放在 AgentLoop,后移除 —— 控制消息归 task 管理,hook 投递,AgentLoop 不持有功能/控制状态。
 
+**重启回填(后补)**:本 ADR 写了持久化却漏了重启回读 —— `delegated_tasks` 行落了盘,但 UI 的 `runtimeTasks:bySession` 只读 live TaskRegistry,重启后清空。现已由 `AgentService.getRuntimeTaskTree` 的 live ⊕ DB 合并补齐(详见 [05 §delegated_tasks](05-persistence.md#delegated_tasks委派任务phase-c)):无 live loop 时返回 DB 行,live 存在时覆盖同 id 行 + 补 bash 后台任务。
+
+**Wiki 工具迁移缺口(后补)**:v0.8 帕尔斯凯域工具(Wiki/Project/Cron/AgentRegistry)曾缺 `RENAMED_TOOLS` 小写别名,且 `toolEnabled()`(能力注入的判据)不做迁移 → 旧的小写键配置(如 `{wiki:{enabled:true}}`)下,`buildToolsSet` 想启用 Wiki,但能力侧 `on("Wiki")` 返回 false → 不注入 `wikiStore` → `CONDITIONAL_TOOLS["Wiki"]` 把它过滤掉。子代理经 `...this.config` 本会继承 wikiStore,故子代理缺 Wiki 只是父代理的连带。修复:`RENAMED_TOOLS` 补 `wiki→Wiki` 等别名 + `toolEnabled` 与 `buildToolsSet` 走同一套迁移。
+
 **Code evidence**:`runtime/subagent-delegator.ts`(持久化 + turn 预算 + 竞态修复)、`runtime/task-registry.ts`(requestFinish/finishing)、`runtime/agent-loop.ts`(prepareStep 点位)、`runtime/hooks/task-control-hooks.ts` + `input-queue-hooks.ts`、`server/session-db.ts`(delegated_tasks 表 + session 列 + 隔离查询 + markRunningDelegatedTasksInterrupted)、`server/input-queue-store.ts`、`server/delegated-task-router.ts` + `input-queue-router.ts`、`renderer/components/layout/TaskTreePanel.tsx` + `chat/InputQueueStrip.tsx`、`renderer/store/task-store.ts` + `input-queue-store.ts`。
 
 **已知技术债**:**已解决(见 [ADR-025](#adr-025--hook-重做per-loop-registry--step-中心--去-turn-表--外置重试与-resume--所有权归位))**。原债有三:① HookRegistry 是全局单例,handler 触发跨所有 loop(含子 agent loop),靠 sessionId 自行过滤;② PrepareStep 多 handler 的 appendMessages merge 是 last-writer-wins(不 concat);③ 注册分散(`registerAllRuntimeHooks` / `registerDurableHooks` / `registerToolExecutionHooks` 三处)。ADR-025 用 per-loop registry(①)+ 数组 concat(②)+ `registerHooksForLoop` 归一(③)全部解决。

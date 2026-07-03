@@ -29,7 +29,7 @@
 import { loadConfig, ZERO_CORE_DIR, type ZeroCoreConfig } from "../core/config.js";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
-import type { AgentRecord } from "../shared/types.js";
+import type { AgentRecord, DelegatedTaskRecord } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
 import type { RuntimeProviderConfig, SessionConfig, StreamEvent } from "../runtime/types.js";
@@ -39,7 +39,7 @@ import { InputQueueStore } from "./input-queue-store.js";
 import { MCPManager } from "./mcp-manager.js";
 import { buildMcpTools } from "../runtime/tools/mcp-tool.js";
 import { log } from "../core/logger.js";
-import { ToolRegistry } from "../core/tool-registry.js";
+import { ToolRegistry, RENAMED_TOOLS } from "../core/tool-registry.js";
 import { ProviderConcurrencyManager } from "../runtime/provider-concurrency-manager.js";
 import type { SessionManager } from "./session-manager.js";
 import { createEventMetricsAdapter, type EventMetricsAdapter } from "./metrics-events.js";
@@ -87,13 +87,47 @@ function toolEnabled(
 ): boolean {
 	if (!policy) return DEFAULT_ENABLED_TOOLS.has(name);
 	if (policy.tools) {
-		if (name in policy.tools) return policy.tools[name]?.enabled === true;
+		// Mirror buildToolsSet's rename: legacy lowercase keys (e.g. "wiki")
+		// must be normalized to their canonical PascalCase names so capability
+		// injection agrees with the tool-set assembly. Otherwise a config with
+		// {wiki:{enabled:true}} would pass buildToolsSet's gate but fail here
+		// → wikiStore never injected → CONDITIONAL_TOOLS filters Wiki out.
+		const normalized: Record<string, { enabled?: boolean } | null> = {};
+		for (const [key, val] of Object.entries(policy.tools)) {
+			normalized[RENAMED_TOOLS[key] ?? key] = val;
+		}
+		if (name in normalized) return normalized[name]?.enabled === true;
 		return DEFAULT_ENABLED_TOOLS.has(name);
 	}
 	const aa = new Set(policy.autoApprove ?? []);
 	if (aa.has("*")) return true;
 	if (aa.size > 0) return aa.has(name);
 	return DEFAULT_ENABLED_TOOLS.has(name);
+}
+
+/**
+ * Map a persisted delegated_tasks row → runtime TaskInfo so the TaskTree UI can
+ * render completed/interrupted history that survives restart (the live
+ * TaskRegistry only holds in-memory entries). Field shapes match
+ * (DelegatedTaskStatus ≡ TaskInfo status). Bash background tasks have no row —
+ * they stay live-only.
+ */
+function delegatedRecordToTaskInfo(rec: DelegatedTaskRecord): import("../runtime/types.js").TaskInfo {
+	return {
+		id: rec.id,
+		type: "subagent",
+		task: rec.task,
+		status: rec.status,
+		parentTaskId: rec.parentTaskId,
+		step: rec.step,
+		turns: rec.turns,
+		tokens: rec.tokens,
+		currentTool: rec.currentTool,
+		result: rec.result,
+		error: rec.error,
+		startedAt: Date.parse(rec.createdAt) || 0,
+		completedAt: rec.completedAt ? Date.parse(rec.completedAt) || undefined : undefined,
+	};
 }
 
 /**
@@ -381,7 +415,32 @@ export class AgentService {
 	 * empty when the session has no live loop yet.
 	 */
 	getRuntimeTaskTree(sessionId: string): import("../runtime/types.js").TaskInfo[] {
-		return this.loops.get(sessionId)?.getRuntimeTaskTree() ?? [];
+		// Persisted delegated tasks first (survive restart). Rebuild the full
+		// delegation tree rooted at this chat session: roots are tasks whose
+		// parent_session_id is this session; expand each by rootTaskId to pull
+		// nested sub-agents (whose parent_session_id is a delegated session,
+		// not this chat). Includes completed/interrupted history across restarts.
+		const byId = new Map<string, import("../runtime/types.js").TaskInfo>();
+		try {
+			const roots = this.db.listDelegatedTasks?.({ parentSessionId: sessionId }) ?? [];
+			const expandedRoots = new Set<string>();
+			for (const root of roots) {
+				const rid = root.rootTaskId ?? root.id;
+				if (expandedRoots.has(rid)) continue;
+				expandedRoots.add(rid);
+				const subtree = this.db.listDelegatedTasks?.({ rootTaskId: rid }) ?? [];
+				for (const rec of (subtree.length ? subtree : [root])) {
+					byId.set(rec.id, delegatedRecordToTaskInfo(rec));
+				}
+			}
+		} catch {
+			// db optional / not yet initialized — fall through to live view.
+		}
+		// Live overlays DB: running/finishing real-time state wins for shared
+		// ids; bash background tasks (live-only, never persisted) are added.
+		const live = this.loops.get(sessionId)?.getRuntimeTaskTree() ?? [];
+		for (const t of live) byId.set(t.id, t);
+		return [...byId.values()];
 	}
 
 	/**

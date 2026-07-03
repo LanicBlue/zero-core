@@ -1983,11 +1983,12 @@ body {
 
 .task-card-target {
   font-weight: 600;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--fg-subtle);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  flex: 0 0 auto;
 }
 
 .task-card-status {
@@ -2030,8 +2031,9 @@ body {
 
 .task-card-task {
   font-size: 11px;
-  margin-top: 2px;
   color: var(--fg-muted, #999);
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2044,6 +2046,76 @@ body {
   font-size: 9px;
   color: var(--fg-subtle);
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+/* ─── Task Detail View (right pane, task selected) ─── */
+.task-detail-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.task-detail-pane {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px;
+}
+.task-detail-grid {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.task-detail-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.task-detail-grid dt {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--fg-subtle);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+.task-detail-grid dd {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg, #ccc);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.task-detail-task dd { font-weight: 600; }
+.task-detail-error dd { color: var(--accent-danger, #e55); }
+.task-detail-result dd {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  max-height: 160px;
+  overflow: auto;
+}
+.task-detail-conversation {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border, #333);
+}
+.task-detail-conversation-header {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--fg-subtle);
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border, #333);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+.task-detail-messages {
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 /* ─── Wiki Tree Panel (middle lower half) ─── */

@@ -85,15 +85,9 @@ export default function TaskTreePanel() {
 						>
 							{hasChildren ? (isCollapsed ? "▸" : "▾") : ""}
 						</span>
-						<span className={`task-status-icon task-status-${t.status}`}>{STATUS_ICON[t.status] ?? "?"}</span>
+						<span className={`task-status-icon task-status-${t.status}`} title={t.status}>{STATUS_ICON[t.status] ?? "?"}</span>
 						<span className="task-card-target">{t.type === "bash" ? "bash" : "subagent"}</span>
-						<span className="task-card-status">{t.status}</span>
-					</div>
-					<div className="task-card-task">{t.task.length > 60 ? t.task.slice(0, 60) + "…" : t.task}</div>
-					<div className="task-card-meta">
-						<span>turns:{t.turns}</span>
-						<span>tokens:{t.tokens}</span>
-						{t.currentTool && <span>tool:{t.currentTool}</span>}
+						<span className="task-card-task">{t.task.length > 60 ? t.task.slice(0, 60) + "…" : t.task}</span>
 					</div>
 				</button>
 				{hasChildren && !isCollapsed && (

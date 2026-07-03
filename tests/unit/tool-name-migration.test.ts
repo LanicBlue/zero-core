@@ -1,0 +1,75 @@
+// 单元测试:工具名迁移(Wiki 等域工具的小写别名)
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 锁死:旧配置里小写键 {wiki:{enabled:true}} 必须迁移到 PascalCase 的 "Wiki",
+// 使 (a) buildToolsSet 产出 Wiki 工具,且 (b) AgentService 的能力注入
+// (capabilityHandlesFor,经 toolEnabled)注入 wikiStore —— 两边对迁移达成一致。
+// 修复前:RENAMED_TOOLS 缺 wiki→Wiki,且 toolEnabled 不迁移 → 即便想开 Wiki,
+// 能力侧 on("Wiki") 返回 false → 不注入 wikiStore → CONDITIONAL_TOOLS 过滤掉。
+//
+import { describe, expect, test, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { buildToolsSet } from "../../src/runtime/tools/index.js";
+import { AgentService } from "../../src/server/agent-service.js";
+
+describe("tool-name migration — legacy lowercase → PascalCase domain tools", () => {
+	describe("buildToolsSet", () => {
+		test("lowercase {wiki:true} yields Wiki when wikiStore is present", () => {
+			const tools = buildToolsSet(
+				{ tools: { wiki: { enabled: true } } },
+				{ wikiStore: {} } as any,
+			);
+			expect("Wiki" in tools).toBe(true);
+		});
+
+		test("PascalCase {Wiki:true} still works (no regression)", () => {
+			const tools = buildToolsSet(
+				{ tools: { Wiki: { enabled: true } } },
+				{ wikiStore: {} } as any,
+			);
+			expect("Wiki" in tools).toBe(true);
+		});
+
+		test("wiki disabled → absent even with wikiStore", () => {
+			const tools = buildToolsSet(
+				{ tools: { wiki: { enabled: false } } },
+				{ wikiStore: {} } as any,
+			);
+			expect("Wiki" in tools).toBe(false);
+		});
+
+		test("other domain tools migrate too (project / cron / agent_registry)", () => {
+			const tools = buildToolsSet(
+				{ tools: { project: { enabled: true }, cron: { enabled: true }, agent_registry: { enabled: true } } },
+				{ management: {} } as any,
+			);
+			expect("Project" in tools).toBe(true);
+			expect("Cron" in tools).toBe(true);
+			expect("AgentRegistry" in tools).toBe(true);
+		});
+	});
+
+	describe("AgentService.capabilityHandlesFor (toolEnabled migration)", () => {
+		let dir: string;
+		beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "zc-migrate-")); });
+		afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+		test("injects wikiStore for legacy lowercase {wiki:true}", () => {
+			const svc = new AgentService(dir);
+			(svc as any).wikiStore = { stub: true };
+			const caps = (svc as any).capabilityHandlesFor({ tools: { wiki: { enabled: true } } });
+			expect(caps.wikiStore).toBeDefined();
+		});
+
+		test("does not inject wikiStore when wiki disabled", () => {
+			const svc = new AgentService(dir);
+			(svc as any).wikiStore = { stub: true };
+			const caps = (svc as any).capabilityHandlesFor({ tools: { wiki: { enabled: false } } });
+			expect(caps.wikiStore).toBeUndefined();
+		});
+	});
+});

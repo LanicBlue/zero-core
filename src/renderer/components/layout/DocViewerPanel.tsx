@@ -22,6 +22,7 @@
 //
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
+import TaskDetailView from "./TaskDetailView.js";
 
 const api = () => (window as any).api;
 
@@ -47,6 +48,10 @@ export default function DocViewerPanel() {
 	const [viewMode, setViewMode] = useState<ViewMode>("preview");
 	const [wikiMode, setWikiMode] = useState(false);
 	const [wikiSummary, setWikiSummary] = useState("");
+	// Task mode: when a delegated task is selected, the right pane switches from
+	// the single doc/wiki markdown view to TaskDetailView (detail + conversation).
+	const [taskMode, setTaskMode] = useState(false);
+	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 	const webviewRef = useRef<Electron.WebviewTag | null>(null);
 
 	const loadFile = useCallback(async (path: string, root: string) => {
@@ -97,6 +102,8 @@ export default function DocViewerPanel() {
 			setResolvedPath("");
 			setWikiMode(false);
 			setWikiSummary("");
+			setTaskMode(false);
+			setSelectedTaskId(null);
 			setLoading(true);
 			await loadFile(path, root);
 		};
@@ -112,28 +119,22 @@ export default function DocViewerPanel() {
 			setContent(d.content ?? "");
 			setWikiMode(true);
 			setViewMode("preview");
+			setTaskMode(false);
+			setSelectedTaskId(null);
 			setLoading(false);
 		};
 		window.addEventListener("zero-wiki-select", wikiHandler);
-		/** Delegated task detail (TaskTreePanel dispatches zero-task-select). */
+		/** Delegated task detail (TaskTreePanel dispatches zero-task-select):
+		 *  switch the right pane to TaskDetailView (detail + conversation). */
 		const taskHandler = (e: Event) => {
-			const d = (e as CustomEvent).detail as { task: { type: string; task: string; status: string; turns: number; tokens: number; currentTool?: string; result?: string; error?: string; id: string } };
-			const t = d.task;
-			setSelectedFile(`Task → ${t.type}`);
+			const d = (e as CustomEvent).detail as { task: { id: string } };
+			setSelectedFile(`Task → ${d.task.id}`);
 			setFileRoot("");
 			setResolvedPath("");
-			setWikiMode(true); // reuse read-only markdown rendering path
-			setWikiSummary(`status: ${t.status} · turns: ${t.turns} · tokens: ${t.tokens}${t.currentTool ? ` · tool: ${t.currentTool}` : ""}`);
-			const body = [
-				`**Task** (${t.id})`,
-				"",
-				t.task,
-				"",
-				t.error ? `**Error:** ${t.error}` : "",
-				t.result ? `**Result:**` : "",
-				t.result ?? "",
-			].filter(Boolean).join("\n");
-			setContent(body);
+			setWikiMode(false);
+			setWikiSummary("");
+			setTaskMode(true);
+			setSelectedTaskId(d.task.id);
 			setViewMode("preview");
 			setLoading(false);
 		};
@@ -154,6 +155,8 @@ export default function DocViewerPanel() {
 		setContent("");
 		setResolvedPath("");
 		setViewMode("preview");
+		setTaskMode(false);
+		setSelectedTaskId(null);
 	};
 
 	const handleSave = async () => {
@@ -222,6 +225,8 @@ export default function DocViewerPanel() {
 					</div>
 					{loading ? (
 						<div className="doc-viewer-panel-content"><p>Loading...</p></div>
+					) : taskMode && selectedTaskId ? (
+						<TaskDetailView taskId={selectedTaskId} />
 					) : viewMode === "edit" ? (
 						<textarea
 							className="doc-viewer-editor"

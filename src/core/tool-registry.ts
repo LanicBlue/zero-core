@@ -80,6 +80,16 @@ export const RENAMED_TOOLS: Record<string, string> = {
 	subagent: "Agent", assistant: "Platform", "Assistant": "Platform",
 	web_fetch: "WebFetch",
 	sequentialthinking: "SequentialThinking",
+	// v0.8 (P3): PascalCase domain action tools — lowercase / snake_case aliases
+	// so legacy configs (e.g. {wiki:{enabled:true}}) migrate to their canonical
+	// keys. Without these, buildToolsSet's rename loop leaves the key untouched
+	// and the tool is silently disabled.
+	wiki: "Wiki",
+	project: "Project",
+	cron: "Cron",
+	agent_registry: "AgentRegistry", agentregistry: "AgentRegistry",
+	create_requirement: "CreateRequirement", createrequirement: "CreateRequirement",
+	create_requirement_with_doc: "CreateRequirementWithDoc",
 };
 
 // ---------------------------------------------------------------------------

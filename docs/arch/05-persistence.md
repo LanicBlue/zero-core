@@ -124,6 +124,12 @@ created_at / updated_at / completed_at  TEXT
 ```
 > 一条委派 = 一个全局 agent + 一个隐藏 delegated session + 一个任务记录。`markRunningDelegatedTasksInterrupted()`
 > 在启动时把残留 running/finishing 标 `interrupted`(只标记,人工重启,不自动恢复)。
+>
+> **重启回填**:`AgentService.getRuntimeTaskTree(sessionId)` 是 live 内存 TaskRegistry 与
+> `delegated_tasks` 表的并集 —— 取 `parent_session_id = 该 chat session` 的根任务,再按
+> `root_task_id` 展开整棵委派子树(子子 agent),按 id 去重,live 条目覆盖同 id 的 DB 行
+> (running/finishing 实时态优先)并补上 DB 没有的 bash 后台任务。重启后即使无 live loop,
+> 历史任务(completed/interrupted)仍出现在 TaskTree。bash 后台任务只在内存,不落本表。
 
 #### `messages`（write-through 缓存）
 ```sql
