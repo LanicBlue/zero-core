@@ -27,6 +27,43 @@ export class TaskRegistry {
 	private abortControllers = new Map<string, AbortController>();
 	private wakeCallback: (() => void) | null = null;
 
+	// N1 (runtime-push-ui-sync): coalesced change notification. The registry
+	// stays sessionId-agnostic — AgentLoop subscribes and translates the ping
+	// into a runtime:tasks:changed agent:event carrying its own sessionId.
+	// Mirrors the data-change-hub coalesce: many writes in one tick → one
+	// callback, so updateProgress / addUsage bursts during a turn don't ping
+	// the UI per call.
+	private changeListeners = new Set<() => void>();
+	private changeScheduled = false;
+
+	/** Subscribe to coalesced change pings. Returns an unsubscribe fn. */
+	subscribe(cb: () => void): () => void {
+		this.changeListeners.add(cb);
+		return () => { this.changeListeners.delete(cb); };
+	}
+
+	/** Test helper: drain any pending coalesced flush synchronously. */
+	_flushChangeForTest(): void {
+		if (!this.changeScheduled) return;
+		this.changeScheduled = false;
+		this.fireChange();
+	}
+
+	private fireChange(): void {
+		for (const cb of this.changeListeners) {
+			try { cb(); } catch { /* listener errors are non-fatal */ }
+		}
+	}
+
+	private scheduleChange(): void {
+		if (this.changeScheduled) return;
+		this.changeScheduled = true;
+		setTimeout(() => {
+			this.changeScheduled = false;
+			this.fireChange();
+		}, 0);
+	}
+
 	create(taskId: string, type: TaskType, task: string, abortController?: AbortController, parentTaskId?: string): void {
 		this.tasks.set(taskId, {
 			id: taskId,
@@ -42,6 +79,7 @@ export class TaskRegistry {
 		if (abortController) {
 			this.abortControllers.set(taskId, abortController);
 		}
+		this.scheduleChange();
 	}
 
 	updateProgress(taskId: string, step: number, toolName?: string): void {
@@ -49,6 +87,7 @@ export class TaskRegistry {
 		if (!info || (info.status !== "running" && info.status !== "finishing")) return;
 		info.step = step;
 		if (toolName) info.currentTool = toolName;
+		this.scheduleChange();
 	}
 
 	/** Add accumulated tokens + one completed agent-loop turn to a task. */
@@ -57,6 +96,7 @@ export class TaskRegistry {
 		if (!info) return;
 		info.tokens += tokensDelta;
 		if (turnCompleted) info.turns += 1;
+		this.scheduleChange();
 	}
 
 	/**
@@ -71,6 +111,7 @@ export class TaskRegistry {
 		info.status = "finishing";
 		if (message) info.result = message;
 		this.tryWake();
+		this.scheduleChange();
 		return true;
 	}
 
@@ -83,6 +124,7 @@ export class TaskRegistry {
 		info.currentTool = undefined;
 		this.abortControllers.delete(taskId);
 		this.tryWake();
+		this.scheduleChange();
 	}
 
 	fail(taskId: string, error: string): void {
@@ -94,6 +136,7 @@ export class TaskRegistry {
 		info.currentTool = undefined;
 		this.abortControllers.delete(taskId);
 		this.tryWake();
+		this.scheduleChange();
 	}
 
 	kill(taskId: string): boolean {
@@ -108,6 +151,7 @@ export class TaskRegistry {
 		info.completedAt = Date.now();
 		info.currentTool = undefined;
 		this.tryWake();
+		this.scheduleChange();
 		return true;
 	}
 
@@ -126,6 +170,7 @@ export class TaskRegistry {
 		this.tasks.delete(taskId);
 		this.abortControllers.delete(taskId);
 		this.tryWake();
+		this.scheduleChange();
 		return true;
 	}
 
@@ -142,6 +187,7 @@ export class TaskRegistry {
 	 */
 	seed(info: TaskInfo): void {
 		this.tasks.set(info.id, info);
+		this.scheduleChange();
 	}
 
 	list(filter?: "running" | "completed"): TaskInfo[] {
@@ -231,10 +277,13 @@ export class TaskRegistry {
 
 	cleanup(maxAgeMs: number = 3600_000): void {
 		const now = Date.now();
+		let changed = false;
 		for (const [id, info] of this.tasks) {
 			if (info.completedAt && now - info.completedAt > maxAgeMs) {
 				this.tasks.delete(id);
+				changed = true;
 			}
 		}
+		if (changed) this.scheduleChange();
 	}
 }

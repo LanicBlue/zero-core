@@ -28,13 +28,36 @@
 // 订阅。两处,各一行。
 //
 
-/** UI 关心的 collection(= SqliteStore 表名)。其它表的写不广播。 */
+/**
+ * UI 关心的 collection(= SqliteStore 表名)。其它表的写不广播。
+ *
+ * N1 (runtime-push-ui-sync) 扩展:
+ * - 表:sessions(侧栏会话列表)/ orchestrate_plans(Kanban pending + confirm)/
+ *   task_steps / requirement_messages(ExecutionDetail)。
+ * - server 层 runtime 虚拟 collection(运行时内存对象经 emitDataChange 喂入):
+ *   runtime:mcp / runtime:metrics / runtime:input-queue / runtime:orchestrate。
+ *   它们不是 SqliteStore 表,但走同一条 hub → data:changed 通道,与表写一视同仁。
+ * - **runtime:tasks 不进白名单**:它走 agent:event(runtime 层 TaskRegistry 不能
+ *   反向 import server 层 hub),不经此通道。
+ */
 const UI_COLLECTIONS = new Set([
 	"agents",
 	"projects",
 	"crons",
 	"requirements",
 	"project_wiki",
+	// N1: structural session-list collections + kanban / execution-detail tables.
+	"sessions",
+	"orchestrate_plans",
+	"task_steps",
+	"requirement_messages",
+	// N1: server-layer runtime virtual collections (in-memory objects that
+	// emitDataChange directly). NOT SqliteStore tables — they share this
+	// hub → data:changed channel.
+	"runtime:mcp",
+	"runtime:metrics",
+	"runtime:input-queue",
+	"runtime:orchestrate",
 ]);
 
 export type DataChangeOp = "create" | "update" | "delete";

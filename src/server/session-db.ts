@@ -39,6 +39,14 @@ import { KeyValueStore } from "./key-value-store.js";
 import { ExtractionCursorStore } from "./extraction-cursor-store.js";
 import { TelemetryStore } from "./telemetry-store.js";
 import { ZERO_CORE_DIR } from "../core/config.js";
+// N1 (runtime-push-ui-sync): structural session primitives (create/delete/
+// archive) feed the unified data-change-hub so the sidebar list updates in
+// real time. data-change-hub is a pure module (no DB / no session-db import),
+// so this import does not create a cycle. High-frequency UPDATEs (updated_at,
+// token counters, context bundle, setMain) deliberately do NOT emit — they
+// would flood the channel; the sidebar only needs to learn about structural
+// membership changes.
+import { emitDataChange } from "./data-change-hub.js";
 
 // ---------------------------------------------------------------------------
 // SessionDB — SQLite-backed session & message persistence
@@ -294,12 +302,16 @@ export class SessionDB {
 			options?.parentTaskId ?? null,
 			visibility,
 		);
-		return {
+		const rec: SessionRecord = {
 			id, agentId, isMain: false, title: title ?? null,
 			sessionKind, parentSessionId: options?.parentSessionId,
 			parentTaskId: options?.parentTaskId, visibility,
 			createdAt: now, updatedAt: now, context,
 		};
+		// N1: structural primitive — emit so the sidebar list updates. The
+		// record is carried so the renderer patches without a refetch.
+		emitDataChange("sessions", id, "create", rec);
+		return rec;
 	}
 
 	getSession(sessionId: string): SessionRecord | undefined {
@@ -398,6 +410,8 @@ export class SessionDB {
 	}
 	deleteSession(sessionId: string): void {
 		this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+		// N1: structural primitive — emit delete (no record).
+		emitDataChange("sessions", sessionId, "delete");
 	}
 
 	/**
@@ -409,6 +423,11 @@ export class SessionDB {
 	archiveSession(sessionId: string): void {
 		this.db.prepare("UPDATE sessions SET archived = 1, updated_at = ? WHERE id = ?")
 			.run(new Date().toISOString(), sessionId);
+		// N1: structural primitive — emit update with archived=true so the
+		// sidebar removes it from the active list. We synthesize a minimal
+		// record (id + archived) rather than re-reading the row: the renderer
+		// patches by id and only needs the membership flag.
+		emitDataChange("sessions", sessionId, "update", { id: sessionId, archived: true });
 	}
 
 	updateSessionUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number; estimatedCostUsd: number }): void {

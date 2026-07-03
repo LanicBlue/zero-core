@@ -17,6 +17,8 @@
 // src/server/ — 被 chat send 路径(忙时入队 + run 后 drain)、PrepareStep 注入
 // hook、IPC router 使用。
 //
+import { emitDataChange } from "./data-change-hub.js";
+
 export type InputQueueMode = "queued" | "insert_now";
 
 export interface InputQueueItem {
@@ -51,6 +53,12 @@ export class InputQueueStore {
 		for (const l of this.listeners) {
 			try { l(snap); } catch { /* listener errors are non-fatal */ }
 		}
+		// N1 (runtime-push-ui-sync): also feed the unified data-change-hub so
+		// the input-queue strip receives the same coalesced, reconnect-safe
+		// delivery as every other UI collection. The hub whitelists the
+		// virtual collection name "runtime:input-queue"; items go as the
+		// record so the renderer patches without a refetch.
+		emitDataChange("runtime:input-queue", sessionId, "update", snap);
 	}
 
 	subscribe(listener: Listener): () => void {

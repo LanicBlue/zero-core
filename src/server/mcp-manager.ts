@@ -58,8 +58,27 @@ export class MCPManager {
 	private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 	private registry: ToolRegistry;
 
+	// N1 (runtime-push-ui-sync): subscribers are pinged when the set of
+	// connected servers / their tool surface changes (connect / disconnect /
+	// connect error). Server/index.ts translates the ping into a
+	// runtime:mcp:changed broadcast; the renderer pulls the live status on
+	// display. Pure notification — no payload serialized here.
+	private listeners = new Set<() => void>();
+
 	constructor(registry: ToolRegistry) {
 		this.registry = registry;
+	}
+
+	/** Subscribe to connection-state change pings. Returns an unsubscribe fn. */
+	subscribe(cb: () => void): () => void {
+		this.listeners.add(cb);
+		return () => { this.listeners.delete(cb); };
+	}
+
+	private emitChange(): void {
+		for (const cb of this.listeners) {
+			try { cb(); } catch { /* listener errors are non-fatal */ }
+		}
 	}
 
 	async connect(config: McpServerConfig): Promise<{ tools: McpToolInfo[]; error?: string }> {
@@ -136,8 +155,13 @@ export class MCPManager {
 			}
 			this.registry.notifyChange?.();
 
+			this.emitChange();
 			return { tools };
 		} catch (err) {
+			// A failed connect also changes the observable state (a server that
+			// was connected is now gone after the disconnect above). Ping so the
+			// UI reflects the failure rather than showing a stale "connected".
+			this.emitChange();
 			return { tools: [], error: (err as Error).message };
 		}
 	}
@@ -164,6 +188,7 @@ export class MCPManager {
 
 		// Unregister MCP tools from ToolRegistry
 		this.registry.unregister("mcp", serverId);
+		this.emitChange();
 	}
 
 	async disconnectAll(): Promise<void> {

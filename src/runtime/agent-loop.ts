@@ -151,6 +151,17 @@ export class AgentLoop implements AgentRuntime {
 			hookDeps: config.hookWiringDeps,
 		});
 
+		// N1 (runtime-push-ui-sync): TaskRegistry lives in src/runtime/, so it
+		// cannot import the server-layer data-change-hub. It coalesces its own
+		// change pings; this loop subscribes and translates them into a
+		// runtime:tasks:changed agent:event carrying this loop's sessionId. The
+		// renderer treats runtime:* pings uniformly (ping → pull active tree).
+		// Subscription lifetime = loop lifetime (no unsubscribe needed; the
+		// registry only holds a cb reference, and the loop owns its registry).
+		this.delegator.taskRegistry.subscribe(() => {
+			this.emit({ type: "runtime:tasks:changed", sessionId: this.config.sessionId } as any);
+		});
+
 		this.toolContext = {
 			workingDir: config.workspaceDir,
 			agentId: config.agentId,

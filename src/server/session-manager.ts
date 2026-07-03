@@ -80,10 +80,46 @@ export class SessionManager {
 
 	private db: SessionDB | null = null;
 
+	// N1 (runtime-push-ui-sync): coalesced metrics change ping. The dashboard
+	// reads the aggregate; counter mutations (tool calls / tokens / turns /
+	// errors / retries) are frequent during a turn, so we coalesce per-tick
+	// exactly like the data-change-hub to avoid a ping storm. Server/index.ts
+	// subscribes and re-broadcasts runtime:metrics:changed.
+	private metricsListeners = new Set<() => void>();
+	private metricsScheduled = false;
+
 	constructor(agentService: AgentServiceAccess, config?: Partial<SessionManagerConfig> & { onStateChange?: (sessionId: string, from: SessionLifecycleState, to: SessionLifecycleState) => void }) {
 		this.agentService = agentService;
 		this.onStateChange = config?.onStateChange;
 		this.config = { ...DEFAULT_CONFIG, ...config };
+	}
+
+	/** Subscribe to coalesced metrics change pings. Returns an unsubscribe fn. */
+	subscribeMetrics(cb: () => void): () => void {
+		this.metricsListeners.add(cb);
+		return () => { this.metricsListeners.delete(cb); };
+	}
+
+	/** Test helper: drain any pending coalesced metrics flush synchronously. */
+	_flushMetricsForTest(): void {
+		if (!this.metricsScheduled) return;
+		this.metricsScheduled = false;
+		this.fireMetrics();
+	}
+
+	private fireMetrics(): void {
+		for (const cb of this.metricsListeners) {
+			try { cb(); } catch { /* listener errors are non-fatal */ }
+		}
+	}
+
+	private scheduleMetricsChange(): void {
+		if (this.metricsScheduled) return;
+		this.metricsScheduled = true;
+		setTimeout(() => {
+			this.metricsScheduled = false;
+			this.fireMetrics();
+		}, 0);
 	}
 
 	setSessionDb(db: SessionDB): void { this.db = db; }
@@ -118,6 +154,7 @@ export class SessionManager {
 			this.firstTokenRecorded.delete(sessionId);
 			const m = this.metrics.get(sessionId);
 			if (m) m.totalUserTurns++;
+			this.scheduleMetricsChange();
 		}
 		this.transition(sessionId, "streaming");
 		this.touchActivity(sessionId);
@@ -144,6 +181,7 @@ export class SessionManager {
 				m.totalTurns++;
 			}
 			this.turnStartAt.delete(sessionId);
+			this.scheduleMetricsChange();
 		}
 	}
 
@@ -169,6 +207,7 @@ export class SessionManager {
 			this.transition(sessionId, "idle");
 		}
 		this.touchActivity(sessionId);
+		this.scheduleMetricsChange();
 		log.debug("session-mgr", "Error in " + sessionId + ": " + errorClass + " → idle");
 	}
 
@@ -219,6 +258,7 @@ export class SessionManager {
 		const elapsed = Date.now() - startedAt;
 		const m = this.metrics.get(sessionId);
 		if (m) m.firstTokenStats.add(elapsed);
+		this.scheduleMetricsChange();
 	}
 
 	recordToolCall(sessionId: string, toolName: string, success: boolean, durationMs: number): void {
@@ -230,11 +270,13 @@ export class SessionManager {
 		if (!success) {
 			m.toolCallErrors.set(toolName, (m.toolCallErrors.get(toolName) ?? 0) + 1);
 		}
+		this.scheduleMetricsChange();
 	}
 
 	recordRetry(sessionId: string): void {
 		const m = this.metrics.get(sessionId);
 		if (m) m.retryCount++;
+		this.scheduleMetricsChange();
 	}
 
 	recordTokenEstimate(sessionId: string, input: number, output: number): void {
@@ -242,6 +284,7 @@ export class SessionManager {
 		if (!m) return;
 		m.estimatedInputTokens += input;
 		m.estimatedOutputTokens += output;
+		this.scheduleMetricsChange();
 	}
 
 	recordTokenUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens?: number; cacheWriteTokens?: number; reasoningTokens?: number }): void {
@@ -262,6 +305,7 @@ export class SessionManager {
 					});
 				} catch (err) { log.warn("session", "persist usage failed:", (err as Error).message); }
 			}
+			this.scheduleMetricsChange();
 		}
 	}
 

@@ -280,10 +280,31 @@ export async function startServer(options?: StartServerOptions) {
 			if (ws.readyState === ws.OPEN) ws.send(msg);
 		}
 	};
-	onDataChange((e) => broadcast({ type: "data:changed", collection: e.collection }));
+	// N1 (runtime-push-ui-sync): forward `changes` so renderers can patch by id
+	// instead of refetching the whole collection. ipc-proxy + preload already
+	// thread `changes` through — this was the missing piece.
+	onDataChange((e) => broadcast({ type: "data:changed", collection: e.collection, changes: e.changes }));
 	// AgentStore.onChange is retained SEPARATELY for agent-service's live
 	// config hot-reload (agent-service.ts) — that is an internal consumer, not
 	// UI sync. UI sync for agents rides the unified data:changed channel above.
+
+	// N1 (runtime-push-ui-sync): server-layer runtime objects ping the renderer
+	// via dedicated runtime:*:changed events (NOT the data:changed channel —
+	// these are in-memory pings, the renderer pulls on display). The renderer
+	// treats every runtime:* ping uniformly. These are best-effort broadcasts:
+	// a client that misses one pulls fresh on next display/reconnect.
+	mcp.subscribe(() => broadcast({ type: "runtime:mcp:changed" }));
+	{
+		const sm = agentService.getSessionManager();
+		if (sm) sm.subscribeMetrics(() => broadcast({ type: "runtime:metrics:changed" }));
+	}
+	{
+		// ConfirmRegistry is a process-wide singleton; orchestrate-router and
+		// the Orchestrate tool share it. Subscribe once here so the kanban
+		// gets pings when the pending set changes.
+		const { ConfirmRegistry } = await import("./orchestrate-store.js");
+		ConfirmRegistry.getInstance().subscribe(() => broadcast({ type: "runtime:orchestrate:changed" }));
+	}
 
 
 	// Load providers from DB for backend-spawn mode.

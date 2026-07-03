@@ -188,9 +188,27 @@ export class ConfirmRegistry {
 
 	private static instance: ConfirmRegistry | null = null;
 
+	// N1 (runtime-push-ui-sync): ping subscribers when the set of pending
+	// confirmations changes (register / confirm / reject / drop). The kanban
+	// pulls the pending list on display; server/index.ts translates the ping
+	// into a runtime:orchestrate:changed broadcast.
+	private listeners = new Set<() => void>();
+
 	static getInstance(): ConfirmRegistry {
 		if (!this.instance) this.instance = new ConfirmRegistry();
 		return this.instance;
+	}
+
+	/** Subscribe to pending-set change pings. Returns an unsubscribe fn. */
+	subscribe(cb: () => void): () => void {
+		this.listeners.add(cb);
+		return () => { this.listeners.delete(cb); };
+	}
+
+	private emitChange(): void {
+		for (const cb of this.listeners) {
+			try { cb(); } catch { /* listener errors are non-fatal */ }
+		}
 	}
 
 	/** Register a pending confirmation. Returns a Promise that resolves when confirm/reject is called. */
@@ -208,6 +226,7 @@ export class ConfirmRegistry {
 		});
 		this.pending.set(planId, { promise, resolve, reject, createdAt: Date.now() });
 		log.debug("orchestrate-confirm", `Registered pending plan: ${planId}`);
+		this.emitChange();
 		return promise;
 	}
 
@@ -218,6 +237,7 @@ export class ConfirmRegistry {
 		this.pending.delete(planId);
 		entry.resolve(true);
 		log.debug("orchestrate-confirm", `Confirmed plan: ${planId}`);
+		this.emitChange();
 		return true;
 	}
 
@@ -228,6 +248,7 @@ export class ConfirmRegistry {
 		this.pending.delete(planId);
 		entry.resolve(false);
 		log.debug("orchestrate-confirm", `Rejected plan: ${planId}`);
+		this.emitChange();
 		return true;
 	}
 
@@ -238,6 +259,7 @@ export class ConfirmRegistry {
 		this.pending.delete(planId);
 		// Reject to unblock any awaiter so the tool returns cleanly.
 		entry.reject(new Error(`Confirmation dropped: ${planId}`));
+		this.emitChange();
 		return true;
 	}
 

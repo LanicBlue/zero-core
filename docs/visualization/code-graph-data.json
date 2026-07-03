@@ -97,7 +97,7 @@
 		},
 		{
 			"path": "src/runtime/agent-loop.ts",
-			"lines": 1226,
+			"lines": 1237,
 			"dir": "src/runtime",
 			"exports": [
 				"AgentLoop.run",
@@ -150,37 +150,37 @@
 				"src/runtime/wiki-anchor-injection.ts"
 			],
 			"functions": [
-				"src/runtime/agent-loop.ts/AgentLoop.run:238",
-				"src/runtime/agent-loop.ts/AgentLoop.resume:312",
-				"src/runtime/agent-loop.ts/AgentLoop.abort:359",
-				"src/runtime/agent-loop.ts/AgentLoop.getState:363",
-				"src/runtime/agent-loop.ts/AgentLoop.getLoopState:371",
-				"src/runtime/agent-loop.ts/AgentLoop.getSessionTurns:379",
-				"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:384",
-				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:389",
-				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:394",
-				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:399",
-				"src/runtime/agent-loop.ts/AgentLoop.getResult:403",
-				"src/runtime/agent-loop.ts/AgentLoop.resetSession:407",
-				"src/runtime/agent-loop.ts/AgentLoop.getConfigAgentId:413",
-				"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:425",
-				"src/runtime/agent-loop.ts/AgentLoop.restoreDelegatedTasks:442",
-				"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:475",
-				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:542",
-				"src/runtime/agent-loop.ts/AgentLoop.executeStream:576",
-				"src/runtime/agent-loop.ts/AgentLoop.buildTools:734",
-				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:746",
-				"src/runtime/agent-loop.ts/AgentLoop.prependContext:754",
-				"src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:771",
-				"src/runtime/agent-loop.ts/AgentLoop.resolveCurrentTask:794",
-				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:823",
-				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:959",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1103",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1175",
-				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1192",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1199",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1218",
-				"src/runtime/agent-loop.ts/AgentLoop.apply:504"
+				"src/runtime/agent-loop.ts/AgentLoop.run:249",
+				"src/runtime/agent-loop.ts/AgentLoop.resume:323",
+				"src/runtime/agent-loop.ts/AgentLoop.abort:370",
+				"src/runtime/agent-loop.ts/AgentLoop.getState:374",
+				"src/runtime/agent-loop.ts/AgentLoop.getLoopState:382",
+				"src/runtime/agent-loop.ts/AgentLoop.getSessionTurns:390",
+				"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:395",
+				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:400",
+				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:405",
+				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:410",
+				"src/runtime/agent-loop.ts/AgentLoop.getResult:414",
+				"src/runtime/agent-loop.ts/AgentLoop.resetSession:418",
+				"src/runtime/agent-loop.ts/AgentLoop.getConfigAgentId:424",
+				"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:436",
+				"src/runtime/agent-loop.ts/AgentLoop.restoreDelegatedTasks:453",
+				"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:486",
+				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:553",
+				"src/runtime/agent-loop.ts/AgentLoop.executeStream:587",
+				"src/runtime/agent-loop.ts/AgentLoop.buildTools:745",
+				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:757",
+				"src/runtime/agent-loop.ts/AgentLoop.prependContext:765",
+				"src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:782",
+				"src/runtime/agent-loop.ts/AgentLoop.resolveCurrentTask:805",
+				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:834",
+				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:970",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1114",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1186",
+				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1203",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1210",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1229",
+				"src/runtime/agent-loop.ts/AgentLoop.apply:515"
 			],
 			"description": "AgentLoop 类：单 turn 执行（run/resume/executeStream），retry + exp backoff，context-length prune + retry，streaming event emit"
 		},
@@ -926,9 +926,13 @@
 		},
 		{
 			"path": "src/runtime/task-registry.ts",
-			"lines": 241,
+			"lines": 290,
 			"dir": "src/runtime",
 			"exports": [
+				"TaskRegistry.subscribe",
+				"TaskRegistry._flushChangeForTest",
+				"TaskRegistry.fireChange",
+				"TaskRegistry.scheduleChange",
 				"TaskRegistry.create",
 				"TaskRegistry.updateProgress",
 				"TaskRegistry.addUsage",
@@ -951,23 +955,27 @@
 				"src/runtime/types.ts"
 			],
 			"functions": [
-				"src/runtime/task-registry.ts/TaskRegistry.create:30",
-				"src/runtime/task-registry.ts/TaskRegistry.updateProgress:47",
-				"src/runtime/task-registry.ts/TaskRegistry.addUsage:55",
-				"src/runtime/task-registry.ts/TaskRegistry.requestFinish:68",
-				"src/runtime/task-registry.ts/TaskRegistry.complete:77",
-				"src/runtime/task-registry.ts/TaskRegistry.fail:88",
-				"src/runtime/task-registry.ts/TaskRegistry.kill:99",
-				"src/runtime/task-registry.ts/TaskRegistry.acknowledge:122",
-				"src/runtime/task-registry.ts/TaskRegistry.get:132",
-				"src/runtime/task-registry.ts/TaskRegistry.seed:143",
-				"src/runtime/task-registry.ts/TaskRegistry.list:147",
-				"src/runtime/task-registry.ts/TaskRegistry.getCompletedUnnotified:154",
-				"src/runtime/task-registry.ts/TaskRegistry.markNotified:164",
-				"src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:169",
-				"src/runtime/task-registry.ts/TaskRegistry.generateSummary:201",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:225",
-				"src/runtime/task-registry.ts/TaskRegistry.cleanup:232"
+				"src/runtime/task-registry.ts/TaskRegistry.subscribe:40",
+				"src/runtime/task-registry.ts/TaskRegistry._flushChangeForTest:46",
+				"src/runtime/task-registry.ts/TaskRegistry.fireChange:52",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58",
+				"src/runtime/task-registry.ts/TaskRegistry.create:67",
+				"src/runtime/task-registry.ts/TaskRegistry.updateProgress:85",
+				"src/runtime/task-registry.ts/TaskRegistry.addUsage:94",
+				"src/runtime/task-registry.ts/TaskRegistry.requestFinish:108",
+				"src/runtime/task-registry.ts/TaskRegistry.complete:118",
+				"src/runtime/task-registry.ts/TaskRegistry.fail:130",
+				"src/runtime/task-registry.ts/TaskRegistry.kill:142",
+				"src/runtime/task-registry.ts/TaskRegistry.acknowledge:166",
+				"src/runtime/task-registry.ts/TaskRegistry.get:177",
+				"src/runtime/task-registry.ts/TaskRegistry.seed:188",
+				"src/runtime/task-registry.ts/TaskRegistry.list:193",
+				"src/runtime/task-registry.ts/TaskRegistry.getCompletedUnnotified:200",
+				"src/runtime/task-registry.ts/TaskRegistry.markNotified:210",
+				"src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:215",
+				"src/runtime/task-registry.ts/TaskRegistry.generateSummary:247",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:271",
+				"src/runtime/task-registry.ts/TaskRegistry.cleanup:278"
 			],
 			"description": "任务注册表：跟踪运行中任务状态、进度、完成/失败/kill"
 		},
@@ -2790,7 +2798,7 @@
 		},
 		{
 			"path": "src/server/data-change-hub.ts",
-			"lines": 108,
+			"lines": 131,
 			"dir": "src/server",
 			"exports": [
 				"emitDataChange",
@@ -2799,10 +2807,10 @@
 			],
 			"imports": [],
 			"functions": [
-				"src/server/data-change-hub.ts/flush:63",
-				"src/server/data-change-hub.ts/emitDataChange:85",
-				"src/server/data-change-hub.ts/onDataChange:97",
-				"src/server/data-change-hub.ts/_resetDataChangeHubForTest:103"
+				"src/server/data-change-hub.ts/flush:86",
+				"src/server/data-change-hub.ts/emitDataChange:108",
+				"src/server/data-change-hub.ts/onDataChange:120",
+				"src/server/data-change-hub.ts/_resetDataChangeHubForTest:126"
 			],
 			"description": ""
 		},
@@ -3039,7 +3047,7 @@
 		},
 		{
 			"path": "src/server/index.ts",
-			"lines": 969,
+			"lines": 990,
 			"dir": "src/server",
 			"exports": [
 				"startServer"
@@ -3094,8 +3102,8 @@
 				"src/server/index.ts/expandHome:81",
 				"src/server/index.ts/startServer:100",
 				"src/server/index.ts/broadcast:277",
-				"src/server/index.ts/reloadProviders:293",
-				"src/server/index.ts/rebuildStaleStructureLayouts:939"
+				"src/server/index.ts/reloadProviders:314",
+				"src/server/index.ts/rebuildStaleStructureLayouts:960"
 			],
 			"description": "服务器入口：初始化所有 store/service/router，HTTP API 模式启动"
 		},
@@ -3116,7 +3124,7 @@
 		},
 		{
 			"path": "src/server/input-queue-store.ts",
-			"lines": 229,
+			"lines": 237,
 			"dir": "src/server",
 			"exports": [
 				"InputQueueStore.emit",
@@ -3132,20 +3140,22 @@
 				"InputQueueStore.drainNextQueued",
 				"InputQueueStore.hasQueued"
 			],
-			"imports": [],
+			"imports": [
+				"src/server/data-change-hub.ts"
+			],
 			"functions": [
-				"src/server/input-queue-store.ts/InputQueueStore.emit:48",
-				"src/server/input-queue-store.ts/InputQueueStore.subscribe:56",
-				"src/server/input-queue-store.ts/InputQueueStore.list:61",
-				"src/server/input-queue-store.ts/InputQueueStore.enqueue:65",
-				"src/server/input-queue-store.ts/InputQueueStore.remove:80",
-				"src/server/input-queue-store.ts/InputQueueStore.promoteInsertNow:94",
-				"src/server/input-queue-store.ts/InputQueueStore.consumeInsertNow:114",
-				"src/server/input-queue-store.ts/InputQueueStore.peekInsertNow:145",
-				"src/server/input-queue-store.ts/InputQueueStore.commitDeliveredForStep:168",
-				"src/server/input-queue-store.ts/InputQueueStore.rollbackDeliveredForStep:195",
-				"src/server/input-queue-store.ts/InputQueueStore.drainNextQueued:213",
-				"src/server/input-queue-store.ts/InputQueueStore.hasQueued:224"
+				"src/server/input-queue-store.ts/InputQueueStore.emit:50",
+				"src/server/input-queue-store.ts/InputQueueStore.subscribe:64",
+				"src/server/input-queue-store.ts/InputQueueStore.list:69",
+				"src/server/input-queue-store.ts/InputQueueStore.enqueue:73",
+				"src/server/input-queue-store.ts/InputQueueStore.remove:88",
+				"src/server/input-queue-store.ts/InputQueueStore.promoteInsertNow:102",
+				"src/server/input-queue-store.ts/InputQueueStore.consumeInsertNow:122",
+				"src/server/input-queue-store.ts/InputQueueStore.peekInsertNow:153",
+				"src/server/input-queue-store.ts/InputQueueStore.commitDeliveredForStep:176",
+				"src/server/input-queue-store.ts/InputQueueStore.rollbackDeliveredForStep:203",
+				"src/server/input-queue-store.ts/InputQueueStore.drainNextQueued:221",
+				"src/server/input-queue-store.ts/InputQueueStore.hasQueued:232"
 			],
 			"description": ""
 		},
@@ -3392,9 +3402,11 @@
 		},
 		{
 			"path": "src/server/mcp-manager.ts",
-			"lines": 240,
+			"lines": 265,
 			"dir": "src/server",
 			"exports": [
+				"MCPManager.subscribe",
+				"MCPManager.emitChange",
 				"MCPManager.connect",
 				"MCPManager.disconnect",
 				"MCPManager.disconnectAll",
@@ -3411,15 +3423,17 @@
 				"src/core/logger.ts"
 			],
 			"functions": [
-				"src/server/mcp-manager.ts/MCPManager.connect:65",
-				"src/server/mcp-manager.ts/MCPManager.disconnect:145",
-				"src/server/mcp-manager.ts/MCPManager.disconnectAll:169",
-				"src/server/mcp-manager.ts/MCPManager.callTool:174",
-				"src/server/mcp-manager.ts/MCPManager.getToolsForAgent:188",
-				"src/server/mcp-manager.ts/MCPManager.getConnectedServers:205",
-				"src/server/mcp-manager.ts/MCPManager.isConnected:218",
-				"src/server/mcp-manager.ts/MCPManager.testConnection:222",
-				"src/server/mcp-manager.ts/MCPManager.reconnectEnabled:233"
+				"src/server/mcp-manager.ts/MCPManager.subscribe:73",
+				"src/server/mcp-manager.ts/MCPManager.emitChange:78",
+				"src/server/mcp-manager.ts/MCPManager.connect:84",
+				"src/server/mcp-manager.ts/MCPManager.disconnect:169",
+				"src/server/mcp-manager.ts/MCPManager.disconnectAll:194",
+				"src/server/mcp-manager.ts/MCPManager.callTool:199",
+				"src/server/mcp-manager.ts/MCPManager.getToolsForAgent:213",
+				"src/server/mcp-manager.ts/MCPManager.getConnectedServers:230",
+				"src/server/mcp-manager.ts/MCPManager.isConnected:243",
+				"src/server/mcp-manager.ts/MCPManager.testConnection:247",
+				"src/server/mcp-manager.ts/MCPManager.reconnectEnabled:258"
 			],
 			"description": "MCP 客户端管理：stdio + SSE 传输，启动 reconnect，tool 注册到 ToolRegistry"
 		},
@@ -3600,7 +3614,7 @@
 		},
 		{
 			"path": "src/server/orchestrate-store.ts",
-			"lines": 254,
+			"lines": 276,
 			"dir": "src/server",
 			"exports": [
 				"OrchestratePlanStore.list",
@@ -3615,6 +3629,8 @@
 				"OrchestrateManifestStore.create",
 				"OrchestrateManifestStore.findLatestForRequirement",
 				"ConfirmRegistry.getInstance",
+				"ConfirmRegistry.subscribe",
+				"ConfirmRegistry.emitChange",
 				"ConfirmRegistry.register",
 				"ConfirmRegistry.confirm",
 				"ConfirmRegistry.reject",
@@ -3640,13 +3656,15 @@
 				"src/server/orchestrate-store.ts/OrchestrateManifestStore.get:150",
 				"src/server/orchestrate-store.ts/OrchestrateManifestStore.create:154",
 				"src/server/orchestrate-store.ts/OrchestrateManifestStore.findLatestForRequirement:159",
-				"src/server/orchestrate-store.ts/ConfirmRegistry.getInstance:191",
-				"src/server/orchestrate-store.ts/ConfirmRegistry.register:197",
-				"src/server/orchestrate-store.ts/ConfirmRegistry.confirm:215",
-				"src/server/orchestrate-store.ts/ConfirmRegistry.reject:225",
-				"src/server/orchestrate-store.ts/ConfirmRegistry.drop:235",
-				"src/server/orchestrate-store.ts/ConfirmRegistry.isPending:245",
-				"src/server/orchestrate-store.ts/ConfirmRegistry.listPendingPlanIds:250"
+				"src/server/orchestrate-store.ts/ConfirmRegistry.getInstance:197",
+				"src/server/orchestrate-store.ts/ConfirmRegistry.subscribe:203",
+				"src/server/orchestrate-store.ts/ConfirmRegistry.emitChange:208",
+				"src/server/orchestrate-store.ts/ConfirmRegistry.register:215",
+				"src/server/orchestrate-store.ts/ConfirmRegistry.confirm:234",
+				"src/server/orchestrate-store.ts/ConfirmRegistry.reject:245",
+				"src/server/orchestrate-store.ts/ConfirmRegistry.drop:256",
+				"src/server/orchestrate-store.ts/ConfirmRegistry.isPending:267",
+				"src/server/orchestrate-store.ts/ConfirmRegistry.listPendingPlanIds:272"
 			],
 			"description": ""
 		},
@@ -4155,7 +4173,7 @@
 		},
 		{
 			"path": "src/server/session-db.ts",
-			"lines": 1145,
+			"lines": 1164,
 			"dir": "src/server",
 			"exports": [
 				"SessionDB.getDb",
@@ -4227,71 +4245,72 @@
 				"src/server/key-value-store.ts",
 				"src/server/extraction-cursor-store.ts",
 				"src/server/telemetry-store.ts",
-				"src/core/config.ts"
+				"src/core/config.ts",
+				"src/server/data-change-hub.ts"
 			],
 			"functions": [
-				"src/server/session-db.ts/SessionDB.getDb:71",
-				"src/server/session-db.ts/SessionDB.getKVStore:75",
-				"src/server/session-db.ts/SessionDB.getExtractionCursorStore:81",
-				"src/server/session-db.ts/SessionDB.getTelemetryStore:88",
-				"src/server/session-db.ts/SessionDB.initSchema:99",
-				"src/server/session-db.ts/SessionDB.safeAddColumn:237",
-				"src/server/session-db.ts/SessionDB.safeAddIndex:247",
-				"src/server/session-db.ts/SessionDB.migrateToolNames:256",
-				"src/server/session-db.ts/SessionDB.createSession:273",
-				"src/server/session-db.ts/SessionDB.getSession:305",
-				"src/server/session-db.ts/SessionDB.getMainSession:310",
-				"src/server/session-db.ts/SessionDB.getMostRecentSession:325",
-				"src/server/session-db.ts/SessionDB.setMainSession:333",
-				"src/server/session-db.ts/SessionDB.listSessions:341",
-				"src/server/session-db.ts/SessionDB.listAllSessions:348",
-				"src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:364",
-				"src/server/session-db.ts/SessionDB.updateSessionContext:373",
-				"src/server/session-db.ts/SessionDB.getSessionContext:388",
-				"src/server/session-db.ts/SessionDB.deleteSession:399",
-				"src/server/session-db.ts/SessionDB.archiveSession:409",
-				"src/server/session-db.ts/SessionDB.updateSessionUsage:414",
-				"src/server/session-db.ts/SessionDB.getMessages:425",
-				"src/server/session-db.ts/SessionDB.getMessagesWithSeq:432",
-				"src/server/session-db.ts/SessionDB.getMessageCount:438",
-				"src/server/session-db.ts/SessionDB.saveTurn:445",
-				"src/server/session-db.ts/SessionDB.deleteMessage:472",
-				"src/server/session-db.ts/SessionDB.updateMessageContent:481",
-				"src/server/session-db.ts/SessionDB.ensureSession:493",
-				"src/server/session-db.ts/SessionDB.migrateMessageFiles:506",
-				"src/server/session-db.ts/SessionDB.getTurnCount:548",
-				"src/server/session-db.ts/SessionDB.clearTurns:553",
-				"src/server/session-db.ts/SessionDB.deleteTurn:557",
-				"src/server/session-db.ts/SessionDB.getSteps:565",
-				"src/server/session-db.ts/SessionDB.getStepGroup:586",
-				"src/server/session-db.ts/SessionDB.appendStep:607",
-				"src/server/session-db.ts/SessionDB.upsertStep:630",
-				"src/server/session-db.ts/SessionDB.updateStepContent:664",
-				"src/server/session-db.ts/SessionDB.deleteStepGroup:685",
-				"src/server/session-db.ts/SessionDB.getTurnGroupCount:694",
-				"src/server/session-db.ts/SessionDB.replaceStepsFromMessages:703",
-				"src/server/session-db.ts/SessionDB.createTurnState:734",
-				"src/server/session-db.ts/SessionDB.advanceStepCheckpoint:759",
-				"src/server/session-db.ts/SessionDB.getStepCheckpoint:774",
-				"src/server/session-db.ts/SessionDB.updateTurnPhase:787",
-				"src/server/session-db.ts/SessionDB.completeTurnState:803",
-				"src/server/session-db.ts/SessionDB.failTurnState:815",
-				"src/server/session-db.ts/SessionDB.getIncompleteTurns:827",
-				"src/server/session-db.ts/SessionDB.cleanOldTurnState:850",
-				"src/server/session-db.ts/SessionDB.deleteTurnState:868",
-				"src/server/session-db.ts/SessionDB.recordToolExecution:876",
-				"src/server/session-db.ts/SessionDB.queryToolExecutions:903",
-				"src/server/session-db.ts/SessionDB.getToolExecutionStats:919",
-				"src/server/session-db.ts/SessionDB.cleanOldToolExecutions:939",
-				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:948",
-				"src/server/session-db.ts/SessionDB.close:968",
-				"src/server/session-db.ts/SessionDB.rowToRecord:976",
-				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1025",
-				"src/server/session-db.ts/SessionDB.createDelegatedTask:1052",
-				"src/server/session-db.ts/SessionDB.updateDelegatedTask:1087",
-				"src/server/session-db.ts/SessionDB.getDelegatedTask:1118",
-				"src/server/session-db.ts/SessionDB.listDelegatedTasks:1123",
-				"src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1137"
+				"src/server/session-db.ts/SessionDB.getDb:79",
+				"src/server/session-db.ts/SessionDB.getKVStore:83",
+				"src/server/session-db.ts/SessionDB.getExtractionCursorStore:89",
+				"src/server/session-db.ts/SessionDB.getTelemetryStore:96",
+				"src/server/session-db.ts/SessionDB.initSchema:107",
+				"src/server/session-db.ts/SessionDB.safeAddColumn:245",
+				"src/server/session-db.ts/SessionDB.safeAddIndex:255",
+				"src/server/session-db.ts/SessionDB.migrateToolNames:264",
+				"src/server/session-db.ts/SessionDB.createSession:281",
+				"src/server/session-db.ts/SessionDB.getSession:317",
+				"src/server/session-db.ts/SessionDB.getMainSession:322",
+				"src/server/session-db.ts/SessionDB.getMostRecentSession:337",
+				"src/server/session-db.ts/SessionDB.setMainSession:345",
+				"src/server/session-db.ts/SessionDB.listSessions:353",
+				"src/server/session-db.ts/SessionDB.listAllSessions:360",
+				"src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:376",
+				"src/server/session-db.ts/SessionDB.updateSessionContext:385",
+				"src/server/session-db.ts/SessionDB.getSessionContext:400",
+				"src/server/session-db.ts/SessionDB.deleteSession:411",
+				"src/server/session-db.ts/SessionDB.archiveSession:423",
+				"src/server/session-db.ts/SessionDB.updateSessionUsage:433",
+				"src/server/session-db.ts/SessionDB.getMessages:444",
+				"src/server/session-db.ts/SessionDB.getMessagesWithSeq:451",
+				"src/server/session-db.ts/SessionDB.getMessageCount:457",
+				"src/server/session-db.ts/SessionDB.saveTurn:464",
+				"src/server/session-db.ts/SessionDB.deleteMessage:491",
+				"src/server/session-db.ts/SessionDB.updateMessageContent:500",
+				"src/server/session-db.ts/SessionDB.ensureSession:512",
+				"src/server/session-db.ts/SessionDB.migrateMessageFiles:525",
+				"src/server/session-db.ts/SessionDB.getTurnCount:567",
+				"src/server/session-db.ts/SessionDB.clearTurns:572",
+				"src/server/session-db.ts/SessionDB.deleteTurn:576",
+				"src/server/session-db.ts/SessionDB.getSteps:584",
+				"src/server/session-db.ts/SessionDB.getStepGroup:605",
+				"src/server/session-db.ts/SessionDB.appendStep:626",
+				"src/server/session-db.ts/SessionDB.upsertStep:649",
+				"src/server/session-db.ts/SessionDB.updateStepContent:683",
+				"src/server/session-db.ts/SessionDB.deleteStepGroup:704",
+				"src/server/session-db.ts/SessionDB.getTurnGroupCount:713",
+				"src/server/session-db.ts/SessionDB.replaceStepsFromMessages:722",
+				"src/server/session-db.ts/SessionDB.createTurnState:753",
+				"src/server/session-db.ts/SessionDB.advanceStepCheckpoint:778",
+				"src/server/session-db.ts/SessionDB.getStepCheckpoint:793",
+				"src/server/session-db.ts/SessionDB.updateTurnPhase:806",
+				"src/server/session-db.ts/SessionDB.completeTurnState:822",
+				"src/server/session-db.ts/SessionDB.failTurnState:834",
+				"src/server/session-db.ts/SessionDB.getIncompleteTurns:846",
+				"src/server/session-db.ts/SessionDB.cleanOldTurnState:869",
+				"src/server/session-db.ts/SessionDB.deleteTurnState:887",
+				"src/server/session-db.ts/SessionDB.recordToolExecution:895",
+				"src/server/session-db.ts/SessionDB.queryToolExecutions:922",
+				"src/server/session-db.ts/SessionDB.getToolExecutionStats:938",
+				"src/server/session-db.ts/SessionDB.cleanOldToolExecutions:958",
+				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:967",
+				"src/server/session-db.ts/SessionDB.close:987",
+				"src/server/session-db.ts/SessionDB.rowToRecord:995",
+				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1044",
+				"src/server/session-db.ts/SessionDB.createDelegatedTask:1071",
+				"src/server/session-db.ts/SessionDB.updateDelegatedTask:1106",
+				"src/server/session-db.ts/SessionDB.getDelegatedTask:1137",
+				"src/server/session-db.ts/SessionDB.listDelegatedTasks:1142",
+				"src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1156"
 			],
 			"description": "SessionDB：SQLite CRUD（sessions/messages/turns/turn_state），cleanOldTurnState 24h 清理"
 		},
@@ -4310,9 +4329,13 @@
 		},
 		{
 			"path": "src/server/session-manager.ts",
-			"lines": 420,
+			"lines": 464,
 			"dir": "src/server",
 			"exports": [
+				"SessionManager.subscribeMetrics",
+				"SessionManager._flushMetricsForTest",
+				"SessionManager.fireMetrics",
+				"SessionManager.scheduleMetricsChange",
 				"SessionManager.setSessionDb",
 				"SessionManager.trackSessionCreated",
 				"SessionManager.trackSessionActivated",
@@ -4349,34 +4372,38 @@
 				"src/core/logger.ts"
 			],
 			"functions": [
-				"src/server/session-manager.ts/SessionManager.setSessionDb:89",
-				"src/server/session-manager.ts/SessionManager.trackSessionCreated:93",
-				"src/server/session-manager.ts/SessionManager.trackSessionActivated:101",
-				"src/server/session-manager.ts/SessionManager.trackSessionQueued:107",
-				"src/server/session-manager.ts/SessionManager.trackSessionStreaming:113",
-				"src/server/session-manager.ts/SessionManager.trackSessionExecutingTools:127",
-				"src/server/session-manager.ts/SessionManager.trackSessionIdle:133",
-				"src/server/session-manager.ts/SessionManager.trackSessionError:151",
-				"src/server/session-manager.ts/SessionManager.trackSessionDisposed:175",
-				"src/server/session-manager.ts/SessionManager.getSessionState:185",
-				"src/server/session-manager.ts/SessionManager.isSessionActive:189",
-				"src/server/session-manager.ts/SessionManager.getActiveSessionCount:194",
-				"src/server/session-manager.ts/SessionManager.getBusySessionCount:202",
-				"src/server/session-manager.ts/SessionManager.recordFirstTokenLatency:212",
-				"src/server/session-manager.ts/SessionManager.recordToolCall:224",
-				"src/server/session-manager.ts/SessionManager.recordRetry:235",
-				"src/server/session-manager.ts/SessionManager.recordTokenEstimate:240",
-				"src/server/session-manager.ts/SessionManager.recordTokenUsage:247",
-				"src/server/session-manager.ts/SessionManager.getSessionMetrics:270",
-				"src/server/session-manager.ts/SessionManager.getAllSessionMetrics:274",
-				"src/server/session-manager.ts/SessionManager.getAggregateMetrics:282",
-				"src/server/session-manager.ts/SessionManager.startTtlCleanup:330",
-				"src/server/session-manager.ts/SessionManager.stopTtlCleanup:336",
-				"src/server/session-manager.ts/SessionManager.runCleanup:343",
-				"src/server/session-manager.ts/SessionManager.evictSession:376",
-				"src/server/session-manager.ts/SessionManager.dispose:389",
-				"src/server/session-manager.ts/SessionManager.transition:400",
-				"src/server/session-manager.ts/SessionManager.touchActivity:413"
+				"src/server/session-manager.ts/SessionManager.subscribeMetrics:98",
+				"src/server/session-manager.ts/SessionManager._flushMetricsForTest:104",
+				"src/server/session-manager.ts/SessionManager.fireMetrics:110",
+				"src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116",
+				"src/server/session-manager.ts/SessionManager.setSessionDb:125",
+				"src/server/session-manager.ts/SessionManager.trackSessionCreated:129",
+				"src/server/session-manager.ts/SessionManager.trackSessionActivated:137",
+				"src/server/session-manager.ts/SessionManager.trackSessionQueued:143",
+				"src/server/session-manager.ts/SessionManager.trackSessionStreaming:149",
+				"src/server/session-manager.ts/SessionManager.trackSessionExecutingTools:164",
+				"src/server/session-manager.ts/SessionManager.trackSessionIdle:170",
+				"src/server/session-manager.ts/SessionManager.trackSessionError:189",
+				"src/server/session-manager.ts/SessionManager.trackSessionDisposed:214",
+				"src/server/session-manager.ts/SessionManager.getSessionState:224",
+				"src/server/session-manager.ts/SessionManager.isSessionActive:228",
+				"src/server/session-manager.ts/SessionManager.getActiveSessionCount:233",
+				"src/server/session-manager.ts/SessionManager.getBusySessionCount:241",
+				"src/server/session-manager.ts/SessionManager.recordFirstTokenLatency:251",
+				"src/server/session-manager.ts/SessionManager.recordToolCall:264",
+				"src/server/session-manager.ts/SessionManager.recordRetry:276",
+				"src/server/session-manager.ts/SessionManager.recordTokenEstimate:282",
+				"src/server/session-manager.ts/SessionManager.recordTokenUsage:290",
+				"src/server/session-manager.ts/SessionManager.getSessionMetrics:314",
+				"src/server/session-manager.ts/SessionManager.getAllSessionMetrics:318",
+				"src/server/session-manager.ts/SessionManager.getAggregateMetrics:326",
+				"src/server/session-manager.ts/SessionManager.startTtlCleanup:374",
+				"src/server/session-manager.ts/SessionManager.stopTtlCleanup:380",
+				"src/server/session-manager.ts/SessionManager.runCleanup:387",
+				"src/server/session-manager.ts/SessionManager.evictSession:420",
+				"src/server/session-manager.ts/SessionManager.dispose:433",
+				"src/server/session-manager.ts/SessionManager.transition:444",
+				"src/server/session-manager.ts/SessionManager.touchActivity:457"
 			],
 			"description": "SessionManager：session 生命周期状态机（created→streaming→disposed），TTL 清理，metrics hooks"
 		},
@@ -5749,63 +5776,63 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.run:238",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.run:249",
 			"name": "AgentLoop.run",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 238,
-			"endLine": 293,
+			"line": 249,
+			"endLine": 304,
 			"statementCount": 29,
 			"exported": true,
 			"signature": "method run(userMessage: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1192",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1218",
-				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:542",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1199"
+				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1203",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1229",
+				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:553",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1210"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.resume:312",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.resume:323",
 			"name": "AgentLoop.resume",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 312,
-			"endLine": 357,
+			"line": 323,
+			"endLine": 368,
 			"statementCount": 28,
 			"exported": true,
 			"signature": "method resume(interruptedTurnSeq?: number, lastCompletedStepSeq?: number)",
 			"description": "Step 2D: step-level resume. Reads the per-session `lastCompletedStepSeq`\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1192",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1218",
-				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:542",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1199"
+				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1203",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1229",
+				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:553",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1210"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.abort:359",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.abort:370",
 			"name": "AgentLoop.abort",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 359,
-			"endLine": 361,
+			"line": 370,
+			"endLine": 372,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method abort()",
 			"description": "",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.abort:359"
+				"src/runtime/agent-loop.ts/AgentLoop.abort:370"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getState:363",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getState:374",
 			"name": "AgentLoop.getState",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 363,
-			"endLine": 369,
+			"line": 374,
+			"endLine": 380,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getState()",
@@ -5813,12 +5840,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getLoopState:371",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getLoopState:382",
 			"name": "AgentLoop.getLoopState",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 371,
-			"endLine": 376,
+			"line": 382,
+			"endLine": 387,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getLoopState()",
@@ -5826,12 +5853,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getSessionTurns:379",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getSessionTurns:390",
 			"name": "AgentLoop.getSessionTurns",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 379,
-			"endLine": 381,
+			"line": 390,
+			"endLine": 392,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getSessionTurns()",
@@ -5839,72 +5866,72 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:384",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:395",
 			"name": "AgentLoop.refreshTurnsCache",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 384,
-			"endLine": 386,
+			"line": 395,
+			"endLine": 397,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method refreshTurnsCache()",
 			"description": "Refresh the cached turns from DB before UI session_init.",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:384"
+				"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:395"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getContextWindow:389",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getContextWindow:400",
 			"name": "AgentLoop.getContextWindow",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 389,
-			"endLine": 391,
+			"line": 400,
+			"endLine": 402,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getContextWindow()",
 			"description": "Get the context window for the current session model.",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:389"
+				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:400"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:394",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:405",
 			"name": "AgentLoop.getEstimatedTokens",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 394,
-			"endLine": 396,
+			"line": 405,
+			"endLine": 407,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getEstimatedTokens()",
 			"description": "Get estimated token count from restored messages.",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:394"
+				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:405"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getContextUsage:399",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getContextUsage:410",
 			"name": "AgentLoop.getContextUsage",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 399,
-			"endLine": 401,
+			"line": 410,
+			"endLine": 412,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getContextUsage()",
 			"description": "Get context usage ratio from restored messages.",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:399"
+				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:410"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getResult:403",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getResult:414",
 			"name": "AgentLoop.getResult",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 403,
-			"endLine": 405,
+			"line": 414,
+			"endLine": 416,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getResult()",
@@ -5912,12 +5939,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.resetSession:407",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.resetSession:418",
 			"name": "AgentLoop.resetSession",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 407,
-			"endLine": 410,
+			"line": 418,
+			"endLine": 421,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method resetSession()",
@@ -5925,12 +5952,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getConfigAgentId:413",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getConfigAgentId:424",
 			"name": "AgentLoop.getConfigAgentId",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 413,
-			"endLine": 415,
+			"line": 424,
+			"endLine": 426,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getConfigAgentId()",
@@ -5938,27 +5965,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:425",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:436",
 			"name": "AgentLoop.getRuntimeTaskTree",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 425,
-			"endLine": 432,
+			"line": 436,
+			"endLine": 443,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method getRuntimeTaskTree()",
 			"description": "Flat list of this loop's live in-memory tasks (its delegator's\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:425"
+				"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:436"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.restoreDelegatedTasks:442",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.restoreDelegatedTasks:453",
 			"name": "AgentLoop.restoreDelegatedTasks",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 442,
-			"endLine": 460,
+			"line": 453,
+			"endLine": 471,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method restoreDelegatedTasks(records: DelegatedTaskRecord[])",
@@ -5966,12 +5993,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:475",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:486",
 			"name": "AgentLoop.applyConfigUpdate",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 475,
-			"endLine": 530,
+			"line": 486,
+			"endLine": 541,
 			"statementCount": 24,
 			"exported": true,
 			"signature": "method applyConfigUpdate(patch: {\r\n\t\tsystemPrompt?: string;\r\n\t\ttoolPolicy?: SessionConfig[\"toolPolicy\"];\r\n\t\tsubagents?: SessionConfig[\"subagents\"];\r\n\t\twikiAnchors?: SessionConfig[\"wikiAnchors\"];\r\n\t\t/**\r\n\t\t * Capability service handles (management / wikiStore / requirementStore /\r\n\t\t * pmService) recomputed by agent-service against the NEW toolPolicy.\r\n\t\t * buildToolsSet reads toolPolicy fresh every turn, so without these the\r\n\t\t * policy could enable e.g. Wiki on a running loop while toolContext still\r\n\t\t * lacks wikiStore → CONDITIONAL_TOOLS filters Wiki out. The caller passes\r\n\t\t * the handles it wants surfaced; we mirror them onto the tool context so\r\n\t\t * a tool newly enabled by policy actually appears.\r\n\t\t */\r\n\t\tcapabilities?: { management?: unknown; wikiStore?: unknown; requirementStore?: unknown; pmService?: unknown };\r\n\t})",
@@ -5982,58 +6009,58 @@
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.runWithRetry:542",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.runWithRetry:553",
 			"name": "AgentLoop.runWithRetry",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 542,
-			"endLine": 572,
+			"line": 553,
+			"endLine": 583,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method runWithRetry()",
 			"description": "",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.executeStream:576",
+				"src/runtime/agent-loop.ts/AgentLoop.executeStream:587",
 				"src/runtime/agent-utils.ts/classifyError:36",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1218",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1229",
 				"src/runtime/agent-utils.ts/userFriendlyMessage:54",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1199"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1210"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.executeStream:576",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.executeStream:587",
 			"name": "AgentLoop.executeStream",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 576,
-			"endLine": 732,
+			"line": 587,
+			"endLine": 743,
 			"statementCount": 36,
 			"exported": true,
 			"signature": "method executeStream()",
 			"description": "",
 			"callees": [
 				"src/runtime/provider-factory.ts/resolveModel:42",
-				"src/runtime/agent-loop.ts/AgentLoop.buildTools:734",
-				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:746",
+				"src/runtime/agent-loop.ts/AgentLoop.buildTools:745",
+				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:757",
 				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:291",
-				"src/runtime/agent-loop.ts/AgentLoop.resolveCurrentTask:794",
+				"src/runtime/agent-loop.ts/AgentLoop.resolveCurrentTask:805",
 				"src/runtime/context-message.ts/buildContextMessage:36",
 				"src/runtime/tools/todo-write.ts/renderTodosContext:62",
-				"src/runtime/agent-loop.ts/AgentLoop.prependContext:754",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1218",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1199",
-				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:823",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1103",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1175"
+				"src/runtime/agent-loop.ts/AgentLoop.prependContext:765",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1229",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1210",
+				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:834",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1114",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1186"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.buildTools:734",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.buildTools:745",
 			"name": "AgentLoop.buildTools",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 734,
-			"endLine": 744,
+			"line": 745,
+			"endLine": 755,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method buildTools()",
@@ -6043,12 +6070,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:746",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:757",
 			"name": "AgentLoop.assembleSystemPrompt",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 746,
-			"endLine": 752,
+			"line": 757,
+			"endLine": 763,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method assembleSystemPrompt()",
@@ -6056,12 +6083,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.prependContext:754",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.prependContext:765",
 			"name": "AgentLoop.prependContext",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 754,
-			"endLine": 762,
+			"line": 765,
+			"endLine": 773,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method prependContext(messages: any[], ctx: string | null)",
@@ -6069,12 +6096,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:771",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:782",
 			"name": "AgentLoop.resolveGlobalWikiStore",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 771,
-			"endLine": 781,
+			"line": 782,
+			"endLine": 792,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method resolveGlobalWikiStore(config: SessionConfig)",
@@ -6082,12 +6109,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.resolveCurrentTask:794",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.resolveCurrentTask:805",
 			"name": "AgentLoop.resolveCurrentTask",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 794,
-			"endLine": 808,
+			"line": 805,
+			"endLine": 819,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method resolveCurrentTask()",
@@ -6095,97 +6122,97 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:823",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:834",
 			"name": "AgentLoop.runOneStepWithRetry",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 823,
-			"endLine": 948,
+			"line": 834,
+			"endLine": 959,
 			"statementCount": 49,
 			"exported": true,
 			"signature": "method runOneStepWithRetry(opts: {\r\n\t\tmodel: any;\r\n\t\tsystem: string;\r\n\t\tmessages: any[];\r\n\t\ttools: Record<string, any>;\r\n\t\tproviderOptions: Record<string, Record<string, any>>;\r\n\t\tstepNumber: number;\r\n\t})",
 			"description": "Step 2C: run a single step (one streamText with stopWhen: stepCountIs(1))\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:959",
+				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:970",
 				"src/runtime/agent-utils.ts/classifyError:36",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1218",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1229",
 				"src/runtime/agent-utils.ts/isTransientError:50",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1199"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1210"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:959",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:970",
 			"name": "AgentLoop.processStreamEvents",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 959,
-			"endLine": 1094,
+			"line": 970,
+			"endLine": 1105,
 			"statementCount": 66,
 			"exported": true,
 			"signature": "method processStreamEvents(result: any, stepNumber: number)",
 			"description": "Step 2C: consume one step's fullStream. Returns a summary (tool-call flag,\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1199",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1218"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1210",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1229"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1103",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1114",
 			"name": "AgentLoop.finalizeOneStep",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1103,
-			"endLine": 1173,
+			"line": 1114,
+			"endLine": 1184,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method finalizeOneStep(usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }, stepNumber?: number)",
 			"description": "Step 2C: finalize ONE successful step. Seals the recorder step with its\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1199",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1218",
-				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:399"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1210",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1229",
+				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:410"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1175",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1186",
 			"name": "AgentLoop.finalizeStream",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1175,
-			"endLine": 1188,
+			"line": 1186,
+			"endLine": 1199,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method finalizeStream(pendingPersist: any[])",
 			"description": "",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1199",
-				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:399",
-				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:389",
-				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:394"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1210",
+				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:410",
+				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:400",
+				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:405"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1192",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1203",
 			"name": "AgentLoop.setupTimeout",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1192,
-			"endLine": 1195,
+			"line": 1203,
+			"endLine": 1206,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method setupTimeout()",
 			"description": "",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.abort:359"
+				"src/runtime/agent-loop.ts/AgentLoop.abort:370"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.emit:1199",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.emit:1210",
 			"name": "AgentLoop.emit",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1199,
-			"endLine": 1206,
+			"line": 1210,
+			"endLine": 1217,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method emit(event: StreamEvent)",
@@ -6193,12 +6220,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1218",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1229",
 			"name": "AgentLoop.triggerLocal",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1218,
-			"endLine": 1224,
+			"line": 1229,
+			"endLine": 1235,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method triggerLocal(event: import(\"../core/hook-types.js\").HookEventName, ctx: Record<string, unknown>)",
@@ -6206,12 +6233,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.apply:504",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.apply:515",
 			"name": "AgentLoop.apply",
 			"kind": "arrow",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 504,
-			"endLine": 509,
+			"line": 515,
+			"endLine": 520,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "fn (field: \"management\" | \"wikiStore\" | \"requirementStore\" | \"pmService\")",
@@ -8788,163 +8815,230 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.create:30",
-			"name": "TaskRegistry.create",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.subscribe:40",
+			"name": "TaskRegistry.subscribe",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 30,
-			"endLine": 45,
+			"line": 40,
+			"endLine": 43,
 			"statementCount": 3,
 			"exported": true,
-			"signature": "method create(taskId: string, type: TaskType, task: string, abortController?: AbortController, parentTaskId?: string)",
+			"signature": "method subscribe(cb: () => void)",
+			"description": "Subscribe to coalesced change pings. Returns an unsubscribe fn.",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/task-registry.ts/TaskRegistry._flushChangeForTest:46",
+			"name": "TaskRegistry._flushChangeForTest",
+			"kind": "method",
+			"file": "src/runtime/task-registry.ts",
+			"line": 46,
+			"endLine": 50,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method _flushChangeForTest()",
+			"description": "Test helper: drain any pending coalesced flush synchronously.",
+			"callees": [
+				"src/runtime/task-registry.ts/TaskRegistry.fireChange:52"
+			]
+		},
+		{
+			"id": "src/runtime/task-registry.ts/TaskRegistry.fireChange:52",
+			"name": "TaskRegistry.fireChange",
+			"kind": "method",
+			"file": "src/runtime/task-registry.ts",
+			"line": 52,
+			"endLine": 56,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method fireChange()",
 			"description": "",
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.updateProgress:47",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58",
+			"name": "TaskRegistry.scheduleChange",
+			"kind": "method",
+			"file": "src/runtime/task-registry.ts",
+			"line": 58,
+			"endLine": 65,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method scheduleChange()",
+			"description": "",
+			"callees": [
+				"src/runtime/task-registry.ts/TaskRegistry.fireChange:52"
+			]
+		},
+		{
+			"id": "src/runtime/task-registry.ts/TaskRegistry.create:67",
+			"name": "TaskRegistry.create",
+			"kind": "method",
+			"file": "src/runtime/task-registry.ts",
+			"line": 67,
+			"endLine": 83,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method create(taskId: string, type: TaskType, task: string, abortController?: AbortController, parentTaskId?: string)",
+			"description": "",
+			"callees": [
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58"
+			]
+		},
+		{
+			"id": "src/runtime/task-registry.ts/TaskRegistry.updateProgress:85",
 			"name": "TaskRegistry.updateProgress",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 47,
-			"endLine": 52,
-			"statementCount": 6,
+			"line": 85,
+			"endLine": 91,
+			"statementCount": 7,
 			"exported": true,
 			"signature": "method updateProgress(taskId: string, step: number, toolName?: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:132"
+				"src/runtime/task-registry.ts/TaskRegistry.get:177",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.addUsage:55",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.addUsage:94",
 			"name": "TaskRegistry.addUsage",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 55,
-			"endLine": 60,
-			"statementCount": 6,
+			"line": 94,
+			"endLine": 100,
+			"statementCount": 7,
 			"exported": true,
 			"signature": "method addUsage(taskId: string, tokensDelta: number, turnCompleted: boolean)",
 			"description": "Add accumulated tokens + one completed agent-loop turn to a task.",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:132"
+				"src/runtime/task-registry.ts/TaskRegistry.get:177",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.requestFinish:68",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.requestFinish:108",
 			"name": "TaskRegistry.requestFinish",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 68,
-			"endLine": 75,
-			"statementCount": 8,
+			"line": 108,
+			"endLine": 116,
+			"statementCount": 9,
 			"exported": true,
 			"signature": "method requestFinish(taskId: string, message?: string)",
 			"description": "Advisory finish: mark a running task \"finishing\" and stage a control\r",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:132",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:225"
+				"src/runtime/task-registry.ts/TaskRegistry.get:177",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:271",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.complete:77",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.complete:118",
 			"name": "TaskRegistry.complete",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 77,
-			"endLine": 86,
-			"statementCount": 9,
+			"line": 118,
+			"endLine": 128,
+			"statementCount": 10,
 			"exported": true,
 			"signature": "method complete(taskId: string, result: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:132",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:225"
+				"src/runtime/task-registry.ts/TaskRegistry.get:177",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:271",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.fail:88",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.fail:130",
 			"name": "TaskRegistry.fail",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 88,
-			"endLine": 97,
-			"statementCount": 9,
+			"line": 130,
+			"endLine": 140,
+			"statementCount": 10,
 			"exported": true,
 			"signature": "method fail(taskId: string, error: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:132",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:225"
+				"src/runtime/task-registry.ts/TaskRegistry.get:177",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:271",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.kill:99",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.kill:142",
 			"name": "TaskRegistry.kill",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 99,
-			"endLine": 112,
-			"statementCount": 12,
+			"line": 142,
+			"endLine": 156,
+			"statementCount": 13,
 			"exported": true,
 			"signature": "method kill(taskId: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:132",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:225"
+				"src/runtime/task-registry.ts/TaskRegistry.get:177",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:271",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.acknowledge:122",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.acknowledge:166",
 			"name": "TaskRegistry.acknowledge",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 122,
-			"endLine": 130,
-			"statementCount": 9,
+			"line": 166,
+			"endLine": 175,
+			"statementCount": 10,
 			"exported": true,
 			"signature": "method acknowledge(taskId: string)",
 			"description": "Acknowledge a FINISHED task (completed/failed/killed/interrupted) and drop\r",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:132",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:225"
+				"src/runtime/task-registry.ts/TaskRegistry.get:177",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:271",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.get:132",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.get:177",
 			"name": "TaskRegistry.get",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 132,
-			"endLine": 134,
+			"line": 177,
+			"endLine": 179,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method get(taskId: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:132"
+				"src/runtime/task-registry.ts/TaskRegistry.get:177"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.seed:143",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.seed:188",
 			"name": "TaskRegistry.seed",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 143,
-			"endLine": 145,
-			"statementCount": 1,
+			"line": 188,
+			"endLine": 191,
+			"statementCount": 2,
 			"exported": true,
 			"signature": "method seed(info: TaskInfo)",
 			"description": "Restore a persisted task as-is into the live registry (startup / activate\r",
-			"callees": []
+			"callees": [
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58"
+			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.list:147",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.list:193",
 			"name": "TaskRegistry.list",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 147,
-			"endLine": 152,
+			"line": 193,
+			"endLine": 198,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method list(filter?: \"running\" | \"completed\")",
@@ -8952,12 +9046,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.getCompletedUnnotified:154",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.getCompletedUnnotified:200",
 			"name": "TaskRegistry.getCompletedUnnotified",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 154,
-			"endLine": 162,
+			"line": 200,
+			"endLine": 208,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getCompletedUnnotified()",
@@ -8965,43 +9059,43 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.markNotified:164",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.markNotified:210",
 			"name": "TaskRegistry.markNotified",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 164,
-			"endLine": 167,
+			"line": 210,
+			"endLine": 213,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method markNotified(taskId: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:132"
+				"src/runtime/task-registry.ts/TaskRegistry.get:177"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:169",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:215",
 			"name": "TaskRegistry.suspendUntilWake",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 169,
-			"endLine": 199,
+			"line": 215,
+			"endLine": 245,
 			"statementCount": 18,
 			"exported": true,
 			"signature": "method suspendUntilWake(timeoutMs: number, taskId?: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:132",
-				"src/runtime/task-registry.ts/TaskRegistry.generateSummary:201"
+				"src/runtime/task-registry.ts/TaskRegistry.get:177",
+				"src/runtime/task-registry.ts/TaskRegistry.generateSummary:247"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.generateSummary:201",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.generateSummary:247",
 			"name": "TaskRegistry.generateSummary",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 201,
-			"endLine": 223,
+			"line": 247,
+			"endLine": 269,
 			"statementCount": 21,
 			"exported": true,
 			"signature": "method generateSummary(filterTaskId?: string)",
@@ -9009,12 +9103,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.tryWake:225",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.tryWake:271",
 			"name": "TaskRegistry.tryWake",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 225,
-			"endLine": 230,
+			"line": 271,
+			"endLine": 276,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method tryWake()",
@@ -9022,17 +9116,19 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.cleanup:232",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.cleanup:278",
 			"name": "TaskRegistry.cleanup",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 232,
-			"endLine": 239,
-			"statementCount": 4,
+			"line": 278,
+			"endLine": 288,
+			"statementCount": 8,
 			"exported": true,
 			"signature": "method cleanup(maxAgeMs: number = 3600_000)",
 			"description": "",
-			"callees": []
+			"callees": [
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58"
+			]
 		},
 		{
 			"id": "src/runtime/terminal-adapter.ts/truncate:40",
@@ -14705,12 +14801,12 @@
 			]
 		},
 		{
-			"id": "src/server/data-change-hub.ts/flush:63",
+			"id": "src/server/data-change-hub.ts/flush:86",
 			"name": "flush",
 			"kind": "function",
 			"file": "src/server/data-change-hub.ts",
-			"line": 63,
-			"endLine": 78,
+			"line": 86,
+			"endLine": 101,
 			"statementCount": 11,
 			"exported": false,
 			"signature": "function flush()",
@@ -14718,25 +14814,25 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/data-change-hub.ts/emitDataChange:85",
+			"id": "src/server/data-change-hub.ts/emitDataChange:108",
 			"name": "emitDataChange",
 			"kind": "function",
 			"file": "src/server/data-change-hub.ts",
-			"line": 85,
-			"endLine": 94,
+			"line": 108,
+			"endLine": 117,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "function emitDataChange(table: string, id: string, op: DataChangeOp, record?: unknown)",
-			"description": "SqliteStore 写原语调此发变更。非 UI collection 直接忽略;UI collection 把",
+			"description": "SqliteStore 写原语调此发变更。非 UI collection 直接忽略;UI collection 把\r",
 			"callees": []
 		},
 		{
-			"id": "src/server/data-change-hub.ts/onDataChange:97",
+			"id": "src/server/data-change-hub.ts/onDataChange:120",
 			"name": "onDataChange",
 			"kind": "function",
 			"file": "src/server/data-change-hub.ts",
-			"line": 97,
-			"endLine": 100,
+			"line": 120,
+			"endLine": 123,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "function onDataChange(cb: Listener)",
@@ -14744,12 +14840,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/data-change-hub.ts/_resetDataChangeHubForTest:103",
+			"id": "src/server/data-change-hub.ts/_resetDataChangeHubForTest:126",
 			"name": "_resetDataChangeHubForTest",
 			"kind": "function",
 			"file": "src/server/data-change-hub.ts",
-			"line": 103,
-			"endLine": 107,
+			"line": 126,
+			"endLine": 130,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "function _resetDataChangeHubForTest()",
@@ -15467,8 +15563,8 @@
 			"kind": "function",
 			"file": "src/server/index.ts",
 			"line": 100,
-			"endLine": 926,
-			"statementCount": 336,
+			"endLine": 947,
+			"statementCount": 342,
 			"exported": true,
 			"signature": "function startServer(options?: StartServerOptions)",
 			"description": "",
@@ -15478,12 +15574,12 @@
 				"src/server/workspace-config.ts/loadWorkspaceConfig:40",
 				"src/runtime/proxy-manager.ts/applyProxy:30",
 				"src/server/agent-service.ts/createAgentService:1474",
-				"src/server/data-change-hub.ts/onDataChange:97",
+				"src/server/data-change-hub.ts/onDataChange:120",
 				"src/server/index.ts/broadcast:277",
-				"src/server/index.ts/reloadProviders:293",
+				"src/server/index.ts/reloadProviders:314",
 				"src/server/mcp-scanner.ts/scanExternalMcpConfigs:156",
 				"src/server/mcp-scanner.ts/mergeDetectedServers:202",
-				"src/server/index.ts/rebuildStaleStructureLayouts:939",
+				"src/server/index.ts/rebuildStaleStructureLayouts:960",
 				"src/server/config-router.ts/createConfigRouter:41",
 				"src/server/agent-router.ts/createAgentRouter:28",
 				"src/server/provider-router.ts/createProviderRouter:36",
@@ -15522,12 +15618,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/index.ts/reloadProviders:293",
+			"id": "src/server/index.ts/reloadProviders:314",
 			"name": "reloadProviders",
 			"kind": "arrow",
 			"file": "src/server/index.ts",
-			"line": 293,
-			"endLine": 304,
+			"line": 314,
+			"endLine": 325,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "fn ()",
@@ -15535,12 +15631,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/index.ts/rebuildStaleStructureLayouts:939",
+			"id": "src/server/index.ts/rebuildStaleStructureLayouts:960",
 			"name": "rebuildStaleStructureLayouts",
 			"kind": "function",
 			"file": "src/server/index.ts",
-			"line": 939,
-			"endLine": 968,
+			"line": 960,
+			"endLine": 989,
 			"statementCount": 23,
 			"exported": false,
 			"signature": "function rebuildStaleStructureLayouts(archivistService: import(\"./wiki-skeleton-service.js\").WikiSkeletonService, projectStore: import(\"./project-store.js\").ProjectStore, wikiStore: import(\"./wiki-node-store.js\").WikiStore)",
@@ -15561,25 +15657,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.emit:48",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.emit:50",
 			"name": "InputQueueStore.emit",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 48,
-			"endLine": 54,
-			"statementCount": 5,
+			"line": 50,
+			"endLine": 62,
+			"statementCount": 6,
 			"exported": true,
 			"signature": "method emit(sessionId: string)",
 			"description": "",
-			"callees": []
+			"callees": [
+				"src/server/data-change-hub.ts/emitDataChange:108"
+			]
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.subscribe:56",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.subscribe:64",
 			"name": "InputQueueStore.subscribe",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 56,
-			"endLine": 59,
+			"line": 64,
+			"endLine": 67,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method subscribe(listener: Listener)",
@@ -15587,12 +15685,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.list:61",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.list:69",
 			"name": "InputQueueStore.list",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 61,
-			"endLine": 63,
+			"line": 69,
+			"endLine": 71,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method list(sessionId: string)",
@@ -15600,132 +15698,132 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.enqueue:65",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.enqueue:73",
 			"name": "InputQueueStore.enqueue",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 65,
-			"endLine": 78,
+			"line": 73,
+			"endLine": 86,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method enqueue(sessionId: string, content: string, mode: InputQueueMode = \"queued\")",
 			"description": "",
 			"callees": [
-				"src/server/input-queue-store.ts/InputQueueStore.emit:48"
+				"src/server/input-queue-store.ts/InputQueueStore.emit:50"
 			]
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.remove:80",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.remove:88",
 			"name": "InputQueueStore.remove",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 80,
-			"endLine": 91,
+			"line": 88,
+			"endLine": 99,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method remove(itemId: string)",
 			"description": "",
 			"callees": [
-				"src/server/input-queue-store.ts/InputQueueStore.emit:48"
+				"src/server/input-queue-store.ts/InputQueueStore.emit:50"
 			]
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.promoteInsertNow:94",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.promoteInsertNow:102",
 			"name": "InputQueueStore.promoteInsertNow",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 94,
-			"endLine": 104,
+			"line": 102,
+			"endLine": 112,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method promoteInsertNow(itemId: string)",
 			"description": "Promote a queued item to insert_now (inject at next step).",
 			"callees": [
-				"src/server/input-queue-store.ts/InputQueueStore.emit:48"
+				"src/server/input-queue-store.ts/InputQueueStore.emit:50"
 			]
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.consumeInsertNow:114",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.consumeInsertNow:122",
 			"name": "InputQueueStore.consumeInsertNow",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 114,
-			"endLine": 124,
+			"line": 122,
+			"endLine": 132,
 			"statementCount": 12,
 			"exported": true,
 			"signature": "method consumeInsertNow(sessionId: string)",
 			"description": "PrepareStep hook drain: consume all insert_now items for a session,\r",
 			"callees": [
-				"src/server/input-queue-store.ts/InputQueueStore.emit:48"
+				"src/server/input-queue-store.ts/InputQueueStore.emit:50"
 			]
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.peekInsertNow:145",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.peekInsertNow:153",
 			"name": "InputQueueStore.peekInsertNow",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 145,
-			"endLine": 161,
+			"line": 153,
+			"endLine": 169,
 			"statementCount": 13,
 			"exported": true,
 			"signature": "method peekInsertNow(sessionId: string, stepNumber: number)",
 			"description": "Step 2E: peek + MARK delivered for insert_now items, returning their\r",
 			"callees": [
-				"src/server/input-queue-store.ts/InputQueueStore.emit:48"
+				"src/server/input-queue-store.ts/InputQueueStore.emit:50"
 			]
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.commitDeliveredForStep:168",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.commitDeliveredForStep:176",
 			"name": "InputQueueStore.commitDeliveredForStep",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 168,
-			"endLine": 186,
+			"line": 176,
+			"endLine": 194,
 			"statementCount": 15,
 			"exported": true,
 			"signature": "method commitDeliveredForStep(sessionId: string, stepNumber: number)",
 			"description": "Step 2E: commit — actually remove from the queue all insert_now items that\r",
 			"callees": [
-				"src/server/input-queue-store.ts/InputQueueStore.emit:48"
+				"src/server/input-queue-store.ts/InputQueueStore.emit:50"
 			]
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.rollbackDeliveredForStep:195",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.rollbackDeliveredForStep:203",
 			"name": "InputQueueStore.rollbackDeliveredForStep",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 195,
-			"endLine": 207,
+			"line": 203,
+			"endLine": 215,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method rollbackDeliveredForStep(sessionId: string, stepNumber: number)",
 			"description": "Step 2E: rollback — clear the delivered marker on every insert_now item\r",
 			"callees": [
-				"src/server/input-queue-store.ts/InputQueueStore.emit:48"
+				"src/server/input-queue-store.ts/InputQueueStore.emit:50"
 			]
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.drainNextQueued:213",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.drainNextQueued:221",
 			"name": "InputQueueStore.drainNextQueued",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 213,
-			"endLine": 222,
+			"line": 221,
+			"endLine": 230,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method drainNextQueued(sessionId: string)",
 			"description": "Post-run drain: pop the first queued item (FIFO) for the next user turn.\r",
 			"callees": [
-				"src/server/input-queue-store.ts/InputQueueStore.emit:48"
+				"src/server/input-queue-store.ts/InputQueueStore.emit:50"
 			]
 		},
 		{
-			"id": "src/server/input-queue-store.ts/InputQueueStore.hasQueued:224",
+			"id": "src/server/input-queue-store.ts/InputQueueStore.hasQueued:232",
 			"name": "InputQueueStore.hasQueued",
 			"kind": "method",
 			"file": "src/server/input-queue-store.ts",
-			"line": 224,
-			"endLine": 227,
+			"line": 232,
+			"endLine": 235,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method hasQueued(sessionId: string)",
@@ -16873,71 +16971,100 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/mcp-manager.ts/MCPManager.connect:65",
-			"name": "MCPManager.connect",
+			"id": "src/server/mcp-manager.ts/MCPManager.subscribe:73",
+			"name": "MCPManager.subscribe",
 			"kind": "method",
 			"file": "src/server/mcp-manager.ts",
-			"line": 65,
-			"endLine": 143,
-			"statementCount": 23,
+			"line": 73,
+			"endLine": 76,
+			"statementCount": 3,
 			"exported": true,
-			"signature": "method connect(config: McpServerConfig)",
-			"description": "",
-			"callees": [
-				"src/server/mcp-manager.ts/MCPManager.disconnect:145",
-				"src/server/mcp-manager.ts/MCPManager.connect:65"
-			]
+			"signature": "method subscribe(cb: () => void)",
+			"description": "Subscribe to connection-state change pings. Returns an unsubscribe fn.",
+			"callees": []
 		},
 		{
-			"id": "src/server/mcp-manager.ts/MCPManager.disconnect:145",
-			"name": "MCPManager.disconnect",
+			"id": "src/server/mcp-manager.ts/MCPManager.emitChange:78",
+			"name": "MCPManager.emitChange",
 			"kind": "method",
 			"file": "src/server/mcp-manager.ts",
-			"line": 145,
-			"endLine": 167,
-			"statementCount": 12,
+			"line": 78,
+			"endLine": 82,
+			"statementCount": 3,
 			"exported": true,
-			"signature": "method disconnect(serverId: string)",
+			"signature": "method emitChange()",
 			"description": "",
 			"callees": []
 		},
 		{
-			"id": "src/server/mcp-manager.ts/MCPManager.disconnectAll:169",
-			"name": "MCPManager.disconnectAll",
+			"id": "src/server/mcp-manager.ts/MCPManager.connect:84",
+			"name": "MCPManager.connect",
+			"kind": "method",
+			"file": "src/server/mcp-manager.ts",
+			"line": 84,
+			"endLine": 167,
+			"statementCount": 25,
+			"exported": true,
+			"signature": "method connect(config: McpServerConfig)",
+			"description": "",
+			"callees": [
+				"src/server/mcp-manager.ts/MCPManager.disconnect:169",
+				"src/server/mcp-manager.ts/MCPManager.connect:84",
+				"src/server/mcp-manager.ts/MCPManager.emitChange:78"
+			]
+		},
+		{
+			"id": "src/server/mcp-manager.ts/MCPManager.disconnect:169",
+			"name": "MCPManager.disconnect",
 			"kind": "method",
 			"file": "src/server/mcp-manager.ts",
 			"line": 169,
-			"endLine": 172,
+			"endLine": 192,
+			"statementCount": 13,
+			"exported": true,
+			"signature": "method disconnect(serverId: string)",
+			"description": "",
+			"callees": [
+				"src/server/mcp-manager.ts/MCPManager.emitChange:78"
+			]
+		},
+		{
+			"id": "src/server/mcp-manager.ts/MCPManager.disconnectAll:194",
+			"name": "MCPManager.disconnectAll",
+			"kind": "method",
+			"file": "src/server/mcp-manager.ts",
+			"line": 194,
+			"endLine": 197,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method disconnectAll()",
 			"description": "",
 			"callees": [
-				"src/server/mcp-manager.ts/MCPManager.disconnect:145"
+				"src/server/mcp-manager.ts/MCPManager.disconnect:169"
 			]
 		},
 		{
-			"id": "src/server/mcp-manager.ts/MCPManager.callTool:174",
+			"id": "src/server/mcp-manager.ts/MCPManager.callTool:199",
 			"name": "MCPManager.callTool",
 			"kind": "method",
 			"file": "src/server/mcp-manager.ts",
-			"line": 174,
-			"endLine": 186,
+			"line": 199,
+			"endLine": 211,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method callTool(serverId: string, toolName: string, args: Record<string, unknown>)",
 			"description": "",
 			"callees": [
-				"src/server/mcp-manager.ts/MCPManager.callTool:174"
+				"src/server/mcp-manager.ts/MCPManager.callTool:199"
 			]
 		},
 		{
-			"id": "src/server/mcp-manager.ts/MCPManager.getToolsForAgent:188",
+			"id": "src/server/mcp-manager.ts/MCPManager.getToolsForAgent:213",
 			"name": "MCPManager.getToolsForAgent",
 			"kind": "method",
 			"file": "src/server/mcp-manager.ts",
-			"line": 188,
-			"endLine": 203,
+			"line": 213,
+			"endLine": 228,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method getToolsForAgent(agentId?: string)",
@@ -16945,12 +17072,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/mcp-manager.ts/MCPManager.getConnectedServers:205",
+			"id": "src/server/mcp-manager.ts/MCPManager.getConnectedServers:230",
 			"name": "MCPManager.getConnectedServers",
 			"kind": "method",
 			"file": "src/server/mcp-manager.ts",
-			"line": 205,
-			"endLine": 216,
+			"line": 230,
+			"endLine": 241,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method getConnectedServers()",
@@ -16958,12 +17085,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/mcp-manager.ts/MCPManager.isConnected:218",
+			"id": "src/server/mcp-manager.ts/MCPManager.isConnected:243",
 			"name": "MCPManager.isConnected",
 			"kind": "method",
 			"file": "src/server/mcp-manager.ts",
-			"line": 218,
-			"endLine": 220,
+			"line": 243,
+			"endLine": 245,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method isConnected(serverId: string)",
@@ -16971,34 +17098,34 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/mcp-manager.ts/MCPManager.testConnection:222",
+			"id": "src/server/mcp-manager.ts/MCPManager.testConnection:247",
 			"name": "MCPManager.testConnection",
 			"kind": "method",
 			"file": "src/server/mcp-manager.ts",
-			"line": 222,
-			"endLine": 231,
+			"line": 247,
+			"endLine": 256,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method testConnection(config: McpServerConfig)",
 			"description": "",
 			"callees": [
-				"src/server/mcp-manager.ts/MCPManager.connect:65",
-				"src/server/mcp-manager.ts/MCPManager.disconnect:145"
+				"src/server/mcp-manager.ts/MCPManager.connect:84",
+				"src/server/mcp-manager.ts/MCPManager.disconnect:169"
 			]
 		},
 		{
-			"id": "src/server/mcp-manager.ts/MCPManager.reconnectEnabled:233",
+			"id": "src/server/mcp-manager.ts/MCPManager.reconnectEnabled:258",
 			"name": "MCPManager.reconnectEnabled",
 			"kind": "method",
 			"file": "src/server/mcp-manager.ts",
-			"line": 233,
-			"endLine": 238,
+			"line": 258,
+			"endLine": 263,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method reconnectEnabled(configs: McpServerConfig[])",
 			"description": "",
 			"callees": [
-				"src/server/mcp-manager.ts/MCPManager.connect:65"
+				"src/server/mcp-manager.ts/MCPManager.connect:84"
 			]
 		},
 		{
@@ -17403,7 +17530,7 @@
 			"signature": "function createOrchestrateRouter(deps: {\r\n\tplanStore: OrchestratePlanStore;\r\n\tmanifestStore: OrchestrateManifestStore;\r\n})",
 			"description": "",
 			"callees": [
-				"src/server/orchestrate-store.ts/ConfirmRegistry.getInstance:191"
+				"src/server/orchestrate-store.ts/ConfirmRegistry.getInstance:197"
 			]
 		},
 		{
@@ -17572,12 +17699,12 @@
 			]
 		},
 		{
-			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.getInstance:191",
+			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.getInstance:197",
 			"name": "ConfirmRegistry.getInstance",
 			"kind": "method",
 			"file": "src/server/orchestrate-store.ts",
-			"line": 191,
-			"endLine": 194,
+			"line": 197,
+			"endLine": 200,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method getInstance()",
@@ -17585,66 +17712,99 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.register:197",
+			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.subscribe:203",
+			"name": "ConfirmRegistry.subscribe",
+			"kind": "method",
+			"file": "src/server/orchestrate-store.ts",
+			"line": 203,
+			"endLine": 206,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method subscribe(cb: () => void)",
+			"description": "Subscribe to pending-set change pings. Returns an unsubscribe fn.",
+			"callees": []
+		},
+		{
+			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.emitChange:208",
+			"name": "ConfirmRegistry.emitChange",
+			"kind": "method",
+			"file": "src/server/orchestrate-store.ts",
+			"line": 208,
+			"endLine": 212,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method emitChange()",
+			"description": "Tracks pending confirmations for Orchestrate flows. When the Orchestrate tool\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.register:215",
 			"name": "ConfirmRegistry.register",
 			"kind": "method",
 			"file": "src/server/orchestrate-store.ts",
-			"line": 197,
-			"endLine": 212,
-			"statementCount": 11,
+			"line": 215,
+			"endLine": 231,
+			"statementCount": 12,
 			"exported": true,
 			"signature": "method register(planId: string)",
 			"description": "Register a pending confirmation. Returns a Promise that resolves when confirm/reject is called.",
-			"callees": []
+			"callees": [
+				"src/server/orchestrate-store.ts/ConfirmRegistry.emitChange:208"
+			]
 		},
 		{
-			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.confirm:215",
+			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.confirm:234",
 			"name": "ConfirmRegistry.confirm",
 			"kind": "method",
 			"file": "src/server/orchestrate-store.ts",
-			"line": 215,
-			"endLine": 222,
-			"statementCount": 7,
+			"line": 234,
+			"endLine": 242,
+			"statementCount": 8,
 			"exported": true,
 			"signature": "method confirm(planId: string)",
 			"description": "Confirm a pending plan → resolves its awaiting tool promise to true.",
-			"callees": []
+			"callees": [
+				"src/server/orchestrate-store.ts/ConfirmRegistry.emitChange:208"
+			]
 		},
 		{
-			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.reject:225",
+			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.reject:245",
 			"name": "ConfirmRegistry.reject",
 			"kind": "method",
 			"file": "src/server/orchestrate-store.ts",
-			"line": 225,
-			"endLine": 232,
-			"statementCount": 7,
+			"line": 245,
+			"endLine": 253,
+			"statementCount": 8,
 			"exported": true,
 			"signature": "method reject(planId: string)",
 			"description": "Reject a pending plan → resolves its awaiting tool promise to false.",
-			"callees": []
+			"callees": [
+				"src/server/orchestrate-store.ts/ConfirmRegistry.emitChange:208"
+			]
 		},
 		{
-			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.drop:235",
+			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.drop:256",
 			"name": "ConfirmRegistry.drop",
 			"kind": "method",
 			"file": "src/server/orchestrate-store.ts",
-			"line": 235,
-			"endLine": 242,
-			"statementCount": 6,
+			"line": 256,
+			"endLine": 264,
+			"statementCount": 7,
 			"exported": true,
 			"signature": "method drop(planId: string)",
 			"description": "Drop a pending entry without resolving (e.g. session died). Returns false if not present.",
 			"callees": [
-				"src/server/orchestrate-store.ts/ConfirmRegistry.reject:225"
+				"src/server/orchestrate-store.ts/ConfirmRegistry.reject:245",
+				"src/server/orchestrate-store.ts/ConfirmRegistry.emitChange:208"
 			]
 		},
 		{
-			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.isPending:245",
+			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.isPending:267",
 			"name": "ConfirmRegistry.isPending",
 			"kind": "method",
 			"file": "src/server/orchestrate-store.ts",
-			"line": 245,
-			"endLine": 247,
+			"line": 267,
+			"endLine": 269,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method isPending(planId: string)",
@@ -17652,12 +17812,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.listPendingPlanIds:250",
+			"id": "src/server/orchestrate-store.ts/ConfirmRegistry.listPendingPlanIds:272",
 			"name": "ConfirmRegistry.listPendingPlanIds",
 			"kind": "method",
 			"file": "src/server/orchestrate-store.ts",
-			"line": 250,
-			"endLine": 252,
+			"line": 272,
+			"endLine": 274,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method listPendingPlanIds()",
@@ -18439,7 +18599,7 @@
 			"signature": "method start()",
 			"description": "订阅 data-change-hub。返回 stop 函数(测试/拆除用)。",
 			"callees": [
-				"src/server/data-change-hub.ts/onDataChange:97",
+				"src/server/data-change-hub.ts/onDataChange:120",
 				"src/server/project-work-hook-manager.ts/ProjectWorkHookManager.handleDataChange:62",
 				"src/server/project-work-hook-manager.ts/ProjectWorkHookManager.stop:55"
 			]
@@ -19165,12 +19325,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getDb:71",
+			"id": "src/server/session-db.ts/SessionDB.getDb:79",
 			"name": "SessionDB.getDb",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 71,
-			"endLine": 73,
+			"line": 79,
+			"endLine": 81,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getDb()",
@@ -19178,12 +19338,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getKVStore:75",
+			"id": "src/server/session-db.ts/SessionDB.getKVStore:83",
 			"name": "SessionDB.getKVStore",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 75,
-			"endLine": 77,
+			"line": 83,
+			"endLine": 85,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getKVStore()",
@@ -19191,12 +19351,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getExtractionCursorStore:81",
+			"id": "src/server/session-db.ts/SessionDB.getExtractionCursorStore:89",
 			"name": "SessionDB.getExtractionCursorStore",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 81,
-			"endLine": 86,
+			"line": 89,
+			"endLine": 94,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method getExtractionCursorStore()",
@@ -19204,12 +19364,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getTelemetryStore:88",
+			"id": "src/server/session-db.ts/SessionDB.getTelemetryStore:96",
 			"name": "SessionDB.getTelemetryStore",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 88,
-			"endLine": 93,
+			"line": 96,
+			"endLine": 101,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method getTelemetryStore()",
@@ -19217,29 +19377,29 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.initSchema:99",
+			"id": "src/server/session-db.ts/SessionDB.initSchema:107",
 			"name": "SessionDB.initSchema",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 99,
-			"endLine": 234,
+			"line": 107,
+			"endLine": 242,
 			"statementCount": 14,
 			"exported": true,
 			"signature": "method initSchema()",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.safeAddColumn:237",
-				"src/server/session-db.ts/SessionDB.safeAddIndex:247",
-				"src/server/session-db.ts/SessionDB.migrateToolNames:256"
+				"src/server/session-db.ts/SessionDB.safeAddColumn:245",
+				"src/server/session-db.ts/SessionDB.safeAddIndex:255",
+				"src/server/session-db.ts/SessionDB.migrateToolNames:264"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.safeAddColumn:237",
+			"id": "src/server/session-db.ts/SessionDB.safeAddColumn:245",
 			"name": "SessionDB.safeAddColumn",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 237,
-			"endLine": 244,
+			"line": 245,
+			"endLine": 252,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method safeAddColumn(table: string, column: string, def: string)",
@@ -19247,12 +19407,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.safeAddIndex:247",
+			"id": "src/server/session-db.ts/SessionDB.safeAddIndex:255",
 			"name": "SessionDB.safeAddIndex",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 247,
-			"endLine": 254,
+			"line": 255,
+			"endLine": 262,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method safeAddIndex(table: string, indexName: string, columns: string)",
@@ -19260,12 +19420,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.migrateToolNames:256",
+			"id": "src/server/session-db.ts/SessionDB.migrateToolNames:264",
 			"name": "SessionDB.migrateToolNames",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 256,
-			"endLine": 268,
+			"line": 264,
+			"endLine": 276,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method migrateToolNames()",
@@ -19273,70 +19433,72 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.createSession:273",
+			"id": "src/server/session-db.ts/SessionDB.createSession:281",
 			"name": "SessionDB.createSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 273,
-			"endLine": 303,
-			"statementCount": 7,
+			"line": 281,
+			"endLine": 315,
+			"statementCount": 9,
 			"exported": true,
 			"signature": "method createSession(agentId: string, title?: string, context?: SessionRecord[\"context\"], options?: { sessionKind?: \"chat\" | \"delegated\"; parentSessionId?: string; parentTaskId?: string; visibility?: \"normal\" | \"hidden\" | \"debug\" })",
 			"description": "",
-			"callees": []
+			"callees": [
+				"src/server/data-change-hub.ts/emitDataChange:108"
+			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getSession:305",
+			"id": "src/server/session-db.ts/SessionDB.getSession:317",
 			"name": "SessionDB.getSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 305,
-			"endLine": 308,
+			"line": 317,
+			"endLine": 320,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getSession(sessionId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:976"
+				"src/server/session-db.ts/SessionDB.rowToRecord:995"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getMainSession:310",
+			"id": "src/server/session-db.ts/SessionDB.getMainSession:322",
 			"name": "SessionDB.getMainSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 310,
-			"endLine": 313,
+			"line": 322,
+			"endLine": 325,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getMainSession(agentId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:976"
+				"src/server/session-db.ts/SessionDB.rowToRecord:995"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getMostRecentSession:325",
+			"id": "src/server/session-db.ts/SessionDB.getMostRecentSession:337",
 			"name": "SessionDB.getMostRecentSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 325,
-			"endLine": 331,
+			"line": 337,
+			"endLine": 343,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getMostRecentSession(agentId: string)",
 			"description": "The most-recently-active session for an agent, by `updated_at`. Every\r",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:976"
+				"src/server/session-db.ts/SessionDB.rowToRecord:995"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.setMainSession:333",
+			"id": "src/server/session-db.ts/SessionDB.setMainSession:345",
 			"name": "SessionDB.setMainSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 333,
-			"endLine": 339,
+			"line": 345,
+			"endLine": 351,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method setMainSession(agentId: string, sessionId: string)",
@@ -19344,57 +19506,57 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.listSessions:341",
+			"id": "src/server/session-db.ts/SessionDB.listSessions:353",
 			"name": "SessionDB.listSessions",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 341,
-			"endLine": 346,
+			"line": 353,
+			"endLine": 358,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method listSessions(agentId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:976"
+				"src/server/session-db.ts/SessionDB.rowToRecord:995"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.listAllSessions:348",
+			"id": "src/server/session-db.ts/SessionDB.listAllSessions:360",
 			"name": "SessionDB.listAllSessions",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 348,
-			"endLine": 353,
+			"line": 360,
+			"endLine": 365,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method listAllSessions()",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:976"
+				"src/server/session-db.ts/SessionDB.rowToRecord:995"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:364",
+			"id": "src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:376",
 			"name": "SessionDB.findSessionByAgentAndProject",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 364,
-			"endLine": 370,
+			"line": 376,
+			"endLine": 382,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method findSessionByAgentAndProject(agentId: string, projectId: string)",
 			"description": "v0.8 (M0): find-or-create routing key for `{role(agentId), projectId} → session`.\r",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:976"
+				"src/server/session-db.ts/SessionDB.rowToRecord:995"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateSessionContext:373",
+			"id": "src/server/session-db.ts/SessionDB.updateSessionContext:385",
 			"name": "SessionDB.updateSessionContext",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 373,
-			"endLine": 385,
+			"line": 385,
+			"endLine": 397,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method updateSessionContext(sessionId: string, context: SessionRecord[\"context\"])",
@@ -19402,12 +19564,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getSessionContext:388",
+			"id": "src/server/session-db.ts/SessionDB.getSessionContext:400",
 			"name": "SessionDB.getSessionContext",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 388,
-			"endLine": 398,
+			"line": 400,
+			"endLine": 410,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method getSessionContext(sessionId: string)",
@@ -19415,38 +19577,42 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteSession:399",
+			"id": "src/server/session-db.ts/SessionDB.deleteSession:411",
 			"name": "SessionDB.deleteSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 399,
-			"endLine": 401,
-			"statementCount": 1,
+			"line": 411,
+			"endLine": 415,
+			"statementCount": 2,
 			"exported": true,
 			"signature": "method deleteSession(sessionId: string)",
 			"description": "",
-			"callees": []
+			"callees": [
+				"src/server/data-change-hub.ts/emitDataChange:108"
+			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.archiveSession:409",
+			"id": "src/server/session-db.ts/SessionDB.archiveSession:423",
 			"name": "SessionDB.archiveSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 409,
-			"endLine": 412,
-			"statementCount": 1,
+			"line": 423,
+			"endLine": 431,
+			"statementCount": 2,
 			"exported": true,
 			"signature": "method archiveSession(sessionId: string)",
 			"description": "Mark a session as archived (soft delete). Archived sessions are excluded\r",
-			"callees": []
+			"callees": [
+				"src/server/data-change-hub.ts/emitDataChange:108"
+			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateSessionUsage:414",
+			"id": "src/server/session-db.ts/SessionDB.updateSessionUsage:433",
 			"name": "SessionDB.updateSessionUsage",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 414,
-			"endLine": 419,
+			"line": 433,
+			"endLine": 438,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method updateSessionUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number; estimatedCostUsd: number })",
@@ -19454,12 +19620,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getMessages:425",
+			"id": "src/server/session-db.ts/SessionDB.getMessages:444",
 			"name": "SessionDB.getMessages",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 425,
-			"endLine": 430,
+			"line": 444,
+			"endLine": 449,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getMessages(sessionId: string)",
@@ -19467,12 +19633,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getMessagesWithSeq:432",
+			"id": "src/server/session-db.ts/SessionDB.getMessagesWithSeq:451",
 			"name": "SessionDB.getMessagesWithSeq",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 432,
-			"endLine": 436,
+			"line": 451,
+			"endLine": 455,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getMessagesWithSeq(sessionId: string)",
@@ -19480,12 +19646,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getMessageCount:438",
+			"id": "src/server/session-db.ts/SessionDB.getMessageCount:457",
 			"name": "SessionDB.getMessageCount",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 438,
-			"endLine": 443,
+			"line": 457,
+			"endLine": 462,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getMessageCount(sessionId: string)",
@@ -19493,12 +19659,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.saveTurn:445",
+			"id": "src/server/session-db.ts/SessionDB.saveTurn:464",
 			"name": "SessionDB.saveTurn",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 445,
-			"endLine": 470,
+			"line": 464,
+			"endLine": 489,
 			"statementCount": 15,
 			"exported": true,
 			"signature": "method saveTurn(sessionId: string, messages: any[])",
@@ -19506,12 +19672,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteMessage:472",
+			"id": "src/server/session-db.ts/SessionDB.deleteMessage:491",
 			"name": "SessionDB.deleteMessage",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 472,
-			"endLine": 479,
+			"line": 491,
+			"endLine": 498,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method deleteMessage(sessionId: string, seq: number)",
@@ -19519,12 +19685,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateMessageContent:481",
+			"id": "src/server/session-db.ts/SessionDB.updateMessageContent:500",
 			"name": "SessionDB.updateMessageContent",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 481,
-			"endLine": 490,
+			"line": 500,
+			"endLine": 509,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method updateMessageContent(sessionId: string, seq: number, content: string, msgJson: string)",
@@ -19532,12 +19698,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.ensureSession:493",
+			"id": "src/server/session-db.ts/SessionDB.ensureSession:512",
 			"name": "SessionDB.ensureSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 493,
-			"endLine": 500,
+			"line": 512,
+			"endLine": 519,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method ensureSession(sessionId: string)",
@@ -19545,29 +19711,29 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.migrateMessageFiles:506",
+			"id": "src/server/session-db.ts/SessionDB.migrateMessageFiles:525",
 			"name": "SessionDB.migrateMessageFiles",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 506,
-			"endLine": 540,
+			"line": 525,
+			"endLine": 559,
 			"statementCount": 22,
 			"exported": true,
 			"signature": "method migrateMessageFiles()",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.createSession:273",
-				"src/server/session-db.ts/SessionDB.setMainSession:333",
-				"src/server/session-db.ts/SessionDB.saveTurn:445"
+				"src/server/session-db.ts/SessionDB.createSession:281",
+				"src/server/session-db.ts/SessionDB.setMainSession:345",
+				"src/server/session-db.ts/SessionDB.saveTurn:464"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getTurnCount:548",
+			"id": "src/server/session-db.ts/SessionDB.getTurnCount:567",
 			"name": "SessionDB.getTurnCount",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 548,
-			"endLine": 551,
+			"line": 567,
+			"endLine": 570,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getTurnCount(sessionId: string)",
@@ -19575,12 +19741,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.clearTurns:553",
+			"id": "src/server/session-db.ts/SessionDB.clearTurns:572",
 			"name": "SessionDB.clearTurns",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 553,
-			"endLine": 555,
+			"line": 572,
+			"endLine": 574,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method clearTurns(sessionId: string)",
@@ -19588,12 +19754,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteTurn:557",
+			"id": "src/server/session-db.ts/SessionDB.deleteTurn:576",
 			"name": "SessionDB.deleteTurn",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 557,
-			"endLine": 559,
+			"line": 576,
+			"endLine": 578,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method deleteTurn(sessionId: string, seq: number)",
@@ -19601,12 +19767,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getSteps:565",
+			"id": "src/server/session-db.ts/SessionDB.getSteps:584",
 			"name": "SessionDB.getSteps",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 565,
-			"endLine": 584,
+			"line": 584,
+			"endLine": 603,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getSteps(sessionId: string)",
@@ -19614,12 +19780,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getStepGroup:586",
+			"id": "src/server/session-db.ts/SessionDB.getStepGroup:605",
 			"name": "SessionDB.getStepGroup",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 586,
-			"endLine": 605,
+			"line": 605,
+			"endLine": 624,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getStepGroup(sessionId: string, turnGroup: number)",
@@ -19627,42 +19793,42 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.appendStep:607",
+			"id": "src/server/session-db.ts/SessionDB.appendStep:626",
 			"name": "SessionDB.appendStep",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 607,
-			"endLine": 628,
+			"line": 626,
+			"endLine": 647,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method appendStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number })",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:493"
+				"src/server/session-db.ts/SessionDB.ensureSession:512"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.upsertStep:630",
+			"id": "src/server/session-db.ts/SessionDB.upsertStep:649",
 			"name": "SessionDB.upsertStep",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 630,
-			"endLine": 662,
+			"line": 649,
+			"endLine": 681,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method upsertStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number })",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:493"
+				"src/server/session-db.ts/SessionDB.ensureSession:512"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateStepContent:664",
+			"id": "src/server/session-db.ts/SessionDB.updateStepContent:683",
 			"name": "SessionDB.updateStepContent",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 664,
-			"endLine": 683,
+			"line": 683,
+			"endLine": 702,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method updateStepContent(sessionId: string, seq: number, content: string, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number })",
@@ -19670,12 +19836,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteStepGroup:685",
+			"id": "src/server/session-db.ts/SessionDB.deleteStepGroup:704",
 			"name": "SessionDB.deleteStepGroup",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 685,
-			"endLine": 692,
+			"line": 704,
+			"endLine": 711,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method deleteStepGroup(sessionId: string, turnGroup: number)",
@@ -19683,12 +19849,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getTurnGroupCount:694",
+			"id": "src/server/session-db.ts/SessionDB.getTurnGroupCount:713",
 			"name": "SessionDB.getTurnGroupCount",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 694,
-			"endLine": 699,
+			"line": 713,
+			"endLine": 718,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getTurnGroupCount(sessionId: string)",
@@ -19696,12 +19862,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.replaceStepsFromMessages:703",
+			"id": "src/server/session-db.ts/SessionDB.replaceStepsFromMessages:722",
 			"name": "SessionDB.replaceStepsFromMessages",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 703,
-			"endLine": 728,
+			"line": 722,
+			"endLine": 747,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method replaceStepsFromMessages(sessionId: string, steps: Array<{\r\n\t\t\tseq: number; turnGroup: number; role: string;\r\n\t\t\tcontent: string | null;\r\n\t\t\tusage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };\r\n\t\t}>)",
@@ -19709,12 +19875,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.createTurnState:734",
+			"id": "src/server/session-db.ts/SessionDB.createTurnState:753",
 			"name": "SessionDB.createTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 734,
-			"endLine": 749,
+			"line": 753,
+			"endLine": 768,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method createTurnState(sessionId: string, turnSeq: number)",
@@ -19722,12 +19888,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.advanceStepCheckpoint:759",
+			"id": "src/server/session-db.ts/SessionDB.advanceStepCheckpoint:778",
 			"name": "SessionDB.advanceStepCheckpoint",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 759,
-			"endLine": 771,
+			"line": 778,
+			"endLine": 790,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method advanceStepCheckpoint(sessionId: string, turnSeq: number, stepSeq: number)",
@@ -19735,12 +19901,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getStepCheckpoint:774",
+			"id": "src/server/session-db.ts/SessionDB.getStepCheckpoint:793",
 			"name": "SessionDB.getStepCheckpoint",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 774,
-			"endLine": 785,
+			"line": 793,
+			"endLine": 804,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getStepCheckpoint(sessionId: string)",
@@ -19748,12 +19914,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateTurnPhase:787",
+			"id": "src/server/session-db.ts/SessionDB.updateTurnPhase:806",
 			"name": "SessionDB.updateTurnPhase",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 787,
-			"endLine": 801,
+			"line": 806,
+			"endLine": 820,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method updateTurnPhase(sessionId: string, turnSeq: number, phase: string, checkpoint?: any)",
@@ -19761,12 +19927,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.completeTurnState:803",
+			"id": "src/server/session-db.ts/SessionDB.completeTurnState:822",
 			"name": "SessionDB.completeTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 803,
-			"endLine": 813,
+			"line": 822,
+			"endLine": 832,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method completeTurnState(sessionId: string, turnSeq: number)",
@@ -19774,12 +19940,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.failTurnState:815",
+			"id": "src/server/session-db.ts/SessionDB.failTurnState:834",
 			"name": "SessionDB.failTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 815,
-			"endLine": 825,
+			"line": 834,
+			"endLine": 844,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method failTurnState(sessionId: string, turnSeq: number, error: string)",
@@ -19787,12 +19953,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurns:827",
+			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurns:846",
 			"name": "SessionDB.getIncompleteTurns",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 827,
-			"endLine": 848,
+			"line": 846,
+			"endLine": 867,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getIncompleteTurns()",
@@ -19800,12 +19966,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.cleanOldTurnState:850",
+			"id": "src/server/session-db.ts/SessionDB.cleanOldTurnState:869",
 			"name": "SessionDB.cleanOldTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 850,
-			"endLine": 866,
+			"line": 869,
+			"endLine": 885,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method cleanOldTurnState(maxAgeMs: number)",
@@ -19813,12 +19979,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteTurnState:868",
+			"id": "src/server/session-db.ts/SessionDB.deleteTurnState:887",
 			"name": "SessionDB.deleteTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 868,
-			"endLine": 870,
+			"line": 887,
+			"endLine": 889,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method deleteTurnState(sessionId: string)",
@@ -19826,12 +19992,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.recordToolExecution:876",
+			"id": "src/server/session-db.ts/SessionDB.recordToolExecution:895",
 			"name": "SessionDB.recordToolExecution",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 876,
-			"endLine": 901,
+			"line": 895,
+			"endLine": 920,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method recordToolExecution(exec: {\r\n\t\tsessionId: string;\r\n\t\tagentId: string;\r\n\t\ttoolName: string;\r\n\t\tsuccess: boolean;\r\n\t\terrorMessage?: string;\r\n\t\tinputPreview?: string;\r\n\t\toutputPreview?: string;\r\n\t\tdurationMs: number;\r\n\t\tturnSeq?: number;\r\n\t})",
@@ -19839,27 +20005,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.queryToolExecutions:903",
+			"id": "src/server/session-db.ts/SessionDB.queryToolExecutions:922",
 			"name": "SessionDB.queryToolExecutions",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 903,
-			"endLine": 917,
+			"line": 922,
+			"endLine": 936,
 			"statementCount": 19,
 			"exported": true,
 			"signature": "method queryToolExecutions(filter: ToolExecutionFilter)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:948"
+				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:967"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getToolExecutionStats:919",
+			"id": "src/server/session-db.ts/SessionDB.getToolExecutionStats:938",
 			"name": "SessionDB.getToolExecutionStats",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 919,
-			"endLine": 937,
+			"line": 938,
+			"endLine": 956,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method getToolExecutionStats(agentId?: string)",
@@ -19867,12 +20033,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.cleanOldToolExecutions:939",
+			"id": "src/server/session-db.ts/SessionDB.cleanOldToolExecutions:958",
 			"name": "SessionDB.cleanOldToolExecutions",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 939,
-			"endLine": 946,
+			"line": 958,
+			"endLine": 965,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method cleanOldToolExecutions(maxAgeMs: number)",
@@ -19880,12 +20046,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.toolExecRowToRecord:948",
+			"id": "src/server/session-db.ts/SessionDB.toolExecRowToRecord:967",
 			"name": "SessionDB.toolExecRowToRecord",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 948,
-			"endLine": 962,
+			"line": 967,
+			"endLine": 981,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method toolExecRowToRecord(row: any)",
@@ -19893,27 +20059,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.close:968",
+			"id": "src/server/session-db.ts/SessionDB.close:987",
 			"name": "SessionDB.close",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 968,
-			"endLine": 970,
+			"line": 987,
+			"endLine": 989,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method close()",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.close:968"
+				"src/server/session-db.ts/SessionDB.close:987"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.rowToRecord:976",
+			"id": "src/server/session-db.ts/SessionDB.rowToRecord:995",
 			"name": "SessionDB.rowToRecord",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 976,
-			"endLine": 1019,
+			"line": 995,
+			"endLine": 1038,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method rowToRecord(row: any)",
@@ -19921,12 +20087,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1025",
+			"id": "src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1044",
 			"name": "SessionDB.delegatedTaskRowToRecord",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1025,
-			"endLine": 1050,
+			"line": 1044,
+			"endLine": 1069,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method delegatedTaskRowToRecord(row: any)",
@@ -19934,72 +20100,72 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.createDelegatedTask:1052",
+			"id": "src/server/session-db.ts/SessionDB.createDelegatedTask:1071",
 			"name": "SessionDB.createDelegatedTask",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1052,
-			"endLine": 1085,
+			"line": 1071,
+			"endLine": 1104,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method createDelegatedTask(input: {\r\n\t\tid: string;\r\n\t\tparentTaskId?: string;\r\n\t\trootTaskId: string;\r\n\t\townerAgentId: string;\r\n\t\ttargetAgentId: string;\r\n\t\tparentSessionId?: string;\r\n\t\tsessionId?: string;\r\n\t\ttask: string;\r\n\t\tstatus?: DelegatedTaskStatus;\r\n\t\tdepth?: number;\r\n\t\tparentToolCallId?: string;\r\n\t})",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.getDelegatedTask:1118"
+				"src/server/session-db.ts/SessionDB.getDelegatedTask:1137"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateDelegatedTask:1087",
+			"id": "src/server/session-db.ts/SessionDB.updateDelegatedTask:1106",
 			"name": "SessionDB.updateDelegatedTask",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1087,
-			"endLine": 1116,
+			"line": 1106,
+			"endLine": 1135,
 			"statementCount": 16,
 			"exported": true,
 			"signature": "method updateDelegatedTask(id: string, patch: Partial<Pick<DelegatedTaskRecord, \"status\" | \"step\" | \"turns\" | \"tokens\" | \"currentTool\" | \"result\" | \"error\" | \"controlMessage\" | \"finishRequestedAt\" | \"completedAt\" | \"sessionId\" | \"parentToolCallId\">>)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.getDelegatedTask:1118"
+				"src/server/session-db.ts/SessionDB.getDelegatedTask:1137"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getDelegatedTask:1118",
+			"id": "src/server/session-db.ts/SessionDB.getDelegatedTask:1137",
 			"name": "SessionDB.getDelegatedTask",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1118,
-			"endLine": 1121,
+			"line": 1137,
+			"endLine": 1140,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getDelegatedTask(id: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1025"
+				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1044"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.listDelegatedTasks:1123",
+			"id": "src/server/session-db.ts/SessionDB.listDelegatedTasks:1142",
 			"name": "SessionDB.listDelegatedTasks",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1123,
-			"endLine": 1134,
+			"line": 1142,
+			"endLine": 1153,
 			"statementCount": 20,
 			"exported": true,
 			"signature": "method listDelegatedTasks(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; parentSessionId?: string; status?: DelegatedTaskStatus })",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1025"
+				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1044"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1137",
+			"id": "src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1156",
 			"name": "SessionDB.markRunningDelegatedTasksInterrupted",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1137,
-			"endLine": 1143,
+			"line": 1156,
+			"endLine": 1162,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method markRunningDelegatedTasksInterrupted()",
@@ -20020,12 +20186,68 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.setSessionDb:89",
+			"id": "src/server/session-manager.ts/SessionManager.subscribeMetrics:98",
+			"name": "SessionManager.subscribeMetrics",
+			"kind": "method",
+			"file": "src/server/session-manager.ts",
+			"line": 98,
+			"endLine": 101,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method subscribeMetrics(cb: () => void)",
+			"description": "Subscribe to coalesced metrics change pings. Returns an unsubscribe fn.",
+			"callees": []
+		},
+		{
+			"id": "src/server/session-manager.ts/SessionManager._flushMetricsForTest:104",
+			"name": "SessionManager._flushMetricsForTest",
+			"kind": "method",
+			"file": "src/server/session-manager.ts",
+			"line": 104,
+			"endLine": 108,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method _flushMetricsForTest()",
+			"description": "Test helper: drain any pending coalesced metrics flush synchronously.",
+			"callees": [
+				"src/server/session-manager.ts/SessionManager.fireMetrics:110"
+			]
+		},
+		{
+			"id": "src/server/session-manager.ts/SessionManager.fireMetrics:110",
+			"name": "SessionManager.fireMetrics",
+			"kind": "method",
+			"file": "src/server/session-manager.ts",
+			"line": 110,
+			"endLine": 114,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method fireMetrics()",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116",
+			"name": "SessionManager.scheduleMetricsChange",
+			"kind": "method",
+			"file": "src/server/session-manager.ts",
+			"line": 116,
+			"endLine": 123,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method scheduleMetricsChange()",
+			"description": "",
+			"callees": [
+				"src/server/session-manager.ts/SessionManager.fireMetrics:110"
+			]
+		},
+		{
+			"id": "src/server/session-manager.ts/SessionManager.setSessionDb:125",
 			"name": "SessionManager.setSessionDb",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 89,
-			"endLine": 89,
+			"line": 125,
+			"endLine": 125,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setSessionDb(db: SessionDB)",
@@ -20033,140 +20255,143 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.trackSessionCreated:93",
+			"id": "src/server/session-manager.ts/SessionManager.trackSessionCreated:129",
 			"name": "SessionManager.trackSessionCreated",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 93,
-			"endLine": 99,
+			"line": 129,
+			"endLine": 135,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method trackSessionCreated(sessionId: string, agentId: string, opts?: { parentSessionId?: string; spawnDepth?: number })",
 			"description": "",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.transition:400",
-				"src/server/session-manager.ts/SessionManager.touchActivity:413"
+				"src/server/session-manager.ts/SessionManager.transition:444",
+				"src/server/session-manager.ts/SessionManager.touchActivity:457"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.trackSessionActivated:101",
+			"id": "src/server/session-manager.ts/SessionManager.trackSessionActivated:137",
 			"name": "SessionManager.trackSessionActivated",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 101,
-			"endLine": 104,
+			"line": 137,
+			"endLine": 140,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method trackSessionActivated(sessionId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.transition:400",
-				"src/server/session-manager.ts/SessionManager.touchActivity:413"
+				"src/server/session-manager.ts/SessionManager.transition:444",
+				"src/server/session-manager.ts/SessionManager.touchActivity:457"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.trackSessionQueued:107",
+			"id": "src/server/session-manager.ts/SessionManager.trackSessionQueued:143",
 			"name": "SessionManager.trackSessionQueued",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 107,
-			"endLine": 110,
+			"line": 143,
+			"endLine": 146,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method trackSessionQueued(sessionId: string)",
 			"description": "Session is waiting for provider concurrency slot",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.transition:400",
-				"src/server/session-manager.ts/SessionManager.touchActivity:413"
+				"src/server/session-manager.ts/SessionManager.transition:444",
+				"src/server/session-manager.ts/SessionManager.touchActivity:457"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.trackSessionStreaming:113",
+			"id": "src/server/session-manager.ts/SessionManager.trackSessionStreaming:149",
 			"name": "SessionManager.trackSessionStreaming",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 113,
-			"endLine": 124,
-			"statementCount": 9,
+			"line": 149,
+			"endLine": 161,
+			"statementCount": 10,
 			"exported": true,
 			"signature": "method trackSessionStreaming(sessionId: string)",
 			"description": "Session is receiving streaming API response",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.transition:400",
-				"src/server/session-manager.ts/SessionManager.touchActivity:413"
+				"src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116",
+				"src/server/session-manager.ts/SessionManager.transition:444",
+				"src/server/session-manager.ts/SessionManager.touchActivity:457"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.trackSessionExecutingTools:127",
+			"id": "src/server/session-manager.ts/SessionManager.trackSessionExecutingTools:164",
 			"name": "SessionManager.trackSessionExecutingTools",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 127,
-			"endLine": 130,
+			"line": 164,
+			"endLine": 167,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method trackSessionExecutingTools(sessionId: string)",
 			"description": "Session is executing tool calls",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.transition:400",
-				"src/server/session-manager.ts/SessionManager.touchActivity:413"
+				"src/server/session-manager.ts/SessionManager.transition:444",
+				"src/server/session-manager.ts/SessionManager.touchActivity:457"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.trackSessionIdle:133",
+			"id": "src/server/session-manager.ts/SessionManager.trackSessionIdle:170",
 			"name": "SessionManager.trackSessionIdle",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 133,
-			"endLine": 148,
-			"statementCount": 10,
+			"line": 170,
+			"endLine": 186,
+			"statementCount": 11,
 			"exported": true,
 			"signature": "method trackSessionIdle(sessionId: string)",
 			"description": "Session turn completed — back to idle",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.transition:400",
-				"src/server/session-manager.ts/SessionManager.touchActivity:413"
+				"src/server/session-manager.ts/SessionManager.transition:444",
+				"src/server/session-manager.ts/SessionManager.touchActivity:457",
+				"src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.trackSessionError:151",
+			"id": "src/server/session-manager.ts/SessionManager.trackSessionError:189",
 			"name": "SessionManager.trackSessionError",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 151,
-			"endLine": 173,
-			"statementCount": 15,
+			"line": 189,
+			"endLine": 212,
+			"statementCount": 16,
 			"exported": true,
 			"signature": "method trackSessionError(sessionId: string, errorClass: string)",
 			"description": "Session encountered a recoverable error — transitions to idle",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.transition:400",
-				"src/server/session-manager.ts/SessionManager.touchActivity:413"
+				"src/server/session-manager.ts/SessionManager.transition:444",
+				"src/server/session-manager.ts/SessionManager.touchActivity:457",
+				"src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.trackSessionDisposed:175",
+			"id": "src/server/session-manager.ts/SessionManager.trackSessionDisposed:214",
 			"name": "SessionManager.trackSessionDisposed",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 175,
-			"endLine": 181,
+			"line": 214,
+			"endLine": 220,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method trackSessionDisposed(sessionId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.transition:400",
-				"src/server/session-manager.ts/SessionManager.touchActivity:413"
+				"src/server/session-manager.ts/SessionManager.transition:444",
+				"src/server/session-manager.ts/SessionManager.touchActivity:457"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.getSessionState:185",
+			"id": "src/server/session-manager.ts/SessionManager.getSessionState:224",
 			"name": "SessionManager.getSessionState",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 185,
-			"endLine": 187,
+			"line": 224,
+			"endLine": 226,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getSessionState(sessionId: string)",
@@ -20174,12 +20399,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.isSessionActive:189",
+			"id": "src/server/session-manager.ts/SessionManager.isSessionActive:228",
 			"name": "SessionManager.isSessionActive",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 189,
-			"endLine": 192,
+			"line": 228,
+			"endLine": 231,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method isSessionActive(sessionId: string)",
@@ -20187,12 +20412,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.getActiveSessionCount:194",
+			"id": "src/server/session-manager.ts/SessionManager.getActiveSessionCount:233",
 			"name": "SessionManager.getActiveSessionCount",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 194,
-			"endLine": 200,
+			"line": 233,
+			"endLine": 239,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getActiveSessionCount()",
@@ -20200,12 +20425,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.getBusySessionCount:202",
+			"id": "src/server/session-manager.ts/SessionManager.getBusySessionCount:241",
 			"name": "SessionManager.getBusySessionCount",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 202,
-			"endLine": 208,
+			"line": 241,
+			"endLine": 247,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getBusySessionCount()",
@@ -20213,79 +20438,88 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.recordFirstTokenLatency:212",
+			"id": "src/server/session-manager.ts/SessionManager.recordFirstTokenLatency:251",
 			"name": "SessionManager.recordFirstTokenLatency",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 212,
-			"endLine": 222,
-			"statementCount": 10,
+			"line": 251,
+			"endLine": 262,
+			"statementCount": 11,
 			"exported": true,
 			"signature": "method recordFirstTokenLatency(sessionId: string)",
 			"description": "",
-			"callees": []
+			"callees": [
+				"src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116"
+			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.recordToolCall:224",
+			"id": "src/server/session-manager.ts/SessionManager.recordToolCall:264",
 			"name": "SessionManager.recordToolCall",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 224,
-			"endLine": 233,
-			"statementCount": 7,
+			"line": 264,
+			"endLine": 274,
+			"statementCount": 8,
 			"exported": true,
 			"signature": "method recordToolCall(sessionId: string, toolName: string, success: boolean, durationMs: number)",
 			"description": "",
-			"callees": []
+			"callees": [
+				"src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116"
+			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.recordRetry:235",
+			"id": "src/server/session-manager.ts/SessionManager.recordRetry:276",
 			"name": "SessionManager.recordRetry",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 235,
-			"endLine": 238,
-			"statementCount": 3,
+			"line": 276,
+			"endLine": 280,
+			"statementCount": 4,
 			"exported": true,
 			"signature": "method recordRetry(sessionId: string)",
 			"description": "",
-			"callees": []
+			"callees": [
+				"src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116"
+			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.recordTokenEstimate:240",
+			"id": "src/server/session-manager.ts/SessionManager.recordTokenEstimate:282",
 			"name": "SessionManager.recordTokenEstimate",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 240,
-			"endLine": 245,
-			"statementCount": 5,
+			"line": 282,
+			"endLine": 288,
+			"statementCount": 6,
 			"exported": true,
 			"signature": "method recordTokenEstimate(sessionId: string, input: number, output: number)",
 			"description": "",
-			"callees": []
+			"callees": [
+				"src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116"
+			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.recordTokenUsage:247",
+			"id": "src/server/session-manager.ts/SessionManager.recordTokenUsage:290",
 			"name": "SessionManager.recordTokenUsage",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 247,
-			"endLine": 266,
-			"statementCount": 7,
+			"line": 290,
+			"endLine": 310,
+			"statementCount": 8,
 			"exported": true,
 			"signature": "method recordTokenUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens?: number; cacheWriteTokens?: number; reasoningTokens?: number })",
 			"description": "",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.recordTokenUsage:247"
+				"src/server/session-manager.ts/SessionManager.recordTokenUsage:290",
+				"src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.getSessionMetrics:270",
+			"id": "src/server/session-manager.ts/SessionManager.getSessionMetrics:314",
 			"name": "SessionManager.getSessionMetrics",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 270,
-			"endLine": 272,
+			"line": 314,
+			"endLine": 316,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getSessionMetrics(sessionId: string)",
@@ -20293,12 +20527,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.getAllSessionMetrics:274",
+			"id": "src/server/session-manager.ts/SessionManager.getAllSessionMetrics:318",
 			"name": "SessionManager.getAllSessionMetrics",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 274,
-			"endLine": 280,
+			"line": 318,
+			"endLine": 324,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method getAllSessionMetrics()",
@@ -20306,12 +20540,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.getAggregateMetrics:282",
+			"id": "src/server/session-manager.ts/SessionManager.getAggregateMetrics:326",
 			"name": "SessionManager.getAggregateMetrics",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 282,
-			"endLine": 326,
+			"line": 326,
+			"endLine": 370,
 			"statementCount": 27,
 			"exported": true,
 			"signature": "method getAggregateMetrics()",
@@ -20319,27 +20553,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.startTtlCleanup:330",
+			"id": "src/server/session-manager.ts/SessionManager.startTtlCleanup:374",
 			"name": "SessionManager.startTtlCleanup",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 330,
-			"endLine": 334,
+			"line": 374,
+			"endLine": 378,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method startTtlCleanup()",
 			"description": "",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.runCleanup:343"
+				"src/server/session-manager.ts/SessionManager.runCleanup:387"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.stopTtlCleanup:336",
+			"id": "src/server/session-manager.ts/SessionManager.stopTtlCleanup:380",
 			"name": "SessionManager.stopTtlCleanup",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 336,
-			"endLine": 341,
+			"line": 380,
+			"endLine": 385,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method stopTtlCleanup()",
@@ -20347,58 +20581,58 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.runCleanup:343",
+			"id": "src/server/session-manager.ts/SessionManager.runCleanup:387",
 			"name": "SessionManager.runCleanup",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 343,
-			"endLine": 374,
+			"line": 387,
+			"endLine": 418,
 			"statementCount": 19,
 			"exported": true,
 			"signature": "method runCleanup()",
 			"description": "",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.evictSession:376"
+				"src/server/session-manager.ts/SessionManager.evictSession:420"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.evictSession:376",
+			"id": "src/server/session-manager.ts/SessionManager.evictSession:420",
 			"name": "SessionManager.evictSession",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 376,
-			"endLine": 385,
+			"line": 420,
+			"endLine": 429,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method evictSession(sessionId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.transition:400",
-				"src/server/session-manager.ts/SessionManager.touchActivity:413"
+				"src/server/session-manager.ts/SessionManager.transition:444",
+				"src/server/session-manager.ts/SessionManager.touchActivity:457"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.dispose:389",
+			"id": "src/server/session-manager.ts/SessionManager.dispose:433",
 			"name": "SessionManager.dispose",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 389,
-			"endLine": 396,
+			"line": 433,
+			"endLine": 440,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method dispose()",
 			"description": "",
 			"callees": [
-				"src/server/session-manager.ts/SessionManager.stopTtlCleanup:336"
+				"src/server/session-manager.ts/SessionManager.stopTtlCleanup:380"
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.transition:400",
+			"id": "src/server/session-manager.ts/SessionManager.transition:444",
 			"name": "SessionManager.transition",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 400,
-			"endLine": 411,
+			"line": 444,
+			"endLine": 455,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method transition(sessionId: string, to: SessionLifecycleState)",
@@ -20408,12 +20642,12 @@
 			]
 		},
 		{
-			"id": "src/server/session-manager.ts/SessionManager.touchActivity:413",
+			"id": "src/server/session-manager.ts/SessionManager.touchActivity:457",
 			"name": "SessionManager.touchActivity",
 			"kind": "method",
 			"file": "src/server/session-manager.ts",
-			"line": 413,
-			"endLine": 418,
+			"line": 457,
+			"endLine": 462,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method touchActivity(sessionId: string)",
@@ -20787,7 +21021,7 @@
 			"signature": "method delete(id: string)",
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
-				"src/server/data-change-hub.ts/emitDataChange:85"
+				"src/server/data-change-hub.ts/emitDataChange:108"
 			]
 		},
 		{
@@ -20818,7 +21052,7 @@
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
 				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:324",
-				"src/server/data-change-hub.ts/emitDataChange:85"
+				"src/server/data-change-hub.ts/emitDataChange:108"
 			]
 		},
 		{
@@ -20834,7 +21068,7 @@
 			"description": "Generic SQLite-backed store for records with `id`, `createdAt`, `updatedAt`.\r",
 			"callees": [
 				"src/server/sqlite-store.ts/SqliteStore.toColumnValue:324",
-				"src/server/data-change-hub.ts/emitDataChange:85"
+				"src/server/data-change-hub.ts/emitDataChange:108"
 			]
 		},
 		{
@@ -24449,120 +24683,120 @@
 		"src/main/ipc-proxy.ts/pollReady:410": [
 			"src/main/ipc-proxy.ts/connectEventBridge:372"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1192": [
-			"src/runtime/agent-loop.ts/AgentLoop.run:238",
-			"src/runtime/agent-loop.ts/AgentLoop.resume:312"
+		"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1203": [
+			"src/runtime/agent-loop.ts/AgentLoop.run:249",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:323"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1218": [
-			"src/runtime/agent-loop.ts/AgentLoop.run:238",
-			"src/runtime/agent-loop.ts/AgentLoop.resume:312",
-			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:542",
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576",
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:823",
-			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:959",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1103"
+		"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1229": [
+			"src/runtime/agent-loop.ts/AgentLoop.run:249",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:323",
+			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:553",
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587",
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:834",
+			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:970",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1114"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:542": [
-			"src/runtime/agent-loop.ts/AgentLoop.run:238",
-			"src/runtime/agent-loop.ts/AgentLoop.resume:312"
+		"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:553": [
+			"src/runtime/agent-loop.ts/AgentLoop.run:249",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:323"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.emit:1199": [
-			"src/runtime/agent-loop.ts/AgentLoop.run:238",
-			"src/runtime/agent-loop.ts/AgentLoop.resume:312",
-			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:542",
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576",
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:823",
-			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:959",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1103",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1175"
+		"src/runtime/agent-loop.ts/AgentLoop.emit:1210": [
+			"src/runtime/agent-loop.ts/AgentLoop.run:249",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:323",
+			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:553",
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587",
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:834",
+			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:970",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1114",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1186"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.abort:359": [
-			"src/runtime/agent-loop.ts/AgentLoop.abort:359",
-			"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1192"
+		"src/runtime/agent-loop.ts/AgentLoop.abort:370": [
+			"src/runtime/agent-loop.ts/AgentLoop.abort:370",
+			"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1203"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:384": [
-			"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:384"
+		"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:395": [
+			"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:395"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:389": [
-			"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:389",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1175"
+		"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:400": [
+			"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:400",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1186"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:394": [
-			"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:394",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1175"
+		"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:405": [
+			"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:405",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1186"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:399": [
-			"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:399",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1103",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1175"
+		"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:410": [
+			"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:410",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1114",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1186"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:425": [
-			"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:425"
+		"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:436": [
+			"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:436"
 		],
 		"src/runtime/wiki-anchor-injection.ts/resolveAnchors:136": [
-			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:475",
+			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:486",
 			"src/server/wiki-router.ts/createWikiRouter:63"
 		],
 		"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:210": [
-			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:475"
+			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:486"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.executeStream:576": [
-			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:542"
+		"src/runtime/agent-loop.ts/AgentLoop.executeStream:587": [
+			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:553"
 		],
 		"src/runtime/agent-utils.ts/classifyError:36": [
-			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:542",
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:823"
+			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:553",
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:834"
 		],
 		"src/runtime/agent-utils.ts/userFriendlyMessage:54": [
-			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:542"
+			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:553"
 		],
 		"src/runtime/provider-factory.ts/resolveModel:42": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576",
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587",
 			"src/runtime/compression-engine.ts/CompressionEngine.compressOldestTurn:189",
 			"src/runtime/compression-engine.ts/CompressionEngine.extractMemoryNodes:246",
 			"src/server/extractor-a-service.ts/ExtractorAService.callLLM:217",
 			"src/server/extractor-b-service.ts/ExtractorBService.callLLM:176",
 			"src/server/tool-execution-router.ts/createToolExecutionRouter:39"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.buildTools:734": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576"
+		"src/runtime/agent-loop.ts/AgentLoop.buildTools:745": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:746": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576"
+		"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:757": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587"
 		],
 		"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:291": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576",
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587",
 			"src/server/wiki-router.ts/createWikiRouter:63"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.resolveCurrentTask:794": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576"
+		"src/runtime/agent-loop.ts/AgentLoop.resolveCurrentTask:805": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587"
 		],
 		"src/runtime/context-message.ts/buildContextMessage:36": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576"
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587"
 		],
 		"src/runtime/tools/todo-write.ts/renderTodosContext:62": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576"
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.prependContext:754": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576"
+		"src/runtime/agent-loop.ts/AgentLoop.prependContext:765": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:823": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576"
+		"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:834": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1103": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576"
+		"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1114": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1175": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:576"
+		"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1186": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:587"
 		],
 		"src/runtime/tools/index.ts/buildToolsSet:162": [
-			"src/runtime/agent-loop.ts/AgentLoop.buildTools:734"
+			"src/runtime/agent-loop.ts/AgentLoop.buildTools:745"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:959": [
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:823"
+		"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:970": [
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:834"
 		],
 		"src/runtime/agent-utils.ts/isTransientError:50": [
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:823"
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:834"
 		],
 		"src/runtime/checkpoint-manager.ts/CheckpointManager.saveUserTurn:55": [
 			"src/runtime/checkpoint-manager.ts/CheckpointManager.saveUserTurn:55"
@@ -24904,27 +25138,43 @@
 		"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:716": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:716"
 		],
-		"src/runtime/task-registry.ts/TaskRegistry.get:132": [
-			"src/runtime/task-registry.ts/TaskRegistry.updateProgress:47",
-			"src/runtime/task-registry.ts/TaskRegistry.addUsage:55",
-			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:68",
-			"src/runtime/task-registry.ts/TaskRegistry.complete:77",
-			"src/runtime/task-registry.ts/TaskRegistry.fail:88",
-			"src/runtime/task-registry.ts/TaskRegistry.kill:99",
-			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:122",
-			"src/runtime/task-registry.ts/TaskRegistry.get:132",
-			"src/runtime/task-registry.ts/TaskRegistry.markNotified:164",
-			"src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:169"
+		"src/runtime/task-registry.ts/TaskRegistry.fireChange:52": [
+			"src/runtime/task-registry.ts/TaskRegistry._flushChangeForTest:46",
+			"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58"
 		],
-		"src/runtime/task-registry.ts/TaskRegistry.tryWake:225": [
-			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:68",
-			"src/runtime/task-registry.ts/TaskRegistry.complete:77",
-			"src/runtime/task-registry.ts/TaskRegistry.fail:88",
-			"src/runtime/task-registry.ts/TaskRegistry.kill:99",
-			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:122"
+		"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:58": [
+			"src/runtime/task-registry.ts/TaskRegistry.create:67",
+			"src/runtime/task-registry.ts/TaskRegistry.updateProgress:85",
+			"src/runtime/task-registry.ts/TaskRegistry.addUsage:94",
+			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:108",
+			"src/runtime/task-registry.ts/TaskRegistry.complete:118",
+			"src/runtime/task-registry.ts/TaskRegistry.fail:130",
+			"src/runtime/task-registry.ts/TaskRegistry.kill:142",
+			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:166",
+			"src/runtime/task-registry.ts/TaskRegistry.seed:188",
+			"src/runtime/task-registry.ts/TaskRegistry.cleanup:278"
 		],
-		"src/runtime/task-registry.ts/TaskRegistry.generateSummary:201": [
-			"src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:169"
+		"src/runtime/task-registry.ts/TaskRegistry.get:177": [
+			"src/runtime/task-registry.ts/TaskRegistry.updateProgress:85",
+			"src/runtime/task-registry.ts/TaskRegistry.addUsage:94",
+			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:108",
+			"src/runtime/task-registry.ts/TaskRegistry.complete:118",
+			"src/runtime/task-registry.ts/TaskRegistry.fail:130",
+			"src/runtime/task-registry.ts/TaskRegistry.kill:142",
+			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:166",
+			"src/runtime/task-registry.ts/TaskRegistry.get:177",
+			"src/runtime/task-registry.ts/TaskRegistry.markNotified:210",
+			"src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:215"
+		],
+		"src/runtime/task-registry.ts/TaskRegistry.tryWake:271": [
+			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:108",
+			"src/runtime/task-registry.ts/TaskRegistry.complete:118",
+			"src/runtime/task-registry.ts/TaskRegistry.fail:130",
+			"src/runtime/task-registry.ts/TaskRegistry.kill:142",
+			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:166"
+		],
+		"src/runtime/task-registry.ts/TaskRegistry.generateSummary:247": [
+			"src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:215"
 		],
 		"src/runtime/terminal-adapter.ts/TerminalAdapter.flushText:150": [
 			"src/runtime/terminal-adapter.ts/TerminalAdapter.handleEvent:60",
@@ -25954,14 +26204,14 @@
 		"src/server/agent-service.ts/createAgentService:1474": [
 			"src/server/index.ts/startServer:100"
 		],
-		"src/server/data-change-hub.ts/onDataChange:97": [
+		"src/server/data-change-hub.ts/onDataChange:120": [
 			"src/server/index.ts/startServer:100",
 			"src/server/project-work-hook-manager.ts/ProjectWorkHookManager.start:48"
 		],
 		"src/server/index.ts/broadcast:277": [
 			"src/server/index.ts/startServer:100"
 		],
-		"src/server/index.ts/reloadProviders:293": [
+		"src/server/index.ts/reloadProviders:314": [
 			"src/server/index.ts/startServer:100"
 		],
 		"src/server/mcp-scanner.ts/scanExternalMcpConfigs:156": [
@@ -25972,7 +26222,7 @@
 			"src/server/index.ts/startServer:100",
 			"src/server/mcp-router.ts/createMcpRouter:29"
 		],
-		"src/server/index.ts/rebuildStaleStructureLayouts:939": [
+		"src/server/index.ts/rebuildStaleStructureLayouts:960": [
 			"src/server/index.ts/startServer:100"
 		],
 		"src/server/config-router.ts/createConfigRouter:41": [
@@ -26041,15 +26291,24 @@
 		"src/server/index.ts/expandHome:81": [
 			"src/server/index.ts/startServer:100"
 		],
-		"src/server/input-queue-store.ts/InputQueueStore.emit:48": [
-			"src/server/input-queue-store.ts/InputQueueStore.enqueue:65",
-			"src/server/input-queue-store.ts/InputQueueStore.remove:80",
-			"src/server/input-queue-store.ts/InputQueueStore.promoteInsertNow:94",
-			"src/server/input-queue-store.ts/InputQueueStore.consumeInsertNow:114",
-			"src/server/input-queue-store.ts/InputQueueStore.peekInsertNow:145",
-			"src/server/input-queue-store.ts/InputQueueStore.commitDeliveredForStep:168",
-			"src/server/input-queue-store.ts/InputQueueStore.rollbackDeliveredForStep:195",
-			"src/server/input-queue-store.ts/InputQueueStore.drainNextQueued:213"
+		"src/server/data-change-hub.ts/emitDataChange:108": [
+			"src/server/input-queue-store.ts/InputQueueStore.emit:50",
+			"src/server/session-db.ts/SessionDB.createSession:281",
+			"src/server/session-db.ts/SessionDB.deleteSession:411",
+			"src/server/session-db.ts/SessionDB.archiveSession:423",
+			"src/server/sqlite-store.ts/SqliteStore.delete:265",
+			"src/server/sqlite-store.ts/SqliteStore.insertRow:310",
+			"src/server/sqlite-store.ts/SqliteStore.updateRow:316"
+		],
+		"src/server/input-queue-store.ts/InputQueueStore.emit:50": [
+			"src/server/input-queue-store.ts/InputQueueStore.enqueue:73",
+			"src/server/input-queue-store.ts/InputQueueStore.remove:88",
+			"src/server/input-queue-store.ts/InputQueueStore.promoteInsertNow:102",
+			"src/server/input-queue-store.ts/InputQueueStore.consumeInsertNow:122",
+			"src/server/input-queue-store.ts/InputQueueStore.peekInsertNow:153",
+			"src/server/input-queue-store.ts/InputQueueStore.commitDeliveredForStep:176",
+			"src/server/input-queue-store.ts/InputQueueStore.rollbackDeliveredForStep:203",
+			"src/server/input-queue-store.ts/InputQueueStore.drainNextQueued:221"
 		],
 		"src/server/key-value-store.ts/KeyValueStore.get:61": [
 			"src/server/key-value-store.ts/KeyValueStore.get:61",
@@ -26148,18 +26407,22 @@
 		"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1111": [
 			"src/server/management-service.ts/ManagementService.updateProjectWork:984"
 		],
-		"src/server/mcp-manager.ts/MCPManager.disconnect:145": [
-			"src/server/mcp-manager.ts/MCPManager.connect:65",
-			"src/server/mcp-manager.ts/MCPManager.disconnectAll:169",
-			"src/server/mcp-manager.ts/MCPManager.testConnection:222"
+		"src/server/mcp-manager.ts/MCPManager.disconnect:169": [
+			"src/server/mcp-manager.ts/MCPManager.connect:84",
+			"src/server/mcp-manager.ts/MCPManager.disconnectAll:194",
+			"src/server/mcp-manager.ts/MCPManager.testConnection:247"
 		],
-		"src/server/mcp-manager.ts/MCPManager.connect:65": [
-			"src/server/mcp-manager.ts/MCPManager.connect:65",
-			"src/server/mcp-manager.ts/MCPManager.testConnection:222",
-			"src/server/mcp-manager.ts/MCPManager.reconnectEnabled:233"
+		"src/server/mcp-manager.ts/MCPManager.connect:84": [
+			"src/server/mcp-manager.ts/MCPManager.connect:84",
+			"src/server/mcp-manager.ts/MCPManager.testConnection:247",
+			"src/server/mcp-manager.ts/MCPManager.reconnectEnabled:258"
 		],
-		"src/server/mcp-manager.ts/MCPManager.callTool:174": [
-			"src/server/mcp-manager.ts/MCPManager.callTool:174"
+		"src/server/mcp-manager.ts/MCPManager.emitChange:78": [
+			"src/server/mcp-manager.ts/MCPManager.connect:84",
+			"src/server/mcp-manager.ts/MCPManager.disconnect:169"
+		],
+		"src/server/mcp-manager.ts/MCPManager.callTool:199": [
+			"src/server/mcp-manager.ts/MCPManager.callTool:199"
 		],
 		"src/server/mcp-presets.ts/buildPresetConfig:86": [
 			"src/server/mcp-router.ts/createMcpRouter:29"
@@ -26214,7 +26477,7 @@
 			"src/server/notification-service.ts/NotificationService.notifyVerificationFailure:108",
 			"src/server/notification-service.ts/NotificationService.notifyPlanReviewRequired:128"
 		],
-		"src/server/orchestrate-store.ts/ConfirmRegistry.getInstance:191": [
+		"src/server/orchestrate-store.ts/ConfirmRegistry.getInstance:197": [
 			"src/server/orchestrate-router.ts/createOrchestrateRouter:41"
 		],
 		"src/server/orchestrate-store.ts/OrchestratePlanStore.list:90": [
@@ -26244,8 +26507,14 @@
 		"src/server/orchestrate-store.ts/OrchestrateManifestStore.create:154": [
 			"src/server/orchestrate-store.ts/OrchestrateManifestStore.create:154"
 		],
-		"src/server/orchestrate-store.ts/ConfirmRegistry.reject:225": [
-			"src/server/orchestrate-store.ts/ConfirmRegistry.drop:235"
+		"src/server/orchestrate-store.ts/ConfirmRegistry.emitChange:208": [
+			"src/server/orchestrate-store.ts/ConfirmRegistry.register:215",
+			"src/server/orchestrate-store.ts/ConfirmRegistry.confirm:234",
+			"src/server/orchestrate-store.ts/ConfirmRegistry.reject:245",
+			"src/server/orchestrate-store.ts/ConfirmRegistry.drop:256"
+		],
+		"src/server/orchestrate-store.ts/ConfirmRegistry.reject:245": [
+			"src/server/orchestrate-store.ts/ConfirmRegistry.drop:256"
 		],
 		"src/server/persona-store.ts/PersonaStore.createRecord:82": [
 			"src/server/persona-store.ts/PersonaStore.load:61",
@@ -26455,86 +26724,100 @@
 		"src/server/session-context-router.ts/buildProjectBundle:137": [
 			"src/server/session-context-router.ts/resolveSessionByRoleProject:98"
 		],
-		"src/server/session-db.ts/SessionDB.safeAddColumn:237": [
-			"src/server/session-db.ts/SessionDB.initSchema:99"
+		"src/server/session-db.ts/SessionDB.safeAddColumn:245": [
+			"src/server/session-db.ts/SessionDB.initSchema:107"
 		],
-		"src/server/session-db.ts/SessionDB.safeAddIndex:247": [
-			"src/server/session-db.ts/SessionDB.initSchema:99"
+		"src/server/session-db.ts/SessionDB.safeAddIndex:255": [
+			"src/server/session-db.ts/SessionDB.initSchema:107"
 		],
-		"src/server/session-db.ts/SessionDB.migrateToolNames:256": [
-			"src/server/session-db.ts/SessionDB.initSchema:99"
+		"src/server/session-db.ts/SessionDB.migrateToolNames:264": [
+			"src/server/session-db.ts/SessionDB.initSchema:107"
 		],
-		"src/server/session-db.ts/SessionDB.rowToRecord:976": [
-			"src/server/session-db.ts/SessionDB.getSession:305",
-			"src/server/session-db.ts/SessionDB.getMainSession:310",
-			"src/server/session-db.ts/SessionDB.getMostRecentSession:325",
-			"src/server/session-db.ts/SessionDB.listSessions:341",
-			"src/server/session-db.ts/SessionDB.listAllSessions:348",
-			"src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:364"
+		"src/server/session-db.ts/SessionDB.rowToRecord:995": [
+			"src/server/session-db.ts/SessionDB.getSession:317",
+			"src/server/session-db.ts/SessionDB.getMainSession:322",
+			"src/server/session-db.ts/SessionDB.getMostRecentSession:337",
+			"src/server/session-db.ts/SessionDB.listSessions:353",
+			"src/server/session-db.ts/SessionDB.listAllSessions:360",
+			"src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:376"
 		],
-		"src/server/session-db.ts/SessionDB.createSession:273": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:506"
+		"src/server/session-db.ts/SessionDB.createSession:281": [
+			"src/server/session-db.ts/SessionDB.migrateMessageFiles:525"
 		],
-		"src/server/session-db.ts/SessionDB.setMainSession:333": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:506"
+		"src/server/session-db.ts/SessionDB.setMainSession:345": [
+			"src/server/session-db.ts/SessionDB.migrateMessageFiles:525"
 		],
-		"src/server/session-db.ts/SessionDB.saveTurn:445": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:506"
+		"src/server/session-db.ts/SessionDB.saveTurn:464": [
+			"src/server/session-db.ts/SessionDB.migrateMessageFiles:525"
 		],
-		"src/server/session-db.ts/SessionDB.ensureSession:493": [
-			"src/server/session-db.ts/SessionDB.appendStep:607",
-			"src/server/session-db.ts/SessionDB.upsertStep:630"
+		"src/server/session-db.ts/SessionDB.ensureSession:512": [
+			"src/server/session-db.ts/SessionDB.appendStep:626",
+			"src/server/session-db.ts/SessionDB.upsertStep:649"
 		],
-		"src/server/session-db.ts/SessionDB.toolExecRowToRecord:948": [
-			"src/server/session-db.ts/SessionDB.queryToolExecutions:903"
+		"src/server/session-db.ts/SessionDB.toolExecRowToRecord:967": [
+			"src/server/session-db.ts/SessionDB.queryToolExecutions:922"
 		],
-		"src/server/session-db.ts/SessionDB.close:968": [
-			"src/server/session-db.ts/SessionDB.close:968"
+		"src/server/session-db.ts/SessionDB.close:987": [
+			"src/server/session-db.ts/SessionDB.close:987"
 		],
-		"src/server/session-db.ts/SessionDB.getDelegatedTask:1118": [
-			"src/server/session-db.ts/SessionDB.createDelegatedTask:1052",
-			"src/server/session-db.ts/SessionDB.updateDelegatedTask:1087"
+		"src/server/session-db.ts/SessionDB.getDelegatedTask:1137": [
+			"src/server/session-db.ts/SessionDB.createDelegatedTask:1071",
+			"src/server/session-db.ts/SessionDB.updateDelegatedTask:1106"
 		],
-		"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1025": [
-			"src/server/session-db.ts/SessionDB.getDelegatedTask:1118",
-			"src/server/session-db.ts/SessionDB.listDelegatedTasks:1123"
+		"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1044": [
+			"src/server/session-db.ts/SessionDB.getDelegatedTask:1137",
+			"src/server/session-db.ts/SessionDB.listDelegatedTasks:1142"
 		],
-		"src/server/session-manager.ts/SessionManager.transition:400": [
-			"src/server/session-manager.ts/SessionManager.trackSessionCreated:93",
-			"src/server/session-manager.ts/SessionManager.trackSessionActivated:101",
-			"src/server/session-manager.ts/SessionManager.trackSessionQueued:107",
-			"src/server/session-manager.ts/SessionManager.trackSessionStreaming:113",
-			"src/server/session-manager.ts/SessionManager.trackSessionExecutingTools:127",
-			"src/server/session-manager.ts/SessionManager.trackSessionIdle:133",
-			"src/server/session-manager.ts/SessionManager.trackSessionError:151",
-			"src/server/session-manager.ts/SessionManager.trackSessionDisposed:175",
-			"src/server/session-manager.ts/SessionManager.evictSession:376"
+		"src/server/session-manager.ts/SessionManager.fireMetrics:110": [
+			"src/server/session-manager.ts/SessionManager._flushMetricsForTest:104",
+			"src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116"
 		],
-		"src/server/session-manager.ts/SessionManager.touchActivity:413": [
-			"src/server/session-manager.ts/SessionManager.trackSessionCreated:93",
-			"src/server/session-manager.ts/SessionManager.trackSessionActivated:101",
-			"src/server/session-manager.ts/SessionManager.trackSessionQueued:107",
-			"src/server/session-manager.ts/SessionManager.trackSessionStreaming:113",
-			"src/server/session-manager.ts/SessionManager.trackSessionExecutingTools:127",
-			"src/server/session-manager.ts/SessionManager.trackSessionIdle:133",
-			"src/server/session-manager.ts/SessionManager.trackSessionError:151",
-			"src/server/session-manager.ts/SessionManager.trackSessionDisposed:175",
-			"src/server/session-manager.ts/SessionManager.evictSession:376"
+		"src/server/session-manager.ts/SessionManager.transition:444": [
+			"src/server/session-manager.ts/SessionManager.trackSessionCreated:129",
+			"src/server/session-manager.ts/SessionManager.trackSessionActivated:137",
+			"src/server/session-manager.ts/SessionManager.trackSessionQueued:143",
+			"src/server/session-manager.ts/SessionManager.trackSessionStreaming:149",
+			"src/server/session-manager.ts/SessionManager.trackSessionExecutingTools:164",
+			"src/server/session-manager.ts/SessionManager.trackSessionIdle:170",
+			"src/server/session-manager.ts/SessionManager.trackSessionError:189",
+			"src/server/session-manager.ts/SessionManager.trackSessionDisposed:214",
+			"src/server/session-manager.ts/SessionManager.evictSession:420"
 		],
-		"src/server/session-manager.ts/SessionManager.recordTokenUsage:247": [
-			"src/server/session-manager.ts/SessionManager.recordTokenUsage:247"
+		"src/server/session-manager.ts/SessionManager.touchActivity:457": [
+			"src/server/session-manager.ts/SessionManager.trackSessionCreated:129",
+			"src/server/session-manager.ts/SessionManager.trackSessionActivated:137",
+			"src/server/session-manager.ts/SessionManager.trackSessionQueued:143",
+			"src/server/session-manager.ts/SessionManager.trackSessionStreaming:149",
+			"src/server/session-manager.ts/SessionManager.trackSessionExecutingTools:164",
+			"src/server/session-manager.ts/SessionManager.trackSessionIdle:170",
+			"src/server/session-manager.ts/SessionManager.trackSessionError:189",
+			"src/server/session-manager.ts/SessionManager.trackSessionDisposed:214",
+			"src/server/session-manager.ts/SessionManager.evictSession:420"
 		],
-		"src/server/session-manager.ts/SessionManager.runCleanup:343": [
-			"src/server/session-manager.ts/SessionManager.startTtlCleanup:330"
+		"src/server/session-manager.ts/SessionManager.scheduleMetricsChange:116": [
+			"src/server/session-manager.ts/SessionManager.trackSessionStreaming:149",
+			"src/server/session-manager.ts/SessionManager.trackSessionIdle:170",
+			"src/server/session-manager.ts/SessionManager.trackSessionError:189",
+			"src/server/session-manager.ts/SessionManager.recordFirstTokenLatency:251",
+			"src/server/session-manager.ts/SessionManager.recordToolCall:264",
+			"src/server/session-manager.ts/SessionManager.recordRetry:276",
+			"src/server/session-manager.ts/SessionManager.recordTokenEstimate:282",
+			"src/server/session-manager.ts/SessionManager.recordTokenUsage:290"
 		],
-		"src/server/session-manager.ts/SessionManager.evictSession:376": [
-			"src/server/session-manager.ts/SessionManager.runCleanup:343"
+		"src/server/session-manager.ts/SessionManager.recordTokenUsage:290": [
+			"src/server/session-manager.ts/SessionManager.recordTokenUsage:290"
 		],
-		"src/server/session-manager.ts/SessionManager.stopTtlCleanup:336": [
-			"src/server/session-manager.ts/SessionManager.dispose:389"
+		"src/server/session-manager.ts/SessionManager.runCleanup:387": [
+			"src/server/session-manager.ts/SessionManager.startTtlCleanup:374"
+		],
+		"src/server/session-manager.ts/SessionManager.evictSession:420": [
+			"src/server/session-manager.ts/SessionManager.runCleanup:387"
+		],
+		"src/server/session-manager.ts/SessionManager.stopTtlCleanup:380": [
+			"src/server/session-manager.ts/SessionManager.dispose:433"
 		],
 		"src/server/session-lifecycle.ts/isValidTransition:42": [
-			"src/server/session-manager.ts/SessionManager.transition:400"
+			"src/server/session-manager.ts/SessionManager.transition:444"
 		],
 		"src/server/session-router.ts/getDb:47": [
 			"src/server/session-router.ts/createSessionRouter:38"
@@ -26580,11 +26863,6 @@
 		],
 		"src/server/sqlite-store.ts/SqliteStore.updateRow:316": [
 			"src/server/sqlite-store.ts/SqliteStore.update:229"
-		],
-		"src/server/data-change-hub.ts/emitDataChange:85": [
-			"src/server/sqlite-store.ts/SqliteStore.delete:265",
-			"src/server/sqlite-store.ts/SqliteStore.insertRow:310",
-			"src/server/sqlite-store.ts/SqliteStore.updateRow:316"
 		],
 		"src/server/sqlite-store.ts/SqliteStore.toColumnValue:324": [
 			"src/server/sqlite-store.ts/SqliteStore.insertRow:310",
@@ -28007,7 +28285,9 @@
 		],
 		"src/server/data-change-hub.ts": [
 			"src/server/index.ts",
+			"src/server/input-queue-store.ts",
 			"src/server/project-work-hook-manager.ts",
+			"src/server/session-db.ts",
 			"src/server/sqlite-store.ts"
 		],
 		"src/server/mcp-store.ts": [
