@@ -129,7 +129,10 @@ export default function CronDashboard() {
 	const [expanded, setExpanded] = useState<Set<string>>(new Set());
 	const [, forceTick] = useState(0);
 
-	// 1s tick so countdowns / now-cursor move without re-fetching.
+	// N3 (runtime-push-ui-sync): 1s local-clock tick so countdowns / now-cursor
+	// move smoothly. This is the DECLARED exception to "zero setInterval" — it
+	// performs NO fetch (forceTick only re-renders; cron records arrive via
+	// cron-store's data:changed subscription, mounted pull-on-display below).
 	useEffect(() => {
 		const t = setInterval(() => forceTick((n) => n + 1), 1000);
 		return () => clearInterval(t);

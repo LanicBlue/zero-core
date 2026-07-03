@@ -47,7 +47,6 @@ export default function LogViewer() {
 	const [entries, setEntries] = useState<LogEntry[]>([]);
 	const [level, setLevel] = useState<LogLevel>("all");
 	const [lines, setLines] = useState(200);
-	const [autoRefresh, setAutoRefresh] = useState(true);
 	const bodyRef = useRef<HTMLDivElement>(null);
 	const prevScrollTop = useRef(0);
 
@@ -83,11 +82,13 @@ export default function LogViewer() {
 		loadEntries();
 	}, [selectedFile, lines, level]);
 
-	useEffect(() => {
-		if (!autoRefresh || selectedFile !== today) return;
-		const timer = setInterval(loadEntries, 5000);
-		return () => clearInterval(timer);
-	}, [autoRefresh, selectedFile, today, loadEntries]);
+	// N3 (runtime-push-ui-sync): the log file is NOT runtime — no auto-refresh
+	// timer. The file is read once on open / level / line-count change, and the
+	// header "Refresh" button triggers a single re-read on demand.
+	const refresh = useCallback(() => {
+		void loadFiles();
+		void loadEntries();
+	}, [loadFiles, loadEntries]);
 
 	const handleFileChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
 		setSelectedFile(e.target.value);
@@ -105,7 +106,7 @@ export default function LogViewer() {
 		<>
 			<div className="log-panel-header">
 				<span>Logs</span>
-				<button type="button" style={{ fontSize: 11 }} onClick={loadFiles}>Refresh</button>
+				<button type="button" style={{ fontSize: 11 }} onClick={refresh}>Refresh</button>
 			</div>
 			<div className="log-toolbar">
 				<select value={selectedFile} onChange={handleFileChange} className="log-file-select">

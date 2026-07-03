@@ -23,6 +23,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useChatStore, selectActiveAgentId } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
+import { usePageStore } from "../../store/page-store.js";
 import type { AgentRecord } from "../../../shared/types.js";
 
 interface FileEntry {
@@ -48,6 +49,11 @@ export default function FileTreePanel() {
 	const activeAgentId = useChatStore(selectActiveAgentId);
 	const activeSessionId = useChatStore((s) => s.activeSessionId);
 	const sessionsByAgent = useChatStore((s) => s.sessionsByAgent);
+	// N3 (runtime-push-ui-sync): the file system is NOT runtime — no fs watcher,
+	// no periodic fetch. Pull-on-display only (mount / root change / manual
+	// refresh button). The chat-page overlay keeps this panel mounted while the
+	// user is on another top-level page, so fetchTree additionally gates auto
+	// pulls by activePage === "chat" (read live via usePageStore.getState()).
 	const agents = useAgentStore((s) => s.agents);
 	const activeAgent = agents.find((a: AgentRecord) => a.id === activeAgentId) ?? null;
 	// project session → 用项目工作区(右侧目录即项目目录,方便观察 agent 操作);
@@ -96,7 +102,12 @@ export default function FileTreePanel() {
 		return apply(fresh);
 	};
 
-	const fetchTree = useCallback(async () => {
+	const fetchTree = useCallback(async (opts?: { force?: boolean }) => {
+		// N3: skip automatic pulls when the chat page isn't the active page (the
+		// panel stays mounted under the overlay). The manual refresh button passes
+		// `force: true` so an explicit user click always fetches regardless of the
+		// current page.
+		if (!opts?.force && usePageStore.getState().activePage !== "chat") return;
 		if (!effectiveRoot) return;
 		try {
 			const data = await api().filesTree(effectiveRoot);
@@ -108,10 +119,11 @@ export default function FileTreePanel() {
 		} catch { /* */ }
 	}, [effectiveRoot]);
 
+	// N3: pull-on-display — fetch ONCE on mount / when the root changes. No
+	// periodic polling (no fs watcher, no timer-based polling). Background writes
+	// are not reflected until the user clicks "Refresh".
 	useEffect(() => {
 		fetchTree();
-		const interval = setInterval(fetchTree, 5000);
-		return () => clearInterval(interval);
 	}, [fetchTree]);
 
 	const toggleDir = (dirPath: string) => {
@@ -164,7 +176,7 @@ export default function FileTreePanel() {
 		<div className="file-tree-panel">
 			<div className="file-tree-header">
 				<span>{shortDir}</span>
-				<button type="button" className="btn-icon" onClick={fetchTree} title="Refresh">{"↻"}</button>
+				<button type="button" className="btn-icon" onClick={() => fetchTree({ force: true })} title="Refresh">{"↻"}</button>
 			</div>
 			<div className="file-tree-body">
 				{tree.length === 0 ? (
