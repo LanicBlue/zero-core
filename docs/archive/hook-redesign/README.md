@@ -14,6 +14,6 @@ per-loop registry + step 中心 + 去 turn 表的那次重做,已全部合并到
 - `hook-redesign/steps/<unit>/impl.md` + `accept.md` — 每个 green-unit 的实现/验收 spec(1A–5B)
 - `hook-redesign-steps.md` — 旧的分步索引(拆细前的入口,已指向 README)
 
-**权威 spec 留在 design 根**:[`../hook-step-redesign.md`](../hook-step-redesign.md)(背景、命名映射、step 级恢复设计),arch 文档(03/05/09)引用的就是它。
+**权威 spec 留在 design 根**:[`./hook-step-redesign.md`](./hook-step-redesign.md)(背景、命名映射、step 级恢复设计),arch 文档(03/05/09)引用的就是它。
 
-> 这些是执行期的拆分文档,工作完成后归档。要理解当前的 hook 系统请读 `../hook-step-redesign.md` + `docs/arch/03-runtime-engine.md`,不要回这里翻步骤。
+> 这些是执行期的拆分文档,工作完成后归档。要理解当前的 hook 系统请读 `./hook-step-redesign.md` + `docs/arch/03-runtime-engine.md`,不要回这里翻步骤。

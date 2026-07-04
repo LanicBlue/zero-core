@@ -1,79 +1,21 @@
-# docs/design — 设计文档统一入口
+# docs/design — 设计 spec(进行中)
 
-所有**设计 / RFC / 实现计划 / 验收**文档按"努力"(effort)分子目录存放。每个子目录是一次完整的设计努力,内部自带它的 spec、计划、验收与归档。
+放**正在讨论/细化**的设计 spec。每个主题一个子目录,至少一份 spec 文件。
 
-> 当前架构以 [`../arch/`](../arch/) 为准(基于代码反向推导)。本目录是**为什么这么设计 + 按什么顺序落地**的来源记录,不一定与最新代码逐字同步;代码是唯一真相。
+> **当前状态:无进行中的设计 effort。** 已完成的 5 个 effort 全部归档到 [`../archive/`](../archive/):
+> - `archive/agent-driven-workflow/`(v0.8 多 agent 工作流,P0–P9)
+> - `archive/hook-redesign/`(hook 生命周期重做)
+> - `archive/project-flow/`(需求→代码合并 Flow)
+> - `archive/runtime-push-ui-sync/`(运行时推送 · UI 窗口,N1–N4)
+> - `archive/agent-context-fields/`(上下文字段接通,C1–C3)
+>
+> 当前架构以 [`../arch/`](../arch/) 为准(code-as-truth)。本目录是"为什么这么设计"的来源;一旦 effort 合并 master,spec 随 plan/acceptance 一起沉到 `archive/`。
 
-## 目录布局
+## 约定(新 effort 进来时)
 
-```
-docs/design/
-├── README.md                ← 本文
-├── agent-driven-workflow/   ← v0.8 多 Agent 工作流重构(原 docs/rfc/)
-├── hook-redesign/           ← hook 生命周期重做(per-loop registry + step 中心)
-├── runtime-push-ui-sync/    ← 运行时推送 · UI 窗口(单一真源 · 零轮询)(已落地 N1–N4)
-├── agent-context-fields/    ← Agent 上下文字段接通(contextConfig/skillPolicy/knowledgeBaseIds 死字段)
-└── project-flow/            ← 需求→代码合并的统一流转(Flow 工具:迁态+发 hook,work 订阅反应)
-```
+- 发现问题 → 先建 [`../issues/<name>.md`](../issues/)。
+- 讨论细化 → 在本目录建 `<topic>/`,至少一份 spec。
+- 需求明确 → 拆 [`../plan/<topic>/`](../plan/)(sub-impl + acceptance 一一对应)。
+- 合并 master → 整组(spec + plan + acceptance)移到 [`../archive/<topic>/`](../archive/)。
 
-## 各努力说明
-
-### agent-driven-workflow/(v0.8 工作流)
-
-原 `docs/rfc/` 整体迁入。一次努力的完整四件套都在这里(RFC + 执行 spec + 计划 + 验收),并非纯 RFC 目录:
-
-| 文件 | 性质 | 作用 |
-|------|------|------|
-| `agent-driven-workflow.md` | **设计 RFC** | 为什么 / 是什么(54 条决策 + 变更沿革 v0.1→v0.8) |
-| `workflow-spec.md` | 执行 spec | 真实代码里流程怎么走(触发点/数据流/IPC/存储/prompt 契约,标 `文件:行号`) |
-| `impl-plan.md` | 计划索引 | 按什么顺序做、怎么算 done |
-| `plan-Px.md` × 10 | 实现计划 | 每阶段(P0–P9)的实现拆解 |
-| `acceptance-Px.md` × 10 | 验收标准 | 每阶段的 done 判定 |
-| `platform-notes.md` | 平台备忘 | 平台相关注意事项 |
-| `archive/` | 已退役 | M0–M5 里程碑级计划(被 P0–P9 取代) |
-
-### hook-redesign/(hook 生命周期重做)
-
-| 文件 | 性质 | 作用 |
-|------|------|------|
-| `hook-step-redesign.md` | **权威 spec** | per-loop registry + step 中心 + 去 turn 表(背景/命名映射/step 级恢复) |
-| `archive/` | 已完成 | 重做的 per-unit 执行步骤(1A–5B 的 impl/accept),已合并到 master |
-
-### runtime-push-ui-sync/(运行时推送 · UI 窗口)
-
-| 文件 | 性质 | 作用 |
-|------|------|------|
-| `runtime-push-ui-sync.md` | **设计(已落地 N1–N4)** | UI 是运行时的展示窗口——四条不变量(所见即所跑 / 只更新变化部分 / 运行时状态变即实时反应 / 架构统一易扩展)+ 两类数据(状态 record / 流 stream)各一套统一契约。N1–N4 已实现合入 master(commit e66c452 / 554301d / 47aa35a / 87b5983);N4 实现时核实 contextConfig/skillPolicy/knowledgeBaseIds 为 Electron 路径死字段,接通留待后续 effort |
-| `conventions.md` | 实现规约 | 冷启动 subagent 必读的项目级硬规约(三层 tsc / sessions.db 只读 / commit / Edit 陷阱 / 不动他人代码 / 层级边界) |
-| `plan-N1.md` / `acceptance-N1.md` | 实现路线 / 测试要求 | N1 统一状态流基建(桥 + runtime emit + 白名单 + session emit) |
-| `plan-N2.md` / `acceptance-N2.md` | 实现路线 / 测试要求 | N2 UI 推送驱动 + 消闪烁 + 重连 resync(依赖 N1) |
-| `plan-N3.md` / `acceptance-N3.md` | 实现路线 / 测试要求 | N3 文件系统零轮询(非运行时) |
-| `plan-N4.md` / `acceptance-N4.md` | 实现路线 / 测试要求 | N4 配置字段热更(不变量 1:所见即所跑) |
-
-### agent-context-fields/(Agent 上下文字段接通)
-
-runtime-push N4 核实出的"死字段"接通 effort。三个字段性质不同:contextConfig(prompt 组合开关,半死)、skillPolicy(skill 有扫描器+UI 但运行时不消费)、knowledgeBaseIds(整个知识库系统都不存在)。
-
-| 文件 | 性质 | 作用 |
-|------|------|------|
-| `agent-context-fields.md` | **设计 Draft** | 现状审计 + 逐字段方案 + 6 个待产品决策项 + 建议节点拆分(C1–C4 + 独立 KB effort) |
-
-### project-flow/(需求→代码合并的统一流转)
-
-把"需求→代码合并"整条交付链统一成 project 类的 `Flow` 工具。**Flow 只做状态迁移 + 发 hook,下游(PM 判断、archivist 合并、交付执行)全靠 work 订阅 hook 反应**——不在工具里硬编码。
-
-| 文件 | 性质 | 作用 |
-|------|------|------|
-| `project-flow.md` | **设计 Draft** | 模型(迁态+发hook、work订阅)+ 状态机/action/驱动 + hook 词表 + 5 个架构变更 + 责任矩阵 |
-| `plan-F1.md` / `acceptance-F1.md` | 实现路线 / 测试要求 | F1 Flow 骨架 + create/list/get |
-| `plan-F2.md` / `acceptance-F2.md` | 实现路线 / 测试要求 | F2 迁移 action + hook 信号机制(依赖 F1) |
-| `plan-F3.md` / `acceptance-F3.md` | 实现路线 / 测试要求 | F3 拆 verify + work 重配 + 替换旧工具(依赖 F2) |
-| `plan-F4.md` / `acceptance-F4.md` | 实现路线 / 测试要求 | F4 UI 接入(用户操作=未暴露 agent 的 action)(依赖 F3) |
-| `plan-F5.md` / `acceptance-F5.md` | 实现路线 / 测试要求 | F5 清理(删旧文件 / 注释 / code-graph / 回归) |
-
-## 约定
-
-- **新努力**:在 `docs/design/` 下新建一个子目录,至少含一份 spec(为什么/是什么)。是否拆 plan/acceptance 由努力规模决定。
-- **完成或被取代的努力**:整体移到该努力自己的 `archive/` 子目录(而非顶层 `archive/`),保留历史。
-- **跨努力导航**:从本 README 进;努力内部用相对链接。
-- 旧路径 `docs/rfc/` 已废弃 → 现为 `docs/design/agent-driven-workflow/`。
+完整生命周期见 [`../issues/README.md`](../issues/README.md)。

@@ -1,6 +1,6 @@
 # plan-F4 — UI 接入(复用现有控件)+ 公共后端 + 迁移
 
-> 节点 F4(依赖 F3)。目标:用户确认动作(pick/ready/startBuild/verify)经现有 UI 控件 → Flow action 公共后端;既有项目交付 work hook + 旧文档路径迁移。**文档查看无需新 UI**(doc 是文件,现有文件树 → DocViewerPanel 已能显示)。对应 [project-flow.md](project-flow.md) §4/§5/§9。
+> 节点 F4(依赖 F3)。目标:用户确认动作(pick/ready/startBuild/verify)经现有 UI 控件 → Flow action 公共后端;既有项目交付 work hook + 旧文档路径迁移。**文档查看无需新 UI**(doc 是文件,现有文件树 → DocViewerPanel 已能显示)。对应 [project-flow.md](./project-flow.md) §4/§5/§9。
 
 ## 范围(按最终模型 —— doc 是文件、不加导航、文件树跟 worktree)
 1. **抽 Flow action 公共后端**:把 flow-tool execute 里的"迁态 + 写文档段 + emitTransition"(以及 verify 复合逻辑)抽成共享函数,Flow execute 与 REST 都调——单源,不分叉。
