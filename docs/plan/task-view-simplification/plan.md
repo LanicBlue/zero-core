@@ -27,20 +27,24 @@
 
 ---
 
-## sub-2:右栏 TaskDetailView 去对话 pane + 去可调两栏
+## sub-2:右栏 TaskDetailView 留对话,删顶部 metadata pane + 去两栏
+
+> 分工:metadata 摘要在中间栏列表(sub-1);右栏专心显示委派 session 的对话(与主聊天是不同 session,不算重复)。
 
 **文件**:`src/renderer/components/layout/TaskDetailView.tsx` + `global.css`
 
 **改动**:
-- 删 `detailWeight` state(line 36)、`startDrag`(line 63-85)、splitter(line 109)、conversation pane(line 110-119)。
-- 删 messages fetch(line 50-52)+ `MessageRow`/`ChatMessage` import(不再用)。
-- 只留顶部 metadata grid(line 97-106:status/target/turns/tokens/tool/task/error/result)。
-- CSS:`.task-detail-view` 去掉 flex 上下分栏,单栏 metadata。
+- 删顶部 metadata pane(`<div className="task-detail-pane">` 的 `<dl className="task-detail-grid">`,line 91-108)+ splitter(line 109)。
+- **保留** conversation pane(line 110-119),占满整个 view(去 `flex: ${2-detailWeight}`,改单栏填满)。
+- 删 `detailWeight` state(line 36)+ `startDrag`(line 63-85)(无两栏了)。
+- `messages` fetch(line 50-52)+ `MessageRow`/`ChatMessage` import **保留**(对话要用)。
+- `record` fetch(line 46-48)保留(avatarLetter 用 `targetAgentId`);若确认无其它字段消费可简化,默认保留。
+- CSS:`.task-detail-view` 去上下分栏;`.task-detail-conversation` 填满。
 
 **验收**:
-- [ ] 无 splitter、无对话 pane;只剩顶部基本信息。
-- [ ] 选中 task 仍正常显示 metadata。
-- [ ] `npm run build:lib` + `vitest` 绿(注意 MessageRow 若他处不用,确认无残留引用)。
+- [ ] 右栏只剩对话 pane,无顶部 metadata、无 splitter。
+- [ ] 对话(MessageRow)正常渲染,占满右栏。
+- [ ] `npm run build:lib` + `vitest` 绿。
 
 ---
 
@@ -66,5 +70,5 @@
 tool-rename(sub-B → sub-D)完成并提交后,回到 master,建 branch `task-view-simplification`,按 sub-1 → sub-2 → sub-3 顺序实施+验收,各 commit,不合并 master(待用户同意)。合并后归档。
 
 ## 风险
-- sub-2 删 MessageRow import 前确认 TaskDetailView 是它在 layout/ 的唯一消费者(chat/ 内另有定义则无影响)。
+- sub-2 保留 MessageRow/messages fetch;确认 `record` fetch 删 metadata 后仍被消费(avatarLetter 用 targetAgentId),否则连 record fetch 一起简化。
 - sub-3 拖拽权重:跳过折叠段时 `totalOpen`/权重计算仍按 open 段集合,行为应与现状(全 open 时)一致。
