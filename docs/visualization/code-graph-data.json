@@ -1243,7 +1243,7 @@
 		},
 		{
 			"path": "src/runtime/tools/index.ts",
-			"lines": 278,
+			"lines": 281,
 			"dir": "src/runtime/tools",
 			"exports": [
 				"registerRuntimeTools",
@@ -1274,6 +1274,7 @@
 				"src/runtime/mcp-tools/platform-tools.ts",
 				"src/runtime/tools/orchestrate-tool.ts",
 				"src/runtime/tools/project-tool.ts",
+				"src/runtime/tools/work-tool.ts",
 				"src/runtime/tools/agent-registry.ts",
 				"src/runtime/tools/cron-tool.ts",
 				"src/runtime/tools/wiki-tool.ts",
@@ -1281,12 +1282,12 @@
 				"src/core/tool-registry.ts"
 			],
 			"functions": [
-				"src/runtime/tools/index.ts/getPlatformTools:69",
-				"src/runtime/tools/index.ts/registerRuntimeTools:148",
-				"src/runtime/tools/index.ts/buildToolsSet:170",
-				"src/runtime/tools/index.ts/isEnabled:202",
-				"src/runtime/tools/index.ts/getToolCategories:248",
-				"src/runtime/tools/index.ts/getAllToolInfo:261"
+				"src/runtime/tools/index.ts/getPlatformTools:70",
+				"src/runtime/tools/index.ts/registerRuntimeTools:151",
+				"src/runtime/tools/index.ts/buildToolsSet:173",
+				"src/runtime/tools/index.ts/isEnabled:205",
+				"src/runtime/tools/index.ts/getToolCategories:251",
+				"src/runtime/tools/index.ts/getAllToolInfo:264"
 			],
 			"description": "工具注册中心：registerBuiltInTools，导出所有内置工具（bash/read/write/edit/grep/glob/web-search/todo/agent/ask-user）"
 		},
@@ -2203,6 +2204,22 @@
 				"src/runtime/tools/wiki-tool.ts/synthesizePath:119",
 				"src/runtime/tools/wiki-tool.ts/resolveNode:131",
 				"src/runtime/tools/wiki-tool.ts/walk:269"
+			],
+			"description": ""
+		},
+		{
+			"path": "src/runtime/tools/work-tool.ts",
+			"lines": 148,
+			"dir": "src/runtime/tools",
+			"exports": [],
+			"imports": [
+				"src/runtime/tools/tool-factory.ts",
+				"src/server/management-service.ts"
+			],
+			"functions": [
+				"src/runtime/tools/work-tool.ts/mgmt:27",
+				"src/runtime/tools/work-tool.ts/safe:33",
+				"src/runtime/tools/work-tool.ts/requireField:42"
 			],
 			"description": ""
 		},
@@ -6120,7 +6137,7 @@
 			"signature": "method buildTools()",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/index.ts/buildToolsSet:170"
+				"src/runtime/tools/index.ts/buildToolsSet:173"
 			]
 		},
 		{
@@ -9920,12 +9937,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/index.ts/getPlatformTools:69",
+			"id": "src/runtime/tools/index.ts/getPlatformTools:70",
 			"name": "getPlatformTools",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 69,
-			"endLine": 74,
+			"line": 70,
+			"endLine": 75,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "function getPlatformTools()",
@@ -9935,12 +9952,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/registerRuntimeTools:148",
+			"id": "src/runtime/tools/index.ts/registerRuntimeTools:151",
 			"name": "registerRuntimeTools",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 148,
-			"endLine": 168,
+			"line": 151,
+			"endLine": 171,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "function registerRuntimeTools(registry: ToolRegistry)",
@@ -9953,27 +9970,27 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/buildToolsSet:170",
+			"id": "src/runtime/tools/index.ts/buildToolsSet:173",
 			"name": "buildToolsSet",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 170,
-			"endLine": 242,
+			"line": 173,
+			"endLine": 245,
 			"statementCount": 34,
 			"exported": true,
 			"signature": "function buildToolsSet(policy: {\r\n\t\tautoApprove?: string[];\r\n\t\tblockedTools?: string[];\r\n\t\ttools?: Record<string, { enabled: boolean }>;\r\n\t\texecutionMode?: \"sequential\" | \"parallel\";\r\n\t\tresultMaxTokens?: number;\r\n\t}, context: ToolExecutionContext, mcpTools?: Record<string, any>)",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/index.ts/isEnabled:202"
+				"src/runtime/tools/index.ts/isEnabled:205"
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/isEnabled:202",
+			"id": "src/runtime/tools/index.ts/isEnabled:205",
 			"name": "isEnabled",
 			"kind": "arrow",
 			"file": "src/runtime/tools/index.ts",
-			"line": 202,
-			"endLine": 210,
+			"line": 205,
+			"endLine": 213,
 			"statementCount": 9,
 			"exported": false,
 			"signature": "fn (name: string)",
@@ -9981,12 +9998,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/index.ts/getToolCategories:248",
+			"id": "src/runtime/tools/index.ts/getToolCategories:251",
 			"name": "getToolCategories",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 248,
-			"endLine": 259,
+			"line": 251,
+			"endLine": 262,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "function getToolCategories()",
@@ -9996,12 +10013,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/getAllToolInfo:261",
+			"id": "src/runtime/tools/index.ts/getAllToolInfo:264",
 			"name": "getAllToolInfo",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 261,
-			"endLine": 277,
+			"line": 264,
+			"endLine": 280,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "function getAllToolInfo()",
@@ -12327,6 +12344,45 @@
 				"src/runtime/wiki-anchor-injection.ts/formatBodySize:60",
 				"src/runtime/tools/wiki-tool.ts/walk:269"
 			]
+		},
+		{
+			"id": "src/runtime/tools/work-tool.ts/mgmt:27",
+			"name": "mgmt",
+			"kind": "function",
+			"file": "src/runtime/tools/work-tool.ts",
+			"line": 27,
+			"endLine": 31,
+			"statementCount": 4,
+			"exported": false,
+			"signature": "function mgmt(ctx: any)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/tools/work-tool.ts/safe:33",
+			"name": "safe",
+			"kind": "function",
+			"file": "src/runtime/tools/work-tool.ts",
+			"line": 33,
+			"endLine": 40,
+			"statementCount": 4,
+			"exported": false,
+			"signature": "function safe(fn: () => any)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/tools/work-tool.ts/requireField:42",
+			"name": "requireField",
+			"kind": "function",
+			"file": "src/runtime/tools/work-tool.ts",
+			"line": 42,
+			"endLine": 46,
+			"statementCount": 2,
+			"exported": false,
+			"signature": "function requireField(value: unknown, field: string, action: string)",
+			"description": "",
+			"callees": []
 		},
 		{
 			"id": "src/runtime/transcript-delta.ts/sliceTranscriptDelta:53",
@@ -15856,7 +15912,7 @@
 			"description": "",
 			"callees": [
 				"src/server/db-migration.ts/runMigrations:657",
-				"src/runtime/tools/index.ts/registerRuntimeTools:148",
+				"src/runtime/tools/index.ts/registerRuntimeTools:151",
 				"src/server/workspace-config.ts/loadWorkspaceConfig:40",
 				"src/runtime/proxy-manager.ts/applyProxy:30",
 				"src/server/agent-service.ts/createAgentService:1527",
@@ -25106,7 +25162,7 @@
 		"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1238": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:637"
 		],
-		"src/runtime/tools/index.ts/buildToolsSet:170": [
+		"src/runtime/tools/index.ts/buildToolsSet:173": [
 			"src/runtime/agent-loop.ts/AgentLoop.buildTools:797"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1022": [
@@ -25558,24 +25614,24 @@
 			"src/runtime/tools/grep.ts/nativeGrepSearch:100"
 		],
 		"src/runtime/mcp-tools/platform-tools.ts/createPlatformTools:55": [
-			"src/runtime/tools/index.ts/getPlatformTools:69"
+			"src/runtime/tools/index.ts/getPlatformTools:70"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolMeta:288": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:148",
-			"src/runtime/tools/index.ts/getToolCategories:248",
-			"src/runtime/tools/index.ts/getAllToolInfo:261"
+			"src/runtime/tools/index.ts/registerRuntimeTools:151",
+			"src/runtime/tools/index.ts/getToolCategories:251",
+			"src/runtime/tools/index.ts/getAllToolInfo:264"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolConfigSchema:304": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:148"
+			"src/runtime/tools/index.ts/registerRuntimeTools:151"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolDescription:296": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:148"
+			"src/runtime/tools/index.ts/registerRuntimeTools:151"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolPrompt:300": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:148"
+			"src/runtime/tools/index.ts/registerRuntimeTools:151"
 		],
-		"src/runtime/tools/index.ts/isEnabled:202": [
-			"src/runtime/tools/index.ts/buildToolsSet:170"
+		"src/runtime/tools/index.ts/isEnabled:205": [
+			"src/runtime/tools/index.ts/buildToolsSet:173"
 		],
 		"src/runtime/tools/mcp-tool.ts/inputSchemaToZod:66": [
 			"src/runtime/tools/mcp-tool.ts/createMcpTool:34"
@@ -26563,7 +26619,7 @@
 		"src/server/db-migration.ts/runMigrations:657": [
 			"src/server/index.ts/startServer:101"
 		],
-		"src/runtime/tools/index.ts/registerRuntimeTools:148": [
+		"src/runtime/tools/index.ts/registerRuntimeTools:151": [
 			"src/server/index.ts/startServer:101"
 		],
 		"src/runtime/proxy-manager.ts/applyProxy:30": [
@@ -28206,6 +28262,7 @@
 			"src/runtime/tools/wait.ts",
 			"src/runtime/tools/web-search.ts",
 			"src/runtime/tools/wiki-tool.ts",
+			"src/runtime/tools/work-tool.ts",
 			"src/server/config-router.ts",
 			"src/server/index.ts"
 		],
@@ -28273,6 +28330,7 @@
 			"src/runtime/tools/agent-registry.ts",
 			"src/runtime/tools/cron-tool.ts",
 			"src/runtime/tools/project-tool.ts",
+			"src/runtime/tools/work-tool.ts",
 			"src/server/cron-router.ts",
 			"src/server/fresh-db-seed.ts",
 			"src/server/project-router.ts",
@@ -28356,6 +28414,9 @@
 			"src/runtime/tools/index.ts"
 		],
 		"src/runtime/tools/project-tool.ts": [
+			"src/runtime/tools/index.ts"
+		],
+		"src/runtime/tools/work-tool.ts": [
 			"src/runtime/tools/index.ts"
 		],
 		"src/runtime/tools/agent-registry.ts": [

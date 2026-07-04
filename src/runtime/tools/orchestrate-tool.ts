@@ -487,7 +487,7 @@ export const orchestrateTool = buildTool({
 		"Confirm semantics: when mode='confirm', this tool stops and waits — it does not return, does not time out, and does not issue another LLM call until the user confirms or rejects via the kanban plan-pending entry. On reject, returns `false: <reason>`.\n\n" +
 		"Verify nodes run unit tests / smoke / reviewer dispatch automatically and produce a manifest (changed files + tests + review verdict).",
 	meta: {
-		category: "workflow",
+		category: "agent",
 		isReadOnly: false,
 		isConcurrencySafe: false,
 		isDestructive: false,

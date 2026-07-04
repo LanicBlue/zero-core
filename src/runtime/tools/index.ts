@@ -50,6 +50,7 @@ import { orchestrateTool } from "./orchestrate-tool.js";
 // v0.8 (P3 §7.3): the four domain action tools, replacing the retired
 // zero-admin-tools.ts (CreateProject/CreateAgent/.../InstantiatePreset/SetToolPolicy/...).
 import { projectTool } from "./project-tool.js";
+import { workTool } from "./work-tool.js";
 import { agentRegistryTool } from "./agent-registry.js";
 import { cronTool } from "./cron-tool.js";
 import { wikiTool } from "./wiki-tool.js";
@@ -102,6 +103,7 @@ export const ALL_TOOLS: Record<string, any> = {
 	// Note: the management tool is named `AgentRegistry` (not `Agent`) to avoid
 	// collision with the long-existing `Agent` sub-agent delegation tool.
 	Project: projectTool,
+	Work: workTool,
 	AgentRegistry: agentRegistryTool,
 	Cron: cronTool,
 	Wiki: wikiTool,
@@ -125,6 +127,7 @@ const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> 
 	// management service handle (zero sessions only). Wiki needs the wiki
 	// store (every project-role session).
 	Project: (ctx) => !!(ctx as any).management,
+	Work: (ctx) => !!(ctx as any).management,
 	AgentRegistry: (ctx) => !!(ctx as any).management,
 	Cron: (ctx) => !!(ctx as any).management,
 	Wiki: (ctx) => !!ctx.wikiStore,

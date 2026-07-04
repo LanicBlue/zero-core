@@ -48,6 +48,7 @@ import { RENAMED_TOOLS } from "../../src/core/tool-registry.js";
 import { delegateTool } from "../../src/runtime/tools/agent.js";
 import { wikiTool } from "../../src/runtime/tools/wiki-tool.js";
 import { projectTool } from "../../src/runtime/tools/project-tool.js";
+import { workTool } from "../../src/runtime/tools/work-tool.js";
 import { agentRegistryTool } from "../../src/runtime/tools/agent-registry.js";
 import { cronTool } from "../../src/runtime/tools/cron-tool.js";
 import { createPlatformTools } from "../../src/runtime/mcp-tools/platform-tools.js";
@@ -120,21 +121,22 @@ describe("P7 ToolCategory 加 workflow", () => {
 	});
 });
 
-// ─── ③ 分类正确:project / management / workflow / agent ────────────────
+// ─── ③ 分类正确:project / management / agent ────────────────
 
 describe("P7 工具分类正确", () => {
-	test("AgentRegistry/Cron/Wiki 是 management;Project/Flow 是 project", () => {
-		// project-flow: Project + Flow are the project class (their own group).
+	test("AgentRegistry/Cron/Wiki 是 management;Project/Work/Flow 是 project", () => {
+		// project-flow: Project + Work + Flow are the project class (their own group).
 		// AgentRegistry/Cron/Wiki remain management (platform).
 		expect(getToolMeta(projectTool)?.category).toBe("project");
+		expect(getToolMeta(workTool)?.category).toBe("project");
 		expect(getToolMeta(flowTool)?.category).toBe("project");
 		expect(getToolMeta(agentRegistryTool)?.category).toBe("management");
 		expect(getToolMeta(cronTool)?.category).toBe("management");
 		expect(getToolMeta(wikiTool)?.category).toBe("management");
 	});
 
-	test("Orchestrate 是 workflow", () => {
-		expect(getToolMeta(orchestrateTool)?.category).toBe("workflow");
+	test("Orchestrate 是 agent(编排多 agent 执行)", () => {
+		expect(getToolMeta(orchestrateTool)?.category).toBe("agent");
 	});
 
 	test("Platform (createPlatformTools 的 Platform) 是 management,不是 assistant", () => {

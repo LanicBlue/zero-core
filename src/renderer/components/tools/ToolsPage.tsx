@@ -43,7 +43,6 @@ const CATEGORY_LABELS: Record<string, string> = {
 	mcp: "MCP",
 	agent: "Agent",
 	management: "Management",
-	workflow: "Workflow",
 	project: "Project",
 };
 
