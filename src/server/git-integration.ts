@@ -26,6 +26,7 @@
 
 import { exec } from "child_process";
 import { log } from "../core/logger.js";
+import { centralFeatureWorktreePath } from "./archivist-git.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -85,20 +86,28 @@ export class GitIntegration {
 
 	/**
 	 * v0.8 (M3): 创建 feature worktree(决策 25/28)。lead 进 build 时建独立
-	 * 目录 `{workspace}.worktrees/req-{shortId}/`,分支 `req-{shortId}` —— 与
-	 * archivist-git 的 featureWorktreePath/featureBranchName 约定完全一致,
-	 * archivist mergeFeatureToMain 直接能找到 + 清理。本方法 safe-fail(与
-	 * 其他 git 方法一样),git 不可用时只 log 不抛。
+	 * 目录,分支 `req-{shortId}` —— 与 archivist-git 的
+	 * featureWorktreePath/featureBranchName 约定完全一致,archivist
+	 * mergeFeatureToMain 直接能找到 + 清理。本方法 safe-fail(与其他 git
+	 * 方法一样),git 不可用时只 log 不抛。
+	 *
+	 * project-flow §4.2 (F3): worktree 路径集中化到
+	 * `~/.zero-core/projects/{project}/{req-shortId}/`(避免 workspace 旁误改 +
+	 * 散落清理)。当 projectId 传入时用 centralFeatureWorktreePath;否则回退到
+	 * 旧的 `{workspace}.worktrees/req-{shortId}`(back-compat)。
 	 *
 	 * 返回 worktree 路径;失败时返回 fallback = projectPath(在主 worktree 跑)。
 	 */
 	async createFeatureWorktree(
 		projectPath: string,
 		requirementId: string,
+		projectId?: string,
 	): Promise<{ worktreePath: string; branch: string; ok: boolean }> {
 		const shortId = requirementId.substring(0, 8);
 		const branch = `req-${shortId}`;
-		const worktreePath = `${projectPath}.worktrees/req-${shortId}`;
+		const worktreePath = projectId
+			? centralFeatureWorktreePath(projectId, requirementId)
+			: `${projectPath}.worktrees/req-${shortId}`;
 
 		try {
 			// Create the branch (from current HEAD) and a linked worktree at the

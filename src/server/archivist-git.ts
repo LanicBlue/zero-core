@@ -38,8 +38,10 @@
 
 import { exec } from "child_process";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { log } from "../core/logger.js";
+import { ZERO_CORE_DIR } from "../core/config.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -62,9 +64,54 @@ function shortId(id: string): string {
 	return id.substring(0, 8);
 }
 
-/** Convention: feature worktree path for a requirement (RFC §2.15). */
-export function featureWorktreePath(workspaceDir: string, requirementId: string): string {
-	return join(workspaceDir + ".worktrees", `req-${shortId(requirementId)}`);
+/**
+ * Slugify a project id/name into a filesystem-safe folder segment. Mirrors
+ * git-integration.slugify so the lead (createFeatureWorktree) and archivist
+ * (mergeFeatureToMain / cleanupWorktree) compute the SAME central path.
+ */
+function projectSlug(projectId: string): string {
+	return (projectId ?? "")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-|-$/g, "")
+		.substring(0, 40) || "project";
+}
+
+/**
+ * project-flow §4.2: feature worktrees live under a CENTRAL root, not beside
+ * the workspace (`{workspace}.worktrees/...` was the old convention — prone to
+ * accidental edits + scattered cleanup). New convention:
+ *   `{ZERO_CORE_DIR}/projects/{projectSlug}/{req-shortId}/`
+ * `workspaceDir` is kept for back-compat with in-flight worktrees created
+ * before centralization: if the central path does not exist but the legacy
+ * `{workspaceDir}.worktrees/req-{shortId}` does, the legacy path is returned
+ * so an in-flight requirement keeps its worktree through verify→merge.
+ */
+export function featureWorktreePath(
+	workspaceDir: string,
+	requirementId: string,
+	projectId?: string,
+): string {
+	const sid = shortId(requirementId);
+	if (projectId) {
+		const central = join(ZERO_CORE_DIR, "projects", projectSlug(projectId), `req-${sid}`);
+		if (existsSync(central)) return central;
+		// Fall through to legacy if the central dir isn't there yet (e.g. an
+		// in-flight requirement whose worktree was created under the old path).
+	}
+	const legacy = join(workspaceDir + ".worktrees", `req-${sid}`);
+	return legacy;
+}
+
+/**
+ * project-flow §4.2: the CENTRAL feature worktree path for a requirement.
+ * Use this when creating a NEW worktree (lead / Flow.plan) so it lands under
+ * `~/.zero-core/projects/{project}/{req-shortId}/`. `featureWorktreePath`
+ * above resolves to the central path when it already exists; this helper is
+ * the authoritative creator-side path (no legacy fallback).
+ */
+export function centralFeatureWorktreePath(projectId: string, requirementId: string): string {
+	return join(ZERO_CORE_DIR, "projects", projectSlug(projectId), `req-${shortId(requirementId)}`);
 }
 
 /** Convention: feature branch name for a requirement (RFC §2.15). */
@@ -264,9 +311,10 @@ export class ArchivistGit {
 	async mergeFeatureToMain(
 		workspaceDir: string,
 		requirementId: string,
+		projectId?: string,
 	): Promise<MergeResult> {
 		const branch = featureBranchName(requirementId);
-		const worktree = featureWorktreePath(workspaceDir, requirementId);
+		const worktree = featureWorktreePath(workspaceDir, requirementId, projectId);
 
 		try {
 			// Make sure we're on main in the primary worktree.
@@ -300,7 +348,7 @@ export class ArchivistGit {
 			const ref = await this.getCurrentMainRef(workspaceDir);
 
 			// Clean up the feature worktree + branch.
-			await this.cleanupWorktree(workspaceDir, requirementId);
+			await this.cleanupWorktree(workspaceDir, requirementId, projectId);
 
 			log.agent(`Archivist: merged ${branch} → main (${ref})`);
 			return { ok: true, mergedToRef: ref };
@@ -313,9 +361,9 @@ export class ArchivistGit {
 	 * Remove a feature worktree and delete its branch. RFC §2.15:
 	 * "清理 feature worktree". Safe to call multiple times.
 	 */
-	async cleanupWorktree(workspaceDir: string, requirementId: string): Promise<void> {
+	async cleanupWorktree(workspaceDir: string, requirementId: string, projectId?: string): Promise<void> {
 		const branch = featureBranchName(requirementId);
-		const worktree = featureWorktreePath(workspaceDir, requirementId);
+		const worktree = featureWorktreePath(workspaceDir, requirementId, projectId);
 
 		// Remove the worktree if it exists.
 		if (existsSync(worktree)) {

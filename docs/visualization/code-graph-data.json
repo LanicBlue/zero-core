@@ -1192,7 +1192,7 @@
 		},
 		{
 			"path": "src/runtime/tools/flow-tool.ts",
-			"lines": 384,
+			"lines": 674,
 			"dir": "src/runtime/tools",
 			"exports": [],
 			"imports": [
@@ -1200,10 +1200,15 @@
 				"src/shared/types.ts"
 			],
 			"functions": [
-				"src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:102",
-				"src/runtime/tools/flow-tool.ts/requirementDocPath:112",
-				"src/runtime/tools/flow-tool.ts/writeIntentDoc:117",
-				"src/runtime/tools/flow-tool.ts/writeDocSection:140"
+				"src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:114",
+				"src/runtime/tools/flow-tool.ts/requirementDocPath:124",
+				"src/runtime/tools/flow-tool.ts/writeIntentDoc:129",
+				"src/runtime/tools/flow-tool.ts/writeDocSection:152",
+				"src/runtime/tools/flow-tool.ts/parseVerdict:475",
+				"src/runtime/tools/flow-tool.ts/decisionLogBody:493",
+				"src/runtime/tools/flow-tool.ts/executeVerify:506",
+				"src/runtime/tools/flow-tool.ts/writeDecisionLog:654",
+				"src/runtime/tools/flow-tool.ts/emitVerifySignal:665"
 			],
 			"description": ""
 		},
@@ -1244,7 +1249,7 @@
 		},
 		{
 			"path": "src/runtime/tools/index.ts",
-			"lines": 279,
+			"lines": 277,
 			"dir": "src/runtime/tools",
 			"exports": [
 				"registerRuntimeTools",
@@ -1273,23 +1278,21 @@
 				"src/runtime/mcp-tools/fetch-tools.ts",
 				"src/runtime/mcp-tools/sequential-thinking-tools.ts",
 				"src/runtime/mcp-tools/platform-tools.ts",
-				"src/runtime/tools/requirement-tools.ts",
 				"src/runtime/tools/orchestrate-tool.ts",
 				"src/runtime/tools/project-tool.ts",
 				"src/runtime/tools/agent-registry.ts",
 				"src/runtime/tools/cron-tool.ts",
 				"src/runtime/tools/wiki-tool.ts",
-				"src/runtime/tools/verify-tool.ts",
 				"src/runtime/tools/flow-tool.ts",
 				"src/core/tool-registry.ts"
 			],
 			"functions": [
-				"src/runtime/tools/index.ts/getPlatformTools:67",
-				"src/runtime/tools/index.ts/registerRuntimeTools:149",
-				"src/runtime/tools/index.ts/buildToolsSet:171",
-				"src/runtime/tools/index.ts/isEnabled:203",
-				"src/runtime/tools/index.ts/getToolCategories:249",
-				"src/runtime/tools/index.ts/getAllToolInfo:262"
+				"src/runtime/tools/index.ts/getPlatformTools:68",
+				"src/runtime/tools/index.ts/registerRuntimeTools:147",
+				"src/runtime/tools/index.ts/buildToolsSet:169",
+				"src/runtime/tools/index.ts/isEnabled:201",
+				"src/runtime/tools/index.ts/getToolCategories:247",
+				"src/runtime/tools/index.ts/getAllToolInfo:260"
 			],
 			"description": "工具注册中心：registerBuiltInTools，导出所有内置工具（bash/read/write/edit/grep/glob/web-search/todo/agent/ask-user）"
 		},
@@ -2372,7 +2375,7 @@
 		},
 		{
 			"path": "src/server/agent-service.ts",
-			"lines": 1521,
+			"lines": 1526,
 			"dir": "src/server",
 			"exports": [
 				"AgentService.getDB",
@@ -2469,37 +2472,37 @@
 				"src/server/agent-service.ts/AgentService.getActiveSessionsMap:396",
 				"src/server/agent-service.ts/AgentService.getRuntimeTaskTree:405",
 				"src/server/agent-service.ts/AgentService.capabilityHandlesFor:418",
-				"src/server/agent-service.ts/AgentService.evictSessionFromMemory:427",
-				"src/server/agent-service.ts/AgentService.buildSessionConfigForEviction:471",
-				"src/server/agent-service.ts/AgentService.subscribe:512",
-				"src/server/agent-service.ts/AgentService.isSessionRunning:518",
-				"src/server/agent-service.ts/AgentService.markRunning:530",
-				"src/server/agent-service.ts/AgentService.getState:539",
-				"src/server/agent-service.ts/AgentService.getAllStates:554",
-				"src/server/agent-service.ts/AgentService.isAnyBusy:561",
-				"src/server/agent-service.ts/AgentService.getOrCreateLoop:568",
-				"src/server/agent-service.ts/AgentService.recreateLoop:583",
-				"src/server/agent-service.ts/AgentService.createLoopForSession:591",
-				"src/server/agent-service.ts/AgentService.sendPrompt:748",
-				"src/server/agent-service.ts/AgentService.sendProjectPrompt:802",
-				"src/server/agent-service.ts/AgentService.abort:955",
-				"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:970",
-				"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:975",
-				"src/server/agent-service.ts/AgentService.restoreAllSessions:1032",
-				"src/server/agent-service.ts/AgentService.activateSession:1062",
-				"src/server/agent-service.ts/AgentService.getSessionInitPayload:1117",
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:1179",
-				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:1183",
-				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:1200",
-				"src/server/agent-service.ts/AgentService.buildLegacyMessages:1316",
-				"src/server/agent-service.ts/AgentService.dispose:1399",
-				"src/server/agent-service.ts/AgentService.invalidateLoops:1432",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1446",
-				"src/server/agent-service.ts/AgentService.findStateByAgentId:1481",
-				"src/server/agent-service.ts/AgentService.emit:1487",
+				"src/server/agent-service.ts/AgentService.evictSessionFromMemory:432",
+				"src/server/agent-service.ts/AgentService.buildSessionConfigForEviction:476",
+				"src/server/agent-service.ts/AgentService.subscribe:517",
+				"src/server/agent-service.ts/AgentService.isSessionRunning:523",
+				"src/server/agent-service.ts/AgentService.markRunning:535",
+				"src/server/agent-service.ts/AgentService.getState:544",
+				"src/server/agent-service.ts/AgentService.getAllStates:559",
+				"src/server/agent-service.ts/AgentService.isAnyBusy:566",
+				"src/server/agent-service.ts/AgentService.getOrCreateLoop:573",
+				"src/server/agent-service.ts/AgentService.recreateLoop:588",
+				"src/server/agent-service.ts/AgentService.createLoopForSession:596",
+				"src/server/agent-service.ts/AgentService.sendPrompt:753",
+				"src/server/agent-service.ts/AgentService.sendProjectPrompt:807",
+				"src/server/agent-service.ts/AgentService.abort:960",
+				"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:975",
+				"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:980",
+				"src/server/agent-service.ts/AgentService.restoreAllSessions:1037",
+				"src/server/agent-service.ts/AgentService.activateSession:1067",
+				"src/server/agent-service.ts/AgentService.getSessionInitPayload:1122",
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:1184",
+				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:1188",
+				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:1205",
+				"src/server/agent-service.ts/AgentService.buildLegacyMessages:1321",
+				"src/server/agent-service.ts/AgentService.dispose:1404",
+				"src/server/agent-service.ts/AgentService.invalidateLoops:1437",
+				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1451",
+				"src/server/agent-service.ts/AgentService.findStateByAgentId:1486",
+				"src/server/agent-service.ts/AgentService.emit:1492",
 				"src/server/agent-service.ts/AgentService.on:419",
-				"src/server/agent-service.ts/createAgentService:1493",
-				"src/server/agent-service.ts/normalizeBlockArgsForUi:1509"
+				"src/server/agent-service.ts/createAgentService:1498",
+				"src/server/agent-service.ts/normalizeBlockArgsForUi:1514"
 			],
 			"description": "AgentService 类：全局调度入口，sendPrompt → createLoop → loop.run，session 管理，事件分发，recovery"
 		},
@@ -2581,10 +2584,11 @@
 		},
 		{
 			"path": "src/server/archivist-git.ts",
-			"lines": 413,
+			"lines": 461,
 			"dir": "src/server",
 			"exports": [
 				"featureWorktreePath",
+				"centralFeatureWorktreePath",
 				"featureBranchName",
 				"ArchivistGit.isRepo",
 				"ArchivistGit.ensureRepo",
@@ -2598,25 +2602,28 @@
 				"ArchivistGit.listConflictedFiles"
 			],
 			"imports": [
-				"src/core/logger.ts"
+				"src/core/logger.ts",
+				"src/core/config.ts"
 			],
 			"functions": [
-				"src/server/archivist-git.ts/execAsync:48",
-				"src/server/archivist-git.ts/shortId:61",
-				"src/server/archivist-git.ts/featureWorktreePath:66",
-				"src/server/archivist-git.ts/featureBranchName:71",
-				"src/server/archivist-git.ts/ArchivistGit.isRepo:103",
-				"src/server/archivist-git.ts/ArchivistGit.ensureRepo:116",
-				"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:138",
-				"src/server/archivist-git.ts/ArchivistGit.changesSince:155",
-				"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:212",
-				"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:264",
-				"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:316",
-				"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:358",
-				"src/server/archivist-git.ts/ArchivistGit.safeLog:367",
-				"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:379",
-				"src/server/archivist-git.ts/isSafePathspec:402",
-				"src/server/archivist-git.ts/isSafeCommitSubject:409"
+				"src/server/archivist-git.ts/execAsync:50",
+				"src/server/archivist-git.ts/shortId:63",
+				"src/server/archivist-git.ts/projectSlug:72",
+				"src/server/archivist-git.ts/featureWorktreePath:90",
+				"src/server/archivist-git.ts/centralFeatureWorktreePath:113",
+				"src/server/archivist-git.ts/featureBranchName:118",
+				"src/server/archivist-git.ts/ArchivistGit.isRepo:150",
+				"src/server/archivist-git.ts/ArchivistGit.ensureRepo:163",
+				"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:185",
+				"src/server/archivist-git.ts/ArchivistGit.changesSince:202",
+				"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:259",
+				"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:311",
+				"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:364",
+				"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:406",
+				"src/server/archivist-git.ts/ArchivistGit.safeLog:415",
+				"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:427",
+				"src/server/archivist-git.ts/isSafePathspec:450",
+				"src/server/archivist-git.ts/isSafeCommitSubject:457"
 			],
 			"description": ""
 		},
@@ -2633,7 +2640,7 @@
 		},
 		{
 			"path": "src/server/builtin-work-templates.ts",
-			"lines": 112,
+			"lines": 113,
 			"dir": "src/server",
 			"exports": [
 				"defaultProjectWorks"
@@ -3040,7 +3047,7 @@
 		},
 		{
 			"path": "src/server/git-integration.ts",
-			"lines": 258,
+			"lines": 267,
 			"dir": "src/server",
 			"exports": [
 				"GitIntegration.createRequirementBranch",
@@ -3052,18 +3059,19 @@
 				"GitIntegration.createPullRequest"
 			],
 			"imports": [
-				"src/core/logger.ts"
+				"src/core/logger.ts",
+				"src/server/archivist-git.ts"
 			],
 			"functions": [
-				"src/server/git-integration.ts/execAsync:34",
-				"src/server/git-integration.ts/slugify:46",
-				"src/server/git-integration.ts/GitIntegration.createRequirementBranch:67",
-				"src/server/git-integration.ts/GitIntegration.createFeatureWorktree:95",
-				"src/server/git-integration.ts/GitIntegration.commitStep:137",
-				"src/server/git-integration.ts/GitIntegration.getDiffSince:167",
-				"src/server/git-integration.ts/GitIntegration.getChangedFiles:189",
-				"src/server/git-integration.ts/GitIntegration.commitChanges:205",
-				"src/server/git-integration.ts/GitIntegration.createPullRequest:222"
+				"src/server/git-integration.ts/execAsync:35",
+				"src/server/git-integration.ts/slugify:47",
+				"src/server/git-integration.ts/GitIntegration.createRequirementBranch:68",
+				"src/server/git-integration.ts/GitIntegration.createFeatureWorktree:101",
+				"src/server/git-integration.ts/GitIntegration.commitStep:146",
+				"src/server/git-integration.ts/GitIntegration.getDiffSince:176",
+				"src/server/git-integration.ts/GitIntegration.getChangedFiles:198",
+				"src/server/git-integration.ts/GitIntegration.commitChanges:214",
+				"src/server/git-integration.ts/GitIntegration.createPullRequest:231"
 			],
 			"description": ""
 		},
@@ -3212,7 +3220,7 @@
 		},
 		{
 			"path": "src/server/lead-service.ts",
-			"lines": 279,
+			"lines": 281,
 			"dir": "src/server",
 			"exports": [
 				"LeadService.setOrchestrateStores",
@@ -3242,9 +3250,9 @@
 				"src/server/lead-service.ts/LeadService.setGitIntegration:112",
 				"src/server/lead-service.ts/LeadService.setProjectWorkStore:116",
 				"src/server/lead-service.ts/LeadService.pickupRequirement:125",
-				"src/server/lead-service.ts/LeadService.autoPickupIfIdle:209",
-				"src/server/lead-service.ts/LeadService.getProgress:238",
-				"src/server/lead-service.ts/LeadService.resolveLeadWork:263"
+				"src/server/lead-service.ts/LeadService.autoPickupIfIdle:211",
+				"src/server/lead-service.ts/LeadService.getProgress:240",
+				"src/server/lead-service.ts/LeadService.resolveLeadWork:265"
 			],
 			"description": ""
 		},
@@ -4951,7 +4959,7 @@
 		},
 		{
 			"path": "src/server/wiki-skeleton-service.ts",
-			"lines": 821,
+			"lines": 823,
 			"dir": "src/server",
 			"exports": [
 				"WikiSkeletonService.buildSkeleton",
@@ -4990,26 +4998,26 @@
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.rebuildProjectSubtree:264",
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.commitRequirementDoc:277",
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.mergeFeatureToMain:305",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:323",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.detectDivergence:340",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureDirectoryChain:576",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.findHeader:614",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureSummary:640",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:684",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:697",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:702",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:711",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:715",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:721",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.indexAdd:418",
-				"src/server/wiki-skeleton-service.ts/extOf:745",
-				"src/server/wiki-skeleton-service.ts/basenameOf:750",
-				"src/server/wiki-skeleton-service.ts/extractExports:755",
-				"src/server/wiki-skeleton-service.ts/readFileText:783",
-				"src/server/wiki-skeleton-service.ts/walkWorkspace:800"
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:325",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.detectDivergence:342",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureDirectoryChain:578",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.findHeader:616",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureSummary:642",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:669",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:686",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:699",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:704",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:713",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:717",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:723",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:730",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.indexAdd:420",
+				"src/server/wiki-skeleton-service.ts/extOf:747",
+				"src/server/wiki-skeleton-service.ts/basenameOf:752",
+				"src/server/wiki-skeleton-service.ts/extractExports:757",
+				"src/server/wiki-skeleton-service.ts/readFileText:785",
+				"src/server/wiki-skeleton-service.ts/walkWorkspace:802"
 			],
 			"description": ""
 		},
@@ -5434,7 +5442,7 @@
 		},
 		{
 			"path": "src/core/tool-registry.ts",
-			"lines": 222,
+			"lines": 230,
 			"dir": "src/core",
 			"exports": [
 				"ToolRegistry.register",
@@ -5454,18 +5462,18 @@
 				"src/core/kv-store-interface.ts"
 			],
 			"functions": [
-				"src/core/tool-registry.ts/ToolRegistry.register:112",
-				"src/core/tool-registry.ts/ToolRegistry.unregister:116",
-				"src/core/tool-registry.ts/ToolRegistry.getAll:127",
-				"src/core/tool-registry.ts/ToolRegistry.getByCategory:136",
-				"src/core/tool-registry.ts/ToolRegistry.getByName:144",
-				"src/core/tool-registry.ts/ToolRegistry.getToolConfig:150",
-				"src/core/tool-registry.ts/ToolRegistry.getToolConfigFor:173",
-				"src/core/tool-registry.ts/ToolRegistry.saveToolConfig:177",
-				"src/core/tool-registry.ts/ToolRegistry.loadConfig:184",
-				"src/core/tool-registry.ts/ToolRegistry.onChange:193",
-				"src/core/tool-registry.ts/ToolRegistry.buildEffectivePrompt:200",
-				"src/core/tool-registry.ts/ToolRegistry.notifyChange:216"
+				"src/core/tool-registry.ts/ToolRegistry.register:120",
+				"src/core/tool-registry.ts/ToolRegistry.unregister:124",
+				"src/core/tool-registry.ts/ToolRegistry.getAll:135",
+				"src/core/tool-registry.ts/ToolRegistry.getByCategory:144",
+				"src/core/tool-registry.ts/ToolRegistry.getByName:152",
+				"src/core/tool-registry.ts/ToolRegistry.getToolConfig:158",
+				"src/core/tool-registry.ts/ToolRegistry.getToolConfigFor:181",
+				"src/core/tool-registry.ts/ToolRegistry.saveToolConfig:185",
+				"src/core/tool-registry.ts/ToolRegistry.loadConfig:192",
+				"src/core/tool-registry.ts/ToolRegistry.onChange:201",
+				"src/core/tool-registry.ts/ToolRegistry.buildEffectivePrompt:208",
+				"src/core/tool-registry.ts/ToolRegistry.notifyChange:224"
 			],
 			"description": "工具元数据注册表：分类管理、配置化、prompt 构建"
 		},
@@ -6101,7 +6109,7 @@
 			"signature": "method buildTools()",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/index.ts/buildToolsSet:171"
+				"src/runtime/tools/index.ts/buildToolsSet:169"
 			]
 		},
 		{
@@ -9779,12 +9787,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:102",
+			"id": "src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:114",
 			"name": "resolveWorkspaceDir",
 			"kind": "function",
 			"file": "src/runtime/tools/flow-tool.ts",
-			"line": 102,
-			"endLine": 109,
+			"line": 114,
+			"endLine": 121,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "function resolveWorkspaceDir(ctx: any)",
@@ -9792,12 +9800,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/flow-tool.ts/requirementDocPath:112",
+			"id": "src/runtime/tools/flow-tool.ts/requirementDocPath:124",
 			"name": "requirementDocPath",
 			"kind": "function",
 			"file": "src/runtime/tools/flow-tool.ts",
-			"line": 112,
-			"endLine": 114,
+			"line": 124,
+			"endLine": 126,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function requirementDocPath(workspaceDir: string, id: string)",
@@ -9805,34 +9813,107 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/flow-tool.ts/writeIntentDoc:117",
+			"id": "src/runtime/tools/flow-tool.ts/writeIntentDoc:129",
 			"name": "writeIntentDoc",
 			"kind": "function",
 			"file": "src/runtime/tools/flow-tool.ts",
-			"line": 117,
-			"endLine": 127,
+			"line": 129,
+			"endLine": 139,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function writeIntentDoc(workspaceDir: string, req: RequirementRecord)",
 			"description": "Write the Intent section to the requirement doc (create action side effect).",
 			"callees": [
-				"src/runtime/tools/flow-tool.ts/requirementDocPath:112"
+				"src/runtime/tools/flow-tool.ts/requirementDocPath:124"
 			]
 		},
 		{
-			"id": "src/runtime/tools/flow-tool.ts/writeDocSection:140",
+			"id": "src/runtime/tools/flow-tool.ts/writeDocSection:152",
 			"name": "writeDocSection",
 			"kind": "function",
 			"file": "src/runtime/tools/flow-tool.ts",
-			"line": 140,
-			"endLine": 186,
+			"line": 152,
+			"endLine": 198,
 			"statementCount": 22,
 			"exported": false,
-			"signature": "function writeDocSection(workspaceDir: string, id: string, section: \"Summary\" | \"Plan\" | \"Coverage\", body: string)",
+			"signature": "function writeDocSection(workspaceDir: string, id: string, section: \"Summary\" | \"Plan\" | \"Coverage\" | \"Decision Log\", body: string)",
 			"description": "Replace the `## <Section>` block in the requirement doc, or append it if",
 			"callees": [
-				"src/runtime/tools/flow-tool.ts/requirementDocPath:112"
+				"src/runtime/tools/flow-tool.ts/requirementDocPath:124"
 			]
+		},
+		{
+			"id": "src/runtime/tools/flow-tool.ts/parseVerdict:475",
+			"name": "parseVerdict",
+			"kind": "function",
+			"file": "src/runtime/tools/flow-tool.ts",
+			"line": 475,
+			"endLine": 490,
+			"statementCount": 8,
+			"exported": false,
+			"signature": "function parseVerdict(raw: string)",
+			"description": "Parse the PM verdict line. Liberal — defaults to REJECTED with the raw",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/tools/flow-tool.ts/decisionLogBody:493",
+			"name": "decisionLogBody",
+			"kind": "function",
+			"file": "src/runtime/tools/flow-tool.ts",
+			"line": 493,
+			"endLine": 504,
+			"statementCount": 9,
+			"exported": false,
+			"signature": "function decisionLogBody(verdict: ParsedVerdict, mergeRef?: string, finalStatus?: string)",
+			"description": "Compose the Decision Log body from the verdict + outcome.",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/tools/flow-tool.ts/executeVerify:506",
+			"name": "executeVerify",
+			"kind": "function",
+			"file": "src/runtime/tools/flow-tool.ts",
+			"line": 506,
+			"endLine": 651,
+			"statementCount": 53,
+			"exported": false,
+			"signature": "function executeVerify(input: { id: string; summary?: string }, ctx: any)",
+			"description": "",
+			"callees": [
+				"src/runtime/tools/flow-tool.ts/parseVerdict:475",
+				"src/runtime/tools/flow-tool.ts/decisionLogBody:493",
+				"src/runtime/tools/flow-tool.ts/writeDecisionLog:654",
+				"src/runtime/tools/flow-tool.ts/emitVerifySignal:665"
+			]
+		},
+		{
+			"id": "src/runtime/tools/flow-tool.ts/writeDecisionLog:654",
+			"name": "writeDecisionLog",
+			"kind": "function",
+			"file": "src/runtime/tools/flow-tool.ts",
+			"line": 654,
+			"endLine": 662,
+			"statementCount": 5,
+			"exported": false,
+			"signature": "function writeDecisionLog(ctx: any, id: string, body: string)",
+			"description": "Write the Decision Log section (file, not DB). Best-effort.",
+			"callees": [
+				"src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:114",
+				"src/runtime/tools/flow-tool.ts/writeDocSection:152"
+			]
+		},
+		{
+			"id": "src/runtime/tools/flow-tool.ts/emitVerifySignal:665",
+			"name": "emitVerifySignal",
+			"kind": "function",
+			"file": "src/runtime/tools/flow-tool.ts",
+			"line": 665,
+			"endLine": 673,
+			"statementCount": 5,
+			"exported": false,
+			"signature": "function emitVerifySignal(ctx: any, id: string, record: unknown, signal: \"verified\" | \"rejected\")",
+			"description": "Emit the named verify signal (requirements.verified | requirements.rejected).",
+			"callees": []
 		},
 		{
 			"id": "src/runtime/tools/glob.ts/isUnderSkipDir:44",
@@ -9918,12 +9999,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/index.ts/getPlatformTools:67",
+			"id": "src/runtime/tools/index.ts/getPlatformTools:68",
 			"name": "getPlatformTools",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 67,
-			"endLine": 72,
+			"line": 68,
+			"endLine": 73,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "function getPlatformTools()",
@@ -9933,12 +10014,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/registerRuntimeTools:149",
+			"id": "src/runtime/tools/index.ts/registerRuntimeTools:147",
 			"name": "registerRuntimeTools",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 149,
-			"endLine": 169,
+			"line": 147,
+			"endLine": 167,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "function registerRuntimeTools(registry: ToolRegistry)",
@@ -9951,27 +10032,27 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/buildToolsSet:171",
+			"id": "src/runtime/tools/index.ts/buildToolsSet:169",
 			"name": "buildToolsSet",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 171,
-			"endLine": 243,
+			"line": 169,
+			"endLine": 241,
 			"statementCount": 34,
 			"exported": true,
 			"signature": "function buildToolsSet(policy: {\r\n\t\tautoApprove?: string[];\r\n\t\tblockedTools?: string[];\r\n\t\ttools?: Record<string, { enabled: boolean }>;\r\n\t\texecutionMode?: \"sequential\" | \"parallel\";\r\n\t\tresultMaxTokens?: number;\r\n\t}, context: ToolExecutionContext, mcpTools?: Record<string, any>)",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/index.ts/isEnabled:203"
+				"src/runtime/tools/index.ts/isEnabled:201"
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/isEnabled:203",
+			"id": "src/runtime/tools/index.ts/isEnabled:201",
 			"name": "isEnabled",
 			"kind": "arrow",
 			"file": "src/runtime/tools/index.ts",
-			"line": 203,
-			"endLine": 211,
+			"line": 201,
+			"endLine": 209,
 			"statementCount": 9,
 			"exported": false,
 			"signature": "fn (name: string)",
@@ -9979,12 +10060,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/index.ts/getToolCategories:249",
+			"id": "src/runtime/tools/index.ts/getToolCategories:247",
 			"name": "getToolCategories",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 249,
-			"endLine": 260,
+			"line": 247,
+			"endLine": 258,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "function getToolCategories()",
@@ -9994,12 +10075,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/getAllToolInfo:262",
+			"id": "src/runtime/tools/index.ts/getAllToolInfo:260",
 			"name": "getAllToolInfo",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 262,
-			"endLine": 278,
+			"line": 260,
+			"endLine": 276,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "function getAllToolInfo()",
@@ -12920,7 +13001,7 @@
 			"signature": "method setWorkspaceDir(dir: string)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.invalidateLoops:1432"
+				"src/server/agent-service.ts/AgentService.invalidateLoops:1437"
 			]
 		},
 		{
@@ -12937,7 +13018,7 @@
 			"callees": [
 				"src/runtime/provider-factory.ts/clearProviderCache:162",
 				"src/runtime/provider-factory.ts/setConcurrencyManager:40",
-				"src/server/agent-service.ts/AgentService.invalidateLoops:1432",
+				"src/server/agent-service.ts/AgentService.invalidateLoops:1437",
 				"src/server/agent-service.ts/AgentService.notifyReady:370"
 			]
 		},
@@ -12954,7 +13035,7 @@
 			"description": "",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.fireSessionClose:356",
-				"src/server/agent-service.ts/AgentService.createLoopForSession:591",
+				"src/server/agent-service.ts/AgentService.createLoopForSession:596",
 				"src/server/agent-service.ts/AgentService.capabilityHandlesFor:418",
 				"src/server/agent-service.ts/AgentService.notifyReady:370"
 			]
@@ -13149,7 +13230,7 @@
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
 			"line": 418,
-			"endLine": 426,
+			"endLine": 431,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method capabilityHandlesFor(policy: SessionConfig[\"toolPolicy\"] | undefined)",
@@ -13159,29 +13240,29 @@
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.evictSessionFromMemory:427",
+			"id": "src/server/agent-service.ts/AgentService.evictSessionFromMemory:432",
 			"name": "AgentService.evictSessionFromMemory",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 427,
-			"endLine": 463,
+			"line": 432,
+			"endLine": 468,
 			"statementCount": 20,
 			"exported": true,
 			"signature": "method evictSessionFromMemory(sessionId: string)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.buildSessionConfigForEviction:471",
+				"src/server/agent-service.ts/AgentService.buildSessionConfigForEviction:476",
 				"src/server/agent-service.ts/AgentService.fireSessionClose:356",
-				"src/server/agent-service.ts/AgentService.abort:955"
+				"src/server/agent-service.ts/AgentService.abort:960"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildSessionConfigForEviction:471",
+			"id": "src/server/agent-service.ts/AgentService.buildSessionConfigForEviction:476",
 			"name": "AgentService.buildSessionConfigForEviction",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 471,
-			"endLine": 511,
+			"line": 476,
+			"endLine": 516,
 			"statementCount": 17,
 			"exported": true,
 			"signature": "method buildSessionConfigForEviction(sessionId: string)",
@@ -13189,12 +13270,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.subscribe:512",
+			"id": "src/server/agent-service.ts/AgentService.subscribe:517",
 			"name": "AgentService.subscribe",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 512,
-			"endLine": 515,
+			"line": 517,
+			"endLine": 520,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method subscribe(cb: StreamCallback)",
@@ -13202,12 +13283,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.isSessionRunning:518",
+			"id": "src/server/agent-service.ts/AgentService.isSessionRunning:523",
 			"name": "AgentService.isSessionRunning",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 518,
-			"endLine": 520,
+			"line": 523,
+			"endLine": 525,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method isSessionRunning(sessionId: string)",
@@ -13215,27 +13296,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.markRunning:530",
+			"id": "src/server/agent-service.ts/AgentService.markRunning:535",
 			"name": "AgentService.markRunning",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 530,
-			"endLine": 537,
+			"line": 535,
+			"endLine": 542,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method markRunning(sessionId: string, agentId: string)",
 			"description": "Mark a session as running (isBusy=true) and emit the authoritative\r",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.emit:1487"
+				"src/server/agent-service.ts/AgentService.emit:1492"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.getState:539",
+			"id": "src/server/agent-service.ts/AgentService.getState:544",
 			"name": "AgentService.getState",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 539,
-			"endLine": 553,
+			"line": 544,
+			"endLine": 558,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method getState(agentId?: string)",
@@ -13243,12 +13324,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.getAllStates:554",
+			"id": "src/server/agent-service.ts/AgentService.getAllStates:559",
 			"name": "AgentService.getAllStates",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 554,
-			"endLine": 560,
+			"line": 559,
+			"endLine": 565,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method getAllStates()",
@@ -13256,12 +13337,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.isAnyBusy:561",
+			"id": "src/server/agent-service.ts/AgentService.isAnyBusy:566",
 			"name": "AgentService.isAnyBusy",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 561,
-			"endLine": 566,
+			"line": 566,
+			"endLine": 571,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method isAnyBusy()",
@@ -13269,42 +13350,42 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.getOrCreateLoop:568",
+			"id": "src/server/agent-service.ts/AgentService.getOrCreateLoop:573",
 			"name": "AgentService.getOrCreateLoop",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 568,
-			"endLine": 582,
+			"line": 573,
+			"endLine": 587,
 			"statementCount": 12,
 			"exported": true,
 			"signature": "method getOrCreateLoop(agent?: AgentRecord)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:591"
+				"src/server/agent-service.ts/AgentService.createLoopForSession:596"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.recreateLoop:583",
+			"id": "src/server/agent-service.ts/AgentService.recreateLoop:588",
 			"name": "AgentService.recreateLoop",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 583,
-			"endLine": 590,
+			"line": 588,
+			"endLine": 595,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method recreateLoop(agentId: string, sessionId: string, agent?: AgentRecord)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:591"
+				"src/server/agent-service.ts/AgentService.createLoopForSession:596"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.createLoopForSession:591",
+			"id": "src/server/agent-service.ts/AgentService.createLoopForSession:596",
 			"name": "AgentService.createLoopForSession",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 591,
-			"endLine": 746,
+			"line": 596,
+			"endLine": 751,
 			"statementCount": 61,
 			"exported": true,
 			"signature": "method createLoopForSession(agentId: string, sessionId: string, agent?: AgentRecord)",
@@ -13313,37 +13394,37 @@
 				"src/runtime/tools/mcp-tool.ts/buildMcpTools:110",
 				"src/server/agent-service.ts/AgentService.capabilityHandlesFor:418",
 				"src/server/agent-service.ts/AgentService.buildHookDeps:318",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1446",
+				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1451",
 				"src/runtime/hooks/index.ts/registerHooksForLoop:117",
 				"src/server/agent-service.ts/AgentService.fireSessionStart:336"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.sendPrompt:748",
+			"id": "src/server/agent-service.ts/AgentService.sendPrompt:753",
 			"name": "AgentService.sendPrompt",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 748,
-			"endLine": 795,
+			"line": 753,
+			"endLine": 800,
 			"statementCount": 27,
 			"exported": true,
 			"signature": "method sendPrompt(text: string, agent?: AgentRecord, sessionId?: string)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:591",
-				"src/server/agent-service.ts/AgentService.getOrCreateLoop:568",
-				"src/server/agent-service.ts/AgentService.isSessionRunning:518",
-				"src/server/agent-service.ts/AgentService.markRunning:530",
-				"src/server/agent-service.ts/AgentService.emit:1487"
+				"src/server/agent-service.ts/AgentService.createLoopForSession:596",
+				"src/server/agent-service.ts/AgentService.getOrCreateLoop:573",
+				"src/server/agent-service.ts/AgentService.isSessionRunning:523",
+				"src/server/agent-service.ts/AgentService.markRunning:535",
+				"src/server/agent-service.ts/AgentService.emit:1492"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.sendProjectPrompt:802",
+			"id": "src/server/agent-service.ts/AgentService.sendProjectPrompt:807",
 			"name": "AgentService.sendProjectPrompt",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 802,
-			"endLine": 941,
+			"line": 807,
+			"endLine": 946,
 			"statementCount": 46,
 			"exported": true,
 			"signature": "method sendProjectPrompt(agentId: string, sessionId: string, prompt: string, context: {\r\n\t\t\tprojectId?: string;\r\n\t\t\tprojectPath?: string;\r\n\t\t\tprojectName?: string;\r\n\t\t\twikiStore?: any;\r\n\t\t\tactiveRequirementId?: string;\r\n\t\t\t/** v0.8 project-work:触发本 turn 的工位(workflow-context-hook 据此注入 T2)。 */\r\n\t\t\tworkId?: string;\r\n\t\t\t/** 可选注入(需求管理工位等需要):工具上下文 stores + git。 */\r\n\t\t\trequirementStore?: any;\r\n\t\t\ttaskStepStore?: any;\r\n\t\t\torchestratePlanStore?: any;\r\n\t\t\torchestrateManifestStore?: any;\r\n\t\t\tgitIntegration?: any;\r\n\t\t})",
@@ -13351,20 +13432,20 @@
 			"callees": [
 				"src/runtime/tools/mcp-tool.ts/buildMcpTools:110",
 				"src/server/agent-service.ts/AgentService.buildHookDeps:318",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1446",
+				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1451",
 				"src/runtime/hooks/index.ts/registerHooksForLoop:117",
 				"src/server/agent-service.ts/AgentService.fireSessionStart:336",
-				"src/server/agent-service.ts/AgentService.markRunning:530",
-				"src/server/agent-service.ts/AgentService.emit:1487"
+				"src/server/agent-service.ts/AgentService.markRunning:535",
+				"src/server/agent-service.ts/AgentService.emit:1492"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.abort:955",
+			"id": "src/server/agent-service.ts/AgentService.abort:960",
 			"name": "AgentService.abort",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 955,
-			"endLine": 969,
+			"line": 960,
+			"endLine": 974,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method abort(agentId?: string, sessionId?: string)",
@@ -13372,204 +13453,204 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.recoverIncompleteSessions:970",
+			"id": "src/server/agent-service.ts/AgentService.recoverIncompleteSessions:975",
 			"name": "AgentService.recoverIncompleteSessions",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 970,
-			"endLine": 973,
+			"line": 975,
+			"endLine": 978,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method recoverIncompleteSessions()",
 			"description": "",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.whenReady:388",
-				"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:975"
+				"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:980"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:975",
+			"id": "src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:980",
 			"name": "AgentService.doRecoverIncompleteSessions",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 975,
-			"endLine": 1028,
+			"line": 980,
+			"endLine": 1033,
 			"statementCount": 29,
 			"exported": true,
 			"signature": "method doRecoverIncompleteSessions()",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:591",
+				"src/server/agent-service.ts/AgentService.createLoopForSession:596",
 				"src/server/durable-hooks.ts/setSessionTurnSeq:55",
-				"src/server/agent-service.ts/AgentService.markRunning:530"
+				"src/server/agent-service.ts/AgentService.markRunning:535"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.restoreAllSessions:1032",
+			"id": "src/server/agent-service.ts/AgentService.restoreAllSessions:1037",
 			"name": "AgentService.restoreAllSessions",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1032,
-			"endLine": 1059,
+			"line": 1037,
+			"endLine": 1064,
 			"statementCount": 13,
 			"exported": true,
 			"signature": "method restoreAllSessions()",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:591"
+				"src/server/agent-service.ts/AgentService.createLoopForSession:596"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.activateSession:1062",
+			"id": "src/server/agent-service.ts/AgentService.activateSession:1067",
 			"name": "AgentService.activateSession",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1062,
-			"endLine": 1107,
+			"line": 1067,
+			"endLine": 1112,
 			"statementCount": 18,
 			"exported": true,
 			"signature": "method activateSession(agentId: string, sessionId?: string)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.getSessionInitPayload:1117",
-				"src/server/agent-service.ts/AgentService.emit:1487"
+				"src/server/agent-service.ts/AgentService.getSessionInitPayload:1122",
+				"src/server/agent-service.ts/AgentService.emit:1492"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.getSessionInitPayload:1117",
+			"id": "src/server/agent-service.ts/AgentService.getSessionInitPayload:1122",
 			"name": "AgentService.getSessionInitPayload",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1117,
-			"endLine": 1156,
+			"line": 1122,
+			"endLine": 1161,
 			"statementCount": 12,
 			"exported": true,
 			"signature": "method getSessionInitPayload(sessionId: string)",
 			"description": "构建 session 的完整 init payload(messages + token 信息 + todos + 未决\r",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:591",
-				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:1183",
+				"src/server/agent-service.ts/AgentService.createLoopForSession:596",
+				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:1188",
 				"src/runtime/pending-responses.ts/PendingResponseManager.getPendingForSession:93",
 				"src/runtime/tools/todo-write.ts/getSessionTodos:48"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.normalizeBlockArgs:1179",
+			"id": "src/server/agent-service.ts/AgentService.normalizeBlockArgs:1184",
 			"name": "AgentService.normalizeBlockArgs",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1179,
-			"endLine": 1181,
+			"line": 1184,
+			"endLine": 1186,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method normalizeBlockArgs(blocks: any[])",
 			"description": "Normalize tool-call blocks' `args` to a JSON STRING. The renderer's\r",
 			"callees": [
-				"src/server/agent-service.ts/normalizeBlockArgsForUi:1509"
+				"src/server/agent-service.ts/normalizeBlockArgsForUi:1514"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildSessionInitMessages:1183",
+			"id": "src/server/agent-service.ts/AgentService.buildSessionInitMessages:1188",
 			"name": "AgentService.buildSessionInitMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1183,
-			"endLine": 1197,
+			"line": 1188,
+			"endLine": 1202,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method buildSessionInitMessages(agentId: string, sessionId: string, loop: AgentLoop)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:1200",
-				"src/server/agent-service.ts/AgentService.buildLegacyMessages:1316"
+				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:1205",
+				"src/server/agent-service.ts/AgentService.buildLegacyMessages:1321"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildStepLevelMessages:1200",
+			"id": "src/server/agent-service.ts/AgentService.buildStepLevelMessages:1205",
 			"name": "AgentService.buildStepLevelMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1200,
-			"endLine": 1313,
+			"line": 1205,
+			"endLine": 1318,
 			"statementCount": 47,
 			"exported": true,
 			"signature": "method buildStepLevelMessages(turns: Array<{ seq: number; role: string; content: string | null; createdAt: string; turnGroup?: number }>, isBusy: boolean, recorderBlocks: any[])",
 			"description": "Build UI messages from step-level data, grouping by turnGroup.",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:1179"
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:1184"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildLegacyMessages:1316",
+			"id": "src/server/agent-service.ts/AgentService.buildLegacyMessages:1321",
 			"name": "AgentService.buildLegacyMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1316,
-			"endLine": 1387,
+			"line": 1321,
+			"endLine": 1392,
 			"statementCount": 27,
 			"exported": true,
 			"signature": "method buildLegacyMessages(turns: Array<{ seq: number; role: string; content: string | null; createdAt: string }>, isBusy: boolean, recorderBlocks: any[])",
 			"description": "Legacy path: no turnGroup, each turn is one UI message.",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:1179"
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:1184"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.dispose:1399",
+			"id": "src/server/agent-service.ts/AgentService.dispose:1404",
 			"name": "AgentService.dispose",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1399,
-			"endLine": 1431,
+			"line": 1404,
+			"endLine": 1436,
 			"statementCount": 20,
 			"exported": true,
 			"signature": "method dispose()",
 			"description": "Step 1C: now async. SessionClose MUST fire BEFORE SessionManager.dispose()\r",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.fireSessionClose:356",
-				"src/server/agent-service.ts/AgentService.dispose:1399",
-				"src/server/agent-service.ts/AgentService.abort:955"
+				"src/server/agent-service.ts/AgentService.dispose:1404",
+				"src/server/agent-service.ts/AgentService.abort:960"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.invalidateLoops:1432",
+			"id": "src/server/agent-service.ts/AgentService.invalidateLoops:1437",
 			"name": "AgentService.invalidateLoops",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1432,
-			"endLine": 1444,
+			"line": 1437,
+			"endLine": 1449,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method invalidateLoops()",
 			"description": "",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.fireSessionClose:356",
-				"src/server/agent-service.ts/AgentService.abort:955"
+				"src/server/agent-service.ts/AgentService.abort:960"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.handleRuntimeEvent:1446",
+			"id": "src/server/agent-service.ts/AgentService.handleRuntimeEvent:1451",
 			"name": "AgentService.handleRuntimeEvent",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1446,
-			"endLine": 1480,
+			"line": 1451,
+			"endLine": 1485,
 			"statementCount": 21,
 			"exported": true,
 			"signature": "method handleRuntimeEvent(agentId: string, event: StreamEvent)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.findStateByAgentId:1481",
-				"src/server/agent-service.ts/AgentService.emit:1487"
+				"src/server/agent-service.ts/AgentService.findStateByAgentId:1486",
+				"src/server/agent-service.ts/AgentService.emit:1492"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.findStateByAgentId:1481",
+			"id": "src/server/agent-service.ts/AgentService.findStateByAgentId:1486",
 			"name": "AgentService.findStateByAgentId",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1481,
-			"endLine": 1486,
+			"line": 1486,
+			"endLine": 1491,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method findStateByAgentId(agentId: string)",
@@ -13577,12 +13658,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.emit:1487",
+			"id": "src/server/agent-service.ts/AgentService.emit:1492",
 			"name": "AgentService.emit",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1487,
-			"endLine": 1491,
+			"line": 1492,
+			"endLine": 1496,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method emit(event: { type: string; [key: string]: unknown })",
@@ -13605,12 +13686,12 @@
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/createAgentService:1493",
+			"id": "src/server/agent-service.ts/createAgentService:1498",
 			"name": "createAgentService",
 			"kind": "function",
 			"file": "src/server/agent-service.ts",
-			"line": 1493,
-			"endLine": 1495,
+			"line": 1498,
+			"endLine": 1500,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function createAgentService(workspaceDir: string, sessionDb?: SessionDB, registry?: ToolRegistry, mcp?: MCPManager)",
@@ -13618,12 +13699,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/normalizeBlockArgsForUi:1509",
+			"id": "src/server/agent-service.ts/normalizeBlockArgsForUi:1514",
 			"name": "normalizeBlockArgsForUi",
 			"kind": "function",
 			"file": "src/server/agent-service.ts",
-			"line": 1509,
-			"endLine": 1520,
+			"line": 1514,
+			"endLine": 1525,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "function normalizeBlockArgsForUi(blocks: any[])",
@@ -13912,12 +13993,12 @@
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/execAsync:48",
+			"id": "src/server/archivist-git.ts/execAsync:50",
 			"name": "execAsync",
 			"kind": "function",
 			"file": "src/server/archivist-git.ts",
-			"line": 48,
-			"endLine": 59,
+			"line": 50,
+			"endLine": 61,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "function execAsync(cmd: string, options: { cwd: string; timeout?: number })",
@@ -13925,12 +14006,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/archivist-git.ts/shortId:61",
+			"id": "src/server/archivist-git.ts/shortId:63",
 			"name": "shortId",
 			"kind": "function",
 			"file": "src/server/archivist-git.ts",
-			"line": 61,
-			"endLine": 63,
+			"line": 63,
+			"endLine": 65,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function shortId(id: string)",
@@ -13938,208 +14019,238 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/archivist-git.ts/featureWorktreePath:66",
+			"id": "src/server/archivist-git.ts/projectSlug:72",
+			"name": "projectSlug",
+			"kind": "function",
+			"file": "src/server/archivist-git.ts",
+			"line": 72,
+			"endLine": 78,
+			"statementCount": 1,
+			"exported": false,
+			"signature": "function projectSlug(projectId: string)",
+			"description": "Slugify a project id/name into a filesystem-safe folder segment. Mirrors\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/archivist-git.ts/featureWorktreePath:90",
 			"name": "featureWorktreePath",
 			"kind": "function",
 			"file": "src/server/archivist-git.ts",
-			"line": 66,
-			"endLine": 68,
-			"statementCount": 1,
+			"line": 90,
+			"endLine": 104,
+			"statementCount": 7,
 			"exported": true,
-			"signature": "function featureWorktreePath(workspaceDir: string, requirementId: string)",
-			"description": "Convention: feature worktree path for a requirement (RFC §2.15).",
+			"signature": "function featureWorktreePath(workspaceDir: string, requirementId: string, projectId?: string)",
+			"description": "project-flow §4.2: feature worktrees live under a CENTRAL root, not beside\r",
 			"callees": [
-				"src/server/archivist-git.ts/shortId:61"
+				"src/server/archivist-git.ts/shortId:63",
+				"src/server/archivist-git.ts/projectSlug:72"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/featureBranchName:71",
+			"id": "src/server/archivist-git.ts/centralFeatureWorktreePath:113",
+			"name": "centralFeatureWorktreePath",
+			"kind": "function",
+			"file": "src/server/archivist-git.ts",
+			"line": 113,
+			"endLine": 115,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "function centralFeatureWorktreePath(projectId: string, requirementId: string)",
+			"description": "project-flow §4.2: the CENTRAL feature worktree path for a requirement.\r",
+			"callees": [
+				"src/server/archivist-git.ts/projectSlug:72",
+				"src/server/archivist-git.ts/shortId:63"
+			]
+		},
+		{
+			"id": "src/server/archivist-git.ts/featureBranchName:118",
 			"name": "featureBranchName",
 			"kind": "function",
 			"file": "src/server/archivist-git.ts",
-			"line": 71,
-			"endLine": 73,
+			"line": 118,
+			"endLine": 120,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function featureBranchName(requirementId: string)",
 			"description": "Convention: feature branch name for a requirement (RFC §2.15).",
 			"callees": [
-				"src/server/archivist-git.ts/shortId:61"
+				"src/server/archivist-git.ts/shortId:63"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.isRepo:103",
+			"id": "src/server/archivist-git.ts/ArchivistGit.isRepo:150",
 			"name": "ArchivistGit.isRepo",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 103,
-			"endLine": 110,
+			"line": 150,
+			"endLine": 157,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method isRepo(workspaceDir: string)",
 			"description": "True if workspaceDir is inside a git repo.",
 			"callees": [
-				"src/server/archivist-git.ts/execAsync:48"
+				"src/server/archivist-git.ts/execAsync:50"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.ensureRepo:116",
+			"id": "src/server/archivist-git.ts/ArchivistGit.ensureRepo:163",
 			"name": "ArchivistGit.ensureRepo",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 116,
-			"endLine": 135,
+			"line": 163,
+			"endLine": 182,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method ensureRepo(workspaceDir: string)",
 			"description": "Ensure workspaceDir is a git repo. If not, `git init` it. RFC §2.15:\r",
 			"callees": [
-				"src/server/archivist-git.ts/ArchivistGit.isRepo:103",
-				"src/server/archivist-git.ts/execAsync:48"
+				"src/server/archivist-git.ts/ArchivistGit.isRepo:150",
+				"src/server/archivist-git.ts/execAsync:50"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:138",
+			"id": "src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:185",
 			"name": "ArchivistGit.getCurrentMainRef",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 138,
-			"endLine": 145,
+			"line": 185,
+			"endLine": 192,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method getCurrentMainRef(workspaceDir: string)",
 			"description": "Read main's current HEAD commit sha. Returns undefined if no commits yet.",
 			"callees": [
-				"src/server/archivist-git.ts/execAsync:48"
+				"src/server/archivist-git.ts/execAsync:50"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.changesSince:155",
+			"id": "src/server/archivist-git.ts/ArchivistGit.changesSince:202",
 			"name": "ArchivistGit.changesSince",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 155,
-			"endLine": 198,
+			"line": 202,
+			"endLine": 245,
 			"statementCount": 18,
 			"exported": true,
 			"signature": "method changesSince(workspaceDir: string, lastScannedRef: string | undefined)",
 			"description": "Compute the change set between the previous scan cursor (lastScannedRef)\r",
 			"callees": [
-				"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:138",
-				"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:358",
-				"src/server/archivist-git.ts/ArchivistGit.safeLog:367",
-				"src/server/archivist-git.ts/execAsync:48"
+				"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:185",
+				"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:406",
+				"src/server/archivist-git.ts/ArchivistGit.safeLog:415",
+				"src/server/archivist-git.ts/execAsync:50"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:212",
+			"id": "src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:259",
 			"name": "ArchivistGit.commitRequirementDoc",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 212,
-			"endLine": 253,
+			"line": 259,
+			"endLine": 300,
 			"statementCount": 22,
 			"exported": true,
 			"signature": "method commitRequirementDoc(workspaceDir: string, requirementId: string, title: string, docPaths: string[])",
 			"description": "Commit PM-written requirement docs to main. RFC §2.15:\r",
 			"callees": [
-				"src/server/archivist-git.ts/isSafePathspec:402",
-				"src/server/archivist-git.ts/isSafeCommitSubject:409",
-				"src/server/archivist-git.ts/execAsync:48",
-				"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:138",
-				"src/server/archivist-git.ts/shortId:61"
+				"src/server/archivist-git.ts/isSafePathspec:450",
+				"src/server/archivist-git.ts/isSafeCommitSubject:457",
+				"src/server/archivist-git.ts/execAsync:50",
+				"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:185",
+				"src/server/archivist-git.ts/shortId:63"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:264",
+			"id": "src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:311",
 			"name": "ArchivistGit.mergeFeatureToMain",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 264,
-			"endLine": 310,
+			"line": 311,
+			"endLine": 358,
 			"statementCount": 19,
 			"exported": true,
-			"signature": "method mergeFeatureToMain(workspaceDir: string, requirementId: string)",
+			"signature": "method mergeFeatureToMain(workspaceDir: string, requirementId: string, projectId?: string)",
 			"description": "Merge a verified feature branch back to main, then clean up its worktree.\r",
 			"callees": [
-				"src/server/archivist-git.ts/featureBranchName:71",
-				"src/server/archivist-git.ts/featureWorktreePath:66",
-				"src/server/archivist-git.ts/execAsync:48",
-				"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:379",
-				"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:138",
-				"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:316"
+				"src/server/archivist-git.ts/featureBranchName:118",
+				"src/server/archivist-git.ts/featureWorktreePath:90",
+				"src/server/archivist-git.ts/execAsync:50",
+				"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:427",
+				"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:185",
+				"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:364"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:316",
+			"id": "src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:364",
 			"name": "ArchivistGit.cleanupWorktree",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 316,
-			"endLine": 354,
+			"line": 364,
+			"endLine": 402,
 			"statementCount": 17,
 			"exported": true,
-			"signature": "method cleanupWorktree(workspaceDir: string, requirementId: string)",
+			"signature": "method cleanupWorktree(workspaceDir: string, requirementId: string, projectId?: string)",
 			"description": "Remove a feature worktree and delete its branch. RFC §2.15:\r",
 			"callees": [
-				"src/server/archivist-git.ts/featureBranchName:71",
-				"src/server/archivist-git.ts/featureWorktreePath:66",
-				"src/server/archivist-git.ts/isSafePathspec:402",
-				"src/server/archivist-git.ts/execAsync:48"
+				"src/server/archivist-git.ts/featureBranchName:118",
+				"src/server/archivist-git.ts/featureWorktreePath:90",
+				"src/server/archivist-git.ts/isSafePathspec:450",
+				"src/server/archivist-git.ts/execAsync:50"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:358",
+			"id": "src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:406",
 			"name": "ArchivistGit.listTrackedFiles",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 358,
-			"endLine": 365,
+			"line": 406,
+			"endLine": 413,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method listTrackedFiles(workspaceDir: string)",
 			"description": "",
 			"callees": [
-				"src/server/archivist-git.ts/execAsync:48"
+				"src/server/archivist-git.ts/execAsync:50"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.safeLog:367",
+			"id": "src/server/archivist-git.ts/ArchivistGit.safeLog:415",
 			"name": "ArchivistGit.safeLog",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 367,
-			"endLine": 377,
+			"line": 415,
+			"endLine": 425,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method safeLog(workspaceDir: string, ...args: string[])",
 			"description": "",
 			"callees": [
-				"src/server/archivist-git.ts/execAsync:48"
+				"src/server/archivist-git.ts/execAsync:50"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:379",
+			"id": "src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:427",
 			"name": "ArchivistGit.listConflictedFiles",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 379,
-			"endLine": 386,
+			"line": 427,
+			"endLine": 434,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method listConflictedFiles(workspaceDir: string)",
 			"description": "",
 			"callees": [
-				"src/server/archivist-git.ts/execAsync:48"
+				"src/server/archivist-git.ts/execAsync:50"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/isSafePathspec:402",
+			"id": "src/server/archivist-git.ts/isSafePathspec:450",
 			"name": "isSafePathspec",
 			"kind": "function",
 			"file": "src/server/archivist-git.ts",
-			"line": 402,
-			"endLine": 406,
+			"line": 450,
+			"endLine": 454,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "function isSafePathspec(p: string)",
@@ -14147,12 +14258,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/archivist-git.ts/isSafeCommitSubject:409",
+			"id": "src/server/archivist-git.ts/isSafeCommitSubject:457",
 			"name": "isSafeCommitSubject",
 			"kind": "function",
 			"file": "src/server/archivist-git.ts",
-			"line": 409,
-			"endLine": 412,
+			"line": 457,
+			"endLine": 460,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "function isSafeCommitSubject(s: string)",
@@ -14165,7 +14276,7 @@
 			"kind": "function",
 			"file": "src/server/builtin-work-templates.ts",
 			"line": 29,
-			"endLine": 108,
+			"endLine": 109,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "function defaultProjectWorks(projectId: string, projectName: string)",
@@ -15519,12 +15630,12 @@
 			]
 		},
 		{
-			"id": "src/server/git-integration.ts/execAsync:34",
+			"id": "src/server/git-integration.ts/execAsync:35",
 			"name": "execAsync",
 			"kind": "function",
 			"file": "src/server/git-integration.ts",
-			"line": 34,
-			"endLine": 41,
+			"line": 35,
+			"endLine": 42,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "function execAsync(cmd: string, options: { cwd: string; timeout?: number })",
@@ -15532,12 +15643,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/git-integration.ts/slugify:46",
+			"id": "src/server/git-integration.ts/slugify:47",
 			"name": "slugify",
 			"kind": "function",
 			"file": "src/server/git-integration.ts",
-			"line": 46,
-			"endLine": 52,
+			"line": 47,
+			"endLine": 53,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function slugify(text: string)",
@@ -15545,109 +15656,110 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/git-integration.ts/GitIntegration.createRequirementBranch:67",
+			"id": "src/server/git-integration.ts/GitIntegration.createRequirementBranch:68",
 			"name": "GitIntegration.createRequirementBranch",
 			"kind": "method",
 			"file": "src/server/git-integration.ts",
-			"line": 67,
-			"endLine": 84,
+			"line": 68,
+			"endLine": 85,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method createRequirementBranch(projectPath: string, requirementId: string, title: string)",
 			"description": "创建需求分支。\r",
 			"callees": [
-				"src/server/git-integration.ts/slugify:46",
-				"src/server/git-integration.ts/execAsync:34"
+				"src/server/git-integration.ts/slugify:47",
+				"src/server/git-integration.ts/execAsync:35"
 			]
 		},
 		{
-			"id": "src/server/git-integration.ts/GitIntegration.createFeatureWorktree:95",
+			"id": "src/server/git-integration.ts/GitIntegration.createFeatureWorktree:101",
 			"name": "GitIntegration.createFeatureWorktree",
 			"kind": "method",
 			"file": "src/server/git-integration.ts",
-			"line": 95,
-			"endLine": 131,
+			"line": 101,
+			"endLine": 140,
 			"statementCount": 13,
 			"exported": true,
-			"signature": "method createFeatureWorktree(projectPath: string, requirementId: string)",
+			"signature": "method createFeatureWorktree(projectPath: string, requirementId: string, projectId?: string)",
 			"description": "v0.8 (M3): 创建 feature worktree(决策 25/28)。lead 进 build 时建独立\r",
 			"callees": [
-				"src/server/git-integration.ts/execAsync:34"
+				"src/server/archivist-git.ts/centralFeatureWorktreePath:113",
+				"src/server/git-integration.ts/execAsync:35"
 			]
 		},
 		{
-			"id": "src/server/git-integration.ts/GitIntegration.commitStep:137",
+			"id": "src/server/git-integration.ts/GitIntegration.commitStep:146",
 			"name": "GitIntegration.commitStep",
 			"kind": "method",
 			"file": "src/server/git-integration.ts",
-			"line": 137,
-			"endLine": 162,
+			"line": 146,
+			"endLine": 171,
 			"statementCount": 14,
 			"exported": true,
 			"signature": "method commitStep(worktreePath: string, requirementId: string, message: string)",
 			"description": "v0.8 (M3): 在 feature worktree 提交一步,commit message 引用 requirementId\r",
 			"callees": [
-				"src/server/git-integration.ts/execAsync:34"
+				"src/server/git-integration.ts/execAsync:35"
 			]
 		},
 		{
-			"id": "src/server/git-integration.ts/GitIntegration.getDiffSince:167",
+			"id": "src/server/git-integration.ts/GitIntegration.getDiffSince:176",
 			"name": "GitIntegration.getDiffSince",
 			"kind": "method",
 			"file": "src/server/git-integration.ts",
-			"line": 167,
-			"endLine": 184,
+			"line": 176,
+			"endLine": 193,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method getDiffSince(projectPath: string, sinceDate: string)",
 			"description": "获取自某时间以来的 diff（增量分析用）。",
 			"callees": [
-				"src/server/git-integration.ts/execAsync:34"
+				"src/server/git-integration.ts/execAsync:35"
 			]
 		},
 		{
-			"id": "src/server/git-integration.ts/GitIntegration.getChangedFiles:189",
+			"id": "src/server/git-integration.ts/GitIntegration.getChangedFiles:198",
 			"name": "GitIntegration.getChangedFiles",
 			"kind": "method",
 			"file": "src/server/git-integration.ts",
-			"line": 189,
-			"endLine": 200,
+			"line": 198,
+			"endLine": 209,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getChangedFiles(projectPath: string, baseBranch?: string)",
 			"description": "获取变更文件列表（验证用）。",
 			"callees": [
-				"src/server/git-integration.ts/execAsync:34"
+				"src/server/git-integration.ts/execAsync:35"
 			]
 		},
 		{
-			"id": "src/server/git-integration.ts/GitIntegration.commitChanges:205",
+			"id": "src/server/git-integration.ts/GitIntegration.commitChanges:214",
 			"name": "GitIntegration.commitChanges",
 			"kind": "method",
 			"file": "src/server/git-integration.ts",
-			"line": 205,
-			"endLine": 216,
+			"line": 214,
+			"endLine": 225,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method commitChanges(projectPath: string, message: string)",
 			"description": "提交变更（步骤完成后可选）。",
 			"callees": [
-				"src/server/git-integration.ts/execAsync:34"
+				"src/server/git-integration.ts/execAsync:35"
 			]
 		},
 		{
-			"id": "src/server/git-integration.ts/GitIntegration.createPullRequest:222",
+			"id": "src/server/git-integration.ts/GitIntegration.createPullRequest:231",
 			"name": "GitIntegration.createPullRequest",
 			"kind": "method",
 			"file": "src/server/git-integration.ts",
-			"line": 222,
-			"endLine": 256,
+			"line": 231,
+			"endLine": 265,
 			"statementCount": 13,
 			"exported": true,
 			"signature": "method createPullRequest(projectPath: string, requirementId: string, title: string, body: string)",
 			"description": "创建 PR（如果配置了远端）。\r",
 			"callees": [
-				"src/server/git-integration.ts/execAsync:34"
+				"src/server/git-integration.ts/execAsync:35"
 			]
 		},
 		{
@@ -15676,10 +15788,10 @@
 			"description": "",
 			"callees": [
 				"src/server/db-migration.ts/runMigrations:657",
-				"src/runtime/tools/index.ts/registerRuntimeTools:149",
+				"src/runtime/tools/index.ts/registerRuntimeTools:147",
 				"src/server/workspace-config.ts/loadWorkspaceConfig:40",
 				"src/runtime/proxy-manager.ts/applyProxy:30",
-				"src/server/agent-service.ts/createAgentService:1493",
+				"src/server/agent-service.ts/createAgentService:1498",
 				"src/server/data-change-hub.ts/onDataChange:165",
 				"src/server/index.ts/broadcast:277",
 				"src/server/index.ts/reloadProviders:314",
@@ -16094,22 +16206,22 @@
 			"kind": "method",
 			"file": "src/server/lead-service.ts",
 			"line": 125,
-			"endLine": 204,
+			"endLine": 206,
 			"statementCount": 27,
 			"exported": true,
 			"signature": "method pickupRequirement(requirementId: string)",
 			"description": "领取就绪需求，启动 Lead session。",
 			"callees": [
-				"src/server/lead-service.ts/LeadService.resolveLeadWork:263"
+				"src/server/lead-service.ts/LeadService.resolveLeadWork:265"
 			]
 		},
 		{
-			"id": "src/server/lead-service.ts/LeadService.autoPickupIfIdle:209",
+			"id": "src/server/lead-service.ts/LeadService.autoPickupIfIdle:211",
 			"name": "LeadService.autoPickupIfIdle",
 			"kind": "method",
 			"file": "src/server/lead-service.ts",
-			"line": 209,
-			"endLine": 233,
+			"line": 211,
+			"endLine": 235,
 			"statementCount": 13,
 			"exported": true,
 			"signature": "method autoPickupIfIdle(projectId: string)",
@@ -16119,12 +16231,12 @@
 			]
 		},
 		{
-			"id": "src/server/lead-service.ts/LeadService.getProgress:238",
+			"id": "src/server/lead-service.ts/LeadService.getProgress:240",
 			"name": "LeadService.getProgress",
 			"kind": "method",
 			"file": "src/server/lead-service.ts",
-			"line": 238,
-			"endLine": 255,
+			"line": 240,
+			"endLine": 257,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method getProgress(requirementId: string)",
@@ -16132,12 +16244,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/lead-service.ts/LeadService.resolveLeadWork:263",
+			"id": "src/server/lead-service.ts/LeadService.resolveLeadWork:265",
 			"name": "LeadService.resolveLeadWork",
 			"kind": "method",
 			"file": "src/server/lead-service.ts",
-			"line": 263,
-			"endLine": 276,
+			"line": 265,
+			"endLine": 278,
 			"statementCount": 12,
 			"exported": true,
 			"signature": "method resolveLeadWork(project: ProjectRecord)",
@@ -23142,8 +23254,8 @@
 			"signature": "method buildSkeleton(projectId: string)",
 			"description": "Scan a project's main branch and update its wiki subtree incrementally.",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:730",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392"
 			]
 		},
 		{
@@ -23158,8 +23270,8 @@
 			"signature": "method rescanProjectFull(projectId: string)",
 			"description": "Periodic full rescan — re-walks the workspace and refreshes every wiki",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:730",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392"
 			]
 		},
 		{
@@ -23174,7 +23286,7 @@
 			"signature": "method rebuildProjectSubtree(projectId: string)",
 			"description": "Clean rebuild — drop the project's entire wiki subtree + scan cursor,",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:730",
 				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.rescanProjectFull:231"
 			]
 		},
@@ -23200,7 +23312,7 @@
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
 			"line": 305,
-			"endLine": 320,
+			"endLine": 322,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method mergeFeatureToMain(projectId: string, requirementId: string)",
@@ -23211,64 +23323,64 @@
 			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:323",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:325",
 			"name": "WikiSkeletonService.cleanupWorktree",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 323,
-			"endLine": 327,
+			"line": 325,
+			"endLine": 329,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method cleanupWorktree(projectId: string, requirementId: string)",
 			"description": "Clean up a feature worktree + branch (called on cancel / abort).",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:323"
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:325"
 			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.detectDivergence:340",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.detectDivergence:342",
 			"name": "WikiSkeletonService.detectDivergence",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 340,
-			"endLine": 386,
+			"line": 342,
+			"endLine": 388,
 			"statementCount": 17,
 			"exported": true,
 			"signature": "method detectDivergence(projectId: string)",
 			"description": "Detect wiki-intent ↔ code-structure divergence:",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:711",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:715"
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:713",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:717"
 			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392",
 			"name": "WikiSkeletonService.ingestFiles",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 390,
-			"endLine": 559,
+			"line": 392,
+			"endLine": 561,
 			"statementCount": 83,
 			"exported": true,
 			"signature": "method ingestFiles(projectId: string, workspaceDir: string, files: string[])",
 			"description": "",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:721",
-				"src/server/wiki-skeleton-service.ts/extOf:745",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureDirectoryChain:576",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.findHeader:614",
-				"src/server/wiki-skeleton-service.ts/basenameOf:750",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:697",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:702"
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:723",
+				"src/server/wiki-skeleton-service.ts/extOf:747",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureDirectoryChain:578",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.findHeader:616",
+				"src/server/wiki-skeleton-service.ts/basenameOf:752",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:699",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:704"
 			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureDirectoryChain:576",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureDirectoryChain:578",
 			"name": "WikiSkeletonService.ensureDirectoryChain",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 576,
-			"endLine": 611,
+			"line": 578,
+			"endLine": 613,
 			"statementCount": 24,
 			"exported": true,
 			"signature": "method ensureDirectoryChain(projectId: string, subtreeRootId: string, dirRelPath: string)",
@@ -23276,12 +23388,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.findHeader:614",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.findHeader:616",
 			"name": "WikiSkeletonService.findHeader",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 614,
-			"endLine": 628,
+			"line": 616,
+			"endLine": 630,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method findHeader(projectId: string, moduleId: string, relPath: string, childrenByParent?: Map<string, WikiNode[]>)",
@@ -23289,59 +23401,59 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureSummary:640",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureSummary:642",
 			"name": "WikiSkeletonService.ensureSummary",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 640,
-			"endLine": 665,
+			"line": 642,
+			"endLine": 667,
 			"statementCount": 22,
 			"exported": true,
 			"signature": "method ensureSummary(nodeId: string)",
 			"description": "Lazily compute + persist a node's rich summary on first expand. Scan",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667",
-				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:684"
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:669",
+				"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:686"
 			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:669",
 			"name": "WikiSkeletonService.summarizeCodeFile",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 667,
-			"endLine": 682,
+			"line": 669,
+			"endLine": 684,
 			"statementCount": 12,
 			"exported": true,
 			"signature": "method summarizeCodeFile(absPath: string, relPath: string)",
 			"description": "",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/readFileText:783",
-				"src/server/wiki-skeleton-service.ts/extractExports:755"
+				"src/server/wiki-skeleton-service.ts/readFileText:785",
+				"src/server/wiki-skeleton-service.ts/extractExports:757"
 			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:684",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:686",
 			"name": "WikiSkeletonService.summarizeDocFile",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 684,
-			"endLine": 695,
+			"line": 686,
+			"endLine": 697,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method summarizeDocFile(absPath: string)",
 			"description": "",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/readFileText:783"
+				"src/server/wiki-skeleton-service.ts/readFileText:785"
 			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:697",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:699",
 			"name": "WikiSkeletonService.classifyIntentDoc",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 697,
-			"endLine": 700,
+			"line": 699,
+			"endLine": 702,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method classifyIntentDoc(relPath: string)",
@@ -23349,27 +23461,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:702",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:704",
 			"name": "WikiSkeletonService.lookupRequirementId",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 702,
-			"endLine": 709,
+			"line": 704,
+			"endLine": 711,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method lookupRequirementId(projectId: string, relPath: string)",
 			"description": "",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/basenameOf:750"
+				"src/server/wiki-skeleton-service.ts/basenameOf:752"
 			]
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:711",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:713",
 			"name": "WikiSkeletonService.nodeReferences",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 711,
-			"endLine": 713,
+			"line": 713,
+			"endLine": 715,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method nodeReferences(node: WikiNode, targetId: string)",
@@ -23377,12 +23489,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:715",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:717",
 			"name": "WikiSkeletonService.sharesRequirement",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 715,
-			"endLine": 719,
+			"line": 717,
+			"endLine": 721,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method sharesRequirement(a: WikiNode, b: WikiNode)",
@@ -23390,12 +23502,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:721",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:723",
 			"name": "WikiSkeletonService.isIgnoredPath",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 721,
-			"endLine": 726,
+			"line": 723,
+			"endLine": 728,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method isIgnoredPath(relPath: string)",
@@ -23403,12 +23515,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:730",
 			"name": "WikiSkeletonService.emptyResult",
 			"kind": "method",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 728,
-			"endLine": 738,
+			"line": 730,
+			"endLine": 740,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method emptyResult(projectId: string, note: string)",
@@ -23416,12 +23528,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.indexAdd:418",
+			"id": "src/server/wiki-skeleton-service.ts/WikiSkeletonService.indexAdd:420",
 			"name": "WikiSkeletonService.indexAdd",
 			"kind": "arrow",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 418,
-			"endLine": 422,
+			"line": 420,
+			"endLine": 424,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "fn (parentId: string, node: WikiNode)",
@@ -23429,12 +23541,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/extOf:745",
+			"id": "src/server/wiki-skeleton-service.ts/extOf:747",
 			"name": "extOf",
 			"kind": "function",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 745,
-			"endLine": 748,
+			"line": 747,
+			"endLine": 750,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "function extOf(p: string)",
@@ -23442,12 +23554,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/basenameOf:750",
+			"id": "src/server/wiki-skeleton-service.ts/basenameOf:752",
 			"name": "basenameOf",
 			"kind": "function",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 750,
-			"endLine": 753,
+			"line": 752,
+			"endLine": 755,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "function basenameOf(p: string)",
@@ -23455,12 +23567,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/extractExports:755",
+			"id": "src/server/wiki-skeleton-service.ts/extractExports:757",
 			"name": "extractExports",
 			"kind": "function",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 755,
-			"endLine": 772,
+			"line": 757,
+			"endLine": 774,
 			"statementCount": 7,
 			"exported": false,
 			"signature": "function extractExports(content: string)",
@@ -23468,12 +23580,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/readFileText:783",
+			"id": "src/server/wiki-skeleton-service.ts/readFileText:785",
 			"name": "readFileText",
 			"kind": "function",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 783,
-			"endLine": 794,
+			"line": 785,
+			"endLine": 796,
 			"statementCount": 9,
 			"exported": false,
 			"signature": "function readFileText(absPath: string)",
@@ -23481,18 +23593,18 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-skeleton-service.ts/walkWorkspace:800",
+			"id": "src/server/wiki-skeleton-service.ts/walkWorkspace:802",
 			"name": "walkWorkspace",
 			"kind": "function",
 			"file": "src/server/wiki-skeleton-service.ts",
-			"line": 800,
-			"endLine": 820,
+			"line": 802,
+			"endLine": 822,
 			"statementCount": 17,
 			"exported": true,
 			"signature": "function walkWorkspace(rootDir: string, accumulator: string[] = [], prefix = \"\")",
 			"description": "Convenience for readdir-based fallback scans (when git is unavailable).",
 			"callees": [
-				"src/server/wiki-skeleton-service.ts/walkWorkspace:800"
+				"src/server/wiki-skeleton-service.ts/walkWorkspace:802"
 			]
 		},
 		{
@@ -24547,12 +24659,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.register:112",
+			"id": "src/core/tool-registry.ts/ToolRegistry.register:120",
 			"name": "ToolRegistry.register",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 112,
-			"endLine": 114,
+			"line": 120,
+			"endLine": 122,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method register(descriptor: ToolDescriptor)",
@@ -24560,43 +24672,43 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.unregister:116",
+			"id": "src/core/tool-registry.ts/ToolRegistry.unregister:124",
 			"name": "ToolRegistry.unregister",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 116,
-			"endLine": 123,
+			"line": 124,
+			"endLine": 131,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method unregister(source: ToolDescriptor[\"source\"], mcpServerId?: string)",
 			"description": "",
 			"callees": [
-				"src/core/tool-registry.ts/ToolRegistry.notifyChange:216"
+				"src/core/tool-registry.ts/ToolRegistry.notifyChange:224"
 			]
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.getAll:127",
+			"id": "src/core/tool-registry.ts/ToolRegistry.getAll:135",
 			"name": "ToolRegistry.getAll",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 127,
-			"endLine": 134,
+			"line": 135,
+			"endLine": 142,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getAll()",
 			"description": "",
 			"callees": [
-				"src/core/tool-registry.ts/ToolRegistry.getToolConfig:150",
-				"src/core/tool-registry.ts/ToolRegistry.buildEffectivePrompt:200"
+				"src/core/tool-registry.ts/ToolRegistry.getToolConfig:158",
+				"src/core/tool-registry.ts/ToolRegistry.buildEffectivePrompt:208"
 			]
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.getByCategory:136",
+			"id": "src/core/tool-registry.ts/ToolRegistry.getByCategory:144",
 			"name": "ToolRegistry.getByCategory",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 136,
-			"endLine": 142,
+			"line": 144,
+			"endLine": 150,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method getByCategory()",
@@ -24604,12 +24716,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.getByName:144",
+			"id": "src/core/tool-registry.ts/ToolRegistry.getByName:152",
 			"name": "ToolRegistry.getByName",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 144,
-			"endLine": 146,
+			"line": 152,
+			"endLine": 154,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getByName(name: string)",
@@ -24617,12 +24729,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.getToolConfig:150",
+			"id": "src/core/tool-registry.ts/ToolRegistry.getToolConfig:158",
 			"name": "ToolRegistry.getToolConfig",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 150,
-			"endLine": 171,
+			"line": 158,
+			"endLine": 179,
 			"statementCount": 13,
 			"exported": true,
 			"signature": "method getToolConfig()",
@@ -24630,27 +24742,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.getToolConfigFor:173",
+			"id": "src/core/tool-registry.ts/ToolRegistry.getToolConfigFor:181",
 			"name": "ToolRegistry.getToolConfigFor",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 173,
-			"endLine": 175,
+			"line": 181,
+			"endLine": 183,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getToolConfigFor(name: string)",
 			"description": "",
 			"callees": [
-				"src/core/tool-registry.ts/ToolRegistry.getToolConfig:150"
+				"src/core/tool-registry.ts/ToolRegistry.getToolConfig:158"
 			]
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.saveToolConfig:177",
+			"id": "src/core/tool-registry.ts/ToolRegistry.saveToolConfig:185",
 			"name": "ToolRegistry.saveToolConfig",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 177,
-			"endLine": 182,
+			"line": 185,
+			"endLine": 190,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method saveToolConfig(config: Record<string, Record<string, any>>)",
@@ -24658,12 +24770,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.loadConfig:184",
+			"id": "src/core/tool-registry.ts/ToolRegistry.loadConfig:192",
 			"name": "ToolRegistry.loadConfig",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 184,
-			"endLine": 189,
+			"line": 192,
+			"endLine": 197,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method loadConfig()",
@@ -24671,12 +24783,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.onChange:193",
+			"id": "src/core/tool-registry.ts/ToolRegistry.onChange:201",
 			"name": "ToolRegistry.onChange",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 193,
-			"endLine": 198,
+			"line": 201,
+			"endLine": 206,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method onChange(cb: ChangeCallback)",
@@ -24684,12 +24796,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.buildEffectivePrompt:200",
+			"id": "src/core/tool-registry.ts/ToolRegistry.buildEffectivePrompt:208",
 			"name": "ToolRegistry.buildEffectivePrompt",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 200,
-			"endLine": 214,
+			"line": 208,
+			"endLine": 222,
 			"statementCount": 13,
 			"exported": true,
 			"signature": "method buildEffectivePrompt(desc: ToolDescriptor, config: Record<string, Record<string, any>>)",
@@ -24697,12 +24809,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/tool-registry.ts/ToolRegistry.notifyChange:216",
+			"id": "src/core/tool-registry.ts/ToolRegistry.notifyChange:224",
 			"name": "ToolRegistry.notifyChange",
 			"kind": "method",
 			"file": "src/core/tool-registry.ts",
-			"line": 216,
-			"endLine": 220,
+			"line": 224,
+			"endLine": 228,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method notifyChange()",
@@ -24895,7 +25007,7 @@
 		"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1236": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:635"
 		],
-		"src/runtime/tools/index.ts/buildToolsSet:171": [
+		"src/runtime/tools/index.ts/buildToolsSet:169": [
 			"src/runtime/agent-loop.ts/AgentLoop.buildTools:795"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1020": [
@@ -25012,7 +25124,7 @@
 		],
 		"src/runtime/tools/todo-write.ts/getSessionTodos:48": [
 			"src/runtime/hooks/todo-cleanup-hooks.ts/registerTodoCleanupHooks:29",
-			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1117"
+			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1122"
 		],
 		"src/runtime/tools/todo-write.ts/clearSessionTodos:52": [
 			"src/runtime/hooks/todo-cleanup-hooks.ts/registerTodoCleanupHooks:29"
@@ -25238,8 +25350,8 @@
 		],
 		"src/runtime/hooks/index.ts/registerHooksForLoop:117": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:709",
-			"src/server/agent-service.ts/AgentService.createLoopForSession:591",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:802"
+			"src/server/agent-service.ts/AgentService.createLoopForSession:596",
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:807"
 		],
 		"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:716": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:716"
@@ -25339,9 +25451,27 @@
 		"src/runtime/tools/file-read-helpers.ts/similarity:214": [
 			"src/runtime/tools/file-read-helpers.ts/suggestSimilarFiles:194"
 		],
-		"src/runtime/tools/flow-tool.ts/requirementDocPath:112": [
-			"src/runtime/tools/flow-tool.ts/writeIntentDoc:117",
-			"src/runtime/tools/flow-tool.ts/writeDocSection:140"
+		"src/runtime/tools/flow-tool.ts/requirementDocPath:124": [
+			"src/runtime/tools/flow-tool.ts/writeIntentDoc:129",
+			"src/runtime/tools/flow-tool.ts/writeDocSection:152"
+		],
+		"src/runtime/tools/flow-tool.ts/parseVerdict:475": [
+			"src/runtime/tools/flow-tool.ts/executeVerify:506"
+		],
+		"src/runtime/tools/flow-tool.ts/decisionLogBody:493": [
+			"src/runtime/tools/flow-tool.ts/executeVerify:506"
+		],
+		"src/runtime/tools/flow-tool.ts/writeDecisionLog:654": [
+			"src/runtime/tools/flow-tool.ts/executeVerify:506"
+		],
+		"src/runtime/tools/flow-tool.ts/emitVerifySignal:665": [
+			"src/runtime/tools/flow-tool.ts/executeVerify:506"
+		],
+		"src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:114": [
+			"src/runtime/tools/flow-tool.ts/writeDecisionLog:654"
+		],
+		"src/runtime/tools/flow-tool.ts/writeDocSection:152": [
+			"src/runtime/tools/flow-tool.ts/writeDecisionLog:654"
 		],
 		"src/runtime/tools/grep.ts/walkFiles:85": [
 			"src/runtime/tools/grep.ts/walkFiles:85",
@@ -25351,24 +25481,24 @@
 			"src/runtime/tools/grep.ts/nativeGrepSearch:100"
 		],
 		"src/runtime/mcp-tools/platform-tools.ts/createPlatformTools:55": [
-			"src/runtime/tools/index.ts/getPlatformTools:67"
+			"src/runtime/tools/index.ts/getPlatformTools:68"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolMeta:294": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:149",
-			"src/runtime/tools/index.ts/getToolCategories:249",
-			"src/runtime/tools/index.ts/getAllToolInfo:262"
+			"src/runtime/tools/index.ts/registerRuntimeTools:147",
+			"src/runtime/tools/index.ts/getToolCategories:247",
+			"src/runtime/tools/index.ts/getAllToolInfo:260"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolConfigSchema:310": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:149"
+			"src/runtime/tools/index.ts/registerRuntimeTools:147"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolDescription:302": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:149"
+			"src/runtime/tools/index.ts/registerRuntimeTools:147"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolPrompt:306": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:149"
+			"src/runtime/tools/index.ts/registerRuntimeTools:147"
 		],
-		"src/runtime/tools/index.ts/isEnabled:203": [
-			"src/runtime/tools/index.ts/buildToolsSet:171"
+		"src/runtime/tools/index.ts/isEnabled:201": [
+			"src/runtime/tools/index.ts/buildToolsSet:169"
 		],
 		"src/runtime/tools/mcp-tool.ts/inputSchemaToZod:66": [
 			"src/runtime/tools/mcp-tool.ts/createMcpTool:34"
@@ -25788,7 +25918,7 @@
 			"src/runtime/wiki-anchor-injection.ts/collectMemoryLeaves:364",
 			"src/runtime/wiki-anchor-injection.ts/visit:366"
 		],
-		"src/server/agent-service.ts/AgentService.invalidateLoops:1432": [
+		"src/server/agent-service.ts/AgentService.invalidateLoops:1437": [
 			"src/server/agent-service.ts/AgentService.setWorkspaceDir:194",
 			"src/server/agent-service.ts/AgentService.setProviders:200"
 		],
@@ -25804,22 +25934,22 @@
 		],
 		"src/server/agent-service.ts/AgentService.fireSessionClose:356": [
 			"src/server/agent-service.ts/AgentService.setAgentStore:210",
-			"src/server/agent-service.ts/AgentService.evictSessionFromMemory:427",
-			"src/server/agent-service.ts/AgentService.dispose:1399",
-			"src/server/agent-service.ts/AgentService.invalidateLoops:1432"
+			"src/server/agent-service.ts/AgentService.evictSessionFromMemory:432",
+			"src/server/agent-service.ts/AgentService.dispose:1404",
+			"src/server/agent-service.ts/AgentService.invalidateLoops:1437"
 		],
-		"src/server/agent-service.ts/AgentService.createLoopForSession:591": [
+		"src/server/agent-service.ts/AgentService.createLoopForSession:596": [
 			"src/server/agent-service.ts/AgentService.setAgentStore:210",
-			"src/server/agent-service.ts/AgentService.getOrCreateLoop:568",
-			"src/server/agent-service.ts/AgentService.recreateLoop:583",
-			"src/server/agent-service.ts/AgentService.sendPrompt:748",
-			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:975",
-			"src/server/agent-service.ts/AgentService.restoreAllSessions:1032",
-			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1117"
+			"src/server/agent-service.ts/AgentService.getOrCreateLoop:573",
+			"src/server/agent-service.ts/AgentService.recreateLoop:588",
+			"src/server/agent-service.ts/AgentService.sendPrompt:753",
+			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:980",
+			"src/server/agent-service.ts/AgentService.restoreAllSessions:1037",
+			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1122"
 		],
 		"src/server/agent-service.ts/AgentService.capabilityHandlesFor:418": [
 			"src/server/agent-service.ts/AgentService.setAgentStore:210",
-			"src/server/agent-service.ts/AgentService.createLoopForSession:591"
+			"src/server/agent-service.ts/AgentService.createLoopForSession:596"
 		],
 		"src/server/metrics-events.ts/createEventMetricsAdapter:34": [
 			"src/server/agent-service.ts/AgentService.setSessionManager:264"
@@ -25828,84 +25958,84 @@
 			"src/server/agent-service.ts/AgentService.capabilityHandlesFor:418",
 			"src/server/agent-service.ts/AgentService.on:419"
 		],
-		"src/server/agent-service.ts/AgentService.buildSessionConfigForEviction:471": [
-			"src/server/agent-service.ts/AgentService.evictSessionFromMemory:427"
+		"src/server/agent-service.ts/AgentService.buildSessionConfigForEviction:476": [
+			"src/server/agent-service.ts/AgentService.evictSessionFromMemory:432"
 		],
-		"src/server/agent-service.ts/AgentService.abort:955": [
-			"src/server/agent-service.ts/AgentService.evictSessionFromMemory:427",
-			"src/server/agent-service.ts/AgentService.dispose:1399",
-			"src/server/agent-service.ts/AgentService.invalidateLoops:1432"
+		"src/server/agent-service.ts/AgentService.abort:960": [
+			"src/server/agent-service.ts/AgentService.evictSessionFromMemory:432",
+			"src/server/agent-service.ts/AgentService.dispose:1404",
+			"src/server/agent-service.ts/AgentService.invalidateLoops:1437"
 		],
-		"src/server/agent-service.ts/AgentService.emit:1487": [
-			"src/server/agent-service.ts/AgentService.markRunning:530",
-			"src/server/agent-service.ts/AgentService.sendPrompt:748",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:802",
-			"src/server/agent-service.ts/AgentService.activateSession:1062",
-			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1446"
+		"src/server/agent-service.ts/AgentService.emit:1492": [
+			"src/server/agent-service.ts/AgentService.markRunning:535",
+			"src/server/agent-service.ts/AgentService.sendPrompt:753",
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:807",
+			"src/server/agent-service.ts/AgentService.activateSession:1067",
+			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1451"
 		],
 		"src/runtime/tools/mcp-tool.ts/buildMcpTools:110": [
-			"src/server/agent-service.ts/AgentService.createLoopForSession:591",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:802"
+			"src/server/agent-service.ts/AgentService.createLoopForSession:596",
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:807"
 		],
 		"src/server/agent-service.ts/AgentService.buildHookDeps:318": [
-			"src/server/agent-service.ts/AgentService.createLoopForSession:591",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:802"
+			"src/server/agent-service.ts/AgentService.createLoopForSession:596",
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:807"
 		],
-		"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1446": [
-			"src/server/agent-service.ts/AgentService.createLoopForSession:591",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:802"
+		"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1451": [
+			"src/server/agent-service.ts/AgentService.createLoopForSession:596",
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:807"
 		],
 		"src/server/agent-service.ts/AgentService.fireSessionStart:336": [
-			"src/server/agent-service.ts/AgentService.createLoopForSession:591",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:802"
+			"src/server/agent-service.ts/AgentService.createLoopForSession:596",
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:807"
 		],
-		"src/server/agent-service.ts/AgentService.getOrCreateLoop:568": [
-			"src/server/agent-service.ts/AgentService.sendPrompt:748"
+		"src/server/agent-service.ts/AgentService.getOrCreateLoop:573": [
+			"src/server/agent-service.ts/AgentService.sendPrompt:753"
 		],
-		"src/server/agent-service.ts/AgentService.isSessionRunning:518": [
-			"src/server/agent-service.ts/AgentService.sendPrompt:748"
+		"src/server/agent-service.ts/AgentService.isSessionRunning:523": [
+			"src/server/agent-service.ts/AgentService.sendPrompt:753"
 		],
-		"src/server/agent-service.ts/AgentService.markRunning:530": [
-			"src/server/agent-service.ts/AgentService.sendPrompt:748",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:802",
-			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:975"
+		"src/server/agent-service.ts/AgentService.markRunning:535": [
+			"src/server/agent-service.ts/AgentService.sendPrompt:753",
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:807",
+			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:980"
 		],
 		"src/server/agent-service.ts/AgentService.whenReady:388": [
-			"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:970"
+			"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:975"
 		],
-		"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:975": [
-			"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:970"
+		"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:980": [
+			"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:975"
 		],
 		"src/server/durable-hooks.ts/setSessionTurnSeq:55": [
-			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:975"
+			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:980"
 		],
-		"src/server/agent-service.ts/AgentService.getSessionInitPayload:1117": [
-			"src/server/agent-service.ts/AgentService.activateSession:1062"
+		"src/server/agent-service.ts/AgentService.getSessionInitPayload:1122": [
+			"src/server/agent-service.ts/AgentService.activateSession:1067"
 		],
-		"src/server/agent-service.ts/AgentService.buildSessionInitMessages:1183": [
-			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1117"
+		"src/server/agent-service.ts/AgentService.buildSessionInitMessages:1188": [
+			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1122"
 		],
 		"src/runtime/pending-responses.ts/PendingResponseManager.getPendingForSession:93": [
-			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1117"
+			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1122"
 		],
-		"src/server/agent-service.ts/normalizeBlockArgsForUi:1509": [
-			"src/server/agent-service.ts/AgentService.normalizeBlockArgs:1179"
+		"src/server/agent-service.ts/normalizeBlockArgsForUi:1514": [
+			"src/server/agent-service.ts/AgentService.normalizeBlockArgs:1184"
 		],
-		"src/server/agent-service.ts/AgentService.buildStepLevelMessages:1200": [
-			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:1183"
+		"src/server/agent-service.ts/AgentService.buildStepLevelMessages:1205": [
+			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:1188"
 		],
-		"src/server/agent-service.ts/AgentService.buildLegacyMessages:1316": [
-			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:1183"
+		"src/server/agent-service.ts/AgentService.buildLegacyMessages:1321": [
+			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:1188"
 		],
-		"src/server/agent-service.ts/AgentService.normalizeBlockArgs:1179": [
-			"src/server/agent-service.ts/AgentService.buildStepLevelMessages:1200",
-			"src/server/agent-service.ts/AgentService.buildLegacyMessages:1316"
+		"src/server/agent-service.ts/AgentService.normalizeBlockArgs:1184": [
+			"src/server/agent-service.ts/AgentService.buildStepLevelMessages:1205",
+			"src/server/agent-service.ts/AgentService.buildLegacyMessages:1321"
 		],
-		"src/server/agent-service.ts/AgentService.dispose:1399": [
-			"src/server/agent-service.ts/AgentService.dispose:1399"
+		"src/server/agent-service.ts/AgentService.dispose:1404": [
+			"src/server/agent-service.ts/AgentService.dispose:1404"
 		],
-		"src/server/agent-service.ts/AgentService.findStateByAgentId:1481": [
-			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1446"
+		"src/server/agent-service.ts/AgentService.findStateByAgentId:1486": [
+			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1451"
 		],
 		"src/server/agent-store.ts/AgentStore.delete:181": [
 			"src/server/agent-store.ts/AgentStore.onChange:119",
@@ -25954,57 +26084,62 @@
 		"src/server/analyst-service.ts/AnalystService.buildIncrementalPrompt:216": [
 			"src/server/analyst-service.ts/AnalystService.runIncrementalAnalysis:133"
 		],
-		"src/server/archivist-git.ts/shortId:61": [
-			"src/server/archivist-git.ts/featureWorktreePath:66",
-			"src/server/archivist-git.ts/featureBranchName:71",
-			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:212"
+		"src/server/archivist-git.ts/shortId:63": [
+			"src/server/archivist-git.ts/featureWorktreePath:90",
+			"src/server/archivist-git.ts/centralFeatureWorktreePath:113",
+			"src/server/archivist-git.ts/featureBranchName:118",
+			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:259"
 		],
-		"src/server/archivist-git.ts/execAsync:48": [
-			"src/server/archivist-git.ts/ArchivistGit.isRepo:103",
-			"src/server/archivist-git.ts/ArchivistGit.ensureRepo:116",
-			"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:138",
-			"src/server/archivist-git.ts/ArchivistGit.changesSince:155",
-			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:212",
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:264",
-			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:316",
-			"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:358",
-			"src/server/archivist-git.ts/ArchivistGit.safeLog:367",
-			"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:379"
+		"src/server/archivist-git.ts/projectSlug:72": [
+			"src/server/archivist-git.ts/featureWorktreePath:90",
+			"src/server/archivist-git.ts/centralFeatureWorktreePath:113"
 		],
-		"src/server/archivist-git.ts/ArchivistGit.isRepo:103": [
-			"src/server/archivist-git.ts/ArchivistGit.ensureRepo:116"
+		"src/server/archivist-git.ts/execAsync:50": [
+			"src/server/archivist-git.ts/ArchivistGit.isRepo:150",
+			"src/server/archivist-git.ts/ArchivistGit.ensureRepo:163",
+			"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:185",
+			"src/server/archivist-git.ts/ArchivistGit.changesSince:202",
+			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:259",
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:311",
+			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:364",
+			"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:406",
+			"src/server/archivist-git.ts/ArchivistGit.safeLog:415",
+			"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:427"
 		],
-		"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:138": [
-			"src/server/archivist-git.ts/ArchivistGit.changesSince:155",
-			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:212",
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:264"
+		"src/server/archivist-git.ts/ArchivistGit.isRepo:150": [
+			"src/server/archivist-git.ts/ArchivistGit.ensureRepo:163"
 		],
-		"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:358": [
-			"src/server/archivist-git.ts/ArchivistGit.changesSince:155"
+		"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:185": [
+			"src/server/archivist-git.ts/ArchivistGit.changesSince:202",
+			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:259",
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:311"
 		],
-		"src/server/archivist-git.ts/ArchivistGit.safeLog:367": [
-			"src/server/archivist-git.ts/ArchivistGit.changesSince:155"
+		"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:406": [
+			"src/server/archivist-git.ts/ArchivistGit.changesSince:202"
 		],
-		"src/server/archivist-git.ts/isSafePathspec:402": [
-			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:212",
-			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:316"
+		"src/server/archivist-git.ts/ArchivistGit.safeLog:415": [
+			"src/server/archivist-git.ts/ArchivistGit.changesSince:202"
 		],
-		"src/server/archivist-git.ts/isSafeCommitSubject:409": [
-			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:212"
+		"src/server/archivist-git.ts/isSafePathspec:450": [
+			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:259",
+			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:364"
 		],
-		"src/server/archivist-git.ts/featureBranchName:71": [
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:264",
-			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:316"
+		"src/server/archivist-git.ts/isSafeCommitSubject:457": [
+			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:259"
 		],
-		"src/server/archivist-git.ts/featureWorktreePath:66": [
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:264",
-			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:316"
+		"src/server/archivist-git.ts/featureBranchName:118": [
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:311",
+			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:364"
 		],
-		"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:379": [
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:264"
+		"src/server/archivist-git.ts/featureWorktreePath:90": [
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:311",
+			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:364"
 		],
-		"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:316": [
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:264"
+		"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:427": [
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:311"
+		],
+		"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:364": [
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:311"
 		],
 		"src/server/chat-router.ts/expandHome:35": [
 			"src/server/chat-router.ts/createChatRouter:37"
@@ -26300,28 +26435,31 @@
 			"src/server/fresh-db-seed.ts/ensureProjectsRoot:438",
 			"src/server/fresh-db-seed.ts/ensureMemoryRoot:450"
 		],
-		"src/server/git-integration.ts/slugify:46": [
-			"src/server/git-integration.ts/GitIntegration.createRequirementBranch:67"
+		"src/server/git-integration.ts/slugify:47": [
+			"src/server/git-integration.ts/GitIntegration.createRequirementBranch:68"
 		],
-		"src/server/git-integration.ts/execAsync:34": [
-			"src/server/git-integration.ts/GitIntegration.createRequirementBranch:67",
-			"src/server/git-integration.ts/GitIntegration.createFeatureWorktree:95",
-			"src/server/git-integration.ts/GitIntegration.commitStep:137",
-			"src/server/git-integration.ts/GitIntegration.getDiffSince:167",
-			"src/server/git-integration.ts/GitIntegration.getChangedFiles:189",
-			"src/server/git-integration.ts/GitIntegration.commitChanges:205",
-			"src/server/git-integration.ts/GitIntegration.createPullRequest:222"
+		"src/server/git-integration.ts/execAsync:35": [
+			"src/server/git-integration.ts/GitIntegration.createRequirementBranch:68",
+			"src/server/git-integration.ts/GitIntegration.createFeatureWorktree:101",
+			"src/server/git-integration.ts/GitIntegration.commitStep:146",
+			"src/server/git-integration.ts/GitIntegration.getDiffSince:176",
+			"src/server/git-integration.ts/GitIntegration.getChangedFiles:198",
+			"src/server/git-integration.ts/GitIntegration.commitChanges:214",
+			"src/server/git-integration.ts/GitIntegration.createPullRequest:231"
+		],
+		"src/server/archivist-git.ts/centralFeatureWorktreePath:113": [
+			"src/server/git-integration.ts/GitIntegration.createFeatureWorktree:101"
 		],
 		"src/server/db-migration.ts/runMigrations:657": [
 			"src/server/index.ts/startServer:100"
 		],
-		"src/runtime/tools/index.ts/registerRuntimeTools:149": [
+		"src/runtime/tools/index.ts/registerRuntimeTools:147": [
 			"src/server/index.ts/startServer:100"
 		],
 		"src/runtime/proxy-manager.ts/applyProxy:30": [
 			"src/server/index.ts/startServer:100"
 		],
-		"src/server/agent-service.ts/createAgentService:1493": [
+		"src/server/agent-service.ts/createAgentService:1498": [
 			"src/server/index.ts/startServer:100"
 		],
 		"src/server/data-change-hub.ts/onDataChange:165": [
@@ -26430,11 +26568,11 @@
 			"src/server/key-value-store.ts/KeyValueStore.setJson:81",
 			"src/server/key-value-store.ts/KeyValueStore.migrateFromJsonFile:97"
 		],
-		"src/server/lead-service.ts/LeadService.resolveLeadWork:263": [
+		"src/server/lead-service.ts/LeadService.resolveLeadWork:265": [
 			"src/server/lead-service.ts/LeadService.pickupRequirement:125"
 		],
 		"src/server/lead-service.ts/LeadService.pickupRequirement:125": [
-			"src/server/lead-service.ts/LeadService.autoPickupIfIdle:209"
+			"src/server/lead-service.ts/LeadService.autoPickupIfIdle:211"
 		],
 		"src/core/logger.ts/configureLogging:118": [
 			"src/server/log-router.ts/createLogRouter:55"
@@ -27297,12 +27435,12 @@
 		"src/server/wiki-scan-cursor-store.ts/WikiScanCursorStore.delete:107": [
 			"src/server/wiki-scan-cursor-store.ts/WikiScanCursorStore.delete:107"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:728": [
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.emptyResult:730": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.buildSkeleton:177",
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.rescanProjectFull:231",
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.rebuildProjectSubtree:264"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390": [
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.buildSkeleton:177",
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.rescanProjectFull:231"
 		],
@@ -27319,52 +27457,52 @@
 		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.mergeFeatureToMain:305": [
 			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.mergeFeatureToMain:305"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:323": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:323"
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:325": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.cleanupWorktree:325"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:711": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.detectDivergence:340"
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.nodeReferences:713": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.detectDivergence:342"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:715": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.detectDivergence:340"
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.sharesRequirement:717": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.detectDivergence:342"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:721": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.isIgnoredPath:723": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392"
 		],
-		"src/server/wiki-skeleton-service.ts/extOf:745": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
+		"src/server/wiki-skeleton-service.ts/extOf:747": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureDirectoryChain:576": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureDirectoryChain:578": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.findHeader:614": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.findHeader:616": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392"
 		],
-		"src/server/wiki-skeleton-service.ts/basenameOf:750": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390",
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:702"
+		"src/server/wiki-skeleton-service.ts/basenameOf:752": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392",
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:704"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:697": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.classifyIntentDoc:699": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:702": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:390"
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.lookupRequirementId:704": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ingestFiles:392"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureSummary:640"
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:669": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureSummary:642"
 		],
-		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:684": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureSummary:640"
+		"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:686": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.ensureSummary:642"
 		],
-		"src/server/wiki-skeleton-service.ts/readFileText:783": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667",
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:684"
+		"src/server/wiki-skeleton-service.ts/readFileText:785": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:669",
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeDocFile:686"
 		],
-		"src/server/wiki-skeleton-service.ts/extractExports:755": [
-			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:667"
+		"src/server/wiki-skeleton-service.ts/extractExports:757": [
+			"src/server/wiki-skeleton-service.ts/WikiSkeletonService.summarizeCodeFile:669"
 		],
-		"src/server/wiki-skeleton-service.ts/walkWorkspace:800": [
-			"src/server/wiki-skeleton-service.ts/walkWorkspace:800"
+		"src/server/wiki-skeleton-service.ts/walkWorkspace:802": [
+			"src/server/wiki-skeleton-service.ts/walkWorkspace:802"
 		],
 		"src/server/workflow-context-hook.ts/getWikiBaseline:41": [
 			"src/server/workflow-context-hook.ts/registerWorkflowContextHook:68"
@@ -27479,15 +27617,15 @@
 		"src/core/tool-policy.ts/extractText:82": [
 			"src/core/tool-policy.ts/transformToolResult:53"
 		],
-		"src/core/tool-registry.ts/ToolRegistry.notifyChange:216": [
-			"src/core/tool-registry.ts/ToolRegistry.unregister:116"
+		"src/core/tool-registry.ts/ToolRegistry.notifyChange:224": [
+			"src/core/tool-registry.ts/ToolRegistry.unregister:124"
 		],
-		"src/core/tool-registry.ts/ToolRegistry.getToolConfig:150": [
-			"src/core/tool-registry.ts/ToolRegistry.getAll:127",
-			"src/core/tool-registry.ts/ToolRegistry.getToolConfigFor:173"
+		"src/core/tool-registry.ts/ToolRegistry.getToolConfig:158": [
+			"src/core/tool-registry.ts/ToolRegistry.getAll:135",
+			"src/core/tool-registry.ts/ToolRegistry.getToolConfigFor:181"
 		],
-		"src/core/tool-registry.ts/ToolRegistry.buildEffectivePrompt:200": [
-			"src/core/tool-registry.ts/ToolRegistry.getAll:127"
+		"src/core/tool-registry.ts/ToolRegistry.buildEffectivePrompt:208": [
+			"src/core/tool-registry.ts/ToolRegistry.getAll:135"
 		]
 	},
 	"fileCallers": {
@@ -27960,6 +28098,7 @@
 			"src/runtime/mcp-tools/platform-tools.ts",
 			"src/server/agent-service.ts",
 			"src/server/agent-store.ts",
+			"src/server/archivist-git.ts",
 			"src/server/config-router.ts",
 			"src/server/db-migration.ts",
 			"src/server/log-router.ts",
@@ -28098,9 +28237,6 @@
 		"src/runtime/mcp-tools/platform-tools.ts": [
 			"src/runtime/tools/index.ts"
 		],
-		"src/runtime/tools/requirement-tools.ts": [
-			"src/runtime/tools/index.ts"
-		],
 		"src/runtime/tools/orchestrate-tool.ts": [
 			"src/runtime/tools/index.ts"
 		],
@@ -28114,9 +28250,6 @@
 			"src/runtime/tools/index.ts"
 		],
 		"src/runtime/tools/wiki-tool.ts": [
-			"src/runtime/tools/index.ts"
-		],
-		"src/runtime/tools/verify-tool.ts": [
 			"src/runtime/tools/index.ts"
 		],
 		"src/runtime/tools/flow-tool.ts": [
@@ -28367,6 +28500,7 @@
 		],
 		"src/server/archivist-git.ts": [
 			"src/server/cron-analysis.ts",
+			"src/server/git-integration.ts",
 			"src/server/index.ts",
 			"src/server/wiki-skeleton-service.ts"
 		],

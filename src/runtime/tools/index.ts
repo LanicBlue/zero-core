@@ -46,18 +46,19 @@ import { getToolMeta, getToolConfigSchema, getToolDescription, getToolPrompt, ge
 import { webFetchTool } from "../mcp-tools/fetch-tools.js";
 import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
 import { createPlatformTools } from "../mcp-tools/platform-tools.js";
-import { createRequirementTool, createRequirementWithDocTool } from "./requirement-tools.js";
 import { orchestrateTool } from "./orchestrate-tool.js";
-// v0.8 (P3 §7.3): the four domain action tools + verify, replacing the retired
+// v0.8 (P3 §7.3): the four domain action tools, replacing the retired
 // zero-admin-tools.ts (CreateProject/CreateAgent/.../InstantiatePreset/SetToolPolicy/...).
 import { projectTool } from "./project-tool.js";
 import { agentRegistryTool } from "./agent-registry.js";
 import { cronTool } from "./cron-tool.js";
 import { wikiTool } from "./wiki-tool.js";
-import { verifyTool } from "./verify-tool.js";
-// project-flow F1: Flow action tool (create/list/get). Old CreateRequirement /
-// CreateRequirementWithDoc / verify stay registered in parallel — F1 does not
-// replace them.
+// project-flow F3: Flow is the single entry point for the requirement→code-
+// merge flow (create/list/get + transitions + compound verify). The legacy
+// CreateRequirement / CreateRequirementWithDoc / verify tools are RETIRED —
+// removed from ALL_TOOLS + CONDITIONAL_TOOLS; their names map to Flow via
+// RENAMED_TOOLS (tool-registry.ts) for back-compat with old configs/prompts.
+// verify-tool.ts file itself is deleted in F5.
 import { flowTool } from "./flow-tool.js";
 import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";
@@ -92,13 +93,9 @@ export const ALL_TOOLS: Record<string, any> = {
 	// (expand/read/upsert/search) and search via the wiki tree. The legacy
 	// MemoryNodeStore-backed tools are retired.
 	SequentialThinking: sequentialThinkingTool,
-	CreateRequirement: createRequirementTool,
-	// v0.8 (M4): PM-only tool — creates a requirement + repo doc + discuss
-	// landing in one shot (PmService.createRequirementWithDoc).
-	CreateRequirementWithDoc: createRequirementWithDocTool,
 	Orchestrate: orchestrateTool,
 	// v0.8 (P3 §7.3): four action-switched domain tools (Project/AgentRegistry/
-	// Cron/Wiki) + the lead verify tool, replacing the retired zero-admin tools
+	// Cron/Wiki), replacing the retired zero-admin tools
 	// (CreateProject/CreateAgent/.../InstantiatePreset/SetToolPolicy/...).
 	// Capability lives in tools; agents are just tool-config bundles.
 	// Note: the management tool is named `AgentRegistry` (not `Agent`) to avoid
@@ -107,8 +104,9 @@ export const ALL_TOOLS: Record<string, any> = {
 	AgentRegistry: agentRegistryTool,
 	Cron: cronTool,
 	Wiki: wikiTool,
-	verify: verifyTool,
-	// project-flow F1: requirement flow action tool (create/list/get).
+	// project-flow F3: Flow is the single entry point for the requirement flow
+	// (create/list/get + transitions + compound verify). Old
+	// CreateRequirement / CreateRequirementWithDoc / verify retired.
 	Flow: flowTool,
 
 	...getPlatformTools(),
@@ -121,21 +119,21 @@ const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> 
 	TaskList: (ctx) => !!ctx.listTasks,
 	TaskStop: (ctx) => !!ctx.stopTask,
 	Wait: (ctx) => !!ctx.suspendUntilWake,
-	CreateRequirement: (ctx) => !!ctx.requirementStore,
-	// v0.8 (M4): PM-only — gated on ctx.pmService (only PM sessions carry it).
-	CreateRequirementWithDoc: (ctx) => !!(ctx as any).pmService,
 	Orchestrate: (ctx) => !!ctx.delegateTask,
 	// v0.8 (P3): domain action tools. Project/AgentRegistry/Cron need the
 	// management service handle (zero sessions only). Wiki needs the wiki
-	// store (every project-role session). verify needs delegate + requirement
-	// store (lead).
+	// store (every project-role session).
 	Project: (ctx) => !!(ctx as any).management,
 	AgentRegistry: (ctx) => !!(ctx as any).management,
 	Cron: (ctx) => !!(ctx as any).management,
 	Wiki: (ctx) => !!ctx.wikiStore,
-	verify: (ctx) => !!ctx.delegateTask && !!ctx.requirementStore,
-	// project-flow F1: Flow needs the requirement store (every project-role
-	// session carries it). Old CreateRequirement / verify gating stays as-is.
+	// project-flow F3: Flow needs the requirement store (every project-role
+	// session carries it). The compound verify action additionally needs
+	// ctx.delegateTask (always present via agent-loop) + ctx.pmService for the
+	// archivist merge close — verify degrades gracefully if pmService is absent
+	// (returns the verdict text; no merge). Keeping Flow gated only on
+	// requirementStore preserves create/list/get/transition access for non-PM
+	// sessions; verify's runtime checks enforce the rest.
 	Flow: (ctx) => !!ctx.requirementStore,
 };
 

@@ -311,13 +311,14 @@ describe("Flow tool · created signal (natural hub emit)", () => {
 	});
 });
 
-// ─── parallel-existence: old tools still registered ─────────
+// ─── F3: old tools retired, Flow is the single entry point ───────
 
-describe("Flow tool · old tools stay registered in parallel", () => {
-	test("CreateRequirement / CreateRequirementWithDoc / verify still in ALL_TOOLS", () => {
-		expect(ALL_TOOLS.CreateRequirement).toBeDefined();
-		expect(ALL_TOOLS.CreateRequirementWithDoc).toBeDefined();
-		expect(ALL_TOOLS.verify).toBeDefined();
+describe("Flow tool · old requirement tools retired (F3)", () => {
+	test("CreateRequirement / CreateRequirementWithDoc / verify are NOT in ALL_TOOLS; Flow is", () => {
+		// F3 retired the three legacy tools — Flow is the single entry point.
+		expect(ALL_TOOLS.CreateRequirement).toBeUndefined();
+		expect(ALL_TOOLS.CreateRequirementWithDoc).toBeUndefined();
+		expect(ALL_TOOLS.verify).toBeUndefined();
 		expect(ALL_TOOLS.Flow).toBeDefined();
 	});
 });

@@ -306,7 +306,9 @@ export class WikiSkeletonService {
 		const project = this.projectStore.get(projectId);
 		if (!project) return { ok: false, error: "project not found" };
 		await this.git.ensureRepo(project.workspaceDir);
-		const r = await this.git.mergeFeatureToMain(project.workspaceDir, requirementId);
+		// project-flow §4.2: pass projectId so merge + cleanup resolve the
+		// central worktree path (~/.zero-core/projects/{project}/{req-shortId}/).
+		const r = await this.git.mergeFeatureToMain(project.workspaceDir, requirementId, projectId);
 		if (r.ok) {
 			// main advanced → re-scan (RFC §2.15: "合并后 main 前进 → 通知 archivist
 			// 刷新 wiki/traceability").

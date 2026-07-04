@@ -156,15 +156,17 @@ export class LeadService {
 		// 6. Transition status: ready → plan
 		this.requirementStore.transitionStatus(requirementId, "plan", "lead", "Lead 领取需求");
 
-		// v0.8 (M3): lead 建 feature worktree(决策 25/28)。独立目录
-		// `{workspace}.worktrees/req-{shortId}/`,分支 `req-{shortId}`,与
-		// archivist-git 的约定一致(archivist 后续 mergeFeatureToMain 能直接
-		// 找到 + 清理)。失败时 fallback 到主 workspace(非阻塞)。
+		// v0.8 (M3): lead 建 feature worktree(决策 25/28)。独立目录,分支
+		// `req-{shortId}`,与 archivist-git 的约定一致(archivist 后续
+		// mergeFeatureToMain 能直接找到 + 清理)。失败时 fallback 到主
+		// workspace(非阻塞)。project-flow §4.2 (F3): 路径集中化到
+		// `~/.zero-core/projects/{project}/{req-shortId}/`(传 projectId 给
+		// createFeatureWorktree)。
 		let featureWorkspace = project.workspaceDir;
 		if (this.gitIntegration && project.workspaceDir) {
 			try {
 				const wt = await this.gitIntegration.createFeatureWorktree(
-					project.workspaceDir, requirementId,
+					project.workspaceDir, requirementId, project.id,
 				);
 				if (wt.ok) featureWorkspace = wt.worktreePath;
 				else log.debug("lead", `feature worktree fallback to main: branch=${wt.branch}`);

@@ -420,8 +420,13 @@ export class AgentService {
 		const caps: CapabilityHandles = {};
 		if (this.management && (on("Project") || on("AgentRegistry") || on("Cron"))) caps.management = this.management;
 		if (this.wikiStore && on("Wiki")) caps.wikiStore = this.wikiStore;
-		if (this.requirementStore && (on("CreateRequirement") || on("CreateRequirementWithDoc") || on("verify") || on("Flow"))) caps.requirementStore = this.requirementStore;
-		if (this.pmService && (on("CreateRequirementWithDoc") || on("verify"))) caps.pmService = this.pmService;
+		// project-flow F3: Flow is the single requirement-flow entry point (old
+		// CreateRequirement / CreateRequirementWithDoc / verify retired). Flow's
+		// compound verify action needs the requirement store + pmService (the
+		// archivist-merge close). delegateTask is wired by agent-loop on every
+		// session, so it's not gated here.
+		if (this.requirementStore && on("Flow")) caps.requirementStore = this.requirementStore;
+		if (this.pmService && on("Flow")) caps.pmService = this.pmService;
 		return caps;
 	}
 	evictSessionFromMemory(sessionId: string): void {

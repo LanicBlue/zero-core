@@ -88,8 +88,16 @@ export const RENAMED_TOOLS: Record<string, string> = {
 	project: "Project",
 	cron: "Cron",
 	agent_registry: "AgentRegistry", agentregistry: "AgentRegistry",
-	create_requirement: "CreateRequirement", createrequirement: "CreateRequirement",
-	create_requirement_with_doc: "CreateRequirementWithDoc",
+	// project-flow F3: legacy requirement tools (CreateRequirement /
+	// CreateRequirementWithDoc / verify) are RETIRED — Flow is the single entry
+	// point. Map every old spelling (PascalCase + lowercase + snake_case) to
+	// "Flow" so legacy configs (toolPolicy.tools, agent prompts, presets) keep
+	// working: a session that had {create_requirement:{enabled:true}} or
+	// {verify:{enabled:true}} now gets Flow enabled instead of silently losing
+	// the capability.
+	create_requirement: "Flow", createrequirement: "Flow", CreateRequirement: "Flow",
+	create_requirement_with_doc: "Flow", createrequirementwithdoc: "Flow", CreateRequirementWithDoc: "Flow",
+	verify: "Flow", Verify: "Flow",
 };
 
 // ---------------------------------------------------------------------------
