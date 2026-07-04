@@ -41,7 +41,7 @@ docs/design/
 
 | 文件 | 性质 | 作用 |
 |------|------|------|
-| `runtime-push-ui-sync.md` | **设计 Draft** | UI 是运行时的展示窗口——四条不变量(所见即所跑 / 只更新变化部分 / 运行时状态变即实时反应 / 架构统一易扩展)+ 两类数据(状态 record / 流 stream)各一套统一契约 |
+| `runtime-push-ui-sync.md` | **设计(已落地 N1–N4)** | UI 是运行时的展示窗口——四条不变量(所见即所跑 / 只更新变化部分 / 运行时状态变即实时反应 / 架构统一易扩展)+ 两类数据(状态 record / 流 stream)各一套统一契约。N1–N4 已实现合入 master(commit e66c452 / 554301d / 47aa35a / 87b5983);N4 实现时核实 contextConfig/skillPolicy/knowledgeBaseIds 为 Electron 路径死字段,接通留待后续 effort |
 | `conventions.md` | 实现规约 | 冷启动 subagent 必读的项目级硬规约(三层 tsc / sessions.db 只读 / commit / Edit 陷阱 / 不动他人代码 / 层级边界) |
 | `plan-N1.md` / `acceptance-N1.md` | 实现路线 / 测试要求 | N1 统一状态流基建(桥 + runtime emit + 白名单 + session emit) |
 | `plan-N2.md` / `acceptance-N2.md` | 实现路线 / 测试要求 | N2 UI 推送驱动 + 消闪烁 + 重连 resync(依赖 N1) |

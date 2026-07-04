@@ -104,7 +104,11 @@ describe("SqliteStore.update no-op detection", () => {
 
 		expect(gotEvent).toBe(false);
 		expect(store2.get(created.id)?.updatedAt).toBe(updatedAtBefore);
-		// Different content → not a no-op.
+		// Different content → not a no-op. Sleep first so the bumped updatedAt
+		// (ms-precision ISO) is guaranteed to differ from the create timestamp —
+		// without this, create + update can land in the same millisecond and the
+		// `not.toBe` assertion flakes.
+		await new Promise((r) => setTimeout(r, 5));
 		store2.update(created.id, { tags: ["a", "b", "c"] });
 		expect(store2.get(created.id)?.updatedAt).not.toBe(updatedAtBefore);
 	});
