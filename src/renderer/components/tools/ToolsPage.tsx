@@ -44,6 +44,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 	agent: "Agent",
 	management: "Management",
 	workflow: "Workflow",
+	project: "Project",
 };
 
 export default function ToolsPage() {

@@ -99,7 +99,7 @@ export const projectTool = buildTool({
 		"- { action:'create', ..., enrich:true } — also kick an archivist agent to deeply enrich the wiki (LLM detail docs). Omit enrich = skeleton scan only.\n" +
 		"- { action:'enrich', id } — manually kick archivist enrichment on an existing project (background, non-blocking; returns { jobId, sessionId }).",
 	meta: {
-		category: "management",
+		category: "project",
 		isReadOnly: false,
 		isConcurrencySafe: false,
 		isDestructive: false,

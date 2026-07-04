@@ -37,7 +37,8 @@ export type ToolCategory =
 	| "mcp"
 	| "agent"
 	| "management"
-	| "workflow";
+	| "workflow"
+	| "project";
 
 export interface ToolConfigField {
 	key: string;

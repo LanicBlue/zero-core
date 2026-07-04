@@ -187,7 +187,7 @@ export const flowTool = buildTool({
 		"- { action:'verify', id, summary? } — BLOCKING. Delegates the PM coverage judgement; on APPROVED drives archivist merge feature→main + verify→closed + writes Decision Log + emits `requirements.verified`; on REJECTED records feedback + returns the requirement to 'build' for rework + writes Decision Log + emits `requirements.rejected`.\n\n" +
 		"Illegal transitions return a friendly `Error: ...` with the valid next statuses.",
 	meta: {
-		category: "management",
+		category: "project",
 		isReadOnly: false,
 		isConcurrencySafe: false,
 		isDestructive: false,

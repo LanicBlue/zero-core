@@ -120,23 +120,21 @@ describe("P7 ToolCategory 加 workflow", () => {
 	});
 });
 
-// ─── ③ 分类正确:management / workflow / agent ────────────────
+// ─── ③ 分类正确:project / management / workflow / agent ────────────────
 
 describe("P7 工具分类正确", () => {
-	test("Project/AgentRegistry/Cron/Wiki 全是 management", () => {
-		expect(getToolMeta(projectTool)?.category).toBe("management");
+	test("AgentRegistry/Cron/Wiki 是 management;Project/Flow 是 project", () => {
+		// project-flow: Project + Flow are the project class (their own group).
+		// AgentRegistry/Cron/Wiki remain management (platform).
+		expect(getToolMeta(projectTool)?.category).toBe("project");
+		expect(getToolMeta(flowTool)?.category).toBe("project");
 		expect(getToolMeta(agentRegistryTool)?.category).toBe("management");
 		expect(getToolMeta(cronTool)?.category).toBe("management");
 		expect(getToolMeta(wikiTool)?.category).toBe("management");
 	});
 
-	test("Orchestrate 是 workflow;Flow 是 management(取代 CreateRequirement/CreateRequirementWithDoc/verify)", () => {
-		// project-flow F1: Flow is categorized "management" (alongside
-		// Project/AgentRegistry/Cron/Wiki — the domain action tools). The
-		// retired CreateRequirement/CreateRequirementWithDoc/verify were
-		// "workflow"; Flow consolidates them under management.
+	test("Orchestrate 是 workflow", () => {
 		expect(getToolMeta(orchestrateTool)?.category).toBe("workflow");
-		expect(getToolMeta(flowTool)?.category).toBe("management");
 	});
 
 	test("Platform (createPlatformTools 的 Platform) 是 management,不是 assistant", () => {
