@@ -968,7 +968,9 @@ export class TemplateStore {
 			systemPrompt: researcherBase + "\n\n" + archivistPromptAppend,
 			toolPolicy: {
 				autoApprove: ["Read", "Grep", "Glob", "Wiki"],
-				blockedTools: ["Write", "Edit", "Shell", "Orchestrate", "CreateRequirement"],
+				// project-flow F5: CreateRequirement retired → Flow (canonical
+				// new name; RENAMED_TOOLS maps the legacy spelling for back-compat).
+				blockedTools: ["Write", "Edit", "Shell", "Orchestrate", "Flow"],
 				readScope: "filesystem",
 			},
 			tags: ["wiki", "archivist", "knowledge", "documentation"],

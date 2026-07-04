@@ -53,12 +53,13 @@ import { projectTool } from "./project-tool.js";
 import { agentRegistryTool } from "./agent-registry.js";
 import { cronTool } from "./cron-tool.js";
 import { wikiTool } from "./wiki-tool.js";
-// project-flow F3: Flow is the single entry point for the requirement→code-
+// project-flow F3/F5: Flow is the single entry point for the requirement→code-
 // merge flow (create/list/get + transitions + compound verify). The legacy
 // CreateRequirement / CreateRequirementWithDoc / verify tools are RETIRED —
 // removed from ALL_TOOLS + CONDITIONAL_TOOLS; their names map to Flow via
 // RENAMED_TOOLS (tool-registry.ts) for back-compat with old configs/prompts.
-// verify-tool.ts file itself is deleted in F5.
+// The old tool files (verify-tool.ts / requirement-tools.ts) were deleted in
+// project-flow F5 — Flow is the only requirement-flow tool left.
 import { flowTool } from "./flow-tool.js";
 import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";

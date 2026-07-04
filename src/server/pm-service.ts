@@ -3,8 +3,8 @@
 // # 文件说明书
 //
 // ## 核心功能
-// PM 行为原语,被 PM 工具 (requirement-tools) + IPC discuss/coverage handler +
-// verify-tool(覆盖判断闭环)调用:
+// PM 行为原语,被 IPC discuss/coverage handler + Flow.verify(复合覆盖判断闭环,
+// project-flow F3)调用:
 //   1. createRequirementWithDoc()    —— 把一条发现落成 RequirementRecord +
 //      repo 内需求文档 + docPath 绑定 (决策 12/14)。wiki 意图节点由 archivist
 //      兜底建,不由 PM/本服务写。
@@ -49,7 +49,7 @@
 // - PmService 类
 //
 // ## 定位
-// 服务层,被 PM 工具 (requirement-tools.ts) + IPC handler + verify-tool 使用。
+// 服务层,被 IPC handler + Flow.verify(复合覆盖判断,project-flow F3)使用。
 //
 // ## 依赖
 // - ./agent-service, ./agent-store, ./project-store
@@ -139,10 +139,12 @@ export class PmService {
 	// service-level "discoverAndCreateRequirement" — the cron only sends a
 	// prompt that wakes the PM session; PM itself decides what to scan, which
 	// analyzer agent-tools to call, and which findings to turn into
-	// requirements via the CreateRequirementWithDoc tool (which routes through
-	// createRequirementWithDoc below). The platform's only job is to seed PM's
-	// system prompt + tool allowlist + the cron's prompt — all done by the
-	// user (zero role) at PM instantiation time.
+	// requirements via the Flow.create tool (project-flow F3; the legacy
+	// CreateRequirementWithDoc tool was retired in F3 and its file deleted in
+	// F5). Flow.create routes through the createRequirementWithDoc primitive
+	// below when the PM session drives it. The platform's only job is to seed
+	// PM's system prompt + tool allowlist + the cron's prompt — all done by
+	// the user (zero role) at PM instantiation time.
 
 	/**
 	 * Read a short summary of the project wiki subtree for PM context (decision

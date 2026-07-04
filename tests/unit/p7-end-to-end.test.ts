@@ -20,8 +20,13 @@
 //
 // ## 测试策略
 // 不依赖真实 LLM —— delegateTask 是 mock,archivistService 是 mock,
-// 状态机 / store / pmService / verifyTool 全是真实组件。
+// 状态机 / store / pmService / flowTool 全是真实组件。
 // 这等同于 ZERO_CORE_TEST_FIXTURE(mock provider)路径在 unit 层的等价物。
+//
+// ## project-flow F5
+// verify-tool.ts 已删,Flow.verify(复合)是单一入口;本文件改驱动 flowTool。
+// 验证语义不变:delegate PM → PmService.submitCoverageVerdict → archivist
+// merge → status closed / rework。
 //
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
@@ -37,8 +42,17 @@ import { OrchestrateManifestStore } from "../../src/server/orchestrate-store.js"
 import { WikiStore } from "../../src/server/wiki-node-store.js";
 import { RequirementDocStore } from "../../src/server/requirement-doc-store.js";
 import { PmService } from "../../src/server/pm-service.js";
-import { verifyTool } from "../../src/runtime/tools/verify-tool.js";
+// project-flow F5: verify-tool.ts is deleted; Flow.verify (compound) is the
+// replacement. This end-to-end file now drives flowTool — the same single
+// entry point the runtime uses. The pmService is the real PmService (so
+// archivist merge + status close are real, not mocked), exactly as before.
+import { flowTool } from "../../src/runtime/tools/flow-tool.js";
 import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { createFlowActions } from "../../src/server/flow-actions.js";
+import {
+	emitTransition,
+	_resetDataChangeHubForTest,
+} from "../../src/server/data-change-hub.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 
 let tmpDir: string;
@@ -133,23 +147,35 @@ function advanceToVerify(reqId: string): void {
 	requirementStore.transitionStatus(reqId, "verify", "system", "lead submits verify tool");
 }
 
-/** Invoke the verify tool with a mocked delegateTask (PM verdict). */
+/** Invoke Flow.verify with a mocked delegateTask (PM verdict). Drives the
+ * real PmService (with its real archivistService mock) through the shared
+ * flowActions backend — same compound body the REST router uses. */
 async function callVerify(
 	reqId: string,
 	pm: PmService,
 	opts: { delegate?: (task: string) => Promise<string> | string; summary?: string },
 ): Promise<string> {
-	const execute = getToolExecute(verifyTool)!;
+	const execute = getToolExecute(flowTool)!;
 	const delegate = opts.delegate ?? (async () => "VERDICT: APPROVED — covers the intent");
+	// Reset the hub so signals from this call don't bleed across tests.
+	_resetDataChangeHubForTest();
+	const flowActions = createFlowActions({
+		requirementStore,
+		resolveWorkspaceDir: () => workspaceDir,
+		emitTransition,
+		pmService: pm,
+	});
 	return await execute(
-		{ requirementId: reqId, summary: opts.summary },
+		{ action: "verify", id: reqId, summary: opts.summary } as any,
 		{
 			workingDir: workspaceDir,
 			agentId: "lead-1",
 			emit: () => {},
 			requirementStore,
+			flowActions,
 			pmService: pm,
 			delegateTask: async (task: string) => delegate(task),
+			contextBundle: { projectId: PROJECT_ID, workspaceDir, wikiRootNodeId: `root:${PROJECT_ID}` },
 		} as any,
 	);
 }
@@ -180,7 +206,7 @@ describe("P7 端到端完整 pipeline: ready → plan → build → verify → a
 		expect(msgs.some((m) => m.content.includes("archivist merged"))).toBe(true);
 	});
 
-	test("PM rejects → requirement stays verify; lead sees feedback; lead revises + re-submits → closed", async () => {
+	test("PM rejects → Flow.verify rework verify→build; lead revises + re-submits → closed", async () => {
 		const { req, pm, merges } = makeRequirement("Iterate-to-close");
 		advanceToVerify(req.id);
 
@@ -191,16 +217,17 @@ describe("P7 端到端完整 pipeline: ready → plan → build → verify → a
 		expect(out1).toMatch(/REJECTED/);
 		expect(out1).toContain("missing tests for error path");
 		expect(merges).toEqual([]); // no merge attempted
-		expect(requirementStore.get(req.id)!.status).toBe("verify");
+		// project-flow F3 contract: Flow.verify REJECTED performs the rework
+		// transition verify→build itself (the delivery work's next fire reads
+		// the Decision Log feedback + re-runs plan→finishBuild→verify). The
+		// old verify-tool left status in 'verify'; Flow.verify advances to
+		// 'build' on rejection.
+		expect(requirementStore.get(req.id)!.status).toBe("build");
 		// Feedback recorded on the requirement (lead will read on re-activation).
 		const msgs1 = requirementStore.getMessages(req.id);
 		expect(msgs1.some((m) => m.content.includes("NOT_COVERED") && m.content.includes("missing tests for error path"))).toBe(true);
 
-		// State machine rollback: verify → build (lead revises).
-		requirementStore.transitionStatus(req.id, "build", "lead", "lead revises plan after PM feedback");
-		expect(requirementStore.get(req.id)!.status).toBe("build");
-
-		// Lead re-submits verify. State: build → verify, then PM approves.
+		// Lead revises (build → verify via finishBuild-equivalent), then re-submits.
 		requirementStore.transitionStatus(req.id, "verify", "system", "lead re-submits verify");
 		const out2 = await callVerify(req.id, pm, {
 			delegate: async () => "VERDICT: APPROVED — error path now covered",
@@ -227,7 +254,7 @@ describe("P7 — PM dispatch 失败降级(fail-safe,不卡死)", () => {
 		expect(requirementStore.get(req.id)!.status).toBe("verify");
 	});
 
-	test("PM returns malformed output → fail-safe to REJECTED (no silent approval)", async () => {
+	test("PM returns malformed output → fail-safe to REJECTED (no silent approval); Flow.verify reworks verify→build", async () => {
 		const { req, pm, merges } = makeRequirement("Malformed PM");
 		advanceToVerify(req.id);
 
@@ -236,7 +263,9 @@ describe("P7 — PM dispatch 失败降级(fail-safe,不卡死)", () => {
 		});
 		expect(out).toMatch(/REJECTED/); // fail-safe conservative
 		expect(merges).toEqual([]);
-		expect(requirementStore.get(req.id)!.status).toBe("verify");
+		// project-flow F3: REJECTED → rework verify→build (Flow.verify does the
+		// transition itself; old verify-tool left status 'verify').
+		expect(requirementStore.get(req.id)!.status).toBe("build");
 	});
 });
 
@@ -325,7 +354,7 @@ describe("P7 — discuss-by-id(req.createdByAgentId 定位 PM session)", () => {
 // ─── 寻址契约:全 P7 路径无 roleTag 查找 ──────────────────────────
 
 describe("P7 — 寻址全用 req agentId,无 roleTag scan", () => {
-	test("verify-tool resolves PM via req.reviewerAgentId ?? req.createdByAgentId (no roleTag)", async () => {
+	test("Flow.verify resolves PM via req.reviewerAgentId ?? req.createdByAgentId (no roleTag)", async () => {
 		const { req, pm, merges } = makeRequirement("Address check");
 		advanceToVerify(req.id);
 
@@ -333,7 +362,7 @@ describe("P7 — 寻址全用 req agentId,无 roleTag scan", () => {
 		const dispatched: string[] = [];
 		await callVerify(req.id, pm, {
 			delegate: async (task: string) => {
-				// delegateTask targetAgentId is set by verify-tool from
+				// delegateTask targetAgentId is set by Flow.verify from
 				// req.reviewerAgentId ?? req.createdByAgentId. The task body
 				// itself doesn't carry it — we assert the agentId resolution
 				// by checking the req fields the tool read instead.
@@ -347,7 +376,7 @@ describe("P7 — 寻址全用 req agentId,无 roleTag scan", () => {
 		expect(merges.length).toBe(1);
 	});
 
-	test("verify-tool prefers explicit reviewerAgentId (reviewer ≠ creator PM)", async () => {
+	test("Flow.verify prefers explicit reviewerAgentId (reviewer ≠ creator PM)", async () => {
 		// A different PM agent acts as reviewer for this requirement.
 		const reviewerPm = agentStore.create({ name: "PM-Reviewer" } as any);
 		const { pm } = buildPm();
@@ -360,7 +389,7 @@ describe("P7 — 寻址全用 req agentId,无 roleTag scan", () => {
 		advanceToVerify(req.id);
 
 		// submitCoverageVerdict(opts.reviewerAgentId) overrides the default.
-		// We can't easily intercept delegateTask's targetAgentId here (verify-tool
+		// We can't easily intercept delegateTask's targetAgentId here (Flow.verify
 		// reads it before calling submitCoverageVerdict), so we directly exercise
 		// the override path.
 		const outcome = await pm.submitCoverageVerdict(
@@ -378,14 +407,15 @@ describe("P7 — 状态机回退(verify → build → verify,lead revises)", () 
 		const { req, pm } = makeRequirement("Loop to close");
 		advanceToVerify(req.id);
 
-		// First verify: REJECTED.
+		// First verify: REJECTED. project-flow F3: Flow.verify reworks
+		// verify→build itself; status is now "build" (old verify-tool left it
+		// in "verify").
 		await callVerify(req.id, pm, {
 			delegate: async () => "VERDICT: REJECTED — incomplete",
 		});
-		expect(requirementStore.get(req.id)!.status).toBe("verify");
+		expect(requirementStore.get(req.id)!.status).toBe("build");
 
-		// Lead revises: verify → build → verify again.
-		requirementStore.transitionStatus(req.id, "build", "lead", "lead revises plan");
+		// Lead revises: build → verify again (Flow.verify already did verify→build).
 		requirementStore.transitionStatus(req.id, "verify", "system", "lead re-submits");
 
 		// Second verify: APPROVED.

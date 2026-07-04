@@ -148,11 +148,14 @@ export class AgentService {
 	// v0.8 (P3): ManagementService handle (renamed from ZeroAdminService),
 	// injected into zero sessions only.
 	private management: import("./management-service.js").ManagementService | null = null;
-	// v0.8 (M4): PmService + RequirementStore handles, injected into PM
-	// (roleTag='pm') sessions so the CreateRequirementWithDoc tool can call
-	// PmService.createRequirementWithDoc from a cron-triggered sendPrompt loop.
-	// wikiStore (ProjectWikiStore) is also injected so PM can read archivist's
-	// wiki to write better requirements (acceptance-M4 line 3).
+	// v0.8 (M4) / project-flow F3: PmService + RequirementStore handles,
+	// injected into PM (roleTag='pm') sessions so Flow.create (PM-session
+	// path) and Flow.verify (compound close: PmService.submitCoverageVerdict)
+	// can call PmService from a cron-triggered sendPrompt loop. The legacy
+	// CreateRequirementWithDoc tool was retired in F3 (file deleted F5); Flow
+	// is now the single requirement-flow entry point. wikiStore
+	// (ProjectWikiStore) is also injected so PM can read archivist's wiki to
+	// write better requirements (acceptance-M4 line 3).
 	private pmService: any = null;
 	private requirementStore: any = null;
 	private wikiStore: any = null;
@@ -272,11 +275,12 @@ export class AgentService {
 		this.management = svc;
 	}
 	/**
-	 * v0.8 (M4): inject the PmService + RequirementStore + wikiStore. These are
-	 * surfaced onto PM (roleTag='pm') session tool contexts so the
-	 * CreateRequirementWithDoc tool (and the read-only wiki tools) can call
-	 * PmService / read the project wiki from a cron-triggered sendPrompt loop
-	 * — without requiring the caller to thread them through sendProjectPrompt.
+	 * v0.8 (M4) / project-flow F3: inject the PmService + RequirementStore +
+	 * wikiStore. These are surfaced onto PM (roleTag='pm') session tool
+	 * contexts so Flow.create / Flow.verify (and the read-only wiki tools) can
+	 * call PmService / read the project wiki from a cron-triggered sendPrompt
+	 * loop — without requiring the caller to thread them through
+	 * sendProjectPrompt.
 	 */
 	setPmService(pmService: any, requirementStore: any, wikiStore?: any): void {
 		this.pmService = pmService;

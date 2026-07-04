@@ -460,8 +460,10 @@ export interface ToolExecutionContext {
 	// Multi-Agent Workflow context
 	wikiStore?: any;                    // ProjectWikiStore
 	requirementStore?: any;             // RequirementStore
-	// v0.8 (M4): PmService handle (PM sessions only) — backs the
-	// CreateRequirementWithDoc tool. Gated via CONDITIONAL_TOOLS.
+	// v0.8 (M4) / project-flow F3: PmService handle (PM sessions only) —
+	// backs Flow.verify's compound close (submitCoverageVerdict → archivist
+	// merge) + Flow.create's PM-session path. The legacy
+	// CreateRequirementWithDoc tool was retired in F3 (file deleted F5).
 	pmService?: any;                    // PmService
 	taskStepStore?: any;                // TaskStepStore
 	projectId?: string;                 // Current project ID

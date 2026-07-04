@@ -25,7 +25,7 @@
 // - verify→PM→archivist 端到端闭环 → P7 (本测试 mock delegateTask,不验 archivist)
 //
 
-import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,7 +44,9 @@ import { projectTool } from "../../src/runtime/tools/project-tool.js";
 import { agentRegistryTool } from "../../src/runtime/tools/agent-registry.js";
 import { cronTool } from "../../src/runtime/tools/cron-tool.js";
 import { wikiTool } from "../../src/runtime/tools/wiki-tool.js";
-import { verifyTool } from "../../src/runtime/tools/verify-tool.js";
+// project-flow F5: verify-tool.ts is deleted; Flow.verify (compound) is the
+// replacement, exercised in tests/unit/f3-flow-verify.test.ts. This P3
+// contract file no longer drives a verify path (it was a thin duplicate).
 import { runMigrations } from "../../src/server/db-migration.js";
 import { seedAgentWithRoleTag } from "./helpers/p0-test-helpers.js";
 import type { CronSchedule } from "../../src/shared/types.js";
@@ -66,7 +68,6 @@ const execProject = getToolExecute(projectTool)!;
 const execAgent = getToolExecute(agentRegistryTool)!;
 const execCron = getToolExecute(cronTool)!;
 const execWiki = getToolExecute(wikiTool)!;
-const execVerify = getToolExecute(verifyTool)!;
 
 const SCHED_DAILY: CronSchedule = { mode: "interval", everyMs: 86_400_000 };
 
@@ -654,71 +655,6 @@ describe("Wiki action tool", () => {
 		const n = createdId(await execWiki({ action: "create", parentId: root(), title: "Fresh" }, ctx()));
 		const ok = await execWiki({ action: "docWrite", nodeId: n, content: "first body" }, ctx());
 		expect(ok).toMatch(/written/i);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// verify tool (§4.5 / §11.4) — blocking; PM verdict via delegateTask
-// ---------------------------------------------------------------------------
-
-describe("verify tool (lead submit → PM verdict)", () => {
-	let pmAgentId: string;
-	let requirementId: string;
-	let projectId: string;
-
-	beforeEach(() => {
-		pmAgentId = management.createAgent({ name: "PM" } as any).id;
-		seedAgentWithRoleTag(sessionDB, pmAgentId, "pm");
-		// Create a real Project so RequirementStore.create's projectId FK holds.
-		const proj = management.createProject({ name: "VerifyProj", workspaceDir: join(tmpDir, "vws") });
-		projectId = proj.id;
-		const req = requirementStore.create({
-			projectId,
-			title: "Test Req",
-			description: "intent",
-			status: "ready" as any,
-			source: "user" as any,
-			priority: "p1" as any,
-			reviewer: "analyst",
-			reviewerAgentId: pmAgentId,
-		} as any);
-		requirementId = req.id;
-	});
-
-	function ctx(delegateTask: (task: string, opts?: any) => Promise<string>): any {
-		return {
-			requirementStore,
-			delegateTask,
-			management,
-			projectId,
-		};
-	}
-
-	test("PM APPROVED → verdict returned; requirement status='verify'", async () => {
-		const delegateTask = vi.fn(async (_task: string, _opts?: any) =>
-			"VERDICT: APPROVED — change covers the intent");
-		const r = await execVerify({ requirementId }, ctx(delegateTask));
-		expect(r).toMatch(/APPROVED/i);
-		expect(delegateTask).toHaveBeenCalled();
-		// verify set status to "verify" + added an audit message.
-		const updated = requirementStore.get(requirementId) as any;
-		expect(updated?.status).toBe("verify");
-	});
-
-	test("PM REJECTED → gap reason returned (mock PM)", async () => {
-		const delegateTask = vi.fn(async (_task: string, _opts?: any) =>
-			"VERDICT: REJECTED — missing test coverage for the error path");
-		const r = await execVerify({ requirementId }, ctx(delegateTask));
-		expect(r).toMatch(/REJECTED/i);
-		expect(r).toMatch(/error path/);
-	});
-
-	test("delegateTask targets PM agent (targetAgentId passed)", async () => {
-		const delegateTask = vi.fn(async (_task: string, _opts?: any) =>
-			"VERDICT: APPROVED — ok");
-		await execVerify({ requirementId }, ctx(delegateTask));
-		const opts = delegateTask.mock.calls[0]?.[1];
-		expect(opts?.targetAgentId).toBe(pmAgentId);
 	});
 });
 

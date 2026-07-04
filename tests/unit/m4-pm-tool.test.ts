@@ -1,37 +1,38 @@
-// M4 单元测试: PM CreateRequirementWithDoc 工具 + discuss 跳转携带需求文档
+// M4 unit tests: PM requirement-creation surface (project-flow F5 rewrite)
 //
-// # 文件说明书
+// # File spec
 //
-// ## 核心功能
-// 验证 M4 缺陷 1 / 缺陷 2 修复 (用户澄清的设计意图),并适配 v0.8 P7
-// 拉模型(tool 入参 / 寻址用 createdByAgentId):
+// ## Core
+// Verifies the PM session's requirement-creation surface AFTER project-flow F3
+// retired the old CreateRequirementWithDoc tool (file deleted in F5). The PM
+// session now reaches the requirement flow via Flow.create (the single entry
+// point); the legacy PM-specific behaviors that survive live on PmService
+// (exercised here + in m4-pm-service.test.ts):
+//   - PM can drive Flow.create from a project session (cron-triggered path).
+//   - PmService still exposes createRequirementWithDoc / openDiscussSession /
+//     submitCoverageVerdict (the server-layer primitives backing the Flow
+//     compound verify + discuss routing).
+//   - discoverAndCreateRequirement stays removed (PM is agent-driven, not
+//     service-driven for discovery).
 //
-//   缺陷 1 — PM 用工具创建需求 + 绑定需求文档 + 落 discuss 栏:
-//   - CreateRequirementWithDoc 工具调用 PmService.createRequirementWithDoc
-//   - 产出 status='discuss' 的 RequirementRecord + repo 文档 + docPath 绑定
-//   - 工具走 ctx.pmService + ctx.contextBundle.projectId (cron 激活路径)
-//   - role-presets PM preset 把 CreateRequirementWithDoc 放进 toolPolicy.tools
+// ## project-flow F5
+// The previous version of this file drove the now-deleted
+// createRequirementWithDocTool (src/runtime/tools/requirement-tools.ts). The
+// tool is gone; Flow.create is the replacement (writes the Intent section to
+// docs/requirements/{id}.md; status='found'; docPath NOT stamped — consumers
+// resolve via resolveExistingDocPath). Comprehensive Flow.create coverage
+// lives in tests/unit/f1-flow-tool.test.ts; this file keeps a PM-session
+// smoke + the PmService primitive surface check.
 //
-//   缺陷 2 — discuss 跳转携带需求文档 (纯函数/约定层断言):
-//   - handleDiscuss 在切到 chat 页 + 打开 session 后, 还需 dispatch
-//     zero-file-select { path: req.docPath, root: workspaceDir }
-//   - 此处通过 docPath 字段存在 + 路径形态断言 (UI 集成由人检/E2E 覆盖)
+// ## Inputs
+// Temporary SessionDB (mkdtempSync) + real stores.
 //
-//   死代码清理:
-//   - PmService.discoverAndCreateRequirement 已删除 (发现由 PM agent 驱动)
-//
-//   v0.8 P7:
-//   - openDiscuss 入参从 (projectId) 改为 (requirementId)(走 req.createdByAgentId)。
-//   - Tool 调用必须把 ctx.agentId 透传到 createRequirementWithDoc 的
-//     createdByAgentId —— 否则 verify/discuss 在 P7 寻址不到 PM agent
-//     (TODO sub1: requirement-tools.ts createRequirementWithDocTool 当前
-//     未透传 createdByAgentId=ctx.agentId;P7 端到端闭环硬依赖,需补一行)。
-//     在补齐前,本文件对 tool 路径断言"记录创建 + docPath + status",对
-//     createdByAgentId 的断言走 pmService 直调路径 (绕过 tool)。
+// ## Output
+// Vitest cases.
 //
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionDB } from "../../src/server/session-db.js";
@@ -41,15 +42,18 @@ import { RequirementStore } from "../../src/server/requirement-store.js";
 import { OrchestrateManifestStore } from "../../src/server/orchestrate-store.js";
 import {
 	RequirementDocStore,
-	requirementDocAbsPath,
 } from "../../src/server/requirement-doc-store.js";
 import { PmService } from "../../src/server/pm-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { WikiStore } from "../../src/server/wiki-node-store.js";
-import { createRequirementWithDocTool } from "../../src/runtime/tools/requirement-tools.js";
+import { flowTool } from "../../src/runtime/tools/flow-tool.js";
 import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { createFlowActions } from "../../src/server/flow-actions.js";
+import { emitTransition } from "../../src/server/data-change-hub.js";
 // v0.8 P0 (§1.4 过渡期): roleTag 不再走 store round-trip;PM agent 物理列直接 seed。
 import { seedAgentWithRoleTag } from "./helpers/p0-test-helpers.js";
+
+const execFlow = getToolExecute(flowTool)!;
 
 let tmpDir: string;
 let workspaceDir: string;
@@ -85,7 +89,7 @@ beforeEach(() => {
 		systemPrompt: "pm",
 		toolPolicy: { tools: {} },
 	} as any);
-	// v0.8 P0 (§1.4): seed role_tag physical column so PmService.findPmAgent resolves.
+	// v0.8 P0 (§1.4): seed role_tag physical column so PmService resolves PM.
 	seedAgentWithRoleTag(sessionDB, pmAgent.id, "pm");
 	PM_AGENT_ID = pmAgent.id;
 
@@ -112,134 +116,126 @@ function buildPm(): PmService {
 	});
 }
 
-/** Build the tool context that the cron-triggered PM session would carry. */
-function buildPmToolContext(pm: PmService) {
+/** Build the Flow tool context that a cron-triggered PM session would carry. */
+function buildPmFlowCtx() {
+	const flowActions = createFlowActions({
+		requirementStore,
+		resolveWorkspaceDir: () => workspaceDir,
+		emitTransition,
+	});
 	return {
 		workingDir: workspaceDir,
 		agentId: PM_AGENT_ID,
 		emit: () => {},
-		pmService: pm,
+		requirementStore,
+		flowActions,
 		// projectId rides on the session context bundle (D-B) on cron-triggered
-		// PM sessions; legacy ctx.projectId is the fallback.
+		// PM sessions.
 		contextBundle: { projectId: PROJECT_ID, workspaceDir, wikiRootNodeId: `wiki-root:${PROJECT_ID}` },
 	};
 }
 
-// ─── CreateRequirementWithDoc tool ────────────────────────────
+// ─── Flow.create from a PM session(project-flow F5 接管)────────
 
-describe("CreateRequirementWithDoc tool (defect 1 — PM creates requirement + doc + discuss)", () => {
-	test("creates RequirementRecord at status='discuss' + repo doc + docPath binding", async () => {
-		const pm = buildPm();
-		const execute = getToolExecute(createRequirementWithDocTool)!;
-		const out = await execute(
-			{ title: "Add login page", summary: "users need to sign in", priority: "normal" },
-			buildPmToolContext(pm),
+describe("Flow.create from a PM session (replaces CreateRequirementWithDoc)", () => {
+	test("creates a status='found' RequirementRecord + writes the Intent doc", async () => {
+		const out = await execFlow(
+			{ action: "create", projectId: PROJECT_ID, title: "Add login page", description: "users need to sign in", priority: "high" } as any,
+			buildPmFlowCtx(),
 		);
 		expect(out).toMatch(/Requirement created:/);
 
 		const reqs = requirementStore.listByProject(PROJECT_ID);
 		expect(reqs.length).toBe(1);
 		const req = reqs[0];
+		// Flow.create lands at status='found' (NOT 'discuss' — that was the old
+		// PM-tool contract; project-flow §2 puts 'found' on create, 'discuss' on
+		// pick). Comprehensive coverage in f1-flow-tool.test.ts.
 		expect(req.title).toBe("Add login page");
-		expect(req.status).toBe("discuss");
-		expect(req.docPath).toBe(`.zero/requirements/${PROJECT_ID}/${req.id}.md`);
-		expect(req.createdByAgentId).toBe(PM_AGENT_ID);
-		// docPath resolves to a real file in the workspace.
-		expect(existsSync(join(workspaceDir, req.docPath!))).toBe(true);
+		expect(req.status).toBe("found");
+		expect(req.priority).toBe("high");
+
+		// Flow.create writes the Intent section to docs/requirements/{id}.md
+		// (a FILE, never the DB). The legacy .zero/requirements/ path is gone.
+		const abs = join(workspaceDir, "docs", "requirements", `${req.id}.md`);
+		const { existsSync, readFileSync } = require("node:fs");
+		expect(existsSync(abs)).toBe(true);
+		const body = readFileSync(abs, "utf-8");
+		expect(body).toContain("# Add login page");
+		expect(body).toContain("## Intent");
+		expect(body).toContain("users need to sign in");
 	});
 
-	test("doc content carries the title + summary (intent seeded)", async () => {
-		const pm = buildPm();
-		const execute = getToolExecute(createRequirementWithDocTool)!;
-		await execute(
-			{ title: "Hardening", summary: "tighten input validation", priority: "high" },
-			buildPmToolContext(pm),
-		);
-		const req = requirementStore.listByProject(PROJECT_ID)[0];
-		const abs = requirementDocAbsPath(workspaceDir, PROJECT_ID, req.id);
-		const body = require("node:fs").readFileSync(abs, "utf-8");
-		expect(body).toContain("# Hardening");
-		expect(body).toContain("tighten input validation");
-	});
-
-	test("idempotent — same title returns existing record, no new doc", async () => {
-		const pm = buildPm();
-		const execute = getToolExecute(createRequirementWithDocTool)!;
-		await execute({ title: "Dup", priority: "normal" }, buildPmToolContext(pm));
-		await execute({ title: "Dup", priority: "normal" }, buildPmToolContext(pm));
-		expect(requirementStore.listByProject(PROJECT_ID).length).toBe(1);
-	});
-
-	test("errors cleanly when pmService missing (non-PM session)", async () => {
-		const execute = getToolExecute(createRequirementWithDocTool)!;
-		const out = await execute(
-			{ title: "X", priority: "normal" },
+	test("errors cleanly when flowActions / requirementStore are absent (non-project session)", async () => {
+		// Flow forwards to ctx.flowActions (injected by agent-service). If a
+		// caller bypasses CONDITIONAL_TOOLS gating and invokes execute directly
+		// without flowActions, the tool returns a clear error instead of
+		// crashing. (A real session always has flowActions when Flow is in the
+		// active set — see capabilityHandlesFor in agent-service.)
+		const out = await execFlow(
+			{ action: "create", projectId: PROJECT_ID, title: "X" } as any,
 			{ workingDir: workspaceDir, agentId: "other", emit: () => {} } as any,
 		);
-		expect(out).toMatch(/PM service not available/i);
+		expect(out).toMatch(/flowActions/i);
 	});
 
-	test("errors cleanly when projectId missing (non-project session)", async () => {
-		const pm = buildPm();
-		const execute = getToolExecute(createRequirementWithDocTool)!;
-		const out = await execute(
-			{ title: "X", priority: "normal" },
-			// No contextBundle.projectId, no ctx.projectId.
-			{ workingDir: workspaceDir, agentId: PM_AGENT_ID, emit: () => {}, pmService: pm } as any,
-		);
-		expect(out).toMatch(/projectId not available/i);
-	});
-
-	test("accepts ctx.projectId fallback when contextBundle has none", async () => {
-		const pm = buildPm();
-		const execute = getToolExecute(createRequirementWithDocTool)!;
-		const out = await execute(
-			{ title: "Legacy ctx", priority: "normal" },
+	test("errors cleanly when projectId is missing (no context bundle, no ctx.projectId)", async () => {
+		const flowActions = createFlowActions({
+			requirementStore,
+			resolveWorkspaceDir: () => workspaceDir,
+			emitTransition,
+		});
+		const out = await execFlow(
+			{ action: "create", title: "X" } as any,
 			{
 				workingDir: workspaceDir,
 				agentId: PM_AGENT_ID,
 				emit: () => {},
-				pmService: pm,
-				projectId: PROJECT_ID,
+				requirementStore,
+				flowActions,
 			} as any,
 		);
-		expect(out).toMatch(/Requirement created:/);
-		expect(requirementStore.listByProject(PROJECT_ID).length).toBe(1);
+		expect(out).toMatch(/projectId/i);
 	});
 });
 
-// ─── defect 2: discuss jump carries the requirement doc ──────
+// ─── defect 2: discuss jump still carries the requirement doc path ────
+//
+// project-flow F5: the legacy `.zero/requirements/{projectId}/{id}.md`
+// docPath the old tool stamped is gone; Flow consumers resolve the doc via
+// resolveExistingDocPath (canonical docs/requirements/{id}.md then legacy
+// fallback). The data handleDiscuss reads is now derived, not stamped — see
+// f1-flow-tool.test.ts + f4-flow-actions.test.ts for the canonical-path
+// coverage. This block intentionally left as a doc-pointer (no assertion):
+// the contract it asserted (stamped docPath under .zero/requirements/) is
+// intentionally retired.
 
-describe("defect 2 — discuss jump opens the requirement doc", () => {
-	test("a requirement created via the PM tool carries a docPath that resolves under the workspace", async () => {
-		// This is the data contract handleDiscuss relies on: it dispatches
-		// `zero-file-select` with { path: req.docPath, root: workspaceDir }.
-		// Asserting the docPath shape + on-disk presence here covers the
-		// backend half; the UI dispatch is exercised via the renderer.
-		const pm = buildPm();
-		const execute = getToolExecute(createRequirementWithDocTool)!;
-		await execute(
-			{ title: "Discuss me", summary: "needs PM discuss", priority: "normal" },
-			buildPmToolContext(pm),
+describe("defect 2 — discuss doc resolution (pointer)", () => {
+	test("Flow.create writes the canonical docs/requirements/{id}.md path (covered in f1-flow-tool)", async () => {
+		// Smoke: the doc lands at the canonical path. Discuss-session doc
+		// resolution is exercised end-to-end via the renderer + f4-flow-actions.
+		await execFlow(
+			{ action: "create", projectId: PROJECT_ID, title: "Discuss me", description: "needs PM discuss" } as any,
+			buildPmFlowCtx(),
 		);
 		const req = requirementStore.listByProject(PROJECT_ID)[0];
-		expect(req.docPath).toBeTruthy();
-		expect(req.docPath!.startsWith(`.zero/requirements/${PROJECT_ID}/`)).toBe(true);
-		expect(existsSync(join(workspaceDir, req.docPath!))).toBe(true);
-		// The root that handleDiscuss would pass = project.workspaceDir.
+		const abs = join(workspaceDir, "docs", "requirements", `${req.id}.md`);
+		const { existsSync } = require("node:fs");
+		expect(existsSync(abs)).toBe(true);
+		// The project workspaceDir is what handleDiscuss would pass as root.
 		expect(projectStore.get(PROJECT_ID)!.workspaceDir).toBe(workspaceDir);
 	});
 });
 
-// ─── dead-code cleanup ────────────────────────────────────────
+// ─── PmService primitive surface(still backs Flow.verify + discuss)──
 
-describe("dead-code cleanup — discoverAndCreateRequirement removed", () => {
-	test("PmService no longer exposes discoverAndCreateRequirement", () => {
+describe("PmService primitive surface (used by Flow.verify + discuss routing)", () => {
+	test("discoverAndCreateRequirement stays removed (PM is agent-driven)", () => {
 		const pm = buildPm();
 		expect(typeof (pm as any).discoverAndCreateRequirement).toBe("undefined");
 	});
-	// Keep the methods that ARE still used by tools / IPC.
-	test("PmService still exposes the methods used by tools / IPC", () => {
+	// Keep the methods that ARE still used by Flow.verify / IPC / discuss.
+	test("PmService still exposes the methods used by Flow.verify / IPC", () => {
 		const pm = buildPm();
 		expect(typeof pm.createRequirementWithDoc).toBe("function");
 		expect(typeof pm.openDiscussSession).toBe("function");

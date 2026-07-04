@@ -179,7 +179,7 @@ export const useRequirementStore = create<RequirementState>((set, get) => ({
 }));
 
 // v0.8: incrementally sync requirements when mutated from the backend (e.g.
-// CreateRequirement / verify tools, status transitions). Single create/update
+// Flow tool create/verify actions, status transitions). Single create/update
 // → fetch one + patch; delete → remove; burst → full refetch.
 subscribeListDataChange("requirements", {
 	patch: (id, record) => {

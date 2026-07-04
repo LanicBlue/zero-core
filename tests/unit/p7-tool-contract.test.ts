@@ -8,9 +8,13 @@
 //     四个原工具不应出现在 ALL_TOOLS,也不应能 import wiki-tools 模块。
 //   - **ToolCategory 含 `workflow`** — `tool-registry.ts` 与 `tool-factory.ts`
 //     的 ToolCategory 类型联合都包含 "workflow"。
-//   - **分类正确** — Assistant = management;Orchestrate/CreateRequirement/
-//     CreateRequirementWithDoc/verify = workflow;delegate `Agent` = agent;
-     // Project/AgentRegistry/Cron/Wiki = management。
+//   - **分类正确** — Platform = management;Orchestrate = workflow;Flow
+//     (project-flow F3:取代已退役的 CreateRequirement/CreateRequirementWithDoc/
+//     verify,归类 management)= management;delegate `Agent` = agent;
+//     Project/AgentRegistry/Cron/Wiki = management。
+//
+// project-flow F5:旧 requirement-tools.ts / verify-tool.ts 已删;
+// CreateRequirement/CreateRequirementWithDoc/verify 经 RENAMED_TOOLS → "Flow"。
 //
 // ## 输入
 // 静态 import ALL_TOOLS + ToolCategory + 各 tool 模块。
@@ -21,11 +25,12 @@
 // ## 关键文件
 //   - src/runtime/tools/index.ts (ALL_TOOLS)
 //   - src/runtime/tools/wiki-tool.ts (统一 Wiki 工具)
-//   - src/core/tool-registry.ts (ToolCategory 类型)
+//   - src/core/tool-registry.ts (ToolCategory 类型 + RENAMED_TOOLS)
 //   - src/runtime/tools/tool-factory.ts (ToolCategory 镜像)
 //   - src/runtime/mcp-tools/platform-tools.ts (category=management)
-//   - src/runtime/tools/orchestrate-tool.ts / requirement-tools.ts / verify-tool.ts
-//     (category=workflow)
+//   - src/runtime/tools/orchestrate-tool.ts (category=workflow)
+//   - src/runtime/tools/flow-tool.ts (Flow = workflow,F5 取代旧 requirement/
+//     verify 工具)
 //   - src/runtime/tools/agent.ts (delegate category=agent)
 
 import { describe, test, expect } from "vitest";
@@ -35,8 +40,11 @@ import { resolve } from "node:path";
 import { ALL_TOOLS } from "../../src/runtime/tools/index.js";
 import { getToolMeta } from "../../src/runtime/tools/tool-factory.js";
 import { orchestrateTool } from "../../src/runtime/tools/orchestrate-tool.js";
-import { createRequirementTool, createRequirementWithDocTool } from "../../src/runtime/tools/requirement-tools.js";
-import { verifyTool } from "../../src/runtime/tools/verify-tool.js";
+// project-flow F5: Flow replaces the retired CreateRequirement /
+// CreateRequirementWithDoc / verify tools (files deleted in F5). Old tool
+// names map to "Flow" via RENAMED_TOOLS back-compat.
+import { flowTool } from "../../src/runtime/tools/flow-tool.js";
+import { RENAMED_TOOLS } from "../../src/core/tool-registry.js";
 import { delegateTool } from "../../src/runtime/tools/agent.js";
 import { wikiTool } from "../../src/runtime/tools/wiki-tool.js";
 import { projectTool } from "../../src/runtime/tools/project-tool.js";
@@ -65,6 +73,41 @@ describe("P7 工具去重:wiki-tools.ts 删除 + 旧名无残留", () => {
 	});
 });
 
+// ─── ①.b project-flow F5:旧 requirement / verify 工具文件已删 ──
+
+describe("project-flow F5:旧 requirement / verify 工具退役", () => {
+	test("src/runtime/tools/requirement-tools.ts + verify-tool.ts 文件已删", () => {
+		for (const f of ["requirement-tools.ts", "verify-tool.ts"]) {
+			const p = resolve(__dirname, `../../src/runtime/tools/${f}`);
+			expect(existsSync(p), `${p} should be deleted`).toBe(false);
+		}
+	});
+
+	test("ALL_TOOLS 不含 CreateRequirement / CreateRequirementWithDoc / verify 三键(Flow 接管)", () => {
+		const retired = ["CreateRequirement", "CreateRequirementWithDoc", "verify"];
+		for (const name of retired) {
+			expect(ALL_TOOLS[name], `${name} must not be in ALL_TOOLS`).toBeUndefined();
+		}
+	});
+
+	test("ALL_TOOLS 含 Flow(workflow 类别,替代三个旧工具)", () => {
+		expect(ALL_TOOLS.Flow).toBeDefined();
+		expect(ALL_TOOLS.Flow).toBe(flowTool);
+	});
+
+	test("RENAMED_TOOLS 把所有旧拼写映射到 Flow(back-compat)", () => {
+		// PascalCase / lowercase / snake_case 全映射到 Flow。
+		expect(RENAMED_TOOLS.CreateRequirement).toBe("Flow");
+		expect(RENAMED_TOOLS.CreateRequirementWithDoc).toBe("Flow");
+		expect(RENAMED_TOOLS.createrequirement).toBe("Flow");
+		expect(RENAMED_TOOLS.createrequirementwithdoc).toBe("Flow");
+		expect(RENAMED_TOOLS.create_requirement).toBe("Flow");
+		expect(RENAMED_TOOLS.create_requirement_with_doc).toBe("Flow");
+		expect(RENAMED_TOOLS.verify).toBe("Flow");
+		expect(RENAMED_TOOLS.Verify).toBe("Flow");
+	});
+});
+
 // ─── ② ToolCategory 加 `workflow` ─────────────────────────────
 
 describe("P7 ToolCategory 加 workflow", () => {
@@ -87,11 +130,13 @@ describe("P7 工具分类正确", () => {
 		expect(getToolMeta(wikiTool)?.category).toBe("management");
 	});
 
-	test("Orchestrate/CreateRequirement/CreateRequirementWithDoc/verify 全是 workflow", () => {
+	test("Orchestrate 是 workflow;Flow 是 management(取代 CreateRequirement/CreateRequirementWithDoc/verify)", () => {
+		// project-flow F1: Flow is categorized "management" (alongside
+		// Project/AgentRegistry/Cron/Wiki — the domain action tools). The
+		// retired CreateRequirement/CreateRequirementWithDoc/verify were
+		// "workflow"; Flow consolidates them under management.
 		expect(getToolMeta(orchestrateTool)?.category).toBe("workflow");
-		expect(getToolMeta(createRequirementTool)?.category).toBe("workflow");
-		expect(getToolMeta(createRequirementWithDocTool)?.category).toBe("workflow");
-		expect(getToolMeta(verifyTool)?.category).toBe("workflow");
+		expect(getToolMeta(flowTool)?.category).toBe("management");
 	});
 
 	test("Platform (createPlatformTools 的 Platform) 是 management,不是 assistant", () => {

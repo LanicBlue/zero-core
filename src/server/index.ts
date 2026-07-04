@@ -524,10 +524,12 @@ export async function startServer(options?: StartServerOptions) {
 		archivistService,
 		sessionDB,
 	});
-	// v0.8 (M4): surface PmService + RequirementStore + wikiStore onto PM
-	// session tool contexts so the CreateRequirementWithDoc tool can call
-	// PmService.createRequirementWithDoc, and PM can read the project wiki
-	// (ListWikiTree / ReadDoc), from a cron-triggered sendPrompt loop.
+	// v0.8 (M4) / project-flow F3: surface PmService + RequirementStore +
+	// wikiStore onto PM session tool contexts so Flow.create (PM-session path)
+	// and Flow.verify (compound close) can call PmService, and PM can read the
+	// project wiki (Wiki expand/docRead), from a cron-triggered sendPrompt
+	// loop. The legacy CreateRequirementWithDoc tool was retired in F3 (file
+	// deleted F5); Flow is the single requirement-flow entry point.
 	agentService.setPmService(pmService, requirementStore, wikiStore);
 	// v0.8 (M5): surface the global WikiStore onto every session so extractor
 	// A can write global memory nodes (decision 46 N2) and recall
