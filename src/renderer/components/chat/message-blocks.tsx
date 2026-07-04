@@ -77,7 +77,12 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
 	grep: "Grep", glob: "Glob",
 	webSearch: "Web Search", web_search: "Web Search",
 	webFetch: "Web Fetch", web_fetch: "Web Fetch",
-	agent: "Subagent", subagent: "Subagent", wait: "Wait",
+	// Canonical tool names are PascalCase; lowercase keys cover legacy
+	// lowercase block names. Capital "Agent" normalises pre-rename history
+	// (tool renamed Agent → Subagent in e8128d8); without it, old persisted
+	// tool-call blocks fall through to raw "Agent".
+	Agent: "Subagent", agent: "Subagent", Subagent: "Subagent", subagent: "Subagent",
+	wait: "Wait",
 	taskStatus: "Task Status", taskList: "Task List", taskStop: "Task Stop",
 	askUser: "Ask User", todoWrite: "Todo Write",
 	memoryRead: "Memory Read", memoryWrite: "Memory Write",
@@ -88,7 +93,7 @@ export const TOOL_SUMMARY_KEY: Record<string, string[]> = {
 	grep: ["pattern"], glob: ["pattern"],
 	webSearch: ["query"], web_search: ["query"],
 	webFetch: ["url"], web_fetch: ["url"],
-	agent: ["task"], subagent: ["task"], wait: ["timeout"],
+	Agent: ["task"], agent: ["task"], Subagent: ["task"], subagent: ["task"], wait: ["timeout"],
 	taskStatus: ["task_id"], taskList: [], taskStop: ["task_id"], askUser: [],
 };
 

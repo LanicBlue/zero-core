@@ -84,7 +84,7 @@ const FS_READ_TOOLS = {
 const MANAGEMENT_TOOLS = {
 	...FS_READ_TOOLS,
 	Wait: { enabled: true },
-	Agent: { enabled: true },
+	Subagent: { enabled: true },
 	WebSearch: { enabled: true },
 	WebFetch: { enabled: true },
 	Project: { enabled: true },

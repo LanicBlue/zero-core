@@ -33,6 +33,7 @@ import MarkdownRenderer from "../common/MarkdownRenderer.js";
 import { ConfirmModal } from "../common/ConfirmModal.js";
 import AskUserCard from "../chat/AskUserCard.js";
 import TodosList from "../chat/TodosList.js";
+import { TOOL_DISPLAY_NAMES, TOOL_SUMMARY_KEY } from "../chat/message-blocks.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
 import { useInputQueueStore } from "../../store/input-queue-store.js";
 import InputQueueStrip from "../chat/InputQueueStrip.js";
@@ -128,26 +129,8 @@ function ThinkingBlockComponent({ text, streaming }: { text: string; streaming: 
 	);
 }
 
-// Tool display names and summary key maps
-	const TOOL_DISPLAY_NAMES: Record<string, string> = {
-		bash: "Shell", shell: "Shell", read: "Read", write: "Write", edit: "Edit",
-		grep: "Grep", glob: "Glob",
-		webSearch: "Web Search", web_search: "Web Search",
-		webFetch: "Web Fetch", web_fetch: "Web Fetch",
-		agent: "Subagent", subagent: "Subagent", wait: "Wait",
-		taskStatus: "Task Status", taskList: "Task List", taskStop: "Task Stop",
-		askUser: "Ask User", todoWrite: "Todo Write",
-		memoryRead: "Memory Read", memoryWrite: "Memory Write",
-	};
-	const TOOL_SUMMARY_KEY: Record<string, string[]> = {
-		bash: ["command", "description"],
-		read: ["file_path", "path"], write: ["file_path", "path"], edit: ["file_path", "path"],
-		grep: ["pattern"], glob: ["pattern"],
-		webSearch: ["query"], web_search: ["query"],
-		webFetch: ["url"], web_fetch: ["url"],
-		agent: ["task"], subagent: ["task"], wait: ["timeout"],
-		taskStatus: ["task_id"], taskList: [], taskStop: ["task_id"], askUser: [],
-	};
+	// TOOL_DISPLAY_NAMES / TOOL_SUMMARY_KEY live in ../chat/message-blocks.js
+	// (single source — shared with the message-list render path).
 
 	function ToolBlock({ block, streaming }: { block: ToolCallBlock; streaming: boolean }) {
 		const [expanded, setExpanded] = useState(false);

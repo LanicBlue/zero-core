@@ -81,7 +81,7 @@ export const ALL_TOOLS: Record<string, any> = {
 	Edit: fileEditTool,
 	Grep: grepTool,
 	Glob: globTool,
-	Agent: delegateTool,
+	Subagent: delegateTool,
 	TaskStatus: taskStatusTool,
 	TaskList: taskListTool,
 	TaskStop: taskStopTool,
@@ -100,8 +100,9 @@ export const ALL_TOOLS: Record<string, any> = {
 	// Cron/Wiki), replacing the retired zero-admin tools
 	// (CreateProject/CreateAgent/.../InstantiatePreset/SetToolPolicy/...).
 	// Capability lives in tools; agents are just tool-config bundles.
-	// Note: the management tool is named `AgentRegistry` (not `Agent`) to avoid
-	// collision with the long-existing `Agent` sub-agent delegation tool.
+	// Note: the management tool is named `AgentRegistry` (not `Subagent`) to
+	// keep the two distinct — `Subagent` is the delegation tool, `AgentRegistry`
+	// manages agent records.
 	Project: projectTool,
 	Work: workTool,
 	AgentRegistry: agentRegistryTool,
@@ -117,7 +118,7 @@ export const ALL_TOOLS: Record<string, any> = {
 
 // Tools that require special context capabilities
 const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> = {
-	Agent: (ctx) => !!ctx.delegateTask,
+	Subagent: (ctx) => !!ctx.delegateTask,
 	TaskStatus: (ctx) => !!ctx.getTaskResult,
 	TaskList: (ctx) => !!ctx.listTasks,
 	TaskStop: (ctx) => !!ctx.stopTask,
@@ -197,7 +198,7 @@ export function buildToolsSet(
 
 	// Determine enabled check: prefer tools map, fall back to autoApprove.
 	// v0.8 (delegation refactor): the tools map gates built-in (hard-coded)
-	// tools. Subagent delegation is the single `Agent` action tool (in
+	// tools. Subagent delegation is the single `Subagent` action tool (in
 	// ALL_TOOLS, gated like any built-in) — there is no separate per-subagent
 	// tool channel anymore.
 	const toolsMap = policy.tools;
@@ -235,8 +236,8 @@ export function buildToolsSet(
 	}
 
 	// v0.8 (delegation refactor): subagent delegation is the single
-	// action-based `Agent` tool (already in ALL_TOOLS) — no per-subagent tools
-	// to merge here anymore.
+	// action-based `Subagent` tool (already in ALL_TOOLS) — no per-subagent
+	// tools to merge here anymore.
 
 	// Config injection into descriptions is now handled by ToolRegistry.getAll()
 	// via buildEffectiveDescription() - UI and runtime see the same prompt.

@@ -55,9 +55,9 @@ describe("Agent delegation — single action tool (no per-subagent tools)", () =
 		expect(src).not.toMatch(/buildSubagentTools/);
 	});
 
-	test("Agent tool is the single delegation surface (in ALL_TOOLS)", () => {
+	test("Subagent tool is the single delegation surface (in ALL_TOOLS)", () => {
 		const src = readSrc("../../src/runtime/tools/index.ts");
-		expect(src).toMatch(/Agent:\s*delegateTool/);
+		expect(src).toMatch(/Subagent:\s*delegateTool/);
 	});
 });
 
