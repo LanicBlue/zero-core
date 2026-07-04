@@ -44,7 +44,7 @@ function entryDisplayName(entry: { agentId: string; name?: string }, target?: { 
 }
 
 export const delegateTool = buildTool({
-	name: "Agent",
+	name: "Subagent",
 	description:
 		"Delegate and control sub-agent tasks. Actions: list, delegate, request_finish, stop, complete, tree.",
 	prompt:
@@ -153,7 +153,7 @@ export const delegateTool = buildTool({
 		const { task, mode: inputMode } = input;
 		if (!task || !task.trim()) return "Error: `task` required for delegate";
 
-		const config = ctx.toolConfig?.Agent ?? {};
+		const config = ctx.toolConfig?.Subagent ?? {};
 		const autoBg = config.auto_background === true;
 		const bgTimeout = Number(config.auto_background_timeout) || 0;
 

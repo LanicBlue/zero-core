@@ -284,7 +284,7 @@ export class SubagentDelegator {
 			// The sub-loop runs UNDER this task → tasks it later dispatches are
 			// children of taskId in the in-memory task tree.
 			ownerTaskId: taskId,
-			timeoutSec: toolConfig?.Agent?.timeout,
+			timeoutSec: toolConfig?.Subagent?.timeout,
 			// Step 1B: mark as a delegated loop so handlers registered on its
 			// own registry know their kind (task-control fires; notification /
 			// input-queue / metrics don't).
@@ -305,8 +305,8 @@ export class SubagentDelegator {
 		this.runningSubloops.set(taskId, entry);
 		subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
 
-		const autoBgEnabled = toolConfig?.Agent?.auto_background === true;
-		const autoBgSec = Number(toolConfig?.Agent?.auto_background_timeout) || 0;
+		const autoBgEnabled = toolConfig?.Subagent?.auto_background === true;
+		const autoBgSec = Number(toolConfig?.Subagent?.auto_background_timeout) || 0;
 
 		// Auto-background path: race the run against a timeout.
 		if (autoBgEnabled && autoBgSec > 0) {
@@ -414,7 +414,7 @@ export class SubagentDelegator {
 			toolPolicy: delegatedToolPolicy(options?.toolPolicy ?? this.config.toolPolicy),
 			workspaceDir: options?.workspaceDir ?? inheritedBundle?.workspaceDir ?? this.config.workspaceDir,
 			contextBundle: inheritedBundle,
-			timeoutSec: toolConfig?.Agent?.timeout,
+			timeoutSec: toolConfig?.Subagent?.timeout,
 			parentSessionId: this.config.sessionId,
 			spawnDepth: (this.config.spawnDepth ?? 0) + 1,
 			// The sub-loop runs UNDER this task → its dispatched tasks are
@@ -599,7 +599,7 @@ export class SubagentDelegator {
 			ownerTaskId: taskId,
 			// Same AskUser block as fresh delegations (sub-agent hidden session).
 			toolPolicy: delegatedToolPolicy(this.config.toolPolicy),
-			timeoutSec: toolConfig?.Agent?.timeout,
+			timeoutSec: toolConfig?.Subagent?.timeout,
 			loopKind: "delegated",
 		};
 		const subAbort = new AbortController();

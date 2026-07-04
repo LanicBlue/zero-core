@@ -74,10 +74,10 @@ const KV_KEY = "tool_config";
 // Legacy lowercase tool name → PascalCase mapping
 export const RENAMED_TOOLS: Record<string, string> = {
 	bash: "Shell", shell: "Shell", read: "Read", write: "Write", edit: "Edit",
-	grep: "Grep", glob: "Glob", find: "Glob", agent: "Agent",
+	grep: "Grep", glob: "Glob", find: "Glob", agent: "Subagent",
 	task_status: "TaskStatus", task_list: "TaskList", task_stop: "TaskStop",
 	wait: "Wait", web_search: "WebSearch", ask_user: "AskUser", todo_write: "TodoWrite",
-	subagent: "Agent", assistant: "Platform", "Assistant": "Platform",
+	subagent: "Subagent", "Agent": "Subagent", assistant: "Platform", "Assistant": "Platform",
 	web_fetch: "WebFetch",
 	sequentialthinking: "SequentialThinking",
 	// v0.8 (P3): PascalCase domain action tools — lowercase / snake_case aliases

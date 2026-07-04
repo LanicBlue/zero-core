@@ -77,7 +77,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
 	grep: "Grep", glob: "Glob",
 	webSearch: "Web Search", web_search: "Web Search",
 	webFetch: "Web Fetch", web_fetch: "Web Fetch",
-	agent: "Agent", wait: "Wait",
+	agent: "Subagent", subagent: "Subagent", wait: "Wait",
 	taskStatus: "Task Status", taskList: "Task List", taskStop: "Task Stop",
 	askUser: "Ask User", todoWrite: "Todo Write",
 	memoryRead: "Memory Read", memoryWrite: "Memory Write",
@@ -88,7 +88,7 @@ export const TOOL_SUMMARY_KEY: Record<string, string[]> = {
 	grep: ["pattern"], glob: ["pattern"],
 	webSearch: ["query"], web_search: ["query"],
 	webFetch: ["url"], web_fetch: ["url"],
-	agent: ["description", "prompt"], wait: ["timeout"],
+	agent: ["task"], subagent: ["task"], wait: ["timeout"],
 	taskStatus: ["task_id"], taskList: [], taskStop: ["task_id"], askUser: [],
 };
 

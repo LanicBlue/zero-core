@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildToolsSet } from "../../src/runtime/tools/index.js";
 import { AgentService } from "../../src/server/agent-service.js";
+import { RENAMED_TOOLS } from "../../src/core/tool-registry.js";
 
 describe("tool-name migration — legacy lowercase → PascalCase domain tools", () => {
 	describe("buildToolsSet", () => {
@@ -50,6 +51,18 @@ describe("tool-name migration — legacy lowercase → PascalCase domain tools",
 			expect("Project" in tools).toBe(true);
 			expect("Cron" in tools).toBe(true);
 			expect("AgentRegistry" in tools).toBe(true);
+		});
+
+		test("Subagent rename: old 'Agent' canonical + lowercase aliases all map to 'Subagent'", () => {
+			// The delegate tool was renamed "Agent" → "Subagent". RENAMED_TOOLS must
+			// map the old canonical name AND the lowercase aliases so pre-rename
+			// policy/config keys (toolPolicy.tools / toolConfig) keep working.
+			// (buildToolsSet doesn't surface Subagent without a delegation context, so
+			// we assert the map directly — the same map buildToolsSet + getToolConfig
+			// apply.)
+			expect(RENAMED_TOOLS["Agent"]).toBe("Subagent");
+			expect(RENAMED_TOOLS["agent"]).toBe("Subagent");
+			expect(RENAMED_TOOLS["subagent"]).toBe("Subagent");
 		});
 	});
 

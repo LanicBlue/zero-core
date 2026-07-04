@@ -165,10 +165,10 @@ export const agentRegistryActionSchema = z.object({
 export const agentRegistryTool = buildTool({
 	name: "AgentRegistry",
 	description:
-		"Manage global Agent records (the role identities). Action-switched: create/update/delete/get/list + listTemplates/getTemplate. (Distinct from the 'Agent' sub-agent delegation tool — this manages the registry of role agents.)",
+		"Manage global Agent records (the role identities). Action-switched: create/update/delete/get/list + listTemplates/getTemplate. (Distinct from the 'Subagent' delegation tool — this manages the registry of role agents.)",
 	prompt:
 		"Manage the global Agent registry via a single action-switched tool.\n\n" +
-		"(Note: 'AgentRegistry' manages role-agent records. The separate 'Agent' tool delegates a task to a sub-agent — different capability.)\n\n" +
+		"(Note: 'AgentRegistry' manages role-agent records. The separate 'Subagent' tool delegates a task to a sub-agent — different capability.)\n\n" +
 		"Actions:\n" +
 		"- { action:'create', name, systemPrompt?, model?, provider?, toolPolicy?, subagents?, wikiAnchors? } — create a global agent from scratch. `name` is required.\n" +
 		"- { action:'create', template, name?, model?, provider? } — instantiate a template. `template` accepts the id OR (case-insensitive) name from `listTemplates` (e.g. 'Coder' or its uuid). systemPrompt + toolPolicy come from the template; the optional `name`/`model`/`provider` override the template defaults (use `name` so each instance is distinguishable). Further customize via `update`.\n" +
