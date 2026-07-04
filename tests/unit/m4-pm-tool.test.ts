@@ -168,10 +168,11 @@ describe("Flow.create from a PM session (replaces CreateRequirementWithDoc)", ()
 
 	test("errors cleanly when flowActions / requirementStore are absent (non-project session)", async () => {
 		// Flow forwards to ctx.flowActions (injected by agent-service). If a
-		// caller bypasses CONDITIONAL_TOOLS gating and invokes execute directly
-		// without flowActions, the tool returns a clear error instead of
-		// crashing. (A real session always has flowActions when Flow is in the
-		// active set — see capabilityHandlesFor in agent-service.)
+		// caller invokes execute directly without flowActions, the tool returns
+		// a clear error instead of crashing. (A real session always has
+		// flowActions when Flow is in the active set — see capabilityHandlesFor
+		// in agent-service. CONDITIONAL_TOOLS was removed 2026-07; gating is now
+		// single-layer toolPolicy.)
 		const out = await execFlow(
 			{ action: "create", projectId: PROJECT_ID, title: "X" } as any,
 			{ workingDir: workspaceDir, agentId: "other", emit: () => {} } as any,

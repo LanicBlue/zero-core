@@ -41,8 +41,8 @@
 // user is a toolPolicy concern, not a structural one.
 //
 // ## Inputs
-// - ctx.requirementStore (RequirementStore — required; tool stays gated off
-//   otherwise via CONDITIONAL_TOOLS).
+// - ctx.requirementStore (RequirementStore — required; agent-service injects
+//   it IFF toolPolicy enables Flow, and warns if missing).
 // - ctx.flowActions (FlowActions — injected by agent-service; the shared
 //   backend with the REST router). Falls back to ad-hoc ctx assembly when a
 //   legacy test harness wires requirementStore but not flowActions.

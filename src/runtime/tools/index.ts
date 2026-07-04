@@ -106,31 +106,17 @@ export const ALL_TOOLS: Record<string, any> = Object.fromEntries([
 	...Object.entries(getPlatformTools()),
 ]);
 
-// Tools that require special context capabilities
-const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> = {
-	Subagent: (ctx) => !!ctx.delegateTask,
-	TaskStatus: (ctx) => !!ctx.getTaskResult,
-	TaskList: (ctx) => !!ctx.listTasks,
-	TaskStop: (ctx) => !!ctx.stopTask,
-	Wait: (ctx) => !!ctx.suspendUntilWake,
-	Orchestrate: (ctx) => !!ctx.delegateTask,
-	// v0.8 (P3): domain action tools. Project/AgentRegistry/Cron need the
-	// management service handle (zero sessions only). Wiki needs the wiki
-	// store (every project-role session).
-	Project: (ctx) => !!(ctx as any).management,
-	Work: (ctx) => !!(ctx as any).management,
-	AgentRegistry: (ctx) => !!(ctx as any).management,
-	Cron: (ctx) => !!(ctx as any).management,
-	Wiki: (ctx) => !!ctx.wikiStore,
-	// project-flow F3: Flow needs the requirement store (every project-role
-	// session carries it). The compound verify action additionally needs
-	// ctx.delegateTask (always present via agent-loop) + ctx.pmService for the
-	// archivist merge close — verify degrades gracefully if pmService is absent
-	// (returns the verdict text; no merge). Keeping Flow gated only on
-	// requirementStore preserves create/list/get/transition access for non-PM
-	// sessions; verify's runtime checks enforce the rest.
-	Flow: (ctx) => !!ctx.requirementStore,
-};
+// Note (v0.8 -> 2026-07): CONDITIONAL_TOOLS (a per-tool capability gate on the
+// ToolExecutionContext) was REMOVED. Audit found it 100% redundant: the 7
+// delegation-based conditions (Subagent/Orchestrate/Task*/Wait) checked
+// delegator methods that agent-loop wires on EVERY session; the 6 service-based
+// conditions (Project/Work/AgentRegistry/Cron/Wiki/Flow) checked handles that
+// capabilityHandlesFor already injects IFF toolPolicy enables the tool - and
+// those backing services are unconditionally new-ed at startup, so the
+// conditions never fired in production. Tool gating is now a SINGLE layer:
+// toolPolicy (isEnabled in buildToolsSet). capabilityHandlesFor
+// (agent-service.ts) emits a loud console.warn if a policy-enabled tool's
+// backing service is missing (replaces the old silent-hide).
 
 
 
@@ -208,10 +194,10 @@ export function buildToolsSet(
 	for (const [name, def] of Object.entries(ALL_TOOLS)) {
 		if (blocked.has(name)) continue;
 
-		// Check conditional tools
-		const condition = CONDITIONAL_TOOLS[name];
-		if (condition && !condition(context)) continue;
-
+		// Tool gating is a single layer: toolPolicy (isEnabled). The former
+		// CONDITIONAL_TOOLS capability gate was removed (see note above) —
+		// capabilityHandlesFor injects service handles IFF policy enables the
+		// tool, and warns if a backing service is missing.
 		if (isEnabled(name)) {
 			tools[name] = def;
 		}

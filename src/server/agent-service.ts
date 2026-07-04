@@ -92,8 +92,9 @@ function toolEnabled(
 		// Mirror buildToolsSet's rename: legacy lowercase keys (e.g. "wiki")
 		// must be normalized to their canonical PascalCase names so capability
 		// injection agrees with the tool-set assembly. Otherwise a config with
-		// {wiki:{enabled:true}} would pass buildToolsSet's gate but fail here
-		// → wikiStore never injected → CONDITIONAL_TOOLS filters Wiki out.
+		// {wiki:{enabled:true}} would pass buildToolsSet's policy gate but miss
+		// capability injection → wikiStore not injected → Wiki offered yet fails
+		// at call time (capabilityHandlesFor warns).
 		const normalized: Record<string, { enabled?: boolean } | null> = {};
 		for (const [key, val] of Object.entries(policy.tools)) {
 			normalized[RENAMED_TOOLS[key] ?? key] = val;
@@ -113,8 +114,9 @@ function toolEnabled(
  * only when its domain tool(s) are enabled by the policy AND the backing
  * service is present. Single source for both loop creation and hot config-sync
  * (applyConfigUpdate) so enabling e.g. Wiki on a RUNNING loop actually injects
- * wikiStore — otherwise buildToolsSet would enable the tool but CONDITIONAL_TOOLS
- * (which gates on ctx.wikiStore) would still filter it out.
+ * wikiStore — otherwise buildToolsSet would enable the tool but it would fail
+ * at call time (capabilityHandlesFor warns). Gating is single-layer toolPolicy;
+ * this just keeps the handle in sync so a policy-enabled tool can function.
  */
 type CapabilityHandles = {
 	management?: unknown;
@@ -257,8 +259,8 @@ export class AgentService {
 					contextConfig: agent.contextConfig,
 					// Re-inject capability handles for the NEW policy so a tool
 					// enabled mid-flight (e.g. Wiki turned on while the loop is
-					// running) actually surfaces — CONDITIONAL_TOOLS gates on
-					// these ctx fields, not just toolPolicy.
+					// running) actually functions — gating is single-layer
+					// toolPolicy, but the tool still needs its service handle.
 					capabilities: this.capabilityHandlesFor(agent.toolPolicy),
 				});
 			}
@@ -433,15 +435,28 @@ export class AgentService {
 	private capabilityHandlesFor(policy: SessionConfig["toolPolicy"] | undefined): CapabilityHandles {
 		const on = (name: string): boolean => toolEnabled(policy, name);
 		const caps: CapabilityHandles = {};
-		if (this.management && (on("Project") || on("AgentRegistry") || on("Cron"))) caps.management = this.management;
+		// Tool gating is now a single layer (toolPolicy); CONDITIONAL_TOOLS was
+		// removed (see tools/index.ts). Capability handles are injected IFF the
+		// policy enables a tool that needs them. If the backing service isn't
+		// initialized, warn loudly — the tool will be offered (policy enabled)
+		// but fail at call time. In production these services are always new-ed
+		// at startup, so the warnings are pure guards.
+		const needMgmt = on("Project") || on("Work") || on("AgentRegistry") || on("Cron");
+		if (this.management && needMgmt) caps.management = this.management;
+		else if (needMgmt && !this.management) console.warn("[capability] toolPolicy enables Project/Work/AgentRegistry/Cron but management service is not initialized — tool will be offered but fail at call time");
 		if (this.wikiStore && on("Wiki")) caps.wikiStore = this.wikiStore;
+		else if (on("Wiki") && !this.wikiStore) console.warn("[capability] toolPolicy enables Wiki but wikiStore is not initialized — tool will be offered but fail at call time");
 		// project-flow F3: Flow is the single requirement-flow entry point (old
 		// CreateRequirement / CreateRequirementWithDoc / verify retired). Flow's
 		// compound verify action needs the requirement store + pmService (the
 		// archivist-merge close). delegateTask is wired by agent-loop on every
 		// session, so it's not gated here.
 		if (this.requirementStore && on("Flow")) caps.requirementStore = this.requirementStore;
+		else if (on("Flow") && !this.requirementStore) console.warn("[capability] toolPolicy enables Flow but requirementStore is not initialized — tool will be offered but fail at call time");
 		if (this.pmService && on("Flow")) caps.pmService = this.pmService;
+		// pmService missing for Flow is non-fatal: verify degrades (returns the
+		// verdict text; no archivist merge), so warn quietly without alarming.
+		else if (on("Flow") && !this.pmService) console.warn("[capability] toolPolicy enables Flow but pmService is not initialized — verify action will degrade (no archivist merge)");
 		return caps;
 	}
 	evictSessionFromMemory(sessionId: string): void {
@@ -686,7 +701,8 @@ export class AgentService {
 		// v0.8: inject context handles by CONFIG. `on(name)` mirrors
 		// buildToolsSet's enabled-check (toolPolicy.tools → autoApprove →
 		// DEFAULT_ENABLED). Domain tools declare the capability; the matching
-		// service handle is surfaced so CONDITIONAL_TOOLS lets the tool through.
+		// service handle is surfaced so a policy-enabled tool can function
+		// (gating is single-layer toolPolicy; the handle is the runtime dep).
 		const caps = this.capabilityHandlesFor(sessionConfig.toolPolicy);
 		if (caps.management) (sessionConfig as any).management = caps.management;
 		if (caps.wikiStore) (sessionConfig as any).wikiStore = caps.wikiStore;

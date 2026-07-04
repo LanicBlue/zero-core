@@ -31,7 +31,7 @@ export function agentHasWikiTool(agent: AgentRecord): boolean {
  * 通用:agent 是否**真正启用**了某工具。镜像 buildToolsSet.isEnabled / agent-service
  * toolEnabled 的判定(blocked → false;否则 tools map > autoApprove > DEFAULT_ENABLED),
  * 而非只看 blockedTools。否则像 Wiki 这种不在 DEFAULT_ENABLED 的工具,agent "没 block
- * 但也没启用"会通过分配校验,运行时 CONDITIONAL_TOOLS.Wiki(ctx.wikiStore 注入由 on("Wiki")
+ * 但也没启用"会通过分配校验,运行时(ctx.wikiStore 注入由 capabilityHandlesFor 的 on("Wiki")
  * 把关)却不附加 → agent 报 "Wiki tool isn't attached"。
  */
 const DEFAULT_ENABLED_TOOLS = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);

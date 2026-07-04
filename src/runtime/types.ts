@@ -484,9 +484,10 @@ export interface ToolExecutionContext {
 	contextBundle?: SessionContextBundle;
 	/**
 	 * v0.8 (P3): ManagementService handle for the zero global-management
-	 * role's action tools (Project/Agent/Cron). Only present on zero
-	 * sessions; absent elsewhere so the tools gate themselves out via
-	 * CONDITIONAL_TOOLS. (Renamed from `zeroAdmin` in P3.)
+	 * role's action tools (Project/Work/AgentRegistry/Cron). Injected IFF the
+	 * session's toolPolicy enables one of those tools (capabilityHandlesFor);
+	 * absent otherwise (and the tool errors at call time if policy enabled it
+	 * without the handle). (Renamed from `zeroAdmin` in P3.)
 	 */
 	management?: any;
 	/**

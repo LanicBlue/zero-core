@@ -91,6 +91,50 @@ describe("Agent delegation — single action tool (no per-subagent tools)", () =
 	});
 });
 
+// ─── 2b. sub-D contracts: gating is single-layer toolPolicy ──
+//
+// CONDITIONAL_TOOLS was removed (2026-07). These contracts pin the two
+// invariants that justify the removal: (a) the delegator methods that the 7
+// retired conditions checked are wired on EVERY session in agent-loop (so
+// gating them was dead code), and (b) capabilityHandlesFor warns loudly when a
+// policy-enabled tool's backing service is missing (the old silent-hide became
+// a loud signal).
+
+describe("Tool gating — single-layer toolPolicy (sub-D)", () => {
+	test("agent-loop wires delegator methods unconditionally (no per-session gate)", () => {
+		const src = readSrc("../../src/runtime/agent-loop.ts");
+		// These are the delegator methods the retired conditions used to check.
+		// They must be assigned unconditionally in the ctx object (constructed in
+		// the loop constructor), proving the 7 delegation conditions were dead.
+		expect(src).toMatch(/delegateTask:\s*\(.*\)\s*=>\s*this\.delegator\.delegateTask/);
+		expect(src).toMatch(/getTaskResult:\s*\(.*\)\s*=>\s*this\.delegator\.getTaskResult/);
+		expect(src).toMatch(/listTasks:\s*\(.*\)\s*=>\s*this\.delegator\.listTasks/);
+		expect(src).toMatch(/suspendUntilWake:\s*\(.*\)\s*=>\s*this\.delegator\.suspendUntilWake/);
+	});
+
+	test("tools/index.ts no longer has a CONDITIONAL_TOOLS capability gate", () => {
+		const src = readSrc("../../src/runtime/tools/index.ts");
+		// The map declaration and its buildToolsSet lookup are gone (comments may
+		// still mention it for historical context — that's fine).
+		expect(src).not.toMatch(/const CONDITIONAL_TOOLS/);
+		expect(src).not.toMatch(/CONDITIONAL_TOOLS\[name\]/);
+		// buildToolsSet must gate only on policy (isEnabled), not a capability check.
+		expect(src).toMatch(/if \(isEnabled\(name\)\)/);
+	});
+
+	test("capabilityHandlesFor warns when a policy-enabled tool's service is missing", () => {
+		const src = readSrc("../../src/server/agent-service.ts");
+		// Loud signal replaces the old silent-hide: each service-backed tool
+		// emits a [capability] warning when enabled but uninitialized.
+		expect(src).toMatch(/\[capability\] toolPolicy enables Wiki but wikiStore/);
+		expect(src).toMatch(/\[capability\] toolPolicy enables Flow but requirementStore/);
+		expect(src).toMatch(/management service is not initialized/);
+		// Work needs management too — must be in the injection condition (was a
+		// latent gap before: original capabilityHandlesFor omitted Work).
+		expect(src).toMatch(/on\("Project"\) \|\| on\("Work"\) \|\| on\("AgentRegistry"\) \|\| on\("Cron"\)/);
+	});
+});
+
 // ─── 3. buildContextMessage content (snapshot-style) ─────
 
 describe("buildContextMessage — P2 sections (snapshot)", () => {
