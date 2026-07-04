@@ -27,6 +27,11 @@ import { SubagentDelegator } from "../../src/runtime/subagent-delegator.js";
 import { buildContextMessage } from "../../src/runtime/context-message.js";
 import { ToolRegistry } from "../../src/core/tool-registry.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
+import { ALL_TOOLS } from "../../src/runtime/tools/index.js";
+import { delegateTool } from "../../src/runtime/tools/agent.js";
+import { getToolName } from "../../src/runtime/tools/tool-factory.js";
+import { BUILTIN_WORKFLOW_ROLES } from "../../src/server/builtin-role-templates.js";
+import { RENAMED_TOOLS } from "../../src/core/tool-registry.js";
 import type { ToolExecutionContext, SessionConfig, RuntimeCallbacks, AgentRuntime } from "../../src/runtime/types.js";
 import type { SessionContextBundle } from "../../src/shared/types.js";
 
@@ -56,8 +61,33 @@ describe("Agent delegation — single action tool (no per-subagent tools)", () =
 	});
 
 	test("Subagent tool is the single delegation surface (in ALL_TOOLS)", () => {
-		const src = readSrc("../../src/runtime/tools/index.ts");
-		expect(src).toMatch(/Subagent:\s*delegateTool/);
+		// ALL_TOOLS keys are derived from each tool's own __name (single source
+		// via getToolName), so the Subagent entry is keyed by the delegate tool's
+		// name — structural, not a hand-written literal.
+		expect(ALL_TOOLS.Subagent).toBe(delegateTool);
+		expect(getToolName(delegateTool)).toBe("Subagent");
+	});
+
+	test("ALL_TOOLS keys are derived from each tool's __name (single source)", () => {
+		// Contract: every ALL_TOOLS key === getToolName(def). If this breaks, a
+		// tool's buildTool({name}) drifted from its registration key — the exact
+		// class of bug the e8128d8 Agent→Subagent rename missed.
+		for (const [key, def] of Object.entries(ALL_TOOLS)) {
+			expect(getToolName(def), `key "${key}" must equal def.__name`).toBe(key);
+		}
+	});
+
+	test("builtin seed-policy tool keys are all known (current or renamed)", () => {
+		// Contract: every tool enabled in a builtin role's seed policy must be a
+		// current ALL_TOOLS key or a legacy key covered by RENAMED_TOOLS — else the
+		// policy silently enables a non-existent tool.
+		const known = new Set<string>([...Object.keys(ALL_TOOLS), ...Object.keys(RENAMED_TOOLS)]);
+		for (const role of BUILTIN_WORKFLOW_ROLES) {
+			const tools = role.toolPolicy?.tools ?? {};
+			for (const key of Object.keys(tools)) {
+				expect(known, `seed policy key "${key}" in role "${role.id}"`).toContain(key);
+			}
+		}
 	});
 });
 
