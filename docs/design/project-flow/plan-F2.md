@@ -1,38 +1,38 @@
-# plan-F2 — 迁移 action + hook 信号机制
+# plan-F2 — 迁移 action + 显式命名 hook 信号
 
-> 节点 F2(依赖 F1)。目标:Flow 补全 7 个迁移 action(每步 transitionStatus + 副作用 + 发命名 hook 信号);扩展 ProjectWorkHookManager 支持命名迁移信号。对应 [project-flow.md](project-flow.md) §2/§3/§8。
+> 节点 F2(依赖 F1)。目标:Flow 补全**简单迁移 action**(pick/ready/plan/startBuild/finishBuild),每个 = transitionStatus + 写文档段 + 显式发命名信号;扩展 data-change-hub 加 `emitTransition`、ProjectWorkHookManager 匹配命名信号。对应 [project-flow.md](project-flow.md) §2/§3/§9。
+> **verify(复合)+ worktree + work 重配 + 替换旧工具 留 F3。**
 
 ## 范围
-- Flow 加 action:`pick` / `ready` / `plan` / `startBuild` / `finishBuild` / `verify`(通过/打回)。
-- 命名 hook 信号机制:`requirements.{picked|ready|planned|buildStarted|buildFinished|verified|rejected}`。
-- ProjectWorkHookManager 扩展:按命名信号匹配 work.hooks[].event。
-- **不拆 verify 工具、不替旧工具、不重配 work**(F3)——本阶段只让 Flow 能迁态+发信号+hook manager 能匹配。
+- Flow 加 action:`pick` / `ready` / `plan` / `startBuild` / `finishBuild`(每个 transitionStatus + 写文档段 + 发命名信号)。
+- **显式命名信号机制**(已定方案 A):data-change-hub 加 `emitTransition(collection, signal, id, record)`;Flow action 迁态后调它发 `requirements.<signal>`。
+- ProjectWorkHookManager 扩展:事件名既匹配 `${collection}.${op}`(create/update/delete),也匹配 `${collection}.${signal>`(命名迁移)。
+- 各 action 写对应文档段到 `{workspace}/docs/requirements/{id}.md` **文件**(不入 DB)。
 
 ## 实现步骤
-1. **核实状态机**:读 [requirement-state-machine](../../../src/server/) 拿全状态串(found/discuss/ready/plan/build/verify/closed)与合法迁移;Flow action 的 `transitionStatus(to)` 必须只走合法迁移(非法 → 友好错误)。
-2. **hook 信号机制**(关键设计点):状态迁移是 `op=update`,data-change-hub 只发 `requirements.update`,无法区分 picked/ready/... 。方案二选一(实现时定,倾向 A):
-   - **A 专用 emit**:在 data-change-hub 加 `emitTransition(collection, signal, id, record)`(或复用 emitDataChange 用虚拟 op=`<signal>`),Flow action 迁态后调它。hub 把 `requirements.<signal>` 当事件名广播。
-   - **B 状态映射**:hook manager 收到 `requirements.update` 后读 record.status,按 status→signal 表发派。
-   - 选定后,ProjectWorkHookManager 的 `handleDataChange` 扩展:事件名既可能是 `${collection}.${op}`(create/update/delete),也可能是 `${collection}.${signal}`(命名迁移)——按 work.hooks[].event 匹配两者。
-3. **Flow 迁移 action**(每个 = transitionStatus + 副作用 + 发信号):
-   - `pick`(Found→Discuss):transitionStatus("discuss") + 建需求文档 + 绑 docPath(复用 PmService.createRequirementWithDoc 的文档逻辑,或抽一个 buildReqDoc)。发 `picked`。
+1. **核实状态机**:读 [requirement-state-machine](../../../src/server/) 拿全状态串(found/discuss/ready/plan/build/verify/closed)与合法迁移;Flow action 只走合法迁移(非法 → 友好错误)。
+2. **emitTransition(data-change-hub.ts)**:新增 `emitTransition(collection, signal, id, record?)`——发一个事件名为 `${collection}.${signal}` 的 data-change(coalesce 同现有 emitDataChange)。与现有 op=create/update/delete 路径并存。**不**改现有 emitDataChange 签名。
+3. **ProjectWorkHookManager 扩展**:`handleDataChange` 收到事件时,事件名可能是 `requirements.ready` 等(命名迁移)——按 work.hooks[].event 匹配(现已是 `${collection}.${op}` 字符串匹配,命名信号同款字符串,天然兼容;确认 record.projectId 过滤仍生效)。
+4. **Flow 迁移 action**(每个 = transitionStatus + 写文档段 + emitTransition):
+   - `pick`(Found→Discuss):transitionStatus("discuss") + 写文档 **Summary 段**(文件已存,append/更新 Summary)。发 `picked`。
    - `ready`(Discuss→Ready):transitionStatus("ready")。发 `ready`。
-   - `plan`(Ready→Plan):transitionStatus("plan") + 建 feature worktree(复用 LeadService.pickupRequirement 的 worktree 部分)。发 `planned`。
+   - `plan`(Ready→Plan):transitionStatus("plan") + 写文档 **Plan 段**。发 `planned`。(worktree 创建留 F3;本阶段 plan 只迁态+写段+发信号。)
    - `startBuild`(Plan→Build):transitionStatus("build")。发 `buildStarted`。
-   - `finishBuild`(Build→Verify):transitionStatus("verify")。发 `buildFinished`。
-   - `verify` 通过(Verify→Closed):transitionStatus("closed")。发 `verified`。
-   - `verify` 打回(Verify→返工):transitionStatus 退回 discuss/build。发 `rejected`。
-4. **capability 注入**:Flow 的 plan/pick 可能需要 leadService/pmService——核实哪些 action 需要哪些 ctx 依赖,F2 暂按需注入(F3 收口)。
+   - `finishBuild`(Build→Verify):transitionStatus("verify") + 写文档 **Coverage 段**。发 `buildFinished`。
+5. **文档段写入**:抽一个写段工具(读现有 docs/requirements/{id}.md → 替换/追加对应 `## <Section>` 段 → 写回)。服务端 fs,不入 DB。
+6. **capability 注入**:核实哪些 action 需 leadService/pmService(F2 暂不接 verify,需求主要 requirementStore + 写文件 + workspace 解析)。
 
 ## 关键文件
-`flow-tool.ts` · `data-change-hub.ts`(emitTransition)· `project-work-hook-manager.ts`(匹配命名信号)· `requirement-store.ts`(transitionStatus,既有)· `lead-service.ts`/`pm-service.ts`(复用既有方法)
+`flow-tool.ts` · `data-change-hub.ts`(emitTransition)· `project-work-hook-manager.ts`(命名信号匹配)· `requirement-store.ts`(transitionStatus,既有)
 
 ## 不做(留 F3)
-- 拆现 verify 工具的 PM 委派/合并逻辑。
-- 默认 work 模板重配(交付→ready、加 PM/合并 work)。
+- **verify**(复合:delegate PM + merge + 发 verified/rejected)。
+- **worktree 创建**(plan 的 worktree,集中化到 ~/.zero-core/projects/...)。
+- 默认 work 重配(交付→ready)。
 - 替换 CreateRequirement/CreateRequirementWithDoc/verify。
 
 ## 风险
-- 命名信号机制是本阶段核心;选 A 还是 B 影响 hook manager + 所有 action 的 emit 调用。先定再写。
-- transitionStatus 的 triggeredBy/comment 参数:Flow action 是通用工具,triggeredBy 用什么(ctx.agentId? "tool"?)F2 暂定,F3 统一。
-- worktree 创建(plan action)现在在 LeadService.pickupRequirement 里;Flow 的 plan 复用它还是抽公共方法——避免逻辑分叉。
+- emitTransition 与现有 emitDataChange 共存:确认 hub 的 coalesce/flush 不互相干扰;命名信号事件能被 onDataChange 订阅者收到。
+- 文档段写入:并发写同一文件风险(requirement 串行,低);段替换逻辑要稳(找 `## Section` 到下一 `##` 或 EOF)。
+- transitionStatus 的 triggeredBy/comment:Flow action 通用,用 ctx.agentId ?? "tool";F3 统一。
+- workspace 解析:复用 F1 的 resolveWorkspaceDir(contextBundle.workspaceDir ?? ctx.workingDir)。

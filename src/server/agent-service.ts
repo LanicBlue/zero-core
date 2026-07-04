@@ -39,6 +39,7 @@ import { InputQueueStore } from "./input-queue-store.js";
 import { MCPManager } from "./mcp-manager.js";
 import { buildMcpTools } from "../runtime/tools/mcp-tool.js";
 import { log } from "../core/logger.js";
+import { emitTransition } from "./data-change-hub.js";
 import { ToolRegistry, RENAMED_TOOLS } from "../core/tool-registry.js";
 import { ProviderConcurrencyManager } from "../runtime/provider-concurrency-manager.js";
 import type { SessionManager } from "./session-manager.js";
@@ -671,6 +672,11 @@ export class AgentService {
 		if (caps.wikiStore) (sessionConfig as any).wikiStore = caps.wikiStore;
 		if (caps.requirementStore) (sessionConfig as any).requirementStore = caps.requirementStore;
 		if (caps.pmService) (sessionConfig as any).pmService = caps.pmService;
+		// project-flow F2: surface the hub's emitTransition so the Flow tool can
+		// fire named hook signals (requirements.<signal>) without the runtime
+		// layer importing the server-layer hub (conventions.md). Only Flow-
+		// capable sessions need it; requirementStore gating already implies Flow.
+		if (caps.requirementStore) (sessionConfig as any).emitTransition = emitTransition;
 		// v0.8 (M5): surface the global WikiStore + extractors config onto
 		// EVERY session (memory written by extractor A is global/cross-project,
 		// so even non-project sessions need access). The extraction hook reads

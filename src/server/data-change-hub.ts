@@ -67,6 +67,16 @@ export interface DataChangeRecord {
 	op: DataChangeOp;
 	/** create/update 推送完整记录,renderer 直接 patch 免再 GET;delete 无。 */
 	record?: unknown;
+	/**
+	 * Named transition signal (project-flow F2). When present, the event name a
+	 * consumer derives should be `${collection}.${signal}` (e.g.
+	 * `requirements.ready`) instead of the natural `${collection}.${op}`. Hook
+	 * managers (ProjectWorkHookManager) honour this; renderers ignore it.
+	 *
+	 * Source: emitTransition(). The op stays "update" (a transition is still a
+	 * row mutation) so existing renderer patch logic keeps working.
+	 */
+	signal?: string;
 }
 
 export interface DataChangeEvent {
@@ -79,8 +89,8 @@ type Listener = (e: DataChangeEvent) => void;
 
 const listeners = new Set<Listener>();
 
-/** pending: collection → (id → 最新 {op, record?})。 */
-let pending = new Map<string, Map<string, { op: DataChangeOp; record?: unknown }>>();
+/** pending: collection → (id → 最新 {op, record?, signal?})。 */
+let pending = new Map<string, Map<string, { op: DataChangeOp; record?: unknown; signal?: string }>>();
 let scheduled = false;
 
 function flush(): void {
@@ -91,7 +101,11 @@ function flush(): void {
 		const changes: DataChangeRecord[] = [];
 		for (const [id, entry] of byId) {
 			// delete 不带 record(create/update 后再 delete → record 清掉)。
-			changes.push(entry.op === "delete" ? { id, op: "delete" } : { id, op: entry.op, record: entry.record });
+			if (entry.op === "delete") {
+				changes.push({ id, op: "delete" });
+			} else {
+				changes.push({ id, op: entry.op, record: entry.record, signal: entry.signal });
+			}
 		}
 		const e: DataChangeEvent = { collection, changes };
 		for (const cb of listeners) {
@@ -113,6 +127,37 @@ export function emitDataChange(table: string, id: string, op: DataChangeOp, reco
 	if (!scheduled) {
 		scheduled = true;
 		setTimeout(flush, 0);
+	}
+}
+
+/**
+ * project-flow F2: emit a NAMED transition signal (e.g. `requirements.ready`)
+ * on the same hub → data:changed channel. The op is recorded as "update" (a
+ * transition is still a row mutation, so renderer patch logic keeps working),
+ * but the change carries a `signal` field; consumers that build event names
+ * (ProjectWorkHookManager) use `${collection}.${signal}` when `signal` is set.
+ *
+ * Coalesces with the same id as a normal emit (last write wins). Calling
+ * `emitTransition("requirements","ready", id, rec)` after `transitionStatus`
+ * means the renderer sees one update change with the new record AND hook
+ * managers see `requirements.ready`. Does NOT change emitDataChange's signature.
+ */
+export function emitTransition(
+	collection: string,
+	signal: string,
+	id: string,
+	record?: unknown,
+): void {
+	emitDataChange(collection, id, "update", record);
+	if (!UI_COLLECTIONS.has(collection)) return;
+	// Stamp the signal on the just-recorded entry (emitDataChange already
+	// created the slot). Last-write-wins: a later natural update on the same id
+	// in the same tick would drop the signal — transitions emit the signal
+	// themselves, so callers control ordering.
+	const byId = pending.get(collection);
+	if (byId) {
+		const entry = byId.get(id);
+		if (entry) entry.signal = signal;
 	}
 }
 

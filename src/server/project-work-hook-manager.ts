@@ -61,9 +61,11 @@ export class ProjectWorkHookManager {
 
 	private async handleDataChange(e: DataChangeEvent): Promise<void> {
 		// 事件名约定:`${collection}.${op}` —— 如 "requirements.create"。
-		// work.hooks[].event 按此匹配;record.projectId 过滤到该 project 的 work。
+		// project-flow F2: 若 change 带 `signal`(命名迁移信号,如 "ready"),
+		// 用 `${collection}.${signal}`(如 "requirements.ready")。两种事件名同款
+		// 字符串匹配 work.hooks[].event。record.projectId 过滤到该 project 的 work。
 		for (const change of e.changes) {
-			const event = `${e.collection}.${change.op}`;
+			const event = change.signal ? `${e.collection}.${change.signal}` : `${e.collection}.${change.op}`;
 			const record = change.record as { projectId?: string } | undefined;
 			const projectId = record?.projectId;
 			if (!projectId) continue; // 无 projectId 的事件无法定位 project,跳过
