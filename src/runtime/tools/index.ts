@@ -55,6 +55,10 @@ import { agentRegistryTool } from "./agent-registry.js";
 import { cronTool } from "./cron-tool.js";
 import { wikiTool } from "./wiki-tool.js";
 import { verifyTool } from "./verify-tool.js";
+// project-flow F1: Flow action tool (create/list/get). Old CreateRequirement /
+// CreateRequirementWithDoc / verify stay registered in parallel — F1 does not
+// replace them.
+import { flowTool } from "./flow-tool.js";
 import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";
 
@@ -104,6 +108,8 @@ export const ALL_TOOLS: Record<string, any> = {
 	Cron: cronTool,
 	Wiki: wikiTool,
 	verify: verifyTool,
+	// project-flow F1: requirement flow action tool (create/list/get).
+	Flow: flowTool,
 
 	...getPlatformTools(),
 };
@@ -128,6 +134,9 @@ const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> 
 	Cron: (ctx) => !!(ctx as any).management,
 	Wiki: (ctx) => !!ctx.wikiStore,
 	verify: (ctx) => !!ctx.delegateTask && !!ctx.requirementStore,
+	// project-flow F1: Flow needs the requirement store (every project-role
+	// session carries it). Old CreateRequirement / verify gating stays as-is.
+	Flow: (ctx) => !!ctx.requirementStore,
 };
 
 

@@ -6,12 +6,13 @@
 - 新建 `src/runtime/tools/flow-tool.ts`:action 切换工具 `Flow`,首批评 action:`create` / `list` / `get`。
 - 注册到 `src/runtime/tools/index.ts`(ALL_TOOLS + CONDITIONAL_TOOLS 门控)。
 - agent-service 能力注入:Flow 启用 → 注入 `requirementStore`。
+- `create` 写文档 **Intent 段**到 `{workspace}/docs/requirements/{id}.md`(文件,**不入 DB**)。
 - **不替换**旧 CreateRequirement / verify(并行)。
 
 ## 实现步骤
 1. **核实状态串**:读 [requirement-state-machine](../../../src/server/) 确认 Found 态的确切字符串(预期 `found`),以及 create 的合法初态。本阶段只用到 `found`。
 2. **新建 flow-tool.ts**:`buildTool({ name:"Flow", ... })`,flat action schema(参照 project-tool.ts / agent-registry.ts 的 FLAT z.object 模式,顶层不能用 discriminatedUnion)。
-   - `create`:{ projectId, title, description?, priority?, impactScope? } → `ctx.requirementStore.create({ projectId, title, description, status:"found", source:"agent", priority, impactScope, reviewer:"agent" })` 返回 record。**发 `created`**:`RequirementStore.create` 走 SqliteStore → data-change-hub 自动发 `requirements.create`(op=create)——即 `created` 信号天然到位,无需额外 emit。
+   - `create`:{ projectId, title, description?, priority?, impactScope? } → `ctx.requirementStore.create({ projectId, title, description, status:"found", source:"agent", priority, impactScope, reviewer:"agent" })` 返回 record。**写文档 Intent 段**到 `{workspace}/docs/requirements/{id}.md`(服务端 fs 写,建文件 + Intent 段 = description 全文;workspace 从 session/project 上下文解析)。**发 `created`**:`RequirementStore.create` 走 SqliteStore → hub 自动发 `requirements.create`(op=create)= created 信号,无需额外 emit。
    - `list`:{ projectId?, status?, priority? } → `ctx.requirementStore.list(...)`.
    - `get`:{ id } → `ctx.requirementStore.get(id)`(本阶段只返 record,不含 messages)。
    - meta.category 用 `"management"`(暂归类管理域,F5 视情况调)。

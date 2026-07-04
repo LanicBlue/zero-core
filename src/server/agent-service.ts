@@ -419,7 +419,7 @@ export class AgentService {
 		const caps: CapabilityHandles = {};
 		if (this.management && (on("Project") || on("AgentRegistry") || on("Cron"))) caps.management = this.management;
 		if (this.wikiStore && on("Wiki")) caps.wikiStore = this.wikiStore;
-		if (this.requirementStore && (on("CreateRequirement") || on("CreateRequirementWithDoc") || on("verify"))) caps.requirementStore = this.requirementStore;
+		if (this.requirementStore && (on("CreateRequirement") || on("CreateRequirementWithDoc") || on("verify") || on("Flow"))) caps.requirementStore = this.requirementStore;
 		if (this.pmService && (on("CreateRequirementWithDoc") || on("verify"))) caps.pmService = this.pmService;
 		return caps;
 	}

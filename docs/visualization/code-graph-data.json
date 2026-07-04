@@ -1191,6 +1191,22 @@
 			"description": "文件写入工具实现"
 		},
 		{
+			"path": "src/runtime/tools/flow-tool.ts",
+			"lines": 203,
+			"dir": "src/runtime/tools",
+			"exports": [],
+			"imports": [
+				"src/runtime/tools/tool-factory.ts",
+				"src/shared/types.ts"
+			],
+			"functions": [
+				"src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:75",
+				"src/runtime/tools/flow-tool.ts/requirementDocPath:85",
+				"src/runtime/tools/flow-tool.ts/writeIntentDoc:90"
+			],
+			"description": ""
+		},
+		{
 			"path": "src/runtime/tools/glob.ts",
 			"lines": 171,
 			"dir": "src/runtime/tools",
@@ -1227,7 +1243,7 @@
 		},
 		{
 			"path": "src/runtime/tools/index.ts",
-			"lines": 270,
+			"lines": 279,
 			"dir": "src/runtime/tools",
 			"exports": [
 				"registerRuntimeTools",
@@ -1263,15 +1279,16 @@
 				"src/runtime/tools/cron-tool.ts",
 				"src/runtime/tools/wiki-tool.ts",
 				"src/runtime/tools/verify-tool.ts",
+				"src/runtime/tools/flow-tool.ts",
 				"src/core/tool-registry.ts"
 			],
 			"functions": [
-				"src/runtime/tools/index.ts/getPlatformTools:63",
-				"src/runtime/tools/index.ts/registerRuntimeTools:140",
-				"src/runtime/tools/index.ts/buildToolsSet:162",
-				"src/runtime/tools/index.ts/isEnabled:194",
-				"src/runtime/tools/index.ts/getToolCategories:240",
-				"src/runtime/tools/index.ts/getAllToolInfo:253"
+				"src/runtime/tools/index.ts/getPlatformTools:67",
+				"src/runtime/tools/index.ts/registerRuntimeTools:149",
+				"src/runtime/tools/index.ts/buildToolsSet:171",
+				"src/runtime/tools/index.ts/isEnabled:203",
+				"src/runtime/tools/index.ts/getToolCategories:249",
+				"src/runtime/tools/index.ts/getAllToolInfo:262"
 			],
 			"description": "工具注册中心：registerBuiltInTools，导出所有内置工具（bash/read/write/edit/grep/glob/web-search/todo/agent/ask-user）"
 		},
@@ -6080,7 +6097,7 @@
 			"signature": "method buildTools()",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/index.ts/buildToolsSet:162"
+				"src/runtime/tools/index.ts/buildToolsSet:171"
 			]
 		},
 		{
@@ -9758,6 +9775,47 @@
 			"callees": []
 		},
 		{
+			"id": "src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:75",
+			"name": "resolveWorkspaceDir",
+			"kind": "function",
+			"file": "src/runtime/tools/flow-tool.ts",
+			"line": 75,
+			"endLine": 82,
+			"statementCount": 5,
+			"exported": false,
+			"signature": "function resolveWorkspaceDir(ctx: any)",
+			"description": "Resolve the workspace dir for the docs/requirements write.",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/tools/flow-tool.ts/requirementDocPath:85",
+			"name": "requirementDocPath",
+			"kind": "function",
+			"file": "src/runtime/tools/flow-tool.ts",
+			"line": 85,
+			"endLine": 87,
+			"statementCount": 1,
+			"exported": false,
+			"signature": "function requirementDocPath(workspaceDir: string, id: string)",
+			"description": "Build the absolute path of a requirement doc (file, lives under docs/).",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/tools/flow-tool.ts/writeIntentDoc:90",
+			"name": "writeIntentDoc",
+			"kind": "function",
+			"file": "src/runtime/tools/flow-tool.ts",
+			"line": 90,
+			"endLine": 100,
+			"statementCount": 6,
+			"exported": false,
+			"signature": "function writeIntentDoc(workspaceDir: string, req: RequirementRecord)",
+			"description": "Write the Intent section to the requirement doc (create action side effect).",
+			"callees": [
+				"src/runtime/tools/flow-tool.ts/requirementDocPath:85"
+			]
+		},
+		{
 			"id": "src/runtime/tools/glob.ts/isUnderSkipDir:44",
 			"name": "isUnderSkipDir",
 			"kind": "function",
@@ -9841,12 +9899,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/index.ts/getPlatformTools:63",
+			"id": "src/runtime/tools/index.ts/getPlatformTools:67",
 			"name": "getPlatformTools",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 63,
-			"endLine": 68,
+			"line": 67,
+			"endLine": 72,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "function getPlatformTools()",
@@ -9856,12 +9914,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/registerRuntimeTools:140",
+			"id": "src/runtime/tools/index.ts/registerRuntimeTools:149",
 			"name": "registerRuntimeTools",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 140,
-			"endLine": 160,
+			"line": 149,
+			"endLine": 169,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "function registerRuntimeTools(registry: ToolRegistry)",
@@ -9874,27 +9932,27 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/buildToolsSet:162",
+			"id": "src/runtime/tools/index.ts/buildToolsSet:171",
 			"name": "buildToolsSet",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 162,
-			"endLine": 234,
+			"line": 171,
+			"endLine": 243,
 			"statementCount": 34,
 			"exported": true,
 			"signature": "function buildToolsSet(policy: {\r\n\t\tautoApprove?: string[];\r\n\t\tblockedTools?: string[];\r\n\t\ttools?: Record<string, { enabled: boolean }>;\r\n\t\texecutionMode?: \"sequential\" | \"parallel\";\r\n\t\tresultMaxTokens?: number;\r\n\t}, context: ToolExecutionContext, mcpTools?: Record<string, any>)",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/index.ts/isEnabled:194"
+				"src/runtime/tools/index.ts/isEnabled:203"
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/isEnabled:194",
+			"id": "src/runtime/tools/index.ts/isEnabled:203",
 			"name": "isEnabled",
 			"kind": "arrow",
 			"file": "src/runtime/tools/index.ts",
-			"line": 194,
-			"endLine": 202,
+			"line": 203,
+			"endLine": 211,
 			"statementCount": 9,
 			"exported": false,
 			"signature": "fn (name: string)",
@@ -9902,12 +9960,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/index.ts/getToolCategories:240",
+			"id": "src/runtime/tools/index.ts/getToolCategories:249",
 			"name": "getToolCategories",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 240,
-			"endLine": 251,
+			"line": 249,
+			"endLine": 260,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "function getToolCategories()",
@@ -9917,12 +9975,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/index.ts/getAllToolInfo:253",
+			"id": "src/runtime/tools/index.ts/getAllToolInfo:262",
 			"name": "getAllToolInfo",
 			"kind": "function",
 			"file": "src/runtime/tools/index.ts",
-			"line": 253,
-			"endLine": 269,
+			"line": 262,
+			"endLine": 278,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "function getAllToolInfo()",
@@ -15584,7 +15642,7 @@
 			"description": "",
 			"callees": [
 				"src/server/db-migration.ts/runMigrations:657",
-				"src/runtime/tools/index.ts/registerRuntimeTools:140",
+				"src/runtime/tools/index.ts/registerRuntimeTools:149",
 				"src/server/workspace-config.ts/loadWorkspaceConfig:40",
 				"src/runtime/proxy-manager.ts/applyProxy:30",
 				"src/server/agent-service.ts/createAgentService:1487",
@@ -24803,7 +24861,7 @@
 		"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1236": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:635"
 		],
-		"src/runtime/tools/index.ts/buildToolsSet:162": [
+		"src/runtime/tools/index.ts/buildToolsSet:171": [
 			"src/runtime/agent-loop.ts/AgentLoop.buildTools:795"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1020": [
@@ -25247,6 +25305,9 @@
 		"src/runtime/tools/file-read-helpers.ts/similarity:214": [
 			"src/runtime/tools/file-read-helpers.ts/suggestSimilarFiles:194"
 		],
+		"src/runtime/tools/flow-tool.ts/requirementDocPath:85": [
+			"src/runtime/tools/flow-tool.ts/writeIntentDoc:90"
+		],
 		"src/runtime/tools/grep.ts/walkFiles:85": [
 			"src/runtime/tools/grep.ts/walkFiles:85",
 			"src/runtime/tools/grep.ts/nativeGrepSearch:100"
@@ -25255,24 +25316,24 @@
 			"src/runtime/tools/grep.ts/nativeGrepSearch:100"
 		],
 		"src/runtime/mcp-tools/platform-tools.ts/createPlatformTools:55": [
-			"src/runtime/tools/index.ts/getPlatformTools:63"
+			"src/runtime/tools/index.ts/getPlatformTools:67"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolMeta:294": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:140",
-			"src/runtime/tools/index.ts/getToolCategories:240",
-			"src/runtime/tools/index.ts/getAllToolInfo:253"
+			"src/runtime/tools/index.ts/registerRuntimeTools:149",
+			"src/runtime/tools/index.ts/getToolCategories:249",
+			"src/runtime/tools/index.ts/getAllToolInfo:262"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolConfigSchema:310": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:140"
+			"src/runtime/tools/index.ts/registerRuntimeTools:149"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolDescription:302": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:140"
+			"src/runtime/tools/index.ts/registerRuntimeTools:149"
 		],
 		"src/runtime/tools/tool-factory.ts/getToolPrompt:306": [
-			"src/runtime/tools/index.ts/registerRuntimeTools:140"
+			"src/runtime/tools/index.ts/registerRuntimeTools:149"
 		],
-		"src/runtime/tools/index.ts/isEnabled:194": [
-			"src/runtime/tools/index.ts/buildToolsSet:162"
+		"src/runtime/tools/index.ts/isEnabled:203": [
+			"src/runtime/tools/index.ts/buildToolsSet:171"
 		],
 		"src/runtime/tools/mcp-tool.ts/inputSchemaToZod:66": [
 			"src/runtime/tools/mcp-tool.ts/createMcpTool:34"
@@ -26209,7 +26270,7 @@
 		"src/server/db-migration.ts/runMigrations:657": [
 			"src/server/index.ts/startServer:100"
 		],
-		"src/runtime/tools/index.ts/registerRuntimeTools:140": [
+		"src/runtime/tools/index.ts/registerRuntimeTools:149": [
 			"src/server/index.ts/startServer:100"
 		],
 		"src/runtime/proxy-manager.ts/applyProxy:30": [
@@ -27582,6 +27643,7 @@
 			"src/runtime/proxy-manager.ts",
 			"src/runtime/session-store-interface.ts",
 			"src/runtime/subagent-delegator.ts",
+			"src/runtime/tools/flow-tool.ts",
 			"src/runtime/tools/orchestrate-tool.ts",
 			"src/runtime/tools/wiki-tool.ts",
 			"src/runtime/types.ts",
@@ -27840,6 +27902,7 @@
 			"src/runtime/tools/file-edit.ts",
 			"src/runtime/tools/file-read.ts",
 			"src/runtime/tools/file-write.ts",
+			"src/runtime/tools/flow-tool.ts",
 			"src/runtime/tools/glob.ts",
 			"src/runtime/tools/grep.ts",
 			"src/runtime/tools/index.ts",
@@ -28018,6 +28081,9 @@
 			"src/runtime/tools/index.ts"
 		],
 		"src/runtime/tools/verify-tool.ts": [
+			"src/runtime/tools/index.ts"
+		],
+		"src/runtime/tools/flow-tool.ts": [
 			"src/runtime/tools/index.ts"
 		],
 		"src/core/tool-registry.ts": [
