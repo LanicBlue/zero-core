@@ -1,158 +1,130 @@
 # Design:Project Flow(需求→代码合并的统一流转)
 
 > 状态:**Draft,模型已锁定,待分阶段实现**。
-> 一句话:**Flow 工具只做状态迁移 + 发 hook 信号;下游动作(PM 判断、archivist 合并、交付执行)全靠 work 订阅对应 hook 反应——不在工具里硬编码。需求文档(DB 真源)是唯一权威上下文,work/verify/用户判断都注入它。**
-> 起源:project 类工具 = Project / Work / Flow 三个。Flow 覆盖"需求→代码合并"整条交付链。Cron / Orchestrate 是通用工具,不在本类。
+> 一句话:**Flow 工具做状态迁移 + 写文档段 + 发命名 hook 信号;`verify` 是复合动作(判覆盖 + 合并,可由用户或 agent 配置调用)。需求文档是 `docs/` 下的文件(agent 直接读,不入 DB)。交付靠 hook fire work(ready → 交付 work)。**
+> 起源:project 类工具 = Project / Work / Flow 三个。Flow 覆盖"需求→代码合并"。Cron / Orchestrate 通用,不在本类。
 
 ---
 
-## 0. 设计原则(贯穿全程)
+## 0. 设计原则
 
-1. **工具与 agent 不相关**——工具按域分组,不绑角色。
-2. **门控是配置的事**——某个 action 暴露给 agent 还是只给用户,是 toolPolicy/暴露面配置,不是结构差别。"用户确认"本质也是一个工具 action,只是没暴露给 agent(以后改暴露即可)。
-3. **Flow 工具只迁态 + 发 hook**——不在工具里编排下游(PM 委派、合并等)。下游全靠 work 订阅 hook。
-4. **每步流转带 hook 信号**——发什么、触发什么,纯看 work 的 hooks 配置。
-5. **需求文档是唯一权威上下文**——DB 存正文(结构化),文件是投影;讨论/决策写进文档,不写消息流。
+1. **工具与 agent 不相关**——按域分组,不绑角色。
+2. **门控是配置的事**——某 action 暴露给 agent 还是只给用户,是 toolPolicy 配置,不是结构差别。"用户确认"本质也是工具 action,只是没暴露给 agent(改配置即可开放,如 verify 可配给 agent)。
+3. **Flow action = 迁态 + 写文档段 + 发命名信号**。`verify` 是复合动作(判覆盖 + 合并,内部 delegate PM)。
+4. **每步流转发命名 hook 信号**(显式 emit),触发什么看 work 配置。
+5. **需求文档是文件**(`docs/requirements/{id}.md`),agent 直接用文件工具读;**不入 DB**。work/工具 prompt 约定路径。
 
 ## 1. 背景:现状的问题
 
-现在"需求→代码合并"散在多个工具 + 隐藏的 service 自动逻辑:
-- 工具:`CreateRequirement`(建 found)、`CreateRequirementWithDoc`(建 discuss+doc)、`verify`(复合阻塞:Build→Verify + delegateTask 唤醒 PM 判断 + APPROVED 自动 archivist 合并)。
-- 隐藏自动:`verify` 工具内串了 PM 委派 + 合并;`LeadService.pickupRequirement`;retired 的 requirement-hooks;交付 work hook 在 `requirements.create`。
-- 上下文散在 messages + 文件 doc;worktree 在 `{workspace}.worktrees/`(workspace 旁,易误改)。
-
-问题:
-- agent 没法 `list`/`get` 需求(看不见)。
-- `verify` 复合阻塞,耦了三件事,违反原则 3。
-- 交付 work 在 `create` 触发(绕过用户把关)。
-- 上下文不统一(messages vs 文件 doc),worktree 跨边界传文档没机制。
+- 工具散:`CreateRequirement` / `CreateRequirementWithDoc` / `verify`(复合阻塞)。
+- 交付 work hook 在 `requirements.create`(一建建议就跑,绕过用户)。
+- agent 没法 list/get 需求。
+- 上下文散在 messages + 文件 doc;worktree 在 `{workspace}.worktrees/`(旁,易误改)。
 
 ## 2. 状态机 + action + hook(定稿)
 
-action 按操作语义命名;hook 是该步发的信号。每个 action = 状态迁移 + 副作用 + 发 hook。
-
 状态序列:Found → Discuss → Ready → Plan → Build → Verify → Closed。
 
-| action | 迁移 | 现在驱动 | 副作用 | 发的 hook | 以后可 agent? |
-|---|---|---|---|---|---|
-| `create` | →Found | agent | 轻量建议(文档 Intent 段) | `created` | — |
-| `pick` | Found→Discuss | 用户 | 选中 + 建文档 + 绑 docPath(Summary 段) | `picked` | 可 |
-| `ready` | Discuss→Ready | 用户 | 讨论文档定型 | `ready`(**fire 交付 work**) | 可 |
-| `plan` | Ready→Plan | agent | 领取 + 建 worktree(Plan 段) | `planned` | — |
-| `startBuild` | Plan→Build | 用户 | 批计划开工 | `buildStarted` | 可 |
-| `finishBuild` | Build→Verify | agent | 做完提交(Coverage 段) | `buildFinished`(**fire PM 判断 work**) | — |
-| `verify`(通过) | Verify→Closed | 用户 | 合并(Decision Log 段) | `verified`(**fire 合并 work**) | 可 |
-| `verify`(打回) | Verify→返工 | 用户 | 意见回灌(Decision Log 段) | `rejected`(**回灌原执行 work**) | 可 |
+| action | 迁移 | 驱动(可配) | 副作用 | 发的 hook |
+|---|---|---|---|---|
+| `create` | →Found | agent | 写文档 Intent 段 | `created` |
+| `pick` | Found→Discuss | 用户(可 agent) | 建/续文档 + 写 Summary | `picked` |
+| `ready` | Discuss→Ready | 用户(可 agent) | 文档定型 | `ready`(**fire 交付 work**) |
+| `plan` | Ready→Plan | agent | 建 worktree + 写 Plan 段 | `planned` |
+| `startBuild` | Plan→Build | 用户(可 agent) | 批计划(Orchestrate confirm 门) | `buildStarted` |
+| `finishBuild` | Build→Verify | agent | 写 Coverage 段 | `buildFinished` |
+| `verify` | Verify→Closed/返工 | **用户 或 agent(配置)** | **复合:delegate PM 判覆盖 → 通过则 mergeFeatureToMain + closed + 写 Decision Log,发 `verified`;打回写意见 + 发 `rejected`** | `verified` / `rejected` |
 
-外加只读:`list` / `get`(观察)。
+外加只读:`list` / `get`。
 
-> 命名规范:`pick`=Found→Discuss(用户选中),`plan`=Ready→Plan(agent 领取),不混。`startBuild`(发 buildStarted,开工)vs `finishBuild`(发 buildFinished,做完),不撞。出 Verify 才叫 `verify`(verified/rejected)。
+> **`verify` 是复合动作**(沿用现 verify 工具语义):判覆盖 + 合并在它内部(delegate PM + mergeFeatureToMain),**不拆成 PM work / 合并 work**。由用户或 agent 调用(配置驱动暴露)。
 
-## 3. hook 信号词表(权威)
+## 3. hook 信号词表(显式 emit)
 
-8 个信号,走 data-change-hub,事件名 `requirements.<signal>`:
+显式发命名信号(Flow action 迁态后调 `emitTransition` 发 `requirements.<signal>`),hook manager 按事件名匹配 work.hooks[].event。
 
-| 信号 | 触发 action | 默认订阅者(看 work 配置) |
+| 信号 | action | 默认订阅 |
 |---|---|---|
-| `requirements.created` | create | (去重/通知) |
+| `requirements.created` | create | (观察) |
 | `requirements.picked` | pick | — |
-| `requirements.ready` | ready | **需求管理 work**(交付) |
+| `requirements.ready` | ready | **交付 work**(需求管理) |
 | `requirements.planned` | plan | — |
 | `requirements.buildStarted` | startBuild | — |
-| `requirements.buildFinished` | finishBuild | **PM 覆盖判断 work** |
-| `requirements.verified` | verify 通过 | **archivist 合并 work** |
-| `requirements.rejected` | verify 打回 | (回灌原执行 work) |
+| `requirements.buildFinished` | finishBuild | — (信息性;"等待 verify") |
+| `requirements.verified` | verify 通过 | (观察;合并在 verify 内已做) |
+| `requirements.rejected` | verify 打回 | (信息性;意见回灌) |
 
-机制:扩展现 `ProjectWorkHookManager`(只认 create/update/delete op)支持命名迁移信号——Flow action 迁态后显式发 `requirements.<signal>`,hook manager 按事件名匹配 work.hooks[].event。
+> 只有 `ready → 交付 work` 是必需订阅;其余信号为观察/可选(PM 判断 + 合并在 verify 内,不需独立 work)。
 
-## 4. 文档与 worktree 模型(上下文怎么传)
+## 4. 文档与 worktree 模型
 
-### 4.1 需求文档 = 唯一权威上下文(DB 真源 + 文件投影)
-- **正文存 RequirementRecord / [requirement-doc-store](../../../src/server/requirement-doc-store.ts)**(DB,location-independent):结构化文档字段(markdown,固定段)。这是真源。
-- **投影到 `{workspace}/docs/requirements/{id}.md`**(非隐藏、文件树可见;可 commit/共享=方便传递)。**不是真源**。
-- **Ready 前不进 git**:Discuss 阶段建的文档不 commit → Plan 建 worktree 时(git worktree 只含已提交文件)文档**不进 worktree**。
-- **注入源是 DB**:work/verify/判断 —— 全从 DB 注入(替代/augment contextPolicy.injectRequirementDetail),**与在哪个 worktree 无关**。worktree 里的 agent 经 DB 注入拿文档,不需要文档文件在 worktree。
-- **讨论结果 / 决策 → 写进文档(DB)→ 投影到 docs/ 文件**,不写消息流。messages 仅留瞬时轻量来回(可选)。
-- **用户看文档**:走 **workspace 文件方案**(复用文件树 → DocViewerPanel),**不加导航段**。文件树根跟活动 session 的 workspace(见 4.3)。
+### 4.1 需求文档 = 文件(agent 直读,不入 DB)
+- 路径:`{workspace}/docs/requirements/{id}.md`(非隐藏,文件树可见,可 commit=方便传递)。
+- **agent 直接用文件工具(Read)读**;work/工具 prompt 约定该路径。**不存 DB**。
+- 各 Flow action **写对应段到文件**(create→Intent,pick→Summary,plan→Plan,finishBuild→Coverage,verify→Decision Log)——服务端写文件(action handler 直接 fs 写)。
+- 文档结构(先试):Intent / Summary / Plan / Coverage / Decision Log。
 
-### 4.2 文档结构(先试,后续调)
-```
-# {title}
-## Intent        (create 时的建议全文)
-## Summary       (pick 定型一句话)
-## Plan          (plan 阶段的 Orchestrate flow / 计划)
-## Coverage      (finishBuild 后的覆盖证据 manifest)
-## Decision Log  (每次 verify 通过/打回 + 理由,追加)
-```
-每个 action 产出/维护对应段(create→Intent,pick→Summary,plan→Plan,finishBuild→Coverage,verify→Decision Log)。
-
-### 4.3 Worktree 模型
-- **位置**:`~/.zero-core/projects/{project}/{req-shortId}/`(集中放全局,避免 workspace 旁误改;替换现 `{workspace}.worktrees/`)。
-- **串行**:一个时间一个 plan/worktree(多个 Discuss→Ready 只是排队,plan/build 串行)。
-- **生命周期**:Ready→Plan(pickup)在此建 worktree → 干活(feature 分支)+ verify → 通过后 merge feature→main 回原项目 → 清理 worktree。
-- **文件树跟 worktree**:[FileTreePanel](../../../src/renderer/components/layout/FileTreePanel.tsx) 根 = 活动 session 的 workspaceDir。build 期间活动 session 在 worktree → 文件树显 worktree(代码)。**文档不进 worktree**(Ready 前没 commit),所以 build 期间文件树看不到文档——**可接受**:build 是 agent 在 worktree 搞代码,文档它经 DB 注入拿;用户不需要在 worktree 看文档。
-- **文档留在原项目**:文档一直在原项目 `docs/requirements/{id}.md`;当活动 session 是项目(idle / Discuss / 合回后)时,文件树显项目 → 文档可见、可重选(解决"切走切不回")。
-- **决策点都在项目上下文**:Discuss / verify 等用户判断发生在项目 session(PM/讨论)→ 文件树显项目 → 文档可见。worktree 只承载代码;merge 回去的是代码,文档无需"传递"(DB 全程共享)。
-
-> 解了"worktree 跨边界传文档":文档不进 worktree(不 commit),DB 真源注入任意 session;用户在项目上下文看文档文件,agent 在 worktree 经 DB 拿。
+### 4.2 Worktree 模型
+- 位置:`~/.zero-core/projects/{project}/{req-shortId}/`(集中,避免 workspace 旁误改)。
+- **串行**:一次一个 plan/worktree(多个 Discuss→Ready 只排队)。
+- 生命周期:Ready→Plan 建 worktree → 干活(feature 分支)+ verify → 通过 merge feature→main 回原项目 → 清理。
+- **文档 Ready 前不 commit → 不进 worktree**。worktree 里的 agent(lead)读文档走**原项目绝对路径**(plan action 把 doc 路径注入 lead 上下文);PM(verify 内 delegate)在项目 session,直接读。
+- 文件树根跟活动 session workspace(FileTreePanel 现状):build 期显 worktree(代码),文档不在其中——可接受(agent 经绝对路径读);项目上下文(Discuss/idle/合回)显项目 → 文档可见可重选。
 
 ## 5. 关键架构变更
 
-1. **新建 Flow 工具**(7 迁移 action + `list`/`get`),每个 = transitionStatus + 写文档段 + 发 hook。**工具内不做 PM 委派 / 不做合并。**
-2. **拆现 `verify` 工具**:去 delegateTask(PM)+ submitCoverageVerdict + mergeFeatureToMain。Build→Verify 降级为 `finishBuild`;PM 判断 + 合并变 work。
-3. **work 重配 hook 订阅**([builtin-work-templates.ts](../../../src/server/builtin-work-templates.ts)):交付 work → `ready`;新增 PM 判断 work → `buildFinished`;新增 archivist 合并 work → `verified`。
-4. **需求文档 DB 化**:[requirement-doc-store](../../../src/server/requirement-doc-store.ts) / RequirementRecord 持结构化文档字段(真源);投影到 `{workspace}/docs/requirements/{id}.md`(非隐藏、文件树可见、可 commit)。各 Flow action 写对应文档段(写 DB → 投影文件)。注入源切到 DB。
-5. **worktree 集中化**:[LeadService.pickupRequirement](../../../src/server/lead-service.ts) / GitIntegration 的 worktree 路径从 `{workspace}.worktrees/` → `~/.zero-core/projects/{project}/{req-shortId}/`;串行(一次一个)。
-6. **UI(用户操作=未暴露 agent 的 action)**:**文档走 workspace 文件方案**(复用文件树 → DocViewerPanel),**不加导航段**;文件树根跟活动 session worktree(见 §4.3)。确认动作放文档面板对应段旁。看板无 drag-and-drop。详见 [plan-F4.md](plan-F4.md)。
-7. **替换旧工具**:`CreateRequirement`/`CreateRequirementWithDoc`/`verify` → Flow(`create`/`pick`/`finishBuild`+`verify`)。RENAMED_TOOLS back-compat。
+1. **新建 Flow 工具**(7 action + list/get),每个 = transitionStatus + 写文档段 + 发命名信号。`verify` 复合(delegate PM + merge + 发 verified/rejected)。
+2. **`verify` 不拆**:沿用现 verify 工具的复合语义,只改成 Flow action + 发命名信号 + 暴露可配(用户/agent)。**不新增 PM work / 合并 work**。
+3. **交付 work hook 改 `create`→`ready`**([builtin-work-templates.ts](../../../src/server/builtin-work-templates.ts));actionPrompt 按新流程重写(finishBuild 提交、verify 复合判断)。
+4. **文档 = 文件**(docs/requirements/{id}.md),不入 DB;Flow action 写段,agent 文件工具读。**不做 requirement-doc-store DB 化、不做投影同步**。
+5. **worktree 集中化**:`~/.zero-core/projects/{project}/{req-shortId}/`,串行。
+6. **UI**:文档走 workspace 文件方案(复用文件树 → DocViewerPanel),**不加导航**;文件树跟活动 session worktree。确认动作放文档面板段旁。看板无 drag。
+7. **替换旧工具**:CreateRequirement / CreateRequirementWithDoc / verify → Flow。RENAMED_TOOLS back-compat。
+8. **hook 信号机制**:data-change-hub 加 `emitTransition(collection, signal, id, record)`;hook manager 匹配命名信号。
 
-## 6. 责任矩阵(谁驱动哪段)
+## 6. 责任矩阵
 
 | 阶段 | 驱动 | 机制 |
 |---|---|---|
-| 建(Found) | agent 工具 | Flow.create(写 Intent)→ `created` |
-| 选中(Discuss) | 用户(工具,未暴露) | Flow.pick(建文档+Summary)→ `picked` |
-| 定型(Ready) | 用户(工具) | Flow.ready(文档定型)→ `ready` |
+| 建(Found) | agent | Flow.create(写 Intent)→ `created` |
+| 选中(Discuss) | 用户/agent | Flow.pick(写 Summary)→ `picked` |
+| 定型(Ready) | 用户/agent | Flow.ready → `ready` |
 | 启动交付 | **hook 自动** | `ready` → fire 交付 work |
-| 领取(Plan) | agent 工具 | Flow.plan(建 worktree + 写 Plan)→ `planned` |
-| 批计划(Build) | 用户(工具) | Flow.startBuild → `buildStarted` |
-| 实现 | agent 工具 | work 内调 Orchestrate(在 worktree,注入 DB 文档) |
-| 提交(Verify) | agent 工具 | Flow.finishBuild(写 Coverage)→ `buildFinished` |
-| PM 判断 | **hook 自动** | `buildFinished` → fire PM work(注入 DB 文档+manifest) |
-| 出 Verify(Closed) | 用户(工具,未暴露) | Flow.verify(写 Decision Log)→ `verified`/`rejected` |
-| 合并 | **hook 自动** | `verified` → fire archivist 合并 work(merge 回原项目) |
-| 返工 | **hook 自动** | `rejected` → 回灌原执行 work |
+| 领取(Plan) | agent | Flow.plan(建 worktree + 写 Plan)→ `planned` |
+| 批计划(Build) | 用户/agent | Flow.startBuild → `buildStarted` |
+| 实现 | agent | work 内 Orchestrate(worktree;读文档走原项目路径) |
+| 提交(Verify) | agent | Flow.finishBuild(写 Coverage)→ `buildFinished` |
+| 判覆盖 + 合并(Closed) | **用户 或 agent** | Flow.verify(复合:delegate PM 判 + merge + 写 Decision Log)→ `verified`/`rejected` |
 
-三类驱动:① agent 工具(建/领取/实现/提交)② 用户工具未暴露(选中/定型/批计划/出 Verify)③ hook 自动(启动交付/PM 判断/合并/返工)。**本质全是 action,差别只在暴露面。** hook 只 fire work。
+PM 判断 + 合并都在 `verify` 内(复合),无独立 work。
 
 ## 7. 不变 / 不动
 
-- **Cron / Orchestrate** 通用,不动(Orchestrate 管 Build 阶段多 agent 编排)。
-- **Wiki / AgentRegistry** 其它域,不动。
-- 状态机合法迁移规则不变,触发者改 Flow action。
-- 数据模型:RequirementRecord 加文档字段(不删既有字段)。
+- Cron / Orchestrate 通用(Build 阶段编排);Wiki / AgentRegistry 其它域。
+- 状态机合法迁移规则不变。
+- verify 的 delegate-PM + merge 语义基本不变(只迁到 Flow action + 加命名信号 + 配置化暴露)。
 
 ## 8. 风险 / 决策
 
-- **返工回路**:`rejected` → 回灌原执行 work;意见写 Decision Log(DB),work 下次被 fire 经注入读到,重走 plan→...→finishBuild。
-- **PM work / 合并 work 新 seed**:既有 project 要补 seed,否则 buildFinished/verified 后断链(F3 处理)。
-- **hook 事件机制扩展**:hook manager 支持命名信号(方案:emitTransition 或 signal 字段,F2 定)。
-- **文档 DB 化迁移**:既有 `.zero/requirements/{id}.md` 文件内容需回填到 DB(一次性 migration,F4/F5 处理);docPath 保留指向投影文件。
+- **worktree agent 读文档**:文档不进 worktree(不 commit),lead 在 worktree 经**原项目绝对路径**读(plan action 注入路径)。需保证 Read 工具允许该绝对路径(readScope 等)。
+- **既有交付 work hook 改 ready**:既有项目的交付 work hook 仍是 create → 要么 migration 改,要么 hook manager 同时认 create/ready 过渡期。
+- **verify 配置化暴露**:默认用户;配给 agent 时该 agent toolPolicy 开 Flow.verify。配置驱动,不绑角色。
+- **返工**:`rejected` 后意见写 Decision Log(文件);交付 work 下次 fire 读到(读文件)。lead 重走 plan→finishBuild→verify。
 - **back-compat**:旧工具名 → Flow(RENAMED_TOOLS)。
-- **暴露面**:`create`/`plan`/`finishBuild` 给 agent;`pick`/`ready`/`startBuild`/`verify` 现仅用户(UI)。CONDITIONAL_TOOLS / toolPolicy 表达,不绑角色。
-- **文档结构先试**:Intent/Summary/Plan/Coverage/Decision Log 五段为初版,实现后据用感调。
+- **文档结构先试**:五段初版,后续调。
+- **既有 .zero/requirements/ 旧文档**:迁移到 docs/requirements/ + 更新 docPath(或留旧路径兼容)。
 
 ## 9. 分阶段实现计划
 
-每阶段独立可测可提交,三层 tsc + build:lib + vitest + 越界。详见 [plan-Fx.md](.)。
+每阶段三层 tsc + build:lib + vitest + 越界。
 
-- **F1** — Flow 骨架 + 读(create/list/get;created 走现成 op=create)。
-- **F2** — 迁移 action(pick/ready/plan/startBuild/finishBuild/verify)+ 命名 hook 信号机制。**含文档 DB 字段 + 各 action 写对应段。**
-- **F3** — 拆 verify + work 重配 + 替换旧工具 + **worktree 集中化(~/.zero-core/projects/...)** + 返工回路。
-- **F4** — UI 接入(卡片=入口,确认在详情/chat,注入 DB 文档)+ **文档 DB 化迁移(回填既有文件)**。
+- **F1** — Flow 骨架 + 读(create/list/get;create 写 Intent 段到文件 + 发 created)。
+- **F2** — 迁移 action + 显式命名信号(emitTransition;hook manager 匹配)。各 action 写文档段。
+- **F3** — verify 接入(复合,沿用现语义,发 verified/rejected)+ 交付 work hook 改 ready + 替换旧工具(CreateRequirement/CreateRequirementWithDoc/verify → Flow)+ RENAMED_TOOLS + worktree 集中化。
+- **F4** — UI(文档走文件树 → DocViewerPanel,不加导航;确认动作接 Flow 后端)+ 既有 work hook / 旧文档迁移。
 - **F5** — 清理(删旧文件 + 注释 + code-graph + 全回归)。
 
 ## 10. 相关
 
-- 现状代码权威:[requirement-store.ts](../../../src/server/requirement-store.ts)、[requirement-state-machine](../../../src/server/)、[project-work-hook-manager.ts](../../../src/server/project-work-hook-manager.ts)、[builtin-work-templates.ts](../../../src/server/builtin-work-templates.ts)、[verify-tool.ts](../../../src/runtime/tools/verify-tool.ts)、[pm-service.ts](../../../src/server/pm-service.ts)、[lead-service.ts](../../../src/server/lead-service.ts)。
+- 代码权威:[requirement-store.ts](../../../src/server/requirement-store.ts)、[requirement-state-machine](../../../src/server/)、[project-work-hook-manager.ts](../../../src/server/project-work-hook-manager.ts)、[builtin-work-templates.ts](../../../src/server/builtin-work-templates.ts)、[verify-tool.ts](../../../src/runtime/tools/verify-tool.ts)、[pm-service.ts](../../../src/server/pm-service.ts)、[lead-service.ts](../../../src/server/lead-service.ts)、[data-change-hub.ts](../../../src/server/data-change-hub.ts)。
 - 关联设计:[agent-context-fields](../agent-context-fields/agent-context-fields.md)、[runtime-push-ui-sync](../runtime-push-ui-sync/runtime-push-ui-sync.md)。
