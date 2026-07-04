@@ -226,7 +226,7 @@ export const wikiTool = buildTool({
 		"- A leaf node's `body` (doc) is the actual content. For a leaf that mirrors a project file, the body is the file's COMMENTARY/EXPLANATION (what the file is for, its role, gotchas) — NOT a copy of the file itself (the file lives in the workspace; read it with Read).\n" +
 		"- So a parent's summary abstracts its body, and its body overviews its children — the two are meant to agree. Keep summaries short (one line) and bodies as overviews (a paragraph or two), not full dumps.",
 	meta: {
-		category: "management",
+		category: "runtime",
 		isReadOnly: false,
 		isConcurrencySafe: false,
 		isDestructive: false,

@@ -106,7 +106,7 @@ export const cronTool = buildTool({
 		"- { action:'list', agentId? } — list, optionally filtered by agentId.\n" +
 		"- { action:'trigger', id } — fire immediately. (P3 stub: records the trigger request; P4 lands the actual scheduler run + cron_runs write.)",
 	meta: {
-		category: "management",
+		category: "agent",
 		isReadOnly: false,
 		isConcurrencySafe: false,
 		isDestructive: false,

@@ -124,15 +124,17 @@ describe("P7 ToolCategory 加 workflow", () => {
 // ─── ③ 分类正确:project / management / agent ────────────────
 
 describe("P7 工具分类正确", () => {
-	test("AgentRegistry/Cron/Wiki 是 management;Project/Work/Flow 是 project", () => {
-		// project-flow: Project + Work + Flow are the project class (their own group).
-		// AgentRegistry/Cron/Wiki remain management (platform).
+	test("Project/Work/Flow 是 project;AgentRegistry 是 management;Cron 是 agent;Wiki 是 runtime(Base)", () => {
+		// project-flow: Project + Work + Flow are the project class (delivery flow).
+		// AgentRegistry stays management (真·平台配置:管 agent 定义).
+		// Cron 并入 agent(按时间触发 agent 执行,与 Orchestrate 同类).
+		// Wiki 作为 Base 基类(runtime)—— 项目作用域的知识/结构,被所有 agent 复用。
 		expect(getToolMeta(projectTool)?.category).toBe("project");
 		expect(getToolMeta(workTool)?.category).toBe("project");
 		expect(getToolMeta(flowTool)?.category).toBe("project");
 		expect(getToolMeta(agentRegistryTool)?.category).toBe("management");
-		expect(getToolMeta(cronTool)?.category).toBe("management");
-		expect(getToolMeta(wikiTool)?.category).toBe("management");
+		expect(getToolMeta(cronTool)?.category).toBe("agent");
+		expect(getToolMeta(wikiTool)?.category).toBe("runtime");
 	});
 
 	test("Orchestrate 是 agent(编排多 agent 执行)", () => {
