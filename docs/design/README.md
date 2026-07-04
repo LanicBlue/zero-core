@@ -12,7 +12,8 @@ docs/design/
 ├── agent-driven-workflow/   ← v0.8 多 Agent 工作流重构(原 docs/rfc/)
 ├── hook-redesign/           ← hook 生命周期重做(per-loop registry + step 中心)
 ├── runtime-push-ui-sync/    ← 运行时推送 · UI 窗口(单一真源 · 零轮询)(已落地 N1–N4)
-└── agent-context-fields/    ← Agent 上下文字段接通(contextConfig/skillPolicy/knowledgeBaseIds 死字段)
+├── agent-context-fields/    ← Agent 上下文字段接通(contextConfig/skillPolicy/knowledgeBaseIds 死字段)
+└── project-flow/            ← 需求→代码合并的统一流转(Flow 工具:迁态+发 hook,work 订阅反应)
 ```
 
 ## 各努力说明
@@ -56,6 +57,14 @@ runtime-push N4 核实出的"死字段"接通 effort。三个字段性质不同:
 | 文件 | 性质 | 作用 |
 |------|------|------|
 | `agent-context-fields.md` | **设计 Draft** | 现状审计 + 逐字段方案 + 6 个待产品决策项 + 建议节点拆分(C1–C4 + 独立 KB effort) |
+
+### project-flow/(需求→代码合并的统一流转)
+
+把"需求→代码合并"整条交付链统一成 project 类的 `Flow` 工具。**Flow 只做状态迁移 + 发 hook,下游(PM 判断、archivist 合并、交付执行)全靠 work 订阅 hook 反应**——不在工具里硬编码。
+
+| 文件 | 性质 | 作用 |
+|------|------|------|
+| `project-flow.md` | **设计 Draft** | 模型(迁态+发hook、work订阅)+ 状态机/action/驱动 + hook 词表 + 5 个架构变更 + 责任矩阵 + F1–F5 分阶段计划 |
 
 ## 约定
 
