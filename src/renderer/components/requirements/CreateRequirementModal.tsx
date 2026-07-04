@@ -58,7 +58,7 @@ export default function CreateRequirementModal({ onClose }: CreateRequirementMod
 				projectId,
 				status: "found",
 				source: "user",
-				reviewer: "analyst",
+				reviewer: "agent",
 			});
 			onClose();
 		} catch (err: any) {

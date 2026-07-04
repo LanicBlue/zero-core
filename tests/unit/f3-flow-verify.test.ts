@@ -109,17 +109,17 @@ function seedReqAt(status: "verify" | "build"): string {
 		title: "Seed",
 		description: "seed intent",
 		status: "found",
-		source: "analyst",
+		source: "agent",
 		priority: "normal",
-		reviewer: "analyst",
+		reviewer: "agent",
 		createdByAgentId: "agent-pm",
 		reviewerAgentId: "agent-pm",
 	} as any);
 	seedDoc(req.id, "found");
-	requirementStore.transitionStatus(req.id, "discuss", "analyst", "seed");
+	requirementStore.transitionStatus(req.id, "discuss", "agent", "seed");
 	requirementStore.transitionStatus(req.id, "ready", "user", "seed");
-	requirementStore.transitionStatus(req.id, "plan", "lead", "seed");
-	requirementStore.transitionStatus(req.id, "build", "lead", "seed");
+	requirementStore.transitionStatus(req.id, "plan", "agent", "seed");
+	requirementStore.transitionStatus(req.id, "build", "agent", "seed");
 	if (status === "build") return req.id;
 	requirementStore.transitionStatus(req.id, "verify", "system", "seed");
 	return req.id;
@@ -158,41 +158,27 @@ function buildCtx(overrides: Record<string, any> = {}) {
 	return ctx;
 }
 
-// ─── Flow.verify · APPROVED → merge + closed + verified signal ───────
+// ─── Flow.verify · verdict-driven (caller supplies covered/reason) ───
 
-describe("Flow.verify · APPROVED path", () => {
-	test("delegates PM, submits covered=true, merges, status→closed, emits requirements.verified, writes Decision Log", async () => {
+describe("Flow.verify · APPROVED path (covered=true)", () => {
+	test("covered=true → submitCoverageVerdict + merge + status→closed + emits requirements.verified + Decision Log", async () => {
 		const id = seedReqAt("verify");
-		const delegateTask = vi.fn().mockResolvedValue("VERDICT: APPROVED — full coverage");
 		const submitCoverageVerdict = vi.fn().mockResolvedValue({
 			covered: true,
-			reviewerAgentId: "agent-pm",
 			merge: { ok: true, ref: "abc123" },
 			finalStatus: "closed",
 		});
 
 		const out = await execFlow(
-			{ action: "verify", id, summary: "done" } as any,
-			buildCtx({ delegateTask, pmService: { submitCoverageVerdict } }),
+			{ action: "verify", id, covered: true, reason: "full coverage" } as any,
+			buildCtx({ pmService: { submitCoverageVerdict } }),
 		);
 
-		// PM was delegated the coverage task targeting the recorded PM agent.
-		expect(delegateTask).toHaveBeenCalledTimes(1);
-		const [task, opts] = delegateTask.mock.calls[0];
-		expect(task).toContain(id);
-		expect(opts).toEqual({ targetAgentId: "agent-pm" });
+		// Verdict forwarded to pmService (no reviewerAgentId opts — pmService
+		// resolves the reviewer from the req record; the tool picks no one).
+		expect(submitCoverageVerdict).toHaveBeenCalledWith(id, { covered: true, reason: "full coverage" });
 
-		// Verdict driven through pmService.
-		expect(submitCoverageVerdict).toHaveBeenCalledWith(
-			id,
-			{ covered: true, reason: "full coverage" },
-			{ reviewerAgentId: "agent-pm" },
-		);
-
-		// merge ok + finalStatus closed (transitionStatus already happened in
-		// the mocked submitCoverageVerdict; we just assert the tool didn't
-		// override). pmService drove closed, so status is closed.
-		expect(out).toMatch(/PM APPROVED/);
+		expect(out).toMatch(/APPROVED/);
 		expect(out).toContain("abc123");
 
 		// Decision Log section written to the doc.
@@ -201,19 +187,15 @@ describe("Flow.verify · APPROVED path", () => {
 		expect(body).toContain("APPROVED");
 		expect(body).toContain("abc123");
 
-		// requirements.verified signal fired via the hub.
-		const cb = vi.fn();
-		onDataChange(cb);
-		// Re-run to capture the signal (the previous run already emitted; the
-		// hub was reset between). Instead assert via a fresh run on a fresh req.
+		// requirements.verified signal fired via the hub (assert on a fresh
+		// req + freshly-armed hub listener).
 		_resetDataChangeHubForTest();
 		const id2 = seedReqAt("verify");
 		const cb2 = vi.fn();
 		onDataChange(cb2);
 		await execFlow(
-			{ action: "verify", id: id2 } as any,
+			{ action: "verify", id: id2, covered: true, reason: "ok" } as any,
 			buildCtx({
-				delegateTask: vi.fn().mockResolvedValue("VERDICT: APPROVED — ok"),
 				pmService: {
 					submitCoverageVerdict: vi.fn().mockResolvedValue({
 						covered: true, merge: { ok: true, ref: "r" }, finalStatus: "closed",
@@ -227,38 +209,15 @@ describe("Flow.verify · APPROVED path", () => {
 			.some((c: any) => c.signal === "verified");
 		expect(verified).toBe(true);
 	});
-
-	test("merge failed → status stays in verify, signal verified still fires, Decision Log notes the failure", async () => {
-		const id = seedReqAt("verify");
-		const out = await execFlow(
-			{ action: "verify", id } as any,
-			buildCtx({
-				delegateTask: vi.fn().mockResolvedValue("VERDICT: APPROVED — ok"),
-				pmService: {
-					submitCoverageVerdict: vi.fn().mockResolvedValue({
-						covered: true,
-						merge: { ok: false, error: "conflict" },
-						finalStatus: "verify",
-					}),
-				},
-			}),
-		);
-		expect(out).toMatch(/PM APPROVED/);
-		expect(out).toContain("FAILED");
-		const body = readFileSync(docPath(id), "utf-8");
-		expect(body).toContain("Archivist merge FAILED");
-	});
 });
 
 // ─── Flow.verify · REJECTED → rework + rejected signal ───────────────
 
-describe("Flow.verify · REJECTED path (rework)", () => {
-	test("records feedback, transitions verify→build, emits requirements.rejected, Decision Log notes rework", async () => {
+describe("Flow.verify · REJECTED path (covered=false, rework)", () => {
+	test("covered=false → rework verify→build + emits requirements.rejected + Decision Log notes rework", async () => {
 		const id = seedReqAt("verify");
-		const delegateTask = vi.fn().mockResolvedValue("VERDICT: REJECTED — missing edge case X");
 		const submitCoverageVerdict = vi.fn().mockResolvedValue({
 			covered: false,
-			reviewerAgentId: "agent-pm",
 			finalStatus: "verify",
 		});
 
@@ -266,19 +225,15 @@ describe("Flow.verify · REJECTED path (rework)", () => {
 		onDataChange(cb);
 
 		const out = await execFlow(
-			{ action: "verify", id } as any,
-			buildCtx({ delegateTask, pmService: { submitCoverageVerdict } }),
+			{ action: "verify", id, covered: false, reason: "missing edge case X" } as any,
+			buildCtx({ pmService: { submitCoverageVerdict } }),
 		);
 		await new Promise((r) => setTimeout(r, 0));
 
-		expect(submitCoverageVerdict).toHaveBeenCalledWith(
-			id,
-			{ covered: false, reason: "missing edge case X" },
-			{ reviewerAgentId: "agent-pm" },
-		);
-		// Rework transition verify→build (lead).
+		expect(submitCoverageVerdict).toHaveBeenCalledWith(id, { covered: false, reason: "missing edge case X" });
+		// Rework transition verify→build (agent).
 		expect(requirementStore.get(id)!.status).toBe("build");
-		expect(out).toMatch(/PM REJECTED/);
+		expect(out).toMatch(/REJECTED/);
 		expect(out).toContain("returned to 'build'");
 
 		// Signal.
@@ -298,45 +253,58 @@ describe("Flow.verify · REJECTED path (rework)", () => {
 // ─── Flow.verify · degraded paths ────────────────────────────────────
 
 describe("Flow.verify · degraded paths", () => {
-	test("status not 'verify' → friendly error, no delegation", async () => {
+	test("status not 'verify' → friendly error, no verdict applied", async () => {
 		const id = seedReqAt("build");
-		const delegateTask = vi.fn();
+		const submitCoverageVerdict = vi.fn();
 		const out = await execFlow(
-			{ action: "verify", id } as any,
-			buildCtx({ delegateTask, pmService: { submitCoverageVerdict: vi.fn() } }),
+			{ action: "verify", id, covered: true } as any,
+			buildCtx({ pmService: { submitCoverageVerdict } }),
 		);
 		expect(out).toMatch(/^Error:/);
 		expect(out).toMatch(/verify requires status='verify'/);
-		expect(delegateTask).not.toHaveBeenCalled();
+		expect(submitCoverageVerdict).not.toHaveBeenCalled();
 		expect(requirementStore.get(id)!.status).toBe("build");
 	});
 
-	test("no delegateTask → error, no PM dispatch", async () => {
+	test("covered omitted → degrade guidance, status stays in verify (no verdict applied)", async () => {
 		const id = seedReqAt("verify");
-		const out = await execFlow({ action: "verify", id } as any, buildCtx({}));
-		expect(out).toMatch(/delegateTask not available/);
-	});
-
-	test("PM dispatch throws → status stays in verify, caller told to retry", async () => {
-		const id = seedReqAt("verify");
-		const delegateTask = vi.fn().mockRejectedValue(new Error("PM down"));
 		const submitCoverageVerdict = vi.fn();
 		const out = await execFlow(
 			{ action: "verify", id } as any,
-			buildCtx({ delegateTask, pmService: { submitCoverageVerdict } }),
+			buildCtx({ pmService: { submitCoverageVerdict } }),
 		);
-		expect(out).toMatch(/PM coverage dispatch failed/);
+		expect(out).toMatch(/verdict not supplied/i);
 		expect(submitCoverageVerdict).not.toHaveBeenCalled();
 		expect(requirementStore.get(id)!.status).toBe("verify");
+	});
+
+	test("merge failed → status stays in verify, Decision Log notes the failure", async () => {
+		const id = seedReqAt("verify");
+		const out = await execFlow(
+			{ action: "verify", id, covered: true, reason: "ok" } as any,
+			buildCtx({
+				pmService: {
+					submitCoverageVerdict: vi.fn().mockResolvedValue({
+						covered: true,
+						merge: { ok: false, error: "conflict" },
+						finalStatus: "verify",
+					}),
+				},
+			}),
+		);
+		expect(out).toMatch(/APPROVED/);
+		expect(out).toContain("FAILED");
+		const body = readFileSync(docPath(id), "utf-8");
+		expect(body).toContain("Archivist merge FAILED");
 	});
 
 	test("pmService absent → verdict text returned, no merge/close", async () => {
 		const id = seedReqAt("verify");
 		const out = await execFlow(
-			{ action: "verify", id } as any,
-			buildCtx({ delegateTask: vi.fn().mockResolvedValue("VERDICT: APPROVED — ok") }),
+			{ action: "verify", id, covered: true, reason: "ok" } as any,
+			buildCtx({}),
 		);
-		expect(out).toMatch(/PM APPROVED/);
+		expect(out).toMatch(/APPROVED/);
 		expect(out).toMatch(/pmService not wired/);
 		// Decision Log still written.
 		const body = readFileSync(docPath(id), "utf-8");
@@ -434,12 +402,12 @@ function seedReqAtBuildReady(): string {
 		title: "Seed",
 		description: "seed",
 		status: "found",
-		source: "analyst",
+		source: "agent",
 		priority: "normal",
-		reviewer: "analyst",
+		reviewer: "agent",
 	} as any);
 	seedDoc(req.id, "found");
-	requirementStore.transitionStatus(req.id, "discuss", "analyst", "seed");
+	requirementStore.transitionStatus(req.id, "discuss", "agent", "seed");
 	requirementStore.transitionStatus(req.id, "ready", "user", "seed");
 	return req.id;
 }

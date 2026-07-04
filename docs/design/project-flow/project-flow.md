@@ -1,8 +1,9 @@
 # Design:Project Flow(需求→代码合并的统一流转)
 
 > 状态:**Draft,模型已锁定,待分阶段实现**。
-> 一句话:**Flow 工具做状态迁移 + 写文档段 + 发命名 hook 信号;`verify` 是复合动作(判覆盖 + 合并,可由用户或 agent 配置调用)。需求文档是 `docs/` 下的文件(agent 直接读,不入 DB)。交付靠 hook fire work(ready → 交付 work)。**
+> 一句话:**Flow 工具做状态迁移 + 写文档段 + 发命名 hook 信号;`verify` 是 verdict-driven 复合动作(消费覆盖率 verdict → 合并/返工,谁出 verdict 由外部决定——用户直供,或 work 配置的复盘 agent 自带 verdict 调用)。需求文档是 `docs/` 下的文件(agent 直接读,不入 DB)。交付靠 hook fire work(ready → 交付 work)。**
 > 起源:project 类工具 = Project / Work / Flow 三个。Flow 覆盖"需求→代码合并"。Cron / Orchestrate 通用,不在本类。
+> **去-role**:工具不绑角色。状态机 actor 词表 = `{agent, user, system}`(退役的 analyst/lead 已 collapse 成 agent);谁来执行某 action 由 work/toolPolicy 配置,工具不挑角色、不委派。
 
 ---
 
@@ -10,7 +11,7 @@
 
 1. **工具与 agent 不相关**——按域分组,不绑角色。
 2. **门控是配置的事**——某 action 暴露给 agent 还是只给用户,是 toolPolicy 配置,不是结构差别。"用户确认"本质也是工具 action,只是没暴露给 agent(改配置即可开放,如 verify 可配给 agent)。
-3. **Flow action = 迁态 + 写文档段 + 发命名信号**。`verify` 是复合动作(判覆盖 + 合并,内部 delegate PM)。
+3. **Flow action = 迁态 + 写文档段 + 发命名信号**。`verify` 是 verdict-driven 复合动作(消费覆盖率 verdict → 合并/返工);**工具不挑复盘者、不委派**——verdict 由调用方外部供入。
 4. **每步流转发命名 hook 信号**(显式 emit),触发什么看 work 配置。
 5. **需求文档是文件**(`docs/requirements/{id}.md`),agent 直接用文件工具读;**不入 DB**。work/工具 prompt 约定路径。
 
@@ -33,11 +34,11 @@
 | `plan` | Ready→Plan | agent | 建 worktree + 写 Plan 段 | `planned` |
 | `startBuild` | Plan→Build | 用户(可 agent) | 批计划(Orchestrate confirm 门) | `buildStarted` |
 | `finishBuild` | Build→Verify | agent | 写 Coverage 段 | `buildFinished` |
-| `verify` | Verify→Closed/返工 | **用户 或 agent(配置)** | **复合:delegate PM 判覆盖 → 通过则 mergeFeatureToMain + closed + 写 Decision Log,发 `verified`;打回写意见 + 发 `rejected`** | `verified` / `rejected` |
+| `verify` | Verify→Closed/返工 | **用户 或 agent(配置)** | **复合(消费 verdict):调用方供 covered/reason → APPROVED 则 mergeFeatureToMain + closed + 写 Decision Log,发 `verified`;REJECTED 则返工 build + 写 Decision Log,发 `rejected`** | `verified` / `rejected` |
 
 外加只读:`list` / `get`。
 
-> **`verify` 是复合动作**(沿用现 verify 工具语义):判覆盖 + 合并在它内部(delegate PM + mergeFeatureToMain),**不拆成 PM work / 合并 work**。由用户或 agent 调用(配置驱动暴露)。
+> **`verify` 是 verdict-driven 复合动作**:工具消费一个覆盖率 verdict(由调用方供入),驱动合并/返工的机械后果。**谁出 verdict 与工具无关**——用户经 UI 直供,或 work 配置的复盘 agent 自行分析后带 verdict 调用。工具不挑复盘者、不委派、不解析"VERDICT:"行。mergeFeatureToMain 仍是 verify 内部的机械步骤(不拆成独立 work)。
 
 ## 3. hook 信号词表(显式 emit)
 
@@ -54,7 +55,7 @@
 | `requirements.verified` | verify 通过 | (观察;合并在 verify 内已做) |
 | `requirements.rejected` | verify 打回 | (信息性;意见回灌) |
 
-> 只有 `ready → 交付 work` 是必需订阅;其余信号为观察/可选(PM 判断 + 合并在 verify 内,不需独立 work)。
+> 只有 `ready → 交付 work` 是必需订阅;其余信号为观察/可选(verdict 由外部供入,合并在 verify 内,不需独立 work)。
 
 ## 4. 文档与 worktree 模型
 
@@ -68,13 +69,13 @@
 - 位置:`~/.zero-core/projects/{project}/{req-shortId}/`(集中,避免 workspace 旁误改)。
 - **串行**:一次一个 plan/worktree(多个 Discuss→Ready 只排队)。
 - 生命周期:Ready→Plan 建 worktree → 干活(feature 分支)+ verify → 通过 merge feature→main 回原项目 → 清理。
-- **文档 Ready 前不 commit → 不进 worktree**。worktree 里的 agent(lead)读文档走**原项目绝对路径**(plan action 把 doc 路径注入 lead 上下文);PM(verify 内 delegate)在项目 session,直接读。
+- **文档 Ready 前不 commit → 不进 worktree**。worktree 里的 agent(执行 build 的 agent)读文档走**原项目绝对路径**(plan action 把 doc 路径注入其上下文);复盘 agent(若 work 配置)在项目 session 自带 verdict 调 verify,直接读。
 - 文件树根跟活动 session workspace(FileTreePanel 现状):build 期显 worktree(代码),文档不在其中——可接受(agent 经绝对路径读);项目上下文(Discuss/idle/合回)显项目 → 文档可见可重选。
 
 ## 5. 关键架构变更
 
-1. **新建 Flow 工具**(7 action + list/get),每个 = transitionStatus + 写文档段 + 发命名信号。`verify` 复合(delegate PM + merge + 发 verified/rejected)。
-2. **`verify` 不拆**:沿用现 verify 工具的复合语义,只改成 Flow action + 发命名信号 + 暴露可配(用户/agent)。**不新增 PM work / 合并 work**。
+1. **新建 Flow 工具**(7 action + list/get),每个 = transitionStatus + 写文档段 + 发命名信号。`verify` 是 verdict-driven 复合(消费 verdict + merge + 发 verified/rejected;不挑复盘者、不委派)。
+2. **`verify` 不拆**:沿用复合语义,改成 Flow action + 发命名信号 + verdict-driven(调用方供 verdict)。**不新增复盘 work / 合并 work**。
 3. **交付 work hook 改 `create`→`ready`**([builtin-work-templates.ts](../../../src/server/builtin-work-templates.ts));actionPrompt 按新流程重写(finishBuild 提交、verify 复合判断)。
 4. **文档 = 文件**(docs/requirements/{id}.md),不入 DB;Flow action 写段,agent 文件工具读。**不做 requirement-doc-store DB 化、不做投影同步**。
 5. **worktree 集中化**:`~/.zero-core/projects/{project}/{req-shortId}/`,串行。
@@ -94,22 +95,22 @@
 | 批计划(Build) | 用户/agent | Flow.startBuild → `buildStarted` |
 | 实现 | agent | work 内 Orchestrate(worktree;读文档走原项目路径) |
 | 提交(Verify) | agent | Flow.finishBuild(写 Coverage)→ `buildFinished` |
-| 判覆盖 + 合并(Closed) | **用户 或 agent** | Flow.verify(复合:delegate PM 判 + merge + 写 Decision Log)→ `verified`/`rejected` |
+| 判覆盖 + 合并(Closed) | **用户 或 agent** | Flow.verify(verdict-driven 复合:消费调用方供的 verdict + merge + 写 Decision Log)→ `verified`/`rejected` |
 
-PM 判断 + 合并都在 `verify` 内(复合),无独立 work。
+verdict 由调用方供入(用户或复盘 agent),合并在 `verify` 内(复合),无独立 work。
 
 ## 7. 不变 / 不动
 
 - Cron / Orchestrate 通用(Build 阶段编排);Wiki / AgentRegistry 其它域。
 - 状态机合法迁移规则不变。
-- verify 的 delegate-PM + merge 语义基本不变(只迁到 Flow action + 加命名信号 + 配置化暴露)。
+- verify 的 merge 语义不变;改成 verdict-driven(消费调用方供的 verdict,不再内部 delegate 复盘者)+ Flow action + 命名信号 + 配置化暴露。
 
 ## 8. 风险 / 决策
 
-- **worktree agent 读文档**:文档不进 worktree(不 commit),lead 在 worktree 经**原项目绝对路径**读(plan action 注入路径)。需保证 Read 工具允许该绝对路径(readScope 等)。
+- **worktree agent 读文档**:文档不进 worktree(不 commit),build agent 在 worktree 经**原项目绝对路径**读(plan action 注入路径)。需保证 Read 工具允许该绝对路径(readScope 等)。
 - **既有交付 work hook 改 ready**:既有项目的交付 work hook 仍是 create → 要么 migration 改,要么 hook manager 同时认 create/ready 过渡期。
 - **verify 配置化暴露**:默认用户;配给 agent 时该 agent toolPolicy 开 Flow.verify。配置驱动,不绑角色。
-- **返工**:`rejected` 后意见写 Decision Log(文件);交付 work 下次 fire 读到(读文件)。lead 重走 plan→finishBuild→verify。
+- **返工**:`rejected` 后意见写 Decision Log(文件);交付 work 下次 fire 读到(读文件)。build agent 重走 plan→finishBuild→verify。
 - **back-compat**:旧工具名 → Flow(RENAMED_TOOLS)。
 - **文档结构先试**:五段初版,后续调。
 - **既有 .zero/requirements/ 旧文档**:迁移到 docs/requirements/ + 更新 docPath(或留旧路径兼容)。

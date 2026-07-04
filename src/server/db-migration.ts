@@ -466,7 +466,7 @@ function migrateWikiTableSchema(db: Database.Database): void {
 			summary TEXT, doc_pointer TEXT, provenance TEXT,
 			requirement_ids TEXT, relations TEXT, links TEXT,
 			flags TEXT,
-			last_updated_by TEXT DEFAULT 'analyst',
+			last_updated_by TEXT DEFAULT 'agent',
 			source_req_id TEXT, created_at TEXT, updated_at TEXT
 		)`);
 		console.log("[db-migration] rebuilt project_wiki to v0.8 schema (was empty, dropped NOT NULL project_id + legacy UNIQUE).");
@@ -654,6 +654,27 @@ function migrateArchivistBindToProjectWork(db: Database.Database): void {
 	}
 }
 
+/**
+ * v0.8 de-role: rewrite retired role tokens ("analyst", "lead") → "agent" across
+ * the requirement + wiki persisted fields. The tooling no longer binds roles;
+ * any agent caller is just "agent". Idempotent — the WHERE clauses guard it (an
+ * already-migrated row has no analyst/lead to match). Runs after all affected
+ * tables exist. display-only fields (reviewer/last_updated_by/sender) and the
+ * state-machine actor (triggered_by) are all rewritten so new code, which emits
+ * only "agent", never collides with legacy values.
+ */
+function migrateRoleTokensToAgent(db: Database.Database): void {
+	try {
+		db.exec(`UPDATE requirements SET source = 'agent' WHERE source = 'analyst'`);
+		db.exec(`UPDATE requirements SET reviewer = 'agent' WHERE reviewer = 'analyst'`);
+		db.exec(`UPDATE requirement_messages SET sender = 'agent' WHERE sender IN ('analyst', 'lead')`);
+		db.exec(`UPDATE requirement_status_history SET triggered_by = 'agent' WHERE triggered_by IN ('analyst', 'lead')`);
+		db.exec(`UPDATE project_wiki SET last_updated_by = 'agent' WHERE last_updated_by = 'analyst'`);
+	} catch (err) {
+		log.warn("migration", `migrateRoleTokensToAgent failed (non-fatal): ${(err as Error).message}`);
+	}
+}
+
 export function runMigrations(sessionDB: SessionDB): void {
 	const kv = sessionDB.getKVStore();
 	const db = sessionDB.getDb();
@@ -759,7 +780,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 		summary TEXT, doc_pointer TEXT, provenance TEXT,
 		requirement_ids TEXT, relations TEXT, links TEXT,
 		flags TEXT,
-		last_updated_by TEXT DEFAULT 'analyst',
+		last_updated_by TEXT DEFAULT 'agent',
 		source_req_id TEXT, created_at TEXT, updated_at TEXT
 	)`);
 	// v0.8 (M2): legacy UNIQUE(project_id, path) is dropped — global tree
@@ -808,10 +829,10 @@ export function runMigrations(sessionDB: SessionDB): void {
 	db.exec(`CREATE TABLE IF NOT EXISTS requirements (
 		id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
 		title TEXT NOT NULL, description TEXT, status TEXT DEFAULT 'found',
-		source TEXT DEFAULT 'analyst', priority TEXT DEFAULT 'normal',
+		source TEXT DEFAULT 'agent', priority TEXT DEFAULT 'normal',
 		impact_scope TEXT, context TEXT,
 		assigned_lead_session_id TEXT, discussion_session_id TEXT,
-		reviewer TEXT DEFAULT 'analyst',
+		reviewer TEXT DEFAULT 'agent',
 		closed_at TEXT, created_at TEXT, updated_at TEXT
 	)`);
 	safeAddIndex(db, "requirements", "idx_req_project", "project_id");
@@ -1125,6 +1146,11 @@ export function runMigrations(sessionDB: SessionDB): void {
 	db.exec(`DROP TABLE IF EXISTS memory_nodes`);
 	db.exec(`DROP TABLE IF EXISTS kb_chunks`);
 	db.exec(`DROP TABLE IF EXISTS kb_entries`);
+
+	// v0.8 de-role: rewrite legacy "analyst"/"lead" tokens → "agent" across the
+	// requirement + wiki persisted fields. All affected tables exist by here.
+	// Idempotent. See migrateRoleTokensToAgent.
+	migrateRoleTokensToAgent(db);
 }
 
 // ---------------------------------------------------------------------------

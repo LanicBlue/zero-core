@@ -41,33 +41,33 @@ const VALID_TRANSITIONS: Array<{
 	to: RequirementStatus;
 	triggeredBy: string;
 }> = [
-	// Initial creation
-	{ from: undefined, to: "found", triggeredBy: "analyst" },
+	// Initial creation (agent = any agent caller; user = the human)
+	{ from: undefined, to: "found", triggeredBy: "agent" },
 	{ from: undefined, to: "found", triggeredBy: "user" },
 
 	// found → discuss
 	{ from: "found", to: "discuss", triggeredBy: "user" },
-	{ from: "found", to: "discuss", triggeredBy: "analyst" },
+	{ from: "found", to: "discuss", triggeredBy: "agent" },
 
-	// discuss → ready / found
+	// discuss → ready / found (ready is a human confirmation gate)
 	{ from: "discuss", to: "ready", triggeredBy: "user" },
 	{ from: "discuss", to: "found", triggeredBy: "user" },
 
 	// ready → plan
-	{ from: "ready", to: "plan", triggeredBy: "lead" },
+	{ from: "ready", to: "plan", triggeredBy: "agent" },
 
 	// plan → build / ready
-	{ from: "plan", to: "build", triggeredBy: "lead" },
-	{ from: "plan", to: "ready", triggeredBy: "lead" },
+	{ from: "plan", to: "build", triggeredBy: "agent" },
+	{ from: "plan", to: "ready", triggeredBy: "agent" },
 
 	// build → verify / build (continue)
 	{ from: "build", to: "verify", triggeredBy: "system" },
-	{ from: "build", to: "build", triggeredBy: "lead" },
+	{ from: "build", to: "build", triggeredBy: "agent" },
 
 	// verify → closed / build
-	{ from: "verify", to: "closed", triggeredBy: "analyst" },
+	{ from: "verify", to: "closed", triggeredBy: "agent" },
 	{ from: "verify", to: "closed", triggeredBy: "user" },
-	{ from: "verify", to: "build", triggeredBy: "lead" },
+	{ from: "verify", to: "build", triggeredBy: "agent" },
 
 	// closed → found (re-analyze)
 	{ from: "closed", to: "found", triggeredBy: "user" },

@@ -1192,7 +1192,7 @@
 		},
 		{
 			"path": "src/runtime/tools/flow-tool.ts",
-			"lines": 349,
+			"lines": 344,
 			"dir": "src/runtime/tools",
 			"exports": [],
 			"imports": [
@@ -1200,9 +1200,9 @@
 				"src/shared/types.ts"
 			],
 			"functions": [
-				"src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:141",
-				"src/runtime/tools/flow-tool.ts/resolveProjectId:151",
-				"src/runtime/tools/flow-tool.ts/getFlowActions:162"
+				"src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:149",
+				"src/runtime/tools/flow-tool.ts/resolveProjectId:159",
+				"src/runtime/tools/flow-tool.ts/getFlowActions:170"
 			],
 			"description": ""
 		},
@@ -2835,7 +2835,7 @@
 		},
 		{
 			"path": "src/server/db-migration.ts",
-			"lines": 1257,
+			"lines": 1283,
 			"dir": "src/server",
 			"exports": [
 				"runMigrations"
@@ -2859,10 +2859,11 @@
 				"src/server/db-migration.ts/memoryArea:524",
 				"src/server/db-migration.ts/areaOf:529",
 				"src/server/db-migration.ts/migrateArchivistBindToProjectWork:612",
-				"src/server/db-migration.ts/runMigrations:657",
-				"src/server/db-migration.ts/migrateTurnsToSteps:1151",
-				"src/server/db-migration.ts/normalizeWorkspaceDir:1218",
-				"src/server/db-migration.ts/migratePersonas:1226"
+				"src/server/db-migration.ts/migrateRoleTokensToAgent:666",
+				"src/server/db-migration.ts/runMigrations:678",
+				"src/server/db-migration.ts/migrateTurnsToSteps:1177",
+				"src/server/db-migration.ts/normalizeWorkspaceDir:1244",
+				"src/server/db-migration.ts/migratePersonas:1252"
 			],
 			"description": "数据库迁移：schema 初始化 + KV migration（每个独立 try/catch）"
 		},
@@ -3007,13 +3008,12 @@
 		},
 		{
 			"path": "src/server/flow-actions.ts",
-			"lines": 637,
+			"lines": 596,
 			"dir": "src/server",
 			"exports": [
 				"flowDocPath",
 				"resolveExistingDocPath",
 				"writeDocSection",
-				"parseVerdict",
 				"decisionLogBody",
 				"createFlowActions"
 			],
@@ -3024,16 +3024,15 @@
 				"src/server/pm-service.ts"
 			],
 			"functions": [
-				"src/server/flow-actions.ts/flowDocPath:107",
-				"src/server/flow-actions.ts/resolveExistingDocPath:121",
-				"src/server/flow-actions.ts/writeIntentDoc:136",
-				"src/server/flow-actions.ts/writeDocSection:159",
-				"src/server/flow-actions.ts/parseVerdict:250",
-				"src/server/flow-actions.ts/decisionLogBody:268",
-				"src/server/flow-actions.ts/createFlowActions:341",
-				"src/server/flow-actions.ts/writeDecisionLog:608",
-				"src/server/flow-actions.ts/emit:623",
-				"src/server/flow-actions.ts/logWorktree:633"
+				"src/server/flow-actions.ts/flowDocPath:109",
+				"src/server/flow-actions.ts/resolveExistingDocPath:123",
+				"src/server/flow-actions.ts/writeIntentDoc:138",
+				"src/server/flow-actions.ts/writeDocSection:161",
+				"src/server/flow-actions.ts/decisionLogBody:248",
+				"src/server/flow-actions.ts/createFlowActions:321",
+				"src/server/flow-actions.ts/writeDecisionLog:567",
+				"src/server/flow-actions.ts/emit:582",
+				"src/server/flow-actions.ts/logWorktree:592"
 			],
 			"description": ""
 		},
@@ -4134,7 +4133,7 @@
 		},
 		{
 			"path": "src/server/requirement-router.ts",
-			"lines": 268,
+			"lines": 269,
 			"dir": "src/server",
 			"exports": [
 				"createRequirementRouter"
@@ -4148,7 +4147,7 @@
 			],
 			"functions": [
 				"src/server/requirement-router.ts/createRequirementRouter:36",
-				"src/server/requirement-router.ts/flowActionForTarget:257"
+				"src/server/requirement-router.ts/flowActionForTarget:258"
 			],
 			"description": ""
 		},
@@ -9815,12 +9814,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:141",
+			"id": "src/runtime/tools/flow-tool.ts/resolveWorkspaceDir:149",
 			"name": "resolveWorkspaceDir",
 			"kind": "function",
 			"file": "src/runtime/tools/flow-tool.ts",
-			"line": 141,
-			"endLine": 148,
+			"line": 149,
+			"endLine": 156,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "function resolveWorkspaceDir(ctx: any)",
@@ -9828,12 +9827,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/flow-tool.ts/resolveProjectId:151",
+			"id": "src/runtime/tools/flow-tool.ts/resolveProjectId:159",
 			"name": "resolveProjectId",
 			"kind": "function",
 			"file": "src/runtime/tools/flow-tool.ts",
-			"line": 151,
-			"endLine": 154,
+			"line": 159,
+			"endLine": 162,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "function resolveProjectId(ctx: any, input: any, fallback?: string)",
@@ -9841,12 +9840,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/flow-tool.ts/getFlowActions:162",
+			"id": "src/runtime/tools/flow-tool.ts/getFlowActions:170",
 			"name": "getFlowActions",
 			"kind": "function",
 			"file": "src/runtime/tools/flow-tool.ts",
-			"line": 162,
-			"endLine": 164,
+			"line": 170,
+			"endLine": 172,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function getFlowActions(ctx: any)",
@@ -13370,7 +13369,7 @@
 			"callees": [
 				"src/runtime/tools/mcp-tool.ts/buildMcpTools:110",
 				"src/server/agent-service.ts/AgentService.capabilityHandlesFor:433",
-				"src/server/flow-actions.ts/createFlowActions:341",
+				"src/server/flow-actions.ts/createFlowActions:321",
 				"src/server/agent-service.ts/AgentService.buildHookDeps:333",
 				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1480",
 				"src/runtime/hooks/index.ts/registerHooksForLoop:117",
@@ -15171,36 +15170,50 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/db-migration.ts/runMigrations:657",
+			"id": "src/server/db-migration.ts/migrateRoleTokensToAgent:666",
+			"name": "migrateRoleTokensToAgent",
+			"kind": "function",
+			"file": "src/server/db-migration.ts",
+			"line": 666,
+			"endLine": 676,
+			"statementCount": 7,
+			"exported": false,
+			"signature": "function migrateRoleTokensToAgent(db: Database.Database)",
+			"description": "v0.8 de-role: rewrite retired role tokens (\"analyst\", \"lead\") → \"agent\" across\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/db-migration.ts/runMigrations:678",
 			"name": "runMigrations",
 			"kind": "function",
 			"file": "src/server/db-migration.ts",
-			"line": 657,
-			"endLine": 1128,
-			"statementCount": 130,
+			"line": 678,
+			"endLine": 1154,
+			"statementCount": 131,
 			"exported": true,
 			"signature": "function runMigrations(sessionDB: SessionDB)",
 			"description": "",
 			"callees": [
 				"src/server/db-migration.ts/safeAddColumn:314",
 				"src/server/db-migration.ts/safeAddIndex:323",
-				"src/server/db-migration.ts/migrateTurnsToSteps:1151",
+				"src/server/db-migration.ts/migrateTurnsToSteps:1177",
 				"src/server/db-migration.ts/migrateWikiTableSchema:451",
 				"src/server/db-migration.ts/migrateWikiDetailToDisk:496",
 				"src/server/db-migration.ts/migrateCronScheduleToJson:346",
 				"src/server/db-migration.ts/migrateArchivistBindToProjectWork:612",
-				"src/server/db-migration.ts/normalizeWorkspaceDir:1218",
+				"src/server/db-migration.ts/normalizeWorkspaceDir:1244",
 				"src/core/default-prompt.ts/buildDefaultPrompt:23",
-				"src/server/db-migration.ts/migratePersonas:1226"
+				"src/server/db-migration.ts/migratePersonas:1252",
+				"src/server/db-migration.ts/migrateRoleTokensToAgent:666"
 			]
 		},
 		{
-			"id": "src/server/db-migration.ts/migrateTurnsToSteps:1151",
+			"id": "src/server/db-migration.ts/migrateTurnsToSteps:1177",
 			"name": "migrateTurnsToSteps",
 			"kind": "function",
 			"file": "src/server/db-migration.ts",
-			"line": 1151,
-			"endLine": 1212,
+			"line": 1177,
+			"endLine": 1238,
 			"statementCount": 32,
 			"exported": false,
 			"signature": "function migrateTurnsToSteps(db: Database.Database)",
@@ -15208,12 +15221,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/db-migration.ts/normalizeWorkspaceDir:1218",
+			"id": "src/server/db-migration.ts/normalizeWorkspaceDir:1244",
 			"name": "normalizeWorkspaceDir",
 			"kind": "function",
 			"file": "src/server/db-migration.ts",
-			"line": 1218,
-			"endLine": 1224,
+			"line": 1244,
+			"endLine": 1250,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function normalizeWorkspaceDir(dir: string | undefined)",
@@ -15221,18 +15234,18 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/db-migration.ts/migratePersonas:1226",
+			"id": "src/server/db-migration.ts/migratePersonas:1252",
 			"name": "migratePersonas",
 			"kind": "function",
 			"file": "src/server/db-migration.ts",
-			"line": 1226,
-			"endLine": 1256,
+			"line": 1252,
+			"endLine": 1282,
 			"statementCount": 24,
 			"exported": false,
 			"signature": "function migratePersonas(db: Database.Database, agentStore: SqliteStore<any>, personaPath: string, agentsJsonPath: string)",
 			"description": "",
 			"callees": [
-				"src/server/db-migration.ts/normalizeWorkspaceDir:1218"
+				"src/server/db-migration.ts/normalizeWorkspaceDir:1244"
 			]
 		},
 		{
@@ -15486,12 +15499,12 @@
 			]
 		},
 		{
-			"id": "src/server/flow-actions.ts/flowDocPath:107",
+			"id": "src/server/flow-actions.ts/flowDocPath:109",
 			"name": "flowDocPath",
 			"kind": "function",
 			"file": "src/server/flow-actions.ts",
-			"line": 107,
-			"endLine": 109,
+			"line": 109,
+			"endLine": 111,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function flowDocPath(workspaceDir: string, id: string)",
@@ -15499,70 +15512,57 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/flow-actions.ts/resolveExistingDocPath:121",
+			"id": "src/server/flow-actions.ts/resolveExistingDocPath:123",
 			"name": "resolveExistingDocPath",
 			"kind": "function",
 			"file": "src/server/flow-actions.ts",
-			"line": 121,
-			"endLine": 133,
+			"line": 123,
+			"endLine": 135,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "function resolveExistingDocPath(workspaceDir: string, projectId: string | undefined, id: string)",
 			"description": "Resolve the on-disk path for an EXISTING doc, honouring the legacy",
 			"callees": [
-				"src/server/flow-actions.ts/flowDocPath:107"
+				"src/server/flow-actions.ts/flowDocPath:109"
 			]
 		},
 		{
-			"id": "src/server/flow-actions.ts/writeIntentDoc:136",
+			"id": "src/server/flow-actions.ts/writeIntentDoc:138",
 			"name": "writeIntentDoc",
 			"kind": "function",
 			"file": "src/server/flow-actions.ts",
-			"line": 136,
-			"endLine": 146,
+			"line": 138,
+			"endLine": 148,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function writeIntentDoc(workspaceDir: string, projectId: string | undefined, req: RequirementRecord)",
 			"description": "Write the Intent section to the requirement doc (create action side effect).",
 			"callees": [
-				"src/server/flow-actions.ts/flowDocPath:107"
+				"src/server/flow-actions.ts/flowDocPath:109"
 			]
 		},
 		{
-			"id": "src/server/flow-actions.ts/writeDocSection:159",
+			"id": "src/server/flow-actions.ts/writeDocSection:161",
 			"name": "writeDocSection",
 			"kind": "function",
 			"file": "src/server/flow-actions.ts",
-			"line": 159,
-			"endLine": 205,
+			"line": 161,
+			"endLine": 207,
 			"statementCount": 22,
 			"exported": true,
 			"signature": "function writeDocSection(workspaceDir: string, projectId: string | undefined, id: string, section: \"Summary\" | \"Plan\" | \"Coverage\" | \"Decision Log\", body: string)",
 			"description": "Replace the `## <Section>` block in the requirement doc, or append it if",
 			"callees": [
-				"src/server/flow-actions.ts/resolveExistingDocPath:121"
+				"src/server/flow-actions.ts/resolveExistingDocPath:123"
 			]
 		},
 		{
-			"id": "src/server/flow-actions.ts/parseVerdict:250",
-			"name": "parseVerdict",
-			"kind": "function",
-			"file": "src/server/flow-actions.ts",
-			"line": 250,
-			"endLine": 265,
-			"statementCount": 8,
-			"exported": true,
-			"signature": "function parseVerdict(raw: string)",
-			"description": "Parse the PM verdict line. Liberal — defaults to REJECTED with the raw",
-			"callees": []
-		},
-		{
-			"id": "src/server/flow-actions.ts/decisionLogBody:268",
+			"id": "src/server/flow-actions.ts/decisionLogBody:248",
 			"name": "decisionLogBody",
 			"kind": "function",
 			"file": "src/server/flow-actions.ts",
-			"line": 268,
-			"endLine": 279,
+			"line": 248,
+			"endLine": 259,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "function decisionLogBody(verdict: ParsedVerdict, mergeRef?: string, finalStatus?: string)",
@@ -15570,48 +15570,47 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/flow-actions.ts/createFlowActions:341",
+			"id": "src/server/flow-actions.ts/createFlowActions:321",
 			"name": "createFlowActions",
 			"kind": "function",
 			"file": "src/server/flow-actions.ts",
-			"line": 341,
-			"endLine": 630,
-			"statementCount": 97,
+			"line": 321,
+			"endLine": 589,
+			"statementCount": 88,
 			"exported": true,
 			"signature": "function createFlowActions(deps: FlowActionsDeps)",
 			"description": "Build the FlowActions backend. Both the runtime Flow tool (via",
 			"callees": [
-				"src/server/flow-actions.ts/writeIntentDoc:136",
-				"src/server/flow-actions.ts/writeDocSection:159",
-				"src/server/flow-actions.ts/logWorktree:633",
-				"src/server/flow-actions.ts/parseVerdict:250",
-				"src/server/flow-actions.ts/decisionLogBody:268",
-				"src/server/flow-actions.ts/writeDecisionLog:608",
-				"src/server/flow-actions.ts/emit:623"
+				"src/server/flow-actions.ts/writeIntentDoc:138",
+				"src/server/flow-actions.ts/writeDocSection:161",
+				"src/server/flow-actions.ts/logWorktree:592",
+				"src/server/flow-actions.ts/decisionLogBody:248",
+				"src/server/flow-actions.ts/writeDecisionLog:567",
+				"src/server/flow-actions.ts/emit:582"
 			]
 		},
 		{
-			"id": "src/server/flow-actions.ts/writeDecisionLog:608",
+			"id": "src/server/flow-actions.ts/writeDecisionLog:567",
 			"name": "writeDecisionLog",
 			"kind": "function",
 			"file": "src/server/flow-actions.ts",
-			"line": 608,
-			"endLine": 620,
+			"line": 567,
+			"endLine": 579,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "function writeDecisionLog(workspaceDir: string | undefined, projectId: string | undefined, id: string, body: string)",
 			"description": "Write the Decision Log section (file, not DB). Best-effort.",
 			"callees": [
-				"src/server/flow-actions.ts/writeDocSection:159"
+				"src/server/flow-actions.ts/writeDocSection:161"
 			]
 		},
 		{
-			"id": "src/server/flow-actions.ts/emit:623",
+			"id": "src/server/flow-actions.ts/emit:582",
 			"name": "emit",
 			"kind": "function",
 			"file": "src/server/flow-actions.ts",
-			"line": 623,
-			"endLine": 629,
+			"line": 582,
+			"endLine": 588,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "function emit(signal: \"verified\" | \"rejected\", id: string, record: unknown)",
@@ -15619,12 +15618,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/flow-actions.ts/logWorktree:633",
+			"id": "src/server/flow-actions.ts/logWorktree:592",
 			"name": "logWorktree",
 			"kind": "function",
 			"file": "src/server/flow-actions.ts",
-			"line": 633,
-			"endLine": 636,
+			"line": 592,
+			"endLine": 595,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "function logWorktree(_id: string, _path: string)",
@@ -15911,7 +15910,7 @@
 			"signature": "function startServer(options?: StartServerOptions)",
 			"description": "",
 			"callees": [
-				"src/server/db-migration.ts/runMigrations:657",
+				"src/server/db-migration.ts/runMigrations:678",
 				"src/runtime/tools/index.ts/registerRuntimeTools:151",
 				"src/server/workspace-config.ts/loadWorkspaceConfig:40",
 				"src/runtime/proxy-manager.ts/applyProxy:30",
@@ -15936,7 +15935,7 @@
 				"src/server/file-router.ts/createFileRouter:41",
 				"src/server/tool-execution-router.ts/createToolExecutionRouter:39",
 				"src/server/project-router.ts/createProjectRouter:37",
-				"src/server/flow-actions.ts/createFlowActions:341",
+				"src/server/flow-actions.ts/createFlowActions:321",
 				"src/server/requirement-router.ts/createRequirementRouter:36",
 				"src/server/project-wiki-router.ts/createWikiRouter:26",
 				"src/server/wiki-router.ts/createWikiRouter:63",
@@ -18318,7 +18317,7 @@
 			"endLine": 241,
 			"statementCount": 16,
 			"exported": true,
-			"signature": "method createRequirementWithDoc(input: {\r\n\t\tprojectId: string;\r\n\t\ttitle: string;\r\n\t\tsummary?: string;\r\n\t\tbody?: string;\r\n\t\tpriority?: RequirementPriority;\r\n\t\tsource?: \"pm\" | \"user\";\r\n\t\t/** PM agent creating this; required for v0.8 address-by-agentId. */\r\n\t\tcreatedByAgentId?: string;\r\n\t})",
+			"signature": "method createRequirementWithDoc(input: {\r\n\t\tprojectId: string;\r\n\t\ttitle: string;\r\n\t\tsummary?: string;\r\n\t\tbody?: string;\r\n\t\tpriority?: RequirementPriority;\r\n\t\tsource?: \"agent\" | \"user\";\r\n\t\t/** PM agent creating this; required for v0.8 address-by-agentId. */\r\n\t\tcreatedByAgentId?: string;\r\n\t})",
 			"description": "Create a new requirement (record + repo doc) from a PM discovery or a\r",
 			"callees": [
 				"src/server/pm-service.ts/PmService.defaultRequirementDocBody:244"
@@ -19422,22 +19421,22 @@
 			"kind": "function",
 			"file": "src/server/requirement-router.ts",
 			"line": 36,
-			"endLine": 249,
+			"endLine": 250,
 			"statementCount": 89,
 			"exported": true,
 			"signature": "function createRequirementRouter(deps: {\n\trequirementStore: RequirementStore;\n\ttaskStepStore: TaskStepStore;\n\tnotificationService?: NotificationService;\n\t/**\n\t * project-flow F4: shared FlowActions backend. When supplied, the\n\t * transition / create / coverage-verdict endpoints route through it (the\n\t * same object the runtime Flow tool uses via ctx.flowActions — single\n\t * source). When absent, the endpoints fall back to the legacy direct-store\n\t * path (back-compat for tests / not-yet-migrated callers).\n\t */\n\tflowActions?: FlowActions;\n})",
 			"description": "",
 			"callees": [
-				"src/server/requirement-router.ts/flowActionForTarget:257"
+				"src/server/requirement-router.ts/flowActionForTarget:258"
 			]
 		},
 		{
-			"id": "src/server/requirement-router.ts/flowActionForTarget:257",
+			"id": "src/server/requirement-router.ts/flowActionForTarget:258",
 			"name": "flowActionForTarget",
 			"kind": "function",
 			"file": "src/server/requirement-router.ts",
-			"line": 257,
-			"endLine": 267,
+			"line": 258,
+			"endLine": 268,
 			"statementCount": 7,
 			"exported": false,
 			"signature": "function flowActionForTarget(toStatus: RequirementStatus)",
@@ -26110,7 +26109,7 @@
 			"src/server/agent-service.ts/AgentService.createLoopForSession:611",
 			"src/server/agent-service.ts/AgentService.sendProjectPrompt:836"
 		],
-		"src/server/flow-actions.ts/createFlowActions:341": [
+		"src/server/flow-actions.ts/createFlowActions:321": [
 			"src/server/agent-service.ts/AgentService.createLoopForSession:611",
 			"src/server/index.ts/startServer:101"
 		],
@@ -26479,35 +26478,38 @@
 			"src/server/db-migration.ts/migrateWikiDetailToDisk:496"
 		],
 		"src/server/db-migration.ts/safeAddColumn:314": [
-			"src/server/db-migration.ts/runMigrations:657"
+			"src/server/db-migration.ts/runMigrations:678"
 		],
 		"src/server/db-migration.ts/safeAddIndex:323": [
-			"src/server/db-migration.ts/runMigrations:657"
+			"src/server/db-migration.ts/runMigrations:678"
 		],
-		"src/server/db-migration.ts/migrateTurnsToSteps:1151": [
-			"src/server/db-migration.ts/runMigrations:657"
+		"src/server/db-migration.ts/migrateTurnsToSteps:1177": [
+			"src/server/db-migration.ts/runMigrations:678"
 		],
 		"src/server/db-migration.ts/migrateWikiTableSchema:451": [
-			"src/server/db-migration.ts/runMigrations:657"
+			"src/server/db-migration.ts/runMigrations:678"
 		],
 		"src/server/db-migration.ts/migrateWikiDetailToDisk:496": [
-			"src/server/db-migration.ts/runMigrations:657"
+			"src/server/db-migration.ts/runMigrations:678"
 		],
 		"src/server/db-migration.ts/migrateCronScheduleToJson:346": [
-			"src/server/db-migration.ts/runMigrations:657"
+			"src/server/db-migration.ts/runMigrations:678"
 		],
 		"src/server/db-migration.ts/migrateArchivistBindToProjectWork:612": [
-			"src/server/db-migration.ts/runMigrations:657"
+			"src/server/db-migration.ts/runMigrations:678"
 		],
-		"src/server/db-migration.ts/normalizeWorkspaceDir:1218": [
-			"src/server/db-migration.ts/runMigrations:657",
-			"src/server/db-migration.ts/migratePersonas:1226"
+		"src/server/db-migration.ts/normalizeWorkspaceDir:1244": [
+			"src/server/db-migration.ts/runMigrations:678",
+			"src/server/db-migration.ts/migratePersonas:1252"
 		],
 		"src/core/default-prompt.ts/buildDefaultPrompt:23": [
-			"src/server/db-migration.ts/runMigrations:657"
+			"src/server/db-migration.ts/runMigrations:678"
 		],
-		"src/server/db-migration.ts/migratePersonas:1226": [
-			"src/server/db-migration.ts/runMigrations:657"
+		"src/server/db-migration.ts/migratePersonas:1252": [
+			"src/server/db-migration.ts/runMigrations:678"
+		],
+		"src/server/db-migration.ts/migrateRoleTokensToAgent:666": [
+			"src/server/db-migration.ts/runMigrations:678"
 		],
 		"src/server/wiki-operations.ts/agentHasWikiTool:26": [
 			"src/server/enrichment-runner.ts/EnrichmentRunner.resolveAgent:80",
@@ -26545,34 +26547,31 @@
 			"src/server/file-router.ts/createFileRouter:41",
 			"src/shared/file-utils.ts/buildTree:48"
 		],
-		"src/server/flow-actions.ts/flowDocPath:107": [
-			"src/server/flow-actions.ts/resolveExistingDocPath:121",
-			"src/server/flow-actions.ts/writeIntentDoc:136"
+		"src/server/flow-actions.ts/flowDocPath:109": [
+			"src/server/flow-actions.ts/resolveExistingDocPath:123",
+			"src/server/flow-actions.ts/writeIntentDoc:138"
 		],
-		"src/server/flow-actions.ts/resolveExistingDocPath:121": [
-			"src/server/flow-actions.ts/writeDocSection:159"
+		"src/server/flow-actions.ts/resolveExistingDocPath:123": [
+			"src/server/flow-actions.ts/writeDocSection:161"
 		],
-		"src/server/flow-actions.ts/writeIntentDoc:136": [
-			"src/server/flow-actions.ts/createFlowActions:341"
+		"src/server/flow-actions.ts/writeIntentDoc:138": [
+			"src/server/flow-actions.ts/createFlowActions:321"
 		],
-		"src/server/flow-actions.ts/writeDocSection:159": [
-			"src/server/flow-actions.ts/createFlowActions:341",
-			"src/server/flow-actions.ts/writeDecisionLog:608"
+		"src/server/flow-actions.ts/writeDocSection:161": [
+			"src/server/flow-actions.ts/createFlowActions:321",
+			"src/server/flow-actions.ts/writeDecisionLog:567"
 		],
-		"src/server/flow-actions.ts/logWorktree:633": [
-			"src/server/flow-actions.ts/createFlowActions:341"
+		"src/server/flow-actions.ts/logWorktree:592": [
+			"src/server/flow-actions.ts/createFlowActions:321"
 		],
-		"src/server/flow-actions.ts/parseVerdict:250": [
-			"src/server/flow-actions.ts/createFlowActions:341"
+		"src/server/flow-actions.ts/decisionLogBody:248": [
+			"src/server/flow-actions.ts/createFlowActions:321"
 		],
-		"src/server/flow-actions.ts/decisionLogBody:268": [
-			"src/server/flow-actions.ts/createFlowActions:341"
+		"src/server/flow-actions.ts/writeDecisionLog:567": [
+			"src/server/flow-actions.ts/createFlowActions:321"
 		],
-		"src/server/flow-actions.ts/writeDecisionLog:608": [
-			"src/server/flow-actions.ts/createFlowActions:341"
-		],
-		"src/server/flow-actions.ts/emit:623": [
-			"src/server/flow-actions.ts/createFlowActions:341"
+		"src/server/flow-actions.ts/emit:582": [
+			"src/server/flow-actions.ts/createFlowActions:321"
 		],
 		"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325": [
 			"src/server/fresh-db-seed.ts/seedFreshDbDefaults:264",
@@ -26616,7 +26615,7 @@
 		"src/server/archivist-git.ts/centralFeatureWorktreePath:113": [
 			"src/server/git-integration.ts/GitIntegration.createFeatureWorktree:101"
 		],
-		"src/server/db-migration.ts/runMigrations:657": [
+		"src/server/db-migration.ts/runMigrations:678": [
 			"src/server/index.ts/startServer:101"
 		],
 		"src/runtime/tools/index.ts/registerRuntimeTools:151": [
@@ -27106,7 +27105,7 @@
 			"src/server/workflow-context-hook.ts/registerWorkflowContextHook:68",
 			"src/core/hook-registry.ts/triggerHooks:137"
 		],
-		"src/server/requirement-router.ts/flowActionForTarget:257": [
+		"src/server/requirement-router.ts/flowActionForTarget:258": [
 			"src/server/requirement-router.ts/createRequirementRouter:36"
 		],
 		"src/server/requirement-state-machine.ts/getNextStatuses:113": [

@@ -133,7 +133,7 @@ function makeRequirement(title: string): { req: any; pm: PmService; merges: any[
 	const req = pm.createRequirementWithDoc({
 		projectId: PROJECT_ID,
 		title,
-		source: "pm",
+		source: "agent",
 		createdByAgentId: PM_AGENT_ID,
 	});
 	return { req, pm, merges };
@@ -142,21 +142,26 @@ function makeRequirement(title: string): { req: any; pm: PmService; merges: any[
 /** Drive the requirement through the state machine: discuss → ready → plan → build → verify. */
 function advanceToVerify(reqId: string): void {
 	requirementStore.transitionStatus(reqId, "ready", "user", "user confirms discuss");
-	requirementStore.transitionStatus(reqId, "plan", "lead", "lead picks up");
-	requirementStore.transitionStatus(reqId, "build", "lead", "lead records first step (PostToolUse)");
-	requirementStore.transitionStatus(reqId, "verify", "system", "lead submits verify tool");
+	requirementStore.transitionStatus(reqId, "plan", "agent", "agent picks up");
+	requirementStore.transitionStatus(reqId, "build", "agent", "agent records first step (PostToolUse)");
+	requirementStore.transitionStatus(reqId, "verify", "system", "agent submits verify tool");
 }
 
-/** Invoke Flow.verify with a mocked delegateTask (PM verdict). Drives the
- * real PmService (with its real archivistService mock) through the shared
- * flowActions backend — same compound body the REST router uses. */
+/** Invoke Flow.verify with a caller-supplied verdict. Drives the real
+ * PmService (with its real archivistService mock) through the shared
+ * flowActions backend — same compound body the REST router uses. The verdict
+ * is supplied by the caller (the reviewing agent / user), NOT delegated. */
 async function callVerify(
 	reqId: string,
 	pm: PmService,
-	opts: { delegate?: (task: string) => Promise<string> | string; summary?: string },
+	opts: { covered?: boolean; reason?: string } = {},
 ): Promise<string> {
 	const execute = getToolExecute(flowTool)!;
-	const delegate = opts.delegate ?? (async () => "VERDICT: APPROVED — covers the intent");
+	// Forward covered/reason only when supplied — omitting covered exercises
+	// the degrade path (the tool asks the caller to supply a verdict).
+	const input: any = { action: "verify", id: reqId };
+	if (opts.covered !== undefined) input.covered = opts.covered;
+	if (opts.reason !== undefined) input.reason = opts.reason;
 	// Reset the hub so signals from this call don't bleed across tests.
 	_resetDataChangeHubForTest();
 	const flowActions = createFlowActions({
@@ -165,19 +170,15 @@ async function callVerify(
 		emitTransition,
 		pmService: pm,
 	});
-	return await execute(
-		{ action: "verify", id: reqId, summary: opts.summary } as any,
-		{
-			workingDir: workspaceDir,
-			agentId: "lead-1",
-			emit: () => {},
-			requirementStore,
-			flowActions,
-			pmService: pm,
-			delegateTask: async (task: string) => delegate(task),
-			contextBundle: { projectId: PROJECT_ID, workspaceDir, wikiRootNodeId: `root:${PROJECT_ID}` },
-		} as any,
-	);
+	return await execute(input, {
+		workingDir: workspaceDir,
+		agentId: "agent-1",
+		emit: () => {},
+		requirementStore,
+		flowActions,
+		pmService: pm,
+		contextBundle: { projectId: PROJECT_ID, workspaceDir, wikiRootNodeId: `root:${PROJECT_ID}` },
+	} as any);
 }
 
 // ─── 完整 pipeline(核心)──────────────────────────────────────────
@@ -191,7 +192,7 @@ describe("P7 端到端完整 pipeline: ready → plan → build → verify → a
 
 		// Phase 2: lead calls verify tool, PM returns APPROVED.
 		const out = await callVerify(req.id, pm, {
-			delegate: async () => "VERDICT: APPROVED — change + tests cover the intent",
+			covered: true, reason: "change + tests cover the intent",
 		});
 
 		// Phase 3: archivist merged + status closed.
@@ -212,7 +213,7 @@ describe("P7 端到端完整 pipeline: ready → plan → build → verify → a
 
 		// First submission: PM rejects.
 		const out1 = await callVerify(req.id, pm, {
-			delegate: async () => "VERDICT: REJECTED — missing tests for error path",
+			covered: false, reason: "missing tests for error path",
 		});
 		expect(out1).toMatch(/REJECTED/);
 		expect(out1).toContain("missing tests for error path");
@@ -230,7 +231,7 @@ describe("P7 端到端完整 pipeline: ready → plan → build → verify → a
 		// Lead revises (build → verify via finishBuild-equivalent), then re-submits.
 		requirementStore.transitionStatus(req.id, "verify", "system", "lead re-submits verify");
 		const out2 = await callVerify(req.id, pm, {
-			delegate: async () => "VERDICT: APPROVED — error path now covered",
+			covered: true, reason: "error path now covered",
 		});
 		expect(out2).toMatch(/APPROVED/);
 		expect(merges).toEqual([{ projectId: PROJECT_ID, requirementId: req.id }]);
@@ -238,30 +239,25 @@ describe("P7 端到端完整 pipeline: ready → plan → build → verify → a
 	});
 });
 
-// ─── PM dispatch 失败降级(契约 1.5)──────────────────────────────
+// ─── verdict-driven 降级(fail-safe,不卡死)────────────────────────
 
-describe("P7 — PM dispatch 失败降级(fail-safe,不卡死)", () => {
-	test("delegateTask throws → tool returns fail message, no merge, status stays verify", async () => {
-		const { req, pm, merges } = makeRequirement("PM crashed");
+describe("P7 — verdict-driven 降级(fail-safe,不卡死)", () => {
+	test("caller omits covered → degrade guidance, no merge, status stays verify", async () => {
+		const { req, pm, merges } = makeRequirement("No verdict");
 		advanceToVerify(req.id);
 
-		const out = await callVerify(req.id, pm, {
-			delegate: async () => { throw new Error("PM session crashed"); },
-		});
-		expect(out).toMatch(/PM coverage dispatch failed/i);
-		expect(out).toContain("PM session crashed");
+		const out = await callVerify(req.id, pm, {}); // no covered/reason
+		expect(out).toMatch(/verdict not supplied/i);
 		expect(merges).toEqual([]);
 		expect(requirementStore.get(req.id)!.status).toBe("verify");
 	});
 
-	test("PM returns malformed output → fail-safe to REJECTED (no silent approval); Flow.verify reworks verify→build", async () => {
-		const { req, pm, merges } = makeRequirement("Malformed PM");
+	test("caller explicitly REJECTS → rework verify→build (no silent approval)", async () => {
+		const { req, pm, merges } = makeRequirement("Explicit reject");
 		advanceToVerify(req.id);
 
-		const out = await callVerify(req.id, pm, {
-			delegate: async () => "yeah sure looks ok I guess",
-		});
-		expect(out).toMatch(/REJECTED/); // fail-safe conservative
+		const out = await callVerify(req.id, pm, { covered: false, reason: "missing tests for error path" });
+		expect(out).toMatch(/REJECTED/);
 		expect(merges).toEqual([]);
 		// project-flow F3: REJECTED → rework verify→build (Flow.verify does the
 		// transition itself; old verify-tool left status 'verify').
@@ -281,7 +277,7 @@ describe("P7 — archivist merge 失败 / 未注入降级", () => {
 		});
 
 		const out = await callVerify(req.id, pm, {
-			delegate: async () => "VERDICT: APPROVED — covers",
+			covered: true, reason: "covers",
 		});
 		expect(out).toMatch(/APPROVED/);
 		expect(out).toMatch(/Archivist merge FAILED/i);
@@ -303,7 +299,7 @@ describe("P7 — archivist merge 失败 / 未注入降级", () => {
 		} as any);
 
 		const out = await callVerify(req.id, pm, {
-			delegate: async () => "VERDICT: APPROVED — covers",
+			covered: true, reason: "covers",
 		});
 		expect(out).toMatch(/APPROVED/);
 		expect(out).toMatch(/not wired/i);
@@ -327,7 +323,7 @@ describe("P7 — discuss-by-id(req.createdByAgentId 定位 PM session)", () => {
 		// Second requirement from the same PM agent (cron re-scan same day).
 		const req2 = pm.createRequirementWithDoc({
 			projectId: PROJECT_ID, title: "Second discuss",
-			source: "pm", createdByAgentId: PM_AGENT_ID,
+			source: "agent", createdByAgentId: PM_AGENT_ID,
 		});
 		const req1 = requirementStore.listByProject(PROJECT_ID).find((r) => r.title === "First discuss")!;
 		const r1 = pm.openDiscussSession(req1.id);
@@ -354,23 +350,15 @@ describe("P7 — discuss-by-id(req.createdByAgentId 定位 PM session)", () => {
 // ─── 寻址契约:全 P7 路径无 roleTag 查找 ──────────────────────────
 
 describe("P7 — 寻址全用 req agentId,无 roleTag scan", () => {
-	test("Flow.verify resolves PM via req.reviewerAgentId ?? req.createdByAgentId (no roleTag)", async () => {
+	test("verify path resolves reviewer via req.reviewerAgentId ?? req.createdByAgentId inside pmService (no roleTag, no tool delegation)", async () => {
 		const { req, pm, merges } = makeRequirement("Address check");
 		advanceToVerify(req.id);
 
-		// spy on delegateTask to capture which agent it targeted.
-		const dispatched: string[] = [];
-		await callVerify(req.id, pm, {
-			delegate: async (task: string) => {
-				// delegateTask targetAgentId is set by Flow.verify from
-				// req.reviewerAgentId ?? req.createdByAgentId. The task body
-				// itself doesn't carry it — we assert the agentId resolution
-				// by checking the req fields the tool read instead.
-				dispatched.push(task);
-				return "VERDICT: APPROVED — ok";
-			},
-		});
-		// The requirement has both reviewerAgentId + createdByAgentId = PM_AGENT_ID.
+		// The tool itself no longer resolves or delegates to a reviewer — it
+		// forwards the caller's verdict. pmService.submitCoverageVerdict stamps
+		// reviewerAgentId from the req record (default createdByAgentId). The
+		// requirement has both reviewerAgentId + createdByAgentId = PM_AGENT_ID.
+		await callVerify(req.id, pm, { covered: true, reason: "ok" });
 		expect(requirementStore.get(req.id)!.reviewerAgentId).toBe(PM_AGENT_ID);
 		expect(requirementStore.get(req.id)!.createdByAgentId).toBe(PM_AGENT_ID);
 		expect(merges.length).toBe(1);
@@ -382,16 +370,15 @@ describe("P7 — 寻址全用 req agentId,无 roleTag scan", () => {
 		const { pm } = buildPm();
 		const req = pm.createRequirementWithDoc({
 			projectId: PROJECT_ID, title: "Reviewer ≠ creator",
-			source: "pm", createdByAgentId: PM_AGENT_ID,
+			source: "agent", createdByAgentId: PM_AGENT_ID,
 		});
 		// Stamp a different reviewer.
 		requirementStore.update(req.id, { reviewerAgentId: reviewerPm.id } as any);
 		advanceToVerify(req.id);
 
-		// submitCoverageVerdict(opts.reviewerAgentId) overrides the default.
-		// We can't easily intercept delegateTask's targetAgentId here (Flow.verify
-		// reads it before calling submitCoverageVerdict), so we directly exercise
-		// the override path.
+		// submitCoverageVerdict(opts.reviewerAgentId) overrides the default
+		// resolution. The tool no longer picks a reviewer, so we exercise the
+		// pmService override path directly.
 		const outcome = await pm.submitCoverageVerdict(
 			req.id, { covered: true }, { reviewerAgentId: reviewerPm.id },
 		);
@@ -411,7 +398,7 @@ describe("P7 — 状态机回退(verify → build → verify,lead revises)", () 
 		// verify→build itself; status is now "build" (old verify-tool left it
 		// in "verify").
 		await callVerify(req.id, pm, {
-			delegate: async () => "VERDICT: REJECTED — incomplete",
+			covered: false, reason: "incomplete",
 		});
 		expect(requirementStore.get(req.id)!.status).toBe("build");
 
@@ -420,7 +407,7 @@ describe("P7 — 状态机回退(verify → build → verify,lead revises)", () 
 
 		// Second verify: APPROVED.
 		const out = await callVerify(req.id, pm, {
-			delegate: async () => "VERDICT: APPROVED — complete now",
+			covered: true, reason: "complete now",
 		});
 		expect(out).toMatch(/APPROVED/);
 		expect(requirementStore.get(req.id)!.status).toBe("closed");
@@ -438,7 +425,7 @@ describe("P7 — 拉模型契约(无 router / notify 推送)", () => {
 		const { req, pm, merges } = makeRequirement("No router");
 		advanceToVerify(req.id);
 		await callVerify(req.id, pm, {
-			delegate: async () => "VERDICT: APPROVED — covers",
+			covered: true, reason: "covers",
 		});
 		expect(merges.length).toBe(1);
 	});

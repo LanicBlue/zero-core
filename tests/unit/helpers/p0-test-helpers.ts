@@ -129,7 +129,7 @@ export function createLegacySchemaDb(db: Database.Database): void {
 			requirement_ids TEXT,
 			relations TEXT,
 			flags TEXT,
-			last_updated_by TEXT DEFAULT 'analyst',
+			last_updated_by TEXT DEFAULT 'agent',
 			source_req_id TEXT,
 			created_at TEXT,
 			updated_at TEXT
@@ -226,7 +226,7 @@ export function buildLegacyWikiRow(db: Database.Database, row: {
 		row.detail ?? null,
 		row.docPointer ?? null,
 		row.provenance ?? null,
-		row.lastUpdatedBy ?? "analyst",
+		row.lastUpdatedBy ?? "agent",
 		row.createdAt ?? now,
 		row.updatedAt ?? now,
 	);

@@ -9,8 +9,8 @@
 // compound verify logic are SHARED with the REST requirement-router via
 // `flow-actions.ts` (src/server/flow-actions.ts) — the runtime ctx carries
 // `ctx.flowActions` (injected by agent-service, mirroring requirementStore).
-// This file is now a thin adapter: it resolves the workspace / target agent /
-// delegateTask / gitIntegration from ctx and forwards to ctx.flowActions.
+// This file is now a thin adapter: it resolves the workspace / gitIntegration
+// from ctx and forwards to ctx.flowActions.
 // Single source — REST and runtime can never drift.
 //
 // Stage scope:
@@ -27,10 +27,13 @@
 //               emit `requirements.planned`.
 //   - startBuild → plan→build + emit `requirements.buildStarted`.
 //   - finishBuild → build→verify + write Coverage section + emit `requirements.buildFinished`.
-//   - verify  → COMPOUND: delegate PM coverage judgement (blocking await)
-//               + submitCoverageVerdict (APPROVED → archivist merge +
-//               verify→closed + emit `verified`; REJECTED → rework verify→build
-//               + emit `rejected`) + write Decision Log.
+//   - verify  → COMPOUND: verdict-driven. The caller supplies a coverage
+//               verdict (covered/reason); submitCoverageVerdict (APPROVED →
+//               archivist merge + verify→closed + emit `verified`; REJECTED →
+//               rework verify→build + emit `rejected`) + write Decision Log.
+//               The tool NEVER picks or invokes a reviewer — who reviews is
+//               external (user via REST, or a reviewing agent via work that
+//               supplies the verdict itself).
 //
 // ## Naming
 // `Flow` covers the requirement→code-merge flow as one action tool. Capability
@@ -45,8 +48,8 @@
 //   legacy test harness wires requirementStore but not flowActions.
 // - ctx.contextBundle.workspaceDir OR ctx.workingDir (resolved workspace for
 //   the docs/requirements/{id}.md write).
-// - ctx.delegateTask / ctx.gitIntegration / ctx.pmService — runtime-only
-//   handles surfaced by agent-service (verify delegate + plan worktree).
+// - ctx.gitIntegration / ctx.pmService — runtime-only handles surfaced by
+//   agent-service (plan worktree; verify's pmService merge).
 //
 // ## Output
 // - export const flowTool (buildTool result).
@@ -70,7 +73,7 @@ export type FlowActionsLike = {
 		description?: string;
 		priority?: "low" | "normal" | "high" | "critical";
 		impactScope?: string;
-		source?: "analyst" | "user";
+		source?: "agent" | "user";
 	}): { requirement: RequirementRecord; docNote: string };
 	list(filter?: { projectId?: string; status?: string; priority?: string }): RequirementRecord[];
 	get(id: string): RequirementRecord | undefined;
@@ -108,10 +111,12 @@ export const flowActionSchema = z.object({
 		// F2 transition actions (each = transitionStatus + write doc section +
 		// emit a named hook signal).
 		"pick", "ready", "plan", "startBuild", "finishBuild",
-		// F3 compound action: verify (delegate PM coverage judgement +
-		// submitCoverageVerdict → APPROVED: merge + closed + emit `verified`;
-		// REJECTED: rework verify→build + emit `rejected`). See
-		// docs/design/project-flow/project-flow.md §2/§3.
+		// F3 compound action: verify (verdict-driven). The caller supplies a
+		// coverage verdict (covered/reason); on APPROVED the tool drives archivist
+		// merge + verify→closed + emit `verified`; on REJECTED rework verify→build
+		// + emit `rejected`. Who reviews is EXTERNAL to the tool (user via REST,
+		// or a reviewing agent via work that supplies the verdict itself) — the
+		// tool never delegates or picks a reviewer. See project-flow.md §2/§3.
 		"verify",
 	]),
 	// create
@@ -124,13 +129,16 @@ export const flowActionSchema = z.object({
 	status: z.string().optional(),
 	id: z.string().optional(),
 	// pick: Summary section body; plan: Plan section body;
-	// finishBuild: Coverage section body; verify: Decision Log body is composed
-	// from the PM verdict (the optional summary is the lead's note for PM).
+	// finishBuild: Coverage section body.
 	// Optional — empty body still creates the section header so the doc
 	// structure is present.
 	summary: z.string().optional(),
 	plan: z.string().optional(),
 	coverage: z.string().optional(),
+	// verify: the caller (user or reviewing agent) supplies the coverage
+	// verdict directly. covered omitted → degrade (status stays in 'verify').
+	covered: z.boolean().optional(),
+	reason: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -170,7 +178,7 @@ function getFlowActions(ctx: any): FlowActionsLike | undefined {
 export const flowTool = buildTool({
 	name: "Flow",
 	description:
-		"Requirement → code-merge unified flow tool. create/list/get + transition actions (pick/ready/plan/startBuild/finishBuild) + compound verify (PM coverage judgement + merge).",
+		"Requirement → code-merge unified flow tool. create/list/get + transition actions (pick/ready/plan/startBuild/finishBuild) + compound verify (verdict-driven close/rework + merge).",
 	prompt:
 		"Manage the project requirement flow via a single action-switched tool (project-flow).\n\n" +
 		"Read/create:\n" +
@@ -183,8 +191,9 @@ export const flowTool = buildTool({
 		"- { action:'plan', id, plan? }            — ready→plan, writes Plan section + creates the feature worktree. Emits `requirements.planned`.\n" +
 		"- { action:'startBuild', id }             — plan→build. Emits `requirements.buildStarted`.\n" +
 		"- { action:'finishBuild', id, coverage? } — build→verify, writes Coverage section. Emits `requirements.buildFinished`.\n\n" +
-		"Compound verify (project-flow §2/§3) — call when the requirement is in 'verify':\n" +
-		"- { action:'verify', id, summary? } — BLOCKING. Delegates the PM coverage judgement; on APPROVED drives archivist merge feature→main + verify→closed + writes Decision Log + emits `requirements.verified`; on REJECTED records feedback + returns the requirement to 'build' for rework + writes Decision Log + emits `requirements.rejected`.\n\n" +
+		"Compound verify (project-flow §2/§3) — call when the requirement is in 'verify'. Verdict-driven: YOU supply the coverage verdict.\n" +
+		"- { action:'verify', id, covered, reason? } — drives the compound close/rework. covered=true (APPROVED): archivist merge feature→main + verify→closed + writes Decision Log + emits `requirements.verified`. covered=false (REJECTED): records feedback + returns the requirement to 'build' for rework + writes Decision Log + emits `requirements.rejected`. Omit covered → degrade (status stays in 'verify'; you'll be asked to supply covered/reason).\n" +
+		"Who issues the verdict is external to the tool — the user (via UI), or whichever agent work assigns to review (that agent reads the Orchestrate manifest/code, forms the verdict, then calls verify with covered/reason). The tool does NOT delegate or pick a reviewer.\n\n" +
 		"Illegal transitions return a friendly `Error: ...` with the valid next statuses.",
 	meta: {
 		category: "project",
@@ -217,10 +226,9 @@ export const flowTool = buildTool({
 						description: input.description,
 						priority: input.priority,
 						impactScope: input.impactScope,
-						// RequirementSource is typed "analyst" | "user"; the agent
-						// path uses "analyst" (the agent-vs-analyst collapse is
-						// deferred). REST/UI passes "user".
-						source: "analyst",
+						// RequirementSource is typed "agent" | "user"; the agent
+						// path uses "agent". REST/UI passes "user".
+						source: "agent",
 					});
 					return `Requirement created: ${req.id}\nTitle: ${req.title}\nStatus: ${req.status}${docNote}`;
 				} catch (err) {
@@ -304,37 +312,24 @@ export const flowTool = buildTool({
 			}
 
 			case "verify": {
-				// F3 compound action (project-flow §2/§3). The runtime path
-				// DELEGATES the PM coverage judgement (blocking await). The
-				// REST/UI path supplies the verdict directly (no delegation) —
-				// that variant lives in the requirement-router, not here.
+				// F3 compound action (project-flow §2/§3), verdict-driven. The
+				// CALLER (the reviewing agent, whose work assigned it the review)
+				// supplies the coverage verdict; the tool drives the compound
+				// close/rework. The tool does NOT delegate or pick a reviewer —
+				// that's external (work config / user). The REST/UI path is the
+				// same shape (user supplies the verdict directly).
 				if (!input.id) {
 					return "Error: id is required for action:verify";
 				}
-				if (!(ctx as any)?.delegateTask) {
-					return "Error: delegateTask not available — cannot invoke PM";
-				}
 				const req = actions.get(input.id);
 				if (!req) return `Error: requirement not found: ${input.id}`;
-				const targetAgentId = req.reviewerAgentId ?? req.createdByAgentId;
-				if (!targetAgentId) {
-					return (
-						"Error: requirement has no reviewerAgentId / createdByAgentId — cannot resolve PM " +
-						"for coverage judgement (PM is addressed by req-recorded agentId, not by role scan)."
-					);
-				}
 				const projectId = resolveProjectId(ctx, input, req.projectId);
+				const source =
+					input.covered === undefined
+						? { kind: "none" as const }
+						: { kind: "verdict" as const, covered: input.covered, reason: input.reason };
 				try {
-					const result = await actions.verify({
-						id: input.id,
-						projectId,
-						source: {
-							kind: "delegate",
-							targetAgentId,
-							summary: input.summary,
-							delegateTask: (ctx as any).delegateTask,
-						},
-					});
+					const result = await actions.verify({ id: input.id, projectId, source });
 					return result.text;
 				} catch (err) {
 					return `Error: verify failed — ${(err as Error).message}`;

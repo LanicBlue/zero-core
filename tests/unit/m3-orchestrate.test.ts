@@ -246,36 +246,36 @@ describe("ConfirmRegistry (suspend semantics)", () => {
 // ─── Requirement state machine — M3 transitions ─────────────────
 
 describe("requirement state machine (M3 paths)", () => {
-	test("ready → plan (lead)", () => {
-		expect(isValidTransition("ready", "plan", "lead").valid).toBe(true);
+	test("ready → plan (agent)", () => {
+		expect(isValidTransition("ready", "plan", "agent").valid).toBe(true);
 	});
 
-	test("plan → build (lead)", () => {
-		expect(isValidTransition("plan", "build", "lead").valid).toBe(true);
+	test("plan → build (agent)", () => {
+		expect(isValidTransition("plan", "build", "agent").valid).toBe(true);
 	});
 
-	test("plan → ready (lead) — plan gate reject回路", () => {
-		expect(isValidTransition("plan", "ready", "lead").valid).toBe(true);
+	test("plan → ready (agent) — plan gate reject回路", () => {
+		expect(isValidTransition("plan", "ready", "agent").valid).toBe(true);
 	});
 
 	test("build → verify (system)", () => {
 		expect(isValidTransition("build", "verify", "system").valid).toBe(true);
 	});
 
-	test("verify → build (lead) — coverage reject回路", () => {
-		expect(isValidTransition("verify", "build", "lead").valid).toBe(true);
+	test("verify → build (agent) — coverage reject回路", () => {
+		expect(isValidTransition("verify", "build", "agent").valid).toBe(true);
 	});
 
-	test("verify → closed (analyst/user)", () => {
-		expect(isValidTransition("verify", "closed", "analyst").valid).toBe(true);
+	test("verify → closed (agent/user)", () => {
+		expect(isValidTransition("verify", "closed", "agent").valid).toBe(true);
 		expect(isValidTransition("verify", "closed", "user").valid).toBe(true);
 	});
 
 	test("invalid transitions rejected", () => {
-		// PM shouldn't transition plan→build (that's lead's job).
-		expect(isValidTransition("plan", "build", "analyst").valid).toBe(false);
+		// discuss→ready is a human-only confirmation gate; an agent can't self-confirm it.
+		expect(isValidTransition("discuss", "ready", "agent").valid).toBe(false);
 		// Can't skip plan from ready.
-		expect(isValidTransition("ready", "build", "lead").valid).toBe(false);
+		expect(isValidTransition("ready", "build", "agent").valid).toBe(false);
 	});
 });
 

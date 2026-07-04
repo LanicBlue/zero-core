@@ -505,7 +505,7 @@ export type RequirementStatus =
 	| "found" | "discuss" | "ready" | "plan"
 	| "build" | "verify" | "closed" | "cancelled";
 export type RequirementPriority = "low" | "normal" | "high" | "critical";
-export type RequirementSource = "analyst" | "user";
+export type RequirementSource = "agent" | "user";
 
 // ── v0.8 (P5 §8.4): Project container view ───────────────────────────────
 
@@ -698,7 +698,7 @@ export interface RequirementRecord {
 	context?: string;               // JSON
 	assignedLeadSessionId?: string;
 	discussionSessionId?: string;
-	reviewer: "analyst" | "user";
+	reviewer: "agent" | "user";
 	closedAt?: string;
 	createdAt: string;
 	updatedAt: string;
@@ -725,7 +725,7 @@ export interface RequirementStatusHistory {
 	requirementId: string;
 	fromStatus?: RequirementStatus;
 	toStatus: RequirementStatus;
-	triggeredBy: "analyst" | "user" | "lead" | "system";
+	triggeredBy: "agent" | "user" | "system";
 	comment?: string;
 	createdAt: string;
 }
@@ -880,14 +880,14 @@ export interface ProjectWikiNode {
 	title: string;
 	summary?: string;
 	detail?: string;
-	lastUpdatedBy: "analyst" | "user";
+	lastUpdatedBy: "agent" | "user";
 	sourceReqId?: string;
 	createdAt: string;
 	updatedAt: string;
 }
 
 export type RequirementMessageSender =
-	| "user" | "analyst" | "lead" | "developer" | "reviewer" | "qa";
+	| "user" | "agent" | "developer" | "reviewer" | "qa";
 export type RequirementMessageType =
 	| "text" | "status_change" | "approval_request" | "notification";
 

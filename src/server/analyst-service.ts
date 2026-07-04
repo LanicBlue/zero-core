@@ -346,7 +346,7 @@ Output format:
 		// 7. Store verification result as a message
 		this.requirementStore.addMessage(
 			requirementId,
-			"analyst" as any,
+			"agent" as any,
 			`Verification ${passed ? "PASSED" : "FAILED"}:\n\n${result}`,
 			"status_change",
 		);
@@ -413,7 +413,7 @@ ${steps.filter(s => s.output).map(s => {
 		// 4. Write report to messages
 		this.requirementStore.addMessage(
 			requirementId,
-			"analyst" as any,
+			"agent" as any,
 			report,
 			"status_change",
 		);
@@ -421,7 +421,7 @@ ${steps.filter(s => s.output).map(s => {
 		// 5. Transition status → closed
 		try {
 			this.requirementStore.transitionStatus(
-				requirementId, "closed", "analyst" as any, "Requirement completed and archived",
+				requirementId, "closed", "agent" as any, "Requirement completed and archived",
 			);
 		} catch (err) {
 			log.error("analyst", `Archive transition failed: ${(err as Error).message}`);

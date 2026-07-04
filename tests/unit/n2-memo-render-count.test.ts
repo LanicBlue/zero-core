@@ -150,9 +150,9 @@ const sampleRequirement: RequirementRecord = {
 	projectId: "proj-1",
 	title: "Sample requirement",
 	status: "build",
-	source: "analyst",
+	source: "agent",
 	priority: "high",
-	reviewer: "analyst",
+	reviewer: "agent",
 	createdAt: "2026-01-01T00:00:00.000Z",
 	updatedAt: "2026-01-01T00:00:00.000Z",
 };

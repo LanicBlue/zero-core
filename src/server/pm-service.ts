@@ -182,7 +182,7 @@ export class PmService {
 		summary?: string;
 		body?: string;
 		priority?: RequirementPriority;
-		source?: "pm" | "user";
+		source?: "agent" | "user";
 		/** PM agent creating this; required for v0.8 address-by-agentId. */
 		createdByAgentId?: string;
 	}): RequirementRecord {
@@ -218,7 +218,7 @@ export class PmService {
 			title: input.title,
 			description: input.summary,
 			status: "discuss",
-			source: input.source === "user" ? "user" : "analyst", // RequirementSource compat
+			source: input.source === "user" ? "user" : "agent", // RequirementSource compat
 			priority: input.priority ?? "normal",
 			createdByAgentId,
 			reviewerAgentId: createdByAgentId, // decision 34: defaults to the PM that created it
@@ -390,7 +390,7 @@ export class PmService {
 		// feedback surface).
 		this.deps.requirementStore.addMessage(
 			requirementId,
-			"analyst", // RequirementMessageSender compat slot; PM uses 'analyst' sender
+			"agent", // RequirementMessageSender slot — the reviewing agent
 			`PM coverage verdict: ${verdict.covered ? "COVERED" : "NOT_COVERED"}` +
 				(verdict.reason ? ` — ${verdict.reason}` : ""),
 			"status_change",
@@ -429,7 +429,7 @@ export class PmService {
 					this.deps.requirementStore.transitionStatus(
 						requirementId,
 						"closed",
-						"analyst", // RequirementMessageSender compat (PM = 'analyst' slot)
+						"agent", // RequirementMessageSender slot — the reviewing agent
 						`PM coverage OK + archivist merged (ref ${merge.ref ?? "?"})`,
 					);
 					finalStatus = "closed";

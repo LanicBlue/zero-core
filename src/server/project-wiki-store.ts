@@ -129,7 +129,7 @@ export class ProjectWikiStore {
 			summary: input.summary,
 			detail: input.detail,
 			projectId: input.projectId,
-			lastUpdatedBy: input.lastUpdatedBy ?? "analyst",
+			lastUpdatedBy: input.lastUpdatedBy ?? "agent",
 			sourceReqId: input.sourceReqId,
 		});
 		return projectView(created)!;
@@ -176,7 +176,7 @@ function projectView(node: WikiNode): ProjectWikiNode {
 		title: node.title,
 		summary: node.summary,
 		detail: node.detail,
-		lastUpdatedBy: (node.lastUpdatedBy === "user" ? "user" : "analyst"),
+		lastUpdatedBy: (node.lastUpdatedBy === "user" ? "user" : "agent"),
 		sourceReqId: node.sourceReqId ?? node.requirementIds?.[0],
 		createdAt: node.createdAt,
 		updatedAt: node.updatedAt,

@@ -154,7 +154,7 @@ export class LeadService {
 		} as any);
 
 		// 6. Transition status: ready → plan
-		this.requirementStore.transitionStatus(requirementId, "plan", "lead", "Lead 领取需求");
+		this.requirementStore.transitionStatus(requirementId, "plan", "agent", "agent 领取需求");
 
 		// v0.8 (M3): lead 建 feature worktree(决策 25/28)。独立目录,分支
 		// `req-{shortId}`,与 archivist-git 的约定一致(archivist 后续

@@ -115,9 +115,9 @@ function newReq(status: "found" | "verify" = "found", overrides: Record<string, 
 		title: "T",
 		description: "intent",
 		status,
-		source: "analyst",
+		source: "agent",
 		priority: "normal",
-		reviewer: "analyst",
+		reviewer: "agent",
 		...overrides,
 	} as any);
 	return r.id;
@@ -233,7 +233,6 @@ describe("FlowActions · verify · user verdict path (REST/UI)", () => {
 		expect(pm.submitCoverageVerdict).toHaveBeenCalledWith(
 			id,
 			{ covered: true, reason: "all covered" },
-			undefined,
 		);
 		expect(result.applied).toBe(true);
 		expect(result.requirement.status).toBe("closed");

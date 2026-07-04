@@ -112,9 +112,9 @@ function seedReqAt(status: "found" | "discuss" | "ready" | "plan" | "build"): st
 		title: "Seed",
 		description: "seed intent",
 		status: "found",
-		source: "analyst",
+		source: "agent",
 		priority: "normal",
-		reviewer: "analyst",
+		reviewer: "agent",
 	}) as any;
 	// Mirror Flow.create's Intent-doc side effect so transition-action tests can
 	// assert the doc structure evolves (F1 section preserved by later writes).
@@ -123,13 +123,13 @@ function seedReqAt(status: "found" | "discuss" | "ready" | "plan" | "build"): st
 		`# Seed\n\n> Requirement: ${req.id} · status: ${req.status}\n\n## Intent\n\nseed intent\n`,
 		"utf-8");
 	if (status === "found") return req.id;
-	requirementStore.transitionStatus(req.id, "discuss", "analyst", "seed");
+	requirementStore.transitionStatus(req.id, "discuss", "agent", "seed");
 	if (status === "discuss") return req.id;
 	requirementStore.transitionStatus(req.id, "ready", "user", "seed");
 	if (status === "ready") return req.id;
-	requirementStore.transitionStatus(req.id, "plan", "lead", "seed");
+	requirementStore.transitionStatus(req.id, "plan", "agent", "seed");
 	if (status === "plan") return req.id;
-	requirementStore.transitionStatus(req.id, "build", "lead", "seed");
+	requirementStore.transitionStatus(req.id, "build", "agent", "seed");
 	return req.id;
 }
 

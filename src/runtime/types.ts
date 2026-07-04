@@ -526,7 +526,7 @@ export interface ToolExecutionContext {
 	orchestratePlanStore?: any;
 	/**
 	 * v0.8 (M3): Orchestrate manifest store — persists per-run manifests
-	 * (touched files + tests + review) for PM coverage judgement and archivist
+	 * (touched files + tests + review) for coverage verdict and archivist
 	 * traceability.
 	 */
 	orchestrateManifestStore?: any;

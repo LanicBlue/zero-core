@@ -100,8 +100,8 @@ export function registerRequirementHooks(deps: {
 				deps.requirementStore.transitionStatus(
 					targetReq.id,
 					"build",
-					"lead",
-					"Lead 开始执行步骤",
+					"agent",
+					"agent 开始执行步骤",
 				);
 			} catch (err) {
 				// Transition may fail if already moved — idempotent, ignore.

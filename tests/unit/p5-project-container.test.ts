@@ -136,13 +136,13 @@ describe("P5 §8.4 — getProjectContainerView aggregation", () => {
 	test("groups requirements by status across mixed statuses", () => {
 		const p = management.createProject({ name: "P", workspaceDir: join(tmpDir, "ws") });
 		// Seed 3 requirements across different statuses.
-		requirementStore.create({ projectId: p.id, title: "r1", status: "found",   source: "analyst", priority: "normal", reviewer: "analyst" });
-		requirementStore.create({ projectId: p.id, title: "r2", status: "found",   source: "analyst", priority: "normal", reviewer: "analyst" });
-		requirementStore.create({ projectId: p.id, title: "r3", status: "discuss", source: "analyst", priority: "high",   reviewer: "analyst" });
-		requirementStore.create({ projectId: p.id, title: "r4", status: "build",   source: "analyst", priority: "normal", reviewer: "analyst" });
+		requirementStore.create({ projectId: p.id, title: "r1", status: "found",   source: "agent", priority: "normal", reviewer: "agent" });
+		requirementStore.create({ projectId: p.id, title: "r2", status: "found",   source: "agent", priority: "normal", reviewer: "agent" });
+		requirementStore.create({ projectId: p.id, title: "r3", status: "discuss", source: "agent", priority: "high",   reviewer: "agent" });
+		requirementStore.create({ projectId: p.id, title: "r4", status: "build",   source: "agent", priority: "normal", reviewer: "agent" });
 		// Seed a requirement for ANOTHER project — must NOT bleed into this view.
 		const other = management.createProject({ name: "Other", workspaceDir: join(tmpDir, "ws2") });
-		requirementStore.create({ projectId: other.id, title: "rOther", status: "found", source: "analyst", priority: "normal", reviewer: "analyst" });
+		requirementStore.create({ projectId: other.id, title: "rOther", status: "found", source: "agent", priority: "normal", reviewer: "agent" });
 
 		const v = management.getProjectContainerView(p.id);
 		expect(v.requirementsByStatus.found.map((r) => r.title).sort()).toEqual(["r1", "r2"]);
@@ -283,9 +283,9 @@ describe("P5 §8.6 — delete cascade incl. project-scoped crons", () => {
 
 		// Seed: 2 reqs (one with task_steps) + wiki subtree + 2 crons (one project-
 		// scoped, one global).
-		const r1 = requirementStore.create({ projectId: p.id, title: "r1", status: "found", source: "analyst", priority: "normal", reviewer: "analyst" });
+		const r1 = requirementStore.create({ projectId: p.id, title: "r1", status: "found", source: "agent", priority: "normal", reviewer: "agent" });
 		taskStepStore.create({ requirementId: r1.id, stepOrder: 0, role: "developer", title: "s1", status: "pending", retryCount: 0, maxRetries: 3 });
-		requirementStore.create({ projectId: p.id, title: "r2", status: "ready", source: "analyst", priority: "normal", reviewer: "analyst" });
+		requirementStore.create({ projectId: p.id, title: "r2", status: "ready", source: "agent", priority: "normal", reviewer: "agent" });
 		// Wiki subtree root exists via create side-effect; verify it's there.
 		expect(wikiStoreGlobal.listByProject(p.id).length).toBeGreaterThanOrEqual(1);
 

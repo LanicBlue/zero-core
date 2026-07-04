@@ -9,18 +9,21 @@
 // compound action (verdict-driven close or rework + Decision Log + signal).
 //
 // Two entry points share this code so their behaviour can NEVER drift:
-//   - the runtime Flow tool (src/runtime/tools/flow-tool.ts) — driven by an
-//     agent (its ctx carries flowActions + delegateTask + gitIntegration);
+//   - the runtime Flow tool (src/runtime/tools/flow-tool.ts) — driven by a
+//     reviewing agent that supplies the coverage verdict itself (its ctx
+//     carries flowActions + gitIntegration);
 //   - the REST requirement-router (src/server/requirement-router.ts) — driven
-//     by the UI (user-confirmation actions; no delegateTask — the verdict is
-//     supplied directly by the user).
+//     by the UI (user-confirmation actions; the verdict is supplied directly
+//     by the user).
+// Both paths are verdict-driven — neither delegates or picks a reviewer.
 //
 // ## Why a module, not a class method
 // ManagementService is the project/agent/cron capability backend; flow actions
 // need RequirementStore + a workspace resolver + (optionally) gitIntegration
-// and pmService + a verdict/delegate path. A standalone factory keeps the
-// surface small and lets both the REST router and the runtime ctx carry the
-// same object without dragging ManagementService into the runtime layer.
+// and pmService (verdict application + archivist merge). A standalone factory
+// keeps the surface small and lets both the REST router and the runtime ctx
+// carry the same object without dragging ManagementService into the runtime
+// layer.
 //
 // ## docPath model (project-flow §4)
 // The requirement doc is a FILE under `{workspace}/docs/requirements/{id}.md`
@@ -72,16 +75,15 @@ export type EmitTransitionFn = (
 export type WorkspaceResolver = (projectId?: string) => string | undefined;
 
 /**
- * Verdict source for `verify`. Two shapes — same compound body:
- *   - { kind: "delegate", targetAgentId, summary } — runtime path: an agent
- *     delegates the PM coverage judgement (blocking await). The verdict text
- *     is parsed out of the delegate output (see parseVerdict).
- *   - { kind: "verdict", covered, reason } — REST/UI path: the user already
- *     chose, supply it directly. No delegation.
- *   - { kind: "none" } — neither side wired: degrade (status stays in verify).
+ * Verdict source for `verify`. The compound body is verdict-driven — the tool
+ * NEVER picks or invokes a reviewer (that is external: the user via REST, or
+ * whichever agent work assigns to review, supplying a verdict itself).
+ *   - { kind: "verdict", covered, reason } — caller (user UI or a reviewing
+ *     agent) supplies the coverage verdict directly.
+ *   - { kind: "none" } — caller supplied no verdict: degrade (status stays in
+ *     verify; returns guidance so the caller knows to supply covered/reason).
  */
 export type VerifyVerdictSource =
-	| { kind: "delegate"; targetAgentId: string; summary?: string; delegateTask: (task: string, opts: { targetAgentId: string }) => Promise<string> }
 	| { kind: "verdict"; covered: boolean; reason?: string }
 	| { kind: "none" };
 
@@ -212,21 +214,21 @@ export function writeDocSection(
 
 interface TransitionSpec {
 	target: RequirementStatus;
-	triggeredBy: "analyst" | "user" | "lead" | "system";
+	triggeredBy: "agent" | "user" | "system";
 	signal: string;
 	/** Section to write when set; body comes from the action input. */
 	section?: "Summary" | "Plan" | "Coverage";
 }
 
 export const FLOW_TRANSITIONS: Record<"pick" | "ready" | "plan" | "startBuild" | "finishBuild", TransitionSpec> = {
-	// found → discuss (analyst|user allowed; Flow uses analyst so an agent can self-drive).
-	pick:        { target: "discuss", triggeredBy: "analyst", signal: "picked",         section: "Summary" },
+	// found → discuss (agent|user allowed; Flow uses agent so an agent can self-drive).
+	pick:        { target: "discuss", triggeredBy: "agent",   signal: "picked",         section: "Summary" },
 	// discuss → ready (user only per state machine).
 	ready:       { target: "ready",   triggeredBy: "user",    signal: "ready" },
-	// ready → plan (lead only).
-	plan:        { target: "plan",    triggeredBy: "lead",    signal: "planned",        section: "Plan" },
-	// plan → build (lead only).
-	startBuild:  { target: "build",   triggeredBy: "lead",    signal: "buildStarted" },
+	// ready → plan (agent).
+	plan:        { target: "plan",    triggeredBy: "agent",   signal: "planned",        section: "Plan" },
+	// plan → build (agent).
+	startBuild:  { target: "build",   triggeredBy: "agent",   signal: "buildStarted" },
 	// build → verify (system only).
 	finishBuild: { target: "verify",  triggeredBy: "system",  signal: "buildFinished",  section: "Coverage" },
 };
@@ -234,34 +236,12 @@ export const FLOW_TRANSITIONS: Record<"pick" | "ready" | "plan" | "startBuild" |
 export type FlowTransitionAction = keyof typeof FLOW_TRANSITIONS;
 
 // ---------------------------------------------------------------------------
-// verify compound action — parse PM verdict + Decision Log composition
+// verify compound action — Decision Log composition (verdict-driven)
 // ---------------------------------------------------------------------------
 
 export interface ParsedVerdict {
 	approved: boolean;
 	reason: string;
-}
-
-/**
- * Parse the PM verdict line. Liberal — defaults to REJECTED with the raw
- * output as the reason if the line is missing/malformed (fail-safe: a
- * confused PM output is treated as a gap, not silent approval).
- */
-export function parseVerdict(raw: string): ParsedVerdict {
-	const text = (raw ?? "").trim();
-	const m = text.match(/VERDICT:\s*(APPROVED|REJECTED)\s*[—\-:]\s*([^\n]*)/i);
-	if (m) {
-		const approved = /^APPROVED$/i.test(m[1]);
-		return { approved, reason: m[2].trim() || "(no reason given)" };
-	}
-	// Fallback heuristics — PM didn't follow the format. Be conservative.
-	if (/\bAPPROV(?:ED|ING)\b/i.test(text) && !/\bREJECT/i.test(text)) {
-		return { approved: true, reason: "(PM output mentioned approval — format mismatch)" };
-	}
-	return {
-		approved: false,
-		reason: text.slice(0, 300) || "(PM output unparseable; treating as rejected)",
-	};
 }
 
 /** Compose the Decision Log body from the verdict + outcome. */
@@ -308,8 +288,8 @@ export interface FlowActions {
 		description?: string;
 		priority?: "low" | "normal" | "high" | "critical";
 		impactScope?: string;
-		/** RequirementSource-derived author role; default "analyst" (agent). */
-		source?: "analyst" | "user";
+		/** RequirementSource-derived author; default "agent" (an agent caller). */
+		source?: "agent" | "user";
 	}): CreateActionResult;
 
 	list(filter?: { projectId?: string; status?: string; priority?: string }): RequirementRecord[];
@@ -348,10 +328,10 @@ export function createFlowActions(deps: FlowActionsDeps): FlowActions {
 				title,
 				description,
 				status: "found",
-				source: source ?? "analyst",
+				source: source ?? "agent",
 				priority: priority ?? "normal",
 				impactScope,
-				reviewer: source === "user" ? "user" : "analyst",
+				reviewer: source === "user" ? "user" : "agent",
 			} as any) as RequirementRecord;
 
 			// Write the Intent section of the requirement doc to the workspace
@@ -476,48 +456,27 @@ export function createFlowActions(deps: FlowActionsDeps): FlowActions {
 				);
 			}
 
-			// 1. Resolve the verdict (delegate vs. supplied vs. none).
+			// 1. Resolve the verdict. Verdict-driven: the caller (user via REST,
+			//    or a reviewing agent via the Flow tool) supplies the coverage
+			//    verdict directly. The tool never picks or invokes a reviewer.
 			let verdict: ParsedVerdict;
-			let reviewerAgentId: string | undefined;
-			if (source.kind === "delegate") {
-				reviewerAgentId = source.targetAgentId;
-				const pmTask =
-					`Product-coverage judgement for requirement ${id}.\n` +
-					`Title: ${req.title}\n` +
-					`Intent: ${req.description ?? "(see requirement doc)"}\n` +
-					`Lead summary: ${source.summary ?? "(none)"}\n\n` +
-					`Read the latest Orchestrate manifest for this requirement, then judge whether the ` +
-					`changes + tests cover the original intent at PRODUCT granularity (NOT technical ` +
-					`acceptance — that lived in the flow).\n\n` +
-					`Respond with EXACTLY one line in the form:\n` +
-					`VERDICT: APPROVED|REJECTED — <one-sentence reason>\n` +
-					`(REJECTED must cite the specific gap; APPROVED must confirm what's covered.)`;
-				let pmOutput: string;
-				try {
-					pmOutput = await source.delegateTask(pmTask, { targetAgentId: source.targetAgentId });
-				} catch (err: any) {
-					// PM dispatch failure → degrade. Do NOT advance status; lead can retry.
-					return {
-						requirement: req,
-						applied: false,
-						text: `PM coverage dispatch failed: ${err.message ?? String(err)}\n\nThe requirement stays in 'verify'; re-submit verify to retry, or your cron fallback will wake you.`,
-					};
-				}
-				verdict = parseVerdict(pmOutput);
-			} else if (source.kind === "verdict") {
-				verdict = { approved: !!source.covered, reason: source.reason ?? "(user-supplied verdict)" };
+			if (source.kind === "verdict") {
+				verdict = { approved: !!source.covered, reason: source.reason ?? "(caller-supplied verdict)" };
 			} else {
-				// "none" — neither delegation nor a supplied verdict. Degrade.
+				// "none" — caller supplied no verdict. Degrade: do NOT advance
+				// status; tell the caller to supply covered/reason.
 				return {
 					requirement: req,
 					applied: false,
-					text: "verify verdict source not available — requirement stays in 'verify'.",
+					text: "verify verdict not supplied — pass covered (true/false) + reason. Requirement stays in 'verify'.",
 				};
 			}
 
-			// 2. Drive PmService.submitCoverageVerdict (stamps reviewerAgentId,
-			//    records the verdict as a status_change audit message, on APPROVED
-			//    triggers archivist mergeFeatureToMain + verify→closed).
+			// 2. Drive PmService.submitCoverageVerdict (records the verdict as a
+			//    status_change audit message; on APPROVED triggers archivist
+			//    mergeFeatureToMain + verify→closed). reviewerAgentId is resolved
+			//    by pmService from the req record (defaults to reviewerAgentId /
+			//    createdByAgentId) — the tool does not pick one.
 			let mergeRef: string | undefined;
 			let finalStatus: string = req.status;
 			let reworked = false;
@@ -527,7 +486,6 @@ export function createFlowActions(deps: FlowActionsDeps): FlowActions {
 					const outcome = await pmService.submitCoverageVerdict(
 						id,
 						{ covered: verdict.approved, reason: verdict.reason },
-						reviewerAgentId ? { reviewerAgentId } : undefined,
 					);
 					finalStatus = outcome?.finalStatus ?? finalStatus;
 					if (verdict.approved) {
@@ -544,7 +502,7 @@ export function createFlowActions(deps: FlowActionsDeps): FlowActions {
 							return {
 								requirement: requirementStore.get(id) ?? req,
 								applied: false,
-								text: `PM APPROVED — ${verdict.reason}\n\nArchivist merge ${why} (${detail}). Requirement stays in 'verify'; archivist cron will retry the merge. You can re-submit verify if needed.`,
+								text: `APPROVED — ${verdict.reason}\n\nArchivist merge ${why} (${detail}). Requirement stays in 'verify'; archivist cron will retry the merge. You can re-submit verify if needed.`,
 							};
 						}
 					}
@@ -556,7 +514,7 @@ export function createFlowActions(deps: FlowActionsDeps): FlowActions {
 					return {
 						requirement: requirementStore.get(id) ?? req,
 						applied: false,
-						text: `PM verdict: ${verdict.approved ? "APPROVED" : "REJECTED"} — ${verdict.reason}\n\nsubmitCoverageVerdict failed: ${err.message ?? String(err)}. Requirement stays in 'verify'; re-submit or wait for cron fallback.`,
+						text: `Verdict: ${verdict.approved ? "APPROVED" : "REJECTED"} — ${verdict.reason}\n\nsubmitCoverageVerdict failed: ${err.message ?? String(err)}. Requirement stays in 'verify'; re-submit or wait for cron fallback.`,
 					};
 				}
 			}
@@ -566,12 +524,12 @@ export function createFlowActions(deps: FlowActionsDeps): FlowActions {
 			// 3. Rework transition + signal emit + Decision Log.
 			if (!verdict.approved) {
 				// project-flow §2/§8: rejected → rework verify→build (triggeredBy
-				// lead, the only legal verify→ non-closed edge). The delivery
+				// agent, the only legal verify→ non-closed edge). The delivery
 				// work's next fire reads the Decision Log feedback and re-runs
 				// plan→finishBuild→verify. Best-effort: a transition failure must
 				// not lose the verdict.
 				try {
-					requirementStore.transitionStatus(id, "build", "lead", "Flow.verify rework (PM rejected)");
+					requirementStore.transitionStatus(id, "build", "agent", "Flow.verify rework (verdict rejected)");
 					finalStatus = "build";
 					reworked = true;
 				} catch {
@@ -588,16 +546,17 @@ export function createFlowActions(deps: FlowActionsDeps): FlowActions {
 			const updatedRec = requirementStore.get(id) ?? req;
 			emit(verdict.approved ? "verified" : "rejected", id, updatedRec);
 
-			// 4. Compose the return text.
+			// 4. Compose the return text (reviewer-agnostic — who issued the
+			//    verdict is external to the tool).
 			let text: string;
 			if (verdict.approved) {
 				if (mergeRef) {
-					text = `PM APPROVED — ${verdict.reason}\n\nArchivist merged feature→main (ref ${mergeRef}); requirement status → ${finalStatus}. Delivery complete.`;
+					text = `APPROVED — ${verdict.reason}\n\nArchivist merged feature→main (ref ${mergeRef}); requirement status → ${finalStatus}. Delivery complete.`;
 				} else {
-					text = `PM APPROVED — ${verdict.reason}\n\n(pmService not wired on this ctx — end-to-end close skipped. Requirement is in 'verify'; PM/archivist cron will pick it up.)`;
+					text = `APPROVED — ${verdict.reason}\n\n(pmService not wired on this ctx — end-to-end close skipped. Requirement is in 'verify'; archivist cron will pick it up.)`;
 				}
 			} else {
-				text = `PM REJECTED — ${verdict.reason}\n\nFeedback recorded on the requirement.${reworked ? " Status returned to 'build' for revision." : " Status stays in 'verify'."} Revise your plan and re-submit finishBuild → verify when ready.`;
+				text = `REJECTED — ${verdict.reason}\n\nFeedback recorded on the requirement.${reworked ? " Status returned to 'build' for revision." : " Status stays in 'verify'."} Revise your plan and re-submit finishBuild → verify when ready.`;
 			}
 
 			return { requirement: updatedRec, text, applied: true };

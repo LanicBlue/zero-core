@@ -122,13 +122,13 @@ export class RequirementStore {
 			requirementId: req.id,
 			fromStatus: undefined,
 			toStatus: req.status,
-			triggeredBy: input.source === "user" ? "user" : "analyst",
+			triggeredBy: input.source === "user" ? "user" : "agent",
 		});
 
 		// Auto-create status_change message
 		this.messageStore.create({
 			requirementId: req.id,
-			sender: input.source === "user" ? "user" : "analyst",
+			sender: input.source === "user" ? "user" : "agent",
 			content: `Requirement created with status: ${req.status}`,
 			messageType: "status_change",
 		});

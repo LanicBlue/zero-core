@@ -117,8 +117,8 @@ describe("Flow tool · create", () => {
 		expect(req.status).toBe("found");
 		expect(req.title).toBe("Add metrics export");
 		expect(req.priority).toBe("high");
-		expect(req.source).toBe("analyst");
-		expect(req.reviewer).toBe("analyst");
+		expect(req.source).toBe("agent");
+		expect(req.reviewer).toBe("agent");
 
 		// The Intent section was written to docs/requirements/{id}.md.
 		const abs = join(workspaceDir, "docs", "requirements", `${req.id}.md`);
@@ -184,10 +184,10 @@ describe("Flow tool · list", () => {
 	beforeEach(() => {
 		const other = projectStore.create({ name: "Other", workspaceDir: join(tmpDir, "ws2") } as any);
 		OTHER_PROJECT_ID = other.id;
-		requirementStore.create({ projectId: PROJECT_ID, title: "A", description: "a", status: "found", source: "analyst", priority: "low", reviewer: "analyst" });
-		requirementStore.create({ projectId: PROJECT_ID, title: "B", description: "b", status: "found", source: "analyst", priority: "high", reviewer: "analyst" });
-		requirementStore.create({ projectId: PROJECT_ID, title: "C", description: "c", status: "discuss", source: "analyst", priority: "high", reviewer: "analyst" });
-		requirementStore.create({ projectId: OTHER_PROJECT_ID, title: "Z", description: "z", status: "found", source: "analyst", priority: "normal", reviewer: "analyst" });
+		requirementStore.create({ projectId: PROJECT_ID, title: "A", description: "a", status: "found", source: "agent", priority: "low", reviewer: "agent" });
+		requirementStore.create({ projectId: PROJECT_ID, title: "B", description: "b", status: "found", source: "agent", priority: "high", reviewer: "agent" });
+		requirementStore.create({ projectId: PROJECT_ID, title: "C", description: "c", status: "discuss", source: "agent", priority: "high", reviewer: "agent" });
+		requirementStore.create({ projectId: OTHER_PROJECT_ID, title: "Z", description: "z", status: "found", source: "agent", priority: "normal", reviewer: "agent" });
 	});
 
 	test("returns the project's requirements", async () => {
@@ -222,7 +222,7 @@ describe("Flow tool · list", () => {
 
 describe("Flow tool · get", () => {
 	test("returns the record only (no messages)", async () => {
-		const created = requirementStore.create({ projectId: PROJECT_ID, title: "R", description: "d", status: "found", source: "analyst", priority: "normal", reviewer: "analyst" });
+		const created = requirementStore.create({ projectId: PROJECT_ID, title: "R", description: "d", status: "found", source: "agent", priority: "normal", reviewer: "agent" });
 		const out = await execFlow({ action: "get", id: created.id }, buildCtx());
 		const rec = parse(out);
 		expect(rec.id).toBe(created.id);
@@ -293,7 +293,7 @@ describe("Flow tool · created signal (natural hub emit)", () => {
 	});
 
 	test("get / list do NOT emit any hub event", async () => {
-		const created = requirementStore.create({ projectId: PROJECT_ID, title: "Pre", description: "p", status: "found", source: "analyst", priority: "normal", reviewer: "analyst" });
+		const created = requirementStore.create({ projectId: PROJECT_ID, title: "Pre", description: "p", status: "found", source: "agent", priority: "normal", reviewer: "agent" });
 		// Drain the create flush first.
 		await new Promise((r) => setTimeout(r, 0));
 

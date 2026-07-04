@@ -183,11 +183,12 @@ export function createRequirementRouter(deps: {
 	/**
 	 * POST /:id/coverage-verdict — project-flow F4 verify (user path).
 	 *
-	 * The user supplies the verdict directly (UI modal); no PM delegation. The
-	 * shared FlowActions.verify runs the compound close (APPROVED → archivist
-	 * merge + closed + Decision Log + verified signal; REJECTED → rework build
-	 * + Decision Log + rejected signal). Mirrors the runtime verify action
-	 * modulo the verdict source.
+	 * The user supplies the verdict directly (UI modal). The shared
+	 * FlowActions.verify runs the compound close (APPROVED → archivist merge +
+	 * closed + Decision Log + verified signal; REJECTED → rework build +
+	 * Decision Log + rejected signal). Same verdict-driven shape as the runtime
+	 * verify action — who issues the verdict is external to the tool (user
+	 * here, or a reviewing agent via the Flow tool there).
 	 */
 	router.post("/:id/coverage-verdict", async (req, res) => {
 		try {

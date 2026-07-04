@@ -128,7 +128,7 @@ function makeReq(pm: PmService, title: string, opts?: { body?: string; summary?:
 		summary: opts?.summary,
 		body: opts?.body,
 		priority: opts?.priority,
-		source: "pm",
+		source: "agent",
 		createdByAgentId: PM_AGENT_ID,
 	});
 }
@@ -140,8 +140,8 @@ function makeReq(pm: PmService, title: string, opts?: { body?: string; summary?:
  */
 function advanceToVerify(reqId: string): void {
 	requirementStore.transitionStatus(reqId, "ready", "user", "discuss → ready (test setup)");
-	requirementStore.transitionStatus(reqId, "plan", "lead", "ready → plan (test setup)");
-	requirementStore.transitionStatus(reqId, "build", "lead", "plan → build (test setup)");
+	requirementStore.transitionStatus(reqId, "plan", "agent", "ready → plan (test setup)");
+	requirementStore.transitionStatus(reqId, "build", "agent", "plan → build (test setup)");
 	requirementStore.transitionStatus(reqId, "verify", "system", "build → verify (test setup)");
 }
 
