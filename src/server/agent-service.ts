@@ -40,6 +40,7 @@ import { MCPManager } from "./mcp-manager.js";
 import { buildMcpTools } from "../runtime/tools/mcp-tool.js";
 import { log } from "../core/logger.js";
 import { emitTransition } from "./data-change-hub.js";
+import { createFlowActions } from "./flow-actions.js";
 import { ToolRegistry, RENAMED_TOOLS } from "../core/tool-registry.js";
 import { ProviderConcurrencyManager } from "../runtime/provider-concurrency-manager.js";
 import type { SessionManager } from "./session-manager.js";
@@ -282,6 +283,16 @@ export class AgentService {
 		this.requirementStore = requirementStore;
 		this.wikiStore = wikiStore ?? null;
 	}
+	/**
+	 * project-flow F4: inject the GitIntegration handle. Surfaced onto the
+	 * session config so the Flow plan action (via ctx.flowActions) can create
+	 * the feature worktree. Optional — sessions without it fall back to the
+	 * main workspace.
+	 */
+	setGitIntegration(gitIntegration: any): void {
+		this.gitIntegration = gitIntegration;
+	}
+	private gitIntegration: any = null;
 	/**
 	 * v0.8 (M5): inject the global WikiStore. The global WikiStore is the
 	 * writer target for extractor A's memory nodes (decision 46 N2).
@@ -682,6 +693,20 @@ export class AgentService {
 		// layer importing the server-layer hub (conventions.md). Only Flow-
 		// capable sessions need it; requirementStore gating already implies Flow.
 		if (caps.requirementStore) (sessionConfig as any).emitTransition = emitTransition;
+		// project-flow F4: surface the shared FlowActions backend (single source
+		// with the REST requirement-router). The runtime Flow tool forwards to
+		// ctx.flowActions instead of open-coding transition+doc+signal here.
+		// Workspace resolves from this session's workspaceDir (project cwd).
+		// gitIntegration / pmService come from caps (agent-service wiring).
+		if (caps.requirementStore) {
+			(sessionConfig as any).flowActions = createFlowActions({
+				requirementStore: caps.requirementStore as any,
+				resolveWorkspaceDir: () => (sessionConfig as any).workspaceDir ?? this.workspaceDir,
+				emitTransition,
+				gitIntegration: ((sessionConfig as any).gitIntegration ?? this.gitIntegration ?? undefined) as any,
+				pmService: (caps.pmService ?? undefined) as any,
+			});
+		}
 		// v0.8 (M5): surface the global WikiStore + extractors config onto
 		// EVERY session (memory written by extractor A is global/cross-project,
 		// so even non-project sessions need access). The extraction hook reads

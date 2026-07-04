@@ -29,7 +29,7 @@ import { fileURLToPath } from "url";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { AgentStore } from "./agent-store.js";
-import { onDataChange } from "./data-change-hub.js";
+import { onDataChange, emitTransition } from "./data-change-hub.js";
 import { ProviderStore } from "./provider-store.js";
 import { TemplateStore } from "./template-store.js";
 import { McpStore } from "./mcp-store.js";
@@ -65,6 +65,7 @@ import { WikiSkeletonService } from "./wiki-skeleton-service.js";
 import { TaskStepStore } from "./task-step-store.js";
 import { createProjectRouter } from "./project-router.js";
 import { createRequirementRouter } from "./requirement-router.js";
+import { createFlowActions } from "./flow-actions.js";
 import { createWikiRouter } from "./project-wiki-router.js";
 // v0.8 (P8 §10.9): global wiki memory-tree browser endpoints
 // (list-by-anchors / nodes/:id/detail / search + project-scoped workspace-doc).
@@ -455,6 +456,18 @@ export async function startServer(options?: StartServerOptions) {
 			kv.setJson("work-prompt-resync-agent-tool-v1", { doneAt: Date.now() });
 		}
 	} catch (e) { console.warn(`[server] resync default work prompts:`, (e as Error).message); }
+	// project-flow F4 one-time migration: existing projects' delivery work was
+	// hooked on `requirements.create` pre-F3 (fired on creation, bypassing user
+	// confirm). Move those works to `requirements.ready` (user-confirmed) — the
+	// seed template is already on `ready`; this catches works seeded before F3.
+	// Idempotent + customization-safe (see resyncDeliveryWorkHookToReady).
+	try {
+		const kv = sessionDB.getKVStore();
+		if (!kv.getJson("work-hook-resync-ready-f4-v1")) {
+			management.resyncDeliveryWorkHookToReady();
+			kv.setJson("work-hook-resync-ready-f4-v1", { doneAt: Date.now() });
+		}
+	} catch (e) { console.warn(`[server] resync delivery work hook to ready:`, (e as Error).message); }
 	// v0.8 (M1): cron manager now scans the cron table (one agent → N cron),
 	// routes triggers via resolveSessionByRoleProject + sendPrompt. P4: mode-
 	// aware firing + cron_runs audit (cronRunStore injected).
@@ -529,6 +542,9 @@ export async function startServer(options?: StartServerOptions) {
 	agentService.setToolUsageStore(new ToolUsageStore(sessionDB));
 
 	analystService.setGitIntegration(gitIntegration);
+	// project-flow F4: surface GitIntegration on the FlowActions backend so the
+	// Flow plan action creates the feature worktree (single source with REST).
+	agentService.setGitIntegration(gitIntegration);
 	// v0.8 project-work(去-role):AnalystService 从"技术调研"工位取 agent。
 	analystService.setProjectWorkStore(projectWorkStore);
 
@@ -600,7 +616,27 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/crons", createCronRouter({ management, cronManager, cronRunStore }));
 
 	// Requirements — with M5 verify/archive/report + notifications
-	const requirementRouter = createRequirementRouter({ requirementStore, taskStepStore, notificationService });
+	// project-flow F4: the transition / create / coverage-verdict endpoints
+	// route through the shared FlowActions backend (single source with the
+	// runtime Flow tool). The resolver honours the session/project workspace.
+	const restFlowActions = createFlowActions({
+		requirementStore,
+		resolveWorkspaceDir: (pid?: string) => {
+			if (pid) {
+				const p = projectStore.get(pid);
+				if (p?.workspaceDir) return p.workspaceDir;
+			}
+			return workspaceConfig.workspaceDir;
+		},
+		emitTransition,
+		pmService,
+	});
+	const requirementRouter = createRequirementRouter({
+		requirementStore,
+		taskStepStore,
+		notificationService,
+		flowActions: restFlowActions,
+	});
 	// v0.8 (M3): Orchestrate confirm-gate + manifest REST surface.
 	const { createOrchestrateRouter } = await import("./orchestrate-router.js");
 	const orchestrateRouter = createOrchestrateRouter({

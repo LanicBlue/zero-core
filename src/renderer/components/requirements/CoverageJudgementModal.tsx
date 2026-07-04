@@ -65,7 +65,15 @@ export default function CoverageJudgementModal({ requirementId, onClose }: Cover
 	const submit = async (covered: boolean) => {
 		setSubmitting(true);
 		try {
-			const r = await api()?.pmCoverageVerdict(requirementId, covered, reason.trim() || undefined);
+			// project-flow F4: route the user verdict through the shared
+			// FlowActions backend (POST /api/requirements/:id/coverage-verdict).
+			// Same compound close the runtime Flow.verify uses — single source.
+			// Falls back to the legacy pm:coverageVerdict channel when the new
+			// IPC handle is missing (older preload).
+			const apiAny = api() as any;
+			const r = apiAny?.requirementsCoverageVerdict
+				? await apiAny.requirementsCoverageVerdict(requirementId, covered, reason.trim() || undefined)
+				: await apiAny?.pmCoverageVerdict(requirementId, covered, reason.trim() || undefined);
 			if (r?.error) {
 				alert(`Verdict failed: ${r.error}`);
 				return;

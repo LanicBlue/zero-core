@@ -212,6 +212,10 @@ const R: Record<string, RouteMapping> = {
 		"requirements:verify":     { method: "POST",   path: "/api/requirements/:id/verify",   buildReq: (id) => ({ params: { id } }) },
 		"requirements:archive":    { method: "POST",   path: "/api/requirements/:id/archive",  buildReq: (id) => ({ params: { id } }) },
 		"requirements:report":     { method: "GET",    path: "/api/requirements/:id/report",   buildReq: (id) => ({ params: { id } }) },
+		// project-flow F4: user-supplied coverage verdict (verify compound close
+		// via the shared FlowActions backend — single source with the runtime
+		// Flow tool). UI modal path.
+		"requirements:coverageVerdict": { method: "POST", path: "/api/requirements/:id/coverage-verdict", buildReq: (id, covered, reason?) => ({ params: { id }, body: { covered, reason } }) },
 
 		// ─── Wiki (M1) ──────────────────────────────────────
 		"wiki:listByProject":      { method: "GET",    path: "/api/project-wiki/:projectId/nodes", buildReq: (projectId) => ({ params: { projectId } }) },

@@ -46,6 +46,7 @@ import {
 import { flowTool } from "../../src/runtime/tools/flow-tool.js";
 import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
 import { ALL_TOOLS } from "../../src/runtime/tools/index.js";
+import { createFlowActions } from "../../src/server/flow-actions.js";
 import { RENAMED_TOOLS } from "../../src/core/tool-registry.js";
 import {
 	featureWorktreePath,
@@ -125,15 +126,36 @@ function seedReqAt(status: "verify" | "build"): string {
 }
 
 function buildCtx(overrides: Record<string, any> = {}) {
-	return {
+	// project-flow F4: the Flow tool forwards to ctx.flowActions. Build the
+	// shared backend; pmService is supplied per-test via overrides
+	// (flowActions takes precedence when present, so we rebuild below if the
+	// caller injects a pmService).
+	const baseFlowActions = createFlowActions({
+		requirementStore,
+		resolveWorkspaceDir: () => workspaceDir,
+		emitTransition,
+	});
+	const ctx = {
 		workingDir: workspaceDir,
 		agentId: "agent-lead",
 		emit: () => {},
 		requirementStore,
+		flowActions: baseFlowActions,
 		emitTransition,
 		contextBundle: { projectId: PROJECT_ID, workspaceDir, wikiRootNodeId: `root:${PROJECT_ID}` },
 		...overrides,
 	};
+	// If the caller supplied a pmService, rebuild flowActions so verify's
+	// compound close sees it (the backend is constructed once per ctx).
+	if (overrides.pmService) {
+		ctx.flowActions = createFlowActions({
+			requirementStore,
+			resolveWorkspaceDir: () => workspaceDir,
+			emitTransition,
+			pmService: overrides.pmService,
+		});
+	}
+	return ctx;
 }
 
 // ─── Flow.verify · APPROVED → merge + closed + verified signal ───────

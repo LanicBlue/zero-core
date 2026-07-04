@@ -200,6 +200,9 @@ export interface IpcChannelDefs {
 	"requirements:messages":   { params: [id: string];                                                       result: RequirementMessage[] };
 	"requirements:addMessage": { params: [id: string, sender: string, content: string, messageType?: string]; result: RequirementMessage };
 	"requirements:steps":      { params: [id: string];                                                       result: TaskStepRecord[] };
+	// project-flow F4: user-supplied coverage verdict (verify compound close
+	// via the shared FlowActions backend).
+	"requirements:coverageVerdict": { params: [id: string, covered: boolean, reason?: string];            result: { ok: boolean; requirement: RequirementRecord; text: string } | Err };
 
 	// ── Wiki ─────────────────────────────────────────────────
 	"wiki:listByProject": { params: [projectId: string];                            result: ProjectWikiNode[] };

@@ -237,6 +237,8 @@ const api: WindowApi = {
 	requirementsMessages: (id) => ipcRenderer.invoke("requirements:messages", id),
 	requirementsAddMessage: (id, sender, content, messageType?) => ipcRenderer.invoke("requirements:addMessage", id, sender, content, messageType),
 	requirementsSteps: (id) => ipcRenderer.invoke("requirements:steps", id),
+	// project-flow F4: user-supplied coverage verdict (verify compound close).
+	requirementsCoverageVerdict: (id, covered, reason?) => ipcRenderer.invoke("requirements:coverageVerdict", id, covered, reason),
 
 	// ── Wiki ──
 	wikiListByProject: (projectId) => ipcRenderer.invoke("wiki:listByProject", projectId),

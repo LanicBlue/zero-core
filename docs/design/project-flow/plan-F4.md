@@ -1,54 +1,36 @@
-# plan-F4 — UI 接入(卡片=入口,确认在详情视图)
+# plan-F4 — UI 接入(复用现有控件)+ 公共后端 + 迁移
 
-> 节点 F4(依赖 F3)。目标:用户操作(确认/迁移)走 Flow action 的同一后端。**UI 模型:看板卡片只做入口(基本信息),确认动作在能展开完整上下文的详情视图/modal 里**——卡片太小,不足以作为判断依据。对应 [project-flow.md](project-flow.md) §4/§5/§8。
+> 节点 F4(依赖 F3)。目标:用户确认动作(pick/ready/startBuild/verify)经现有 UI 控件 → Flow action 公共后端;既有项目交付 work hook + 旧文档路径迁移。**文档查看无需新 UI**(doc 是文件,现有文件树 → DocViewerPanel 已能显示)。对应 [project-flow.md](project-flow.md) §4/§5/§9。
 
-## UI 模型(定)
-- **看板卡片**(RequirementCard)= 基本信息入口(标题/状态/priority/assignee 摘要)。**不放确认按钮**——信息不足以判断。点击 → 打开需求视图(左 chat + 右文档)。
-- **需求视图 = 左右分栏**(A):
-  - **左:讨论 chat**(消息流,轻量来回;非判断依据)。
-  - **右:文档面板**——**复用现成 [DocViewerPanel](../../../src/renderer/components/layout/DocViewerPanel.tsx)**(MarkdownRenderer 渲染)。渲染需求文档(Intent/Summary/Plan/Coverage/Decision Log 段)。
-    - 数据源:DB 文档字段(真源)→ 喂 MarkdownRenderer;或投影到 `{workspace}/.zero/requirements/{id}.md` 让 DocViewerPanel 读文件。实现时定(倾向直接喂 DB,免文件滞后)。
-    - **实时更新**:文档变 → runtime-push `data:changed` → 重渲染。
-    - **edit 关闭/round-trip**:真源在 DB,改走 Flow action(不直接编辑文件)。
-    - 活动需求切换 → 切换文档面板内容源。
-  - **确认动作放文档面板**:每个门的按钮(startBuild 的 Confirm / verify 的通过-打回)放文档面板顶部或对应段旁——用户读完段就地确认。
-  | Flow action | 文档面板展示段 | 确认控件 |
-  |---|---|---|
-  | `pick` | Intent + 建 Summary | 采纳 + 建文档 |
-  | `ready` | Summary(定型) | 定型 |
-  | `startBuild` | Plan | Confirm / Reject(+理由) |
-  | `verify` | Coverage + Decision Log | 通过 / 打回 |
-- **没有 drag-and-drop**(看板不支持拖卡)。
-- **通用状态选择器**(RequirementHeader `onTransition`)是兜底入口。
-
-## 范围
-- 抽 Flow action 公共后端(transitionStatus + 副作用 + 发 signal),Flow execute 与 REST/UI 共用它。
-- 各详情视图/modal 的确认控件改调公共后端(经 REST):
-  - CreateRequirementModal → Flow.create。
-  - 需求讨论视图(RequirementHeader onTransition + pick/ready 按钮)→ Flow.pick / Flow.ready。
-  - pending-plan Confirm/Reject → Flow.startBuild(发 buildStarted)/ 打回。
-  - CoverageJudgementModal → Flow.verify(通过发 verified / 打回发 rejected)。
-- 暴露面:这些是用户操作的后端,不受 agent 工具暴露面限制(agent 默认看不到 pick/ready/startBuild/verify,但 UI 能调)。
+## 范围(按最终模型 —— doc 是文件、不加导航、文件树跟 worktree)
+1. **抽 Flow action 公共后端**:把 flow-tool execute 里的"迁态 + 写文档段 + emitTransition"(以及 verify 复合逻辑)抽成共享函数,Flow execute 与 REST 都调——单源,不分叉。
+2. **REST 接 Flow 后端**:[requirement-router.ts](../../../src/server/requirement-router.ts) transition/create 等端点改调 Flow 公共后端(透传 signal + 写文档段)。
+3. **UI 控件接 REST**(用户确认 = 未暴露给 agent 的 action):
+   - [RequirementHeader](../../../src/renderer/components/requirements/RequirementHeader.tsx) `onTransition`(状态选择器)→ pick/ready/startBuild/verify 经 REST。
+   - [CoverageJudgementModal](../../../src/renderer/components/requirements/CoverageJudgementModal.tsx) → verify(通过/打回)经 REST。
+   - 看板 pending-plan Confirm/Reject → startBuild/打回 经 REST。
+   - 建/选中需求入口(CreateRequirementModal 等)→ Flow.create/pick 经 REST。
+4. **迁移**:
+   - 既有项目交付 work hook `requirements.create` → `requirements.ready`(seedDefaultProjectWorks 只跑新项目;既有项目需一次性补 seed 或 hook manager 过渡期双认 create/ready)。
+   - 旧文档路径 `.zero/requirements/{projectId}/{id}.md` → `docs/requirements/{id}.md`(docPath 更新 / 兼容读)。
+5. **文档查看**:无新 UI。doc 是 `{workspace}/docs/requirements/{id}.md` 文件,现有文件树(MiddlePanel WORKSPACE 段)选中 → DocViewerPanel 渲染。文件树根跟活动 session worktree(build 期显 worktree,文档不在——可接受,决策在项目上下文做)。
 
 ## 实现步骤
-1. **抽公共后端**:Flow action 的迁移逻辑(transitionStatus + 写文档段 + emit signal)抽成共享函数/方法,Flow execute + REST 都调它——单源,不分叉。
-2. **REST 改接**:[requirement-router.ts](../../../src/server/requirement-router.ts) transition/create 端点改调公共后端(透传 signal)。
-3. **需求视图(左右分栏)**:
-   - 左:讨论 chat(现 RequirementHeader + messages,沿用)。
-   - 右:**复用 [DocViewerPanel](../../../src/renderer/components/layout/DocViewerPanel.tsx)** / [MarkdownRenderer](../../../src/renderer/components/common/MarkdownRenderer.tsx) 渲染需求文档。数据源接 DB 文档字段(或投影文件),实时随 data:changed 重渲染。edit 关闭/round-trip。
-   - 活动需求切换 → 切文档面板内容源。
-4. **确认控件放文档面板**(各门按钮接 Flow action):pick(采纳+建文档)/ready(定型)/startBuild(Confirm/Reject)/verify(通过/打回)。CreateRequirementModal → create(入口);CoverageJudgementModal 可并入文档面板的 verify 段或保留。
-5. **卡片保持入口**:RequirementCard 点击打开需求视图;**不加确认按钮**。
+1. **抽公共后端**:flow-tool 的 transition+writeDocSection+emitTransition 逻辑(及 verify 复合)抽成 management-service 方法或纯函数模块(`flow-actions.ts`),签名吃 stores/services;flow-tool execute 改调它,REST 也调。
+2. **REST 改接**:requirement-router transition/create/coverage-verdict 端点 → 公共后端。
+3. **UI 控件改调 REST**:RequirementHeader/CoverageJudgementModal/kanban pending-plan/CreateRequirementModal 的 transitionStatus/coverage 调用 → 走更新后的 REST(透传 signal + 写文档段)。renderer 调用点改动小,不动 ChatPanel 内联渲染。
+4. **迁移脚本/逻辑**:既有 project 交付 work hook 改 ready(一次性);旧 docPath 兼容(读时 fallback)。
+5. **测试**:公共后端单源(Flow execute 与 REST 走同一函数);REST → 后端 → 迁态+段+signal;UI 控件 → REST;迁移(既有 work hook 改 ready)。
 
 ## 关键文件
-`requirement-router.ts` · management-service(公共后端)· `flow-tool.ts`(复用)· **`DocViewerPanel.tsx` / `MarkdownRenderer.tsx`(复用渲染需求文档)** · `CreateRequirementModal.tsx` / `CoverageJudgementModal.tsx` / `KanbanBoard.tsx`(pending-plan 入口)· 需求讨论视图(RequirementHeader)
+`requirement-router.ts` · management-service / `flow-actions.ts`(公共后端)· `flow-tool.ts`(复用)· `RequirementHeader.tsx` / `CoverageJudgementModal.tsx` / `KanbanBoard.tsx`(pending-plan)· `CreateRequirementModal.tsx` · 迁移(seed/migration)
 
 ## 不做(留 F5)
-- 删旧文件 / 注释清扫 / code-graph。
+- 删旧文件(verify-tool.ts / requirement-tools.ts)/ 注释清扫 / code-graph。
 
 ## 风险
-- ChatPanel 830 行 tab/CRLF——只改 transition/pick/ready 调用点,不动内联渲染(conventions)。
-- 公共后端抽离别引入分叉:Flow execute 与 REST 必须走同一段迁移+写文档+signal 逻辑。
-- DocViewerPanel 复用:它现读文件;若改喂 DB 文档字段要适配其数据源(或保持读投影文件)。preview-only(edit 关)避免用户绕过 Flow action 改文档。
-- pick 的"建文档"副作用:现 PmService.createRequirementWithDoc 建文档;UI 的 pick 走公共后端时带上建文档语义(写 DB Summary 段 + 投影)。
-
+- **公共后端抽离别引入分叉**:Flow execute 与 REST 必须走同一段迁态+写段+signal 逻辑(否则 UI 和 agent 行为不一致)。
+- ChatPanel 830 行 tab/CRLF——只改 transition 调用点,不动内联渲染。
+- **既有 work hook 迁移**:既有项目交付 work 仍 hook=create;不改则旧项目 ready 后不 fire 交付。需一次性补(migration 或启动时 resync)。
+- **旧 docPath 兼容**:既有需求 docPath 指 .zero/requirements/...;读时 fallback 或一次性迁移。
+- 文件树跟 worktree:build 期文档不在 worktree 文件树——用户在项目上下文(PM/discuss)看文档;确认这点不破坏(build 期用户不靠文件树看文档)。

@@ -32,8 +32,10 @@ import { RequirementStore } from "../../src/server/requirement-store.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import {
 	onDataChange,
+	emitTransition,
 	_resetDataChangeHubForTest,
 } from "../../src/server/data-change-hub.js";
+import { createFlowActions } from "../../src/server/flow-actions.js";
 import { flowTool } from "../../src/runtime/tools/flow-tool.js";
 import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
 import {
@@ -81,11 +83,19 @@ afterEach(() => {
 });
 
 function buildCtx(overrides: Record<string, any> = {}) {
+	// project-flow F4: the Flow tool now forwards to ctx.flowActions (single
+	// source with the REST router). Build the shared backend here.
+	const flowActions = createFlowActions({
+		requirementStore,
+		resolveWorkspaceDir: () => workspaceDir,
+		emitTransition,
+	});
 	return {
 		workingDir: workspaceDir,
 		agentId: "agent-f1",
 		emit: () => {},
 		requirementStore,
+		flowActions,
 		contextBundle: { projectId: PROJECT_ID, workspaceDir, wikiRootNodeId: `root:${PROJECT_ID}` },
 		...overrides,
 	};
@@ -122,17 +132,19 @@ describe("Flow tool · create", () => {
 	test("errors cleanly when requirementStore is missing (gating)", async () => {
 		const out = await execFlow(
 			{ action: "create", projectId: PROJECT_ID, title: "X" },
-			// No requirementStore in the context.
+			// No flowActions / no requirementStore in the context.
 			{ workingDir: workspaceDir, agentId: "agent-f1", emit: () => {}, contextBundle: { projectId: PROJECT_ID, workspaceDir } } as any,
 		);
-		expect(out).toMatch(/requires ctx.requirementStore/i);
+		// project-flow F4: the tool now requires ctx.flowActions (the shared
+		// backend); it no longer reads ctx.requirementStore directly.
+		expect(out).toMatch(/requires ctx.flowActions/i);
 	});
 
 	test("errors cleanly when projectId is missing", async () => {
 		const out = await execFlow(
 			{ action: "create", title: "X" },
 			// No contextBundle.projectId, no ctx.projectId, no input.projectId.
-			{ workingDir: workspaceDir, agentId: "agent-f1", emit: () => {}, requirementStore } as any,
+			buildCtx({ contextBundle: { wikiRootNodeId: `root:${PROJECT_ID}` } }),
 		);
 		expect(out).toMatch(/projectId is required/i);
 	});
@@ -148,13 +160,7 @@ describe("Flow tool · create", () => {
 	test("falls back to ctx.projectId when contextBundle has none", async () => {
 		const out = await execFlow(
 			{ action: "create", title: "Legacy path" },
-			{
-				workingDir: workspaceDir,
-				agentId: "agent-f1",
-				emit: () => {},
-				requirementStore,
-				projectId: PROJECT_ID,
-			} as any,
+			buildCtx({ contextBundle: { wikiRootNodeId: `root:${PROJECT_ID}` }, projectId: PROJECT_ID }),
 		);
 		expect(out).toMatch(/Requirement created:/);
 		expect(requirementStore.listByProject(PROJECT_ID).length).toBe(1);
@@ -163,13 +169,7 @@ describe("Flow tool · create", () => {
 	test("falls back to ctx.workingDir when contextBundle.workspaceDir is absent", async () => {
 		const out = await execFlow(
 			{ action: "create", projectId: PROJECT_ID, title: "Fallback ws", description: "uses workingDir" },
-			{
-				workingDir: workspaceDir,
-				agentId: "agent-f1",
-				emit: () => {},
-				requirementStore,
-				contextBundle: { projectId: PROJECT_ID, wikiRootNodeId: "r" },
-			} as any,
+			buildCtx({ contextBundle: { projectId: PROJECT_ID, wikiRootNodeId: "r" } }),
 		);
 		expect(out).toMatch(/Requirement created:/);
 		const req = requirementStore.listByProject(PROJECT_ID)[0];

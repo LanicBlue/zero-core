@@ -38,6 +38,7 @@ import {
 	_resetDataChangeHubForTest,
 } from "../../src/server/data-change-hub.js";
 import { ProjectWorkHookManager } from "../../src/server/project-work-hook-manager.js";
+import { createFlowActions } from "../../src/server/flow-actions.js";
 import { flowTool } from "../../src/runtime/tools/flow-tool.js";
 import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
 
@@ -79,11 +80,20 @@ afterEach(async () => {
 });
 
 function buildCtx(overrides: Record<string, any> = {}) {
+	// project-flow F4: the Flow tool forwards to ctx.flowActions. Build the
+	// shared backend with the real emitter so transition actions fire named
+	// signals through the hub (single source with the REST router).
+	const flowActions = createFlowActions({
+		requirementStore,
+		resolveWorkspaceDir: () => workspaceDir,
+		emitTransition,
+	});
 	return {
 		workingDir: workspaceDir,
 		agentId: "agent-f2",
 		emit: () => {},
 		requirementStore,
+		flowActions,
 		// Wire the real hub emitter so transition actions fire named signals.
 		emitTransition,
 		contextBundle: { projectId: PROJECT_ID, workspaceDir, wikiRootNodeId: `root:${PROJECT_ID}` },

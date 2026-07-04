@@ -935,6 +935,41 @@ export class ManagementService {
 	}
 
 	/**
+	 * project-flow F4 one-time migration: existing projects' delivery work
+	 * (the seeded "需求管理" work) was hooked on `requirements.create` pre-F3
+	 * — it fired the moment a requirement was created, bypassing the user
+	 * confirmation step. F3/F4 move the delivery trigger to `requirements.ready`
+	 * (user-confirmed). The seed template is already updated; this migrates
+	 * EXISTING works still carrying the old hook event to the new one.
+	 *
+	 * Safety: only touches works whose hook event is EXACTLY
+	 * `requirements.create` AND whose name matches the seeded delivery work
+	 * ("需求管理"). User-customized works / works with non-standard hooks are
+	 * left alone. Idempotent — a no-op once migrated. Caller gates this with a
+	 * one-time KV flag so it runs exactly once.
+	 */
+	resyncDeliveryWorkHookToReady(): void {
+		const store = this.requireProjectWorkStore();
+		const DELIVERY_WORK_NAMES = new Set(["需求管理", "Requirement Delivery"]);
+		const OLD_EVENT = "requirements.create";
+		const NEW_EVENT = "requirements.ready";
+		for (const project of this.projectStore.list()) {
+			for (const work of store.listByProject(project.id)) {
+				if (!DELIVERY_WORK_NAMES.has(work.name)) continue;
+				if (!Array.isArray(work.hooks)) continue;
+				// Skip if no hook uses the old event.
+				if (!work.hooks.some((h) => h.event === OLD_EVENT)) continue;
+				// Skip if already migrated (a hook with the new event exists).
+				if (work.hooks.some((h) => h.event === NEW_EVENT)) continue;
+				const nextHooks = work.hooks.map((h) =>
+					h.event === OLD_EVENT ? { ...h, event: NEW_EVENT } : h,
+				);
+				store.update(work.id, { hooks: nextHooks } as any);
+			}
+		}
+	}
+
+	/**
 	 * 创建一个 project-work(+ 可选 cron 触发器)。校验:agent 存在(若指定)+
 	 * 满足 requiredTools(无 fallback)。runOnce=true 时创建后立刻手动触发一次。
 	 */

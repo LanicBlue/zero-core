@@ -255,6 +255,8 @@ export interface WindowApi {
 	requirementsMessages: (id: string) => Promise<RequirementMessage[]>;
 	requirementsAddMessage: (id: string, sender: string, content: string, messageType?: string) => Promise<RequirementMessage>;
 	requirementsSteps: (id: string) => Promise<TaskStepRecord[]>;
+	// project-flow F4: user-supplied coverage verdict (verify compound close).
+	requirementsCoverageVerdict: (id: string, covered: boolean, reason?: string) => Promise<{ ok: boolean; requirement: RequirementRecord; text: string } | { error: string }>;
 
 	// ── Wiki ──
 	wikiListByProject: (projectId: string) => Promise<ProjectWikiNode[]>;
