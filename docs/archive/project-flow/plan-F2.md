@@ -1,6 +1,6 @@
 # plan-F2 — 迁移 action + 显式命名 hook 信号
 
-> 节点 F2(依赖 F1)。目标:Flow 补全**简单迁移 action**(pick/ready/plan/startBuild/finishBuild),每个 = transitionStatus + 写文档段 + 显式发命名信号;扩展 data-change-hub 加 `emitTransition`、ProjectWorkHookManager 匹配命名信号。对应 [project-flow.md](../../design/project-flow/project-flow.md) §2/§3/§9。
+> 节点 F2(依赖 F1)。目标:Flow 补全**简单迁移 action**(pick/ready/plan/startBuild/finishBuild),每个 = transitionStatus + 写文档段 + 显式发命名信号;扩展 data-change-hub 加 `emitTransition`、ProjectWorkHookManager 匹配命名信号。对应 [project-flow.md](./project-flow.md) §2/§3/§9。
 > **verify(复合)+ worktree + work 重配 + 替换旧工具 留 F3。**
 
 ## 范围

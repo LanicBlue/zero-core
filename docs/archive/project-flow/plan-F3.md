@@ -1,6 +1,6 @@
 # plan-F3 — verify 接入(复合)+ worktree 集中化 + 交付 work hook + 替换旧工具
 
-> 节点 F3(依赖 F2)。目标:Flow 加 **`verify`(复合,沿用现 verify 语义)+ `plan` 补 worktree 创建**;worktree 集中化到 `~/.zero-core/projects/{project}/{req-shortId}/`;交付 work hook 改 `create`→`ready`;替换 3 旧工具(CreateRequirement/CreateRequirementWithDoc/verify)→ Flow + RENAMED_TOOLS back-compat;返工回路。对应 [project-flow.md](../../design/project-flow/project-flow.md) §2/§5/§9。
+> 节点 F3(依赖 F2)。目标:Flow 加 **`verify`(复合,沿用现 verify 语义)+ `plan` 补 worktree 创建**;worktree 集中化到 `~/.zero-core/projects/{project}/{req-shortId}/`;交付 work hook 改 `create`→`ready`;替换 3 旧工具(CreateRequirement/CreateRequirementWithDoc/verify)→ Flow + RENAMED_TOOLS back-compat;返工回路。对应 [project-flow.md](./project-flow.md) §2/§5/§9。
 
 ## 范围(按简化设计 —— 不拆 verify、不加 PM/合并 work)
 1. **`verify`(复合 Flow action)**:把现 `verify-tool.ts` 的逻辑(delegate PM 判覆盖 + submitCoverageVerdict + APPROVED→mergeFeatureToMain+closed / REJECTED→意见回灌)搬进 Flow.verify。Flow.verify 通过发 `verified`/`rejected`,写 Decision Log 段。可由用户或 agent 调用(配置暴露,不绑角色)。

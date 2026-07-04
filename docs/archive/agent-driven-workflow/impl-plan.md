@@ -1,6 +1,6 @@
 # v0.8 实现计划(impl-plan)
 
-> [workflow-spec.md](../../design/agent-driven-workflow/workflow-spec.md) 的实现拆解索引。每阶段详情见对应 `plan-Px.md`。
+> [workflow-spec.md](./workflow-spec.md) 的实现拆解索引。每阶段详情见对应 `plan-Px.md`。
 > 规范是「为什么/是什么」,本文档是「按什么顺序做、怎么算 done」。
 
 ## 推进方式

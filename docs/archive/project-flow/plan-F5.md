@@ -1,6 +1,6 @@
 # plan-F5 — 清理
 
-> 节点 F5(依赖 F4)。目标:删旧文件、扫注释、code-graph、全回归。Flow 全面接管,无残留。对应 [project-flow.md](../../design/project-flow/project-flow.md) §8。
+> 节点 F5(依赖 F4)。目标:删旧文件、扫注释、code-graph、全回归。Flow 全面接管,无残留。对应 [project-flow.md](./project-flow.md) §8。
 
 ## 范围
 - 删 [requirement-tools.ts](../../../src/runtime/tools/requirement-tools.ts)、[verify-tool.ts](../../../src/runtime/tools/verify-tool.ts)(若 F3 已移注册、F4 已接管 UI,此时无人引用)。
