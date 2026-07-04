@@ -11,7 +11,8 @@ docs/design/
 ├── README.md                ← 本文
 ├── agent-driven-workflow/   ← v0.8 多 Agent 工作流重构(原 docs/rfc/)
 ├── hook-redesign/           ← hook 生命周期重做(per-loop registry + step 中心)
-└── runtime-push-ui-sync/    ← 运行时推送 · UI 窗口(单一真源 · 零轮询)
+├── runtime-push-ui-sync/    ← 运行时推送 · UI 窗口(单一真源 · 零轮询)(已落地 N1–N4)
+└── agent-context-fields/    ← Agent 上下文字段接通(contextConfig/skillPolicy/knowledgeBaseIds 死字段)
 ```
 
 ## 各努力说明
@@ -47,6 +48,14 @@ docs/design/
 | `plan-N2.md` / `acceptance-N2.md` | 实现路线 / 测试要求 | N2 UI 推送驱动 + 消闪烁 + 重连 resync(依赖 N1) |
 | `plan-N3.md` / `acceptance-N3.md` | 实现路线 / 测试要求 | N3 文件系统零轮询(非运行时) |
 | `plan-N4.md` / `acceptance-N4.md` | 实现路线 / 测试要求 | N4 配置字段热更(不变量 1:所见即所跑) |
+
+### agent-context-fields/(Agent 上下文字段接通)
+
+runtime-push N4 核实出的"死字段"接通 effort。三个字段性质不同:contextConfig(prompt 组合开关,半死)、skillPolicy(skill 有扫描器+UI 但运行时不消费)、knowledgeBaseIds(整个知识库系统都不存在)。
+
+| 文件 | 性质 | 作用 |
+|------|------|------|
+| `agent-context-fields.md` | **设计 Draft** | 现状审计 + 逐字段方案 + 6 个待产品决策项 + 建议节点拆分(C1–C4 + 独立 KB effort) |
 
 ## 约定
 
