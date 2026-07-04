@@ -28,27 +28,20 @@
 import { tool } from "ai";
 import type { ZodSchema } from "zod";
 import type { ToolExecutionContext } from "../types.js";
-import type { ToolConfigField } from "../../core/tool-registry.js";
+import type { ToolConfigField, ToolCategory } from "../../core/tool-registry.js";
 import { log } from "../../core/logger.js";
 import { triggerHooks } from "../../core/hook-registry.js";
 import type { ToolRateLimiter } from "../tool-rate-limiter.js";
 
+// Re-export so existing consumers (e.g. tools/index.ts) can still import
+// ToolCategory from tool-factory. Canonical definition lives in
+// core/tool-registry.ts (single source — previously duplicated here, which
+// drifted when new categories were added).
+export type { ToolCategory };
+
 // ---------------------------------------------------------------------------
 // Tool metadata
 // ---------------------------------------------------------------------------
-
-export type ToolCategory =
-	| "runtime"
-	| "task"
-	| "web"
-	| "memory"
-	| "thinking"
-	| "assistant"
-	| "interaction"
-	| "agent"
-	| "management"
-	| "workflow"
-	| "project";
 
 export interface ToolMeta {
 	category: ToolCategory;

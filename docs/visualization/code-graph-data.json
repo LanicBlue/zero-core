@@ -2094,7 +2094,7 @@
 		},
 		{
 			"path": "src/runtime/tools/tool-factory.ts",
-			"lines": 353,
+			"lines": 346,
 			"dir": "src/runtime/tools",
 			"exports": [
 				"truncateResult",
@@ -2115,18 +2115,18 @@
 				"src/runtime/tool-rate-limiter.ts"
 			],
 			"functions": [
-				"src/runtime/tools/tool-factory.ts/truncateResult:73",
-				"src/runtime/tools/tool-factory.ts/recordToolUsage:92",
-				"src/runtime/tools/tool-factory.ts/summarizeParams:124",
-				"src/runtime/tools/tool-factory.ts/buildTool:162",
-				"src/runtime/tools/tool-factory.ts/getToolMeta:295",
-				"src/runtime/tools/tool-factory.ts/getToolName:299",
-				"src/runtime/tools/tool-factory.ts/getToolDescription:303",
-				"src/runtime/tools/tool-factory.ts/getToolPrompt:307",
-				"src/runtime/tools/tool-factory.ts/getToolConfigSchema:311",
-				"src/runtime/tools/tool-factory.ts/getToolInputFields:315",
-				"src/runtime/tools/tool-factory.ts/getToolExecute:319",
-				"src/runtime/tools/tool-factory.ts/extractInputFields:327"
+				"src/runtime/tools/tool-factory.ts/truncateResult:66",
+				"src/runtime/tools/tool-factory.ts/recordToolUsage:85",
+				"src/runtime/tools/tool-factory.ts/summarizeParams:117",
+				"src/runtime/tools/tool-factory.ts/buildTool:155",
+				"src/runtime/tools/tool-factory.ts/getToolMeta:288",
+				"src/runtime/tools/tool-factory.ts/getToolName:292",
+				"src/runtime/tools/tool-factory.ts/getToolDescription:296",
+				"src/runtime/tools/tool-factory.ts/getToolPrompt:300",
+				"src/runtime/tools/tool-factory.ts/getToolConfigSchema:304",
+				"src/runtime/tools/tool-factory.ts/getToolInputFields:308",
+				"src/runtime/tools/tool-factory.ts/getToolExecute:312",
+				"src/runtime/tools/tool-factory.ts/extractInputFields:320"
 			],
 			"description": "工具工厂：根据配置构建工具实例，参数校验，结果截断"
 		},
@@ -7634,7 +7634,7 @@
 			"signature": "function createPlatformTools(getAppVersion?: () => string)",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/tool-factory.ts/buildTool:162",
+				"src/runtime/tools/tool-factory.ts/buildTool:155",
 				"src/runtime/mcp-tools/platform-tools.ts/getLatestLogFile:30",
 				"src/runtime/mcp-tools/platform-tools.ts/redactSensitive:44"
 			]
@@ -9946,10 +9946,10 @@
 			"signature": "function registerRuntimeTools(registry: ToolRegistry)",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/tool-factory.ts/getToolMeta:295",
-				"src/runtime/tools/tool-factory.ts/getToolConfigSchema:311",
-				"src/runtime/tools/tool-factory.ts/getToolDescription:303",
-				"src/runtime/tools/tool-factory.ts/getToolPrompt:307"
+				"src/runtime/tools/tool-factory.ts/getToolMeta:288",
+				"src/runtime/tools/tool-factory.ts/getToolConfigSchema:304",
+				"src/runtime/tools/tool-factory.ts/getToolDescription:296",
+				"src/runtime/tools/tool-factory.ts/getToolPrompt:300"
 			]
 		},
 		{
@@ -9992,7 +9992,7 @@
 			"signature": "function getToolCategories()",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/tool-factory.ts/getToolMeta:295"
+				"src/runtime/tools/tool-factory.ts/getToolMeta:288"
 			]
 		},
 		{
@@ -10007,7 +10007,7 @@
 			"signature": "function getAllToolInfo()",
 			"description": "",
 			"callees": [
-				"src/runtime/tools/tool-factory.ts/getToolMeta:295"
+				"src/runtime/tools/tool-factory.ts/getToolMeta:288"
 			]
 		},
 		{
@@ -11897,12 +11897,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/truncateResult:73",
+			"id": "src/runtime/tools/tool-factory.ts/truncateResult:66",
 			"name": "truncateResult",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 73,
-			"endLine": 77,
+			"line": 66,
+			"endLine": 70,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "function truncateResult(result: string, maxSize: number)",
@@ -11910,27 +11910,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/recordToolUsage:92",
+			"id": "src/runtime/tools/tool-factory.ts/recordToolUsage:85",
 			"name": "recordToolUsage",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 92,
-			"endLine": 117,
+			"line": 85,
+			"endLine": 110,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "function recordToolUsage(toolName: string, input: unknown, startTs: number, ctx: ToolExecutionContext | { agentId?: string; sessionId?: string }, success: boolean, _errorMsg?: string)",
 			"description": "Record one tool invocation to the tool_usage table. Best-effort: any error\r",
 			"callees": [
-				"src/runtime/tools/tool-factory.ts/summarizeParams:124"
+				"src/runtime/tools/tool-factory.ts/summarizeParams:117"
 			]
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/summarizeParams:124",
+			"id": "src/runtime/tools/tool-factory.ts/summarizeParams:117",
 			"name": "summarizeParams",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 124,
-			"endLine": 146,
+			"line": 117,
+			"endLine": 139,
 			"statementCount": 16,
 			"exported": false,
 			"signature": "function summarizeParams(input: unknown)",
@@ -11938,30 +11938,30 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/buildTool:162",
+			"id": "src/runtime/tools/tool-factory.ts/buildTool:155",
 			"name": "buildTool",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 162,
-			"endLine": 289,
+			"line": 155,
+			"endLine": 282,
 			"statementCount": 38,
 			"exported": true,
 			"signature": "function buildTool(options: BuildToolOptions<T>)",
 			"description": "",
 			"callees": [
 				"src/core/hook-registry.ts/triggerHooks:137",
-				"src/runtime/tools/tool-factory.ts/recordToolUsage:92",
-				"src/runtime/tools/tool-factory.ts/truncateResult:73",
-				"src/runtime/tools/tool-factory.ts/extractInputFields:327"
+				"src/runtime/tools/tool-factory.ts/recordToolUsage:85",
+				"src/runtime/tools/tool-factory.ts/truncateResult:66",
+				"src/runtime/tools/tool-factory.ts/extractInputFields:320"
 			]
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/getToolMeta:295",
+			"id": "src/runtime/tools/tool-factory.ts/getToolMeta:288",
 			"name": "getToolMeta",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 295,
-			"endLine": 297,
+			"line": 288,
+			"endLine": 290,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function getToolMeta(toolObj: any)",
@@ -11969,12 +11969,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/getToolName:299",
+			"id": "src/runtime/tools/tool-factory.ts/getToolName:292",
 			"name": "getToolName",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 299,
-			"endLine": 301,
+			"line": 292,
+			"endLine": 294,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function getToolName(toolObj: any)",
@@ -11982,12 +11982,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/getToolDescription:303",
+			"id": "src/runtime/tools/tool-factory.ts/getToolDescription:296",
 			"name": "getToolDescription",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 303,
-			"endLine": 305,
+			"line": 296,
+			"endLine": 298,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function getToolDescription(toolObj: any)",
@@ -11995,12 +11995,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/getToolPrompt:307",
+			"id": "src/runtime/tools/tool-factory.ts/getToolPrompt:300",
 			"name": "getToolPrompt",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 307,
-			"endLine": 309,
+			"line": 300,
+			"endLine": 302,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function getToolPrompt(toolObj: any)",
@@ -12008,12 +12008,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/getToolConfigSchema:311",
+			"id": "src/runtime/tools/tool-factory.ts/getToolConfigSchema:304",
 			"name": "getToolConfigSchema",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 311,
-			"endLine": 313,
+			"line": 304,
+			"endLine": 306,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function getToolConfigSchema(toolObj: any)",
@@ -12021,12 +12021,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/getToolInputFields:315",
+			"id": "src/runtime/tools/tool-factory.ts/getToolInputFields:308",
 			"name": "getToolInputFields",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 315,
-			"endLine": 317,
+			"line": 308,
+			"endLine": 310,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function getToolInputFields(toolObj: any)",
@@ -12034,12 +12034,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/getToolExecute:319",
+			"id": "src/runtime/tools/tool-factory.ts/getToolExecute:312",
 			"name": "getToolExecute",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 319,
-			"endLine": 321,
+			"line": 312,
+			"endLine": 314,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function getToolExecute(toolObj: any)",
@@ -12047,12 +12047,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tools/tool-factory.ts/extractInputFields:327",
+			"id": "src/runtime/tools/tool-factory.ts/extractInputFields:320",
 			"name": "extractInputFields",
 			"kind": "function",
 			"file": "src/runtime/tools/tool-factory.ts",
-			"line": 327,
-			"endLine": 351,
+			"line": 320,
+			"endLine": 344,
 			"statementCount": 23,
 			"exported": false,
 			"signature": "function extractInputFields(schema: any)",
@@ -14252,7 +14252,7 @@
 				"src/core/device-context.ts/generateAndSaveDeviceContext:228",
 				"src/core/device-context.ts/saveDeviceContext:224",
 				"src/core/config.ts/loadConfig:307",
-				"src/runtime/tools/tool-factory.ts/getToolInputFields:315"
+				"src/runtime/tools/tool-factory.ts/getToolInputFields:308"
 			]
 		},
 		{
@@ -15885,7 +15885,7 @@
 				"src/server/project-wiki-router.ts/createWikiRouter:26",
 				"src/server/wiki-router.ts/createWikiRouter:63",
 				"src/server/wiki-router.ts/createWorkspaceDocHandler:264",
-				"src/runtime/tools/tool-factory.ts/getToolExecute:319",
+				"src/runtime/tools/tool-factory.ts/getToolExecute:312",
 				"src/runtime/mcp-tools/fetch-tools.ts/getCookieCount:421",
 				"src/runtime/mcp-tools/fetch-tools.ts/clearCookies:429",
 				"src/server/index.ts/expandHome:82"
@@ -25301,7 +25301,7 @@
 			"src/runtime/mcp-tools/platform-tools.ts/redactSensitive:44",
 			"src/runtime/mcp-tools/platform-tools.ts/createPlatformTools:55"
 		],
-		"src/runtime/tools/tool-factory.ts/buildTool:162": [
+		"src/runtime/tools/tool-factory.ts/buildTool:155": [
 			"src/runtime/mcp-tools/platform-tools.ts/createPlatformTools:55"
 		],
 		"src/runtime/mcp-tools/platform-tools.ts/getLatestLogFile:30": [
@@ -25372,7 +25372,7 @@
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:498",
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:574",
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:650",
-			"src/runtime/tools/tool-factory.ts/buildTool:162"
+			"src/runtime/tools/tool-factory.ts/buildTool:155"
 		],
 		"src/runtime/session.ts/AgentSession.estimateMessageTokens:518": [
 			"src/runtime/session.ts/AgentSession.pruneIfNeeded:153",
@@ -25560,18 +25560,18 @@
 		"src/runtime/mcp-tools/platform-tools.ts/createPlatformTools:55": [
 			"src/runtime/tools/index.ts/getPlatformTools:69"
 		],
-		"src/runtime/tools/tool-factory.ts/getToolMeta:295": [
+		"src/runtime/tools/tool-factory.ts/getToolMeta:288": [
 			"src/runtime/tools/index.ts/registerRuntimeTools:148",
 			"src/runtime/tools/index.ts/getToolCategories:248",
 			"src/runtime/tools/index.ts/getAllToolInfo:261"
 		],
-		"src/runtime/tools/tool-factory.ts/getToolConfigSchema:311": [
+		"src/runtime/tools/tool-factory.ts/getToolConfigSchema:304": [
 			"src/runtime/tools/index.ts/registerRuntimeTools:148"
 		],
-		"src/runtime/tools/tool-factory.ts/getToolDescription:303": [
+		"src/runtime/tools/tool-factory.ts/getToolDescription:296": [
 			"src/runtime/tools/index.ts/registerRuntimeTools:148"
 		],
-		"src/runtime/tools/tool-factory.ts/getToolPrompt:307": [
+		"src/runtime/tools/tool-factory.ts/getToolPrompt:300": [
 			"src/runtime/tools/index.ts/registerRuntimeTools:148"
 		],
 		"src/runtime/tools/index.ts/isEnabled:202": [
@@ -25880,17 +25880,17 @@
 		"src/runtime/tools/todo-write.ts/todoKey:44": [
 			"src/runtime/tools/todo-write.ts/renderTodosContext:62"
 		],
-		"src/runtime/tools/tool-factory.ts/summarizeParams:124": [
-			"src/runtime/tools/tool-factory.ts/recordToolUsage:92"
+		"src/runtime/tools/tool-factory.ts/summarizeParams:117": [
+			"src/runtime/tools/tool-factory.ts/recordToolUsage:85"
 		],
-		"src/runtime/tools/tool-factory.ts/recordToolUsage:92": [
-			"src/runtime/tools/tool-factory.ts/buildTool:162"
+		"src/runtime/tools/tool-factory.ts/recordToolUsage:85": [
+			"src/runtime/tools/tool-factory.ts/buildTool:155"
 		],
-		"src/runtime/tools/tool-factory.ts/truncateResult:73": [
-			"src/runtime/tools/tool-factory.ts/buildTool:162"
+		"src/runtime/tools/tool-factory.ts/truncateResult:66": [
+			"src/runtime/tools/tool-factory.ts/buildTool:155"
 		],
-		"src/runtime/tools/tool-factory.ts/extractInputFields:327": [
-			"src/runtime/tools/tool-factory.ts/buildTool:162"
+		"src/runtime/tools/tool-factory.ts/extractInputFields:320": [
+			"src/runtime/tools/tool-factory.ts/buildTool:155"
 		],
 		"src/runtime/tools/web-search.ts/DuckDuckGoProvider.searchHtml:71": [
 			"src/runtime/tools/web-search.ts/DuckDuckGoProvider.search:61"
@@ -26250,7 +26250,7 @@
 		"src/core/config.ts/loadConfig:307": [
 			"src/server/config-router.ts/createConfigRouter:41"
 		],
-		"src/runtime/tools/tool-factory.ts/getToolInputFields:315": [
+		"src/runtime/tools/tool-factory.ts/getToolInputFields:308": [
 			"src/server/config-router.ts/createConfigRouter:41"
 		],
 		"src/server/cron-analysis.ts/tzFields:147": [
@@ -26647,7 +26647,7 @@
 		"src/server/wiki-router.ts/createWorkspaceDocHandler:264": [
 			"src/server/index.ts/startServer:101"
 		],
-		"src/runtime/tools/tool-factory.ts/getToolExecute:319": [
+		"src/runtime/tools/tool-factory.ts/getToolExecute:312": [
 			"src/server/index.ts/startServer:101"
 		],
 		"src/runtime/mcp-tools/fetch-tools.ts/getCookieCount:421": [
