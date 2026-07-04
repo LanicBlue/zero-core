@@ -68,10 +68,12 @@ action 按操作语义命名;hook 是该步发的信号。每个 action = 状态
 ## 4. 文档与 worktree 模型(上下文怎么传)
 
 ### 4.1 需求文档 = 唯一权威上下文(DB 真源 + 文件投影)
-- **正文存 RequirementRecord**(DB,location-independent):新增结构化文档字段(markdown,固定段)。这是真源。
-- **投影到 `{workspace}/.zero/requirements/{id}.md`**:给用户看 / 可选 git。**不是真源**。
-- **注入源是 DB**:work 执行、verify 判断、用户确认 chat —— 全从 DB 注入文档(替代/augment 现 contextPolicy.injectRequirementDetail),**与在哪个 worktree 无关**。
-- **讨论结果 / 决策 → 写进文档(DB)**,不写消息流。messages 仅留瞬时轻量来回(可选)。
+- **正文存 RequirementRecord / [requirement-doc-store](../../../src/server/requirement-doc-store.ts)**(DB,location-independent):结构化文档字段(markdown,固定段)。这是真源。
+- **投影到 `{workspace}/docs/requirements/{id}.md`**(非隐藏、文件树可见;可 commit/共享=方便传递)。**不是真源**。
+- **Ready 前不进 git**:Discuss 阶段建的文档不 commit → Plan 建 worktree 时(git worktree 只含已提交文件)文档**不进 worktree**。
+- **注入源是 DB**:work/verify/判断 —— 全从 DB 注入(替代/augment contextPolicy.injectRequirementDetail),**与在哪个 worktree 无关**。worktree 里的 agent 经 DB 注入拿文档,不需要文档文件在 worktree。
+- **讨论结果 / 决策 → 写进文档(DB)→ 投影到 docs/ 文件**,不写消息流。messages 仅留瞬时轻量来回(可选)。
+- **用户看文档**:走 **workspace 文件方案**(复用文件树 → DocViewerPanel),**不加导航段**。文件树根跟活动 session 的 workspace(见 4.3)。
 
 ### 4.2 文档结构(先试,后续调)
 ```
@@ -85,20 +87,23 @@ action 按操作语义命名;hook 是该步发的信号。每个 action = 状态
 每个 action 产出/维护对应段(create→Intent,pick→Summary,plan→Plan,finishBuild→Coverage,verify→Decision Log)。
 
 ### 4.3 Worktree 模型
-- **位置**:`~/.zero-core/projects/{project}/{req-shortId}/`(集中放全局,避免在 workspace 旁被意外改动;替换现 `{workspace}.worktrees/`)。
-- **生命周期**:Ready→Plan(pickup)在此建 worktree → 干活 + verify 都在 worktree(lead agent 经 DB 注入文档;代码改在 feature 分支)→ verify 通过 merge feature→main 回原项目 → 清理 worktree。
-- **文档不随 worktree 走**:文档一直在 DB;worktree 只承载代码变更。merge 回去的是代码,文档无需"传递"(DB 全程共享)。
+- **位置**:`~/.zero-core/projects/{project}/{req-shortId}/`(集中放全局,避免 workspace 旁误改;替换现 `{workspace}.worktrees/`)。
+- **串行**:一个时间一个 plan/worktree(多个 Discuss→Ready 只是排队,plan/build 串行)。
+- **生命周期**:Ready→Plan(pickup)在此建 worktree → 干活(feature 分支)+ verify → 通过后 merge feature→main 回原项目 → 清理 worktree。
+- **文件树跟 worktree**:[FileTreePanel](../../../src/renderer/components/layout/FileTreePanel.tsx) 根 = 活动 session 的 workspaceDir。build 期间活动 session 在 worktree → 文件树显 worktree(代码)。**文档不进 worktree**(Ready 前没 commit),所以 build 期间文件树看不到文档——**可接受**:build 是 agent 在 worktree 搞代码,文档它经 DB 注入拿;用户不需要在 worktree 看文档。
+- **文档留在原项目**:文档一直在原项目 `docs/requirements/{id}.md`;当活动 session 是项目(idle / Discuss / 合回后)时,文件树显项目 → 文档可见、可重选(解决"切走切不回")。
+- **决策点都在项目上下文**:Discuss / verify 等用户判断发生在项目 session(PM/讨论)→ 文件树显项目 → 文档可见。worktree 只承载代码;merge 回去的是代码,文档无需"传递"(DB 全程共享)。
 
-> 这解了"worktree 跨边界传文档"问题:DB 真源 → 任意 worktree/session 注入即得,不存在文件搬运。
+> 解了"worktree 跨边界传文档":文档不进 worktree(不 commit),DB 真源注入任意 session;用户在项目上下文看文档文件,agent 在 worktree 经 DB 拿。
 
 ## 5. 关键架构变更
 
 1. **新建 Flow 工具**(7 迁移 action + `list`/`get`),每个 = transitionStatus + 写文档段 + 发 hook。**工具内不做 PM 委派 / 不做合并。**
 2. **拆现 `verify` 工具**:去 delegateTask(PM)+ submitCoverageVerdict + mergeFeatureToMain。Build→Verify 降级为 `finishBuild`;PM 判断 + 合并变 work。
 3. **work 重配 hook 订阅**([builtin-work-templates.ts](../../../src/server/builtin-work-templates.ts)):交付 work → `ready`;新增 PM 判断 work → `buildFinished`;新增 archivist 合并 work → `verified`。
-4. **需求文档 DB 化**:RequirementRecord 加结构化文档字段(真源);`.zero/requirements/{id}.md` 改为投影(渲染)。各 Flow action 写对应文档段。注入源切到 DB。
-5. **worktree 集中化**:[LeadService.pickupRequirement](../../../src/server/lead-service.ts) / GitIntegration 的 worktree 路径从 `{workspace}.worktrees/` → `~/.zero-core/projects/{project}/{req-shortId}/`。
-6. **UI(用户操作=未暴露 agent 的 action)**:卡片=入口(基本信息,不放确认按钮——太小不足以判断);确认动作在能展开完整上下文的**详情/chat 视图**里(注入需求文档 DB 内容)。看板无 drag-and-drop。详见 [plan-F4.md](plan-F4.md)。
+4. **需求文档 DB 化**:[requirement-doc-store](../../../src/server/requirement-doc-store.ts) / RequirementRecord 持结构化文档字段(真源);投影到 `{workspace}/docs/requirements/{id}.md`(非隐藏、文件树可见、可 commit)。各 Flow action 写对应文档段(写 DB → 投影文件)。注入源切到 DB。
+5. **worktree 集中化**:[LeadService.pickupRequirement](../../../src/server/lead-service.ts) / GitIntegration 的 worktree 路径从 `{workspace}.worktrees/` → `~/.zero-core/projects/{project}/{req-shortId}/`;串行(一次一个)。
+6. **UI(用户操作=未暴露 agent 的 action)**:**文档走 workspace 文件方案**(复用文件树 → DocViewerPanel),**不加导航段**;文件树根跟活动 session worktree(见 §4.3)。确认动作放文档面板对应段旁。看板无 drag-and-drop。详见 [plan-F4.md](plan-F4.md)。
 7. **替换旧工具**:`CreateRequirement`/`CreateRequirementWithDoc`/`verify` → Flow(`create`/`pick`/`finishBuild`+`verify`)。RENAMED_TOOLS back-compat。
 
 ## 6. 责任矩阵(谁驱动哪段)
