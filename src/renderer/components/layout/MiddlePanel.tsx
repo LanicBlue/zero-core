@@ -78,13 +78,20 @@ export default function MiddlePanel() {
 		<div className="middle-panel middle-panel-stack" ref={panelRef}>
 			{SECTIONS.map((sec, i) => {
 				const isOpen = open[sec.id];
-				const next = SECTIONS[i + 1];
-				// Splitter only between two adjacent (in fixed order) OPEN sections.
-				// A collapsed section between two open ones breaks the pair — its
-				// header bounds them, so no direct splitter (expected).
-				const showSplitter = isOpen && next && open[next.id];
+				// Splitter sits BETWEEN consecutive OPEN sections — collapsing a
+				// middle section no longer breaks the chain. It renders above this
+				// section when this one is open AND there's an open section earlier
+				// in the list; the drag adjusts that immediately-preceding open
+				// section vs this one (collapsed sections between are fixed-height
+				// header slabs). Fixes: wiki collapsed → workspace/tasks still
+				// resizable.
+				const aboveOpen = SECTIONS.slice(0, i).reverse().find((s) => open[s.id]);
+				const showSplitterAbove = isOpen && !!aboveOpen;
 				return (
 					<React.Fragment key={sec.id}>
+						{showSplitterAbove && aboveOpen && (
+							<div className="middle-splitter" onMouseDown={startDrag(aboveOpen.id, sec.id)} />
+						)}
 						<div
 							className={`middle-section${isOpen ? " open" : " collapsed"}`}
 							// Open sections size by weight (override the CSS flex:1 1 0 so
@@ -104,9 +111,6 @@ export default function MiddlePanel() {
 								</div>
 							)}
 						</div>
-						{showSplitter && (
-							<div className="middle-splitter" onMouseDown={startDrag(sec.id, next.id)} />
-						)}
 					</React.Fragment>
 				);
 			})}
