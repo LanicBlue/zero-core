@@ -29,6 +29,13 @@ const STATUS_ICON: Record<string, string> = {
 	interrupted: "⌽",
 };
 
+// Compact token count for the list row (1234 → "1.2k", 1250000 → "1.3M").
+function formatTokens(n: number): string {
+	if (n < 1000) return String(n);
+	if (n < 1_000_000) return (n / 1000).toFixed(1) + "k";
+	return (n / 1_000_000).toFixed(1) + "M";
+}
+
 export default function TaskTreePanel() {
 	const activeSessionId = useChatStore((s) => s.activeSessionId);
 	// Selector subscriptions (N2 render hygiene): subscribe to the active
@@ -98,7 +105,12 @@ export default function TaskTreePanel() {
 						</span>
 						<span className={`task-status-icon task-status-${t.status}`} title={t.status}>{STATUS_ICON[t.status] ?? "?"}</span>
 						<span className="task-card-target">{t.type === "bash" ? "bash" : "subagent"}</span>
-						<span className="task-card-task">{t.task.length > 60 ? t.task.slice(0, 60) + "…" : t.task}</span>
+						{/* Metadata, not task content (content is in the title tooltip +
+							right-pane conversation). turns/tokens/currentTool come straight
+							off RuntimeTaskInfo — already pulled by the store, no extra fetch. */}
+						<span className="task-card-stat" title="turns">{t.turns}t</span>
+						<span className="task-card-stat" title="tokens">{formatTokens(t.tokens)}</span>
+						{t.currentTool && <span className="task-card-tool" title={t.currentTool}>{t.currentTool}</span>}
 					</div>
 				</button>
 				{hasChildren && !isCollapsed && (
