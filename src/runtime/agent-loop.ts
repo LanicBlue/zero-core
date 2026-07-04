@@ -489,6 +489,25 @@ export class AgentLoop implements AgentRuntime {
 		subagents?: SessionConfig["subagents"];
 		wikiAnchors?: SessionConfig["wikiAnchors"];
 		/**
+		 * N4 (runtime-push-ui-sync, invariant 1): model / provider hot-sync.
+		 * Written back to this.config.{providerName,modelId}; executeStream
+		 * re-resolves the model every turn via resolveModel(providers,
+		 * this.config.providerName, this.config.modelId) (L588), so the next
+		 * turn picks them up with no cache invalidation needed. Undefined is
+		 * treated as "no change" (mirrors the other fields' !== undefined guard)
+		 * so the caller may pass the new agent record verbatim.
+		 */
+		providerName?: string;
+		modelId?: string;
+		/**
+		 * N4 (runtime-push-ui-sync, invariant 1): thinkingLevel hot-sync. Written
+		 * back to this.config.thinkingLevel; the PreLLMCall provider-options hook
+		 * (provider-options-hooks.ts) re-reads ctx.config.thinkingLevel every
+		 * turn, so the next turn's providerOptions reflect the new value with no
+		 * cache invalidation needed. Undefined = no change.
+		 */
+		thinkingLevel?: string;
+		/**
 		 * Capability service handles (management / wikiStore / requirementStore /
 		 * pmService) recomputed by agent-service against the NEW toolPolicy.
 		 * buildToolsSet reads toolPolicy fresh every turn, so without these the
@@ -506,6 +525,20 @@ export class AgentLoop implements AgentRuntime {
 		}
 		if (patch.toolPolicy !== undefined) {
 			this.config.toolPolicy = patch.toolPolicy;
+		}
+		// N4 (invariant 1): model / provider / thinkingLevel write-back. Each is
+		// re-read every turn (resolveModel at executeStream; thinkingLevel at the
+		// PreLLMCall provider-options hook), so simply writing the new value here
+		// is sufficient — no cache invalidation. Undefined preserves the existing
+		// value (caller may pass the new agent record verbatim).
+		if (patch.providerName !== undefined) {
+			this.config.providerName = patch.providerName;
+		}
+		if (patch.modelId !== undefined) {
+			this.config.modelId = patch.modelId;
+		}
+		if (patch.thinkingLevel !== undefined) {
+			this.config.thinkingLevel = patch.thinkingLevel;
 		}
 		// Sync capability handles to the new policy so a tool enabled mid-flight
 		// (e.g. Wiki turned on while the loop is running) actually surfaces —

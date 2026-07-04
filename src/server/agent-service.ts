@@ -238,6 +238,16 @@ export class AgentService {
 					toolPolicy: agent.toolPolicy,
 					subagents: agent.subagents,
 					wikiAnchors: agent.wikiAnchors,
+					// N4 (invariant 1): hot-sync model / provider / thinkingLevel
+					// from the new agent record. applyConfigUpdate treats each as
+					// "undefined = no change", so passing them verbatim is safe
+					// even when the record leaves a field unset. executeStream
+					// re-resolves the model and the PreLLMCall hook re-reads
+					// thinkingLevel every turn, so the next turn uses the new
+					// values without a loop rebuild.
+					providerName: agent.provider,
+					modelId: agent.model,
+					thinkingLevel: agent.thinkingLevel,
 					// Re-inject capability handles for the NEW policy so a tool
 					// enabled mid-flight (e.g. Wiki turned on while the loop is
 					// running) actually surfaces — CONDITIONAL_TOOLS gates on
