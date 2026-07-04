@@ -64,7 +64,12 @@ runtime-push N4 核实出的"死字段"接通 effort。三个字段性质不同:
 
 | 文件 | 性质 | 作用 |
 |------|------|------|
-| `project-flow.md` | **设计 Draft** | 模型(迁态+发hook、work订阅)+ 状态机/action/驱动 + hook 词表 + 5 个架构变更 + 责任矩阵 + F1–F5 分阶段计划 |
+| `project-flow.md` | **设计 Draft** | 模型(迁态+发hook、work订阅)+ 状态机/action/驱动 + hook 词表 + 5 个架构变更 + 责任矩阵 |
+| `plan-F1.md` / `acceptance-F1.md` | 实现路线 / 测试要求 | F1 Flow 骨架 + create/list/get |
+| `plan-F2.md` / `acceptance-F2.md` | 实现路线 / 测试要求 | F2 迁移 action + hook 信号机制(依赖 F1) |
+| `plan-F3.md` / `acceptance-F3.md` | 实现路线 / 测试要求 | F3 拆 verify + work 重配 + 替换旧工具(依赖 F2) |
+| `plan-F4.md` / `acceptance-F4.md` | 实现路线 / 测试要求 | F4 UI 接入(用户操作=未暴露 agent 的 action)(依赖 F3) |
+| `plan-F5.md` / `acceptance-F5.md` | 实现路线 / 测试要求 | F5 清理(删旧文件 / 注释 / code-graph / 回归) |
 
 ## 约定
 
