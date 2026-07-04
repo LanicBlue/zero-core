@@ -42,6 +42,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 	interaction: "Interaction",
 	mcp: "MCP",
 	agent: "Agent",
+	management: "Management",
+	workflow: "Workflow",
 };
 
 export default function ToolsPage() {
