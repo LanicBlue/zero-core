@@ -1,6 +1,6 @@
 # Hook 重做 · 编排索引
 
-> 18:00 定时执行的入口。权威 spec:[hook-step-redesign.md](../hook-step-redesign.md)(背景/命名/恢复设计)。本文档是**执行编排索引**。
+> 18:00 定时执行的入口。权威 spec:[hook-step-redesign.md](../../../design/hook-redesign/hook-step-redesign.md)(背景/命名/恢复设计)。本文档是**执行编排索引**。
 
 ## 执行模型(编排者 = Claude,不亲自编码)
 - **第一 commit = 文档保护**(已做):所有 design doc(spec + 本索引 + steps/)入库,作为初始状态保护点。

@@ -794,7 +794,7 @@ prepare 失败。所以补列永远在第 1 步。涵盖:
 `runMigrations` 内部就地 `new SqliteStore<T>(db, table, COLUMNS)` 构造旧业务 store
 (`agents` / `providers` / `templates` / `mcp_servers` / `kb_entries`),并 `agents.ensureColumn("role_tag", "TEXT")`
 显式补回 v0.8 故意从 `AGENT_COLUMNS` 拿掉的 `role_tag` 物理列(fresh DB 上 `ensureTable` 不会加它,
-但 acceptance-P0 要求"roleTag 列还在")。
+但 acceptance-P0(`plan/agent-driven-workflow/acceptance-P0.md`)要求"roleTag 列还在")。
 
 #### 阶段 4:JSON 文件 → SQLite(`migrateFromJson`,旧版软启动路径)
 

@@ -1,6 +1,6 @@
 # plan-F1 — Flow 工具骨架 + 读
 
-> 节点 F1(基石,无依赖)。目标:新建 Flow 工具,先开 `create`(→Found,自然发 `created`)+ `list`/`get`,与旧工具并行存在(不替换)。对应 [project-flow.md](project-flow.md) §2/§8。
+> 节点 F1(基石,无依赖)。目标:新建 Flow 工具,先开 `create`(→Found,自然发 `created`)+ `list`/`get`,与旧工具并行存在(不替换)。对应 [project-flow.md](../../design/project-flow/project-flow.md) §2/§8。
 
 ## 范围
 - 新建 `src/runtime/tools/flow-tool.ts`:action 切换工具 `Flow`,首批评 action:`create` / `list` / `get`。
