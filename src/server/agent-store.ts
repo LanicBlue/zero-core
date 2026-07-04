@@ -49,10 +49,12 @@ const COLUMNS: ColumnDef[] = [
 	{ key: "systemPrompt", column: "system_prompt" },
 	{ key: "toolPolicy", column: "tool_policy", json: true },
 	{ key: "skillPolicy", column: "skill_policy", json: true },
-	{ key: "knowledgeBaseIds", column: "knowledge_base_ids", json: true },
 	// v0.8 (P0 §2.2): subagents + wikiAnchors — JSON single-column round-trip
 	// (parity with knowledgeBaseIds). role_tag is INTENTIONALLY OMITTED — the
 	// physical column is retained (legacy) but store no longer round-trips it.
+	// knowledge_base_ids likewise: column retained (legacy), but knowledgeBaseIds
+	// was merged into wikiAnchors (knowledge base = wiki), so it is no longer
+	// round-tripped here.
 	{ key: "subagents", json: true },
 	{ key: "wikiAnchors", json: true },
 	{ key: "createdAt", column: "created_at" },

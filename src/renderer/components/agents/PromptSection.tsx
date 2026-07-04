@@ -89,21 +89,11 @@ export function PromptSection({
 
 			<div className="editor-subsection">
 				<h5>Context Sections</h5>
-				<p className="section-desc">Toggle which context sections are included in the system prompt.</p>
+				<p className="section-desc">Toggle which context sections are included in the per-turn context block.</p>
 				<label className="checkbox-label">
 					<input type="checkbox" checked={form.contextConfig?.useDeviceContext !== false}
 						onChange={(e) => updateContextConfig({ useDeviceContext: e.target.checked })} />
 					Device Context
-				</label>
-				<label className="checkbox-label">
-					<input type="checkbox" checked={form.contextConfig?.useGuidelines !== false}
-						onChange={(e) => updateContextConfig({ useGuidelines: e.target.checked })} />
-					Guidelines
-				</label>
-				<label className="checkbox-label">
-					<input type="checkbox" checked={form.contextConfig?.useMemoryContext === true}
-						onChange={(e) => updateContextConfig({ useMemoryContext: e.target.checked || undefined })} />
-					Memory (reserved)
 				</label>
 			</div>
 		</div>

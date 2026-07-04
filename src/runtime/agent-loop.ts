@@ -508,6 +508,14 @@ export class AgentLoop implements AgentRuntime {
 		 */
 		thinkingLevel?: string;
 		/**
+		 * agent-context-fields C1: per-agent context-block toggle. Written back to
+		 * this.config.contextConfig; buildContextMessage re-reads it every turn to
+		 * gate the Environment section. Only affects the per-turn <context> block,
+		 * never the system prompt (promptAssembler base), so no invalidation.
+		 * Undefined = no change.
+		 */
+		contextConfig?: { useDeviceContext?: boolean };
+		/**
 		 * Capability service handles (management / wikiStore / requirementStore /
 		 * pmService) recomputed by agent-service against the NEW toolPolicy.
 		 * buildToolsSet reads toolPolicy fresh every turn, so without these the
@@ -539,6 +547,13 @@ export class AgentLoop implements AgentRuntime {
 		}
 		if (patch.thinkingLevel !== undefined) {
 			this.config.thinkingLevel = patch.thinkingLevel;
+		}
+		// C1 (agent-context-fields): contextConfig write-back. buildContextMessage
+		// re-reads this.config.contextConfig?.useDeviceContext every turn, so a
+		// plain write is enough — no cache invalidation. Only gates the
+		// per-turn context block, never the system prompt.
+		if (patch.contextConfig !== undefined) {
+			this.config.contextConfig = patch.contextConfig;
 		}
 		// Sync capability handles to the new policy so a tool enabled mid-flight
 		// (e.g. Wiki turned on while the loop is running) actually surfaces —
@@ -658,6 +673,7 @@ export class AgentLoop implements AgentRuntime {
 		const baseCtx = buildContextMessage({
 			workspaceDir: this.config.workspaceDir,
 			guidelines: this.config.guidelines,
+			useDeviceContext: this.config.contextConfig?.useDeviceContext,
 			wikiAnchorsContext: wikiAnchorsContext || undefined,
 			currentTask: currentTask || undefined,
 			// Inject the agent's current todo list so it can read its own state
@@ -720,6 +736,7 @@ export class AgentLoop implements AgentRuntime {
 				const ctx = buildContextMessage({
 					workspaceDir: this.config.workspaceDir,
 					guidelines: this.config.guidelines,
+					useDeviceContext: this.config.contextConfig?.useDeviceContext,
 					memoryContext,
 					wikiAnchorsContext: wikiAnchorsContext || undefined,
 					currentTask: currentTask || undefined,

@@ -48,7 +48,10 @@ const AGENT_COLUMNS = [
 	{ key: "systemPrompt", column: "system_prompt" },
 	{ key: "toolPolicy", column: "tool_policy", json: true },
 	{ key: "skillPolicy", column: "skill_policy", json: true },
-	{ key: "knowledgeBaseIds", column: "knowledge_base_ids", json: true },
+	// knowledge_base_ids column is ALTERed onto upgraded DBs (see below) but
+	// INTENTIONALLY OMITTED from AGENT_COLUMNS: knowledgeBaseIds was merged into
+	// wikiAnchors (knowledge base = wiki), so neither store round-trips it. Same
+	// pattern as role_tag.
 	// v0.8 (P0 §2.2): subagents + wikiAnchors — JSON-stored as single TEXT
 	// columns (parity with knowledgeBaseIds). Migration ALTERs these onto
 	// upgraded DBs; fresh DBs get them via the SqliteStore ensureTable()

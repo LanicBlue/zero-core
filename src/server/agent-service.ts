@@ -248,6 +248,8 @@ export class AgentService {
 					providerName: agent.provider,
 					modelId: agent.model,
 					thinkingLevel: agent.thinkingLevel,
+					// C1 (agent-context-fields): per-agent context-block toggle.
+					contextConfig: agent.contextConfig,
 					// Re-inject capability handles for the NEW policy so a tool
 					// enabled mid-flight (e.g. Wiki turned on while the loop is
 					// running) actually surfaces — CONDITIONAL_TOOLS gates on
@@ -606,6 +608,7 @@ export class AgentService {
 			contextBundle: sessionRec?.context,
 			systemPrompt,
 			guidelines,
+			contextConfig: agent?.contextConfig,
 			compression: this.config.compression,
 			modelId: agent?.model || this.defaultModel || "",
 			providerName: agent?.provider || this.defaultProvider || "",

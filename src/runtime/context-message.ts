@@ -36,6 +36,12 @@ import * as os from "os";
 export function buildContextMessage(config: {
 	workspaceDir?: string;
 	guidelines?: string[];
+	/**
+	 * Per-agent toggle for the Environment section. undefined ⇒ on (the historic
+	 * default — env was always injected before this toggle was wired). Set false
+	 * to drop the Environment block from the context.
+	 */
+	useDeviceContext?: boolean;
 	memoryContext?: string;
 	/**
 	 * v0.8 (P1 §10.6): pre-rendered wiki anchor block for the `context`
@@ -63,8 +69,11 @@ export function buildContextMessage(config: {
 }): string | null {
 	const parts: string[] = [];
 
-	const env = buildEnvironmentBlock(config.workspaceDir);
-	parts.push(env);
+	// useDeviceContext defaults ON (undefined ⇒ !== false). Historic behavior
+	// (env always injected) is preserved for every agent that never set the toggle.
+	if (config.useDeviceContext !== false) {
+		parts.push(buildEnvironmentBlock(config.workspaceDir));
+	}
 
 	if (config.guidelines?.length) {
 		parts.push("## Guidelines\n" + config.guidelines.map(g => `- ${g}`).join("\n"));
@@ -89,6 +98,7 @@ export function buildContextMessage(config: {
 		parts.push("## Task List (your todos)\n" + config.todosContext);
 	}
 
+	if (parts.length === 0) return null;
 	return `<context>\n${parts.join("\n\n")}\n</context>\n`;
 }
 

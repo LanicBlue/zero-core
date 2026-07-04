@@ -36,8 +36,6 @@ export interface AgentRecord {
 	thinkingLevel?: string;
 	contextConfig?: {
 		useDeviceContext?: boolean;
-		useGuidelines?: boolean;
-		useMemoryContext?: boolean;
 	};
 	systemPrompt?: string;
 	toolPolicy?: {
@@ -51,7 +49,6 @@ export interface AgentRecord {
 	skillPolicy?: {
 		enabledSkills?: string[];
 	};
-	knowledgeBaseIds?: string[];
 	/**
 	 * v0.8 (P0 §2.2 / §11.9): subagents this agent may delegate to. Each entry
 	 * references a global agent by id (soft ref — no cascade). name/description

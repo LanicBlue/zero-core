@@ -245,6 +245,12 @@ export interface SessionConfig {
 	loopKind?: "main" | "delegated";
 	systemPrompt: string;
 	guidelines?: string[];
+	/**
+	 * Per-agent context-block toggles (mirrors AgentRecord.contextConfig, narrowed
+	 * to the only live toggle). buildContextMessage reads useDeviceContext every
+	 * turn to gate the Environment section; undefined ⇒ on (default-equivalent).
+	 */
+	contextConfig?: { useDeviceContext?: boolean };
 	modelId: string;
 	providerName: string;
 	thinkingLevel?: string;

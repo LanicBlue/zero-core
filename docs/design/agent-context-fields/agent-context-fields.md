@@ -1,6 +1,6 @@
 # Design:Agent 上下文字段接通(从死字段到运行时生效)
 
-> 状态:**Draft,决策已收敛,待实现**。
+> 状态:**C1/C2/C3 已实现并合入 master;SKILL 接入待单开 effort**。
 > 一句话:`AgentRecord` 上有三个 UI 可编辑、DB 持久化、但 Electron 运行时零消费的字段(contextConfig / skillPolicy / knowledgeBaseIds)。本努力界定真实现状并接通/清理。
 > 起源:runtime-push-ui-sync N4 核实这三个字段为"死字段",接通另起本 effort。详见 [runtime-push-ui-sync.md §5](../runtime-push-ui-sync/runtime-push-ui-sync.md)。
 
@@ -61,13 +61,13 @@ Electron 路径([agent-service.ts createLoopForSession L601–612](../../../src/
 
 ## 4. 节点拆分
 
-| 节点 | 主题 | 体量 |
-|---|---|---|
-| **C1** | useDeviceContext 接通(buildContextMessage 门控 + SessionConfig 传参 + applyConfigUpdate 热更) | 小 |
-| **C2** | 移除 useGuidelines/useMemoryContext(UI + 类型收窄) | 小 |
-| **C3** | knowledgeBaseIds 合并进 wikiAnchors(UI 指向 + 字段废弃) | 小 |
-| ~~C4~~ | ~~清理 core/buildSystemPrompt~~ | **取消**(Q9 约束) |
-| **SKILL** | skill 正式接入运行时(独立 effort) | 另起 |
+| 节点 | 主题 | 体量 | 状态 |
+|---|---|---|---|
+| **C1** | useDeviceContext 接通(buildContextMessage 门控 + SessionConfig 传参 + applyConfigUpdate 热更) | 小 | ✅ 已实现 |
+| **C2** | 移除 useGuidelines/useMemoryContext(UI + 类型收窄) | 小 | ✅ 已实现 |
+| **C3** | knowledgeBaseIds 合并进 wikiAnchors(字段废弃 + COLUMNS 移除,DB 列保留) | 小 | ✅ 已实现 |
+| ~~C4~~ | ~~清理 core/buildSystemPrompt~~ | **取消**(Q9 约束) | — |
+| **SKILL** | skill 正式接入运行时(独立 effort) | 另起 | 待启动 |
 
 > C1/C2/C3 互相独立、都小,可一起做。每个走 runtime-push N4 的验收模式(三层 tsc + build:lib + vitest + applyConfigUpdate 热更用例)。
 
