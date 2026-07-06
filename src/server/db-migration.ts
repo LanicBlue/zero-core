@@ -749,6 +749,12 @@ export function runMigrations(sessionDB: SessionDB): void {
 	// that already have delegated_tasks need the column added.
 	safeAddColumn(db, "delegated_tasks", "parent_tool_call_id", "TEXT");
 
+	// Persist the model the sub-agent actually ran on (Subagent tool's model
+	// override, else the target/caller's configured model), so historical tasks
+	// show the model used at delegation time rather than the agent's current
+	// model. Fresh DBs get it via CREATE TABLE; upgraded DBs need it added.
+	safeAddColumn(db, "delegated_tasks", "model_id", "TEXT");
+
 	// ─── Multi-Agent Workflow tables ───────────────────────────
 	// v0.8 (M0): projects slimmed to pure metadata + workspaceDir uniqueness.
 	// Legacy columns (path/analyst_cron_id/analyst_session_id/last_analysis_at/

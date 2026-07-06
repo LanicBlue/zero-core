@@ -185,6 +185,7 @@ export class SessionDB {
 				root_task_id        TEXT NOT NULL,
 				owner_agent_id      TEXT NOT NULL,
 				target_agent_id     TEXT NOT NULL,
+				model_id            TEXT,
 				parent_session_id   TEXT,
 				session_id          TEXT,
 				task                TEXT NOT NULL,
@@ -1048,6 +1049,7 @@ export class SessionDB {
 			rootTaskId: row.root_task_id,
 			ownerAgentId: row.owner_agent_id,
 			targetAgentId: row.target_agent_id,
+			modelId: row.model_id ?? undefined,
 			parentSessionId: row.parent_session_id ?? undefined,
 			sessionId: row.session_id ?? undefined,
 			task: row.task,
@@ -1074,6 +1076,7 @@ export class SessionDB {
 		rootTaskId: string;
 		ownerAgentId: string;
 		targetAgentId: string;
+		modelId?: string;
 		parentSessionId?: string;
 		sessionId?: string;
 		task: string;
@@ -1084,14 +1087,15 @@ export class SessionDB {
 		const now = new Date().toISOString();
 		const status = input.status ?? "running";
 		this.db.prepare(
-			"INSERT INTO delegated_tasks (id, parent_task_id, root_task_id, owner_agent_id, target_agent_id, parent_session_id, session_id, task, status, depth, step, turns, tokens, parent_tool_call_id, created_at, updated_at) " +
-			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)",
+			"INSERT INTO delegated_tasks (id, parent_task_id, root_task_id, owner_agent_id, target_agent_id, model_id, parent_session_id, session_id, task, status, depth, step, turns, tokens, parent_tool_call_id, created_at, updated_at) " +
+			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)",
 		).run(
 			input.id,
 			input.parentTaskId ?? null,
 			input.rootTaskId,
 			input.ownerAgentId,
 			input.targetAgentId,
+			input.modelId ?? null,
 			input.parentSessionId ?? null,
 			input.sessionId ?? null,
 			input.task,

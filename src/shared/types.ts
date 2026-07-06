@@ -233,6 +233,13 @@ export interface DelegatedTaskRecord {
 	ownerAgentId: string;
 	/** Agent the task was delegated to (runs with this agent's identity). */
 	targetAgentId: string;
+	/**
+	 * The model the sub-agent actually ran on — effective model at delegation
+	 * time (Subagent tool's model override, else the target/caller agent's
+	 * configured model). Persisted so historical tasks show the model that was
+	 * used, not the agent's current model. Undefined on legacy rows.
+	 */
+	modelId?: string;
 	/** Owner's chat session (where the delegation was triggered). */
 	parentSessionId?: string;
 	/** Hidden delegated session backing this task's turn history. */

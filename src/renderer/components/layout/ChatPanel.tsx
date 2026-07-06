@@ -519,6 +519,7 @@ export default function ChatPanel() {
 				inputTokens: payload.inputTokens ?? 0,
 				outputTokens: payload.outputTokens ?? 0,
 				totalTokens: payload.totalTokens ?? 0,
+				model: payload.model,
 			});
 			setTodos(sid, payload.todos ?? []);
 			setPending(
@@ -740,6 +741,14 @@ export default function ChatPanel() {
 
 				{contextInfo && (
 					<div className="context-usage">
+						{contextInfo.model && (
+							<span
+								className="context-usage-model"
+								title={contextInfo.model.providerName ? `${contextInfo.model.providerName}/${contextInfo.model.modelId}` : contextInfo.model.modelId}
+							>
+								{contextInfo.model.modelId}
+							</span>
+						)}
 						<span className="context-usage-text">
 							{contextInfo.inputTokens > 0
 								? <>{formatTokenCount(contextInfo.inputTokens)} in · {formatTokenCount(contextInfo.outputTokens)} out | {formatTokenCount(contextInfo.contextWindow)}</>
