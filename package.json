@@ -25,7 +25,8 @@
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:e2e": "npm run build && playwright test",
-    "build:codegraph": "tsx scripts/build-codegraph.ts"
+    "build:codegraph": "tsx scripts/build-codegraph.ts",
+    "check:links": "node scripts/check-doc-links.cjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.77",
