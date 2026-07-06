@@ -43,7 +43,7 @@ import type {
 import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
 import { buildToolsSet } from "./tools/index.js";
-import { renderTodosContext } from "./tools/todo-write.js";
+import { renderWorkbench } from "./workbench.js";
 import { log } from "../core/logger.js";
 import { HookRegistry } from "../core/hook-registry.js";
 import { classifyError, isTransientError, userFriendlyMessage, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
@@ -690,9 +690,8 @@ export class AgentLoop implements AgentRuntime {
 			useDeviceContext: this.config.contextConfig?.useDeviceContext,
 			wikiAnchorsContext: wikiAnchorsContext || undefined,
 			currentTask: currentTask || undefined,
-			// Inject the agent's current todo list so it can read its own state
-			// across turns (not just write blindly). Renderer lives in todo-write.ts.
-			todosContext: renderTodosContext(this.config.sessionId, this.config.agentId) ?? undefined,
+			// (sub-1) todos moved out of the turn-scoped context block into the
+			// per-step workbench channel (renderWorkbench) so they refresh mid-turn.
 		});
 		let messages = this.prependContext(this.session.getMessages(), baseCtx);
 		// Collect each step's response messages so finalizeStream can persist
@@ -754,7 +753,6 @@ export class AgentLoop implements AgentRuntime {
 					memoryContext,
 					wikiAnchorsContext: wikiAnchorsContext || undefined,
 					currentTask: currentTask || undefined,
-					todosContext: renderTodosContext(this.config.sessionId, this.config.agentId) ?? undefined,
 				});
 				if (ctx) {
 					messages = this.prependContext(messages, ctx);
@@ -762,7 +760,16 @@ export class AgentLoop implements AgentRuntime {
 			}
 
 			// Apply appendMessages from StepStart + PreLLMCall to this step only.
-			const stepMessages = [...messages, ...stepStartExtra, ...preExtra];
+			let stepMessages = [...messages, ...stepStartExtra, ...preExtra];
+
+			// (sub-1) workbench: per-step, non-persistent live-state block (todos,
+			// later task/wait). Appended as a user message at the end (format-safe:
+			// last message is often a tool result mid-turn, can't prepend to it).
+			// Not persisted into `messages` — fresh each step, never accumulates.
+			const workbench = renderWorkbench(this.config.sessionId, this.config.agentId);
+			if (workbench) {
+				stepMessages = [...stepMessages, { role: "user", content: workbench }];
+			}
 
 			log.debug("loop", "streamText called (step " + stepNumber + "), messages:", stepMessages.length,
 				"model:", this.config.providerName + "/" + this.config.modelId,

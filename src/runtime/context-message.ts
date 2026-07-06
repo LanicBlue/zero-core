@@ -60,12 +60,6 @@ export function buildContextMessage(config: {
 	 * Re-evaluated every turn (the active requirement may switch mid-session).
 	 */
 	currentTask?: string;
-	/**
-	 * The agent's current todo list (pre-rendered by renderTodosContext in
-	 * todo-write.ts). Injected every turn so the agent knows its own task
-	 * state — without this the agent could write todos but never read them.
-	 */
-	todosContext?: string;
 }): string | null {
 	const parts: string[] = [];
 
@@ -94,9 +88,7 @@ export function buildContextMessage(config: {
 		parts.push("## Wiki Anchors (context)\n" + config.wikiAnchorsContext);
 	}
 
-	if (config.todosContext) {
-		parts.push("## Task List (your todos)\n" + config.todosContext);
-	}
+	// (sub-1) todos moved to the per-step workbench channel (renderWorkbench).
 
 	if (parts.length === 0) return null;
 	return `<context>\n${parts.join("\n\n")}\n</context>\n`;
