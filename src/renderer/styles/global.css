@@ -480,6 +480,18 @@ body {
 .context-usage-text {
   white-space: nowrap;
 }
+.context-usage-model {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  /* Visually separate the model tag from the token counts that follow. */
+  padding-right: 6px;
+  border-right: 1px solid var(--border, #333);
+  color: var(--fg-muted, #999);
+}
 .context-usage-bar {
   width: 60px;
   height: 4px;

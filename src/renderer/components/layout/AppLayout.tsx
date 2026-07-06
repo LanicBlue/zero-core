@@ -102,6 +102,7 @@ export default function AppLayout() {
 							inputTokens: payload.inputTokens ?? 0,
 							outputTokens: payload.outputTokens ?? 0,
 							totalTokens: payload.totalTokens ?? 0,
+							model: payload.model,
 						});
 					}
 				}).catch(() => { /* ignore — next ping/nav refetches */ });

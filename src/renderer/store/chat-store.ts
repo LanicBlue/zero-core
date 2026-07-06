@@ -70,6 +70,9 @@ export interface ContextInfo {
 	inputTokens: number;
 	outputTokens: number;
 	totalTokens: number;
+	/** Current model backing the session (set on session pull; preserved across
+	 * streaming events since those don't carry it). Undefined until first pull. */
+	model?: { providerName: string; modelId: string };
 }
 
 interface ChatState {
@@ -136,7 +139,7 @@ interface ChatState {
 	deleteMessage: (sessionId: string, msgId: string) => void;
 	setError: (sessionId: string, message: string) => void;
 	clearError: () => void;
-	updateContextInfo: (sessionId: string, info: ContextInfo) => void;
+	updateContextInfo: (sessionId: string, info: Partial<ContextInfo>) => void;
 }
 
 function updateLastAssistantMsg(
@@ -424,7 +427,10 @@ export const useChatStore = create<ChatState>((set) => ({
 
 	updateContextInfo: (sessionId, info) =>
 		set((state) => ({
-			contextInfoBySession: { ...state.contextInfoBySession, [sessionId]: info },
+			// Merge (not replace): streaming events (message_end/usage) don't
+			// carry `model`, so a replace would clobber the model set on session
+			// pull. Merging preserves it across token refreshes.
+			contextInfoBySession: { ...state.contextInfoBySession, [sessionId]: { ...state.contextInfoBySession[sessionId], ...info } },
 		})),
 
 	clearError: () =>
