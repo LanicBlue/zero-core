@@ -1,6 +1,6 @@
 # Plan-D:删除 CONDITIONAL_TOOLS + 启动校验
 
-> 节点 D(架构简化,与 B 并列)。验收见 [acceptance-D.md](acceptance-D.md)。设计依据见 [`../../design/tool-rename-consistency/tool-rename-consistency.md`](../../design/tool-rename-consistency/tool-rename-consistency.md) §决策。
+> 节点 D(架构简化,与 B 并列)。验收见 [acceptance-D.md](acceptance-D.md)。设计依据见 [`./tool-rename-consistency.md`](./tool-rename-consistency.md) §决策。
 
 ## 目标
 

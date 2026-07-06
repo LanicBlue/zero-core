@@ -1,6 +1,6 @@
 # Issue:工具改名一致性
 
-- **状态**:③ plan 就绪,待开 branch 执行 → [design](../design/tool-rename-consistency/tool-rename-consistency.md) · [plan](../plan/tool-rename-consistency/)
+- **状态**:✅ 已合并 master(2026-07)→ [design](./tool-rename-consistency.md) · [plan](./)
 - **提出**:2026-06
 - **类型**:机制加固(非 tech-debt,无缺陷在跑)
 

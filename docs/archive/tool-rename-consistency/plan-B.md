@@ -1,6 +1,6 @@
 # Plan-B:ALL_TOOLS key 派生(单一来源)
 
-> 节点 B(改名一致性)。验收见 [acceptance-B.md](acceptance-B.md)。设计见 [`../../design/tool-rename-consistency/tool-rename-consistency.md`](../../design/tool-rename-consistency/tool-rename-consistency.md)。
+> 节点 B(改名一致性)。验收见 [acceptance-B.md](acceptance-B.md)。设计见 [`./tool-rename-consistency.md`](./tool-rename-consistency.md)。
 
 ## 目标
 

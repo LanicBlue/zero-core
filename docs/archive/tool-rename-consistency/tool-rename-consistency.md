@@ -1,7 +1,7 @@
 # Design:工具改名一致性加固
 
-> 状态:**已决策(B + D),进③ plan**。
-> 对应 issue:[`../../issues/tool-rename-consistency.md`](../../issues/tool-rename-consistency.md)。
+> 状态:**✅ 已合并 master(2026-07,B + D)**。
+> 对应 issue:[`./issue.md`](./issue.md)。
 > 本文档是 ② design 阶段(方案讨论 + 推荐 + 决策);issue 是①问题记录。
 
 ## 问题回顾(详见 issue)
@@ -109,4 +109,4 @@ B 消除了本次实际事故的根因(key↔name 不一致),改名降到一处,
 - **sub-B:ALL_TOOLS key 派生** —— key 从 `getToolName(def)` 派生(platform 工具同法),顺序保持;迁移 `p2-agent-runtime` 源码契约正则为运行时断言;加契约测试(ALL_TOOLS key === getToolName(def);种子策略 ⊆ ALL_TOOLS ∪ RENAMED_TOOLS)。
 - **sub-D:删 CONDITIONAL_TOOLS + 启动校验** —— 删 map + buildToolsSet ② 层;`capabilityHandlesFor` 加服务缺失 loud 信号;改写 f1-flow / tool-name-migration 受影响测试;验证 delegator 永远注入。
 
-互不阻塞,但同在 `src/runtime/tools/index.ts`,按 B → D 顺序提交。详见 [`../../plan/tool-rename-consistency/`](../../plan/tool-rename-consistency/)。
+互不阻塞,但同在 `src/runtime/tools/index.ts`,按 B → D 顺序提交。详见 [`./`](./)(plan-B/acceptance-B/plan-D/acceptance-D)。
