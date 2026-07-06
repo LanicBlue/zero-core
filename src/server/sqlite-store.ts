@@ -240,10 +240,24 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 		// compare wrongly flags 1 ≠ "1.0" as a change. JSON columns compare
 		// structurally; scalars compare numerically when both sides are numeric
 		// (so 2 and "2.0" match), else as strings.
-		const patchKeys = Object.keys(input as object);
+		// Strip `undefined` values from the patch up front. `undefined` means
+		// "field not supplied" — it must NOT overwrite the existing value. The
+		// no-op check below already treats undefined as "skip", but the merge
+		// `{...existing, ...input}` would otherwise copy undefined over existing
+		// and toColumnValue() would then write NULL — silently blanking every
+		// field the caller omitted (the Work update bug: passing only workName
+		// nulled actionPrompt/requiredTools/hooks). Callers that want to CLEAR a
+		// field pass `null` explicitly (e.g. agentId:null to unassign), which
+		// toColumnValue still maps to SQL NULL. Building the patch once here and
+		// reusing it for both the no-op check and the merge keeps them consistent.
+		const patch: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(input as object)) {
+			if (v !== undefined) patch[k] = v;
+		}
+
+		const patchKeys = Object.keys(patch);
 		const isNoOp = patchKeys.every((k) => {
-			const v = (input as any)[k];
-			if (v === undefined) return true;
+			const v = patch[k];
 			const cur = (existing as any)[k];
 			if (this.jsonColumns.has(k)) {
 				try { return JSON.stringify(cur) === JSON.stringify(v); } catch { return false; }
@@ -254,7 +268,7 @@ export class SqliteStore<T extends { id: string; createdAt: string; updatedAt: s
 
 		const merged = {
 			...existing,
-			...input,
+			...patch,
 			updatedAt: new Date().toISOString(),
 		} as unknown as T;
 

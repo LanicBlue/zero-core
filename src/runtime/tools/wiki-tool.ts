@@ -48,6 +48,40 @@ import { formatBodySize, formatNodeId, shortIdOf, sanitizeText } from "../wiki-a
 // Helpers — wiki store resolution + anchor scope + node addressing
 // ---------------------------------------------------------------------------
 
+/**
+ * Group the visible nodes by parentId. Shared by expand (descendant walk) and
+ * search (subtree scoping) so neither re-builds the map inline.
+ */
+function groupByParent(nodes: WikiNode[]): Map<string, WikiNode[]> {
+	const m = new Map<string, WikiNode[]>();
+	for (const n of nodes) {
+		const key = n.parentId ?? "";
+		const arr = m.get(key);
+		if (arr) arr.push(n);
+		else m.set(key, [n]);
+	}
+	return m;
+}
+
+/**
+ * Collect a root + all its descendant node ids (BFS over a byParent map).
+ * Used by search to narrow matches to a subtree.
+ */
+function collectSubtree(rootId: string, byParent: Map<string, WikiNode[]>): Set<string> {
+	const set = new Set<string>([rootId]);
+	const queue = [rootId];
+	while (queue.length) {
+		const cur = queue.shift()!;
+		for (const child of byParent.get(cur) ?? []) {
+			if (!set.has(child.id)) {
+				set.add(child.id);
+				queue.push(child.id);
+			}
+		}
+	}
+	return set;
+}
+
 function resolveWikiStore(ctx: any): WikiStore | undefined {
 	const raw = ctx?.wikiStore;
 	if (!raw) return undefined;
@@ -123,6 +157,18 @@ function synthesizePath(parentPath: string | undefined, title: string): string {
 }
 
 /**
+ * A header/intent node's `path` encodes the workspace file it mirrors
+ * (`header:src/runtime/agent-loop.ts`, `intent:docs/req-foo.md`). Strip the
+ * type prefix and return the workspace-relative path, or undefined if the path
+ * isn't a file-pointer (structure/memory/project nodes). Used by expand's
+ * "Source file" line so the agent can Read the underlying file directly.
+ */
+function sourceFileFromPath(path: string | undefined): string | undefined {
+	const m = path?.match(/^(?:header|intent):(.+)$/);
+	return m ? m[1] : undefined;
+}
+
+/**
  * Resolve a doc-op target to a node, accepting EITHER a nodeId (direct) OR a
  * hierarchical title path like "Parent/Child/Leaf" (walked from the anchor
  * scope, matching each segment against a child's title). Titles are unique per
@@ -168,16 +214,28 @@ function resolveNode(
 
 export const wikiActionSchema = z.object({
 	action: z.enum(["expand", "search", "create", "update", "delete", "docRead", "docWrite", "docEdit"]),
-	// expand / docRead / docWrite / docEdit / update / delete — direct addressing
+	// expand / search / docRead / docWrite / docEdit / update / delete — direct addressing
 	nodeId: z.string().optional(),
 	// docRead / docWrite / docEdit — hierarchical title path addressing (alt to nodeId)
 	path: z.string().optional().describe("Hierarchical title path (e.g. 'Parent/Child') for doc ops — alt to nodeId"),
 	// expand — how many descendant levels to include (1 = direct children only,
 	// the default; capped at 5). expand NEVER returns node bodies — use docRead.
 	depth: z.number().optional().describe("expand: descendant levels to include (1=direct children, default 1, max 5)"),
+	// expand — only include nodes of this type in the subtree listing.
+	type: z.enum(["structure", "header", "intent"]).optional().describe("expand/search: only match nodes of this type"),
+	// expand — only include leaf nodes (nodes with no children). Still walks
+	// through non-leaf ancestors to reach deeper leaves, within `depth`.
+	leavesOnly: z.boolean().optional().describe("expand: only include leaf nodes (no children)"),
 	// search
 	query: z.string().optional().describe("Substring query (action:'search')"),
+	// search — limit matches to the subtree under this nodeId (narrow within a
+	// large session). Accepts a short id like expand's nodeId.
+	subtree: z.string().optional().describe("search: limit matches to the subtree under this nodeId"),
 	limit: z.number().optional(),
+	// docRead — batch: read several nodes' bodies in one call (each entry is a
+	// nodeId / short id). Returns each body under a header. Avoids N serial
+	// round-trips when exploring a module's docs.
+	nodeIds: z.array(z.string()).optional().describe("docRead: batch-read multiple nodes' bodies by id"),
 	// create / update
 	parentId: z.string().optional().describe("Parent nodeId (action:'create')"),
 	title: z.string().optional(),
@@ -201,17 +259,17 @@ export const wikiActionSchema = z.object({
 export const wikiTool = buildTool({
 	name: "Wiki",
 	description:
-		"Operate on the project Wiki. Two groups: STRUCTURE ops (expand/search/create/update/delete nodes) and DOC ops (docRead/docWrite/docEdit a node's body — mirror Read/Write/Edit). Address nodes by their 8-char short id (#xxxxxxxx, shown in expand/search/injected outlines), a full nodeId, or a title path.",
+		"Operate on the project Wiki. Two groups: STRUCTURE ops (expand/search/create/update/delete nodes; expand/search support type filter + subtree/leaves narrowing) and DOC ops (docRead/docWrite/docEdit a node's body — mirror Read/Write/Edit; docRead supports batch via nodeIds). Address nodes by their 8-char short id (#xxxxxxxx, shown in expand/search/injected outlines), a full nodeId, or a title path. header/intent node paths encode their source file (shown as 'Source file' in expand).",
 	prompt:
 		"Operate on the project Wiki. Two groups of actions:\n\n" +
 		"STRUCTURE (node tree):\n" +
-		"- { action:'expand', nodeId, depth? } — read a node's STRUCTURE: its metadata (summary/flags) plus its descendants as an indented tree, `depth` levels deep (1 = direct children only, default; max 5). Primary way to navigate and discover nodeIds. Does NOT return any node's body.\n" +
-		"- { action:'search', query, limit? } — substring search across visible nodes (title/summary).\n" +
+		"- { action:'expand', nodeId, depth?, type?, leavesOnly? } — read a node's STRUCTURE: its metadata (summary/flags/source file) plus its descendants as an indented tree, `depth` levels deep (1 = direct children only, default; max 5). `type` filters the listing to one node type; `leavesOnly` shows only leaf nodes (still walks through non-leaf ancestors to reach deeper leaves). Primary way to navigate and discover nodeIds. Does NOT return any node's body.\n" +
+		"- { action:'search', query, limit?, type?, subtree? } — substring search across visible nodes (title/summary). `type` filters matches; `subtree` (a nodeId) narrows the search to that node's subtree — useful inside a large session to avoid noise (e.g. searching 'tool' inside one project only).\n" +
 		"- { action:'create', parentId, title, summary?, content? } — create a node under a parent. NO type, NO path: type is inherited from the parent's position; the node name IS the title. Titles must be unique under the same parent (rejected otherwise). content?, if given, is the initial body.\n" +
 		"- { action:'update', nodeId, title?, summary?, flags? } — edit a node's metadata. Does NOT touch the body. Changing title must keep it unique among siblings.\n" +
 		"- { action:'delete', nodeId } — delete a node (cascades children + body).\n\n" +
 		"DOC (a node's body document — mirror Read/Write/Edit, addressed by nodeId OR title path):\n" +
-		"- { action:'docRead', nodeId? | path? } — read the node's body. THE ONLY way to read a node's full body — expand does not include it. path is a hierarchical title path like 'Parent/Child'.\n" +
+		"- { action:'docRead', nodeId? | path? | nodeIds? } — read a node's body. THE ONLY way to read a node's full body — expand does not include it. `nodeIds` (array) batch-reads several bodies in one call (each entry a nodeId/short id) — use it instead of N serial docReads when exploring a module's docs. path is a hierarchical title path like 'Parent/Child'.\n" +
 		"- { action:'docWrite', nodeId? | path?, content, overwrite? } — overwrite the whole body (like Write). If the node already has a non-empty body you MUST pass overwrite:true (otherwise it is rejected with the existing body size — use docEdit for a targeted change instead).\n" +
 		"- { action:'docEdit', nodeId? | path?, oldString, newString, replaceAll? } — exact string replace (like Edit). oldString must exist and be unique (or set replaceAll:true to replace every occurrence). No-op/rejected if oldString not found.\n\n" +
 		"Rules:\n" +
@@ -219,7 +277,8 @@ export const wikiTool = buildTool({
 		"- Identity: every node carries an 8-char short id like #a3f2b1c0 (shown next to the node in expand/search/injected outlines). Pass that short id as nodeId/parentId — it resolves to the node. A full nodeId also works. If two nodes collide on a short id (vanishingly rare), the tool tells you to use the title path instead.\n" +
 		"- Title path (doc ops) is HIERARCHICAL and RELATIVE to your scope root, walking child→grandchild by TITLE: 'Knowledge/software-dev 工作流'. The root's own title is NOT part of the path, and a bare leaf name ('software-dev 工作流') only works if that node is a DIRECT child of your scope root. Every segment must match an ancestor along the way — if you don't know the full ancestry, use expand to walk down or search to find the id instead of guessing the path.\n" +
 		"- Scope = your wiki anchors (your project subtree + your memory + any free anchors you were granted; the GLOBAL ROOT for global/zero sessions). Read and write share the SAME boundary: you can create/update/delete/docWrite/docEdit exactly the nodes you can expand. Nodes outside your anchors are invisible and unwritable.\n" +
-		"- To edit a node's body, use docEdit/docWrite — never update (update is metadata-only).\n\n" +
+		"- To edit a node's body, use docEdit/docWrite — never update (update is metadata-only).\n" +
+		"- Source files: a node whose path starts with `header:` or `intent:` mirrors a workspace file / requirement doc — strip the prefix to get the workspace-relative path (e.g. `header:src/runtime/agent-loop.ts` → `src/runtime/agent-loop.ts`). expand shows this as 'Source file'; you can then Read the file directly instead of reconstructing the path from titles.\n\n" +
 		"Node semantics (how to WRITE summary / body — applies to EVERY agent that creates or updates wiki nodes):\n" +
 		"- A node's `summary` is the ABSTRACT of the subtree rooted at that node (one line — the essence of what this subtree is about).\n" +
 		"- A non-leaf node's `body` (doc) is the OVERVIEW of its subtree (what the children collectively do, how they fit together). Writing a parent's body = writing the subtree overview.\n" +
@@ -251,14 +310,10 @@ export const wikiTool = buildTool({
 				// body via readNodeDetail, which duplicated docRead and flooded
 				// the result whenever a node had a large document.)
 				const depth = Math.max(1, Math.min(input.depth ?? 1, 5));
+				const typeFilter = input.type;
+				const leavesOnly = input.leavesOnly === true;
 				const allVisible = wiki.listVisibleFromAnchors(anchors);
-				const byParent = new Map<string, WikiNode[]>();
-				for (const n of allVisible) {
-					const key = n.parentId ?? "";
-					const arr = byParent.get(key);
-					if (arr) arr.push(n);
-					else byParent.set(key, [n]);
-				}
+				const byParent = groupByParent(allVisible);
 				const treeLines: string[] = [];
 				let descendantCount = 0;
 				// Nodes hidden by the depth cap: any node at the deepest shown
@@ -270,17 +325,25 @@ export const wikiTool = buildTool({
 					if (level > depth) return;
 					const kids = byParent.get(parentId) ?? [];
 					for (const k of kids) {
-						descendantCount++;
-						// Markdown nested list: `- item` with 2-space indent per
-						// level renders as a real hierarchical list in the UI
-						// (bare leading-space indentation gets collapsed by
-						// Markdown and the tree looked flat). Clear to the agent
-						// reading raw text too.
-						// Child line carries the subtree-abstract summary so expand
-						// is more than a flat directory listing (summary = the
-						// node's subtree abstract per the Wiki node semantics).
-						const childSummary = k.summary ? ` — ${sanitizeText(k.summary)}` : "";
-						treeLines.push(`${"  ".repeat(level - 1)}- ${formatNodeId(k.id)} [${k.type}] ${k.title}${childSummary} ${formatBodySize(wiki.getNodeDetailSize(k.id))}`);
+						// Filters only affect whether a node is EMITTED; we still
+						// walk into filtered-out ancestors so leavesOnly / type
+						// matches at deeper levels are reachable (within depth).
+						const isLeaf = (byParent.get(k.id) ?? []).length === 0;
+						const typeOk = !typeFilter || k.type === typeFilter;
+						const show = typeOk && (!leavesOnly || isLeaf);
+						if (show) {
+							descendantCount++;
+							// Markdown nested list: `- item` with 2-space indent per
+							// level renders as a real hierarchical list in the UI
+							// (bare leading-space indentation gets collapsed by
+							// Markdown and the tree looked flat). Clear to the agent
+							// reading raw text too.
+							// Child line carries the subtree-abstract summary so expand
+							// is more than a flat directory listing (summary = the
+							// node's subtree abstract per the Wiki node semantics).
+							const childSummary = k.summary ? ` — ${sanitizeText(k.summary)}` : "";
+							treeLines.push(`${"  ".repeat(level - 1)}- ${formatNodeId(k.id)} [${k.type}] ${k.title}${childSummary} ${formatBodySize(wiki.getNodeDetailSize(k.id))}`);
+						}
 						if (level === depth) {
 							// At the cap: count this node's children as hidden
 							// (they won't be walked) so we can warn they exist.
@@ -291,17 +354,26 @@ export const wikiTool = buildTool({
 					}
 				};
 				walk(node.id, 1);
+				const filterNote = typeFilter || leavesOnly
+					? ` (${typeFilter ? `type=${typeFilter}` : ""}${typeFilter && leavesOnly ? ", " : ""}${leavesOnly ? "leaves only" : ""})`
+					: "";
 				const hiddenNote = hiddenNodes > 0
 					? `\n(${hiddenNodes} more node${hiddenNodes !== 1 ? "s" : ""} hidden below depth ${depth} — raise depth, or expand a specific nodeId to see deeper)`
 					: "";
 				const subtreeLine = treeLines.length
-					? `\nSubtree (depth ${depth}, ${descendantCount} descendant${descendantCount !== 1 ? "s" : ""}):\n` + treeLines.join("\n") + hiddenNote
-					: "\nSubtree: (no children)";
+					? `\nSubtree (depth ${depth}, ${descendantCount} descendant${descendantCount !== 1 ? "s" : ""})${filterNote}:\n` + treeLines.join("\n") + hiddenNote
+					: `\nSubtree${filterNote}: (no matching children)`;
 				const flags = node.flags?.length ? `\nFlags: ${node.flags.join(", ")}` : "";
 				const prov = node.provenance ? `\nProvenance: ${node.provenance}` : "";
 				const summary = node.summary ? `\nSummary: ${sanitizeText(node.summary)}` : "";
 				const bodySize = `\nBody: ${formatBodySize(wiki.getNodeDetailSize(node.id))}`;
-				return `nodeId: ${formatNodeId(node.id)}\nTitle: ${node.title}\nType: ${node.type}${prov}${summary}${flags}${bodySize}${subtreeLine}`;
+				// A header/intent node's path encodes its source file (e.g.
+				// `header:src/runtime/agent-loop.ts`); expose the workspace-relative
+				// path so the agent can jump straight to Read without reconstructing
+				// it from the title hierarchy.
+				const sourceFile = sourceFileFromPath(node.path);
+				const sourceLine = sourceFile ? `\nSource file: ${sourceFile}` : "";
+				return `nodeId: ${formatNodeId(node.id)}\nTitle: ${node.title}\nType: ${node.type}${prov}${summary}${flags}${bodySize}${sourceLine}${subtreeLine}`;
 			}
 
 			case "search": {
@@ -309,21 +381,37 @@ export const wikiTool = buildTool({
 				const q = input.query.toLowerCase();
 				const limit = input.limit ?? 50;
 				const nodes = wiki.listVisibleFromAnchors(anchors);
+				// Optional subtree narrowing: resolve the subtree nodeId, then keep
+				// only nodes inside that subtree (root + descendants).
+				let subtree: Set<string> | undefined;
+				if (input.subtree) {
+					const r = resolveNodeIdArg(input.subtree, anchors, wiki);
+					if (!r.ok) return `Error: ${r.reason}`;
+					subtree = collectSubtree(r.node.id, groupByParent(nodes));
+				}
+				const typeFilter = input.type;
 				const hits = nodes
 					// 排除合成子树根容器(wiki-root:*):结构容器无正文,出现在 search 结果里只会让
 					// agent 误当内容节点去 docRead 而失败。遍历结构用 expand(根 nodeId 在注入的 outline 里)。
 					.filter((n) => !n.id.startsWith("wiki-root:"))
+					.filter((n) => !subtree || subtree.has(n.id))
+					.filter((n) => !typeFilter || n.type === typeFilter)
 					.filter(
 						(n) =>
 						(n.title?.toLowerCase().includes(q) ?? false) ||
 						(n.summary?.toLowerCase().includes(q) ?? false) ||
 						(n.path?.toLowerCase().includes(q) ?? false),
 				);
+				if (hits.length === 0) {
+					const scope = subtree ? " in subtree" : "";
+					const typeN = typeFilter ? ` (type=${typeFilter})` : "";
+					return `(no wiki nodes match "${input.query}"${scope}${typeN})`;
+				}
 				const sliced = hits.slice(0, limit);
-				if (sliced.length === 0) return `(no wiki nodes match "${input.query}")`;
+				const truncated = hits.length > sliced.length ? `\n…(${hits.length - sliced.length} more, raise limit to see)` : "";
 				return sliced
 					.map((n) => `${formatNodeId(n.id)} | ${n.type} | ${n.title} ${formatBodySize(wiki.getNodeDetailSize(n.id))}\n   ${sanitizeText(n.summary)}`)
-					.join("\n");
+					.join("\n") + truncated;
 			}
 
 			case "create": {
@@ -412,6 +500,26 @@ export const wikiTool = buildTool({
 
 			// ── DOC (body document) ──────────────────────────────────────
 			case "docRead": {
+				// Batch: read several nodes' bodies in one call (each entry a
+				// nodeId / short id). Avoids N serial round-trips when exploring
+				// a module with many leaf docs. Each body is returned under a
+				// header; a failed resolve for one entry doesn't abort the rest.
+				if (input.nodeIds && input.nodeIds.length > 0) {
+					const parts: string[] = [];
+					for (const raw of input.nodeIds) {
+						const r = resolveNodeIdArg(raw, anchors, wiki);
+						if (!r.ok) {
+							parts.push(`=== ${raw} ===\nError: ${r.reason}`);
+							continue;
+						}
+						const body = wiki.readNodeDetail(r.node.id);
+						parts.push(
+							`=== ${formatNodeId(r.node.id)} | ${r.node.title} ===\n` +
+							(body ?? "(no body document yet — use docWrite to create one)"),
+						);
+					}
+					return parts.join("\n\n");
+				}
 				if (!input.nodeId && !input.path) return "Error: nodeId or path required for docRead";
 				const node = resolveNode(input, anchors, wiki);
 				if (!node) return `Error: node not found (${input.nodeId ?? input.path})`;

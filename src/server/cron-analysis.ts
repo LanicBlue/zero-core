@@ -591,12 +591,15 @@ export class CronAnalysisManager {
 
 		// Persist telemetry + audit row.
 		try {
+			// `null` (not `undefined`) clears a field: SqliteStore now treats
+			// undefined as "leave untouched", so an ok run must null lastError
+			// and a once-fire must null nextRunAt explicitly.
 			this.deps.cronStore.update(cron.id, {
 				enabled: nextEnabled,
 				lastRunAt: firedAt,
 				lastStatus: status,
-				lastError: errorMsg,
-				nextRunAt: nextAt,
+				lastError: errorMsg ?? null,
+				nextRunAt: nextAt ?? null,
 			} as any);
 		} catch (err) {
 			log.error("cron", `Failed to update telemetry for ${cron.id}: ${(err as Error).message}`);
@@ -694,7 +697,10 @@ export class CronAnalysisManager {
 	/** Write next_run_at without disturbing the rest of the row. */
 	private persistNextRunAt(cronId: string, value: string | undefined): void {
 		try {
-			this.deps.cronStore.update(cronId, { nextRunAt: value } as any);
+			// `null` (not `undefined`) is the explicit "clear" signal: SqliteStore
+			// now treats `undefined` as "leave the field untouched", so an absent
+			// next run must be written as null to actually blank the column.
+			this.deps.cronStore.update(cronId, { nextRunAt: value ?? null } as any);
 		} catch (err) {
 			log.debug("cron", `Skipped next_run_at write for ${cronId}: ${(err as Error).message}`);
 		}
