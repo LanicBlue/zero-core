@@ -1058,6 +1058,17 @@ export class AgentService {
 					this.db.failTurnState(turn.sessionId, turn.turnSeq, "Session not found");
 					continue;
 				}
+				// sub-3: delegated (sub-agent) sessions are NOT auto-resumed. They
+				// freeze interrupted, waiting for the parent to decide (TaskResume /
+				// TaskKill). Resuming here would run them disconnected from the
+				// parent — orphaning result or causing duplicate dispatch. Only chat
+				// (parent) sessions auto-resume. The frozen child task record is still
+				// seeded into the parent registry (restoreDelegatedTasks) so the parent
+				// sees it as Interrupted in workbench and can decide.
+				if (session.sessionKind === "delegated") {
+					log.db(`Skipping delegated session ${turn.sessionId} (frozen)`);
+					continue;
+				}
 				const agent = this.agentStore
 					? this.agentStore.list().find((a) => a.id === session.agentId)
 					: null;
