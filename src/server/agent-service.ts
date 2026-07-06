@@ -288,6 +288,22 @@ export class AgentService {
 		this.pmService = pmService;
 		this.requirementStore = requirementStore;
 		this.wikiStore = wikiStore ?? null;
+		// Re-inject capability handles into loops created BEFORE pmService was
+		// wired. At startup, restoreAllSessions (and historically recovery) run
+		// before this call, so those loops were built with a null wikiStore/
+		// requirementStore baked into their sessionConfig — and the
+		// "toolPolicy enables Wiki but wikiStore is not initialized" warning
+		// fired whenever Wiki/Flow was enabled. Re-applying capabilities now
+		// (capabilityHandlesFor re-reads this.wikiStore/requirementStore) makes
+		// those tools functional on the next turn without a loop rebuild.
+		// applyConfigUpdate treats every other field as "no change" when
+		// undefined, so passing only capabilities is safe mid-flight.
+		for (const loop of this.loops.values()) {
+			const agentId = loop.getConfigAgentId();
+			const agent = agentId ? this.agentStore?.get(agentId) : undefined;
+			loop.applyConfigUpdate({ capabilities: this.capabilityHandlesFor(agent?.toolPolicy) });
+		}
+		this.notifyReady("pmService");
 	}
 	/**
 	 * project-flow F4: inject the GitIntegration handle. Surfaced onto the
@@ -1018,8 +1034,14 @@ export class AgentService {
 		}
 	}
 	recoverIncompleteSessions(): void {
-		// Defer until providers and agentStore are ready
-		this.whenReady(["providers", "agentStore"], () => this.doRecoverIncompleteSessions());
+		// Defer until providers, agentStore, AND pmService are ready. pmService
+		// wires wikiStore/requirementStore (the capability handles Wiki/Flow
+		// need). Recovering before setPmService resumed loops with a null
+		// wikiStore, so recovered sessions' Wiki calls failed and the
+		// "wikiStore is not initialized" warning spammed the log. setPmService
+		// calls notifyReady("pmService"); both callers live in server/index.ts,
+		// so the gate never stalls recovery in any real startup path.
+		this.whenReady(["providers", "agentStore", "pmService"], () => this.doRecoverIncompleteSessions());
 	}
 
 	private async doRecoverIncompleteSessions(): Promise<void> {
