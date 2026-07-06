@@ -341,7 +341,7 @@ export class SubagentDelegator {
 			}
 
 			// Timed out still running → register as a background task.
-			registry.create(taskId, "subagent", task, subAbort, this.config.ownerTaskId);
+			registry.create(taskId, "subagent", task, subAbort, this.config.ownerTaskId, targetAgentId);
 			await triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task });
 			done.then(async () => {
 				this.runningSubloops.delete(taskId);
@@ -426,7 +426,7 @@ export class SubagentDelegator {
 
 		const registry = this.taskRegistry;
 		const subAbort = new AbortController();
-		registry.create(taskId, "subagent", task, subAbort, this.config.ownerTaskId);
+		registry.create(taskId, "subagent", task, subAbort, this.config.ownerTaskId, targetAgentId);
 		triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task }).catch(() => {});
 		triggerHooks("SubagentStart", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task }).catch(() => {});
 

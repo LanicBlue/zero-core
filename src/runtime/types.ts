@@ -388,6 +388,14 @@ export interface TaskInfo {
 	startedAt: number;
 	completedAt?: number;
 	notified?: boolean;
+	/**
+	 * The agent the task was delegated to (sub-agent identity). For subagent
+	 * tasks = targetAgentId; undefined for bash tasks (no agent). Used by the
+	 * UI TaskTree to show the agent NAME instead of a generic "subagent" label.
+	 * Not persisted — live view only (DelegatedTaskRecord.targetAgentId is the
+	 * persisted mirror).
+	 */
+	targetAgentId?: string;
 }
 
 // ---------------------------------------------------------------------------

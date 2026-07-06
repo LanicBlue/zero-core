@@ -293,6 +293,9 @@ export interface RuntimeTaskInfo {
 	error?: string;
 	startedAt: number;
 	completedAt?: number;
+	/** Sub-agent identity (targetAgentId); undefined for bash tasks. Lets the
+	 * UI TaskTree show the agent NAME instead of a generic "subagent" label. */
+	targetAgentId?: string;
 }
 
 /**

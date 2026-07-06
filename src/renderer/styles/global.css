@@ -2075,6 +2075,42 @@ body {
   min-height: 0;
   overflow: hidden;
 }
+/* Fixed (non-resizable) info bar above the conversation: created time, run
+   status, turns, tokens, agent. Compact label/value grid. */
+.task-detail-info {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #333);
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+.task-detail-info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.task-detail-info-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--fg-subtle);
+}
+.task-detail-info-value {
+  color: var(--fg, #ddd);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-status-text.task-status-running { color: #4aa3ff; }
+.task-status-text.task-status-finishing { color: #f0a040; }
+.task-status-text.task-status-completed { color: #4ade80; }
+.task-status-text.task-status-failed { color: #f87171; }
+.task-status-text.task-status-killed { color: #a78bfa; }
+.task-status-text.task-status-interrupted { color: #fbbf24; }
 .task-detail-conversation {
   flex: 1 1 0;
   min-height: 0;

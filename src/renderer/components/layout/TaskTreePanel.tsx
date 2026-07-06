@@ -13,6 +13,7 @@
 import React, { useEffect, useState } from "react";
 import { useChatStore } from "../../store/chat-store.js";
 import { useTaskStore } from "../../store/task-store.js";
+import { useAgentStore } from "../../store/agent-store.js";
 import type { RuntimeTaskInfo } from "../../../shared/types.js";
 
 // Module-level stable empty-array reference: avoids a fresh `[]` (new identity
@@ -36,8 +37,22 @@ function formatTokens(n: number): string {
 	return (n / 1_000_000).toFixed(1) + "M";
 }
 
+// Resolve a subagent task's targetAgentId to a display NAME. Real named
+// delegations resolve via the agent roster; synthetic ids (`<parent>:sub`)
+// fall back to the suffix (or the raw id) — never the generic "subagent".
+function resolveAgentLabel(targetAgentId: string | undefined, agentNameById: Map<string, string>): string {
+	if (!targetAgentId) return "subagent";
+	const hit = agentNameById.get(targetAgentId);
+	if (hit) return hit;
+	const i = targetAgentId.lastIndexOf(":");
+	return i >= 0 ? targetAgentId.slice(i + 1) : targetAgentId;
+}
+
 export default function TaskTreePanel() {
 	const activeSessionId = useChatStore((s) => s.activeSessionId);
+	// Agent roster (id → name) to resolve a subagent task's targetAgentId into
+	// a display NAME. Fetched once at app init (AppLayout); cheap to read.
+	const agents = useAgentStore((s) => s.agents);
 	// Selector subscriptions (N2 render hygiene): subscribe to the active
 	// session's slice only, so a refresh of another session's slice doesn't
 	// re-render this panel. Action fns are stable across renders (zustand).
@@ -88,6 +103,9 @@ export default function TaskTreePanel() {
 		const children = byParent.get(t.id) ?? [];
 		const hasChildren = children.length > 0;
 		const isCollapsed = collapsed.has(t.id);
+		// bash → "bash"; subagent → the target agent's NAME (resolved from the
+		// roster), not a generic "subagent" label.
+		const targetLabel = t.type === "bash" ? "bash" : resolveAgentLabel(t.targetAgentId, agentNameById);
 		return (
 			<div key={t.id} className="task-tree-node">
 				<button
@@ -104,7 +122,7 @@ export default function TaskTreePanel() {
 							{hasChildren ? (isCollapsed ? "▸" : "▾") : ""}
 						</span>
 						<span className={`task-status-icon task-status-${t.status}`} title={t.status}>{STATUS_ICON[t.status] ?? "?"}</span>
-						<span className="task-card-target">{t.type === "bash" ? "bash" : "subagent"}</span>
+						<span className="task-card-target" title={t.targetAgentId ?? t.type}>{targetLabel}</span>
 						{/* Metadata, not task content (content is in the title tooltip +
 							right-pane conversation). turns/tokens/currentTool come straight
 							off RuntimeTaskInfo — already pulled by the store, no extra fetch. */}
@@ -123,6 +141,11 @@ export default function TaskTreePanel() {
 	};
 
 	const roots = byParent.get("__root__") ?? [];
+
+	// id → name lookup (rebuilt per render from the roster; agents list is
+	// small and stable across task pings).
+	const agentNameById = new Map<string, string>();
+	for (const a of agents) agentNameById.set(a.id, a.name);
 
 	return (
 		<div className="task-tree-panel">
