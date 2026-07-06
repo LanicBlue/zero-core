@@ -27,6 +27,11 @@ import { SubagentDelegator } from "../../src/runtime/subagent-delegator.js";
 import { buildContextMessage } from "../../src/runtime/context-message.js";
 import { ToolRegistry } from "../../src/core/tool-registry.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
+import { ALL_TOOLS } from "../../src/runtime/tools/index.js";
+import { delegateTool } from "../../src/runtime/tools/agent.js";
+import { getToolName } from "../../src/runtime/tools/tool-factory.js";
+import { BUILTIN_WORKFLOW_ROLES } from "../../src/server/builtin-role-templates.js";
+import { RENAMED_TOOLS } from "../../src/core/tool-registry.js";
 import type { ToolExecutionContext, SessionConfig, RuntimeCallbacks, AgentRuntime } from "../../src/runtime/types.js";
 import type { SessionContextBundle } from "../../src/shared/types.js";
 
@@ -56,8 +61,77 @@ describe("Agent delegation — single action tool (no per-subagent tools)", () =
 	});
 
 	test("Subagent tool is the single delegation surface (in ALL_TOOLS)", () => {
+		// ALL_TOOLS keys are derived from each tool's own __name (single source
+		// via getToolName), so the Subagent entry is keyed by the delegate tool's
+		// name — structural, not a hand-written literal.
+		expect(ALL_TOOLS.Subagent).toBe(delegateTool);
+		expect(getToolName(delegateTool)).toBe("Subagent");
+	});
+
+	test("ALL_TOOLS keys are derived from each tool's __name (single source)", () => {
+		// Contract: every ALL_TOOLS key === getToolName(def). If this breaks, a
+		// tool's buildTool({name}) drifted from its registration key — the exact
+		// class of bug the e8128d8 Agent→Subagent rename missed.
+		for (const [key, def] of Object.entries(ALL_TOOLS)) {
+			expect(getToolName(def), `key "${key}" must equal def.__name`).toBe(key);
+		}
+	});
+
+	test("builtin seed-policy tool keys are all known (current or renamed)", () => {
+		// Contract: every tool enabled in a builtin role's seed policy must be a
+		// current ALL_TOOLS key or a legacy key covered by RENAMED_TOOLS — else the
+		// policy silently enables a non-existent tool.
+		const known = new Set<string>([...Object.keys(ALL_TOOLS), ...Object.keys(RENAMED_TOOLS)]);
+		for (const role of BUILTIN_WORKFLOW_ROLES) {
+			const tools = role.toolPolicy?.tools ?? {};
+			for (const key of Object.keys(tools)) {
+				expect(known, `seed policy key "${key}" in role "${role.id}"`).toContain(key);
+			}
+		}
+	});
+});
+
+// ─── 2b. sub-D contracts: gating is single-layer toolPolicy ──
+//
+// CONDITIONAL_TOOLS was removed (2026-07). These contracts pin the two
+// invariants that justify the removal: (a) the delegator methods that the 7
+// retired conditions checked are wired on EVERY session in agent-loop (so
+// gating them was dead code), and (b) capabilityHandlesFor warns loudly when a
+// policy-enabled tool's backing service is missing (the old silent-hide became
+// a loud signal).
+
+describe("Tool gating — single-layer toolPolicy (sub-D)", () => {
+	test("agent-loop wires delegator methods unconditionally (no per-session gate)", () => {
+		const src = readSrc("../../src/runtime/agent-loop.ts");
+		// These are the delegator methods the retired conditions used to check.
+		// They must be assigned unconditionally in the ctx object (constructed in
+		// the loop constructor), proving the 7 delegation conditions were dead.
+		expect(src).toMatch(/delegateTask:\s*\(.*\)\s*=>\s*this\.delegator\.delegateTask/);
+		expect(src).toMatch(/getTaskResult:\s*\(.*\)\s*=>\s*this\.delegator\.getTaskResult/);
+		expect(src).toMatch(/listTasks:\s*\(.*\)\s*=>\s*this\.delegator\.listTasks/);
+		expect(src).toMatch(/suspendUntilWake:\s*\(.*\)\s*=>\s*this\.delegator\.suspendUntilWake/);
+	});
+
+	test("tools/index.ts no longer has a CONDITIONAL_TOOLS capability gate", () => {
 		const src = readSrc("../../src/runtime/tools/index.ts");
-		expect(src).toMatch(/Subagent:\s*delegateTool/);
+		// The map declaration and its buildToolsSet lookup are gone (comments may
+		// still mention it for historical context — that's fine).
+		expect(src).not.toMatch(/const CONDITIONAL_TOOLS/);
+		expect(src).not.toMatch(/CONDITIONAL_TOOLS\[name\]/);
+		// buildToolsSet must gate only on policy (isEnabled), not a capability check.
+		expect(src).toMatch(/if \(isEnabled\(name\)\)/);
+	});
+
+	test("capabilityHandlesFor warns when a policy-enabled tool's service is missing", () => {
+		const src = readSrc("../../src/server/agent-service.ts");
+		// Loud signal replaces the old silent-hide: each service-backed tool
+		// emits a [capability] warning when enabled but uninitialized.
+		expect(src).toMatch(/\[capability\] toolPolicy enables Wiki but wikiStore/);
+		expect(src).toMatch(/\[capability\] toolPolicy enables Flow but requirementStore/);
+		expect(src).toMatch(/management service is not initialized/);
+		// Work needs management too — must be in the injection condition (was a
+		// latent gap before: original capabilityHandlesFor omitted Work).
+		expect(src).toMatch(/on\("Project"\) \|\| on\("Work"\) \|\| on\("AgentRegistry"\) \|\| on\("Cron"\)/);
 	});
 });
 

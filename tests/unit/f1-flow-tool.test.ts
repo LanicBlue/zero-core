@@ -249,12 +249,15 @@ describe("Flow tool · gating", () => {
 		expect(ALL_TOOLS.Flow).toBe(flowTool);
 	});
 
-	test("buildToolsSet excludes Flow when ctx has no requirementStore", () => {
+	test("buildToolsSet includes Flow whenever policy enables it (single gate = toolPolicy)", () => {
+		// CONDITIONAL_TOOLS was removed; ctx.requirementStore no longer filters
+		// Flow. Capability handles are injected by capabilityHandlesFor when the
+		// policy enables the tool, and a missing backing service warns there.
 		const tools = buildToolsSet(
 			{ autoApprove: ["*"] },
 			{ workingDir: workspaceDir, agentId: "a", emit: () => {} } as any,
 		);
-		expect(tools.Flow).toBeUndefined();
+		expect(tools.Flow).toBeDefined();
 	});
 
 	test("buildToolsSet includes Flow when ctx has requirementStore", () => {

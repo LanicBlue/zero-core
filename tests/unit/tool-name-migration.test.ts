@@ -7,7 +7,8 @@
 // 使 (a) buildToolsSet 产出 Wiki 工具,且 (b) AgentService 的能力注入
 // (capabilityHandlesFor,经 toolEnabled)注入 wikiStore —— 两边对迁移达成一致。
 // 修复前:RENAMED_TOOLS 缺 wiki→Wiki,且 toolEnabled 不迁移 → 即便想开 Wiki,
-// 能力侧 on("Wiki") 返回 false → 不注入 wikiStore → CONDITIONAL_TOOLS 过滤掉。
+// 能力侧 on("Wiki") 返回 false → 不注入 wikiStore → 工具开了也跑不起来
+// (CONDITIONAL_TOOLS 已于 2026-07 移除,门控现为单一 toolPolicy)。
 //
 import { describe, expect, test, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";

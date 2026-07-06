@@ -522,9 +522,10 @@ export class AgentLoop implements AgentRuntime {
 		 * pmService) recomputed by agent-service against the NEW toolPolicy.
 		 * buildToolsSet reads toolPolicy fresh every turn, so without these the
 		 * policy could enable e.g. Wiki on a running loop while toolContext still
-		 * lacks wikiStore → CONDITIONAL_TOOLS filters Wiki out. The caller passes
-		 * the handles it wants surfaced; we mirror them onto the tool context so
-		 * a tool newly enabled by policy actually appears.
+		 * lacks wikiStore → the tool would be offered but fail at call time (and
+		 * capabilityHandlesFor warns). The caller passes the handles it wants
+		 * surfaced; we mirror them onto the tool context so a tool newly enabled
+		 * by policy actually works.
 		 */
 		capabilities?: { management?: unknown; wikiStore?: unknown; requirementStore?: unknown; pmService?: unknown };
 	}): void {
@@ -558,8 +559,9 @@ export class AgentLoop implements AgentRuntime {
 			this.config.contextConfig = patch.contextConfig;
 		}
 		// Sync capability handles to the new policy so a tool enabled mid-flight
-		// (e.g. Wiki turned on while the loop is running) actually surfaces —
-		// CONDITIONAL_TOOLS gates on these ctx fields, not just policy.
+		// (e.g. Wiki turned on while the loop is running) actually works — gating
+		// is single-layer toolPolicy, but the tool still needs its service handle
+		// present or it fails at call time (capabilityHandlesFor warns).
 		if (patch.capabilities) {
 			const caps = patch.capabilities;
 			const apply = (field: "management" | "wikiStore" | "requirementStore" | "pmService"): void => {

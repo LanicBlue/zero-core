@@ -42,7 +42,7 @@ import { buildMcpTools } from "./mcp-tool.js";
 import { webSearchTool } from "./web-search.js";
 import { askUserTool } from "./ask-user.js";
 import { todoWriteTool } from "./todo-write.js";
-import { getToolMeta, getToolConfigSchema, getToolDescription, getToolPrompt, getToolInputFields, getToolExecute } from "./tool-factory.js";
+import { getToolName, getToolMeta, getToolConfigSchema, getToolDescription, getToolPrompt, getToolInputFields, getToolExecute } from "./tool-factory.js";
 import { webFetchTool } from "../mcp-tools/fetch-tools.js";
 import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
 import { createPlatformTools } from "../mcp-tools/platform-tools.js";
@@ -74,73 +74,49 @@ function getPlatformTools(): Record<string, any> {
 	return _platformTools;
 }
 
-export const ALL_TOOLS: Record<string, any> = {
-	Shell: bashTool,
-	Read: fileReadTool,
-	Write: fileWriteTool,
-	Edit: fileEditTool,
-	Grep: grepTool,
-	Glob: globTool,
-	Subagent: delegateTool,
-	TaskStatus: taskStatusTool,
-	TaskList: taskListTool,
-	TaskStop: taskStopTool,
-	Wait: waitTool,
-	WebSearch: webSearchTool,
-	AskUser: askUserTool,
-	TodoWrite: todoWriteTool,
-	WebFetch: webFetchTool,
+// Each tool's canonical name lives in ONE place: its own buildTool({name})
+// in the tool's file (read via getToolName(def) → __name). ALL_TOOLS is keyed
+// by that name (derived), so renaming a tool = editing exactly one string in
+// its file. A mismatch between a literal key and the tool's name field is
+// structurally impossible here. Order = TOOL_DEFS array order (kept stable so
+// the /tools API and UI lists don't reshuffle); platform tools appended after.
+const TOOL_DEFS: any[] = [
+	bashTool, fileReadTool, fileWriteTool, fileEditTool, grepTool, globTool,
 	// v0.8 (P2 §11.6): MemoryRecall / MemoryNote tools removed — memory is
 	// now a wiki per-agent subtree; agents read it via the Wiki action tool
 	// (expand/read/upsert/search) and search via the wiki tree. The legacy
 	// MemoryNodeStore-backed tools are retired.
-	SequentialThinking: sequentialThinkingTool,
-	Orchestrate: orchestrateTool,
+	delegateTool, taskStatusTool, taskListTool, taskStopTool, waitTool,
+	webSearchTool, askUserTool, todoWriteTool, webFetchTool,
+	sequentialThinkingTool,
+	orchestrateTool,
 	// v0.8 (P3 §7.3): four action-switched domain tools (Project/AgentRegistry/
-	// Cron/Wiki), replacing the retired zero-admin tools
-	// (CreateProject/CreateAgent/.../InstantiatePreset/SetToolPolicy/...).
-	// Capability lives in tools; agents are just tool-config bundles.
-	// Note: the management tool is named `AgentRegistry` (not `Subagent`) to
-	// keep the two distinct — `Subagent` is the delegation tool, `AgentRegistry`
-	// manages agent records.
-	Project: projectTool,
-	Work: workTool,
-	AgentRegistry: agentRegistryTool,
-	Cron: cronTool,
-	Wiki: wikiTool,
+	// Cron/Wiki), replacing the retired zero-admin tools. Capability lives in
+	// tools; agents are just tool-config bundles. Note: the management tool is
+	// named `AgentRegistry` (not `Subagent`) to keep the two distinct —
+	// `Subagent` is the delegation tool, `AgentRegistry` manages agent records.
+	projectTool, workTool, agentRegistryTool, cronTool, wikiTool,
 	// project-flow F3: Flow is the single entry point for the requirement flow
 	// (create/list/get + transitions + compound verify). Old
 	// CreateRequirement / CreateRequirementWithDoc / verify retired.
-	Flow: flowTool,
+	flowTool,
+];
+export const ALL_TOOLS: Record<string, any> = Object.fromEntries([
+	...TOOL_DEFS.map((def) => [getToolName(def), def]),
+	...Object.entries(getPlatformTools()),
+]);
 
-	...getPlatformTools(),
-};
-
-// Tools that require special context capabilities
-const CONDITIONAL_TOOLS: Record<string, (ctx: ToolExecutionContext) => boolean> = {
-	Subagent: (ctx) => !!ctx.delegateTask,
-	TaskStatus: (ctx) => !!ctx.getTaskResult,
-	TaskList: (ctx) => !!ctx.listTasks,
-	TaskStop: (ctx) => !!ctx.stopTask,
-	Wait: (ctx) => !!ctx.suspendUntilWake,
-	Orchestrate: (ctx) => !!ctx.delegateTask,
-	// v0.8 (P3): domain action tools. Project/AgentRegistry/Cron need the
-	// management service handle (zero sessions only). Wiki needs the wiki
-	// store (every project-role session).
-	Project: (ctx) => !!(ctx as any).management,
-	Work: (ctx) => !!(ctx as any).management,
-	AgentRegistry: (ctx) => !!(ctx as any).management,
-	Cron: (ctx) => !!(ctx as any).management,
-	Wiki: (ctx) => !!ctx.wikiStore,
-	// project-flow F3: Flow needs the requirement store (every project-role
-	// session carries it). The compound verify action additionally needs
-	// ctx.delegateTask (always present via agent-loop) + ctx.pmService for the
-	// archivist merge close — verify degrades gracefully if pmService is absent
-	// (returns the verdict text; no merge). Keeping Flow gated only on
-	// requirementStore preserves create/list/get/transition access for non-PM
-	// sessions; verify's runtime checks enforce the rest.
-	Flow: (ctx) => !!ctx.requirementStore,
-};
+// Note (v0.8 -> 2026-07): CONDITIONAL_TOOLS (a per-tool capability gate on the
+// ToolExecutionContext) was REMOVED. Audit found it 100% redundant: the 7
+// delegation-based conditions (Subagent/Orchestrate/Task*/Wait) checked
+// delegator methods that agent-loop wires on EVERY session; the 6 service-based
+// conditions (Project/Work/AgentRegistry/Cron/Wiki/Flow) checked handles that
+// capabilityHandlesFor already injects IFF toolPolicy enables the tool - and
+// those backing services are unconditionally new-ed at startup, so the
+// conditions never fired in production. Tool gating is now a SINGLE layer:
+// toolPolicy (isEnabled in buildToolsSet). capabilityHandlesFor
+// (agent-service.ts) emits a loud console.warn if a policy-enabled tool's
+// backing service is missing (replaces the old silent-hide).
 
 
 
@@ -218,10 +194,10 @@ export function buildToolsSet(
 	for (const [name, def] of Object.entries(ALL_TOOLS)) {
 		if (blocked.has(name)) continue;
 
-		// Check conditional tools
-		const condition = CONDITIONAL_TOOLS[name];
-		if (condition && !condition(context)) continue;
-
+		// Tool gating is a single layer: toolPolicy (isEnabled). The former
+		// CONDITIONAL_TOOLS capability gate was removed (see note above) —
+		// capabilityHandlesFor injects service handles IFF policy enables the
+		// tool, and warns if a backing service is missing.
 		if (isEnabled(name)) {
 			tools[name] = def;
 		}
