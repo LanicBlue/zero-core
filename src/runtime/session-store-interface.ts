@@ -65,6 +65,7 @@ export interface ISessionStore {
 		rootTaskId: string;
 		ownerAgentId: string;
 		targetAgentId: string;
+		modelId?: string;
 		parentSessionId?: string;
 		sessionId?: string;
 		task: string;

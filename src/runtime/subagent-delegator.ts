@@ -188,6 +188,10 @@ export class SubagentDelegator {
 			rootTaskId: options?.rootTaskId ?? options?.parentTaskId ?? taskId,
 			ownerAgentId: this.config.agentId,
 			targetAgentId,
+			// Effective model at delegation time: the Subagent tool's override,
+			// else the caller's configured model (named delegations already
+			// folded target.model into options.model upstream in the Agent tool).
+			modelId: options?.model ?? this.config.modelId,
 			parentSessionId: this.config.sessionId,
 			sessionId,
 			task,

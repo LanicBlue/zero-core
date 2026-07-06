@@ -103,8 +103,12 @@ export default function TaskDetailView({ taskId }: Props) {
 	const contextLabel = sessionCtx.contextWindow > 0
 		? `${formatTokens(sessionCtx.contextUsed)} / ${formatTokens(sessionCtx.contextWindow)}`
 		: "—";
-	const modelLabel = sessionCtx.model?.modelId ?? "—";
-	const modelTitle = sessionCtx.model ? `${sessionCtx.model.providerName}/${sessionCtx.model.modelId}` : undefined;
+	// Prefer the model PERSISTED at delegation time (accurate for history,
+	// including Subagent-tool overrides); fall back to the session's current
+	// live model when the row predates the model_id column (legacy) or has none.
+	const modelLabel = record?.modelId ?? sessionCtx.model?.modelId ?? "—";
+	const modelTitle = record?.modelId
+		?? (sessionCtx.model ? `${sessionCtx.model.providerName}/${sessionCtx.model.modelId}` : undefined);
 	let info: React.ReactNode = null;
 	if (record) {
 		info = (
