@@ -27,6 +27,7 @@ import MessageRow from "../chat/MessageRow.js";
 import type { ChatMessage } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
 import type { DelegatedTaskRecord } from "../../../shared/types.js";
+import { resolveAgentLabel } from "./task-label.js";
 
 const api = () => (window as any).api;
 
@@ -83,7 +84,11 @@ export default function TaskDetailView({ taskId }: Props) {
 	}, [taskId]);
 
 	const avatarLetter = record?.targetAgentId?.[0]?.toUpperCase() ?? "Z";
-	const agentName = record ? (agents.find((a) => a.id === record.targetAgentId)?.name ?? record.targetAgentId ?? "—") : "—";
+	// Same resolution as the middle column (named target → its name; synthetic
+	// `<parent>:sub` → parent name).
+	const agentNameById = new Map<string, string>();
+	for (const a of agents) agentNameById.set(a.id, a.name);
+	const agentName = record ? resolveAgentLabel(record.targetAgentId, agentNameById) : "—";
 
 	// Fixed info bar (not resizable): created time, run status, turns, tokens,
 	// agent. Shown only when a persisted record exists (bash / live-only tasks

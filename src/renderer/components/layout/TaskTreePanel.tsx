@@ -15,6 +15,7 @@ import { useChatStore } from "../../store/chat-store.js";
 import { useTaskStore } from "../../store/task-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
 import type { RuntimeTaskInfo } from "../../../shared/types.js";
+import { resolveAgentLabel } from "./task-label.js";
 
 // Module-level stable empty-array reference: avoids a fresh `[]` (new identity
 // each render) that would force downstream memo/selector consumers to re-render
@@ -35,17 +36,6 @@ function formatTokens(n: number): string {
 	if (n < 1000) return String(n);
 	if (n < 1_000_000) return (n / 1000).toFixed(1) + "k";
 	return (n / 1_000_000).toFixed(1) + "M";
-}
-
-// Resolve a subagent task's targetAgentId to a display NAME. Real named
-// delegations resolve via the agent roster; synthetic ids (`<parent>:sub`)
-// fall back to the suffix (or the raw id) — never the generic "subagent".
-function resolveAgentLabel(targetAgentId: string | undefined, agentNameById: Map<string, string>): string {
-	if (!targetAgentId) return "subagent";
-	const hit = agentNameById.get(targetAgentId);
-	if (hit) return hit;
-	const i = targetAgentId.lastIndexOf(":");
-	return i >= 0 ? targetAgentId.slice(i + 1) : targetAgentId;
 }
 
 export default function TaskTreePanel() {

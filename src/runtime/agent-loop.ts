@@ -468,6 +468,7 @@ export class AgentLoop implements AgentRuntime {
 				error: rec.error,
 				startedAt: Date.parse(rec.createdAt) || 0,
 				completedAt: rec.completedAt ? Date.parse(rec.completedAt) || undefined : undefined,
+				targetAgentId: rec.targetAgentId,
 			});
 		}
 	}
