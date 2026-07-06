@@ -2039,6 +2039,25 @@ body {
   white-space: nowrap;
 }
 
+/* List-row metadata (sub-1): turns / tokens / current tool, monospace + subtle. */
+.task-card-stat {
+  flex: 0 0 auto;
+  font-size: 9px;
+  color: var(--fg-subtle);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+.task-card-tool {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--fg-muted, #999);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-card-meta {
   display: flex;
   gap: 10px;
@@ -2056,49 +2075,11 @@ body {
   min-height: 0;
   overflow: hidden;
 }
-.task-detail-pane {
-  min-height: 0;
-  overflow: auto;
-  padding: 10px 12px;
-}
-.task-detail-grid {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.task-detail-grid > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.task-detail-grid dt {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--fg-subtle);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-}
-.task-detail-grid dd {
-  margin: 0;
-  font-size: 12px;
-  color: var(--fg, #ccc);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.task-detail-task dd { font-weight: 600; }
-.task-detail-error dd { color: var(--accent-danger, #e55); }
-.task-detail-result dd {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  font-size: 11px;
-  max-height: 160px;
-  overflow: auto;
-}
 .task-detail-conversation {
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--border, #333);
 }
 .task-detail-conversation-header {
   font-size: 9px;
