@@ -110,6 +110,7 @@ export interface WindowApi {
 		totalTokens: number;
 		contextWindow: number;
 		contextUsage: number;
+		model: { providerName: string; modelId: string };
 		todos: Array<{ content: string; status: "pending" | "in_progress" | "completed"; activeForm: string }>;
 		pendingQuestion: { requestId: string; questions: Array<{ question: string; header?: string; options?: Array<{ label: string; description?: string }>; multiSelect?: boolean }> } | null;
 		isRunning: boolean;

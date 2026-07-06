@@ -1171,6 +1171,7 @@ export class AgentService {
 		totalTokens: number;
 		contextWindow: number;
 		contextUsage: number;
+		model: { providerName: string; modelId: string };
 		todos: any[];
 		pendingQuestion: { requestId: string; questions: any[] } | null;
 		isRunning: boolean;
@@ -1197,6 +1198,7 @@ export class AgentService {
 			totalTokens: (session.outputTokens ?? 0) + loop.getEstimatedTokens(),
 			contextWindow: loop.getContextWindow(),
 			contextUsage: loop.getContextUsage(),
+			model: loop.getModelId(),
 			todos: getSessionTodos(sessionId),
 			pendingQuestion,
 			// 该 session 当前是否在跑。前端 pull-on-display 据此自愈清掉残留的

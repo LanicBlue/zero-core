@@ -3,13 +3,15 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 选中中间栏 task 树的一个委派任务时,右栏切到本视图,显示该委派 session 的
-// 对话(用与主聊天一致的 MessageRow 渲染,只读)。任务 metadata(status/turns/
-// tokens/tool)在中间栏列表显示(sub-1),右栏专心对话 —— 中间栏列表是摘要、
-// 右栏是详情,且本对话是委派子 session 的,与主聊天不是同一个,不算重复。
+// 选中中间栏 task 树的一个委派任务时,右栏切到本视图:
+//  - 顶部固定 info bar(不可调):agent / status / created / turns / tokens,
+//    从 DelegatedTaskRecord 直接读。
+//  - 下方对话(用与主聊天一致的 MessageRow 渲染,只读)。
+// 中间栏列表是摘要、右栏是详情;对话是委派子 session 的,与主聊天不是同一个,
+// 不算重复。
 //
-// 历史:本视图原是"上 metadata + splitter + 下对话"两栏(2026-07 sub-2 简化)。
-// metadata 上移中间栏后,右栏只留对话。
+// 历史:本视图原是"上 metadata + splitter + 下对话"两栏 → 2026-07 sub-2 简化
+// 成"只留对话" → 同期又加回固定 info bar(精简、不可调,区别于旧 splitter 两栏)。
 //
 // ## 数据来源
 // - record:api().delegatedTasksGet(taskId) → DelegatedTaskRecord(targetAgentId
@@ -23,7 +25,9 @@
 import React, { useEffect, useState } from "react";
 import MessageRow from "../chat/MessageRow.js";
 import type { ChatMessage } from "../../store/chat-store.js";
+import { useAgentStore } from "../../store/agent-store.js";
 import type { DelegatedTaskRecord } from "../../../shared/types.js";
+import { resolveAgentLabel } from "./task-label.js";
 
 const api = () => (window as any).api;
 
@@ -31,16 +35,40 @@ interface Props {
 	taskId: string;
 }
 
+// ISO → "2026-07-06 14:03" (local). Falls back to the raw string on parse fail.
+function formatTimestamp(iso: string | undefined): string {
+	if (!iso) return "—";
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return iso;
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Compact token count (1234 → "1.2k").
+function formatTokens(n: number): string {
+	if (n < 1000) return String(n);
+	if (n < 1_000_000) return (n / 1000).toFixed(1) + "k";
+	return (n / 1_000_000).toFixed(1) + "M";
+}
+
 export default function TaskDetailView({ taskId }: Props) {
 	const [record, setRecord] = useState<DelegatedTaskRecord | undefined>(undefined);
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
+	// Live session context (model + current context fill), pulled from the
+	// delegated session's init payload (same call that loads messages). Empty
+	// until the payload resolves or if the session has no loop yet.
+	const [sessionCtx, setSessionCtx] = useState<{ model?: { providerName: string; modelId: string }; contextUsed: number; contextWindow: number }>({ contextUsed: 0, contextWindow: 0 });
 	const [loading, setLoading] = useState(true);
+	// Resolve the delegated agent's NAME from the roster (consistent with the
+	// middle-column TaskTree). Falls back to the raw id.
+	const agents = useAgentStore((s) => s.agents);
 
 	useEffect(() => {
 		let cancelled = false;
 		setLoading(true);
 		setRecord(undefined);
 		setMessages([]);
+		setSessionCtx({ contextUsed: 0, contextWindow: 0 });
 		(async () => {
 			try {
 				const rec = (await api().delegatedTasksGet(taskId)) as DelegatedTaskRecord | undefined;
@@ -50,6 +78,7 @@ export default function TaskDetailView({ taskId }: Props) {
 					const init = await api().sessionsGetInit(rec.sessionId);
 					if (cancelled) return;
 					setMessages((init?.messages ?? []) as ChatMessage[]);
+					if (init) setSessionCtx({ model: init.model, contextUsed: init.inputTokens ?? 0, contextWindow: init.contextWindow ?? 0 });
 				}
 			} catch {
 				/* leave empty */
@@ -61,6 +90,56 @@ export default function TaskDetailView({ taskId }: Props) {
 	}, [taskId]);
 
 	const avatarLetter = record?.targetAgentId?.[0]?.toUpperCase() ?? "Z";
+	// Same resolution as the middle column (named target → its name; synthetic
+	// `<parent>:sub` → parent name).
+	const agentNameById = new Map<string, string>();
+	for (const a of agents) agentNameById.set(a.id, a.name);
+	const agentName = record ? resolveAgentLabel(record.targetAgentId, agentNameById) : "—";
+
+	// Fixed info bar (not resizable): agent / status / model / created / turns
+	// / tokens (cumulative) / context (current fill). Shown only when a
+	// persisted record exists (bash / live-only tasks have no record → keep the
+	// existing placeholder body).
+	const contextLabel = sessionCtx.contextWindow > 0
+		? `${formatTokens(sessionCtx.contextUsed)} / ${formatTokens(sessionCtx.contextWindow)}`
+		: "—";
+	const modelLabel = sessionCtx.model?.modelId ?? "—";
+	const modelTitle = sessionCtx.model ? `${sessionCtx.model.providerName}/${sessionCtx.model.modelId}` : undefined;
+	let info: React.ReactNode = null;
+	if (record) {
+		info = (
+			<div className="task-detail-info">
+				<div className="task-detail-info-row">
+					<span className="task-detail-info-label">Agent</span>
+					<span className="task-detail-info-value">{agentName}</span>
+				</div>
+				<div className="task-detail-info-row">
+					<span className="task-detail-info-label">Status</span>
+					<span className={`task-detail-info-value task-status-text task-status-${record.status}`}>{record.status}</span>
+				</div>
+				<div className="task-detail-info-row">
+					<span className="task-detail-info-label">Model</span>
+					<span className="task-detail-info-value" title={modelTitle}>{modelLabel}</span>
+				</div>
+				<div className="task-detail-info-row">
+					<span className="task-detail-info-label">Created</span>
+					<span className="task-detail-info-value">{formatTimestamp(record.createdAt)}</span>
+				</div>
+				<div className="task-detail-info-row">
+					<span className="task-detail-info-label">Turns</span>
+					<span className="task-detail-info-value">{record.turns}</span>
+				</div>
+				<div className="task-detail-info-row">
+					<span className="task-detail-info-label">Tokens</span>
+					<span className="task-detail-info-value">{formatTokens(record.tokens)}</span>
+				</div>
+				<div className="task-detail-info-row">
+					<span className="task-detail-info-label">Context</span>
+					<span className="task-detail-info-value">{contextLabel}</span>
+				</div>
+			</div>
+		);
+	}
 
 	let body: React.ReactNode;
 	if (loading) {
@@ -75,6 +154,7 @@ export default function TaskDetailView({ taskId }: Props) {
 
 	return (
 		<div className="task-detail-view">
+			{info}
 			<div className="task-detail-conversation">
 				<div className="task-detail-conversation-header">Conversation</div>
 				<div className="task-detail-messages">{body}</div>

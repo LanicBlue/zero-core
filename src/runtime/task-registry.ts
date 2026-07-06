@@ -64,7 +64,7 @@ export class TaskRegistry {
 		}, 0);
 	}
 
-	create(taskId: string, type: TaskType, task: string, abortController?: AbortController, parentTaskId?: string): void {
+	create(taskId: string, type: TaskType, task: string, abortController?: AbortController, parentTaskId?: string, targetAgentId?: string): void {
 		this.tasks.set(taskId, {
 			id: taskId,
 			type,
@@ -75,6 +75,7 @@ export class TaskRegistry {
 			turns: 0,
 			tokens: 0,
 			startedAt: Date.now(),
+			targetAgentId: type === "subagent" ? targetAgentId : undefined,
 		});
 		if (abortController) {
 			this.abortControllers.set(taskId, abortController);
