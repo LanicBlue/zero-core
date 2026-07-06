@@ -2080,7 +2080,7 @@ body {
 .task-detail-info {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
   gap: 4px 12px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border, #333);

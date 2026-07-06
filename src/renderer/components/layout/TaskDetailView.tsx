@@ -54,6 +54,10 @@ function formatTokens(n: number): string {
 export default function TaskDetailView({ taskId }: Props) {
 	const [record, setRecord] = useState<DelegatedTaskRecord | undefined>(undefined);
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
+	// Live session context (model + current context fill), pulled from the
+	// delegated session's init payload (same call that loads messages). Empty
+	// until the payload resolves or if the session has no loop yet.
+	const [sessionCtx, setSessionCtx] = useState<{ model?: { providerName: string; modelId: string }; contextUsed: number; contextWindow: number }>({ contextUsed: 0, contextWindow: 0 });
 	const [loading, setLoading] = useState(true);
 	// Resolve the delegated agent's NAME from the roster (consistent with the
 	// middle-column TaskTree). Falls back to the raw id.
@@ -64,6 +68,7 @@ export default function TaskDetailView({ taskId }: Props) {
 		setLoading(true);
 		setRecord(undefined);
 		setMessages([]);
+		setSessionCtx({ contextUsed: 0, contextWindow: 0 });
 		(async () => {
 			try {
 				const rec = (await api().delegatedTasksGet(taskId)) as DelegatedTaskRecord | undefined;
@@ -73,6 +78,7 @@ export default function TaskDetailView({ taskId }: Props) {
 					const init = await api().sessionsGetInit(rec.sessionId);
 					if (cancelled) return;
 					setMessages((init?.messages ?? []) as ChatMessage[]);
+					if (init) setSessionCtx({ model: init.model, contextUsed: init.inputTokens ?? 0, contextWindow: init.contextWindow ?? 0 });
 				}
 			} catch {
 				/* leave empty */
@@ -90,9 +96,15 @@ export default function TaskDetailView({ taskId }: Props) {
 	for (const a of agents) agentNameById.set(a.id, a.name);
 	const agentName = record ? resolveAgentLabel(record.targetAgentId, agentNameById) : "—";
 
-	// Fixed info bar (not resizable): created time, run status, turns, tokens,
-	// agent. Shown only when a persisted record exists (bash / live-only tasks
-	// have no record → keep the existing placeholder body).
+	// Fixed info bar (not resizable): agent / status / model / created / turns
+	// / tokens (cumulative) / context (current fill). Shown only when a
+	// persisted record exists (bash / live-only tasks have no record → keep the
+	// existing placeholder body).
+	const contextLabel = sessionCtx.contextWindow > 0
+		? `${formatTokens(sessionCtx.contextUsed)} / ${formatTokens(sessionCtx.contextWindow)}`
+		: "—";
+	const modelLabel = sessionCtx.model?.modelId ?? "—";
+	const modelTitle = sessionCtx.model ? `${sessionCtx.model.providerName}/${sessionCtx.model.modelId}` : undefined;
 	let info: React.ReactNode = null;
 	if (record) {
 		info = (
@@ -106,6 +118,10 @@ export default function TaskDetailView({ taskId }: Props) {
 					<span className={`task-detail-info-value task-status-text task-status-${record.status}`}>{record.status}</span>
 				</div>
 				<div className="task-detail-info-row">
+					<span className="task-detail-info-label">Model</span>
+					<span className="task-detail-info-value" title={modelTitle}>{modelLabel}</span>
+				</div>
+				<div className="task-detail-info-row">
 					<span className="task-detail-info-label">Created</span>
 					<span className="task-detail-info-value">{formatTimestamp(record.createdAt)}</span>
 				</div>
@@ -116,6 +132,10 @@ export default function TaskDetailView({ taskId }: Props) {
 				<div className="task-detail-info-row">
 					<span className="task-detail-info-label">Tokens</span>
 					<span className="task-detail-info-value">{formatTokens(record.tokens)}</span>
+				</div>
+				<div className="task-detail-info-row">
+					<span className="task-detail-info-label">Context</span>
+					<span className="task-detail-info-value">{contextLabel}</span>
 				</div>
 			</div>
 		);

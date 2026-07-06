@@ -413,6 +413,15 @@ export class AgentLoop implements AgentRuntime {
 		return this.session.getContextUsage();
 	}
 
+	/**
+	 * Current model the loop runs on (provider + model id). Reflects the live
+	 * config — updated by hot config-sync / per-call overrides — so the UI can
+	 * show the model actually backing a session (incl. delegated sub-agents).
+	 */
+	getModelId(): { providerName: string; modelId: string } {
+		return { providerName: this.config.providerName, modelId: this.config.modelId };
+	}
+
 	getResult(): string {
 		return this.resultText;
 	}
