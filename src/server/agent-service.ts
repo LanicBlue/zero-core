@@ -29,7 +29,7 @@
 import { loadConfig, ZERO_CORE_DIR, type ZeroCoreConfig } from "../core/config.js";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
-import type { AgentRecord, DelegatedTaskRecord } from "../shared/types.js";
+import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
 import type { RuntimeProviderConfig, SessionConfig, StreamEvent } from "../runtime/types.js";
@@ -50,6 +50,13 @@ import { setTurnSeq } from "../runtime/hooks/turn-hooks.js";
 import { registerHooksForLoop, type HookWiringDeps } from "../runtime/hooks/index.js";
 import { getSessionTodos } from "../runtime/tools/todo-write.js";
 import { pendingResponses } from "../runtime/pending-responses.js";
+// sub-7 (work-context 拆解到三通道): store types for the work-context closures
+// (type-only imports — runtime layer never sees the store classes via this file).
+import type { ProjectStore } from "./project-store.js";
+import type { RequirementStore } from "./requirement-store.js";
+import type { ProjectWikiStore } from "./project-wiki-store.js";
+import type { TaskStepStore } from "./task-step-store.js";
+import type { ProjectWorkStore } from "./project-work-store.js";
 // (WORKFLOW_ROLES / sendRolePrompt 已退役 —— 去-role 统一走 sendProjectPrompt)
 
 // ---------------------------------------------------------------------------
@@ -133,6 +140,25 @@ type CapabilityHandles = {
 	pmService?: unknown;
 };
 
+/**
+ * sub-7 (work-context 拆解到三通道): shallow Wiki baseline for a project,
+ * sorted by path and indented by depth (moved verbatim from the deleted
+ * workflow-context-hook). Used by buildWorkContextClosures to render the
+ * Wiki Baseline sub-block of the work-context system section.
+ */
+function getWikiBaseline(wikiStore: ProjectWikiStore, projectId: string): string {
+	const nodes = wikiStore.listByProject(projectId);
+	if (nodes.length === 0) return "";
+	const sorted = nodes
+		.filter((n) => n.summary)
+		.sort((a, b) => a.path.localeCompare(b.path));
+	return sorted.map((n) => {
+		const depth = n.path.split("/").length - 1;
+		const indent = "  ".repeat(Math.max(0, depth - 1));
+		return `${indent}${n.path} — ${n.summary}`;
+	}).join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // Agent Service — supports concurrent multi-agent execution
 // ---------------------------------------------------------------------------
@@ -184,11 +210,31 @@ export class AgentService {
 	// (logging failures are swallowed in tool-factory).
 	private toolUsageStore: any = null;
 	/**
+	 * sub-7 (work-context 拆解到三通道): the workflow-context stores
+	 * (projectStore / requirementStore / projectWikiStore / taskStepStore /
+	 * projectWorkStore) used to build the SessionConfig closures that render
+	 * Project / Requirement / Wiki Baseline → system section and Steps Progress
+	 * → workbench section. Injected by server/index.ts via setWorkContextStores
+	 * (the same stores the deleted workflow-context-hook consumed). The
+	 * closures capture these + the per-config (workId, projectId,
+	 * activeRequirementId) and read the live state on every call → runtime
+	 * never imports the server stores directly (DI invariant).
+	 */
+	private workContextStores: {
+		projectStore: ProjectStore;
+		requirementStore: RequirementStore;
+		wikiStore: ProjectWikiStore;
+		taskStepStore: TaskStepStore;
+		projectWorkStore?: ProjectWorkStore;
+	} | null = null;
+	/**
 	 * Step 1B: per-loop hook wiring deps. Assembled by server/index.ts (which
-	 * owns the M5 extractor deps + workflow-context stores) and injected here.
-	 * Each loop built by this service registers the main hook set on its own
-	 * registry from these deps; delegated sub-loops inherit the same deps via
-	 * config.hookWiringDeps (threaded through AgentLoop → SubagentDelegator).
+	 * owns the M5 extractor deps) and injected here. Each loop built by this
+	 * service registers the main hook set on its own registry from these deps;
+	 * delegated sub-loops inherit the same deps via config.hookWiringDeps
+	 * (threaded through AgentLoop → SubagentDelegator). (sub-7: workflow-
+	 * context stores are no longer threaded here — they flow through
+	 * setWorkContextStores / buildWorkContextClosures into SessionConfig.)
 	 */
 	private hookDeps: HookWiringDeps = {};
 
@@ -339,6 +385,94 @@ export class AgentService {
 		this.toolUsageStore = store ?? null;
 	}
 	/**
+	 * sub-7 (work-context 拆解到三通道): inject the workflow-context stores
+	 * (the same set the deleted workflow-context-hook consumed). Used by
+	 * buildWorkContextClosures to construct the SessionConfig closures that
+	 * render Project / Requirement / Wiki Baseline → system and Steps Progress
+	 * → workbench. Call once at startup (server/index.ts); idempotent.
+	 */
+	setWorkContextStores(stores: {
+		projectStore: ProjectStore;
+		requirementStore: RequirementStore;
+		wikiStore: ProjectWikiStore;
+		taskStepStore: TaskStepStore;
+		projectWorkStore?: ProjectWorkStore;
+	}): void {
+		this.workContextStores = stores ?? null;
+	}
+	/**
+	 * sub-7: build the two SessionConfig closures for a given work session.
+	 * Captures the stores + per-config (workId, projectId, activeRequirementId)
+	 * and renders the system / workbench sections on each call. Returns
+	 * `{ system: undefined, steps: undefined }` for non-work sessions (no
+	 * workId / no stores) → the loop omits the work-context system section and
+	 * the workbench Steps Progress sub-block. Mirrors the deleted hook's logic
+	 * (work.contextPolicy gate, per-policy injections) but returns strings
+	 * instead of writing to memoryContext.
+	 *
+	 * Runtime layer never sees the store classes — only calls the closures.
+	 */
+	private buildWorkContextClosures(args: {
+		workId?: string;
+		projectId?: string;
+		activeRequirementId?: string;
+	}): {
+		workContextSystemSection?: () => string;
+		stepsProgressSection?: () => string;
+	} {
+		const stores = this.workContextStores;
+		const { workId, projectId, activeRequirementId } = args;
+		if (!stores || !workId) {
+			// Non-work session: no closures → system section + workbench sub-block omitted.
+			return {};
+		}
+		const policy: WorkContextPolicy | undefined = stores.projectWorkStore?.get(workId)?.contextPolicy;
+		if (!policy) {
+			// Work session but no policy resolved yet → nothing to inject.
+			return {};
+		}
+		// ── system section: Project / Requirement / Wiki Baseline ────────────
+		const workContextSystemSection = (): string => {
+			const parts: string[] = [];
+			if (policy.injectProjectInfo && projectId) {
+				const project = stores.projectStore.get(projectId);
+				if (project) {
+					// v0.8 (M0): ProjectRecord slimmed to workspaceDir
+					parts.push(`## Project\n- Name: ${project.name}\n- Working directory: ${project.workspaceDir}`);
+				}
+			}
+			if (policy.injectWikiBaseline && projectId) {
+				const baseline = getWikiBaseline(stores.wikiStore, projectId);
+				if (baseline) {
+					parts.push(`## Wiki Baseline\n${baseline}`);
+				}
+			}
+			if (policy.injectRequirementDetail && activeRequirementId) {
+				const req = stores.requirementStore.get(activeRequirementId);
+				if (req) {
+					parts.push(`## Requirement\n- Title: ${req.title}\n- Priority: ${req.priority}\n- Impact: ${req.impactScope || "N/A"}\n- Description:\n${req.description || "(no description)"}`);
+				}
+			}
+			return parts.join("\n\n");
+		};
+		// ── workbench section: Steps Progress (compact, per-step) ────────────
+		const stepsProgressSection = (): string => {
+			if (!policy.injectStepsProgress || !activeRequirementId) return "";
+			const steps = stores.taskStepStore.listByRequirement(activeRequirementId);
+			if (steps.length === 0) return "";
+			const lines = steps.map((s) => {
+				const icon = s.status === "completed" ? "done"
+					: s.status === "running" ? "running"
+					: s.status === "failed" ? "failed"
+					: "pending";
+				return `  [${icon}] ${s.role}: ${s.title}`;
+			});
+			const completed = steps.filter((s) => s.status === "completed").length;
+			return `(${completed}/${steps.length})\n${lines.join("\n")}`;
+		};
+		return { workContextSystemSection, stepsProgressSection };
+	}
+	/**
 	 * Step 1B: inject the per-loop hook wiring deps. Called once by
 	 * server/index.ts after the M5 extractor deps + workflow-context stores
 	 * are built. The service merges its own always-available handles (db /
@@ -354,7 +488,9 @@ export class AgentService {
 	 * Step 1B: assemble the per-loop hook wiring deps. Service-owned handles
 	 * (db / sessionDb / sessionManager / inputQueue) are always available and
 	 * override any same-key field injected via setHookDeps; the rest
-	 * (extractionDeps / workflowContext) come from server/index.ts injection.
+	 * (extractionDeps) comes from server/index.ts injection. (sub-7:
+	 * workflowContext is gone — the workflow-context stores now flow through
+	 * setWorkContextStores → buildWorkContextClosures → SessionConfig closures.)
 	 */
 	private buildHookDeps(): HookWiringDeps {
 		return {
@@ -883,8 +1019,10 @@ export class AgentService {
 	/**
 	 * v0.8 project-work(取代工作流角色的去-role 触发器):身份 prompt + toolPolicy
 	 * 全用 agent 自带(来自模板),不调任何 role config。注入 wikiStore/projectContext/
-	 * wikiAnchors + 可选 stores(req/task/orchestrate/git)+ workId(供 T2 hook 按
-	 * work.contextPolicy 注入)。所有可触发工作(cron/hook/手动 + lead/analyst)走这里。
+	 * wikiAnchors + 可选 stores(req/task/orchestrate/git)+ workId。sub-7 后 workId 不再
+	 * 喂 T2 hook(已删),而是喂 buildWorkContextClosures —— 按 work.contextPolicy 渲染
+	 * Project/Requirement/Wiki Baseline 进 system 段、Steps Progress 进 workbench 段。
+	 * 所有可触发工作(cron/hook/手动 + lead/analyst)走这里。
 	 */
 	async sendProjectPrompt(
 		agentId: string,
@@ -896,7 +1034,7 @@ export class AgentService {
 			projectName?: string;
 			wikiStore?: any;
 			activeRequirementId?: string;
-			/** v0.8 project-work:触发本 turn 的工位(workflow-context-hook 据此注入 T2)。 */
+			/** v0.8 project-work:触发本 turn 的工位。sub-7:work-context closures 据此读 work.contextPolicy 渲染 system/workbench 段。 */
 			workId?: string;
 			/** 可选注入(需求管理工位等需要):工具上下文 stores + git。 */
 			requirementStore?: any;
@@ -981,6 +1119,24 @@ export class AgentService {
 		if (agent?.wikiAnchors) (sessionConfig as any).wikiAnchors = agent.wikiAnchors;
 		// Step 1B: thread hook wiring deps (subagent-delegator uses them).
 		sessionConfig.hookWiringDeps = this.buildHookDeps();
+
+		// sub-7 (work-context 拆解到三通道): build the system + workbench
+		// closures for this work session (replaces the deleted workflow-context-
+		// hook's memoryContext path). Non-work / no-policy sessions get {} back
+		// → the loop omits the work-context system section + the workbench
+		// Steps Progress sub-block. Built fresh per sendProjectPrompt call so a
+		// changed workId / activeRequirementId is captured.
+		const workClosures = this.buildWorkContextClosures({
+			workId: context.workId,
+			projectId: context.projectId,
+			activeRequirementId: context.activeRequirementId,
+		});
+		if (workClosures.workContextSystemSection) {
+			(sessionConfig as any).workContextSystemSection = workClosures.workContextSystemSection;
+		}
+		if (workClosures.stepsProgressSection) {
+			(sessionConfig as any).stepsProgressSection = workClosures.stepsProgressSection;
+		}
 
 		let loop = this.loops.get(sessionId);
 		if (!loop) {

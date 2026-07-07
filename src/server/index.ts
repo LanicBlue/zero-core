@@ -222,7 +222,14 @@ export async function startServer(options?: StartServerOptions) {
 	// / registerWorkflowContextHook / registerInputQueueHooks calls.
 	agentService.setHookDeps({
 		extractionDeps,
-		workflowContext: { projectStore, requirementStore, wikiStore, taskStepStore, projectWorkStore },
+	});
+	// sub-7 (work-context 拆解到三通道): the workflow-context stores are now
+	// injected here (the deleted workflow-context-hook used to consume them via
+	// setHookDeps.workflowContext; that field is gone). agent-service builds
+	// SessionConfig closures (workContextSystemSection / stepsProgressSection)
+	// from them — runtime never imports the stores directly.
+	agentService.setWorkContextStores({
+		projectStore, requirementStore, wikiStore, taskStepStore, projectWorkStore,
 	});
 
 	// v0.8 (P3): ManagementService (renamed from ZeroAdminService) —

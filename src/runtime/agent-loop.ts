@@ -61,6 +61,12 @@ import {
 	renderContextAnchors,
 	type ResolvedAnchor,
 } from "./wiki-anchor-injection.js";
+// sub-7 (anchor merger): renderSystemAnchors + renderContextAnchors collapse
+// into the single `wiki-system-anchors` system section (root summary + one
+// layer, both channels unioned). renderContextAnchors stays exported so tests
+// can call it directly; the executeStream path no longer renders it into the
+// per-turn <context> block (the context channel now carries only Recalled
+// Memories — design §1.2).
 
 // ---------------------------------------------------------------------------
 // AgentLoop
@@ -150,7 +156,12 @@ export class AgentLoop implements AgentRuntime {
 		// view (or already a WikiStore); .getWikiStore() unwraps it.
 		this.wikiStoreGlobal = this.resolveGlobalWikiStore(config);
 
-		// Build prompt sections: base + wiki system-anchor section (cacheable).
+		// Build prompt sections: base + wiki system-anchor section (cacheable) +
+		// work-context system section (on-demand). sub-7 merges the context-
+		// channel anchors into the existing `wiki-system-anchors` section (root
+		// summary + one layer for both channels); the per-turn <context> block
+		// no longer renders an anchors sub-block (context channel = Recalled
+		// Memories only, design §1.2).
 		const sections = [
 			{ name: "base", compute: () => this.session.getSystemPrompt(), cacheBreak: false },
 		];
@@ -161,12 +172,33 @@ export class AgentLoop implements AgentRuntime {
 				contextBundle: config.contextBundle,
 				wikiAnchors: config.wikiAnchors,
 			});
-			// system-channel anchors → cached section (refresh only when the
-			// caller invalidates it). context-channel anchors are rendered
-			// every turn in executeStream → buildContextMessage.
+			// sub-7 (Wiki Anchors merger): renderSystemAnchors + the context-
+			// channel memory index render TOGETHER into this single cached
+			// section. The context channel's per-agent memory anchor used to
+			// ride inside <context> every turn; it now joins the project
+			// outline here so there is exactly one Wiki Anchors block, and it
+			// is cache-stable (refresh only on subtree change, design §1.3 #1).
 			sections.push({
 				name: "wiki-system-anchors",
-				compute: () => renderSystemAnchors({ wiki: this.wikiStoreGlobal!, anchors: this.wikiAnchors }),
+				compute: () => {
+					const sys = renderSystemAnchors({ wiki: this.wikiStoreGlobal!, anchors: this.wikiAnchors });
+					const ctx = renderContextAnchors({ wiki: this.wikiStoreGlobal!, anchors: this.wikiAnchors });
+					if (!sys && !ctx) return "";
+					if (!ctx) return sys;
+					if (!sys) return ctx;
+					return sys + "\n\n" + ctx;
+				},
+				cacheBreak: false,
+			});
+		}
+		// sub-7 (work-context → system): Project / Requirement / Wiki Baseline
+		// rendered by a server-built closure (config.workContextSystemSection)
+		// — on-demand (cacheBreak:false so the closure re-reads store state
+		// each turn) but empty for non-work sessions → section dropped.
+		if (config.workContextSystemSection) {
+			sections.push({
+				name: "work-context",
+				compute: () => config.workContextSystemSection!() ?? "",
 				cacheBreak: false,
 			});
 		}
@@ -724,6 +756,19 @@ export class AgentLoop implements AgentRuntime {
 		 * by policy actually works.
 		 */
 		capabilities?: { management?: unknown; wikiStore?: unknown; requirementStore?: unknown; pmService?: unknown };
+		/**
+		 * sub-7 (work-context → system): replacement server-built closure for the
+		 * Project / Requirement / Wiki Baseline system section. Pass when the
+		 * activeRequirement / workId changes on a RUNNING loop so the next turn's
+		 * `work-context` section re-renders the new requirement. Mirrors the
+		 * wikiAnchors hot-swap pattern. Undefined = no change.
+		 */
+		workContextSystemSection?: SessionConfig["workContextSystemSection"];
+		/**
+		 * sub-7: replacement server-built closure for the Steps Progress
+		 * workbench section. Same hot-swap semantics as workContextSystemSection.
+		 */
+		stepsProgressSection?: SessionConfig["stepsProgressSection"];
 	}): void {
 		if (patch.systemPrompt !== undefined && patch.systemPrompt !== this.config.systemPrompt) {
 			this.config.systemPrompt = patch.systemPrompt;
@@ -786,6 +831,18 @@ export class AgentLoop implements AgentRuntime {
 			this.toolContext.wikiAnchorNodeIds = anchorNodeIds(this.wikiAnchors);
 			this.promptAssembler.invalidate("wiki-system-anchors");
 		}
+		// sub-7 (work-context → system): hot-swap the work-context / Steps
+		// Progress closures when activeRequirement / workId / work policy flips
+		// on a RUNNING loop. The section closures are cacheBreak:false so they
+		// re-read on the next turn anyway; we still invalidate so the swap is
+		// visible immediately even if a turn is mid-flight.
+		if (patch.workContextSystemSection !== undefined) {
+			this.config.workContextSystemSection = patch.workContextSystemSection;
+			this.promptAssembler.invalidate("work-context");
+		}
+		if (patch.stepsProgressSection !== undefined) {
+			this.config.stepsProgressSection = patch.stepsProgressSection;
+		}
 	}
 
 
@@ -840,20 +897,14 @@ export class AgentLoop implements AgentRuntime {
 		}
 
 		// These are turn-scoped (not per-step): tools, system prompt, and the
-		// context-channel render (wiki anchors / current task / todos) are
-		// resolved once per turn. Per-step injection (appendMessages from
-		// StepStart / PreLLMCall handlers, providerOptions from PreLLMCall) is
-		// merged inside the loop.
+		// context-channel render (Recalled Memories only — sub-7) are resolved
+		// once per turn. Per-step injection (appendMessages from StepStart /
+		// PreLLMCall handlers, providerOptions from PreLLMCall) is merged
+		// inside the loop. Wiki anchors now live entirely in the cached system
+		// prompt (sub-7 merger), so the per-turn <context> block carries only
+		// Environment + Guidelines + Recalled Memories.
 		const tools = await this.buildTools();
 		const systemPrompt = await this.assembleSystemPrompt();
-
-		// v0.8 (P1 §10.6): render context-channel wiki anchors every turn
-		// (system-channel anchors already live in the cached system prompt).
-		// v0.8 (P2 §11.6): the memory anchor inside this set is the session
-		// agent's per-agent memory subtree index (memory/<agentId>/).
-		const wikiAnchorsContext = this.wikiStoreGlobal
-			? renderContextAnchors({ wiki: this.wikiStoreGlobal, anchors: this.wikiAnchors })
-			: "";
 
 		// Step 2C: externalized step loop. Each iteration runs ONE model call
 		// via streamText({ stopWhen: stepCountIs(1) }), consumes its events,
@@ -868,9 +919,10 @@ export class AgentLoop implements AgentRuntime {
 			workspaceDir: this.config.workspaceDir,
 			guidelines: this.config.guidelines,
 			useDeviceContext: this.config.contextConfig?.useDeviceContext,
-			wikiAnchorsContext: wikiAnchorsContext || undefined,
 			// (sub-1) todos moved out of the turn-scoped context block into the
 			// per-step workbench channel (renderWorkbench) so they refresh mid-turn.
+			// (sub-7) wiki anchors moved into the cached `wiki-system-anchors`
+			// system section; the context channel is Recalled Memories only.
 		});
 		let messages = this.prependContext(this.session.getMessages(), baseCtx);
 		// Collect each step's response messages so finalizeStream can persist
@@ -919,10 +971,15 @@ export class AgentLoop implements AgentRuntime {
 				stepNumber,
 			});
 
-			// v0.8 (P2 §11.6): memory indexing flows through wikiAnchorsContext
-			// above (per-agent memory subtree). memoryContext is still used as
-			// the transport for T2 workflow-context injection (workflow-context-
-			// hook for work sessions). The legacy ragContext recall hook retired.
+			// sub-7 (work-context 拆解到三通道): memoryContext is now reserved
+			// for the persistent Recalled Memories channel (recall source = wiki
+			// memory subtree; not wired in this sub → stays empty). The old T2
+			// workflow-context-hook transport (Project / Wiki Baseline /
+			// Requirement / Steps Progress) is gone — those ride the system +
+			// workbench channels via SessionConfig closures instead. buildContextMessage
+			// ALWAYS emits a `## Recalled Memories` section (even empty) per
+			// acceptance-7 补遗, so the channel is structurally present for the
+			// future recall wiring.
 			const memoryContext = preResult.memoryContext as string | undefined;
 			const providerOptions = (preResult.providerOptions as Record<string, Record<string, any>>) ?? {};
 			const preExtra = (preResult.appendMessages as Array<{ role: string; content: string }>) ?? [];
@@ -930,15 +987,14 @@ export class AgentLoop implements AgentRuntime {
 			// First step: fold the prepared context block into the message list
 			// (turn-scoped prefix; subsequent steps reuse the already-prepended
 			// baseCtx). We re-render on step 1 (block is derived from session
-			// config + wiki anchors, stable within a turn) and also when the
-			// workflow-context hook surfaces memoryContext mid-turn.
+			// config, stable within a turn) and also when a hook surfaces fresh
+			// recalled memories mid-turn (future recall wiring).
 			if (stepNumber === 1 || memoryContext !== undefined) {
 				const ctx = buildContextMessage({
 					workspaceDir: this.config.workspaceDir,
 					guidelines: this.config.guidelines,
 					useDeviceContext: this.config.contextConfig?.useDeviceContext,
 					memoryContext,
-					wikiAnchorsContext: wikiAnchorsContext || undefined,
 				});
 				if (ctx) {
 					messages = this.prependContext(messages, ctx);
@@ -952,7 +1008,14 @@ export class AgentLoop implements AgentRuntime {
 			// later task/wait). Appended as a user message at the end (format-safe:
 			// last message is often a tool result mid-turn, can't prepend to it).
 			// Not persisted into `messages` — fresh each step, never accumulates.
-			const workbench = renderWorkbench(this.config.sessionId, this.config.agentId);
+			// (sub-7) Steps Progress rides this channel too — a per-step server-
+			// built closure (config.stepsProgressSection) re-reads the task-step
+			// store each render so the workbench always shows fresh step state.
+			const workbench = renderWorkbench({
+				sessionId: this.config.sessionId,
+				agentId: this.config.agentId,
+				stepsProgress: this.config.stepsProgressSection?.() ?? "",
+			});
 			if (workbench) {
 				stepMessages = [...stepMessages, { role: "user", content: workbench }];
 			}

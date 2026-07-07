@@ -8,7 +8,7 @@
 //
 // ## 范围
 // - C1: buildContextMessage 的 useDeviceContext 门控(undefined ⇒ 环境段在,默认等价;
-//   false ⇒ 环境段缺;全空 ⇒ 返回 null)。
+//   false ⇒ 环境段缺)。sub-7: Recalled Memories 段始终在,故 block 不会因"全空"返 null。
 // - C2/C3: 类型层面由三层 tsc 覆盖(收窄后无残留引用);DB 列保留,旧 JSON 里的
 //   useGuidelines/useMemoryContext/knowledgeBaseIds 键读回后被忽略(向前兼容)。
 //
@@ -40,12 +40,18 @@ describe("agent-context-fields C1: useDeviceContext gating", () => {
 		expect(ctx).toContain("- be concise");
 	});
 
-	test("useDeviceContext: false AND nothing else ⇒ returns null (no empty <context> block)", () => {
+	test("useDeviceContext: false AND nothing else ⇒ still emits <context> with Recalled Memories (sub-7)", () => {
+		// sub-7 (acceptance-7 补遗): the `## Recalled Memories` section is
+		// ALWAYS emitted, so the context block is no longer null when only the
+		// Environment section is gated off — the Recalled Memories channel
+		// stays structurally present even before recall is wired.
 		const ctx = buildContextMessage({
 			workspaceDir: "/tmp",
 			useDeviceContext: false,
 		});
-		expect(ctx).toBeNull();
+		expect(ctx).not.toBeNull();
+		expect(ctx).not.toContain("## Environment");
+		expect(ctx).toContain("## Recalled Memories");
 	});
 
 	test("useDeviceContext: true ⇒ Environment present (explicit on == default)", () => {
@@ -66,7 +72,9 @@ describe("agent-context-fields C2/C3: type narrowing is compile-time", () => {
 	test("buildContextMessage accepts { useDeviceContext } only (no useGuidelines/useMemoryContext on the agent record path)", () => {
 		// The runtime call passes this.config.contextConfig?.useDeviceContext only.
 		// Asserting the function signature compiles + behaves is the contract.
+		// sub-7: the block is never null (Recalled Memories section always
+		// present), so we assert the section instead of null.
 		const ctx = buildContextMessage({ useDeviceContext: false });
-		expect(ctx).toBeNull();
+		expect(ctx).toContain("## Recalled Memories");
 	});
 });

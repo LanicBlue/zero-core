@@ -368,6 +368,25 @@ export interface SessionConfig {
 	 */
 	wikiAnchors?: import("../shared/types.js").AgentRecord["wikiAnchors"];
 	/**
+	 * sub-7 (work-context 拆解到三通道): server-built closure that renders the
+	 * Project / Requirement / Wiki Baseline text for the **system** channel
+	 * (按需段,cacheBreak:false — re-read each turn but only injected when the
+	 * work-context policy / activeRequirement flips). The closure captures
+	 * projectStore / requirementStore / wikiStore + the per-work policy at
+	 * SessionConfig build time (agent-service) so the runtime layer never
+	 * imports server stores directly (mirrors wikiStore / wikiAnchors injection).
+	 *
+	 * Returns "" for non-work sessions → the system section is omitted
+	 * (SystemPromptAssembler drops empty sections).
+	 */
+	workContextSystemSection?: () => string;
+	/**
+	 * sub-7: server-built closure rendering the **Steps Progress** text for the
+	 * **workbench** channel (per-step). Same DI shape as workContextSystemSection.
+	 * Returns "" when there are no steps → the workbench section is omitted.
+	 */
+	stepsProgressSection?: () => string;
+	/**
 	 * v0.8 (P3): ManagementService handle for the domain action tools
 	 * (Project/Agent/Cron). Only set on zero sessions.
 	 *

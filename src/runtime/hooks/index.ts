@@ -4,15 +4,18 @@
 //
 // ## 核心功能
 // `registerHooksForLoop(registry, loopKind, deps)` 按 loop 类型往给定 registry 上
-// 注册功能钩子。注册顺序敏感(notification → providerOptions → compression
-// 对 PreLLMCall 返回值 merge 顺序)。分组见 spec §6:
+// 注册功能钩子。注册顺序敏感(providerOptions → compression 对 PreLLMCall 返回值
+// merge 顺序)。分组见 spec §6:
 //   - shared (main + delegated): turn-hooks / tool-execution-hooks / durable-hooks
 //     / provider-options-hooks / extraction-hooks / compression-hooks
-//     / workflow-context-hook(work session)
 //   - main only:  input-queue-hooks / metrics-hooks (sub-4: notification-hooks
 //     removed — workbench 收件箱 replaces it)
 //   - delegated only: task-control-hooks
 // requirement-hooks 不再注册(§5.5,workflow 域,已退役)。
+// sub-7 (work-context 拆解到三通道): workflow-context-hook **删除** —— Project /
+// Wiki Baseline / Requirement / Steps Progress 改由 SessionConfig 闭包
+// (config.workContextSystemSection / config.stepsProgressSection)直接渲染进
+// system 段 / workbench 段,不再走 PreLLMCall memoryContext 误标通道。
 //
 // 各 register*Hooks 子函数收 `registry` 形参(默认 HookRegistry.getInstance(),
 // 旧测试/未迁移调用方仍可用)。
@@ -58,19 +61,20 @@ import { registerInputQueueHooks } from "./input-queue-hooks.js";
 // server/ hooks — runtime already depends on server/ stores (compression-hooks
 // → wiki-node-store, extraction-hooks → extractor-*). Static imports here are
 // the same layer-crossing that already exists; no new cycle.
+//
+// sub-7: workflow-context-hook is GONE. Its job (Project / Wiki Baseline /
+// Requirement / Steps Progress injection) moved to SessionConfig closures
+// (config.workContextSystemSection / config.stepsProgressSection) built by
+// agent-service and rendered directly into the system + workbench sections.
+// The runtime layer now never imports the workflow-context stores for prompt
+// rendering — they live behind the closures.
 import { registerDurableHooks } from "../../server/durable-hooks.js";
 import { registerToolExecutionHooks } from "../../server/tool-execution-hooks.js";
 import { registerMetricsHooks } from "../../server/metrics-hooks.js";
-import { registerWorkflowContextHook } from "../../server/workflow-context-hook.js";
 import type { ISessionStore } from "../session-store-interface.js";
 import type { InputQueueStore } from "../../server/input-queue-store.js";
 import type { SessionManager } from "../../server/session-manager.js";
 import type { SessionDB } from "../../server/session-db.js";
-import type { ProjectStore } from "../../server/project-store.js";
-import type { ProjectWikiStore } from "../../server/project-wiki-store.js";
-import type { RequirementStore } from "../../server/requirement-store.js";
-import type { TaskStepStore } from "../../server/task-step-store.js";
-import type { ProjectWorkStore } from "../../server/project-work-store.js";
 import { log } from "../../core/logger.js";
 
 /**
@@ -82,6 +86,10 @@ import { log } from "../../core/logger.js";
  * `agent-service` (main) and `subagent-delegator` (delegated), both of which
  * hold different subsets of these handles. Anything optional here is what the
  * caller MAY legitimately lack (e.g. a delegated sub-loop has no input queue).
+ *
+ * sub-7: the `workflowContext` field is REMOVED — workflow-context-hook was
+ * deleted; the same store access now happens inside SessionConfig closures
+ * (agent-service → config.workContextSystemSection / stepsProgressSection).
  */
 export interface HookWiringDeps {
 	/** Step-level persistence store (turn-hooks). */
@@ -94,14 +102,6 @@ export interface HookWiringDeps {
 	inputQueue?: InputQueueStore;
 	/** Metrics consumer (main-only). */
 	sessionManager?: SessionManager;
-	/** Workflow-context (T2) deps — only for work sessions. */
-	workflowContext?: {
-		projectStore: ProjectStore;
-		requirementStore: RequirementStore;
-		wikiStore: ProjectWikiStore;
-		taskStepStore: TaskStepStore;
-		projectWorkStore?: ProjectWorkStore;
-	};
 }
 
 /**
@@ -124,7 +124,7 @@ export function registerHooksForLoop(
 	loopKind: "main" | "delegated",
 	deps: HookWiringDeps,
 ): void {
-	const { db, sessionDb, extractionDeps, inputQueue, sessionManager, workflowContext } = deps;
+	const { db, sessionDb, extractionDeps, inputQueue, sessionManager } = deps;
 
 	// ── shared (main + delegated) ──────────────────────────────────
 	if (db) {
@@ -147,12 +147,10 @@ export function registerHooksForLoop(
 	if (extractionDeps) {
 		registerExtractionHooks(extractionDeps, registry);
 	}
-	if (workflowContext) {
-		// workflow-context-hook lives in server/ but is plain pre-LLM-call
-		// injection; import it lazily so the runtime layer doesn't gain a
-		// static dep on server/.
-		registerWorkflowContextHook({ ...workflowContext, hookRegistry: registry });
-	}
+	// sub-7: workflow-context-hook DELETED — Project / Wiki Baseline /
+	// Requirement / Steps Progress injection moved to SessionConfig closures
+	// (config.workContextSystemSection / stepsProgressSection), rendered into
+	// the system + workbench sections directly. No PreLLMCall hook here.
 
 	// ── main only ──────────────────────────────────────────────────
 	if (loopKind === "main") {
