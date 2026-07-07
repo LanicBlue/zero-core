@@ -13,9 +13,14 @@
 7. **回归**:非 work session 的 system/context/workbench 不受影响(无 workContextSystemSection 时段为空)。
 8. **旧路径删除**:workflow-context-hook 的 memoryContext 注入路径移除(或 hook 删除,改由 config 闭包渲染)。
 
+## 明确化补遗(2026-07-07)
+
+- **case 4 修正**:context 块**空也注入**(`## Recalled Memories` 段常在,内容可空),不 skip。
+- **case 3 修正**:Wiki Anchors 合并**扩展现有 `wiki-system-anchors` system 段**(根+一层),不新建段;context 块无独立 anchors 段。
+
 ## 验证手段
 
-- 单测:mock work session,断言 system prompt 含 Project/Requirement;workbench 含 Steps Progress;context 块不含这些。
+- 单测:mock work session,断言 system prompt 含 Project/Requirement;workbench 含 Steps Progress;context 块不含这些(但 `## Recalled Memories` 段在,内容空)。
 - 单测:非 work session,work-context 段为空。
 - 单测:runtime 文件 grep 无 server import。
 - typecheck 三层 + vitest(sibling cwd,baseline ~875-937,~4 无关 fail)。

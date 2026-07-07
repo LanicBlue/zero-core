@@ -26,6 +26,10 @@ sub-5 实现者标了两处:
 - resumed-suspend turn+1 与 runtime Wait turn+1 路径要对齐,避免两套逻辑漂移。
 - 时钟跳变(休眠)对相对 timeout 的影响 —— 接受,标注。
 
+## 明确化补遗(2026-07-07)
+
+**startedAt 字段路径**:在持久化的 Wait pending 工具块上加 `startedAt`,作为**与 `b.args` 同级的块字段**(不塞进 `b.args` —— args 是工具入参,startedAt 是执行元数据)。实现者读 `session.ts` 工具块结构(turn-recorder 持久化形态)对齐确切字段名;synthesize Wait 分支 stamp `startedAt = now`,durable resume 读 `block.startedAt`。旧块无该字段 → 按"已超时"处理(不崩)。
+
 ## 验收
 
 见 `acceptance-9.md`。

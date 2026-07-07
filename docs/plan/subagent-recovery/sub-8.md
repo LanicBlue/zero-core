@@ -25,6 +25,17 @@ sub-3 只做了 recovery 冻结过滤(delegated session 不 auto-resume),两件 
 - 懒重建是启动行为改动,易触多处假设;需全面 audit + 回归(UI 列表、metrics、config-sync)。
 - interrupted seed 判定要查子 session 的 turn_state(跨表:delegated_tasks → session_id → turn_state),注意性能(批量查)。
 
+## audit 清单(懒重建假设点 —— 实现者逐个核对)
+
+`this.loops` 全部用法(agent-service.ts),按"loop 可能未预建"重审:
+- **迭代类(容忍缺失)**:249、309、1509、1530、1539(已是 `for ... of this.loops`,空即跳过,天然容忍)。
+- **取单 + 容忍**:`getRuntimeTaskTree` 446-451 已 `?? []`;504、985、1098、1237(`this.loops.get(sid)`)—— 确认每处都容忍 `undefined`(可选链 / 早返)。
+- **删除类**:`this.loops.delete` 243、516、1546 —— delete 不存在的 key 无害,确认。
+- **创建/判定**:628 `getOrCreateLoop`、644 `this.loops.has`、790 `set`、828/831、994、1136 `restoreAllSessions`、1151 `if (this.loops.has) continue`、1166 `activateSession` —— 这些是懒重建核心改动点。
+- **abort 类**:1044、1049、1054(可选链 `?.abort()`,容忍)。
+
+**懒重建目标**:`restoreAllSessions`(1136)只给"有 incomplete turn"的 session 建 loop;`activateSession`(1166)首次打开未建 loop 的 session 时建;其余迭代/取单路径全部容忍 loop 缺失。
+
 ## 验收
 
 见 `acceptance-8.md`。

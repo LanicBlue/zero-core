@@ -29,6 +29,10 @@
 - vitest/Windows pool 问题常无干净修法,可能需取舍(如接受特定 pool 的局限)。
 - 不要为修测试基建引入新的运行时风险(只动测试配置)。
 
+## 明确化补遗(2026-07-07)
+
+**选型优先级**:先试 `pool: "threads"` + 适当 `isolate`(已知避 forks-cwd 绑定 bug),验证不触发 `@exodus/bytes`。若 threads 踩 @exodus/bytes,fallback 再上探(execArgv/env 绕 cwd、vitest 4.x patch、worker cwd 隔离)。**正面成功判据 = 主 cwd `npm run test:unit` 出正常 Test Files/Tests 且 pass 数对齐 sibling baseline**,不只看"无 @exodus 报错"。
+
 ## 验收
 
 见 `acceptance-11.md`。

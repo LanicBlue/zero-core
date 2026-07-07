@@ -27,6 +27,10 @@ sub-6 功能(force-Wait hook)已实现 + 单测覆盖各环节契约,但缺**端
 - 集成测 harness 搭建成本(model mock、DB、hook 注册、registry)。
 - 易 flaky(时序)—— 用确定性的 mock,不靠真实 setTimeout race。
 
+## 明确化补遗(2026-07-07)
+
+**测试粒度(PASS 判据)**:覆盖**状态机链路全转换**即 PASS —— 用 mock provider / 直接触发 hook + registry 状态转换拼接,断言每个环节的 registry/workbench/turn 状态正确转换(TaskStart→running、TurnEndCheck nudge→不结束、Wait→waiting、wake→woke:task finished、TaskGet→acknowledge 出 registry、hasRunning=false→放行结束)。**不强求真 LLM stream**。nudge 防死循环用"同 turn 标记"断言(收 nudge 后再结束不再 nudge)。确定性 mock 时钟,不靠真实 setTimeout race。
+
 ## 验收
 
 见 `acceptance-10.md`。
