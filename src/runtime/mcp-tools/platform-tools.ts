@@ -62,7 +62,7 @@ export function createPlatformTools(getAppVersion?: () => string) {
 			prompt:
 				"Inspect the zero-core platform runtime (read-only diagnostics). Resources:\n" +
 				"- 'info' — app version, paths (see below), pid, node version, platform, memory usage, uptime\n" +
-				"- 'logs' — recent log entries (lines?, level?: all|error|warn)\n" +
+				"- 'logs' — recent log entries (lines?, level?: all|error|warn, source?: module tag, sessionId?: substring). `source` matches the structured [module] tag (e.g. agent|loop|ipc|db|tool|mcp|provider|session); `sessionId` filters to lines mentioning that sessionId anywhere in the line. Filters compose (all must match).\n" +
 				"- 'config' — workspace config from the DB (defaultModel, defaultProvider, proxy, workspaceDir)\n" +
 				"- 'providers' — AI providers from the DB (name, type, enabled, modelCount, baseUrl, redacted apiKey)\n\n" +
 				"This tool is for platform self-introspection only. To read files, list directories, or search content, use Read / Glob / Grep instead.\n\n" +
@@ -76,6 +76,8 @@ export function createPlatformTools(getAppVersion?: () => string) {
 					.describe("Which platform diagnostic resource to access"),
 				lines: z.number().optional().describe("Log lines to return (for 'logs', max 500, default 50)"),
 				level: z.enum(["all", "error", "warn"]).optional().describe("Log level filter (for 'logs')"),
+				source: z.string().optional().describe("Log source/module filter (for 'logs') — matches the structured [module] tag (agent|loop|ipc|db|tool|mcp|provider|session, or any custom module). Case-insensitive exact match on the tag."),
+				sessionId: z.string().optional().describe("Filter 'logs' to lines mentioning this sessionId (case-insensitive substring match on the whole line)."),
 			}),
 			execute: async (input: any, ctx: any) => {
 				switch (input.resource) {
@@ -108,6 +110,23 @@ export function createPlatformTools(getAppVersion?: () => string) {
 							if (input.level && input.level !== "all") {
 								const levelUpper = input.level.toUpperCase();
 								logLines = logLines.filter((l) => l.includes(levelUpper));
+							}
+							// Source filter: match the structured [module] tag.
+							// Line format: <ISO> [LEVEL] [module] message  (module padded to 7).
+							// Capture the second bracket, trimmed; exact case-insensitive match.
+							if (input.source) {
+								const src = input.source.trim().toLowerCase();
+								logLines = logLines.filter((l) => {
+									const m = l.match(/^\S+\s+\[[^\]]+\]\s+\[\s*([^\]]+?)\s*\]/);
+									return m ? m[1].toLowerCase() === src : false;
+								});
+							}
+							// sessionId filter: substring match on the whole line
+							// (sessionId is not a structured field; it appears inline in
+							// message/args for sessions that log it).
+							if (input.sessionId) {
+								const sid = input.sessionId.toLowerCase();
+								logLines = logLines.filter((l) => l.toLowerCase().includes(sid));
 							}
 							const count = Math.min(input.lines ?? 50, 500);
 							const selected = logLines.slice(-count);
