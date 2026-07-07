@@ -676,7 +676,10 @@ export class WikiSkeletonService {
 			if (exportsList.length > 0) {
 				parts.push(`Exports: ${exportsList.slice(0, 6).join(", ")}.`);
 			}
-			if (head.trim()) parts.push(`Head: ${head.slice(0, 120)}`);
+			if (head.trim()) {
+				const truncated = head.length > 120 ? head.slice(0, 120) + "…" : head;
+				parts.push(`Head: ${truncated}`);
+			}
 			return parts.join(" ");
 		} catch {
 			return undefined;
@@ -688,9 +691,12 @@ export class WikiSkeletonService {
 			const content = readFileText(absPath);
 			// First non-empty heading or first paragraph.
 			const heading = content.split(/\r?\n/).find((l) => /^\s*#\s+/.test(l));
-			if (heading) return heading.replace(/^\s*#\s+/, "").trim().slice(0, 200);
-			const firstPara = content.split(/\n\s*\n/)[0];
-			return (firstPara ?? "").trim().slice(0, 200);
+			if (heading) {
+				const h = heading.replace(/^\s*#\s+/, "").trim();
+				return h.length > 200 ? h.slice(0, 200) + "…" : h;
+			}
+			const firstPara = (content.split(/\n\s*\n/)[0] ?? "").trim();
+			return firstPara.length > 200 ? firstPara.slice(0, 200) + "…" : firstPara;
 		} catch {
 			return undefined;
 		}
