@@ -152,6 +152,29 @@ export class TurnRecorder {
 		if (tb) tb.taskId = taskId;
 	}
 
+	/**
+	 * sub-9 (durable relative-timeout Wait): stamp the wall-clock startedAt onto
+	 * a Wait tool-call block, as a block-level field SIBLING to `args` (not
+	 * inside args — args is the tool's input, startedAt is execution metadata).
+	 * Persisted with the step row so the resume path can compute remaining
+	 * `timeout` across a restart. Mirrors setToolBlockTaskId. Best-effort no-op
+	 * when the block isn't found (recorder reset / no current step).
+	 */
+	setToolBlockStartedAt(toolCallId: string | undefined, name: string | undefined, startedAt: number): void {
+		let tb: any | undefined;
+		if (toolCallId) {
+			tb = [...this.currentStepBlocks].reverse().find(
+				(b: any) => b.type === "tool" && b.toolCallId === toolCallId,
+			);
+		}
+		if (!tb && name) {
+			tb = [...this.currentStepBlocks].reverse().find(
+				(b: any) => b.type === "tool" && b.name === name && b.status === "running",
+			);
+		}
+		if (tb) tb.startedAt = startedAt;
+	}
+
 	/** Record a successful tool result (legacy API — matches by name only). */
 	addToolResult(name: string, output: any): void {
 		const tb = this.findToolBlock(undefined, name);

@@ -261,6 +261,12 @@ export class AgentLoop implements AgentRuntime {
 			setToolCallTaskId: (toolCallId, taskId) => {
 				this.recorder.setToolBlockTaskId(toolCallId, undefined, taskId);
 			},
+			// sub-9 (durable relative-timeout Wait): stamp the wall-clock startedAt
+			// onto the calling Wait tool's block so the resume path can compute
+			// remaining timeout across a restart. Best-effort via the recorder.
+			setWaitStartedAt: (toolCallId, startedAt) => {
+				this.recorder.setToolBlockStartedAt(toolCallId, "Wait", startedAt);
+			},
 			resumeTask: (taskId) => this.delegator.resumeTask(taskId),
 			// sub-4 (TaskResume, non-blocking): set up sub-loop + turn_seq guard
 			// synchronously, detach the run. Agent tasks only.
@@ -561,18 +567,42 @@ export class AgentLoop implements AgentRuntime {
 					? (JSON.parse(waitBlock.args) ?? {})
 					: (waitBlock.args ?? {});
 				const untilIso = typeof args?.until === "string" ? args.until : undefined;
-				if (!untilIso) continue; // relative-only timeout → not durable; let the synthesized result stand
-				const untilMs = Date.parse(untilIso);
-				if (Number.isNaN(untilMs)) continue;
-				if (untilMs <= Date.now()) continue; // already past due → synthesized `woke: timeout` stands
-				// Future `until` → re-suspend until that point (or any-task /
-				// user-input wakes it sooner). Announce suspend/resume so the
-				// server's running flag stays consistent during the re-wait.
+				const untilMs = untilIso ? Date.parse(untilIso) : NaN;
+				const hasFutureUntil = !Number.isNaN(untilMs) && untilMs > Date.now();
+				// sub-9 (durable relative-timeout): a relative-only `timeout` with a
+				// persisted block-level `startedAt` (sibling to args) is now durable.
+				// Compute remaining = startedAt + timeoutSec*1000 − now; if > 0,
+				// re-suspend with that remaining as a fresh relative timeout. Old
+				// blocks without startedAt → treated as elapsed (no re-suspend, the
+				// synthesized `woke: timeout` stands; does not crash).
+				let resumeOpts: { until?: string; timeoutSec?: number } | null = null;
+				if (hasFutureUntil) {
+					resumeOpts = { until: untilIso };
+				} else {
+					const startedAt = typeof waitBlock.startedAt === "number" ? waitBlock.startedAt
+						: (typeof waitBlock.startedAt === "string" && /^[0-9]+$/.test(waitBlock.startedAt) ? Number(waitBlock.startedAt) : NaN);
+					const timeoutSecArg = typeof args?.timeout === "number" ? args.timeout
+						: (typeof args?.timeout === "string" && /^[0-9]+(?:\.[0-9]+)?$/.test(args.timeout) ? Number(args.timeout) : NaN);
+					if (!Number.isNaN(startedAt) && !Number.isNaN(timeoutSecArg) && timeoutSecArg > 0) {
+						const remainingMs = startedAt + timeoutSecArg * 1000 - Date.now();
+						if (remainingMs > 0) {
+							resumeOpts = { timeoutSec: Math.max(1, Math.round(remainingMs / 1000)) };
+						}
+					}
+				}
+				if (!resumeOpts) continue; // already past due / no durable source → synthesized result stands
+				// Re-suspend until the resolved point (or any-task / user-input wakes
+				// it sooner). Announce suspend/resume so the server's running flag
+				// stays consistent during the re-wait. sub-9: pass the REAL wake reason
+				// (from the resolver) to endWaitSuspend so a user-input wake during
+				// re-suspend correctly triggers turn+1 — DO NOT hardcode "timeout".
 				this.beginWaitSuspend();
+				let wakeReason: import("./types.js").WakeReason = "timeout";
 				try {
-					await this.delegator.suspendUntilWake({ until: untilIso });
+					const wr = await this.delegator.suspendUntilWake(resumeOpts);
+					wakeReason = wr.reason;
 				} finally {
-					this.endWaitSuspend("timeout");
+					this.endWaitSuspend(wakeReason);
 				}
 				return; // at most one re-suspend per resume
 			}

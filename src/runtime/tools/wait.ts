@@ -43,12 +43,12 @@ export const waitTool = buildTool({
 		"- After dispatching background tasks (TaskStart), to block until they complete or a deadline.\n" +
 		"- To pause until a known future time.\n\n" +
 		"Parameters (provide one):\n" +
-		"- until: ISO 8601 absolute time point to wake at (e.g. \"2026-07-07T10:30:00Z\"). Preferred for durability across restarts.\n" +
-		"- timeout: relative wait in seconds (1-3600). Used when `until` is omitted. NOTE: a relative timeout that spans a restart is treated as already-elapsed on resume (absolute `until` is durable; relative `timeout` is not).\n\n" +
+		"- until: ISO 8601 absolute time point to wake at (e.g. \"2026-07-07T10:30:00Z\"). Durable across restarts.\n" +
+		"- timeout: relative wait in seconds (1-3600). Used when `until` is omitted. Durable across restarts: on crash/restart the remaining time is computed from the persisted start timestamp and the wait is re-suspended for the remainder (already-elapsed → fills as timeout). Both `until` and `timeout` survive restarts.\n\n" +
 		"Returns: `woke: timeout` / `woke: task finished` / `woke: user input` plus elapsed seconds. For task results use TaskGet — Wait no longer returns a task summary.",
 	meta: { category: "runtime", isReadOnly: true, isConcurrencySafe: true, isDestructive: false },
 	inputSchema: z.object({
-		until: z.string().describe("ISO 8601 absolute time point to wake at. Preferred over timeout for durability."),
+		until: z.string().describe("ISO 8601 absolute time point to wake at. Durable across restarts."),
 		timeout: z.number().min(1).max(3600).optional().describe("Relative wait in seconds (1-3600). Used when `until` is omitted."),
 	}),
 	execute: async (input, ctx) => {
@@ -69,6 +69,13 @@ export const waitTool = buildTool({
 		}
 
 		if (ctx.suspendUntilWake) {
+			// sub-9 (durable relative-timeout): stamp the wall-clock start onto
+			// the recorder's Wait tool block (sibling to `args`) so a crash
+			// mid-wait can be resumed with remaining-timeout computation. Only
+			// meaningful for a relative `timeout` (an absolute `until` is itself
+			// durable); we stamp unconditionally so the persisted block carries
+			// the metadata regardless of which time source was used.
+			ctx.setWaitStartedAt?.(ctx.currentToolCallId ?? "", Date.now());
 			// sub-5: announce suspend → release session "running" state, then
 			// resume → reacquire. begin/endWait are best-effort no-ops when the
 			// context doesn't wire them (test stubs).

@@ -548,6 +548,14 @@ export interface ToolExecutionContext {
 	 */
 	setToolCallTaskId?: (toolCallId: string, taskId: string) => void;
 	/**
+	 * sub-9 (durable relative-timeout Wait): stamp the wall-clock startedAt
+	 * onto the calling Wait tool's recorder block (sibling to `args`). Persisted
+	 * with the step so the resume path can compute remaining `timeout` across a
+	 * restart. Wired to TurnRecorder by AgentLoop. Best-effort no-op when not
+	 * wired (test stubs).
+	 */
+	setWaitStartedAt?: (toolCallId: string, startedAt: number) => void;
+	/**
 	 * Step 2E: resume a delegated task by taskId from the parent session's
 	 * resume path. Surfaces SubagentDelegator.resumeTask so a future parent-
 	 * side dangling-tool-call scanner can re-attach without re-invoking.
