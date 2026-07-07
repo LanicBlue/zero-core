@@ -140,7 +140,7 @@
 
 ## 4. 域三:工具重构 —— 后台任务归 Task
 
-**原则**:后台任务全部归 **Task** 命名空间;**Subagent / Shell 本身只 blocking**(超时自动后台保留作 safety net);显式后台唯一入口 = `TaskStart`。task 通用操作对 subagent 和 bash 都生效(不为 bash 单做一套)。
+**原则**:后台任务全部归 **Task** 命名空间;**Subagent / Shell 本身只 blocking**;**Subagent delegate 超时自动后台保留作 safety net**(父得 task_id 不卡死),**Shell 前台超时 throw**(原行为,长 Shell 任务用 `TaskStart`);显式后台唯一入口 = `TaskStart`。task 通用操作对 subagent 和 bash 都生效(不为 bash 单做一套)。
 
 ### 4.1 工具布局
 
@@ -155,8 +155,8 @@
 | `TaskFinish` | 优雅收尾(advisory + turn budget) | **仅 agent** |
 | `TaskResume` | 解冻冻结子(懒建 loop + resume,非阻塞) | **仅 agent** |
 
-**Subagent**(同步委派):`delegate`(blocking;超时自动后台)+ `list`(可委派角色)。  
-**Shell**(同步命令):blocking(去 `background:true`;超时自动后台)。  
+**Subagent**(同步委派):`delegate`(blocking;超时自动后台 safety net)+ `list`(可委派角色)。  
+**Shell**(同步命令):blocking(去 `background:true`;**前台超时 throw**,长任务用 `TaskStart`)。  
 **Wait / TodoWrite** 不变。
 
 **删 / 合并 / 改名**:
@@ -207,7 +207,7 @@
 - [x] Wiki Anchors(根+一层)→ system,默认不更新,特殊时机刷新。
 - [x] work-context hook 拆解、resolveCurrentTask 删除。
 - [x] **工具重构:后台归 Task**(§4):`TaskStart`(显式后台,agent+shell)/ `TaskList`(列表+tree,富)/ `TaskGet`(单 task 钻取,completed 取走 result+acknowledge)/ `TaskKill`(丢弃,running→kill interrupted→abandon)/ `TaskFinish`(仅 agent)/ `TaskResume`(仅 agent,非阻塞)。
-- [x] Subagent / Shell 只 blocking(超时自动后台保留);显式后台唯一入口 `TaskStart`;去 non_blocking / `background:true`。
+- [x] Subagent / Shell 只 blocking;**Subagent delegate 超时自动后台保留 safety net**,**Shell 前台超时 throw**(长任务用 `TaskStart`);显式后台唯一入口 `TaskStart`;去 non_blocking / `background:true`。
 - [x] 删/合并/改名:stop→`TaskKill`、complete→`TaskGet`、tree→`TaskList`、request_finish→`TaskFinish`、resume→`TaskResume`、TaskStatus→改名 `TaskGet`。
 - [x] `TaskGet` 近期调用记录数据源 `ctx.getTaskRecentCalls`(N=3,只调用记录不输出):agent 走子 loop(现成)、bash 不暴露 stdout。
 - [x] 三级 zoom:workbench(id+status 极简)→ TaskList(富列表+tree)→ TaskGet(单个钻取)。

@@ -372,7 +372,7 @@ export class SubagentDelegator {
 				}
 			});
 
-			return `Sub-agent auto-backgrounded after ${autoBgSec}s (still running).\ntask_id: ${taskId}\nUse TaskStatus to check progress.`;
+			return `Sub-agent auto-backgrounded after ${autoBgSec}s (still running).\ntask_id: ${taskId}\nUse TaskGet to check progress.`;
 		}
 
 		// Plain blocking path.
@@ -633,7 +633,7 @@ export class SubagentDelegator {
 	 *
 	 * On parent crash recovery, `markRunningDelegatedTasksInterrupted` marks
 	 * in-flight sub-agents `interrupted`. The PARENT then decides on its next
-	 * turn: TaskStatus / tree shows the interrupted task → the parent calls
+	 * turn: TaskGet / tree shows the interrupted task → the parent calls
 	 * `resumeTask(taskId)` deliberately to continue it (this primitive), or
 	 * accepts the interrupted result. There is NO automatic scan-backfill of
 	 * dangling Agent tool-calls on parent restart — by design. resumeTask is
