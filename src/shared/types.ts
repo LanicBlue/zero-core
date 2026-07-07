@@ -401,6 +401,40 @@ export interface PlatformProviderQueueEntry {
 	waitedSince: number;
 }
 
+// ─── platform-observability ③ (sub-6): crons:today IPC (today's planned fires) ──
+// One row per cron scheduled to fire within today's local calendar day. Backs
+// the ③ kanban's right "今日任务" column. The cron's type discriminator drives
+// the [work|cron|git-aware] tag rendered next to each row.
+
+/**
+ * How a cron entry is classified for the kanban's type tag.
+ *  - `work`       — cron carries workId (project-work cron trigger).
+ *  - `git-aware`  — cron.prompt carries the git-aware sentinel (changes-only).
+ *  - `cron`       — plain scheduled cron (default).
+ * Mirrors the tag rendered as [work] / [cron] / [git] in the kanban.
+ */
+export type PlatformCronType = "work" | "cron" | "git-aware";
+
+/**
+ * One planned cron fire within today. fireTime is the epoch ms of the next
+ * slot that lands inside today's local calendar day (null when the cron won't
+ * fire today). label is a short human tag (cron id, or the work name / cron
+ * source hint). lastResult mirrors CronRecord.lastStatus for the "上次结果"
+ * column (undefined when the cron has never run).
+ */
+export interface PlatformCronTodayItem {
+	cronId: string;
+	agentId: string;
+	/** Epoch ms of the next fire slot inside today (local day); null = no fire today. */
+	fireTime: number | null;
+	/** For interval crons that fire multiple times today, the period (e.g. "每 2h"). */
+	interval?: string;
+	type: PlatformCronType;
+	label: string;
+	/** Outcome of the most recent fire (mirrors CronRecord.lastStatus). */
+	lastResult?: "ok" | "failed" | "missed";
+}
+
 /**
  * v0.8 (M0): the context bundle a session carries. projectId is optional
  * (global/observation sessions have none); workspaceDir and wikiRootNodeId

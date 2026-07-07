@@ -53,6 +53,7 @@ import type {
 	PlatformProviderStat,
 	PlatformProviderSeries,
 	PlatformProviderQueueEntry,
+	PlatformCronTodayItem,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -160,6 +161,12 @@ export interface IpcChannelDefs {
 	"provider:stats":   { params: [];                                                                    result: PlatformProviderStat[] };
 	"provider:usage":   { params: [provider: string, granularity: "hour" | "day", range: "24h" | "30d", model?: string]; result: PlatformProviderSeries };
 	"provider:queue":   { params: [provider: string];                                                   result: PlatformProviderQueueEntry[] };
+
+	// platform-observability ③ (sub-6): today's planned cron fires for the ③
+	// kanban's right column. Walks enabled crons, computes each one's next fire
+	// slot inside today's local calendar day via nextFireMs, and classifies the
+	// type tag (work | cron | git-aware). Includes workId crons.
+	"crons:today":      { params: [];                                                                    result: PlatformCronTodayItem[] };
 
 	// ── Chat ─────────────────────────────────────────────────
 	"chat:send":   { params: [text: string, agentId?: string, sessionId?: string];    result: Ok };

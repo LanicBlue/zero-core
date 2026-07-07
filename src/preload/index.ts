@@ -296,6 +296,8 @@ const api: WindowApi = {
 	cronsTrigger: (id) => ipcRenderer.invoke("crons:trigger", id),
 	// §9.3: cron_runs audit log (newest-first, default 50).
 	cronsListRuns: (cronId, limit?) => ipcRenderer.invoke("crons:listRuns", cronId, limit),
+	// platform-observability ③ (sub-6): today's planned cron fires (kanban right column).
+	cronsToday: () => ipcRenderer.invoke("crons:today"),
 
 	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
 	orchestratePending: (filter?) => ipcRenderer.invoke("orchestrate:pending", filter),

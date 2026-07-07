@@ -53,6 +53,7 @@ import type {
 	PlatformProviderStat,
 	PlatformProviderSeries,
 	PlatformProviderQueueEntry,
+	PlatformCronTodayItem,
 } from "./types.js";
 
 export interface WindowApi {
@@ -334,6 +335,8 @@ export interface WindowApi {
 	cronsDelete: (id: string) => Promise<{ success: true }>;
 	cronsTrigger: (id: string) => Promise<{ success: true } | { error: string }>;
 	cronsListRuns: (cronId: string, limit?: number) => Promise<CronRunRecord[]>;
+	// platform-observability ③ (sub-6): today's planned cron fires (kanban right column).
+	cronsToday: () => Promise<PlatformCronTodayItem[]>;
 
 	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
 	orchestratePending: (filter?: { projectId?: string }) => Promise<OrchestratePlanRecord[]>;

@@ -271,6 +271,8 @@ const R: Record<string, RouteMapping> = {
 		"crons:list":     { method: "GET",    path: "/api/crons",            buildReq: (filter?) => ({ query: filter ?? {} }) },
 		"crons:get":      { method: "GET",    path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },
 		"crons:listRuns": { method: "GET",    path: "/api/crons/:id/runs",   buildReq: (cronId: string, limit?: number) => ({ params: { id: cronId }, query: limit ? { limit: String(limit) } : undefined }) },
+		// platform-observability ③ (sub-6): today's planned cron fires for the kanban.
+		"crons:today":    { method: "GET",    path: "/api/crons/today",      buildReq: () => ({}) },
 		"crons:create":   { method: "POST",   path: "/api/crons",            buildReq: (input) => ({ body: input }) },
 		"crons:update":   { method: "PUT",    path: "/api/crons/:id",        buildReq: (id, input) => ({ params: { id }, body: input }) },
 		"crons:delete":   { method: "DELETE", path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },

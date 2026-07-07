@@ -50,7 +50,7 @@
 		},
 		{
 			"path": "src/main/ipc-proxy.ts",
-			"lines": 459,
+			"lines": 461,
 			"dir": "src/main",
 			"exports": [
 				"registerProxyHandlers",
@@ -60,10 +60,10 @@
 				"src/core/logger.ts"
 			],
 			"functions": [
-				"src/main/ipc-proxy.ts/registerProxyHandlers:309",
-				"src/main/ipc-proxy.ts/connectEventBridge:390",
-				"src/main/ipc-proxy.ts/connect:393",
-				"src/main/ipc-proxy.ts/pollReady:445"
+				"src/main/ipc-proxy.ts/registerProxyHandlers:311",
+				"src/main/ipc-proxy.ts/connectEventBridge:392",
+				"src/main/ipc-proxy.ts/connect:395",
+				"src/main/ipc-proxy.ts/pollReady:447"
 			],
 			"description": ""
 		},
@@ -78,7 +78,7 @@
 		},
 		{
 			"path": "src/preload/index.ts",
-			"lines": 325,
+			"lines": 327,
 			"dir": "src/preload",
 			"exports": [],
 			"imports": [
@@ -2844,10 +2844,12 @@
 		},
 		{
 			"path": "src/server/cron-analysis.ts",
-			"lines": 837,
+			"lines": 976,
 			"dir": "src/server",
 			"exports": [
+				"nextFireMs",
 				"CronAnalysisManager.restoreSchedules",
+				"CronAnalysisManager.listTodaysFires",
 				"CronAnalysisManager.handleMissedOnce",
 				"CronAnalysisManager.scheduleCron",
 				"CronAnalysisManager.armOnce",
@@ -2878,37 +2880,42 @@
 				"src/core/logger.ts"
 			],
 			"functions": [
-				"src/server/cron-analysis.ts/nextAlarmMs:90",
-				"src/server/cron-analysis.ts/tzFields:147",
-				"src/server/cron-analysis.ts/get:168",
-				"src/server/cron-analysis.ts/nextSlotInTzAsEpoch:204",
-				"src/server/cron-analysis.ts/tzWallClockFields:239",
-				"src/server/cron-analysis.ts/get:246",
-				"src/server/cron-analysis.ts/parseHHMM:259",
-				"src/server/cron-analysis.ts/nextFireMs:272",
-				"src/server/cron-analysis.ts/iso:291",
-				"src/server/cron-analysis.ts/CronAnalysisManager.restoreSchedules:357",
-				"src/server/cron-analysis.ts/CronAnalysisManager.handleMissedOnce:385",
-				"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414",
-				"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:440",
-				"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:455",
-				"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:468",
-				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:483",
-				"src/server/cron-analysis.ts/CronAnalysisManager.refreshCron:499",
-				"src/server/cron-analysis.ts/CronAnalysisManager.refreshAll:509",
-				"src/server/cron-analysis.ts/CronAnalysisManager.getScheduledCronIds:522",
-				"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543",
-				"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:638",
-				"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:698",
-				"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:718",
-				"src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:795",
-				"src/server/cron-analysis.ts/CronAnalysisManager.defaultPromptFor:830"
+				"src/server/cron-analysis.ts/nextAlarmMs:91",
+				"src/server/cron-analysis.ts/tzFields:148",
+				"src/server/cron-analysis.ts/get:169",
+				"src/server/cron-analysis.ts/nextSlotInTzAsEpoch:205",
+				"src/server/cron-analysis.ts/tzWallClockFields:240",
+				"src/server/cron-analysis.ts/get:247",
+				"src/server/cron-analysis.ts/parseHHMM:260",
+				"src/server/cron-analysis.ts/nextFireMs:277",
+				"src/server/cron-analysis.ts/iso:296",
+				"src/server/cron-analysis.ts/startOfLocalDay:305",
+				"src/server/cron-analysis.ts/endOfLocalDay:310",
+				"src/server/cron-analysis.ts/fireTimeToday:330",
+				"src/server/cron-analysis.ts/formatEveryMs:359",
+				"src/server/cron-analysis.ts/CronAnalysisManager.restoreSchedules:431",
+				"src/server/cron-analysis.ts/CronAnalysisManager.listTodaysFires:468",
+				"src/server/cron-analysis.ts/CronAnalysisManager.handleMissedOnce:524",
+				"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553",
+				"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:579",
+				"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:594",
+				"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:607",
+				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:622",
+				"src/server/cron-analysis.ts/CronAnalysisManager.refreshCron:638",
+				"src/server/cron-analysis.ts/CronAnalysisManager.refreshAll:648",
+				"src/server/cron-analysis.ts/CronAnalysisManager.getScheduledCronIds:661",
+				"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682",
+				"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:777",
+				"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:837",
+				"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:857",
+				"src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:934",
+				"src/server/cron-analysis.ts/CronAnalysisManager.defaultPromptFor:969"
 			],
 			"description": ""
 		},
 		{
 			"path": "src/server/cron-router.ts",
-			"lines": 146,
+			"lines": 160,
 			"dir": "src/server",
 			"exports": [
 				"createCronRouter"
@@ -2921,8 +2928,8 @@
 			],
 			"functions": [
 				"src/server/cron-router.ts/createCronRouter:41",
-				"src/server/cron-router.ts/pickCreateInput:128",
-				"src/server/cron-router.ts/pickUpdateInput:135"
+				"src/server/cron-router.ts/pickCreateInput:142",
+				"src/server/cron-router.ts/pickUpdateInput:149"
 			],
 			"description": ""
 		},
@@ -5718,7 +5725,7 @@
 		},
 		{
 			"path": "src/shared/ipc-api.ts",
-			"lines": 315,
+			"lines": 322,
 			"dir": "src/shared",
 			"exports": [],
 			"imports": [
@@ -5730,7 +5737,7 @@
 		},
 		{
 			"path": "src/shared/preload-types.ts",
-			"lines": 362,
+			"lines": 365,
 			"dir": "src/shared",
 			"exports": [],
 			"imports": [
@@ -5741,7 +5748,7 @@
 		},
 		{
 			"path": "src/shared/types.ts",
-			"lines": 1416,
+			"lines": 1450,
 			"dir": "src/shared",
 			"exports": [],
 			"imports": [],
@@ -5869,12 +5876,12 @@
 			]
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/registerProxyHandlers:309",
+			"id": "src/main/ipc-proxy.ts/registerProxyHandlers:311",
 			"name": "registerProxyHandlers",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 309,
-			"endLine": 380,
+			"line": 311,
+			"endLine": 382,
 			"statementCount": 38,
 			"exported": true,
 			"signature": "function registerProxyHandlers(port: number)",
@@ -5882,28 +5889,28 @@
 			"callees": []
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/connectEventBridge:390",
+			"id": "src/main/ipc-proxy.ts/connectEventBridge:392",
 			"name": "connectEventBridge",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 390,
-			"endLine": 458,
+			"line": 392,
+			"endLine": 460,
 			"statementCount": 33,
 			"exported": true,
 			"signature": "function connectEventBridge(win: BrowserWindow, port: number)",
 			"description": "",
 			"callees": [
-				"src/main/ipc-proxy.ts/connect:393",
-				"src/main/ipc-proxy.ts/pollReady:445"
+				"src/main/ipc-proxy.ts/connect:395",
+				"src/main/ipc-proxy.ts/pollReady:447"
 			]
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/connect:393",
+			"id": "src/main/ipc-proxy.ts/connect:395",
 			"name": "connect",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 393,
-			"endLine": 440,
+			"line": 395,
+			"endLine": 442,
 			"statementCount": 22,
 			"exported": false,
 			"signature": "function connect()",
@@ -5911,12 +5918,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/main/ipc-proxy.ts/pollReady:445",
+			"id": "src/main/ipc-proxy.ts/pollReady:447",
 			"name": "pollReady",
 			"kind": "function",
 			"file": "src/main/ipc-proxy.ts",
-			"line": 445,
-			"endLine": 456,
+			"line": 447,
+			"endLine": 458,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function pollReady()",
@@ -15333,44 +15340,44 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/cron-analysis.ts/nextAlarmMs:90",
+			"id": "src/server/cron-analysis.ts/nextAlarmMs:91",
 			"name": "nextAlarmMs",
 			"kind": "function",
 			"file": "src/server/cron-analysis.ts",
-			"line": 90,
-			"endLine": 138,
+			"line": 91,
+			"endLine": 139,
 			"statementCount": 16,
 			"exported": false,
 			"signature": "function nextAlarmMs(sched: CronScheduleAlarm, nowMs: number)",
 			"description": "Compute the next fire timestamp (epoch ms) for an `alarm` schedule, relative\r",
 			"callees": [
-				"src/server/cron-analysis.ts/tzFields:147",
-				"src/server/cron-analysis.ts/parseHHMM:259",
-				"src/server/cron-analysis.ts/nextSlotInTzAsEpoch:204"
+				"src/server/cron-analysis.ts/tzFields:148",
+				"src/server/cron-analysis.ts/parseHHMM:260",
+				"src/server/cron-analysis.ts/nextSlotInTzAsEpoch:205"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/tzFields:147",
+			"id": "src/server/cron-analysis.ts/tzFields:148",
 			"name": "tzFields",
 			"kind": "function",
 			"file": "src/server/cron-analysis.ts",
-			"line": 147,
-			"endLine": 188,
+			"line": 148,
+			"endLine": 189,
 			"statementCount": 16,
 			"exported": false,
 			"signature": "function tzFields(nowMs: number, tz: string | undefined)",
 			"description": "Decode a real UTC epoch (`nowMs`) into the wall-clock Y/M/D weekday fields\r",
 			"callees": [
-				"src/server/cron-analysis.ts/get:246"
+				"src/server/cron-analysis.ts/get:247"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/get:168",
+			"id": "src/server/cron-analysis.ts/get:169",
 			"name": "get",
 			"kind": "arrow",
 			"file": "src/server/cron-analysis.ts",
-			"line": 168,
-			"endLine": 168,
+			"line": 169,
+			"endLine": 169,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (t: string)",
@@ -15378,42 +15385,42 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/cron-analysis.ts/nextSlotInTzAsEpoch:204",
+			"id": "src/server/cron-analysis.ts/nextSlotInTzAsEpoch:205",
 			"name": "nextSlotInTzAsEpoch",
 			"kind": "function",
 			"file": "src/server/cron-analysis.ts",
-			"line": 204,
-			"endLine": 230,
+			"line": 205,
+			"endLine": 231,
 			"statementCount": 13,
 			"exported": false,
 			"signature": "function nextSlotInTzAsEpoch(year: number, month: number, day: number, hh: number, mm: number, tz: string | undefined)",
 			"description": "Convert a wall-clock (year, month, day, hh, mm) in `tz` into the *real UTC\r",
 			"callees": [
-				"src/server/cron-analysis.ts/tzWallClockFields:239"
+				"src/server/cron-analysis.ts/tzWallClockFields:240"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/tzWallClockFields:239",
+			"id": "src/server/cron-analysis.ts/tzWallClockFields:240",
 			"name": "tzWallClockFields",
 			"kind": "function",
 			"file": "src/server/cron-analysis.ts",
-			"line": 239,
-			"endLine": 257,
+			"line": 240,
+			"endLine": 258,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "function tzWallClockFields(epochMs: number, tz: string)",
 			"description": "Format `epochMs` into the wall-clock fields it represents in `tz`, returned\r",
 			"callees": [
-				"src/server/cron-analysis.ts/get:246"
+				"src/server/cron-analysis.ts/get:247"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/get:246",
+			"id": "src/server/cron-analysis.ts/get:247",
 			"name": "get",
 			"kind": "arrow",
 			"file": "src/server/cron-analysis.ts",
-			"line": 246,
-			"endLine": 246,
+			"line": 247,
+			"endLine": 247,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (t: string)",
@@ -15421,12 +15428,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/cron-analysis.ts/parseHHMM:259",
+			"id": "src/server/cron-analysis.ts/parseHHMM:260",
 			"name": "parseHHMM",
 			"kind": "function",
 			"file": "src/server/cron-analysis.ts",
-			"line": 259,
-			"endLine": 265,
+			"line": 260,
+			"endLine": 266,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function parseHHMM(time: string)",
@@ -15434,27 +15441,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/cron-analysis.ts/nextFireMs:272",
+			"id": "src/server/cron-analysis.ts/nextFireMs:277",
 			"name": "nextFireMs",
 			"kind": "function",
 			"file": "src/server/cron-analysis.ts",
-			"line": 272,
-			"endLine": 288,
+			"line": 277,
+			"endLine": 293,
 			"statementCount": 9,
-			"exported": false,
+			"exported": true,
 			"signature": "function nextFireMs(sched: CronSchedule, nowMs: number)",
 			"description": "Compute the next fire timestamp (epoch ms) for any schedule relative to\r",
 			"callees": [
-				"src/server/cron-analysis.ts/nextAlarmMs:90"
+				"src/server/cron-analysis.ts/nextAlarmMs:91"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/iso:291",
+			"id": "src/server/cron-analysis.ts/iso:296",
 			"name": "iso",
 			"kind": "function",
 			"file": "src/server/cron-analysis.ts",
-			"line": 291,
-			"endLine": 293,
+			"line": 296,
+			"endLine": 298,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function iso(ms: number)",
@@ -15462,114 +15469,188 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.restoreSchedules:357",
+			"id": "src/server/cron-analysis.ts/startOfLocalDay:305",
+			"name": "startOfLocalDay",
+			"kind": "function",
+			"file": "src/server/cron-analysis.ts",
+			"line": 305,
+			"endLine": 309,
+			"statementCount": 3,
+			"exported": false,
+			"signature": "function startOfLocalDay(nowMs: number)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/cron-analysis.ts/endOfLocalDay:310",
+			"name": "endOfLocalDay",
+			"kind": "function",
+			"file": "src/server/cron-analysis.ts",
+			"line": 310,
+			"endLine": 314,
+			"statementCount": 3,
+			"exported": false,
+			"signature": "function endOfLocalDay(nowMs: number)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/cron-analysis.ts/fireTimeToday:330",
+			"name": "fireTimeToday",
+			"kind": "function",
+			"file": "src/server/cron-analysis.ts",
+			"line": 330,
+			"endLine": 356,
+			"statementCount": 16,
+			"exported": false,
+			"signature": "function fireTimeToday(sched: CronSchedule, nowMs: number, dayStart: number, dayEnd: number)",
+			"description": "Compute this cron's next fire slot that lands inside today's local day\r",
+			"callees": [
+				"src/server/cron-analysis.ts/nextFireMs:277"
+			]
+		},
+		{
+			"id": "src/server/cron-analysis.ts/formatEveryMs:359",
+			"name": "formatEveryMs",
+			"kind": "function",
+			"file": "src/server/cron-analysis.ts",
+			"line": 359,
+			"endLine": 367,
+			"statementCount": 9,
+			"exported": false,
+			"signature": "function formatEveryMs(everyMs: number)",
+			"description": "Render everyMs as a short Chinese-frequency hint (e.g. \"每 2h\" / \"每 30m\").",
+			"callees": []
+		},
+		{
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.restoreSchedules:431",
 			"name": "CronAnalysisManager.restoreSchedules",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 357,
-			"endLine": 378,
+			"line": 431,
+			"endLine": 452,
 			"statementCount": 13,
 			"exported": true,
 			"signature": "method restoreSchedules()",
 			"description": "启动时恢复所有 enabled cron 的定时任务 (M1: 扫 cron 表;P4: mode-aware\r",
 			"callees": [
-				"src/server/cron-analysis.ts/CronAnalysisManager.handleMissedOnce:385",
-				"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414"
+				"src/server/cron-analysis.ts/CronAnalysisManager.handleMissedOnce:524",
+				"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.handleMissedOnce:385",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.listTodaysFires:468",
+			"name": "CronAnalysisManager.listTodaysFires",
+			"kind": "method",
+			"file": "src/server/cron-analysis.ts",
+			"line": 468,
+			"endLine": 517,
+			"statementCount": 28,
+			"exported": true,
+			"signature": "method listTodaysFires()",
+			"description": "platform-observability ③ (sub-6): today's planned cron fires, for the\r",
+			"callees": [
+				"src/server/cron-analysis.ts/startOfLocalDay:305",
+				"src/server/cron-analysis.ts/endOfLocalDay:310",
+				"src/server/cron-analysis.ts/fireTimeToday:330",
+				"src/server/wiki-operations.ts/isGitAwarePrompt:184",
+				"src/server/cron-analysis.ts/get:247",
+				"src/server/cron-analysis.ts/formatEveryMs:359"
+			]
+		},
+		{
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.handleMissedOnce:524",
 			"name": "CronAnalysisManager.handleMissedOnce",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 385,
-			"endLine": 403,
+			"line": 524,
+			"endLine": 542,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method handleMissedOnce(cron: CronRecord, fireAt: number)",
 			"description": "§9.2: missed once policy — fireAt already in the past at startup. Mark\r",
 			"callees": [
-				"src/server/cron-analysis.ts/iso:291"
+				"src/server/cron-analysis.ts/iso:296"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553",
 			"name": "CronAnalysisManager.scheduleCron",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 414,
-			"endLine": 438,
+			"line": 553,
+			"endLine": 577,
 			"statementCount": 15,
 			"exported": true,
 			"signature": "method scheduleCron(cron: CronRecord)",
 			"description": "为单条 cron 注册定时触发 (mode-aware)。先清已有,再按 mode 注册新 timer。\r",
 			"callees": [
-				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:483",
-				"src/server/cron-analysis.ts/nextFireMs:272",
-				"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:698",
-				"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:440",
-				"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:455",
-				"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:468"
+				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:622",
+				"src/server/cron-analysis.ts/nextFireMs:277",
+				"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:837",
+				"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:579",
+				"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:594",
+				"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:607"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.armOnce:440",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.armOnce:579",
 			"name": "CronAnalysisManager.armOnce",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 440,
-			"endLine": 453,
+			"line": 579,
+			"endLine": 592,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method armOnce(cron: CronRecord, fireAt: number)",
 			"description": "",
 			"callees": [
-				"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543",
-				"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:698",
-				"src/server/cron-analysis.ts/iso:291"
+				"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682",
+				"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:837",
+				"src/server/cron-analysis.ts/iso:296"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:455",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:594",
 			"name": "CronAnalysisManager.armAlarm",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 455,
-			"endLine": 466,
+			"line": 594,
+			"endLine": 605,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method armAlarm(cron: CronRecord, fireAt: number)",
 			"description": "",
 			"callees": [
-				"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543",
-				"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:698",
-				"src/server/cron-analysis.ts/iso:291"
+				"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682",
+				"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:837",
+				"src/server/cron-analysis.ts/iso:296"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.armInterval:468",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.armInterval:607",
 			"name": "CronAnalysisManager.armInterval",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 468,
-			"endLine": 480,
+			"line": 607,
+			"endLine": 619,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method armInterval(cron: CronRecord, sched: CronScheduleInterval)",
 			"description": "",
 			"callees": [
-				"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543",
-				"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:698",
-				"src/server/cron-analysis.ts/iso:291"
+				"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682",
+				"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:837",
+				"src/server/cron-analysis.ts/iso:296"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:483",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:622",
 			"name": "CronAnalysisManager.unscheduleCron",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 483,
-			"endLine": 492,
+			"line": 622,
+			"endLine": 631,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method unscheduleCron(cronId: string)",
@@ -15577,44 +15658,44 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.refreshCron:499",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.refreshCron:638",
 			"name": "CronAnalysisManager.refreshCron",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 499,
-			"endLine": 506,
+			"line": 638,
+			"endLine": 645,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method refreshCron(cronId: string)",
 			"description": "Reschedule after a cron row mutates (create/update/delete). Re-reads the\r",
 			"callees": [
-				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:483",
-				"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414"
+				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:622",
+				"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.refreshAll:509",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.refreshAll:648",
 			"name": "CronAnalysisManager.refreshAll",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 509,
-			"endLine": 519,
+			"line": 648,
+			"endLine": 658,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method refreshAll()",
 			"description": "Re-scan all cron rows and reconcile timers (add new, drop stale).",
 			"callees": [
-				"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414",
-				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:483"
+				"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553",
+				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:622"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.getScheduledCronIds:522",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.getScheduledCronIds:661",
 			"name": "CronAnalysisManager.getScheduledCronIds",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 522,
-			"endLine": 524,
+			"line": 661,
+			"endLine": 663,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getScheduledCronIds()",
@@ -15622,52 +15703,52 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682",
 			"name": "CronAnalysisManager.fireCron",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 543,
-			"endLine": 630,
+			"line": 682,
+			"endLine": 769,
 			"statementCount": 43,
 			"exported": true,
 			"signature": "method fireCron(cronId: string, schedule: CronSchedule)",
 			"description": "Fire one cron entry on the schedule path (called by once/alarm/interval\r",
 			"callees": [
-				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:483",
-				"src/server/cron-analysis.ts/iso:291",
-				"src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:795",
-				"src/server/cron-analysis.ts/CronAnalysisManager.defaultPromptFor:830",
-				"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:718",
-				"src/server/cron-analysis.ts/nextFireMs:272",
-				"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414"
+				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:622",
+				"src/server/cron-analysis.ts/iso:296",
+				"src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:934",
+				"src/server/cron-analysis.ts/CronAnalysisManager.defaultPromptFor:969",
+				"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:857",
+				"src/server/cron-analysis.ts/nextFireMs:277",
+				"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:638",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:777",
 			"name": "CronAnalysisManager.triggerCron",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 638,
-			"endLine": 695,
+			"line": 777,
+			"endLine": 834,
 			"statementCount": 30,
 			"exported": true,
 			"signature": "method triggerCron(cronId: string)",
 			"description": "Manually fire a cron once (test/debug). §9.4: trigger does NOT advance\r",
 			"callees": [
-				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:483",
-				"src/server/cron-analysis.ts/iso:291",
-				"src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:795",
-				"src/server/cron-analysis.ts/CronAnalysisManager.defaultPromptFor:830",
-				"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:718"
+				"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:622",
+				"src/server/cron-analysis.ts/iso:296",
+				"src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:934",
+				"src/server/cron-analysis.ts/CronAnalysisManager.defaultPromptFor:969",
+				"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:857"
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:698",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:837",
 			"name": "CronAnalysisManager.persistNextRunAt",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 698,
-			"endLine": 707,
+			"line": 837,
+			"endLine": 846,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method persistNextRunAt(cronId: string, value: string | undefined)",
@@ -15675,12 +15756,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:718",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:857",
 			"name": "CronAnalysisManager.fireAgent",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 718,
-			"endLine": 788,
+			"line": 857,
+			"endLine": 927,
 			"statementCount": 45,
 			"exported": true,
 			"signature": "method fireAgent(cron: CronRecord, agent: AgentRecord, prompt: string, sessionId: string)",
@@ -15692,12 +15773,12 @@
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:795",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:934",
 			"name": "CronAnalysisManager.resolveSessionForCron",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 795,
-			"endLine": 828,
+			"line": 934,
+			"endLine": 967,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method resolveSessionForCron(cron: CronRecord)",
@@ -15707,12 +15788,12 @@
 			]
 		},
 		{
-			"id": "src/server/cron-analysis.ts/CronAnalysisManager.defaultPromptFor:830",
+			"id": "src/server/cron-analysis.ts/CronAnalysisManager.defaultPromptFor:969",
 			"name": "CronAnalysisManager.defaultPromptFor",
 			"kind": "method",
 			"file": "src/server/cron-analysis.ts",
-			"line": 830,
-			"endLine": 835,
+			"line": 969,
+			"endLine": 974,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method defaultPromptFor(cron: CronRecord)",
@@ -15725,23 +15806,23 @@
 			"kind": "function",
 			"file": "src/server/cron-router.ts",
 			"line": 41,
-			"endLine": 126,
-			"statementCount": 47,
+			"endLine": 140,
+			"statementCount": 51,
 			"exported": true,
 			"signature": "function createCronRouter(deps: {\r\n\tmanagement: ManagementService;\r\n\tcronManager: CronAnalysisManager;\r\n\tcronRunStore?: CronRunStore;\r\n})",
 			"description": "",
 			"callees": [
-				"src/server/cron-router.ts/pickCreateInput:128",
-				"src/server/cron-router.ts/pickUpdateInput:135"
+				"src/server/cron-router.ts/pickCreateInput:142",
+				"src/server/cron-router.ts/pickUpdateInput:149"
 			]
 		},
 		{
-			"id": "src/server/cron-router.ts/pickCreateInput:128",
+			"id": "src/server/cron-router.ts/pickCreateInput:142",
 			"name": "pickCreateInput",
 			"kind": "function",
 			"file": "src/server/cron-router.ts",
-			"line": 128,
-			"endLine": 133,
+			"line": 142,
+			"endLine": 147,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function pickCreateInput(body: any)",
@@ -15749,12 +15830,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/cron-router.ts/pickUpdateInput:135",
+			"id": "src/server/cron-router.ts/pickUpdateInput:149",
 			"name": "pickUpdateInput",
 			"kind": "function",
 			"file": "src/server/cron-router.ts",
-			"line": 135,
-			"endLine": 142,
+			"line": 149,
+			"endLine": 156,
 			"statementCount": 10,
 			"exported": false,
 			"signature": "function pickUpdateInput(body: any)",
@@ -26233,11 +26314,11 @@
 		"src/runtime/mcp-tools/cookie-jar.ts/importCookies:73": [
 			"src/main/index.ts/registerLocalHandlers:96"
 		],
-		"src/main/ipc-proxy.ts/connect:393": [
-			"src/main/ipc-proxy.ts/connectEventBridge:390"
+		"src/main/ipc-proxy.ts/connect:395": [
+			"src/main/ipc-proxy.ts/connectEventBridge:392"
 		],
-		"src/main/ipc-proxy.ts/pollReady:445": [
-			"src/main/ipc-proxy.ts/connectEventBridge:390"
+		"src/main/ipc-proxy.ts/pollReady:447": [
+			"src/main/ipc-proxy.ts/connectEventBridge:392"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1712": [
 			"src/runtime/agent-loop.ts/AgentLoop.run:345",
@@ -27592,111 +27673,126 @@
 		"src/runtime/tools/tool-factory.ts/getToolInputFields:308": [
 			"src/server/config-router.ts/createConfigRouter:41"
 		],
-		"src/server/cron-analysis.ts/tzFields:147": [
-			"src/server/cron-analysis.ts/nextAlarmMs:90"
+		"src/server/cron-analysis.ts/tzFields:148": [
+			"src/server/cron-analysis.ts/nextAlarmMs:91"
 		],
-		"src/server/cron-analysis.ts/parseHHMM:259": [
-			"src/server/cron-analysis.ts/nextAlarmMs:90"
+		"src/server/cron-analysis.ts/parseHHMM:260": [
+			"src/server/cron-analysis.ts/nextAlarmMs:91"
 		],
-		"src/server/cron-analysis.ts/nextSlotInTzAsEpoch:204": [
-			"src/server/cron-analysis.ts/nextAlarmMs:90"
+		"src/server/cron-analysis.ts/nextSlotInTzAsEpoch:205": [
+			"src/server/cron-analysis.ts/nextAlarmMs:91"
 		],
-		"src/server/cron-analysis.ts/get:246": [
-			"src/server/cron-analysis.ts/tzFields:147",
-			"src/server/cron-analysis.ts/tzWallClockFields:239"
+		"src/server/cron-analysis.ts/get:247": [
+			"src/server/cron-analysis.ts/tzFields:148",
+			"src/server/cron-analysis.ts/tzWallClockFields:240",
+			"src/server/cron-analysis.ts/CronAnalysisManager.listTodaysFires:468"
 		],
-		"src/server/cron-analysis.ts/tzWallClockFields:239": [
-			"src/server/cron-analysis.ts/nextSlotInTzAsEpoch:204"
+		"src/server/cron-analysis.ts/tzWallClockFields:240": [
+			"src/server/cron-analysis.ts/nextSlotInTzAsEpoch:205"
 		],
-		"src/server/cron-analysis.ts/nextAlarmMs:90": [
-			"src/server/cron-analysis.ts/nextFireMs:272"
+		"src/server/cron-analysis.ts/nextAlarmMs:91": [
+			"src/server/cron-analysis.ts/nextFireMs:277"
 		],
-		"src/server/cron-analysis.ts/CronAnalysisManager.handleMissedOnce:385": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.restoreSchedules:357"
+		"src/server/cron-analysis.ts/nextFireMs:277": [
+			"src/server/cron-analysis.ts/fireTimeToday:330",
+			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553",
+			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682"
 		],
-		"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.restoreSchedules:357",
-			"src/server/cron-analysis.ts/CronAnalysisManager.refreshCron:499",
-			"src/server/cron-analysis.ts/CronAnalysisManager.refreshAll:509",
-			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543"
+		"src/server/cron-analysis.ts/CronAnalysisManager.handleMissedOnce:524": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.restoreSchedules:431"
 		],
-		"src/server/cron-analysis.ts/iso:291": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.handleMissedOnce:385",
-			"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:440",
-			"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:455",
-			"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:468",
-			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543",
-			"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:638"
+		"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.restoreSchedules:431",
+			"src/server/cron-analysis.ts/CronAnalysisManager.refreshCron:638",
+			"src/server/cron-analysis.ts/CronAnalysisManager.refreshAll:648",
+			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682"
 		],
-		"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:483": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414",
-			"src/server/cron-analysis.ts/CronAnalysisManager.refreshCron:499",
-			"src/server/cron-analysis.ts/CronAnalysisManager.refreshAll:509",
-			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543",
-			"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:638"
+		"src/server/cron-analysis.ts/startOfLocalDay:305": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.listTodaysFires:468"
 		],
-		"src/server/cron-analysis.ts/nextFireMs:272": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414",
-			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543"
+		"src/server/cron-analysis.ts/endOfLocalDay:310": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.listTodaysFires:468"
 		],
-		"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:698": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414",
-			"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:440",
-			"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:455",
-			"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:468"
-		],
-		"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:440": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414"
-		],
-		"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:455": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414"
-		],
-		"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:468": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:414"
-		],
-		"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:440",
-			"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:455",
-			"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:468"
-		],
-		"src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:795": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543",
-			"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:638"
-		],
-		"src/server/cron-analysis.ts/CronAnalysisManager.defaultPromptFor:830": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543",
-			"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:638"
-		],
-		"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:718": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:543",
-			"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:638"
-		],
-		"src/server/wiki-operations.ts/agentHasTool:38": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:718",
-			"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1124",
-			"src/server/project-work-runner.ts/ProjectWorkRunner.fireProjectWork:62",
-			"src/server/wiki-operations.ts/agentHasWikiTool:26"
+		"src/server/cron-analysis.ts/fireTimeToday:330": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.listTodaysFires:468"
 		],
 		"src/server/wiki-operations.ts/isGitAwarePrompt:184": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:718",
+			"src/server/cron-analysis.ts/CronAnalysisManager.listTodaysFires:468",
+			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:857",
 			"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:834",
 			"src/server/management-service.ts/ManagementService.getProjectWorks:1085",
 			"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1146"
 		],
+		"src/server/cron-analysis.ts/formatEveryMs:359": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.listTodaysFires:468"
+		],
+		"src/server/cron-analysis.ts/iso:296": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.handleMissedOnce:524",
+			"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:579",
+			"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:594",
+			"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:607",
+			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682",
+			"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:777"
+		],
+		"src/server/cron-analysis.ts/CronAnalysisManager.unscheduleCron:622": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553",
+			"src/server/cron-analysis.ts/CronAnalysisManager.refreshCron:638",
+			"src/server/cron-analysis.ts/CronAnalysisManager.refreshAll:648",
+			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682",
+			"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:777"
+		],
+		"src/server/cron-analysis.ts/CronAnalysisManager.persistNextRunAt:837": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553",
+			"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:579",
+			"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:594",
+			"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:607"
+		],
+		"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:579": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553"
+		],
+		"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:594": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553"
+		],
+		"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:607": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.scheduleCron:553"
+		],
+		"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.armOnce:579",
+			"src/server/cron-analysis.ts/CronAnalysisManager.armAlarm:594",
+			"src/server/cron-analysis.ts/CronAnalysisManager.armInterval:607"
+		],
+		"src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:934": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682",
+			"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:777"
+		],
+		"src/server/cron-analysis.ts/CronAnalysisManager.defaultPromptFor:969": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682",
+			"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:777"
+		],
+		"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:857": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:682",
+			"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:777"
+		],
+		"src/server/wiki-operations.ts/agentHasTool:38": [
+			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:857",
+			"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1124",
+			"src/server/project-work-runner.ts/ProjectWorkRunner.fireProjectWork:62",
+			"src/server/wiki-operations.ts/agentHasWikiTool:26"
+		],
 		"src/server/wiki-operations.ts/stripGitAwareSentinel:189": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:718"
+			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:857"
 		],
 		"src/server/session-context-router.ts/resolveSessionByRoleProject:98": [
-			"src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:795",
+			"src/server/cron-analysis.ts/CronAnalysisManager.resolveSessionForCron:934",
 			"src/server/enrichment-runner.ts/EnrichmentRunner.runProjectEnrichment:100",
 			"src/server/management-service.ts/ManagementService.ensureProjectSession:304",
 			"src/server/pm-service.ts/PmService.openDiscussSession:277",
 			"src/server/project-work-runner.ts/ProjectWorkRunner.fireProjectWork:62"
 		],
-		"src/server/cron-router.ts/pickCreateInput:128": [
+		"src/server/cron-router.ts/pickCreateInput:142": [
 			"src/server/cron-router.ts/createCronRouter:41"
 		],
-		"src/server/cron-router.ts/pickUpdateInput:135": [
+		"src/server/cron-router.ts/pickUpdateInput:149": [
 			"src/server/cron-router.ts/createCronRouter:41"
 		],
 		"src/server/cron-store.ts/CronStore.list:75": [
