@@ -125,6 +125,9 @@ const R: Record<string, RouteMapping> = {
 	"sessions:delete":  { method: "DELETE", path: "/api/sessions/:agentId/:sessionId", buildReq: (agentId, sessionId) => ({ params: { agentId, sessionId } }) },
 	"sessions:archive": { method: "POST", path: "/api/sessions/:agentId/:sessionId/archive", buildReq: (agentId, sessionId) => ({ params: { agentId, sessionId } }) },
 	"sessions:metrics": { method: "GET", path: "/api/sessions/metrics", buildReq: () => ({}) },
+	// platform-observability ① (sub-4): parent-session List + Detail for the ③ kanban.
+	"sessions:parents": { method: "GET", path: "/api/sessions/parents", buildReq: () => ({}) },
+	"sessions:detail":  { method: "GET", path: "/api/sessions/detail/:sessionId", buildReq: (sessionId) => ({ params: { sessionId } }) },
 
 	// Messages
 	"messages:clear":  { method: "DELETE", path: "/api/sessions/:agentId/messages", buildReq: (agentId) => ({ params: { agentId } }) },

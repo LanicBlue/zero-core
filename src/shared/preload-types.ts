@@ -47,6 +47,9 @@ import type {
 	OrchestrateManifestRecord,
 	DelegatedTaskRecord,
 	RuntimeTaskInfo,
+	PlatformSessionSummary,
+	PlatformSessionStep,
+	PlatformSessionDetail,
 } from "./types.js";
 
 export interface WindowApi {
@@ -143,6 +146,11 @@ export interface WindowApi {
 		concurrencySnapshot: Record<string, { active: number; waiting: number }>;
 		lastUpdatedAt: number;
 	}>;
+	// platform-observability ① (sub-4): parent-session observation for the ③
+	// kanban. parents → left-column List (agent self-introspection + kanban share
+	// one source); detail → a session's task tree + last 3 steps (click-through).
+	sessionsParents: () => Promise<PlatformSessionSummary[]>;
+	sessionsDetail: (sessionId: string) => Promise<PlatformSessionDetail>;
 
 	// ── Streaming events ──
 	onAgentEvent: (callback: (event: any) => void) => () => void;

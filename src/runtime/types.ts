@@ -48,6 +48,61 @@ export type TurnSource = "user" | "work" | "cron" | "background";
 export const TURN_SOURCES: readonly TurnSource[] = ["user", "work", "cron", "background"] as const;
 
 // ---------------------------------------------------------------------------
+// platform-observability ① (sub-4): read-only session observation seam
+// ---------------------------------------------------------------------------
+/**
+ * Read-only platform observation surface — the ONLY way the Platform 'sessions'
+ * resource (runtime/mcp-tools) reaches live session state without importing the
+ * server layer. Implemented by AgentService; injected onto every SessionConfig
+ * + mirrored to ToolExecutionContext so the Platform tool's execute() can call
+ * it through `ctx.platformObserver`. Same data the UI kanban (③) consumes via
+ * the IPC channels (sessions:parents / sessions:detail) — single source.
+ *
+ * Why a typed seam and not `ctx.agentService`: the runtime layer must not import
+ * the server module (conventions.md). The handle is a narrowing interface the
+ * service satisfies; the tool only sees the read methods it needs.
+ *
+ * All methods are READ-ONLY. status semantics (acceptance-4 #3):
+ *   running  — runStates has the session AND isBusy
+ *   waiting  — runStates has the session, !isBusy, AND waiting (Wait tool suspended)
+ *   idle     — otherwise (no runStates entry, or isBusy=false + waiting=false)
+ */
+export interface PlatformObserver {
+	/**
+	 * One row per PARENT agent (an agent that has an active/main `session_kind='chat'`
+	 * session — delegated sub-agent sessions are NOT parents; they back a task and
+	 * surface through TaskList/getRuntimeTaskTree). The natural filter is
+	 * db.getMainSession(agentId) which already excludes session_kind='delegated'.
+	 * Returns [] when agentStore is unavailable (early startup / tests).
+	 */
+	listParentSessions(): Array<PlatformSessionSummary>;
+	/**
+	 * Task tree for a session — verbatim getRuntimeTaskTree(sessionId) output
+	 * (same source as TaskList / UI TaskTree). Empty when the session has no
+	 * live loop yet.
+	 */
+	getSessionTaskTree(sessionId: string): TaskInfo[];
+	/**
+	 * Last N=3 step worth of tool-call blocks from the session's live loop
+	 * recorder, {name, argsBrief} only — NO tokens, NO output/result. Returns
+	 * [] when the loop is gone or has no tool calls yet.
+	 */
+	getSessionRecentSteps(sessionId: string, n?: number): Array<{ stepSeq: number; toolCalls: Array<{ name: string; argsBrief?: string }>; status: string; time: number }>;
+}
+
+/** Row returned by PlatformObserver.listParentSessions — one parent agent session. */
+export interface PlatformSessionSummary {
+	agentId: string;
+	agentName?: string;
+	sessionId: string;
+	status: "running" | "waiting" | "idle";
+	/** Wall-clock ms of the last activity on this session (Date.now() basis). */
+	lastActivityAt: number;
+	/** Persisted turn count for this session (SessionMetrics.totalTurns). */
+	turns: number;
+}
+
+// ---------------------------------------------------------------------------
 // Stream events — must match the existing IPC contract
 // ---------------------------------------------------------------------------
 
@@ -452,6 +507,13 @@ export interface SessionConfig {
 	 * builds the loop (it owns loopKind="main").
 	 */
 	hookWiringDeps?: HookWiringDeps;
+	/**
+	 * platform-observability ① (sub-4): read-only session observation handle.
+	 * Injected on EVERY SessionConfig by AgentService (the service implements
+	 * PlatformObserver); the loop mirrors it to ToolExecutionContext so the
+	 * Platform 'sessions' resource can read live session state through ctx.
+	 */
+	platformObserver?: PlatformObserver;
 }
 
 // ---------------------------------------------------------------------------
@@ -711,6 +773,14 @@ export interface ToolExecutionContext {
 	 * when git is unavailable).
 	 */
 	gitIntegration?: any;
+	/**
+	 * platform-observability ① (sub-4): read-only session observation handle.
+	 * Backs the Platform 'sessions' resource (List parent sessions / Detail task
+	 * tree + recent steps). Injected on every SessionConfig by AgentService
+	 * (the service implements PlatformObserver); absent in test stubs → the
+	 * resource reports "observer not available" rather than crashing.
+	 */
+	platformObserver?: PlatformObserver;
 }
 
 // ---------------------------------------------------------------------------

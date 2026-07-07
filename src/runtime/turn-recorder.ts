@@ -361,6 +361,31 @@ export class TurnRecorder {
 			.map((b: any) => ({ name: b.name, status: b.status }));
 	}
 
+	/**
+	 * platform-observability ① (sub-4): the last N steps' blocks, per step.
+	 * Returns completed steps (oldest→newest) + the in-progress current step,
+	 * each tagged with a 0-based stepSeq and `time` (wall-clock proxy = the
+	 * recorder's currentTurnGroup, since per-step timestamps aren't tracked).
+	 * Tool-bearing steps only is the CALLER's concern (AgentLoop.getRecentSteps
+	 * filters); this method returns every step's blocks verbatim. The current
+	 * (in-progress) step is included only if it has blocks.
+	 */
+	getRecentStepBlocks(n: number = 3): Array<{ stepSeq: number; blocks: any[]; time: number }> {
+		// Per-step wall-clock isn't tracked on StepData; the best live proxy is
+		// the capture moment (these are the N most recent steps, all near now).
+		// The caller (AgentLoop.getRecentSteps) surfaces this as `time`; the
+		// Platform 'sessions' resource renders it as relative time. Documented
+		// limitation — exact per-step timestamps are not a recorder concern.
+		const now = Date.now();
+		const all: Array<{ blocks: any[]; time: number }> = [];
+		for (const s of this.completedSteps) all.push({ blocks: s.blocks, time: now });
+		if (this.currentStepBlocks.length > 0) all.push({ blocks: this.currentStepBlocks, time: now });
+		const recent = all.slice(-n);
+		// stepSeq is 0-based within this run's step sequence (completedSteps then current).
+		const baseSeq = Math.max(0, all.length - recent.length);
+		return recent.map((s, i) => ({ stepSeq: baseSeq + i, blocks: s.blocks, time: s.time }));
+	}
+
 	// -----------------------------------------------------------------------
 	// Internal helpers
 	// -----------------------------------------------------------------------

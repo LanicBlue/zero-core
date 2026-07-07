@@ -85,6 +85,9 @@ const api: WindowApi = {
 	sessionsDelete: (agentId, sessionId) => ipcRenderer.invoke("sessions:delete", agentId, sessionId),
 	sessionsArchive: (agentId, sessionId) => ipcRenderer.invoke("sessions:archive", agentId, sessionId),
 	sessionsMetrics: () => ipcRenderer.invoke("sessions:metrics"),
+	// platform-observability ① (sub-4): parent-session List + Detail for the ③ kanban.
+	sessionsParents: () => ipcRenderer.invoke("sessions:parents"),
+	sessionsDetail: (sessionId) => ipcRenderer.invoke("sessions:detail", sessionId),
 
 	// ─── Streaming events ────────────────────────────
 	onAgentEvent: (callback) => {

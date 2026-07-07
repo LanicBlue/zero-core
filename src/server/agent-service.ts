@@ -32,7 +32,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
-import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource } from "../runtime/types.js";
+import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource, PlatformObserver, PlatformSessionSummary } from "../runtime/types.js";
 import { clearProviderCache, setConcurrencyManager } from "../runtime/provider-factory.js";
 import { SessionDB } from "./session-db.js";
 import { InputQueueStore } from "./input-queue-store.js";
@@ -162,7 +162,7 @@ function getWikiBaseline(wikiStore: ProjectWikiStore, projectId: string): string
 // ---------------------------------------------------------------------------
 // Agent Service — supports concurrent multi-agent execution
 // ---------------------------------------------------------------------------
-export class AgentService {
+export class AgentService implements PlatformObserver {
 	private loops = new Map<string, AgentLoop>();        // sessionId → loop
 	private runStates = new Map<string, AgentRunState>(); // sessionId → state
 	private activeSessions = new Map<string, string>();    // agentId → active sessionId
@@ -587,6 +587,62 @@ export class AgentService {
 		return this.loops.get(sessionId)?.getRuntimeTaskTree() ?? [];
 	}
 
+	// ─── platform-observability ① (sub-4): PlatformObserver impl ────────────
+	// Read-only session observation surface. Backs BOTH the Platform 'sessions'
+	// resource (agent self-introspection, via ctx.platformObserver) AND the IPC
+	// channels sessions:parents / sessions:detail (③ kanban, via REST). Single
+	// source — same data, two consumers. See runtime/types.ts PlatformObserver.
+	/**
+	 * List one row per PARENT agent session. A "parent" = an agent that has an
+	 * active/main `session_kind='chat'` session. db.getMainSession already
+	 * excludes session_kind='delegated' (those back a sub-agent task and surface
+	 * via TaskList, not here) AND archived rows, so the natural filter is just
+	 * "does this agent have a main chat session". status from runStates
+	 * (acceptance-4 #3): isBusy→running, waiting→waiting, else idle.
+	 * turns/lastActivityAt from SessionMetrics when available.
+	 */
+	listParentSessions(): PlatformSessionSummary[] {
+		const agents = this.agentStore?.list() ?? [];
+		const metricsMap = this.sessionManager?.getAllSessionMetrics();
+		const out: PlatformSessionSummary[] = [];
+		for (const agent of agents) {
+			const session = this.db.getMainSession(agent.id);
+			if (!session) continue; // no main chat session → not a parent
+			const sid = session.id;
+			const state = this.runStates.get(sid);
+			const status: PlatformSessionSummary["status"] = state
+				? (state.isBusy ? "running" : (state.waiting ? "waiting" : "idle"))
+				: "idle";
+			const m = metricsMap?.get(sid);
+			out.push({
+				agentId: agent.id,
+				agentName: agent.name,
+				sessionId: sid,
+				status,
+				lastActivityAt: m?.lastActivityAt ?? (Date.parse(session.updatedAt ?? session.createdAt) || Date.now()),
+				turns: m?.totalTurns ?? 0,
+			});
+		}
+		return out;
+	}
+
+	/** PlatformObserver: task tree for a session (verbatim getRuntimeTaskTree). */
+	getSessionTaskTree(sessionId: string): import("../runtime/types.js").TaskInfo[] {
+		return this.getRuntimeTaskTree(sessionId);
+	}
+
+	/**
+	 * PlatformObserver: last N=3 steps' tool-call blocks for a session, via the
+	 * live loop's recorder (same source as getRecentToolCalls). {name, argsBrief}
+	 * only — NO tokens, NO output/result (per design). Returns [] when the loop
+	 * is gone or has no tool-bearing steps.
+	 */
+	getSessionRecentSteps(sessionId: string, n: number = 3): Array<{ stepSeq: number; toolCalls: Array<{ name: string; argsBrief?: string }>; status: string; time: number }> {
+		const loop = this.loops.get(sessionId) as unknown as { getRecentSteps?: (n?: number) => Array<{ stepSeq: number; toolCalls: Array<{ name: string; argsBrief?: string }>; status: string; time: number }> } | undefined;
+		return loop?.getRecentSteps?.(n) ?? [];
+	}
+	// ─── end PlatformObserver ───────────────────────────────────────────────
+
 	/**
 	 * Compute the domain capability handles to surface for a toolPolicy. See
 	 * the CapabilityHandles type above for the rationale (single source shared
@@ -702,6 +758,10 @@ export class AgentService {
 		// Re-attach compression config (the extraction hook doesn't strictly
 		// need it but other code paths might run during the flush).
 		(cfg as any).compression = this.config.compression;
+		// platform-observability ① (sub-4): keep the observer handle on the
+		// rebuilt config (consistency — the close-flush path doesn't run tools,
+		// but a future caller of the rebuilt loop would expect it present).
+		cfg.platformObserver = this;
 		return cfg;
 	}
 	subscribe(cb: StreamCallback): () => void {
@@ -898,6 +958,12 @@ export class AgentService {
 		// v0.8 (P3 §7.7 #4): surface the tool-call usage log on every session
 		// so tool-factory records one row per tool invocation.
 		if (this.toolUsageStore) (sessionConfig as any).toolUsageStore = this.toolUsageStore;
+		// platform-observability ① (sub-4): read-only session observation handle.
+		// The service itself implements PlatformObserver; surfacing it on every
+		// session config lets the Platform 'sessions' resource read live session
+		// state via ctx.platformObserver (single source — same data the IPC
+		// sessions:parents/detail channels serve to the ③ kanban).
+		sessionConfig.platformObserver = this;
 		// v0.8 (P1 §10.6): copy the agent's free wikiAnchors onto the session
 		// config so the loop can resolve + inject them (system + context
 		// channels). Auto anchors (memory + project) are derived from the

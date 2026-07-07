@@ -306,6 +306,49 @@ export interface RuntimeTaskInfo {
 }
 
 /**
+ * platform-observability ① (sub-4): one parent-agent session row, served to the
+ * ③ kanban left column via the `sessions:parents` IPC. Same shape the Platform
+ * 'sessions' resource (text) renders — agent self-introspection and kanban are
+ * two faces of one source. The kanban does NOT show sessionId (per design ③),
+ * but it's carried so the click-through Detail call can use it.
+ */
+export interface PlatformSessionSummary {
+	agentId: string;
+	agentName?: string;
+	sessionId: string;
+	status: "running" | "waiting" | "idle";
+	/** Wall-clock ms of the last activity (Date.now() basis). */
+	lastActivityAt: number;
+	/** Persisted turn count for this session (SessionMetrics.totalTurns). */
+	turns: number;
+}
+
+/**
+ * platform-observability ① (sub-4): one recent step in a session's live loop,
+ * served to the kanban Detail panel via `sessions:detail`. {name, argsBrief}
+ * only — NO tokens, NO output/result (per design). status aggregates the step's
+ * tool blocks (running if any running, error if any error, else done).
+ */
+export interface PlatformSessionStep {
+	stepSeq: number;
+	toolCalls: Array<{ name: string; argsBrief?: string }>;
+	status: string;
+	time: number;
+}
+
+/**
+ * platform-observability ① (sub-4): Detail payload for `sessions:detail` —
+ * a session's live task tree (RuntimeTaskInfo[], same source as TaskList) +
+ * its last N=3 steps. Empty arrays when the session has no live loop / no
+ * tool calls yet.
+ */
+export interface PlatformSessionDetail {
+	sessionId: string;
+	taskTree: RuntimeTaskInfo[];
+	recentSteps: PlatformSessionStep[];
+}
+
+/**
  * v0.8 (M0): the context bundle a session carries. projectId is optional
  * (global/observation sessions have none); workspaceDir and wikiRootNodeId
  * are required so every session has a concrete work location and wiki view.

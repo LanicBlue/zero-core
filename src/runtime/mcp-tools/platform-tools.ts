@@ -52,6 +52,125 @@ function redactSensitive(obj: any): void {
 	}
 }
 
+// ─── platform-observability ① (sub-4): sessions resource helpers ───────────
+//
+// Text rendering for the 'sessions' resource. The same data shape is served as
+// JSON to the ③ kanban via IPC (sessions:parents / sessions:detail) — this is
+// the agent self-introspection (text) face of it. Renders relative time
+// ("last 2s ago" / "last 1m ago") to match the kanban.
+
+/**
+ * Render a wall-clock ms as a short relative-time string. Matches the format
+ * the ③ kanban will use ("last 2s ago" / "last 1m ago" / "last 3h ago" /
+ * "last 2d ago"). nowMs lets tests inject a fixed clock.
+ */
+export function formatRelativeTime(atMs: number, nowMs: number = Date.now()): string {
+	const diff = Math.max(0, nowMs - atMs);
+	const sec = Math.floor(diff / 1000);
+	if (sec < 60) return `last ${sec}s ago`;
+	const min = Math.floor(sec / 60);
+	if (min < 60) return `last ${min}m ago`;
+	const hr = Math.floor(min / 60);
+	if (hr < 24) return `last ${hr}h ago`;
+	const day = Math.floor(hr / 24);
+	return `last ${day}d ago`;
+}
+
+/** Short 8-char prefix of a sessionId/uuid for compact display. */
+function shortId(id: string): string {
+	return id ? id.slice(0, 8) : "(none)";
+}
+
+/** Status dot glyph (● running / ◐ waiting / ○ idle) — matches the kanban. */
+function statusDot(status: "running" | "waiting" | "idle"): string {
+	return status === "running" ? "●" : status === "waiting" ? "◐" : "○";
+}
+
+/**
+ * Render the sessions LIST (no sessionId arg) as text — one line per parent
+ * agent session: `状态点 · agentId · sessionId(short) · status · 相对时间 · turns`.
+ * agentId prefers agentName when available (more readable); falls back to id.
+ */
+function renderSessionsList(
+	rows: Array<{ agentId: string; agentName?: string; sessionId: string; status: "running" | "waiting" | "idle"; lastActivityAt: number; turns: number }>,
+	nowMs: number = Date.now(),
+): string {
+	if (rows.length === 0) {
+		return "No parent agent sessions. (Agents without an active/main chat session, or delegated sub-agent sessions, are not listed — those surface via TaskList.)";
+	}
+	// Sort: running first, then waiting, then idle; within a group, most recent activity first.
+	const order: Record<string, number> = { running: 0, waiting: 1, idle: 2 };
+	const sorted = [...rows].sort((a, b) => {
+		const so = order[a.status] - order[b.status];
+		if (so !== 0) return so;
+		return b.lastActivityAt - a.lastActivityAt;
+	});
+	const lines = sorted.map((r) => {
+		const label = r.agentName || r.agentId;
+		return `${statusDot(r.status)} ${label} · ${shortId(r.sessionId)} · ${r.status} · ${formatRelativeTime(r.lastActivityAt, nowMs)} · ${r.turns} turns`;
+	});
+	return [
+		`Parent agent sessions (${sorted.length}):`,
+		...lines,
+		"",
+		"Legend: ● running  ◐ waiting  ○ idle. Use {resource:'sessions', sessionId:'<full-id>'} for a session's task tree + recent steps.",
+	].join("\n");
+}
+
+/**
+ * Render the sessions DETAIL (sessionId arg) as text — task tree (verbatim
+ * getRuntimeTaskTree output) + recent N=3 steps ({stepSeq, toolCalls[{name,argsBrief}], status}).
+ * No tokens (per design — usage is not a sessions-resource concern).
+ */
+function renderSessionsDetail(
+	sessionId: string,
+	taskTree: any[],
+	steps: Array<{ stepSeq: number; toolCalls: Array<{ name: string; argsBrief?: string }>; status: string; time: number }>,
+	nowMs: number = Date.now(),
+): string {
+	const out: string[] = [];
+	out.push(`Session ${sessionId}`);
+	out.push("");
+	out.push(`Task tree (${taskTree.length} ${taskTree.length === 1 ? "root" : "roots"}):`);
+	if (taskTree.length === 0) {
+		out.push("  (no live tasks — this session has no running/completed delegated tasks)");
+	} else {
+		// Rebuild parent→children once, then render roots recursively. Mirrors the
+		// UI TaskTree indent. Each line: `status icon · type · task (turns)`.
+		const byParent = new Map<string | undefined, any[]>();
+		for (const t of taskTree) {
+			const key = t.parentTaskId;
+			if (!byParent.has(key)) byParent.set(key, []);
+			byParent.get(key)!.push(t);
+		}
+		const roots = taskTree.filter((t) => !t.parentTaskId || !taskTree.some((x) => x.id === t.parentTaskId));
+		const icon = (s: string) => s === "running" ? "▶" : s === "finishing" ? "⏸" : s === "completed" ? "✓" : s === "failed" || s === "killed" || s === "interrupted" ? "✗" : "·";
+		const renderNode = (t: any, depth: number): string => {
+			const indent = "  ".repeat(depth);
+			const label = t.type === "subagent" ? `subagent${t.targetAgentId ? ` (${t.targetAgentId})` : ""}` : t.type;
+			const tail = `${t.turns ?? 0} turns`;
+			return `${indent}${icon(t.status)} ${label}: ${t.task ?? "(no task text)"} — ${tail}`;
+		};
+		const walk = (t: any, depth: number): string[] => {
+			const lines = [renderNode(t, depth)];
+			for (const c of byParent.get(t.id) ?? []) lines.push(...walk(c, depth + 1));
+			return lines;
+		};
+		for (const r of roots) out.push(...walk(r, 0));
+	}
+	out.push("");
+	out.push(`Recent steps (last ${steps.length}):`);
+	if (steps.length === 0) {
+		out.push("  (no tool calls yet in this session's live loop)");
+	} else {
+		for (const s of steps) {
+			const calls = s.toolCalls.map((c) => `${c.name}${c.argsBrief ? `(${c.argsBrief})` : ""}`).join(", ") || "(none)";
+			out.push(`  step ${s.stepSeq} [${s.status}] ${formatRelativeTime(s.time, nowMs)}: ${calls}`);
+		}
+	}
+	return out.join("\n");
+}
+
 export function createPlatformTools(getAppVersion?: () => string) {
 	const version = getAppVersion?.() ?? "0.0.0-dev";
 
@@ -64,7 +183,8 @@ export function createPlatformTools(getAppVersion?: () => string) {
 				"- 'info' — app version, paths (see below), pid, node version, platform, memory usage, uptime\n" +
 				"- 'logs' — recent log entries (lines?, level?: all|error|warn, source?: module tag, sessionId?: substring). `source` matches the structured [module] tag (e.g. agent|loop|ipc|db|tool|mcp|provider|session); `sessionId` filters to lines mentioning that sessionId anywhere in the line. Filters compose (all must match).\n" +
 				"- 'config' — workspace config from the DB (defaultModel, defaultProvider, proxy, workspaceDir)\n" +
-				"- 'providers' — AI providers from the DB (name, type, enabled, modelCount, baseUrl, redacted apiKey)\n\n" +
+				"- 'providers' — AI providers from the DB (name, type, enabled, modelCount, baseUrl, redacted apiKey)\n" +
+				"- 'sessions' — parent-agent session observation. OMIT sessionId → LIST (one line per parent agent's active/main chat session: status dot · agent · sessionId(short) · running|waiting|idle · relative time · turns). PASS sessionId → DETAIL (that session's live task tree via getRuntimeTaskTree + last 3 steps' tool calls, no tokens). Useful to self-introspect what the platform's parent agents are doing right now.\n\n" +
 				"This tool is for platform self-introspection only. To read files, list directories, or search content, use Read / Glob / Grep instead.\n\n" +
 				"Three distinct paths reported across resources — do NOT confuse them:\n" +
 				"- info.paths.dataDir   — the .zero-core HOME: DB (sessions.db), logs/, app config. Persistent app data.\n" +
@@ -72,12 +192,12 @@ export function createPlatformTools(getAppVersion?: () => string) {
 				"- config.workspaceDir   — the agent's FILE-WORKING directory (where agents read/write project files). This is the path you almost always want when talking about 'the workspace'.",
 			meta: { category: "management", isReadOnly: true },
 			inputSchema: z.object({
-				resource: z.enum(["info", "logs", "config", "providers"])
+				resource: z.enum(["info", "logs", "config", "providers", "sessions"])
 					.describe("Which platform diagnostic resource to access"),
 				lines: z.number().optional().describe("Log lines to return (for 'logs', max 500, default 50)"),
 				level: z.enum(["all", "error", "warn"]).optional().describe("Log level filter (for 'logs')"),
 				source: z.string().optional().describe("Log source/module filter (for 'logs') — matches the structured [module] tag (agent|loop|ipc|db|tool|mcp|provider|session, or any custom module). Case-insensitive exact match on the tag."),
-				sessionId: z.string().optional().describe("Filter 'logs' to lines mentioning this sessionId (case-insensitive substring match on the whole line)."),
+				sessionId: z.string().optional().describe("Dual-purpose by resource: for 'logs', filters to lines mentioning this sessionId (substring); for 'sessions', switches List→Detail (pass the FULL sessionId to get that session's task tree + recent steps)."),
 			}),
 			execute: async (input: any, ctx: any) => {
 				switch (input.resource) {
@@ -179,6 +299,25 @@ export function createPlatformTools(getAppVersion?: () => string) {
 							);
 						}
 						return JSON.stringify(providers, null, 2);
+					}
+					case "sessions": {
+						// platform-observability ① (sub-4): read-only session observation.
+						// Data comes through ctx.platformObserver (AgentService impl) — the
+						// runtime layer never imports the server. Same source the IPC
+						// sessions:parents / sessions:detail channels serve to the ③ kanban.
+						const observer = ctx?.platformObserver;
+						if (!observer || typeof observer.listParentSessions !== "function") {
+							return "Session observer not available in this context (platform-observability handle not injected).";
+						}
+						if (input.sessionId) {
+							// Detail: task tree + recent 3 steps (no tokens).
+							const tree = observer.getSessionTaskTree?.(input.sessionId) ?? [];
+							const steps = observer.getSessionRecentSteps?.(input.sessionId, 3) ?? [];
+							return renderSessionsDetail(input.sessionId, tree, steps);
+						}
+						// List: one line per parent agent session.
+						const rows = observer.listParentSessions();
+						return renderSessionsList(rows);
 					}
 					default:
 						return `Unknown resource: ${input.resource}`;

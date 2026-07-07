@@ -47,6 +47,9 @@ import type {
 	OrchestrateManifestRecord,
 	DelegatedTaskRecord,
 	RuntimeTaskInfo,
+	PlatformSessionSummary,
+	PlatformSessionStep,
+	PlatformSessionDetail,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -136,6 +139,13 @@ export interface IpcChannelDefs {
 	"sessions:delete":  { params: [agentId: string, sessionId: string];           result: Ok | (Ok & { newSessionId: string }) };
 	"sessions:archive": { params: [agentId: string, sessionId: string];           result: Ok & { newSessionId: string } };
 	"sessions:metrics": { params: []; result: import("../server/session-metrics.js").AggregateMetrics & { sessions: Record<string, import("../server/session-metrics.js").SessionMetrics> } };
+	// platform-observability ① (sub-4): parent-session List + Detail for the ③
+	// kanban. Same data the Platform 'sessions' resource (text) serves to agents
+	// — two faces of one source. sessions:parents returns the left-column List
+	// (kanban hides sessionId); sessions:detail returns a session's live task
+	// tree (RuntimeTaskInfo[], same source as TaskList) + last 3 steps.
+	"sessions:parents": { params: [];                              result: PlatformSessionSummary[] };
+	"sessions:detail":  { params: [sessionId: string];             result: PlatformSessionDetail };
 
 	// ── Chat ─────────────────────────────────────────────────
 	"chat:send":   { params: [text: string, agentId?: string, sessionId?: string];    result: Ok };

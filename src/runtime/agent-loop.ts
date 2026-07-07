@@ -304,6 +304,11 @@ export class AgentLoop implements AgentRuntime {
 			contextBundle: config.contextBundle,
 			// v0.8 (P3): ManagementService handle for the zero role's action tools.
 			management: config.management,
+			// platform-observability ① (sub-4): read-only session observation
+			// handle backing the Platform 'sessions' resource. Injected by
+			// AgentService on every SessionConfig; mirrored here so the tool's
+			// execute() reaches it via ctx.platformObserver.
+			platformObserver: config.platformObserver,
 			// v0.8 (P2 §11.5): subagents + resolver surfaced so the Orchestrate
 			// engine can resolve a DSL `task` node's agentTool name → target
 			// agent (replaces retired getAgentToolEntries resolver).
@@ -675,6 +680,35 @@ export class AgentLoop implements AgentRuntime {
 			name: String(b.name),
 			args: typeof b.args === "string" ? summarizeArgs(b.args) : b.args,
 		}));
+	}
+
+	/**
+	 * platform-observability ① (sub-4): the last N steps' tool-call blocks,
+	 * grouped per step — {stepSeq, toolCalls:[{name, argsBrief}], status, time}.
+	 * Same recorder source as getRecentToolCalls, but keeps the step grouping
+	 * (recorder.completedSteps + currentStepBlocks) so each entry is one LLM
+	 * step's worth of tool calls. **No tokens** (per design — usage is stripped).
+	 * status = aggregate of the step's tool blocks ("running" if any running,
+	 * "error" if any error, else "done"); time = the recorder's currentTurnGroup
+	 * (best wall-clock proxy available without per-step timestamps). Returns []
+	 * when there are no tool-bearing steps. stepSeq is 0-based within the run.
+	 */
+	getRecentSteps(n: number = 3): Array<{ stepSeq: number; toolCalls: Array<{ name: string; argsBrief?: string }>; status: string; time: number }> {
+		const steps = this.recorder.getRecentStepBlocks(n);
+		return steps.map((s) => {
+			const toolCalls = s.blocks
+				.filter((b: any) => b?.type === "tool" && b?.name)
+				.map((b: any) => ({
+					name: String(b.name),
+					argsBrief: typeof b.args === "string" ? summarizeArgs(b.args) : (b.args != null ? String(b.args) : undefined),
+				}));
+			const statuses = s.blocks.filter((b: any) => b?.type === "tool").map((b: any) => b.status as string);
+			const status = statuses.includes("running") ? "running"
+				: statuses.includes("error") ? "error"
+				: statuses.length > 0 ? "done"
+				: "done";
+			return { stepSeq: s.stepSeq, toolCalls, status, time: s.time };
+		}).filter((s) => s.toolCalls.length > 0);
 	}
 
 	/** Expose session turns for UI rendering — runtime is the single source of truth. */
