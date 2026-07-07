@@ -206,6 +206,20 @@ export class TaskRegistry {
 	}
 
 	/**
+	 * sub-6 (force-Wait hook): true when ANY task is still active (running OR
+	 * finishing). The parent turn must not end while this is true — the
+	 * force-Wait hook gates its nudge on this. Matches the in-suspendUntilWake
+	 * definition so "should I keep waiting?" and "should the turn keep going?"
+	 * agree on what "active" means.
+	 */
+	hasRunning(): boolean {
+		for (const t of this.tasks.values()) {
+			if (t.status === "running" || t.status === "finishing") return true;
+		}
+		return false;
+	}
+
+	/**
 	 * sub-5 (Wait rewrite): suspend the calling Wait tool until one of three
 	 * wake sources fires. Returns the wake reason + wall-clock elapsed.
 	 *

@@ -98,7 +98,7 @@
 		},
 		{
 			"path": "src/runtime/agent-loop.ts",
-			"lines": 1466,
+			"lines": 1490,
 			"dir": "src/runtime",
 			"exports": [
 				"AgentLoop.run",
@@ -183,17 +183,17 @@
 				"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:684",
 				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:801",
 				"src/runtime/agent-loop.ts/AgentLoop.executeStream:835",
-				"src/runtime/agent-loop.ts/AgentLoop.buildTools:1002",
-				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1014",
-				"src/runtime/agent-loop.ts/AgentLoop.prependContext:1022",
-				"src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:1039",
-				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1063",
-				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1199",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1343",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1415",
-				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1432",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1439",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1458",
+				"src/runtime/agent-loop.ts/AgentLoop.buildTools:1026",
+				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1038",
+				"src/runtime/agent-loop.ts/AgentLoop.prependContext:1046",
+				"src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:1063",
+				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1087",
+				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1223",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1367",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1439",
+				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1456",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1463",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1482",
 				"src/runtime/agent-loop.ts/AgentLoop.apply:763"
 			],
 			"description": "AgentLoop 类：单 turn 执行（run/resume/executeStream），retry + exp backoff，context-length prune + retry，streaming event emit"
@@ -371,8 +371,27 @@
 			"description": ""
 		},
 		{
+			"path": "src/runtime/hooks/force-wait-hooks.ts",
+			"lines": 126,
+			"dir": "src/runtime/hooks",
+			"exports": [
+				"registerForceWaitHooks",
+				"_resetForceWaitNudgeState"
+			],
+			"imports": [
+				"src/core/hook-registry.ts",
+				"src/runtime/task-registry.ts",
+				"src/core/logger.ts"
+			],
+			"functions": [
+				"src/runtime/hooks/force-wait-hooks.ts/registerForceWaitHooks:74",
+				"src/runtime/hooks/force-wait-hooks.ts/_resetForceWaitNudgeState:123"
+			],
+			"description": ""
+		},
+		{
 			"path": "src/runtime/hooks/index.ts",
-			"lines": 185,
+			"lines": 191,
 			"dir": "src/runtime/hooks",
 			"exports": [
 				"registerHooksForLoop"
@@ -381,6 +400,7 @@
 				"src/core/hook-registry.ts",
 				"src/runtime/hooks/compression-hooks.ts",
 				"src/runtime/hooks/extraction-hooks.ts",
+				"src/runtime/hooks/force-wait-hooks.ts",
 				"src/runtime/hooks/provider-options-hooks.ts",
 				"src/runtime/hooks/todo-cleanup-hooks.ts",
 				"src/runtime/hooks/task-control-hooks.ts",
@@ -402,7 +422,7 @@
 				"src/core/logger.ts"
 			],
 			"functions": [
-				"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+				"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 			],
 			"description": ""
 		},
@@ -938,7 +958,7 @@
 		},
 		{
 			"path": "src/runtime/task-registry.ts",
-			"lines": 301,
+			"lines": 315,
 			"dir": "src/runtime",
 			"exports": [
 				"TaskRegistry.subscribe",
@@ -956,6 +976,7 @@
 				"TaskRegistry.get",
 				"TaskRegistry.seed",
 				"TaskRegistry.list",
+				"TaskRegistry.hasRunning",
 				"TaskRegistry.suspendUntilWake",
 				"TaskRegistry.interruptWaitForUserInput",
 				"TaskRegistry.tryWake",
@@ -980,12 +1001,13 @@
 				"src/runtime/task-registry.ts/TaskRegistry.get:185",
 				"src/runtime/task-registry.ts/TaskRegistry.seed:196",
 				"src/runtime/task-registry.ts/TaskRegistry.list:201",
-				"src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:232",
-				"src/runtime/task-registry.ts/TaskRegistry.interruptWaitForUserInput:279",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:283",
-				"src/runtime/task-registry.ts/TaskRegistry.cleanup:289",
-				"src/runtime/task-registry.ts/TaskRegistry.hasRunning:249",
-				"src/runtime/task-registry.ts/TaskRegistry.finish:256"
+				"src/runtime/task-registry.ts/TaskRegistry.hasRunning:215",
+				"src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:246",
+				"src/runtime/task-registry.ts/TaskRegistry.interruptWaitForUserInput:293",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
+				"src/runtime/task-registry.ts/TaskRegistry.cleanup:303",
+				"src/runtime/task-registry.ts/TaskRegistry.hasRunning:263",
+				"src/runtime/task-registry.ts/TaskRegistry.finish:270"
 			],
 			"description": "任务注册表：跟踪运行中任务状态、进度、完成/失败/kill"
 		},
@@ -5359,7 +5381,7 @@
 		},
 		{
 			"path": "src/core/hook-types.ts",
-			"lines": 352,
+			"lines": 374,
 			"dir": "src/core",
 			"exports": [],
 			"imports": [],
@@ -5942,10 +5964,10 @@
 			"signature": "method run(userMessage: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1432",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1458",
+				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1456",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1482",
 				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:801",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1439"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1463"
 			]
 		},
 		{
@@ -5960,11 +5982,11 @@
 			"signature": "method resume(interruptedTurnSeq?: number, lastCompletedStepSeq?: number)",
 			"description": "Step 2D: step-level resume. Reads the per-session `lastCompletedStepSeq`\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1432",
+				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1456",
 				"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:513",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1458",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1482",
 				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:801",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1439"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1463"
 			]
 		},
 		{
@@ -6035,7 +6057,7 @@
 			"signature": "method beginWaitSuspend()",
 			"description": "sub-5: called by the Wait tool (via ctx.beginWait) right before it\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1439"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1463"
 			]
 		},
 		{
@@ -6050,7 +6072,7 @@
 			"signature": "method endWaitSuspend(reason: string)",
 			"description": "sub-5: called by the Wait tool (via ctx.endWait) right after it resolves.\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1439"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1463"
 			]
 		},
 		{
@@ -6280,9 +6302,9 @@
 			"callees": [
 				"src/runtime/agent-loop.ts/AgentLoop.executeStream:835",
 				"src/runtime/agent-utils.ts/classifyError:36",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1458",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1482",
 				"src/runtime/agent-utils.ts/userFriendlyMessage:54",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1439"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1463"
 			]
 		},
 		{
@@ -6291,33 +6313,33 @@
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
 			"line": 835,
-			"endLine": 1000,
-			"statementCount": 41,
+			"endLine": 1024,
+			"statementCount": 48,
 			"exported": true,
 			"signature": "method executeStream()",
 			"description": "",
 			"callees": [
 				"src/runtime/provider-factory.ts/resolveModel:42",
-				"src/runtime/agent-loop.ts/AgentLoop.buildTools:1002",
-				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1014",
+				"src/runtime/agent-loop.ts/AgentLoop.buildTools:1026",
+				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1038",
 				"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:291",
 				"src/runtime/context-message.ts/buildContextMessage:36",
-				"src/runtime/agent-loop.ts/AgentLoop.prependContext:1022",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1458",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1439",
+				"src/runtime/agent-loop.ts/AgentLoop.prependContext:1046",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1482",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1463",
 				"src/runtime/workbench.ts/renderWorkbench:37",
-				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1063",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1343",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1415"
+				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1087",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1367",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1439"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.buildTools:1002",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.buildTools:1026",
 			"name": "AgentLoop.buildTools",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1002,
-			"endLine": 1012,
+			"line": 1026,
+			"endLine": 1036,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method buildTools()",
@@ -6327,12 +6349,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1014",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1038",
 			"name": "AgentLoop.assembleSystemPrompt",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1014,
-			"endLine": 1020,
+			"line": 1038,
+			"endLine": 1044,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method assembleSystemPrompt()",
@@ -6340,12 +6362,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.prependContext:1022",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.prependContext:1046",
 			"name": "AgentLoop.prependContext",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1022,
-			"endLine": 1030,
+			"line": 1046,
+			"endLine": 1054,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method prependContext(messages: any[], ctx: string | null)",
@@ -6353,12 +6375,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:1039",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:1063",
 			"name": "AgentLoop.resolveGlobalWikiStore",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1039,
-			"endLine": 1049,
+			"line": 1063,
+			"endLine": 1073,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method resolveGlobalWikiStore(config: SessionConfig)",
@@ -6366,82 +6388,82 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1063",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1087",
 			"name": "AgentLoop.runOneStepWithRetry",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1063,
-			"endLine": 1188,
+			"line": 1087,
+			"endLine": 1212,
 			"statementCount": 49,
 			"exported": true,
 			"signature": "method runOneStepWithRetry(opts: {\r\n\t\tmodel: any;\r\n\t\tsystem: string;\r\n\t\tmessages: any[];\r\n\t\ttools: Record<string, any>;\r\n\t\tproviderOptions: Record<string, Record<string, any>>;\r\n\t\tstepNumber: number;\r\n\t})",
 			"description": "Step 2C: run a single step (one streamText with stopWhen: stepCountIs(1))\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1199",
+				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1223",
 				"src/runtime/agent-utils.ts/classifyError:36",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1458",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1482",
 				"src/runtime/agent-utils.ts/isTransientError:50",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1439"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1463"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1199",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1223",
 			"name": "AgentLoop.processStreamEvents",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1199,
-			"endLine": 1334,
+			"line": 1223,
+			"endLine": 1358,
 			"statementCount": 66,
 			"exported": true,
 			"signature": "method processStreamEvents(result: any, stepNumber: number)",
 			"description": "Step 2C: consume one step's fullStream. Returns a summary (tool-call flag,\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1439",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1458"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1463",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1482"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1343",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1367",
 			"name": "AgentLoop.finalizeOneStep",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1343,
-			"endLine": 1413,
+			"line": 1367,
+			"endLine": 1437,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method finalizeOneStep(usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }, stepNumber?: number)",
 			"description": "Step 2C: finalize ONE successful step. Seals the recorder step with its\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1439",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1458",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1463",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1482",
 				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:598"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1415",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1439",
 			"name": "AgentLoop.finalizeStream",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1415,
-			"endLine": 1428,
+			"line": 1439,
+			"endLine": 1452,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method finalizeStream(pendingPersist: any[])",
 			"description": "",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:1439",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:1463",
 				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:598",
 				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:588",
 				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:593"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1432",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1456",
 			"name": "AgentLoop.setupTimeout",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1432,
-			"endLine": 1435,
+			"line": 1456,
+			"endLine": 1459,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method setupTimeout()",
@@ -6451,12 +6473,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.emit:1439",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.emit:1463",
 			"name": "AgentLoop.emit",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1439,
-			"endLine": 1446,
+			"line": 1463,
+			"endLine": 1470,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method emit(event: StreamEvent)",
@@ -6464,12 +6486,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1458",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1482",
 			"name": "AgentLoop.triggerLocal",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1458,
-			"endLine": 1464,
+			"line": 1482,
+			"endLine": 1488,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method triggerLocal(event: import(\"../core/hook-types.js\").HookEventName, ctx: Record<string, unknown>)",
@@ -7050,13 +7072,39 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/index.ts/registerHooksForLoop:121",
+			"id": "src/runtime/hooks/force-wait-hooks.ts/registerForceWaitHooks:74",
+			"name": "registerForceWaitHooks",
+			"kind": "function",
+			"file": "src/runtime/hooks/force-wait-hooks.ts",
+			"line": 74,
+			"endLine": 120,
+			"statementCount": 26,
+			"exported": true,
+			"signature": "function registerForceWaitHooks(registry: HookRegistry = HookRegistry.getInstance())",
+			"description": "Register the force-Wait TurnEndCheck hook. Idempotent.",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/hooks/force-wait-hooks.ts/_resetForceWaitNudgeState:123",
+			"name": "_resetForceWaitNudgeState",
+			"kind": "function",
+			"file": "src/runtime/hooks/force-wait-hooks.ts",
+			"line": 123,
+			"endLine": 125,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "function _resetForceWaitNudgeState()",
+			"description": "Test-only: reset the per-session nudge marker.",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/hooks/index.ts/registerHooksForLoop:122",
 			"name": "registerHooksForLoop",
 			"kind": "function",
 			"file": "src/runtime/hooks/index.ts",
-			"line": 121,
-			"endLine": 173,
-			"statementCount": 22,
+			"line": 122,
+			"endLine": 178,
+			"statementCount": 23,
 			"exported": true,
 			"signature": "function registerHooksForLoop(registry: HookRegistry, loopKind: \"main\" | \"delegated\", deps: HookWiringDeps)",
 			"description": "Register the full feature hook set onto `registry`, scoped by loop kind.\r",
@@ -7067,6 +7115,7 @@
 				"src/runtime/hooks/provider-options-hooks.ts/registerProviderOptionsHooks:30",
 				"src/runtime/hooks/compression-hooks.ts/registerCompressionHooks:70",
 				"src/runtime/hooks/todo-cleanup-hooks.ts/registerTodoCleanupHooks:29",
+				"src/runtime/hooks/force-wait-hooks.ts/registerForceWaitHooks:74",
 				"src/runtime/hooks/extraction-hooks.ts/registerExtractionHooks:170",
 				"src/server/workflow-context-hook.ts/registerWorkflowContextHook:68",
 				"src/runtime/hooks/input-queue-hooks.ts/registerInputQueueHooks:39",
@@ -9108,7 +9157,7 @@
 			"signature": "method registerSubLoopHooks(subLoop: AgentRuntime)",
 			"description": "Step 1B: register the delegated hook set on a freshly-built sub-loop's\r",
 			"callees": [
-				"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+				"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 			]
 		},
 		{
@@ -9294,7 +9343,7 @@
 			"description": "Advisory finish: mark a running task \"finishing\" and stage a control\r",
 			"callees": [
 				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:283",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
 				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
 			]
 		},
@@ -9311,7 +9360,7 @@
 			"description": "",
 			"callees": [
 				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:283",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
 				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
 			]
 		},
@@ -9328,7 +9377,7 @@
 			"description": "",
 			"callees": [
 				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:283",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
 				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
 			]
 		},
@@ -9345,7 +9394,7 @@
 			"description": "",
 			"callees": [
 				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:283",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
 				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
 			]
 		},
@@ -9362,7 +9411,7 @@
 			"description": "Acknowledge a FINISHED task (completed/failed/killed/interrupted) and drop\r",
 			"callees": [
 				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:283",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
 				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
 			]
 		},
@@ -9410,12 +9459,25 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:232",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.hasRunning:215",
+			"name": "TaskRegistry.hasRunning",
+			"kind": "method",
+			"file": "src/runtime/task-registry.ts",
+			"line": 215,
+			"endLine": 220,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method hasRunning()",
+			"description": "sub-6 (force-Wait hook): true when ANY task is still active (running OR\r",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:246",
 			"name": "TaskRegistry.suspendUntilWake",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 232,
-			"endLine": 272,
+			"line": 246,
+			"endLine": 286,
 			"statementCount": 25,
 			"exported": true,
 			"signature": "method suspendUntilWake(opts: WaitSuspendOptions)",
@@ -9423,12 +9485,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.interruptWaitForUserInput:279",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.interruptWaitForUserInput:293",
 			"name": "TaskRegistry.interruptWaitForUserInput",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 279,
-			"endLine": 281,
+			"line": 293,
+			"endLine": 295,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method interruptWaitForUserInput()",
@@ -9436,12 +9498,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.tryWake:283",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
 			"name": "TaskRegistry.tryWake",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 283,
-			"endLine": 287,
+			"line": 297,
+			"endLine": 301,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method tryWake()",
@@ -9449,12 +9511,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.cleanup:289",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.cleanup:303",
 			"name": "TaskRegistry.cleanup",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 289,
-			"endLine": 299,
+			"line": 303,
+			"endLine": 313,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method cleanup(maxAgeMs: number = 3600_000)",
@@ -9464,12 +9526,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.hasRunning:249",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.hasRunning:263",
 			"name": "TaskRegistry.hasRunning",
 			"kind": "arrow",
 			"file": "src/runtime/task-registry.ts",
-			"line": 249,
-			"endLine": 249,
+			"line": 263,
+			"endLine": 263,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn ()",
@@ -9477,12 +9539,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.finish:256",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.finish:270",
 			"name": "TaskRegistry.finish",
 			"kind": "arrow",
 			"file": "src/runtime/task-registry.ts",
-			"line": 256,
-			"endLine": 260,
+			"line": 270,
+			"endLine": 274,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "fn (r: WakeReason)",
@@ -13763,7 +13825,7 @@
 				"src/server/flow-actions.ts/createFlowActions:321",
 				"src/server/agent-service.ts/AgentService.buildHookDeps:359",
 				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1552",
-				"src/runtime/hooks/index.ts/registerHooksForLoop:121",
+				"src/runtime/hooks/index.ts/registerHooksForLoop:122",
 				"src/server/agent-service.ts/AgentService.fireSessionStart:377"
 			]
 		},
@@ -13801,7 +13863,7 @@
 				"src/runtime/tools/mcp-tool.ts/buildMcpTools:110",
 				"src/server/agent-service.ts/AgentService.buildHookDeps:359",
 				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:1552",
-				"src/runtime/hooks/index.ts/registerHooksForLoop:121",
+				"src/runtime/hooks/index.ts/registerHooksForLoop:122",
 				"src/server/agent-service.ts/AgentService.fireSessionStart:377",
 				"src/server/agent-service.ts/AgentService.markRunning:589",
 				"src/server/agent-service.ts/AgentService.emit:1614"
@@ -25476,41 +25538,41 @@
 		"src/main/ipc-proxy.ts/pollReady:435": [
 			"src/main/ipc-proxy.ts/connectEventBridge:380"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1432": [
+		"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1456": [
 			"src/runtime/agent-loop.ts/AgentLoop.run:299",
 			"src/runtime/agent-loop.ts/AgentLoop.resume:374"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1458": [
+		"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:1482": [
 			"src/runtime/agent-loop.ts/AgentLoop.run:299",
 			"src/runtime/agent-loop.ts/AgentLoop.resume:374",
 			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:801",
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:835",
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1063",
-			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1199",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1343"
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1087",
+			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1223",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1367"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:801": [
 			"src/runtime/agent-loop.ts/AgentLoop.run:299",
 			"src/runtime/agent-loop.ts/AgentLoop.resume:374"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.emit:1439": [
+		"src/runtime/agent-loop.ts/AgentLoop.emit:1463": [
 			"src/runtime/agent-loop.ts/AgentLoop.run:299",
 			"src/runtime/agent-loop.ts/AgentLoop.resume:374",
 			"src/runtime/agent-loop.ts/AgentLoop.beginWaitSuspend:474",
 			"src/runtime/agent-loop.ts/AgentLoop.endWaitSuspend:486",
 			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:801",
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:835",
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1063",
-			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1199",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1343",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1415"
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1087",
+			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1223",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1367",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1439"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:513": [
 			"src/runtime/agent-loop.ts/AgentLoop.resume:374"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.abort:431": [
 			"src/runtime/agent-loop.ts/AgentLoop.abort:431",
-			"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1432"
+			"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:1456"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:461": [
 			"src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:461"
@@ -25529,16 +25591,16 @@
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:588": [
 			"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:588",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1415"
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1439"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:593": [
 			"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:593",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1415"
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1439"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:598": [
 			"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:598",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1343",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1415"
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1367",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1439"
 		],
 		"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:633": [
 			"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:633"
@@ -25555,7 +25617,7 @@
 		],
 		"src/runtime/agent-utils.ts/classifyError:36": [
 			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:801",
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1063"
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1087"
 		],
 		"src/runtime/agent-utils.ts/userFriendlyMessage:54": [
 			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:801"
@@ -25568,10 +25630,10 @@
 			"src/server/extractor-b-service.ts/ExtractorBService.callLLM:176",
 			"src/server/tool-execution-router.ts/createToolExecutionRouter:39"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.buildTools:1002": [
+		"src/runtime/agent-loop.ts/AgentLoop.buildTools:1026": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:835"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1014": [
+		"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1038": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:835"
 		],
 		"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:291": [
@@ -25581,29 +25643,29 @@
 		"src/runtime/context-message.ts/buildContextMessage:36": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:835"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.prependContext:1022": [
+		"src/runtime/agent-loop.ts/AgentLoop.prependContext:1046": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:835"
 		],
 		"src/runtime/workbench.ts/renderWorkbench:37": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:835"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1063": [
+		"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1087": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:835"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1343": [
+		"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1367": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:835"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1415": [
+		"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:1439": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:835"
 		],
 		"src/runtime/tools/index.ts/buildToolsSet:164": [
-			"src/runtime/agent-loop.ts/AgentLoop.buildTools:1002"
+			"src/runtime/agent-loop.ts/AgentLoop.buildTools:1026"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1199": [
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1063"
+		"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1223": [
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1087"
 		],
 		"src/runtime/agent-utils.ts/isTransientError:50": [
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1063"
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1087"
 		],
 		"src/runtime/checkpoint-manager.ts/CheckpointManager.saveUserTurn:55": [
 			"src/runtime/checkpoint-manager.ts/CheckpointManager.saveUserTurn:55"
@@ -25670,37 +25732,40 @@
 			"src/runtime/hooks/extraction-hooks.ts/closeFlushSession:267"
 		],
 		"src/runtime/hooks/turn-hooks.ts/registerTurnHooks:47": [
-			"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 		],
 		"src/server/durable-hooks.ts/registerDurableHooks:73": [
-			"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 		],
 		"src/server/tool-execution-hooks.ts/registerToolExecutionHooks:35": [
-			"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 		],
 		"src/runtime/hooks/provider-options-hooks.ts/registerProviderOptionsHooks:30": [
-			"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 		],
 		"src/runtime/hooks/compression-hooks.ts/registerCompressionHooks:70": [
-			"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 		],
 		"src/runtime/hooks/todo-cleanup-hooks.ts/registerTodoCleanupHooks:29": [
-			"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
+		],
+		"src/runtime/hooks/force-wait-hooks.ts/registerForceWaitHooks:74": [
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 		],
 		"src/runtime/hooks/extraction-hooks.ts/registerExtractionHooks:170": [
-			"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 		],
 		"src/server/workflow-context-hook.ts/registerWorkflowContextHook:68": [
-			"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 		],
 		"src/runtime/hooks/input-queue-hooks.ts/registerInputQueueHooks:39": [
-			"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 		],
 		"src/server/metrics-hooks.ts/registerMetricsHooks:31": [
-			"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 		],
 		"src/runtime/hooks/task-control-hooks.ts/registerTaskControlHooks:67": [
-			"src/runtime/hooks/index.ts/registerHooksForLoop:121"
+			"src/runtime/hooks/index.ts/registerHooksForLoop:122"
 		],
 		"src/runtime/hooks/task-control-hooks.ts/clearSession:58": [
 			"src/runtime/hooks/task-control-hooks.ts/registerTaskControlHooks:67"
@@ -25955,7 +26020,7 @@
 		"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:846": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:846"
 		],
-		"src/runtime/hooks/index.ts/registerHooksForLoop:121": [
+		"src/runtime/hooks/index.ts/registerHooksForLoop:122": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:914",
 			"src/server/agent-service.ts/AgentService.createLoopForSession:651",
 			"src/server/agent-service.ts/AgentService.sendProjectPrompt:889"
@@ -25977,7 +26042,7 @@
 			"src/runtime/task-registry.ts/TaskRegistry.kill:150",
 			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:174",
 			"src/runtime/task-registry.ts/TaskRegistry.seed:196",
-			"src/runtime/task-registry.ts/TaskRegistry.cleanup:289"
+			"src/runtime/task-registry.ts/TaskRegistry.cleanup:303"
 		],
 		"src/runtime/task-registry.ts/TaskRegistry.get:185": [
 			"src/runtime/task-registry.ts/TaskRegistry.updateProgress:93",
@@ -25989,7 +26054,7 @@
 			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:174",
 			"src/runtime/task-registry.ts/TaskRegistry.get:185"
 		],
-		"src/runtime/task-registry.ts/TaskRegistry.tryWake:283": [
+		"src/runtime/task-registry.ts/TaskRegistry.tryWake:297": [
 			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:116",
 			"src/runtime/task-registry.ts/TaskRegistry.complete:126",
 			"src/runtime/task-registry.ts/TaskRegistry.fail:138",
@@ -28273,6 +28338,7 @@
 			"src/runtime/compression-engine.ts",
 			"src/runtime/hooks/compression-hooks.ts",
 			"src/runtime/hooks/extraction-hooks.ts",
+			"src/runtime/hooks/force-wait-hooks.ts",
 			"src/runtime/hooks/index.ts",
 			"src/runtime/hooks/input-queue-hooks.ts",
 			"src/runtime/hooks/provider-options-hooks.ts",
@@ -28385,6 +28451,7 @@
 			"src/runtime/agent-loop.ts",
 			"src/runtime/hooks/compression-hooks.ts",
 			"src/runtime/hooks/extraction-hooks.ts",
+			"src/runtime/hooks/force-wait-hooks.ts",
 			"src/runtime/hooks/index.ts",
 			"src/runtime/hooks/input-queue-hooks.ts",
 			"src/runtime/hooks/provider-options-hooks.ts",
@@ -28538,10 +28605,18 @@
 		"src/server/extractor-b-service.ts": [
 			"src/runtime/hooks/extraction-hooks.ts"
 		],
+		"src/runtime/task-registry.ts": [
+			"src/runtime/hooks/force-wait-hooks.ts",
+			"src/runtime/subagent-delegation.ts",
+			"src/runtime/subagent-delegator.ts"
+		],
 		"src/runtime/hooks/compression-hooks.ts": [
 			"src/runtime/hooks/index.ts"
 		],
 		"src/runtime/hooks/extraction-hooks.ts": [
+			"src/runtime/hooks/index.ts"
+		],
+		"src/runtime/hooks/force-wait-hooks.ts": [
 			"src/runtime/hooks/index.ts"
 		],
 		"src/runtime/hooks/provider-options-hooks.ts": [
@@ -28768,10 +28843,6 @@
 			"src/core/config.ts",
 			"src/core/device-context.ts",
 			"src/core/tool-registry.ts"
-		],
-		"src/runtime/task-registry.ts": [
-			"src/runtime/subagent-delegation.ts",
-			"src/runtime/subagent-delegator.ts"
 		],
 		"src/runtime/agent-loop.ts": [
 			"src/runtime/subagent-delegation.ts",

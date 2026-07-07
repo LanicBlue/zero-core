@@ -49,6 +49,7 @@ import { registerExtractionHooks, type ExtractionHooksDeps } from "./extraction-
 // 收件箱 (running 一直在;终态留到 TaskGet 消费才删) replaces the old addMessage
 // notification path. Fewer accumulating message types. The `notified` flag on
 // TaskInfo is also removed (no consumer left).
+import { registerForceWaitHooks } from "./force-wait-hooks.js";
 import { registerProviderOptionsHooks } from "./provider-options-hooks.js";
 import { registerTodoCleanupHooks } from "./todo-cleanup-hooks.js";
 import { registerTaskControlHooks } from "./task-control-hooks.js";
@@ -139,6 +140,10 @@ export function registerHooksForLoop(
 	registerCompressionHooks(registry);
 	// Clear all-completed todos at the end of the current turn (UI auto-hide).
 	registerTodoCleanupHooks(registry);
+	// sub-6 (force-Wait): if running background tasks exist when a turn is
+	// about to end, nudge the model to Wait (one nudge per turn). Registered
+	// for both loop kinds — either can own background tasks via TaskStart.
+	registerForceWaitHooks(registry);
 	if (extractionDeps) {
 		registerExtractionHooks(extractionDeps, registry);
 	}
@@ -175,6 +180,7 @@ export function registerHooksForLoop(
 export {
 	registerCompressionHooks,
 	registerExtractionHooks,
+	registerForceWaitHooks,
 	registerProviderOptionsHooks,
 	registerTodoCleanupHooks,
 	registerTaskControlHooks,

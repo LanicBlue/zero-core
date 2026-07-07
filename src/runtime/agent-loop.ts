@@ -991,6 +991,30 @@ export class AgentLoop implements AgentRuntime {
 
 			// No tool call this step → the model produced its final answer; turn done.
 			if (!step.hadToolCall) {
+				// sub-6 (force-Wait): last-chance hook before the turn ends. A
+				// handler (force-wait-hooks) may return { forceContinue: true,
+				// message } to inject a nudge and run ONE more step instead of
+				// ending. The handler owns per-turn de-dup so a turn that keeps
+				// trying to end isn't nudged into a loop; Wait timeout is the
+				// backstop. Not fired while a Wait is suspended (turn is mid-run,
+				// not ending) — see isWaiting guard in the hook itself.
+				const endCheck = await this.triggerLocal("TurnEndCheck", {
+					agentId: this.config.agentId,
+					sessionId: this.session.getSessionId(),
+					resultText: step.text,
+					taskRegistry: this.delegator.taskRegistry,
+				});
+				if (endCheck.forceContinue === true && typeof endCheck.message === "string" && endCheck.message.length > 0) {
+					// Inject the nudge as a user message for the next step and
+					// continue the while-loop (stepNumber increments naturally).
+					// Persist it into the session so it survives a mid-turn crash
+					// and is visible on rebuild.
+					const nudgeMsg = { role: "user", content: endCheck.message };
+					messages = [...messages, nudgeMsg];
+					pendingPersist.push(nudgeMsg);
+					log.debug("loop", `TurnEndCheck forceContinue: running one more step (${endCheck.message.slice(0, 60)}…)`);
+					continue;
+				}
 				this.resultText = step.text;
 				break;
 			}
