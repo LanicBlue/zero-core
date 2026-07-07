@@ -52,6 +52,9 @@ import { SystemPromptAssembler } from "./prompt-sections.js";
 import { buildContextMessage } from "./context-message.js";
 import { SubagentDelegator } from "./subagent-delegator.js";
 import { ToolRateLimiter } from "./tool-rate-limiter.js";
+// platform-observability ②.4 (sub-3): turn 级 ALS context,传 tier + 身份给
+// provider-factory acquire → 并发队列按 tier 优先级出队。
+import { runInConcurrencyContext, turnSourceToTier } from "./concurrency-context.js";
 import type { WikiStore } from "../server/wiki-node-store.js";
 import type { DelegatedTaskRecord } from "../shared/types.js";
 import {
@@ -347,49 +350,63 @@ export class AgentLoop implements AgentRuntime {
 		this.userInterruptQueued = false;
 		const timeout = this.setupTimeout();
 
-		try {
-			// Step 1C: UserPromptSubmit is deleted (no consumer; the input-gate
-			// concern merged into TurnStart). addMessage runs unconditionally.
-			this.session.addMessage({ role: "user", content: userMessage });
-			this.session.saveToDb();
-			await this.session.pruneIfNeeded();
+		// platform-observability ②.4 (sub-3): set the ALS turn context BEFORE
+		// any LLM call. Scope covers the whole try/finally (incl. runWithRetry
+		// → streamText → provider middleware acquire). provider-factory reads
+		// tier + identity from this and attaches to the waiter → release() then
+		// dequeues by tier priority. sub-loops are independent AgentLoops, each
+		// sets its own context here.
+		const turnCtx = {
+			sessionId: this.config.sessionId,
+			agentId: this.config.agentId,
+			tier: turnSourceToTier(this.config.source),
+		};
 
-			log.loop("Messages after prune:", this.session.getMessages().length, "est tokens:", this.session.getMessages().reduce((s: number, m: any) => s + Math.ceil(JSON.stringify(m).length / 4), 0));
+		return runInConcurrencyContext(turnCtx, async () => {
+			try {
+				// Step 1C: UserPromptSubmit is deleted (no consumer; the input-gate
+				// concern merged into TurnStart). addMessage runs unconditionally.
+				this.session.addMessage({ role: "user", content: userMessage });
+				this.session.saveToDb();
+				await this.session.pruneIfNeeded();
 
-			await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage, source: this.config.source });
+				log.loop("Messages after prune:", this.session.getMessages().length, "est tokens:", this.session.getMessages().reduce((s: number, m: any) => s + Math.ceil(JSON.stringify(m).length / 4), 0));
 
-			// TurnStart hook has written user turn; next seq is the first assistant step
-			if (this.config.db && this.config.sessionId) {
-				this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+				await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage, source: this.config.source });
+
+				// TurnStart hook has written user turn; next seq is the first assistant step
+				if (this.config.db && this.config.sessionId) {
+					this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+				}
+				this.stepOffset = 0;
+
+				// Set the turn group (= user message's seq = stepBaseSeq - 1 for non-resume,
+				// but TurnStart already wrote the user turn so getTurnCount includes it)
+				const userSeq = this.stepBaseSeq - 1;
+				this.recorder.startTurnGroup(userSeq);
+
+				await this.runWithRetry();
+
+				// Step 3B: PostTurnComplete was deleted. Its operations moved to
+				// StepEnd (compression/extraction/todo evaluate per step) and the
+				// token estimate was dropped (real usage flows via the `usage`
+				// stream event → metrics-events.ts). The turn boundary is closed by
+				// the TurnEnd hook below.
+
+			} finally {
+				if (timeout) clearTimeout(timeout);
+				this.busy = false;
+				this.streamText = "";
+				this.delegator.cleanup();
+
+				await this.triggerLocal("TurnEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
+				// Step 1C: the empty per-run SessionEnd trigger is deleted (session-
+				// lifecycle ownership moved to agent-service: SessionClose fires at
+				// loop destroy). TurnEnd closes the turn boundary above.
+
+				this.emit({ type: "agent_end", agentId: this.config.agentId });
 			}
-			this.stepOffset = 0;
-
-			// Set the turn group (= user message's seq = stepBaseSeq - 1 for non-resume,
-			// but TurnStart already wrote the user turn so getTurnCount includes it)
-			const userSeq = this.stepBaseSeq - 1;
-			this.recorder.startTurnGroup(userSeq);
-
-			await this.runWithRetry();
-
-			// Step 3B: PostTurnComplete was deleted. Its operations moved to
-			// StepEnd (compression/extraction/todo evaluate per step) and the
-			// token estimate was dropped (real usage flows via the `usage`
-			// stream event → metrics-events.ts). The turn boundary is closed by
-			// the TurnEnd hook below.
-
-		} finally {
-			if (timeout) clearTimeout(timeout);
-			this.busy = false;
-			this.streamText = "";
-			this.delegator.cleanup();
-
-			await this.triggerLocal("TurnEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
-			// Step 1C: the empty per-run SessionEnd trigger is deleted (session-
-			// lifecycle ownership moved to agent-service: SessionClose fires at
-			// loop destroy). TurnEnd closes the turn boundary above.
-
-			this.emit({ type: "agent_end", agentId: this.config.agentId });
-		}
+		});
 	}
 
 	/**
@@ -423,47 +440,57 @@ export class AgentLoop implements AgentRuntime {
 		this.userInterruptQueued = false;
 		const timeout = this.setupTimeout();
 
-		try {
-			await this.session.pruneIfNeeded();
+		// ②.4 (sub-3): same ALS turn context as run() — resume is also a turn
+		// boundary; LLM calls inside runWithRetry must carry the tier + identity.
+		const turnCtx = {
+			sessionId: this.config.sessionId,
+			agentId: this.config.agentId,
+			tier: turnSourceToTier(this.config.source),
+		};
 
-			// For resume, the user turn + any completed steps are already in DB.
-			// getTurnCount returns the count INCLUDING those, so the next
-			// appendStep lands at the correct fresh seq.
-			if (this.config.db && this.config.sessionId) {
-				this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+		return runInConcurrencyContext(turnCtx, async () => {
+			try {
+				await this.session.pruneIfNeeded();
+
+				// For resume, the user turn + any completed steps are already in DB.
+				// getTurnCount returns the count INCLUDING those, so the next
+				// appendStep lands at the correct fresh seq.
+				if (this.config.db && this.config.sessionId) {
+					this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+				}
+				this.stepOffset = 0;
+
+				// sub-5 (durable Wait): if the crash left a pending Wait tool call
+				// whose absolute `until` is still in the future, re-suspend now
+				// (before TurnStart / the model runs) so the wait honors its real
+				// deadline instead of the model seeing a synthetic "woke: timeout".
+				// Past-due / relative-only waits are NOT re-suspended — the rebuild
+				// already synthesized `woke: timeout` for them. Best-effort: any
+				// error just logs and lets the resume proceed normally.
+				await this.detectAndResumePendingWait();
+
+				await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)", source: this.config.source });
+
+				// After TurnStart, the turn count may have increased (if hook wrote a turn)
+				if (this.config.db && this.config.sessionId) {
+					this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+				}
+				const userSeq = this.stepBaseSeq - 1;
+				this.recorder.startTurnGroup(userSeq);
+
+				await this.runWithRetry();
+			} finally {
+				if (timeout) clearTimeout(timeout);
+				this.busy = false;
+				this.streamText = "";
+				this.delegator.cleanup();
+
+				await this.triggerLocal("TurnEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
+				// Step 1C: SessionEnd empty trigger deleted (see run() finally).
+
+				this.emit({ type: "agent_end", agentId: this.config.agentId });
 			}
-			this.stepOffset = 0;
-
-			// sub-5 (durable Wait): if the crash left a pending Wait tool call
-			// whose absolute `until` is still in the future, re-suspend now
-			// (before TurnStart / the model runs) so the wait honors its real
-			// deadline instead of the model seeing a synthetic "woke: timeout".
-			// Past-due / relative-only waits are NOT re-suspended — the rebuild
-			// already synthesized `woke: timeout` for them. Best-effort: any
-			// error just logs and lets the resume proceed normally.
-			await this.detectAndResumePendingWait();
-
-			await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)", source: this.config.source });
-
-			// After TurnStart, the turn count may have increased (if hook wrote a turn)
-			if (this.config.db && this.config.sessionId) {
-				this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
-			}
-			const userSeq = this.stepBaseSeq - 1;
-			this.recorder.startTurnGroup(userSeq);
-
-			await this.runWithRetry();
-		} finally {
-			if (timeout) clearTimeout(timeout);
-			this.busy = false;
-			this.streamText = "";
-			this.delegator.cleanup();
-
-			await this.triggerLocal("TurnEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
-			// Step 1C: SessionEnd empty trigger deleted (see run() finally).
-
-			this.emit({ type: "agent_end", agentId: this.config.agentId });
-		}
+		});
 	}
 
 	abort(): void {

@@ -28,6 +28,8 @@ import type { RuntimeProviderConfig } from "./types.js";
 import type { ProviderConcurrencyManager } from "./provider-concurrency-manager.js";
 import { log } from "../core/logger.js";
 import { createMockLanguageModel } from "./mock-language-model.js";
+// platform-observability ②.4 (sub-3): acquire 时从 ALS 读 tier + 身份挂 waiter。
+import { getConcurrencyContext } from "./concurrency-context.js";
 
 // Cache provider instances by config fingerprint
 const providerCache = new Map<string, (modelId: string) => any>();
@@ -63,8 +65,14 @@ export function resolveModel(
 			middleware: {
 				specificationVersion: "v3",
 				wrapStream: async ({ doStream }) => {
-					await queue.acquire();
-					log.debug("concurrency", `Acquired for ${providerName}`);
+					// ②.4: 从 ALS 读 tier + 身份(agent-loop.run set 的)挂 waiter。
+					const ctx = getConcurrencyContext();
+					await queue.acquire({
+						sessionId: ctx?.sessionId,
+						agentId: ctx?.agentId,
+						tier: ctx?.tier,
+					});
+					log.debug("concurrency", `Acquired for ${providerName} (tier=${ctx?.tier ?? 3})`);
 					try {
 						const result = await doStream();
 						// Wrap the ReadableStream to release when fully consumed
@@ -87,7 +95,12 @@ export function resolveModel(
 					}
 				},
 				wrapGenerate: async ({ doGenerate }) => {
-					await queue.acquire();
+					const ctx = getConcurrencyContext();
+					await queue.acquire({
+						sessionId: ctx?.sessionId,
+						agentId: ctx?.agentId,
+						tier: ctx?.tier,
+					});
 					try {
 						const result = await doGenerate();
 						queue.release();
