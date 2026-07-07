@@ -669,12 +669,6 @@ export class AgentLoop implements AgentRuntime {
 			? renderContextAnchors({ wiki: this.wikiStoreGlobal, anchors: this.wikiAnchors })
 			: "";
 
-		// v0.8 (P2 §11.7): current-task — the active requirement id (when the
-		// session is bound to a project + requirement). Re-evaluated every turn;
-		// does not enter message history. Rendered in buildContextMessage under
-		// ## Current Task so the model always knows what it is doing right now.
-		const currentTask = this.resolveCurrentTask();
-
 		// Step 2C: externalized step loop. Each iteration runs ONE model call
 		// via streamText({ stopWhen: stepCountIs(1) }), consumes its events,
 		// finalizes it (seal + usage + StepEnd), then appends the step's
@@ -689,7 +683,6 @@ export class AgentLoop implements AgentRuntime {
 			guidelines: this.config.guidelines,
 			useDeviceContext: this.config.contextConfig?.useDeviceContext,
 			wikiAnchorsContext: wikiAnchorsContext || undefined,
-			currentTask: currentTask || undefined,
 			// (sub-1) todos moved out of the turn-scoped context block into the
 			// per-step workbench channel (renderWorkbench) so they refresh mid-turn.
 		});
@@ -752,7 +745,6 @@ export class AgentLoop implements AgentRuntime {
 					useDeviceContext: this.config.contextConfig?.useDeviceContext,
 					memoryContext,
 					wikiAnchorsContext: wikiAnchorsContext || undefined,
-					currentTask: currentTask || undefined,
 				});
 				if (ctx) {
 					messages = this.prependContext(messages, ctx);
@@ -861,34 +853,6 @@ export class AgentLoop implements AgentRuntime {
 		}
 		return null;
 	}
-
-	/**
-	 * v0.8 (P2 §11.7): resolve the session's current task for the context
-	 * block. Source: the active requirement id on the session's project
-	 * context. When a RequirementStore is available, the requirement's title
-	 * is also pulled so the model sees a human-readable handle. Returns "" when
-	 * the session isn't bound to an active requirement (non-project sessions,
-	 * global crons, etc.) — buildContextMessage drops the section in that case.
-	 *
-	 * Re-evaluated every turn (the active requirement may switch mid-session).
-	 * Never throws — store lookups are best-effort.
-	 */
-	private resolveCurrentTask(): string {
-		const ctx = this.config.projectContext;
-		const reqId = ctx?.activeRequirementId;
-		if (!reqId) return "";
-		const store = (this.config as any).requirementStore;
-		let title: string | undefined;
-		try {
-			const req = store?.get?.(reqId) ?? store?.getRequirement?.(reqId);
-			title = req?.title ?? req?.name;
-		} catch { /* best-effort */ }
-		const project = ctx?.projectName ? ` (project: ${ctx.projectName})` : "";
-		return title
-			? `Active requirement: ${title} [${reqId}]${project}`
-			: `Active requirement id: ${reqId}${project}`;
-	}
-
 
 
 	/**

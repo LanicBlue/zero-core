@@ -138,34 +138,28 @@ describe("Tool gating — single-layer toolPolicy (sub-D)", () => {
 // ─── 3. buildContextMessage content (snapshot-style) ─────
 
 describe("buildContextMessage — P2 sections (snapshot)", () => {
-	test("injects env + guidelines + current-task + wiki anchors", () => {
+	test("injects env + guidelines + wiki anchors", () => {
 		const out = buildContextMessage({
 			workspaceDir: "/proj",
 			guidelines: ["No emojis"],
-			currentTask: "Active requirement: Add tests [req-42] (project: Demo)",
 			wikiAnchorsContext: "### Project: Demo\n- Foo — summary",
 		});
 		expect(out).toContain("## Environment");
 		expect(out).toContain("/proj");
 		expect(out).toContain("## Guidelines");
 		expect(out).toContain("No emojis");
-		expect(out).toContain("## Current Task");
-		expect(out).toContain("req-42");
 		expect(out).toContain("## Wiki Anchors (context)");
 		expect(out).toContain("### Project: Demo");
 	});
 
-	test("current-task renders between Guidelines and Recalled Memories", () => {
+	test("current-task section removed (sub-2): field dropped, no header", () => {
+		// sub-2: resolveCurrentTask + ## Current Task removed (covered by the
+		// work-context hook's ## Requirement). Assert the field/section are gone.
 		const out = buildContextMessage({
 			guidelines: ["G"],
-			currentTask: "task-x",
 			memoryContext: "mem-y",
 		});
-		const g = out!.indexOf("## Guidelines");
-		const t = out!.indexOf("## Current Task");
-		const m = out!.indexOf("## Recalled Memories");
-		expect(g).toBeLessThan(t);
-		expect(t).toBeLessThan(m);
+		expect(out).not.toContain("## Current Task");
 	});
 
 	test("wiki anchors land in their own section after memory", () => {
@@ -178,25 +172,17 @@ describe("buildContextMessage — P2 sections (snapshot)", () => {
 		expect(m).toBeLessThan(w);
 	});
 
-	test("no current-task → section omitted (no empty header)", () => {
-		const out = buildContextMessage({ workspaceDir: "/x" });
-		expect(out).not.toContain("## Current Task");
-	});
-
 	test("all sections combined — full content snapshot", () => {
 		const out = buildContextMessage({
 			workspaceDir: "/proj",
 			guidelines: ["G1", "G2"],
-			currentTask: "task-z",
 			memoryContext: "mem content",
 			wikiAnchorsContext: "wiki outline",
 		});
-		// Order: Environment, Guidelines, Current Task, Recalled Memories,
-		// Wiki Anchors.
+		// Order: Environment, Guidelines, Recalled Memories, Wiki Anchors.
 		const order = [
 			"## Environment",
 			"## Guidelines",
-			"## Current Task",
 			"## Recalled Memories",
 			"## Wiki Anchors (context)",
 		];
