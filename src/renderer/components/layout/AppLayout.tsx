@@ -217,6 +217,15 @@ export default function AppLayout() {
 				const sid = terminalTargetSession(d, useChatStore.getState().activeSessionId);
 				if (sid) finishStreaming(sid);
 			},
+			// sub-5 (Wait): a Wait tool suspended mid-run. The session is NOT
+			// running anymore (loop released busy) — flip the button back to Send
+			// so the user can type. The wake (user input / task finish / timeout)
+			// re-emits session_running → setIsStreaming(true) to resume the Stop
+			// state. Same target-session semantics as agent_end.
+			session_waiting: (d, _key) => {
+				const sid = terminalTargetSession(d, useChatStore.getState().activeSessionId);
+				if (sid) finishStreaming(sid);
+			},
 			// Authoritative "turn started" signal from the server (agent-service
 			// markRunning). The streaming flag follows the server's isBusy, not an
 			// optimistic UI flag — so chat / cron / work-trigger / recovery all flip

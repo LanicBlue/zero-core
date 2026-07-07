@@ -71,6 +71,14 @@ export interface ProviderConfig {
 interface AgentRunState {
 	agentId: string;
 	isBusy: boolean;
+	/**
+	 * sub-5 (Wait): true while a Wait tool call is suspended in the loop. The
+	 * session shows idle (isBusy=false) but accepts user input as a wake source
+	 * (the loop is still mid-run; a second run() would clash). sendPrompt routes
+	 * a message arriving while waiting to loop.interruptWaitForUserInput() +
+	 * queue, instead of starting a conflicting run.
+	 */
+	waiting: boolean;
 	streamingText: string;
 	toolCalls: { name: string; status: "running" | "done" | "error" }[];
 }
@@ -579,8 +587,9 @@ export class AgentService {
 	 * isBusy in handleRuntimeEvent.
 	 */
 	private markRunning(sessionId: string, agentId: string): void {
-		const state = this.runStates.get(sessionId) ?? { agentId, isBusy: false, streamingText: "", toolCalls: [] };
+		const state = this.runStates.get(sessionId) ?? { agentId, isBusy: false, waiting: false, streamingText: "", toolCalls: [] };
 		state.isBusy = true;
+		state.waiting = false;
 		state.streamingText = "";
 		state.toolCalls = [];
 		this.runStates.set(sessionId, state);
@@ -764,7 +773,7 @@ export class AgentService {
 		sessionConfig.hookWiringDeps = this.buildHookDeps();
 		// Initialize run state for this session
 		if (!this.runStates.has(sessionId)) {
-			this.runStates.set(sessionId, { agentId, isBusy: false, streamingText: "", toolCalls: [] });
+			this.runStates.set(sessionId, { agentId, isBusy: false, waiting: false, streamingText: "", toolCalls: [] });
 		}
 		const capturedAgentId = agentId;
 		const loop = new AgentLoop(
@@ -828,6 +837,18 @@ export class AgentService {
 		if (this.isSessionRunning(sessionId)) {
 			this.inputQueue.enqueue(sessionId, text);
 			log.agent("Session busy — input queued for:", agentId, "session:", sessionId);
+			return;
+		}
+		// sub-5 (Wait): if the loop is suspended inside a Wait, the session shows
+		// idle (isBusy=false, so isSessionRunning is false) but a second run()
+		// would clash. Route the user message as a wake source: enqueue it (so
+		// it runs as turn+1 after the current turn ends) and fire the interrupt
+		// so the Wait resolves with "user input" and executeStream ends the turn
+		// at the next step boundary → the drain picks up this queued message.
+		if (loop.isWaiting()) {
+			this.inputQueue.enqueue(sessionId, text);
+			const interrupted = loop.interruptWaitForUserInput();
+			log.agent("Session waiting — input queued + interrupt fired:", agentId, "session:", sessionId, "interrupted:", interrupted);
 			return;
 		}
 		log.agent("Sending prompt to:", agentId, "session:", sessionId, "length:", text.length);
@@ -978,7 +999,7 @@ export class AgentService {
 
 		this.activeSessions.set(agentId, sessionId);
 		if (!this.runStates.has(sessionId)) {
-			this.runStates.set(sessionId, { agentId, isBusy: false, streamingText: "", toolCalls: [] });
+			this.runStates.set(sessionId, { agentId, isBusy: false, waiting: false, streamingText: "", toolCalls: [] });
 		}
 
 		const state = this.runStates.get(sessionId)!;
@@ -1556,8 +1577,29 @@ export class AgentService {
 			}
 			case "agent_end": {
 				state.isBusy = false;
+				state.waiting = false;
 				state.streamingText = "";
 				state.toolCalls = [];
+				break;
+			}
+			// sub-5 (Wait): the loop flipped into/out-of a Wait suspension.
+			// session_waiting → release the "running" flag (UI shows idle, but
+			// state.waiting stays true so sendPrompt routes the next user
+			// message to interruptWaitForUserInput instead of a clashing run()).
+			// session_running (resume) flips back. These are runtime→server
+			// control events; only this switch consumes them.
+			case "session_waiting": {
+				state.isBusy = false;
+				state.waiting = true;
+				state.streamingText = "";
+				state.toolCalls = [];
+				break;
+			}
+			case "session_running": {
+				// Reacquire on Wait resume. (Also emitted by markRunning; harmless
+				// to handle here — just keep state consistent.)
+				state.isBusy = true;
+				state.waiting = false;
 				break;
 			}
 		}

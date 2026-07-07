@@ -27,6 +27,8 @@ import type {
 	TaskInfo,
 	RuntimeCallbacks,
 	AgentRuntime,
+	WaitSuspendOptions,
+	WaitWakeResult,
 } from "./types.js";
 import type { SessionContextBundle, DelegatedTaskRecord } from "../shared/types.js";
 import { spawn } from "node:child_process";
@@ -836,8 +838,13 @@ export class SubagentDelegator {
 		}) ?? [];
 	}
 
-	suspendUntilWake(timeoutMs: number, taskId?: string): Promise<string> {
-		return this.taskRegistry.suspendUntilWake(timeoutMs, taskId);
+	suspendUntilWake(opts: WaitSuspendOptions): Promise<WaitWakeResult> {
+		return this.taskRegistry.suspendUntilWake(opts);
+	}
+
+	/** sub-5: expose the user-input wake source for the loop. */
+	interruptWaitForUserInput(): void {
+		this.taskRegistry.interruptWaitForUserInput();
 	}
 
 	// -----------------------------------------------------------------------

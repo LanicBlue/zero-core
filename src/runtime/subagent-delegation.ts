@@ -26,6 +26,8 @@ import type {
 	RuntimeProviderConfig,
 	SessionConfig,
 	TaskInfo,
+	WaitSuspendOptions,
+	WaitWakeResult,
 } from "./types.js";
 import { TaskRegistry } from "./task-registry.js";
 import { AgentLoop } from "./agent-loop.js";
@@ -249,8 +251,8 @@ export function createSubagentDelegation(deps: SubagentDelegationConfig) {
 		return taskRegistry.kill(taskId);
 	}
 
-	function suspendUntilWake(timeoutMs: number, taskId?: string): Promise<string> {
-		return taskRegistry.suspendUntilWake(timeoutMs);
+	function suspendUntilWake(opts: WaitSuspendOptions): Promise<WaitWakeResult> {
+		return taskRegistry.suspendUntilWake(opts);
 	}
 
 	// -----------------------------------------------------------------------

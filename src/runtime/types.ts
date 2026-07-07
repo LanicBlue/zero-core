@@ -190,6 +190,30 @@ export interface SessionInitEvent {
 	totalTokens?: number;
 }
 
+/**
+ * sub-5 (Wait rewrite): control events emitted by the loop to flip the
+ * session's "running" state around a Wait suspension. session_waiting = a Wait
+ * tool suspended (release busy; UI shows idle; next user message routes to
+ * interruptWaitForUserInput). session_running = Wait resumed (reacquire busy).
+ * The server (agent-service handleRuntimeEvent) consumes these to keep
+ * runStates the UI truth source; the renderer's session_waiting handler flips
+ * the streaming flag back to idle. session_running is ALSO emitted by the
+ * server's markRunning (pre-existing); the loop emitting it on Wait resume just
+ * keeps the flag consistent. Both carry sessionId (required) + agentId.
+ */
+export interface SessionWaitingEvent {
+	type: "session_waiting";
+	agentId?: string;
+	sessionId?: string;
+}
+
+/** sub-5: Wait resumed → reacquire running. Mirror of SessionWaitingEvent. */
+export interface SessionRunningEvent {
+	type: "session_running";
+	agentId?: string;
+	sessionId?: string;
+}
+
 export type StreamEvent =
 	| TextDeltaEvent
 	| ThinkingDeltaEvent
@@ -205,7 +229,9 @@ export type StreamEvent =
 	| SubagentProgressEvent
 	| SubagentCompletedEvent
 	| UsageEvent
-	| SessionInitEvent;
+	| SessionInitEvent
+	| SessionWaitingEvent
+	| SessionRunningEvent;
 
 // ---------------------------------------------------------------------------
 // Provider config — mirrors existing ProviderConfig
@@ -365,6 +391,37 @@ export interface SessionConfig {
 
 export type TaskType = "subagent" | "bash";
 
+/**
+ * sub-5 (Wait rewrite): wake reasons for the generic session-suspend Wait.
+ * The Wait tool returns one of these as `woke: <reason>`. Wake-source
+ * priority when multiple fire in the same tick (deterministic): user-input >
+ * task-finished > timeout.
+ *
+ *   - "timeout"        : the `until` absolute point or `timeout` relative
+ *                        duration was reached.
+ *   - "task finished"  : any background task reached a terminal state.
+ *   - "user input"     : the user sent a message while the session was
+ *                        suspended (the current turn ends; turn+1 starts).
+ */
+export type WakeReason = "timeout" | "task finished" | "user input";
+
+/** Options passed to suspendUntilWake. Exactly one timing source should be
+ *  meaningful; `until` is preferred (absolute, durable across restart). */
+export interface WaitSuspendOptions {
+	/** ISO 8601 absolute wake point. Preferred for durability. */
+	until?: string;
+	/** Relative wait in seconds. Used when `until` is omitted. Not durable
+	 *  across restart (a relative timeout that spans a restart is treated as
+	 *  already-elapsed on resume). */
+	timeoutSec?: number;
+}
+
+/** Result of a Wait suspension: why it woke + wall-clock elapsed. */
+export interface WaitWakeResult {
+	reason: WakeReason;
+	elapsedMs: number;
+}
+
 export interface TaskInfo {
 	id: string;
 	type: TaskType;
@@ -452,7 +509,16 @@ export interface ToolExecutionContext {
 	requestTaskFinish?: (taskId: string, options?: { message?: string; maxTurns?: number }) => boolean;
 	/** List delegated-task records (persisted) for this owner, optionally scoped. */
 	listDelegatedTasks?: (filter?: { rootTaskId?: string; parentTaskId?: string }) => DelegatedTaskRecord[];
-	suspendUntilWake?: (timeoutMs: number, taskId?: string) => Promise<string>;
+	suspendUntilWake?: (opts: WaitSuspendOptions) => Promise<WaitWakeResult>;
+	/**
+	 * sub-5 (Wait): announce a Wait suspension starting / ending so the loop
+	 * can release/reacquire the session "running" state and detect a user-input
+	 * wake (→ end current turn, start turn+1). Best-effort no-ops when not wired
+	 * (test stubs). The Wait tool calls beginWait before suspendUntilWake and
+	 * endWait(reason) after it resolves.
+	 */
+	beginWait?: () => void;
+	endWait?: (reason: WakeReason) => void;
 	runBackground?: (command: string, timeout?: number) => string;
 	/**
 	 * Step 2E: annotate the recorder's current tool-call block with the
