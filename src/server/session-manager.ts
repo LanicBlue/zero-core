@@ -25,6 +25,11 @@ import { isValidTransition } from "./session-lifecycle.js";
 import type { SessionMetrics, AggregateMetrics } from "./session-metrics.js";
 import { SessionMetricsHolder } from "./session-metrics.js";
 import type { SessionDB } from "./session-db.js";
+// platform-observability ②.2 (sub-2): provider-layer usage store. Lazy-init
+// on first access — constructed against sessionDB.getDb() so it shares the
+// same SQLite handle (no second connection to sessions.db, no WAL contention).
+import { ProviderUsageStore, floorToHourBucket } from "./provider-usage-store.js";
+import type { TurnSource } from "../runtime/types.js";
 import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -79,6 +84,9 @@ export class SessionManager {
 	private readonly firstTokenRecorded = new Map<string, boolean>();
 
 	private db: SessionDB | null = null;
+	// sub-2: provider-layer usage rollup. Lazy so callers that never touch
+	// provider stats (and unit tests that don't wire a SessionDB) pay nothing.
+	private providerUsageStore: ProviderUsageStore | null = null;
 
 	// N1 (runtime-push-ui-sync): coalesced metrics change ping. The dashboard
 	// reads the aggregate; counter mutations (tool calls / tokens / turns /
@@ -123,6 +131,20 @@ export class SessionManager {
 	}
 
 	setSessionDb(db: SessionDB): void { this.db = db; }
+
+	/**
+	 * sub-2: provider-layer usage store. Constructed against the session DB's
+	 * underlying better-sqlite3 handle so it shares one connection (no WAL
+	 * contention, no second writer). Lazy — returns undefined if no SessionDB
+	 * is attached (unit-test paths).
+	 */
+	getProviderUsageStore(): ProviderUsageStore | undefined {
+		if (!this.db) return undefined;
+		if (!this.providerUsageStore) {
+			this.providerUsageStore = new ProviderUsageStore(this.db.getDb());
+		}
+		return this.providerUsageStore;
+	}
 
 	// ─── Lifecycle tracking ─────────────────────────────────────
 
@@ -306,6 +328,48 @@ export class SessionManager {
 				} catch (err) { log.warn("session", "persist usage failed:", (err as Error).message); }
 			}
 			this.scheduleMetricsChange();
+		}
+	}
+
+	/**
+	 * sub-2: accumulate one step's usage into the provider-layer rollup
+	 * (`provider_usage` table), INDEPENDENT of the session metrics above.
+	 * Called from metrics-events on a `usage` StreamEvent that carries
+	 * provider/model/source (agent-loop finalizeOneStep). Best-effort — errors
+	 * log and don't propagate (a stats write must not fail the turn).
+	 *
+	 * `error: true` should be passed for a FAILED step so its bucket's errors
+	 * counter increments. The success path leaves error unset.
+	 */
+	recordProviderUsage(input: {
+		provider: string;
+		model: string;
+		source: TurnSource;
+		usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheWriteTokens?: number };
+		error?: boolean;
+	}): void {
+		const store = this.getProviderUsageStore();
+		if (!store) return;
+		try {
+			// hour_bucket = hour-floor ISO UTC. Single source of truth for the
+			// format lives in provider-usage-store (floorToHourBucket); using it
+			// here keeps the bucket-key shape consistent with what the store +
+			// tests expect.
+			const hourBucket = floorToHourBucket(Date.now());
+			store.upsert({
+				provider: input.provider,
+				model: input.model,
+				source: input.source,
+				hourBucket,
+				calls: 1,
+				inputTokens: input.usage.inputTokens ?? 0,
+				outputTokens: input.usage.outputTokens ?? 0,
+				cacheRead: input.usage.cacheReadTokens ?? 0,
+				cacheWrite: input.usage.cacheWriteTokens ?? 0,
+				error: input.error,
+			});
+		} catch (err) {
+			log.warn("session", "recordProviderUsage failed:", (err as Error).message);
 		}
 	}
 

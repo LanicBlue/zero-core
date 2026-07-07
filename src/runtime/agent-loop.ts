@@ -979,6 +979,11 @@ export class AgentLoop implements AgentRuntime {
 				agentId: this.config.agentId,
 				error: userFriendlyMessage(cls, err?.message ?? String(err)),
 				errorClass: cls,
+				// sub-2: same provider/model/source stamp as the usage event, so
+				// the failed step's bucket gets errors +1 in provider_usage.
+				provider: this.config.providerName,
+				model: this.config.modelId,
+				source: this.config.source ?? "background",
 			});
 		}
 	}
@@ -1528,9 +1533,19 @@ export class AgentLoop implements AgentRuntime {
 			if (usage.inputTokens) {
 				this.session.calibrateFromActualUsage(usage.inputTokens);
 			}
+			// platform-observability ②.2 (sub-2): stamp provider/model/source on
+			// the usage event so the server-side adapter (metrics-events) can
+			// accumulate into the provider_usage rollup INDEPENDENT of session
+			// metrics. All three are known here: this.config.providerName/modelId
+			// are the live values (mid-session provider switches update them),
+			// and this.config.source is the sub-1 turn-source marker. source
+			// defaults to 'background' for unspec'd callers (acceptance-1 6/7).
 			this.emit({
 				type: "usage",
 				agentId: this.config.agentId,
+				provider: this.config.providerName,
+				model: this.config.modelId,
+				source: this.config.source ?? "background",
 				usage: {
 					inputTokens: usage.inputTokens ?? 0,
 					outputTokens: usage.outputTokens ?? 0,

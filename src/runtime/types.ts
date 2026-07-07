@@ -106,6 +106,15 @@ export interface ErrorEvent {
 	sessionId?: string;
 	error: string;
 	errorClass?: ErrorClass;
+	/**
+	 * platform-observability ②.2 (sub-2): provider attribution so a failed
+	 * step's bucket gets errors +1 in the provider_usage rollup. Same fields
+	 * as UsageEvent. Optional — when absent the adapter skips the error bump
+	 * (session metrics still record the error).
+	 */
+	provider?: string;
+	model?: string;
+	source?: TurnSource;
 }
 
 export interface RetryAttemptEvent {
@@ -182,6 +191,17 @@ export interface UsageEvent {
 		cacheWriteTokens?: number;
 		reasoningTokens?: number;
 	};
+	/**
+	 * platform-observability ②.2 (sub-2): provider attribution for the
+	 * provider-layer usage rollup (`provider_usage` table). All three are
+	 * known at agent-loop finalizeOneStep (this.config.providerName/modelId +
+	 * turn source). Optional only for back-compat with synthetic events in
+	 * tests; production emits always set them. When absent, the server-side
+	 * adapter skips the provider rollup write (session metrics still record).
+	 */
+	provider?: string;
+	model?: string;
+	source?: TurnSource;
 }
 
 export interface SessionInitMessage {

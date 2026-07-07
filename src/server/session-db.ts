@@ -219,6 +219,32 @@ export class SessionDB {
 			CREATE INDEX IF NOT EXISTS idx_delegated_tasks_owner ON delegated_tasks(owner_agent_id, status);
 			CREATE INDEX IF NOT EXISTS idx_delegated_tasks_parent ON delegated_tasks(parent_task_id);
 			CREATE INDEX IF NOT EXISTS idx_delegated_tasks_root ON delegated_tasks(root_task_id);
+
+			-- platform-observability ②.2 (sub-2): provider-layer usage rollup,
+			-- INDEPENDENT of session metrics. One row per
+			-- (provider, model, hour_bucket, source); upsert accumulates.
+			-- Feeds sub-5 observation + sub-6 charts. PK is the 4-tuple key so
+			-- mid-session provider switches produce separate rows (correct
+			-- attribution — the whole point). hour_bucket is hour-floor ISO UTC
+			-- (e.g. "2026-07-07T09:00:00.000Z"). source ∈ user|work|cron|background
+			-- (sub-1 turn-source marker). Retention ≥ 30d via cleanOldProviderUsage.
+			CREATE TABLE IF NOT EXISTS provider_usage (
+				provider      TEXT NOT NULL,
+				model         TEXT NOT NULL,
+				hour_bucket   TEXT NOT NULL,
+				source        TEXT NOT NULL DEFAULT 'background',
+				calls         INTEGER NOT NULL DEFAULT 0,
+				input_tokens  INTEGER NOT NULL DEFAULT 0,
+				output_tokens INTEGER NOT NULL DEFAULT 0,
+				cache_read    INTEGER NOT NULL DEFAULT 0,
+				cache_write   INTEGER NOT NULL DEFAULT 0,
+				errors        INTEGER NOT NULL DEFAULT 0,
+				created_at    TEXT NOT NULL,
+				updated_at    TEXT NOT NULL,
+				PRIMARY KEY (provider, model, hour_bucket, source)
+			);
+			CREATE INDEX IF NOT EXISTS idx_provider_usage_hour ON provider_usage(hour_bucket);
+			CREATE INDEX IF NOT EXISTS idx_provider_usage_provider ON provider_usage(provider, hour_bucket);
 		`);
 
 		// v0.8 (M0): session context bundle columns + routing index.
@@ -976,6 +1002,29 @@ export class SessionDB {
 		} catch (e) {
 			log.error("db", "cleanOldTurnState failed:", (e as Error).message);
 			throw e;
+		}
+	}
+
+	/**
+	 * platform-observability ②.2 (sub-2): retention for the provider_usage
+	 * rollup. Deletes any hour_bucket older than `maxAgeMs` ago. Called on the
+	 * same schedule as cleanOldTurnState (startup). Cutoff is compared against
+	 * hour_bucket (hour-floor ISO UTC) directly — that's a coarser comparison
+	 * than updated_at, which is fine: we keep ≥30d of hourly buckets, the only
+	 * risk is over-retaining the partial hour at the boundary (acceptable).
+	 */
+	cleanOldProviderUsage(maxAgeMs: number): void {
+		const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+		try {
+			const result = this.db.prepare(
+				`DELETE FROM provider_usage WHERE hour_bucket < ?`,
+			).run(cutoff);
+			if (result.changes > 0) {
+				log.db(`cleanOldProviderUsage removed ${result.changes} row(s) older than ${maxAgeMs}ms`);
+			}
+		} catch (e) {
+			log.error("db", "cleanOldProviderUsage failed:", (e as Error).message);
+			// Best-effort — don't take down startup for a retention cleanup.
 		}
 	}
 
