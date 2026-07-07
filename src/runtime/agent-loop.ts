@@ -356,7 +356,7 @@ export class AgentLoop implements AgentRuntime {
 
 			log.loop("Messages after prune:", this.session.getMessages().length, "est tokens:", this.session.getMessages().reduce((s: number, m: any) => s + Math.ceil(JSON.stringify(m).length / 4), 0));
 
-			await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage });
+			await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage, source: this.config.source });
 
 			// TurnStart hook has written user turn; next seq is the first assistant step
 			if (this.config.db && this.config.sessionId) {
@@ -443,7 +443,7 @@ export class AgentLoop implements AgentRuntime {
 			// error just logs and lets the resume proceed normally.
 			await this.detectAndResumePendingWait();
 
-			await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)" });
+			await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)", source: this.config.source });
 
 			// After TurnStart, the turn count may have increased (if hook wrote a turn)
 			if (this.config.db && this.config.sessionId) {
@@ -468,6 +468,20 @@ export class AgentLoop implements AgentRuntime {
 
 	abort(): void {
 		this.abortController?.abort();
+	}
+
+	/**
+	 * platform-observability ②.1 (sub-1): set the turn-source marker for the
+	 * NEXT run()/resume() on this loop. Called by the entry that drives the
+	 * turn (agent-service sendPrompt/sendProjectPrompt), since one loop can be
+	 * driven by different entries across its lifetime (e.g. a chat session
+	 * started by chat-router[user] then poked by analyst-service[background]).
+	 * The marker is read by durable-hooks TurnStart → createTurnState and
+	 * persisted on turn_state.source. Delegated sub-loops never call this, so
+	 * they stay at the default 'background'.
+	 */
+	setTurnSource(source: import("./types.js").TurnSource): void {
+		this.config.source = source;
 	}
 
 	getState(): RuntimeState {

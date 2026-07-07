@@ -140,7 +140,7 @@ export class EnrichmentRunner {
 					projectPath: project.workspaceDir,
 					projectName: project.name,
 					wikiStore,
-				}),
+				}, "work"),
 			)
 			.then(() => {
 				projectJobStore.markCompleted(job.id);

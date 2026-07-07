@@ -32,7 +32,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
-import type { RuntimeProviderConfig, SessionConfig, StreamEvent } from "../runtime/types.js";
+import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource } from "../runtime/types.js";
 import { clearProviderCache, setConcurrencyManager } from "../runtime/provider-factory.js";
 import { SessionDB } from "./session-db.js";
 import { InputQueueStore } from "./input-queue-store.js";
@@ -956,7 +956,15 @@ export class AgentService {
 		return loop;
 	}
 	// ─── Prompt execution — concurrent ──────────────────────────────
-	async sendPrompt(text: string, agent?: AgentRecord, sessionId?: string): Promise<void> {
+	/**
+	 * Send a user/automated prompt. `source` is the platform-observability ②.1
+	 * turn-source marker (user|work|cron|background), defaulting to 'background'
+	 * — callers MUST pass the right value (chat-router→'user', cron→'cron',
+	 * analyst/automation→'background'). Omitting it lands in 'background'
+	 * (acceptance-1 case 6). The marker is stamped on the loop and persists on
+	 * turn_state.source via durable-hooks TurnStart.
+	 */
+	async sendPrompt(text: string, agent?: AgentRecord, sessionId?: string, source: TurnSource = "background"): Promise<void> {
 		const agentId = agent?.id ?? "__default__";
 		// If sessionId provided, look up (or create) the loop for that specific session
 		let loop: AgentLoop;
@@ -967,6 +975,9 @@ export class AgentService {
 			loop = this.getOrCreateLoop(agent);
 			sessionId = this.activeSessions.get(agentId) ?? agentId;
 		}
+		// sub-1: stamp the turn-source marker BEFORE run()/drain so this turn
+		// (and any queued inputs drained as turn+1 from the SAME entry) carry it.
+		loop.setTurnSource(source);
 		// C2 input queue: if this session is already running, enqueue instead of
 		// starting a concurrent run on the same loop (which would clash). The
 		// running sendPrompt drains the queue after its run() returns.
@@ -1043,6 +1054,14 @@ export class AgentService {
 			orchestrateManifestStore?: any;
 			gitIntegration?: any;
 		},
+		/**
+		 * platform-observability ②.1 (sub-1): turn-source marker. Defaults to
+		 * 'work' (sendProjectPrompt's primary callers are project-work / lead /
+		 * enrichment, all of which drive a 工位). cron's fireAgent overrides
+		 * this to 'cron' since the same project-prompt path is how scope-bound
+		 * cron runs reach the agent (acceptance-1 case 3 vs 4).
+		 */
+		source: TurnSource = "work",
 	): Promise<{ skipped?: "busy" }> {
 		const agent = this.agentStore?.get(agentId);
 		if (!agent) throw new Error(`Agent not found: ${agentId}`);
@@ -1159,6 +1178,10 @@ export class AgentService {
 		}
 
 		const state = this.runStates.get(sessionId)!;
+		// sub-1: stamp turn-source BEFORE the busy check + run() so the marker
+		// is correct even on a busy-skip retry (the next non-busy attempt will
+		// re-stamp the same value). Mirrors sendPrompt's stamp placement.
+		loop.setTurnSource(source);
 		// A 方案:上一 turn 未完成(session 正在跑)→ 干净 skip,不丢/不排,不覆盖
 		// in-flight 的流式状态(work 都有重发源:cron/hook/手动重试,skip 比 heap 排队合理)。
 		if (state.isBusy) return { skipped: "busy" };

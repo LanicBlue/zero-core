@@ -769,14 +769,14 @@ export class CronAnalysisManager {
 				projectName: project?.name ?? "",
 				wikiStore: this.deps.wikiStore,
 				workId: cron.workId,
-			});
+			}, "cron");
 			// A 方案:session 正在跑 → skip,且不更新 lastGitRef(下次 cron 再试,避免漏处理变更)。
 			if (result?.skipped === "busy") {
 				log.debug("cron", `cron ${cron.id} skipped: session ${sessionId} busy(上一 turn 未完成),不更新 lastGitRef`);
 				newGitRef = undefined;
 			}
 		} else {
-			await this.deps.agentService.sendPrompt(effectivePrompt, activeAgent, sessionId);
+			await this.deps.agentService.sendPrompt(effectivePrompt, activeAgent, sessionId, "cron");
 		}
 		if (newGitRef) {
 			try {

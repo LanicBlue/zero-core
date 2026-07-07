@@ -303,6 +303,13 @@ export class SubagentDelegator {
 			// own registry know their kind (task-control fires; notification /
 			// input-queue / metrics don't).
 			loopKind: "delegated",
+			// sub-1 (platform-observability ②.1): delegated sub-loops are
+			// background work — they're spawned by a parent agent mid-turn, not
+			// by a user/cron/work entry. Stamped on every sub-loop turn; the
+			// parent's own source is NOT inherited (the parent is the entry's
+			// turn; the child is parent-driven automation). Matches acceptance-1
+			// case 5.
+			source: "background",
 		};
 
 		await triggerHooks("SubagentStart", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task });
@@ -436,6 +443,9 @@ export class SubagentDelegator {
 			ownerTaskId: taskId,
 			// Step 1B: delegated loop → task-control fires, main-only hooks don't.
 			loopKind: "delegated",
+			// sub-1: delegated sub-loops are background work (see first config
+			// site above for rationale). Stamped on every sub-loop turn.
+			source: "background",
 		};
 
 		const registry = this.taskRegistry;
@@ -672,6 +682,9 @@ export class SubagentDelegator {
 			toolPolicy: delegatedToolPolicy(this.config.toolPolicy),
 			timeoutSec: toolConfig?.Subagent?.timeout,
 			loopKind: "delegated",
+			// sub-1: delegated sub-loops are background work (see first config
+			// site above for rationale). Stamped on every sub-loop turn.
+			source: "background",
 		};
 		const subAbort = new AbortController();
 		const entry: RunningSubloop = { loop: undefined as unknown as AgentRuntime, abort: subAbort };
@@ -772,6 +785,9 @@ export class SubagentDelegator {
 			toolPolicy: delegatedToolPolicy(this.config.toolPolicy),
 			timeoutSec: toolConfig?.Subagent?.timeout,
 			loopKind: "delegated",
+			// sub-1: delegated sub-loops are background work (see first config
+			// site above for rationale). Stamped on every sub-loop turn.
+			source: "background",
 		};
 		const subAbort = new AbortController();
 		const entry: RunningSubloop = { loop: undefined as unknown as AgentRuntime, abort: subAbort };

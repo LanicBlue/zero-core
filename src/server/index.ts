@@ -947,7 +947,7 @@ export async function startServer(options?: StartServerOptions) {
 						: undefined;
 					const wsDir = expandHome(agent?.workspaceDir || workspaceConfig.workspaceDir);
 					agentService.setWorkspaceDir(wsDir);
-					await agentService.sendPrompt(msg.text, agent);
+					await agentService.sendPrompt(msg.text, agent, undefined, "background");
 				} else if (msg.type === "abort") {
 					await agentService.abort();
 				}

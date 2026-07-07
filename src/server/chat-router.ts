@@ -64,7 +64,7 @@ export function createChatRouter(deps: {
 		}));
 		agentService.setProviders(providerConfigs, workspaceConfig.defaultModel, workspaceConfig.defaultProvider);
 
-		agentService.sendPrompt(text, agent, sessionId).catch(() => {
+		agentService.sendPrompt(text, agent, sessionId, "user").catch(() => {
 			// Error events are forwarded via WebSocket
 		});
 

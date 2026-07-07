@@ -28,6 +28,26 @@ import type { DelegatedTaskRecord, SessionContextBundle } from "../shared/types.
 import type { HookWiringDeps } from "./hooks/index.js";
 
 // ---------------------------------------------------------------------------
+// platform-observability ②.1 (sub-1): turn source
+// ---------------------------------------------------------------------------
+/**
+ * The "source" that started a turn — feeds sub-3 priority + sub-2 usage-by-
+ * source dimension. Set by the entry that kicks the turn (chat-router=user,
+ * sendProjectPrompt=work, cron fireAgent=cron, delegated sub-loop / unspec'd
+ * callers=background). Persisted on turn_state.source, default 'background'
+ * for pre-migration rows + any caller that doesn't pass it (acceptance-1 6/7).
+ *
+ * type-only export — both the runtime layer (SessionConfig) and the service
+ * layer (session-db) reference it. Imported as `import type` where needed so
+ * there's no runtime cycle (session-db already imports shared types the same
+ * way).
+ */
+export type TurnSource = "user" | "work" | "cron" | "background";
+
+/** All valid TurnSource values, useful for validation + iteration. */
+export const TURN_SOURCES: readonly TurnSource[] = ["user", "work", "cron", "background"] as const;
+
+// ---------------------------------------------------------------------------
 // Stream events — must match the existing IPC contract
 // ---------------------------------------------------------------------------
 
@@ -269,6 +289,16 @@ export interface SessionConfig {
 	 * input-queue / metrics).
 	 */
 	loopKind?: "main" | "delegated";
+	/**
+	 * platform-observability ②.1 (sub-1): the turn-source marker that this
+	 * loop's turns are stamped with. Set by the entry that builds the loop
+	 * (chat-router=user, sendProjectPrompt=work, cron fireAgent=cron, delegated
+	 * sub-loops / unspec'd=background). Carried on the config so the runtime
+	 * layer doesn't need to know about the entry — durable-hooks TurnStart
+	 * reads it from ctx.source (forwarded by agent-loop.run/resume) and
+	 * persists it via createTurnState. Defaults to 'background'.
+	 */
+	source?: TurnSource;
 	systemPrompt: string;
 	guidelines?: string[];
 	/**
