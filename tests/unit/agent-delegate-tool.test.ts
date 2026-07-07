@@ -128,13 +128,25 @@ describe("Agent tool — ephemeral delegate (no subagent)", () => {
 	});
 });
 
-describe("Agent tool — non-blocking + validation", () => {
-	test("mode=non_blocking → 走 delegateTaskBackground,返回 task_id", async () => {
+describe("Agent tool — blocking-only (sub-4) + validation", () => {
+	test("sub-4: mode param removed — delegate is ALWAYS blocking (走 delegateTask)", async () => {
+		let captured: any;
 		const ctx = makeCtx({
-			delegateTaskBackground: (_t, _o) => "task-xyz",
+			delegateTask: async (task, o) => { captured = { task, o }; return "blocking-result"; },
+			delegateTaskBackground: (_t, _o) => "should-not-be-called",
 		});
-		const r = await exec({ action: "delegate", task: "long", mode: "non_blocking" }, ctx);
-		expect(r).toMatch(/task_id: task-xyz/);
+		const r = await exec({ action: "delegate", task: "blocking work" }, ctx);
+		expect(r).toBe("blocking-result");
+		expect(captured.task).toBe("blocking work");
+	});
+
+	test("sub-4: retired actions (stop/complete/request_finish/tree) error out", async () => {
+		for (const bad of ["stop", "complete", "request_finish", "tree"] as const) {
+			const r = await exec({ action: bad } as any, makeCtx());
+			// zod rejects unknown enum values; either a zod error or our unknown-
+			// action message is acceptable. The key assertion: NOT silent success.
+			expect(r).not.toMatch(/task_id|acknowledged|has been stopped|Delegated/i);
+		}
 	});
 
 	test("delegate 缺 task → 报错", async () => {

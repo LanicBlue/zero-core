@@ -94,9 +94,15 @@ const MANAGEMENT_TOOLS = {
 	Platform: { enabled: true },
 	AskUser: { enabled: true },
 	TodoWrite: { enabled: true },
-	TaskStatus: { enabled: true },
+	// sub-4 (subagent-recovery): Task tool family. TaskStatus→TaskGet,
+	// TaskStop→TaskKill renamed; TaskStart/TaskFinish/TaskResume added. Legacy
+	// configs spelling TaskStatus/TaskStop still migrate via RENAMED_TOOLS.
+	TaskStart: { enabled: true },
+	TaskGet: { enabled: true },
 	TaskList: { enabled: true },
-	TaskStop: { enabled: true },
+	TaskKill: { enabled: true },
+	TaskFinish: { enabled: true },
+	TaskResume: { enabled: true },
 	SequentialThinking: { enabled: true },
 };
 

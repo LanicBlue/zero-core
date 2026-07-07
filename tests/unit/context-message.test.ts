@@ -3,7 +3,7 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 测试 buildContextMessage 按 Environment → Guidelines → Current Task → Recalled Memories 顺序
+// 测试 buildContextMessage 按 Environment → Guidelines → Recalled Memories 顺序
 // 拼装 <context> 标签包裹的上下文块；覆盖仅 workspaceDir、含 guidelines/memoryContext 各组合
 //
 // ## 输入

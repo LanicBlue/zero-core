@@ -20,12 +20,19 @@
 // ## 维护规则
 // 新增任务类型时需更新 TaskType 联合类型
 //
-import type { TaskInfo, TaskType } from "./types.js";
+import type { TaskInfo, TaskType, WakeReason, WaitSuspendOptions, WaitWakeResult } from "./types.js";
 
 export class TaskRegistry {
 	private tasks = new Map<string, TaskInfo>();
 	private abortControllers = new Map<string, AbortController>();
-	private wakeCallback: (() => void) | null = null;
+	/**
+	 * sub-5 (Wait rewrite): the active Wait suspension. Set by suspendUntilWake,
+	 * cleared on wake. The registry itself is session-agnostic — exactly one
+	 * Wait can be active per registry (one parent session waits on its own
+	 * registry). tryWake() fires it on any task terminal transition;
+	 * interruptWaitForUserInput() fires it for the user-input wake source.
+	 */
+	private waitResolver: ((reason: WakeReason) => void) | null = null;
 
 	// N1 (runtime-push-ui-sync): coalesced change notification. The registry
 	// stays sessionId-agnostic — AgentLoop subscribes and translates the ping
@@ -198,82 +205,99 @@ export class TaskRegistry {
 		return all.filter((t) => t.status !== "running");
 	}
 
-	getCompletedUnnotified(): TaskInfo[] {
-		const result: TaskInfo[] = [];
-		for (const info of this.tasks.values()) {
-			if ((info.status === "completed" || info.status === "failed" || info.status === "killed") && !info.notified) {
-				result.push(info);
-			}
+	/**
+	 * sub-6 (force-Wait hook): true when ANY task is still active (running OR
+	 * finishing). The parent turn must not end while this is true — the
+	 * force-Wait hook gates its nudge on this. Matches the in-suspendUntilWake
+	 * definition so "should I keep waiting?" and "should the turn keep going?"
+	 * agree on what "active" means.
+	 */
+	hasRunning(): boolean {
+		for (const t of this.tasks.values()) {
+			if (t.status === "running" || t.status === "finishing") return true;
 		}
-		return result;
+		return false;
 	}
 
-	markNotified(taskId: string): void {
-		const info = this.tasks.get(taskId);
-		if (info) info.notified = true;
-	}
+	/**
+	 * sub-5 (Wait rewrite): suspend the calling Wait tool until one of three
+	 * wake sources fires. Returns the wake reason + wall-clock elapsed.
+	 *
+	 * Wake sources (deterministic priority when multiple fire in the same tick):
+	 *   1. user-input   — interruptWaitForUserInput() called (highest priority)
+	 *   2. task finished — any background task reaches a terminal state
+	 *                      (complete/fail/kill/acknowledge fires tryWake())
+	 *   3. timeout      — the `until` absolute point or `timeout` relative
+	 *                     duration elapses (lowest priority)
+	 *
+	 * If NO background task is running at suspend time AND no time source was
+	 * given, the wait resolves immediately as "timeout" (nothing to wait for).
+	 * If a time source is given, the timer is honored even with no running
+	 * tasks (lets a caller Wait until a wall-clock point).
+	 *
+	 * Replaces the old task_id-scoped suspendUntilWake + generateSummary. Wait
+	 * now returns ONLY the wake reason + elapsed; task details go via TaskGet.
+	 *
+	 * NOTE on system clock: absolute `until` is compared via Date.now(); a
+	 * large clock jump (e.g. system sleep/wake) may cause a premature or
+	 * delayed timeout wake. Accepted — durability of `until` across a real
+	 * restart is the primary use case; in-process clock skew is best-effort.
+	 */
+	async suspendUntilWake(opts: WaitSuspendOptions): Promise<WaitWakeResult> {
+		const start = Date.now();
+		const untilMs = opts.until ? Date.parse(opts.until) : NaN;
+		const hasAbsolute = !Number.isNaN(untilMs);
+		const timeoutSec = opts.timeoutSec;
+		const hasRelative = typeof timeoutSec === "number" && timeoutSec > 0;
 
-	async suspendUntilWake(timeoutMs: number, taskId?: string): Promise<string> {
-		const hasRunning = taskId
-			? (this.tasks.get(taskId)?.status === "running" || this.tasks.get(taskId)?.status === "finishing")
-			: [...this.tasks.values()].some((t) => t.status === "running" || t.status === "finishing");
+		// Compute the timer delay (absolute point → relative delay). If neither
+		// source is given, delay is undefined (timer not armed).
+		let delayMs: number | undefined;
+		if (hasAbsolute) {
+			delayMs = Math.max(0, untilMs - start);
+		} else if (hasRelative) {
+			delayMs = Math.max(0, Math.min(timeoutSec!, 3600)) * 1000;
+		}
 
-		if (!hasRunning) return this.generateSummary(taskId);
+		// Nothing to wait for (no time source AND no running task) → wake now.
+		const hasRunning = () => [...this.tasks.values()].some((t) => t.status === "running" || t.status === "finishing");
+		if (delayMs === undefined && !hasRunning()) {
+			return { reason: "timeout", elapsedMs: 0 };
+		}
 
-		await new Promise<void>((resolve) => {
-			const timer = setTimeout(() => {
-				this.wakeCallback = null;
-				resolve();
-			}, timeoutMs);
-
-			this.wakeCallback = () => {
-				if (taskId) {
-					const info = this.tasks.get(taskId);
-					if (info && info.status !== "running" && info.status !== "finishing") {
-						clearTimeout(timer);
-						this.wakeCallback = null;
-						resolve();
-					}
-				} else {
-					clearTimeout(timer);
-					this.wakeCallback = null;
-					resolve();
-				}
+		const reason = await new Promise<WakeReason>((resolve) => {
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const finish = (r: WakeReason) => {
+				if (timer) clearTimeout(timer);
+				if (this.waitResolver === finish) this.waitResolver = null;
+				resolve(r);
 			};
+			// Register as the active resolver. tryWake() / interruptWaitForUserInput
+			// call it. If a second Wait suspends while one is active (shouldn't
+			// happen — a loop runs one Wait at a time), the new one supersedes.
+			this.waitResolver = finish;
+
+			if (delayMs !== undefined) {
+				timer = setTimeout(() => finish("timeout"), delayMs);
+			}
 		});
 
-		return this.generateSummary(taskId);
+		return { reason, elapsedMs: Date.now() - start };
 	}
 
-	private generateSummary(filterTaskId?: string): string {
-		const running: string[] = [];
-		const completed: string[] = [];
-		for (const info of this.tasks.values()) {
-			if (filterTaskId && info.id !== filterTaskId) continue;
-
-			if (info.status === "running" || info.status === "finishing") {
-				const typeLabel = info.type === "bash" ? "bash" : "subagent";
-				running.push(`[${info.id}] ${typeLabel} ${info.status} (turns:${info.turns} tokens:${info.tokens})${info.currentTool ? " tool:" + info.currentTool : ""}`);
-			} else if (info.status === "completed") {
-				const r = info.result && info.result.length > 500 ? info.result.slice(0, 500) + "..." : info.result;
-				completed.push(`[${info.id}] completed. Result: ${r}`);
-			} else if (info.status === "failed") {
-				completed.push(`[${info.id}] failed. Error: ${info.error}`);
-			} else if (info.status === "killed") {
-				completed.push(`[${info.id}] killed.`);
-			}
-		}
-		const parts: string[] = [];
-		if (completed.length) parts.push("Completed:\n" + completed.join("\n"));
-		if (running.length) parts.push("Still running:\n" + running.join("\n"));
-		return parts.join("\n\n") || "No tasks.";
+	/**
+	 * sub-5: fire the user-input wake source. Called by the loop when a user
+	 * message arrives while a Wait is suspended. No-op when no Wait is active.
+	 * Has the highest wake priority (see suspendUntilWake).
+	 */
+	interruptWaitForUserInput(): void {
+		if (this.waitResolver) this.waitResolver("user input");
 	}
 
 	private tryWake(): void {
-		if (this.wakeCallback) {
-			const cb = this.wakeCallback;
-			cb();
-		}
+		// sub-5: any task terminal transition wakes an active Wait with the
+		// "task finished" reason. (Was: the old task-scoped wakeCallback.)
+		if (this.waitResolver) this.waitResolver("task finished");
 	}
 
 	cleanup(maxAgeMs: number = 3600_000): void {

@@ -3,14 +3,14 @@
 // # 文件说明书
 //
 // ## 核心功能
-// buildContextMessage 把环境（日期/时区/OS/CPU/工作目录）、guidelines、current-task、
+// buildContextMessage 把环境（日期/时区/OS/CPU/工作目录）、guidelines、
 // memory 索引(wiki per-agent 锚点)、RAG 知识库拼成一个 <context> 块。每 turn 重建，
 // 不写 DB；动态内容插在最后一条 user 消息文本之前，使真正的 user 文本处于末尾、获得
 // 最高注意力（参考 claude-code attachment 与 Aider reminder 模式）。
 //
 // v0.8 (P2 §11.6 / §11.7): memory 现在是 wiki per-agent 子树索引(经
 // wikiAnchorsContext 注入);旧的独立 memoryContext 路径(FTS5 召回)已废,但参数
-// 保留为前向兼容入口(无 hook 再写入它)。新增 currentTask 字段。
+// 保留为前向兼容入口(无 hook 再写入它)。
 //
 // ## 输入
 // - workspaceDir：工作目录，用于提示工具默认路径与 cd 行为
@@ -53,19 +53,6 @@ export function buildContextMessage(config: {
 	 * subtree index (memory/<agentId>/).
 	 */
 	wikiAnchorsContext?: string;
-	/**
-	 * v0.8 (P2 §11.7): the session's current task — the requirement the
-	 * session is currently working on (derived from context.projectId +
-	 * active requirement). Plain text; rendered under ## Current Task.
-	 * Re-evaluated every turn (the active requirement may switch mid-session).
-	 */
-	currentTask?: string;
-	/**
-	 * The agent's current todo list (pre-rendered by renderTodosContext in
-	 * todo-write.ts). Injected every turn so the agent knows its own task
-	 * state — without this the agent could write todos but never read them.
-	 */
-	todosContext?: string;
 }): string | null {
 	const parts: string[] = [];
 
@@ -79,13 +66,6 @@ export function buildContextMessage(config: {
 		parts.push("## Guidelines\n" + config.guidelines.map(g => `- ${g}`).join("\n"));
 	}
 
-	// v0.8 (P2 §11.7): current-task goes ABOVE memory/wiki so the model sees
-	// "what am I doing right now" right after the guidelines, before the
-	// background knowledge.
-	if (config.currentTask) {
-		parts.push("## Current Task\n" + config.currentTask);
-	}
-
 	if (config.memoryContext) {
 		parts.push("## Recalled Memories\n" + config.memoryContext);
 	}
@@ -94,9 +74,7 @@ export function buildContextMessage(config: {
 		parts.push("## Wiki Anchors (context)\n" + config.wikiAnchorsContext);
 	}
 
-	if (config.todosContext) {
-		parts.push("## Task List (your todos)\n" + config.todosContext);
-	}
+	// (sub-1) todos moved to the per-step workbench channel (renderWorkbench).
 
 	if (parts.length === 0) return null;
 	return `<context>\n${parts.join("\n\n")}\n</context>\n`;

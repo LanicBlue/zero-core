@@ -54,7 +54,12 @@ export type HookEventName =
 	// ── Session level (agent-service, once per loop instance) ──────────────
 	| "SessionStart" | "SessionClose"
 	// ── Turn level (AgentLoop.run(), per user input) ───────────────────────
-	| "TurnStart" | "TurnEnd" | "TurnError"
+	//   TurnEndCheck (sub-6) — fires right before a turn would naturally end
+	//   (the step produced no tool call). A handler can return
+	//   { forceContinue: true, message } to keep the turn alive for one more
+	//   step with the message injected — used by the force-Wait hook to nudge
+	//   the model to Wait when background tasks are still running.
+	| "TurnStart" | "TurnEnd" | "TurnError" | "TurnEndCheck"
 	// ── Step level (per LLM call) ──────────────────────────────────────────
 	| "StepStart" | "StepEnd"
 	// ── LLMCall level (per LLM call) ───────────────────────────────────────
@@ -128,6 +133,23 @@ export interface TurnEndContext extends BaseHookContext {
 	messageCount: number;
 	/** Recorder blocks for the safety-net persist path. */
 	blocks?: unknown[];
+}
+
+/**
+ * TurnEndCheck (sub-6 force-Wait): fires once right before a turn would
+ * naturally end (the just-completed step produced no tool call). This is the
+ * LAST chance for a handler to keep the turn alive. Return
+ * `{ forceContinue: true, message }` to inject `message` and run one more
+ * step instead of ending the turn. The handler is responsible for de-duping
+ * its own nudges across repeated TurnEndCheck fires within the same turn
+ * (e.g. a per-turn "already nudged" marker) so an agent that keeps trying to
+ * end doesn't get nudged into a tight loop.
+ */
+export interface TurnEndCheckContext extends BaseHookContext {
+	/** Result text the model produced this step (empty if it only emitted a tool call that was then... n/a here — only fires when no tool call). */
+	resultText?: string;
+	/** The task registry attached to this loop (may be absent in stubbed tests). */
+	taskRegistry?: unknown;
 }
 
 /** TurnError: fires when a turn fails after all retries. */

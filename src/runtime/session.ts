@@ -33,6 +33,18 @@ import { triggerHooks } from "../core/hook-registry.js";
 const DEFAULT_CONTEXT_WINDOW = 128000;
 const RESERVE_TOKENS = 16384;
 
+/**
+ * sub-5 (Wait resume): best-effort parse of a persisted tool-call's args. The
+ * turns table stores `args` either as a raw OBJECT (turn-recorder writes the
+ * SDK's e.input verbatim, JSON round-trip preserves object shape) or as a JSON
+ * STRING (some legacy/normalized paths). Returns {} on parse failure so the
+ * wait-resume branch can degrade to the "no args → wake as timeout" path
+ * instead of throwing during message rebuild.
+ */
+function safeParseArgs(raw: string): any {
+	try { return JSON.parse(raw) ?? {}; } catch { return {}; }
+}
+
 /** Cached turn data — now includes turnGroup for step-level storage. */
 export interface CachedTurnData {
 	seq: number;
@@ -330,13 +342,47 @@ export class AgentSession {
 	 * legitimately stays "running" mid-step), so this is applied at rebuild time
 	 * to guarantee the rebuilt messages always carry a paired tool-result for
 	 * every tool-call. Idempotent — blocks with a result are untouched.
+	 *
+	 * sub-5 (Wait rewrite): a pending WAIT tool call does NOT get the generic
+	 * `[interrupted]` synthesis. Instead it takes a dedicated wait-resume
+	 * branch: read the persisted args (`until` absolute / `timeout` relative),
+	 * decide whether the deadline already passed during the outage, and fill a
+	 * Wait-specific result so the rebuilt messages stay valid (paired tool-
+	 * result) WITHOUT the misleading "[interrupted]" label. The in-process
+	 * re-suspend for a still-future `until` is handled by AgentLoop.resume
+	 * (detectAndResumePendingWait), not here — here we only guarantee message
+	 * validity + an honest result string.
+	 *
+	 *   - `until` in the past, or only relative `timeout` (not durable across
+	 *     restart → treated as elapsed): fill `woke: timeout` (status done).
+	 *   - `until` in the future: fill `woke: timeout (resumed; wait re-suspended)`
+	 *     (status done). The model sees the wait "returned" so the conversation
+	 *     is valid; AgentLoop.resume re-suspends to honor the real deadline.
 	 */
 	private synthesizeDanglingToolResultsInPlace(blocks: any[]): void {
 		for (const b of blocks) {
-			if (b?.type === "tool" && b.status === "running" && b.result === undefined) {
-				b.status = "error";
-				b.result = "[interrupted]";
+			if (b?.type !== "tool" || b.status !== "running" || b.result !== undefined) continue;
+
+			if (b.name === "Wait") {
+				// Dedicated wait-resume branch — do NOT synthesize [interrupted].
+				const args = (typeof b.args === "string") ? safeParseArgs(b.args) : (b.args ?? {});
+				const untilIso = typeof args?.until === "string" ? args.until : undefined;
+				const untilMs = untilIso ? Date.parse(untilIso) : NaN;
+				const hasFutureUntil = !Number.isNaN(untilMs) && untilMs > Date.now();
+				if (hasFutureUntil) {
+					b.status = "done";
+					b.result = "woke: timeout (resumed; wait re-suspended)";
+				} else {
+					// Past-due `until`, or relative-only `timeout` (treated as
+					// elapsed across restart), or no args at all → wake as timeout.
+					b.status = "done";
+					b.result = "woke: timeout";
+				}
+				continue;
 			}
+
+			b.status = "error";
+			b.result = "[interrupted]";
 		}
 	}
 

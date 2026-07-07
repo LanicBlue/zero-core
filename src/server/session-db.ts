@@ -867,6 +867,50 @@ export class SessionDB {
 		}
 	}
 
+	/**
+	 * sub-4 (TaskResume turn_seq guard): single-session interrupted turn read.
+	 * Used by the runtime resumeTask path to pre-populate turn_seq before
+	 * loop.resume() (closing the turn+1 bug on the TaskResume path — the server-
+	 * side doRecoverIncompleteSessions already does this for chat sessions).
+	 * Returns the FIRST non-terminal turn_state row for the session (a session
+	 * has at most one in-flight turn at a time). Returns undefined if none.
+	 */
+	getIncompleteTurn(sessionId: string): { turnSeq: number; lastCompletedStepSeq?: number | null } | undefined {
+		try {
+			const row = this.db.prepare(
+				`SELECT turn_seq, last_completed_step_seq FROM turn_state WHERE session_id = ? AND phase NOT IN ('completed', 'failed') ORDER BY turn_seq DESC LIMIT 1`,
+			).get(sessionId) as any;
+			if (!row) return undefined;
+			return {
+				turnSeq: row.turn_seq,
+				lastCompletedStepSeq: row.last_completed_step_seq ?? null,
+			};
+		} catch (e) {
+			log.error("db", `getIncompleteTurn failed (session=${sessionId}):`, (e as Error).message);
+			return undefined;
+		}
+	}
+
+	/**
+	 * sub-4 (TaskKill interrupted→abandon): mark a session's interrupted
+	 * turn_state rows terminal (failed) so they don't resurface as "needs
+	 * resume" on next startup. Called from the parent's TaskKill(interrupted)
+	 * branch when the parent chooses NOT to resume a frozen delegated child.
+	 * Returns the count of rows marked. Best-effort: errors log + return 0.
+	 */
+	abandonInterruptedTurn(sessionId: string, reason: string = "Abandoned via TaskKill"): number {
+		try {
+			const now = new Date().toISOString();
+			const info = this.db.prepare(
+				`UPDATE turn_state SET phase = 'failed', error = ?, updated_at = ? WHERE session_id = ? AND phase NOT IN ('completed', 'failed')`,
+			).run(reason, now, sessionId);
+			return info.changes ?? 0;
+		} catch (e) {
+			log.error("db", `abandonInterruptedTurn failed (session=${sessionId}):`, (e as Error).message);
+			return 0;
+		}
+	}
+
 	cleanOldTurnState(maxAgeMs: number): void {
 		const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
 		try {

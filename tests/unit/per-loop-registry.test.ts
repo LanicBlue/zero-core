@@ -2,12 +2,16 @@
 //
 // Verifies that `registerHooksForLoop(registry, loopKind, deps)` registers the
 // correct handler set per loop kind, on the registry the caller passes:
-//   - main only:  registerNotificationHooks / registerInputQueueHooks /
-//                 registerMetricsHooks are called (on the main registry).
+//   - main only:  registerInputQueueHooks / registerMetricsHooks are called
+//                 (on the main registry).
 //   - delegated only: registerTaskControlHooks is called (on the delegated
 //                 registry).
 //   - cross-kind negative: main registry does NOT get task-control; delegated
-//                 registry does NOT get notification / input-queue / metrics.
+//                 registry does NOT get input-queue / metrics.
+//
+// sub-4 (subagent-recovery): notification-hooks was DELETED (workbench 收件箱
+// replaces it). The main-only set is now input-queue + metrics. This test was
+// updated to drop the notification-hooks spies/assertions.
 //
 // Approach: spy on the per-module register functions (they are the public
 // registerHooksForLoop subcontract — each branch dispatches to exactly one set
@@ -27,7 +31,6 @@ import { registerHooksForLoop, type HookWiringDeps } from "../../src/runtime/hoo
 
 // The per-module register fns dispatched to by registerHooksForLoop. Importing
 // them statically lets us spy on the same module object index.ts re-exports.
-import * as NotificationHooks from "../../src/runtime/hooks/notification-hooks.js";
 import * as InputQueueHooks from "../../src/runtime/hooks/input-queue-hooks.js";
 import * as MetricsHooks from "../../src/server/metrics-hooks.js";
 import * as TaskControlHooks from "../../src/runtime/hooks/task-control-hooks.js";
@@ -61,26 +64,23 @@ describe("Step 1B · registerHooksForLoop per-loop isolation (A2)", () => {
 		// accumulates across tests on the same module object).
 		for (const s of spies ?? []) s.mockRestore();
 		spies = [
-			vi.spyOn(NotificationHooks, "registerNotificationHooks"),
 			vi.spyOn(InputQueueHooks, "registerInputQueueHooks"),
 			vi.spyOn(MetricsHooks, "registerMetricsHooks"),
 			vi.spyOn(TaskControlHooks, "registerTaskControlHooks"),
 		];
 	});
 
-	it("main loop: notification / input-queue / metrics are registered on the MAIN registry; task-control is NOT", () => {
+	it("main loop: input-queue / metrics are registered on the MAIN registry; task-control is NOT", () => {
 		const mainRegistry = new HookRegistry();
 		const deps = fakeDeps();
 
 		registerHooksForLoop(mainRegistry, "main", deps);
 
-		// main-only registers fired.
-		expect(NotificationHooks.registerNotificationHooks).toHaveBeenCalledTimes(1);
+		// main-only registers fired (sub-4: notification-hooks deleted).
 		expect(InputQueueHooks.registerInputQueueHooks).toHaveBeenCalledTimes(1);
 		expect(MetricsHooks.registerMetricsHooks).toHaveBeenCalledTimes(1);
 
 		// Each received the MAIN registry (not the singleton, not some other).
-		expect(NotificationHooks.registerNotificationHooks).toHaveBeenCalledWith(mainRegistry);
 		expect(InputQueueHooks.registerInputQueueHooks).toHaveBeenCalledWith(expect.anything(), mainRegistry);
 		expect(MetricsHooks.registerMetricsHooks).toHaveBeenCalledWith(expect.anything(), mainRegistry);
 
@@ -88,7 +88,7 @@ describe("Step 1B · registerHooksForLoop per-loop isolation (A2)", () => {
 		expect(TaskControlHooks.registerTaskControlHooks).not.toHaveBeenCalled();
 	});
 
-	it("delegated loop: task-control is registered on the DELEGATED registry; notification / input-queue / metrics are NOT", () => {
+	it("delegated loop: task-control is registered on the DELEGATED registry; input-queue / metrics are NOT", () => {
 		const delegatedRegistry = new HookRegistry();
 		const deps = fakeDeps();
 
@@ -99,7 +99,6 @@ describe("Step 1B · registerHooksForLoop per-loop isolation (A2)", () => {
 		expect(TaskControlHooks.registerTaskControlHooks).toHaveBeenCalledWith(expect.anything(), delegatedRegistry);
 
 		// main-only registers must NOT have fired for delegated.
-		expect(NotificationHooks.registerNotificationHooks).not.toHaveBeenCalled();
 		expect(InputQueueHooks.registerInputQueueHooks).not.toHaveBeenCalled();
 		expect(MetricsHooks.registerMetricsHooks).not.toHaveBeenCalled();
 	});
@@ -114,7 +113,6 @@ describe("Step 1B · registerHooksForLoop per-loop isolation (A2)", () => {
 		registerHooksForLoop(delegatedRegistry, "delegated", deps);
 
 		expect(TaskControlHooks.registerTaskControlHooks).not.toHaveBeenCalled();
-		expect(NotificationHooks.registerNotificationHooks).not.toHaveBeenCalled();
 		expect(InputQueueHooks.registerInputQueueHooks).not.toHaveBeenCalled();
 		expect(MetricsHooks.registerMetricsHooks).not.toHaveBeenCalled();
 	});
@@ -127,21 +125,21 @@ describe("Step 1B · registerHooksForLoop per-loop isolation (A2)", () => {
 		registerHooksForLoop(mainRegistry, "main", deps);
 		registerHooksForLoop(delegatedRegistry, "delegated", deps);
 
-		// Notification fired exactly once and received the MAIN registry.
-		expect(NotificationHooks.registerNotificationHooks).toHaveBeenCalledTimes(1);
-		expect(NotificationHooks.registerNotificationHooks).toHaveBeenCalledWith(mainRegistry);
+		// Input-queue fired exactly once and received the MAIN registry.
+		expect(InputQueueHooks.registerInputQueueHooks).toHaveBeenCalledTimes(1);
+		expect(InputQueueHooks.registerInputQueueHooks).toHaveBeenCalledWith(expect.anything(), mainRegistry);
 
 		// Task-control fired exactly once and received the DELEGATED registry.
 		expect(TaskControlHooks.registerTaskControlHooks).toHaveBeenCalledTimes(1);
 		expect(TaskControlHooks.registerTaskControlHooks).toHaveBeenCalledWith(expect.anything(), delegatedRegistry);
 
 		// Cross-kind negative: main registry never received task-control;
-		// delegated registry never received notification.
+		// delegated registry never received input-queue.
 		const tcCallReg = TaskControlHooks.registerTaskControlHooks.mock.calls[0][1];
-		const notifCallReg = NotificationHooks.registerNotificationHooks.mock.calls[0][0];
+		const iqCallReg = InputQueueHooks.registerInputQueueHooks.mock.calls[0][1];
 		expect(tcCallReg).toBe(delegatedRegistry);
 		expect(tcCallReg).not.toBe(mainRegistry);
-		expect(notifCallReg).toBe(mainRegistry);
-		expect(notifCallReg).not.toBe(delegatedRegistry);
+		expect(iqCallReg).toBe(mainRegistry);
+		expect(iqCallReg).not.toBe(delegatedRegistry);
 	});
 });

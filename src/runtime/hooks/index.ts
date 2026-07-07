@@ -9,7 +9,8 @@
 //   - shared (main + delegated): turn-hooks / tool-execution-hooks / durable-hooks
 //     / provider-options-hooks / extraction-hooks / compression-hooks
 //     / workflow-context-hook(work session)
-//   - main only:  notification-hooks / input-queue-hooks / metrics-hooks
+//   - main only:  input-queue-hooks / metrics-hooks (sub-4: notification-hooks
+//     removed — workbench 收件箱 replaces it)
 //   - delegated only: task-control-hooks
 // requirement-hooks 不再注册(§5.5,workflow 域,已退役)。
 //
@@ -44,7 +45,11 @@
 import type { HookRegistry } from "../../core/hook-registry.js";
 import { registerCompressionHooks } from "./compression-hooks.js";
 import { registerExtractionHooks, type ExtractionHooksDeps } from "./extraction-hooks.js";
-import { registerNotificationHooks } from "./notification-hooks.js";
+// sub-4 (subagent-recovery): notification-hooks.ts DELETED — the workbench
+// 收件箱 (running 一直在;终态留到 TaskGet 消费才删) replaces the old addMessage
+// notification path. Fewer accumulating message types. The `notified` flag on
+// TaskInfo is also removed (no consumer left).
+import { registerForceWaitHooks } from "./force-wait-hooks.js";
 import { registerProviderOptionsHooks } from "./provider-options-hooks.js";
 import { registerTodoCleanupHooks } from "./todo-cleanup-hooks.js";
 import { registerTaskControlHooks } from "./task-control-hooks.js";
@@ -135,6 +140,10 @@ export function registerHooksForLoop(
 	registerCompressionHooks(registry);
 	// Clear all-completed todos at the end of the current turn (UI auto-hide).
 	registerTodoCleanupHooks(registry);
+	// sub-6 (force-Wait): if running background tasks exist when a turn is
+	// about to end, nudge the model to Wait (one nudge per turn). Registered
+	// for both loop kinds — either can own background tasks via TaskStart.
+	registerForceWaitHooks(registry);
 	if (extractionDeps) {
 		registerExtractionHooks(extractionDeps, registry);
 	}
@@ -147,7 +156,7 @@ export function registerHooksForLoop(
 
 	// ── main only ──────────────────────────────────────────────────
 	if (loopKind === "main") {
-		registerNotificationHooks(registry);
+		// sub-4: notification-hooks removed — workbench 收件箱 covers it.
 		if (inputQueue) {
 			registerInputQueueHooks(inputQueue, registry);
 		}
@@ -171,7 +180,7 @@ export function registerHooksForLoop(
 export {
 	registerCompressionHooks,
 	registerExtractionHooks,
-	registerNotificationHooks,
+	registerForceWaitHooks,
 	registerProviderOptionsHooks,
 	registerTodoCleanupHooks,
 	registerTaskControlHooks,

@@ -43,7 +43,7 @@ import type {
 import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
 import { buildToolsSet } from "./tools/index.js";
-import { renderTodosContext } from "./tools/todo-write.js";
+import { renderWorkbench } from "./workbench.js";
 import { log } from "../core/logger.js";
 import { HookRegistry } from "../core/hook-registry.js";
 import { classifyError, isTransientError, userFriendlyMessage, MAX_RETRIES, BASE_DELAY_MS } from "./agent-utils.js";
@@ -66,6 +66,20 @@ import {
 // AgentLoop
 // ---------------------------------------------------------------------------
 
+/**
+ * sub-4 (TaskGet recent-calls): compact a tool-call's args string for display
+ * in the parent's TaskGet(running) view. Long args get truncated to a one-line
+ * summary so the recent-calls list stays readable; output is NEVER included
+ * (that's reserved for TaskGet(completed)'s full result). Same intent as
+ * tool-factory's summarizeParams but trimmed tighter (parent only needs a hint
+ * of what the sub-agent is doing, not the full payload).
+ */
+function summarizeArgs(argsText: string): string {
+	const trimmed = argsText.trim().replace(/\s+/g, " ");
+	if (trimmed.length <= 120) return trimmed;
+	return trimmed.slice(0, 120) + "…";
+}
+
 export class AgentLoop implements AgentRuntime {
 	private session: AgentSession;
 	private config: SessionConfig;
@@ -76,6 +90,24 @@ export class AgentLoop implements AgentRuntime {
 	private promptAssembler: SystemPromptAssembler;
 	private abortController: AbortController | null = null;
 	private busy = false;
+	/**
+	 * sub-5 (Wait rewrite): true while a Wait tool call is suspended inside a
+	 * step's streamText. Distinct from `busy` — the loop is still mid-run (the
+	 * Wait tool's execute is awaiting inside the SDK), but the session is NOT
+	 * "running" for UI/queue purposes: it shows idle and accepts user input as a
+	 * wake source (which ends the current turn and starts turn+1). Mirrored to
+	 * the server via session_waiting/session_running events so runStates stays
+	 * the UI truth source.
+	 */
+	private waiting = false;
+	/**
+	 * sub-5: set when a Wait woke with reason "user input". executeStream polls
+	 * this at the next step boundary and breaks the step loop → the current
+	 * turn ends cleanly (Wait's tool-result is the last block); the user's
+	 * queued message then runs as turn+1 (drained by agent-service after run()
+	 * returns). Reset per-run.
+	 */
+	private userInterruptQueued = false;
 	private streamText = "";
 	private thinkingText = "";
 	private recorder = new TurnRecorder();
@@ -175,10 +207,18 @@ export class AgentLoop implements AgentRuntime {
 			getTaskResult: (taskId) => this.delegator.getTaskResult(taskId),
 			listTasks: (filter) => this.delegator.listTasks(filter),
 			stopTask: (taskId) => this.delegator.stopTask(taskId),
+			// sub-4 (TaskKill interrupted→abandon): close the frozen child's
+			// turn_state terminal + drop from registry. Complement to stopTask.
+			abandonTask: (taskId) => this.delegator.abandonTask(taskId),
 			acknowledgeTask: (taskId) => this.delegator.acknowledgeTask(taskId),
 			requestTaskFinish: (taskId, options) => this.delegator.requestTaskFinish(taskId, options),
 			listDelegatedTasks: (filter) => this.delegator.listDelegatedTasks(filter),
-			suspendUntilWake: (timeoutMs, taskId) => this.delegator.suspendUntilWake(timeoutMs, taskId),
+			suspendUntilWake: (opts) => this.delegator.suspendUntilWake(opts),
+			// sub-5 (Wait): let the Wait tool announce suspend/resume so the loop
+			// can release/reacquire the session "running" state and detect a
+			// user-input wake (→ end current turn, start turn+1).
+			beginWait: () => { this.beginWaitSuspend(); },
+			endWait: (reason) => { this.endWaitSuspend(reason); },
 			runBackground: (command, timeoutSec) => this.delegator.runBackground(command, timeoutSec),
 			// Step 2E: tool-call ↔ task link — let the Agent tool stamp the
 			// recorder's tool-call block with the delegated taskId the moment
@@ -190,6 +230,14 @@ export class AgentLoop implements AgentRuntime {
 				this.recorder.setToolBlockTaskId(toolCallId, undefined, taskId);
 			},
 			resumeTask: (taskId) => this.delegator.resumeTask(taskId),
+			// sub-4 (TaskResume, non-blocking): set up sub-loop + turn_seq guard
+			// synchronously, detach the run. Agent tasks only.
+			resumeTaskBackground: (taskId) => this.delegator.resumeTaskBackground(taskId),
+			// sub-4 (TaskGet recent-calls): name+args summary of a running task's
+			// last N tool calls (agent → live sub-loop recorder; bash → command).
+			// Output is NEVER included here — completed results come through
+			// TaskGet(completed). Runtime→runtime; no DB hop.
+			getTaskRecentCalls: (taskId, n) => this.delegator.getTaskRecentCalls(taskId, n),
 			rateLimiter: new ToolRateLimiter(),
 			// Multi-Agent Workflow context
 			wikiStore: (config as any).wikiStore,
@@ -258,6 +306,7 @@ export class AgentLoop implements AgentRuntime {
 		this.resultText = "";
 		this.recorder.reset();
 		this.abortController = new AbortController();
+		this.userInterruptQueued = false;
 		const timeout = this.setupTimeout();
 
 		try {
@@ -333,6 +382,7 @@ export class AgentLoop implements AgentRuntime {
 		this.resultText = "";
 		this.recorder.reset();
 		this.abortController = new AbortController();
+		this.userInterruptQueued = false;
 		const timeout = this.setupTimeout();
 
 		try {
@@ -345,6 +395,15 @@ export class AgentLoop implements AgentRuntime {
 				this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
 			}
 			this.stepOffset = 0;
+
+			// sub-5 (durable Wait): if the crash left a pending Wait tool call
+			// whose absolute `until` is still in the future, re-suspend now
+			// (before TurnStart / the model runs) so the wait honors its real
+			// deadline instead of the model seeing a synthetic "woke: timeout".
+			// Past-due / relative-only waits are NOT re-suspended — the rebuild
+			// already synthesized `woke: timeout` for them. Best-effort: any
+			// error just logs and lets the resume proceed normally.
+			await this.detectAndResumePendingWait();
 
 			await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: "(resumed)" });
 
@@ -381,11 +440,138 @@ export class AgentLoop implements AgentRuntime {
 		};
 	}
 
+	// ─── sub-5: Wait suspension coordination ─────────────────────────────
+	/**
+	 * Whether this loop is currently suspended inside a Wait tool call. While
+	 * true the session is NOT "running" for UI/queue purposes (shows idle,
+	 * accepts user input as a wake source). Distinct from `busy` (the loop is
+	 * still mid-run; the Wait tool's execute is awaiting inside the SDK).
+	 */
+	isWaiting(): boolean { return this.waiting; }
+
+	/**
+	 * Fire the user-input wake source. Called by the server when a user message
+	 * arrives while the loop is waiting. Returns true if a Wait was active and
+	 * got interrupted; false if the loop wasn't waiting (caller treats the
+	 * message as a normal prompt). The interrupted Wait resolves with reason
+	 * "user input"; endWaitSuspend then sets userInterruptQueued so executeStream
+	 * ends the current turn at the next step boundary → the queued message runs
+	 * as turn+1 (agent-service drains the input queue after run() returns).
+	 */
+	interruptWaitForUserInput(): boolean {
+		if (!this.waiting) return false;
+		this.delegator.interruptWaitForUserInput();
+		return true;
+	}
+
+	/**
+	 * sub-5: called by the Wait tool (via ctx.beginWait) right before it
+	 * suspends. Flips the loop into the waiting state and emits session_waiting
+	 * so the server releases the "running" flag (UI shows idle, sendPrompt can
+	 * route the next user message to interruptWaitForUserInput instead of a
+	 * conflicting second run()).
+	 */
+	private beginWaitSuspend(): void {
+		if (this.waiting) return;
+		this.waiting = true;
+		this.emit({ type: "session_waiting", sessionId: this.config.sessionId, agentId: this.config.agentId });
+	}
+
+	/**
+	 * sub-5: called by the Wait tool (via ctx.endWait) right after it resolves.
+	 * Reacquires the running state (emits session_running) and, if the wake was
+	 * a user-input interrupt, sets userInterruptQueued so executeStream breaks
+	 * at the next step boundary (current turn ends; turn+1 follows via drain).
+	 */
+	private endWaitSuspend(reason: string): void {
+		if (!this.waiting) return;
+		this.waiting = false;
+		if (reason === "user input") this.userInterruptQueued = true;
+		this.emit({ type: "session_running", sessionId: this.config.sessionId, agentId: this.config.agentId });
+	}
+
+	/**
+	 * sub-5 (durable Wait resume): scan the last persisted step for a pending
+	 * Wait tool call whose absolute `until` is still in the future, and if so
+	 * re-suspend via suspendUntilWake so the wait honors its real deadline. The
+	 * rebuild path (synthesizeDanglingToolResultsInPlace) already paired the
+	 * dangling Wait with a synthetic `woke: timeout` so the messages are valid;
+	 * this re-suspend is what actually makes the resumed turn WAIT again rather
+	 * than continuing as if the wait had elapsed.
+	 *
+	 * Wake sources during the re-suspend are the same three (time / any-task /
+	 * user-input). If a background task reached a terminal state during the
+	 * outage, it already fired tryWake() into a dead resolver (no Wait was
+	 * active) — so on re-suspend we may wake immediately as "timeout" if no
+	 * task is currently running. That matches the spec: any-finish "naturally
+	 * triggers" via the re-suspend; the reason label may read "timeout" when
+	 * the finishing task already left the live registry (accepted, documented).
+	 *
+	 * Best-effort: any parse/read error logs and falls through (resume proceeds
+	 * without re-suspending — the synthesized `woke: timeout` stands).
+	 */
+	private async detectAndResumePendingWait(): Promise<void> {
+		if (!this.config.db || !this.config.sessionId) return;
+		try {
+			const steps = this.config.db.getSteps(this.config.sessionId);
+			if (steps.length === 0) return;
+			// Scan assistant steps from the latest backward for a pending Wait.
+			for (let i = steps.length - 1; i >= 0; i--) {
+				const s = steps[i];
+				if (s.role !== "assistant") continue;
+				let blocks: any[] = [];
+				try { blocks = JSON.parse(s.content ?? "[]"); } catch { continue; }
+				const waitBlock = blocks.find((b: any) =>
+					b?.type === "tool" && b.name === "Wait" && b.status === "running" && b.result === undefined,
+				);
+				if (!waitBlock) continue; // this step has no pending Wait; keep scanning up
+				const args = typeof waitBlock.args === "string"
+					? (JSON.parse(waitBlock.args) ?? {})
+					: (waitBlock.args ?? {});
+				const untilIso = typeof args?.until === "string" ? args.until : undefined;
+				if (!untilIso) continue; // relative-only timeout → not durable; let the synthesized result stand
+				const untilMs = Date.parse(untilIso);
+				if (Number.isNaN(untilMs)) continue;
+				if (untilMs <= Date.now()) continue; // already past due → synthesized `woke: timeout` stands
+				// Future `until` → re-suspend until that point (or any-task /
+				// user-input wakes it sooner). Announce suspend/resume so the
+				// server's running flag stays consistent during the re-wait.
+				this.beginWaitSuspend();
+				try {
+					await this.delegator.suspendUntilWake({ until: untilIso });
+				} finally {
+					this.endWaitSuspend("timeout");
+				}
+				return; // at most one re-suspend per resume
+			}
+		} catch (err: any) {
+			log.warn("loop", "detectAndResumePendingWait failed (non-fatal):", err?.message ?? err);
+		}
+	}
+
 	getLoopState(): { isBusy: boolean; recorderBlocks: any[] } {
 		return {
 			isBusy: this.busy,
 			recorderBlocks: this.recorder.blocks.slice(),
 		};
+	}
+
+	/**
+	 * sub-4 (TaskGet recent-calls source): the last N tool-call blocks from this
+	 * loop's recorder, name + args summary only (NO output/result). Used by the
+	 * parent's `ctx.getTaskRecentCalls(taskId)` to surface what a running
+	 * sub-agent is doing without leaking tool output (that's reserved for the
+	 * completed branch of TaskGet). Returns [] if there are no tool blocks yet.
+	 *
+	 * Same source as the UI's live block view — single source of truth.
+	 */
+	getRecentToolCalls(n: number = 3): Array<{ name: string; args?: string }> {
+		const toolBlocks = this.recorder.blocks.filter((b: any) => b?.type === "tool" && b?.name);
+		const recent = toolBlocks.slice(-n);
+		return recent.map((b: any) => ({
+			name: String(b.name),
+			args: typeof b.args === "string" ? summarizeArgs(b.args) : b.args,
+		}));
 	}
 
 	/** Expose session turns for UI rendering — runtime is the single source of truth. */
@@ -669,12 +855,6 @@ export class AgentLoop implements AgentRuntime {
 			? renderContextAnchors({ wiki: this.wikiStoreGlobal, anchors: this.wikiAnchors })
 			: "";
 
-		// v0.8 (P2 §11.7): current-task — the active requirement id (when the
-		// session is bound to a project + requirement). Re-evaluated every turn;
-		// does not enter message history. Rendered in buildContextMessage under
-		// ## Current Task so the model always knows what it is doing right now.
-		const currentTask = this.resolveCurrentTask();
-
 		// Step 2C: externalized step loop. Each iteration runs ONE model call
 		// via streamText({ stopWhen: stepCountIs(1) }), consumes its events,
 		// finalizes it (seal + usage + StepEnd), then appends the step's
@@ -689,10 +869,8 @@ export class AgentLoop implements AgentRuntime {
 			guidelines: this.config.guidelines,
 			useDeviceContext: this.config.contextConfig?.useDeviceContext,
 			wikiAnchorsContext: wikiAnchorsContext || undefined,
-			currentTask: currentTask || undefined,
-			// Inject the agent's current todo list so it can read its own state
-			// across turns (not just write blindly). Renderer lives in todo-write.ts.
-			todosContext: renderTodosContext(this.config.sessionId, this.config.agentId) ?? undefined,
+			// (sub-1) todos moved out of the turn-scoped context block into the
+			// per-step workbench channel (renderWorkbench) so they refresh mid-turn.
 		});
 		let messages = this.prependContext(this.session.getMessages(), baseCtx);
 		// Collect each step's response messages so finalizeStream can persist
@@ -703,6 +881,14 @@ export class AgentLoop implements AgentRuntime {
 		for (let stepNumber = 1; stepNumber <= MAX_STEPS; stepNumber++) {
 			// Abort at the step boundary — never start a new model call after cancel.
 			if (this.abortController?.signal.aborted) break;
+			// sub-5 (Wait): a user-input wake ended the last step. End the turn
+			// cleanly here (the Wait tool-result was the last block); the user's
+			// queued message runs as turn+1 (agent-service drains the input
+			// queue after run() returns). NOT an abort — turn completes normally.
+			if (this.userInterruptQueued) {
+				this.userInterruptQueued = false;
+				break;
+			}
 
 			// ── StepStart → PreLLMCall: per-step injection seam. ─────────────
 			// Both fire per step now. StepStart carries the queued-input /
@@ -753,8 +939,6 @@ export class AgentLoop implements AgentRuntime {
 					useDeviceContext: this.config.contextConfig?.useDeviceContext,
 					memoryContext,
 					wikiAnchorsContext: wikiAnchorsContext || undefined,
-					currentTask: currentTask || undefined,
-					todosContext: renderTodosContext(this.config.sessionId, this.config.agentId) ?? undefined,
 				});
 				if (ctx) {
 					messages = this.prependContext(messages, ctx);
@@ -762,7 +946,16 @@ export class AgentLoop implements AgentRuntime {
 			}
 
 			// Apply appendMessages from StepStart + PreLLMCall to this step only.
-			const stepMessages = [...messages, ...stepStartExtra, ...preExtra];
+			let stepMessages = [...messages, ...stepStartExtra, ...preExtra];
+
+			// (sub-1) workbench: per-step, non-persistent live-state block (todos,
+			// later task/wait). Appended as a user message at the end (format-safe:
+			// last message is often a tool result mid-turn, can't prepend to it).
+			// Not persisted into `messages` — fresh each step, never accumulates.
+			const workbench = renderWorkbench(this.config.sessionId, this.config.agentId);
+			if (workbench) {
+				stepMessages = [...stepMessages, { role: "user", content: workbench }];
+			}
 
 			log.debug("loop", "streamText called (step " + stepNumber + "), messages:", stepMessages.length,
 				"model:", this.config.providerName + "/" + this.config.modelId,
@@ -798,6 +991,30 @@ export class AgentLoop implements AgentRuntime {
 
 			// No tool call this step → the model produced its final answer; turn done.
 			if (!step.hadToolCall) {
+				// sub-6 (force-Wait): last-chance hook before the turn ends. A
+				// handler (force-wait-hooks) may return { forceContinue: true,
+				// message } to inject a nudge and run ONE more step instead of
+				// ending. The handler owns per-turn de-dup so a turn that keeps
+				// trying to end isn't nudged into a loop; Wait timeout is the
+				// backstop. Not fired while a Wait is suspended (turn is mid-run,
+				// not ending) — see isWaiting guard in the hook itself.
+				const endCheck = await this.triggerLocal("TurnEndCheck", {
+					agentId: this.config.agentId,
+					sessionId: this.session.getSessionId(),
+					resultText: step.text,
+					taskRegistry: this.delegator.taskRegistry,
+				});
+				if (endCheck.forceContinue === true && typeof endCheck.message === "string" && endCheck.message.length > 0) {
+					// Inject the nudge as a user message for the next step and
+					// continue the while-loop (stepNumber increments naturally).
+					// Persist it into the session so it survives a mid-turn crash
+					// and is visible on rebuild.
+					const nudgeMsg = { role: "user", content: endCheck.message };
+					messages = [...messages, nudgeMsg];
+					pendingPersist.push(nudgeMsg);
+					log.debug("loop", `TurnEndCheck forceContinue: running one more step (${endCheck.message.slice(0, 60)}…)`);
+					continue;
+				}
 				this.resultText = step.text;
 				break;
 			}
@@ -854,34 +1071,6 @@ export class AgentLoop implements AgentRuntime {
 		}
 		return null;
 	}
-
-	/**
-	 * v0.8 (P2 §11.7): resolve the session's current task for the context
-	 * block. Source: the active requirement id on the session's project
-	 * context. When a RequirementStore is available, the requirement's title
-	 * is also pulled so the model sees a human-readable handle. Returns "" when
-	 * the session isn't bound to an active requirement (non-project sessions,
-	 * global crons, etc.) — buildContextMessage drops the section in that case.
-	 *
-	 * Re-evaluated every turn (the active requirement may switch mid-session).
-	 * Never throws — store lookups are best-effort.
-	 */
-	private resolveCurrentTask(): string {
-		const ctx = this.config.projectContext;
-		const reqId = ctx?.activeRequirementId;
-		if (!reqId) return "";
-		const store = (this.config as any).requirementStore;
-		let title: string | undefined;
-		try {
-			const req = store?.get?.(reqId) ?? store?.getRequirement?.(reqId);
-			title = req?.title ?? req?.name;
-		} catch { /* best-effort */ }
-		const project = ctx?.projectName ? ` (project: ${ctx.projectName})` : "";
-		return title
-			? `Active requirement: ${title} [${reqId}]${project}`
-			: `Active requirement id: ${reqId}${project}`;
-	}
-
 
 
 	/**

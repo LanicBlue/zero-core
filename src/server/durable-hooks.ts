@@ -26,20 +26,15 @@ import { log } from "../core/logger.js";
 // Step 4A (fix): the shared turn_seq Map is OWNED by turn-hooks — it writes the
 // user-step row at TurnStart, so it owns the cursor. durable-hooks READS the
 // shared Map (for createTurnState's seq) but does NOT write to it. Instead it
-// dedups turn_state creation through a local Set (turnStateCreated). This
+// dedups turn_state creation through the shared turn-seq-tracker marker
+// (markTurnStatePrecreated / isTurnStatePrecreated — sub-4: moved from a local
+// Set here so the runtime layer's resumeTask can pre-populate it too). This
 // removes the TurnStart ordering dependency that previously caused step-resume
 // regressions: when durable's TurnStart ran first it set the cursor, which
 // made turn-hooks' hasTurnSeq() guard skip the user-row write. With durable
 // out of the writer seat, turn-hooks' TurnStart always writes the user row
 // regardless of registration order.
-import { getTurnSeq, setTurnSeq } from "../runtime/hooks/turn-seq-tracker.js";
-
-// Local turn_state dedup: marks "createTurnState already ran for this session
-// this turn" (either durable's own TurnStart created it, or a resume caller
-// pre-populated it via setSessionTurnSeq). Decoupled from the shared turn_seq
-// Map so durable's dedup can never cause turn-hooks' TurnStart user-row write
-// to be skipped.
-const turnStateCreated = new Set<string>();
+import { getTurnSeq, setTurnSeq, markTurnStatePrecreated, isTurnStatePrecreated, clearTurnStatePrecreated } from "../runtime/hooks/turn-seq-tracker.js";
 
 /**
  * Back-compat shim: existing callers (agent-service resume, step-resume test)
@@ -47,14 +42,18 @@ const turnStateCreated = new Set<string>();
  * "this turn is being resumed, do NOT re-initialize" signal. It writes BOTH:
  *   - the shared turn_seq Map (turn-hooks' TurnStart guard consults it to skip
  *     the user-row write — correct, the row already exists on resume), and
- *   - durable's local turnStateCreated Set (so durable's TurnStart skips
+ *   - the shared turn_state-precreate marker (so durable's TurnStart skips
  *     createTurnState, preserving the existing turn_state row + checkpoint).
- * Mirroring the cursor into both dedup mechanisms keeps durable independent of
- * the shared Map's writer state, while preserving the resume contract.
+ *
+ * sub-4 (subagent-recovery): the dedup marker moved from this file's local Set
+ * to a shared accessor in turn-seq-tracker.ts so the RUNTIME layer
+ * (subagent-delegator.resumeTask, called by TaskResume) can pre-populate it too
+ * — closing the turn+1 bug on the TaskResume path. Same single-source
+ * invariant; the Set just lives one layer down where both writers reach it.
  */
 export function setSessionTurnSeq(sessionId: string, turnSeq: number): void {
 	setTurnSeq(sessionId, turnSeq);
-	turnStateCreated.add(sessionId);
+	markTurnStatePrecreated(sessionId);
 }
 
 // ---------------------------------------------------------------------------
@@ -85,7 +84,7 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 			// running first would mark the cursor, causing turn-hooks to skip
 			// the user-row write). The local Set keeps durable's dedup
 			// independent of turn-hooks' writer state.
-			if (turnStateCreated.has(sessionId)) {
+			if (isTurnStatePrecreated(sessionId)) {
 				log.debug("durable", `turn_state already created for session ${sessionId}, skipping`);
 				return;
 			}
@@ -98,7 +97,7 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 				turnSeq = sessionDb.getTurnCount(sessionId);
 			}
 			sessionDb.createTurnState(sessionId, turnSeq);
-			turnStateCreated.add(sessionId);
+			markTurnStatePrecreated(sessionId);
 			log.debug("durable", `Turn ${turnSeq} created for session ${sessionId}`);
 		} catch (err) {
 			log.error("durable", "TurnStart hook failed:", (err as Error).message);
@@ -147,7 +146,7 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 			log.debug("durable", `Turn ${seq} completed for session ${sessionId}`);
 			// Clear durable's local dedup marker — do NOT touch the shared Map
 			// (turn-hooks owns it).
-			turnStateCreated.delete(sessionId);
+			clearTurnStatePrecreated(sessionId);
 		} catch (err) {
 			log.error("durable", "TurnEnd hook failed:", (err as Error).message);
 		}
@@ -166,7 +165,7 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 			if (seq === undefined) return;
 			sessionDb.failTurnState(sessionId, seq, ctx.error as string ?? "Unknown error");
 			log.debug("durable", `Turn ${seq} failed for session ${sessionId}`);
-			turnStateCreated.delete(sessionId);
+			clearTurnStatePrecreated(sessionId);
 		} catch (err) {
 			log.error("durable", "TurnError hook failed:", (err as Error).message);
 		}

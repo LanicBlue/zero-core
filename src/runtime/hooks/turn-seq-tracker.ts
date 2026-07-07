@@ -39,3 +39,40 @@ export function hasTurnSeq(sessionId: string): boolean {
 export function deleteTurnSeq(sessionId: string): void {
 	sessionTurnSeq.delete(sessionId);
 }
+
+// ─── turn_state pre-create marker (sub-4) ────────────────────────────────
+//
+// subagent-recovery sub-4 / TaskResume turn_seq guard: when a delegated child
+// session is RESUMED (not freshly started), its turn_state row for the
+// interrupted turn already exists in the DB. TurnStart must NOT create a new
+// one (that would allocate turn_seq+1 — the "turn+1 bug" the acceptance suite
+// case 9 checks). The pre-create marker tells durable-hooks' TurnStart to skip
+// createTurnState for this session THIS turn, mirroring what
+// `setSessionTurnSeq` (server/durable-hooks.ts) used to do standalone.
+//
+// Layering: this lives in runtime/ so BOTH layers can touch it without a cycle
+//   - server/durable-hooks.ts (consumer): already imports this module; switches
+//     its local `turnStateCreated` Set to these accessors (single source).
+//   - runtime/subagent-delegator.ts resumeTask (writer): sets it BEFORE
+//     loop.resume() so the child's TurnStart sees it. Previously only the
+//     server-side resume path (doRecoverIncompleteSessions) did this — the
+//     runtime resumeTask path skipped it, which is exactly the bug the guard
+//     closes.
+//   - server/agent-service.ts doRecoverIncompleteSessions: keeps using its
+//     existing `setSessionTurnSeq` shim (which now delegates here), so the
+//     long-standing parent-resume path is unchanged.
+const turnStatePrecreated = new Set<string>();
+
+/** Mark that a turn_state row already exists for this session this turn. */
+export function markTurnStatePrecreated(sessionId: string): void {
+	turnStatePrecreated.add(sessionId);
+}
+
+export function isTurnStatePrecreated(sessionId: string): boolean {
+	return turnStatePrecreated.has(sessionId);
+}
+
+/** Clear the pre-create marker (called on TurnEnd / TurnError). */
+export function clearTurnStatePrecreated(sessionId: string): void {
+	turnStatePrecreated.delete(sessionId);
+}
