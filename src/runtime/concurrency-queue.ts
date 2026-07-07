@@ -184,6 +184,12 @@ export class ConcurrencyQueue {
 
 	getActiveCount(): number { return this.active; }
 	getWaitingCount(): number { return this.waiters.length; }
+	/**
+	 * Configured max concurrency. Read-only accessor for platform-observability
+	 * ② (sub-5) — the providerStats resource + provider:stats IPC surface
+	 * "in-flight/max". Was private; exposed without behavioral change.
+	 */
+	getMax(): number { return this.max; }
 
 	/**
 	 * 当前排队清单(身份 + tier + 等了多久)。按 tier 升序返回(观测友好);

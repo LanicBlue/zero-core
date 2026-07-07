@@ -348,6 +348,59 @@ export interface PlatformSessionDetail {
 	recentSteps: PlatformSessionStep[];
 }
 
+// ─── platform-observability ② (sub-5): provider observation (IPC result types) ──
+// The runtime-layer interface (PlatformObserver in runtime/types.ts) defines the
+// same shapes; these are the shared contract the IPC channels (provider:stats /
+// provider:usage / provider:queue) serve to the ③ kanban. Agent self-introspection
+// (Platform 'providerStats' resource, text) and the kanban share one source.
+
+/**
+ * One provider row — static config + live concurrency + cumulative usage.
+ * Mirrors runtime/types.ts PlatformProviderStat (kept in sync; the runtime type
+ * is the authority, this is the IPC-facing copy so the preload/renderer don't
+ * import the runtime layer). latencyMs is N/A (null) until a process-local
+ * latency accumulator exists (sub-2 risk — not yet built).
+ */
+export interface PlatformProviderStat {
+	name: string;
+	type: string;
+	enabled: boolean;
+	modelCount: number;
+	inFlight: number;
+	maxConcurrency: number;
+	queue: number;
+	tokens: number;
+	calls: number;
+	errors: number;
+	errRate: number;
+	latencyMs: number | null;
+}
+
+/** One model's time series bucket for provider:usage. */
+export interface PlatformProviderSeriesPoint {
+	bucket: string;
+	calls: number;
+	tokens: number;
+	errors: number;
+}
+
+/** provider:usage result — a series per model for the stacked-bar chart. */
+export interface PlatformProviderSeries {
+	provider: string;
+	granularity: "hour" | "day";
+	range: "24h" | "30d";
+	model?: string;
+	series: Array<{ model: string; points: PlatformProviderSeriesPoint[] }>;
+}
+
+/** One queued waiter for provider:queue (live ConcurrencyQueue.getWaiting). */
+export interface PlatformProviderQueueEntry {
+	sessionId?: string;
+	agentId?: string;
+	tier: number;
+	waitedSince: number;
+}
+
 /**
  * v0.8 (M0): the context bundle a session carries. projectId is optional
  * (global/observation sessions have none); workspaceDir and wikiRootNodeId

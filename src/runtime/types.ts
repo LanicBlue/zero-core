@@ -88,6 +88,100 @@ export interface PlatformObserver {
 	 * [] when the loop is gone or has no tool calls yet.
 	 */
 	getSessionRecentSteps(sessionId: string, n?: number): Array<{ stepSeq: number; toolCalls: Array<{ name: string; argsBrief?: string }>; status: string; time: number }>;
+	// ─── platform-observability ② (sub-5): provider observation ────────────
+	// Same DI seam as the session methods above — AgentService implements these
+	// (it holds concurrencyManager + providerConfigs + sessionManager→
+	// getProviderUsageStore). Backs BOTH the Platform 'providerStats' resource
+	// (agent self-introspection, via ctx.platformObserver) AND the IPC channels
+	// provider:stats / provider:usage / provider:queue (③ kanban). Single source.
+	/**
+	 * One row per provider (ALL providers, including disabled — design ② / sub-5
+	 * wants the full list so the agent gets a platform-wide view; the ③ kanban
+	 * narrows via combobox). Combines static config (providers table) + live
+	 * concurrency (ConcurrencyQueue active/waiting) + cumulative usage
+	 * (ProviderUsageStore SUM). latency is N/A until sub-2's running-accumulator
+	 * is added (not yet built — design ②.2 leaves it process-local). Returns []
+	 * when no providers are configured.
+	 */
+	listProviderStats?(): Array<PlatformProviderStat>;
+	/**
+	 * Time series for ONE provider, bucketed by hour or day, optionally filtered
+	 * by model. Returns a separate series per model so the ③ kanban can stack
+	 * them (design ③). Empty when the provider has no usage in range.
+	 */
+	getProviderUsageSeries?(provider: string, granularity: "hour" | "day", range: "24h" | "30d", model?: string): PlatformProviderSeries;
+	/**
+	 * Current queue for ONE provider — the live ConcurrencyQueue.getWaiting()
+	 * snapshot (sessionId/agentId/tier/waitedSince). Empty when the provider has
+	 * no queue or no waiters. Backs the ③ kanban "排队中" list.
+	 */
+	getProviderQueue?(provider: string): Array<PlatformProviderQueueEntry>;
+}
+
+/**
+ * platform-observability ② (sub-5): one provider row for the 'providerStats'
+ * resource (text) + provider:stats IPC. Combines static config + live
+ * concurrency + cumulative usage. errRate is calls>0 ? errors/calls : 0.
+ * latencyMs is N/A until a process-local latency accumulator exists (sub-2 did
+ * NOT build one — provider_usage has no latency column; design ②.2 leaves
+ * latency process-local, not yet implemented).
+ */
+export interface PlatformProviderStat {
+	/** Provider name (key into providers table + concurrencyManager queues). */
+	name: string;
+	/** Provider type (openai/anthropic/gemini/openai-compatible/ollama/mock). */
+	type: string;
+	enabled: boolean;
+	/** Configured model count (providers.models length). */
+	modelCount: number;
+	/** Live in-flight requests (ConcurrencyQueue.getActiveCount). */
+	inFlight: number;
+	/** Configured max concurrency (ConcurrencyQueue.max). 0 when no limit set. */
+	maxConcurrency: number;
+	/** Live queued waiters (ConcurrencyQueue.getWaitingCount). */
+	queue: number;
+	/** Cumulative tokens (input + output + cache) from provider_usage SUM. */
+	tokens: number;
+	/** Cumulative call count from provider_usage SUM. */
+	calls: number;
+	/** Cumulative error count from provider_usage SUM. */
+	errors: number;
+	/** errors / calls (0 when calls=0). */
+	errRate: number;
+	/**
+	 * Average per-step latency in ms. N/A until a process-local latency
+	 * accumulator exists (sub-2 risk — not yet built). Renderers show "N/A".
+	 */
+	latencyMs: number | null;
+}
+
+/** platform-observability ② (sub-5): one model's time series for provider:usage. */
+export interface PlatformProviderSeries {
+	provider: string;
+	granularity: "hour" | "day";
+	range: "24h" | "30d";
+	model?: string;
+	/** One series per model (or a single "(all)" series when model is passed). */
+	series: Array<{
+		model: string;
+		points: Array<{
+			/** ISO hour (granularity=hour) or YYYY-MM-DD (granularity=day). */
+			bucket: string;
+			calls: number;
+			tokens: number;
+			errors: number;
+		}>;
+	}>;
+}
+
+/** platform-observability ② (sub-5): one queued waiter for provider:queue. */
+export interface PlatformProviderQueueEntry {
+	sessionId?: string;
+	agentId?: string;
+	/** Priority tier (1=highest). From turnSourceToTier (sub-3 ②.4). */
+	tier: number;
+	/** Wall-clock ms when the waiter entered the queue. */
+	waitedSince: number;
 }
 
 /** Row returned by PlatformObserver.listParentSessions — one parent agent session. */
@@ -257,6 +351,17 @@ export interface UsageEvent {
 	provider?: string;
 	model?: string;
 	source?: TurnSource;
+	/**
+	 * platform-observability ②.2 (sub-2 补遗): this step's wall-clock duration
+	 * (model call → finalize), stamped at agent-loop finalizeOneStep from the
+	 * stepStartMs captured in executeStream's step loop. Folded into the
+	 * per-provider process-local latency accumulator by the server-side adapter
+	 * (metrics-events usage case → SessionManager.recordProviderUsage). NOT in
+	 * the DB (design ②.2: small volume, restart-safe). Optional — absent on
+	 * synthetic/test events and on the failed-step error path (whose latency is
+	 * not representative); the server skips when undefined.
+	 */
+	durationMs?: number;
 }
 
 export interface SessionInitMessage {

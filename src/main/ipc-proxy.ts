@@ -78,6 +78,13 @@ const R: Record<string, RouteMapping> = {
 	"providers:fetch-models":  { method: "GET", path: "/api/providers/:id/fetch-models", buildReq: (providerId) => ({ params: { id: providerId } }) },
 	"models:list":             { method: "GET", path: "/api/models", buildReq: () => ({}) },
 
+	// platform-observability ② (sub-5): provider observation (singular `provider:`
+	// prefix — distinct from the plural `providers:` CRUD above). Same data the
+	// Platform 'providerStats' resource serves to agents.
+	"provider:stats": { method: "GET", path: "/api/providers/stats", buildReq: () => ({}) },
+	"provider:usage": { method: "GET", path: "/api/providers/usage", buildReq: (provider, granularity, range, model?) => ({ query: { provider, granularity, range, ...(model ? { model } : {}) } }) },
+	"provider:queue": { method: "GET", path: "/api/providers/queue", buildReq: (provider) => ({ query: { provider } }) },
+
 	// MCP
 	"mcp:list":       { method: "GET", path: "/api/mcp", buildReq: () => ({}) },
 	"mcp:get":        { method: "GET", path: "/api/mcp/:id", buildReq: (id) => ({ params: { id } }) },

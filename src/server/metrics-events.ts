@@ -90,6 +90,10 @@ export function createEventMetricsAdapter(sm: SessionManager): EventMetricsAdapt
 					// model/source (stamped at agent-loop finalizeOneStep). When
 					// absent (synthetic/test events), skip — session metrics
 					// above already recorded. Best-effort inside recordProviderUsage.
+					// (sub-2 补遗): durationMs (this step's wall-clock) rides the
+					// same event → folded into the per-provider process-local
+					// latency accumulator inside recordProviderUsage. Absent on
+					// synthetic/test events → skipped, latency unchanged.
 					const u = event as any;
 					if (u.provider && u.model && u.source) {
 						sm.recordProviderUsage({
@@ -97,6 +101,7 @@ export function createEventMetricsAdapter(sm: SessionManager): EventMetricsAdapt
 							model: u.model,
 							source: u.source,
 							usage: u.usage,
+							durationMs: typeof u.durationMs === "number" ? u.durationMs : undefined,
 						});
 					}
 					break;

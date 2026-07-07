@@ -88,6 +88,10 @@ const api: WindowApi = {
 	// platform-observability ① (sub-4): parent-session List + Detail for the ③ kanban.
 	sessionsParents: () => ipcRenderer.invoke("sessions:parents"),
 	sessionsDetail: (sessionId) => ipcRenderer.invoke("sessions:detail", sessionId),
+	// platform-observability ② (sub-5): provider observation for the ③ kanban.
+	providerStats: () => ipcRenderer.invoke("provider:stats"),
+	providerUsage: (provider, granularity, range, model) => ipcRenderer.invoke("provider:usage", provider, granularity, range, model),
+	providerQueue: (provider) => ipcRenderer.invoke("provider:queue", provider),
 
 	// ─── Streaming events ────────────────────────────
 	onAgentEvent: (callback) => {

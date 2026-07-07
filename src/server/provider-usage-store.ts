@@ -243,6 +243,72 @@ export class ProviderUsageStore {
 		}));
 	}
 
+	/**
+	 * Time series grouped by MODEL for ONE provider — one series per model so the
+	 * ③ kanban can stack models (design ③ / acceptance-5 #4). Each series has the
+	 * same shape as series() points (bucket + calls + tokens + errors). Buckets
+	 * are aligned across models (a model with no rows in a bucket is simply
+	 * absent from its points — the kanban fills gaps with 0). Optional model
+	 * filter narrows to a single series (rarely used; the combobox picks a
+	 * provider, not a model, but the contract allows it). Empty when the provider
+	 * has no usage in range.
+	 *
+	 * platform-observability ② (sub-5): backs the provider:usage IPC + the
+	 * Platform 'providerStats' resource's per-provider drill-down.
+	 */
+	seriesByModel(
+		provider: string,
+		granularity: SeriesGranularity,
+		range: SeriesRange,
+		model?: string,
+	): Array<{ model: string; points: ProviderUsageSeriesPoint[] }> {
+		const cutoff = new Date(Date.now() - RANGE_MS[range]).toISOString();
+		const bucketExpr = granularity === "day"
+			? `substr(hour_bucket, 1, 10)`
+			: `hour_bucket`;
+		const modelClause = model ? " AND model = ?" : "";
+		const params: any[] = [provider, cutoff];
+		if (model) params.push(model);
+
+		// GROUP BY (bucket, model) → one row per (model, bucket). Then we pivot
+		// into per-model series in JS. ORDER BY model, bucket keeps the grouping
+		// stable so the JS walk is a single pass.
+		const rows = this.db.prepare(
+			`SELECT
+				${bucketExpr} AS bucket,
+				model,
+				COALESCE(SUM(calls), 0)         AS calls,
+				COALESCE(SUM(input_tokens), 0)  AS inputTokens,
+				COALESCE(SUM(output_tokens), 0) AS outputTokens,
+				COALESCE(SUM(cache_read), 0)    AS cacheRead,
+				COALESCE(SUM(cache_write), 0)   AS cacheWrite,
+				COALESCE(SUM(errors), 0)        AS errors
+			 FROM provider_usage
+			 WHERE provider = ? AND hour_bucket >= ?${modelClause}
+			 GROUP BY ${bucketExpr}, model
+			 ORDER BY model ASC, ${bucketExpr} ASC`,
+		).all(...params) as any[];
+
+		const byModel = new Map<string, ProviderUsageSeriesPoint[]>();
+		for (const r of rows) {
+			const pt: ProviderUsageSeriesPoint = {
+				bucket: r.bucket,
+				calls: r.calls ?? 0,
+				inputTokens: r.inputTokens ?? 0,
+				outputTokens: r.outputTokens ?? 0,
+				cacheRead: r.cacheRead ?? 0,
+				cacheWrite: r.cacheWrite ?? 0,
+				errors: r.errors ?? 0,
+			};
+			let arr = byModel.get(r.model);
+			if (!arr) { arr = []; byModel.set(r.model, arr); }
+			arr.push(pt);
+		}
+		// Preserve first-seen order (already sorted by model ASC from SQL, but
+		// Map insertion order matches that anyway).
+		return Array.from(byModel, ([model, points]) => ({ model, points }));
+	}
+
 	/** Raw row read — useful for tests + sub-5 observation diagnostics. */
 	listAll(): ProviderUsageRow[] {
 		const rows = this.db.prepare(

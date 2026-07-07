@@ -50,6 +50,9 @@ import type {
 	PlatformSessionSummary,
 	PlatformSessionStep,
 	PlatformSessionDetail,
+	PlatformProviderStat,
+	PlatformProviderSeries,
+	PlatformProviderQueueEntry,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -146,6 +149,17 @@ export interface IpcChannelDefs {
 	// tree (RuntimeTaskInfo[], same source as TaskList) + last 3 steps.
 	"sessions:parents": { params: [];                              result: PlatformSessionSummary[] };
 	"sessions:detail":  { params: [sessionId: string];             result: PlatformSessionDetail };
+
+	// platform-observability ② (sub-5): provider observation for the ③ kanban.
+	// Same data the Platform 'providerStats' resource (text) serves to agents —
+	// two faces of one source. (Note: singular `provider:` prefix — distinct
+	// from the plural `providers:` CRUD channels above.)
+	//   provider:stats  → all-providers cumulative JSON (KPI bar + combobox).
+	//   provider:usage  → one provider's per-model time series (stacked chart).
+	//   provider:queue  → one provider's live queued waiters (queue list).
+	"provider:stats":   { params: [];                                                                    result: PlatformProviderStat[] };
+	"provider:usage":   { params: [provider: string, granularity: "hour" | "day", range: "24h" | "30d", model?: string]; result: PlatformProviderSeries };
+	"provider:queue":   { params: [provider: string];                                                   result: PlatformProviderQueueEntry[] };
 
 	// ── Chat ─────────────────────────────────────────────────
 	"chat:send":   { params: [text: string, agentId?: string, sessionId?: string];    result: Ok };

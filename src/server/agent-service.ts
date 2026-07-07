@@ -32,7 +32,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
-import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource, PlatformObserver, PlatformSessionSummary } from "../runtime/types.js";
+import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource, PlatformObserver, PlatformSessionSummary, PlatformProviderStat, PlatformProviderSeries, PlatformProviderQueueEntry } from "../runtime/types.js";
 import { clearProviderCache, setConcurrencyManager } from "../runtime/provider-factory.js";
 import { SessionDB } from "./session-db.js";
 import { InputQueueStore } from "./input-queue-store.js";
@@ -640,6 +640,139 @@ export class AgentService implements PlatformObserver {
 	getSessionRecentSteps(sessionId: string, n: number = 3): Array<{ stepSeq: number; toolCalls: Array<{ name: string; argsBrief?: string }>; status: string; time: number }> {
 		const loop = this.loops.get(sessionId) as unknown as { getRecentSteps?: (n?: number) => Array<{ stepSeq: number; toolCalls: Array<{ name: string; argsBrief?: string }>; status: string; time: number }> } | undefined;
 		return loop?.getRecentSteps?.(n) ?? [];
+	}
+
+	// ─── platform-observability ② (sub-5): provider observation ────────────
+	// Backs BOTH the Platform 'providerStats' resource (agent self-introspection,
+	// via ctx.platformObserver) AND the IPC channels provider:stats / :usage /
+	// :queue (③ kanban, via REST in provider-router). Single source — same data,
+	// two consumers. latency is N/A (null) — sub-2 did NOT build a process-local
+	// latency accumulator (design ②.2 leaves it process-local; provider_usage has
+	// no latency column). When added, fill latencyMs here.
+
+	/**
+	 * Read the providers table read-only via the raw DB handle (same path as the
+	 * 'providers' resource — ProviderStore's constructor has write side-effects,
+	 * so we SELECT directly). Returns the authoritative provider list (including
+	 * disabled, per acceptance-5 #6). Localized cast: ISessionStore doesn't
+	 * expose getDb(); SessionDB does.
+	 */
+	private readProvidersTable(): Array<{ name: string; type: string; enabled: boolean; models: any[] }> {
+		const rawDb = (this.db as any).getDb?.();
+		if (!rawDb) return [];
+		try {
+			const rows = rawDb.prepare("SELECT name, type, enabled, models FROM providers").all() as any[];
+			return rows.map((r) => {
+				let models: any[] = [];
+				try { models = Array.isArray(r.models) ? r.models : (JSON.parse(r.models ?? "[]") as any[]); } catch { /* unparseable */ }
+				return { name: r.name, type: r.type, enabled: !!r.enabled, models };
+			});
+		} catch {
+			return [];
+		}
+	}
+
+	/**
+	 * One row per provider (ALL providers incl. disabled). Combines static config
+	 * (providers table) + live concurrency (ConcurrencyQueue) + cumulative usage
+	 * (ProviderUsageStore SUM). errRate = calls>0 ? errors/calls : 0. latencyMs
+	 * is N/A (null) until a process-local latency accumulator exists.
+	 */
+	listProviderStats(): PlatformProviderStat[] {
+		const providers = this.readProvidersTable();
+		const usageStore = this.sessionManager?.getProviderUsageStore();
+		const out: PlatformProviderStat[] = [];
+		for (const p of providers) {
+			const queue = this.concurrencyManager.getQueue(p.name);
+			const inFlight = queue?.getActiveCount() ?? 0;
+			const waiting = queue?.getWaitingCount() ?? 0;
+			const maxConcurrency = queue?.getMax() ?? 0;
+			const cum = usageStore?.cumulative(p.name) ?? { calls: 0, inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0, errors: 0 };
+			const tokens = (cum.inputTokens ?? 0) + (cum.outputTokens ?? 0) + (cum.cacheRead ?? 0) + (cum.cacheWrite ?? 0);
+			const calls = cum.calls ?? 0;
+			const errors = cum.errors ?? 0;
+			// platform-observability ②.2 (sub-2 补遗): per-provider avg latency
+			// from the process-local accumulator (restart-safe — empty after
+			// boot). Falls back to null when no successful step has landed since
+			// start, which the text renderer renders as "N/A". Not from the DB:
+			// design ②.2 deliberately keeps latency out of provider_usage. The
+			// typeof guard keeps unit-test mocks (which stub only the fields they
+			// exercise) from blowing up — they just see latencyMs:null.
+			const sm = this.sessionManager as any;
+			const latencyMs = (sm && typeof sm.getProviderLatencyMs === "function")
+				? (sm.getProviderLatencyMs(p.name) ?? null)
+				: null;
+			out.push({
+				name: p.name,
+				type: p.type,
+				enabled: p.enabled,
+				modelCount: Array.isArray(p.models) ? p.models.length : 0,
+				inFlight,
+				maxConcurrency,
+				queue: waiting,
+				tokens,
+				calls,
+				errors,
+				errRate: calls > 0 ? errors / calls : 0,
+				latencyMs,
+			});
+		}
+		return out;
+	}
+
+	/**
+	 * Time series for ONE provider, one series per model (for the ③ kanban's
+	 * stacked bar chart). Optional model filter narrows to a single series.
+	 * Empty series array when the provider has no usage in range.
+	 */
+	getProviderUsageSeries(provider: string, granularity: "hour" | "day", range: "24h" | "30d", model?: string): PlatformProviderSeries {
+		const usageStore = this.sessionManager?.getProviderUsageStore();
+		const series = usageStore
+			? usageStore.seriesByModel(provider, granularity, range, model)
+				.map((s) => ({
+					model: s.model,
+					points: s.points.map((pt) => ({
+						bucket: pt.bucket,
+						calls: pt.calls,
+						tokens: (pt.inputTokens ?? 0) + (pt.outputTokens ?? 0) + (pt.cacheRead ?? 0) + (pt.cacheWrite ?? 0),
+						errors: pt.errors,
+					})),
+				}))
+			: [];
+		return { provider, granularity, range, model, series };
+	}
+
+	/**
+	 * Live queue for ONE provider — the ConcurrencyQueue.getWaiting() snapshot.
+	 * sessionId/agentId/tier/waitedSince per waiter. Empty when the provider has
+	 * no queue or no current waiters.
+	 */
+	getProviderQueue(provider: string): PlatformProviderQueueEntry[] {
+		const queue = this.concurrencyManager.getQueue(provider);
+		if (!queue) return [];
+		return queue.getWaiting().map((w) => ({
+			sessionId: w.sessionId,
+			agentId: w.agentId,
+			tier: w.tier,
+			waitedSince: w.waitedSince,
+		}));
+	}
+
+	/**
+	 * Per-provider concurrency snapshot ({ active, waiting }) — fills the gap
+	 * referenced by session-manager.getAggregateMetrics (which calls
+	 * this.getConcurrencySnapshot?.()). Was undefined before sub-5 (returned {}
+	 * via optional-chaining); now derived from concurrencyManager queues.
+	 * Readonly, all providers with a queue.
+	 */
+	getConcurrencySnapshot(): Record<string, { active: number; waiting: number }> {
+		const out: Record<string, { active: number; waiting: number }> = {};
+		const providers = this.readProvidersTable();
+		for (const p of providers) {
+			const q = this.concurrencyManager.getQueue(p.name);
+			if (q) out[p.name] = { active: q.getActiveCount(), waiting: q.getWaitingCount() };
+		}
+		return out;
 	}
 	// ─── end PlatformObserver ───────────────────────────────────────────────
 

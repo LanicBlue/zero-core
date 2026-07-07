@@ -1188,6 +1188,14 @@ export class AgentLoop implements AgentRuntime {
 				"lastMsgRole:", stepMessages.at(-1)?.role,
 				"injectedMsgs:", stepStartExtra.length + preExtra.length);
 
+			// platform-observability ②.2 (sub-2 补遗): capture this step's
+			// wall-clock start BEFORE the model call so finalizeOneStep can
+			// compute durationMs = (finalize moment − this start). Stamped on
+			// the usage event → server-side per-provider latency accumulator.
+			// Captured here (post StepStart/PreLLMCall injection, pre stream)
+			// so the measurement covers the actual model call + tool round.
+			const stepStartMs = Date.now();
+
 			// ── Run one step with per-step retry. ────────────────────────────
 			const step = await this.runOneStepWithRetry({
 				model,
@@ -1203,7 +1211,8 @@ export class AgentLoop implements AgentRuntime {
 			if (step.aborted || this.abortController?.signal.aborted) break;
 
 			// Finalize this step: seal usage + StepEnd persistence.
-			await this.finalizeOneStep(step.usage, stepNumber);
+			// durationMs = wall-clock of this step (model call → finalize).
+			await this.finalizeOneStep(step.usage, stepNumber, Date.now() - stepStartMs);
 
 			// 2A gotcha #1: result.response is a PromiseLike — await the response
 			// first, THEN read .messages. response.messages carries this step's
@@ -1589,7 +1598,11 @@ export class AgentLoop implements AgentRuntime {
 	 * inline finish-step handler, now called once per successful step from the
 	 * outer while-loop.
 	 */
-	private async finalizeOneStep(usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }, stepNumber?: number): Promise<void> {
+	private async finalizeOneStep(
+		usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number },
+		stepNumber?: number,
+		durationMs?: number,
+	): Promise<void> {
 		if (usage) {
 			if (usage.inputTokens) {
 				this.session.calibrateFromActualUsage(usage.inputTokens);
@@ -1601,12 +1614,20 @@ export class AgentLoop implements AgentRuntime {
 			// are the live values (mid-session provider switches update them),
 			// and this.config.source is the sub-1 turn-source marker. source
 			// defaults to 'background' for unspec'd callers (acceptance-1 6/7).
+			//
+			// (sub-2 补遗): durationMs = this step's wall-clock (model call →
+			// finalize), captured in executeStream's step loop. Stamped here so
+			// the server-side per-provider latency accumulator can build an
+			// in-process running average (design ②.2: not in DB; restart-safe).
+			// Forwarded only when the caller measured it (older call sites that
+			// don't pass durationMs leave the field undefined → server skips).
 			this.emit({
 				type: "usage",
 				agentId: this.config.agentId,
 				provider: this.config.providerName,
 				model: this.config.modelId,
 				source: this.config.source ?? "background",
+				durationMs,
 				usage: {
 					inputTokens: usage.inputTokens ?? 0,
 					outputTokens: usage.outputTokens ?? 0,

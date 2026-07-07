@@ -171,6 +171,69 @@ function renderSessionsDetail(
 	return out.join("\n");
 }
 
+// ─── platform-observability ② (sub-5): providerStats resource helper ──────
+//
+// Text rendering for the 'providerStats' resource — per-provider one line,
+// same text-face convention as 'sessions'. The IPC faces (provider:stats /
+// :usage / :queue) serve the same data as JSON to the ③ kanban.
+
+/**
+ * Format a token count with k/M suffix for compact per-line display.
+ * 0 → "0"; 1234 → "1.2k"; 1500000 → "1.5M".
+ */
+function formatTokens(n: number): string {
+	if (!n) return "0";
+	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+	if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+	return String(n);
+}
+
+/**
+ * Render the providerStats LIST as text — one line per provider (ALL providers,
+ * including disabled — the agent gets a platform-wide view; the ③ kanban
+ * narrows via combobox). Format:
+ *   `name · enabled|disabled · in-flight/max · queue:N · tokens · calls · err% · avg latency`
+ * latency is N/A (sub-2 did not build a process-local latency accumulator;
+ * design ②.2 leaves it process-local, not yet implemented). Returns a friendly
+ * empty-state when no providers are configured.
+ */
+function renderProviderStats(
+	stats: Array<{
+		name: string; type: string; enabled: boolean; modelCount: number;
+		inFlight: number; maxConcurrency: number; queue: number;
+		tokens: number; calls: number; errors: number; errRate: number;
+		latencyMs: number | null;
+	}>,
+): string {
+	if (stats.length === 0) {
+		return (
+			"No AI providers configured. Supported provider types: " +
+			"openai, anthropic, gemini, openai-compatible, ollama.\n" +
+			"Configure via Settings > Providers in the UI (recommended)."
+		);
+	}
+	// Sort: enabled first, then by name — stable + scannable. The ③ kanban does
+	// its own combobox filtering; here we give the agent the full ordered list.
+	const sorted = [...stats].sort((a, b) => {
+		if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+		return a.name.localeCompare(b.name);
+	});
+	const lines = sorted.map((s) => {
+		const enabledLabel = s.enabled ? "enabled" : "disabled";
+		const inflightMax = s.maxConcurrency > 0 ? `${s.inFlight}/${s.maxConcurrency}` : `${s.inFlight}/∞`;
+		const errPct = `${(s.errRate * 100).toFixed(1)}%`;
+		const latency = s.latencyMs != null ? `${Math.round(s.latencyMs)}ms` : "N/A";
+		return `${s.name} · ${s.type} · ${enabledLabel} · ${inflightMax} · queue:${s.queue} · ${formatTokens(s.tokens)} tok · ${s.calls} calls · ${errPct} err · ${latency} avg`;
+	});
+	return [
+		`Providers (${sorted.length}):`,
+		...lines,
+		"",
+		"Columns: name · type · enabled|disabled · in-flight/max · queue · cumulative tokens · cumulative calls · err% · avg latency.",
+		"Tokens/calls/errors are cumulative (process + DB provider_usage). in-flight/queue are live (ConcurrencyQueue). latency is a process-local running avg (restart resets to N/A). Use provider:stats / provider:usage / provider:queue IPC for the kanban JSON.",
+	].join("\n");
+}
+
 export function createPlatformTools(getAppVersion?: () => string) {
 	const version = getAppVersion?.() ?? "0.0.0-dev";
 
@@ -184,6 +247,7 @@ export function createPlatformTools(getAppVersion?: () => string) {
 				"- 'logs' — recent log entries (lines?, level?: all|error|warn, source?: module tag, sessionId?: substring). `source` matches the structured [module] tag (e.g. agent|loop|ipc|db|tool|mcp|provider|session); `sessionId` filters to lines mentioning that sessionId anywhere in the line. Filters compose (all must match).\n" +
 				"- 'config' — workspace config from the DB (defaultModel, defaultProvider, proxy, workspaceDir)\n" +
 				"- 'providers' — AI providers from the DB (name, type, enabled, modelCount, baseUrl, redacted apiKey)\n" +
+				"- 'providerStats' — live provider observation: ONE line per provider (all providers, incl. disabled) = `name · type · enabled|disabled · in-flight/max · queue · cumulative tokens · calls · err% · avg latency`. Combines static config + live concurrency (ConcurrencyQueue) + cumulative usage (provider_usage table). Useful to self-introspect provider load/health across the platform. (latency shows N/A until a process-local latency accumulator lands.)\n" +
 				"- 'sessions' — parent-agent session observation. OMIT sessionId → LIST (one line per parent agent's active/main chat session: status dot · agent · sessionId(short) · running|waiting|idle · relative time · turns). PASS sessionId → DETAIL (that session's live task tree via getRuntimeTaskTree + last 3 steps' tool calls, no tokens). Useful to self-introspect what the platform's parent agents are doing right now.\n\n" +
 				"This tool is for platform self-introspection only. To read files, list directories, or search content, use Read / Glob / Grep instead.\n\n" +
 				"Three distinct paths reported across resources — do NOT confuse them:\n" +
@@ -192,7 +256,7 @@ export function createPlatformTools(getAppVersion?: () => string) {
 				"- config.workspaceDir   — the agent's FILE-WORKING directory (where agents read/write project files). This is the path you almost always want when talking about 'the workspace'.",
 			meta: { category: "management", isReadOnly: true },
 			inputSchema: z.object({
-				resource: z.enum(["info", "logs", "config", "providers", "sessions"])
+				resource: z.enum(["info", "logs", "config", "providers", "providerStats", "sessions"])
 					.describe("Which platform diagnostic resource to access"),
 				lines: z.number().optional().describe("Log lines to return (for 'logs', max 500, default 50)"),
 				level: z.enum(["all", "error", "warn"]).optional().describe("Log level filter (for 'logs')"),
@@ -299,6 +363,20 @@ export function createPlatformTools(getAppVersion?: () => string) {
 							);
 						}
 						return JSON.stringify(providers, null, 2);
+					}
+					case "providerStats": {
+						// platform-observability ② (sub-5): read-only provider
+						// observation. Data comes through ctx.platformObserver
+						// (AgentService impl: concurrencyManager + sessionManager→
+						// getProviderUsageStore + providers table) — runtime never
+						// imports the server. Same source the IPC provider:stats /
+						// :usage / :queue channels serve to the ③ kanban.
+						const observer = ctx?.platformObserver;
+						if (!observer || typeof observer.listProviderStats !== "function") {
+							return "Provider observer not available in this context (platform-observability handle not injected).";
+						}
+						const stats = observer.listProviderStats();
+						return renderProviderStats(stats);
 					}
 					case "sessions": {
 						// platform-observability ① (sub-4): read-only session observation.

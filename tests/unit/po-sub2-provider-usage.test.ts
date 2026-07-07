@@ -491,4 +491,59 @@ describe("platform-observability sub-2: provider_usage", () => {
 		expect(ghost.calls).toBe(0);
 		expect(ghost.inputTokens).toBe(0);
 	});
+
+	// ─── latency accumulator (sub-2 补遗; fixes acceptance-5 #2 FAIL) ──
+	// Per design ②.2: per-provider latency is a process-local running average,
+	// NOT in the DB. SessionManager folds each successful step's durationMs into
+	// an in-memory Map; getProviderLatencyMs returns the avg. Restart-safe (Map
+	// clears on boot). This proves the sub-5 #2 "latencyMs is null — GAP" path
+	// is closed: when the real SessionManager (not a test mock) wires through,
+	// listProviderStats surfaces a non-null avg.
+	test("10. recordProviderUsage durationMs folds into per-provider process-local latency avg (sub-2 补遗)", () => {
+		// Cold-DB tolerated: the latency fold runs BEFORE the store guard, so
+		// even with no SessionDB attached the accumulator fills. (Production
+		// always has a DB; this proves the latency path is independent of it,
+		// matching design ②.2's "NOT in DB" decision.)
+		const sm = new SessionManager({} as any);
+		// No setSessionDb → getProviderUsageStore() returns undefined, but the
+		// latency fold still lands (it is process-local, not DB-backed).
+
+		// No data yet → undefined (listProviderStats renders as null → "N/A").
+		expect(sm.getProviderLatencyMs("openai")).toBeUndefined();
+
+		// Two successful steps: 100ms + 200ms → avg 150ms.
+		sm.recordProviderUsage({
+			provider: "openai", model: "gpt-4o", source: "user",
+			usage: { inputTokens: 10, outputTokens: 5 }, durationMs: 100,
+		});
+		sm.recordProviderUsage({
+			provider: "openai", model: "gpt-4o", source: "user",
+			usage: { inputTokens: 10, outputTokens: 5 }, durationMs: 200,
+		});
+		expect(sm.getProviderLatencyMs("openai")).toBe(150);
+
+		// Different provider accumulates independently.
+		expect(sm.getProviderLatencyMs("anthropic")).toBeUndefined();
+		sm.recordProviderUsage({
+			provider: "anthropic", model: "claude", source: "user",
+			usage: { inputTokens: 0, outputTokens: 0 }, durationMs: 300,
+		});
+		expect(sm.getProviderLatencyMs("anthropic")).toBe(300);
+		expect(sm.getProviderLatencyMs("openai")).toBe(150); // unchanged
+
+		// Failed step (error path) does NOT fold its duration — its latency is
+		// not representative of successful provider throughput.
+		sm.recordProviderUsage({
+			provider: "openai", model: "gpt-4o", source: "user",
+			usage: { inputTokens: 0, outputTokens: 0 }, durationMs: 9999, error: true,
+		});
+		expect(sm.getProviderLatencyMs("openai")).toBe(150);
+
+		// Missing durationMs (older callers / synthetic events) → no-op.
+		sm.recordProviderUsage({
+			provider: "openai", model: "gpt-4o", source: "user",
+			usage: { inputTokens: 0, outputTokens: 0 },
+		});
+		expect(sm.getProviderLatencyMs("openai")).toBe(150);
+	});
 });

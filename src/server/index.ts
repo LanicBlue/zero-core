@@ -584,7 +584,7 @@ export async function startServer(options?: StartServerOptions) {
 	}));
 
 	app.use("/api/agents", createAgentRouter({ agentStore, agentService, sessionDB }));
-	app.use("/api/providers", createProviderRouter(providerStore, reloadProviders));
+	app.use("/api/providers", createProviderRouter(providerStore, reloadProviders, agentService));
 	app.use("/api/templates", createTemplateRouter(templateStore, sessionDB));
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
 	app.use("/api/skills", createSkillRouter());

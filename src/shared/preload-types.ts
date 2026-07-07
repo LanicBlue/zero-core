@@ -50,6 +50,9 @@ import type {
 	PlatformSessionSummary,
 	PlatformSessionStep,
 	PlatformSessionDetail,
+	PlatformProviderStat,
+	PlatformProviderSeries,
+	PlatformProviderQueueEntry,
 } from "./types.js";
 
 export interface WindowApi {
@@ -151,6 +154,15 @@ export interface WindowApi {
 	// one source); detail → a session's task tree + last 3 steps (click-through).
 	sessionsParents: () => Promise<PlatformSessionSummary[]>;
 	sessionsDetail: (sessionId: string) => Promise<PlatformSessionDetail>;
+
+	// platform-observability ② (sub-5): provider observation for the ③ kanban.
+	// Same data the Platform 'providerStats' resource (text) serves to agents.
+	// providerStats → all-providers cumulative (KPI bar + combobox);
+	// providerUsage  → one provider's per-model time series (stacked chart);
+	// providerQueue  → one provider's live queued waiters (queue list).
+	providerStats: () => Promise<PlatformProviderStat[]>;
+	providerUsage: (provider: string, granularity: "hour" | "day", range: "24h" | "30d", model?: string) => Promise<PlatformProviderSeries>;
+	providerQueue: (provider: string) => Promise<PlatformProviderQueueEntry[]>;
 
 	// ── Streaming events ──
 	onAgentEvent: (callback: (event: any) => void) => () => void;
