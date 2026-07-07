@@ -36,6 +36,14 @@ import { triggerHooks } from "../core/hook-registry.js";
 import { OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
 import { decodeShellBuffer } from "../core/encoding.js";
 import { registerHooksForLoop, type HookWiringDeps } from "./hooks/index.js";
+// sub-4 (TaskResume turn_seq guard): pre-populate the shared turn_seq cursor +
+// turn_state-precreate marker BEFORE loop.resume(), so the child's TurnStart
+// doesn't allocate turn_seq+1. Same pattern as the server-side
+// doRecoverIncompleteSessions (which calls setSessionTurnSeq+setTurnSeq for
+// chat-session recovery). The runtime path uses the underlying shared
+// accessors directly (setTurnSeq + markTurnStatePrecreated) — the
+// setSessionTurnSeq shim lives in the server layer, which runtime can't import.
+import { setTurnSeq, markTurnStatePrecreated } from "./hooks/turn-seq-tracker.js";
 
 type LoopFactory = (
 	config: SessionConfig,
@@ -510,6 +518,63 @@ export class SubagentDelegator {
 	}
 
 	/**
+	 * sub-4 (TaskKill interrupted→abandon): the parent has chosen NOT to resume
+	 * a frozen delegated child. Mark the child's interrupted turn_state row
+	 * terminal (failed) so it stops resurfacing as "needs resume" on next
+	 * startup, mark the delegated_tasks row killed, and drop the task from the
+	 * live registry (acknowledge — workbench moves on). Best-effort: if the
+	 * child session id is missing or the turn_state row is already terminal,
+	 * the registry drop still happens. Returns false only if the task is
+	 * unknown or not in an interrupted state (the caller surfaces that).
+	 */
+	abandonTask(taskId: string): boolean {
+		const info = this.taskRegistry.get(taskId);
+		if (!info) return false;
+		if (info.status !== "interrupted") return false;
+		// Close the child's interrupted turn_state row + delegated_tasks row.
+		const childSessionId = this.config.db?.getDelegatedTask?.(taskId)?.sessionId;
+		if (childSessionId) {
+			this.config.db?.abandonInterruptedTurn?.(childSessionId, `Abandoned via TaskKill (task ${taskId})`);
+		}
+		this.updateDelegatedTask(taskId, { status: "killed", error: "Abandoned via TaskKill." });
+		// Drop from the live registry → leaves the workbench / TaskList.
+		this.taskRegistry.acknowledge(taskId);
+		triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed" }).catch(() => {});
+		triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed" }).catch(() => {});
+		return true;
+	}
+
+	/**
+	 * sub-4 (TaskGet recent-calls source, design §4.2): the last N tool-call
+	 * records of a running task — NAME + ARGS SUMMARY ONLY, no output/result.
+	 * Dispatch by task type:
+	 *   - subagent: read the live sub-loop's recorder (same source as the UI's
+	 *     live block view). Frozen/interrupted sub-loops aren't in
+	 *     `runningSubloops`, so they return [] — recent calls only appear after
+	 *     TaskResume re-attaches the loop. This matches design §4.2
+	 *     ("近期调用记录待 TaskResume 后").
+	 *   - bash: a single shell command has no call sequence — surface just the
+	 *     status + elapsed + command (the task's `task` field), NOT stdout.
+	 *
+	 * Pure runtime→runtime read; no DB hop, no cross-layer.
+	 */
+	getTaskRecentCalls(taskId: string, n: number = 3): Array<{ name: string; args?: string }> {
+		const info = this.taskRegistry.get(taskId);
+		if (!info) return [];
+		if (info.type === "bash") {
+			// Bash has no call sequence. Surface the command (info.task) as a
+			// single pseudo-call so the parent sees "what's running" without
+			// leaking stdout. Status is already in TaskInfo (caller has it).
+			return [{ name: "Shell", args: info.task }];
+		}
+		// subagent: read live sub-loop's recorder.
+		const entry = this.runningSubloops.get(taskId);
+		const loop = entry?.loop as unknown as { getRecentToolCalls?: (n: number) => Array<{ name: string; args?: string }> } | undefined;
+		if (!loop?.getRecentToolCalls) return [];
+		return loop.getRecentToolCalls(n);
+	}
+
+	/**
 	 * Parent-agent "confirm completion": drop a FINISHED task from the live
 	 * registry so it leaves the UI TaskTree and the agent's TaskList. Refuses
 	 * running tasks (stop them first). Returns false if not terminal / absent.
@@ -615,6 +680,25 @@ export class SubagentDelegator {
 		this.runningSubloops.set(taskId, entry);
 		subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
 		try {
+			// ⚠️ sub-4 turn_seq guard (acceptance case 9): pre-populate the
+			// child's turn_seq cursor + turn_state-precreate marker BEFORE
+			// loop.resume(). The child's interrupted turn_state row already
+			// exists in the DB; without this, the child's TurnStart would
+			// create a NEW turn_state at turn_seq+1 (the "turn+1 bug"). We look
+			// up the interrupted turn from the runtime store interface (no
+			// server import), then set both the cursor (turn-hooks TurnStart
+			// skips the user-row write — correct, the row exists) and the
+			// precreate marker (durable-hooks TurnStart skips createTurnState —
+			// preserves the existing row + checkpoint). Mirrors
+			// doRecoverIncompleteSessions for the chat-session resume path.
+			const childSessionId = rec.sessionId;
+			if (childSessionId) {
+				const incomplete = db.getIncompleteTurn?.(childSessionId);
+				if (incomplete) {
+					setTurnSeq(childSessionId, incomplete.turnSeq);
+					markTurnStatePrecreated(childSessionId);
+				}
+			}
 			// The sub-session's lastCompletedStepSeq lives in its own turn_state
 			// row; AgentLoop.resume reads it. We pass undefined and let the loop
 			// self-resolve.
@@ -631,6 +715,116 @@ export class SubagentDelegator {
 		} finally {
 			this.runningSubloops.delete(taskId);
 		}
+	}
+
+	/**
+	 * sub-4 (TaskResume, non-blocking): the SAME setup + turn_seq guard as
+	 * resumeTask, but the sub-loop's resume runs DETACHED (setImmediate). The
+	 * parent gets control back immediately ("child resumed, task_id:X") and
+	 * watches progress via workbench / TaskGet. This is the design §2.3 entry
+	 * point — "non-blocking, parent decides to continue a frozen child".
+	 *
+	 * The turn_seq guard runs SYNCHRONOUSLY before we return, so even though
+	 * loop.resume() is deferred, the child's TurnStart (when it fires) will see
+	 * the pre-populated cursor + precreate marker and NOT allocate turn_seq+1.
+	 *
+	 * Throws synchronously for the same preconditions as resumeTask (db missing,
+	 * task not found, already terminal). Returns the taskId on success.
+	 */
+	resumeTaskBackground(taskId: string): string {
+		const db = this.config.db;
+		if (!db?.getDelegatedTask) throw new Error(`resumeTaskBackground: db unavailable`);
+		const rec = db.getDelegatedTask(taskId);
+		if (!rec) throw new Error(`resumeTaskBackground: task ${taskId} not found`);
+		if (rec.status === "completed") return taskId; // nothing to do
+		if (rec.status === "failed" || rec.status === "killed") {
+			throw new Error(rec.error ?? `task ${taskId} is ${rec.status}`);
+		}
+		// Idempotent: already resumed / still running — return as-is.
+		if (this.runningSubloops.has(taskId)) return taskId;
+
+		// ⚠️ sub-4 turn_seq guard (acceptance case 9) — runs SYNCHRONOUSLY,
+		// before the detached resume, so the child's TurnStart (deferred) sees
+		// the pre-populated cursor + precreate marker. Same lookup as resumeTask.
+		const childSessionId = rec.sessionId;
+		if (childSessionId) {
+			const incomplete = db.getIncompleteTurn?.(childSessionId);
+			if (incomplete) {
+				setTurnSeq(childSessionId, incomplete.turnSeq);
+				markTurnStatePrecreated(childSessionId);
+			}
+		}
+
+		const toolConfig = this.getToolConfig();
+		const subConfig: SessionConfig = {
+			...this.config,
+			agentId: rec.targetAgentId,
+			sessionId: rec.sessionId,
+			systemPrompt: this.config.systemPrompt,
+			modelId: this.config.modelId,
+			workspaceDir: this.config.workspaceDir,
+			contextBundle: this.config.contextBundle,
+			parentSessionId: this.config.sessionId,
+			spawnDepth: (this.config.spawnDepth ?? 0) + 1,
+			ownerTaskId: taskId,
+			toolPolicy: delegatedToolPolicy(this.config.toolPolicy),
+			timeoutSec: toolConfig?.Subagent?.timeout,
+			loopKind: "delegated",
+		};
+		const subAbort = new AbortController();
+		const entry: RunningSubloop = { loop: undefined as unknown as AgentRuntime, abort: subAbort };
+		// Build the loop synchronously so the parent has a live handle to kill /
+		// TaskGet-recent-calls against immediately (before the deferred resume
+		// fires). The registry task moves to running so workbench reflects it.
+		const telemetryOnEvent = this.buildSubEventHandler(taskId, entry);
+		const subLoop = this.createSubLoop(subConfig, this.providers, { onEvent: telemetryOnEvent });
+		this.registerSubLoopHooks(subLoop);
+		entry.loop = subLoop;
+		this.runningSubloops.set(taskId, entry);
+		subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
+		this.taskRegistry.seed({
+			id: taskId,
+			type: "subagent",
+			task: rec.task,
+			status: "running",
+			parentTaskId: rec.parentTaskId,
+			step: rec.step,
+			turns: rec.turns,
+			tokens: rec.tokens,
+			startedAt: Date.parse(rec.createdAt) || Date.now(),
+			targetAgentId: rec.targetAgentId,
+		});
+		this.updateDelegatedTask(taskId, { status: "running" });
+		triggerHooks("SubagentStart", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task: rec.task }).catch(() => {});
+
+		const parentEmit = (event: StreamEvent) => this.emit(event);
+		setImmediate(async () => {
+			try {
+				await (subLoop as any).resume?.();
+				const result = subLoop.getResult();
+				this.taskRegistry.complete(taskId, result);
+				this.updateDelegatedTask(taskId, { status: "completed", result });
+				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "completed", result });
+				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
+				await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
+			} catch (err: any) {
+				const message = err.message || "Unknown error";
+				const cur = this.taskRegistry.get(taskId)?.status;
+				if (cur === "killed") {
+					this.updateDelegatedTask(taskId, { status: "killed", error: message });
+				} else {
+					this.taskRegistry.fail(taskId, message);
+					this.updateDelegatedTask(taskId, { status: "failed", error: message });
+				}
+				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: message });
+				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: message });
+				await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: message });
+			} finally {
+				this.runningSubloops.delete(taskId);
+			}
+		});
+
+		return taskId;
 	}
 
 	/** List delegated-task records (persisted) for this owner, optionally scoped. */

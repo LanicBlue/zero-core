@@ -230,7 +230,7 @@ function buildPrompt(): string {
 		"- Always quote file paths that contain spaces with double quotes.",
 		"- Always use absolute paths. Do NOT rely on `cd` to persist — each call starts fresh from the workspace root. Use `cd dir && command` to run in a specific directory within a single call.",
 		"- You may specify an optional timeout in seconds. By default, commands have no timeout unless configured.",
-		"- Use background=true for long-running commands (downloads, installs) - returns a task_id immediately. Use Wait or TaskStatus to check progress.",
+		"- Shell is BLOCKING (waits for output). For a long-running background command (downloads, installs, watches), use TaskStart { type:'shell', command } — it returns a task_id immediately; check it via TaskGet / Wait. A blocking Shell call that times out auto-backgrounds as a safety net (you get a task_id).",
 		"- When issuing multiple commands: if independent, make multiple Shell calls in parallel; if dependent, chain with `&&`. Use `;` only when you don't care if earlier commands fail.",
 		"- DO NOT use newlines to separate commands.",
 		"- For git commands: prefer creating new commits over amending. Never skip hooks (--no-verify) unless explicitly asked.",
@@ -253,11 +253,10 @@ export const bashTool = buildTool({
 	],
 	inputSchema: z.object({
 		command: z.string().describe("The shell command to execute"),
-		timeout: z.number().optional().describe("Timeout in seconds (foreground only)"),
-		background: z.boolean().optional().describe("Run in background and return task_id immediately"),
+		timeout: z.number().optional().describe("Timeout in seconds (a blocking call that times out auto-backgrounds as a safety net)"),
 	}),
 	execute: async (input, ctx) => {
-		const { command, timeout: inputTimeout, background } = input;
+		const { command, timeout: inputTimeout } = input;
 		const config = ctx.toolConfig?.Shell ?? {};
 		const timeoutSec = inputTimeout ?? config.timeout;
 		const timeout = timeoutSec ? timeoutSec * 1000 : undefined;
@@ -281,21 +280,10 @@ export const bashTool = buildTool({
 		const processedCommand = preprocessCommand(command, info.type);
 		const shellArgs = [...info.args, processedCommand];
 
-		// Background mode
-		if (background) {
-			if (!ctx.runBackground) {
-				return "Error: Background execution is not available in this context.";
-			}
-			const taskId = ctx.runBackground(processedCommand, timeoutSec);
-			// A synchronous launch failure (bad shell, missing binary) is recorded
-			// against the task immediately — surface it now with the task_id so the
-			// model can tell "launch failed" from "running" without a separate poll.
-			const launched = ctx.getTaskResult?.(taskId);
-			if (launched?.status === "failed") {
-				return `Background command failed to launch.\ntask_id: ${taskId}\nError: ${launched.result ?? "unknown launch error"}`;
-			}
-			return `Command running in background.\ntask_id: ${taskId}\nUse Wait or TaskStatus to check progress and retrieve the result.`;
-		}
+		// sub-4: Shell is BLOCKING only. Explicit background is the TaskStart
+		// {type:'shell'} tool — `background:true` was removed. A blocking call
+		// that times out throws (the auto-background safety net is a Subagent
+		// delegate concern, not a Shell one). Foreground:
 
 		// Foreground mode
 		const cwd = ctx.workingDir ?? ".";

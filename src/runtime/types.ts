@@ -387,7 +387,6 @@ export interface TaskInfo {
 	error?: string;
 	startedAt: number;
 	completedAt?: number;
-	notified?: boolean;
 	/**
 	 * The agent the task was delegated to (sub-agent identity). For subagent
 	 * tasks = targetAgentId; undefined for bash tasks (no agent). Used by the
@@ -431,6 +430,13 @@ export interface ToolExecutionContext {
 	listTasks?: (filter?: "running" | "completed") => TaskInfo[];
 	stopTask?: (taskId: string) => boolean;
 	/**
+	 * sub-4 (TaskKill interrupted→abandon): mark a frozen delegated child's
+	 * interrupted turn_state terminal + drop the task from the live registry.
+	 * Returns false if the task isn't interrupted (or unknown). The complement
+	 * to stopTask (running→kill) — this is interrupted→abandon.
+	 */
+	abandonTask?: (taskId: string) => boolean;
+	/**
 	 * Parent-agent "confirm completion": drop a FINISHED (completed/failed/
 	 * killed/interrupted) task from the live registry so it leaves the UI
 	 * TaskTree and the agent's TaskList. Refuses running/finishing tasks.
@@ -462,6 +468,22 @@ export interface ToolExecutionContext {
 	 * side dangling-tool-call scanner can re-attach without re-invoking.
 	 */
 	resumeTask?: (taskId: string) => Promise<string>;
+	/**
+	 * sub-4 (TaskResume, non-blocking): resume a frozen delegated child WITHOUT
+	 * awaiting — set up the sub-loop + turn_seq guard synchronously, then detach
+	 * the run. Returns the taskId. The turn_seq pre-population happens BEFORE
+	 * the detached resume fires, so the child's TurnStart won't allocate
+	 * turn_seq+1 (the "turn+1 bug"). Agent tasks only.
+	 */
+	resumeTaskBackground?: (taskId: string) => string;
+	/**
+	 * sub-4 (TaskGet recent-calls, design §4.2): the last N tool-call records
+	 * of a running task — NAME + ARGS SUMMARY ONLY, no output/result. Dispatch
+	 * by task type (agent → live sub-loop recorder; bash → command only).
+	 * Pure runtime→runtime read; no DB hop, no cross-layer. Returns [] when the
+	 * sub-loop is frozen/interrupted (recent calls only appear post-TaskResume).
+	 */
+	getTaskRecentCalls?: (taskId: string, n?: number) => Array<{ name: string; args?: string }>;
 	readScope?: "filesystem" | "workspace";
 	toolConfig?: Record<string, Record<string, any>>;
 	rateLimiter?: import("./tool-rate-limiter.js").ToolRateLimiter;

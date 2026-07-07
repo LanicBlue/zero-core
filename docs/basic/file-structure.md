@@ -49,7 +49,7 @@ renderer / runtime 四个独立 JS 上下文**。
 - `session.ts` / `session-store-interface.ts` — 会话消息、token 管理 / store 接口
 - `subagent-delegator.ts` — **当前**的子任务委派实现(`SubagentDelegator` 类,被 `agent-loop.ts` import)
 - `subagent-delegation.ts` — **死代码**(v0.8 重构遗留,零 importer,删除候选;勿与 `subagent-delegator.ts` 混淆,见 [`../arch/12-glossary.md`](../arch/12-glossary.md))
-- `task-registry.ts` — 后台任务注册表(供 TaskStatus/TaskList/TaskStop 查询)
+- `task-registry.ts` — 后台任务注册表(供 TaskGet/TaskList/TaskKill 查询;sub-4 改名后 TaskStatus→TaskGet、TaskStop→TaskKill)
 - `terminal-adapter.ts` — 终端适配
 - `tool-rate-limiter.ts` — per-tool FIFO 限速
 - `transcript-delta.ts` — transcript 增量
@@ -65,7 +65,7 @@ renderer / runtime 四个独立 JS 上下文**。
 | hook handler | 触发点 | 作用 |
 |------|------|------|
 | `turn-hooks.ts` | PreLLMCall / PostTurnComplete | turn 持久化、turn_state 更新 |
-| `notification-hooks.ts` | 多处 | agent:notification / step_failure / verification_failure 通知分发 |
+| ~~`notification-hooks.ts`~~ | — | **sub-4 已删**(workbench 收件箱取代:running 一直在;终态留到 TaskGet 消费才删) |
 | `rag-hooks.ts` | PreLLMCall | **legacy 可选** RAG 注入(默认不生效,需 ctx.getRagContext,见 [`../arch/06-knowledge-subsystems.md`](../arch/06-knowledge-subsystems.md) §3.2) |
 | `provider-options-hooks.ts` | PreLLMCall | 按 provider 注入 options |
 | `compression-hooks.ts` | PostTurnComplete | 触发上下文压缩,提取 memory 写 wiki |
@@ -80,7 +80,7 @@ renderer / runtime 四个独立 JS 上下文**。
 
 - 基础设施:`index.ts`(ALL_TOOLS + registerRuntimeTools + CONDITIONAL_TOOLS 门控)、`tool-factory.ts`(`buildTool` 包装层:PreToolUse 阻断 / rateLimiter / execute / PostToolUse+Failure hook / recordToolUsage 遥测 / truncateResult)、`file-read-helpers.ts`、`wiki-path-guard.ts`(反向拒绝 agent FS 工具碰 wiki 磁盘镜像根)
 - 文件域:`bash.ts`(Shell)、`file-read.ts`(Read)、`file-write.ts`(Write)、`file-edit.ts`(Edit)、`glob.ts`(Glob)、`grep.ts`(Grep)、`syntax-check.ts`
-- 任务域:`task-list.ts`(TaskList)、`task-status.ts`(TaskStatus)、`task-stop.ts`(TaskStop)、`wait.ts`(Wait)、`todo-write.ts`(TodoWrite)
+- 任务域(sub-4 Task 工具族):`task-start.ts`(TaskStart,显式后台 agent/shell)、`task-get.ts`(TaskGet,单 task 钻取,completed 取走+acknowledge)、`task-list.ts`(TaskList,富列表+tree)、`task-kill.ts`(TaskKill,running→kill/interrupted→abandon)、`task-finish.ts`(TaskFinish,仅 agent 优雅收尾)、`task-resume.ts`(TaskResume,仅 agent 解冻冻结子+turn_seq 守卫)、`wait.ts`(Wait)、`todo-write.ts`(TodoWrite)。旧 `task-status.ts`/`task-stop.ts` 已删(TaskStatus→TaskGet、TaskStop→TaskKill 改名)。
 - 交互/网络域:`ask-user.ts`(AskUser)、`web-search.ts`(WebSearch)、`fetch-tools.ts`(WebFetch,与 `mcp-tools/fetch-tools.ts` 共享)
 - 子 Agent 委派域:`agent.ts`(Agent,action=list/delegate,v0.8 sessionId=undefined 隔离)
 - 工作流域(v0.8):`orchestrate-tool.ts`(Orchestrate)、`requirement-tools.ts`(CreateRequirement + CreateRequirementWithDoc,PM-only)、`project-tool.ts`(Project,zero-only)、`agent-tool.ts`(AgentRegistry,zero-only,**注意与 `agent.ts` 的 `Agent` 同名陷阱**)、`cron-tool.ts`(Cron,zero-only)、`wiki-tool.ts`(Wiki)、`verify-tool.ts`(verify,lead-only)

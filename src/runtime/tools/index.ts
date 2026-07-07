@@ -34,9 +34,16 @@ import { fileEditTool } from "./file-edit.js";
 import { grepTool } from "./grep.js";
 import { globTool } from "./glob.js";
 import { delegateTool } from "./agent.js";
-import { taskStatusTool } from "./task-status.js";
+// sub-4 (subagent-recovery): the Task tool family. TaskStatus→TaskGet,
+// TaskStop→TaskKill (renamed); TaskStart/TaskFinish/TaskResume are new. The
+// retired files (task-status.ts / task-stop.ts) are deleted — their behavior
+// lives in task-get.ts / task-kill.ts with the new status-branch semantics.
+import { taskStartTool } from "./task-start.js";
+import { taskGetTool } from "./task-get.js";
 import { taskListTool } from "./task-list.js";
-import { taskStopTool } from "./task-stop.js";
+import { taskKillTool } from "./task-kill.js";
+import { taskFinishTool } from "./task-finish.js";
+import { taskResumeTool } from "./task-resume.js";
 import { waitTool } from "./wait.js";
 import { buildMcpTools } from "./mcp-tool.js";
 import { webSearchTool } from "./web-search.js";
@@ -86,7 +93,14 @@ const TOOL_DEFS: any[] = [
 	// now a wiki per-agent subtree; agents read it via the Wiki action tool
 	// (expand/read/upsert/search) and search via the wiki tree. The legacy
 	// MemoryNodeStore-backed tools are retired.
-	delegateTool, taskStatusTool, taskListTool, taskStopTool, waitTool,
+	delegateTool,
+	// sub-4: Task tool family — explicit background (TaskStart), drill-in
+	// (TaskGet, status-branched), rich list (TaskList), discard (TaskKill),
+	// graceful wrap (TaskFinish, agent only), resume frozen child (TaskResume,
+	// agent only). Replaces TaskStatus/TaskStop + Subagent's stop/complete/
+	// request_finish/tree/resume actions (now in the Task namespace).
+	taskStartTool, taskGetTool, taskListTool, taskKillTool, taskFinishTool, taskResumeTool,
+	waitTool,
 	webSearchTool, askUserTool, todoWriteTool, webFetchTool,
 	sequentialThinkingTool,
 	orchestrateTool,

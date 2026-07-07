@@ -66,6 +66,20 @@ import {
 // AgentLoop
 // ---------------------------------------------------------------------------
 
+/**
+ * sub-4 (TaskGet recent-calls): compact a tool-call's args string for display
+ * in the parent's TaskGet(running) view. Long args get truncated to a one-line
+ * summary so the recent-calls list stays readable; output is NEVER included
+ * (that's reserved for TaskGet(completed)'s full result). Same intent as
+ * tool-factory's summarizeParams but trimmed tighter (parent only needs a hint
+ * of what the sub-agent is doing, not the full payload).
+ */
+function summarizeArgs(argsText: string): string {
+	const trimmed = argsText.trim().replace(/\s+/g, " ");
+	if (trimmed.length <= 120) return trimmed;
+	return trimmed.slice(0, 120) + "…";
+}
+
 export class AgentLoop implements AgentRuntime {
 	private session: AgentSession;
 	private config: SessionConfig;
@@ -175,6 +189,9 @@ export class AgentLoop implements AgentRuntime {
 			getTaskResult: (taskId) => this.delegator.getTaskResult(taskId),
 			listTasks: (filter) => this.delegator.listTasks(filter),
 			stopTask: (taskId) => this.delegator.stopTask(taskId),
+			// sub-4 (TaskKill interrupted→abandon): close the frozen child's
+			// turn_state terminal + drop from registry. Complement to stopTask.
+			abandonTask: (taskId) => this.delegator.abandonTask(taskId),
 			acknowledgeTask: (taskId) => this.delegator.acknowledgeTask(taskId),
 			requestTaskFinish: (taskId, options) => this.delegator.requestTaskFinish(taskId, options),
 			listDelegatedTasks: (filter) => this.delegator.listDelegatedTasks(filter),
@@ -190,6 +207,14 @@ export class AgentLoop implements AgentRuntime {
 				this.recorder.setToolBlockTaskId(toolCallId, undefined, taskId);
 			},
 			resumeTask: (taskId) => this.delegator.resumeTask(taskId),
+			// sub-4 (TaskResume, non-blocking): set up sub-loop + turn_seq guard
+			// synchronously, detach the run. Agent tasks only.
+			resumeTaskBackground: (taskId) => this.delegator.resumeTaskBackground(taskId),
+			// sub-4 (TaskGet recent-calls): name+args summary of a running task's
+			// last N tool calls (agent → live sub-loop recorder; bash → command).
+			// Output is NEVER included here — completed results come through
+			// TaskGet(completed). Runtime→runtime; no DB hop.
+			getTaskRecentCalls: (taskId, n) => this.delegator.getTaskRecentCalls(taskId, n),
 			rateLimiter: new ToolRateLimiter(),
 			// Multi-Agent Workflow context
 			wikiStore: (config as any).wikiStore,
@@ -386,6 +411,24 @@ export class AgentLoop implements AgentRuntime {
 			isBusy: this.busy,
 			recorderBlocks: this.recorder.blocks.slice(),
 		};
+	}
+
+	/**
+	 * sub-4 (TaskGet recent-calls source): the last N tool-call blocks from this
+	 * loop's recorder, name + args summary only (NO output/result). Used by the
+	 * parent's `ctx.getTaskRecentCalls(taskId)` to surface what a running
+	 * sub-agent is doing without leaking tool output (that's reserved for the
+	 * completed branch of TaskGet). Returns [] if there are no tool blocks yet.
+	 *
+	 * Same source as the UI's live block view — single source of truth.
+	 */
+	getRecentToolCalls(n: number = 3): Array<{ name: string; args?: string }> {
+		const toolBlocks = this.recorder.blocks.filter((b: any) => b?.type === "tool" && b?.name);
+		const recent = toolBlocks.slice(-n);
+		return recent.map((b: any) => ({
+			name: String(b.name),
+			args: typeof b.args === "string" ? summarizeArgs(b.args) : b.args,
+		}));
 	}
 
 	/** Expose session turns for UI rendering — runtime is the single source of truth. */

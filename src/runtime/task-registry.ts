@@ -198,21 +198,6 @@ export class TaskRegistry {
 		return all.filter((t) => t.status !== "running");
 	}
 
-	getCompletedUnnotified(): TaskInfo[] {
-		const result: TaskInfo[] = [];
-		for (const info of this.tasks.values()) {
-			if ((info.status === "completed" || info.status === "failed" || info.status === "killed") && !info.notified) {
-				result.push(info);
-			}
-		}
-		return result;
-	}
-
-	markNotified(taskId: string): void {
-		const info = this.tasks.get(taskId);
-		if (info) info.notified = true;
-	}
-
 	async suspendUntilWake(timeoutMs: number, taskId?: string): Promise<string> {
 		const hasRunning = taskId
 			? (this.tasks.get(taskId)?.status === "running" || this.tasks.get(taskId)?.status === "finishing")

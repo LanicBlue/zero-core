@@ -1,19 +1,21 @@
-// Agent 委派工具 (v0.8 — action 化重构)
+// Agent 委派工具 (sub-4 — blocking-only 重构)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 单一 `Agent` 工具,两个 action:
+// 单一 `Subagent` 工具,两个 action(sub-4 瘦身后):
 //   - list     列出 caller 当前可委派的 subagent(现查 agentStore,自发现,
 //              不靠 system prompt 注入)。
-//   - delegate 委派任务。传 `subagent`(name)→ 用那个已注册 agent 的身份
-//              (systemPrompt/model/toolPolicy,现查)跑;不传 → 临时委派
+//   - delegate 委派任务(blocking)。传 `subagent`(name)→ 用那个已注册 agent
+//              的身份(systemPrompt/model/toolPolicy,现查)跑;不传 → 临时委派
 //              (继承 caller 身份,或 inline model/systemPrompt 覆盖)。
-//              支持 blocking / non_blocking。
 //
-// 取代了:(a) 旧通用 Agent 工具(只临时委派);(b) per-subagent 工具
-// (buildSubagentTools,每个 subagent 一个独立工具,名字不安全 + 身份固化)。
-// 单工具名 `Agent` 恒定合法;subagent 是参数值;身份/列表现查 agentStore,
+// sub-4 改动:去 mode:non_blocking(显式后台全归 TaskStart)、去 stop/complete/
+// request_finish/tree/resume(全归 Task 工具族)。本工具现在只 blocking 委派 +
+// 列可委派角色。超时自动后台保留(auto_background config)safety net 不变 —— 阻塞
+// 超时仍会转后台 task(经 delegator.delegateTask 的 auto-bg 分支),父用 TaskGet 看。
+//
+// 单工具名 `Subagent` 恒定合法;subagent 是参数值;身份/列表现查 agentStore,
 // 改配置不用重启 loop。
 //
 // ## 白名单语义
@@ -22,7 +24,7 @@
 // 报错(不静默回落 caller)。
 //
 // ## 输入
-// - ctx.delegateTask / ctx.delegateTaskBackground
+// - ctx.delegateTask
 // - ctx.resolveAgent(id)(活查 agentStore)
 //
 // ## 输出
@@ -46,37 +48,30 @@ function entryDisplayName(entry: { agentId: string; name?: string }, target?: { 
 export const delegateTool = buildTool({
 	name: "Subagent",
 	description:
-		"Delegate and control sub-agent tasks. Actions: list, delegate, request_finish, stop, complete, tree.",
+		"Delegate a sub-agent task (blocking) or list delegatable role agents. Actions: list, delegate.",
 	prompt:
 		"Delegate and control sub-agent tasks (each runs in an isolated context with its own conversation history, persisted for restart-aware inspection).\n\n" +
+		"Delegation is BLOCKING (waits for the result). For a background / parallel sub-agent, use TaskStart { type:'agent', ... } instead — that's the single explicit background entry point. A blocking delegate that exceeds its timeout auto-backgrounds (you get a task_id); watch it via TaskGet.\n\n" +
 		"Delegation never requires a configured subagent. The default is to simply omit `subagent`: a sub-agent inherits your identity and runs the task in an isolated context. Name a `subagent` only when you want to hand the work to a specific registered role agent.\n\n" +
 		"Actions:\n" +
-		"- { action:'list' } — optional. Lists the registered role agents you can hand off to by name (your configured subagents), with name/description/model. Only useful when you want a named `subagent`. An empty list doesn't block delegation — it just means there's no named role agent, so omit `subagent`.\n" +
-		"- { action:'delegate', task, subagent?, mode?, model?, systemPrompt? } — delegate a task.\n" +
-		"    · Omit `subagent` (the default, always available): an ephemeral sub-agent that inherits YOUR identity (or the inline `model`/`systemPrompt` overrides). Good for isolated or parallel sub-tasks you'd otherwise do yourself — and it works whether or not you have any registered subagents.\n" +
-		"    · `subagent` (a name from `list`): hand off to a registered role agent, which runs with ITS OWN identity (system prompt / tools / model). Only needed for role-based handoff to a specialist. If no name fits, just omit `subagent`.\n" +
-		"    · `mode`: 'blocking' (default, wait for output) | 'non_blocking' (return a task_id immediately; use Wait/TaskStatus to check later).\n" +
-		"- { action:'request_finish', task_id, message?, maxTurns? } — ask a running task to wrap up. Advisory: injects a control message asking the sub-agent to finish. Pass `maxTurns` to force-stop after that many additional agent-loop turns; omit it for a purely advisory request that never force-stops.\n" +
-		"- { action:'stop', task_id } — force-stop a running task immediately (hard stop; the task cannot resume).\n" +
-		"- { action:'complete', task_id } — acknowledge a FINISHED task (completed/failed/killed) to dismiss it from the task list once you've consumed its result. Running tasks must be stopped first; this only removes finished tasks from the live view.\n" +
-		"- { action:'tree', task_id? } — list delegated-task records (status/turns/tokens), optionally scoped to a root task. Use this to inspect delegated work, including tasks interrupted by a restart.\n\n" +
-		"When to delegate — for LARGE or MULTI-STEP tasks, prefer delegating to a sub-agent over doing them inline. If a request looks like it will need many tool calls, multiple file edits, or a long exploration, lean toward breaking it into sub-tasks and delegating them (use non_blocking mode for independent sub-tasks so they run in parallel). Delegating keeps your own context lean, lets work proceed in parallel, and keeps exploratory noise out of the main conversation. Use your judgment: tasks that hinge on the context you've already built may be better done inline. Also delegate to hand work to a specialized role agent (a configured subagent).\n\n" +
+		"- { action:'list' } — lists the registered role agents you can hand off to by name (your configured subagents), with name/description/model. Only useful when you want a named `subagent`. An empty list doesn't block delegation — it just means there's no named role agent, so omit `subagent`.\n" +
+		"- { action:'delegate', task, subagent?, model?, systemPrompt? } — delegate a task (blocking).\n" +
+		"    · Omit `subagent` (the default, always available): an ephemeral sub-agent that inherits YOUR identity (or the inline `model`/`systemPrompt` overrides). Good for isolated sub-tasks you'd otherwise do yourself.\n" +
+		"    · `subagent` (a name from `list`): hand off to a registered role agent, which runs with ITS OWN identity (system prompt / tools / model). Only needed for role-based handoff to a specialist.\n" +
+		"Task lifecycle (status, recent calls, kill, finish, resume) is handled by the Task tool family — TaskGet / TaskList / TaskKill / TaskFinish / TaskResume.\n\n" +
+		"When to delegate — for LARGE or MULTI-STEP tasks, prefer delegating to a sub-agent over doing them inline. If a request looks like it will need many tool calls, multiple file edits, or a long exploration, lean toward breaking it into sub-tasks and delegating them (use TaskStart for independent sub-tasks so they run in parallel). Delegating keeps your own context lean, lets work proceed in parallel, and keeps exploratory noise out of the main conversation. Use your judgment: tasks that hinge on the context you've already built may be better done inline. Also delegate to hand work to a specialized role agent (a configured subagent).\n\n" +
 		"If you name a `subagent`, it must come from your own subagents list (run 'list'). You can always delegate without one by omitting `subagent`.",
 	meta: { category: "agent", isReadOnly: false, isConcurrencySafe: false },
 	configSchema: [
-		{ key: "auto_background", type: "boolean", label: "自动转后台", description: "阻塞超时后自动转为非阻塞后台执行" },
+		{ key: "auto_background", type: "boolean", label: "自动转后台", description: "阻塞超时后自动转为非阻塞后台执行 (safety net)" },
 		{ key: "auto_background_timeout", type: "number", label: "超时 (s)", description: "阻塞等待秒数，超时后转后台；设为 0 则立即非阻塞", default: 0 },
 	],
 	inputSchema: z.object({
-		action: z.enum(["list", "delegate", "request_finish", "stop", "complete", "tree"]).describe("list / delegate / request_finish / stop / complete / tree"),
+		action: z.enum(["list", "delegate"]).describe("list (show delegatable role agents) or delegate (blocking delegation)"),
 		task: z.string().optional().describe("The task description (action:'delegate')"),
 		subagent: z.string().optional().describe("Name of a registered subagent to delegate to (from 'list'). Omit for ephemeral delegation."),
 		model: z.string().optional().describe("Model ID override (ephemeral delegation only)"),
 		systemPrompt: z.string().optional().describe("Custom system prompt override (ephemeral delegation only)"),
-		mode: z.enum(["blocking", "non_blocking"]).optional().describe("blocking (wait) or non_blocking (return task_id)"),
-		task_id: z.string().optional().describe("Task id (action:'request_finish' / 'stop' / 'tree')"),
-		message: z.string().optional().describe("Control message for action:'request_finish'"),
-		maxTurns: z.number().optional().describe("request_finish: force-stop after this many additional agent-loop turns (omit for purely advisory)"),
 	}),
 	execute: async (input, ctx) => {
 		const { action } = input;
@@ -101,61 +96,10 @@ export const delegateTool = buildTool({
 			return JSON.stringify(summary);
 		}
 
-		// ── request_finish (advisory graceful stop) ───────────────
-		if (action === "request_finish") {
-			if (!input.task_id) return "Error: `task_id` required for request_finish";
-			if (!ctx.requestTaskFinish) return "Error: request_finish is not available in this context.";
-			const ok = ctx.requestTaskFinish(input.task_id, { message: input.message, maxTurns: input.maxTurns });
-			if (!ok) return `Task ${input.task_id} not found or not running.`;
-			return input.maxTurns
-				? `Finish requested for ${input.task_id}: advisory message sent, will force-stop after ${input.maxTurns} more turn(s).`
-				: `Finish requested for ${input.task_id}: advisory message sent (no hard turn budget — use 'stop' to force-stop).`;
-		}
-
-		// ── stop (hard stop) ───────────────────────────────────────
-		if (action === "stop") {
-			if (!input.task_id) return "Error: `task_id` required for stop";
-			if (!ctx.stopTask) return "Error: stop is not available in this context.";
-			return ctx.stopTask(input.task_id)
-				? `Task ${input.task_id} has been stopped.`
-				: `Task ${input.task_id} not found or not running.`;
-		}
-
-		// ── complete (acknowledge a finished task → drop from live list) ──
-		if (action === "complete") {
-			if (!input.task_id) return "Error: `task_id` required for complete";
-			if (!ctx.acknowledgeTask) return "Error: complete is not available in this context.";
-			const ok = ctx.acknowledgeTask(input.task_id);
-			return ok
-				? `Task ${input.task_id} acknowledged and removed from the task list.`
-				: `Task ${input.task_id} is still running (or unknown) — stop it first, then complete.`;
-		}
-
-		// ── tree (inspect delegated task records) ──────────────────
-		if (action === "tree") {
-			if (!ctx.listDelegatedTasks) return "Error: tree is not available in this context.";
-			const tasks = ctx.listDelegatedTasks(input.task_id ? { rootTaskId: input.task_id } : undefined);
-			if (!tasks.length) return input.task_id ? `No delegated tasks under root ${input.task_id}.` : "No delegated tasks.";
-			return JSON.stringify(tasks.map((t) => ({
-				id: t.id,
-				parentTaskId: t.parentTaskId,
-				target: t.targetAgentId,
-				status: t.status,
-				turns: t.turns,
-				tokens: t.tokens,
-				currentTool: t.currentTool,
-				task: t.task.length > 80 ? t.task.slice(0, 80) + "..." : t.task,
-			})), null, 2);
-		}
-
-		// ── delegate ───────────────────────────────────────────────
-		if (action !== "delegate") return `Error: unknown Agent action '${action}'`;
-		const { task, mode: inputMode } = input;
+		// ── delegate (blocking) ────────────────────────────────────
+		if (action !== "delegate") return `Error: unknown Subagent action '${action}'. Supported: list, delegate. (Task lifecycle is handled by the Task tool family: TaskGet / TaskList / TaskKill / TaskFinish / TaskResume.)`;
+		const { task } = input;
 		if (!task || !task.trim()) return "Error: `task` required for delegate";
-
-		const config = ctx.toolConfig?.Subagent ?? {};
-		const autoBg = config.auto_background === true;
-		const bgTimeout = Number(config.auto_background_timeout) || 0;
 
 		// Resolve delegation options. If `subagent` is named, resolve it LIVE to
 		// the target agent's identity (systemPrompt/model/toolPolicy); else the
@@ -199,45 +143,17 @@ export const delegateTool = buildTool({
 			};
 		}
 
-		// Determine effective mode.
-		let effectiveMode: "blocking" | "non_blocking";
-		if (inputMode) {
-			effectiveMode = inputMode;
-		} else if (!autoBg) {
-			effectiveMode = "blocking";
-		} else if (bgTimeout === 0) {
-			effectiveMode = "non_blocking";
-		} else {
-			effectiveMode = "blocking"; // will auto-background after timeout
-		}
-
-		if (effectiveMode === "non_blocking") {
-			if (!ctx.delegateTaskBackground) {
-				return "Error: Non-blocking sub-agent is not available in this context.";
-			}
-			// Step 2E: stamp the parent tool-call id + annotate the recorder
-			// block with the minted taskId (tool-call ↔ task link).
-			const parentToolCallId = ctx.currentToolCallId;
-			const taskId = ctx.delegateTaskBackground(task, {
-				model: delegateOpts.model,
-				systemPrompt: delegateOpts.systemPrompt,
-				parentToolCallId,
-				onDispatched: parentToolCallId
-					? (id) => ctx.setToolCallTaskId?.(parentToolCallId, id)
-					: undefined,
-			});
-			return `Agent dispatched in non-blocking mode.\ntask_id: ${taskId}\nUse TaskStatus to check progress and retrieve the result.`;
-		}
-
-		// Blocking mode
+		// Blocking mode (sub-4: the ONLY mode now — non_blocking moved to TaskStart).
+		// auto_background remains as a safety net: a blocking delegate that exceeds
+		// its timeout auto-backgrounds (delegator.delegateTask's auto-bg branch).
 		if (!ctx.delegateTask) {
 			return "Error: Sub-agent delegation is not available in this context.";
 		}
 		try {
-			// Step 2E: same tool-call ↔ task link as non-blocking. The blocking
-			// path doesn't return a taskId, so we use the onDispatched callback
-			// (fired synchronously inside delegateTask right after the row is
-			// created) to annotate the recorder block before the call awaits.
+			// Step 2E: same tool-call ↔ task link as TaskStart. The blocking path
+			// doesn't return a taskId, so we use the onDispatched callback (fired
+			// synchronously inside delegateTask right after the row is created) to
+			// annotate the recorder block before the call awaits.
 			const parentToolCallId = ctx.currentToolCallId;
 			const result = await ctx.delegateTask(task, {
 				...delegateOpts,

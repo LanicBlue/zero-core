@@ -78,6 +78,25 @@ export interface ISessionStore {
 	listDelegatedTasks?(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; parentSessionId?: string; status?: DelegatedTaskStatus }): DelegatedTaskRecord[];
 	/** Mark still-running/finishing delegated tasks as interrupted (startup recovery). Returns the count marked. */
 	markRunningDelegatedTasksInterrupted?(): number;
+	/**
+	 * sub-4 (TaskResume turn_seq guard): the interrupted turn for a session, if
+	 * any. Returns { turnSeq, lastCompletedStepSeq? } so the runtime resumeTask
+	 * path can pre-populate the turn_seq cursor + turn_state-precreate marker
+	 * BEFORE loop.resume() — otherwise TurnStart allocates turn_seq+1 (the
+	 * "turn+1 bug" acceptance case 9 checks). Mirrors what the server-side
+	 * doRecoverIncompleteSessions does for chat-session recovery. Narrow single-
+	 * session read so the runtime doesn't need the full getIncompleteTurns list.
+	 * Returns undefined when the session has no interrupted turn.
+	 */
+	getIncompleteTurn?(sessionId: string): { turnSeq: number; lastCompletedStepSeq?: number | null } | undefined;
+	/**
+	 * sub-4 (TaskKill interrupted→abandon): mark a session's interrupted
+	 * turn_state row terminal (failed) so it stops appearing as "needs resume"
+	 * on next startup. Used by the parent's TaskKill(interrupted) branch — the
+	 * parent is choosing NOT to resume a frozen child, so its interrupted turn
+	 * must be closed out. Returns the count of rows marked (0 if none/unknown).
+	 */
+	abandonInterruptedTurn?(sessionId: string, reason?: string): number;
 	recordToolExecution(exec: {
 		sessionId: string;
 		agentId: string;
