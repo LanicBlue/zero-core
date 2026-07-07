@@ -90,6 +90,14 @@ export interface ISessionStore {
 	 */
 	getIncompleteTurn?(sessionId: string): { turnSeq: number; lastCompletedStepSeq?: number | null } | undefined;
 	/**
+	 * sub-8 (lazy rebuild + interrupted seed): distinct session ids that have
+	 * at least one non-terminal turn_state row. Single batched query (no N+1).
+	 * Used by restoreAllSessions (only incomplete sessions get a startup loop)
+	 * and restoreDelegatedTasks (authoritative frozen/interrupted seed signal).
+	 * Empty set when nothing is incomplete.
+	 */
+	getIncompleteTurnSessionIds?(): Set<string>;
+	/**
 	 * sub-4 (TaskKill interrupted→abandon): mark a session's interrupted
 	 * turn_state row terminal (failed) so it stops appearing as "needs resume"
 	 * on next startup. Used by the parent's TaskKill(interrupted) branch — the

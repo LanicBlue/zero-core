@@ -678,14 +678,66 @@ export class AgentLoop implements AgentRuntime {
 	 * memory view non-empty after restart. Restored tasks are historical (not
 	 * actively running) → no abortController. Bash background tasks aren't
 	 * persisted, so they're correctly absent after restart.
+	 *
+	 * sub-8 (interrupted-status seed, design §2.3): for each record whose backing
+	 * delegated session has an incomplete turn_state row (session_kind=
+	 * 'delegated' + phase ∉ {completed, failed}), seed status="interrupted" so
+	 * the parent workbench shows `[taskX] Interrupted` after restart. This is the
+	 * AUTHORITATIVE signal — delegated_tasks.status is usually already flipped to
+	 * 'interrupted' by markRunningDelegatedTasksInterrupted at startup, but the
+	 * turn_state cross-check is what the design pins the workbench display on
+	 * (and guards the rare row that drifted). Completed/failed/killed rows are
+	 * never re-marked (acceptance #7 — don't mislabel finished children).
+	 *
+	 * Single batched turn_state query (no N+1): getIncompleteTurnSessionIds
+	 * returns the distinct set once; per-record lookup is O(1).
 	 */
 	restoreDelegatedTasks(records: DelegatedTaskRecord[]): void {
+		// Batched cross-table read: which delegated child sessions still have an
+		// incomplete turn? Best-effort — when the store doesn't expose the helper
+		// (test stubs), fall back to per-record getIncompleteTurn; both miss are
+		// acceptable (the row status from markRunningDelegatedTasksInterrupted
+		// already reflects interruption in production).
+		let incompleteSessionIds: Set<string> | undefined;
+		try {
+			incompleteSessionIds = this.config.db?.getIncompleteTurnSessionIds?.();
+		} catch {
+			incompleteSessionIds = undefined;
+		}
+
 		for (const rec of records) {
+			// Determine whether THIS child's session is frozen (has an incomplete
+			// turn). rec.sessionId is the hidden delegated session backing the
+			// task; absent on legacy rows / before the sub-loop created its
+			// session — in that case fall back to the persisted status.
+			let childIncomplete = false;
+			if (rec.sessionId) {
+				if (incompleteSessionIds) {
+					childIncomplete = incompleteSessionIds.has(rec.sessionId);
+				} else {
+					try {
+						childIncomplete = !!this.config.db?.getIncompleteTurn?.(rec.sessionId);
+					} catch {
+						childIncomplete = false;
+					}
+				}
+			}
+
+			// Seed-status resolution. A non-terminal record (running / finishing /
+			// interrupted) over a frozen child → "interrupted". Terminal records
+			// (completed / failed / killed) keep their status even if the child's
+			// turn_state row is somehow non-terminal — the task itself reached a
+			// terminal state and the workbench must reflect THAT (acceptance #7).
+			let seedStatus: TaskInfo["status"] = rec.status;
+			if (childIncomplete && (rec.status === "running" || rec.status === "finishing" || rec.status === "interrupted")) {
+				seedStatus = "interrupted";
+			}
+
 			this.delegator.taskRegistry.seed({
 				id: rec.id,
 				type: "subagent",
 				task: rec.task,
-				status: rec.status,
+				status: seedStatus,
 				parentTaskId: rec.parentTaskId,
 				step: rec.step,
 				turns: rec.turns,

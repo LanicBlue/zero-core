@@ -1293,6 +1293,15 @@ export class AgentService {
 		const allSessions = this.db.listAllSessions();
 		console.error(`[server] Restoring ${allSessions.length} session(s) into runtime`);
 
+		// sub-8 (lazy rebuild, design §2.4): only sessions with an incomplete
+		// turn get a runtime loop at startup (so doRecoverIncompleteSessions
+		// can resume them). All other chat sessions defer loop creation to
+		// activateSession (lazy build via getSessionInitPayload) — they have no
+		// live turn to resume, so eagerly building them only burns memory and
+		// assumes loop-already-built in places that now must tolerate absence.
+		// Single batched query (one SELECT DISTINCT over turn_state).
+		const incompleteSessionIds = this.db.getIncompleteTurnSessionIds?.() ?? new Set<string>();
+
 		// listAllSessions is ordered by updated_at DESC, so for each agent the
 		// FIRST session we encounter is its most-recently-active one. Track
 		// which agents we've already anchored so the loop (which iterates
@@ -1300,18 +1309,33 @@ export class AgentService {
 		// anchor with a stale session — that was the bug: every iteration did
 		// `activeSessions.set(agentId, session.id)`, leaving each agent pointing
 		// at whatever session the loop visited LAST (the oldest).
+		//
+		// activeSessions anchoring is INDEPENDENT of loop creation: the anchor
+		// (agentId → most-recent session) is what the UI list and activateSession
+		// read, so it must be populated for every agent even when no loop is
+		// built for that session this startup.
 		const anchoredAgents = new Set<string>();
 
 		for (const session of allSessions) {
 			try {
-				if (this.loops.has(session.id)) continue;
-
-				const agent = this.agentStore?.list().find((a) => a.id === session.agentId);
-				this.createLoopForSession(session.agentId, session.id, agent ?? undefined);
+				// Always anchor the most-recent session per agent (UI list /
+				// activateSession rely on it). Done BEFORE the incomplete check so
+				// a completed-only agent still gets its anchor.
 				if (!anchoredAgents.has(session.agentId)) {
 					this.activeSessions.set(session.agentId, session.id);
 					anchoredAgents.add(session.agentId);
 				}
+
+				if (this.loops.has(session.id)) continue;
+
+				// Lazy rebuild: skip loop creation for sessions with no incomplete
+				// turn. activateSession will build it on first open. Recovery
+				// (doRecoverIncompleteSessions) only needs loops for incomplete
+				// sessions and queries turn_state directly, so it is unaffected.
+				if (!incompleteSessionIds.has(session.id)) continue;
+
+				const agent = this.agentStore?.list().find((a) => a.id === session.agentId);
+				this.createLoopForSession(session.agentId, session.id, agent ?? undefined);
 			} catch (err) {
 				log.error("recovery", `Failed to restore ${session.id}:`, (err as Error).message);
 			}

@@ -892,6 +892,28 @@ export class SessionDB {
 	}
 
 	/**
+	 * sub-8 (lazy rebuild + interrupted seed): set of DISTINCT session ids that
+	 * have at least one non-terminal turn_state row. Used by:
+	 *   - restoreAllSessions — only these sessions get a loop at startup; all
+	 *     other chat sessions defer to activateSession (lazy build).
+	 *   - restoreDelegatedTasks — authoritative seed-status signal: a delegated
+	 *     child whose session has an incomplete turn is "frozen/interrupted"
+	 *     regardless of its delegated_tasks.status row.
+	 * Single batched query (no N+1). Empty set when nothing is incomplete.
+	 */
+	getIncompleteTurnSessionIds(): Set<string> {
+		try {
+			const rows = this.db.prepare(
+				`SELECT DISTINCT session_id FROM turn_state WHERE phase NOT IN ('completed', 'failed')`,
+			).all() as any[];
+			return new Set(rows.map((r) => r.session_id as string));
+		} catch (e) {
+			log.error("db", "getIncompleteTurnSessionIds failed:", (e as Error).message);
+			return new Set();
+		}
+	}
+
+	/**
 	 * sub-4 (TaskKill interrupted→abandon): mark a session's interrupted
 	 * turn_state rows terminal (failed) so they don't resurface as "needs
 	 * resume" on next startup. Called from the parent's TaskKill(interrupted)
