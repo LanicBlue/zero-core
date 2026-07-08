@@ -55,6 +55,16 @@ import { emitDataChange } from "./data-change-hub.js";
 // SessionDB — SQLite-backed session & message persistence
 // ---------------------------------------------------------------------------
 
+// tool-decoupling(决策 1):process-wide 单例 getter/setter。启动时注册;
+// 工具 import { getSessionDB } 直读(db / messages / KV)。headless 无则 undefined。
+let _sessionDB: SessionDB | undefined;
+export function getSessionDB(): SessionDB | undefined {
+	return _sessionDB;
+}
+export function setSessionDB(s: SessionDB | undefined): void {
+	_sessionDB = s;
+}
+
 export class SessionDB {
 	private db: Database.Database;
 	private kvStore: KeyValueStore;

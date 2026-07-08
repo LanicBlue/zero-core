@@ -37,7 +37,7 @@ import { clearProviderCache, setConcurrencyManager } from "../runtime/provider-f
 import { SessionDB } from "./session-db.js";
 import { InputQueueStore } from "./input-queue-store.js";
 import { MCPManager } from "./mcp-manager.js";
-import { buildMcpTools } from "../runtime/tools/mcp-tool.js";
+import { buildMcpTools } from "../tools/mcp-tool.js";
 import { log } from "../core/logger.js";
 import { emitTransition } from "./data-change-hub.js";
 import { createFlowActions } from "./flow-actions.js";
@@ -48,7 +48,7 @@ import { createEventMetricsAdapter, type EventMetricsAdapter } from "./metrics-e
 import { setSessionTurnSeq } from "./durable-hooks.js";
 import { setTurnSeq } from "../runtime/hooks/turn-hooks.js";
 import { registerHooksForLoop, type HookWiringDeps } from "../runtime/hooks/index.js";
-import { getSessionTodos } from "../runtime/tools/todo-write.js";
+import { getSessionTodos } from "../tools/todo-write.js";
 import { pendingResponses } from "../runtime/pending-responses.js";
 // sub-7 (work-context 拆解到三通道): store types for the work-context closures
 // (type-only imports — runtime layer never sees the store classes via this file).
@@ -2021,6 +2021,28 @@ export class AgentService implements PlatformObserver {
 }
 export function createAgentService(workspaceDir: string, sessionDb?: SessionDB, registry?: ToolRegistry, mcp?: MCPManager): AgentService {
 	return new AgentService(workspaceDir, sessionDb, registry, mcp);
+}
+
+// ---------------------------------------------------------------------------
+// tool-decoupling(决策 1):process-wide 单例 getter/setter。
+//
+// 工具(execute)直读数据源模块,不靠 per-loop ctx 注入 —— 根治"work/cron 漏
+// platformObserver"类注入舞。启动时 server/index.ts(或 cli.ts headless)调
+// setAgentService(inst);工具 `import { getAgentService }` 直取。
+//
+// AgentService 同时是 PlatformObserver 的实现(详见 class 声明),所以
+// platformObserver 的"单例"就是这个 —— 不另设 getXxx。sub-2 删 ctx.platformObserver
+// 字段后,Platform 工具改读 getAgentService()。
+//
+// Headless/CLI 无 service 时 getter 返 undefined → 数据工具优雅报错(不崩,
+// design 决策 6)。测试可 setAgentService(mock) 替换。
+// ---------------------------------------------------------------------------
+let _agentService: AgentService | undefined;
+export function getAgentService(): AgentService | undefined {
+	return _agentService;
+}
+export function setAgentService(s: AgentService | undefined): void {
+	_agentService = s;
 }
 
 /**

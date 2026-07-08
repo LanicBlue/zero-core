@@ -14,7 +14,7 @@
 //   - workbench with todos → `<workbench>` block containing the rendered list.
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { clearSessionTodos } from "../../src/runtime/tools/todo-write.js";
+import { clearSessionTodos } from "../../src/tools/todo-write.js";
 import { renderWorkbench } from "../../src/runtime/workbench.js";
 
 const SESSION_ID = "sess-workbench";
@@ -24,7 +24,7 @@ async function seedTodos(
 	sessionId: string,
 	todos: Array<{ content: string; status: "pending" | "in_progress" | "completed"; activeForm: string }>,
 ): Promise<void> {
-	const { todoWriteTool } = await import("../../src/runtime/tools/todo-write.js");
+	const { todoWriteTool } = await import("../../src/tools/todo-write.js");
 	const rawExecute = (todoWriteTool as any).__execute;
 	await rawExecute(
 		{ todos },

@@ -41,8 +41,8 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 
-import { createPlatformTools, formatRelativeTime } from "../../src/runtime/mcp-tools/platform-tools.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { createPlatformTools, formatRelativeTime } from "../../src/tools/mcp/platform-tools.js";
+import { getToolExecute } from "../../src/tools/tool-factory.js";
 import type { PlatformObserver } from "../../src/runtime/types.js";
 import type { PlatformSessionSummary, PlatformSessionDetail } from "../../src/shared/types.js";
 

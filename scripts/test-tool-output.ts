@@ -15,7 +15,7 @@
 // scripts/ — 测试脚本，验证工具输出格式正确性
 //
 // ## 依赖
-// runtime/tools/ 下各工具模块
+// tools/ 下各工具模块
 //
 // ## 维护规则
 // 新增工具需在此添加对应的输出测试
@@ -24,19 +24,19 @@ import { mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { bashTool } from "../src/runtime/tools/bash.ts";
-import { fileEditTool } from "../src/runtime/tools/file-edit.ts";
-import { fileWriteTool } from "../src/runtime/tools/file-write.ts";
-import { fileReadTool } from "../src/runtime/tools/file-read.ts";
-import { grepTool } from "../src/runtime/tools/grep.ts";
-import { globTool } from "../src/runtime/tools/glob.ts";
-import { webSearchTool, setSearchProvider, type SearchProvider } from "../src/runtime/tools/web-search.ts";
-import { webFetchTool } from "../src/runtime/mcp-tools/fetch-tools.ts";
-import { todoWriteTool, clearSessionTodos } from "../src/runtime/tools/todo-write.ts";
-import { taskListTool } from "../src/runtime/tools/task-list.ts";
-import { taskStatusTool } from "../src/runtime/tools/task-status.ts";
-import { taskStopTool } from "../src/runtime/tools/task-stop.ts";
-import { waitTool } from "../src/runtime/tools/wait.ts";
+import { bashTool } from "../src/tools/bash.ts";
+import { fileEditTool } from "../src/tools/file-edit.ts";
+import { fileWriteTool } from "../src/tools/file-write.ts";
+import { fileReadTool } from "../src/tools/file-read.ts";
+import { grepTool } from "../src/tools/grep.ts";
+import { globTool } from "../src/tools/glob.ts";
+import { webSearchTool, setSearchProvider, type SearchProvider } from "../src/tools/web-search.ts";
+import { webFetchTool } from "../src/tools/mcp/fetch-tools.ts";
+import { todoWriteTool, clearSessionTodos } from "../src/tools/todo-write.ts";
+import { taskListTool } from "../src/tools/task-list.ts";
+import { taskStatusTool } from "../src/tools/task-status.ts";
+import { taskStopTool } from "../src/tools/task-stop.ts";
+import { waitTool } from "../src/tools/wait.ts";
 
 function getExecute(toolObj: any) {
 	const rawExecute = toolObj.execute;

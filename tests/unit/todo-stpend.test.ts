@@ -25,7 +25,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 import { registerTodoCleanupHooks } from "../../src/runtime/hooks/todo-cleanup-hooks.js";
-import { getSessionTodos, clearSessionTodos } from "../../src/runtime/tools/todo-write.js";
+import { getSessionTodos, clearSessionTodos } from "../../src/tools/todo-write.js";
 
 const SESSION_ID = "sess-todo-3b";
 const AGENT_ID = "dev";
@@ -40,7 +40,7 @@ async function seedTodos(
 	sessionId: string,
 	todos: Array<{ content: string; status: "pending" | "in_progress" | "completed"; activeForm: string }>,
 ): Promise<void> {
-	const { todoWriteTool } = await import("../../src/runtime/tools/todo-write.js");
+	const { todoWriteTool } = await import("../../src/tools/todo-write.js");
 	const rawExecute = (todoWriteTool as any).__execute;
 	await rawExecute(
 		{ todos },

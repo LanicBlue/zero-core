@@ -46,8 +46,8 @@ import { PmService } from "../../src/server/pm-service.js";
 // replacement. This end-to-end file now drives flowTool — the same single
 // entry point the runtime uses. The pmService is the real PmService (so
 // archivist merge + status close are real, not mocked), exactly as before.
-import { flowTool } from "../../src/runtime/tools/flow-tool.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { flowTool } from "../../src/tools/flow-tool.js";
+import { getToolExecute } from "../../src/tools/tool-factory.js";
 import { createFlowActions } from "../../src/server/flow-actions.js";
 import {
 	emitTransition,

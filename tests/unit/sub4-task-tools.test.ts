@@ -15,12 +15,12 @@
 // tracker accessors — the tool itself just dispatches.
 
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { taskGetTool } from "../../src/runtime/tools/task-get.js";
-import { taskKillTool } from "../../src/runtime/tools/task-kill.js";
-import { taskFinishTool } from "../../src/runtime/tools/task-finish.js";
-import { taskResumeTool } from "../../src/runtime/tools/task-resume.js";
-import { taskStartTool } from "../../src/runtime/tools/task-start.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { taskGetTool } from "../../src/tools/task-get.js";
+import { taskKillTool } from "../../src/tools/task-kill.js";
+import { taskFinishTool } from "../../src/tools/task-finish.js";
+import { taskResumeTool } from "../../src/tools/task-resume.js";
+import { taskStartTool } from "../../src/tools/task-start.js";
+import { getToolExecute } from "../../src/tools/tool-factory.js";
 import { SubagentDelegator } from "../../src/runtime/subagent-delegator.js";
 import {
 	getTurnSeq,

@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { nativeGrepSearch } from "../../src/runtime/tools/grep.js";
+import { nativeGrepSearch } from "../../src/tools/grep.js";
 
 let root: string;
 beforeAll(() => {

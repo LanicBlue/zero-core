@@ -29,7 +29,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { spawnBackend, shutdownBackend } from "./backend-spawn.js";
 import { registerProxyHandlers, connectEventBridge } from "./ipc-proxy.js";
-import { importCookies } from "../runtime/mcp-tools/cookie-jar.js";
+import { importCookies } from "../tools/mcp/cookie-jar.js";
 import { DEV_SERVER_URL } from "../core/constants.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

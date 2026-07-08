@@ -348,8 +348,8 @@ describe("cron action tool (Cron)", () => {
 		// v0.8 P3 (§7.3): the four retired per-action cron tools
 		// (CreateCron/UpdateCron/DeleteCron/ListCrons) are merged into one
 		// action-switched `Cron` tool. Each action is one switch branch.
-		const { cronTool } = await import("../../src/runtime/tools/cron-tool.js");
-		const { getToolExecute } = await import("../../src/runtime/tools/tool-factory.js");
+		const { cronTool } = await import("../../src/tools/cron-tool.js");
+		const { getToolExecute } = await import("../../src/tools/tool-factory.js");
 		const execute = getToolExecute(cronTool)!;
 		const agent = (() => { const _a = agentStore.create({ name: "PM" } as any); seedAgentWithRoleTag(sessionDB, _a.id, "pm"); return _a; })();
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws") });
@@ -383,8 +383,8 @@ describe("cron action tool (Cron)", () => {
 	});
 
 	test("create action without ctx.management returns error string (fail-soft)", async () => {
-		const { cronTool } = await import("../../src/runtime/tools/cron-tool.js");
-		const { getToolExecute } = await import("../../src/runtime/tools/tool-factory.js");
+		const { cronTool } = await import("../../src/tools/cron-tool.js");
+		const { getToolExecute } = await import("../../src/tools/tool-factory.js");
 		const execute = getToolExecute(cronTool)!;
 		const result = await execute({
 			action: "create",

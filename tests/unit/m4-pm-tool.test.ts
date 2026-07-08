@@ -46,8 +46,8 @@ import {
 import { PmService } from "../../src/server/pm-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { WikiStore } from "../../src/server/wiki-node-store.js";
-import { flowTool } from "../../src/runtime/tools/flow-tool.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { flowTool } from "../../src/tools/flow-tool.js";
+import { getToolExecute } from "../../src/tools/tool-factory.js";
 import { createFlowActions } from "../../src/server/flow-actions.js";
 import { emitTransition } from "../../src/server/data-change-hub.js";
 // v0.8 P0 (§1.4 过渡期): roleTag 不再走 store round-trip;PM agent 物理列直接 seed。

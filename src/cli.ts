@@ -40,6 +40,8 @@ import { ProviderStore } from "./server/provider-store.js";
 import { runMigrations } from "./server/db-migration.js";
 import { ToolRegistry } from "./core/tool-registry.js";
 import { MCPManager } from "./server/mcp-manager.js";
+// tool-decoupling sub-1: 注册 app 级服务实例到各模块的 getter/setter 单例。
+import { registerServerInstances } from "./server/runtime-instances.js";
 import type { RuntimeProviderConfig, SessionConfig } from "./runtime/types.js";
 import type { Provider } from "./shared/types.js";
 
@@ -172,6 +174,9 @@ async function main() {
 	// Initialize DB
 	const sessionDB = new SessionDB();
 	runMigrations(sessionDB);
+	// tool-decoupling(决策 6):headless CLI 只起 sessionDB;其余 stores 不构造,
+	// getter 返 undefined → 数据工具优雅报错(不崩)。共用注册逻辑与 server 路径。
+	registerServerInstances({ sessionDB });
 	const registry = new ToolRegistry(sessionDB.getKVStore());
 
 	// Load config

@@ -32,7 +32,7 @@ import {
 	isWikiDiskPath,
 	wikiPathRejectMessage,
 	findWikiPathInShellCommand,
-} from "../../src/runtime/tools/wiki-path-guard.js";
+} from "../../src/tools/wiki-path-guard.js";
 import { WIKI_DISK_ROOT } from "../../src/server/wiki-node-store.js";
 import { join, normalize, resolve } from "node:path";
 

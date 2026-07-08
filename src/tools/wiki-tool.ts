@@ -40,9 +40,9 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import type { WikiStore } from "../../server/wiki-node-store.js";
-import type { WikiNode } from "../../shared/types.js";
-import { formatBodySize, formatNodeId, shortIdOf, sanitizeText } from "../wiki-anchor-injection.js";
+import type { WikiStore } from "../server/wiki-node-store.js";
+import type { WikiNode } from "../shared/types.js";
+import { formatBodySize, formatNodeId, shortIdOf, sanitizeText } from "../runtime/wiki-anchor-injection.js";
 
 // ---------------------------------------------------------------------------
 // Helpers — wiki store resolution + anchor scope + node addressing

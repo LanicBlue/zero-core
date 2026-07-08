@@ -73,10 +73,12 @@ import { createWikiRouter } from "./project-wiki-router.js";
 import { createWikiRouter as createWikiBrowserRouter, createWorkspaceDocHandler } from "./wiki-router.js";
 import { AnalystService } from "./analyst-service.js";
 import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
-import { ALL_TOOLS, registerRuntimeTools } from "../runtime/tools/index.js";
-import { getToolExecute } from "../runtime/tools/tool-factory.js";
+import { ALL_TOOLS, registerRuntimeTools } from "../tools/index.js";
+import { getToolExecute } from "../tools/tool-factory.js";
 import type { ToolExecutionContext } from "../runtime/types.js";
-import { getCookieCount, clearCookies } from "../runtime/mcp-tools/fetch-tools.js";
+import { getCookieCount, clearCookies } from "../tools/mcp/fetch-tools.js";
+// tool-decoupling sub-1: 注册 app 级服务实例到各模块的 getter/setter 单例。
+import { registerServerInstances } from "./runtime-instances.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const expandHome = (p: string) => p.startsWith("~") ? p.replace(/^~/, homedir()) : p;
@@ -548,7 +550,24 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 (P3 §7.7 #4): tool-call usage log — one row per tool invocation,
 	// surfaced onto every session so tool-factory can record it. Best-effort.
 	const { ToolUsageStore } = await import("./tool-usage-store.js");
-	agentService.setToolUsageStore(new ToolUsageStore(sessionDB));
+	const toolUsageStore = new ToolUsageStore(sessionDB);
+	agentService.setToolUsageStore(toolUsageStore);
+
+	// tool-decoupling(决策 1 + 决策 6):注册 app 级服务实例到各数据源模块的
+	// process-wide 单例。工具(sub-2+ 迁完)将 import { getXxx } 直读,不再靠
+	// per-loop ctx 注入。必须在任何工具调用(restoreAllSessions / cron / 等)
+	// 之前完成 —— 所有 store 此刻都已构造,在此注册。CLI 路径(cli.ts)调同一
+	// 函数(headless 多数缺,getter 返 undefined,工具降级)。
+	registerServerInstances({
+		agentService,
+		sessionDB,
+		wikiStoreGlobal,
+		projectWikiStore: wikiStore,
+		requirementStore,
+		managementService: management,
+		pmService,
+		toolUsageStore,
+	});
 
 	analystService.setGitIntegration(gitIntegration);
 	// project-flow F4: surface GitIntegration on the FlowActions backend so the

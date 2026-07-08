@@ -33,7 +33,7 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import { OUTPUT_TRUNCATION_CHARS } from "../../core/constants.js";
+import { OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
 
 function truncate(text: string): string {
 	if (text.length <= OUTPUT_TRUNCATION_CHARS) return text;

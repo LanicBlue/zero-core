@@ -39,8 +39,8 @@ import {
 } from "../../src/server/data-change-hub.js";
 import { ProjectWorkHookManager } from "../../src/server/project-work-hook-manager.js";
 import { createFlowActions } from "../../src/server/flow-actions.js";
-import { flowTool } from "../../src/runtime/tools/flow-tool.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { flowTool } from "../../src/tools/flow-tool.js";
+import { getToolExecute } from "../../src/tools/tool-factory.js";
 
 // Drive the action switch directly (bypasses the AI SDK wrapper + hooks).
 const execFlow = getToolExecute(flowTool)!;

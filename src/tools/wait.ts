@@ -29,7 +29,7 @@
 //
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import type { WakeReason, WaitWakeResult } from "../types.js";
+import type { WakeReason, WaitWakeResult } from "../runtime/types.js";
 
 export const waitTool = buildTool({
 	name: "Wait",

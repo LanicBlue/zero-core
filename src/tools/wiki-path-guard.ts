@@ -32,7 +32,7 @@
 //
 
 import { resolve, normalize, isAbsolute } from "node:path";
-import { WIKI_DISK_ROOT } from "../../server/wiki-node-store.js";
+import { WIKI_DISK_ROOT } from "../server/wiki-node-store.js";
 
 /**
  * Canonicalize a path string the way the FS tools do before checking. Accepts

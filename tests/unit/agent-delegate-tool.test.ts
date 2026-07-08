@@ -3,8 +3,8 @@
 // 验证 v0.8 委派重构:单 Agent 工具,list 现查 caller subagents,delegate
 // 按 name 解析(现查身份),白名单语义(不在列表报错),目标被删报错不回落。
 import { describe, test, expect } from "vitest";
-import { delegateTool } from "../../src/runtime/tools/agent.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { delegateTool } from "../../src/tools/agent.js";
+import { getToolExecute } from "../../src/tools/tool-factory.js";
 
 const exec = getToolExecute(delegateTool)!;
 

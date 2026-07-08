@@ -324,6 +324,17 @@ export function memoryAgentRootId(agentId: string): string {
 // WikiStore — the single global wiki memory tree
 // ---------------------------------------------------------------------------
 
+// tool-decoupling(决策 1):process-wide 单例 getter/setter。这是"全局"
+// WikiStore(记忆树,wikiStoreGlobal)。启动时注册;工具(Wiki 读 / Platform /
+// Cron)import { getWikiStoreGlobal } 直读。headless 无则 undefined。
+let _wikiStoreGlobal: WikiStore | undefined;
+export function getWikiStoreGlobal(): WikiStore | undefined {
+	return _wikiStoreGlobal;
+}
+export function setWikiStoreGlobal(s: WikiStore | undefined): void {
+	_wikiStoreGlobal = s;
+}
+
 export class WikiStore {
 	private store: SqliteStore<WikiNode & { nodeType?: string }>;
 	private db: import("better-sqlite3").Database;

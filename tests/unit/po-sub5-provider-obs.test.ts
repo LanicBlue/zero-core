@@ -59,8 +59,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createPlatformTools } from "../../src/runtime/mcp-tools/platform-tools.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { createPlatformTools } from "../../src/tools/mcp/platform-tools.js";
+import { getToolExecute } from "../../src/tools/tool-factory.js";
 import { createProviderRouter } from "../../src/server/provider-router.js";
 import { ProviderStore } from "../../src/server/provider-store.js";
 import { SessionDB } from "../../src/server/session-db.js";

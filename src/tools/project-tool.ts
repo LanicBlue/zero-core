@@ -30,7 +30,7 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import type { ManagementService } from "../../server/management-service.js";
+import type { ManagementService } from "../server/management-service.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

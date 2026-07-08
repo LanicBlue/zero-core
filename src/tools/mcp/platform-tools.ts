@@ -24,7 +24,7 @@
 import { z } from "zod";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { buildTool } from "../tools/tool-factory.js";
+import { buildTool } from "../tool-factory.js";
 import { ZERO_CORE_DIR } from "../../core/config.js";
 
 function getLatestLogFile(): string | null {

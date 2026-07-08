@@ -451,8 +451,8 @@ describe("P5 §8.5 — getProjectResourceUsage (sessions token/cost SUM by proje
 
 describe("P5 §8.2 — Project tool get(includeContext) returns container view", () => {
 	test("includeContext=true goes through getProjectContainerView", async () => {
-		const { projectTool } = await import("../../src/runtime/tools/project-tool.js");
-		const { getToolExecute } = await import("../../src/runtime/tools/tool-factory.js");
+		const { projectTool } = await import("../../src/tools/project-tool.js");
+		const { getToolExecute } = await import("../../src/tools/tool-factory.js");
 		const exec = getToolExecute(projectTool)!;
 
 		const p = management.createProject({ name: "Tool", workspaceDir: join(tmpDir, "ws") });

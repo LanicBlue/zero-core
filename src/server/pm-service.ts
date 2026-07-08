@@ -126,6 +126,17 @@ export interface CoverageVerdictOutcome {
 	finalStatus: string;
 }
 
+// tool-decoupling(决策 1):process-wide 单例 getter/setter。启动时注册;
+// 工具(Flow 的 PM-session 路径 / verify 复合关闭)import { getPmService }
+// 直读。headless 无则 undefined。
+let _pmService: PmService | undefined;
+export function getPmService(): PmService | undefined {
+	return _pmService;
+}
+export function setPmService(s: PmService | undefined): void {
+	_pmService = s;
+}
+
 export class PmService {
 	private deps: PmServiceDeps;
 

@@ -29,7 +29,7 @@ import { promisify } from "node:util";
 import { resolve, relative, extname, sep } from "node:path";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { buildTool } from "./tool-factory.js";
-import { EXEC_MAX_BUFFER_BYTES } from "../../core/constants.js";
+import { EXEC_MAX_BUFFER_BYTES } from "../core/constants.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 
 const execFileAsync = promisify(execFile);

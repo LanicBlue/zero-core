@@ -39,11 +39,11 @@ import { WikiStore } from "../../src/server/wiki-node-store.js";
 import { ProjectWikiStore } from "../../src/server/project-wiki-store.js";
 import { RequirementStore } from "../../src/server/requirement-store.js";
 import { ToolUsageStore } from "../../src/server/tool-usage-store.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
-import { projectTool } from "../../src/runtime/tools/project-tool.js";
-import { agentRegistryTool } from "../../src/runtime/tools/agent-registry.js";
-import { cronTool } from "../../src/runtime/tools/cron-tool.js";
-import { wikiTool } from "../../src/runtime/tools/wiki-tool.js";
+import { getToolExecute } from "../../src/tools/tool-factory.js";
+import { projectTool } from "../../src/tools/project-tool.js";
+import { agentRegistryTool } from "../../src/tools/agent-registry.js";
+import { cronTool } from "../../src/tools/cron-tool.js";
+import { wikiTool } from "../../src/tools/wiki-tool.js";
 // project-flow F5: verify-tool.ts is deleted; Flow.verify (compound) is the
 // replacement, exercised in tests/unit/f3-flow-verify.test.ts. This P3
 // contract file no longer drives a verify path (it was a thin duplicate).
@@ -695,7 +695,7 @@ describe("tool_usage record", () => {
 		// records success=false when the tool execute() actually throws. So
 		// to exercise the failure path we build a minimal throwing tool with
 		// the same wrapper and drive it.
-		const { buildTool } = await import("../../src/runtime/tools/tool-factory.js");
+		const { buildTool } = await import("../../src/tools/tool-factory.js");
 		const z = await import("zod");
 		const throwingTool = buildTool({
 			name: "ThrowingTool",

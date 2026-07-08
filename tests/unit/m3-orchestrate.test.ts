@@ -340,8 +340,8 @@ describe("feature worktree + commit reference convention", () => {
 
 describe("Orchestrate tool (confirm gate + DSL engine integration)", () => {
 	test("mode=run executes pipeline + parallel + barrier without confirm gate", async () => {
-		const { orchestrateTool } = await import("../../src/runtime/tools/orchestrate-tool.js");
-		const { getToolExecute } = await import("../../src/runtime/tools/tool-factory.js");
+		const { orchestrateTool } = await import("../../src/tools/orchestrate-tool.js");
+		const { getToolExecute } = await import("../../src/tools/tool-factory.js");
 		const execFn = getToolExecute(orchestrateTool)!;
 
 		const dispatched: string[] = [];
@@ -398,8 +398,8 @@ describe("Orchestrate tool (confirm gate + DSL engine integration)", () => {
 	});
 
 	test("mode=confirm suspends → confirm() releases → runs", async () => {
-		const { orchestrateTool } = await import("../../src/runtime/tools/orchestrate-tool.js");
-		const { getToolExecute } = await import("../../src/runtime/tools/tool-factory.js");
+		const { orchestrateTool } = await import("../../src/tools/orchestrate-tool.js");
+		const { getToolExecute } = await import("../../src/tools/tool-factory.js");
 		const execFn = getToolExecute(orchestrateTool)!;
 
 		const dispatched: string[] = [];
@@ -447,8 +447,8 @@ describe("Orchestrate tool (confirm gate + DSL engine integration)", () => {
 	});
 
 	test("mode=confirm rejected → returns false: <reason>, does not dispatch", async () => {
-		const { orchestrateTool } = await import("../../src/runtime/tools/orchestrate-tool.js");
-		const { getToolExecute } = await import("../../src/runtime/tools/tool-factory.js");
+		const { orchestrateTool } = await import("../../src/tools/orchestrate-tool.js");
+		const { getToolExecute } = await import("../../src/tools/tool-factory.js");
 		const execFn = getToolExecute(orchestrateTool)!;
 
 		const dispatched: string[] = [];

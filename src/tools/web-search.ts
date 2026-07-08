@@ -25,7 +25,7 @@
 //
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import { DEFAULT_URLS } from "../../core/constants.js";
+import { DEFAULT_URLS } from "../core/constants.js";
 
 // ---------------------------------------------------------------------------
 // Web Search — adapter pattern for multiple search backends
@@ -308,7 +308,7 @@ export const webSearchTool = buildTool({
 			? createSearchProvider({ type: cfg.provider, searxngUrl: cfg.searxngUrl, serpApiKey: cfg.serpApiKey, braveApiKey: cfg.braveApiKey })
 			: currentProvider;
 		console.log(`[WebSearch] provider=${provider.name}, proxy checking...`);
-		try { const { isProxyActive } = await import("../proxy-manager.js"); console.log(`[WebSearch] proxy active=${isProxyActive()}`); } catch {}
+		try { const { isProxyActive } = await import("../runtime/proxy-manager.js"); console.log(`[WebSearch] proxy active=${isProxyActive()}`); } catch {}
 
 		const results = await provider.search(query, {
 			maxResults: Math.min(maxResults ?? cfg?.maxResults ?? 8, 20),

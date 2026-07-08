@@ -57,7 +57,7 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import type { RequirementRecord } from "../../shared/types.js";
+import type { RequirementRecord } from "../shared/types.js";
 
 /**
  * FlowActions backend shape (project-flow F4). Imported as a TYPE-ONLY ref so

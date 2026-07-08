@@ -22,6 +22,7 @@
     "src/backend.ts",
     "src/core/**/*.ts",
     "src/runtime/**/*.ts",
+    "src/tools/**/*.ts",
     "src/server/*.ts",
     "src/server/mcp-servers/**/*.ts"
   ],

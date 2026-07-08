@@ -27,7 +27,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import TurndownService from "turndown";
 import { JSDOM } from "jsdom";
-import { buildTool } from "../tools/tool-factory.js";
+import { buildTool } from "../tool-factory.js";
 
 // ---------------------------------------------------------------------------
 // Constants

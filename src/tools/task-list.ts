@@ -26,7 +26,7 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import type { TaskInfo } from "../types.js";
+import type { TaskInfo } from "../runtime/types.js";
 
 function formatTask(t: TaskInfo, indent: string = ""): string {
 	const elapsed = t.completedAt

@@ -27,11 +27,11 @@
 //
 import { tool } from "ai";
 import type { ZodSchema } from "zod";
-import type { ToolExecutionContext } from "../types.js";
-import type { ToolConfigField, ToolCategory } from "../../core/tool-registry.js";
-import { log } from "../../core/logger.js";
-import { triggerHooks } from "../../core/hook-registry.js";
-import type { ToolRateLimiter } from "../tool-rate-limiter.js";
+import type { ToolExecutionContext } from "../runtime/types.js";
+import type { ToolConfigField, ToolCategory } from "../core/tool-registry.js";
+import { log } from "../core/logger.js";
+import { triggerHooks } from "../core/hook-registry.js";
+import type { ToolRateLimiter } from "../runtime/tool-rate-limiter.js";
 
 // Re-export so existing consumers (e.g. tools/index.ts) can still import
 // ToolCategory from tool-factory. Canonical definition lives in
@@ -49,6 +49,15 @@ export interface ToolMeta {
 	isConcurrencySafe: boolean;
 	isDestructive: boolean;
 	maxResultSize: number;
+	/**
+	 * tool-decoupling(决策 4):是否暴露给非 agent host(UI dispatcher / MCP)。
+	 * 默认按类别:OS 工具(Read/Bash/Grep)与 app 级工具(Wiki/Platform)暴露;
+	 * session 作用域工具(TodoWrite/Task*)仅内部 agent host 用 → exposable=false。
+	 *
+	 * sub-1 只加字段不强制用 —— 现有 ToolRegistry/UI 工具页仍走 ALL_TOOLS。
+	 * sub-5(UI 统一 dispatcher)读此标记决定暴露集合。
+	 */
+	exposable?: boolean;
 }
 
 const DEFAULT_META: ToolMeta = {
@@ -150,6 +159,20 @@ export interface BuildToolOptions<T extends ZodSchema> {
 	configSchema?: ToolConfigField[];
 	inputSchema: T;
 	execute: (input: any, ctx: ToolExecutionContext) => Promise<string>;
+	/**
+	 * tool-decoupling(决策 3):工具自带文本 formatter —— 把结构化 JSON 返值转成
+	 * 喂 LLM 的文本形态。纯函数,可单测。
+	 *
+	 * - **agent loop** → execute → `format(JSON)` → 文本喂 LLM。
+	 * - **MCP server** → execute → `format(JSON)` → 文本(或 JSON 给外部 client 自决)。
+	 * - **UI/REST** → execute → JSON 直渲染(不调 format)。
+	 *
+	 * sub-1 只加字段不强制用 —— buildTool 当前仍把 execute 的 string 返值直接喂
+	 * LLM(旧行为)。sub-2+ 工具增量迁到 JSON 返值时,buildTool wrapper 才会
+	 * `execute → JSON → format → 文本`。当前签名暂保持 `(input, ctx)=>Promise<string>`
+	 * (sub-2+ 改造签名)。
+	 */
+	format?: (result: any) => string;
 }
 
 export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {

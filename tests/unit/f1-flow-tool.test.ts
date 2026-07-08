@@ -36,12 +36,12 @@ import {
 	_resetDataChangeHubForTest,
 } from "../../src/server/data-change-hub.js";
 import { createFlowActions } from "../../src/server/flow-actions.js";
-import { flowTool } from "../../src/runtime/tools/flow-tool.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { flowTool } from "../../src/tools/flow-tool.js";
+import { getToolExecute } from "../../src/tools/tool-factory.js";
 import {
 	ALL_TOOLS,
 	buildToolsSet,
-} from "../../src/runtime/tools/index.js";
+} from "../../src/tools/index.js";
 
 // Get the inner execute (bypasses the AI SDK wrapper + hooks/rate-limit, so
 // the test drives the action switch directly and asserts on its return).

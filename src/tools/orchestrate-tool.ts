@@ -58,7 +58,7 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import type { ToolExecutionContext } from "../types.js";
+import type { ToolExecutionContext } from "../runtime/types.js";
 import type {
 	OrchestrateFlow,
 	OrchestrateNode,
@@ -70,13 +70,13 @@ import type {
 	OrchestrateBarrierNode,
 	OrchestrateVerifyNode,
 	OrchestrateManifestRecord,
-} from "../../shared/types.js";
+} from "../shared/types.js";
 import {
 	OrchestratePlanStore,
 	OrchestrateManifestStore,
 	ConfirmRegistry,
-} from "../../server/orchestrate-store.js";
-import { log } from "../../core/logger.js";
+} from "../server/orchestrate-store.js";
+import { log } from "../core/logger.js";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 

@@ -28,7 +28,7 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import type { ManagementService } from "../../server/management-service.js";
+import type { ManagementService } from "../server/management-service.js";
 
 function mgmt(ctx: any): ManagementService {
 	const svc = ctx?.management;

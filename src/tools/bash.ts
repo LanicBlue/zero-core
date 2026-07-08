@@ -30,8 +30,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import { buildTool } from "./tool-factory.js";
-import { EXEC_MAX_BUFFER_BYTES } from "../../core/constants.js";
-import { decodeExecBuffers } from "../../core/encoding.js";
+import { EXEC_MAX_BUFFER_BYTES } from "../core/constants.js";
+import { decodeExecBuffers } from "../core/encoding.js";
 import { findWikiPathInShellCommand, wikiPathRejectMessage } from "./wiki-path-guard.js";
 
 const execFileAsync = promisify(execFile);

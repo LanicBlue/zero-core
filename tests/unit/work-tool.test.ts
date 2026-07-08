@@ -4,8 +4,8 @@
 // (ManagementService work 方法)正确路由,字段映射 + required 字段校验 + 门控。
 
 import { describe, test, expect } from "vitest";
-import { workTool } from "../../src/runtime/tools/work-tool.js";
-import { getToolExecute, getToolMeta } from "../../src/runtime/tools/tool-factory.js";
+import { workTool } from "../../src/tools/work-tool.js";
+import { getToolExecute, getToolMeta } from "../../src/tools/tool-factory.js";
 
 function makeCtx(overrides: Record<string, any> = {}) {
 	const calls: any[] = [];

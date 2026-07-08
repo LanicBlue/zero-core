@@ -43,9 +43,9 @@ import {
 	onDataChange,
 	_resetDataChangeHubForTest,
 } from "../../src/server/data-change-hub.js";
-import { flowTool } from "../../src/runtime/tools/flow-tool.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
-import { ALL_TOOLS } from "../../src/runtime/tools/index.js";
+import { flowTool } from "../../src/tools/flow-tool.js";
+import { getToolExecute } from "../../src/tools/tool-factory.js";
+import { ALL_TOOLS } from "../../src/tools/index.js";
 import { createFlowActions } from "../../src/server/flow-actions.js";
 import { RENAMED_TOOLS } from "../../src/core/tool-registry.js";
 import {

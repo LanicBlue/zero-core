@@ -26,7 +26,7 @@
 //
 import { tool } from "ai";
 import { z } from "zod";
-import type { ToolExecutionContext } from "../types.js";
+import type { ToolExecutionContext } from "../runtime/types.js";
 import { bashTool } from "./bash.js";
 import { fileReadTool } from "./file-read.js";
 import { fileWriteTool } from "./file-write.js";
@@ -50,9 +50,9 @@ import { webSearchTool } from "./web-search.js";
 import { askUserTool } from "./ask-user.js";
 import { todoWriteTool } from "./todo-write.js";
 import { getToolName, getToolMeta, getToolConfigSchema, getToolDescription, getToolPrompt, getToolInputFields, getToolExecute } from "./tool-factory.js";
-import { webFetchTool } from "../mcp-tools/fetch-tools.js";
-import { sequentialThinkingTool } from "../mcp-tools/sequential-thinking-tools.js";
-import { createPlatformTools } from "../mcp-tools/platform-tools.js";
+import { webFetchTool } from "./mcp/fetch-tools.js";
+import { sequentialThinkingTool } from "./mcp/sequential-thinking-tools.js";
+import { createPlatformTools } from "./mcp/platform-tools.js";
 import { orchestrateTool } from "./orchestrate-tool.js";
 // v0.8 (P3 §7.3): the four domain action tools, replacing the retired
 // zero-admin-tools.ts (CreateProject/CreateAgent/.../InstantiatePreset/SetToolPolicy/...).
@@ -69,7 +69,7 @@ import { wikiTool } from "./wiki-tool.js";
 // The old tool files (verify-tool.ts / requirement-tools.ts) were deleted in
 // project-flow F5 — Flow is the only requirement-flow tool left.
 import { flowTool } from "./flow-tool.js";
-import { type ToolRegistry, RENAMED_TOOLS } from "../../core/tool-registry.js";
+import { type ToolRegistry, RENAMED_TOOLS } from "../core/tool-registry.js";
 import type { ToolCategory } from "./tool-factory.js";
 
 // Built-in tools (platform tool needs getAppVersion, so lazy init)

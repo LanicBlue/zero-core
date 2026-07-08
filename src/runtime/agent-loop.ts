@@ -42,7 +42,7 @@ import type {
 } from "./types.js";
 import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
-import { buildToolsSet } from "./tools/index.js";
+import { buildToolsSet } from "../tools/index.js";
 import { renderWorkbench } from "./workbench.js";
 import { log } from "../core/logger.js";
 import { HookRegistry } from "../core/hook-registry.js";

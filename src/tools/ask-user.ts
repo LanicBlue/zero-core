@@ -25,8 +25,8 @@
 //
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import { pendingResponses } from "../pending-responses.js";
-import { triggerHooks } from "../../core/hook-registry.js";
+import { pendingResponses } from "../runtime/pending-responses.js";
+import { triggerHooks } from "../core/hook-registry.js";
 
 // ---------------------------------------------------------------------------
 // AskUserQuestion — ask the user questions during task execution

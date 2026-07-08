@@ -26,7 +26,7 @@
 // - 新增活状态段(task 状态/wait 状态)在此函数追加 ## 子标题。
 // - 各段为空则不出现;全空返回 null(调用方跳过注入)。
 
-import { renderTodosContext } from "./tools/todo-write.js";
+import { renderTodosContext } from "../tools/todo-write.js";
 
 /**
  * Options for the per-step workbench render. `stepsProgress` is the server-

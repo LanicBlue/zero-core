@@ -21,7 +21,7 @@
 // 思维链格式变更需确保向后兼容
 //
 import { z } from "zod";
-import { buildTool } from "../tools/tool-factory.js";
+import { buildTool } from "../tool-factory.js";
 
 const thoughtHistories = new Map<string, { thought: string; thoughtNumber: number; totalThoughts: number; status: string }[]>();
 
