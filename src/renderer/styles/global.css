@@ -5724,6 +5724,18 @@ n.tools-page-test-chips {
 	overflow: hidden;
 }
 
+/* ─── sub-5 SkillsSection (agent config) ──────────────────── */
+/* 镜像 ToolsSection 的 .tool-group / .tool-list / .tool-item 布局;
+   checkbox 替代 toggle-switch,缩进/对齐一致。 */
+
+.skill-checkbox {
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+	flex-shrink: 0;
+	margin-left: auto;
+}
+
 /* ─── Memory Config Settings ────────────────────────────── */
 
 .memory-config {

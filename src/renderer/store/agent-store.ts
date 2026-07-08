@@ -140,9 +140,27 @@ if (!_fetched) {
 	// patch the array; delete → remove; burst → full refetch.
 	subscribeListDataChange("agents", {
 		patch: (id, record) => {
-			const others = useAgentStore.getState().agents.filter((a) => a.id !== id);
-			useAgentStore.setState({ agents: record ? [...others, record as AgentRecord] : others });
-			return true; // 非过滤列表:新 id 直接 append
+			const current = useAgentStore.getState().agents;
+			if (record === null) {
+				useAgentStore.setState({ agents: current.filter((a) => a.id !== id) });
+				return true;
+			}
+			// sub-5 fix (skill-system): preserve list position on UPDATE.
+			// The previous "filter then append" re-sorted the array on every
+			// change, which (a) made agents jump to the bottom of the list
+			// mid-edit (confusing UX) and (b) desynced renderer store order
+			// from the server's insert-order (agentsList IPC), so a DOM
+			// ".agents-list-item.first()" click could target a different agent
+			// than agentsList()[0] — breaking the E2E reopen flow.
+			const idx = current.findIndex((a) => a.id === id);
+			if (idx === -1) {
+				useAgentStore.setState({ agents: [...current, record as AgentRecord] });
+			} else {
+				const next = current.slice();
+				next[idx] = record as AgentRecord;
+				useAgentStore.setState({ agents: next });
+			}
+			return true; // 非过滤列表:新 id 直接 append,已有 id 原地更新
 		},
 		refetchAll: () => { useAgentStore.getState().fetchAgents(); },
 	});

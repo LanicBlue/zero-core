@@ -24,7 +24,7 @@ import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
 
 export type FormState = Omit<AgentRecord, "id" | "createdAt" | "updatedAt">;
 
-export type Section = "basic" | "prompt" | "tools" | "expose" | "permissions" | "subagents" | "anchors";
+export type Section = "basic" | "prompt" | "tools" | "skills" | "expose" | "permissions" | "subagents" | "anchors";
 
 export const DEFAULT_ENABLED_TOOLS = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);
 

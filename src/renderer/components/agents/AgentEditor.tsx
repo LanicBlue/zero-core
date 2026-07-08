@@ -24,15 +24,16 @@
 // - 新增字段时需更新表单
 // - 保持验证逻辑正确
 //
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useAgentStore } from "../../store/agent-store.js";
 import { useProviderStore } from "../../store/provider-store.js";
 import { useWikiStore } from "../../store/wiki-store.js";
-import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
+import type { AgentRecord, PromptTemplate, DiscoveredSkill } from "../../../shared/types.js";
 import { ConfirmModal } from "../common/ConfirmModal.js";
 import { BasicSection } from "./BasicSection.js";
 import { PromptSection } from "./PromptSection.js";
 import { ToolsSection } from "./ToolsSection.js";
+import { SkillsSection } from "./SkillsSection.js";
 import { PermissionsSection } from "./PermissionsSection.js";
 import { SubagentsSection } from "./SubagentsSection.js";
 import { WikiAnchorsSection } from "./WikiAnchorsSection.js";
@@ -73,6 +74,20 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 	const refreshWiki = useWikiStore((s) => s.refresh);
 	useEffect(() => { void refreshWiki(); }, [refreshWiki]);
 	const wikiNodes = useMemo(() => Object.values(wikiNodeById), [wikiNodeById]);
+	// sub-5 (skill-system): pull discovered skills from skill-router via preload
+	// (skillsList → /api/skills → scanSkills()). Scanner reads disk on every
+	// call, so seeding a skill mid-session + refresh picks it up (E2E depends on
+	// this). Lazy-load once on mount; SkillsSection filters by source for display.
+	const [skills, setSkills] = useState<DiscoveredSkill[]>([]);
+	const loadSkills = useCallback(async () => {
+		try {
+			const list = await api().skillsList();
+			setSkills(list ?? []);
+		} catch {
+			setSkills([]);
+		}
+	}, []);
+	useEffect(() => { void loadSkills(); }, [loadSkills]);
 	const { providers, fetchProviders } = useProviderStore();
 	const [section, setSection] = useState<Section>("basic");
 	const [globalWorkspace, setGlobalWorkspace] = useState("");
@@ -226,6 +241,25 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		if (agent) autoSave(next);
 	};
 
+	// sub-5 (skill-system): toggle a skill in form.skillPolicy.enabledSkills by
+	// id(目录名). CRITICAL: when the list empties we set [] (NOT undefined).
+	// The autosave payload is JSON.stringify'd (ipc-proxy); JSON drops undefined
+	// properties → backend merge keeps the OLD list → unchecking the last skill
+	// would not persist. Same regression class as subagents/wikiAnchors
+	// (feedback-unique-message-keys). [] survives and explicitly clears.
+	const toggleSkill = (skillId: string) => {
+		const current: string[] = form.skillPolicy?.enabledSkills ?? [];
+		const next = current.includes(skillId)
+			? current.filter((id) => id !== skillId)
+			: [...current, skillId];
+		const f: FormState = {
+			...form,
+			skillPolicy: { ...form.skillPolicy, enabledSkills: next.length > 0 ? next : [] },
+		};
+		setForm(f);
+		if (agent) autoSave(f);
+	};
+
 	const updateContextConfig = (patch: Partial<NonNullable<FormState["contextConfig"]>>) => {
 		const next: FormState = {
 			...form,
@@ -267,6 +301,7 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		{ key: "basic", label: "基础设置" },
 		{ key: "prompt", label: "提示词设置" },
 		{ key: "tools", label: "工具" },
+		{ key: "skills", label: "Skills" },
 		{ key: "subagents", label: "委派 (subagents)" },
 		{ key: "anchors", label: "Wiki 锚点" },
 		{ key: "permissions", label: "权限模式" },
@@ -359,6 +394,14 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 							tools={tools}
 							toggleTool={toggleTool}
 							toolsTokenEstimate={toolsTokenEstimate}
+						/>
+					)}
+
+					{section === "skills" && (
+						<SkillsSection
+							form={form}
+							skills={skills}
+							toggleSkill={toggleSkill}
 						/>
 					)}
 
