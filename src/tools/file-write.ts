@@ -27,10 +27,12 @@
 //
 import { z } from "zod";
 import { writeFile, mkdir, stat } from "node:fs/promises";
-import { dirname, resolve, extname, normalize } from "node:path";
+import { dirname, resolve, extname, normalize, basename } from "node:path";
 import { buildTool } from "./tool-factory.js";
 import { checkSyntax, formatDiagnostics } from "./syntax-check.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import { resolveSkillWritePath, stampAuthorFrontmatter } from "./skill-paths.js";
+import { checkSkillAuthorGate } from "./skill-author-gate.js";
 import type { CallerCtx, ToolResult } from "./types.js";
 
 function resolvePath(path: string, workingDir: string): string | { error: string } {
@@ -91,8 +93,31 @@ export const fileWriteTool = buildTool({
 		if (!callerCtx.workingDir) return wrap("Error: no workspace directory configured");
 		// v0.8 (P1 §10.1): block agent writes to the wiki memory store.
 		if (isWikiDiskPath(path, callerCtx.workingDir)) return wrap(wikiPathRejectMessage(path));
-		const resolved = resolvePath(path, callerCtx.workingDir);
-		if (typeof resolved === "object") return wrap(resolved.error);
+
+		// skill-system sub-8 (decision 4 write + 11): `[skills]/<id>/<rel>` 虚拟
+		// 路径写通道。门禁先行(canAuthorSkills=false → 拒,不落盘),再做路径
+		// 解析(新/已存在/外部/越界/id 护栏)。读家族(Read/Glob/Grep)不经此分支。
+		const skillWrite = resolveSkillWritePath(path);
+		let resolved: string;
+		let writeContent = content;
+		if (skillWrite === null) {
+			// 非 `[skills]/` 前缀 → 原 resolvePath(workspace 沙箱)。
+			const r = resolvePath(path, callerCtx.workingDir);
+			if (typeof r === "object") return wrap(r.error);
+			resolved = r;
+		} else if (!skillWrite.ok) {
+			return wrap(`Error: ${skillWrite.error}`);
+		} else {
+			// skill 写:门禁查当前 agent 的 canAuthorSkills。
+			const gateError = checkSkillAuthorGate(callerCtx);
+			if (gateError) return wrap(gateError);
+			resolved = skillWrite.realPath;
+			// SKILL.md + markAuthor → 打 author 溯源 frontmatter(不覆盖 agent 自填)。
+			if (skillWrite.markAuthor && basename(resolved).toLowerCase() === "skill.md") {
+				const agentId = callerCtx.agentId;
+				if (agentId) writeContent = stampAuthorFrontmatter(content, agentId);
+			}
+		}
 
 		try {
 			// Check if file already exists
@@ -114,16 +139,16 @@ export const fileWriteTool = buildTool({
 			}
 
 			await mkdir(dirname(resolved), { recursive: true });
-			await writeFile(resolved, content, "utf-8");
+			await writeFile(resolved, writeContent, "utf-8");
 			const action = existingStat ? "Overwrote" : "Created";
-			let result = `${action} ${path} (${content.length} bytes)`;
+			let result = `${action} ${path} (${writeContent.length} bytes)`;
 			const enabled = callerCtx.toolConfig?.Write?.syntaxCheck ?? true;
 			if (enabled) {
 				const ext = extname(path).slice(1).toLowerCase();
-				const diags = checkSyntax(content, ext);
+				const diags = checkSyntax(writeContent, ext);
 				if (diags.length) result += formatDiagnostics(path, diags);
 			}
-			return wrap(result, { action, bytes: content.length });
+			return wrap(result, { action, bytes: writeContent.length });
 		} catch (err: any) {
 			return wrap(`Error writing file: ${err.message}\n  Path: ${path}\n  Resolved: ${resolved}`);
 		}

@@ -48,6 +48,13 @@ export interface AgentRecord {
 	};
 	skillPolicy?: {
 		enabledSkills?: string[];
+		/**
+		 * skill-system sub-8 (decision 11): whether this agent may create/edit
+		 * skills via the `[skills]/<id>/...` virtual path using Write/Edit.
+		 * Read family (Read/Glob/Grep) always allowed; this only gates writes.
+		 * Default false (new agents); persisted in skill_policy JSON column.
+		 */
+		canAuthorSkills?: boolean;
 	};
 	/**
 	 * v0.8 (P0 §2.2 / §11.9): subagents this agent may delegate to. Each entry

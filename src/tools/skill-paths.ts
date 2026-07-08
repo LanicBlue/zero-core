@@ -35,6 +35,7 @@
 
 import { resolve, normalize, relative, sep } from "node:path";
 import { resolveSkillByName } from "../server/skill-scanner.js";
+import { isPathSafeId, appSkillDir } from "../server/skill-router.js";
 
 /** 虚拟路径前缀。Read/Glob/Grep 都用它做"是否走 skill 通道"判断。 */
 export const SKILL_VIRTUAL_PREFIX = "[skills]/";
@@ -394,4 +395,145 @@ export function resolveSkillTokensInShellCommand(
 	}
 
 	return { ok: true, command: resolved, skillDirs: [...skillDirs] };
+}
+
+// ─── 写家族 `[skills]/` 适配(sub-8,决策 4 写 + 11)────────────────────────
+//
+// # 文件说明书(段)
+//
+// ## 核心功能
+// 把 Write/Edit 的 `[skills]/<id>/<rel>` 虚拟路径解析成"可写的真实磁盘路径" +
+// 标识"是否需要打 author 溯源标记"。**复用读家族解析器**(tryParseSkillPath +
+// resolveSkillPath),区别在:
+//   - 写**已存在** skill:resolveSkillPath 沙箱解析成功后,**额外判来源**(source
+//     非 app → 拒,外部只读)。
+//   - 写**新** skill(id 不存在):基目录 = appSkillDir(id)(`~/.zero-core/skills/<id>`),
+//     校验 id path-safe + 重名(双重护栏,与 sub-6 同源)。
+//
+// ## 输入
+// - virtualPath:`[skills]/<id>/<rel>` 虚拟路径(Write/Edit 的 path 参数)。
+//
+// ## 输出
+// - `null` —— 入参不是 `[skills]/` 前缀(交回原写流程)。
+// - `{ ok:false, error }` —— 是 skill 通道但解析失败:无权限场景 / 越界 / 外部只读 /
+//   id 非法 / 重名。错误信息直接给 agent(返回权限错误,不落盘)。
+// - `{ ok:true, realPath, markAuthor }` —— 解析成功。
+//   - `markAuthor: true` = 这是**新** skill 或现有 app skill(agent 自建/编辑都打
+//     frontmatter `author: agent:<id>` 溯源);调用方在写 SKILL.md 时按需补标记。
+//
+// ## 门禁(关键)
+// **写门禁在调用方**(file-write/file-edit)查 callerCtx 关联 agent 的
+// `skillPolicy.canAuthorSkills`。本函数**不做**门禁判定(它只做"路径/来源/id"静态
+// 解析)。理由:门禁要拿当前 agent → 走 getAgentService() 单例,这是 host 注入语义
+// 决策,与纯路径解析解耦。但本函数对**所有 `[skills]/` 写**都参与解析,调用方先查
+// 门禁 flag = false 直接拒(不进本函数),确保无权限 agent 写 `[skills]/` 一定被拒。
+//
+// ## 维护规则
+// - 外部来源只读:写已存在 skill 时判 `skill.source !== "app"` → 拒(对齐决策 8)。
+// - 新 skill id 护栏:isPathSafeId + scanner 现有 id 查重(对齐 sub-6)。
+// - 沙箱:复用 resolveSkillPath 的 `../` 越界拦截(已存在 skill 路径)。
+
+/** 写家族 `[skills]/` 解析结果。 */
+export type WriteSkillPathResolved =
+	| { ok: true; realPath: string; markAuthor: boolean }
+	| { ok: false; error: string };
+
+/**
+ * 解析 Write/Edit 的 `[skills]/<id>/<rel>` 写路径。
+ *
+ * 见上文段头文件说明书。返回 `null` = 非 `[skills]/` 前缀(交回原写流程)。
+ * 失败(`{ ok:false }`)的 error 信息直接返回给 agent(权限错误,不落盘)。
+ *
+ * @param home 可选 home 目录;省略时 scanner 用 os.homedir()。仅测试注入。
+ */
+export function resolveSkillWritePath(
+	virtualPath: string,
+	home?: string,
+): WriteSkillPathResolved | null {
+	const parsed = tryParseSkillPath(virtualPath);
+	if (!parsed) return null; // 非 skill 通道,交回原写流程。
+
+	const { skillId, rel } = parsed;
+
+	// id 含 glob 通配字符 → 跨 skill 意图,拒(与读家族 resolveSkillPath 一致)。
+	if (/[*?\[\]{}]/.test(skillId)) {
+		return { ok: false, error: "cross-skill access is not supported; name a single skill as [skills]/<id>/..." };
+	}
+
+	const existing = resolveSkillByName(skillId, home);
+
+	if (existing) {
+		// 已存在 skill:来源必须是 app(外部只读,决策 8)。
+		if (existing.source !== "app") {
+			return {
+				ok: false,
+				error: `Skill '${skillId}' is read-only (external source: ${existing.source}); only skills under ~/.zero-core/skills/ are writable.`,
+			};
+		}
+		// 沙箱解析(复用读家族)。rel 越界 → ok:false。
+		// 注意:resolveSkillPath 内部已 normalize + 沙箱判 baseDir 前缀,这里直接用它。
+		const r = resolveSkillPath(virtualPath, home);
+		// r === null 不该发生(前缀已识别);!r.ok = 越界/skill 不存在(已查存在,只剩越界)。
+		if (!r || !r.ok) {
+			return { ok: false, error: r && !r.ok ? r.error : `Cannot resolve ${virtualPath}` };
+		}
+		// 已存在 app skill 写:agent 编辑也打 author 溯源(markAuthor=true)。
+		return { ok: true, realPath: r.realPath, markAuthor: true };
+	}
+
+	// 新 skill:id 护栏(path-safe + 长度)。
+	if (!isPathSafeId(skillId)) {
+		return {
+			ok: false,
+			error: `Invalid skill id '${skillId}': id must be path-safe (letters, digits, '.', '_', '-', 1-64 chars), no spaces or path separators.`,
+		};
+	}
+	// 重名已查(scanner resolveSkillByName 返 undefined = 无现有);isPathSafeId 是第二道。
+
+	// 新 skill 基目录 = appSkillDir(id)。rel 沙箱:resolve 后必须在 baseDir 内。
+	const base = normalize(appSkillDir(skillId));
+	const real = normalize(resolve(base, rel));
+	if (!isInsideBaseDir(real, base)) {
+		return {
+			ok: false,
+			error: `Access denied: path outside skill directory (${virtualPath})`,
+		};
+	}
+	// 新 skill 一律打 author 溯源标记。
+	return { ok: true, realPath: real, markAuthor: true };
+}
+
+/**
+ * 给 SKILL.md 内容打 `author: agent:<agentId>` frontmatter 溯源标记。
+ *
+ * agent 自建/编辑 skill 时调用。行为:
+ * - 内容无 frontmatter(不以 `---\n` 开头)→ 在最前插一个 `---\nname: <id>\ndescription: ''\nauthor: agent:<id>\n---\n\n`。
+ * - 内容有 frontmatter 且无 author 行 → 在 frontmatter 内追加 `author: agent:<id>` 行。
+ * - 内容已有 author 行 → 不动(尊重 agent 自填;agent 想表达"我创建"可自填,框架不覆盖)。
+ *
+ * 只处理 SKILL.md 文件名(调用方负责判断);非 SKILL.md 不调本函数。
+ */
+export function stampAuthorFrontmatter(content: string, agentId: string): string {
+	const authorLine = `author: agent:${agentId}`;
+	// 已有 author 行(frontmatter 内)→ 不覆盖,尊重 agent 自填。
+	if (/^---\r?\n[\s\S]*?^author:\s.*$\r?\n[\s\S]*?^---\s*$/m.test(content)) {
+		return content;
+	}
+	// 简化判定:frontmatter 内出现 `author:`(任意位置)→ 不覆盖。
+	if (/^---\r?\n[\s\S]*?^---\s*$/m.test(content) && /^author:/m.test(content)) {
+		return content;
+	}
+
+	// 有 frontmatter 但无 author → 插入 author 行(frontmatter 末行 `---` 之前)。
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\s*(\r?\n|$)/);
+	if (fmMatch) {
+		const fmBody = fmMatch[1];
+		const after = content.slice(fmMatch[0].length);
+		// 在 frontmatter body 末尾追加 author 行(确保 body 末尾无多余换行)。
+		const newFmBody = fmBody.endsWith("\n") ? fmBody + authorLine : fmBody + "\n" + authorLine;
+		return `---\n${newFmBody}\n---\n` + after;
+	}
+
+	// 无 frontmatter → 造最小 frontmatter(name 缺失时给占位;真实 name 应由 agent 提供)。
+	return `---\nauthor: agent:${agentId}\n---\n\n` + content;
 }

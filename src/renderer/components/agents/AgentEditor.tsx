@@ -260,6 +260,20 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		if (agent) autoSave(f);
 	};
 
+	// sub-8 (skill-system, decision 11): toggle canAuthorSkills (write gate for
+	// `[skills]/`). Persisted in skillPolicy JSON column. CRITICAL: always send
+	// an explicit boolean (true/false), never undefined — ipc-proxy JSON.stringify
+	// drops undefined → backend merge would keep the OLD value (same regression
+	// class as toggleSkill enabledSkills=[] clearing).
+	const toggleCanAuthorSkills = (next: boolean) => {
+		const f: FormState = {
+			...form,
+			skillPolicy: { ...form.skillPolicy, canAuthorSkills: next === true },
+		};
+		setForm(f);
+		if (agent) autoSave(f);
+	};
+
 	const updateContextConfig = (patch: Partial<NonNullable<FormState["contextConfig"]>>) => {
 		const next: FormState = {
 			...form,
@@ -402,6 +416,7 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 							form={form}
 							skills={skills}
 							toggleSkill={toggleSkill}
+							toggleCanAuthorSkills={toggleCanAuthorSkills}
 						/>
 					)}
 

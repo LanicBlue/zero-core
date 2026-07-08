@@ -36,6 +36,11 @@ export interface SystemPromptContext {
 	useDeviceContext?: boolean;
 	useMemoryContext?: boolean;
 	enabledSkills?: string[];
+	/**
+	 * skill-system sub-8 (decision 11): when true, inject a brief "you may
+	 * create skills" guidance into the prompt.文案克制,防 agent 滥建低质 skill。
+	 */
+	canAuthorSkills?: boolean;
 }
 
 export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptContext): string {
@@ -92,6 +97,32 @@ export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptConte
 					"- **Scripts**: skills may bundle scripts; run them with Shell as `[skills]/<id>/scripts/...`.",
 			);
 		}
+	}
+
+	// 5. Skill authoring guidance (sub-8, decision 11)
+	//
+	// 仅当 canAuthorSkills === true 时注入。文案克制:强调"确有复用价值"再写,
+	// 防滥建低质 skill(风险段)。给出 frontmatter 形态 + 路径,agent 据此自建。
+	if (ctx.canAuthorSkills === true) {
+		sections.push(
+			"## Authoring Skills\n\n" +
+				"You are permitted to create and edit skills for reuse. A skill is a folder under `[skills]/<id>/` containing a `SKILL.md`.\n\n" +
+				"Write a new skill only when a procedure has **genuine, repeatable reuse value** across tasks — not for one-off work. Premature or low-quality skills add noise.\n\n" +
+				"To author a skill, use the `Write` tool with a virtual path `[skills]/<skill-id>/SKILL.md`:\n" +
+				"```\n" +
+				"---\n" +
+				"name: <human-readable name>\n" +
+				"description: <one-line description; when this skill applies>\n" +
+				"---\n" +
+				"\n" +
+				"<body: when to use, the procedure, examples>\n" +
+				"```\n\n" +
+				"Rules:\n" +
+				"- `<skill-id>` must be path-safe (letters, digits, `.`, `_`, `-`; 1–64 chars), unique, and stable.\n" +
+				"- New skills land under the app skills root; external skills (`~/.claude`, `~/.agents`) are read-only.\n" +
+				"- You may also edit existing app skills via `Write`/`Edit` on `[skills]/<id>/<file>`; `..` escapes are blocked.\n" +
+				"- Resources/scripts go in sibling files (e.g. `[skills]/<id>/reference.md`) and are reachable via Read/Glob/Grep/Shell using the same virtual path.",
+		);
 	}
 
 	return sections.join("\n\n");

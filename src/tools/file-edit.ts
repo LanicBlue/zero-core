@@ -27,10 +27,12 @@
 //
 import { z } from "zod";
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve, extname } from "node:path";
+import { resolve, extname, basename } from "node:path";
 import { buildTool } from "./tool-factory.js";
 import { checkSyntax, formatDiagnostics } from "./syntax-check.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import { resolveSkillWritePath, stampAuthorFrontmatter } from "./skill-paths.js";
+import { checkSkillAuthorGate } from "./skill-author-gate.js";
 import type { CallerCtx, ToolResult } from "./types.js";
 
 export const fileEditTool = buildTool({
@@ -73,16 +75,37 @@ export const fileEditTool = buildTool({
 		if (!callerCtx.workingDir) return wrap("Error: no workspace directory configured");
 		// v0.8 (P1 §10.1): block agent edits to the wiki memory store.
 		if (isWikiDiskPath(path, callerCtx.workingDir)) return wrap(wikiPathRejectMessage(path));
-		const filePath = resolve(callerCtx.workingDir, path);
-		if (!filePath.startsWith(resolve(callerCtx.workingDir))) {
-			return wrap(`Access denied: path outside workspace (${path})`);
+
+		// skill-system sub-8 (decision 4 write + 11): `[skills]/<id>/<rel>` 虚拟
+		// 路径写通道(Edit)。门禁先行,再做路径解析。读家族不经此分支。
+		const skillWrite = resolveSkillWritePath(path);
+		let filePath: string;
+		let skillMarkAuthor = false;
+		if (skillWrite === null) {
+			// 非 `[skills]/` 前缀 → 原 workspace 沙箱解析。
+			filePath = resolve(callerCtx.workingDir, path);
+			if (!filePath.startsWith(resolve(callerCtx.workingDir))) {
+				return wrap(`Access denied: path outside workspace (${path})`);
+			}
+		} else if (!skillWrite.ok) {
+			return wrap(`Error: ${skillWrite.error}`);
+		} else {
+			const gateError = checkSkillAuthorGate(callerCtx);
+			if (gateError) return wrap(gateError);
+			filePath = skillWrite.realPath;
+			skillMarkAuthor = skillWrite.markAuthor;
 		}
 		try {
 			const content = await readFile(filePath, "utf-8");
 			if (!content.includes(oldText)) {
 				return wrap(buildNotFoundMessage(path, content, oldText));
 			}
-			const newContent = content.replace(oldText, newText);
+			let newContent = content.replace(oldText, newText);
+			// SKILL.md + markAuthor → 编辑后再保证 author 溯源(不覆盖已有 author)。
+			if (skillMarkAuthor && basename(filePath).toLowerCase() === "skill.md") {
+				const agentId = callerCtx.agentId;
+				if (agentId) newContent = stampAuthorFrontmatter(newContent, agentId);
+			}
 			await writeFile(filePath, newContent, "utf-8");
 			let result = `Successfully edited ${path}`;
 			const enabled = callerCtx.toolConfig?.Edit?.syntaxCheck ?? true;

@@ -35,6 +35,8 @@ interface Props {
 	form: FormState;
 	skills: DiscoveredSkill[];
 	toggleSkill: (skillId: string) => void;
+	/** sub-8 (decision 11): toggle whether this agent may create/edit skills. */
+	toggleCanAuthorSkills: (next: boolean) => void;
 }
 
 // app 置顶 → user 其下(对齐 acceptance-5 用例 2 + design 决策 7)。
@@ -44,9 +46,11 @@ const GROUP_LABELS: Record<DiscoveredSkill["source"], string> = {
 	user: "外部 skills (~/.claude / ~/.agents)",
 };
 
-export function SkillsSection({ form, skills, toggleSkill }: Props) {
+export function SkillsSection({ form, skills, toggleSkill, toggleCanAuthorSkills }: Props) {
 	// sub-4 已把 enabledSkills 归一化为 [](agentToForm),这里防御性兜底。
 	const enabledSkills: string[] = form.skillPolicy?.enabledSkills ?? [];
+	// sub-8: canAuthorSkills 归一化(agentToForm 已做 === true,这里再兜底)。
+	const canAuthorSkills = form.skillPolicy?.canAuthorSkills === true;
 	const enabledSet = useMemo(() => new Set(enabledSkills), [enabledSkills]);
 
 	// 按 source 分组(保持 GROUP_ORDER 顺序:app 置顶)。
@@ -68,6 +72,26 @@ export function SkillsSection({ form, skills, toggleSkill }: Props) {
 				选择该 Agent 可以使用的 skills。勾选的 skill 会按 id(目录名)写入
 				<code>skillPolicy.enabledSkills</code>。
 			</p>
+
+			{/* sub-8 (decision 11): per-agent 写权限门禁。默认关;开 → agent 经
+			    `[skills]/<id>/SKILL.md` 虚拟路径用 Write/Edit 自建/编辑 skill,
+			    仅落 ~/.zero-core/skills/,外部来源只读。门禁在 Write/Edit 工具内查。 */}
+			<div className="tool-item skill-author-toggle">
+				<div className="tool-info">
+					<span className="tool-name">允许此 agent 创建 skill</span>
+					<span className="tool-desc">
+						开启后,该 agent 可用 Write/Edit 经 <code>[skills]/&lt;id&gt;/SKILL.md</code> 虚拟路径
+						创建或编辑 skill(仅落 ~/.zero-core/skills/,外部来源只读)。默认关闭。
+					</span>
+				</div>
+				<input
+					type="checkbox"
+					className="skill-author-toggle__checkbox"
+					checked={canAuthorSkills}
+					onChange={(e) => toggleCanAuthorSkills(e.target.checked)}
+					aria-label="允许此 agent 创建 skill"
+				/>
+			</div>
 
 			{orderedGroups.length === 0 && (
 				<p className="section-desc">未检测到任何 skill。</p>

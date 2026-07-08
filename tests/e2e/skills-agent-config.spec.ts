@@ -288,3 +288,68 @@ test.describe("sub-5 — SkillsSection checkbox round-trip (requires installed s
 		expect(after.length, "清空后 enabledSkills 必须是 [],旧值不能残留").toBe(0);
 	});
 });
+
+// ── sub-8 (acceptance-8 用例 11): canAuthorSkills toggle 往返 ──────────────
+//
+// SkillsSection 顶部的「允许此 agent 创建 skill」checkbox,aria-label 唯一可定位
+// (区别于 skill 启用 checkbox,后者 aria-label="Toggle skill <name>")。
+// 往返:勾选 → autosave → 关重开 → 仍勾选;取消 → 关重开 → 未勾选。读 IPC 验证
+// 持久化值是 boolean(显式 true/false,非 undefined — 同 enabledSkills=[] 回归同类陷阱)。
+
+test.describe("sub-8 — SkillsSection canAuthorSkills toggle round-trip", () => {
+	let cleanup: () => Promise<void>;
+	let window: Awaited<ReturnType<typeof launchApp>>["window"];
+
+	test.beforeEach(async () => {
+		const app = await launchApp(FIXTURE);
+		window = app.window;
+		cleanup = app.cleanup;
+		await waitForAppReady(window);
+	});
+
+	test.afterEach(async () => { await cleanup(); });
+
+	test("用例11: 勾选「允许创建 skill」→ autosave → 关重开 → 仍勾选;取消 → 未勾选", async () => {
+		await openFirstAgentEditor(window);
+		await window.locator(".editor-nav-item", { hasText: "Skills" }).click();
+		await expect(window.getByText("可用 skills").first()).toBeVisible({ timeout: 5_000 });
+
+		const authorToggle = window.locator("input.skill-author-toggle__checkbox");
+		await expect(authorToggle).toBeVisible({ timeout: 5_000 });
+
+		// 起始可能勾选(legacy agent);先确保取消,得到确定的"未勾选"起点。
+		const wasChecked = await authorToggle.isChecked();
+		if (wasChecked) {
+			await authorToggle.uncheck();
+			await waitForAutosave();
+		}
+
+		// ── 勾选 → autosave → 关重开 → 仍勾选 ──
+		await authorToggle.check();
+		await waitForAutosave();
+		await reopenFirstAgentEditor(window);
+		await window.locator(".editor-nav-item", { hasText: "Skills" }).click();
+		await expect(window.getByText("可用 skills").first()).toBeVisible({ timeout: 5_000 });
+		const authorToggleAfter = window.locator("input.skill-author-toggle__checkbox");
+		await expect(authorToggleAfter).toBeChecked({ timeout: 5_000 });
+
+		// 持久化值 = true(显式 boolean,非 undefined)。
+		const agentId = await firstAgentId(window);
+		const agentOn: any = await readAgent(window, agentId);
+		expect(agentOn?.skillPolicy?.canAuthorSkills, "勾选后 canAuthorSkills 必须 === true").toBe(true);
+
+		// ── 取消 → autosave → 关重开 → 未勾选 ──
+		await authorToggleAfter.uncheck();
+		await waitForAutosave();
+		await reopenFirstAgentEditor(window);
+		await window.locator(".editor-nav-item", { hasText: "Skills" }).click();
+		await expect(window.getByText("可用 skills").first()).toBeVisible({ timeout: 5_000 });
+		const authorToggleFinal = window.locator("input.skill-author-toggle__checkbox");
+		await expect(authorToggleFinal).not.toBeChecked({ timeout: 5_000 });
+
+		// 持久化值 = false(显式 boolean,非 undefined — 同 enabledSkills=[] 回归陷阱:
+		// JSON.stringify 丢 undefined → 后端 merge 留旧值 → 取消不持久化)。
+		const agentOff: any = await readAgent(window, agentId);
+		expect(agentOff?.skillPolicy?.canAuthorSkills, "取消后 canAuthorSkills 必须 === false(显式,非 undefined)").toBe(false);
+	});
+});

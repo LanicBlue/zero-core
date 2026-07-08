@@ -6018,6 +6018,17 @@ n.tools-page-test-chips {
 	margin-left: auto;
 }
 
+/* sub-8: canAuthorSkills toggle checkbox。与 .skill-checkbox 同视觉但独立 className,
+   避免 sub-5 E2E 的 `input.skill-checkbox` 选择器误命中 toggle(无 skill 时误判 cbCount=1)。
+   aria-label 唯一定位(允许此 agent 创建 skill)。 */
+.skill-author-toggle__checkbox {
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+	flex-shrink: 0;
+	margin-left: auto;
+}
+
 /* ─── Memory Config Settings ────────────────────────────── */
 
 .memory-config {

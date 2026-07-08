@@ -79,16 +79,18 @@ describe("AgentStore.create — skillPolicy 默认全不开(sub-4 决策 5)", ()
 describe("agentToForm — legacy(undefined)归一化为 [](sub-4 决策 5,为 sub-5 UI 兜底)", () => {
 	test("legacy 记录无 skillPolicy → form.enabledSkills === []", () => {
 		const form = agentToForm({ id: "x", name: "L", createdAt: "", updatedAt: "" } as any);
-		expect(form.skillPolicy).toEqual({ enabledSkills: [] });
+		// sub-8: canAuthorSkills 也归一化为 false(legacy agent 缺该字段 → false = 无写权限)。
+		expect(form.skillPolicy).toEqual({ enabledSkills: [], canAuthorSkills: false });
 	});
 
 	test("legacy 记录 enabledSkills===undefined → form.enabledSkills === []", () => {
 		const form = agentToForm({ id: "x", name: "L", skillPolicy: { enabledSkills: undefined }, createdAt: "", updatedAt: "" } as any);
-		expect(form.skillPolicy).toEqual({ enabledSkills: [] });
+		expect(form.skillPolicy).toEqual({ enabledSkills: [], canAuthorSkills: false });
 	});
 
 	test("有值记录 → form 原样保留", () => {
 		const form = agentToForm({ id: "x", name: "L", skillPolicy: { enabledSkills: ["pdf"] }, createdAt: "", updatedAt: "" } as any);
-		expect(form.skillPolicy).toEqual({ enabledSkills: ["pdf"] });
+		// sub-8: canAuthorSkills 缺失归一化为 false(原记录无该字段时)。
+		expect(form.skillPolicy).toEqual({ enabledSkills: ["pdf"], canAuthorSkills: false });
 	});
 });

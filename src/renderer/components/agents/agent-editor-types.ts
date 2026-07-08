@@ -53,8 +53,11 @@ export function agentToForm(a: AgentRecord): FormState {
 		// loaded from legacy agents whose record predates this field
 		// (enabledSkills===undefined). Normalize here too so the form always has
 		// an array to render/toggle (sub-5 SkillsSection), never undefined.
+		// sub-8 (decision 11): canAuthorSkills normalize to false (default off;
+		// legacy agents lack the field → false = no write permission).
 		skillPolicy: {
 			enabledSkills: a.skillPolicy?.enabledSkills ?? [],
+			canAuthorSkills: a.skillPolicy?.canAuthorSkills === true,
 		},
 		// v0.8 (P2 §11.9 / §11.5 / §11.3): harness fields surfaced in the
 		// agent config page. Copy through so the subagents + wikiAnchors

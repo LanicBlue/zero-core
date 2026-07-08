@@ -167,11 +167,17 @@ export class AgentStore {
 		// 缺省时填 { enabledSkills: [] }(显式空数组)。这是唯一一处把"未配置"
 		// 转成"显式空"的开关:legacy agent(undefined)仍走 buildSystemPrompt 的
 		// undefined 分支(注入全部);新建 agent 一律 [] → 不注入任何 skill。
-		// canAuthorSkills 的默认值由 sub-8 在此同处补(类型字段 sub-8 才加)。
+		// sub-8 (skill-system, decision 11): canAuthorSkills 默认 false(无写权限)。
+		// 不开 = 既不暴露 SkillsSection toggle 也写不了 [skills]/;显式 true 才放行写。
 		if (!normalized.skillPolicy) {
-			normalized.skillPolicy = { enabledSkills: [] };
-		} else if (normalized.skillPolicy.enabledSkills === undefined) {
-			normalized.skillPolicy = { ...normalized.skillPolicy, enabledSkills: [] };
+			normalized.skillPolicy = { enabledSkills: [], canAuthorSkills: false };
+		} else {
+			if (normalized.skillPolicy.enabledSkills === undefined) {
+				normalized.skillPolicy = { ...normalized.skillPolicy, enabledSkills: [] };
+			}
+			if (normalized.skillPolicy.canAuthorSkills === undefined) {
+				normalized.skillPolicy = { ...normalized.skillPolicy, canAuthorSkills: false };
+			}
 		}
 		const created = this.store.create(normalized as any);
 		this.notifyChanged(created.id);

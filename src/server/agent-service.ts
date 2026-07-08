@@ -951,6 +951,17 @@ export class AgentService implements PlatformObserver {
 		}
 		return false;
 	}
+	/**
+	 * skill-system sub-8 (decision 11): public read of an agent's persisted
+	 * record. Write/Edit tools read `skillPolicy.canAuthorSkills` from this to
+	 * gate `[skills]/` writes (gate must reach the per-agent flag without going
+	 * through callerCtx, since toolPolicy/skillPolicy are config-time, not
+	 * per-session-loop state). Returns undefined when store absent (early
+	 * startup / tests) — callers treat that as "no permission granted".
+	 */
+	getAgentRecord(agentId: string): AgentRecord | undefined {
+		return this.agentStore?.get(agentId);
+	}
 	// ─── Loop management ───────────────────────────────────────────
 	private getOrCreateLoop(agent?: AgentRecord): AgentLoop {
 		const agentId = agent?.id ?? "__default__";
