@@ -1,25 +1,29 @@
-# sub-4:SkillsSection(agent 配置)
+# sub-4:prompt 注入 + 默认全不开
 
-> per-agent skill 开关入口。镜像 `ToolsSection.tsx` 的分组 checkbox UI,写入 `skillPolicy.enabledSkills: string[]`(**id=目录名**,非 display name)。对应 design 决策 1/6。
+> 告知 agent skill 存在 + `[skills]/` 寻址用法 + 默认全不开。对应 design 决策 5。
 
 ## 任务
 
-1. **`SkillsSection.tsx`**(`src/renderer/components/agents/`):镜像 ToolsSection 布局——按来源分组("本软件 skills" 置顶、其下外部来源),每 skill 一行 checkbox(**显示** display name + description,**值**绑 id=目录名)。
-2. **数据源**:从 `skill-router`(`/api/skills`,经 preload)拉 `scanSkills()` 结果;按 `source` 分组。
-3. **绑定 form state**:`form.skillPolicy.enabledSkills`(string[] of **id**);勾选=push id,取消=filter 出。对齐 `agent-editor-types.ts` 的 FormState(加 `skillPolicy.enabledSkills` 字段,默认 `[]`)。
-4. **AgentEditor 接入**:在编辑器里挂载 `<SkillsSection>`(位置邻近 ToolsSection)。
-5. **保存**:FormState → AgentRecord.skillPolicy.enabledSkills 持久化(经现有 agent-store 保存路径,JSON 列)。
+1. **"Available Skills" 段增强**(`src/core/system-prompt.ts:64-74`):
+   - 每个 enabled skill 条目**带路径**:`- **<display>**: <desc> (read \`[skills]/<id>/SKILL.md\` to load)`——agent 自行 Read,必须知道 id/路径才能寻址(display name ≠ id 时光给 name 不够)。
+   - 段尾加**寻址与加载指引**(三段式用法):
+     - 加载:需要某 skill 详细步骤时,Read 其 `[skills]/<id>/SKILL.md`。
+     - 资源:skill 可含兄弟文件,按需 `Read [skills]/<id>/<file>`(skill 正文里的 `${SKILL_DIR}` / `${CLAUDE_SKILL_DIR}` 已替换为 `[skills]/<id>`)。
+     - 脚本:skill 可含脚本,`Shell` 运行 `[skills]/<id>/scripts/...`。
+2. **默认全不开**:
+   - 新建 agent `skillPolicy.enabledSkills = []`(显式空数组)——核对 agent 创建/seed 路径(`fresh-db-seed.ts`、`builtin-role-templates.ts` 等)。
+   - **`system-prompt.ts:66-69` 的 undefined 分支不动**(legacy `enabledSkills===undefined`=注入全部,保兼容);显式 `[]` 走 filter→空。注释写清二元语义。
+3. **prompt 注入仍只 name+desc**:不灌 body(body 经 sub-2 按需 Read)。
 
 ## 范围
 
-- 只加 agent 配置区段;**不动 SkillsPage**(sub-5)、**不动 prompt/工具/虚拟通道**(已定)。
-- 本软件/外部 skill 在此都只勾选(不编辑正文,编辑在 sub-5)。
+- 只改 prompt 文案 + seed 默认值 + 注释。
+- **不动工具/虚拟通道**(sub-2/3)、**不动 UI**(sub-5/6)。
 
 ## 风险
 
-- 来源分组 label:"本软件 skills" = `source==="app"`;外部 = `source==="user"`(含 ~/.claude + ~/.agents)。核对 scanner 的 source 字段语义。
-- **id vs display name 区分**:UI 显示 name、存 id;prompt 过滤(sub-3)按 id 匹配、显示 name。别混。
-- id 唯一性依赖 sub-1 的按目录名去重。
+- undefined vs `[]` 二元语义易混 → 注释 + 单测覆盖两路径。
+- 现有内置 agent(Coder 等)未用 skill,核对无依赖。
 
 ## 验收
 

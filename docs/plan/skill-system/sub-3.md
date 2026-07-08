@@ -1,27 +1,26 @@
-# sub-3:prompt 注入 + 默认全不开
+# sub-3:`[skills]/` Shell 虚拟路径通道(脚本,resource 段)
 
-> 告知 agent skill 存在 + `[skills]/` 寻址用法 + 默认全不开。对应 design 决策 5。
+> progressive disclosure 第 3 段(resource:脚本执行)。复用 sub-2 解析器,把 `[skills]/` 接进 Shell,让 agent 能跑 skill 自带脚本。对应 design 决策 4。**依赖 sub-2(解析器)**。
 
 ## 任务
 
-1. **"Available Skills" 段增强**(`src/core/system-prompt.ts:64-74`):enabled skill 列表保持 `- **<display>**: <desc>`,并在段尾加**寻址与加载指引**(三段式用法):
-   - 加载:需要某 skill 详细步骤时,`Read [skills]/<id>/SKILL.md`。
-   - 资源:skill 可含兄弟文件,按需 `Read [skills]/<id>/<file>`(skill 正文里的 `${SKILL_DIR}` 已替换为 `[skills]/<id>`)。
-   - 脚本:skill 可含脚本,`Shell` 运行 `[skills]/<id>/scripts/...`。
-2. **默认全不开**:
-   - 新建 agent `skillPolicy.enabledSkills = []`(显式空数组)——核对 agent 创建/seed 路径(`fresh-db-seed.ts`、`builtin-role-templates.ts` 等)。
-   - **`system-prompt.ts:66-69` 的 undefined 分支不动**(legacy `enabledSkills===undefined`=注入全部,保兼容);显式 `[]` 走 filter→空。注释写清二元语义。
-3. **prompt 注入仍只 name+desc**:不灌 body(body 经 sub-2 按需 Read)。
+1. **Shell 接入**(`src/tools/bash.ts`):
+   - 命令里扫描 `[skills]/<id>/<rel>` token → 经 sub-2 解析器 → 真实路径 → 替换进命令 → 执行。
+   - 真实路径命令不变(Shell 现有 autoApprove/scope 流程)。
+2. **Windows 反斜杠**:解析出的真实路径在 win32 带 `\`,直接塞进 bash 命令会被当转义 → 替换时**引号包裹 + 转正斜杠**(或 POSIX 路径)。
+3. **`SKILL_DIR` 环境变量**:执行 skill 脚本时设 `SKILL_DIR=<真实 baseDir>` env(协议脚本可能依赖自定位)。
 
 ## 范围
 
-- 只改 prompt 文案 + seed 默认值 + 注释。
-- **不动工具/虚拟通道**(sub-2)、**不动 UI**(sub-4/5)。
+- 只接 Shell;**复用 sub-2 解析器**(不重写)。
+- 不动 Read 通道(sub-2)、prompt(sub-4)、UI(sub-5/6)。
+- **可后置**:核心 skill 链路(读 SKILL.md)在 sub-2 + sub-4 即可用,脚本是增强。
 
 ## 风险
 
-- undefined vs `[]` 二元语义易混 → 注释 + 单测覆盖两路径。
-- 现有内置 agent(Coder 等)未用 skill,核对无依赖。
+- **Shell token 替换稳健性**:引号、变量、多路径;只替换 `[skills]/...` token。先朴素正则 + 单测边界。
+- **Windows 路径注入**(F3):反斜杠进 bash 需引号 + 转正斜杠。
+- **命令注入面**:解析后真实路径含空格/特殊字符时,替换进命令要正确转义,防注入。
 
 ## 验收
 

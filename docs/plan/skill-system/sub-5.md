@@ -1,28 +1,25 @@
-# sub-5:SkillsPage 双栏 UI + 本软件 skill CRUD
+# sub-5:SkillsSection(agent 配置)
 
-> 用户浏览/编辑 skill 的主页面。左列表 + 右详情;只有"本软件 skills"(`~/.zero-core/skills/`)可新建/编辑/删除,外部来源只读。对应 design 已定项(UI 形态、可编辑边界、目录)+ 决策 4(分字段编辑)。
+> per-agent skill 开关入口。镜像 `ToolsSection.tsx` 的分组 checkbox UI,写入 `skillPolicy.enabledSkills: string[]`(**id=目录名**,非 display name)。对应 design 决策 1/6。
 
 ## 任务
 
-1. **SkillsPage 改双栏**(`src/renderer/components/skills/SkillsPage.tsx`):
-   - 左:skill 列表,按来源分组("本软件 skills" 置顶,外部其下);每项 name + source 标记。
-   - 右:选中 skill 的详情——name / description / source / body(只读或可编辑,见下)。
-2. **本软件 skill 可编辑**(分字段,决策 4):name / description(frontmatter 字段)+ body(textarea);保存写回 `~/.zero-core/skills/<name>/SKILL.md`(重组 frontmatter + body,保留 frontmatter 格式)。
-3. **本软件 skill 新建**:按钮 → 新建目录 + SKILL.md(name/description/body 默认空)→ 列表刷新。
-4. **本软件 skill 删除**:删除目录(确认对话框);外部来源**无**新建/编辑/删除按钮(只读)。
-5. **后端 CRUD API**(若现 `/api/skills` 只读):加写端点(create / update / delete),**仅限 `~/.zero-core/skills/`**——路径校验拒绝任何 home 之外/外部来源的写操作(安全护栏,绝不破坏 ~/.claude 等)。
+1. **`SkillsSection.tsx`**(`src/renderer/components/agents/`):镜像 ToolsSection 布局——按来源分组("本软件 skills" 置顶、其下外部来源),每 skill 一行 checkbox(**显示** display name + description,**值**绑 id=目录名)。
+2. **数据源**:从 `skill-router`(`/api/skills`,经 preload)拉 `scanSkills()` 结果;按 `source` 分组。
+3. **绑定 form state**:`form.skillPolicy.enabledSkills`(string[] of **id**);勾选=push id,取消=filter 出。对齐 `agent-editor-types.ts` 的 FormState(加 `skillPolicy.enabledSkills` 字段,默认 `[]`)。
+4. **AgentEditor 接入**:在编辑器里挂载 `<SkillsSection>`(位置邻近 ToolsSection)。
+5. **保存**:FormState → AgentRecord.skillPolicy.enabledSkills 持久化(经现有 agent-store 保存路径,JSON 列)。
 
 ## 范围
 
-- 只动 SkillsPage + skill-router 写端点;**不动 agent 配置**(sub-4)、**不动 prompt/工具**。
-- 编辑保存后,sub-1 scanner 下次扫描读到新 body(无须重启,scanSkills 每次读盘)。
-- **目录形态边界(v1)**:本软件 skill 是目录(SKILL.md 入口 + 兄弟文件 + scripts/),但 **v1 CRUD 只管 SKILL.md 入口**(新建=建目录+SKILL.md;编辑=name/desc/body 字段)。兄弟文件/脚本的新建编辑**留后续 sub**(用户现阶段可手动放文件,scanner 只读入口、`skill` 工具能按需读全部文件)。在 UI 标注此边界,避免误解。
+- 只加 agent 配置区段;**不动 SkillsPage**(sub-6)、**不动 prompt/工具/虚拟通道**(sub-2/3/4)。
+- 本软件/外部 skill 在此都只勾选(不编辑正文,编辑在 sub-6)。
 
 ## 风险
 
-- **写路径安全**:必须校验目标在 `~/.zero-core/skills/` 内,防 `../` 越界写到外部(关键护栏);`resolve` 后比对前缀 + 软链接边界。
-- name 改名 = 目录改名 + SKILL.md frontmatter 同步;核对一致性(目录名与 frontmatter name 必须一致,sub-1 去重 by name 依赖)。
-- 删除 = 删整个 skill 目录(含兄弟文件),确认对话框明示。
+- 来源分组 label:"本软件 skills" = `source==="app"`;外部 = `source==="user"`(含 ~/.claude + ~/.agents)。核对 scanner 的 source 字段语义。
+- **id vs display name 区分**:UI 显示 name、存 id;prompt 过滤(sub-4)按 id 匹配、显示 name。别混。
+- id 唯一性依赖 sub-1 的按目录名去重。
 
 ## 验收
 

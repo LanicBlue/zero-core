@@ -1,19 +1,17 @@
-# acceptance-4:SkillsSection(agent 配置)
+# acceptance-4:prompt 注入 + 默认全不开
 
 对应 `sub-4.md`。
 
 ## 用例
 
-1. **区段渲染**:AgentEditor 含 `<SkillsSection>`,邻近 ToolsSection。
-2. **分组正确**:skills 按来源分组,"本软件 skills"(`source==="app"`)在最上,外部(`source==="user"`)其下。
-3. **checkbox 绑定**:勾选某 skill → `form.skillPolicy.enabledSkills` 含其 **id(目录名)**(UI 显示的是 display name);取消→移除。
-4. **默认值**:新建 agent 表单 `enabledSkills = []`(全不开,对齐决策 3)。
-5. **持久化**:保存 agent → 重新打开,勾选状态从 `AgentRecord.skillPolicy.enabledSkills` 还原。
-6. **影响 prompt**:勾选的 skill 经 sub-3 路径进系统提示词 name+desc;调用提示也在。
-7. **无存量破坏**:typecheck 三层 + vitest 全套绿;ToolsSection 不受影响。
+1. **每条目带路径**:enabled skill 的每个条目含 `[skills]/<id>/SKILL.md`(agent 据此寻址);段尾有加载/资源/脚本三段式指引。
+2. **新 agent 默认空**:新建 agent `skillPolicy.enabledSkills === []`。
+3. **显式空→不注入**:`buildSystemPrompt` 传 `enabledSkills:[]` → "Available Skills" 段不出现。
+4. **undefined→全注入(legacy)**:`enabledSkills:undefined` + 有 skills → 全部 name+desc 注入(存量行为不变)。
+5. **body 不进 prompt**:无论 enabled,prompt 只有 name+desc,无 body。
+6. **无存量破坏**:typecheck 三层 + vitest 全套绿。
 
 ## 验证手段
 
-- 手动/截图:AgentEditor 渲染、勾选、保存往返。
-- 单测(若有 renderer 测试):FormState 字段 + 持久化映射。
+- 单测:buildSystemPrompt 三态(enabled 命中 / [] / undefined)+ 指引文案断言。
 - typecheck 三层 + `npm run test`。
