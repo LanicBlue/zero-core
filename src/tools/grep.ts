@@ -31,6 +31,8 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { buildTool } from "./tool-factory.js";
 import { EXEC_MAX_BUFFER_BYTES } from "../core/constants.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import { tryParseSkillPath, remapGrepOutputLines, isPathInSkillBase, isSkillVirtualPath } from "./skill-paths.js";
+import { resolveSkillByName } from "../server/skill-scanner.js";
 import type { CallerCtx, ToolResult } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -235,7 +237,31 @@ export const grepTool = buildTool({
 		});
 
 		let searchPath: string;
-		if (path) {
+		// skill-system sub-2:`[skills]/<id>/` 虚拟路径通道。
+		// 读家族始终放行;单 skill 限定(`[skills]/<id>/...`),裸 `[skills]/` 拒;
+		// 结果回映射成虚拟形态(防真实路径泄露)。
+		let skillCtx: { skillId: string; baseDir: string } | null = null;
+		const parsedSkill = path ? tryParseSkillPath(path) : null;
+		// path 是 skill 虚拟前缀但未指名 skill(裸 [skills]/)→ 拒(单 skill 边界)。
+		// tryParseSkillPath 对裸 [skills]/ 返 null,需用前缀判定兜底。
+		if (path && !parsedSkill && isSkillVirtualPath(path)) {
+			return wrap("Access denied: bare `[skills]/` grep is not supported; name a specific skill as `[skills]/<id>/...`.");
+		}
+		if (parsedSkill) {
+			if (!parsedSkill.skillId) {
+				return wrap("Access denied: bare `[skills]/` grep is not supported; name a specific skill as `[skills]/<id>/...`.");
+			}
+			// skillId 含 glob 通配字符 → 跨 skill 枚举意图,拒(单 skill 边界)。
+			if (/[*?\[\]{}]/.test(parsedSkill.skillId)) {
+				return wrap("Access denied: cross-skill grep is not supported; name a single skill as `[skills]/<id>/...`.");
+			}
+			const skill = resolveSkillByName(parsedSkill.skillId);
+			if (!skill) {
+				return wrap(`Error: skill not found: ${parsedSkill.skillId}`);
+			}
+			skillCtx = { skillId: skill.id, baseDir: skill.baseDir };
+			searchPath = skillCtx.baseDir;
+		} else if (path) {
 			// v0.8 (P1 §10.1): block agent greps inside the wiki memory store.
 			if (isWikiDiskPath(path, workingDir)) return wrap(wikiPathRejectMessage(path));
 			searchPath = workingDir ? resolve(workingDir, path) : path;
@@ -302,6 +328,19 @@ export const grepTool = buildTool({
 				args.push("--", pattern);
 			}
 			args.push(searchPath);
+
+			// skill 通道:跳过 rg,统一走 nativeGrepSearch(输出格式受控 → 回映射 100% 可靠)。
+			// skill 目录小,native walker 性能可接受;避免 rg 输出 path 相对 workingDir
+			// 不一致导致的真实路径泄露。沙箱由 nativeGrepSearch 的 walkFiles 天然限定
+			// 在 searchPath(baseDir)内。
+			if (skillCtx) {
+				const fallbackText = await nativeGrepSearch({
+					pattern, searchPath, glob, type, output_mode,
+					caseInsensitive, context, after, before,
+					head_limit: resolved_head_limit, max_columns: resolved_max_columns,
+				});
+				return wrap(remapGrepOutputLines(fallbackText, skillCtx.skillId));
+			}
 
 			try {
 				const { stdout } = await execFileAsync("rg", args, {

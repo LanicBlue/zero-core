@@ -42,6 +42,7 @@ import {
 	MAX_FILE_SIZE,
 } from "./file-read-helpers.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import { resolveSkillPath, replaceSkillDirVars } from "./skill-paths.js";
 import type { CallerCtx, ToolResult } from "./types.js";
 
 function resolvePath(path: string, workingDir: string | undefined, restrictToWorkspace: boolean): string | { error: string } {
@@ -112,8 +113,25 @@ export const fileReadTool = buildTool({
 
 		// v0.8 (P1 §10.1): block agent reads of the wiki memory store.
 		if (isWikiDiskPath(path, workingDir)) return wrap(wikiPathRejectMessage(path));
-		const resolved = resolvePath(path, workingDir, restrictToWorkspace);
-		if (typeof resolved === "object") return wrap(resolved.error);
+
+		// skill-system sub-2: `[skills]/<id>/<rel>` 虚拟路径通道。
+		// 读家族始终放行(不经 restrictToWorkspace);解析 → 真实路径直接用(真实路径
+		// readScope 不变;这里是受信 skill 读取入口)。沙箱由 resolveSkillPath 保证。
+		const skillResolved = resolveSkillPath(path);
+		let resolved: string;
+		let skillIdForVarReplace: string | null = null;
+		if (skillResolved === null) {
+			// 非 `[skills]/` 前缀 → 原 resolvePath(readScope 照常)。
+			const r = resolvePath(path, workingDir, restrictToWorkspace);
+			if (typeof r === "object") return wrap(r.error);
+			resolved = r;
+		} else if (!skillResolved.ok) {
+			return wrap(`Error: ${skillResolved.error}`);
+		} else {
+			// skill 通道:始终放行,真实路径直接用(绕过 resolvePath 的 workspace 守卫)。
+			resolved = skillResolved.realPath;
+			skillIdForVarReplace = skillResolved.skillId;
+		}
 
 		try {
 			// 1. Stat the file
@@ -149,7 +167,14 @@ export const fileReadTool = buildTool({
 
 			// 8. Read raw bytes and decode
 			const rawBuffer = await readFile(resolved);
-			const content = decodeBuffer(rawBuffer);
+			let content = decodeBuffer(rawBuffer);
+
+			// skill-system sub-2:读 skill md 正文做自引用变量替换(可移植自引用)。
+			// ${SKILL_DIR} / ${CLAUDE_SKILL_DIR} → [skills]/<id>(两变量都换)。
+			// 仅 md 文件 + 经 [skills]/ 通道读取时做(协议:只换 skill md 正文)。
+			if (skillIdForVarReplace !== null && resolved.toLowerCase().endsWith(".md")) {
+				content = replaceSkillDirVars(content, skillIdForVarReplace);
+			}
 
 			// 9. Jupyter Notebook
 			if (fileType === "notebook") {

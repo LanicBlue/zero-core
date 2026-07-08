@@ -31,6 +31,8 @@ import { stat } from "node:fs/promises";
 import { glob } from "node:fs/promises";
 import { buildTool } from "./tool-factory.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import { tryParseSkillPath, mapRealToVirtual, isPathInSkillBase, isSkillVirtualPath } from "./skill-paths.js";
+import { resolveSkillByName } from "../server/skill-scanner.js";
 import type { CallerCtx, ToolResult } from "./types.js";
 
 // Directories to always skip
@@ -101,7 +103,40 @@ export const globTool = buildTool({
 		});
 
 		let searchPath: string;
-		if (path) {
+		// skill-system sub-2:`[skills]/<id>/...` 虚拟路径通道。
+		// 读家族始终放行;单 skill 限定(`[skills]/<id>/...`),裸 `[skills]/**` 拒;
+		// 结果路径回映射成虚拟形态(防真实路径泄露)。
+		// pattern 与 path 任一以 `[skills]/` 开头即走 skill 通道。
+		let skillCtx: { skillId: string; baseDir: string } | null = null;
+		const parsedFromPattern = tryParseSkillPath(pattern);
+		const parsedFromPath = path ? tryParseSkillPath(path) : null;
+		// pattern 或 path 是 skill 虚拟前缀但未指名 skill(裸 [skills]/ 或 [skills]/*)→ 拒。
+		// tryParseSkillPath 对这些返 null,需用前缀判定兜底(单 skill 边界)。
+		if (
+			(!parsedFromPattern && isSkillVirtualPath(pattern)) ||
+			(path && !parsedFromPath && isSkillVirtualPath(path))
+		) {
+			return wrap("Access denied: bare `[skills]/` glob is not supported; name a specific skill as `[skills]/<id>/...`.");
+		}
+		if (parsedFromPattern || parsedFromPath) {
+			// 单 skill 边界:必须指名 skill(skillId 非空)。裸 `[skills]/**` / `[skills]/*` 拒。
+			const fromPattern = parsedFromPattern && parsedFromPattern.skillId ? parsedFromPattern : null;
+			const fromPath = parsedFromPath && parsedFromPath.skillId ? parsedFromPath : null;
+			const ref = fromPattern ?? fromPath;
+			if (!ref) {
+				return wrap("Access denied: bare `[skills]/` glob is not supported; name a specific skill as `[skills]/<id>/...`.");
+			}
+			// skillId 含 glob 通配字符(* ? [ { )→ 跨 skill 枚举意图,拒(单 skill 边界)。
+			if (/[*?\[\]{}]/.test(ref.skillId)) {
+				return wrap("Access denied: cross-skill glob is not supported; name a single skill as `[skills]/<id>/...`.");
+			}
+			const skill = resolveSkillByName(ref.skillId);
+			if (!skill) {
+				return wrap(`Error: skill not found: ${ref.skillId}`);
+			}
+			skillCtx = { skillId: skill.id, baseDir: normalize(skill.baseDir) };
+			searchPath = skillCtx.baseDir;
+		} else if (path) {
 			let p = path.trim();
 			if ((p.startsWith('"') && p.endsWith('"')) || (p.startsWith("'") && p.endsWith("'"))) {
 				p = p.slice(1, -1);
@@ -117,7 +152,19 @@ export const globTool = buildTool({
 		}
 
 		const excludes = exclude ? exclude.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
-		const fullPattern = resolve(searchPath, pattern);
+
+		// skill 通道:pattern 可能带 `[skills]/<id>/` 虚拟前缀(Glob [skills]/foo/**),
+		// 剥离成 rel glob 后再 resolve 到真实 baseDir。
+		let realPattern = pattern;
+		if (skillCtx) {
+			const parsedPat = tryParseSkillPath(pattern);
+			if (parsedPat && parsedPat.skillId === skillCtx.skillId) {
+				// pattern 起头是 [skills]/<id>/...,rel 部分即真正 glob。
+				realPattern = parsedPat.rel || "**";
+			}
+			// path 通道(pattern 不带虚拟前缀)→ realPattern 保持原样(rel glob)。
+		}
+		const fullPattern = resolve(searchPath, realPattern);
 
 		type FileEntry = { path: string; mtime: number };
 		const entries: FileEntry[] = [];
@@ -142,6 +189,8 @@ export const globTool = buildTool({
 			try {
 				const s = await stat(file);
 				if (!s.isFile()) continue;
+				// skill 通道沙箱兜底:glob 因 pattern 含 `..` 等跑出 baseDir 的结果一律丢。
+				if (skillCtx && !isPathInSkillBase(file, skillCtx.baseDir)) continue;
 				entries.push({ path: file, mtime: s.mtimeMs });
 			} catch { /* skip inaccessible files */ }
 
@@ -163,9 +212,13 @@ export const globTool = buildTool({
 		const truncated = totalMatched > limit;
 		const results = entries.slice(0, limit);
 
-		const display = results.map((e) =>
-			relative(workingDir ?? searchPath, e.path).replace(/\\/g, "/"),
-		);
+		const display = results.map((e) => {
+			if (skillCtx) {
+				// skill 通道:回映射成虚拟路径,杜绝真实 baseDir 泄露。
+				return mapRealToVirtual(e.path, skillCtx.skillId, skillCtx.baseDir);
+			}
+			return relative(workingDir ?? searchPath, e.path).replace(/\\/g, "/");
+		});
 
 		let output = display.join("\n");
 		if (truncated) {
