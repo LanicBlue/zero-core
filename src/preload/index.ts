@@ -153,6 +153,11 @@ const api: WindowApi = {
 
 	// ─── Skills
 	skillsList: () => ipcRenderer.invoke("skills:list"),
+	// sub-6: body 按需取 + 本软件 skill CRUD(护栏在后端,仅落 ~/.zero-core/skills)。
+	skillsGetBody: (id) => ipcRenderer.invoke("skills:getBody", id),
+	skillsCreate: (input) => ipcRenderer.invoke("skills:create", input),
+	skillsUpdate: (id, input) => ipcRenderer.invoke("skills:update", id, input),
+	skillsDelete: (id) => ipcRenderer.invoke("skills:delete", id),
 
 	// ─── MCP ─────────────────────────────────────────
 	mcpList: () => ipcRenderer.invoke("mcp:list"),

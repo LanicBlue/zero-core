@@ -179,7 +179,12 @@ const R: Record<string, RouteMapping> = {
 	"ask-user:respond":       { method: "POST", path: "/api/ask-user/respond", buildReq: (requestId, answers) => ({ body: { requestId, answers } }) },
 
 	// Skills
-	"skills:list":    { method: "GET", path: "/api/skills", buildReq: () => ({}) },
+	"skills:list":         { method: "GET", path: "/api/skills", buildReq: () => ({}) },
+	// sub-6: 按需取 body + 本软件 skill CRUD(写仅落 ~/.zero-core/skills,护栏在后端)。
+	"skills:getBody":      { method: "GET", path: "/api/skills/:id/body", buildReq: (id) => ({ params: { id } }) },
+	"skills:create":       { method: "POST", path: "/api/skills", buildReq: (input) => ({ body: input }) },
+	"skills:update":       { method: "PUT", path: "/api/skills/:id", buildReq: (id, input) => ({ params: { id }, body: input }) },
+	"skills:delete":       { method: "DELETE", path: "/api/skills/:id", buildReq: (id) => ({ params: { id } }) },
 
 		// Memory Nodes — removed (memory lives in the wiki tree).
 

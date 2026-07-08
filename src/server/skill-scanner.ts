@@ -94,7 +94,7 @@ function loadManifest(dir: string): Map<string, ManifestSkill> | null {
 	}
 }
 
-function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
+export function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
 	const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 	if (!normalized.startsWith("---")) return {};
 

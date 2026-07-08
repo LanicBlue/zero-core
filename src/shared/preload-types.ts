@@ -197,6 +197,25 @@ export interface WindowApi {
 
 	// ── Skills ──
 	skillsList: () => Promise<DiscoveredSkill[]>;
+	/**
+	 * sub-6:按需取 SKILL.md 正文(F4 —— scanner 不持有 body,详情视图经此拉真实正文)。
+	 * 返回 { body, source };外部来源只读展示,本软件可编辑。
+	 */
+	skillsGetBody: (id: string) => Promise<{ body: string; source: "user" | "app" } | { error: string }>;
+	/**
+	 * sub-6:新建本软件 skill(仅落 ~/.zero-core/skills/<id>/SKILL.md)。
+	 * id 须 path-safe + 不与已有冲突;护栏在后端。返回新建后的 DiscoveredSkill。
+	 */
+	skillsCreate: (input: { id: string; name: string; description: string; body: string }) => Promise<DiscoveredSkill | { error: string }>;
+	/**
+	 * sub-6:更新本软件 skill 的 frontmatter display name / description + body。
+	 * id=目录名不可改。外部来源(source=user)不可更新 → 后端 403。
+	 */
+	skillsUpdate: (id: string, input: { name: string; description: string; body: string }) => Promise<DiscoveredSkill | { error: string }>;
+	/**
+	 * sub-6:删除本软件 skill(整个目录 + 兄弟文件)。外部来源不可删 → 后端 403。
+	 */
+	skillsDelete: (id: string) => Promise<{ success: true } | { error: string }>;
 
 	// ── Templates ──
 	templatesList: () => Promise<PromptTemplate[]>;
