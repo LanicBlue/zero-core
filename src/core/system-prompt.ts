@@ -62,14 +62,35 @@ export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptConte
 	}
 
 	// 4. Skills
+	//
+	// sub-4 (skill-system): progressive disclosure 注入。
+	// 二元语义(对齐 design 决策 5,千万别混):
+	//   - enabledSkills === undefined → legacy 模式(注入全部 name+desc)。存量
+	//     agent 没有 skillPolicy.enabledSkills 字段;保留兼容,该分支不动。
+	//   - enabledSkills === [] (显式空数组,新 agent 默认)→ 过滤后为空,"Available
+	//     Skills" 段不出现(全不开,对齐决策 5)。
+	//   - enabledSkills = [id,...] → 仅注入命中 id 的条目。
+	// 每条目带 `[skills]/<id>/SKILL.md` 路径(agent 据此寻址 Read,id=目录名;display
+	// name ≠ id 时光给 name agent 构造不出路径);段尾三段式指引(加载/资源/脚本)。
+	// body 不进 prompt(按需 Read,见指引)。
 	if (ctx.skills?.length) {
 		const enabled = ctx.enabledSkills;
 		const filtered = enabled
 			? ctx.skills.filter((s) => enabled.includes(s.id))
 			: ctx.skills;
 		if (filtered.length) {
-			const skillList = filtered.map((s) => `- **${s.name}**: ${s.description}`).join("\n");
-			sections.push("## Available Skills\n\n" + skillList);
+			const skillList = filtered
+				.map((s) => `- **${s.name}**: ${s.description} (read \`[skills]/${s.id}/SKILL.md\` to load)`)
+				.join("\n");
+			sections.push(
+				"## Available Skills\n\n" +
+					skillList +
+					"\n\n" +
+					"Skill usage:\n" +
+					"- **Load**: when a task matches a skill above, read its `[skills]/<id>/SKILL.md` for the full procedure.\n" +
+					"- **Resources**: skills may bundle sibling files; read/glob/grep them via `[skills]/<id>/<file>`. (`${SKILL_DIR}` / `${CLAUDE_SKILL_DIR}` in skill bodies already resolve to `[skills]/<id>`.)\n" +
+					"- **Scripts**: skills may bundle scripts; run them with Shell as `[skills]/<id>/scripts/...`.",
+			);
 		}
 	}
 

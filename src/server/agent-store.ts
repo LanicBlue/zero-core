@@ -163,6 +163,16 @@ export class AgentStore {
 	create(input: Omit<AgentRecord, "id" | "createdAt" | "updatedAt">): AgentRecord {
 		const normalized = { ...input };
 		normalized.workspaceDir = normalizeWorkspaceDir(normalized.workspaceDir);
+		// sub-4 (skill-system, decision 5): 新 agent 默认全不开。skillPolicy
+		// 缺省时填 { enabledSkills: [] }(显式空数组)。这是唯一一处把"未配置"
+		// 转成"显式空"的开关:legacy agent(undefined)仍走 buildSystemPrompt 的
+		// undefined 分支(注入全部);新建 agent 一律 [] → 不注入任何 skill。
+		// canAuthorSkills 的默认值由 sub-8 在此同处补(类型字段 sub-8 才加)。
+		if (!normalized.skillPolicy) {
+			normalized.skillPolicy = { enabledSkills: [] };
+		} else if (normalized.skillPolicy.enabledSkills === undefined) {
+			normalized.skillPolicy = { ...normalized.skillPolicy, enabledSkills: [] };
+		}
 		const created = this.store.create(normalized as any);
 		this.notifyChanged(created.id);
 		return created;
