@@ -82,6 +82,17 @@ const MESSAGES_COLUMNS: ColumnDef[] = [
 // RequirementStore
 // ---------------------------------------------------------------------------
 
+// tool-decoupling(决策 1):process-wide 单例 getter/setter。启动时注册;
+// 工具(Flow / requirement 相关)import { getRequirementStore } 直读。
+// headless 无则 undefined。
+let _requirementStore: RequirementStore | undefined;
+export function getRequirementStore(): RequirementStore | undefined {
+	return _requirementStore;
+}
+export function setRequirementStore(s: RequirementStore | undefined): void {
+	_requirementStore = s;
+}
+
 export class RequirementStore {
 	private reqStore: SqliteStore<RequirementRecord>;
 	private historyStore: SqliteStore<any>;

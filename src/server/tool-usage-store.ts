@@ -126,6 +126,17 @@ export class ToolConfigStore {
 // (canonical 时间是 called_at),所以同样手写 prepared statements,不用 SqliteStore
 // (避免它自愈 ALTER 加列,动了 P0 已定的表结构)。
 
+// tool-decoupling(决策 1):process-wide 单例 getter/setter。启动时注册;
+// tool-factory 的 recordToolUsage 当前从 ctx.toolUsageStore 读(sub-2+ 改读
+// 此单例)。headless 无则 undefined → 日志 no-op(已有降级)。
+let _toolUsageStore: ToolUsageStore | undefined;
+export function getToolUsageStore(): ToolUsageStore | undefined {
+	return _toolUsageStore;
+}
+export function setToolUsageStore(s: ToolUsageStore | undefined): void {
+	_toolUsageStore = s;
+}
+
 export class ToolUsageStore {
 	private db: Database.Database;
 	private _insertStmt: Database.Statement;

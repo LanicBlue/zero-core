@@ -73,10 +73,12 @@ import { createWikiRouter } from "./project-wiki-router.js";
 import { createWikiRouter as createWikiBrowserRouter, createWorkspaceDocHandler } from "./wiki-router.js";
 import { AnalystService } from "./analyst-service.js";
 import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
-import { ALL_TOOLS, registerRuntimeTools } from "../runtime/tools/index.js";
-import { getToolExecute } from "../runtime/tools/tool-factory.js";
-import type { ToolExecutionContext } from "../runtime/types.js";
-import { getCookieCount, clearCookies } from "../runtime/mcp-tools/fetch-tools.js";
+import { ALL_TOOLS, registerRuntimeTools } from "../tools/index.js";
+// tool-decoupling sub-5(决策 4):UI 统一 dispatcher —— 取代 UI 用 REST。
+import { dispatchTool } from "./tool-dispatcher.js";
+import { getCookieCount, clearCookies } from "../tools/mcp/fetch-tools.js";
+// tool-decoupling sub-1: 注册 app 级服务实例到各模块的 getter/setter 单例。
+import { registerServerInstances } from "./runtime-instances.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const expandHome = (p: string) => p.startsWith("~") ? p.replace(/^~/, homedir()) : p;
@@ -212,6 +214,16 @@ export async function startServer(options?: StartServerOptions) {
 
 	const agentService = createAgentService(workspaceConfig.workspaceDir, sessionDB, registry, mcp);
 	agentService.setAgentStore(agentStore);
+
+	// tool-decoupling(sub-2): early-register the AgentService singleton BEFORE
+	// restoreAllSessions (below). Migrated Platform tools read live session
+	// state via `getAgentService()` (no more ctx.platformObserver); a restored
+	// session that fires a tool during restore would otherwise read undefined.
+	// registerServerInstances is idempotent on present fields, so the full call
+	// near the bottom (which also registers the stores built later) is still
+	// correct — it just re-sets the same agentService handle. sessionDB is also
+	// available now, so register it too (sub-3+ data tools will read it).
+	registerServerInstances({ agentService, sessionDB });
 
 	// Step 1B: inject per-loop hook wiring deps. The service merges its own
 	// always-available handles (db / sessionManager / inputQueue) on top at
@@ -434,7 +446,7 @@ export async function startServer(options?: StartServerOptions) {
 	// ─── M5: Git, Notifications, Cron ────────────────────────────
 	const { GitIntegration } = await import("./git-integration.js");
 	const { NotificationService } = await import("./notification-service.js");
-	const { CronAnalysisManager } = await import("./cron-analysis.js");
+	const { CronAnalysisManager, setCronAnalysisManager } = await import("./cron-analysis.js");
 	const { recoverWorkflowState } = await import("./recovery.js");
 
 	const gitIntegration = new GitIntegration();
@@ -489,6 +501,12 @@ export async function startServer(options?: StartServerOptions) {
 		archivistGit,
 		projectWorkStore,
 	});
+	// tool-decoupling sub-6: register the process-wide CronAnalysisManager
+	// singleton so the Cron tool's 'today' action can read it directly (no ctx
+	// injection). Done immediately after construction — well before REST mount
+	// and before any tool call (incl. restoreAllSessions-driven cron triggers).
+	// Same pattern as setManagementService / setAgentService.
+	setCronAnalysisManager(cronManager);
 	// project-work 触发执行器(手动/hook 触发共享路径)+ hook 管理器(订阅
 	// data-change-hub,domain 事件 → 命中的 work)。会话期内常驻。
 	const { ProjectWorkRunner } = await import("./project-work-runner.js");
@@ -548,7 +566,24 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 (P3 §7.7 #4): tool-call usage log — one row per tool invocation,
 	// surfaced onto every session so tool-factory can record it. Best-effort.
 	const { ToolUsageStore } = await import("./tool-usage-store.js");
-	agentService.setToolUsageStore(new ToolUsageStore(sessionDB));
+	const toolUsageStore = new ToolUsageStore(sessionDB);
+	agentService.setToolUsageStore(toolUsageStore);
+
+	// tool-decoupling(决策 1 + 决策 6):注册 app 级服务实例到各数据源模块的
+	// process-wide 单例。工具(sub-2+ 迁完)将 import { getXxx } 直读,不再靠
+	// per-loop ctx 注入。必须在任何工具调用(restoreAllSessions / cron / 等)
+	// 之前完成 —— 所有 store 此刻都已构造,在此注册。CLI 路径(cli.ts)调同一
+	// 函数(headless 多数缺,getter 返 undefined,工具降级)。
+	registerServerInstances({
+		agentService,
+		sessionDB,
+		wikiStoreGlobal,
+		projectWikiStore: wikiStore,
+		requirementStore,
+		managementService: management,
+		pmService,
+		toolUsageStore,
+	});
 
 	analystService.setGitIntegration(gitIntegration);
 	// project-flow F4: surface GitIntegration on the FlowActions backend so the
@@ -584,7 +619,7 @@ export async function startServer(options?: StartServerOptions) {
 	}));
 
 	app.use("/api/agents", createAgentRouter({ agentStore, agentService, sessionDB }));
-	app.use("/api/providers", createProviderRouter(providerStore, reloadProviders, agentService));
+	app.use("/api/providers", createProviderRouter(providerStore, reloadProviders));
 	app.use("/api/templates", createTemplateRouter(templateStore, sessionDB));
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
 	app.use("/api/skills", createSkillRouter());
@@ -836,32 +871,42 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 模板统一:role-template 通道已移除 —— role 身份模板并入 TemplateStore
 	// (/api/templates),AgentRegistry 工具与 UI Templates 页面读同一张表。
 
-	// Tool execute
+	// Tool execute — tool-decoupling sub-5(决策 4):统一走 dispatcher。
+	//
+	// /api/tool-execute(旧,Tools 页 + ipc-proxy tool:execute 仍用)与
+	// /api/tool-run(sub-5 新,IPC tool:run 用)都经 dispatchTool —— 同一入口,
+	// 同一 getToolExecute,返同一 ToolResult JSON。agent(buildTool wrapper)/
+	// UI(dispatcher)/ [MCP 后续] 三 host 调同一原始 execute(acceptance-5 #6)。
+	//
+	// dispatcher 自带错误捕获(工具抛错 → {ok:false, error},UI 不崩)。
 	app.post("/api/tool-execute", async (req, res) => {
-		const { toolName, input } = req.body;
-		const toolDef = ALL_TOOLS[toolName];
-		if (!toolDef) return res.json({ ok: false, error: `Tool not found: ${toolName}`, elapsedMs: 0 });
-
-		const execute = getToolExecute(toolDef);
-		if (!execute) return res.json({ ok: false, error: `Tool not testable: ${toolName}`, elapsedMs: 0 });
-
+		const { toolName, input } = req.body ?? {};
 		const config = registry.getToolConfig();
-		const toolCtx: ToolExecutionContext = {
+		const result = await dispatchTool({
+			tool: toolName,
+			input,
 			workingDir: workspaceConfig.workspaceDir,
-			agentId: "__test__",
-			emit: () => {},
-			db: sessionDB,
-			readScope: workspaceConfig.readScope ?? "filesystem",
 			toolConfig: config,
-		};
+			readScope: workspaceConfig.readScope ?? "filesystem",
+		});
+		res.json(result);
+	});
 
-		const t0 = Date.now();
-		try {
-			const result = await execute(input, toolCtx);
-			res.json({ ok: true, result, elapsedMs: Date.now() - t0 });
-		} catch (err: any) {
-			res.json({ ok: false, error: err.message, elapsedMs: Date.now() - t0 });
-		}
+	// tool-decoupling sub-5(决策 4):UI 统一 dispatcher 入口。
+	// UI → ipc.invoke("tool:run", {tool, input, scope?, workingDir?}) → 这里。
+	// 全工具暴露(无可见性策略);session 工具无 loop 状态 → 返默认/示例值(G1)。
+	app.post("/api/tool-run", async (req, res) => {
+		const { tool, input, scope, workingDir } = req.body ?? {};
+		const config = registry.getToolConfig();
+		const result = await dispatchTool({
+			tool,
+			input,
+			scope,
+			workingDir: workingDir ?? workspaceConfig.workspaceDir,
+			toolConfig: config,
+			readScope: workspaceConfig.readScope ?? "filesystem",
+		});
+		res.json(result);
 	});
 
 	// WebFetch cookie ops (login stays in Electron)

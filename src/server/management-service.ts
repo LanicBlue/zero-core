@@ -120,6 +120,17 @@ const CONTAINER_REQUIREMENT_STATUSES: RequirementStatus[] = [
  * Capability backend for the domain tools (Project / Agent / Cron / Wiki).
  * The capability lives in the tools; agents are just tool-config bundles.
  */
+// tool-decoupling(决策 1):process-wide 单例 getter/setter。启动时注册;
+// 工具(Project / Work / AgentRegistry / Cron action 工具)import
+// { getManagementService } 直读 capability 后端。headless 无则 undefined。
+let _managementService: ManagementService | undefined;
+export function getManagementService(): ManagementService | undefined {
+	return _managementService;
+}
+export function setManagementService(s: ManagementService | undefined): void {
+	_managementService = s;
+}
+
 export class ManagementService {
 	private agentStore: AgentStore;
 	private projectStore: ProjectStore;

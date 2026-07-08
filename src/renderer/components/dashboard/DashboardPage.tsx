@@ -47,6 +47,40 @@ const api = () => (window as any).api;
 
 const POLL_MS = 8000;
 
+// ─── tool-decoupling sub-6: data fetch via the unified dispatcher ──────────
+//
+// 6 endpoints (sessions:parents / sessions:detail / provider:stats /
+// provider:usage / provider:queue / crons:today) now go through
+// api().toolRun({tool, input}) → /api/tool-run → dispatchTool → the tool's
+// raw execute() → JSON. The old REST/IPC handlers are gone.
+//
+// toolRun returns { ok, result?, error?, elapsedMs } where `result` is a
+// ToolResult { ok, data?, error? }. Each helper unwraps `result.data.<field>`
+// to feed the existing useState/render (rendering is unchanged). On
+// {ok:false} / thrown, the helper resolves `null`/`[]` so the kanban degrades
+// to an empty state instead of crashing — same posture as the old
+// `.catch(() => null)` REST path.
+async function runPlatform<T>(input: Record<string, unknown>, pick: (data: any) => T, fallback: T): Promise<T> {
+	try {
+		const r = await api().toolRun({ tool: "Platform", input });
+		if (!r.ok || !r.result || !(r.result as any).ok) return fallback;
+		const data = (r.result as any).data;
+		return pick(data) ?? fallback;
+	} catch {
+		return fallback;
+	}
+}
+async function runCronToday(): Promise<PlatformCronTodayItem[] | null> {
+	try {
+		const r = await api().toolRun({ tool: "Cron", input: { action: "today" } });
+		if (!r.ok || !r.result || !(r.result as any).ok) return null;
+		const items = (r.result as any).data?.items;
+		return Array.isArray(items) ? items : null;
+	} catch {
+		return null;
+	}
+}
+
 // ─── 相对时间(renderer 本地实现;server 的 formatRelativeTime 在 runtime 层,web tsconfig 不含) ──
 function formatRelativeTime(atMs: number, nowMs: number = Date.now()): string {
 	const diff = Math.max(0, nowMs - atMs);
@@ -97,33 +131,49 @@ export default function DashboardPage() {
 
 	const fetchTop = useCallback(async () => {
 		try {
+			// 3 main fetches go through the dispatcher (sub-6). Each helper
+			// degrades to []/null on failure so one broken endpoint doesn't
+			// abort the others.
 			const [p, t, s] = await Promise.all([
-				api().sessionsParents(),
-				api().cronsToday(),
-				api().providerStats(),
+				runPlatform<PlatformSessionSummary[]>(
+					{ resource: "sessions" },
+					(d) => d.rows,
+					[],
+				),
+				runCronToday(),
+				runPlatform<PlatformProviderStat[]>(
+					{ resource: "providerStats" },
+					(d) => d.stats,
+					[],
+				),
 			]);
+			const stats = s;
 			setParents(p);
 			setTodayCrons(t);
-			setProviderStats(s);
+			setProviderStats(stats);
 			setError(null);
 			// 默认选中第一个 enabled provider(若尚未选)。
 			setSelectedProvider((cur) => {
-				if (cur && s.some((x: PlatformProviderStat) => x.name === cur)) return cur;
-				const first = s.find((x: PlatformProviderStat) => x.enabled) ?? s[0];
+				if (cur && stats.some((x: PlatformProviderStat) => x.name === cur)) return cur;
+				const first = stats.find((x: PlatformProviderStat) => x.enabled) ?? stats[0];
 				return first?.name ?? "";
 			});
 			// 今日 token:并发拉每个 enabled provider 的近 24h 小时桶 usage,
 			// 汇总本地今日日期的桶 tokens。失败按 0 计,不阻断主数据。
-			const enabled = s.filter((x: PlatformProviderStat) => x.enabled);
+			const enabled = stats.filter((x: PlatformProviderStat) => x.enabled);
 			try {
 				const todayKey = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD(本地)
 				const usages = await Promise.all(
 					enabled.map((x: PlatformProviderStat) =>
-						api().providerUsage(x.name, "hour", "24h").catch(() => null),
+						runPlatform<PlatformProviderSeries | null>(
+							{ resource: "providerUsage", provider: x.name, granularity: "hour", range: "24h" },
+							(d) => d as PlatformProviderSeries,
+							null,
+						),
 					),
 				);
 				let sum = 0;
-				for (const u of usages as (PlatformProviderSeries | null)[]) {
+				for (const u of usages) {
 					if (!u) continue;
 					for (const m of u.series) {
 						for (const pt of m.points) {
@@ -167,9 +217,19 @@ export default function DashboardPage() {
 		try {
 			const granularity = view === "24h" ? "hour" : "day";
 			const range = view;
+			// dispatcher (sub-6): providerUsage returns the full series object
+			// (matches PlatformProviderSeries); providerQueue returns the array.
 			const [u, q] = await Promise.all([
-				api().providerUsage(selectedProvider, granularity, range),
-				api().providerQueue(selectedProvider),
+				runPlatform<PlatformProviderSeries | null>(
+					{ resource: "providerUsage", provider: selectedProvider, granularity, range },
+					(d) => d as PlatformProviderSeries,
+					null,
+				),
+				runPlatform<PlatformProviderQueueEntry[]>(
+					{ resource: "providerQueue", provider: selectedProvider },
+					(d) => d.queue,
+					[],
+				),
 			]);
 			setUsage(u);
 			setQueue(q);
@@ -190,12 +250,14 @@ export default function DashboardPage() {
 		}
 		setExpandedSession(sessionId);
 		setDetail(null);
-		try {
-			const d = await api().sessionsDetail(sessionId);
-			setDetail(d);
-		} catch {
-			setDetail({ sessionId, taskTree: [], recentSteps: [] });
-		}
+		// dispatcher (sub-6): sessions Detail via Platform resource. result.data
+		// is { sessionId, taskTree, recentSteps } — already the right shape.
+		const d = await runPlatform<PlatformSessionDetail | null>(
+			{ resource: "sessions", sessionId },
+			(data) => data as PlatformSessionDetail,
+			null,
+		);
+		setDetail(d ?? { sessionId, taskTree: [], recentSteps: [] });
 	}, [expandedSession]);
 
 	// ─── KPI 聚合 ────────────────────────────────────────────

@@ -40,6 +40,18 @@ import type { ProjectWikiNode, WikiNode, WikiNodeType } from "../shared/types.js
 // ProjectWikiStore — back-compat view over WikiStore
 // ---------------------------------------------------------------------------
 
+// tool-decoupling(决策 1):process-wide 单例 getter/setter。这是 WikiStore 的
+// "project 视图"(ProjectWikiStore,back-compat 层)。启动时注册;工具 import
+// { getProjectWikiStore } 直读。headless 无则 undefined。注意:全局 WikiStore
+// 用 getWikiStoreGlobal()(见 wiki-node-store.ts);两个单例不同。
+let _projectWikiStore: ProjectWikiStore | undefined;
+export function getProjectWikiStore(): ProjectWikiStore | undefined {
+	return _projectWikiStore;
+}
+export function setProjectWikiStore(s: ProjectWikiStore | undefined): void {
+	_projectWikiStore = s;
+}
+
 export class ProjectWikiStore {
 	private wiki: WikiStore;
 

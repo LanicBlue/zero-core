@@ -51,16 +51,16 @@ export const TURN_SOURCES: readonly TurnSource[] = ["user", "work", "cron", "bac
 // platform-observability ① (sub-4): read-only session observation seam
 // ---------------------------------------------------------------------------
 /**
- * Read-only platform observation surface — the ONLY way the Platform 'sessions'
- * resource (runtime/mcp-tools) reaches live session state without importing the
- * server layer. Implemented by AgentService; injected onto every SessionConfig
- * + mirrored to ToolExecutionContext so the Platform tool's execute() can call
- * it through `ctx.platformObserver`. Same data the UI kanban (③) consumes via
- * the IPC channels (sessions:parents / sessions:detail) — single source.
+ * Read-only platform observation surface. Implemented by AgentService; the
+ * Platform 'sessions' / 'providerStats' tools reach it through the process-wide
+ * `getAgentService()` singleton (tool-decoupling sub-2 — no longer injected
+ * via ctx). Same data the UI kanban (③) consumes via the IPC channels
+ * (sessions:parents / sessions:detail, provider:stats / :usage / :queue) —
+ * single source.
  *
- * Why a typed seam and not `ctx.agentService`: the runtime layer must not import
- * the server module (conventions.md). The handle is a narrowing interface the
- * service satisfies; the tool only sees the read methods it needs.
+ * Why a typed seam and not `agentService` directly: keeps the contract narrow
+ * (the read methods the tool/IPC need) so the implementation can evolve
+ * independently, and lets tests substitute a mock via `setAgentService(mock)`.
  *
  * All methods are READ-ONLY. status semantics (acceptance-4 #3):
  *   running  — runStates has the session AND isBusy
@@ -612,13 +612,6 @@ export interface SessionConfig {
 	 * builds the loop (it owns loopKind="main").
 	 */
 	hookWiringDeps?: HookWiringDeps;
-	/**
-	 * platform-observability ① (sub-4): read-only session observation handle.
-	 * Injected on EVERY SessionConfig by AgentService (the service implements
-	 * PlatformObserver); the loop mirrors it to ToolExecutionContext so the
-	 * Platform 'sessions' resource can read live session state through ctx.
-	 */
-	platformObserver?: PlatformObserver;
 }
 
 // ---------------------------------------------------------------------------
@@ -797,16 +790,15 @@ export interface ToolExecutionContext {
 	readScope?: "filesystem" | "workspace";
 	toolConfig?: Record<string, Record<string, any>>;
 	rateLimiter?: import("./tool-rate-limiter.js").ToolRateLimiter;
-	// Multi-Agent Workflow context
-	wikiStore?: any;                    // ProjectWikiStore
-	requirementStore?: any;             // RequirementStore
-	// v0.8 (M4) / project-flow F3: PmService handle (PM sessions only) —
-	// backs Flow.verify's compound close (submitCoverageVerdict → archivist
-	// merge) + Flow.create's PM-session path. The legacy
-	// CreateRequirementWithDoc tool was retired in F3 (file deleted F5).
-	pmService?: any;                    // PmService
-	taskStepStore?: any;                // TaskStepStore
-	projectId?: string;                 // Current project ID
+	// tool-decoupling sub-5(B3):以下 app 级服务字段已删 —— 工具改直读
+	// getter/setter 单例(getManagementService / getWikiStoreGlobal /
+	// getRequirementStore / getPmService / getToolUsageStore):
+	//   wikiStore / requirementStore / pmService / taskStepStore / management
+	//   / wikiStoreGlobal(从未在此声明,见 agent-loop this.wikiStoreGlobal)
+	// 保留的(rate limit / hook 仍读,sub-5 收敛后下一波清):
+	//   toolUsageStore(wrapper recordToolUsage 读)/ rateLimiter /
+	//   toolConfig(rate config)/ 身份字段(emit/agentId/sessionId/turnSeq)。
+	projectId?: string;
 	/**
 	 * v0.8 (读写同界 / pure anchor model): this session's resolved wiki anchor
 	 * node ids (auto memory + auto project/global + free wikiAnchors). The Wiki
@@ -822,14 +814,6 @@ export interface ToolExecutionContext {
 	// full config + per-call override + caller bundle inheritance).
 	/** v0.8 (M0): session context bundle (D-B) carried by this loop. */
 	contextBundle?: SessionContextBundle;
-	/**
-	 * v0.8 (P3): ManagementService handle for the zero global-management
-	 * role's action tools (Project/Work/AgentRegistry/Cron). Injected IFF the
-	 * session's toolPolicy enables one of those tools (capabilityHandlesFor);
-	 * absent otherwise (and the tool errors at call time if policy enabled it
-	 * without the handle). (Renamed from `zeroAdmin` in P3.)
-	 */
-	management?: any;
 	/**
 	 * v0.8 (P2 §11.5): this caller's subagents list (mirrors SessionConfig.
 	 * subagents). Surfaced so the Orchestrate engine can resolve a DSL `task`
@@ -878,14 +862,6 @@ export interface ToolExecutionContext {
 	 * when git is unavailable).
 	 */
 	gitIntegration?: any;
-	/**
-	 * platform-observability ① (sub-4): read-only session observation handle.
-	 * Backs the Platform 'sessions' resource (List parent sessions / Detail task
-	 * tree + recent steps). Injected on every SessionConfig by AgentService
-	 * (the service implements PlatformObserver); absent in test stubs → the
-	 * resource reports "observer not available" rather than crashing.
-	 */
-	platformObserver?: PlatformObserver;
 }
 
 // ---------------------------------------------------------------------------

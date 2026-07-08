@@ -46,8 +46,8 @@ import { PmService } from "../../src/server/pm-service.js";
 // replacement. This end-to-end file now drives flowTool — the same single
 // entry point the runtime uses. The pmService is the real PmService (so
 // archivist merge + status close are real, not mocked), exactly as before.
-import { flowTool } from "../../src/runtime/tools/flow-tool.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { flowTool } from "../../src/tools/flow-tool.js";
+import { getToolExecute, getToolFormat } from "../../src/tools/tool-factory.js";
 import { createFlowActions } from "../../src/server/flow-actions.js";
 import {
 	emitTransition,
@@ -157,6 +157,7 @@ async function callVerify(
 	opts: { covered?: boolean; reason?: string } = {},
 ): Promise<string> {
 	const execute = getToolExecute(flowTool)!;
+	const format = getToolFormat(flowTool)!;
 	// Forward covered/reason only when supplied — omitting covered exercises
 	// the degrade path (the tool asks the caller to supply a verdict).
 	const input: any = { action: "verify", id: reqId };
@@ -170,7 +171,12 @@ async function callVerify(
 		emitTransition,
 		pmService: pm,
 	});
-	return await execute(input, {
+	// tool-decoupling sub-4:Flow now returns ToolResult JSON; format it back to
+	// the LLM-facing string the existing assertions expect. CallerCtx shape =
+	// legacy ctx fields passed through (flowActions/contextBundle/etc. have the
+	// same names on CallerCtx).
+	const json = await execute(input, {
+		caller: "internal" as const,
 		workingDir: workspaceDir,
 		agentId: "agent-1",
 		emit: () => {},
@@ -179,6 +185,7 @@ async function callVerify(
 		pmService: pm,
 		contextBundle: { projectId: PROJECT_ID, workspaceDir, wikiRootNodeId: `root:${PROJECT_ID}` },
 	} as any);
+	return format(json);
 }
 
 // ─── 完整 pipeline(核心)──────────────────────────────────────────

@@ -20,10 +20,10 @@
 //
 
 import { describe, it, expect } from "vitest";
-import { projectActionSchema } from "../../src/runtime/tools/project-tool.js";
-import { agentRegistryActionSchema } from "../../src/runtime/tools/agent-registry.js";
-import { cronActionSchema } from "../../src/runtime/tools/cron-tool.js";
-import { wikiActionSchema } from "../../src/runtime/tools/wiki-tool.js";
+import { projectActionSchema } from "../../src/tools/project-tool.js";
+import { agentRegistryActionSchema } from "../../src/tools/agent-registry.js";
+import { cronActionSchema } from "../../src/tools/cron-tool.js";
+import { wikiActionSchema } from "../../src/tools/wiki-tool.js";
 import { z } from "zod";
 
 // Mirror the four flat schemas. If any regresses to z.discriminatedUnion at the

@@ -15,12 +15,12 @@
 // tracker accessors — the tool itself just dispatches.
 
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { taskGetTool } from "../../src/runtime/tools/task-get.js";
-import { taskKillTool } from "../../src/runtime/tools/task-kill.js";
-import { taskFinishTool } from "../../src/runtime/tools/task-finish.js";
-import { taskResumeTool } from "../../src/runtime/tools/task-resume.js";
-import { taskStartTool } from "../../src/runtime/tools/task-start.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { taskGetTool } from "../../src/tools/task-get.js";
+import { taskKillTool } from "../../src/tools/task-kill.js";
+import { taskFinishTool } from "../../src/tools/task-finish.js";
+import { taskResumeTool } from "../../src/tools/task-resume.js";
+import { taskStartTool } from "../../src/tools/task-start.js";
+import { getToolExecute, getToolFormat } from "../../src/tools/tool-factory.js";
 import { SubagentDelegator } from "../../src/runtime/subagent-delegator.js";
 import {
 	getTurnSeq,
@@ -33,10 +33,29 @@ import {
 import type { TaskInfo } from "../../src/runtime/types.js";
 
 const execGet = getToolExecute(taskGetTool)!;
+const fmtGet = getToolFormat(taskGetTool)!;
 const execKill = getToolExecute(taskKillTool)!;
+const fmtKill = getToolFormat(taskKillTool)!;
 const execFinish = getToolExecute(taskFinishTool)!;
+const fmtFinish = getToolFormat(taskFinishTool)!;
 const execResume = getToolExecute(taskResumeTool)!;
+const fmtResume = getToolFormat(taskResumeTool)!;
 const execStart = getToolExecute(taskStartTool)!;
+const fmtStart = getToolFormat(taskStartTool)!;
+
+/**
+ * tool-decoupling sub-4:the Task family now returns ToolResult JSON. Tests
+ * historically asserted on the LLM-facing string. Wrap each exec so it
+ * returns format(JSON) — same string the LLM saw pre-sub-4. Two flavors:
+ * - run*(input, ctx): formatted text (existing assertions).
+ * - json*(input, ctx): raw ToolResult (for tests that JSON.parse the body).
+ */
+const runGet = (i: any, c: any) => execGet(i, c).then(fmtGet);
+const jsonGet = (i: any, c: any) => execGet(i, c).then((r: any) => (r.ok ? r.data.text : r.error));
+const runKill = (i: any, c: any) => execKill(i, c).then(fmtKill);
+const runFinish = (i: any, c: any) => execFinish(i, c).then(fmtFinish);
+const runResume = (i: any, c: any) => execResume(i, c).then(fmtResume);
+const runStart = (i: any, c: any) => execStart(i, c).then(fmtStart);
 
 /** Build a TaskInfo with sensible defaults; callers override fields. */
 function task(over: Partial<TaskInfo> = {}): TaskInfo {
@@ -53,14 +72,49 @@ function task(over: Partial<TaskInfo> = {}): TaskInfo {
 	} as TaskInfo;
 }
 
+/**
+ * tool-decoupling sub-4:migrated Task 工具族读 callerCtx.delegateFns.*
+ * (not legacy ctx.*). build a CallerCtx-shape ctx that bridges the legacy
+ * fields the tests pass (getTaskResult / stopTask / abandonTask / etc.) into
+ * delegateFns, and resolveAgent into agentResolvers. Mirrors what
+ * ctxToCallerCtx does in production.
+ */
 function ctxWith(tasks: Record<string, TaskInfo>, extra: Record<string, any> = {}) {
+	const delegateFns: any = {
+		getTaskResult: (id: string) => tasks[id] ?? null,
+	};
+	// Bridge every legacy field the test supplies into delegateFns / agentResolvers.
+	const agentResolvers: any = {};
+	for (const [k, v] of Object.entries(extra)) {
+		if (["getTaskResult", "listTasks", "stopTask", "abandonTask", "acknowledgeTask",
+			"requestTaskFinish", "resumeTaskBackground", "getTaskRecentCalls",
+			"runBackground", "delegateTask", "delegateTaskBackground",
+			"suspendUntilWake", "beginWait", "endWait", "setWaitStartedAt",
+			"setToolCallTaskId"].includes(k)) {
+			delegateFns[k] = v;
+		} else if (["resolveAgent", "resolveSubagentTarget", "subagents"].includes(k)) {
+			agentResolvers[k] = v;
+		}
+	}
 	return {
+		caller: "internal" as const,
 		agentId: "caller",
 		workingDir: ".",
-		getTaskResult: (id: string) => tasks[id] ?? null,
-		...extra,
+		delegateFns,
+		agentResolvers,
+		// Drop the keys we already bridged so they don't linger as stray fields.
+		...Object.fromEntries(Object.entries(extra).filter(([k]) =>
+			!["getTaskResult", "listTasks", "stopTask", "abandonTask", "acknowledgeTask",
+			  "requestTaskFinish", "resumeTaskBackground", "getTaskRecentCalls",
+			  "runBackground", "delegateTask", "delegateTaskBackground",
+			  "suspendUntilWake", "beginWait", "endWait", "setWaitStartedAt",
+			  "setToolCallTaskId", "resolveAgent", "resolveSubagentTarget", "subagents"].includes(k)
+		)),
 	} as any;
 }
+
+// (run*/json* wrappers above replace the pre-sub-4 string-return path; no
+// extra helper needed.)
 
 // ─── TaskGet (3 status branches) ─────────────────────────────────────────
 
@@ -75,7 +129,7 @@ describe("TaskGet — running branch (case 4)", () => {
 			{ t1: task({ status: "running", currentTool: "Edit" }) },
 			{ getTaskRecentCalls: (_id: string, n?: number) => calls.slice(0, n ?? 3) },
 		);
-		const r = await execGet({ task_id: "t1" }, ctx);
+		const r = await runGet({ task_id: "t1" }, ctx);
 		const parsed = JSON.parse(r);
 		expect(parsed.status).toBe("running");
 		expect(parsed.current_tool).toBe("Edit");
@@ -90,7 +144,7 @@ describe("TaskGet — running branch (case 4)", () => {
 			{ t1: task({ status: "running" }) },
 			{ getTaskRecentCalls: () => [] },
 		);
-		const parsed = JSON.parse(await execGet({ task_id: "t1" }, ctx));
+		const parsed = JSON.parse(await jsonGet({ task_id: "t1" }, ctx));
 		expect(parsed.recent_calls).toEqual([]);
 	});
 });
@@ -101,7 +155,7 @@ describe("TaskGet — interrupted branch (case 6)", () => {
 			{ t1: task({ status: "interrupted", startedAt: Date.now() - 5000, currentTool: "Grep" }) },
 			{ getTaskRecentCalls: () => [] },
 		);
-		const parsed = JSON.parse(await execGet({ task_id: "t1" }, ctx));
+		const parsed = JSON.parse(await jsonGet({ task_id: "t1" }, ctx));
 		expect(parsed.status).toBe("interrupted");
 		expect(parsed.marker).toBe("[interrupted by restart]");
 		expect(parsed.waited_s).toBeGreaterThanOrEqual(5);
@@ -119,7 +173,7 @@ describe("TaskGet — completed branch (case 5)", () => {
 		const ctx = ctxWith(tasks, {
 			acknowledgeTask: (id: string) => { delete tasks[id]; return true; },
 		});
-		const parsed = JSON.parse(await execGet({ task_id: "t1" }, ctx));
+		const parsed = JSON.parse(await jsonGet({ task_id: "t1" }, ctx));
 		expect(parsed.status).toBe("completed");
 		expect(parsed.result).toBe("ALL DONE");
 		expect(parsed.acknowledged).toBe(true);
@@ -132,13 +186,13 @@ describe("TaskGet — completed branch (case 5)", () => {
 			{ t1: task({ status: "completed", result: "x", completedAt: Date.now() }) },
 			{ acknowledgeTask: () => false },
 		);
-		const parsed = JSON.parse(await execGet({ task_id: "t1" }, ctx));
+		const parsed = JSON.parse(await jsonGet({ task_id: "t1" }, ctx));
 		expect(parsed.acknowledged).toBe(false);
 		expect(parsed.acknowledge_warning).toBeTruthy();
 	});
 
 	test("not-found task → friendly not-found string", async () => {
-		const r = await execGet({ task_id: "nope" }, ctxWith({}));
+		const r = await runGet({ task_id: "nope" }, ctxWith({}));
 		expect(r).toMatch(/not found/i);
 	});
 });
@@ -152,7 +206,7 @@ describe("TaskKill", () => {
 			{ t1: task({ status: "running" }) },
 			{ stopTask: (id: string) => { killedId = id; return true; } },
 		);
-		const r = await execKill({ task_id: "t1" }, ctx);
+		const r = await runKill({ task_id: "t1" }, ctx);
 		expect(killedId).toBe("t1");
 		expect(r).toMatch(/killed/i);
 	});
@@ -163,20 +217,20 @@ describe("TaskKill", () => {
 			{ t1: task({ status: "interrupted" }) },
 			{ abandonTask: (id: string) => { abandonedId = id; return true; } },
 		);
-		const r = await execKill({ task_id: "t1" }, ctx);
+		const r = await runKill({ task_id: "t1" }, ctx);
 		expect(abandonedId).toBe("t1");
 		expect(r).toMatch(/abandoned/i);
 	});
 
 	test("terminal → points at TaskGet (not killable)", async () => {
 		const ctx = ctxWith({ t1: task({ status: "completed", completedAt: Date.now() }) });
-		const r = await execKill({ task_id: "t1" }, ctx);
+		const r = await runKill({ task_id: "t1" }, ctx);
 		expect(r).toMatch(/terminal/i);
 		expect(r).toMatch(/TaskGet/i);
 	});
 
 	test("not-found → not found", async () => {
-		const r = await execKill({ task_id: "nope" }, ctxWith({}));
+		const r = await runKill({ task_id: "nope" }, ctxWith({}));
 		expect(r).toMatch(/not found/i);
 	});
 });
@@ -190,7 +244,7 @@ describe("TaskFinish — agent only", () => {
 			{ t1: task({ status: "running" }) },
 			{ requestTaskFinish: (id: string, o: any) => { captured = { id, o }; return true; } },
 		);
-		const r = await execFinish({ task_id: "t1", maxTurns: 3 }, ctx);
+		const r = await runFinish({ task_id: "t1", maxTurns: 3 }, ctx);
 		expect(captured.id).toBe("t1");
 		expect(captured.o.maxTurns).toBe(3);
 		expect(r).toMatch(/force-stop after 3/);
@@ -198,7 +252,7 @@ describe("TaskFinish — agent only", () => {
 
 	test("bash task → rejected (case 8)", async () => {
 		const ctx = ctxWith({ t1: task({ type: "bash", status: "running" }) });
-		const r = await execFinish({ task_id: "t1" }, ctx);
+		const r = await runFinish({ task_id: "t1" }, ctx);
 		expect(r).toMatch(/agent tasks only/i);
 		expect(r).toMatch(/TaskKill/i);
 	});
@@ -209,7 +263,7 @@ describe("TaskFinish — agent only", () => {
 describe("TaskResume — agent only + turn_seq guard", () => {
 	test("bash task → rejected (case 8)", async () => {
 		const ctx = ctxWith({ t1: task({ type: "bash", status: "interrupted" }) });
-		const r = await execResume({ task_id: "t1" }, ctx);
+		const r = await runResume({ task_id: "t1" }, ctx);
 		expect(r).toMatch(/agent tasks only/i);
 	});
 
@@ -218,7 +272,7 @@ describe("TaskResume — agent only + turn_seq guard", () => {
 			{ t1: task({ status: "running" }) },
 			{ resumeTaskBackground: () => "t1" },
 		);
-		const r = await execResume({ task_id: "t1" }, ctx);
+		const r = await runResume({ task_id: "t1" }, ctx);
 		expect(r).toMatch(/not interrupted/i);
 	});
 
@@ -228,7 +282,7 @@ describe("TaskResume — agent only + turn_seq guard", () => {
 			{ t1: task({ status: "interrupted" }) },
 			{ resumeTaskBackground: () => { fired = true; return "t1"; } },
 		);
-		const r = await execResume({ task_id: "t1" }, ctx);
+		const r = await runResume({ task_id: "t1" }, ctx);
 		expect(fired).toBe(true);
 		expect(r).toMatch(/resumed/i);
 		expect(r).toMatch(/non-blocking/i);
@@ -401,13 +455,13 @@ describe("TaskStart — explicit background entry (case 1)", () => {
 				getTaskResult: () => null,
 			},
 		);
-		const r = await execStart({ type: "shell", command: "npm test" }, ctx);
+		const r = await runStart({ type: "shell", command: "npm test" }, ctx);
 		expect(r).toMatch(/task_id: bg-1/);
 	});
 
 	test("type:shell missing command → error", async () => {
 		const ctx = ctxWith({}, { runBackground: () => "x" });
-		const r = await execStart({ type: "shell", command: "" }, ctx);
+		const r = await runStart({ type: "shell", command: "" }, ctx);
 		expect(r).toMatch(/command.*required/i);
 	});
 
@@ -419,13 +473,13 @@ describe("TaskStart — explicit background entry (case 1)", () => {
 				resolveAgent: () => ({ id: "c", subagents: [] }),
 			},
 		);
-		const r = await execStart({ type: "agent", task: "explore the codebase" }, ctx);
+		const r = await runStart({ type: "agent", task: "explore the codebase" }, ctx);
 		expect(r).toMatch(/task_id: sub-1/);
 	});
 
 	test("type:agent missing task → error", async () => {
 		const ctx = ctxWith({}, { delegateTaskBackground: () => "x", resolveAgent: () => ({ id: "c", subagents: [] }) });
-		const r = await execStart({ type: "agent", task: "" }, ctx);
+		const r = await runStart({ type: "agent", task: "" }, ctx);
 		expect(r).toMatch(/task.*required/i);
 	});
 
@@ -439,7 +493,7 @@ describe("TaskStart — explicit background entry (case 1)", () => {
 			},
 		);
 		// resolveAgent(dev-1) returns no target → "no longer exists" path
-		const r = await execStart({ type: "agent", task: "t", subagent: "Nope" }, ctx);
+		const r = await runStart({ type: "agent", task: "t", subagent: "Nope" }, ctx);
 		expect(r).toMatch(/no subagent named "Nope"/);
 	});
 });

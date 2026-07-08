@@ -1,13 +1,19 @@
 // Work 工具单元测试(project-flow — project 类三工具之一)
 //
-// 验证 Work action 工具的 create/update/delete/list/fire 经 ctx.management
-// (ManagementService work 方法)正确路由,字段映射 + required 字段校验 + 门控。
+// 验证 Work action 工具的 create/update/delete/list/fire 经 ManagementService
+// work 方法正确路由,字段映射 + required 字段校验 + 门控。
+//
+// tool-decoupling sub-3:工具迁新签名(execute(input, callerCtx) → ToolResult
+// + format)。测试改用 runTool helper 同时拿 JSON + 文本断言两边;management
+// 经 setManagementService 单例注册(决策 1:工具直读单例,不经 ctx)。
 
-import { describe, test, expect } from "vitest";
-import { workTool } from "../../src/runtime/tools/work-tool.js";
-import { getToolExecute, getToolMeta } from "../../src/runtime/tools/tool-factory.js";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { workTool } from "../../src/tools/work-tool.js";
+import { getToolMeta } from "../../src/tools/tool-factory.js";
+import { setManagementService } from "../../src/server/management-service.js";
+import { runTool } from "./helpers/tool-decoupling-helpers.js";
 
-function makeCtx(overrides: Record<string, any> = {}) {
+function makeMgmt() {
 	const calls: any[] = [];
 	const mgmt = {
 		createProjectWork: (pid: string, body: any) => {
@@ -30,23 +36,38 @@ function makeCtx(overrides: Record<string, any> = {}) {
 			return { status: "ok", sessionId: "sess-1" };
 		},
 	};
-	return { ctx: { management: mgmt, ...overrides }, calls };
+	return { mgmt, calls };
 }
 
-async function exec(input: any, ctxOverride: Record<string, any> = {}) {
-	const { ctx } = makeCtx(ctxOverride);
-	const execute = getToolExecute(workTool)!;
-	return execute(input, ctx as any);
+let activeMgmt: ReturnType<typeof makeMgmt> | null = null;
+
+beforeEach(() => {
+	activeMgmt = makeMgmt();
+	// 决策 1:工具直读 getManagementService() 单例。测试注册 mock。
+	setManagementService(activeMgmt.mgmt as any);
+});
+
+afterEach(() => {
+	setManagementService(undefined);
+	activeMgmt = null;
+});
+
+async function exec(input: any): Promise<string> {
+	// 返 format 后的文本(同 sub-3 前 agent 视角的 string 返值)。
+	const { text } = await runTool(workTool, input, { caller: "internal" });
+	return text;
 }
 
 describe("Work tool", () => {
 	test("create routes to createProjectWork with workName→name mapping", async () => {
 		const r = await exec({ action: "create", projectId: "p1", workName: "需求管理", actionPrompt: "do X", requiredTools: ["Flow"] });
 		expect(r).toContain("work-1");
-		const { ctx, calls } = makeCtx();
-		await getToolExecute(workTool)!({ action: "create", projectId: "p1", workName: "需求管理" }, ctx as any);
-		expect(calls[0].m).toBe("createProjectWork");
-		expect(calls[0].body.name).toBe("需求管理");
+		// 也验 JSON 边:execute 返 ToolResult,result 携带 store 返值。
+		const { json } = await runTool(workTool, { action: "create", projectId: "p1", workName: "需求管理" }, { caller: "internal" });
+		expect(json.ok).toBe(true);
+		expect((json.data as any).result.id).toBe("work-1");
+		expect(activeMgmt!.calls[0].m).toBe("createProjectWork");
+		expect(activeMgmt!.calls[0].body.name).toBe("需求管理");
 	});
 
 	test("create requires projectId + workName", async () => {
@@ -55,10 +76,9 @@ describe("Work tool", () => {
 	});
 
 	test("update builds a sparse patch (only supplied fields)", async () => {
-		const { ctx, calls } = makeCtx();
-		await getToolExecute(workTool)!({ action: "update", workId: "w1", enabled: false }, ctx as any);
-		expect(calls[0].m).toBe("updateProjectWork");
-		expect(calls[0].patch).toEqual({ enabled: false });
+		await runTool(workTool, { action: "update", workId: "w1", enabled: false }, { caller: "internal" });
+		expect(activeMgmt!.calls[0].m).toBe("updateProjectWork");
+		expect(activeMgmt!.calls[0].patch).toEqual({ enabled: false });
 	});
 
 	test("update requires workId", async () => {
@@ -83,9 +103,11 @@ describe("Work tool", () => {
 		expect(await exec({ action: "fire" })).toMatch(/workId/);
 	});
 
-	test("gating: no ctx.management → friendly error", async () => {
-		const r = await exec({ action: "list", projectId: "p1" }, { management: undefined });
-		expect(r).toMatch(/ctx.management/);
+	test("gating: no ManagementService singleton → friendly error", async () => {
+		// 撤销单例 → 工具优雅报错(不崩)。
+		setManagementService(undefined);
+		const r = await exec({ action: "list", projectId: "p1" });
+		expect(r).toMatch(/ManagementService/);
 	});
 
 	test("category is project (project class)", () => {

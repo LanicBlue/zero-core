@@ -47,13 +47,6 @@ import type {
 	OrchestrateManifestRecord,
 	DelegatedTaskRecord,
 	RuntimeTaskInfo,
-	PlatformSessionSummary,
-	PlatformSessionStep,
-	PlatformSessionDetail,
-	PlatformProviderStat,
-	PlatformProviderSeries,
-	PlatformProviderQueueEntry,
-	PlatformCronTodayItem,
 } from "./types.js";
 
 export interface WindowApi {
@@ -77,6 +70,17 @@ export interface WindowApi {
 	toolConfigGet: () => Promise<Record<string, Record<string, any>>>;
 	toolConfigSave: (config: Record<string, Record<string, any>>) => Promise<void>;
 	toolExecute: (toolName: string, input: Record<string, any>) => Promise<{ ok: boolean; result?: string; error?: string; elapsedMs: number }>;
+	/**
+	 * tool-decoupling sub-5(决策 4):UI 统一 dispatcher。取代 UI 用 REST ——
+	 * toolRun({tool, input, scope?, workingDir?}) → 后端 dispatchTool →
+	 * getToolExecute(tool)(input, {caller:"ui", ...}) → JSON。
+	 * 全工具暴露(无可见性策略);错误结构化返(UI 不崩)。
+	 */
+	toolRun: (
+		tool: string,
+		input: Record<string, any>,
+		opts?: { scope?: { projectId: string; readOnly?: boolean; allowedTools?: string[] }; workingDir?: string },
+	) => Promise<{ ok: boolean; result?: unknown; error?: string; elapsedMs: number }>;
 
 	// ── Providers ──
 	providersList: () => Promise<Provider[]>;
@@ -150,20 +154,11 @@ export interface WindowApi {
 		concurrencySnapshot: Record<string, { active: number; waiting: number }>;
 		lastUpdatedAt: number;
 	}>;
-	// platform-observability ① (sub-4): parent-session observation for the ③
-	// kanban. parents → left-column List (agent self-introspection + kanban share
-	// one source); detail → a session's task tree + last 3 steps (click-through).
-	sessionsParents: () => Promise<PlatformSessionSummary[]>;
-	sessionsDetail: (sessionId: string) => Promise<PlatformSessionDetail>;
-
-	// platform-observability ② (sub-5): provider observation for the ③ kanban.
-	// Same data the Platform 'providerStats' resource (text) serves to agents.
-	// providerStats → all-providers cumulative (KPI bar + combobox);
-	// providerUsage  → one provider's per-model time series (stacked chart);
-	// providerQueue  → one provider's live queued waiters (queue list).
-	providerStats: () => Promise<PlatformProviderStat[]>;
-	providerUsage: (provider: string, granularity: "hour" | "day", range: "24h" | "30d", model?: string) => Promise<PlatformProviderSeries>;
-	providerQueue: (provider: string) => Promise<PlatformProviderQueueEntry[]>;
+	// platform-observability ① ② ③ (sub-4/5/6): the six kanban data endpoints
+	// (sessionsParents / sessionsDetail / providerStats / providerUsage /
+	// providerQueue / cronsToday) now flow through the unified dispatcher
+	// (`toolRun`) instead of dedicated REST/IPC channels. The dedicated
+	// WindowApi members are REMOVED; DashboardPage unwraps toolRun results.
 
 	// ── Streaming events ──
 	onAgentEvent: (callback: (event: any) => void) => () => void;
@@ -335,8 +330,8 @@ export interface WindowApi {
 	cronsDelete: (id: string) => Promise<{ success: true }>;
 	cronsTrigger: (id: string) => Promise<{ success: true } | { error: string }>;
 	cronsListRuns: (cronId: string, limit?: number) => Promise<CronRunRecord[]>;
-	// platform-observability ③ (sub-6): today's planned cron fires (kanban right column).
-	cronsToday: () => Promise<PlatformCronTodayItem[]>;
+	// platform-observability ③ (sub-6): cronsToday REMOVED — the kanban reads
+	// today's fires via toolRun({tool:"Cron", input:{action:"today"}}).
 
 	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
 	orchestratePending: (filter?: { projectId?: string }) => Promise<OrchestratePlanRecord[]>;

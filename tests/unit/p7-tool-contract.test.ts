@@ -37,21 +37,21 @@ import { describe, test, expect } from "vitest";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { ALL_TOOLS } from "../../src/runtime/tools/index.js";
-import { getToolMeta } from "../../src/runtime/tools/tool-factory.js";
-import { orchestrateTool } from "../../src/runtime/tools/orchestrate-tool.js";
+import { ALL_TOOLS } from "../../src/tools/index.js";
+import { getToolMeta } from "../../src/tools/tool-factory.js";
+import { orchestrateTool } from "../../src/tools/orchestrate-tool.js";
 // project-flow F5: Flow replaces the retired CreateRequirement /
 // CreateRequirementWithDoc / verify tools (files deleted in F5). Old tool
 // names map to "Flow" via RENAMED_TOOLS back-compat.
-import { flowTool } from "../../src/runtime/tools/flow-tool.js";
+import { flowTool } from "../../src/tools/flow-tool.js";
 import { RENAMED_TOOLS } from "../../src/core/tool-registry.js";
-import { delegateTool } from "../../src/runtime/tools/agent.js";
-import { wikiTool } from "../../src/runtime/tools/wiki-tool.js";
-import { projectTool } from "../../src/runtime/tools/project-tool.js";
-import { workTool } from "../../src/runtime/tools/work-tool.js";
-import { agentRegistryTool } from "../../src/runtime/tools/agent-registry.js";
-import { cronTool } from "../../src/runtime/tools/cron-tool.js";
-import { createPlatformTools } from "../../src/runtime/mcp-tools/platform-tools.js";
+import { delegateTool } from "../../src/tools/agent.js";
+import { wikiTool } from "../../src/tools/wiki-tool.js";
+import { projectTool } from "../../src/tools/project-tool.js";
+import { workTool } from "../../src/tools/work-tool.js";
+import { agentRegistryTool } from "../../src/tools/agent-registry.js";
+import { cronTool } from "../../src/tools/cron-tool.js";
+import { createPlatformTools } from "../../src/tools/mcp/platform-tools.js";
 
 // ─── ① wiki-tools.ts 已删除 + ALL_TOOLS 无残留 ────────────────
 

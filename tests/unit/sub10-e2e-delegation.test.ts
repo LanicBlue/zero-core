@@ -59,9 +59,9 @@ import {
 	registerForceWaitHooks,
 	_resetForceWaitNudgeState,
 } from "../../src/runtime/hooks/force-wait-hooks.js";
-import { taskStartTool } from "../../src/runtime/tools/task-start.js";
-import { taskGetTool } from "../../src/runtime/tools/task-get.js";
-import { waitTool } from "../../src/runtime/tools/wait.js";
+import { taskStartTool } from "../../src/tools/task-start.js";
+import { taskGetTool } from "../../src/tools/task-get.js";
+import { waitTool } from "../../src/tools/wait.js";
 import type { TaskInfo } from "../../src/runtime/types.js";
 
 // Stub provider-factory BEFORE any import that pulls agent-loop transitively

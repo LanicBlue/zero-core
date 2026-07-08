@@ -39,11 +39,14 @@ import {
 } from "../../src/server/data-change-hub.js";
 import { ProjectWorkHookManager } from "../../src/server/project-work-hook-manager.js";
 import { createFlowActions } from "../../src/server/flow-actions.js";
-import { flowTool } from "../../src/runtime/tools/flow-tool.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
+import { flowTool } from "../../src/tools/flow-tool.js";
+import { getToolExecute, getToolFormat } from "../../src/tools/tool-factory.js";
 
 // Drive the action switch directly (bypasses the AI SDK wrapper + hooks).
-const execFlow = getToolExecute(flowTool)!;
+const __execFlow = getToolExecute(flowTool)!;
+const __fmtFlow = getToolFormat(flowTool)!;
+// tool-decoupling sub-4:Flow now returns ToolResult JSON; wrap to format(JSON) so existing string assertions hold.
+const execFlow = (i: any, c: any) => __execFlow(i, c).then(__fmtFlow);
 
 let tmpDir: string;
 let workspaceDir: string;

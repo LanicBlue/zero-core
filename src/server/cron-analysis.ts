@@ -404,6 +404,21 @@ export interface CronAnalysisDeps {
 	now?: () => number;
 }
 
+// tool-decoupling sub-6: process-wide CronAnalysisManager singleton.
+// Cron tool's 'today' action reads this directly (no ctx injection), same
+// pattern as getAgentService / getManagementService. server/index.ts calls
+// setCronAnalysisManager(inst) right after construction, before any tool call
+// (well before restoreAllSessions / REST mount). headless / non-zero session
+// → undefined → the 'today' action degrades to a friendly error (no crash).
+let _cronAnalysisManager: CronAnalysisManager | undefined;
+export function getCronAnalysisManager(): CronAnalysisManager | undefined {
+	return _cronAnalysisManager;
+}
+export function setCronAnalysisManager(m: CronAnalysisManager | undefined): void {
+	_cronAnalysisManager = m;
+}
+
+
 export class CronAnalysisManager {
 	private deps: CronAnalysisDeps;
 	/** cron.id → timer. One timer per enabled cron entry. */

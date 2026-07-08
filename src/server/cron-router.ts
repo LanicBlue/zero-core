@@ -68,19 +68,13 @@ export function createCronRouter(deps: {
 		res.json(rows);
 	});
 
-	/**
-	 * GET /today — platform-observability ③ (sub-6): today's planned cron fires
-	 * for the kanban's "今日任务" column. Walks enabled crons via cronManager
-	 * .listTodaysFires() (nextFireMs-based). MUST precede /:id so "today" isn't
-	 * captured as an id param. Same data the kanban reads via the crons:today IPC.
-	 */
-	router.get("/today", (_req, res) => {
-		try {
-			res.json(cronManager.listTodaysFires());
-		} catch (e) {
-			res.status(500).json({ error: (e as Error).message });
-		}
-	});
+	// platform-observability ③ (sub-6): GET /today is RETIRED. The ③ kanban now
+	// reads today's planned cron fires via the unified dispatcher —
+	// toolRun({tool:"Cron", input:{action:"today"}}) → the Cron tool's execute,
+	// which calls cronManager.listTodaysFires() directly (registered as the
+	// process-wide CronAnalysisManager singleton). The REST route is removed;
+	// no IPC channel maps to it anymore. (The /:id route below now needs no
+	// "/today" guard since today is no longer a path segment.)
 
 	/** GET /:id — get a single cron */
 	router.get("/:id", (req, res) => {

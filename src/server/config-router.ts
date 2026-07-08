@@ -28,8 +28,8 @@ import type { ToolRegistry } from "../core/tool-registry.js";
 import type { WorkspaceConfig } from "./workspace-config.js";
 import { loadWorkspaceConfig, saveWorkspaceConfig } from "./workspace-config.js";
 import { loadConfig, saveGlobalConfig, DEFAULT_GUIDELINES } from "../core/config.js";
-import { ALL_TOOLS } from "../runtime/tools/index.js";
-import { getToolInputFields } from "../runtime/tools/tool-factory.js";
+import { ALL_TOOLS } from "../tools/index.js";
+import { getToolInputFields } from "../tools/tool-factory.js";
 import { loadDeviceContext, saveDeviceContext, generateAndSaveDeviceContext } from "../core/device-context.js";
 
 export interface ConfigRouterDeps {

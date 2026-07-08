@@ -24,7 +24,7 @@
 // src/runtime/hooks/ — step lifecycle hook, registered by hooks/index.ts.
 
 import { HookRegistry } from "../../core/hook-registry.js";
-import { getSessionTodos, clearSessionTodos } from "../tools/todo-write.js";
+import { getSessionTodos, clearSessionTodos } from "../../tools/todo-write.js";
 
 export function registerTodoCleanupHooks(registry: HookRegistry = HookRegistry.getInstance()): void {
 	// Step 3B: migrated from PostTurnComplete to StepEnd. Per-step check means

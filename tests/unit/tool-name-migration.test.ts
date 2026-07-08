@@ -14,7 +14,7 @@ import { describe, expect, test, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildToolsSet } from "../../src/runtime/tools/index.js";
+import { buildToolsSet } from "../../src/tools/index.js";
 import { AgentService } from "../../src/server/agent-service.js";
 import { RENAMED_TOOLS } from "../../src/core/tool-registry.js";
 

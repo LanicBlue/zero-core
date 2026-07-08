@@ -27,9 +27,9 @@ import { SubagentDelegator } from "../../src/runtime/subagent-delegator.js";
 import { buildContextMessage } from "../../src/runtime/context-message.js";
 import { ToolRegistry } from "../../src/core/tool-registry.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
-import { ALL_TOOLS } from "../../src/runtime/tools/index.js";
-import { delegateTool } from "../../src/runtime/tools/agent.js";
-import { getToolName } from "../../src/runtime/tools/tool-factory.js";
+import { ALL_TOOLS } from "../../src/tools/index.js";
+import { delegateTool } from "../../src/tools/agent.js";
+import { getToolName } from "../../src/tools/tool-factory.js";
 import { BUILTIN_WORKFLOW_ROLES } from "../../src/server/builtin-role-templates.js";
 import { RENAMED_TOOLS } from "../../src/core/tool-registry.js";
 import type { ToolExecutionContext, SessionConfig, RuntimeCallbacks, AgentRuntime } from "../../src/runtime/types.js";
@@ -50,7 +50,7 @@ function readSrc(rel: string): string {
 
 describe("Agent delegation — single action tool (no per-subagent tools)", () => {
 	test("tools/index.ts buildToolsSet has NO subagentsTools channel anymore", () => {
-		const src = readSrc("../../src/runtime/tools/index.ts");
+		const src = readSrc("../../src/tools/index.ts");
 		expect(src).not.toMatch(/subagentsTools/);
 		expect(src).toMatch(/Object\.entries\(ALL_TOOLS\)/);
 	});
@@ -113,7 +113,7 @@ describe("Tool gating — single-layer toolPolicy (sub-D)", () => {
 	});
 
 	test("tools/index.ts no longer has a CONDITIONAL_TOOLS capability gate", () => {
-		const src = readSrc("../../src/runtime/tools/index.ts");
+		const src = readSrc("../../src/tools/index.ts");
 		// The map declaration and its buildToolsSet lookup are gone (comments may
 		// still mention it for historical context — that's fine).
 		expect(src).not.toMatch(/const CONDITIONAL_TOOLS/);

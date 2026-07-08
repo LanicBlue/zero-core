@@ -47,13 +47,6 @@ import type {
 	OrchestrateManifestRecord,
 	DelegatedTaskRecord,
 	RuntimeTaskInfo,
-	PlatformSessionSummary,
-	PlatformSessionStep,
-	PlatformSessionDetail,
-	PlatformProviderStat,
-	PlatformProviderSeries,
-	PlatformProviderQueueEntry,
-	PlatformCronTodayItem,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -143,30 +136,12 @@ export interface IpcChannelDefs {
 	"sessions:delete":  { params: [agentId: string, sessionId: string];           result: Ok | (Ok & { newSessionId: string }) };
 	"sessions:archive": { params: [agentId: string, sessionId: string];           result: Ok & { newSessionId: string } };
 	"sessions:metrics": { params: []; result: import("../server/session-metrics.js").AggregateMetrics & { sessions: Record<string, import("../server/session-metrics.js").SessionMetrics> } };
-	// platform-observability ① (sub-4): parent-session List + Detail for the ③
-	// kanban. Same data the Platform 'sessions' resource (text) serves to agents
-	// — two faces of one source. sessions:parents returns the left-column List
-	// (kanban hides sessionId); sessions:detail returns a session's live task
-	// tree (RuntimeTaskInfo[], same source as TaskList) + last 3 steps.
-	"sessions:parents": { params: [];                              result: PlatformSessionSummary[] };
-	"sessions:detail":  { params: [sessionId: string];             result: PlatformSessionDetail };
-
-	// platform-observability ② (sub-5): provider observation for the ③ kanban.
-	// Same data the Platform 'providerStats' resource (text) serves to agents —
-	// two faces of one source. (Note: singular `provider:` prefix — distinct
-	// from the plural `providers:` CRUD channels above.)
-	//   provider:stats  → all-providers cumulative JSON (KPI bar + combobox).
-	//   provider:usage  → one provider's per-model time series (stacked chart).
-	//   provider:queue  → one provider's live queued waiters (queue list).
-	"provider:stats":   { params: [];                                                                    result: PlatformProviderStat[] };
-	"provider:usage":   { params: [provider: string, granularity: "hour" | "day", range: "24h" | "30d", model?: string]; result: PlatformProviderSeries };
-	"provider:queue":   { params: [provider: string];                                                   result: PlatformProviderQueueEntry[] };
-
-	// platform-observability ③ (sub-6): today's planned cron fires for the ③
-	// kanban's right column. Walks enabled crons, computes each one's next fire
-	// slot inside today's local calendar day via nextFireMs, and classifies the
-	// type tag (work | cron | git-aware). Includes workId crons.
-	"crons:today":      { params: [];                                                                    result: PlatformCronTodayItem[] };
+	// platform-observability ① ② ③ (sub-4/5/6): the six kanban data channels
+	// (sessions:parents / sessions:detail / provider:stats / provider:usage /
+	// provider:queue / crons:today) are RETIRED — the ③ kanban now reads them
+	// via the unified dispatcher (`toolRun`). The channel defs below are
+	// removed; no ipcMain.handle maps to them, and the preload no longer
+	// exposes them.
 
 	// ── Chat ─────────────────────────────────────────────────
 	"chat:send":   { params: [text: string, agentId?: string, sessionId?: string];    result: Ok };

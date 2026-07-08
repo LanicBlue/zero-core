@@ -53,49 +53,24 @@
 //   the 25th; 30d keeps 30, drops the 31st).
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import express, { type Express } from "express";
-import { createServer, type Server } from "http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createPlatformTools } from "../../src/runtime/mcp-tools/platform-tools.js";
-import { getToolExecute } from "../../src/runtime/tools/tool-factory.js";
-import { createProviderRouter } from "../../src/server/provider-router.js";
-import { ProviderStore } from "../../src/server/provider-store.js";
+import { createPlatformTools } from "../../src/tools/mcp/platform-tools.js";
+import { getToolExecute, getToolFormat } from "../../src/tools/tool-factory.js";
 import { SessionDB } from "../../src/server/session-db.js";
 import { ProviderUsageStore, floorToHourBucket } from "../../src/server/provider-usage-store.js";
-import { ConcurrencyQueue } from "../../src/runtime/concurrency-queue.js";
 import { ProviderConcurrencyManager } from "../../src/runtime/provider-concurrency-manager.js";
-import { AgentService } from "../../src/server/agent-service.js";
+import { AgentService, setAgentService, getAgentService } from "../../src/server/agent-service.js";
 import { SessionManager } from "../../src/server/session-manager.js";
 import type { PlatformProviderStat } from "../../src/runtime/types.js";
+import type { CallerCtx, ToolResult } from "../../src/tools/types.js";
 import { TIER_P1, TIER_P2 } from "../../src/runtime/concurrency-context.js";
 
-// ---------------------------------------------------------------------------
-// HTTP helpers (lifted from sub-4)
-// ---------------------------------------------------------------------------
-
-function listen(app: Express): Promise<{ server: Server; port: number }> {
-	return new Promise((resolve) => {
-		const server = createServer(app);
-		server.listen(0, () => {
-			const addr = server.address() as { port: number };
-			resolve({ server, port: addr.port });
-		});
-	});
-}
-
-function close(server: Server): Promise<void> {
-	return new Promise((resolve) => server.close(resolve));
-}
-
-async function request(port: number, method: string, path: string): Promise<{ status: number; data: any }> {
-	const resp = await fetch(`http://localhost:${port}${path}`, { method });
-	const text = await resp.text();
-	try { return { status: resp.status, data: JSON.parse(text) }; }
-	catch { return { status: resp.status, data: text }; }
-}
+// tool-decoupling sub-6: the HTTP helpers (express server + listen/close/
+// request) are gone — the retired REST routes (/api/providers/stats|usage|
+// queue) are no longer exercised. The tool execute() is the single source.
 
 // ---------------------------------------------------------------------------
 // Mock PlatformObserver / agentService (for the text-face #1 and #3 paths)
@@ -216,25 +191,52 @@ function makeAgentServiceHarness(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Acceptance #1 — Platform providerStats text format
+// Acceptance #1 — Platform providerStats
+//
+// tool-decoupling sub-2: execute returns STRUCTURED ToolResult JSON (stats
+// array); the text face is the tool's format(). The tool reads the
+// process-wide AgentService singleton (setAgentService) — no ctx injection.
+// These tests drive execute() (assert JSON) + format() (assert text).
 // ---------------------------------------------------------------------------
 
-describe("acceptance-5 #1 — Platform providerStats text format", () => {
-	test("each provider line carries enabled / in-flight / queue / tokens / calls / err% / avg latency", async () => {
-		const tools = createPlatformTools();
-		const Platform = (tools as any).Platform;
-		const exec = getToolExecute(Platform);
-		const out = await exec(
-			{ resource: "providerStats" },
-			{ platformObserver: observerWithStats(makeStatRows()) } as any,
-		);
-		expect(typeof out).toBe("string");
+describe("acceptance-5 #1 — Platform providerStats JSON + text format", () => {
+	const callerCtx: CallerCtx = { caller: "internal" };
+	let prev: unknown;
+	beforeEach(() => {
+		prev = getAgentService();
+	});
+	afterEach(() => {
+		setAgentService(prev as any);
+	});
 
-		// Only provider-data lines start with the provider name + " · " (the
-		// header line "Providers (N):" and the legend lines use different
-		// separators / no leading provider name).
+	/** Install an agentService-shaped mock returning the given stat rows. */
+	function withStats(rows: PlatformProviderStat[]): void {
+		setAgentService(observerWithStats(rows) as any);
+	}
+
+	test("JSON shape { ok, data:{ stats } } + text line carries enabled / in-flight / queue / tokens / calls / err% / avg latency", async () => {
+		withStats(makeStatRows());
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const fmt = getToolFormat((tools as any).Platform)!;
+
+		const json = await exec({ resource: "providerStats" }, callerCtx) as ToolResult;
+		// JSON: well-formed + both providers present (enabled + disabled).
+		expect(json.ok).toBe(true);
+		const stats = (json.data as any).stats as PlatformProviderStat[];
+		expect(Array.isArray(stats)).toBe(true);
+		expect(stats).toHaveLength(2);
+		const byName = Object.fromEntries(stats.map((s) => [s.name, s]));
+		expect(byName.OpenAI.enabled).toBe(true);
+		expect(byName.OpenAI.inFlight).toBe(2);
+		expect(byName.OpenAI.calls).toBe(100);
+		expect(byName["Local-Ollama"].enabled).toBe(false);
+
+		// Text face (format) — full column contract.
+		const text = fmt(json);
+		expect(typeof text).toBe("string");
 		const rows = makeStatRows().map((r) => r.name);
-		const lines = (out as string).split("\n").filter((l) => rows.some((n) => l.startsWith(n + " · ")) || rows.some((n) => l.startsWith(n + " ")));
+		const lines = text.split("\n").filter((l) => rows.some((n) => l.startsWith(n + " · ")) || rows.some((n) => l.startsWith(n + " ")));
 		expect(lines.length).toBe(2);
 
 		// The enabled provider line — assert EVERY required field appears.
@@ -253,39 +255,39 @@ describe("acceptance-5 #1 — Platform providerStats text format", () => {
 	});
 
 	test("one line per provider — ALL providers incl. disabled (no row dropped)", async () => {
+		withStats(makeStatRows());
 		const tools = createPlatformTools();
-		const exec = getToolExecute((tools as any).Platform);
-		const out = (await exec(
-			{ resource: "providerStats" },
-			{ platformObserver: observerWithStats(makeStatRows()) } as any,
-		)) as string;
+		const exec = getToolExecute((tools as any).Platform)!;
+		const fmt = getToolFormat((tools as any).Platform)!;
+		const text = fmt(await exec({ resource: "providerStats" }, callerCtx) as ToolResult);
 		// Both the enabled and disabled providers appear.
-		expect(out).toMatch(/OpenAI/);
-		expect(out).toMatch(/Local-Ollama/);
+		expect(text).toMatch(/OpenAI/);
+		expect(text).toMatch(/Local-Ollama/);
 	});
 
 	test("header labels cumulative tokens / calls / err% / avg latency (column contract)", async () => {
+		withStats(makeStatRows());
 		const tools = createPlatformTools();
-		const exec = getToolExecute((tools as any).Platform);
-		const out = (await exec(
-			{ resource: "providerStats" },
-			{ platformObserver: observerWithStats(makeStatRows()) } as any,
-		)) as string;
+		const exec = getToolExecute((tools as any).Platform)!;
+		const fmt = getToolFormat((tools as any).Platform)!;
+		const text = fmt(await exec({ resource: "providerStats" }, callerCtx) as ToolResult);
 		// The trailing legend line names every column — proves the contract.
-		expect(out).toMatch(/cumulative tokens/);
-		expect(out).toMatch(/cumulative calls/);
-		expect(out).toMatch(/err%/);
-		expect(out).toMatch(/avg latency/);
+		expect(text).toMatch(/cumulative tokens/);
+		expect(text).toMatch(/cumulative calls/);
+		expect(text).toMatch(/err%/);
+		expect(text).toMatch(/avg latency/);
 	});
 
 	test("empty state when no providers", async () => {
+		withStats([]);
 		const tools = createPlatformTools();
-		const exec = getToolExecute((tools as any).Platform);
-		const out = (await exec(
-			{ resource: "providerStats" },
-			{ platformObserver: observerWithStats([]) } as any,
-		)) as string;
-		expect(out).toMatch(/No AI providers configured/);
+		const exec = getToolExecute((tools as any).Platform)!;
+		const fmt = getToolFormat((tools as any).Platform)!;
+		// JSON: empty stats array (ok). Text: friendly empty-state.
+		const json = await exec({ resource: "providerStats" }, callerCtx) as ToolResult;
+		expect(json.ok).toBe(true);
+		expect((json.data as any).stats).toEqual([]);
+		expect(fmt(json)).toMatch(/No AI providers configured/);
 	});
 });
 
@@ -428,37 +430,32 @@ describe("acceptance-5 #2 — data sources correct (cumulative + concurrency)", 
 });
 
 // ---------------------------------------------------------------------------
-// Acceptance #3 — IPC provider:stats (REST /api/providers/stats)
+// Acceptance #3 — Platform providerStats resource (JSON face)
+//
+// tool-decoupling sub-6: the kanban's provider-stats no longer flows through
+// the retired REST route (/api/providers/stats) or IPC channel (provider:stats).
+// The Platform 'providerStats' resource execute() is now the single source.
 // ---------------------------------------------------------------------------
 
-describe("acceptance-5 #3 — IPC provider:stats (REST)", () => {
-	let server: Server;
-	let port: number;
+describe("acceptance-5 #3 — Platform providerStats resource (JSON)", () => {
+	const callerCtx: CallerCtx = { caller: "internal" };
+	let prev: unknown;
+	beforeEach(() => { prev = getAgentService(); });
+	afterEach(() => { setAgentService(prev as any); });
 
-	beforeEach(async () => {
-		const providerStore = { list: () => [] } as unknown as ProviderStore;
-		const app = express();
-		app.use("/api/providers", createProviderRouter(providerStore, undefined, {
-			listProviderStats: () => makeStatRows(),
-			getProviderUsageSeries: () => ({ provider: "", granularity: "hour", range: "24h", series: [] }),
-			getProviderQueue: () => [],
-		} as any));
-		const srv = await listen(app);
-		server = srv.server;
-		port = srv.port;
-	});
-
-	afterEach(async () => { await close(server); });
-
-	test("GET /api/providers/stats returns ALL providers cumulative JSON", async () => {
-		const { status, data } = await request(port, "GET", "/api/providers/stats");
-		expect(status).toBe(200);
-		expect(Array.isArray(data)).toBe(true);
-		expect(data.length).toBe(2);
-		const names = data.map((r: any) => r.name).sort();
+	test("Platform providerStats returns ALL providers cumulative JSON", async () => {
+		setAgentService(observerWithStats(makeStatRows()) as any);
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const json = await exec({ resource: "providerStats" }, callerCtx) as ToolResult;
+		expect(json.ok).toBe(true);
+		const stats = (json.data as any).stats;
+		expect(Array.isArray(stats)).toBe(true);
+		expect(stats.length).toBe(2);
+		const names = stats.map((r: any) => r.name).sort();
 		expect(names).toEqual(["Local-Ollama", "OpenAI"]);
 		// Each row carries the cumulative fields the kanban KPI bar reads.
-		for (const row of data) {
+		for (const row of stats) {
 			for (const f of ["name", "type", "enabled", "inFlight", "maxConcurrency", "queue", "tokens", "calls", "errors", "errRate", "latencyMs"]) {
 				expect(row).toHaveProperty(f);
 			}
@@ -467,17 +464,21 @@ describe("acceptance-5 #3 — IPC provider:stats (REST)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Acceptance #4 — IPC provider:usage (granularity hour/day + per-model series)
+// Acceptance #4 — Platform providerUsage resource (hour/day + per-model series)
+//
+// tool-decoupling sub-6: kanban usage now reads via Platform 'providerUsage'
+// resource (was REST /api/providers/usage + IPC provider:usage).
 // ---------------------------------------------------------------------------
 
-describe("acceptance-5 #4 — IPC provider:usage (hour/day + per-model series)", () => {
+describe("acceptance-5 #4 — Platform providerUsage resource (hour/day + per-model series)", () => {
+	const callerCtx: CallerCtx = { caller: "internal" };
 	let dir: string;
 	let sessionDb: SessionDB;
 	let usageStore: ProviderUsageStore;
-	let server: Server;
-	let port: number;
+	let svc: AgentService;
+	let prev: unknown;
 
-	beforeEach(async () => {
+	beforeEach(() => {
 		dir = mkdtempSync(join(tmpdir(), "po-sub5-usage-"));
 		sessionDb = new SessionDB(join(dir, "sessions.db"));
 		usageStore = new ProviderUsageStore(sessionDb.getDb());
@@ -500,30 +501,29 @@ describe("acceptance-5 #4 — IPC provider:usage (hour/day + per-model series)",
 			usageStore.upsert({ provider: "OpenAI", model: "gpt-4", hourBucket: hour, source: "work", calls: 1, inputTokens: 100, outputTokens: 50 });
 		}
 
-		// REST face backed by the REAL AgentService prototype.
+		// Tool face backed by the REAL AgentService prototype.
 		const concurrencyManager = new ProviderConcurrencyManager();
-		const svc = makeAgentServiceHarness({
+		svc = makeAgentServiceHarness({
 			db: sessionDb,
 			concurrencyManager,
 			sessionManager: { getProviderUsageStore: () => usageStore },
 		});
-		const providerStore = { list: () => [] } as unknown as ProviderStore;
-		const app = express();
-		app.use("/api/providers", createProviderRouter(providerStore, undefined, svc as any));
-		const srv = await listen(app);
-		server = srv.server;
-		port = srv.port;
+		prev = getAgentService();
+		setAgentService(svc);
 	});
 
-	afterEach(async () => {
-		await close(server);
+	afterEach(() => {
+		setAgentService(prev as any);
 		try { sessionDb.close(); } catch { /* best-effort */ }
 		rmSync(dir, { recursive: true, force: true });
 	});
 
 	test("granularity=hour keeps ~24 buckets; per-bucket per-model series", async () => {
-		const { status, data } = await request(port, "GET", "/api/providers/usage?provider=OpenAI&granularity=hour&range=24h");
-		expect(status).toBe(200);
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const json = await exec({ resource: "providerUsage", provider: "OpenAI", granularity: "hour", range: "24h" }, callerCtx) as ToolResult;
+		expect(json.ok).toBe(true);
+		const data = json.data as any;
 		expect(data.provider).toBe("OpenAI");
 		expect(data.granularity).toBe("hour");
 		expect(data.range).toBe("24h");
@@ -545,8 +545,10 @@ describe("acceptance-5 #4 — IPC provider:usage (hour/day + per-model series)",
 	});
 
 	test("granularity=day keeps ≤30 buckets (30d cutoff drops the 31st)", async () => {
-		const { status, data } = await request(port, "GET", "/api/providers/usage?provider=OpenAI&granularity=day&range=30d");
-		expect(status).toBe(200);
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const json = await exec({ resource: "providerUsage", provider: "OpenAI", granularity: "day", range: "30d" }, callerCtx) as ToolResult;
+		const data = json.data as any;
 		expect(data.granularity).toBe("day");
 		// gpt-4 day series: 31 days seeded, but range=30d keeps ≤30.
 		const gpt4 = data.series.find((s: any) => s.model === "gpt-4");
@@ -560,7 +562,10 @@ describe("acceptance-5 #4 — IPC provider:usage (hour/day + per-model series)",
 	});
 
 	test("per-model series are SEPARATE (not merged) — stacked-chart ready", async () => {
-		const { data } = await request(port, "GET", "/api/providers/usage?provider=OpenAI&granularity=hour&range=24h");
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const json = await exec({ resource: "providerUsage", provider: "OpenAI", granularity: "hour", range: "24h" }, callerCtx) as ToolResult;
+		const data = json.data as any;
 		// Two distinct model series; the chart stacks them per bucket.
 		expect(data.series.length).toBe(2);
 		const byModel = new Set(data.series.map((s: any) => s.model));
@@ -569,31 +574,42 @@ describe("acceptance-5 #4 — IPC provider:usage (hour/day + per-model series)",
 	});
 
 	test("model filter narrows to a single series", async () => {
-		const { data } = await request(port, "GET", "/api/providers/usage?provider=OpenAI&granularity=hour&range=24h&model=gpt-4");
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const json = await exec({ resource: "providerUsage", provider: "OpenAI", granularity: "hour", range: "24h", model: "gpt-4" }, callerCtx) as ToolResult;
+		const data = json.data as any;
 		// Filtered to gpt-4 only.
 		const models = data.series.map((s: any) => s.model);
 		expect(models).toEqual(["gpt-4"]);
 	});
 
-	test("missing provider param → 400", async () => {
-		const { status } = await request(port, "GET", "/api/providers/usage?granularity=hour&range=24h");
-		expect(status).toBe(400);
+	test("missing provider param → tool returns { ok:false, error } (no 400 — dispatcher is JSON-shaped)", async () => {
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const json = await exec({ resource: "providerUsage", granularity: "hour", range: "24h" }, callerCtx) as ToolResult;
+		// Tool-layer contract: missing provider → structured {ok:false} (the
+		// dispatcher forwards this to the UI, which degrades — no HTTP status).
+		expect(json.ok).toBe(false);
+		expect(typeof json.error).toBe("string");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Acceptance #5 — IPC provider:queue (queued session list)
+// Acceptance #5 — Platform providerQueue resource (queued session list)
+//
+// tool-decoupling sub-6: kanban queue now reads via Platform 'providerQueue'
+// resource (was REST /api/providers/queue + IPC provider:queue).
 // ---------------------------------------------------------------------------
 
-describe("acceptance-5 #5 — IPC provider:queue (queued session list)", () => {
+describe("acceptance-5 #5 — Platform providerQueue resource (queued session list)", () => {
+	const callerCtx: CallerCtx = { caller: "internal" };
 	let dir: string;
 	let sessionDb: SessionDB;
 	let concurrencyManager: ProviderConcurrencyManager;
 	let svc: AgentService;
-	let server: Server;
-	let port: number;
+	let prev: unknown;
 
-	beforeEach(async () => {
+	beforeEach(() => {
 		dir = mkdtempSync(join(tmpdir(), "po-sub5-queue-"));
 		sessionDb = new SessionDB(join(dir, "sessions.db"));
 		concurrencyManager = new ProviderConcurrencyManager();
@@ -608,16 +624,12 @@ describe("acceptance-5 #5 — IPC provider:queue (queued session list)", () => {
 			concurrencyManager,
 			sessionManager: { getProviderUsageStore: () => undefined },
 		});
-		const providerStore = { list: () => [] } as unknown as ProviderStore;
-		const app = express();
-		app.use("/api/providers", createProviderRouter(providerStore, undefined, svc as any));
-		const srv = await listen(app);
-		server = srv.server;
-		port = srv.port;
+		prev = getAgentService();
+		setAgentService(svc);
 	});
 
-	afterEach(async () => {
-		await close(server);
+	afterEach(() => {
+		setAgentService(prev as any);
 		try { sessionDb.close(); } catch { /* best-effort */ }
 		rmSync(dir, { recursive: true, force: true });
 	});
@@ -630,14 +642,18 @@ describe("acceptance-5 #5 — IPC provider:queue (queued session list)", () => {
 		await Promise.resolve();
 		await new Promise<void>((r) => setImmediate(r));
 
-		const { status, data } = await request(port, "GET", "/api/providers/queue?provider=OpenAI");
-		expect(status).toBe(200);
-		expect(Array.isArray(data)).toBe(true);
-		expect(data.length).toBe(2);
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const json = await exec({ resource: "providerQueue", provider: "OpenAI" }, callerCtx) as ToolResult;
+		expect(json.ok).toBe(true);
+		const data = json.data as any;
+		expect(data.provider).toBe("OpenAI");
+		expect(Array.isArray(data.queue)).toBe(true);
+		expect(data.queue.length).toBe(2);
 		// P1 (sess-B) sorts before P2 (sess-A) per getWaiting's tier-asc ordering.
-		expect(data[0].sessionId).toBe("sess-B");
-		expect(data[1].sessionId).toBe("sess-A");
-		for (const entry of data) {
+		expect(data.queue[0].sessionId).toBe("sess-B");
+		expect(data.queue[1].sessionId).toBe("sess-A");
+		for (const entry of data.queue) {
 			expect(typeof entry.tier).toBe("number");
 			expect(typeof entry.waitedSince).toBe("number");
 		}
@@ -653,14 +669,19 @@ describe("acceptance-5 #5 — IPC provider:queue (queued session list)", () => {
 	});
 
 	test("empty queue → []", async () => {
-		const { status, data } = await request(port, "GET", "/api/providers/queue?provider=OpenAI");
-		expect(status).toBe(200);
-		expect(data).toEqual([]);
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const json = await exec({ resource: "providerQueue", provider: "OpenAI" }, callerCtx) as ToolResult;
+		expect(json.ok).toBe(true);
+		expect((json.data as any).queue).toEqual([]);
 	});
 
-	test("missing provider param → 400", async () => {
-		const { status } = await request(port, "GET", "/api/providers/queue");
-		expect(status).toBe(400);
+	test("missing provider param → tool returns { ok:false, error } (no 400 — dispatcher is JSON-shaped)", async () => {
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const json = await exec({ resource: "providerQueue" }, callerCtx) as ToolResult;
+		expect(json.ok).toBe(false);
+		expect(typeof json.error).toBe("string");
 	});
 });
 
@@ -709,18 +730,26 @@ describe("acceptance-5 #6 — disabled provider listed (marked, cumulative 0)", 
 	});
 
 	test("text renderer marks the disabled row 'disabled'", async () => {
-		// Reuse the real listProviderStats output → feed to the text renderer.
-		const stats = svc.listProviderStats!();
-		const tools = createPlatformTools();
-		const exec = getToolExecute((tools as any).Platform);
-		const out = (await exec(
-			{ resource: "providerStats" },
-			{ platformObserver: { listProviderStats: () => stats } } as any,
-		)) as string;
-		expect(out).toMatch(/Disabled-One/);
-		const disabledLine = out.split("\n").find((l) => l.startsWith("Disabled-One"))!;
-		expect(disabledLine).toMatch(/\bdisabled\b/);
-		expect(disabledLine).toMatch(/queue:0/);
+		// tool-decoupling sub-2: register the real harness svc as the singleton,
+		// then drive execute() → JSON → format() (no ctx injection).
+		const prev = getAgentService();
+		setAgentService(svc);
+		try {
+			const stats = svc.listProviderStats!();
+			const tools = createPlatformTools();
+			const exec = getToolExecute((tools as any).Platform)!;
+			const fmt = getToolFormat((tools as any).Platform)!;
+			const json = await exec({ resource: "providerStats" }, { caller: "internal" }) as ToolResult;
+			// JSON carries both providers; the disabled one has enabled=false.
+			expect((json.data as any).stats).toEqual(stats);
+			const out = fmt(json);
+			expect(out).toMatch(/Disabled-One/);
+			const disabledLine = out.split("\n").find((l) => l.startsWith("Disabled-One"))!;
+			expect(disabledLine).toMatch(/\bdisabled\b/);
+			expect(disabledLine).toMatch(/queue:0/);
+		} finally {
+			setAgentService(prev as any);
+		}
 	});
 });
 
