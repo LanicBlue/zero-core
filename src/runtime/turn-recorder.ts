@@ -152,6 +152,29 @@ export class TurnRecorder {
 		if (tb) tb.taskId = taskId;
 	}
 
+	/**
+	 * sub-9 (durable relative-timeout Wait): stamp the wall-clock startedAt onto
+	 * a Wait tool-call block, as a block-level field SIBLING to `args` (not
+	 * inside args — args is the tool's input, startedAt is execution metadata).
+	 * Persisted with the step row so the resume path can compute remaining
+	 * `timeout` across a restart. Mirrors setToolBlockTaskId. Best-effort no-op
+	 * when the block isn't found (recorder reset / no current step).
+	 */
+	setToolBlockStartedAt(toolCallId: string | undefined, name: string | undefined, startedAt: number): void {
+		let tb: any | undefined;
+		if (toolCallId) {
+			tb = [...this.currentStepBlocks].reverse().find(
+				(b: any) => b.type === "tool" && b.toolCallId === toolCallId,
+			);
+		}
+		if (!tb && name) {
+			tb = [...this.currentStepBlocks].reverse().find(
+				(b: any) => b.type === "tool" && b.name === name && b.status === "running",
+			);
+		}
+		if (tb) tb.startedAt = startedAt;
+	}
+
 	/** Record a successful tool result (legacy API — matches by name only). */
 	addToolResult(name: string, output: any): void {
 		const tb = this.findToolBlock(undefined, name);
@@ -336,6 +359,31 @@ export class TurnRecorder {
 		return this.blocks
 			.filter((b: any) => b.type === "tool")
 			.map((b: any) => ({ name: b.name, status: b.status }));
+	}
+
+	/**
+	 * platform-observability ① (sub-4): the last N steps' blocks, per step.
+	 * Returns completed steps (oldest→newest) + the in-progress current step,
+	 * each tagged with a 0-based stepSeq and `time` (wall-clock proxy = the
+	 * recorder's currentTurnGroup, since per-step timestamps aren't tracked).
+	 * Tool-bearing steps only is the CALLER's concern (AgentLoop.getRecentSteps
+	 * filters); this method returns every step's blocks verbatim. The current
+	 * (in-progress) step is included only if it has blocks.
+	 */
+	getRecentStepBlocks(n: number = 3): Array<{ stepSeq: number; blocks: any[]; time: number }> {
+		// Per-step wall-clock isn't tracked on StepData; the best live proxy is
+		// the capture moment (these are the N most recent steps, all near now).
+		// The caller (AgentLoop.getRecentSteps) surfaces this as `time`; the
+		// Platform 'sessions' resource renders it as relative time. Documented
+		// limitation — exact per-step timestamps are not a recorder concern.
+		const now = Date.now();
+		const all: Array<{ blocks: any[]; time: number }> = [];
+		for (const s of this.completedSteps) all.push({ blocks: s.blocks, time: now });
+		if (this.currentStepBlocks.length > 0) all.push({ blocks: this.currentStepBlocks, time: now });
+		const recent = all.slice(-n);
+		// stepSeq is 0-based within this run's step sequence (completedSteps then current).
+		const baseSeq = Math.max(0, all.length - recent.length);
+		return recent.map((s, i) => ({ stepSeq: baseSeq + i, blocks: s.blocks, time: s.time }));
 	}
 
 	// -----------------------------------------------------------------------

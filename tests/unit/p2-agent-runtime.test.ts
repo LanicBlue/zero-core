@@ -138,23 +138,26 @@ describe("Tool gating — single-layer toolPolicy (sub-D)", () => {
 // ─── 3. buildContextMessage content (snapshot-style) ─────
 
 describe("buildContextMessage — P2 sections (snapshot)", () => {
-	test("injects env + guidelines + wiki anchors", () => {
+	test("injects env + guidelines + recalled memories", () => {
+		// sub-7: wiki anchors moved into the cached `wiki-system-anchors` system
+		// section; the context channel is Recalled Memories only.
 		const out = buildContextMessage({
 			workspaceDir: "/proj",
 			guidelines: ["No emojis"],
-			wikiAnchorsContext: "### Project: Demo\n- Foo — summary",
 		});
 		expect(out).toContain("## Environment");
 		expect(out).toContain("/proj");
 		expect(out).toContain("## Guidelines");
 		expect(out).toContain("No emojis");
-		expect(out).toContain("## Wiki Anchors (context)");
-		expect(out).toContain("### Project: Demo");
+		expect(out).toContain("## Recalled Memories");
+		// No wiki-anchors section in the context block anymore.
+		expect(out).not.toContain("## Wiki Anchors");
 	});
 
 	test("current-task section removed (sub-2): field dropped, no header", () => {
 		// sub-2: resolveCurrentTask + ## Current Task removed (covered by the
-		// work-context hook's ## Requirement). Assert the field/section are gone.
+		// work-context system section's ## Requirement). Assert the field/section
+		// are gone.
 		const out = buildContextMessage({
 			guidelines: ["G"],
 			memoryContext: "mem-y",
@@ -162,14 +165,14 @@ describe("buildContextMessage — P2 sections (snapshot)", () => {
 		expect(out).not.toContain("## Current Task");
 	});
 
-	test("wiki anchors land in their own section after memory", () => {
+	test("recalled memories section always present (sub-7 补遗)", () => {
+		// sub-7: the `## Recalled Memories` section is ALWAYS emitted, even when
+		// memoryContext is empty/undefined (recall not wired yet). Content uses a
+		// placeholder when empty so the channel is structurally present.
 		const out = buildContextMessage({
-			memoryContext: "M",
-			wikiAnchorsContext: "W",
+			guidelines: ["G"],
 		});
-		const m = out!.indexOf("## Recalled Memories");
-		const w = out!.indexOf("## Wiki Anchors (context)");
-		expect(m).toBeLessThan(w);
+		expect(out).toContain("## Recalled Memories");
 	});
 
 	test("all sections combined — full content snapshot", () => {
@@ -177,14 +180,13 @@ describe("buildContextMessage — P2 sections (snapshot)", () => {
 			workspaceDir: "/proj",
 			guidelines: ["G1", "G2"],
 			memoryContext: "mem content",
-			wikiAnchorsContext: "wiki outline",
 		});
-		// Order: Environment, Guidelines, Recalled Memories, Wiki Anchors.
+		// Order: Environment, Guidelines, Recalled Memories (sub-7: Wiki Anchors
+		// moved to the system section).
 		const order = [
 			"## Environment",
 			"## Guidelines",
 			"## Recalled Memories",
-			"## Wiki Anchors (context)",
 		];
 		const idxs = order.map(h => out!.indexOf(h));
 		for (let i = 1; i < idxs.length; i++) {
@@ -193,6 +195,8 @@ describe("buildContextMessage — P2 sections (snapshot)", () => {
 		// Wrapped in <context> tag.
 		expect(out!.startsWith("<context>\n")).toBe(true);
 		expect(out!.trim().endsWith("</context>")).toBe(true);
+		// No wiki-anchors section in the context block anymore.
+		expect(out).not.toContain("## Wiki Anchors");
 	});
 });
 

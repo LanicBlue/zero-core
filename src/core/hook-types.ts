@@ -125,6 +125,15 @@ export interface PostToolUseFailureContext extends BaseHookContext {
 export interface TurnStartContext extends BaseHookContext {
 	/** The user message that started this turn. "(resumed)" on a resume turn. */
 	userMessage: string;
+	/**
+	 * platform-observability ②.1 (sub-1): the turn-source marker for this
+	 * turn (user|work|cron|background). Forwarded from SessionConfig.source by
+	 * agent-loop.run/resume. durable-hooks TurnStart reads it to persist on
+	 * turn_state.source via createTurnState. Optional on the context for
+	 * back-compat with test stubs that don't set it (durable-hooks defaults to
+	 * 'background' when absent).
+	 */
+	source?: import("../runtime/types.js").TurnSource;
 }
 
 /** TurnEnd: fires when a turn completes normally (turn boundary closure). */

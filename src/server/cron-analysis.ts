@@ -54,6 +54,7 @@ import type {
 	CronScheduleInterval,
 	CronScheduleOnce,
 	CronLastStatus,
+	PlatformCronTodayItem,
 	SessionContextBundle,
 	AgentRecord,
 } from "../shared/types.js";
@@ -268,8 +269,12 @@ function parseHHMM(time: string): [number, number] {
  * Compute the next fire timestamp (epoch ms) for any schedule relative to
  * `nowMs`. Returns null for inert schedules (interval everyMs<=0 with enabled
  * handled by caller, or malformed shapes) — caller treats null as "no fire".
+ *
+ * platform-observability ③ (sub-6): exported so the `crons:today` IPC can
+ * compute today's fire times without duplicating the mode-aware math. The
+ * kanban's "今日任务" column walks enabled crons and calls this per cron.
  */
-function nextFireMs(sched: CronSchedule, nowMs: number): number | null {
+export function nextFireMs(sched: CronSchedule, nowMs: number): number | null {
 	switch (sched.mode) {
 		case "once": {
 			const t = Date.parse(sched.at);
@@ -290,6 +295,75 @@ function nextFireMs(sched: CronSchedule, nowMs: number): number | null {
 /** Format an epoch ms as ISO 8601 for telemetry columns. */
 function iso(ms: number): string {
 	return new Date(ms).toISOString();
+}
+
+// ─── platform-observability ③ (sub-6): today-fire helpers ───────────────────
+// Used by listTodaysFires (CronAnalysisManager) to compute each cron's next
+// slot inside today's local calendar day. Kept module-local — only
+// listTodaysFires consumes them.
+
+function startOfLocalDay(nowMs: number): number {
+	const d = new Date(nowMs);
+	d.setHours(0, 0, 0, 0);
+	return d.getTime();
+}
+function endOfLocalDay(nowMs: number): number {
+	const d = new Date(nowMs);
+	d.setHours(23, 59, 59, 999);
+	return d.getTime();
+}
+
+/**
+ * Compute this cron's next fire slot that lands inside today's local day
+ * [dayStart, dayEnd]. Returns null when no slot lands today.
+ *   - once    → its single at-timestamp if it falls inside today.
+ *   - alarm   → nextFireMs from dayStart (so an already-passed morning alarm
+ *               still surfaces as "fired today"); accept if it lands in today.
+ *   - interval→ nextFireMs from now; the column shows the next upcoming slot
+ *               (multiple same-day fires are summarized via the `interval` hint,
+ *               not enumerated).
+ *
+ * Acceptance-6 #4: "interval 型显频率" — interval crons are listed with their
+ * interval hint even when the next slot is later today; fireTime is the next
+ * upcoming slot (or null only if everyMs<=0 / inert).
+ */
+function fireTimeToday(sched: CronSchedule, nowMs: number, dayStart: number, dayEnd: number): number | null {
+	switch (sched.mode) {
+		case "once": {
+			const t = Date.parse(sched.at);
+			if (!Number.isFinite(t)) return null;
+			return t >= dayStart && t <= dayEnd ? t : null;
+		}
+		case "alarm": {
+			// Anchor at dayStart so an alarm whose time already passed today
+			// still resolves to today's slot (not tomorrow's).
+			const fromDayStart = nextFireMs(sched, dayStart);
+			if (fromDayStart === null) return null;
+			return fromDayStart >= dayStart && fromDayStart <= dayEnd ? fromDayStart : null;
+		}
+		case "interval": {
+			if (!sched.everyMs || sched.everyMs <= 0) return null;
+			// Next upcoming slot from now; if it spills past today, the cron's
+			// next fire is tomorrow — show null but the row still lists with the
+			// interval hint so the user sees the recurring cadence.
+			const next = nextFireMs(sched, nowMs);
+			if (next === null) return null;
+			return next <= dayEnd ? next : null;
+		}
+		default:
+			return null;
+	}
+}
+
+/** Render everyMs as a short Chinese-frequency hint (e.g. "每 2h" / "每 30m"). */
+function formatEveryMs(everyMs: number): string {
+	const ms = Math.max(MIN_INTERVAL_MS, everyMs);
+	const min = Math.round(ms / 60000);
+	if (min < 60) return `每 ${min}m`;
+	const hr = Math.round(min / 60);
+	if (hr < 24) return `每 ${hr}h`;
+	const day = Math.round(hr / 24);
+	return `每 ${day}d`;
 }
 
 // ---------------------------------------------------------------------------
@@ -375,6 +449,71 @@ export class CronAnalysisManager {
 			"cron",
 			`Restored ${restored} enabled cron entr${restored === 1 ? "y" : "ies"}${missed > 0 ? `; ${missed} missed once disabled` : ""}`,
 		);
+	}
+
+	/**
+	 * platform-observability ③ (sub-6): today's planned cron fires, for the
+	 * kanban's "今日任务" column via the `crons:today` IPC. Walks enabled crons
+	 * and computes each one's next fire slot that lands inside TODAY's local
+	 * calendar day. Returns one PlatformCronTodayItem per cron (fireTime=null
+	 * when the cron won't fire today). Type tag: work (cron.workId) /
+	 * git-aware (prompt sentinel) / cron (default). label = work name when a
+	 * workId cron resolves, else cron.source or cron.id.
+	 *
+	 * "Today" = the host's local calendar day (startOfDay..endOfDay), in line
+	 * with how the user reads the kanban. For interval crons the next slot is
+	 * reported once plus an `interval` hint (e.g. "每 2h") — multiple same-day
+	 * fires are not enumerated to keep the column readable.
+	 */
+	listTodaysFires(): PlatformCronTodayItem[] {
+		const now = this.now();
+		const dayStart = startOfLocalDay(now);
+		const dayEnd = endOfLocalDay(now);
+		const workStore = this.deps.projectWorkStore;
+		const crons = this.deps.cronStore.listEnabled();
+		const out: PlatformCronTodayItem[] = [];
+		for (const cron of crons) {
+			const fireTime = fireTimeToday(cron.schedule, now, dayStart, dayEnd);
+			if (fireTime === null && cron.schedule.mode !== "interval") {
+				// alarm/once that has no slot today → still list with null so the
+				// user sees the cron exists but isn't firing today? Per design the
+				// column is "today's fires" — skip crons that won't fire today.
+				continue;
+			}
+			const type: PlatformCronTodayItem["type"] = cron.workId
+				? "work"
+				: isGitAwarePrompt(cron.prompt)
+					? "git-aware"
+					: "cron";
+			let label: string;
+			if (cron.workId) {
+				const work = workStore?.get(cron.workId);
+				label = work?.name ?? cron.source ?? cron.id;
+			} else if (cron.source) {
+				label = cron.source;
+			} else {
+				label = cron.id;
+			}
+			out.push({
+				cronId: cron.id,
+				agentId: cron.agentId,
+				fireTime,
+				interval: cron.schedule.mode === "interval" && cron.schedule.everyMs > 0
+					? formatEveryMs(cron.schedule.everyMs)
+					: undefined,
+				type,
+				label,
+				lastResult: cron.lastStatus,
+			});
+		}
+		// Earliest-fire first; nulls (won't fire today) sink to the bottom.
+		out.sort((a, b) => {
+			if (a.fireTime === null && b.fireTime === null) return a.label.localeCompare(b.label);
+			if (a.fireTime === null) return 1;
+			if (b.fireTime === null) return -1;
+			return a.fireTime - b.fireTime;
+		});
+		return out;
 	}
 
 	/**
@@ -769,14 +908,14 @@ export class CronAnalysisManager {
 				projectName: project?.name ?? "",
 				wikiStore: this.deps.wikiStore,
 				workId: cron.workId,
-			});
+			}, "cron");
 			// A 方案:session 正在跑 → skip,且不更新 lastGitRef(下次 cron 再试,避免漏处理变更)。
 			if (result?.skipped === "busy") {
 				log.debug("cron", `cron ${cron.id} skipped: session ${sessionId} busy(上一 turn 未完成),不更新 lastGitRef`);
 				newGitRef = undefined;
 			}
 		} else {
-			await this.deps.agentService.sendPrompt(effectivePrompt, activeAgent, sessionId);
+			await this.deps.agentService.sendPrompt(effectivePrompt, activeAgent, sessionId, "cron");
 		}
 		if (newGitRef) {
 			try {

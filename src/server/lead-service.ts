@@ -200,6 +200,7 @@ export class LeadService {
 				orchestrateManifestStore: this.orchestrateManifestStore,
 				gitIntegration: this.gitIntegration ?? undefined,
 			},
+			"work",
 		);
 
 		return sessionId;

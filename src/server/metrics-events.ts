@@ -86,12 +86,47 @@ export function createEventMetricsAdapter(sm: SessionManager): EventMetricsAdapt
 				}
 				case "usage": {
 					sm.recordTokenUsage(sessionId, (event as any).usage);
+					// sub-2: provider-layer rollup. The event carries provider/
+					// model/source (stamped at agent-loop finalizeOneStep). When
+					// absent (synthetic/test events), skip — session metrics
+					// above already recorded. Best-effort inside recordProviderUsage.
+					// (sub-2 补遗): durationMs (this step's wall-clock) rides the
+					// same event → folded into the per-provider process-local
+					// latency accumulator inside recordProviderUsage. Absent on
+					// synthetic/test events → skipped, latency unchanged.
+					const u = event as any;
+					if (u.provider && u.model && u.source) {
+						sm.recordProviderUsage({
+							provider: u.provider,
+							model: u.model,
+							source: u.source,
+							usage: u.usage,
+							durationMs: typeof u.durationMs === "number" ? u.durationMs : undefined,
+						});
+					}
 					break;
 				}
 				case "error": {
 					const errMsg = (event as any).error ?? "unknown";
 					toolsInFlight.delete(sessionId);
 					sm.trackSessionError(sessionId, String(errMsg));
+					// sub-2: failed step → errors +1 in provider_usage. The error
+					// event carries provider/model/source (stamped at agent-loop
+					// runWithRetry). calls/tokens intentionally left at 0 here —
+					// a failed step's usage typically didn't land (no usage
+					// event fired), and we only want to bump the error counter.
+					// When the fields are absent, skip (session error above still
+					// recorded).
+					const e = event as any;
+					if (e.provider && e.model && e.source) {
+						sm.recordProviderUsage({
+							provider: e.provider,
+							model: e.model,
+							source: e.source,
+							usage: { inputTokens: 0, outputTokens: 0 },
+							error: true,
+						});
+					}
 					break;
 				}
 			}

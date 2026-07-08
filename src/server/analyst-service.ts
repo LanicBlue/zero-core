@@ -117,7 +117,7 @@ export class AnalystService {
 		log.agent("Analyst: starting full analysis for project:", project.name, "agent:", agent.id);
 
 		try {
-			await this.agentService.sendPrompt(prompt, agent);
+			await this.agentService.sendPrompt(prompt, agent, undefined, "background");
 			// v0.8 (M0): lastAnalysisAt removed from ProjectRecord. The per
 			// (archivist, project) git scan cursor is owned by archivist in M5.
 			log.agent("Analyst: full analysis completed for:", project.name);
@@ -153,7 +153,7 @@ export class AnalystService {
 		log.agent("Analyst: starting incremental analysis for project:", project.name);
 
 		try {
-			await this.agentService.sendPrompt(prompt, agent);
+			await this.agentService.sendPrompt(prompt, agent, undefined, "background");
 			// v0.8 (M0): lastAnalysisAt removed (see runFullAnalysis note).
 			log.agent("Analyst: incremental analysis completed for:", project.name);
 		} catch (err) {
@@ -323,7 +323,7 @@ Output format:
 		try {
 			const agent = project ? this.resolveAnalystWork(project).agent : undefined;
 			if (agent) {
-				await this.agentService.sendPrompt(prompt, agent);
+				await this.agentService.sendPrompt(prompt, agent, undefined, "background");
 				// Read back the last assistant message from the session
 				const db = this.agentService.getDB();
 				const messages = db.getMessages
@@ -389,7 +389,7 @@ ${changedFiles.map(f => `- ${f}`).join("\n")}`;
 
 				try {
 					const agent = this.resolveAnalystWork(project).agent;
-					await this.agentService.sendPrompt(wikiPrompt, agent);
+					await this.agentService.sendPrompt(wikiPrompt, agent, undefined, "background");
 				} catch (err) {
 					log.error("analyst", `Wiki update failed during archive: ${(err as Error).message}`);
 				}

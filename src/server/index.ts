@@ -222,7 +222,14 @@ export async function startServer(options?: StartServerOptions) {
 	// / registerWorkflowContextHook / registerInputQueueHooks calls.
 	agentService.setHookDeps({
 		extractionDeps,
-		workflowContext: { projectStore, requirementStore, wikiStore, taskStepStore, projectWorkStore },
+	});
+	// sub-7 (work-context 拆解到三通道): the workflow-context stores are now
+	// injected here (the deleted workflow-context-hook used to consume them via
+	// setHookDeps.workflowContext; that field is gone). agent-service builds
+	// SessionConfig closures (workContextSystemSection / stepsProgressSection)
+	// from them — runtime never imports the stores directly.
+	agentService.setWorkContextStores({
+		projectStore, requirementStore, wikiStore, taskStepStore, projectWorkStore,
 	});
 
 	// v0.8 (P3): ManagementService (renamed from ZeroAdminService) —
@@ -577,7 +584,7 @@ export async function startServer(options?: StartServerOptions) {
 	}));
 
 	app.use("/api/agents", createAgentRouter({ agentStore, agentService, sessionDB }));
-	app.use("/api/providers", createProviderRouter(providerStore, reloadProviders));
+	app.use("/api/providers", createProviderRouter(providerStore, reloadProviders, agentService));
 	app.use("/api/templates", createTemplateRouter(templateStore, sessionDB));
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
 	app.use("/api/skills", createSkillRouter());
@@ -940,7 +947,7 @@ export async function startServer(options?: StartServerOptions) {
 						: undefined;
 					const wsDir = expandHome(agent?.workspaceDir || workspaceConfig.workspaceDir);
 					agentService.setWorkspaceDir(wsDir);
-					await agentService.sendPrompt(msg.text, agent);
+					await agentService.sendPrompt(msg.text, agent, undefined, "background");
 				} else if (msg.type === "abort") {
 					await agentService.abort();
 				}

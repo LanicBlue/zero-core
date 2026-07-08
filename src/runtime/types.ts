@@ -28,6 +28,175 @@ import type { DelegatedTaskRecord, SessionContextBundle } from "../shared/types.
 import type { HookWiringDeps } from "./hooks/index.js";
 
 // ---------------------------------------------------------------------------
+// platform-observability ②.1 (sub-1): turn source
+// ---------------------------------------------------------------------------
+/**
+ * The "source" that started a turn — feeds sub-3 priority + sub-2 usage-by-
+ * source dimension. Set by the entry that kicks the turn (chat-router=user,
+ * sendProjectPrompt=work, cron fireAgent=cron, delegated sub-loop / unspec'd
+ * callers=background). Persisted on turn_state.source, default 'background'
+ * for pre-migration rows + any caller that doesn't pass it (acceptance-1 6/7).
+ *
+ * type-only export — both the runtime layer (SessionConfig) and the service
+ * layer (session-db) reference it. Imported as `import type` where needed so
+ * there's no runtime cycle (session-db already imports shared types the same
+ * way).
+ */
+export type TurnSource = "user" | "work" | "cron" | "background";
+
+/** All valid TurnSource values, useful for validation + iteration. */
+export const TURN_SOURCES: readonly TurnSource[] = ["user", "work", "cron", "background"] as const;
+
+// ---------------------------------------------------------------------------
+// platform-observability ① (sub-4): read-only session observation seam
+// ---------------------------------------------------------------------------
+/**
+ * Read-only platform observation surface — the ONLY way the Platform 'sessions'
+ * resource (runtime/mcp-tools) reaches live session state without importing the
+ * server layer. Implemented by AgentService; injected onto every SessionConfig
+ * + mirrored to ToolExecutionContext so the Platform tool's execute() can call
+ * it through `ctx.platformObserver`. Same data the UI kanban (③) consumes via
+ * the IPC channels (sessions:parents / sessions:detail) — single source.
+ *
+ * Why a typed seam and not `ctx.agentService`: the runtime layer must not import
+ * the server module (conventions.md). The handle is a narrowing interface the
+ * service satisfies; the tool only sees the read methods it needs.
+ *
+ * All methods are READ-ONLY. status semantics (acceptance-4 #3):
+ *   running  — runStates has the session AND isBusy
+ *   waiting  — runStates has the session, !isBusy, AND waiting (Wait tool suspended)
+ *   idle     — otherwise (no runStates entry, or isBusy=false + waiting=false)
+ */
+export interface PlatformObserver {
+	/**
+	 * One row per PARENT agent (an agent that has an active/main `session_kind='chat'`
+	 * session — delegated sub-agent sessions are NOT parents; they back a task and
+	 * surface through TaskList/getRuntimeTaskTree). The natural filter is
+	 * db.getMainSession(agentId) which already excludes session_kind='delegated'.
+	 * Returns [] when agentStore is unavailable (early startup / tests).
+	 */
+	listParentSessions(): Array<PlatformSessionSummary>;
+	/**
+	 * Task tree for a session — verbatim getRuntimeTaskTree(sessionId) output
+	 * (same source as TaskList / UI TaskTree). Empty when the session has no
+	 * live loop yet.
+	 */
+	getSessionTaskTree(sessionId: string): TaskInfo[];
+	/**
+	 * Last N=3 step worth of tool-call blocks from the session's live loop
+	 * recorder, {name, argsBrief} only — NO tokens, NO output/result. Returns
+	 * [] when the loop is gone or has no tool calls yet.
+	 */
+	getSessionRecentSteps(sessionId: string, n?: number): Array<{ stepSeq: number; toolCalls: Array<{ name: string; argsBrief?: string }>; status: string; time: number }>;
+	// ─── platform-observability ② (sub-5): provider observation ────────────
+	// Same DI seam as the session methods above — AgentService implements these
+	// (it holds concurrencyManager + providerConfigs + sessionManager→
+	// getProviderUsageStore). Backs BOTH the Platform 'providerStats' resource
+	// (agent self-introspection, via ctx.platformObserver) AND the IPC channels
+	// provider:stats / provider:usage / provider:queue (③ kanban). Single source.
+	/**
+	 * One row per provider (ALL providers, including disabled — design ② / sub-5
+	 * wants the full list so the agent gets a platform-wide view; the ③ kanban
+	 * narrows via combobox). Combines static config (providers table) + live
+	 * concurrency (ConcurrencyQueue active/waiting) + cumulative usage
+	 * (ProviderUsageStore SUM). latency is N/A until sub-2's running-accumulator
+	 * is added (not yet built — design ②.2 leaves it process-local). Returns []
+	 * when no providers are configured.
+	 */
+	listProviderStats?(): Array<PlatformProviderStat>;
+	/**
+	 * Time series for ONE provider, bucketed by hour or day, optionally filtered
+	 * by model. Returns a separate series per model so the ③ kanban can stack
+	 * them (design ③). Empty when the provider has no usage in range.
+	 */
+	getProviderUsageSeries?(provider: string, granularity: "hour" | "day", range: "24h" | "30d", model?: string): PlatformProviderSeries;
+	/**
+	 * Current queue for ONE provider — the live ConcurrencyQueue.getWaiting()
+	 * snapshot (sessionId/agentId/tier/waitedSince). Empty when the provider has
+	 * no queue or no waiters. Backs the ③ kanban "排队中" list.
+	 */
+	getProviderQueue?(provider: string): Array<PlatformProviderQueueEntry>;
+}
+
+/**
+ * platform-observability ② (sub-5): one provider row for the 'providerStats'
+ * resource (text) + provider:stats IPC. Combines static config + live
+ * concurrency + cumulative usage. errRate is calls>0 ? errors/calls : 0.
+ * latencyMs is N/A until a process-local latency accumulator exists (sub-2 did
+ * NOT build one — provider_usage has no latency column; design ②.2 leaves
+ * latency process-local, not yet implemented).
+ */
+export interface PlatformProviderStat {
+	/** Provider name (key into providers table + concurrencyManager queues). */
+	name: string;
+	/** Provider type (openai/anthropic/gemini/openai-compatible/ollama/mock). */
+	type: string;
+	enabled: boolean;
+	/** Configured model count (providers.models length). */
+	modelCount: number;
+	/** Live in-flight requests (ConcurrencyQueue.getActiveCount). */
+	inFlight: number;
+	/** Configured max concurrency (ConcurrencyQueue.max). 0 when no limit set. */
+	maxConcurrency: number;
+	/** Live queued waiters (ConcurrencyQueue.getWaitingCount). */
+	queue: number;
+	/** Cumulative tokens (input + output + cache) from provider_usage SUM. */
+	tokens: number;
+	/** Cumulative call count from provider_usage SUM. */
+	calls: number;
+	/** Cumulative error count from provider_usage SUM. */
+	errors: number;
+	/** errors / calls (0 when calls=0). */
+	errRate: number;
+	/**
+	 * Average per-step latency in ms. N/A until a process-local latency
+	 * accumulator exists (sub-2 risk — not yet built). Renderers show "N/A".
+	 */
+	latencyMs: number | null;
+}
+
+/** platform-observability ② (sub-5): one model's time series for provider:usage. */
+export interface PlatformProviderSeries {
+	provider: string;
+	granularity: "hour" | "day";
+	range: "24h" | "30d";
+	model?: string;
+	/** One series per model (or a single "(all)" series when model is passed). */
+	series: Array<{
+		model: string;
+		points: Array<{
+			/** ISO hour (granularity=hour) or YYYY-MM-DD (granularity=day). */
+			bucket: string;
+			calls: number;
+			tokens: number;
+			errors: number;
+		}>;
+	}>;
+}
+
+/** platform-observability ② (sub-5): one queued waiter for provider:queue. */
+export interface PlatformProviderQueueEntry {
+	sessionId?: string;
+	agentId?: string;
+	/** Priority tier (1=highest). From turnSourceToTier (sub-3 ②.4). */
+	tier: number;
+	/** Wall-clock ms when the waiter entered the queue. */
+	waitedSince: number;
+}
+
+/** Row returned by PlatformObserver.listParentSessions — one parent agent session. */
+export interface PlatformSessionSummary {
+	agentId: string;
+	agentName?: string;
+	sessionId: string;
+	status: "running" | "waiting" | "idle";
+	/** Wall-clock ms of the last activity on this session (Date.now() basis). */
+	lastActivityAt: number;
+	/** Persisted turn count for this session (SessionMetrics.totalTurns). */
+	turns: number;
+}
+
+// ---------------------------------------------------------------------------
 // Stream events — must match the existing IPC contract
 // ---------------------------------------------------------------------------
 
@@ -86,6 +255,15 @@ export interface ErrorEvent {
 	sessionId?: string;
 	error: string;
 	errorClass?: ErrorClass;
+	/**
+	 * platform-observability ②.2 (sub-2): provider attribution so a failed
+	 * step's bucket gets errors +1 in the provider_usage rollup. Same fields
+	 * as UsageEvent. Optional — when absent the adapter skips the error bump
+	 * (session metrics still record the error).
+	 */
+	provider?: string;
+	model?: string;
+	source?: TurnSource;
 }
 
 export interface RetryAttemptEvent {
@@ -162,6 +340,28 @@ export interface UsageEvent {
 		cacheWriteTokens?: number;
 		reasoningTokens?: number;
 	};
+	/**
+	 * platform-observability ②.2 (sub-2): provider attribution for the
+	 * provider-layer usage rollup (`provider_usage` table). All three are
+	 * known at agent-loop finalizeOneStep (this.config.providerName/modelId +
+	 * turn source). Optional only for back-compat with synthetic events in
+	 * tests; production emits always set them. When absent, the server-side
+	 * adapter skips the provider rollup write (session metrics still record).
+	 */
+	provider?: string;
+	model?: string;
+	source?: TurnSource;
+	/**
+	 * platform-observability ②.2 (sub-2 补遗): this step's wall-clock duration
+	 * (model call → finalize), stamped at agent-loop finalizeOneStep from the
+	 * stepStartMs captured in executeStream's step loop. Folded into the
+	 * per-provider process-local latency accumulator by the server-side adapter
+	 * (metrics-events usage case → SessionManager.recordProviderUsage). NOT in
+	 * the DB (design ②.2: small volume, restart-safe). Optional — absent on
+	 * synthetic/test events and on the failed-step error path (whose latency is
+	 * not representative); the server skips when undefined.
+	 */
+	durationMs?: number;
 }
 
 export interface SessionInitMessage {
@@ -269,6 +469,16 @@ export interface SessionConfig {
 	 * input-queue / metrics).
 	 */
 	loopKind?: "main" | "delegated";
+	/**
+	 * platform-observability ②.1 (sub-1): the turn-source marker that this
+	 * loop's turns are stamped with. Set by the entry that builds the loop
+	 * (chat-router=user, sendProjectPrompt=work, cron fireAgent=cron, delegated
+	 * sub-loops / unspec'd=background). Carried on the config so the runtime
+	 * layer doesn't need to know about the entry — durable-hooks TurnStart
+	 * reads it from ctx.source (forwarded by agent-loop.run/resume) and
+	 * persists it via createTurnState. Defaults to 'background'.
+	 */
+	source?: TurnSource;
 	systemPrompt: string;
 	guidelines?: string[];
 	/**
@@ -368,6 +578,25 @@ export interface SessionConfig {
 	 */
 	wikiAnchors?: import("../shared/types.js").AgentRecord["wikiAnchors"];
 	/**
+	 * sub-7 (work-context 拆解到三通道): server-built closure that renders the
+	 * Project / Requirement / Wiki Baseline text for the **system** channel
+	 * (按需段,cacheBreak:false — re-read each turn but only injected when the
+	 * work-context policy / activeRequirement flips). The closure captures
+	 * projectStore / requirementStore / wikiStore + the per-work policy at
+	 * SessionConfig build time (agent-service) so the runtime layer never
+	 * imports server stores directly (mirrors wikiStore / wikiAnchors injection).
+	 *
+	 * Returns "" for non-work sessions → the system section is omitted
+	 * (SystemPromptAssembler drops empty sections).
+	 */
+	workContextSystemSection?: () => string;
+	/**
+	 * sub-7: server-built closure rendering the **Steps Progress** text for the
+	 * **workbench** channel (per-step). Same DI shape as workContextSystemSection.
+	 * Returns "" when there are no steps → the workbench section is omitted.
+	 */
+	stepsProgressSection?: () => string;
+	/**
 	 * v0.8 (P3): ManagementService handle for the domain action tools
 	 * (Project/Agent/Cron). Only set on zero sessions.
 	 *
@@ -383,6 +612,13 @@ export interface SessionConfig {
 	 * builds the loop (it owns loopKind="main").
 	 */
 	hookWiringDeps?: HookWiringDeps;
+	/**
+	 * platform-observability ① (sub-4): read-only session observation handle.
+	 * Injected on EVERY SessionConfig by AgentService (the service implements
+	 * PlatformObserver); the loop mirrors it to ToolExecutionContext so the
+	 * Platform 'sessions' resource can read live session state through ctx.
+	 */
+	platformObserver?: PlatformObserver;
 }
 
 // ---------------------------------------------------------------------------
@@ -529,6 +765,14 @@ export interface ToolExecutionContext {
 	 */
 	setToolCallTaskId?: (toolCallId: string, taskId: string) => void;
 	/**
+	 * sub-9 (durable relative-timeout Wait): stamp the wall-clock startedAt
+	 * onto the calling Wait tool's recorder block (sibling to `args`). Persisted
+	 * with the step so the resume path can compute remaining `timeout` across a
+	 * restart. Wired to TurnRecorder by AgentLoop. Best-effort no-op when not
+	 * wired (test stubs).
+	 */
+	setWaitStartedAt?: (toolCallId: string, startedAt: number) => void;
+	/**
 	 * Step 2E: resume a delegated task by taskId from the parent session's
 	 * resume path. Surfaces SubagentDelegator.resumeTask so a future parent-
 	 * side dangling-tool-call scanner can re-attach without re-invoking.
@@ -634,6 +878,14 @@ export interface ToolExecutionContext {
 	 * when git is unavailable).
 	 */
 	gitIntegration?: any;
+	/**
+	 * platform-observability ① (sub-4): read-only session observation handle.
+	 * Backs the Platform 'sessions' resource (List parent sessions / Detail task
+	 * tree + recent steps). Injected on every SessionConfig by AgentService
+	 * (the service implements PlatformObserver); absent in test stubs → the
+	 * resource reports "observer not available" rather than crashing.
+	 */
+	platformObserver?: PlatformObserver;
 }
 
 // ---------------------------------------------------------------------------

@@ -109,7 +109,7 @@ export class ProjectWorkRunner {
 			wikiStore: this.deps.wikiStore,
 			activeRequirementId: opts.requirementId,
 			workId: work.id,
-		});
+		}, "work");
 		if (result?.skipped === "busy") {
 			log.debug("project-work", `work ${workId} (${work.name}) skipped: session ${sessionId} busy(上一 turn 未完成)`);
 			return { status: "skipped", reason: "agent busy(上一 turn 未完成)" };

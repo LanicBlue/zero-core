@@ -306,6 +306,136 @@ export interface RuntimeTaskInfo {
 }
 
 /**
+ * platform-observability ① (sub-4): one parent-agent session row, served to the
+ * ③ kanban left column via the `sessions:parents` IPC. Same shape the Platform
+ * 'sessions' resource (text) renders — agent self-introspection and kanban are
+ * two faces of one source. The kanban does NOT show sessionId (per design ③),
+ * but it's carried so the click-through Detail call can use it.
+ */
+export interface PlatformSessionSummary {
+	agentId: string;
+	agentName?: string;
+	sessionId: string;
+	status: "running" | "waiting" | "idle";
+	/** Wall-clock ms of the last activity (Date.now() basis). */
+	lastActivityAt: number;
+	/** Persisted turn count for this session (SessionMetrics.totalTurns). */
+	turns: number;
+}
+
+/**
+ * platform-observability ① (sub-4): one recent step in a session's live loop,
+ * served to the kanban Detail panel via `sessions:detail`. {name, argsBrief}
+ * only — NO tokens, NO output/result (per design). status aggregates the step's
+ * tool blocks (running if any running, error if any error, else done).
+ */
+export interface PlatformSessionStep {
+	stepSeq: number;
+	toolCalls: Array<{ name: string; argsBrief?: string }>;
+	status: string;
+	time: number;
+}
+
+/**
+ * platform-observability ① (sub-4): Detail payload for `sessions:detail` —
+ * a session's live task tree (RuntimeTaskInfo[], same source as TaskList) +
+ * its last N=3 steps. Empty arrays when the session has no live loop / no
+ * tool calls yet.
+ */
+export interface PlatformSessionDetail {
+	sessionId: string;
+	taskTree: RuntimeTaskInfo[];
+	recentSteps: PlatformSessionStep[];
+}
+
+// ─── platform-observability ② (sub-5): provider observation (IPC result types) ──
+// The runtime-layer interface (PlatformObserver in runtime/types.ts) defines the
+// same shapes; these are the shared contract the IPC channels (provider:stats /
+// provider:usage / provider:queue) serve to the ③ kanban. Agent self-introspection
+// (Platform 'providerStats' resource, text) and the kanban share one source.
+
+/**
+ * One provider row — static config + live concurrency + cumulative usage.
+ * Mirrors runtime/types.ts PlatformProviderStat (kept in sync; the runtime type
+ * is the authority, this is the IPC-facing copy so the preload/renderer don't
+ * import the runtime layer). latencyMs is N/A (null) until a process-local
+ * latency accumulator exists (sub-2 risk — not yet built).
+ */
+export interface PlatformProviderStat {
+	name: string;
+	type: string;
+	enabled: boolean;
+	modelCount: number;
+	inFlight: number;
+	maxConcurrency: number;
+	queue: number;
+	tokens: number;
+	calls: number;
+	errors: number;
+	errRate: number;
+	latencyMs: number | null;
+}
+
+/** One model's time series bucket for provider:usage. */
+export interface PlatformProviderSeriesPoint {
+	bucket: string;
+	calls: number;
+	tokens: number;
+	errors: number;
+}
+
+/** provider:usage result — a series per model for the stacked-bar chart. */
+export interface PlatformProviderSeries {
+	provider: string;
+	granularity: "hour" | "day";
+	range: "24h" | "30d";
+	model?: string;
+	series: Array<{ model: string; points: PlatformProviderSeriesPoint[] }>;
+}
+
+/** One queued waiter for provider:queue (live ConcurrencyQueue.getWaiting). */
+export interface PlatformProviderQueueEntry {
+	sessionId?: string;
+	agentId?: string;
+	tier: number;
+	waitedSince: number;
+}
+
+// ─── platform-observability ③ (sub-6): crons:today IPC (today's planned fires) ──
+// One row per cron scheduled to fire within today's local calendar day. Backs
+// the ③ kanban's right "今日任务" column. The cron's type discriminator drives
+// the [work|cron|git-aware] tag rendered next to each row.
+
+/**
+ * How a cron entry is classified for the kanban's type tag.
+ *  - `work`       — cron carries workId (project-work cron trigger).
+ *  - `git-aware`  — cron.prompt carries the git-aware sentinel (changes-only).
+ *  - `cron`       — plain scheduled cron (default).
+ * Mirrors the tag rendered as [work] / [cron] / [git] in the kanban.
+ */
+export type PlatformCronType = "work" | "cron" | "git-aware";
+
+/**
+ * One planned cron fire within today. fireTime is the epoch ms of the next
+ * slot that lands inside today's local calendar day (null when the cron won't
+ * fire today). label is a short human tag (cron id, or the work name / cron
+ * source hint). lastResult mirrors CronRecord.lastStatus for the "上次结果"
+ * column (undefined when the cron has never run).
+ */
+export interface PlatformCronTodayItem {
+	cronId: string;
+	agentId: string;
+	/** Epoch ms of the next fire slot inside today (local day); null = no fire today. */
+	fireTime: number | null;
+	/** For interval crons that fire multiple times today, the period (e.g. "每 2h"). */
+	interval?: string;
+	type: PlatformCronType;
+	label: string;
+	/** Outcome of the most recent fire (mirrors CronRecord.lastStatus). */
+	lastResult?: "ok" | "failed" | "missed";
+}
+
+/**
  * v0.8 (M0): the context bundle a session carries. projectId is optional
  * (global/observation sessions have none); workspaceDir and wikiRootNodeId
  * are required so every session has a concrete work location and wiki view.

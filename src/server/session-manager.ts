@@ -25,6 +25,11 @@ import { isValidTransition } from "./session-lifecycle.js";
 import type { SessionMetrics, AggregateMetrics } from "./session-metrics.js";
 import { SessionMetricsHolder } from "./session-metrics.js";
 import type { SessionDB } from "./session-db.js";
+// platform-observability ②.2 (sub-2): provider-layer usage store. Lazy-init
+// on first access — constructed against sessionDB.getDb() so it shares the
+// same SQLite handle (no second connection to sessions.db, no WAL contention).
+import { ProviderUsageStore, floorToHourBucket } from "./provider-usage-store.js";
+import type { TurnSource } from "../runtime/types.js";
 import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -79,6 +84,20 @@ export class SessionManager {
 	private readonly firstTokenRecorded = new Map<string, boolean>();
 
 	private db: SessionDB | null = null;
+	// sub-2: provider-layer usage rollup. Lazy so callers that never touch
+	// provider stats (and unit tests that don't wire a SessionDB) pay nothing.
+	private providerUsageStore: ProviderUsageStore | null = null;
+
+	// platform-observability ②.2 (sub-2 补遗): per-provider process-local
+	// latency accumulator (design ②.2: NOT in DB; restart-safe — the observability
+	// volume is small and restart-zero is acceptable). Each successful step's
+	// durationMs (from agent-loop finalizeOneStep → metrics-events usage case)
+	// folds into this running sum/count. Keyed by provider NAME (matches the
+	// providers-table key listProviderStats iterates). Reboot → empty Map →
+	// latencyMs:null until the next step lands. SessionManager owns this because
+	// it already owns recordProviderUsage (the single funnel for provider-layer
+	// step metrics).
+	private readonly providerLatencyMs = new Map<string, { count: number; sum: number }>();
 
 	// N1 (runtime-push-ui-sync): coalesced metrics change ping. The dashboard
 	// reads the aggregate; counter mutations (tool calls / tokens / turns /
@@ -123,6 +142,20 @@ export class SessionManager {
 	}
 
 	setSessionDb(db: SessionDB): void { this.db = db; }
+
+	/**
+	 * sub-2: provider-layer usage store. Constructed against the session DB's
+	 * underlying better-sqlite3 handle so it shares one connection (no WAL
+	 * contention, no second writer). Lazy — returns undefined if no SessionDB
+	 * is attached (unit-test paths).
+	 */
+	getProviderUsageStore(): ProviderUsageStore | undefined {
+		if (!this.db) return undefined;
+		if (!this.providerUsageStore) {
+			this.providerUsageStore = new ProviderUsageStore(this.db.getDb());
+		}
+		return this.providerUsageStore;
+	}
 
 	// ─── Lifecycle tracking ─────────────────────────────────────
 
@@ -307,6 +340,83 @@ export class SessionManager {
 			}
 			this.scheduleMetricsChange();
 		}
+	}
+
+	/**
+	 * sub-2: accumulate one step's usage into the provider-layer rollup
+	 * (`provider_usage` table), INDEPENDENT of the session metrics above.
+	 * Called from metrics-events on a `usage` StreamEvent that carries
+	 * provider/model/source (agent-loop finalizeOneStep). Best-effort — errors
+	 * log and don't propagate (a stats write must not fail the turn).
+	 *
+	 * `error: true` should be passed for a FAILED step so its bucket's errors
+	 * counter increments. The success path leaves error unset.
+	 */
+	recordProviderUsage(input: {
+		provider: string;
+		model: string;
+		source: TurnSource;
+		usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheWriteTokens?: number };
+		error?: boolean;
+		// platform-observability ②.2 (sub-2 补遗): this step's wall-clock
+		// duration (model call → finalize), forwarded from the usage event the
+		// agent-loop stamped. Folded into the per-provider process-local
+		// latency accumulator (NOT the DB). Skipped when absent (failed-step
+		// error path, or older callers that don't measure).
+		durationMs?: number;
+	}): void {
+		// (sub-2 补遗) Latency accumulator runs FIRST, before the DB-store
+		// guard, because it is process-local (design ②.2: NOT in DB, restart-
+		// safe). The DB rollup below needs a SessionDB, but the latency fold
+		// must still land when the DB is cold/unwired (tests, fresh boot) so
+		// listProviderStats can surface a real avg instead of permanent N/A.
+		// Only fold non-negative durationMs on the success path — the error
+		// path intentionally omits durationMs (its latency is not representative
+		// of successful provider throughput).
+		if (typeof input.durationMs === "number" && input.durationMs >= 0 && !input.error) {
+			const cur = this.providerLatencyMs.get(input.provider) ?? { count: 0, sum: 0 };
+			cur.count += 1;
+			cur.sum += input.durationMs;
+			this.providerLatencyMs.set(input.provider, cur);
+		}
+
+		const store = this.getProviderUsageStore();
+		if (!store) return;
+		try {
+			// hour_bucket = hour-floor ISO UTC. Single source of truth for the
+			// format lives in provider-usage-store (floorToHourBucket); using it
+			// here keeps the bucket-key shape consistent with what the store +
+			// tests expect.
+			const hourBucket = floorToHourBucket(Date.now());
+			store.upsert({
+				provider: input.provider,
+				model: input.model,
+				source: input.source,
+				hourBucket,
+				calls: 1,
+				inputTokens: input.usage.inputTokens ?? 0,
+				outputTokens: input.usage.outputTokens ?? 0,
+				cacheRead: input.usage.cacheReadTokens ?? 0,
+				cacheWrite: input.usage.cacheWriteTokens ?? 0,
+				error: input.error,
+			});
+		} catch (err) {
+			log.warn("session", "recordProviderUsage failed:", (err as Error).message);
+		}
+	}
+
+	/**
+	 * platform-observability ②.2 (sub-2 补遗): per-provider running average
+	 * latency in ms, computed from the process-local accumulator. Returns
+	 * undefined when no successful step has landed for this provider since boot
+	 * (so listProviderStats leaves latencyMs null and the renderer shows N/A,
+	 * matching the design's "small volume, restart-safe" contract). Restart-
+	 * safe: the Map clears on process restart by virtue of being in-memory only.
+	 */
+	getProviderLatencyMs(provider: string): number | undefined {
+		const acc = this.providerLatencyMs.get(provider);
+		if (!acc || acc.count === 0) return undefined;
+		return acc.sum / acc.count;
 	}
 
 	// ─── Metrics queries ────────────────────────────────────────

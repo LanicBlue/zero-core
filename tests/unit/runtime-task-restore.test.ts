@@ -37,6 +37,12 @@ describe("delegated task restart restore (DB → runtime at loop creation)", () 
 		const svc = new AgentService(tmp, db);
 		await svc.restoreAllSessions();
 
+		// sub-8 lazy rebuild (design §2.4): a chat session with no incomplete
+		// turn gets NO loop at startup, so the seeded task tree is not visible
+		// until the session is activated (which builds the loop on demand).
+		expect(svc.getRuntimeTaskTree(chat.id)).toEqual([]);
+		await svc.activateSession("agent-1", chat.id);
+
 		const tree = svc.getRuntimeTaskTree(chat.id);
 		expect(tree.map((t) => t.id)).toEqual(["t1"]);
 		expect(tree[0].type).toBe("subagent");
@@ -58,6 +64,11 @@ describe("delegated task restart restore (DB → runtime at loop creation)", () 
 		const svc = new AgentService(tmp, db);
 		await svc.restoreAllSessions();
 
+		// sub-8 lazy rebuild (design §2.4): no loop at startup → tree empty
+		// until activateSession pulls the loop (which seeds the delegated tree).
+		expect(svc.getRuntimeTaskTree(chat.id)).toEqual([]);
+		await svc.activateSession("agent-1", chat.id);
+
 		const tree = svc.getRuntimeTaskTree(chat.id);
 		expect(tree.map((t) => t.id).sort()).toEqual(["t1", "t2"]);
 	});
@@ -71,6 +82,10 @@ describe("delegated task restart restore (DB → runtime at loop creation)", () 
 		});
 		const svc = new AgentService(tmp, db);
 		await svc.restoreAllSessions();
+
+		// sub-8 lazy rebuild (design §2.4): no loop at startup → tree empty.
+		expect(svc.getRuntimeTaskTree(chat.id)).toEqual([]);
+		await svc.activateSession("agent-1", chat.id);
 
 		const tree = svc.getRuntimeTaskTree(chat.id);
 		expect(tree[0].status).toBe("interrupted");

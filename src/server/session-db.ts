@@ -30,6 +30,9 @@ import { existsSync, readdirSync, readFileSync, renameSync, mkdirSync } from "no
 import { v4 as uuidv4 } from "uuid";
 import { log } from "../core/logger.js";
 import type { DelegatedTaskRecord, DelegatedTaskStatus, SessionRecord, ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats } from "../shared/types.js";
+// platform-observability ②.1 (sub-1): type-only import — no runtime cycle with
+// the runtime layer (session-db is server, but types are erased at runtime).
+import type { TurnSource } from "../runtime/types.js";
 import { KeyValueStore } from "./key-value-store.js";
 // v0.8 (M5): extractor cursor + tool telemetry stores. These back
 // extractor A's incremental cursor (mechanism 2) and extractor B's
@@ -155,6 +158,14 @@ export class SessionDB {
 				-- continues from seq+1, never re-running completed steps. NULL
 				-- means the turn started but no step has completed yet.
 				last_completed_step_seq INTEGER,
+				-- platform-observability ②.1 (sub-1): the "source" that started
+				-- this turn, feeding later sub-3 priority + sub-2 usage-by-source.
+				-- One of 'user' | 'work' | 'cron' | 'background'. Defaults to
+				-- 'background' so pre-migration turns + any unspec'd caller fall
+				-- into the lowest tier (acceptance-1 case 6/7). Set by the entry
+				-- that calls run()/sendPrompt/sendProjectPrompt; durable-hooks
+				-- TurnStart persists it via createTurnState.
+				source      TEXT NOT NULL DEFAULT 'background',
 				created_at  TEXT NOT NULL,
 				updated_at  TEXT NOT NULL,
 				PRIMARY KEY (session_id, turn_seq),
@@ -208,6 +219,32 @@ export class SessionDB {
 			CREATE INDEX IF NOT EXISTS idx_delegated_tasks_owner ON delegated_tasks(owner_agent_id, status);
 			CREATE INDEX IF NOT EXISTS idx_delegated_tasks_parent ON delegated_tasks(parent_task_id);
 			CREATE INDEX IF NOT EXISTS idx_delegated_tasks_root ON delegated_tasks(root_task_id);
+
+			-- platform-observability ②.2 (sub-2): provider-layer usage rollup,
+			-- INDEPENDENT of session metrics. One row per
+			-- (provider, model, hour_bucket, source); upsert accumulates.
+			-- Feeds sub-5 observation + sub-6 charts. PK is the 4-tuple key so
+			-- mid-session provider switches produce separate rows (correct
+			-- attribution — the whole point). hour_bucket is hour-floor ISO UTC
+			-- (e.g. "2026-07-07T09:00:00.000Z"). source ∈ user|work|cron|background
+			-- (sub-1 turn-source marker). Retention ≥ 30d via cleanOldProviderUsage.
+			CREATE TABLE IF NOT EXISTS provider_usage (
+				provider      TEXT NOT NULL,
+				model         TEXT NOT NULL,
+				hour_bucket   TEXT NOT NULL,
+				source        TEXT NOT NULL DEFAULT 'background',
+				calls         INTEGER NOT NULL DEFAULT 0,
+				input_tokens  INTEGER NOT NULL DEFAULT 0,
+				output_tokens INTEGER NOT NULL DEFAULT 0,
+				cache_read    INTEGER NOT NULL DEFAULT 0,
+				cache_write   INTEGER NOT NULL DEFAULT 0,
+				errors        INTEGER NOT NULL DEFAULT 0,
+				created_at    TEXT NOT NULL,
+				updated_at    TEXT NOT NULL,
+				PRIMARY KEY (provider, model, hour_bucket, source)
+			);
+			CREATE INDEX IF NOT EXISTS idx_provider_usage_hour ON provider_usage(hour_bucket);
+			CREATE INDEX IF NOT EXISTS idx_provider_usage_provider ON provider_usage(provider, hour_bucket);
 		`);
 
 		// v0.8 (M0): session context bundle columns + routing index.
@@ -240,6 +277,11 @@ export class SessionDB {
 		// migrations: turn_state is SessionDB-owned (not a SqliteStore table),
 		// so this is the only legacy-DB sync point.
 		this.safeAddColumn("turn_state", "last_completed_step_seq", "INTEGER");
+		// platform-observability ②.1 (sub-1): turn-source marker. Mirror of the
+		// CREATE TABLE column above for upgraded DBs (fresh DBs already have it).
+		// See feedback-fresh-db-migrations: turn_state is SessionDB-owned (not a
+		// SqliteStore table), so this safeAddColumn is the only legacy-DB sync.
+		this.safeAddColumn("turn_state", "source", "TEXT NOT NULL DEFAULT 'background'");
 	}
 
 	/** Idempotently add a column to an existing table (no-op if present). */
@@ -751,7 +793,7 @@ export class SessionDB {
 	// Turn state (durable execution checkpointing)
 	// -----------------------------------------------------------------------
 
-	createTurnState(sessionId: string, turnSeq: number): void {
+	createTurnState(sessionId: string, turnSeq: number, source: TurnSource = "background"): void {
 		const now = new Date().toISOString();
 		try {
 			// Step 2D: phase is now a session-level marker (pending → completed/
@@ -759,9 +801,18 @@ export class SessionDB {
 			// advanced per-StepEnd below. INSERT OR REPLACE keeps the row stable
 			// across retries within the same turn; last_completed_step_seq starts
 			// NULL (turn started, no step finished yet).
+			//
+			// platform-observability ②.1 (sub-1): source is the turn-source
+			// marker (user|work|cron|background). The default 'background'
+			// matches the column DEFAULT so any caller that omits it (and any
+			// pre-migration row) lands in the lowest tier. INSERT OR REPLACE
+			// re-writes source on each retry — same turn, same entry, so the
+			// value is stable (it's set by the entry that owns the turn, not by
+			// mid-turn code). A recovered turn reuses the existing row (recovery
+			// path pre-marks via setSessionTurnSeq so this INSERT is skipped).
 			this.db.prepare(
-				`INSERT OR REPLACE INTO turn_state (session_id, turn_seq, phase, last_completed_step_seq, created_at, updated_at) VALUES (?, ?, 'pending', NULL, ?, ?)`,
-			).run(sessionId, turnSeq, now, now);
+				`INSERT OR REPLACE INTO turn_state (session_id, turn_seq, phase, last_completed_step_seq, source, created_at, updated_at) VALUES (?, ?, 'pending', NULL, ?, ?, ?)`,
+			).run(sessionId, turnSeq, source, now, now);
 		} catch (e) {
 			log.error("db", `createTurnState failed (session=${sessionId}, turn=${turnSeq}):`, (e as Error).message);
 			throw e;
@@ -844,14 +895,15 @@ export class SessionDB {
 		}
 	}
 
-	getIncompleteTurns(): Array<{ sessionId: string; turnSeq: number; phase: string; checkpoint: any; error: string | null; lastCompletedStepSeq: number | null }> {
+	getIncompleteTurns(): Array<{ sessionId: string; turnSeq: number; phase: string; checkpoint: any; error: string | null; lastCompletedStepSeq: number | null; source: TurnSource }> {
 		try {
 			// Step 2D: surface the step-level checkpoint so recovery can resume
 			// from the next step instead of re-running the whole turn. phase is
 			// still the session-level terminal marker (pending → completed/
 			// failed); lastCompletedStepSeq is the fine-grained progress.
+			// sub-1: surface source so callers (recovery) carry it through.
 			const rows = this.db.prepare(
-				`SELECT session_id, turn_seq, phase, checkpoint, error, last_completed_step_seq FROM turn_state WHERE phase NOT IN ('completed', 'failed')`,
+				`SELECT session_id, turn_seq, phase, checkpoint, error, last_completed_step_seq, source FROM turn_state WHERE phase NOT IN ('completed', 'failed')`,
 			).all() as any[];
 			return rows.map((r: any) => ({
 				sessionId: r.session_id,
@@ -860,6 +912,7 @@ export class SessionDB {
 				checkpoint: r.checkpoint ? JSON.parse(r.checkpoint) : null,
 				error: r.error,
 				lastCompletedStepSeq: r.last_completed_step_seq ?? null,
+				source: (r.source ?? "background") as TurnSource,
 			}));
 		} catch (e) {
 			log.error("db", "getIncompleteTurns failed:", (e as Error).message);
@@ -875,19 +928,42 @@ export class SessionDB {
 	 * Returns the FIRST non-terminal turn_state row for the session (a session
 	 * has at most one in-flight turn at a time). Returns undefined if none.
 	 */
-	getIncompleteTurn(sessionId: string): { turnSeq: number; lastCompletedStepSeq?: number | null } | undefined {
+	getIncompleteTurn(sessionId: string): { turnSeq: number; lastCompletedStepSeq?: number | null; source?: TurnSource } | undefined {
 		try {
 			const row = this.db.prepare(
-				`SELECT turn_seq, last_completed_step_seq FROM turn_state WHERE session_id = ? AND phase NOT IN ('completed', 'failed') ORDER BY turn_seq DESC LIMIT 1`,
+				`SELECT turn_seq, last_completed_step_seq, source FROM turn_state WHERE session_id = ? AND phase NOT IN ('completed', 'failed') ORDER BY turn_seq DESC LIMIT 1`,
 			).get(sessionId) as any;
 			if (!row) return undefined;
 			return {
 				turnSeq: row.turn_seq,
 				lastCompletedStepSeq: row.last_completed_step_seq ?? null,
+				source: (row.source ?? "background") as TurnSource,
 			};
 		} catch (e) {
 			log.error("db", `getIncompleteTurn failed (session=${sessionId}):`, (e as Error).message);
 			return undefined;
+		}
+	}
+
+	/**
+	 * sub-8 (lazy rebuild + interrupted seed): set of DISTINCT session ids that
+	 * have at least one non-terminal turn_state row. Used by:
+	 *   - restoreAllSessions — only these sessions get a loop at startup; all
+	 *     other chat sessions defer to activateSession (lazy build).
+	 *   - restoreDelegatedTasks — authoritative seed-status signal: a delegated
+	 *     child whose session has an incomplete turn is "frozen/interrupted"
+	 *     regardless of its delegated_tasks.status row.
+	 * Single batched query (no N+1). Empty set when nothing is incomplete.
+	 */
+	getIncompleteTurnSessionIds(): Set<string> {
+		try {
+			const rows = this.db.prepare(
+				`SELECT DISTINCT session_id FROM turn_state WHERE phase NOT IN ('completed', 'failed')`,
+			).all() as any[];
+			return new Set(rows.map((r) => r.session_id as string));
+		} catch (e) {
+			log.error("db", "getIncompleteTurnSessionIds failed:", (e as Error).message);
+			return new Set();
 		}
 	}
 
@@ -926,6 +1002,29 @@ export class SessionDB {
 		} catch (e) {
 			log.error("db", "cleanOldTurnState failed:", (e as Error).message);
 			throw e;
+		}
+	}
+
+	/**
+	 * platform-observability ②.2 (sub-2): retention for the provider_usage
+	 * rollup. Deletes any hour_bucket older than `maxAgeMs` ago. Called on the
+	 * same schedule as cleanOldTurnState (startup). Cutoff is compared against
+	 * hour_bucket (hour-floor ISO UTC) directly — that's a coarser comparison
+	 * than updated_at, which is fine: we keep ≥30d of hourly buckets, the only
+	 * risk is over-retaining the partial hour at the boundary (acceptable).
+	 */
+	cleanOldProviderUsage(maxAgeMs: number): void {
+		const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+		try {
+			const result = this.db.prepare(
+				`DELETE FROM provider_usage WHERE hour_bucket < ?`,
+			).run(cutoff);
+			if (result.changes > 0) {
+				log.db(`cleanOldProviderUsage removed ${result.changes} row(s) older than ${maxAgeMs}ms`);
+			}
+		} catch (e) {
+			log.error("db", "cleanOldProviderUsage failed:", (e as Error).message);
+			// Best-effort — don't take down startup for a retention cleanup.
 		}
 	}
 

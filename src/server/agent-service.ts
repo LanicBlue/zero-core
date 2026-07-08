@@ -29,10 +29,10 @@
 import { loadConfig, ZERO_CORE_DIR, type ZeroCoreConfig } from "../core/config.js";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
-import type { AgentRecord, DelegatedTaskRecord } from "../shared/types.js";
+import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
-import type { RuntimeProviderConfig, SessionConfig, StreamEvent } from "../runtime/types.js";
+import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource, PlatformObserver, PlatformSessionSummary, PlatformProviderStat, PlatformProviderSeries, PlatformProviderQueueEntry } from "../runtime/types.js";
 import { clearProviderCache, setConcurrencyManager } from "../runtime/provider-factory.js";
 import { SessionDB } from "./session-db.js";
 import { InputQueueStore } from "./input-queue-store.js";
@@ -50,6 +50,13 @@ import { setTurnSeq } from "../runtime/hooks/turn-hooks.js";
 import { registerHooksForLoop, type HookWiringDeps } from "../runtime/hooks/index.js";
 import { getSessionTodos } from "../runtime/tools/todo-write.js";
 import { pendingResponses } from "../runtime/pending-responses.js";
+// sub-7 (work-context 拆解到三通道): store types for the work-context closures
+// (type-only imports — runtime layer never sees the store classes via this file).
+import type { ProjectStore } from "./project-store.js";
+import type { RequirementStore } from "./requirement-store.js";
+import type { ProjectWikiStore } from "./project-wiki-store.js";
+import type { TaskStepStore } from "./task-step-store.js";
+import type { ProjectWorkStore } from "./project-work-store.js";
 // (WORKFLOW_ROLES / sendRolePrompt 已退役 —— 去-role 统一走 sendProjectPrompt)
 
 // ---------------------------------------------------------------------------
@@ -133,10 +140,29 @@ type CapabilityHandles = {
 	pmService?: unknown;
 };
 
+/**
+ * sub-7 (work-context 拆解到三通道): shallow Wiki baseline for a project,
+ * sorted by path and indented by depth (moved verbatim from the deleted
+ * workflow-context-hook). Used by buildWorkContextClosures to render the
+ * Wiki Baseline sub-block of the work-context system section.
+ */
+function getWikiBaseline(wikiStore: ProjectWikiStore, projectId: string): string {
+	const nodes = wikiStore.listByProject(projectId);
+	if (nodes.length === 0) return "";
+	const sorted = nodes
+		.filter((n) => n.summary)
+		.sort((a, b) => a.path.localeCompare(b.path));
+	return sorted.map((n) => {
+		const depth = n.path.split("/").length - 1;
+		const indent = "  ".repeat(Math.max(0, depth - 1));
+		return `${indent}${n.path} — ${n.summary}`;
+	}).join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // Agent Service — supports concurrent multi-agent execution
 // ---------------------------------------------------------------------------
-export class AgentService {
+export class AgentService implements PlatformObserver {
 	private loops = new Map<string, AgentLoop>();        // sessionId → loop
 	private runStates = new Map<string, AgentRunState>(); // sessionId → state
 	private activeSessions = new Map<string, string>();    // agentId → active sessionId
@@ -184,11 +210,31 @@ export class AgentService {
 	// (logging failures are swallowed in tool-factory).
 	private toolUsageStore: any = null;
 	/**
+	 * sub-7 (work-context 拆解到三通道): the workflow-context stores
+	 * (projectStore / requirementStore / projectWikiStore / taskStepStore /
+	 * projectWorkStore) used to build the SessionConfig closures that render
+	 * Project / Requirement / Wiki Baseline → system section and Steps Progress
+	 * → workbench section. Injected by server/index.ts via setWorkContextStores
+	 * (the same stores the deleted workflow-context-hook consumed). The
+	 * closures capture these + the per-config (workId, projectId,
+	 * activeRequirementId) and read the live state on every call → runtime
+	 * never imports the server stores directly (DI invariant).
+	 */
+	private workContextStores: {
+		projectStore: ProjectStore;
+		requirementStore: RequirementStore;
+		wikiStore: ProjectWikiStore;
+		taskStepStore: TaskStepStore;
+		projectWorkStore?: ProjectWorkStore;
+	} | null = null;
+	/**
 	 * Step 1B: per-loop hook wiring deps. Assembled by server/index.ts (which
-	 * owns the M5 extractor deps + workflow-context stores) and injected here.
-	 * Each loop built by this service registers the main hook set on its own
-	 * registry from these deps; delegated sub-loops inherit the same deps via
-	 * config.hookWiringDeps (threaded through AgentLoop → SubagentDelegator).
+	 * owns the M5 extractor deps) and injected here. Each loop built by this
+	 * service registers the main hook set on its own registry from these deps;
+	 * delegated sub-loops inherit the same deps via config.hookWiringDeps
+	 * (threaded through AgentLoop → SubagentDelegator). (sub-7: workflow-
+	 * context stores are no longer threaded here — they flow through
+	 * setWorkContextStores / buildWorkContextClosures into SessionConfig.)
 	 */
 	private hookDeps: HookWiringDeps = {};
 
@@ -339,6 +385,94 @@ export class AgentService {
 		this.toolUsageStore = store ?? null;
 	}
 	/**
+	 * sub-7 (work-context 拆解到三通道): inject the workflow-context stores
+	 * (the same set the deleted workflow-context-hook consumed). Used by
+	 * buildWorkContextClosures to construct the SessionConfig closures that
+	 * render Project / Requirement / Wiki Baseline → system and Steps Progress
+	 * → workbench. Call once at startup (server/index.ts); idempotent.
+	 */
+	setWorkContextStores(stores: {
+		projectStore: ProjectStore;
+		requirementStore: RequirementStore;
+		wikiStore: ProjectWikiStore;
+		taskStepStore: TaskStepStore;
+		projectWorkStore?: ProjectWorkStore;
+	}): void {
+		this.workContextStores = stores ?? null;
+	}
+	/**
+	 * sub-7: build the two SessionConfig closures for a given work session.
+	 * Captures the stores + per-config (workId, projectId, activeRequirementId)
+	 * and renders the system / workbench sections on each call. Returns
+	 * `{ system: undefined, steps: undefined }` for non-work sessions (no
+	 * workId / no stores) → the loop omits the work-context system section and
+	 * the workbench Steps Progress sub-block. Mirrors the deleted hook's logic
+	 * (work.contextPolicy gate, per-policy injections) but returns strings
+	 * instead of writing to memoryContext.
+	 *
+	 * Runtime layer never sees the store classes — only calls the closures.
+	 */
+	private buildWorkContextClosures(args: {
+		workId?: string;
+		projectId?: string;
+		activeRequirementId?: string;
+	}): {
+		workContextSystemSection?: () => string;
+		stepsProgressSection?: () => string;
+	} {
+		const stores = this.workContextStores;
+		const { workId, projectId, activeRequirementId } = args;
+		if (!stores || !workId) {
+			// Non-work session: no closures → system section + workbench sub-block omitted.
+			return {};
+		}
+		const policy: WorkContextPolicy | undefined = stores.projectWorkStore?.get(workId)?.contextPolicy;
+		if (!policy) {
+			// Work session but no policy resolved yet → nothing to inject.
+			return {};
+		}
+		// ── system section: Project / Requirement / Wiki Baseline ────────────
+		const workContextSystemSection = (): string => {
+			const parts: string[] = [];
+			if (policy.injectProjectInfo && projectId) {
+				const project = stores.projectStore.get(projectId);
+				if (project) {
+					// v0.8 (M0): ProjectRecord slimmed to workspaceDir
+					parts.push(`## Project\n- Name: ${project.name}\n- Working directory: ${project.workspaceDir}`);
+				}
+			}
+			if (policy.injectWikiBaseline && projectId) {
+				const baseline = getWikiBaseline(stores.wikiStore, projectId);
+				if (baseline) {
+					parts.push(`## Wiki Baseline\n${baseline}`);
+				}
+			}
+			if (policy.injectRequirementDetail && activeRequirementId) {
+				const req = stores.requirementStore.get(activeRequirementId);
+				if (req) {
+					parts.push(`## Requirement\n- Title: ${req.title}\n- Priority: ${req.priority}\n- Impact: ${req.impactScope || "N/A"}\n- Description:\n${req.description || "(no description)"}`);
+				}
+			}
+			return parts.join("\n\n");
+		};
+		// ── workbench section: Steps Progress (compact, per-step) ────────────
+		const stepsProgressSection = (): string => {
+			if (!policy.injectStepsProgress || !activeRequirementId) return "";
+			const steps = stores.taskStepStore.listByRequirement(activeRequirementId);
+			if (steps.length === 0) return "";
+			const lines = steps.map((s) => {
+				const icon = s.status === "completed" ? "done"
+					: s.status === "running" ? "running"
+					: s.status === "failed" ? "failed"
+					: "pending";
+				return `  [${icon}] ${s.role}: ${s.title}`;
+			});
+			const completed = steps.filter((s) => s.status === "completed").length;
+			return `(${completed}/${steps.length})\n${lines.join("\n")}`;
+		};
+		return { workContextSystemSection, stepsProgressSection };
+	}
+	/**
 	 * Step 1B: inject the per-loop hook wiring deps. Called once by
 	 * server/index.ts after the M5 extractor deps + workflow-context stores
 	 * are built. The service merges its own always-available handles (db /
@@ -354,7 +488,9 @@ export class AgentService {
 	 * Step 1B: assemble the per-loop hook wiring deps. Service-owned handles
 	 * (db / sessionDb / sessionManager / inputQueue) are always available and
 	 * override any same-key field injected via setHookDeps; the rest
-	 * (extractionDeps / workflowContext) come from server/index.ts injection.
+	 * (extractionDeps) comes from server/index.ts injection. (sub-7:
+	 * workflowContext is gone — the workflow-context stores now flow through
+	 * setWorkContextStores → buildWorkContextClosures → SessionConfig closures.)
 	 */
 	private buildHookDeps(): HookWiringDeps {
 		return {
@@ -450,6 +586,195 @@ export class AgentService {
 		// createLoopForSession → loop.restoreDelegatedTasks — NOT here.
 		return this.loops.get(sessionId)?.getRuntimeTaskTree() ?? [];
 	}
+
+	// ─── platform-observability ① (sub-4): PlatformObserver impl ────────────
+	// Read-only session observation surface. Backs BOTH the Platform 'sessions'
+	// resource (agent self-introspection, via ctx.platformObserver) AND the IPC
+	// channels sessions:parents / sessions:detail (③ kanban, via REST). Single
+	// source — same data, two consumers. See runtime/types.ts PlatformObserver.
+	/**
+	 * List one row per PARENT agent session. A "parent" = an agent that has an
+	 * active/main `session_kind='chat'` session. db.getMainSession already
+	 * excludes session_kind='delegated' (those back a sub-agent task and surface
+	 * via TaskList, not here) AND archived rows, so the natural filter is just
+	 * "does this agent have a main chat session". status from runStates
+	 * (acceptance-4 #3): isBusy→running, waiting→waiting, else idle.
+	 * turns/lastActivityAt from SessionMetrics when available.
+	 */
+	listParentSessions(): PlatformSessionSummary[] {
+		const agents = this.agentStore?.list() ?? [];
+		const metricsMap = this.sessionManager?.getAllSessionMetrics();
+		const out: PlatformSessionSummary[] = [];
+		for (const agent of agents) {
+			const session = this.db.getMainSession(agent.id);
+			if (!session) continue; // no main chat session → not a parent
+			const sid = session.id;
+			const state = this.runStates.get(sid);
+			const status: PlatformSessionSummary["status"] = state
+				? (state.isBusy ? "running" : (state.waiting ? "waiting" : "idle"))
+				: "idle";
+			const m = metricsMap?.get(sid);
+			out.push({
+				agentId: agent.id,
+				agentName: agent.name,
+				sessionId: sid,
+				status,
+				lastActivityAt: m?.lastActivityAt ?? (Date.parse(session.updatedAt ?? session.createdAt) || Date.now()),
+				turns: m?.totalTurns ?? 0,
+			});
+		}
+		return out;
+	}
+
+	/** PlatformObserver: task tree for a session (verbatim getRuntimeTaskTree). */
+	getSessionTaskTree(sessionId: string): import("../runtime/types.js").TaskInfo[] {
+		return this.getRuntimeTaskTree(sessionId);
+	}
+
+	/**
+	 * PlatformObserver: last N=3 steps' tool-call blocks for a session, via the
+	 * live loop's recorder (same source as getRecentToolCalls). {name, argsBrief}
+	 * only — NO tokens, NO output/result (per design). Returns [] when the loop
+	 * is gone or has no tool-bearing steps.
+	 */
+	getSessionRecentSteps(sessionId: string, n: number = 3): Array<{ stepSeq: number; toolCalls: Array<{ name: string; argsBrief?: string }>; status: string; time: number }> {
+		const loop = this.loops.get(sessionId) as unknown as { getRecentSteps?: (n?: number) => Array<{ stepSeq: number; toolCalls: Array<{ name: string; argsBrief?: string }>; status: string; time: number }> } | undefined;
+		return loop?.getRecentSteps?.(n) ?? [];
+	}
+
+	// ─── platform-observability ② (sub-5): provider observation ────────────
+	// Backs BOTH the Platform 'providerStats' resource (agent self-introspection,
+	// via ctx.platformObserver) AND the IPC channels provider:stats / :usage /
+	// :queue (③ kanban, via REST in provider-router). Single source — same data,
+	// two consumers. latency is N/A (null) — sub-2 did NOT build a process-local
+	// latency accumulator (design ②.2 leaves it process-local; provider_usage has
+	// no latency column). When added, fill latencyMs here.
+
+	/**
+	 * Read the providers table read-only via the raw DB handle (same path as the
+	 * 'providers' resource — ProviderStore's constructor has write side-effects,
+	 * so we SELECT directly). Returns the authoritative provider list (including
+	 * disabled, per acceptance-5 #6). Localized cast: ISessionStore doesn't
+	 * expose getDb(); SessionDB does.
+	 */
+	private readProvidersTable(): Array<{ name: string; type: string; enabled: boolean; models: any[] }> {
+		const rawDb = (this.db as any).getDb?.();
+		if (!rawDb) return [];
+		try {
+			const rows = rawDb.prepare("SELECT name, type, enabled, models FROM providers").all() as any[];
+			return rows.map((r) => {
+				let models: any[] = [];
+				try { models = Array.isArray(r.models) ? r.models : (JSON.parse(r.models ?? "[]") as any[]); } catch { /* unparseable */ }
+				return { name: r.name, type: r.type, enabled: !!r.enabled, models };
+			});
+		} catch {
+			return [];
+		}
+	}
+
+	/**
+	 * One row per provider (ALL providers incl. disabled). Combines static config
+	 * (providers table) + live concurrency (ConcurrencyQueue) + cumulative usage
+	 * (ProviderUsageStore SUM). errRate = calls>0 ? errors/calls : 0. latencyMs
+	 * is N/A (null) until a process-local latency accumulator exists.
+	 */
+	listProviderStats(): PlatformProviderStat[] {
+		const providers = this.readProvidersTable();
+		const usageStore = this.sessionManager?.getProviderUsageStore();
+		const out: PlatformProviderStat[] = [];
+		for (const p of providers) {
+			const queue = this.concurrencyManager.getQueue(p.name);
+			const inFlight = queue?.getActiveCount() ?? 0;
+			const waiting = queue?.getWaitingCount() ?? 0;
+			const maxConcurrency = queue?.getMax() ?? 0;
+			const cum = usageStore?.cumulative(p.name) ?? { calls: 0, inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0, errors: 0 };
+			const tokens = (cum.inputTokens ?? 0) + (cum.outputTokens ?? 0) + (cum.cacheRead ?? 0) + (cum.cacheWrite ?? 0);
+			const calls = cum.calls ?? 0;
+			const errors = cum.errors ?? 0;
+			// platform-observability ②.2 (sub-2 补遗): per-provider avg latency
+			// from the process-local accumulator (restart-safe — empty after
+			// boot). Falls back to null when no successful step has landed since
+			// start, which the text renderer renders as "N/A". Not from the DB:
+			// design ②.2 deliberately keeps latency out of provider_usage. The
+			// typeof guard keeps unit-test mocks (which stub only the fields they
+			// exercise) from blowing up — they just see latencyMs:null.
+			const sm = this.sessionManager as any;
+			const latencyMs = (sm && typeof sm.getProviderLatencyMs === "function")
+				? (sm.getProviderLatencyMs(p.name) ?? null)
+				: null;
+			out.push({
+				name: p.name,
+				type: p.type,
+				enabled: p.enabled,
+				modelCount: Array.isArray(p.models) ? p.models.length : 0,
+				inFlight,
+				maxConcurrency,
+				queue: waiting,
+				tokens,
+				calls,
+				errors,
+				errRate: calls > 0 ? errors / calls : 0,
+				latencyMs,
+			});
+		}
+		return out;
+	}
+
+	/**
+	 * Time series for ONE provider, one series per model (for the ③ kanban's
+	 * stacked bar chart). Optional model filter narrows to a single series.
+	 * Empty series array when the provider has no usage in range.
+	 */
+	getProviderUsageSeries(provider: string, granularity: "hour" | "day", range: "24h" | "30d", model?: string): PlatformProviderSeries {
+		const usageStore = this.sessionManager?.getProviderUsageStore();
+		const series = usageStore
+			? usageStore.seriesByModel(provider, granularity, range, model)
+				.map((s) => ({
+					model: s.model,
+					points: s.points.map((pt) => ({
+						bucket: pt.bucket,
+						calls: pt.calls,
+						tokens: (pt.inputTokens ?? 0) + (pt.outputTokens ?? 0) + (pt.cacheRead ?? 0) + (pt.cacheWrite ?? 0),
+						errors: pt.errors,
+					})),
+				}))
+			: [];
+		return { provider, granularity, range, model, series };
+	}
+
+	/**
+	 * Live queue for ONE provider — the ConcurrencyQueue.getWaiting() snapshot.
+	 * sessionId/agentId/tier/waitedSince per waiter. Empty when the provider has
+	 * no queue or no current waiters.
+	 */
+	getProviderQueue(provider: string): PlatformProviderQueueEntry[] {
+		const queue = this.concurrencyManager.getQueue(provider);
+		if (!queue) return [];
+		return queue.getWaiting().map((w) => ({
+			sessionId: w.sessionId,
+			agentId: w.agentId,
+			tier: w.tier,
+			waitedSince: w.waitedSince,
+		}));
+	}
+
+	/**
+	 * Per-provider concurrency snapshot ({ active, waiting }) — fills the gap
+	 * referenced by session-manager.getAggregateMetrics (which calls
+	 * this.getConcurrencySnapshot?.()). Was undefined before sub-5 (returned {}
+	 * via optional-chaining); now derived from concurrencyManager queues.
+	 * Readonly, all providers with a queue.
+	 */
+	getConcurrencySnapshot(): Record<string, { active: number; waiting: number }> {
+		const out: Record<string, { active: number; waiting: number }> = {};
+		const providers = this.readProvidersTable();
+		for (const p of providers) {
+			const q = this.concurrencyManager.getQueue(p.name);
+			if (q) out[p.name] = { active: q.getActiveCount(), waiting: q.getWaitingCount() };
+		}
+		return out;
+	}
+	// ─── end PlatformObserver ───────────────────────────────────────────────
 
 	/**
 	 * Compute the domain capability handles to surface for a toolPolicy. See
@@ -566,6 +891,10 @@ export class AgentService {
 		// Re-attach compression config (the extraction hook doesn't strictly
 		// need it but other code paths might run during the flush).
 		(cfg as any).compression = this.config.compression;
+		// platform-observability ① (sub-4): keep the observer handle on the
+		// rebuilt config (consistency — the close-flush path doesn't run tools,
+		// but a future caller of the rebuilt loop would expect it present).
+		cfg.platformObserver = this;
 		return cfg;
 	}
 	subscribe(cb: StreamCallback): () => void {
@@ -762,6 +1091,12 @@ export class AgentService {
 		// v0.8 (P3 §7.7 #4): surface the tool-call usage log on every session
 		// so tool-factory records one row per tool invocation.
 		if (this.toolUsageStore) (sessionConfig as any).toolUsageStore = this.toolUsageStore;
+		// platform-observability ① (sub-4): read-only session observation handle.
+		// The service itself implements PlatformObserver; surfacing it on every
+		// session config lets the Platform 'sessions' resource read live session
+		// state via ctx.platformObserver (single source — same data the IPC
+		// sessions:parents/detail channels serve to the ③ kanban).
+		sessionConfig.platformObserver = this;
 		// v0.8 (P1 §10.6): copy the agent's free wikiAnchors onto the session
 		// config so the loop can resolve + inject them (system + context
 		// channels). Auto anchors (memory + project) are derived from the
@@ -820,7 +1155,15 @@ export class AgentService {
 		return loop;
 	}
 	// ─── Prompt execution — concurrent ──────────────────────────────
-	async sendPrompt(text: string, agent?: AgentRecord, sessionId?: string): Promise<void> {
+	/**
+	 * Send a user/automated prompt. `source` is the platform-observability ②.1
+	 * turn-source marker (user|work|cron|background), defaulting to 'background'
+	 * — callers MUST pass the right value (chat-router→'user', cron→'cron',
+	 * analyst/automation→'background'). Omitting it lands in 'background'
+	 * (acceptance-1 case 6). The marker is stamped on the loop and persists on
+	 * turn_state.source via durable-hooks TurnStart.
+	 */
+	async sendPrompt(text: string, agent?: AgentRecord, sessionId?: string, source: TurnSource = "background"): Promise<void> {
 		const agentId = agent?.id ?? "__default__";
 		// If sessionId provided, look up (or create) the loop for that specific session
 		let loop: AgentLoop;
@@ -831,6 +1174,9 @@ export class AgentService {
 			loop = this.getOrCreateLoop(agent);
 			sessionId = this.activeSessions.get(agentId) ?? agentId;
 		}
+		// sub-1: stamp the turn-source marker BEFORE run()/drain so this turn
+		// (and any queued inputs drained as turn+1 from the SAME entry) carry it.
+		loop.setTurnSource(source);
 		// C2 input queue: if this session is already running, enqueue instead of
 		// starting a concurrent run on the same loop (which would clash). The
 		// running sendPrompt drains the queue after its run() returns.
@@ -883,8 +1229,10 @@ export class AgentService {
 	/**
 	 * v0.8 project-work(取代工作流角色的去-role 触发器):身份 prompt + toolPolicy
 	 * 全用 agent 自带(来自模板),不调任何 role config。注入 wikiStore/projectContext/
-	 * wikiAnchors + 可选 stores(req/task/orchestrate/git)+ workId(供 T2 hook 按
-	 * work.contextPolicy 注入)。所有可触发工作(cron/hook/手动 + lead/analyst)走这里。
+	 * wikiAnchors + 可选 stores(req/task/orchestrate/git)+ workId。sub-7 后 workId 不再
+	 * 喂 T2 hook(已删),而是喂 buildWorkContextClosures —— 按 work.contextPolicy 渲染
+	 * Project/Requirement/Wiki Baseline 进 system 段、Steps Progress 进 workbench 段。
+	 * 所有可触发工作(cron/hook/手动 + lead/analyst)走这里。
 	 */
 	async sendProjectPrompt(
 		agentId: string,
@@ -896,7 +1244,7 @@ export class AgentService {
 			projectName?: string;
 			wikiStore?: any;
 			activeRequirementId?: string;
-			/** v0.8 project-work:触发本 turn 的工位(workflow-context-hook 据此注入 T2)。 */
+			/** v0.8 project-work:触发本 turn 的工位。sub-7:work-context closures 据此读 work.contextPolicy 渲染 system/workbench 段。 */
 			workId?: string;
 			/** 可选注入(需求管理工位等需要):工具上下文 stores + git。 */
 			requirementStore?: any;
@@ -905,6 +1253,14 @@ export class AgentService {
 			orchestrateManifestStore?: any;
 			gitIntegration?: any;
 		},
+		/**
+		 * platform-observability ②.1 (sub-1): turn-source marker. Defaults to
+		 * 'work' (sendProjectPrompt's primary callers are project-work / lead /
+		 * enrichment, all of which drive a 工位). cron's fireAgent overrides
+		 * this to 'cron' since the same project-prompt path is how scope-bound
+		 * cron runs reach the agent (acceptance-1 case 3 vs 4).
+		 */
+		source: TurnSource = "work",
 	): Promise<{ skipped?: "busy" }> {
 		const agent = this.agentStore?.get(agentId);
 		if (!agent) throw new Error(`Agent not found: ${agentId}`);
@@ -982,6 +1338,24 @@ export class AgentService {
 		// Step 1B: thread hook wiring deps (subagent-delegator uses them).
 		sessionConfig.hookWiringDeps = this.buildHookDeps();
 
+		// sub-7 (work-context 拆解到三通道): build the system + workbench
+		// closures for this work session (replaces the deleted workflow-context-
+		// hook's memoryContext path). Non-work / no-policy sessions get {} back
+		// → the loop omits the work-context system section + the workbench
+		// Steps Progress sub-block. Built fresh per sendProjectPrompt call so a
+		// changed workId / activeRequirementId is captured.
+		const workClosures = this.buildWorkContextClosures({
+			workId: context.workId,
+			projectId: context.projectId,
+			activeRequirementId: context.activeRequirementId,
+		});
+		if (workClosures.workContextSystemSection) {
+			(sessionConfig as any).workContextSystemSection = workClosures.workContextSystemSection;
+		}
+		if (workClosures.stepsProgressSection) {
+			(sessionConfig as any).stepsProgressSection = workClosures.stepsProgressSection;
+		}
+
 		let loop = this.loops.get(sessionId);
 		if (!loop) {
 			loop = new AgentLoop(sessionConfig, this.providerConfigs, {
@@ -1003,6 +1377,10 @@ export class AgentService {
 		}
 
 		const state = this.runStates.get(sessionId)!;
+		// sub-1: stamp turn-source BEFORE the busy check + run() so the marker
+		// is correct even on a busy-skip retry (the next non-busy attempt will
+		// re-stamp the same value). Mirrors sendPrompt's stamp placement.
+		loop.setTurnSource(source);
 		// A 方案:上一 turn 未完成(session 正在跑)→ 干净 skip,不丢/不排,不覆盖
 		// in-flight 的流式状态(work 都有重发源:cron/hook/手动重试,skip 比 heap 排队合理)。
 		if (state.isBusy) return { skipped: "busy" };
@@ -1137,6 +1515,15 @@ export class AgentService {
 		const allSessions = this.db.listAllSessions();
 		console.error(`[server] Restoring ${allSessions.length} session(s) into runtime`);
 
+		// sub-8 (lazy rebuild, design §2.4): only sessions with an incomplete
+		// turn get a runtime loop at startup (so doRecoverIncompleteSessions
+		// can resume them). All other chat sessions defer loop creation to
+		// activateSession (lazy build via getSessionInitPayload) — they have no
+		// live turn to resume, so eagerly building them only burns memory and
+		// assumes loop-already-built in places that now must tolerate absence.
+		// Single batched query (one SELECT DISTINCT over turn_state).
+		const incompleteSessionIds = this.db.getIncompleteTurnSessionIds?.() ?? new Set<string>();
+
 		// listAllSessions is ordered by updated_at DESC, so for each agent the
 		// FIRST session we encounter is its most-recently-active one. Track
 		// which agents we've already anchored so the loop (which iterates
@@ -1144,18 +1531,33 @@ export class AgentService {
 		// anchor with a stale session — that was the bug: every iteration did
 		// `activeSessions.set(agentId, session.id)`, leaving each agent pointing
 		// at whatever session the loop visited LAST (the oldest).
+		//
+		// activeSessions anchoring is INDEPENDENT of loop creation: the anchor
+		// (agentId → most-recent session) is what the UI list and activateSession
+		// read, so it must be populated for every agent even when no loop is
+		// built for that session this startup.
 		const anchoredAgents = new Set<string>();
 
 		for (const session of allSessions) {
 			try {
-				if (this.loops.has(session.id)) continue;
-
-				const agent = this.agentStore?.list().find((a) => a.id === session.agentId);
-				this.createLoopForSession(session.agentId, session.id, agent ?? undefined);
+				// Always anchor the most-recent session per agent (UI list /
+				// activateSession rely on it). Done BEFORE the incomplete check so
+				// a completed-only agent still gets its anchor.
 				if (!anchoredAgents.has(session.agentId)) {
 					this.activeSessions.set(session.agentId, session.id);
 					anchoredAgents.add(session.agentId);
 				}
+
+				if (this.loops.has(session.id)) continue;
+
+				// Lazy rebuild: skip loop creation for sessions with no incomplete
+				// turn. activateSession will build it on first open. Recovery
+				// (doRecoverIncompleteSessions) only needs loops for incomplete
+				// sessions and queries turn_state directly, so it is unaffected.
+				if (!incompleteSessionIds.has(session.id)) continue;
+
+				const agent = this.agentStore?.list().find((a) => a.id === session.agentId);
+				this.createLoopForSession(session.agentId, session.id, agent ?? undefined);
 			} catch (err) {
 				log.error("recovery", `Failed to restore ${session.id}:`, (err as Error).message);
 			}

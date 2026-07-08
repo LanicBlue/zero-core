@@ -85,6 +85,13 @@ const api: WindowApi = {
 	sessionsDelete: (agentId, sessionId) => ipcRenderer.invoke("sessions:delete", agentId, sessionId),
 	sessionsArchive: (agentId, sessionId) => ipcRenderer.invoke("sessions:archive", agentId, sessionId),
 	sessionsMetrics: () => ipcRenderer.invoke("sessions:metrics"),
+	// platform-observability ① (sub-4): parent-session List + Detail for the ③ kanban.
+	sessionsParents: () => ipcRenderer.invoke("sessions:parents"),
+	sessionsDetail: (sessionId) => ipcRenderer.invoke("sessions:detail", sessionId),
+	// platform-observability ② (sub-5): provider observation for the ③ kanban.
+	providerStats: () => ipcRenderer.invoke("provider:stats"),
+	providerUsage: (provider, granularity, range, model) => ipcRenderer.invoke("provider:usage", provider, granularity, range, model),
+	providerQueue: (provider) => ipcRenderer.invoke("provider:queue", provider),
 
 	// ─── Streaming events ────────────────────────────
 	onAgentEvent: (callback) => {
@@ -289,6 +296,8 @@ const api: WindowApi = {
 	cronsTrigger: (id) => ipcRenderer.invoke("crons:trigger", id),
 	// §9.3: cron_runs audit log (newest-first, default 50).
 	cronsListRuns: (cronId, limit?) => ipcRenderer.invoke("crons:listRuns", cronId, limit),
+	// platform-observability ③ (sub-6): today's planned cron fires (kanban right column).
+	cronsToday: () => ipcRenderer.invoke("crons:today"),
 
 	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
 	orchestratePending: (filter?) => ipcRenderer.invoke("orchestrate:pending", filter),

@@ -68,6 +68,20 @@ export function createCronRouter(deps: {
 		res.json(rows);
 	});
 
+	/**
+	 * GET /today — platform-observability ③ (sub-6): today's planned cron fires
+	 * for the kanban's "今日任务" column. Walks enabled crons via cronManager
+	 * .listTodaysFires() (nextFireMs-based). MUST precede /:id so "today" isn't
+	 * captured as an id param. Same data the kanban reads via the crons:today IPC.
+	 */
+	router.get("/today", (_req, res) => {
+		try {
+			res.json(cronManager.listTodaysFires());
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
+		}
+	});
+
 	/** GET /:id — get a single cron */
 	router.get("/:id", (req, res) => {
 		const cron = management.getCron(req.params.id);

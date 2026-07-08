@@ -358,6 +358,14 @@ export class AgentSession {
 	 *   - `until` in the future: fill `woke: timeout (resumed; wait re-suspended)`
 	 *     (status done). The model sees the wait "returned" so the conversation
 	 *     is valid; AgentLoop.resume re-suspends to honor the real deadline.
+	 *
+	 *   sub-9 (durable relative-timeout): a relative-only `timeout` with a
+	 *   persisted `startedAt` block-level field (sibling to `args`) is now ALSO
+	 *   durable. If `now − startedAt < timeoutSec*1000` the deadline has NOT
+	 *   elapsed across the restart → fill the same "resumed; wait re-suspended"
+	 *   placeholder so detectAndResumePendingWait re-suspends with the remaining
+	 *   time. No `startedAt` (old blocks pre-sub-9) OR remaining ≤ 0 → fall
+	 *   through to `woke: timeout` (old-block compat: treated as elapsed, no crash).
 	 */
 	private synthesizeDanglingToolResultsInPlace(blocks: any[]): void {
 		for (const b of blocks) {
@@ -372,12 +380,27 @@ export class AgentSession {
 				if (hasFutureUntil) {
 					b.status = "done";
 					b.result = "woke: timeout (resumed; wait re-suspended)";
-				} else {
-					// Past-due `until`, or relative-only `timeout` (treated as
-					// elapsed across restart), or no args at all → wake as timeout.
-					b.status = "done";
-					b.result = "woke: timeout";
+					continue;
 				}
+				// sub-9: relative-only `timeout` with a persisted `startedAt` →
+				// durable. Compute remaining and treat like a future `until`.
+				const startedAt = typeof b.startedAt === "number" ? b.startedAt
+					: (typeof b.startedAt === "string" && /^[0-9]+$/.test(b.startedAt) ? Number(b.startedAt) : NaN);
+				const timeoutSec = typeof args?.timeout === "number" ? args.timeout
+					: (typeof args?.timeout === "string" && /^[0-9]+(\.[0-9]+)?$/.test(args.timeout) ? Number(args.timeout) : NaN);
+				if (!Number.isNaN(startedAt) && !Number.isNaN(timeoutSec) && timeoutSec > 0) {
+					const remainingMs = startedAt + timeoutSec * 1000 - Date.now();
+					if (remainingMs > 0) {
+						b.status = "done";
+						b.result = "woke: timeout (resumed; wait re-suspended)";
+						continue;
+					}
+				}
+				// Past-due `until`, relative-only `timeout` without `startedAt`
+				// (old block → treated as elapsed for back-compat) or already
+				// elapsed, or no args at all → wake as timeout.
+				b.status = "done";
+				b.result = "woke: timeout";
 				continue;
 			}
 

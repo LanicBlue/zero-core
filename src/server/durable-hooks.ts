@@ -96,9 +96,15 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 			if (turnSeq === undefined) {
 				turnSeq = sessionDb.getTurnCount(sessionId);
 			}
-			sessionDb.createTurnState(sessionId, turnSeq);
+			// sub-1: forward the turn-source marker from the TurnStart context
+			// (set by the entry that kicked the turn, threaded via SessionConfig
+			// → agent-loop.run/resume → triggerLocal). Defaults to 'background'
+			// inside createTurnState when ctx.source is unset (pre-migration rows
+			// + test stubs that skip the field), matching the column DEFAULT.
+			const source = (ctx.source as import("../runtime/types.js").TurnSource | undefined) ?? "background";
+			sessionDb.createTurnState(sessionId, turnSeq, source);
 			markTurnStatePrecreated(sessionId);
-			log.debug("durable", `Turn ${turnSeq} created for session ${sessionId}`);
+			log.debug("durable", `Turn ${turnSeq} created for session ${sessionId} (source=${source})`);
 		} catch (err) {
 			log.error("durable", "TurnStart hook failed:", (err as Error).message);
 		}

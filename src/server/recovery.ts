@@ -37,6 +37,8 @@ import { log } from "../core/logger.js";
 export function scanIncompleteTurns(sessionDb: SessionDB): Array<{ sessionId: string; turnSeq: number; phase: string }> {
 	// Clean up old turn_state records (older than 24 hours)
 	sessionDb.cleanOldTurnState(24 * 60 * 60 * 1000);
+	// platform-observability ②.2 (sub-2): retain provider_usage ≥30d.
+	sessionDb.cleanOldProviderUsage(30 * 24 * 60 * 60 * 1000);
 
 	const incomplete = sessionDb.getIncompleteTurns();
 	if (incomplete.length === 0) {
