@@ -256,3 +256,142 @@ export function replaceSkillDirVars(content: string, skillId: string): string {
 		.replace(/\$\{CLAUDE_SKILL_DIR\}/g, replacement)
 		.replace(/\$\{SKILL_DIR\}/g, replacement);
 }
+
+// ─── Shell 命令 token 解析(sub-3,resource 段:脚本执行) ────────────────
+//
+// # 文件说明书(段)
+//
+// ## 核心功能
+// 把 Shell 命令里的 `[skills]/<id>/<rel>` 虚拟路径 token + `${SKILL_DIR}` /
+// `${CLAUDE_SKILL_DIR}` 自引用 token 解析成**真实磁盘路径**(要真跑,不是虚拟形态
+// —— 与 Read 那边替换成 `[skills]/<id>` 不同,见 design「`${SKILL_DIR}` 替换」段
+// + 决策 4)。
+//
+// ## 输入
+// - 命令字符串(可能含 0..N 个 `[skills]/<id>/<rel>` token,0..N 个 `${SKILL_DIR}`)。
+// - 可选 home(测试注入 tmp;生产 scanner 用 os.homedir())。
+//
+// ## 输出
+// - `{ ok:true, command, skillDirs }` —— 全部 token 解析成功,命令里所有 skill
+//   虚拟路径 / 自引用变量已替换成引号包裹的真实路径;`skillDirs` 是被解析到的
+//   skill 的 baseDir 集合(供调用方注入 `SKILL_DIR` env)。
+// - `{ ok:false, error }` —— 任一 `[skills]/` token 解析失败(skill 不存在 / `../`
+//   越界)。整条命令拒(不部分替换,防半解析后执行意外路径)。
+//
+// ## 路径沙箱
+// 复用 resolveSkillPath:`<rel>` resolve 后必须仍在该 skill baseDir 内,`../` 越
+// 界 → `{ ok:false }`。`${SKILL_DIR}` 的 skillId 上下文来自同命令里已解析成功
+// 的 `[skills]/<id>/` token(无 `[skills]/` 锚点 → 保留字面 `${SKILL_DIR}`,交
+// shell 自行展开,不阻塞执行)。
+//
+// ## Windows 安全(F3)
+// 解析出的真实路径在 win32 带反斜杠,直接塞进 bash 命令会被当转义;统一**正斜杠
+// 化 + 双引号包裹**(`"C:/Users/.../x.py"`)。引号包裹同时防路径含空格/特殊字符
+// 被当命令分隔符(命令注入防护,acceptance 用例 6)。
+//
+// ## 维护规则
+// - 命令注入面:替换进命令的路径**必须**引号包裹,绝不裸插(防 `;rm -rf` 之类)。
+// - 半解析拒:任一 token 失败整条命令拒(不部分替换),防 agent 看到混合形态。
+// - token 识别用非贪婪正则 + 字符类限定(`<id>` 限 `[A-Za-z0-9._-]`,`<rel>` 限非
+//   空白/非引号),避免误吞命令其他部分。
+//
+// ## 定位
+// src/tools/skill-paths.ts —— 解析器家族;被 sub-3 Shell(bash.ts)复用。sub-8
+// (Write/Edit)不复用本函数(那是写类,语义不同)。
+
+/** Shell 命令 token 解析结果。 */
+export type ShellTokenResolution =
+	| { ok: true; command: string; skillDirs: string[] }
+	| { ok: false; error: string };
+
+/**
+ * 把引号包裹 + 正斜杠化的真实路径"安全地"插回命令(Windows 反斜杠 + 注入防护)。
+ *
+ * win32 真实路径形如 `C:\Users\foo bar\x.py`,裸塞进 bash 命令:反斜杠被转义 +
+ * 空格被当参数分隔。统一处理:正斜杠化 + 双引号包裹。
+ *
+ * posix 路径无反斜杠问题,但仍引号包裹(防空格/特殊字符,统一注入防护)。
+ */
+function quoteRealPath(realPath: string): string {
+	const fwd = realPath.replace(/\\/g, "/");
+	return `"${fwd}"`;
+}
+
+/**
+ * 解析 Shell 命令里的 `[skills]/<id>/<rel>` 与 `${SKILL_DIR}` token → 真实路径。
+ *
+ * 见上文段头文件说明书。返回 `{ ok:false }` 时整条命令拒(不部分替换)。
+ *
+ * @param command 待解析的 shell 命令。
+ * @param home    可选 home 目录;省略时 scanner 用 os.homedir()。仅测试注入。
+ */
+export function resolveSkillTokensInShellCommand(
+	command: string,
+	home?: string,
+): ShellTokenResolution {
+	if (typeof command !== "string" || command.length === 0) {
+		return { ok: true, command: command ?? "", skillDirs: [] };
+	}
+
+	// 第一遍:扫 `[skills]/<id>/<rel>` token,逐个 resolveSkillPath。
+	// token 形态:`[skills]/<id>/<rel>` —— **要求至少一个 `/<rel>` 段**(rel 非空),
+	// 避免 `[skills]/foo`(裸 skill id、无 rel)被解析成 baseDir 后紧接命令分隔符
+	// (`python [skills]/foo;a.py` → baseDir + `;a.py`,误执行注入面)。
+	// `<id>` 限 path-safe 字符 `[A-Za-z0-9._-]`;`<rel>` 限非空白 / 非引号 / 非命令
+	// 分隔符(`;&|<>$`)——避免吞到命令其他部分(命令注入防护,acceptance 用例6)。
+	// 容错:已被双引号包裹的 token(`"[skills]/foo/x.py"`)也识别 —— strip 引号后解析。
+	const skillDirs = new Set<string>();
+	let resolved = command;
+	const tokenRe = /"\[skills\]\/[A-Za-z0-9._-]+\/[^\s"|';&<>$]*"|\[skills\]\/[A-Za-z0-9._-]+\/[^\s"|';&<>$]*/g;
+	let tokenError: string | null = null;
+
+	resolved = resolved.replace(tokenRe, (raw) => {
+		// strip 包裹引号(resolveSkillPath 内部也 strip,但显式 strip 让 token 边界清晰)。
+		let tok = raw;
+		if (tok.startsWith('"') && tok.endsWith('"')) tok = tok.slice(1, -1);
+		const r = resolveSkillPath(tok, home);
+		if (r === null) return raw; // 不该发生(正则已限定前缀),兜底原样
+		if (!r.ok) {
+			tokenError = r.error;
+			return raw; // 占位,外层检测 tokenError 后整条拒
+		}
+		skillDirs.add(r.baseDir);
+		return quoteRealPath(r.realPath);
+	});
+
+	if (tokenError) {
+		return { ok: false, error: tokenError };
+	}
+
+	// 第二遍:`${SKILL_DIR}` / `${CLAUDE_SKILL_DIR}` 自引用 token。
+	// skillId 上下文:同命令里已解析到的 `[skills]/<id>/` token 的 baseDir。
+	// - 有锚点 → 用第一个锚点的 baseDir 替换 `${SKILL_DIR}` 成真实路径。
+	//   **整段 `${SKILL_DIR}/rest/of/path` 一起引号包裹**(不能只包 baseDir —— 否则
+	//   `"...base"/rest` 的 `/rest` 裸露在引号外,反斜杠/空格仍会破坏命令)。
+	//   多锚点歧义时取第一个(skill 自引用典型场景是单 skill 命令,多 skill 命令里
+	//   `${SKILL_DIR}` 本就歧义,取第一个保守可用)。
+	// - 无锚点 → 保留字面(交 shell 自行展开,不阻塞;符合"防御性 best-effort"语义)。
+	if (/\$\{(?:CLAUDE_)?SKILL_DIR\}/.test(resolved) && skillDirs.size > 0) {
+		const baseDir = [...skillDirs][0];
+		const baseFwd = baseDir.replace(/\\/g, "/");
+		// token 形态:`${SKILL_DIR}` 或 `${CLAUDE_SKILL_DIR}` 后跟可选 `/rest`(rest 限
+		// 非空白/非引号/非命令分隔符,与第一遍 token rel 字符类一致 —— 防注入)。
+		// 替换成 `"<baseFwd>[/rest]"`(整段引号包裹)。
+		const expandVar = (varName: string) => {
+			const re = new RegExp(
+				`\\$\\{${varName}\\}(\\/[^\\s"|';&<>$]*)?`,
+				"g",
+			);
+			return resolved.replace(re, (_m, rest: string | undefined) => {
+				const full = rest ? `${baseFwd}${rest}` : baseFwd;
+				return `"${full}"`;
+			});
+		};
+		// 先替换长变量名(CLAUDE_SKILL_DIR),再替换短的 —— 两者正则互不包含,顺序仅
+		// 为可读性(不互相吃)。
+		resolved = expandVar("CLAUDE_SKILL_DIR");
+		resolved = expandVar("SKILL_DIR");
+	}
+
+	return { ok: true, command: resolved, skillDirs: [...skillDirs] };
+}

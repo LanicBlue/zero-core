@@ -33,6 +33,7 @@ import { buildTool } from "./tool-factory.js";
 import { EXEC_MAX_BUFFER_BYTES } from "../core/constants.js";
 import { decodeExecBuffers } from "../core/encoding.js";
 import { findWikiPathInShellCommand, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import { resolveSkillTokensInShellCommand } from "./skill-paths.js";
 import type { CallerCtx, ToolResult } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -289,11 +290,30 @@ export const bashTool = buildTool({
 			return wrap({ text: wikiPathRejectMessage(blockedPath), stdout: "", stderr: "", exitCode: 0, elapsedSec: "0.0" }, false);
 		}
 
+		// skill-system sub-3:`[skills]/<id>/<rel>` 虚拟路径通道(resource 段:脚本执行)。
+		// 命令里的 `[skills]/foo/scripts/x.py` token → 经 sub-2 解析器 → 真实路径(引号
+		// 包裹 + 正斜杠化,Windows 反斜杠 + 命令注入防护)→ 替换进命令 → 执行真实脚本。
+		// 同时把 `${SKILL_DIR}` / `${CLAUDE_SKILL_DIR}` 自引用替换成真实 baseDir(有
+		// `[skills]/<id>/` 锚点时)。**真实路径命令不变**(无 `[skills]/` token 走原流程,
+		// autoApprove/scope 照常——执行权限仍走原有 shell 工具门禁,这里不新造"始终放行")。
+		// 任一 token 解析失败(skill 不存在 / `../` 越界)→ 整条命令拒(不部分替换)。
+		// 解析成功的 skill baseDir → 注入 `SKILL_DIR=<baseDir>` 子进程 env(脚本自定位用)。
+		const skillRes = resolveSkillTokensInShellCommand(command);
+		if (!skillRes.ok) {
+			return wrap(
+				{ text: `Error: ${skillRes.error}`, stdout: "", stderr: "", exitCode: 0, elapsedSec: "0.0" },
+				false,
+				skillRes.error,
+			);
+		}
+		const finalCommand = skillRes.command;
+		const skillDirs = skillRes.skillDirs;
+
 		const info = detectShell();
 
 		// Pre-check: warn about Unix-only commands on non-bash shells
 		if (info.type !== "bash") {
-			const warning = checkUnixCommand(command, info.type);
+			const warning = checkUnixCommand(finalCommand, info.type);
 			if (warning) {
 				const text = `[Warning] ${warning}\n\n[Command not executed]`;
 				return wrap({ text, stdout: "", stderr: warning, exitCode: 0, elapsedSec: "0.0" }, false);
@@ -301,7 +321,7 @@ export const bashTool = buildTool({
 		}
 
 		// Preprocess command for non-bash shells
-		const processedCommand = preprocessCommand(command, info.type);
+		const processedCommand = preprocessCommand(finalCommand, info.type);
 		const shellArgs = [...info.args, processedCommand];
 
 		// sub-4: Shell is BLOCKING only. Explicit background is the TaskStart
@@ -315,6 +335,12 @@ export const bashTool = buildTool({
 		// 做 UTF-8(优先)/ GBK(Windows 原生命令回退)解码,避免中文乱码。
 		const execOpts: any = { cwd, maxBuffer: EXEC_MAX_BUFFER_BYTES, encoding: "buffer" };
 		if (timeout) execOpts.timeout = timeout;
+		// skill-system sub-3:命令含 skill 脚本时注入 `SKILL_DIR=<真实 baseDir>` 子进程
+		// env(协议脚本可能依赖自定位)。多 skill 命令取第一个锚点的 baseDir(与 token
+		// 替换的 `${SKILL_DIR}` 语义一致);无 skill → 不设 env(走 process.env 继承)。
+		if (skillDirs.length > 0) {
+			execOpts.env = { ...process.env, SKILL_DIR: skillDirs[0] };
+		}
 		const t0 = Date.now();
 
 		try {
@@ -334,16 +360,16 @@ export const bashTool = buildTool({
 				// Timeout:重现旧文本("Command timed out after …s\nCommand: …"),
 				// 但走 migrated 返 ToolResult{ok:false} 而非 throw(与 Platform
 				// 一致:错误也返 JSON,agent 看到 timeout 文本作为工具结果)。
-				const text = `Command timed out after ${timeoutSec}s\nCommand: ${command}`;
+				const text = `Command timed out after ${timeoutSec}s\nCommand: ${finalCommand}`;
 				return wrap({ text, stdout: "", stderr: "", exitCode: -1, elapsedSec }, false, text);
 			}
 			const { stdout, stderr } = decodeExecBuffers(err);
-			const stderrText = postprocessError(stderr.trim(), command, info.type);
+			const stderrText = postprocessError(stderr.trim(), finalCommand, info.type);
 			const exitCode = err.status ?? err.code ?? 1;
 			// G2 流式:即使失败也推 partial(已收集的 stdout)。
 			if (emit && stdout) emit({ type: "partial", text: stdout.trim() });
 			let text = `Exit code ${exitCode}`;
-			if (command.length <= 200) text += `\nCommand: ${command}`;
+			if (finalCommand.length <= 200) text += `\nCommand: ${finalCommand}`;
 			const stdoutTrim = stdout.trim();
 			if (stdoutTrim) text += "\n" + stdoutTrim;
 			if (stderrText) text += "\n[stderr] " + stderrText;
