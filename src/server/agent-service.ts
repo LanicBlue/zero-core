@@ -589,9 +589,10 @@ export class AgentService implements PlatformObserver {
 
 	// ─── platform-observability ① (sub-4): PlatformObserver impl ────────────
 	// Read-only session observation surface. Backs BOTH the Platform 'sessions'
-	// resource (agent self-introspection, via ctx.platformObserver) AND the IPC
-	// channels sessions:parents / sessions:detail (③ kanban, via REST). Single
-	// source — same data, two consumers. See runtime/types.ts PlatformObserver.
+	// tool (agent self-introspection, reads this via getAgentService() singleton
+	// — tool-decoupling sub-2) AND the IPC channels sessions:parents /
+	// sessions:detail (③ kanban, via REST). Single source — same data, two
+	// consumers. See runtime/types.ts PlatformObserver.
 	/**
 	 * List one row per PARENT agent session. A "parent" = an agent that has an
 	 * active/main `session_kind='chat'` session. db.getMainSession already
@@ -643,12 +644,13 @@ export class AgentService implements PlatformObserver {
 	}
 
 	// ─── platform-observability ② (sub-5): provider observation ────────────
-	// Backs BOTH the Platform 'providerStats' resource (agent self-introspection,
-	// via ctx.platformObserver) AND the IPC channels provider:stats / :usage /
-	// :queue (③ kanban, via REST in provider-router). Single source — same data,
-	// two consumers. latency is N/A (null) — sub-2 did NOT build a process-local
-	// latency accumulator (design ②.2 leaves it process-local; provider_usage has
-	// no latency column). When added, fill latencyMs here.
+	// Backs BOTH the Platform 'providerStats' tool (agent self-introspection,
+	// reads this via getAgentService() singleton — tool-decoupling sub-2) AND
+	// the IPC channels provider:stats / :usage / :queue (③ kanban, via REST in
+	// provider-router). Single source — same data, two consumers. latency is
+	// N/A (null) — sub-2 did NOT build a process-local latency accumulator
+	// (design ②.2 leaves it process-local; provider_usage has no latency
+	// column). When added, fill latencyMs here.
 
 	/**
 	 * Read the providers table read-only via the raw DB handle (same path as the
@@ -891,10 +893,6 @@ export class AgentService implements PlatformObserver {
 		// Re-attach compression config (the extraction hook doesn't strictly
 		// need it but other code paths might run during the flush).
 		(cfg as any).compression = this.config.compression;
-		// platform-observability ① (sub-4): keep the observer handle on the
-		// rebuilt config (consistency — the close-flush path doesn't run tools,
-		// but a future caller of the rebuilt loop would expect it present).
-		cfg.platformObserver = this;
 		return cfg;
 	}
 	subscribe(cb: StreamCallback): () => void {
@@ -1091,12 +1089,6 @@ export class AgentService implements PlatformObserver {
 		// v0.8 (P3 §7.7 #4): surface the tool-call usage log on every session
 		// so tool-factory records one row per tool invocation.
 		if (this.toolUsageStore) (sessionConfig as any).toolUsageStore = this.toolUsageStore;
-		// platform-observability ① (sub-4): read-only session observation handle.
-		// The service itself implements PlatformObserver; surfacing it on every
-		// session config lets the Platform 'sessions' resource read live session
-		// state via ctx.platformObserver (single source — same data the IPC
-		// sessions:parents/detail channels serve to the ③ kanban).
-		sessionConfig.platformObserver = this;
 		// v0.8 (P1 §10.6): copy the agent's free wikiAnchors onto the session
 		// config so the loop can resolve + inject them (system + context
 		// channels). Auto anchors (memory + project) are derived from the

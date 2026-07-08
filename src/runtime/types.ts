@@ -51,16 +51,16 @@ export const TURN_SOURCES: readonly TurnSource[] = ["user", "work", "cron", "bac
 // platform-observability ① (sub-4): read-only session observation seam
 // ---------------------------------------------------------------------------
 /**
- * Read-only platform observation surface — the ONLY way the Platform 'sessions'
- * resource (runtime/mcp-tools) reaches live session state without importing the
- * server layer. Implemented by AgentService; injected onto every SessionConfig
- * + mirrored to ToolExecutionContext so the Platform tool's execute() can call
- * it through `ctx.platformObserver`. Same data the UI kanban (③) consumes via
- * the IPC channels (sessions:parents / sessions:detail) — single source.
+ * Read-only platform observation surface. Implemented by AgentService; the
+ * Platform 'sessions' / 'providerStats' tools reach it through the process-wide
+ * `getAgentService()` singleton (tool-decoupling sub-2 — no longer injected
+ * via ctx). Same data the UI kanban (③) consumes via the IPC channels
+ * (sessions:parents / sessions:detail, provider:stats / :usage / :queue) —
+ * single source.
  *
- * Why a typed seam and not `ctx.agentService`: the runtime layer must not import
- * the server module (conventions.md). The handle is a narrowing interface the
- * service satisfies; the tool only sees the read methods it needs.
+ * Why a typed seam and not `agentService` directly: keeps the contract narrow
+ * (the read methods the tool/IPC need) so the implementation can evolve
+ * independently, and lets tests substitute a mock via `setAgentService(mock)`.
  *
  * All methods are READ-ONLY. status semantics (acceptance-4 #3):
  *   running  — runStates has the session AND isBusy
@@ -612,13 +612,6 @@ export interface SessionConfig {
 	 * builds the loop (it owns loopKind="main").
 	 */
 	hookWiringDeps?: HookWiringDeps;
-	/**
-	 * platform-observability ① (sub-4): read-only session observation handle.
-	 * Injected on EVERY SessionConfig by AgentService (the service implements
-	 * PlatformObserver); the loop mirrors it to ToolExecutionContext so the
-	 * Platform 'sessions' resource can read live session state through ctx.
-	 */
-	platformObserver?: PlatformObserver;
 }
 
 // ---------------------------------------------------------------------------
@@ -878,14 +871,6 @@ export interface ToolExecutionContext {
 	 * when git is unavailable).
 	 */
 	gitIntegration?: any;
-	/**
-	 * platform-observability ① (sub-4): read-only session observation handle.
-	 * Backs the Platform 'sessions' resource (List parent sessions / Detail task
-	 * tree + recent steps). Injected on every SessionConfig by AgentService
-	 * (the service implements PlatformObserver); absent in test stubs → the
-	 * resource reports "observer not available" rather than crashing.
-	 */
-	platformObserver?: PlatformObserver;
 }
 
 // ---------------------------------------------------------------------------

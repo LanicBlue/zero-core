@@ -215,6 +215,16 @@ export async function startServer(options?: StartServerOptions) {
 	const agentService = createAgentService(workspaceConfig.workspaceDir, sessionDB, registry, mcp);
 	agentService.setAgentStore(agentStore);
 
+	// tool-decoupling(sub-2): early-register the AgentService singleton BEFORE
+	// restoreAllSessions (below). Migrated Platform tools read live session
+	// state via `getAgentService()` (no more ctx.platformObserver); a restored
+	// session that fires a tool during restore would otherwise read undefined.
+	// registerServerInstances is idempotent on present fields, so the full call
+	// near the bottom (which also registers the stores built later) is still
+	// correct — it just re-sets the same agentService handle. sessionDB is also
+	// available now, so register it too (sub-3+ data tools will read it).
+	registerServerInstances({ agentService, sessionDB });
+
 	// Step 1B: inject per-loop hook wiring deps. The service merges its own
 	// always-available handles (db / sessionManager / inputQueue) on top at
 	// buildHookDeps() time. Each loop built by agent-service registers the

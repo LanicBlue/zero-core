@@ -60,16 +60,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createPlatformTools } from "../../src/tools/mcp/platform-tools.js";
-import { getToolExecute } from "../../src/tools/tool-factory.js";
+import { getToolExecute, getToolFormat } from "../../src/tools/tool-factory.js";
 import { createProviderRouter } from "../../src/server/provider-router.js";
 import { ProviderStore } from "../../src/server/provider-store.js";
 import { SessionDB } from "../../src/server/session-db.js";
 import { ProviderUsageStore, floorToHourBucket } from "../../src/server/provider-usage-store.js";
 import { ConcurrencyQueue } from "../../src/runtime/concurrency-queue.js";
 import { ProviderConcurrencyManager } from "../../src/runtime/provider-concurrency-manager.js";
-import { AgentService } from "../../src/server/agent-service.js";
+import { AgentService, setAgentService, getAgentService } from "../../src/server/agent-service.js";
 import { SessionManager } from "../../src/server/session-manager.js";
 import type { PlatformProviderStat } from "../../src/runtime/types.js";
+import type { CallerCtx, ToolResult } from "../../src/tools/types.js";
 import { TIER_P1, TIER_P2 } from "../../src/runtime/concurrency-context.js";
 
 // ---------------------------------------------------------------------------
@@ -216,25 +217,52 @@ function makeAgentServiceHarness(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Acceptance #1 — Platform providerStats text format
+// Acceptance #1 — Platform providerStats
+//
+// tool-decoupling sub-2: execute returns STRUCTURED ToolResult JSON (stats
+// array); the text face is the tool's format(). The tool reads the
+// process-wide AgentService singleton (setAgentService) — no ctx injection.
+// These tests drive execute() (assert JSON) + format() (assert text).
 // ---------------------------------------------------------------------------
 
-describe("acceptance-5 #1 — Platform providerStats text format", () => {
-	test("each provider line carries enabled / in-flight / queue / tokens / calls / err% / avg latency", async () => {
-		const tools = createPlatformTools();
-		const Platform = (tools as any).Platform;
-		const exec = getToolExecute(Platform);
-		const out = await exec(
-			{ resource: "providerStats" },
-			{ platformObserver: observerWithStats(makeStatRows()) } as any,
-		);
-		expect(typeof out).toBe("string");
+describe("acceptance-5 #1 — Platform providerStats JSON + text format", () => {
+	const callerCtx: CallerCtx = { caller: "internal" };
+	let prev: unknown;
+	beforeEach(() => {
+		prev = getAgentService();
+	});
+	afterEach(() => {
+		setAgentService(prev as any);
+	});
 
-		// Only provider-data lines start with the provider name + " · " (the
-		// header line "Providers (N):" and the legend lines use different
-		// separators / no leading provider name).
+	/** Install an agentService-shaped mock returning the given stat rows. */
+	function withStats(rows: PlatformProviderStat[]): void {
+		setAgentService(observerWithStats(rows) as any);
+	}
+
+	test("JSON shape { ok, data:{ stats } } + text line carries enabled / in-flight / queue / tokens / calls / err% / avg latency", async () => {
+		withStats(makeStatRows());
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const fmt = getToolFormat((tools as any).Platform)!;
+
+		const json = await exec({ resource: "providerStats" }, callerCtx) as ToolResult;
+		// JSON: well-formed + both providers present (enabled + disabled).
+		expect(json.ok).toBe(true);
+		const stats = (json.data as any).stats as PlatformProviderStat[];
+		expect(Array.isArray(stats)).toBe(true);
+		expect(stats).toHaveLength(2);
+		const byName = Object.fromEntries(stats.map((s) => [s.name, s]));
+		expect(byName.OpenAI.enabled).toBe(true);
+		expect(byName.OpenAI.inFlight).toBe(2);
+		expect(byName.OpenAI.calls).toBe(100);
+		expect(byName["Local-Ollama"].enabled).toBe(false);
+
+		// Text face (format) — full column contract.
+		const text = fmt(json);
+		expect(typeof text).toBe("string");
 		const rows = makeStatRows().map((r) => r.name);
-		const lines = (out as string).split("\n").filter((l) => rows.some((n) => l.startsWith(n + " · ")) || rows.some((n) => l.startsWith(n + " ")));
+		const lines = text.split("\n").filter((l) => rows.some((n) => l.startsWith(n + " · ")) || rows.some((n) => l.startsWith(n + " ")));
 		expect(lines.length).toBe(2);
 
 		// The enabled provider line — assert EVERY required field appears.
@@ -253,39 +281,39 @@ describe("acceptance-5 #1 — Platform providerStats text format", () => {
 	});
 
 	test("one line per provider — ALL providers incl. disabled (no row dropped)", async () => {
+		withStats(makeStatRows());
 		const tools = createPlatformTools();
-		const exec = getToolExecute((tools as any).Platform);
-		const out = (await exec(
-			{ resource: "providerStats" },
-			{ platformObserver: observerWithStats(makeStatRows()) } as any,
-		)) as string;
+		const exec = getToolExecute((tools as any).Platform)!;
+		const fmt = getToolFormat((tools as any).Platform)!;
+		const text = fmt(await exec({ resource: "providerStats" }, callerCtx) as ToolResult);
 		// Both the enabled and disabled providers appear.
-		expect(out).toMatch(/OpenAI/);
-		expect(out).toMatch(/Local-Ollama/);
+		expect(text).toMatch(/OpenAI/);
+		expect(text).toMatch(/Local-Ollama/);
 	});
 
 	test("header labels cumulative tokens / calls / err% / avg latency (column contract)", async () => {
+		withStats(makeStatRows());
 		const tools = createPlatformTools();
-		const exec = getToolExecute((tools as any).Platform);
-		const out = (await exec(
-			{ resource: "providerStats" },
-			{ platformObserver: observerWithStats(makeStatRows()) } as any,
-		)) as string;
+		const exec = getToolExecute((tools as any).Platform)!;
+		const fmt = getToolFormat((tools as any).Platform)!;
+		const text = fmt(await exec({ resource: "providerStats" }, callerCtx) as ToolResult);
 		// The trailing legend line names every column — proves the contract.
-		expect(out).toMatch(/cumulative tokens/);
-		expect(out).toMatch(/cumulative calls/);
-		expect(out).toMatch(/err%/);
-		expect(out).toMatch(/avg latency/);
+		expect(text).toMatch(/cumulative tokens/);
+		expect(text).toMatch(/cumulative calls/);
+		expect(text).toMatch(/err%/);
+		expect(text).toMatch(/avg latency/);
 	});
 
 	test("empty state when no providers", async () => {
+		withStats([]);
 		const tools = createPlatformTools();
-		const exec = getToolExecute((tools as any).Platform);
-		const out = (await exec(
-			{ resource: "providerStats" },
-			{ platformObserver: observerWithStats([]) } as any,
-		)) as string;
-		expect(out).toMatch(/No AI providers configured/);
+		const exec = getToolExecute((tools as any).Platform)!;
+		const fmt = getToolFormat((tools as any).Platform)!;
+		// JSON: empty stats array (ok). Text: friendly empty-state.
+		const json = await exec({ resource: "providerStats" }, callerCtx) as ToolResult;
+		expect(json.ok).toBe(true);
+		expect((json.data as any).stats).toEqual([]);
+		expect(fmt(json)).toMatch(/No AI providers configured/);
 	});
 });
 
@@ -709,18 +737,26 @@ describe("acceptance-5 #6 — disabled provider listed (marked, cumulative 0)", 
 	});
 
 	test("text renderer marks the disabled row 'disabled'", async () => {
-		// Reuse the real listProviderStats output → feed to the text renderer.
-		const stats = svc.listProviderStats!();
-		const tools = createPlatformTools();
-		const exec = getToolExecute((tools as any).Platform);
-		const out = (await exec(
-			{ resource: "providerStats" },
-			{ platformObserver: { listProviderStats: () => stats } } as any,
-		)) as string;
-		expect(out).toMatch(/Disabled-One/);
-		const disabledLine = out.split("\n").find((l) => l.startsWith("Disabled-One"))!;
-		expect(disabledLine).toMatch(/\bdisabled\b/);
-		expect(disabledLine).toMatch(/queue:0/);
+		// tool-decoupling sub-2: register the real harness svc as the singleton,
+		// then drive execute() → JSON → format() (no ctx injection).
+		const prev = getAgentService();
+		setAgentService(svc);
+		try {
+			const stats = svc.listProviderStats!();
+			const tools = createPlatformTools();
+			const exec = getToolExecute((tools as any).Platform)!;
+			const fmt = getToolFormat((tools as any).Platform)!;
+			const json = await exec({ resource: "providerStats" }, { caller: "internal" }) as ToolResult;
+			// JSON carries both providers; the disabled one has enabled=false.
+			expect((json.data as any).stats).toEqual(stats);
+			const out = fmt(json);
+			expect(out).toMatch(/Disabled-One/);
+			const disabledLine = out.split("\n").find((l) => l.startsWith("Disabled-One"))!;
+			expect(disabledLine).toMatch(/\bdisabled\b/);
+			expect(disabledLine).toMatch(/queue:0/);
+		} finally {
+			setAgentService(prev as any);
+		}
 	});
 });
 

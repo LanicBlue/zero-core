@@ -32,6 +32,7 @@ import type { ToolConfigField, ToolCategory } from "../core/tool-registry.js";
 import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
 import type { ToolRateLimiter } from "../runtime/tool-rate-limiter.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 
 // Re-export so existing consumers (e.g. tools/index.ts) can still import
 // ToolCategory from tool-factory. Canonical definition lives in
@@ -148,10 +149,67 @@ function summarizeParams(input: unknown): unknown {
 }
 
 // ---------------------------------------------------------------------------
+// tool-decoupling(sub-2 过渡):map the legacy ToolExecutionContext (loop-injected
+// grab-bag of services + caller identity) into the target CallerCtx shape
+// (caller identity only — services read via singletons). sub-4 deletes this
+// once the loop passes CallerCtx directly.
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a CallerCtx from the fields an AgentLoop currently puts on its
+ * ToolExecutionContext. This is the **transitional** mapping: the loop still
+ * threads the old ctx, but migrated tools (Platform, sub-2) take CallerCtx as
+ * their second parameter and read services through module singletons.
+ *
+ * Mirrors the design's "loop 调:{sessionId, agentId, caller:"internal",
+ * toolCallId, turnSeq, workingDir}" fill. emit is bridged from ctx.emit so
+ * streaming-capable migrated tools can still flush progress (none yet, but the
+ * field is wired so a future migrated Bash/Wait doesn't need a second edit).
+ */
+function ctxToCallerCtx(ctx: ToolExecutionContext, toolCallId: string): CallerCtx {
+	const callerCtx: CallerCtx = {
+		caller: "internal",
+		sessionId: ctx.sessionId,
+		agentId: ctx.agentId,
+		toolCallId: toolCallId || ctx.currentToolCallId,
+		turnSeq: ctx.turnSeq,
+		workingDir: ctx.workingDir,
+	};
+	// ctx.emit is the loop's streaming channel (runtime events → UI). Bridge it
+	// so the emit contract (CallerCtx.emit) reaches migrated streaming tools.
+	if (typeof (ctx as any).emit === "function") {
+		callerCtx.emit = (ctx as any).emit;
+	}
+	return callerCtx;
+}
+
+// ---------------------------------------------------------------------------
 // buildTool — factory that wraps AI SDK's tool() with metadata
 // ---------------------------------------------------------------------------
 
-export interface BuildToolOptions<T extends ZodSchema> {
+/**
+ * 工具原始执行函数。sub-2 起**双签名过渡**:
+ *
+ * - **未迁移工具**(legacy,多数):`(input, ctx: ToolExecutionContext) => Promise<string>`
+ *   —— 直接返文本喂 LLM,buildTool 不调 format。`options.format` 缺省。
+ * - **已迁移工具**(migrated,sub-2 起 Platform):`(input, callerCtx: CallerCtx) =>
+ *   Promise<ToolResult>` —— 返结构化 JSON,buildTool 套 `format(JSON)` → 文本。
+ *   `options.format` 必填。
+ *
+ * buildTool 据 options.format 是否存在分流。AgentLoop 仍传旧 ToolExecutionContext
+ * 作为第二参(过渡);buildTool wrapper 在调 migrated execute 前把旧 ctx 映射成
+ * CallerCtx(sub-4 彻底切后再删映射)。
+ *
+ * 两个变体用判别联合(format 是否存在区分),让未迁移工具的 ctx 仍是
+ * ToolExecutionContext(它取 ctx 上几十个字段;若联合成 any 会丢类型检查),
+ * migrated 工具的 ctx 是 CallerCtx(只取身份字段)。
+ */
+export type BuildToolOptions<T extends ZodSchema> =
+	| BuildToolOptionsLegacy<T>
+	| BuildToolOptionsMigrated<T>;
+
+/** 未迁移工具:string 返值,无 format,ctx = ToolExecutionContext。 */
+export interface BuildToolOptionsLegacy<T extends ZodSchema> {
 	name: string;
 	description: string;
 	prompt?: string;
@@ -159,6 +217,25 @@ export interface BuildToolOptions<T extends ZodSchema> {
 	configSchema?: ToolConfigField[];
 	inputSchema: T;
 	execute: (input: any, ctx: ToolExecutionContext) => Promise<string>;
+	format?: undefined;
+}
+
+/** 已迁移工具(migrated):JSON ToolResult 返值 + format,ctx = CallerCtx。 */
+export interface BuildToolOptionsMigrated<T extends ZodSchema> {
+	name: string;
+	description: string;
+	prompt?: string;
+	meta?: Partial<ToolMeta>;
+	configSchema?: ToolConfigField[];
+	inputSchema: T;
+	/**
+	 * 工具原始执行函数(新签名)。返**结构化 JSON**(`ToolResult`);buildTool
+	 * wrapper 套 `format(JSON)` → 文本喂 LLM(JSON 不泄露给 LLM)。
+	 *
+	 * 第二参是 CallerCtx —— buildTool 把 AgentLoop 传的旧 ToolExecutionContext
+	 * 映射成 CallerCtx 再调(sub-2 过渡,sub-4 删映射)。
+	 */
+	execute: (input: any, callerCtx: CallerCtx) => Promise<ToolResult>;
 	/**
 	 * tool-decoupling(决策 3):工具自带文本 formatter —— 把结构化 JSON 返值转成
 	 * 喂 LLM 的文本形态。纯函数,可单测。
@@ -166,13 +243,8 @@ export interface BuildToolOptions<T extends ZodSchema> {
 	 * - **agent loop** → execute → `format(JSON)` → 文本喂 LLM。
 	 * - **MCP server** → execute → `format(JSON)` → 文本(或 JSON 给外部 client 自决)。
 	 * - **UI/REST** → execute → JSON 直渲染(不调 format)。
-	 *
-	 * sub-1 只加字段不强制用 —— buildTool 当前仍把 execute 的 string 返值直接喂
-	 * LLM(旧行为)。sub-2+ 工具增量迁到 JSON 返值时,buildTool wrapper 才会
-	 * `execute → JSON → format → 文本`。当前签名暂保持 `(input, ctx)=>Promise<string>`
-	 * (sub-2+ 改造签名)。
 	 */
-	format?: (result: any) => string;
+	format: (result: ToolResult) => string;
 }
 
 export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
@@ -221,7 +293,40 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 				// delegation tools (Agent/Orchestrate) can stamp the resulting
 				// delegated task with its parent tool-call id.
 				ctxOrEmpty.currentToolCallId = toolCallId || undefined;
-				const result = await options.execute(input, ctxOrEmpty);
+
+				// tool-decoupling(决策 2/3,sub-2 双返值过渡):
+				// - **migrated 工具**(options.format 是函数,如 Platform)→ 把旧
+				//   ToolExecutionContext 字段映射成 CallerCtx 再调 execute;execute
+				//   返结构化 ToolResult,wrapper 套 format → 文本喂 LLM(JSON 不泄露)。
+				// - **未迁移工具**(无 format)→ 直传旧 ctx,execute 返 string,旧行为。
+				// sub-4 删旧工具后此分支收敛为 migrated-only,ctx 映射也删。
+				//
+				// The typeof check is the runtime discriminant for the BuildToolOptions
+				// union (format present = migrated). Capturing into a local avoids
+				// re-narrowing on every options.* access below.
+				const fmt = options.format;
+				const isMigrated = typeof fmt === "function";
+				const raw: string | ToolResult = isMigrated
+					? await (options as BuildToolOptionsMigrated<typeof options.inputSchema>).execute(input, ctxToCallerCtx(ctxOrEmpty, toolCallId))
+					: await (options as BuildToolOptionsLegacy<typeof options.inputSchema>).execute(input, ctxOrEmpty);
+
+				// Normalize to the LLM-facing text:
+				// - migrated: raw is ToolResult → format(JSON)。
+				// - legacy:   raw is string → 直传。
+				// A migrated tool that returns a string (shouldn't happen, but defensive)
+				// is treated as pre-formatted text.
+				let result: string;
+				if (isMigrated && raw && typeof raw === "object" && typeof (raw as ToolResult).ok === "boolean") {
+					result = fmt((raw as ToolResult));
+				} else if (typeof raw === "string") {
+					result = raw;
+				} else {
+					// Defensive: migrated tool returned a non-ToolResult object without
+					// going through format — JSON-dump so the LLM still gets something.
+					try { result = JSON.stringify(raw, null, 2); }
+					catch { result = String(raw); }
+				}
+
 				await triggerHooks("PostToolUse", {
 					agentId: ctxOrEmpty.agentId ?? "",
 					sessionId: ctxOrEmpty.sessionId,
@@ -301,6 +406,19 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 		writable: false,
 	});
 
+	// tool-decoupling(决策 3,sub-2): expose format on the tool object so non-
+	// agent hosts (MCP server / UI dispatcher, sub-5) can pick it up the same
+	// way buildTool's wrapper does. Only present on migrated tools (Platform);
+	// absent on legacy string-returning tools. Hosts that need text call
+	// getToolFormat(tool)(result) → string; hosts that want JSON skip it.
+	if (options.format) {
+		Object.defineProperty(toolDef, "__format", {
+			value: options.format,
+			enumerable: false,
+			writable: false,
+		});
+	}
+
 	return toolDef;
 }
 
@@ -332,8 +450,18 @@ export function getToolInputFields(toolObj: any): any[] {
 	return toolObj?.__inputFields ?? [];
 }
 
-export function getToolExecute(toolObj: any): ((input: any, ctx: ToolExecutionContext) => Promise<string>) | undefined {
+export function getToolExecute(toolObj: any): ((input: any, ctx: any) => Promise<string | ToolResult>) | undefined {
 	return toolObj?.__execute;
+}
+
+/**
+ * tool-decoupling(sub-2): read a migrated tool's format() (decision 3). Returns
+ * undefined for legacy string-returning tools (no format attached). Hosts that
+ * need the LLM/MCP text face call this + execute; hosts that want JSON (UI
+ * dispatcher) skip it.
+ */
+export function getToolFormat(toolObj: any): ((result: ToolResult) => string) | undefined {
+	return toolObj?.__format;
 }
 
 // ---------------------------------------------------------------------------

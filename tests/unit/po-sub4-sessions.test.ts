@@ -42,9 +42,11 @@ import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 
 import { createPlatformTools, formatRelativeTime } from "../../src/tools/mcp/platform-tools.js";
-import { getToolExecute } from "../../src/tools/tool-factory.js";
+import { getToolExecute, getToolFormat } from "../../src/tools/tool-factory.js";
+import { setAgentService, getAgentService } from "../../src/server/agent-service.js";
 import type { PlatformObserver } from "../../src/runtime/types.js";
 import type { PlatformSessionSummary, PlatformSessionDetail } from "../../src/shared/types.js";
+import type { CallerCtx, ToolResult } from "../../src/tools/types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -218,32 +220,72 @@ describe("acceptance-4 #8: formatRelativeTime", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Acceptance cases 1–5: Platform 'sessions' resource (text face)
+// Acceptance cases 1–5: Platform 'sessions' resource
+//
+// tool-decoupling sub-2: execute now returns a STRUCTURED ToolResult (JSON),
+// and the text face is produced by the tool's format(). The tool reads the
+// process-wide AgentService singleton (setAgentService) instead of
+// ctx.platformObserver. These tests:
+//   - drive execute() and assert the JSON data shape (decisions 1 + 3);
+//   - drive format() on the same result and assert the text (decision 3, the
+//     agent-facing face);
+//   - mutate the registered singleton per-test (beforeEach) and clear it
+//     (afterEach) so the singleton never leaks across files.
 // ---------------------------------------------------------------------------
 
 describe("acceptance-4 #1–5: Platform 'sessions' resource", () => {
-	const obs = makeObserver();
 	const tools = createPlatformTools(() => "test-version");
 	const platform = (tools as any).Platform;
-	// buildTool wraps execute so the public .execute uses the AI-SDK signature
-	// (input, opts) with ctx on opts.experimental_context. The ORIGINAL execute
-	// — (input, ctx) — is exposed via the non-enumerable __execute. Drive THAT
-	// directly so ctx.platformObserver reaches the resource.
+	// buildTool exposes the ORIGINAL execute — (input, callerCtx) — via the
+	// non-enumerable __execute, and format via __format. Drive both directly.
 	const exec = getToolExecute(platform)!;
-	const ctx = { platformObserver: obs } as any;
+	const fmt = getToolFormat(platform)!;
+	// A minimal callerCtx (internal agent). The sessions resource is app-level
+	// so it doesn't actually read sessionId/agentId — the ctx just has to be a
+	// valid CallerCtx so the new signature is satisfied.
+	const callerCtx: CallerCtx = { caller: "internal", sessionId: "test-sess", agentId: "test-agent" };
 
-	test("#1 + #3 + #8: List is text, one row per parent, each row has status + relative time + turns", async () => {
-		const out = await exec({ resource: "sessions" }, ctx);
-		expect(typeof out).toBe("string");
-		// Header + 3 rows + legend → at least 5 lines.
-		const lines = out.split("\n");
-		expect(lines.length).toBeGreaterThanOrEqual(5);
-		// Exactly three rows (one per parent agent) — no delegated row, no extras.
-		const rows = lines.filter((l) => /^[●◐○] /.test(l));
+	let prev: unknown;
+	beforeEach(() => {
+		// Stash whatever singleton is currently registered (could be undefined
+		// or a real AgentService from a prior test file) and install ours.
+		prev = getAgentService();
+		setAgentService(makeObserver() as any);
+	});
+	afterEach(() => {
+		setAgentService(prev as any);
+	});
+
+	/** Run execute → assert JSON is well-formed → run format → return text. */
+	async function runBoth(input: any): Promise<{ json: ToolResult; text: string }> {
+		const json = await exec(input, callerCtx) as ToolResult;
+		const text = fmt(json);
+		return { json, text };
+	}
+
+	test("#1 + #3 + #8: List JSON has one row per parent; text has status + relative time + turns", async () => {
+		const { json, text } = await runBoth({ resource: "sessions" });
+
+		// JSON shape: { ok:true, data:{ rows: PlatformSessionSummary[] } }.
+		expect(json.ok).toBe(true);
+		const rows = (json.data as any).rows as PlatformSessionSummary[];
+		expect(Array.isArray(rows)).toBe(true);
 		expect(rows).toHaveLength(3);
+		const byName = Object.fromEntries(rows.map((r) => [r.agentName, r]));
+		expect(byName.General.status).toBe("running");
+		expect(byName.General.turns).toBe(24);
+		expect(byName.Project.status).toBe("waiting");
+		expect(byName.Research.status).toBe("idle");
+
+		// Text face (format) — header + 3 rows + legend → at least 5 lines.
+		expect(typeof text).toBe("string");
+		const lines = text.split("\n");
+		expect(lines.length).toBeGreaterThanOrEqual(5);
+		const textRows = lines.filter((l) => /^[●◐○] /.test(l));
+		expect(textRows).toHaveLength(3);
 
 		// running row: ● General · sess-gen… · running · last 2s ago · 24 turns
-		const running = rows.find((l) => l.includes("General"));
+		const running = textRows.find((l) => l.includes("General"));
 		expect(running).toBeDefined();
 		expect(running!).toContain("●"); // status dot
 		expect(running!).toContain("running");
@@ -252,7 +294,7 @@ describe("acceptance-4 #1–5: Platform 'sessions' resource", () => {
 		expect(running!).toContain("sess-gen"); // short sessionId (8 chars)
 
 		// waiting row uses ◐ + "waiting"
-		const waiting = rows.find((l) => l.includes("Project"));
+		const waiting = textRows.find((l) => l.includes("Project"));
 		expect(waiting).toBeDefined();
 		expect(waiting!).toContain("◐");
 		expect(waiting!).toContain("waiting");
@@ -260,7 +302,7 @@ describe("acceptance-4 #1–5: Platform 'sessions' resource", () => {
 		expect(waiting!).toContain("8 turns");
 
 		// idle row uses ○ + "idle"
-		const idle = rows.find((l) => l.includes("Research"));
+		const idle = textRows.find((l) => l.includes("Research"));
 		expect(idle).toBeDefined();
 		expect(idle!).toContain("○");
 		expect(idle!).toContain("idle");
@@ -275,9 +317,10 @@ describe("acceptance-4 #1–5: Platform 'sessions' resource", () => {
 		// session_kind='chat' clause. We assert BOTH halves:
 		//   (a) the surface never invents extra rows
 		//   (b) the SQL filter really excludes session_kind='delegated'
-		const out = await exec({ resource: "sessions" }, ctx);
-		expect(out).not.toContain("delegated");
-		expect(out).not.toContain("agent-delegated");
+		const { json, text } = await runBoth({ resource: "sessions" });
+		expect((json.data as any).rows).toHaveLength(3);
+		expect(text).not.toContain("delegated");
+		expect(text).not.toContain("agent-delegated");
 
 		// (b) The SQL filter is the source of truth — read it straight from the
 		//     source file rather than trusting the implementer's claim.
@@ -293,28 +336,34 @@ describe("acceptance-4 #1–5: Platform 'sessions' resource", () => {
 	test("#3 (regression): all three statuses produce the right dot + label", async () => {
 		// The mock emits one of each — exercised above; this case pins the
 		// mapping independently in case the formatter ever drifts.
-		const out = await exec({ resource: "sessions" }, ctx);
+		const { text } = await runBoth({ resource: "sessions" });
 		// The three distinct dots must each appear exactly once per matching row.
-		expect((out.match(/●/g) ?? []).length).toBeGreaterThanOrEqual(1);
-		expect((out.match(/◐/g) ?? []).length).toBeGreaterThanOrEqual(1);
-		expect((out.match(/○/g) ?? []).length).toBeGreaterThanOrEqual(1);
+		expect((text.match(/●/g) ?? []).length).toBeGreaterThanOrEqual(1);
+		expect((text.match(/◐/g) ?? []).length).toBeGreaterThanOrEqual(1);
+		expect((text.match(/○/g) ?? []).length).toBeGreaterThanOrEqual(1);
 	});
 
-	test("#4 + #5: Detail returns task tree + last 3 steps; NO tokens", async () => {
-		const out = await exec({ resource: "sessions", sessionId: "sess-general-full-id" }, ctx);
-		expect(typeof out).toBe("string");
+	test("#4 + #5: Detail JSON has task tree + last 3 steps; text renders them; NO tokens", async () => {
+		const { json, text } = await runBoth({ resource: "sessions", sessionId: "sess-general-full-id" });
 
-		// Task tree present — both nodes (root + nested bash child), indented.
-		expect(out).toContain("research providers");
-		expect(out).toContain("build the project");
-		// The bash child is parented to the root → must be indented (≥2 spaces)
-		// relative to the root line. The renderer uses "  ".repeat(depth).
-		const bashLine = out.split("\n").find((l) => l.includes("build the project"));
+		// JSON shape: { ok:true, data:{ sessionId, taskTree, recentSteps } }.
+		expect(json.ok).toBe(true);
+		const data = json.data as any;
+		expect(data.sessionId).toBe("sess-general-full-id");
+		expect(Array.isArray(data.taskTree)).toBe(true);
+		expect(data.taskTree).toHaveLength(2);
+		expect(Array.isArray(data.recentSteps)).toBe(true);
+		expect(data.recentSteps).toHaveLength(3);
+
+		// Text face — task tree present, bash child indented.
+		expect(text).toContain("research providers");
+		expect(text).toContain("build the project");
+		const bashLine = text.split("\n").find((l) => l.includes("build the project"));
 		expect(bashLine, "bash child must appear").toBeTruthy();
 		expect(/^ {2,}\S/.test(bashLine!) || /^\t/.test(bashLine!), "nested task must be indented").toBe(true);
 
 		// 3 recent steps (mock returns 3) — one line per step.
-		const stepLines = out.split("\n").filter((l) => /^\s*step \d+ \[/.test(l));
+		const stepLines = text.split("\n").filter((l) => /^\s*step \d+ \[/.test(l));
 		expect(stepLines).toHaveLength(3);
 
 		// step 0: Read; step 1: Bash (error); step 2: Grep + Glob (running).
@@ -331,21 +380,21 @@ describe("acceptance-4 #1–5: Platform 'sessions' resource", () => {
 		expect(stepLines[2]).toContain("Glob");
 		expect(stepLines[2]).toContain("[running]");
 
-		// #5 adversarial: NO tokens ANYWHERE in the Detail output. The task tree
-		// mock seeds tokens: 12345 / 999; steps never carry tokens in production.
-		// The text renderer must surface NEITHER.
-		expect(out).not.toMatch(/token/i);
-		expect(out).not.toContain("12345");
-		expect(out).not.toContain("999");
+		// #5 adversarial: NO tokens ANYWHERE in the Detail TEXT output. The task
+		// tree mock seeds tokens: 12345 / 999; steps never carry tokens in
+		// production. The text renderer must surface NEITHER.
+		expect(text).not.toMatch(/token/i);
+		expect(text).not.toContain("12345");
+		expect(text).not.toContain("999");
 		// Per-task sensitive fields must NOT leak: result / currentTool / startedAt.
 		// (RuntimeTaskInfo carries them; only type/task/status/turns/targetAgentId render.)
-		expect(out).not.toContain("secret-result-data");
-		expect(out).not.toContain("ok-output");
+		expect(text).not.toContain("secret-result-data");
+		expect(text).not.toContain("ok-output");
 		// task text itself IS shown.
-		expect(out).toContain("research providers");
+		expect(text).toContain("research providers");
 		// Tool args are surfaced as argsBrief — assert no `output`/`result` LABEL.
-		expect(out).not.toMatch(/\boutput\b/i);
-		expect(out).not.toMatch(/\bresult\b/i);
+		expect(text).not.toMatch(/\boutput\b/i);
+		expect(text).not.toMatch(/\bresult\b/i);
 	});
 
 	test("edge: Detail with zero steps → 'no tool calls yet'", async () => {
@@ -354,16 +403,27 @@ describe("acceptance-4 #1–5: Platform 'sessions' resource", () => {
 			getSessionTaskTree: () => [],
 			getSessionRecentSteps: () => [],
 		};
-		const out = await exec({ resource: "sessions", sessionId: "x" }, { platformObserver: emptyObs } as any);
-		expect(out).toContain("no tool calls yet");
-		expect(out).toContain("no live tasks"); // empty tree branch
+		setAgentService(emptyObs as any);
+		const json = await exec({ resource: "sessions", sessionId: "x" }, callerCtx) as ToolResult;
+		const text = fmt(json);
+		expect(text).toContain("no tool calls yet");
+		expect(text).toContain("no live tasks"); // empty tree branch
+		// JSON still well-formed: empty tree + empty steps.
+		expect((json.data as any).taskTree).toEqual([]);
+		expect((json.data as any).recentSteps).toEqual([]);
 	});
 
-	test("edge: observer absent → friendly fallback, not a crash", async () => {
-		const out = await exec({ resource: "sessions" }, {} as any);
-		expect(out).toContain("not available");
-		const out2 = await exec({ resource: "sessions", sessionId: "x" }, {} as any);
-		expect(out2).toContain("not available");
+	test("edge: observer absent (singleton undefined) → friendly fallback, not a crash", async () => {
+		// Clear the singleton → getAgentService() returns undefined → the resource
+		// must report "not available" rather than throw. This is the work/cron
+		// path before AgentService registers, and the headless/CLI path entirely.
+		setAgentService(undefined);
+		const json = await exec({ resource: "sessions" }, callerCtx) as ToolResult;
+		expect(json.ok).toBe(false);
+		expect(fmt(json)).toContain("not available");
+		const json2 = await exec({ resource: "sessions", sessionId: "x" }, callerCtx) as ToolResult;
+		expect(json2.ok).toBe(false);
+		expect(fmt(json2)).toContain("not available");
 	});
 });
 

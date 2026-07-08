@@ -6,26 +6,36 @@
 // 让 agent 自省 zero-core 平台运行时:版本/路径/内存(info)、日志(logs)、
 // workspace 配置(config)、AI provider(providers)。纯只读诊断,无副作用。
 //
-// ## 数据来源(重要)
-// config / providers 读 **SQLite**(经 ctx.db),不是 config.json——app 把配置
-// 存在 DB(kv_store / providers 表),config.json 从不被读写。历史上这两个资源
-// 读 config.json 导致永远"No configuration found",与 AgentRegistry.list(读
-// agents 表)报的 provider 不符。
+// ## 数据来源(tool-decoupling sub-2 之后)
+// - **info / logs**:进程级,直接读 process / 日志文件,不依赖任何 ctx 字段。
+// - **config / providers**:读 **SQLite**(经 getAgentService().db,kv_store / providers 表),
+//   不是 config.json。app 把配置存在 DB,config.json 从不被读写。
+// - **sessions / providerStats**:直读 `getAgentService()` 单例(AgentService
+//   implements PlatformObserver)—— 不再经 ctx.platformObserver。这是 sub-2 的
+//   关键修复:work/cron 路径(sendProjectPrompt)漏注 platformObserver 导致
+//   "Session observer not available" bug,直读单例后根除。
+//
+// ## 输出形态(决策 3:工具返 JSON + 自带 format)
+// - `execute(input, callerCtx): Promise<ToolResult>` —— 返**结构化 JSON**。
+// - `format(result): string` —— 纯函数,把 ToolResult JSON 转成喂 LLM 的文本。
+// - **UI/REST** → execute → JSON 直渲染(不调 format)。
+// - **agent loop** → buildTool wrapper 调 execute 拿 JSON → 套 format → 文本喂 LLM。
 //
 // ## 设计边界
-// 通用文件读取是 Read/Glob/Grep 的职责。本工具只做平台自省,数据经 ctx.db
-// (ISessionStore)获取,agent-loop 无需为它新增任何字段——保持工具/loop 解耦。
+// 通用文件读取是 Read/Glob/Grep 的职责。本工具只做平台自省,agent-loop 无需为它
+// 新增任何字段——保持工具/loop 解耦。
 //
 // ## 命名
 // 原 "Assistant"(通用且语义不清)→ "Platform"。旧 toolPolicy 的 "Assistant"
 // 键经 RENAMED_TOOLS 运行时迁移到 "Platform"。
-//
 
 import { z } from "zod";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { buildTool } from "../tool-factory.js";
 import { ZERO_CORE_DIR } from "../../core/config.js";
+import type { CallerCtx, ToolResult } from "../types.js";
+import { getAgentService } from "../../server/agent-service.js";
 
 function getLatestLogFile(): string | null {
 	const logDir = join(ZERO_CORE_DIR, "logs");
@@ -52,12 +62,12 @@ function redactSensitive(obj: any): void {
 	}
 }
 
-// ─── platform-observability ① (sub-4): sessions resource helpers ───────────
+// ─── platform-observability ① (sub-4): sessions resource text face ───────────
 //
-// Text rendering for the 'sessions' resource. The same data shape is served as
-// JSON to the ③ kanban via IPC (sessions:parents / sessions:detail) — this is
-// the agent self-introspection (text) face of it. Renders relative time
-// ("last 2s ago" / "last 1m ago") to match the kanban.
+// Text rendering for the 'sessions' resource (the format() face; execute now
+// returns JSON). The same data shape is served as JSON to the ③ kanban via IPC
+// (sessions:parents / sessions:detail). Renders relative time ("last 2s ago" /
+// "last 1m ago") to match the kanban.
 
 /**
  * Render a wall-clock ms as a short relative-time string. Matches the format
@@ -171,11 +181,11 @@ function renderSessionsDetail(
 	return out.join("\n");
 }
 
-// ─── platform-observability ② (sub-5): providerStats resource helper ──────
+// ─── platform-observability ② (sub-5): providerStats text face ──────────────
 //
-// Text rendering for the 'providerStats' resource — per-provider one line,
-// same text-face convention as 'sessions'. The IPC faces (provider:stats /
-// :usage / :queue) serve the same data as JSON to the ③ kanban.
+// Text rendering for the 'providerStats' resource (the format() face). The IPC
+// faces (provider:stats / :usage / :queue) serve the same data as JSON to the
+// ③ kanban.
 
 /**
  * Format a token count with k/M suffix for compact per-line display.
@@ -234,6 +244,75 @@ function renderProviderStats(
 	].join("\n");
 }
 
+// ─── ToolResult data shapes (decision 3: JSON) ──────────────────────────────
+//
+// Each resource carries a typed `data` payload so a UI dispatcher (sub-5) can
+// render JSON directly. The text face (format()) renders the SAME data the way
+// the LLM wants it. Keeping one shape (not a parallel "text-only" path) avoids
+// drift between the agent text output and the UI JSON.
+
+export interface PlatformInfoData {
+	version: string;
+	paths: { dataDir: string; processCwd: string };
+	pid: number;
+	nodeVersion: string;
+	platform: string;
+	arch: string;
+	memory: { rss: string; heapUsed: string; heapTotal: string };
+	uptime: string;
+}
+
+export interface PlatformLogsData {
+	/** Log lines already filtered + sliced to the requested count. Empty when no log file / no matches. */
+	lines: string[];
+	/** Path of the log file that was read (null when none found). */
+	logFile: string | null;
+}
+
+export interface PlatformConfigData {
+	/** The redacted workspace config object (kv_store key 'workspace'). null when not set. */
+	config: any;
+}
+
+export interface PlatformProvidersData {
+	providers: Array<{
+		name: string;
+		type: string;
+		enabled: boolean;
+		modelCount: number;
+		baseUrl: string | null;
+		apiKey: string;
+	}>;
+}
+
+export interface PlatformProviderStatsData {
+	stats: Array<{
+		name: string; type: string; enabled: boolean; modelCount: number;
+		inFlight: number; maxConcurrency: number; queue: number;
+		tokens: number; calls: number; errors: number; errRate: number;
+		latencyMs: number | null;
+	}>;
+}
+
+export interface PlatformSessionsListData {
+	rows: Array<{
+		agentId: string; agentName?: string; sessionId: string;
+		status: "running" | "waiting" | "idle";
+		lastActivityAt: number; turns: number;
+	}>;
+}
+
+export interface PlatformSessionsDetailData {
+	sessionId: string;
+	taskTree: any[];
+	recentSteps: Array<{
+		stepSeq: number;
+		toolCalls: Array<{ name: string; argsBrief?: string }>;
+		status: string;
+		time: number;
+	}>;
+}
+
 export function createPlatformTools(getAppVersion?: () => string) {
 	const version = getAppVersion?.() ?? "0.0.0-dev";
 
@@ -263,11 +342,11 @@ export function createPlatformTools(getAppVersion?: () => string) {
 				source: z.string().optional().describe("Log source/module filter (for 'logs') — matches the structured [module] tag (agent|loop|ipc|db|tool|mcp|provider|session, or any custom module). Case-insensitive exact match on the tag."),
 				sessionId: z.string().optional().describe("Dual-purpose by resource: for 'logs', filters to lines mentioning this sessionId (substring); for 'sessions', switches List→Detail (pass the FULL sessionId to get that session's task tree + recent steps)."),
 			}),
-			execute: async (input: any, ctx: any) => {
+			execute: async (input: any, _callerCtx: CallerCtx): Promise<ToolResult> => {
 				switch (input.resource) {
 					case "info": {
 						const mem = process.memoryUsage();
-						return JSON.stringify({
+						const data: PlatformInfoData = {
 							version,
 							paths: {
 								dataDir: ZERO_CORE_DIR,
@@ -283,11 +362,14 @@ export function createPlatformTools(getAppVersion?: () => string) {
 								heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)}MB`,
 							},
 							uptime: `${Math.round(process.uptime())}s`,
-						}, null, 2);
+						};
+						return { ok: true, data };
 					}
 					case "logs": {
 						const logFile = getLatestLogFile();
-						if (!logFile) return "No log files found.";
+						if (!logFile) {
+							return { ok: true, data: { lines: [], logFile: null } satisfies PlatformLogsData };
+						}
 						try {
 							const content = readFileSync(logFile, "utf-8");
 							let logLines = content.split("\n").filter(Boolean);
@@ -314,32 +396,39 @@ export function createPlatformTools(getAppVersion?: () => string) {
 							}
 							const count = Math.min(input.lines ?? 50, 500);
 							const selected = logLines.slice(-count);
-							return selected.join("\n") || "No log entries found.";
+							return { ok: true, data: { lines: selected, logFile } satisfies PlatformLogsData };
 						} catch (err: any) {
-							return `Error reading logs: ${err.message}`;
+							return { ok: false, error: `Error reading logs: ${err.message}` };
 						}
 					}
 					case "config": {
 						// Read the REAL workspace config from kv_store (SQLite). config.json is
-						// never written by the app. ctx.db (ISessionStore) exposes getKVStore().
-						const kv = ctx?.db?.getKVStore?.();
+						// never written by the app. The AgentService exposes its db via
+						// getDB(); ISessionStore.getKVStore() returns the kv reader.
+						const svc = getAgentService();
+						const db = svc?.getDB?.();
+						const kv = db?.getKVStore?.();
 						const stored = kv?.getJson?.("workspace");
-						if (!stored) return "No workspace config found (kv_store key 'workspace' is empty).";
+						if (!stored) {
+							return { ok: false, error: "No workspace config found (kv_store key 'workspace' is empty)." };
+						}
 						redactSensitive(stored);
-						return JSON.stringify(stored, null, 2);
+						return { ok: true, data: { config: stored } satisfies PlatformConfigData };
 					}
 					case "providers": {
 						// Read the REAL providers from the `providers` table (SQLite). ProviderStore's
 						// constructor has write side-effects (mergeSystemProviders), so we SELECT
-						// read-only via the raw DB handle instead of constructing a store. ctx.db is
-						// SessionDB at runtime; ISessionStore doesn't expose getDb() → localized cast.
-						const rawDb = ctx?.db?.getDb?.();
-						if (!rawDb) return "Provider DB not available in this context.";
+						// read-only via the raw DB handle instead of constructing a store.
+						const svc = getAgentService();
+						const rawDb = svc?.getDB?.()?.getDb?.();
+						if (!rawDb) {
+							return { ok: false, error: "Provider DB not available in this context." };
+						}
 						let rows: any[] = [];
 						try {
 							rows = rawDb.prepare("SELECT name, type, enabled, base_url, api_key, models FROM providers").all() as any[];
 						} catch (err: any) {
-							return `Error reading providers: ${err.message}`;
+							return { ok: false, error: `Error reading providers: ${err.message}` };
 						}
 						const providers = rows.map((r) => {
 							let modelCount = 0;
@@ -355,50 +444,105 @@ export function createPlatformTools(getAppVersion?: () => string) {
 								apiKey: r.api_key ? `${String(r.api_key).substring(0, 8)}...` : "(none)",
 							};
 						});
-						if (providers.length === 0) {
-							return (
-								"No AI providers configured. Supported provider types: " +
-								"openai, anthropic, gemini, openai-compatible, ollama.\n" +
-								"Configure via Settings > Providers in the UI (recommended)."
-							);
-						}
-						return JSON.stringify(providers, null, 2);
+						return { ok: true, data: { providers } satisfies PlatformProvidersData };
 					}
 					case "providerStats": {
-						// platform-observability ② (sub-5): read-only provider
-						// observation. Data comes through ctx.platformObserver
-						// (AgentService impl: concurrencyManager + sessionManager→
-						// getProviderUsageStore + providers table) — runtime never
-						// imports the server. Same source the IPC provider:stats /
-						// :usage / :queue channels serve to the ③ kanban.
-						const observer = ctx?.platformObserver;
-						if (!observer || typeof observer.listProviderStats !== "function") {
-							return "Provider observer not available in this context (platform-observability handle not injected).";
+						// platform-observability ② (sub-5): read-only provider observation.
+						// Reads the process-wide AgentService singleton (it implements
+						// PlatformObserver: concurrencyManager + sessionManager→
+						// getProviderUsageStore + providers table). Same source the IPC
+						// provider:stats / :usage / :queue channels serve to the ③ kanban.
+						const svc = getAgentService();
+						if (!svc || typeof svc.listProviderStats !== "function") {
+							return { ok: false, error: "Provider observer not available in this context (AgentService singleton not registered)." };
 						}
-						const stats = observer.listProviderStats();
-						return renderProviderStats(stats);
+						const stats = svc.listProviderStats();
+						return { ok: true, data: { stats } satisfies PlatformProviderStatsData };
 					}
 					case "sessions": {
 						// platform-observability ① (sub-4): read-only session observation.
-						// Data comes through ctx.platformObserver (AgentService impl) — the
-						// runtime layer never imports the server. Same source the IPC
-						// sessions:parents / sessions:detail channels serve to the ③ kanban.
-						const observer = ctx?.platformObserver;
-						if (!observer || typeof observer.listParentSessions !== "function") {
-							return "Session observer not available in this context (platform-observability handle not injected).";
+						// Reads the process-wide AgentService singleton (the service is the
+						// PlatformObserver impl). Same source the IPC sessions:parents /
+						// sessions:detail channels serve to the ③ kanban.
+						const svc = getAgentService();
+						if (!svc || typeof svc.listParentSessions !== "function") {
+							return { ok: false, error: "Session observer not available in this context (AgentService singleton not registered)." };
 						}
 						if (input.sessionId) {
 							// Detail: task tree + recent 3 steps (no tokens).
-							const tree = observer.getSessionTaskTree?.(input.sessionId) ?? [];
-							const steps = observer.getSessionRecentSteps?.(input.sessionId, 3) ?? [];
-							return renderSessionsDetail(input.sessionId, tree, steps);
+							const tree = svc.getSessionTaskTree?.(input.sessionId) ?? [];
+							const steps = svc.getSessionRecentSteps?.(input.sessionId, 3) ?? [];
+							return {
+								ok: true,
+								data: {
+									sessionId: input.sessionId,
+									taskTree: tree,
+									recentSteps: steps,
+								} satisfies PlatformSessionsDetailData,
+							};
 						}
 						// List: one line per parent agent session.
-						const rows = observer.listParentSessions();
-						return renderSessionsList(rows);
+						const rows = svc.listParentSessions();
+						return { ok: true, data: { rows } satisfies PlatformSessionsListData };
 					}
 					default:
-						return `Unknown resource: ${input.resource}`;
+						return { ok: false, error: `Unknown resource: ${input.resource}` };
+				}
+			},
+			// format(): pure function. Takes the ToolResult JSON returned by execute
+			// and produces the LLM-facing text. Mirrors the pre-sub-2 text output so
+			// agent behavior is unchanged; the JSON shape (above) is what a future UI
+			// dispatcher will consume directly.
+			format: (result: ToolResult): string => {
+				if (!result.ok) {
+					// Error path: surface the message verbatim (same as the old code's
+					// string returns on error/empty branches).
+					return result.error ?? "Platform resource unavailable.";
+				}
+				const data = result.data;
+				// Discriminate by shape. Each branch reconstructs the text the LLM
+				// saw before sub-2 (kept stable to avoid behavior drift).
+				if (data && typeof data === "object" && "version" in (data as any)) {
+					// info
+					return JSON.stringify(data, null, 2);
+				}
+				if (data && typeof data === "object" && "lines" in (data as any) && "logFile" in (data as any)) {
+					const d = data as PlatformLogsData;
+					if (!d.logFile) return "No log files found.";
+					return d.lines.join("\n") || "No log entries found.";
+				}
+				if (data && typeof data === "object" && "config" in (data as any)) {
+					const d = data as PlatformConfigData;
+					return JSON.stringify(d.config, null, 2);
+				}
+				if (data && typeof data === "object" && "providers" in (data as any)) {
+					const d = data as PlatformProvidersData;
+					if (d.providers.length === 0) {
+						return (
+							"No AI providers configured. Supported provider types: " +
+							"openai, anthropic, gemini, openai-compatible, ollama.\n" +
+							"Configure via Settings > Providers in the UI (recommended)."
+						);
+					}
+					return JSON.stringify(d.providers, null, 2);
+				}
+				if (data && typeof data === "object" && "stats" in (data as any)) {
+					const d = data as PlatformProviderStatsData;
+					return renderProviderStats(d.stats);
+				}
+				if (data && typeof data === "object" && "sessionId" in (data as any) && "taskTree" in (data as any)) {
+					const d = data as PlatformSessionsDetailData;
+					return renderSessionsDetail(d.sessionId, d.taskTree, d.recentSteps);
+				}
+				if (data && typeof data === "object" && "rows" in (data as any)) {
+					const d = data as PlatformSessionsListData;
+					return renderSessionsList(d.rows);
+				}
+				// Fallback: best-effort JSON dump (should not normally be reached).
+				try {
+					return typeof data === "string" ? data : JSON.stringify(data, null, 2);
+				} catch {
+					return "Platform resource returned non-serializable data.";
 				}
 			},
 		}),

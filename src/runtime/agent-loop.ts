@@ -304,11 +304,6 @@ export class AgentLoop implements AgentRuntime {
 			contextBundle: config.contextBundle,
 			// v0.8 (P3): ManagementService handle for the zero role's action tools.
 			management: config.management,
-			// platform-observability ① (sub-4): read-only session observation
-			// handle backing the Platform 'sessions' resource. Injected by
-			// AgentService on every SessionConfig; mirrored here so the tool's
-			// execute() reaches it via ctx.platformObserver.
-			platformObserver: config.platformObserver,
 			// v0.8 (P2 §11.5): subagents + resolver surfaced so the Orchestrate
 			// engine can resolve a DSL `task` node's agentTool name → target
 			// agent (replaces retired getAgentToolEntries resolver).
