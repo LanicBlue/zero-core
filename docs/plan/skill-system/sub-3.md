@@ -4,7 +4,10 @@
 
 ## 任务
 
-1. **"Available Skills" 段加调用提示**(`src/core/system-prompt.ts:64-74`):在 skill 列表后追加一行提示,大意"需要某 skill 的详细步骤时,调用 `skill` 工具按 name 加载其正文"(中英文与现有 prompt 风格一致)。
+1. **"Available Skills" 段加调用提示**(`src/core/system-prompt.ts:64-74`):在 skill 列表后追加提示,覆盖三段式用法(中英文与现有 prompt 风格一致):
+   - 入口:需要某 skill 的详细步骤时,调 `skill({name})` 加载 SKILL.md 正文。
+   - 资源:skill 可能含兄弟文件/脚本,用 `skill({name, file})` 读特定文件、`skill({name, list:true})` 看清单。
+   - 脚本:读到脚本源码后,用 bash 执行(skill 工具本身不执行)。
 2. **默认全不开语义**:
    - 新建 agent 时 `skillPolicy.enabledSkills = []`(显式空数组)——在 agent 创建/seed 路径核对(`fresh-db-seed.ts`、`builtin-role-templates.ts` 等)。
    - **`system-prompt.ts:66-69` 的 undefined 分支不动**(legacy agent `enabledSkills===undefined` 仍= 注入全部,保存量兼容);只有显式 `[]` 才过滤为空。在代码注释里写清这个二元语义。

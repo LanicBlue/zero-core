@@ -1,17 +1,22 @@
-# acceptance-2:`skill` 工具(按 name 查询 body)
+# acceptance-2:`skill` 系统工具(多文件 + 自动激活)
 
 对应 `sub-2.md`。
 
 ## 用例
 
-1. **工具存在并注册**:`skill` 在 `ALL_TOOLS`;`getToolExecute("skill")` 返函数;ToolsPage 列表可见。
-2. **查询成功**:mock 一个 skill(name="foo", body="正文"),调 `skill({name:"foo"})` → `{ok:true, data:{name:"foo", body:"正文", ...}}`。
-3. **查询失败**:调 `skill({name:"不存在"})` → `{ok:false, error:"skill not found: 不存在"}`(或等价明确错误)。
-4. **format 可用**:`getToolFormat("skill")(result)` 返可读文本块(含 body),供 agent host。
-5. **经 dispatcher 可达**:`dispatchTool("skill", {name:"foo"}, {caller:"ui"})` 返 JSON 结果。
-6. **无存量破坏**:typecheck 三层 + vitest 全套绿;新工具不影响其它工具注册顺序/可见性。
+1. **工具注册**:`skill` 在 `ALL_TOOLS`;`getToolExecute("skill")` 返函数;ToolDescriptor category=`system`、isReadOnly=true。
+2. **入口查询**:`skill({name:"foo"})` → `{ok:true, data:{name:"foo", body, ...}}`(SKILL.md 入口)。
+3. **多文件查询**:mock skill 目录含 `SKILL.md` + `checklist.md`,`skill({name:"foo", file:"checklist.md"})` → `{ok:true, data:{file:"checklist.md", content:"..."}}`。
+4. **list 枚举**:`skill({name:"foo", list:true})` → `{ok:true, data:{files:["SKILL.md","checklist.md","scripts/..."]}}`。
+5. **路径沙箱**:`skill({name:"foo", file:"../../etc/passwd"})` → `{ok:false, error:"path outside skill dir"}`(或等价拒绝);`../` 越界、软链逃逸都被拒。
+6. **查询失败**:`skill({name:"不存在"})` → `{ok:false, error:"skill not found: 不存在"}`。
+7. **自动激活**:agent `enabledSkills` 非空 → 激活工具集含 `skill`(即便 toolPolicy 没勾);`enabledSkills=[]`/undefined → 不含。
+8. **不经 toolPolicy 开关**:ToolsSection 无 `skill` 勾选项(非手动可开关);ToolsPage 在 "system" 分组可见。
+9. **纯检索无副作用**:工具不执行脚本;返回脚本源码后由 agent 用 bash 跑。
+10. **format 可用 + dispatcher 可达**:`getToolFormat("skill")(result)` 返可读文本;`dispatchTool("skill", {...}, {caller:"ui"})` 返 JSON。
+11. **无存量破坏**:typecheck 三层 + vitest 全套绿。
 
 ## 验证手段
 
-- 单测:mock scanSkills(或临时 skill 目录)+ 直接 execute + dispatcher 两路验证。
+- 单测:mock skill 目录(单文件/多文件/越界路径)+ execute + dispatcher 两路;自动激活断言(构造 enabledSkills 非空/空两态比对激活集)。
 - typecheck 三层 + `npm run test`。

@@ -16,12 +16,13 @@
 
 - 只动 SkillsPage + skill-router 写端点;**不动 agent 配置**(sub-4)、**不动 prompt/工具**。
 - 编辑保存后,sub-1 scanner 下次扫描读到新 body(无须重启,scanSkills 每次读盘)。
+- **目录形态边界(v1)**:本软件 skill 是目录(SKILL.md 入口 + 兄弟文件 + scripts/),但 **v1 CRUD 只管 SKILL.md 入口**(新建=建目录+SKILL.md;编辑=name/desc/body 字段)。兄弟文件/脚本的新建编辑**留后续 sub**(用户现阶段可手动放文件,scanner 只读入口、`skill` 工具能按需读全部文件)。在 UI 标注此边界,避免误解。
 
 ## 风险
 
-- **写路径安全**:必须校验目标在 `~/.zero-core/skills/` 内,防 `../` 越界写到外部(关键护栏)。
-- name 改名 = 目录改名 + SKILL.md frontmatter 同步;核对一致性。
-- 路径校验 + 软链接边界:`resolve` 后比对前缀。
+- **写路径安全**:必须校验目标在 `~/.zero-core/skills/` 内,防 `../` 越界写到外部(关键护栏);`resolve` 后比对前缀 + 软链接边界。
+- name 改名 = 目录改名 + SKILL.md frontmatter 同步;核对一致性(目录名与 frontmatter name 必须一致,sub-1 去重 by name 依赖)。
+- 删除 = 删整个 skill 目录(含兄弟文件),确认对话框明示。
 
 ## 验收
 

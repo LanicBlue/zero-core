@@ -61,12 +61,14 @@ scanner 读 body,系统提示词注入完整正文(非 name+desc 一行)。
 2. **skillPolicy 保持 `enabledSkills: string[]`**(string[] of names)。
 3. **新 agent 默认全不开**(`enabledSkills = []`)。**注意**:`system-prompt.ts:66-69` 现有 `enabled ? filter : skills` 分支——`undefined` 时注入全部。plan 需核对:新 agent 显式写 `[]` 走 filter→空(undefined 分支不动,保 legacy 兼容);或评估是否把 undefined 也改成"全不开"(倾向**不动 undefined**,避免破坏存量 agent)。
 4. **本软件 skill 正文 = 分字段编辑**(name / description / 其它 frontmatter 字段 + body textarea),写回 `~/.zero-core/skills/<name>/SKILL.md`,保留 frontmatter + body。
+5. **`skill` 工具进 tool 系统 = 方案 B(系统工具·自动开)**:注册进 `ALL_TOOLS` + ToolDescriptor(新 category `system`),**不经 `toolPolicy` 手动开关**;`buildToolsSet` 在 `skillPolicy.enabledSkills` 非空时**自动纳入**激活集(杜绝"有 skill 没 loader"坏状态)。ToolsPage 归 "system" 分组,可见可测但非 per-agent 勾选。否决 A(普通可开关工具,坏状态风险)与 C(特殊注入,丧失 tool-decoupling 三 host 共享)。
+6. **多文件 skill 支持(折进 sub-2,不 defer)**:标准协议([Claude Code skills](https://code.claude.com/docs/en/skills)、[Anthropic Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills))下 skill = 目录(SKILL.md 入口 + 兄弟 md + scripts/ + 资源),不是单 md。`skill` 工具加可选 `file` / `list` 参数覆盖:`skill({name})` 取 SKILL.md 入口、`skill({name,file})` 取兄弟文件、`skill({name,list:true})` 枚举目录;`file` 路径沙箱(相对 baseDir,resolve 后比对前缀,拒 `../` 越界)。脚本不由 skill 工具执行——工具只做纯检索,agent 读源码后用 bash 跑。**defer 的仅**"单超大 md 的 chunked offset/limit 阅读"(罕见,入口 md 本就该精炼)。
 
 ## 下一步
 
 → `/effort plan` 拆 sub(每个 sub 配对 acceptance)。预想 5 个 sub:
 1. scanner 读 body + 类型扩展 + 去重切 by name
-2. `skill` 工具(按 name 查询 body)
-3. 系统提示词 "Available Skills" 加调用提示 + 默认全不开语义
+2. `skill` 系统工具(按 name 查询;多文件 file/list 参数 + 路径沙箱;enabledSkills 非空自动激活)
+3. 系统提示词 "Available Skills" 加调用提示(含 file 资源加载)+ 默认全不开语义
 4. `SkillsSection`(agent 配置,skillPolicy checkbox)
-5. `SkillsPage` 双栏 UI + 本软件 skill CRUD(分字段编辑)
+5. `SkillsPage` 双栏 UI + 本软件 skill CRUD(目录形态;v1 管 SKILL.md 入口)
