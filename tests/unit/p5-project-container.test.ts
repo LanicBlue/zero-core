@@ -61,7 +61,7 @@ import { WikiStore } from "../../src/server/wiki-node-store.js";
 import { RequirementStore } from "../../src/server/requirement-store.js";
 import { TaskStepStore } from "../../src/server/task-step-store.js";
 import { ProjectWikiStore } from "../../src/server/project-wiki-store.js";
-import { ManagementService } from "../../src/server/management-service.js";
+import { ManagementService, setManagementService } from "../../src/server/management-service.js";
 import { createProjectRouter } from "../../src/server/project-router.js";
 import type { CronSchedule, ProjectContainerView, RequirementStatus } from "../../src/shared/types.js";
 
@@ -102,9 +102,13 @@ beforeEach(() => {
 		wikiStore: wikiStoreGlobal,
 		taskStepStore,
 	});
+	// tool-decoupling sub-3:Project 工具迁新签名,直读 getManagementService()
+	// 单例(决策 1,不经 ctx.management)。测试注册本用例实例。
+	setManagementService(management);
 });
 
 afterEach(() => {
+	setManagementService(undefined);
 	sessionDB.close();
 	rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -451,14 +455,24 @@ describe("P5 §8.5 — getProjectResourceUsage (sessions token/cost SUM by proje
 
 describe("P5 §8.2 — Project tool get(includeContext) returns container view", () => {
 	test("includeContext=true goes through getProjectContainerView", async () => {
+		// tool-decoupling sub-3:Project 工具迁新签名(execute 返 ToolResult +
+		// format),直读 getManagementService() 单例(beforeEach 已注册)。execute
+		// 返 ToolResult,text 经 format 取(仍是 JSON.dump 形态,同 sub-3 前)。
 		const { projectTool } = await import("../../src/tools/project-tool.js");
-		const { getToolExecute } = await import("../../src/tools/tool-factory.js");
+		const { getToolExecute, getToolFormat } = await import("../../src/tools/tool-factory.js");
 		const exec = getToolExecute(projectTool)!;
+		const format = getToolFormat(projectTool)!;
+		// 助手:execute → ToolResult;format → 文本(同 sub-3 前);断言两边。
+		const run = async (input: any) => {
+			const json: any = await exec(input, { caller: "internal" });
+			return { json, text: format(json) };
+		};
 
 		const p = management.createProject({ name: "Tool", workspaceDir: join(tmpDir, "ws") });
-		const ctx: any = { management };
 
-		const parsed = JSON.parse(await exec({ action: "get", id: p.id, includeContext: true }, ctx) as string);
+		const r1 = await run({ action: "get", id: p.id, includeContext: true });
+		expect(r1.json.ok).toBe(true);
+		const parsed = JSON.parse(r1.text);
 		expect(parsed.project.id).toBe(p.id);
 		// All container fields present.
 		expect(parsed.requirementsByStatus).toBeDefined();
@@ -467,7 +481,8 @@ describe("P5 §8.2 — Project tool get(includeContext) returns container view",
 		expect(parsed.activeSessions).toEqual([]);
 
 		// Without includeContext, plain metadata.
-		const meta = JSON.parse(await exec({ action: "get", id: p.id }, ctx) as string);
+		const r2 = await run({ action: "get", id: p.id });
+		const meta = JSON.parse(r2.text);
 		expect(meta.id).toBe(p.id);
 		expect(meta.requirementsByStatus).toBeUndefined();
 	});

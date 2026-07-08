@@ -191,4 +191,41 @@ export interface CallerCtx {
 	// ─── 流式(G2):可选副作用通道 ────────────────────────────────────
 	/** 流式事件回调。可选:测试/合成调用不提供 → 工具不流式,只返 JSON。 */
 	emit?: (event: ToolStreamEvent) => void;
+
+	// ─── 过渡字段(sub-3,sub-4/5 收敛后删)──────────────────────────────
+	// 这些字段在最终设计里要么并入 scope(决策 G5)、要么 loop 侧消化掉。
+	// sub-3 让工具读 callerCtx 而非 ToolExecutionContext,但 ctxToCallerCtx
+	// 仍从旧 ctx 把它们桥过来;sub-4/5 把 scope/workspaceDir/toolConfig 改成
+	// 由 host 在调用点显式填(或并入 scope)。
+	/**
+	 * sub-3 过渡:per-tool 配置默认值(Read.max_lines / Grep.head_limit / Shell.timeout …)。
+	 * loop 从 toolPolicy 解出后注入;工具用它取"未传参时的默认"。sub-4/5 收敛为
+	 * host 解析后直接传 input 字段(或并入 scope)。
+	 */
+	toolConfig?: Record<string, Record<string, any>>;
+	/**
+	 * sub-3 过渡:文件访问范围(workspace = 限制在 workspaceDir 内 / filesystem = 不限)。
+	 * loop 从 session 配置注入;OS 工具(Read/Grep/Glob/Edit/Write)用它做 workspace
+	 * 边界检查。sub-4/5 并入 scope.readOnly / 路径白名单。
+	 */
+	readScope?: "filesystem" | "workspace";
+	/**
+	 * sub-3 过渡(Wiki scope 回退):本 session 解析出的 wiki anchor node id 集。
+	 * G5 说 scope 应是 host 解析的 `{projectId, readOnly}`,但 AgentLoop 侧还没填
+	 * scope(那是 sendProjectPrompt 的事,sub-4/5 接)。过渡期 Wiki 工具从
+	 * callerCtx.scope 取;scope 为空时回退到这组 anchor id(保持现有 wiki-anchor
+	 * 注入逻辑不回归)。sub-4/5 把它换成 scope 后删此字段。
+	 */
+	wikiAnchorNodeIds?: string[];
+	/**
+	 * sub-3 过渡:session context bundle({projectId, workspaceDir, wikiRootNodeId} 等)。
+	 * loop 从 config.contextBundle 注入;部分工具(Flow 用 workspaceDir 写 requirement
+	 * 文档)读它。sub-4/5 收敛为 host 显式填 workingDir + scope。
+	 */
+	contextBundle?: { projectId?: string; workspaceDir?: string; wikiRootNodeId?: string; [k: string]: unknown };
+	/**
+	 * sub-3 过渡:本 session 的 project id(loop 从 projectContext 注入)。Wiki scope
+	 * 回退 + 工具按 project 取数据时用。sub-4/5 并入 scope.projectId。
+	 */
+	projectId?: string;
 }

@@ -31,6 +31,7 @@ import { stat } from "node:fs/promises";
 import { glob } from "node:fs/promises";
 import { buildTool } from "./tool-factory.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 
 // Directories to always skip
 const SKIP_DIRS = new Set([
@@ -83,13 +84,21 @@ export const globTool = buildTool({
 		exclude: z.string().optional().describe("Comma-separated patterns to exclude (e.g., '*.test.ts,*.spec.ts,mocks')"),
 		limit: z.number().optional().describe("Max number of results to return (default: 30)"),
 	}),
-	execute: async (input, ctx) => {
+	// tool-decoupling sub-3(决策 1/3 + G5/G6):workingDir / toolConfig / readScope
+	// 从 callerCtx 取;返 ToolResult{data:{pattern, text, matches, truncated?}}
+	// (G6 文本壳 + 元数据);format(r) = r.data.text。行为同 sub-3 前。
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult> => {
 		const { pattern, path, exclude, limit: inputLimit } = input;
-		const config = ctx.toolConfig?.Glob ?? {};
+		const config = callerCtx.toolConfig?.Glob ?? {};
 		const limit = inputLimit ?? config.result_limit ?? 30;
 		const skipCommon = config.skip_common_dirs !== false;
-		const restrictToWorkspace = ctx.readScope === "workspace";
-		const workingDir = ctx.workingDir;
+		const restrictToWorkspace = callerCtx.readScope === "workspace";
+		const workingDir = callerCtx.workingDir;
+
+		const wrap = (text: string, extra: Record<string, unknown> = {}): ToolResult => ({
+			ok: !/^Error:|Access denied/.test(text),
+			data: { pattern, text, ...extra },
+		});
 
 		let searchPath: string;
 		if (path) {
@@ -98,10 +107,10 @@ export const globTool = buildTool({
 				p = p.slice(1, -1);
 			}
 			// v0.8 (P1 §10.1): block agent globbing inside the wiki memory store.
-			if (isWikiDiskPath(p, workingDir)) return wikiPathRejectMessage(p);
+			if (isWikiDiskPath(p, workingDir)) return wrap(wikiPathRejectMessage(p));
 			searchPath = workingDir ? normalize(resolve(workingDir, p)) : normalize(resolve(p));
 			if (restrictToWorkspace && workingDir && !searchPath.startsWith(normalize(resolve(workingDir)))) {
-				return `Access denied: search path outside workspace (${path})`;
+				return wrap(`Access denied: search path outside workspace (${path})`);
 			}
 		} else {
 			searchPath = workingDir || ".";
@@ -142,9 +151,9 @@ export const globTool = buildTool({
 
 		if (entries.length === 0) {
 			if (totalSkipped > 0) {
-				return `No files matching '${pattern}' found (${totalSkipped} files skipped in excluded directories).`;
+				return wrap(`No files matching '${pattern}' found (${totalSkipped} files skipped in excluded directories).`, { matches: [] });
 			}
-			return `No files matching '${pattern}' found.`;
+			return wrap(`No files matching '${pattern}' found.`, { matches: [] });
 		}
 
 		// Sort by modification time descending (most recent first)
@@ -165,6 +174,10 @@ export const globTool = buildTool({
 		if (totalSkipped > 0 && !truncated) {
 			output += `\n(${totalSkipped} files in excluded directories were skipped)`;
 		}
-		return output;
+		return wrap(output, { matches: display, totalMatched, truncated });
+	},
+	// format(决策 3,G6):透出 data.text。文本形态与 sub-3 前完全一致。
+	format: (result: ToolResult): string => {
+		return (result.data as any)?.text ?? result.error ?? "Glob failed.";
 	},
 });

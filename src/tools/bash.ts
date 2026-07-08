@@ -33,6 +33,7 @@ import { buildTool } from "./tool-factory.js";
 import { EXEC_MAX_BUFFER_BYTES } from "../core/constants.js";
 import { decodeExecBuffers } from "../core/encoding.js";
 import { findWikiPathInShellCommand, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -255,16 +256,38 @@ export const bashTool = buildTool({
 		command: z.string().describe("The shell command to execute"),
 		timeout: z.number().optional().describe("Timeout in seconds (a blocking call that times out auto-backgrounds as a safety net)"),
 	}),
-	execute: async (input, ctx) => {
+	// tool-decoupling sub-3(决策 1/3 + G5/G6 + G2 流式):workingDir / toolConfig
+	// 从 callerCtx 取;Bash 流式经 callerCtx.emit 吐 stdout 增量(sub-2 的
+	// ctxToCallerCtx 已桥接 ctx.emit → callerCtx.emit)。返 ToolResult{data:{text,
+	// stdout, stderr, exitCode, elapsedSec}}(G6 文本壳 + 元数据);format(r) =
+	// r.data.text。文本形态与 sub-3 前完全一致(agent 行为不回归)。
+	//
+	// 流式契约(G2):callerCtx.emit 缺失(测试 / 合成调用)→ 不流式,只返 JSON。
+	// emit 存在 → 边跑边吐 {type:"partial", text:<stdout 增量>}。终态 JSON 仍含
+	// 完整 stdout(emit 是副作用通道,不影响返值)。
+	//
+	// 注:当前用 execFileAsync 一次性收集 stdout(非真流式);emit 在结果就绪后
+	// 推一次完整 stdout 作为 partial。真增量流(spawn + chunked emit)留后续接入
+	// —— sub-3 不改 exec 模型,只把 emit 通道接通(G2 契约先就位)。
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult> => {
 		const { command, timeout: inputTimeout } = input;
-		const config = ctx.toolConfig?.Shell ?? {};
+		const config = callerCtx.toolConfig?.Shell ?? {};
 		const timeoutSec = inputTimeout ?? config.timeout;
 		const timeout = timeoutSec ? timeoutSec * 1000 : undefined;
+		const emit = typeof callerCtx.emit === "function" ? callerCtx.emit : undefined;
+
+		const wrap = (data: { text: string; stdout: string; stderr: string; exitCode: number; elapsedSec: string }, ok: boolean, error?: string): ToolResult => ({
+			ok,
+			error,
+			data,
+		});
 
 		// v0.8 (P1 §10.1): block agent shell access to the wiki memory store.
 		// Best-effort token scan; flags clear `.zero-core/wiki/` references.
-		const blockedPath = findWikiPathInShellCommand(command, ctx.workingDir);
-		if (blockedPath) return wikiPathRejectMessage(blockedPath);
+		const blockedPath = findWikiPathInShellCommand(command, callerCtx.workingDir);
+		if (blockedPath) {
+			return wrap({ text: wikiPathRejectMessage(blockedPath), stdout: "", stderr: "", exitCode: 0, elapsedSec: "0.0" }, false);
+		}
 
 		const info = detectShell();
 
@@ -272,7 +295,8 @@ export const bashTool = buildTool({
 		if (info.type !== "bash") {
 			const warning = checkUnixCommand(command, info.type);
 			if (warning) {
-				return `[Warning] ${warning}\n\n[Command not executed]`;
+				const text = `[Warning] ${warning}\n\n[Command not executed]`;
+				return wrap({ text, stdout: "", stderr: warning, exitCode: 0, elapsedSec: "0.0" }, false);
 			}
 		}
 
@@ -286,7 +310,7 @@ export const bashTool = buildTool({
 		// delegate concern, not a Shell one). Foreground:
 
 		// Foreground mode
-		const cwd = ctx.workingDir ?? ".";
+		const cwd = callerCtx.workingDir ?? ".";
 		// encoding:"buffer" → stdout/stderr 以 Buffer 返回,交给 decodeExecBuffers
 		// 做 UTF-8(优先)/ GBK(Windows 原生命令回退)解码,避免中文乱码。
 		const execOpts: any = { cwd, maxBuffer: EXEC_MAX_BUFFER_BYTES, encoding: "buffer" };
@@ -295,28 +319,43 @@ export const bashTool = buildTool({
 
 		try {
 			const result = await execFileAsync(info.shell, shellArgs, execOpts) as unknown as { stdout: Buffer; stderr: Buffer };
-			const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+			const elapsedSec = ((Date.now() - t0) / 1000).toFixed(1);
 			const { stdout, stderr } = decodeExecBuffers(result);
-			let out = "";
-			if (stdout) out += stdout.trim();
-			if (stderr) out += "\n[stderr] " + stderr.trim();
-			out += `\n[Completed in ${elapsed}s]`;
-			return out;
+			// G2 流式:推一次完整 stdout 作为 partial(真增量流留后续)。
+			if (emit && stdout) emit({ type: "partial", text: stdout.trim() });
+			let text = "";
+			if (stdout) text += stdout.trim();
+			if (stderr) text += "\n[stderr] " + stderr.trim();
+			text += `\n[Completed in ${elapsedSec}s]`;
+			return wrap({ text, stdout: stdout.trim(), stderr: stderr.trim(), exitCode: 0, elapsedSec }, true);
 		} catch (err: any) {
+			const elapsedSec = ((Date.now() - t0) / 1000).toFixed(1);
 			if (err.killed) {
-				throw new Error(`Command timed out after ${timeoutSec}s\nCommand: ${command}`);
+				// Timeout:重现旧文本("Command timed out after …s\nCommand: …"),
+				// 但走 migrated 返 ToolResult{ok:false} 而非 throw(与 Platform
+				// 一致:错误也返 JSON,agent 看到 timeout 文本作为工具结果)。
+				const text = `Command timed out after ${timeoutSec}s\nCommand: ${command}`;
+				return wrap({ text, stdout: "", stderr: "", exitCode: -1, elapsedSec }, false, text);
 			}
-			const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 			const { stdout, stderr } = decodeExecBuffers(err);
 			const stderrText = postprocessError(stderr.trim(), command, info.type);
 			const exitCode = err.status ?? err.code ?? 1;
-			let out = `Exit code ${exitCode}`;
-			if (command.length <= 200) out += `\nCommand: ${command}`;
+			// G2 流式:即使失败也推 partial(已收集的 stdout)。
+			if (emit && stdout) emit({ type: "partial", text: stdout.trim() });
+			let text = `Exit code ${exitCode}`;
+			if (command.length <= 200) text += `\nCommand: ${command}`;
 			const stdoutTrim = stdout.trim();
-			if (stdoutTrim) out += "\n" + stdoutTrim;
-			if (stderrText) out += "\n[stderr] " + stderrText;
-			out += `\n[Completed in ${elapsed}s]`;
-			throw new Error(out);
+			if (stdoutTrim) text += "\n" + stdoutTrim;
+			if (stderrText) text += "\n[stderr] " + stderrText;
+			text += `\n[Completed in ${elapsedSec}s]`;
+			// 失败仍返 ToolResult(ok=false)—— format 透出 data.text(同旧 throw
+			// 文本),agent 看到的形态不变;UI 拿 exitCode 等元数据。
+			return wrap({ text, stdout: stdoutTrim, stderr: stderrText, exitCode, elapsedSec }, false, text);
 		}
+	},
+	// format(决策 3,G6):透出 data.text。文本形态与 sub-3 前完全一致(成功 +
+	// 失败两条路径都逐字保留)。
+	format: (result: ToolResult): string => {
+		return (result.data as any)?.text ?? result.error ?? "Shell command failed.";
 	},
 });

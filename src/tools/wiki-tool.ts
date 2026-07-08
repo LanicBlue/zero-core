@@ -16,8 +16,7 @@
 // read-modify-write 做精确字符串替换(无 markdown 解析)。
 //
 // ## 权限模型(读写同界 / pure anchor model)
-// 读和写**共用同一道边界** = agent 的 resolved anchor 节点集(ctx.
-// wikiAnchorNodeIds:auto memory + auto project/global + free wikiAnchors)。
+// 读和写**共用同一道边界** = agent 的 resolved anchor 节点集。
 //   - 能读 = 能写:anchor 子树内的节点既可 expand 也可 create/update/delete。
 //   - free wikiAnchors 授予的子树同样可写(不再像旧版只读不写)。
 //   - zero / 全局 session(无 projectId)的 anchor 集含全局根 → 整棵树可读可写。
@@ -26,13 +25,23 @@
 // scope 在 store 层强制(assertNodeInAnchorScope);工具层只负责把 anchor 集
 // 透传给 *InScope 写原语。空 anchor 集 → 拒绝(无 wiki 上下文)。
 //
+// ## tool-decoupling sub-3(决策 1/2/3 + G5 scope 回退)
+// - **数据源**:直读 getWikiStoreGlobal() 单例(决策 1)—— 不再经 ctx.wikiStore。
+// - **scope**:首选 callerCtx.scope(G5:外部 MCP host 注入 {projectId, readOnly?});
+//   scope 为空(内部 agent loop 还没填,sub-4/5 接)时回退到 callerCtx.
+//   wikiAnchorNodeIds(现有 wiki-anchor 解析,不回归)。scope.readOnly=true →
+//   写操作(create/update/delete/docWrite/docEdit)拒绝。
+// - **输出**:execute 返 ToolResult{data:{text, action, nodeId?}}(G6 文本壳);
+//   format(r) = r.data.text。文本形态与 sub-3 前完全一致(agent 行为不回归)。
+//   更细的结构化(subtree / 搜索结果数组)留后续 UI 接入时补。
+//
 // ## 设计依据
 // - schema 必须顶层 z.object(非 discriminatedUnion):LLM 函数调用协议要求
 //   顶层 type:object。见 project-v08-tool-hardening §2。
 //
 // ## 输入
-// - ctx.wikiStore (ProjectWikiStore 兼容层 → .getWikiStore() 取真 WikiStore)
-// - ctx.wikiAnchorNodeIds (读写同界的 scope 锚点集)
+// - callerCtx.scope (G5,首选;外部 host 注入) 或 callerCtx.wikiAnchorNodeIds
+//   (回退,内部 loop 桥接) —— 二者至少一个,否则拒绝(空 scope)。
 //
 // ## 输出
 // - export const wikiTool / wikiActionSchema
@@ -40,8 +49,10 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
+import { getWikiStoreGlobal } from "../server/wiki-node-store.js";
 import type { WikiStore } from "../server/wiki-node-store.js";
 import type { WikiNode } from "../shared/types.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 import { formatBodySize, formatNodeId, shortIdOf, sanitizeText } from "../runtime/wiki-anchor-injection.js";
 
 // ---------------------------------------------------------------------------
@@ -82,23 +93,54 @@ function collectSubtree(rootId: string, byParent: Map<string, WikiNode[]>): Set<
 	return set;
 }
 
-function resolveWikiStore(ctx: any): WikiStore | undefined {
-	const raw = ctx?.wikiStore;
-	if (!raw) return undefined;
-	if (typeof raw.getWikiStore === "function") return raw.getWikiStore() as WikiStore;
-	if (typeof raw.upsertProjectNode === "function") return raw as WikiStore;
-	return undefined;
+/**
+ * tool-decoupling sub-3(决策 1):WikiStore 直读全局单例(getWikiStoreGlobal)。
+ * 不再经 ctx.wikiStore(旧 ToolExecutionContext 字段)。headless 无单例 →
+ * undefined,工具优雅报错(不崩)。
+ *
+ * 注:ProjectWikiStore(back-compat 视图,renderer-facing)是另一个单例
+ * (getProjectWikiStore);本工具直接用全局 WikiStore(数据工具本就直读真源)。
+ */
+function resolveWikiStore(): WikiStore | undefined {
+	return getWikiStoreGlobal();
 }
 
 /**
- * v0.8 (读写同界): the session's resolved wiki anchor node ids — the SINGLE
- * boundary for both read and write. Falls back to [] when the context didn't
- * supply anchors (the tool then refuses with a clear error rather than
- * accidentally reading/writing the whole tree).
+ * tool-decoupling sub-3(G5 scope + 回退):
+ * - **首选** callerCtx.scope —— host 解析 scope 后注入(MCP 外部 agent 必走)。
+ *   scope.projectId → 该 project 的子树根(`wiki-root:<projectId>`);
+ *   scope.readOnly → 写操作(create/update/delete/docWrite/docEdit)拒绝。
+ * - **回退**(过渡期,sub-3):callerCtx.scope 为空(内部 agent loop 还没填
+ *   scope —— 那是 sendProjectPrompt 的事,sub-4/5 接)时,回退到现有的
+ *   wiki-anchor 解析:callerCtx.wikiAnchorNodeIds(loop 从 session context
+ *   解析注入,zero/global 含 GLOBAL_ROOT,project 含自己子树根 + memory +
+ *   free wikiAnchors)。这保证现有 wiki-anchor 注入逻辑**不回归**。
+ *
+ * 返 anchor 集(读写同界的 scope 边界);空集 → 调用方报错(无 wiki 上下文)。
+ * sub-4/5 把它彻底换成 scope,wikiAnchorNodeIds 字段从 callerCtx 删。
  */
-function resolveAnchorsCtx(ctx: any): string[] {
-	const ids = ctx?.wikiAnchorNodeIds;
-	return Array.isArray(ids) ? ids : [];
+function resolveAnchorsCtx(callerCtx: CallerCtx): { anchors: string[]; readOnly: boolean } {
+	// G5 首选:scope(MCP 外部 agent / 未来 host 注入)
+	if (callerCtx.scope?.projectId) {
+		return {
+			anchors: [`wiki-root:${callerCtx.scope.projectId}`],
+			readOnly: callerCtx.scope.readOnly === true,
+		};
+	}
+	// 回退(sub-3 过渡):wiki-anchor 注入,内部 agent loop 走这条
+	const ids = callerCtx.wikiAnchorNodeIds;
+	return {
+		anchors: Array.isArray(ids) ? ids : [],
+		readOnly: false,
+	};
+}
+
+/**
+ * Wrap a write-op rejection (readOnly scope) into the same error string the
+ * tool surfaces elsewhere. Keeps execute branches uniform.
+ */
+function readOnlyReject(action: string): string {
+	return `Error: scope is read-only — ${action} not permitted`;
 }
 
 /**
@@ -291,16 +333,50 @@ export const wikiTool = buildTool({
 		isDestructive: false,
 	},
 	inputSchema: wikiActionSchema,
-	execute: async (input, ctx) => {
-		const wiki = resolveWikiStore(ctx);
-		const anchors = resolveAnchorsCtx(ctx);
-		if (!wiki) return "Error: wiki context not available";
-		if (anchors.length === 0) return "Error: no wiki anchors in this session (scope is empty)";
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult> => {
+		const text = await renderWikiAction(input, callerCtx);
+		// tool-decoupling sub-3(G6 文本壳):Wiki 返 {text} 形态。data.action /
+		// data.nodeId 让未来 UI dispatcher 能粗粒度区分结果类型而不解析文本;
+		// 文本本身保持与 sub-3 前完全一致(agent 行为不回归)。更细的结构化
+		// (subtree / 搜索结果数组)留后续 UI 接入时再补,本 sub 只切签名。
+		return {
+			ok: !/^Error:/.test(text),
+			data: {
+				text,
+				action: input.action,
+				nodeId: input.nodeId ?? input.path,
+			},
+		};
+	},
+	// format(决策 3):纯函数,把 ToolResult JSON 转成喂 LLM 的文本。
+	// Wiki 的文本形态就是 renderWikiAction 的输出(sub-3 前的 agent 视角,
+	// 行为不变)。
+	format: (result: ToolResult): string => {
+		if (!result.ok) {
+			// Error 路径:execute 已经把 "Error: …" 放进 data.text;直接透出。
+			// (data.text 缺失的极端情况才回退到 error 字段。)
+			return (result.data as any)?.text ?? result.error ?? "Wiki action failed.";
+		}
+		return (result.data as any)?.text ?? "";
+	},
+});
 
-		switch (input.action) {
-			// ── STRUCTURE ────────────────────────────────────────────────
-			case "expand": {
-				if (!input.nodeId) return "Error: nodeId required for expand";
+/**
+ * Pure renderer for a Wiki action — produces the agent-facing text (sub-3 前的
+ * 行为,逐字保留)。被 execute 调一次拿文本,再包成 ToolResult{data:{text}}。
+ * 分离出来是为了让 format 也能复用同一段渲染逻辑(目前 execute 直接调它,
+ * format 只透出 data.text;未来若要 host 各自渲染可拆)。
+ */
+async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<string> {
+	const wiki = resolveWikiStore();
+	const { anchors, readOnly } = resolveAnchorsCtx(callerCtx);
+	if (!wiki) return "Error: wiki context not available";
+	if (anchors.length === 0) return "Error: no wiki anchors in this session (scope is empty)";
+
+	switch (input.action) {
+		// ── STRUCTURE ────────────────────────────────────────────────
+		case "expand": {
+			if (!input.nodeId) return "Error: nodeId required for expand";
 				const resolved = resolveNodeIdArg(input.nodeId, anchors, wiki);
 				if (!resolved.ok) return `Error: ${resolved.reason}`;
 				const node = resolved.node;
@@ -415,6 +491,7 @@ export const wikiTool = buildTool({
 			}
 
 			case "create": {
+				if (readOnly) return readOnlyReject("create");
 				if (!input.parentId) return "Error: parentId required for create";
 				if (!input.title) return "Error: title required for create";
 				// Parent must be visible in scope (accepts short id / full id).
@@ -454,6 +531,7 @@ export const wikiTool = buildTool({
 			}
 
 			case "update": {
+				if (readOnly) return readOnlyReject("update");
 				if (!input.nodeId) return "Error: nodeId required for update";
 				const resolved = resolveNodeIdArg(input.nodeId, anchors, wiki);
 				if (!resolved.ok) return `Error: ${resolved.reason}`;
@@ -486,6 +564,7 @@ export const wikiTool = buildTool({
 			}
 
 			case "delete": {
+				if (readOnly) return readOnlyReject("delete");
 				if (!input.nodeId) return "Error: nodeId required for delete";
 				const resolved = resolveNodeIdArg(input.nodeId, anchors, wiki);
 				if (!resolved.ok) return `Error: ${resolved.reason}`;
@@ -529,6 +608,7 @@ export const wikiTool = buildTool({
 			}
 
 			case "docWrite": {
+				if (readOnly) return readOnlyReject("docWrite");
 				if (!input.nodeId && !input.path) return "Error: nodeId or path required for docWrite";
 				if (input.content === undefined) return "Error: content required for docWrite";
 				const node = resolveNode(input, anchors, wiki);
@@ -549,6 +629,7 @@ export const wikiTool = buildTool({
 			}
 
 			case "docEdit": {
+				if (readOnly) return readOnlyReject("docEdit");
 				if (!input.nodeId && !input.path) return "Error: nodeId or path required for docEdit";
 				if (input.oldString === undefined || input.newString === undefined) {
 					return "Error: oldString and newString required for docEdit";
@@ -581,5 +662,4 @@ export const wikiTool = buildTool({
 		}
 		// Exhaustiveness fallback (unreachable if schema validates).
 		return `Error: unknown wiki action`;
-	},
-});
+	}

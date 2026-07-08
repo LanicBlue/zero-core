@@ -42,6 +42,7 @@ import {
 	MAX_FILE_SIZE,
 } from "./file-read-helpers.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 
 function resolvePath(path: string, workingDir: string | undefined, restrictToWorkspace: boolean): string | { error: string } {
 	if (!workingDir) return path;
@@ -91,18 +92,28 @@ export const fileReadTool = buildTool({
 		mode: z.enum(["full", "outline"]).optional().describe("full=raw text with line numbers, outline=structured code outline"),
 		pages: z.string().optional().describe("Page range for PDF/notebook files (e.g., '1-5', '3', '10-20'). Only applies to PDF and .ipynb files."),
 	}),
-	execute: async (input, ctx) => {
+	// tool-decoupling sub-3(决策 1/3 + G5/G6):workingDir / toolConfig / readScope
+	// 从 callerCtx 取(不经 ctx);返 ToolResult{data:{path, text, mode?}}(G6 文本壳,
+	// +path/offset/limit 元数据);format(r) = r.data.text。行为与 sub-3 前一致。
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult> => {
 		const { path, offset, limit: inputLimit, pages } = input;
-		const config = ctx.toolConfig?.Read ?? {};
+		const config = callerCtx.toolConfig?.Read ?? {};
 		const maxLines = config.max_lines ?? 2000;
 		const maxFileSize = config.max_file_size ?? 256;
 		const maxBytes = maxFileSize > 0 ? maxFileSize * 1024 : 0;
 		const mode = (offset != null) ? "full" : (input.mode ?? config.default_mode ?? "full");
-		const restrictToWorkspace = ctx.readScope === "workspace";
+		const restrictToWorkspace = callerCtx.readScope === "workspace";
+		const workingDir = callerCtx.workingDir;
+
+		const wrap = (text: string, extra: Record<string, unknown> = {}): ToolResult => ({
+			ok: !/^Error:/.test(text),
+			data: { path, text, mode, ...extra },
+		});
+
 		// v0.8 (P1 §10.1): block agent reads of the wiki memory store.
-		if (isWikiDiskPath(path, ctx.workingDir)) return wikiPathRejectMessage(path);
-		const resolved = resolvePath(path, ctx.workingDir, restrictToWorkspace);
-		if (typeof resolved === "object") return resolved.error;
+		if (isWikiDiskPath(path, workingDir)) return wrap(wikiPathRejectMessage(path));
+		const resolved = resolvePath(path, workingDir, restrictToWorkspace);
+		if (typeof resolved === "object") return wrap(resolved.error);
 
 		try {
 			// 1. Stat the file
@@ -110,7 +121,7 @@ export const fileReadTool = buildTool({
 
 			// 2. Directory check
 			if (fileStat.isDirectory()) {
-				return `Error: ${path} is a directory, not a file. Use Glob to list directory contents.`;
+				return wrap(`Error: ${path} is a directory, not a file. Use Glob to list directory contents.`);
 			}
 
 			// 3. File type detection
@@ -118,22 +129,22 @@ export const fileReadTool = buildTool({
 
 			// 4. Binary block
 			if (fileType === "block") {
-				return `Error: Cannot read binary file. Binary files (executables, archives, media, fonts, etc.) are not supported.`;
+				return wrap(`Error: Cannot read binary file. Binary files (executables, archives, media, fonts, etc.) are not supported.`);
 			}
 
 			// 5. File size limit
 			if (maxBytes > 0 && fileStat.size > maxBytes) {
-				return `File too large (${formatBytes(fileStat.size)}). Maximum is ${formatBytes(maxBytes)}.\nUse offset and limit parameters to read specific sections of large files.`;
+				return wrap(`File too large (${formatBytes(fileStat.size)}). Maximum is ${formatBytes(maxBytes)}.\nUse offset and limit parameters to read specific sections of large files.`);
 			}
 
 			// 6. Image
 			if (fileType === "image") {
-				return formatImageInfo(resolved, fileStat.size);
+				return wrap(formatImageInfo(resolved, fileStat.size), { fileType: "image" });
 			}
 
 			// 7. PDF
 			if (fileType === "pdf") {
-				return await extractPdfText(resolved, fileStat.size, pages);
+				return wrap(await extractPdfText(resolved, fileStat.size, pages), { fileType: "pdf" });
 			}
 
 			// 8. Read raw bytes and decode
@@ -142,13 +153,13 @@ export const fileReadTool = buildTool({
 
 			// 9. Jupyter Notebook
 			if (fileType === "notebook") {
-				return parseJupyterNotebook(content, resolved, pages);
+				return wrap(parseJupyterNotebook(content, resolved, pages), { fileType: "notebook" });
 			}
 
 			// 10. Outline mode
 			if (mode === "outline") {
 				const outline = extractOutline(basename(resolved), content);
-				return renderOutline(outline, { budget: inputLimit ?? maxLines, source: content });
+				return wrap(renderOutline(outline, { budget: inputLimit ?? maxLines, source: content }));
 			}
 
 			// 11. Full mode
@@ -168,7 +179,7 @@ export const fileReadTool = buildTool({
 			if (truncated) {
 				result += `\n\n[File has ${lines.length} lines, showing ${start + 1}-${end}. Use offset/limit to read more.]`;
 			}
-			return result;
+			return wrap(result, { offset: start + 1, limit: end - start, totalLines: lines.length, truncated });
 		} catch (err: any) {
 			if (err.code === "ENOENT") {
 				const parentDir = dirname(resolved as string);
@@ -178,17 +189,21 @@ export const fileReadTool = buildTool({
 				if (!parentExists) {
 					msg += `\n  Parent directory does not exist: ${parentDir}`;
 				}
-				const suggestions = await suggestSimilarFiles(resolved as string, ctx.workingDir);
+				const suggestions = await suggestSimilarFiles(resolved as string, workingDir);
 				if (suggestions) msg += "\n\n" + suggestions;
-				return msg;
+				return wrap(msg);
 			}
 			if (err.code === "EACCES") {
-				return `Error: Permission denied: ${path}\n  Resolved: ${resolved}`;
+				return wrap(`Error: Permission denied: ${path}\n  Resolved: ${resolved}`);
 			}
 			if (err.code === "EISDIR") {
-				return `Error: ${path} is a directory, not a file. Use Glob to list directory contents.`;
+				return wrap(`Error: ${path} is a directory, not a file. Use Glob to list directory contents.`);
 			}
-			return `Error reading file: ${err.message}\n  Path: ${path}\n  Resolved: ${resolved}`;
+			return wrap(`Error reading file: ${err.message}\n  Path: ${path}\n  Resolved: ${resolved}`);
 		}
+	},
+	// format(决策 3,G6):透出 data.text。文本形态与 sub-3 前完全一致。
+	format: (result: ToolResult): string => {
+		return (result.data as any)?.text ?? result.error ?? "Read failed.";
 	},
 });

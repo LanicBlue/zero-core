@@ -348,48 +348,67 @@ describe("cron action tool (Cron)", () => {
 		// v0.8 P3 (§7.3): the four retired per-action cron tools
 		// (CreateCron/UpdateCron/DeleteCron/ListCrons) are merged into one
 		// action-switched `Cron` tool. Each action is one switch branch.
+		//
+		// tool-decoupling sub-3:Cron 工具迁新签名(execute 返 ToolResult + format),
+		// 直读 getManagementService() 单例(决策 1,不经 ctx.management)。测试
+		// 注册本用例的 zeroAdmin 作单例;execute 返 ToolResult,text 经 format 取
+		// (仍是 JSON.dump 形态,同 sub-3 前)。
 		const { cronTool } = await import("../../src/tools/cron-tool.js");
-		const { getToolExecute } = await import("../../src/tools/tool-factory.js");
-		const execute = getToolExecute(cronTool)!;
-		const agent = (() => { const _a = agentStore.create({ name: "PM" } as any); seedAgentWithRoleTag(sessionDB, _a.id, "pm"); return _a; })();
-		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws") });
-		// AI SDK tool() execute receives (input, opts); ctx lives at opts.experimental_context.
-		// v0.8 P3: ctx.zeroAdmin renamed → ctx.management.
-		// v0.8 P3: getToolExecute returns the inner options.execute, which
-		// receives the ToolExecutionContext directly (no experimental_context
-		// wrapper — that unwrapping is the AI SDK tool()'s job at call time).
-		const ctx = { management: zeroAdmin } as any;
+		const { getToolExecute, getToolFormat } = await import("../../src/tools/tool-factory.js");
+		const { setManagementService } = await import("../../src/server/management-service.js");
+		setManagementService(zeroAdmin);
+		try {
+			const execute = getToolExecute(cronTool)!;
+			const format = getToolFormat(cronTool)!;
+			const agent = (() => { const _a = agentStore.create({ name: "PM" } as any); seedAgentWithRoleTag(sessionDB, _a.id, "pm"); return _a; })();
+			const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "ws") });
+			const ctx = { caller: "internal" as const };
 
-		const created = JSON.parse(await execute({
-			action: "create",
-			agentId: agent.id,
-			workingScope: scope(proj.id, proj.workspaceDir),
-			schedule: SCHED_INTERVAL_DAILY,
-		}, ctx));
-		expect(created.agentId).toBe(agent.id);
+			// 助手:execute → ToolResult;format → 文本(同 sub-3 前);断言两边。
+			const run = async (input: any) => {
+				const json: any = await execute(input, ctx);
+				return { json, text: format(json) };
+			};
 
-		const updated = JSON.parse(await execute({
-			action: "update",
-			id: created.id, schedule: SCHED_INTERVAL_WEEKLY,
-		}, ctx));
-		expect(updated.schedule).toEqual(SCHED_INTERVAL_WEEKLY);
+			const created = JSON.parse((await run({
+				action: "create",
+				agentId: agent.id,
+				workingScope: scope(proj.id, proj.workspaceDir),
+				schedule: SCHED_INTERVAL_DAILY,
+			})).text);
+			expect(created.agentId).toBe(agent.id);
 
-		const list = JSON.parse(await execute({ action: "list" }, ctx));
-		expect(list.length).toBe(1);
+			const updated = JSON.parse((await run({
+				action: "update",
+				id: created.id, schedule: SCHED_INTERVAL_WEEKLY,
+			})).text);
+			expect(updated.schedule).toEqual(SCHED_INTERVAL_WEEKLY);
 
-		const del = JSON.parse(await execute({ action: "delete", id: created.id }, ctx));
-		expect(del.success).toBe(true);
-		expect(zeroAdmin.listCrons().length).toBe(0);
+			const list = JSON.parse((await run({ action: "list" })).text);
+			expect(list.length).toBe(1);
+
+			const del = JSON.parse((await run({ action: "delete", id: created.id })).text);
+			expect(del.success).toBe(true);
+			expect(zeroAdmin.listCrons().length).toBe(0);
+		} finally {
+			setManagementService(undefined);
+		}
 	});
 
-	test("create action without ctx.management returns error string (fail-soft)", async () => {
+	test("create action without ManagementService singleton returns error (fail-soft)", async () => {
+		// tool-decoupling sub-3:撤销单例 → 工具优雅报错(不崩),返 ToolResult
+		// {ok:false},format 透出 error 文本(同 sub-3 前 "Error: …" 形态)。
 		const { cronTool } = await import("../../src/tools/cron-tool.js");
-		const { getToolExecute } = await import("../../src/tools/tool-factory.js");
+		const { getToolExecute, getToolFormat } = await import("../../src/tools/tool-factory.js");
+		const { setManagementService } = await import("../../src/server/management-service.js");
+		setManagementService(undefined);
 		const execute = getToolExecute(cronTool)!;
-		const result = await execute({
+		const format = getToolFormat(cronTool)!;
+		const json: any = await execute({
 			action: "create",
 			agentId: "x", workingScope: scope(undefined, "/x", "r"), schedule: SCHED_INTERVAL_DAILY,
-		}, {} as any);
-		expect(String(result)).toMatch(/Error:/);
+		}, { caller: "internal" });
+		expect(json.ok).toBe(false);
+		expect(format(json)).toMatch(/Error:/);
 	});
 });

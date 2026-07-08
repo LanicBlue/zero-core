@@ -31,6 +31,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { buildTool } from "./tool-factory.js";
 import { EXEC_MAX_BUFFER_BYTES } from "../core/constants.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -208,7 +209,10 @@ export const grepTool = buildTool({
 		"-B": z.number().optional().describe("Number of lines to show before each match"),
 		head_limit: z.number().optional().describe("Limit output to first N results (default: 250)"),
 	}),
-	execute: async (input, ctx) => {
+	// tool-decoupling sub-3(决策 1/3 + G5/G6):workingDir / toolConfig / readScope
+	// 从 callerCtx 取(不经 ctx);返 ToolResult{data:{pattern, text, outputMode,
+	// searchPath}}(G6 文本壳 + 元数据);format(r) = r.data.text。行为同 sub-3 前。
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult> => {
 		const {
 			pattern, path, glob, type,
 			output_mode = "content",
@@ -219,19 +223,24 @@ export const grepTool = buildTool({
 			head_limit,
 		} = input;
 
-		const config = ctx.toolConfig?.Grep ?? {};
+		const config = callerCtx.toolConfig?.Grep ?? {};
 		const resolved_head_limit = input.head_limit ?? config.head_limit ?? 250;
 		const resolved_max_columns = config.max_columns ?? 500;
-		const restrictToWorkspace = ctx.readScope === "workspace";
-		const workingDir = ctx.workingDir;
+		const restrictToWorkspace = callerCtx.readScope === "workspace";
+		const workingDir = callerCtx.workingDir;
+
+		const wrap = (text: string, extra: Record<string, unknown> = {}): ToolResult => ({
+			ok: !/^Error:|Search error/.test(text),
+			data: { pattern, outputMode: output_mode, searchPath: path, text, ...extra },
+		});
 
 		let searchPath: string;
 		if (path) {
 			// v0.8 (P1 §10.1): block agent greps inside the wiki memory store.
-			if (isWikiDiskPath(path, workingDir)) return wikiPathRejectMessage(path);
+			if (isWikiDiskPath(path, workingDir)) return wrap(wikiPathRejectMessage(path));
 			searchPath = workingDir ? resolve(workingDir, path) : path;
 			if (restrictToWorkspace && workingDir && !searchPath.startsWith(resolve(workingDir))) {
-				return `Access denied: search path outside workspace (${path})`;
+				return wrap(`Access denied: search path outside workspace (${path})`);
 			}
 		} else {
 			searchPath = workingDir || ".";
@@ -300,32 +309,40 @@ export const grepTool = buildTool({
 					timeout: 20000,
 					maxBuffer: EXEC_MAX_BUFFER_BYTES,
 				});
-				if (!stdout) return "No matches found.";
+				if (!stdout) return wrap("No matches found.", { matchCount: 0 });
 
 				// Trim output to head_limit lines for content mode
 				if (output_mode === "content") {
 					const lines = stdout.split("\n");
 					const truncated = lines.length > resolved_head_limit;
 					const result = lines.slice(0, resolved_head_limit).join("\n");
-					return truncated ? `${result}\n\n... (truncated, ${lines.length} total matches)` : result;
+					return wrap(
+						truncated ? `${result}\n\n... (truncated, ${lines.length} total matches)` : result,
+						{ matchCount: lines.length, truncated },
+					);
 				}
-				return stdout;
+				return wrap(stdout);
 			} catch (rgErr: any) {
-				if (rgErr.stdout) return truncateColumns(rgErr.stdout);
-				if (rgErr.code === 1) return "No matches found.";
-				if (rgErr.code === 2) return `Search error: ${rgErr.stderr || rgErr.message}`;
+				if (rgErr.stdout) return wrap(truncateColumns(rgErr.stdout));
+				if (rgErr.code === 1) return wrap("No matches found.", { matchCount: 0 });
+				if (rgErr.code === 2) return wrap(`Search error: ${rgErr.stderr || rgErr.message}`);
 				// rg not installed (ENOENT on Windows, etc.) → Node-native fallback
 				// (replaces the old `grep` fallback, which is also absent on Windows).
 			}
 
-			return nativeGrepSearch({
+			const fallbackText = await nativeGrepSearch({
 				pattern, searchPath, glob, type, output_mode,
 				caseInsensitive, context, after, before,
 				head_limit: resolved_head_limit, max_columns: resolved_max_columns,
 			});
+			return wrap(fallbackText);
 		} catch (err: any) {
-			if (err.code === 1) return "No matches found.";
-			return `Error searching: ${err.message}`;
+			if (err.code === 1) return wrap("No matches found.", { matchCount: 0 });
+			return wrap(`Error searching: ${err.message}`);
 		}
+	},
+	// format(决策 3,G6):透出 data.text。文本形态与 sub-3 前完全一致。
+	format: (result: ToolResult): string => {
+		return (result.data as any)?.text ?? result.error ?? "Grep failed.";
 	},
 });

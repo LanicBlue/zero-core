@@ -30,24 +30,36 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
+import { getManagementService } from "../server/management-service.js";
 import type { ManagementService } from "../server/management-service.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function mgmt(ctx: any): ManagementService {
-	const svc = ctx?.management;
-	if (!svc) throw new Error("Project tool requires ctx.management (zero session only)");
-	return svc as ManagementService;
+/**
+ * tool-decoupling sub-3(决策 1):直读 getManagementService() 单例 —— 不再经
+ * ctx.management。
+ */
+function mgmt(): ManagementService {
+	const svc = getManagementService();
+	if (!svc) throw new Error("Project tool requires ManagementService singleton (zero session only)");
+	return svc;
 }
 
-async function safe(fn: () => any): Promise<string> {
+/**
+ * tool-decoupling sub-3(决策 3):execute 返 ToolResult{data:{text, result}}。
+ * text = 渲染后的 LLM 文本(同 sub-3 前);result = 原始 store 返值(UI 直渲染)。
+ */
+async function runAction(fn: () => any): Promise<ToolResult> {
 	try {
 		const result = await fn();
-		return typeof result === "string" ? result : JSON.stringify(result);
+		const text = typeof result === "string" ? result : JSON.stringify(result);
+		return { ok: true, data: { text, result } };
 	} catch (err: any) {
-		return `Error: ${err.message ?? String(err)}`;
+		const msg = `Error: ${err.message ?? String(err)}`;
+		return { ok: false, error: msg, data: { text: msg } };
 	}
 }
 
@@ -105,14 +117,14 @@ export const projectTool = buildTool({
 		isDestructive: false,
 	},
 	inputSchema: projectActionSchema,
-	execute: async (input, ctx) =>
-		safe(() => {
-			const svc = mgmt(ctx);
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult> =>
+		runAction(() => {
+			const svc = mgmt();
 			switch (input.action) {
 				case "create":
-					return svc.createProject({ name: input.name, workspaceDir: input.workspaceDir, enrich: input.enrich, via: { agentId: ctx.agentId } });
+					return svc.createProject({ name: input.name, workspaceDir: input.workspaceDir, enrich: input.enrich, via: { agentId: callerCtx.agentId } });
 				case "enrich":
-					return svc.enrichProject(input.id, { via: { agentId: ctx.agentId } });
+					return svc.enrichProject(input.id, { via: { agentId: callerCtx.agentId } });
 				case "update":
 					return svc.updateProject(input.id, { name: input.name });
 				case "delete":
@@ -127,4 +139,8 @@ export const projectTool = buildTool({
 					return svc.listProjects();
 			}
 		}),
+	// format(决策 3):透出 data.text(渲染后的 LLM 文本,同 sub-3 前)。
+	format: (result: ToolResult): string => {
+		return (result.data as any)?.text ?? result.error ?? "Project action failed.";
+	},
 });

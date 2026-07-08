@@ -31,6 +31,7 @@ import { resolve, extname } from "node:path";
 import { buildTool } from "./tool-factory.js";
 import { checkSyntax, formatDiagnostics } from "./syntax-check.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 
 export const fileEditTool = buildTool({
 	name: "Edit",
@@ -60,33 +61,44 @@ export const fileEditTool = buildTool({
 		oldText: z.string().describe("Exact text to find and replace"),
 		newText: z.string().describe("Replacement text"),
 	}),
-	execute: async (input, ctx) => {
+	// tool-decoupling sub-3(决策 1/3 + G5/G6):workingDir / toolConfig 从
+	// callerCtx 取;返 ToolResult{data:{path, text, replaced}}(G6 文本壳 + 元数据);
+	// format(r) = r.data.text。行为同 sub-3 前。
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult> => {
 		const { path, oldText, newText } = input;
-		if (!ctx.workingDir) return "Error: no workspace directory configured";
+		const wrap = (text: string, extra: Record<string, unknown> = {}): ToolResult => ({
+			ok: !/^Error:|Text not found/.test(text),
+			data: { path, text, ...extra },
+		});
+		if (!callerCtx.workingDir) return wrap("Error: no workspace directory configured");
 		// v0.8 (P1 §10.1): block agent edits to the wiki memory store.
-		if (isWikiDiskPath(path, ctx.workingDir)) return wikiPathRejectMessage(path);
-		const filePath = resolve(ctx.workingDir, path);
-		if (!filePath.startsWith(resolve(ctx.workingDir))) {
-			return `Access denied: path outside workspace (${path})`;
+		if (isWikiDiskPath(path, callerCtx.workingDir)) return wrap(wikiPathRejectMessage(path));
+		const filePath = resolve(callerCtx.workingDir, path);
+		if (!filePath.startsWith(resolve(callerCtx.workingDir))) {
+			return wrap(`Access denied: path outside workspace (${path})`);
 		}
 		try {
 			const content = await readFile(filePath, "utf-8");
 			if (!content.includes(oldText)) {
-				return buildNotFoundMessage(path, content, oldText);
+				return wrap(buildNotFoundMessage(path, content, oldText));
 			}
 			const newContent = content.replace(oldText, newText);
 			await writeFile(filePath, newContent, "utf-8");
 			let result = `Successfully edited ${path}`;
-			const enabled = ctx.toolConfig?.Edit?.syntaxCheck ?? true;
+			const enabled = callerCtx.toolConfig?.Edit?.syntaxCheck ?? true;
 			if (enabled) {
 				const ext = extname(path).slice(1).toLowerCase();
 				const diags = checkSyntax(newContent, ext);
 				if (diags.length) result += formatDiagnostics(path, diags);
 			}
-			return result;
+			return wrap(result, { replaced: 1 });
 		} catch (err: any) {
-			return `Error writing file: ${err.message}`;
+			return wrap(`Error writing file: ${err.message}`);
 		}
+	},
+	// format(决策 3,G6):透出 data.text。文本形态与 sub-3 前完全一致。
+	format: (result: ToolResult): string => {
+		return (result.data as any)?.text ?? result.error ?? "Edit failed.";
 	},
 });
 

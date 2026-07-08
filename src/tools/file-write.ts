@@ -31,6 +31,7 @@ import { dirname, resolve, extname, normalize } from "node:path";
 import { buildTool } from "./tool-factory.js";
 import { checkSyntax, formatDiagnostics } from "./syntax-check.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 
 function resolvePath(path: string, workingDir: string): string | { error: string } {
 	let p = path.trim();
@@ -78,13 +79,20 @@ export const fileWriteTool = buildTool({
 		content: z.string().describe("Content to write to the file"),
 		overwrite: z.boolean().optional().describe("Set to true to overwrite an existing file. Without this, writing to an existing file returns a warning."),
 	}),
-	execute: async (input, ctx) => {
+	// tool-decoupling sub-3(决策 1/3 + G5/G6):workingDir / toolConfig 从
+	// callerCtx 取;返 ToolResult{data:{path, text, bytes, action}}(G6 文本壳 +
+	// 元数据);format(r) = r.data.text。行为同 sub-3 前。
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult> => {
 		const { path, content, overwrite } = input;
-		if (!ctx.workingDir) return "Error: no workspace directory configured";
+		const wrap = (text: string, extra: Record<string, unknown> = {}): ToolResult => ({
+			ok: !/^Error:|File already exists/.test(text),
+			data: { path, text, ...extra },
+		});
+		if (!callerCtx.workingDir) return wrap("Error: no workspace directory configured");
 		// v0.8 (P1 §10.1): block agent writes to the wiki memory store.
-		if (isWikiDiskPath(path, ctx.workingDir)) return wikiPathRejectMessage(path);
-		const resolved = resolvePath(path, ctx.workingDir);
-		if (typeof resolved === "object") return resolved.error;
+		if (isWikiDiskPath(path, callerCtx.workingDir)) return wrap(wikiPathRejectMessage(path));
+		const resolved = resolvePath(path, callerCtx.workingDir);
+		if (typeof resolved === "object") return wrap(resolved.error);
 
 		try {
 			// Check if file already exists
@@ -97,10 +105,11 @@ export const fileWriteTool = buildTool({
 
 			if (existingStat && !overwrite) {
 				const mtime = existingStat.mtime.toISOString().replace("T", " ").replace(/\.\d+Z$/, "");
-				return (
+				return wrap(
 					`File already exists: ${path}\n` +
 					`  Size: ${formatBytes(existingStat.size)}, Last modified: ${mtime}\n\n` +
-					`Set overwrite=true to overwrite this file, or use Edit to modify it.`
+					`Set overwrite=true to overwrite this file, or use Edit to modify it.`,
+					{ exists: true, bytes: existingStat.size },
 				);
 			}
 
@@ -108,15 +117,19 @@ export const fileWriteTool = buildTool({
 			await writeFile(resolved, content, "utf-8");
 			const action = existingStat ? "Overwrote" : "Created";
 			let result = `${action} ${path} (${content.length} bytes)`;
-			const enabled = ctx.toolConfig?.Write?.syntaxCheck ?? true;
+			const enabled = callerCtx.toolConfig?.Write?.syntaxCheck ?? true;
 			if (enabled) {
 				const ext = extname(path).slice(1).toLowerCase();
 				const diags = checkSyntax(content, ext);
 				if (diags.length) result += formatDiagnostics(path, diags);
 			}
-			return result;
+			return wrap(result, { action, bytes: content.length });
 		} catch (err: any) {
-			return `Error writing file: ${err.message}\n  Path: ${path}\n  Resolved: ${resolved}`;
+			return wrap(`Error writing file: ${err.message}\n  Path: ${path}\n  Resolved: ${resolved}`);
 		}
+	},
+	// format(决策 3,G6):透出 data.text。文本形态与 sub-3 前完全一致。
+	format: (result: ToolResult): string => {
+		return (result.data as any)?.text ?? result.error ?? "Write failed.";
 	},
 });

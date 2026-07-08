@@ -22,20 +22,31 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
+import { getManagementService } from "../server/management-service.js";
 import type { ManagementService } from "../server/management-service.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 
-function mgmt(ctx: any): ManagementService {
-	const svc = ctx?.management;
-	if (!svc) throw new Error("Work tool requires ctx.management (zero session only)");
-	return svc as ManagementService;
+/**
+ * tool-decoupling sub-3(决策 1):直读 getManagementService() 单例 —— 不再经
+ * ctx.management。
+ */
+function mgmt(): ManagementService {
+	const svc = getManagementService();
+	if (!svc) throw new Error("Work tool requires ManagementService singleton (zero session only)");
+	return svc;
 }
 
-async function safe(fn: () => any): Promise<string> {
+/**
+ * tool-decoupling sub-3(决策 3):execute 返 ToolResult{data:{text, result}}。
+ */
+async function runAction(fn: () => any): Promise<ToolResult> {
 	try {
 		const result = await fn();
-		return typeof result === "string" ? result : JSON.stringify(result);
+		const text = typeof result === "string" ? result : JSON.stringify(result);
+		return { ok: true, data: { text, result } };
 	} catch (err: any) {
-		return `Error: ${err.message ?? String(err)}`;
+		const msg = `Error: ${err.message ?? String(err)}`;
+		return { ok: false, error: msg, data: { text: msg } };
 	}
 }
 
@@ -99,9 +110,9 @@ export const workTool = buildTool({
 		isDestructive: false,
 	},
 	inputSchema: workActionSchema,
-	execute: async (input, ctx) =>
-		safe(() => {
-			const svc = mgmt(ctx);
+	execute: async (input: any, _callerCtx: CallerCtx): Promise<ToolResult> =>
+		runAction(() => {
+			const svc = mgmt();
 			switch (input.action) {
 				case "create": {
 					requireField(input.projectId, "projectId", "create");
@@ -144,4 +155,8 @@ export const workTool = buildTool({
 					return svc.triggerProjectWork(input.workId);
 			}
 		}),
+	// format(决策 3):透出 data.text(渲染后的 LLM 文本,同 sub-3 前)。
+	format: (result: ToolResult): string => {
+		return (result.data as any)?.text ?? result.error ?? "Work action failed.";
+	},
 });

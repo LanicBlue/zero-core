@@ -174,6 +174,14 @@ function ctxToCallerCtx(ctx: ToolExecutionContext, toolCallId: string): CallerCt
 		toolCallId: toolCallId || ctx.currentToolCallId,
 		turnSeq: ctx.turnSeq,
 		workingDir: ctx.workingDir,
+		// sub-3 过渡字段(sub-4/5 收敛后删):从旧 ToolExecutionContext 桥过来,
+		// 让迁移工具继续读 toolConfig / readScope / wikiAnchorNodeIds / contextBundle /
+		// projectId —— 这些字段在最终设计里由 host 在调用点显式填(或并入 scope)。
+		toolConfig: (ctx as any).toolConfig,
+		readScope: (ctx as any).readScope,
+		wikiAnchorNodeIds: (ctx as any).wikiAnchorNodeIds,
+		contextBundle: (ctx as any).contextBundle,
+		projectId: (ctx as any).projectId,
 	};
 	// ctx.emit is the loop's streaming channel (runtime events → UI). Bridge it
 	// so the emit contract (CallerCtx.emit) reaches migrated streaming tools.
@@ -316,8 +324,23 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 				// A migrated tool that returns a string (shouldn't happen, but defensive)
 				// is treated as pre-formatted text.
 				let result: string;
+				// tool-decoupling(sub-3 fix):migrated 工具返 {ok:false} 时按失败语义处理。
+				// 此前 wrapper 把 ok:false 当成功(走 PostToolUse + recordToolUsage true),
+				// 而 AI SDK 因 execute 没 throw → 发 tool-result 而非 tool-error → agent-loop
+				// 的 PostToolUseFailure 路径(含 isError=true 持久化 + tool_execution success=false)
+				// 完全不触发。修复:ok:false 时把 format 后的文本包成 Error 抛出,让它走与
+				// legacy throw 工具完全相同的失败路径(catch 块)——单点失败语义,无双触发。
+				// migrated 工具自身的 "返 JSON" 契约不受影响(execute 仍返 ToolResult);
+				// 这里是 host wrapper 层把 "工具自报失败" 翻译成 "工具调用失败"。
+				let migratedFailureText: string | undefined;
 				if (isMigrated && raw && typeof raw === "object" && typeof (raw as ToolResult).ok === "boolean") {
 					result = fmt((raw as ToolResult));
+					if ((raw as ToolResult).ok === false) {
+						// Prefer the structured error (concise) when present; fall back
+						// to the formatted LLM-facing text so the LLM still sees a
+						// useful message via AI SDK's tool-error event.
+						migratedFailureText = (raw as ToolResult).error ?? result;
+					}
 				} else if (typeof raw === "string") {
 					result = raw;
 				} else {
@@ -325,6 +348,14 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 					// going through format — JSON-dump so the LLM still gets something.
 					try { result = JSON.stringify(raw, null, 2); }
 					catch { result = String(raw); }
+				}
+
+				// Migrated tool reported failure → throw so the catch block runs the
+				// unified failure side (PostToolUseFailure + recordToolUsage false +
+				// release limiter + rethrow → AI SDK emits tool-error → agent-loop
+				// persists isError=true and tool-execution-hooks records success=false).
+				if (migratedFailureText !== undefined) {
+					throw new Error(migratedFailureText);
 				}
 
 				await triggerHooks("PostToolUse", {

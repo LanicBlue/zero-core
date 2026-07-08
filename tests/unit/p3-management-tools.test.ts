@@ -35,11 +35,12 @@ import { AgentStore } from "../../src/server/agent-store.js";
 import { CronStore } from "../../src/server/cron-store.js";
 import { ManagementService } from "../../src/server/management-service.js";
 import { TemplateStore } from "../../src/server/template-store.js";
-import { WikiStore } from "../../src/server/wiki-node-store.js";
+import { WikiStore, getWikiStoreGlobal, setWikiStoreGlobal } from "../../src/server/wiki-node-store.js";
 import { ProjectWikiStore } from "../../src/server/project-wiki-store.js";
 import { RequirementStore } from "../../src/server/requirement-store.js";
 import { ToolUsageStore } from "../../src/server/tool-usage-store.js";
 import { getToolExecute } from "../../src/tools/tool-factory.js";
+import { setManagementService } from "../../src/server/management-service.js";
 import { projectTool } from "../../src/tools/project-tool.js";
 import { agentRegistryTool } from "../../src/tools/agent-registry.js";
 import { cronTool } from "../../src/tools/cron-tool.js";
@@ -49,6 +50,7 @@ import { wikiTool } from "../../src/tools/wiki-tool.js";
 // contract file no longer drives a verify path (it was a thin duplicate).
 import { runMigrations } from "../../src/server/db-migration.js";
 import { seedAgentWithRoleTag } from "./helpers/p0-test-helpers.js";
+import { runTool } from "./helpers/tool-decoupling-helpers.js";
 import type { CronSchedule } from "../../src/shared/types.js";
 
 let tmpDir: string;
@@ -62,15 +64,46 @@ let wikiStore: ProjectWikiStore;
 let requirementStore: RequirementStore;
 let toolUsageStore: ToolUsageStore;
 
-// Get the inner execute (bypasses AI SDK wrapper + hooks/rate-limit, so the
-// test drives the action switch directly and asserts on its return string).
-const execProject = getToolExecute(projectTool)!;
+// tool-decoupling sub-3:迁移后的工具(Project/Cron/Wiki)execute 返 ToolResult
+// + format。runTool 同时拿 JSON + 文本,断言两边。agentRegistryTool 仍是 legacy
+// (string 返值,sub-3 范围外),直调 execute 拿 string。
+//
+// 为最小化改动既有用例,exec<Project|Cron|Wiki> 返一个 thenable 字符串 ——
+// `await execProject(...)` 解析成 format 后的文本(同 sub-3 前 agent 视角的
+// string 返值),所以 `parse(await execProject(...))` 和
+// `expect(await execWiki(...)).toMatch(...)` 都不需逐行改。
+//
+// 想断言 JSON 边(结构化 ToolResult)的用例用 execJSON,它返完整 {json, text}。
+function makeExec(tool: any) {
+	return (input: any, ctx: any) => {
+		const p = runTool(tool, input, ctx);
+		// thenable:await 拿 text(format 后)。同时暴露 .full(原 promise)给
+		// 需要拿 JSON 的用例。
+		const thenable = {
+			then(onFulfilled: any, onRejected?: any) {
+				return p.then((r) => onFulfilled ? onFulfilled(r.text) : r.text, onRejected);
+			},
+			full: p,
+		};
+		return thenable;
+	};
+}
+const execProject = makeExec(projectTool);
+const execCron = makeExec(cronTool);
+const execWiki = makeExec(wikiTool);
+// 拿完整 {json, text} 的 helper(少数用例断言 JSON 边用)。
+const execJSON = {
+	Project: (input: any, ctx: any) => runTool(projectTool, input, ctx),
+	Cron: (input: any, ctx: any) => runTool(cronTool, input, ctx),
+	Wiki: (input: any, ctx: any) => runTool(wikiTool, input, ctx),
+};
+// agentRegistry 仍是 legacy(string 返值)→ 直接 execute,parse。
 const execAgent = getToolExecute(agentRegistryTool)!;
-const execCron = getToolExecute(cronTool)!;
-const execWiki = getToolExecute(wikiTool)!;
 
 const SCHED_DAILY: CronSchedule = { mode: "interval", everyMs: 86_400_000 };
 
+// parse:string→JSON(legacy execAgent)。迁移工具的文本(format 后)对 Project/
+// Cron 是 JSON.dump,对 Wiki 是渲染文本 —— 用例里 parse 仅对 Project/Cron 用。
 function parse(s: unknown): any {
 	return typeof s === "string" ? JSON.parse(s) : s;
 }
@@ -87,9 +120,14 @@ beforeEach(() => {
 	requirementStore = new RequirementStore(sessionDB);
 	toolUsageStore = new ToolUsageStore(sessionDB);
 	management = new ManagementService({ agentStore, projectStore, cronStore, templateStore: new TemplateStore(sessionDB) });
+	// 决策 1:迁移工具直读单例。测试注册本用例的实例(每个 beforeEach 重建)。
+	setManagementService(management);
+	setWikiStoreGlobal(wikiStoreGlobal);
 });
 
 afterEach(() => {
+	setManagementService(undefined);
+	setWikiStoreGlobal(undefined);
 	sessionDB.close();
 	rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -722,5 +760,96 @@ describe("tool_usage record", () => {
 		// String reduced to ≤200 chars + truncation marker (per summarizeParams).
 		expect((params.name as string).length).toBeLessThanOrEqual(220);
 		expect(params.name as string).toMatch(/…\(truncated\)/);
+	});
+
+	// tool-decoupling sub-3 fix: migrated tool returning {ok:false} must be
+	// treated as a failure by the buildTool wrapper — throw so AI SDK emits
+	// tool-error (→ agent-loop persists isError=true + tool-execution-hooks
+	// records success=false), AND record success=false in tool_usage. The
+	// previous bug: ok:false was returned as a normal string → success path
+	// → recordToolUsage(true) + PostToolUse + AI SDK tool-result (isError=false).
+	test("migrated tool returning {ok:false} is recorded as failure + throws", async () => {
+		const { buildTool } = await import("../../src/tools/tool-factory.js");
+		const { HookRegistry } = await import("../../src/core/hook-registry.js");
+		const z = await import("zod");
+
+		// Register a PostToolUseFailure + PostToolUse spy on the singleton so we
+		// can assert which side the wrapper took (buildTool fires to the
+		// singleton via triggerHooks; production per-loop hooks are separate, but
+		// the wrapper's own triggerHooks call reaches this spy).
+		const singleton = HookRegistry.getInstance();
+		singleton.clear();
+		const fired: string[] = [];
+		const unsub1 = singleton.register("PostToolUse", async () => { fired.push("PostToolUse"); });
+		const unsub2 = singleton.register("PostToolUseFailure", async (c: any) => { fired.push("PostToolUseFailure:" + String(c.error)); });
+
+		try {
+			const failingMigratedTool = buildTool({
+				name: "FailingMigrated",
+				description: "test-only migrated tool returning ok:false",
+				meta: { category: "management" as const, isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
+				inputSchema: z.object({}),
+				execute: async () => ({ ok: false, error: "boom-from-migrated" }),
+				format: (r) => `FORMATTED: ${r.error ?? "no error"}`,
+			});
+			const ctx: any = { toolUsageStore, agentId: "agent-1", sessionId: "sess-1" };
+
+			// The wrapper must throw so AI SDK emits tool-error (the load-bearing
+			// signal for agent-loop's isError=true + tool-execution success=false).
+			await expect(
+				failingMigratedTool.execute({}, { experimental_context: ctx, toolCallId: "m1" }),
+			).rejects.toThrow(/boom-from-migrated/);
+
+			// tool_usage row must be success=false (the load-bearing failure mark;
+			// the table has no errorMessage column — recordToolUsage's _errorMsg
+			// param is a best-effort dead arg, the row only carries success bool).
+			const rows = toolUsageStore.listByTool("FailingMigrated");
+			expect(rows.length).toBe(1);
+			expect(rows[0].success).toBe(false);
+
+			// Wrapper must have taken the failure side (NOT PostToolUse success).
+			expect(fired).toEqual(["PostToolUseFailure:boom-from-migrated"]);
+			expect(fired.some((e) => e.startsWith("PostToolUse:"))).toBe(false);
+		} finally {
+			unsub1();
+			unsub2();
+		}
+	});
+
+	// Symmetric positive case: migrated ok:true must still take the success
+	// side (no regression on the happy path).
+	test("migrated tool returning {ok:true} still takes the success side", async () => {
+		const { buildTool } = await import("../../src/tools/tool-factory.js");
+		const { HookRegistry } = await import("../../src/core/hook-registry.js");
+		const z = await import("zod");
+
+		const singleton = HookRegistry.getInstance();
+		singleton.clear();
+		const fired: string[] = [];
+		const unsub1 = singleton.register("PostToolUse", async () => { fired.push("PostToolUse"); });
+		const unsub2 = singleton.register("PostToolUseFailure", async () => { fired.push("PostToolUseFailure"); });
+
+		try {
+			const okMigratedTool = buildTool({
+				name: "OkMigrated",
+				description: "test-only migrated tool returning ok:true",
+				meta: { category: "management" as const, isReadOnly: true, isConcurrencySafe: true, isDestructive: false },
+				inputSchema: z.object({}),
+				execute: async () => ({ ok: true, data: { text: "all good" } }),
+				format: (r) => (r.data as any)?.text ?? "ok",
+			});
+			const ctx: any = { toolUsageStore, agentId: "agent-1", sessionId: "sess-1" };
+			const out = await okMigratedTool.execute({}, { experimental_context: ctx, toolCallId: "m2" });
+			expect(out).toBe("all good");
+
+			const rows = toolUsageStore.listByTool("OkMigrated");
+			expect(rows.length).toBe(1);
+			expect(rows[0].success).toBe(true);
+
+			expect(fired).toEqual(["PostToolUse"]);
+		} finally {
+			unsub1();
+			unsub2();
+		}
 	});
 });
