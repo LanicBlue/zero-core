@@ -158,6 +158,8 @@ const api: WindowApi = {
 	skillsCreate: (input) => ipcRenderer.invoke("skills:create", input),
 	skillsUpdate: (id, input) => ipcRenderer.invoke("skills:update", id, input),
 	skillsDelete: (id) => ipcRenderer.invoke("skills:delete", id),
+	// sub-7: 从 git URL 安装第三方 skill(系统 git clone + auto-detect + 重名整批拒绝 + 校验回滚)。
+	skillsInstallGit: (url) => ipcRenderer.invoke("skills:installGit", url),
 
 	// ─── MCP ─────────────────────────────────────────
 	mcpList: () => ipcRenderer.invoke("mcp:list"),

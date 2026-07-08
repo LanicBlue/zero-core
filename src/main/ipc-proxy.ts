@@ -185,6 +185,8 @@ const R: Record<string, RouteMapping> = {
 	"skills:create":       { method: "POST", path: "/api/skills", buildReq: (input) => ({ body: input }) },
 	"skills:update":       { method: "PUT", path: "/api/skills/:id", buildReq: (id, input) => ({ params: { id }, body: input }) },
 	"skills:delete":       { method: "DELETE", path: "/api/skills/:id", buildReq: (id) => ({ params: { id } }) },
+	// sub-7: 从 git URL 安装第三方 skill(clone 临时目录 → auto-detect → 校验 → 重名整批拒绝 → 落 ~/.zero-core/skills,保留 .git)。
+	"skills:installGit":   { method: "POST", path: "/api/skills/install-git", buildReq: (url) => ({ body: { url } }) },
 
 		// Memory Nodes — removed (memory lives in the wiki tree).
 

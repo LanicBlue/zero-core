@@ -59,6 +59,9 @@ export default function SkillsPage() {
 	const [mode, setMode] = useState<Mode>({ kind: "view" });
 	const [body, setBody] = useState<BodyState>({ loading: false, body: "" });
 	const [toast, setToast] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+	// sub-7: 从 git 安装弹窗(open / installing / closed)。
+	const [installOpen, setInstallOpen] = useState(false);
+	const [installing, setInstalling] = useState(false);
 
 	const loadSkills = useCallback(async () => {
 		setLoadingList(true);
@@ -177,6 +180,26 @@ export default function SkillsPage() {
 		}
 	};
 
+	// sub-7: 从 git URL 安装(异步:clone + auto-detect + 校验 + 落盘)。
+	const handleInstallGit = async (url: string) => {
+		setInstalling(true);
+		try {
+			const res = await api().skillsInstallGit(url);
+			if (res && Array.isArray((res as any).installed)) {
+				await loadSkills();
+				const ids = (res as any).installed.map((s: DiscoveredSkill) => s.id).join(", ");
+				setInstallOpen(false);
+				showToast("info", `Installed ${ids}`);
+			} else {
+				showToast("error", (res as any)?.error ?? "Failed to install from git");
+			}
+		} catch (e) {
+			showToast("error", (e as Error).message);
+		} finally {
+			setInstalling(false);
+		}
+	};
+
 	const appSkills = skills.filter((s) => s.source === "app");
 	const userSkills = skills.filter((s) => s.source === "user");
 
@@ -195,6 +218,14 @@ export default function SkillsPage() {
 					</button>
 					<button
 						type="button"
+						className="btn-ghost"
+						onClick={() => setInstallOpen(true)}
+						title="Clone a skill from a git URL into ~/.zero-core/skills/"
+					>
+						⬇ Install from git
+					</button>
+					<button
+						type="button"
 						className="btn-primary"
 						onClick={handleCreateClick}
 						title="Create a new skill in ~/.zero-core/skills/"
@@ -206,6 +237,14 @@ export default function SkillsPage() {
 
 			{toast && (
 				<div className={`skills-toast skills-toast-${toast.kind}`}>{toast.text}</div>
+			)}
+
+			{installOpen && (
+				<SkillInstallGitForm
+					installing={installing}
+					onCancel={() => { if (!installing) setInstallOpen(false); }}
+					onInstall={handleInstallGit}
+				/>
 			)}
 
 			<div className="skills-two-pane">
@@ -519,6 +558,83 @@ function SkillCreateForm({
 				>
 					Create
 				</button>
+			</div>
+		</div>
+	);
+}
+
+// sub-7: 从 git URL 安装第三方 skill 的弹窗。
+//
+// 协议:clone → auto-detect(根 + 一层子目录)→ 校验 → 重名整批拒绝 → 落 ~/.zero-core/skills。
+// id 由后端从 repo 名 / 子目录名派生(path-safe),UI 不暴露 id 输入。
+//
+// 安全警示(对齐 design 安全段):远程代码,装前请审计来源。
+function SkillInstallGitForm({
+	installing,
+	onCancel,
+	onInstall,
+}: {
+	installing: boolean;
+	onCancel: () => void;
+	onInstall: (url: string) => void;
+}) {
+	const [url, setUrl] = useState("");
+	// 简单 URL 校验:非空 + 以 http(s)/git/file 协议或 git@ scp 风格开头。
+	const urlValid = (() => {
+		const u = url.trim();
+		if (u.length === 0) return false;
+		return /^(https?:\/\/|git:\/\/|file:\/\/|ssh:\/\/|git@|[\w.-]+:[\w./-]+\/)/.test(u) ||
+			// 本地路径(无协议):绝对路径驱动器(Win)或 / 开头(POSIX)
+			/^[A-Za-z]:[\\/]/.test(u) || u.startsWith("/");
+	})();
+
+	return (
+		<div className="skill-install-overlay">
+			<div className="skill-install-modal">
+				<div className="skill-install-header">
+					<h3>Install skills from git</h3>
+				</div>
+
+				<div className="skill-install-warning">
+					⚠ Remote code: skills are scripts the agent may run. Audit the source before installing.
+				</div>
+
+				<div className="skill-detail-field">
+					<label className="skill-detail-label" htmlFor="skill-install-url">Git URL</label>
+					<input
+						id="skill-install-url"
+						className="skill-input"
+						type="text"
+						value={url}
+						onChange={(e) => setUrl(e.target.value)}
+						placeholder="https://github.com/owner/skills-repo.git"
+						disabled={installing}
+						autoFocus
+					/>
+					{!urlValid && url.length > 0 && (
+						<p className="skill-field-hint skill-field-hint-error">
+							Enter a valid git URL (https://, git@, file://, or local path).
+						</p>
+					)}
+					<p className="skill-field-hint">
+						Detects skills at repo root and in direct subdirectories (one level, not nested).
+						Ids come from the repo / subdirectory name. Existing ids reject the whole batch.
+					</p>
+				</div>
+
+				<div className="skill-detail-actions">
+					<button type="button" className="btn-ghost" onClick={onCancel} disabled={installing}>
+						Cancel
+					</button>
+					<button
+						type="button"
+						className="btn-primary"
+						onClick={() => onInstall(url.trim())}
+						disabled={!urlValid || installing}
+					>
+						{installing ? "Installing…" : "Install"}
+					</button>
+				</div>
 			</div>
 		</div>
 	);

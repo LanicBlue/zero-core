@@ -216,6 +216,14 @@ export interface WindowApi {
 	 * sub-6:删除本软件 skill(整个目录 + 兄弟文件)。外部来源不可删 → 后端 403。
 	 */
 	skillsDelete: (id: string) => Promise<{ success: true } | { error: string }>;
+	/**
+	 * sub-7:从 git URL 安装第三方 skill。系统 `git clone` 到临时目录 → auto-detect
+	 * (只根 + 一层子目录,不递归)→ scanner 校验每个 skill 合法 → 重名原子性(任一冲突
+	 * 整批拒 + 清理临时 clone)→ 落 ~/.zero-core/skills/<id>/(保留 .git)。
+	 * 走系统 git(用户凭证/SSH key),不内置 token;系统无 git → 明确报错。
+	 * 成功返 { installed: DiscoveredSkill[] };失败返 { error }。
+	 */
+	skillsInstallGit: (url: string) => Promise<{ installed: DiscoveredSkill[] } | { error: string }>;
 
 	// ── Templates ──
 	templatesList: () => Promise<PromptTemplate[]>;

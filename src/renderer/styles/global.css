@@ -5971,6 +5971,41 @@ n.tools-page-test-chips {
 	border: 1px solid var(--border-default);
 }
 
+/* ─── sub-7 SkillsPage install-from-git modal ──────────────── */
+.skill-install-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+}
+
+.skill-install-modal {
+	background: var(--bg-elevated, var(--bg-default));
+	border: 1px solid var(--border-default);
+	border-radius: 8px;
+	padding: 20px 24px;
+	width: 520px;
+	max-width: 90vw;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.skill-install-header h3 {
+	margin: 0 0 12px 0;
+}
+
+.skill-install-warning {
+	background: rgba(251, 191, 36, 0.12);
+	border: 1px solid rgba(251, 191, 36, 0.4);
+	color: #fbbf24;
+	padding: 8px 12px;
+	border-radius: 6px;
+	font-size: 13px;
+	margin-bottom: 16px;
+}
+
 /* ─── sub-5 SkillsSection (agent config) ──────────────────── */
 /* 镜像 ToolsSection 的 .tool-group / .tool-list / .tool-item 布局;
    checkbox 替代 toggle-switch,缩进/对齐一致。 */
