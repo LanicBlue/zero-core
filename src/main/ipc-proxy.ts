@@ -78,12 +78,14 @@ const R: Record<string, RouteMapping> = {
 	"providers:fetch-models":  { method: "GET", path: "/api/providers/:id/fetch-models", buildReq: (providerId) => ({ params: { id: providerId } }) },
 	"models:list":             { method: "GET", path: "/api/models", buildReq: () => ({}) },
 
-	// platform-observability ② (sub-5): provider observation (singular `provider:`
-	// prefix — distinct from the plural `providers:` CRUD above). Same data the
-	// Platform 'providerStats' resource serves to agents.
-	"provider:stats": { method: "GET", path: "/api/providers/stats", buildReq: () => ({}) },
-	"provider:usage": { method: "GET", path: "/api/providers/usage", buildReq: (provider, granularity, range, model?) => ({ query: { provider, granularity, range, ...(model ? { model } : {}) } }) },
-	"provider:queue": { method: "GET", path: "/api/providers/queue", buildReq: (provider) => ({ query: { provider } }) },
+	// platform-observability ② (sub-5→sub-6): the three provider-observation
+	// REST channels (provider:stats / :usage / :queue) are RETIRED — the ③
+	// kanban now reads them via the unified dispatcher (`toolRun` → Platform
+	// resource providerStats / providerUsage / providerQueue). The REST routes
+	// under /api/providers/{stats,usage,queue} are also removed from
+	// provider-router.ts.
+
+	// MCP
 
 	// MCP
 	"mcp:list":       { method: "GET", path: "/api/mcp", buildReq: () => ({}) },
@@ -135,9 +137,11 @@ const R: Record<string, RouteMapping> = {
 	"sessions:delete":  { method: "DELETE", path: "/api/sessions/:agentId/:sessionId", buildReq: (agentId, sessionId) => ({ params: { agentId, sessionId } }) },
 	"sessions:archive": { method: "POST", path: "/api/sessions/:agentId/:sessionId/archive", buildReq: (agentId, sessionId) => ({ params: { agentId, sessionId } }) },
 	"sessions:metrics": { method: "GET", path: "/api/sessions/metrics", buildReq: () => ({}) },
-	// platform-observability ① (sub-4): parent-session List + Detail for the ③ kanban.
-	"sessions:parents": { method: "GET", path: "/api/sessions/parents", buildReq: () => ({}) },
-	"sessions:detail":  { method: "GET", path: "/api/sessions/detail/:sessionId", buildReq: (sessionId) => ({ params: { sessionId } }) },
+	// platform-observability ① (sub-4→sub-6): the two kanban session channels
+	// (sessions:parents / sessions:detail) are RETIRED — the ③ kanban reads
+	// them via toolRun({tool:"Platform", input:{resource:"sessions"[,sessionId]}}).
+	// The REST routes under /api/sessions/{parents,detail} are also removed from
+	// session-router.ts.
 
 	// Messages
 	"messages:clear":  { method: "DELETE", path: "/api/sessions/:agentId/messages", buildReq: (agentId) => ({ params: { agentId } }) },
@@ -274,8 +278,9 @@ const R: Record<string, RouteMapping> = {
 		"crons:list":     { method: "GET",    path: "/api/crons",            buildReq: (filter?) => ({ query: filter ?? {} }) },
 		"crons:get":      { method: "GET",    path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },
 		"crons:listRuns": { method: "GET",    path: "/api/crons/:id/runs",   buildReq: (cronId: string, limit?: number) => ({ params: { id: cronId }, query: limit ? { limit: String(limit) } : undefined }) },
-		// platform-observability ③ (sub-6): today's planned cron fires for the kanban.
-		"crons:today":    { method: "GET",    path: "/api/crons/today",      buildReq: () => ({}) },
+		// platform-observability ③ (sub-6): crons:today RETIRED — the kanban
+		// reads today's fires via toolRun({tool:"Cron", input:{action:"today"}}).
+		// The REST route /api/crons/today is also removed from cron-router.ts.
 		"crons:create":   { method: "POST",   path: "/api/crons",            buildReq: (input) => ({ body: input }) },
 		"crons:update":   { method: "PUT",    path: "/api/crons/:id",        buildReq: (id, input) => ({ params: { id }, body: input }) },
 		"crons:delete":   { method: "DELETE", path: "/api/crons/:id",        buildReq: (id) => ({ params: { id } }) },

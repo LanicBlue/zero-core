@@ -244,6 +244,53 @@ function renderProviderStats(
 	].join("\n");
 }
 
+// ─── platform-observability ② (sub-6): providerUsage / providerQueue text face ──
+//
+// Text rendering for the 'providerUsage' / 'providerQueue' resources (the
+// format() face). The dispatcher serves the same data as JSON to the ③ kanban.
+
+/**
+ * Render the providerUsage series as text — one block per model, each line a
+ * `bucket · calls · tokens · errors`. Buckets are ISO hour (granularity=hour)
+ * or YYYY-MM-DD (granularity=day). Tokens formatted compact (k/M). Empty-state
+ * friendly so the LLM gets a useful line even when no usage exists in range.
+ */
+function renderProviderUsage(d: PlatformProviderUsageData): string {
+	const head = `Provider ${d.provider} usage (${d.granularity} buckets, last ${d.range}${d.model ? `, model=${d.model}` : ""}):`;
+	if (d.series.length === 0) {
+		return `${head}\nNo usage rows in range.`;
+	}
+	const lines: string[] = [head, ""];
+	for (const s of d.series) {
+		lines.push(`  model: ${s.model} (${s.points.length} buckets)`);
+		if (s.points.length === 0) {
+			lines.push("    (no buckets)");
+			continue;
+		}
+		for (const pt of s.points) {
+			lines.push(`    ${pt.bucket} · ${pt.calls} calls · ${formatTokens(pt.tokens)} tok · ${pt.errors} err`);
+		}
+	}
+	return lines.join("\n");
+}
+
+/**
+ * Render the providerQueue as text — one line per waiter:
+ * `T{tier} · agentId|sessionId(short) · waiting {rel}`. Sorted by tier asc
+ * (the ConcurrencyQueue.getWaiting order). Empty-state friendly.
+ */
+function renderProviderQueue(d: PlatformProviderQueueData, nowMs: number = Date.now()): string {
+	if (d.queue.length === 0) {
+		return `Provider ${d.provider} queue: empty (no waiters).`;
+	}
+	const lines = d.queue.map((w) => {
+		const who = w.agentId ?? (w.sessionId ? shortId(w.sessionId) : "?");
+		const wait = formatRelativeTime(w.waitedSince, nowMs);
+		return `  T${w.tier} · ${who} · waiting ${wait}`;
+	});
+	return [`Provider ${d.provider} queue (${d.queue.length}):`, ...lines].join("\n");
+}
+
 // ─── ToolResult data shapes (decision 3: JSON) ──────────────────────────────
 //
 // Each resource carries a typed `data` payload so a UI dispatcher (sub-5) can
@@ -313,6 +360,37 @@ export interface PlatformSessionsDetailData {
 	}>;
 }
 
+/**
+ * platform-observability ② (sub-6): 'providerUsage' resource data shape — a
+ * series per model for the stacked-bar chart (tool-decoupling sub-6). Mirrors
+ * PlatformProviderSeries in shared/types.ts. Kept local so the tool layer
+ * doesn't import the renderer-facing copy.
+ */
+export interface PlatformProviderUsageData {
+	provider: string;
+	granularity: "hour" | "day";
+	range: "24h" | "30d";
+	model?: string;
+	series: Array<{
+		model: string;
+		points: Array<{ bucket: string; calls: number; tokens: number; errors: number }>;
+	}>;
+}
+
+/**
+ * platform-observability ② (sub-6): 'providerQueue' resource data shape —
+ * one entry per queued waiter for the provider's live ConcurrencyQueue.
+ */
+export interface PlatformProviderQueueData {
+	provider: string;
+	queue: Array<{
+		sessionId?: string;
+		agentId?: string;
+		tier: number;
+		waitedSince: number;
+	}>;
+}
+
 export function createPlatformTools(getAppVersion?: () => string) {
 	const version = getAppVersion?.() ?? "0.0.0-dev";
 
@@ -327,6 +405,8 @@ export function createPlatformTools(getAppVersion?: () => string) {
 				"- 'config' — workspace config from the DB (defaultModel, defaultProvider, proxy, workspaceDir)\n" +
 				"- 'providers' — AI providers from the DB (name, type, enabled, modelCount, baseUrl, redacted apiKey)\n" +
 				"- 'providerStats' — live provider observation: ONE line per provider (all providers, incl. disabled) = `name · type · enabled|disabled · in-flight/max · queue · cumulative tokens · calls · err% · avg latency`. Combines static config + live concurrency (ConcurrencyQueue) + cumulative usage (provider_usage table). Useful to self-introspect provider load/health across the platform. (latency shows N/A until a process-local latency accumulator lands.)\n" +
+				"- 'providerUsage' — one provider's per-model time series (stacked chart data). PASS provider; granularity 'hour'|'day' (default 'hour'); range '24h'|'30d' (default '24h'); optional model filter. Returns a series per model with per-bucket {bucket, calls, tokens, errors}.\n" +
+				"- 'providerQueue' — one provider's live queued waiters (sessionId/agentId/tier/waitedSince per entry). PASS provider. Empty when the provider has no queue or no current waiters.\n" +
 				"- 'sessions' — parent-agent session observation. OMIT sessionId → LIST (one line per parent agent's active/main chat session: status dot · agent · sessionId(short) · running|waiting|idle · relative time · turns). PASS sessionId → DETAIL (that session's live task tree via getRuntimeTaskTree + last 3 steps' tool calls, no tokens). Useful to self-introspect what the platform's parent agents are doing right now.\n\n" +
 				"This tool is for platform self-introspection only. To read files, list directories, or search content, use Read / Glob / Grep instead.\n\n" +
 				"Three distinct paths reported across resources — do NOT confuse them:\n" +
@@ -335,12 +415,19 @@ export function createPlatformTools(getAppVersion?: () => string) {
 				"- config.workspaceDir   — the agent's FILE-WORKING directory (where agents read/write project files). This is the path you almost always want when talking about 'the workspace'.",
 			meta: { category: "management", isReadOnly: true },
 			inputSchema: z.object({
-				resource: z.enum(["info", "logs", "config", "providers", "providerStats", "sessions"])
+				resource: z.enum(["info", "logs", "config", "providers", "providerStats", "providerUsage", "providerQueue", "sessions"])
 					.describe("Which platform diagnostic resource to access"),
 				lines: z.number().optional().describe("Log lines to return (for 'logs', max 500, default 50)"),
 				level: z.enum(["all", "error", "warn"]).optional().describe("Log level filter (for 'logs')"),
 				source: z.string().optional().describe("Log source/module filter (for 'logs') — matches the structured [module] tag (agent|loop|ipc|db|tool|mcp|provider|session, or any custom module). Case-insensitive exact match on the tag."),
 				sessionId: z.string().optional().describe("Dual-purpose by resource: for 'logs', filters to lines mentioning this sessionId (substring); for 'sessions', switches List→Detail (pass the FULL sessionId to get that session's task tree + recent steps)."),
+				// providerUsage / providerQueue (sub-6): both require a provider name.
+				// Optional at schema level (flat object, provider-compat); enforced
+				// inside the case branches with a friendly error.
+				provider: z.string().optional().describe("Provider name (REQUIRED for 'providerUsage' / 'providerQueue')"),
+				granularity: z.enum(["hour", "day"]).optional().describe("Bucket granularity for 'providerUsage' (default 'hour')"),
+				range: z.enum(["24h", "30d"]).optional().describe("Range window for 'providerUsage' (default '24h')"),
+				model: z.string().optional().describe("Optional model filter for 'providerUsage' (narrows to a single series)"),
 			}),
 			execute: async (input: any, _callerCtx: CallerCtx): Promise<ToolResult> => {
 				switch (input.resource) {
@@ -459,6 +546,51 @@ export function createPlatformTools(getAppVersion?: () => string) {
 						const stats = svc.listProviderStats();
 						return { ok: true, data: { stats } satisfies PlatformProviderStatsData };
 					}
+					case "providerUsage": {
+						// platform-observability ② (sub-6): per-model time series for one
+						// provider (stacked-chart data). Same source the kanban reads via
+						// dispatcher today (was the IPC provider:usage channel).
+						const provider = input.provider;
+						if (!provider || typeof provider !== "string") {
+							return { ok: false, error: "provider is required for the 'providerUsage' resource." };
+						}
+						const svc = getAgentService();
+						if (!svc || typeof svc.getProviderUsageSeries !== "function") {
+							return { ok: false, error: "Provider observer not available in this context (AgentService singleton not registered)." };
+						}
+						const granularity = input.granularity === "day" ? "day" : "hour";
+						const range = input.range === "30d" ? "30d" : "24h";
+						const model = typeof input.model === "string" && input.model ? input.model : undefined;
+						const series = svc.getProviderUsageSeries(provider, granularity, range, model);
+						return {
+							ok: true,
+							data: {
+								provider: series.provider,
+								granularity: series.granularity,
+								range: series.range,
+								model: series.model,
+								series: series.series,
+							} satisfies PlatformProviderUsageData,
+						};
+					}
+					case "providerQueue": {
+						// platform-observability ② (sub-6): live queued waiters for one
+						// provider's ConcurrencyQueue. Same source the kanban reads via
+						// dispatcher today (was the IPC provider:queue channel).
+						const provider = input.provider;
+						if (!provider || typeof provider !== "string") {
+							return { ok: false, error: "provider is required for the 'providerQueue' resource." };
+						}
+						const svc = getAgentService();
+						if (!svc || typeof svc.getProviderQueue !== "function") {
+							return { ok: false, error: "Provider observer not available in this context (AgentService singleton not registered)." };
+						}
+						const queue = svc.getProviderQueue(provider);
+						return {
+							ok: true,
+							data: { provider, queue } satisfies PlatformProviderQueueData,
+						};
+					}
 					case "sessions": {
 						// platform-observability ① (sub-4): read-only session observation.
 						// Reads the process-wide AgentService singleton (the service is the
@@ -529,6 +661,14 @@ export function createPlatformTools(getAppVersion?: () => string) {
 				if (data && typeof data === "object" && "stats" in (data as any)) {
 					const d = data as PlatformProviderStatsData;
 					return renderProviderStats(d.stats);
+				}
+				if (data && typeof data === "object" && "series" in (data as any) && "provider" in (data as any)) {
+					const d = data as PlatformProviderUsageData;
+					return renderProviderUsage(d);
+				}
+				if (data && typeof data === "object" && "queue" in (data as any) && "provider" in (data as any)) {
+					const d = data as PlatformProviderQueueData;
+					return renderProviderQueue(d);
 				}
 				if (data && typeof data === "object" && "sessionId" in (data as any) && "taskTree" in (data as any)) {
 					const d = data as PlatformSessionsDetailData;

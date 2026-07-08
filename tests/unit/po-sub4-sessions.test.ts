@@ -38,8 +38,6 @@
 // session_kind='chat' clause — separately asserted from the SQL).
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import express, { type Express } from "express";
-import { createServer, type Server } from "http";
 
 import { createPlatformTools, formatRelativeTime } from "../../src/tools/mcp/platform-tools.js";
 import { getToolExecute, getToolFormat } from "../../src/tools/tool-factory.js";
@@ -48,39 +46,14 @@ import type { PlatformObserver } from "../../src/runtime/types.js";
 import type { PlatformSessionSummary, PlatformSessionDetail } from "../../src/shared/types.js";
 import type { CallerCtx, ToolResult } from "../../src/tools/types.js";
 
+// tool-decoupling sub-6: the HTTP helpers (express server + listen/close/
+// request) are gone — the retired REST routes (/api/sessions/parents +
+// /detail/:id) are no longer exercised. The Platform 'sessions' resource
+// execute() is the single source.
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function listen(app: Express): Promise<{ server: Server; port: number }> {
-	return new Promise((resolve) => {
-		const server = createServer(app);
-		server.listen(0, () => {
-			const addr = server.address() as { port: number };
-			resolve({ server, port: addr.port });
-		});
-	});
-}
-
-function close(server: Server): Promise<void> {
-	return new Promise((resolve) => server.close(resolve));
-}
-
-async function request(port: number, method: string, path: string, body?: any): Promise<{ status: number; data: any }> {
-	const url = `http://localhost:${port}${path}`;
-	const opts: RequestInit = { method };
-	if (body !== undefined) {
-		opts.headers = { "Content-Type": "application/json" };
-		opts.body = JSON.stringify(body);
-	}
-	const resp = await fetch(url, opts);
-	const text = await resp.text();
-	try {
-		return { status: resp.status, data: JSON.parse(text) };
-	} catch {
-		return { status: resp.status, data: text };
-	}
-}
 
 /**
  * A wall-clock anchored to the REAL now (formatRelativeTime defaults to
@@ -428,38 +401,43 @@ describe("acceptance-4 #1–5: Platform 'sessions' resource", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Acceptance cases 6 + 7: IPC sessions:parents / sessions:detail (JSON face)
+// Acceptance cases 6 + 7: Platform 'sessions' resource (JSON face)
+//
+// tool-decoupling sub-6: the kanban's sessions List + Detail no longer flow
+// through the retired REST routes (/api/sessions/parents + /detail/:id) or the
+// retired IPC channels (sessions:parents / sessions:detail). The Platform
+// 'sessions' resource execute() is now the single source — the dispatcher
+// unwraps `result.data.rows` (List) / `result.data` (Detail). These cases
+// drive that execute() directly against the same injected agentService.
 // ---------------------------------------------------------------------------
 
-describe("acceptance-4 #6 + #7: IPC sessions:parents / sessions:detail", () => {
-	let app: Express;
-	let server: Server;
-	let port: number;
+describe("acceptance-4 #6 + #7: Platform sessions resource (List + Detail JSON)", () => {
+	const callerCtx: CallerCtx = { caller: "internal" };
+	let prev: unknown;
 	let agentService: any;
 
-	beforeEach(async () => {
+	beforeEach(() => {
+		prev = getAgentService();
 		const obs = makeObserver();
 		agentService = observerAsAgentService(obs);
-		app = express();
-		app.use(express.json());
-		const { createSessionRouter } = await import("../../src/server/session-router.js");
-		app.use("/api/sessions", createSessionRouter({ agentService, agentStore: { get: () => undefined, list: () => [] } as any }));
-		const r = await listen(app);
-		server = r.server;
-		port = r.port;
+		setAgentService(agentService);
+	});
+	afterEach(() => {
+		setAgentService(prev as any);
 	});
 
-	afterEach(async () => { await close(server); });
-
-	test("#6: GET /api/sessions/parents returns the parent-session List JSON", async () => {
-		const res = await request(port, "GET", "/api/sessions/parents");
-		expect(res.status).toBe(200);
-		expect(Array.isArray(res.data)).toBe(true);
-		expect(res.data).toHaveLength(3);
+	test("#6: Platform sessions List returns the parent-session List JSON", async () => {
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const json = await exec({ resource: "sessions" }, callerCtx) as ToolResult;
+		expect(json.ok).toBe(true);
+		const rows = (json.data as any).rows;
+		expect(Array.isArray(rows)).toBe(true);
+		expect(rows).toHaveLength(3);
 
 		// Each row carries the full contract (kanban hides sessionId client-side;
-		// the IPC still carries it for the click-through Detail call).
-		const byId = Object.fromEntries(res.data.map((r: any) => [r.agentId, r]));
+		// the dispatcher still carries it for the click-through Detail call).
+		const byId = Object.fromEntries(rows.map((r: any) => [r.agentId, r]));
 		expect(byId["agent-general"].status).toBe("running");
 		expect(byId["agent-general"].agentName).toBe("General");
 		expect(byId["agent-general"].sessionId).toBe("sess-general-full-id");
@@ -470,39 +448,31 @@ describe("acceptance-4 #6 + #7: IPC sessions:parents / sessions:detail", () => {
 		expect(byId["agent-research"].status).toBe("idle");
 
 		// #6 adversarial: no delegated session leaks through.
-		expect(JSON.stringify(res.data)).not.toContain("delegated");
+		expect(JSON.stringify(rows)).not.toContain("delegated");
 	});
 
-	test("#6 (regression): /parents is not captured by the :agentId route", async () => {
-		// Routes are registered /metrics → /parents → /detail → ... → /:agentId.
-		// If /parents ever moves after /:agentId, this becomes a 404 or wrong shape.
-		const res = await request(port, "GET", "/api/sessions/parents");
-		expect(res.status).toBe(200);
-		expect(Array.isArray(res.data)).toBe(true);
-		// If captured by /:agentId, res.data would be an array of sessions for an
-		// agent literally named "parents" — empty/undefined here → assert non-empty.
-		expect(res.data.length).toBeGreaterThan(0);
-	});
-
-	test("#7: GET /api/sessions/detail/:sessionId returns task tree + last 3 steps JSON", async () => {
-		const res = await request(port, "GET", "/api/sessions/detail/sess-general-full-id");
-		expect(res.status).toBe(200);
-		expect(res.data.sessionId).toBe("sess-general-full-id");
+	test("#7: Platform sessions Detail returns task tree + last 3 steps JSON", async () => {
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
+		const json = await exec({ resource: "sessions", sessionId: "sess-general-full-id" }, callerCtx) as ToolResult;
+		expect(json.ok).toBe(true);
+		const data = json.data as any;
+		expect(data.sessionId).toBe("sess-general-full-id");
 
 		// Task tree: two nodes (subagent root + bash child).
-		expect(Array.isArray(res.data.taskTree)).toBe(true);
-		expect(res.data.taskTree).toHaveLength(2);
-		const root = res.data.taskTree.find((t: any) => t.type === "subagent");
+		expect(Array.isArray(data.taskTree)).toBe(true);
+		expect(data.taskTree).toHaveLength(2);
+		const root = data.taskTree.find((t: any) => t.type === "subagent");
 		expect(root.task).toBe("research providers");
 		expect(root.status).toBe("running");
-		const bash = res.data.taskTree.find((t: any) => t.type === "bash");
+		const bash = data.taskTree.find((t: any) => t.type === "bash");
 		expect(bash.parentTaskId).toBe("task-root-1");
 
 		// Steps: 3 entries with the contract shape — {stepSeq, toolCalls:[{name,
 		// argsBrief}], status, time}. NO tokens, NO output/result (per design #5).
-		expect(Array.isArray(res.data.recentSteps)).toBe(true);
-		expect(res.data.recentSteps).toHaveLength(3);
-		for (const s of res.data.recentSteps) {
+		expect(Array.isArray(data.recentSteps)).toBe(true);
+		expect(data.recentSteps).toHaveLength(3);
+		for (const s of data.recentSteps) {
 			expect(typeof s.stepSeq).toBe("number");
 			expect(Array.isArray(s.toolCalls)).toBe(true);
 			for (const c of s.toolCalls) {
@@ -517,26 +487,30 @@ describe("acceptance-4 #6 + #7: IPC sessions:parents / sessions:detail", () => {
 			expect(s).not.toHaveProperty("result");
 		}
 		// #5 (steps face): recentSteps JSON has no token mention.
-		expect(JSON.stringify(res.data.recentSteps)).not.toMatch(/token/i);
+		expect(JSON.stringify(data.recentSteps)).not.toMatch(/token/i);
 
-		// DESIGN GAP (flagged, not a failure): the IPC /detail taskTree is the
+		// DESIGN GAP (flagged, not a failure): the Detail taskTree is the
 		// verbatim RuntimeTaskInfo[], which itself carries a `tokens` field per
 		// node. Acceptance-4 #5 scopes "no tokens" to STEPS; the task tree is
-		// not in scope. But the IPC JSON DOES leak `tokens: 12345` on each task
+		// not in scope. But the JSON DOES leak `tokens: 12345` on each task
 		// node — a kanban that renders this raw would show token counts. Either
 		// the kanban must avoid the field, or a future acceptance should tighten
 		// the task tree shape. Recorded here as an observation, not a regression.
-		expect(JSON.stringify(res.data.taskTree)).toContain("tokens"); // observed leak
+		expect(JSON.stringify(data.taskTree)).toContain("tokens"); // observed leak
 	});
 
-	test("#6 + #7 same-source: IPC JSON matches what listParentSessions / getSessionTaskTree / getSessionRecentSteps return", async () => {
-		// The REST handlers must be thin pass-throughs — same data the Platform
-		// resource renders. Call the observer directly and compare.
-		const parents = await request(port, "GET", "/api/sessions/parents");
-		expect(parents.data).toEqual(agentService.listParentSessions());
+	test("#6 + #7 same-source: resource JSON matches what listParentSessions / getSessionTaskTree / getSessionRecentSteps return", async () => {
+		// The resource execute() must be a thin pass-through — same data the
+		// observer returns. Call the observer directly and compare.
+		const tools = createPlatformTools();
+		const exec = getToolExecute((tools as any).Platform)!;
 
-		const detail = await request(port, "GET", "/api/sessions/detail/sess-general-full-id");
-		expect(detail.data.taskTree).toEqual(agentService.getSessionTaskTree("sess-general-full-id"));
-		expect(detail.data.recentSteps).toEqual(agentService.getSessionRecentSteps("sess-general-full-id", 3));
+		const listJson = await exec({ resource: "sessions" }, callerCtx) as ToolResult;
+		expect((listJson.data as any).rows).toEqual(agentService.listParentSessions());
+
+		const detailJson = await exec({ resource: "sessions", sessionId: "sess-general-full-id" }, callerCtx) as ToolResult;
+		const detailData = detailJson.data as any;
+		expect(detailData.taskTree).toEqual(agentService.getSessionTaskTree("sess-general-full-id"));
+		expect(detailData.recentSteps).toEqual(agentService.getSessionRecentSteps("sess-general-full-id", 3));
 	});
 });

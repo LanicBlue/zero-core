@@ -33,20 +33,7 @@ import { Router } from "express";
 import type { ProviderStore } from "./provider-store.js";
 import { enrichModels } from "../core/model-registry.js";
 
-/**
- * platform-observability ② (sub-5): the agentService handle, narrowed to the
- * read-only provider-observation methods the /stats /usage /queue endpoints
- * need. AgentService implements PlatformObserver (listProviderStats /
- * getProviderUsageSeries / getProviderQueue). Optional — when absent (early
- * startup / tests) the endpoints return 503 instead of crashing.
- */
-interface ProviderObservationHandle {
-	listProviderStats(): any[];
-	getProviderUsageSeries(provider: string, granularity: "hour" | "day", range: "24h" | "30d", model?: string): any;
-	getProviderQueue(provider: string): any[];
-}
-
-export function createProviderRouter(providerStore: ProviderStore, onMutate?: () => void, agentService?: ProviderObservationHandle): Router {
+export function createProviderRouter(providerStore: ProviderStore, onMutate?: () => void): Router {
 	const router = Router();
 
 	// 任何 provider 增删改后触发上层重新 setProviders —— 否则并发限制
@@ -63,35 +50,14 @@ export function createProviderRouter(providerStore: ProviderStore, onMutate?: ()
 		}
 	});
 
-	// ─── platform-observability ② (sub-5): read-only provider observation ────
-	// These MUST come before /:id to avoid param capture ("stats" / "usage" /
-	// "queue" would otherwise be treated as a provider id). Same data the
-	// Platform 'providerStats' resource (text) serves to agents — two faces of
-	// one source. Backs the ③ kanban's KPI bar, stacked usage chart, queue list.
-	router.get("/stats", (_req, res) => {
-		if (!agentService) return res.status(503).json({ error: "Provider observation unavailable (agentService not injected)" });
-		try { res.json(agentService.listProviderStats()); }
-		catch (e) { res.status(500).json({ error: (e as Error).message }); }
-	});
-	router.get("/usage", (req, res) => {
-		if (!agentService) return res.status(503).json({ error: "Provider observation unavailable (agentService not injected)" });
-		try {
-			const provider = String(req.query.provider ?? "");
-			const granularity = (req.query.granularity === "day" ? "day" : "hour") as "hour" | "day";
-			const range = (req.query.range === "30d" ? "30d" : "24h") as "24h" | "30d";
-			const model = req.query.model ? String(req.query.model) : undefined;
-			if (!provider) return res.status(400).json({ error: "provider query param required" });
-			res.json(agentService.getProviderUsageSeries(provider, granularity, range, model));
-		} catch (e) { res.status(500).json({ error: (e as Error).message }); }
-	});
-	router.get("/queue", (req, res) => {
-		if (!agentService) return res.status(503).json({ error: "Provider observation unavailable (agentService not injected)" });
-		try {
-			const provider = String(req.query.provider ?? "");
-			if (!provider) return res.status(400).json({ error: "provider query param required" });
-			res.json(agentService.getProviderQueue(provider));
-		} catch (e) { res.status(500).json({ error: (e as Error).message }); }
-	});
+	// platform-observability ② (sub-5→sub-6): the three provider-observation
+	// REST routes (/stats /usage /queue) are RETIRED. The ③ kanban now reads
+	// them via the unified dispatcher — toolRun({tool:"Platform",
+	// input:{resource:"providerStats" | "providerUsage" | "providerQueue", ...}})
+	// → the Platform tool's execute, which calls agentService.listProviderStats
+	// / getProviderUsageSeries / getProviderQueue directly (same source as these
+	// handlers were). The agentService param has been dropped from this router's
+	// signature since it was only used by these three retired routes.
 
 	router.get("/models", (_req, res) => {
 		try {

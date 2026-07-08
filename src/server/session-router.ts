@@ -65,25 +65,13 @@ export function createSessionRouter(deps: {
 		res.json({ ...aggregate, concurrencySnapshot: Object.fromEntries(Object.entries(aggregate.concurrencySnapshot)), sessions });
 	});
 
-	// platform-observability ① (sub-4): parent-session observation for the ③
-	// kanban. Both endpoints must come before /:agentId to avoid param capture.
-	// /parents → left-column List (one row per parent agent's main chat session;
-	// delegated sub-agent sessions are excluded — they surface via TaskList).
-	// Same source as the Platform 'sessions' resource (agent self-introspection).
-	router.get("/parents", (_req, res) => {
-		res.json(agentService.listParentSessions());
-	});
-	// /detail/:sessionId → a session's live task tree (getRuntimeTaskTree, same
-	// source as TaskList) + last 3 steps' tool calls (no tokens). Click-through
-	// from the kanban left column.
-	router.get("/detail/:sessionId", (req, res) => {
-		const sessionId = req.params.sessionId;
-		res.json({
-			sessionId,
-			taskTree: agentService.getSessionTaskTree(sessionId),
-			recentSteps: agentService.getSessionRecentSteps(sessionId, 3),
-		});
-	});
+	// platform-observability ① (sub-4→sub-6): the two kanban session endpoints
+	// (/parents + /detail/:sessionId) are RETIRED. The ③ kanban now reads them
+	// via the unified dispatcher — toolRun({tool:"Platform",
+	// input:{resource:"sessions"[, sessionId]}}) → the Platform tool's execute,
+	// which calls agentService.listParentSessions() / getSessionTaskTree() /
+	// getSessionRecentSteps() directly (same source as these handlers were).
+	// The REST routes are removed; no IPC channel maps to them anymore.
 
 	/**
 	 * POST /for-project — M4: find-or-create 一个 (agentId, projectId) session。

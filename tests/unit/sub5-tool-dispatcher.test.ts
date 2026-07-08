@@ -24,9 +24,10 @@ import { WikiStore, setWikiStoreGlobal } from "../../src/server/wiki-node-store.
 import { ManagementService, setManagementService } from "../../src/server/management-service.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { ProjectStore } from "../../src/server/project-store.js";
-import { CronStore } from "../../src/server/cron-store.js";
+import { CronStore, CronRunStore } from "../../src/server/cron-store.js";
 import { TemplateStore } from "../../src/server/template-store.js";
 import { RequirementStore } from "../../src/server/requirement-store.js";
+import { CronAnalysisManager, setCronAnalysisManager } from "../../src/server/cron-analysis.js";
 import { dispatchTool, listDispatchableTools } from "../../src/server/tool-dispatcher.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 
@@ -161,5 +162,145 @@ describe("sub-5 UI dispatcher", () => {
 		expect(result).toHaveProperty("ok");
 		// 不是 string(wrapper format 后会是 string)
 		expect(typeof result).not.toBe("string");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// tool-decoupling sub-6: Cron 'today' action + Platform providerUsage/queue
+// via the dispatcher (acceptance-6 #1/#2/#3/#8).
+//
+// These prove the new kanban data endpoints are reachable through the unified
+// dispatcher (the retired REST/IPC channels are gone). The Cron today action
+// reads the CronAnalysisManager singleton; the Platform providerUsage/queue
+// resources read the AgentService singleton. Both degrade gracefully when the
+// singleton is absent (headless / non-zero session).
+// ---------------------------------------------------------------------------
+
+describe("sub-6 dispatcher: Cron today + Platform providerUsage/queue", () => {
+	let sub6Tmp: string;
+	let sub6Db: SessionDB;
+	let cronStore: CronStore;
+	let cronRunStore: CronRunStore;
+	let agentStore: AgentStore;
+	let projectStore: ProjectStore;
+	let cronManager: CronAnalysisManager;
+
+	beforeEach(() => {
+		sub6Tmp = mkdtempSync(join(tmpdir(), "zero-sub6-dispatch-"));
+		sub6Db = new SessionDB(join(sub6Tmp, "sessions.db"));
+		runMigrations(sub6Db);
+		cronStore = new CronStore(sub6Db);
+		cronRunStore = new CronRunStore(sub6Db);
+		agentStore = new AgentStore(sub6Db);
+		projectStore = new ProjectStore(sub6Db);
+		const agent = agentStore.create({ name: "CronAgent" } as any);
+		cronManager = new CronAnalysisManager({
+			agentService: { sendPrompt: () => undefined } as any,
+			agentStore,
+			projectStore,
+			sessionDB: sub6Db,
+			cronStore,
+			cronRunStore,
+		} as any);
+		setCronAnalysisManager(cronManager);
+		// Seed an enabled interval cron → today's fires should include it.
+		cronStore.create({
+			agentId: agent.id,
+			workingScope: { projectId: undefined, workspaceDir: "/ws", wikiRootNodeId: "wiki-root:global" },
+			schedule: { mode: "interval", everyMs: 2 * 3600_000 },
+			enabled: true,
+		});
+	});
+
+	afterEach(() => {
+		setCronAnalysisManager(undefined);
+		sub6Db.close();
+		rmSync(sub6Tmp, { recursive: true, force: true });
+	});
+
+	test("acceptance-6 #3 + #8: dispatchTool({tool:'Cron', input:{action:'today'}}) → ToolResult JSON {items} via the singleton", async () => {
+		const r = await dispatchTool({ tool: "Cron", input: { action: "today" } });
+		expect(r.ok).toBe(true);
+		const result = r.result as { ok: boolean; data?: { items?: any[]; text?: string } };
+		expect(result.ok).toBe(true);
+		expect(Array.isArray(result.data?.items)).toBe(true);
+		expect(result.data!.items!.length).toBeGreaterThan(0);
+		// Each item carries the kanban contract (cronId/agentId/fireTime/type/label).
+		const item = result.data!.items![0];
+		expect(typeof item.cronId).toBe("string");
+		expect(typeof item.agentId).toBe("string");
+		expect(item.fireTime === null || typeof item.fireTime === "number").toBe(true);
+		expect(["work", "cron", "git-aware"]).toContain(item.type);
+	});
+
+	test("acceptance-6 #3 (degrade): CronAnalysisManager absent → today returns {ok:false, error} (headless safe)", async () => {
+		setCronAnalysisManager(undefined);
+		const r = await dispatchTool({ tool: "Cron", input: { action: "today" } });
+		expect(r.ok).toBe(true); // dispatch itself succeeded (execute ran)
+		const result = r.result as { ok: boolean; error?: string };
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/not available/i);
+	});
+
+	test("acceptance-6 #1 + #8: dispatchTool({tool:'Platform', input:{resource:'providerUsage', provider, ...}}) → ToolResult JSON series shape", async () => {
+		// No AgentService registered → the resource returns {ok:false} (headless
+		// path). We assert the dispatcher forwards that cleanly (no throw) AND
+		// that when a singleton IS present it returns the series shape.
+		// First: absent singleton → friendly {ok:false}.
+		const r1 = await dispatchTool({
+			tool: "Platform",
+			input: { resource: "providerUsage", provider: "OpenAI", granularity: "hour", range: "24h" },
+		});
+		expect(r1.ok).toBe(true);
+		expect((r1.result as any).ok).toBe(false);
+
+		// Now register a minimal agentService returning a canned series and
+		// re-dispatch — the resource should unwrap it into the data shape.
+		const fakeSeries = { provider: "OpenAI", granularity: "hour", range: "24h", model: undefined, series: [{ model: "gpt-4", points: [{ bucket: "2026-07-08T09:00:00.000Z", calls: 1, tokens: 42, errors: 0 }] }] };
+		const { setAgentService, getAgentService } = await import("../../src/server/agent-service.js");
+		const prev = getAgentService();
+		setAgentService({ getProviderUsageSeries: () => fakeSeries } as any);
+		try {
+			const r2 = await dispatchTool({
+				tool: "Platform",
+				input: { resource: "providerUsage", provider: "OpenAI", granularity: "hour", range: "24h" },
+			});
+			expect(r2.ok).toBe(true);
+			const result = r2.result as { ok: boolean; data?: any };
+			expect(result.ok).toBe(true);
+			expect(result.data.provider).toBe("OpenAI");
+			expect(result.data.series[0].model).toBe("gpt-4");
+			expect(result.data.series[0].points[0].tokens).toBe(42);
+		} finally {
+			setAgentService(prev as any);
+		}
+	});
+
+	test("acceptance-6 #2 + #8: dispatchTool({tool:'Platform', input:{resource:'providerQueue', provider}}) → ToolResult JSON queue shape", async () => {
+		const { setAgentService, getAgentService } = await import("../../src/server/agent-service.js");
+		const prev = getAgentService();
+		setAgentService({ getProviderQueue: () => [{ sessionId: "s1", tier: 1, waitedSince: 12345 }] } as any);
+		try {
+			const r = await dispatchTool({
+				tool: "Platform",
+				input: { resource: "providerQueue", provider: "OpenAI" },
+			});
+			expect(r.ok).toBe(true);
+			const result = r.result as { ok: boolean; data?: any };
+			expect(result.ok).toBe(true);
+			expect(result.data.provider).toBe("OpenAI");
+			expect(Array.isArray(result.data.queue)).toBe(true);
+			expect(result.data.queue[0].tier).toBe(1);
+		} finally {
+			setAgentService(prev as any);
+		}
+	});
+
+	test("acceptance-6 #1 (missing provider): providerUsage without provider → {ok:false, error} (no throw)", async () => {
+		const r = await dispatchTool({ tool: "Platform", input: { resource: "providerUsage", granularity: "hour", range: "24h" } });
+		expect(r.ok).toBe(true);
+		const result = r.result as { ok: boolean; error?: string };
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/provider is required/i);
 	});
 });

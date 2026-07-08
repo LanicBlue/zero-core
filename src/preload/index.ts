@@ -90,13 +90,11 @@ const api: WindowApi = {
 	sessionsDelete: (agentId, sessionId) => ipcRenderer.invoke("sessions:delete", agentId, sessionId),
 	sessionsArchive: (agentId, sessionId) => ipcRenderer.invoke("sessions:archive", agentId, sessionId),
 	sessionsMetrics: () => ipcRenderer.invoke("sessions:metrics"),
-	// platform-observability ① (sub-4): parent-session List + Detail for the ③ kanban.
-	sessionsParents: () => ipcRenderer.invoke("sessions:parents"),
-	sessionsDetail: (sessionId) => ipcRenderer.invoke("sessions:detail", sessionId),
-	// platform-observability ② (sub-5): provider observation for the ③ kanban.
-	providerStats: () => ipcRenderer.invoke("provider:stats"),
-	providerUsage: (provider, granularity, range, model) => ipcRenderer.invoke("provider:usage", provider, granularity, range, model),
-	providerQueue: (provider) => ipcRenderer.invoke("provider:queue", provider),
+	// platform-observability ① ② ③ (sub-4/5/6): the six kanban data endpoints
+	// (sessions:parents / sessions:detail / provider:stats / provider:usage /
+	// provider:queue / crons:today) now flow through the unified dispatcher
+	// (`toolRun`) instead of dedicated REST/IPC channels. The dedicated channels
+	// below are REMOVED; see DashboardPage's runPlatform / runCronToday helpers.
 
 	// ─── Streaming events ────────────────────────────
 	onAgentEvent: (callback) => {
@@ -301,8 +299,8 @@ const api: WindowApi = {
 	cronsTrigger: (id) => ipcRenderer.invoke("crons:trigger", id),
 	// §9.3: cron_runs audit log (newest-first, default 50).
 	cronsListRuns: (cronId, limit?) => ipcRenderer.invoke("crons:listRuns", cronId, limit),
-	// platform-observability ③ (sub-6): today's planned cron fires (kanban right column).
-	cronsToday: () => ipcRenderer.invoke("crons:today"),
+	// platform-observability ③ (sub-6): crons:today REMOVED — the kanban now
+	// reads today's fires via toolRun({tool:"Cron", input:{action:"today"}}).
 
 	// ── M3: Orchestrate plan-gate (kanban pending entry + confirm/reject) ──
 	orchestratePending: (filter?) => ipcRenderer.invoke("orchestrate:pending", filter),

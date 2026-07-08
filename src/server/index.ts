@@ -446,7 +446,7 @@ export async function startServer(options?: StartServerOptions) {
 	// ─── M5: Git, Notifications, Cron ────────────────────────────
 	const { GitIntegration } = await import("./git-integration.js");
 	const { NotificationService } = await import("./notification-service.js");
-	const { CronAnalysisManager } = await import("./cron-analysis.js");
+	const { CronAnalysisManager, setCronAnalysisManager } = await import("./cron-analysis.js");
 	const { recoverWorkflowState } = await import("./recovery.js");
 
 	const gitIntegration = new GitIntegration();
@@ -501,6 +501,12 @@ export async function startServer(options?: StartServerOptions) {
 		archivistGit,
 		projectWorkStore,
 	});
+	// tool-decoupling sub-6: register the process-wide CronAnalysisManager
+	// singleton so the Cron tool's 'today' action can read it directly (no ctx
+	// injection). Done immediately after construction — well before REST mount
+	// and before any tool call (incl. restoreAllSessions-driven cron triggers).
+	// Same pattern as setManagementService / setAgentService.
+	setCronAnalysisManager(cronManager);
 	// project-work 触发执行器(手动/hook 触发共享路径)+ hook 管理器(订阅
 	// data-change-hub,domain 事件 → 命中的 work)。会话期内常驻。
 	const { ProjectWorkRunner } = await import("./project-work-runner.js");
@@ -613,7 +619,7 @@ export async function startServer(options?: StartServerOptions) {
 	}));
 
 	app.use("/api/agents", createAgentRouter({ agentStore, agentService, sessionDB }));
-	app.use("/api/providers", createProviderRouter(providerStore, reloadProviders, agentService));
+	app.use("/api/providers", createProviderRouter(providerStore, reloadProviders));
 	app.use("/api/templates", createTemplateRouter(templateStore, sessionDB));
 	app.use("/api/mcp", createMcpRouter(mcpStore, mcp));
 	app.use("/api/skills", createSkillRouter());

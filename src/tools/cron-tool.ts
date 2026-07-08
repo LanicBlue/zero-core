@@ -30,6 +30,7 @@ import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 import { getManagementService } from "../server/management-service.js";
 import type { ManagementService } from "../server/management-service.js";
+import { getCronAnalysisManager } from "../server/cron-analysis.js";
 import type { CallerCtx, ToolResult } from "./types.js";
 
 /**
@@ -94,7 +95,7 @@ const scheduleSchema = z.object({
 // model calls the tool with `{}`. The action enum validates the discriminator.
 
 export const cronActionSchema = z.object({
-	action: z.enum(["create", "update", "delete", "get", "list", "trigger"]),
+	action: z.enum(["create", "update", "delete", "get", "list", "trigger", "today"]),
 	agentId: z.string().optional(),
 	workingScope: workingScopeSchema.optional(),
 	schedule: scheduleSchema.optional(),
@@ -110,7 +111,7 @@ export const cronActionSchema = z.object({
 export const cronTool = buildTool({
 	name: "Cron",
 	description:
-		"Manage Cron records (scheduled recurring runs of a global agent). Action-switched: create/update/delete/get/list/trigger.",
+		"Manage Cron records (scheduled recurring runs of a global agent). Action-switched: create/update/delete/get/list/trigger/today.",
 	prompt:
 		"Manage Crons via a single action-switched tool.\n\n" +
 		"Actions:\n" +
@@ -119,7 +120,8 @@ export const cronTool = buildTool({
 		"- { action:'delete', id } — unbind (the agent it referenced stays).\n" +
 		"- { action:'get', id } — read one.\n" +
 		"- { action:'list', agentId? } — list, optionally filtered by agentId.\n" +
-		"- { action:'trigger', id } — fire immediately. (P3 stub: records the trigger request; P4 lands the actual scheduler run + cron_runs write.)",
+		"- { action:'trigger', id } — fire immediately. (P3 stub: records the trigger request; P4 lands the actual scheduler run + cron_runs write.)\n" +
+		"- { action:'today' } — list today's planned cron fires (one row per enabled cron whose next slot lands inside today's local calendar day; interval crons always listed with an interval hint). Read-only; backs the kanban's 'today' column.",
 	meta: {
 		category: "agent",
 		isReadOnly: false,
@@ -127,8 +129,27 @@ export const cronTool = buildTool({
 		isDestructive: false,
 	},
 	inputSchema: cronActionSchema,
-	execute: async (input: any, _callerCtx: CallerCtx): Promise<ToolResult> =>
-		runAction(() => {
+	execute: async (input: any, _callerCtx: CallerCtx): Promise<ToolResult> => {
+		// 'today' is read-only + reads the CronAnalysisManager singleton (not
+		// ManagementService). Handle it before the mgmt() switch so it works in
+		// contexts where ManagementService isn't registered but the scheduler is.
+		// tool-decoupling sub-6: typed JSON data shape { items: [...] }.
+		if (input.action === "today") {
+			const mgr = getCronAnalysisManager();
+			if (!mgr || typeof mgr.listTodaysFires !== "function") {
+				const msg = "Cron scheduler not available in this context (CronAnalysisManager singleton not registered).";
+				return { ok: false, error: msg, data: { text: msg, items: [] } };
+			}
+			try {
+				const items = mgr.listTodaysFires();
+				const text = JSON.stringify(items);
+				return { ok: true, data: { text, items } };
+			} catch (err: any) {
+				const msg = `Error: ${err.message ?? String(err)}`;
+				return { ok: false, error: msg, data: { text: msg, items: [] } };
+			}
+		}
+		return runAction(() => {
 			const svc = mgmt();
 			switch (input.action) {
 				case "create":
@@ -157,7 +178,8 @@ export const cronTool = buildTool({
 				case "trigger":
 					return svc.triggerCron(input.id);
 			}
-		}),
+		});
+	},
 	// format(决策 3):纯函数,透出 data.text(渲染后的 LLM 文本)。
 	format: (result: ToolResult): string => {
 		return (result.data as any)?.text ?? result.error ?? "Cron action failed.";
