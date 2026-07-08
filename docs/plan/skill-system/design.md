@@ -1,6 +1,6 @@
 # Design:skill-system
 
-> 状态:**Draft,待决策**。
+> 状态:**Decided,可进 plan**。
 > 对应 issue:[`./issue.md`](./issue.md)(同目录,随文件夹流转)。
 
 ## 问题回顾(详见 ./issue.md)
@@ -55,13 +55,18 @@ scanner 读 body,系统提示词注入完整正文(非 name+desc 一行)。
 3. **可编辑边界**:只有"本软件 skills"(`~/.zero-core/skills/`)可新建/编辑/删除;外部来源(`~/.claude/skills`、`~/.agents/skills`)**只读**,绝不破坏。
 4. **本软件 skills 目录 = `~/.zero-core/skills/`**(scanner 已扫此路径并标 `source:"app"`,直接用起来)。
 
-## 待决策(进 plan 前需定)
+## 已定决策(design→plan 闸门通过)
 
-1. **`skill` 工具的入参形态**:按 skill `id`(目录名,稳定)还是 `name`(展示名,可能重名)?倾向 **id**(scanner 已用目录名作 id,唯一)。
-2. **skillPolicy 是否升级成 map**:现 `enabledSkills: string[]`,是否对齐 `toolPolicy.tools` 改成 `Record<id,{enabled}>`?倾向**保持 `string[]`**(更简单;UI 用 checkbox 勾选写入数组即可,无需 map)。
-3. **SkillsSection 默认勾选策略**:新 agent 默认全启用还是全不启用?倾向**全启用本软件 skills + 外部默认不启用**(与现 `enabledSkills` undefined=全开 的兜底语义对齐,需核对 `system-prompt.ts:66-69` 的 undefined 分支)。
-4. **正文编辑保存格式**:UI 编辑本软件 skill 正文 → 写回 `~/.zero-core/skills/<id>/SKILL.md`(保留 frontmatter + body)。需定编辑器是纯 textarea 还是带 frontmatter 字段。倾向**分字段编辑**(name/description/frontmatter 字段 + body textarea,避免用户写坏 frontmatter)。
+1. **`skill` 工具入参 = `name`**(通用规则)。标准模型里 skill 由 frontmatter 的 `name` 标识、agent 按 name 引用;目录名只是存储位置。→ **scanner 去重从"按目录名 id"切到"按 name"**(最高优先级 source 覆盖),保证 prompt 里 name 唯一、agent 的 name 引用必解析。`DiscoveredSkill.id` 保留(= 目录名,作磁盘定位),但工具入参与 prompt 展示用 name。
+2. **skillPolicy 保持 `enabledSkills: string[]`**(string[] of names)。
+3. **新 agent 默认全不开**(`enabledSkills = []`)。**注意**:`system-prompt.ts:66-69` 现有 `enabled ? filter : skills` 分支——`undefined` 时注入全部。plan 需核对:新 agent 显式写 `[]` 走 filter→空(undefined 分支不动,保 legacy 兼容);或评估是否把 undefined 也改成"全不开"(倾向**不动 undefined**,避免破坏存量 agent)。
+4. **本软件 skill 正文 = 分字段编辑**(name / description / 其它 frontmatter 字段 + body textarea),写回 `~/.zero-core/skills/<name>/SKILL.md`,保留 frontmatter + body。
 
 ## 下一步
 
-用户拍板(尤其决策 1-4)→ `/effort plan` 拆 sub(每个 sub 配对 acceptance)。预想 sub 切分:① scanner 读 body + 类型扩展;② `skill` 工具(查询正文);③ 系统提示词 "Available Skills" 加调用提示;④ `SkillsSection`(agent 配置);⑤ `SkillsPage` 双栏 UI + 本软件 skill CRUD。
+→ `/effort plan` 拆 sub(每个 sub 配对 acceptance)。预想 5 个 sub:
+1. scanner 读 body + 类型扩展 + 去重切 by name
+2. `skill` 工具(按 name 查询 body)
+3. 系统提示词 "Available Skills" 加调用提示 + 默认全不开语义
+4. `SkillsSection`(agent 配置,skillPolicy checkbox)
+5. `SkillsPage` 双栏 UI + 本软件 skill CRUD(分字段编辑)
