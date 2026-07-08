@@ -1,18 +1,18 @@
-# acceptance-1:scanner 读 body + 去重切 by name
+# acceptance-1:scanner 协议对齐
 
 对应 `sub-1.md`。
 
 ## 用例
 
-1. **body 字段存在**:`DiscoveredSkill`(scanner + shared/types)有 `body: string`。
-2. **body 读取正确**:给定一个含 frontmatter 的 SKILL.md,`scanSkills()` 返回项的 `body` = frontmatter 之后的正文(不含 `---` 块);无 frontmatter 时 body = 全文。
-3. **去重 by name**:构造两个目录、同 name、不同 source(user / app),`scanSkills()` 只返回高优先级 source 那个(user 胜 app)。
-4. **id 保留**:返回项仍有 `id`(目录名)+ `baseDir`/`filePath`(磁盘定位字段不变)。
-5. **无行为回退**:系统提示词注入的 "Available Skills" 仍是 name+desc(sub-3 之前不指望 body 进 prompt)。
-6. **存量无破坏**:既有 skill 扫描测试(若有)全过;typecheck 三层 + vitest baseline 全绿。
+1. **优先级方向正确**:同 id(目录名)skill 在 personal(`~/.claude/skills/foo`)与 app(`~/.zero-core/skills/foo`)都存在 → `scanSkills()` 返回 **personal 那个**(`source:"user"`),app 被覆盖。
+2. **getSkillRoots 可用**:导出 source 目录列表(含优先级顺序),sub-2/3 可调。
+3. **name→dir 解析索引**:`resolveSkillByName("foo")`(或 `getSkillIndex().get("foo")`)返 `{baseDir, source, ...}`;不存在 → undefined。
+4. **identity=目录名**:`DiscoveredSkill.id` = 目录名;同目录前两个 skill 同 frontmatter name 但不同目录名 → 视为两个不同 skill(id 不同)。
+5. **display name 兜底**:frontmatter 无 name → display name = 目录名。
+6. **body 不读**:`DiscoveredSkill` 无 body 字段;scanner 不返回正文。
+7. **无存量破坏**:typecheck 三层 + vitest 全套绿(优先级翻转后,相关测试按协议更新)。
 
 ## 验证手段
 
-- 单测:mock 临时 skill 目录(含/不含 frontmatter、同 name 跨 source),断言 body 与去重。
-- typecheck 三层(tsconfig.cli/web/node)+ `npm run test` 全套。
-- grep:`DiscoveredSkill` 无残留只读 name/desc 的旧用法。
+- 单测:mock 临时 skill 目录(同 id 跨 source、缺 name、多 skill 同 name 不同 id)。
+- typecheck 三层 + `npm run test`。
