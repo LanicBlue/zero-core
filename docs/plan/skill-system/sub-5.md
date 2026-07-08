@@ -9,6 +9,7 @@
 3. **绑定 form state**:`form.skillPolicy.enabledSkills`(string[] of **id**);勾选=push id,取消=filter 出。对齐 `agent-editor-types.ts` 的 FormState(加 `skillPolicy.enabledSkills` 字段,默认 `[]`)。
 4. **AgentEditor 接入**:在编辑器里挂载 `<SkillsSection>`(位置邻近 ToolsSection)。
 5. **保存**:FormState → AgentRecord.skillPolicy.enabledSkills 持久化(经现有 agent-store 保存路径,JSON 列)。
+6. **E2E**:按 `acceptance-5.md` E2E 段(用例 10–14)扩 `tests/e2e/p8-wiki-and-agent-config.spec.ts` 或新 `skills-agent-config.spec.ts`;照抄 subagents/wikiAnchors round-trip 模式 + 清空回归(`[]` vs `undefined`)。
 
 ## 范围
 

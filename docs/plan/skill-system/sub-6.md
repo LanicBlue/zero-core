@@ -12,6 +12,7 @@
 3. **本软件 skill 新建**:按钮 → 用户提供 **id(目录名,path-safe)**+ display name + description + body → 新建目录 + SKILL.md → 列表刷新。
 4. **本软件 skill 删除**:删除目录(确认对话框);外部来源**无**新建/编辑/删除按钮(只读)。
 5. **后端 CRUD API**(若现 `/api/skills` 只读):加写端点(create / update / delete),**仅限 `~/.zero-core/skills/`**——路径校验拒绝任何 home 之外/外部来源的写操作(安全护栏,绝不破坏 ~/.claude 等)。
+6. **E2E**:按 `acceptance-6.md` E2E 段(用例 10–15)扩 `tests/e2e/skills-page.spec.ts`(现有 spec 只覆盖入口);双栏渲染、外部只读、编辑往返、新建/删除、id 不可改。
 
 ## 范围
 
