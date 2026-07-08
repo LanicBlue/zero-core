@@ -15,16 +15,24 @@
 // - maxTurns?(可选,>0 时 force-stop after N additional agent-loop turns;省略则纯 advisory)
 //
 // ## 输出
-// 结果字符串
+// - ToolResult{data:{text}};format(r) = r.data.text
 //
 // ## 定位
-// Runtime 工具(src/runtime/tools/),被 Agent 调用。
+// 中立工具层(src/tools/),被 agent loop / UI dispatcher 调。
 //
 // ## 维护规则
 // - bash task 必须拒绝(acceptance 用例 8 强测)。
+// - tool-decoupling sub-4(G1 + 决策 2/3):委派函数经 callerCtx.delegateFns;
+//   UI 无 loop 状态 → 返默认/示例;execute 返 ToolResult JSON;format 文本与
+//   sub-4 前逐字一致。
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
+import type { CallerCtx, ToolResult } from "./types.js";
+
+interface TaskFinishData {
+	text: string;
+}
 
 export const taskFinishTool = buildTool({
 	name: "TaskFinish",
@@ -40,24 +48,54 @@ export const taskFinishTool = buildTool({
 		"- A background sub-agent has done enough work and should return its result.\n" +
 		"- You want a soft landing instead of a hard TaskKill.\n\n" +
 		"For a hard immediate stop use TaskKill; for a frozen interrupted child use TaskResume (continue) or TaskKill (abandon).",
-	meta: { category: "task", isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
+	meta: { category: "task", isReadOnly: false, isConcurrencySafe: false, isDestructive: false, exposable: false },
 	inputSchema: z.object({
 		task_id: z.string().describe("The running agent task to ask to finish"),
 		message: z.string().optional().describe("Optional custom control message asking the sub-agent to wrap up"),
 		maxTurns: z.number().optional().describe("Force-stop after this many additional agent-loop turns (omit for purely advisory)"),
 	}),
-	execute: async (input, ctx) => {
-		const info = ctx.getTaskResult?.(input.task_id);
-		if (!info) return `Task ${input.task_id} not found.`;
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult<TaskFinishData>> => {
+		const fns = callerCtx.delegateFns;
+		// G1:UI/external host without a loop → benign preview.
+		if (!fns?.getTaskResult) {
+			return { ok: true, data: { text: `(preview) Task ${input.task_id} not found (no delegateFns / not in an agent loop).` } };
+		}
+		const info = fns.getTaskResult(input.task_id);
+		if (!info) {
+			return { ok: true, data: { text: `Task ${input.task_id} not found.` } };
+		}
 		// AGENT ONLY — bash tasks have no finish semantics.
 		if (info.type === "bash") {
-			return `Error: TaskFinish is for sub-agent tasks only. Task ${input.task_id} is a bash task — use TaskKill to stop it.`;
+			return {
+				ok: true,
+				data: {
+					text: `Error: TaskFinish is for sub-agent tasks only. Task ${input.task_id} is a bash task — use TaskKill to stop it.`,
+				},
+			};
 		}
-		if (!ctx.requestTaskFinish) return "Error: request_finish is not available in this context.";
-		const ok = ctx.requestTaskFinish(input.task_id, { message: input.message, maxTurns: input.maxTurns });
-		if (!ok) return `Task ${input.task_id} not found or not running (status: ${info.status}).`;
-		return input.maxTurns
-			? `Finish requested for ${input.task_id}: advisory message sent, will force-stop after ${input.maxTurns} more turn(s).`
-			: `Finish requested for ${input.task_id}: advisory message sent (no hard turn budget — use TaskKill to force-stop).`;
+		if (!fns.requestTaskFinish) {
+			return { ok: false, error: "request_finish is not available in this context." };
+		}
+		const ok = fns.requestTaskFinish(input.task_id, { message: input.message, maxTurns: input.maxTurns });
+		if (!ok) {
+			return {
+				ok: true,
+				data: { text: `Task ${input.task_id} not found or not running (status: ${info.status}).` },
+			};
+		}
+		return {
+			ok: true,
+			data: {
+				text: input.maxTurns
+					? `Finish requested for ${input.task_id}: advisory message sent, will force-stop after ${input.maxTurns} more turn(s).`
+					: `Finish requested for ${input.task_id}: advisory message sent (no hard turn budget — use TaskKill to force-stop).`,
+			},
+		};
+	},
+	format: (result: ToolResult): string => {
+		if (!result.ok) {
+			return result.error ?? "TaskFinish failed.";
+		}
+		return (result.data as TaskFinishData)?.text ?? "";
 	},
 });

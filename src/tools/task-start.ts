@@ -12,26 +12,37 @@
 // - { type:"shell", command, timeout? } —— 后台 shell 命令
 //
 // ## 输出
-// task_id(成功) / 错误字符串(失败)
+// - ToolResult{data:{text, taskId?}}(JSON);format(r) = r.data.text
 //
 // ## 定位
-// Runtime 工具(src/runtime/tools/),被 Agent 调用。
+// 中立工具层(src/tools/),被 agent loop / UI dispatcher 调。
 //
 // ## 依赖
 // - zod / buildTool
-// - ctx.delegateTaskBackground(后台委派)/ ctx.runBackground(后台 shell)
-// - ctx.resolveAgent(命名 subagent 解析,复用 Subagent 工具同款白名单语义)
+// - callerCtx.delegateFns(delegateTaskBackground / runBackground / getTaskResult)
+// - callerCtx.agentResolvers.resolveAgent(命名 subagent 解析,G4)
 //
 // ## 维护规则
 // - Subagent 白名单语义(agent → delegateTaskBackground 传 targetAgentId/systemPrompt/
 //   toolPolicy)须与 Subagent 工具的 delegate 动作保持一致 —— 改一处同步另一处。
+// - tool-decoupling sub-4(G1 per-session 访问器 + 决策 2/3):
+//   · 身份(agentId)只从 callerCtx 取。
+//   · 委派函数经 `callerCtx.delegateFns.*`(访问器形态,G1)。
+//   · UI/外部 host 无 loop 状态时 → 返默认/示例值(不崩)。
+//   · execute 返 ToolResult JSON;format 文本与 sub-4 前逐字一致。
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 
 /** A subagent entry's effective name = entry.name override, else the target agent's name. */
 function entryDisplayName(entry: { agentId: string; name?: string }, target?: { name?: string }): string {
 	return entry.name?.trim() || target?.name?.trim() || entry.agentId;
+}
+
+interface TaskStartData {
+	text: string;
+	taskId?: string;
 }
 
 export const taskStartTool = buildTool({
@@ -49,7 +60,7 @@ export const taskStartTool = buildTool({
 		"- Long-running or independent sub-tasks you want running while you keep working (instead of blocking via `Subagent delegate`).\n" +
 		"- Long-running shell commands (downloads, installs, watches).\n\n" +
 		"Prefer blocking `Subagent delegate` / `Shell` when you need the result inline; reach for TaskStart when parallelism or long runtime justifies background dispatch.",
-	meta: { category: "task", isReadOnly: false, isConcurrencySafe: false, isDestructive: false },
+	meta: { category: "task", isReadOnly: false, isConcurrencySafe: false, isDestructive: false, exposable: false },
 	inputSchema: z.object({
 		type: z.enum(["agent", "shell"]).describe("Background task type: agent (sub-agent delegation) or shell (background command)"),
 		// agent fields
@@ -61,39 +72,79 @@ export const taskStartTool = buildTool({
 		command: z.string().optional().describe("(type:'shell') The shell command to run in the background"),
 		timeout: z.number().optional().describe("(type:'shell') Optional timeout in seconds"),
 	}),
-	execute: async (input, ctx) => {
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult<TaskStartData>> => {
 		const { type } = input;
+		const fns = callerCtx.delegateFns;
+
+		// G1:when the host has no loop (UI dispatcher preview), there are no
+		// delegate fns. Return a benign default so the UI can render the tool
+		// preview without crashing — the model never sees this state in real runs.
+		if (!fns) {
+			return {
+				ok: true,
+				data: {
+					text: "(preview) TaskStart is unavailable outside an agent loop — callerCtx has no delegateFns.",
+				},
+			};
+		}
 
 		if (type === "shell") {
-			if (!input.command || !input.command.trim()) return "Error: `command` required for type:'shell'.";
-			if (!ctx.runBackground) return "Error: Background shell is not available in this context.";
-			const taskId = ctx.runBackground(input.command, input.timeout);
+			if (!input.command || !input.command.trim()) {
+				return { ok: false, error: "`command` required for type:'shell'." };
+			}
+			if (!fns.runBackground) {
+				return { ok: false, error: "Background shell is not available in this context." };
+			}
+			const taskId = fns.runBackground(input.command, input.timeout);
 			// Surface synchronous launch failures (bad shell / missing binary)
 			// immediately so the model can tell "launch failed" from "running".
-			const launched = ctx.getTaskResult?.(taskId);
+			const launched = fns.getTaskResult?.(taskId);
 			if (launched?.status === "failed") {
-				return `Background command failed to launch.\ntask_id: ${taskId}\nError: ${launched.result ?? "unknown launch error"}`;
+				return {
+					ok: true,
+					data: {
+						text: `Background command failed to launch.\ntask_id: ${taskId}\nError: ${launched.result ?? "unknown launch error"}`,
+						taskId,
+					},
+				};
 			}
-			return `Background shell started.\ntask_id: ${taskId}\nUse TaskGet to drill in (recent calls / completed result).`;
+			return {
+				ok: true,
+				data: {
+					text: `Background shell started.\ntask_id: ${taskId}\nUse TaskGet to drill in (recent calls / completed result).`,
+					taskId,
+				},
+			};
 		}
 
 		// type === "agent"
-		if (type !== "agent") return `Error: unknown TaskStart type '${type}'`;
+		if (type !== "agent") {
+			return { ok: false, error: `unknown TaskStart type '${type}'` };
+		}
 		const { task } = input;
-		if (!task || !task.trim()) return "Error: `task` required for type:'agent'.";
-		if (!ctx.delegateTaskBackground) return "Error: Background sub-agent is not available in this context.";
+		if (!task || !task.trim()) {
+			return { ok: false, error: "`task` required for type:'agent'." };
+		}
+		if (!fns.delegateTaskBackground) {
+			return { ok: false, error: "Background sub-agent is not available in this context." };
+		}
 
 		// Resolve delegation options. Same white-list semantics as the Subagent
 		// tool's `delegate` action: named `subagent` → live-resolve to the target
 		// agent's identity; omit → ephemeral (caller identity + inline overrides).
+		// LIVE agent resolution goes through callerCtx.agentResolvers (G4:per-agent
+		// config解 via callerCtx.agentId). Falls back to undefined resolvers in
+		// UI/external hosts (returns an error listing available names as empty).
+		const resolvers = callerCtx.agentResolvers;
+		const resolveAgent = resolvers?.resolveAgent;
 		let delegateOpts: { targetAgentId?: string; systemPrompt?: string; model?: string; toolPolicy?: any } = {};
 		if (input.subagent) {
-			const caller = ctx.resolveAgent?.(ctx.agentId);
+			const caller = resolveAgent?.(callerCtx.agentId ?? "");
 			const entries = caller?.subagents ?? [];
 			let matchedAgentId: string | undefined;
 			for (const e of entries) {
 				if (!e?.agentId) continue;
-				const target = ctx.resolveAgent?.(e.agentId);
+				const target = resolveAgent?.(e.agentId);
 				if (entryDisplayName(e, target) === input.subagent) {
 					matchedAgentId = e.agentId;
 					break;
@@ -101,13 +152,13 @@ export const taskStartTool = buildTool({
 			}
 			if (!matchedAgentId) {
 				const avail = entries
-					.map((e) => entryDisplayName(e, ctx.resolveAgent?.(e.agentId)))
+					.map((e) => entryDisplayName(e, resolveAgent?.(e.agentId)))
 					.filter(Boolean);
-				return `Error: no subagent named "${input.subagent}". Available: ${avail.length ? avail.join(", ") : "(none)"}.`;
+				return { ok: false, error: `no subagent named "${input.subagent}". Available: ${avail.length ? avail.join(", ") : "(none)"}.` };
 			}
-			const target = ctx.resolveAgent?.(matchedAgentId);
+			const target = resolveAgent?.(matchedAgentId);
 			if (!target) {
-				return `Error: subagent "${input.subagent}" (${matchedAgentId}) no longer exists. Remove the stale reference or recreate the agent.`;
+				return { ok: false, error: `subagent "${input.subagent}" (${matchedAgentId}) no longer exists. Remove the stale reference or recreate the agent.` };
 			}
 			delegateOpts = {
 				targetAgentId: matchedAgentId,
@@ -122,14 +173,26 @@ export const taskStartTool = buildTool({
 		// Step 2E: same tool-call ↔ task link as the Subagent tool. Stamp the
 		// parent tool-call id + annotate the recorder block with the minted
 		// taskId so a future dangling-tool-call scanner can re-attach.
-		const parentToolCallId = ctx.currentToolCallId;
-		const taskId = ctx.delegateTaskBackground(task, {
+		const parentToolCallId = callerCtx.toolCallId;
+		const taskId = fns.delegateTaskBackground(task, {
 			...delegateOpts,
 			parentToolCallId,
-			onDispatched: parentToolCallId
-				? (id) => ctx.setToolCallTaskId?.(parentToolCallId, id)
+			onDispatched: parentToolCallId && fns.setToolCallTaskId
+				? (id: string) => fns.setToolCallTaskId!(parentToolCallId, id)
 				: undefined,
 		});
-		return `Background sub-agent started.\ntask_id: ${taskId}\nUse TaskGet to drill in (recent calls / completed result), TaskFinish to wrap up, TaskResume to resume a frozen child.`;
+		return {
+			ok: true,
+			data: {
+				text: `Background sub-agent started.\ntask_id: ${taskId}\nUse TaskGet to drill in (recent calls / completed result), TaskFinish to wrap up, TaskResume to resume a frozen child.`,
+				taskId,
+			},
+		};
+	},
+	format: (result: ToolResult): string => {
+		if (!result.ok) {
+			return `Error: ${result.error ?? "TaskStart failed."}`;
+		}
+		return (result.data as TaskStartData)?.text ?? "";
 	},
 });

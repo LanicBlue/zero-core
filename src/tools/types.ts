@@ -61,10 +61,13 @@ export interface TodoAccessor {
  * Loop 持有的 per-session TaskRegistry 访问器(G1)。
  *
  * 同 todos 的模式:TaskRegistry(delegated tasks)主人是 loop,访问器让 tool
- * 在本 loop 作用域内查/操作任务。sub-1 只占位,方法集随 Task 工具族迁移收敛。
+ * 在本 loop 作用域内查/操作任务。sub-1 占位,sub-4(本 sub)按真实工具需求收敛:
+ * list/get 的窄视图 + 通过 delegateFns 暴露的写操作(delegate/stop/abandon/
+ * acknowledge/requestFinish/resumeBackground/recentCalls/runBackground)。
  *
- * 故意最小:避免和 runtime/subagent-delegator.ts 的 SubagentTaskRegistry 完整
- * API 强耦合 —— 工具只需要"列出/查询/控制"的窄视图。
+ * list/get 故意保持窄形状(避免和 runtime/subagent-delegator.ts 的 TaskInfo 完整
+ * 形状强耦合 —— TaskGet/List 自己取完整字段;Task 工具族直接用 delegateFns.*,
+ * 那里返完整 TaskInfo)。
  */
 export interface TaskRegistryAccessor {
 	/** 列出本 loop 的 live delegated tasks(可选过滤)。 */
@@ -83,6 +86,92 @@ export interface TaskRegistryAccessor {
 		status: string;
 		targetAgentId?: string;
 	} | null;
+}
+
+/**
+ * Per-session 委派/挂起/子任务操作集合(G1,sub-4)。
+ *
+ * Task 工具族 / Wait / 委派类(Subagent/Orchestrate/TaskStart)需要的 loop 级函数
+ * 集合 —— 主人是 loop(SubagentDelegator + recorder + busy 协调),loop 调 tool 时
+ * 把这些函数装进 callerCtx.delegateFns。工具只调这些函数,**不直接碰 loop 内部**,
+ * 碰不到别的 loop 的状态(数据"过 tool 一圈"回 loop)。
+ *
+ * 函数签名逐字对齐 runtime/types.ts 的 ToolExecutionContext 上对应字段 —— 旧路径
+ * (ctx.delegateTask 等)和迁移路径(callerCtx.delegateFns.delegateTask 等)返值
+ * 完全相同,过渡期 ctxToCallerCtx 把它们桥过来(sub-4 完成)。
+ *
+ * sub-5+ 把这些收敛(决策 1:服务读单例;G1:状态经访问器),那时再合并字段形态。
+ * 当前所有字段可选:测试/UI 调用无 loop 状态时缺失,工具返默认/示例值。
+ */
+export interface DelegateFns {
+	/** Blocking sub-agent delegation (auto-background safety net retained). */
+	delegateTask?: (task: string, options?: any) => Promise<string>;
+	/** Non-blocking background sub-agent delegation; returns taskId immediately. */
+	delegateTaskBackground?: (task: string, options?: any) => string;
+	/** Get one delegated task's live info (null when absent). */
+	getTaskResult?: (taskId: string) => any | null;
+	/** List live delegated tasks (optional status filter). */
+	listTasks?: (filter?: "running" | "completed") => any[];
+	/** Hard-stop a running/finishing task. Returns false if not killable. */
+	stopTask?: (taskId: string) => boolean;
+	/** Abandon an interrupted frozen child (mark turn_state terminal + drop). */
+	abandonTask?: (taskId: string) => boolean;
+	/** Acknowledge a finished task and drop from the live registry. */
+	acknowledgeTask?: (taskId: string) => boolean;
+	/** Advisory finish request; optional maxTurns force-stop budget. */
+	requestTaskFinish?: (taskId: string, options?: { message?: string; maxTurns?: number }) => boolean;
+	/** Non-blocking resume of an interrupted frozen agent child; returns taskId. */
+	resumeTaskBackground?: (taskId: string) => string;
+	/** Last N tool-call records (name + args summary only, no output) of a running task. */
+	getTaskRecentCalls?: (taskId: string, n?: number) => Array<{ name: string; args?: string }>;
+	/** Run a shell command in the background; returns taskId. */
+	runBackground?: (command: string, timeout?: number) => string;
+	/** Suspend the calling Wait tool until a wake event (time / task finish / user input). */
+	suspendUntilWake?: (opts: any) => Promise<any>;
+	/** Announce Wait suspension starting (release "running" state). Best-effort no-op. */
+	beginWait?: () => void;
+	/** Announce Wait suspension ending (reacquire "running" state). Best-effort no-op. */
+	endWait?: (reason: any) => void;
+	/** Stamp the calling Wait tool's recorder block with the wall-clock startedAt (durable timeout). */
+	setWaitStartedAt?: (toolCallId: string, startedAt: number) => void;
+	/** Stamp the calling tool's recorder block with the delegated taskId (tool-call ↔ task link). */
+	setToolCallTaskId?: (toolCallId: string, taskId: string) => void;
+}
+
+/**
+ * Per-session agent resolver set(G1,sub-4)。
+ *
+ * 委派类(Subagent/Orchestrate/TaskStart)需要 LIVE 解 agent 配置:列出 caller
+ * 当前可委派的 subagent(自发现,不靠 system prompt 注入)+ 命名 subagent 解到
+ * 目标 agent 的身份(systemPrompt/model/toolPolicy)。函数主人是 AgentService
+ * (agentStore 包装);loop 调 tool 时把这些函数装进 callerCtx.agentResolvers。
+ *
+ * 旧 ctx.resolveAgent / ctx.resolveSubagentTarget / ctx.subagents 字段的等价形态;
+ * ctxToCallerCtx 桥过来(sub-4 完成,过渡期)。
+ *
+ * sub-5+ 把 agentResolvers 收敛进 getAgentService() 单例 + callerCtx.agentId
+ * (G4:per-agent 配置解法),那时直接 import 单例。当前所有字段可选。
+ */
+export interface AgentResolvers {
+	/** LIVE agent-record resolver: returns the agent's identity + own subagents list. */
+	resolveAgent?: (agentId: string) => {
+		id: string;
+		name?: string;
+		systemPrompt?: string;
+		model?: string;
+		toolPolicy?: any;
+		subagents?: Array<{ agentId: string; name?: string; description?: string }>;
+	} | undefined;
+	/** Resolve a subagent target's identity by id (sub-set of resolveAgent, no subagents list). */
+	resolveSubagentTarget?: (agentId: string) => {
+		id: string;
+		name?: string;
+		systemPrompt?: string;
+		model?: string;
+		toolPolicy?: any;
+	} | undefined;
+	/** This caller's subagents list (mirrors SessionConfig.subagents); for Orchestrate DSL resolution. */
+	subagents?: Array<{ agentId: string; name?: string; description?: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,12 +274,33 @@ export interface CallerCtx {
 	// (或返默认/示例值供 Tool 页预览)。
 	/** 本 loop 的 todo 访问器。 */
 	todos?: TodoAccessor;
-	/** 本 loop 的 delegated task registry 访问器。 */
+	/** 本 loop 的 delegated task registry 访问器(窄视图:list/get)。 */
 	taskRegistry?: TaskRegistryAccessor;
+	/**
+	 * sub-4:本 loop 的委派/挂起/子任务操作集合(Task 工具族 / Wait / 委派类用)。
+	 * 函数签名逐字对齐 runtime/types.ts 的 ToolExecutionContext 上对应字段 ——
+	 * ctxToCallerCtx 把它们从旧 ctx 桥过来。可选:UI/MCP 调用无 loop 状态时缺失
+	 * → 工具返默认/示例值。
+	 */
+	delegateFns?: DelegateFns;
+	/**
+	 * sub-4:本 loop 的 LIVE agent 解析器(委派类用 —— Subagent/Orchestrate/TaskStart
+	 * 需要列 caller 当前可委派的 subagent + 命名 subagent 解到目标 agent 身份)。
+	 * 等价于旧 ctx.resolveAgent / ctx.resolveSubagentTarget / ctx.subagents。
+	 * sub-5+ 收敛进 getAgentService() 单例 + callerCtx.agentId(G4)。
+	 */
+	agentResolvers?: AgentResolvers;
 
 	// ─── 流式(G2):可选副作用通道 ────────────────────────────────────
-	/** 流式事件回调。可选:测试/合成调用不提供 → 工具不流式,只返 JSON。 */
-	emit?: (event: ToolStreamEvent) => void;
+	/**
+	 * 副作用回调(loop 注入)。设计原本仅 ToolStreamEvent(progress/partial/step),
+	 * 但实际工具也吐 loop 级事件(todos_update / ask_user / runtime:tasks:changed),
+	 * 这些经 ctx.emit(loop 的 (event: StreamEvent) => void)流出。过渡期(sub-4)
+	 * callerCtx.emit 是 ctx.emit 的别名 —— 接受任意事件对象,运行时按 type 分发。
+	 * sub-5+ 收敛为纯 ToolStreamEvent(只流式),loop 级事件改经 hook/registry。
+	 * 可选:测试/合成调用不提供 → 工具不流式,只返 JSON。
+	 */
+	emit?: (event: any) => void;
 
 	// ─── 过渡字段(sub-3,sub-4/5 收敛后删)──────────────────────────────
 	// 这些字段在最终设计里要么并入 scope(决策 G5)、要么 loop 侧消化掉。
@@ -228,4 +338,27 @@ export interface CallerCtx {
 	 * 回退 + 工具按 project 取数据时用。sub-4/5 并入 scope.projectId。
 	 */
 	projectId?: string;
+
+	// ─── sub-4 过渡:project-flow / Orchestrate 的 session 状态(loop 注入)────
+	// 这些字段是 PM/Lead session 才有的 handle,主体是 AgentService 经
+	// capabilityHandlesFor 注入到 SessionConfig → toolContext,再 ctxToCallerCtx 桥过来。
+	// sub-5+ 收敛:flowActions + gitIntegration + pmService 全部下沉到单例
+	// (FlowActions 自己就接 requirementStore / pmService);Orchestrate 的 planStore /
+	// manifestStore 亦然。activeRequirementId / featureWorkspace 是 session 作用域状态
+	// (loop 持有),sub-5+ 经访问器或 host 显式填。
+	/** Flow 工具的共享后端(create/list/get/transition/verify;agent-service 注入)。 */
+	flowActions?: any;
+	/** Orchestrate 的 plan store(lead session 注入)。 */
+	orchestratePlanStore?: any;
+	/** Orchestrate 的 manifest store(lead session 注入)。 */
+	orchestrateManifestStore?: any;
+	/** Orchestrate / Flow 的 GitIntegration handle(lead/PM session 注入)。 */
+	gitIntegration?: any;
+	/** 本 session 的 active requirement id(Orchestrate 门禁 + Flow 取 project id 用)。 */
+	activeRequirementId?: string;
+	/**
+	 * plan 动作创建的 feature worktree 路径(本 session 的可变状态)。
+	 * Flow.plan 写;后续 Orchestrate / startBuild 走它作 cwd。
+	 */
+	featureWorkspace?: string;
 }

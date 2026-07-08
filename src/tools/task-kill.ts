@@ -13,16 +13,25 @@
 // - task_id
 //
 // ## 输出
-// 结果字符串
+// - ToolResult{data:{text}};format(r) = r.data.text
 //
 // ## 定位
-// Runtime 工具(src/runtime/tools/),被 Agent 调用。
+// 中立工具层(src/tools/),被 agent loop / UI dispatcher 调。
 //
 // ## 维护规则
-// - kill / abandon 的状态判定须与 TaskInfo.status 联合类型一致(running|finishing|completed|failed|killed|interrupted)。
+// - kill / abandon 的状态判定须与 TaskInfo.status 联合类型一致
+//   (running|finishing|completed|failed|killed|interrupted)。
+// - tool-decoupling sub-4(G1 + 决策 2/3):委派函数经 callerCtx.delegateFns;
+//   UI 无 loop 状态 → 返默认/示例;execute 返 ToolResult JSON;format 文本与
+//   sub-4 前逐字一致。
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
+import type { CallerCtx, ToolResult } from "./types.js";
+
+interface TaskKillData {
+	text: string;
+}
 
 export const taskKillTool = buildTool({
 	name: "TaskKill",
@@ -36,33 +45,65 @@ export const taskKillTool = buildTool({
 		"- A background task is taking too long or producing unwanted results (running).\n" +
 		"- The user asks to cancel an ongoing operation (running).\n" +
 		"- You've decided NOT to resume a frozen child after a restart (interrupted).",
-	meta: { category: "task", isReadOnly: false, isConcurrencySafe: false, isDestructive: true },
+	meta: { category: "task", isReadOnly: false, isConcurrencySafe: false, isDestructive: true, exposable: false },
 	inputSchema: z.object({
 		task_id: z.string().describe("The task ID to discard"),
 	}),
-	execute: async (input, ctx) => {
-		const info = ctx.getTaskResult?.(input.task_id);
-		if (!info) return `Task ${input.task_id} not found.`;
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult<TaskKillData>> => {
+		const fns = callerCtx.delegateFns;
+		// G1:UI/external host without a loop → benign preview.
+		if (!fns?.getTaskResult) {
+			return { ok: true, data: { text: `(preview) Task ${input.task_id} not found (no delegateFns / not in an agent loop).` } };
+		}
+		const info = fns.getTaskResult(input.task_id);
+		if (!info) {
+			return { ok: true, data: { text: `Task ${input.task_id} not found.` } };
+		}
 
 		// interrupted → abandon
 		if (info.status === "interrupted") {
-			if (!ctx.abandonTask) return "Error: Task abandon is not available in this context.";
-			const ok = ctx.abandonTask(input.task_id);
-			return ok
-				? `Task ${input.task_id} (interrupted) abandoned: child turn closed + task dropped from the live registry.`
-				: `Task ${input.task_id} could not be abandoned (state changed?).`;
+			if (!fns.abandonTask) {
+				return { ok: false, error: "Task abandon is not available in this context." };
+			}
+			const ok = fns.abandonTask(input.task_id);
+			return {
+				ok: true,
+				data: {
+					text: ok
+						? `Task ${input.task_id} (interrupted) abandoned: child turn closed + task dropped from the live registry.`
+						: `Task ${input.task_id} could not be abandoned (state changed?).`,
+				},
+			};
 		}
 
 		// running / finishing → kill
 		if (info.status === "running" || info.status === "finishing") {
-			if (!ctx.stopTask) return "Error: Task kill is not available in this context.";
-			const killed = ctx.stopTask(input.task_id);
-			return killed
-				? `Task ${input.task_id} has been killed (hard stop; cannot be resumed).`
-				: `Failed to kill task ${input.task_id}.`;
+			if (!fns.stopTask) {
+				return { ok: false, error: "Task kill is not available in this context." };
+			}
+			const killed = fns.stopTask(input.task_id);
+			return {
+				ok: true,
+				data: {
+					text: killed
+						? `Task ${input.task_id} has been killed (hard stop; cannot be resumed).`
+						: `Failed to kill task ${input.task_id}.`,
+				},
+			};
 		}
 
 		// terminal — point at TaskGet to consume
-		return `Task ${input.task_id} is already terminal (status: ${info.status}). Use TaskGet to acknowledge and consume its result.`;
+		return {
+			ok: true,
+			data: {
+				text: `Task ${input.task_id} is already terminal (status: ${info.status}). Use TaskGet to acknowledge and consume its result.`,
+			},
+		};
+	},
+	format: (result: ToolResult): string => {
+		if (!result.ok) {
+			return result.error ?? "TaskKill failed.";
+		}
+		return (result.data as TaskKillData)?.text ?? "";
 	},
 });

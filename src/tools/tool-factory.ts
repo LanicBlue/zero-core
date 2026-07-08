@@ -32,7 +32,7 @@ import type { ToolConfigField, ToolCategory } from "../core/tool-registry.js";
 import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
 import type { ToolRateLimiter } from "../runtime/tool-rate-limiter.js";
-import type { CallerCtx, ToolResult } from "./types.js";
+import type { CallerCtx, ToolResult, TodoAccessor, TaskRegistryAccessor, DelegateFns, AgentResolvers } from "./types.js";
 
 // Re-export so existing consumers (e.g. tools/index.ts) can still import
 // ToolCategory from tool-factory. Canonical definition lives in
@@ -156,6 +156,126 @@ function summarizeParams(input: unknown): unknown {
 // ---------------------------------------------------------------------------
 
 /**
+ * Build a TodoAccessor that proxies to the module-level `sessionTodos` Map in
+ * todo-write.ts (the legacy per-session store, keyed by sessionId/agentId).
+ *
+ * The accessor's job (G1) is "tool reads/writes its loop's todos via the
+ * accessor — never reaches into loop internals." Here the loop's todos ARE the
+ * todo-write.ts module Map (keyed by this ctx's sessionId), and the accessor
+ * simply exposes read/replace over it. Without a sessionId the accessor
+ * returns the empty list (no per-session key) — UI/external callers without a
+ * real loop get a benign empty state, and TodoWrite creates an ephemeral entry
+ * under their (missing) sessionId key (UI preview path).
+ *
+ * We import the read/write helpers lazily to keep tool-factory decoupled from
+ * the tool module at type-check time (todo-write.ts imports tool-factory.js —
+ * a cycle; deferring the import to call time sidesteps it).
+ */
+function buildTodosAccessor(ctx: ToolExecutionContext): TodoAccessor {
+	const sessionId = ctx.sessionId;
+	const agentId = ctx.agentId;
+	return {
+		list: () => {
+			// Defer the import so callers that don't touch todos pay no cost, and
+			// so the type layer doesn't see the todo-write ↔ tool-factory cycle.
+			const mod = require("./todo-write.js") as {
+				getSessionTodos: (sessionId: string) => any[];
+			};
+			if (!sessionId && !agentId) return [];
+			// todo-write keys by sessionId ?? agentId ?? "_default"; mirror it.
+			const key = sessionId ?? agentId ?? "_default";
+			if (sessionId) return mod.getSessionTodos(sessionId);
+			// No sessionId (rare) — read via the helper that accepts sessionId
+			// shape: we fall back to the agentId key by reading the same Map.
+			return mod.getSessionTodos(key);
+		},
+		set: (items) => {
+			const mod = require("./todo-write.js") as {
+				setSessionTodosForCtx?: (sessionId: string | undefined, agentId: string | undefined, items: any[]) => void;
+			};
+			// Lazy: require the setter. todo-write exports it for the bridge.
+			mod.setSessionTodosForCtx?.(sessionId, agentId, items);
+		},
+	};
+}
+
+/**
+ * Build a TaskRegistryAccessor that proxies to this loop's TaskRegistry
+ * (SubagentDelegator.taskRegistry). The accessor exposes the narrow list/get
+ * view (Task 工具族 / 委派类 用 delegateFns 取完整 TaskInfo;此处仅作"过 tool
+ * 一圈"的快照读)。
+ */
+function buildTaskRegistryAccessor(ctx: ToolExecutionContext): TaskRegistryAccessor | undefined {
+	// The loop exposes listTasks + getTaskResult on ctx; delegate to those.
+	// Without them (UI/external) the accessor is undefined → tools degrade.
+	if (!ctx.listTasks && !ctx.getTaskResult) return undefined;
+	return {
+		list: (filter) => {
+			const all = ctx.listTasks?.(filter) ?? [];
+			return all.map((t: any) => ({
+				id: t.id,
+				type: t.type,
+				task: t.task,
+				status: t.status,
+				targetAgentId: t.targetAgentId,
+			}));
+		},
+		get: (taskId) => {
+			const t = ctx.getTaskResult?.(taskId);
+			if (!t) return null;
+			return {
+				id: t.id,
+				type: t.type,
+				task: t.task,
+				status: t.status,
+				targetAgentId: t.targetAgentId,
+			};
+		},
+	};
+}
+
+/**
+ * Bridge the loop-injected delegation/suspend/recorder functions onto
+ * callerCtx.delegateFns. The functions are passed through verbatim (same
+ * signatures as on ToolExecutionContext) — sub-4's contract is "tool reads
+ * callerCtx.delegateFns.X instead of ctx.X; behavior identical".
+ */
+function buildDelegateFns(ctx: ToolExecutionContext): DelegateFns {
+	return {
+		delegateTask: ctx.delegateTask,
+		delegateTaskBackground: ctx.delegateTaskBackground,
+		getTaskResult: ctx.getTaskResult,
+		listTasks: ctx.listTasks,
+		stopTask: ctx.stopTask,
+		abandonTask: ctx.abandonTask,
+		acknowledgeTask: ctx.acknowledgeTask,
+		requestTaskFinish: ctx.requestTaskFinish,
+		resumeTaskBackground: ctx.resumeTaskBackground,
+		getTaskRecentCalls: ctx.getTaskRecentCalls,
+		runBackground: ctx.runBackground,
+		suspendUntilWake: ctx.suspendUntilWake,
+		beginWait: ctx.beginWait,
+		endWait: ctx.endWait,
+		setWaitStartedAt: ctx.setWaitStartedAt,
+		setToolCallTaskId: ctx.setToolCallTaskId,
+	};
+}
+
+/**
+ * Bridge the LIVE agent-record resolvers onto callerCtx.agentResolvers.
+ * Verbatim from ctx (sub-4 transitional; sub-5+ collapses into getAgentService
+ * + callerCtx.agentId per G4).
+ */
+function buildAgentResolvers(ctx: ToolExecutionContext): AgentResolvers {
+	const subagents = (ctx as any).subagents as AgentResolvers["subagents"];
+	return {
+		resolveAgent: (ctx as any).resolveAgent,
+		resolveSubagentTarget: (ctx as any).resolveSubagentTarget,
+		subagents,
+	};
+}
+
+/**
  * Build a CallerCtx from the fields an AgentLoop currently puts on its
  * ToolExecutionContext. This is the **transitional** mapping: the loop still
  * threads the old ctx, but migrated tools (Platform, sub-2) take CallerCtx as
@@ -165,6 +285,12 @@ function summarizeParams(input: unknown): unknown {
  * toolCallId, turnSeq, workingDir}" fill. emit is bridged from ctx.emit so
  * streaming-capable migrated tools can still flush progress (none yet, but the
  * field is wired so a future migrated Bash/Wait doesn't need a second edit).
+ *
+ * sub-4: also bridges the per-session accessors (todos / taskRegistry) and the
+ * loop-injected delegation/suspend/recorder functions (delegateFns) + LIVE
+ * agent resolvers (agentResolvers), plus the project-flow / Orchestrate session
+ * state (flowActions / orchestratePlanStore / orchestrateManifestStore /
+ * gitIntegration / activeRequirementId / featureWorkspace).
  */
 function ctxToCallerCtx(ctx: ToolExecutionContext, toolCallId: string): CallerCtx {
 	const callerCtx: CallerCtx = {
@@ -182,6 +308,18 @@ function ctxToCallerCtx(ctx: ToolExecutionContext, toolCallId: string): CallerCt
 		wikiAnchorNodeIds: (ctx as any).wikiAnchorNodeIds,
 		contextBundle: (ctx as any).contextBundle,
 		projectId: (ctx as any).projectId,
+		// sub-4: per-session accessors + delegation fns + agent resolvers.
+		todos: buildTodosAccessor(ctx),
+		taskRegistry: buildTaskRegistryAccessor(ctx),
+		delegateFns: buildDelegateFns(ctx),
+		agentResolvers: buildAgentResolvers(ctx),
+		// sub-4: project-flow / Orchestrate session state.
+		flowActions: (ctx as any).flowActions,
+		orchestratePlanStore: (ctx as any).orchestratePlanStore,
+		orchestrateManifestStore: (ctx as any).orchestrateManifestStore,
+		gitIntegration: (ctx as any).gitIntegration,
+		activeRequirementId: (ctx as any).activeRequirementId,
+		featureWorkspace: (ctx as any).featureWorkspace,
 	};
 	// ctx.emit is the loop's streaming channel (runtime events → UI). Bridge it
 	// so the emit contract (CallerCtx.emit) reaches migrated streaming tools.

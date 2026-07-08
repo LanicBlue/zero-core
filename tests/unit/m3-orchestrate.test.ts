@@ -339,10 +339,42 @@ describe("feature worktree + commit reference convention", () => {
 // ─── Orchestrate tool execute — end-to-end confirm gate ──────────
 
 describe("Orchestrate tool (confirm gate + DSL engine integration)", () => {
-	test("mode=run executes pipeline + parallel + barrier without confirm gate", async () => {
+	/**
+	 * tool-decoupling sub-4:Orchestrate now reads callerCtx.delegateFns.* (not
+	 * legacy ctx.*) and returns ToolResult JSON. Bridge the legacy ctx fields
+	 * the test builds into callerCtx shape, and format the result back to the
+	 * LLM-facing string the existing assertions expect.
+	 */
+	async function runOrch(input: any, legacyCtx: any): Promise<string> {
 		const { orchestrateTool } = await import("../../src/tools/orchestrate-tool.js");
-		const { getToolExecute } = await import("../../src/tools/tool-factory.js");
+		const { getToolExecute, getToolFormat } = await import("../../src/tools/tool-factory.js");
 		const execFn = getToolExecute(orchestrateTool)!;
+		const fmtFn = getToolFormat(orchestrateTool)!;
+		const callerCtx = {
+			caller: "internal" as const,
+			agentId: legacyCtx.agentId,
+			sessionId: legacyCtx.sessionId,
+			workingDir: legacyCtx.workingDir,
+			projectId: legacyCtx.projectId,
+			activeRequirementId: legacyCtx.activeRequirementId,
+			orchestratePlanStore: legacyCtx.orchestratePlanStore,
+			orchestrateManifestStore: legacyCtx.orchestrateManifestStore,
+			gitIntegration: legacyCtx.gitIntegration,
+			delegateFns: {
+				delegateTask: legacyCtx.delegateTask,
+				setToolCallTaskId: legacyCtx.setToolCallTaskId,
+			},
+			agentResolvers: {
+				subagents: legacyCtx.subagents,
+				resolveSubagentTarget: legacyCtx.resolveSubagentTarget,
+			},
+			emit: legacyCtx.emit,
+		};
+		const json = await execFn(input, callerCtx);
+		return fmtFn(json);
+	}
+
+	test("mode=run executes pipeline + parallel + barrier without confirm gate", async () => {
 
 		const dispatched: string[] = [];
 		const ctx: any = {
@@ -380,7 +412,7 @@ describe("Orchestrate tool (confirm gate + DSL engine integration)", () => {
 			},
 		};
 
-		const out = await execFn({ flow, mode: "run" }, ctx);
+		const out = await runOrch({ flow, mode: "run" }, ctx);
 		expect(out).toContain("PASS");
 		// Both tasks dispatched.
 		expect(dispatched.some((d) => d.includes("implement feature"))).toBe(true);
@@ -425,7 +457,7 @@ describe("Orchestrate tool (confirm gate + DSL engine integration)", () => {
 		};
 
 		// Start the tool — it will register a pending plan and await confirm.
-		const execPromise = execFn({ flow, mode: "confirm" }, ctx);
+		const execPromise = runOrch({ flow, mode: "confirm" }, ctx);
 
 		// Yield — confirm gate must hold (engine has not dispatched yet).
 		await new Promise((r) => setTimeout(r, 20));
@@ -470,7 +502,7 @@ describe("Orchestrate tool (confirm gate + DSL engine integration)", () => {
 			root: { kind: "task" as const, id: "t1", agentTool: "developer", task: "x" },
 		};
 
-		const execPromise = execFn({ flow, mode: "confirm" }, ctx);
+		const execPromise = runOrch({ flow, mode: "confirm" }, ctx);
 		await new Promise((r) => setTimeout(r, 10));
 
 		const pending = planStore.list({ requirementId: "req-3", state: "pending" });

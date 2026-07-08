@@ -1,16 +1,16 @@
 // Flow action tool (project-flow F1) — requirement → code-merge unified flow
 //
-// # File spec
+// # File spec (tool-decoupling sub-4 迁新签名)
 //
 // ## Core
 // F4 stage of the project-flow redesign (see
 // docs/design/project-flow/project-flow.md §2/§4). One action-switched tool
 // `Flow`. The transition + write-doc-section + emit-signal logic and the
 // compound verify logic are SHARED with the REST requirement-router via
-// `flow-actions.ts` (src/server/flow-actions.ts) — the runtime ctx carries
-// `ctx.flowActions` (injected by agent-service, mirroring requirementStore).
+// `flow-actions.ts` (src/server/flow-actions.ts) — callerCtx.flowActions is
+// the shared backend (injected by agent-service, mirroring requirementStore).
 // This file is now a thin adapter: it resolves the workspace / gitIntegration
-// from ctx and forwards to ctx.flowActions.
+// from callerCtx and forwards to callerCtx.flowActions.
 // Single source — REST and runtime can never drift.
 //
 // Stage scope:
@@ -41,28 +41,25 @@
 // user is a toolPolicy concern, not a structural one.
 //
 // ## Inputs
-// - ctx.requirementStore (RequirementStore — required; agent-service injects
-//   it IFF toolPolicy enables Flow, and warns if missing).
-// - ctx.flowActions (FlowActions — injected by agent-service; the shared
-//   backend with the REST router). Falls back to ad-hoc ctx assembly when a
-//   legacy test harness wires requirementStore but not flowActions.
-// - ctx.contextBundle.workspaceDir OR ctx.workingDir (resolved workspace for
-//   the docs/requirements/{id}.md write).
-// - ctx.gitIntegration / ctx.pmService — runtime-only handles surfaced by
-//   agent-service (plan worktree; verify's pmService merge).
+// - callerCtx.flowActions (FlowActions — injected by agent-service; the shared
+//   backend with the REST router). Falls back gracefully when absent.
+// - callerCtx.contextBundle.workspaceDir OR callerCtx.workingDir (resolved
+//   workspace for the docs/requirements/{id}.md write).
+// - callerCtx.gitIntegration (runtime-only handle surfaced by agent-service;
+//   plan worktree; verify's pmService merge is inside flowActions).
 //
 // ## Output
-// - export const flowTool (buildTool result).
-//
+// - ToolResult{data:{text}};format(r) = r.data.text。
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 import type { RequirementRecord } from "../shared/types.js";
 
 /**
  * FlowActions backend shape (project-flow F4). Imported as a TYPE-ONLY ref so
  * the runtime layer never imports the server-layer module at runtime — the
- * backend is injected via ctx.flowActions (agent-service wiring). Test
+ * backend is injected via callerCtx.flowActions (agent-service wiring). Test
  * harnesses build their own via createFlowActions imported directly from the
  * server module.
  */
@@ -146,34 +143,39 @@ export const flowActionSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /** Resolve the workspace dir for the docs/requirements write. */
-function resolveWorkspaceDir(ctx: any): string | undefined {
-	const bundle = ctx?.contextBundle;
+function resolveWorkspaceDir(callerCtx: CallerCtx): string | undefined {
+	const bundle = callerCtx.contextBundle;
 	if (bundle && typeof bundle.workspaceDir === "string" && bundle.workspaceDir) {
 		return bundle.workspaceDir;
 	}
-	const wd = ctx?.workingDir;
+	const wd = callerCtx.workingDir;
 	return typeof wd === "string" && wd ? wd : undefined;
 }
 
-/** Resolve the projectId from ctx bundle or input. */
-function resolveProjectId(ctx: any, input: any, fallback?: string): string | undefined {
-	const fromBundle = ctx?.contextBundle?.projectId ?? ctx?.projectId;
+/** Resolve the projectId from callerCtx bundle or input. */
+function resolveProjectId(callerCtx: CallerCtx, input: any, fallback?: string): string | undefined {
+	const fromBundle = callerCtx.contextBundle?.projectId ?? callerCtx.projectId;
 	return fromBundle ?? input.projectId ?? fallback;
 }
 
 /**
- * Fetch the FlowActions backend for this ctx. The backend is injected by
- * agent-service via ctx.flowActions (single source — the REST router uses the
- * same object). Test harnesses that exercised the legacy direct-store path
- * must now wire ctx.flowActions themselves (see f1/f2/f3 tests).
+ * Fetch the FlowActions backend for this callerCtx. The backend is injected by
+ * agent-service via callerCtx.flowActions (single source — the REST router uses
+ * the same object). Test harnesses that exercised the legacy direct-store path
+ * must now wire callerCtx.flowActions themselves (see f1/f2/f3 tests).
  */
-function getFlowActions(ctx: any): FlowActionsLike | undefined {
-	return (ctx?.flowActions as FlowActionsLike | undefined) ?? undefined;
+function getFlowActions(callerCtx: CallerCtx): FlowActionsLike | undefined {
+	return (callerCtx.flowActions as FlowActionsLike | undefined) ?? undefined;
 }
 
 // ---------------------------------------------------------------------------
 // Tool
 // ---------------------------------------------------------------------------
+
+interface FlowData {
+	/** LLM-facing text (per-action: created/transition/verify/list/get/error). */
+	text: string;
+}
 
 export const flowTool = buildTool({
 	name: "Flow",
@@ -200,24 +202,33 @@ export const flowTool = buildTool({
 		isReadOnly: false,
 		isConcurrencySafe: false,
 		isDestructive: false,
+		exposable: false,
 	},
 
 	inputSchema: flowActionSchema,
 
-	execute: async (input, ctx) => {
-		const actions = getFlowActions(ctx);
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult<FlowData>> => {
+		const actions = getFlowActions(callerCtx);
 		if (!actions) {
-			return "Error: Flow tool requires ctx.flowActions (inject via agent-service; the shared backend with the REST router)";
+			// Preserve the pre-sub-4 "Error: ..." soft failure (string return —
+			// not a thrown failure). Migrated ok:false would route through
+			// PostToolUseFailure, a behavior change; keep ok:true + error text.
+			return {
+				ok: true,
+				data: {
+					text: "Error: Flow tool requires ctx.flowActions (inject via agent-service; the shared backend with the REST router)",
+				},
+			};
 		}
 
 		switch (input.action) {
 			case "create": {
-				const projectId = resolveProjectId(ctx, input);
+				const projectId = resolveProjectId(callerCtx, input);
 				if (!projectId) {
-					return "Error: projectId is required for action:create (provide it on the call or via the session context bundle)";
+					return { ok: true, data: { text: "Error: projectId is required for action:create (provide it on the call or via the session context bundle)" } };
 				}
 				if (!input.title) {
-					return "Error: title is required for action:create";
+					return { ok: true, data: { text: "Error: title is required for action:create" } };
 				}
 				try {
 					const { requirement: req, docNote } = actions.create({
@@ -230,9 +241,9 @@ export const flowTool = buildTool({
 						// path uses "agent". REST/UI passes "user".
 						source: "agent",
 					});
-					return `Requirement created: ${req.id}\nTitle: ${req.title}\nStatus: ${req.status}${docNote}`;
+					return { ok: true, data: { text: `Requirement created: ${req.id}\nTitle: ${req.title}\nStatus: ${req.status}${docNote}` } };
 				} catch (err) {
-					return `Error: create failed — ${(err as Error).message}`;
+					return { ok: true, data: { text: `Error: create failed — ${(err as Error).message}` } };
 				}
 			}
 
@@ -242,18 +253,18 @@ export const flowTool = buildTool({
 					status: input.status,
 					priority: input.priority,
 				});
-				return JSON.stringify(result);
+				return { ok: true, data: { text: JSON.stringify(result) } };
 			}
 
 			case "get": {
 				if (!input.id) {
-					return "Error: id is required for action:get";
+					return { ok: true, data: { text: "Error: id is required for action:get" } };
 				}
 				const result = actions.get(input.id);
 				if (!result) {
-					return `Error: Requirement not found: ${input.id}`;
+					return { ok: true, data: { text: `Error: Requirement not found: ${input.id}` } };
 				}
-				return JSON.stringify(result);
+				return { ok: true, data: { text: JSON.stringify(result) } };
 			}
 
 			case "pick":
@@ -262,9 +273,9 @@ export const flowTool = buildTool({
 			case "startBuild":
 			case "finishBuild": {
 				if (!input.id) {
-					return `Error: id is required for action:${input.action}`;
+					return { ok: true, data: { text: `Error: id is required for action:${input.action}` } };
 				}
-				const projectId = resolveProjectId(ctx, input);
+				const projectId = resolveProjectId(callerCtx, input);
 				const sectionBody =
 					input.action === "pick" ? input.summary :
 					input.action === "plan" ? input.plan :
@@ -283,16 +294,16 @@ export const flowTool = buildTool({
 					// backend kicked off createFeatureWorktree fire-and-forget;
 					// for the runtime plan action we AWAIT it so the lead lands
 					// in the worktree for the follow-up startBuild / Orchestrate.
-					// The created path is surfaced on ctx.featureWorkspace.
+					// The created path is surfaced on callerCtx.featureWorkspace.
 					let runtimeWorktreeNote = worktreeNote;
 					if (input.action === "plan") {
-						const gi = (ctx as any)?.gitIntegration;
-						const ws = resolveWorkspaceDir(ctx);
+						const gi = callerCtx.gitIntegration;
+						const ws = resolveWorkspaceDir(callerCtx);
 						if (gi && ws) {
 							try {
 								const wt = await gi.createFeatureWorktree(ws, input.id, projectId);
 								if (wt?.ok && wt.worktreePath) {
-									(ctx as any).featureWorkspace = wt.worktreePath;
+									callerCtx.featureWorkspace = wt.worktreePath;
 									runtimeWorktreeNote = ` (worktree: ${wt.worktreePath})`;
 								} else if (wt?.branch) {
 									runtimeWorktreeNote = ` (worktree fallback: main workspace)`;
@@ -303,11 +314,11 @@ export const flowTool = buildTool({
 						}
 					}
 
-					return `Requirement ${input.action}: ${updated.id} → ${updated.status}${docNote}${runtimeWorktreeNote}`;
+					return { ok: true, data: { text: `Requirement ${input.action}: ${updated.id} → ${updated.status}${docNote}${runtimeWorktreeNote}` } };
 				} catch (err) {
 					const e = err as Error & { validTargets?: string[] };
 					const targets = e.validTargets?.length ? ` Valid next: ${e.validTargets.join(", ")}` : "";
-					return `Error: ${input.action} transition failed — ${e.message}.${targets}`;
+					return { ok: true, data: { text: `Error: ${input.action} transition failed — ${e.message}.${targets}` } };
 				}
 			}
 
@@ -319,25 +330,31 @@ export const flowTool = buildTool({
 				// that's external (work config / user). The REST/UI path is the
 				// same shape (user supplies the verdict directly).
 				if (!input.id) {
-					return "Error: id is required for action:verify";
+					return { ok: true, data: { text: "Error: id is required for action:verify" } };
 				}
 				const req = actions.get(input.id);
-				if (!req) return `Error: requirement not found: ${input.id}`;
-				const projectId = resolveProjectId(ctx, input, req.projectId);
+				if (!req) return { ok: true, data: { text: `Error: requirement not found: ${input.id}` } };
+				const projectId = resolveProjectId(callerCtx, input, req.projectId);
 				const source =
 					input.covered === undefined
 						? { kind: "none" as const }
 						: { kind: "verdict" as const, covered: input.covered, reason: input.reason };
 				try {
 					const result = await actions.verify({ id: input.id, projectId, source });
-					return result.text;
+					return { ok: true, data: { text: result.text } };
 				} catch (err) {
-					return `Error: verify failed — ${(err as Error).message}`;
+					return { ok: true, data: { text: `Error: verify failed — ${(err as Error).message}` } };
 				}
 			}
 
 			default:
-				return `Error: unknown action: ${(input as any).action}`;
+				return { ok: true, data: { text: `Error: unknown action: ${(input as any).action}` } };
 		}
+	},
+	format: (result: ToolResult): string => {
+		if (!result.ok) {
+			return result.error ?? "Flow failed.";
+		}
+		return (result.data as FlowData)?.text ?? "";
 	},
 });

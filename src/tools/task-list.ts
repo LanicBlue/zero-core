@@ -8,24 +8,28 @@
 //   - `tree` 渲染:按 parentTaskId 建嵌套树文本(sub-agent of sub-agent 链)
 // 比工作台的"id+status 极简"富;比 TaskGet 的"单 task 钻取"粗。
 //
-// 数据源 ctx.listTasks(TaskInfo[],含 parentTaskId)+ 不递归(本层只看自己直接
-// task;tree 靠 parentTaskId 字段就地重建)。
+// 数据源 callerCtx.delegateFns.listTasks(TaskInfo[],含 parentTaskId)+ 不递归(本层
+// 只看自己直接 task;tree 靠 parentTaskId 字段就地重建)。
 //
 // ## 输入
 // - filter?(all | running | completed)
 // - taskIds?(string[],按 id 过滤)
 //
 // ## 输出
-// 富列表文本(可选 tree 缩进)
+// - ToolResult{data:{text}} —— 富列表文本(可选 tree 缩进);format(r) = r.data.text
 //
 // ## 定位
-// Runtime 工具(src/runtime/tools/),被 Agent 调用。
+// 中立工具层(src/tools/),被 agent loop / UI dispatcher 调。
 //
 // ## 维护规则
 // - formatTask 字段须与 TaskInfo 一致。
+// - tool-decoupling sub-4(G1 + 决策 2/3):委派函数经 callerCtx.delegateFns;
+//   UI 无 loop 状态 → 返默认/示例;execute 返 ToolResult JSON;format 文本与
+//   sub-4 前逐字一致。
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 import type { TaskInfo } from "../runtime/types.js";
 
 function formatTask(t: TaskInfo, indent: string = ""): string {
@@ -76,6 +80,10 @@ function formatTree(tasks: TaskInfo[]): string {
 	return lines.join("\n");
 }
 
+interface TaskListData {
+	text: string;
+}
+
 export const taskListTool = buildTool({
 	name: "TaskList",
 	description: "List background tasks (rich view). Optional taskIds filter + nested tree.",
@@ -88,7 +96,7 @@ export const taskListTool = buildTool({
 		"- After dispatching multiple parallel tasks to check overall progress.\n" +
 		"- To find a task_id for use with TaskGet / TaskKill / TaskFinish / TaskResume.\n" +
 		"- To review completed task results before acknowledging them via TaskGet.",
-	meta: { category: "task", isReadOnly: true, isConcurrencySafe: true, isDestructive: false },
+	meta: { category: "task", isReadOnly: true, isConcurrencySafe: true, isDestructive: false, exposable: false },
 	configSchema: [
 		{
 			key: "max_completed",
@@ -102,13 +110,17 @@ export const taskListTool = buildTool({
 		filter: z.enum(["all", "running", "completed"]).optional().describe("Filter by status: all (default), running, or completed"),
 		taskIds: z.array(z.string()).optional().describe("Only show these task IDs (optional drill-in filter)"),
 	}),
-	execute: async (input, ctx) => {
-		if (!ctx.listTasks) return "Error: Task listing is not available in this context.";
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult<TaskListData>> => {
+		const fns = callerCtx.delegateFns;
+		// G1:UI/external host without a loop → benign preview.
+		if (!fns?.listTasks) {
+			return { ok: true, data: { text: "(preview) No tasks — callerCtx has no delegateFns (not running inside an agent loop)." } };
+		}
 
-		const config = ctx.toolConfig?.TaskList ?? {};
+		const config = callerCtx.toolConfig?.TaskList ?? {};
 		const maxCompleted = config.max_completed ?? 5;
 		const filter = input.filter ?? "all";
-		let tasks = ctx.listTasks(filter === "all" ? undefined : filter);
+		let tasks = fns.listTasks(filter === "all" ? undefined : filter);
 
 		// Optional taskIds drill-in filter.
 		if (input.taskIds && input.taskIds.length) {
@@ -117,9 +129,12 @@ export const taskListTool = buildTool({
 		}
 
 		if (!tasks.length) {
-			return filter === "running"
-				? "No running tasks."
-				: "No tasks.";
+			return {
+				ok: true,
+				data: {
+					text: filter === "running" ? "No running tasks." : "No tasks.",
+				},
+			};
 		}
 
 		const running = tasks.filter((t) => t.status === "running" || t.status === "finishing");
@@ -154,6 +169,12 @@ export const taskListTool = buildTool({
 			lines.push(formatTree(tasks) || "(empty)");
 		}
 
-		return lines.join("\n");
+		return { ok: true, data: { text: lines.join("\n") } };
+	},
+	format: (result: ToolResult): string => {
+		if (!result.ok) {
+			return result.error ?? "TaskList failed.";
+		}
+		return (result.data as TaskListData)?.text ?? "";
 	},
 });

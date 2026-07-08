@@ -4,9 +4,17 @@
 // 按 name 解析(现查身份),白名单语义(不在列表报错),目标被删报错不回落。
 import { describe, test, expect } from "vitest";
 import { delegateTool } from "../../src/tools/agent.js";
-import { getToolExecute } from "../../src/tools/tool-factory.js";
+import { getToolExecute, getToolFormat } from "../../src/tools/tool-factory.js";
 
 const exec = getToolExecute(delegateTool)!;
+const fmt = getToolFormat(delegateTool)!;
+
+/**
+ * tool-decoupling sub-4:the Subagent tool now returns ToolResult JSON. Tests
+ * assert on the LLM-facing string. run() returns format(JSON) — same string
+ * the LLM saw pre-sub-4.
+ */
+const run = (i: any, c: any) => exec(i, c).then(fmt);
 
 /** Build a ctx with a caller + its subagents + a live resolveAgent. */
 function makeCtx(opts: {
@@ -23,12 +31,19 @@ function makeCtx(opts: {
 		id: callerId, name: "Caller",
 		subagents: opts.callerSubagents ?? [],
 	};
+	// tool-decoupling sub-4:bridge legacy ctx fields into callerCtx shape:
+	// resolveAgent → agentResolvers.resolveAgent; delegateTask → delegateFns.delegateTask.
 	return {
+		caller: "internal" as const,
 		agentId: callerId,
 		workingDir: ".",
-		resolveAgent: (id: string) => agents[id] ? { ...agents[id] } : undefined,
-		delegateTask: opts.delegateTask ?? (async () => "(default)"),
-		delegateTaskBackground: opts.delegateTaskBackground,
+		agentResolvers: {
+			resolveAgent: (id: string) => agents[id] ? { ...agents[id] } : undefined,
+		},
+		delegateFns: {
+			delegateTask: opts.delegateTask ?? (async () => "(default)"),
+			delegateTaskBackground: opts.delegateTaskBackground,
+		},
 		toolConfig: {},
 	} as any;
 }
@@ -41,7 +56,7 @@ describe("Agent tool — list", () => {
 				"dev-1": { id: "dev-1", name: "Developer", model: "glm-5.2", systemPrompt: "BIG" },
 			},
 		});
-		const r = JSON.parse(await exec({ action: "list" }, ctx));
+		const r = JSON.parse(await run({ action: "list" }, ctx));
 		expect(r).toHaveLength(1);
 		expect(r[0].name).toBe("Developer");
 		expect(r[0].model).toBe("glm-5.2");
@@ -50,7 +65,7 @@ describe("Agent tool — list", () => {
 	});
 
 	test("list 无 subagents → 提示空", async () => {
-		const r = await exec({ action: "list" }, makeCtx());
+		const r = await run({ action: "list" }, makeCtx());
 		expect(r).toMatch(/no registered subagents/i);
 	});
 
@@ -59,7 +74,7 @@ describe("Agent tool — list", () => {
 			callerSubagents: [{ agentId: "gone-1", name: "Ghost" }],
 			agents: {}, // target missing
 		});
-		const r = JSON.parse(await exec({ action: "list" }, ctx));
+		const r = JSON.parse(await run({ action: "list" }, ctx));
 		expect(r[0].name).toBe("Ghost");
 		expect(r[0].note).toMatch(/not found/i);
 	});
@@ -75,7 +90,7 @@ describe("Agent tool — delegate by name", () => {
 			},
 			delegateTask: async (task, o) => { captured = { task, o }; return "done"; },
 		});
-		const r = await exec({ action: "delegate", task: "write hello", subagent: "Developer" }, ctx);
+		const r = await run({ action: "delegate", task: "write hello", subagent: "Developer" }, ctx);
 		expect(r).toBe("done");
 		expect(captured.task).toBe("write hello");
 		expect(captured.o.targetAgentId).toBe("dev-1");
@@ -89,9 +104,9 @@ describe("Agent tool — delegate by name", () => {
 			agents: { "dev-1": { id: "dev-1", name: "Developer" } },
 		});
 		// entry.name = "Coder" → 必须用 "Coder" 才匹配,"Developer" 不匹配
-		const ok = await exec({ action: "delegate", task: "t", subagent: "Coder" }, ctx);
+		const ok = await run({ action: "delegate", task: "t", subagent: "Coder" }, ctx);
 		expect(ok).not.toMatch(/no subagent named/);
-		const miss = await exec({ action: "delegate", task: "t", subagent: "Developer" }, ctx);
+		const miss = await run({ action: "delegate", task: "t", subagent: "Developer" }, ctx);
 		expect(miss).toMatch(/no subagent named "Developer"/);
 	});
 
@@ -100,7 +115,7 @@ describe("Agent tool — delegate by name", () => {
 			callerSubagents: [{ agentId: "dev-1", name: "Developer" }],
 			agents: { "dev-1": { id: "dev-1", name: "Developer" } },
 		});
-		const r = await exec({ action: "delegate", task: "t", subagent: "Nope" }, ctx);
+		const r = await run({ action: "delegate", task: "t", subagent: "Nope" }, ctx);
 		expect(r).toMatch(/no subagent named "Nope"/);
 		expect(r).toMatch(/Available.*Developer/);
 	});
@@ -110,7 +125,7 @@ describe("Agent tool — delegate by name", () => {
 			callerSubagents: [{ agentId: "gone-1", name: "Ghost" }],
 			agents: {}, // target missing
 		});
-		const r = await exec({ action: "delegate", task: "t", subagent: "Ghost" }, ctx);
+		const r = await run({ action: "delegate", task: "t", subagent: "Ghost" }, ctx);
 		expect(r).toMatch(/no longer exists|stale/i);
 	});
 });
@@ -121,7 +136,7 @@ describe("Agent tool — ephemeral delegate (no subagent)", () => {
 		const ctx = makeCtx({
 			delegateTask: async (task, o) => { captured = { task, o }; return "ok"; },
 		});
-		await exec({ action: "delegate", task: "explore", model: "m1", systemPrompt: "custom" }, ctx);
+		await run({ action: "delegate", task: "explore", model: "m1", systemPrompt: "custom" }, ctx);
 		expect(captured.o.targetAgentId).toBeUndefined();
 		expect(captured.o.model).toBe("m1");
 		expect(captured.o.systemPrompt).toBe("custom");
@@ -135,14 +150,14 @@ describe("Agent tool — blocking-only (sub-4) + validation", () => {
 			delegateTask: async (task, o) => { captured = { task, o }; return "blocking-result"; },
 			delegateTaskBackground: (_t, _o) => "should-not-be-called",
 		});
-		const r = await exec({ action: "delegate", task: "blocking work" }, ctx);
+		const r = await run({ action: "delegate", task: "blocking work" }, ctx);
 		expect(r).toBe("blocking-result");
 		expect(captured.task).toBe("blocking work");
 	});
 
 	test("sub-4: retired actions (stop/complete/request_finish/tree) error out", async () => {
 		for (const bad of ["stop", "complete", "request_finish", "tree"] as const) {
-			const r = await exec({ action: bad } as any, makeCtx());
+			const r = await run({ action: bad } as any, makeCtx());
 			// zod rejects unknown enum values; either a zod error or our unknown-
 			// action message is acceptable. The key assertion: NOT silent success.
 			expect(r).not.toMatch(/task_id|acknowledged|has been stopped|Delegated/i);
@@ -150,7 +165,7 @@ describe("Agent tool — blocking-only (sub-4) + validation", () => {
 	});
 
 	test("delegate 缺 task → 报错", async () => {
-		const r = await exec({ action: "delegate" } as any, makeCtx());
+		const r = await run({ action: "delegate" } as any, makeCtx());
 		expect(r).toMatch(/task.*required/i);
 	});
 });

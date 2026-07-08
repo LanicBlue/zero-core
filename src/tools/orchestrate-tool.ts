@@ -1,4 +1,4 @@
-// Orchestrate 编排器工具 (v0.8 M3)
+// Orchestrate 编排器工具 (v0.8 M3 / tool-decoupling sub-4 迁新签名)
 //
 // # 文件说明书
 //
@@ -39,9 +39,10 @@
 // ## 输出
 // - confirm 模式被 rejected → "false: <reason>"
 // - confirm 模式被 confirmed / run 模式 → 执行后摘要 + manifest 概览
+//   形态:ToolResult{data:{text, planId?, manifestId?}};format(r) = r.data.text
 //
 // ## 定位
-// Runtime 工具,被 Lead Agent 调用。sub-agent dispatch 走 delegateTask +
+// 中立工具层(src/tools/),被 Lead Agent 调用。sub-agent dispatch 走 delegateFns +
 // toolPolicy(继承 caller bundle)。
 //
 // ## 依赖
@@ -49,16 +50,23 @@
 // - ./tool-factory
 // - ../../server/orchestrate-store (plan + manifest + confirm registry)
 // - ../shared/types (OrchestrateNode/Flow/...)
+// - callerCtx.delegateFns(delegateTask / setToolCallTaskId)
+// - callerCtx.agentResolvers(subagents / resolveSubagentTarget)
+// - callerCtx.orchestratePlanStore / orchestrateManifestStore / gitIntegration
+// - callerCtx.workingDir / contextBundle / projectId / activeRequirementId /
+//   agentId / sessionId / toolCallId
 //
 // ## 维护规则
 // - confirm 门绝不退化成轮询/忙等/长连接占资源
-// - 节点 dispatch 走 delegateTask(继承 caller bundle + toolPolicy)
+// - 节点 dispatch 走 delegateFns(继承 caller bundle + toolPolicy)
 // - manifest 落库(决策 34) → PM 覆盖判断 + archivist traceability
-//
+// - tool-decoupling sub-4(G1 + 决策 2/3):所有 session 状态经 callerCtx;
+//   UI 无 loop 状态 → 返默认/示例;execute 返 ToolResult JSON;format 文本与
+//   sub-4 前逐字一致。
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import type { ToolExecutionContext } from "../runtime/types.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 import type {
 	OrchestrateFlow,
 	OrchestrateNode,
@@ -193,34 +201,31 @@ function parseTouchedFiles(text: string): string[] {
 // ---------------------------------------------------------------------------
 
 interface EngineDeps {
-	ctx: ToolExecutionContext;
+	callerCtx: CallerCtx;
 	flow: OrchestrateFlow;
 	planId: string;
 	manifestStore?: OrchestrateManifestStore;
 }
 
 async function dispatchAgentTool(
-	ctx: ToolExecutionContext,
+	callerCtx: CallerCtx,
 	agentToolName: string,
 	task: string,
 ): Promise<string> {
-	if (!ctx.delegateTask) {
+	const fns = callerCtx.delegateFns;
+	if (!fns?.delegateTask) {
 		return `Error: delegateTask not available — cannot dispatch ${agentToolName}`;
 	}
 
 	// v0.8 (P2 §11.5): resolve the agentTool name → target agent via this
-	// session's subagents list (AgentRecord.subagents, surfaced as
-	// ctx.subagents). Each entry's user-facing name (or agentId) is matched
-	// against agentToolName; identity comes from ctx.resolveSubagentTarget
-	// when available. The legacy getAgentToolEntries path is retired.
-	const subagents = (ctx as any).subagents as
-		| Array<{ agentId: string; name?: string; description?: string }>
-		| undefined;
-	const resolveTarget = (ctx as any).resolveSubagentTarget as
-		| ((agentId: string) =>
-			| { id: string; systemPrompt?: string; model?: string; toolPolicy?: any }
-			| undefined)
-		| undefined;
+	// session's subagents list (AgentRecord.subagents, surfaced via
+	// callerCtx.agentResolvers.subagents). Each entry's user-facing name (or
+	// agentId) is matched against agentToolName; identity comes from
+	// callerCtx.agentResolvers.resolveSubagentTarget. The legacy getAgentToolEntries
+	// path is retired.
+	const resolvers = callerCtx.agentResolvers;
+	const subagents = resolvers?.subagents;
+	const resolveTarget = resolvers?.resolveSubagentTarget;
 
 	let targetAgentId: string | undefined;
 	let systemPrompt: string | undefined;
@@ -253,16 +258,16 @@ async function dispatchAgentTool(
 		// under a single tool-call id; each task node shares that id (the link
 		// is best-effort — multiple nodes under one Orchestrate call all map to
 		// the same parent tool-call, which is fine for resume lookup).
-		const parentToolCallId = ctx.currentToolCallId;
-		const result = await ctx.delegateTask(task, {
+		const parentToolCallId = callerCtx.toolCallId;
+		const result = await fns.delegateTask(task, {
 			targetAgentId,
 			systemPrompt,
 			model,
 			toolPolicy,
-			workspaceDir: ctx.contextBundle?.workspaceDir ?? ctx.workingDir,
+			workspaceDir: callerCtx.contextBundle?.workspaceDir ?? callerCtx.workingDir,
 			parentToolCallId,
-			onDispatched: parentToolCallId
-				? (id) => ctx.setToolCallTaskId?.(parentToolCallId, id)
+			onDispatched: parentToolCallId && fns.setToolCallTaskId
+				? (id: string) => fns.setToolCallTaskId!(parentToolCallId, id)
 				: undefined,
 		});
 		return result || "(no output)";
@@ -292,7 +297,7 @@ async function runNode(node: OrchestrateNode, deps: EngineDeps): Promise<ExecRes
 
 async function runTaskNode(node: OrchestrateTaskNode, deps: EngineDeps): Promise<ExecResult> {
 	log.agent(`Orchestrate task: ${node.id} → ${node.agentTool}`);
-	const output = await dispatchAgentTool(deps.ctx, node.agentTool, node.task);
+	const output = await dispatchAgentTool(deps.callerCtx, node.agentTool, node.task);
 	const touched = parseTouchedFiles(output);
 
 	// v0.8 (M3): commit this step on the feature worktree with the [req-<short>]
@@ -322,9 +327,9 @@ function commitStepOnWorktree(
 	node: OrchestrateTaskNode,
 	_touchedFiles: string[],
 ): void {
-	const worktreePath = deps.ctx.contextBundle?.workspaceDir ?? deps.ctx.workingDir;
+	const worktreePath = deps.callerCtx.contextBundle?.workspaceDir ?? deps.callerCtx.workingDir;
 	if (!worktreePath) return;
-	const gitIntegration = (deps.ctx as any).gitIntegration as
+	const gitIntegration = deps.callerCtx.gitIntegration as
 		| { commitStep: (worktree: string, reqId: string, msg: string) => Promise<{ ok: boolean; ref?: string; error?: string }> }
 		| undefined;
 	if (!gitIntegration?.commitStep) return;
@@ -395,7 +400,7 @@ async function runBarrierNode(node: OrchestrateBarrierNode): Promise<ExecResult>
 async function runVerifyNode(node: OrchestrateVerifyNode, deps: EngineDeps): Promise<ExecResult> {
 	log.agent(`Orchestrate verify: ${node.id}`);
 	const tests: Array<{ command: string; ok: boolean; output?: string }> = [];
-	const cwd = deps.ctx.contextBundle?.workspaceDir ?? deps.ctx.workingDir;
+	const cwd = deps.callerCtx.contextBundle?.workspaceDir ?? deps.callerCtx.workingDir;
 
 	for (const cmd of node.commands ?? []) {
 		try {
@@ -410,7 +415,7 @@ async function runVerifyNode(node: OrchestrateVerifyNode, deps: EngineDeps): Pro
 	let review: ExecResult["review"];
 	if (node.reviewerAgentTool) {
 		const reviewTask = `Review the changes for requirement ${deps.flow.requirementId}. Output verdict: APPROVED or REJECTED with brief justification.`;
-		const reviewOut = await dispatchAgentTool(deps.ctx, node.reviewerAgentTool, reviewTask);
+		const reviewOut = await dispatchAgentTool(deps.callerCtx, node.reviewerAgentTool, reviewTask);
 		const approved = /APPROVED/i.test(reviewOut);
 		review = {
 			verdict: approved ? "approved" : "rejected",
@@ -436,7 +441,7 @@ function persistManifest(
 	merged: ExecResult,
 ): OrchestrateManifestRecord | undefined {
 	if (!deps.manifestStore) return undefined;
-	const projectId = deps.ctx.projectId ?? "";
+	const projectId = deps.callerCtx.projectId ?? "";
 	const passed = !merged.failed;
 	const summary =
 		`Requirement ${deps.flow.requirementId} — ${deps.flow.title}\n` +
@@ -460,20 +465,13 @@ function persistManifest(
 // Tool definition
 // ---------------------------------------------------------------------------
 
-/**
- * Internal helper: lazily grab the plan/manifest stores from the tool context.
- * They are injected by the loop wiring (M3 adds orchestratePlanStore /
- * orchestrateManifestStore onto the lead session config → tool context).
- */
-function getStores(ctx: ToolExecutionContext): {
-	planStore?: OrchestratePlanStore;
-	manifestStore?: OrchestrateManifestStore;
-} {
-	const any = ctx as any;
-	return {
-		planStore: any.orchestratePlanStore as OrchestratePlanStore | undefined,
-		manifestStore: any.orchestrateManifestStore as OrchestrateManifestStore | undefined,
-	};
+interface OrchestrateData {
+	/** LLM-facing text: post-run summary + manifest line (or rejection reason). */
+	text: string;
+	/** Persisted plan id (for UI dispatcher traceability). */
+	planId?: string;
+	/** Persisted manifest id (PM coverage judgement + archivist traceability). */
+	manifestId?: string;
 }
 
 export const orchestrateTool = buildTool({
@@ -491,6 +489,7 @@ export const orchestrateTool = buildTool({
 		isReadOnly: false,
 		isConcurrencySafe: false,
 		isDestructive: false,
+		exposable: false,
 	},
 
 	inputSchema: z.object({
@@ -499,19 +498,27 @@ export const orchestrateTool = buildTool({
 			.describe("'confirm' (default) waits for user; 'run' executes immediately"),
 	}),
 
-	execute: async (input, ctx) => {
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult<OrchestrateData>> => {
+		const fns = callerCtx.delegateFns;
 		// 1. Validate context
-		if (!ctx.delegateTask) {
-			return "Error: Orchestrate not available in this context (no delegateTask)";
+		if (!fns?.delegateTask) {
+			// G1:UI/external host without a loop → benign preview.
+			return {
+				ok: true,
+				data: {
+					text: "(preview) Orchestrate unavailable — callerCtx has no delegateFns (not running inside an agent loop).",
+				},
+			};
 		}
-		if (!ctx.activeRequirementId) {
-			return "Error: Orchestrate not available in this context (no activeRequirementId)";
+		if (!callerCtx.activeRequirementId) {
+			return { ok: false, error: "Orchestrate not available in this context (no activeRequirementId)" };
 		}
-		if (!ctx.projectId) {
-			return "Error: Orchestrate not available in this context (no projectId)";
+		if (!callerCtx.projectId) {
+			return { ok: false, error: "Orchestrate not available in this context (no projectId)" };
 		}
 
-		const { planStore, manifestStore } = getStores(ctx);
+		const planStore = callerCtx.orchestratePlanStore as OrchestratePlanStore | undefined;
+		const manifestStore = callerCtx.orchestrateManifestStore as OrchestrateManifestStore | undefined;
 		const mode = input.mode ?? "confirm";
 		const flow = input.flow as OrchestrateFlow;
 
@@ -520,9 +527,11 @@ export const orchestrateTool = buildTool({
 		if (planStore) {
 			const plan = planStore.create({
 				requirementId: flow.requirementId,
-				projectId: ctx.projectId,
-				leadAgentId: ctx.agentId,
-				leadSessionId: ctx.sessionId ?? "",
+				projectId: callerCtx.projectId,
+				// CallerCtx.agentId is optional (UI/MCP may have none); lead runs
+				// always have one. Coalesce to empty for the persisted record.
+				leadAgentId: callerCtx.agentId ?? "",
+				leadSessionId: callerCtx.sessionId ?? "",
 				flow: JSON.stringify(flow),
 				state: "pending",
 			});
@@ -541,9 +550,9 @@ export const orchestrateTool = buildTool({
 				if (planStore) {
 					const reason = planStore.get(planId)?.rejectionReason ?? "(no reason given)";
 					planStore.setState(planId, "rejected", { rejectionReason: reason });
-					return `false: plan rejected — ${reason}`;
+					return { ok: true, data: { text: `false: plan rejected — ${reason}`, planId } };
 				}
-				return "false: plan rejected";
+				return { ok: true, data: { text: "false: plan rejected", planId } };
 			}
 			// Confirmed → run.
 			if (planStore) planStore.setState(planId, "confirmed");
@@ -551,7 +560,7 @@ export const orchestrateTool = buildTool({
 
 		// 4. Execute the flow.
 		if (planStore) planStore.setState(planId, "running");
-		const engineDeps: EngineDeps = { ctx, flow, planId, manifestStore };
+		const engineDeps: EngineDeps = { callerCtx, flow, planId, manifestStore };
 		try {
 			const merged = await runNode(flow.root, engineDeps);
 
@@ -567,10 +576,27 @@ export const orchestrateTool = buildTool({
 
 			const overall = merged.failed ? "FAIL" : "PASS";
 			const manifestLine = manifest ? `\n\nManifest id: ${manifest.id} (PM reads this for coverage judgement)` : "";
-			return `Orchestrate ${overall}. ${merged.tests.length} test(s), review=${merged.review?.verdict ?? "n/a"}.\n${merged.summary}${manifestLine}`;
-		} catch (err) {
+			return {
+				ok: true,
+				data: {
+					text: `Orchestrate ${overall}. ${merged.tests.length} test(s), review=${merged.review?.verdict ?? "n/a"}.\n${merged.summary}${manifestLine}`,
+					planId,
+					manifestId: manifest?.id,
+				},
+			};
+		} catch (err: any) {
 			if (planStore) planStore.setState(planId, "failed");
-			throw err;
+			// Preserve pre-sub-4 behavior: orchestrate failures threw (the loop's
+			// catch handled them as a tool failure). Migrated ok:false → buildTool
+			// throws → unified failure side. Same outcome; error message preserved
+			// verbatim (the loop's PostToolUseFailure hooks see the same text).
+			return { ok: false, error: err?.message ?? "Orchestrate run failed." };
 		}
+	},
+	format: (result: ToolResult): string => {
+		if (!result.ok) {
+			return result.error ?? "Orchestrate failed.";
+		}
+		return (result.data as OrchestrateData)?.text ?? "";
 	},
 });

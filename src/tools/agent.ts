@@ -1,4 +1,4 @@
-// Agent 委派工具 (sub-4 — blocking-only 重构)
+// Agent 委派工具 (sub-4 — blocking-only 重构 / tool-decoupling sub-4 迁新签名)
 //
 // # 文件说明书
 //
@@ -24,15 +24,20 @@
 // 报错(不静默回落 caller)。
 //
 // ## 输入
-// - ctx.delegateTask
-// - ctx.resolveAgent(id)(活查 agentStore)
+// - callerCtx.agentResolvers.resolveAgent(LIVE 解 caller + 目标身份)
+// - callerCtx.delegateFns.delegateTask(blocking 委派)
 //
 // ## 输出
-// - export const delegateTool
+// - ToolResult{data:{text}};format(r) = r.data.text
 //
+// ## 维护规则
+// - tool-decoupling sub-4(G1 + 决策 2/3):委派/查询函数经 callerCtx.delegateFns;
+//   agentResolvers LIVE 解 per-agent 配置(G4);UI 无 loop 状态 → 返默认/示例;
+//   execute 返 ToolResult JSON;format 文本与 sub-4 前逐字一致。
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 import { OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
 
 function truncate(text: string): string {
@@ -43,6 +48,11 @@ function truncate(text: string): string {
 /** A subagent entry's effective name = entry.name override, else the target agent's name. */
 function entryDisplayName(entry: { agentId: string; name?: string }, target?: { name?: string }): string {
 	return entry.name?.trim() || target?.name?.trim() || entry.agentId;
+}
+
+interface DelegateData {
+	/** LLM-facing text (truncated to OUTPUT_TRUNCATION_CHARS). */
+	text: string;
 }
 
 export const delegateTool = buildTool({
@@ -61,7 +71,7 @@ export const delegateTool = buildTool({
 		"Task lifecycle (status, recent calls, kill, finish, resume) is handled by the Task tool family — TaskGet / TaskList / TaskKill / TaskFinish / TaskResume.\n\n" +
 		"When to delegate — for LARGE or MULTI-STEP tasks, prefer delegating to a sub-agent over doing them inline. If a request looks like it will need many tool calls, multiple file edits, or a long exploration, lean toward breaking it into sub-tasks and delegating them (use TaskStart for independent sub-tasks so they run in parallel). Delegating keeps your own context lean, lets work proceed in parallel, and keeps exploratory noise out of the main conversation. Use your judgment: tasks that hinge on the context you've already built may be better done inline. Also delegate to hand work to a specialized role agent (a configured subagent).\n\n" +
 		"If you name a `subagent`, it must come from your own subagents list (run 'list'). You can always delegate without one by omitting `subagent`.",
-	meta: { category: "agent", isReadOnly: false, isConcurrencySafe: false },
+	meta: { category: "agent", isReadOnly: false, isConcurrencySafe: false, exposable: false },
 	configSchema: [
 		{ key: "auto_background", type: "boolean", label: "自动转后台", description: "阻塞超时后自动转为非阻塞后台执行 (safety net)" },
 		{ key: "auto_background_timeout", type: "number", label: "超时 (s)", description: "阻塞等待秒数，超时后转后台；设为 0 则立即非阻塞", default: 0 },
@@ -73,18 +83,27 @@ export const delegateTool = buildTool({
 		model: z.string().optional().describe("Model ID override (ephemeral delegation only)"),
 		systemPrompt: z.string().optional().describe("Custom system prompt override (ephemeral delegation only)"),
 	}),
-	execute: async (input, ctx) => {
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult<DelegateData>> => {
 		const { action } = input;
+		const resolvers = callerCtx.agentResolvers;
+		const resolveAgent = resolvers?.resolveAgent;
+		const fns = callerCtx.delegateFns;
 
 		// ── list ───────────────────────────────────────────────────
 		if (action === "list") {
-			const caller = ctx.resolveAgent?.(ctx.agentId);
+			// G1:UI/external host without agentResolvers → empty list (preview).
+			const caller = resolveAgent?.(callerCtx.agentId ?? "");
 			const entries = caller?.subagents ?? [];
 			if (entries.length === 0) {
-				return "(No registered subagents to hand off to by name. You can still delegate — just omit `subagent` and the sub-agent inherits your identity.)";
+				return {
+					ok: true,
+					data: {
+						text: "(No registered subagents to hand off to by name. You can still delegate — just omit `subagent` and the sub-agent inherits your identity.)",
+					},
+				};
 			}
 			const summary = entries.map((e) => {
-				const target = ctx.resolveAgent?.(e.agentId);
+				const target = resolveAgent?.(e.agentId);
 				const name = entryDisplayName(e, target);
 				return {
 					name,
@@ -93,13 +112,17 @@ export const delegateTool = buildTool({
 					...(target ? {} : { note: "target agent not found (stale reference)" }),
 				};
 			});
-			return JSON.stringify(summary);
+			return { ok: true, data: { text: JSON.stringify(summary) } };
 		}
 
 		// ── delegate (blocking) ────────────────────────────────────
-		if (action !== "delegate") return `Error: unknown Subagent action '${action}'. Supported: list, delegate. (Task lifecycle is handled by the Task tool family: TaskGet / TaskList / TaskKill / TaskFinish / TaskResume.)`;
+		if (action !== "delegate") {
+			return { ok: false, error: `unknown Subagent action '${action}'. Supported: list, delegate. (Task lifecycle is handled by the Task tool family: TaskGet / TaskList / TaskKill / TaskFinish / TaskResume.)` };
+		}
 		const { task } = input;
-		if (!task || !task.trim()) return "Error: `task` required for delegate";
+		if (!task || !task.trim()) {
+			return { ok: false, error: "`task` required for delegate" };
+		}
 
 		// Resolve delegation options. If `subagent` is named, resolve it LIVE to
 		// the target agent's identity (systemPrompt/model/toolPolicy); else the
@@ -107,13 +130,13 @@ export const delegateTool = buildTool({
 		// inline model/systemPrompt overrides.
 		let delegateOpts: { targetAgentId?: string; systemPrompt?: string; model?: string; toolPolicy?: any } = {};
 		if (input.subagent) {
-			const caller = ctx.resolveAgent?.(ctx.agentId);
+			const caller = resolveAgent?.(callerCtx.agentId ?? "");
 			const entries = caller?.subagents ?? [];
 			// Match by effective name (entry.name > target.name). First hit wins.
 			let matchedAgentId: string | undefined;
 			for (const e of entries) {
 				if (!e?.agentId) continue;
-				const target = ctx.resolveAgent?.(e.agentId);
+				const target = resolveAgent?.(e.agentId);
 				if (entryDisplayName(e, target) === input.subagent) {
 					matchedAgentId = e.agentId;
 					break;
@@ -121,13 +144,13 @@ export const delegateTool = buildTool({
 			}
 			if (!matchedAgentId) {
 				const avail = entries
-					.map((e) => entryDisplayName(e, ctx.resolveAgent?.(e.agentId)))
+					.map((e) => entryDisplayName(e, resolveAgent?.(e.agentId)))
 					.filter(Boolean);
-				return `Error: no subagent named "${input.subagent}". Available: ${avail.length ? avail.join(", ") : "(none)"}.`;
+				return { ok: false, error: `no subagent named "${input.subagent}". Available: ${avail.length ? avail.join(", ") : "(none)"}.` };
 			}
-			const target = ctx.resolveAgent?.(matchedAgentId);
+			const target = resolveAgent?.(matchedAgentId);
 			if (!target) {
-				return `Error: subagent "${input.subagent}" (${matchedAgentId}) no longer exists. Remove the stale reference or recreate the agent.`;
+				return { ok: false, error: `subagent "${input.subagent}" (${matchedAgentId}) no longer exists. Remove the stale reference or recreate the agent.` };
 			}
 			delegateOpts = {
 				targetAgentId: matchedAgentId,
@@ -146,25 +169,38 @@ export const delegateTool = buildTool({
 		// Blocking mode (sub-4: the ONLY mode now — non_blocking moved to TaskStart).
 		// auto_background remains as a safety net: a blocking delegate that exceeds
 		// its timeout auto-backgrounds (delegator.delegateTask's auto-bg branch).
-		if (!ctx.delegateTask) {
-			return "Error: Sub-agent delegation is not available in this context.";
+		if (!fns?.delegateTask) {
+			return { ok: false, error: "Sub-agent delegation is not available in this context." };
 		}
 		try {
 			// Step 2E: same tool-call ↔ task link as TaskStart. The blocking path
 			// doesn't return a taskId, so we use the onDispatched callback (fired
 			// synchronously inside delegateTask right after the row is created) to
 			// annotate the recorder block before the call awaits.
-			const parentToolCallId = ctx.currentToolCallId;
-			const result = await ctx.delegateTask(task, {
+			const parentToolCallId = callerCtx.toolCallId;
+			const result = await fns.delegateTask(task, {
 				...delegateOpts,
 				parentToolCallId,
-				onDispatched: parentToolCallId
-					? (id) => ctx.setToolCallTaskId?.(parentToolCallId, id)
+				onDispatched: parentToolCallId && fns.setToolCallTaskId
+					? (id: string) => fns.setToolCallTaskId!(parentToolCallId, id)
 					: undefined,
 			});
-			return truncate(result || "(sub-agent returned no output)");
+			return { ok: true, data: { text: truncate(result || "(sub-agent returned no output)") } };
 		} catch (err: any) {
-			return `Sub-agent error: ${err.message}`;
+			// Preserve the pre-sub-4 "soft failure" semantics: the delegator threw
+			// (e.g. agent target vanished / sub-loop crashed), but historically the
+			// tool returned the error as a successful string so the agent could read
+			// it inline + react. Migrated tools' {ok:false} → buildTool throws →
+			// PostToolUseFailure fires + tool_usage(success=false); that would be a
+			// behavior change for the Subagent error path. Keep ok:true + put the
+			// error text in data.text so format returns it verbatim (same as before).
+			return { ok: true, data: { text: `Sub-agent error: ${err.message}` } };
 		}
+	},
+	format: (result: ToolResult): string => {
+		if (!result.ok) {
+			return result.error ?? "Subagent failed.";
+		}
+		return (result.data as DelegateData)?.text ?? "";
 	},
 });
