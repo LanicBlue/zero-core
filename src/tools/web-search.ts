@@ -26,6 +26,7 @@
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 import { DEFAULT_URLS } from "../core/constants.js";
+import type { CallerCtx, ToolResult } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Web Search — adapter pattern for multiple search backends
@@ -302,8 +303,10 @@ export const webSearchTool = buildTool({
 		query: z.string().describe("Search query"),
 		maxResults: z.number().optional().describe("Max results (default 8, max 20)"),
 	}),
-	execute: async ({ query, maxResults }, ctx) => {
-		const cfg = ctx.toolConfig?.WebSearch;
+	execute: async ({ query, maxResults }: any, callerCtx: CallerCtx): Promise<ToolResult> => {
+		// tool-decoupling sub-5: callerCtx.toolConfig 仍是过渡字段(sub-3 起 OS 工具
+		// 共用此模式);B4 收敛时挪进 wrapper/host 显式填。
+		const cfg = callerCtx.toolConfig?.WebSearch;
 		const provider = cfg?.provider
 			? createSearchProvider({ type: cfg.provider, searxngUrl: cfg.searxngUrl, serpApiKey: cfg.serpApiKey, braveApiKey: cfg.braveApiKey })
 			: currentProvider;
@@ -315,29 +318,53 @@ export const webSearchTool = buildTool({
 		});
 
 		if (results.length === 0) {
-			throw new Error(`No search results found for: "${query}". DuckDuckGo may be blocked in your network — configure a different search provider (SearXNG, Brave, SerpAPI) in Tools > WebSearch.`);
+			// tool-decoupling(决策 3):返 ToolResult{ok:false} 而非 throw ——
+			// buildTool wrapper 把 ok:false 翻译成 throw(走统一失败路径);
+			// UI dispatcher 拿到结构化错误(UI 不崩)。
+			return {
+				ok: false,
+				error: `No search results found for: "${query}". DuckDuckGo may be blocked in your network — configure a different search provider (SearXNG, Brave, SerpAPI) in Tools > WebSearch.`,
+			};
 		}
 
-		const lines: string[] = [];
-		lines.push(`Found ${results.length} result${results.length > 1 ? "s" : ""} for: "${query}"`);
-		lines.push("");
-
-		for (let i = 0; i < results.length; i++) {
-			const r = results[i];
-			lines.push(`[${i + 1}] ${r.title}`);
-			lines.push(`    ${r.url}`);
-			if (r.snippet) lines.push(`    ${r.snippet}`);
-			lines.push("");
-		}
-
-		lines.push("Sources:");
-		for (const r of results) {
-			if (r.url) lines.push(`- [${r.title}](${r.url})`);
-		}
-
-		return lines.join(String.fromCharCode(10));
+		const text = formatWebSearchResults(query, results);
+		return { ok: true, data: { text, results } };
+	},
+	/**
+	 * tool-decoupling(决策 3):format(result.data) → 喂 LLM 的文本(Sources 列表)。
+	 * UI dispatcher 跳过它 → JSON 直渲染(results 数组)。
+	 */
+	format: (result: ToolResult): string => {
+		const data = result.data as { text?: string } | undefined;
+		return data?.text ?? (result.ok ? "" : (result.error ?? "Error"));
 	},
 });
+
+/**
+ * Render the LLM-facing text for a web-search result set (header + numbered
+ * results + Sources markdown links). Pure function — shared between execute
+ * (builds the text payload) and format (extracts it from the ToolResult).
+ */
+function formatWebSearchResults(query: string, results: SearchResult[]): string {
+	const lines: string[] = [];
+	lines.push(`Found ${results.length} result${results.length > 1 ? "s" : ""} for: "${query}"`);
+	lines.push("");
+
+	for (let i = 0; i < results.length; i++) {
+		const r = results[i];
+		lines.push(`[${i + 1}] ${r.title}`);
+		lines.push(`    ${r.url}`);
+		if (r.snippet) lines.push(`    ${r.snippet}`);
+		lines.push("");
+	}
+
+	lines.push("Sources:");
+	for (const r of results) {
+		if (r.url) lines.push(`- [${r.title}](${r.url})`);
+	}
+
+	return lines.join(String.fromCharCode(10));
+}
 
 // ---------------------------------------------------------------------------
 // HTML helpers

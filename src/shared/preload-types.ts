@@ -77,6 +77,17 @@ export interface WindowApi {
 	toolConfigGet: () => Promise<Record<string, Record<string, any>>>;
 	toolConfigSave: (config: Record<string, Record<string, any>>) => Promise<void>;
 	toolExecute: (toolName: string, input: Record<string, any>) => Promise<{ ok: boolean; result?: string; error?: string; elapsedMs: number }>;
+	/**
+	 * tool-decoupling sub-5(决策 4):UI 统一 dispatcher。取代 UI 用 REST ——
+	 * toolRun({tool, input, scope?, workingDir?}) → 后端 dispatchTool →
+	 * getToolExecute(tool)(input, {caller:"ui", ...}) → JSON。
+	 * 全工具暴露(无可见性策略);错误结构化返(UI 不崩)。
+	 */
+	toolRun: (
+		tool: string,
+		input: Record<string, any>,
+		opts?: { scope?: { projectId: string; readOnly?: boolean; allowedTools?: string[] }; workingDir?: string },
+	) => Promise<{ ok: boolean; result?: unknown; error?: string; elapsedMs: number }>;
 
 	// ── Providers ──
 	providersList: () => Promise<Provider[]>;

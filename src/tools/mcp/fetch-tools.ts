@@ -28,6 +28,7 @@ import { homedir } from "node:os";
 import TurndownService from "turndown";
 import { JSDOM } from "jsdom";
 import { buildTool } from "../tool-factory.js";
+import type { CallerCtx, ToolResult } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -507,9 +508,9 @@ export const webFetchTool = buildTool({
 		noCache: z.boolean().optional().describe("Skip cache, force fresh fetch"),
 		renderMode: z.enum(["fetch", "browser", "auto"]).optional().describe("Override render mode: fetch=HTTP only, browser=render JS, auto=detect SPA"),
 	}),
-	execute: async (input, ctx) => {
+	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult> => {
 		const { url, headers } = input;
-		const config = ctx.toolConfig?.WebFetch ?? {};
+		const config = callerCtx.toolConfig?.WebFetch ?? {};
 		const fmt = input.format ?? config.format ?? "markdown";
 		const timeoutSec = input.timeout ?? config.timeout ?? 30;
 		const retainImages = input.retainImages ?? config.retainImages ?? true;
@@ -519,6 +520,12 @@ export const webFetchTool = buildTool({
 		const renderMode = input.renderMode ?? config.renderMode ?? "auto";
 		const renderDelay = config.renderDelay ?? 3;
 
+		// tool-decoupling(决策 3):成功路径返 ToolResult{ok:true, data:{text, ...}};
+		// 错误路径(network/4xx/5xx/timeout)继续 throw —— buildTool wrapper 把它
+		// 翻译成统一失败路径(PostToolUseFailure + recordToolUsage false + rethrow)。
+		const ok = (text: string, extra: Record<string, unknown> = {}): ToolResult =>
+			({ ok: true, data: { text, ...extra } });
+
 		// Step 1: Check cache
 		const cacheKey = urlHash(url);
 		if (!noCache && fmt !== "json") {
@@ -526,7 +533,7 @@ export const webFetchTool = buildTool({
 			if (cached !== null) {
 				let result = cached;
 				result = appendSummaries(result, input, url);
-				return handleLargeResult(result);
+				return ok(handleLargeResult(result), { cached: true });
 			}
 		}
 
@@ -555,7 +562,10 @@ export const webFetchTool = buildTool({
 					}
 					const ext = mimeToExt(ct);
 					const path = persistBinary(buf, ext);
-					return `Binary content saved to: ${path}\nSize: ${(buf.byteLength / 1024).toFixed(1)}KB\nType: ${ct}`;
+					return ok(
+						`Binary content saved to: ${path}\nSize: ${(buf.byteLength / 1024).toFixed(1)}KB\nType: ${ct}`,
+						{ binaryPath: path, contentType: ct },
+					);
 				}
 
 				// JSON format — return directly
@@ -571,7 +581,7 @@ export const webFetchTool = buildTool({
 					}
 					const json = await resp.json();
 					const result = JSON.stringify(json, null, 2);
-					return handleLargeResult(result);
+					return ok(handleLargeResult(result), { format: "json" });
 				}
 
 				html = await resp.text();
@@ -618,7 +628,7 @@ export const webFetchTool = buildTool({
 			// Step 4: Append summaries
 			result = appendSummaries(result, input, html);
 
-			return handleLargeResult(result);
+			return ok(handleLargeResult(result), { format: fmt });
 		} catch (err: any) {
 			const msg = err.message ?? String(err);
 			if (/HTTP (401|403)/.test(msg)) {
@@ -644,6 +654,14 @@ export const webFetchTool = buildTool({
 			}
 			throw new Error(`Failed to fetch ${url}: ${msg}`);
 		}
+	},
+	/**
+	 * tool-decoupling(决策 3):format(result.data) → 喂 LLM 的文本(渲染后的 markdown/html/text)。
+	 * UI dispatcher 跳过它 → JSON 直渲染(text + format + binaryPath)。
+	 */
+	format: (result: ToolResult): string => {
+		const data = result.data as { text?: string } | undefined;
+		return data?.text ?? (result.ok ? "" : (result.error ?? "Error"));
 	},
 });
 

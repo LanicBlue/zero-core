@@ -22,6 +22,7 @@
 //
 import { z } from "zod";
 import { buildTool } from "../tool-factory.js";
+import type { CallerCtx, ToolResult } from "../types.js";
 
 const thoughtHistories = new Map<string, { thought: string; thoughtNumber: number; totalThoughts: number; status: string }[]>();
 
@@ -41,7 +42,7 @@ export const sequentialThinkingTool = buildTool({
 		totalThoughts: z.number().int().min(1).describe("Estimated total thoughts needed"),
 		key: z.string().optional().describe("Optional key to group thoughts by problem/topic"),
 	}),
-	execute: async ({ thought, nextThoughtNeeded, thoughtNumber, totalThoughts, key }) => {
+	execute: async ({ thought, nextThoughtNeeded, thoughtNumber, totalThoughts, key }: any, _callerCtx: CallerCtx): Promise<ToolResult> => {
 		const groupKey = key ?? "default";
 		let history = thoughtHistories.get(groupKey);
 		if (!history) {
@@ -70,6 +71,15 @@ export const sequentialThinkingTool = buildTool({
 			thoughtHistories.delete(groupKey);
 		}
 
-		return lines.join("\n");
+		const text = lines.join("\n");
+		return { ok: true, data: { text, entry, groupKey } };
+	},
+	/**
+	 * tool-decoupling(决策 3):format(result.data) → 喂 LLM 的文本。
+	 * UI dispatcher 跳过它 → JSON 直渲染(entry + groupKey)。
+	 */
+	format: (result: ToolResult): string => {
+		const data = result.data as { text?: string } | undefined;
+		return data?.text ?? (result.ok ? "" : (result.error ?? "Error"));
 	},
 });

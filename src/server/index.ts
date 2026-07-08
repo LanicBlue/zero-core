@@ -74,8 +74,8 @@ import { createWikiRouter as createWikiBrowserRouter, createWorkspaceDocHandler 
 import { AnalystService } from "./analyst-service.js";
 import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
 import { ALL_TOOLS, registerRuntimeTools } from "../tools/index.js";
-import { getToolExecute } from "../tools/tool-factory.js";
-import type { ToolExecutionContext } from "../runtime/types.js";
+// tool-decoupling sub-5(决策 4):UI 统一 dispatcher —— 取代 UI 用 REST。
+import { dispatchTool } from "./tool-dispatcher.js";
 import { getCookieCount, clearCookies } from "../tools/mcp/fetch-tools.js";
 // tool-decoupling sub-1: 注册 app 级服务实例到各模块的 getter/setter 单例。
 import { registerServerInstances } from "./runtime-instances.js";
@@ -865,32 +865,42 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 模板统一:role-template 通道已移除 —— role 身份模板并入 TemplateStore
 	// (/api/templates),AgentRegistry 工具与 UI Templates 页面读同一张表。
 
-	// Tool execute
+	// Tool execute — tool-decoupling sub-5(决策 4):统一走 dispatcher。
+	//
+	// /api/tool-execute(旧,Tools 页 + ipc-proxy tool:execute 仍用)与
+	// /api/tool-run(sub-5 新,IPC tool:run 用)都经 dispatchTool —— 同一入口,
+	// 同一 getToolExecute,返同一 ToolResult JSON。agent(buildTool wrapper)/
+	// UI(dispatcher)/ [MCP 后续] 三 host 调同一原始 execute(acceptance-5 #6)。
+	//
+	// dispatcher 自带错误捕获(工具抛错 → {ok:false, error},UI 不崩)。
 	app.post("/api/tool-execute", async (req, res) => {
-		const { toolName, input } = req.body;
-		const toolDef = ALL_TOOLS[toolName];
-		if (!toolDef) return res.json({ ok: false, error: `Tool not found: ${toolName}`, elapsedMs: 0 });
-
-		const execute = getToolExecute(toolDef);
-		if (!execute) return res.json({ ok: false, error: `Tool not testable: ${toolName}`, elapsedMs: 0 });
-
+		const { toolName, input } = req.body ?? {};
 		const config = registry.getToolConfig();
-		const toolCtx: ToolExecutionContext = {
+		const result = await dispatchTool({
+			tool: toolName,
+			input,
 			workingDir: workspaceConfig.workspaceDir,
-			agentId: "__test__",
-			emit: () => {},
-			db: sessionDB,
-			readScope: workspaceConfig.readScope ?? "filesystem",
 			toolConfig: config,
-		};
+			readScope: workspaceConfig.readScope ?? "filesystem",
+		});
+		res.json(result);
+	});
 
-		const t0 = Date.now();
-		try {
-			const result = await execute(input, toolCtx);
-			res.json({ ok: true, result, elapsedMs: Date.now() - t0 });
-		} catch (err: any) {
-			res.json({ ok: false, error: err.message, elapsedMs: Date.now() - t0 });
-		}
+	// tool-decoupling sub-5(决策 4):UI 统一 dispatcher 入口。
+	// UI → ipc.invoke("tool:run", {tool, input, scope?, workingDir?}) → 这里。
+	// 全工具暴露(无可见性策略);session 工具无 loop 状态 → 返默认/示例值(G1)。
+	app.post("/api/tool-run", async (req, res) => {
+		const { tool, input, scope, workingDir } = req.body ?? {};
+		const config = registry.getToolConfig();
+		const result = await dispatchTool({
+			tool,
+			input,
+			scope,
+			workingDir: workingDir ?? workspaceConfig.workspaceDir,
+			toolConfig: config,
+			readScope: workspaceConfig.readScope ?? "filesystem",
+		});
+		res.json(result);
 	});
 
 	// WebFetch cookie ops (login stays in Electron)

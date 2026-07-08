@@ -46,6 +46,11 @@ const api: WindowApi = {
 	toolConfigGet: () => ipcRenderer.invoke("tool-config:get"),
 	toolConfigSave: (config) => ipcRenderer.invoke("tool-config:save", config),
 	toolExecute: (toolName, input) => ipcRenderer.invoke("tool:execute", { toolName, input }),
+	// tool-decoupling sub-5(决策 4):UI 统一 dispatcher —— 取代 UI 用的 REST。
+	// toolRun({tool, input, scope?, workingDir?}) → 后端 /api/tool-run →
+	// dispatchTool → getToolExecute(tool)(input, {caller:"ui", ...}) → JSON。
+	// 全工具暴露(无可见性策略);错误结构化返(UI 不崩)。
+	toolRun: (tool, input, opts?) => ipcRenderer.invoke("tool:run", { tool, input, scope: opts?.scope, workingDir: opts?.workingDir }),
 
 	// ─── Providers ───────────────────────────────────
 	providersList: () => ipcRenderer.invoke("providers:list"),

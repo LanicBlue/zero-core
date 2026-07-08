@@ -302,50 +302,58 @@ export interface CallerCtx {
 	 */
 	emit?: (event: any) => void;
 
-	// ─── 过渡字段(sub-3,sub-4/5 收敛后删)──────────────────────────────
-	// 这些字段在最终设计里要么并入 scope(决策 G5)、要么 loop 侧消化掉。
-	// sub-3 让工具读 callerCtx 而非 ToolExecutionContext,但 ctxToCallerCtx
-	// 仍从旧 ctx 把它们桥过来;sub-4/5 把 scope/workspaceDir/toolConfig 改成
-	// 由 host 在调用点显式填(或并入 scope)。
+	// ─── host 注入的 session 级配置 / scope 字段(sub-5 收敛后保留)──────
+	// 这些字段曾标"sub-3 过渡,sub-4/5 收敛后删"。sub-5 复审结论:**保留** ——
+	// 它们都是合法的 host 注入字段(决策 G5:工具不自查,host 解析后注入),只是
+	// 最终形态原计划并入 `scope`(G5 的 `{projectId, readOnly?, allowedTools?}`)
+	// 或经 host 显式 input。但 scope 结构扩展(readScope 枚举 / wikiAnchorNodeIds
+	// 数组 / contextBundle 多字段)+ AgentLoop 侧 sendProjectPrompt 重接 scope 注入
+	// 是 sub-5 范围外的更大重构(牵动 Wiki/Flow/Orchestrate/OS 多工具)。当前所有
+	// 迁移工具都按这些字段的名直读,行为稳定 —— 故 sub-5 去"过渡"标记,正名保留,
+	// 待后续 scope 结构扩展时再统一并入(避免半完成的双形态混乱)。
 	/**
-	 * sub-3 过渡:per-tool 配置默认值(Read.max_lines / Grep.head_limit / Shell.timeout …)。
-	 * loop 从 toolPolicy 解出后注入;工具用它取"未传参时的默认"。sub-4/5 收敛为
-	 * host 解析后直接传 input 字段(或并入 scope)。
+	 * Per-tool 配置默认值(Read.max_lines / Grep.head_limit / Shell.timeout /
+	 * WebSearch.provider …)。loop 从 toolPolicy 解出后注入;工具用它取"未传参时
+	 * 的默认"。保留理由:8 个 OS/web/thinking 工具(bash, file-read/write/edit,
+	 * grep, glob, task-list, web-search, web-fetch)直读此字段,挪走需要逐工具
+	 * 改默认源 + 单例化 toolConfig(它是 per-policy 的,不是 app 级)。后续若把
+	 * toolPolicy 单例化,工具改读 getXxx;在此之前保留。
 	 */
 	toolConfig?: Record<string, Record<string, any>>;
 	/**
-	 * sub-3 过渡:文件访问范围(workspace = 限制在 workspaceDir 内 / filesystem = 不限)。
+	 * 文件访问范围(workspace = 限制在 workspaceDir 内 / filesystem = 不限)。
 	 * loop 从 session 配置注入;OS 工具(Read/Grep/Glob/Edit/Write)用它做 workspace
-	 * 边界检查。sub-4/5 并入 scope.readOnly / 路径白名单。
+	 * 边界检查。**保留理由**:并入 scope 需要扩 CallerScope 结构加 readScope 枚举
+	 * 字段(scope.readOnly 是 boolean,语义不同)。当前 3 工具直读,稳定。
 	 */
 	readScope?: "filesystem" | "workspace";
 	/**
-	 * sub-3 过渡(Wiki scope 回退):本 session 解析出的 wiki anchor node id 集。
-	 * G5 说 scope 应是 host 解析的 `{projectId, readOnly}`,但 AgentLoop 侧还没填
-	 * scope(那是 sendProjectPrompt 的事,sub-4/5 接)。过渡期 Wiki 工具从
+	 * Wiki scope 回退:本 session 解析出的 wiki anchor node id 集。Wiki 工具从
 	 * callerCtx.scope 取;scope 为空时回退到这组 anchor id(保持现有 wiki-anchor
-	 * 注入逻辑不回归)。sub-4/5 把它换成 scope 后删此字段。
+	 * 注入逻辑)。**保留理由**:AgentLoop 侧还没填 callerCtx.scope(那是
+	 * sendProjectPrompt 重接的事,sub-5 范围外);删了 Wiki 会丢读/写范围。
 	 */
 	wikiAnchorNodeIds?: string[];
 	/**
-	 * sub-3 过渡:session context bundle({projectId, workspaceDir, wikiRootNodeId} 等)。
-	 * loop 从 config.contextBundle 注入;部分工具(Flow 用 workspaceDir 写 requirement
-	 * 文档)读它。sub-4/5 收敛为 host 显式填 workingDir + scope。
+	 * Session context bundle({projectId, workspaceDir, wikiRootNodeId} 等)。loop
+	 * 从 config.contextBundle 注入;Flow/Orchestrate 工具读它取 workspaceDir(写
+	 * requirement 文档)+ projectId + wikiRootNodeId。**保留理由**:多个字段捆绑,
+	 * 拆进 workingDir + scope.projectId 需逐工具改 + Flow 取 wikiRootNodeId 仍要
+	 * 单独字段。当前 3 工具(flow/orchestrate 两处)直读 bundle,稳定。
 	 */
 	contextBundle?: { projectId?: string; workspaceDir?: string; wikiRootNodeId?: string; [k: string]: unknown };
 	/**
-	 * sub-3 过渡:本 session 的 project id(loop 从 projectContext 注入)。Wiki scope
-	 * 回退 + 工具按 project 取数据时用。sub-4/5 并入 scope.projectId。
+	 * 本 session 的 project id(loop 从 projectContext 注入)。Wiki scope 回退 +
+	 * Flow/Orchestrate 按 project 取数据时用。**保留理由**:并入 scope.projectId
+	 * 需 AgentLoop 侧填 scope(同 wikiAnchorNodeIds)。当前正名(非过渡)保留。
 	 */
 	projectId?: string;
 
-	// ─── sub-4 过渡:project-flow / Orchestrate 的 session 状态(loop 注入)────
-	// 这些字段是 PM/Lead session 才有的 handle,主体是 AgentService 经
-	// capabilityHandlesFor 注入到 SessionConfig → toolContext,再 ctxToCallerCtx 桥过来。
-	// sub-5+ 收敛:flowActions + gitIntegration + pmService 全部下沉到单例
-	// (FlowActions 自己就接 requirementStore / pmService);Orchestrate 的 planStore /
-	// manifestStore 亦然。activeRequirementId / featureWorkspace 是 session 作用域状态
-	// (loop 持有),sub-5+ 经访问器或 host 显式填。
+	// ─── project-flow / Orchestrate 的 session 状态(loop 注入)────────
+	// PM/Lead session 才有的 handle,主体经 capabilityHandlesFor 注入到
+	// SessionConfig → AgentLoop.buildCallerCtx 桥过来(sub-5 B2 起 AgentLoop 直建)。
+	// 这些字段是 loop 持有的 session 作用域状态,工具经 callerCtx 读 —— 不是 app 级
+	// 单例(FlowActions 是 per-workspace,Orchestrate stores 是 per-lead-session)。
 	/** Flow 工具的共享后端(create/list/get/transition/verify;agent-service 注入)。 */
 	flowActions?: any;
 	/** Orchestrate 的 plan store(lead session 注入)。 */

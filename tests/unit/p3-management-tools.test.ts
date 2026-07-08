@@ -91,19 +91,20 @@ function makeExec(tool: any) {
 const execProject = makeExec(projectTool);
 const execCron = makeExec(cronTool);
 const execWiki = makeExec(wikiTool);
+// tool-decoupling sub-5:agentRegistryTool 已迁(migrated),与 Project/Cron/Wiki
+// 同走 makeExec(runTool 同时拿 JSON + format 后文本)。
+const execAgent = makeExec(agentRegistryTool);
 // 拿完整 {json, text} 的 helper(少数用例断言 JSON 边用)。
 const execJSON = {
 	Project: (input: any, ctx: any) => runTool(projectTool, input, ctx),
 	Cron: (input: any, ctx: any) => runTool(cronTool, input, ctx),
 	Wiki: (input: any, ctx: any) => runTool(wikiTool, input, ctx),
 };
-// agentRegistry 仍是 legacy(string 返值)→ 直接 execute,parse。
-const execAgent = getToolExecute(agentRegistryTool)!;
 
 const SCHED_DAILY: CronSchedule = { mode: "interval", everyMs: 86_400_000 };
 
-// parse:string→JSON(legacy execAgent)。迁移工具的文本(format 后)对 Project/
-// Cron 是 JSON.dump,对 Wiki 是渲染文本 —— 用例里 parse 仅对 Project/Cron 用。
+// parse:string→JSON。迁移工具的文本(format 后)对 Project/Cron/Agent 是
+// JSON.dump,对 Wiki 是渲染文本 —— 用例里 parse 仅对 Project/Cron/Agent 用。
 function parse(s: unknown): any {
 	return typeof s === "string" ? JSON.parse(s) : s;
 }

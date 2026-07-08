@@ -119,6 +119,9 @@ const R: Record<string, RouteMapping> = {
 	"tool-config:get":  { method: "GET", path: "/api/config/tool-config", buildReq: () => ({}) },
 	"tool-config:save": { method: "PUT", path: "/api/config/tool-config", buildReq: (config) => ({ body: config }) },
 	"tool:execute":     { method: "POST", path: "/api/tool-execute", buildReq: ({ toolName, input }) => ({ body: { toolName, input } }) },
+	// tool-decoupling sub-5(决策 4):UI 统一 dispatcher —— 取代 UI 用 REST。
+	// 全工具暴露;返结构化 ToolResult JSON(UI 直渲染)。
+	"tool:run":         { method: "POST", path: "/api/tool-run", buildReq: (tool, input, opts?) => ({ body: { tool, input, scope: opts?.scope, workingDir: opts?.workingDir } }) },
 
 	// Sessions
 	"sessions:list":    { method: "GET", path: "/api/sessions/:agentId", buildReq: (agentId) => ({ params: { agentId } }) },

@@ -149,99 +149,70 @@ function summarizeParams(input: unknown): unknown {
 }
 
 // ---------------------------------------------------------------------------
-// tool-decoupling(sub-2 过渡):map the legacy ToolExecutionContext (loop-injected
-// grab-bag of services + caller identity) into the target CallerCtx shape
-// (caller identity only — services read via singletons). sub-4 deletes this
-// once the loop passes CallerCtx directly.
+// tool-decoupling sub-5(B2):ctxToCallerCtx + 4 accessor builders DELETED.
+// AgentLoop now constructs CallerCtx directly (see AgentLoop.buildCallerCtx).
+// The wrapper reads callerCtx from experimental_context.buildCallerCtx(toolCallId);
+// legacy callers (tests / server tool-execute) that pass a bare ToolExecutionContext
+// get a fallback callerCtx via callerCtxFromLegacyCtx below.
 // ---------------------------------------------------------------------------
 
 /**
- * Build a TodoAccessor that proxies to the module-level `sessionTodos` Map in
- * todo-write.ts (the legacy per-session store, keyed by sessionId/agentId).
+ * Build a CallerCtx from a legacy ToolExecutionContext (fallback path).
  *
- * The accessor's job (G1) is "tool reads/writes its loop's todos via the
- * accessor — never reaches into loop internals." Here the loop's todos ARE the
- * todo-write.ts module Map (keyed by this ctx's sessionId), and the accessor
- * simply exposes read/replace over it. Without a sessionId the accessor
- * returns the empty list (no per-session key) — UI/external callers without a
- * real loop get a benign empty state, and TodoWrite creates an ephemeral entry
- * under their (missing) sessionId key (UI preview path).
+ * Production (AgentLoop) passes `experimental_context.buildCallerCtx(toolCallId)`
+ * — the loop owns callerCtx construction (B2). Tests and the server tool-execute
+ * endpoint still pass a bare ToolExecutionContext as experimental_context; this
+ * helper bridges it into a CallerCtx with the FULL field set (identity +
+ * transitional fields + delegateFns + agentResolvers + todos/taskRegistry
+ * accessors + project-flow session state), mirroring the deleted ctxToCallerCtx.
  *
- * We import the read/write helpers lazily to keep tool-factory decoupled from
- * the tool module at type-check time (todo-write.ts imports tool-factory.js —
- * a cycle; deferring the import to call time sidesteps it).
+ * Without this, Task-family / Orchestrate / Flow tools would see missing
+ * delegateFns in test/server paths and degrade (those tools are exercised by
+ * sub-4/sub-10 tests via bare-ctx runTool).
  */
-function buildTodosAccessor(ctx: ToolExecutionContext): TodoAccessor {
+function callerCtxFromLegacyCtx(ctx: ToolExecutionContext, toolCallId: string): CallerCtx {
 	const sessionId = ctx.sessionId;
 	const agentId = ctx.agentId;
-	return {
+
+	const todos: TodoAccessor = {
 		list: () => {
-			// Defer the import so callers that don't touch todos pay no cost, and
-			// so the type layer doesn't see the todo-write ↔ tool-factory cycle.
 			const mod = require("./todo-write.js") as {
 				getSessionTodos: (sessionId: string) => any[];
 			};
 			if (!sessionId && !agentId) return [];
-			// todo-write keys by sessionId ?? agentId ?? "_default"; mirror it.
 			const key = sessionId ?? agentId ?? "_default";
-			if (sessionId) return mod.getSessionTodos(sessionId);
-			// No sessionId (rare) — read via the helper that accepts sessionId
-			// shape: we fall back to the agentId key by reading the same Map.
 			return mod.getSessionTodos(key);
 		},
 		set: (items) => {
 			const mod = require("./todo-write.js") as {
 				setSessionTodosForCtx?: (sessionId: string | undefined, agentId: string | undefined, items: any[]) => void;
 			};
-			// Lazy: require the setter. todo-write exports it for the bridge.
 			mod.setSessionTodosForCtx?.(sessionId, agentId, items);
 		},
 	};
-}
 
-/**
- * Build a TaskRegistryAccessor that proxies to this loop's TaskRegistry
- * (SubagentDelegator.taskRegistry). The accessor exposes the narrow list/get
- * view (Task 工具族 / 委派类 用 delegateFns 取完整 TaskInfo;此处仅作"过 tool
- * 一圈"的快照读)。
- */
-function buildTaskRegistryAccessor(ctx: ToolExecutionContext): TaskRegistryAccessor | undefined {
-	// The loop exposes listTasks + getTaskResult on ctx; delegate to those.
-	// Without them (UI/external) the accessor is undefined → tools degrade.
-	if (!ctx.listTasks && !ctx.getTaskResult) return undefined;
-	return {
-		list: (filter) => {
-			const all = ctx.listTasks?.(filter) ?? [];
-			return all.map((t: any) => ({
-				id: t.id,
-				type: t.type,
-				task: t.task,
-				status: t.status,
-				targetAgentId: t.targetAgentId,
-			}));
-		},
-		get: (taskId) => {
-			const t = ctx.getTaskResult?.(taskId);
-			if (!t) return null;
-			return {
-				id: t.id,
-				type: t.type,
-				task: t.task,
-				status: t.status,
-				targetAgentId: t.targetAgentId,
-			};
-		},
-	};
-}
+	const taskRegistry: TaskRegistryAccessor | undefined =
+		(ctx.listTasks || ctx.getTaskResult)
+			? {
+				list: (filter) => {
+					const all = ctx.listTasks?.(filter) ?? [];
+					return all.map((t: any) => ({
+						id: t.id, type: t.type, task: t.task, status: t.status,
+						targetAgentId: t.targetAgentId,
+					}));
+				},
+				get: (taskId) => {
+					const t = ctx.getTaskResult?.(taskId);
+					if (!t) return null;
+					return {
+						id: t.id, type: t.type, task: t.task, status: t.status,
+						targetAgentId: t.targetAgentId,
+					};
+				},
+			}
+			: undefined;
 
-/**
- * Bridge the loop-injected delegation/suspend/recorder functions onto
- * callerCtx.delegateFns. The functions are passed through verbatim (same
- * signatures as on ToolExecutionContext) — sub-4's contract is "tool reads
- * callerCtx.delegateFns.X instead of ctx.X; behavior identical".
- */
-function buildDelegateFns(ctx: ToolExecutionContext): DelegateFns {
-	return {
+	const delegateFns: DelegateFns = {
 		delegateTask: ctx.delegateTask,
 		delegateTaskBackground: ctx.delegateTaskBackground,
 		getTaskResult: ctx.getTaskResult,
@@ -259,40 +230,13 @@ function buildDelegateFns(ctx: ToolExecutionContext): DelegateFns {
 		setWaitStartedAt: ctx.setWaitStartedAt,
 		setToolCallTaskId: ctx.setToolCallTaskId,
 	};
-}
 
-/**
- * Bridge the LIVE agent-record resolvers onto callerCtx.agentResolvers.
- * Verbatim from ctx (sub-4 transitional; sub-5+ collapses into getAgentService
- * + callerCtx.agentId per G4).
- */
-function buildAgentResolvers(ctx: ToolExecutionContext): AgentResolvers {
-	const subagents = (ctx as any).subagents as AgentResolvers["subagents"];
-	return {
+	const agentResolvers: AgentResolvers = {
 		resolveAgent: (ctx as any).resolveAgent,
 		resolveSubagentTarget: (ctx as any).resolveSubagentTarget,
-		subagents,
+		subagents: (ctx as any).subagents,
 	};
-}
 
-/**
- * Build a CallerCtx from the fields an AgentLoop currently puts on its
- * ToolExecutionContext. This is the **transitional** mapping: the loop still
- * threads the old ctx, but migrated tools (Platform, sub-2) take CallerCtx as
- * their second parameter and read services through module singletons.
- *
- * Mirrors the design's "loop 调:{sessionId, agentId, caller:"internal",
- * toolCallId, turnSeq, workingDir}" fill. emit is bridged from ctx.emit so
- * streaming-capable migrated tools can still flush progress (none yet, but the
- * field is wired so a future migrated Bash/Wait doesn't need a second edit).
- *
- * sub-4: also bridges the per-session accessors (todos / taskRegistry) and the
- * loop-injected delegation/suspend/recorder functions (delegateFns) + LIVE
- * agent resolvers (agentResolvers), plus the project-flow / Orchestrate session
- * state (flowActions / orchestratePlanStore / orchestrateManifestStore /
- * gitIntegration / activeRequirementId / featureWorkspace).
- */
-function ctxToCallerCtx(ctx: ToolExecutionContext, toolCallId: string): CallerCtx {
 	const callerCtx: CallerCtx = {
 		caller: "internal",
 		sessionId: ctx.sessionId,
@@ -300,20 +244,17 @@ function ctxToCallerCtx(ctx: ToolExecutionContext, toolCallId: string): CallerCt
 		toolCallId: toolCallId || ctx.currentToolCallId,
 		turnSeq: ctx.turnSeq,
 		workingDir: ctx.workingDir,
-		// sub-3 过渡字段(sub-4/5 收敛后删):从旧 ToolExecutionContext 桥过来,
-		// 让迁移工具继续读 toolConfig / readScope / wikiAnchorNodeIds / contextBundle /
-		// projectId —— 这些字段在最终设计里由 host 在调用点显式填(或并入 scope)。
+		// transitional fields (B4 collapses):
 		toolConfig: (ctx as any).toolConfig,
 		readScope: (ctx as any).readScope,
 		wikiAnchorNodeIds: (ctx as any).wikiAnchorNodeIds,
 		contextBundle: (ctx as any).contextBundle,
 		projectId: (ctx as any).projectId,
-		// sub-4: per-session accessors + delegation fns + agent resolvers.
-		todos: buildTodosAccessor(ctx),
-		taskRegistry: buildTaskRegistryAccessor(ctx),
-		delegateFns: buildDelegateFns(ctx),
-		agentResolvers: buildAgentResolvers(ctx),
-		// sub-4: project-flow / Orchestrate session state.
+		todos,
+		taskRegistry,
+		delegateFns,
+		agentResolvers,
+		// project-flow / Orchestrate session state:
 		flowActions: (ctx as any).flowActions,
 		orchestratePlanStore: (ctx as any).orchestratePlanStore,
 		orchestrateManifestStore: (ctx as any).orchestrateManifestStore,
@@ -321,53 +262,33 @@ function ctxToCallerCtx(ctx: ToolExecutionContext, toolCallId: string): CallerCt
 		activeRequirementId: (ctx as any).activeRequirementId,
 		featureWorkspace: (ctx as any).featureWorkspace,
 	};
-	// ctx.emit is the loop's streaming channel (runtime events → UI). Bridge it
-	// so the emit contract (CallerCtx.emit) reaches migrated streaming tools.
 	if (typeof (ctx as any).emit === "function") {
 		callerCtx.emit = (ctx as any).emit;
 	}
 	return callerCtx;
 }
 
+
 // ---------------------------------------------------------------------------
 // buildTool — factory that wraps AI SDK's tool() with metadata
 // ---------------------------------------------------------------------------
 
 /**
- * 工具原始执行函数。sub-2 起**双签名过渡**:
+ * 工具构建选项(tool-decoupling sub-5 收敛后单一形态)。
  *
- * - **未迁移工具**(legacy,多数):`(input, ctx: ToolExecutionContext) => Promise<string>`
- *   —— 直接返文本喂 LLM,buildTool 不调 format。`options.format` 缺省。
- * - **已迁移工具**(migrated,sub-2 起 Platform):`(input, callerCtx: CallerCtx) =>
- *   Promise<ToolResult>` —— 返结构化 JSON,buildTool 套 `format(JSON)` → 文本。
- *   `options.format` 必填。
+ * sub-2 起的过渡期里 buildTool 同时认两种签名(legacy string 返值 / migrated
+ * ToolResult + format),用判别联合 `BuildToolOptionsLegacy | BuildToolOptionsMigrated`
+ * 区分。sub-5 把所有工具迁完(sub-2..sub-5,A 把 agent-registry/web-search/
+ * sequential-thinking 收尾),过渡期结束 —— buildTool 只剩 migrated 形态:
  *
- * buildTool 据 options.format 是否存在分流。AgentLoop 仍传旧 ToolExecutionContext
- * 作为第二参(过渡);buildTool wrapper 在调 migrated execute 前把旧 ctx 映射成
- * CallerCtx(sub-4 彻底切后再删映射)。
+ * - `execute: (input, callerCtx: CallerCtx) => Promise<ToolResult>` —— 返结构化 JSON。
+ * - `format: (result: ToolResult) => string` —— 必填,把 JSON 转 LLM 文本。
  *
- * 两个变体用判别联合(format 是否存在区分),让未迁移工具的 ctx 仍是
- * ToolExecutionContext(它取 ctx 上几十个字段;若联合成 any 会丢类型检查),
- * migrated 工具的 ctx 是 CallerCtx(只取身份字段)。
+ * AgentLoop 仍传旧 ToolExecutionContext 作为 AI SDK experimental_context(过渡);
+ * buildTool wrapper 在调 execute 前把它经 `ctxToCallerCtx` 映射成 CallerCtx。
+ * sub-5 B2 把这步搬进 AgentLoop 直建 callerCtx,届时 `ctxToCallerCtx` 删。
  */
-export type BuildToolOptions<T extends ZodSchema> =
-	| BuildToolOptionsLegacy<T>
-	| BuildToolOptionsMigrated<T>;
-
-/** 未迁移工具:string 返值,无 format,ctx = ToolExecutionContext。 */
-export interface BuildToolOptionsLegacy<T extends ZodSchema> {
-	name: string;
-	description: string;
-	prompt?: string;
-	meta?: Partial<ToolMeta>;
-	configSchema?: ToolConfigField[];
-	inputSchema: T;
-	execute: (input: any, ctx: ToolExecutionContext) => Promise<string>;
-	format?: undefined;
-}
-
-/** 已迁移工具(migrated):JSON ToolResult 返值 + format,ctx = CallerCtx。 */
-export interface BuildToolOptionsMigrated<T extends ZodSchema> {
+export interface BuildToolOptions<T extends ZodSchema> {
 	name: string;
 	description: string;
 	prompt?: string;
@@ -375,11 +296,12 @@ export interface BuildToolOptionsMigrated<T extends ZodSchema> {
 	configSchema?: ToolConfigField[];
 	inputSchema: T;
 	/**
-	 * 工具原始执行函数(新签名)。返**结构化 JSON**(`ToolResult`);buildTool
-	 * wrapper 套 `format(JSON)` → 文本喂 LLM(JSON 不泄露给 LLM)。
+	 * 工具原始执行函数。返**结构化 JSON**(`ToolResult`);buildTool wrapper 套
+	 * `format(JSON)` → 文本喂 LLM(JSON 不泄露给 LLM)。
 	 *
-	 * 第二参是 CallerCtx —— buildTool 把 AgentLoop 传的旧 ToolExecutionContext
-	 * 映射成 CallerCtx 再调(sub-2 过渡,sub-4 删映射)。
+	 * 第二参是 CallerCtx(host 注入的调用者身份 + per-session 访问器)。
+	 * sub-2..sub-4 过渡期 buildTool 把 AgentLoop 传的旧 ToolExecutionContext 经
+	 * `ctxToCallerCtx` 映射成 CallerCtx 再调;sub-5 B2 起 AgentLoop 直建 callerCtx。
 	 */
 	execute: (input: any, callerCtx: CallerCtx) => Promise<ToolResult>;
 	/**
@@ -404,8 +326,19 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 		description: aiDescription,
 		inputSchema: options.inputSchema,
 		execute: async (input: any, opts: any) => {
-			const ctx = opts?.experimental_context as ToolExecutionContext | undefined;
+			// tool-decoupling sub-5(B2):experimental_context 现在是 AgentLoop 直建
+			// 的 host 对象 {ctx: ToolExecutionContext, buildCallerCtx: (id)=>CallerCtx}。
+			// 旧 ctx 仍是 wrapper 的 hook / rate-limit / usage-log 源;callerCtx 由
+			// AgentLoop 直建(不再经 ctxToCallerCtx 桥)。两路回退:旧调用方传纯
+			// ToolExecutionContext(测试 / server tool-execute)→ 兜底空 callerCtx。
+			const host = opts?.experimental_context;
+			const ctx = (host && typeof host === "object" && "ctx" in host
+				? (host as { ctx: ToolExecutionContext }).ctx
+				: host) as ToolExecutionContext | undefined;
 			const ctxOrEmpty = ctx ?? { workingDir: "", agentId: "", emit: () => {} };
+			const buildCallerCtx = (host && typeof host === "object" && "buildCallerCtx" in host
+				? (host as { buildCallerCtx: (id: string) => CallerCtx }).buildCallerCtx
+				: null);
 			const toolCallId = (opts?.toolCallId ?? opts?.id ?? "") as string;
 			// v0.8 (P3 §7.7 #4): wall-clock the tool call for tool_usage log.
 			const startTs = Date.now();
@@ -440,60 +373,56 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 				// delegated task with its parent tool-call id.
 				ctxOrEmpty.currentToolCallId = toolCallId || undefined;
 
-				// tool-decoupling(决策 2/3,sub-2 双返值过渡):
-				// - **migrated 工具**(options.format 是函数,如 Platform)→ 把旧
-				//   ToolExecutionContext 字段映射成 CallerCtx 再调 execute;execute
-				//   返结构化 ToolResult,wrapper 套 format → 文本喂 LLM(JSON 不泄露)。
-				// - **未迁移工具**(无 format)→ 直传旧 ctx,execute 返 string,旧行为。
-				// sub-4 删旧工具后此分支收敛为 migrated-only,ctx 映射也删。
+				// tool-decoupling(决策 2/3,sub-5 收敛):
+				// 所有工具都 migrated —— execute 返 ToolResult,wrapper 套 format(JSON)
+				// → 文本喂 LLM(JSON 不泄露给 LLM)。callerCtx 由 AgentLoop 直建
+				// (B2:experimental_context.buildCallerCtx);旧 ctx 仅供 wrapper 的
+				// hook / rate-limit / usage-log 读。
 				//
-				// The typeof check is the runtime discriminant for the BuildToolOptions
-				// union (format present = migrated). Capturing into a local avoids
-				// re-narrowing on every options.* access below.
-				const fmt = options.format;
-				const isMigrated = typeof fmt === "function";
-				const raw: string | ToolResult = isMigrated
-					? await (options as BuildToolOptionsMigrated<typeof options.inputSchema>).execute(input, ctxToCallerCtx(ctxOrEmpty, toolCallId))
-					: await (options as BuildToolOptionsLegacy<typeof options.inputSchema>).execute(input, ctxOrEmpty);
+				// Fallback:测试 / server tool-execute 直传旧 ToolExecutionContext
+				// (无 buildCallerCtx)→ callerCtxFromLegacyCtx 桥完整 callerCtx
+				// (身份 + transitional + delegateFns + agentResolvers + 访问器 +
+				// session 状态),等同 sub-4 前 ctxToCallerCtx。
+				const callerCtx: CallerCtx = buildCallerCtx
+					? buildCallerCtx(toolCallId)
+					: callerCtxFromLegacyCtx(ctxOrEmpty, toolCallId);
+				const raw = await options.execute(input, callerCtx);
 
-				// Normalize to the LLM-facing text:
-				// - migrated: raw is ToolResult → format(JSON)。
-				// - legacy:   raw is string → 直传。
-				// A migrated tool that returns a string (shouldn't happen, but defensive)
-				// is treated as pre-formatted text.
-				let result: string;
-				// tool-decoupling(sub-3 fix):migrated 工具返 {ok:false} 时按失败语义处理。
+				// tool-decoupling(sub-3 fix):工具返 {ok:false} 时按失败语义处理。
 				// 此前 wrapper 把 ok:false 当成功(走 PostToolUse + recordToolUsage true),
 				// 而 AI SDK 因 execute 没 throw → 发 tool-result 而非 tool-error → agent-loop
 				// 的 PostToolUseFailure 路径(含 isError=true 持久化 + tool_execution success=false)
 				// 完全不触发。修复:ok:false 时把 format 后的文本包成 Error 抛出,让它走与
-				// legacy throw 工具完全相同的失败路径(catch 块)——单点失败语义,无双触发。
-				// migrated 工具自身的 "返 JSON" 契约不受影响(execute 仍返 ToolResult);
+				// 抛错工具完全相同的失败路径(catch 块)——单点失败语义,无双触发。
+				// 工具自身的 "返 JSON" 契约不受影响(execute 仍返 ToolResult);
 				// 这里是 host wrapper 层把 "工具自报失败" 翻译成 "工具调用失败"。
-				let migratedFailureText: string | undefined;
-				if (isMigrated && raw && typeof raw === "object" && typeof (raw as ToolResult).ok === "boolean") {
-					result = fmt((raw as ToolResult));
+				let result: string;
+				let failureText: string | undefined;
+				if (raw && typeof raw === "object" && typeof (raw as ToolResult).ok === "boolean") {
+					result = options.format(raw as ToolResult);
 					if ((raw as ToolResult).ok === false) {
 						// Prefer the structured error (concise) when present; fall back
 						// to the formatted LLM-facing text so the LLM still sees a
 						// useful message via AI SDK's tool-error event.
-						migratedFailureText = (raw as ToolResult).error ?? result;
+						failureText = (raw as ToolResult).error ?? result;
 					}
 				} else if (typeof raw === "string") {
+					// Defensive: a tool returned a string instead of ToolResult
+					// (shouldn't happen post-migration). Treat as pre-formatted text.
 					result = raw;
 				} else {
-					// Defensive: migrated tool returned a non-ToolResult object without
-					// going through format — JSON-dump so the LLM still gets something.
+					// Defensive: tool returned a non-ToolResult object — JSON-dump so
+					// the LLM still gets something.
 					try { result = JSON.stringify(raw, null, 2); }
 					catch { result = String(raw); }
 				}
 
-				// Migrated tool reported failure → throw so the catch block runs the
-				// unified failure side (PostToolUseFailure + recordToolUsage false +
-				// release limiter + rethrow → AI SDK emits tool-error → agent-loop
-				// persists isError=true and tool-execution-hooks records success=false).
-				if (migratedFailureText !== undefined) {
-					throw new Error(migratedFailureText);
+				// Tool reported failure → throw so the catch block runs the unified
+				// failure side (PostToolUseFailure + recordToolUsage false + release
+				// limiter + rethrow → AI SDK emits tool-error → agent-loop persists
+				// isError=true and tool-execution-hooks records success=false).
+				if (failureText !== undefined) {
+					throw new Error(failureText);
 				}
 
 				await triggerHooks("PostToolUse", {
@@ -575,18 +504,15 @@ export function buildTool<T extends ZodSchema>(options: BuildToolOptions<T>) {
 		writable: false,
 	});
 
-	// tool-decoupling(决策 3,sub-2): expose format on the tool object so non-
-	// agent hosts (MCP server / UI dispatcher, sub-5) can pick it up the same
-	// way buildTool's wrapper does. Only present on migrated tools (Platform);
-	// absent on legacy string-returning tools. Hosts that need text call
-	// getToolFormat(tool)(result) → string; hosts that want JSON skip it.
-	if (options.format) {
-		Object.defineProperty(toolDef, "__format", {
-			value: options.format,
-			enumerable: false,
-			writable: false,
-		});
-	}
+	// tool-decoupling(决策 3):expose format on the tool object so non-agent hosts
+	// (MCP server / UI dispatcher) can pick it up the same way buildTool's wrapper
+	// does. Hosts that need text call getToolFormat(tool)(result) → string; hosts
+	// that want JSON skip it. Post-sub-5 collapse this is always present.
+	Object.defineProperty(toolDef, "__format", {
+		value: options.format,
+		enumerable: false,
+		writable: false,
+	});
 
 	return toolDef;
 }
@@ -619,15 +545,14 @@ export function getToolInputFields(toolObj: any): any[] {
 	return toolObj?.__inputFields ?? [];
 }
 
-export function getToolExecute(toolObj: any): ((input: any, ctx: any) => Promise<string | ToolResult>) | undefined {
+export function getToolExecute(toolObj: any): ((input: any, callerCtx: any) => Promise<ToolResult>) | undefined {
 	return toolObj?.__execute;
 }
 
 /**
- * tool-decoupling(sub-2): read a migrated tool's format() (decision 3). Returns
- * undefined for legacy string-returning tools (no format attached). Hosts that
- * need the LLM/MCP text face call this + execute; hosts that want JSON (UI
- * dispatcher) skip it.
+ * tool-decoupling(决策 3):read a tool's format() —— 把结构化 ToolResult 转 LLM 文本。
+ * sub-5 收敛后所有工具都 migrated,format 总在。Hosts that need the LLM/MCP text
+ * face call this + execute; hosts that want JSON (UI dispatcher) skip it.
  */
 export function getToolFormat(toolObj: any): ((result: ToolResult) => string) | undefined {
 	return toolObj?.__format;

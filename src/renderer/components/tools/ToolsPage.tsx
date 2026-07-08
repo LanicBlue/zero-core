@@ -200,7 +200,11 @@ export default function ToolsPage() {
 		setTesting(true);
 		setTestResult(null);
 		try {
-			const result = await api().toolExecute(selected, testInput);
+			// tool-decoupling sub-5(决策 4):Tool 测试页改调统一 dispatcher
+			// (api().toolRun → ipc tool:run → /api/tool-run → dispatchTool)。
+			// 取代旧 toolExecute(仍保留作回退)。返结构一致({ok, result, elapsedMs}),
+			// 行为不回归 —— dispatcher 走 getToolExecute(原始 execute,返 JSON)。
+			const result = await api().toolRun(selected, testInput);
 			setTestResult(result);
 		} catch (err: any) {
 			setTestResult({ ok: false, error: err.message, elapsedMs: 0 });

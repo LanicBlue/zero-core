@@ -40,6 +40,8 @@ import type {
 	ToolExecutionContext,
 	TaskInfo,
 } from "./types.js";
+// tool-decoupling sub-5(B2):AgentLoop 直建 CallerCtx(不再经 ctxToCallerCtx 桥)。
+import type { CallerCtx, TodoAccessor, TaskRegistryAccessor, DelegateFns, AgentResolvers } from "../tools/types.js";
 import { resolveModel, getContextWindow } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
 import { buildToolsSet } from "../tools/index.js";
@@ -95,6 +97,18 @@ export class AgentLoop implements AgentRuntime {
 	private providers: RuntimeProviderConfig[];
 	private callbacks: RuntimeCallbacks;
 	private toolContext: ToolExecutionContext;
+	/**
+	 * tool-decoupling sub-5(B2):CallerCtx 直建于 AgentLoop —— 工具 execute 的
+	 * 第二参,host 注入的调用者身份 + per-session 访问器。experimental_context
+	 * 同时携带它(经 ToolExecHost 包成 {ctx, callerCtx})和旧 toolContext(供
+	 * buildTool wrapper 的 hook / rate-limit / usage-log 读)。删 ctxToCallerCtx 后
+	 * 这里的构建是 callerCtx 的唯一来源。
+	 *
+	 * 每次 streamText 调前重建(per-call toolCallId 不同);访问器闭包捕获
+	 * this.delegator / this.config —— 热重载突变(delegator 字段 / subagents /
+	 * wikiAnchors / toolConfig)经 this.* 自然反映。
+	 */
+	private callerCtx!: CallerCtx;
 	private delegator: SubagentDelegator;
 	private promptAssembler: SystemPromptAssembler;
 	private abortController: AbortController | null = null;
@@ -280,15 +294,11 @@ export class AgentLoop implements AgentRuntime {
 			// TaskGet(completed). Runtime→runtime; no DB hop.
 			getTaskRecentCalls: (taskId, n) => this.delegator.getTaskRecentCalls(taskId, n),
 			rateLimiter: new ToolRateLimiter(),
-			// Multi-Agent Workflow context
-			wikiStore: (config as any).wikiStore,
-			requirementStore: (config as any).requirementStore,
-			// v0.8 (M4) / project-flow F3: PmService handle for PM sessions —
-			// backs Flow.verify's compound close (PmService.submitCoverageVerdict
-			// → archivist merge) + Flow.create's PM-session path. The legacy
-			// CreateRequirementWithDoc tool was retired in F3 (file deleted F5).
-			pmService: (config as any).pmService,
-			taskStepStore: (config as any).taskStepStore,
+			// tool-decoupling sub-5(B3):app 级服务(wikiStore / requirementStore /
+			// pmService / taskStepStore / management)从 ToolExecutionContext 删除 —
+			// 工具直读 getter 单例(决策 1)。loop 仍从 config 解 capabilities,但
+			// 不再装进 ctx(避免"装了不用 + 单例漂移")。capabilityHandlesFor 仍把
+			// 这些 handles 注入 SessionConfig → 各工具 import getXxx 单例读最新实例。
 			projectId: config.projectContext?.projectId,
 			// v0.8 (读写同界): resolved wiki anchor node ids = read scope = write
 			// scope for the Wiki tool. Zero/global sessions include the global
@@ -302,8 +312,8 @@ export class AgentLoop implements AgentRuntime {
 			// so workflow tools (and downstream M1 cron / M3 notification) can
 			// read the current (projectId, workspaceDir, wikiRootNodeId).
 			contextBundle: config.contextBundle,
-			// v0.8 (P3): ManagementService handle for the zero role's action tools.
-			management: config.management,
+			// tool-decoupling sub-5(B3):`management` 已从 ToolExecutionContext 删除 —
+			// AgentRegistry/Project/Cron/Work 工具直读 getManagementService() 单例。
 			// v0.8 (P2 §11.5): subagents + resolver surfaced so the Orchestrate
 			// engine can resolve a DSL `task` node's agentTool name → target
 			// agent (replaces retired getAgentToolEntries resolver).
@@ -333,6 +343,134 @@ export class AgentLoop implements AgentRuntime {
 			// commitStep on the feature worktree (decision 21).
 			gitIntegration: (config as any).gitIntegration,
 		};
+	}
+
+	/**
+	 * tool-decoupling sub-5(B2):build the CallerCtx that migrated tool execute
+	 * reads as its 2nd arg. Replaces the old ctxToCallerCtx bridge — the loop
+	 * now constructs callerCtx directly from its own state (delegator / config /
+	 * recorder), so tool execute reads host-injected identity, not the legacy
+	 * service-grab-bag.
+	 *
+	 * Per-call (toolCallId varies per invocation). Accessor closures capture
+	 * `this` (the loop), so hot-reload mutations (subagents / wikiAnchors /
+	 * capabilities / toolConfig) reflect naturally — same as the old bridge,
+	 * which read from ctx at call time.
+	 *
+	 * Mirrors the design's "loop 调:{sessionId, agentId, caller:"internal",
+	 * toolCallId, turnSeq, workingDir, todos, taskRegistry, delegateFns,
+	 * agentResolvers, emit}" + the sub-4 project-flow / Orchestrate session
+	 * state (flowActions / orchestratePlanStore / orchestrateManifestStore /
+	 * gitIntegration / activeRequirementId / featureWorkspace). sub-5 transitional
+	 * fields (toolConfig / readScope / wikiAnchorNodeIds / contextBundle /
+	 * projectId) are still filled from this.toolContext — B4 collapses them.
+	 */
+	private buildCallerCtx(toolCallId: string): CallerCtx {
+		const ctx = this.toolContext;
+		const sessionId = ctx.sessionId;
+		const agentId = ctx.agentId;
+
+		// todos accessor(G1):proxy to the module-level sessionTodos Map in
+		// todo-write.ts, keyed by sessionId/agentId. Same shape as the old bridge.
+		const todosAccessor: TodoAccessor = {
+			list: () => {
+				const mod = require("../tools/todo-write.js") as {
+					getSessionTodos: (sessionId: string) => any[];
+				};
+				if (!sessionId && !agentId) return [];
+				const key = sessionId ?? agentId ?? "_default";
+				return mod.getSessionTodos(key);
+			},
+			set: (items) => {
+				const mod = require("../tools/todo-write.js") as {
+					setSessionTodosForCtx?: (sessionId: string | undefined, agentId: string | undefined, items: any[]) => void;
+				};
+				mod.setSessionTodosForCtx?.(sessionId, agentId, items);
+			},
+		};
+
+		// TaskRegistry accessor(G1):proxy to this loop's TaskRegistry snapshot view.
+		const taskRegistryAccessor: TaskRegistryAccessor | undefined =
+			(ctx.listTasks || ctx.getTaskResult)
+				? {
+					list: (filter) => {
+						const all = ctx.listTasks?.(filter) ?? [];
+						return all.map((t: any) => ({
+							id: t.id, type: t.type, task: t.task, status: t.status,
+							targetAgentId: t.targetAgentId,
+						}));
+					},
+					get: (taskId) => {
+						const t = ctx.getTaskResult?.(taskId);
+						if (!t) return null;
+						return {
+							id: t.id, type: t.type, task: t.task, status: t.status,
+							targetAgentId: t.targetAgentId,
+						};
+					},
+				}
+				: undefined;
+
+		// delegateFns(G1):verbatim pass-through of the loop's delegator/suspend/
+		// recorder functions. Same signatures as on ToolExecutionContext.
+		const delegateFns: DelegateFns = {
+			delegateTask: ctx.delegateTask,
+			delegateTaskBackground: ctx.delegateTaskBackground,
+			getTaskResult: ctx.getTaskResult,
+			listTasks: ctx.listTasks,
+			stopTask: ctx.stopTask,
+			abandonTask: ctx.abandonTask,
+			acknowledgeTask: ctx.acknowledgeTask,
+			requestTaskFinish: ctx.requestTaskFinish,
+			resumeTaskBackground: ctx.resumeTaskBackground,
+			getTaskRecentCalls: ctx.getTaskRecentCalls,
+			runBackground: ctx.runBackground,
+			suspendUntilWake: ctx.suspendUntilWake,
+			beginWait: ctx.beginWait,
+			endWait: ctx.endWait,
+			setWaitStartedAt: ctx.setWaitStartedAt,
+			setToolCallTaskId: ctx.setToolCallTaskId,
+		};
+
+		// agentResolvers(G1):LIVE agent-record resolvers for delegation tools.
+		const agentResolvers: AgentResolvers = {
+			resolveAgent: (ctx as any).resolveAgent,
+			resolveSubagentTarget: (ctx as any).resolveSubagentTarget,
+			subagents: (ctx as any).subagents,
+		};
+
+		const callerCtx: CallerCtx = {
+			caller: "internal",
+			sessionId: ctx.sessionId,
+			agentId: ctx.agentId,
+			toolCallId: toolCallId || ctx.currentToolCallId,
+			turnSeq: ctx.turnSeq,
+			workingDir: ctx.workingDir,
+			// sub-3 过渡字段(B4 收敛后并入 scope / host 显式填):
+			toolConfig: (ctx as any).toolConfig,
+			readScope: (ctx as any).readScope,
+			wikiAnchorNodeIds: (ctx as any).wikiAnchorNodeIds,
+			contextBundle: (ctx as any).contextBundle,
+			projectId: (ctx as any).projectId,
+			// per-session accessors + delegation fns + agent resolvers (G1).
+			todos: todosAccessor,
+			taskRegistry: taskRegistryAccessor,
+			delegateFns,
+			agentResolvers,
+			// sub-4: project-flow / Orchestrate session state.
+			flowActions: (ctx as any).flowActions,
+			orchestratePlanStore: (ctx as any).orchestratePlanStore,
+			orchestrateManifestStore: (ctx as any).orchestrateManifestStore,
+			gitIntegration: (ctx as any).gitIntegration,
+			activeRequirementId: (ctx as any).activeRequirementId,
+			featureWorkspace: (ctx as any).featureWorkspace,
+		};
+		// ctx.emit is the loop's streaming channel (runtime events → UI). Bridge it
+		// so the emit contract (CallerCtx.emit) reaches streaming-capable tools.
+		if (typeof (ctx as any).emit === "function") {
+			callerCtx.emit = (ctx as any).emit;
+		}
+		return callerCtx;
 	}
 
 	// ─── Public API ──────────────────────────────────────────────
@@ -957,9 +1095,12 @@ export class AgentLoop implements AgentRuntime {
 		// present or it fails at call time (capabilityHandlesFor warns).
 		if (patch.capabilities) {
 			const caps = patch.capabilities;
+			// tool-decoupling sub-5(B3):capability handles 不再写进 ToolExecutionContext
+			// (那些字段已删,工具直读单例);只同步到 SessionConfig,保留 capability
+			// hot-reload 语义(中程开关工具时 SessionConfig 仍带 handle,各工具的单例
+			// 也由 server/index.ts 启动时 setXxx 全局注册)。
 			const apply = (field: "management" | "wikiStore" | "requirementStore" | "pmService"): void => {
 				if (caps[field] !== undefined) {
-					(this.toolContext as any)[field] = caps[field];
 					(this.config as any)[field] = caps[field];
 				}
 			};
@@ -1347,7 +1488,14 @@ export class AgentLoop implements AgentRuntime {
 				messages: opts.messages,
 				tools: opts.tools,
 				abortSignal: this.abortController!.signal,
-				experimental_context: this.toolContext,
+				// tool-decoupling sub-5(B2):experimental_context 同时携带旧
+				// ToolExecutionContext(供 buildTool wrapper 的 hook / rate-limit /
+				// usage-log 读)+ AgentLoop 直建的 callerCtx 构造器(供 tool execute
+				// 拿 host 注入身份)。per-call 构建(toolCallId 每次 tool 调用不同)。
+				experimental_context: {
+					ctx: this.toolContext,
+					buildCallerCtx: (toolCallId: string) => this.buildCallerCtx(toolCallId),
+				},
 				...(Object.keys(opts.providerOptions).length > 0 ? { providerOptions: opts.providerOptions } : {}),
 			});
 
