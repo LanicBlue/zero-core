@@ -1,9 +1,9 @@
 # Issue:external-subagent-mcp
 
-- **状态**:① issues(问题记录)
+- **状态**:② design(讨论细化)
 - **提出**:2026-07-08
 - **类型**:改进(架构 / 集成)
-- **依赖**:[`../design/tool-decoupling/`](../design/tool-decoupling/)(工具纯函数化是地基)
+- **依赖**:[`../../archive/tool-decoupling/`](../../archive/tool-decoupling/)(工具纯函数化是地基,已合并)
 
 ## 问题
 
