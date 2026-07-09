@@ -16,9 +16,9 @@
 // CLI 入口 `main()` 负责 fs IO + 把读到的字符串/路径喂给 `validateSkill`,
 // 然后按 `problems`/`warnings` 打印 + 设 exit code。这样测函数不必 spawn node。
 //
-// ## 审查项(每项独立,逐条报错;warnings 不影响 exit code)
+// // ## 审查项(每项独立,逐条报错;warnings 不影响 exit code)
 //   1. SKILL.md 存在
-//   2. frontmatter 合法(`---` 包裹,且至少有一个 `key: value`)
+//   2. frontmatter 合法(`---` 包裹,且至少有一个 `key: value`;sub-14 支持块标量 `|`/`>`)
 //   3. frontmatter 有 name(非空)
 //   4. frontmatter 有 description(非空)—— 它是触发主机制,缺了 scanner 直接跳过
 //   5. description 不过短(< 10 字符)→ **warning**(可过严误伤,只提示)
@@ -49,8 +49,10 @@ const PATH_SAFE_ID_RE = /^[a-zA-Z0-9._-]+$/;
 
 /**
  * 轻量 YAML frontmatter 解析(对齐 scanner.parseSkillFrontmatterFull):
- * 仅 `---\n...\n---` 包裹的顶层 `key: value` 标量行;value 去配对引号。
- * 无 frontmatter → 返回 {}。不处理嵌套/数组/多行块。
+ * `---\n...\n---` 包裹的顶层 `key: value` 标量行;value 去配对引号;
+ * **sub-14**: 支持 YAML 块标量(`|`/`|-`/`|+`/`>`/`>-`/`>+`)—— 修复 claude-api
+ * `description: |-` 多行 description 被抓成字面 `|-` 的 parser bug。
+ * 无 frontmatter → 返回 {}。嵌套/列表项仍跳过(简单启发式)。
  */
 function parseFrontmatter(content) {
 	const normalized = String(content).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -58,14 +60,33 @@ function parseFrontmatter(content) {
 	const endIdx = normalized.indexOf("\n---", 3);
 	if (endIdx === -1) return {};
 	const block = normalized.slice(4, endIdx);
+	const lines = block.split("\n");
 	const out = {};
-	for (const line of block.split("\n")) {
-		if (/^\s/.test(line)) continue; // 跳过缩进行(嵌套/列表)
+
+	let i = 0;
+	while (i < lines.length) {
+		const line = lines[i];
+		i++;
+		if (line === "" || /^\s/.test(line)) continue; // 跳过空行/缩进行
 		const m = line.match(/^([\w-]+):\s*(.*)$/);
 		if (!m) continue;
 		const key = m[1];
 		let value = m[2].trim();
-		if (
+
+		// 块标量(sub-14)。
+		const blockMatch = value.match(/^([|>])([-+]?)\s*(?:#.*)?$/);
+		if (blockMatch) {
+			const indicator = blockMatch[1];
+			const chomp = blockMatch[2];
+			const blockLines = [];
+			while (i < lines.length) {
+				const next = lines[i];
+				if (next !== "" && !/^\s/.test(next)) break;
+				blockLines.push(next);
+				i++;
+			}
+			value = joinBlockScalar(blockLines, indicator, chomp);
+		} else if (
 			(value.startsWith('"') && value.endsWith('"')) ||
 			(value.startsWith("'") && value.endsWith("'"))
 		) {
@@ -74,6 +95,56 @@ function parseFrontmatter(content) {
 		if (key) out[key] = value;
 	}
 	return out;
+}
+
+/**
+ * sub-14: 块标量合成(与 scanner.joinBlockScalar 对齐)。
+ * indicator `|`=literal(保留换行)/ `>`=folded(折成空格);chomp `-`/`+`/无。
+ * 仅展示用途,剥首尾空白。
+ */
+function joinBlockScalar(blockLines, indicator, chomp) {
+	let minIndent = Infinity;
+	for (const ln of blockLines) {
+		if (ln === "") continue;
+		const m = ln.match(/^(\s*)/);
+		const indent = m ? m[1].length : 0;
+		if (indent < minIndent) minIndent = indent;
+	}
+	if (minIndent === Infinity) minIndent = 0;
+	const stripped = blockLines.map((ln) => (ln === "" ? "" : ln.slice(minIndent)));
+
+	let joined;
+	if (indicator === ">") {
+		const out = [];
+		let buf = [];
+		const flush = () => {
+			if (buf.length > 0) {
+				out.push(buf.join(" "));
+				buf = [];
+			}
+		};
+		for (const ln of stripped) {
+			if (ln === "") {
+				flush();
+				out.push("");
+			} else {
+				buf.push(ln);
+			}
+		}
+		flush();
+		joined = out.join("\n");
+	} else {
+		joined = stripped.join("\n");
+	}
+
+	if (chomp === "-") {
+		joined = joined.replace(/\n+$/, "");
+	} else if (chomp === "+") {
+		// keep 全部尾部换行。
+	} else {
+		joined = joined.replace(/\n+$/, "\n");
+	}
+	return joined.replace(/^\n+/, "").replace(/\n+$/, "");
 }
 
 /**

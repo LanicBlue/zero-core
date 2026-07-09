@@ -629,10 +629,11 @@ export interface DiscoveredSkill {
 	source: "user" | "app";
 	/**
 	 * sub-10 (decision 10): display-only 来源标签。
-	 * zero-core(~/.zero-core/skills)/claude(~/.claude/skills)/agents(~/.agents/skills)。
-	 * 仅 UI badge 使用,业务判断仍走 `source`(管 app/user 分组、sub-6/8 的 source==="app")。
+	 * zero-core(~/.zero-core/skills)/claude(~/.claude/skills)/agents(~/.agents/skills)/
+	 * codex(~/.codex/skills 顶层 + .system,sub-14)。
+	 * 仅 UI badge / 分组标题使用,业务判断仍走 `source`(管 app/user 分组、sub-6/8 的 source==="app")。
 	 */
-	origin: "zero-core" | "claude" | "agents";
+	origin: "zero-core" | "claude" | "agents" | "codex";
 	filePath: string;
 	baseDir: string;
 }

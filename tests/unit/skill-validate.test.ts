@@ -147,6 +147,44 @@ describe("validateSkill — core logic", () => {
 		expect(r.warnings.some((w) => w.includes("very short"))).toBe(true);
 	});
 
+	// ─── sub-14: 块标量 description ──────────────────────────────
+	// 修复 claude-api `description: |-` 被原 parser 当成字面 `|-`(非空但短)误判通过、
+	// 实际丢了真实 description 的 bug。sub-14 parser 支持块标量,validate 应正确识别。
+
+	it("block scalar description (|-) → parsed as real content, not literal `|-`", () => {
+		const content = [
+			"---",
+			"name: Block Desc",
+			"description: |-",
+			"  Reference for the Claude API and SDK.",
+			"  TRIGGER on any Claude/Anthropic mention.",
+			"---",
+			"",
+			"body",
+		].join("\n");
+		const r = validateSkill({ skillMdContent: content });
+		// 不应报 "missing description"(原 bug 会把 `|-` 当成空 value 触发错路径,
+		// 或把字面 `|-` 当成合法短 description 蒙混过关)。sub-14 parser 拿到真实内容。
+		expect(r.problems).toEqual([]);
+		expect(r.warnings).toEqual([]);
+	});
+
+	it("block scalar description folded (>) → parsed as folded single-line", () => {
+		const content = [
+			"---",
+			"name: Folded Desc",
+			"description: >",
+			"  This is a folded description that joins lines with spaces.",
+			"  It should be parsed as one continuous description.",
+			"---",
+			"",
+			"body",
+		].join("\n");
+		const r = validateSkill({ skillMdContent: content });
+		expect(r.problems).toEqual([]);
+		expect(r.warnings).toEqual([]);
+	});
+
 	// ─── id path-safe ───────────────────────────────────────
 
 	it("dirName omitted (SKILL.md path input) → id check skipped", () => {

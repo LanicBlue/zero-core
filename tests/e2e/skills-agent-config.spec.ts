@@ -3,15 +3,16 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 验证 acceptance-5 用例 10-14 + sub-10 UI 对齐 + sub-12 变更:
+// 验证 acceptance-5 用例 10-14 + sub-10 UI 对齐 + sub-12/sub-14 变更:
 //   10. Skills 段挂载在 AgentEditor nav(邻近 工具)
 //   11. 勾选某 skill → autosave → 关编辑器重开 → 仍勾选(持久化往返)
 //   12. 取消勾选 → autosave → 重开 → 未勾选
 //   13. 清空回归:取消全部 → 重开 → 仍空([] vs undefined)
 //   14. 持久化值是 id(目录名)而非 display name
-//   sub-10: toggle-switch 渲染 / 可点展开 detail panel / origin badge 渲染
-//   sub-12: canAuthorSkills toggle 已移除(写权限 = 勾选 skill-creator)/
-//           origin badge 移到标题(skill.name)右边同一行
+//   sub-10: toggle-switch 渲染 / 可点展开 detail panel
+//   sub-12: canAuthorSkills toggle 已移除(写权限 = 勾选 skill-creator)
+//   sub-14: 分组按 origin(ZERO-CORE/CLAUDE/AGENTS/CODEX,zero-core 置顶);
+//           per-item origin badge 与详情面板 origin badge 全部移除(分组标题表示来源)
 //
 // ## 输入
 // simple-response.json fixture
@@ -27,13 +28,16 @@
 //   - SkillsSection 的 DOM 结构(toggle-switch / tool-item / skill-name-row /
 //     skill-origin-badge / skill-detail-panel)变更同步本测试
 //
-// ## sub-10/sub-12 UI 变更
+// ## sub-10/sub-12/sub-14 UI 变更
 // sub-10 起 skill 启用 toggle 用 toggle-switch(button.toggle-switch,带 `.on` 类表示启用)。
-// sub-12: 原 canAuthorSkills toggle 移除(写权限改为 enabledSkills 含 "skill-creator");
-//         origin badge 从介绍下面挪到 .skill-name-row(与 .tool-name 同一行,标题左 + badge 右)。
+// sub-12: 原 canAuthorSkills toggle 移除(写权限改为 enabledSkills 含 "skill-creator")。
+// sub-14: 分组改为按 origin(ZERO-CORE/CLAUDE/AGENTS/CODEX,zero-core 置顶);
+//         per-item origin badge 与详情面板 origin badge 全部移除(分组标题表示来源);
+//         .skill-name-row 容器已删(skill 行直接是 .tool-name + .tool-desc)。
 // 选择器:
 //   - skill 启用开关:button.skill-toggle-switch(aria-label="Toggle skill <name>")
-//   - origin badge:.skill-name-row 内的 .skill-origin-badge(与 .tool-name 同级)
+//   - 分组标题:.tool-group-title(文本含 origin label:ZERO-CORE/CLAUDE/AGENTS/CODEX)
+//   - (sub-14 已移除) .skill-origin-badge / .skill-name-row / .skill-detail-origin
 //   - (sub-12 已移除) button.skill-author-toggle__switch
 //
 // ## E2E fixture 限制(诚实声明,sub-5 同源)
@@ -124,30 +128,29 @@ test.describe("sub-5 — SkillsSection mount + grouping", () => {
 		await expect(window.getByText("可用 skills").first()).toBeVisible({ timeout: 5_000 });
 	});
 
-	test("用例2(分组): 本软件 skills (source=app) 置顶,外部 (source=user) 其下", async () => {
+	test("用例2(分组): ZERO-CORE 分组(origin)置顶,其余其下(sub-14 按 origin 分组)", async () => {
 		await openFirstAgentEditor(window);
 		await window.locator(".editor-nav-item", { hasText: "Skills" }).click();
 		await expect(window.getByText("可用 skills").first()).toBeVisible({ timeout: 5_000 });
 
+		// sub-14: 分组标题用 origin label(ZERO-CORE / CLAUDE / AGENTS / CODEX)。
 		// 分组标题渲染与否取决于本机是否装了 skill。
 		const groupTitles = window.locator(".tool-group-title");
 		const count = await groupTitles.count();
 		// count===0 也接受(本机无 skill 时 SkillsSection 渲染"未检测到")。
 		if (count === 0) return;
 
-		// app 分组是否存在取决于本机是否有 source=app 的 skill(scanner 读真实 home,
-		// 大多数开发机只有 ~/.claude skills = source=user,无 app-skill)。
-		// 仅当 app 分组存在时,才断言它必须置顶(GROUP_ORDER=["app","user"])。
+		// ZERO-CORE 分组是否存在取决于本机是否有 source=app 的 skill(scanner 读真实 home)。
+		// 仅当 ZERO-CORE 分组存在时,才断言它必须置顶(originGroupOrder 把 zero-core 放首)。
 		const titles = await groupTitles.allTextContents();
-		const hasApp = titles.some((t) => t.includes("本软件 skills"));
-		if (!hasApp) {
-			// 本机无 app-skill:置顶断言无意义(无 app 可置顶),合理跳过。
-			test.skip(true, "本机无 source=app 的 skill(仅 user 源);app 置顶断言需 app-skill 才能验证");
+		const hasZeroCore = titles.some((t) => t.includes("ZERO-CORE"));
+		if (!hasZeroCore) {
+			test.skip(true, "本机无 source=app 的 skill(仅 user 源);ZERO-CORE 置顶断言需 app-skill 才能验证");
 			return;
 		}
-		// app 分组存在 → 它必须是第一个。
+		// ZERO-CORE 分组存在 → 它必须是第一个。
 		const firstTitle = titles[0];
-		expect(firstTitle).toContain("本软件 skills");
+		expect(firstTitle).toContain("ZERO-CORE");
 	});
 });
 
@@ -337,7 +340,7 @@ test.describe("sub-10/sub-12 — SkillsSection UI(toggle-switch + 展开 + origi
 		await expect(window.getByText(/skill-creator/).first()).toBeVisible({ timeout: 5_000 });
 	});
 
-	test("sub-10: 每个 skill 用 toggle-switch 渲染(非 checkbox);有 skill 时还验 badge 位置(sub-12)", async () => {
+	test("sub-10/sub-14: 每个 skill 用 toggle-switch 渲染(非 checkbox);per-item origin badge 已移除", async () => {
 		await openFirstAgentEditor(window);
 		await window.locator(".editor-nav-item", { hasText: "Skills" }).click();
 		await expect(window.getByText("可用 skills").first()).toBeVisible({ timeout: 5_000 });
@@ -345,7 +348,7 @@ test.describe("sub-10/sub-12 — SkillsSection UI(toggle-switch + 展开 + origi
 		const toggles = window.locator("button.skill-toggle-switch");
 		const count = await toggles.count();
 		if (count === 0) {
-			test.skip(true, "本机无已安装 skill;skill toggle-switch / badge 需 skill 才能验证");
+			test.skip(true, "本机无已安装 skill;skill toggle-switch 需 skill 才能验证");
 			return;
 		}
 
@@ -359,28 +362,27 @@ test.describe("sub-10/sub-12 — SkillsSection UI(toggle-switch + 展开 + origi
 		const legacyCheckbox = window.locator("input.skill-checkbox");
 		await expect(legacyCheckbox).toHaveCount(0);
 
-		// 每个 skill 行都有 origin badge(skill-origin-badge)。
-		const badges = window.locator(".skill-origin-badge");
-		const badgeCount = await badges.count();
-		expect(badgeCount, "skill 行数应与 origin badge 数一致").toBe(count);
+		// sub-14 (item 3): per-item origin badge 已移除(分组标题表示来源)。
+		// .skill-origin-badge 不应存在(skill-name-row 也已移除)。
+		await expect(window.locator(".skill-origin-badge")).toHaveCount(0);
+		await expect(window.locator(".skill-name-row")).toHaveCount(0);
 
-		// 每个 badge 文本必须是已知 origin label 之一(防止 origin 未 stamp 显示空/undefined)。
-		const validLabels = new Set(["ZERO-CORE", "CLAUDE", "AGENTS"]);
-		for (let i = 0; i < badgeCount; i++) {
-			const text = (await badges.nth(i).textContent())?.trim() ?? "";
-			expect(validLabels, `origin badge #${i} 文本 "${text}" 不在合法集合`).toContain(text);
-		}
+		// 每个 skill 行仍有 .tool-name(display name)+ .tool-desc(description)。
+		// 验证至少第一行结构正常(其余由 toggle count 保证)。
+		const firstRow = firstToggle.locator("xpath=ancestor::div[contains(@class,'tool-item')]");
+		await expect(firstRow.locator(".tool-name")).toHaveCount(1);
+		await expect(firstRow.locator(".tool-desc")).toHaveCount(1);
 
-		// sub-12: badge 在标题行(.skill-name-row)内,与 .tool-name 同级(标题左 + badge 右)。
-		const nameRows = window.locator(".skill-name-row");
-		await expect(nameRows.first()).toBeVisible({ timeout: 5_000 });
-		const rowCount = await nameRows.count();
-		expect(rowCount, "skill-name-row 数应与 skill 行数一致").toBe(count);
-		// 每行 .skill-name-row 同时含 .tool-name 和 .skill-origin-badge。
-		for (let i = 0; i < rowCount; i++) {
-			const row = nameRows.nth(i);
-			await expect(row.locator(".tool-name")).toHaveCount(1);
-			await expect(row.locator(".skill-origin-badge")).toHaveCount(1);
+		// 分组标题用 origin label(分组按 origin,sub-14)。ZERO-CORE / CLAUDE / AGENTS / CODEX。
+		const groupTitles = window.locator(".tool-group-title");
+		const validOriginLabels = new Set(["ZERO-CORE", "CLAUDE", "AGENTS", "CODEX"]);
+		const titleCount = await groupTitles.count();
+		expect(titleCount, "至少一个 origin 分组标题应渲染").toBeGreaterThan(0);
+		for (let i = 0; i < titleCount; i++) {
+			const txt = (await groupTitles.nth(i).textContent())?.trim() ?? "";
+			// 标题含 origin label 之一(也带 count badge,故用 includes)。
+			const matched = Array.from(validOriginLabels).some((l) => txt.includes(l));
+			expect(matched, `分组标题 "${txt}" 不含已知 origin label`).toBe(true);
 		}
 	});
 
@@ -407,11 +409,9 @@ test.describe("sub-10/sub-12 — SkillsSection UI(toggle-switch + 展开 + origi
 		// 出现 1 个 skill-detail-panel(复用 tool-detail-panel 外壳)。
 		await expect(detailPanels).toHaveCount(1, { timeout: 5_000 });
 
-		// 详情含 id(<code>)与 origin badge(skill-detail-origin)。
+		// 详情含 id(<code>)。sub-14: 详情面板的 origin badge 已移除(分组表示来源)。
 		await expect(detailPanels.locator(".skill-detail-id code")).toBeVisible();
-		await expect(detailPanels.locator(".skill-detail-origin")).toBeVisible();
-		const originText = (await detailPanels.locator(".skill-detail-origin").textContent())?.trim() ?? "";
-		expect(["ZERO-CORE", "CLAUDE", "AGENTS"], `详情 origin "${originText}" 不合法`).toContain(originText);
+		await expect(detailPanels.locator(".skill-detail-origin")).toHaveCount(0);
 
 		// 再点 → 收起。
 		await firstRow.locator(".tool-info").click();

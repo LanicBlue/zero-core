@@ -4,9 +4,9 @@
 //
 // ## 核心功能
 // 双栏布局:
-//   - 左:skill 列表,按来源分组("本软件 skills" `source==="app"` 置顶,外部其下);
-//     每项 display name + 来源 badge。sub-11: badge 文案用 originLabel(skill.origin)
-//     → ZERO-CORE/CLAUDE/AGENTS(具体来源标签,不再是原始 source 字符串)。
+//   - 左:skill 列表,**按 origin 分组**(sub-14;原按 source 2 组改为 ZERO-CORE/CLAUDE/
+//     AGENTS/CODEX 分组,zero-core 组置顶)。每项 display name + description(2 行截断);
+//     **不再显示 per-item origin badge**(分组标题已表示来源,item 3)。
 //   - 右:选中 skill 详情——header(display name / origin / id)→
 //     Frontmatter 全字段(metadata,含 description;sub-13 置顶 + 去掉独立 Description 字段)→
 //     body(sub-11 view 模式 markdown 渲染)/ 兄弟文件列表(Files 段)。
@@ -30,20 +30,21 @@
 // ## 依赖
 // - react
 // - ../../../shared/types (DiscoveredSkill)
-// - ../../../shared/skill-origin (originLabel —— sub-10 来源 badge 文案)
+// - ../../../shared/skill-origin (originLabel + originGroupOrder —— sub-14 分组)
 // - ../common/MarkdownRenderer (sub-11 view 模式 body 渲染)
 // - window.api(preload 暴露的 skills* 接口)
 //
 // ## 维护规则
 // - DiscoveredSkill 字段变化时同步详情渲染。
-// - Skill 来源类别新增(如 plugin)时需要扩展分组逻辑 + originLabel 映射。
+// - Skill 来源类别新增(如 plugin)时:扩展 origin 联合类型 + originLabel 映射,
+//   originGroupOrder 自动兜底(未知 origin 排在 zero-core 之后)。
 // - 写路径安全护栏在后端(skill-router);本组件只负责按 source 控按钮可见性。
 // - v1 边界:CRUD 只管 SKILL.md 入口;兄弟文件/脚本的新建编辑留后续 sub(Files 段只读)。
 //
 
 import React, { useState, useEffect, useCallback } from "react";
 import type { DiscoveredSkill } from "../../../shared/types.js";
-import { originLabel } from "../../../shared/skill-origin.js";
+import { originLabel, originGroupOrder } from "../../../shared/skill-origin.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
 
 const api = () => (window as any).api;
@@ -256,8 +257,12 @@ export default function SkillsPage() {
 		}
 	};
 
-	const appSkills = skills.filter((s) => s.source === "app");
-	const userSkills = skills.filter((s) => s.source === "user");
+	// sub-14: 按 origin 分组(取代原 source 2 组)。zero-core 置顶,其余按 originLabel 字母序。
+	const orderedOrigins = originGroupOrder(skills.map((s) => s.origin));
+	const skillsByOrigin = new Map<string, DiscoveredSkill[]>();
+	for (const origin of orderedOrigins) {
+		skillsByOrigin.set(origin, skills.filter((s) => s.origin === origin));
+	}
 
 	return (
 		<div className="skills-page">
@@ -314,22 +319,19 @@ export default function SkillsPage() {
 						</div>
 					)}
 
-					{appSkills.length > 0 && (
-						<SkillListSection
-							title="本软件 skills"
-							skills={appSkills}
-							selectedId={selectedId}
-							onSelect={handleSelect}
-						/>
-					)}
-					{userSkills.length > 0 && (
-						<SkillListSection
-							title="外部 skills"
-							skills={userSkills}
-							selectedId={selectedId}
-							onSelect={handleSelect}
-						/>
-					)}
+					{orderedOrigins.map((origin) => {
+						const group = skillsByOrigin.get(origin) ?? [];
+						if (group.length === 0) return null;
+						return (
+							<SkillListSection
+								key={origin}
+								title={originLabel(origin)}
+								skills={group}
+								selectedId={selectedId}
+								onSelect={handleSelect}
+							/>
+						);
+					})}
 				</div>
 
 				<div className="skills-detail-pane">
@@ -391,9 +393,6 @@ function SkillListSection({
 					>
 						<div className="skill-item-header">
 							<span className="skill-item-name">{skill.name}</span>
-							<span className={`skill-item-source skill-source-${skill.source}`}>
-								{originLabel(skill.origin)}
-							</span>
 						</div>
 						<p className="skill-item-description">{skill.description}</p>
 						<p className="skill-item-id">id: {skill.id}</p>
