@@ -68,7 +68,6 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			}
 
 			const userMessage = ctx.userMessage as string;
-			if (!userMessage) return;
 
 			// multimodal-input sub-4: read the current turn's attachment META
 			// off the TurnStart ctx (AgentLoop.run threaded it through from the
@@ -78,6 +77,15 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			// LIVE path (sub-3 only covered rebuild). undefined for legacy
 			// string-only callers → appendStep writes NULL (back-compat).
 			const attachments = ctx.attachments as AttachmentMeta[] | undefined;
+
+			// multimodal-input sub-4/sub-7: attachment-only sends (no text) are
+			// permitted (ChatPanel allows Send with no text + ≥1 pending
+			// attachment). The original guard `if (!userMessage) return;` skipped
+			// writing the user step entirely on empty text — which also dropped
+			// the turn's attachments (never persisted), so getMessagesMultimodal
+			// could not inline/annotate them. Allow the step write through when
+			// there are attachments even with empty text.
+			if (!userMessage && (!attachments || attachments.length === 0)) return;
 
 			const seq = db.getTurnCount(sessionId);
 			setTurnSeq(sessionId, seq);

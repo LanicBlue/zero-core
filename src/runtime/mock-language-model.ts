@@ -21,7 +21,9 @@
 // fixture 格式变更需同步更新 MockFixture 接口和 E2E fixture 文件
 // 新增 chunk 类型需在 toStreamPart 中添加转换逻辑
 //
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { ZERO_CORE_DIR } from "../core/config.js";
 import type { LanguageModelV2, LanguageModelV2StreamPart, LanguageModelV2CallOptions } from "@ai-sdk/provider";
 
 // ---------------------------------------------------------------------------
@@ -132,13 +134,69 @@ export function createMockLanguageModel(fixturePath: string, modelId = "mock-mod
 	};
 	const allFixtureChunks = (): MockChunk[] => fixture.steps?.flat() ?? fixture.chunks ?? [];
 
+	/**
+	 * multimodal-input sub-7 (E2E): capture the prompt the provider receives so
+	 * E2E tests can assert on the actual message shape (inline image content vs
+	 * attachment meta-info text). Writes to ZERO_CORE_DIR/mock-captures/. Each
+	 * call appends call-<n>.json; the E2E helper reads all captures back.
+	 *
+	 * Bytes (Uint8Array/Buffer in image `file` parts) are replaced by a compact
+	 * descriptor so the capture file stays small and inspectable; tests assert on
+	 * part `type` + `mediaType`, not raw bytes.
+	 *
+	 * Capturing is always-on: this module is ONLY instantiated for the mock
+	 * provider (provider-factory type=mock), which is test-only. No production
+	 * provider routes through it, so there is no perf/privacy concern.
+	 */
+	const captureCall = (kind: "generate" | "stream", options: LanguageModelV2CallOptions): void => {
+		try {
+			const sanitized = (options.prompt ?? []).map((msg: any) => ({
+				role: msg.role,
+				content: Array.isArray(msg.content)
+					? msg.content.map((part: any) => {
+							if (part?.type === "file") {
+								// image / pdf bytes — replace with descriptor.
+								const data = part.data;
+								let byteLength = 0;
+								if (data instanceof Uint8Array) byteLength = data.byteLength;
+								else if (typeof data === "string") byteLength = data.length;
+								return {
+									type: "file",
+									mediaType: part.mediaType,
+									filename: part.filename,
+									byteLength,
+								};
+							}
+							return part;
+						})
+					: msg.content,
+			}));
+			const dir = join(ZERO_CORE_DIR, "mock-captures");
+			mkdirSync(dir, { recursive: true });
+			const files = (() => {
+				try { return readFileSync(join(dir, "count"), "utf8"); }
+				catch { return "0"; }
+			})();
+			const n = parseInt(files, 10) || 0;
+			writeFileSync(join(dir, "call-" + n + ".json"), JSON.stringify({
+				kind,
+				modelId,
+				prompt: sanitized,
+			}), "utf8");
+			writeFileSync(join(dir, "count"), String(n + 1), "utf8");
+		} catch {
+			// Capture failures must never break the stream — swallow.
+		}
+	};
+
 	return {
 		specificationVersion: "v2",
 		provider: "mock",
 		modelId,
 		supportedUrls: {},
 
-		async doGenerate(_options: LanguageModelV2CallOptions) {
+		async doGenerate(options: LanguageModelV2CallOptions) {
+			captureCall("generate", options);
 			if (fixture.error) throw new Error(fixture.error.message);
 			const textParts = allFixtureChunks()
 				.filter((c) => c.type === "text")
@@ -156,7 +214,8 @@ export function createMockLanguageModel(fixturePath: string, modelId = "mock-mod
 			};
 		},
 
-		async doStream(_options: LanguageModelV2CallOptions) {
+		async doStream(options: LanguageModelV2CallOptions) {
+			captureCall("stream", options);
 			if (fixture.error) throw new Error(fixture.error.message);
 			const stream = new ReadableStream<LanguageModelV2StreamPart>({
 				async start(controller) {

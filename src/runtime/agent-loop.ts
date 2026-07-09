@@ -569,6 +569,17 @@ export class AgentLoop implements AgentRuntime {
 				// but TurnStart already wrote the user turn so getTurnCount includes it)
 				const userSeq = this.stepBaseSeq - 1;
 				this.recorder.startTurnGroup(userSeq);
+				// multimodal-input sub-7 (E2E-found wiring gap): TurnStart just
+				// wrote the user step (with its attachments) to the DB, but
+				// `session.cachedTurns` still reflects the state at session
+				// construction / last sessionsGetInit — it does NOT include this
+				// turn's user step. getMessagesMultimodal reads cachedTurns both
+				// for the hasAnyAttachment fast-path AND for the positional
+				// user-step ↔ user-message matching, so a stale cache made the
+				// live inline-image path a dead path (only sub-3's unit test,
+				// which sets cachedTurns directly, exercised it). Refresh here so
+				// getMessagesMultimodal sees the just-written attachments.
+				this.session.refreshTurnsCache();
 				// multimodal-input sub-3 (#3 wiring): mark the current turn's user
 				// step seq so getMessagesMultimodal inlines images for THIS step
 				// only (design: 当前 step = the turn's user message; all multi-step
@@ -1531,7 +1542,26 @@ export class AgentLoop implements AgentRuntime {
 		const copy = [...messages];
 		const last = copy[copy.length - 1];
 		if (last?.role === "user") {
-			copy[copy.length - 1] = { ...last, content: ctx + last.content };
+			// multimodal-input sub-7 (E2E-found wiring gap): when the last user
+			// message carries a content ARRAY (image-only inline path from
+			// getMessagesMultimodal), `ctx + last.content` would coerce the
+			// array to the string "[object Object],…" and destroy the image
+			// parts. Instead, merge the context into the FIRST text part of the
+			// array (the user's own text), preserving the image parts; if there
+			// is no text part (attachment-only send), prepend a new text part
+			// carrying the context block.
+			if (Array.isArray(last.content)) {
+				const parts = [...last.content];
+				const firstTextIdx = parts.findIndex((p: any) => p?.type === "text");
+				if (firstTextIdx >= 0) {
+					parts[firstTextIdx] = { ...parts[firstTextIdx], text: ctx + (parts[firstTextIdx].text ?? "") };
+				} else {
+					parts.unshift({ type: "text", text: ctx });
+				}
+				copy[copy.length - 1] = { ...last, content: parts };
+			} else {
+				copy[copy.length - 1] = { ...last, content: ctx + last.content };
+			}
 		}
 		return copy;
 	}
