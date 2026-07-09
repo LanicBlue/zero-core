@@ -54,6 +54,9 @@ import { createLogRouter } from "./log-router.js";
 import { createFileRouter } from "./file-router.js";
 import { createToolExecutionRouter } from "./tool-execution-router.js";
 import { createSkillRouter } from "./skill-router.js";
+// multimodal-input sub-1: per-session attachment upload (single bytes-into-main
+// entry point, design 顶层原则 A). Mounted under /api/attachments.
+import { createAttachmentRouter } from "./attachment-router.js";
 import { ProjectStore } from "./project-store.js";
 import { RequirementStore } from "./requirement-store.js";
 import { ProjectWikiStore } from "./project-wiki-store.js";
@@ -637,6 +640,11 @@ export async function startServer(options?: StartServerOptions) {
 	app.use("/api/logs", createLogRouter({ sessionDb: sessionDB }));
 	app.use("/api/files", createFileRouter({ workspaceConfig }));
 	app.use("/api/tool-executions", createToolExecutionRouter({ sessionDb: sessionDB, agentService, providerStore, workspaceConfig }));
+
+	// multimodal-input sub-1: single bytes-into-main entry point. Renderer POSTs
+	// base64 + meta → main persists to ZERO_CORE_DIR/attachments/<sessionId>/ →
+	// returns AttachmentMeta (with diskPath). chat:send (sub-4) carries only meta.
+	app.use("/api/attachments", createAttachmentRouter());
 
 	// Multi-Agent Workflow routers
 

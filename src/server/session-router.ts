@@ -34,6 +34,8 @@ import { Router } from "express";
 import type { createAgentService } from "./agent-service.js";
 import type { AgentStore } from "./agent-store.js";
 import type { ManagementService } from "./management-service.js";
+// multimodal-input sub-1: purge the per-session attachment dir on hard delete.
+import { cleanSessionAttachments } from "./attachment-store.js";
 
 export function createSessionRouter(deps: {
 	agentService: ReturnType<typeof createAgentService>;
@@ -138,6 +140,12 @@ export function createSessionRouter(deps: {
 		const db = getDb();
 		const mainSession = db.getMainSession(req.params.agentId);
 		db.deleteSession(req.params.sessionId);
+		// multimodal-input sub-1: best-effort purge of the per-session attachment
+		// directory. Failures are swallowed (the session row is already gone; a
+		// stranded dir is reclaimable manually). NOTE: the archive path below is a
+		// SOFT delete — the row is retained, so we intentionally do NOT purge there
+		// (archived sessions stay inspectable, attachments included).
+		cleanSessionAttachments(req.params.sessionId).catch(() => { /* best-effort */ });
 		if (mainSession?.id === req.params.sessionId) {
 			const newSession = db.createSession(req.params.agentId);
 			db.setMainSession(req.params.agentId, newSession.id);

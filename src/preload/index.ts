@@ -77,6 +77,11 @@ const api: WindowApi = {
 	chatSend: (text, agentId, sessionId?) => ipcRenderer.invoke("chat:send", text, agentId, sessionId),
 	chatAbort: (sessionId) => ipcRenderer.invoke("chat:abort", sessionId),
 
+	// ─── Attachments (multimodal-input sub-1) ───────
+	// Single bytes-into-main entry point: renderer sends base64 + meta → main
+	// persists → returns AttachmentMeta (with diskPath). Mirrors chatSend.
+	attachmentsUpload: (body) => ipcRenderer.invoke("attachments:upload", body),
+
 	// ─── Sessions ────────────────────────────────────
 	sessionsList: (agentId) => ipcRenderer.invoke("sessions:list", agentId),
 	// pull-on-display: 拉 session 完整 init payload(messages + todos + 未决 AskUser)。

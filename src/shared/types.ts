@@ -620,6 +620,55 @@ export interface FetchedModel {
 	group?: string;
 }
 
+// ── Multimodal Input (effort: multimodal-input) ──────────────────────────────
+//
+// Per design principle A (顶层原则 A): attachment BYTES only touch the two
+// "edges" — (1) when sending to the LLM (getMessages inline) and (2) when the
+// UI renders a thumbnail. Everywhere else (persistence, IPC body, session/loop
+// internals, turns table) only the lightweight `AttachmentMeta` flows — never
+// the bytes themselves. The single entry point for bytes into main is the
+// `attachments:upload` endpoint (sub-1); everything after carries diskPath.
+//
+// See docs/plan/multimodal-input/design.md (组件设计 1).
+
+/**
+ * Attachment kind discriminator, inferred once at upload time from the MIME
+ * type and never re-derived downstream (sub-1 + design 组件 1):
+ *  - `image` — any image/* (inline-able by multimodal providers, sub-3).
+ *  - `pdf`   — application/pdf (image-only inline; PDFs always go as meta).
+ *  - `file`  — anything else.
+ */
+export type AttachmentKind = "image" | "pdf" | "file";
+
+/**
+ * Lightweight attachment descriptor that flows through IPC, persistence, and
+ * the runtime — carrying only metadata + the on-disk path, never the bytes.
+ * `kind` is set once at upload (from mimeType) so downstream never re-derives.
+ * `diskPath` is absolute, rooted under `ZERO_CORE_DIR/attachments/<sessionId>/`.
+ */
+export interface AttachmentMeta {
+	/** Stable unique id (uuid v4). Used as the on-disk filename prefix. */
+	id: string;
+	kind: AttachmentKind;
+	fileName: string;
+	mimeType: string;
+	/** Byte length of the stored file. */
+	size: number;
+	/** Absolute path under `ZERO_CORE_DIR/attachments/<sessionId>/`. */
+	diskPath: string;
+}
+
+/**
+ * The unified user-content shape that replaces a bare `string` across the four
+ * layers (renderer state, IPC, session step, getMessages input). `text` may be
+ * empty when the user sends attachments only; `attachments` defaults to `[]`
+ * for callers that still pass plain strings.
+ */
+export interface UserContent {
+	text: string;
+	attachments: AttachmentMeta[];
+}
+
 // ── Skills ──────────────────────────────────────────────────────────────────
 
 export interface DiscoveredSkill {

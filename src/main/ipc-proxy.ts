@@ -152,6 +152,11 @@ const R: Record<string, RouteMapping> = {
 	"chat:send":  { method: "POST", path: "/api/chat/send", buildReq: (text, agentId?, sessionId?) => ({ body: { text, agentId, sessionId } }) },
 	"chat:abort": { method: "POST", path: "/api/chat/abort", buildReq: (sessionId?: string) => ({ body: { sessionId } }) },
 
+	// Attachments (multimodal-input sub-1) — single bytes-into-main entry.
+	// Renderer passes { sessionId, fileName, mimeType, data(base64) }; backend
+	// persists to ZERO_CORE_DIR/attachments/<sessionId>/ and returns AttachmentMeta.
+	"attachments:upload": { method: "POST", path: "/api/attachments/upload", buildReq: (body) => ({ body }) },
+
 	// Files
 	"files:tree":         { method: "GET", path: "/api/files/tree", buildReq: (root?: string) => ({ query: root ? { root } : undefined }) },
 	"files:content":      { method: "GET", path: "/api/files/content", buildReq: (filePath, root?) => ({ query: { path: filePath, ...(root ? { root } : {}) } }) },

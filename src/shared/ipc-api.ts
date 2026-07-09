@@ -47,6 +47,7 @@ import type {
 	OrchestrateManifestRecord,
 	DelegatedTaskRecord,
 	RuntimeTaskInfo,
+	AttachmentMeta,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
 
@@ -146,6 +147,16 @@ export interface IpcChannelDefs {
 	// ── Chat ─────────────────────────────────────────────────
 	"chat:send":   { params: [text: string, agentId?: string, sessionId?: string];    result: Ok };
 	"chat:abort":  { params: [sessionId?: string];                result: Ok };
+
+	// ── Attachments (multimodal-input sub-1) ─────────────────
+	// attachments:upload is the SINGLE entry point for attachment bytes into
+	// main (design 顶层原则 A). Renderer sends base64 bytes + meta; main writes
+	// to ZERO_CORE_DIR/attachments/<sessionId>/ and returns AttachmentMeta
+	// (with diskPath). chat:send (sub-4) will then carry only meta, not bytes.
+	"attachments:upload": {
+		params: [body: { sessionId: string; fileName: string; mimeType: string; data: string }];
+		result: AttachmentMeta;
+	};
 
 	// ── Files ────────────────────────────────────────────────
 	"files:tree":         { params: [root?: string];                              result: FileTreeNode[] | Err };

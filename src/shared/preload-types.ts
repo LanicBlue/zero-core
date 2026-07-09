@@ -47,6 +47,7 @@ import type {
 	OrchestrateManifestRecord,
 	DelegatedTaskRecord,
 	RuntimeTaskInfo,
+	AttachmentMeta,
 } from "./types.js";
 
 export interface WindowApi {
@@ -106,6 +107,11 @@ export interface WindowApi {
 	// ── Chat ──
 	chatSend: (text: string, agentId?: string, sessionId?: string) => Promise<{ success: true }>;
 	chatAbort: (sessionId?: string) => Promise<{ success: true }>;
+
+	// ── Attachments (multimodal-input sub-1) ──
+	// Single bytes-into-main entry point. Renderer passes base64 bytes + meta;
+	// main persists to per-session dir and returns AttachmentMeta with diskPath.
+	attachmentsUpload: (body: { sessionId: string; fileName: string; mimeType: string; data: string }) => Promise<AttachmentMeta | { error: string }>;
 
 	// ── Sessions ──
 	sessionsList: (agentId: string) => Promise<SessionRecord[]>;
