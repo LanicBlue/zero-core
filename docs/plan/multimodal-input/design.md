@@ -1,6 +1,6 @@
 # Design:multimodal-input
 
-- **状态**:② design(讨论细化)
+- **状态**:③ plan(实施拆分)
 - **提出**:2026-07-08(issue);design 2026-07-09
 - **类型**:功能 / 架构
 
