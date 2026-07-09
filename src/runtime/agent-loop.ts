@@ -219,6 +219,21 @@ export class AgentLoop implements AgentRuntime {
 				cacheBreak: false,
 			});
 		}
+		// skill-system sub-9 (Approach A): skills section. Server-built closure
+		// (config.getSkillSection) renders Available Skills list (sub-4 三态)
+		// + Authoring guidance (sub-8) via buildSkillsSection. The closure
+		// captures agentStore.get(agentId).skillPolicy + scanSkills() at call
+		// time (re-read each turn — cacheBreak:false); agent-service hot-swaps
+		// the closure on skillPolicy change and invalidate("skills"). Returns ""
+		// when no skills / no policy → section dropped. Mirrors work-context /
+		// wiki-anchors DI shape (runtime never imports scanner/store directly).
+		if (config.getSkillSection) {
+			sections.push({
+				name: "skills",
+				compute: () => config.getSkillSection!() ?? "",
+				cacheBreak: false,
+			});
+		}
 		this.promptAssembler = new SystemPromptAssembler(sections);
 
 		this.delegator = new SubagentDelegator({
@@ -1059,6 +1074,16 @@ export class AgentLoop implements AgentRuntime {
 		 * workbench section. Same hot-swap semantics as workContextSystemSection.
 		 */
 		stepsProgressSection?: SessionConfig["stepsProgressSection"];
+		/**
+		 * skill-system sub-9: replacement server-built closure for the skills
+		 * system section (Available Skills list + Authoring guidance). Pass when
+		 * the agent's skillPolicy (enabledSkills / canAuthorSkills) changes on a
+		 * RUNNING loop so the next turn's `skills` section re-renders. Same
+		 * hot-swap + invalidate pattern as workContextSystemSection. Undefined =
+		 * no change. The section is cacheBreak:false (re-reads each turn), but
+		 * we invalidate anyway so the swap is visible immediately.
+		 */
+		getSkillSection?: SessionConfig["getSkillSection"];
 	}): void {
 		if (patch.systemPrompt !== undefined && patch.systemPrompt !== this.config.systemPrompt) {
 			this.config.systemPrompt = patch.systemPrompt;
@@ -1135,6 +1160,15 @@ export class AgentLoop implements AgentRuntime {
 		}
 		if (patch.stepsProgressSection !== undefined) {
 			this.config.stepsProgressSection = patch.stepsProgressSection;
+		}
+		// skill-system sub-9: hot-swap the skills section closure when the
+		// agent's skillPolicy (enabledSkills / canAuthorSkills) flips on a
+		// RUNNING loop. The closure re-reads scanSkills each turn
+		// (cacheBreak:false), but invalidate anyway so a mid-flight turn picks
+		// up the new closure immediately. Mirrors work-context hot-swap.
+		if (patch.getSkillSection !== undefined) {
+			this.config.getSkillSection = patch.getSkillSection;
+			this.promptAssembler.invalidate("skills");
 		}
 	}
 

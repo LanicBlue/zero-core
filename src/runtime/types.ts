@@ -597,6 +597,19 @@ export interface SessionConfig {
 	 */
 	stepsProgressSection?: () => string;
 	/**
+	 * skill-system sub-9: server-built closure that renders the agent's
+	 * **skills** system section (Available Skills list + optional Authoring
+	 * guidance). Mirrors the workContextSystemSection DI shape — the runtime
+	 * layer never imports skill-scanner / agentStore directly; agent-service
+	 * builds the closure at SessionConfig construction so the loop just calls
+	 * it each turn (cacheBreak:false).
+	 *
+	 * The closure returns "" (empty) when there are no skills to inject → the
+	 * `skills` section is dropped by SystemPromptAssembler. Hot-swapped on
+	 * skillPolicy change via applyConfigUpdate (mirrors work-context/wikiAnchors).
+	 */
+	getSkillSection?: () => string;
+	/**
 	 * v0.8 (P3): ManagementService handle for the domain action tools
 	 * (Project/Agent/Cron). Only set on zero sessions.
 	 *

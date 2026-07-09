@@ -23,6 +23,9 @@
 // - 保持提示词质量
 //
 import type { ZeroCoreConfig } from "./config.js";
+// skill-system sub-9:skill 段渲染抽到 buildSkillsSection(单一真理源)。
+// buildSystemPrompt 复用它,Electron app 运行时的 AgentLoop skills section 也复用。
+import { buildSkillsSection } from "./skills-section.js";
 
 export interface SystemPromptContext {
 	cwd: string;
@@ -43,6 +46,25 @@ export interface SystemPromptContext {
 	canAuthorSkills?: boolean;
 }
 
+/**
+ * ⚠️ skill-system sub-9 重要说明 ⚠️
+ *
+ * 本函数是 **CLI / headless 路径的 prompt builder**(唯一调用方:
+ * `src/cli.ts:201`,headless 一次性 prompt 组装)。**Electron app 运行时
+ * agent 的 system prompt 不走这里** —— app agent 的 prompt 由
+ * `AgentLoop.assembleSystemPrompt`(`src/runtime/agent-loop.ts`)经各
+ * `SystemPromptAssembler` section 拼装;skill 注入走那里的 `skills`
+ * system section(见 `src/core/skills-section.ts` 的 `buildSkillsSection`,
+ * 本函数也复用它 —— 单一真理源)。
+ *
+ * 勿以为改本函数会影响 app agent。app agent 的 skill 段改动请改
+ * `buildSkillsSection`(两路径共用)。本函数保留是为 CLI/headless prompt,
+ * 详见 docs/archive/agent-context-fields Q9(维持原样不清理,清理风险高、
+ * 对 app 无收益)。
+ *
+ * CLI 调用方不传 skills / enabledSkills / canAuthorSkills,所以这里的
+ * skill 段对 CLI 实际是空跑(段不出现)—— 符合预期,CLI 不注入 skill。
+ */
 export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptContext): string {
 	const sections: string[] = [];
 
@@ -66,63 +88,18 @@ export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptConte
 		}
 	}
 
-	// 4. Skills
+	// 4–5. Skills(Available Skills 列表 + Authoring 引导)
 	//
-	// sub-4 (skill-system): progressive disclosure 注入。
-	// 二元语义(对齐 design 决策 5,千万别混):
-	//   - enabledSkills === undefined → legacy 模式(注入全部 name+desc)。存量
-	//     agent 没有 skillPolicy.enabledSkills 字段;保留兼容,该分支不动。
-	//   - enabledSkills === [] (显式空数组,新 agent 默认)→ 过滤后为空,"Available
-	//     Skills" 段不出现(全不开,对齐决策 5)。
-	//   - enabledSkills = [id,...] → 仅注入命中 id 的条目。
-	// 每条目带 `[skills]/<id>/SKILL.md` 路径(agent 据此寻址 Read,id=目录名;display
-	// name ≠ id 时光给 name agent 构造不出路径);段尾三段式指引(加载/资源/脚本)。
-	// body 不进 prompt(按需 Read,见指引)。
-	if (ctx.skills?.length) {
-		const enabled = ctx.enabledSkills;
-		const filtered = enabled
-			? ctx.skills.filter((s) => enabled.includes(s.id))
-			: ctx.skills;
-		if (filtered.length) {
-			const skillList = filtered
-				.map((s) => `- **${s.name}**: ${s.description} (read \`[skills]/${s.id}/SKILL.md\` to load)`)
-				.join("\n");
-			sections.push(
-				"## Available Skills\n\n" +
-					skillList +
-					"\n\n" +
-					"Skill usage:\n" +
-					"- **Load**: when a task matches a skill above, read its `[skills]/<id>/SKILL.md` for the full procedure.\n" +
-					"- **Resources**: skills may bundle sibling files; read/glob/grep them via `[skills]/<id>/<file>`. (`${SKILL_DIR}` / `${CLAUDE_SKILL_DIR}` in skill bodies already resolve to `[skills]/<id>`.)\n" +
-					"- **Scripts**: skills may bundle scripts; run them with Shell as `[skills]/<id>/scripts/...`.",
-			);
-		}
-	}
-
-	// 5. Skill authoring guidance (sub-8, decision 11)
-	//
-	// 仅当 canAuthorSkills === true 时注入。文案克制:强调"确有复用价值"再写,
-	// 防滥建低质 skill(风险段)。给出 frontmatter 形态 + 路径,agent 据此自建。
-	if (ctx.canAuthorSkills === true) {
-		sections.push(
-			"## Authoring Skills\n\n" +
-				"You are permitted to create and edit skills for reuse. A skill is a folder under `[skills]/<id>/` containing a `SKILL.md`.\n\n" +
-				"Write a new skill only when a procedure has **genuine, repeatable reuse value** across tasks — not for one-off work. Premature or low-quality skills add noise.\n\n" +
-				"To author a skill, use the `Write` tool with a virtual path `[skills]/<skill-id>/SKILL.md`:\n" +
-				"```\n" +
-				"---\n" +
-				"name: <human-readable name>\n" +
-				"description: <one-line description; when this skill applies>\n" +
-				"---\n" +
-				"\n" +
-				"<body: when to use, the procedure, examples>\n" +
-				"```\n\n" +
-				"Rules:\n" +
-				"- `<skill-id>` must be path-safe (letters, digits, `.`, `_`, `-`; 1–64 chars), unique, and stable.\n" +
-				"- New skills land under the app skills root; external skills (`~/.claude`, `~/.agents`) are read-only.\n" +
-				"- You may also edit existing app skills via `Write`/`Edit` on `[skills]/<id>/<file>`; `..` escapes are blocked.\n" +
-				"- Resources/scripts go in sibling files (e.g. `[skills]/<id>/reference.md`) and are reachable via Read/Glob/Grep/Shell using the same virtual path.",
-		);
+	// skill-system sub-9:渲染抽到 `buildSkillsSection`(src/core/skills-section.ts),
+	// Electron app 运行时的 AgentLoop skills section 也复用它 —— 单一真理源。
+	// 三态语义 + canAuthorSkills 引导均在 buildSkillsSection 内,详见其文件头。
+	if (ctx.skills?.length || ctx.canAuthorSkills === true) {
+		const skillSection = buildSkillsSection({
+			skills: ctx.skills ?? [],
+			enabledSkills: ctx.enabledSkills,
+			canAuthorSkills: ctx.canAuthorSkills,
+		});
+		if (skillSection) sections.push(skillSection);
 	}
 
 	return sections.join("\n\n");

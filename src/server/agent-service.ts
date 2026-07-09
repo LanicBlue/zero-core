@@ -57,6 +57,9 @@ import type { RequirementStore } from "./requirement-store.js";
 import type { ProjectWikiStore } from "./project-wiki-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import type { ProjectWorkStore } from "./project-work-store.js";
+// skill-system sub-9:运行时 skill section 渲染(scanner + buildSkillsSection 单一真理源)。
+import { scanSkills } from "./skill-scanner.js";
+import { buildSkillsSection } from "../core/skills-section.js";
 // (WORKFLOW_ROLES / sendRolePrompt 已退役 —— 去-role 统一走 sendProjectPrompt)
 
 // ---------------------------------------------------------------------------
@@ -316,6 +319,12 @@ export class AgentService implements PlatformObserver {
 					// running) actually functions — gating is single-layer
 					// toolPolicy, but the tool still needs its service handle.
 					capabilities: this.capabilityHandlesFor(agent.toolPolicy),
+					// skill-system sub-9: hot-swap the skills section closure so
+					// a skillPolicy edit (enabledSkills / canAuthorSkills) via UI
+					// or AgentRegistry tool reflects on the next turn. Closure
+					// re-reads scanSkills each turn anyway; applyConfigUpdate
+					// also invalidate("skills") so the swap is immediate.
+					getSkillSection: this.buildSkillSectionClosure(agentId),
 				});
 			}
 		});
@@ -779,6 +788,42 @@ export class AgentService implements PlatformObserver {
 	// ─── end PlatformObserver ───────────────────────────────────────────────
 
 	/**
+	 * skill-system sub-9 (Approach A): build the server-side closure that
+	 * renders the agent's **skills** system section (Available Skills list +
+	 * optional Authoring guidance). The closure captures the agentId and reads
+	 * `agentStore.get(agentId).skillPolicy` + `scanSkills()` **at call time**
+	 * (re-evaluated each turn — the AgentLoop registers it as cacheBreak:false),
+	 * so a skillPolicy edit (UI / AgentRegistry tool) or a filesystem skill
+	 * install/uninstall is reflected on the next turn without a loop rebuild.
+	 *
+	 * Returns "" when there's nothing to inject (no agent / no skillPolicy /
+	 * empty enabledSkills list / no skills on disk) → the loop's `skills`
+	 * section is dropped. Mirrors the workContextSystemSection DI shape:
+	 * runtime layer never imports skill-scanner / agentStore directly.
+	 *
+	 * Why a closure (not eager render at loop build): scanSkills reads disk
+	 * and skillPolicy can hot-change — both must be re-read per turn, so the
+	 * closure defers the read to section-compute time.
+	 */
+	private buildSkillSectionClosure(agentId: string | undefined): (() => string) | undefined {
+		if (!agentId) return undefined;
+		return () => {
+			const agent = this.agentStore?.get(agentId);
+			const policy = agent?.skillPolicy;
+			// skillPolicy absent → legacy undefined(全注入)语义留给 buildSkillsSection
+			// 处理;但若无 agent record,不注入(早期启动 / __cli__ 等)。
+			if (!agent) return "";
+			const skills = scanSkills();
+			if (skills.length === 0) return "";
+			return buildSkillsSection({
+				skills: skills.map((s) => ({ id: s.id, name: s.name, description: s.description })),
+				enabledSkills: policy?.enabledSkills,
+				canAuthorSkills: policy?.canAuthorSkills,
+			});
+		};
+	}
+
+	/**
 	 * Compute the domain capability handles to surface for a toolPolicy. See
 	 * the CapabilityHandles type above for the rationale (single source shared
 	 * by loop creation and hot config-sync).
@@ -1097,6 +1142,13 @@ export class AgentService implements PlatformObserver {
 		// reaches config.wikiStoreGlobal for searchMemoryNodes.
 		if (this.wikiStoreGlobal) (sessionConfig as any).wikiStoreGlobal = this.wikiStoreGlobal;
 		if (this.extractorsConfig) (sessionConfig as any).extractors = this.extractorsConfig;
+		// skill-system sub-9 (Approach A): inject the skills section closure so
+		// the AgentLoop's `skills` system section renders the agent's enabled
+		// skills + (if permitted) Authoring guidance. Closure re-reads
+		// skillPolicy + scanSkills() each turn; agentStore.onChange hot-swaps it
+		// (see setAgentStore). Mirrors workContextSystemSection DI shape.
+		const skillSectionClosure = this.buildSkillSectionClosure(agentId);
+		if (skillSectionClosure) sessionConfig.getSkillSection = skillSectionClosure;
 		// v0.8 (P3 §7.7 #4): surface the tool-call usage log on every session
 		// so tool-factory records one row per tool invocation.
 		if (this.toolUsageStore) (sessionConfig as any).toolUsageStore = this.toolUsageStore;

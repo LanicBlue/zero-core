@@ -197,6 +197,13 @@ async function main() {
 	console.log(`Using: ${providerName} / ${modelId}`);
 
 	// Build system prompt
+	//
+	// ⚠️ skill-system sub-9:这是 **CLI / headless 路径** 的 prompt builder,
+	// 不是 Electron app 运行时入口。app agent 的 system prompt 经
+	// AgentLoop.assembleSystemPrompt → SystemPromptAssembler sections 拼装;
+	// skill 注入走那里的 `skills` system section(见 src/core/skills-section.ts
+	// 的 buildSkillsSection,本处 buildSystemPrompt 也复用它)。
+	// 此处未传 skills / enabledSkills / canAuthorSkills,故 skill 段对 CLI 空跑。
 	const deviceContext = loadDeviceContext(sessionDB.getKVStore()) || undefined;
 	const systemPrompt = buildSystemPrompt(config, {
 		cwd,
