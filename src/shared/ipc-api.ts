@@ -145,7 +145,10 @@ export interface IpcChannelDefs {
 	// exposes them.
 
 	// ── Chat ─────────────────────────────────────────────────
-	"chat:send":   { params: [text: string, agentId?: string, sessionId?: string];    result: Ok };
+	// multimodal-input sub-4 (principle A): chat:send carries attachment META
+	// only (AttachmentMeta[] with diskPath); bytes never travel in this body —
+	// they were uploaded via attachments:upload (sub-1) and live on disk.
+	"chat:send":   { params: [text: string, agentId?: string, sessionId?: string, attachments?: AttachmentMeta[]];    result: Ok };
 	"chat:abort":  { params: [sessionId?: string];                result: Ok };
 
 	// ── Attachments (multimodal-input sub-1) ─────────────────

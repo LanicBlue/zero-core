@@ -105,7 +105,9 @@ export interface WindowApi {
 	filesSave: (path: string, content: string, root?: string) => Promise<{ success: true } | { error: string }>;
 
 	// ── Chat ──
-	chatSend: (text: string, agentId?: string, sessionId?: string) => Promise<{ success: true }>;
+	// multimodal-input sub-4 (principle A): attachments carry META only
+	// (diskPath + kind/size/mime); bytes never enter this call.
+	chatSend: (text: string, agentId?: string, sessionId?: string, attachments?: AttachmentMeta[]) => Promise<{ success: true }>;
 	chatAbort: (sessionId?: string) => Promise<{ success: true }>;
 
 	// ── Attachments (multimodal-input sub-1) ──

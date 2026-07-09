@@ -40,6 +40,11 @@ import type {
 	ToolExecutionContext,
 	TaskInfo,
 } from "./types.js";
+// multimodal-input sub-4: run() accepts string | UserContent. Internal model
+// stays meta-only (principle A); bytes are read at the LLM edge (getMessages)
+// and UI edge, never inside the loop. UserContent/AttachmentMeta come from
+// shared/types (sub-1) so IPC + runtime share one shape.
+import type { UserContent, AttachmentMeta } from "../shared/types.js";
 // tool-decoupling sub-5(B2):AgentLoop 直建 CallerCtx(不再经 ctxToCallerCtx 桥)。
 import type { CallerCtx, TodoAccessor, TaskRegistryAccessor, DelegateFns, AgentResolvers } from "../tools/types.js";
 import { resolveModel, getContextWindow, getMultimodal } from "./provider-factory.js";
@@ -497,9 +502,25 @@ export class AgentLoop implements AgentRuntime {
 
 	// ─── Public API ──────────────────────────────────────────────
 
-	async run(userMessage: string): Promise<void> {
+	/**
+	 * multimodal-input sub-4: run() now accepts `string | UserContent`. A bare
+	 * string is normalized to `{ text: string, attachments: [] }` so the rest of
+	 * the loop and all legacy callers (recovery sendPrompt, delegation,
+	 * cron/analyst, sendProjectPrompt) keep working unchanged. The attachments
+	 * (meta-only, principle A) are threaded into the TurnStart hook ctx so the
+	 * live persistence path (turn-hooks TurnStart → appendStep) writes them to
+	 * the `turns.attachments` column — this is what getMessagesMultimodal
+	 * (sub-3) reads on the LIVE path (sub-3 only covered the rebuild path).
+	 */
+	async run(userMessage: string | UserContent): Promise<void> {
 		if (this.busy) throw new Error("Agent is already busy");
-		log.loop("run() called, msg length:", userMessage.length);
+		// Normalize once: string → {text, attachments:[]}. Downstream code reads
+		// `text` (legacy message content — stays a plain string per design) and
+		// `attachments` (meta-only; bytes never enter the loop).
+		const isUserContent = typeof userMessage !== "string";
+		const text = isUserContent ? userMessage.text : userMessage;
+		const attachments: AttachmentMeta[] = isUserContent ? userMessage.attachments : [];
+		log.loop("run() called, msg length:", text.length, "attachments:", attachments.length);
 
 		this.busy = true;
 		this.streamText = "";
@@ -526,13 +547,17 @@ export class AgentLoop implements AgentRuntime {
 			try {
 				// Step 1C: UserPromptSubmit is deleted (no consumer; the input-gate
 				// concern merged into TurnStart). addMessage runs unconditionally.
-				this.session.addMessage({ role: "user", content: userMessage });
+				this.session.addMessage({ role: "user", content: text });
 				this.session.saveToDb();
 				await this.session.pruneIfNeeded();
 
 				log.loop("Messages after prune:", this.session.getMessages().length, "est tokens:", this.session.getMessages().reduce((s: number, m: any) => s + Math.ceil(JSON.stringify(m).length / 4), 0));
 
-				await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage, source: this.config.source });
+				// multimodal-input sub-4: pass the normalized text + attachments
+				// (meta-only) to TurnStart so the live persistence hook
+				// (turn-hooks.ts) can write them via appendStep → turns.attachments.
+				// `userMessage` stays the string text for any legacy hook reading it.
+				await this.triggerLocal("TurnStart", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), userMessage: text, attachments, source: this.config.source });
 
 				// TurnStart hook has written user turn; next seq is the first assistant step
 				if (this.config.db && this.config.sessionId) {
@@ -876,7 +901,10 @@ export class AgentLoop implements AgentRuntime {
 	}
 
 	/** Expose session turns for UI rendering — runtime is the single source of truth. */
-	getSessionTurns(): Array<{ seq: number; role: string; content: string | null; createdAt: string; turnGroup?: number }> {
+	// multimodal-input sub-4: turns now carry optional attachment META (from
+	// turns.attachments, sub-2) so buildStepLevelMessages can surface them onto
+	// ChatMessage for the renderer. Bytes never flow here (principle A).
+	getSessionTurns(): Array<{ seq: number; role: string; content: string | null; createdAt: string; turnGroup?: number; attachments?: AttachmentMeta[] }> {
 		return this.session.getCachedTurns();
 	}
 

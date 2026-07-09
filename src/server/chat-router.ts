@@ -31,6 +31,11 @@ import { homedir } from "node:os";
 import type { createAgentService } from "./agent-service.js";
 import type { AgentStore } from "./agent-store.js";
 import type { ProviderStore } from "./provider-store.js";
+// multimodal-input sub-4: chat:send carries attachment META only (principle A).
+// The renderer uploaded bytes via attachments:upload (sub-1) and now passes just
+// AttachmentMeta[] (with diskPath); the backend wraps text + attachments into a
+// UserContent and hands it to sendPrompt → loop.run.
+import type { AttachmentMeta, UserContent } from "../shared/types.js";
 
 const expandHome = (p: string) => p.startsWith("~") ? p.replace(/^~/, homedir()) : p;
 
@@ -44,7 +49,7 @@ export function createChatRouter(deps: {
 	const { agentService, agentStore, providerStore, workspaceConfig } = deps;
 
 	router.post("/send", async (req, res) => {
-		const { text, agentId, sessionId } = req.body;
+		const { text, agentId, sessionId, attachments } = req.body as { text: string; agentId?: string; sessionId?: string; attachments?: AttachmentMeta[] };
 		const agent = agentId ? agentStore.get(agentId) : undefined;
 
 		const wsDir = expandHome(agent?.workspaceDir || workspaceConfig.workspaceDir);
@@ -64,7 +69,14 @@ export function createChatRouter(deps: {
 		}));
 		agentService.setProviders(providerConfigs, workspaceConfig.defaultModel, workspaceConfig.defaultProvider);
 
-		agentService.sendPrompt(text, agent, sessionId, "user").catch(() => {
+		// multimodal-input sub-4 (principle A): chat:send carries attachment META
+		// only (diskPath + kind/size/mime); bytes never enter this body. When
+		// attachments are present, wrap text + attachments into a UserContent;
+		// otherwise pass the bare string (back-compat / cheapest path).
+		const prompt: string | UserContent = Array.isArray(attachments) && attachments.length > 0
+			? { text: text ?? "", attachments }
+			: (text ?? "");
+		agentService.sendPrompt(prompt, agent, sessionId, "user").catch(() => {
 			// Error events are forwarded via WebSocket
 		});
 

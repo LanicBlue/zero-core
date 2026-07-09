@@ -29,7 +29,7 @@
 import { loadConfig, ZERO_CORE_DIR, type ZeroCoreConfig } from "../core/config.js";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
-import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy } from "../shared/types.js";
+import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy, UserContent, AttachmentMeta } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
 import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource, PlatformObserver, PlatformSessionSummary, PlatformProviderStat, PlatformProviderSeries, PlatformProviderQueueEntry } from "../runtime/types.js";
@@ -1221,7 +1221,7 @@ export class AgentService implements PlatformObserver {
 	 * (acceptance-1 case 6). The marker is stamped on the loop and persists on
 	 * turn_state.source via durable-hooks TurnStart.
 	 */
-	async sendPrompt(text: string, agent?: AgentRecord, sessionId?: string, source: TurnSource = "background"): Promise<void> {
+	async sendPrompt(text: string | UserContent, agent?: AgentRecord, sessionId?: string, source: TurnSource = "background"): Promise<void> {
 		const agentId = agent?.id ?? "__default__";
 		// If sessionId provided, look up (or create) the loop for that specific session
 		let loop: AgentLoop;
@@ -1255,7 +1255,11 @@ export class AgentService implements PlatformObserver {
 			log.agent("Session waiting — input queued + interrupt fired:", agentId, "session:", sessionId, "interrupted:", interrupted);
 			return;
 		}
-		log.agent("Sending prompt to:", agentId, "session:", sessionId, "length:", text.length);
+		// multimodal-input sub-4: text may be string | UserContent. For the log
+		// line only, reduce to its text length (attachments are meta; bytes never
+		// enter the loop). loop.run() does its own normalization.
+		const textLen = typeof text === "string" ? text.length : text.text.length;
+		log.agent("Sending prompt to:", agentId, "session:", sessionId, "length:", textLen);
 		this.sessionManager?.trackSessionQueued(sessionId);
 		this.markRunning(sessionId, agentId);
 		try {
@@ -1764,14 +1768,14 @@ export class AgentService implements PlatformObserver {
 
 	/** Build UI messages from step-level data, grouping by turnGroup. */
 	private buildStepLevelMessages(
-		turns: Array<{ seq: number; role: string; content: string | null; createdAt: string; turnGroup?: number }>,
+		turns: Array<{ seq: number; role: string; content: string | null; createdAt: string; turnGroup?: number; attachments?: AttachmentMeta[] }>,
 		isBusy: boolean,
 		recorderBlocks: any[],
 	): any[] {
 		const result: any[] = [];
 
 		// Group steps by turnGroup, preserving order
-		const groups = new Map<number, Array<{ seq: number; role: string; content: string | null; createdAt: string }>>();
+		const groups = new Map<number, Array<{ seq: number; role: string; content: string | null; createdAt: string; attachments?: AttachmentMeta[] }>>();
 		const groupOrder: number[] = [];
 		for (const t of turns) {
 			const tg = t.turnGroup ?? t.seq;
@@ -1796,6 +1800,12 @@ export class AgentService implements PlatformObserver {
 
 			// User message
 			if (userStep) {
+				// multimodal-input sub-4: surface the user step's attachment META
+				// (from turns.attachments, sub-2) onto the UI ChatMessage so the
+				// renderer can render thumbnails (sub-5/6). Only meta flows here
+				// (principle A); the renderer fetches bytes via the attachment-
+				// serving endpoint when it needs to display an image.
+				const userAttachments = userStep.attachments && userStep.attachments.length > 0 ? userStep.attachments : undefined;
 				result.push({
 					// id prefix distinguishes role so user/assistant in the same
 					// turnGroup get DIFFERENT React keys. Editing/deleting parses
@@ -1807,6 +1817,7 @@ export class AgentService implements PlatformObserver {
 					role: "user",
 					text: userStep.content ?? "",
 					timestamp: new Date(userStep.createdAt).getTime(),
+					...(userAttachments ? { attachments: userAttachments } : {}),
 				});
 			}
 

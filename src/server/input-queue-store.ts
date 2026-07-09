@@ -18,6 +18,10 @@
 // hook、IPC router 使用。
 //
 import { emitDataChange } from "./data-change-hub.js";
+// multimodal-input sub-4: queued items may carry attachment meta (UserContent).
+// insert_now stays string-only (mid-step injection; multimodal insert_now is out
+// of sub-4 scope). Only the queued → next-turn path carries UserContent.
+import type { UserContent } from "../shared/types.js";
 
 export type InputQueueMode = "queued" | "insert_now";
 
@@ -27,6 +31,14 @@ export interface InputQueueItem {
 	content: string;
 	mode: InputQueueMode;
 	createdAt: number;
+	/**
+	 * multimodal-input sub-4: when a queued item was enqueued from a
+	 * `UserContent` (text + attachments), the full UserContent is carried here
+	 * so the post-run drain can hand it back to `loop.run`. `undefined` for
+	 * insert_now items (string-only) and for back-compat string-only enqueues.
+	 * The flat `content` string always holds the text portion (UI strip + logs).
+	 */
+	userContent?: UserContent;
 	/**
 	 * Step 2E: deferred-consume marker. Set when an insert_now item has been
 	 * injected into a step (peekInsertNow) but NOT yet committed out of the
@@ -70,13 +82,24 @@ export class InputQueueStore {
 		return [...(this.itemsBySession.get(sessionId) ?? [])];
 	}
 
-	enqueue(sessionId: string, content: string, mode: InputQueueMode = "queued"): InputQueueItem {
+	/**
+	 * multimodal-input sub-4: `content` may be `string | UserContent`. For a
+	 * UserContent, the text portion is stored in the flat `content` field (UI
+	 * strip + logs need a string) and the full UserContent in `userContent`
+	 * (drain path hands it back to `loop.run`). String input is back-compat
+	 * (userContent stays undefined → drain returns a bare string).
+	 */
+	enqueue(sessionId: string, content: string | UserContent, mode: InputQueueMode = "queued"): InputQueueItem {
+		const isUserContent = typeof content !== "string";
+		const text = isUserContent ? content.text : content;
 		const item: InputQueueItem = {
 			id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 			sessionId,
-			content,
+			content: text,
 			mode,
 			createdAt: Date.now(),
+			// Only queued items carry UserContent; insert_now is string-only (sub-4 scope).
+			userContent: (isUserContent && mode === "queued") ? content : undefined,
 		};
 		const arr = this.itemsBySession.get(sessionId) ?? [];
 		arr.push(item);
@@ -216,9 +239,14 @@ export class InputQueueStore {
 
 	/**
 	 * Post-run drain: pop the first queued item (FIFO) for the next user turn.
-	 * Returns its content, or undefined if the queue is empty.
+	 *
+	 * multimodal-input sub-4: returns `string | UserContent | undefined`. If the
+	 * item was enqueued from a UserContent, the full UserContent (text +
+	 * attachments) is returned so the drain caller can pass it to `loop.run`;
+	 * otherwise the flat string content is returned (back-compat). Caller treats
+	 * both shapes via the `string | UserContent` union that `loop.run` accepts.
 	 */
-	drainNextQueued(sessionId: string): string | undefined {
+	drainNextQueued(sessionId: string): string | UserContent | undefined {
 		const arr = this.itemsBySession.get(sessionId);
 		if (!arr || arr.length === 0) return undefined;
 		const idx = arr.findIndex((i) => i.mode === "queued");
@@ -226,7 +254,7 @@ export class InputQueueStore {
 		const [item] = arr.splice(idx, 1);
 		if (arr.length === 0) this.itemsBySession.delete(sessionId);
 		this.emit(sessionId);
-		return item.content;
+		return item.userContent ?? item.content;
 	}
 
 	hasQueued(sessionId: string): boolean {

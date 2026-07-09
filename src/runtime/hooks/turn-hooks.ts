@@ -26,6 +26,12 @@ import { HookRegistry } from "../../core/hook-registry.js";
 import type { ISessionStore } from "../session-store-interface.js";
 import { TurnRecorder } from "../turn-recorder.js";
 import { log } from "../../core/logger.js";
+// multimodal-input sub-4: live path persists the current turn's attachment
+// META into turns.attachments (sub-2 column). sub-3's getMessagesMultimodal
+// already reads this column on the rebuild path; this wiring makes the LIVE
+// path (TurnStart → appendStep) write it so getMessagesMultimodal sees the
+// current turn's attachments too. Bytes never enter here (principle A).
+import type { AttachmentMeta } from "../../shared/types.js";
 // Step 4A: turn_seq tracking consolidated into a single shared Map
 // (turn-seq-tracker). turn-hooks re-exports the accessors so existing
 // callers (agent-service, tests) keep their import paths; durable-hooks
@@ -64,14 +70,23 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			const userMessage = ctx.userMessage as string;
 			if (!userMessage) return;
 
+			// multimodal-input sub-4: read the current turn's attachment META
+			// off the TurnStart ctx (AgentLoop.run threaded it through from the
+			// normalized UserContent) and persist it via appendStep →
+			// turns.attachments. This is what sub-3's getMessagesMultimodal
+			// reads to inline/annotate the CURRENT turn's attachments on the
+			// LIVE path (sub-3 only covered rebuild). undefined for legacy
+			// string-only callers → appendStep writes NULL (back-compat).
+			const attachments = ctx.attachments as AttachmentMeta[] | undefined;
+
 			const seq = db.getTurnCount(sessionId);
 			setTurnSeq(sessionId, seq);
 
 			// Step 4A: step-only. The user row's turn_group = its own seq (a
 			// user turn opens a new group); the legacy single-row write path is
 			// retired.
-			db.appendStep(sessionId, seq, seq, "user", userMessage);
-			log.debug("turn-hooks", `User turn ${seq} saved for session ${sessionId}`);
+			db.appendStep(sessionId, seq, seq, "user", userMessage, undefined, attachments);
+			log.debug("turn-hooks", `User turn ${seq} saved for session ${sessionId}${attachments && attachments.length ? ` (${attachments.length} attachment(s))` : ""}`);
 		} catch (err) {
 			log.error("turn-hooks", "TurnStart hook failed:", (err as Error).message);
 		}

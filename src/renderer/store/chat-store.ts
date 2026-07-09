@@ -24,7 +24,7 @@
 // - 保持状态更新幂等性
 //
 import { create } from "zustand";
-import type { SessionRecord } from "../../shared/types.js";
+import type { SessionRecord, AttachmentMeta } from "../../shared/types.js";
 
 type SessionLifecycleState = "created" | "idle" | "queued" | "streaming" | "executing_tools" | "error" | "disposed";
 
@@ -58,6 +58,15 @@ export interface ChatMessage {
 	blocks?: MessageBlock[];
 	timestamp: number;
 	streaming?: boolean;
+	/**
+	 * multimodal-input sub-4: attachment META carried on a user message (from
+	 * turns.attachments via buildStepLevelMessages). Only meta flows here
+	 * (principle A) — the renderer fetches bytes via the attachment-serving
+	 * endpoint (sub-5) when it needs to render a thumbnail. Undefined for
+	 * assistant messages and legacy user messages with no attachments.
+	 * Rendered by sub-5/6 (not this sub).
+	 */
+	attachments?: AttachmentMeta[];
 }
 
 let _nextId = Date.now();

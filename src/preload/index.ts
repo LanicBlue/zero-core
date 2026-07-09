@@ -74,7 +74,7 @@ const api: WindowApi = {
 	filesSave: (path, content, root) => ipcRenderer.invoke("files:save", path, content, root),
 
 	// ─── Chat ────────────────────────────────────────
-	chatSend: (text, agentId, sessionId?) => ipcRenderer.invoke("chat:send", text, agentId, sessionId),
+	chatSend: (text, agentId, sessionId?, attachments?) => ipcRenderer.invoke("chat:send", text, agentId, sessionId, attachments),
 	chatAbort: (sessionId) => ipcRenderer.invoke("chat:abort", sessionId),
 
 	// ─── Attachments (multimodal-input sub-1) ───────

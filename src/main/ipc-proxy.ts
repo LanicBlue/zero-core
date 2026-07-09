@@ -149,7 +149,10 @@ const R: Record<string, RouteMapping> = {
 	"messages:delete": { method: "DELETE", path: "/api/sessions/:agentId/messages/:seq", buildReq: (agentId, msgSeq) => ({ params: { agentId, seq: String(msgSeq) } }) },
 
 	// Chat
-	"chat:send":  { method: "POST", path: "/api/chat/send", buildReq: (text, agentId?, sessionId?) => ({ body: { text, agentId, sessionId } }) },
+	// multimodal-input sub-4 (principle A): attachments carry META only
+	// (diskPath); bytes never enter this body. Forwarded as the request body so
+	// chat-router can wrap text+attachments into UserContent for sendPrompt.
+	"chat:send":  { method: "POST", path: "/api/chat/send", buildReq: (text, agentId?, sessionId?, attachments?) => ({ body: { text, agentId, sessionId, attachments } }) },
 	"chat:abort": { method: "POST", path: "/api/chat/abort", buildReq: (sessionId?: string) => ({ body: { sessionId } }) },
 
 	// Attachments (multimodal-input sub-1) — single bytes-into-main entry.
