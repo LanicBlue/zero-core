@@ -161,6 +161,54 @@ describe("acceptance-1 用例2:getSkillRoots 顺序 + source 标记", () => {
 		expect(roots[1]?.dir).toBe(join(home, ".claude", "skills"));
 		expect(roots[2]?.dir).toBe(join(home, ".agents", "skills"));
 	});
+
+	// sub-10 (decision 10): 每个 root 带 display-only origin 字段(给 UI badge 用)。
+	// origin 与 dir 一一对应:app root → zero-core;~/.claude/skills → claude;~/.agents/skills → agents。
+	test("sub-10: 每个 root 带 origin 字段(zero-core/claude/agents,与 dir 对应)", () => {
+		const roots = getSkillRoots(home);
+		expect(roots.map((r) => r.origin)).toEqual(["zero-core", "claude", "agents"]);
+		// source 与 origin 的对应关系(app↔zero-core;两个 user 分别 claude/agents)。
+		expect(roots[0]).toMatchObject({ source: "app", origin: "zero-core" });
+		expect(roots[1]).toMatchObject({ source: "user", origin: "claude" });
+		expect(roots[2]).toMatchObject({ source: "user", origin: "agents" });
+	});
+});
+
+// sub-10 (decision 10): DiscoveredSkill.origin 由 scanDir 按 root stamp。
+// - ~/.zero-core/skills/<id> → origin "zero-core"
+// - ~/.claude/skills/<id>    → origin "claude"
+// - ~/.agents/skills/<id>    → origin "agents"
+// 同 id 跨 root 时:origin 跟随"胜出"那条(personal>app,与 source 同步覆盖)。
+describe("sub-10: DiscoveredSkill.origin 按 root stamp", () => {
+	test("三条 root 各放一个不同 id 的 skill → origin 各对应 root", () => {
+		createSkill(home, ".zero-core", "alpha", { name: "Alpha", description: "a" });
+		createSkill(home, ".claude", "beta", { name: "Beta", description: "b" });
+		createSkill(home, ".agents", "gamma", { name: "Gamma", description: "g" });
+
+		const idx = getSkillIndex(home);
+		expect(idx.get("alpha")?.origin).toBe("zero-core");
+		expect(idx.get("beta")?.origin).toBe("claude");
+		expect(idx.get("gamma")?.origin).toBe("agents");
+	});
+
+	test("同 id 跨 .zero-core + .claude → user 胜,origin=claude(跟胜者)", () => {
+		createSkill(home, ".zero-core", "dup", { name: "Dup", description: "app" });
+		createSkill(home, ".claude", "dup", { name: "Dup", description: "user-claude" });
+
+		const skill = scanSkills(home)[0];
+		expect(skill?.source).toBe("user");
+		expect(skill?.origin).toBe("claude"); // personal 胜 → origin 跟随
+		expect(skill?.description).toBe("user-claude");
+	});
+
+	test("同 id 跨 .claude + .agents → .agents(数组序靠后)胜,origin=agents", () => {
+		createSkill(home, ".claude", "dup2", { name: "Dup2", description: "claude" });
+		createSkill(home, ".agents", "dup2", { name: "Dup2", description: "agents" });
+
+		const skill = scanSkills(home)[0];
+		expect(skill?.origin).toBe("agents");
+		expect(skill?.description).toBe("agents");
+	});
 });
 
 describe("acceptance-1 用例3:resolveSkillByName 缺失 → undefined", () => {

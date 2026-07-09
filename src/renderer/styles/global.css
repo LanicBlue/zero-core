@@ -6006,27 +6006,77 @@ n.tools-page-test-chips {
 	margin-bottom: 16px;
 }
 
-/* ─── sub-5 SkillsSection (agent config) ──────────────────── */
-/* 镜像 ToolsSection 的 .tool-group / .tool-list / .tool-item 布局;
-   checkbox 替代 toggle-switch,缩进/对齐一致。 */
+/* ─── sub-10 SkillsSection (agent config) ──────────────────── */
+/* UI 对齐 ToolsSection:toggle-switch + 可点展开 detail panel + origin badge。
+   复用 ToolsSection 的 .tool-group/.tool-list/.tool-item/.tool-info/.toggle-switch/
+   .tool-detail-panel/.tool-name/.tool-desc,这里只补 skills 专属样式。 */
 
-.skill-checkbox {
-	width: 16px;
-	height: 16px;
+/* sub-10: skill 行的 tool-info 可点击展开(光标提示)。 */
+.skill-tool-info {
 	cursor: pointer;
-	flex-shrink: 0;
-	margin-left: auto;
 }
 
-/* sub-8: canAuthorSkills toggle checkbox。与 .skill-checkbox 同视觉但独立 className,
-   避免 sub-5 E2E 的 `input.skill-checkbox` 选择器误命中 toggle(无 skill 时误判 cbCount=1)。
-   aria-label 唯一定位(允许此 agent 创建 skill)。 */
-.skill-author-toggle__checkbox {
-	width: 16px;
-	height: 16px;
-	cursor: pointer;
-	flex-shrink: 0;
-	margin-left: auto;
+/* sub-10: 来源 badge(ZERO-CORE/CLAUDE/AGENTS)。仅展示,不参与业务判断。 */
+.skill-origin-badge {
+	display: inline-block;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.5px;
+	padding: 2px 6px;
+	border-radius: 4px;
+	background: var(--bg-subtle);
+	color: var(--fg-muted);
+	border: 1px solid var(--border-default);
+	margin-top: 4px;
+	width: fit-content;
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+/* sub-10: 展开后的详情面板元信息行(id + origin badge)。复用 .tool-detail-panel 外壳。 */
+.skill-detail-meta {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 8px;
+	font-size: 11px;
+	color: var(--fg-muted);
+	flex-wrap: wrap;
+}
+
+.skill-detail-id code {
+	font-family: "Cascadia Code", "Fira Code", monospace;
+	font-size: 11px;
+	background: var(--bg-subtle);
+	padding: 1px 4px;
+	border-radius: 3px;
+}
+
+/* sub-10: 详情面板内的 origin badge 按来源分色(辅助一眼区分)。 */
+.skill-detail-origin {
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.5px;
+	padding: 2px 6px;
+	border-radius: 4px;
+	border: 1px solid var(--border-default);
+	-webkit-user-select: none;
+	user-select: none;
+}
+.skill-detail-origin--zero-core {
+	background: rgba(59, 130, 246, 0.12);
+	border-color: rgba(59, 130, 246, 0.4);
+	color: #60a5fa;
+}
+.skill-detail-origin--claude {
+	background: rgba(217, 119, 6, 0.12);
+	border-color: rgba(217, 119, 6, 0.4);
+	color: #fbbf24;
+}
+.skill-detail-origin--agents {
+	background: rgba(168, 85, 247, 0.12);
+	border-color: rgba(168, 85, 247, 0.4);
+	color: #c084fc;
 }
 
 /* ─── Memory Config Settings ────────────────────────────── */

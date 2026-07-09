@@ -34,7 +34,12 @@ export interface DiscoveredSkill {
 	id: string;
 	name: string;
 	description: string;
+	// 逻辑分类(管 app/user 分组、sub-6/8 的 source==="app" 判断)— 不动。
 	source: "user" | "app";
+	// sub-10 (decision 10): display-only 来源标签。
+	// 细分到具体 root:zero-core(~/.zero-core/skills)/claude(~/.claude/skills)/agents(~/.agents/skills)。
+	// 仅展示用,不参与任何业务判断(后者仍走 `source`)。
+	origin: "zero-core" | "claude" | "agents";
 	filePath: string;
 	baseDir: string;
 }
@@ -49,6 +54,8 @@ export interface DiscoveredSkill {
 export interface SkillRoot {
 	dir: string;
 	source: "user" | "app";
+	// sub-10 (decision 10): display-only 来源标签,与 dir 一一对应。
+	origin: "zero-core" | "claude" | "agents";
 }
 
 /**
@@ -61,9 +68,9 @@ export interface SkillRoot {
  */
 export function getSkillRoots(home: string = homedir()): SkillRoot[] {
 	return [
-		{ dir: join(home, ".zero-core", "skills"), source: "app" as const },
-		{ dir: join(home, ".claude", "skills"), source: "user" as const },
-		{ dir: join(home, ".agents", "skills"), source: "user" as const },
+		{ dir: join(home, ".zero-core", "skills"), source: "app" as const, origin: "zero-core" as const },
+		{ dir: join(home, ".claude", "skills"), source: "user" as const, origin: "claude" as const },
+		{ dir: join(home, ".agents", "skills"), source: "user" as const, origin: "agents" as const },
 	];
 }
 
@@ -129,7 +136,11 @@ export function parseSkillFrontmatter(content: string): { name?: string; descrip
 	return { name, description };
 }
 
-function scanDir(dir: string, source: "user" | "app"): DiscoveredSkill[] {
+function scanDir(
+	dir: string,
+	source: "user" | "app",
+	origin: "zero-core" | "claude" | "agents",
+): DiscoveredSkill[] {
 	if (!existsSync(dir)) return [];
 
 	const manifest = loadManifest(dir);
@@ -172,6 +183,7 @@ function scanDir(dir: string, source: "user" | "app"): DiscoveredSkill[] {
 			name,
 			description,
 			source,
+			origin,
 			filePath: resolve(skillMdPath),
 			baseDir: skillDir,
 		});
@@ -190,8 +202,8 @@ export function scanSkills(home?: string): DiscoveredSkill[] {
 	const sources = getSkillRoots(home ?? homedir());
 	const merged = new Map<string, DiscoveredSkill>();
 
-	for (const { dir, source } of sources) {
-		const skills = scanDir(dir, source);
+	for (const { dir, source, origin } of sources) {
+		const skills = scanDir(dir, source, origin);
 		for (const skill of skills) {
 			// 数组中靠后 = 高优先级(personal),覆盖前(app)
 			merged.set(skill.id, skill);
