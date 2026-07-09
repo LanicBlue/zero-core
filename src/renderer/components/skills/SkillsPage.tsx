@@ -5,16 +5,21 @@
 // ## 核心功能
 // 双栏布局:
 //   - 左:skill 列表,按来源分组("本软件 skills" `source==="app"` 置顶,外部其下);
-//     每项 display name + source 标记。
-//   - 右:选中 skill 详情——display name / description / source / body(body 按需取)。
+//     每项 display name + 来源 badge。sub-11: badge 文案用 originLabel(skill.origin)
+//     → ZERO-CORE/CLAUDE/AGENTS(具体来源标签,不再是原始 source 字符串)。
+//   - 右:选中 skill 详情——display name / origin / id / description(触发词) /
+//     body(sub-11 view 模式 markdown 渲染)/ frontmatter 全字段(metadata)/
+//     兄弟文件列表(Files 段)。
 // 本软件 skill(source==="app"):可编辑(display name + description + body)、新建、删除。
-// 外部来源(source==="user"):只读,无编辑/删除按钮。
-// body 经 `skillsGetBody(id)` 按需取(scanner 不持有 body,见 F4)。
+// 外部来源(source==="user"):只读,无编辑/删除按钮,但 body/frontmatter/files 仍可读。
+// body + frontmatter 经 `skillsGetBody(id)` 按需取(scanner 不持有 body,见 F4)。
+// 兄弟文件经 `skillsListFiles(id)` 按需取(sub-11,只读)。
 //
 // ## 输入
 // - window.api.skillsList():DiscoveredSkill[]
-// - window.api.skillsGetBody(id):{ body, source }
-// - window.api.skillsCreate/update/delete(本软件 skill 写操作)
+// - window.api.skillsGetBody(id):{ body, source, frontmatter }(sub-11 加 frontmatter)
+// - window.api.skillsListFiles(id):{ files, source }(sub-11 新增,兄弟文件/脚本)
+// - window.api.skillsCreate/update/delete/installGit(本软件 skill 写操作 + git 安装)
 //
 // ## 输出
 // - 渲染的双栏 DOM(.skills-page / .skills-two-pane / .skills-detail-pane 等)
@@ -25,17 +30,21 @@
 // ## 依赖
 // - react
 // - ../../../shared/types (DiscoveredSkill)
+// - ../../../shared/skill-origin (originLabel —— sub-10 来源 badge 文案)
+// - ../common/MarkdownRenderer (sub-11 view 模式 body 渲染)
 // - window.api(preload 暴露的 skills* 接口)
 //
 // ## 维护规则
 // - DiscoveredSkill 字段变化时同步详情渲染。
-// - Skill 来源类别新增(如 plugin)时需要扩展分组逻辑。
+// - Skill 来源类别新增(如 plugin)时需要扩展分组逻辑 + originLabel 映射。
 // - 写路径安全护栏在后端(skill-router);本组件只负责按 source 控按钮可见性。
-// - v1 边界:CRUD 只管 SKILL.md 入口;兄弟文件/脚本的新建编辑留后续 sub。
+// - v1 边界:CRUD 只管 SKILL.md 入口;兄弟文件/脚本的新建编辑留后续 sub(Files 段只读)。
 //
 
 import React, { useState, useEffect, useCallback } from "react";
 import type { DiscoveredSkill } from "../../../shared/types.js";
+import { originLabel } from "../../../shared/skill-origin.js";
+import MarkdownRenderer from "../common/MarkdownRenderer.js";
 
 const api = () => (window as any).api;
 
@@ -44,6 +53,21 @@ type SkillSource = "app" | "user";
 interface BodyState {
 	loading: boolean;
 	body: string;
+	/** sub-11: SKILL.md frontmatter 全字段(供 Metadata 段展示)。 */
+	frontmatter: Record<string, string>;
+	error?: string;
+}
+
+interface SkillFileEntry {
+	relPath: string;
+	kind: "file" | "dir";
+	size: number;
+	name: string;
+}
+
+interface FilesState {
+	loading: boolean;
+	files: SkillFileEntry[];
 	error?: string;
 }
 
@@ -57,7 +81,8 @@ export default function SkillsPage() {
 	const [loadingList, setLoadingList] = useState(true);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [mode, setMode] = useState<Mode>({ kind: "view" });
-	const [body, setBody] = useState<BodyState>({ loading: false, body: "" });
+	const [body, setBody] = useState<BodyState>({ loading: false, body: "", frontmatter: {} });
+	const [files, setFiles] = useState<FilesState>({ loading: false, files: [] });
 	const [toast, setToast] = useState<{ kind: "error" | "info"; text: string } | null>(null);
 	// sub-7: 从 git 安装弹窗(open / installing / closed)。
 	const [installOpen, setInstallOpen] = useState(false);
@@ -79,30 +104,60 @@ export default function SkillsPage() {
 		loadSkills();
 	}, [loadSkills]);
 
-	// 选中项变化 → 按需拉 body(F4)。create 模式不拉(用空表单)。
+	// 选中项变化 → 按需拉 body + frontmatter(F4)。create 模式不拉(用空表单)。
 	useEffect(() => {
 		if (mode.kind === "create") {
-			setBody({ loading: false, body: "" });
+			setBody({ loading: false, body: "", frontmatter: {} });
 			return;
 		}
 		if (!selectedId) {
-			setBody({ loading: false, body: "" });
+			setBody({ loading: false, body: "", frontmatter: {} });
 			return;
 		}
 		let cancelled = false;
-		setBody({ loading: true, body: "" });
+		setBody({ loading: true, body: "", frontmatter: {} });
 		(async () => {
 			try {
 				const res = await api().skillsGetBody(selectedId);
 				if (cancelled) return;
 				if (res && typeof res.body === "string") {
-					setBody({ loading: false, body: res.body });
+					setBody({
+						loading: false,
+						body: res.body,
+						frontmatter: res.frontmatter ?? {},
+					});
 				} else {
-					setBody({ loading: false, body: "", error: res?.error ?? "Failed to load body" });
+					setBody({ loading: false, body: "", frontmatter: {}, error: res?.error ?? "Failed to load body" });
 				}
 			} catch (e) {
 				if (cancelled) return;
-				setBody({ loading: false, body: "", error: (e as Error).message });
+				setBody({ loading: false, body: "", frontmatter: {}, error: (e as Error).message });
+			}
+		})();
+		return () => { cancelled = true; };
+	}, [selectedId, mode.kind]);
+
+	// sub-11: 选中项变化 → 按需拉兄弟文件列表(只读展示)。
+	// edit/create 模式不拉(编辑只管 SKILL.md 入口,兄弟文件 v1 不可编辑)。
+	useEffect(() => {
+		if (mode.kind !== "view" || !selectedId) {
+			setFiles({ loading: false, files: [] });
+			return;
+		}
+		let cancelled = false;
+		setFiles({ loading: true, files: [] });
+		(async () => {
+			try {
+				const res = await api().skillsListFiles(selectedId);
+				if (cancelled) return;
+				if (res && Array.isArray(res.files)) {
+					setFiles({ loading: false, files: res.files });
+				} else {
+					setFiles({ loading: false, files: [], error: res?.error ?? "Failed to load files" });
+				}
+			} catch (e) {
+				if (cancelled) return;
+				setFiles({ loading: false, files: [], error: (e as Error).message });
 			}
 		})();
 		return () => { cancelled = true; };
@@ -150,7 +205,8 @@ export default function SkillsPage() {
 			const res = await api().skillsUpdate(id, input);
 			if (res && res.id) {
 				await loadSkills();
-				setBody({ loading: false, body: input.body });
+				// body 重置(下次切回 view 模式 useEffect 会重拉 frontmatter)。
+				setBody({ loading: false, body: input.body, frontmatter: {} });
 				setMode({ kind: "view" });
 				showToast("info", `Saved skill: ${id}`);
 			} else {
@@ -289,6 +345,7 @@ export default function SkillsPage() {
 						<SkillDetailView
 							skill={selected}
 							body={body}
+							files={files}
 							onEdit={() => setMode({ kind: "edit" })}
 							onDelete={() => handleDelete(selected.id)}
 						/>
@@ -335,7 +392,7 @@ function SkillListSection({
 						<div className="skill-item-header">
 							<span className="skill-item-name">{skill.name}</span>
 							<span className={`skill-item-source skill-source-${skill.source}`}>
-								{skill.source}
+								{originLabel(skill.origin)}
 							</span>
 						</div>
 						<p className="skill-item-description">{skill.description}</p>
@@ -350,22 +407,29 @@ function SkillListSection({
 function SkillDetailView({
 	skill,
 	body,
+	files,
 	onEdit,
 	onDelete,
 }: {
 	skill: DiscoveredSkill;
 	body: BodyState;
+	files: FilesState;
 	onEdit: () => void;
 	onDelete: () => void;
 }) {
 	const isApp = skill.source === "app";
+	// sub-11: frontmatter 全字段(去重掉已在单独字段展示的 name;description 仍保留作触发词主体)。
+	const fmEntries = Object.entries(body.frontmatter ?? {}).filter(([k]) => k !== "name");
+	const hasFiles = files.files.length > 0;
 	return (
 		<div className="skill-detail">
 			<div className="skill-detail-header">
 				<div>
 					<h3 className="skill-detail-name">{skill.name}</h3>
 					<p className="skill-detail-meta">
-						<span className={`skill-source-${skill.source}`}>{skill.source}</span>
+						<span className={`skill-source-${skill.source} skill-origin-badge`}>
+							{originLabel(skill.origin)}
+						</span>
 						{" · id: "}<code>{skill.id}</code>
 					</p>
 				</div>
@@ -378,7 +442,7 @@ function SkillDetailView({
 			</div>
 
 			<div className="skill-detail-field">
-				<label className="skill-detail-label">Description</label>
+				<label className="skill-detail-label">Description <span className="skill-detail-label-hint">(trigger phrase)</span></label>
 				<p className="skill-detail-description">{skill.description}</p>
 			</div>
 
@@ -389,7 +453,58 @@ function SkillDetailView({
 					<p className="skill-detail-body-error">Failed to load body: {body.error}</p>
 				)}
 				{!body.loading && !body.error && (
-					<pre className="skill-detail-body">{body.body || "(empty)"}</pre>
+					// sub-11: view 模式 markdown 渲染(取代 <pre> 裸显)。
+					// 用 .skill-detail-body 容器保留滚动 + 边框;MarkdownRenderer 内含 .markdown-body。
+					<div className="skill-detail-body skill-detail-body-md">
+						{body.body
+							? <MarkdownRenderer content={body.body} />
+							: <span className="skill-detail-body-empty">(empty)</span>}
+					</div>
+				)}
+			</div>
+
+			{fmEntries.length > 0 && (
+				<div className="skill-detail-field">
+					<label className="skill-detail-label">Frontmatter <span className="skill-detail-label-hint">(metadata)</span></label>
+					<dl className="skill-frontmatter">
+						{fmEntries.map(([k, v]) => (
+							<div className="skill-frontmatter-row" key={k}>
+								<dt className="skill-frontmatter-key">{k}</dt>
+								<dd className="skill-frontmatter-value">{v}</dd>
+							</div>
+						))}
+					</dl>
+				</div>
+			)}
+
+			<div className="skill-detail-field">
+				<label className="skill-detail-label">Files</label>
+				{files.loading && <p className="skill-detail-body-loading">Loading…</p>}
+				{!files.loading && files.error && (
+					<p className="skill-detail-body-error">Failed to load files: {files.error}</p>
+				)}
+				{!files.loading && !files.error && !hasFiles && (
+					<p className="skill-detail-body-loading">Only SKILL.md (no sibling files or scripts).</p>
+				)}
+				{!files.loading && !files.error && hasFiles && (
+					<ul className="skill-files-list">
+						{files.files.map((f) => (
+							<li key={f.relPath} className={`skill-file skill-file-${f.kind}`}>
+								<span className="skill-file-kind">{f.kind === "dir" ? "📁" : "📄"}</span>
+								<span className="skill-file-name" title={f.relPath}>{f.name}</span>
+								{f.kind === "dir" && <span className="skill-file-rel">/</span>}
+								{f.relPath !== f.name && (
+									<span className="skill-file-rel">{f.relPath}</span>
+								)}
+								{f.name === "SKILL.md" && (
+									<span className="skill-file-tag skill-file-tag-entry">entry</span>
+								)}
+								{f.kind === "file" && f.size > 0 && (
+									<span className="skill-file-size">{formatBytes(f.size)}</span>
+								)}
+							</li>
+						))}
+					</ul>
 				)}
 			</div>
 
@@ -402,6 +517,12 @@ function SkillDetailView({
 	);
 }
 
+/** sub-11: 文件大小人类可读展示(bytes → KB/MB)。 */
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 function SkillEditForm({
 	skill,
 	initialBody,

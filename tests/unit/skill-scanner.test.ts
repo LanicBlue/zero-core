@@ -32,6 +32,8 @@ import {
 	getSkillRoots,
 	getSkillIndex,
 	resolveSkillByName,
+	parseSkillFrontmatter,
+	parseSkillFrontmatterFull,
 	type DiscoveredSkill,
 } from "../../src/server/skill-scanner.js";
 
@@ -237,5 +239,86 @@ describe("acceptance-1 用例6:body 不读 / 不返回", () => {
 		expect(skill).toBeDefined();
 		// 协议:DiscoveredSkill 结构里不应有 body 字段
 		expect(skill).not.toHaveProperty("body");
+	});
+});
+
+// ─── sub-11: parseSkillFrontmatterFull(全字段,供详情页 Metadata 段) ──────
+
+describe("sub-11: parseSkillFrontmatterFull 返回全部 frontmatter 字段", () => {
+	test("含 name/description + 额外字段(category/allowed-tools)→ 全返回", () => {
+		const skillDir = join(home, ".claude", "skills", "fm-full");
+		mkdirSync(skillDir, { recursive: true });
+		const md = [
+			"---",
+			"name: Full FM",
+			"description: triggers when user asks",
+			"category: productivity",
+			"allowed-tools: Read, Grep, Bash",
+			"version: 1.2.3",
+			"---",
+			"",
+			"body line",
+		].join("\n");
+		writeFileSync(join(skillDir, "SKILL.md"), md, "utf-8");
+
+		const full = parseSkillFrontmatterFull(md);
+		expect(full.name).toBe("Full FM");
+		expect(full.description).toBe("triggers when user asks");
+		expect(full.category).toBe("productivity");
+		expect(full["allowed-tools"]).toBe("Read, Grep, Bash");
+		expect(full.version).toBe("1.2.3");
+	});
+
+	test("frontmatter 内 value 含引号 → 剥首尾配对引号", () => {
+		const md = [
+			"---",
+			'name: "Quoted: name"',
+			'description: "Has \\"escaped\\" quotes"',
+			"---",
+			"",
+			"body",
+		].join("\n");
+		const full = parseSkillFrontmatterFull(md);
+		// 双引号包裹 → 剥外层,内层转义不还原(轻量解析,够展示用)。
+		expect(full.name).toBe("Quoted: name");
+	});
+
+	test("无 frontmatter → 空对象", () => {
+		expect(parseSkillFrontmatterFull("just body text")).toEqual({});
+	});
+
+	test("缩进行(嵌套/列表项)被跳过 —— 仅顶层标量进入结果", () => {
+		const md = [
+			"---",
+			"name: Nested",
+			"description: d",
+			"tools:",
+			"  - Read",
+			"  - Grep",
+			"---",
+			"",
+			"body",
+		].join("\n");
+		const full = parseSkillFrontmatterFull(md);
+		// tools: 行 value 为空字符串(顶层标量),但缩进的列表项 - Read / - Grep 不进入。
+		expect(full.name).toBe("Nested");
+		expect(full.tools).toBe("");
+		// 确认缩进行的 - Read / - Grep 没被当成顶层 key。
+		expect(full["- Read"]).toBeUndefined();
+	});
+
+	test("parseSkillFrontmatter(旧 API)仍只返回 { name, description } —— 向后兼容", () => {
+		const md = [
+			"---",
+			"name: Compat",
+			"description: d",
+			"category: extra",
+			"---",
+			"",
+			"body",
+		].join("\n");
+		const parsed = parseSkillFrontmatter(md);
+		expect(parsed).toEqual({ name: "Compat", description: "d" });
+		expect((parsed as any).category).toBeUndefined();
 	});
 });

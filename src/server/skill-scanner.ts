@@ -102,6 +102,25 @@ function loadManifest(dir: string): Map<string, ManifestSkill> | null {
 }
 
 export function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
+	const full = parseSkillFrontmatterFull(content);
+	return { name: full.name, description: full.description };
+}
+
+/**
+ * sub-11: 解析 SKILL.md frontmatter 的 **全部** key-value(供详情页展示触发词/元数据)。
+ *
+ * 与 parseSkillFrontmatter 同源(轻量 YAML key:value,不处理嵌套/数组/多行块),
+ * 但返回所有顶层标量字段 —— 用作详情页的 Metadata 段(category、allowed-tools 等)。
+ * name/description 仍在返回里(详情页可在 frontmatter 段一并展示或单独去重)。
+ *
+ * 边界(与 parseSkillFrontmatter 一致):
+ *   - 仅处理 `---\n...\n---` 包裹的 frontmatter 块;无 frontmatter → 返回 {}。
+ *   - 仅顶层 `key: value` 标量行;缩进/列表项/多行 `|` `>` 块不进入结果(简单跳过)。
+ *   - value 去首尾配对引号("..." 或 '...')。
+ *
+ * @returns 键序按文件中出现顺序(插入顺序)。
+ */
+export function parseSkillFrontmatterFull(content: string): Record<string, string> {
 	const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 	if (!normalized.startsWith("---")) return {};
 
@@ -109,19 +128,17 @@ export function parseSkillFrontmatter(content: string): { name?: string; descrip
 	if (endIdx === -1) return {};
 
 	const block = normalized.slice(4, endIdx);
+	const out: Record<string, string> = {};
 
-	let name: string | undefined;
-	let description: string | undefined;
-
-	// Simple YAML key:value parsing (good enough for SKILL.md frontmatter)
 	for (const line of block.split("\n")) {
+		// 仅顶层标量(行首顶格 key:);跳过缩进行的嵌套/列表(简单启发式,够用)。
+		if (/^\s/.test(line)) continue;
 		const match = line.match(/^([\w-]+):\s*(.*)$/);
 		if (!match) continue;
 
 		const key = match[1];
 		let value = match[2].trim();
 
-		// Strip quotes
 		if (
 			(value.startsWith('"') && value.endsWith('"')) ||
 			(value.startsWith("'") && value.endsWith("'"))
@@ -129,11 +146,11 @@ export function parseSkillFrontmatter(content: string): { name?: string; descrip
 			value = value.slice(1, -1);
 		}
 
-		if (key === "name" && value) name = value;
-		if (key === "description" && value) description = value;
+		// 空字符串也保留(展示真实 frontmatter 状态);重复 key 后者覆盖(罕见)。
+		if (key) out[key] = value;
 	}
 
-	return { name, description };
+	return out;
 }
 
 function scanDir(

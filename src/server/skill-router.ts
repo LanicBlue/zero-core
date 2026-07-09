@@ -46,6 +46,7 @@ import { Router } from "express";
 import {
 	scanSkills,
 	parseSkillFrontmatter,
+	parseSkillFrontmatterFull,
 } from "./skill-scanner.js";
 import {
 	existsSync,
@@ -205,6 +206,7 @@ export function createSkillRouter(): Router {
 
 	// 按需读 body(F4):scanner 不持有 body,详情视图经此端点读真实 SKILL.md 正文。
 	// 外部来源 + 本软件都可读(只读展示)。
+	// sub-11: 同时附带 frontmatter(全字段,供详情页 Metadata/触发词 段展示)。
 	router.get("/:id/body", (req, res) => {
 		try {
 			const id = req.params.id;
@@ -219,7 +221,35 @@ export function createSkillRouter(): Router {
 				return;
 			}
 			const raw = readFileSync(skill.filePath, "utf-8");
-			res.json({ body: stripFrontmatter(raw), source: skill.source });
+			res.json({
+				body: stripFrontmatter(raw),
+				source: skill.source,
+				frontmatter: parseSkillFrontmatterFull(raw),
+			});
+		} catch (e) {
+			res.status(500).json({ error: (e as Error).message });
+		}
+	});
+
+	// sub-11: 列出某 skill 目录的兄弟文件/子目录(SKILL.md 之外的 scripts/、reference.md 等)。
+	// 只读列举(本软件 + 外部都可读,均不写)。
+	//
+	// 安全护栏(关键):**仅限该 skill 的 baseDir 之内**。
+	//   - skill 由 scanner 解析出真实 baseDir(resolve 过的绝对路径)。
+	//   - 列举 baseDir 顶层 + 子目录递归(上限 MAX_LIST_DEPTH=3,防深层枚举)。
+	//   - 每个条目路径 resolve 后比对 baseDir 前缀,拒越界(`../`、符号链接逃逸)。
+	//   - 符号链接:跳过(避免链到 baseDir 外的敏感文件;skill 目录常规是普通文件)。
+	router.get("/:id/files", (req, res) => {
+		try {
+			const id = req.params.id;
+			const skill = scanSkills().find((s) => s.id === id);
+			if (!skill) {
+				res.status(404).json({ error: `Skill not found: ${id}` });
+				return;
+			}
+			const baseDir = skill.baseDir;
+			const entries = listSkillFiles(baseDir, baseDir, 0);
+			res.json({ files: entries, source: skill.source });
 		} catch (e) {
 			res.status(500).json({ error: (e as Error).message });
 		}
@@ -437,6 +467,102 @@ export function stripFrontmatter(raw: string): string {
 	bodyStart = nextNl + 1;
 	// 吃掉 body 开头的多余空行(最多 1 个,保留语义上的段落分隔)。
 	return normalized.slice(bodyStart).replace(/^\n+/, "\n").replace(/^\n/, "");
+}
+
+// ─── sub-11: 列文件端点辅助 ─────────────────────────────────────
+
+/** 列举递归深度上限(防深层枚举 / 超大目录拖垮响应)。 */
+export const MAX_LIST_DEPTH = 3;
+/** 单目录条目上限(防恶意构造的超大目录)。 */
+const MAX_ENTRIES_PER_DIR = 200;
+
+export interface SkillFileEntry {
+	/** 相对 skill baseDir 的路径(POSIX 风格 / 分隔,前端展示 + 调试用)。 */
+	relPath: string;
+	/** file | dir。 */
+	kind: "file" | "dir";
+	/** 文件大小(字节);dir=0。 */
+	size: number;
+	/** 文件名(最后一段,前端列表显示用)。 */
+	name: string;
+}
+
+/**
+ * 列出 skill baseDir 内的文件/子目录(递归到 MAX_LIST_DEPTH)。
+ *
+ * 安全护栏(只读列举,仍防越界):
+ *   - 每个条目路径 resolve 后必须位于 baseDir 之内(比对前缀)。
+ *   - 符号链接跳过(避免链到 baseDir 外的敏感文件)。
+ *   - 单目录条目上限 MAX_ENTRIES_PER_DIR(防恶意构造)。
+ *   - 深度上限 MAX_LIST_DEPTH(防深层枚举)。
+ *
+ * 返回顺序:目录在前,再文件;同层按名字排序(确定性)。
+ */
+export function listSkillFiles(
+	baseDir: string,
+	currentDir: string,
+	depth: number,
+): SkillFileEntry[] {
+	const root = resolve(baseDir);
+	const cur = resolve(currentDir);
+	// 二次护栏:currentDir 必须在 baseDir 内(递归子目录时已校验,这里防御性)。
+	if (!isWithinRoot(cur, root)) return [];
+
+	const out: SkillFileEntry[] = [];
+	let entries: import("node:fs").Dirent[];
+	try {
+		entries = readdirSync(cur, { withFileTypes: true });
+	} catch {
+		return [];
+	}
+
+	// 稳定顺序:目录在前,文件在后;同 kind 内按名字排序。
+	entries.sort((a, b) => {
+		const ad = a.isDirectory() ? 0 : 1;
+		const bd = b.isDirectory() ? 0 : 1;
+		if (ad !== bd) return ad - bd;
+		return a.name.localeCompare(b.name);
+	});
+
+	let count = 0;
+	for (const ent of entries) {
+		if (count >= MAX_ENTRIES_PER_DIR) break;
+		count++;
+		// 符号链接跳过(链接目标可能在 baseDir 外,虽只读仍避免泄露)。
+		if (ent.isSymbolicLink()) continue;
+		const abs = join(cur, ent.name);
+		const resolved = resolve(abs);
+		// 越界拒(防御性:正常不会触发,readdir 已在 cur 内)。
+		if (!isWithinRoot(resolved, root)) continue;
+		const relPath = toRelPath(root, resolved);
+		if (ent.isDirectory()) {
+			out.push({ relPath, kind: "dir", size: 0, name: ent.name });
+			// 递归子目录(深度未超)。
+			if (depth + 1 < MAX_LIST_DEPTH) {
+				out.push(...listSkillFiles(baseDir, abs, depth + 1));
+			}
+		} else if (ent.isFile()) {
+			let size = 0;
+			try { size = statSync(abs).size; } catch { /* 读不出大小 → 0 */ }
+			out.push({ relPath, kind: "file", size, name: ent.name });
+		}
+	}
+	return out;
+}
+
+/** target resolve 后必须 === root 或位于 root/ 之下(前缀比对)。 */
+function isWithinRoot(target: string, root: string): boolean {
+	if (target === root) return true;
+	const rootWithSep = root.endsWith(sep) ? root : root + sep;
+	return target.startsWith(rootWithSep);
+}
+
+/** 把 abs 转成相对 root 的 POSIX 风格路径(展示用)。 */
+function toRelPath(root: string, abs: string): string {
+	const rootWithSep = root.endsWith(sep) ? root : root + sep;
+	let rel = abs.startsWith(rootWithSep) ? abs.slice(rootWithSep.length) : abs;
+	// Windows 反斜杠 → POSIX。
+	return rel.split(sep).join("/");
 }
 
 // ─── sub-7: git URL 安装辅助 ─────────────────────────────────────

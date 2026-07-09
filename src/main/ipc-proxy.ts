@@ -182,6 +182,8 @@ const R: Record<string, RouteMapping> = {
 	"skills:list":         { method: "GET", path: "/api/skills", buildReq: () => ({}) },
 	// sub-6: 按需取 body + 本软件 skill CRUD(写仅落 ~/.zero-core/skills,护栏在后端)。
 	"skills:getBody":      { method: "GET", path: "/api/skills/:id/body", buildReq: (id) => ({ params: { id } }) },
+	// sub-11: 列出 skill 目录的兄弟文件/脚本(只读,护栏在后端 baseDir 前缀比对)。
+	"skills:listFiles":    { method: "GET", path: "/api/skills/:id/files", buildReq: (id) => ({ params: { id } }) },
 	"skills:create":       { method: "POST", path: "/api/skills", buildReq: (input) => ({ body: input }) },
 	"skills:update":       { method: "PUT", path: "/api/skills/:id", buildReq: (id, input) => ({ params: { id }, body: input }) },
 	"skills:delete":       { method: "DELETE", path: "/api/skills/:id", buildReq: (id) => ({ params: { id } }) },

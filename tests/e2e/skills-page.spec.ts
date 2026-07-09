@@ -464,4 +464,135 @@ test.describe("Skills page", () => {
 		await expect(window.locator(".skills-toast-error")).toBeVisible({ timeout: 15_000 });
 		expect(existsSync(join(APP_SKILLS_DIR, repoName))).toBe(false);
 	});
+
+	// ─── sub-11: 详情页完善(origin 标签 + md 渲染 + 兄弟文件 + frontmatter)──────
+
+	/**
+	 * 种一个含额外 frontmatter 字段 + 兄弟文件的 app skill fixture。
+	 * SKILL.md frontmatter 含 name/description + category(触发词外的元数据),
+	 * body 是 markdown(含标题/列表,验证 md 渲染而非 <pre> 裸显)。
+	 * 兄弟文件:reference.md + scripts/run.sh(验证 Files 段)。
+	 */
+	function seedAppSkillRich(id: string) {
+		const dir = join(APP_SKILLS_DIR, id);
+		mkdirSync(dir, { recursive: true });
+		const md = [
+			"---",
+			`name: ${id} Display`,
+			"description: triggers when user asks about sub11",
+			"category: e2e-cat",
+			"---",
+			"",
+			"# Heading One",
+			"",
+			"Body with **bold** and a list:",
+			"",
+			"- item a",
+			"- item b",
+			"",
+			"```text",
+			"code block line",
+			"```",
+			"",
+		].join("\n");
+		writeFileSync(join(dir, "SKILL.md"), md, "utf-8");
+		// 兄弟文件。
+		writeFileSync(join(dir, "reference.md"), "# Reference", "utf-8");
+		mkdirSync(join(dir, "scripts"), { recursive: true });
+		writeFileSync(join(dir, "scripts", "run.sh"), "echo hi", "utf-8");
+		return dir;
+	}
+
+	test("sub-11: detail shows origin label (ZERO-CORE / CLAUDE / AGENTS) not raw source", async () => {
+		const appId = `${TEST_ID_PREFIX}origin-app`;
+		const userId = `${TEST_ID_PREFIX}origin-claude`;
+		seedAppSkill(appId, { name: "OA", description: "app origin" });
+		seedUserSkill(userId, { name: "OC", description: "claude origin" });
+
+		await gotoSkillsPage(window);
+
+		// 左列表 badge 显示 origin 标签(ZERO-CORE / CLAUDE),不是原始 source(app/user)。
+		const appItem = window.locator(`.skill-item`, { hasText: appId });
+		const userItem = window.locator(`.skill-item`, { hasText: userId });
+		await expect(appItem).toBeVisible({ timeout: 10_000 });
+		await expect(userItem).toBeVisible({ timeout: 10_000 });
+		await expect(appItem.locator(".skill-item-source")).toContainText("ZERO-CORE");
+		await expect(userItem.locator(".skill-item-source")).toContainText("CLAUDE");
+
+		// 右详情 meta 也用 origin 标签。
+		await appItem.click();
+		const detail = window.locator(".skill-detail");
+		await expect(detail).toBeVisible();
+		await expect(detail.locator(".skill-detail-meta .skill-origin-badge")).toContainText("ZERO-CORE");
+		// 不应出现裸 "app" 字样作为 badge 文案。
+		await expect(detail.locator(".skill-detail-meta .skill-origin-badge")).not.toHaveText("app");
+	});
+
+	test("sub-11: body markdown-rendered in view mode (HTML elements, not <pre> raw)", async () => {
+		const appId = `${TEST_ID_PREFIX}md`;
+		seedAppSkillRich(appId);
+
+		await gotoSkillsPage(window);
+		const item = window.locator(`.skill-item`, { hasText: appId });
+		await expect(item).toBeVisible({ timeout: 10_000 });
+		await item.click();
+
+		const detail = window.locator(".skill-detail");
+		// body 容器是 .skill-detail-body-md(内含 MarkdownRenderer 的 .markdown-body)。
+		const bodyContainer = detail.locator(".skill-detail-body-md");
+		await expect(bodyContainer).toBeVisible({ timeout: 10_000 });
+		// markdown 渲染:H1 标题 + 列表 + code block 都成 HTML 元素。
+		await expect(bodyContainer.locator("h1")).toContainText("Heading One", { timeout: 10_000 });
+		await expect(bodyContainer.locator("ul li")).toHaveCount(2);
+		await expect(bodyContainer.locator("strong")).toContainText("bold");
+		// 渲染后含 <pre>(code block)而非裸 <pre class="skill-detail-body"> 文本容器。
+		expect(await bodyContainer.locator("pre").count()).toBeGreaterThanOrEqual(1);
+		// 不应是裸 <pre> 文本容器(原 <pre className="skill-detail-body"> 不带 -md 后缀)。
+		await expect(detail.locator("pre.skill-detail-body:not(.skill-detail-body-md)")).toHaveCount(0);
+	});
+
+	test("sub-11: Files section lists sibling files + scripts (entry / scripts/)", async () => {
+		const appId = `${TEST_ID_PREFIX}files`;
+		seedAppSkillRich(appId);
+
+		await gotoSkillsPage(window);
+		const item = window.locator(`.skill-item`, { hasText: appId });
+		await expect(item).toBeVisible({ timeout: 10_000 });
+		await item.click();
+
+		const detail = window.locator(".skill-detail");
+		// Files 段存在 + 列出兄弟文件。
+		await expect(detail.locator(".skill-files-list")).toBeVisible({ timeout: 10_000 });
+		// SKILL.md + reference.md + scripts/(dir) + scripts/run.sh 都列出。
+		// 顺序无关(listSkillFiles 按目录在前/文件在后 + 名字排序,这里只校验存在)。
+		await expect(detail.locator(".skill-file-name", { hasText: "SKILL.md" })).toBeVisible();
+		await expect(detail.locator(".skill-file-name", { hasText: "reference.md" })).toBeVisible();
+		await expect(detail.locator(".skill-file-name", { hasText: "run.sh" })).toBeVisible();
+		// SKILL.md 标记为 entry。
+		const entryFile = detail.locator(".skill-file").filter({ hasText: "SKILL.md" });
+		await expect(entryFile.locator(".skill-file-tag-entry")).toBeVisible();
+		// scripts/ 子目录被列出(kind=dir)。
+		const scriptsDir = detail.locator(".skill-file-dir").filter({ hasText: "scripts" });
+		await expect(scriptsDir).toBeVisible();
+	});
+
+	test("sub-11: Frontmatter section shows metadata fields (category etc.)", async () => {
+		const appId = `${TEST_ID_PREFIX}fm`;
+		seedAppSkillRich(appId);
+
+		await gotoSkillsPage(window);
+		const item = window.locator(`.skill-item`, { hasText: appId });
+		await expect(item).toBeVisible({ timeout: 10_000 });
+		await item.click();
+
+		const detail = window.locator(".skill-detail");
+		// Frontmatter 段存在。
+		await expect(detail.locator(".skill-frontmatter")).toBeVisible({ timeout: 10_000 });
+		// 含 category 字段(name 已单独展示,去重)。.skill-frontmatter-row 用 display:contents,
+		// 故只断言 key/value 元素本身存在(顺序无关,有 category key 即可)。
+		await expect(detail.locator(".skill-frontmatter-key", { hasText: "category" })).toBeVisible();
+		await expect(detail.locator(".skill-frontmatter-value", { hasText: "e2e-cat" })).toBeVisible();
+		// name 不在 frontmatter 段(已在顶部 detail-name 单独展示)。
+		await expect(detail.locator(".skill-frontmatter-key", { hasText: "name" })).toHaveCount(0);
+	});
 });

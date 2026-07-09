@@ -28,7 +28,7 @@
 import { describe, test, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import express, { type Express } from "express";
 import { createServer, type Server } from "node:http";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -320,5 +320,125 @@ describe("acceptance-6 用例 8 + 2:外部来源只读(不破坏 ~/.claude / ~/.
 		expect(res.status).toBe(200);
 		expect(res.data.source).toBe("user");
 		expect(res.data.body).toContain("user body");
+	});
+});
+
+// ─── sub-11: 列文件端点 + body 附带 frontmatter ──────────────────
+
+describe("sub-11: GET /:id/body 附带 frontmatter 全字段", () => {
+	test("body 端点响应含 frontmatter(全 key-value)", async () => {
+		// seed 一个含额外 frontmatter 字段的 skill。
+		const skillDir = join(tmpHome, ".zero-core", "skills", "fm-body");
+		mkdirSync(skillDir, { recursive: true });
+		const md = [
+			"---",
+			"name: FM Body",
+			"description: triggers when x",
+			"category: test-cat",
+			"allowed-tools: Read, Grep",
+			"---",
+			"",
+			"the body line",
+		].join("\n");
+		writeFileSync(join(skillDir, "SKILL.md"), md, "utf-8");
+
+		const port = await start(buildApp());
+		const res = await req(port, "GET", "/api/skills/fm-body/body");
+		expect(res.status).toBe(200);
+		expect(res.data.body).toContain("the body line");
+		expect(res.data.frontmatter).toMatchObject({
+			name: "FM Body",
+			description: "triggers when x",
+			category: "test-cat",
+			"allowed-tools": "Read, Grep",
+		});
+	});
+
+	test("无额外字段的 skill → frontmatter 仍含 name/description", async () => {
+		seedAppSkill(tmpHome, "plain-fm", { name: "Plain", description: "d" }, "b");
+		const port = await start(buildApp());
+		const res = await req(port, "GET", "/api/skills/plain-fm/body");
+		expect(res.status).toBe(200);
+		expect(res.data.frontmatter.name).toBe("Plain");
+		expect(res.data.frontmatter.description).toBe("d");
+	});
+});
+
+describe("sub-11: GET /:id/files 列出兄弟文件/脚本(只读 + baseDir 护栏)", () => {
+	test("列出 skill 目录内全部文件 + 子目录(递归到 MAX_LIST_DEPTH)", async () => {
+		const skillDir = join(tmpHome, ".zero-core", "skills", "files-test");
+		mkdirSync(skillDir, { recursive: true });
+		// SKILL.md + 兄弟文件 + scripts/ 子目录。
+		writeFileSync(join(skillDir, "SKILL.md"), "---\nname: FT\ndescription: d\n---\nbody\n", "utf-8");
+		writeFileSync(join(skillDir, "reference.md"), "# ref", "utf-8");
+		mkdirSync(join(skillDir, "scripts"), { recursive: true });
+		writeFileSync(join(skillDir, "scripts", "run.sh"), "echo hi", "utf-8");
+
+		const port = await start(buildApp());
+		const res = await req(port, "GET", "/api/skills/files-test/files");
+		expect(res.status).toBe(200);
+		expect(res.data.source).toBe("app");
+		const files = res.data.files as Array<{ relPath: string; kind: string; name: string }>;
+		// SKILL.md + reference.md + scripts/ + scripts/run.sh 都列出。
+		const relPaths = files.map((f) => f.relPath);
+		expect(relPaths).toContain("SKILL.md");
+		expect(relPaths).toContain("reference.md");
+		expect(relPaths).toContain("scripts");
+		expect(relPaths).toContain("scripts/run.sh");
+		// kind 正确。
+		const scriptsEntry = files.find((f) => f.relPath === "scripts");
+		expect(scriptsEntry?.kind).toBe("dir");
+		const runEntry = files.find((f) => f.relPath === "scripts/run.sh");
+		expect(runEntry?.kind).toBe("file");
+	});
+
+	test("只有 SKILL.md → files 数组里只有它", async () => {
+		seedAppSkill(tmpHome, "only-md", { name: "OM", description: "d" }, "b");
+		const port = await start(buildApp());
+		const res = await req(port, "GET", "/api/skills/only-md/files");
+		expect(res.status).toBe(200);
+		const files = res.data.files as Array<{ relPath: string }>;
+		expect(files.map((f) => f.relPath)).toEqual(["SKILL.md"]);
+	});
+
+	test("外部来源(user)也可列文件(只读,不写)", async () => {
+		seedUserSkill(tmpHome, ".claude", "ext-files", { name: "Ext", description: "e" });
+		// 加一个兄弟文件。
+		writeFileSync(join(tmpHome, ".claude", "skills", "ext-files", "extra.md"), "x", "utf-8");
+		const port = await start(buildApp());
+		const res = await req(port, "GET", "/api/skills/ext-files/files");
+		expect(res.status).toBe(200);
+		expect(res.data.source).toBe("user");
+		const relPaths = (res.data.files as Array<{ relPath: string }>).map((f) => f.relPath);
+		expect(relPaths).toContain("SKILL.md");
+		expect(relPaths).toContain("extra.md");
+	});
+
+	test("不存在的 id → 404", async () => {
+		const port = await start(buildApp());
+		const res = await req(port, "GET", "/api/skills/no-such-id/files");
+		expect(res.status).toBe(404);
+	});
+
+	test("listSkillFiles 纯函数:baseDir 越界子路径被拒(护栏)", () => {
+		// 纯函数:直接构造一个含符号链接逃逸的目录,确认链接被跳过(不列 baseDir 外)。
+		const skillDir = join(tmpHome, ".zero-core", "skills", "guard-test");
+		mkdirSync(skillDir, { recursive: true });
+		writeFileSync(join(skillDir, "SKILL.md"), "---\nname: G\ndescription: d\n---\nb\n", "utf-8");
+		// 在 skill 目录内造一个指向 baseDir 外的符号链接。
+		const escapeTarget = join(tmpdir(), "zc-skill-escape-target");
+		writeFileSync(escapeTarget, "secret", "utf-8");
+		try {
+			symlinkSync(escapeTarget, join(skillDir, "escape-link"));
+		} catch {
+			// 某些环境(无管理员权限的 Windows)不支持 symlink → 跳过本断言。
+			return;
+		}
+
+		const entries = routerMod.listSkillFiles(skillDir, skillDir, 0);
+		const relPaths = entries.map((e) => e.relPath);
+		expect(relPaths).toContain("SKILL.md");
+		// 符号链接被跳过(不列 baseDir 外的目标)。
+		expect(relPaths).not.toContain("escape-link");
 	});
 });

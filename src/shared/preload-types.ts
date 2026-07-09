@@ -200,8 +200,20 @@ export interface WindowApi {
 	/**
 	 * sub-6:按需取 SKILL.md 正文(F4 —— scanner 不持有 body,详情视图经此拉真实正文)。
 	 * 返回 { body, source };外部来源只读展示,本软件可编辑。
+	 *
+	 * sub-11: 附带 frontmatter(全字段,供详情页 Metadata/触发词 段展示)。frontmatter 为
+	 * 标量 key-value map(parseSkillFrontmatterFull,顺序 = 文件中出现顺序)。
 	 */
-	skillsGetBody: (id: string) => Promise<{ body: string; source: "user" | "app" } | { error: string }>;
+	skillsGetBody: (id: string) => Promise<{ body: string; source: "user" | "app"; frontmatter: Record<string, string> } | { error: string }>;
+	/**
+	 * sub-11:列出 skill 目录的兄弟文件/脚本(SKILL.md 之外的 scripts/、reference.md 等)。
+	 * 只读,本软件 + 外部来源均可读。护栏在后端(解析后比对 skill baseDir 前缀,拒越界;
+	 * 符号链接跳过;递归深度 + 单目录条目数有上限)。点击查看留后续 sub(v1 仅展示列表)。
+	 */
+	skillsListFiles: (id: string) => Promise<{
+		files: Array<{ relPath: string; kind: "file" | "dir"; size: number; name: string }>;
+		source: "user" | "app";
+	} | { error: string }>;
 	/**
 	 * sub-6:新建本软件 skill(仅落 ~/.zero-core/skills/<id>/SKILL.md)。
 	 * id 须 path-safe + 不与已有冲突;护栏在后端。返回新建后的 DiscoveredSkill。
