@@ -21,7 +21,10 @@
 // ## 维护规则
 // - SKILL.md frontmatter 解析只做轻量 YAML(key: value),复杂结构应通过 manifest 提供。
 // - 跳过以 . 开头的目录与 node_modules;单文件 > 256KB 视为非法并跳过。
-// - 新增来源目录时调 getSkillRoots() 的顺序:app 在前(低)、personal 在后(高),personal 覆盖 app。
+// - **优先级(sub-12 反转)**:数组靠后 = 高优先级;`~/.zero-core/skills` 放最后(app 胜)。
+//   zero-core 产品选择:自己的 skill 视为权威/精调,覆盖外部同名 skill。**偏离协议默认**
+//   (协议默认 personal>app)——记录理由:zero-core 自带 skill 是产品精调,优先级高于
+//   用户从 ~/.claude 装的通用 skill。新增来源目录时保持 .zero-core 在数组末尾。
 //
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -47,9 +50,13 @@ export interface DiscoveredSkill {
 /**
  * Skill 来源目录(含优先级顺序)。
  *
- * 优先级:数组中 **靠后 = 高优先级**(personal 覆盖 app/bundled)。
- * 协议:personal(`~/.claude/skills`、`~/.agents/skills`)> app/bundled(`~/.zero-core/skills`)。
- * 这与 `scanSkills()` 的"后写入覆盖前写入"合并方向保持一致。
+ * 优先级:数组中 **靠后 = 高优先级**(`scanSkills()` 后写入覆盖前写入)。
+ *
+ * **sub-12 反转(产品决策,记录于 design 决策 2)**:zero-core 自带 skill 视为
+ * 权威/精调,**覆盖外部同名 skill**。故 `~/.zero-core/skills` 放数组**最后**。
+ * 这**偏离协议默认**(协议:personal > app),但更符合产品定位——zero-core 精调
+ * skill 优先级高于用户从 ~/.claude 装的通用 skill。`source` 字段仍按真实来源
+ * 标记(app/user),不因此反转。
  */
 export interface SkillRoot {
 	dir: string;
@@ -60,7 +67,10 @@ export interface SkillRoot {
 
 /**
  * 返回 skill 来源目录列表(含优先级顺序)。
- * 顺序:app/bundled 在前(低)、personal 在后(高)——personal 覆盖 app。
+ *
+ * **sub-12 反转**:数组靠后 = 高优先级。顺序 `~/.claude`(user/claude)→
+ * `~/.agents`(user/agents)→ `~/.zero-core`(app/zero-core,最后=最高优先级)。
+ * zero-core skill 覆盖外部同名 skill(产品决策,详见 design 决策 2)。
  * 供 sub-2 虚拟路径解析器与 sub-3 prompt 组装复用。
  *
  * @param home 可选 home 目录;省略时用 `os.homedir()`。**仅测试注入 tmp 目录**,
@@ -68,9 +78,9 @@ export interface SkillRoot {
  */
 export function getSkillRoots(home: string = homedir()): SkillRoot[] {
 	return [
-		{ dir: join(home, ".zero-core", "skills"), source: "app" as const, origin: "zero-core" as const },
 		{ dir: join(home, ".claude", "skills"), source: "user" as const, origin: "claude" as const },
 		{ dir: join(home, ".agents", "skills"), source: "user" as const, origin: "agents" as const },
+		{ dir: join(home, ".zero-core", "skills"), source: "app" as const, origin: "zero-core" as const },
 	];
 }
 
@@ -212,8 +222,9 @@ function scanDir(
 /**
  * 扫描所有来源,合并去重。
  *
- * 优先级:按 `getSkillRoots()` 顺序遍历,**后写入覆盖前写入** → personal 覆盖 app。
- * 合并主键 = skill.id(目录名);同 id 跨来源只保留最高优先级那个。
+ * 优先级(sub-12 反转):按 `getSkillRoots()` 顺序遍历,**后写入覆盖前写入** →
+ * `~/.zero-core/skills`(app,数组末尾)覆盖 `~/.claude`/`~/.agents`(user)。
+ * 合并主键 = skill.id(目录名);同 id 跨来源只保留最高优先级那条(app)。
  */
 export function scanSkills(home?: string): DiscoveredSkill[] {
 	const sources = getSkillRoots(home ?? homedir());
@@ -222,7 +233,7 @@ export function scanSkills(home?: string): DiscoveredSkill[] {
 	for (const { dir, source, origin } of sources) {
 		const skills = scanDir(dir, source, origin);
 		for (const skill of skills) {
-			// 数组中靠后 = 高优先级(personal),覆盖前(app)
+			// 数组中靠后 = 高优先级(sub-12 反转:app/zero-core 胜,覆盖外部 user)
 			merged.set(skill.id, skill);
 		}
 	}
@@ -232,7 +243,7 @@ export function scanSkills(home?: string): DiscoveredSkill[] {
 
 /**
  * 构建 id(目录名)→ DiscoveredSkill 的解析索引。
- * 只是 `scanSkills()` 结果的 Map 化,无新 IO。优先级语义同 `scanSkills()`(personal 胜)。
+ * 只是 `scanSkills()` 结果的 Map 化,无新 IO。优先级语义同 `scanSkills()`(sub-12:app 胜)。
  * 供 sub-2 `[skills]/<id>/` 虚拟路径前缀解析用。
  */
 export function getSkillIndex(home?: string): Map<string, DiscoveredSkill> {
@@ -241,7 +252,7 @@ export function getSkillIndex(home?: string): Map<string, DiscoveredSkill> {
 
 /**
  * 按目录名(id)解析单个 skill。
- * 不存在 → undefined。优先级语义同 `scanSkills()`(personal 胜,app 被 personal 同名覆盖时不可见)。
+ * 不存在 → undefined。优先级语义同 `scanSkills()`(sub-12:app 胜,user 被 app 同名覆盖时不可见)。
  * 供 sub-2 `[skills]/<id>/` 虚拟路径解析用。
  */
 export function resolveSkillByName(id: string, home?: string): DiscoveredSkill | undefined {

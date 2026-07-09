@@ -247,6 +247,10 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 	// properties → backend merge keeps the OLD list → unchecking the last skill
 	// would not persist. Same regression class as subagents/wikiAnchors
 	// (feedback-unique-message-keys). [] survives and explicitly clears.
+	//
+	// sub-12: 勾选 "skill-creator" 即授予该 agent 创建/编辑 skill 的写权限
+	// (skill-author-gate 查 enabledSkills 含 "skill-creator")。本函数不区分
+	// skill-creator 与其他 skill —— 勾选/取消走同一逻辑。
 	const toggleSkill = (skillId: string) => {
 		const current: string[] = form.skillPolicy?.enabledSkills ?? [];
 		const next = current.includes(skillId)
@@ -255,20 +259,6 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		const f: FormState = {
 			...form,
 			skillPolicy: { ...form.skillPolicy, enabledSkills: next.length > 0 ? next : [] },
-		};
-		setForm(f);
-		if (agent) autoSave(f);
-	};
-
-	// sub-8 (skill-system, decision 11): toggle canAuthorSkills (write gate for
-	// `[skills]/`). Persisted in skillPolicy JSON column. CRITICAL: always send
-	// an explicit boolean (true/false), never undefined — ipc-proxy JSON.stringify
-	// drops undefined → backend merge would keep the OLD value (same regression
-	// class as toggleSkill enabledSkills=[] clearing).
-	const toggleCanAuthorSkills = (next: boolean) => {
-		const f: FormState = {
-			...form,
-			skillPolicy: { ...form.skillPolicy, canAuthorSkills: next === true },
 		};
 		setForm(f);
 		if (agent) autoSave(f);
@@ -416,7 +406,6 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 							form={form}
 							skills={skills}
 							toggleSkill={toggleSkill}
-							toggleCanAuthorSkills={toggleCanAuthorSkills}
 						/>
 					)}
 

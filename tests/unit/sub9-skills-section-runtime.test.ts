@@ -8,7 +8,7 @@
 //   1. enabled 命中 → prompt 含 [skills]/<id>/SKILL.md 路径
 //   2. enabledSkills=[] → 不含
 //   3. undefined → legacy 全注入
-//   4. canAuthorSkills=true → 含 Authoring 段
+//   4. sub-12: Authoring 段已移除(即便 enabledSkills 含 skill-creator 也只产 Available)
 //   5. applyConfigUpdate({getSkillSection}) 热更 → 下次 assemble 重算(invalidate)
 //
 // ## 驱动方式
@@ -168,17 +168,20 @@ describe("sub-9 skills section — 运行时注入 assembleSystemPrompt", () => 
 		expect(prompt).toContain("[skills]/code-review/SKILL.md");
 	});
 
-	test("canAuthorSkills=true → 含 Authoring 段", async () => {
+	test("sub-12: Authoring 段已移除 —— 即便 enabledSkills 含 skill-creator 也只产 Available", async () => {
+		// sub-12 移除了原 canAuthorSkills=true 注入的 Authoring 引导段。即便闭包
+		// 注入 skill-creator(skillPolicy.enabledSkills 含它),prompt 也只有 Available
+		// Skills 段(skill-creator 的 name+desc 在该段),不再有 Authoring 段。
 		const closure = (): string => buildSkillsSection({
-			skills: scanSkillsMock(),
-			enabledSkills: [],
-			canAuthorSkills: true,
+			skills: [{ id: "skill-creator", name: "skill-creator", description: "create skills" }, ...scanSkillsMock()],
+			enabledSkills: ["skill-creator"],
 		});
 		const loop = new AgentLoop(makeConfig("s4", closure), [], makeCallbacks());
 		registerTurnHooks(sessionDB, loop.registry);
 		const prompt = await runOnce(loop);
-		expect(prompt).toContain("## Authoring Skills");
-		expect(prompt).toContain("[skills]/<skill-id>/SKILL.md");
+		expect(prompt).toContain("## Available Skills");
+		expect(prompt).not.toContain("## Authoring Skills");
+		expect(prompt).not.toContain("[skills]/<skill-id>/SKILL.md");
 	});
 
 	test("无 getSkillSection 闭包 → 段不出现(向后兼容,non-skill agent)", async () => {
@@ -225,28 +228,26 @@ describe("sub-9 skills section — agent-service 闭包集成(getAgentRecord + s
 		const svc = new AgentService(tmpDir, sessionDB);
 		const store = new AgentStore(sessionDB);
 		svc.setAgentStore(store);
-		// agent 带 skillPolicy.enabledSkills = ["pdf"] + canAuthorSkills = true
+		// agent 带 skillPolicy.enabledSkills = ["pdf"] (sub-12:canAuthorSkills 已移除)
 		const created = store.create({
 			name: "Sub9",
 			systemPrompt: "AGENT BASE.",
 			toolPolicy: { tools: {} },
-			skillPolicy: { enabledSkills: ["pdf"], canAuthorSkills: true },
+			skillPolicy: { enabledSkills: ["pdf"] },
 		} as any);
 
 		// 验 skillPolicy 持久化可读(sub-8 已覆盖 getAgentRecord;这里验闭包链)。
 		const agent = svc.getAgentRecord(created.id);
 		expect(agent?.skillPolicy?.enabledSkills).toEqual(["pdf"]);
-		expect(agent?.skillPolicy?.canAuthorSkills).toBe(true);
 
 		// 闭包链:scanSkillsMock 已 beforeEach 返 SKILLS;模拟 svc 的闭包逻辑
-		// (与 buildSkillSectionClosure 同款)。
+		// (与 buildSkillSectionClosure 同款)。sub-12:不再传 canAuthorSkills。
 		const closure = (): string => {
 			const a = svc.getAgentRecord(created.id);
 			const policy = a?.skillPolicy;
 			return buildSkillsSection({
 				skills: scanSkillsMock().map((s: any) => ({ id: s.id, name: s.name, description: s.description })),
 				enabledSkills: policy?.enabledSkills,
-				canAuthorSkills: policy?.canAuthorSkills,
 			});
 		};
 		const loop = new AgentLoop(makeConfig("s7", closure), [], makeCallbacks());
@@ -254,22 +255,22 @@ describe("sub-9 skills section — agent-service 闭包集成(getAgentRecord + s
 		const prompt = await runOnce(loop);
 		expect(prompt).toContain("[skills]/pdf/SKILL.md");
 		expect(prompt).not.toContain("[skills]/code-review/SKILL.md");
-		expect(prompt).toContain("## Authoring Skills");
+		// sub-12:Authoring 段已移除(即便有 skill-creator 也只在 Available 段)
+		expect(prompt).not.toContain("## Authoring Skills");
 	});
 
 	test("agent 无 skillPolicy(create 默认填 enabledSkills=[])→ 段不出现(sub-4 默认全不开)", async () => {
 		const svc = new AgentService(tmpDir, sessionDB);
 		const store = new AgentStore(sessionDB);
 		svc.setAgentStore(store);
-		// create 不传 skillPolicy → AgentStore.create 归一化为 {enabledSkills:[],canAuthorSkills:false}
-		// (sub-4 decision 5: 新 agent 默认全不开)。
+		// create 不传 skillPolicy → AgentStore.create 归一化为 {enabledSkills:[]}
+		// (sub-4 decision 5: 新 agent 默认全不开;sub-12:canAuthorSkills 已移除)。
 		const created = store.create({
 			name: "FreshAgent",
 			systemPrompt: "BASE.",
 			toolPolicy: { tools: {} },
 		} as any);
 		expect(created.skillPolicy?.enabledSkills).toEqual([]);
-		expect(created.skillPolicy?.canAuthorSkills).toBe(false);
 
 		const closure = (): string => {
 			const a = svc.getAgentRecord(created.id);
@@ -277,7 +278,6 @@ describe("sub-9 skills section — agent-service 闭包集成(getAgentRecord + s
 			return buildSkillsSection({
 				skills: scanSkillsMock().map((s: any) => ({ id: s.id, name: s.name, description: s.description })),
 				enabledSkills: policy?.enabledSkills,
-				canAuthorSkills: policy?.canAuthorSkills,
 			});
 		};
 		const loop = new AgentLoop(makeConfig("s8", closure), [], makeCallbacks());

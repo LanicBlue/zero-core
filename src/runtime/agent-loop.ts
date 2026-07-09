@@ -221,7 +221,7 @@ export class AgentLoop implements AgentRuntime {
 		}
 		// skill-system sub-9 (Approach A): skills section. Server-built closure
 		// (config.getSkillSection) renders Available Skills list (sub-4 三态)
-		// + Authoring guidance (sub-8) via buildSkillsSection. The closure
+		// via buildSkillsSection. The closure
 		// captures agentStore.get(agentId).skillPolicy + scanSkills() at call
 		// time (re-read each turn — cacheBreak:false); agent-service hot-swaps
 		// the closure on skillPolicy change and invalidate("skills"). Returns ""
@@ -1076,8 +1076,8 @@ export class AgentLoop implements AgentRuntime {
 		stepsProgressSection?: SessionConfig["stepsProgressSection"];
 		/**
 		 * skill-system sub-9: replacement server-built closure for the skills
-		 * system section (Available Skills list + Authoring guidance). Pass when
-		 * the agent's skillPolicy (enabledSkills / canAuthorSkills) changes on a
+		 * system section (Available Skills list). Pass when
+		 * the agent's skillPolicy (enabledSkills) changes on a
 		 * RUNNING loop so the next turn's `skills` section re-renders. Same
 		 * hot-swap + invalidate pattern as workContextSystemSection. Undefined =
 		 * no change. The section is cacheBreak:false (re-reads each turn), but
@@ -1162,7 +1162,7 @@ export class AgentLoop implements AgentRuntime {
 			this.config.stepsProgressSection = patch.stepsProgressSection;
 		}
 		// skill-system sub-9: hot-swap the skills section closure when the
-		// agent's skillPolicy (enabledSkills / canAuthorSkills) flips on a
+		// agent's skillPolicy (enabledSkills) flips on a
 		// RUNNING loop. The closure re-reads scanSkills each turn
 		// (cacheBreak:false), but invalidate anyway so a mid-flight turn picks
 		// up the new closure immediately. Mirrors work-context hot-swap.

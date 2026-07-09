@@ -423,10 +423,11 @@ export function resolveSkillTokensInShellCommand(
 //
 // ## 门禁(关键)
 // **写门禁在调用方**(file-write/file-edit)查 callerCtx 关联 agent 的
-// `skillPolicy.canAuthorSkills`。本函数**不做**门禁判定(它只做"路径/来源/id"静态
-// 解析)。理由:门禁要拿当前 agent → 走 getAgentService() 单例,这是 host 注入语义
-// 决策,与纯路径解析解耦。但本函数对**所有 `[skills]/` 写**都参与解析,调用方先查
-// 门禁 flag = false 直接拒(不进本函数),确保无权限 agent 写 `[skills]/` 一定被拒。
+// `skillPolicy.enabledSkills` 是否含 `"skill-creator"`(sub-12)。本函数**不做**门禁
+// 判定(它只做"路径/来源/id"静态解析)。理由:门禁要拿当前 agent → 走
+// getAgentService() 单例,这是 host 注入语义决策,与纯路径解析解耦。但本函数对
+// **所有 `[skills]/` 写**都参与解析,调用方先查门禁 enabledSkills 不含 skill-creator
+// 直接拒(不进本函数),确保无权限 agent 写 `[skills]/` 一定被拒。
 //
 // ## 维护规则
 // - 外部来源只读:写已存在 skill 时判 `skill.source !== "app"` → 拒(对齐决策 8)。

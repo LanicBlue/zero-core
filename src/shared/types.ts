@@ -49,12 +49,11 @@ export interface AgentRecord {
 	skillPolicy?: {
 		enabledSkills?: string[];
 		/**
-		 * skill-system sub-8 (decision 11): whether this agent may create/edit
-		 * skills via the `[skills]/<id>/...` virtual path using Write/Edit.
-		 * Read family (Read/Glob/Grep) always allowed; this only gates writes.
-		 * Default false (new agents); persisted in skill_policy JSON column.
+		 * skill-system sub-12: `[skills]/` 写权限改为查 enabledSkills 是否含
+		 * `"skill-creator"`(见 src/tools/skill-author-gate.ts 的 SKILL_CREATOR_ID)。
+		 * 原 `canAuthorSkills` 字段已移除 —— agent 勾选 skill-creator 即同时获得
+		 * "使用 skill-creator"和"创建/编辑 skill"两项许可。
 		 */
-		canAuthorSkills?: boolean;
 	};
 	/**
 	 * v0.8 (P0 §2.2 / §11.9): subagents this agent may delegate to. Each entry

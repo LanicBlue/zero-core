@@ -203,7 +203,7 @@ async function main() {
 	// AgentLoop.assembleSystemPrompt → SystemPromptAssembler sections 拼装;
 	// skill 注入走那里的 `skills` system section(见 src/core/skills-section.ts
 	// 的 buildSkillsSection,本处 buildSystemPrompt 也复用它)。
-	// 此处未传 skills / enabledSkills / canAuthorSkills,故 skill 段对 CLI 空跑。
+	// 此处未传 skills / enabledSkills,故 skill 段对 CLI 空跑。
 	const deviceContext = loadDeviceContext(sessionDB.getKVStore()) || undefined;
 	const systemPrompt = buildSystemPrompt(config, {
 		cwd,

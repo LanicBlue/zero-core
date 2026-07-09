@@ -5,7 +5,7 @@
 // ## 核心功能
 // 在 Agent 编辑器中管理 per-agent 启用的 skills(写 form.skillPolicy.enabledSkills,
 // 值为 skill id=目录名)。sub-10 起 UI 视觉与交互对齐 ToolsSection:
-//   - toggle-switch 替代 <input checkbox>(skill 启用 + canAuthorSkills 两个开关都换)
+//   - toggle-switch 替代 <input checkbox>(skill 启用开关)
 //   - 点 skill 的 tool-info 展开/收起 detail panel(完整 description + id + origin badge)
 //   - 每个 skill 显示 origin badge(CLAUDE/AGENTS/ZERO-CORE)
 //
@@ -34,8 +34,8 @@
 // 调用方(toggleSkill in AgentEditor)负责把空数组透传到 autoSave。
 //
 // sub-10 (decision 10): UI 对齐 ToolsSection —— toggle-switch + 可点展开 + origin badge。
-// 保留所有 sub-5/sub-8 逻辑(值绑 id、分组、清空回归、canAuthorSkills)。DOM 结构变更
-// 已同步 sub-5 E2E(选择器从 input.skill-checkbox 改为 button.toggle-switch[aria-label])。
+// sub-12: 删 canAuthorSkills toggle(写权限改为 enabledSkills 含 "skill-creator");
+//         origin badge 移到标题(skill.name)右边同一行。
 import { useMemo, useState } from "react";
 import type { DiscoveredSkill } from "../../../shared/types.js";
 import { originLabel } from "../../../shared/skill-origin.js";
@@ -45,8 +45,6 @@ interface Props {
 	form: FormState;
 	skills: DiscoveredSkill[];
 	toggleSkill: (skillId: string) => void;
-	/** sub-8 (decision 11): toggle whether this agent may create/edit skills. */
-	toggleCanAuthorSkills: (next: boolean) => void;
 }
 
 // app 置顶 → user 其下(对齐 acceptance-5 用例 2 + design 决策 7)。
@@ -56,13 +54,11 @@ const GROUP_LABELS: Record<DiscoveredSkill["source"], string> = {
 	user: "外部 skills (~/.claude / ~/.agents)",
 };
 
-export function SkillsSection({ form, skills, toggleSkill, toggleCanAuthorSkills }: Props) {
+export function SkillsSection({ form, skills, toggleSkill }: Props) {
 	// sub-10: expandedSkill 跟踪当前展开详情面板的 skill id(同 ToolsSection 的 expandedTool)。
 	const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
 	// sub-4 已把 enabledSkills 归一化为 [](agentToForm),这里防御性兜底。
 	const enabledSkills: string[] = form.skillPolicy?.enabledSkills ?? [];
-	// sub-8: canAuthorSkills 归一化(agentToForm 已做 === true,这里再兜底)。
-	const canAuthorSkills = form.skillPolicy?.canAuthorSkills === true;
 	const enabledSet = useMemo(() => new Set(enabledSkills), [enabledSkills]);
 
 	// 按 source 分组(保持 GROUP_ORDER 顺序:app 置顶)。
@@ -84,27 +80,10 @@ export function SkillsSection({ form, skills, toggleSkill, toggleCanAuthorSkills
 				选择该 Agent 可以使用的 skills。勾选的 skill 会按 id(目录名)写入
 				<code>skillPolicy.enabledSkills</code>。点击 skill 名称可展开详情。
 			</p>
-
-			{/* sub-8 (decision 11): per-agent 写权限门禁。默认关;开 → agent 经
-			    `[skills]/<id>/SKILL.md` 虚拟路径用 Write/Edit 自建/编辑 skill,
-			    仅落 ~/.zero-core/skills/,外部来源只读。门禁在 Write/Edit 工具内查。
-			    sub-10: checkbox → toggle-switch(对齐 ToolsSection 视觉)。 */}
-			<div className="tool-item skill-author-toggle">
-				<div className="tool-info">
-					<span className="tool-name">允许此 agent 创建 skill</span>
-					<span className="tool-desc">
-						开启后,该 agent 可用 Write/Edit 经 <code>[skills]/&lt;id&gt;/SKILL.md</code> 虚拟路径
-						创建或编辑 skill(仅落 ~/.zero-core/skills/,外部来源只读)。默认关闭。
-					</span>
-				</div>
-				<button
-					type="button"
-					title={canAuthorSkills ? "Disable" : "Enable"}
-					className={`toggle-switch skill-author-toggle__switch ${canAuthorSkills ? "on" : ""}`}
-					onClick={() => toggleCanAuthorSkills(!canAuthorSkills)}
-					aria-label="允许此 agent 创建 skill"
-				/>
-			</div>
+			<p className="section-desc">
+				提示:勾选 <code>skill-creator</code>(本软件自带)即同时授予该 agent
+				创建/编辑 skill 的写权限(经 <code>[skills]/&lt;id&gt;/SKILL.md</code> 虚拟路径)。
+			</p>
 
 			{orderedGroups.length === 0 && (
 				<p className="section-desc">未检测到任何 skill。</p>
@@ -128,11 +107,13 @@ export function SkillsSection({ form, skills, toggleSkill, toggleCanAuthorSkills
 											className="tool-info skill-tool-info"
 											onClick={() => setExpandedSkill(expanded ? null : skill.id)}
 										>
-											<span className="tool-name">{skill.name}</span>
+											{/* sub-12: origin badge 移到标题(skill.name)右边同一行。
+											    flex 布局:.skill-name 左 + .skill-origin-badge 右(margin-left:auto)。 */}
+											<span className="skill-name-row">
+												<span className="tool-name">{skill.name}</span>
+												<span className="skill-origin-badge">{originLabel(skill.origin)}</span>
+											</span>
 											<span className="tool-desc">{skill.description || skill.id}</span>
-											{/* sub-10: 来源 badge(ZERO-CORE/CLAUDE/AGENTS)。
-											    origin 是 scanner 在 scanDir 时按 root stamp 的 display-only 字段。 */}
-											<span className="skill-origin-badge">{originLabel(skill.origin)}</span>
 										</div>
 										<button
 											type="button"

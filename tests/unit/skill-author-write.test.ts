@@ -1,12 +1,13 @@
-// 单元测试:skill-system sub-8 `[skills]/` 写通道 + 门禁(acceptance-8)
+// 单元测试:skill-system sub-8/sub-12 `[skills]/` 写通道 + 门禁(acceptance-8)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 验证 sub-8 用例:
+// 验证 sub-8 用例(门禁 sub-12 反转后):
 // - resolveSkillWritePath:新 skill / 已存在 app / 外部只读 / id 护栏 / 越界。
 // - stampAuthorFrontmatter:有/无 frontmatter / 已有 author 不覆盖。
-// - checkSkillAuthorGate:agentId 缺失 / service 缺失 / record 缺失 / flag false / true。
+// - checkSkillAuthorGate:agentId 缺失 / service 缺失 / record 缺失 /
+//   enabledSkills 不含 skill-creator / 含 skill-creator(sub-12)。
 // - fileWriteTool + fileEditTool execute 的 skill 通道:门禁 + 落盘 + author 标记。
 //
 // ## 输入
@@ -16,13 +17,14 @@
 // ## 输出
 // Vitest 用例覆盖 acceptance-8 用例 1/2/4/5/6/7(核心写 + 门禁 + 标记)。
 // 用例 3(读不受门禁)在 skill-paths.test.ts 已覆盖(读家族)。用例 8(prompt)见
-// system-prompt-author.test.ts。用例 9(toggle 往返)见 E2E。
+// system-prompt-author.test.ts(sub-12 后该段已移除)。用例 9(toggle 往返)见 E2E。
 //
 // ## 定位
 // tests/unit/ —— 单元测试。
 //
 // ## 维护规则
 // mock os.homedir 指向 tmp(隔离);mock agent-service 的 getAgentService 注入假 record。
+// sub-12:门禁改查 enabledSkills 含 "skill-creator"(替原 canAuthorSkills)。
 //
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
@@ -37,10 +39,10 @@ vi.mock("node:os", async (importOriginal) => {
 });
 
 // mock agent-service:getAgentService 返可控 fake(含 getAgentRecord)。
-// 测试用例通过 mockService.current 切换 record 内容(canAuthorSkills true/false)。
+// 测试用例通过 mockService.current 切换 record 内容(enabledSkills 含/不含 skill-creator)。
 const mockService = {
 	current: undefined as
-		| { getAgentRecord(id: string): { skillPolicy?: { canAuthorSkills?: boolean } } | undefined }
+		| { getAgentRecord(id: string): { skillPolicy?: { enabledSkills?: string[] } } | undefined }
 		| undefined,
 };
 vi.mock("../../src/server/agent-service.js", () => ({
@@ -205,24 +207,24 @@ describe("checkSkillAuthorGate:写门禁", () => {
 		expect(checkSkillAuthorGate(ctx({ agentId: "a1" }))).toMatch(/not found/);
 	});
 
-	test("canAuthorSkills=false → 拒", () => {
+	test("enabledSkills 不含 skill-creator → 拒", () => {
 		mockService.current = {
-			getAgentRecord: () => ({ skillPolicy: { canAuthorSkills: false } }),
+			getAgentRecord: () => ({ skillPolicy: { enabledSkills: ["other-skill"] } }),
 		};
 		const err = checkSkillAuthorGate(ctx({ agentId: "a1" }));
-		expect(err).toMatch(/canAuthorSkills is false/);
+		expect(err).toMatch(/skill-creator is not enabled/);
 	});
 
-	test("canAuthorSkills 缺失(undefined)→ 拒(默认 false 语义)", () => {
+	test("enabledSkills 缺失(undefined)→ 拒(默认无许可)", () => {
 		mockService.current = {
 			getAgentRecord: () => ({ skillPolicy: {} }),
 		};
-		expect(checkSkillAuthorGate(ctx({ agentId: "a1" }))).toMatch(/canAuthorSkills is false/);
+		expect(checkSkillAuthorGate(ctx({ agentId: "a1" }))).toMatch(/skill-creator is not enabled/);
 	});
 
-	test("canAuthorSkills=true → 放行(null)", () => {
+	test("enabledSkills 含 skill-creator → 放行(null)", () => {
 		mockService.current = {
-			getAgentRecord: () => ({ skillPolicy: { canAuthorSkills: true } }),
+			getAgentRecord: () => ({ skillPolicy: { enabledSkills: ["skill-creator", "pdf"] } }),
 		};
 		expect(checkSkillAuthorGate(ctx({ agentId: "a1" }))).toBeNull();
 	});
@@ -255,7 +257,7 @@ async function callWrite(tool: any, input: any, opts: any = {}): Promise<string>
 describe("fileWriteTool:[skills]/ 写通道", () => {
 	test("有权限写新 skill → 落盘 + author 标记(用例 1+7)", async () => {
 		mockService.current = {
-			getAgentRecord: () => ({ skillPolicy: { canAuthorSkills: true } }),
+			getAgentRecord: () => ({ skillPolicy: { enabledSkills: ["skill-creator"] } }),
 		};
 		const res = await callWrite(
 			fileWriteTool,
@@ -273,20 +275,20 @@ describe("fileWriteTool:[skills]/ 写通道", () => {
 
 	test("无权限写新 skill → 拒 + 不落盘(用例 2)", async () => {
 		mockService.current = {
-			getAgentRecord: () => ({ skillPolicy: { canAuthorSkills: false } }),
+			getAgentRecord: () => ({ skillPolicy: { enabledSkills: [] } }),
 		};
 		const res = await callWrite(
 			fileWriteTool,
 			{ path: "[skills]/denied/SKILL.md", content: "x" },
 			{ agentId: "agent-x" },
 		);
-		expect(res).toMatch(/canAuthorSkills is false/);
+		expect(res).toMatch(/skill-creator is not enabled/);
 		expect(existsSync(join(home, ".zero-core", "skills", "denied"))).toBe(false);
 	});
 
 	test("无 agentId(UI 调用)写 [skills]/ → 拒 + 不落盘", async () => {
 		mockService.current = {
-			getAgentRecord: () => ({ skillPolicy: { canAuthorSkills: true } }),
+			getAgentRecord: () => ({ skillPolicy: { enabledSkills: ["skill-creator"] } }),
 		};
 		const res = await callWrite(
 			fileWriteTool,
@@ -300,7 +302,7 @@ describe("fileWriteTool:[skills]/ 写通道", () => {
 	test("有权限写外部已存在 skill → 拒(外部只读,用例 4)", async () => {
 		createUserSkill(home, "external");
 		mockService.current = {
-			getAgentRecord: () => ({ skillPolicy: { canAuthorSkills: true } }),
+			getAgentRecord: () => ({ skillPolicy: { enabledSkills: ["skill-creator"] } }),
 		};
 		const res = await callWrite(
 			fileWriteTool,
@@ -312,7 +314,7 @@ describe("fileWriteTool:[skills]/ 写通道", () => {
 
 	test("id 非 path-safe → 拒(用例 5)", async () => {
 		mockService.current = {
-			getAgentRecord: () => ({ skillPolicy: { canAuthorSkills: true } }),
+			getAgentRecord: () => ({ skillPolicy: { enabledSkills: ["skill-creator"] } }),
 		};
 		const res = await callWrite(
 			fileWriteTool,
@@ -325,7 +327,7 @@ describe("fileWriteTool:[skills]/ 写通道", () => {
 	test("已存在 app skill rel 越界 → 拒(用例 6)", async () => {
 		createAppSkill(home, "existing");
 		mockService.current = {
-			getAgentRecord: () => ({ skillPolicy: { canAuthorSkills: true } }),
+			getAgentRecord: () => ({ skillPolicy: { enabledSkills: ["skill-creator"] } }),
 		};
 		const res = await callWrite(
 			fileWriteTool,
@@ -355,7 +357,7 @@ describe("fileEditTool:[skills]/ 写通道", () => {
 	test("有权限 Edit 已存在 app SKILL.md → 替换 + 补 author 标记", async () => {
 		createAppSkill(home, "e1", "old body line");
 		mockService.current = {
-			getAgentRecord: () => ({ skillPolicy: { canAuthorSkills: true } }),
+			getAgentRecord: () => ({ skillPolicy: { enabledSkills: ["skill-creator"] } }),
 		};
 		const res = await callWrite(
 			fileEditTool,
@@ -375,7 +377,7 @@ describe("fileEditTool:[skills]/ 写通道", () => {
 	test("无权限 Edit → 拒 + 内容不变", async () => {
 		createAppSkill(home, "e2", "body");
 		mockService.current = {
-			getAgentRecord: () => ({ skillPolicy: { canAuthorSkills: false } }),
+			getAgentRecord: () => ({ skillPolicy: { enabledSkills: [] } }),
 		};
 		const before = readFileSync(join(home, ".zero-core", "skills", "e2", "SKILL.md"), "utf-8");
 		const res = await callWrite(
@@ -383,7 +385,7 @@ describe("fileEditTool:[skills]/ 写通道", () => {
 			{ path: "[skills]/e2/SKILL.md", oldText: "body", newText: "changed" },
 			{ agentId: "agent-no" },
 		);
-		expect(res).toMatch(/canAuthorSkills is false/);
+		expect(res).toMatch(/skill-creator is not enabled/);
 		const after = readFileSync(join(home, ".zero-core", "skills", "e2", "SKILL.md"), "utf-8");
 		expect(after).toBe(before);
 	});

@@ -595,4 +595,51 @@ test.describe("Skills page", () => {
 		// name 不在 frontmatter 段(已在顶部 detail-name 单独展示)。
 		await expect(detail.locator(".skill-frontmatter-key", { hasText: "name" })).toHaveCount(0);
 	});
+
+	// ─── sub-12: 优先级反转(zero-core 覆盖外部同名)+ skill-creator skill 可见 ────
+	//
+	// sub-12 产品决策:zero-core 自带 skill 视为权威/精调,覆盖外部同名 skill。
+	// 种一个同名 skill 到 ~/.zero-core 和 ~/.claude,断言列表/详情都是 zero-core 那个
+	// (source=app、origin=ZERO-CORE、description=app 内容)。同时验证 zero-core 自带的
+	// skill-creator skill 出现在列表(origin ZERO-CORE)。
+
+	test("sub-12: 同名 skill — zero-core(app)覆盖外部(claude),列表/详情显示 app 那个", async () => {
+		const dupId = `${TEST_ID_PREFIX}dup`;
+		// 种同名:app 与 claude 各一份,description 不同以便区分胜者。
+		seedAppSkill(dupId, { name: "Dup Display", description: "from-app-zero-core" });
+		seedUserSkill(dupId, { name: "Dup Display", description: "from-claude-external" });
+
+		await gotoSkillsPage(window);
+
+		// 左列表只应有 1 条该 id 的 skill(scanner 合并去重),且 badge = ZERO-CORE。
+		const items = window.locator(`.skill-item`, { hasText: dupId });
+		await expect(items.first()).toBeVisible({ timeout: 10_000 });
+		await expect(items).toHaveCount(1, { timeout: 10_000 });
+		await expect(items.first().locator(".skill-item-source")).toContainText("ZERO-CORE");
+
+		// 点开详情:描述是 app 那条(胜者),不是 claude 那条。
+		await items.first().click();
+		const detail = window.locator(".skill-detail");
+		await expect(detail).toBeVisible();
+		await expect(detail.locator(".skill-detail-meta .skill-origin-badge")).toContainText("ZERO-CORE");
+		await expect(detail).toContainText("from-app-zero-core");
+		await expect(detail).not.toContainText("from-claude-external");
+	});
+
+	test("sub-12: zero-core 自带 skill-creator skill 出现在列表(origin ZERO-CORE)", async () => {
+		// skill-creator 是 zero-core 自带 skill(installed at ~/.zero-core/skills/skill-creator,
+		// 由 sub-12 引入)。本测验证它被 scanner 扫到且 origin=ZERO-CORE。
+		// 本测不种 fixture(skill-creator 是产品自带,非测试 fixture),仅断言其存在。
+		const scDir = join(APP_SKILLS_DIR, "skill-creator");
+		if (!existsSync(scDir)) {
+			test.skip(true, "本机 ~/.zero-core/skills/skill-creator 未安装(sub-12 安装步骤未执行)");
+			return;
+		}
+
+		await gotoSkillsPage(window);
+		const item = window.locator(`.skill-item`, { hasText: "skill-creator" });
+		await expect(item.first()).toBeVisible({ timeout: 10_000 });
+		await expect(item.first().locator(".skill-item-source")).toContainText("ZERO-CORE");
+	});
 });
+

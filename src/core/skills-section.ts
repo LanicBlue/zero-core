@@ -1,16 +1,14 @@
-// skill-system sub-9:运行时 skill section 渲染器(单一真理源)
+// skill-system sub-9/sub-12:运行时 skill section 渲染器(单一真理源)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 把「Available Skills」列表(sub-4)+ 「Authoring Skills」引导(sub-8)两段
-// system prompt 渲染抽出来,作为 **buildSystemPrompt(CLI/headless) 与
-// AgentLoop 运行时 skills section(Electron app)共用的唯一渲染入口**。
+// 把「Available Skills」列表(sub-4)渲染抽出来,作为 **buildSystemPrompt(CLI/headless)
+// 与 AgentLoop 运行时 skills section(Electron app)共用的唯一渲染入口**。
 //
 // ## 输入
 // - skills:DiscoveredSkill[](来自 scanSkills;只读 id/name/description)
 // - enabledSkills:三态过滤(undefined→全注入 legacy / []→空 / [id...]→过滤)
-// - canAuthorSkills:boolean(为 true 时附 Authoring Skills 引导段)
 //
 // ## 输出
 // - string(空串表示该段不出现;SystemPromptAssembler / buildSystemPrompt
@@ -26,6 +24,12 @@
 // ## 维护规则
 // 段文案 / 路径格式 / 三段式指引变更时同步更新 tests/unit/system-prompt*.test.ts。
 // undefined(legacy)分支千万别删(acceptance-4 守护此不变量)。
+//
+// sub-12: 移除「Authoring Skills」引导段(canAuthorSkills 引导)。理由:写权限
+// 改为查 enabledSkills 含 "skill-creator"(skill-creator 是 zero-core 自带 skill),
+// 而该 skill 的 name+description 已在 Available Skills 列表里(sub-4 注入),
+// 足够触发 agent 在合适时机读取 skill-creator 正文(经 progressive disclosure)
+// 获取创建 skill 的完整引导。不再在 prompt 里重复一份引导文案。
 //
 
 /**
@@ -47,24 +51,22 @@ export interface BuildSkillsSectionInput {
 	 *   - [id,...]  → 仅注入命中 id 的条目
 	 */
 	enabledSkills?: string[];
-	/**
-	 * skill-system sub-8 (decision 11):true 时附「Authoring Skills」引导段。
-	 * 文案克制,强调"确有复用价值"再写,防滥建低质 skill。
-	 */
-	canAuthorSkills?: boolean;
 }
 
 /**
- * 渲染「Available Skills」+ (可选)「Authoring Skills」两段 system prompt。
+ * 渲染「Available Skills」system prompt 段。
  *
  * **单一真理源**:`buildSystemPrompt`(CLI/headless 路径)与 AgentLoop 的
  * `skills` system section(Electron app 运行时)都必须调用本函数,禁止复制
- * 渲染逻辑。两段为空时返回空串(调用方对空串 drop)。
+ * 渲染逻辑。段为空时返回空串(调用方对空串 drop)。
  *
  * body 不进 prompt(按需 Read,见指引)。
+ *
+ * sub-12: 原可选「Authoring Skills」引导段已移除 —— 写权限由 skill-creator
+ * skill 自身的 name+description 触发(经 progressive disclosure 读其正文)。
  */
 export function buildSkillsSection(input: BuildSkillsSectionInput): string {
-	const { skills, enabledSkills, canAuthorSkills } = input;
+	const { skills, enabledSkills } = input;
 	const parts: string[] = [];
 
 	// ── Available Skills(sub-4,决策 5 三态语义)──────────────────────────
@@ -95,32 +97,6 @@ export function buildSkillsSection(input: BuildSkillsSectionInput): string {
 					"- **Scripts**: skills may bundle scripts; run them with Shell as `[skills]/<id>/scripts/...`.",
 			);
 		}
-	}
-
-	// ── Authoring Skills(sub-8,决策 11)────────────────────────────────
-	//
-	// 仅当 canAuthorSkills === true 时注入。文案克制:强调"确有复用价值"再写,
-	// 防滥建低质 skill(风险段)。给出 frontmatter 形态 + 路径,agent 据此自建。
-	if (canAuthorSkills === true) {
-		parts.push(
-			"## Authoring Skills\n\n" +
-				"You are permitted to create and edit skills for reuse. A skill is a folder under `[skills]/<id>/` containing a `SKILL.md`.\n\n" +
-				"Write a new skill only when a procedure has **genuine, repeatable reuse value** across tasks — not for one-off work. Premature or low-quality skills add noise.\n\n" +
-				"To author a skill, use the `Write` tool with a virtual path `[skills]/<skill-id>/SKILL.md`:\n" +
-				"```\n" +
-				"---\n" +
-				"name: <human-readable name>\n" +
-				"description: <one-line description; when this skill applies>\n" +
-				"---\n" +
-				"\n" +
-				"<body: when to use, the procedure, examples>\n" +
-				"```\n\n" +
-				"Rules:\n" +
-				"- `<skill-id>` must be path-safe (letters, digits, `.`, `_`, `-`; 1–64 chars), unique, and stable.\n" +
-				"- New skills land under the app skills root; external skills (`~/.claude`, `~/.agents`) are read-only.\n" +
-				"- You may also edit existing app skills via `Write`/`Edit` on `[skills]/<id>/<file>`; `..` escapes are blocked.\n" +
-				"- Resources/scripts go in sibling files (e.g. `[skills]/<id>/reference.md`) and are reachable via Read/Glob/Grep/Shell using the same virtual path.",
-		);
 	}
 
 	return parts.join("\n\n");

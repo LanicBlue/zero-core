@@ -6136,7 +6136,26 @@ n.tools-page-test-chips {
 	cursor: pointer;
 }
 
-/* sub-10: 来源 badge(ZERO-CORE/CLAUDE/AGENTS)。仅展示,不参与业务判断。 */
+/* sub-12: 标题行(skill name + origin badge 同一行,标题左 + badge 右)。
+   .skill-name-row 是 SkillsSection 里包 tool-name + skill-origin-badge 的 flex 容器;
+   badge 用 margin-left:auto 推到行尾。 */
+.skill-name-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-width: 0;
+}
+.skill-name-row .tool-name {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* sub-10/sub-12: 来源 badge(ZERO-CORE/CLAUDE/AGENTS)。仅展示,不参与业务判断。
+   sub-12: 从介绍下面挪到标题行右侧(margin-left:auto 推到行尾)。 */
 .skill-origin-badge {
 	display: inline-block;
 	font-size: 10px;
@@ -6147,8 +6166,8 @@ n.tools-page-test-chips {
 	background: var(--bg-subtle);
 	color: var(--fg-muted);
 	border: 1px solid var(--border-default);
-	margin-top: 4px;
-	width: fit-content;
+	margin-left: auto;
+	flex: 0 0 auto;
 	-webkit-user-select: none;
 	user-select: none;
 }

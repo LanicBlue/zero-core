@@ -320,10 +320,10 @@ export class AgentService implements PlatformObserver {
 					// toolPolicy, but the tool still needs its service handle.
 					capabilities: this.capabilityHandlesFor(agent.toolPolicy),
 					// skill-system sub-9: hot-swap the skills section closure so
-					// a skillPolicy edit (enabledSkills / canAuthorSkills) via UI
-					// or AgentRegistry tool reflects on the next turn. Closure
-					// re-reads scanSkills each turn anyway; applyConfigUpdate
-					// also invalidate("skills") so the swap is immediate.
+					// a skillPolicy edit (enabledSkills) via UI or AgentRegistry
+					// tool reflects on the next turn. Closure re-reads scanSkills
+					// each turn anyway; applyConfigUpdate also invalidate("skills")
+					// so the swap is immediate.
 					getSkillSection: this.buildSkillSectionClosure(agentId),
 				});
 			}
@@ -818,7 +818,6 @@ export class AgentService implements PlatformObserver {
 			return buildSkillsSection({
 				skills: skills.map((s) => ({ id: s.id, name: s.name, description: s.description })),
 				enabledSkills: policy?.enabledSkills,
-				canAuthorSkills: policy?.canAuthorSkills,
 			});
 		};
 	}
@@ -997,11 +996,10 @@ export class AgentService implements PlatformObserver {
 		return false;
 	}
 	/**
-	 * skill-system sub-8 (decision 11): public read of an agent's persisted
-	 * record. Write/Edit tools read `skillPolicy.canAuthorSkills` from this to
-	 * gate `[skills]/` writes (gate must reach the per-agent flag without going
-	 * through callerCtx, since toolPolicy/skillPolicy are config-time, not
-	 * per-session-loop state). Returns undefined when store absent (early
+	 * skill-system sub-8/sub-12: public read of an agent's persisted record.
+	 * Write/Edit tools read `skillPolicy.enabledSkills` from this to gate
+	 * `[skills]/` writes (sub-12: gate放行条件 = enabledSkills 含 "skill-creator",
+	 * 见 skill-author-gate.ts)。Returns undefined when store absent (early
 	 * startup / tests) — callers treat that as "no permission granted".
 	 */
 	getAgentRecord(agentId: string): AgentRecord | undefined {

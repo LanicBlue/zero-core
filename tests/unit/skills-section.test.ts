@@ -1,17 +1,21 @@
-// 单元测试:skill-system sub-9 buildSkillsSection(单一真理源,运行时 + CLI 共用)
+// 单元测试:skill-system sub-9/sub-12 buildSkillsSection(单一真理源,运行时 + CLI 共用)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 验证抽出来的 buildSkillsSection 三态 + canAuthorSkills 行为与 buildSystemPrompt
-// 内联版完全一致(回归守护:抽函数后旧 acceptance-4/8 语义不变)。
+// 验证抽出来的 buildSkillsSection 三态行为与 buildSystemPrompt 内联版完全一致
+// (回归守护:抽函数后旧 acceptance-4 语义不变)。
+//
+// sub-12: 原 canAuthorSkills=true 时注入的「Authoring Skills」引导段已移除 ——
+// 写权限改由 enabledSkills 含 "skill-creator" 决定,且 skill-creator 自身的
+// name+description 已在 Available Skills 列表触发 agent 读其正文。本测守护
+// "Authoring 段永不再出现" 不变量。
 //
 // ## 输入
 // src/core/skills-section.ts 的 buildSkillsSection。
 //
 // ## 输出
-// Vitest 用例:三态(enabled 命中 / [] / undefined)+ canAuthorSkills 开/关 +
-// 两段共存(canAuthorSkills=true 且 enabled 命中 → Available + Authoring 都在)。
+// Vitest 用例:三态(enabled 命中 / [] / undefined)+ Authoring 段移除断言。
 //
 // ## 定位
 // tests/unit/ —— 纯函数单测。
@@ -61,41 +65,18 @@ describe("buildSkillsSection — Available Skills 三态(单一真理源)", () =
 	});
 });
 
-describe("buildSkillsSection — Authoring Skills(canAuthorSkills)", () => {
-	test("canAuthorSkills=true → 含 Authoring 段 + frontmatter + path-safe 规则", () => {
-		// 无 skills,只测引导段
-		const out = buildSkillsSection({ skills: [], canAuthorSkills: true });
-		expect(out).toContain("## Authoring Skills");
-		expect(out).toContain("[skills]/<skill-id>/SKILL.md");
-		expect(out).toContain("genuine, repeatable reuse value");
-		expect(out).toContain("name: <human-readable name>");
-		expect(out).toContain("path-safe");
-		expect(out).toContain("read-only");
-	});
-
-	test("canAuthorSkills=false / undefined → 不含 Authoring 段", () => {
-		expect(buildSkillsSection({ skills: [], canAuthorSkills: false }))
-			.not.toContain("Authoring Skills");
-		expect(buildSkillsSection({ skills: [] }))
-			.not.toContain("Authoring Skills");
-	});
-});
-
-describe("buildSkillsSection — 两段共存", () => {
-	test("canAuthorSkills=true 且 enabled 命中 → Available + Authoring 都在", () => {
+describe("buildSkillsSection — sub-12:Authoring 段已移除", () => {
+	test("无论 skills/enabledSkills 如何组合,均不含 Authoring 段", () => {
+		// skills=[] 也无 Authoring(原 canAuthorSkills=true 时会注入,sub-12 移除)
+		expect(buildSkillsSection({ skills: [] })).not.toContain("Authoring Skills");
+		expect(buildSkillsSection({ skills: [] })).not.toContain("genuine, repeatable reuse value");
+		// 含 skill-creator 的 enabledSkills 也只产 Available,无 Authoring
 		const out = buildSkillsSection({
-			skills: SKILLS,
-			enabledSkills: ["pdf"],
-			canAuthorSkills: true,
+			skills: [{ id: "skill-creator", name: "skill-creator", description: "create skills" }],
+			enabledSkills: ["skill-creator"],
 		});
-		// Available 在前,Authoring 在后(用 indexOf 顺序断言)
-		const availIdx = out.indexOf("## Available Skills");
-		const authIdx = out.indexOf("## Authoring Skills");
-		expect(availIdx).toBeGreaterThan(-1);
-		expect(authIdx).toBeGreaterThan(-1);
-		expect(authIdx).toBeGreaterThan(availIdx);
-		// Available 段只命中 pdf
-		expect(out).toContain("[skills]/pdf/SKILL.md");
-		expect(out).not.toContain("[skills]/code-review/SKILL.md");
+		expect(out).toContain("Available Skills");
+		expect(out).not.toContain("Authoring Skills");
+		expect(out).not.toContain("genuine, repeatable reuse value");
 	});
 });

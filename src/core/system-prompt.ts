@@ -40,10 +40,11 @@ export interface SystemPromptContext {
 	useMemoryContext?: boolean;
 	enabledSkills?: string[];
 	/**
-	 * skill-system sub-8 (decision 11): when true, inject a brief "you may
-	 * create skills" guidance into the prompt.文案克制,防 agent 滥建低质 skill。
+	 * skill-system sub-12: 原 canAuthorSkills 字段移除。写权限由 enabledSkills
+	 * 是否含 "skill-creator" 决定(skill-author-gate 查),且 skill-creator 自身
+	 * 的 name+description 已在 Available Skills 段触发 agent 读其正文获取引导,
+	 * 不再在 prompt 里重复一份引导文案。
 	 */
-	canAuthorSkills?: boolean;
 }
 
 /**
@@ -62,7 +63,7 @@ export interface SystemPromptContext {
  * 详见 docs/archive/agent-context-fields Q9(维持原样不清理,清理风险高、
  * 对 app 无收益)。
  *
- * CLI 调用方不传 skills / enabledSkills / canAuthorSkills,所以这里的
+ * CLI 调用方不传 skills / enabledSkills,所以这里的
  * skill 段对 CLI 实际是空跑(段不出现)—— 符合预期,CLI 不注入 skill。
  */
 export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptContext): string {
@@ -88,16 +89,15 @@ export function buildSystemPrompt(config: ZeroCoreConfig, ctx: SystemPromptConte
 		}
 	}
 
-	// 4–5. Skills(Available Skills 列表 + Authoring 引导)
+	// 4–5. Skills(Available Skills 列表)
 	//
-	// skill-system sub-9:渲染抽到 `buildSkillsSection`(src/core/skills-section.ts),
+	// skill-system sub-9/sub-12:渲染抽到 `buildSkillsSection`(src/core/skills-section.ts),
 	// Electron app 运行时的 AgentLoop skills section 也复用它 —— 单一真理源。
-	// 三态语义 + canAuthorSkills 引导均在 buildSkillsSection 内,详见其文件头。
-	if (ctx.skills?.length || ctx.canAuthorSkills === true) {
+	// sub-12: 原 Authoring 引导段已移除(写权限改由 skill-creator skill 触发)。
+	if (ctx.skills?.length) {
 		const skillSection = buildSkillsSection({
 			skills: ctx.skills ?? [],
 			enabledSkills: ctx.enabledSkills,
-			canAuthorSkills: ctx.canAuthorSkills,
 		});
 		if (skillSection) sections.push(skillSection);
 	}

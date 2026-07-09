@@ -94,9 +94,10 @@ export const fileWriteTool = buildTool({
 		// v0.8 (P1 §10.1): block agent writes to the wiki memory store.
 		if (isWikiDiskPath(path, callerCtx.workingDir)) return wrap(wikiPathRejectMessage(path));
 
-		// skill-system sub-8 (decision 4 write + 11): `[skills]/<id>/<rel>` 虚拟
-		// 路径写通道。门禁先行(canAuthorSkills=false → 拒,不落盘),再做路径
-		// 解析(新/已存在/外部/越界/id 护栏)。读家族(Read/Glob/Grep)不经此分支。
+		// skill-system sub-8/sub-12 (decision 4 write + 11): `[skills]/<id>/<rel>` 虚拟
+		// 路径写通道。门禁先行(sub-12: enabledSkills 不含 "skill-creator" → 拒,
+		// 不落盘),再做路径解析(新/已存在/外部/越界/id 护栏)。读家族(Read/Glob/Grep)
+		// 不经此分支。
 		const skillWrite = resolveSkillWritePath(path);
 		let resolved: string;
 		let writeContent = content;
@@ -108,7 +109,7 @@ export const fileWriteTool = buildTool({
 		} else if (!skillWrite.ok) {
 			return wrap(`Error: ${skillWrite.error}`);
 		} else {
-			// skill 写:门禁查当前 agent 的 canAuthorSkills。
+			// skill 写:门禁查当前 agent 的 enabledSkills 是否含 skill-creator(sub-12)。
 			const gateError = checkSkillAuthorGate(callerCtx);
 			if (gateError) return wrap(gateError);
 			resolved = skillWrite.realPath;

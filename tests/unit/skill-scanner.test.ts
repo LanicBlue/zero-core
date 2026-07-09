@@ -3,8 +3,8 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 验证 skill-scanner 的优先级(personal>app)、identity(=目录名)、display name 兜底、
-// 同名 frontmatter 跨目录去重、resolveSkillByName 缺失语义、getSkillRoots 顺序。
+// 验证 skill-scanner 的优先级(sub-12 反转:zero-core/app 胜)、identity(=目录名)、
+// display name 兜底、同名 frontmatter 跨目录去重、resolveSkillByName 缺失语义、getSkillRoots 顺序。
 //
 // ## 输入
 // src/server/skill-scanner.ts 导出的 scanSkills/getSkillRoots/getSkillIndex/resolveSkillByName,
@@ -22,6 +22,9 @@
 // ## 维护规则
 // scanner 改优先级方向/identity 字段时,本文件按协议同步更新。
 // 测试通过 scanSkills(home) 注入 tmp home,不污染真实 ~/.claude|~/.zero-core|~/.agents。
+//
+// **sub-12(2026-07)优先级反转**:zero-core 自带 skill 视为权威/精调,覆盖外部同名。
+// 数组顺序 `~/.claude` → `~/.agents` → `~/.zero-core`(末尾最高优先级)。
 //
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
@@ -64,45 +67,48 @@ afterEach(() => {
 	rmSync(home, { recursive: true, force: true });
 });
 
-describe("acceptance-1 用例1:同 id 跨 source → personal 胜", () => {
-	test("scanSkills 在 .zero-core 与 .claude 下都建 foo → 返回 user(source/路径)", () => {
-		const appDir = createSkill(home, ".zero-core", "foo", {
-			name: "Foo",
-			description: "from app",
-		});
+describe("acceptance-1 用例1:同 id 跨 source → app(zero-core)胜(sub-12 反转)", () => {
+	test("scanSkills 在 .zero-core 与 .claude 下都建 foo → 返回 app(source/路径)", () => {
 		const userDir = createSkill(home, ".claude", "foo", {
 			name: "Foo",
 			description: "from user",
+		});
+		const appDir = createSkill(home, ".zero-core", "foo", {
+			name: "Foo",
+			description: "from app",
 		});
 
 		const skills = scanSkills(home);
 		expect(skills).toHaveLength(1);
 		const foo = skills[0] as DiscoveredSkill;
 		expect(foo.id).toBe("foo");
-		expect(foo.source).toBe("user"); // personal 胜
-		expect(foo.baseDir).toBe(userDir);
-		expect(foo.baseDir).not.toBe(appDir);
-		expect(foo.description).toBe("from user");
+		// sub-12 反转:zero-core(app)胜,覆盖外部 personal(user)
+		expect(foo.source).toBe("app");
+		expect(foo.origin).toBe("zero-core");
+		expect(foo.baseDir).toBe(appDir);
+		expect(foo.baseDir).not.toBe(userDir);
+		expect(foo.description).toBe("from app");
 	});
 
-	test("getSkillIndex 同 id 跨 source → Map 只剩 user 那条", () => {
-		createSkill(home, ".zero-core", "bar", {
-			name: "Bar",
-			description: "app",
-		});
+	test("getSkillIndex 同 id 跨 source → Map 只剩 app 那条", () => {
 		createSkill(home, ".claude", "bar", {
 			name: "Bar",
 			description: "user",
 		});
+		createSkill(home, ".zero-core", "bar", {
+			name: "Bar",
+			description: "app",
+		});
 
 		const idx = getSkillIndex(home);
 		expect(idx.size).toBe(1);
-		expect(idx.get("bar")?.source).toBe("user");
-		expect(idx.get("bar")?.description).toBe("user");
+		expect(idx.get("bar")?.source).toBe("app");
+		expect(idx.get("bar")?.origin).toBe("zero-core");
+		expect(idx.get("bar")?.description).toBe("app");
 	});
 
-	test(".agents/skills 也是 user,且 .claude 与 .agents 都存在时优先级靠后(数组序)胜", () => {
-		// 两个 user 源,同 id;数组里 .agents 在 .claude 之后 → .agents 胜。
+	test(".agents/skills 与 .claude 都存在、.zero-core 缺时 → 数组序靠后(user 内部)胜;加 .zero-core 则 app 胜", () => {
+		// 两个 user 源,同 id,无 app → 数组里 .agents 在 .claude 之后 → .agents 胜。
 		createSkill(home, ".claude", "baz", {
 			name: "Baz",
 			description: "claude",
@@ -115,6 +121,16 @@ describe("acceptance-1 用例1:同 id 跨 source → personal 胜", () => {
 		const idx = getSkillIndex(home);
 		expect(idx.get("baz")?.baseDir).toBe(agentsDir);
 		expect(idx.get("baz")?.description).toBe("agents");
+
+		// 加入 .zero-core 后 app 胜(数组末尾 = 最高优先级)
+		const appDir = createSkill(home, ".zero-core", "baz", {
+			name: "Baz",
+			description: "app",
+		});
+		const idx2 = getSkillIndex(home);
+		expect(idx2.get("baz")?.baseDir).toBe(appDir);
+		expect(idx2.get("baz")?.source).toBe("app");
+		expect(idx2.get("baz")?.description).toBe("app");
 	});
 });
 
@@ -153,26 +169,28 @@ describe("acceptance-1 用例4:同 frontmatter name、不同目录名 → 两条
 	});
 });
 
-describe("acceptance-1 用例2:getSkillRoots 顺序 + source 标记", () => {
-	test("返回 3 条,app 在前(低)、两个 user 在后(高)", () => {
+describe("acceptance-1 用例2:getSkillRoots 顺序 + source 标记(sub-12 反转)", () => {
+	test("返回 3 条,两个 user 在前(低)、app 在最后(高)", () => {
 		const roots = getSkillRoots(home);
 		expect(roots).toHaveLength(3);
-		expect(roots.map((r) => r.source)).toEqual(["app", "user", "user"]);
-		// 顺序断言:app/bundled → .claude → .agents
-		expect(roots[0]?.dir).toBe(join(home, ".zero-core", "skills"));
-		expect(roots[1]?.dir).toBe(join(home, ".claude", "skills"));
-		expect(roots[2]?.dir).toBe(join(home, ".agents", "skills"));
+		// sub-12 反转:app/zero-core 放数组末尾(最高优先级)
+		expect(roots.map((r) => r.source)).toEqual(["user", "user", "app"]);
+		// 顺序断言:.claude → .agents → .zero-core(末尾=最高优先级)
+		expect(roots[0]?.dir).toBe(join(home, ".claude", "skills"));
+		expect(roots[1]?.dir).toBe(join(home, ".agents", "skills"));
+		expect(roots[2]?.dir).toBe(join(home, ".zero-core", "skills"));
 	});
 
 	// sub-10 (decision 10): 每个 root 带 display-only origin 字段(给 UI badge 用)。
 	// origin 与 dir 一一对应:app root → zero-core;~/.claude/skills → claude;~/.agents/skills → agents。
 	test("sub-10: 每个 root 带 origin 字段(zero-core/claude/agents,与 dir 对应)", () => {
 		const roots = getSkillRoots(home);
-		expect(roots.map((r) => r.origin)).toEqual(["zero-core", "claude", "agents"]);
+		// sub-12 反转:顺序跟着 dir 翻转
+		expect(roots.map((r) => r.origin)).toEqual(["claude", "agents", "zero-core"]);
 		// source 与 origin 的对应关系(app↔zero-core;两个 user 分别 claude/agents)。
-		expect(roots[0]).toMatchObject({ source: "app", origin: "zero-core" });
-		expect(roots[1]).toMatchObject({ source: "user", origin: "claude" });
-		expect(roots[2]).toMatchObject({ source: "user", origin: "agents" });
+		expect(roots[0]).toMatchObject({ source: "user", origin: "claude" });
+		expect(roots[1]).toMatchObject({ source: "user", origin: "agents" });
+		expect(roots[2]).toMatchObject({ source: "app", origin: "zero-core" });
 	});
 });
 
@@ -180,7 +198,7 @@ describe("acceptance-1 用例2:getSkillRoots 顺序 + source 标记", () => {
 // - ~/.zero-core/skills/<id> → origin "zero-core"
 // - ~/.claude/skills/<id>    → origin "claude"
 // - ~/.agents/skills/<id>    → origin "agents"
-// 同 id 跨 root 时:origin 跟随"胜出"那条(personal>app,与 source 同步覆盖)。
+// 同 id 跨 root 时:origin 跟随"胜出"那条(sub-12:app/zero-core 胜,与 source 同步覆盖)。
 describe("sub-10: DiscoveredSkill.origin 按 root stamp", () => {
 	test("三条 root 各放一个不同 id 的 skill → origin 各对应 root", () => {
 		createSkill(home, ".zero-core", "alpha", { name: "Alpha", description: "a" });
@@ -193,14 +211,15 @@ describe("sub-10: DiscoveredSkill.origin 按 root stamp", () => {
 		expect(idx.get("gamma")?.origin).toBe("agents");
 	});
 
-	test("同 id 跨 .zero-core + .claude → user 胜,origin=claude(跟胜者)", () => {
-		createSkill(home, ".zero-core", "dup", { name: "Dup", description: "app" });
+	test("同 id 跨 .zero-core + .claude → app 胜(sub-12 反转),origin=zero-core(跟胜者)", () => {
 		createSkill(home, ".claude", "dup", { name: "Dup", description: "user-claude" });
+		createSkill(home, ".zero-core", "dup", { name: "Dup", description: "app" });
 
 		const skill = scanSkills(home)[0];
-		expect(skill?.source).toBe("user");
-		expect(skill?.origin).toBe("claude"); // personal 胜 → origin 跟随
-		expect(skill?.description).toBe("user-claude");
+		// sub-12 反转:app(zero-core)胜 → origin 跟随胜者
+		expect(skill?.source).toBe("app");
+		expect(skill?.origin).toBe("zero-core");
+		expect(skill?.description).toBe("app");
 	});
 
 	test("同 id 跨 .claude + .agents → .agents(数组序靠后)胜,origin=agents", () => {

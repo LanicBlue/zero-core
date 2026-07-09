@@ -1,15 +1,17 @@
-// E2E 测试:skill-system sub-5/sub-8/sub-10 — per-agent skill 配置(SkillsSection)
+// E2E 测试:skill-system sub-5/sub-10/sub-12 — per-agent skill 配置(SkillsSection)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 验证 acceptance-5 用例 10-14 + sub-8 canAuthorSkills + sub-10 UI 对齐:
+// 验证 acceptance-5 用例 10-14 + sub-10 UI 对齐 + sub-12 变更:
 //   10. Skills 段挂载在 AgentEditor nav(邻近 工具)
 //   11. 勾选某 skill → autosave → 关编辑器重开 → 仍勾选(持久化往返)
 //   12. 取消勾选 → autosave → 重开 → 未勾选
 //   13. 清空回归:取消全部 → 重开 → 仍空([] vs undefined)
 //   14. 持久化值是 id(目录名)而非 display name
 //   sub-10: toggle-switch 渲染 / 可点展开 detail panel / origin badge 渲染
+//   sub-12: canAuthorSkills toggle 已移除(写权限 = 勾选 skill-creator)/
+//           origin badge 移到标题(skill.name)右边同一行
 //
 // ## 输入
 // simple-response.json fixture
@@ -22,22 +24,25 @@
 //
 // ## 维护规则
 //   - AgentEditor 段名/按钮文案变更同步本测试
-//   - SkillsSection 的 DOM 结构(toggle-switch / tool-item / skill-origin-badge / skill-detail-panel)
-//     变更同步本测试
+//   - SkillsSection 的 DOM 结构(toggle-switch / tool-item / skill-name-row /
+//     skill-origin-badge / skill-detail-panel)变更同步本测试
 //
-// ## sub-10 UI 变更(checkbox → toggle-switch)
-// sub-10 起 skill 启用 + canAuthorSkills 都用 toggle-switch(button.toggle-switch,带 `.on` 类表示启用)。
-// 没有 `checked` 属性可断言了,改用 `.on` class 存在性判定启用状态。
+// ## sub-10/sub-12 UI 变更
+// sub-10 起 skill 启用 toggle 用 toggle-switch(button.toggle-switch,带 `.on` 类表示启用)。
+// sub-12: 原 canAuthorSkills toggle 移除(写权限改为 enabledSkills 含 "skill-creator");
+//         origin badge 从介绍下面挪到 .skill-name-row(与 .tool-name 同一行,标题左 + badge 右)。
 // 选择器:
 //   - skill 启用开关:button.skill-toggle-switch(aria-label="Toggle skill <name>")
-//   - canAuthorSkills 开关:button.skill-author-toggle__switch(aria-label="允许此 agent 创建 skill")
+//   - origin badge:.skill-name-row 内的 .skill-origin-badge(与 .tool-name 同级)
+//   - (sub-12 已移除) button.skill-author-toggle__switch
 //
 // ## E2E fixture 限制(诚实声明,sub-5 同源)
 // skill-scanner.scanSkills() 硬编码读 homedir() 下的 ~/.zero-core|~/.claude|~/.agents
 // (sub-1 实现,本 sub-10 不动)。Playwright launcher 用 ZERO_CORE_DIR 重定向 DB/workspace,
 // **不**重定向 homedir()。所以本测试对 skills 列表的断言依赖**真实 home 下已安装的 skill**
 // (scanner 每次读盘 → 刷新即得)。若本机无任何 skill,11-14 主体用例自动 skip 并给出明确原因;
-// 10(段挂载)与 sub-10 toggle-switch 渲染断言在任何环境下都跑(只要该段挂载且至少有 toggle 渲染)。
+// 10(段挂载)与 sub-12 toggle 移除/badge 位置断言在任何环境下都跑。
+//
 
 import { test, expect } from "@playwright/test";
 import { resolve, dirname } from "node:path";
@@ -297,12 +302,12 @@ test.describe("sub-5/sub-10 — SkillsSection toggle-switch round-trip (requires
 	});
 });
 
-// ── sub-10: UI 对齐 ToolsSection 验证(toggle-switch + 可点展开 + origin badge) ──
+// ── sub-10/sub-12: UI 对齐 ToolsSection 验证(toggle-switch + 可点展开 + origin badge) ──
 //
 // 这些用例不依赖本机装 skill 之外的状态:有 skill 才能验证 badge/展开交互;
-// 无 skill 时 toggle-switch 渲染断言仍能跑(canAuthorSkills toggle 永远渲染)。
+// 无 skill 时 sub-12 移除断言(canAuthorSkills toggle 不再存在)在任何环境都跑。
 
-test.describe("sub-10 — SkillsSection UI 对齐 (toggle-switch + 展开 + origin badge)", () => {
+test.describe("sub-10/sub-12 — SkillsSection UI(toggle-switch + 展开 + origin badge 位置)", () => {
 	let cleanup: () => Promise<void>;
 	let window: Awaited<ReturnType<typeof launchApp>>["window"];
 
@@ -315,31 +320,30 @@ test.describe("sub-10 — SkillsSection UI 对齐 (toggle-switch + 展开 + orig
 
 	test.afterEach(async () => { await cleanup(); });
 
-	test("sub-10: canAuthorSkills 用 toggle-switch 渲染(非 checkbox)", async () => {
+	test("sub-12: canAuthorSkills toggle 已移除(写权限改由 enabledSkills 含 skill-creator 决定)", async () => {
 		await openFirstAgentEditor(window);
 		await window.locator(".editor-nav-item", { hasText: "Skills" }).click();
 		await expect(window.getByText("可用 skills").first()).toBeVisible({ timeout: 5_000 });
 
-		// canAuthorSkills 开关 = button.skill-author-toggle__switch(toggle-switch)。
-		// 不应是 <input checkbox>。
-		const authorToggle = window.locator("button.skill-author-toggle__switch.toggle-switch");
-		await expect(authorToggle).toBeVisible({ timeout: 5_000 });
-		const tagName = await authorToggle.evaluate((el) => el.tagName.toLowerCase());
-		expect(tagName).toBe("button");
-
-		// 旧的 checkbox 选择器必须不存在(sub-10 已移除)。
+		// sub-12 移除:canAuthorSkills toggle 不应再渲染(任何形态)。
+		const authorToggle = window.locator("button.skill-author-toggle__switch");
+		await expect(authorToggle).toHaveCount(0);
 		const legacyCheckbox = window.locator("input.skill-author-toggle__checkbox");
 		await expect(legacyCheckbox).toHaveCount(0);
+		// 同时验证「允许此 agent 创建 skill」文案不再出现(整块 toggle 已删)。
+		await expect(window.getByText("允许此 agent 创建 skill")).toHaveCount(0);
+
+		// 替代引导:section-desc 提示用户勾选 skill-creator 即获得写权限。
+		await expect(window.getByText(/skill-creator/).first()).toBeVisible({ timeout: 5_000 });
 	});
 
-	test("sub-10: 每个 skill 用 toggle-switch 渲染(非 checkbox);有 skill 时还验 badge", async () => {
+	test("sub-10: 每个 skill 用 toggle-switch 渲染(非 checkbox);有 skill 时还验 badge 位置(sub-12)", async () => {
 		await openFirstAgentEditor(window);
 		await window.locator(".editor-nav-item", { hasText: "Skills" }).click();
 		await expect(window.getByText("可用 skills").first()).toBeVisible({ timeout: 5_000 });
 
 		const toggles = window.locator("button.skill-toggle-switch");
 		const count = await toggles.count();
-		// 无 skill 时只验"canAuthorSkills toggle 是 toggle-switch"(上个用例已覆盖),这里 skip。
 		if (count === 0) {
 			test.skip(true, "本机无已安装 skill;skill toggle-switch / badge 需 skill 才能验证");
 			return;
@@ -365,6 +369,18 @@ test.describe("sub-10 — SkillsSection UI 对齐 (toggle-switch + 展开 + orig
 		for (let i = 0; i < badgeCount; i++) {
 			const text = (await badges.nth(i).textContent())?.trim() ?? "";
 			expect(validLabels, `origin badge #${i} 文本 "${text}" 不在合法集合`).toContain(text);
+		}
+
+		// sub-12: badge 在标题行(.skill-name-row)内,与 .tool-name 同级(标题左 + badge 右)。
+		const nameRows = window.locator(".skill-name-row");
+		await expect(nameRows.first()).toBeVisible({ timeout: 5_000 });
+		const rowCount = await nameRows.count();
+		expect(rowCount, "skill-name-row 数应与 skill 行数一致").toBe(count);
+		// 每行 .skill-name-row 同时含 .tool-name 和 .skill-origin-badge。
+		for (let i = 0; i < rowCount; i++) {
+			const row = nameRows.nth(i);
+			await expect(row.locator(".tool-name")).toHaveCount(1);
+			await expect(row.locator(".skill-origin-badge")).toHaveCount(1);
 		}
 	});
 
@@ -403,69 +419,3 @@ test.describe("sub-10 — SkillsSection UI 对齐 (toggle-switch + 展开 + orig
 	});
 });
 
-// ── sub-8 (acceptance-8 用例 11): canAuthorSkills toggle 往返 ──────────────
-//
-// SkillsSection 顶部的「允许此 agent 创建 skill」toggle-switch,aria-label 唯一可定位
-// (区别于 skill 启用 toggle,后者 aria-label="Toggle skill <name>")。
-// 往返:启用 → autosave → 关重开 → 仍启用;取消 → 关重开 → 未启用。读 IPC 验证
-// 持久化值是 boolean(显式 true/false,非 undefined — 同 enabledSkills=[] 回归同类陷阱)。
-// sub-10: checkbox → toggle-switch;启用状态改用 `.on` class 判定。
-
-test.describe("sub-8/sub-10 — SkillsSection canAuthorSkills toggle round-trip", () => {
-	let cleanup: () => Promise<void>;
-	let window: Awaited<ReturnType<typeof launchApp>>["window"];
-
-	test.beforeEach(async () => {
-		const app = await launchApp(FIXTURE);
-		window = app.window;
-		cleanup = app.cleanup;
-		await waitForAppReady(window);
-	});
-
-	test.afterEach(async () => { await cleanup(); });
-
-	test("用例11: 启用「允许创建 skill」→ autosave → 关重开 → 仍启用;取消 → 未启用", async () => {
-		await openFirstAgentEditor(window);
-		await window.locator(".editor-nav-item", { hasText: "Skills" }).click();
-		await expect(window.getByText("可用 skills").first()).toBeVisible({ timeout: 5_000 });
-
-		const authorToggle = window.locator("button.skill-author-toggle__switch.toggle-switch");
-		await expect(authorToggle).toBeVisible({ timeout: 5_000 });
-
-		// 起始可能启用(legacy agent);先确保关闭,得到确定的"未启用"起点。
-		const wasOn = await authorToggle.evaluate((el) => el.classList.contains("on"));
-		if (wasOn) {
-			await authorToggle.click();
-			await waitForAutosave();
-		}
-
-		// ── 启用 → autosave → 关重开 → 仍启用 ──
-		await authorToggle.click();
-		await waitForAutosave();
-		await reopenFirstAgentEditor(window);
-		await window.locator(".editor-nav-item", { hasText: "Skills" }).click();
-		await expect(window.getByText("可用 skills").first()).toBeVisible({ timeout: 5_000 });
-		const authorToggleAfter = window.locator("button.skill-author-toggle__switch.toggle-switch");
-		await expect(authorToggleAfter).toHaveClass(/on/, { timeout: 5_000 });
-
-		// 持久化值 = true(显式 boolean,非 undefined)。
-		const agentId = await firstAgentId(window);
-		const agentOn: any = await readAgent(window, agentId);
-		expect(agentOn?.skillPolicy?.canAuthorSkills, "勾选后 canAuthorSkills 必须 === true").toBe(true);
-
-		// ── 取消 → autosave → 关重开 → 未启用 ──
-		await authorToggleAfter.click();
-		await waitForAutosave();
-		await reopenFirstAgentEditor(window);
-		await window.locator(".editor-nav-item", { hasText: "Skills" }).click();
-		await expect(window.getByText("可用 skills").first()).toBeVisible({ timeout: 5_000 });
-		const authorToggleFinal = window.locator("button.skill-author-toggle__switch.toggle-switch");
-		const classFinal = await authorToggleFinal.evaluate((el) => el.className);
-		expect(classFinal, `取消后 toggle 不应有 on class,实际: ${classFinal}`).not.toMatch(/on/);
-
-		// 持久化值 = false(显式 boolean,非 undefined — 同 enabledSkills=[] 回归陷阱:
-		// JSON.stringify 丢 undefined → 后端 merge 留旧值 → 取消不持久化)。
-		const agentOff: any = await readAgent(window, agentId);
-		expect(agentOff?.skillPolicy?.canAuthorSkills, "取消后 canAuthorSkills 必须 === false(显式,非 undefined)").toBe(false);
-	});
-});
