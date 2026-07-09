@@ -7,9 +7,9 @@
 //   - 左:skill 列表,按来源分组("本软件 skills" `source==="app"` 置顶,外部其下);
 //     每项 display name + 来源 badge。sub-11: badge 文案用 originLabel(skill.origin)
 //     → ZERO-CORE/CLAUDE/AGENTS(具体来源标签,不再是原始 source 字符串)。
-//   - 右:选中 skill 详情——display name / origin / id / description(触发词) /
-//     body(sub-11 view 模式 markdown 渲染)/ frontmatter 全字段(metadata)/
-//     兄弟文件列表(Files 段)。
+//   - 右:选中 skill 详情——header(display name / origin / id)→
+//     Frontmatter 全字段(metadata,含 description;sub-13 置顶 + 去掉独立 Description 字段)→
+//     body(sub-11 view 模式 markdown 渲染)/ 兄弟文件列表(Files 段)。
 // 本软件 skill(source==="app"):可编辑(display name + description + body)、新建、删除。
 // 外部来源(source==="user"):只读,无编辑/删除按钮,但 body/frontmatter/files 仍可读。
 // body + frontmatter 经 `skillsGetBody(id)` 按需取(scanner 不持有 body,见 F4)。
@@ -418,7 +418,11 @@ function SkillDetailView({
 	onDelete: () => void;
 }) {
 	const isApp = skill.source === "app";
-	// sub-11: frontmatter 全字段(去重掉已在单独字段展示的 name;description 仍保留作触发词主体)。
+	// sub-13: frontmatter 全字段置顶(开头展示)。
+	//   - name 仍由 header(.skill-detail-name)单独显示 → 在 frontmatter 段去重 name。
+	//   - description 不再单独成字段(原 "Description (trigger phrase)" 已删)→
+	//     description 只在 frontmatter 段出现一次,保留作触发词主体;给它的 value
+	//     加一个 "(trigger)" 小标记保留语义提示。
 	const fmEntries = Object.entries(body.frontmatter ?? {}).filter(([k]) => k !== "name");
 	const hasFiles = files.files.length > 0;
 	return (
@@ -441,10 +445,24 @@ function SkillDetailView({
 				)}
 			</div>
 
-			<div className="skill-detail-field">
-				<label className="skill-detail-label">Description <span className="skill-detail-label-hint">(trigger phrase)</span></label>
-				<p className="skill-detail-description">{skill.description}</p>
-			</div>
+			{fmEntries.length > 0 && (
+				<div className="skill-detail-field">
+					<label className="skill-detail-label">Frontmatter <span className="skill-detail-label-hint">(metadata)</span></label>
+					<dl className="skill-frontmatter">
+						{fmEntries.map(([k, v]) => (
+							<div className="skill-frontmatter-row" key={k}>
+								<dt className="skill-frontmatter-key">{k}</dt>
+								<dd className="skill-frontmatter-value">
+									{v}
+									{k === "description" && (
+										<span className="skill-frontmatter-trigger-hint"> (trigger)</span>
+									)}
+								</dd>
+							</div>
+						))}
+					</dl>
+				</div>
+			)}
 
 			<div className="skill-detail-field">
 				<label className="skill-detail-label">Body</label>
@@ -462,20 +480,6 @@ function SkillDetailView({
 					</div>
 				)}
 			</div>
-
-			{fmEntries.length > 0 && (
-				<div className="skill-detail-field">
-					<label className="skill-detail-label">Frontmatter <span className="skill-detail-label-hint">(metadata)</span></label>
-					<dl className="skill-frontmatter">
-						{fmEntries.map(([k, v]) => (
-							<div className="skill-frontmatter-row" key={k}>
-								<dt className="skill-frontmatter-key">{k}</dt>
-								<dd className="skill-frontmatter-value">{v}</dd>
-							</div>
-						))}
-					</dl>
-				</div>
-			)}
 
 			<div className="skill-detail-field">
 				<label className="skill-detail-label">Files</label>

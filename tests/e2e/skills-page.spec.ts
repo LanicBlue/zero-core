@@ -179,11 +179,13 @@ test.describe("Skills page", () => {
 		expect(appGroupIdx).toBeLessThan(userGroupIdx);
 
 		// 选中本软件 skill → 右详情显示 name/description/body。
+		// sub-13: description 不再独立成字段,改在 Frontmatter 段唯一展示。
 		await appItem.click();
 		const detail = window.locator(".skill-detail");
 		await expect(detail).toBeVisible();
 		await expect(detail.locator(".skill-detail-name")).toContainText("App Seed");
-		await expect(detail.locator(".skill-detail-description")).toContainText("app-seed desc");
+		// description 在 frontmatter 段(不再是 .skill-detail-description 独立字段)。
+		await expect(detail.locator(".skill-frontmatter-value", { hasText: "app-seed desc" })).toBeVisible({ timeout: 10_000 });
 		// body 按需取 → 含 seeded 正文。
 		await expect(detail.locator(".skill-detail-body")).toContainText("app body content", { timeout: 10_000 });
 	});
@@ -237,8 +239,9 @@ test.describe("Skills page", () => {
 		await detail.locator("button:has-text('Save')").click();
 
 		// 重扫后详情显示新内容。
+		// sub-13: description 在 frontmatter 段展示(独立 Description 字段已删)。
 		await expect(detail.locator(".skill-detail-name")).toContainText("After Edit", { timeout: 10_000 });
-		await expect(detail.locator(".skill-detail-description")).toContainText("new desc");
+		await expect(detail.locator(".skill-frontmatter-value", { hasText: "new desc" })).toBeVisible({ timeout: 10_000 });
 		await expect(detail.locator(".skill-detail-body")).toContainText("new body content", { timeout: 10_000 });
 
 		// 磁盘写回正确。
@@ -576,7 +579,7 @@ test.describe("Skills page", () => {
 		await expect(scriptsDir).toBeVisible();
 	});
 
-	test("sub-11: Frontmatter section shows metadata fields (category etc.)", async () => {
+	test("sub-11: Frontmatter section shows metadata fields (category etc.) + sub-13 ordering/dedup", async () => {
 		const appId = `${TEST_ID_PREFIX}fm`;
 		seedAppSkillRich(appId);
 
@@ -594,6 +597,23 @@ test.describe("Skills page", () => {
 		await expect(detail.locator(".skill-frontmatter-value", { hasText: "e2e-cat" })).toBeVisible();
 		// name 不在 frontmatter 段(已在顶部 detail-name 单独展示)。
 		await expect(detail.locator(".skill-frontmatter-key", { hasText: "name" })).toHaveCount(0);
+
+		// sub-13: Frontmatter 段在 Body 之前(DOM 顺序)。
+		const fmBox = detail.locator(".skill-frontmatter");
+		const bodyBox = detail.locator(".skill-detail-body-md");
+		const fmY = (await fmBox.boundingBox())?.y;
+		const bodyY = (await bodyBox.boundingBox())?.y;
+		expect(typeof fmY).toBe("number");
+		expect(typeof bodyY).toBe("number");
+		expect(fmY!).toBeLessThan(bodyY!);
+
+		// sub-13: 独立的 "Description (trigger phrase)" 字段已移除 ——
+		// description 只在 frontmatter 段出现一次,不再单独成 .skill-detail-description。
+		await expect(detail.locator(".skill-detail-description")).toHaveCount(0);
+		await expect(detail.locator(".skill-detail-label", { hasText: "Description" })).toHaveCount(0);
+		// description 在 frontmatter 段唯一出现(seedAppSkillRich description = "triggers when user asks about sub11")。
+		await expect(detail.locator(".skill-frontmatter-key", { hasText: "description" })).toHaveCount(1);
+		await expect(detail.locator(".skill-frontmatter-value", { hasText: "triggers when user asks about sub11" })).toHaveCount(1);
 	});
 
 	// ─── sub-12: 优先级反转(zero-core 覆盖外部同名)+ skill-creator skill 可见 ────

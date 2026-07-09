@@ -72,6 +72,26 @@ description: <one-line; what it does + when to use it>
 <when to use, the procedure, examples>
 ```
 
+### Validate the skill (required)
+
+After writing the draft, **you must run the format validator** before considering the skill done:
+
+```
+node ${SKILL_DIR}/scripts/validate-skill.mjs [skills]/<new-id>/
+```
+
+`${SKILL_DIR}` and any `[skills]/<id>/` token are resolved by the Shell channel to real paths, so this works from any agent. The validator checks (and reports each failure on its own line):
+
+- SKILL.md exists and has a valid `--- ... ---` frontmatter block
+- frontmatter has non-empty `name`
+- frontmatter has non-empty `description` (this is the primary trigger — scanner silently drops skills without one)
+- `description` length ≥ 10 chars (warning only — too-strict would over-reject; fix if reasonable)
+- SKILL.md ≤ 256KB (scanner skips larger files; the skill would vanish)
+- directory name (id) is path-safe (`[a-zA-Z0-9._-]`, 1–64 chars; no spaces / `.` / `..` / separators)
+- body is non-empty (content after the frontmatter)
+
+If it prints `✓ skill valid` you're clear. If it lists problems, fix each one and re-run — **the skill is not complete until validation passes**. Re-run after every meaningful edit to the draft, not just once at the end (cheaper than discovering a malformed skill mid-test-loop).
+
 ### Skill Writing Guide
 
 #### Anatomy of a Skill
@@ -111,7 +131,7 @@ Keep SKILL.md under 500 lines. If you approach that limit, add another layer of 
   ## Recommendations
   ```
 - **Include examples** — concrete input/output pairs teach better than abstract prose.
-- **Look for repeated work across test runs.** If every test case made the agent independently write the same helper script, bundle that script into `scripts/` and reference it — saves every future invocation from reinventing the wheel.
+- **Look for repeated work across test runs.** If every test case made the agent independently write the same helper script, bundle that script into `scripts/` and reference it — saves every future invocation from reinventing the wheel. (This skill ships its own `scripts/validate-skill.mjs` for exactly this reason — see "Validate the skill" below.)
 
 #### Principle of Lack of Surprise
 
@@ -157,9 +177,10 @@ Stop when:
 After improving the skill:
 
 1. Apply the improvement (Write/Edit on `[skills]/<id>/SKILL.md` or a sibling file).
-2. Re-run all test prompts.
-3. Compare outputs to the previous iteration.
-4. Get user feedback, improve again, repeat.
+2. **Re-run the validator** (`node ${SKILL_DIR}/scripts/validate-skill.mjs [skills]/<id>/`) — an edit that breaks the frontmatter or empties the body will silently kill triggering; catch it now, not at the next failed test.
+3. Re-run all test prompts.
+4. Compare outputs to the previous iteration.
+5. Get user feedback, improve again, repeat.
 
 Keep going until the user is satisfied, the outputs are all acceptable, or progress stalls.
 

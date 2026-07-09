@@ -5968,6 +5968,12 @@ n.tools-page-test-chips {
 	word-break: break-word;
 }
 
+/* sub-13: description 在 frontmatter 段唯一展示,加 "(trigger)" 小标记保留触发词语义。 */
+.skill-frontmatter-trigger-hint {
+	color: var(--fg-muted);
+	font-style: italic;
+}
+
 /* sub-11: 兄弟文件/脚本列表(SKILL.md 之外的 scripts/、reference.md 等)。 */
 .skill-files-list {
 	list-style: none;
