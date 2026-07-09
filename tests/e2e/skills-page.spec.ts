@@ -12,6 +12,11 @@
 // 6. 删除(用例 14):删除(确认)→ 列表移除;再次进页不在。
 // 7. id 不可改(用例 15):编辑模式下无 id 输入字段(仅改 display name + description + body)。
 //
+// sub-15: UI 对齐 ToolsPage 风格 —— 左列表项只显示名字(无 description / id 行),
+// 改用 .tools-page-list-item + data-skill-id 属性定位(取代旧 hasText(id) 文案匹配);
+// 分组标题改用 .tools-page-category-title;详情 name 改用 .tools-page-detail-name;
+// 详情 origin badge 在 .tools-page-detail-title 下。skill-detail* 内容段不变。
+//
 // ## 测试隔离与 cleanup
 // scanner 读 os.homedir() —— Electron 主进程的 homedir() 是真实用户 home(E2E 不重定向)。
 // 故本软件 skill CRUD 写到真实 `~/.zero-core/skills/<test-id>/`。**每个用例都 cleanup**:
@@ -89,6 +94,14 @@ function cleanupTestSkills() {
 	}
 }
 
+/**
+ * sub-15: 左列表项改用 .tools-page-list-item + data-skill-id 属性(列表只显示名字,
+ * 不再含 id 文案)。本 helper 按 skill id 定位列表项,取代旧的 hasText(id) 文案匹配。
+ */
+function skillListItem(window: import("@playwright/test").Page, id: string) {
+	return window.locator(`.tools-page-list-item[data-skill-id="${id}"]`);
+}
+
 async function gotoSkillsPage(window: import("@playwright/test").Page) {
 	const skillsBtn = window.locator(".icon-sidebar-top button[title='Skills']");
 	await skillsBtn.click();
@@ -160,14 +173,18 @@ test.describe("Skills page", () => {
 
 		await gotoSkillsPage(window);
 
-		// 左栏按 id 找到 seeded skills。
-		const appItem = window.locator(`.skill-item`, { hasText: appId });
-		const userItem = window.locator(`.skill-item`, { hasText: userId });
+		// sub-15: 左列表项改用 .tools-page-list-item + data-skill-id(只显示名字,不含 id 文案)。
+		const appItem = skillListItem(window, appId);
+		const userItem = skillListItem(window, userId);
 		await expect(appItem).toBeVisible({ timeout: 10_000 });
 		await expect(userItem).toBeVisible({ timeout: 10_000 });
+		// 列表项只显示 display name(不含 description / id 文案)。
+		await expect(appItem.locator(".tools-page-list-name")).toContainText("App Seed");
+		await expect(appItem.locator(".skill-item-description")).toHaveCount(0);
+		await expect(appItem.locator(".skill-item-id")).toHaveCount(0);
 
-		// sub-14: 分组标题用 origin label(ZERO-CORE / CLAUDE)。
-		const titles = window.locator(".skills-group-title");
+		// sub-15: 分组标题用 .tools-page-category-title(对齐 ToolsPage),文案 + 计数。
+		const titles = window.locator(".tools-page-category-title");
 		const titleCount = await titles.count();
 		let appGroupIdx = -1;
 		let userGroupIdx = -1;
@@ -188,7 +205,8 @@ test.describe("Skills page", () => {
 		await appItem.click();
 		const detail = window.locator(".skill-detail");
 		await expect(detail).toBeVisible();
-		await expect(detail.locator(".skill-detail-name")).toContainText("App Seed");
+		// sub-15: detail name 改用 .tools-page-detail-name。
+		await expect(detail.locator(".tools-page-detail-name")).toContainText("App Seed");
 		await expect(detail.locator(".skill-frontmatter-value", { hasText: "app-seed desc" })).toBeVisible({ timeout: 10_000 });
 		await expect(detail.locator(".skill-detail-body")).toContainText("app body content", { timeout: 10_000 });
 	});
@@ -200,7 +218,7 @@ test.describe("Skills page", () => {
 		seedUserSkill(userId, { name: "RO Ext", description: "read-only external" });
 
 		await gotoSkillsPage(window);
-		const userItem = window.locator(`.skill-item`, { hasText: userId });
+		const userItem = skillListItem(window, userId);
 		await expect(userItem).toBeVisible({ timeout: 10_000 });
 		await userItem.click();
 
@@ -220,7 +238,7 @@ test.describe("Skills page", () => {
 		seedAppSkill(appId, { name: "Before Edit", description: "old desc", body: "old body line" });
 
 		await gotoSkillsPage(window);
-		const appItem = window.locator(`.skill-item`, { hasText: appId });
+		const appItem = skillListItem(window, appId);
 		await expect(appItem).toBeVisible({ timeout: 10_000 });
 		await appItem.click();
 
@@ -243,7 +261,8 @@ test.describe("Skills page", () => {
 
 		// 重扫后详情显示新内容。
 		// sub-13: description 在 frontmatter 段展示(独立 Description 字段已删)。
-		await expect(detail.locator(".skill-detail-name")).toContainText("After Edit", { timeout: 10_000 });
+		// sub-15: detail name 改用 .tools-page-detail-name。
+		await expect(detail.locator(".tools-page-detail-name")).toContainText("After Edit", { timeout: 10_000 });
 		await expect(detail.locator(".skill-frontmatter-value", { hasText: "new desc" })).toBeVisible({ timeout: 10_000 });
 		await expect(detail.locator(".skill-detail-body")).toContainText("new body content", { timeout: 10_000 });
 
@@ -271,7 +290,7 @@ test.describe("Skills page", () => {
 		await form.locator("button:has-text('Create')").click();
 
 		// 列表出现。
-		const newItem = window.locator(`.skill-item`, { hasText: `${TEST_ID_PREFIX}new` });
+		const newItem = skillListItem(window, `${TEST_ID_PREFIX}new`);
 		await expect(newItem).toBeVisible({ timeout: 10_000 });
 
 		// 磁盘文件存在。
@@ -290,7 +309,7 @@ test.describe("Skills page", () => {
 		seedAppSkill(appId, { name: "To Delete", description: "soon gone" });
 
 		await gotoSkillsPage(window);
-		const item = window.locator(`.skill-item`, { hasText: appId });
+		const item = skillListItem(window, appId);
 		await expect(item).toBeVisible({ timeout: 10_000 });
 		await item.click();
 
@@ -317,7 +336,7 @@ test.describe("Skills page", () => {
 		seedAppSkill(appId, { name: "Id Lock", description: "d" });
 
 		await gotoSkillsPage(window);
-		const item = window.locator(`.skill-item`, { hasText: appId });
+		const item = skillListItem(window, appId);
 		await expect(item).toBeVisible({ timeout: 10_000 });
 		await item.click();
 
@@ -402,7 +421,7 @@ test.describe("Skills page", () => {
 		await window.locator(".skill-install-modal button:has-text('Install')").click();
 
 		// 列表出现该 skill。
-		const item = window.locator(".skill-item", { hasText: repoName });
+		const item = skillListItem(window, repoName);
 		await expect(item).toBeVisible({ timeout: 30_000 });
 
 		// 详情可读。
@@ -427,8 +446,8 @@ test.describe("Skills page", () => {
 		await window.locator(".skill-install-modal button:has-text('Install')").click();
 
 		// 两个子 skill 都出现。
-		await expect(window.locator(".skill-item", { hasText: idA })).toBeVisible({ timeout: 30_000 });
-		await expect(window.locator(".skill-item", { hasText: idB })).toBeVisible({ timeout: 10_000 });
+		await expect(skillListItem(window, idA)).toBeVisible({ timeout: 30_000 });
+		await expect(skillListItem(window, idB)).toBeVisible({ timeout: 10_000 });
 
 		expect(existsSync(join(APP_SKILLS_DIR, idA, "SKILL.md"))).toBe(true);
 		expect(existsSync(join(APP_SKILLS_DIR, idB, "SKILL.md"))).toBe(true);
@@ -444,7 +463,7 @@ test.describe("Skills page", () => {
 		await window.locator(".skills-page-header-actions button:has-text('Install from git')").click();
 		await window.locator("#skill-install-url").fill(url);
 		await window.locator(".skill-install-modal button:has-text('Install')").click();
-		const item = window.locator(".skill-item", { hasText: repoName });
+		const item = skillListItem(window, repoName);
 		await expect(item).toBeVisible({ timeout: 30_000 });
 
 		// 第二次:重名 → 拒绝。弹窗显示错误 toast。
@@ -455,7 +474,7 @@ test.describe("Skills page", () => {
 		// toast 出现 + 含 already exists / 整批。
 		await expect(window.locator(".skills-toast-error")).toBeVisible({ timeout: 15_000 });
 		// 列表条数不变(只有第一次装的那一个):repoName 的 skill 只有一个。
-		await expect(window.locator(".skill-item", { hasText: repoName })).toHaveCount(1);
+		await expect(skillListItem(window, repoName)).toHaveCount(1);
 	});
 
 	(E2E_GIT_AVAILABLE ? test : test.skip)("case (extra): install repo with no SKILL.md → error toast, no install", async () => {
@@ -518,25 +537,25 @@ test.describe("Skills page", () => {
 		await gotoSkillsPage(window);
 
 		// sub-14: 左列表已无 per-item origin badge(分组标题表示来源)。
-		// 分组标题用 origin label(ZERO-CORE / CLAUDE)。
-		const appItem = window.locator(`.skill-item`, { hasText: appId });
-		const userItem = window.locator(`.skill-item`, { hasText: userId });
+		// sub-15: 列表项改用 .tools-page-list-item + data-skill-id;分组标题 .tools-page-category-title。
+		const appItem = skillListItem(window, appId);
+		const userItem = skillListItem(window, userId);
 		await expect(appItem).toBeVisible({ timeout: 10_000 });
 		await expect(userItem).toBeVisible({ timeout: 10_000 });
 		// per-item origin badge 不存在(item 3 移除)。
 		await expect(appItem.locator(".skill-item-source")).toHaveCount(0);
 		await expect(userItem.locator(".skill-item-source")).toHaveCount(0);
 		// 分组标题含 origin label。
-		await expect(window.locator(".skills-group-title", { hasText: "ZERO-CORE" })).toBeVisible();
-		await expect(window.locator(".skills-group-title", { hasText: "CLAUDE" })).toBeVisible();
+		await expect(window.locator(".tools-page-category-title", { hasText: "ZERO-CORE" })).toBeVisible();
+		await expect(window.locator(".tools-page-category-title", { hasText: "CLAUDE" })).toBeVisible();
 
-		// 右详情 meta 仍用 origin 标签(detail header badge 保留)。
+		// 右详情 detail header 仍用 origin 标签(badge 保留在 .tools-page-detail-title)。
 		await appItem.click();
 		const detail = window.locator(".skill-detail");
 		await expect(detail).toBeVisible();
-		await expect(detail.locator(".skill-detail-meta .skill-origin-badge")).toContainText("ZERO-CORE");
+		await expect(detail.locator(".tools-page-detail-title .skill-origin-badge")).toContainText("ZERO-CORE");
 		// 不应出现裸 "app" 字样作为 badge 文案。
-		await expect(detail.locator(".skill-detail-meta .skill-origin-badge")).not.toHaveText("app");
+		await expect(detail.locator(".tools-page-detail-title .skill-origin-badge")).not.toHaveText("app");
 	});
 
 	test("sub-11: body markdown-rendered in view mode (HTML elements, not <pre> raw)", async () => {
@@ -544,7 +563,7 @@ test.describe("Skills page", () => {
 		seedAppSkillRich(appId);
 
 		await gotoSkillsPage(window);
-		const item = window.locator(`.skill-item`, { hasText: appId });
+		const item = skillListItem(window, appId);
 		await expect(item).toBeVisible({ timeout: 10_000 });
 		await item.click();
 
@@ -567,7 +586,7 @@ test.describe("Skills page", () => {
 		seedAppSkillRich(appId);
 
 		await gotoSkillsPage(window);
-		const item = window.locator(`.skill-item`, { hasText: appId });
+		const item = skillListItem(window, appId);
 		await expect(item).toBeVisible({ timeout: 10_000 });
 		await item.click();
 
@@ -592,7 +611,7 @@ test.describe("Skills page", () => {
 		seedAppSkillRich(appId);
 
 		await gotoSkillsPage(window);
-		const item = window.locator(`.skill-item`, { hasText: appId });
+		const item = skillListItem(window, appId);
 		await expect(item).toBeVisible({ timeout: 10_000 });
 		await item.click();
 
@@ -641,17 +660,18 @@ test.describe("Skills page", () => {
 
 		// 左列表只应有 1 条该 id 的 skill(scanner 合并去重)。
 		// sub-14: per-item origin badge 已移除;该 skill 落在 ZERO-CORE 分组下。
-		const items = window.locator(`.skill-item`, { hasText: dupId });
+		// sub-15: 列表项用 .tools-page-list-item + data-skill-id。
+		const items = skillListItem(window, dupId);
 		await expect(items.first()).toBeVisible({ timeout: 10_000 });
 		await expect(items).toHaveCount(1, { timeout: 10_000 });
 		// 该 skill 在 ZERO-CORE 分组标题下(app 胜,origin=zero-core)。
-		await expect(window.locator(".skills-group-title", { hasText: "ZERO-CORE" })).toBeVisible();
+		await expect(window.locator(".tools-page-category-title", { hasText: "ZERO-CORE" })).toBeVisible();
 
 		// 点开详情:描述是 app 那条(胜者),不是 claude 那条。
 		await items.first().click();
 		const detail = window.locator(".skill-detail");
 		await expect(detail).toBeVisible();
-		await expect(detail.locator(".skill-detail-meta .skill-origin-badge")).toContainText("ZERO-CORE");
+		await expect(detail.locator(".tools-page-detail-title .skill-origin-badge")).toContainText("ZERO-CORE");
 		await expect(detail).toContainText("from-app-zero-core");
 		await expect(detail).not.toContainText("from-claude-external");
 	});
@@ -667,10 +687,11 @@ test.describe("Skills page", () => {
 		}
 
 		await gotoSkillsPage(window);
-		const item = window.locator(`.skill-item`, { hasText: "skill-creator" });
+		const item = skillListItem(window, "skill-creator");
 		await expect(item.first()).toBeVisible({ timeout: 10_000 });
 		// sub-14: per-item badge 移除;skill-creator 落 ZERO-CORE 分组。
-		await expect(window.locator(".skills-group-title", { hasText: "ZERO-CORE" })).toBeVisible();
+		// sub-15: 分组标题 .tools-page-category-title。
+		await expect(window.locator(".tools-page-category-title", { hasText: "ZERO-CORE" })).toBeVisible();
 	});
 });
 

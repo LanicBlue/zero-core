@@ -1,13 +1,19 @@
-// Skills 发现 / 浏览 / 编辑页面(双栏)
+// Skills 发现 / 浏览 / 编辑页面(双栏)。
+//
+// sub-15: UI 对齐 ToolsPage 风格 —— 左列表只显示名字(无 description / id 行),
+// 整体布局复用 tools-page 系列布局/列表 class(.skills-page 顶层 flex column + body 两栏,
+// 左 .tools-page-list 按分组(.tools-page-category / .tools-page-category-title +
+// .tools-page-list-item 单行名字),右详情区保留 skill 专属 .skill-detail* 内容)。
+// 详情区功能不变:Frontmatter(metadata)+ Body(md 渲染)+ Files + Edit/Delete/Create + git install。
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 双栏布局:
-//   - 左:skill 列表,**按 origin 分组**(sub-14;原按 source 2 组改为 ZERO-CORE/CLAUDE/
-//     AGENTS/CODEX 分组,zero-core 组置顶)。每项 display name + description(2 行截断);
-//     **不再显示 per-item origin badge**(分组标题已表示来源,item 3)。
-//   - 右:选中 skill 详情——header(display name / origin / id)→
+// 双栏布局(sub-15 对齐 ToolsPage):
+//   - 左:skill 列表,**按 origin 分组**(sub-14;ZERO-CORE/CLAUDE/AGENTS/CODEX,
+//     zero-core 组置顶)。每项只显示 display name(单行,tools-page 风格)——
+//     **无 description、无 id 行**(简化展示,细节进详情区)。
+//   - 右:选中 skill 详情——header(skill name + origin badge + id code)→
 //     Frontmatter 全字段(metadata,含 description;sub-13 置顶 + 去掉独立 Description 字段)→
 //     body(sub-11 view 模式 markdown 渲染)/ 兄弟文件列表(Files 段)。
 // 本软件 skill(source==="app"):可编辑(display name + description + body)、新建、删除。
@@ -22,7 +28,8 @@
 // - window.api.skillsCreate/update/delete/installGit(本软件 skill 写操作 + git 安装)
 //
 // ## 输出
-// - 渲染的双栏 DOM(.skills-page / .skills-two-pane / .skills-detail-pane 等)
+// - 渲染的双栏 DOM(.skills-page 顶层 / .skills-page-body / 左 .tools-page-list /
+//   右 .tools-page-detail 内含 .skill-detail*)
 //
 // ## 定位
 // 渲染进程组件,被 AppLayout 路由到 skills 页面时加载。
@@ -264,10 +271,26 @@ export default function SkillsPage() {
 		skillsByOrigin.set(origin, skills.filter((s) => s.origin === origin));
 	}
 
+	// sub-15: loading 直接走 ToolsPage 同款骨架(顶 header + empty 提示),不再有独立 pane。
+	if (loadingList) {
+		return (
+			<div className="skills-page skills-page-tools-style">
+				<div className="tools-page-header">
+					<h2>Skills</h2>
+				</div>
+				<p className="tools-page-empty">Loading skills...</p>
+			</div>
+		);
+	}
+
 	return (
-		<div className="skills-page">
-			<div className="skills-page-header">
+		<div className="skills-page skills-page-tools-style">
+			{/* sub-15: header 对齐 ToolsPage —— 标题 + 计数 + 操作按钮组。 */}
+			<div className="tools-page-header">
 				<h2>Skills</h2>
+				<div className="tools-page-header-info">
+					<span>{skills.length} {skills.length === 1 ? "skill" : "skills"}</span>
+				</div>
 				<div className="skills-page-header-actions">
 					<button
 						type="button"
@@ -308,9 +331,11 @@ export default function SkillsPage() {
 				/>
 			)}
 
-			<div className="skills-two-pane">
-				<div className="skills-list-pane">
-					{skills.length === 0 && !loadingList && (
+			{/* sub-15: body 两栏对齐 ToolsPage —— 直接复用 tools-page-body / tools-page-list /
+			    tools-page-detail 布局 class(两个页面互斥路由,CSS 不会冲突)。 */}
+			<div className="tools-page-body">
+				<div className="tools-page-list">
+					{skills.length === 0 && (
 						<div className="skills-empty">
 							<p>No skills detected.</p>
 							<p className="skills-empty-hint">
@@ -334,13 +359,13 @@ export default function SkillsPage() {
 					})}
 				</div>
 
-				<div className="skills-detail-pane">
+				<div className="tools-page-detail">
 					{mode.kind === "create" && (
 						<SkillCreateForm onCancel={handleCancel} onCreate={handleCreate} />
 					)}
 					{mode.kind !== "create" && !selected && (
-						<div className="skills-detail-empty">
-							<p>Select a skill on the left to view details.</p>
+						<div className="tools-page-detail-empty">
+							<p>Select a skill to view details</p>
 						</div>
 					)}
 					{mode.kind !== "create" && selected && mode.kind === "view" && (
@@ -377,28 +402,36 @@ function SkillListSection({
 	selectedId: string | null;
 	onSelect: (id: string) => void;
 }) {
+	// sub-15: 左列表项只显示 skill 名字(对齐 ToolsPage 的 .tools-page-list-item 风格)。
+	//   - .tools-page-list-item 单行 + .tools-page-list-name(选中态变色 + 右 border)。
+	//   - 移除 description 行 + id 行(细节进详情区)。
+	//   - 保留 data-skill-id 属性供 E2E 按 id 定位(替代原 hasText(id) 文案匹配)。
+	//   - 用 div + role=button 替代 <button>,避免 button 默认样式干扰 tools-page 单行布局。
 	return (
-		<div className="skills-group">
-			<h3 className="skills-group-title">
+		<div className="tools-page-category">
+			<div className="tools-page-category-title">
 				{title}
-				<span className="skills-group-count">{skills.length}</span>
-			</h3>
-			<div className="skills-list">
-				{skills.map((skill) => (
-					<button
-						type="button"
-						key={skill.id}
-						className={`skill-item${selectedId === skill.id ? " skill-item-selected" : ""}`}
-						onClick={() => onSelect(skill.id)}
-					>
-						<div className="skill-item-header">
-							<span className="skill-item-name">{skill.name}</span>
-						</div>
-						<p className="skill-item-description">{skill.description}</p>
-						<p className="skill-item-id">id: {skill.id}</p>
-					</button>
-				))}
+				<span className="tools-page-category-count">{skills.length}</span>
 			</div>
+			{skills.map((skill) => (
+				<div
+					key={skill.id}
+					role="button"
+					tabIndex={0}
+					data-skill-id={skill.id}
+					className={"tools-page-list-item" + (selectedId === skill.id ? " active" : "")}
+					onClick={() => onSelect(skill.id)}
+					onKeyDown={(e) => {
+						if (e.key === "Enter" || e.key === " ") {
+							e.preventDefault();
+							onSelect(skill.id);
+						}
+					}}
+					title={skill.name}
+				>
+					<span className="tools-page-list-name">{skill.name}</span>
+				</div>
+			))}
 		</div>
 	);
 }
@@ -418,30 +451,33 @@ function SkillDetailView({
 }) {
 	const isApp = skill.source === "app";
 	// sub-13: frontmatter 全字段置顶(开头展示)。
-	//   - name 仍由 header(.skill-detail-name)单独显示 → 在 frontmatter 段去重 name。
+	//   - name 仍由 header(.tools-page-detail-name)单独显示 → 在 frontmatter 段去重 name。
 	//   - description 不再单独成字段(原 "Description (trigger phrase)" 已删)→
 	//     description 只在 frontmatter 段出现一次,保留作触发词主体;给它的 value
 	//     加一个 "(trigger)" 小标记保留语义提示。
+	// sub-15: header 对齐 ToolsPage —— .tools-page-detail-header + .tools-page-detail-title
+	//   (name + origin badge + id code 同一行),actions(Edit/Delete)放标题行尾。
 	const fmEntries = Object.entries(body.frontmatter ?? {}).filter(([k]) => k !== "name");
 	const hasFiles = files.files.length > 0;
 	return (
 		<div className="skill-detail">
-			<div className="skill-detail-header">
-				<div>
-					<h3 className="skill-detail-name">{skill.name}</h3>
-					<p className="skill-detail-meta">
-						<span className={`skill-source-${skill.source} skill-origin-badge`}>
-							{originLabel(skill.origin)}
-						</span>
-						{" · id: "}<code>{skill.id}</code>
-					</p>
+			<div className="tools-page-detail-header">
+				<div className="tools-page-detail-title">
+					<span className="tools-page-detail-name">{skill.name}</span>
+					<span
+						className={`tools-page-source-badge skill-origin-badge skill-origin-${skill.origin.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+						data-skill-origin={skill.origin}
+					>
+						{originLabel(skill.origin)}
+					</span>
+					<code className="skill-detail-id-code">id: {skill.id}</code>
+					{isApp && (
+						<div className="skill-detail-actions skill-detail-actions-inline">
+							<button type="button" className="btn-ghost btn-sm" onClick={onEdit}>Edit</button>
+							<button type="button" className="btn-danger btn-sm" onClick={onDelete}>Delete</button>
+						</div>
+					)}
 				</div>
-				{isApp && (
-					<div className="skill-detail-actions">
-						<button type="button" className="btn-ghost" onClick={onEdit}>Edit</button>
-						<button type="button" className="btn-danger" onClick={onDelete}>Delete</button>
-					</div>
-				)}
 			</div>
 
 			{fmEntries.length > 0 && (
@@ -543,8 +579,10 @@ function SkillEditForm({
 
 	return (
 		<div className="skill-detail skill-detail-editing">
-			<div className="skill-detail-header">
-				<h3 className="skill-detail-name">Edit: {skill.name}</h3>
+			<div className="tools-page-detail-header">
+				<div className="tools-page-detail-title">
+					<span className="tools-page-detail-name">Edit: {skill.name}</span>
+				</div>
 				<p className="skill-detail-meta">
 					id: <code>{skill.id}</code> (read-only — directory name)
 				</p>
@@ -613,8 +651,10 @@ function SkillCreateForm({
 
 	return (
 		<div className="skill-detail skill-detail-creating">
-			<div className="skill-detail-header">
-				<h3 className="skill-detail-name">New skill</h3>
+			<div className="tools-page-detail-header">
+				<div className="tools-page-detail-title">
+					<span className="tools-page-detail-name">New skill</span>
+				</div>
 				<p className="skill-detail-meta">
 					Created in <code>~/.zero-core/skills/&lt;id&gt;/SKILL.md</code>
 				</p>
