@@ -27,6 +27,7 @@
 // - 保持消息修剪策略正确
 //
 import type { ModelMessage } from "ai";
+import type { AttachmentMeta } from "../shared/types.js";
 import type { ISessionStore, StepRow } from "./session-store-interface.js";
 import { triggerHooks } from "../core/hook-registry.js";
 
@@ -52,6 +53,12 @@ export interface CachedTurnData {
 	content: string | null;
 	createdAt: string;
 	turnGroup?: number;
+	/**
+	 * multimodal-input sub-2: attachment metadata loaded back from the
+	 * `turns.attachments` column. `undefined` for legacy rows / no attachments
+	 * (back-compat). Per design principle A only meta flows here — never bytes.
+	 */
+	attachments?: AttachmentMeta[];
 }
 
 export class AgentSession {
@@ -121,6 +128,7 @@ export class AgentSession {
 			content: s.content,
 			createdAt: s.createdAt,
 			turnGroup: s.turnGroup,
+			attachments: s.attachments,
 		}));
 	}
 
@@ -320,13 +328,15 @@ export class AgentSession {
 
 		const steps = this.db.getSteps(this.sessionId);
 		if (steps.length > 0) {
-			// Cache the step data
+			// Cache the step data (multimodal-input sub-2: carry attachments so
+			// UI rebuild + restart recovery keep attachment metadata in sync).
 			this.cachedTurns = steps.map(s => ({
 				seq: s.seq,
 				role: s.role,
 				content: s.content,
 				createdAt: s.createdAt,
 				turnGroup: s.turnGroup,
+				attachments: s.attachments,
 			}));
 			return this.rebuildFromSteps(steps);
 		}

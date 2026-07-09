@@ -21,7 +21,34 @@
 // 接口变更需确保 SessionDB 实现方同步更新
 //
 import type { IKVStore } from "../core/kv-store-interface.js";
-import type { DelegatedTaskRecord, DelegatedTaskStatus, SessionContextBundle } from "../shared/types.js";
+import type { AttachmentMeta, DelegatedTaskRecord, DelegatedTaskStatus, SessionContextBundle } from "../shared/types.js";
+
+/**
+ * Optional usage counters carried by step rows. Shared between the step write
+ * API and {@link StepInput}.
+ */
+export interface StepUsage {
+	inputTokens?: number;
+	outputTokens?: number;
+	totalTokens?: number;
+}
+
+/**
+ * Input shape for the step-level write API (appendStep / upsertStep /
+ * replaceStepsFromMessages). `content` stays a plain string (design principle
+ * A — multimodal-input sub-2): attachment metadata flows separately via
+ * `attachments` and is persisted to the `turns.attachments` column as JSON.
+ * `attachments` is optional for back-compat with pre-multimodal callers.
+ */
+export interface StepInput {
+	seq: number;
+	turnGroup: number;
+	role: string;
+	content: string | null;
+	usage?: StepUsage;
+	/** multimodal-input sub-2: attachment metadata persisted as JSON. */
+	attachments?: AttachmentMeta[];
+}
 
 /** Step-level row from the turns table. */
 export interface StepRow {
@@ -33,6 +60,12 @@ export interface StepRow {
 	outputTokens: number;
 	totalTokens: number;
 	createdAt: string;
+	/**
+	 * multimodal-input sub-2: attachment metadata for the step, parsed back from
+	 * the `turns.attachments` JSON column. `undefined` for rows written before
+	 * the column existed / rows with no attachments (back-compat).
+	 */
+	attachments?: AttachmentMeta[];
 }
 
 /**
@@ -121,10 +154,14 @@ export interface ISessionStore {
 	// legacy turn API has been retired; step methods are the only turns-table API).
 	getSteps(sessionId: string): StepRow[];
 	getStepGroup(sessionId: string, turnGroup: number): StepRow[];
-	appendStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void;
-	upsertStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void;
-	updateStepContent(sessionId: string, seq: number, content: string, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void;
+	/** multimodal-input sub-2: `attachments` (optional) is persisted to the
+	 *  `turns.attachments` column as JSON; omitted on pre-multimodal callers. */
+	appendStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: StepUsage, attachments?: AttachmentMeta[]): void;
+	upsertStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: StepUsage, attachments?: AttachmentMeta[]): void;
+	updateStepContent(sessionId: string, seq: number, content: string, usage?: StepUsage): void;
 	deleteStepGroup(sessionId: string, turnGroup: number): void;
 	getTurnGroupCount(sessionId: string): number;
-	replaceStepsFromMessages(sessionId: string, steps: Array<{ seq: number; turnGroup: number; role: string; content: string | null; usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number } }>): void;
+	/** multimodal-input sub-2: each step's optional `attachments` is persisted
+	 *  to the `turns.attachments` column as JSON. */
+	replaceStepsFromMessages(sessionId: string, steps: StepInput[]): void;
 }

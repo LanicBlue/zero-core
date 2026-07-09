@@ -29,7 +29,7 @@ import { join } from "node:path";
 import { existsSync, readdirSync, readFileSync, renameSync, mkdirSync } from "node:fs";
 import { v4 as uuidv4 } from "uuid";
 import { log } from "../core/logger.js";
-import type { DelegatedTaskRecord, DelegatedTaskStatus, SessionRecord, ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats } from "../shared/types.js";
+import type { AttachmentMeta, DelegatedTaskRecord, DelegatedTaskStatus, SessionRecord, ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats } from "../shared/types.js";
 // platform-observability ②.1 (sub-1): type-only import — no runtime cycle with
 // the runtime layer (session-db is server, but types are erased at runtime).
 import type { TurnSource } from "../runtime/types.js";
@@ -153,6 +153,9 @@ export class SessionDB {
 				input_tokens  INTEGER DEFAULT 0,
 				output_tokens INTEGER DEFAULT 0,
 				total_tokens  INTEGER DEFAULT 0,
+				-- multimodal-input sub-2: AttachmentMeta[] JSON (design principle
+				-- A — only meta, never bytes). NULL on legacy/no-attachment rows.
+				attachments TEXT,
 				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 			);
 			CREATE INDEX IF NOT EXISTS idx_turns_session_seq ON turns(session_id, seq);
@@ -292,6 +295,15 @@ export class SessionDB {
 		// See feedback-fresh-db-migrations: turn_state is SessionDB-owned (not a
 		// SqliteStore table), so this safeAddColumn is the only legacy-DB sync.
 		this.safeAddColumn("turn_state", "source", "TEXT NOT NULL DEFAULT 'background'");
+
+		// multimodal-input sub-2: per-step attachment metadata. The turns table
+		// stores an `AttachmentMeta[]` JSON blob here; `content` stays a plain
+		// string (design principle A — bytes never enter the turns table, only
+		// the lightweight meta does). turns is SessionDB-owned (no *_COLUMNS
+		// array), so this single safeAddColumn is the only migration sync point
+		// — fresh DBs get the column from CREATE TABLE above; upgraded DBs get
+		// it here. NULL on legacy rows (read back as undefined — back-compat).
+		this.safeAddColumn("turns", "attachments", "TEXT");
 	}
 
 	/** Idempotently add a column to an existing table (no-op if present). */
@@ -634,13 +646,41 @@ export class SessionDB {
 	// Step-level storage — canonical turns-table API (Step 4A: step-only).
 	// -----------------------------------------------------------------------
 
+	/**
+	 * multimodal-input sub-2: serialize a step's attachment metadata to the
+	 * `turns.attachments` column value. Empty/undefined → NULL (keeps legacy
+	 * rows indistinguishable from no-attachment rows; both read back as
+	 * `undefined`). Design principle A: only meta is persisted, never bytes.
+	 */
+	private serializeAttachments(attachments?: AttachmentMeta[]): string | null {
+		if (!attachments || attachments.length === 0) return null;
+		return JSON.stringify(attachments);
+	}
+
+	/**
+	 * multimodal-input sub-2: parse the `turns.attachments` column back into
+	 * `AttachmentMeta[]`. Returns `undefined` for NULL / unparseable rows so
+	 * legacy data (pre-column) is transparent — callers see no attachments.
+	 */
+	private deserializeAttachments(raw: unknown): AttachmentMeta[] | undefined {
+		if (typeof raw !== "string" || raw.length === 0) return undefined;
+		try {
+			const parsed = JSON.parse(raw);
+			if (!Array.isArray(parsed)) return undefined;
+			return parsed as AttachmentMeta[];
+		} catch {
+			return undefined;
+		}
+	}
+
 	getSteps(sessionId: string): Array<{
 		seq: number; turnGroup: number; role: string;
 		content: string | null; inputTokens: number; outputTokens: number;
 		totalTokens: number; createdAt: string;
+		attachments?: AttachmentMeta[];
 	}> {
 		const rows = this.db.prepare(
-			"SELECT seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at " +
+			"SELECT seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments " +
 			"FROM turns WHERE session_id = ? ORDER BY seq",
 		).all(sessionId) as any[];
 		return rows.map((r) => ({
@@ -652,6 +692,7 @@ export class SessionDB {
 			outputTokens: r.output_tokens ?? 0,
 			totalTokens: r.total_tokens ?? 0,
 			createdAt: r.created_at,
+			attachments: this.deserializeAttachments(r.attachments),
 		}));
 	}
 
@@ -659,9 +700,10 @@ export class SessionDB {
 		seq: number; turnGroup: number; role: string;
 		content: string | null; inputTokens: number; outputTokens: number;
 		totalTokens: number; createdAt: string;
+		attachments?: AttachmentMeta[];
 	}> {
 		const rows = this.db.prepare(
-			"SELECT seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at " +
+			"SELECT seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments " +
 			"FROM turns WHERE session_id = ? AND turn_group = ? ORDER BY seq",
 		).all(sessionId, turnGroup) as any[];
 		return rows.map((r) => ({
@@ -673,6 +715,7 @@ export class SessionDB {
 			outputTokens: r.output_tokens ?? 0,
 			totalTokens: r.total_tokens ?? 0,
 			createdAt: r.created_at,
+			attachments: this.deserializeAttachments(r.attachments),
 		}));
 	}
 
@@ -680,19 +723,22 @@ export class SessionDB {
 		sessionId: string, seq: number, turnGroup: number,
 		role: string, content: string | null,
 		usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number },
+		attachments?: AttachmentMeta[],
 	): void {
 		this.ensureSession(sessionId);
 		const now = new Date().toISOString();
+		const attachmentsJson = this.serializeAttachments(attachments);
 		const tx = this.db.transaction(() => {
 			this.db.prepare(
-				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at) " +
-				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments) " +
+				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			).run(
 				sessionId, seq, turnGroup, role, content ?? null,
 				usage?.inputTokens ?? 0,
 				usage?.outputTokens ?? 0,
 				usage?.totalTokens ?? 0,
 				now,
+				attachmentsJson,
 			);
 			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
 		});
@@ -703,31 +749,35 @@ export class SessionDB {
 		sessionId: string, seq: number, turnGroup: number,
 		role: string, content: string | null,
 		usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number },
+		attachments?: AttachmentMeta[],
 	): void {
 		this.ensureSession(sessionId);
 		const now = new Date().toISOString();
+		const attachmentsJson = this.serializeAttachments(attachments);
 		const existing = this.db.prepare(
 			"SELECT 1 FROM turns WHERE session_id = ? AND seq = ?",
 		).get(sessionId, seq);
 		if (existing) {
 			this.db.prepare(
-				"UPDATE turns SET turn_group = ?, content = ?, input_tokens = ?, output_tokens = ?, total_tokens = ? " +
+				"UPDATE turns SET turn_group = ?, content = ?, input_tokens = ?, output_tokens = ?, total_tokens = ?, attachments = ? " +
 				"WHERE session_id = ? AND seq = ?",
 			).run(
 				turnGroup, content ?? null,
 				usage?.inputTokens ?? 0, usage?.outputTokens ?? 0, usage?.totalTokens ?? 0,
+				attachmentsJson,
 				sessionId, seq,
 			);
 		} else {
 			this.db.prepare(
-				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at) " +
-				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments) " +
+				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			).run(
 				sessionId, seq, turnGroup, role, content ?? null,
 				usage?.inputTokens ?? 0,
 				usage?.outputTokens ?? 0,
 				usage?.totalTokens ?? 0,
 				now,
+				attachmentsJson,
 			);
 		}
 		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
@@ -771,27 +821,31 @@ export class SessionDB {
 	}
 
 	/** Replace all turns for a session with step-level rows derived from messages.
-	 *  Used after compression to sync the turns table with the compressed messages. */
+	 *  Used after compression to sync the turns table with the compressed messages.
+	 *  multimodal-input sub-2: each step's optional `attachments` is persisted to
+	 *  the `turns.attachments` column as JSON (design principle A — meta only). */
 	replaceStepsFromMessages(
 		sessionId: string,
 		steps: Array<{
 			seq: number; turnGroup: number; role: string;
 			content: string | null;
 			usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+			attachments?: AttachmentMeta[];
 		}>,
 	): void {
 		const now = new Date().toISOString();
 		const tx = this.db.transaction(() => {
 			this.db.prepare("DELETE FROM turns WHERE session_id = ?").run(sessionId);
 			const insert = this.db.prepare(
-				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at) " +
-				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments) " +
+				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			);
 			for (const s of steps) {
 				insert.run(
 					sessionId, s.seq, s.turnGroup, s.role, s.content ?? null,
 					s.usage?.inputTokens ?? 0, s.usage?.outputTokens ?? 0, s.usage?.totalTokens ?? 0,
 					now,
+					this.serializeAttachments(s.attachments),
 				);
 			}
 			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
