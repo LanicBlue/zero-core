@@ -151,7 +151,7 @@ export interface IpcChannelDefs {
 	"chat:send":   { params: [text: string, agentId?: string, sessionId?: string, attachments?: AttachmentMeta[]];    result: Ok };
 	"chat:abort":  { params: [sessionId?: string];                result: Ok };
 
-	// ── Attachments (multimodal-input sub-1) ─────────────────
+	// ── Attachments (multimodal-input sub-1 / sub-5) ─────────
 	// attachments:upload is the SINGLE entry point for attachment bytes into
 	// main (design 顶层原则 A). Renderer sends base64 bytes + meta; main writes
 	// to ZERO_CORE_DIR/attachments/<sessionId>/ and returns AttachmentMeta
@@ -159,6 +159,19 @@ export interface IpcChannelDefs {
 	"attachments:upload": {
 		params: [body: { sessionId: string; fileName: string; mimeType: string; data: string }];
 		result: AttachmentMeta;
+	};
+	// attachments:content (sub-5, 组件 8) is the UI-rendering EDGE that reads
+	// bytes back from disk (principle A's other bytes-touching edge). Given a
+	// { sessionId, diskPath } (both already present on AttachmentMeta from
+	// turns.attachments), main re-validates the path is contained in the
+	// session's attachment dir and returns the bytes base64-encoded + the mime
+	// type. The result is JSON-wrapped base64 (NOT raw binary) because the IPC
+	// bridge goes through HTTP + JSON.stringify → JSON.parse (ipc-proxy), which
+	// cannot transport arbitrary binary. Path safety is enforced by
+	// attachment-store.assertWithinSession (limited to ATTACHMENTS_ROOT/<sid>/).
+	"attachments:content": {
+		params: [body: { sessionId: string; diskPath: string; mimeType?: string }];
+		result: { data: string; mimeType: string; size: number };
 	};
 
 	// ── Files ────────────────────────────────────────────────

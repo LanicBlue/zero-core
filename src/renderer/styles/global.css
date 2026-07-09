@@ -1114,6 +1114,143 @@ body {
 .btn-abort { background: var(--color-danger) !important; }
 .btn-abort:hover { background: var(--color-danger-fg) !important; }
 
+/* ─── Multimodal input (effort: multimodal-input sub-5) ─────────── */
+
+/* Hidden-but-accessible file input (driven by the + button). Stays in the a11y
+   tree but is moved off-screen so it doesn't affect layout. */
+.sr-only-attach {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The + attach button: a square icon button visually distinct from Send. */
+.btn-attach {
+  flex-shrink: 0;
+  width: 38px;
+  padding: 10px 0 !important;
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 300;
+  background: var(--bg-subtle) !important;
+  color: var(--fg-muted) !important;
+  border: 1px solid var(--border-muted) !important;
+}
+.btn-attach:hover:not(:disabled) {
+  background: var(--border-muted) !important;
+  color: var(--fg-default) !important;
+}
+
+/* Drag-over highlight on the whole input bar (dropzone). */
+.chat-input-bar-dragging {
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -2px;
+  background: var(--bg-subtle);
+}
+
+/* Pending-attachments strip below the input bar. */
+.chat-input-attachments {
+  padding: 8px 20px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: var(--bg-canvas);
+  flex-shrink: 0;
+}
+.attach-upload-error {
+  width: 100%;
+  color: var(--color-danger, #f85149);
+  font-size: 12px;
+}
+
+/* A pending-attachment chip: thumb/icon + name + size + remove. */
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-muted);
+  border-radius: 6px;
+  max-width: 220px;
+  font-size: 12px;
+}
+.attach-chip-thumb {
+  width: 28px; height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.attach-chip-icon { font-size: 16px; flex-shrink: 0; }
+.attach-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
+}
+.attach-chip-size { color: var(--fg-faint); flex-shrink: 0; }
+.attach-chip-remove {
+  width: 18px; height: 18px;
+  padding: 0 !important;
+  background: transparent !important;
+  color: var(--fg-muted) !important;
+  border: none !important;
+  border-radius: 50%;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.attach-chip-remove:hover {
+  background: var(--color-danger, #f85149) !important;
+  color: white !important;
+}
+
+/* History attachments (rendered under a user message). */
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding-left: 0;
+}
+.attach-history {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-muted);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--fg-default);
+}
+.attach-history-image {
+  padding: 2px;
+  line-height: 0;
+}
+.attach-history-thumb {
+  max-width: 180px;
+  max-height: 180px;
+  border-radius: 4px;
+  object-fit: contain;
+  display: block;
+}
+.attach-history-icon { font-size: 16px; }
+.attach-history-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+.attach-history-size { color: var(--fg-faint); }
+.attach-history-error .attach-history-size,
+.attach-history-loading .attach-history-size { color: var(--color-danger, #f85149); }
+
 /* ─── Modal ───────────────────────────────────────── */
 
 .modal-overlay {

@@ -110,10 +110,19 @@ export interface WindowApi {
 	chatSend: (text: string, agentId?: string, sessionId?: string, attachments?: AttachmentMeta[]) => Promise<{ success: true }>;
 	chatAbort: (sessionId?: string) => Promise<{ success: true }>;
 
-	// ── Attachments (multimodal-input sub-1) ──
+	// ── Attachments (multimodal-input sub-1 / sub-5) ──
 	// Single bytes-into-main entry point. Renderer passes base64 bytes + meta;
 	// main persists to per-session dir and returns AttachmentMeta with diskPath.
 	attachmentsUpload: (body: { sessionId: string; fileName: string; mimeType: string; data: string }) => Promise<AttachmentMeta | { error: string }>;
+	/**
+	 * sub-5 / 组件 8 — UI-rendering edge that reads bytes back from disk
+	 * (principle A). Given a { sessionId, diskPath } (both already on
+	 * AttachmentMeta carried by turns.attachments), main re-validates the path
+	 * is contained in the session dir and returns base64 bytes + mime. Used to
+	 * render a HISTORY attachment thumbnail (the local paste preview uses
+	 * URL.createObjectURL instead — no round-trip).
+	 */
+	attachmentsContent: (body: { sessionId: string; diskPath: string; mimeType?: string }) => Promise<{ data: string; mimeType: string; size: number } | { error: string }>;
 
 	// ── Sessions ──
 	sessionsList: (agentId: string) => Promise<SessionRecord[]>;

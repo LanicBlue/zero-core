@@ -40,7 +40,7 @@ import InputQueueStrip from "../chat/InputQueueStrip.js";
 import { usePageStore } from "../../store/page-store.js";
 import { useRequirementStore } from "../../store/requirement-store.js";
 import RequirementHeader from "../requirements/RequirementHeader.js";
-import type { RequirementStatus, SessionRecord } from "../../../shared/types.js";
+import type { RequirementStatus, SessionRecord, AttachmentMeta } from "../../../shared/types.js";
 
 const api = () => (window as any).api;
 
@@ -104,6 +104,180 @@ function parseThinkingSegments(text: string): { type: "thinking" | "text"; text:
 		remaining = after;
 	}
 	return segs;
+}
+
+// ---------------------------------------------------------------------------
+// Multimodal helpers (effort: multimodal-input sub-5)
+// ---------------------------------------------------------------------------
+
+/** Human-readable byte size, e.g. 1536 → "1.5 KB". */
+function formatFileSize(bytes: number): string {
+	if (!bytes || bytes < 0) return "0 B";
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes % 1024 === 0 ? 0 : 1)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** File → base64 (without the data: URL prefix) via FileReader.readAsDataURL. */
+function fileToBase64(file: File): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => {
+			const r = reader.result;
+			if (typeof r !== "string") { reject(new Error("read failed")); return; }
+			const comma = r.indexOf(",");
+			resolve(comma >= 0 ? r.slice(comma + 1) : r);
+		};
+		reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+		reader.readAsDataURL(file);
+	});
+}
+
+/** Build a data: URL from base64 bytes + mime, for `<img src>`. */
+function dataUrl(base64: string, mimeType: string): string {
+	return `data:${mimeType};base64,${base64}`;
+}
+
+/**
+ * Resolve a File → AttachmentMeta by uploading it (sub-1 endpoint). On error
+ * returns null (caller surfaces a banner). This is the SINGLE bytes-into-main
+ * path — after this the renderer only carries meta (principle A).
+ */
+async function uploadFile(file: File, sessionId: string): Promise<AttachmentMeta | null> {
+	try {
+		const data = await fileToBase64(file);
+		const result = await api().attachmentsUpload({
+			sessionId,
+			fileName: file.name || "attachment",
+			mimeType: file.type || "application/octet-stream",
+			data,
+		});
+		if (result && typeof result === "object" && "error" in result) return null;
+		return result as AttachmentMeta;
+	} catch (err) {
+		console.error("attachment upload failed:", err);
+		return null;
+	}
+}
+
+/**
+ * Pending-attachment chip for the input area. Image → local object-URL
+ * thumbnail (no round-trip; the bytes are already in the renderer); pdf/file →
+ * icon + name + size. A remove button drops it from the pending list.
+ */
+function PendingAttachmentChip({
+	meta,
+	previewUrl,
+	onRemove,
+}: {
+	meta: AttachmentMeta;
+	previewUrl?: string;
+	onRemove: () => void;
+}) {
+	return (
+		<div className="attach-chip" title={meta.fileName}>
+			{meta.kind === "image" && previewUrl ? (
+				<img className="attach-chip-thumb" src={previewUrl} alt={meta.fileName} />
+			) : (
+				<span className="attach-chip-icon">{meta.kind === "pdf" ? "📄" : "📎"}</span>
+			)}
+			<span className="attach-chip-name">{meta.fileName}</span>
+			<span className="attach-chip-size">{formatFileSize(meta.size)}</span>
+			<button
+				type="button"
+				className="attach-chip-remove"
+				onClick={onRemove}
+				title="Remove attachment"
+			>
+				×
+			</button>
+		</div>
+	);
+}
+
+/**
+ * HISTORY attachment renderer. Image thumbnails fetch their bytes via the
+ * `attachments:content` endpoint (sub-5 / 组件 8) — they live on disk under the
+ * session's attachment dir, not in the renderer. pdf/file render as an icon +
+ * name + size chip (no fetch needed). Each image fetch is local to this mount
+ * (cached in a ref + state) and revoked on unmount to avoid blob-URL leaks.
+ */
+function HistoryAttachmentView({
+	meta,
+	sessionId,
+}: {
+	meta: AttachmentMeta;
+	sessionId: string;
+}) {
+	const [imgUrl, setImgUrl] = useState<string | null>(null);
+	const [err, setErr] = useState(false);
+
+	useEffect(() => {
+		if (meta.kind !== "image") return;
+		let revoked = false;
+		let createdUrl: string | null = null;
+		(async () => {
+			try {
+				const result = await api().attachmentsContent({
+					sessionId,
+					diskPath: meta.diskPath,
+					mimeType: meta.mimeType,
+				});
+				if (revoked) return;
+				if (result && typeof result === "object" && "error" in result) { setErr(true); return; }
+				const { data, mimeType } = result as { data: string; mimeType: string };
+				createdUrl = dataUrl(data, mimeType);
+				setImgUrl(createdUrl);
+			} catch (e) {
+				if (!revoked) setErr(true);
+				console.error("attachment content fetch failed:", e);
+			}
+		})();
+		return () => {
+			revoked = true;
+			if (createdUrl) URL.revokeObjectURL(createdUrl);
+		};
+	}, [meta.diskPath, meta.kind, meta.mimeType, sessionId]);
+
+	if (meta.kind === "image") {
+		if (err) {
+			return (
+				<div className="attach-history attach-history-error" title={meta.fileName}>
+					<span className="attach-history-icon">🖼</span>
+					<span className="attach-history-name">{meta.fileName}</span>
+					<span className="attach-history-size">(unavailable)</span>
+				</div>
+			);
+		}
+		if (!imgUrl) {
+			return (
+				<div className="attach-history attach-history-loading" title={meta.fileName}>
+					<span className="attach-history-icon">🖼</span>
+					<span className="attach-history-name">{meta.fileName}</span>
+				</div>
+			);
+		}
+		return (
+			<a
+				className="attach-history attach-history-image"
+				href={imgUrl}
+				target="_blank"
+				rel="noreferrer"
+				title={meta.fileName}
+			>
+				<img className="attach-history-thumb" src={imgUrl} alt={meta.fileName} />
+			</a>
+		);
+	}
+
+	// pdf / file
+	return (
+		<div className="attach-history attach-history-file" title={meta.diskPath}>
+			<span className="attach-history-icon">{meta.kind === "pdf" ? "📄" : "📎"}</span>
+			<span className="attach-history-name">{meta.fileName}</span>
+			<span className="attach-history-size">{formatFileSize(meta.size)}</span>
+		</div>
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -374,6 +548,116 @@ export default function ChatPanel() {
 	const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
 	const [editText, setEditText] = useState("");
 
+	// ─── multimodal-input sub-5: pending attachments ───────────────
+	// Each entry pairs the uploaded AttachmentMeta (carrying diskPath, principle
+	// A — bytes already persisted via attachments:upload) with a LOCAL object URL
+	// for the image preview (no round-trip; the bytes are still in renderer
+	// memory). Non-image entries have no previewUrl. Cleared on send.
+	const [pendingAttachments, setPendingAttachments] = useState<Array<{ meta: AttachmentMeta; previewUrl?: string }>>([]);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+	const [isDragging, setIsDragging] = useState(false);
+	const [uploadError, setUploadError] = useState<string | null>(null);
+	const previewUrlsRef = useRef<Set<string>>(new Set());
+
+	// Revoke any leftover object URLs on unmount (avoid blob-URL leaks).
+	useEffect(() => {
+		return () => {
+			for (const u of previewUrlsRef.current) URL.revokeObjectURL(u);
+			previewUrlsRef.current.clear();
+		};
+	}, []);
+
+	/**
+	 * Ingest one or more Files (from + button / drop / paste). Each file is
+	 * uploaded (bytes → main → diskPath) and the returned meta appended to
+	 * pendingAttachments. Image previews use a local object URL. Upload
+	 * failures are surfaced via uploadError and do NOT block the others.
+	 */
+	const ingestFiles = useCallback(async (files: FileList | File[]) => {
+		if (!activeSessionId) return;
+		const arr = Array.from(files);
+		if (arr.length === 0) return;
+		setUploadError(null);
+		const results: Array<{ meta: AttachmentMeta; previewUrl?: string }> = [];
+		for (const file of arr) {
+			const meta = await uploadFile(file, activeSessionId);
+			if (!meta) {
+				setUploadError(`Failed to upload: ${file.name || "attachment"}`);
+				continue;
+			}
+			let previewUrl: string | undefined;
+			if (meta.kind === "image") {
+				previewUrl = URL.createObjectURL(file);
+				previewUrlsRef.current.add(previewUrl);
+			}
+			results.push({ meta, previewUrl });
+		}
+		if (results.length > 0) {
+			setPendingAttachments((prev) => [...prev, ...results]);
+		}
+	}, [activeSessionId]);
+
+	const removePendingAttachment = useCallback((id: string) => {
+		setPendingAttachments((prev) => {
+			const entry = prev.find((p) => p.meta.id === id);
+			if (entry?.previewUrl) {
+				URL.revokeObjectURL(entry.previewUrl);
+				previewUrlsRef.current.delete(entry.previewUrl);
+			}
+			return prev.filter((p) => p.meta.id !== id);
+		});
+	}, []);
+
+	const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		if (e.target.files && e.target.files.length > 0) {
+			void ingestFiles(e.target.files);
+		}
+		// Reset so the same file can be picked again.
+		e.target.value = "";
+	};
+
+	const handleDrop = (e: React.DragEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		setIsDragging(false);
+		if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+			void ingestFiles(e.dataTransfer.files);
+		}
+	};
+
+	const handleDragOver = (e: React.DragEvent) => {
+		// preventDefault is REQUIRED to allow drop (otherwise the browser opens
+		// the file).
+		e.preventDefault();
+		e.stopPropagation();
+		if (!isDragging) setIsDragging(true);
+	};
+
+	const handleDragLeave = (e: React.DragEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		// Only clear when leaving the container (not bouncing between children).
+		if (e.currentTarget === e.target) setIsDragging(false);
+	};
+
+	const handlePaste = (e: React.ClipboardEvent) => {
+		const items = e.clipboardData?.items;
+		if (!items) return;
+		const files: File[] = [];
+		for (let i = 0; i < items.length; i++) {
+			const it = items[i];
+			if (it.kind === "file") {
+				const f = it.getAsFile();
+				if (f) files.push(f);
+			}
+		}
+		if (files.length > 0) {
+			// Prevent the textarea from also inserting the image as text.
+			e.preventDefault();
+			void ingestFiles(files);
+		}
+	};
+
 	const refreshSessionData = useCallback(async (agentId: string) => {
 		const sessions = await api().sessionsList(agentId);
 		setSessions(agentId, sessions);
@@ -545,13 +829,24 @@ export default function ChatPanel() {
 
 	const send = async () => {
 		const text = input.trim();
-		if (!text || !activeAgentId) return;
+		// multimodal-input sub-5: allow attachment-only sends (no text). Either
+		// text OR at least one pending attachment must be present.
+		const attachments = pendingAttachments.map((p) => p.meta);
+		if ((!text && attachments.length === 0) || !activeAgentId) return;
 
 		// C2: if the session is already running, queue the input instead of
 		// starting a concurrent run. The user message is not added to the
 		// transcript optimistically — it appears as a real turn when the agent
 		// drains the queue (or is injected at the next step if promoted).
+		//
+		// NOTE: the input queue is text-only (enqueueInput carries a string).
+		// Attachments are therefore only sent when the session is idle; if the
+		// session is running, an attachment-only / text+attachment send is a
+		// no-op (the Send button is swapped to Stop, so the user can't reach
+		// this path with attachments anyway). Queued-attachment support is out
+		// of sub-5 scope.
 		if (isStreaming && activeSessionId) {
+			if (!text || attachments.length > 0) return;
 			setInput("");
 			await enqueueInput(activeSessionId, text);
 			return;
@@ -562,8 +857,26 @@ export default function ChatPanel() {
 		// session is active (UI gating), but guard regardless.
 		if (!activeSessionId) return;
 		const sid = activeSessionId;
-		addMessage(sid, { id: nextMsgId(), role: "user", text, timestamp: Date.now() });
+		// Optimistic user message: carry the attachment meta so the renderer
+		// shows the chips immediately (principle A — only meta; the image thumb
+		// will re-fetch via attachments:content just like a history message).
+		addMessage(sid, {
+			id: nextMsgId(),
+			role: "user",
+			text,
+			timestamp: Date.now(),
+			...(attachments.length > 0 ? { attachments } : {}),
+		});
 		setInput("");
+		// Clear the pending attachments + revoke their local preview URLs (the
+		// optimistic message will re-fetch via the content endpoint).
+		for (const p of pendingAttachments) {
+			if (p.previewUrl) {
+				URL.revokeObjectURL(p.previewUrl);
+				previewUrlsRef.current.delete(p.previewUrl);
+			}
+		}
+		setPendingAttachments([]);
 		// NOTE: isStreaming is NOT set optimistically here. The server is the
 		// single source of truth for session running state — agent-service
 		// markRunning emits "session_running" when isBusy flips true, which
@@ -581,7 +894,7 @@ export default function ChatPanel() {
 			blocks: [],
 		});
 
-		await api().chatSend(text, activeAgentId, activeSessionId ?? undefined);
+		await api().chatSend(text, activeAgentId, activeSessionId ?? undefined, attachments);
 	};
 
 	const abort = () => {
@@ -804,7 +1117,22 @@ export default function ChatPanel() {
 										</div>
 									</div>
 								) : renderMessageContent(msg)}
-							</div>
+								</div>
+								{/* multimodal-input sub-5: render a user message's attachment META
+								    as thumbnails/chips. Image bytes are fetched on demand via the
+								    attachments:content endpoint (component 8); pdf/file are static
+								    chips. Only meta flows here (principle A). */}
+								{msg.role === "user" && msg.attachments && msg.attachments.length > 0 && activeSessionId && (
+									<div className="message-attachments">
+										{msg.attachments.map((meta) => (
+											<HistoryAttachmentView
+												key={meta.id}
+												meta={meta}
+												sessionId={activeSessionId}
+											/>
+										))}
+									</div>
+								)}
 							{!msg.streaming && editingMsgId !== msg.id && (
 								<div className="message-actions">
 									<button className="msg-action-btn" onClick={() => startEdit(msg)} title="Edit">Edit</button>
@@ -828,15 +1156,44 @@ export default function ChatPanel() {
 			{/* C2: queued inputs (submitted while running) — sits right above the input bar. */}
 			<InputQueueStrip />
 
-			<div className="chat-input-bar">
+			<div
+				className={`chat-input-bar${isDragging ? " chat-input-bar-dragging" : ""}`}
+				onDrop={handleDrop}
+				onDragOver={handleDragOver}
+				onDragLeave={handleDragLeave}
+			>
+				{/* multimodal-input sub-5: hidden file input driven by the + button.
+				    multiple + no accept restriction → images / PDF / any file. The
+				    class .sr-only-attach keeps it in the a11y tree (visually hidden)
+				    so a screen reader still announces it; the + button relays focus
+				    by calling its click() handler. */}
+				<input
+					ref={fileInputRef}
+					type="file"
+					multiple
+					className="sr-only-attach"
+					aria-label="Add attachments"
+					title="Add attachments (image / PDF / file)"
+					onChange={handleFileInputChange}
+				/>
+				<button
+					type="button"
+					className="btn-attach"
+					onClick={() => fileInputRef.current?.click()}
+					disabled={!activeAgentId || isStreaming}
+					title="Add attachments (image / PDF / file)"
+				>
+					+
+				</button>
 				<textarea
 					value={input}
 					onChange={(e) => setInput(e.target.value)}
 					onKeyDown={handleKeyDown}
+					onPaste={handlePaste}
 					placeholder={
 						!activeAgentId ? "Select an agent first..."
 						: isStreaming ? "运行中,回车将加入队列(可立即插入)..."
-						: "Type a message..."
+						: "Type a message… (paste / drop / + to attach)"
 					}
 					/* Input is always available once an agent is selected. While the
 					   session is running, Enter enqueues (send() routes to enqueueInput)
@@ -847,11 +1204,32 @@ export default function ChatPanel() {
 				{isStreaming ? (
 					<button type="button" onClick={abort} className="btn-abort">Stop</button>
 				) : (
-					<button type="button" onClick={send} disabled={!activeAgentId || !input.trim()}>
+					<button
+						type="button"
+						onClick={send}
+						/* Allow attachment-only sends: enabled when there's text OR a
+						   pending attachment (and an agent is selected). */
+						disabled={!activeAgentId || (!input.trim() && pendingAttachments.length === 0)}
+					>
 						Send
 					</button>
 				)}
 			</div>
+			{/* multimodal-input sub-5: pending attachments preview strip. Sits above
+			    the input bar; image thumbnails use LOCAL object URLs (no round-trip). */}
+			{(pendingAttachments.length > 0 || uploadError) && (
+				<div className="chat-input-attachments">
+					{uploadError && <div className="attach-upload-error">{uploadError}</div>}
+					{pendingAttachments.map(({ meta, previewUrl }) => (
+						<PendingAttachmentChip
+							key={meta.id}
+							meta={meta}
+							previewUrl={previewUrl}
+							onRemove={() => removePendingAttachment(meta.id)}
+						/>
+					))}
+				</div>
+			)}
 
 			{showArchiveConfirm && (
 				<ConfirmModal

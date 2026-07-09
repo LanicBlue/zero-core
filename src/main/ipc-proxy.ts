@@ -159,6 +159,12 @@ const R: Record<string, RouteMapping> = {
 	// Renderer passes { sessionId, fileName, mimeType, data(base64) }; backend
 	// persists to ZERO_CORE_DIR/attachments/<sessionId>/ and returns AttachmentMeta.
 	"attachments:upload": { method: "POST", path: "/api/attachments/upload", buildReq: (body) => ({ body }) },
+	// Attachments (multimodal-input sub-5 / 组件 8) — UI-rendering edge: read
+	// bytes back for a history attachment thumbnail. Body carries { sessionId,
+	// diskPath, mimeType? }; backend re-validates the path is contained in the
+	// session dir and returns { data(base64), mimeType, size } (JSON-wrapped
+	// because this proxy JSON.parses responses — raw binary would break it).
+	"attachments:content": { method: "POST", path: "/api/attachments/content", buildReq: (body) => ({ body }) },
 
 	// Files
 	"files:tree":         { method: "GET", path: "/api/files/tree", buildReq: (root?: string) => ({ query: root ? { root } : undefined }) },
