@@ -25,6 +25,7 @@ import { TaskRegistry } from "../../src/runtime/task-registry.js";
 vi.mock("../../src/runtime/provider-factory.js", () => ({
 	resolveModel: () => ({}),
 	getContextWindow: () => 128000,
+	getMultimodal: () => false,
 }));
 import { AgentLoop } from "../../src/runtime/agent-loop.js";
 import type { WakeReason } from "../../src/runtime/types.js";

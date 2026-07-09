@@ -339,7 +339,7 @@ export async function startServer(options?: StartServerOptions) {
 			.filter((p) => p.enabled)
 			.map((p) => ({
 				name: p.name, type: p.type, apiKey: p.apiKey, baseUrl: p.baseUrl,
-				models: p.models.map((m: any) => ({ id: m.id, name: m.name, contextWindow: m.contextWindow, maxTokens: m.maxTokens })),
+				models: p.models.map((m: any) => ({ id: m.id, name: m.name, contextWindow: m.contextWindow, maxTokens: m.maxTokens, multimodal: m.multimodal })),
 				enabled: p.enabled,
 				enableConcurrencyLimit: p.enableConcurrencyLimit ?? false,
 				maxConcurrency: p.maxConcurrency ?? 1,

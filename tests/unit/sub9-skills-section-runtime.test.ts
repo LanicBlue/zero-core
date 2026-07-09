@@ -32,6 +32,7 @@ const resolveModelMock = vi.fn();
 vi.mock("../../src/runtime/provider-factory.js", () => ({
 	resolveModel: (...args: unknown[]) => resolveModelMock(...args),
 	getContextWindow: () => 128000,
+	getMultimodal: () => false,
 }));
 
 // Mock skill-scanner.scanSkills so the closure (which calls scanSkills() with

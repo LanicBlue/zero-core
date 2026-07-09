@@ -56,7 +56,7 @@ export function createChatRouter(deps: {
 			apiKey: p.apiKey,
 			baseUrl: p.baseUrl,
 			models: p.models.map((m: any) => ({
-				id: m.id, name: m.name, contextWindow: m.contextWindow, maxTokens: m.maxTokens,
+				id: m.id, name: m.name, contextWindow: m.contextWindow, maxTokens: m.maxTokens, multimodal: m.multimodal,
 			})),
 			enabled: p.enabled,
 			enableConcurrencyLimit: p.enableConcurrencyLimit ?? false,

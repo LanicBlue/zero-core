@@ -52,6 +52,7 @@ const resolveModelMock = vi.fn();
 vi.mock("../../src/runtime/provider-factory.js", () => ({
 	resolveModel: (...args: unknown[]) => resolveModelMock(...args),
 	getContextWindow: () => 128000,
+	getMultimodal: () => false,
 }));
 
 import { SessionDB } from "../../src/server/session-db.js";

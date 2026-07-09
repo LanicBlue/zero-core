@@ -42,7 +42,7 @@ import type {
 } from "./types.js";
 // tool-decoupling sub-5(B2):AgentLoop 直建 CallerCtx(不再经 ctxToCallerCtx 桥)。
 import type { CallerCtx, TodoAccessor, TaskRegistryAccessor, DelegateFns, AgentResolvers } from "../tools/types.js";
-import { resolveModel, getContextWindow } from "./provider-factory.js";
+import { resolveModel, getContextWindow, getMultimodal } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
 import { buildToolsSet } from "../tools/index.js";
 import { renderWorkbench } from "./workbench.js";
@@ -166,7 +166,14 @@ export class AgentLoop implements AgentRuntime {
 		this.callbacks = callbacks;
 
 		const contextWindow = getContextWindow(providers, config.providerName, config.modelId);
-		this.session = new AgentSession(config.systemPrompt, contextWindow, config.sessionId, config.db);
+		// multimodal-input sub-3 (#3 wiring): resolve image capability on the
+		// SAME path as contextWindow (getMultimodal rides the identical
+		// provider.models.find — see provider-factory.ts). Passed into
+		// AgentSession so getMessagesMultimodal can apply the image-only inline
+		// + current-step rule (design 组件 3). `multimodal===undefined` (manually
+		// configured / OpenRouter-uncovered models) → false (safe default).
+		const multimodal = getMultimodal(providers, config.providerName, config.modelId);
+		this.session = new AgentSession(config.systemPrompt, contextWindow, config.sessionId, config.db, multimodal);
 
 		// v0.8 (P1 §10.6): resolve the global WikiStore + the session's wiki
 		// anchor set. config.wikiStore is the ProjectWikiStore back-compat
@@ -537,6 +544,12 @@ export class AgentLoop implements AgentRuntime {
 				// but TurnStart already wrote the user turn so getTurnCount includes it)
 				const userSeq = this.stepBaseSeq - 1;
 				this.recorder.startTurnGroup(userSeq);
+				// multimodal-input sub-3 (#3 wiring): mark the current turn's user
+				// step seq so getMessagesMultimodal inlines images for THIS step
+				// only (design: 当前 step = the turn's user message; all multi-step
+				// LLM calls in the turn treat it as current). User steps earlier
+				// than userSeq are "history" → meta-info text only.
+				this.session.setCurrentUserStepSeq(userSeq);
 
 				await this.runWithRetry();
 
@@ -630,6 +643,9 @@ export class AgentLoop implements AgentRuntime {
 				}
 				const userSeq = this.stepBaseSeq - 1;
 				this.recorder.startTurnGroup(userSeq);
+				// multimodal-input sub-3 (#3 wiring): same as run() — mark the
+				// resumed turn's user step as current for image inlining.
+				this.session.setCurrentUserStepSeq(userSeq);
 
 				await this.runWithRetry();
 			} finally {
@@ -1104,6 +1120,14 @@ export class AgentLoop implements AgentRuntime {
 		if (patch.modelId !== undefined) {
 			this.config.modelId = patch.modelId;
 		}
+		// multimodal-input sub-3 (#3 wiring): when the model / provider changes,
+		// re-resolve the image capability and push it to the session so the
+		// next getMessagesMultimodal reflects the new model's capability (rides
+		// the same resolution path as construction — getMultimodal).
+		if (patch.providerName !== undefined || patch.modelId !== undefined) {
+			const multimodal = getMultimodal(this.providers, this.config.providerName, this.config.modelId);
+			this.session.setMultimodal(multimodal);
+		}
 		if (patch.thinkingLevel !== undefined) {
 			this.config.thinkingLevel = patch.thinkingLevel;
 		}
@@ -1256,7 +1280,14 @@ export class AgentLoop implements AgentRuntime {
 			// (sub-7) wiki anchors moved into the cached `wiki-system-anchors`
 			// system section; the context channel is Recalled Memories only.
 		});
-		let messages = this.prependContext(this.session.getMessages(), baseCtx);
+		// multimodal-input sub-3 (#3 wiring — consumer): feed the
+		// multimodal-aware message list into streamText so images on the CURRENT
+		// user step get inlined (when the provider is multimodal) and history /
+		// PDF / arbitrary-file attachments render as meta-info text. Falls back
+		// to plain messages when there are no attachments (fast path in
+		// getMessagesMultimodal). prependContext still wraps the system-level
+		// context block around the result.
+		let messages = this.prependContext(this.session.getMessagesMultimodal(), baseCtx);
 		// Collect each step's response messages so finalizeStream can persist
 		// them into the session at turn end (matches the old addMessage loop).
 		const pendingPersist: any[] = [];

@@ -31,6 +31,7 @@ import { AgentSession } from "../../src/runtime/session.js";
 vi.mock("../../src/runtime/provider-factory.js", () => ({
 	resolveModel: () => ({}),
 	getContextWindow: () => 128000,
+	getMultimodal: () => false,
 }));
 import { AgentLoop } from "../../src/runtime/agent-loop.js";
 

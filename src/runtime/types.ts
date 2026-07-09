@@ -447,6 +447,15 @@ export interface RuntimeProviderConfig {
 		name: string;
 		contextWindow?: number;
 		maxTokens?: number;
+		/**
+		 * multimodal-input sub-3 (#3 wiring): image-input capability flag.
+		 * Populated from {@link ProviderModel.multimodal} (itself filled by
+		 * OpenRouter `enrichModels` from `architecture.input_modalities`).
+		 * `undefined` (manually-configured / uncovered models) → treated as NOT
+		 * multimodal (safe default, design D3). Read by getMultimodal alongside
+		 * contextWindow on the same provider.models.find path.
+		 */
+		multimodal?: boolean;
 	}[];
 	enabled: boolean;
 	enableConcurrencyLimit?: boolean;

@@ -29,6 +29,7 @@ import {
 vi.mock("../../src/runtime/provider-factory.js", () => ({
 	resolveModel: () => ({}),
 	getContextWindow: () => 128000,
+	getMultimodal: () => false,
 }));
 
 async function fireEndCheck(reg: HookRegistry, sessionId: string, taskRegistry: TaskRegistry) {

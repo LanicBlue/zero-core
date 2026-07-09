@@ -75,7 +75,12 @@ export interface ProviderConfig {
 	type: "openai" | "anthropic" | "gemini" | "openai-compatible" | "ollama";
 	apiKey: string;
 	baseUrl: string;
-	models: { id: string; name: string; contextWindow?: number; maxTokens?: number }[];
+	/**
+	 * multimodal-input sub-3 (#3 wiring): `multimodal` flows Provider → config
+	 * → RuntimeProviderConfig → getMultimodal (provider-factory). Optional for
+	 * back-compat with config sources that don't carry it (undefined → false).
+	 */
+	models: { id: string; name: string; contextWindow?: number; maxTokens?: number; multimodal?: boolean }[];
 	enabled: boolean;
 }
 interface AgentRunState {

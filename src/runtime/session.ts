@@ -30,9 +30,23 @@ import type { ModelMessage } from "ai";
 import type { AttachmentMeta } from "../shared/types.js";
 import type { ISessionStore, StepRow } from "./session-store-interface.js";
 import { triggerHooks } from "../core/hook-registry.js";
+import { readFileSync } from "node:fs";
 
 const DEFAULT_CONTEXT_WINDOW = 128000;
 const RESERVE_TOKENS = 16384;
+
+/**
+ * multimodal-input sub-3: format an attachment's meta-info as a text part,
+ * appended to the user message content when the attachment is NOT inlined
+ * (history step / non-image kind / provider not multimodal / read failure).
+ * Per design 组件 3 the format is:
+ *   [attachment: <fileName> | type=<mimeType> | size=<size> | at <diskPath> — <hint>]
+ * `hint` contextualizes WHY it's meta-only and nudges the LLM toward file-read
+ * / subagent delegation (principle B — LLM self-decides how to reach the bytes).
+ */
+function formatAttachmentMeta(att: AttachmentMeta, hint: string): string {
+	return `[attachment: ${att.fileName} | type=${att.mimeType} | size=${att.size} | at ${att.diskPath} — ${hint}]`;
+}
 
 /**
  * sub-5 (Wait resume): best-effort parse of a persisted tool-call's args. The
@@ -68,6 +82,27 @@ export class AgentSession {
 	private sessionId: string | null = null;
 	private db: ISessionStore | null;
 
+	/**
+	 * multimodal-input sub-3 (#3 wiring): whether the resolved provider/model
+	 * supports image input (`ProviderModel.multimodal === true`). Set by
+	 * AgentLoop alongside contextWindow (same resolution path). Consumed by
+	 * {@link getMessagesMultimodal} to decide inline-image vs attachment
+	 * meta-info text for the CURRENT user step. `false` (default) → all
+	 * attachments render as meta-info text (safe; LLM may still reach the image
+	 * via file-read / subagent delegation, per design principle B).
+	 */
+	private multimodal: boolean = false;
+
+	/**
+	 * multimodal-input sub-3: the seq of the user step that opened the CURRENT
+	 * turn group (the most recent user step). All multi-step LLM calls within
+	 * the same turn treat this step as "current" (per design: 当前 step = the
+	 * turn's user message). Set by AgentLoop right after TurnStart writes the
+	 * user row (`stepBaseSeq - 1`). `-1` = no current user step marked (treat
+	 * ALL user steps as history → meta-info only, safe default).
+	 */
+	private currentUserStepSeq: number = -1;
+
 	/** Cached raw turns from DB — populated by rebuildFromTurns(), used as runtime source for UI. */
 	private cachedTurns: CachedTurnData[] = [];
 
@@ -81,17 +116,55 @@ export class AgentSession {
 		contextWindow?: number,
 		sessionId?: string,
 		db?: ISessionStore,
+		multimodal?: boolean,
 	) {
 		this.systemPrompt = systemPrompt;
 		this.contextWindow = contextWindow ?? DEFAULT_CONTEXT_WINDOW;
 		this.sessionId = sessionId ?? null;
 		this.db = db ?? null;
+		this.multimodal = multimodal ?? false;
 
 		if (this.db && this.sessionId) {
 			// Always rebuild from turns table (single source of truth).
 			// The messages table is a write-through cache, not authoritative.
 			this.messages = this.normalizeMessages(this.rebuildFromTurns());
 		}
+	}
+
+	/**
+	 * multimodal-input sub-3 (#3 wiring): set the provider image capability for
+	 * this session. Called by AgentLoop when the resolved model changes
+	 * (applyConfigUpdate) so the new capability takes effect on the next
+	 * getMessages. Mirrors the existing updateSystemPrompt mid-session-update
+	 * pattern.
+	 */
+	setMultimodal(multimodal: boolean): void {
+		this.multimodal = multimodal;
+	}
+
+	/**
+	 * multimodal-input sub-3: read the resolved provider image capability.
+	 * Used by getMessagesMultimodal.
+	 */
+	getMultimodalCapability(): boolean {
+		return this.multimodal;
+	}
+
+	/**
+	 * multimodal-input sub-3: mark the seq of the user step that opened the
+	 * current turn group. Called by AgentLoop right after TurnStart writes the
+	 * user row (value = `stepBaseSeq - 1`). Pass `-1` to clear (next getMessages
+	 * treats every user step as history → meta-info only).
+	 */
+	setCurrentUserStepSeq(seq: number): void {
+		this.currentUserStepSeq = seq;
+	}
+
+	/**
+	 * multimodal-input sub-3: read the current turn's user-step seq.
+	 */
+	getCurrentUserStepSeq(): number {
+		return this.currentUserStepSeq;
 	}
 
 	getSessionId(): string | null {
@@ -115,6 +188,115 @@ export class AgentSession {
 
 	getMessages(): ModelMessage[] {
 		return this.messages;
+	}
+
+	/**
+	 * multimodal-input sub-3 (#3 wiring, the consumer side): build the message
+	 * list sent to the LLM, applying the **image-only inline + current step**
+	 * rule from design 组件 3 / principle B. This is what AgentLoop feeds into
+	 * streamText (replacing the bare `getMessages()` at the LLM call site).
+	 *
+	 * Rules (per design D3):
+	 *  - **Current user step** (the user step that opened the current turn
+	 *    group, marked via {@link setCurrentUserStepSeq}; all multi-step LLM
+	 *    calls within the turn treat it as current) + provider
+	 *    {@link multimodal}===true + attachment.kind==="image" → inline
+	 *    `{type:"image", image: readFileSync(diskPath), mimeType}` part
+	 *    (bytes read from disk at this edge — principle A).
+	 *  - **History user step** (any earlier user step with attachments) /
+	 *    PDF / arbitrary file / provider not multimodal → meta-info text part
+	 *    appended to the user content:
+	 *    `[attachment: <fileName> | type=<mimeType> | size=<size> | at <diskPath> — <hint>]`.
+	 *
+	 * Non-user messages and user messages without attachments pass through
+	 * unchanged. The matching between `this.messages` (already-built, user text
+	 * as plain string) and `this.cachedTurns` (step rows carrying attachments)
+	 * is positional on user-role entries: every user step yields exactly one
+	 * user message, in order.
+	 *
+	 * Returns a NEW array; `this.messages` is not mutated (the inline bytes are
+	 * a per-LLM-call edge concern — principle A — and must not leak into the
+	 * persistent `messages` write-through cache).
+	 */
+	getMessagesMultimodal(): ModelMessage[] {
+		// Fast path: no attachments anywhere AND provider not multimodal → the
+		// plain messages are already correct; skip the enrichment loop.
+		const hasAnyAttachment = this.cachedTurns.some(t => t.attachments && t.attachments.length > 0);
+		if (!hasAnyAttachment) return this.messages;
+
+		// Walk cachedTurns in order and collect USER steps that produced a user
+		// message, so we can match them 1:1 (positional, user-role only) with
+		// the user messages in `this.messages`. rebuildFromSteps emits exactly
+		// one user message per user step (in step order), so the i-th user step
+		// corresponds to the i-th user message.
+		const userSteps = this.cachedTurns.filter(t => t.role === "user");
+
+		const out: ModelMessage[] = [];
+		let userMsgIdx = 0;
+		for (const msg of this.messages) {
+			if ((msg as any).role !== "user") {
+				out.push(msg);
+				continue;
+			}
+			const step = userSteps[userMsgIdx];
+			userMsgIdx++;
+			const attachments = step?.attachments;
+			if (!attachments || attachments.length === 0 || step === undefined) {
+				out.push(msg);
+				continue;
+			}
+			const isCurrent = this.currentUserStepSeq !== -1 && step.seq === this.currentUserStepSeq;
+			const built = this.buildMultimodalUserMessage(msg, attachments, isCurrent);
+			out.push(built);
+		}
+		return out;
+	}
+
+	/**
+	 * multimodal-input sub-3: turn one user ModelMessage + its attachment list
+	 * into the final user content (string | content-array). Inline image parts
+	 * are added ONLY when `isCurrent && this.multimodal && kind==="image"`; all
+	 * other attachments and the not-current/not-multimodal cases collapse to
+	 * meta-info text parts appended after the original text.
+	 */
+	private buildMultimodalUserMessage(
+		msg: ModelMessage,
+		attachments: AttachmentMeta[],
+		isCurrent: boolean,
+	): ModelMessage {
+		const originalText = typeof (msg as any).content === "string"
+			? (msg as any).content as string
+			: "";
+
+		const parts: any[] = [];
+		if (originalText) parts.push({ type: "text", text: originalText });
+
+		for (const att of attachments) {
+			const inlineable = isCurrent && this.multimodal && att.kind === "image";
+			if (inlineable) {
+				// Principle A edge: read bytes off disk ONLY here. readFileSync
+				// returns a Buffer, which IS a valid AI SDK DataContent
+				// (Uint8Array subclass). On any read error, degrade to
+				// meta-info text rather than crashing the turn.
+				try {
+					const bytes = readFileSync(att.diskPath);
+					parts.push({ type: "image", image: bytes, mimeType: att.mimeType });
+				} catch {
+					parts.push({ type: "text", text: formatAttachmentMeta(att, "attachment unreadable on disk (read failed)") });
+				}
+			} else {
+				const hint = !this.multimodal
+					? "model not multimodal — use file-read / delegate to a vision-capable subagent"
+					: att.kind !== "image"
+						? `${att.kind} attachment — use file-read to inspect`
+						: isCurrent
+							? "current image (inline disabled)"
+							: "history attachment — use file-read to re-inspect";
+				parts.push({ type: "text", text: formatAttachmentMeta(att, hint) });
+			}
+		}
+
+		return { role: "user", content: parts } as ModelMessage;
 	}
 
 	/** Cached raw turns from DB (populated by rebuildFromTurns). Used as runtime source for UI. */

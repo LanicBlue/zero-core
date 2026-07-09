@@ -69,6 +69,7 @@ import type { TaskInfo } from "../../src/runtime/types.js";
 vi.mock("../../src/runtime/provider-factory.js", () => ({
 	resolveModel: () => ({}),
 	getContextWindow: () => 128000,
+	getMultimodal: () => false,
 }));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────

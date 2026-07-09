@@ -130,6 +130,31 @@ export function getContextWindow(
 	return model?.contextWindow ?? 128000;
 }
 
+/**
+ * multimodal-input sub-3 (#3 wiring): detect whether the resolved provider/model
+ * supports image input, reading the existing `ProviderModel.multimodal` field
+ * (populated by OpenRouter `enrichModels` for known models). Rides the SAME
+ * resolution path as {@link getContextWindow} — same `provider.models.find`,
+ * same `ProviderModel` object that already carries `multimodal`. Per design D3 /
+ * principle B: `multimodal === undefined` (manually-configured / OpenRouter-
+ * uncovered models) is treated as NOT supported (safe default → meta-info
+ * injection; the LLM can still reach the image via file-read / delegation).
+ *
+ * This is the single capability-detection point referenced by getMessages
+ * (session.ts) when deciding inline-image vs attachment meta-info text.
+ */
+export function getMultimodal(
+	providers: RuntimeProviderConfig[],
+	providerName: string,
+	modelId: string,
+): boolean {
+	const normalized = normalizeName(providerName);
+	const provider = providers.find((p) => normalizeName(p.name) === normalized);
+	if (!provider) return false;
+	const model = provider.models.find((m) => m.id === modelId);
+	return model?.multimodal ?? false;
+}
+
 function getOrCreateProvider(config: RuntimeProviderConfig): (modelId: string) => any {
 	const cacheKey = `${config.type}:${config.apiKey}:${config.baseUrl}`;
 	const cached = providerCache.get(cacheKey);

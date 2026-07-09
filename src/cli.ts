@@ -121,6 +121,9 @@ function toRuntimeProviders(providers: Provider[]): RuntimeProviderConfig[] {
 			name: m.name,
 			contextWindow: m.contextWindow,
 			maxTokens: m.maxTokens,
+			// multimodal-input sub-3: carry the image-capability flag through the
+			// Provider → RuntimeProviderConfig mapping so getMultimodal can read it.
+			multimodal: m.multimodal,
 		})),
 		enabled: p.enabled,
 	}));
