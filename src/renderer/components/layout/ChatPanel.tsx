@@ -804,6 +804,10 @@ export default function ChatPanel() {
 				outputTokens: payload.outputTokens ?? 0,
 				totalTokens: payload.totalTokens ?? 0,
 				model: payload.model,
+				// multimodal-input sub-6: tri-state image capability for the
+				// context-usage modality badge. Pass through undefined ("模态未知")
+				// — do NOT coalesce, the badge needs all three states.
+				modelMultimodal: payload.modelMultimodal,
 			});
 			setTodos(sid, payload.todos ?? []);
 			setPending(
@@ -1067,6 +1071,28 @@ export default function ChatPanel() {
 								? <>{formatTokenCount(contextInfo.inputTokens)} in · {formatTokenCount(contextInfo.outputTokens)} out | {formatTokenCount(contextInfo.contextWindow)}</>
 								: <>{formatTokenCount(contextInfo.usedTokens)} / {formatTokenCount(contextInfo.contextWindow)}</>}
 						</span>
+						{/* multimodal-input sub-6: modality badge. Tri-state from
+							sessionsGetInit payload.modelMultimodal (raw, NOT the
+							merged D3 boolean): true → image supported; false →
+							no badge (text-only); undefined → "模态未知". Image-only
+							(ProviderModel.multimodal only covers image per design
+							组件 7 / 组件 3 image-only inline rule). */}
+						{contextInfo.modelMultimodal === true && (
+							<span
+								className="context-usage-modality modality-image"
+								title="当前模型支持图像输入(image)"
+							>
+								🖼 image
+							</span>
+						)}
+						{contextInfo.modelMultimodal === undefined && (
+							<span
+								className="context-usage-modality modality-unknown"
+								title="当前模型的输入模态未知(手动配置或 OpenRouter 未覆盖)"
+							>
+								模态未知
+							</span>
+						)}
 						<div className="context-usage-bar">
 							<div
 								className="context-usage-fill"

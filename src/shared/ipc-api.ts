@@ -79,6 +79,7 @@ export interface IpcChannelDefs {
 	"providers:update":        { params: [id: string, input: UpdateProviderInput]; result: Provider | Err };
 	"providers:delete":        { params: [id: string];                        result: Ok };
 	"providers:add-model":     { params: [providerId: string, model: ProviderModel]; result: Provider | Err };
+	"providers:update-model":  { params: [providerId: string, modelId: string, patch: Partial<ProviderModel>]; result: Provider | Err };
 	"providers:remove-model":  { params: [providerId: string, modelId: string];      result: Provider | Err };
 	"providers:fetch-models":  { params: [providerId: string];                        result: FetchedModel[] };
 	"models:list":             { params: [];                                           result: ModelInfo[] };

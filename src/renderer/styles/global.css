@@ -504,6 +504,25 @@ body {
   border-radius: 2px;
   transition: width 0.3s ease;
 }
+/* multimodal-input sub-6: modality badge next to context-usage.
+ * Two variants: image-supported (🖼 image) and unknown (模态未知).
+ * image uses a subtle accent; unknown is muted/italic to signal uncertainty. */
+.context-usage-modality {
+  white-space: nowrap;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #333);
+}
+.context-usage-modality.modality-image {
+  color: var(--success, #7ee787);
+  border-color: var(--border, #333);
+}
+.context-usage-modality.modality-unknown {
+  color: var(--fg-muted, #999);
+  font-style: italic;
+  opacity: 0.8;
+}
 
 .btn-archive-session {
   background: transparent;

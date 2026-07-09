@@ -133,6 +133,18 @@ export function createProviderRouter(providerStore: ProviderStore, onMutate?: ()
 		}
 	});
 
+	// multimodal-input sub-6: patch a single model's fields (e.g. hand-set
+	// `multimodal` for OpenRouter-uncovered models). Body = Partial<ProviderModel>.
+	router.patch("/:id/models/:modelId", (req, res) => {
+		try {
+			const provider = providerStore.updateModel(req.params.id, req.params.modelId, req.body);
+			mutated();
+			res.json(provider);
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+		}
+	});
+
 	router.delete("/:id/models/:modelId", (req, res) => {
 		try {
 			const provider = providerStore.removeModel(req.params.id, req.params.modelId);

@@ -82,6 +82,15 @@ export interface ContextInfo {
 	/** Current model backing the session (set on session pull; preserved across
 	 * streaming events since those don't carry it). Undefined until first pull. */
 	model?: { providerName: string; modelId: string };
+	/**
+	 * multimodal-input sub-6: raw (tri-state) image capability of the current
+	 * model, for the context-usage modality badge. `true` = supports image,
+	 * `false` = does not, `undefined` = unknown (manually-configured /
+	 * OpenRouter-uncovered) → UI renders "模态未知". Set on session pull (sourced
+	 * from sessionsGetInit payload.modelMultimodal); preserved across streaming
+	 * token refreshes by the merge semantics of updateContextInfo.
+	 */
+	modelMultimodal?: boolean;
 }
 
 interface ChatState {

@@ -155,6 +155,29 @@ export function getMultimodal(
 	return model?.multimodal ?? false;
 }
 
+/**
+ * multimodal-input sub-6: tri-state variant of {@link getMultimodal} for UI
+ * display. Returns the raw `ProviderModel.multimodal` value — `true` / `false`
+ * / `undefined` — WITHOUT the `?? false` merge, so the context-usage modality
+ * badge can distinguish "supports image" / "does not" / "unknown"
+ * (manually-configured / OpenRouter-uncovered models → undefined → UI shows
+ * "模态未知" per acceptance-6).
+ *
+ * NOT used by getMessages; that path uses the merged boolean {@link getMultimodal}
+ * (design D3 safe default undefined→false). Same provider.models.find path.
+ */
+export function getMultimodalTri(
+	providers: RuntimeProviderConfig[],
+	providerName: string,
+	modelId: string,
+): boolean | undefined {
+	const normalized = normalizeName(providerName);
+	const provider = providers.find((p) => normalizeName(p.name) === normalized);
+	if (!provider) return undefined;
+	const model = provider.models.find((m) => m.id === modelId);
+	return model?.multimodal;
+}
+
 function getOrCreateProvider(config: RuntimeProviderConfig): (modelId: string) => any {
 	const cacheKey = `${config.type}:${config.apiKey}:${config.baseUrl}`;
 	const cached = providerCache.get(cacheKey);

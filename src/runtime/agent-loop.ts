@@ -47,7 +47,7 @@ import type {
 import type { UserContent, AttachmentMeta } from "../shared/types.js";
 // tool-decoupling sub-5(B2):AgentLoop 直建 CallerCtx(不再经 ctxToCallerCtx 桥)。
 import type { CallerCtx, TodoAccessor, TaskRegistryAccessor, DelegateFns, AgentResolvers } from "../tools/types.js";
-import { resolveModel, getContextWindow, getMultimodal } from "./provider-factory.js";
+import { resolveModel, getContextWindow, getMultimodal, getMultimodalTri } from "./provider-factory.js";
 import { AgentSession } from "./session.js";
 import { buildToolsSet } from "../tools/index.js";
 import { renderWorkbench } from "./workbench.js";
@@ -935,6 +935,26 @@ export class AgentLoop implements AgentRuntime {
 	 */
 	getModelId(): { providerName: string; modelId: string } {
 		return { providerName: this.config.providerName, modelId: this.config.modelId };
+	}
+
+	/**
+	 * multimodal-input sub-6: raw (tri-state) image capability of the CURRENT
+	 * model, for UI display only. Returns the `ProviderModel.multimodal` value
+	 * AS-IS — `true` / `false` / `undefined` — so the context-usage badge can
+	 * distinguish "supports image" / "does not" / "unknown" (manually configured
+	 * or OpenRouter-uncovered models).
+	 *
+	 * NOT used by getMessages (that path uses the merged `getMultimodal` →
+	 * boolean via session.getMultimodalCapability, design D3 safe default
+	 * undefined→false). This getter intentionally preserves undefined so the
+	 * UI can show "模态未知" per acceptance-6.
+	 *
+	 * Rides the same provider.models.find path as getMultimodal
+	 * (provider-factory.ts); re-resolved live (no caching) so hot config-sync
+	 * (applyConfigPatch swapping modelId/providerName) is reflected.
+	 */
+	getModelMultimodalTri(): boolean | undefined {
+		return getMultimodalTri(this.providers, this.config.providerName, this.config.modelId);
 	}
 
 	getResult(): string {

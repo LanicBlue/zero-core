@@ -176,6 +176,24 @@ export class ProviderStore {
 		return this.store.update(providerId, { models: provider.models } as any);
 	}
 
+	/**
+	 * multimodal-input sub-6: patch a single model's fields (e.g. hand-set
+	 * `multimodal` for models OpenRouter doesn't cover). Merges `patch` shallowly
+	 * onto the matched model; persists the full models array. Used by the
+	 * ProviderEditor model-list multimodal toggle so manually-configured models
+	 * get an explicit capability (overrides the undefined safe-default in D3).
+	 */
+	updateModel(providerId: string, modelId: string, patch: Partial<ProviderModel>): Provider {
+		const provider = this.get(providerId);
+		if (!provider) throw new Error(`Provider not found: ${providerId}`);
+		const idx = provider.models.findIndex((m) => m.id === modelId);
+		if (idx < 0) throw new Error(`Model not found: ${modelId}`);
+		provider.models = provider.models.map((m, i) =>
+			i === idx ? { ...m, ...patch, id: m.id } : m,
+		);
+		return this.store.update(providerId, { models: provider.models } as any);
+	}
+
 	removeModel(providerId: string, modelId: string): Provider {
 		const provider = this.get(providerId);
 		if (!provider) throw new Error(`Provider not found: ${providerId}`);

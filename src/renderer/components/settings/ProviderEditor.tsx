@@ -26,7 +26,7 @@ import type { Provider, ProviderModel } from "../../../shared/types.js";
 import { DEFAULT_URLS } from "../../../core/constants.js";
 
 export function ProviderEditor({ provider, onClose }: { provider: Provider | null; onClose: () => void }) {
-	const { create, update, addModel, removeModel, fetchModels, fetchProviders } = useProviderStore();
+	const { create, update, addModel, updateModel, removeModel, fetchModels, fetchProviders } = useProviderStore();
 	const isEdit = !!provider;
 
 	const [form, setForm] = useState({
@@ -153,6 +153,31 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 		}
 	};
 
+	/**
+	 * multimodal-input sub-6: hand-set a model's image capability. Toggles
+	 * between `true` (supports image) and `false` (does not); sets the explicit
+	 * value so it overrides the undefined safe-default (design D3) for models
+	 * OpenRouter doesn't cover. Persisted to ProviderModel.multimodal.
+	 *
+	 * Edit mode: persists immediately via updateModel IPC (same pattern as
+	 * addModel/removeModel). Create mode: mutates local `models` state (saved
+	 * on submit with the rest of the form).
+	 */
+	const handleToggleMultimodal = async (modelId: string) => {
+		const current = (isEdit
+			? (useProviderStore.getState().providers.find((p) => p.id === provider!.id)?.models ?? [])
+			: models
+		).find((m) => m.id === modelId);
+		const next = !(current?.multimodal ?? false);
+		if (isEdit && provider) {
+			await updateModel(provider.id, modelId, { multimodal: next });
+			const updated = useProviderStore.getState().providers.find((p) => p.id === provider.id);
+			if (updated) setModels(updated.models);
+		} else {
+			setModels(models.map((m) => (m.id === modelId ? { ...m, multimodal: next } : m)));
+		}
+	};
+
 	const displayModels = isEdit
 		? (useProviderStore.getState().providers.find((p) => p.id === provider!.id)?.models ?? [])
 		: models;
@@ -224,6 +249,28 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 								<div key={m.id} className="model-item">
 									<span className="model-id">{m.name || m.id}</span>
 									{m.group && <span className="model-group">{m.group}</span>}
+									{/* multimodal-input sub-6: hand-set image capability.
+									 * Tri-state display: checked = true, unchecked with
+									 * title "unset" = undefined (D3 safe-default), but
+									 * toggle is binary (false<->true). Once toggled the
+									 * value is explicit (overrides undefined). */}
+									<label
+										className="checkbox-label model-multimodal-toggle"
+										title={
+											m.multimodal === undefined
+												? "图像能力未设置(默认按不支持);勾选=支持图像"
+												: m.multimodal
+													? "支持图像输入"
+													: "不支持图像输入"
+										}
+									>
+										<input
+											type="checkbox"
+											checked={m.multimodal === true}
+											onChange={() => handleToggleMultimodal(m.id)}
+										/>
+										🖼
+									</label>
 									<button type="button" className="btn-ghost btn-sm" onClick={() => handleRemoveModel(m.id)}>×</button>
 								</div>
 							))}

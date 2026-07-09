@@ -465,7 +465,7 @@ describe("ipc-proxy route mapping completeness", () => {
 		// Tolerant to leading whitespace / tabs (file uses tabs). Channel names
 		// are kebab-case but may carry camelCase suffixes (e.g. getResourceUsage),
 		// so the name char class includes uppercase.
-		const re = /^\s*"([a-zA-Z][a-zA-Z0-9:-]*)":\s*\{\s*method:\s*"(GET|POST|PUT|DELETE)"\s*,\s*path:\s*"(\/[^"]+)"/gm;
+		const re = /^\s*"([a-zA-Z][a-zA-Z0-9:-]*)":\s*\{\s*method:\s*"(GET|POST|PUT|DELETE|PATCH)"\s*,\s*path:\s*"(\/[^"]+)"/gm;
 		let m: RegExpExecArray | null;
 		while ((m = re.exec(src)) !== null) {
 			out[m[1]] = { method: m[2], path: m[3] };
@@ -529,7 +529,7 @@ describe("ipc-proxy route mapping completeness", () => {
 
 	test("every proxy mapping has a valid HTTP method and path", async () => {
 		for (const [channel, route] of Object.entries(ROUTE_MAP)) {
-			expect(route.method).toMatch(/^(GET|POST|PUT|DELETE)$/);
+			expect(route.method).toMatch(/^(GET|POST|PUT|DELETE|PATCH)$/);
 			expect(route.path).toMatch(/^\//);
 		}
 	});

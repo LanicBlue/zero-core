@@ -59,6 +59,7 @@ const api: WindowApi = {
 	providersUpdate: (id, input) => ipcRenderer.invoke("providers:update", id, input),
 	providersDelete: (id) => ipcRenderer.invoke("providers:delete", id),
 	providersAddModel: (providerId, model) => ipcRenderer.invoke("providers:add-model", providerId, model),
+	providersUpdateModel: (providerId, modelId, patch) => ipcRenderer.invoke("providers:update-model", providerId, modelId, patch),
 	providersRemoveModel: (providerId, modelId) => ipcRenderer.invoke("providers:remove-model", providerId, modelId),
 	providersFetchModels: (providerId) => ipcRenderer.invoke("providers:fetch-models", providerId),
 

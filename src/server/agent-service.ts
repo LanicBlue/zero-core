@@ -1690,6 +1690,15 @@ export class AgentService implements PlatformObserver {
 		contextWindow: number;
 		contextUsage: number;
 		model: { providerName: string; modelId: string };
+		/**
+		 * multimodal-input sub-6: raw (tri-state) image capability of the
+		 * current session model, for the context-usage modality badge.
+		 * `true` = supports image, `false` = does not, `undefined` = unknown
+		 * (manually-configured / OpenRouter-uncovered). NOT the merged D3
+		 * boolean (that lives in the getMessages path); this preserves the
+		 * raw value so the UI can render "模态未知" per acceptance-6.
+		 */
+		modelMultimodal: boolean | undefined;
 		todos: any[];
 		pendingQuestion: { requestId: string; questions: any[] } | null;
 		isRunning: boolean;
@@ -1717,6 +1726,10 @@ export class AgentService implements PlatformObserver {
 			contextWindow: loop.getContextWindow(),
 			contextUsage: loop.getContextUsage(),
 			model: loop.getModelId(),
+			// multimodal-input sub-6: tri-state image capability (raw undefined
+			// preserved) for the context-usage modality badge. Rides the same
+			// provider.models.find path as getMultimodal (provider-factory).
+			modelMultimodal: loop.getModelMultimodalTri(),
 			todos: getSessionTodos(sessionId),
 			pendingQuestion,
 			// 该 session 当前是否在跑。前端 pull-on-display 据此自愈清掉残留的
