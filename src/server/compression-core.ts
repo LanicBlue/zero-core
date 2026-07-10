@@ -112,6 +112,31 @@ export interface CompressSessionOptions {
 	 * 默认 12k 字符。
 	 */
 	maxTranscriptChars?: number;
+	/**
+	 * steps-overhaul sub-7: Extractor A multi-step agent. When present, each
+	 * summary written to `messages` is ALSO fed to Extractor A's
+	 * mergeSummaryIntoWiki (the second product of compression: ① messages
+	 * summary, ② wiki node merge). Fire-and-forget per summary — a merge
+	 * failure is logged + swallowed (it must NOT break the compression that
+	 * produced the summary). When absent, compression produces only the
+	 * messages summary (sub-4 behavior — tests that don't care about wiki).
+	 *
+	 * The caller (compression-trigger-hooks) builds this from
+	 * config.wikiStoreGlobal + the extractor-A model config.
+	 */
+	extractorA?: {
+		service: import("./extractor-a-service.js").ExtractorAService;
+		/**
+		 * Resolve the topic id + title for a given summary segment. Typically
+		 * derived from the session's agentId (one topic per agent) or from the
+		 * summary's dominant subject. Defaults to agentId-based topic.
+		 */
+		resolveTopic?: (summary: MessageSummary, seg: CompressionSegment, sessionId: string) => {
+			topicId: string;
+			topicTitle?: string;
+			agentId?: string;
+		};
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -401,6 +426,32 @@ export async function compressSession(
 		db.saveSummaryAndAdvanceCursor(sessionId, summary, seg.toSeqInclusive);
 		written.push(summary);
 		compressedToSeq = Math.max(compressedToSeq, seg.toSeqInclusive);
+
+		// sub-7: 第二个产物 —— 把 summary 喂 Extractor A 合并进 wiki。fire-and-
+		// forget(失败仅 warn,绝不阻塞压缩主干/游标推进)。一次压缩可产多 summary
+		// (跨主题),每段独立喂一次 → Extractor A 按 topic 合并。
+		if (opts.extractorA) {
+			try {
+				const topic = opts.extractorA.resolveTopic
+					? opts.extractorA.resolveTopic(summary, seg, sessionId)
+					: { topicId: sessionId, agentId: undefined };
+				void opts.extractorA.service.mergeSummaryIntoWiki({
+					summary,
+					topicId: topic.topicId,
+					topicTitle: topic.topicTitle,
+					agentId: topic.agentId,
+					sessionId,
+				}).catch((err: unknown) => {
+					log.warn("compression-core",
+						`Extractor A merge failed (seg ${seg.fromSeq}..${seg.toSeqInclusive}, topic ${topic.topicId}):`,
+						(err as Error).message);
+				});
+			} catch (err) {
+				log.warn("compression-core",
+					`Extractor A merge dispatch failed (seg ${seg.fromSeq}..${seg.toSeqInclusive}):`,
+					(err as Error).message);
+			}
+		}
 	}
 
 	if (written.length === 0) {

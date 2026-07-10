@@ -1,41 +1,43 @@
-// M5 单元测试:归档提取者 + 记忆恢复(D-C)
+// M5 单元测试:归档提取者 + 记忆恢复(D-C) —— steps-overhaul sub-7 修订版
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 验证 M5 核心交付 (acceptance-M5.md):
+// sub-7 退役了 extraction-hooks 的阈值独立抽取通路(机制 2 StepEnd 阈值 +
+// 机制 3 closeFlushSession):wiki 抽取现在由 compressSession 的 Extractor A
+// 多步 agent 承担(每段 summary 喂一次合并进 topic wiki)。本测试反映这个
+// 新现实:
+//
+// 仍验证(未退役的部分):
 //   - ExtractionCursorStore / TelemetryStore 基础 CRUD + dedupe
-//   - 提取者 A 写全局 wiki type=memory 节点(不在 project 子树)+ 按 (subject,type) 演进
-//   - 提取者 B 写 telemetry(按 (sessionId,toolName,kind,signature) upsert 累加)
-//   - 低 checkpoint 增量提取触发点(20/45/70):按 token-budget 低点,不按 turn
-//   - 每次触发只处理 cursor 后 delta
-//   - 关闭 flush = 对尾批的最后一次 delta
-//   - 大单 turn 不再被裸丢(pruneIfNeeded 截断保留,不裸丢)
-//   - resume: 全量原始 turn + 召回 wiki memory(rebuildFromTurns 读 step 表)
-//   - new session: 只拿 wiki memory
-//   - **明确未引入回归**:无活 checkpoint / 无 transition 检测器 / 无外部事件锚点 / 无每 turn 压缩
+//   - ExtractorBService 类仍可独立调(未来触发器可挂回;B 的 telemetry 写入
+//     语义没变)
+//   - sliceTranscriptDelta 切片器(压缩/抽取都用)
+//   - resume: 全量原始 turn(step 表);new session 只拿 wiki memory
+//   - pruneIfNeeded 大单 turn 不裸丢
+//
+// 已退役(本文件不再测,迁到 sub-7 专项测):
+//   - 机制 2 StepEnd 阈值触发(registerExtractionHooks 现 no-op)
+//   - 机制 3 closeFlushSession(现 no-op)
+//   - ExtractorAService 单步 generateText → 现多步 agent(在 sub-7 专项测覆盖)
+//   - 「明确未引入回归」原断言(基于源码字符串,已随退役失效)
 //
 // ## 输入
 // 临时 SessionDB (mkdtempSync) + WikiStore + ExtractionCursorStore + TelemetryStore +
-// 注入 testModel stub 的 ExtractorAService / ExtractorBService.
+// 注入 testModel stub 的 ExtractorBService.
 //
 // ## 输出
 // Vitest 用例。
 //
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionDB } from "../../src/server/session-db.js";
-import {
-	WikiStore,
-	WIKI_GLOBAL_ROOT_ID,
-	memoryTypeRootId,
-} from "../../src/server/wiki-node-store.js";
+import { WikiStore } from "../../src/server/wiki-node-store.js";
 import { ExtractionCursorStore } from "../../src/server/extraction-cursor-store.js";
 import { TelemetryStore } from "../../src/server/telemetry-store.js";
-import { ExtractorAService } from "../../src/server/extractor-a-service.js";
 import { ExtractorBService } from "../../src/server/extractor-b-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { sliceTranscriptDelta } from "../../src/runtime/transcript-delta.js";
@@ -60,8 +62,7 @@ beforeEach(() => {
 	wiki = new WikiStore(sessionDB);
 	cursorStore = sessionDB.getExtractionCursorStore();
 	telemetryStore = sessionDB.getTelemetryStore();
-	// Reset hook registry between tests so the extraction hook doesn't carry
-	// state across files.
+	// Reset hook registry between tests so nothing carries state across files.
 	HookRegistry.getInstance().clear();
 	_resetExtractionScheduler();
 });
@@ -75,7 +76,7 @@ afterEach(() => {
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-/** Stub model: returns the given text as generateText result. */
+/** Stub model: returns the given text as generateText result (no tool calls). */
 function stubModel(text: string): any {
 	return {
 		specificationVersion: "v2",
@@ -103,13 +104,6 @@ function stubModel(text: string): any {
 			return { stream };
 		},
 	};
-}
-
-function makeExtractorA(modelText: string): ExtractorAService {
-	return new ExtractorAService({
-		providers: [], providerName: "stub", modelId: "stub",
-		wiki, testModel: stubModel(modelText),
-	});
 }
 
 function makeExtractorB(modelText: string): ExtractorBService {
@@ -187,70 +181,7 @@ describe("TelemetryStore", () => {
 	});
 });
 
-// ─── 3. ExtractorA: writes global memory node + evolves ───────
-
-describe("ExtractorAService", () => {
-	test("writes global type=memory nodes (NOT under any project subtree)", async () => {
-		const svc = makeExtractorA(JSON.stringify([
-			{ subject: "ProjectX", type: "decision", content: "Decided to use SQLite." },
-		]));
-		const result = await svc.extractDelta({
-			sessionId: "s1", agentId: "dev",
-			transcript: "User: ... Assistant: we picked SQLite",
-			fromSeq: 0, toSeq: 2,
-		});
-		expect(result.skipped).toBe(false);
-		expect(result.createdCount).toBe(1);
-
-		const memoryNodes = wiki.listMemoryNodes();
-		expect(memoryNodes.length).toBeGreaterThan(0);
-		// Memory node should NOT live under any project subtree.
-		const projects = wiki.listProjects();
-		for (const p of projects) {
-			const subtreeIds = wiki.listByProject(p).map(n => n.id);
-			for (const m of memoryNodes) {
-				expect(subtreeIds).not.toContain(m.id);
-			}
-		}
-	});
-
-	test("merges into existing memory node by (subject, type) — UPDATE not new", async () => {
-		// First extraction: creates a decision node.
-		const svc1 = makeExtractorA(JSON.stringify([
-			{ subject: "ProjectX", type: "decision", content: "v1" },
-		]));
-		await svc1.extractDelta({ sessionId: "s1", transcript: "x", fromSeq: 0, toSeq: 1 });
-		const after1 = wiki.listMemoryNodes().filter(n => !n.path?.startsWith("memory-root:"));
-		expect(after1.length).toBe(1);
-
-		// Second extraction: same subject + type → UPDATE existing.
-		const svc2 = makeExtractorA(JSON.stringify([
-			{ subject: "ProjectX", type: "decision", content: "v2 — superseded" },
-		]));
-		const result2 = await svc2.extractDelta({ sessionId: "s1", transcript: "x", fromSeq: 1, toSeq: 2 });
-		expect(result2.createdCount).toBe(0);
-		expect(result2.updatedCount).toBe(1);
-
-		const after2 = wiki.listMemoryNodes().filter(n => !n.path?.startsWith("memory-root:"));
-		expect(after2.length).toBe(1); // still only one — UPDATE not new
-		// The summary was updated to v2.
-		expect(after2[0].summary).toContain("v2");
-	});
-
-	test("returns skipped=true when transcript is empty", async () => {
-		const svc = makeExtractorA("[]");
-		const result = await svc.extractDelta({ sessionId: "s1", transcript: "", fromSeq: 0, toSeq: 0 });
-		expect(result.skipped).toBe(true);
-	});
-
-	test("returns skipped=true when LLM returns no facts", async () => {
-		const svc = makeExtractorA("[]");
-		const result = await svc.extractDelta({ sessionId: "s1", transcript: "stuff", fromSeq: 0, toSeq: 1 });
-		expect(result.skipped).toBe(true);
-	});
-});
-
-// ─── 4. ExtractorB: writes telemetry ──────────────────────────
+// ─── 3. ExtractorBService: writes telemetry (class preserved, sub-7) ──
 
 describe("ExtractorBService", () => {
 	test("extracts findings + writes to telemetry store", async () => {
@@ -290,238 +221,85 @@ describe("ExtractorBService", () => {
 	});
 });
 
-// ─── 5. Mechanism 2: low-checkpoint incremental extraction ────
+// ─── 4. extraction-hooks RETIRED (sub-7 — decision 53 修订) ───
 
-describe("Mechanism 2 — low-checkpoint incremental extraction hook", () => {
-	test("triggers at 20% threshold (NOT at 0%) and processes cursor delta", async () => {
-		// Start with 2 turns. As the test progresses we add more turns so each
-		// subsequent threshold crossing has new delta to extract.
-		const sessionId = "sess-A";
-		seedSteps(sessionId, [
-			{ role: "user", content: "what storage?" },
-			{ role: "assistant", content: JSON.stringify([{ type: "text", text: "we should pick SQLite" }]) },
-		]);
-
-		// Register hook with stub-backed extractors.
+describe("extraction-hooks RETIRED (sub-7)", () => {
+	test("registerExtractionHooks is a no-op — no StepEnd handler fires extractor", async () => {
+		// Even with A + B enabled and a low threshold, registerExtractionHooks
+		// no longer registers any handler that calls extractors. Triggering
+		// StepEnd does nothing (no cursor advance, no extractor call).
 		let aCalled = 0;
+		let bCalled = 0;
 		registerExtractionHooks({
 			cursorStore,
-			buildExtractorA: () => {
-				aCalled++;
-				return makeExtractorA(JSON.stringify([
-					{ subject: "ProjectX", type: "decision", content: "use SQLite" },
-				]));
-			},
-			buildExtractorB: () => makeExtractorB("[]"),
+			buildExtractorA: () => { aCalled++; return ({} as any); },
+			buildExtractorB: () => { bCalled++; return ({} as any); },
 		});
 
 		const registry = HookRegistry.getInstance();
 		const config: any = {
-			agentId: "dev", sessionId,
+			agentId: "dev", sessionId: "s1",
 			db: sessionDB,
 			providerName: "stub", modelId: "stub",
 			toolPolicy: {},
-			extractors: { A: { enabled: true }, B: { enabled: false }, checkpointThresholds: [0.2, 0.45, 0.7] },
+			extractors: { A: { enabled: true }, B: { enabled: true }, checkpointThresholds: [0.2, 0.45, 0.7] },
 		};
-
-		// 0% usage → no trigger.
 		await (registry as any).trigger("StepEnd", {
-			agentId: "dev", sessionId, config, contextUsage: 0.0, providers: [],
+			agentId: "dev", sessionId: "s1", config, contextUsage: 0.9, providers: [],
 		});
 		expect(aCalled).toBe(0);
-
-		// 20% usage → first threshold crossed → trigger.
-		await (registry as any).trigger("StepEnd", {
-			agentId: "dev", sessionId, config, contextUsage: 0.21, providers: [],
-		});
-		expect(aCalled).toBe(1);
-
-		// Cursor advanced: lastThresholdIdx = 0.
-		const cursor = cursorStore.get(sessionId)!;
-		expect(cursor.lastThresholdIdx).toBe(0);
-		expect(cursor.lastExtractedSeq).toBeGreaterThanOrEqual(0);
-
-		// 25% usage (same threshold band) → no new trigger.
-		await (registry as any).trigger("StepEnd", {
-			agentId: "dev", sessionId, config, contextUsage: 0.25, providers: [],
-		});
-		expect(aCalled).toBe(1);
-
-		// Add 2 more turns so the 45% trigger has new delta to process.
-		seedSteps(sessionId, [
-			{ role: "user", content: "what next?" },
-			{ role: "assistant", content: JSON.stringify([{ type: "text", text: "build the schema" }]) },
-		]);
-
-		// 45% usage → second threshold crossed → trigger again.
-		await (registry as any).trigger("StepEnd", {
-			agentId: "dev", sessionId, config, contextUsage: 0.46, providers: [],
-		});
-		expect(aCalled).toBe(2);
-		expect(cursorStore.get(sessionId)!.lastThresholdIdx).toBe(1);
-
-		// Add 2 more turns for the 70% trigger.
-		seedSteps(sessionId, [
-			{ role: "user", content: "what else?" },
-			{ role: "assistant", content: JSON.stringify([{ type: "text", text: "test it" }]) },
-		]);
-
-		// 70% usage → third threshold crossed → trigger again.
-		await (registry as any).trigger("StepEnd", {
-			agentId: "dev", sessionId, config, contextUsage: 0.71, providers: [],
-		});
-		expect(aCalled).toBe(3);
-		expect(cursorStore.get(sessionId)!.lastThresholdIdx).toBe(2);
+		expect(bCalled).toBe(0);
+		// Cursor untouched (no extraction scheduled).
+		expect(cursorStore.get("s1")).toBeUndefined();
 	});
 
-	test("each trigger only processes delta after cursor (not whole transcript)", async () => {
-		const sessionId = "sess-delta";
-		// Seed 4 turns.
-		seedSteps(sessionId, [
-			{ role: "user", content: "q1" },
-			{ role: "assistant", content: JSON.stringify([{ type: "text", text: "a1" }]) },
-			{ role: "user", content: "q2" },
-			{ role: "assistant", content: JSON.stringify([{ type: "text", text: "a2" }]) },
-		]);
-
-		const sliceSpy: Array<{ fromSeq: number; toSeq: number }> = [];
-		let aModelJson = JSON.stringify([
-			{ subject: "SubjX", type: "decision", content: "v1" },
-		]);
-
-		registerExtractionHooks({
-			cursorStore,
-			buildExtractorA: () => {
-				const svc = new ExtractorAService({
-					providers: [], providerName: "stub", modelId: "stub",
-					wiki, testModel: stubModel(aModelJson),
-				});
-				const orig = svc.extractDelta.bind(svc);
-				svc.extractDelta = async (delta) => {
-					sliceSpy.push({ fromSeq: delta.fromSeq, toSeq: delta.toSeq });
-					return orig(delta);
-				};
-				return svc;
-			},
-			buildExtractorB: () => makeExtractorB("[]"),
-		});
-
-		const registry = HookRegistry.getInstance();
-		const config: any = {
-			agentId: "dev", sessionId, db: sessionDB,
-			providerName: "stub", modelId: "stub",
-			toolPolicy: {},
-			extractors: { A: { enabled: true }, B: { enabled: false }, checkpointThresholds: [0.2, 0.45] },
-		};
-
-		// Fire at 20% — first 4 steps, cursor was -1, so fromSeq=0.
-		await (registry as any).trigger("StepEnd", {
-			agentId: "dev", sessionId, config, contextUsage: 0.21, providers: [],
-		});
-		expect(sliceSpy.length).toBe(1);
-		expect(sliceSpy[0].fromSeq).toBe(0);
-
-		// Add 2 more steps (turns 5,6) so the next slice has work to do.
-		seedSteps(sessionId, [
-			{ role: "user", content: "q3" },
-			{ role: "assistant", content: JSON.stringify([{ type: "text", text: "a3" }]) },
-		]);
-
-		// Fire at 45% — should process only the delta (cursor+1 to current).
-		await (registry as any).trigger("StepEnd", {
-			agentId: "dev", sessionId, config, contextUsage: 0.46, providers: [],
-		});
-		expect(sliceSpy.length).toBe(2);
-		// The second slice's fromSeq must be GREATER than the first's
-		// (delta-only, not whole transcript again).
-		expect(sliceSpy[1].fromSeq).toBeGreaterThan(sliceSpy[0].fromSeq);
-	});
-});
-
-// ─── 6. Mechanism 3: close flush ──────────────────────────────
-
-describe("Mechanism 3 — close flush (session eviction)", () => {
-	test("closeFlushSession runs extractor A on tail batch (post-cursor)", async () => {
-		const sessionId = "sess-flush";
+	test("closeFlushSession is a no-op — does not run extractor A on tail", async () => {
+		const sessionId = "sess-flush-retired";
 		seedSteps(sessionId, [
 			{ role: "user", content: "q1" },
 			{ role: "assistant", content: JSON.stringify([{ type: "text", text: "decided X" }]) },
-			{ role: "user", content: "q2" },
-			{ role: "assistant", content: JSON.stringify([{ type: "text", text: "decided Y (tail batch)" }]) },
 		]);
-		// Simulate that mechanism 2 already extracted up to seq 1.
-		cursorStore.upsert({ sessionId, lastExtractedSeq: 1, lastThresholdIdx: 2 });
-
 		let aCalled = 0;
-		let capturedFromSeq = -1;
 		registerExtractionHooks({
 			cursorStore,
-			buildExtractorA: () => {
-				aCalled++;
-				const svc = new ExtractorAService({
-					providers: [], providerName: "stub", modelId: "stub",
-					wiki, testModel: stubModel(JSON.stringify([
-						{ subject: "TailBatch", type: "decision", content: "tail decision" },
-					])),
-				});
-				const orig = svc.extractDelta.bind(svc);
-				svc.extractDelta = async (delta) => {
-					capturedFromSeq = delta.fromSeq;
-					return orig(delta);
-				};
-				return svc;
-			},
-			buildExtractorB: () => makeExtractorB("[]"),
+			buildExtractorA: () => { aCalled++; return ({} as any); },
+			buildExtractorB: () => ({} as any),
 		});
-
-		const config: any = {
-			agentId: "dev", sessionId, db: sessionDB,
-			providerName: "stub", modelId: "stub",
-			toolPolicy: {},
-			extractors: { A: { enabled: true }, B: { enabled: false } },
-		};
-
 		await closeFlushSession({
 			sessionId,
-			resolveConfig: () => config,
+			resolveConfig: () => ({
+				agentId: "dev", sessionId, db: sessionDB,
+				providerName: "stub", modelId: "stub", toolPolicy: {},
+				extractors: { A: { enabled: true }, B: { enabled: false } },
+			} as any),
 			resolveProviders: () => [],
 		});
-
-		expect(aCalled).toBe(1);
-		// Tail batch starts AFTER cursor (cursor was 1, so tail starts at seq 2).
-		expect(capturedFromSeq).toBe(2);
+		expect(aCalled).toBe(0);
 	});
 
-	test("closeFlushSession is a no-op when cursor is already at the tail", async () => {
-		const sessionId = "sess-flush-empty";
-		seedSteps(sessionId, [
-			{ role: "user", content: "q1" },
-			{ role: "assistant", content: JSON.stringify([{ type: "text", text: "a1" }]) },
-		]);
-		// Cursor already past all turns.
-		cursorStore.upsert({ sessionId, lastExtractedSeq: 1, lastThresholdIdx: 2 });
-
-		let aCalled = 0;
-		registerExtractionHooks({
-			cursorStore,
-			buildExtractorA: () => { aCalled++; return makeExtractorA("[]"); },
-			buildExtractorB: () => makeExtractorB("[]"),
-		});
-		const config: any = {
-			agentId: "dev", sessionId, db: sessionDB,
-			providerName: "stub", modelId: "stub", toolPolicy: {},
-			extractors: { A: { enabled: true }, B: { enabled: false } },
-		};
-		await closeFlushSession({
-			sessionId,
-			resolveConfig: () => config,
-			resolveProviders: () => [],
-		});
-		expect(aCalled).toBe(0); // no tail to flush
+	test("extraction-hooks source RETIRED — no active threshold trigger / no StepEnd handler", () => {
+		// Static guard: the retired pathways are gone from the source code (the
+		// file may still MENTION them in doc comments explaining the retirement,
+		// but must not contain the executable trigger). We assert against the
+		// real retirement signals: no executable threshold list constant, no
+		// registry.register call, the RETIRED marker present.
+		const fs = require("node:fs");
+		const path = require("node:path");
+		const src = fs.readFileSync(
+			path.join(__dirname, "..", "..", "src", "runtime", "hooks", "extraction-hooks.ts"),
+			"utf-8",
+		);
+		// No executable DEFAULT_THRESHOLDS constant + no StepEnd registration.
+		expect(src).not.toContain("DEFAULT_THRESHOLDS");
+		expect(src).not.toMatch(/registry\.register\(\s*["']StepEnd["']/);
+		// The retirement marker is present (documents the decision).
+		expect(src).toContain("RETIRED");
+		// closeFlushSession is a no-op shell (present, but does nothing).
+		expect(src).toContain("export async function closeFlushSession");
 	});
 });
 
-// ─── 7. Mechanism 1 + resume: raw turns already in session storage ──
+// ─── 5. Mechanism 1 + resume: raw turns already in session storage ──
 
 describe("Mechanism 1 — raw turn persistence (resume gets full history)", () => {
 	test("AgentSession rebuilds messages from step-level storage on construct", () => {
@@ -540,30 +318,9 @@ describe("Mechanism 1 — raw turn persistence (resume gets full history)", () =
 		expect((msgs[0] as any).role).toBe("user");
 		expect((msgs[3] as any).role).toBe("assistant");
 	});
-
-	test("new session (no steps) gets empty messages but recall can still hit wiki memory", async () => {
-		// Write a wiki memory node via extractor A (simulating prior close flush).
-		const svc = makeExtractorA(JSON.stringify([
-			{ subject: "ImportantThing", type: "decision", content: "we chose X" },
-		]));
-		await svc.extractDelta({ sessionId: "old-sess", transcript: "x", fromSeq: 0, toSeq: 1 });
-
-		// New session: no steps at all.
-		const newSessionId = "new-sess";
-		const sess = new AgentSession("sys", 128000, newSessionId, sessionDB);
-		expect(sess.getMessages().length).toBe(0);
-
-		// v0.8 (P2 §11.6): MemoryRecall is retired — memory is now a wiki
-		// per-agent subtree. Reading goes through WikiStore.searchMemoryNodes
-		// (title+summary+body scan) + WikiStore.readNodeDetail (body).
-		const hits = wiki.searchMemoryNodes("ImportantThing");
-		expect(hits.length).toBeGreaterThan(0);
-		const detail = wiki.readNodeDetail(hits[0].id) ?? "";
-		expect(detail).toContain("ImportantThing");
-	});
 });
 
-// ─── 8. prune/compress order fix — large single turn not naked-dropped ──
+// ─── 6. prune/compress order fix — large single turn not naked-dropped ──
 
 describe("prune/compress order fix (RFC §2.18)", () => {
 	test("large single turn is truncated to fit, NOT naked-dropped", () => {
@@ -590,7 +347,7 @@ describe("prune/compress order fix (RFC §2.18)", () => {
 	});
 });
 
-// ─── 9. sliceTranscriptDelta ──────────────────────────────────
+// ─── 7. sliceTranscriptDelta ──────────────────────────────────
 
 describe("sliceTranscriptDelta", () => {
 	test("returns empty slice when no steps in range", () => {
@@ -616,89 +373,5 @@ describe("sliceTranscriptDelta", () => {
 		expect(slice.transcript).toContain("User:");
 		expect(slice.transcript).toContain("Assistant:");
 		expect(slice.transcript).toContain("glob");
-	});
-});
-
-// ─── 10. "Explicit not introduced" regression (acceptance-M5 末尾) ──
-
-describe("M5 regression — explicitly NOT introduced", () => {
-	test("no live checkpoint concept — cursor is just (lastExtractedSeq, lastThresholdIdx)", () => {
-		// The cursor store's columns are extraction-progress only.
-		// There is no "current work state" / "active checkpoint" node.
-		cursorStore.upsert({ sessionId: "x", lastExtractedSeq: 0, lastThresholdIdx: 0 });
-		const row = cursorStore.get("x")!;
-		expect(Object.keys(row).sort()).toEqual(
-			["createdAt", "lastExtractedAt", "lastExtractedSeq", "lastThresholdIdx", "sessionId", "updatedAt"].sort(),
-		);
-		// No 'transition' / 'taskState' / 'workState' / 'activeCheckpoint' field.
-		expect((row as any).transition).toBeUndefined();
-		expect((row as any).taskState).toBeUndefined();
-		expect((row as any).workState).toBeUndefined();
-		expect((row as any).activeCheckpoint).toBeUndefined();
-	});
-
-	test("no transition / task-change detector — extraction triggers only on token budget", async () => {
-		// Confirm the hook checks contextUsage against thresholds and nothing else.
-		const sessionId = "sess-no-trans";
-		seedSteps(sessionId, [{ role: "user", content: "q" }]);
-
-		let aCalled = 0;
-		registerExtractionHooks({
-			cursorStore,
-			buildExtractorA: () => { aCalled++; return makeExtractorA("[]"); },
-			buildExtractorB: () => makeExtractorB("[]"),
-		});
-		const registry = HookRegistry.getInstance();
-		const config: any = {
-			agentId: "dev", sessionId, db: sessionDB,
-			providerName: "stub", modelId: "stub", toolPolicy: {},
-			// Even with NO checkpointThresholds, the default is the token-budget
-			// triple [0.2, 0.45, 0.7]. There is no "transition detector" that
-			// would fire on tool-name changes or task boundaries.
-			extractors: { A: { enabled: true }, B: { enabled: false } },
-		};
-		// Below 20% → no trigger, regardless of how many "task transitions"
-		// happened in the transcript.
-		await (registry as any).trigger("StepEnd", {
-			agentId: "dev", sessionId, config, contextUsage: 0.1, providers: [],
-		});
-		expect(aCalled).toBe(0);
-	});
-
-	test("no external-event anchor — extraction source files have no write/api/委托 anchors", () => {
-		// Static check: the M5 extraction hook file must not contain logic
-		// that keys off toolName === "Write" / API calls / 委托 type as a
-		// trigger. Trigger is contextUsage (token budget) only.
-		const fs = require("node:fs");
-		const path = require("node:path");
-		const src = fs.readFileSync(
-			path.join(__dirname, "..", "..", "src", "runtime", "hooks", "extraction-hooks.ts"),
-			"utf-8",
-		);
-		// Hook should reference contextUsage + thresholds.
-		expect(src).toContain("contextUsage");
-		expect(src).toContain("thresholds");
-		// Hook should NOT key off tool name or event type as the trigger.
-		expect(src).not.toContain('toolName === "Write"');
-		expect(src).not.toContain('toolName === "Edit"');
-		expect(src).not.toContain('event === "api"');
-	});
-
-	test("no per-turn compression — extractor fires only at budget checkpoints", () => {
-		// Mechanism 2 explicitly states: trigger by token-budget low point,
-		// NOT by turn (every turn would be too expensive).
-		// The hook only fires when a new threshold is crossed — calling it
-		// every turn at the same usage does NOT re-fire (covered by the
-		// 'same threshold band → no new trigger' assertion in test 5).
-		// This test exists to document the invariant explicitly.
-		const fs = require("node:fs");
-		const path = require("node:path");
-		const src = fs.readFileSync(
-			path.join(__dirname, "..", "..", "src", "runtime", "hooks", "extraction-hooks.ts"),
-			"utf-8",
-		);
-		// Each threshold fires at most once per session — enforced by the
-		// cursor's lastThresholdIdx check.
-		expect(src).toContain("nextIdx === cursor.lastThresholdIdx");
 	});
 });

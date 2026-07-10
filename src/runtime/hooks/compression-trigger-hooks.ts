@@ -185,13 +185,46 @@ function exceedsThreshold(state: TokenState, abs: number, frac: number): boolean
 // Compression runner — single chokepoint (fresh-tail protection enforced here)
 // ---------------------------------------------------------------------------
 
-/** Build compressSession opts from the session config (reuses extractor A model). */
+/**
+ * Build compressSession opts from the session config (reuses extractor A model).
+ *
+ * sub-7: when config.wikiStoreGlobal is present, also wire an Extractor A
+ * service instance so each summary compressSession writes is fed to the
+ * multi-step wiki-merge agent (second product of compression). The Extractor A
+ * model config (config.extractors.A.provider/model) is reused. ExtractorAService
+ * is imported lazily (dynamic require) to avoid a static runtime→server cycle
+ * at module-load (the hook module is in runtime/, the service in server/).
+ */
 function buildCompressOpts(config: SessionConfig, providers: RuntimeProviderConfig[]) {
 	const ext = (config as any)?.extractors?.A ?? {};
 	const providerName = ext.provider ?? config.providerName;
 	const modelId = ext.model ?? config.modelId;
 	const contextWindow = getContextWindow(providers, config.providerName, config.modelId);
-	return { providers, providerName, modelId, contextWindow };
+	const opts: any = { providers, providerName, modelId, contextWindow };
+	const wiki = (config as any)?.wikiStoreGlobal;
+	if (wiki) {
+		try {
+			// Lazy require — server/extractor-a-service imports tools/wiki-tool
+			// (which imports server/wiki-node-store). Keeping this dynamic avoids
+			// pulling the whole server/ wiki stack into runtime/ at static load.
+			const { ExtractorAService } = require("../../server/extractor-a-service.js") as typeof import("../../server/extractor-a-service.js");
+			const agentId = config.agentId;
+			opts.extractorA = {
+				service: new ExtractorAService({ providers, providerName, modelId, wiki }),
+				// Default topic = per-agent (one memory subtree per agent;
+				// agentId is the stable cross-session handle). Callers that want
+				// a different topic partition can override resolveTopic.
+				resolveTopic: (_summary: unknown, _seg: unknown, sessionId: string) => ({
+					topicId: agentId ?? sessionId,
+					topicTitle: agentId ? `Memory: ${agentId}` : undefined,
+					agentId,
+				}),
+			};
+		} catch (err) {
+			log.warn("compress-trigger", `failed to wire Extractor A for compression (wiki merge disabled):`, (err as Error).message);
+		}
+	}
+	return opts;
 }
 
 /**

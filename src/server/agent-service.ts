@@ -867,11 +867,14 @@ export class AgentService implements PlatformObserver {
 		return caps;
 	}
 	evictSessionFromMemory(sessionId: string): void {
-		// v0.8 (M5): mechanism 3 — close flush. Fire extractor A on the tail
-		// batch (anything after the last extraction cursor) so session death
-		// doesn't lose content. fire-and-forget: we kick it off and don't
-		// await (eviction is synchronous from the session-manager's POV and
-		// must not block on LLM calls).
+		// steps-overhaul sub-7: the M5 close-flush (mechanism 3) is RETIRED —
+		// wiki extraction now happens via compressSession's Extractor A
+		// multi-step agent (decision 53 修订). closeFlushSession is kept as a
+		// no-op shell so this call site doesn't break; it does nothing now.
+		// The session's memory has already been merged into the wiki tree by
+		// the compression trigger throughout the session's life. Kept as a
+		// defensive try/catch + fire-and-forget in case future code restores
+		// eviction-time work.
 		try {
 			if (this.wikiStoreGlobal) {
 				const { closeFlushSession } = require("../runtime/hooks/extraction-hooks.js") as typeof import("../runtime/hooks/extraction-hooks.js");
