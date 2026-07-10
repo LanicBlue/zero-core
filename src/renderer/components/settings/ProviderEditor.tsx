@@ -21,6 +21,7 @@
 // Provider 字段变更需同步更新表单
 //
 import React, { useState, useEffect } from "react";
+import { formatContextWindow } from "../../utils/model-format.js";
 import { useProviderStore } from "../../store/provider-store.js";
 import type { Provider, ProviderModel } from "../../../shared/types.js";
 import { DEFAULT_URLS } from "../../../core/constants.js";
@@ -32,12 +33,6 @@ import { DEFAULT_URLS } from "../../../core/constants.js";
  * ≥1K → "128K", otherwise the raw number. Returns "" when there's nothing to
  * show (no/zero context window) so the caller can omit the tag.
  */
-function formatContextWindow(n?: number): string {
-	if (!n || n <= 0) return "";
-	if (n >= 1048576) return (n / 1048576).toFixed(n % 1048576 === 0 ? 0 : 1) + "M";
-	if (n >= 1000) return Math.round(n / 1000) + "K";
-	return String(n);
-}
 
 export function ProviderEditor({ provider, onClose }: { provider: Provider | null; onClose: () => void }) {
 	const { create, update, addModel, removeModel, fetchModels, fetchProviders } = useProviderStore();

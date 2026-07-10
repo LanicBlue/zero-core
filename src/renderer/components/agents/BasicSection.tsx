@@ -21,6 +21,7 @@
 // 模型列表获取逻辑变更需确保加载状态正确
 //
 import type { FormState } from "./agent-editor-types.js";
+import { modelOptionSuffix } from "../../utils/model-format.js";
 
 const api = () => (window as any).api;
 
@@ -41,25 +42,7 @@ interface Props {
 	allModelsByGroup: Record<string, ModelOption[]>;
 }
 
-function formatCtx(n?: number): string {
-	if (!n) return "";
-	return n >= 1048576 ? (n / 1048576).toFixed(n % 1048576 === 0 ? 0 : 1) + "M" : n >= 1000 ? Math.round(n / 1000) + "K" : String(n);
-}
 
-/**
- * Build the suffix shown after a model name in a <select> option —
- * model-tag-polish #3. Dropdowns can only render strings, so the
- * context-window + image info from ProviderEditor's tags is collapsed into one
- * line: " · 128K" / " · 1M · image" / "" (nothing when neither is set).
- * Uses " · " as the separator to match the tag visual order (window · image).
- */
-function modelOptionSuffix(contextWindow?: number, multimodal?: boolean): string {
-	const parts: string[] = [];
-	const ctx = formatCtx(contextWindow);
-	if (ctx) parts.push(ctx);
-	if (multimodal === true) parts.push("image");
-	return parts.length > 0 ? " · " + parts.join(" · ") : "";
-}
 
 export function BasicSection({ form, onSet, onSetForm, onAutoSave, defaultWorkspaceDisplay, allModelsByGroup }: Props) {
 	return (

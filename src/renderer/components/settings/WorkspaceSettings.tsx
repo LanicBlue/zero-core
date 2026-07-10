@@ -21,27 +21,12 @@
 // 工作区配置字段变更需同步更新 shared/types.ts
 //
 import { useEffect, useState } from "react";
+import { modelOptionSuffix } from "../../utils/model-format.js";
 import { useProviderStore } from "../../store/provider-store.js";
 
 const api = () => (window as any).api;
 
-function formatCtx(n?: number): string {
-	if (!n) return "";
-	return n >= 1048576 ? (n / 1048576).toFixed(n % 1048576 === 0 ? 0 : 1) + "M" : n >= 1000 ? Math.round(n / 1000) + "K" : String(n);
-}
 
-/**
- * Suffix for model <option> text — model-tag-polish #3. Collapses the
- * ProviderEditor tag info (context-window + image) into one string since a
- * dropdown can only show text. "" when neither is set.
- */
-function modelOptionSuffix(contextWindow?: number, multimodal?: boolean): string {
-	const parts: string[] = [];
-	const ctx = formatCtx(contextWindow);
-	if (ctx) parts.push(ctx);
-	if (multimodal === true) parts.push("image");
-	return parts.length > 0 ? " · " + parts.join(" · ") : "";
-}
 
 export function WorkspaceSettings() {
 	const { providers } = useProviderStore();
