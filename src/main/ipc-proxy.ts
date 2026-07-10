@@ -74,7 +74,6 @@ const R: Record<string, RouteMapping> = {
 	"providers:update":        { method: "PUT", path: "/api/providers/:id", buildReq: (id, input) => ({ params: { id }, body: input }) },
 	"providers:delete":        { method: "DELETE", path: "/api/providers/:id", buildReq: (id) => ({ params: { id } }) },
 	"providers:add-model":     { method: "POST", path: "/api/providers/:id/models", buildReq: (providerId, model) => ({ params: { id: providerId }, body: model }) },
-	"providers:update-model":  { method: "PATCH", path: "/api/providers/:id/models/:modelId", buildReq: (providerId, modelId, patch) => ({ params: { id: providerId, modelId }, body: patch }) },
 	"providers:remove-model":  { method: "DELETE", path: "/api/providers/:id/models/:modelId", buildReq: (providerId, modelId) => ({ params: { id: providerId, modelId } }) },
 	"providers:fetch-models":  { method: "GET", path: "/api/providers/:id/fetch-models", buildReq: (providerId) => ({ params: { id: providerId } }) },
 	"models:list":             { method: "GET", path: "/api/models", buildReq: () => ({}) },

@@ -8,9 +8,7 @@
 //      与 D3 路径 getMultimodal(布尔,undefined→false)对照。
 //   2. AgentLoop.getModelMultimodalTri: 委托 getMultimodalTri(读当前 config 的
 //      provider/model),与 getModelId 同路径。
-//   3. ProviderStore.updateModel: 手填 multimodal 持久化到 ProviderModel
-//      (覆盖 OpenRouter 未覆盖的模型;真实 SessionDB)。
-//   4. chat-store ContextInfo.modelMultimodal: 字段流转 + updateContextInfo
+//   3. chat-store ContextInfo.modelMultimodal: 字段流转 + updateContextInfo
 //      merge 语义(streaming token 刷新不覆盖)。
 //
 // ## 范围
@@ -31,7 +29,6 @@ import { join } from "node:path";
 import { getMultimodal, getMultimodalTri } from "../../src/runtime/provider-factory.js";
 import type { RuntimeProviderConfig } from "../../src/runtime/types.js";
 import { SessionDB } from "../../src/server/session-db.js";
-import { ProviderStore } from "../../src/server/provider-store.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import {
 	useChatStore,
@@ -170,90 +167,7 @@ describe("sub-6: AgentLoop.getModelMultimodalTri delegates to getMultimodalTri",
 	});
 });
 
-// ── 3. ProviderStore.updateModel (hand-set multimodal persistence) ──────────
-
-describe("sub-6: ProviderStore.updateModel persists hand-set multimodal", () => {
-	let tmpDir: string;
-	let sessionDB: SessionDB;
-	let store: ProviderStore;
-
-	beforeEach(() => {
-		tmpDir = mkdtempSync(join(tmpdir(), "zero-mm-store-"));
-		sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
-		runMigrations(sessionDB);
-		store = new ProviderStore(sessionDB);
-	});
-
-	afterEach(() => {
-		sessionDB.close();
-		rmSync(tmpDir, { recursive: true, force: true });
-	});
-
-	test("patches multimodal=true onto a model that had none (OpenRouter-uncovered)", () => {
-		const created = store.create({
-			name: "ManualProvider", type: "openai-compatible", apiKey: "k",
-			baseUrl: "http://x", enabled: true, isSystem: false,
-			models: [{ id: "manual-1", name: "Manual 1", contextWindow: 32000 }],
-		} as any);
-		const before = created.models.find((m) => m.id === "manual-1");
-		expect(before?.multimodal).toBeUndefined();
-
-		const updated = store.updateModel(created.id, "manual-1", { multimodal: true });
-		const after = updated.models.find((m) => m.id === "manual-1");
-		expect(after?.multimodal).toBe(true);
-		// Other fields preserved.
-		expect(after?.name).toBe("Manual 1");
-		expect(after?.contextWindow).toBe(32000);
-	});
-
-	test("flips multimodal from true to false", () => {
-		const created = store.create({
-			name: "P2", type: "openai-compatible", apiKey: "k",
-			baseUrl: "http://x", enabled: true, isSystem: false,
-			models: [{ id: "m", name: "M", contextWindow: 8000, multimodal: true }],
-		} as any);
-		const updated = store.updateModel(created.id, "m", { multimodal: false });
-		expect(updated.models.find((mm) => mm.id === "m")?.multimodal).toBe(false);
-	});
-
-	test("persists across store reload (real DB round-trip)", () => {
-		const created = store.create({
-			name: "P3", type: "openai-compatible", apiKey: "k",
-			baseUrl: "http://x", enabled: true, isSystem: false,
-			models: [{ id: "persist-m", name: "Persist", contextWindow: 16000 }],
-		} as any);
-		store.updateModel(created.id, "persist-m", { multimodal: true });
-
-		// New store instance over the same DB file → reads persisted value.
-		const reloaded = new ProviderStore(sessionDB);
-		const provider = reloaded.get(created.id);
-		expect(provider?.models.find((m) => m.id === "persist-m")?.multimodal).toBe(true);
-	});
-
-	test("does not mutate the model id (immutable identity)", () => {
-		const created = store.create({
-			name: "P4", type: "openai-compatible", apiKey: "k",
-			baseUrl: "http://x", enabled: true, isSystem: false,
-			models: [{ id: "id-stable", name: "Stable", contextWindow: 4000 }],
-		} as any);
-		// Even if a rogue patch tried to change id, updateModel must preserve it.
-		const updated = store.updateModel(created.id, "id-stable", { id: "tampered", multimodal: true } as any);
-		const model = updated.models.find((m) => m.name === "Stable");
-		expect(model?.id).toBe("id-stable");
-		expect(model?.multimodal).toBe(true);
-	});
-
-	test("throws when model not found", () => {
-		const created = store.create({
-			name: "P5", type: "openai-compatible", apiKey: "k",
-			baseUrl: "http://x", enabled: true, isSystem: false,
-			models: [],
-		} as any);
-		expect(() => store.updateModel(created.id, "nope", { multimodal: true })).toThrow(/Model not found/);
-	});
-});
-
-// ── 4. chat-store ContextInfo.modelMultimodal flow ──────────────────────────
+// ── 3. chat-store ContextInfo.modelMultimodal flow ──────────────────────────
 
 describe("sub-6: ContextInfo.modelMultimodal field flow", () => {
 	function reset() {

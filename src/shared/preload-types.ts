@@ -90,7 +90,6 @@ export interface WindowApi {
 	providersUpdate: (id: string, input: UpdateProviderInput) => Promise<Provider | { error: string }>;
 	providersDelete: (id: string) => Promise<{ success: true }>;
 	providersAddModel: (providerId: string, model: ProviderModel) => Promise<Provider | { error: string }>;
-	providersUpdateModel: (providerId: string, modelId: string, patch: Partial<ProviderModel>) => Promise<Provider | { error: string }>;
 	providersRemoveModel: (providerId: string, modelId: string) => Promise<Provider | { error: string }>;
 	providersFetchModels: (providerId: string) => Promise<FetchedModel[]>;
 

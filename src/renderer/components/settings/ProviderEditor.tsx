@@ -26,7 +26,7 @@ import type { Provider, ProviderModel } from "../../../shared/types.js";
 import { DEFAULT_URLS } from "../../../core/constants.js";
 
 export function ProviderEditor({ provider, onClose }: { provider: Provider | null; onClose: () => void }) {
-	const { create, update, addModel, updateModel, removeModel, fetchModels, fetchProviders } = useProviderStore();
+	const { create, update, addModel, removeModel, fetchModels, fetchProviders } = useProviderStore();
 	const isEdit = !!provider;
 
 	const [form, setForm] = useState({
@@ -153,30 +153,6 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 		}
 	};
 
-	/**
-	 * multimodal-input sub-6: hand-set a model's image capability. Toggles
-	 * between `true` (supports image) and `false` (does not); sets the explicit
-	 * value so it overrides the undefined safe-default (design D3) for models
-	 * OpenRouter doesn't cover. Persisted to ProviderModel.multimodal.
-	 *
-	 * Edit mode: persists immediately via updateModel IPC (same pattern as
-	 * addModel/removeModel). Create mode: mutates local `models` state (saved
-	 * on submit with the rest of the form).
-	 */
-	const handleToggleMultimodal = async (modelId: string) => {
-		const current = (isEdit
-			? (useProviderStore.getState().providers.find((p) => p.id === provider!.id)?.models ?? [])
-			: models
-		).find((m) => m.id === modelId);
-		const next = !(current?.multimodal ?? false);
-		if (isEdit && provider) {
-			await updateModel(provider.id, modelId, { multimodal: next });
-			const updated = useProviderStore.getState().providers.find((p) => p.id === provider.id);
-			if (updated) setModels(updated.models);
-		} else {
-			setModels(models.map((m) => (m.id === modelId ? { ...m, multimodal: next } : m)));
-		}
-	};
 
 	const displayModels = isEdit
 		? (useProviderStore.getState().providers.find((p) => p.id === provider!.id)?.models ?? [])
@@ -250,20 +226,8 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 									<span className="model-id">{m.name || m.id}</span>
 									<div className="model-modalities">
 										<span className="modality-tag modality-tag-text" title="文本输入(所有模型支持)">text</span>
-										{m.multimodal === true ? (
-											<button
-												type="button"
-												className="modality-tag modality-tag-image modality-tag-on"
-												title="支持图像输入(点击移除)"
-												onClick={() => handleToggleMultimodal(m.id)}
-											>image</button>
-										) : (
-											<button
-												type="button"
-												className="modality-tag modality-tag-add"
-												title={m.multimodal === undefined ? "图像能力未设置(默认不支持);点击添加" : "不支持图像输入;点击添加"}
-												onClick={() => handleToggleMultimodal(m.id)}
-											>+ image</button>
+										{m.multimodal === true && (
+											<span className="modality-tag modality-tag-image modality-tag-on" title="支持图像输入">image</span>
 										)}
 									</div>
 									<button type="button" className="btn-ghost btn-sm" onClick={() => handleRemoveModel(m.id)}>×</button>

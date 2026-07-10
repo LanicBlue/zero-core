@@ -33,9 +33,6 @@ interface ProviderState {
 	update: (id: string, input: Partial<Provider>) => Promise<Provider>;
 	remove: (id: string) => Promise<void>;
 	addModel: (providerId: string, model: ProviderModel) => Promise<Provider>;
-	/** multimodal-input sub-6: patch a single model's fields (e.g. hand-set
-	 * `multimodal`). Persists via providers:update-model IPC. */
-	updateModel: (providerId: string, modelId: string, patch: Partial<ProviderModel>) => Promise<Provider>;
 	removeModel: (providerId: string, modelId: string) => Promise<Provider>;
 	fetchModels: (providerId: string) => Promise<ProviderModel[]>;
 }
@@ -80,13 +77,6 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
 		return updated;
 	},
 
-	updateModel: async (providerId, modelId, patch) => {
-		const updated = await api().providersUpdateModel(providerId, modelId, patch);
-		set((state) => ({
-			providers: state.providers.map((p) => (p.id === providerId ? updated : p)),
-		}));
-		return updated;
-	},
 
 	removeModel: async (providerId, modelId) => {
 		const updated = await api().providersRemoveModel(providerId, modelId);
