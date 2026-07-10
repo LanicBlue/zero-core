@@ -248,29 +248,24 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 							{displayModels.map((m) => (
 								<div key={m.id} className="model-item">
 									<span className="model-id">{m.name || m.id}</span>
-									{m.group && <span className="model-group">{m.group}</span>}
-									{/* multimodal-input sub-6: hand-set image capability.
-									 * Tri-state display: checked = true, unchecked with
-									 * title "unset" = undefined (D3 safe-default), but
-									 * toggle is binary (false<->true). Once toggled the
-									 * value is explicit (overrides undefined). */}
-									<label
-										className="checkbox-label model-multimodal-toggle"
-										title={
-											m.multimodal === undefined
-												? "图像能力未设置(默认按不支持);勾选=支持图像"
-												: m.multimodal
-													? "支持图像输入"
-													: "不支持图像输入"
-										}
-									>
-										<input
-											type="checkbox"
-											checked={m.multimodal === true}
-											onChange={() => handleToggleMultimodal(m.id)}
-										/>
-										🖼
-									</label>
+									<div className="model-modalities">
+										<span className="modality-tag modality-tag-text" title="文本输入(所有模型支持)">text</span>
+										{m.multimodal === true ? (
+											<button
+												type="button"
+												className="modality-tag modality-tag-image modality-tag-on"
+												title="支持图像输入(点击移除)"
+												onClick={() => handleToggleMultimodal(m.id)}
+											>image</button>
+										) : (
+											<button
+												type="button"
+												className="modality-tag modality-tag-add"
+												title={m.multimodal === undefined ? "图像能力未设置(默认不支持);点击添加" : "不支持图像输入;点击添加"}
+												onClick={() => handleToggleMultimodal(m.id)}
+											>+ image</button>
+										)}
+									</div>
 									<button type="button" className="btn-ghost btn-sm" onClick={() => handleRemoveModel(m.id)}>×</button>
 								</div>
 							))}
