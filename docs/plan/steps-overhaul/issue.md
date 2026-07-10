@@ -4,6 +4,7 @@
 - **提出**:2026-07-09
 - **类型**:改进(架构 / 存储 / UX)
 - **关联**:[`../design/multimodal-input/`](../design/multimodal-input/)(multimodal-input 会给 turns 表加 `attachments` 列,本 effort 若改表名/结构需协调顺序)
+- **scope 扩大(2026-07-10)**:含**压缩策略重整**(压缩与表结构强耦合)+ **吸收 session-archive-memory issue**(后台 session 跑完自动归档 + 提记忆;归档 = 压缩记忆之上加导出 JSON + 删库,父/子 agent 通用)。原 `docs/issues/session-archive-memory/` 已并入本 effort。
 
 ## 问题
 
