@@ -22,9 +22,25 @@
 // - 全局配置变更时需更新
 // - 保持组件层次清晰
 //
-import React from "react";
+import React, { useEffect } from "react";
 import AppLayout from "./components/layout/AppLayout.js";
 
 export default function App() {
+	// Electron/Chromium:文件拖入窗口默认显示 no-drop 光标 + 会导航打开该文件。
+	// document 级 dragover+drop preventDefault → 全窗口不再禁止光标、不再打开文件;
+	// 实际附件 ingest 由 chat-panel 的 onDrop 处理(multimodal-input)。
+	// 拖到 chat 区以外:仅阻止导航,不 ingest(无 onDrop 命中)。
+	useEffect(() => {
+		const prevent = (e: DragEvent) => {
+			e.preventDefault();
+		};
+		document.addEventListener("dragover", prevent);
+		document.addEventListener("drop", prevent);
+		return () => {
+			document.removeEventListener("dragover", prevent);
+			document.removeEventListener("drop", prevent);
+		};
+	}, []);
+
 	return <AppLayout />;
 }
