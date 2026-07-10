@@ -1136,13 +1136,20 @@ body {
 /* ─── Multimodal input (effort: multimodal-input sub-5) ─────────── */
 
 /* Hidden-but-accessible file input (driven by the + button). Stays in the a11y
-   tree but is moved off-screen so it doesn't affect layout. */
+   tree but is moved off-screen so it doesn't affect layout. model-tag-polish #4:
+   added explicit left/top so the element is deterministically off-screen under
+   all flex/Electron layouts (the previous offset-less absolute could, in some
+   Chromium versions, land the 1px box on top of the + button and swallow the
+   click that should have opened the file dialog). */
 .sr-only-attach {
   position: absolute;
+  left: -9999px;
+  top: 0;
   width: 1px; height: 1px;
   padding: 0; margin: -1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
 }
@@ -1164,10 +1171,13 @@ body {
   color: var(--fg-default) !important;
 }
 
-/* Drag-over highlight on the whole input bar (dropzone). */
-.chat-input-bar-dragging {
+/* model-tag-polish #4: dropzone now covers the whole chat panel (the input-bar
+   -only dropzone was the root cause of "drag doesn't work" — files dropped on
+   the messages area hit no preventDefault'd dragover). Same visual as the old
+   input-bar highlight so the existing E2E (case 6) and muscle memory line up. */
+.chat-panel-dragging {
   outline: 2px dashed var(--color-primary);
-  outline-offset: -2px;
+  outline-offset: -4px;
   background: var(--bg-subtle);
 }
 
@@ -6698,8 +6708,16 @@ n.tools-page-test-chips {
 	background: transparent; color: var(--text-dim, #8a8a8a); cursor: default;
 }
 .modality-tag-text { cursor: default; }
+/* image tag: same dim style as text (no blue highlight) — model-tag-polish #1.
+   Keep the modifier classes for selector stability / future toggle, but drop
+   the accent fill so the tag reads as informational, not "active". */
+.modality-tag-image,
 .modality-tag-image.modality-tag-on {
-	background: var(--accent, #3b82f6); color: #fff; border-color: transparent; cursor: pointer;
+	background: transparent; color: var(--text-dim, #8a8a8a); border-color: var(--border, #3a3a3a); cursor: default;
+}
+.modality-tag-window {
+	/* context-window tag: same dim style as text/image — model-tag-polish #2. */
+	background: transparent; color: var(--text-dim, #8a8a8a); border-color: var(--border, #3a3a3a); cursor: default;
 }
 .modality-tag-add {
 	border-style: dashed; color: var(--text-dim, #6a6a6a); cursor: pointer;

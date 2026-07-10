@@ -46,6 +46,21 @@ function formatCtx(n?: number): string {
 	return n >= 1048576 ? (n / 1048576).toFixed(n % 1048576 === 0 ? 0 : 1) + "M" : n >= 1000 ? Math.round(n / 1000) + "K" : String(n);
 }
 
+/**
+ * Build the suffix shown after a model name in a <select> option —
+ * model-tag-polish #3. Dropdowns can only render strings, so the
+ * context-window + image info from ProviderEditor's tags is collapsed into one
+ * line: " · 128K" / " · 1M · image" / "" (nothing when neither is set).
+ * Uses " · " as the separator to match the tag visual order (window · image).
+ */
+function modelOptionSuffix(contextWindow?: number, multimodal?: boolean): string {
+	const parts: string[] = [];
+	const ctx = formatCtx(contextWindow);
+	if (ctx) parts.push(ctx);
+	if (multimodal === true) parts.push("image");
+	return parts.length > 0 ? " · " + parts.join(" · ") : "";
+}
+
 export function BasicSection({ form, onSet, onSetForm, onAutoSave, defaultWorkspaceDisplay, allModelsByGroup }: Props) {
 	return (
 		<div className="editor-section">
@@ -79,7 +94,7 @@ export function BasicSection({ form, onSet, onSetForm, onAutoSave, defaultWorksp
 						<optgroup key={group} label={group}>
 							{groupModels.map((m) => (
 								<option key={`${m.provider}|${m.id}`} value={`${m.provider}|${m.id}`}>
-									{m.name}{m.contextWindow ? ` — ${formatCtx(m.contextWindow)}` : ""}
+									{m.name}{modelOptionSuffix(m.contextWindow, m.multimodal)}
 								</option>
 							))}
 						</optgroup>

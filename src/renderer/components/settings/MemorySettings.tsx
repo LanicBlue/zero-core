@@ -38,6 +38,19 @@ function formatCtx(n?: number): string {
 	return n >= 1048576 ? (n / 1048576).toFixed(n % 1048576 === 0 ? 0 : 1) + "M" : n >= 1000 ? Math.round(n / 1000) + "K" : String(n);
 }
 
+/**
+ * Suffix for model <option> text — model-tag-polish #3. Collapses the
+ * ProviderEditor tag info (context-window + image) into one string since a
+ * dropdown can only show text. "" when neither is set.
+ */
+function modelOptionSuffix(contextWindow?: number, multimodal?: boolean): string {
+	const parts: string[] = [];
+	const ctx = formatCtx(contextWindow);
+	if (ctx) parts.push(ctx);
+	if (multimodal === true) parts.push("image");
+	return parts.length > 0 ? " · " + parts.join(" · ") : "";
+}
+
 interface CompressionConfig {
 	enabled?: boolean;
 	keepRecentTurns?: number;
@@ -60,11 +73,11 @@ export function MemorySettings() {
 		}).catch(() => setLoading(false));
 	}, []);
 
-	const enabledModels: { provider: string; id: string; name: string; group: string; contextWindow?: number }[] = [];
+	const enabledModels: { provider: string; id: string; name: string; group: string; contextWindow?: number; multimodal?: boolean }[] = [];
 	for (const p of providers) {
 		if (!p.enabled) continue;
 		for (const m of p.models) {
-			enabledModels.push({ provider: p.name, id: m.id, name: m.name || m.id, group: m.group || p.name, contextWindow: m.contextWindow });
+			enabledModels.push({ provider: p.name, id: m.id, name: m.name || m.id, group: m.group || p.name, contextWindow: m.contextWindow, multimodal: m.multimodal });
 		}
 	}
 
@@ -117,7 +130,7 @@ export function MemorySettings() {
 									.filter((m) => m.group === group)
 									.map((m) => (
 										<option key={`${m.provider}|${m.id}`} value={`${m.provider}|${m.id}`}>
-											{m.name}{m.contextWindow ? ` — ${formatCtx(m.contextWindow)}` : ""}
+											{m.name}{modelOptionSuffix(m.contextWindow, m.multimodal)}
 										</option>
 									))}
 							</optgroup>

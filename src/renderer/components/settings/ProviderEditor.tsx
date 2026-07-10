@@ -25,6 +25,20 @@ import { useProviderStore } from "../../store/provider-store.js";
 import type { Provider, ProviderModel } from "../../../shared/types.js";
 import { DEFAULT_URLS } from "../../../core/constants.js";
 
+/**
+ * Format a context-window size for the model-row tag — model-tag-polish #2.
+ * Mirrors the existing formatCtx convention used in the model dropdowns
+ * (BasicSection / WorkspaceSettings / MemorySettings): ≥1M → "1M"/"1.5M",
+ * ≥1K → "128K", otherwise the raw number. Returns "" when there's nothing to
+ * show (no/zero context window) so the caller can omit the tag.
+ */
+function formatContextWindow(n?: number): string {
+	if (!n || n <= 0) return "";
+	if (n >= 1048576) return (n / 1048576).toFixed(n % 1048576 === 0 ? 0 : 1) + "M";
+	if (n >= 1000) return Math.round(n / 1000) + "K";
+	return String(n);
+}
+
 export function ProviderEditor({ provider, onClose }: { provider: Provider | null; onClose: () => void }) {
 	const { create, update, addModel, removeModel, fetchModels, fetchProviders } = useProviderStore();
 	const isEdit = !!provider;
@@ -225,9 +239,18 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 								<div key={m.id} className="model-item">
 									<span className="model-id">{m.name || m.id}</span>
 									<div className="model-modalities">
+										{/* model-tag-polish #2: context-window tag first (e.g. 205K / 1M),
+										    then text, then image-if-supported. All three use the same
+										    dim .modality-tag style (#1). */}
+										{(() => {
+											const cw = formatContextWindow(m.contextWindow);
+											return cw ? (
+												<span className="modality-tag modality-tag-window" title={`上下文窗口 ${m.contextWindow}`}>{cw}</span>
+											) : null;
+										})()}
 										<span className="modality-tag modality-tag-text" title="文本输入(所有模型支持)">text</span>
 										{m.multimodal === true && (
-											<span className="modality-tag modality-tag-image modality-tag-on" title="支持图像输入">image</span>
+											<span className="modality-tag modality-tag-image" title="支持图像输入">image</span>
 										)}
 									</div>
 									<button type="button" className="btn-ghost btn-sm" onClick={() => handleRemoveModel(m.id)}>×</button>

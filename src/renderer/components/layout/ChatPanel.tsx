@@ -1012,8 +1012,24 @@ export default function ChatPanel() {
 		);
 	};
 
-	return (
-		<main className="chat-panel" data-session-id={activeSessionId ?? ""}>
+		// model-tag-polish #4: dropzone covers the WHOLE chat panel (header +
+		// messages + input), not just the narrow input bar. The original sub-5
+		// wiring bound onDrop to .chat-input-bar only — dropping a file on the
+		// large messages area did nothing (no onDragOver → no preventDefault →
+		// the browser would navigate to/open the dropped file instead of
+		// attaching it). That's why "only paste worked": paste is a textarea
+		// event (always wired), but drop needed a preventDefault'd dragover
+		// handler on the element you drop onto. Moving the handlers up to
+		// <main> makes anywhere in the chat a valid drop target. The
+		// chat-input-bar handlers are removed (would double-handle).
+		return (
+		<main
+			className={`chat-panel${isDragging ? " chat-panel-dragging" : ""}`}
+			data-session-id={activeSessionId ?? ""}
+			onDrop={handleDrop}
+			onDragOver={handleDragOver}
+			onDragLeave={handleDragLeave}
+		>
 			{/* Requirement discussion header */}
 			{activeRequirementId && activeRequirement && (
 				<RequirementHeader
@@ -1182,12 +1198,7 @@ export default function ChatPanel() {
 			{/* C2: queued inputs (submitted while running) — sits right above the input bar. */}
 			<InputQueueStrip />
 
-			<div
-				className={`chat-input-bar${isDragging ? " chat-input-bar-dragging" : ""}`}
-				onDrop={handleDrop}
-				onDragOver={handleDragOver}
-				onDragLeave={handleDragLeave}
-			>
+			<div className="chat-input-bar">
 				{/* multimodal-input sub-5: hidden file input driven by the + button.
 				    multiple + no accept restriction → images / PDF / any file. The
 				    class .sr-only-attach keeps it in the a11y tree (visually hidden)
