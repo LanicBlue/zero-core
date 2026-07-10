@@ -194,21 +194,16 @@ export function createSessionRouter(deps: {
 
 		const seqParam = parseInt(req.params.seq);
 
-		// Step 4A: step-only — find the step(s) for this turnGroup and update content.
+		// Step 4A: step-only — find the step(s) for this turnGroup and update
+		// content. steps is the single source of truth; the old "also mirror to
+		// messages table" path is GONE (steps-overhaul sub-3: messages is now
+		// summary+cursor, no step content). recreateLoop below rebuilds the
+		// in-memory LLM view from steps, so the edit takes effect immediately.
 		const steps = db.getStepGroup(session.id, seqParam);
 		for (const step of steps) {
 			if (step.role === "user") {
 				db.updateStepContent(session.id, step.seq, newText);
 			}
-		}
-
-		// Also update messages table for in-memory cache
-		const rows = db.getMessagesWithSeq(session.id);
-		const target = rows.find((r: any) => r.seq === seqParam);
-		if (target) {
-			const msg = JSON.parse(target.msg_json);
-			msg.content = newText;
-			db.updateMessageContent(session.id, seqParam, newText, JSON.stringify(msg));
 		}
 		const agent = agentStore.get(req.params.agentId);
 		agentService.recreateLoop(req.params.agentId, session.id, agent);
@@ -223,9 +218,10 @@ export function createSessionRouter(deps: {
 
 		const seqParam = parseInt(req.params.seq);
 
-		// Step 4A: step-only — delete all steps in the turnGroup.
+		// Step 4A: step-only — delete all steps in the turnGroup. (sub-3: the
+		// old db.deleteMessage mirror is removed — messages no longer caches
+		// step content; deleteStepGroup on steps is authoritative.)
 		db.deleteStepGroup(session.id, seqParam);
-		db.deleteMessage(session.id, seqParam);
 		const agent = agentStore.get(req.params.agentId);
 		agentService.recreateLoop(req.params.agentId, session.id, agent);
 		res.json({ success: true });

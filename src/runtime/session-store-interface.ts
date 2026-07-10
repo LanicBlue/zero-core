@@ -34,11 +34,28 @@ export interface StepUsage {
 }
 
 /**
- * Input shape for the step-level write API (appendStep / upsertStep /
- * replaceStepsFromMessages). `content` stays a plain string (design principle
- * A — multimodal-input sub-2): attachment metadata flows separately via
- * `attachments` and is persisted to the `turns.attachments` column as JSON.
- * `attachments` is optional for back-compat with pre-multimodal callers.
+ * steps-overhaul sub-3: re-export of the summary block type from SessionDB so
+ * the runtime layer can read/write summaries without importing server/ (which
+ * would create a runtime cycle). Structurally identical to SessionDB's
+ * MessageSummary — kept as a type alias for clarity at call sites.
+ */
+export interface MessageSummary {
+	title: string;
+	sections: { [k: string]: string | undefined };
+	stepRange?: { from: number; to: number };
+	createdAt: string;
+}
+
+/**
+ * Input shape for the step-level write API (appendStep / upsertStep). `content`
+ * stays a plain string (design principle A — multimodal-input sub-2):
+ * attachment metadata flows separately via `attachments` and is persisted to
+ * the `steps.attachments` column as JSON. `attachments` is optional for
+ * back-compat with pre-multimodal callers.
+ *
+ * steps-overhaul sub-3: replaceStepsFromMessages is REMOVED from this shape's
+ * user list (the method is deleted); StepInput now backs only appendStep /
+ * upsertStep.
  */
 export interface StepInput {
 	seq: number;
@@ -73,8 +90,19 @@ export interface StepRow {
  * Runtime layer uses this instead of depending on server/SessionDB.
  */
 export interface ISessionStore {
-	getMessages(sessionId: string): any[];
-	saveTurn(sessionId: string, messages: any[]): void;
+	/**
+	 * steps-overhaul sub-3: the old `getMessages(sessionId)` / `saveTurn(...)`
+	 * are REMOVED — the `messages` table no longer stores LLM-view content
+	 * (redefined to summary blocks + a compression cursor). Use {@link getSteps}
+	 * for step content and the summary/cursor API below for LLM-view continuity.
+	 *
+	 * The new messages API is OPTIONAL on the interface (it's only consumed by
+	 * AgentSession.rebuildFromTurns, which null-checks before calling). Mocks
+	 * that don't exercise the 3-zone assembly can omit it.
+	 */
+	getSummaries?(sessionId: string): MessageSummary[];
+	getCompressionCursor?(sessionId: string): number | null;
+
 	getTurnCount(sessionId: string): number;
 	getMainSession(agentId: string): { id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string } | undefined;
 	createSession(
@@ -169,7 +197,9 @@ export interface ISessionStore {
 	updateStepContent(sessionId: string, seq: number, content: string, usage?: StepUsage): void;
 	deleteStepGroup(sessionId: string, turnGroup: number): void;
 	getTurnGroupCount(sessionId: string): number;
-	/** multimodal-input sub-2: each step's optional `attachments` is persisted
-	 *  to the `turns.attachments` column as JSON. */
-	replaceStepsFromMessages(sessionId: string, steps: StepInput[]): void;
+	// steps-overhaul sub-3: replaceStepsFromMessages is REMOVED — it was the
+	// destructive "rebuild steps from compressed messages" path used by old
+	// L1/L2 compression. With steps now the immutable source of truth and
+	// messages reduced to summary+cursor, no caller remains. Sub-4 will also
+	// delete the dead compression-engine.
 }

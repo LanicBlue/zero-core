@@ -1,41 +1,34 @@
-// Step 3A acceptance test: compression evaluates on StepEnd, per-step.
+// steps-overhaul sub-3: compression StepEnd hook is DISABLED (no-op).
 //
 // # File说明书
-// ## 核心功能
-// 验证 Step 3A (compression hook moved PostTurnComplete → StepEnd):
-//   - StepEnd with contextUsage <= l1Threshold → compressIfNeeded early-returns
-//     (didCompress = false); no replaceMessages / saveToDb side effect.
-//   - StepEnd with contextUsage > l1Threshold (crossed at step 2) →
-//     compressIfNeeded fires at THAT step's StepEnd, returns didCompress = true,
-//     and the hook applies replaceMessages + saveToDb inside the StepEnd handler
-//     (per-step timing, NOT deferred to a turn-end boundary).
+// ## 核心功能(当前)
+// Originally this file verified that compression evaluated per-step on StepEnd
+// (Step 3A: the threshold-crossing engine fired at the step that crossed
+// l1Threshold, not deferred to the turn boundary). sub-3 DISABLED that trigger:
+// the `messages` table was redefined to "summary + compression cursor" (no step
+// content), so the old L1/L2 engine — which writes the retired messages shape
+// and calls the deleted syncTurnsAfterCompression/replaceStepsFromMessages —
+// would crash if it ran. sub-3 leaves the engine code as dead code and no-ops
+// the StepEnd handler; sub-4 will delete the engine + the hook entirely and
+// land the new Extractor A.
 //
-// ## 输入
-// vi.mock'd CompressionEngine (we control compressIfNeeded's return value to
-// assert on didCompress deterministically without a live LLM), a fake session
-// exposing getMessages/replaceMessages/saveToDb/getSessionId, and a config
-// whose compression.l1Threshold = 0.5.
-//
-// ## 输出
-// Vitest cases.
+// This file now asserts the DISABLED contract:
+//   - StepEnd with contextUsage <= l1Threshold → engine NOT reached (no-op).
+//   - StepEnd with contextUsage > l1Threshold → engine STILL NOT reached
+//     (the whole point of sub-3: the trigger is gone, regardless of usage).
+//   - No saveToDb, no replaceMessages side effect, in either case.
 //
 // ## 定位
-// tests/unit/ — pairs with compression-engine.test.ts (which covers the pure
-// turn/threshold logic) by exercising the hook's per-step scheduling contract.
-//
-// ## 维护规则
-// If the hook reverts to PostTurnComplete, or the threshold gate moves out of
-// the hook, this test must fail — update together with compression-hooks.ts.
-//
+// tests/unit/ — regression guard for the sub-3 disable. When sub-4 replaces
+// this hook with the new Extractor A trigger, this file is rewritten (or the
+// module is deleted along with the engine).
 
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 
-// ─── Mock CompressionEngine BEFORE importing the hook ─────────────────
-// The hook does `new CompressionEngine(providers, ...)`. We stub the class so
-// we can drive compressIfNeeded's return shape (didCompress / messages /
-// memoryNodes) deterministically and assert the hook's StepEnd scheduling
-// behaviour without standing up a real provider/model.
+// ─── Mock CompressionEngine (still imported by the hook module, but must NOT
+// be reached now that the StepEnd handler is a no-op). We keep the mock so the
+// import resolves; the assertion is that compressIfNeeded is NEVER called.
 const compressIfNeededMock = vi.fn();
 vi.mock("../../src/runtime/compression-engine.js", () => ({
 	CompressionEngine: class {
@@ -46,22 +39,20 @@ vi.mock("../../src/runtime/compression-engine.js", () => ({
 
 import { registerCompressionHooks } from "../../src/runtime/hooks/compression-hooks.js";
 
-/** Minimal fake session — only the surface the hook touches. */
+/** Minimal fake session — only the surface the old hook used to touch. The
+ *  no-op handler doesn't read it, but we pass it so the StepEndContext shape
+ *  mirrors the real one (regression guard if a future change re-enables). */
 function makeFakeSession(messages: any[]) {
 	return {
 		_messages: messages,
-		getMessages() {
-			return this._messages;
-		},
-		replaceMessages(next: any[]) {
-			this._messages = next;
-		},
+		getMessages() { return this._messages; },
+		replaceMessages(next: any[]) { this._messages = next; },
 		saveToDb: vi.fn(),
 		getSessionId: () => "sess-step-3a",
 	};
 }
 
-describe("Step 3A — compression evaluates on StepEnd (per-step)", () => {
+describe("sub-3 — compression StepEnd hook is DISABLED (no-op)", () => {
 	let registry: HookRegistry;
 
 	beforeEach(() => {
@@ -76,11 +67,6 @@ describe("Step 3A — compression evaluates on StepEnd (per-step)", () => {
 		compressIfNeededMock.mockReset();
 	});
 
-	/**
-	 * Fire a StepEnd with the given contextUsage. Mirrors how agent-loop's
-	 * finalizeOneStep builds the StepEndContext for the compression surface
-	 * (Step 3A added session/config/providers/contextUsage to StepEndContext).
-	 */
 	async function fireStepEnd(session: any, config: any, contextUsage: number) {
 		await (registry as any).trigger("StepEnd", {
 			agentId: "dev",
@@ -92,100 +78,53 @@ describe("Step 3A — compression evaluates on StepEnd (per-step)", () => {
 		});
 	}
 
-	test("below-threshold step: compressIfNeeded early-returns (didCompress = false), no side effects", async () => {
+	test("below-threshold step: no-op (engine never reached, no side effects)", async () => {
 		const session = makeFakeSession([
 			{ role: "user", content: "hi" },
 			{ role: "assistant", content: "hello" },
 		]);
 		const config: any = {
-			compression: {
-				enabled: true,
-				l1Threshold: 0.5,
-				l2Threshold: 0.3,
-				keepRecentTurns: 2,
-			},
+			compression: { enabled: true, l1Threshold: 0.5, l2Threshold: 0.3, keepRecentTurns: 2 },
 		};
 
-		// Usage 0.4 is <= l1Threshold (0.5) → the hook must early-return BEFORE
-		// ever constructing/calling the engine. Even if the engine were reached,
-		// compressIfNeeded's own below-threshold guard returns didCompress=false.
 		await fireStepEnd(session, config, 0.4);
 
 		expect(compressIfNeededMock).not.toHaveBeenCalled();
 		expect(session.saveToDb).not.toHaveBeenCalled();
-		// Messages untouched.
 		expect(session.getMessages()).toHaveLength(2);
 	});
 
-	test("threshold crossed at step 2: compression fires at step 2's StepEnd (didCompress = true), not the turn boundary", async () => {
-		// Enough turns that compressOldestTurn would have a target in a real run;
-		// here the mocked engine just reports a compression happened.
+	test("ABOVE-threshold step: STILL no-op (sub-3 disabled the trigger regardless of usage)", async () => {
+		// Pre-sub-3 this crossed l1Threshold and fired compression. sub-3 makes
+		// the StepEnd handler unconditionally return; the engine is dead code
+		// until sub-4 lands Extractor A. This test pins that contract so a
+		// regression that re-enables the old trigger fails loudly here.
 		const initialMessages = [
 			{ role: "user", content: "turn 1 question" },
 			{ role: "assistant", content: "turn 1 answer long enough to compress".padEnd(220, "x") },
 			{ role: "user", content: "turn 2 question" },
-			{ role: "assistant", content: "turn 2 answer long enough to compress".padEnd(220, "x") },
-			{ role: "user", content: "turn 3 question" },
-			{ role: "assistant", content: "turn 3 answer long enough to compress".padEnd(220, "x") },
 		];
 		const session = makeFakeSession(initialMessages);
 		const saveSpy = session.saveToDb as ReturnType<typeof vi.fn>;
 		const config: any = {
-			compression: {
-				enabled: true,
-				l1Threshold: 0.5, // crossed when contextUsage > 0.5
-				l2Threshold: 0.3,
-				keepRecentTurns: 2,
-			},
+			compression: { enabled: true, l1Threshold: 0.5, l2Threshold: 0.3, keepRecentTurns: 2 },
 		};
-
-		// ── Step 1: usage 0.4, still below 0.5 → no compression yet. ──
-		await fireStepEnd(session, config, 0.4);
-		expect(compressIfNeededMock).not.toHaveBeenCalled();
-		expect(saveSpy).not.toHaveBeenCalled();
-		expect(session.getMessages()).toBe(initialMessages);
-
-		// ── Step 2: usage 0.6 crosses l1Threshold (0.5). The compression MUST
-		//    fire here, at step 2's StepEnd, with didCompress = true. ──
-		const compressedMessages = [
-			{ role: "user", content: "turn 1 question" },
-			{ role: "assistant", content: "[compressed summary]" },
-			{ role: "user", content: "turn 2 question" },
-			{ role: "assistant", content: "turn 2 answer long enough to compress".padEnd(220, "x") },
-			{ role: "user", content: "turn 3 question" },
-			{ role: "assistant", content: "turn 3 answer long enough to compress".padEnd(220, "x") },
-		];
-		compressIfNeededMock.mockResolvedValueOnce({
-			messages: compressedMessages,
-			memoryNodes: [],
-			didCompress: true,
-			didExtract: false,
-		});
 
 		await fireStepEnd(session, config, 0.6);
 
-		// Engine was reached this step.
-		expect(compressIfNeededMock).toHaveBeenCalledTimes(1);
-		const callArgs = compressIfNeededMock.mock.calls[0];
-		expect(callArgs[1]).toBe(0.6); // contextUsage passed through
-		// Hook applied the engine's compressed messages and persisted.
-		expect(session.getMessages()).toBe(compressedMessages);
-		expect(saveSpy).toHaveBeenCalledTimes(1);
+		expect(compressIfNeededMock).not.toHaveBeenCalled();
+		expect(saveSpy).not.toHaveBeenCalled();
+		// Messages untouched — no replaceMessages, no saveToDb.
+		expect(session.getMessages()).toBe(initialMessages);
 	});
 
-	test("StepEndContext now carries the compression surface (session/config/providers/contextUsage)", async () => {
-		// Regression guard for the StepEndContext extension added in 3A: if a
-		// future change drops these fields, the hook would silently no-op.
-		// We assert the hook reads ctx.contextUsage and ctx.session by driving a
-		// below-threshold step and confirming the gate evaluated the value.
+	test("StepEndContext carries the compression surface but the handler ignores it (no-op)", async () => {
+		// Regression guard: the handler still RECEIVES ctx.contextUsage /
+		// ctx.session (StepEndContext unchanged) but must not act on them. A
+		// below-threshold fire proves the handler ran without throwing.
 		const session = makeFakeSession([{ role: "user", content: "x" }]);
-		const config: any = {
-			compression: { enabled: true, l1Threshold: 0.7, keepRecentTurns: 2 },
-		};
+		const config: any = { compression: { enabled: true, l1Threshold: 0.7, keepRecentTurns: 2 } };
 
-		// 0.5 <= 0.7 → below threshold, engine not reached. This proves the
-		// hook received and used ctx.contextUsage (otherwise it would have
-		// thrown on `undefined <= 0.7` or skipped the gate).
 		await expect(fireStepEnd(session, config, 0.5)).resolves.toBeUndefined();
 		expect(compressIfNeededMock).not.toHaveBeenCalled();
 	});

@@ -75,10 +75,7 @@ function mockSessionDb() {
 		setMainSession: vi.fn(),
 		getMainSession: vi.fn(() => ({ id: "s1", agentId: "a1" })),
 		deleteSession: vi.fn(),
-		getMessagesWithSeq: vi.fn(() => []),
-		updateMessageContent: vi.fn(),
 		deleteTurn: vi.fn(),
-		deleteMessage: vi.fn(),
 		queryToolExecutions: vi.fn(() => []),
 		getToolExecutionStats: vi.fn(() => []),
 		cleanOldToolExecutions: vi.fn(() => 0),
@@ -90,7 +87,9 @@ function mockSessionDb() {
 		updateStepContent: vi.fn(),
 		deleteStepGroup: vi.fn(),
 		getTurnGroupCount: vi.fn(() => 0),
-		replaceStepsFromMessages: vi.fn(),
+		// steps-overhaul sub-3: getMessagesWithSeq/updateMessageContent/deleteMessage/
+		// replaceStepsFromMessages removed from SessionDB (messages redefined to
+		// summary+cursor; the edit/delete routers no longer mirror to messages).
 	};
 }
 

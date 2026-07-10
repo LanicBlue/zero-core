@@ -10,12 +10,13 @@
 //
 // ## Acceptance cases (acceptance-2.md)
 //   1. step `content` stays a plain string; `attachments` is the new field.
-//   2. appendStep/upsertStep/replaceStepsFromMessages carry `attachments`;
-//      the turns table writes them to the `attachments` column.
-//   3. turns table has the new `attachments TEXT` column; initSchema ran
-//      `safeAddColumn(db,"turns","attachments","TEXT")`.
+//   2. appendStep/upsertStep carry `attachments`; the steps table writes them
+//      to the `attachments` column. (steps-overhaul sub-3: replaceStepsFromMessages
+//      was deleted; it is no longer part of this acceptance case.)
+//   3. steps table has the `attachments TEXT` column; initSchema ran
+//      `safeAddColumn(db,"steps","attachments","TEXT")`.
 //   4. fresh DB (no legacy column to migrate) — column present, no crash.
-//   5. legacy DB (turns table pre-exists WITHOUT the column) — startup adds
+//   5. legacy DB (steps table pre-exists WITHOUT the column) — startup adds
 //      the column via safeAddColumn and reads legacy rows as undefined (the
 //      non-COLUMNS-array path called out in the plan).
 //   6. restart recovery: rebuildFromTurns / refreshTurnsCache load attachments
@@ -227,34 +228,11 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 		}
 	});
 
-	test("replaceStepsFromMessages persists each step's attachments", () => {
-		let sessionDB: SessionDB | null = null;
-		try {
-			sessionDB = new SessionDB(dbPath);
-			const raw = (sessionDB as any).db as Database.Database;
-			const sessionId = "replace-att";
-			const att = [makeAttachment({ id: "r-1" })];
-
-			// Seed an initial row to verify replace wipes it.
-			sessionDB.appendStep(sessionId, 0, 0, "user", "old", undefined, [makeAttachment({ id: "old" })]);
-
-			sessionDB.replaceStepsFromMessages(sessionId, [
-				{ seq: 0, turnGroup: 0, role: "user", content: "new", attachments: att },
-				{ seq: 1, turnGroup: 0, role: "assistant", content: "[]" /* no attachments */ },
-			]);
-
-			const cols = readAttachmentsColumn(raw, sessionId);
-			expect(cols[0]).toBe(JSON.stringify(att));
-			expect(cols[1]).toBeNull();
-
-			const steps = sessionDB.getSteps(sessionId);
-			expect(steps.length).toBe(2);
-			expect(steps[0].attachments).toEqual(att);
-			expect(steps[1].attachments).toBeUndefined();
-		} finally {
-			sessionDB?.close();
-		}
-	});
+	// steps-overhaul sub-3: the replaceStepsFromMessages test is REMOVED —
+	// that method was deleted (it was the destructive "rebuild steps from
+	// compressed messages" path used by old L1/L2 compression; with messages
+	// redefined to summary+cursor there is no caller). The attachments round-
+	// trip is fully covered by the appendStep / upsertStep cases above.
 
 	test("legacy DB (no attachments column) → startup safeAddColumn adds it; legacy rows read back as undefined", () => {
 		let sessionDB: SessionDB | null = null;

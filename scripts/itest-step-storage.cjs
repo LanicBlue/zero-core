@@ -158,16 +158,13 @@ async function run() {
 	const groupCount = db.getTurnGroupCount(sessionId);
 	assert(groupCount === 1, `1 distinct turn group (got ${groupCount})`);
 
-	// ─── Test 10: replaceStepsFromMessages ──────────────────────
-	console.log("\n=== Test 10: replaceStepsFromMessages ===");
-	db.replaceStepsFromMessages(sessionId, [
-		{ seq: 0, turnGroup: 0, role: "user", content: "compressed question" },
-		{ seq: 1, turnGroup: 0, role: "assistant", content: JSON.stringify([{ type: "text", text: "compressed answer" }]) },
-	]);
-	const replaced = db.getSteps(sessionId);
-	assert(replaced.length === 2, `2 steps after replace (got ${replaced.length})`);
-	assert(replaced[0].content === "compressed question", "Replaced user content correct");
-	assert(replaced[1].role === "assistant", "Replaced assistant role correct");
+	// ─── Test 10: (retired in steps-overhaul sub-3) ───────────
+	// Previously exercised replaceStepsFromMessages (the destructive "rebuild
+	// steps from compressed messages" path). sub-3 deleted that method:
+	// messages is now summary+cursor (no step content), steps is the immutable
+	// source of truth, and old L1/L2 compression's sync path is gone. Future
+	// compression (sub-4 Extractor A) writes summaries + advances the cursor
+	// instead of touching steps.
 
 	// ─── Test 11: Step-level low-level CRUD (replaces retired legacy path) ────
 	// Step 4A: the legacy appendTurn / updateTurnContent / getTurns API was

@@ -1,257 +1,60 @@
-// StepEnd 钩子：每步评估 contextUsage 阈值并触发渐进式压缩，同步 messages 表与 turns 表。
+// StepEnd 压缩钩子 — steps-overhaul sub-3: DISABLED (no-op).
 //
 // # 文件说明书
 //
-// ## 核心功能
-// registerCompressionHooks 在 StepEnd 注册处理器：每步评估 contextUsage，超过阈值时调用
-// CompressionEngine.compressIfNeeded（compressIfNeeded 内部对未超阈值的情形有廉价 guard，所以
-// 每 step 评估不会真压缩到 thrash）；若发生压缩或抽取，则 replaceMessages + saveToDb，再通过
-// syncTurnsAfterCompression 重建 step-level turns（避免重启 rebuildFromSteps 时丢失压缩效果），
-// 最后把抽出的记忆节点写入 wiki memory 树。
+// ## 核心功能(当前)
+// registerCompressionHooks 仍向 StepEnd 注册一个处理器,但处理器**立即 no-op 返回**。
+// 本文件不再执行任何压缩。这是 sub-3 把 `messages` 表语义从"LLM 视图内容落盘"
+// 重定义为"summary 块 + 压缩游标"后的过渡产物:
+//   - 旧 L1/L2(`compression-engine.ts`)写老 shape 的 messages + 调已删的
+//     `syncTurnsAfterCompression`/`replaceStepsFromMessages` → 一跑就崩。
+//   - 新压缩核心(Extractor A,多步 agent)由 **sub-4** 落地:它会调
+//     `db.saveSummaryAndAdvanceCursor(...)`(sub-3 已就位)写 summary + 推进游标。
+//   - sub-3 → sub-4 之间无压缩(过渡;阶段2 的中间区 tool stub 由组装规则常驻提供,
+//     不依赖本 hook)。
 //
-// PreCompact/PostCompact 仍由 session.pruneIfNeeded() / compression-engine 自行处理，作为压缩
-// 子事件不变；本 hook 不 fire 也不 consume 这两个事件。
+// ## 为什么保留死代码而不删整个文件
+// sub-4 的拆除清单明确认领:删 `compression-engine.ts`(L1/L2/identifyTurns/
+// TurnBoundary)+ 旧配置键 + 本 hook 的 StepEnd 触发器(届时 no-op 注册也一并删)。
+// sub-3 只禁用触发(避免崩溃)+ 删旁路 sync;引擎代码本身留死代码给 sub-4 一次性清。
+// hooks/index.ts 仍 import + register,保持注册签名稳定,sub-4 移除时只动两处。
 //
-// ## 输入
-// - Hook 上下文：config（SessionConfig.compression）、session、contextUsage、providers
-// - CompressionEngine 输出的压缩 messages 与 memoryNodes
-//
-// ## 输出
-// - 副作用：更新 session 内存态、DB messages、DB turns、memory-node 表
-// - 无返回值；失败时仅 warn 不抛出
+// ## 已删(sub-3)
+// - syncTurnsAfterCompression(把压缩 messages 重灌进 steps 表的旁路)—— messages
+//   改引用模型后 LLM view 从 messages.summary + steps[压缩游标..] 组装,
+//   turns/steps sync 不再必要;它也是 sub-2 Lens B 标的"从 messages 重灌原始字节
+//   进 steps"的旁路,删掉闭合 steps 不可变不变量。
 //
 // ## 定位
-// runtime/hooks 层，是 compression-engine 与 session/DB 之间的胶水；由 hooks/index.ts 统一注册。
-//
-// ## 依赖
-// - core/hook-registry、core/hook-types、core/logger
-// - runtime/compression-engine、runtime/types、runtime/session
-// - server/wiki-node-store(memoryTypeRootId)、具备 replaceStepsFromMessages 的 DB
+// runtime/hooks 层。当前为过渡占位;sub-4 整体拆除。
 //
 // ## 维护规则
-// - 压缩阈值或 keepRecentTurns 默认值调整时，同步更新 types.ts 的 SessionConfig.compression 注释。
-// - step-level turns 重建逻辑（syncTurnsAfterCompression）改动后必须验证重启 rebuildFromSteps
-//   仍能还原压缩结果，否则会出现"重启后压缩消失"。
-// - 任何新增的压缩后副作用都应放进本处理器，禁止把内联代码写回 agent-loop。
+// - sub-4 落地时:删本文件的 StepEnd 注册(或换成新 Extractor A 触发器)、删
+//   compression-engine.ts、删 SessionConfig.compression 的 l1Threshold/l2Threshold/
+//   keepRecentTurns 旧键。本文件届时可整体退役或重写为新触发器宿主。
 
-import type { HookHandler } from "../../core/hook-types.js";
 import { HookRegistry } from "../../core/hook-registry.js";
-import { CompressionEngine } from "../compression-engine.js";
-import type { SessionConfig, RuntimeProviderConfig } from "../types.js";
-import type { AgentSession } from "../session.js";
-// v0.8 (M5): memory node migration — write to wiki tree (memory nodes) instead
-// of legacy MemoryNodeStore. memoryTypeRootId is shared with extractor-a-service
-// so all memory writes converge on the same parent layout.
-import { memoryTypeRootId } from "../../server/wiki-node-store.js";
 import { log } from "../../core/logger.js";
 
 /**
- * Slugify a subject for use in the wiki memory node path. Duplicated from
- * extractor-a-service so compression-hooks doesn't need a circular import
- * (extractor-a-service imports the runtime layer via provider-factory; this
- * is the runtime layer importing back).
+ * sub-3: register a NO-OP StepEnd handler. The old compression trigger is
+ * disabled because it relied on the retired messages-table shape + the deleted
+ * syncTurnsAfterCompression/replaceStepsFromMessages path. The replacement
+ * (Extractor A, stage-3 compression) lands in sub-4.
+ *
+ * We still register (rather than removing the call from hooks/index.ts) so the
+ * hook wiring surface stays stable — sub-4 removes this whole module in one
+ * shot. The no-op logs once at debug level so a tracer can see it fired.
  */
-function subjectSlug(subject: string): string {
-	return subject
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 64) || "unnamed";
-}
-
-/**
- * Wiki memory-type-root id, identical to the one exported from wiki-node-store
- * (kept as a local alias to avoid surprising renames if the export moves).
- */
-function wikiMemoryTypeRootId(type: string): string {
-	return memoryTypeRootId(type as any);
-}
-
 export function registerCompressionHooks(registry: HookRegistry = HookRegistry.getInstance()): void {
-
-	// Step 3A: evaluation moved from PostTurnComplete (turn-end) to StepEnd
-	// (per-step). compressIfNeeded's internal "below threshold → return"
-	// guard prevents thrashing, so evaluating every step is cheap and lets
-	// compression trigger mid-turn instead of waiting for the turn boundary.
-	registry.register("StepEnd", async (ctx) => {
-		const config = ctx.config as SessionConfig;
-		const compressionConfig = config.compression;
-		if (!compressionConfig?.enabled) return;
-
-		const session = ctx.session as AgentSession;
-		const contextUsage = ctx.contextUsage as number;
-		if (contextUsage === undefined) return;
-
-		if (contextUsage <= (compressionConfig.l1Threshold ?? 0.7)) return;
-
-		try {
-			const providers = ctx.providers as RuntimeProviderConfig[];
-			const engine = new CompressionEngine(
-				providers,
-				config.providerName,
-				config.modelId,
-			);
-
-			const result = await engine.compressIfNeeded(
-				session.getMessages(),
-				contextUsage,
-				{
-					keepRecentTurns: compressionConfig.keepRecentTurns ?? 5,
-					l1Threshold: compressionConfig.l1Threshold ?? 0.7,
-					l2Threshold: compressionConfig.l2Threshold ?? 0.5,
-					provider: compressionConfig.provider,
-					model: compressionConfig.model,
-				},
-			);
-
-			if (result.didCompress || result.didExtract) {
-				session.replaceMessages(result.messages);
-				session.saveToDb();
-
-				// Sync turns table with compressed messages for step-level storage.
-				// Without this, rebuildFromSteps() on next restart would read
-				// the pre-compression turns, losing the compression effect.
-				// Step 4A: step-only — turns table is always step-level now.
-				if (config.db && config.sessionId) {
-					syncTurnsAfterCompression(config.db, config.sessionId, session);
-				}
-
-				if (result.memoryNodes.length > 0 && config.db) {
-					try {
-						// v0.8 (M5): memory nodes go to the global wiki tree
-						// (type=memory) — the canonical content-memory store
-						// (decision 53). The legacy MemoryNodeStore is removed;
-						// if wikiStoreGlobal is unavailable (a session not built
-						// via agent-service) the extraction is skipped.
-						const wikiGlobal = (config as any).wikiStoreGlobal;
-						if (wikiGlobal) {
-							for (const fact of result.memoryNodes) {
-								try {
-									// Reuse extractor A's write path so all
-									// content memory goes through the same
-									// global memory-type-root layout.
-									wikiGlobal.ensureMemoryTypeRoot(fact.type);
-									const parentId = wikiMemoryTypeRootId(fact.type);
-									const path = `memory:${subjectSlug(fact.subject)}`;
-									wikiGlobal.createMemoryNode({
-										parentId,
-										path,
-										title: `${fact.subject} (${fact.type})`,
-										summary: fact.content,
-										detail: JSON.stringify({
-											subject: fact.subject,
-											type: fact.type,
-											content: fact.content,
-											sourceSessionId: session.getSessionId() ?? null,
-											source: "compression-engine-L2",
-										}, null, 2),
-										provenance: "derived",
-										lastUpdatedBy: "extractor-A",
-									});
-								} catch (err2) {
-									log.warn("compression", `Memory node wiki write failed for ${fact.subject}:`, (err2 as Error).message);
-								}
-							}
-						}
-					} catch (err) {
-						log.warn("compression", "Memory node save failed:", (err as Error).message);
-					}
-				}
-
-				log.debug("compression", "Compressed:", result.didCompress, "Extracted:", result.didExtract,
-					"Memory nodes:", result.memoryNodes.length, "Messages:", result.messages.length);
-			}
-		} catch (err) {
-			log.warn("compression", "Compression failed, skipping:", (err as Error).message);
-		}
+	registry.register("StepEnd", async (_ctx) => {
+		// steps-overhaul sub-3: compression disabled (transition to sub-4's
+		// Extractor A). Old L1/L2 engine code is retained as dead code; this
+		// handler must NOT call it — it would write the retired messages shape
+		// and invoke the deleted sync path, crashing the step.
+		log.debug("compression", "StepEnd compression trigger skipped (steps-overhaul sub-3 disabled; sub-4 lands Extractor A)");
+		return;
 	});
 
-	log.debug("hooks", "Compression hooks registered (StepEnd)");
-}
-
-/**
- * Rebuild step-level turns from compressed messages.
- * Each message becomes a step row; user and assistant messages alternate.
- * Tool messages are merged into the preceding assistant step's blocks.
- */
-function syncTurnsAfterCompression(db: any, sessionId: string, session: AgentSession): void {
-	try {
-		const messages = session.getMessages();
-		const steps: Array<{
-			seq: number; turnGroup: number; role: string;
-			content: string | null;
-		}> = [];
-
-		let seq = 0;
-		let turnGroup = 0;
-		let pendingToolBlocks: any[] = [];
-
-		for (const msg of messages) {
-			const role = (msg as any).role;
-			if (role === "user") {
-				const content = typeof (msg as any).content === "string"
-					? (msg as any).content
-					: JSON.stringify((msg as any).content);
-				turnGroup = seq;
-				steps.push({ seq, turnGroup, role: "user", content });
-				seq++;
-			} else if (role === "assistant") {
-				const content = (msg as any).content;
-				const blocks: any[] = [];
-
-				if (typeof content === "string") {
-					blocks.push({ type: "text", text: content });
-				} else if (Array.isArray(content)) {
-					for (const part of content) {
-						if (part.type === "text" && part.text) {
-							blocks.push({ type: "text", text: part.text });
-						} else if (part.type === "tool-call") {
-							blocks.push({
-								type: "tool",
-								name: part.toolName,
-								args: part.input ?? part.args,
-								status: "done",
-								toolCallId: part.toolCallId,
-							});
-						}
-					}
-				}
-
-				// Merge pending tool results into blocks
-				for (const tb of pendingToolBlocks) {
-					const matchIdx = blocks.findIndex(
-						(b: any) => b.type === "tool" && b.toolCallId === tb.toolCallId,
-					);
-					if (matchIdx >= 0) {
-						blocks[matchIdx].result = tb.result;
-					}
-				}
-				pendingToolBlocks = [];
-
-				if (blocks.length > 0) {
-					steps.push({ seq, turnGroup, role: "assistant", content: JSON.stringify(blocks) });
-					seq++;
-				}
-			} else if (role === "tool") {
-				// Collect tool results to merge into the assistant step
-				const parts = (msg as any).content;
-				if (Array.isArray(parts)) {
-					for (const p of parts) {
-						if (p.type === "tool-result") {
-							let result: string;
-							if (typeof p.output === "string") result = p.output;
-							else if (p.output?.type === "text") result = p.output.value;
-							else result = JSON.stringify(p.output);
-							pendingToolBlocks.push({ toolCallId: p.toolCallId, result });
-						}
-					}
-				}
-			}
-		}
-
-		db.replaceStepsFromMessages(sessionId, steps);
-		log.debug("compression", `Synced ${steps.length} step(s) to turns table after compression`);
-	} catch (err) {
-		log.warn("compression", "Failed to sync turns after compression:", (err as Error).message);
-	}
+	log.debug("hooks", "Compression hooks registered (StepEnd) — NO-OP (steps-overhaul sub-3; sub-4 will replace)");
 }

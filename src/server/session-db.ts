@@ -55,6 +55,34 @@ import { emitDataChange } from "./data-change-hub.js";
 // SessionDB — SQLite-backed session & message persistence
 // ---------------------------------------------------------------------------
 
+/**
+ * steps-overhaul sub-3: one summary block persisted in the `messages` table.
+ * The table holds ≤3 of these FIFO (design.md: cap 3, oldest evicted). Each is
+ * the product of one compression pass (future Extractor A, sub-4) and carries
+ * the structured 5-section form (purpose/plan/status/artifacts/lessons) plus an
+ * anchor back to the step range it summarized (for on-demand recall).
+ *
+ * sub-3 itself has no writer — the table starts empty; this type fixes the
+ * contract ahead of the writer landing.
+ */
+export interface MessageSummary {
+	/** Human-readable headline (e.g. "Compression of steps 12..27"). */
+	title: string;
+	/** Structured body — the 5 sections from design.md (purpose/plan/status/...). */
+	sections: {
+		purpose?: string;
+		plan?: string;
+		status?: string;
+		artifacts?: string;
+		lessons?: string;
+		[k: string]: string | undefined;
+	};
+	/** Anchor: the step seq range this summary covers (for on-demand recall). */
+	stepRange?: { from: number; to: number };
+	/** ISO timestamp of the compression that produced this summary. */
+	createdAt: string;
+}
+
 // tool-decoupling(决策 1):process-wide 单例 getter/setter。启动时注册;
 // 工具 import { getSessionDB } 直读(db / messages / KV)。headless 无则 undefined。
 let _sessionDB: SessionDB | undefined;
@@ -138,6 +166,19 @@ export class SessionDB {
 		this.db.exec(`DROP TABLE IF EXISTS turn_state`);
 		this.db.exec(`DROP TABLE IF EXISTS turns`);
 
+		// steps-overhaul sub-3: the `messages` table's semantic was redefined
+		// from "LLM view content dumped to disk" to "summary blocks + a
+		// compression cursor (last_compressed_step_seq) — NO step content".
+		// The old schema (session_id/seq/role/content/msg_json) is incompatible
+		// with the new one (session_id/seq/summary_json/last_compressed_step_seq),
+		// so we DROP+rebuild it on every startup. CREATE TABLE IF NOT EXISTS
+		// would NOT alter an existing pre-sub-3 table, so the explicit DROP is
+		// load-bearing. Data is NOT migrated — confirmed with the user (the old
+		// LLM-view cache is redundant once steps is the source of truth; nothing
+		// references it after sub-3). Guarded so the very first run on a fresh DB
+		// (which never had the old schema) is a no-op drop.
+		this.db.exec(`DROP TABLE IF EXISTS messages`);
+
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS sessions (
 				id         TEXT PRIMARY KEY,
@@ -149,14 +190,21 @@ export class SessionDB {
 			);
 			CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
 
+			-- steps-overhaul sub-3: messages is redefined to "summary blocks +
+			-- compression cursor". It does NOT store step content (steps is the
+			-- source of truth; messages is an assemble pointer + ≤3 FIFO summary
+			-- blocks for LLM view continuity). One row per summary slot, capped at
+			-- MAX_MESSAGE_SUMMARIES (=3, FIFO). last_compressed_step_seq is the
+			-- compression/assembly cursor — redundant across a session's ≤3 rows
+			-- (kept in sync by every writer) so reads are a single SELECT. NULL
+			-- means "no compression yet / cursor unset". See design.md「两张表」.
 			CREATE TABLE IF NOT EXISTS messages (
-				id         INTEGER PRIMARY KEY AUTOINCREMENT,
-				session_id TEXT NOT NULL,
-				seq        INTEGER NOT NULL,
-				role       TEXT NOT NULL,
-				content    TEXT NOT NULL,
-				msg_json   TEXT NOT NULL,
-				created_at TEXT NOT NULL,
+				id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+				session_id                TEXT NOT NULL,
+				seq                       INTEGER NOT NULL,
+				summary_json              TEXT NOT NULL,
+				last_compressed_step_seq  INTEGER,
+				created_at                TEXT NOT NULL,
 				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 			);
 			CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_id, seq);
@@ -504,71 +552,131 @@ export class SessionDB {
 	}
 
 	// -----------------------------------------------------------------------
-	// Messages
+	// Messages — steps-overhaul sub-3 redefinition
+	//
+	// The `messages` table NO LONGER stores LLM-view content. It now holds:
+	//   - up to MAX_MESSAGE_SUMMARIES (=3) summary blocks (FIFO, one row each),
+	//     produced by future compression (sub-4+); and
+	//   - last_compressed_step_seq: the compression/assembly cursor that splits
+	//     the LLM view into [summary] + [middle: tool stub] + [fresh tail].
+	//
+	// steps is the single source of truth for step content; messages is just an
+	// assemble pointer. Invariant (design.md): two tables never duplicate
+	// content. saveTurn's old "dump the in-memory messages array here" contract
+	// is GONE — AgentSession now rebuilds its LLM view from steps on every
+	// assemble (rebuildFromTurns) and never writes step content to messages.
+	//
+	// The old reader API names (getMessages / getMessagesWithSeq / getMessageCount
+	// / deleteMessage / updateMessageContent) referenced the retired "LLM view
+	// dumped here" semantics and are removed. Callers that need step content read
+	// getSteps / getStepGroup; callers that need the summary blocks + cursor read
+	// getSummaries / getCompressionCursor below. The two server-side REST readers
+	// that still treat messages as content (agent-router GET /messages,
+	// analyst-service verify) are best-effort tolerated by getSummaries so they
+	// don't crash on the empty/summary-only new shape; sub-9 will repoint them at
+	// steps (UI data source per design).
 	// -----------------------------------------------------------------------
 
-	getMessages(sessionId: string): any[] {
-		const rows = this.db.prepare(
-			"SELECT msg_json FROM messages WHERE session_id = ? ORDER BY seq",
-		).all(sessionId) as { msg_json: string }[];
-		return rows.map((r) => JSON.parse(r.msg_json));
+	/** Max FIFO summary slots in the messages table per session (design.md: ≤3). */
+	static readonly MAX_MESSAGE_SUMMARIES = 3;
+
+	/** Shape of one summary block persisted to messages.summary_json. */
+	static parseSummary(raw: string): MessageSummary {
+		return JSON.parse(raw) as MessageSummary;
 	}
 
-	getMessagesWithSeq(sessionId: string): Array<{ seq: number; msg_json: string }> {
-		return this.db.prepare(
-			"SELECT seq, msg_json FROM messages WHERE session_id = ? ORDER BY seq",
-		).all(sessionId) as Array<{ seq: number; msg_json: string }>;
-	}
-
-	getMessageCount(sessionId: string): number {
-		const row = this.db.prepare(
-			"SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?",
-		).get(sessionId) as any;
-		return row.cnt;
-	}
-
-	saveTurn(sessionId: string, messages: any[]): void {
-		// Ensure the session row exists (FK constraint on messages.session_id)
-		const existing = this.db.prepare("SELECT 1 FROM sessions WHERE id = ?").get(sessionId);
-		if (!existing) {
-			log.warn("db", "saveTurn: session not found, creating:", sessionId);
-			this.db.prepare(
-				"INSERT OR IGNORE INTO sessions (id, agent_id, is_main, title, created_at, updated_at) VALUES (?, '__recovered__', 0, NULL, ?, ?)",
-			).run(sessionId, new Date().toISOString(), new Date().toISOString());
+	/**
+	 * Read the summary blocks for a session, oldest-first. Returns [] when no
+	 * compression has written summaries yet (the common case in sub-3 — there is
+	 * no compression writer until sub-4). Future compression (sub-4 Extractor A)
+	 * appends here FIFO, capping at MAX_MESSAGE_SUMMARIES.
+	 */
+	getSummaries(sessionId: string): MessageSummary[] {
+		try {
+			const rows = this.db.prepare(
+				"SELECT summary_json FROM messages WHERE session_id = ? ORDER BY seq",
+			).all(sessionId) as { summary_json: string }[];
+			return rows.map((r) => SessionDB.parseSummary(r.summary_json));
+		} catch (err) {
+			log.warn("db", `getSummaries failed (session=${sessionId}):`, (err as Error).message);
+			return [];
 		}
+	}
 
+	/**
+	 * Read the compression/assembly cursor (messages.last_compressed_step_seq).
+	 * NULL means "no compression yet / cursor unset" — the entire step history
+	 * lives in the fresh-tail region for LLM-view assembly. This is the
+	 * summary/middle vs fresh-tail boundary, INDEPENDENT of
+	 * sessions.last_completed_step_seq (the resume cursor — see sub-1).
+	 */
+	getCompressionCursor(sessionId: string): number | null {
+		try {
+			const row = this.db.prepare(
+				"SELECT last_compressed_step_seq AS seq FROM messages WHERE session_id = ? ORDER BY seq LIMIT 1",
+			).get(sessionId) as { seq: number | null } | undefined;
+			return row?.seq ?? null;
+		} catch (err) {
+			log.warn("db", `getCompressionCursor failed (session=${sessionId}):`, (err as Error).message);
+			return null;
+		}
+	}
+
+	/**
+	 * Push a new summary block + advance the compression cursor atomically.
+	 * FIFO cap at MAX_MESSAGE_SUMMARIES: the oldest summary is evicted when the
+	 * cap is reached. The cursor is set on EVERY summary row for the session
+	 * (redundant but lets readers SELECT it from any row — the table holds ≤3
+	 * rows so the duplication is trivial and read-path-cheap).
+	 *
+	 * Used by future compression (sub-4 Extractor A). sub-3 itself has no writer
+	 * — the table starts empty; this method exists so the contract is fixed
+	 * before the writer lands.
+	 */
+	saveSummaryAndAdvanceCursor(sessionId: string, summary: MessageSummary, compressedStepSeq: number): void {
+		this.ensureSession(sessionId);
+		const now = new Date().toISOString();
+		const tx = this.db.transaction(() => {
+			// Current slot count + FIFO eviction.
+			const cntRow = this.db.prepare(
+				"SELECT COUNT(*) AS cnt FROM messages WHERE session_id = ?",
+			).get(sessionId) as { cnt: number };
+			if (cntRow.cnt >= SessionDB.MAX_MESSAGE_SUMMARIES) {
+				// Evict the oldest (lowest seq) and re-pack seq from 0.
+				this.db.prepare(
+					"DELETE FROM messages WHERE session_id = ? AND seq = (SELECT MIN(seq) FROM messages WHERE session_id = ?)",
+				).run(sessionId, sessionId);
+			}
+			// Re-number remaining rows to a dense 0..N-1 so the new slot is N.
+			const reRows = this.db.prepare(
+				"SELECT id FROM messages WHERE session_id = ? ORDER BY seq",
+			).all(sessionId) as { id: number }[];
+			const renumber = this.db.prepare("UPDATE messages SET seq = ? WHERE id = ?");
+			reRows.forEach((r, i) => renumber.run(i, r.id));
+			const nextSeq = reRows.length;
+
+			this.db.prepare(
+				"INSERT INTO messages (session_id, seq, summary_json, last_compressed_step_seq, created_at) VALUES (?, ?, ?, ?, ?)",
+			).run(sessionId, nextSeq, JSON.stringify(summary), compressedStepSeq, now);
+
+			// Keep the cursor identical across all of the session's rows.
+			this.db.prepare(
+				"UPDATE messages SET last_compressed_step_seq = ? WHERE session_id = ?",
+			).run(compressedStepSeq, sessionId);
+
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
+	}
+
+	/**
+	 * Clear all summaries for a session (e.g. on session reset). Does NOT touch
+	 * steps. The cursor returns to NULL (no compression) implicitly.
+	 */
+	clearSummaries(sessionId: string): void {
 		const now = new Date().toISOString();
 		const tx = this.db.transaction(() => {
 			this.db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
-			const insert = this.db.prepare(
-				"INSERT INTO messages (session_id, seq, role, content, msg_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-			);
-			for (let i = 0; i < messages.length; i++) {
-				const msg = messages[i];
-				const role = msg.role ?? "user";
-				const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
-				insert.run(sessionId, i, role, content, JSON.stringify(msg), now);
-			}
-			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
-		});
-		tx();
-	}
-
-	deleteMessage(sessionId: string, seq: number): void {
-		const now = new Date().toISOString();
-		const tx = this.db.transaction(() => {
-			this.db.prepare("DELETE FROM messages WHERE session_id = ? AND seq = ?").run(sessionId, seq);
-			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
-		});
-		tx();
-	}
-
-	updateMessageContent(sessionId: string, seq: number, content: string, msgJson: string): void {
-		const now = new Date().toISOString();
-		const tx = this.db.transaction(() => {
-			this.db.prepare(
-				"UPDATE messages SET content = ?, msg_json = ? WHERE session_id = ? AND seq = ?",
-			).run(content, msgJson, sessionId, seq);
 			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
 		});
 		tx();
@@ -586,6 +694,13 @@ export class SessionDB {
 
 	// -----------------------------------------------------------------------
 	// Migration from legacy message JSON files
+	//
+	// steps-overhaul sub-3: the old migration wrote the legacy messages array
+	// into the `messages` table via saveTurn. With messages redefined to
+	// summary+cursor (no step content), legacy content now lands in STEPS — the
+	// source of truth. Each legacy message becomes one step row: user messages
+	// open a new turn_group, assistant messages append a text block to the same
+	// group. No tool blocks (legacy JSON didn't carry them).
 	// -----------------------------------------------------------------------
 
 	private migrateMessageFiles(): void {
@@ -610,11 +725,23 @@ export class SessionDB {
 				const session = this.createSession(agentId, "Migrated");
 				this.setMainSession(agentId, session.id);
 
-				const modelMessages = data.map((sm: any) => ({
-					role: sm.role === "assistant" ? "assistant" : "user",
-					content: sm.text ?? "",
-				}));
-				this.saveTurn(session.id, modelMessages);
+				// Build step rows from legacy messages. user opens a turn_group;
+				// assistant appends a text-block step in the same group.
+				let seq = 0;
+				let turnGroup = 0;
+				for (const sm of data) {
+					const role = sm.role === "assistant" ? "assistant" : "user";
+					const text: string = sm.text ?? "";
+					if (role === "user") {
+						turnGroup = seq;
+						this.appendStep(session.id, seq, turnGroup, "user", text);
+						seq++;
+					} else {
+						const block = JSON.stringify([{ type: "text", text }]);
+						this.appendStep(session.id, seq, turnGroup, "assistant", block);
+						seq++;
+					}
+				}
 
 				renameSync(fp, fp + ".migrated.bak");
 				log.db("Migrated", data.length, "messages for agent", agentId);
@@ -890,47 +1017,13 @@ export class SessionDB {
 		return row.cnt;
 	}
 
-	/** Replace all steps for a session with rows derived from messages.
-	 *  Used after compression to sync the steps table with the compressed messages.
-	 *  multimodal-input sub-2: each step's optional `attachments` is persisted to
-	 *  the `steps.attachments` column as JSON (design principle A — meta only). */
-	replaceStepsFromMessages(
-		sessionId: string,
-		steps: Array<{
-			seq: number; turnGroup: number; role: string;
-			content: string | null;
-			usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
-			attachments?: AttachmentMeta[];
-		}>,
-	): void {
-		const now = new Date().toISOString();
-		const tx = this.db.transaction(() => {
-			this.db.prepare("DELETE FROM steps WHERE session_id = ?").run(sessionId);
-			const insert = this.db.prepare(
-				"INSERT INTO steps (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments) " +
-				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			);
-			for (const s of steps) {
-				insert.run(
-					sessionId, s.seq, s.turnGroup, s.role, s.content ?? null,
-					s.usage?.inputTokens ?? 0, s.usage?.outputTokens ?? 0, s.usage?.totalTokens ?? 0,
-					now,
-					this.serializeAttachments(s.attachments),
-				);
-			}
-			// steps-overhaul sub-1: recompute the counters from the rebuilt row
-			// set. step_count = total rows; turn_count = user rows (true turn
-			// count). Both derived from the fresh batch so they stay correct
-			// after a destructive compression rebuild (DELETE+INSERT).
-			const cnt = this.db.prepare(
-				"SELECT COUNT(*) AS total, SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END) AS user_rows FROM steps WHERE session_id = ?",
-			).get(sessionId) as { total: number; user_rows: number } | undefined;
-			this.db.prepare(
-				"UPDATE sessions SET step_count = ?, turn_count = ?, updated_at = ? WHERE id = ?",
-			).run(cnt?.total ?? 0, cnt?.user_rows ?? 0, now, sessionId);
-		});
-		tx();
-	}
+	// steps-overhaul sub-3: replaceStepsFromMessages is DELETED. It was the
+	// destructive "DELETE+re-insert steps from compressed messages" path used
+	// by old L1/L2 compression (syncTurnsAfterCompression in compression-hooks).
+	// With messages redefined to summary+cursor (no step content) and steps now
+	// the immutable source of truth, there is no caller and no valid use —
+	// future compression (sub-4) advances the cursor + writes a summary instead
+	// of touching steps. Sub-4 will also delete the dead compression-engine.
 
 	// -----------------------------------------------------------------------
 	// Turn state (steps-overhaul sub-1: folded into sessions as 1:1 current

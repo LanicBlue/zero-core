@@ -76,24 +76,40 @@ export function createAgentRouter(deps: {
 	// Messages
 	// -----------------------------------------------------------------------
 
-	/** GET /:agentId/messages — get messages for agent's current session */
+	/**
+	 * GET /:agentId/messages — get messages for agent's current session.
+	 *
+	 * steps-overhaul sub-3: the source of truth for message content is now the
+	 * STEPS table (messages was redefined to summary+cursor and stores no step
+	 * content). This endpoint walks steps in seq order and flattens each step
+	 * into a {role, text} entry — user steps emit their plain-text content,
+	 * assistant steps parse their block-JSON content and join text blocks (tool
+	 * blocks are skipped for this human-readable view). The shape mirrors the
+	 * legacy {id, role, text, timestamp} contract the renderer expects.
+	 */
 	router.get("/:agentId/messages", (req, res) => {
 		const session = sessionDB.getMainSession(req.params.agentId);
 		if (!session) return res.json([]);
-		const msgs = sessionDB.getMessages(session.id);
+		const steps = sessionDB.getSteps(session.id);
 		const result: { id: string; role: "user" | "assistant"; text: string; timestamp: number }[] = [];
-		for (const msg of msgs) {
-			const role = msg.role as string;
+		for (const step of steps) {
+			const role = step.role as string;
 			if (role !== "user" && role !== "assistant") continue;
 			let text = "";
-			if (typeof msg.content === "string") {
-				text = msg.content;
-			} else if (Array.isArray(msg.content)) {
-				for (const part of msg.content) {
-					if (typeof part === "object" && "text" in part && typeof part.text === "string") {
-						text += part.text;
+			if (role === "user") {
+				text = step.content ?? "";
+			} else {
+				// assistant step content is a JSON array of blocks; join text blocks.
+				try {
+					const blocks = JSON.parse(step.content ?? "[]");
+					if (Array.isArray(blocks)) {
+						for (const b of blocks) {
+							if (b && typeof b === "object" && b.type === "text" && typeof b.text === "string") {
+								text += b.text;
+							}
+						}
 					}
-				}
+				} catch { /* malformed assistant content → empty text */ }
 			}
 			if (text) {
 				result.push({ id: `s${result.length}`, role: role as "user" | "assistant", text, timestamp: Date.now() });

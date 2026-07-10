@@ -28,12 +28,17 @@
 //
 import type { ModelMessage } from "ai";
 import type { AttachmentMeta } from "../shared/types.js";
-import type { ISessionStore, StepRow } from "./session-store-interface.js";
+import type { ISessionStore, MessageSummary, StepRow } from "./session-store-interface.js";
 import { triggerHooks } from "../core/hook-registry.js";
 import { readFileSync } from "node:fs";
 
 const DEFAULT_CONTEXT_WINDOW = 128000;
 const RESERVE_TOKENS = 16384;
+
+// steps-overhaul sub-3: 3-zone LLM-view assembly constants (design.md「fresh
+// tail 保护」). fresh-tail token budget = min(32K, 20% of context window).
+const FRESH_TAIL_ABSOLUTE_TOKEN_BUDGET = 32_000;
+const FRESH_TAIL_WINDOW_FRACTION = 0.20;
 
 /**
  * multimodal-input sub-3: format an attachment's meta-info as a text part,
@@ -125,9 +130,16 @@ export class AgentSession {
 		this.multimodal = multimodal ?? false;
 
 		if (this.db && this.sessionId) {
-			// Always rebuild from turns table (single source of truth).
-			// The messages table is a write-through cache, not authoritative.
-			this.messages = this.normalizeMessages(this.rebuildFromTurns());
+			// steps-overhaul sub-3: rebuildFromTurns now splits into TWO paths
+			// (both run eagerly here so getMessagesMultimodal's positional
+			// match against cachedTurns works on the first call):
+			//   ① cachedTurns — the FULL step history from steps (UI source).
+			//   ② this.messages (LLM view) — the 3-zone assembly:
+			//     [summary] + [middle: tool stub] + [fresh tail: pointer verbatim].
+			// The messages table is NO LONGER a write-through cache — it holds
+			// summary blocks + a compression cursor; step content lives only in
+			// steps. See design.md「两张表」+ sub-3.md.
+			this.rebuildFromTurns();
 		}
 	}
 
@@ -300,18 +312,17 @@ export class AgentSession {
 	}
 
 	/** Cached raw turns from DB (populated by rebuildFromTurns). Used as runtime source for UI. */
-	/** Refresh the cached turns from DB (e.g. before UI session_init). */
+	/**
+	 * Refresh the cached turns from DB (e.g. before UI session_init).
+	 * steps-overhaul sub-3: now also rebuilds the LLM view (this.messages) so a
+	 * refresh leaves both paths consistent — getMessages() reflects fresh steps
+	 * after a refresh, not just getCachedTurns(). Both paths run eager (the
+	 * display-time pull contract: a refresh re-pulls the source of truth).
+	 */
 	refreshTurnsCache(): void {
-		// Step 4A: step-only — turns table is read exclusively via getSteps.
+		// Step 4A: step-only — steps table is read exclusively via getSteps.
 		if (!this.db || !this.sessionId) return;
-		this.cachedTurns = this.db.getSteps(this.sessionId).map(s => ({
-			seq: s.seq,
-			role: s.role,
-			content: s.content,
-			createdAt: s.createdAt,
-			turnGroup: s.turnGroup,
-			attachments: s.attachments,
-		}));
+		this.rebuildFromTurns();
 	}
 
 	/**
@@ -346,10 +357,26 @@ export class AgentSession {
 		return this.estimateTokens();
 	}
 
+	/**
+	 * steps-overhaul sub-3: saveToDb is now a NO-OP. The old implementation
+	 * dumped this.messages (the in-memory LLM view) into the `messages` table
+	 * via db.saveTurn. With messages redefined to "summary blocks + a
+	 * compression cursor" (no step content), there is nothing for the runtime
+	 * to write here:
+	 *   - Step content is persisted at write time via turn-hooks (appendStep /
+	 *     upsertStep / updateStepContent) — steps is the durable source.
+	 *   - Summary blocks + the compression cursor are written by future
+	 *     compression (sub-4 Extractor A via saveSummaryAndAdvanceCursor), NOT
+	 *     by the per-turn runtime.
+	 *   - The LLM view (this.messages) is an ephemeral assemble, never stored.
+	 *
+	 * The method is kept as a no-op rather than removed because existing
+	 * callers (the disabled compression hook, tests) still reference it; removing
+	 * it would force a wider refactor. The no-op is semantically correct: there
+	 * is genuinely nothing to persist at the call sites that remain.
+	 */
 	saveToDb(): void {
-		if (this.db && this.sessionId) {
-			this.db.saveTurn(this.sessionId, this.messages);
-		}
+		/* no-op — see method comment. steps is durable; messages is summary+cursor. */
 	}
 
 	async pruneIfNeeded(): Promise<void> {
@@ -503,28 +530,286 @@ export class AgentSession {
 		this.invalidateCalibration();
 	}
 
+	/**
+	 * steps-overhaul sub-3: rebuildFromTurns now runs TWO independent paths and
+	 * returns the LLM view (this.messages). Both populate state that downstream
+	 * consumers read, so both must run eagerly (constructor + every call):
+	 *
+	 *   ① cachedTurns — the FULL step history from steps (UI source; also the
+	 *     positional-match source for getMessagesMultimodal's attachment
+	 *     enrichment). No truncation, no stubbing — one entry per step row.
+	 *
+	 *   ② this.messages (LLM view) — the 3-zone assembly from design.md:
+	 *        [summary]              ← messages table summary blocks (≤3 FIFO)
+	 *        [middle: tool stub]    ← steps(压缩游标..fresh-tail 边界): tool
+	 *                                 results replaced by a one-line stub
+	 *        [fresh tail: verbatim] ← steps(fresh-tail 边界..当前): assembled
+	 *                                 verbatim (pointer form intact — NOT
+	 *                                 dereferenced to full bytes)
+	 *
+	 * Invariants (acceptance-3):
+	 *   - Two tables never duplicate content (steps holds all step content;
+	 *     messages holds only summary+cursor).
+	 *   - No mid-turn drift: messages is a cursor; steps is the source; this
+	 *     assemble is deterministic and reproducible across crashes.
+	 *   - fresh-tail boundary = min(32K token, 20% window), STEP granularity,
+	 *     tool-pair safe (never splits a tool_use/result pair), includes any
+	 *     in-flight tool.
+	 *   - Restart recovery: reassembling from messages.summary + steps[cursor..
+	 *     last_completed_step_seq] yields the SAME LLM view as before the crash.
+	 */
 	rebuildFromTurns(): ModelMessage[] {
-		// Step 4A: step-only — the turns table is read exclusively via getSteps.
-		// (Physical table name `turns` retained; step rows are the unit of storage.)
-		if (!this.db || !this.sessionId) return [];
-
-		const steps = this.db.getSteps(this.sessionId);
-		if (steps.length > 0) {
-			// Cache the step data (multimodal-input sub-2: carry attachments so
-			// UI rebuild + restart recovery keep attachment metadata in sync).
-			this.cachedTurns = steps.map(s => ({
-				seq: s.seq,
-				role: s.role,
-				content: s.content,
-				createdAt: s.createdAt,
-				turnGroup: s.turnGroup,
-				attachments: s.attachments,
-			}));
-			return this.rebuildFromSteps(steps);
+		// Step 4A: step-only — the steps table is read exclusively via getSteps.
+		if (!this.db || !this.sessionId) {
+			this.cachedTurns = [];
+			this.messages = [];
+			return [];
 		}
 
-		this.cachedTurns = [];
-		return [];
+		const steps = this.db.getSteps(this.sessionId);
+
+		// ── Path ① cachedTurns: FULL step history (UI source). ──────────────
+		// multimodal-input sub-2: carry attachments so UI rebuild + restart
+		// recovery keep attachment metadata in sync. Never stubbed/truncated.
+		this.cachedTurns = steps.map(s => ({
+			seq: s.seq,
+			role: s.role,
+			content: s.content,
+			createdAt: s.createdAt,
+			turnGroup: s.turnGroup,
+			attachments: s.attachments,
+		}));
+
+		// ── Path ② this.messages: 3-zone LLM-view assembly. ────────────────
+		this.messages = this.normalizeMessages(this.assembleLLMView(steps));
+		return this.messages;
+	}
+
+	/**
+	 * steps-overhaul sub-3: build the 3-zone LLM view (design.md「阶段2」).
+	 * Zones, in order:
+	 *   [summary]           — from db.getSummaries (≤3 FIFO blocks). Skipped if
+	 *                         no summaries (the common sub-3 case — no writer
+	 *                         until sub-4).
+	 *   [middle: tool stub] — steps with seq in (compressionCursor ..
+	 *                         freshTailStart), with tool RESULTS replaced by a
+	 *                         one-line stub. Tool-call parts are KEPT (so the
+	 *                         tool_use/result pair stays valid). Non-tool step
+	 *                         content (text blocks) passes through unchanged.
+	 *   [fresh tail]        — steps with seq in [freshTailStart .. last], built
+	 *                         VERBATIM — pointer-form tool results are NOT
+	 *                         dereferenced (only the middle zone stubs).
+	 *
+	 * Compression cursor (db.getCompressionCursor) and fresh-tail boundary
+	 * (this.computeFreshTailBoundary) together carve the regions. Step
+	 * granularity is preserved throughout (a step is never split). Tool-pair
+	 * safety is enforced at the fresh-tail boundary (see computeFreshTailBoundary).
+	 */
+	private assembleLLMView(steps: StepRow[]): ModelMessage[] {
+		if (steps.length === 0) return [];
+
+		const db = this.db!;
+		const sessionId = this.sessionId!;
+
+		// ── Zone 1: summary blocks (messages table). ───────────────────────
+		const summaries: MessageSummary[] =
+			(typeof db.getSummaries === "function") ? (db.getSummaries(sessionId) ?? []) : [];
+		const compressionCursor: number | null =
+			(typeof db.getCompressionCursor === "function") ? db.getCompressionCursor(sessionId) : null;
+
+		const messages: ModelMessage[] = [];
+
+		// Emit each summary block as a single user-role message. Structured 5-
+		// section form is rendered as a readable text block (purpose/plan/...).
+		// The LLM sees these as a compact recap of pre-cursor history.
+		for (const s of summaries) {
+			const body = this.renderSummaryText(s);
+			if (body) {
+				messages.push({ role: "user", content: body } as ModelMessage);
+			}
+		}
+
+		// ── Zones 2 + 3: split steps at the fresh-tail boundary. ───────────
+		// compressionCursor = last step seq that was summarized away. NULL OR 0
+		// means "no compression yet" (design: default NULL/0) — in that case the
+		// ENTIRE step history lives in the post-cursor region (middle + fresh
+		// tail). Steps with seq <= a real (>=1) cursor are ALREADY represented
+		// by the summaries above and are dropped from the assemble.
+		const hasRealCursor = compressionCursor !== null && compressionCursor >= 1;
+		const postCursor = hasRealCursor
+			? steps.filter(s => s.seq > (compressionCursor as number))
+			: steps;
+		if (postCursor.length === 0) return messages;
+
+		const freshTailStartSeq = this.computeFreshTailBoundary(postCursor);
+
+		const middleSteps = postCursor.filter(s => s.seq < freshTailStartSeq);
+		const freshSteps = postCursor.filter(s => s.seq >= freshTailStartSeq);
+
+		// Zone 2: middle — assemble with tool-result stubs.
+		if (middleSteps.length > 0) {
+			this.appendStepsAsMessages(middleSteps, messages, { stubToolResults: true });
+		}
+		// Zone 3: fresh tail — assemble verbatim (pointer form preserved).
+		if (freshSteps.length > 0) {
+			this.appendStepsAsMessages(freshSteps, messages, { stubToolResults: false });
+		}
+
+		return messages;
+	}
+
+	/**
+	 * Render one MessageSummary block as a compact text message for zone 1.
+	 * Emits the structured sections in a stable order; empty sections omitted.
+	 */
+	private renderSummaryText(s: MessageSummary): string {
+		const lines: string[] = [];
+		lines.push(`[summary: ${s.title}]`);
+		const order = ["purpose", "plan", "status", "artifacts", "lessons"];
+		for (const key of order) {
+			const val = s.sections?.[key];
+			if (val) lines.push(`${key}: ${val}`);
+		}
+		// Any non-standard sections appended after the canonical 5.
+		for (const [k, v] of Object.entries(s.sections ?? {})) {
+			if (order.includes(k)) continue;
+			if (v) lines.push(`${k}: ${v}`);
+		}
+		if (s.stepRange) lines.push(`(summarizes steps ${s.stepRange.from}..${s.stepRange.to})`);
+		return lines.join("\n");
+	}
+
+	/**
+	 * steps-overhaul sub-3: compute the fresh-tail boundary seq (design.md「fresh
+	 * tail 保护」). The fresh tail is the most recent run of steps whose total
+	 * estimated token cost fits within `min(32K, 20% of context window)`. Steps
+	 * are walked newest-first; each is added to the tail while budget remains.
+	 *
+	 * Tool-pair safety: a step is the unit of storage, and one assistant step
+	 * already carries its own tool_use AND tool_result blocks as a complete pair
+	 * (rebuildFromSteps/appendStepMessages emits both from the same step). So
+	 * splitting at a step boundary NEVER splits a tool pair. In-flight tools (a
+	 * step with a "running" tool block — only possible for the very last step
+	 * mid-turn) are kept in the tail by the newest-first walk (they're added
+	 * first, before budget is checked against older steps).
+	 *
+	 * Returns the LOWEST seq that belongs to the fresh tail. All steps with
+	 * seq >= this value go in zone 3 (verbatim); lower seqs go in zone 2 (stub).
+	 */
+	private computeFreshTailBoundary(postCursorSteps: StepRow[]): number {
+		if (postCursorSteps.length === 0) return Number.MAX_SAFE_INTEGER;
+
+		const absoluteBudget = FRESH_TAIL_ABSOLUTE_TOKEN_BUDGET;
+		const windowBudget = Math.floor(this.contextWindow * FRESH_TAIL_WINDOW_FRACTION);
+		let budget = Math.min(absoluteBudget, windowBudget);
+
+		// Walk newest-first; include steps while budget remains.
+		// postCursorSteps is in ascending seq order (getSteps ORDER BY seq).
+		let freshStartIdx = postCursorSteps.length; // default: empty tail
+		for (let i = postCursorSteps.length - 1; i >= 0; i--) {
+			const cost = this.estimateStepTokens(postCursorSteps[i]);
+			if (budget - cost < 0) break;
+			budget -= cost;
+			freshStartIdx = i;
+		}
+		// Guarantee a non-empty tail: even if the newest step alone exceeds the
+		// budget, keep at least the last step (the agent must see its most
+		// recent work). This can only widen the tail beyond budget for a single
+		// oversized step — preferable to an empty context.
+		if (freshStartIdx === postCursorSteps.length) {
+			freshStartIdx = postCursorSteps.length - 1;
+		}
+		return postCursorSteps[freshStartIdx].seq;
+	}
+
+	/** Rough token estimate for a single step row (4 chars/token heuristic). */
+	private estimateStepTokens(step: StepRow): number {
+		const json = step.content ?? "";
+		return Math.ceil(json.length / 4) + 8;
+	}
+
+	/**
+	 * Assemble a contiguous run of step rows into ModelMessages, grouping by
+	 * turnGroup (mirrors the legacy rebuildFromSteps grouping). When
+	 * `stubToolResults` is true (zone 2 / middle), each step's tool RESULT is
+	 * replaced by a one-line stub before emission; the tool USE (call) is kept
+	 * so the pair stays valid. The dangling-tool synthesis (Step 2E / sub-5 Wait)
+	 * runs in BOTH zones — a paired tool-result is always required for validity.
+	 *
+	 * `stubToolResults` is the ONLY difference between the two zones: fresh tail
+	 * assembles verbatim (pointer-form tool results intact), middle stubs them.
+	 * Pointer form is NOT dereferenced in either zone — fresh tail renders the
+	 * pointer string as-is (the LLM sees the summary + path, ~4K token, and can
+	 * file-read for detail). The middle zone replaces even the pointer with a
+	 * shorter stub to shed tokens.
+	 */
+	private appendStepsAsMessages(steps: StepRow[], messages: ModelMessage[], opts: { stubToolResults: boolean }): void {
+		// Group by turnGroup, preserving order (same grouping as rebuildFromSteps).
+		const groups = new Map<number, StepRow[]>();
+		for (const step of steps) {
+			const g = groups.get(step.turnGroup);
+			if (g) g.push(step);
+			else groups.set(step.turnGroup, [step]);
+		}
+
+		// The toolCallId offset must be continuous across the WHOLE LLM view
+		// (zone 1 summaries don't emit tool ids; zones 2+3 share one counter).
+		// Seed it from the count of tool-call ids already emitted in `messages`.
+		let tcOffset = this.countToolCallIds(messages);
+
+		for (const [, groupSteps] of groups) {
+			const userStep = groupSteps.find(s => s.role === "user");
+			if (userStep) {
+				messages.push({ role: "user", content: userStep.content ?? "" });
+			}
+			for (const step of groupSteps) {
+				if (step.role !== "assistant") continue;
+				let blocks: any[] = [];
+				try { blocks = JSON.parse(step.content ?? "[]"); } catch { blocks = []; }
+				// Dangling-tool synthesis runs in both zones (validity invariant).
+				this.synthesizeDanglingToolResultsInPlace(blocks);
+				if (opts.stubToolResults) {
+					this.stubToolResultsInPlace(blocks);
+				}
+				tcOffset = this.appendStepMessages(blocks, messages, tcOffset);
+			}
+		}
+	}
+
+	/** Count tool-call ids already present in a message list (for tcOffset seeding). */
+	private countToolCallIds(messages: ModelMessage[]): number {
+		let n = 0;
+		for (const msg of messages) {
+			const content = (msg as any).content;
+			if (!Array.isArray(content)) continue;
+			for (const part of content) {
+				if (part?.type === "tool-call") n++;
+			}
+		}
+		return n;
+	}
+
+	/**
+	 * steps-overhaul sub-3 (阶段2 常驻组装规则): replace each tool block's
+	 * RESULT with a one-line stub. The tool NAME + ARGS (the "use" side) are
+	 * KEPT — only the result is stubbed — so the tool_use/tool_result pair stays
+	 * structurally valid for the provider. The stub carries the tool name so the
+	 * model can still see WHAT was called; the actual result is dropped to shed
+	 * tokens. A pointer-form result (sub-2 externalization) is collapsed to the
+	 * stub just like any other result — the middle zone never dereferences.
+	 *
+	 * Idempotent on already-stubbed blocks (a stub result is itself a string,
+	 * but we detect the sentinel and skip re-stubbing to avoid nesting).
+	 */
+	private stubToolResultsInPlace(blocks: any[]): void {
+		const STUB_SENTINEL = "[tool result stubbed (steps-overhaul 阶段2)]";
+		for (const b of blocks) {
+			if (b?.type !== "tool") continue;
+			if (b.result === undefined) continue; // dangling — synthesize handles it
+			// Skip re-stubbing (idempotent).
+			if (typeof b.result === "string" && b.result.startsWith(STUB_SENTINEL)) continue;
+			b.result = `${STUB_SENTINEL} tool=${b.name ?? "unknown"}`;
+		}
 	}
 
 	/**
@@ -601,47 +886,11 @@ export class AgentSession {
 		}
 	}
 
-	/** Rebuild messages from step-level rows. Groups by turnGroup and handles toolCallId offsets. */
-	private rebuildFromSteps(steps: StepRow[]): ModelMessage[] {
-		const messages: ModelMessage[] = [];
-		let tcOffset = 0;
-
-		// Group steps by turnGroup, preserving order
-		const groups = new Map<number, StepRow[]>();
-		for (const step of steps) {
-			const group = groups.get(step.turnGroup);
-			if (group) {
-				group.push(step);
-			} else {
-				groups.set(step.turnGroup, [step]);
-			}
-		}
-
-		for (const [, groupSteps] of groups) {
-			// First step in group should be user
-			const userStep = groupSteps.find(s => s.role === "user");
-			if (userStep) {
-				messages.push({ role: "user", content: userStep.content ?? "" });
-			}
-
-			// Process assistant steps
-			for (const step of groupSteps) {
-				if (step.role !== "assistant") continue;
-				let blocks: any[] = [];
-				try { blocks = JSON.parse(step.content ?? "[]"); } catch { blocks = []; }
-				// Step 2E: synthesize dangling tool blocks on rebuild. Persist writes
-				// the truth (a tool legitimately "running" mid-step stays running), so
-				// a persisted row can carry an unmatched tool-call when an abort cut
-				// the step off mid-tool-execution. The rebuilt messages must always
-				// carry a paired tool-result, so fill any status:"running" tool block
-				// with no result here. Idempotent - blocks with a result are untouched.
-				this.synthesizeDanglingToolResultsInPlace(blocks);
-				tcOffset = this.appendStepMessages(blocks, messages, tcOffset);
-			}
-		}
-
-		return messages;
-	}
+	// steps-overhaul sub-3: the old rebuildFromSteps() (full verbatim rebuild,
+	// no zones) was folded into assembleLLMView + appendStepsAsMessages which
+	// implement the 3-zone assembly. The method is removed — no callers remain
+	// (verified by grep; only test/doc comments reference the historical name).
+	// appendStepMessages below is still used by appendStepsAsMessages.
 
 	/** Process a single step's blocks into AI SDK messages, with toolCallId offset.
 	 *  Returns the updated tcOffset for the next step. */
