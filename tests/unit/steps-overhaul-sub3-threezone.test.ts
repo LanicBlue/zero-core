@@ -214,8 +214,8 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 		const sess = new AgentSession("sys", 128000, sessionId, sessionDB as any);
 		const msgs = sess.getMessages();
 
-		// Zone 1: summary emitted as a user message.
-		const summaryMsgs = msgs.filter(m => m.role === "user" && typeof m.content === "string" && (m.content as string).includes("[summary:"));
+		// steps-overhaul sub-4: summary now emitted as a SYSTEM message (Lens A 连续-role 修正).
+		const summaryMsgs = msgs.filter(m => m.role === "system" && typeof m.content === "string" && (m.content as string).includes("[summary:"));
 		expect(summaryMsgs.length).toBe(1);
 
 		// Steps 1 and 2 (seq <= cursor 2) are NOT in zones 2/3 — their tool

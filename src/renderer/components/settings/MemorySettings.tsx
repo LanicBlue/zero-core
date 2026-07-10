@@ -3,17 +3,23 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 配置会话压缩（L1 摘要阈值 / L2 记忆抽取阈值 / 保留轮数 / 压缩模型），保存到主进程。
+// 配置会话压缩(总开关 + 独立压缩模型),保存到主进程。
+//
+// steps-overhaul sub-4:旧的 L1 摘要阈值 / L2 记忆抽取阈值 / 保留轮数控件随
+// compression-engine.ts(L1/L2)一起删除。新的阶段3 压缩核心(server/
+// compression-core.ts)是 step 粒度 + fresh-tail 边界(min(32K, 20% 窗口)),
+// 没有用户可调的阈值——何时触发由 sub-5 的触发器(cache 冷热 + token 阈值)决定。
+// 本面板只留:总开关 + 压缩模型(默认 = 工作模型)。
 //
 // 注:独立的 memory/autoRecall 配置是 v0.8 前的残留(memory 现以 wiki 子树形式存在),
-// 已移除。本面板只管压缩。
+// 已移除。
 //
 // ## 输入
 // - providerStore (Zustand):用于挑选压缩模型的可用 provider/model 列表
 // - window.api.memoryConfigGet / memoryConfigUpdate:读写主进程配置
 //
 // ## 输出
-// - 渲染的设置面板 DOM(含滑块、开关、模型下拉与保存按钮)
+// - 渲染的设置面板 DOM(含开关、模型下拉与保存按钮)
 //
 // ## 定位
 // 渲染进程组件,被 SettingsPage 在 Memory 分页下渲染。
@@ -24,7 +30,7 @@
 // - window.api(preload 暴露的 memoryConfig* 接口)
 //
 // ## 维护规则
-// - 压缩配置字段(阈值/默认值)变化时同步本面板。
+// - 压缩配置字段变化时同步本面板。
 // - 新增模型分组逻辑需要保留按 group 聚合的 optgroup 渲染。
 //
 
@@ -38,9 +44,6 @@ const api = () => (window as any).api;
 
 interface CompressionConfig {
 	enabled?: boolean;
-	keepRecentTurns?: number;
-	l1Threshold?: number;
-	l2Threshold?: number;
 	provider?: string;
 	model?: string;
 }
@@ -79,7 +82,7 @@ export function MemorySettings() {
 			<div className="memory-config-section">
 				<h4 className="memory-config-title">Session Compression</h4>
 				<p className="memory-config-desc">
-					Automatically compress older turns when context fills up. L1 summarizes old turns; L2 extracts memory nodes and discards the originals.
+					Automatically compress older steps (beyond the fresh-tail boundary) into structured 5-section summaries when context fills up. The fresh-tail boundary (min(32K tokens, 20% of window)) is automatic — no knob.
 				</p>
 
 				<div className="memory-config-row">
@@ -123,55 +126,6 @@ export function MemorySettings() {
 					</select>
 				</div>
 
-				<div className="memory-config-row">
-					<label className="config-label">Keep Recent Turns</label>
-					<input
-						type="number"
-						className="memory-config-number"
-						title="Keep Recent Turns"
-						value={compression.keepRecentTurns ?? 5}
-						min={2}
-						max={20}
-						onChange={(e) => setCompression({ ...compression, keepRecentTurns: parseInt(e.target.value, 10) || 5 })}
-						disabled={!compression.enabled}
-					/>
-				</div>
-
-				<div className="memory-config-row">
-					<label className="config-label">L1 Threshold (compress trigger)</label>
-					<div className="memory-config-slider-row">
-						<input
-							type="range"
-							className="memory-config-slider"
-							title="L1 Threshold"
-							min={0.3}
-							max={0.95}
-							step={0.05}
-							value={compression.l1Threshold ?? 0.7}
-							onChange={(e) => setCompression({ ...compression, l1Threshold: parseFloat(e.target.value) })}
-							disabled={!compression.enabled}
-						/>
-						<span className="memory-config-slider-val">{Math.round((compression.l1Threshold ?? 0.7) * 100)}%</span>
-					</div>
-				</div>
-
-				<div className="memory-config-row">
-					<label className="config-label">L2 Threshold (memory extraction)</label>
-					<div className="memory-config-slider-row">
-						<input
-							type="range"
-							className="memory-config-slider"
-							title="L2 Threshold"
-							min={0.2}
-							max={0.9}
-							step={0.05}
-							value={compression.l2Threshold ?? 0.5}
-							onChange={(e) => setCompression({ ...compression, l2Threshold: parseFloat(e.target.value) })}
-							disabled={!compression.enabled}
-						/>
-						<span className="memory-config-slider-val">{Math.round((compression.l2Threshold ?? 0.5) * 100)}%</span>
-					</div>
-				</div>
 			</div>
 
 			<button type="button" className="btn-primary btn-sm" onClick={save}>

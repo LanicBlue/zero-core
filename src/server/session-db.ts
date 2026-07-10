@@ -1019,11 +1019,11 @@ export class SessionDB {
 
 	// steps-overhaul sub-3: replaceStepsFromMessages is DELETED. It was the
 	// destructive "DELETE+re-insert steps from compressed messages" path used
-	// by old L1/L2 compression (syncTurnsAfterCompression in compression-hooks).
+	// (steps-overhaul sub-4: old L1/L2 compression engine + compression-hooks deleted; stage-3 core (compressSession) does not touch steps.)
 	// With messages redefined to summary+cursor (no step content) and steps now
 	// the immutable source of truth, there is no caller and no valid use —
 	// future compression (sub-4) advances the cursor + writes a summary instead
-	// of touching steps. Sub-4 will also delete the dead compression-engine.
+	// of touching steps.
 
 	// -----------------------------------------------------------------------
 	// Turn state (steps-overhaul sub-1: folded into sessions as 1:1 current

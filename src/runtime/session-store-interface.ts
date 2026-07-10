@@ -200,6 +200,8 @@ export interface ISessionStore {
 	// steps-overhaul sub-3: replaceStepsFromMessages is REMOVED — it was the
 	// destructive "rebuild steps from compressed messages" path used by old
 	// L1/L2 compression. With steps now the immutable source of truth and
-	// messages reduced to summary+cursor, no caller remains. Sub-4 will also
-	// delete the dead compression-engine.
+	// messages reduced to summary+cursor, no caller remains. Sub-4 deleted the
+	// dead compression-engine.ts (L1/L2/identifyTurns/TurnBoundary) entirely;
+	// the new stage-3 core (server/compression-core.ts compressSession) advances
+	// the cursor + writes a summary without ever touching steps.
 }

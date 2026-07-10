@@ -289,7 +289,9 @@ export interface WindowApi {
 	toolExecutionsAnalyze: (agentId?: string) => Promise<{ analysis: string; stats: ToolExecutionStats[]; recentErrors: ToolExecutionRecord[] } | { error: string }>;
 
 	// ── Compression Config ──
-	memoryConfigGet: () => Promise<{ compression: { enabled?: boolean; keepRecentTurns?: number; l1Threshold?: number; l2Threshold?: number } }>;
+	// steps-overhaul sub-4: L1/L2 keys (keepRecentTurns/l1Threshold/l2Threshold)
+	// removed with compression-engine.ts. Stage-3 core is step-granular.
+	memoryConfigGet: () => Promise<{ compression: { enabled?: boolean; provider?: string; model?: string } }>;
 	memoryConfigUpdate: (data: { compression?: any }) => Promise<{ success: true }>;
 
 	// ── Projects ──

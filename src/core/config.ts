@@ -124,13 +124,21 @@ export const ZeroCoreConfigSchema = Type.Object({
 		keepRecentTokens: Type.Optional(Type.Number()),
 	}),
 
-	// ─── Compression (L1/L2 progressive)
-
+	// ─── Compression (stage-3 summary core)
+	//
+	// steps-overhaul sub-4: the old L1/L2 progressive engine
+	// (keepRecentTurns/l1Threshold/l2Threshold) is DELETED along with
+	// compression-engine.ts. The new stage-3 core (compressSession in
+	// server/compression-core.ts) is step-granular + fresh-tail-based, with no
+	// turn-count or usage-% knobs — the fresh-tail boundary (min(32K, 20%
+	// window)) replaces keepRecentTurns, and sub-5's trigger owns the
+	// when-to-fire decision (cache cold/hot + token/usage thresholds). What
+	// remains here:
+	//   - enabled: master on/off (sub-5 trigger reads it).
+	//   - provider/model: independent memory model override (defaults to the
+	//     session's working model). Same slot the old engine used.
 	compression: Type.Object({
 		enabled: Type.Optional(Type.Boolean()),
-		keepRecentTurns: Type.Optional(Type.Number()),
-		l1Threshold: Type.Optional(Type.Number()),
-		l2Threshold: Type.Optional(Type.Number()),
 		provider: Type.Optional(Type.String()),
 		model: Type.Optional(Type.String()),
 	}),

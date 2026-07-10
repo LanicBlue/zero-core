@@ -552,11 +552,11 @@ export interface SessionConfig {
 		subagents?: Array<{ agentId: string; name?: string; description?: string }>;
 	} | undefined;
 	getToolConfig?: () => Record<string, Record<string, any>>;
+	// steps-overhaul sub-4: old L1/L2 keys (keepRecentTurns/l1Threshold/
+	// l2Threshold) removed with compression-engine.ts. Stage-3 core is
+	// step-granular + fresh-tail-based; only enabled/provider/model remain.
 	compression?: {
 		enabled?: boolean;
-		keepRecentTurns?: number;
-		l1Threshold?: number;
-		l2Threshold?: number;
 		provider?: string;
 		model?: string;
 	};

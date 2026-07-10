@@ -4,10 +4,10 @@
 //
 // ## 核心功能
 // `registerHooksForLoop(registry, loopKind, deps)` 按 loop 类型往给定 registry 上
-// 注册功能钩子。注册顺序敏感(providerOptions → compression 对 PreLLMCall 返回值
+// 注册功能钩子。注册顺序敏感(providerOptions 对 PreLLMCall 返回值
 // merge 顺序)。分组见 spec §6:
 //   - shared (main + delegated): turn-hooks / tool-execution-hooks / durable-hooks
-//     / provider-options-hooks / extraction-hooks / compression-hooks
+//     / provider-options-hooks / extraction-hooks
 //   - main only:  input-queue-hooks / metrics-hooks (sub-4: notification-hooks
 //     removed — workbench 收件箱 replaces it)
 //   - delegated only: task-control-hooks
@@ -46,7 +46,12 @@
 // - 调整注册顺序前需评估 PreLLMCall 之间对返回值 merge 的影响。
 
 import type { HookRegistry } from "../../core/hook-registry.js";
-import { registerCompressionHooks } from "./compression-hooks.js";
+// steps-overhaul sub-4: registerCompressionHooks + compression-hooks.ts DELETED.
+// The old L1/L2 StepEnd trigger (sub-3 made it a no-op) is gone; the new
+// stage-3 compression core (compressSession in server/compression-core.ts)
+// is a callable, NOT a hook — sub-5 wires the trigger (StepEnd / PreLLMCall
+// preflight / new-turn / reactive) into a NEW hook module. Old compression-
+// engine.ts is also deleted (L1/L2/identifyTurns/TurnBoundary all gone).
 import { registerExtractionHooks, type ExtractionHooksDeps } from "./extraction-hooks.js";
 // sub-4 (subagent-recovery): notification-hooks.ts DELETED — the workbench
 // 收件箱 (running 一直在;终态留到 TaskGet 消费才删) replaces the old addMessage
@@ -58,8 +63,8 @@ import { registerTodoCleanupHooks } from "./todo-cleanup-hooks.js";
 import { registerTaskControlHooks } from "./task-control-hooks.js";
 import { registerTurnHooks } from "./turn-hooks.js";
 import { registerInputQueueHooks } from "./input-queue-hooks.js";
-// server/ hooks — runtime already depends on server/ stores (compression-hooks
-// → wiki-node-store, extraction-hooks → extractor-*). Static imports here are
+// server/ hooks — runtime already depends on server/ stores (extraction-hooks
+// → extractor-*). Static imports here are
 // the same layer-crossing that already exists; no new cycle.
 //
 // sub-7: workflow-context-hook is GONE. Its job (Project / Wiki Baseline /
@@ -137,7 +142,8 @@ export function registerHooksForLoop(
 		registerToolExecutionHooks(sessionDb, registry);
 	}
 	registerProviderOptionsHooks(registry);
-	registerCompressionHooks(registry);
+	// steps-overhaul sub-4: registerCompressionHooks(registry) REMOVED — the
+	// old StepEnd L1/L2 trigger is deleted. sub-5 lands the new trigger.
 	// Clear all-completed todos at the end of the current turn (UI auto-hide).
 	registerTodoCleanupHooks(registry);
 	// sub-6 (force-Wait): if running background tasks exist when a turn is
@@ -176,7 +182,6 @@ export function registerHooksForLoop(
 }
 
 export {
-	registerCompressionHooks,
 	registerExtractionHooks,
 	registerForceWaitHooks,
 	registerProviderOptionsHooks,

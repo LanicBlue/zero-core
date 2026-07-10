@@ -433,9 +433,9 @@ export class AgentSession {
 				break;
 			}
 			// Older overflow: drop this message and everything older. They
-			// are subject to compression-engine L1/L2 on PostTurnComplete
-			// (which extracts memory nodes from compressed turns — NOT a
-			// naked drop).
+			// are subject to stage-3 compression (sub-4 compressSession —
+			// summarizes them into the messages summary blocks, NOT a naked
+			// drop).
 			for (let j = i; j >= 0; j--) dropped.unshift(this.messages[j]);
 			break;
 		}
@@ -619,13 +619,18 @@ export class AgentSession {
 
 		const messages: ModelMessage[] = [];
 
-		// Emit each summary block as a single user-role message. Structured 5-
-		// section form is rendered as a readable text block (purpose/plan/...).
-		// The LLM sees these as a compact recap of pre-cursor history.
+		// steps-overhaul sub-4 (Lens A 连续-role 修正): each summary block is
+		// emitted as a single SYSTEM-role message (NOT user). The summary is a
+		// recap of pre-cursor history — system is the semantically correct role,
+		// AND it cannot collide with the turn-opening user step that follows it
+		// in zone 2/3 (which would produce two consecutive user messages — some
+		// providers reject that). This is the primary fix; normalizeMessages
+		// below is the defensive backstop that merges any residual consecutive
+		// same-role run (e.g. two user steps at a zone 2/3 boundary).
 		for (const s of summaries) {
 			const body = this.renderSummaryText(s);
 			if (body) {
-				messages.push({ role: "user", content: body } as ModelMessage);
+				messages.push({ role: "system", content: body } as ModelMessage);
 			}
 		}
 
@@ -1085,7 +1090,17 @@ export class AgentSession {
 			}
 		}
 
-		// Pass 3: Remove empty tool messages, deduplicate user messages
+		// Pass 3: Remove empty tool messages, deduplicate user messages.
+		//
+		// steps-overhaul sub-4 连续-role 修正: summaries render as SYSTEM (see
+		// assembleLLMView zone 1), so a summary can never collide with the
+		// turn-opening user step that follows. But when MULTIPLE summaries
+		// exist (multi-topic compression), they appear as back-to-back system
+		// messages — some providers reject consecutive system messages too. So
+		// we merge consecutive SYSTEM (text-string) messages here. This is the
+		// ONLY role we merge: user/assistant messages are left untouched
+		// (merging them regresses multimodal assembly, which legitimately
+		// produces adjacent same-role parts within one user message).
 		const result: ModelMessage[] = [];
 		for (const msg of msgs) {
 			// Skip empty tool messages
@@ -1094,10 +1109,21 @@ export class AgentSession {
 				if (Array.isArray(parts) && parts.length === 0) continue;
 			}
 
-			// Deduplicate consecutive identical user messages
+			// Deduplicate consecutive IDENTICAL user messages (drop the dup).
 			if (msg.role === "user" && typeof (msg as any).content === "string") {
 				const last = result[result.length - 1];
 				if (last && last.role === "user" && typeof (last as any).content === "string" && (last as any).content === (msg as any).content) {
+					continue;
+				}
+			}
+
+			// Merge consecutive SYSTEM text-string messages (multiple summary
+			// blocks → one consolidated system recap). Strings only; system
+			// messages are always text here (they come from renderSummaryText).
+			if (msg.role === "system" && typeof (msg as any).content === "string") {
+				const last = result[result.length - 1];
+				if (last && last.role === "system" && typeof (last as any).content === "string") {
+					(last as any).content = `${(last as any).content}\n${(msg as any).content}`;
 					continue;
 				}
 			}

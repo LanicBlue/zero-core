@@ -28,7 +28,9 @@
 // - 无返回值;失败仅 warn,绝不抛回 AgentLoop(避免污染工作 session)
 //
 // ## 定位
-// runtime/hooks 层,与 compression-hooks.ts 平级;由 hooks/index.ts 统一注册。
+// runtime/hooks 层;由 hooks/index.ts 统一注册。
+// (steps-overhaul sub-4: compression-hooks.ts DELETED — old L1/L2 StepEnd trigger
+// removed; new stage-3 trigger lands in sub-5 as a fresh module.)
 // closeFlushSession 由 agent-service 在 evict 时调用(显式同步入口,不经 hook
 // 总线)。
 //
