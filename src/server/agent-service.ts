@@ -29,12 +29,13 @@
 import { loadConfig, ZERO_CORE_DIR, type ZeroCoreConfig } from "../core/config.js";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
-import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy, UserContent, AttachmentMeta } from "../shared/types.js";
+import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy, UserContent, AttachmentMeta, SessionVolumeInfo } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
 import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource, PlatformObserver, PlatformSessionSummary, PlatformProviderStat, PlatformProviderSeries, PlatformProviderQueueEntry } from "../runtime/types.js";
 import { clearProviderCache, setConcurrencyManager } from "../runtime/provider-factory.js";
 import { SessionDB } from "./session-db.js";
+import { computeDisplayWindow } from "./session-volume.js";
 import { InputQueueStore } from "./input-queue-store.js";
 import { MCPManager } from "./mcp-manager.js";
 import { buildMcpTools } from "../tools/mcp-tool.js";
@@ -1848,6 +1849,40 @@ export class AgentService implements PlatformObserver {
 	}
 
 	/**
+	 * steps-overhaul sub-9: read the session's CONTENT VOLUME for the chat UI.
+	 *
+	 * Source of truth = the `steps` table (原始不可变), NOT messages (LLM view)
+	 * — the user sees real history. Returns:
+	 *   - totalStepCount / totalTurnCount: the session's full size;
+	 *   - tokenUsage: sessions.token_usage (last API-returned usage, context size);
+	 *   - displayWindow: which range the UI shows under the "max(100 step, 5 turn)"
+	 *     rule (取多的 — whichever of the two covers MORE steps wins).
+	 *
+	 * Turn count = DISTINCT turn_group in steps (user-perceived turns: one user
+	 * message + its assistant steps), NOT sessions.turn_count (which counts user
+	 * step ROWS and is the seq-allocation cursor, not a logical turn count).
+	 *
+	 * Pure read; never throws (returns a zeroed shape on missing session so the
+	 * UI degrades gracefully instead of breaking the whole init payload).
+	 */
+	getSessionVolume(sessionId: string): SessionVolumeInfo {
+		const session = this.db.getSession(sessionId);
+		// step_count is the O(1) total-step-row counter (bumped on every
+		// appendStep). getTurnCount() reads it. Fall back to 0 only if the session
+		// row is gone (should not happen post-sub-1 migration).
+		const totalStepCount = session
+			? this.db.getTurnCount(sessionId)
+			: 0;
+		const totalTurnCount = session
+			? this.db.getTurnGroupCount(sessionId)
+			: 0;
+		const tokenUsage = session
+			? this.db.getTokenUsage(sessionId)
+			: undefined;
+		return computeDisplayWindow(totalStepCount, totalTurnCount, tokenUsage);
+	}
+
+	/**
 	 * 构建 session 的完整 init payload(messages + token 信息 + todos + 未决
 	 * AskUser 问题)。供两条路径共用,保证 push(activateSession 的 session_init)
 	 * 与 pull(前端显示时 GET /api/sessions/init/:sessionId)永不漂移。
@@ -1875,6 +1910,8 @@ export class AgentService implements PlatformObserver {
 		todos: any[];
 		pendingQuestion: { requestId: string; questions: any[] } | null;
 		isRunning: boolean;
+		/** steps-overhaul sub-9: content volume (steps/turns/token size) for the chat UI volume panel. */
+		volume: SessionVolumeInfo;
 	} | null {
 		const session = this.db.getSession(sessionId);
 		if (!session) return null;
@@ -1908,6 +1945,7 @@ export class AgentService implements PlatformObserver {
 			// 该 session 当前是否在跑。前端 pull-on-display 据此自愈清掉残留的
 			// streaming 指示(后台报错停止后 agent_end 若被丢会卡 streaming → Send 禁用)。
 			isRunning: !!this.runStates.get(sessionId)?.isBusy,
+			volume: this.getSessionVolume(sessionId),
 		};
 	}
 

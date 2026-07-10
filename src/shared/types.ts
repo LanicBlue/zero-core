@@ -1519,3 +1519,27 @@ export interface OrchestrateManifestRecord {
 	createdAt: string;
 	updatedAt: string;
 }
+
+/**
+ * steps-overhaul sub-9: content-volume snapshot for the chat UI volume panel.
+ * Source = the `steps` table (原始不可变). Driven by sessionsGetInit pull-on-display.
+ */
+export interface SessionVolumeInfo {
+	/** Total step rows in the session (sessions.step_count, O(1)). */
+	totalStepCount: number;
+	/** Distinct turn_group count = user-perceived turns (NOT sessions.turn_count,
+	 *  which counts user step rows and is the seq-allocation cursor). */
+	totalTurnCount: number;
+	/** sessions.token_usage — last API-returned usage (context size snapshot).
+	 *  Undefined before any step has run. */
+	tokenUsage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+	/** Which range the UI shows under the "max(100 step, 5 turn)" rule (取多的). */
+	displayWindow: {
+		/** "steps" = last-100-steps window won; "turns" = last-5-turns window won. */
+		basis: "steps" | "turns";
+		/** How many steps the chosen window covers (the larger of the two). */
+		coveredSteps: number;
+		/** How many turns the chosen window covers. */
+		coveredTurns: number;
+	};
+}

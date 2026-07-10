@@ -524,6 +524,86 @@ body {
   opacity: 0.8;
 }
 
+/* steps-overhaul sub-9: session content-volume panel (default collapsed/silent).
+ * Visual style mirrors .context-usage (same font-size / fg-subtle) so it reads
+ * as a sibling indicator without crowding the header bar. Collapsed = one quiet
+ * line below the header; expanded = a details card with window explanation. */
+.session-volume-panel {
+  border-top: 1px solid var(--border-muted, #333);
+  border-bottom: 1px solid var(--border-muted, #333);
+  background: var(--bg-muted, rgba(0, 0, 0, 0.15));
+  font-size: 12px;
+  color: var(--fg-subtle);
+}
+.session-volume-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: inherit;
+  padding: 4px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.session-volume-toggle:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+}
+.session-volume-chevron {
+  font-size: 10px;
+  color: var(--fg-muted, #999);
+  width: 10px;
+}
+.session-volume-icon {
+  font-size: 12px;
+}
+.session-volume-summary {
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+}
+.session-volume-details {
+  padding: 6px 12px 8px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-top: 1px solid var(--border-muted, #333);
+}
+.session-volume-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.session-volume-label {
+  color: var(--fg-muted, #999);
+  min-width: 110px;
+  font-size: 11px;
+}
+.session-volume-value {
+  color: var(--fg, #ddd);
+  font-size: 11px;
+  word-break: break-word;
+}
+.session-volume-row.session-volume-window .session-volume-value,
+.session-volume-row.session-volume-token .session-volume-value {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+.session-volume-source {
+  margin-top: 4px;
+  color: var(--fg-muted, #999);
+  font-size: 10px;
+  font-style: italic;
+}
+.session-volume-source code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 10px;
+  padding: 0 3px;
+  background: var(--bg-muted, rgba(0, 0, 0, 0.2));
+  border-radius: 3px;
+}
+
 .btn-archive-session {
   background: transparent;
   color: var(--fg-subtle);

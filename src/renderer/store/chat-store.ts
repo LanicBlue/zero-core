@@ -24,7 +24,7 @@
 // - 保持状态更新幂等性
 //
 import { create } from "zustand";
-import type { SessionRecord, AttachmentMeta } from "../../shared/types.js";
+import type { SessionRecord, AttachmentMeta, SessionVolumeInfo } from "../../shared/types.js";
 
 type SessionLifecycleState = "created" | "idle" | "queued" | "streaming" | "executing_tools" | "error" | "disposed";
 
@@ -116,6 +116,14 @@ interface ChatState {
 	lastError: { sessionId: string; message: string } | null;
 	contextInfoBySession: Record<string, ContextInfo>;
 	/**
+	 * steps-overhaul sub-9: per-session content volume (steps/turns/token size).
+	 * Sourced from the `steps` table via sessionsGetInit pull-on-display. Stored
+	 * SEPARATELY from ContextInfo (which streaming token events refresh) — volume
+	 * is step-count-based and only needs refreshing when steps change, so it has
+	 * its own map + setter (not merged by updateContextInfo). Keyed by sessionId.
+	 */
+	volumeBySession: Record<string, SessionVolumeInfo>;
+	/**
 	 * sessionId → 最近一次"内容型"增量事件(text_delta / tool 调用 / thinking)到达的时间。
 	 * pull-on-display 防回归用:pull 响应回来时若本 session 在 pull 发出后被 live
 	 * 事件更新过,说明 live tail 更新,不能拿旧快照整覆盖(会回退流式内容、丢正在
@@ -158,6 +166,8 @@ interface ChatState {
 	setError: (sessionId: string, message: string) => void;
 	clearError: () => void;
 	updateContextInfo: (sessionId: string, info: Partial<ContextInfo>) => void;
+	/** steps-overhaul sub-9: set the active session's content volume (from pull-on-display). */
+	setSessionVolume: (sessionId: string, volume: SessionVolumeInfo) => void;
 }
 
 function updateLastAssistantMsg(
@@ -209,6 +219,14 @@ export const selectIsStreaming = (s: ChatState): boolean =>
 export const selectContextInfo = (s: ChatState): ContextInfo | null =>
 	s.activeSessionId ? (s.contextInfoBySession[s.activeSessionId] ?? null) : null;
 
+/**
+ * steps-overhaul sub-9: active session's content volume (steps/turns/token
+ * size), sourced from the `steps` table via pull-on-display. Null until the
+ * session's init payload has landed.
+ */
+export const selectActiveVolume = (s: ChatState): SessionVolumeInfo | null =>
+	s.activeSessionId ? (s.volumeBySession[s.activeSessionId] ?? null) : null;
+
 export const selectLastError = (s: ChatState): ChatState["lastError"] =>
 	s.lastError && s.lastError.sessionId === s.activeSessionId ? s.lastError : null;
 
@@ -247,6 +265,7 @@ export const useChatStore = create<ChatState>((set) => ({
 	sessionsByAgent: {},
 	lastError: null,
 	contextInfoBySession: {},
+		volumeBySession: {},
 	lastEventAt: {},
 
 	addMessage: (sessionId, msg) =>
@@ -449,6 +468,11 @@ export const useChatStore = create<ChatState>((set) => ({
 			// carry `model`, so a replace would clobber the model set on session
 			// pull. Merging preserves it across token refreshes.
 			contextInfoBySession: { ...state.contextInfoBySession, [sessionId]: { ...state.contextInfoBySession[sessionId], ...info } },
+		})),
+
+	setSessionVolume: (sessionId, volume) =>
+		set((state) => ({
+			volumeBySession: { ...state.volumeBySession, [sessionId]: volume },
 		})),
 
 	clearError: () =>

@@ -26,7 +26,7 @@
 // - 保持 UI 响应性
 //
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { useChatStore, selectActiveMessages, selectIsStreaming, selectLastError, selectContextInfo, selectActiveAgentId, nextMsgId, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
+import { useChatStore, selectActiveMessages, selectIsStreaming, selectLastError, selectContextInfo, selectActiveAgentId, nextMsgId, selectActiveVolume, type MessageBlock, type ToolCallBlock, type ThinkingBlock } from "../../store/chat-store.js";
 import { useAgentStore } from "../../store/agent-store.js";
 import { useProjectStore } from "../../store/project-store.js";
 import MarkdownRenderer from "../common/MarkdownRenderer.js";
@@ -40,6 +40,7 @@ import InputQueueStrip from "../chat/InputQueueStrip.js";
 import { usePageStore } from "../../store/page-store.js";
 import { useRequirementStore } from "../../store/requirement-store.js";
 import RequirementHeader from "../requirements/RequirementHeader.js";
+import SessionVolumePanel from "../chat/SessionVolumePanel.js";
 import type { RequirementStatus, SessionRecord, AttachmentMeta } from "../../../shared/types.js";
 
 const api = () => (window as any).api;
@@ -511,7 +512,7 @@ export default function ChatPanel() {
 				addMessage, finishStreaming,
 				setSessions, setActiveSessionId, setActiveProject, clearMessages,
 				editMessage, deleteMessage, setIsStreaming,
-				updateContextInfo, loadMessages,
+				updateContextInfo, setSessionVolume, loadMessages,
 			} = useChatStore();
 	// activeAgentId is DERIVED from activeSessionId (single source of truth) —
 	// see selectActiveAgentId. Kept as a local name so the ~20 read sites are
@@ -523,6 +524,8 @@ export default function ChatPanel() {
 	const messages = useChatStore(selectActiveMessages);
 	const isStreaming = useChatStore(selectIsStreaming);
 	const contextInfo = useChatStore(selectContextInfo);
+	// steps-overhaul sub-9: content volume (steps/turns/token) for the volume panel.
+	const sessionVolume = useChatStore(selectActiveVolume);
 	const { agents } = useAgentStore();
 	const { projects, fetchProjects } = useProjectStore();
 	const { pendingBySession, todosBySession, setPending, setTodos } = useInteractionStore();
@@ -798,6 +801,8 @@ export default function ChatPanel() {
 			// single authoritative checkpoint: isRunning reflects runStates.isBusy,
 			// which sendProjectPrompt sets synchronously before returning.
 			setIsStreaming(sid, !!payload.isRunning);
+			// steps-overhaul sub-9: content volume from the `steps` table.
+			setSessionVolume(sid, payload.volume);
 			updateContextInfo(sid, {
 				usedTokens: payload.inputTokens ?? 0,
 				contextWindow: payload.contextWindow ?? 128000,
@@ -1136,6 +1141,9 @@ export default function ChatPanel() {
 			</div>
 
 			<ErrorBanner />
+			{/* steps-overhaul sub-9: content volume panel (default collapsed, silent). */}
+			<SessionVolumePanel volume={sessionVolume} />
+
 
 			{/* C2: todos pinned to the top so they don't overlap the input queue strip. */}
 			{todos.length > 0 && <TodosList todos={todos} />}
