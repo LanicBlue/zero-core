@@ -108,7 +108,10 @@ export async function startServer(options?: StartServerOptions) {
 	const serveStatic = options?.serveStatic ?? true;
 
 	const app = express();
-	app.use(express.json());
+	// 默认 100kb 限制会把 attachments:upload 的 base64 payload(图片/PDF)拒成 413
+	// (multimodal-input:小 paste 截图能过,真实文件 +号/拖拽超限 → "Failed to upload")。
+	// 提到 50mb(loopback 桌面 app,design 允许几十 MB)。
+	app.use(express.json({ limit: "50mb" }));
 
 	const server = createServer(app);
 	const wss = new WebSocketServer({ server, path: "/ws" });

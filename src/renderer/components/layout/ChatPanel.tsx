@@ -143,7 +143,7 @@ function dataUrl(base64: string, mimeType: string): string {
  * returns null (caller surfaces a banner). This is the SINGLE bytes-into-main
  * path — after this the renderer only carries meta (principle A).
  */
-async function uploadFile(file: File, sessionId: string): Promise<AttachmentMeta | null> {
+async function uploadFile(file: File, sessionId: string): Promise<{ meta: AttachmentMeta } | { error: string }> {
 	try {
 		const data = await fileToBase64(file);
 		const result = await api().attachmentsUpload({
@@ -152,11 +152,12 @@ async function uploadFile(file: File, sessionId: string): Promise<AttachmentMeta
 			mimeType: file.type || "application/octet-stream",
 			data,
 		});
-		if (result && typeof result === "object" && "error" in result) return null;
-		return result as AttachmentMeta;
+		if (result && typeof result === "object" && "error" in result) return { error: (result as { error?: string }).error || "server error" };
+		return { meta: result as AttachmentMeta };
 	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
 		console.error("attachment upload failed:", err);
-		return null;
+		return { error: msg };
 	}
 }
 
@@ -580,11 +581,12 @@ export default function ChatPanel() {
 		setUploadError(null);
 		const results: Array<{ meta: AttachmentMeta; previewUrl?: string }> = [];
 		for (const file of arr) {
-			const meta = await uploadFile(file, activeSessionId);
-			if (!meta) {
-				setUploadError(`Failed to upload: ${file.name || "attachment"}`);
+			const r = await uploadFile(file, activeSessionId);
+			if ("error" in r) {
+				setUploadError(`Failed to upload: ${file.name || "attachment"} (${r.error})`);
 				continue;
 			}
+			const meta = r.meta;
 			let previewUrl: string | undefined;
 			if (meta.kind === "image") {
 				previewUrl = URL.createObjectURL(file);
