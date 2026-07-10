@@ -954,6 +954,155 @@ export class AgentService implements PlatformObserver {
 		(cfg as any).compression = this.config.compression;
 		return cfg;
 	}
+
+	/**
+	 * steps-overhaul sub-8 (archive): rebuild a minimal SessionConfig for a
+	 * DELEGATED CHILD session being archived, mirroring
+	 * buildSessionConfigForEviction but resolving the CHILD's agent/model from
+	 * the delegated_tasks row (target_agent_id / model_id) rather than the
+	 * activeSessions scan. Re-attaches the SAME wiki/extractors handles the
+	 * parent loop had so the final compression writes into the same topic
+	 * subtree as the child's prior mid-turn compressions.
+	 *
+	 * Used by `archiveDelegatedSession` (auto) and is also the basis for the
+	 * chat-manual archive path (which passes the session's own agentId).
+	 */
+	private buildSessionConfigForArchive(sessionId: string, childAgentId?: string, childModelId?: string): import("../runtime/types.js").SessionConfig | undefined {
+		const sessionRec = this.db.getSession(sessionId);
+		const agentId = childAgentId ?? sessionRec?.agentId ?? "__default__";
+		const agent = this.agentStore?.get(agentId);
+		const cfg: import("../runtime/types.js").SessionConfig = {
+			agentId,
+			workspaceDir: sessionRec?.context?.workspaceDir || agent?.workspaceDir || this.workspaceDir,
+			systemPrompt: "",
+			modelId: childModelId ?? agent?.model ?? this.defaultModel ?? "",
+			providerName: agent?.provider ?? this.defaultProvider ?? "",
+			sessionId,
+			db: this.db,
+			toolPolicy: {
+				autoApprove: agent?.toolPolicy?.autoApprove ?? this.config.toolPolicy.autoApprove,
+				blockedTools: agent?.toolPolicy?.blockedTools ?? this.config.toolPolicy.blockedTools,
+				tools: agent?.toolPolicy?.tools ?? this.config.toolPolicy.tools,
+				executionMode: agent?.toolPolicy?.executionMode ?? this.config.toolPolicy.executionMode,
+				resultMaxTokens: agent?.toolPolicy?.resultMaxTokens ?? this.config.toolPolicy.resultMaxTokens,
+				readScope: agent?.toolPolicy?.readScope ?? "filesystem",
+			},
+		};
+		// Re-attach the SAME wiki/extractors handles the parent loop had so the
+		// final compression's Extractor A writes into the parent's topic subtree.
+		if (this.wikiStoreGlobal) (cfg as any).wikiStoreGlobal = this.wikiStoreGlobal;
+		if (this.extractorsConfig) (cfg as any).extractors = this.extractorsConfig;
+		(cfg as any).compression = this.config.compression;
+		return cfg;
+	}
+
+	/**
+	 * steps-overhaul sub-8 (archive): auto-archive a delegated CHILD session
+	 * after its task reaches a terminal state (called from the runtime's
+	 * SubagentDelegator via the `archiveDelegatedSession` config callback).
+	 *
+	 * Resolves the child's agentId/modelId from the delegated_tasks row, builds
+	 * a minimal child SessionConfig, and runs the archive pipeline (final
+	 * compression → export JSON → delete). delegated auto-archive is naturally
+	 * a complete-state event (the child AgentLoop has already returned), so NO
+	 * runtime teardown is needed here (no `teardown` passed to archiveSession).
+	 *
+	 * Best-effort: any failure is logged + swallowed by the caller (the task
+	 * already succeeded/failed; archiving is a post-terminal side-effect).
+	 */
+	async archiveDelegatedSession(
+		taskId: string,
+		childSessionId: string,
+	): Promise<void> {
+		// Lazy require — server/archive-service imports compression-core +
+		// extractor-a-service (which imports tools/wiki-tool → server/wiki-node-
+		// store). Keeping this dynamic avoids pulling the whole server/ wiki
+		// stack into agent-service's static graph (agent-service is already
+		// large). Same pattern as compression-trigger-hooks.
+		const { archiveSession } =
+			require("./archive-service.js") as typeof import("./archive-service.js");
+		const rec = this.db.getDelegatedTask?.(taskId);
+		const childAgentId = rec?.targetAgentId;
+		const childModelId = rec?.modelId;
+		const sessionConfig = this.buildSessionConfigForArchive(childSessionId, childAgentId, childModelId);
+		if (!sessionConfig) {
+			log.warn("agent", `archiveDelegatedSession: could not build child config (task=${taskId}, child=${childSessionId}) — skipping archive`);
+			return;
+		}
+		await archiveSession(childSessionId, this.db, {
+			providers: this.providerConfigs,
+			sessionConfig,
+			// NO teardown — delegated child is already complete (AgentLoop returned).
+		});
+	}
+
+	/**
+	 * steps-overhaul sub-8 (archive): manually archive a session from the chat
+	 * UI (the existing 归档 button). Runs the FULL archive pipeline:
+	 *
+	 *   1. (if the session is active) tear down its AgentLoop + clear in-memory
+	 *      hook state (turn-seq-tracker + compression-trigger-hooks maps for
+	 *      this sid), so the loop stops writing to the DB / firing hooks
+	 *      mid-archive. This is the "active session runtime teardown" the
+	 *      acceptance checks: chat manual archive of a running session must
+	 *      stop the loop BEFORE deleting its DB rows.
+	 *   2. final Extractor A compression → export JSON → delete DB rows
+	 *      (incl. tool_executions/delegated_tasks orphans). Wiki nodes stay.
+	 *
+	 * Returns the path of the written archive JSON. The CALLER (session-router)
+	 * is responsible for creating the replacement session + handing over main +
+	 * recreateLoop — same as the pre-sub-8 soft-delete handler did, so the UI
+	 * contract (返回 newSessionId) is preserved.
+	 *
+	 * teardown is injected into archiveSession via the `teardown` option so the
+	 * archive pipeline owns the ORDER (teardown → compress → export → delete).
+	 */
+	async archiveSessionManually(sessionId: string): Promise<{ archivePath: string }> {
+		// Lazy require (same rationale as archiveDelegatedSession).
+		const { archiveSession } =
+			require("./archive-service.js") as typeof import("./archive-service.js");
+		// Lazy require the per-session hook-state clearers. These live in
+		// runtime/hooks/; importing them statically here would pull the hook
+		// registry + its deps into agent-service's static graph. Dynamic require
+		// keeps that cost off module-load.
+		const { clearCompressionTriggerStateForSession } =
+			require("../runtime/hooks/compression-trigger-hooks.js") as typeof import("../runtime/hooks/compression-trigger-hooks.js");
+		const { clearTurnSeqStateForSession } =
+			require("../runtime/hooks/turn-seq-tracker.js") as typeof import("../runtime/hooks/turn-seq-tracker.js");
+
+		const sessionRec = this.db.getSession(sessionId);
+		if (!sessionRec) {
+			throw new Error(`archiveSessionManually: session not found: ${sessionId}`);
+		}
+		const sessionConfig = this.buildSessionConfigForArchive(sessionId);
+		if (!sessionConfig) {
+			throw new Error(`archiveSessionManually: could not build session config (session=${sessionId})`);
+		}
+
+		const result = await archiveSession(sessionId, this.db, {
+			providers: this.providerConfigs,
+			sessionConfig,
+			// Active-session teardown: stop the loop FIRST (so it stops writing
+			// to the DB / firing hooks mid-archive), THEN clear the per-session
+			// hook state. evictSessionFromMemory aborts the loop + clears
+			// loops/runStates/activeSessions for this sid; the clearHookState
+			// step clears the per-session maps the hooks hold.
+			teardown: {
+				stopAgentLoop: (sid) => {
+					// evictSessionFromMemory is idempotent for a non-active /
+					// already-stopped session (no-op when there's no loop). It
+					// also fires SessionClose (metrics idle) — fine for archive.
+					this.evictSessionFromMemory(sid);
+				},
+				clearHookState: (sid) => {
+					clearCompressionTriggerStateForSession(sid);
+					clearTurnSeqStateForSession(sid);
+				},
+			},
+		});
+		return { archivePath: result.archivePath };
+	}
+
 	subscribe(cb: StreamCallback): () => void {
 		this.subscribers.add(cb);
 		return () => { this.subscribers.delete(cb); };
@@ -1174,6 +1323,20 @@ export class AgentService implements PlatformObserver {
 		// register delegated sub-loops with the same set. The main loop's own
 		// registration happens below (right after construction).
 		sessionConfig.hookWiringDeps = this.buildHookDeps();
+		// sub-8 (archive): wire the delegated-session auto-archive callback so a
+		// sub-agent that reaches completed/failed auto-archives (design.md
+		// 「归档」). The child session config is rebuilt here from the child's
+		// delegated_tasks row (target agent + inherited model) + THIS loop's
+		// wiki/extractors handles (sub-loops inherit these via the config spread
+		// in subagent-delegator, so mirroring them here lets the final
+		// compression write into the same topic subtree). Best-effort: a missing
+		// child row / build failure is logged + swallowed (the task already
+		// succeeded; archiving is a post-terminal side-effect).
+		sessionConfig.archiveDelegatedSession = (taskId, _status, childSessionId) => {
+			this.archiveDelegatedSession(taskId, childSessionId).catch((err: unknown) => {
+				log.warn("agent", `archiveDelegatedSession failed (task=${taskId}, child=${childSessionId}):`, (err as Error)?.message ?? err);
+			});
+		};
 		// Initialize run state for this session
 		if (!this.runStates.has(sessionId)) {
 			this.runStates.set(sessionId, { agentId, isBusy: false, waiting: false, streamingText: "", toolCalls: [] });

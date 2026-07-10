@@ -448,6 +448,29 @@ function buildCompressionReminder(state: TokenState): { role: string; content: s
 }
 
 // ---------------------------------------------------------------------------
+// Per-session state clear — archive pipeline (sub-8)
+// ---------------------------------------------------------------------------
+
+/**
+ * steps-overhaul sub-8 (archive): clear ALL in-memory state this module holds
+ * for ONE session. Called by the archive pipeline's teardown step (chat manual
+ * archive of an active session) so a re-used sessionId / a sessionId whose
+ * rows were just deleted doesn't leave stale hook state behind.
+ *
+ * Clears: lastLLMCall, compressedThisTurn, lastReductionFraction, inFlight for
+ * this sessionId. Idempotent (no-op if the session had no state).
+ *
+ * NOTE: distinct from `clearCompressionTriggerState` (which clears EVERY
+ * session — test-only reset). This is per-session and safe for production.
+ */
+export function clearCompressionTriggerStateForSession(sessionId: string): void {
+	lastLLMCall.delete(sessionId);
+	compressedThisTurn.delete(sessionId);
+	lastReductionFraction.delete(sessionId);
+	inFlight.delete(sessionId);
+}
+
+// ---------------------------------------------------------------------------
 // Test helpers — reset module state between unit tests.
 // ---------------------------------------------------------------------------
 

@@ -544,6 +544,41 @@ export class SessionDB {
 		emitDataChange("sessions", sessionId, "update", { id: sessionId, archived: true });
 	}
 
+	/**
+	 * steps-overhaul sub-8 (archive pipeline): hard-delete ALL of a session's
+	 * OWN data — the `sessions` row + every `steps`/`messages` row + the
+	 * `tool_executions`/`delegated_tasks` ORPHANS that reference this session
+	 * via `session_id`. Wiki memory nodes are NOT session-owned (they live
+	 * cross-session in the wiki tree) and are intentionally left untouched.
+	 *
+	 * This is the "delete" half of the archive pipeline (after the JSON export
+	 * has been written). It is also idempotent: re-running on an already-archived
+	 * session is a no-op (all DELETEs match zero rows).
+	 *
+	 * `delegated_tasks` carries TWO session links: `session_id` (the child
+	 * session this task SPAWNED) and `parent_session_id` (the session that
+	 * DISPATCHED it). We delete by `session_id` only — i.e. rows whose CHILD
+	 * session is the one being archived. Rows where this session is the PARENT
+	 * are NOT deleted: those belong to the parent's archive scope, and a parent
+	 * being archived would itself be the `session_id` of its own
+	 * `delegated_tasks` row chain (root tasks have NULL parent_session_id).
+	 *
+	 * Emits a `sessions` delete event so the sidebar removes the row.
+	 */
+	deleteSessionData(sessionId: string): void {
+		const tx = this.db.transaction(() => {
+			this.db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
+			this.db.prepare("DELETE FROM steps WHERE session_id = ?").run(sessionId);
+			this.db.prepare("DELETE FROM tool_executions WHERE session_id = ?").run(sessionId);
+			this.db.prepare("DELETE FROM delegated_tasks WHERE session_id = ?").run(sessionId);
+			this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+		});
+		tx();
+		// N1: structural primitive — emit delete (no record). The renderer
+		// removes the session from every list (active + archived area).
+		emitDataChange("sessions", sessionId, "delete");
+	}
+
 	updateSessionUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number; estimatedCostUsd: number }): void {
 		const now = new Date().toISOString();
 		this.db.prepare(

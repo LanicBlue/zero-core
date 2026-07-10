@@ -641,6 +641,22 @@ export interface SessionConfig {
 	 * builds the loop (it owns loopKind="main").
 	 */
 	hookWiringDeps?: HookWiringDeps;
+	/**
+	 * steps-overhaul sub-8 (archive): fired by the runtime's SubagentDelegator
+	 * when a delegated sub-agent task reaches a terminal state
+	 * (`completed` / `failed`), so the owning layer (agent-service) can run the
+	 * archive pipeline on the CHILD session. The callback receives the taskId,
+	 * the terminal status, and the child session id (resolved from the
+	 * delegated_tasks row by the delegator). Fire-and-forget from the runtime's
+	 * POV — the callback owns its own error handling.
+	 *
+	 * Set by agent-service to call archive-service.archiveSession. Omitted in
+	 * test stubs / when archiving is disabled. The cron/main invariant
+	 * ("cron/main 父 agent 不自动归档") is preserved because this archives the
+	 * CHILD session (delegated work), not the parent — a cron/main parent that
+	 * itself dispatches sub-agents correctly archives those sub-agents.
+	 */
+	archiveDelegatedSession?: (taskId: string, status: "completed" | "failed", childSessionId: string) => Promise<void> | void;
 }
 
 // ---------------------------------------------------------------------------

@@ -257,6 +257,12 @@ export class AgentLoop implements AgentRuntime {
 			// Step 1B: thread per-loop hook deps so delegated sub-loops register
 			// their own hook set on their own registry (loopKind="delegated").
 			hookDeps: config.hookWiringDeps,
+			// sub-8 (archive): thread the delegated-session archive callback so
+			// delegated sub-agents auto-archive on terminal state. agent-service
+			// sets this when building the loop config (server layer owns the
+			// SessionDB + archive-service). Sub-loops inherit it via the config
+			// spread in subagent-delegator, so nested delegated work also archives.
+			onTaskTerminal: config.archiveDelegatedSession,
 		});
 
 		// N1 (runtime-push-ui-sync): TaskRegistry lives in src/runtime/, so it

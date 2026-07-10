@@ -36,6 +36,7 @@ import type { AgentStore } from "./agent-store.js";
 import type { ManagementService } from "./management-service.js";
 // multimodal-input sub-1: purge the per-session attachment dir on hard delete.
 import { cleanSessionAttachments } from "./attachment-store.js";
+import { log } from "../core/logger.js";
 
 export function createSessionRouter(deps: {
 	agentService: ReturnType<typeof createAgentService>;
@@ -156,18 +157,34 @@ export function createSessionRouter(deps: {
 		res.json({ success: true });
 	});
 
-	// Archive (soft-delete): mark the session archived=1, then create a clean
-	// replacement with the SAME (agentId, projectId) context so routing lands on
-	// a fresh session. The archived row is retained (excluded by the archived=0
-	// filters in SessionDB). If the archived one was main, hand main to the new one.
-	router.post("/:agentId/:sessionId/archive", (req, res) => {
+	// Archive (steps-overhaul sub-8): run the FULL archive pipeline — final
+	// Extractor A compression → export JSON to ~/.zero-core/archives/<agentId>/
+	// <sessionId>.json → hard-delete the session's DB rows (sessions/steps/
+	// messages + tool_executions/delegated_tasks orphans). Wiki memory nodes
+	// are LEFT (cross-session). If the session is still active (has a running
+	// AgentLoop), the pipeline tears it down FIRST (stop loop + clear in-memory
+	// hook state) before deleting rows.
+	//
+	// After the archive, a clean replacement session with the SAME
+	// (agentId, projectId) context is created so routing lands on a fresh
+	// session. If the archived one was main, main is handed to the new one.
+	// The UI contract (返回 newSessionId) is preserved from the pre-sub-8
+	// soft-delete handler.
+	router.post("/:agentId/:sessionId/archive", async (req, res) => {
 		const db = getDb();
 		const old = db.getSession(req.params.sessionId);
 		if (!old) return res.status(404).json({ error: "session not found" });
-		db.archiveSession(req.params.sessionId);
+		try {
+			await agentService.archiveSessionManually(req.params.sessionId);
+		} catch (err) {
+			log.error("session-router", `archive failed (session=${req.params.sessionId}):`, (err as Error).message);
+			return res.status(500).json({ error: "archive failed", detail: (err as Error).message });
+		}
+		// The archived session's rows are now GONE (hard delete). Create the
+		// replacement with the SAME context so routing continues to work.
 		const ns = db.createSession(req.params.agentId, undefined, old.context);
-		const main = db.getMainSession(req.params.agentId); // already excludes archived
-		if (!main || main.id === req.params.sessionId) {
+		const main = db.getMainSession(req.params.agentId);
+		if (!main) {
 			db.setMainSession(req.params.agentId, ns.id);
 		}
 		const agent = agentStore.get(req.params.agentId);
