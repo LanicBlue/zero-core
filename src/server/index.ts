@@ -566,9 +566,9 @@ export async function startServer(options?: StartServerOptions) {
 	agentService.setPmService(pmService, requirementStore, wikiStore);
 	// v0.8 (M5): surface the global WikiStore onto every session so extractor
 	// A can write global memory nodes (decision 46 N2) and recall
-	// (memory-hooks) can read them back. Extractor enable flags +
-	// checkpointThresholds are read from this.config.extractors inside
-	// AgentService (loaded via loadConfig in its constructor).
+	// (memory-hooks) can read them back. Extractor enable flags are read from
+	// this.config.extractors inside AgentService (loaded via loadConfig in its
+	// constructor). (steps-overhaul sub-10: checkpointThresholds dropped.)
 	agentService.setWikiStoreGlobal(wikiStoreGlobal);
 
 	// v0.8 (P3 §7.7 #4): tool-call usage log — one row per tool invocation,

@@ -13,6 +13,21 @@
 // 「内容记忆提取抽到哪里了」+「哪些 token-budget 阈值已 fire 过」，是机制 2
 // 增量提取的副产品。
 //
+// ## steps-overhaul sub-10 — RETIRED (kept as inert CRUD utility)
+// sub-7 retired 机制 2/3(wiki 抽取现在由 compressSession 的 Extractor A 多步
+// agent 承担 — design.md「wiki memory」/ 决策 53 修订)。`extraction-hooks`
+// 的 StepEnd 阈值触发器 + closeFlushSession 都已是 no-op stub。本 store 的
+// **生产消费路径**(server/index.ts:145 → extractionDeps.cursorStore →
+// registerExtractionHooks no-op)已 dead-end,无活 caller。
+//
+// **为什么不删**:本 store 是一个自包含的、有单测覆盖(m5-extractors.test.ts)
+// 的 CRUD 持久化工具。删除它需要同步拆 m5-extractors.test.ts 的覆盖段 + 担心
+// 老 DB 里残留的 extraction_cursors 表(CREATE TABLE IF NOT EXISTS,老库会有)。
+// 收益(少几行 dead code)< 风险(破一个不相关的大测试文件 + 老 DB 兼容)。
+// 故保留为 inert 工具 + 标注退役;未来若要彻底清理,删 store + session-db 的
+// getExtractionCursorStore 访问器 + server/index.ts:145 的 cursorStore 字段 +
+// m5-extractors.test.ts 的 ExtractionCursorStore 段。
+//
 // ## 输入
 // - 构造时注入 better-sqlite3 Database(由 SessionDB 提供)
 // - upsertCursor 接收 { sessionId, lastExtractedSeq, lastThresholdIdx, lastExtractedAt }
@@ -39,9 +54,10 @@ export interface ExtractionCursorRow {
 	/** Step seq up to which extractor A has already processed (inclusive). */
 	lastExtractedSeq: number;
 	/**
-	 * Index into checkpointThresholds[] of the last threshold that already
-	 * fired an extraction. -1 means no threshold has fired yet. Each
-	 * threshold fires at most once per session (decision 53).
+	 * Index into the (RETIRED sub-7/sub-10) checkpointThresholds[] of the last
+	 * threshold that fired an extraction. -1 = no threshold fired. The threshold
+	 * list + its trigger are gone (see file header); this column is preserved
+	 * on existing rows but never advanced going forward.
 	 */
 	lastThresholdIdx: number;
 	/** ISO timestamp of last successful extraction. */

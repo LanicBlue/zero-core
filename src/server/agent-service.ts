@@ -218,8 +218,11 @@ export class AgentService implements PlatformObserver {
 	// can read those nodes back.
 	private wikiStoreGlobal: any = null;
 	// v0.8 (M5): extractor config (extractors.A/B enabled + provider/model
-	// overrides + checkpointThresholds). Threaded into every session config
-	// so the extraction hook can gate + build extractor services.
+	// overrides). Threaded into every session config so the compression trigger
+	// (sub-5) + archive (sub-8) can resolve the Extractor A model, and so any
+	// remaining extraction-hook wiring can gate + build extractor services.
+	// (steps-overhaul sub-10: checkpointThresholds dropped from this config —
+	// retired in sub-7, no live reader.)
 	private extractorsConfig: any = null;
 	// v0.8 (P3 §7.7 #4): tool-call usage log. Surfaced onto every session
 	// config so tool-factory can record one row per tool invocation. Best-effort
@@ -394,9 +397,9 @@ export class AgentService implements PlatformObserver {
 	/**
 	 * v0.8 (M5): inject the global WikiStore. The global WikiStore is the
 	 * writer target for extractor A's memory nodes (decision 46 N2).
-	 * Extractor config (extractors.A/B enabled + provider/model overrides +
-	 * checkpointThresholds) is read from this.config.extractors (loaded in
-	 * the constructor via loadConfig).
+	 * Extractor config (extractors.A/B enabled + provider/model overrides) is
+	 * read from this.config.extractors (loaded in the constructor via
+	 * loadConfig). (steps-overhaul sub-10: checkpointThresholds dropped.)
 	 */
 	setWikiStoreGlobal(wikiStoreGlobal: any): void {
 		this.wikiStoreGlobal = wikiStoreGlobal ?? null;
