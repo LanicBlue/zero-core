@@ -120,22 +120,30 @@ export interface ISessionStore {
 	 * doRecoverIncompleteSessions does for chat-session recovery. Narrow single-
 	 * session read so the runtime doesn't need the full getIncompleteTurns list.
 	 * Returns undefined when the session has no interrupted turn.
+	 *
+	 * steps-overhaul sub-1: now reads sessions WHERE phase NOT IN
+	 * ('completed','failed') (was a turn_state scan). turnSeq is derived from
+	 * sessions.turn_count (the in-flight turn's own seq).
 	 */
 	getIncompleteTurn?(sessionId: string): { turnSeq: number; lastCompletedStepSeq?: number | null } | undefined;
 	/**
-	 * sub-8 (lazy rebuild + interrupted seed): distinct session ids that have
-	 * at least one non-terminal turn_state row. Single batched query (no N+1).
-	 * Used by restoreAllSessions (only incomplete sessions get a startup loop)
-	 * and restoreDelegatedTasks (authoritative frozen/interrupted seed signal).
-	 * Empty set when nothing is incomplete.
+	 * sub-8 (lazy rebuild + interrupted seed): distinct session ids that are
+	 * non-terminal (steps-overhaul sub-1: was DISTINCT session_id FROM
+	 * turn_state; now SELECT id FROM sessions WHERE phase NOT IN (...)). Single
+	 * batched query (no N+1). Used by restoreAllSessions (only incomplete
+	 * sessions get a startup loop) and restoreDelegatedTasks (authoritative
+	 * frozen/interrupted seed signal). Empty set when nothing is incomplete.
 	 */
 	getIncompleteTurnSessionIds?(): Set<string>;
 	/**
-	 * sub-4 (TaskKill interrupted→abandon): mark a session's interrupted
-	 * turn_state row terminal (failed) so it stops appearing as "needs resume"
-	 * on next startup. Used by the parent's TaskKill(interrupted) branch — the
-	 * parent is choosing NOT to resume a frozen child, so its interrupted turn
-	 * must be closed out. Returns the count of rows marked (0 if none/unknown).
+	 * sub-4 (TaskKill interrupted→abandon): mark a session's interrupted state
+	 * terminal (failed) so it stops appearing as "needs resume" on next startup.
+	 * Used by the parent's TaskKill(interrupted) branch — the parent is choosing
+	 * NOT to resume a frozen child, so its interrupted turn must be closed out.
+	 * Returns the count of rows marked (0 if none/unknown).
+	 *
+	 * steps-overhaul sub-1: was UPDATE turn_state ... WHERE phase NOT IN ...;
+	 * now a single-row UPDATE on sessions.
 	 */
 	abandonInterruptedTurn?(sessionId: string, reason?: string): number;
 	recordToolExecution(exec: {

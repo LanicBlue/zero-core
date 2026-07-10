@@ -114,10 +114,30 @@ export class SessionDB {
 	}
 
 	// -----------------------------------------------------------------------
-	// Schema — only sessions/messages/turns (owned by SessionDB itself)
+	// Schema — sessions/messages/steps (owned by SessionDB itself).
+	//
+	// steps-overhaul sub-1: the physical `turns` table was renamed to `steps`
+	// (it always held step rows; the old name was a misnomer). The per-(session,
+	// turn) `turn_state` table was DROPPED — its columns folded into `sessions`
+	// as a 1:1 "current run state" (phase/last_completed_step_seq/source/error/
+	// turn_count/step_count/token_usage). The legacy `checkpoint` JSON column
+	// was deleted (zero consumers; the step-level marker is
+	// last_completed_step_seq). `updateTurnPhase` (zero callers) + `cleanOldTurn-
+	// State` (its GC job is absorbed by recovery scanning sessions.phase) were
+	// removed. DROP statements for upgraded DBs run below (guarded); fresh DBs
+	// never create the legacy tables.
 	// -----------------------------------------------------------------------
 
 	private initSchema(): void {
+		// steps-overhaul sub-1: drop legacy `turns` + `turn_state` on upgraded
+		// DBs (CREATE TABLE IF NOT EXISTS below will not alter an existing
+		// table, and the renamed `steps` must not collide with the old `turns`).
+		// Data is NOT migrated (DROP+rebuild per design.md). Guarded so fresh DBs
+		// (which never had them) are unaffected. SQLite supports DROP TABLE
+		// IF EXISTS since 3.7.
+		this.db.exec(`DROP TABLE IF EXISTS turn_state`);
+		this.db.exec(`DROP TABLE IF EXISTS turns`);
+
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS sessions (
 				id         TEXT PRIMARY KEY,
@@ -141,7 +161,9 @@ export class SessionDB {
 			);
 			CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_id, seq);
 
-			CREATE TABLE IF NOT EXISTS turns (
+			-- steps-overhaul sub-1: physical turns table renamed to steps.
+			-- A row = one assistant step (or the user-row opening a turn_group).
+			CREATE TABLE IF NOT EXISTS steps (
 				id          INTEGER PRIMARY KEY AUTOINCREMENT,
 				session_id  TEXT NOT NULL,
 				seq         INTEGER NOT NULL,
@@ -158,33 +180,7 @@ export class SessionDB {
 				attachments TEXT,
 				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 			);
-			CREATE INDEX IF NOT EXISTS idx_turns_session_seq ON turns(session_id, seq);
-
-			CREATE TABLE IF NOT EXISTS turn_state (
-				session_id  TEXT NOT NULL,
-				turn_seq    INTEGER NOT NULL,
-				phase       TEXT NOT NULL DEFAULT 'pending',
-				checkpoint  TEXT,
-				error       TEXT,
-				-- Step 2D: per-session step-level resume checkpoint. The seq of
-				-- the last finish-step that fired StepEnd successfully. resume()
-				-- continues from seq+1, never re-running completed steps. NULL
-				-- means the turn started but no step has completed yet.
-				last_completed_step_seq INTEGER,
-				-- platform-observability ②.1 (sub-1): the "source" that started
-				-- this turn, feeding later sub-3 priority + sub-2 usage-by-source.
-				-- One of 'user' | 'work' | 'cron' | 'background'. Defaults to
-				-- 'background' so pre-migration turns + any unspec'd caller fall
-				-- into the lowest tier (acceptance-1 case 6/7). Set by the entry
-				-- that calls run()/sendPrompt/sendProjectPrompt; durable-hooks
-				-- TurnStart persists it via createTurnState.
-				source      TEXT NOT NULL DEFAULT 'background',
-				created_at  TEXT NOT NULL,
-				updated_at  TEXT NOT NULL,
-				PRIMARY KEY (session_id, turn_seq),
-				FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-			);
-			CREATE INDEX IF NOT EXISTS idx_turn_state_session ON turn_state(session_id);
+			CREATE INDEX IF NOT EXISTS idx_steps_session_seq ON steps(session_id, seq);
 
 			CREATE TABLE IF NOT EXISTS tool_executions (
 				id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,30 +276,35 @@ export class SessionDB {
 		this.safeAddIndex("sessions", "idx_sessions_agent_project", "agent_id, context_project_id");
 		this.safeAddIndex("sessions", "idx_sessions_kind", "session_kind, visibility");
 
+		// steps-overhaul sub-1: sessions absorbs turn_state (1:1 current run
+		// state). 7 new columns. phase defaults to 'completed' so existing
+		// (pre-fold) sessions rows are NOT flagged as recovery candidates
+		// (recovery scans phase NOT IN ('completed','failed')). turn_count/
+		// step_count default 0; appendStep(role='user') bumps turn_count.
+		// token_usage is JSON (last API usage). See design.md "sessions 收状态".
+		// Also added (typed) in db-migration.ts runMigrations
+		// (memory feedback-fresh-db-migrations — fresh DB must not miss cols).
+		this.safeAddColumn("sessions", "phase", "TEXT NOT NULL DEFAULT 'completed'");
+		this.safeAddColumn("sessions", "last_completed_step_seq", "INTEGER");
+		this.safeAddColumn("sessions", "source", "TEXT NOT NULL DEFAULT 'background'");
+		this.safeAddColumn("sessions", "error", "TEXT");
+		this.safeAddColumn("sessions", "turn_count", "INTEGER NOT NULL DEFAULT 0");
+		this.safeAddColumn("sessions", "step_count", "INTEGER NOT NULL DEFAULT 0");
+		this.safeAddColumn("sessions", "token_usage", "TEXT");
+		// Index the recovery scan hot path: WHERE phase NOT IN (...).
+		this.safeAddIndex("sessions", "idx_sessions_phase", "phase");
+
 		// Migrate renamed tools (Bash -> Shell, etc.)
 		this.migrateToolNames();
 
-		// Step 2D: turn_state.last_completed_step_seq — step-level resume
-		// checkpoint. CREATE TABLE above adds it on fresh DBs; this ALTER
-		// covers upgraded DBs where the table already exists (CREATE TABLE IF
-		// NOT EXISTS won't alter an existing row). See feedback-fresh-db-
-		// migrations: turn_state is SessionDB-owned (not a SqliteStore table),
-		// so this is the only legacy-DB sync point.
-		this.safeAddColumn("turn_state", "last_completed_step_seq", "INTEGER");
-		// platform-observability ②.1 (sub-1): turn-source marker. Mirror of the
-		// CREATE TABLE column above for upgraded DBs (fresh DBs already have it).
-		// See feedback-fresh-db-migrations: turn_state is SessionDB-owned (not a
-		// SqliteStore table), so this safeAddColumn is the only legacy-DB sync.
-		this.safeAddColumn("turn_state", "source", "TEXT NOT NULL DEFAULT 'background'");
-
-		// multimodal-input sub-2: per-step attachment metadata. The turns table
+		// multimodal-input sub-2: per-step attachment metadata. The steps table
 		// stores an `AttachmentMeta[]` JSON blob here; `content` stays a plain
-		// string (design principle A — bytes never enter the turns table, only
-		// the lightweight meta does). turns is SessionDB-owned (no *_COLUMNS
+		// string (design principle A — bytes never enter the steps table, only
+		// the lightweight meta does). steps is SessionDB-owned (no *_COLUMNS
 		// array), so this single safeAddColumn is the only migration sync point
 		// — fresh DBs get the column from CREATE TABLE above; upgraded DBs get
 		// it here. NULL on legacy rows (read back as undefined — back-compat).
-		this.safeAddColumn("turns", "attachments", "TEXT");
+		this.safeAddColumn("steps", "attachments", "TEXT");
 	}
 
 	/** Idempotently add a column to an existing table (no-op if present). */
@@ -624,22 +625,48 @@ export class SessionDB {
 	}
 
 	// -----------------------------------------------------------------------
-	// Turns table — step-level storage only (Step 4A: legacy turn API retired).
-	// The physical `turns` table holds step rows (turn_group is the grouping
-	// key). Every write path goes through the step-level methods below.
+	// Steps table — step-level storage (steps-overhaul sub-1: physical table
+	// renamed from `turns`). turn_group is the grouping key. Every write path
+	// goes through the step-level methods below.
 	// -----------------------------------------------------------------------
 
 	getTurnCount(sessionId: string): number {
-		const row = this.db.prepare("SELECT COUNT(*) as cnt FROM turns WHERE session_id = ?").get(sessionId) as any;
-		return row.cnt;
+		// steps-overhaul sub-1: read sessions.step_count instead of
+		// COUNT(*) FROM steps. CRITICAL: getTurnCount is the SEQ ALLOCATION
+		// cursor — turn-hooks TurnStart reads it for the next user-row seq,
+		// AND AgentLoop.resume() reads it for stepBaseSeq (the next assistant
+		// step's seq, which MUST account for all already-persisted steps). So
+		// step_count tracks TOTAL step rows (user + assistant), bumped on every
+		// appendStep / upsertStep-insert / replaceStepsFromMessages write.
+		// (turn_count, separately, tracks true turn count = user rows; it's for
+		// the future volume UI, NOT for seq allocation.)
+		//
+		// Pre-migration this was COUNT(*) FROM turns (all rows); step_count is
+		// the equivalent column-mirror, kept in sync at every step write so the
+		// read is O(1).
+		const row = this.db.prepare(
+			"SELECT step_count AS cnt FROM sessions WHERE id = ?",
+		).get(sessionId) as { cnt: number } | undefined;
+		return row?.cnt ?? 0;
 	}
 
 	clearTurns(sessionId: string): void {
-		this.db.prepare("DELETE FROM turns WHERE session_id = ?").run(sessionId);
+		// steps-overhaul sub-1: zero the counters since every step row is gone.
+		const now = new Date().toISOString();
+		const tx = this.db.transaction(() => {
+			this.db.prepare("DELETE FROM steps WHERE session_id = ?").run(sessionId);
+			this.db.prepare(
+				"UPDATE sessions SET step_count = 0, turn_count = 0, updated_at = ? WHERE id = ?",
+			).run(now, sessionId);
+		});
+		tx();
 	}
 
 	deleteTurn(sessionId: string, seq: number): void {
-		this.db.prepare("DELETE FROM turns WHERE session_id = ? AND seq = ?").run(sessionId, seq);
+		// Note: does NOT decrement step_count (seq allocation is monotonic;
+		// re-using a freed seq would collide with future appends). Callers that
+		// need a corrected count should use deleteStepGroup (which recomputes).
+		this.db.prepare("DELETE FROM steps WHERE session_id = ? AND seq = ?").run(sessionId, seq);
 	}
 
 	// -----------------------------------------------------------------------
@@ -648,7 +675,7 @@ export class SessionDB {
 
 	/**
 	 * multimodal-input sub-2: serialize a step's attachment metadata to the
-	 * `turns.attachments` column value. Empty/undefined → NULL (keeps legacy
+	 * `steps.attachments` column value. Empty/undefined → NULL (keeps legacy
 	 * rows indistinguishable from no-attachment rows; both read back as
 	 * `undefined`). Design principle A: only meta is persisted, never bytes.
 	 */
@@ -658,7 +685,7 @@ export class SessionDB {
 	}
 
 	/**
-	 * multimodal-input sub-2: parse the `turns.attachments` column back into
+	 * multimodal-input sub-2: parse the `steps.attachments` column back into
 	 * `AttachmentMeta[]`. Returns `undefined` for NULL / unparseable rows so
 	 * legacy data (pre-column) is transparent — callers see no attachments.
 	 */
@@ -681,7 +708,7 @@ export class SessionDB {
 	}> {
 		const rows = this.db.prepare(
 			"SELECT seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments " +
-			"FROM turns WHERE session_id = ? ORDER BY seq",
+			"FROM steps WHERE session_id = ? ORDER BY seq",
 		).all(sessionId) as any[];
 		return rows.map((r) => ({
 			seq: r.seq,
@@ -704,7 +731,7 @@ export class SessionDB {
 	}> {
 		const rows = this.db.prepare(
 			"SELECT seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments " +
-			"FROM turns WHERE session_id = ? AND turn_group = ? ORDER BY seq",
+			"FROM steps WHERE session_id = ? AND turn_group = ? ORDER BY seq",
 		).all(sessionId, turnGroup) as any[];
 		return rows.map((r) => ({
 			seq: r.seq,
@@ -728,9 +755,20 @@ export class SessionDB {
 		this.ensureSession(sessionId);
 		const now = new Date().toISOString();
 		const attachmentsJson = this.serializeAttachments(attachments);
+		// steps-overhaul sub-1: bump counters on every appendStep.
+		// - step_count: tracks TOTAL step rows (= the old COUNT(*) FROM turns).
+		//   getTurnCount() reads this for seq allocation (turn-hooks' user row
+		//   AND AgentLoop.resume()'s stepBaseSeq). Bumped for EVERY role since
+		//   every appendStep inserts one row.
+		// - turn_count: tracks TRUE turn count (user rows only). For the future
+		//   volume UI. Not used for seq allocation.
+		// Both set to seq+1 (the just-written row's seq + 1 = next allocation).
+		// replaceStepsFromMessages (compression rebuild) sets counts in bulk
+		// separately (doesn't go through appendStep).
+		const isUser = role === "user";
 		const tx = this.db.transaction(() => {
 			this.db.prepare(
-				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments) " +
+				"INSERT INTO steps (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments) " +
 				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			).run(
 				sessionId, seq, turnGroup, role, content ?? null,
@@ -740,7 +778,15 @@ export class SessionDB {
 				now,
 				attachmentsJson,
 			);
-			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+			if (isUser) {
+				this.db.prepare(
+					"UPDATE sessions SET step_count = MAX(step_count, ?), turn_count = MAX(turn_count, ?), updated_at = ? WHERE id = ?",
+				).run(seq + 1, seq + 1, now, sessionId);
+			} else {
+				this.db.prepare(
+					"UPDATE sessions SET step_count = MAX(step_count, ?), updated_at = ? WHERE id = ?",
+				).run(seq + 1, now, sessionId);
+			}
 		});
 		tx();
 	}
@@ -755,11 +801,12 @@ export class SessionDB {
 		const now = new Date().toISOString();
 		const attachmentsJson = this.serializeAttachments(attachments);
 		const existing = this.db.prepare(
-			"SELECT 1 FROM turns WHERE session_id = ? AND seq = ?",
+			"SELECT 1 FROM steps WHERE session_id = ? AND seq = ?",
 		).get(sessionId, seq);
+		const isUser = role === "user";
 		if (existing) {
 			this.db.prepare(
-				"UPDATE turns SET turn_group = ?, content = ?, input_tokens = ?, output_tokens = ?, total_tokens = ?, attachments = ? " +
+				"UPDATE steps SET turn_group = ?, content = ?, input_tokens = ?, output_tokens = ?, total_tokens = ?, attachments = ? " +
 				"WHERE session_id = ? AND seq = ?",
 			).run(
 				turnGroup, content ?? null,
@@ -767,20 +814,35 @@ export class SessionDB {
 				attachmentsJson,
 				sessionId, seq,
 			);
+			// UPDATE path: no new row, no counter bump (counters track row count).
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
 		} else {
-			this.db.prepare(
-				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments) " +
-				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			).run(
-				sessionId, seq, turnGroup, role, content ?? null,
-				usage?.inputTokens ?? 0,
-				usage?.outputTokens ?? 0,
-				usage?.totalTokens ?? 0,
-				now,
-				attachmentsJson,
-			);
+			// INSERT path: new row → bump step_count (and turn_count if user).
+			// See appendStep for the counter semantics rationale.
+			const tx = this.db.transaction(() => {
+				this.db.prepare(
+					"INSERT INTO steps (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments) " +
+					"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				).run(
+					sessionId, seq, turnGroup, role, content ?? null,
+					usage?.inputTokens ?? 0,
+					usage?.outputTokens ?? 0,
+					usage?.totalTokens ?? 0,
+					now,
+					attachmentsJson,
+				);
+				if (isUser) {
+					this.db.prepare(
+						"UPDATE sessions SET step_count = MAX(step_count, ?), turn_count = MAX(turn_count, ?), updated_at = ? WHERE id = ?",
+					).run(seq + 1, seq + 1, now, sessionId);
+				} else {
+					this.db.prepare(
+						"UPDATE sessions SET step_count = MAX(step_count, ?), updated_at = ? WHERE id = ?",
+					).run(seq + 1, now, sessionId);
+				}
+			});
+			tx();
 		}
-		this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
 	}
 
 	updateStepContent(
@@ -791,12 +853,12 @@ export class SessionDB {
 		const tx = this.db.transaction(() => {
 			if (usage) {
 				this.db.prepare(
-					"UPDATE turns SET content = ?, input_tokens = ?, output_tokens = ?, total_tokens = ? " +
+					"UPDATE steps SET content = ?, input_tokens = ?, output_tokens = ?, total_tokens = ? " +
 					"WHERE session_id = ? AND seq = ?",
 				).run(content, usage.inputTokens ?? 0, usage.outputTokens ?? 0, usage.totalTokens ?? 0, sessionId, seq);
 			} else {
 				this.db.prepare(
-					"UPDATE turns SET content = ? WHERE session_id = ? AND seq = ?",
+					"UPDATE steps SET content = ? WHERE session_id = ? AND seq = ?",
 				).run(content, sessionId, seq);
 			}
 			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
@@ -805,25 +867,33 @@ export class SessionDB {
 	}
 
 	deleteStepGroup(sessionId: string, turnGroup: number): void {
+		// steps-overhaul sub-1: recompute counters after deleting a group
+		// (compression / undo paths). step_count = remaining rows; turn_count =
+		// remaining user rows.
 		const now = new Date().toISOString();
 		const tx = this.db.transaction(() => {
-			this.db.prepare("DELETE FROM turns WHERE session_id = ? AND turn_group = ?").run(sessionId, turnGroup);
-			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+			this.db.prepare("DELETE FROM steps WHERE session_id = ? AND turn_group = ?").run(sessionId, turnGroup);
+			const cnt = this.db.prepare(
+				"SELECT COUNT(*) AS total, SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END) AS user_rows FROM steps WHERE session_id = ?",
+			).get(sessionId) as { total: number; user_rows: number } | undefined;
+			this.db.prepare(
+				"UPDATE sessions SET step_count = ?, turn_count = ?, updated_at = ? WHERE id = ?",
+			).run(cnt?.total ?? 0, cnt?.user_rows ?? 0, now, sessionId);
 		});
 		tx();
 	}
 
 	getTurnGroupCount(sessionId: string): number {
 		const row = this.db.prepare(
-			"SELECT COUNT(DISTINCT turn_group) as cnt FROM turns WHERE session_id = ?",
+			"SELECT COUNT(DISTINCT turn_group) as cnt FROM steps WHERE session_id = ?",
 		).get(sessionId) as any;
 		return row.cnt;
 	}
 
-	/** Replace all turns for a session with step-level rows derived from messages.
-	 *  Used after compression to sync the turns table with the compressed messages.
+	/** Replace all steps for a session with rows derived from messages.
+	 *  Used after compression to sync the steps table with the compressed messages.
 	 *  multimodal-input sub-2: each step's optional `attachments` is persisted to
-	 *  the `turns.attachments` column as JSON (design principle A — meta only). */
+	 *  the `steps.attachments` column as JSON (design principle A — meta only). */
 	replaceStepsFromMessages(
 		sessionId: string,
 		steps: Array<{
@@ -835,9 +905,9 @@ export class SessionDB {
 	): void {
 		const now = new Date().toISOString();
 		const tx = this.db.transaction(() => {
-			this.db.prepare("DELETE FROM turns WHERE session_id = ?").run(sessionId);
+			this.db.prepare("DELETE FROM steps WHERE session_id = ?").run(sessionId);
 			const insert = this.db.prepare(
-				"INSERT INTO turns (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments) " +
+				"INSERT INTO steps (session_id, seq, turn_group, role, content, input_tokens, output_tokens, total_tokens, created_at, attachments) " +
 				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			);
 			for (const s of steps) {
@@ -848,35 +918,51 @@ export class SessionDB {
 					this.serializeAttachments(s.attachments),
 				);
 			}
-			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+			// steps-overhaul sub-1: recompute the counters from the rebuilt row
+			// set. step_count = total rows; turn_count = user rows (true turn
+			// count). Both derived from the fresh batch so they stay correct
+			// after a destructive compression rebuild (DELETE+INSERT).
+			const cnt = this.db.prepare(
+				"SELECT COUNT(*) AS total, SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END) AS user_rows FROM steps WHERE session_id = ?",
+			).get(sessionId) as { total: number; user_rows: number } | undefined;
+			this.db.prepare(
+				"UPDATE sessions SET step_count = ?, turn_count = ?, updated_at = ? WHERE id = ?",
+			).run(cnt?.total ?? 0, cnt?.user_rows ?? 0, now, sessionId);
 		});
 		tx();
 	}
 
 	// -----------------------------------------------------------------------
-	// Turn state (durable execution checkpointing)
+	// Turn state (steps-overhaul sub-1: folded into sessions as 1:1 current
+	// run state — phase/last_completed_step_seq/source/error/turn_count/
+	// step_count/token_usage. No per-turn history; a session has at most one
+	// in-flight turn. cleanOldTurnState + updateTurnPhase removed (the former's
+	// GC job is absorbed by recovery scanning sessions.phase; the latter had
+	// zero callers).)
 	// -----------------------------------------------------------------------
 
 	createTurnState(sessionId: string, turnSeq: number, source: TurnSource = "background"): void {
 		const now = new Date().toISOString();
 		try {
-			// Step 2D: phase is now a session-level marker (pending → completed/
-			// failed). The fine-grained progress lives in last_completed_step_seq,
-			// advanced per-StepEnd below. INSERT OR REPLACE keeps the row stable
-			// across retries within the same turn; last_completed_step_seq starts
-			// NULL (turn started, no step finished yet).
+			// steps-overhaul sub-1: the per-turn turn_state row is gone; the
+			// same logical state lives on the sessions row. phase flips to
+			// 'pending' (recovery candidate), last_completed_step_seq resets to
+			// NULL (turn started, no step finished yet), and source records who
+			// kicked the turn. error is cleared (fresh turn).
 			//
-			// platform-observability ②.1 (sub-1): source is the turn-source
-			// marker (user|work|cron|background). The default 'background'
-			// matches the column DEFAULT so any caller that omits it (and any
-			// pre-migration row) lands in the lowest tier. INSERT OR REPLACE
-			// re-writes source on each retry — same turn, same entry, so the
-			// value is stable (it's set by the entry that owns the turn, not by
-			// mid-turn code). A recovered turn reuses the existing row (recovery
-			// path pre-marks via setSessionTurnSeq so this INSERT is skipped).
+			// turn_count is NOT bumped here — see appendStep (role='user') for
+			// the bump rationale (it must happen at user-row write time, not at
+			// turn-state init, to avoid a TurnStart ordering hazard: if durable
+			// TurnStart runs before turn-hooks TurnStart, bumping here would
+			// make turn-hooks' subsequent getTurnCount() read N+1 and write the
+			// user row at the wrong seq).
+			//
+			// A recovered turn skips this (recovery pre-marks via
+			// setSessionTurnSeq → markTurnStatePrecreated → durable TurnStart
+			// skips createTurnState, preserving the existing phase/checkpoint).
 			this.db.prepare(
-				`INSERT OR REPLACE INTO turn_state (session_id, turn_seq, phase, last_completed_step_seq, source, created_at, updated_at) VALUES (?, ?, 'pending', NULL, ?, ?, ?)`,
-			).run(sessionId, turnSeq, source, now, now);
+				`UPDATE sessions SET phase = 'pending', last_completed_step_seq = NULL, source = ?, error = NULL, updated_at = ? WHERE id = ?`,
+			).run(source, now, sessionId);
 		} catch (e) {
 			log.error("db", `createTurnState failed (session=${sessionId}, turn=${turnSeq}):`, (e as Error).message);
 			throw e;
@@ -884,10 +970,11 @@ export class SessionDB {
 	}
 
 	/**
-	 * Step 2D: advance the per-session step checkpoint. Called on every
-	 * successful StepEnd with the just-completed step's seq (stepBaseSeq +
-	 * stepOffset). resume() reads lastCompletedStepSeq and continues from +1,
-	 * so completed steps are never re-run. Only moves the cursor FORWARD — a
+	 * steps-overhaul sub-1: advance the per-session step checkpoint (was
+	 * per-(session,turn); now 1:1 on sessions). Called on every successful
+	 * StepEnd with the just-completed step's seq (stepBaseSeq + stepOffset).
+	 * resume() reads last_completed_step_seq and continues from +1, so
+	 * completed steps are never re-run. Only moves the cursor FORWARD — a
 	 * regression (older seq) is ignored to protect against out-of-order hook
 	 * firing.
 	 */
@@ -895,10 +982,10 @@ export class SessionDB {
 		const now = new Date().toISOString();
 		try {
 			this.db.prepare(
-				"UPDATE turn_state SET last_completed_step_seq = ?, updated_at = ? " +
-				"WHERE session_id = ? AND turn_seq = ? " +
+				"UPDATE sessions SET last_completed_step_seq = ?, updated_at = ? " +
+				"WHERE id = ? " +
 				"AND (last_completed_step_seq IS NULL OR last_completed_step_seq < ?)",
-			).run(stepSeq, now, sessionId, turnSeq, stepSeq);
+			).run(stepSeq, now, sessionId, stepSeq);
 		} catch (e) {
 			log.error("db", `advanceStepCheckpoint failed (session=${sessionId}, turn=${turnSeq}, step=${stepSeq}):`, (e as Error).message);
 			throw e;
@@ -909,8 +996,7 @@ export class SessionDB {
 	getStepCheckpoint(sessionId: string): number | null {
 		try {
 			const row = this.db.prepare(
-				"SELECT last_completed_step_seq AS seq FROM turn_state WHERE session_id = ? " +
-				"ORDER BY turn_seq DESC LIMIT 1",
+				"SELECT last_completed_step_seq AS seq FROM sessions WHERE id = ?",
 			).get(sessionId) as { seq: number | null } | undefined;
 			return row?.seq ?? null;
 		} catch (e) {
@@ -919,28 +1005,12 @@ export class SessionDB {
 		}
 	}
 
-	updateTurnPhase(sessionId: string, turnSeq: number, phase: string, checkpoint?: any): void {
-		// Step 2D: retained for back-compat (no live caller now that durable-
-		// hooks is step-level), but the canonical progress marker is
-		// last_completed_step_seq, not phase. Phase only flips to completed/
-		// failed at TurnEnd/TurnError.
-		const now = new Date().toISOString();
-		try {
-			this.db.prepare(
-				"UPDATE turn_state SET phase = ?, checkpoint = ?, updated_at = ? WHERE session_id = ? AND turn_seq = ?",
-			).run(phase, checkpoint ? JSON.stringify(checkpoint) : null, now, sessionId, turnSeq);
-		} catch (e) {
-			log.error("db", `updateTurnPhase failed (session=${sessionId}, turn=${turnSeq}, phase=${phase}):`, (e as Error).message);
-			throw e;
-		}
-	}
-
 	completeTurnState(sessionId: string, turnSeq: number): void {
 		const now = new Date().toISOString();
 		try {
 			this.db.prepare(
-				`UPDATE turn_state SET phase = 'completed', updated_at = ? WHERE session_id = ? AND turn_seq = ?`,
-			).run(now, sessionId, turnSeq);
+				`UPDATE sessions SET phase = 'completed', updated_at = ? WHERE id = ?`,
+			).run(now, sessionId);
 		} catch (e) {
 			log.error("db", `completeTurnState failed (session=${sessionId}, turn=${turnSeq}):`, (e as Error).message);
 			throw e;
@@ -951,29 +1021,34 @@ export class SessionDB {
 		const now = new Date().toISOString();
 		try {
 			this.db.prepare(
-				`UPDATE turn_state SET phase = 'failed', error = ?, updated_at = ? WHERE session_id = ? AND turn_seq = ?`,
-			).run(error, now, sessionId, turnSeq);
+				`UPDATE sessions SET phase = 'failed', error = ?, updated_at = ? WHERE id = ?`,
+			).run(error, now, sessionId);
 		} catch (e) {
 			log.error("db", `failTurnState failed (session=${sessionId}, turn=${turnSeq}):`, (e as Error).message);
 			throw e;
 		}
 	}
 
-	getIncompleteTurns(): Array<{ sessionId: string; turnSeq: number; phase: string; checkpoint: any; error: string | null; lastCompletedStepSeq: number | null; source: TurnSource }> {
+	/**
+	 * steps-overhaul sub-1: all sessions whose phase is non-terminal (recovery
+	 * candidates). Was a scan of turn_state; now a single SELECT on sessions.
+	 * Returns turnSeq derived from sessions.turn_count (the next allocation =
+	 * current turn_count, which is also the in-flight turn's seq+1 — but the
+	 * in-flight turn's OWN seq is turn_count-1; recovery resumes that turn, so
+	 * we report turnSeq = turn_count - 1). For sessions where turn_count is 0
+	 * (edge: phase pending but no createTurnState ran), fall back to 0.
+	 * `.checkpoint` field dropped (dead); callers (recovery, durable-hooks)
+	 * only read `.turnSeq` / `.lastCompletedStepSeq` / `.phase` / `.source`.
+	 */
+	getIncompleteTurns(): Array<{ sessionId: string; turnSeq: number; phase: string; error: string | null; lastCompletedStepSeq: number | null; source: TurnSource }> {
 		try {
-			// Step 2D: surface the step-level checkpoint so recovery can resume
-			// from the next step instead of re-running the whole turn. phase is
-			// still the session-level terminal marker (pending → completed/
-			// failed); lastCompletedStepSeq is the fine-grained progress.
-			// sub-1: surface source so callers (recovery) carry it through.
 			const rows = this.db.prepare(
-				`SELECT session_id, turn_seq, phase, checkpoint, error, last_completed_step_seq, source FROM turn_state WHERE phase NOT IN ('completed', 'failed')`,
+				`SELECT id AS session_id, phase, error, last_completed_step_seq, source, turn_count FROM sessions WHERE phase NOT IN ('completed', 'failed')`,
 			).all() as any[];
 			return rows.map((r: any) => ({
 				sessionId: r.session_id,
-				turnSeq: r.turn_seq,
+				turnSeq: Math.max(0, (r.turn_count ?? 1) - 1),
 				phase: r.phase,
-				checkpoint: r.checkpoint ? JSON.parse(r.checkpoint) : null,
 				error: r.error,
 				lastCompletedStepSeq: r.last_completed_step_seq ?? null,
 				source: (r.source ?? "background") as TurnSource,
@@ -989,17 +1064,18 @@ export class SessionDB {
 	 * Used by the runtime resumeTask path to pre-populate turn_seq before
 	 * loop.resume() (closing the turn+1 bug on the TaskResume path — the server-
 	 * side doRecoverIncompleteSessions already does this for chat sessions).
-	 * Returns the FIRST non-terminal turn_state row for the session (a session
-	 * has at most one in-flight turn at a time). Returns undefined if none.
+	 * steps-overhaul sub-1: now reads sessions (phase non-terminal). Returns
+	 * turnSeq = turn_count - 1 (the in-flight turn's own seq). undefined if the
+	 * session is terminal or missing.
 	 */
 	getIncompleteTurn(sessionId: string): { turnSeq: number; lastCompletedStepSeq?: number | null; source?: TurnSource } | undefined {
 		try {
 			const row = this.db.prepare(
-				`SELECT turn_seq, last_completed_step_seq, source FROM turn_state WHERE session_id = ? AND phase NOT IN ('completed', 'failed') ORDER BY turn_seq DESC LIMIT 1`,
+				`SELECT turn_count, last_completed_step_seq, source FROM sessions WHERE id = ? AND phase NOT IN ('completed', 'failed')`,
 			).get(sessionId) as any;
 			if (!row) return undefined;
 			return {
-				turnSeq: row.turn_seq,
+				turnSeq: Math.max(0, (row.turn_count ?? 1) - 1),
 				lastCompletedStepSeq: row.last_completed_step_seq ?? null,
 				source: (row.source ?? "background") as TurnSource,
 			};
@@ -1010,21 +1086,23 @@ export class SessionDB {
 	}
 
 	/**
-	 * sub-8 (lazy rebuild + interrupted seed): set of DISTINCT session ids that
-	 * have at least one non-terminal turn_state row. Used by:
+	 * sub-8 (lazy rebuild + interrupted seed): set of DISTINCT session ids whose
+	 * phase is non-terminal. Used by:
 	 *   - restoreAllSessions — only these sessions get a loop at startup; all
 	 *     other chat sessions defer to activateSession (lazy build).
 	 *   - restoreDelegatedTasks — authoritative seed-status signal: a delegated
-	 *     child whose session has an incomplete turn is "frozen/interrupted"
-	 *     regardless of its delegated_tasks.status row.
-	 * Single batched query (no N+1). Empty set when nothing is incomplete.
+	 *     child whose session is non-terminal is "frozen/interrupted" regardless
+	 *     of its delegated_tasks.status row.
+	 * steps-overhaul sub-1: was DISTINCT session_id FROM turn_state; now a
+	 * single SELECT id FROM sessions WHERE phase NOT IN (...). Single batched
+	 * query (no N+1). Empty set when nothing is incomplete.
 	 */
 	getIncompleteTurnSessionIds(): Set<string> {
 		try {
 			const rows = this.db.prepare(
-				`SELECT DISTINCT session_id FROM turn_state WHERE phase NOT IN ('completed', 'failed')`,
+				`SELECT id FROM sessions WHERE phase NOT IN ('completed', 'failed')`,
 			).all() as any[];
-			return new Set(rows.map((r) => r.session_id as string));
+			return new Set(rows.map((r) => r.id as string));
 		} catch (e) {
 			log.error("db", "getIncompleteTurnSessionIds failed:", (e as Error).message);
 			return new Set();
@@ -1032,17 +1110,19 @@ export class SessionDB {
 	}
 
 	/**
-	 * sub-4 (TaskKill interrupted→abandon): mark a session's interrupted
-	 * turn_state rows terminal (failed) so they don't resurface as "needs
-	 * resume" on next startup. Called from the parent's TaskKill(interrupted)
-	 * branch when the parent chooses NOT to resume a frozen delegated child.
-	 * Returns the count of rows marked. Best-effort: errors log + return 0.
+	 * sub-4 (TaskKill interrupted→abandon): mark a session's interrupted state
+	 * terminal (failed) so it doesn't resurface as "needs resume" on next
+	 * startup. Called from the parent's TaskKill(interrupted) branch when the
+	 * parent chooses NOT to resume a frozen delegated child. Returns 1 if a row
+	 * was flipped, 0 otherwise (best-effort: errors log + return 0).
+	 * steps-overhaul sub-1: was UPDATE turn_state ... WHERE phase NOT IN ...;
+	 * now a single-row UPDATE on sessions.
 	 */
 	abandonInterruptedTurn(sessionId: string, reason: string = "Abandoned via TaskKill"): number {
 		try {
 			const now = new Date().toISOString();
 			const info = this.db.prepare(
-				`UPDATE turn_state SET phase = 'failed', error = ?, updated_at = ? WHERE session_id = ? AND phase NOT IN ('completed', 'failed')`,
+				`UPDATE sessions SET phase = 'failed', error = ?, updated_at = ? WHERE id = ? AND phase NOT IN ('completed', 'failed')`,
 			).run(reason, now, sessionId);
 			return info.changes ?? 0;
 		} catch (e) {
@@ -1051,31 +1131,14 @@ export class SessionDB {
 		}
 	}
 
-	cleanOldTurnState(maxAgeMs: number): void {
-		const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
-		try {
-			// At startup, the previous process is gone — every row older than cutoff is stale.
-			// This includes pending rows that would otherwise accumulate forever and cause
-			// bogus recovery attempts on every subsequent startup.
-			const result = this.db.prepare(
-				`DELETE FROM turn_state WHERE updated_at < ?`,
-			).run(cutoff);
-			if (result.changes > 0) {
-				log.db(`cleanOldTurnState removed ${result.changes} stale row(s) older than ${maxAgeMs}ms`);
-			}
-		} catch (e) {
-			log.error("db", "cleanOldTurnState failed:", (e as Error).message);
-			throw e;
-		}
-	}
-
 	/**
 	 * platform-observability ②.2 (sub-2): retention for the provider_usage
 	 * rollup. Deletes any hour_bucket older than `maxAgeMs` ago. Called on the
-	 * same schedule as cleanOldTurnState (startup). Cutoff is compared against
-	 * hour_bucket (hour-floor ISO UTC) directly — that's a coarser comparison
-	 * than updated_at, which is fine: we keep ≥30d of hourly buckets, the only
-	 * risk is over-retaining the partial hour at the boundary (acceptable).
+	 * same startup schedule as the (now-removed) cleanOldTurnState. Cutoff is
+	 * compared against hour_bucket (hour-floor ISO UTC) directly — that's a
+	 * coarser comparison than updated_at, which is fine: we keep ≥30d of hourly
+	 * buckets, the only risk is over-retaining the partial hour at the boundary
+	 * (acceptable).
 	 */
 	cleanOldProviderUsage(maxAgeMs: number): void {
 		const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
@@ -1092,8 +1155,17 @@ export class SessionDB {
 		}
 	}
 
-		deleteTurnState(sessionId: string): void {
-		this.db.prepare("DELETE FROM turn_state WHERE session_id = ?").run(sessionId);
+	/**
+	 * Reset a session's turn state row to terminal-completed (defensive clear).
+	 * steps-overhaul sub-1: was DELETE FROM turn_state; now flips sessions.phase
+	 * to 'completed' so the session stops being a recovery candidate. Kept for
+	 * callers that historically cleared turn_state on session teardown.
+	 */
+	deleteTurnState(sessionId: string): void {
+		const now = new Date().toISOString();
+		this.db.prepare(
+			`UPDATE sessions SET phase = 'completed', last_completed_step_seq = NULL, error = NULL, updated_at = ? WHERE id = ?`,
+		).run(now, sessionId);
 	}
 
 	// -----------------------------------------------------------------------

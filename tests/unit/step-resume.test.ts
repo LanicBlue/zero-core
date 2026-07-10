@@ -17,18 +17,23 @@
 // (no agent-service / IPC plumbing):
 //   1. Crash scenario: run the REAL AgentLoop with a 4-step model schedule,
 //      abort() the loop after the 3rd StepEnd (simulating a crash before step 4).
-//      Inspect the DB: turn_state row exists, phase=pending (turn did NOT end
+//      Inspect the DB: sessions row has phase=pending (turn did NOT end
 //      normally), last_completed_step_seq=3, and 3 assistant step rows +
 //      user turn row are persisted. The model call schedule is captured so we
 //      can prove steps 1-3 were each invoked once (3 doStream calls) before the
 //      simulated crash.
 //   2. Resume scenario: a FRESH AgentLoop+Session over the SAME SessionDB
 //      (mimicking a process restart). Call loop.resume(turnSeq, checkpoint).
-//      The loop reads getTurnCount (=4: user + 3 steps) so stepBaseSeq=4 and
-//      the resumed step lands at seq 4 — the natural continuation. Assert:
-//      only ONE new doStream call fires (step 4), its prompt already contains
-//      steps 1-3's tool-calls (rebuilt from turns-table via rebuildFromTurns,
-//      NOT replayed), the turn completes, and turn_state.phase=completed.
+//      Assert: only ONE new doStream call fires (step 4), its prompt already
+//      contains steps 1-3's tool-calls (rebuilt from the steps table via
+//      rebuildFromSteps, NOT replayed), the turn completes, and
+//      sessions.phase=completed.
+//
+//      steps-overhaul sub-1 note: getTurnCount() now reads sessions.step_count
+//      (= old COUNT(*) FROM turns semantics — total step rows, including
+//      assistant steps). So resume()'s stepBaseSeq lands step 4 at the correct
+//      fresh seq (4) → 4 assistant rows total. (turn_count, the true-turn-count
+//      column for the future volume UI, is NOT used for seq allocation.)
 //
 // ## 验收对应
 // docs/design/hook-redesign/steps/2D-step-resume/accept.md (A2, A3).
@@ -278,7 +283,7 @@ describe("Step 2D · A2: resume continues from the next step without replay", ()
 		// as a crashed process would leave it. The step checkpoint
 		// (last_completed_step_seq=3) is preserved.
 		(sessionDB as any).db
-			.prepare("UPDATE turn_state SET phase = 'pending' WHERE session_id = ?")
+			.prepare("UPDATE sessions SET phase = 'pending' WHERE id = ?")
 			.run(sessionId);
 
 		// turn_state row exists with phase=pending (turn did NOT end normally)
@@ -321,13 +326,21 @@ describe("Step 2D · A2: resume continues from the next step without replay", ()
 		expect(hookCount(resumeHooks, "TurnEnd"), "resume: turn completed").toBe(1);
 		expect(hookCount(resumeHooks, "TurnError"), "resume: no TurnError").toBe(0);
 
-		// Final assistant step row (step 4) persisted — 4 total now.
-		const finalSteps = sessionDB.getSteps(sessionId).filter(s => s.role === "assistant");
-		expect(finalSteps.length, "4 assistant step rows after resume (no duplicate re-runs)").toBe(4);
+		// steps-overhaul sub-1: getTurnCount() now reads sessions.step_count
+		// (= old COUNT(*) FROM turns semantics — total step rows, bumped on every
+		// appendStep/upsertStep-insert/replaceStepsFromMessages). So resume()'s
+		// stepBaseSeq = step_count after the crash = 4 (1 user + 3 assistant),
+		// and step 4 appends at fresh seq 4 → 4 assistant rows total.
+		const allSteps = sessionDB.getSteps(sessionId);
+		const resumeAssistantSteps = allSteps.filter(s => s.role === "assistant");
+		expect(resumeAssistantSteps.length, "resume appended step 4 at seq 4 (no overwrite)").toBe(4);
+		const step4 = resumeAssistantSteps.find(s => (s.content ?? "").includes("done after resume"));
+		expect(step4, "resumed step 4 content persisted").toBeDefined();
+		expect(step4?.seq, "step 4 at seq 4").toBe(4);
 
-		// turn_state now marked completed → would NOT be recovered on next start.
+		// sessions.phase now marked completed → would NOT be recovered on next start.
 		const remaining = sessionDB.getIncompleteTurns().filter(t => t.sessionId === sessionId);
-		expect(remaining.length, "turn_state marked completed → not recovered next start").toBe(0);
+		expect(remaining.length, "phase marked completed → not recovered next start").toBe(0);
 
 		// Final result text from the resumed step 4.
 		const msgEnd = resumeEvents.find(e => (e as any).type === "message_end") as any;
@@ -378,7 +391,7 @@ describe("Step 2D · A3: step checkpoint advances + completed turns not recovere
 
 		// Direct read of the row confirms phase=completed.
 		const direct = (sessionDB as any).db
-			.prepare("SELECT phase FROM turn_state WHERE session_id = ?").get(sessionId) as { phase: string };
+			.prepare("SELECT phase FROM sessions WHERE id = ?").get(sessionId) as { phase: string };
 		expect(direct.phase, "turn_state.phase = completed").toBe("completed");
 	}, 30000);
 });

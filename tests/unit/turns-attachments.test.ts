@@ -1,4 +1,4 @@
-// multimodal-input sub-2 acceptance test: turns.attachments column.
+// multimodal-input sub-2 acceptance test: steps.attachments column.
 //
 // # File Spec
 //
@@ -22,7 +22,7 @@
 //      into the in-memory CachedTurnData so a restart doesn't drop them.
 //
 // ## Storage shape
-// turns.attachments = JSON.stringify(AttachmentMeta[]) | NULL. NULL on legacy
+// steps.attachments = JSON.stringify(AttachmentMeta[]) | NULL. NULL on legacy
 // rows / rows with no attachments (read back as undefined).
 //
 // ## Constraints
@@ -47,14 +47,14 @@ import type { AttachmentMeta } from "../../src/shared/types.js";
 /** Read back the raw `attachments` column value for a session in seq order. */
 function readAttachmentsColumn(db: Database.Database, sessionId: string): Array<string | null> {
 	const rows = db.prepare(
-		"SELECT attachments FROM turns WHERE session_id = ? ORDER BY seq",
+		"SELECT attachments FROM steps WHERE session_id = ? ORDER BY seq",
 	).all(sessionId) as Array<{ attachments: string | null } | undefined>;
 	return rows.map((r) => r?.attachments ?? null);
 }
 
-/** Column names of the turns table (post-migration). */
+/** Column names of the steps table (post-migration). */
 function turnsColumns(db: Database.Database): string[] {
-	return (db.pragma("table_info(turns)") as Array<{ name: string }>).map((c) => c.name);
+	return (db.pragma("table_info(steps)") as Array<{ name: string }>).map((c) => c.name);
 }
 
 /** Insert a session row (FK target) directly via raw SQL. */
@@ -92,7 +92,7 @@ function preCreateLegacyTurnsTable(db: Database.Database): void {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);
-		CREATE TABLE IF NOT EXISTS turns (
+		CREATE TABLE IF NOT EXISTS steps (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id TEXT NOT NULL,
 			seq INTEGER NOT NULL,
@@ -105,7 +105,7 @@ function preCreateLegacyTurnsTable(db: Database.Database): void {
 			output_tokens INTEGER DEFAULT 0,
 			total_tokens INTEGER DEFAULT 0
 		);
-		CREATE INDEX IF NOT EXISTS idx_turns_session_seq ON turns(session_id, seq);
+		CREATE INDEX IF NOT EXISTS idx_steps_session_seq ON steps(session_id, seq);
 	`);
 }
 
@@ -113,7 +113,7 @@ function preCreateLegacyTurnsTable(db: Database.Database): void {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("multimodal-input sub-2: turns.attachments column", () => {
+describe("multimodal-input sub-2: steps.attachments column", () => {
 	let tmpDir: string;
 	let dbPath: string;
 
@@ -127,7 +127,7 @@ describe("multimodal-input sub-2: turns.attachments column", () => {
 		try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
 	});
 
-	test("fresh DB: turns.attachments column exists after initSchema", () => {
+	test("fresh DB: steps.attachments column exists after initSchema", () => {
 		let sessionDB: SessionDB | null = null;
 		try {
 			sessionDB = new SessionDB(dbPath);
@@ -138,7 +138,7 @@ describe("multimodal-input sub-2: turns.attachments column", () => {
 		}
 	});
 
-	test("appendStep with attachments persists JSON to turns.attachments and getSteps reads it back", () => {
+	test("appendStep with attachments persists JSON to steps.attachments and getSteps reads it back", () => {
 		let sessionDB: SessionDB | null = null;
 		try {
 			sessionDB = new SessionDB(dbPath);
@@ -266,7 +266,7 @@ describe("multimodal-input sub-2: turns.attachments column", () => {
 			const sessionId = "legacy";
 			ensureSession(raw0, sessionId);
 			raw0.prepare(
-				"INSERT INTO turns (session_id, seq, role, content, created_at, turn_group) " +
+				"INSERT INTO steps (session_id, seq, role, content, created_at, turn_group) " +
 				"VALUES (?, ?, ?, ?, ?, ?)",
 			).run(sessionId, 0, "user", "legacy text", "2026-01-01T00:00:00.000Z", 0);
 			raw0.close();
@@ -293,7 +293,7 @@ describe("multimodal-input sub-2: turns.attachments column", () => {
 		}
 	});
 
-	test("corrupt JSON in turns.attachments reads back as undefined (read tolerance)", () => {
+	test("corrupt JSON in steps.attachments reads back as undefined (read tolerance)", () => {
 		let sessionDB: SessionDB | null = null;
 		try {
 			sessionDB = new SessionDB(dbPath);
@@ -302,7 +302,7 @@ describe("multimodal-input sub-2: turns.attachments column", () => {
 			ensureSession(raw, sessionId);
 			// Write a malformed attachments value directly.
 			raw.prepare(
-				"INSERT INTO turns (session_id, seq, role, content, created_at, turn_group, attachments) " +
+				"INSERT INTO steps (session_id, seq, role, content, created_at, turn_group, attachments) " +
 				"VALUES (?, ?, ?, ?, ?, ?, ?)",
 			).run(sessionId, 0, "user", "txt", "2026-01-01T00:00:00.000Z", 0, "{not valid json");
 

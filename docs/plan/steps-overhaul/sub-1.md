@@ -8,7 +8,9 @@ DROP+重建 session 内容/状态表;`turns`→`steps` 正名;sessions 吸收 tu
 
 ## 改动点
 - `src/server/session-db.ts` `initSchema`:`turns`→`steps`;DROP `turn_state`;sessions 加 7 列(权威清单见 design.md「sessions 收状态」):`phase`(DEFAULT `'completed'`)/`last_completed_step_seq`/`source`/`error`/`turn_count`/`step_count`/`token_usage(JSON)`。
-- **`turn_seq` 不进 DB**:运行时真相是 in-memory `turn-seq-tracker.ts`(TurnStart 经 `db.getTurnCount()` 分配);`getTurnCount()`(`session-db.ts:632`)改成读 `sessions.turn_count`(原从 turns 表 COUNT)。
+- **`turn_seq` 不进 DB**:运行时真相是 in-memory `turn-seq-tracker.ts`(TurnStart 经 `db.getTurnCount()` 分配)。
+- **`getTurnCount()` 读 `sessions.step_count`(非 turn_count)**:`getTurnCount` 名字误导——原 `COUNT(*) FROM turns` 数的是**所有行 = 所有 step**(user+assistant),被 `agent-loop.ts:661/678` 拿去分配 stepBaseSeq。读 `step_count`(总 step 行数)才保语义不变(step seq 分配不漂);读 `turn_count`(只 user turn 数)会让 resume 算错 stepBaseSeq → step 覆盖。`turn_count` 列留给 sub-9 体积 UI(真正的 turn 计数)。两列都建。
+- **计数器 bump 时机**:在 step-row 写入点(`appendStep`/`upsertStep`/`replaceStepsFromMessages`/`deleteStepGroup`/`clearTurns`)bump/重算,**不在 `createTurnState`**——避免 durable TurnStart vs turn-hooks TurnStart 顺序依赖。`replaceStepsFromMessages` 等重建路径用 `COUNT(*)`/`SUM(role='user')` 重算,防压缩后漂移。
 - **`checkpoint TEXT(JSON)` 列丢弃(已查证为死代码,2026-07-10)**:唯一写该列的是 `updateTurnPhase`(`session-db.ts:930`),而 `updateTurnPhase` **src 内零 caller**(自带注释"no live caller");该列唯一读点是 `getIncompleteTurns` 的返回字段 `.checkpoint`(`:976`),**零下游消费**(recovery.ts 只读 `.length`,durable-hooks 只读 `.turnSeq`)。直接删列 + 删 `updateTurnPhase` 死方法。(`advanceStepCheckpoint`/`getStepCheckpoint` 名字虽带 checkpoint,实际读写的是 `last_completed_step_seq`,保留语义改名后留用。)
 - turn_state 方法(`createTurnState`/`advanceStepCheckpoint`/`completeTurnState`/`failTurnState`/`getIncompleteTurn*`/`abandonInterruptedTurn`)改成 sessions 单行操作;`updateTurnPhase`(零 caller 死代码)删。
 - **`cleanOldTurnState` 整体退役**(2026-07-10 定,非"语义替代"):无 per-turn 行可 GC;其 stale 清理职责由 recovery 扫描吸收——启动时 `phase NOT IN ('completed','failed')` 即恢复候选,恢复不了的标 `'interrupted'`/`'failed'`。

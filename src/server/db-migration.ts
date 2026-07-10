@@ -81,6 +81,19 @@ const PROJECT_COLUMNS = [
 // extracted projectId column for the (agentId, projectId) find-or-create
 // routing key. Kept here for parity with the *_COLUMNS pattern even though
 // the sessions table itself is owned by SessionDB.
+//
+// Note: SESSION_COLUMNS is consumed by the `for (const col of SESSION_COLUMNS)`
+// loop in runMigrations, which calls safeAddColumn(..., "TEXT") for each. That
+// is correct for the context-bundle columns above (all TEXT/JSON-as-TEXT).
+// The steps-overhaul sub-1 turn_state-fold columns (phase/source/error/
+// turn_count/step_count/token_usage/last_completed_step_seq) are NOT listed
+// here because they need typed definitions (phase = TEXT NOT NULL DEFAULT
+// 'completed', turn_count = INTEGER NOT NULL DEFAULT 0, etc.) — forcing them
+// through the TEXT-only loop would corrupt their types. They are added with
+// the correct types by an explicit typed safeAddColumn block in runMigrations
+// below AND by SessionDB.initSchema (double-belt-and-suspenders; both paths
+// run on every startup, fresh + upgraded). They are also NOT part of the
+// SessionRecord TS type — rowToRecord does not read them.
 const SESSION_COLUMNS = [
 	{ key: "context", json: true },
 	{ key: "contextProjectId", column: "context_project_id" },
@@ -733,15 +746,39 @@ export function runMigrations(sessionDB: SessionDB): void {
 	}
 	safeAddIndex(db, "sessions", "idx_sessions_agent_project", "agent_id, context_project_id");
 
-	// Step-level storage: turns table new columns
-	safeAddColumn(db, "turns", "turn_group", "INTEGER NOT NULL DEFAULT -1");
-	safeAddColumn(db, "turns", "input_tokens", "INTEGER DEFAULT 0");
-	safeAddColumn(db, "turns", "output_tokens", "INTEGER DEFAULT 0");
-	safeAddColumn(db, "turns", "total_tokens", "INTEGER DEFAULT 0");
-	safeAddIndex(db, "turns", "idx_turns_session_group", "session_id, turn_group");
+	// steps-overhaul sub-1: sessions absorbs turn_state. 7 typed columns with
+	// the SAME types/defaults as SessionDB.initSchema's CREATE TABLE / ALTER
+	// (double-belt-and-suspenders: both paths run on every startup). phase
+	// defaults to 'completed' so existing (pre-fold) sessions rows are NOT
+	// flagged as recovery candidates (recovery scans phase NOT IN
+	// ('completed','failed')). turn_count/step_count default 0; turn_count is
+	// bumped in appendStep (role='user'). memory feedback-fresh-db-migrations:
+	// are NOT in SESSION_COLUMNS (that loop forces TEXT, wrong for INTEGER /
+	// NOT NULL DEFAULT cols); typed safeAddColumn here is the sync point.
+	safeAddColumn(db, "sessions", "phase", "TEXT NOT NULL DEFAULT 'completed'");
+	safeAddColumn(db, "sessions", "last_completed_step_seq", "INTEGER");
+	safeAddColumn(db, "sessions", "source", "TEXT NOT NULL DEFAULT 'background'");
+	safeAddColumn(db, "sessions", "error", "TEXT");
+	safeAddColumn(db, "sessions", "turn_count", "INTEGER NOT NULL DEFAULT 0");
+	safeAddColumn(db, "sessions", "step_count", "INTEGER NOT NULL DEFAULT 0");
+	safeAddColumn(db, "sessions", "token_usage", "TEXT");
+	safeAddIndex(db, "sessions", "idx_sessions_phase", "phase");
 
-	// Migrate old rows: set turn_group = seq for un-migrated rows
-	migrateTurnsToSteps(db);
+	// steps-overhaul sub-1: physical `turns` table renamed to `steps`.
+	// SessionDB.initSchema DROPPED the legacy `turns` + `turn_state` tables and
+	// CREATEs `steps` with these columns, so on every startup (fresh + upgraded)
+	// the columns already exist by here — these safeAddColumn calls are no-ops
+	// kept as defensive parity with the v0.8 pattern (and to self-heal any DB
+	// that somehow lost them). The old migrateTurnsToSteps backfill is removed
+	// (its source table `turns` no longer exists; nothing to migrate — design
+	// decided DROP+rebuild, no data migration).
+	safeAddColumn(db, "steps", "turn_group", "INTEGER NOT NULL DEFAULT -1");
+	safeAddColumn(db, "steps", "input_tokens", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "steps", "output_tokens", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "steps", "total_tokens", "INTEGER DEFAULT 0");
+	safeAddColumn(db, "steps", "attachments", "TEXT");
+	safeAddIndex(db, "steps", "idx_steps_session_seq", "session_id, seq");
+	safeAddIndex(db, "steps", "idx_steps_session_group", "session_id, turn_group");
 
 	// Step 2E (hook-redesign): parent_tool_call_id on delegated_tasks lets the
 	// parent resume path resolve a dangling Agent tool-call → its delegated task
@@ -1157,90 +1194,6 @@ export function runMigrations(sessionDB: SessionDB): void {
 	// requirement + wiki persisted fields. All affected tables exist by here.
 	// Idempotent. See migrateRoleTokensToAgent.
 	migrateRoleTokensToAgent(db);
-}
-
-// ---------------------------------------------------------------------------
-// Step-level migration: backfill turn_group for pre-step rows.
-//
-// Step 4A: turn_group is now mandatory. Legacy rows (written before the
-// step-level schema) carry either NULL (column added without default) or
-// the -1 sentinel (added via safeAddColumn with `DEFAULT -1`). Backfill:
-//   - user row      → turn_group = its own seq (a user turn opens a new group)
-//   - assistant row → turn_group = the seq of the most recent preceding user
-//                     row within the same session (it joins that user's group)
-//
-// Per-session ordering is essential: a global UPDATE ... WHERE turn_group = -1
-// would stamp every assistant row with its own seq, breaking the user/assistant
-// grouping that rebuildFromSteps relies on. We scan each session's rows in seq
-// order and track the last user seq seen.
-//
-// Safe on a live DB? Yes — this is a single-pass UPDATE inside one implicit
-// transaction per session, and we never checkpoint (sessions.db readonly
-// invariant, feedback-sessions-db-readonly). Idempotent: rows already carrying
-// a real turn_group (>= 0) are skipped.
-// ---------------------------------------------------------------------------
-
-function migrateTurnsToSteps(db: Database.Database): void {
-	try {
-		const tableInfo = db.pragma("table_info(turns)") as Array<{ name: string }> | undefined;
-		if (!tableInfo || tableInfo.length === 0) return;
-		if (!tableInfo.some((c) => c.name === "turn_group")) return;
-
-		const sessions = db.prepare(
-			"SELECT DISTINCT session_id FROM turns WHERE turn_group IS NULL OR turn_group < 0",
-		).all() as Array<{ session_id: string }>;
-
-		if (sessions.length === 0) return;
-
-		const selectRows = db.prepare(
-			"SELECT seq, role, turn_group FROM turns WHERE session_id = ? ORDER BY seq",
-		);
-		const updateRow = db.prepare(
-			"UPDATE turns SET turn_group = ? WHERE session_id = ? AND seq = ?",
-		);
-
-		let totalUpdated = 0;
-		for (const { session_id } of sessions) {
-			const rows = selectRows.all(session_id) as Array<{
-				seq: number;
-				role: string;
-				turn_group: number | null;
-			}>;
-			let lastUserSeq: number | null = null;
-			const tx = db.transaction(() => {
-				for (const row of rows) {
-					// Skip rows already migrated to a real group.
-					if (row.turn_group !== null && row.turn_group >= 0) {
-						// Keep the running user cursor in sync for already-migrated
-						// rows so subsequent legacy assistant rows still attach to
-						// the right group.
-						if (row.role === "user") lastUserSeq = row.turn_group;
-						continue;
-					}
-					let group: number;
-					if (row.role === "user") {
-						group = row.seq;
-						lastUserSeq = row.seq;
-					} else {
-						// assistant (or any non-user): attach to the most recent
-						// user group. If none has been seen yet (orphan assistant
-						// before any user), fall back to the row's own seq so the
-						// NOT NULL constraint holds and it forms its own group.
-						group = lastUserSeq ?? row.seq;
-					}
-					updateRow.run(group, session_id, row.seq);
-					totalUpdated++;
-				}
-			});
-			tx();
-		}
-
-		if (totalUpdated > 0) {
-			log.db(`migrateTurnsToSteps: backfilled turn_group on ${totalUpdated} row(s)`);
-		}
-	} catch (err) {
-		log.warn("migration", "migrateTurnsToSteps backfill skipped:", (err as Error).message);
-	}
 }
 
 // ---------------------------------------------------------------------------

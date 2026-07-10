@@ -35,11 +35,17 @@ import { log } from "../core/logger.js";
 // ---------------------------------------------------------------------------
 
 export function scanIncompleteTurns(sessionDb: SessionDB): Array<{ sessionId: string; turnSeq: number; phase: string }> {
-	// Clean up old turn_state records (older than 24 hours)
-	sessionDb.cleanOldTurnState(24 * 60 * 60 * 1000);
+	// steps-overhaul sub-1: cleanOldTurnState is removed (its GC job — clearing
+	// stale turn_state rows — is absorbed by recovery scanning sessions.phase:
+	// a non-terminal session is a recovery candidate; one that can't be resumed
+	// gets marked 'interrupted'/'failed' by the resume path, not by a TTL sweep.
+	// There is no per-turn row to GC anymore.)
 	// platform-observability ②.2 (sub-2): retain provider_usage ≥30d.
 	sessionDb.cleanOldProviderUsage(30 * 24 * 60 * 60 * 1000);
 
+	// steps-overhaul sub-1: getIncompleteTurns now scans sessions.phase NOT IN
+	// ('completed','failed') (was a scan of turn_state). Same return shape so
+	// callers (agent-service.doRecoverIncompleteSessions) are unchanged.
 	const incomplete = sessionDb.getIncompleteTurns();
 	if (incomplete.length === 0) {
 		log.debug("recovery", "No interrupted turns found");
