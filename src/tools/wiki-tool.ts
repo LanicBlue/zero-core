@@ -49,11 +49,45 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import { getWikiStoreGlobal } from "../server/wiki-node-store.js";
+import { getWikiStoreGlobal, WIKI_GLOBAL_ROOT_ID } from "../server/wiki-node-store.js";
 import type { WikiStore } from "../server/wiki-node-store.js";
 import type { WikiNode } from "../shared/types.js";
 import type { CallerCtx, ToolResult } from "./types.js";
 import { formatBodySize, formatNodeId, shortIdOf, sanitizeText } from "../runtime/wiki-anchor-injection.js";
+
+// ---------------------------------------------------------------------------
+// Extractor A callerCtx — global-anchor Wiki tool instance (steps-overhaul sub-6)
+// ---------------------------------------------------------------------------
+
+/**
+ * v0.8 (steps-overhaul sub-6): build a MINIMAL callerCtx whose wiki anchor set
+ * is the single GLOBAL ROOT, so the Wiki tool can read/write the ENTIRE wiki
+ * memory tree (knowledge + projects + every memory subtree: per-agent, legacy
+ * type, per-topic). This is the "fire-and-forget" callerCtx for Extractor A
+ * (sub-7) — a multi-step memory-curation agent that has NO real session/loop
+ * state (it runs out-of-band during compression) but needs full wiki access to
+ * merge per-topic memory.
+ *
+ * The Wiki tool's resolveAnchorsCtx falls back to callerCtx.wikiAnchorNodeIds
+ * when callerCtx.scope is unset; passing [WIKI_GLOBAL_ROOT_ID] makes
+ * listVisibleFromAnchors / assertNodeInAnchorScope take the global-root fast
+ * path (whole-tree read + write). caller:"internal" so it isn't filtered as an
+ * external MCP caller; no sessionId/agentId (it's session-less).
+ *
+ * sub-6 ONLY provides this factory + the underlying store/tool capabilities
+ * (createMemoryNodeForTopic, ensureMemoryTopicRoot, createMemory/updateMemory
+ * tool actions, scope-respecting memory upsert primitives). sub-7 wires the
+ * actual Extractor A multi-step agent to call wikiTool.execute with a
+ * callerCtx built here.
+ */
+export function buildGlobalAnchorWikiCallerCtx(): CallerCtx {
+	return {
+		caller: "internal",
+		// No sessionId / agentId — this is a session-less fire-and-forget
+		// caller. The Wiki tool only needs the wiki-anchor scope field.
+		wikiAnchorNodeIds: [WIKI_GLOBAL_ROOT_ID],
+	};
+}
 
 // ---------------------------------------------------------------------------
 // Helpers — wiki store resolution + anchor scope + node addressing
@@ -199,6 +233,23 @@ function synthesizePath(parentPath: string | undefined, title: string): string {
 }
 
 /**
+ * v0.8 (steps-overhaul sub-6): synthesize a MEMORY leaf's internal `path` from
+ * its subject. The `memory:` prefix is what deriveTypeFromPosition keys off to
+ * classify the row as type=memory. The subject is slugged (mirrors
+ * WikiStore.createMemoryNodeForAgent/ForTopic's slug normalization) so the same
+ * (parentId, subject) upserts to the same node across calls. Agent never sees
+ * this path — `subject` is the stable handle it passes.
+ */
+function synthesizeMemoryPath(subject: string): string {
+	const slug = subject
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 64) || "unnamed";
+	return `memory:${slug}`;
+}
+
+/**
  * A header/intent node's `path` encodes the workspace file it mirrors
  * (`header:src/runtime/agent-loop.ts`, `intent:docs/req-foo.md`). Strip the
  * type prefix and return the workspace-relative path, or undefined if the path
@@ -255,7 +306,7 @@ function resolveNode(
 // checked at runtime in execute.
 
 export const wikiActionSchema = z.object({
-	action: z.enum(["expand", "search", "create", "update", "delete", "docRead", "docWrite", "docEdit"]),
+	action: z.enum(["expand", "search", "create", "update", "delete", "createMemory", "updateMemory", "docRead", "docWrite", "docEdit"]),
 	// expand / search / docRead / docWrite / docEdit / update / delete — direct addressing
 	nodeId: z.string().optional(),
 	// docRead / docWrite / docEdit — hierarchical title path addressing (alt to nodeId)
@@ -283,6 +334,8 @@ export const wikiActionSchema = z.object({
 	title: z.string().optional(),
 	summary: z.string().optional(),
 	flags: z.array(z.string()).optional(),
+	// createMemory / updateMemory — memory-leaf addressing
+	subject: z.string().optional().describe("createMemory: stable subject key for the memory leaf (slugged into the path; same subject → same node via upsert)"),
 	// create (initial body) / docWrite
 	content: z.string().optional(),
 	// docWrite — must be set to true to overwrite a node that already has a
@@ -307,9 +360,12 @@ export const wikiTool = buildTool({
 		"STRUCTURE (node tree):\n" +
 		"- { action:'expand', nodeId, depth?, type?, leavesOnly? } — read a node's STRUCTURE: its metadata (summary/flags/source file) plus its descendants as an indented tree, `depth` levels deep (1 = direct children only, default; max 5). `type` filters the listing to one node type; `leavesOnly` shows only leaf nodes (still walks through non-leaf ancestors to reach deeper leaves). Primary way to navigate and discover nodeIds. Does NOT return any node's body.\n" +
 		"- { action:'search', query, limit?, type?, subtree? } — substring search across visible nodes (title/summary). `type` filters matches; `subtree` (a nodeId) narrows the search to that node's subtree — useful inside a large session to avoid noise (e.g. searching 'tool' inside one project only).\n" +
-		"- { action:'create', parentId, title, summary?, content? } — create a node under a parent. NO type, NO path: type is inherited from the parent's position; the node name IS the title. Titles must be unique under the same parent (rejected otherwise). content?, if given, is the initial body.\n" +
-		"- { action:'update', nodeId, title?, summary?, flags? } — edit a node's metadata. Does NOT touch the body. Changing title must keep it unique among siblings.\n" +
-		"- { action:'delete', nodeId } — delete a node (cascades children + body).\n\n" +
+		"- { action:'create', parentId, title, summary?, content? } — create a STRUCTURE node under a parent (header/intent/structure, type inherited from the parent's position). NO memory type: memory leaves go via createMemory. Titles must be unique under the same parent (rejected otherwise). content?, if given, is the initial body.\n" +
+		"- { action:'update', nodeId, title?, summary?, flags? } — edit a STRUCTURE node's metadata. Does NOT touch the body. Changing title must keep it unique among siblings.\n" +
+		"- { action:'delete', nodeId } — delete a node (cascades children + body).\n" +
+		"MEMORY (memory-type leaves — for Extractor / memory-curation agents; needs a memory-kind parent in scope, e.g. a topic or per-agent memory root):\n" +
+		"- { action:'createMemory', parentId, subject, title, summary?, content?, flags? } — UPSERT a memory leaf under a memory parent. `subject` is the stable key (slugged into the internal path); same (parentId, subject) → same node across calls (idempotent merge). content?, if given, is the merged body. flags? marks conflicts.\n" +
+		"- { action:'updateMemory', nodeId, title?, summary?, flags?, content? } — patch a memory leaf's metadata + optionally its body (content?). PATCH semantics: omit a field to leave it alone. Use flags to mark conflicts; append to the body's '## 历史' section for a provenance trail.\n\n" +
 		"DOC (a node's body document — mirror Read/Write/Edit, addressed by nodeId OR title path):\n" +
 		"- { action:'docRead', nodeId? | path? | nodeIds? } — read a node's body. THE ONLY way to read a node's full body — expand does not include it. `nodeIds` (array) batch-reads several bodies in one call (each entry a nodeId/short id) — use it instead of N serial docReads when exploring a module's docs. path is a hierarchical title path like 'Parent/Child'.\n" +
 		"- { action:'docWrite', nodeId? | path?, content, overwrite? } — overwrite the whole body (like Write). If the node already has a non-empty body you MUST pass overwrite:true (otherwise it is rejected with the existing body size — use docEdit for a targeted change instead).\n" +
@@ -574,6 +630,85 @@ async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<strin
 					return `Wiki node deleted: ${formatNodeId(node.id)}`;
 				} catch (err) {
 					return `Delete rejected: ${(err as Error).message}`;
+				}
+			}
+
+			// ── MEMORY (memory-type leaves — Extractor / curation agents) ───
+			case "createMemory": {
+				if (readOnly) return readOnlyReject("createMemory");
+				if (!input.parentId) return "Error: parentId required for createMemory";
+				if (!input.subject) return "Error: subject required for createMemory (stable key for the memory leaf)";
+				if (!input.title) return "Error: title required for createMemory";
+				// Parent must be visible in scope (accepts short id / full id).
+				const resolvedParent = resolveNodeIdArg(input.parentId, anchors, wiki);
+				if (!resolvedParent.ok) return `Error: parent ${resolvedParent.reason}`;
+				const parent = resolvedParent.node;
+				// The parent MUST be a memory-kind container (memory root under
+				// global root, or a memory leaf being extended). Structure
+				// parents (project subtree) are rejected — memory leaves belong
+				// outside any project subtree (RFC §2.16 N2; the store enforces
+				// this too, but we surface a clearer error here).
+				const isMemoryParent = parent.id.startsWith("wiki-root:memory")
+					|| parent.type === "memory"
+					|| (parent.path ?? "").startsWith("memory");
+				if (!isMemoryParent) {
+					return `Error: createMemory parent must be a memory container (memory root or memory leaf), got ${parent.type} "${parent.title}" — use create for structure nodes`;
+				}
+				const path = synthesizeMemoryPath(input.subject);
+				try {
+					const created = wiki.upsertMemoryNodeInScope(anchors, {
+						parentId: parent.id,
+						path,
+						title: input.title,
+						summary: input.summary,
+						detail: input.content,
+						flags: input.flags,
+						lastUpdatedBy: "agent",
+					});
+					const tag = wiki.getByParentAndPath(parent.id, path) ? "updated" : "created";
+					return `Memory node ${tag}: ${formatNodeId(created.id)} | ${created.title}`;
+				} catch (err) {
+					return `createMemory rejected: ${(err as Error).message}`;
+				}
+			}
+
+			case "updateMemory": {
+				if (readOnly) return readOnlyReject("updateMemory");
+				if (!input.nodeId) return "Error: nodeId required for updateMemory";
+				const resolved = resolveNodeIdArg(input.nodeId, anchors, wiki);
+				if (!resolved.ok) return `Error: ${resolved.reason}`;
+				const node = resolved.node;
+				if (node.type !== "memory") {
+					return `Error: updateMemory targets memory leaves only — node ${formatNodeId(node.id)} is ${node.type}. Use update for structure nodes.`;
+				}
+				const patch: Record<string, unknown> = {};
+				if (input.title !== undefined) patch.title = input.title;
+				if (input.summary !== undefined) patch.summary = input.summary;
+				if (input.flags !== undefined) patch.flags = input.flags;
+				// `content` maps to the body (`detail` on the store). Omitting it
+				// leaves the body untouched (patch semantics); pass an empty
+				// string to clear it.
+				if (input.content !== undefined) patch.detail = input.content;
+				if (Object.keys(patch).length === 0) {
+					return "Error: nothing to update — provide title/summary/flags/content";
+				}
+				// Renaming must keep sibling title uniqueness.
+				if (patch.title !== undefined && patch.title !== node.title) {
+					const siblings = wiki
+						.listVisibleFromAnchors(anchors)
+						.filter((n) => n.parentId === node.parentId && n.id !== node.id);
+					if (siblings.some((n) => n.title === patch.title)) {
+						return `Error: a sibling already has the title "${patch.title}" — titles must be unique under the same parent`;
+					}
+				}
+				try {
+					const updated = wiki.updateMemoryNodeInScope(anchors, node.id, {
+						...patch,
+						lastUpdatedBy: "agent",
+					});
+					return `Memory node updated: ${formatNodeId(updated.id)} | ${updated.title}`;
+				} catch (err) {
+					return `updateMemory rejected: ${(err as Error).message}`;
 				}
 			}
 
