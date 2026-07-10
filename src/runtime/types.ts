@@ -460,6 +460,13 @@ export interface RuntimeProviderConfig {
 	enabled: boolean;
 	enableConcurrencyLimit?: boolean;
 	maxConcurrency?: number;
+	/**
+	 * steps-overhaul sub-5: provider prompt-cache TTL (ms). Drives the
+	 * compression cache 冷热判定 (cold = free to compress). Optional; resolved
+	 * to DEFAULT_CACHE_TTL_MS at the read site when unset so a missing field
+	 * never silently means "0 / always cold". See design.md「cache 冷热判定」.
+	 */
+	cacheTtlMs?: number;
 }
 
 // ---------------------------------------------------------------------------

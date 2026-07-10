@@ -53,6 +53,13 @@ import type { HookRegistry } from "../../core/hook-registry.js";
 // preflight / new-turn / reactive) into a NEW hook module. Old compression-
 // engine.ts is also deleted (L1/L2/identifyTurns/TurnBoundary all gone).
 import { registerExtractionHooks, type ExtractionHooksDeps } from "./extraction-hooks.js";
+// steps-overhaul sub-5: compression TRIGGER hooks (cache 冷热判定 + StepEnd cold /
+// PreLLMCall preflight+hot / OnLLMError reactive). The callable core lives in
+// server/compression-core.ts; this module wires it to the lifecycle triggers.
+import {
+	registerCompressionTriggerHooks,
+	type CompressionTriggerHooksDeps,
+} from "./compression-trigger-hooks.js";
 // sub-4 (subagent-recovery): notification-hooks.ts DELETED — the workbench
 // 收件箱 (running 一直在;终态留到 TaskGet 消费才删) replaces the old addMessage
 // notification path. Fewer accumulating message types. The `notified` flag on
@@ -107,6 +114,11 @@ export interface HookWiringDeps {
 	inputQueue?: InputQueueStore;
 	/** Metrics consumer (main-only). */
 	sessionManager?: SessionManager;
+	/**
+	 * steps-overhaul sub-5: compression trigger deps. When sessionDb is present
+	 * this is auto-derived; set explicitly only to override (tests).
+	 */
+	compressionTriggerDeps?: CompressionTriggerHooksDeps;
 }
 
 /**
@@ -130,6 +142,9 @@ export function registerHooksForLoop(
 	deps: HookWiringDeps,
 ): void {
 	const { db, sessionDb, extractionDeps, inputQueue, sessionManager } = deps;
+	// steps-overhaul sub-5: compression trigger deps default to a sessionDb-backed
+	// config; explicit override wins (tests).
+	const compressionTriggerDeps = deps.compressionTriggerDeps ?? (sessionDb ? { sessionDb } : undefined);
 
 	// ── shared (main + delegated) ──────────────────────────────────
 	if (db) {
@@ -152,6 +167,13 @@ export function registerHooksForLoop(
 	registerForceWaitHooks(registry);
 	if (extractionDeps) {
 		registerExtractionHooks(extractionDeps, registry);
+	}
+	// steps-overhaul sub-5: compression triggers (cache 冷热判定 + StepEnd cold /
+	// PreLLMCall preflight+hot / OnLLMError reactive). Registered for every loop
+	// kind that owns a SessionDB (main + delegated). Routes through compressSession
+	// so fresh-tail protection (owned by the core) is never bypassed.
+	if (compressionTriggerDeps) {
+		registerCompressionTriggerHooks(compressionTriggerDeps, registry);
 	}
 	// sub-7: workflow-context-hook DELETED — Project / Wiki Baseline /
 	// Requirement / Steps Progress injection moved to SessionConfig closures
@@ -189,5 +211,6 @@ export {
 	registerTaskControlHooks,
 	registerTurnHooks,
 	registerInputQueueHooks,
+	registerCompressionTriggerHooks,
 };
-export type { ExtractionHooksDeps };
+export type { ExtractionHooksDeps, CompressionTriggerHooksDeps };

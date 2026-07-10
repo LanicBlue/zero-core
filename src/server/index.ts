@@ -346,6 +346,8 @@ export async function startServer(options?: StartServerOptions) {
 				enabled: p.enabled,
 				enableConcurrencyLimit: p.enableConcurrencyLimit ?? false,
 				maxConcurrency: p.maxConcurrency ?? 1,
+					// steps-overhaul sub-5: carry cacheTtlMs for the compression cache 冷热判定.
+					cacheTtlMs: p.cacheTtlMs,
 			}));
 		agentService.setProviders(providerConfigs as any, workspaceConfig.defaultModel, workspaceConfig.defaultProvider);
 	};

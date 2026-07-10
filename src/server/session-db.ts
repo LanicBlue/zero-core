@@ -552,6 +552,52 @@ export class SessionDB {
 	}
 
 	// -----------------------------------------------------------------------
+	// token_usage — steps-overhaul sub-5
+	//
+	// `sessions.token_usage` (JSON) holds the LAST API-returned usage object for
+	// the session (the most recent step's input/output token counts as reported
+	// by the provider, NOT a running sum — input grows within a turn). This is
+	// the input the compression trigger reads to decide whether the live context
+	// has crossed the absolute/relative thresholds (design.md「阈值」). The
+	// cumulative input_tokens/output_tokens columns are a different thing
+	// (session-wide running totals for metrics); token_usage is the per-call
+	// snapshot that reflects current context size.
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Read the last API-returned usage snapshot for a session (the `token_usage`
+	 * JSON column). Returns undefined when no step has run yet (column NULL or
+	 * malformed). Used by the compression trigger to gauge current context size.
+	 */
+	getTokenUsage(sessionId: string): { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined {
+		try {
+			const row = this.db.prepare(
+				"SELECT token_usage FROM sessions WHERE id = ?",
+			).get(sessionId) as { token_usage: string | null } | undefined;
+			if (!row || !row.token_usage) return undefined;
+			return JSON.parse(row.token_usage) as { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+		} catch (err) {
+			log.warn("db", `getTokenUsage failed (session=${sessionId}):`, (err as Error).message);
+			return undefined;
+		}
+	}
+
+	/**
+	 * Overwrite the last API-returned usage snapshot. Called by the compression
+	 * trigger's StepEnd handler with the step's `usage` so the next trigger
+	 * evaluation reads current context size off the session row.
+	 */
+	setTokenUsage(sessionId: string, usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void {
+		try {
+			this.db.prepare(
+				"UPDATE sessions SET token_usage = ?, updated_at = ? WHERE id = ?",
+			).run(JSON.stringify(usage), new Date().toISOString(), sessionId);
+		} catch (err) {
+			log.warn("db", `setTokenUsage failed (session=${sessionId}):`, (err as Error).message);
+		}
+	}
+
+	// -----------------------------------------------------------------------
 	// Messages — steps-overhaul sub-3 redefinition
 	//
 	// The `messages` table NO LONGER stores LLM-view content. It now holds:

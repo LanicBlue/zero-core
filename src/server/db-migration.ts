@@ -724,6 +724,8 @@ export function runMigrations(sessionDB: SessionDB): void {
 	// Provider columns
 	safeAddColumn(db, "providers", "enable_concurrency_limit", "INTEGER DEFAULT 0");
 	safeAddColumn(db, "providers", "max_concurrency", "INTEGER");
+	// steps-overhaul sub-5: provider prompt-cache TTL (ms) for compression 冷热判定.
+	safeAddColumn(db, "providers", "cache_ttl_ms", "INTEGER");
 
 	// Session token tracking
 	safeAddColumn(db, "sessions", "input_tokens", "INTEGER DEFAULT 0");
@@ -1102,6 +1104,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 		{ key: "enabled", bool: true }, { key: "isSystem", column: "is_system", bool: true },
 		{ key: "enableConcurrencyLimit", column: "enable_concurrency_limit", bool: true },
 		{ key: "maxConcurrency", column: "max_concurrency", number: true },
+		{ key: "cacheTtlMs", column: "cache_ttl_ms", number: true },
 		{ key: "createdAt", column: "created_at" }, { key: "updatedAt", column: "updated_at" },
 	]);
 	providers.migrateFromJson(join(zeroDir, "providers.json"), "providers", (raw: any) => ({

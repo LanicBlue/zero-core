@@ -82,6 +82,13 @@ export interface ProviderConfig {
 	 */
 	models: { id: string; name: string; contextWindow?: number; maxTokens?: number; multimodal?: boolean }[];
 	enabled: boolean;
+	/**
+	 * steps-overhaul sub-5: provider prompt-cache TTL (ms) for the compression
+	 * cache 冷热判定. Optional; flows Provider → ProviderConfig →
+	 * RuntimeProviderConfig. undefined → resolved to DEFAULT_CACHE_TTL_MS at
+	 * the read site.
+	 */
+	cacheTtlMs?: number;
 }
 interface AgentRunState {
 	agentId: string;

@@ -1681,6 +1681,9 @@ export class AgentLoop implements AgentRuntime {
 			const onErrorResult = await this.triggerLocal("OnLLMError", {
 				agentId: this.config.agentId,
 				sessionId: this.session.getSessionId(),
+				session: this.session,
+				config: this.config,
+				providers: this.providers,
 				error: errMsg,
 				errorClass,
 				stepNumber: opts.stepNumber,
