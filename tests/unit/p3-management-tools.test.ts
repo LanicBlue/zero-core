@@ -545,6 +545,38 @@ describe("Wiki action tool", () => {
 		expect(dCap).toMatch(/Grandchild/);
 	});
 
+	test("expand breadth-first budget: keeps ALL level-1 siblings, drops deeper levels when the subtree is huge", async () => {
+		// Regression: the old depth-first walk rendered the full `depth`, so a huge
+		// first-child branch buried its siblings once the result was truncated. The
+		// breadth-first budget must keep every level-1 child (siblings complete) and
+		// sacrifice DEPTH instead. Build parent → 60 children → 5 grandchildren each
+		// (360 descendants); request depth 5; assert all 60 children show and deeper
+		// is budget-cut.
+		const parent = wikiStoreGlobal.upsertProjectNode(projectId, {
+			parentId: root(), type: "intent", path: "intent:wide", title: "WideParent", lastUpdatedBy: "test",
+		});
+		const childTitles: string[] = [];
+		for (let i = 0; i < 60; i++) {
+			const c = wikiStoreGlobal.upsertProjectNode(projectId, {
+				parentId: parent.id, type: "intent", path: `intent:wide/c${i}`, title: `Child${i}`, lastUpdatedBy: "test",
+			});
+			childTitles.push(`Child${i}`);
+			for (let g = 0; g < 5; g++) {
+				wikiStoreGlobal.upsertProjectNode(projectId, {
+					parentId: c.id, type: "intent", path: `intent:wide/c${i}/g${g}`, title: `GC${i}-${g}`, lastUpdatedBy: "test",
+				});
+			}
+		}
+		const expanded = await execWiki({ action: "expand", nodeId: parent.id, depth: 5 }, ctx());
+		// EVERY level-1 sibling appears — the breadth-first guarantee. DFS+truncation
+		// would have filled the output with Child0's subtree and dropped Child40+.
+		for (const title of childTitles) expect(expanded).toContain(title);
+		// Grandchildren (level 2) were dropped by the budget, not the siblings.
+		expect(expanded).not.toContain("GC0-0");
+		// Budget-cut note surfaces, naming the kept level range.
+		expect(expanded).toMatch(/breadth-first budget kept levels 1\.\.1 complete/);
+	});
+
 	test("short id round-trip: create returns #xxxxxxxx; docRead/update/expand resolve it; full id never leaks", async () => {
 		const r = await execWiki({ action: "create", parentId: root(), title: "ShortIdTarget", summary: "sm" }, ctx());
 		const short = createdId(r);

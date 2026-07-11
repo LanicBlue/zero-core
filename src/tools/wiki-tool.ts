@@ -436,65 +436,93 @@ async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<strin
 				const resolved = resolveNodeIdArg(input.nodeId, anchors, wiki);
 				if (!resolved.ok) return `Error: ${resolved.reason}`;
 				const node = resolved.node;
-				// expand is STRUCTURE-only: metadata + a descendant subtree, `depth`
-				// levels deep. It deliberately does NOT return any node's body —
-				// that's docRead's job. (Previously this dumped the node's full
-				// body via readNodeDetail, which duplicated docRead and flooded
-				// the result whenever a node had a large document.)
-				const depth = Math.max(1, Math.min(input.depth ?? 1, 5));
+				// expand is STRUCTURE-only: metadata + a descendant subtree, rendered as a
+				// nested markdown list (2-space indent per level → real hierarchy in the UI).
+				// BREADTH-FIRST BUDGET (was: depth-first walk at the full `depth`, so a huge
+				// first-child branch buried its siblings the moment anything downstream
+				// truncated an over-long result). We ALWAYS include whole levels starting at
+				// level 1 (every direct child), and add deeper levels only while the node
+				// count fits a budget that keeps the output under the 16K externalize
+				// threshold. So when the subtree is huge, the DEEPEST levels get dropped —
+				// never level-1 siblings. Filters (type/leavesOnly) only prune emission;
+				// traversal still descends through filtered ancestors so deeper matches
+				// stay reachable.
+				const depthCap = Math.max(1, Math.min(input.depth ?? 1, 5));
 				const typeFilter = input.type;
 				const leavesOnly = input.leavesOnly === true;
 				const allVisible = wiki.listVisibleFromAnchors(anchors);
 				const byParent = groupByParent(allVisible);
+				// Structural node counts per BFS level (filter-agnostic). Used to pick how
+				// deep to render without first building a huge string we'd throw away.
+				const levelCounts: number[] = [];
+				{
+					let frontier: string[] = (byParent.get(node.id) ?? []).map((k) => k.id);
+					let lvl = 1;
+					while (frontier.length && lvl <= depthCap) {
+						levelCounts[lvl - 1] = frontier.length;
+						const next: string[] = [];
+						for (const id of frontier) for (const c of byParent.get(id) ?? []) next.push(c.id);
+						frontier = next;
+						lvl++;
+					}
+				}
+				// Total structural descendants (uncapped by depth) → feeds the 'more hidden'
+				// count (nodes beyond what we rendered).
+				let totalDescendants = 0;
+				{
+					const q: string[] = (byParent.get(node.id) ?? []).map((k) => k.id);
+					while (q.length) {
+						const id = q.shift()!;
+						totalDescendants++;
+						for (const c of byParent.get(id) ?? []) q.push(c.id);
+					}
+				}
+				// Largest maxLevel ≤ depthCap whose cumulative structural node count fits
+				// the budget. Level 1 is ALWAYS kept even if it alone exceeds the budget —
+				// the breadth-first guarantee (siblings before depth).
+				const NODE_BUDGET = 100; // ≈ stays under 16K externalize threshold even with long summaries
+				let maxLevel = 1;
+				for (let Lv = 1; Lv <= depthCap; Lv++) {
+					const cum = levelCounts.slice(0, Lv).reduce((a, b) => a + b, 0);
+					if (cum <= NODE_BUDGET) maxLevel = Lv;
+					else break;
+				}
+				// Render the nested list down to maxLevel.
 				const treeLines: string[] = [];
-				let descendantCount = 0;
-				// Nodes hidden by the depth cap: any node at the deepest shown
-				// level that itself has children. Surfacing the count tells the
-				// agent there's more to expand (raise depth, or expand that node),
-				// so a truncated subtree isn't mistaken for a leaf.
-				let hiddenNodes = 0;
+				let shown = 0;
 				const walk = (parentId: string, level: number) => {
-					if (level > depth) return;
-					const kids = byParent.get(parentId) ?? [];
-					for (const k of kids) {
-						// Filters only affect whether a node is EMITTED; we still
-						// walk into filtered-out ancestors so leavesOnly / type
-						// matches at deeper levels are reachable (within depth).
+					if (level > maxLevel) return;
+					for (const k of byParent.get(parentId) ?? []) {
+						// Filters only affect EMISSION; we still recurse so deeper type/leaves
+						// matches are reachable within maxLevel.
 						const isLeaf = (byParent.get(k.id) ?? []).length === 0;
 						const typeOk = !typeFilter || k.type === typeFilter;
 						const show = typeOk && (!leavesOnly || isLeaf);
 						if (show) {
-							descendantCount++;
-							// Markdown nested list: `- item` with 2-space indent per
-							// level renders as a real hierarchical list in the UI
-							// (bare leading-space indentation gets collapsed by
-							// Markdown and the tree looked flat). Clear to the agent
-							// reading raw text too.
-							// Child line carries the subtree-abstract summary so expand
-							// is more than a flat directory listing (summary = the
-							// node's subtree abstract per the Wiki node semantics).
+							shown++;
+							// Child line carries the subtree-abstract summary so expand is more
+							// than a flat directory listing.
 							const childSummary = k.summary ? ` — ${sanitizeText(k.summary)}` : "";
 							treeLines.push(`${"  ".repeat(level - 1)}- ${formatNodeId(k.id)} [${k.type}] ${k.title}${childSummary} ${formatBodySize(wiki.getNodeDetailSize(k.id))}`);
 						}
-						if (level === depth) {
-							// At the cap: count this node's children as hidden
-							// (they won't be walked) so we can warn they exist.
-							hiddenNodes += (byParent.get(k.id) ?? []).length;
-						} else {
-							walk(k.id, level + 1);
-						}
+						walk(k.id, level + 1);
 					}
 				};
 				walk(node.id, 1);
 				const filterNote = typeFilter || leavesOnly
 					? ` (${typeFilter ? `type=${typeFilter}` : ""}${typeFilter && leavesOnly ? ", " : ""}${leavesOnly ? "leaves only" : ""})`
 					: "";
-				const hiddenNote = hiddenNodes > 0
-					? `\n(${hiddenNodes} more node${hiddenNodes !== 1 ? "s" : ""} hidden below depth ${depth} — raise depth, or expand a specific nodeId to see deeper)`
+				const hidden = Math.max(0, totalDescendants - shown);
+				const budgetCut = maxLevel < depthCap;
+				const hiddenNote = hidden > 0
+					? budgetCut
+						? `\n(${hidden} more node${hidden !== 1 ? "s" : ""} hidden — breadth-first budget kept levels 1..${maxLevel} complete; raise depth or expand a specific nodeId to go deeper)`
+						: `\n(${hidden} more node${hidden !== 1 ? "s" : ""} hidden below depth ${depthCap} — raise depth, or expand a specific nodeId to see deeper)`
 					: "";
+				const depthLabel = budgetCut ? `depth ${depthCap}, showing levels 1..${maxLevel}` : `depth ${depthCap}`;
 				const subtreeLine = treeLines.length
-					? `\nSubtree (depth ${depth}, ${descendantCount} descendant${descendantCount !== 1 ? "s" : ""})${filterNote}:\n` + treeLines.join("\n") + hiddenNote
-					: `\nSubtree${filterNote}: (no matching children)`;
+					? `\nSubtree (${depthLabel}, ${shown} descendant${shown !== 1 ? "s" : ""})${filterNote}:\n` + treeLines.join("\n") + hiddenNote
+					: `\nSubtree${filterNote}: (no matching children)`
 				const flags = node.flags?.length ? `\nFlags: ${node.flags.join(", ")}` : "";
 				const prov = node.provenance ? `\nProvenance: ${node.provenance}` : "";
 				const summary = node.summary ? `\nSummary: ${sanitizeText(node.summary)}` : "";
