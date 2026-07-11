@@ -86,6 +86,7 @@ function mockSessionDb() {
 		upsertStep: vi.fn(),
 		updateStepContent: vi.fn(),
 		deleteStepGroup: vi.fn(),
+		deleteStepsFromSeq: vi.fn(),
 		getTurnGroupCount: vi.fn(() => 0),
 		// steps-overhaul sub-3: getMessagesWithSeq/updateMessageContent/deleteMessage/
 		// replaceStepsFromMessages removed from SessionDB (messages redefined to
@@ -101,6 +102,7 @@ function mockAgentService(sessionDb: any) {
 		setWorkspaceDir: vi.fn(),
 		setProviders: vi.fn(),
 		recreateLoop: vi.fn(),
+		isSessionRunning: vi.fn(() => false),
 		activateSession: vi.fn(async () => "s1"),
 		getSessionManager: vi.fn(() => null),
 		subscribe: vi.fn(() => () => {}),
@@ -236,10 +238,21 @@ describe("session-router", () => {
 		expect(res.data.success).toBe(true);
 	});
 
-	test("DELETE /:agentId/messages/:seq deletes message", async () => {
+	test("DELETE /:agentId/messages/:seq cascades — calls deleteStepsFromSeq(sid, fromSeq)", async () => {
 		const res = await request(port, "DELETE", "/api/sessions/a1/messages/5");
 		expect(res.status).toBe(200);
 		expect(res.data.success).toBe(true);
+		// Cascade rollback: deleteStepsFromSeq(sid, 5) — NOT the old single-group delete.
+		expect(sessionDb.deleteStepsFromSeq).toHaveBeenCalledWith("s1", 5);
+		expect(sessionDb.deleteStepGroup).not.toHaveBeenCalled();
+		expect(agentService.recreateLoop).toHaveBeenCalled();
+	});
+
+	test("DELETE /:agentId/messages/:seq refused (409) while session running", async () => {
+		agentService.isSessionRunning.mockReturnValueOnce(true);
+		const res = await request(port, "DELETE", "/api/sessions/a1/messages/5");
+		expect(res.status).toBe(409);
+		expect(sessionDb.deleteStepsFromSeq).not.toHaveBeenCalled();
 	});
 });
 

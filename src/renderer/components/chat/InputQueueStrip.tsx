@@ -22,18 +22,24 @@ export default function InputQueueStrip() {
 				<span>队列等待 · {items.length}</span>
 				{!isStreaming && <span className="input-queue-hint">(会话空闲,下一项将立即发送)</span>}
 			</div>
-			{items.map((it) => (
+			{items.map((it) => {
+				// `local-` items are optimistic (enqueued mid-turn before the
+				// backend confirms); the server doesn't know their temp id yet, so
+				// disable promote/remove until reconcile (ms).
+				const pending = it.id.startsWith("local-");
+				return (
 				<div key={it.id} className={`input-queue-item mode-${it.mode}`}>
 					<span className="input-queue-mode">{it.mode === "insert_now" ? "⇡插入" : "⏳等待"}</span>
 					<span className="input-queue-content">{it.content}</span>
 					<div className="input-queue-actions">
 						{it.mode === "queued" && (
-							<button type="button" className="input-queue-btn" onClick={() => promote(it.id)} title="立即插入到下一个 agent loop">立即插入</button>
+							<button type="button" className="input-queue-btn" onClick={() => promote(it.id)} disabled={pending} title="立即插入到下一个 agent loop">立即插入</button>
 						)}
-						<button type="button" className="input-queue-btn input-queue-remove" onClick={() => remove(it.id)} title="删除">×</button>
+						<button type="button" className="input-queue-btn input-queue-remove" onClick={() => remove(it.id)} disabled={pending} title="删除">×</button>
 					</div>
 				</div>
-			))}
+				);
+			})}
 		</div>
 	);
 }

@@ -196,6 +196,9 @@ export interface ISessionStore {
 	upsertStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: StepUsage, attachments?: AttachmentMeta[]): void;
 	updateStepContent(sessionId: string, seq: number, content: string, usage?: StepUsage): void;
 	deleteStepGroup(sessionId: string, turnGroup: number): void;
+	/** Rollback delete: drop the step at `fromSeq` and every step after it
+	 *  (seq >= fromSeq). Powers "delete user message → rollback to before it". */
+	deleteStepsFromSeq(sessionId: string, fromSeq: number): void;
 	getTurnGroupCount(sessionId: string): number;
 	// steps-overhaul sub-3: replaceStepsFromMessages is REMOVED — it was the
 	// destructive "rebuild steps from compressed messages" path used by old

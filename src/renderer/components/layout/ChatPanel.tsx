@@ -511,7 +511,7 @@ export default function ChatPanel() {
 				activeSessionId, activeProjectId, sessionsByAgent,
 				addMessage, finishStreaming,
 				setSessions, setActiveSessionId, setActiveProject, clearMessages,
-				editMessage, deleteMessage, setIsStreaming,
+				editMessage, deleteMessageFrom, setIsStreaming,
 				updateContextInfo, setSessionVolume, loadMessages,
 			} = useChatStore();
 	// activeAgentId is DERIVED from activeSessionId (single source of truth) —
@@ -951,6 +951,16 @@ export default function ChatPanel() {
 
 	const activeAgent = agents.find((a) => a.id === activeAgentId);
 
+	// Delete (cascade rollback) is only offered on the MOST RECENT user message
+	// — the natural "undo my last turn / re-ask" affordance. Older user messages
+	// are not deletable (avoids mid-history rollback states).
+	const lastUserMsgId = (() => {
+		for (let i = messages.length - 1; i >= 0; i--) {
+			if (messages[i].role === "user") return messages[i].id;
+		}
+		return null;
+	})();
+
 	// Input is never locked: when the session is running, Enter enqueues the
 	// message (send() routes to enqueueInput) rather than dispatching. The
 	// running vs idle distinction is expressed only by the Send/Stop button
@@ -977,10 +987,21 @@ export default function ChatPanel() {
 
 	const handleDeleteMsg = async (msg: typeof messages[number]) => {
 		if (!activeAgentId || !activeSessionId) return;
-		if (!confirm("Delete this message?")) return;
+		// Cascade rollback: delete this user message + every step after it
+		// (server deleteStepsFromSeq). Only offered on user messages — the
+		// rollback is coherent from a user message (its seq = turn_group =
+		// fromSeq); deleting an assistant message would orphan the user turn.
+		if (!confirm("删除该消息及之后所有内容（回档到该消息之前）？")) return;
 		const seq = parseMsgSeq(msg.id);
-		await api().messagesDelete(activeAgentId, seq);
-		deleteMessage(activeSessionId, msg.id);
+		try {
+			await api().messagesDelete(activeAgentId, seq);
+		} catch {
+			// 409 = session running: deleting steps under an active loop would
+			// corrupt its state, so the router refuses. Tell the user to Stop.
+			alert("该会话正在运行，请先 Stop 再删除。");
+			return;
+		}
+		deleteMessageFrom(activeSessionId, msg.id);
 	};
 
 	// Requirement discussion: handle status transitions
@@ -1188,7 +1209,9 @@ export default function ChatPanel() {
 							{!msg.streaming && editingMsgId !== msg.id && (
 								<div className="message-actions">
 									<button className="msg-action-btn" onClick={() => startEdit(msg)} title="Edit">Edit</button>
-									<button className="msg-action-btn" onClick={() => handleDeleteMsg(msg)} title="Delete">Delete</button>
+									{msg.role === "user" && msg.id === lastUserMsgId && (
+										<button className="msg-action-btn" onClick={() => handleDeleteMsg(msg)} title="删除最近这条消息及之后所有内容（回档重问）">Delete</button>
+									)}
 								</div>
 							)}
 						</div>

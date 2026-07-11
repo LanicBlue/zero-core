@@ -163,6 +163,7 @@ interface ChatState {
 	setActiveSessionId: (sessionId: string | null, agentIdHint?: string | null) => void;
 	editMessage: (sessionId: string, msgId: string, newText: string) => void;
 	deleteMessage: (sessionId: string, msgId: string) => void;
+	deleteMessageFrom: (sessionId: string, msgId: string) => void;
 	setError: (sessionId: string, message: string) => void;
 	clearError: () => void;
 	updateContextInfo: (sessionId: string, info: Partial<ContextInfo>) => void;
@@ -456,6 +457,19 @@ export const useChatStore = create<ChatState>((set) => ({
 			const sessionMsgs = (state.messagesBySession[sessionId] ?? []).filter((m) => m.id !== msgId);
 			return {
 				messagesBySession: { ...state.messagesBySession, [sessionId]: sessionMsgs },
+			};
+		}),
+
+	// Cascade rollback: drop `msgId` AND every message after it (the message
+	// array is in conversation order). Mirrors the server's deleteStepsFromSeq
+	// (delete user message → rollback to before it). Used by handleDeleteMsg.
+	deleteMessageFrom: (sessionId, msgId) =>
+		set((state) => {
+			const prev = state.messagesBySession[sessionId] ?? [];
+			const idx = prev.findIndex((m) => m.id === msgId);
+			if (idx < 0) return {};
+			return {
+				messagesBySession: { ...state.messagesBySession, [sessionId]: prev.slice(0, idx) },
 			};
 		}),
 

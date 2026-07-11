@@ -75,11 +75,39 @@ export const useInputQueueStore = create<InputQueueState>((set, get) => ({
 	},
 
 	enqueue: async (sessionId, content, mode) => {
-		await api().inputQueueEnqueue(sessionId, content, mode ?? "queued");
-		// The hub ping will drive the refresh (watched session path); pulling here
-		// too is harmless and keeps enqueue feeling instant even before the ping
-		// arrives.
-		await get().pull(sessionId);
+		const m = mode ?? "queued";
+		// Optimistic: insert a LOCAL item the instant the user submits so the
+		// queue strip renders immediately — even mid-turn, when the backend
+		// round-trip (IPC→main→fetch→backend) and the runtime:input-queue WS ping
+		// can lag behind the streaming flood and only land at turn end. The temp
+		// item (id prefixed `local-`) is reconciled to the authoritative item when
+		// the IPC resolves, and rolled back on failure so the strip never lies.
+		// promote/remove are disabled on `local-` items (server doesn't know the
+		// temp id yet) — see InputQueueStrip.
+		const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+		const createdAt = Date.now();
+		set((s) => ({
+			itemsBySession: {
+				...s.itemsBySession,
+				[sessionId]: [...(s.itemsBySession[sessionId] ?? []), { id: tempId, sessionId, content, mode: m, createdAt }],
+			},
+		}));
+		try {
+			const item: InputQueueItemView = await api().inputQueueEnqueue(sessionId, content, m);
+			set((s) => ({
+				itemsBySession: {
+					...s.itemsBySession,
+					[sessionId]: (s.itemsBySession[sessionId] ?? []).map((it) => (it.id === tempId ? item : it)),
+				},
+			}));
+		} catch {
+			set((s) => ({
+				itemsBySession: {
+					...s.itemsBySession,
+					[sessionId]: (s.itemsBySession[sessionId] ?? []).filter((it) => it.id !== tempId),
+				},
+			}));
+		}
 	},
 
 	promote: async (itemId) => {

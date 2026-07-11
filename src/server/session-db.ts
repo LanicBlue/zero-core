@@ -1091,6 +1091,51 @@ export class SessionDB {
 		tx();
 	}
 
+	/**
+	 * Rollback delete: drop the step at `fromSeq` AND every step after it (seq
+	 * is monotonic per session, never renumbered on delete — see deleteStep).
+	 * Powers the "delete user message → rollback to before it" UI action: a
+	 * user step opens its group with turn_group === seq, so the UI's `:seq`
+	 * (= that user step's seq) IS `fromSeq`, and `seq >= fromSeq` cleanly removes
+	 * that user message, its assistant steps, and all subsequent turns while
+	 * leaving `seq < fromSeq` intact. Recomputes step_count/turn_count, cascades
+	 * tool_executions whose turn_seq >= fromSeq, and clears now-stale compression
+	 * summaries if the cutoff falls inside the compressed region. delegated_tasks
+	 * are NOT cascaded (keyed by their own child session, not by step seq).
+	 */
+	deleteStepsFromSeq(sessionId: string, fromSeq: number): void {
+		const now = new Date().toISOString();
+		const tx = this.db.transaction(() => {
+			this.db.prepare("DELETE FROM steps WHERE session_id = ? AND seq >= ?").run(sessionId, fromSeq);
+			// Cascade tool-execution history for the dropped turns (turn_seq =
+			// the user-step seq = turn_group). Legacy NULL turn_seq rows are left.
+			this.db.prepare("DELETE FROM tool_executions WHERE session_id = ? AND turn_seq >= ?").run(sessionId, fromSeq);
+			// Recompute counters (same shape as deleteStepGroup).
+			const cnt = this.db.prepare(
+				"SELECT COUNT(*) AS total, SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END) AS user_rows FROM steps WHERE session_id = ?",
+			).get(sessionId) as { total: number; user_rows: number } | undefined;
+			this.db.prepare(
+				"UPDATE sessions SET step_count = ?, turn_count = ?, updated_at = ? WHERE id = ?",
+			).run(cnt?.total ?? 0, cnt?.user_rows ?? 0, now, sessionId);
+			// Resume checkpoint: if it pointed into the deleted range, drop it so
+			// a later resume can't land on a gone step (a non-running session is
+			// normally NULL here, but a crashed/pending session may carry one).
+			this.db.prepare(
+				"UPDATE sessions SET last_completed_step_seq = NULL WHERE id = ? AND last_completed_step_seq IS NOT NULL AND last_completed_step_seq >= ?",
+			).run(sessionId, fromSeq);
+		});
+		tx();
+		// Compression-cursor safety (after the tx — clearSummaries opens its
+		// own). If the cutoff lands inside the compressed region [0..cursor] the
+		// summaries reference now-deleted steps → invalidate by clearing them
+		// (LLM view falls back to the full remaining fresh tail). cursor < fromSeq
+		// means the compressed region is untouched → summaries kept.
+		const cursor = this.getCompressionCursor(sessionId);
+		if (cursor !== null && cursor >= fromSeq) {
+			this.clearSummaries(sessionId);
+		}
+	}
+
 	getTurnGroupCount(sessionId: string): number {
 		const row = this.db.prepare(
 			"SELECT COUNT(DISTINCT turn_group) as cnt FROM steps WHERE session_id = ?",

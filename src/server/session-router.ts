@@ -227,18 +227,22 @@ export function createSessionRouter(deps: {
 		res.json({ success: true });
 	});
 
-	// Delete message — :seq is now a turnGroup value, deletes entire group
+	// Delete message — cascade rollback. :seq is the turnGroup value (the user
+	// step's seq, since a user step opens its group with turn_group === seq).
+	// Deleting = drop that user message + every step after it (seq >= :seq),
+	// i.e. roll back to before the user sent it. Refused while the session is
+	// running (deleting steps under an active loop would corrupt its state).
 	router.delete("/:agentId/messages/:seq", (req, res) => {
 		const db = getDb();
 		const session = db.getMainSession(req.params.agentId);
 		if (!session) return res.status(404).json({ error: "session not found" });
 
-		const seqParam = parseInt(req.params.seq);
+		if (agentService.isSessionRunning(session.id)) {
+			return res.status(409).json({ error: "session is running — stop it before deleting" });
+		}
 
-		// Step 4A: step-only — delete all steps in the turnGroup. (sub-3: the
-		// old db.deleteMessage mirror is removed — messages no longer caches
-		// step content; deleteStepGroup on steps is authoritative.)
-		db.deleteStepGroup(session.id, seqParam);
+		const fromSeq = parseInt(req.params.seq);
+		db.deleteStepsFromSeq(session.id, fromSeq);
 		const agent = agentStore.get(req.params.agentId);
 		agentService.recreateLoop(req.params.agentId, session.id, agent);
 		res.json({ success: true });
