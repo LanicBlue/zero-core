@@ -28,16 +28,17 @@ import { join } from "node:path";
 import { AgentSession } from "../../src/runtime/session.js";
 import { getMultimodal, getContextWindow } from "../../src/runtime/provider-factory.js";
 import type { AttachmentMeta, RuntimeProviderConfig } from "../../src/runtime/types.js";
-import type { ISessionStore, StepRow, StepInput } from "../../src/runtime/session-store-interface.js";
+import type { ISessionStore, StepRow } from "../../src/runtime/session-store-interface.js";
 
 // ── Minimal in-memory ISessionStore stub ────────────────────────────────────
 // Only getSteps is exercised by AgentSession.rebuildFromTurns; the rest are
 // no-ops so we can drive getMessagesMultimodal without a real DB.
+// steps-overhaul sub-3: getMessages/saveTurn/replaceStepsFromMessages removed
+// from ISessionStore (messages table redefined to summary+cursor); the summary
+// API is optional and omitted here — assembleLLMView null-checks it.
 class MemStore implements ISessionStore {
 	steps: StepRow[] = [];
-	getMessages(): any[] { return []; }
-	saveTurn(): void { /* no-op */ }
-	getTurnCount(): number { return this.steps.length; }
+	getStepCount(): number { return this.steps.length; }
 	getMainSession(): undefined { return undefined; }
 	createSession(): any { throw new Error("not used"); }
 	setMainSession(): void { /* no-op */ }
@@ -79,14 +80,6 @@ class MemStore implements ISessionStore {
 	}
 	getTurnGroupCount(): number {
 		return new Set(this.steps.map(s => s.turnGroup)).size;
-	}
-	replaceStepsFromMessages(_sessionId: string, steps: StepInput[]): void {
-		this.steps = steps.map(s => ({
-			seq: s.seq, turnGroup: s.turnGroup, role: s.role, content: s.content,
-			inputTokens: 0, outputTokens: 0, totalTokens: 0,
-			createdAt: new Date().toISOString(),
-			attachments: s.attachments,
-		}));
 	}
 	recordToolExecution(): void { /* no-op */ }
 }

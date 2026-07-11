@@ -31,16 +31,16 @@ import { deleteTurnSeq } from "../../src/runtime/hooks/turn-seq-tracker.js";
 import { InputQueueStore } from "../../src/server/input-queue-store.js";
 import { AgentSession } from "../../src/runtime/session.js";
 import type { AttachmentMeta, UserContent } from "../../src/shared/types.js";
-import type { ISessionStore, StepRow, StepInput } from "../../src/runtime/session-store-interface.js";
+import type { ISessionStore, StepRow } from "../../src/runtime/session-store-interface.js";
 
 // ── Minimal in-memory ISessionStore stub (reused shape from sub-3 test) ─────
 // Only appendStep/getSteps are exercised here; the rest are no-ops so we can
 // drive the TurnStart hook + AgentSession.getCachedTurns without a real DB.
+// steps-overhaul sub-3: getMessages/saveTurn/replaceStepsFromMessages removed
+// from ISessionStore (messages table redefined to summary+cursor).
 class MemStore implements ISessionStore {
 	steps: StepRow[] = [];
-	getMessages(): any[] { return []; }
-	saveTurn(): void { /* no-op */ }
-	getTurnCount(): number { return this.steps.length; }
+	getStepCount(): number { return this.steps.length; }
 	getMainSession(): undefined { return undefined; }
 	createSession(): any { throw new Error("not used"); }
 	setMainSession(): void { /* no-op */ }
@@ -81,14 +81,6 @@ class MemStore implements ISessionStore {
 	}
 	getTurnGroupCount(): number {
 		return new Set(this.steps.map(s => s.turnGroup)).size;
-	}
-	replaceStepsFromMessages(_sessionId: string, steps: StepInput[]): void {
-		this.steps = steps.map(s => ({
-			seq: s.seq, turnGroup: s.turnGroup, role: s.role, content: s.content,
-			inputTokens: 0, outputTokens: 0, totalTokens: 0,
-			createdAt: new Date().toISOString(),
-			attachments: s.attachments,
-		}));
 	}
 	recordToolExecution(): void { /* no-op */ }
 }

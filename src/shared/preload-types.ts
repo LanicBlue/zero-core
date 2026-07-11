@@ -48,6 +48,7 @@ import type {
 	DelegatedTaskRecord,
 	RuntimeTaskInfo,
 	AttachmentMeta,
+	SessionVolumeInfo,
 } from "./types.js";
 
 export interface WindowApi {
@@ -142,6 +143,8 @@ export interface WindowApi {
 		todos: Array<{ content: string; status: "pending" | "in_progress" | "completed"; activeForm: string }>;
 		pendingQuestion: { requestId: string; questions: Array<{ question: string; header?: string; options?: Array<{ label: string; description?: string }>; multiSelect?: boolean }> } | null;
 		isRunning: boolean;
+		/** steps-overhaul sub-9: content volume (steps/turns/token size) for the volume panel. */
+		volume: SessionVolumeInfo;
 	} | null>;
 	sessionsNew: (agentId: string) => Promise<SessionRecord>;
 	/** M4: find-or-create 一个 (agentId, projectId) session(project chat 入口)。 */
@@ -289,7 +292,9 @@ export interface WindowApi {
 	toolExecutionsAnalyze: (agentId?: string) => Promise<{ analysis: string; stats: ToolExecutionStats[]; recentErrors: ToolExecutionRecord[] } | { error: string }>;
 
 	// ── Compression Config ──
-	memoryConfigGet: () => Promise<{ compression: { enabled?: boolean; keepRecentTurns?: number; l1Threshold?: number; l2Threshold?: number } }>;
+	// steps-overhaul sub-4: L1/L2 keys (keepRecentTurns/l1Threshold/l2Threshold)
+	// removed with compression-engine.ts. Stage-3 core is step-granular.
+	memoryConfigGet: () => Promise<{ compression: { enabled?: boolean; provider?: string; model?: string } }>;
 	memoryConfigUpdate: (data: { compression?: any }) => Promise<{ success: true }>;
 
 	// ── Projects ──

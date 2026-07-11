@@ -124,13 +124,21 @@ export const ZeroCoreConfigSchema = Type.Object({
 		keepRecentTokens: Type.Optional(Type.Number()),
 	}),
 
-	// ─── Compression (L1/L2 progressive)
-
+	// ─── Compression (stage-3 summary core)
+	//
+	// steps-overhaul sub-4: the old L1/L2 progressive engine
+	// (keepRecentTurns/l1Threshold/l2Threshold) is DELETED along with
+	// compression-engine.ts. The new stage-3 core (compressSession in
+	// server/compression-core.ts) is step-granular + fresh-tail-based, with no
+	// turn-count or usage-% knobs — the fresh-tail boundary (min(32K, 20%
+	// window)) replaces keepRecentTurns, and sub-5's trigger owns the
+	// when-to-fire decision (cache cold/hot + token/usage thresholds). What
+	// remains here:
+	//   - enabled: master on/off (sub-5 trigger reads it).
+	//   - provider/model: independent memory model override (defaults to the
+	//     session's working model). Same slot the old engine used.
 	compression: Type.Object({
 		enabled: Type.Optional(Type.Boolean()),
-		keepRecentTurns: Type.Optional(Type.Number()),
-		l1Threshold: Type.Optional(Type.Number()),
-		l2Threshold: Type.Optional(Type.Number()),
 		provider: Type.Optional(Type.String()),
 		model: Type.Optional(Type.String()),
 	}),
@@ -145,9 +153,14 @@ export const ZeroCoreConfigSchema = Type.Object({
 	//   - B: tool telemetry extractor — writes to an independent telemetry
 	//        store (NOT the wiki tree; platform-improvement data, not project
 	//        knowledge — decision 49).
-	// checkpointThresholds = token-budget ratios at which the low-checkpoint
-	// incremental extraction hook fires extractor A on the delta since the
-	// last cursor (decision 53). Default ~20% / 45% / 70% (RFC §2.18).
+	//
+	// steps-overhaul sub-10: `checkpointThresholds` REMOVED. The low-checkpoint
+	// threshold trigger (decision 53) was RETIRED in sub-7 (wiki extraction now
+	// lives in compressSession's Extractor A multi-step agent — design.md「wiki
+	// memory」/ decision 53 修订). The threshold list + its only consumer
+	// (extraction-hooks StepEnd hook) are gone; this config key had zero live
+	// readers. A pre-existing user config that still carries the key is harmless
+	// (loadConfig deepMerges + ignores it); it just no longer has a typed slot.
 	extractors: Type.Object({
 		A: Type.Object({
 			enabled: Type.Optional(Type.Boolean()),
@@ -159,7 +172,6 @@ export const ZeroCoreConfigSchema = Type.Object({
 			provider: Type.Optional(Type.String()),
 			model: Type.Optional(Type.String()),
 		}),
-		checkpointThresholds: Type.Optional(Type.Array(Type.Number())),
 	}),
 
 	// ─── Runtime defaults ──────────────────────────────────────────
@@ -232,14 +244,10 @@ export const DEFAULT_CONFIG: ZeroCoreConfig = {
 	// v0.8 (M5): archive extractors. A is the unified content-memory writer
 	// (incremental + close flush). B is the tool telemetry extractor. Both
 	// off by default; flip extractors.A.enabled=true in config to turn on.
+	// (steps-overhaul sub-10: checkpointThresholds removed — see schema comment.)
 	extractors: {
 		A: { enabled: false },
 		B: { enabled: false },
-		// RFC §2.18 / decision 53 — fire at low budget points so the delta
-		// can be summarized while there's still headroom. NOT a "live
-		// checkpoint" — it's just a token-budget threshold for invoking the
-		// async extractor A on the delta since the last cursor.
-		checkpointThresholds: [0.2, 0.45, 0.7],
 	},
 	defaults: {},
 	retry: {},

@@ -9,6 +9,7 @@
 - [ ] `steps` 表不动;fresh tail/head 不被压。
 - [ ] 旧 `compression-engine.ts`(L1/L2/identifyTurns/TurnBoundary)+ `l1Threshold` 配置 + `syncTurnsAfterCompression`/`replaceStepsFromMessages` 已删,无死代码。
 - [ ] wiki 写入本轮可 stub(只产 summary,wiki 留 sub-7)。
+- [ ] 组装输出无连续同 role 消息(sub-3 Lens A 移交:summary + turn-opening user step 不撞)。
 - [ ] 三层 tsc + vitest。
 
 ## 怎么验

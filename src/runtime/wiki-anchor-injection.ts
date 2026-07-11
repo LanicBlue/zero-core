@@ -214,7 +214,13 @@ export function anchorNodeIds(anchors: ResolvedAnchor[]): string[] {
 function classifyAnchorKind(nodeId: string, node: WikiNode | undefined): "project" | "memory" {
 	// v0.8 (P2 §11.6): per-agent memory roots (`wiki-root:memory-agent:<id>`)
 	// + legacy global type roots (`wiki-root:memory:<type>`) → memory.
+	// v0.8 (steps-overhaul sub-6): per-TOPIC memory roots
+	// (`wiki-root:memory-topic:<topicId>`) → memory (parallel to per-agent).
+	// Recognized by id prefix so a topic root resolves to memory-kind EVEN
+	// BEFORE its row is lazily created (Extractor A's callerCtx may inject the
+	// topic root id as an anchor before ensureMemoryTopicRoot has run).
 	if (nodeId.startsWith("wiki-root:memory-agent:")) return "memory";
+	if (nodeId.startsWith("wiki-root:memory-topic:")) return "memory";
 	if (nodeId.startsWith("wiki-root:memory:")) return "memory";
 	if (node && node.type === "memory") return "memory";
 	if (node && node.path && node.path.startsWith("memory")) return "memory";

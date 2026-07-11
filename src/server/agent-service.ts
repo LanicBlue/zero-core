@@ -29,12 +29,13 @@
 import { loadConfig, ZERO_CORE_DIR, type ZeroCoreConfig } from "../core/config.js";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
-import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy, UserContent, AttachmentMeta } from "../shared/types.js";
+import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy, UserContent, AttachmentMeta, SessionVolumeInfo } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop } from "../runtime/agent-loop.js";
 import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource, PlatformObserver, PlatformSessionSummary, PlatformProviderStat, PlatformProviderSeries, PlatformProviderQueueEntry } from "../runtime/types.js";
 import { clearProviderCache, setConcurrencyManager } from "../runtime/provider-factory.js";
 import { SessionDB } from "./session-db.js";
+import { computeDisplayWindow } from "./session-volume.js";
 import { InputQueueStore } from "./input-queue-store.js";
 import { MCPManager } from "./mcp-manager.js";
 import { buildMcpTools } from "../tools/mcp-tool.js";
@@ -82,6 +83,13 @@ export interface ProviderConfig {
 	 */
 	models: { id: string; name: string; contextWindow?: number; maxTokens?: number; multimodal?: boolean }[];
 	enabled: boolean;
+	/**
+	 * steps-overhaul sub-5: provider prompt-cache TTL (ms) for the compression
+	 * cache 冷热判定. Optional; flows Provider → ProviderConfig →
+	 * RuntimeProviderConfig. undefined → resolved to DEFAULT_CACHE_TTL_MS at
+	 * the read site.
+	 */
+	cacheTtlMs?: number | null;
 }
 interface AgentRunState {
 	agentId: string;
@@ -210,8 +218,11 @@ export class AgentService implements PlatformObserver {
 	// can read those nodes back.
 	private wikiStoreGlobal: any = null;
 	// v0.8 (M5): extractor config (extractors.A/B enabled + provider/model
-	// overrides + checkpointThresholds). Threaded into every session config
-	// so the extraction hook can gate + build extractor services.
+	// overrides). Threaded into every session config so the compression trigger
+	// (sub-5) + archive (sub-8) can resolve the Extractor A model, and so any
+	// remaining extraction-hook wiring can gate + build extractor services.
+	// (steps-overhaul sub-10: checkpointThresholds dropped from this config —
+	// retired in sub-7, no live reader.)
 	private extractorsConfig: any = null;
 	// v0.8 (P3 §7.7 #4): tool-call usage log. Surfaced onto every session
 	// config so tool-factory can record one row per tool invocation. Best-effort
@@ -386,9 +397,9 @@ export class AgentService implements PlatformObserver {
 	/**
 	 * v0.8 (M5): inject the global WikiStore. The global WikiStore is the
 	 * writer target for extractor A's memory nodes (decision 46 N2).
-	 * Extractor config (extractors.A/B enabled + provider/model overrides +
-	 * checkpointThresholds) is read from this.config.extractors (loaded in
-	 * the constructor via loadConfig).
+	 * Extractor config (extractors.A/B enabled + provider/model overrides) is
+	 * read from this.config.extractors (loaded in the constructor via
+	 * loadConfig). (steps-overhaul sub-10: checkpointThresholds dropped.)
 	 */
 	setWikiStoreGlobal(wikiStoreGlobal: any): void {
 		this.wikiStoreGlobal = wikiStoreGlobal ?? null;
@@ -860,11 +871,14 @@ export class AgentService implements PlatformObserver {
 		return caps;
 	}
 	evictSessionFromMemory(sessionId: string): void {
-		// v0.8 (M5): mechanism 3 — close flush. Fire extractor A on the tail
-		// batch (anything after the last extraction cursor) so session death
-		// doesn't lose content. fire-and-forget: we kick it off and don't
-		// await (eviction is synchronous from the session-manager's POV and
-		// must not block on LLM calls).
+		// steps-overhaul sub-7: the M5 close-flush (mechanism 3) is RETIRED —
+		// wiki extraction now happens via compressSession's Extractor A
+		// multi-step agent (decision 53 修订). closeFlushSession is kept as a
+		// no-op shell so this call site doesn't break; it does nothing now.
+		// The session's memory has already been merged into the wiki tree by
+		// the compression trigger throughout the session's life. Kept as a
+		// defensive try/catch + fire-and-forget in case future code restores
+		// eviction-time work.
 		try {
 			if (this.wikiStoreGlobal) {
 				const { closeFlushSession } = require("../runtime/hooks/extraction-hooks.js") as typeof import("../runtime/hooks/extraction-hooks.js");
@@ -944,6 +958,155 @@ export class AgentService implements PlatformObserver {
 		(cfg as any).compression = this.config.compression;
 		return cfg;
 	}
+
+	/**
+	 * steps-overhaul sub-8 (archive): rebuild a minimal SessionConfig for a
+	 * DELEGATED CHILD session being archived, mirroring
+	 * buildSessionConfigForEviction but resolving the CHILD's agent/model from
+	 * the delegated_tasks row (target_agent_id / model_id) rather than the
+	 * activeSessions scan. Re-attaches the SAME wiki/extractors handles the
+	 * parent loop had so the final compression writes into the same topic
+	 * subtree as the child's prior mid-turn compressions.
+	 *
+	 * Used by `archiveDelegatedSession` (auto) and is also the basis for the
+	 * chat-manual archive path (which passes the session's own agentId).
+	 */
+	private buildSessionConfigForArchive(sessionId: string, childAgentId?: string, childModelId?: string): import("../runtime/types.js").SessionConfig | undefined {
+		const sessionRec = this.db.getSession(sessionId);
+		const agentId = childAgentId ?? sessionRec?.agentId ?? "__default__";
+		const agent = this.agentStore?.get(agentId);
+		const cfg: import("../runtime/types.js").SessionConfig = {
+			agentId,
+			workspaceDir: sessionRec?.context?.workspaceDir || agent?.workspaceDir || this.workspaceDir,
+			systemPrompt: "",
+			modelId: childModelId ?? agent?.model ?? this.defaultModel ?? "",
+			providerName: agent?.provider ?? this.defaultProvider ?? "",
+			sessionId,
+			db: this.db,
+			toolPolicy: {
+				autoApprove: agent?.toolPolicy?.autoApprove ?? this.config.toolPolicy.autoApprove,
+				blockedTools: agent?.toolPolicy?.blockedTools ?? this.config.toolPolicy.blockedTools,
+				tools: agent?.toolPolicy?.tools ?? this.config.toolPolicy.tools,
+				executionMode: agent?.toolPolicy?.executionMode ?? this.config.toolPolicy.executionMode,
+				resultMaxTokens: agent?.toolPolicy?.resultMaxTokens ?? this.config.toolPolicy.resultMaxTokens,
+				readScope: agent?.toolPolicy?.readScope ?? "filesystem",
+			},
+		};
+		// Re-attach the SAME wiki/extractors handles the parent loop had so the
+		// final compression's Extractor A writes into the parent's topic subtree.
+		if (this.wikiStoreGlobal) (cfg as any).wikiStoreGlobal = this.wikiStoreGlobal;
+		if (this.extractorsConfig) (cfg as any).extractors = this.extractorsConfig;
+		(cfg as any).compression = this.config.compression;
+		return cfg;
+	}
+
+	/**
+	 * steps-overhaul sub-8 (archive): auto-archive a delegated CHILD session
+	 * after its task reaches a terminal state (called from the runtime's
+	 * SubagentDelegator via the `archiveDelegatedSession` config callback).
+	 *
+	 * Resolves the child's agentId/modelId from the delegated_tasks row, builds
+	 * a minimal child SessionConfig, and runs the archive pipeline (final
+	 * compression → export JSON → delete). delegated auto-archive is naturally
+	 * a complete-state event (the child AgentLoop has already returned), so NO
+	 * runtime teardown is needed here (no `teardown` passed to archiveSession).
+	 *
+	 * Best-effort: any failure is logged + swallowed by the caller (the task
+	 * already succeeded/failed; archiving is a post-terminal side-effect).
+	 */
+	async archiveDelegatedSession(
+		taskId: string,
+		childSessionId: string,
+	): Promise<void> {
+		// Lazy require — server/archive-service imports compression-core +
+		// extractor-a-service (which imports tools/wiki-tool → server/wiki-node-
+		// store). Keeping this dynamic avoids pulling the whole server/ wiki
+		// stack into agent-service's static graph (agent-service is already
+		// large). Same pattern as compression-trigger-hooks.
+		const { archiveSession } =
+			require("./archive-service.js") as typeof import("./archive-service.js");
+		const rec = this.db.getDelegatedTask?.(taskId);
+		const childAgentId = rec?.targetAgentId;
+		const childModelId = rec?.modelId;
+		const sessionConfig = this.buildSessionConfigForArchive(childSessionId, childAgentId, childModelId);
+		if (!sessionConfig) {
+			log.warn("agent", `archiveDelegatedSession: could not build child config (task=${taskId}, child=${childSessionId}) — skipping archive`);
+			return;
+		}
+		await archiveSession(childSessionId, this.db, {
+			providers: this.providerConfigs,
+			sessionConfig,
+			// NO teardown — delegated child is already complete (AgentLoop returned).
+		});
+	}
+
+	/**
+	 * steps-overhaul sub-8 (archive): manually archive a session from the chat
+	 * UI (the existing 归档 button). Runs the FULL archive pipeline:
+	 *
+	 *   1. (if the session is active) tear down its AgentLoop + clear in-memory
+	 *      hook state (turn-seq-tracker + compression-trigger-hooks maps for
+	 *      this sid), so the loop stops writing to the DB / firing hooks
+	 *      mid-archive. This is the "active session runtime teardown" the
+	 *      acceptance checks: chat manual archive of a running session must
+	 *      stop the loop BEFORE deleting its DB rows.
+	 *   2. final Extractor A compression → export JSON → delete DB rows
+	 *      (incl. tool_executions/delegated_tasks orphans). Wiki nodes stay.
+	 *
+	 * Returns the path of the written archive JSON. The CALLER (session-router)
+	 * is responsible for creating the replacement session + handing over main +
+	 * recreateLoop — same as the pre-sub-8 soft-delete handler did, so the UI
+	 * contract (返回 newSessionId) is preserved.
+	 *
+	 * teardown is injected into archiveSession via the `teardown` option so the
+	 * archive pipeline owns the ORDER (teardown → compress → export → delete).
+	 */
+	async archiveSessionManually(sessionId: string): Promise<{ archivePath: string }> {
+		// Lazy require (same rationale as archiveDelegatedSession).
+		const { archiveSession } =
+			require("./archive-service.js") as typeof import("./archive-service.js");
+		// Lazy require the per-session hook-state clearers. These live in
+		// runtime/hooks/; importing them statically here would pull the hook
+		// registry + its deps into agent-service's static graph. Dynamic require
+		// keeps that cost off module-load.
+		const { clearCompressionTriggerStateForSession } =
+			require("../runtime/hooks/compression-trigger-hooks.js") as typeof import("../runtime/hooks/compression-trigger-hooks.js");
+		const { clearTurnSeqStateForSession } =
+			require("../runtime/hooks/turn-seq-tracker.js") as typeof import("../runtime/hooks/turn-seq-tracker.js");
+
+		const sessionRec = this.db.getSession(sessionId);
+		if (!sessionRec) {
+			throw new Error(`archiveSessionManually: session not found: ${sessionId}`);
+		}
+		const sessionConfig = this.buildSessionConfigForArchive(sessionId);
+		if (!sessionConfig) {
+			throw new Error(`archiveSessionManually: could not build session config (session=${sessionId})`);
+		}
+
+		const result = await archiveSession(sessionId, this.db, {
+			providers: this.providerConfigs,
+			sessionConfig,
+			// Active-session teardown: stop the loop FIRST (so it stops writing
+			// to the DB / firing hooks mid-archive), THEN clear the per-session
+			// hook state. evictSessionFromMemory aborts the loop + clears
+			// loops/runStates/activeSessions for this sid; the clearHookState
+			// step clears the per-session maps the hooks hold.
+			teardown: {
+				stopAgentLoop: (sid) => {
+					// evictSessionFromMemory is idempotent for a non-active /
+					// already-stopped session (no-op when there's no loop). It
+					// also fires SessionClose (metrics idle) — fine for archive.
+					this.evictSessionFromMemory(sid);
+				},
+				clearHookState: (sid) => {
+					clearCompressionTriggerStateForSession(sid);
+					clearTurnSeqStateForSession(sid);
+				},
+			},
+		});
+		return { archivePath: result.archivePath };
+	}
+
 	subscribe(cb: StreamCallback): () => void {
 		this.subscribers.add(cb);
 		return () => { this.subscribers.delete(cb); };
@@ -1164,6 +1327,20 @@ export class AgentService implements PlatformObserver {
 		// register delegated sub-loops with the same set. The main loop's own
 		// registration happens below (right after construction).
 		sessionConfig.hookWiringDeps = this.buildHookDeps();
+		// sub-8 (archive): wire the delegated-session auto-archive callback so a
+		// sub-agent that reaches completed/failed auto-archives (design.md
+		// 「归档」). The child session config is rebuilt here from the child's
+		// delegated_tasks row (target agent + inherited model) + THIS loop's
+		// wiki/extractors handles (sub-loops inherit these via the config spread
+		// in subagent-delegator, so mirroring them here lets the final
+		// compression write into the same topic subtree). Best-effort: a missing
+		// child row / build failure is logged + swallowed (the task already
+		// succeeded; archiving is a post-terminal side-effect).
+		sessionConfig.archiveDelegatedSession = (taskId, _status, childSessionId) => {
+			this.archiveDelegatedSession(taskId, childSessionId).catch((err: unknown) => {
+				log.warn("agent", `archiveDelegatedSession failed (task=${taskId}, child=${childSessionId}):`, (err as Error)?.message ?? err);
+			});
+		};
 		// Initialize run state for this session
 		if (!this.runStates.has(sessionId)) {
 			this.runStates.set(sessionId, { agentId, isBusy: false, waiting: false, streamingText: "", toolCalls: [] });
@@ -1675,6 +1852,40 @@ export class AgentService implements PlatformObserver {
 	}
 
 	/**
+	 * steps-overhaul sub-9: read the session's CONTENT VOLUME for the chat UI.
+	 *
+	 * Source of truth = the `steps` table (原始不可变), NOT messages (LLM view)
+	 * — the user sees real history. Returns:
+	 *   - totalStepCount / totalTurnCount: the session's full size;
+	 *   - tokenUsage: sessions.token_usage (last API-returned usage, context size);
+	 *   - displayWindow: which range the UI shows under the "max(100 step, 5 turn)"
+	 *     rule (取多的 — whichever of the two covers MORE steps wins).
+	 *
+	 * Turn count = DISTINCT turn_group in steps (user-perceived turns: one user
+	 * message + its assistant steps), NOT sessions.turn_count (which counts user
+	 * step ROWS and is the seq-allocation cursor, not a logical turn count).
+	 *
+	 * Pure read; never throws (returns a zeroed shape on missing session so the
+	 * UI degrades gracefully instead of breaking the whole init payload).
+	 */
+	getSessionVolume(sessionId: string): SessionVolumeInfo {
+		const session = this.db.getSession(sessionId);
+		// step_count is the O(1) total-step-row counter (bumped on every
+		// appendStep). getStepCount() reads it. Fall back to 0 only if the session
+		// row is gone (should not happen post-sub-1 migration).
+		const totalStepCount = session
+			? this.db.getStepCount(sessionId)
+			: 0;
+		const totalTurnCount = session
+			? this.db.getTurnGroupCount(sessionId)
+			: 0;
+		const tokenUsage = session
+			? this.db.getTokenUsage(sessionId)
+			: undefined;
+		return computeDisplayWindow(totalStepCount, totalTurnCount, tokenUsage);
+	}
+
+	/**
 	 * 构建 session 的完整 init payload(messages + token 信息 + todos + 未决
 	 * AskUser 问题)。供两条路径共用,保证 push(activateSession 的 session_init)
 	 * 与 pull(前端显示时 GET /api/sessions/init/:sessionId)永不漂移。
@@ -1702,6 +1913,8 @@ export class AgentService implements PlatformObserver {
 		todos: any[];
 		pendingQuestion: { requestId: string; questions: any[] } | null;
 		isRunning: boolean;
+		/** steps-overhaul sub-9: content volume (steps/turns/token size) for the chat UI volume panel. */
+		volume: SessionVolumeInfo;
 	} | null {
 		const session = this.db.getSession(sessionId);
 		if (!session) return null;
@@ -1735,6 +1948,7 @@ export class AgentService implements PlatformObserver {
 			// 该 session 当前是否在跑。前端 pull-on-display 据此自愈清掉残留的
 			// streaming 指示(后台报错停止后 agent_end 若被丢会卡 streaming → Send 禁用)。
 			isRunning: !!this.runStates.get(sessionId)?.isBusy,
+			volume: this.getSessionVolume(sessionId),
 		};
 	}
 

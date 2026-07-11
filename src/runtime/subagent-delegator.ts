@@ -120,6 +120,21 @@ export interface SubagentDelegatorDeps {
 	 * Omit only in test stubs that don't run real hooks.
 	 */
 	hookDeps?: HookWiringDeps;
+	/**
+	 * steps-overhaul sub-8 (archive): fired when a delegated task reaches a
+	 * terminal state (`completed` / `failed`) so the caller can run the archive
+	 * pipeline on the CHILD session. The callback receives the taskId, the
+	 * terminal status, and the child session id (resolved from the
+	 * delegated_tasks row). Fire-and-forget from the delegator's POV — the
+	 * callback owns its own error handling; a rejection is logged but does NOT
+	 * propagate to the task caller.
+	 *
+	 * Set by agent-service (server layer) to call archive-service.archiveSession.
+	 * Omitted in test stubs. NOTE: this fires ONLY for delegated sub-agent
+	 * terminal states — it does NOT fire for cron/main (parent) completion,
+	 * preserving the "cron/main 不自动归档" invariant (acceptance-8).
+	 */
+	onTaskTerminal?: (taskId: string, status: "completed" | "failed", childSessionId: string) => Promise<void> | void;
 }
 
 const DEFAULT_FINISH_MESSAGE =
@@ -149,6 +164,7 @@ export class SubagentDelegator {
 	private createSubLoop: LoopFactory;
 	private getToolConfig: () => Record<string, Record<string, any>>;
 	private hookDeps: HookWiringDeps | undefined;
+	private onTaskTerminal: SubagentDelegatorDeps["onTaskTerminal"];
 	private runningSubloops = new Map<string, RunningSubloop>();
 
 	constructor(deps: SubagentDelegatorDeps) {
@@ -158,6 +174,7 @@ export class SubagentDelegator {
 		this.createSubLoop = deps.createSubLoop;
 		this.getToolConfig = deps.getToolConfig;
 		this.hookDeps = deps.hookDeps;
+		this.onTaskTerminal = deps.onTaskTerminal;
 	}
 
 	// -----------------------------------------------------------------------
@@ -217,6 +234,49 @@ export class SubagentDelegator {
 	/** Patch a delegated_tasks row (status/progress/result/...). Best-effort. */
 	private updateDelegatedTask(taskId: string, patch: Partial<DelegatedTaskRecord>): void {
 		this.config.db?.updateDelegatedTask?.(taskId, patch as any);
+	}
+
+	/**
+	 * steps-overhaul sub-8 (archive): fire the `onTaskTerminal` callback when a
+	 * delegated task reaches a terminal state, so the caller (agent-service)
+	 * can run the archive pipeline on the CHILD session.
+	 *
+	 * Resolves the child sessionId from the delegated_tasks row (after the
+	 * status patch has been written). Fire-and-forget: the callback's promise
+	 * is detached + errors are logged; a rejection MUST NOT propagate to the
+	 * task caller (the task already succeeded/failed — archiving is a
+	 * post-terminal side-effect, never part of the task's own contract).
+	 *
+	 * Only fires for `completed` / `failed` (NOT `killed` — killed is a
+	 * parent-initiated stop via stopTask/abandonTask; the child session there
+	 * is abandoned, not "completed work", and the parent owns its cleanup).
+	 * The cron/main invariant ("cron/main 不自动归档") is preserved because this
+	 * callback is ONLY wired by agent-service for delegated sub-agent loops —
+	 * cron/main loops never set onTaskTerminal on their own delegator (a cron/
+	 * main agent that itself dispatches sub-agents DOES archive those
+	 * sub-agents, which is correct: the sub-agent is delegated work, not the
+	 * cron/main parent).
+	 */
+	private fireOnTaskTerminal(taskId: string, status: "completed" | "failed"): void {
+		if (!this.onTaskTerminal) return;
+		const childSessionId = this.config.db?.getDelegatedTask?.(taskId)?.sessionId;
+		if (!childSessionId) {
+			// No child session (e.g. test stub without persistence, or the row
+			// was already cleared). Nothing to archive.
+			return;
+		}
+		try {
+			const ret = this.onTaskTerminal(taskId, status, childSessionId);
+			if (ret && typeof (ret as Promise<void>).then === "function") {
+				void (ret as Promise<void>).catch((err: unknown) => {
+					// Log only — archiving is a detached post-terminal side-effect.
+					log.warn("delegator", `onTaskTerminal archive failed (task=${taskId}, child=${childSessionId}):`, (err as Error)?.message ?? err);
+				});
+			}
+		} catch (err) {
+			// Synchronous throw in the callback — log + swallow.
+			log.warn("delegator", `onTaskTerminal archive threw (task=${taskId}, child=${childSessionId}):`, (err as Error)?.message ?? err);
+		}
 	}
 
 	/**
@@ -354,10 +414,12 @@ export class SubagentDelegator {
 				if (bgError) {
 					this.updateDelegatedTask(taskId, { status: "failed", error: bgError });
 					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
+					this.fireOnTaskTerminal(taskId, "failed");
 					throw new Error(bgError);
 				}
 				this.updateDelegatedTask(taskId, { status: "completed", result: bgResult });
 				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
+				this.fireOnTaskTerminal(taskId, "completed");
 				return bgResult || "(sub-agent returned no output)";
 			}
 
@@ -372,12 +434,14 @@ export class SubagentDelegator {
 					parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: bgError });
 					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
 					await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
+					this.fireOnTaskTerminal(taskId, "failed");
 				} else {
 					registry.complete(taskId, bgResult);
 					this.updateDelegatedTask(taskId, { status: "completed", result: bgResult });
 					parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "completed", result: bgResult });
 					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
 					await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
+					this.fireOnTaskTerminal(taskId, "completed");
 				}
 			});
 
@@ -390,6 +454,7 @@ export class SubagentDelegator {
 			const result = subLoop.getResult();
 			this.updateDelegatedTask(taskId, { status: "completed", result });
 			await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
+			this.fireOnTaskTerminal(taskId, "completed");
 			return result;
 		} catch (err: any) {
 			const message = err.message || "Unknown error";
@@ -400,6 +465,7 @@ export class SubagentDelegator {
 				this.updateDelegatedTask(taskId, { status: "killed", error: message });
 			} else {
 				this.updateDelegatedTask(taskId, { status: "failed", error: message });
+				this.fireOnTaskTerminal(taskId, "failed");
 			}
 			await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: cur === "killed" ? "killed" : "failed", result: message });
 			throw err;
@@ -473,6 +539,7 @@ export class SubagentDelegator {
 				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "completed", result });
 				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
 				await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
+				this.fireOnTaskTerminal(taskId, "completed");
 			} catch (err: any) {
 				const message = err.message || "Unknown error";
 				const cur = registry.get(taskId)?.status;
@@ -485,6 +552,7 @@ export class SubagentDelegator {
 				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: message });
 				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: message });
 				await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: message });
+				if (cur !== "killed") this.fireOnTaskTerminal(taskId, "failed");
 			} finally {
 				this.runningSubloops.delete(taskId);
 			}
@@ -721,11 +789,13 @@ export class SubagentDelegator {
 			const result = subLoop.getResult();
 			this.updateDelegatedTask(taskId, { status: "completed", result });
 			await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
+			this.fireOnTaskTerminal(taskId, "completed");
 			return result;
 		} catch (err: any) {
 			const message = err.message || "Unknown error";
 			this.updateDelegatedTask(taskId, { status: "failed", error: message });
 			await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: message });
+			this.fireOnTaskTerminal(taskId, "failed");
 			throw err;
 		} finally {
 			this.runningSubloops.delete(taskId);
@@ -825,6 +895,7 @@ export class SubagentDelegator {
 				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "completed", result });
 				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
 				await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result });
+				this.fireOnTaskTerminal(taskId, "completed");
 			} catch (err: any) {
 				const message = err.message || "Unknown error";
 				const cur = this.taskRegistry.get(taskId)?.status;
@@ -837,6 +908,7 @@ export class SubagentDelegator {
 				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: message });
 				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: message });
 				await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: message });
+				if (cur !== "killed") this.fireOnTaskTerminal(taskId, "failed");
 			} finally {
 				this.runningSubloops.delete(taskId);
 			}

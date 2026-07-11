@@ -324,15 +324,29 @@ Output format:
 			const agent = project ? this.resolveAnalystWork(project).agent : undefined;
 			if (agent) {
 				await this.agentService.sendPrompt(prompt, agent, undefined, "background");
-				// Read back the last assistant message from the session
+				// steps-overhaul sub-3: read the last assistant STEP from the
+				// steps table (messages was redefined to summary+cursor and
+				// stores no step content). Walk steps newest-first, find the
+				// most recent assistant step, flatten its text blocks.
 				const db = this.agentService.getDB();
-				const messages = db.getMessages
-					? db.getMessages(agent.id)
-					: [];
-				const lastAssistant = [...messages]
-					.reverse()
-					.find((m: any) => m.role === "assistant");
-				result = lastAssistant?.content || "Verification completed (no detailed output captured)";
+				const steps = db.getSteps ? db.getSteps(agent.id) : [];
+				let lastAssistantText = "";
+				for (let i = steps.length - 1; i >= 0; i--) {
+					const s = steps[i];
+					if (s.role !== "assistant") continue;
+					try {
+						const blocks = JSON.parse(s.content ?? "[]");
+						if (Array.isArray(blocks)) {
+							for (const b of blocks) {
+								if (b && typeof b === "object" && b.type === "text" && typeof b.text === "string") {
+									lastAssistantText += b.text;
+								}
+							}
+						}
+					} catch { /* malformed → skip */ }
+					if (lastAssistantText) break;
+				}
+				result = lastAssistantText || "Verification completed (no detailed output captured)";
 			} else {
 				result = "PASSED\nVerification completed (no agent session available for detailed check)";
 			}

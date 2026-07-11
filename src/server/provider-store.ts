@@ -100,6 +100,8 @@ const COLUMNS: ColumnDef[] = [
 	{ key: "isSystem", column: "is_system", bool: true },
 		{ key: "enableConcurrencyLimit", column: "enable_concurrency_limit", bool: true },
 		{ key: "maxConcurrency", column: "max_concurrency", number: true },
+	// steps-overhaul sub-5: provider prompt-cache TTL (ms) for compression 冷热判定.
+	{ key: "cacheTtlMs", column: "cache_ttl_ms", number: true },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
 ];

@@ -4,10 +4,11 @@
 //
 // ## 核心功能
 // 不使用 mock，直接从 dist/ 加载真实 SessionDB 与 runMigrations，新建临时 DB 后
-// 串联 12 个用例验证 step 级存储：建库+迁移、列与索引存在性、appendStep/
+// 串联 11 个用例验证 step 级存储：建库+迁移、列与索引存在性、appendStep/
 // getStepGroup/getSteps/upsertStep/updateStepContent/deleteStepGroup/
-// getTurnGroupCount/replaceStepsFromMessages、token 用量统计、旧 schema 迁移、
+// getTurnGroupCount/replaceStepsFromMessages、token 用量统计、
 // 以及 step 级低层 CRUD(Step 4A: legacy appendTurn/updateTurnContent/getTurns 已退役)。
+// (steps-overhaul sub-1:turns→steps 改名 + DROP-rebuild,旧 schema 迁移用例已退役。)
 //
 // ## 输入
 // - 可选 CLI 参数：db-path（默认 ~/.zero-core/itest-test.db）
@@ -70,15 +71,15 @@ async function run() {
 	assert(db !== null, "SessionDB created + migrations ran");
 
 	// Check columns
-	const cols = db.getDb().pragma("table_info(turns)").map(c => c.name);
+	const cols = db.getDb().pragma("table_info(steps)").map(c => c.name);
 	assert(cols.includes("turn_group"), "turn_group column exists");
 	assert(cols.includes("input_tokens"), "input_tokens column exists");
 	assert(cols.includes("output_tokens"), "output_tokens column exists");
 	assert(cols.includes("total_tokens"), "total_tokens column exists");
 
 	// Check indexes
-	const idxs = db.getDb().prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='turns'").all().map(i => i.name);
-	assert(idxs.includes("idx_turns_session_group"), "idx_turns_session_group index exists");
+	const idxs = db.getDb().prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='steps'").all().map(i => i.name);
+	assert(idxs.includes("idx_steps_session_seq"), "idx_steps_session_seq index exists");
 
 	// ─── Test 2: hasStepSchema ─────────────────────────────────
 	console.log("\n=== Test 2: hasStepSchema ===");
@@ -157,22 +158,19 @@ async function run() {
 	const groupCount = db.getTurnGroupCount(sessionId);
 	assert(groupCount === 1, `1 distinct turn group (got ${groupCount})`);
 
-	// ─── Test 10: replaceStepsFromMessages ──────────────────────
-	console.log("\n=== Test 10: replaceStepsFromMessages ===");
-	db.replaceStepsFromMessages(sessionId, [
-		{ seq: 0, turnGroup: 0, role: "user", content: "compressed question" },
-		{ seq: 1, turnGroup: 0, role: "assistant", content: JSON.stringify([{ type: "text", text: "compressed answer" }]) },
-	]);
-	const replaced = db.getSteps(sessionId);
-	assert(replaced.length === 2, `2 steps after replace (got ${replaced.length})`);
-	assert(replaced[0].content === "compressed question", "Replaced user content correct");
-	assert(replaced[1].role === "assistant", "Replaced assistant role correct");
+	// ─── Test 10: (retired in steps-overhaul sub-3) ───────────
+	// Previously exercised replaceStepsFromMessages (the destructive "rebuild
+	// steps from compressed messages" path). sub-3 deleted that method:
+	// messages is now summary+cursor (no step content), steps is the immutable
+	// source of truth, and old L1/L2 compression's sync path is gone. Future
+	// compression (sub-4 Extractor A) writes summaries + advances the cursor
+	// instead of touching steps.
 
 	// ─── Test 11: Step-level low-level CRUD (replaces retired legacy path) ────
 	// Step 4A: the legacy appendTurn / updateTurnContent / getTurns API was
-	// retired. This case now exercises the equivalent step-level writes against
-	// the same physical `turns` table: append a step with an explicit
-	// turn_group, update its content, read it back, then delete it.
+	// retired. This case exercises the equivalent step-level writes against
+	// the physical `steps` table: append a step with an explicit turn_group,
+	// update its content, read it back, then delete it.
 	console.log("\n=== Test 11: Step-level low-level CRUD ===");
 	db.appendStep(sessionId, 10, 10, "user", "step turn");
 	db.updateStepContent(sessionId, 10, "step turn updated");
@@ -185,13 +183,10 @@ async function run() {
 	const afterDelete = db.getSteps(sessionId).find(t => t.seq === 10);
 	assert(!afterDelete, "deleteStepGroup removes the row");
 
-	// ─── Test 12: Migration from old schema ────────────────────
-	console.log("\n=== Test 12: Old DB migration simulation ===");
-	db.getDb().exec(`INSERT INTO turns (session_id, seq, role, content, created_at, turn_group) VALUES ('${sessionId}', 99, 'user', 'old row', datetime('now'), -1)`);
-	// Run the migration logic manually
-	db.getDb().exec("UPDATE turns SET turn_group = seq WHERE turn_group = -1");
-	const migrated = db.getDb().prepare("SELECT turn_group FROM turns WHERE seq = 99").get();
-	assert(migrated.turn_group === 99, `Old row migrated: turn_group = ${migrated.turn_group}`);
+	// ─── Test 12: (retired in steps-overhaul sub-1) ───────────
+	// Previously simulated a turn_group backfill migration (`UPDATE turns SET
+	// turn_group = seq`) against a legacy `turns` table. sub-1 DROP-rebuilds
+	// (turns → steps, no legacy data migration), so that path no longer exists.
 
 	// ─── Cleanup ──────────────────────────────────────────────
 	db.getDb().close();

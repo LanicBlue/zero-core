@@ -126,6 +126,8 @@ function toRuntimeProviders(providers: Provider[]): RuntimeProviderConfig[] {
 			multimodal: m.multimodal,
 		})),
 		enabled: p.enabled,
+		// steps-overhaul sub-5: carry cacheTtlMs for the compression cache 冷热判定.
+		cacheTtlMs: p.cacheTtlMs,
 	}));
 }
 

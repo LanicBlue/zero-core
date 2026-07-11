@@ -250,6 +250,16 @@ export interface PostLLCallContext extends BaseHookContext {
 export interface OnLLMErrorContext extends BaseHookContext {
 	error: string;
 	errorClass?: string;
+	/**
+	 * Session / config / providers — same shape as StepEnd/PreLLMCall. Auto-fire
+	 * from AgentLoop.triggerLocal includes them so reactive handlers (e.g.
+	 * compression-trigger's prompt_too_long path) can resolve the provider/model
+	 * + drive compressSession without a separate lookup. Optional for back-compat
+	 * with stub test contexts.
+	 */
+	session?: unknown;
+	config?: unknown;
+	providers?: unknown;
 	/** Set by a handler to request a retry of the failed step. */
 	retry?: boolean;
 	/** Delay (ms) before the requested retry. */
@@ -353,6 +363,13 @@ export interface PostToolUseFailureResult {
 export interface PreLLMCallResult {
 	memoryContext?: string;
 	providerOptions?: Record<string, Record<string, unknown>>;
+	/**
+	 * Extra messages to append for this step (same transport as
+	 * StepStartResult.appendMessages). AgentLoop merges these into the outgoing
+	 * step messages; compression-trigger's hot-path 提醒 uses this to nudge the
+	 * model when the context crosses the soft threshold.
+	 */
+	appendMessages?: Array<{ role: string; content: string }>;
 }
 
 /** StepEnd: can trigger token calibration. */

@@ -257,6 +257,12 @@ export class AgentLoop implements AgentRuntime {
 			// Step 1B: thread per-loop hook deps so delegated sub-loops register
 			// their own hook set on their own registry (loopKind="delegated").
 			hookDeps: config.hookWiringDeps,
+			// sub-8 (archive): thread the delegated-session archive callback so
+			// delegated sub-agents auto-archive on terminal state. agent-service
+			// sets this when building the loop config (server layer owns the
+			// SessionDB + archive-service). Sub-loops inherit it via the config
+			// spread in subagent-delegator, so nested delegated work also archives.
+			onTaskTerminal: config.archiveDelegatedSession,
 		});
 
 		// N1 (runtime-push-ui-sync): TaskRegistry lives in src/runtime/, so it
@@ -561,12 +567,12 @@ export class AgentLoop implements AgentRuntime {
 
 				// TurnStart hook has written user turn; next seq is the first assistant step
 				if (this.config.db && this.config.sessionId) {
-					this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+					this.stepBaseSeq = this.config.db.getStepCount(this.config.sessionId);
 				}
 				this.stepOffset = 0;
 
 				// Set the turn group (= user message's seq = stepBaseSeq - 1 for non-resume,
-				// but TurnStart already wrote the user turn so getTurnCount includes it)
+				// but TurnStart already wrote the user turn so getStepCount includes it)
 				const userSeq = this.stepBaseSeq - 1;
 				this.recorder.startTurnGroup(userSeq);
 				// multimodal-input sub-7 (E2E-found wiring gap): TurnStart just
@@ -619,7 +625,7 @@ export class AgentLoop implements AgentRuntime {
 	 * those rows (rebuildFromTurns), so the model sees the full prior work and
 	 * simply produces the next step.
 	 *
-	 * `lastCompletedStepSeq` is informational for this layer — getTurnCount()
+	 * `lastCompletedStepSeq` is informational for this layer — getStepCount()
 	 * already returns the correct next seq (it counts the already-persisted
 	 * step rows). The checkpoint is what recovery uses to decide a session had
 	 * mid-turn progress (vs a turn that crashed before any step completed) and
@@ -655,10 +661,10 @@ export class AgentLoop implements AgentRuntime {
 				await this.session.pruneIfNeeded();
 
 				// For resume, the user turn + any completed steps are already in DB.
-				// getTurnCount returns the count INCLUDING those, so the next
+				// getStepCount returns the count INCLUDING those, so the next
 				// appendStep lands at the correct fresh seq.
 				if (this.config.db && this.config.sessionId) {
-					this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+					this.stepBaseSeq = this.config.db.getStepCount(this.config.sessionId);
 				}
 				this.stepOffset = 0;
 
@@ -675,7 +681,7 @@ export class AgentLoop implements AgentRuntime {
 
 				// After TurnStart, the turn count may have increased (if hook wrote a turn)
 				if (this.config.db && this.config.sessionId) {
-					this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+					this.stepBaseSeq = this.config.db.getStepCount(this.config.sessionId);
 				}
 				const userSeq = this.stepBaseSeq - 1;
 				this.recorder.startTurnGroup(userSeq);
@@ -1681,6 +1687,9 @@ export class AgentLoop implements AgentRuntime {
 			const onErrorResult = await this.triggerLocal("OnLLMError", {
 				agentId: this.config.agentId,
 				sessionId: this.session.getSessionId(),
+				session: this.session,
+				config: this.config,
+				providers: this.providers,
 				error: errMsg,
 				errorClass,
 				stepNumber: opts.stepNumber,

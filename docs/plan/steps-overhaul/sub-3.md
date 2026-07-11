@@ -12,7 +12,8 @@ sub-1、sub-2。
 - fresh tail 边界 = `min(32K token, 20% 窗口)`,step 粒度,tool-pair 安全。
 - **fresh tail "逐字" = step 指针形态逐字,非解引用原始字节**:fresh tail 里某 step 的 tool result 若被 sub-2 外置(>16K),渲染的是**指针版**(摘要+文件路径,~4K token),**不解引用外置文件全字节回上下文**(否则违阶段1 目的)。"逐字"仅相对中间区 stub 而言——fresh tail 的 step 内容原样组装(不 stub),但仍是指针形态。agent 要细节按指针从 `steps`/外置文件按需读。
 - `getMessagesMultimodal` 位置匹配依赖 cachedTurns → 构造时两路都 eager 跑。
-- 删 `compression-hooks.ts` 的 `syncTurnsAfterCompression`/`replaceStepsFromMessages`(LLM 改从 messages 重建后,turns/steps sync 不再必要)。
+- 删 `compression-hooks.ts` 的 `syncTurnsAfterCompression`/`replaceStepsFromMessages`(LLM 改从 messages 重建后,turns/steps sync 不再必要;也是 sub-2 Lens B 标的"从 messages 重灌原始字节进 steps"的旁路,删掉闭合)。
+- **禁用旧压缩 StepEnd 触发**:messages schema 改成 summary+cursor 后,旧 L1/L2 压缩(`compression-engine.ts`)写老 shape messages + 调已删的 sync → 会崩。sub-3 把 compression-hooks 的 StepEnd 压缩触发摘掉/置 no-op(旧引擎代码 `compression-engine.ts` 本身留死代码,sub-4 拆)。sub-3→sub-4 之间无压缩(过渡,sub-4 紧接建新核心)。
 
 ## 关键不变量
 - 两表不重复存内容(steps 全量 step 指针版;messages 只 summary+游标)。

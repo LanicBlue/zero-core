@@ -137,7 +137,7 @@ describe("sub-5 durable wait-resume — pending Wait is NOT synthesized as [inte
 		const steps: Array<{ seq: number; turnGroup: number; role: string; content: string | null; createdAt: string }> = [];
 		const store: any = {
 			getSteps: () => steps,
-			getTurnCount: () => steps.length,
+			getStepCount: () => steps.length,
 			appendStep: (sid: string, seq: number, tg: number, role: string, content: string) => {
 				steps.push({ seq, turnGroup: tg, role, content, createdAt: new Date().toISOString() });
 			},

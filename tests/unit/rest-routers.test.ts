@@ -75,10 +75,7 @@ function mockSessionDb() {
 		setMainSession: vi.fn(),
 		getMainSession: vi.fn(() => ({ id: "s1", agentId: "a1" })),
 		deleteSession: vi.fn(),
-		getMessagesWithSeq: vi.fn(() => []),
-		updateMessageContent: vi.fn(),
 		deleteTurn: vi.fn(),
-		deleteMessage: vi.fn(),
 		queryToolExecutions: vi.fn(() => []),
 		getToolExecutionStats: vi.fn(() => []),
 		cleanOldToolExecutions: vi.fn(() => 0),
@@ -90,7 +87,9 @@ function mockSessionDb() {
 		updateStepContent: vi.fn(),
 		deleteStepGroup: vi.fn(),
 		getTurnGroupCount: vi.fn(() => 0),
-		replaceStepsFromMessages: vi.fn(),
+		// steps-overhaul sub-3: getMessagesWithSeq/updateMessageContent/deleteMessage/
+		// replaceStepsFromMessages removed from SessionDB (messages redefined to
+		// summary+cursor; the edit/delete routers no longer mirror to messages).
 	};
 }
 
@@ -987,14 +986,17 @@ describe("memory-config", () => {
 	test("PUT /memory-config saves and reads back", async () => {
 		const { port } = await setupConfigRouter();
 
+		// steps-overhaul sub-4: keepRecentTurns/l1Threshold/l2Threshold removed
+		// with compression-engine.ts. Stage-3 core only carries enabled/provider/model.
 		const update = await request(port, "PUT", "/api/config/memory-config", {
-			compression: { enabled: true, keepRecentTurns: 3 },
+			compression: { enabled: true, provider: "stub", model: "stub-model" },
 		});
 		expect(update.status).toBe(200);
 		expect(update.data.success).toBe(true);
 
 		const res = await request(port, "GET", "/api/config/memory-config");
 		expect(res.data.compression.enabled).toBe(true);
-		expect(res.data.compression.keepRecentTurns).toBe(3);
+		expect(res.data.compression.provider).toBe("stub");
+		expect(res.data.compression.model).toBe("stub-model");
 	}, 15_000);
 });

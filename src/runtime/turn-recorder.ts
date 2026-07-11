@@ -31,6 +31,7 @@
 
 import { parseThinkingTags } from "./agent-utils.js";
 import type { ISessionStore } from "./session-store-interface.js";
+import { maybeExternalizeToolResult } from "./tool-result-externalizer.js";
 
 /** Data for a completed step, waiting for persistAllSteps(). */
 interface StepData {
@@ -121,12 +122,35 @@ export class TurnRecorder {
 		this.currentStepBlocks.push({ type: "tool", name, status: "running", args, ...(toolCallId ? { toolCallId } : {}) });
 	}
 
-	/** Update a tool block when result arrives. Matches by toolCallId if provided, else by name. */
+	/**
+	 * Update a tool block when result arrives. Matches by toolCallId if provided, else by name.
+	 *
+	 * steps-overhaul sub-2 / 阶段1: this is the **唯一 choke point** where tool result
+	 * raw bytes enter the recorder. Every tool-result persistence path funnels through
+	 * here — both the live streaming path (AgentLoop tool-result/tool-error/tool-call
+	 * blocked cases) AND the per-tool persist hook path (turn-hooks PostToolUse /
+	 * PostToolUseFailure call this before persistCurrentStep). By externalizing here,
+	 * both paths get the pointer automatically with no hook-order dependency.
+	 *
+	 * 外置规则(design 阶段1):result 体积 > 16K bytes → 完整字节落到外置文件
+	 * (`~/.zero-core/tool-outputs/<sha256>.txt`),`tb.result` 放**自描述指针串**
+	 * (摘要 + 文件路径 + 原始字节数,见 tool-result-externalizer.ts 的指针格式)。
+	 * ≤16K bytes → result 原样存(不外置)。
+	 *
+	 * 不变量:第一次进 recorder 就是指针(若超阈值)→ steps 永远存指针,完整字节只
+	 * 在外置文件,**无原始字节窗口**。不用 PostToolUse modifiedResult(那是返回值,
+	 * 到不了持久化 handler turn-hooks,它读 ctx.result 原始先跑 → 破不变量)。
+	 */
 	updateToolResult(toolCallId: string | undefined, name: string, result: any, isError: boolean): void {
 		const tb = this.findToolBlock(toolCallId, name);
 		if (tb) {
 			tb.status = isError ? "error" : "done";
-			tb.result = result;
+			// 阶段1 choke point:>16K 外置 + 指针;≤16K 原样。maybeExternalizeToolResult
+			// 返回 null 表示不外置(result 原样);返回非 null 表示已外置,放指针串。
+			// 外置写盘失败时 maybeExternalizeToolResult 自身回退为 null(result 原样进 steps,
+			// 体积破不变量但功能不挂)。
+			const pointer = maybeExternalizeToolResult(result);
+			tb.result = pointer ?? result;
 		}
 	}
 
@@ -175,21 +199,35 @@ export class TurnRecorder {
 		if (tb) tb.startedAt = startedAt;
 	}
 
-	/** Record a successful tool result (legacy API — matches by name only). */
+	/**
+	 * Record a successful tool result (legacy API — matches by name only).
+	 * steps-overhaul sub-2: routes through the same 阶段1 choke point
+	 * (maybeExternalizeToolResult) as updateToolResult, so legacy callers can't
+	 * bypass externalization. No production callers today (grep-verified), but
+	 * kept consistent to preserve the "唯一 choke point" invariant.
+	 */
 	addToolResult(name: string, output: any): void {
 		const tb = this.findToolBlock(undefined, name);
 		if (tb) {
 			tb.status = "done";
-			tb.result = output;
+			const pointer = maybeExternalizeToolResult(output);
+			tb.result = pointer ?? output;
 		}
 	}
 
-	/** Record a tool error (legacy API — matches by name only). */
+	/**
+	 * Record a tool error (legacy API — matches by name only).
+	 * steps-overhaul sub-2: same choke point routing as addToolResult. Error
+	 * strings are typically small (<16K) so externalization is usually a no-op,
+	 * but routed for consistency.
+	 */
 	addToolError(name: string, errorText: string, output?: any): void {
 		const tb = this.findToolBlock(undefined, name);
 		if (tb) {
 			tb.status = "error";
-			tb.result = errorText ?? String(output);
+			const raw = errorText ?? String(output);
+			const pointer = maybeExternalizeToolResult(raw);
+			tb.result = pointer ?? raw;
 		}
 	}
 
@@ -271,7 +309,7 @@ export class TurnRecorder {
 	/** Append a user turn as a step row. */
 	saveUserTurn(db: ISessionStore, sessionId: string, text: string): void {
 		if (!db || !sessionId) return;
-		const seq = db.getTurnCount(sessionId);
+		const seq = db.getStepCount(sessionId);
 		db.appendStep(sessionId, seq, seq, "user", text);
 	}
 

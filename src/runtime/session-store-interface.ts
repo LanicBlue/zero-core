@@ -34,11 +34,28 @@ export interface StepUsage {
 }
 
 /**
- * Input shape for the step-level write API (appendStep / upsertStep /
- * replaceStepsFromMessages). `content` stays a plain string (design principle
- * A — multimodal-input sub-2): attachment metadata flows separately via
- * `attachments` and is persisted to the `turns.attachments` column as JSON.
- * `attachments` is optional for back-compat with pre-multimodal callers.
+ * steps-overhaul sub-3: re-export of the summary block type from SessionDB so
+ * the runtime layer can read/write summaries without importing server/ (which
+ * would create a runtime cycle). Structurally identical to SessionDB's
+ * MessageSummary — kept as a type alias for clarity at call sites.
+ */
+export interface MessageSummary {
+	title: string;
+	sections: { [k: string]: string | undefined };
+	stepRange?: { from: number; to: number };
+	createdAt: string;
+}
+
+/**
+ * Input shape for the step-level write API (appendStep / upsertStep). `content`
+ * stays a plain string (design principle A — multimodal-input sub-2):
+ * attachment metadata flows separately via `attachments` and is persisted to
+ * the `steps.attachments` column as JSON. `attachments` is optional for
+ * back-compat with pre-multimodal callers.
+ *
+ * steps-overhaul sub-3: replaceStepsFromMessages is REMOVED from this shape's
+ * user list (the method is deleted); StepInput now backs only appendStep /
+ * upsertStep.
  */
 export interface StepInput {
 	seq: number;
@@ -73,9 +90,20 @@ export interface StepRow {
  * Runtime layer uses this instead of depending on server/SessionDB.
  */
 export interface ISessionStore {
-	getMessages(sessionId: string): any[];
-	saveTurn(sessionId: string, messages: any[]): void;
-	getTurnCount(sessionId: string): number;
+	/**
+	 * steps-overhaul sub-3: the old `getMessages(sessionId)` / `saveTurn(...)`
+	 * are REMOVED — the `messages` table no longer stores LLM-view content
+	 * (redefined to summary blocks + a compression cursor). Use {@link getSteps}
+	 * for step content and the summary/cursor API below for LLM-view continuity.
+	 *
+	 * The new messages API is OPTIONAL on the interface (it's only consumed by
+	 * AgentSession.rebuildFromTurns, which null-checks before calling). Mocks
+	 * that don't exercise the 3-zone assembly can omit it.
+	 */
+	getSummaries?(sessionId: string): MessageSummary[];
+	getCompressionCursor?(sessionId: string): number | null;
+
+	getStepCount(sessionId: string): number;
 	getMainSession(agentId: string): { id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string } | undefined;
 	createSession(
 		agentId: string,
@@ -120,22 +148,30 @@ export interface ISessionStore {
 	 * doRecoverIncompleteSessions does for chat-session recovery. Narrow single-
 	 * session read so the runtime doesn't need the full getIncompleteTurns list.
 	 * Returns undefined when the session has no interrupted turn.
+	 *
+	 * steps-overhaul sub-1: now reads sessions WHERE phase NOT IN
+	 * ('completed','failed') (was a turn_state scan). turnSeq is derived from
+	 * sessions.turn_count (the in-flight turn's own seq).
 	 */
 	getIncompleteTurn?(sessionId: string): { turnSeq: number; lastCompletedStepSeq?: number | null } | undefined;
 	/**
-	 * sub-8 (lazy rebuild + interrupted seed): distinct session ids that have
-	 * at least one non-terminal turn_state row. Single batched query (no N+1).
-	 * Used by restoreAllSessions (only incomplete sessions get a startup loop)
-	 * and restoreDelegatedTasks (authoritative frozen/interrupted seed signal).
-	 * Empty set when nothing is incomplete.
+	 * sub-8 (lazy rebuild + interrupted seed): distinct session ids that are
+	 * non-terminal (steps-overhaul sub-1: was DISTINCT session_id FROM
+	 * turn_state; now SELECT id FROM sessions WHERE phase NOT IN (...)). Single
+	 * batched query (no N+1). Used by restoreAllSessions (only incomplete
+	 * sessions get a startup loop) and restoreDelegatedTasks (authoritative
+	 * frozen/interrupted seed signal). Empty set when nothing is incomplete.
 	 */
 	getIncompleteTurnSessionIds?(): Set<string>;
 	/**
-	 * sub-4 (TaskKill interrupted→abandon): mark a session's interrupted
-	 * turn_state row terminal (failed) so it stops appearing as "needs resume"
-	 * on next startup. Used by the parent's TaskKill(interrupted) branch — the
-	 * parent is choosing NOT to resume a frozen child, so its interrupted turn
-	 * must be closed out. Returns the count of rows marked (0 if none/unknown).
+	 * sub-4 (TaskKill interrupted→abandon): mark a session's interrupted state
+	 * terminal (failed) so it stops appearing as "needs resume" on next startup.
+	 * Used by the parent's TaskKill(interrupted) branch — the parent is choosing
+	 * NOT to resume a frozen child, so its interrupted turn must be closed out.
+	 * Returns the count of rows marked (0 if none/unknown).
+	 *
+	 * steps-overhaul sub-1: was UPDATE turn_state ... WHERE phase NOT IN ...;
+	 * now a single-row UPDATE on sessions.
 	 */
 	abandonInterruptedTurn?(sessionId: string, reason?: string): number;
 	recordToolExecution(exec: {
@@ -161,7 +197,11 @@ export interface ISessionStore {
 	updateStepContent(sessionId: string, seq: number, content: string, usage?: StepUsage): void;
 	deleteStepGroup(sessionId: string, turnGroup: number): void;
 	getTurnGroupCount(sessionId: string): number;
-	/** multimodal-input sub-2: each step's optional `attachments` is persisted
-	 *  to the `turns.attachments` column as JSON. */
-	replaceStepsFromMessages(sessionId: string, steps: StepInput[]): void;
+	// steps-overhaul sub-3: replaceStepsFromMessages is REMOVED — it was the
+	// destructive "rebuild steps from compressed messages" path used by old
+	// L1/L2 compression. With steps now the immutable source of truth and
+	// messages reduced to summary+cursor, no caller remains. Sub-4 deleted the
+	// dead compression-engine.ts (L1/L2/identifyTurns/TurnBoundary) entirely;
+	// the new stage-3 core (server/compression-core.ts compressSession) advances
+	// the cursor + writes a summary without ever touching steps.
 }

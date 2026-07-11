@@ -7,7 +7,7 @@
 // Verifies the dedicated TurnEnd "closure" handler in registerTurnHooks
 // (Step 3B): after a turn ends, the in-memory sessionTurnSeq marker for that
 // session is cleared UNCONDITIONALLY, so the next TurnStart re-reads
-// db.getTurnCount() and assigns the next sequential turn_group. Without this
+// db.getStepCount() and assigns the next sequential turn_group. Without this
 // closure, the second turn would inherit the first turn's sessionTurnSeq and
 // persist its assistant step under the SAME turnGroup → turns bleed together.
 //
@@ -118,7 +118,7 @@ describe("Step 3B — TurnEnd closes the turn_group boundary (accept.md A5)", ()
 
 		// The hard assertion: the second turn_group must NOT equal the first
 		// (no 串号) and must advance monotonically. Note: under this store,
-		// turn_group = db.getTurnCount() at TurnStart, which counts BOTH the
+		// turn_group = db.getStepCount() at TurnStart, which counts BOTH the
 		// user row AND any assistant step rows persisted by the prior turn, so
 		// the gap between consecutive groups is the number of rows the prior
 		// turn wrote (here: 2 = user + assistant). The accept.md "first + 1"
@@ -167,7 +167,7 @@ describe("Step 3B — TurnEnd closes the turn_group boundary (accept.md A5)", ()
 		// pre-3B failure by manually re-seeding sessionTurnSeq to the first
 		// turn's value BEFORE TurnStart of turn 2 (which is exactly what would
 		// happen if TurnEnd did not clear it). TurnStart skips re-reading
-		// db.getTurnCount when the key is already present, so turn 2 would
+		// db.getStepCount when the key is already present, so turn 2 would
 		// inherit turn 1's group — the bug the closure handler prevents.
 		const { setTurnSeq } = await import("../../src/runtime/hooks/turn-hooks.js");
 		const registry = new HookRegistry();

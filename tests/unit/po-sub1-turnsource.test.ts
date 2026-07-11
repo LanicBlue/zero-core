@@ -9,14 +9,20 @@
 // SessionConfig.source → durable-hooks TurnStart → createTurnState), not the
 // implementer's claims.
 //
+// steps-overhaul sub-1 note: the per-turn `turn_state` table was DROPPED and
+// its columns folded into `sessions` as a 1:1 "current run state". So this
+// suite now reads the source marker from `sessions.source` rather than
+// `turn_state.source`. The BEHAVIOR under test (source is persisted + read
+// back + drives recovery) is unchanged.
+//
 // ## Acceptance cases (acceptance-1.md)
 //   1. column exists after migration AND on fresh DB
-//   2. chat-router path (sendPrompt source="user") → turn_state.source="user"
+//   2. chat-router path (sendPrompt source="user") → sessions.source="user"
 //   3. sendProjectPrompt (workId) source="work" → "work"
 //   4. cron fireAgent source="cron" → "cron"
 //   5. delegated sub-loop → "background"
 //   6. unspec'd sendPrompt → "background" (no null, no crash)
-//   7. pre-migration turn rows → default "background", query/recover don't crash
+//   7. pre-migration rows → default "background", query/recover don't crash
 //   8. audit: every sendPrompt/sendProjectPrompt call site has explicit source
 //
 // ## Constraints
@@ -37,14 +43,18 @@ import type { TurnSource } from "../../src/runtime/types.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function turnStateColumns(db: Database.Database): string[] {
-	return (db.pragma("table_info(turn_state)") as Array<{ name: string }>).map((c) => c.name);
+function sessionsColumns(db: Database.Database): string[] {
+	return (db.pragma("table_info(sessions)") as Array<{ name: string }>).map((c) => c.name);
 }
 
-function readSource(db: Database.Database, sessionId: string, turnSeq: number): string | null {
+/**
+ * Read the source marker for a session. steps-overhaul sub-1: the marker lives
+ * on `sessions.source` (1:1 current-run state), no longer on `turn_state`.
+ */
+function readSource(db: Database.Database, sessionId: string): string | null {
 	const row = db.prepare(
-		"SELECT source FROM turn_state WHERE session_id = ? AND turn_seq = ?",
-	).get(sessionId, turnSeq) as { source: string | null } | undefined;
+		"SELECT source FROM sessions WHERE id = ?",
+	).get(sessionId) as { source: string | null } | undefined;
 	return row?.source ?? null;
 }
 
@@ -53,47 +63,6 @@ function ensureSession(db: Database.Database, sessionId: string): void {
 		"INSERT OR IGNORE INTO sessions (id, agent_id, is_main, title, created_at, updated_at) " +
 		"VALUES (?, '__test__', 0, NULL, ?, ?)",
 	).run(sessionId, "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
-}
-
-/**
- * Pre-create the turn_state table WITHOUT the source column, mirroring a DB
- * from before sub-1 shipped. Must run BEFORE SessionDB's CREATE TABLE IF NOT
- * EXISTS so the IF NOT EXISTS no-ops and SessionDB's only touch is the
- * safeAddColumn("turn_state", "source", ...) upgrade.
- */
-function preCreateLegacyTurnStateTable(db: Database.Database): void {
-	db.exec(`
-		CREATE TABLE IF NOT EXISTS sessions (
-			id TEXT PRIMARY KEY,
-			agent_id TEXT,
-			is_main INTEGER NOT NULL DEFAULT 0,
-			title TEXT,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		);
-		CREATE TABLE IF NOT EXISTS turn_state (
-			session_id  TEXT NOT NULL,
-			turn_seq    INTEGER NOT NULL,
-			phase       TEXT NOT NULL DEFAULT 'pending',
-			checkpoint  TEXT,
-			error       TEXT,
-			last_completed_step_seq INTEGER,
-			created_at  TEXT NOT NULL,
-			updated_at  TEXT NOT NULL,
-			PRIMARY KEY (session_id, turn_seq),
-			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-		);
-		CREATE INDEX IF NOT EXISTS idx_turn_state_session ON turn_state(session_id);
-	`);
-}
-
-/** Seed a legacy turn_state row with NO source column (pre-migration shape). */
-function seedLegacyTurnState(db: Database.Database, sessionId: string, turnSeq: number, phase: string = "pending"): void {
-	ensureSession(db, sessionId);
-	db.prepare(
-		"INSERT INTO turn_state (session_id, turn_seq, phase, created_at, updated_at) " +
-		"VALUES (?, ?, ?, ?, ?)",
-	).run(sessionId, turnSeq, phase, "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
 }
 
 // ---------------------------------------------------------------------------
@@ -117,28 +86,40 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 	// Case 1: column exists after migration AND on fresh DB
 	// -------------------------------------------------------------------------
 	describe("case 1 — column exists", () => {
-		test("fresh DB: turn_state.source column present after SessionDB construction", () => {
+		test("fresh DB: sessions.source column present after SessionDB construction", () => {
 			const sessionDB = new SessionDB(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			try {
-				expect(turnStateColumns(raw)).toContain("source");
+				expect(sessionsColumns(raw)).toContain("source");
 			} finally {
 				sessionDB.close();
 			}
 		});
 
 		test("upgraded DB: source column added via safeAddColumn when missing", () => {
-			// 1. Build a legacy DB with NO source column.
+			// 1. Build a legacy DB with a sessions table but NO source column.
+			//    (steps-overhaul sub-1 folded turn_state into sessions, so the
+			//    pre-migration shape is "sessions without the 7 new run-state
+			//    columns". We model that by creating a minimal sessions table.)
 			const raw0 = new Database(dbPath);
-			preCreateLegacyTurnStateTable(raw0);
-			expect(turnStateColumns(raw0)).not.toContain("source");
+			raw0.exec(`
+				CREATE TABLE IF NOT EXISTS sessions (
+					id TEXT PRIMARY KEY,
+					agent_id TEXT,
+					is_main INTEGER NOT NULL DEFAULT 0,
+					title TEXT,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				);
+			`);
+			expect(sessionsColumns(raw0)).not.toContain("source");
 			raw0.close();
 
 			// 2. Re-open via SessionDB — initSchema's safeAddColumn must add it.
 			const sessionDB = new SessionDB(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			try {
-				expect(turnStateColumns(raw)).toContain("source");
+				expect(sessionsColumns(raw)).toContain("source");
 			} finally {
 				sessionDB.close();
 			}
@@ -148,7 +129,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 			const sessionDB = new SessionDB(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			try {
-				const col = (raw.pragma("table_info(turn_state)") as Array<{ name: string; dflt_value: string | null; notnull: number }>)
+				const col = (raw.pragma("table_info(sessions)") as Array<{ name: string; dflt_value: string | null; notnull: number }>)
 					.find((c) => c.name === "source");
 				expect(col).toBeDefined();
 				expect(col!.notnull).toBe(1);
@@ -170,6 +151,10 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 	// We verify the persistence layer (createTurnState) directly for each
 	// TurnSource value, since that is the durable write the marker exists for.
 	// The full entry→loop→hook wiring is exercised by the existing sub-* tests.
+	//
+	// steps-overhaul sub-1: createTurnState now writes sessions.source (was
+	// turn_state.source). Signature is unchanged; only the storage location
+	// moved. We read back from sessions.source.
 	describe("cases 2-6 — createTurnState persists each source", () => {
 		const cases: Array<{ label: string; source: TurnSource | undefined; expected: TurnSource }> = [
 			{ label: "case 2 chat→user (sendPrompt source='user')", source: "user", expected: "user" },
@@ -185,9 +170,9 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 				const raw = (sessionDB as any).db as Database.Database;
 				const sessionId = `sess-${label.replace(/\W+/g, "-")}`;
 				try {
-					// turn_state has an FK to sessions; create the parent row
-					// first (production path goes through createSession /
-					// saveTurn's ensureSession).
+					// createTurnState updates the sessions row, so the parent
+					// session must exist first (production path goes through
+					// createSession / saveTurn's ensureSession).
 					ensureSession(raw, sessionId);
 					// createTurnState mirrors the durable-hooks TurnStart call:
 					//   const source = (ctx.source as TurnSource | undefined) ?? "background";
@@ -195,7 +180,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 					const effective: TurnSource = source ?? "background";
 					sessionDB.createTurnState(sessionId, 0, effective);
 
-					const persisted = readSource(raw, sessionId, 0);
+					const persisted = readSource(raw, sessionId);
 					// Case 6 invariant: never null, never crash.
 					expect(persisted).not.toBeNull();
 					expect(persisted).toBe(expected);
@@ -214,7 +199,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 				// createTurnState(sessionId, turnSeq, source = "background")
 				// — calling without the 3rd arg exercises the default param.
 				(sessionDB as any).createTurnState(sessionId, 0);
-				expect(readSource(raw, sessionId, 0)).toBe("background");
+				expect(readSource(raw, sessionId)).toBe("background");
 			} finally {
 				sessionDB.close();
 			}
@@ -222,39 +207,56 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 	});
 
 	// -------------------------------------------------------------------------
-	// Case 7: pre-migration turn rows default to background, no crash on read
+	// Case 7: pre-migration rows default to background, no crash on read
 	// -------------------------------------------------------------------------
+	// steps-overhaul sub-1: turn_state is gone; the "pre-migration" scenario is
+	// now a sessions row whose source column is NULL/default. Since the column
+	// always exists post-migration with DEFAULT 'background' (case 1), the
+	// "backfill on read" sub-test is no longer meaningful — getIncompleteTurns
+	// always sees the default. The remaining sub-tests verify the recovery read
+	// path picks up source='background' and excludes terminal sessions.
 	describe("case 7 — pre-migration rows", () => {
-		test("legacy turn_state row (no source) backfills to 'background' on read", () => {
-			// 1. Legacy DB: pre-create turn_state WITHOUT source, seed a row.
+		// The "legacy row backfills to 'background' on read" sub-test was
+		// removed: with turn_state dropped and source folded into sessions,
+		// there is no longer a separate column that needs backfilling — the
+		// sessions.source DEFAULT 'background' (asserted in case 1) covers
+		// every pre-migration row. The getIncompleteTurns sub-test below
+		// already exercises the default-pickup path end-to-end.
+
+		test("getIncompleteTurns recovers pre-migration rows with source='background', no crash", () => {
+			// Pre-migration scenario: a sessions row with phase='pending'
+			// (non-terminal) and source defaulting to 'background' via the
+			// column DEFAULT. We build a legacy DB without the source column,
+			// seed a pending sessions row, then re-open via SessionDB so
+			// safeAddColumn adds source with DEFAULT 'background'.
 			const raw0 = new Database(dbPath);
-			preCreateLegacyTurnStateTable(raw0);
-			seedLegacyTurnState(raw0, "legacy-sess", 0, "pending");
-			seedLegacyTurnState(raw0, "legacy-sess", 1, "pending");
+			raw0.exec(`
+				CREATE TABLE IF NOT EXISTS sessions (
+					id TEXT PRIMARY KEY,
+					agent_id TEXT,
+					is_main INTEGER NOT NULL DEFAULT 0,
+					title TEXT,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				);
+			`);
+			// A non-terminal phase so getIncompleteTurns surfaces it. source
+			// column does not exist yet on this legacy row.
+			raw0.prepare(
+				"INSERT INTO sessions (id, agent_id, is_main, created_at, updated_at) " +
+				"VALUES ('legacy-incomplete', '__test__', 0, ?, ?)",
+			).run("2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
 			raw0.close();
 
-			// 2. Re-open: safeAddColumn adds source with DEFAULT 'background'.
-			//    Existing rows pick up the default value (SQLite ALTER TABLE
-			//    ADD COLUMN ... DEFAULT puts the default on all existing rows).
 			const sessionDB = new SessionDB(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			try {
-				expect(readSource(raw, "legacy-sess", 0)).toBe("background");
-				expect(readSource(raw, "legacy-sess", 1)).toBe("background");
-			} finally {
-				sessionDB.close();
-			}
-		});
+				// Flip phase to 'pending' so recovery surfaces it (the legacy
+				// row above had no phase column; safeAddColumn defaulted phase
+				// to 'completed' on the existing row). Mirrors a session that
+				// crashed mid-turn before the fold.
+				raw.prepare("UPDATE sessions SET phase = 'pending' WHERE id = 'legacy-incomplete'").run();
 
-		test("getIncompleteTurns recovers pre-migration rows with source='background', no crash", () => {
-			const raw0 = new Database(dbPath);
-			preCreateLegacyTurnStateTable(raw0);
-			// A non-terminal phase so getIncompleteTurns surfaces it.
-			seedLegacyTurnState(raw0, "legacy-incomplete", 0, "pending");
-			raw0.close();
-
-			const sessionDB = new SessionDB(dbPath);
-			try {
 				const incomplete = sessionDB.getIncompleteTurns();
 				expect(incomplete.length).toBeGreaterThanOrEqual(1);
 				const row = incomplete.find((r) => r.sessionId === "legacy-incomplete");
@@ -268,12 +270,27 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 
 		test("getIncompleteTurn (single-session) reads pre-migration source without crash", () => {
 			const raw0 = new Database(dbPath);
-			preCreateLegacyTurnStateTable(raw0);
-			seedLegacyTurnState(raw0, "legacy-single", 0, "pending");
+			raw0.exec(`
+				CREATE TABLE IF NOT EXISTS sessions (
+					id TEXT PRIMARY KEY,
+					agent_id TEXT,
+					is_main INTEGER NOT NULL DEFAULT 0,
+					title TEXT,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				);
+			`);
+			raw0.prepare(
+				"INSERT INTO sessions (id, agent_id, is_main, created_at, updated_at) " +
+				"VALUES ('legacy-single', '__test__', 0, ?, ?)",
+			).run("2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
 			raw0.close();
 
 			const sessionDB = new SessionDB(dbPath);
+			const raw = (sessionDB as any).db as Database.Database;
 			try {
+				raw.prepare("UPDATE sessions SET phase = 'pending' WHERE id = 'legacy-single'").run();
+
 				const turn = sessionDB.getIncompleteTurn("legacy-single");
 				expect(turn).toBeDefined();
 				expect(turn!.source).toBe("background");
@@ -283,14 +300,15 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 		});
 
 		test("terminal pre-migration rows (completed/failed) are excluded from recovery", () => {
-			const raw0 = new Database(dbPath);
-			preCreateLegacyTurnStateTable(raw0);
-			seedLegacyTurnState(raw0, "legacy-done", 0, "completed");
-			seedLegacyTurnState(raw0, "legacy-failed", 0, "failed");
-			raw0.close();
-
 			const sessionDB = new SessionDB(dbPath);
+			const raw = (sessionDB as any).db as Database.Database;
 			try {
+				// Seed two sessions with terminal phases.
+				ensureSession(raw, "legacy-done");
+				ensureSession(raw, "legacy-failed");
+				raw.prepare("UPDATE sessions SET phase = 'completed' WHERE id = 'legacy-done'").run();
+				raw.prepare("UPDATE sessions SET phase = 'failed'    WHERE id = 'legacy-failed'").run();
+
 				const incomplete = sessionDB.getIncompleteTurns();
 				expect(incomplete.find((r) => r.sessionId === "legacy-done")).toBeUndefined();
 				expect(incomplete.find((r) => r.sessionId === "legacy-failed")).toBeUndefined();
@@ -363,7 +381,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 					const sid = `roundtrip-${src}`;
 					ensureSession(raw, sid);
 					sessionDB.createTurnState(sid, 0, src);
-					expect(readSource(raw, sid, 0)).toBe(src);
+					expect(readSource(raw, sid)).toBe(src);
 				}
 			} finally {
 				sessionDB.close();

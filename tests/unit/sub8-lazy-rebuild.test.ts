@@ -11,7 +11,7 @@
 //     3. activeSessions 锚定保留:每个 agent 仍指向最近 session。
 //     4. 假设审计:getRuntimeTaskTree 在 loop 缺失时不报错(返 [])。
 //     5. recovery 不回归:incomplete chat session 仍 auto-resume;delegated
-//        不 resume(turn_state 留 incomplete,loop 不被建)。
+//        不 resume(sessions.phase 留 non-terminal,loop 不被建)。
 //   interrupted seed (6-8):
 //     6. 冻结子(delegated session + incomplete turn)seed 进父 registry 时
 //        status=interrupted。
@@ -27,6 +27,12 @@
 // sub8-recovery-resume.test.ts 仿 step-resume)。loop 是否"被建"通过
 // getRuntimeTaskTree(sessionId) 是否回填 seeded delegated task 判定 —— loop 存在
 // ⇒ restoreDelegatedTasks 已跑 ⇒ tree 非空;loop 不存在 ⇒ tree 为空。
+//
+// ## steps-overhaul sub-1 schema note
+// turn_state 表已合并进 sessions(phase/last_completed_step_seq/source/error/
+// turn_count/step_count/token_usage 列)。createTurnState/completeTurnState/
+// failTurnState 现在都写 sessions.phase + sessions.updated_at 等。术语
+// "turn state" / "incomplete turn" 仍指 sessions.phase 非 'completed'/'failed'。
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -45,7 +51,7 @@ function createDelegated(db: SessionDB, agentId: string, title = "delegated"): s
 	return db.createSession(agentId, title, undefined, { sessionKind: "delegated", visibility: "hidden" }).id;
 }
 
-// turn_state phase 常量(参考):'pending' / 'streaming' / ... = 非终态(incomplete);
+// sessions.phase 常量(参考):'pending' / 'streaming' / ... = 非终态(incomplete);
 // 'completed' / 'failed' = 终态。getIncompleteTurnSessionIds 只排除终态两类。
 // createTurnState 默认写 phase='pending',即 incomplete。
 
@@ -132,9 +138,11 @@ describe("sub-8 lazy rebuild (acceptance #1-#5)", () => {
 	test("#3 activeSessions 锚定保留:每个 agent 指向最近 session", async () => {
 		// 一个 agent 多个 session(同 agent 的最近一个应被锚定)。
 		// listAllSessions 按 sessions.updated_at DESC —— "最近" = updated_at 最大。
-		// 注:createTurnState/completeTurnState 写 turn_state.updated_at(非 sessions),
-		// 所以只有 sessions.updated_at(创建时写一次)决定顺序。同毫秒建的 session 会
-		// tie → 顺序不稳。这里用显式 updated_at 写入锁死顺序。
+		// 注:steps-overhaul sub-1 后 createTurnState/completeTurnState 现在也写
+		// sessions.updated_at(连同 phase/source 等),不再有独立的 turn_state 表。
+		// 所以 setCompletedTurn 会刷新 updated_at 到 setCompletedTurn 的调用时刻,
+		// 同毫秒建的 session 仍会 tie → 顺序不稳。这里用显式 updated_at 写入锁死
+		// 顺序(setCompletedTurn 之后再 UPDATE,覆盖其时间戳)。
 		const a1older = createChat(db, "agent-1");
 		const a1recent = createChat(db, "agent-1");
 		const a2recent = createChat(db, "agent-2");
@@ -142,8 +150,9 @@ describe("sub-8 lazy rebuild (acceptance #1-#5)", () => {
 		setCompletedTurn(a1recent);
 		setCompletedTurn(a2recent);
 
-		// 显式锁 updated_at:a1recent > a1older(agent-1 下 a1recent 最近);
-		// a2recent 任意值(agent-2 只一个 session)。
+		// 显式锁 updated_at(setCompletedTurn 之后写,覆盖其时间戳):
+		// a1recent > a1older(agent-1 下 a1recent 最近);a2recent 任意值
+		// (agent-2 只一个 session)。
 		const setUpdatedAt = (sid: string, iso: string) =>
 			db.getDb().prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(iso, sid);
 		setUpdatedAt(a1older, "2026-01-01T00:00:00.000Z");
@@ -241,12 +250,13 @@ describe("sub-8 interrupted-status seed (acceptance #6-#8)", () => {
 		db.createTurnState(parentChat, 1);
 		db.completeTurnState(parentChat, 1);
 
-		// 子 delegated session + 它的 turn_state(incomplete 或 completed)。
+		// 子 delegated session + 它的 turn state(incomplete 或 completed)。
+		// steps-overhaul sub-1:turn state 合并进 sessions.phase/source 等。
 		// session_kind 通过 createDelegated helper 写(options.sessionKind='delegated');
 		// 子 session 由调用方建好传入。
 
 		// delegated task row 指向子 session(restoreDelegatedTasks 用 rec.sessionId
-		// 查 turn_state 判 incomplete)。
+		// 查 sessions.phase 判 incomplete)。
 		db.createDelegatedTask({
 			id: "task-x",
 			rootTaskId: "task-x",

@@ -7,6 +7,7 @@ Extractor A 从单次 generateText 升级为多步 agent:读 memory 子树 + 新
 sub-4(压缩核心产 summary)、sub-6(topic store + 工具)。
 
 ## 改动点
+- **wiki 写入路径统一(sub-6 Lens B 移交)**:sub-6 提供两条可达路径——Wiki 工具 `createMemory`(合成 path `memory:<slug>`,agent 视角,全链路已验)vs store `createMemoryNodeForTopic`(合成 `memory-topic:<topicId>:<slug>`)。两者不撞(upsert key=parentId+path),但 sub-7 应**统一走工具 `createMemory`/`updateMemory`**(经 sub-6 注入的 global-anchor callerCtx),避免同 topic 下混出两种 path 前缀叶子。
 - `src/server/extractor-a-service.ts`:从单次 generateText 改成多步 agent loop(独立 loop,不在工作 session 里);用 settings/memory 配置的模型;带 wiki 读写工具(sub-6 注入的 callerCtx)。
 - 逻辑:读被压缩 agent 的 memory 子树 + 新 step → 判定每个内容映射到已有 topic 节点(补充)还是新 topic(新建)→ 合并写入(**去重 + 去伪(纠正过时/错误)+ 冲突无法判定则留 flags 标注**,非 dumb append、非覆盖)。
 - 多步:wiki 读(看已有)→ 判定 → 写(合并)。

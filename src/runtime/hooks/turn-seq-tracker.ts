@@ -76,3 +76,16 @@ export function isTurnStatePrecreated(sessionId: string): boolean {
 export function clearTurnStatePrecreated(sessionId: string): void {
 	turnStatePrecreated.delete(sessionId);
 }
+
+/**
+ * steps-overhaul sub-8 (archive): clear ALL in-memory state this module holds
+ * for ONE session — both the turn_seq cursor AND the turn_state pre-create
+ * marker. Called by the archive pipeline's teardown step (chat manual archive
+ * of an active session) so a sessionId whose DB rows were just deleted doesn't
+ * leave stale hook state behind. Idempotent (no-op if the session had no
+ * state).
+ */
+export function clearTurnSeqStateForSession(sessionId: string): void {
+	sessionTurnSeq.delete(sessionId);
+	turnStatePrecreated.delete(sessionId);
+}

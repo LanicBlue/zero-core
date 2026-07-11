@@ -508,7 +508,7 @@ const FUNC_DESC: Record<string, string> = {
 	"src/server/session-db.ts/SessionDB.updateMessageContent:209": "更新指定消息的内容和 JSON",
 	"src/server/session-db.ts/SessionDB.appendTurn:271": "追加一条轮次记录到会话",
 	"src/server/session-db.ts/SessionDB.getTurns:280": "获取指定会话的所有轮次",
-	"src/server/session-db.ts/SessionDB.getTurnCount:293": "获取指定会话的轮次数量",
+	"src/server/session-db.ts/SessionDB.getStepCount:293": "获取指定会话的轮次数量",
 	"src/server/session-db.ts/SessionDB.clearTurns:298": "清除指定会话的所有轮次",
 	"src/server/session-db.ts/SessionDB.deleteTurn:302": "删除指定会话中特定序号的轮次",
 	"src/server/session-db.ts/SessionDB.updateTurnContent:306": "更新指定轮次的内容",
