@@ -92,7 +92,7 @@ export const WIKI_OPERATIONS: WikiOperation[] = [
 			"1. 用 Wiki(expand) 从项目子树根开始遍历整棵骨架。",
 			"2. 对每个 header 节点(代码文件):用 Read 读源文件,然后用 Wiki(docWrite/docEdit)",
 			"   写一段详实的 detail —— 讲清这个文件/模块的职责、关键导出、依赖关系、",
-			"   设计意图(为什么这么写),并更新 summary 成准确的一句话概括。",
+			"   设计意图(为什么这么写),并更新 summary 成一句话概括该节点是什么(不写导出/依赖;detail 里可详写)。",
 			"3. 对每个 intent 节点(需求/设计/ADR 文档):读文档,写 detail 概述其内容。",
 			"4. 对 structure 节点(模块/子系统):聚合子节点信息,写 detail 说明该层的组织。",
 			"5. 持续直到没有 detail 为空的 header/intent 节点。provenance 标 structure/derived/confirmed。",

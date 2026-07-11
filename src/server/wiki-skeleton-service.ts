@@ -670,17 +670,17 @@ export class WikiSkeletonService {
 		try {
 			const content = readFileText(absPath);
 			const lines = content.split(/\r?\n/);
-			const exportsList = extractExports(content);
-			const head = lines.slice(0, 3).join(" / ");
-			const parts = [`${relPath} — ${lines.length} line(s).`];
-			if (exportsList.length > 0) {
-				parts.push(`Exports: ${exportsList.slice(0, 6).join(", ")}.`);
-			}
-			if (head.trim()) {
-				const truncated = head.length > 120 ? head.slice(0, 120) + "…" : head;
-				parts.push(`Head: ${truncated}`);
-			}
-			return parts.join(" ");
+			// Content policy: summary = "what this node IS" (1 line). Rule-based fallback
+			// cannot do real semantics, so use the first meaningful COMMENT line (often a
+			// file/module description) or a non-empty line count. NO exports/deps dump —
+			// those live in `detail` (docRead). The LLM (analyst/enrich) replaces this.
+			const firstComment = lines
+				.map((l) => l.trim())
+				.filter((l) => /^(\/\/|\*|#|\/\*)/.test(l)) // only actual comment lines
+				.map((l) => l.replace(/^(\/\/|\*|#|\/\*)\s?/, "").replace(/\*\/$/, "").trim())
+				.find((l) => l.length > 0 && !/^(use strict|eslint|@|copyright|license|\{\s*$)/i.test(l));
+			const nonEmpty = lines.filter((l) => l.trim()).length;
+			return firstComment ? `${relPath} — ${firstComment}` : `${relPath} — ${nonEmpty} 行代码`;
 		} catch {
 			return undefined;
 		}

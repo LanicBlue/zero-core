@@ -72,3 +72,31 @@ export function buildTree(dir: string, basePath: string): FileTreeNode[] {
 		return [];
 	}
 }
+
+/**
+ * Truncate a string to at most `maxBytes` UTF-8 bytes WITHOUT splitting a
+ * multibyte character. If the string fits, return it unchanged; otherwise cut
+ * at the last full-character boundary ≤ maxBytes and append the marker ("…").
+ * Used to cap wiki node summaries (byte budget, not UTF-16 code units —
+ * `.slice(0, N)` would corrupt multibyte chars and miscount CJK).
+ *
+ * `maxBytes` excludes the marker; the returned string may be maxBytes + marker
+ * bytes long. maxBytes ≤ 0 returns "".
+ */
+export function truncateUtf8Bytes(str: string | undefined | null, maxBytes: number, marker = "…"): string {
+	if (!str) return "";
+	if (maxBytes <= 0) return "";
+	const bytes = Buffer.byteLength(str, "utf8");
+	if (bytes <= maxBytes) return str;
+	// Array.from splits on code points (respects surrogate pairs); accumulate
+	// bytes and stop at the last full-character boundary that fits.
+	let out = "";
+	let used = 0;
+	for (const ch of Array.from(str)) {
+		const chBytes = Buffer.byteLength(ch, "utf8");
+		if (used + chBytes > maxBytes) break;
+		out += ch;
+		used += chBytes;
+	}
+	return out + marker;
+}

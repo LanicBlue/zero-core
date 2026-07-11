@@ -4,7 +4,7 @@
 //
 // ## 核心功能
 // 编辑 AgentRecord.wikiAnchors:此 agent 自由锚定的 wiki 节点。每锚点 = nodeId
-// + inject(system/context/off) + 可选 depth。
+// + inject(system/context/off).
 //
 // §11.3 多锚点模型:
 //   - 自动锚点(memory by agentId + project by projectId)在运行时派生,不存
@@ -63,7 +63,6 @@ export function WikiAnchorsSection({ form, agentId, wikiNodes, onChange }: Props
 	const list: WikiAnchor[] = form.wikiAnchors ?? EMPTY_ANCHORS;
 	const [newNodeId, setNewNodeId] = useState("");
 	const [newInject, setNewInject] = useState<Inject>("context");
-	const [newDepth, setNewDepth] = useState<string>("");
 	const [manualNodeId, setManualNodeId] = useState("");
 	const [useManual, setUseManual] = useState(false);
 
@@ -109,12 +108,10 @@ export function WikiAnchorsSection({ form, agentId, wikiNodes, onChange }: Props
 		const entry: WikiAnchor = {
 			nodeId: id,
 			inject: newInject,
-			...(newDepth.trim() ? { depth: Math.max(0, parseInt(newDepth, 10) || 0) } : {}),
 		};
 		onChange([...list, entry]);
 		setNewNodeId("");
 		setManualNodeId("");
-		setNewDepth("");
 	};
 
 	const handleRemove = (nodeId: string) => {
@@ -136,9 +133,9 @@ export function WikiAnchorsSection({ form, agentId, wikiNodes, onChange }: Props
 				<h4>Wiki anchors</h4>
 				<p className="section-hint">
 					Free wiki anchors this agent pins into its context. Each anchor&apos;s subtree
-					(title+summary, no body) is injected by <code>inject</code>: <code>system</code>{" "}
+					(root doc + one level of children) is injected by <code>inject</code>: <code>system</code>{" "}
 					(cached system-prompt section), <code>context</code> (per-turn context),{" "}
-					<code>off</code> (stored, not injected). <code>depth</code> = child levels to pull.
+					<code>off</code> (stored, not injected). Injection = root doc + one level of children (fixed).
 					<br />
 					<em>Auto anchors</em> (per-agent <code>memory/&lt;agentId&gt;/</code> + session project
 					subtree) are derived at runtime with defaults project→system, memory→context;
@@ -164,7 +161,6 @@ export function WikiAnchorsSection({ form, agentId, wikiNodes, onChange }: Props
 						<tr>
 							<th style={thStyle}>Node</th>
 							<th style={thStyle}>Inject</th>
-							<th style={thStyle}>Depth</th>
 							<th style={thStyle}></th>
 						</tr>
 					</thead>
@@ -188,20 +184,6 @@ export function WikiAnchorsSection({ form, agentId, wikiNodes, onChange }: Props
 											<option key={v} value={v}>{v}</option>
 										))}
 									</select>
-								</td>
-								<td style={tdStyle}>
-									<input
-										type="number"
-										min={0}
-										value={a.depth ?? ""}
-										onChange={(e) => {
-											const v = e.target.value;
-											handleUpdate(a.nodeId, v === "" ? { depth: undefined } : { depth: Math.max(0, parseInt(v, 10) || 0) });
-										}}
-										placeholder="∞"
-										aria-label={`Depth for ${a.nodeId}`}
-										style={{ ...inputStyle, width: 60 }}
-									/>
 								</td>
 								<td style={tdStyle}>
 									<button type="button" className="btn-ghost btn-xs" onClick={() => handleRemove(a.nodeId)}>
@@ -272,18 +254,6 @@ export function WikiAnchorsSection({ form, agentId, wikiNodes, onChange }: Props
 							<option key={v} value={v}>{v}</option>
 						))}
 					</select>
-				</div>
-				<div>
-					<label style={labelStyle}>Depth</label>
-					<input
-						type="number"
-						min={0}
-						value={newDepth}
-						onChange={(e) => setNewDepth(e.target.value)}
-						placeholder="∞"
-						aria-label="Depth for new anchor"
-						style={{ ...inputStyle, width: 60 }}
-					/>
 				</div>
 				<button
 					type="button"

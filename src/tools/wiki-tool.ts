@@ -49,11 +49,12 @@
 
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
-import { getWikiStoreGlobal, WIKI_GLOBAL_ROOT_ID } from "../server/wiki-node-store.js";
+import { getWikiStoreGlobal, WIKI_GLOBAL_ROOT_ID, SUMMARY_MAX_BYTES } from "../server/wiki-node-store.js";
 import type { WikiStore } from "../server/wiki-node-store.js";
 import type { WikiNode } from "../shared/types.js";
 import type { CallerCtx, ToolResult } from "./types.js";
 import { formatBodySize, formatNodeId, shortIdOf, sanitizeText } from "../runtime/wiki-anchor-injection.js";
+import { truncateUtf8Bytes } from "../shared/file-utils.js";
 
 // ---------------------------------------------------------------------------
 // Extractor A callerCtx — global-anchor Wiki tool instance (steps-overhaul sub-6)
@@ -319,6 +320,8 @@ export const wikiActionSchema = z.object({
 	// expand — only include leaf nodes (nodes with no children). Still walks
 	// through non-leaf ancestors to reach deeper leaves, within `depth`.
 	leavesOnly: z.boolean().optional().describe("expand: only include leaf nodes (no children)"),
+	// expand — replace the root's Summary line with its own doc body (capped 4kb).
+	rootDoc: z.boolean().optional().describe("expand: replace root Summary line with its doc body (<=4kb)"),
 	// search
 	query: z.string().optional().describe("Substring query (action:'search')"),
 	// search — limit matches to the subtree under this nodeId (narrow within a
@@ -358,7 +361,7 @@ export const wikiTool = buildTool({
 	prompt:
 		"Operate on the project Wiki. Two groups of actions:\n\n" +
 		"STRUCTURE (node tree):\n" +
-		"- { action:'expand', nodeId, depth?, type?, leavesOnly? } — read a node's STRUCTURE: its metadata (summary/flags/source file) plus its descendants as an indented tree, `depth` levels deep (1 = direct children only, default; max 5). `type` filters the listing to one node type; `leavesOnly` shows only leaf nodes (still walks through non-leaf ancestors to reach deeper leaves). Primary way to navigate and discover nodeIds. Does NOT return any node's body.\n" +
+		"- { action:'expand', nodeId, depth?, type?, leavesOnly? } — read a node's STRUCTURE: its metadata (summary/flags/source file) plus its descendants as an indented tree, `depth` levels deep (1 = direct children only, default; max 5). `type` filters the listing to one node type; `leavesOnly` shows only leaf nodes (still walks through non-leaf ancestors to reach deeper leaves). Primary way to navigate and discover nodeIds. Does NOT return any node's body (use docRead); rootDoc:true is the one exception — it inlines the ROOT's own doc (<=4kb).\n" +
 		"- { action:'search', query, limit?, type?, subtree? } — substring search across visible nodes (title/summary). `type` filters matches; `subtree` (a nodeId) narrows the search to that node's subtree — useful inside a large session to avoid noise (e.g. searching 'tool' inside one project only).\n" +
 		"- { action:'create', parentId, title, summary?, content? } — create a STRUCTURE node under a parent (header/intent/structure, type inherited from the parent's position). NO memory type: memory leaves go via createMemory. Titles must be unique under the same parent (rejected otherwise). content?, if given, is the initial body.\n" +
 		"- { action:'update', nodeId, title?, summary?, flags? } — edit a STRUCTURE node's metadata. Does NOT touch the body. Changing title must keep it unique among siblings.\n" +
@@ -502,8 +505,10 @@ async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<strin
 							shown++;
 							// Child line carries the subtree-abstract summary so expand is more
 							// than a flat directory listing.
-							const childSummary = k.summary ? ` — ${sanitizeText(k.summary)}` : "";
-							treeLines.push(`${"  ".repeat(level - 1)}- ${formatNodeId(k.id)} [${k.type}] ${k.title}${childSummary} ${formatBodySize(wiki.getNodeDetailSize(k.id))}`);
+							const childSummary = k.summary ? ` — ${sanitizeText(truncateUtf8Bytes(k.summary, SUMMARY_MAX_BYTES))}` : "";
+							const childCount = (byParent.get(k.id) ?? []).length;
+							const childMarker = childCount > 0 ? ` ▾${childCount}` : " leaf";
+							treeLines.push(`${"  ".repeat(level - 1)}- ${formatNodeId(k.id)} [${k.type}] ${k.title}${childSummary} ${formatBodySize(wiki.getNodeDetailSize(k.id))}${childMarker}`);
 						}
 						walk(k.id, level + 1);
 					}
@@ -525,7 +530,10 @@ async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<strin
 					: `\nSubtree${filterNote}: (no matching children)`
 				const flags = node.flags?.length ? `\nFlags: ${node.flags.join(", ")}` : "";
 				const prov = node.provenance ? `\nProvenance: ${node.provenance}` : "";
-				const summary = node.summary ? `\nSummary: ${sanitizeText(node.summary)}` : "";
+				const rootDocText = input.rootDoc ? wiki.readNodeDetail?.(node.id) : undefined;
+				const summary = rootDocText && rootDocText.trim()
+					? `\nDoc: ${truncateUtf8Bytes(rootDocText.trim(), 4096, " …(doc truncated, use docRead for full)")}`
+					: (node.summary ? `\nSummary: ${sanitizeText(node.summary)}` : "");
 				const bodySize = `\nBody: ${formatBodySize(wiki.getNodeDetailSize(node.id))}`;
 				// A header/intent node's path encodes its source file (e.g.
 				// `header:src/runtime/agent-loop.ts`); expose the workspace-relative

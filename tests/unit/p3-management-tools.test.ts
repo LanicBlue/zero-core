@@ -577,6 +577,30 @@ describe("Wiki action tool", () => {
 		expect(expanded).toMatch(/breadth-first budget kept levels 1\.\.1 complete/);
 	});
 
+	test("expand rootDoc:true replaces Summary line with the node doc (capped 4kb)", async () => {
+		// Create a node with both a summary and a body doc.
+		const r = await execWiki({ action: "create", parentId: root(), title: "RD", summary: "sum-line" }, ctx());
+		const nodeId = createdId(r);
+		await execWiki({ action: "docWrite", nodeId, content: "THE DOC BODY that rootDoc should surface" }, ctx());
+		// Seed a child so the expand result has a child line carrying a marker.
+		await execWiki({ action: "create", parentId: nodeId, title: "ChildOfRD", summary: "kid" }, ctx());
+	
+		// Without rootDoc: root shows Summary, NOT the doc body.
+		const plain = await execWiki({ action: "expand", nodeId }, ctx());
+		expect(plain).toMatch(/Summary: sum-line/);
+		expect(plain).not.toContain("Doc:");
+		expect(plain).not.toContain("THE DOC BODY that rootDoc should surface");
+	
+		// With rootDoc:true: root shows Doc: (the body), capped at 4kb.
+		const withDoc = await execWiki({ action: "expand", nodeId, rootDoc: true }, ctx());
+		expect(withDoc).toMatch(/Doc: THE DOC BODY that rootDoc should surface/);
+		expect(withDoc).not.toMatch(/^Summary:/m);
+	
+		// Child line (ChildOfRD has no children) carries the leaf marker.
+		expect(withDoc).toMatch(/ChildOfRD.*leaf/);
+	});
+
+
 	test("short id round-trip: create returns #xxxxxxxx; docRead/update/expand resolve it; full id never leaks", async () => {
 		const r = await execWiki({ action: "create", parentId: root(), title: "ShortIdTarget", summary: "sm" }, ctx());
 		const short = createdId(r);

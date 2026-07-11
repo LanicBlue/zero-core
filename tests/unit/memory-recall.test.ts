@@ -236,7 +236,9 @@ describe("memory as wiki per-agent subtree (P2 §11.6)", () => {
 			expect(rendered).toContain("Subject-B");
 			// MEMORY.md convention: each leaf line carries its nodeId link as a
 			// short id handle (#xxxxxxxx), with an explicit body-presence label.
-			expect(rendered).toMatch(/- Subject-A \(decision\) \(no doc\) #[0-9a-f]{8}/);
+			// New unified format: child line = title — summary (doc size) #shortid <marker>.
+			expect(rendered).toMatch(/Subject-A \(decision\) — summary A \(no doc\) #[0-9a-f]{8} leaf/);
+			expect(rendered).toMatch(/Subject-B \(event\) — summary B \(no doc\) #[0-9a-f]{8} leaf/);
 		});
 
 		test("renderContextAnchors shows '(no memory leaves yet)' for an empty subtree", () => {
@@ -246,7 +248,8 @@ describe("memory as wiki per-agent subtree (P2 §11.6)", () => {
 			wiki.ensureMemoryAgentRoot("fresh-agent");
 			const anchors = resolveAnchors({ wiki, agentId: "fresh-agent" });
 			const rendered = renderContextAnchors({ wiki, anchors });
-			expect(rendered).toContain("no memory leaves yet");
+			// Empty memory root renders only the header — no child lines (no '- ' bullets).
+		expect(rendered.match(/^\s*- /m)).toBeNull();
 		});
 	});
 });

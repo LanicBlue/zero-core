@@ -5,15 +5,25 @@
 // ## 核心功能
 // 把一个 session 的 wiki 锚点(自动 memory + 自动 project + 自由 wikiAnchors)
 // 解析成 nodeId 列表(scope guard 用)+ 渲染成可注入的文本(system / context
-// 两个通道)。两类锚点的渲染语义严格按 plan-P1 §12:
+// 两个通道)。
 //
-//   - project 锚点 → 子树前 2 层 title+summary(不带正文);depth 可配。
-//   - memory  锚点 → 索引(MEMORY.md 式:每条 title + nodeId 链接,不展开内容)。
+// 注入格式(所有锚点统一,不区分 project/memory,固定一层):
+//   ### <root title>  #<id> (doc <size>)
+//   <root doc,截到 INJECT_ROOT_DOC_MAX,有则注入;空则省>
+//     - <child title> — <summary> (doc <size>) #<id> ▾<N>   // N=该子节点的子节点数
+//     - <child title> — <summary> (doc <size>) #<id> leaf   // 无下层
 //
-// 注入通道(plan-P1 §11):
+//   summary 是"节点是什么 + doc 摘要"(写入已截到 SUMMARY_MAX_BYTES);注入里
+//   再过一遍 SUMMARY_MAX_BYTES 兜存量。根 doc 是唯一注入的正文(其余正文靠
+//   docRead),让 agent 一眼拿到子树 overview + 一层结构 + 哪些该再 expand。
+//
+// 注入通道:
 //   - inject=system  → 走 SystemPromptAssembler 的 section(可缓存,子树变再刷新)
 //   - inject=context → 走 PreLLMCall buildContextMessage(每轮重算,不入 history)
 //   - inject=off     → 不注入但仍计入 scope 锚点集(可见但沉默)
+//
+// 注:本模块**只对根节点**读一次正文 doc(10kb 上限);其余节点只渲染结构
+// (title/summary/size/id)。这是为了让注入携带子树 overview 而做的有界例外。
 //
 // ## 输入
 // - WikiStore
@@ -27,11 +37,11 @@
 //
 // ## 定位
 // runtime 层 helper,被 agent-loop(prompt-sections 装配) + context-message
-// (PreLLMCall 注入)调用。本模块不读 DB-wiki 内容文件(ExpandNode 才读),
-// 只渲染结构。
+// (PreLLMCall 注入)调用。
 //
 // ## 依赖
-// - ../../server/wiki-node-store (WikiStore + 常量)
+// - ../../server/wiki-node-store (WikiStore + 常量 SUMMARY_MAX_BYTES)
+// - ../shared/file-utils (truncateUtf8Bytes)
 // - ../shared/types (AgentRecord / SessionContextBundle)
 //
 
@@ -41,15 +51,21 @@ import {
 	WIKI_GLOBAL_ROOT_ID,
 	projectSubtreeRootId,
 	memoryAgentRootId,
+	SUMMARY_MAX_BYTES,
 } from "../server/wiki-node-store.js";
+import { truncateUtf8Bytes } from "../shared/file-utils.js";
 import type {
 	AgentRecord,
 	SessionContextBundle,
 	WikiNode,
 } from "../shared/types.js";
 
-/** Default depth for project-anchor subtree expansion (plan-P1 §12). */
-export const DEFAULT_PROJECT_ANCHOR_DEPTH = 1;
+/**
+ * Max UTF-8 bytes of the ROOT node's doc injected inline. Root doc = subtree
+ * overview, the one piece of body content worth injecting. 10kb keeps it under
+ * the 16K externalize threshold. Deeper bodies stay behind docRead.
+ */
+const INJECT_ROOT_DOC_MAX = 10 * 1024;
 
 /**
  * Format a node body's byte size for compact display next to a node entry.
@@ -102,15 +118,15 @@ export function sanitizeText(s: string | undefined): string {
 
 /**
  * A resolved anchor entry — combines the auto-derived vs free-origin flag with
- * the anchor's injection channel and target node id. `kind` controls how the
- * anchor is rendered (project-subtree outline vs memory index).
+ * the anchor's injection channel and target node id. All anchors render with
+ * the SAME outline (root doc + one level of children); `kind` is retained only
+ * for callers that distinguish project vs memory anchors for other reasons.
  */
 export interface ResolvedAnchor {
 	nodeId: string;
 	inject: "system" | "context" | "off";
 	/** 'project' = project subtree anchor; 'memory' = memory index anchor. */
 	kind: "project" | "memory";
-	depth: number;
 }
 
 /**
@@ -155,10 +171,6 @@ export function resolveAnchors(opts: {
 			nodeId: memoryAgentRootId(opts.agentId),
 			inject: "context", // memory anchor default channel
 			kind: "memory",
-			// depth 1: memory leaves hang directly under the per-agent root, so
-			// one level already surfaces the index. Keeps the injected memory
-			// block lean (default expand = 1 layer).
-			depth: 1,
 		});
 	}
 
@@ -169,7 +181,6 @@ export function resolveAnchors(opts: {
 			nodeId: projectSubtreeRootId(contextBundle.projectId),
 			inject: "system", // project anchor default channel
 			kind: "project",
-			depth: DEFAULT_PROJECT_ANCHOR_DEPTH,
 		});
 	} else {
 		// v0.8 (读写同界 / pure anchor model): GLOBAL ROOT 作为 scope 锚点只给
@@ -183,13 +194,12 @@ export function resolveAnchors(opts: {
 				nodeId: WIKI_GLOBAL_ROOT_ID,
 				inject: "off",
 				kind: "project",
-				depth: 0,
 			});
 		}
 	}
 
-	// 3. Free anchors (AgentRecord.wikiAnchors). Override kind/inject/depth as
-	//    specified; classify kind by inspecting the node's position.
+	// 3. Free anchors (AgentRecord.wikiAnchors). Override inject as specified;
+	//    classify kind by inspecting the node's position.
 	if (wikiAnchors) {
 		for (const entry of wikiAnchors) {
 			const node = wiki.get(entry.nodeId);
@@ -198,7 +208,6 @@ export function resolveAnchors(opts: {
 				nodeId: entry.nodeId,
 				inject: entry.inject,
 				kind,
-				depth: entry.depth ?? (kind === "project" ? DEFAULT_PROJECT_ANCHOR_DEPTH : 1),
 			});
 		}
 	}
@@ -231,18 +240,16 @@ function classifyAnchorKind(nodeId: string, node: WikiNode | undefined): "projec
 
 function dedupeAnchors(anchors: ResolvedAnchor[]): ResolvedAnchor[] {
 	const byNode = new Map<string, ResolvedAnchor>();
-	// First-write-wins for kind/depth (auto anchors come first); but inject
-	// is overridden by any free entry that targets the same node (free wins).
+	// First-write-wins for kind; inject is overridden by any free entry that
+	// targets the same node (free wins).
 	for (const a of anchors) {
 		const existing = byNode.get(a.nodeId);
 		if (!existing) {
 			byNode.set(a.nodeId, { ...a });
 		} else {
-			// Free override wins on inject; keep the more permissive depth (max).
 			byNode.set(a.nodeId, {
 				...existing,
 				inject: a.inject !== "context" || existing.inject === "context" ? a.inject : existing.inject,
-				depth: Math.max(existing.depth, a.depth),
 			});
 		}
 	}
@@ -252,17 +259,50 @@ function dedupeAnchors(anchors: ResolvedAnchor[]): ResolvedAnchor[] {
 // ─── Rendering ─────────────────────────────────────────────────────────────
 
 /**
+ * Render ONE anchor as the unified outline:
+ *   ### <root title>  #<id> (doc <size>)
+ *   <root doc, ≤ INJECT_ROOT_DOC_MAX, with truncation marker; omitted if empty>
+ *     - <child title> — <summary> (doc <size>) #<id> ▾<N>      // has N children
+ *     - <child title> — <summary> (doc <size>) #<id> leaf      // no children
+ *
+ * - Root doc is the ONLY body content injected (subtree overview); read via
+ *   wiki.readNodeDetail, capped to INJECT_ROOT_DOC_MAX. Other bodies stay
+ *   behind docRead.
+ * - Children are exactly ONE level (fixed; depth is no longer configurable).
+ * - Each child summary is re-capped to SUMMARY_MAX_BYTES at render time so
+ *   legacy oversized rows (pre-cap) don't bloat the injection.
+ * - `▾<N>` / `leaf` tells the agent which children have further structure to
+ *   expand (injection is one level, so this is the cue to call expand/docRead).
+ */
+function renderAnchorOutline(wiki: WikiStore, anchor: ResolvedAnchor): string {
+	const root = wiki.get(anchor.nodeId);
+	if (!root) return "";
+	const lines: string[] = [];
+	lines.push(`### ${root.title}  ${formatNodeId(root.id)} ${formatBodySize(wiki.getNodeDetailSize(root.id))}`);
+
+	// Root doc (capped). readNodeDetail is optional on the type for test stubs.
+	const doc = wiki.readNodeDetail?.(root.id);
+	if (doc && doc.trim()) {
+		lines.push(truncateUtf8Bytes(doc.trim(), INJECT_ROOT_DOC_MAX, " …(doc truncated, use docRead)"));
+	}
+
+	const children = wiki.getChildren(root.id);
+	for (const child of children) {
+		const summary = child.summary
+			? ` — ${sanitizeText(truncateUtf8Bytes(child.summary, SUMMARY_MAX_BYTES))}`
+			: "";
+		const size = formatBodySize(wiki.getNodeDetailSize(child.id));
+		const grandChildCount = wiki.getChildren(child.id).length;
+		const marker = grandChildCount > 0 ? ` ▾${grandChildCount}` : " leaf";
+		lines.push(`  - ${child.title}${summary} ${size} ${formatNodeId(child.id)}${marker}`);
+	}
+	return lines.join("\n");
+}
+
+/**
  * Render the system-channel anchors as a single system-prompt section. Output
  * is empty when there are no system anchors. Stable across turns (caller
  * caches via SystemPromptAssembler; invalidate on subtree change).
- *
- * Layout:
- *   ## Wiki Project Anchors
- *   ### <project subtree root title>
- *   - <child level 1 title> — <summary>
- *     - <grandchild level 2 title> — <summary>
- *   ### <another project root>
- *   ...
  */
 export function renderSystemAnchors(opts: {
 	wiki: WikiStore;
@@ -276,14 +316,12 @@ export function renderSystemAnchors(opts: {
 	for (const anchor of sys) {
 		const node = wiki.get(anchor.nodeId);
 		if (!node) continue;
-		const rendered = anchor.kind === "project"
-			? renderProjectSubtreeOutline(wiki, anchor.nodeId, anchor.depth)
-			: renderMemoryIndex(wiki, anchor.nodeId, anchor.depth);
+		const rendered = renderAnchorOutline(wiki, anchor);
 		if (rendered) blocks.push(rendered);
 	}
 	if (blocks.length === 0) return "";
 	return "## Wiki Anchors (system)\n"
-		+ "用 Wiki 工具操作这些节点(不要用 Glob/Read 去文件系统探索):docRead 读正文、expand 遍历子树、docWrite/docEdit 写。每个节点带一个 8 字符短 id(#xxxxxxxx),用它(或 title path)寻址即可,无需完整 nodeId。\n\n"
+		+ "用 Wiki 工具操作这些节点(不要用 Glob/Read 去文件系统探索):docRead 读正文、expand 遍历子树、docWrite/docEdit 写。每个节点带一个 8 字符短 id(#xxxxxxxx),用它(或 title path)寻址即可,无需完整 nodeId。▾N 表示该节点还有 N 个子节点(用 expand 深入),leaf 表示叶子。\n\n"
 		+ blocks.join("\n\n");
 }
 
@@ -305,84 +343,10 @@ export function renderContextAnchors(opts: {
 	for (const anchor of ctx) {
 		const node = wiki.get(anchor.nodeId);
 		if (!node) continue;
-		const rendered = anchor.kind === "project"
-			? renderProjectSubtreeOutline(wiki, anchor.nodeId, anchor.depth)
-			: renderMemoryIndex(wiki, anchor.nodeId, anchor.depth);
+		const rendered = renderAnchorOutline(wiki, anchor);
 		if (rendered) blocks.push(rendered);
 	}
 	return blocks.join("\n\n");
-}
-
-/**
- * Project anchor render — first N levels of the subtree as title + summary
- * bullets, WITHOUT pulling body content. Plan-P1 §12: "子树前 2 层
- * title+summary(不带正文); depth 可配".
- */
-function renderProjectSubtreeOutline(wiki: WikiStore, rootId: string, depth: number): string {
-	const root = wiki.get(rootId);
-	if (!root) return "";
-	const lines: string[] = [];
-	lines.push(`### ${root.title}  ${formatNodeId(root.id)} ${formatBodySize(wiki.getNodeDetailSize(root.id))}`);
-	if (root.summary) lines.push(`> ${sanitizeText(root.summary)}`);
-	renderSubtreeChildren(wiki, rootId, 1, depth, lines);
-	return lines.join("\n");
-}
-
-function renderSubtreeChildren(
-	wiki: WikiStore,
-	parentId: string,
-	level: number,
-	maxDepth: number,
-	lines: string[],
-): void {
-	if (level > maxDepth) return;
-	const children = wiki.getChildren(parentId);
-	for (const child of children) {
-		const indent = "  ".repeat(level) + "- ";
-		const summary = child.summary ? ` — ${sanitizeText(child.summary)}` : "";
-		const size = formatBodySize(wiki.getNodeDetailSize(child.id));
-		lines.push(`${indent}${child.title}${summary} ${size} ${formatNodeId(child.id)}`);
-		renderSubtreeChildren(wiki, child.id, level + 1, maxDepth, lines);
-	}
-}
-
-/**
- * Memory anchor render — MEMORY.md-style index: each memory leaf is one
- * bullet with its title + nodeId link, no content expansion. Plan-P1 §12:
- * "索引(MEMORY.md 式:每条 title + nodeId 链接,不展开内容)".
- */
-function renderMemoryIndex(wiki: WikiStore, rootId: string, depth: number): string {
-	const root = wiki.get(rootId);
-	if (!root) return "";
-	const lines: string[] = [];
-	lines.push(`### ${root.title}`);
-	const leaves = collectMemoryLeaves(wiki, rootId, depth);
-	if (leaves.length === 0) {
-		lines.push("(no memory leaves yet)");
-		return lines.join("\n");
-	}
-	for (const leaf of leaves) {
-		lines.push(`- ${leaf.title} ${formatBodySize(wiki.getNodeDetailSize(leaf.id))} ${formatNodeId(leaf.id)}`);
-	}
-	return lines.join("\n");
-}
-
-function collectMemoryLeaves(wiki: WikiStore, rootId: string, maxDepth: number): WikiNode[] {
-	const out: WikiNode[] = [];
-	const visit = (id: string, level: number) => {
-		if (level > maxDepth) return;
-		const children = wiki.getChildren(id);
-		for (const child of children) {
-			// Skip nested type-root-like containers; only collect actual leaves.
-			if (child.id.startsWith("wiki-root:")) {
-				visit(child.id, level + 1);
-				continue;
-			}
-			out.push(child);
-		}
-	};
-	visit(rootId, 1);
-	return out;
 }
 
 /** Re-export for tests / consumers that need the global root id. */

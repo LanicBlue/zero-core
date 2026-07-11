@@ -40,7 +40,6 @@ import {
 	renderSystemAnchors,
 	renderContextAnchors,
 	anchorNodeIds,
-	DEFAULT_PROJECT_ANCHOR_DEPTH,
 	formatNodeId,
 	shortIdOf,
 	formatBodySize,
@@ -90,7 +89,7 @@ describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
 		expect(memAnchors.every((a) => a.inject === "context")).toBe(true);
 	});
 
-	test("auto project = wiki-root:<projectId> (system channel, depth=1)", () => {
+	test("auto project = wiki-root:<projectId> (system channel)", () => {
 		const proj = projectStore.create({ name: "P", workspaceDir: join(tmpDir, "p") });
 		const bundle: SessionContextBundle = {
 			projectId: proj.id,
@@ -103,8 +102,7 @@ describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
 		expect(projAnchors.length).toBeGreaterThanOrEqual(1);
 		expect(projAnchors.some((a) => a.nodeId === projectSubtreeRootId(proj.id))).toBe(true);
 		const projAnchor = projAnchors.find((a) => a.nodeId === projectSubtreeRootId(proj.id))!;
-		expect(projAnchor.depth).toBe(DEFAULT_PROJECT_ANCHOR_DEPTH);
-		expect(projAnchor.depth).toBe(1);
+		// injection depth is fixed (1 level), no longer a field on ResolvedAnchor.
 	});
 
 	test("zero (no projectId) → memory anchor + GLOBAL ROOT scope anchor (read=write=whole tree)", () => {
@@ -201,9 +199,11 @@ describe("P1 §10.6 渲染:project 2 层 outline + memory 索引", () => {
 		expect(out).not.toContain("wiki-root:");
 	});
 
-	test("project anchor 显式 depth=2 渲染到第 2 层子节点", () => {
+	test("project anchor 注入根 doc + 子节点 ▾N/leaf 标记(固定一层)", () => {
 		const proj = projectStore.create({ name: "P2", workspaceDir: join(tmpDir, "p2") });
 		const root = track(wiki.ensureProjectSubtree(proj.id, "Project P2"));
+		// 给根写一段 doc(subtree overview)—— 注入里应出现。
+		wiki.update(root.id, { detail: "ROOT DOC OVERVIEW that should be injected" } as any);
 		const mod = track(wiki.upsertProjectNode(proj.id, {
 			parentId: root.id, type: "structure", path: "structure:src",
 			title: "src/", summary: "Source tree",
@@ -212,15 +212,23 @@ describe("P1 §10.6 渲染:project 2 层 outline + memory 索引", () => {
 			parentId: mod.id, type: "header", path: "header:src/a.ts",
 			title: "a.ts", summary: "Module a",
 		}));
-		// Free anchor with depth=2 overrides the default.
+		// 一个叶子兄弟(无下层)。
+		track(wiki.upsertProjectNode(proj.id, {
+			parentId: root.id, type: "header", path: "header:leaf.ts",
+			title: "leaf.ts", summary: "a leaf file",
+		}));
 		const anchors = resolveAnchors({
 			wiki, agentId: "x",
-			wikiAnchors: [{ nodeId: root.id, inject: "system", depth: 2 }],
+			wikiAnchors: [{ nodeId: root.id, inject: "system" }],
 		});
 		const out = renderSystemAnchors({ wiki, anchors });
-		expect(out).toContain("src/");
-		expect(out).toContain("a.ts");
-		expect(out).toContain("Module a");
+		// 根 doc 被注入。
+		expect(out).toContain("ROOT DOC OVERVIEW that should be injected");
+		// src/ 有 1 个子节点 → ▾1;leaf.ts 无下层 → leaf。
+		expect(out).toMatch(/src\/.*▾1/);
+		expect(out).toMatch(/leaf\.ts.*leaf/);
+		// 固定一层:a.ts(src/ 的子)不出现。
+		expect(out).not.toContain("a.ts");
 	});
 
 	test("memory anchor 渲染:索引 (title + nodeId 链接,不展开内容)", () => {
@@ -241,13 +249,17 @@ describe("P1 §10.6 渲染:project 2 层 outline + memory 索引", () => {
 
 		// Index includes both leaves' titles + their SHORT id handles (full
 		// nodeId no longer leaks to the agent — formatNodeId renders #xxxxxxxx).
+		// New unified format: each memory leaf is a child line with its summary
+		// + a `leaf` marker (memory leaves have no children).
 		expect(out).toContain("Decided on SQLite");
 		expect(out).toContain(formatNodeId(decLeaf.id));
 		expect(out).not.toContain(decLeaf.id);
 		expect(out).toContain("Initial scan completed");
 		expect(out).toContain(formatNodeId(evtLeaf.id));
-		// Index does NOT expand content.
-		expect(out).not.toContain("internal rationale that must NOT leak");
+		// memory leaf summary IS shown now (it is the leaf's "what it is");
+		// both leaves carry the leaf marker.
+		expect(out).toContain("internal rationale that must NOT leak");
+		expect(out.match(/leaf/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
 	});
 
 	test("off-channel anchor 不渲染但仍在 scope 锚点集", () => {

@@ -41,6 +41,17 @@ import type { WikiNode, WikiNodeTypeGlobal } from "../shared/types.js";
 import { join, resolve, normalize, isAbsolute } from "node:path";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, renameSync, statSync } from "node:fs";
 import { ZERO_CORE_DIR } from "../core/config.js";
+import { truncateUtf8Bytes } from "../shared/file-utils.js";
+
+// ---------------------------------------------------------------------------
+// Summary byte cap: every summary written to the store is truncated to this
+// many UTF-8 bytes (+ "…") so summaries stay terse (they describe what the node
+// IS + a doc abstract — not exports/deps). Read paths (injection/expand) re-cap
+// at the same budget to cover legacy oversized rows.
+// ---------------------------------------------------------------------------
+
+/** Max UTF-8 bytes for a wiki node summary (content policy: what-it-is + doc abstract). */
+export const SUMMARY_MAX_BYTES = 512;
 
 // ---------------------------------------------------------------------------
 // Column definitions — MUST stay in sync with db-migration.ts PROJECT_WIKI_COLUMNS
@@ -500,6 +511,9 @@ export class WikiStore {
 		// v0.8 (P1 §10.1): `detail` is not a DB column anymore — peel it off
 		// and write to disk after the row exists (so docPointer can be set).
 		const { detail, ...rowInput } = input as Omit<WikiNode, "id" | "createdAt" | "updatedAt"> & { detail?: string };
+		// Cap summary to SUMMARY_MAX_BYTES (content policy keeps it terse; oversized
+		// inputs are byte-truncated without splitting multibyte chars).
+		if (rowInput.summary) rowInput.summary = truncateUtf8Bytes(rowInput.summary, SUMMARY_MAX_BYTES);
 		const created = this.store.create(rowInput as any);
 		const node = rowToWikiNode(created)!;
 		if (detail && detail.trim().length > 0) {
@@ -516,6 +530,7 @@ export class WikiStore {
 		// v0.8 (P1 §10.1): `detail` is peeled off and routed to disk; the
 		// remaining fields (title/summary/path/provenance/...) update the row.
 		const { detail, ...rowPatch } = input as Partial<WikiNode> & { detail?: string };
+		if (rowPatch.summary) rowPatch.summary = truncateUtf8Bytes(rowPatch.summary, SUMMARY_MAX_BYTES);
 		// diskPathFor depends on title (nodeSlug) + parentId (ancestor chain).
 		// A rename or reparent relocates the body file — compute the OLD path
 		// before the row change so we can move the body to its NEW path after.

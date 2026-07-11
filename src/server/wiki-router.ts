@@ -96,7 +96,6 @@ export function createWikiRouter(deps: {
 				title: wikiStore.get(a.nodeId)?.title ?? a.nodeId,
 				kind: a.kind,
 				inject: a.inject,
-				depth: a.depth,
 			}));
 			res.json(views);
 		} catch (err) {
@@ -145,7 +144,6 @@ export function createWikiRouter(deps: {
 					title: wikiStore.get(a.nodeId)?.title ?? a.nodeId,
 					kind: a.kind,
 					inject: a.inject,
-					depth: a.depth,
 				})),
 			});
 		} catch (err) {

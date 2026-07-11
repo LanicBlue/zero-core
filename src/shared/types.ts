@@ -66,13 +66,12 @@ export interface AgentRecord {
 	 * v0.8 (P0 §2.2 / §11.9): wiki nodes this agent anchors into its context.
 	 * `inject` controls how the node enters the prompt — `system` (always in
 	 * system prompt), `context` (in the turn context bundle), or `off` (stored
-	 * but not injected). `depth` = how many levels of children to pull in.
+	 * but not injected).
 	 * JSON-stored as a single TEXT column.
 	 */
 	wikiAnchors?: Array<{
 		nodeId: string;
 		inject: "system" | "context" | "off";
-		depth?: number;
 	}>;
 	/**
 	 * v0.8 (P0 §1.4 / §2.2): roleTag was REMOVED from the type. Identity in
@@ -862,7 +861,6 @@ export interface ResolvedAnchorView {
 	title: string;
 	kind: "project" | "memory";
 	inject: "system" | "context" | "off";
-	depth: number;
 }
 
 /** POST /projects/:id/works 绑定/创建 body。 */
