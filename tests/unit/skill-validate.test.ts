@@ -37,7 +37,7 @@ const __dirname = dirname(__filename);
 
 const SCRIPT_PATH = resolve(
 	__dirname,
-	"../../docs/plan/skill-system/bundled-skills/skill-creator/scripts/validate-skill.mjs",
+	"../../src/server/bundled-skills/skill-creator/scripts/validate-skill.mjs",
 );
 
 // 动态 import .mjs(vitest 支持 ESM dynamic import)。

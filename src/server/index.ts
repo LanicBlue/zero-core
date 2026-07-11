@@ -34,6 +34,7 @@ import { ProviderStore } from "./provider-store.js";
 import { TemplateStore } from "./template-store.js";
 import { McpStore } from "./mcp-store.js";
 import { createAgentService } from "./agent-service.js";
+import { ensureBuiltinSkills } from "./builtin-skills.js";
 import { SessionDB } from "./session-db.js";
 import { runMigrations } from "./db-migration.js";
 import { loadWorkspaceConfig } from "./workspace-config.js";
@@ -199,6 +200,10 @@ export async function startServer(options?: StartServerOptions) {
 	}
 
 	console.log("[server] Workspace:", workspaceConfig.workspaceDir);
+
+	// Seed built-in skills (skill-creator) into ~/.zero-core/skills/ so they're
+	// available out-of-the-box on a fresh machine. Idempotent; never throws.
+	ensureBuiltinSkills();
 
 	// Apply persisted proxy config at startup. Without this, the proxy saved in
 	// Settings only takes effect reactively (config-router on save) and is LOST

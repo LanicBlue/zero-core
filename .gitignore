@@ -16,3 +16,4 @@ test_*.ts
 openprd/
 AGENTS.md
 CLAUDE.md
+.docloop/

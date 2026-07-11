@@ -2,6 +2,13 @@
   "name": "zero-core",
   "version": "0.1.0",
   "description": "AI Agent runtime built on Electron with configurable tools, MCP, and multi-provider support",
+  "license": "MIT",
+  "author": "Lanic",
+  "homepage": "https://github.com/LanicBlue/zero-core",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LanicBlue/zero-core.git"
+  },
   "type": "module",
   "bin": {
     "zero-core": "./dist/cli.js"
@@ -20,7 +27,7 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "preview": "electron-vite preview",
-    "build:lib": "tsc -p tsconfig.cli.json",
+    "build:lib": "tsc -p tsconfig.cli.json && node scripts/copy-bundled-skills.cjs",
     "typecheck": "tsc -p tsconfig.cli.json && tsc -p tsconfig.web.json && tsc -p tsconfig.node.json",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
