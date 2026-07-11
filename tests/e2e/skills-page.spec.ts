@@ -21,6 +21,8 @@
 // scanner 读 os.homedir() —— Electron 主进程的 homedir() 是真实用户 home(E2E 不重定向)。
 // 故本软件 skill CRUD 写到真实 `~/.zero-core/skills/<test-id>/`。**每个用例都 cleanup**:
 // afterEach 删除本测试创建的所有 `<test-id>` 目录,绝不污染用户环境。
+// sub-guard: 另有 beforeAll/afterAll 快照守卫 —— beforeAll 拍下两 skills 目录现有条目,
+//   afterAll 删除所有新增(不靠 prefix),兜住漏网 fixture / 手测残留 / prefix 失配。
 // 不动 ~/.claude / ~/.agents(外部来源只读,本测试不写)。
 //
 // ## 非确定性处理
@@ -94,6 +96,34 @@ function cleanupTestSkills() {
 	}
 }
 
+/** 拍下两个 skills 目录现有条目的快照(beforeAll 用,作为 afterAll 还原基准)。 */
+function snapshotSkillDirs(): Set<string> {
+	const snap = new Set<string>();
+	for (const dir of [APP_SKILLS_DIR, CLAUDE_SKILLS_DIR]) {
+		if (!existsSync(dir)) continue;
+		try {
+			for (const name of readdirSync(dir)) snap.add(join(dir, name));
+		} catch {}
+	}
+	return snap;
+}
+
+/** 删除快照之后新增的所有条目(afterAll 用,不靠 prefix,兜底防残留)。 */
+function restoreSkillDirs(before: Set<string>) {
+	for (const dir of [APP_SKILLS_DIR, CLAUDE_SKILLS_DIR]) {
+		if (!existsSync(dir)) continue;
+		let entries: string[] = [];
+		try { entries = readdirSync(dir); } catch { continue; }
+		for (const name of entries) {
+			const full = join(dir, name);
+			// 只删本 run 新增的;快照里有的(pre-existing 用户 skill 如 skill-creator)不动。
+			if (!before.has(full)) {
+				try { rmSync(full, { recursive: true, force: true }); } catch {}
+			}
+		}
+	}
+}
+
 /**
  * sub-15: 左列表项改用 .tools-page-list-item + data-skill-id 属性(列表只显示名字,
  * 不再含 id 文案)。本 helper 按 skill id 定位列表项,取代旧的 hasText(id) 文案匹配。
@@ -110,7 +140,13 @@ async function gotoSkillsPage(window: import("@playwright/test").Page) {
 
 test.describe("Skills page", () => {
 	let cleanup: () => Promise<void>;
+	let _skillSnapshot: Set<string>;
 	let window: Awaited<ReturnType<typeof launchApp>>["window"];
+
+	test.beforeAll(() => {
+		// 任何测试种 fixture 前拍快照;afterAll 据此还原(与 prefix 清理互补)。
+		_skillSnapshot = snapshotSkillDirs();
+	});
 
 	test.beforeEach(async () => {
 		cleanupTestSkills(); // 进入前清一次,防前次崩溃残留
@@ -123,6 +159,12 @@ test.describe("Skills page", () => {
 	test.afterEach(async () => {
 		await cleanup();
 		cleanupTestSkills(); // 退出后再清一次,确保不污染用户环境
+	});
+
+	test.afterAll(() => {
+		// 还原快照:删掉本 run 在两个 skills 目录新增的所有条目(不靠 prefix)。
+		// 与 afterEach 的 prefix 清理互补 —— 兜住漏 prefix 的 fixture / 手测残留。
+		restoreSkillDirs(_skillSnapshot);
 	});
 
 	// ─── 原有用例(入口 + 基础渲染)──────────────────────────────
