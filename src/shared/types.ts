@@ -114,7 +114,7 @@ export interface Provider {
 	 * the compression cache 冷热判定 — a session is "cold" when
 	 * (now − lastLLMCall) > cacheTtlMs, meaning the provider prompt cache has
 	 * aged out and a full compression is effectively free (the next call misses
-	 * cache anyway). Optional; defaults to DEFAULT_CACHE_TTL_MS (6 min) when
+	 * cache anyway). Optional; defaults to DEFAULT_CACHE_TTL_MS (1 hour) when
 	 * unset. Users who know their provider's real cache window (Anthropic 5m,
 	 * OpenAI no prompt cache, etc.) override per-provider.
 	 */

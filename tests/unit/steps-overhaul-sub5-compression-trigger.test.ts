@@ -448,7 +448,7 @@ describe("steps-overhaul sub-5: compression trigger hooks", () => {
 
 	// ── cacheTTL per-provider 默认 ───────────────────────────────────────
 
-	test("cacheTTL: undefined provider cacheTtlMs → DEFAULT_CACHE_TTL_MS (6min) used", async () => {
+	test("cacheTTL: undefined provider cacheTtlMs → DEFAULT_CACHE_TTL_MS (1 hour) used", async () => {
 		// Re-register with a provider that has NO cacheTtlMs.
 		const reg2 = new HookRegistry();
 		clearCompressionTriggerState();
@@ -458,7 +458,7 @@ describe("steps-overhaul sub-5: compression trigger hooks", () => {
 			models: [{ id: "stub", name: "stub", contextWindow: 200000 }],
 			enabled: true,
 		}];
-		// 3 min ago → within default 6min TTL → hot → no compression.
+		// 3 min ago → within default 1 hour TTL → hot → no compression.
 		_setLastLLMCallForTest("s1", Date.now() - 180_000);
 		seedTurn(db, "s1", 0);
 		db.setTokenUsage("s1", { inputTokens: 150_000 });

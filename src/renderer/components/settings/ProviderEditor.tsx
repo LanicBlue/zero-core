@@ -47,7 +47,7 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 		enableConcurrencyLimit: provider?.enableConcurrencyLimit ?? false,
 		maxConcurrency: Number(provider?.maxConcurrency) || 3,
 		// steps-overhaul sub-5: provider prompt-cache TTL override (minutes).
-		// Blank = no override (use DEFAULT_CACHE_TTL_MS = 6min). Stored as ms.
+		// Blank = no override (use DEFAULT_CACHE_TTL_MS = 1 hour). Stored as ms.
 		cacheTtlMin: provider?.cacheTtlMs ? String(Math.round(provider.cacheTtlMs / 60000)) : "",
 	});
 	const [newModelId, setNewModelId] = useState("");
@@ -206,7 +206,7 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 							<input type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder={form.type === "ollama" ? "Not required" : "sk-..."} />
 						</label>
 						<label>Cache TTL (分钟)
-							<input type="number" min={1} value={form.cacheTtlMin} onChange={(e) => setForm({ ...form, cacheTtlMin: e.target.value })} placeholder="留空 = 全局默认 6min" />
+							<input type="number" min={1} value={form.cacheTtlMin} onChange={(e) => setForm({ ...form, cacheTtlMin: e.target.value })} placeholder="留空 = 全局默认 60min" />
 						</label>
 						<label>Concurrency Limit
 						<div className="concurrency-row">

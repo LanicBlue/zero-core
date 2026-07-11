@@ -55,9 +55,8 @@ export const DEV_SERVER_URL = "http://localhost:5173";
 
 /**
  * Default provider prompt-cache TTL (ms) for the compression cache 冷热判定.
- * A session is "cold" when (now − lastLLMCall) > cacheTtlMs. 6 min is the
- * Anthropic prompt-cache window default; users who know their provider's real
- * cache behavior override per-provider (Provider.cacheTtlMs). See design.md
+ * A session is "cold" when (now − lastLLMCall) > cacheTtlMs. 1 hour; users who know their provider's real cache window
+ * override per-provider (Provider.cacheTtlMs, e.g. Anthropic 5m / Google 1h). See design.md
  * 「cache 冷热判定」.
  */
-export const DEFAULT_CACHE_TTL_MS = 360_000;
+export const DEFAULT_CACHE_TTL_MS = 3_600_000;
