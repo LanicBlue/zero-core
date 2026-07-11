@@ -89,7 +89,7 @@ export interface ProviderConfig {
 	 * RuntimeProviderConfig. undefined → resolved to DEFAULT_CACHE_TTL_MS at
 	 * the read site.
 	 */
-	cacheTtlMs?: number;
+	cacheTtlMs?: number | null;
 }
 interface AgentRunState {
 	agentId: string;

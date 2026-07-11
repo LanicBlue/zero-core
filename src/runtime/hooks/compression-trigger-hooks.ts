@@ -297,7 +297,7 @@ function resolveCacheTtl(
 	providerName: string,
 ): number {
 	const match = providers.find((p) => p.name === providerName || p.name.toLowerCase() === providerName.toLowerCase());
-	if (match?.cacheTtlMs !== undefined && match.cacheTtlMs > 0) return match.cacheTtlMs;
+	if (match?.cacheTtlMs != null && match.cacheTtlMs > 0) return match.cacheTtlMs;
 	return DEFAULT_CACHE_TTL_MS;
 }
 

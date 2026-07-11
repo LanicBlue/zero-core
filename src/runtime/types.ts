@@ -466,7 +466,7 @@ export interface RuntimeProviderConfig {
 	 * to DEFAULT_CACHE_TTL_MS at the read site when unset so a missing field
 	 * never silently means "0 / always cold". See design.md「cache 冷热判定」.
 	 */
-	cacheTtlMs?: number;
+	cacheTtlMs?: number | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -46,6 +46,9 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 		enabled: provider?.enabled ?? true,
 		enableConcurrencyLimit: provider?.enableConcurrencyLimit ?? false,
 		maxConcurrency: Number(provider?.maxConcurrency) || 3,
+		// steps-overhaul sub-5: provider prompt-cache TTL override (minutes).
+		// Blank = no override (use DEFAULT_CACHE_TTL_MS = 6min). Stored as ms.
+		cacheTtlMin: provider?.cacheTtlMs ? String(Math.round(provider.cacheTtlMs / 60000)) : "",
 	});
 	const [newModelId, setNewModelId] = useState("");
 	const [newModelGroup, setNewModelGroup] = useState("");
@@ -67,6 +70,11 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 		e.preventDefault();
 		setSaving(true);
 		try {
+			// Blank → null (clear override, fall back to DEFAULT_CACHE_TTL_MS);
+			// filled → minutes * 60000, clamped to ≥1min.
+			const cacheTtlMs = form.cacheTtlMin.trim() === ""
+				? null
+				: Math.round(Math.max(1, parseFloat(form.cacheTtlMin) || 6) * 60000);
 			if (isEdit) {
 				await update(provider!.id, {
 					name: form.name,
@@ -76,6 +84,7 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 					enabled: form.enabled,
 					enableConcurrencyLimit: form.enableConcurrencyLimit,
 					maxConcurrency: form.maxConcurrency,
+					cacheTtlMs,
 				});
 			} else {
 				await create({
@@ -86,6 +95,7 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 					enabled: form.enabled,
 					enableConcurrencyLimit: form.enableConcurrencyLimit,
 					maxConcurrency: form.maxConcurrency,
+					cacheTtlMs,
 					models: models,
 					isSystem: false,
 				});
@@ -195,7 +205,10 @@ export function ProviderEditor({ provider, onClose }: { provider: Provider | nul
 						<label>API Key
 							<input type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder={form.type === "ollama" ? "Not required" : "sk-..."} />
 						</label>
-					<label>Concurrency Limit
+						<label>Cache TTL (分钟)
+							<input type="number" min={1} value={form.cacheTtlMin} onChange={(e) => setForm({ ...form, cacheTtlMin: e.target.value })} placeholder="留空 = 全局默认 6min" />
+						</label>
+						<label>Concurrency Limit
 						<div className="concurrency-row">
 							<label className="checkbox-label"><input type="checkbox" checked={form.enableConcurrencyLimit} onChange={(e) => setForm({ ...form, enableConcurrencyLimit: e.target.checked })} /> Enable</label>
 							<input type="number" className="concurrency-input" min={1} max={10} value={form.maxConcurrency} onChange={(e) => setForm({ ...form, maxConcurrency: Math.max(1, Math.min(10, parseInt(e.target.value) || 1)) })} disabled={!form.enableConcurrencyLimit} />

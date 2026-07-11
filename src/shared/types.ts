@@ -119,7 +119,7 @@ export interface Provider {
 	 * unset. Users who know their provider's real cache window (Anthropic 5m,
 	 * OpenAI no prompt cache, etc.) override per-provider.
 	 */
-	cacheTtlMs?: number;
+	cacheTtlMs?: number | null;
 	createdAt: string;
 	updatedAt: string;
 }
