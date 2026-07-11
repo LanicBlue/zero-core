@@ -838,9 +838,9 @@ export class SessionDB {
 	// goes through the step-level methods below.
 	// -----------------------------------------------------------------------
 
-	getTurnCount(sessionId: string): number {
+	getStepCount(sessionId: string): number {
 		// steps-overhaul sub-1: read sessions.step_count instead of
-		// COUNT(*) FROM steps. CRITICAL: getTurnCount is the SEQ ALLOCATION
+		// COUNT(*) FROM steps. CRITICAL: getStepCount is the SEQ ALLOCATION
 		// cursor — turn-hooks TurnStart reads it for the next user-row seq,
 		// AND AgentLoop.resume() reads it for stepBaseSeq (the next assistant
 		// step's seq, which MUST account for all already-persisted steps). So
@@ -965,7 +965,7 @@ export class SessionDB {
 		const attachmentsJson = this.serializeAttachments(attachments);
 		// steps-overhaul sub-1: bump counters on every appendStep.
 		// - step_count: tracks TOTAL step rows (= the old COUNT(*) FROM turns).
-		//   getTurnCount() reads this for seq allocation (turn-hooks' user row
+		//   getStepCount() reads this for seq allocation (turn-hooks' user row
 		//   AND AgentLoop.resume()'s stepBaseSeq). Bumped for EVERY role since
 		//   every appendStep inserts one row.
 		// - turn_count: tracks TRUE turn count (user rows only). For the future
@@ -1128,7 +1128,7 @@ export class SessionDB {
 			// the bump rationale (it must happen at user-row write time, not at
 			// turn-state init, to avoid a TurnStart ordering hazard: if durable
 			// TurnStart runs before turn-hooks TurnStart, bumping here would
-			// make turn-hooks' subsequent getTurnCount() read N+1 and write the
+			// make turn-hooks' subsequent getStepCount() read N+1 and write the
 			// user row at the wrong seq).
 			//
 			// A recovered turn skips this (recovery pre-marks via

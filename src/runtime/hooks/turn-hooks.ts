@@ -87,7 +87,7 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 			// there are attachments even with empty text.
 			if (!userMessage && (!attachments || attachments.length === 0)) return;
 
-			const seq = db.getTurnCount(sessionId);
+			const seq = db.getStepCount(sessionId);
 			setTurnSeq(sessionId, seq);
 
 			// Step 4A: step-only. The user row's turn_group = its own seq (a
@@ -241,7 +241,7 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 	// ─── TurnEnd (turn-boundary closure): close the current turn_group and
 	//     advance turn_seq so the next user input's TurnStart reads seq+1.
 	//
-	// Step 3B: turn_seq is read implicitly at TurnStart via db.getTurnCount()
+	// Step 3B: turn_seq is read implicitly at TurnStart via db.getStepCount()
 	// (the user-turn row written at TurnStart makes the next count higher).
 	// The safety-net handler above only clears sessionTurnSeq when it actually
 	// ran its persist path; this dedicated handler closes the boundary

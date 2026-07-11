@@ -103,7 +103,7 @@ export interface ISessionStore {
 	getSummaries?(sessionId: string): MessageSummary[];
 	getCompressionCursor?(sessionId: string): number | null;
 
-	getTurnCount(sessionId: string): number;
+	getStepCount(sessionId: string): number;
 	getMainSession(agentId: string): { id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string } | undefined;
 	createSession(
 		agentId: string,

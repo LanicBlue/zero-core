@@ -630,7 +630,7 @@ describe("steps-overhaul sub-10 integration: volume-UI stays accurate across com
 		try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* Windows */ }
 	});
 
-	test("after mid-turn compression, getTurnCount + getTurnGroupCount still reflect the FULL step history (steps untouched)", async () => {
+	test("after mid-turn compression, getStepCount + getTurnGroupCount still reflect the FULL step history (steps untouched)", async () => {
 		// Seed 4 turns (8 steps), compress the older ones, then verify the volume
 		// counters still see ALL 8 steps (compression only touches messages).
 		const session = db.createSession("vol-agent");
@@ -652,8 +652,8 @@ describe("steps-overhaul sub-10 integration: volume-UI stays accurate across com
 		expect(db.getSummaries(session.id).length, "summary written").toBeGreaterThan(0);
 
 		// Volume counters see the FULL history (steps untouched by compression).
-		// getTurnCount reads sessions.step_count (= 8 — bumped by appendStep).
-		expect(db.getTurnCount(session.id), "step count unchanged by compression").toBe(8);
+		// getStepCount reads sessions.step_count (= 8 — bumped by appendStep).
+		expect(db.getStepCount(session.id), "step count unchanged by compression").toBe(8);
 		// getTurnGroupCount reads COUNT DISTINCT turn_group FROM steps (= 4).
 		expect(db.getTurnGroupCount(session.id), "turn count unchanged by compression").toBe(4);
 
@@ -674,7 +674,7 @@ describe("steps-overhaul sub-10 integration: volume-UI stays accurate across com
 			}
 		}
 		// step_count = 256, distinct turn_group = 8.
-		expect(db.getTurnCount(session.id)).toBe(256);
+		expect(db.getStepCount(session.id)).toBe(256);
 		expect(db.getTurnGroupCount(session.id)).toBe(8);
 
 		// step basis = 100; turn basis = ceil(256*5/8)=160 → turn basis wins (shows more).

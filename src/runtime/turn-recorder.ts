@@ -309,7 +309,7 @@ export class TurnRecorder {
 	/** Append a user turn as a step row. */
 	saveUserTurn(db: ISessionStore, sessionId: string, text: string): void {
 		if (!db || !sessionId) return;
-		const seq = db.getTurnCount(sessionId);
+		const seq = db.getStepCount(sessionId);
 		db.appendStep(sessionId, seq, seq, "user", text);
 	}
 

@@ -29,7 +29,7 @@
 //      rebuildFromSteps, NOT replayed), the turn completes, and
 //      sessions.phase=completed.
 //
-//      steps-overhaul sub-1 note: getTurnCount() now reads sessions.step_count
+//      steps-overhaul sub-1 note: getStepCount() now reads sessions.step_count
 //      (= old COUNT(*) FROM turns semantics — total step rows, including
 //      assistant steps). So resume()'s stepBaseSeq lands step 4 at the correct
 //      fresh seq (4) → 4 assistant rows total. (turn_count, the true-turn-count
@@ -39,7 +39,7 @@
 // docs/design/hook-redesign/steps/2D-step-resume/accept.md (A2, A3).
 // A1 (typecheck + build:lib + full vitest) verified separately.
 //
-// ## Design note: resume reads getTurnCount, not the checkpoint, to pick the
+// ## Design note: resume reads getStepCount, not the checkpoint, to pick the
 // next seq. lastCompletedStepSeq is informational at this layer (it tells
 // recovery that mid-turn progress existed, and drives UI). This test asserts
 // the OBSERVABLE invariant — no replay of completed steps — rather than the
@@ -326,7 +326,7 @@ describe("Step 2D · A2: resume continues from the next step without replay", ()
 		expect(hookCount(resumeHooks, "TurnEnd"), "resume: turn completed").toBe(1);
 		expect(hookCount(resumeHooks, "TurnError"), "resume: no TurnError").toBe(0);
 
-		// steps-overhaul sub-1: getTurnCount() now reads sessions.step_count
+		// steps-overhaul sub-1: getStepCount() now reads sessions.step_count
 		// (= old COUNT(*) FROM turns semantics — total step rows, bumped on every
 		// appendStep/upsertStep-insert/replaceStepsFromMessages). So resume()'s
 		// stepBaseSeq = step_count after the crash = 4 (1 user + 3 assistant),

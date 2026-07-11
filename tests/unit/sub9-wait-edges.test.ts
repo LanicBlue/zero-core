@@ -33,13 +33,13 @@ import type { WakeReason } from "../../src/runtime/types.js";
 // ─── Shared helpers ───────────────────────────────────────────────────────
 
 /** Minimal in-memory step store with the shape AgentSession.rebuildFromTurns
- *  touches (getSteps/appendStep/upsertStep/getTurnCount). */
+ *  touches (getSteps/appendStep/upsertStep/getStepCount). */
 function makeStepStore() {
 	const steps: Array<{ seq: number; turnGroup: number; role: string; content: string | null; createdAt: string }> = [];
 	return {
 		steps,
 		getSteps: () => steps,
-		getTurnCount: () => steps.length,
+		getStepCount: () => steps.length,
 		appendStep: (_sid: string, seq: number, tg: number, role: string, content: string) => {
 			steps.push({ seq, turnGroup: tg, role, content, createdAt: new Date().toISOString() });
 		},

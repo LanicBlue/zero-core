@@ -90,11 +90,11 @@ export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistr
 			}
 			// Read the turn seq for createTurnState. Prefer turn-hooks' shared
 			// cursor (it has already written the user-step row, so its seq is
-			// authoritative); fall back to db.getTurnCount if turn-hooks has
+			// authoritative); fall back to db.getStepCount if turn-hooks has
 			// not run yet (registration order varies across processes).
 			let turnSeq = getTurnSeq(sessionId);
 			if (turnSeq === undefined) {
-				turnSeq = sessionDb.getTurnCount(sessionId);
+				turnSeq = sessionDb.getStepCount(sessionId);
 			}
 			// sub-1: forward the turn-source marker from the TurnStart context
 			// (set by the entry that kicked the turn, threaded via SessionConfig

@@ -62,13 +62,13 @@ SessionDB 自有表(`session-db.ts:120-307`),内容相关 4 张(现状物理名)
 | `last_completed_step_seq` | INTEGER | step 级 resume 游标(最后一个跑完 StepEnd 的 step seq;resume 从 +1 续) |
 | `source` | TEXT NOT NULL DEFAULT `'background'` | turn 来源(chat/cron/delegated/background);**驱动归档触发**(sub-8:delegated 自动归档,cron/main 不) |
 | `error` | TEXT | 最近错误(failed 阶段展示/排错) |
-| `turn_count` | INTEGER NOT NULL DEFAULT 0 | turn 计数(体积 UI + `getTurnCount()` 经它分配 turn_seq) |
-| `step_count` | INTEGER NOT NULL DEFAULT 0 | step 计数(体积 UI) |
+| `turn_count` | INTEGER NOT NULL DEFAULT 0 | user-step 写入时 bump(`MAX(turn_count, seq+1)`);当前无主要 reader(sub-9 体积 UI 用 `DISTINCT turn_group` 算逻辑 turn,**非此列**)。保留作 seq 游标影子/未来用 |
+| `step_count` | INTEGER NOT NULL DEFAULT 0 | 总 step 行数;**`getStepCount()` 读它分配 step seq**(stepBaseSeq)+ 体积 UI |
 | `token_usage` | TEXT(JSON) | 最近一次 API 返回的 usage(`{prompt_tokens,...}`);**以 API 返回为准、不本地重算**,触发判定 + UI 都读 |
 
 **turn_state 列的归宿**(逐列):
 - **保留进 sessions**:`phase`/`last_completed_step_seq`/`source`/`error`(→ 上表)。
-- **`turn_seq` 不进 DB**:运行时真相是 in-memory `turn-seq-tracker.ts`(TurnStart 经 `db.getTurnCount()` 分配,防 turn+1 bug);DB 的 `turn_seq` 值由 `turn_count` 派生,折叠后无需单独列。
+- **`turn_seq` 不进 DB**:运行时真相是 in-memory `turn-seq-tracker.ts`(TurnStart 经 `db.getStepCount()` 分配,防 turn+1 bug);DB 的 `turn_seq` 值由 `turn_count` 派生,折叠后无需单独列。
 - **`checkpoint TEXT(JSON)` 丢弃**:legacy turn 级 checkpoint,被 `last_completed_step_seq` 取代;sub-1 核对无消费方(`advanceStepCheckpoint` 写、`:976` 读)后删。
 - **per-turn `created_at`/`updated_at`**:sessions 自有时间戳,冗余丢弃。
 - **`cleanOldTurnState` 整体退役**:其 GC 职责(清 stale turn_state 行)被 recovery 扫描吸收——启动时 `phase NOT IN ('completed','failed')` 的 session 即恢复候选,恢复不了的标 `'interrupted'`/`'failed'`,无 per-turn 行可 GC。

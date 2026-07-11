@@ -567,12 +567,12 @@ export class AgentLoop implements AgentRuntime {
 
 				// TurnStart hook has written user turn; next seq is the first assistant step
 				if (this.config.db && this.config.sessionId) {
-					this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+					this.stepBaseSeq = this.config.db.getStepCount(this.config.sessionId);
 				}
 				this.stepOffset = 0;
 
 				// Set the turn group (= user message's seq = stepBaseSeq - 1 for non-resume,
-				// but TurnStart already wrote the user turn so getTurnCount includes it)
+				// but TurnStart already wrote the user turn so getStepCount includes it)
 				const userSeq = this.stepBaseSeq - 1;
 				this.recorder.startTurnGroup(userSeq);
 				// multimodal-input sub-7 (E2E-found wiring gap): TurnStart just
@@ -625,7 +625,7 @@ export class AgentLoop implements AgentRuntime {
 	 * those rows (rebuildFromTurns), so the model sees the full prior work and
 	 * simply produces the next step.
 	 *
-	 * `lastCompletedStepSeq` is informational for this layer — getTurnCount()
+	 * `lastCompletedStepSeq` is informational for this layer — getStepCount()
 	 * already returns the correct next seq (it counts the already-persisted
 	 * step rows). The checkpoint is what recovery uses to decide a session had
 	 * mid-turn progress (vs a turn that crashed before any step completed) and
@@ -661,10 +661,10 @@ export class AgentLoop implements AgentRuntime {
 				await this.session.pruneIfNeeded();
 
 				// For resume, the user turn + any completed steps are already in DB.
-				// getTurnCount returns the count INCLUDING those, so the next
+				// getStepCount returns the count INCLUDING those, so the next
 				// appendStep lands at the correct fresh seq.
 				if (this.config.db && this.config.sessionId) {
-					this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+					this.stepBaseSeq = this.config.db.getStepCount(this.config.sessionId);
 				}
 				this.stepOffset = 0;
 
@@ -681,7 +681,7 @@ export class AgentLoop implements AgentRuntime {
 
 				// After TurnStart, the turn count may have increased (if hook wrote a turn)
 				if (this.config.db && this.config.sessionId) {
-					this.stepBaseSeq = this.config.db.getTurnCount(this.config.sessionId);
+					this.stepBaseSeq = this.config.db.getStepCount(this.config.sessionId);
 				}
 				const userSeq = this.stepBaseSeq - 1;
 				this.recorder.startTurnGroup(userSeq);

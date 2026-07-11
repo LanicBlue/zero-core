@@ -1871,10 +1871,10 @@ export class AgentService implements PlatformObserver {
 	getSessionVolume(sessionId: string): SessionVolumeInfo {
 		const session = this.db.getSession(sessionId);
 		// step_count is the O(1) total-step-row counter (bumped on every
-		// appendStep). getTurnCount() reads it. Fall back to 0 only if the session
+		// appendStep). getStepCount() reads it. Fall back to 0 only if the session
 		// row is gone (should not happen post-sub-1 migration).
 		const totalStepCount = session
-			? this.db.getTurnCount(sessionId)
+			? this.db.getStepCount(sessionId)
 			: 0;
 		const totalTurnCount = session
 			? this.db.getTurnGroupCount(sessionId)

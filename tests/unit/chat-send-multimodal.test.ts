@@ -40,7 +40,7 @@ import type { ISessionStore, StepRow } from "../../src/runtime/session-store-int
 // from ISessionStore (messages table redefined to summary+cursor).
 class MemStore implements ISessionStore {
 	steps: StepRow[] = [];
-	getTurnCount(): number { return this.steps.length; }
+	getStepCount(): number { return this.steps.length; }
 	getMainSession(): undefined { return undefined; }
 	createSession(): any { throw new Error("not used"); }
 	setMainSession(): void { /* no-op */ }

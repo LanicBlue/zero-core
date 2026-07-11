@@ -38,7 +38,7 @@ import type { ISessionStore, StepRow } from "../../src/runtime/session-store-int
 // API is optional and omitted here — assembleLLMView null-checks it.
 class MemStore implements ISessionStore {
 	steps: StepRow[] = [];
-	getTurnCount(): number { return this.steps.length; }
+	getStepCount(): number { return this.steps.length; }
 	getMainSession(): undefined { return undefined; }
 	createSession(): any { throw new Error("not used"); }
 	setMainSession(): void { /* no-op */ }

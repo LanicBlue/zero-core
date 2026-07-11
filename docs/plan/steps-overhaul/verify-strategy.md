@@ -19,7 +19,7 @@
 ### Lens B — 运行时接线 / 下游真消费
 - 输入:`sub-N.md` 改动点 + memory `feedback-verify-runtime-wiring`。
 - 动作:**端到端追消费链**,不接受 producer 隔离。例:
-  - sub-1:recovery **真的**扫 `sessions.phase` 而非 turn_state?`getTurnCount()` **真的**读 `sessions.turn_count`?
+  - sub-1:recovery **真的**扫 `sessions.phase` 而非 turn_state?`getStepCount()` **真的**读 `sessions.step_count`?
   - sub-3:LLM view **真的**组装三区?fresh tail **真的**渲染指针形态不解引用全字节?
   - sub-5:`AgentLoop.resume()` **真的**跑了冷 preflight?
   - sub-8:delegated 完成 **真的**触发归档?活跃 session **真的**先 teardown?

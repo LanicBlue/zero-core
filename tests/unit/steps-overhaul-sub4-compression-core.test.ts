@@ -234,7 +234,7 @@ describe("steps-overhaul sub-4: compressSession 压缩核心", () => {
 		// Repeatedly: seed 2 padded turns, compress. After several rounds the
 		// messages table must hold at most MAX_MESSAGE_SUMMARIES (=3) blocks.
 		for (let round = 0; round < 5; round++) {
-			const base = sessionDB!.getTurnCount(sessionId);
+			const base = sessionDB!.getStepCount(sessionId);
 			// base is the next seq to write (user row opens a new turn_group).
 			seedTurn(sessionDB!, sessionId, base, `t${round}-a`, `asst ${round}-a`);
 			seedTurn(sessionDB!, sessionId, base + 2, `t${round}-b`, `asst ${round}-b`);

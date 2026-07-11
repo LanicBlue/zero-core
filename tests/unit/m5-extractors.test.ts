@@ -116,7 +116,7 @@ function makeExtractorB(modelText: string): ExtractorBService {
 function seedSteps(sessionId: string, steps: Array<{ role: "user" | "assistant"; content: string }>): void {
 	// Offset by existing step count so multiple seedSteps calls on the same
 	// session APPEND rather than collide on seq.
-	let seq = sessionDB.getTurnCount(sessionId);
+	let seq = sessionDB.getStepCount(sessionId);
 	let group = seq > 0 ? seq - 1 : 0;
 	for (const s of steps) {
 		if (s.role === "user") group = seq;
