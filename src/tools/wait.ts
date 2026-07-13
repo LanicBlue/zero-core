@@ -63,7 +63,7 @@ export const waitTool = buildTool({
 		"- until: ISO 8601 absolute time point to wake at (e.g. \"2026-07-07T10:30:00Z\"). Durable across restarts.\n" +
 		"- timeout: relative wait in seconds (1-3600). Used when `until` is omitted. Durable across restarts: on crash/restart the remaining time is computed from the persisted start timestamp and the wait is re-suspended for the remainder (already-elapsed → fills as timeout). Both `until` and `timeout` survive restarts.\n\n" +
 		"Returns: `woke: timeout` / `woke: task finished` / `woke: user input` plus elapsed seconds. For task results use TaskGet — Wait no longer returns a task summary.",
-	meta: { category: "runtime", isReadOnly: true, isConcurrencySafe: true, isDestructive: false, exposable: false },
+	meta: { category: "task", isReadOnly: true, isConcurrencySafe: true, isDestructive: false, exposable: false },
 	inputSchema: z.object({
 		until: z.string().describe("ISO 8601 absolute time point to wake at. Durable across restarts."),
 		timeout: z.number().min(1).max(3600).optional().describe("Relative wait in seconds (1-3600). Used when `until` is omitted."),
