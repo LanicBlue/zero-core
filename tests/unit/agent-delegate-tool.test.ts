@@ -81,17 +81,19 @@ describe("Agent tool — list", () => {
 });
 
 describe("Agent tool — delegate by name", () => {
-	test("命中 name → 用 target 身份调 delegateTask(传 targetAgentId)", async () => {
+	test("命中 name → 用 target 身份调 delegateTaskBackground(传 targetAgentId, 立即返 task_id)", async () => {
+		// sub-1 (execution-entry-redesign): delegate 现走 delegateTaskBackground
+		// (非阻塞,立即返 task_id),身份解析不变(target systemPrompt/model/toolPolicy)。
 		let captured: any;
 		const ctx = makeCtx({
 			callerSubagents: [{ agentId: "dev-1", name: "Developer" }],
 			agents: {
 				"dev-1": { id: "dev-1", name: "Developer", model: "glm-5.2", systemPrompt: "P", toolPolicy: { tools: {} } },
 			},
-			delegateTask: async (task, o) => { captured = { task, o }; return "done"; },
+			delegateTaskBackground: (task, o) => { captured = { task, o }; return "sub-named-1"; },
 		});
 		const r = await run({ action: "delegate", task: "write hello", subagent: "Developer" }, ctx);
-		expect(r).toBe("done");
+		expect(r).toMatch(/task_id: sub-named-1/);
 		expect(captured.task).toBe("write hello");
 		expect(captured.o.targetAgentId).toBe("dev-1");
 		expect(captured.o.systemPrompt).toBe("P");
@@ -131,28 +133,35 @@ describe("Agent tool — delegate by name", () => {
 });
 
 describe("Agent tool — ephemeral delegate (no subagent)", () => {
-	test("不传 subagent → 临时委派,传 inline model/systemPrompt", async () => {
+	test("不传 subagent → 临时委派,传 inline model/systemPrompt, 走 delegateTaskBackground", async () => {
+		// sub-1: ephemeral 委派也走后台路径,立即返 task_id,targetAgentId 不设。
 		let captured: any;
 		const ctx = makeCtx({
-			delegateTask: async (task, o) => { captured = { task, o }; return "ok"; },
+			delegateTaskBackground: (task, o) => { captured = { task, o }; return "sub-eph-1"; },
 		});
-		await run({ action: "delegate", task: "explore", model: "m1", systemPrompt: "custom" }, ctx);
+		const r = await run({ action: "delegate", task: "explore", model: "m1", systemPrompt: "custom" }, ctx);
+		expect(r).toMatch(/task_id: sub-eph-1/);
 		expect(captured.o.targetAgentId).toBeUndefined();
 		expect(captured.o.model).toBe("m1");
 		expect(captured.o.systemPrompt).toBe("custom");
 	});
 });
 
-describe("Agent tool — blocking-only (sub-4) + validation", () => {
-	test("sub-4: mode param removed — delegate is ALWAYS blocking (走 delegateTask)", async () => {
-		let captured: any;
+describe("Agent tool — background-only (sub-1) + validation", () => {
+	test("sub-1: delegate is ALWAYS background (走 delegateTaskBackground, 不走 delegateTask)", async () => {
+		// sub-1 (execution-entry-redesign): delegate 从 blocking 切到默认后台。
+		// delegateTaskBackground 立即返 task_id,delegateTask(blocking 原语)绝不被调
+		// —— 它保留给 Orchestrate 的 task 节点(见 orchestrate-tool.ts)。
+		let bgCaptured: any;
+		let blockingCalled = false;
 		const ctx = makeCtx({
-			delegateTask: async (task, o) => { captured = { task, o }; return "blocking-result"; },
-			delegateTaskBackground: (_t, _o) => "should-not-be-called",
+			delegateTask: async () => { blockingCalled = true; return "should-not-be-called"; },
+			delegateTaskBackground: (task, _o) => { bgCaptured = { task }; return "sub-bg-1"; },
 		});
-		const r = await run({ action: "delegate", task: "blocking work" }, ctx);
-		expect(r).toBe("blocking-result");
-		expect(captured.task).toBe("blocking work");
+		const r = await run({ action: "delegate", task: "background work" }, ctx);
+		expect(r).toMatch(/task_id: sub-bg-1/);
+		expect(bgCaptured.task).toBe("background work");
+		expect(blockingCalled).toBe(false);
 	});
 
 	test("sub-4: retired actions (stop/complete/request_finish/tree) error out", async () => {

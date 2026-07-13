@@ -324,7 +324,10 @@ export class SubagentDelegator {
 	}
 
 	// -----------------------------------------------------------------------
-	// delegateTask — blocking sub-agent execution (with auto-background)
+	// delegateTask — blocking sub-agent execution (Orchestrate's task nodes).
+	// sub-1: the auto-background race was removed; this is now pure blocking.
+	// Background sub-agent dispatch goes via delegateTaskBackground (called
+	// directly by the Subagent tool's `delegate` action).
 	// -----------------------------------------------------------------------
 
 	async delegateTask(task: string, options?: DelegateTaskOptions): Promise<string> {
@@ -386,67 +389,14 @@ export class SubagentDelegator {
 		this.runningSubloops.set(taskId, entry);
 		subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
 
-		const autoBgEnabled = toolConfig?.Subagent?.auto_background === true;
-		const autoBgSec = Number(toolConfig?.Subagent?.auto_background_timeout) || 0;
-
-		// Auto-background path: race the run against a timeout.
-		if (autoBgEnabled && autoBgSec > 0) {
-			const registry = this.taskRegistry;
-			const parentEmit = (event: StreamEvent) => this.emit(event);
-
-			let bgResult = "";
-			let bgError = "";
-			const done = new Promise<void>((resolve) => {
-				subLoop.run(task).then(() => {
-					bgResult = subLoop.getResult();
-					resolve();
-				}).catch((err: any) => {
-					bgError = err.message || "Unknown error";
-					resolve();
-				});
-			});
-
-			const timeout = new Promise<string>((resolve) => setTimeout(() => resolve("timeout"), autoBgSec * 1000));
-			const raceResult = await Promise.race([done.then(() => "done"), timeout]);
-
-			if (raceResult === "done") {
-				this.runningSubloops.delete(taskId);
-				if (bgError) {
-					this.updateDelegatedTask(taskId, { status: "failed", error: bgError });
-					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
-					this.fireOnTaskTerminal(taskId, "failed");
-					throw new Error(bgError);
-				}
-				this.updateDelegatedTask(taskId, { status: "completed", result: bgResult });
-				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
-				this.fireOnTaskTerminal(taskId, "completed");
-				return bgResult || "(sub-agent returned no output)";
-			}
-
-			// Timed out still running → register as a background task.
-			registry.create(taskId, "subagent", task, subAbort, this.config.ownerTaskId, targetAgentId);
-			await triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task });
-			done.then(async () => {
-				this.runningSubloops.delete(taskId);
-				if (bgError) {
-					registry.fail(taskId, bgError);
-					this.updateDelegatedTask(taskId, { status: "failed", error: bgError });
-					parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: bgError });
-					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
-					await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
-					this.fireOnTaskTerminal(taskId, "failed");
-				} else {
-					registry.complete(taskId, bgResult);
-					this.updateDelegatedTask(taskId, { status: "completed", result: bgResult });
-					parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "completed", result: bgResult });
-					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
-					await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
-					this.fireOnTaskTerminal(taskId, "completed");
-				}
-			});
-
-			return `Sub-agent auto-backgrounded after ${autoBgSec}s (still running).\ntask_id: ${taskId}\nUse TaskGet to check progress.`;
-		}
+		// sub-1 (execution-entry-redesign): the auto-background branch that used
+		// to race this run against a timeout was removed. The Subagent tool now
+		// calls delegateTaskBackground directly for background work, and
+		// delegateTask here is pure blocking — used only by Orchestrate's task
+		// nodes (orchestrate-tool.ts), which never sets the Subagent.auto_background
+		// config so the branch was dead anyway. If async-to-background semantics are
+		// ever needed again, route via delegateTaskBackground instead of
+		// re-introducing an auto-bg race here.
 
 		// Plain blocking path.
 		try {
