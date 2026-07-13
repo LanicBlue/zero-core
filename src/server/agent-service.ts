@@ -1453,6 +1453,16 @@ export class AgentService implements PlatformObserver {
 		// drain only handles "queued" items (next-turn semantics).
 		let next = this.inputQueue.drainNextQueued(sessionId);
 		while (next !== undefined) {
+			// C2 drain: a queued input is becoming a real turn. The manual send
+			// path adds user msg + assistant placeholder to the UI optimistically
+			// (ChatPanel.send); the drain runs server-side, so emit the same pair
+			// here. Without it the drained user message is persisted (TurnStart
+			// hook) but never appears live, and the assistant output merges into
+			// the previous turn's bubble (updateLastAssistantMsg reuses the last
+			// assistant). Pull-on-display recovers it on restart / switch-back
+			// regardless.
+			const drainedText = typeof next === "string" ? next : next.text;
+			this.emit({ type: "queued_turn_started", sessionId, agentId, text: drainedText });
 			try {
 				await loop.run(next);
 			} catch (err) {

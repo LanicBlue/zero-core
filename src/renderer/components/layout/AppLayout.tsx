@@ -47,7 +47,7 @@ import WikiPage from "../wiki/WikiPage.js";
 import { usePageStore } from "../../store/page-store.js";
 import { terminalTargetSession } from "../../store/event-attribution.js";
 import { useInteractionStore } from "../../store/interaction-store.js";
-import { useChatStore } from "../../store/chat-store.js";
+import { useChatStore, nextMsgId } from "../../store/chat-store.js";
 import { useNotificationStore } from "../../store/notification-store.js";
 import { useRequirementStore } from "../../store/requirement-store.js";
 import NotificationToast from "../common/NotificationToast.js";
@@ -236,6 +236,17 @@ export default function AppLayout() {
 				// never fall back to the active session.
 				if (d.sessionId) useChatStore.getState().setIsStreaming(d.sessionId, true);
 			},
+			queued_turn_started: (d, key) => {
+				// C2 drain: a queued input is starting a real turn server-side.
+				// Mirror the manual send path (ChatPanel.send) — insert the user
+				// message + an empty streaming assistant placeholder so this turn
+				// streams into its OWN bubble. Without the placeholder the drained
+				// assistant output merges into the previous turn's bubble
+				// (updateLastAssistantMsg reuses the last assistant), and the user
+				// message never appears live (only after pull / restart).
+				addMessage(key, { id: nextMsgId(), role: "user", text: d.text ?? "", timestamp: Date.now() });
+				addMessage(key, { id: nextMsgId(), role: "assistant", text: "", timestamp: Date.now(), streaming: true, blocks: [] });
+			},
 			retry_attempt: (d, key) => updateAssistantText(key, `Retrying (${d.attempt}/${d.maxAttempts})...`),
 			todos_update: (d) => {
 				// 按 sessionId 路由(同 agent 多 session 不串显)。
@@ -312,7 +323,7 @@ export default function AppLayout() {
 		const PER_SESSION_PUSH = new Set([
 			"text_delta", "thinking_delta", "tool_start", "tool_end",
 			"message_end", "usage", "retry_attempt",
-			"session_init", "todos_update", "ask_user",
+			"session_init", "todos_update", "ask_user", "queued_turn_started",
 		]);
 
 		const unsubscribe = api().onAgentEvent((data: any) => {
