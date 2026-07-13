@@ -32,7 +32,7 @@ export default function TitleBar() {
 	const showControls = platform === "win32" || platform === "linux";
 
 	return (
-		<div className="title-bar">
+		<div className={`title-bar${platform === "darwin" ? " title-bar-darwin" : ""}`}>
 			<span className="title-bar-name">Zero-Core</span>
 			{showControls && (
 				<div className="title-bar-controls">

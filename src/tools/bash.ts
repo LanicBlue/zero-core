@@ -54,6 +54,15 @@ function detectShell(): ShellInfo {
 	const isWin = process.platform === "win32";
 
 	if (!isWin) {
+		// Prefer Homebrew bash 5.x over macOS system /bin/bash (3.2, which
+		// lacks associative arrays, ${var^^}, mapfile, etc.). /opt/homebrew on
+		// Apple Silicon, /usr/local on Intel; fall back if neither is present.
+		for (const p of ["/opt/homebrew/bin/bash", "/usr/local/bin/bash"]) {
+			if (existsSync(p)) {
+				cachedShell = { shell: p, args: ["-c"], type: "bash" };
+				return cachedShell;
+			}
+		}
 		cachedShell = existsSync("/bin/bash")
 			? { shell: "/bin/bash", args: ["-c"], type: "bash" }
 			: { shell: "/bin/sh", args: ["-c"], type: "bash" };

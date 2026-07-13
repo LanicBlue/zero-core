@@ -47,12 +47,22 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative;
   padding: 0 12px;
   background: var(--bg-inset);
   border-bottom: 1px solid var(--border-default);
   -webkit-app-region: drag;
   flex-shrink: 0;
   user-select: none;
+}
+.title-bar-darwin {
+  /* macOS 原生红绿灯(左上三圆点)占 ~70px;标题在窗口水平居中 */
+  padding-left: 78px;
+}
+.title-bar-darwin .title-bar-name {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 }
 .title-bar-name {
   font-size: 12px;
