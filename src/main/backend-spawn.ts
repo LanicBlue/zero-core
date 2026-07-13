@@ -35,9 +35,11 @@
 
 import { fork, spawn, type ChildProcess } from "child_process";
 import { join, dirname } from "path";
+import { writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { app, dialog } from "electron";
 import { log as logger } from "../core/logger.js";
+import { ZERO_CORE_DIR } from "../core/config.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -112,6 +114,8 @@ export function spawnBackend(): Promise<BackendHandle> {
 						ready = true;
 						clearTimeout(timeout);
 						_handle = { process: child, port: msg.port };
+						// 暴露端口到 <ZERO_CORE_DIR>/runtime.port,供自更新 helper 验活(P6)
+						try { writeFileSync(join(ZERO_CORE_DIR, "runtime.port"), String(msg.port)); } catch { /* 数据目录不可写则忽略 */ }
 						log(`Backend ready on port ${msg.port}`);
 						resolve(_handle);
 					}

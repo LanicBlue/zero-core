@@ -26,7 +26,7 @@ import { createServer } from "http";
 import { WebSocketServer } from "ws";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { AgentStore } from "./agent-store.js";
 import { onDataChange, emitTransition } from "./data-change-hub.js";
@@ -986,6 +986,45 @@ export async function startServer(options?: StartServerOptions) {
 
 	// Ready endpoint
 	app.get("/api/ready", (_req, res) => res.json({ ready: true }));
+
+	// Health endpoint — 业务活络(自更新冒烟用);/api/ready 只代表 HTTP listen
+	app.get("/api/health", (_req, res) => {
+		const db = sessionDB.getDb();
+		let integrity = "ok";
+		let dbOk = false;
+		try {
+			const rows = db.pragma("integrity_check") as Array<{ integrity_check: string }>;
+			integrity = rows.map((r) => r.integrity_check).join("; ");
+			dbOk = integrity === "ok";
+		} catch (e: any) {
+			integrity = "error: " + (e?.message ?? String(e));
+		}
+		let dbWritable = false;
+		try {
+			db.exec("BEGIN; CREATE TEMP TABLE IF NOT EXISTS _health_probe(x); INSERT INTO _health_probe VALUES(1); ROLLBACK;");
+			dbWritable = true;
+		} catch { /* db not writable */ }
+		let providers = 0;
+		let agents = 0;
+		try { providers = providerStore.list().length; } catch { /* empty */ }
+		try { agents = agentStore.list().length; } catch { /* empty */ }
+		let version = "unknown";
+		try {
+			const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json");
+			version = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "unknown";
+		} catch { /* unknown */ }
+		res.json({
+			ready: true,
+			db: dbOk,
+			dbWritable,
+			integrity,
+			providers,
+			agents,
+			workspace: { exists: existsSync(workspaceConfig.workspaceDir) },
+			version,
+			uptimeMs: Math.round(process.uptime() * 1000),
+		});
+	});
 
 	// ─── WebSocket ──────────────────────────────────────────────
 
