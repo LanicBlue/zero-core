@@ -259,12 +259,12 @@ export const bashTool = buildTool({
 	description: buildDescription(),
 	prompt: buildPrompt(),
 	meta: { category: "runtime", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
-	configSchema: [
-		{ key: "timeout", type: "number", label: "默认超时 (s)", description: "命令执行超时时间（秒，留空则不限制）" },
-	],
+	// sub-2:configSchema 的 timeout 项移除 —— 默认固化 300s(execute 内硬编码),
+	// LLM 仍可经 input `timeout` 单次覆盖。前端 ToolsPage 自动不再渲染该项。
 	inputSchema: z.object({
 		command: z.string().describe("The shell command to execute"),
 		timeout: z.number().optional().describe("Timeout in seconds (a blocking call that times out auto-backgrounds as a safety net)"),
+		background: z.boolean().optional().describe("Run in background and return task_id immediately"),
 	}),
 	// tool-decoupling sub-3(决策 1/3 + G5/G6 + G2 流式):workingDir / toolConfig
 	// 从 callerCtx 取;Bash 流式经 callerCtx.emit 吐 stdout 增量(sub-2 的
@@ -280,9 +280,10 @@ export const bashTool = buildTool({
 	// 推一次完整 stdout 作为 partial。真增量流(spawn + chunked emit)留后续接入
 	// —— sub-3 不改 exec 模型,只把 emit 通道接通(G2 契约先就位)。
 	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult> => {
-		const { command, timeout: inputTimeout } = input;
-		const config = callerCtx.toolConfig?.Shell ?? {};
-		const timeoutSec = inputTimeout ?? config.timeout;
+		const { command, timeout: inputTimeout, background } = input;
+		// sub-2:timeout 默认固化 300s(不再读 configSchema 的 timeout —— 该项已移除)。
+		// LLM 仍可经 input `timeout` 单次覆盖。sub-3 把超时行为从 kill 改为转后台 task。
+		const timeoutSec = inputTimeout ?? 300;
 		const timeout = timeoutSec ? timeoutSec * 1000 : undefined;
 		const emit = typeof callerCtx.emit === "function" ? callerCtx.emit : undefined;
 
@@ -333,12 +334,45 @@ export const bashTool = buildTool({
 		const processedCommand = preprocessCommand(finalCommand, info.type);
 		const shellArgs = [...info.args, processedCommand];
 
-		// sub-4: Shell is BLOCKING only. Explicit background is the TaskStart
-		// {type:'shell'} tool — `background:true` was removed. A blocking call
-		// that times out throws (the auto-background safety net is a Subagent
-		// delegate concern, not a Shell one). Foreground:
+		// Background mode (sub-2):`background:true` 把命令送进后台 task registry,
+		// 立即返 task_id(不等命令完成)。从 sub-4 的移除里恢复 —— 现走中立的
+		// callerCtx.delegateFns.runBackground(G1 访问器形态)而非旧的 ctx.runBackground。
+		// 与 TaskStart{shell} 同 registry、同路径;两入口的取舍由 prompt 指引(sub-5)。
+		//
+		// G1:UI dispatcher 预览路径无 loop → delegateFns 缺失。返 benign preview
+		// 让 host 能渲染工具预览不崩(model 在真实 run 里看不到这个状态)。
+		if (background) {
+			const fns = callerCtx.delegateFns;
+			if (!fns) {
+				return {
+					ok: true,
+					data: { text: "(preview) Shell background is unavailable outside an agent loop — callerCtx has no delegateFns." },
+				};
+			}
+			if (!fns.runBackground) {
+				return { ok: false, error: "Background shell is not available in this context." };
+			}
+			const taskId = fns.runBackground(processedCommand, timeoutSec);
+			// Surface synchronous launch failures (bad shell / missing binary)
+			// immediately so the model can tell "launch failed" from "running".
+			const launched = fns.getTaskResult?.(taskId);
+			if (launched?.status === "failed") {
+				return {
+					ok: true,
+					data: {
+						text: `Background command failed to launch.\ntask_id: ${taskId}\nError: ${launched.result ?? "unknown launch error"}`,
+					},
+				};
+			}
+			return {
+				ok: true,
+				data: {
+					text: `Background shell started.\ntask_id: ${taskId}\nUse TaskGet to drill in (recent calls / completed result).`,
+				},
+			};
+		}
 
-		// Foreground mode
+		// Foreground mode (sub-2:timeout 默认 300s 固化;超时仍是 kill —— sub-3 改 spawn+转后台)
 		const cwd = callerCtx.workingDir ?? ".";
 		// encoding:"buffer" → stdout/stderr 以 Buffer 返回,交给 decodeExecBuffers
 		// 做 UTF-8(优先)/ GBK(Windows 原生命令回退)解码,避免中文乱码。
