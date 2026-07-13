@@ -795,6 +795,20 @@ export interface ToolExecutionContext {
 	endWait?: (reason: WakeReason) => void;
 	runBackground?: (command: string, timeout?: number) => string;
 	/**
+	 * sub-3 (Shell timeout auto-background): adopt an ALREADY-SPAWNED child
+	 * process into the task registry as a "bash" background task. Shell tool's
+	 * blocking-mode timeout path calls this with the still-running child + the
+	 * stdout/stderr chunks collected before timeout. The delegator wires
+	 * TaskKill → child.kill() and a close listener that decodes the chunks
+	 * (including post-timeout output) + completes/fails the task. Returns taskId.
+	 */
+	adoptBackgroundTask?: (
+		child: import("node:child_process").ChildProcess,
+		command: string,
+		stdoutChunks: Buffer[],
+		stderrChunks: Buffer[],
+	) => string;
+	/**
 	 * Step 2E: annotate the recorder's current tool-call block with the
 	 * delegated taskId backing it. Called by the Agent/Orchestrate tools right
 	 * after the delegator mints a taskId, so the parent step's tool-call block

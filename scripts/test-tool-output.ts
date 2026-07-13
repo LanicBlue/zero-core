@@ -33,9 +33,6 @@ import { globTool } from "../src/tools/glob.ts";
 import { webSearchTool, setSearchProvider, type SearchProvider } from "../src/tools/web-search.ts";
 import { webFetchTool } from "../src/tools/mcp/fetch-tools.ts";
 import { todoWriteTool, clearSessionTodos } from "../src/tools/todo-write.ts";
-import { taskListTool } from "../src/tools/task-list.ts";
-import { taskStatusTool } from "../src/tools/task-status.ts";
-import { taskStopTool } from "../src/tools/task-stop.ts";
 import { waitTool } from "../src/tools/wait.ts";
 
 function getExecute(toolObj: any) {
@@ -334,71 +331,12 @@ const results: Record<string, T[]> = {};
 // ═══════════════════════════════════════════
 // TaskList: config=max_completed
 // ═══════════════════════════════════════════
-{
-	const t: T[] = results["TaskList"] = [];
-	const run = getExecute(taskListTool);
-	const now = Date.now();
-	const tasks = Array.from({ length: 8 }, (_, i) => ({
-		id: `t${i}`, status: "completed", type: "bash" as const,
-		startedAt: now - (8 - i) * 1000, completedAt: now - (7 - i) * 1000,
-		step: 1, task: `task ${i}`,
-	}));
-
-	// --- config.max_completed=3 ---
-	let r = await run({}, ctx({ listTasks: () => tasks, toolConfig: { TaskList: { max_completed: 3 } } }));
-	t.push({ scenario: "config.max_completed=3", result: r, pass: r.includes("showing 3 of 8"), note: "Shows 3 of 8" });
-
-	// --- config.max_completed=10 (more than total) ---
-	r = await run({}, ctx({ listTasks: () => tasks, toolConfig: { TaskList: { max_completed: 10 } } }));
-	t.push({ scenario: "config.max_completed=10 (all)", result: r, pass: r.includes("t7") && !r.includes("of 8"), note: "Shows all" });
-
-	// --- filter=running ---
-	r = await run({ filter: "running" }, ctx({ listTasks: () => [] }));
-	t.push({ scenario: "filter=running: none", result: r, pass: r.includes("No running"), note: "Empty running" });
-}
-
-// ═══════════════════════════════════════════
-// TaskStatus: config=recent_turns, turn_length
-// ═══════════════════════════════════════════
-{
-	const t: T[] = results["TaskStatus"] = [];
-	const run = getExecute(taskStatusTool);
-
-	// --- not found ---
-	let r = await run({ task_id: "nope" }, ctx({ getTaskResult: () => null }));
-	t.push({ scenario: "not found", result: r, pass: r.includes("not found"), note: "Missing task" });
-
-	// --- running + currentTool ---
-	r = await run({ task_id: "t1" }, ctx({
-		getTaskResult: () => ({ id: "t1", status: "running", startedAt: Date.now() - 3000, step: 4, currentTool: "Bash" }),
-		db: null,
-	}));
-	t.push({ scenario: "running with currentTool", result: r, pass: r.includes("running") && r.includes("Bash"), note: "Shows current tool" });
-
-	// --- completed + elapsed ---
-	r = await run({ task_id: "t2" }, ctx({
-		getTaskResult: () => ({ id: "t2", status: "completed", startedAt: Date.now() - 5000, completedAt: Date.now(), step: 8 }),
-		db: null,
-	}));
-	t.push({ scenario: "completed elapsed", result: r, pass: r.includes("completed") && r.includes("5s"), note: "Elapsed time" });
-}
-
-// ═══════════════════════════════════════════
-// TaskStop
-// ═══════════════════════════════════════════
-{
-	const t: T[] = results["TaskStop"] = [];
-	const run = getExecute(taskStopTool);
-
-	let r = await run({ task_id: "nope" }, ctx({ getTaskResult: () => null, stopTask: () => false }));
-	t.push({ scenario: "not found", result: r, pass: r.includes("not found"), note: "Missing task" });
-
-	r = await run({ task_id: "t1" }, ctx({ getTaskResult: () => ({ id: "t1", status: "completed" }), stopTask: () => false }));
-	t.push({ scenario: "not running", result: r, pass: r.includes("not running"), note: "Wrong status" });
-
-	r = await run({ task_id: "t2" }, ctx({ getTaskResult: () => ({ id: "t2", status: "running" }), stopTask: () => true }));
-	t.push({ scenario: "stopped ok", result: r, pass: r.includes("stopped"), note: "Success" });
-}
+// REMOVED in sub-4 (execution-entry-redesign): taskListTool, taskStatusTool,
+// and taskStopTool were merged into the single `Task` action tool (`taskTool`
+// with `{action:'list'|'get'|'kill'}`). Their source files were deleted, so
+// the per-tool output-format cases that lived here can no longer import them.
+// The new tool's list/get/kill semantics + toolConfig.Task.max_completed config
+// are exercised in tests/unit/sub4-task-action-tool.test.ts.
 
 // ═══════════════════════════════════════════
 // Wait

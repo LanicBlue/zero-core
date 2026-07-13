@@ -106,7 +106,7 @@ function renderSessionsList(
 	nowMs: number = Date.now(),
 ): string {
 	if (rows.length === 0) {
-		return "No parent agent sessions. (Agents without an active/main chat session, or delegated sub-agent sessions, are not listed — those surface via TaskList.)";
+		return "No parent agent sessions. (Agents without an active/main chat session, or delegated sub-agent sessions, are not listed — those surface via `Task action:'list'`.)";
 	}
 	// Sort: running first, then waiting, then idle; within a group, most recent activity first.
 	const order: Record<string, number> = { running: 0, waiting: 1, idle: 2 };

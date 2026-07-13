@@ -10,7 +10,7 @@ graph TB
     R --> B["Built-in Tools<br/>25 个<br/>(ALL_TOOLS, registerRuntimeTools)"]
     R --> M["MCP Tools<br/>动态数量<br/>(source=mcp)"]
     B --> B1["runtime 域<br/>Shell/Read/Write/Edit<br/>Grep/Glob/Wait"]
-    B --> B2["task 域<br/>TaskList/Status/Stop"]
+    B --> B2["task 域<br/>Task"]
     B --> B3["web 域<br/>WebSearch/WebFetch"]
     B --> B4["interaction 域<br/>TodoWrite/AskUser"]
     B --> B5["thinking 域<br/>SequentialThinking"]
@@ -100,11 +100,9 @@ ToolExecutionContext {
 | Edit | runtime | ✅ 写 | ⚠️ | ❌ | — | 精确匹配 + 错误诊断（空白/换行提示）|
 | Grep | runtime | ❌ | ❌ | ✅ | — | ripgrep 风格搜索（v0.8 加 native 降级回退）|
 | Glob | runtime | ❌ | ❌ | ✅ | — | 文件路径匹配 |
-| Wait | runtime | ❌ | ❌ | ✅ | `ctx.suspendUntilWake` | 事件驱动等待 |
+| Wait | task | ❌ | ❌ | ✅ | `ctx.suspendUntilWake` | 事件驱动等待 |
 | Agent | agent | ✅ 写 | ❌ | ❌ | `ctx.delegateTask` | 子 Agent 委派（action=list/delegate，blocking/non_blocking）|
-| TaskStatus | task | ❌ | ❌ | ✅ | `ctx.getTaskResult` | 查询后台任务 |
-| TaskList | task | ❌ | ❌ | ✅ | `ctx.listTasks` | 列任务 |
-| TaskStop | task | ✅ 写 | ⚠️ | ❌ | `ctx.stopTask` | 终止任务 |
+| **Task** | task | 视 action 而定 | ⚠️ | ❌ | `ctx.{getTaskResult,listTasks,stopTask,abandonTask,acknowledgeTask,requestTaskFinish,resumeTaskBackground}` | action-switched 后台任务管理（get/list/kill/finish/resume）；原 TaskStatus/TaskList/TaskStop 三件套已合并 |
 | WebSearch | web | ❌ | ❌ | ✅ | — | 4 后端 |
 | WebFetch | web | ❌ | ❌ | ✅ | — | Markdown + Cookie + 浏览器渲染 |
 | SequentialThinking | thinking | ❌ | ❌ | ✅ | — | 思维链状态机（可改 totalThoughts 反悔）|
@@ -181,7 +179,7 @@ transport === 'sse' | 'streamable-http':
 - **action-switched(2 个 action)**：
   - `list`：现查 caller(`ctx.resolveAgent(agentId)`)的 `subagents[]`，列出当前可委派的子 Agent(name/description/model)。**自发现**——不靠 system prompt 注入名单。
   - `delegate`：传 `subagent`(name) → 委派给那个已注册 agent，用它的身份(systemPrompt/model/toolPolicy)跑；不传 → 临时委派(继承 caller 身份，或 inline `model`/`systemPrompt` 覆盖)。
-- **`mode`**：`blocking`(默认，await 结果) | `non_blocking`(返回 `task_id`，后续用 Wait/TaskStatus 查)。
+- **`mode`**：`blocking`(默认，await 结果) | `non_blocking`(返回 `task_id`，后续用 Wait 或 `Task action:'get'` 查)。
 - **白名单语义**：`subagent` 字段只能填 caller 自己 subagents 列表里的 agent(name 匹配)；匹配不到 → 报错并列出可用名；目标 agentId 查不到 → 报错(不静默回落到 caller)。
 - **隔离级别(v0.8 关键改动)**：子 Agent 跑在**独立 session 上下文**里(`sessionId=undefined` 隔离，详见 `MEMORY.md` v0.8 工具加固决策)。caller 把"上下文 bundle"(projectId / requirementId / 关键 wiki anchor)显式传过去；**不再共享 DB session 句柄**，从根本上消除了旧 internal 模式的跨 agent 写竞争问题(见 §12.2 旧评价已失效)。
 - **configSchema**：`auto_background` + `auto_background_timeout` —— 阻塞超时自动转后台(避免无限挂起)。

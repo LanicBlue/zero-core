@@ -123,7 +123,7 @@ export const cronTool = buildTool({
 		"- { action:'trigger', id } — fire immediately. (P3 stub: records the trigger request; P4 lands the actual scheduler run + cron_runs write.)\n" +
 		"- { action:'today' } — list today's planned cron fires (one row per enabled cron whose next slot lands inside today's local calendar day; interval crons always listed with an interval hint). Read-only; backs the kanban's 'today' column.",
 	meta: {
-		category: "agent",
+		category: "management",
 		isReadOnly: false,
 		isConcurrencySafe: false,
 		isDestructive: false,

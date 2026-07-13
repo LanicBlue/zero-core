@@ -14,7 +14,7 @@
 //
 // ## 输出
 // - 仅 wake 原因 + elapsed:`woke: timeout` / `woke: task finished` /
-//   `woke: user input`。去摘要(completed task 详情走 TaskGet)。
+//   `woke: user input`。去摘要(completed task 详情走 Task action:'get')。
 //   形态:ToolResult{data:{text, reason?, elapsedSec?}};format(r) = r.data.text。
 //
 // ## 定位
@@ -57,13 +57,13 @@ export const waitTool = buildTool({
 		"- Any background task finishes: any delegated/background task reaching a terminal state.\n" +
 		"- User input: the user sends a message while you're waiting (ends the current turn, starts a new one).\n\n" +
 		"When to use Wait:\n" +
-		"- After dispatching background tasks (TaskStart), to block until they complete or a deadline.\n" +
+		"- After dispatching background tasks (Subagent delegate for an agent, Shell background:true for a command), to block until they complete or a deadline.\n" +
 		"- To pause until a known future time.\n\n" +
 		"Parameters (provide one):\n" +
 		"- until: ISO 8601 absolute time point to wake at (e.g. \"2026-07-07T10:30:00Z\"). Durable across restarts.\n" +
 		"- timeout: relative wait in seconds (1-3600). Used when `until` is omitted. Durable across restarts: on crash/restart the remaining time is computed from the persisted start timestamp and the wait is re-suspended for the remainder (already-elapsed → fills as timeout). Both `until` and `timeout` survive restarts.\n\n" +
-		"Returns: `woke: timeout` / `woke: task finished` / `woke: user input` plus elapsed seconds. For task results use TaskGet — Wait no longer returns a task summary.",
-	meta: { category: "runtime", isReadOnly: true, isConcurrencySafe: true, isDestructive: false, exposable: false },
+		"Returns: `woke: timeout` / `woke: task finished` / `woke: user input` plus elapsed seconds. For task results use Task action:'get' — Wait no longer returns a task summary.",
+	meta: { category: "task", isReadOnly: true, isConcurrencySafe: true, isDestructive: false, exposable: false },
 	inputSchema: z.object({
 		until: z.string().describe("ISO 8601 absolute time point to wake at. Durable across restarts."),
 		timeout: z.number().min(1).max(3600).optional().describe("Relative wait in seconds (1-3600). Used when `until` is omitted."),

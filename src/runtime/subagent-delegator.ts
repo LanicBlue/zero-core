@@ -35,7 +35,7 @@ import { spawn } from "node:child_process";
 import { TaskRegistry } from "./task-registry.js";
 import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
-import { OUTPUT_TRUNCATION_CHARS } from "../core/constants.js";
+import { OUTPUT_TRUNCATION_CHARS, EXEC_MAX_BUFFER_BYTES } from "../core/constants.js";
 import { decodeShellBuffer } from "../core/encoding.js";
 import { registerHooksForLoop, type HookWiringDeps } from "./hooks/index.js";
 // sub-4 (TaskResume turn_seq guard): pre-populate the shared turn_seq cursor +
@@ -324,7 +324,10 @@ export class SubagentDelegator {
 	}
 
 	// -----------------------------------------------------------------------
-	// delegateTask — blocking sub-agent execution (with auto-background)
+	// delegateTask — blocking sub-agent execution (Orchestrate's task nodes).
+	// sub-1: the auto-background race was removed; this is now pure blocking.
+	// Background sub-agent dispatch goes via delegateTaskBackground (called
+	// directly by the Subagent tool's `delegate` action).
 	// -----------------------------------------------------------------------
 
 	async delegateTask(task: string, options?: DelegateTaskOptions): Promise<string> {
@@ -386,67 +389,14 @@ export class SubagentDelegator {
 		this.runningSubloops.set(taskId, entry);
 		subAbort.signal.addEventListener("abort", () => subLoop.abort(), { once: true });
 
-		const autoBgEnabled = toolConfig?.Subagent?.auto_background === true;
-		const autoBgSec = Number(toolConfig?.Subagent?.auto_background_timeout) || 0;
-
-		// Auto-background path: race the run against a timeout.
-		if (autoBgEnabled && autoBgSec > 0) {
-			const registry = this.taskRegistry;
-			const parentEmit = (event: StreamEvent) => this.emit(event);
-
-			let bgResult = "";
-			let bgError = "";
-			const done = new Promise<void>((resolve) => {
-				subLoop.run(task).then(() => {
-					bgResult = subLoop.getResult();
-					resolve();
-				}).catch((err: any) => {
-					bgError = err.message || "Unknown error";
-					resolve();
-				});
-			});
-
-			const timeout = new Promise<string>((resolve) => setTimeout(() => resolve("timeout"), autoBgSec * 1000));
-			const raceResult = await Promise.race([done.then(() => "done"), timeout]);
-
-			if (raceResult === "done") {
-				this.runningSubloops.delete(taskId);
-				if (bgError) {
-					this.updateDelegatedTask(taskId, { status: "failed", error: bgError });
-					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
-					this.fireOnTaskTerminal(taskId, "failed");
-					throw new Error(bgError);
-				}
-				this.updateDelegatedTask(taskId, { status: "completed", result: bgResult });
-				await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
-				this.fireOnTaskTerminal(taskId, "completed");
-				return bgResult || "(sub-agent returned no output)";
-			}
-
-			// Timed out still running → register as a background task.
-			registry.create(taskId, "subagent", task, subAbort, this.config.ownerTaskId, targetAgentId);
-			await triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task });
-			done.then(async () => {
-				this.runningSubloops.delete(taskId);
-				if (bgError) {
-					registry.fail(taskId, bgError);
-					this.updateDelegatedTask(taskId, { status: "failed", error: bgError });
-					parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: bgError });
-					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
-					await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: bgError });
-					this.fireOnTaskTerminal(taskId, "failed");
-				} else {
-					registry.complete(taskId, bgResult);
-					this.updateDelegatedTask(taskId, { status: "completed", result: bgResult });
-					parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "completed", result: bgResult });
-					await triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
-					await triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result: bgResult });
-					this.fireOnTaskTerminal(taskId, "completed");
-				}
-			});
-
-			return `Sub-agent auto-backgrounded after ${autoBgSec}s (still running).\ntask_id: ${taskId}\nUse TaskGet to check progress.`;
-		}
+		// sub-1 (execution-entry-redesign): the auto-background branch that used
+		// to race this run against a timeout was removed. The Subagent tool now
+		// calls delegateTaskBackground directly for background work, and
+		// delegateTask here is pure blocking — used only by Orchestrate's task
+		// nodes (orchestrate-tool.ts), which never sets the Subagent.auto_background
+		// config so the branch was dead anyway. If async-to-background semantics are
+		// ever needed again, route via delegateTaskBackground instead of
+		// re-introducing an auto-bg race here.
 
 		// Plain blocking path.
 		try {
@@ -989,6 +939,165 @@ export class SubagentDelegator {
 			parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: err.message });
 			triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: err.message }).catch(() => {});
 		});
+
+		return taskId;
+	}
+
+	// -----------------------------------------------------------------------
+	// adoptBackgroundTask — sub-3 (Shell timeout auto-background):
+	// adopt an ALREADY-SPAWNED child process into the task registry as a "bash"
+	// background task. Used by the Shell tool's blocking-mode timeout path:
+	// bash.ts spawns with `spawn` + manual timeout detection; on timeout the
+	// child is NOT killed — instead it's handed off here along with the
+	// stdout/stderr chunks collected so far. The delegator wires the child's
+	// close event to the registry's complete/fail, and an AbortController to
+	// child.kill() so TaskKill actually terminates the process. Returns taskId.
+	//
+	// Unlike runBackground (which spawns a NEW process), this method takes
+	// ownership of a process the CALLER already started. The caller's existing
+	// `data` listeners on child.stdout/stderr MUST remain attached — they keep
+	// appending to the stdoutChunks/stderrChunks arrays passed in here, and
+	// this method's close handler reads those same arrays (by reference) at
+	// completion. No new `data` listeners are attached here.
+	//
+	// Lifecycle:
+	//   - On handoff: registry.create(taskId, "bash", command, ac, ownerTaskId).
+	//     ac is wired to child.kill() so TaskKill → registry.kill → ac.abort
+	//     → SIGTERM. Unlike runBackground (which passes abortController=
+	//     undefined, so kill is bookkeeping-only), adopt's kill actually
+	//     terminates the process.
+	//   - On child close: if status is already "killed" (TaskKill fired
+	//     first), skip complete/fail (status is already terminal — registry
+	//     otherwise has no terminal-state guard and would override). Otherwise
+	//     decode buffers + complete(code===0)/fail(code!==0).
+	//   - On child 'error' event: same skip-if-killed, then fail.
+	//
+	// No delegated_tasks row (matches runBackground — these are pure in-memory
+	// background shell tasks, no persistence). Survives in registry until
+	// cleanup (maxAgeMs 1h default) or acknowledge.
+	//
+	// NOT a regression risk to runBackground: separate code path, separate
+	// taskId namespace (same `bg-` prefix shared by both — identical shape in
+	// the registry). The two methods never interact (runBackground spawns
+	// fresh; adopt receives an already-running child).
+	// -----------------------------------------------------------------------
+
+	adoptBackgroundTask(
+		child: import("node:child_process").ChildProcess,
+		command: string,
+		stdoutChunks: Buffer[],
+		stderrChunks: Buffer[],
+	): string {
+		const taskId = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+		const registry = this.taskRegistry;
+		const parentEmit = (event: StreamEvent) => this.emit(event);
+
+		// AbortController wires TaskKill → child.kill(). On abort, SIGTERM the
+		// child; the subsequent 'close' event will see status="killed" and
+		// skip complete/fail (skip-if-killed guard below).
+		const ac = new AbortController();
+		ac.signal.addEventListener("abort", () => {
+			try { child.kill(); } catch { /* already exited */ }
+		}, { once: true });
+
+		registry.create(taskId, "bash", command, ac, this.config.ownerTaskId);
+		triggerHooks("TaskCreated", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, task: command }).catch(() => {});
+
+		// m1: shared settled flag for close+error. Node may emit BOTH on
+		// fatal errors (error first, then close) — without this guard,
+		// finalize would run twice → duplicate registry.fail + emit + hook.
+		// First event wins; second is a no-op.
+		let settled = false;
+
+		// finalize: unified close + error handler. Always decodes chunks
+		// (covers all paths — m2 killed + m4 error + normal close + M1
+		// maxbuffer detection via chunks total size).
+		const finalize = (reason: "close" | "error", code: number | null, err?: Error) => {
+			if (settled) return;
+			settled = true;
+
+			// Decode chunks (always — covers m4 error path + m2 killed path
+			// + normal close). Same UTF-8/GBK fallback as runBackground.
+			const stdout = decodeShellBuffer(Buffer.concat(stdoutChunks));
+			const stderr = decodeShellBuffer(Buffer.concat(stderrChunks));
+			let partial = "";
+			if (stdout) partial += stdout;
+			if (stderr) partial += (partial ? "\n" : "") + "[stderr] " + stderr;
+
+			// M1: detect maxbuffer via chunks size. bash.ts's data listener
+			// detaches itself + kills child when totalBytes > MAX. We don't
+			// have a shared-state channel — totalBytes is the proxy. If
+			// chunks > MAX, maxbuffer was the root cause (chunks can't grow
+			// past MAX without the listener firing). Prefix the message +
+			// always fail (a child that hit maxbuffer never "succeeds").
+			const totalBytes = stdoutChunks.reduce((s, c) => s + c.length, 0)
+				+ stderrChunks.reduce((s, c) => s + c.length, 0);
+			const maxBufferHit = totalBytes > EXEC_MAX_BUFFER_BYTES;
+
+			// Truncate for storage (same OUTPUT_TRUNCATION_CHARS guard as
+			// runBackground — 50K, prevents registry memory blowup on tasks
+			// that legitimately produced just-under-MAX output).
+			const trunc = (s: string) => s.length > OUTPUT_TRUNCATION_CHARS
+				? s.slice(0, OUTPUT_TRUNCATION_CHARS) + "\n... (output truncated)"
+				: s;
+
+			// m2: skip-if-killed guard. If TaskKill fired before finalize,
+			// status is already "killed" — don't override (registry.complete/
+			// fail have no terminal-state check; they'd clobber). DECODE THE
+			// CHUNKS ANYWAY and write to info.result so TaskGet shows the
+			// partial output (commands often succeed then get killed by the
+			// agent — losing the output discards useful work). registry.get
+			// returns the actual info object reference; mutation propagates.
+			//
+			// Event/hook status: subagent_completed's status union is
+			// "completed" | "failed" (no "killed"). Follow the stopTask
+			// convention — map killed → "failed" for the event stream.
+			const cur = registry.get(taskId)?.status;
+			if (cur === "killed") {
+				const preserved = `(killed) ${trunc(partial)}`;
+				const info = registry.get(taskId);
+				if (info) info.result = preserved;
+				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result: preserved });
+				triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result: preserved }).catch(() => {});
+				return;
+			}
+
+			// M1 maxbuffer path: prefix message + always fail.
+			if (maxBufferHit) {
+				const result = trunc(`Output exceeded ${EXEC_MAX_BUFFER_BYTES} bytes (process killed). ${partial}`);
+				registry.fail(taskId, result);
+				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result });
+				triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result }).catch(() => {});
+				return;
+			}
+
+			// m4: error path — prepend err.message so the partial output
+			// collected before the error is preserved alongside the cause.
+			if (reason === "error" && err) {
+				const result = trunc(`${err.message}\n${partial}`);
+				registry.fail(taskId, result);
+				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result });
+				triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result }).catch(() => {});
+				return;
+			}
+
+			// Normal close path.
+			const numericCode = typeof code === "number" ? code : -1;
+			if (numericCode === 0) {
+				const result = trunc(partial) || "(no output)";
+				registry.complete(taskId, result);
+				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "completed", result });
+				triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "completed", result }).catch(() => {});
+			} else {
+				const result = trunc(`Exit code ${numericCode}: ${partial}`);
+				registry.fail(taskId, result);
+				parentEmit({ type: "subagent_completed", agentId: this.config.agentId, taskId, status: "failed", result });
+				triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed", result }).catch(() => {});
+			}
+		};
+
+		child.on("close", (code) => finalize("close", code));
+		child.on("error", (err: Error) => finalize("error", -1, err));
 
 		return taskId;
 	}

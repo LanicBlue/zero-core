@@ -126,6 +126,21 @@ export interface DelegateFns {
 	getTaskRecentCalls?: (taskId: string, n?: number) => Array<{ name: string; args?: string }>;
 	/** Run a shell command in the background; returns taskId. */
 	runBackground?: (command: string, timeout?: number) => string;
+	/**
+	 * sub-3 (Shell timeout auto-background): adopt an ALREADY-SPAWNED child
+	 * process into the task registry as a "bash" background task. Used by the
+	 * Shell tool's blocking-mode timeout path — the child is spawned with
+	 * `spawn` + manual timeout detection; on timeout the child is NOT killed,
+	 * but handed off here with the stdout/stderr chunks collected so far (the
+	 * caller's `data` listeners stay attached; this method attaches a close
+	 * listener + wires TaskKill → child.kill()). Returns taskId.
+	 */
+	adoptBackgroundTask?: (
+		child: import("node:child_process").ChildProcess,
+		command: string,
+		stdoutChunks: Buffer[],
+		stderrChunks: Buffer[],
+	) => string;
 	/** Suspend the calling Wait tool until a wake event (time / task finish / user input). */
 	suspendUntilWake?: (opts: any) => Promise<any>;
 	/** Announce Wait suspension starting (release "running" state). Best-effort no-op. */

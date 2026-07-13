@@ -26,17 +26,14 @@
 // - 新增危险命令黑名单时需更新
 //
 import { z } from "zod";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { existsSync } from "node:fs";
 import { buildTool } from "./tool-factory.js";
+import { decodeShellBuffer } from "../core/encoding.js";
 import { EXEC_MAX_BUFFER_BYTES } from "../core/constants.js";
-import { decodeExecBuffers } from "../core/encoding.js";
 import { findWikiPathInShellCommand, wikiPathRejectMessage } from "./wiki-path-guard.js";
 import { resolveSkillTokensInShellCommand } from "./skill-paths.js";
 import type { CallerCtx, ToolResult } from "./types.js";
-
-const execFileAsync = promisify(execFile);
 
 // ─── Shell detection ─────────────────────────────────────────────────
 
@@ -241,7 +238,7 @@ function buildPrompt(): string {
 		"- Always quote file paths that contain spaces with double quotes.",
 		"- Always use absolute paths. Do NOT rely on `cd` to persist — each call starts fresh from the workspace root. Use `cd dir && command` to run in a specific directory within a single call.",
 		"- You may specify an optional timeout in seconds. By default, commands have no timeout unless configured.",
-		"- Shell is BLOCKING (waits for output). For a long-running background command (downloads, installs, watches), use TaskStart { type:'shell', command } — it returns a task_id immediately; check it via TaskGet / Wait. A blocking Shell call that times out auto-backgrounds as a safety net (you get a task_id).",
+		"- Shell is BLOCKING (waits for output). For a long-running background command (downloads, installs, watches), use Shell { command, background:true } — it returns a task_id immediately; check it via Task action:'get' / Wait. A blocking Shell call that times out auto-backgrounds as a TASK (the process is kept alive and adopted into the task registry, NOT killed); you decide whether to stop it via Task action:'kill' or let it finish — check it via Task action:'get'.",
 		"- When issuing multiple commands: if independent, make multiple Shell calls in parallel; if dependent, chain with `&&`. Use `;` only when you don't care if earlier commands fail.",
 		"- DO NOT use newlines to separate commands.",
 		"- For git commands: prefer creating new commits over amending. Never skip hooks (--no-verify) unless explicitly asked.",
@@ -259,12 +256,12 @@ export const bashTool = buildTool({
 	description: buildDescription(),
 	prompt: buildPrompt(),
 	meta: { category: "runtime", isReadOnly: false, isDestructive: true, isConcurrencySafe: false },
-	configSchema: [
-		{ key: "timeout", type: "number", label: "默认超时 (s)", description: "命令执行超时时间（秒，留空则不限制）" },
-	],
+	// sub-2:configSchema 的 timeout 项移除 —— 默认固化 300s(execute 内硬编码),
+	// LLM 仍可经 input `timeout` 单次覆盖。前端 ToolsPage 自动不再渲染该项。
 	inputSchema: z.object({
 		command: z.string().describe("The shell command to execute"),
-		timeout: z.number().optional().describe("Timeout in seconds (a blocking call that times out auto-backgrounds as a safety net)"),
+		timeout: z.number().optional().describe("Timeout in seconds (a blocking call that times out auto-backgrounds as a live task — the process is adopted, not killed)"),
+		background: z.boolean().optional().describe("Run in background and return task_id immediately"),
 	}),
 	// tool-decoupling sub-3(决策 1/3 + G5/G6 + G2 流式):workingDir / toolConfig
 	// 从 callerCtx 取;Bash 流式经 callerCtx.emit 吐 stdout 增量(sub-2 的
@@ -276,13 +273,16 @@ export const bashTool = buildTool({
 	// emit 存在 → 边跑边吐 {type:"partial", text:<stdout 增量>}。终态 JSON 仍含
 	// 完整 stdout(emit 是副作用通道,不影响返值)。
 	//
-	// 注:当前用 execFileAsync 一次性收集 stdout(非真流式);emit 在结果就绪后
-	// 推一次完整 stdout 作为 partial。真增量流(spawn + chunked emit)留后续接入
-	// —— sub-3 不改 exec 模型,只把 emit 通道接通(G2 契约先就位)。
+	// 注:execution-entry-redesign sub-3 把执行模型从 execFileAsync 改成 spawn
+	// (为了超时能保留子进程并 adopt 进 task registry,见 foreground 路径)。spawn
+	// 增量收集 stdout 进 chunks 数组,但 emit 仍在 close 后一次性推完整 stdout 作为
+	// partial(非真增量流)。真 chunked emit 留后续接入 —— 当前优先级是"输出不丢 +
+	// 超时转后台",不是流式 UX。
 	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult> => {
-		const { command, timeout: inputTimeout } = input;
-		const config = callerCtx.toolConfig?.Shell ?? {};
-		const timeoutSec = inputTimeout ?? config.timeout;
+		const { command, timeout: inputTimeout, background } = input;
+		// sub-2:timeout 默认固化 300s(不再读 configSchema 的 timeout —— 该项已移除)。
+		// LLM 仍可经 input `timeout` 单次覆盖。sub-3 把超时行为从 kill 改为转后台 task。
+		const timeoutSec = inputTimeout ?? 300;
 		const timeout = timeoutSec ? timeoutSec * 1000 : undefined;
 		const emit = typeof callerCtx.emit === "function" ? callerCtx.emit : undefined;
 
@@ -333,58 +333,217 @@ export const bashTool = buildTool({
 		const processedCommand = preprocessCommand(finalCommand, info.type);
 		const shellArgs = [...info.args, processedCommand];
 
-		// sub-4: Shell is BLOCKING only. Explicit background is the TaskStart
-		// {type:'shell'} tool — `background:true` was removed. A blocking call
-		// that times out throws (the auto-background safety net is a Subagent
-		// delegate concern, not a Shell one). Foreground:
+		// Background mode (sub-2):`background:true` 把命令送进后台 task registry,
+		// 立即返 task_id(不等命令完成)。从 sub-4 的移除里恢复 —— 现走中立的
+		// callerCtx.delegateFns.runBackground(G1 访问器形态)而非旧的 ctx.runBackground。
+		// 与(已删的)旧 start{shell} 入口同 registry、同路径;Shell background:true
+		// 现在是后台 shell 的唯一入口(取舍由 prompt 指引 sub-5)。
+		//
+		// G1:UI dispatcher 预览路径无 loop → delegateFns 缺失。返 benign preview
+		// 让 host 能渲染工具预览不崩(model 在真实 run 里看不到这个状态)。
+		if (background) {
+			const fns = callerCtx.delegateFns;
+			if (!fns) {
+				return {
+					ok: true,
+					data: { text: "(preview) Shell background is unavailable outside an agent loop — callerCtx has no delegateFns." },
+				};
+			}
+			if (!fns.runBackground) {
+				return { ok: false, error: "Background shell is not available in this context." };
+			}
+			const taskId = fns.runBackground(processedCommand, timeoutSec);
+			// Surface synchronous launch failures (bad shell / missing binary)
+			// immediately so the model can tell "launch failed" from "running".
+			const launched = fns.getTaskResult?.(taskId);
+			if (launched?.status === "failed") {
+				return {
+					ok: true,
+					data: {
+						text: `Background command failed to launch.\ntask_id: ${taskId}\nError: ${launched.result ?? "unknown launch error"}`,
+					},
+				};
+			}
+			return {
+				ok: true,
+				data: {
+					text: `Background shell started.\ntask_id: ${taskId}\nUse Task action:'get' to drill in (recent calls / completed result).`,
+				},
+			};
+		}
 
-		// Foreground mode
+		// Foreground mode (sub-3:execFileAsync → spawn + 手动超时检测 + 输出增量
+		// 收集 + 超时转后台 adopt)。spawn 让我们能在超时时**保留**子进程(不 kill)
+		// 并把它移交给 task registry(adoptBackgroundTask),后续输出持续收集进
+		// task result,Task action:'get' 能看到。文本壳(成功 / 失败 / 超时三条路径)与 sub-3
+		// 前逐字一致 —— agent 行为不回归;只有超时路径从"丢命令"变成"转后台 task"。
 		const cwd = callerCtx.workingDir ?? ".";
-		// encoding:"buffer" → stdout/stderr 以 Buffer 返回,交给 decodeExecBuffers
-		// 做 UTF-8(优先)/ GBK(Windows 原生命令回退)解码,避免中文乱码。
-		const execOpts: any = { cwd, maxBuffer: EXEC_MAX_BUFFER_BYTES, encoding: "buffer" };
-		if (timeout) execOpts.timeout = timeout;
-		// skill-system sub-3:命令含 skill 脚本时注入 `SKILL_DIR=<真实 baseDir>` 子进程
-		// env(协议脚本可能依赖自定位)。多 skill 命令取第一个锚点的 baseDir(与 token
-		// 替换的 `${SKILL_DIR}` 语义一致);无 skill → 不设 env(走 process.env 继承)。
+		const spawnOpts: SpawnOptions = {
+			cwd,
+			// m3:显式关 stdin。spawn 默认 stdio:'pipe' → 父进程不写不关 stdin →
+			// `cat` / `tail -f`(无参)等命令会 blocking 等 stdin → 300s 超时转后台
+			// 后子进程继续阻塞 → registry 里永久存活。Shell 命令本就不该读 stdin,
+			// 用 'ignore' 让 child 看到 EOF 立即退出(无参命令)/ 不阻塞。
+			stdio: ["ignore", "pipe", "pipe"],
+			// n1:Windows 上 spawn cmd.exe / git bash 默认会闪一下控制台窗口。
+			// windowsHide:true 让 child 隐藏窗口运行(非 Windows 平台 no-op)。
+			windowsHide: true,
+		};
+		// skill-system:命令含 skill 脚本时注入 `SKILL_DIR=<真实 baseDir>` 子进程 env。
+		// (与 sub-3 前的 execOpts.env 语义一致;spawn 的 env 形态完全相同。)
 		if (skillDirs.length > 0) {
-			execOpts.env = { ...process.env, SKILL_DIR: skillDirs[0] };
+			spawnOpts.env = { ...process.env, SKILL_DIR: skillDirs[0] };
 		}
 		const t0 = Date.now();
 
+		// spawn 同步失败(极少见,通常是 shell binary 缺失或权限问题)→ 立即返失败,
+		// 与 execFileAsync 的同步 throw 路径等价(只是更早抛 — execFile 是异步抛 error
+		// 事件,spawn 失败也走 error 事件,但 try/catch 能抓到 ENOENT 等启动期错误)。
+		let child: ChildProcess;
 		try {
-			const result = await execFileAsync(info.shell, shellArgs, execOpts) as unknown as { stdout: Buffer; stderr: Buffer };
-			const elapsedSec = ((Date.now() - t0) / 1000).toFixed(1);
-			const { stdout, stderr } = decodeExecBuffers(result);
-			// G2 流式:推一次完整 stdout 作为 partial(真增量流留后续)。
-			if (emit && stdout) emit({ type: "partial", text: stdout.trim() });
-			let text = "";
-			if (stdout) text += stdout.trim();
-			if (stderr) text += "\n[stderr] " + stderr.trim();
-			text += `\n[Completed in ${elapsedSec}s]`;
-			return wrap({ text, stdout: stdout.trim(), stderr: stderr.trim(), exitCode: 0, elapsedSec }, true);
+			child = spawn(info.shell, shellArgs, spawnOpts);
 		} catch (err: any) {
 			const elapsedSec = ((Date.now() - t0) / 1000).toFixed(1);
-			if (err.killed) {
-				// Timeout:重现旧文本("Command timed out after …s\nCommand: …"),
-				// 但走 migrated 返 ToolResult{ok:false} 而非 throw(与 Platform
-				// 一致:错误也返 JSON,agent 看到 timeout 文本作为工具结果)。
-				const text = `Command timed out after ${timeoutSec}s\nCommand: ${finalCommand}`;
+			const msg = `Failed to launch: ${err?.message ?? String(err)}`;
+			return wrap({ text: msg, stdout: "", stderr: msg, exitCode: -1, elapsedSec }, false, msg);
+		}
+
+		// 增量收集 raw Buffer chunks。**这些数组按引用**传给 adoptBackgroundTask,
+		// 后台期间 data 监听器继续追加,close 时 adopt 一次性 concat+decode(避免
+		// chunk 边界切断多字节字符 + Windows GBK 回退)。
+		const stdoutChunks: Buffer[] = [];
+		const stderrChunks: Buffer[] = [];
+		// M1(maxBuffer 回归):execFileAsync 的 maxBuffer:EXEC_MAX_BUFFER_BYTES
+		// (10MB)硬上限在 spawn 下没有对应物 —— 不加防护 → 长跑命令(`yes` /
+		// `cat /dev/urandom` / 后台化的 `tail -f`)会让 chunks 无限涨 → 父进程 OOM。
+		// 这里手写软上限:totalBytes 超 MAX → detach 两个 data 监听器(停止累积)
+		// + child.kill()(停止产生更多输出)+ 标记 maxBufferHit。foreground race
+		// 走 {kind:"maxbuffer"} 路径返失败;background(已 adopt)由 adopt 的 close
+		// handler 在 close 时检测 chunks 总量 > MAX 走 maxbuffer fail 路径(见
+		// adoptBackgroundTask 的 finalize)。
+		const MAX_BYTES = EXEC_MAX_BUFFER_BYTES;
+		let totalBytes = 0;
+		let maxBufferHit = false;
+		const onChunk = (chunk: Buffer, target: Buffer[]) => {
+			if (maxBufferHit) return;
+			totalBytes += chunk.length;
+			target.push(chunk);
+			if (totalBytes > MAX_BYTES) {
+				maxBufferHit = true;
+				// detach 监听器防止 chunks 继续累积(虽然已超 MAX,但避免后到 chunk
+				// 进一步加重内存压力)。listener 已挂,这里 remove 一次性清掉所有
+				// 'data' 监听器(只我们一个,无副作用)。
+				child.stdout?.removeAllListeners("data");
+				child.stderr?.removeAllListeners("data");
+				// kill child(SIGTERM)。foreground race 的 close listener 会触发
+				// finish({kind:"done",code:SIGTERM-code});background 的 adopt close
+				// handler 同样会触发,finalize 检测 totalBytes > MAX 走 maxbuffer fail。
+				try { child.kill(); } catch { /* already exited */ }
+				// foreground:直接 settle race 为 maxbuffer(outcome.kind 即可识别)。
+				// background:settle 是 no-op(timeout 已 settle),不影响。
+				finishRace({ kind: "maxbuffer" });
+			}
+		};
+
+		// 子进程完成 vs 超时 vs maxbuffer:race。三条路径:
+		//   - done     :child 自然结束 → decode chunks → 返正常 ToolResult。
+		//   - timeout  :**不 kill child** → adopt 进 registry → 返 task_id + 中性提示。
+		//   - maxbuffer:输出超 MAX → 返 maxbuffer 失败(保留截断的 partial 输出)。
+		// race listeners settle 后变 no-op(不 removeAllListeners — 那会和 adopt
+		// 的 close listener attach 抢跑,丢事件;settled flag 让重复触发安全)。
+		let doneCode: number;
+		let finishRace: (r: { kind: "done"; code: number } | { kind: "timeout" } | { kind: "maxbuffer" }) => void = () => {
+			// placeholder — Promise executor 同步重赋值前 maxbuffer 不会触发
+			// (data 事件是异步,Promise 构造函数同步跑完)。防御性兜底。
+		};
+		// **先** attach data 监听器(必须在 await Promise 之前 — Promise 期间
+		// child 可能产出 chunks,不能丢)。监听器闭包引用 finishRace,真正实现
+		// 在 Promise executor 同步赋值。
+		child.stdout?.on("data", (d: Buffer) => onChunk(d, stdoutChunks));
+		child.stderr?.on("data", (d: Buffer) => onChunk(d, stderrChunks));
+		const outcome: { kind: "done"; code: number } | { kind: "timeout" } | { kind: "maxbuffer" } = await new Promise((resolve) => {
+			let settled = false;
+			finishRace = (r) => {
+				if (settled) return;
+				settled = true;
+				if (timer) clearTimeout(timer);
+				resolve(r);
+			};
+			const timer = timeout ? setTimeout(() => finishRace({ kind: "timeout" }), timeout) : undefined;
+			child.on("close", (code) => finishRace({ kind: "done", code: typeof code === "number" ? code : -1 }));
+			// child.on("error"): 同步 spawn 错误或运行期 spawn-internal 错误。统一
+			// 当作 done code=-1 处理(error 事件后 child 通常不会再 close,避免挂起)。
+			child.on("error", () => finishRace({ kind: "done", code: -1 }));
+		});
+
+		// M1 foreground maxbuffer 路径:输出超 MAX → kill child + 返 maxbuffer 失败。
+		// 保留截断的 partial 输出(前 4KB,避免 ToolResult 文本过长)。
+		if (maxBufferHit || outcome.kind === "maxbuffer") {
+			const elapsedSec = ((Date.now() - t0) / 1000).toFixed(1);
+			const partialStdout = decodeShellBuffer(Buffer.concat(stdoutChunks));
+			const partialStderr = decodeShellBuffer(Buffer.concat(stderrChunks));
+			const partialPreview = (partialStdout + (partialStderr ? `\n[stderr] ${partialStderr}` : "")).slice(0, 4096);
+			const text = `Output exceeded ${MAX_BYTES} bytes (process killed).\nCommand: ${finalCommand}\nPartial output (truncated):\n${partialPreview}`;
+			return wrap({ text, stdout: partialStdout.slice(0, 4096), stderr: partialStderr.slice(0, 2048), exitCode: -1, elapsedSec }, false, text);
+		}
+
+		// 超时路径:转后台(保留命令 + 已收集输出)。
+		if (outcome.kind === "timeout") {
+			const elapsedSec = ((Date.now() - t0) / 1000).toFixed(1);
+			// Race guard:child 可能在 timeout 触发与本行之间已退出(close 事件在
+			// finish 返回后、adopt 接管前已发;再 attach close listener 不会回放)。
+			// exitCode/signalCode 任一非 null 表示 child 已退出 → 走 done 路径返正常
+			// 文本(等同 outcome.kind==="done",agent 看到完整输出而非 task_id)。
+			const alreadyExited = child.exitCode !== null || child.signalCode !== null;
+			if (!alreadyExited) {
+				const fns = callerCtx.delegateFns;
+				if (fns?.adoptBackgroundTask) {
+					// 核心:移交 child 进 task registry。child 的 data 监听器仍挂在
+					// bash.ts 的 stdoutChunks/stderrChunks 数组上(按引用),adopt
+					// 的 close handler 在 child 真正退出时 concat+decode 这两个数组,
+					// 拿到包含超时后所有后续输出的完整结果。Task action:'kill' 经 AbortController
+					// → child.kill() 真正终止 child(不像 runBackground 是 bookkeeping only)。
+					const taskId = fns.adoptBackgroundTask(child, finalCommand, stdoutChunks, stderrChunks);
+					const text = `Command ran ${timeoutSec}s without finishing. Backgrounded as task_id: ${taskId}. You decide: Task action:'kill' to stop / Task action:'get' to watch / let it finish.`;
+					return wrap({ text, stdout: "", stderr: "", exitCode: -1, elapsedSec }, false, text);
+				}
+				// Adoption unavailable(UI preview / external host / 旧 loop 没装这个
+				// delegate fn):退回 sub-3 前行为 —— kill child + 返 timeout 文本。
+				// 不静默降级,文本明示 "(background adoption unavailable)" 让 agent
+				// 知道这条路径没转后台。
+				try { child.kill(); } catch { /* already exited */ }
+				const text = `Command timed out after ${timeoutSec}s (background adoption unavailable)\nCommand: ${finalCommand}`;
 				return wrap({ text, stdout: "", stderr: "", exitCode: -1, elapsedSec }, false, text);
 			}
-			const { stdout, stderr } = decodeExecBuffers(err);
+			// 已退出 → 落到下面的 done 路径(用 child 的 exitCode/signalCode)
+			doneCode = child.exitCode !== null ? child.exitCode : -1;
+		} else {
+			doneCode = outcome.code;
+		}
+
+		// Done 路径(自然完成 或 超时 race 中已退出):decode + 返 ToolResult。
+		// 文本形态与 sub-3 前逐字一致 —— 成功路径输出 stdout,失败路径 "Exit code N"。
+		{
+			const elapsedSec = ((Date.now() - t0) / 1000).toFixed(1);
+			const stdout = decodeShellBuffer(Buffer.concat(stdoutChunks));
+			const stderr = decodeShellBuffer(Buffer.concat(stderrChunks));
 			const stderrText = postprocessError(stderr.trim(), finalCommand, info.type);
-			const exitCode = err.status ?? err.code ?? 1;
-			// G2 流式:即使失败也推 partial(已收集的 stdout)。
-			if (emit && stdout) emit({ type: "partial", text: stdout.trim() });
+			const exitCode = doneCode;
+			// G2 流式:推一次完整 stdout 作为 partial(真增量流留后续,同 sub-2)。
+			if (emit && stdout.trim()) emit({ type: "partial", text: stdout.trim() });
+			const stdoutTrim = stdout.trim();
+			if (exitCode === 0) {
+				let text = "";
+				if (stdoutTrim) text += stdoutTrim;
+				if (stderrText) text += "\n[stderr] " + stderrText;
+				text += `\n[Completed in ${elapsedSec}s]`;
+				return wrap({ text, stdout: stdoutTrim, stderr: stderrText, exitCode: 0, elapsedSec }, true);
+			}
 			let text = `Exit code ${exitCode}`;
 			if (finalCommand.length <= 200) text += `\nCommand: ${finalCommand}`;
-			const stdoutTrim = stdout.trim();
 			if (stdoutTrim) text += "\n" + stdoutTrim;
 			if (stderrText) text += "\n[stderr] " + stderrText;
 			text += `\n[Completed in ${elapsedSec}s]`;
-			// 失败仍返 ToolResult(ok=false)—— format 透出 data.text(同旧 throw
-			// 文本),agent 看到的形态不变;UI 拿 exitCode 等元数据。
 			return wrap({ text, stdout: stdoutTrim, stderr: stderrText, exitCode, elapsedSec }, false, text);
 		}
 	},

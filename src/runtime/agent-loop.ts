@@ -307,6 +307,12 @@ export class AgentLoop implements AgentRuntime {
 			beginWait: () => { this.beginWaitSuspend(); },
 			endWait: (reason) => { this.endWaitSuspend(reason); },
 			runBackground: (command, timeoutSec) => this.delegator.runBackground(command, timeoutSec),
+			// sub-3 (Shell timeout auto-background): adopt an already-spawned
+			// child into the task registry. Shell tool's timeout path uses this
+			// to preserve the still-running command + collected output instead
+			// of killing it. The delegator wires TaskKill → child.kill().
+			adoptBackgroundTask: (child, command, stdoutChunks, stderrChunks) =>
+				this.delegator.adoptBackgroundTask(child, command, stdoutChunks, stderrChunks),
 			// Step 2E: tool-call ↔ task link — let the Agent tool stamp the
 			// recorder's tool-call block with the delegated taskId the moment
 			// the delegator mints it (before the sub-agent loop starts, so the
@@ -456,6 +462,7 @@ export class AgentLoop implements AgentRuntime {
 			resumeTaskBackground: ctx.resumeTaskBackground,
 			getTaskRecentCalls: ctx.getTaskRecentCalls,
 			runBackground: ctx.runBackground,
+			adoptBackgroundTask: ctx.adoptBackgroundTask,
 			suspendUntilWake: ctx.suspendUntilWake,
 			beginWait: ctx.beginWait,
 			endWait: ctx.endWait,
