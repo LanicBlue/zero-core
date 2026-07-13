@@ -238,7 +238,7 @@ function buildPrompt(): string {
 		"- Always quote file paths that contain spaces with double quotes.",
 		"- Always use absolute paths. Do NOT rely on `cd` to persist — each call starts fresh from the workspace root. Use `cd dir && command` to run in a specific directory within a single call.",
 		"- You may specify an optional timeout in seconds. By default, commands have no timeout unless configured.",
-		"- Shell is BLOCKING (waits for output). For a long-running background command (downloads, installs, watches), use TaskStart { type:'shell', command } — it returns a task_id immediately; check it via TaskGet / Wait. A blocking Shell call that times out auto-backgrounds as a safety net (you get a task_id).",
+		"- Shell is BLOCKING (waits for output). For a long-running background command (downloads, installs, watches), use Shell { command, background:true } — it returns a task_id immediately; check it via Task action:'get' / Wait. A blocking Shell call that times out auto-backgrounds as a TASK (the process is kept alive and adopted into the task registry, NOT killed); you decide whether to stop it via Task action:'kill' or let it finish — check it via Task action:'get'.",
 		"- When issuing multiple commands: if independent, make multiple Shell calls in parallel; if dependent, chain with `&&`. Use `;` only when you don't care if earlier commands fail.",
 		"- DO NOT use newlines to separate commands.",
 		"- For git commands: prefer creating new commits over amending. Never skip hooks (--no-verify) unless explicitly asked.",
@@ -260,7 +260,7 @@ export const bashTool = buildTool({
 	// LLM 仍可经 input `timeout` 单次覆盖。前端 ToolsPage 自动不再渲染该项。
 	inputSchema: z.object({
 		command: z.string().describe("The shell command to execute"),
-		timeout: z.number().optional().describe("Timeout in seconds (a blocking call that times out auto-backgrounds as a safety net)"),
+		timeout: z.number().optional().describe("Timeout in seconds (a blocking call that times out auto-backgrounds as a live task — the process is adopted, not killed)"),
 		background: z.boolean().optional().describe("Run in background and return task_id immediately"),
 	}),
 	// tool-decoupling sub-3(决策 1/3 + G5/G6 + G2 流式):workingDir / toolConfig
@@ -336,7 +336,8 @@ export const bashTool = buildTool({
 		// Background mode (sub-2):`background:true` 把命令送进后台 task registry,
 		// 立即返 task_id(不等命令完成)。从 sub-4 的移除里恢复 —— 现走中立的
 		// callerCtx.delegateFns.runBackground(G1 访问器形态)而非旧的 ctx.runBackground。
-		// 与 TaskStart{shell} 同 registry、同路径;两入口的取舍由 prompt 指引(sub-5)。
+		// 与(已删的)旧 start{shell} 入口同 registry、同路径;Shell background:true
+		// 现在是后台 shell 的唯一入口(取舍由 prompt 指引 sub-5)。
 		//
 		// G1:UI dispatcher 预览路径无 loop → delegateFns 缺失。返 benign preview
 		// 让 host 能渲染工具预览不崩(model 在真实 run 里看不到这个状态)。
@@ -366,7 +367,7 @@ export const bashTool = buildTool({
 			return {
 				ok: true,
 				data: {
-					text: `Background shell started.\ntask_id: ${taskId}\nUse TaskGet to drill in (recent calls / completed result).`,
+					text: `Background shell started.\ntask_id: ${taskId}\nUse Task action:'get' to drill in (recent calls / completed result).`,
 				},
 			};
 		}
@@ -374,7 +375,7 @@ export const bashTool = buildTool({
 		// Foreground mode (sub-3:execFileAsync → spawn + 手动超时检测 + 输出增量
 		// 收集 + 超时转后台 adopt)。spawn 让我们能在超时时**保留**子进程(不 kill)
 		// 并把它移交给 task registry(adoptBackgroundTask),后续输出持续收集进
-		// task result,TaskGet 能看到。文本壳(成功 / 失败 / 超时三条路径)与 sub-3
+		// task result,Task action:'get' 能看到。文本壳(成功 / 失败 / 超时三条路径)与 sub-3
 		// 前逐字一致 —— agent 行为不回归;只有超时路径从"丢命令"变成"转后台 task"。
 		const cwd = callerCtx.workingDir ?? ".";
 		const spawnOpts: SpawnOptions = {
@@ -500,10 +501,10 @@ export const bashTool = buildTool({
 					// 核心:移交 child 进 task registry。child 的 data 监听器仍挂在
 					// bash.ts 的 stdoutChunks/stderrChunks 数组上(按引用),adopt
 					// 的 close handler 在 child 真正退出时 concat+decode 这两个数组,
-					// 拿到包含超时后所有后续输出的完整结果。TaskKill 经 AbortController
+					// 拿到包含超时后所有后续输出的完整结果。Task action:'kill' 经 AbortController
 					// → child.kill() 真正终止 child(不像 runBackground 是 bookkeeping only)。
 					const taskId = fns.adoptBackgroundTask(child, finalCommand, stdoutChunks, stderrChunks);
-					const text = `Command ran ${timeoutSec}s without finishing. Backgrounded as task_id: ${taskId}. You decide: Task kill to stop / Task get to watch / let it finish.`;
+					const text = `Command ran ${timeoutSec}s without finishing. Backgrounded as task_id: ${taskId}. You decide: Task action:'kill' to stop / Task action:'get' to watch / let it finish.`;
 					return wrap({ text, stdout: "", stderr: "", exitCode: -1, elapsedSec }, false, text);
 				}
 				// Adoption unavailable(UI preview / external host / 旧 loop 没装这个

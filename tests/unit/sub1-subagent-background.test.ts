@@ -82,7 +82,7 @@ describe("acceptance-1 / item 1: Subagent delegate returns task_id immediately",
 		const text = await run({ action: "delegate", task: "explore" }, ctx);
 		expect(text).toMatch(/Background sub-agent started\./);
 		expect(text).toMatch(/task_id: sub-fixed-2/);
-		expect(text).toMatch(/TaskGet/);
+		expect(text).toMatch(/Task action:'get'/);
 	});
 });
 

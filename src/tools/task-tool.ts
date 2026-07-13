@@ -5,8 +5,8 @@
 // ## 核心功能
 // "Task" 是 execution-entry-redesign 的判别联合 action 工具之一。一个工具 +
 // action 字段切换 5 个生命周期操作(get/list/kill/finish/resume),复刻 project-tool
-// 结构。原 TaskGet/TaskList/TaskKill/TaskFinish/TaskResume/TaskStart 六个分散工具
-// 合并到此 —— TaskStart 的功能被 Subagent delegate(后台 agent)与 Shell background
+// 结构。原 6 个分散工具(get/list/kill/finish/resume/start 各一)合并到此 ——
+// start 的功能被 Subagent delegate(后台 agent)与 Shell background
 // (后台 shell)接管,本工具不再保留 start 语义。
 //   - get     单 task 钻取,按 running / interrupted / completed 三状态分支
 //              (running → 近 N=3 调用记录;interrupted → registry+waited+marker;
@@ -17,12 +17,12 @@
 //   - resume  解冻冻结子(非阻塞,仅 agent,turn_seq 守卫在 delegator 层)
 //
 // ## 命名 (design §6)
-// 工具按功能命名 → `Task`;6 个旧名(TaskStart/TaskGet/TaskList/TaskKill/TaskFinish/
-// TaskResume)经 RENAMED_TOOLS(sub-5)映射回 `Task`。本 sub 后旧名暂失效,sub-5 修复。
+// 工具按功能命名 → `Task`;6 个旧 PascalCase 名(start/get/list/kill/finish/resume 各一)
+// 经 RENAMED_TOOLS(sub-5)映射回 `Task`。本 sub 后旧名暂失效,sub-5 修复。
 //
 // ## 输入
 // - callerCtx.delegateFns.*    (G1 per-session 访问器,loop 注入)
-// - callerCtx.toolConfig.Task  (max_completed,从旧 TaskList key 改名)
+// - callerCtx.toolConfig.Task  (max_completed,从旧 list 工具 key 改名)
 //
 // ## 输出
 // - export const taskTool
@@ -243,7 +243,7 @@ export const taskTool = buildTool({
 				if (!fns.listTasks) {
 					return { ok: true, data: { text: "(preview) No tasks — callerCtx has no delegateFns (not running inside an agent loop)." } };
 				}
-				// toolConfig key moved TaskList → Task (sub-4: tool name is `Task`).
+				// toolConfig key moved (旧 list 工具)→ Task (sub-4: tool name is `Task`).
 				const config = callerCtx.toolConfig?.Task ?? {};
 				const maxCompleted = config.max_completed ?? 5;
 				const filter = input.filter ?? "all";

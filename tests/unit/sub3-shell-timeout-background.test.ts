@@ -400,9 +400,13 @@ describe("acceptance-3 / item 6: neutral hint lets agent decide", () => {
     const p = raw({ command: "sleep 1", timeout: 0.05 }, ctx);
     const r = await p;
     const text = (r as any).data.text;
-    // Per sub-3.md spec: "Task kill to stop / Task get to watch / let it finish"
-    expect(text).toMatch(/Task kill/i);
-    expect(text).toMatch(/Task get/i);
+    // Per sub-3.md spec: "Task kill to stop / Task get to watch / let it finish".
+    // sub-7 (execution-entry-redesign) unified bash.ts prompt wording to the
+    // Task action form: "Task action:'kill' to stop / Task action:'get' to
+    // watch / let it finish". Assertion tracks the new wording; intent
+    // unchanged (decision keywords still present).
+    expect(text).toMatch(/Task action:'kill'/i);
+    expect(text).toMatch(/Task action:'get'/i);
     expect(text).toMatch(/finish/i);
   });
 

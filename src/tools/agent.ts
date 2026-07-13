@@ -57,14 +57,14 @@ export const delegateTool = buildTool({
 		"Delegate a sub-agent task (background, returns task_id) or list delegatable role agents. Actions: list, delegate.",
 	prompt:
 		"Delegate sub-agent tasks (each runs in an isolated context with its own conversation history, persisted for restart-aware inspection).\n\n" +
-		"Delegation is BACKGROUND: `delegate` returns immediately with a task_id — the sub-agent runs in the background. Use `TaskGet` to drill in (running → recent calls, completed → full result + acknowledge, interrupted → status), `TaskList` for an overview, `TaskKill` to discard, `TaskFinish`/`TaskResume` (agent only) to gracefully wrap / resume a frozen child.\n\n" +
+		"Delegation is BACKGROUND: `delegate` returns immediately with a task_id — the sub-agent runs in the background. Use `Task action:'get'` to drill in (running → recent calls, completed → full result + acknowledge, interrupted → status), `Task action:'list'` for an overview, `Task action:'kill'` to discard, `Task action:'finish'`/`Task action:'resume'` (agent only) to gracefully wrap / resume a frozen child.\n\n" +
 		"Delegation never requires a configured subagent. The default is to simply omit `subagent`: a sub-agent inherits your identity and runs the task in an isolated context. Name a `subagent` only when you want to hand the work to a specific registered role agent.\n\n" +
 		"Actions:\n" +
 		"- { action:'list' } — lists the registered role agents you can hand off to by name (your configured subagents), with name/description/model. Only useful when you want a named `subagent`. An empty list doesn't block delegation — it just means there's no named role agent, so omit `subagent`.\n" +
 		"- { action:'delegate', task, subagent?, model?, systemPrompt? } — delegate a task (background, returns task_id).\n" +
 		"    · Omit `subagent` (the default, always available): an ephemeral sub-agent that inherits YOUR identity (or the inline `model`/`systemPrompt` overrides). Good for isolated sub-tasks you'd otherwise do yourself.\n" +
 		"    · `subagent` (a name from `list`): hand off to a registered role agent, which runs with ITS OWN identity (system prompt / tools / model). Only needed for role-based handoff to a specialist.\n" +
-		"Task lifecycle (status, recent calls, kill, finish, resume) is handled by the Task tool family — TaskGet / TaskList / TaskKill / TaskFinish / TaskResume.\n\n" +
+		"Task lifecycle (status, recent calls, kill, finish, resume) is handled by the single `Task` action tool — `Task action:'get'/'list'/'kill'/'finish'/'resume'`.\n\n" +
 		"When to delegate — for LARGE or MULTI-STEP tasks, prefer delegating to a sub-agent over doing them inline. If a request looks like it will need many tool calls, multiple file edits, or a long exploration, lean toward breaking it into sub-tasks and delegating them (independent sub-tasks run in parallel). Delegating keeps your own context lean, lets work proceed in parallel, and keeps exploratory noise out of the main conversation. Use your judgment: tasks that hinge on the context you've already built may be better done inline. Also delegate to hand work to a specialized role agent (a configured subagent).\n\n" +
 		"If you name a `subagent`, it must come from your own subagents list (run 'list'). You can always delegate without one by omitting `subagent`.",
 	meta: { category: "agent", isReadOnly: false, isConcurrencySafe: false, exposable: false },
@@ -109,7 +109,7 @@ export const delegateTool = buildTool({
 
 		// ── delegate (blocking) ────────────────────────────────────
 		if (action !== "delegate") {
-			return { ok: false, error: `unknown Subagent action '${action}'. Supported: list, delegate. (Task lifecycle is handled by the Task tool family: TaskGet / TaskList / TaskKill / TaskFinish / TaskResume.)` };
+			return { ok: false, error: `unknown Subagent action '${action}'. Supported: list, delegate. (Task lifecycle is handled by the single Task action tool: Task action:'get'/'list'/'kill'/'finish'/'resume'.)` };
 		}
 		const { task } = input;
 		if (!task || !task.trim()) {
@@ -167,7 +167,8 @@ export const delegateTool = buildTool({
 		if (!fns?.delegateTaskBackground) {
 			return { ok: false, error: "Sub-agent delegation is not available in this context." };
 		}
-		// Step 2E: same tool-call ↔ task link as TaskStart. Background dispatch
+		// Step 2E: tool-call ↔ task link annotation (mirrors the wiring the old
+		// start action used to register). Background dispatch
 		// returns the taskId synchronously; onDispatched is fired inside
 		// delegateTaskBackground right after the row is created (before the sub-loop
 		// is spawned), so the recorder block gets annotated before any work starts.
@@ -182,7 +183,7 @@ export const delegateTool = buildTool({
 		return {
 			ok: true,
 			data: {
-				text: `Background sub-agent started.\ntask_id: ${taskId}\nUse TaskGet to drill in (recent calls / completed result), TaskFinish to wrap up, TaskResume to resume a frozen child.`,
+				text: `Background sub-agent started.\ntask_id: ${taskId}\nUse Task action:'get' to drill in (recent calls / completed result), Task action:'finish' to wrap up, Task action:'resume' to resume a frozen child.`,
 				taskId,
 			},
 		};
