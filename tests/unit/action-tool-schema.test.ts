@@ -3,7 +3,7 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 断言四个 action 工具(Project/AgentRegistry/Cron/Wiki)+ Cron 的 schedule
+// 断言五个 action 工具(Project/AgentRegistry/Cron/Wiki/Task)+ Cron 的 schedule
 // schema,经 zod v4 `~standard.jsonSchema` 转换后(AI SDK 走的就是这条路径),
 // 顶层是 `type: "object"`,且**无顶层 oneOf/anyOf**。
 //
@@ -24,6 +24,7 @@ import { projectActionSchema } from "../../src/tools/project-tool.js";
 import { agentRegistryActionSchema } from "../../src/tools/agent-registry.js";
 import { cronActionSchema } from "../../src/tools/cron-tool.js";
 import { wikiActionSchema } from "../../src/tools/wiki-tool.js";
+import { taskActionSchema } from "../../src/tools/task-tool.js";
 import { z } from "zod";
 
 // Mirror the four flat schemas. If any regresses to z.discriminatedUnion at the
@@ -33,6 +34,7 @@ const ACTION_SCHEMAS: Record<string, z.ZodTypeAny> = {
 	AgentRegistry: agentRegistryActionSchema,
 	Cron: cronActionSchema,
 	Wiki: wikiActionSchema,
+	Task: taskActionSchema,
 };
 
 async function toJsonSchema(schema: z.ZodTypeAny): Promise<any> {

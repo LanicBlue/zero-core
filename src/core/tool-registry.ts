@@ -76,18 +76,22 @@ const KV_KEY = "tool_config";
 export const RENAMED_TOOLS: Record<string, string> = {
 	bash: "Shell", shell: "Shell", read: "Read", write: "Write", edit: "Edit",
 	grep: "Grep", glob: "Glob", find: "Glob", agent: "Subagent",
-	// sub-4 (subagent-recovery): TaskStatus→TaskGet, TaskStop→TaskKill renamed.
-	// Legacy lowercase + retired PascalCase names map to the new tools so old
-	// configs / agent prompts / presets keep working (a session that had
-	// {task_status:{enabled:true}} now gets TaskGet instead of losing it).
-	task_status: "TaskGet", taskstatus: "TaskGet", TaskStatus: "TaskGet",
-	task_stop: "TaskKill", taskstop: "TaskKill", TaskStop: "TaskKill",
-	task_list: "TaskList", tasklist: "TaskList",
-	task_start: "TaskStart", taskstart: "TaskStart",
-	task_get: "TaskGet", taskget: "TaskGet",
-	task_kill: "TaskKill", taskkill: "TaskKill",
-	task_finish: "TaskFinish", taskfinish: "TaskFinish",
-	task_resume: "TaskResume", taskresume: "TaskResume",
+	// sub-5 (execution-entry-redesign): the six per-task tools
+	// (TaskGet/TaskList/TaskStart/TaskKill/TaskFinish/TaskResume) plus the
+	// historical TaskStatus/TaskStop were MERGED into the single `Task` action
+	// tool by sub-4, and the old targets deleted. Every legacy spelling
+	// (PascalCase + lowercase + snake_case + historical task_status/TaskStop)
+	// now maps to "Task" so old configs / agent prompts / presets keep working:
+	// a session that had {task_status:{enabled:true}} or {task_start:...} now
+	// gets Task instead of silently losing the capability.
+	task_status: "Task", taskstatus: "Task", TaskStatus: "Task",
+	task_stop: "Task", taskstop: "Task", TaskStop: "Task",
+	task_list: "Task", tasklist: "Task", TaskList: "Task",
+	task_start: "Task", taskstart: "Task", TaskStart: "Task",
+	task_get: "Task", taskget: "Task", TaskGet: "Task",
+	task_kill: "Task", taskkill: "Task", TaskKill: "Task",
+	task_finish: "Task", taskfinish: "Task", TaskFinish: "Task",
+	task_resume: "Task", taskresume: "Task", TaskResume: "Task",
 	wait: "Wait", web_search: "WebSearch", ask_user: "AskUser", todo_write: "TodoWrite",
 	subagent: "Subagent", "Agent": "Subagent", assistant: "Platform", "Assistant": "Platform",
 	web_fetch: "WebFetch",
