@@ -207,11 +207,14 @@ export class AgentLoop implements AgentRuntime {
 				wikiAnchors: config.wikiAnchors,
 			});
 			// sub-7 (Wiki Anchors merger): renderSystemAnchors + the context-
-			// channel memory index render TOGETHER into this single cached
-			// section. The context channel's per-agent memory anchor used to
-			// ride inside <context> every turn; it now joins the project
-			// outline here so there is exactly one Wiki Anchors block, and it
-			// is cache-stable (refresh only on subtree change, design §1.3 #1).
+			// channel anchors render TOGETHER into this single cached section
+			// (cacheBreak:false). compression-archive-simplify sub-1 moved the
+			// default memory root context→system, so renderSystemAnchors now
+			// carries memory + project (+ zero global-root);
+			// renderContextAnchors only catches free wikiAnchors still on
+			// inject:context. One Wiki Anchors block, cache-stable: refresh
+			// only on patch.wikiAnchors / resetSession — mid-session wiki
+			// writes do NOT invalidate it (frozen snapshot, design §零).
 			sections.push({
 				name: "wiki-system-anchors",
 				compute: () => {

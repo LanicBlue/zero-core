@@ -38,6 +38,7 @@ import {
 import { runMigrations } from "../../src/server/db-migration.js";
 import {
 	resolveAnchors,
+	renderSystemAnchors,
 	renderContextAnchors,
 	anchorNodeIds,
 } from "../../src/runtime/wiki-anchor-injection.js";
@@ -167,7 +168,9 @@ describe("memory as wiki per-agent subtree (P2 §11.6)", () => {
 			const memAnchor = anchors.find(a => a.kind === "memory");
 			expect(memAnchor).toBeDefined();
 			expect(memAnchor!.nodeId).toBe(memoryAgentRootId("dev-1"));
-			expect(memAnchor!.inject).toBe("context");
+			// compression-archive-simplify sub-1: memory anchor moved
+			// context → system (frozen snapshot in cached system section).
+			expect(memAnchor!.inject).toBe("system");
 		});
 
 		test("anchorNodeIds includes the per-agent memory root in the visible scope", () => {
@@ -220,7 +223,11 @@ describe("memory as wiki per-agent subtree (P2 §11.6)", () => {
 	});
 
 	describe("memory index rendering (replaces formatForContext)", () => {
-		test("renderContextAnchors emits a MEMORY.md-style index of leaves", () => {
+		test("renderSystemAnchors emits a MEMORY.md-style index of leaves (sub-1 channel change)", () => {
+			// compression-archive-simplify sub-1: memory anchor default inject
+			// moved context → system. The rendering pipeline (renderAnchorOutline)
+			// is unchanged — only the channel routing changed. Verify via the new
+			// default (renderSystemAnchors) instead of renderContextAnchors.
 			wiki.createMemoryNodeForAgent({
 				agentId: "dev-1", type: "decision", subject: "Subject-A",
 				title: "Subject-A (decision)", summary: "summary A",
@@ -231,7 +238,7 @@ describe("memory as wiki per-agent subtree (P2 §11.6)", () => {
 			});
 
 			const anchors = resolveAnchors({ wiki, agentId: "dev-1" });
-			const rendered = renderContextAnchors({ wiki, anchors });
+			const rendered = renderSystemAnchors({ wiki, anchors });
 			expect(rendered).toContain("Subject-A");
 			expect(rendered).toContain("Subject-B");
 			// MEMORY.md convention: each leaf line carries its nodeId link as a

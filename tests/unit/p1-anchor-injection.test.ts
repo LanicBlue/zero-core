@@ -77,7 +77,7 @@ function track<T extends { id: string }>(n: T): T {
 // ─── resolveAnchors:auto memory + auto project + free ─────────
 
 describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
-	test("auto memory = per-agent subtree root (context channel, depth=1)", () => {
+	test("auto memory = per-agent subtree root (system channel, depth=1)", () => {
 		// v0.8 (P2 §11.6): memory anchor is now ONE per-agent subtree root
 		// (wiki-root:memory-agent:<agentId>), not the 5 shared type roots.
 		// The 5 shared type roots are retired as auto anchors.
@@ -85,8 +85,9 @@ describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
 		const memAnchors = anchors.filter((a) => a.kind === "memory");
 		expect(memAnchors.length).toBe(1);
 		expect(memAnchors[0].nodeId).toBe(memoryAgentRootId("agent-x"));
-		// Default channel for auto-memory = context.
-		expect(memAnchors.every((a) => a.inject === "context")).toBe(true);
+		// compression-archive-simplify sub-1: default channel for auto-memory
+		// moved context → system (frozen snapshot in cached system section).
+		expect(memAnchors.every((a) => a.inject === "system")).toBe(true);
 	});
 
 	test("auto project = wiki-root:<projectId> (system channel)", () => {
@@ -108,9 +109,11 @@ describe("P1 §10.3.1 resolveAnchors:auto + free anchors", () => {
 	test("zero (no projectId) → memory anchor + GLOBAL ROOT scope anchor (read=write=whole tree)", () => {
 		const anchors = resolveAnchors({ wiki, agentId: "zero" });
 		// v0.8 (读写同界): a session with no project anchor gets the GLOBAL ROOT
-		// as an inject:"off" scope anchor so its read scope == write scope == the
-		// whole tree. Plus one per-agent memory anchor (P2 §11.6).
-		expect(anchors.some((a) => a.nodeId === WIKI_GLOBAL_ROOT_ID && a.inject === "off")).toBe(true);
+		// as a scope anchor so its read scope == write scope == the whole tree.
+		// Plus one per-agent memory anchor (P2 §11.6).
+		// compression-archive-simplify sub-1: zero global-root inject moved
+		// off → system (renders doc + one-level summary, capped; frozen snapshot).
+		expect(anchors.some((a) => a.nodeId === WIKI_GLOBAL_ROOT_ID && a.inject === "system")).toBe(true);
 		expect(anchors.filter((a) => a.kind === "memory").length).toBe(1);
 	});
 
@@ -234,6 +237,9 @@ describe("P1 §10.6 渲染:project 2 层 outline + memory 索引", () => {
 	test("memory anchor 渲染:索引 (title + nodeId 链接,不展开内容)", () => {
 		// v0.8 (P2 §11.6): memory leaves live under the per-agent subtree
 		// root for the resolving agent. We seed leaves under agent "x"'s root.
+		// compression-archive-simplify sub-1: memory anchor default channel
+		// moved context → system. Rendering pipeline unchanged; verify via
+		// the new default (renderSystemAnchors).
 		const decLeaf = track(wiki.createMemoryNodeForAgent({
 			agentId: "x", type: "decision", subject: "dec-subject-1",
 			title: "Decided on SQLite",
@@ -245,7 +251,7 @@ describe("P1 §10.6 渲染:project 2 层 outline + memory 索引", () => {
 		}));
 
 		const anchors = resolveAnchors({ wiki, agentId: "x" });
-		const out = renderContextAnchors({ wiki, anchors });
+		const out = renderSystemAnchors({ wiki, anchors });
 
 		// Index includes both leaves' titles + their SHORT id handles (full
 		// nodeId no longer leaks to the agent — formatNodeId renders #xxxxxxxx).
@@ -325,12 +331,14 @@ describe("P1 §10.6 system vs context 通道分离", () => {
 		const sys = renderSystemAnchors({ wiki, anchors });
 		const ctx = renderContextAnchors({ wiki, anchors });
 
-		// Project anchor → system;memory anchor → context.
+		// compression-archive-simplify sub-1: memory anchor moved context → system.
+		// Default project AND memory anchors both render in the system channel;
+		// context channel is empty for the default anchor set.
 		expect(sys).toContain("Project: P");
-		expect(sys).not.toContain("Memory: x");
-		expect(ctx).toContain("Memory: x");
-		expect(ctx).toContain("dec 1");
+		expect(sys).toContain("Memory: x");
+		expect(sys).toContain("dec 1");
 		expect(ctx).not.toContain("Project: P");
+		expect(ctx).not.toContain("Memory: x");
 	});
 });
 

@@ -17,9 +17,12 @@
 //   再过一遍 SUMMARY_MAX_BYTES 兜存量。根 doc 是唯一注入的正文(其余正文靠
 //   docRead),让 agent 一眼拿到子树 overview + 一层结构 + 哪些该再 expand。
 //
-// 注入通道:
-//   - inject=system  → 走 SystemPromptAssembler 的 section(可缓存,子树变再刷新)
-//   - inject=context → 走 PreLLMCall buildContextMessage(每轮重算,不入 history)
+// 注入通道(默认根 memory/project/global 都进 system,享冻结快照):
+//   - inject=system  → 走 SystemPromptAssembler 的 wiki-system-anchors section
+//                       (cacheBreak:false;session 开始定格,mid-session wiki 写
+//                       不触发重渲染 → prefix cache 稳定;压缩后刷新)
+//   - inject=context → sub-7 anchor merger 后同样并入 cached wiki-system-anchors
+//                       section 渲染(不再每轮重算);free 锚点保留此选项
 //   - inject=off     → 不注入但仍计入 scope 锚点集(可见但沉默)
 //
 // 注:本模块**只对根节点**读一次正文 doc(10kb 上限);其余节点只渲染结构
@@ -161,15 +164,17 @@ export function resolveAnchors(opts: {
 	// 1. Auto memory anchor — this session's agent's per-agent memory subtree
 	//    root (P2 §11.6). Memory is global to the agent (cross-project): the
 	//    same agent's memory spans every project it touches. Extractor A
-	//    writes here; the anchor renders the subtree as a MEMORY.md-style
-	//    index in the context channel.
+	//    writes here (ExtractorA, 待 sub-5 删) / the session itself (memory
+	//    ephemeral turn, compression-archive-simplify sub-2+); the anchor
+	//    renders the subtree as a MEMORY.md-style index in the cached system
+	//    section (inject:"system" sub-1 — frozen snapshot, design §零).
 	//
 	//    (Pre-P2 used the 5 shared global type roots; that scheme is retired
 	//    but old data under those roots is left in place — P9 cleanup.)
 	if (opts.agentId) {
 		out.push({
 			nodeId: memoryAgentRootId(opts.agentId),
-			inject: "context", // memory anchor default channel
+			inject: "system", // memory anchor — cached system section (frozen snapshot, compression-archive sub-1)
 			kind: "memory",
 		});
 	}
@@ -187,12 +192,16 @@ export function resolveAnchors(opts: {
 		// **zero**(平台管家,需跨项目巡视整棵 wiki 树,read=write=whole tree)。
 		// 其他 agent 的 general session 默认**不**放开整棵全局树 —— 只有自己的
 		// memory 根(上面已加)+ 显式 free wikiAnchors。需要碰某 project 的 wiki
-		// 就走该 project 的 session(拿到 project 子树锚点)。inject:"off" → 算
-		// scope 锚点但不进 prompt(整树注入没意义)。
+		// 就走该 project 的 session(拿到 project 子树锚点)。
+		//
+		// compression-archive-simplify sub-1: zero global-root inject 从 "off"
+		// 改 "system" —— 渲染 doc + 一层 children summary(受 INJECT_ROOT_DOC_MAX
+		// / SUMMARY_MAX_BYTES cap 有界),让 zero 一眼看到整棵 wiki 顶层结构。
+		// 享冻结快照(同 memory/project 根)。
 		if (opts.agentId === "zero") {
 			out.push({
 				nodeId: WIKI_GLOBAL_ROOT_ID,
-				inject: "off",
+				inject: "system", // zero global-root — cached system section (frozen snapshot, compression-archive sub-1)
 				kind: "project",
 			});
 		}
