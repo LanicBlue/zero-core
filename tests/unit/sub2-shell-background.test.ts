@@ -73,7 +73,6 @@ vi.mock("node:child_process", () => ({
 }));
 
 import { bashTool } from "../../src/tools/bash.js";
-import { taskStartTool } from "../../src/tools/task-start.js";
 import {
   getToolExecute,
   getToolFormat,
@@ -355,30 +354,12 @@ describe("acceptance-2 / item 6: blocking command still works", () => {
 // ===========================================================================
 // Acceptance 7 — TaskStart{shell} 仍工作 (sub-4 才删; sub-2 不动)
 // ===========================================================================
-
-describe("acceptance-2 / item 7: TaskStart{type:shell} still works", () => {
-  const execStart = getToolExecute(taskStartTool)!;
-  const fmtStart = getToolFormat(taskStartTool)!;
-
-  test("type:shell → callerCtx.delegateFns.runBackground, returns task_id", async () => {
-    let capturedCmd: string | null = null;
-    const ctx: any = {
-      caller: "internal",
-      agentId: "caller",
-      workingDir: ".",
-      delegateFns: {
-        runBackground: (cmd: string) => { capturedCmd = cmd; return "ts-bg-1"; },
-        getTaskResult: () => null,
-      },
-    };
-    const text = await fmtStart(await execStart({ type: "shell", command: "npm test" }, ctx));
-    expect(text).toMatch(/task_id: ts-bg-1/);
-    expect(capturedCmd).toBe("npm test");
-    // Must not have invoked our mocked spawn — TaskStart routes through
-    // delegateFns.runBackground, not bash.ts's spawn path.
-    expect(spawnState.lastCall).toBeNull();
-  });
-});
+// REMOVED in sub-4: TaskStart{type:shell} was the pre-sub-2 background-shell
+// entry. sub-2 replaced it with Shell `background:true` (already covered by
+// items 1–2 above), and sub-4 deleted the TaskStart tool entirely. The
+// cross-check described by acceptance-2 item 7 is therefore obsolete; the
+// equivalent coverage (background:true → runBackground → task_id, no spawn)
+// lives in item 1.
 
 // ===========================================================================
 // Acceptance 8 — ToolsPage 不渲染 Shell timeout config (静态:configSchema 空)

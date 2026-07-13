@@ -18,7 +18,6 @@ import { describe, test, expect } from "vitest";
 import { delegateTool } from "../../src/tools/agent.js";
 import { getToolExecute as getExec, getToolFormat as getFmt, getToolConfigSchema } from "../../src/tools/tool-factory.js";
 import { SubagentDelegator } from "../../src/runtime/subagent-delegator.js";
-import { taskStartTool } from "../../src/tools/task-start.js";
 
 const exec = getExec(delegateTool)!;
 const fmt = getFmt(delegateTool)!;
@@ -418,32 +417,11 @@ describe("acceptance-1 / item 7: delegateTask stays blocking (Orchestrate safe)"
 // ===========================================================================
 // Acceptance 8 — TaskStart{agent} 仍工作 (sub-4 才删;sub-1 不动)
 // ===========================================================================
-//
-// Cross-check: the agent branch of TaskStart{type:'agent'} still uses
-// delegateTaskBackground and returns a task_id. This is the same code path
-// the Subagent tool now uses; sub-1 must not have broken it. The exhaustive
-// TaskStart suite lives in sub4-task-tools.test.ts; here we smoke-check the
-// agent branch is intact (delegates via delegateTaskBackground).
-
-const execStart = getExec(taskStartTool)!;
-const fmtStart = getFmt(taskStartTool)!;
-
-describe("acceptance-1 / item 8: TaskStart{type:agent} still works (untouched by sub-1)", () => {
-	test("type:agent → delegateTaskBackground, returns task_id", async () => {
-		const ctx: any = {
-			caller: "internal",
-			agentId: "caller",
-			workingDir: ".",
-			agentResolvers: { resolveAgent: () => ({ id: "c", subagents: [] }) },
-			delegateFns: {
-				delegateTaskBackground: () => "sub-from-taskstart",
-				setToolCallTaskId: undefined,
-			},
-		};
-		const r = await fmtStart(await execStart({ type: "agent", task: "explore" }, ctx));
-		expect(r).toMatch(/task_id: sub-from-taskstart/);
-	});
-});
+// REMOVED in sub-4: TaskStart{type:agent} was the pre-sub-1 background-agent
+// entry. sub-1 replaced it with Subagent `delegate` (already covered by items
+// 1–7 above), and sub-4 deleted the TaskStart tool entirely. The cross-check
+// described by acceptance-1 item 8 is therefore obsolete; the equivalent
+// coverage (delegate → delegateTaskBackground → task_id) lives in items 1–3.
 
 // ===========================================================================
 // Acceptance 9 — ToolsPage 不渲染 Subagent config (静态:configSchema 已空)

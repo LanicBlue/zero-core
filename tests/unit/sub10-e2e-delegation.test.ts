@@ -59,8 +59,7 @@ import {
 	registerForceWaitHooks,
 	_resetForceWaitNudgeState,
 } from "../../src/runtime/hooks/force-wait-hooks.js";
-import { taskStartTool } from "../../src/tools/task-start.js";
-import { taskGetTool } from "../../src/tools/task-get.js";
+import { taskTool } from "../../src/tools/task-tool.js";
 import { waitTool } from "../../src/tools/wait.js";
 import type { TaskInfo } from "../../src/runtime/types.js";
 
@@ -163,11 +162,28 @@ async function fireStart(reg: HookRegistry, sessionId = "parent-session") {
 	return reg.trigger("TurnStart", { agentId: "parent-agent", sessionId, userMessage: "go" });
 }
 
-/** Parse the `task_id: <id>` line out of a TaskStart result. */
-function extractTaskId(startResult: string): string {
-	const m = startResult.match(/task_id:\s*(\S+)/);
-	if (!m) throw new Error(`no task_id in result: ${startResult}`);
-	return m[1];
+/**
+ * Seed a running task directly in the registry and return its id.
+ *
+ * Sub-1 / sub-2 replaced the pre-sub-4 entry points:
+ *   - `TaskStart{type:'agent'}` → Subagent `delegate` action (sub-1)
+ *   - `TaskStart{type:'shell'}` → Shell `background:true`      (sub-2)
+ * Both new entry paths ultimately call `registry.create(...)` (via the loop's
+ * delegateFns.delegateTaskBackground / runBackground). This e2e file focuses
+ * on the force-wait + Wait + wake lifecycle that FOLLOWS task creation, so we
+ * skip the (now tool-specific) entry dispatch and seed the registry directly —
+ * same end state, no dependency on any background-entry tool. The new entry
+ * paths themselves are covered by sub1-subagent-background.test.ts and
+ * sub2-shell-background.test.ts.
+ */
+function seedRunningTask(
+	registry: TaskRegistry,
+	type: "subagent" | "bash",
+	label: string,
+): string {
+	const taskId = `${type === "subagent" ? "parent-agent:sub" : "shell"}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+	registry.create(taskId, type, label);
+	return taskId;
 }
 
 // ─── Case 1: full lifecycle — every state-machine transition ──────────────
@@ -188,13 +204,14 @@ describe("sub-10 case 1: full delegation lifecycle (state machine end-to-end)", 
 	});
 
 	test("TaskStart → nudge → Wait → task done → wake → TaskGet consume → TurnEndCheck放行", async () => {
-		// (1) 父 TaskStart 后台 agent task.
-		const startOut = await runTool(taskStartTool, { type: "agent", task: "research the bug" }, toolCtx);
-		expect(startOut).toMatch(/task_id:/);
-		const taskId = extractTaskId(startOut);
+		// (1) Seed a running background agent task in the registry.
+		// (Pre-sub-4 this was `TaskStart{type:'agent'}`; sub-1 replaced that entry
+		// with Subagent `delegate`. This e2e case focuses on the lifecycle AFTER
+		// task creation, so we seed the registry directly — see seedRunningTask.)
+		const taskId = seedRunningTask(registry, "subagent", "research the bug");
 
 		// registry 有 running task.
-		expect(registry.hasRunning(), "after TaskStart: hasRunning=true").toBe(true);
+		expect(registry.hasRunning(), "after seed: hasRunning=true").toBe(true);
 		const created = registry.get(taskId);
 		expect(created, "task present in registry").toBeDefined();
 		expect(created!.status).toBe("running");
@@ -245,7 +262,7 @@ describe("sub-10 case 1: full delegation lifecycle (state machine end-to-end)", 
 		expect(finished!.result).toBe("the bug is in module X");
 
 		// (6) 父 TaskGet(task_id) → 取 result + acknowledge → task 出 registry.
-		const getOut = await runTool(taskGetTool, { task_id: taskId }, toolCtx);
+		const getOut = await runTool(taskTool, { action: "get", task_id: taskId }, toolCtx);
 		const parsed = JSON.parse(getOut);
 		expect(parsed.status).toBe("completed");
 		expect(parsed.result).toBe("the bug is in module X");
@@ -260,9 +277,8 @@ describe("sub-10 case 1: full delegation lifecycle (state machine end-to-end)", 
 	});
 
 	test("shell-task variant: same lifecycle through type:'shell'", async () => {
-		// Smoke: same chain with a shell task (runBackground path).
-		const startOut = await runTool(taskStartTool, { type: "shell", command: "echo hi" }, toolCtx);
-		const taskId = extractTaskId(startOut);
+		// Smoke: same chain with a shell task (sub-2's runBackground entry path).
+		const taskId = seedRunningTask(registry, "bash", "echo hi");
 		expect(registry.get(taskId)!.type).toBe("bash");
 		expect(registry.hasRunning()).toBe(true);
 
@@ -270,7 +286,7 @@ describe("sub-10 case 1: full delegation lifecycle (state machine end-to-end)", 
 		expect(endCheck.forceContinue).toBe(true);
 
 		registry.complete(taskId, "done");
-		const getOut = await runTool(taskGetTool, { task_id: taskId }, toolCtx);
+		const getOut = await runTool(taskTool, { action: "get", task_id: taskId }, toolCtx);
 		expect(JSON.parse(getOut).status).toBe("completed");
 		expect(registry.get(taskId)).toBeUndefined();
 
@@ -325,8 +341,8 @@ describe("sub-10 case 3: nudge anti-loop (same-turn marker; agent ignores nudge 
 	});
 
 	test("second TurnEndCheck in the SAME turn does not nudge again", async () => {
-		// 父 TaskStart 后台 task.
-		await runTool(taskStartTool, { type: "agent", task: "work" }, toolCtx);
+		// Seed a running background task.
+		seedRunningTask(registry, "subagent", "work");
 		expect(registry.hasRunning()).toBe(true);
 
 		// 第一次 TurnEndCheck → nudge.
@@ -344,7 +360,7 @@ describe("sub-10 case 3: nudge anti-loop (same-turn marker; agent ignores nudge 
 	});
 
 	test("TurnStart clears marker → next turn CAN nudge again", async () => {
-		await runTool(taskStartTool, { type: "agent", task: "work" }, toolCtx);
+		seedRunningTask(registry, "subagent", "work");
 		await fireEndCheck(reg, registry); // nudge #1
 		await fireEndCheck(reg, registry); // dedup'd
 
@@ -375,9 +391,7 @@ describe("sub-10 case 4: determinism (no real setTimeout race)", () => {
 		// comes ONLY from registry.complete() → tryWake. If that path were
 		// timer-dependent, this test would hang (or fail on the 5s timer). It
 		// resolves immediately on complete() — deterministic.
-		await runTool(taskStartTool, { type: "agent", task: "work" }, toolCtx);
-		// Grab the task id by listing (don't depend on parsing the start output).
-		const taskId = registry.list("running")[0]!.id;
+		const taskId = seedRunningTask(registry, "subagent", "work");
 
 		// Track beginWait via this local ctx's harness. The default case-4
 		// toolCtx already wires beginWait; but we need a handle to pump on it.
@@ -425,8 +439,7 @@ describe("sub-10 supporting — fail/kill wake + inbox (terminal stays until Tas
 	});
 
 	test("task fail() wakes Wait with 'task finished'", async () => {
-		await runTool(taskStartTool, { type: "agent", task: "x" }, toolCtx);
-		const taskId = registry.list("running")[0]!.id;
+		const taskId = seedRunningTask(registry, "subagent", "x");
 		let began = false;
 		const observedCtx = (makeCtx(registry) as any).toToolCtx();
 		(observedCtx as any).beginWait = () => { began = true; };
@@ -442,8 +455,7 @@ describe("sub-10 supporting — fail/kill wake + inbox (terminal stays until Tas
 	test("terminal task stays in registry (inbox) until TaskGet acknowledges it", async () => {
 		// 收件箱契约: 终态留到 TaskGet 消费才删 —— workbench Task 段在消费前
 		// 一直显示该 task.
-		await runTool(taskStartTool, { type: "agent", task: "x" }, toolCtx);
-		const taskId = registry.list("running")[0]!.id;
+		const taskId = seedRunningTask(registry, "subagent", "x");
 		registry.complete(taskId, "result");
 
 		// 终态后仍在 registry(workbench 能看见).
@@ -451,7 +463,7 @@ describe("sub-10 supporting — fail/kill wake + inbox (terminal stays until Tas
 		expect(registry.list().some((t) => t.id === taskId)).toBe(true);
 
 		// TaskGet(completed) 消费 → acknowledge → 出 registry.
-		await runTool(taskGetTool, { task_id: taskId }, toolCtx);
+		await runTool(taskTool, { action: "get", task_id: taskId }, toolCtx);
 		expect(registry.get(taskId), "consumed → out of registry").toBeUndefined();
 		expect(registry.list().some((t) => t.id === taskId)).toBe(false);
 	});

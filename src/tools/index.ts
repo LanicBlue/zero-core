@@ -34,16 +34,13 @@ import { fileEditTool } from "./file-edit.js";
 import { grepTool } from "./grep.js";
 import { globTool } from "./glob.js";
 import { delegateTool } from "./agent.js";
-// sub-4 (subagent-recovery): the Task tool family. TaskStatus→TaskGet,
-// TaskStop→TaskKill (renamed); TaskStart/TaskFinish/TaskResume are new. The
-// retired files (task-status.ts / task-stop.ts) are deleted — their behavior
-// lives in task-get.ts / task-kill.ts with the new status-branch semantics.
-import { taskStartTool } from "./task-start.js";
-import { taskGetTool } from "./task-get.js";
-import { taskListTool } from "./task-list.js";
-import { taskKillTool } from "./task-kill.js";
-import { taskFinishTool } from "./task-finish.js";
-import { taskResumeTool } from "./task-resume.js";
+// execution-entry-redesign sub-4: Task is the single action-switched lifecycle
+// tool (get/list/kill/finish/resume). Replaces the 6 prior tools
+// (TaskStart/TaskGet/TaskList/TaskKill/TaskFinish/TaskResume); start is gone
+// (agent dispatch → Subagent delegate, shell → Shell background) and the other
+// five are consolidated into action branches. Old tool names map back to Task
+// via RENAMED_TOOLS (sub-5).
+import { taskTool } from "./task-tool.js";
 import { waitTool } from "./wait.js";
 import { buildMcpTools } from "./mcp-tool.js";
 import { webSearchTool } from "./web-search.js";
@@ -94,12 +91,12 @@ const TOOL_DEFS: any[] = [
 	// (expand/read/upsert/search) and search via the wiki tree. The legacy
 	// MemoryNodeStore-backed tools are retired.
 	delegateTool,
-	// sub-4: Task tool family — explicit background (TaskStart), drill-in
-	// (TaskGet, status-branched), rich list (TaskList), discard (TaskKill),
-	// graceful wrap (TaskFinish, agent only), resume frozen child (TaskResume,
-	// agent only). Replaces TaskStatus/TaskStop + Subagent's stop/complete/
-	// request_finish/tree/resume actions (now in the Task namespace).
-	taskStartTool, taskGetTool, taskListTool, taskKillTool, taskFinishTool, taskResumeTool,
+	// execution-entry-redesign sub-4: single Task action tool — drill-in (get),
+	// rich list (list), discard (kill), graceful wrap (finish, agent only),
+	// resume frozen child (resume, agent only). The 6 prior tools
+	// (TaskStart/TaskGet/TaskList/TaskKill/TaskFinish/TaskResume) are consolidated
+	// here; start is gone (Subagent delegate + Shell background took over).
+	taskTool,
 	waitTool,
 	webSearchTool, askUserTool, todoWriteTool, webFetchTool,
 	sequentialThinkingTool,

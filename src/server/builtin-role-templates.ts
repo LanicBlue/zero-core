@@ -94,15 +94,11 @@ const MANAGEMENT_TOOLS = {
 	Platform: { enabled: true },
 	AskUser: { enabled: true },
 	TodoWrite: { enabled: true },
-	// sub-4 (subagent-recovery): Task tool family. TaskStatus→TaskGet,
-	// TaskStop→TaskKill renamed; TaskStart/TaskFinish/TaskResume added. Legacy
-	// configs spelling TaskStatus/TaskStop still migrate via RENAMED_TOOLS.
-	TaskStart: { enabled: true },
-	TaskGet: { enabled: true },
-	TaskList: { enabled: true },
-	TaskKill: { enabled: true },
-	TaskFinish: { enabled: true },
-	TaskResume: { enabled: true },
+	// sub-4 (execution-entry-redesign): the 6 task tools (TaskStart/TaskGet/
+	// TaskList/TaskKill/TaskFinish/TaskResume) merged into a single `Task`
+	// action tool. Seed policy now enables `Task` only. Legacy user configs
+	// spelling the old 6 names migrate to `Task` via RENAMED_TOOLS (sub-5).
+	Task: { enabled: true },
 	SequentialThinking: { enabled: true },
 };
 
