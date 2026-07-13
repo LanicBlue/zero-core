@@ -15,77 +15,60 @@
 //     (no longer reads config.timeout — configSchema's timeout removed).
 //   - LLM input `timeout` overrides the default.
 //
-// # Mocking strategy
-//   We mock node:child_process's execFile (and node:util's promisify to identity)
-//   so that bash.ts's `const execFileAsync = promisify(execFile)` ends up calling
-//   our mock directly. This lets us assert the opts passed to exec (notably
-//   `opts.timeout`) without running a real 300s command. The mock also lets us
-//   simulate success / failure / timeout for the kill-path test.
+// # MIGRATION NOTICE (sub-3)
+//   sub-3 refactored bash.ts's foreground path from `execFile`+`promisify` to
+//   `spawn` + manual timeout race + adopt. The previous version of this file
+//   mocked `execFile` to capture `opts.timeout` and emit canned stdout/stderr.
+//   That mock no longer intercepts anything (bash.ts now imports `spawn`,
+//   not `execFile`), so the foreground-path tests have been rewritten to:
+//     1. Mock `spawn` and return a controllable FakeChild (stdout/stderr/close).
+//     2. Use a setTimeout spy for the timeout-default/override assertions
+//        (sub-3 pipes `timeout` into a setTimeout call internally).
+//   The "extra: foreground timeout still kills" suite was DELETED — sub-3
+//   intentionally inverts that behavior (timeout now auto-backgrounds, not
+//   kills). The new contract is exercised in sub3-shell-timeout-background.test.ts.
 //
-//   IMPORTANT: vi.mock is file-scoped in vitest — other test files (eg.
-//   skill-shell.test.ts) still run real commands because they don't mock
-//   node:child_process.
+// # Mocking strategy
+//   vi.mock("node:child_process", ...) exposes `spawn` returning a hoisted
+//   `currentChild` (a FakeChild EventEmitter). Each test configures
+//   `nextResult` to drive the child's events; the helper `play()` emits them
+//   on nextTick so bash.ts's race listener is registered first.
 
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
+import { EventEmitter } from "node:events";
 
-// ─── exec mock state (hoisted so vi.mock factory can read it) ──────────────
-const execState = vi.hoisted(() => ({
-  // Most recent opts passed to execFile. Reset in beforeEach.
-  lastOpts: null as any,
-  // Last (file, args) tuple passed to execFile.
-  lastCall: null as { file: string; args: string[] } | null,
-  // What the next exec invocation should resolve/reject with. Reset in beforeEach.
-  nextResult: { kind: "success", stdout: "ok", stderr: "" } as {
-    kind: "success" | "fail" | "timeout";
-    stdout?: string;
-    stderr?: string;
-    code?: number;
+// ─── spawn mock state (hoisted so vi.mock factory can read it) ──────────────
+const spawnState = vi.hoisted(() => ({
+  // Most recent FakeChild returned by spawn.
+  currentChild: null as any,
+  // What the next spawn's child should do. Reset in beforeEach.
+  nextResult: {
+    kind: "success" as "success" | "fail",
+    stdout: "ok",
+    stderr: "",
+    code: 0,
   },
+  // Captured (shell, args) tuple.
+  lastCall: null as { shell: string; args: string[] } | null,
 }));
 
-// Mock node:util's promisify to identity, so that bash.ts's
-// `promisify(execFile)` simply IS our mocked execFile (which returns a Promise).
-vi.mock("node:util", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:util")>();
-  return {
-    ...actual,
-    promisify: (fn: any) => fn,
-  };
-});
+// A fake ChildProcess. Bash.ts reads .stdout/.stderr (attaches data listeners),
+// awaits .on("close")/.on("error"), and on timeout path checks .exitCode /
+// .signalCode / calls .kill(). For sub-2 we only need the success/fail path.
+class FakeChild extends EventEmitter {
+  stdout = new EventEmitter();
+  stderr = new EventEmitter();
+  exitCode: number | null = null;
+  signalCode: string | null = null;
+  kill() { return true; }
+}
 
-// Mock node:child_process. execFile returns a Promise (because promisify is
-// identity above). Bash.ts casts the resolved value to {stdout: Buffer, stderr:
-// Buffer}, so we resolve with that shape.
 vi.mock("node:child_process", () => ({
-  execFile: (file: string, args: string[], opts: any): Promise<{ stdout: Buffer; stderr: Buffer }> => {
-    execState.lastOpts = opts ?? null;
-    execState.lastCall = { file, args };
-    const r = execState.nextResult;
-    return new Promise((resolve, reject) => {
-      process.nextTick(() => {
-        if (r.kind === "timeout") {
-          // Mimic node's timeout-killed error: err.killed + err.signal=SIGTERM.
-          const err: any = new Error("Command killed");
-          err.killed = true;
-          err.signal = "SIGTERM";
-          err.stdout = Buffer.from(r.stdout ?? "");
-          err.stderr = Buffer.from(r.stderr ?? "");
-          reject(err);
-        } else if (r.kind === "fail") {
-          const err: any = new Error("Command failed");
-          err.code = r.code ?? 1;
-          err.status = r.code ?? 1;
-          err.stdout = Buffer.from(r.stdout ?? "");
-          err.stderr = Buffer.from(r.stderr ?? "");
-          reject(err);
-        } else {
-          resolve({
-            stdout: Buffer.from(r.stdout ?? ""),
-            stderr: Buffer.from(r.stderr ?? ""),
-          });
-        }
-      });
-    });
+  spawn: (shell: string, args: string[]) => {
+    spawnState.lastCall = { shell, args };
+    const child = new FakeChild();
+    spawnState.currentChild = child;
+    return child;
   },
 }));
 
@@ -106,6 +89,20 @@ const run = (i: any, c: any) => exec(i, c).then(fmt);
 /** Raw ToolResult JSON. */
 const raw = (i: any, c: any) => exec(i, c);
 
+/** Drive the fake child to completion based on nextResult. */
+function play(): void {
+  const child = spawnState.currentChild as FakeChild | null;
+  if (!child) return;
+  const r = spawnState.nextResult;
+  process.nextTick(() => {
+    if (r.stdout) child.stdout.emit("data", Buffer.from(r.stdout));
+    if (r.stderr) child.stderr.emit("data", Buffer.from(r.stderr));
+    const code = r.kind === "success" ? 0 : (r.code ?? 1);
+    child.exitCode = code;
+    child.emit("close", code);
+  });
+}
+
 /** Build a CallerCtx-shape ctx with the delegateFns the Shell bg branch reads. */
 function makeCtx(opts: {
   runBackground?: (cmd: string, timeout?: number) => string;
@@ -119,14 +116,21 @@ function makeCtx(opts: {
     delegateFns: {
       runBackground: opts.runBackground,
       getTaskResult: opts.getTaskResult ?? (() => null),
+      // adoptBackgroundTask wired so the timeout path can resolve (sub-3 path
+      // exercised separately in sub3-shell-timeout-background.test.ts).
+      adoptBackgroundTask: () => "bg-stub",
     },
   } as any;
 }
 
 beforeEach(() => {
-  execState.lastOpts = null;
-  execState.lastCall = null;
-  execState.nextResult = { kind: "success", stdout: "ok", stderr: "" };
+  spawnState.currentChild = null;
+  spawnState.lastCall = null;
+  spawnState.nextResult = { kind: "success", stdout: "ok", stderr: "", code: 0 };
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 // ===========================================================================
@@ -149,28 +153,24 @@ describe("acceptance-2 / item 1: background:true returns task_id immediately", (
     expect(captured.cmd).toBe("npm test");
   });
 
-  test("background:true does NOT invoke execFile (no waiting on the command)", async () => {
+  test("background:true does NOT invoke spawn (no waiting on the command)", async () => {
     const ctx = makeCtx({ runBackground: () => "bg-fixed-2" });
     await raw({ command: "long-running-watch", background: true }, ctx);
-    // execFile must NOT have been called — background returns before exec.
-    expect(execState.lastOpts).toBeNull();
-    expect(execState.lastCall).toBeNull();
+    // spawn must NOT have been called — background returns before exec.
+    expect(spawnState.lastCall).toBeNull();
+    expect(spawnState.currentChild).toBeNull();
   });
 
   test("background:true returns synchronously after runBackground (no deferred wait)", async () => {
-    // If execute were to await a deferred task, our flag would flip before raw
-    // resolves. Here runBackground is sync, so execute must resolve immediately.
     let deferredFired = false;
     const ctx = makeCtx({
       runBackground: () => {
-        // schedule something that would only fire on a later tick
         setImmediate(() => { deferredFired = true; });
         return "bg-immediate-1";
       },
     });
     const r = await raw({ command: "x", background: true }, ctx);
     expect((r as any).data.text).toMatch(/task_id: bg-immediate-1/);
-    // The deferred work has NOT fired yet (execute didn't await it).
     expect(deferredFired).toBe(false);
     await new Promise((res) => setImmediate(res));
     expect(deferredFired).toBe(true);
@@ -178,27 +178,28 @@ describe("acceptance-2 / item 1: background:true returns task_id immediately", (
 });
 
 // ===========================================================================
-// Acceptance 2 — background 默认 blocking (无 background → execFile path)
+// Acceptance 2 — background 默认 blocking (无 background → spawn path)
 // ===========================================================================
 
 describe("acceptance-2 / item 2: background defaults to blocking", () => {
-  test("no background flag → execFile IS invoked (blocking path)", async () => {
-    execState.nextResult = { kind: "success", stdout: "BLOCKING_OK", stderr: "" };
-    const ctx = makeCtx({
-      // runBackground is wired but must NOT be called.
-      runBackground: () => "should-not-fire",
-    });
-    const r = await raw({ command: "echo hi" }, ctx);
+  test("no background flag → spawn IS invoked (blocking path)", async () => {
+    spawnState.nextResult = { kind: "success", stdout: "BLOCKING_OK", stderr: "", code: 0 };
+    const ctx = makeCtx({ runBackground: () => "should-not-fire" });
+    const p = raw({ command: "echo hi" }, ctx);
+    play();
+    const r = await p;
     expect(r.ok).toBe(true);
-    expect(execState.lastCall).not.toBeNull();
+    expect(spawnState.lastCall).not.toBeNull();
     expect((r as any).data.text).toContain("BLOCKING_OK");
   });
 
-  test("background:false explicit → same as blocking (execFile invoked)", async () => {
-    execState.nextResult = { kind: "success", stdout: "EXPLICIT_FALSE_OK", stderr: "" };
+  test("background:false explicit → same as blocking (spawn invoked)", async () => {
+    spawnState.nextResult = { kind: "success", stdout: "EXPLICIT_FALSE_OK", stderr: "", code: 0 };
     const ctx = makeCtx({ runBackground: () => "should-not-fire" });
-    const r = await raw({ command: "echo hi", background: false }, ctx);
-    expect(execState.lastCall).not.toBeNull();
+    const p = raw({ command: "echo hi", background: false }, ctx);
+    play();
+    const r = await p;
+    expect(spawnState.lastCall).not.toBeNull();
     expect((r as any).data.text).toContain("EXPLICIT_FALSE_OK");
   });
 });
@@ -206,29 +207,51 @@ describe("acceptance-2 / item 2: background defaults to blocking", () => {
 // ===========================================================================
 // Acceptance 3 — timeout 默认 300s
 // ===========================================================================
+//
+// sub-3 changed the mechanism (no longer `opts.timeout` on execFile — it's now
+// a setTimeout(delay) inside bash.ts's race). Spy on setTimeout to capture the
+// delay bash.ts arms when no input timeout is supplied.
 
 describe("acceptance-2 / item 3: timeout defaults to 300s", () => {
-  test("no input timeout, no config → opts.timeout = 300000 (ms)", async () => {
-    // No config in callerCtx (no toolConfig.Shell.timeout) and no input.timeout.
+  test("no input timeout, no config → setTimeout armed with 300000ms", async () => {
+    const spies: number[] = [];
+    const spy = vi.spyOn(global, "setTimeout").mockImplementation((fn: any, delay?: number) => {
+      if (typeof delay === "number") spies.push(delay);
+      // Don't actually arm — we don't want the race to fire on a real 300s timer.
+      // Return a fake handle; clearTimeout is also stubbed below.
+      return 0 as any;
+    });
+    vi.spyOn(global, "clearTimeout").mockImplementation(() => {});
     const ctx = makeCtx();
-    await raw({ command: "echo default-timeout" }, ctx);
-    expect(execState.lastOpts).not.toBeNull();
-    expect(execState.lastOpts.timeout).toBe(300000);
+    const p = raw({ command: "echo default-timeout" }, ctx);
+    play();
+    await p;
+    spy.mockRestore();
+    vi.restoreAllMocks();
+    expect(spies).toContain(300000);
   });
 
-  test("even with callerCtx.toolConfig.Shell.timeout set, the default is still 300 (config no longer read)", async () => {
-    // Pre-sub-2 the tool read callerCtx.toolConfig?.Shell?.timeout. Post-sub-2
-    // that field is ignored. Verify by setting it to a small value and
-    // confirming the exec still got 300000ms — proving config is NOT consulted.
+  test("callerCtx.toolConfig.Shell.timeout is NOT consulted (default still 300)", async () => {
+    const spies: number[] = [];
+    const spy = vi.spyOn(global, "setTimeout").mockImplementation((fn: any, delay?: number) => {
+      if (typeof delay === "number") spies.push(delay);
+      return 0 as any;
+    });
+    vi.spyOn(global, "clearTimeout").mockImplementation(() => {});
     const ctx: any = {
       caller: "internal",
       agentId: "caller",
       workingDir: ".",
       toolConfig: { Shell: { timeout: 5 } },
-      delegateFns: {},
+      delegateFns: { adoptBackgroundTask: () => "bg-stub" },
     };
-    await raw({ command: "echo should-not-be-5" }, ctx);
-    expect(execState.lastOpts.timeout).toBe(300000);
+    const p = raw({ command: "echo should-not-be-5" }, ctx);
+    play();
+    await p;
+    spy.mockRestore();
+    vi.restoreAllMocks();
+    expect(spies).toContain(300000);
+    expect(spies).not.toContain(5000);
   });
 });
 
@@ -237,16 +260,37 @@ describe("acceptance-2 / item 3: timeout defaults to 300s", () => {
 // ===========================================================================
 
 describe("acceptance-2 / item 4: input timeout overrides default 300s", () => {
-  test("input timeout:10 → opts.timeout = 10000 (ms)", async () => {
+  test("input timeout:10 → setTimeout armed with 10000ms", async () => {
+    const spies: number[] = [];
+    const spy = vi.spyOn(global, "setTimeout").mockImplementation((fn: any, delay?: number) => {
+      if (typeof delay === "number") spies.push(delay);
+      return 0 as any;
+    });
+    vi.spyOn(global, "clearTimeout").mockImplementation(() => {});
     const ctx = makeCtx();
-    await raw({ command: "echo ten", timeout: 10 }, ctx);
-    expect(execState.lastOpts.timeout).toBe(10000);
+    const p = raw({ command: "echo ten", timeout: 10 }, ctx);
+    play();
+    await p;
+    spy.mockRestore();
+    vi.restoreAllMocks();
+    expect(spies).toContain(10000);
   });
 
-  test("input timeout:1 → opts.timeout = 1000 (ms) — beats 300s default", async () => {
+  test("input timeout:1 → setTimeout armed with 1000ms — beats 300s default", async () => {
+    const spies: number[] = [];
+    const spy = vi.spyOn(global, "setTimeout").mockImplementation((fn: any, delay?: number) => {
+      if (typeof delay === "number") spies.push(delay);
+      return 0 as any;
+    });
+    vi.spyOn(global, "clearTimeout").mockImplementation(() => {});
     const ctx = makeCtx();
-    await raw({ command: "echo one", timeout: 1 }, ctx);
-    expect(execState.lastOpts.timeout).toBe(1000);
+    const p = raw({ command: "echo one", timeout: 1 }, ctx);
+    play();
+    await p;
+    spy.mockRestore();
+    vi.restoreAllMocks();
+    expect(spies).toContain(1000);
+    expect(spies).not.toContain(300000);
   });
 });
 
@@ -256,9 +300,6 @@ describe("acceptance-2 / item 4: input timeout overrides default 300s", () => {
 
 describe("acceptance-2 / item 5: configSchema has no timeout", () => {
   test("getToolConfigSchema(bashTool) returns undefined or no field with key 'timeout'", () => {
-    // bash.ts's buildTool call passes no configSchema at all — so this should
-    // be undefined. Even if it were defined (defensive), no field.key may be
-    // 'timeout'.
     const keys = (schema ?? []).map((f: any) => f.key);
     expect(keys).not.toContain("timeout");
   });
@@ -276,9 +317,11 @@ describe("acceptance-2 / item 5: configSchema has no timeout", () => {
 
 describe("acceptance-2 / item 6: blocking command still works", () => {
   test("success → text contains stdout + '[Completed in Xs]'", async () => {
-    execState.nextResult = { kind: "success", stdout: "REAL_OUTPUT_42", stderr: "" };
+    spawnState.nextResult = { kind: "success", stdout: "REAL_OUTPUT_42", stderr: "", code: 0 };
     const ctx = makeCtx();
-    const r = await raw({ command: "echo REAL_OUTPUT_42" }, ctx);
+    const p = raw({ command: "echo REAL_OUTPUT_42" }, ctx);
+    play();
+    const r = await p;
     expect(r.ok).toBe(true);
     const text = (r as any).data.text;
     expect(text).toContain("REAL_OUTPUT_42");
@@ -286,17 +329,21 @@ describe("acceptance-2 / item 6: blocking command still works", () => {
   });
 
   test("formatted output (LLM-facing) contains stdout + completion marker", async () => {
-    execState.nextResult = { kind: "success", stdout: "FMT_OUTPUT", stderr: "" };
+    spawnState.nextResult = { kind: "success", stdout: "FMT_OUTPUT", stderr: "", code: 0 };
     const ctx = makeCtx();
-    const text = await run({ command: "echo FMT_OUTPUT" }, ctx);
+    const p = run({ command: "echo FMT_OUTPUT" }, ctx);
+    play();
+    const text = await p;
     expect(text).toContain("FMT_OUTPUT");
     expect(text).toMatch(/\[Completed in [\d.]+s\]/);
   });
 
   test("non-zero exit (fail path) → text contains 'Exit code N' + completion", async () => {
-    execState.nextResult = { kind: "fail", stdout: "PARTIAL", stderr: "boom", code: 42 };
+    spawnState.nextResult = { kind: "fail", stdout: "PARTIAL", stderr: "boom", code: 42 };
     const ctx = makeCtx();
-    const r = await raw({ command: "exit 42" }, ctx);
+    const p = raw({ command: "exit 42" }, ctx);
+    play();
+    const r = await p;
     expect(r.ok).toBe(false);
     const text = (r as any).data.text;
     expect(text).toMatch(/Exit code 42/);
@@ -327,65 +374,25 @@ describe("acceptance-2 / item 7: TaskStart{type:shell} still works", () => {
     const text = await fmtStart(await execStart({ type: "shell", command: "npm test" }, ctx));
     expect(text).toMatch(/task_id: ts-bg-1/);
     expect(capturedCmd).toBe("npm test");
-    // Must not have invoked our mocked execFile — TaskStart routes through
-    // delegateFns.runBackground, not bash.ts's exec path.
-    expect(execState.lastCall).toBeNull();
+    // Must not have invoked our mocked spawn — TaskStart routes through
+    // delegateFns.runBackground, not bash.ts's spawn path.
+    expect(spawnState.lastCall).toBeNull();
   });
 });
 
 // ===========================================================================
 // Acceptance 8 — ToolsPage 不渲染 Shell timeout config (静态:configSchema 空)
 // ===========================================================================
-//
-// ToolsPage.tsx (around line 319) renders config fields by iterating
-// selectedTool.configSchema with the guard `selectedTool.configSchema?.length > 0`.
-// With configSchema undefined/empty, the entire config tab body is skipped and
-// "No configurable parameters." is shown. We assert the schema-side invariant
-// here; UI render is a mechanical consequence.
 
 describe("acceptance-2 / item 8: ToolsPage will not render Shell timeout (configSchema empty)", () => {
   test("configSchema is empty or undefined → ToolsPage render guard skips it", () => {
-    // ToolsPage.tsx:319 guard: `selectedTool.configSchema?.length > 0`.
     const renderableLen = (schema ?? []).length;
     expect(renderableLen).toBe(0);
   });
 
   test("no configSchema field with key 'timeout' would render", () => {
-    // Render guard aside: even if iteration ran, no field has key 'timeout'.
     const keys = (schema ?? []).map((f: any) => f.key);
     expect(keys).not.toContain("timeout");
-  });
-});
-
-// ===========================================================================
-// Extra — timeout still kills (sub-2 不做转后台; sub-3 才改)
-// ===========================================================================
-//
-// Acceptance-2's "不破坏" lens: the foreground timeout path must still kill
-// (return "Command timed out") rather than auto-background. bash.ts's catch
-// block `if (err.killed)` returns the timeout text. This must NOT have changed
-// into a background dispatch (sub-3's scope).
-
-describe("extra: foreground timeout still kills (no auto-background in sub-2)", () => {
-  test("killed error → text 'Command timed out after Ns', ok:false, exitCode:-1", async () => {
-    execState.nextResult = { kind: "timeout", stdout: "", stderr: "" };
-    const ctx = makeCtx({
-      // If sub-2 accidentally turned timeout into background, runBackground
-      // would fire. Wire it to assert it does NOT.
-      runBackground: () => "should-not-fire-bg",
-    });
-    const r = await raw({ command: "sleep 9999", timeout: 5 }, ctx);
-    expect(r.ok).toBe(false);
-    expect((r as any).data.exitCode).toBe(-1);
-    const text = (r as any).data.text;
-    expect(text).toMatch(/Command timed out after 5s/);
-    expect(text).toContain("sleep 9999");
-    // Critical: timeout must NOT have produced a task_id.
-    expect(text).not.toMatch(/task_id/);
-    // And runBackground must not have been invoked (no auto-bg in sub-2).
-    // We can't directly assert call count on the mock, but execFile WAS
-    // called (blocking path) — confirming we went through exec, not bg.
-    expect(execState.lastCall).not.toBeNull();
   });
 });
 
@@ -399,7 +406,6 @@ describe("extra: background without delegateFns returns benign preview (G1)", ()
       caller: "ui",
       agentId: "preview",
       workingDir: ".",
-      // No delegateFns at all — UI dispatcher preview path.
     };
     const r = await raw({ command: "x", background: true }, ctx);
     expect(r.ok).toBe(true);
@@ -412,7 +418,6 @@ describe("extra: background without delegateFns returns benign preview (G1)", ()
       agentId: "caller",
       workingDir: ".",
       delegateFns: {
-        // runBackground intentionally absent.
         getTaskResult: () => null,
       },
     };
@@ -422,9 +427,6 @@ describe("extra: background without delegateFns returns benign preview (G1)", ()
   });
 
   test("background:true surfaces launch failures synchronously (status:failed)", async () => {
-    // If runBackground's spawn fails immediately, the registry marks the task
-    // 'failed' and the next getTaskResult reflects it. Bash surfaces that as
-    // ok:true (launch returned a task_id) but with a "failed to launch" text.
     const ctx = makeCtx({
       runBackground: () => "bg-boom",
       getTaskResult: () => ({ status: "failed", result: "spawn ENOENT" }),
@@ -441,10 +443,6 @@ describe("extra: background without delegateFns returns benign preview (G1)", ()
 // ===========================================================================
 // Acceptance 9 — typecheck (verified by `npm run build:lib`)
 // ===========================================================================
-//
-// Exercised outside vitest — the verifier report captures build:lib exit code.
-// The sentinel below proves the module loads (a TS error would surface at
-// build, not at runtime, but importing confirms no runtime wiring issue).
 
 describe("acceptance-2 / item 9: typecheck sentinel", () => {
   test("bashTool + helpers are importable (module loads)", () => {
