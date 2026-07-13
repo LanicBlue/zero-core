@@ -150,6 +150,17 @@ export class AgentLoop implements AgentRuntime {
 	/** How many steps have been completed in the current turn group. */
 	private stepOffset = 0;
 	/**
+	 * compression-archive-simplify sub-2: ephemeral turn mode. "ephemeral" =
+	 * this turn's steps are NOT persisted — triggerLocal injects persist:false
+	 * and turn-hooks (TurnStart/PostToolUse/PostToolUseFailure/StepEnd/TurnEnd
+	 * safety-net/TurnError) skip their appendStep/upsertStep writes; the
+	 * in-memory LLM messages are rolled back at turn end. Only side effects
+	 * (wiki writes, tool state) survive. Used by the memory self-write turn
+	 * (sub-3 force档 / sub-4 archive). Defaults to "default" (persist); set by
+	 * run(msg, {ephemeral:true}).
+	 */
+	private persistMode: "default" | "ephemeral" = "default";
+	/**
 	 * v0.8 (P1 §10.6): resolved wiki anchors for this session (auto memory +
 	 * auto project + free wikiAnchors). Cached at construction; invalidated
 	 * by invalidateWikiAnchorCache() when a subtree changes (future hook).
@@ -526,8 +537,15 @@ export class AgentLoop implements AgentRuntime {
 	 * the `turns.attachments` column — this is what getMessagesMultimodal
 	 * (sub-3) reads on the LIVE path (sub-3 only covered the rebuild path).
 	 */
-	async run(userMessage: string | UserContent): Promise<void> {
+	async run(userMessage: string | UserContent, opts?: { ephemeral?: boolean }): Promise<void> {
 		if (this.busy) throw new Error("Agent is already busy");
+		// compression-archive-simplify sub-2: ephemeral turn — steps NOT persisted
+		// (turn-hooks skip via persist:false), in-memory messages rolled back at
+		// turn end so the memory prompt + assistant response don't leak into the
+		// next turn (only wiki side effects survive). Snapshot BEFORE addMessage.
+		const ephemeral = opts?.ephemeral === true;
+		const ephemeralMessagesSnapshot = ephemeral ? this.session.getMessages().slice() : undefined;
+		if (ephemeral) this.persistMode = "ephemeral";
 		// Normalize once: string → {text, attachments:[]}. Downstream code reads
 		// `text` (legacy message content — stays a plain string per design) and
 		// `attachments` (meta-only; bytes never enter the loop).
@@ -593,7 +611,15 @@ export class AgentLoop implements AgentRuntime {
 				// live inline-image path a dead path (only sub-3's unit test,
 				// which sets cachedTurns directly, exercised it). Refresh here so
 				// getMessagesMultimodal sees the just-written attachments.
-				this.session.refreshTurnsCache();
+				//
+				// compression-archive-simplify sub-2: ephemeral turn 的 TurnStart 被
+				// persist:false 跳过(没写 user step);refreshTurnsCache 会从 db steps
+				// 重建 messages,擦掉刚 addMessage 的 ephemeral prompt(fresh session →
+				// 空 messages → streamText "messages must not be empty")。ephemeral
+				// 模式跳过 refresh,prompt 留在内存 messages 直达 LLM。
+				if (!ephemeral) {
+					this.session.refreshTurnsCache();
+				}
 				// multimodal-input sub-3 (#3 wiring): mark the current turn's user
 				// step seq so getMessagesMultimodal inlines images for THIS step
 				// only (design: 当前 step = the turn's user message; all multi-step
@@ -615,7 +641,17 @@ export class AgentLoop implements AgentRuntime {
 				this.streamText = "";
 				this.delegator.cleanup();
 
+				// TurnEnd fires while persistMode is still "ephemeral" (if set) so
+				// the safety-net hook also skips its assistant-step persist.
 				await this.triggerLocal("TurnEnd", { agentId: this.config.agentId, sessionId: this.session.getSessionId(), resultText: this.resultText, messageCount: this.session.getMessages().length, blocks: this.recorder.blocks.slice() });
+
+				if (ephemeral) {
+					// Roll back the in-memory LLM messages (prompt + assistant
+					// response) — only wiki side effects survive. persistMode resets
+					// AFTER TurnEnd so the safety-net above saw persist:false.
+					if (ephemeralMessagesSnapshot) this.session.replaceMessages(ephemeralMessagesSnapshot);
+					this.persistMode = "default";
+				}
 				// Step 1C: the empty per-run SessionEnd trigger is deleted (session-
 				// lifecycle ownership moved to agent-service: SessionClose fires at
 				// loop destroy). TurnEnd closes the turn boundary above.
@@ -2043,6 +2079,9 @@ export class AgentLoop implements AgentRuntime {
 			...ctx,
 			loopKind: this.config.loopKind ?? "main",
 			timestamp: Date.now(),
+			// compression-archive-simplify sub-2: ephemeral turns inject
+			// persist:false so turn-hooks skip step persistence. Defaults true.
+			persist: this.persistMode !== "ephemeral",
 		});
 	}
 }
