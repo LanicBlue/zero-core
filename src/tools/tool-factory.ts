@@ -33,6 +33,10 @@ import { log } from "../core/logger.js";
 import { triggerHooks } from "../core/hook-registry.js";
 import type { ToolRateLimiter } from "../runtime/tool-rate-limiter.js";
 import type { CallerCtx, ToolResult, TodoAccessor, TaskRegistryAccessor, DelegateFns, AgentResolvers } from "./types.js";
+// todo state lives in a leaf module (no imports from the tools/runtime graph) so
+// it can be imported STATICALLY here without the tool-factory ↔ todo-write
+// cycle that forced the old lazy `require` (undefined under ESM).
+import { getSessionTodos, setSessionTodosForCtx } from "./todo-state.js";
 
 // Re-export so existing consumers (e.g. tools/index.ts) can still import
 // ToolCategory from tool-factory. Canonical definition lives in
@@ -176,18 +180,11 @@ function callerCtxFromLegacyCtx(ctx: ToolExecutionContext, toolCallId: string): 
 
 	const todos: TodoAccessor = {
 		list: () => {
-			const mod = require("./todo-write.js") as {
-				getSessionTodos: (sessionId: string) => any[];
-			};
 			if (!sessionId && !agentId) return [];
-			const key = sessionId ?? agentId ?? "_default";
-			return mod.getSessionTodos(key);
+			return getSessionTodos(sessionId ?? agentId ?? "_default");
 		},
 		set: (items) => {
-			const mod = require("./todo-write.js") as {
-				setSessionTodosForCtx?: (sessionId: string | undefined, agentId: string | undefined, items: any[]) => void;
-			};
-			mod.setSessionTodosForCtx?.(sessionId, agentId, items);
+			setSessionTodosForCtx(sessionId, agentId, items);
 		},
 	};
 

@@ -43,6 +43,7 @@ import type { GitIntegration } from "./git-integration.js";
 import type { ProjectWorkStore } from "./project-work-store.js";
 import type { ProjectRecord, AgentRecord, ProjectWorkRecord } from "../shared/types.js";
 import { log } from "../core/logger.js";
+import { execSync } from "node:child_process";
 
 // ---------------------------------------------------------------------------
 // AnalystService
@@ -238,7 +239,6 @@ ${diff}
 	 */
 	private getGitDiff(project: ProjectRecord): string {
 		try {
-			const { execSync } = require("child_process");
 			const since = "--since=\"1 week ago\"";
 			const cmd = `git -C "${project.workspaceDir}" log --oneline ${since} -n 50`;
 			const logOutput = execSync(cmd, { encoding: "utf-8", timeout: 10000 });

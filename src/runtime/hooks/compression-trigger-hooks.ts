@@ -195,7 +195,7 @@ function exceedsThreshold(state: TokenState, abs: number, frac: number): boolean
  * is imported lazily (dynamic require) to avoid a static runtime→server cycle
  * at module-load (the hook module is in runtime/, the service in server/).
  */
-function buildCompressOpts(config: SessionConfig, providers: RuntimeProviderConfig[]) {
+async function buildCompressOpts(config: SessionConfig, providers: RuntimeProviderConfig[]) {
 	const ext = (config as any)?.extractors?.A ?? {};
 	const providerName = ext.provider ?? config.providerName;
 	const modelId = ext.model ?? config.modelId;
@@ -204,10 +204,10 @@ function buildCompressOpts(config: SessionConfig, providers: RuntimeProviderConf
 	const wiki = (config as any)?.wikiStoreGlobal;
 	if (wiki) {
 		try {
-			// Lazy require — server/extractor-a-service imports tools/wiki-tool
+			// Dynamic import — server/extractor-a-service imports tools/wiki-tool
 			// (which imports server/wiki-node-store). Keeping this dynamic avoids
 			// pulling the whole server/ wiki stack into runtime/ at static load.
-			const { ExtractorAService } = require("../../server/extractor-a-service.js") as typeof import("../../server/extractor-a-service.js");
+			const { ExtractorAService } = await import("../../server/extractor-a-service.js");
 			const agentId = config.agentId;
 			opts.extractorA = {
 				service: new ExtractorAService({ providers, providerName, modelId, wiki }),
@@ -260,7 +260,7 @@ async function runCompression(
 
 	inFlight.add(sessionId);
 	try {
-		const result = await compressSession(sessionId, db, buildCompressOpts(config, providers));
+		const result = await compressSession(sessionId, db, await buildCompressOpts(config, providers));
 		// Mark this turn as compressed (suppresses further compressions until TurnStart).
 		if (result.summaries.length > 0) {
 			compressedThisTurn.add(sessionId);

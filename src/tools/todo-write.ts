@@ -35,71 +35,14 @@
 import { z } from "zod";
 import { buildTool } from "./tool-factory.js";
 import type { CallerCtx, ToolResult } from "./types.js";
+import { type TodoItem, setSessionTodosForCtx, renderTodosContext } from "./todo-state.js";
 
-// ---------------------------------------------------------------------------
-// TodoWrite — per-session task list management
-// ---------------------------------------------------------------------------
-
-export interface TodoItem {
-	content: string;
-	status: "pending" | "in_progress" | "completed";
-	activeForm: string;
-}
-
-// Per-session in-memory todo store. Keyed by sessionId(同一 agent 的 General /
-// 各 project session 互不干扰)。sessionId 缺失时退化为 agentId,保证旧路径不崩。
-//
-// G1 说"todos 的主人是 loop",但实际现状是 module-level Map(sub-4 收敛前)。
-// sub-4 的迁移语义:callerCtx.todos 访问器 read/write 这张 Map(经
-// setSessionTodosForCtx / getSessionTodos 导出);loop 侧(ctxToCallerCtx)建访问器
-// 时把 ctx.sessionId 闭包进去 —— 数据仍 per-session keyed,只是读写路径走访问器。
-// sub-5+ 真正把这张 Map 挪到 loop / 单例后,访问器形态不变,只换底层。
-const sessionTodos = new Map<string, TodoItem[]>();
-
-function todoKey(sessionId: string | undefined, agentId: string | undefined): string {
-	return sessionId ?? agentId ?? "_default";
-}
-
-export function getSessionTodos(sessionId: string): TodoItem[] {
-	return sessionTodos.get(sessionId) ?? [];
-}
-
-export function clearSessionTodos(sessionId: string): void {
-	sessionTodos.delete(sessionId);
-}
-
-/**
- * sub-4 bridge:write the per-session todos under the ctx's key. Called by the
- * TodoAccessor built in tool-factory's ctxToCallerCtx (so the tool itself stays
- * decoupled from the keying scheme — it just calls callerCtx.todos.set(items)).
- *
- * Exported (not just used internally) so the accessor in tool-factory can reach
- * it without re-implementing the key logic.
- */
-export function setSessionTodosForCtx(
-	sessionId: string | undefined,
-	agentId: string | undefined,
-	items: TodoItem[],
-): void {
-	sessionTodos.set(todoKey(sessionId, agentId), items);
-}
-
-/**
- * Render the session's current todo list as a context block (null if empty).
- * Called by agent-loop each turn so the agent SEES its todo state (not just
- * writes blindly). Rendering lives here (the todo module); agent-loop only
- * wires the result into buildContextMessage — keeps tool/loop concerns separate.
- */
-export function renderTodosContext(sessionId: string | undefined, agentId?: string): string | null {
-	const todos = sessionTodos.get(todoKey(sessionId, agentId));
-	if (!todos || todos.length === 0) return null;
-	const lines = todos.map((t) => {
-		const mark = t.status === "completed" ? "[x]" : t.status === "in_progress" ? "[~]" : "[ ]";
-		return `- ${mark} ${t.content}`;
-	});
-	const completed = todos.filter((t) => t.status === "completed").length;
-	return `${completed}/${todos.length} done\n` + lines.join("\n");
-}
+// Per-session todo state(Map + accessors)lives in ./todo-state —— a leaf module
+// with no imports from the tools/runtime graph. tool-factory + agent-loop import
+// it DIRECTLY to avoid the tool-factory ↔ todo-write static cycle that forced
+// the old lazy `require`(undefined under ESM)。Re-exported here so existing
+// importers(workbench / todo-cleanup-hooks / agent-service)keep working unchanged.
+export { getSessionTodos, setSessionTodosForCtx, clearSessionTodos, renderTodosContext, type TodoItem } from "./todo-state.js";
 
 /** ToolResult data shape (decision 3: JSON). UI dispatcher consumes this directly. */
 export interface TodoWriteData {

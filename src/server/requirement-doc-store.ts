@@ -36,7 +36,7 @@
 // - 写前确保目录存在;读不存在返回 undefined (不抛)
 //
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync, readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import type { RequirementRecord } from "../shared/types.js";
 
@@ -156,7 +156,6 @@ export class RequirementDocStore {
 		if (!workspaceDir) return [];
 		const dir = join(workspaceDir, REQUIREMENTS_DIR_NAME, projectId);
 		if (!existsSync(dir)) return [];
-		const { readdirSync } = require("node:fs");
 		const rel = relative(workspaceDir, dir);
 		return readdirSync(dir)
 			.filter((f: string) => f.endsWith(".md"))

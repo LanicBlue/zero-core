@@ -71,6 +71,11 @@ import {
 	renderContextAnchors,
 	type ResolvedAnchor,
 } from "./wiki-anchor-injection.js";
+// todo state for the todos accessor in buildCallerCtx. Imported STATICALLY from
+// the leaf module todo-state (no cycle — it imports nothing from tools/runtime),
+// which lets us drop the old lazy `require` (undefined under ESM) without pulling
+// todo-write (which cycles with tool-factory) into the static graph.
+import { getSessionTodos, setSessionTodosForCtx } from "../tools/todo-state.js";
 // sub-7 (anchor merger): renderSystemAnchors + renderContextAnchors collapse
 // into the single `wiki-system-anchors` system section (root summary + one
 // layer, both channels unioned). renderContextAnchors stays exported so tests
@@ -407,18 +412,11 @@ export class AgentLoop implements AgentRuntime {
 		// todo-write.ts, keyed by sessionId/agentId. Same shape as the old bridge.
 		const todosAccessor: TodoAccessor = {
 			list: () => {
-				const mod = require("../tools/todo-write.js") as {
-					getSessionTodos: (sessionId: string) => any[];
-				};
 				if (!sessionId && !agentId) return [];
-				const key = sessionId ?? agentId ?? "_default";
-				return mod.getSessionTodos(key);
+				return getSessionTodos(sessionId ?? agentId ?? "_default");
 			},
 			set: (items) => {
-				const mod = require("../tools/todo-write.js") as {
-					setSessionTodosForCtx?: (sessionId: string | undefined, agentId: string | undefined, items: any[]) => void;
-				};
-				mod.setSessionTodosForCtx?.(sessionId, agentId, items);
+				setSessionTodosForCtx(sessionId, agentId, items);
 			},
 		};
 

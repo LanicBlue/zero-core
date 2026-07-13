@@ -211,10 +211,10 @@ function sanitizePathSegment(seg: string): string {
  * NOT block the archive (final compression is best-effort; the JSON export
  * proceeds regardless).
  */
-function buildFinalCompressOpts(
+async function buildFinalCompressOpts(
 	sessionConfig: SessionConfig,
 	providers: RuntimeProviderConfig[],
-): CompressSessionOptions {
+): Promise<CompressSessionOptions> {
 	const ext = (sessionConfig as any)?.extractors?.A ?? {};
 	const providerName = ext.provider ?? sessionConfig.providerName;
 	const modelId = ext.model ?? sessionConfig.modelId;
@@ -237,11 +237,10 @@ function buildFinalCompressOpts(
 	const wiki = (sessionConfig as any)?.wikiStoreGlobal ?? (sessionConfig as any)?.wikiStore;
 	if (wiki) {
 		try {
-			// Lazy require — server/extractor-a-service imports tools/wiki-tool
+			// Dynamic import — server/extractor-a-service imports tools/wiki-tool
 			// (which imports server/wiki-node-store). Keeping this dynamic avoids
 			// pulling the whole server/ wiki stack at static load.
-			const { ExtractorAService } =
-				require("./extractor-a-service.js") as typeof import("./extractor-a-service.js");
+			const { ExtractorAService } = await import("./extractor-a-service.js");
 			const agentId = sessionConfig.agentId;
 			(opts as any).extractorA = {
 				service: new ExtractorAService({ providers, providerName, modelId, wiki }),
@@ -333,7 +332,7 @@ export async function archiveSession(
 			const result = await compressSession(
 				sessionId,
 				db,
-				buildFinalCompressOpts(opts.sessionConfig, opts.providers),
+				await buildFinalCompressOpts(opts.sessionConfig, opts.providers),
 			);
 			finalCompressionRan = result.summaries.length > 0;
 			log.debug(

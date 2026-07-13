@@ -881,12 +881,14 @@ export class AgentService implements PlatformObserver {
 		// eviction-time work.
 		try {
 			if (this.wikiStoreGlobal) {
-				const { closeFlushSession } = require("../runtime/hooks/extraction-hooks.js") as typeof import("../runtime/hooks/extraction-hooks.js");
-				void closeFlushSession({
-					sessionId,
-					resolveConfig: () => this.buildSessionConfigForEviction(sessionId),
-					resolveProviders: () => this.providerConfigs,
-				}).catch((err: any) => log.warn("agent", `close flush failed: ${err?.message}`));
+				// ESM: dynamic import (require is undefined here). Fire-and-forget.
+				void import("../runtime/hooks/extraction-hooks.js")
+					.then(({ closeFlushSession }) => closeFlushSession({
+						sessionId,
+						resolveConfig: () => this.buildSessionConfigForEviction(sessionId),
+						resolveProviders: () => this.providerConfigs,
+					}))
+					.catch((err: any) => log.warn("agent", `close flush failed: ${err?.message}`));
 			}
 		} catch (err) {
 			log.warn("agent", `close flush dispatch failed: ${(err as Error)?.message}`);
@@ -1018,13 +1020,12 @@ export class AgentService implements PlatformObserver {
 		taskId: string,
 		childSessionId: string,
 	): Promise<void> {
-		// Lazy require — server/archive-service imports compression-core +
+		// Dynamic import — server/archive-service imports compression-core +
 		// extractor-a-service (which imports tools/wiki-tool → server/wiki-node-
 		// store). Keeping this dynamic avoids pulling the whole server/ wiki
 		// stack into agent-service's static graph (agent-service is already
 		// large). Same pattern as compression-trigger-hooks.
-		const { archiveSession } =
-			require("./archive-service.js") as typeof import("./archive-service.js");
+		const { archiveSession } = await import("./archive-service.js");
 		const rec = this.db.getDelegatedTask?.(taskId);
 		const childAgentId = rec?.targetAgentId;
 		const childModelId = rec?.modelId;
@@ -1062,17 +1063,14 @@ export class AgentService implements PlatformObserver {
 	 * archive pipeline owns the ORDER (teardown → compress → export → delete).
 	 */
 	async archiveSessionManually(sessionId: string): Promise<{ archivePath: string }> {
-		// Lazy require (same rationale as archiveDelegatedSession).
-		const { archiveSession } =
-			require("./archive-service.js") as typeof import("./archive-service.js");
-		// Lazy require the per-session hook-state clearers. These live in
+		// Dynamic import (same rationale as archiveDelegatedSession).
+		const { archiveSession } = await import("./archive-service.js");
+		// Dynamic import of the per-session hook-state clearers. These live in
 		// runtime/hooks/; importing them statically here would pull the hook
-		// registry + its deps into agent-service's static graph. Dynamic require
+		// registry + its deps into agent-service's static graph. Dynamic import
 		// keeps that cost off module-load.
-		const { clearCompressionTriggerStateForSession } =
-			require("../runtime/hooks/compression-trigger-hooks.js") as typeof import("../runtime/hooks/compression-trigger-hooks.js");
-		const { clearTurnSeqStateForSession } =
-			require("../runtime/hooks/turn-seq-tracker.js") as typeof import("../runtime/hooks/turn-seq-tracker.js");
+		const { clearCompressionTriggerStateForSession } = await import("../runtime/hooks/compression-trigger-hooks.js");
+		const { clearTurnSeqStateForSession } = await import("../runtime/hooks/turn-seq-tracker.js");
 
 		const sessionRec = this.db.getSession(sessionId);
 		if (!sessionRec) {
