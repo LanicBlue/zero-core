@@ -8,7 +8,16 @@ files:
   - dist/**/*
   - package.json
 asar: false
-npmRebuild: true
+# npmRebuild 必须为 false:@electron/rebuild 默认 buildFromSource=false,而 better-sqlite3
+# 12.11.1 没发布 Electron 43(ABI 148)预编译 → 它 no-op,留下 Node ABI(141)的 .node,
+# 打包后后端启动崩 "NODE_MODULE_VERSION 141 vs 148"。改由 scripts/rebuild-native.cjs
+# 在打包前显式 node-gyp --runtime=electron 从源码编译。build:mac/win/linux 已包这层。
+npmRebuild: false
+extraResources:
+  - from: build/trayIconTemplate.png
+    to: trayIconTemplate.png
+  - from: build/trayIconTemplate@2x.png
+    to: trayIconTemplate@2x.png
 win:
   executableName: Zero-Core
   artifactName: "${productName}-${version}-${arch}-setup.${ext}"
@@ -25,8 +34,10 @@ nsis:
 portable:
   artifactName: "${productName}-${version}-${arch}-portable.${ext}"
 mac:
+  icon: build/icon.png
   target:
     - dmg
 linux:
+  category: Utility
   target:
     - AppImage

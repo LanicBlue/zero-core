@@ -24,8 +24,9 @@
   "scripts": {
     "dev": "node scripts/dev.js",
     "build": "npm run typecheck && electron-vite build",
-    "build:win": "npm run build && electron-builder --win",
-    "build:mac": "npm run build && electron-builder --mac",
+    "build:win": "npm run rebuild:native:electron && npm run build && electron-builder --win && npm run rebuild:native:node",
+    "build:mac": "npm run rebuild:native:electron && npm run build && electron-builder --mac && npm run rebuild:native:node",
+    "build:linux": "npm run rebuild:native:electron && npm run build && electron-builder --linux && npm run rebuild:native:node",
     "preview": "electron-vite preview",
     "build:lib": "tsc -p tsconfig.cli.json && node scripts/copy-bundled-skills.cjs",
     "typecheck": "tsc -p tsconfig.cli.json && tsc -p tsconfig.web.json && tsc -p tsconfig.node.json",
@@ -33,7 +34,12 @@
     "test:unit:watch": "vitest",
     "test:e2e": "npm run build && playwright test",
     "build:codegraph": "tsx scripts/build-codegraph.ts",
-    "check:links": "node scripts/check-doc-links.cjs"
+    "check:links": "node scripts/check-doc-links.cjs",
+    "self-update": "node scripts/self-update.cjs",
+    "self-update:packaged": "node scripts/self-update.cjs --mode=packaged",
+    "self-update:restore": "node scripts/self-update-restore.cjs",
+    "rebuild:native:electron": "node scripts/rebuild-native.cjs electron",
+    "rebuild:native:node": "node scripts/rebuild-native.cjs node"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.77",
@@ -41,7 +47,7 @@
     "@ai-sdk/openai": "^3.0.63",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^6.0.180",
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "^12.11.1",
     "iconv-lite": "^0.6.3",
     "jsdom": "^29.1.1",
     "mermaid": "^11.15.0",
@@ -57,6 +63,7 @@
     "typebox": "^1.1.24",
     "undici": "^8.3.0",
     "uuid": "^14.0.0",
+    "ws": "^8.21.0",
     "zod": "^4.4.3",
     "zustand": "^5.0.13"
   },
@@ -72,8 +79,8 @@
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.7.0",
-    "electron": "41.6.0",
-    "electron-builder": "^26.8.1",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "tsx": "^4.22.4",
     "typescript": "^5.7.3",
