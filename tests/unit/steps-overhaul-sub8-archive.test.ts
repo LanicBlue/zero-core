@@ -1,22 +1,23 @@
 // steps-overhaul sub-8 acceptance test: 归档管线 (archive pipeline).
+// Updated compression-archive-simplify sub-4: Q5b memory turn + atomic export
+// (no final compression, no ExtractorA wiki-merge coupling).
 //
 // # File说明书
 // ## 核心功能
-// 独立验证 acceptance-8.md 的核心条目,直调 archive-service.archiveSession():
-//   - 管线顺序:末次压缩 → 导出 JSON → 删库(含孤儿)。
+// 独立验证 acceptance-8.md + acceptance-4.md 的核心条目,直调 archive-service.archiveSession():
+//   - 管线顺序:(可选 memory turn)→ mark(archived=1)→ 原子 export → 删库(含孤儿)。
 //   - JSON 落盘 `<ZERO_CORE_DIR>/archives/<agentId>/<sessionId>.json`,plain JSON,
 //     含 sessions 行 + steps + messages summary + compressionCursor。
 //   - 归档后:DB 无该 session 的 sessions/steps/messages/tool_executions/
 //     delegated_tasks 行。
 //   - 活跃 session 归档:teardown 先于删库(stopAgentLoop + clearHookState 注入,
-//     按顺序跑,验证调用次序)。
-//   - 末次压缩失败不阻塞 JSON 落盘 + 删库(best-effort)。
-//   - 无 step 的 session:跳过末次压缩(skipFinalCompression 或 compressSession
-//     自然 skip),JSON 仍落盘,删库仍跑。
+//     按顺序跑,验证调用次序)。memory turn 在 teardown 之前。
+//   - memory turn 失败 / 未注入 → 不阻塞 JSON 落盘 + 删库(best-effort)。
+//   - 无 memoryTurnRunner 的 caller(如 recovery scan)→ 直接 export + delete。
 //   - archivePathFor 路径段净化(防 ../../escape)。
 //   - SessionDB.deleteSessionData:孤儿清理(tool_executions/delegated_tasks)。
 //
-// ## 不变量守恒(acceptance-8)
+// ## 不变量守恒(acceptance-4 + acceptance-8)
 //   - 管线顺序 / JSON 形态 / 孤儿清理 / wiki 不归本管线管(deleteSessionData 不
 //     触 wiki store;wiki 节点留存由删库语句不命中 wiki 表保证)。
 //
@@ -85,6 +86,16 @@ function sessionConfigFor(agentId: string, workspaceDir: string): any {
 	};
 }
 
+/**
+ * sub-4: a memoryTurnRunner stub. Returns true (claimed ran) without actually
+ * spinning up a loop — these tests don't need a real AgentLoop (they verify
+ * the archive pipeline: mark/export/delete + ordering). The runner is just
+ * plumbed through to assert the opts shape + that the pipeline calls it.
+ */
+function memoryTurnRanStub(): () => Promise<boolean> {
+	return async () => true;
+}
+
 /** Cast SessionDB to expose the private `db` (better-sqlite3) for fixture inserts. */
 function rawDb(db: InstanceType<typeof SessionDBCtor>): import("better-sqlite3").Database {
 	return (db as unknown as { db: import("better-sqlite3").Database }).db;
@@ -111,7 +122,7 @@ describe("steps-overhaul sub-8: archive pipeline (archiveSession)", () => {
 
 	// ── 1. 管线顺序 + JSON 形态 + 删库 + 孤儿清理 ──────────────────────────
 
-	test("runs compress → export JSON → delete DB rows (incl. orphans)", async () => {
+	test("runs memory-turn → mark → export JSON → delete DB rows (incl. orphans)", async () => {
 		const agentId = "agt-archive";
 		const created = sessionDB!.createSession(agentId, "title");
 		const sid = created.id;
@@ -132,8 +143,7 @@ describe("steps-overhaul sub-8: archive pipeline (archiveSession)", () => {
 		expect(dbi.prepare("SELECT COUNT(*) AS c FROM delegated_tasks WHERE session_id = ?").get(sid)).toEqual({ c: 1 });
 
 		const result = await archiveMod.archiveSession(sid, sessionDB!, {
-			providers: [],
-			sessionConfig: sessionConfigFor(agentId, testDir),
+			memoryTurnRunner: memoryTurnRanStub(),
 		});
 
 		// JSON file written to <TMP>/archives/<agentId>/<sid>.json (TMP is the
@@ -151,8 +161,9 @@ describe("steps-overhaul sub-8: archive pipeline (archiveSession)", () => {
 		expect(payload.session.id).toBe(sid);
 		expect(payload.steps.length).toBe(4); // 2 turns × (user + assistant)
 		expect(payload.summaries).toEqual([]);
-		// stub providers=[] can't resolve a model → compress threw → false.
-		expect(payload.finalCompressionRan).toBe(false);
+		// sub-4: memory turn ran (stub returns true).
+		expect(payload.memoryTurnRan).toBe(true);
+		expect(result.memoryTurnRan).toBe(true);
 
 		// DB rows ALL gone — sessions/steps/messages + both orphan tables.
 		expect(sessionDB!.getSession(sid)).toBeUndefined();
@@ -162,41 +173,43 @@ describe("steps-overhaul sub-8: archive pipeline (archiveSession)", () => {
 		expect(dbi.prepare("SELECT COUNT(*) AS c FROM delegated_tasks WHERE session_id = ?").get(sid)).toEqual({ c: 0 });
 	});
 
-	// ── 2. 末次压缩失败不阻塞 JSON 落盘 + 删库(best-effort) ─────────────
+	// ── 2. memory turn 失败不阻塞 JSON 落盘 + 删库(best-effort) ─────────────
 
-	test("final compression failure (no providers) still exports JSON + deletes rows", async () => {
+	test("memory turn failure (stub throws) still exports JSON + deletes rows", async () => {
 		const created = sessionDB!.createSession("agt-best", "t");
 		const sid = created.id;
 		seedTurn(sessionDB!, sid, 0, "what is X?", "X is ...");
 
 		const result = await archiveMod.archiveSession(sid, sessionDB!, {
-			providers: [], // can't resolve model → compress throws internally
-			sessionConfig: sessionConfigFor("agt-best", testDir),
+			memoryTurnRunner: async () => { throw new Error("memory turn boom"); },
 		});
 
-		expect(result.finalCompressionRan).toBe(false);
+		// memory turn threw → caught + memoryTurnRan=false; export + delete proceeded.
+		expect(result.memoryTurnRan).toBe(false);
 		expect(existsSync(result.archivePath)).toBe(true);
 		expect(sessionDB!.getSession(sid)).toBeUndefined();
+		const payload: ArchiveJson = JSON.parse(readFileSync(result.archivePath, "utf8"));
+		expect(payload.memoryTurnRan).toBe(false);
 	});
 
-	// ── 3. 活跃 session teardown:先停 loop 再清 hook state,顺序对 ────────
+	// ── 3. 活跃 session teardown:memory turn → teardown → export,顺序对 ───
 
-	test("active-session teardown runs stopAgentLoop BEFORE clearHookState, BEFORE export/delete", async () => {
+	test("active-session teardown runs stopAgentLoop BEFORE clearHookState, BEFORE export/delete; memory turn runs BEFORE teardown", async () => {
 		const created = sessionDB!.createSession("agt-3", "t");
 		const sid = created.id;
 		seedTurn(sessionDB!, sid, 0, "hi", "hello");
 
 		const order: string[] = [];
 		const result = await archiveMod.archiveSession(sid, sessionDB!, {
-			providers: [],
-			sessionConfig: sessionConfigFor("agt-3", testDir),
+			memoryTurnRunner: async () => { order.push("memory-turn"); return true; },
 			teardown: {
 				stopAgentLoop: () => { order.push("stop"); },
 				clearHookState: () => { order.push("clear-hooks"); },
 			},
 		});
 
-		expect(order).toEqual(["stop", "clear-hooks"]);
+		expect(order).toEqual(["memory-turn", "stop", "clear-hooks"]);
+		expect(result.memoryTurnRan).toBe(true);
 		expect(existsSync(result.archivePath)).toBe(true);
 		expect(sessionDB!.getSession(sid)).toBeUndefined();
 	});
@@ -207,8 +220,6 @@ describe("steps-overhaul sub-8: archive pipeline (archiveSession)", () => {
 		seedTurn(sessionDB!, sid, 0, "hi", "hello");
 
 		await expect(archiveMod.archiveSession(sid, sessionDB!, {
-			providers: [],
-			sessionConfig: sessionConfigFor("agt-3b", testDir),
 			teardown: {
 				stopAgentLoop: () => { throw new Error("boom-stop"); },
 				clearHookState: () => { throw new Error("boom-clear"); },
@@ -217,23 +228,19 @@ describe("steps-overhaul sub-8: archive pipeline (archiveSession)", () => {
 		expect(sessionDB!.getSession(sid)).toBeUndefined();
 	});
 
-	// ── 4. 空 session(skipFinalCompression)→ JSON 仍落盘,删库仍跑 ───────
+	// ── 4. 无 memoryTurnRunner(recovery scan 形态)→ JSON 仍落盘,删库仍跑 ─
 
-	test("skipFinalCompression=true bypasses compress; JSON still exports + delete still runs", async () => {
+	test("no memoryTurnRunner (recovery scan form) → straight to export + delete", async () => {
 		const created = sessionDB!.createSession("agt-4", "t");
 		const sid = created.id;
 		sessionDB!.appendStep(sid, 0, 0, "user", "hi");
 
-		const result = await archiveMod.archiveSession(sid, sessionDB!, {
-			providers: [],
-			sessionConfig: sessionConfigFor("agt-4", testDir),
-			skipFinalCompression: true,
-		});
+		const result = await archiveMod.archiveSession(sid, sessionDB!, {});
 
-		expect(result.finalCompressionRan).toBe(false);
+		expect(result.memoryTurnRan).toBe(false);
 		const payload: ArchiveJson = JSON.parse(readFileSync(result.archivePath, "utf8"));
 		expect(payload.steps.length).toBe(1);
-		expect(payload.finalCompressionRan).toBe(false);
+		expect(payload.memoryTurnRan).toBe(false);
 		expect(sessionDB!.getSession(sid)).toBeUndefined();
 	});
 

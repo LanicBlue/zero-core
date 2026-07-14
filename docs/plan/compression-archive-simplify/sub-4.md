@@ -24,6 +24,19 @@
 - 不删 `extractor-a-service.ts` 主体(sub-5)。
 - 不动压缩(sub-3)。
 
+## Deferred(本 sub 留接口未实现,acceptance-4 #11)
+
+- **restore 通路**(IPC 读 `<id>.json` 重建 session 行):archive JSON 是
+  单向留档,本 sub 没有重建通路的 IPC / 命令 / UI 入口。`archivePathFor` /
+  `ARCHIVES_ROOT` / `ArchiveJson` 都是 public export,follow-up 直接消费即可
+  实现 restore。
+- **archives 轮转 / 上限**(cap `<archives>/<agentId>/` 下文件数,LRU 清理):
+  本 sub 不做。`~/.zero-core/archives/` 会无限增长,follow-up 加一个启动时
+  的 sweep(按 mtime / 容量阈值清理最老)。
+
+> Follow-up:开 issue `compression-archive-restore` + `compression-archive-rotation`
+> 跟进(本 sub 验收不阻塞)。
+
 ## 验证
 
 见 [./acceptance-4.md](./acceptance-4.md)。

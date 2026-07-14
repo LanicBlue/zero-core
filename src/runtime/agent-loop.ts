@@ -139,6 +139,29 @@ const FORCE_MEMORY_PROMPT =
 	"After you finish writing (or if there is nothing worth saving), end your turn with a " +
 	"brief text response. The compression will run automatically once you finish.";
 
+/**
+ * compression-archive-simplify sub-4 (Q5b): the prompt for the memory ephemeral
+ * turn that runs at session end / manual archive. Same shape as
+ * FORCE_MEMORY_PROMPT but framed for archive (no compression will follow — the
+ * session is being retired). Exported so the archive path (server layer,
+ * agent-service.archiveSessionManually / archiveDelegatedSession) can drive it
+ * on either the existing active loop (chat manual) or a temp rebuilt loop
+ * (delegated child whose loop already returned — GAP2 re-activate).
+ *
+ * The turn is `ephemeral:true` (sub-2) so its steps are NOT persisted — only
+ * wiki writes survive. This is the Q5b replacement for the retired
+ * ExtractorA.archiveService merge step (sub-3b stripped the wiring; sub-4
+ * removes the dead code + replumbs the call site to drive this turn).
+ */
+export const ARCHIVE_MEMORY_PROMPT =
+	"[system] This session is being archived. Before it closes, take a moment to write " +
+	"any salient facts worth preserving across sessions — decisions, file paths, key " +
+	"results, lessons learned, unfinished threads — to your wiki memory (use the Wiki " +
+	"tool to create or update nodes in your memory subtree). " +
+	"Be selective: only durable facts a future session would need, not a recap of every step. " +
+	"After you finish writing (or if there is nothing worth saving), end your turn with a " +
+	"brief text response. The session will be exported to JSON once you finish.";
+
 export class AgentLoop implements AgentRuntime {
 	private session: AgentSession;
 	private config: SessionConfig;

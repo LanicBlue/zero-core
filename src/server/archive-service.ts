@@ -1,75 +1,88 @@
-// 归档管线服务 (steps-overhaul sub-8 → compression-archive-simplify sub-3b)
+// 归档管线服务 (steps-overhaul sub-8 → compression-archive-simplify sub-4)
 //
 // # 文件说明书
 //
-// ## 核心功能
-// 单向归档 = **末次滚动压缩 → 导出 JSON → 删库(含孤儿) → wiki 留存**。
-// 任一触发后都走这套(`archiveSession`)。
+// ## 核心功能(compression-archive-simplify sub-4 重写)
 //
-// ① **末次压缩**:把残留 step(游标之后、fresh-tail 之外)抽进滚动摘要。
-//    复用 sub-4 `compressSession`(sub-3b 滚动摘要版)—— 与平时 mid-turn 压缩
-//    **完全相同的代码路径**(buildFinalCompressOpts 镜像 compression-trigger-
-//    hooks 的连线)。归档也压缩(design.md「归档」:"归档也压缩")。失败仅
-//    warn,不阻塞归档主干(摘要没更新比丢整个 session 轻 —— JSON 仍落盘)。
+// 单向归档 = **Q5b memory ephemeral turn(可选)→ mark(archived=1,瞬态崩溃
+// 检查点)→ 原子 export(JSON tmp+parse+rename+删行)→ wiki 留存**。任一触发
+// 都走这套(`archiveSession`)。所有步骤都串在一把 per-session 锁下,防
+// "手动 + 自动"并发归档同一 session 的竞态(acceptance-4 #8)。
 //
-//    sub-3b:压缩的 ExtractorA wiki-merge 耦合已拆(wiki 写由 sub-3c Force 档
-//    memory ephemeral turn 替代)。本管线不再连 ExtractorA;末次压缩只产滚动摘要
-//    供 JSON 导出。
+// ① **memory ephemeral turn(可选)**:Q5b —— session 自然结束(子 agent
+//    task-finish / 手动归档)前,跑一轮 `persist:false` turn 让 agent 自写
+//    wiki 记忆(design.md「三、归档流程」)。step 不落盘,只 wiki 副作用
+//    存活(sub-2 acceptance #1)。由 caller 注入 `memoryTurnRunner` 闭包:
+//    - 手动归档(chat 活跃 session):在活跃 AgentLoop 上 `run(prompt,
+//      {ephemeral:true})`。
+//    - 子 agent termination(已 return,loop 没了):caller 重建 temp loop
+//      → 跑 ephemeral turn → dispose。
+//    - 已压缩过的长 session(compression memory turn 已写过 wiki)→ caller
+//      skip(GAP2);只 export。
+//    - 启动恢复扫描(只重 export,不再跑 memory turn)→ caller 不传 runner。
 //
-// ② **导出 JSON**:该 session 的自有数据 = `sessions` 行 + `steps` 全量 +
-//    `messages` summary 全量 + 压缩游标 → 落盘
-//    `~/.zero-core/archives/<agentId>/<sessionId>.json`(plain JSON,与 wiki/
-//    archives 同根;目录不存在则建;按 agentId 分目录)。文件名 = sessionId
-//    (唯一)。**plain JSON**(v1,可读;真大了再加 gzip —— design.md「JSON 细节」)。
+// ② **mark(archived=1,瞬态)**:O3 —— 复用现有 `archived` 列作瞬态崩溃
+//    检查点。mark→export+delete 之间崩 → 重启扫 `listArchivedTransientSessions`
+//    重 export(design.md「五、保险」)。**不 emit sidebar update**:行马上
+//    就被 delete,emit 会闪一帧"已归档"再消失;crash 后由恢复扫描兜底。
 //
-// ③ **删库**:`db.deleteSessionData(sessionId)` —— 删 `sessions`/`steps`/
-//    `messages` 行 + `tool_executions`/`delegated_tasks` **孤儿**(全
-//    `WHERE session_id`)。Wiki 节点**不删**(跨 session 留存 —— 归档只删
-//    session 自有内容,记忆节点留存)。
+// ③ **原子 export**:`<id>.json.tmp` → JSON.parse 校验 → `rename(tmp,final)`
+//    → 才 `db.deleteSessionData(sessionId)`。任一步失败(tmp 写失败 / parse
+//    不过 / rename 失败)→ **不删行**;DB 行仍在,可重试(acceptance-4 #2)。
+//    export 无 LLM(纯读 + 写),廉价(design.md:「Archive = (I) export+delete
+//    即时原子」)。
 //
-// ## 触发(sub-8)
-// - **delegated(子 agent)完成**:`subagent-delegator.ts` 任务
-//   `completed/failed` → 调本服务。子 agent 跑完即沉,天然完成态,**无需额外
-//   runtime teardown**(归档前子 AgentLoop 已 run() return / abort)。
+// ④ **删库**:`db.deleteSessionData(sessionId)` —— 删 `sessions`/`steps`/
+//    `messages` 行 + `tool_executions`/`delegated_tasks` 孤儿(全 WHERE
+//    session_id)。Wiki 节点不删(跨 session 留存 —— 归档只删 session 自有
+//    内容,记忆节点留存)。
+//
+// ## 砍 final compression(D4)+ 拆 archive-wiki-merge 耦合(Q5b 替代)
+// - 归档不再跑末次压缩(D4:design.md 明确"归档也压缩"作废);sub-3b 留下的
+//   末次压缩 opts builder + provider/model 解析 + 上下文窗口读取全部删
+//   (acceptance-4 #7:归档路径不调压缩入口)。
+// - archive-service 的 wiki-merge 调用早已在 sub-3b 拆除(Q5b memory turn
+//   替代);本 sub 进一步把"末次压缩假需求"和耦合注释残留一并清掉
+//   (acceptance-4 #6:archive-service 内不再出现该外部 extractor 名)。
+//
+// ## 触发(sub-8 沿用)
+// - **delegated(子 agent)完成**:`subagent-delegator.ts` 任务 `completed/
+//   failed` → `fireOnTaskTerminal` → agent-service.archiveDelegatedSession →
+//   本服务。子 agent 跑完即沉,天然完成态;若从没压缩过,caller 重建 temp
+//   loop 跑 memory turn(GAP2)。
 // - **chat(前台)手动**:走现有 chat UI 归档按钮 → session-router → 本服务。
-//   若该 session 仍活跃(还在跑 AgentLoop),**先 teardown runtime**(停 loop /
-//   注销 handle / 清 in-memory 状态:turn-seq-tracker、compression-trigger-
-//   hooks 的 lastLLMCall/compressedThisTurn/防抖 Map 该 session 条目),再走管线。
+//   若该 session 仍活跃(还在跑 AgentLoop),先在活跃 loop 跑 memory turn,
+//   再 teardown(停 loop / 注销 handle / 清 in-memory 状态:turn-seq-tracker、
+//   compression-trigger-hooks 的 lastLLMCall/compressedThisTurn/防抖 Map 该
+//   session 条目),再走管线。
 // - **cron/main(父 agent)不自动归档**(design.md:父 agent 持久,用户保留)。
 //
-// ## 不做归档恢复
-// archive JSON 只留档,**无 restore 通路**(不建 UI/IPC/命令读回)。归档 = 单向
-// "导出 + 删"(design.md「不做归档恢复」)。本服务不提供任何 read-back / load /
-// restore 方法。
+// ## 可恢复(sub-4 新)
+// 启动 `recoverInterruptedArchives(db)` 扫 `archived=1 且仍有行` 的 session,
+// 重 export + 删行。memory turn 已在崩溃前跑过(mark 在 memory turn 之后);
+// recovery 只重 export(acceptance-4 #3)。
 //
-// ## 关键不变量(acceptance-8)
-// - 管线顺序:末次压缩 → 导出 JSON → 删库(含孤儿)→ wiki 留存。
-// - JSON 落盘 `~/.zero-core/archives/<agentId>/<sessionId>.json`,plain JSON,
-//   含 sessions 行 + steps + messages summary。
-// - 归档后:DB 无该 session 的 sessions/steps/messages/tool_executions/
-//   delegated_tasks 行;wiki 节点仍在。
+// ## per-session 锁(sub-4 新)
+// `withArchiveLock(sessionId, fn)`:模块级 Map<sessionId, {owner, acquiredAt}>。
+// 原子 acquire:TTL 30s 过期自动恢复(进程崩溃兜底,hermes 式)。同 session
+// 并发 archive(手动 + 自动)→ 第二个 caller 等不到锁就 skip + log,不
+// double-archive(acceptance-4 #8)。
+//
+// ## 不做归档恢复(deferred)
+// archive JSON 只留档,restore 通路(IPC 读 JSON 重建 session 行)+ archives
+// 轮转/上限 = **optional,本 sub 留接口未实现**(acceptance-4 #11 标注)。
+// 见 sub-4.md「Deferred」段。
 //
 // ## 定位
 // src/server/ 服务层。被 `subagent-delegator.ts`(delegated 自动)+ session-router
-// (chat 手动)调。复用 compression-core / session-db,不旁路任何通路。
-//
-// ## 维护规则
-// - 末次压缩必须走 compressSession(不要 bypass —— 滚动摘要 + 游标推进由它独占,
-//   memory feedback-verify-runtime-wiring)。
-// - 删库必须经 db.deleteSessionData(含孤儿清理);不要散在 archive-service 里
-//   手写 DELETE。
-// - 活跃 session 归档必须先 teardown runtime(chat 手动);teardown 顺序见
-//   `runTeardown`。
-// - 不加 restore 方法(单向归档)。
+// (chat 手动)+ index.ts(启动 recovery)调。复用 session-db,不旁路任何通路。
 
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { ZERO_CORE_DIR } from "../core/config.js";
 import { log } from "../core/logger.js";
 import type { SessionDB, MessageSummary } from "./session-db.js";
 import type { SessionRecord } from "../shared/types.js";
-import type { RuntimeProviderConfig, SessionConfig } from "../runtime/types.js";
-import { compressSession, type CompressSessionOptions } from "./compression-core.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -103,8 +116,12 @@ export interface ArchiveJson {
 	summaries: MessageSummary[];
 	/** 压缩游标(`messages.last_compressed_step_seq`,NULL = 未压缩)。 */
 	compressionCursor: number | null;
-	/** 末次压缩是否跑过(诊断字段:false = 跳过/失败,JSON 仍落盘)。 */
-	finalCompressionRan: boolean;
+	/**
+	 * sub-4: archive 前是否跑过 Q5b memory ephemeral turn。true = 跑过;
+	 * false = 跳过(已压缩过的长 session / recovery scan 重 export /
+	 * memoryTurnRunner 未注入)。替换 sub-3b 的 finalCompressionRan。
+	 */
+	memoryTurnRan: boolean;
 }
 
 /**
@@ -112,8 +129,8 @@ export interface ArchiveJson {
  * ACTIVE session (chat manual archive): tears down the session's AgentLoop +
  * clears the in-memory caches the loop's hooks hold. delegated auto-archive
  * leaves this undefined (the child AgentLoop has already returned by the time
- * the task hits completed/failed, so there's nothing live to tear down — see
- * `archiveSession` doc).
+ * the task hits completed/failed — but see `memoryTurnRunner`, which may have
+ * built a temp loop and disposed it already).
  */
 export interface ArchiveRuntimeTeardown {
 	/**
@@ -133,34 +150,36 @@ export interface ArchiveRuntimeTeardown {
 }
 
 export interface ArchiveSessionOptions {
-	/** Provider configs (for the final compression's LLM call). Required. */
-	providers: RuntimeProviderConfig[];
 	/**
-	 * The session's runtime config — used to build the final compression's
-	 * opts (model + Extractor A wiring). For delegated: the delegator's
-	 * `this.config` (the sub-config, which inherited `wikiStore` via spread).
-	 * For chat: rebuilt from the session record + agent record by the caller
-	 * (mirror agent-service.buildSessionConfigForEviction).
+	 * sub-4 Q5b: runner that executes ONE memory ephemeral turn (sub-2
+	 * `persist:false`) on the session being archived, so the agent self-writes
+	 * its wiki memory before the JSON export. The runner owns ALL loop
+	 * orchestration:
+	 *   - chat manual archive: run on the EXISTING active loop (still alive
+	 *     pre-teardown) via `loop.run(prompt, {ephemeral:true})`.
+	 *   - delegated child (loop already returned): caller builds a TEMP loop,
+	 *     runs the ephemeral turn, disposes it, then returns.
+	 *   - already-compressed long session: caller returns `false` (skip — the
+	 *     compression memory turn already wrote wiki; GAP2).
+	 * Returns true if the turn ran, false if skipped. Best-effort: a throw is
+	 * logged + treated as `false` (the export proceeds — wiki may simply have
+	 * fewer entries). When omitted (e.g. startup recovery scan), the archive
+	 * skips straight to export.
 	 */
-	sessionConfig: SessionConfig;
+	memoryTurnRunner?: () => Promise<boolean>;
 	/**
-	 * Active-session teardown (chat manual archive only). When present, run
-	 * BEFORE the pipeline. delegated auto-archive leaves this undefined.
+	 * Active-session teardown (chat manual archive only). Runs AFTER the
+	 * memory turn (so the loop is stopped only after its wiki writes land),
+	 * BEFORE the mark + atomic export.
 	 */
 	teardown?: ArchiveRuntimeTeardown;
-	/**
-	 * Skip the final compression (e.g. test fixture / a session with no steps).
-	 * Default false. When true, the pipeline goes straight to export + delete
-	 * (the wiki keeps whatever prior compressions wrote).
-	 */
-	skipFinalCompression?: boolean;
 }
 
 export interface ArchiveResult {
 	/** Path of the JSON file written (always set on success). */
 	archivePath: string;
-	/** Whether the final compression actually ran (false = skipped/failed). */
-	finalCompressionRan: boolean;
+	/** Whether the Q5b memory ephemeral turn ran (false = skipped/failed). */
+	memoryTurnRan: boolean;
 	/** Number of steps exported in the JSON. */
 	stepsExported: number;
 	/** Number of summaries exported in the JSON. */
@@ -198,71 +217,84 @@ function sanitizePathSegment(seg: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Final-compression opts builder
+// per-session DB lock (atomic acquire + TTL recovery)
 // ---------------------------------------------------------------------------
 
 /**
- * Build `compressSession` opts for the final compression, mirroring
- * compression-trigger-hooks' `buildCompressOpts`.
- *
- * sub-3b: the ExtractorA wiki-merge coupling has been REMOVED from
- * compressSession — this builder no longer wires `opts.extractorA` and no
- * longer touches `wikiStoreGlobal` / `wikiStore`. Wiki memory writes are now
- * the Force档 memory ephemeral turn's job (sub-3c). The final compression here
- * just produces the rolling summary for the JSON export.
- *
- * sub-3b (D2 configurable prompt): forwards `config.compression.
- * summarySystemPrompt` into opts when set (default falls through to the in-file
- * SUMMARY_SYSTEM literal inside compression-core).
+ * Lock TTL (ms). A process crash between acquire + release leaves the lock
+ * stranded; we recover by treating any entry older than this as expired
+ * (hermes-style). 30s is generous for a memory turn + JSON write + DB delete
+ * (real timings are seconds; the TTL is a crash backstop, not a normal
+ * timeout).
  */
-async function buildFinalCompressOpts(
-	sessionConfig: SessionConfig,
-	providers: RuntimeProviderConfig[],
-): Promise<CompressSessionOptions> {
-	const ext = (sessionConfig as any)?.extractors?.A ?? {};
-	const providerName = ext.provider ?? sessionConfig.providerName;
-	const modelId = ext.model ?? sessionConfig.modelId;
-	const opts: CompressSessionOptions = {
-		providers,
-		providerName,
-		modelId,
-	} as CompressSessionOptions;
-	// getContextWindow mirrors the trigger hook's read; inline it here to keep
-	// archive-service self-contained (the trigger hook is in runtime/, this is
-	// in server/ — a cross-layer import for one helper isn't worth the cycle
-	// risk).
-	const contextWindow = getContextWindowFor(providers, providerName, modelId);
-	(opts as any).contextWindow = contextWindow;
+const ARCHIVE_LOCK_TTL_MS = 30_000;
 
-	// sub-3b D2: forward the configurable compression system prompt (same shape
-	// as the trigger hook). The archive's final compression honors the same
-	// override as mid-turn compressions.
-	const summarySystemPrompt = (sessionConfig as any)?.compression?.summarySystemPrompt;
-	if (typeof summarySystemPrompt === "string" && summarySystemPrompt.trim()) {
-		(opts as any).summarySystemPrompt = summarySystemPrompt;
-	}
-	return opts;
+interface ArchiveLockEntry {
+	/** Wall-clock ms when the lock was acquired (Date.now()). */
+	acquiredAt: number;
 }
 
 /**
- * Resolve the context window for a provider/model (mirrors
- * runtime/provider-factory.getContextWindow's read shape). Falls back to the
- * default when the provider/model isn't found or reports no window.
+ * Module-level lock map. Keyed by sessionId so two concurrent archives of
+ * DIFFERENT sessions don't contend (only same-session concurrency does, which
+ * is exactly the case acceptance-4 #8 covers — manual + auto on the same sid).
+ *
+ * Single Node process assumption: this Map is in-memory, not cross-process.
+ * The TTL handles within-process crashes (an async throw that escapes the
+ * caller without releasing). Cross-process crashes (kill -9) leave the entry
+ * stranded until the process exits; that's fine because the process is gone
+ * and nothing is contending anymore. The startup recovery scan handles the
+ * "mark archived=1 then crash" data-state.
  */
-function getContextWindowFor(
-	providers: RuntimeProviderConfig[],
-	providerName: string,
-	modelId: string,
-): number {
-	const match = providers.find(
-		(p) => p.name === providerName || p.name.toLowerCase() === providerName.toLowerCase(),
-	);
-	if (!match) return 128000;
-	const model = (match as any).models?.find(
-		(m: any) => m.id === modelId || m.name === modelId,
-	);
-	const w = model?.contextWindow ?? (match as any).contextWindow;
-	return typeof w === "number" && w > 0 ? w : 128000;
+const archiveLocks = new Map<string, ArchiveLockEntry>();
+
+/**
+ * sub-4 acceptance #8: acquire the per-session archive lock, run `fn`, release.
+ * If the lock is held by another caller AND hasn't expired, return
+ * `already-archiving` (the caller logs + skips — best-effort: the holder will
+ * finish the archive; double-archiving would produce duplicate JSON + a
+ * double-delete race, which is exactly what we're avoiding).
+ *
+ * On expiry (entry older than TTL), the lock is stolen: the prior holder is
+ * assumed to have crashed mid-archive, and we take over. The mark+atomic-
+ * export+delete is idempotent enough that a re-run after a crash is safe
+ * (mark ArchivedTransient is a no-op if already 1; export overwrites the JSON;
+ * delete is a no-op if the row is gone).
+ *
+ * Release is in a `finally` so an async throw inside `fn` doesn't strand the
+ * lock. `fn` is expected to be the full archive pipeline (memory turn → mark
+ * → export → delete).
+ */
+async function withArchiveLock<T>(
+	sessionId: string,
+	fn: () => Promise<T>,
+): Promise<{ result: T } | { skipped: "already-archiving" }> {
+	const now = Date.now();
+	const existing = archiveLocks.get(sessionId);
+	if (existing) {
+		const age = now - existing.acquiredAt;
+		if (age < ARCHIVE_LOCK_TTL_MS) {
+			return { skipped: "already-archiving" };
+		}
+		// Expired — steal. Log loudly because this means a prior archive
+		// exceeded the TTL (or crashed); the steal is correct but the prior
+		// holder's state deserves a look.
+		log.warn("archive",
+			`archive lock for session=${sessionId} expired (age=${age}ms > TTL=${ARCHIVE_LOCK_TTL_MS}ms); stealing`);
+	}
+	archiveLocks.set(sessionId, { acquiredAt: now });
+	try {
+		const result = await fn();
+		return { result };
+	} finally {
+		// Only delete if WE still own it. If a steal happened mid-flight (we
+		// took >TTL and another caller stole), the new owner's entry is the
+		// one to keep — our delete would clobber theirs. Compare acquire time.
+		const current = archiveLocks.get(sessionId);
+		if (current && current.acquiredAt === now) {
+			archiveLocks.delete(sessionId);
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -270,73 +302,114 @@ function getContextWindowFor(
 // ---------------------------------------------------------------------------
 
 /**
- * Run the archive pipeline for one session:
- *   ① (optional) final Extractor A compression — flush residual step memory
- *      into wiki.
- *   ② export the session's own data to a plain-JSON file.
- *   ③ hard-delete the session's rows (sessions/steps/messages +
- *      tool_executions/delegated_tasks orphans). Wiki nodes are LEFT.
+ * Run the archive pipeline for one session (compression-archive-simplify
+ * sub-4):
+ *   ① acquire per-session lock (concurrent same-session archive → skip).
+ *   ② (optional) Q5b memory ephemeral turn — agent self-writes wiki.
+ *   ③ (active session only) teardown — stop loop + clear hook state.
+ *   ④ mark `archived=1` (transient crash checkpoint).
+ *   ⑤ atomic export: write `<id>.json.tmp` → JSON.parse-validate → rename →
+ *      only then `deleteSessionData`. Any step failing → row stays (retryable).
  *
- * For an ACTIVE session (chat manual archive), pass `opts.teardown` — it runs
- * BEFORE the pipeline to stop the AgentLoop + clear in-memory hook state.
- * delegated auto-archive leaves `teardown` undefined (the child AgentLoop has
- * already returned by the time the task hits completed/failed).
+ * Atomicity (acceptance-4 #2): the export + delete is crash-safe. A failure
+ * in tmp-write / parse / rename logs + returns WITHOUT deleting the row;
+ * the startup recovery scan re-runs the export. The only irrecoverable
+ * failure is the DB delete itself (which is a single SQLite transaction).
  *
- * NEVER throws on the compression/export best-effort halves — only on
- * irrecoverable IO (archive dir creation / JSON write) or DB delete failure.
- * A failed final compression is logged + the JSON still exports with
- * `finalCompressionRan: false`.
+ * Locking (acceptance-4 #8): per-session lock guards the whole pipeline.
+ * Manual + auto on the same sid: the second caller hits `skipped` and
+ * returns; the holder finishes the archive.
+ *
+ * NEVER throws on the memory-turn / teardown best-effort halves — only on
+ * irrecoverable IO (tmp write / rename) or DB delete failure. A failed
+ * memory turn is logged + the JSON still exports with `memoryTurnRan: false`.
  */
 export async function archiveSession(
 	sessionId: string,
 	db: SessionDB,
 	opts: ArchiveSessionOptions,
 ): Promise<ArchiveResult> {
-	// ── Active-session teardown (chat manual archive) ──────────────────────
-	// Runs BEFORE anything else so the loop stops writing to the DB / firing
-	// hooks mid-archive. Best-effort: a teardown failure is logged but does NOT
+	const lockOutcome = await withArchiveLock(sessionId, () =>
+		runArchivePipeline(sessionId, db, opts),
+	);
+	if ("skipped" in lockOutcome) {
+		// Another caller is already archiving this session. Return a benign
+		// result reflecting "nothing exported by THIS call" — the holder's
+		// archive covers it. acceptance-4 #8.
+		log.warn("archive",
+			`session=${sessionId} archive skipped: another caller holds the lock (will finish)`);
+		return {
+			archivePath: "",
+			memoryTurnRan: false,
+			stepsExported: 0,
+			summariesExported: 0,
+		};
+	}
+	return lockOutcome.result;
+}
+
+/**
+ * Inner pipeline (runs under the lock). Broken out so the lock wrapper stays
+ * generic. See `archiveSession` for the contract.
+ */
+async function runArchivePipeline(
+	sessionId: string,
+	db: SessionDB,
+	opts: ArchiveSessionOptions,
+): Promise<ArchiveResult> {
+	const sessionRow = db.getSession(sessionId);
+	const agentId = sessionRow?.agentId ?? "__default__";
+
+	// ── ① Q5b memory ephemeral turn (best-effort) ─────────────────────────
+	// Runs BEFORE teardown so the active loop can still write wiki (chat
+	// manual archive). For delegated children the caller's runner builds a
+	// temp loop. Skipped when runner omitted (recovery) or returns false
+	// (already compressed / no steps).
+	let memoryTurnRan = false;
+	if (opts.memoryTurnRunner) {
+		try {
+			memoryTurnRan = (await opts.memoryTurnRunner()) === true;
+			log.debug("archive",
+				`session=${sessionId} Q5b memory ephemeral turn: ${memoryTurnRan ? "ran" : "skipped"}`);
+		} catch (err) {
+			// Best-effort: a failure here MUST NOT block the export+delete.
+			// Log + continue with memoryTurnRan=false.
+			log.warn("archive",
+				`Q5b memory turn failed (session=${sessionId}); proceeding to mark+export+delete:`,
+				(err as Error).message);
+		}
+	}
+
+	// ── ② Active-session teardown (chat manual archive) ───────────────────
+	// Runs AFTER the memory turn (so the loop's wiki writes land) and BEFORE
+	// the mark + export (so the loop stops writing to the DB / firing hooks
+	// mid-export). Best-effort: a teardown failure is logged but does NOT
 	// abort (the export+delete still proceeds — a stuck loop is worse than a
 	// clean archive of the last consistent state).
 	if (opts.teardown) {
 		runTeardown(opts.teardown, sessionId);
 	}
 
-	const sessionRow = db.getSession(sessionId);
-	const agentId = opts.sessionConfig.agentId ?? sessionRow?.agentId ?? "__default__";
+	// ── ③ mark archived=1 (transient crash checkpoint) ────────────────────
+	// If we crash between here and the delete, the startup recovery scan
+	// finds the row (still exists, archived=1) and re-runs the export. No
+	// emit: the row is about to be deleted (which emits the canonical delete).
+	db.markArchivedTransient(sessionId);
 
-	// ── ① Final Extractor A compression (best-effort) ──────────────────────
-	let finalCompressionRan = false;
-	if (!opts.skipFinalCompression) {
-		try {
-			const result = await compressSession(
-				sessionId,
-				db,
-				await buildFinalCompressOpts(opts.sessionConfig, opts.providers),
-			);
-			finalCompressionRan = result.summaries.length > 0;
-			log.debug(
-				"archive",
-				`session=${sessionId} final compression: ${result.summaries.length} summary(ies)` +
-					(result.skippedReason ? ` [${result.skippedReason}]` : "") +
-					(finalCompressionRan ? "" : " (no residual steps compressed — ok)"),
-			);
-		} catch (err) {
-			// Final compression is best-effort: a failure here MUST NOT block
-			// the export+delete. Log + continue with finalCompressionRan=false.
-			log.warn(
-				"archive",
-				`final compression failed (session=${sessionId}); proceeding to export+delete:`,
-				(err as Error).message,
-			);
-		}
-	}
-
-	// ── ② Export JSON (the session's own data) ─────────────────────────────
+	// ── ④ Atomic export: tmp → validate → rename → delete row ─────────────
+	// Re-read the session row AFTER the memory turn + teardown: the row may
+	// have been mutated (teardown updates usage / the memory turn wrote
+	// nothing to DB since steps are ephemeral, but sessionRow.updated_at may
+	// have moved). Build the payload from the post-teardown state.
+	const finalRow = db.getSession(sessionId) ?? sessionRow;
 	const archivePath = archivePathFor(agentId, sessionId);
-	const payload = buildArchivePayload(sessionId, agentId, db, sessionRow, finalCompressionRan);
-	writeArchiveJson(archivePath, payload);
+	const payload = buildArchivePayload(sessionId, agentId, db, finalRow, memoryTurnRan);
+	writeArchiveJsonAtomic(archivePath, payload);
 
-	// ── ③ Delete the session's DB rows (incl. orphans); wiki stays ─────────
+	// ── ⑤ Delete the session's DB rows (incl. orphans); wiki stays ─────────
+	// Only reached if the atomic export succeeded. deleteSessionData is a
+	// single SQLite transaction (sessions/steps/messages/tool_executions/
+	// delegated_tasks WHERE session_id) — atomic by construction.
 	db.deleteSessionData(sessionId);
 
 	log.agent(
@@ -345,33 +418,32 @@ export async function archiveSession(
 		"→",
 		archivePath,
 		`(steps=${payload.steps.length}, summaries=${payload.summaries.length}` +
-			`, finalCompress=${finalCompressionRan ? "ran" : "skipped"})`,
+			`, memoryTurn=${memoryTurnRan ? "ran" : "skipped"})`,
 	);
 
 	return {
 		archivePath,
-		finalCompressionRan,
+		memoryTurnRan,
 		stepsExported: payload.steps.length,
 		summariesExported: payload.summaries.length,
 	};
 }
 
 /**
- * Read the session's own data into the ArchiveJson payload. Reads happen BEFORE
- * the delete so the export reflects the post-final-compression state (the final
- * compression may have just written new summaries + advanced the cursor).
+ * Read the session's own data into the ArchiveJson payload. Reads happen AFTER
+ * the memory turn + teardown (so the export reflects the final state).
  *
- * `sessionRow` is passed in (read once before the final compression) so the
- * payload records the session as it was at archive time; if the row is missing
- * (idempotent re-archive), a minimal placeholder is emitted so the JSON file
- * still self-describes the attempt.
+ * `sessionRow` is passed in (read fresh AFTER teardown in the pipeline). If
+ * the row is missing (idempotent re-archive / race with another caller), a
+ * minimal placeholder is emitted so the JSON file still self-describes the
+ * attempt.
  */
 function buildArchivePayload(
 	sessionId: string,
 	agentId: string,
 	db: SessionDB,
 	sessionRow: SessionRecord | undefined,
-	finalCompressionRan: boolean,
+	memoryTurnRan: boolean,
 ): ArchiveJson {
 	if (!sessionRow) {
 		// Defensive: the caller should have validated existence. If the row is
@@ -409,22 +481,62 @@ function buildArchivePayload(
 		})),
 		summaries,
 		compressionCursor,
-		finalCompressionRan,
+		memoryTurnRan,
 	};
 }
 
 /**
- * Write the archive JSON to disk. Creates the per-agent dir if missing. Throws
- * on IO failure (an unwritable archive root is irrecoverable — better to fail
- * the archive loud than silently lose the export and then delete the DB rows).
+ * Atomic export (sub-4 acceptance #2):
+ *   1. write `<archivePath>.tmp` (plain JSON, 2-space indent).
+ *   2. read it back + JSON.parse-validate (catches disk-write corruption +
+ *      encoding issues — design.md「export 边界」: large session export is
+ *      IO-bound, not LLM-bound; validation is cheap).
+ *   3. `rename(tmp, final)` — atomic on POSIX, atomic-replace on Windows
+ *      (both `fs.renameSync` flavors either fully succeed or leave the prior
+ *      file intact).
+ *
+ * Throws (does NOT delete the row) on any failure. The caller wraps this so
+ * a throw leaves the DB row intact + retryable.
+ *
+ * The `.tmp` file is removed on a parse-failure so a retry doesn't see a
+ * stale tmp (rename would then move the corrupt file in). On rename failure
+ * the tmp is left in place for diagnosis.
  */
-function writeArchiveJson(archivePath: string, payload: ArchiveJson): void {
+function writeArchiveJsonAtomic(archivePath: string, payload: ArchiveJson): void {
 	const dir = join(archivePath, "..");
 	if (!existsSync(dir)) {
 		mkdirSync(dir, { recursive: true });
 	}
-	// plain JSON, 2-space indent (human-readable; v1 — gzip later if size bites).
-	writeFileSync(archivePath, JSON.stringify(payload, null, 2), "utf8");
+	const tmpPath = `${archivePath}.tmp`;
+	// Step 1 — write tmp.
+	try {
+		// plain JSON, 2-space indent (human-readable; v1 — gzip later if size bites).
+		writeFileSync(tmpPath, JSON.stringify(payload, null, 2), "utf8");
+	} catch (err) {
+		// tmp write failure = irrecoverable IO (disk full / permission). Do
+		// NOT delete the row — let the next retry attempt it.
+		const msg = (err as Error).message;
+		throw new Error(`archive tmp write failed (${tmpPath}): ${msg}`);
+	}
+	// Step 2 — parse-validate (catches serialization corruption).
+	try {
+		const written = readFileSync(tmpPath, "utf8");
+		JSON.parse(written);
+	} catch (err) {
+		// Remove the corrupt tmp so the next retry starts clean.
+		try { unlinkSync(tmpPath); } catch { /* best-effort */ }
+		const msg = (err as Error).message;
+		throw new Error(`archive tmp JSON validation failed (${tmpPath}): ${msg}`);
+	}
+	// Step 3 — atomic rename to final.
+	try {
+		renameSync(tmpPath, archivePath);
+	} catch (err) {
+		// Leave the tmp in place for diagnosis (do NOT unlink — rename may
+		// have partially succeeded on some platforms).
+		const msg = (err as Error).message;
+		throw new Error(`archive rename failed (${tmpPath} → ${archivePath}): ${msg}`);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -464,4 +576,45 @@ function runTeardown(teardown: ArchiveRuntimeTeardown, sessionId: string): void 
 			log.warn("archive", `teardown.clearHookState failed (session=${sessionId}):`, (err as Error).message);
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Startup recovery scan
+// ---------------------------------------------------------------------------
+
+/**
+ * sub-4 acceptance #3: scan for sessions left in the transient `archived=1`
+ * state by a crash between `markArchivedTransient` and `deleteSessionData`.
+ * For each, re-run the atomic export (memory turn already ran pre-crash —
+ * the mark is set AFTER the memory turn) and delete the row.
+ *
+ * Idempotent + best-effort: a re-export failure (e.g. unreadable row) is
+ * logged + skipped; the row stays for the next startup to retry. Returns
+ * the count of sessions successfully re-archived.
+ *
+ * Called once at server startup (index.ts), after migrations + stores are
+ * ready. Doesn't accept a memoryTurnRunner — recovery assumes the pre-crash
+ * memory turn's wiki writes survived (wiki is cross-session + durable).
+ */
+export async function recoverInterruptedArchives(db: SessionDB): Promise<number> {
+	const stranded = db.listArchivedTransientSessions();
+	if (stranded.length === 0) return 0;
+	log.warn("archive",
+		`recovery scan: ${stranded.length} session(s) stranded in archived=1 state; re-exporting`);
+	let recovered = 0;
+	for (const row of stranded) {
+		try {
+			// No memoryTurnRunner — the pre-crash turn already wrote wiki
+			// (the mark is set AFTER the turn). No teardown — the loop is
+			// long gone (process restarted). Just re-export + delete.
+			await archiveSession(row.id, db, {});
+			recovered++;
+		} catch (err) {
+			log.warn("archive",
+				`recovery scan: re-export failed (session=${row.id}); leaving stranded for next retry:`,
+				(err as Error).message);
+		}
+	}
+	log.warn("archive", `recovery scan: ${recovered}/${stranded.length} re-archived`);
+	return recovered;
 }

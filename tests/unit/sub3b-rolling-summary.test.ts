@@ -22,7 +22,8 @@
 //
 // ## 对抗性核查(穿插在 #1-#5 测试里)
 //   - replaceSummariesAndAdvanceCursor 单事务(DELETE + INSERT + UPDATE 同 tx)。
-//   - buildFinalCompressOpts 仍在,archive 仍调 compressSession(scope 不越界)。
+//   - compression-archive-simplify sub-4:archive-service 不再调末次压缩
+//     (buildFinalCompressOpts / compressSession 都已删)。
 //   - 首次压缩(prior 为空)正确。
 //   - 段 LLM 输出 malformed 时 fallbackSections 不污染 rolling 状态。
 //
@@ -551,35 +552,33 @@ describe("compression-archive-simplify sub-3b: rolling summary + handoff + cap +
 	});
 
 	// ─────────────────────────────────────────────────────────────────────
-	// Adversarial: archive-service scope — buildFinalCompressOpts still
-	// EXISTS + archive still calls compressSession (sub-3b only stripped
-	// extractorA plumbing; sub-4 will remove final-compression itself)
+	// Adversarial: archive-service scope — compression-archive-simplify
+	// sub-4 REMOVED buildFinalCompressOpts + the final compressSession call
+	// (archive no longer runs a final compression; Q5b memory turn + atomic
+	// export replaces it). Verifies the removal is clean.
 	// ─────────────────────────────────────────────────────────────────────
 
-	test("adversarial: archive-service still defines buildFinalCompressOpts + calls compressSession (scope OK)", () => {
+	test("adversarial: archive-service no longer defines buildFinalCompressOpts nor calls compressSession (sub-4 removed)", () => {
 		const src = readFileSync(
 			join(__dirname, "..", "..", "src", "server", "archive-service.ts"),
 			"utf-8",
 		);
-		// buildFinalCompressOpts function still DEFINED (sub-4 will remove
-		// the final compression itself; sub-3b must NOT).
-		expect(src).toMatch(/(?:async\s+)?function\s+buildFinalCompressOpts\b/);
-		// archive still calls compressSession (with the final-compression opts).
-		expect(src).toMatch(/compressSession\s*\(/);
-		// The opts builder forwards summarySystemPrompt (D2 wiring intact).
-		expect(src).toMatch(/summarySystemPrompt/);
-		// mergeSummaryIntoWiki must be gone entirely (sub-3b removed the
-		// ExtractorA fire-and-forget call).
+		// buildFinalCompressOpts function must be GONE (sub-4 deleted it).
+		expect(src).not.toMatch(/(?:async\s+)?function\s+buildFinalCompressOpts\b/);
+		// archive must NOT call compressSession anymore (D4 — final
+		// compression is retired; archive = memory turn + atomic export).
+		expect(src).not.toMatch(/compressSession\s*\(/);
+		// The opts builder's summarySystemPrompt forwarding is gone with the
+		// builder (no compression → no D2 prompt wiring at archive time).
+		expect(src).not.toMatch(/summarySystemPrompt/);
+		// mergeSummaryIntoWiki must remain gone entirely (sub-3b removed it;
+		// sub-4 must not re-introduce it).
 		expect((src.match(/mergeSummaryIntoWiki/g) ?? []).length).toBe(0);
-		// `opts.extractorA` (the wiring field) must be gone from CODE — strip
-		// comment lines first, then check. Comments documenting the removal
-		// are fine; an actual `opts.extractorA = ...` assignment is not.
-		const codeOnly = src
-			.split(/\r?\n/)
-			.filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*"))
-			.join("\n");
-		expect((codeOnly.match(/extractorA/g) ?? []).length,
-			"extractorA must not appear in archive-service.ts code (only in comments)").toBe(0);
+		// ExtractorA name must not appear ANYWHERE in archive-service — even
+		// in comments (sub-4 cleaned the dead-comment residue; acceptance-4 #6
+		// is a strict grep with zero hits).
+		expect((src.match(/ExtractorA|extractorA/g) ?? []).length,
+			"ExtractorA/extractorA must not appear in archive-service.ts at all (sub-4 cleaned comments + code)").toBe(0);
 	});
 
 	// ─────────────────────────────────────────────────────────────────────

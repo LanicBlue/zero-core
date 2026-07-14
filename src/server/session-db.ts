@@ -545,6 +545,52 @@ export class SessionDB {
 	}
 
 	/**
+	 * compression-archive-simplify sub-4 (atomic archive): transient mark used
+	 * as a CRASH CHECKPOINT between "memory turn done" and "export JSON written +
+	 * row deleted". Sets `archived = 1` WITHOUT emitting a sidebar update — the
+	 * row stays in DB, the renderer filters it out via the WHERE archived = 0
+	 * list query (so it disappears from the active list quietly), and on a clean
+	 * archive `deleteSessionData` removes the row entirely. If the process
+	 * crashes between this mark and the delete, the next startup's
+	 * `listArchivedTransientSessions` recovery scan finds the row and re-runs
+	 * the atomic export (design.md「五、保险」+「O3 reused as transient mark」).
+	 *
+	 * This is distinct from the soft-delete `archiveSession` above: that one is
+	 * a PERMANENT "this session is archived" state for the UI; this one is a
+	 * transient flag the archive pipeline uses as a recoverable checkpoint.
+	 * Both reuse the same `archived` column (no new column — O3 decision).
+	 */
+	markArchivedTransient(sessionId: string): void {
+		this.db.prepare("UPDATE sessions SET archived = 1, updated_at = ? WHERE id = ?")
+			.run(new Date().toISOString(), sessionId);
+		// No emitDataChange here: the archive pipeline is about to delete the
+		// row (which emits the canonical delete event). If we crash before the
+		// delete, the recovery scan re-runs the export and the eventual delete
+		// emits then. Emitting a transient update would briefly flash the row
+		// as "archived" in the sidebar before disappearing — noisy and wrong.
+	}
+
+	/**
+	 * compression-archive-simplify sub-4: list sessions left in the transient
+	 * archived=1 state by a crash between `markArchivedTransient` and
+	 * `deleteSessionData` (the row still exists). Used by the startup recovery
+	 * scan to re-run the atomic export. Returns rows as SessionRecord so the
+	 * recovery path can rebuild configs + re-export. Excludes any session that
+	 * has already been hard-deleted (those simply aren't in the table).
+	 */
+	listArchivedTransientSessions(): SessionRecord[] {
+		try {
+			const rows = this.db.prepare(
+				"SELECT * FROM sessions WHERE archived = 1",
+			).all() as any[];
+			return rows.map((r) => this.rowToRecord(r));
+		} catch (err) {
+			log.warn("db", `listArchivedTransientSessions failed:`, (err as Error).message);
+			return [];
+		}
+	}
+
+	/**
 	 * steps-overhaul sub-8 (archive pipeline): hard-delete ALL of a session's
 	 * OWN data — the `sessions` row + every `steps`/`messages` row + the
 	 * `tool_executions`/`delegated_tasks` ORPHANS that reference this session

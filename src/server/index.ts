@@ -130,6 +130,20 @@ export async function startServer(options?: StartServerOptions) {
 		console.error(`[server] Interrupted delegated tasks on startup: ${interruptedDelegatedTasks}`);
 	}
 
+	// compression-archive-simplify sub-4: re-run the atomic export for any
+	// session left stranded by a crash between `markArchivedTransient` and
+	// `deleteSessionData` (rows that still exist with archived=1). The memory
+	// turn already ran pre-crash (the mark is set AFTER the turn) — recovery
+	// only re-exports + deletes. Fire-and-forget on startup; the function is
+	// idempotent + best-effort (failures log + leave the row for next retry).
+	// Run AFTER migrations so the archived column exists; safe to fire before
+	// the wiki store is up (recovery doesn't touch wiki).
+	void import("./archive-service.js").then(({ recoverInterruptedArchives }) => {
+		recoverInterruptedArchives(sessionDB).catch((err: unknown) => {
+			console.error(`[server] Archive recovery scan failed:`, (err as Error)?.message ?? err);
+		});
+	});
+
 	// v0.8 (M2): single global WikiStore (the memory tree) — created EARLY so
 	// the M5 extraction hooks (registered per-loop below via setHookDeps) can
 	// point at it. The back-compat ProjectWikiStore view is created alongside;
