@@ -76,10 +76,10 @@ import { truncateUtf8Bytes } from "../shared/file-utils.js";
  * external MCP caller; no sessionId/agentId (it's session-less).
  *
  * sub-6 ONLY provides this factory + the underlying store/tool capabilities
- * (createMemoryNodeForTopic, ensureMemoryTopicRoot, createMemory/updateMemory
- * tool actions, scope-respecting memory upsert primitives). sub-7 wires the
- * actual Extractor A multi-step agent to call wikiTool.execute with a
- * callerCtx built here.
+ * (createMemory/updateMemory tool actions, scope-respecting memory upsert
+ * primitives). sub-7 wires the actual Extractor A multi-step agent to call
+ * wikiTool.execute with a callerCtx built here. (memory-archive-fixes sub-2:
+ * the per-topic store methods were removed as dead code.)
  */
 export function buildGlobalAnchorWikiCallerCtx(): CallerCtx {
 	return {
@@ -237,17 +237,25 @@ function synthesizePath(parentPath: string | undefined, title: string): string {
  * v0.8 (steps-overhaul sub-6): synthesize a MEMORY leaf's internal `path` from
  * its subject. The `memory:` prefix is what deriveTypeFromPosition keys off to
  * classify the row as type=memory. The subject is slugged (mirrors
- * WikiStore.createMemoryNodeForAgent/ForTopic's slug normalization) so the same
+ * WikiStore.createMemoryNodeForAgent's slug normalization) so the same
  * (parentId, subject) upserts to the same node across calls. Agent never sees
  * this path — `subject` is the stable handle it passes.
+ *
+ * memory-archive-fixes sub-2 (round 2): the path is namespaced per-agent as
+ * `memory:<agentId>:<slug>` when the parent is the agent's per-agent memory
+ * root. The earlier `memory:<slug>` form collided across agents sharing a
+ * parent and didn't reflect the per-agent scheme. The `<type>` segment from
+ * the dead extractor-A taxonomy is intentionally NOT produced — agents
+ * self-author memory and have no fact-type. Slug normalization is unchanged,
+ * so (parentId, subject) still maps to one node upsert.
  */
-function synthesizeMemoryPath(subject: string): string {
+function synthesizeMemoryPath(subject: string, agentId?: string): string {
 	const slug = subject
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "")
 		.slice(0, 64) || "unnamed";
-	return `memory:${slug}`;
+	return agentId ? `memory:${agentId}:${slug}` : `memory:${slug}`;
 }
 
 /**
@@ -675,22 +683,58 @@ async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<strin
 				if (!input.parentId) return "Error: parentId required for createMemory";
 				if (!input.subject) return "Error: subject required for createMemory (stable key for the memory leaf)";
 				if (!input.title) return "Error: title required for createMemory";
+				// memory-archive-fixes sub-2: lazy-ensure the per-agent memory
+				// root row when the agent passes its own synthetic memory-agent
+				// anchor id as parentId. The anchor is synthetic
+				// (wiki-root:memory-agent:<agentId>) and usually already backed
+				// by a row (management-service ensures it at startup / on agent
+				// create / rename). This covers the rare case where the row is
+				// still missing — without it, resolveNodeIdArg + the scope guard
+				// both fail (no row → not visible → not writable). agentName is
+				// not on callerCtx, so the title falls back to agentId here;
+				// management-service's startup backfill / rename path corrects
+				// it to the agent name (and subtreeSeg then derives the readable
+				// disk folder).
+				if (input.parentId.startsWith("wiki-root:memory-agent:")) {
+					const agentId = input.parentId.slice("wiki-root:memory-agent:".length);
+					try {
+						wiki.ensureMemoryAgentRoot(agentId);
+					} catch (err) {
+						return `createMemory rejected: failed to ensure memory root — ${(err as Error).message}`;
+					}
+				}
 				// Parent must be visible in scope (accepts short id / full id).
 				const resolvedParent = resolveNodeIdArg(input.parentId, anchors, wiki);
 				if (!resolvedParent.ok) return `Error: parent ${resolvedParent.reason}`;
 				const parent = resolvedParent.node;
-				// The parent MUST be a memory-kind container (memory root under
-				// global root, or a memory leaf being extended). Structure
-				// parents (project subtree) are rejected — memory leaves belong
-				// outside any project subtree (RFC §2.16 N2; the store enforces
-				// this too, but we surface a clearer error here).
-				const isMemoryParent = parent.id.startsWith("wiki-root:memory")
-					|| parent.type === "memory"
-					|| (parent.path ?? "").startsWith("memory");
+				// memory-archive-fixes sub-2: tighten the parent check. The
+				// ONLY valid parents are the agent's own per-agent memory root
+				// (wiki-root:memory-agent:<id>) or an existing memory leaf being
+				// extended (type=memory). The old global "Memory" container
+				// (path="memory") is REJECTED — it predates the per-agent scheme
+				// and its leaves orphan on disk. The per-topic scheme
+				// (wiki-root:memory-topic:*) is dead code (Extractor A removed)
+				// and also rejected. Structure / project-subtree parents are
+				// rejected — memory leaves belong outside any project subtree
+				// (RFC §2.16 N2; the store enforces this too, but we surface a
+				// clearer error here).
+				// memory-archive-fixes sub-2 (round 2): explicitly exclude the
+				// legacy global "memory" container (path="memory", parent=global
+				// root). deriveTypeFromPosition classifies it as type=memory
+				// (path startsWith "memory"), so the `parent.type === "memory"`
+				// branch above would otherwise still admit it — reopening the
+				// ③④ root cause (agent writes memory leaves under the orphaning
+				// legacy container).
+				const isLegacyMemoryContainer = parent.path === "memory"
+					&& parent.parentId === WIKI_GLOBAL_ROOT_ID;
+				const isMemoryParent = (parent.id.startsWith("wiki-root:memory-agent:")
+					|| parent.type === "memory") && !isLegacyMemoryContainer;
 				if (!isMemoryParent) {
-					return `Error: createMemory parent must be a memory container (memory root or memory leaf), got ${parent.type} "${parent.title}" — use create for structure nodes`;
+					return `Error: createMemory parent must be the agent's per-agent memory root (wiki-root:memory-agent:<agentId>) or an existing memory leaf, got ${parent.type} "${parent.title}" — the old global "memory" container and topic roots are no longer accepted`;
 				}
-				const path = synthesizeMemoryPath(input.subject);
+				const parsedAgentId = parent.id.startsWith("wiki-root:memory-agent:")
+					? parent.id.slice("wiki-root:memory-agent:".length) : undefined;
+				const path = synthesizeMemoryPath(input.subject, parsedAgentId);
 				try {
 					const created = wiki.upsertMemoryNodeInScope(anchors, {
 						parentId: parent.id,

@@ -39,7 +39,7 @@ import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { SessionDB } from "./session-db.js";
 import type { WikiNode, WikiNodeTypeGlobal } from "../shared/types.js";
 import { join, resolve, normalize, isAbsolute } from "node:path";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, renameSync, statSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, renameSync, statSync, readdirSync, rmdirSync } from "node:fs";
 import { ZERO_CORE_DIR } from "../core/config.js";
 import { truncateUtf8Bytes } from "../shared/file-utils.js";
 
@@ -331,38 +331,11 @@ export function memoryAgentRootId(agentId: string): string {
 	return `wiki-root:memory-agent:${safe}`;
 }
 
-/**
- * v0.8 (steps-overhaul sub-6): stable synthetic id of a TOPIC-scoped memory
- * subtree root. Extractor A (sub-7) is a multi-step agent that maintains wiki
- * memory PER TOPIC (not per agent). Each topic gets its own subtree root
- * hanging directly under WIKI_GLOBAL_ROOT_ID, parallel to the per-agent roots.
- *
- * The id scheme `wiki-root:memory-topic:<topicId>` is INTENTIONALLY distinct
- * from `wiki-root:memory-agent:<id>` (per-agent) and `wiki-root:memory:<type>`
- * (legacy 5-type shared root) so the three sources never collide and
- * deriveTypeFromPosition can tell them apart by id/path prefix.
- *
- * Container-name collision guard (acceptance-6): the topic root's PATH is
- * `memory-topic:<topicId>` — a prefixed path, NOT a bare container name. The
- * §10.5 skeleton containers are bare names (`knowledge` / `workflow` / `projects`
- * / `memory`); a prefixed path can never clash with them. The topic root is
- * also created lazily (not in fresh-db-seed), so it never competes for the
- * (parent=global-root, path=X) slot at seed time.
- */
-export function memoryTopicRootId(topicId: string): string {
-	// Same sanitization as memoryAgentRootId — keep them parallel.
-	const safe = topicId.replace(/[:/\\]+/g, "_");
-	return `wiki-root:memory-topic:${safe}`;
-}
-
-/**
- * v0.8 (steps-overhaul sub-6): path prefix for topic memory leaves. Extractor A
- * writes leaves with path `memory-topic:<topicId>:<slug>` under their topic
- * root. The `memory-topic:` prefix is what deriveTypeFromPosition keys off to
- * classify these leaves as `memory` (parallel to the per-agent `memory:<id>:`
- * scheme and the legacy `memory:<type>/<subject>` scheme).
- */
-export const MEMORY_TOPIC_PATH_PREFIX = "memory-topic";
+// (memory-archive-fixes sub-2) The per-TOPIC memory scheme (Extractor A,
+// steps-overhaul sub-6/7) is dead code — Extractor A was deleted and no caller
+// remains. memoryTopicRootId / MEMORY_TOPIC_PATH_PREFIX /
+// ensureMemoryTopicRoot / createMemoryNodeForTopic were removed; the per-agent
+// scheme (memoryAgentRootId / ensureMemoryAgentRoot) is the sole live path.
 
 // ---------------------------------------------------------------------------
 // WikiStore — the single global wiki memory tree
@@ -653,13 +626,22 @@ export class WikiStore {
 		return node.id.startsWith("wiki-root:memory") ? "memory" : "projects";
 	}
 	private subtreeSeg(node: WikiNode): string {
-		// v0.8 (steps-overhaul sub-6): per-TOPIC memory roots
-		// (`wiki-root:memory-topic:<topicId>`) get their own sanitized dir segment
-		// under the memory area, parallel to per-agent roots. Colons in the raw
-		// id would land in the disk path (illegal on Windows — ENOENT on mkdir),
-		// so the seg is passed through sanitizeSeg (strips ":" / "/" / "\").
-		if (node.id.startsWith("wiki-root:memory-agent:")) return sanitizeSeg(node.id.slice("wiki-root:memory-agent:".length));
-		if (node.id.startsWith("wiki-root:memory-topic:")) return sanitizeSeg(node.id.slice("wiki-root:memory-topic:".length));
+		// memory-archive-fixes sub-2: per-agent memory roots
+		// (`wiki-root:memory-agent:<agentId>`) get a disk dir segment derived
+		// from the agent NAME (readable), parsed from the root's title
+		// ("Memory: <agentName>", stamped by ensureMemoryAgentRoot). Falling
+		// back to the id-suffix (agentId) when the title is missing or doesn't
+		// match the convention keeps the seg stable + writable. Agent rename
+		// updates the title via management-service → ensureMemoryAgentRoot, which
+		// changes the derived seg; renameMemoryAgentDiskDir then migrates the
+		// on-disk folder so children's body files follow the new name.
+		// Colons/slashes in the raw name are stripped by sanitizeSeg (Windows-
+		// illegal path chars → ENOENT on mkdir otherwise).
+		if (node.id.startsWith("wiki-root:memory-agent:")) {
+			const m = node.title?.match(/^Memory:\s*(.+)$/);
+			const name = m ? m[1].trim() : "";
+			return sanitizeSeg(name) || sanitizeSeg(node.id.slice("wiki-root:memory-agent:".length));
+		}
 		if (node.id.startsWith("wiki-root:memory:")) return sanitizeSeg(node.id.slice("wiki-root:memory:".length));
 		return sanitizeSeg(node.id.slice("wiki-root:".length)); // project subtree root → projectId
 	}
@@ -1617,116 +1599,120 @@ export class WikiStore {
 	}
 
 	/**
-	 * v0.8 (steps-overhaul sub-6): ensure a TOPIC-scoped memory subtree root
-	 * exists. One root per topic, hanging directly under WIKI_GLOBAL_ROOT_ID.
-	 * Extractor A (sub-7) is a multi-step agent that maintains wiki memory
-	 * PER TOPIC (de-duplicated / conflict-flagged merged memory, NOT per-agent
-	 * append) — each topic gets its own subtree root.
+	 * memory-archive-fixes sub-2: one-time startup cleanup of legacy memory
+	 * data. Two passes:
 	 *
-	 * Parallel to ensureMemoryAgentRoot but keyed by topicId. Replaces no prior
-	 * scheme (new in sub-6). Idempotent.
+	 *   1. Delete the old global "Memory" container (the §10.5 skeleton node
+	 *      with path=`memory`, parent=global root) + cascade its children.
+	 *      Pre-per-agent-root writes (e.g. the "Zero Session Notes" leaf) hung
+	 *      here and their disk bodies are now orphaned under wiki/memory/ root
+	 *      rather than under an agent folder. The whole container + leaves are
+	 *      test data; the user confirmed deletion (design decision 2/3).
+	 *   2. Remove orphan disk DIRECTORIES under wiki/memory/ that have no
+	 *      backing per-agent root row (e.g. `auth-system/`, `dev-1/` — residue
+	 *      from the deleted per-topic scheme + early per-agent experiments).
+	 *      Per-agent root dirs (owned by a `wiki-root:memory-agent:<id>` row,
+	 *      whose seg is derived from the agent name) are preserved.
 	 *
-	 * Container-name collision guard (acceptance-6): the root's PATH is the
-	 * prefixed `memory-topic:<topicId>` (NOT a bare container name), so it
-	 * cannot collide with the §10.5 skeleton containers (`knowledge` /
-	 * `workflow` / `projects` / `memory`). It is also created lazily, never at
-	 * fresh-db-seed time, so it never competes for the (parent=global-root,
-	 * path=X) slot at seed.
+	 * NOT protected by assertNotProtected — the legacy memory container is not
+	 * a seed-protected node (only knowledge root + software-dev playbook are).
+	 * Idempotent + best-effort: failures log and continue.
 	 */
-	ensureMemoryTopicRoot(topicId: string, topicTitle?: string): WikiNode {
-		const id = memoryTopicRootId(topicId);
-		// title 用调用方给的 topicTitle(可读);id 仍按 topicId(不可变),所以
-		// 同一 topic 重复 ensure 拿到同一节点,rename topic 只同步 title。
-		const expectedTitle = topicTitle ?? `Memory Topic: ${topicId}`;
-		const existing = this.get(id);
-		if (existing) {
-			// sync:topic 改名后调用方传新 topicTitle,这里同步 title(同 agent root)。
-			if (topicTitle && existing.title !== expectedTitle) {
-				return this.update(existing.id, { title: expectedTitle, lastUpdatedBy: "extractor-A" });
+	cleanupLegacyMemoryData(): { deletedContainer: boolean; deletedLeaves: number; orphanDirs: string[] } {
+		const result = { deletedContainer: false, deletedLeaves: 0, orphanDirs: [] as string[] };
+		// 1. Legacy global Memory container (path=memory, parent=global root).
+		const legacy = this.store.list().find(
+			(n) => n.path === "memory" && n.parentId === WIKI_GLOBAL_ROOT_ID,
+		);
+		if (legacy) {
+			result.deletedLeaves = this.getChildren(legacy.id).length;
+			try {
+				this.delete(legacy.id); // cascades children + disk bodies
+				result.deletedContainer = true;
+			} catch (err) {
+				console.error(
+					"[wikiStore] cleanupLegacyMemoryData: failed to delete legacy memory container:",
+					(err as Error)?.message ?? err,
+				);
 			}
-			return existing;
 		}
-		const now = new Date().toISOString();
-		this.insertWithId({
-			id,
-			parentId: WIKI_GLOBAL_ROOT_ID,
-			type: "memory",
-			nodeType: "section",
-			path: `${MEMORY_TOPIC_PATH_PREFIX}:${topicId}`,
-			title: expectedTitle,
-			summary: `Per-topic memory subtree for ${topicTitle ?? topicId} (steps-overhaul sub-6).`,
-			lastUpdatedBy: "extractor-A",
-			createdAt: now,
-			updatedAt: now,
-		} as any);
-		return this.get(id)!;
+		// 2. Orphan disk dirs under wiki/memory/ with no backing per-agent root.
+		const memoryDir = join(WIKI_DISK_ROOT, "memory");
+		let dirs: string[] = [];
+		try {
+			dirs = readdirSync(memoryDir, { withFileTypes: true })
+				.filter((e) => e.isDirectory())
+				.map((e) => e.name);
+		} catch {
+			return result; // memory dir doesn't exist yet — nothing to clean
+		}
+		// Build the set of dir segments owned by a live per-agent root row.
+		const ownedSegs = new Set<string>();
+		for (const row of this.store.list()) {
+			if (row.id.startsWith("wiki-root:memory-agent:")) {
+				ownedSegs.add(this.subtreeSeg(rowToWikiNode(row)));
+			}
+		}
+		for (const name of dirs) {
+			if (ownedSegs.has(name)) continue;
+			const orphanDir = join(memoryDir, name);
+			try {
+				rmSync(orphanDir, { recursive: true, force: true });
+				result.orphanDirs.push(name);
+			} catch (err) {
+				console.error(
+					`[wikiStore] cleanupLegacyMemoryData: failed to remove orphan dir ${name}:`,
+					(err as Error)?.message ?? err,
+				);
+			}
+		}
+		return result;
 	}
 
 	/**
-	 * v0.8 (steps-overhaul sub-6): upsert a memory leaf under a topic's
-	 * per-topic subtree. Extractor A (sub-7) reads the topic's existing memory
-	 * subtree + new step content, decides whether to create a new node or merge
-	 * into an existing one, then writes here.
+	 * memory-archive-fixes sub-2: migrate an agent's memory subtree disk
+	 * directory when the agent renames. ensureMemoryAgentRoot (called from
+	 * management-service updateAgent) already updated the root's title, so
+	 * subtreeSeg + diskPathFor now derive the NEW agentName segment, and the
+	 * built-in update() rename moved the root's OWN body file to the new
+	 * location. But the root's CHILDREN's body files are still under the OLD
+	 * segment dir — move them, then remove the now-empty old dir.
 	 *
-	 * Upsert is keyed by (parentId + path) — same stable-binding model as
-	 * createMemoryNodeForAgent. The leaf's path encodes topic + slug so the
-	 * same node is updated across runs (idempotent merge).
+	 * Called from management-service updateAgent AFTER ensureMemoryAgentRoot.
+	 * Best-effort: failures log + leave files in place (reads will miss them,
+	 * no crash). Idempotent (no-op if old dir is gone or seg unchanged).
 	 *
-	 * Multi-step agent partial updates (sub-7): callers SHOULD pass patch-style
-	 * updates (only the fields being changed). This upsert always writes the
-	 * full input on the create path; for UPDATE paths, the underlying `update`
-	 * honors SqliteStore's patch semantics (undefined = leave the field alone,
-	 * null = clear it — see `reference-sqlite-store-update-semantics`). When
-	 * `detail` is supplied it routes to the on-disk body file
-	 * (WikiStore.update peels + writes detail). Use `flags` for conflict
-	 * markers and the body's `## 历史` section for provenance trail (no
-	 * version/history column exists; design.md「wiki memory」).
+	 * NB: this covers the rename case NOT covered by acceptance-2's "known
+	 * limitation" — children bodies now follow the agent rename instead of
+	 * orphaning under the old name folder.
 	 */
-	createMemoryNodeForTopic(input: {
-		topicId: string;
-		subject: string;
-		title: string;
-		summary?: string;
-		detail?: string;
-		flags?: string[];
-		provenance?: "structure" | "derived" | "confirmed";
-		lastUpdatedBy?: string;
-	}): WikiNode {
-		const root = this.ensureMemoryTopicRoot(input.topicId);
-		// Path encodes topic + subject for stable upsert. Slug mirrors
-		// createMemoryNodeForAgent's normalization so cross-scheme lookups
-		// behave uniformly.
-		const slug = input.subject
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, "-")
-			.replace(/^-+|-+$/g, "")
-			.slice(0, 64) || "unnamed";
-		const path = `${MEMORY_TOPIC_PATH_PREFIX}:${input.topicId}:${slug}`;
-		const existing = this.getByParentAndPath(root.id, path);
-		if (existing) {
-			// Patch path: only fields the caller supplied are written. Pass
-			// `undefined` to leave a field alone, `null` to clear it (the
-			// store honors SqliteStore.update semantics — see doc above).
-			return this.update(existing.id, {
-				title: input.title,
-				summary: input.summary,
-				detail: input.detail,
-				flags: input.flags,
-				type: "memory",
-				lastUpdatedBy: input.lastUpdatedBy ?? "extractor-A",
-			});
+	renameMemoryAgentDiskDir(agentId: string, oldAgentName: string): void {
+		const rootId = memoryAgentRootId(agentId);
+		const node = this.get(rootId);
+		if (!node) return;
+		const oldSeg = sanitizeSeg(oldAgentName) || sanitizeSeg(agentId);
+		const newSeg = this.subtreeSeg(node);
+		if (oldSeg === newSeg) return;
+		const oldDir = join(WIKI_DISK_ROOT, "memory", oldSeg);
+		const newDir = join(WIKI_DISK_ROOT, "memory", newSeg);
+		let oldEntries: string[] = [];
+		try {
+			oldEntries = readdirSync(oldDir);
+		} catch {
+			return; // old dir already gone — nothing to migrate
 		}
-		return this.create({
-			parentId: root.id,
-			path,
-			title: input.title,
-			summary: input.summary,
-			detail: input.detail,
-			flags: input.flags,
-			type: "memory",
-			provenance: input.provenance ?? "derived",
-			lastUpdatedBy: input.lastUpdatedBy ?? "extractor-A",
-		});
+		try {
+			mkdirSync(newDir, { recursive: true });
+			for (const entry of oldEntries) {
+				renameSync(join(oldDir, entry), join(newDir, entry));
+			}
+			try { rmdirSync(oldDir); } catch { /* not empty / in use — leave it */ }
+		} catch (err) {
+			console.error(
+				`[wikiStore] renameMemoryAgentDiskDir: failed to migrate memory dir ${oldSeg} → ${newSeg}:`,
+				(err as Error)?.message ?? err,
+			);
+		}
 	}
 
 	// ─── Project registry / helpers ─────────────────────────────────
@@ -1779,12 +1765,12 @@ export class WikiStore {
 	 * synthetic memory subtree ROOTS (they are index containers, not facts):
 	 *   - the 5 legacy shared type roots `wiki-root:memory:<type>` (type=memory,
 	 *     so they'd survive the type filter — listed explicitly below);
-	 *   - per-agent roots `wiki-root:memory-agent:<id>` and per-topic roots
-	 *     `wiki-root:memory-topic:<id>` (sub-6) are type=project (synthetic
-	 *     `wiki-root:` root), so the `type === "memory"` filter already drops
-	 *     them — no explicit exclusion needed. The LEAVES under any of these
-	 *     roots (path `memory:...` / `memory-topic:...`) are type=memory and
-	 *     ARE searched (acceptance-6: topic leaves must be findable).
+	 *   - per-agent roots `wiki-root:memory-agent:<id>` are type=project
+	 *     (synthetic `wiki-root:` root), so the `type === "memory"` filter
+	 *     already drops them — no explicit exclusion needed. The LEAVES under
+	 *     a per-agent root (path `memory:...`) are type=memory and ARE searched.
+	 *     (memory-archive-fixes sub-2: the per-topic scheme was removed; only
+	 *     per-agent roots remain.)
 	 */
 	searchMemoryNodes(query: string, limit: number = 10): WikiNode[] {
 		const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -1800,11 +1786,6 @@ export class WikiStore {
 		// rowToWikiNode first, then filter by the synthesized type. The
 		// fallback readNodeDetail(n.id) below is unaffected because it keys
 		// off n.id, which is present on the raw row and the WikiNode.
-		//
-		// v0.8 (steps-overhaul sub-6): this filter already admits topic leaves
-		// (path `memory-topic:<topicId>:<slug>` → type=memory) and excludes the
-		// topic root (`wiki-root:memory-topic:<id>` → type=project, dropped by
-		// the type check). No topic-specific branch is needed here.
 		const candidates = this.store
 			.list()
 			.map(rowToWikiNode)
@@ -1946,26 +1927,17 @@ function deriveTypeFromPosition(row: any): WikiNodeTypeGlobal {
 	// prefix directly (wiki-anchor-injection.ts:classifyAnchorKind), so the
 	// root does not need type === "memory" to render. Fall through: its
 	// nodeType is "section" → "structure" (rule 4).
-	//
-	// v0.8 (steps-overhaul sub-6): the per-TOPIC memory subtree root
-	// (`wiki-root:memory-topic:<topicId>`, path `memory-topic:<topicId>`) is
-	// ALSO an index/anchor container, parallel to the per-agent root. It must
-	// likewise fall through to rule 4 (not be classified as a memory leaf) so
-	// listMemoryNodes / searchMemoryNodes only pick up its leaves (path
-	// `memory-topic:<topicId>:<slug>`). NB: `wiki-root:memory-topic:` does NOT
-	// match `wiki-root:memory:` (the colon lands earlier in the latter), so
-	// this branch is reached naturally — no extra guard needed.
+	// (memory-archive-fixes sub-2: the per-TOPIC scheme was removed; only
+	// per-agent roots remain.)
 	if (id.startsWith("wiki-root:memory:")) return "memory"; // legacy shared type root
 	if (id.startsWith("wiki-root:")) return "project"; // project subtree root
 
 	// 2. Memory leaves by path signal.
 	// P2 per-agent leaves: `memory:<agentId>:<type>:<slug>` (under a
 	// wiki-root:memory-agent: root). Legacy M5 leaves: `memory:<type>/<subject>`
-	// under a wiki-root:memory:<type> root. sub-6 per-topic leaves:
-	// `memory-topic:<topicId>:<slug>` (under a wiki-root:memory-topic: root).
-	// ALL three match `path.startsWith("memory")` — the topic scheme reuses the
-	// `memory` prefix deliberately so existing classification just works.
-	// `memory-root:` covers the legacy type-root path namespace as memory too.
+	// under a wiki-root:memory:<type> root. Both match
+	// `path.startsWith("memory")`. `memory-root:` covers the legacy type-root
+	// path namespace as memory too.
 	if (path.startsWith("memory") || path.startsWith("memory-root:")) return "memory";
 
 	// 3. Project subtree members.

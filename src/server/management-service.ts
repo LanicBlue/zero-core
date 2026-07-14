@@ -566,6 +566,12 @@ export class ManagementService {
 		// (e.g. disable one tool) must MERGE — otherwise passing {tools:{WebSearch:
 		// {enabled:false}}} wipes every other tool. Other fields are scalar/arrays
 		// and stay replace. See mergeToolPolicy for the same merge logic.
+		// memory-archive-fixes sub-2: capture the old name BEFORE the store
+		// update so the memory-root disk dir can be migrated to the new name
+		// (subtreeSeg derives the folder from the title, which is set from the
+		// agent name).
+		const oldAgent = this.agentStore.get(id);
+		const oldName = oldAgent?.name;
 		let updated: AgentRecord;
 		if (input.toolPolicy !== undefined) {
 			const agent = this.agentStore.get(id);
@@ -584,9 +590,13 @@ export class ManagementService {
 		} else {
 			updated = this.agentStore.update(id, input);
 		}
-		// rename 同步:agent 改名 → memory 根 title 跟着改。
-		if (input.name !== undefined) {
+		// rename 同步:agent 改名 → memory 根 title 跟着改 + 磁盘目录迁移。
+		// ensureMemoryAgentRoot updates the title (update() moves the root's own
+		// body file); renameMemoryAgentDiskDir moves the children's body files
+		// so the whole per-agent folder follows the new name.
+		if (input.name !== undefined && oldName !== undefined && oldName !== input.name) {
 			this.wikiStore?.ensureMemoryAgentRoot(id, input.name);
+			this.wikiStore?.renameMemoryAgentDiskDir(id, oldName);
 		}
 		return updated;
 	}

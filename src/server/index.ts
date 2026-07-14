@@ -150,6 +150,24 @@ export async function startServer(options?: StartServerOptions) {
 	// legacy IPC/router/renderer keep using it.
 	const wikiStoreGlobal = new WikiStore(sessionDB);
 
+	// memory-archive-fixes sub-2: one-time startup cleanup of legacy memory
+	// data — delete the old global "memory" container (path=memory) + its
+	// orphaned leaves, and remove orphan disk dirs under wiki/memory/ with no
+	// backing per-agent root row (residue from the removed per-topic scheme +
+	// early per-agent experiments). Per-agent root dirs (with DB rows) are
+	// preserved. Runs synchronously BEFORE any session uses the store so the
+	// tree state is clean; best-effort (failures log + continue).
+	try {
+		const cleanup = wikiStoreGlobal.cleanupLegacyMemoryData();
+		if (cleanup.deletedContainer || cleanup.orphanDirs.length > 0) {
+			console.error(
+				`[server] Legacy memory cleanup: containerDeleted=${cleanup.deletedContainer} leaves=${cleanup.deletedLeaves} orphanDirs=[${cleanup.orphanDirs.join(", ")}]`,
+			);
+		}
+	} catch (err) {
+		console.error(`[server] Legacy memory cleanup failed:`, (err as Error)?.message ?? err);
+	}
+
 	// compression-archive-simplify sub-5: the M5 extraction-hooks wiring is
 	// DELETED along with extractor-a-service.ts (ExtractorA body — wiki
 	// extraction now lives in compressSession's Force-档 memory ephemeral turn,
