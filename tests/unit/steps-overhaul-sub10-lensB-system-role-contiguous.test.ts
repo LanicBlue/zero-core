@@ -105,7 +105,9 @@ describe("steps-overhaul sub-10 Lens B (sub-4 移交): system role only in zone-
 
 	test("single summary: one system message at the start, then user/assistant (no later system)", () => {
 		insertSession(db, "s1");
-		db.saveSummaryAndAdvanceCursor("s1", summary("did 0..3", 0, 3), 3);
+		// compression-archive-simplify sub-5: migrated from saveSummaryAndAdvanceCursor
+		// (deleted FIFO-3 path) to replaceSummariesAndAdvanceCursor (2-zone rolling).
+		db.replaceSummariesAndAdvanceCursor("s1", summary("did 0..3", 0, 3), 3);
 		// Seed steps AFTER the cursor (these become zone 2/3).
 		db.appendStep("s1", 4, 4, "user", "go");
 		db.appendStep("s1", 5, 4, "assistant", assistantContent([{ type: "text", text: "ok" }]));
@@ -121,33 +123,19 @@ describe("steps-overhaul sub-10 Lens B (sub-4 移交): system role only in zone-
 		expect(view[0].role, "zone 1 starts with system").toBe("system");
 	});
 
-	test("multiple summaries (3 FIFO): all merge into ONE contiguous system prefix (no split system blocks)", () => {
-		insertSession(db, "m1");
-		// Three summaries → without normalizeMessages they'd be 3 back-to-back
-		// system messages; normalizeMessages merges them into ONE.
-		db.saveSummaryAndAdvanceCursor("m1", summary("did 0..1", 0, 1), 1);
-		db.saveSummaryAndAdvanceCursor("m1", summary("did 2..3", 2, 3), 3);
-		db.saveSummaryAndAdvanceCursor("m1", summary("did 4..5", 4, 5), 5);
-		db.appendStep("m1", 6, 6, "user", "go");
-		db.appendStep("m1", 7, 6, "assistant", assistantContent([{ type: "text", text: "ok" }]));
-
-		const sess = new AgentSession("sys", 200000, "m1", db as any);
-		const view = sess.getMessages();
-
-		assertSystemRoleContiguous(view as any, "3 summaries (merged)");
-		// Exactly ONE system message in the final view (the merged summary).
-		const systemCount = view.filter(m => m.role === "system").length;
-		expect(systemCount, "3 summaries merged into 1 system message").toBe(1);
-		expect(view[0].role).toBe("system");
-		// After the system message, only user/assistant/tool.
-		for (let i = 1; i < view.length; i++) {
-			expect(["user", "assistant", "tool"], `index ${i} not system`).toContain(view[i].role);
-		}
-	});
+	// compression-archive-simplify sub-5: the multi-summary (3 FIFO) tests are
+	// DELETED — the 2-zone rolling model keeps exactly ONE summary row per
+	// session (replaceSummariesAndAdvanceCursor wipes stale rows in the same tx
+	// that writes the new one). The "3 summaries merge into 1 contiguous system
+	// prefix" scenario can no longer be produced via the public API. The
+	// contiguous-system-role invariant itself is still covered by the
+	// single-summary + fresh-tail-with-tools + large-history tests below.
 
 	test("fresh tail with tool calls: tool/assistant/user never produce system (zone 2/3 system-free)", () => {
 		insertSession(db, "t1");
-		db.saveSummaryAndAdvanceCursor("t1", summary("did 0..2", 0, 2), 2);
+		// compression-archive-simplify sub-5: migrated from saveSummaryAndAdvanceCursor
+		// (deleted FIFO-3 path) to replaceSummariesAndAdvanceCursor (2-zone rolling).
+		db.replaceSummariesAndAdvanceCursor("t1", summary("did 0..2", 0, 2), 2);
 		// Steps after cursor, with tool calls in the fresh tail.
 		db.appendStep("t1", 3, 3, "user", "use a tool");
 		db.appendStep("t1", 4, 3, "assistant", assistantContent([
@@ -169,12 +157,11 @@ describe("steps-overhaul sub-10 Lens B (sub-4 移交): system role only in zone-
 		expect(roles[0]).toBe("system");
 	});
 
-	test("large history + many summaries + many steps: invariant still holds (scale)", () => {
+	test("large history + ONE rolling summary + many steps: invariant still holds (scale)", () => {
 		insertSession(db, "big1");
-		// 3 summaries (cap), each compressing a range; cursor at the last.
-		db.saveSummaryAndAdvanceCursor("big1", summary("s0", 0, 5), 5);
-		db.saveSummaryAndAdvanceCursor("big1", summary("s1", 6, 11), 11);
-		db.saveSummaryAndAdvanceCursor("big1", summary("s2", 12, 17), 17);
+		// compression-archive-simplify sub-5: was 3 FIFO summaries; migrated to
+		// ONE rolling summary (the only legal state in the 2-zone model).
+		db.replaceSummariesAndAdvanceCursor("big1", summary("s0", 0, 17), 17);
 		// Many steps after the cursor (zone 2 + 3).
 		const big = "x".repeat(500);
 		for (let i = 18; i < 60; i++) {
@@ -188,7 +175,7 @@ describe("steps-overhaul sub-10 Lens B (sub-4 移交): system role only in zone-
 		const view = sess.getMessages();
 
 		assertSystemRoleContiguous(view as any, "large history");
-		// System count is 1 (merged) — never splits.
+		// System count is 1 (the single rolling summary) — never splits.
 		expect(view.filter(m => m.role === "system").length).toBe(1);
 	});
 

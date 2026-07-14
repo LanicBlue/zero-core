@@ -35,11 +35,6 @@ import { readFileSync } from "node:fs";
 const DEFAULT_CONTEXT_WINDOW = 128000;
 const RESERVE_TOKENS = 16384;
 
-// steps-overhaul sub-3: 3-zone LLM-view assembly constants (design.md「fresh
-// tail 保护」). fresh-tail token budget = min(32K, 20% of context window).
-const FRESH_TAIL_ABSOLUTE_TOKEN_BUDGET = 32_000;
-const FRESH_TAIL_WINDOW_FRACTION = 0.20;
-
 /**
  * multimodal-input sub-3: format an attachment's meta-info as a text part,
  * appended to the user message content when the attachment is NOT inlined
@@ -514,22 +509,6 @@ export class AgentSession {
 		return msg;
 	}
 
-	/** Aggressively prune: keep only the last keepRatio of messages (by token budget). */
-	async aggressivePrune(keepRatio: number): Promise<void> {
-		const available = this.contextWindow - RESERVE_TOKENS - this.estimateSystemPromptTokens();
-		const keepTokens = Math.floor(available * keepRatio);
-		let budget = keepTokens;
-		const kept: ModelMessage[] = [];
-		for (let i = this.messages.length - 1; i >= 0; i--) {
-			const cost = this.estimateMessageTokens(this.messages[i]);
-			if (budget - cost < 0) break;
-			budget -= cost;
-			kept.unshift(this.messages[i]);
-		}
-		this.messages = kept;
-		this.invalidateCalibration();
-	}
-
 	/**
 	 * steps-overhaul sub-3: rebuildFromTurns now runs TWO independent paths and
 	 * returns the LLM view (this.messages). Both populate state that downstream
@@ -539,24 +518,25 @@ export class AgentSession {
 	 *     positional-match source for getMessagesMultimodal's attachment
 	 *     enrichment). No truncation, no stubbing — one entry per step row.
 	 *
-	 *   ② this.messages (LLM view) — the 3-zone assembly from design.md:
-	 *        [summary]              ← messages table summary blocks (≤3 FIFO)
-	 *        [middle: tool stub]    ← steps(压缩游标..fresh-tail 边界): tool
-	 *                                 results replaced by a one-line stub
-	 *        [fresh tail: verbatim] ← steps(fresh-tail 边界..当前): assembled
-	 *                                 verbatim (pointer form intact — NOT
-	 *                                 dereferenced to full bytes)
+	 *   ② this.messages (LLM view) — the 2-zone assembly (sub-3a):
+	 *        [summary]        ← messages table summary blocks (≤3 FIFO)
+	 *        [postCursor]     ← steps(compressionCursor..当前) assembled
+	 *                           verbatim (pointer form intact — NOT
+	 *                           dereferenced to full bytes)
 	 *
-	 * Invariants (acceptance-3):
+	 * Invariants (acceptance-3a):
 	 *   - Two tables never duplicate content (steps holds all step content;
 	 *     messages holds only summary+cursor).
 	 *   - No mid-turn drift: messages is a cursor; steps is the source; this
 	 *     assemble is deterministic and reproducible across crashes.
-	 *   - fresh-tail boundary = min(32K token, 20% window), STEP granularity,
-	 *     tool-pair safe (never splits a tool_use/result pair), includes any
-	 *     in-flight tool.
 	 *   - Restart recovery: reassembling from messages.summary + steps[cursor..
 	 *     last_completed_step_seq] yields the SAME LLM view as before the crash.
+	 *
+	 * sub-3a shrank the 3-zone model (summary / stubbed middle / verbatim fresh
+	 * tail) to 2 zones (summary / verbatim postCursor). The fresh-tail boundary
+	 * survives ONLY in compression-core.computeFreshTailStartSeq, where it
+	 * governs how far the cursor advances during compression — the LLM view no
+	 * longer needs it.
 	 */
 	rebuildFromTurns(): ModelMessage[] {
 		// Step 4A: step-only — the steps table is read exclusively via getSteps.
@@ -580,30 +560,26 @@ export class AgentSession {
 			attachments: s.attachments,
 		}));
 
-		// ── Path ② this.messages: 3-zone LLM-view assembly. ────────────────
+		// ── Path ② this.messages: 2-zone LLM-view assembly (sub-3a). ────────
 		this.messages = this.normalizeMessages(this.assembleLLMView(steps));
 		return this.messages;
 	}
 
 	/**
-	 * steps-overhaul sub-3: build the 3-zone LLM view (design.md「阶段2」).
+	 * sub-3a: build the 2-zone LLM view (design.md「阶段2」).
 	 * Zones, in order:
-	 *   [summary]           — from db.getSummaries (≤3 FIFO blocks). Skipped if
-	 *                         no summaries (the common sub-3 case — no writer
-	 *                         until sub-4).
-	 *   [middle: tool stub] — steps with seq in (compressionCursor ..
-	 *                         freshTailStart), with tool RESULTS replaced by a
-	 *                         one-line stub. Tool-call parts are KEPT (so the
-	 *                         tool_use/result pair stays valid). Non-tool step
-	 *                         content (text blocks) passes through unchanged.
-	 *   [fresh tail]        — steps with seq in [freshTailStart .. last], built
-	 *                         VERBATIM — pointer-form tool results are NOT
-	 *                         dereferenced (only the middle zone stubs).
+	 *   [summary]     — from db.getSummaries (≤3 FIFO blocks). Skipped if no
+	 *                   summaries (the common case until the compression hook
+	 *                   writes one).
+	 *   [postCursor]  — steps with seq > compressionCursor, assembled VERBATIM.
+	 *                   Pointer-form tool results are NOT dereferenced. Tool-
+	 *                   use/result pairs stay valid because each assistant step
+	 *                   carries both blocks (see appendStepMessages).
 	 *
-	 * Compression cursor (db.getCompressionCursor) and fresh-tail boundary
-	 * (this.computeFreshTailBoundary) together carve the regions. Step
-	 * granularity is preserved throughout (a step is never split). Tool-pair
-	 * safety is enforced at the fresh-tail boundary (see computeFreshTailBoundary).
+	 * compressionCursor (db.getCompressionCursor) is the only carve point; the
+	 * previous fresh-tail split was a session-side duplicate of
+	 * compression-core.computeFreshTailStartSeq and is now consolidated there.
+	 * Step granularity is preserved throughout (a step is never split).
 	 */
 	private assembleLLMView(steps: StepRow[]): ModelMessage[] {
 		if (steps.length === 0) return [];
@@ -634,31 +610,26 @@ export class AgentSession {
 			}
 		}
 
-		// ── Zones 2 + 3: split steps at the fresh-tail boundary. ───────────
+		// ── Zone 2: postCursor verbatim (2-zone model, sub-3a). ────────────
 		// compressionCursor = last step seq that was summarized away. NULL OR 0
 		// means "no compression yet" (design: default NULL/0) — in that case the
-		// ENTIRE step history lives in the post-cursor region (middle + fresh
-		// tail). Steps with seq <= a real (>=1) cursor are ALREADY represented
-		// by the summaries above and are dropped from the assemble.
+		// ENTIRE step history lives in the post-cursor region. Steps with seq <=
+		// a real (>=1) cursor are ALREADY represented by the summaries above and
+		// are dropped from the assemble.
+		//
+		// sub-3a: the previous 3-zone model split this region at the fresh-tail
+		// boundary and stubbed tool results in the older half. That middle
+		// (stub) zone is GONE — postCursor is now emitted as a single verbatim
+		// run. Token budgeting is owned by the compression pipeline (sub-3b/c
+		// advance the cursor; PreLLMCall/compressSession hook fires on
+		// prompt_too_long); the LLM view is just a cursor over what survives.
 		const hasRealCursor = compressionCursor !== null && compressionCursor >= 1;
 		const postCursor = hasRealCursor
 			? steps.filter(s => s.seq > (compressionCursor as number))
 			: steps;
 		if (postCursor.length === 0) return messages;
 
-		const freshTailStartSeq = this.computeFreshTailBoundary(postCursor);
-
-		const middleSteps = postCursor.filter(s => s.seq < freshTailStartSeq);
-		const freshSteps = postCursor.filter(s => s.seq >= freshTailStartSeq);
-
-		// Zone 2: middle — assemble with tool-result stubs.
-		if (middleSteps.length > 0) {
-			this.appendStepsAsMessages(middleSteps, messages, { stubToolResults: true });
-		}
-		// Zone 3: fresh tail — assemble verbatim (pointer form preserved).
-		if (freshSteps.length > 0) {
-			this.appendStepsAsMessages(freshSteps, messages, { stubToolResults: false });
-		}
+		this.appendStepsAsMessages(postCursor, messages);
 
 		return messages;
 	}
@@ -685,70 +656,15 @@ export class AgentSession {
 	}
 
 	/**
-	 * steps-overhaul sub-3: compute the fresh-tail boundary seq (design.md「fresh
-	 * tail 保护」). The fresh tail is the most recent run of steps whose total
-	 * estimated token cost fits within `min(32K, 20% of context window)`. Steps
-	 * are walked newest-first; each is added to the tail while budget remains.
-	 *
-	 * Tool-pair safety: a step is the unit of storage, and one assistant step
-	 * already carries its own tool_use AND tool_result blocks as a complete pair
-	 * (rebuildFromSteps/appendStepMessages emits both from the same step). So
-	 * splitting at a step boundary NEVER splits a tool pair. In-flight tools (a
-	 * step with a "running" tool block — only possible for the very last step
-	 * mid-turn) are kept in the tail by the newest-first walk (they're added
-	 * first, before budget is checked against older steps).
-	 *
-	 * Returns the LOWEST seq that belongs to the fresh tail. All steps with
-	 * seq >= this value go in zone 3 (verbatim); lower seqs go in zone 2 (stub).
-	 */
-	private computeFreshTailBoundary(postCursorSteps: StepRow[]): number {
-		if (postCursorSteps.length === 0) return Number.MAX_SAFE_INTEGER;
-
-		const absoluteBudget = FRESH_TAIL_ABSOLUTE_TOKEN_BUDGET;
-		const windowBudget = Math.floor(this.contextWindow * FRESH_TAIL_WINDOW_FRACTION);
-		let budget = Math.min(absoluteBudget, windowBudget);
-
-		// Walk newest-first; include steps while budget remains.
-		// postCursorSteps is in ascending seq order (getSteps ORDER BY seq).
-		let freshStartIdx = postCursorSteps.length; // default: empty tail
-		for (let i = postCursorSteps.length - 1; i >= 0; i--) {
-			const cost = this.estimateStepTokens(postCursorSteps[i]);
-			if (budget - cost < 0) break;
-			budget -= cost;
-			freshStartIdx = i;
-		}
-		// Guarantee a non-empty tail: even if the newest step alone exceeds the
-		// budget, keep at least the last step (the agent must see its most
-		// recent work). This can only widen the tail beyond budget for a single
-		// oversized step — preferable to an empty context.
-		if (freshStartIdx === postCursorSteps.length) {
-			freshStartIdx = postCursorSteps.length - 1;
-		}
-		return postCursorSteps[freshStartIdx].seq;
-	}
-
-	/** Rough token estimate for a single step row (4 chars/token heuristic). */
-	private estimateStepTokens(step: StepRow): number {
-		const json = step.content ?? "";
-		return Math.ceil(json.length / 4) + 8;
-	}
-
-	/**
 	 * Assemble a contiguous run of step rows into ModelMessages, grouping by
-	 * turnGroup (mirrors the legacy rebuildFromSteps grouping). When
-	 * `stubToolResults` is true (zone 2 / middle), each step's tool RESULT is
-	 * replaced by a one-line stub before emission; the tool USE (call) is kept
-	 * so the pair stays valid. The dangling-tool synthesis (Step 2E / sub-5 Wait)
-	 * runs in BOTH zones — a paired tool-result is always required for validity.
-	 *
-	 * `stubToolResults` is the ONLY difference between the two zones: fresh tail
-	 * assembles verbatim (pointer-form tool results intact), middle stubs them.
-	 * Pointer form is NOT dereferenced in either zone — fresh tail renders the
-	 * pointer string as-is (the LLM sees the summary + path, ~4K token, and can
-	 * file-read for detail). The middle zone replaces even the pointer with a
-	 * shorter stub to shed tokens.
+	 * turnGroup (mirrors the legacy rebuildFromSteps grouping). All steps are
+	 * emitted VERBATIM (sub-3a 2-zone model: no middle/stub zone). Pointer-form
+	 * tool results are NOT dereferenced — the LLM sees the pointer string as-is
+	 * (~4K token) and can file-read for detail. Dangling-tool synthesis (Step 2E
+	 * / sub-5 Wait) still runs so every tool-call has a paired tool-result
+	 * (validity invariant for the provider).
 	 */
-	private appendStepsAsMessages(steps: StepRow[], messages: ModelMessage[], opts: { stubToolResults: boolean }): void {
+	private appendStepsAsMessages(steps: StepRow[], messages: ModelMessage[]): void {
 		// Group by turnGroup, preserving order (same grouping as rebuildFromSteps).
 		const groups = new Map<number, StepRow[]>();
 		for (const step of steps) {
@@ -758,7 +674,7 @@ export class AgentSession {
 		}
 
 		// The toolCallId offset must be continuous across the WHOLE LLM view
-		// (zone 1 summaries don't emit tool ids; zones 2+3 share one counter).
+		// (zone 1 summaries don't emit tool ids; zone 2 shares one counter).
 		// Seed it from the count of tool-call ids already emitted in `messages`.
 		let tcOffset = this.countToolCallIds(messages);
 
@@ -771,11 +687,8 @@ export class AgentSession {
 				if (step.role !== "assistant") continue;
 				let blocks: any[] = [];
 				try { blocks = JSON.parse(step.content ?? "[]"); } catch { blocks = []; }
-				// Dangling-tool synthesis runs in both zones (validity invariant).
+				// Dangling-tool synthesis always runs (validity invariant).
 				this.synthesizeDanglingToolResultsInPlace(blocks);
-				if (opts.stubToolResults) {
-					this.stubToolResultsInPlace(blocks);
-				}
 				tcOffset = this.appendStepMessages(blocks, messages, tcOffset);
 			}
 		}
@@ -792,29 +705,6 @@ export class AgentSession {
 			}
 		}
 		return n;
-	}
-
-	/**
-	 * steps-overhaul sub-3 (阶段2 常驻组装规则): replace each tool block's
-	 * RESULT with a one-line stub. The tool NAME + ARGS (the "use" side) are
-	 * KEPT — only the result is stubbed — so the tool_use/tool_result pair stays
-	 * structurally valid for the provider. The stub carries the tool name so the
-	 * model can still see WHAT was called; the actual result is dropped to shed
-	 * tokens. A pointer-form result (sub-2 externalization) is collapsed to the
-	 * stub just like any other result — the middle zone never dereferences.
-	 *
-	 * Idempotent on already-stubbed blocks (a stub result is itself a string,
-	 * but we detect the sentinel and skip re-stubbing to avoid nesting).
-	 */
-	private stubToolResultsInPlace(blocks: any[]): void {
-		const STUB_SENTINEL = "[tool result stubbed (steps-overhaul 阶段2)]";
-		for (const b of blocks) {
-			if (b?.type !== "tool") continue;
-			if (b.result === undefined) continue; // dangling — synthesize handles it
-			// Skip re-stubbing (idempotent).
-			if (typeof b.result === "string" && b.result.startsWith(STUB_SENTINEL)) continue;
-			b.result = `${STUB_SENTINEL} tool=${b.name ?? "unknown"}`;
-		}
 	}
 
 	/**

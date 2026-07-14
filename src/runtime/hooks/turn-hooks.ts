@@ -58,6 +58,9 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 
 	registry.register("TurnStart", async (ctx) => {
 		try {
+			// compression-archive-simplify sub-2: ephemeral turn (persist:false)
+			// skips user-step persistence.
+			if (ctx.persist === false) return;
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
 
@@ -117,6 +120,9 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 
 	registry.register("PostToolUse", async (ctx) => {
 		try {
+			// compression-archive-simplify sub-2: ephemeral turn skips the
+			// immediate per-tool persist.
+			if (ctx.persist === false) return;
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
 
@@ -151,6 +157,8 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 
 	registry.register("PostToolUseFailure", async (ctx) => {
 		try {
+			// compression-archive-simplify sub-2: ephemeral turn skips.
+			if (ctx.persist === false) return;
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
 
@@ -186,6 +194,8 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 
 	registry.register("StepEnd", async (ctx) => {
 		try {
+			// compression-archive-simplify sub-2: ephemeral turn skips step persist.
+			if (ctx.persist === false) return;
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
 
@@ -209,6 +219,10 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 
 	registry.register("TurnEnd", async (ctx) => {
 		try {
+			// compression-archive-simplify sub-2: ephemeral turn skips the
+			// safety-net assistant-step persist. (The TurnEnd closure handler
+			// below still runs to clear turn_seq — idempotent either way.)
+			if (ctx.persist === false) return;
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
 
@@ -272,6 +286,8 @@ export function registerTurnHooks(db: ISessionStore, registry: HookRegistry = Ho
 
 	registry.register("TurnError", async (ctx) => {
 		try {
+			// compression-archive-simplify sub-2: ephemeral turn skips.
+			if (ctx.persist === false) return;
 			const sessionId = ctx.sessionId as string;
 			if (!sessionId) return;
 

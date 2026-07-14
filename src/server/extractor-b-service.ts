@@ -18,7 +18,9 @@
 // - 返回 ExtractorBResult(写了多少条)
 //
 // ## 定位
-// src/server/ 服务层,被 hooks/extraction-hooks.ts 调用。
+// src/server/ 服务层。compression-archive-simplify sub-5: 原 caller
+// hooks/extraction-hooks.ts 已删除(ExtractorA 整体退役);B 仍保留为独立类
+// (决策 49 — tool telemetry 是独立数据流),未来触发器可重新挂回。
 //
 // ## 依赖
 // - ai.generateText、runtime/provider-factory.resolveModel

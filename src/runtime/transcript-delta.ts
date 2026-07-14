@@ -7,7 +7,10 @@
 // 的 delta,渲染成 markdown 文本喂给 extractor A/B。是机制 2「只处理 cursor 之后
 // 的 delta,不重新过整段 transcript」(决策 53)的物理实现。
 //
-// 不依赖任何 LLM、不写 DB —— 纯切片器,被 hooks/extraction-hooks.ts 调用。
+// 不依赖任何 LLM、不写 DB —— 纯切片器。compression-archive-simplify sub-5:
+// 主 caller hooks/extraction-hooks.ts 已随 ExtractorA 退役一并删除;现在仅被
+// 切片相关测试覆盖(sub-5 不删本文件 —— 不在设计.md「四、死代码清理」清单内;
+// 未来挂回 B 触发器时可复用)。
 //
 // ## 输入
 // - SessionDB(via db.getSteps)

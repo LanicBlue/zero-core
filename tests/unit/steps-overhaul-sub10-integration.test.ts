@@ -67,7 +67,9 @@ import {
 	_setLastLLMCallForTest,
 	_getLastLLMCallForTest,
 	clearCompressionTriggerStateForSession,
+	buildCompressOpts,
 } from "../../src/runtime/hooks/compression-trigger-hooks.js";
+import { compressSession } from "../../src/server/compression-core.js";
 import type { SessionConfig, RuntimeProviderConfig } from "../../src/runtime/types.js";
 import { computeDisplayWindow } from "../../src/server/session-volume.js";
 
@@ -184,6 +186,21 @@ function fireStepEnd(
 	});
 }
 
+/**
+ * sub-3c: Force-trigger paths (StepEnd cold / PreLLMCall cold / hot+hard) no
+ * longer compress at the hook layer — they set a signal that AgentLoop
+ * consumes at the turn boundary (coordinateForceCompress runs memory turn →
+ * compressSession). For integration tests that exercise the downstream
+ * pipeline (summaries / cursor / fresh-tail / 3-zone view / volume UI) the
+ * trigger mechanism is incidental. This helper invokes compressSession
+ * directly, mirroring what coordinateForceCompress does MINUS the memory
+ * ephemeral turn (which is exercised separately in sub3c-dual-mechanism.test.ts).
+ */
+async function compressDirect(db: SessionDB, sessionId: string) {
+	const opts = await buildCompressOpts(mkConfig(sessionId), PROVIDERS);
+	return compressSession(sessionId, db, opts);
+}
+
 /** A standalone registry with the production hook set wired for "main" loop. */
 function wireProductionHooks(db: SessionDB): HookRegistry {
 	const reg = new HookRegistry();
@@ -212,24 +229,24 @@ describe("steps-overhaul sub-10 integration: compression → messages → cursor
 		try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* Windows */ }
 	});
 
-	test("cache-cold StepEnd (mid-turn) drives full pipeline: compress → summary persists → cursor advances → fresh tail NOT compressed → 3-zone LLM view", async () => {
+	test("compressSession drives full pipeline: compress → summary persists → cursor advances → fresh tail NOT compressed → 3-zone LLM view (sub-3c)", async () => {
+		// sub-3c: the cache-cold StepEnd trigger no longer compresses at the hook
+		// layer — it sets a Force signal that AgentLoop consumes at the turn
+		// boundary (coordinateForceCompress runs memory turn → compressSession).
+		// This integration test exercises the downstream PIPELINE of
+		// compressSession (the part those trigger-side changes did NOT alter),
+		// driven directly — equivalent to what coordinateForceCompress runs,
+		// minus the memory ephemeral turn (covered separately in sub3c-dual-
+		// mechanism.test.ts #1). The 3-zone view / cursor / fresh-tail
+		// invariants are compressSession's contract, independent of trigger.
+		//
 		// Seed 3 padded turns (turn 0..5 = 6 steps). Older turns exceed fresh-tail
 		// budget; newest turn is the fresh tail (must NOT be compressed).
 		seedTurn(db, "s1", 0); // steps 0,1
 		seedTurn(db, "s1", 2); // steps 2,3
 		seedTurn(db, "s1", 4); // steps 4,5 ← newest, must be in fresh tail
 
-		// Register the FULL production hook set (turn / durable / tool-exec /
-		// compression-trigger / ...) and fire StepEnd as agent-loop does.
-		// cache cold (lastLLMCall unset) + usage over cold threshold (>100K).
-		const reg = wireProductionHooks(db);
-		_setLastLLMCallForTest("s1", Date.now() - 600_000); // 10min ago → cold
-		db.setTokenUsage("s1", { inputTokens: 150_000 });
-
-		await fireStepEnd(reg, db, {
-			sessionId: "s1", stepNumber: 3,
-			usage: { inputTokens: 150_000, outputTokens: 500, totalTokens: 150_500 },
-		});
+		await compressDirect(db, "s1");
 
 		// ── summary persisted to messages (downstream real consumption) ──────
 		const summaries = db.getSummaries("s1");
@@ -275,40 +292,37 @@ describe("steps-overhaul sub-10 integration: compression → messages → cursor
 		expect(asstTexts.length, "fresh-tail assistant step present").toBeGreaterThan(0);
 	});
 
-	test("multiple compressions across turns: messages cap 3 FIFO, cursor monotonically advances", async () => {
+	test("multiple compressions across turns: messages cap 3 FIFO, cursor monotonically advances (sub-3c)", async () => {
+		// sub-3c: trigger-driven compression at the hook layer is gone (Force path
+		// is signal-only now; AgentLoop's coordinateForceCompress consumes + runs
+		// compressSession at the turn boundary). This test exercises the multi-
+		// compression pipeline directly via compressSession — the FIFO cap + cursor
+		// monotonicity are compressSession's contract, independent of trigger.
 		// Compression 1: turns 0..3 seeded. Fresh-tail budget (~128K char) holds
 		// the newest turn; older turn(s) get compressed (≥1 summary per run).
 		seedTurn(db, "s1", 0);
 		seedTurn(db, "s1", 2);
-		const reg = wireProductionHooks(db);
-		_setLastLLMCallForTest("s1", Date.now() - 600_000);
-		db.setTokenUsage("s1", { inputTokens: 150_000 });
-		await fireStepEnd(reg, db, { sessionId: "s1", stepNumber: 3, usage: { inputTokens: 150_000 } });
+		await compressDirect(db, "s1");
 		const cursor1 = db.getCompressionCursor("s1");
 		expect(cursor1!, "first compression advanced cursor").toBeGreaterThan(0);
 		const summaries1 = db.getSummaries("s1").length;
 		expect(summaries1, "first run wrote ≥1 summary").toBeGreaterThan(0);
 
-		// New turn → reset per-turn guard. Seed more, compress again.
-		await reg.trigger("TurnStart", { agentId: "integ-agent", sessionId: "s1", userMessage: "go2" });
+		// Seed more, compress again. (Per-turn guard lives in runCompression; we
+		// bypass it here since we're driving compressSession directly.)
 		seedTurn(db, "s1", 4);
 		seedTurn(db, "s1", 6);
-		_setLastLLMCallForTest("s1", Date.now() - 600_000);
-		db.setTokenUsage("s1", { inputTokens: 150_000 });
-		await fireStepEnd(reg, db, { sessionId: "s1", stepNumber: 2, usage: { inputTokens: 150_000 } });
+		await compressDirect(db, "s1");
 		const cursor2 = db.getCompressionCursor("s1");
 		expect(cursor2!, "cursor monotonically advances").toBeGreaterThan(cursor1!);
 		// More summaries accumulated (cap not yet hit).
 		expect(db.getSummaries("s1").length, "second run added summaries").toBeGreaterThanOrEqual(summaries1);
 
-		// 3 more new-turn compressions to push past the cap-3 FIFO boundary.
+		// 3 more compressions to push past the cap-3 FIFO boundary.
 		for (let extra = 0; extra < 3; extra++) {
-			await reg.trigger("TurnStart", { agentId: "integ-agent", sessionId: "s1", userMessage: "go" + extra });
 			seedTurn(db, "s1", 8 + extra * 2);
 			seedTurn(db, "s1", 10 + extra * 2);
-			_setLastLLMCallForTest("s1", Date.now() - 600_000);
-			db.setTokenUsage("s1", { inputTokens: 150_000 });
-			await fireStepEnd(reg, db, { sessionId: "s1", stepNumber: 2, usage: { inputTokens: 150_000 } });
+			await compressDirect(db, "s1");
 		}
 		// Cap 3 FIFO: NEVER more than 3 summary blocks regardless of how many
 		// compressions ran (design.md「messages summary cap」).
@@ -552,63 +566,16 @@ describe("steps-overhaul sub-10 integration: archive pipeline (delegated auto + 
 // ---------------------------------------------------------------------------
 // Wiki stub: compression → ExtractorAService.mergeSummaryIntoWiki is reachable
 // ---------------------------------------------------------------------------
-
-describe("steps-overhaul sub-10 integration: wiki topic write path reachable via compression", () => {
-	let tmpDir: string;
-	let db: SessionDB;
-
-	beforeEach(() => {
-		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub10-wiki-"));
-		db = new SessionDB(join(tmpDir, "sessions.db"));
-		insertSession(db, "w1");
-		clearCompressionTriggerState();
-	});
-
-	afterEach(() => {
-		db.close();
-		try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* Windows */ }
-	});
-
-	test("compressSession with extractorA wired: mergeSummaryIntoWiki is called (path reachable; content quality in sub-7)", async () => {
-		// Sub-7 covers the merge content quality. Here we verify the WIRING:
-		// compressSession, when given an extractorA option, actually invokes
-		// service.mergeSummaryIntoWiki (downstream real consumption). We inject
-		// a stub service that records the call.
-		const mergeCalls: any[] = [];
-		const stubExtractorA = {
-			service: {
-				async mergeSummaryIntoWiki(input: any) {
-					mergeCalls.push(input);
-					return { ok: true };
-				},
-			},
-			// resolveTopic default = agentId-based (compression-core provides it
-			// when extractorA.resolveTopic is absent).
-		};
-
-		seedTurn(db, "w1", 0);
-		seedTurn(db, "w1", 2);
-
-		const { compressSession } = await import("../../src/server/compression-core.js");
-		const result = await compressSession("w1", db, {
-			providers: PROVIDERS,
-			providerName: "stub",
-			modelId: "stub",
-			contextWindow: 200000,
-			testModel: stubModel(),
-			extractorA: stubExtractorA as any,
-		});
-
-		expect(result.summaries.length, "compression produced summaries").toBeGreaterThan(0);
-		expect(mergeCalls.length, "mergeSummaryIntoWiki called per summary (wiring reachable)")
-			.toBe(result.summaries.length);
-		// Each call carried the structured summary (the wiki-node update input).
-		for (const c of mergeCalls) {
-			expect(c.summary).toBeDefined();
-			expect(c.summary.sections?.status, "summary carried the status section").toBeTruthy();
-		}
-	});
-});
+// REMOVED (sub-3b leftover, deleted sub-3c verification pass):
+// The "compressSession with extractorA wired → mergeSummaryIntoWiki called"
+// case asserted that compressSession invokes the ExtractorA service per
+// summary. sub-3b ("ExtractorA 拆除") removed that coupling from
+// compressSession — the Force档 memory ephemeral turn (sub-3c) replaces it.
+// The case had been red since the sub-3b commit (the sub-3b regression set
+// missed this file). Deleting outright because the extractorA-wired scenario
+// is dead config post-sub-3b; sub-5 will delete `extractor-a-service.ts`
+// entirely when it lands.
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Content-volume UI: stays accurate across the compression pipeline
@@ -630,7 +597,11 @@ describe("steps-overhaul sub-10 integration: volume-UI stays accurate across com
 		try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* Windows */ }
 	});
 
-	test("after mid-turn compression, getStepCount + getTurnGroupCount still reflect the FULL step history (steps untouched)", async () => {
+	test("after compression, getStepCount + getTurnGroupCount still reflect the FULL step history (steps untouched) (sub-3c)", async () => {
+		// sub-3c: trigger is signal-only at the hook layer; coordinateForceCompress
+		// runs compressSession at the turn boundary. The "steps are immutable"
+		// contract is compressSession's, independent of trigger — drive it
+		// directly to test the volume-UI invariant.
 		// Seed 4 turns (8 steps), compress the older ones, then verify the volume
 		// counters still see ALL 8 steps (compression only touches messages).
 		const session = db.createSession("vol-agent");
@@ -639,13 +610,7 @@ describe("steps-overhaul sub-10 integration: volume-UI stays accurate across com
 		seedTurn(db, session.id, 4);
 		seedTurn(db, session.id, 6);
 
-		const reg = wireProductionHooks(db);
-		_setLastLLMCallForTest(session.id, Date.now() - 600_000);
-		db.setTokenUsage(session.id, { inputTokens: 150_000 });
-		await fireStepEnd(reg, db, {
-			sessionId: session.id, stepNumber: 3,
-			usage: { inputTokens: 150_000, outputTokens: 500 },
-		});
+		await compressDirect(db, session.id);
 
 		// Compression DID run (cursor advanced, summary written).
 		expect(db.getCompressionCursor(session.id)!, "compression ran").toBeGreaterThan(0);

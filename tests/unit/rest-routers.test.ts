@@ -990,7 +990,8 @@ describe("memory-config", () => {
 		const res = await request(port, "GET", "/api/config/memory-config");
 		expect(res.status).toBe(200);
 		expect(res.data.compression).toBeDefined();
-		expect(res.data.compression.enabled).toBe(false);
+		// compression-archive-simplify sub-5: `enabled` removed (unread fake).
+		expect(res.data.compression.enabled).toBeUndefined();
 		// v0.8: standalone memory config removed (memory lives in wiki tree);
 		// only compression is exchanged now.
 		expect(res.data.memory).toBeUndefined();
@@ -1000,15 +1001,16 @@ describe("memory-config", () => {
 		const { port } = await setupConfigRouter();
 
 		// steps-overhaul sub-4: keepRecentTurns/l1Threshold/l2Threshold removed
-		// with compression-engine.ts. Stage-3 core only carries enabled/provider/model.
+		// with compression-engine.ts.
+		// compression-archive-simplify sub-5: `enabled` removed (unread fake);
+		// stage-3 core carries only provider/model.
 		const update = await request(port, "PUT", "/api/config/memory-config", {
-			compression: { enabled: true, provider: "stub", model: "stub-model" },
+			compression: { provider: "stub", model: "stub-model" },
 		});
 		expect(update.status).toBe(200);
 		expect(update.data.success).toBe(true);
 
 		const res = await request(port, "GET", "/api/config/memory-config");
-		expect(res.data.compression.enabled).toBe(true);
 		expect(res.data.compression.provider).toBe("stub");
 		expect(res.data.compression.model).toBe("stub-model");
 	}, 15_000);

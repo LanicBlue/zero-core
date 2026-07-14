@@ -40,8 +40,14 @@ export interface PersonaDefinition {
 		blockedTools?: string[];
 		autoApprove?: string[];
 	};
-	compaction?: {
-		customInstructions?: string;
+	// compression-archive-simplify sub-3b (D2): persona-scoped override for the
+	// stage-3 compression system prompt. When present, applied over
+	// config.compression.summarySystemPrompt in applyPersonaToConfig.
+	// (compression-archive-simplify sub-5: persona.compaction removed —
+	// the compaction.* schema it mirrored is deleted; only the compression
+	// override remains live.)
+	compression?: {
+		summarySystemPrompt?: string;
 	};
 	systemPrompt?: {
 		guidelines?: string[];
@@ -168,9 +174,17 @@ export function applyPersonaToConfig(
 		}
 	}
 
-	// Merge compaction
-	if (persona.compaction?.customInstructions) {
-		merged.compaction.customInstructions = persona.compaction.customInstructions;
+	// compression-archive-simplify sub-5: persona.compaction merge DELETED —
+	// compaction.* schema is gone (only consumer was the dead compaction.ts).
+	// No fallback needed: a persona that still carries a `compaction` field is
+	// silently ignored (deepMerge never sees the typed slot).
+
+	// sub-3b (D2): merge persona-scoped compression summary system prompt. The
+	// default (undefined here) means "use config.compression.summarySystemPrompt
+	// or the in-file SUMMARY_SYSTEM literal" — only override when the persona
+	// sets one. Output sections contract is fixed; bad prompt → fallbackSections.
+	if (persona.compression?.summarySystemPrompt) {
+		merged.compression.summarySystemPrompt = persona.compression.summarySystemPrompt;
 	}
 
 	// Merge systemPrompt

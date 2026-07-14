@@ -1,14 +1,14 @@
-// steps-overhaul sub-3 acceptance test: messages 引用模型 + LLM view 三区组装.
+// steps-overhaul sub-3 acceptance test: messages 引用模型 + LLM view 2区组装.
 //
 // # File说明书
 // ## 核心功能
-// 独立验证 acceptance-3.md 的核心条目:
+// 独立验证 acceptance-3.md (sub-3a 2-zone 收敛后) 的核心条目:
 //   - messages 表只存 summary 块 + last_compressed_step_seq(不存 step 内容)。
-//   - LLM view(session.messages)组装三区:[summary] + [中间区 tool stub]
-//     + [fresh tail 逐字+指针],正确。
-//   - fresh tail 边界 = min(32K token, 20% 窗口),step 粒度,tool-pair 安全。
+//   - LLM view(session.messages)组装 2 区:[summary] + [postCursor 逐字],
+//     无中间 stub 区(sub-3a 把 3-zone 收敛成 2-zone)。
+//   - fresh tail 边界 = min(32K token, 20% 窗口),step 粒度,tool-pair 安全
+//     (压缩侧 compression-core.computeFreshTailStartSeq 单源,L360)。
 //   - fresh tail 中被外置(>16K)的 tool result 渲染指针形态(不解引用全字节)。
-//   - 中间区(压缩游标..fresh-tail 边界)tool 结果 stub(阶段2 常驻组装规则)。
 //   - 重启恢复:组装 LLM view = messages.summary + steps[压缩游标..
 //     last_completed_step_seq];与崩溃前一致(无 mid-turn 漂移)。
 //   - cachedTurns(UI 源)从 steps 独立填,与 LLM view 重建分离。
@@ -100,25 +100,13 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 		expect(sessionDB!.getCompressionCursor(sessionId)).toBeNull();
 	});
 
-	test("saveSummaryAndAdvanceCursor writes summary + advances cursor; FIFO cap at 3", () => {
-		const sessionId = "cap";
-		const mk = (i: number) => ({
-			title: `s${i}`,
-			sections: { status: `status ${i}` },
-			createdAt: `2026-01-0${i + 1}T00:00:00.000Z`,
-		});
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, mk(0), 5);
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, mk(1), 10);
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, mk(2), 15);
-		expect(sessionDB!.getSummaries(sessionId).map(s => s.title)).toEqual(["s0", "s1", "s2"]);
-		expect(sessionDB!.getCompressionCursor(sessionId)).toBe(15);
-
-		// 4th summary evicts the oldest (FIFO).
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, mk(3), 20);
-		const titles = sessionDB!.getSummaries(sessionId).map(s => s.title);
-		expect(titles).toEqual(["s1", "s2", "s3"]);
-		expect(titles).not.toContain("s0");
-		expect(sessionDB!.getCompressionCursor(sessionId)).toBe(20);
+	test("saveSummaryAndAdvanceCursor FIFO-3 path is DELETED (compression-archive-simplify sub-5)", () => {
+		// compression-archive-simplify sub-5: the FIFO-3 sibling
+		// (`saveSummaryAndAdvanceCursor` + `MAX_MESSAGE_SUMMARIES`) is gone.
+		// compressSession now uses `replaceSummariesAndAdvanceCursor` exclusively
+		// (2-zone rolling summary — one row survives per session).
+		expect(typeof (sessionDB as any).saveSummaryAndAdvanceCursor).toBe("undefined");
+		expect((SessionDB as any).MAX_MESSAGE_SUMMARIES).toBeUndefined();
 	});
 
 	test("LLM view with NO summaries + small history: everything is fresh tail, verbatim (no stubs)", () => {
@@ -141,13 +129,14 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 		expect(toolResultText(tr[0])).toBe("real result bytes");
 	});
 
-	test("middle zone stubs tool results; fresh tail keeps them verbatim (阶段2 常驻组装规则)", () => {
+	test("2-zone model: postCursor tool results are ALL verbatim (no middle stub zone, sub-3a)", () => {
 		const sessionId = "zones";
-		// Build a history large enough to span both zones: many assistant steps
-		// each carrying a tool result, so the fresh-tail budget (min(32K, 20% of
-		// 128K) = 25600 tokens) is exceeded and older steps land in the middle.
-		// Each step's content is ~12K chars (~3K tokens) → ~9 steps push past the
-		// ~25600-token fresh-tail budget, forcing the oldest into the middle zone.
+		// Build a history that UNDER the old 3-zone model would have split into
+		// middle (stubbed) + fresh tail (verbatim) at the fresh-tail budget
+		// (min(32K, 20% of 128K) = 25600 tokens). Each step is ~12K chars (~3K
+		// tokens) → ~10 steps push well past 25600, so the oldest would have
+		// been stubbed. Under sub-3a's 2-zone model every postCursor step is
+		// verbatim — no stub anywhere.
 		const big = "x".repeat(12000);
 		// user opens turn_group 0.
 		sessionDB!.appendStep(sessionId, 0, 0, "user", "go");
@@ -162,13 +151,18 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 		const msgs = sess.getMessages();
 		const tr = toolResultParts(msgs);
 
-		// At least one tool result is stubbed (middle zone) — the sentinel prefix.
+		// ZERO tool results are stubbed — the middle/stub zone is gone (sub-3a).
 		const stubbed = tr.filter(p => toolResultText(p).startsWith("[tool result stubbed"));
-		expect(stubbed.length, "middle zone stubs at least the oldest tool results").toBeGreaterThan(0);
+		expect(stubbed.length, "2-zone model: no stubbed tool results anywhere").toBe(0);
 
-		// The NEWEST tool result is verbatim (fresh tail) — carries the real result.
-		const last = tr[tr.length - 1];
-		expect(toolResultText(last)).toContain("real-10-");
+		// EVERY tool result is verbatim — carries its real bytes, oldest included.
+		expect(tr.length, "all 10 tool results emitted").toBe(10);
+		for (let i = 1; i <= 10; i++) {
+			const found = tr.some(p => toolResultText(p).includes(`real-${i}-`));
+			expect(found, `tool result #${i} verbatim`).toBe(true);
+		}
+		// Spot-check the OLDEST (which the old model would have stubbed first).
+		expect(toolResultText(tr[0])).toContain("real-1-");
 	});
 
 	test("fresh tail renders pointer-form tool results VERBATIM (no dereference to full bytes)", () => {
@@ -204,7 +198,9 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 		}
 
 		// Write a summary that compresses steps 1..2 (cursor = 2).
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, {
+		// compression-archive-simplify sub-5: migrated from saveSummaryAndAdvanceCursor
+		// (deleted FIFO-3 path) to replaceSummariesAndAdvanceCursor (2-zone rolling).
+		sessionDB!.replaceSummariesAndAdvanceCursor(sessionId, {
 			title: "compressed 1..2",
 			sections: { status: "did 1 and 2" },
 			stepRange: { from: 1, to: 2 },
@@ -260,7 +256,9 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 				{ type: "text", text: `step ${i}` },
 			]));
 		}
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, {
+		// compression-archive-simplify sub-5: migrated from saveSummaryAndAdvanceCursor
+		// (deleted FIFO-3 path) to replaceSummariesAndAdvanceCursor (2-zone rolling).
+		sessionDB!.replaceSummariesAndAdvanceCursor(sessionId, {
 			title: "did 1..3",
 			sections: { status: "first three done" },
 			stepRange: { from: 1, to: 3 },
@@ -332,7 +330,9 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 				{ type: "text", text: `step ${i}` },
 			]));
 		}
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, {
+		// compression-archive-simplify sub-5: migrated from saveSummaryAndAdvanceCursor
+		// (deleted FIFO-3 path) to replaceSummariesAndAdvanceCursor (2-zone rolling).
+		sessionDB!.replaceSummariesAndAdvanceCursor(sessionId, {
 			title: "recap",
 			sections: { status: "recapped" },
 			stepRange: { from: 1, to: 2 },

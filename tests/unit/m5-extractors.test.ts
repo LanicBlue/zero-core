@@ -4,9 +4,8 @@
 //
 // ## 核心功能
 // sub-7 退役了 extraction-hooks 的阈值独立抽取通路(机制 2 StepEnd 阈值 +
-// 机制 3 closeFlushSession):wiki 抽取现在由 compressSession 的 Extractor A
-// 多步 agent 承担(每段 summary 喂一次合并进 topic wiki)。本测试反映这个
-// 新现实:
+// 机制 3 closeFlushSession):wiki 抽取现在由 compressSession 的 Force-档 memory
+// ephemeral turn 承担(sub-3c)。本测试反映这个新现实:
 //
 // 仍验证(未退役的部分):
 //   - ExtractionCursorStore / TelemetryStore 基础 CRUD + dedupe
@@ -16,11 +15,11 @@
 //   - resume: 全量原始 turn(step 表);new session 只拿 wiki memory
 //   - pruneIfNeeded 大单 turn 不裸丢
 //
-// 已退役(本文件不再测,迁到 sub-7 专项测):
-//   - 机制 2 StepEnd 阈值触发(registerExtractionHooks 现 no-op)
-//   - 机制 3 closeFlushSession(现 no-op)
-//   - ExtractorAService 单步 generateText → 现多步 agent(在 sub-7 专项测覆盖)
-//   - 「明确未引入回归」原断言(基于源码字符串,已随退役失效)
+// compression-archive-simplify sub-5: extraction-hooks.ts 整体删除。本文件原
+// 「extraction-hooks RETIRED」section(测 no-op stubs)一并删除——无 live
+// code 可测。registerExtractionHooks / closeFlushSession / _resetExtractionScheduler
+// imports + beforeEach/afterEach 调用清掉。ExtractorB 部分(独立类,文件保留)
+// 不受影响。
 //
 // ## 输入
 // 临时 SessionDB (mkdtempSync) + WikiStore + ExtractionCursorStore + TelemetryStore +
@@ -42,11 +41,6 @@ import { ExtractorBService } from "../../src/server/extractor-b-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { sliceTranscriptDelta } from "../../src/runtime/transcript-delta.js";
 import { AgentSession } from "../../src/runtime/session.js";
-import {
-	registerExtractionHooks,
-	closeFlushSession,
-	_resetExtractionScheduler,
-} from "../../src/runtime/hooks/extraction-hooks.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 
 let tmpDir: string;
@@ -64,12 +58,10 @@ beforeEach(() => {
 	telemetryStore = sessionDB.getTelemetryStore();
 	// Reset hook registry between tests so nothing carries state across files.
 	HookRegistry.getInstance().clear();
-	_resetExtractionScheduler();
 });
 
 afterEach(() => {
 	HookRegistry.getInstance().clear();
-	_resetExtractionScheduler();
 	try { sessionDB.close(); } catch {}
 	rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -221,83 +213,13 @@ describe("ExtractorBService", () => {
 	});
 });
 
-// ─── 4. extraction-hooks RETIRED (sub-7 — decision 53 修订) ───
-
-describe("extraction-hooks RETIRED (sub-7)", () => {
-	test("registerExtractionHooks is a no-op — no StepEnd handler fires extractor", async () => {
-		// Even with A + B enabled and a low threshold, registerExtractionHooks
-		// no longer registers any handler that calls extractors. Triggering
-		// StepEnd does nothing (no cursor advance, no extractor call).
-		let aCalled = 0;
-		let bCalled = 0;
-		registerExtractionHooks({
-			cursorStore,
-			buildExtractorA: () => { aCalled++; return ({} as any); },
-			buildExtractorB: () => { bCalled++; return ({} as any); },
-		});
-
-		const registry = HookRegistry.getInstance();
-		const config: any = {
-			agentId: "dev", sessionId: "s1",
-			db: sessionDB,
-			providerName: "stub", modelId: "stub",
-			toolPolicy: {},
-			extractors: { A: { enabled: true }, B: { enabled: true }, checkpointThresholds: [0.2, 0.45, 0.7] },
-		};
-		await (registry as any).trigger("StepEnd", {
-			agentId: "dev", sessionId: "s1", config, contextUsage: 0.9, providers: [],
-		});
-		expect(aCalled).toBe(0);
-		expect(bCalled).toBe(0);
-		// Cursor untouched (no extraction scheduled).
-		expect(cursorStore.get("s1")).toBeUndefined();
-	});
-
-	test("closeFlushSession is a no-op — does not run extractor A on tail", async () => {
-		const sessionId = "sess-flush-retired";
-		seedSteps(sessionId, [
-			{ role: "user", content: "q1" },
-			{ role: "assistant", content: JSON.stringify([{ type: "text", text: "decided X" }]) },
-		]);
-		let aCalled = 0;
-		registerExtractionHooks({
-			cursorStore,
-			buildExtractorA: () => { aCalled++; return ({} as any); },
-			buildExtractorB: () => ({} as any),
-		});
-		await closeFlushSession({
-			sessionId,
-			resolveConfig: () => ({
-				agentId: "dev", sessionId, db: sessionDB,
-				providerName: "stub", modelId: "stub", toolPolicy: {},
-				extractors: { A: { enabled: true }, B: { enabled: false } },
-			} as any),
-			resolveProviders: () => [],
-		});
-		expect(aCalled).toBe(0);
-	});
-
-	test("extraction-hooks source RETIRED — no active threshold trigger / no StepEnd handler", () => {
-		// Static guard: the retired pathways are gone from the source code (the
-		// file may still MENTION them in doc comments explaining the retirement,
-		// but must not contain the executable trigger). We assert against the
-		// real retirement signals: no executable threshold list constant, no
-		// registry.register call, the RETIRED marker present.
-		const fs = require("node:fs");
-		const path = require("node:path");
-		const src = fs.readFileSync(
-			path.join(__dirname, "..", "..", "src", "runtime", "hooks", "extraction-hooks.ts"),
-			"utf-8",
-		);
-		// No executable DEFAULT_THRESHOLDS constant + no StepEnd registration.
-		expect(src).not.toContain("DEFAULT_THRESHOLDS");
-		expect(src).not.toMatch(/registry\.register\(\s*["']StepEnd["']/);
-		// The retirement marker is present (documents the decision).
-		expect(src).toContain("RETIRED");
-		// closeFlushSession is a no-op shell (present, but does nothing).
-		expect(src).toContain("export async function closeFlushSession");
-	});
-});
+// ─── 4. extraction-hooks RETIRED + DELETED (compression-archive-simplify sub-5)
+//
+// compression-archive-simplify sub-5: extraction-hooks.ts 整体删除。原 section
+// 测的是 no-op stubs 的「不调度 extractor」+「source 仍含 RETIRED 标记」.
+// 文件已不存在 → 无可测对象,section 整体删除。ExtractorA 的 wiki 合并通路
+// 现由 compressSession 的 Force-档 memory ephemeral turn 承担(sub-3c),其
+// 行为在 sub-3c/sub-4 专项测试覆盖。
 
 // ─── 5. Mechanism 1 + resume: raw turns already in session storage ──
 

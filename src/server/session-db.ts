@@ -190,14 +190,14 @@ export class SessionDB {
 			);
 			CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
 
-			-- steps-overhaul sub-3: messages is redefined to "summary blocks +
+			-- steps-overhaul sub-3: messages is redefined to "rolling summary +
 			-- compression cursor". It does NOT store step content (steps is the
-			-- source of truth; messages is an assemble pointer + ≤3 FIFO summary
-			-- blocks for LLM view continuity). One row per summary slot, capped at
-			-- MAX_MESSAGE_SUMMARIES (=3, FIFO). last_compressed_step_seq is the
-			-- compression/assembly cursor — redundant across a session's ≤3 rows
-			-- (kept in sync by every writer) so reads are a single SELECT. NULL
-			-- means "no compression yet / cursor unset". See design.md「两张表」.
+			-- source of truth; messages is an assemble pointer). The 3-zone FIFO
+			-- model was collapsed to 2-zone in sub-3a — exactly ONE summary row
+			-- survives per session (replaceSummariesAndAdvanceCursor wipes stale
+			-- rows in the same tx that writes the new one). last_compressed_step_seq
+			-- is the compression/assembly cursor; NULL means "no compression yet /
+			-- cursor unset". See design.md「两张表」.
 			CREATE TABLE IF NOT EXISTS messages (
 				id                        INTEGER PRIMARY KEY AUTOINCREMENT,
 				session_id                TEXT NOT NULL,
@@ -211,13 +211,15 @@ export class SessionDB {
 
 			-- steps-overhaul sub-1: physical turns table renamed to steps.
 			-- A row = one assistant step (or the user-row opening a turn_group).
+			-- compression-archive-simplify sub-5: 'compressed' column DELETED —
+			-- it had a schema declaration but zero writers (no INSERT/UPDATE ever
+			-- set it). Pure noise. Upgraded DBs drop it via safeDropColumn below.
 			CREATE TABLE IF NOT EXISTS steps (
 				id          INTEGER PRIMARY KEY AUTOINCREMENT,
 				session_id  TEXT NOT NULL,
 				seq         INTEGER NOT NULL,
 				role        TEXT NOT NULL,
 				content     TEXT,
-				compressed  INTEGER NOT NULL DEFAULT 0,
 				created_at  TEXT NOT NULL,
 				turn_group  INTEGER NOT NULL DEFAULT -1,
 				input_tokens  INTEGER DEFAULT 0,
@@ -353,6 +355,26 @@ export class SessionDB {
 		// — fresh DBs get the column from CREATE TABLE above; upgraded DBs get
 		// it here. NULL on legacy rows (read back as undefined — back-compat).
 		this.safeAddColumn("steps", "attachments", "TEXT");
+
+		// compression-archive-simplify sub-5: drop the dead `compressed` column
+		// from upgraded DBs. Fresh DBs never get it (removed from CREATE TABLE
+		// above). The column had zero writers — no INSERT/UPDATE ever set it, so
+		// dropping loses no data. See design.md「四、死代码清理」.
+		this.safeDropColumn("steps", "compressed");
+	}
+
+	/**
+	 * Idempotently drop a column from an existing table (no-op if absent).
+	 * SQLite ≥3.35 supports `ALTER TABLE ... DROP COLUMN`. Safe to call on
+	 * fresh DBs (no-op) and on legacy upgraded DBs (drops if present).
+	 */
+	private safeDropColumn(table: string, column: string): void {
+		try {
+			const cols = (this.db.pragma(`table_info(${table})`) as Array<{ name: string }>).map(r => r.name);
+			if (cols.includes(column)) {
+				this.db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+			}
+		} catch { /* column already absent / drop not supported — no-op */ }
 	}
 
 	/** Idempotently add a column to an existing table (no-op if present). */
@@ -545,6 +567,52 @@ export class SessionDB {
 	}
 
 	/**
+	 * compression-archive-simplify sub-4 (atomic archive): transient mark used
+	 * as a CRASH CHECKPOINT between "memory turn done" and "export JSON written +
+	 * row deleted". Sets `archived = 1` WITHOUT emitting a sidebar update — the
+	 * row stays in DB, the renderer filters it out via the WHERE archived = 0
+	 * list query (so it disappears from the active list quietly), and on a clean
+	 * archive `deleteSessionData` removes the row entirely. If the process
+	 * crashes between this mark and the delete, the next startup's
+	 * `listArchivedTransientSessions` recovery scan finds the row and re-runs
+	 * the atomic export (design.md「五、保险」+「O3 reused as transient mark」).
+	 *
+	 * This is distinct from the soft-delete `archiveSession` above: that one is
+	 * a PERMANENT "this session is archived" state for the UI; this one is a
+	 * transient flag the archive pipeline uses as a recoverable checkpoint.
+	 * Both reuse the same `archived` column (no new column — O3 decision).
+	 */
+	markArchivedTransient(sessionId: string): void {
+		this.db.prepare("UPDATE sessions SET archived = 1, updated_at = ? WHERE id = ?")
+			.run(new Date().toISOString(), sessionId);
+		// No emitDataChange here: the archive pipeline is about to delete the
+		// row (which emits the canonical delete event). If we crash before the
+		// delete, the recovery scan re-runs the export and the eventual delete
+		// emits then. Emitting a transient update would briefly flash the row
+		// as "archived" in the sidebar before disappearing — noisy and wrong.
+	}
+
+	/**
+	 * compression-archive-simplify sub-4: list sessions left in the transient
+	 * archived=1 state by a crash between `markArchivedTransient` and
+	 * `deleteSessionData` (the row still exists). Used by the startup recovery
+	 * scan to re-run the atomic export. Returns rows as SessionRecord so the
+	 * recovery path can rebuild configs + re-export. Excludes any session that
+	 * has already been hard-deleted (those simply aren't in the table).
+	 */
+	listArchivedTransientSessions(): SessionRecord[] {
+		try {
+			const rows = this.db.prepare(
+				"SELECT * FROM sessions WHERE archived = 1",
+			).all() as any[];
+			return rows.map((r) => this.rowToRecord(r));
+		} catch (err) {
+			log.warn("db", `listArchivedTransientSessions failed:`, (err as Error).message);
+			return [];
+		}
+	}
+
+	/**
 	 * steps-overhaul sub-8 (archive pipeline): hard-delete ALL of a session's
 	 * OWN data — the `sessions` row + every `steps`/`messages` row + the
 	 * `tool_executions`/`delegated_tasks` ORPHANS that reference this session
@@ -636,10 +704,10 @@ export class SessionDB {
 	// Messages — steps-overhaul sub-3 redefinition
 	//
 	// The `messages` table NO LONGER stores LLM-view content. It now holds:
-	//   - up to MAX_MESSAGE_SUMMARIES (=3) summary blocks (FIFO, one row each),
-	//     produced by future compression (sub-4+); and
+	//   - exactly ONE rolling summary block (sub-3a 2-zone model), produced by
+	//     compressSession (replaceSummariesAndAdvanceCursor); and
 	//   - last_compressed_step_seq: the compression/assembly cursor that splits
-	//     the LLM view into [summary] + [middle: tool stub] + [fresh tail].
+	//     the LLM view into [summary] + [fresh tail].
 	//
 	// steps is the single source of truth for step content; messages is just an
 	// assemble pointer. Invariant (design.md): two tables never duplicate
@@ -647,19 +715,13 @@ export class SessionDB {
 	// is GONE — AgentSession now rebuilds its LLM view from steps on every
 	// assemble (rebuildFromTurns) and never writes step content to messages.
 	//
-	// The old reader API names (getMessages / getMessagesWithSeq / getMessageCount
-	// / deleteMessage / updateMessageContent) referenced the retired "LLM view
-	// dumped here" semantics and are removed. Callers that need step content read
-	// getSteps / getStepGroup; callers that need the summary blocks + cursor read
-	// getSummaries / getCompressionCursor below. The two server-side REST readers
-	// that still treat messages as content (agent-router GET /messages,
-	// analyst-service verify) are best-effort tolerated by getSummaries so they
-	// don't crash on the empty/summary-only new shape; sub-9 will repoint them at
-	// steps (UI data source per design).
+	// compression-archive-simplify sub-5: the FIFO-3 write path
+	// (`MAX_MESSAGE_SUMMARIES` + `saveSummaryAndAdvanceCursor`) is DELETED.
+	// compressSession (sub-3a) now uses `replaceSummariesAndAdvanceCursor`
+	// exclusively — the 3-zone FIFO collapsed into the 2-zone rolling summary
+	// (one summary row + fresh tail). The legacy method + cap had zero live
+	// production callers; only stale tests referenced them, those are migrated.
 	// -----------------------------------------------------------------------
-
-	/** Max FIFO summary slots in the messages table per session (design.md: ≤3). */
-	static readonly MAX_MESSAGE_SUMMARIES = 3;
 
 	/** Shape of one summary block persisted to messages.summary_json. */
 	static parseSummary(raw: string): MessageSummary {
@@ -668,9 +730,9 @@ export class SessionDB {
 
 	/**
 	 * Read the summary blocks for a session, oldest-first. Returns [] when no
-	 * compression has written summaries yet (the common case in sub-3 — there is
-	 * no compression writer until sub-4). Future compression (sub-4 Extractor A)
-	 * appends here FIFO, capping at MAX_MESSAGE_SUMMARIES.
+	 * compression has written summaries yet (the common pre-compression case).
+	 * After compressSession runs, exactly ONE rolling summary row is present
+	 * (2-zone model — sub-3a).
 	 */
 	getSummaries(sessionId: string): MessageSummary[] {
 		try {
@@ -688,7 +750,7 @@ export class SessionDB {
 	 * Read the compression/assembly cursor (messages.last_compressed_step_seq).
 	 * NULL means "no compression yet / cursor unset" — the entire step history
 	 * lives in the fresh-tail region for LLM-view assembly. This is the
-	 * summary/middle vs fresh-tail boundary, INDEPENDENT of
+	 * summary vs fresh-tail boundary, INDEPENDENT of
 	 * sessions.last_completed_step_seq (the resume cursor — see sub-1).
 	 */
 	getCompressionCursor(sessionId: string): number | null {
@@ -704,53 +766,6 @@ export class SessionDB {
 	}
 
 	/**
-	 * Push a new summary block + advance the compression cursor atomically.
-	 * FIFO cap at MAX_MESSAGE_SUMMARIES: the oldest summary is evicted when the
-	 * cap is reached. The cursor is set on EVERY summary row for the session
-	 * (redundant but lets readers SELECT it from any row — the table holds ≤3
-	 * rows so the duplication is trivial and read-path-cheap).
-	 *
-	 * Used by future compression (sub-4 Extractor A). sub-3 itself has no writer
-	 * — the table starts empty; this method exists so the contract is fixed
-	 * before the writer lands.
-	 */
-	saveSummaryAndAdvanceCursor(sessionId: string, summary: MessageSummary, compressedStepSeq: number): void {
-		this.ensureSession(sessionId);
-		const now = new Date().toISOString();
-		const tx = this.db.transaction(() => {
-			// Current slot count + FIFO eviction.
-			const cntRow = this.db.prepare(
-				"SELECT COUNT(*) AS cnt FROM messages WHERE session_id = ?",
-			).get(sessionId) as { cnt: number };
-			if (cntRow.cnt >= SessionDB.MAX_MESSAGE_SUMMARIES) {
-				// Evict the oldest (lowest seq) and re-pack seq from 0.
-				this.db.prepare(
-					"DELETE FROM messages WHERE session_id = ? AND seq = (SELECT MIN(seq) FROM messages WHERE session_id = ?)",
-				).run(sessionId, sessionId);
-			}
-			// Re-number remaining rows to a dense 0..N-1 so the new slot is N.
-			const reRows = this.db.prepare(
-				"SELECT id FROM messages WHERE session_id = ? ORDER BY seq",
-			).all(sessionId) as { id: number }[];
-			const renumber = this.db.prepare("UPDATE messages SET seq = ? WHERE id = ?");
-			reRows.forEach((r, i) => renumber.run(i, r.id));
-			const nextSeq = reRows.length;
-
-			this.db.prepare(
-				"INSERT INTO messages (session_id, seq, summary_json, last_compressed_step_seq, created_at) VALUES (?, ?, ?, ?, ?)",
-			).run(sessionId, nextSeq, JSON.stringify(summary), compressedStepSeq, now);
-
-			// Keep the cursor identical across all of the session's rows.
-			this.db.prepare(
-				"UPDATE messages SET last_compressed_step_seq = ? WHERE session_id = ?",
-			).run(compressedStepSeq, sessionId);
-
-			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
-		});
-		tx();
-	}
-
-	/**
 	 * Clear all summaries for a session (e.g. on session reset). Does NOT touch
 	 * steps. The cursor returns to NULL (no compression) implicitly.
 	 */
@@ -758,6 +773,43 @@ export class SessionDB {
 		const now = new Date().toISOString();
 		const tx = this.db.transaction(() => {
 			this.db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
+	}
+
+	/**
+	 * steps-overhaul sub-3b (compression-archive-simplify): atomic clear +
+	 * write-one + advance-cursor — the rolling-summary replace path. This is
+	 * the ONLY compression writer (sub-5 deleted the FIFO-3 sibling).
+	 *
+	 * Design「二、压缩流程」: "用新摘要替换 [旧摘要 + 被压 steps];游标前进(原子
+	 * 事务)". The rolling summary this pass produces merges the prior summary
+	 * (via handoff prefix) + the compressed steps into ONE new summary, so the
+	 * prior rows are stale and must be wiped in the SAME tx that writes the new
+	 * one. Cursor advances to `compressedStepSeq` exactly once.
+	 *
+	 * After this call the LLM view (session.ts assembleLLMView) shows ONE
+	 * rolling summary block + the post-cursor verbatim region — the 2-zone
+	 * model.
+	 */
+	replaceSummariesAndAdvanceCursor(
+		sessionId: string,
+		summary: MessageSummary,
+		compressedStepSeq: number,
+	): void {
+		this.ensureSession(sessionId);
+		const now = new Date().toISOString();
+		const tx = this.db.transaction(() => {
+			// Wipe ALL prior summary rows for this session — they are superseded
+			// by the new rolling summary (their info content has been merged in
+			// via the LLM handoff prefix). One tx = no window where the reader
+			// could see both old + new or a missing cursor.
+			this.db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
+			// Dense seq from 0 — only one row survives, so it is seq=0.
+			this.db.prepare(
+				"INSERT INTO messages (session_id, seq, summary_json, last_compressed_step_seq, created_at) VALUES (?, ?, ?, ?, ?)",
+			).run(sessionId, 0, JSON.stringify(summary), compressedStepSeq, now);
 			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
 		});
 		tx();

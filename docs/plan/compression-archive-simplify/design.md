@@ -117,7 +117,10 @@ session 自然结束(子 agent task-finish / 手动归档)
 
 0. **Wiki 注入默认根调整**(前置,独立)——默认根(memory+project/global)进 system + 冻结快照 + zero global-root 注入;保留 free wikiAnchors。
 1. **ephemeral turn 基建**(`persist:false`)——前驱。
-2. **压缩流程**(双机制 + ExtractorA 拆除 + 2 区 + handoff + cap + 边界去重/不切对)。
+2. **压缩流程**(拆 sub-3a/3b/3c,顺序依赖):
+   - **3a** 数据模型 3区→2区 + fresh-tail 边界去重/不切对 + 去 prompt_too_long 双触发。
+   - **3b** 滚动摘要 update + handoff + cap + prompt 可配 + ExtractorA compression 拆除。
+   - **3c** 双机制 Force/Remind + memory ephemeral turn 协调。
 3. **归档**(Q5b + GAP2 re-activate + 即时原子 export + DB 锁)。
 4. **死代码清理**(并行)。
 

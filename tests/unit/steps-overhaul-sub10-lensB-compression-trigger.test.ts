@@ -45,6 +45,7 @@ import {
 import {
 	clearCompressionTriggerState,
 	_setLastLLMCallForTest,
+	_getPendingForceSignalForTest,
 } from "../../src/runtime/hooks/compression-trigger-hooks.js";
 import type { SessionConfig, RuntimeProviderConfig } from "../../src/runtime/types.js";
 
@@ -206,10 +207,12 @@ describe("steps-overhaul sub-10 Lens B (sub-5 移交): production hook wiring dr
 		expect((result as any)?.retry).toBeUndefined();
 	});
 
-	test("StepEnd cold path via PRODUCTION wiring → compressSession called (the StepEnd trigger is wired too, not just OnLLMError)", async () => {
+	test("StepEnd cold path via PRODUCTION wiring → sets Force signal (sub-3c; the StepEnd trigger is wired too, not just OnLLMError)", async () => {
 		// Verify the OTHER trigger seam (StepEnd) is also wired by the production
 		// path. sub-5 unit 测 covers StepEnd directly; this asserts the wiring
-		// through registerHooksForLoop.
+		// through registerHooksForLoop. sub-3c: the StepEnd cold path now SETS
+		// THE FORCE SIGNAL instead of compressing directly (AgentLoop coordinates
+		// at the turn boundary — memory ephemeral turn → compressSession).
 		seedTurn(db, "lb1", 0);
 		seedTurn(db, "lb1", 2);
 		seedTurn(db, "lb1", 4);
@@ -227,8 +230,11 @@ describe("steps-overhaul sub-10 Lens B (sub-5 移交): production hook wiring dr
 			usage: { inputTokens: 150_000, outputTokens: 500, totalTokens: 150_500 },
 			stepNumber: 3,
 		});
-		expect(db.getSummaries("lb1").length, "StepEnd cold → compressSession called")
-			.toBeGreaterThan(summariesBefore);
+		// sub-3c: Force signal set; NO direct compression at the hook layer.
+		expect(_getPendingForceSignalForTest("lb1"),
+			"StepEnd cold via production wiring sets Force signal").toBeDefined();
+		expect(db.getSummaries("lb1").length,
+			"hook does NOT compress directly (sub-3c signal-based)").toBe(summariesBefore);
 	});
 
 	test("single fire → exactly one compression (no duplicate registration double-fires compressSession)", async () => {
