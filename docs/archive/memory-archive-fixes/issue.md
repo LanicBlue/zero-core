@@ -1,6 +1,6 @@
 # Issue:memory-archive-fixes
 
-- **状态**:① issues(问题记录)
+- **状态**:④ archive(已合并 master 2026-07-14;commits 5b3dc3b / 902003b / 1192d6e / 555c1f9)
 - **提出**:2026-07-14
 - **类型**:bug(多处)/ 机制加固
 
