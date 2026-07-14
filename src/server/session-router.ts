@@ -157,39 +157,74 @@ export function createSessionRouter(deps: {
 		res.json({ success: true });
 	});
 
-	// Archive (steps-overhaul sub-8): run the FULL archive pipeline — final
-	// Extractor A compression → export JSON to ~/.zero-core/archives/<agentId>/
-	// <sessionId>.json → hard-delete the session's DB rows (sessions/steps/
-	// messages + tool_executions/delegated_tasks orphans). Wiki memory nodes
-	// are LEFT (cross-session). If the session is still active (has a running
-	// AgentLoop), the pipeline tears it down FIRST (stop loop + clear in-memory
-	// hook state) before deleting rows.
+	// Archive (memory-archive-fixes sub-1): two-phase — SYNC swap + BACKGROUND
+	// pipeline. The HTTP request no longer awaits the LLM-bound memory turn
+	// or the JSON export; it returns the replacement session id within ms, so
+	// the user keeps working immediately. The Q5b memory ephemeral turn +
+	// atomic export + DB delete run fire-and-forget; failures are logged +
+	// left to the startup `recoverInterruptedArchives` scan (the row stays
+	// archived=1 in that case).
 	//
-	// After the archive, a clean replacement session with the SAME
-	// (agentId, projectId) context is created so routing lands on a fresh
-	// session. If the archived one was main, main is handed to the new one.
-	// The UI contract (返回 newSessionId) is preserved from the pre-sub-8
-	// soft-delete handler.
+	// SYNC phase (blocking HTTP, ms-level):
+	//   1. idempotency guard — if old.archived === true, another concurrent
+	//      archive already swapped this session; return the CURRENT main
+	//      session (don't double-swap).
+	//   2. db.markArchivedTransient(oldId) — crash checkpoint (idempotent).
+	//   3. agentService.teardownSessionForArchive(oldId) — stop the active
+	//      AgentLoop + clear per-session hook state (compression-trigger /
+	//      turn-seq-tracker maps for this sid). The loop must be gone BEFORE
+	//      the background archive constructs a temp loop on the same session.
+	//   4. db.createSession(agentId, undefined, old.context) + handover main
+	//      + recreateLoop — same swap pattern as the DELETE route above.
+	//   5. res.json({ success, newSessionId }) — immediate.
+	//
+	// BACKGROUND phase (NOT awaited; .catch(log)):
+	//   6. agentService.archiveSessionInBackground(oldId) — builds a temp
+	//      loop memoryTurnRunner (active loop is gone) + invokes the existing
+	//      `archiveSession` pipeline: memory turn → mark (idempotent) →
+	//      atomic export JSON → delete DB rows. Wiki nodes stay.
 	router.post("/:agentId/:sessionId/archive", async (req, res) => {
 		const db = getDb();
 		const old = db.getSession(req.params.sessionId);
 		if (!old) return res.status(404).json({ error: "session not found" });
-		try {
-			await agentService.archiveSessionManually(req.params.sessionId);
-		} catch (err) {
-			log.error("session-router", `archive failed (session=${req.params.sessionId}):`, (err as Error).message);
-			return res.status(500).json({ error: "archive failed", detail: (err as Error).message });
+
+		// Idempotency guard: a prior archive already swapped this session out
+		// (archived=1 set in the sync phase, row still present while the
+		// background pipeline runs). Return the CURRENT main session — the
+		// in-flight background archive owns the cleanup.
+		if (old.archived === true) {
+			const currentMain = db.getMainSession(req.params.agentId);
+			if (currentMain) {
+				return res.json({ success: true, newSessionId: currentMain.id, skipped: "already-archived" });
+			}
+			// No main? fall through and create a fresh one (defensive — should
+			// not happen since the prior archive swapped in a replacement).
 		}
-		// The archived session's rows are now GONE (hard delete). Create the
-		// replacement with the SAME context so routing continues to work.
+
+		// SYNC phase.
+		db.markArchivedTransient(req.params.sessionId);
+		await agentService.teardownSessionForArchive(req.params.sessionId);
+		// Create the replacement with the SAME context so routing continues
+		// to work. Hand over main if the archived session owned it (matches
+		// the DELETE route's swap pattern).
 		const ns = db.createSession(req.params.agentId, undefined, old.context);
 		const main = db.getMainSession(req.params.agentId);
-		if (!main) {
+		if (!main || main.id === req.params.sessionId) {
 			db.setMainSession(req.params.agentId, ns.id);
 		}
 		const agent = agentStore.get(req.params.agentId);
 		agentService.recreateLoop(req.params.agentId, ns.id, agent);
+
+		// Respond IMMEDIATELY — do NOT await the background archive.
 		res.json({ success: true, newSessionId: ns.id });
+
+		// BACKGROUND phase — fire-and-forget. Any failure is logged + leaves
+		// the row in archived=1 state for the next startup's recovery scan.
+		agentService.archiveSessionInBackground(req.params.sessionId).catch((err) => {
+			log.warn("session-router",
+				`background archive failed (session=${req.params.sessionId}); row stays archived=1 for recovery scan:`,
+				(err as Error)?.message ?? err);
+		});
 	});
 
 	// Messages

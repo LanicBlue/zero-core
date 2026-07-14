@@ -901,15 +901,19 @@ export class AgentService implements PlatformObserver {
 
 	/**
 	 * compression-archive-simplify sub-4: rebuild a minimal SessionConfig for a
-	 * DELEGATED CHILD session being archived (GAP2 re-activate). Resolves the
-	 * CHILD's agent/model from the delegated_tasks row (target_agent_id /
-	 * model_id). Re-attaches the SAME wiki/extractors handles the parent loop
-	 * had so the Q5b memory ephemeral turn's Wiki tool writes into the same
-	 * topic subtree as the child's prior mid-turn compressions (if any).
+	 * session being archived on a TEMP loop (GAP2 re-activate). Resolves the
+	 * agent/model from the delegated_tasks row (target_agent_id / model_id)
+	 * when given (delegated child path); falls back to the session row's
+	 * agentId (chat manual archive background path). Re-attaches the SAME
+	 * wiki/extractors handles the parent loop had so the Q5b memory ephemeral
+	 * turn's Wiki tool writes into the same topic subtree as the child's prior
+	 * mid-turn compressions (if any).
 	 *
-	 * Used by `archiveDelegatedSession` to spin up the TEMP loop that runs the
-	 * Q5b memory turn before the export. NOT used by chat-manual archive (that
-	 * runs the memory turn on the EXISTING active loop, no rebuild needed).
+	 * Used by `archiveDelegatedSession` (delegated child) AND
+	 * `archiveSessionInBackground` (chat manual archive background half —
+	 * memory-archive-fixes sub-1) to spin up the TEMP loop that runs the Q5b
+	 * memory turn before the export. The chat path's active loop is gone
+	 * (evicted in the HTTP SYNC phase), so it shares this rebuild path.
 	 */
 	private buildSessionConfigForArchive(sessionId: string, childAgentId?: string, childModelId?: string): import("../runtime/types.js").SessionConfig | undefined {
 		const sessionRec = this.db.getSession(sessionId);
@@ -994,7 +998,7 @@ export class AgentService implements PlatformObserver {
 		const cursor = this.db.getCompressionCursor(childSessionId);
 		const neverCompressed = cursor === null || cursor === undefined;
 		const memoryTurnRunner = neverCompressed
-			? () => this.runDelegatedArchiveMemoryTurn(sessionConfig)
+			? this.buildTempMemoryTurnRunner(sessionConfig)
 			: async () => false; // already compressed → skip
 		await archiveSession(childSessionId, this.db, {
 			memoryTurnRunner,
@@ -1003,160 +1007,134 @@ export class AgentService implements PlatformObserver {
 	}
 
 	/**
-	 * sub-4 GAP2 helper: spin up a TEMP AgentLoop on the (already-completed)
-	 * delegated child session, run ONE Q5b memory ephemeral turn so the agent
-	 * writes its durable wiki memory, then dispose. Used by
-	 * `archiveDelegatedSession` when the child was never compressed (no
-	 * compression memory turn → no wiki writes yet).
+	 * memory-archive-fixes sub-1: build a memoryTurnRunner that spins up a TEMP
+	 * AgentLoop on the given sessionConfig, runs ONE Q5b memory ephemeral turn
+	 * (so the agent self-writes its durable wiki memory), then disposes.
 	 *
-	 * The temp loop is constructed with the SAME hook wiring deps as a real
-	 * sub-loop so the Wiki tool resolves + writes land in the right topic
-	 * subtree. The ephemeral turn's persist:false (sub-2) means NO step is
-	 * written to the DB — only wiki side effects survive, which is exactly
-	 * what we want pre-export.
+	 * Extracted from the old `runDelegatedArchiveMemoryTurn` so both archive
+	 * paths that need a temp loop share the same construction:
+	 *   - `archiveDelegatedSession` — delegated child re-activate (GAP2: child
+	 *     never compressed → run one memory turn before export).
+	 *   - `archiveSessionInBackground` — chat manual archive background half
+	 *     (the old active loop was synchronously evicted in the HTTP Sync phase,
+	 *     so the memory turn runs on a fresh temp loop with context rebuilt
+	 *     from persisted steps).
 	 *
-	 * Returns true if the turn ran cleanly, false on any error (caller treats
-	 * as "no memory written" + proceeds with the export — best-effort).
+	 * The temp loop is NOT registered in this.loops (it's not addressable by
+	 * routing; we drive it directly + dispose). Same shape as
+	 * subagent-delegator's createSubLoop + the test fixture pattern. Hook
+	 * wiring deps come from the session config (set by buildSessionConfigForArchive).
+	 *
+	 * The ephemeral turn's persist:false (sub-2) means NO step is written to
+	 * the DB — only wiki side effects survive, which is exactly what we want
+	 * pre-export.
+	 *
+	 * Returns the runner closure (does not execute it). The runner returns
+	 * true if the turn ran cleanly, false on any error (caller treats as "no
+	 * memory written" + proceeds with the export — best-effort).
 	 */
-	private async runDelegatedArchiveMemoryTurn(
+	private buildTempMemoryTurnRunner(
 		sessionConfig: SessionConfig,
-	): Promise<boolean> {
-		const childSessionId = sessionConfig.sessionId;
-		if (!childSessionId) return false;
-		try {
-			// Build a TEMP loop (NOT registered in this.loops — it's not
-			// addressable by routing; we drive it directly here + dispose).
-			// Same shape as subagent-delegator's createSubLoop + the test
-			// fixture pattern. Hook wiring deps come from the session config
-			// (set by buildSessionConfigForArchive's caller chain).
-			const tempLoop = new AgentLoop(
-				sessionConfig,
-				this.providerConfigs,
-				{ onEvent: () => { /* discard — temp loop, no UI */ } },
-			);
-			// Register the main hook set so turn-hooks / wiki tool resolve.
-			registerHooksForLoop(tempLoop.registry, "main", sessionConfig.hookWiringDeps ?? this.buildHookDeps());
+	): () => Promise<boolean> {
+		const loopSessionId = sessionConfig.sessionId;
+		return async () => {
+			if (!loopSessionId) return false;
 			try {
-				await tempLoop.run(ARCHIVE_MEMORY_PROMPT, { ephemeral: true });
-				return true;
-			} finally {
-				// Dispose: abort (cancels any pending provider call) + drop.
-				// We don't have a loops-map entry to clean (temp loop), but
-				// abort fires SessionClose + clears ALS turn context.
-				tempLoop.abort();
+				const tempLoop = new AgentLoop(
+					sessionConfig,
+					this.providerConfigs,
+					{ onEvent: () => { /* discard — temp loop, no UI */ } },
+				);
+				// Register the main hook set so turn-hooks / wiki tool resolve.
+				registerHooksForLoop(tempLoop.registry, "main", sessionConfig.hookWiringDeps ?? this.buildHookDeps());
+				try {
+					await tempLoop.run(ARCHIVE_MEMORY_PROMPT, { ephemeral: true });
+					return true;
+				} finally {
+					// Dispose: abort (cancels any pending provider call) + drop.
+					// We don't have a loops-map entry to clean (temp loop), but
+					// abort fires SessionClose + clears ALS turn context.
+					tempLoop.abort();
+				}
+			} catch (err) {
+				log.warn("agent",
+					`temp memory turn failed (session=${loopSessionId}):`,
+					(err as Error)?.message ?? err);
+				return false;
 			}
-		} catch (err) {
-			log.warn("agent",
-				`runDelegatedArchiveMemoryTurn failed (child=${childSessionId}):`,
-				(err as Error)?.message ?? err);
-			return false;
-		}
+		};
 	}
 
 	/**
-	 * compression-archive-simplify sub-4: manually archive a session from the
-	 * chat UI (the existing 归档 button). Runs the FULL archive pipeline:
+	 * memory-archive-fixes sub-1: BACKGROUND half of the chat manual archive.
+	 * The active loop + per-session hook state have ALREADY been torn down in
+	 * the HTTP SYNC phase (see `teardownSessionForArchive`, called by session-
+	 * router before this runs). This method:
+	 *   1. rebuilds a minimal SessionConfig from the persisted session row
+	 *      (same construction `archiveDelegatedSession` uses for a delegated
+	 *      child — contextBundle, hook wiring deps, wiki/extractors handles).
+	 *   2. builds a temp-loop memoryTurnRunner (the agent's active loop is
+	 *      gone, so the Q5b memory ephemeral turn runs on a fresh temp loop
+	 *      with context rebuilt from persisted steps — equivalent wiki result).
+	 *   3. invokes the existing `archiveSession` pipeline: memory turn → mark
+	 *      (idempotent: the sync phase already marked archived=1) → atomic
+	 *      export JSON → delete DB rows. NO teardown (the loop is gone).
 	 *
-	 *   1. (if the session is active + idle) run a Q5b memory ephemeral turn
-	 *      on the EXISTING active loop so the agent self-writes wiki memory
-	 *      before its loop is torn down. Skipped if the loop is busy (mid-turn)
-	 *      — teardown will abort it, and a memory turn under abort is unsafe.
-	 *   2. tear down the AgentLoop + clear in-memory hook state (turn-seq-
-	 *      tracker + compression-trigger-hooks maps for this sid), so the loop
-	 *      stops writing to the DB / firing hooks mid-export.
-	 *   3. mark archived=1 (transient crash checkpoint).
-	 *   4. atomic export JSON (tmp+parse+rename) → delete DB rows (incl.
-	 *      tool_executions/delegated_tasks orphans). Wiki nodes stay.
+	 * Best-effort: any failure is logged (caller wraps in `.catch(log)`). The
+	 * row is still archived=1 from the sync phase, so the next startup's
+	 * `recoverInterruptedArchives` scan re-runs the export. The per-session
+	 * `withArchiveLock` guards against concurrent same-session archives.
 	 *
-	 * Returns the path of the written archive JSON. The CALLER (session-router)
-	 * is responsible for creating the replacement session + handing over main +
-	 * recreateLoop — same as the pre-sub-8 soft-delete handler did, so the UI
-	 * contract (返回 newSessionId) is preserved.
-	 *
-	 * The memory turn runner is injected into archiveSession so the pipeline
-	 * owns the ORDER (memory turn → teardown → mark → export → delete) under
-	 * the per-session lock.
+	 * NOT awaited by the HTTP handler — fire-and-forget after the swap. The
+	 * HTTP response returns immediately with the new replacement session id.
 	 */
-	async archiveSessionManually(sessionId: string): Promise<{ archivePath: string }> {
-		// Dynamic import (same rationale as archiveDelegatedSession).
+	async archiveSessionInBackground(sessionId: string): Promise<void> {
+		// Dynamic import (same rationale as archiveDelegatedSession — avoids
+		// pulling archive-service's runtime transitive deps into agent-service's
+		// static graph).
 		const { archiveSession } = await import("./archive-service.js");
+		const sessionConfig = this.buildSessionConfigForArchive(sessionId);
+		if (!sessionConfig) {
+			log.warn("agent",
+				`archiveSessionInBackground: could not build session config (session=${sessionId}) — skipping archive; row stays archived=1 for recovery scan`);
+			return;
+		}
+		const memoryTurnRunner = this.buildTempMemoryTurnRunner(sessionConfig);
+		// NO teardown — the active loop + hook state were synchronously cleared
+		// in the HTTP SYNC phase (teardownSessionForArchive). archiveSession's
+		// mark is idempotent (archived=1 already set; no-op here).
+		await archiveSession(sessionId, this.db, { memoryTurnRunner });
+	}
+
+	/**
+	 * memory-archive-fixes sub-1: SYNC-phase teardown for chat manual archive.
+	 * Stops the session's active AgentLoop + clears the per-session in-memory
+	 * hook state (turn-seq-tracker + compression-trigger-hooks maps for this
+	 * sid), in preparation for the BACKGROUND archive (which no longer tears
+	 * down the loop itself — by the time it runs, the loop is already gone).
+	 *
+	 * Equivalent to the old `archiveSessionManually`'s teardown block (which
+	 * was deleted along with archiveSessionManually itself when manual archive
+	 * moved to the two-phase swap+background design). Called by session-router
+	 * in the HTTP SYNC phase, AFTER markArchivedTransient, BEFORE createSession
+	 * + recreateLoop.
+	 *
+	 * Best-effort + idempotent: safe to call on a session whose loop is already
+	 * gone (evictSessionFromMemory is a no-op then). The dynamic imports are
+	 * cached after first call, so the await is trivial past module load.
+	 */
+	async teardownSessionForArchive(sessionId: string): Promise<void> {
+		// Stop the loop FIRST (so it stops firing hooks / writing to the DB
+		// mid-clear), THEN clear the per-session hook state.
+		this.evictSessionFromMemory(sessionId);
 		// Dynamic import of the per-session hook-state clearers. These live in
 		// runtime/hooks/; importing them statically here would pull the hook
 		// registry + its deps into agent-service's static graph. Dynamic import
 		// keeps that cost off module-load.
 		const { clearCompressionTriggerStateForSession } = await import("../runtime/hooks/compression-trigger-hooks.js");
 		const { clearTurnSeqStateForSession } = await import("../runtime/hooks/turn-seq-tracker.js");
-
-		const sessionRec = this.db.getSession(sessionId);
-		if (!sessionRec) {
-			throw new Error(`archiveSessionManually: session not found: ${sessionId}`);
-		}
-
-		const result = await archiveSession(sessionId, this.db, {
-			// Q5b memory turn: run on the EXISTING active loop (if idle). The
-			// runner is a closure so archiveSession invokes it under the lock
-			// + BEFORE teardown (teardown stops the loop, so the memory turn
-			// must run first). Returns false if the loop is busy / gone / no
-			// steps (then the export proceeds without a fresh wiki write).
-			memoryTurnRunner: async () => {
-				return this.runManualArchiveMemoryTurn(sessionId);
-			},
-			// Active-session teardown: stop the loop AFTER the memory turn
-			// (so its wiki writes land), THEN clear the per-session hook state.
-			// evictSessionFromMemory aborts the loop + clears loops/runStates/
-			// activeSessions for this sid; clearHookState clears the per-session
-			// maps the hooks hold.
-			teardown: {
-				stopAgentLoop: (sid) => {
-					// evictSessionFromMemory is idempotent for a non-active /
-					// already-stopped session (no-op when there's no loop). It
-					// also fires SessionClose (metrics idle) — fine for archive.
-					this.evictSessionFromMemory(sid);
-				},
-				clearHookState: (sid) => {
-					clearCompressionTriggerStateForSession(sid);
-					clearTurnSeqStateForSession(sid);
-				},
-			},
-		});
-		return { archivePath: result.archivePath };
-	}
-
-	/**
-	 * sub-4 Q5b helper for manual archive: run ONE memory ephemeral turn on
-	 * the session's EXISTING active loop. Returns true if it ran, false if
-	 * skipped (loop busy / gone / session has no steps to summarize).
-	 *
-	 * Must be called BEFORE teardown stops the loop. The caller
-	 * (archiveSessionManually via archiveSession's memoryTurnRunner) ensures
-	 * the ordering: this runs first, then teardown.
-	 */
-	private async runManualArchiveMemoryTurn(sessionId: string): Promise<boolean> {
-		const loop = this.loops.get(sessionId);
-		if (!loop) {
-			// Loop already gone (e.g. session restored from DB but never
-			// driven) — nothing to run the turn on. The export proceeds with
-			// whatever wiki the session already has.
-			log.debug("archive", `manual archive: no active loop for ${sessionId}; skipping memory turn`);
-			return false;
-		}
-		if (this.isSessionRunning(sessionId)) {
-			// Loop is mid-turn (busy=true). Running an ephemeral turn would
-			// throw on the busy check. Teardown will abort it; we skip the
-			// memory turn (the running turn's wiki writes — if any — already
-			// landed; better to archive the current state than to deadlock).
-			log.warn("archive", `manual archive: loop busy for ${sessionId}; skipping memory turn (teardown will abort)`);
-			return false;
-		}
-		try {
-			await loop.run(ARCHIVE_MEMORY_PROMPT, { ephemeral: true });
-			return true;
-		} catch (err) {
-			log.warn("archive",
-				`manual archive memory turn failed (session=${sessionId}):`,
-				(err as Error)?.message ?? err);
-			return false;
-		}
+		clearCompressionTriggerStateForSession(sessionId);
+		clearTurnSeqStateForSession(sessionId);
 	}
 
 	subscribe(cb: StreamCallback): () => void {

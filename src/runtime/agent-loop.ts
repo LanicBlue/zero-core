@@ -144,9 +144,10 @@ const FORCE_MEMORY_PROMPT =
  * turn that runs at session end / manual archive. Same shape as
  * FORCE_MEMORY_PROMPT but framed for archive (no compression will follow — the
  * session is being retired). Exported so the archive path (server layer,
- * agent-service.archiveSessionManually / archiveDelegatedSession) can drive it
- * on either the existing active loop (chat manual) or a temp rebuilt loop
- * (delegated child whose loop already returned — GAP2 re-activate).
+ * agent-service.archiveSessionInBackground / archiveDelegatedSession) can drive
+ * it on a temp rebuilt loop (memory-archive-fixes sub-1: chat manual archive
+ * now evicts the active loop synchronously + runs the memory turn on a temp
+ * loop in the background; delegated child path is unchanged — GAP2 re-activate).
  *
  * The turn is `ephemeral:true` (sub-2) so its steps are NOT persisted — only
  * wiki writes survive. This is the Q5b replacement for the retired

@@ -451,7 +451,7 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 		return archiveSessionCalls;
 	}
 
-	test("cursor === null → memory turn runner is the re-activate path (runDelegatedArchiveMemoryTurn called) before export", async () => {
+	test("cursor === null → memory turn runner is the re-activate path (buildTempMemoryTurnRunner called) before export", async () => {
 		const agentId = "agt-gap2-short";
 		const { taskId, childSid } = seedDelegated(agentId);
 
@@ -464,12 +464,18 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 			const { AgentService } = await import("../../src/server/agent-service.js");
 			const svc = new AgentService(testDir, sessionDB!);
 
-			// Spy on the private method to observe GAP2 branch selection
-			// without depending on AgentLoop / registerHooksForLoop wiring.
+			// Spy on the private temp-loop-runner builder to observe GAP2 branch
+			// selection without depending on AgentLoop / registerHooksForLoop
+			// wiring. memory-archive-fixes sub-1: the old
+			// `runDelegatedArchiveMemoryTurn` (which directly ran the temp loop)
+			// was extracted into `buildTempMemoryTurnRunner` (which RETURNS a
+			// closure). The spy replaces the builder so the closure is a benign
+			// stub; archiveDelegatedSession injects that stub as memoryTurnRunner.
+			const stubRunner = vi.fn(async () => true);
 			const spy = vi.spyOn(
-				svc as unknown as { runDelegatedArchiveMemoryTurn: () => Promise<boolean> },
-				"runDelegatedArchiveMemoryTurn",
-			).mockResolvedValue(true);
+				svc as unknown as { buildTempMemoryTurnRunner: () => () => Promise<boolean> },
+				"buildTempMemoryTurnRunner",
+			).mockReturnValue(stubRunner);
 
 			await svc.archiveDelegatedSession(taskId, childSid);
 
@@ -478,9 +484,11 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 			expect(archiveSessionCalls[0].sid).toBe(childSid);
 			// A memoryTurnRunner WAS injected (not undefined).
 			expect(typeof archiveSessionCalls[0].opts.memoryTurnRunner).toBe("function");
-			// GAP2 re-activate path was selected (cursor null).
+			// GAP2 re-activate path was selected (cursor null) → builder called.
 			expect(spy).toHaveBeenCalledTimes(1);
-			// And invoking the runner returns the spy's value.
+			// The injected runner IS the spy's return value (proves wiring).
+			expect(archiveSessionCalls[0].opts.memoryTurnRunner).toBe(stubRunner);
+			// And invoking the runner returns the stub's value.
 			const ret = await archiveSessionCalls[0].opts.memoryTurnRunner();
 			expect(ret).toBe(true);
 		} finally {
@@ -491,7 +499,7 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 		}
 	});
 
-	test("cursor >= 1 (already compressed) → runDelegatedArchiveMemoryTurn NOT called; runner returns false", async () => {
+	test("cursor >= 1 (already compressed) → buildTempMemoryTurnRunner NOT called; runner returns false", async () => {
 		const agentId = "agt-gap2-compressed";
 		const { taskId, childSid } = seedDelegated(agentId);
 
@@ -512,17 +520,18 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 			const { AgentService } = await import("../../src/server/agent-service.js");
 			const svc = new AgentService(testDir, sessionDB!);
 
+			const stubRunner = vi.fn(async () => true);
 			const spy = vi.spyOn(
-				svc as unknown as { runDelegatedArchiveMemoryTurn: () => Promise<boolean> },
-				"runDelegatedArchiveMemoryTurn",
-			).mockResolvedValue(true);
+				svc as unknown as { buildTempMemoryTurnRunner: () => () => Promise<boolean> },
+				"buildTempMemoryTurnRunner",
+			).mockReturnValue(stubRunner);
 
 			await svc.archiveDelegatedSession(taskId, childSid);
 
 			expect(archiveSessionCalls).toHaveLength(1);
 			// Re-activate path NOT taken (cursor >= 1 → skip).
 			expect(spy).not.toHaveBeenCalled();
-			// Runner injected but returns false (skip).
+			// Runner injected but returns false (skip — inline async () => false).
 			const runner = archiveSessionCalls[0].opts.memoryTurnRunner;
 			expect(typeof runner).toBe("function");
 			const ret = await runner();
@@ -624,8 +633,11 @@ describe("sub-4 #6 + #7: source-level invariants (archive-service scope)", () =>
 	});
 
 	test("#11 deferred: restore / rotation explicitly noted as deferred in sub-4.md", () => {
+		// memory-archive-fixes: the compression-archive-simplify effort was
+		// archived (docs/plan → docs/archive) after it shipped. The deferred
+		// markers must still be reachable in the archived sub-4.md.
 		const sub4 = readFileSync(
-			join(__dirname, "..", "..", "docs", "plan", "compression-archive-simplify", "sub-4.md"),
+			join(__dirname, "..", "..", "docs", "archive", "compression-archive-simplify", "sub-4.md"),
 			"utf8",
 		);
 		// Both deferred items must be called out so they aren't silently lost.
