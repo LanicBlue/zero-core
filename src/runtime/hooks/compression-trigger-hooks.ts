@@ -274,9 +274,15 @@ function exceedsThreshold(state: TokenState, abs: number, frac: number): boolean
  * can set it on the returned opts.
  */
 export async function buildCompressOpts(config: SessionConfig, providers: RuntimeProviderConfig[]) {
+	// compression-archive-simplify sub-3b wiring fix: read the LIVE
+	// `compression.provider/model` config first — this is the surface the UI
+	// (MemorySettings → memoryConfigUpdate) writes and the schema (config.ts
+	// `compression`) owns. Fall back to legacy `extractors.A.*` (back-compat if
+	// anything still sets it), then the session working model.
+	const comp = (config as any)?.compression ?? {};
 	const ext = (config as any)?.extractors?.A ?? {};
-	const providerName = ext.provider ?? config.providerName;
-	const modelId = ext.model ?? config.modelId;
+	const providerName = comp.provider ?? ext.provider ?? config.providerName;
+	const modelId = comp.model ?? ext.model ?? config.modelId;
 	const contextWindow = getContextWindow(providers, config.providerName, config.modelId);
 	const opts: any = { providers, providerName, modelId, contextWindow };
 	// sub-3b D2: forward the configurable compression system prompt. The default
