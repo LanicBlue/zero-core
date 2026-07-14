@@ -26,7 +26,7 @@
 //
 import { app, BrowserWindow, Tray, Menu, nativeImage, dialog, session } from "electron";
 import { join, dirname } from "path";
-import { existsSync, writeFileSync, statSync, watchFile, readdirSync, mkdirSync } from "fs";
+import { existsSync, writeFileSync, statSync, watchFile, readdirSync, mkdirSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
 import { spawnBackend, shutdownBackend } from "./backend-spawn.js";
 import { registerProxyHandlers, connectEventBridge } from "./ipc-proxy.js";
@@ -162,10 +162,17 @@ function createTray() {
 // 写 <ZERO_CORE_DIR>/runtime.install-path,供 self-update 脚本探测安装位置
 // (mac: .app/Contents/MacOS/Zero-Core;win: exe 本体;linux: AppImage 文件)
 function writeInstallPath() {
+	const f = join(ZERO_CORE_DIR, "runtime.install-path");
+	if (!app.isPackaged) {
+		// dev:process.execPath 是 node_modules/electron 的 dev 二进制。写了(或残留)会让
+		// self-update:packaged 的 P1 把它 mv 走、炸掉 dev 环境。dev 下主动清掉历史残留。
+		try { rmSync(f, { force: true }); } catch {}
+		return;
+	}
 	try {
 		// linux AppImage 运行时 process.execPath 是挂载点;APPIMAGE env 才是真实文件
 		const installPath = process.env.APPIMAGE || process.execPath;
-		writeFileSync(join(ZERO_CORE_DIR, "runtime.install-path"), installPath);
+		writeFileSync(f, installPath);
 	} catch { /* 数据目录不可写则忽略 */ }
 }
 
@@ -352,8 +359,22 @@ app.on("activate", () => {
 	if (mainWindow === null) createWindow();
 });
 
-app.on("before-quit", async () => {
-	isQuitting = true; // 放行窗口 close 处理器，允许真正关闭
-	log("Shutting down backend...");
-	await shutdownBackend();
+app.on("before-quit", () => {
+	// 放行窗口 close 处理器(否则关窗一律 hide 到托盘)。同步设标志即可;
+	// backend 的优雅关闭放 will-quit 里 await —— Electron 不 await before-quit 的 Promise,
+	// 在 before-quit 里 await shutdownBackend() 是 fire-and-forget,刷 WAL 的兜底会失效。
+	isQuitting = true;
+});
+
+let _backendShutdownStarted = false;
+app.on("will-quit", (event) => {
+	// will-quit 阻止立即退出 → 等 backend 优雅关闭(刷 WAL)→ 再强制退出。
+	if (_backendShutdownStarted) return; // 防重入
+	_backendShutdownStarted = true;
+	event.preventDefault();
+	log("Shutting down backend (will-quit)...");
+	shutdownBackend().finally(() => {
+		log("Backend stopped, exiting");
+		app.exit(0); // 强制退出,不再重新触发 will-quit
+	});
 });

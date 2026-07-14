@@ -32,18 +32,18 @@
 
 ### P0 预检(exit 10)
 - `PATH 缺少 git/npm/node`:提示用户安装或确认 PATH。
-- `无法定位安装位置`:传 `--install=<path>`,或确认运行中的 zero-core 已写 `<ZERO_CORE_DIR>/runtime.install-path`。
+- `无法定位安装位置`:传 `--install=<path>`,或确认运行中的 packaged zero-core 已写 `<ZERO_CORE_DIR>/runtime.install-path`。**dev 模式不写**(process.execPath 是 node_modules 的 dev electron,写了会让 P1 把它 mv 走炸 dev);只有 packaged app 运行时才写。
 
 ### P1 回退点(exit 11)
 - `mv 失败(EBUSY/文件锁)`:有进程占用安装位置。确认 zero-core 已退出(P2 的 sentinel 会优雅退出;若有残留进程占用,提示用户手动结束)。
 
 ### P2 快照(exit 12)
-- 通常因 zero-core 未完全退出、数据目录仍被写。查 `<ZERO_CORE_DIR>/.quit-requested` 是否触发、主进程是否退出。
+- 通常因 zero-core 未完全退出、数据目录仍被写。查 `<ZERO_CORE_DIR>/.quit-requested` 是否触发、主进程是否退出。sentinel 命中后走 `will-quit`(`event.preventDefault()` → `await shutdownBackend()` 刷 WAL → `app.exit(0)`)—— Electron **不 await before-quit 的 Promise**,在 before-quit 里 await 是 fire-and-forget,刷 WAL 必须挪到 will-quit 才可靠。
 
 ### P3 构建(exit 13)
 - P3 先跑 `rebuild:native:electron`(把 better-sqlite3 编给 Electron ABI),再 build:lib+build+electron-builder,最后 finally 里跑 `rebuild:native:node` 还原 dev ABI。
 - 读 `<runDir>/build.log` 末尾。
-- `rebuild:native:electron 失败(检查编译工具链)`:better-sqlite3 没发布 Electron 43 预编译,必须本地 node-gyp 源码编译。装工具链:mac `xcode-select --install`、win 装 Visual Studio Build Tools(含 MSVC)、linux `apt install make g++ python3`。
+- `rebuild:native:electron 失败(检查编译工具链)`:better-sqlite3 没发布 Electron 43 预编译,必须本地 node-gyp 源码编译。装工具链:mac `xcode-select --install`、win 装 Visual Studio Build Tools(含 MSVC)**+ python(node-gyp 依赖;MS Store python 也行,node-gyp 查注册表能找到)**、linux `apt install make g++ python3`。
 - TypeScript 错误 → 改对应 `src/` 文件。
 - `electron-builder` 错误:mac 查 icon 路径、win 查 nsis、linux 查 AppImage 工具链。
 - `release/ 无产物` → 确认 `build:lib` + `build` 实际执行(脚本已显式跑 build:lib 补 dist/)。
