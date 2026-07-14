@@ -52,8 +52,10 @@
 // ## 维护规则
 // - summary 模板/prompt 改动后跑 acceptance-4 测试(5 段 + 状态段「下一步」+
 //   寻回指针 + 输出格式核对)。
-// - fresh tail 边界语义与 session.ts assembleLLMView 的 computeFreshTailBoundary
-//   保持一致(两边都是 design.md「fresh tail 保护」的同一条规则)。
+// - fresh tail 边界:compression-core 的 computeFreshTailStartSeq 是 design.md
+//   「fresh tail 保护」规则的 SINGLE 源(sub-3a:session.ts 的同名镜像已删)。
+//   LLM view 不再用它(2-zone = summary + postCursor verbatim);它只在压缩
+//   pipeline 里决定 cursor 前进到哪。
 //
 
 import { generateText } from "ai";
@@ -214,16 +216,17 @@ function statusHasNextAction(status: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Fresh-tail boundary —— 与 session.ts computeFreshTailBoundary 同语义
+// Fresh-tail boundary —— design.md「fresh tail 保护」规则的 SINGLE 源
 // ---------------------------------------------------------------------------
 
 /**
  * 计算 fresh tail 的起始 seq(含)。fresh tail 是最近一段总 token 预算内的 step,
  * 压缩只作用于它之前。返回 postCursorSteps 中属于 fresh tail 的最低 seq。
  *
- * 与 src/runtime/session.ts AgentSession.computeFreshTailBoundary 是同一条 design
- * 规则(design.md「fresh tail 保护」)的两个消费者;语义必须保持一致,否则压缩边
- * 界 ≠ 组装边界,被压的 step 会出现在 fresh tail 里。
+ * sub-3a:这是 design.md「fresh tail 保护」规则的 SINGLE 源。session.ts 历史上有
+ * 一份镜像(computeFreshTailBoundary),已在 sub-3a 删除 —— LLM view 改 2-zone
+ * (summary + postCursor verbatim)后不再需要 boundary,这里只服务于压缩 pipeline
+ * 决定 cursor 前进到哪。语义改动请同步更新 design.md「fresh tail 保护」段。
  */
 export function computeFreshTailStartSeq(
 	postCursorSteps: StepRow[],

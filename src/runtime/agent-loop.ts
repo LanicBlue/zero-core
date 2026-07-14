@@ -1760,13 +1760,15 @@ export class AgentLoop implements AgentRuntime {
 				throw streamError;
 			}
 
-			// prompt_too_long: shrink the live conversation before retrying this
-			// step (operate on opts.messages' source-of-truth = session). The
-			// next attempt will see a pruned context. We do NOT advance messages
-			// for the failed attempt.
+			// prompt_too_long: sub-3a removed the inline eager-prune call that
+			// used to fire here. Recovery is now owned by the PreLLMCall /
+			// compressSession hook (compression-trigger-hooks.ts): retrying this
+			// step re-enters runWithRetry, which re-fires PreLLMCall, which
+			// runs compressSession to advance the cursor. The retry predicate
+			// above (isTransient || isPromptTooLong) is preserved so the loop
+			// still attempts the step after compression.
 			if (isPromptTooLong) {
-				await this.session.aggressivePrune(0.5);
-				log.loop("Step " + opts.stepNumber + ": prompt_too_long, aggressive prune before retry.");
+				log.loop("Step " + opts.stepNumber + ": prompt_too_long; PreLLMCall/compressSession hook owns recovery.");
 			}
 
 			// Backoff for transient classes (handler may override the delay).
