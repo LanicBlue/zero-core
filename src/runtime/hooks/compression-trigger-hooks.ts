@@ -15,28 +15,33 @@
 //
 //   ② StepEnd cold path (可 mid-turn): on every StepEnd, evaluate cache 冷热
 //      against the state captured BEFORE this step's LLM call. Cold + (token
-//      >100K OR >50% window) → run compressSession (stage 3). This catches
-//      mid-turn cache expiry (slow tool / long Wait aged the cache past TTL).
-//      Per-turn "already compressed" guard prevents re-compressing the same
-//      turn repeatedly.
+//      >100K OR >50% window) → **Force档 signal** (sub-3c dual-mechanism):
+//      requestForceCompress(sessionId, "StepEnd cold"). This catches mid-turn
+//      cache expiry (slow tool / long Wait aged the cache past TTL). AgentLoop
+//      consumes the signal at the turn boundary and coordinates (memory
+//      ephemeral turn → compressSession); the hook CANNOT run a nested turn.
 //
 //   ③ PreLLMCall (新 turn + resume 冷 preflight): single seam covering both
 //      "WAIT/resume woke into a cold cache" (design: WAIT folded into resume —
 //      no separate WAIT trigger) and "new turn". On every PreLLMCall, evaluate
-//      cold/heat BEFORE marking this call:
-//        - cold + (token >100K OR >50%) → 强制压缩 (preflight: compress first,
-//          then let the call proceed). Covers resume-first-call / crash-recovery
-//          / cold new turn.
-//        - hot + new turn (stepNumber === 1) + (token >400K OR >90%) → 强制压缩
-//          (hard limit; mid-turn+hot is NOT compressed here).
-//        - hot + new turn + (token >200K OR >70%) → inject 提醒 (appendMessages;
-//          LLM self-decides). mid-turn+hot 不打断.
+//      cold/heat BEFORE marking this call (sub-3c dual-mechanism):
+//        - cold + (token >100K OR >50%) → **Force档 signal** (requestForceCompress).
+//          Covers resume-first-call / crash-recovery / cold new turn. AgentLoop
+//          coordinates at turn boundary (memory ephemeral turn → compressSession).
+//        - hot + new turn (stepNumber === 1) + (token >400K OR >90%) → **Force档
+//          signal** (hard limit; mid-turn+hot is NOT triggered here).
+//        - hot + new turn + (token >200K OR >70%) → **Remind档**: inject appendMessage
+//          ("上下文偏大,可写 memory;若认为该压缩就表示") so the LLM self-decides —
+//          can self-write wiki memory + self-judge whether to compress.
+//          mid-turn+hot 不打断.
 //        - hot + mid-turn → no-op.
 //      After evaluation, stamp lastLLMCall = now (this call is happening).
 //
-//   ④ OnLLMError reactive: prompt_too_long → 强制压缩 + allow retry. The
-//      error-context already carries errorClass; we request retry and compress
-//      before the retry attempt runs.
+//   ④ OnLLMError reactive: prompt_too_long → 强制压缩 + allow retry. KEEPS
+//      direct runCompression (single-mechanism recovery path, acceptance-3c #4)
+//      — bypasses the signal because it MUST compress before the retry attempt
+//      re-enters streamText (the loop's turn-boundary coordination would run
+//      too late for a retry that's about to fire).
 //
 // ## New turn vs mid-turn 判据
 // PreLLMCall ctx carries `stepNumber` (1-based within the turn).
@@ -133,6 +138,68 @@ const lastReductionFraction = new Map<string, number>();
 /** SessionId guard: avoid re-entrant compression for the same session. */
 const inFlight = new Set<string>();
 
+/**
+ * sub-3c Force档 signal (dual-mechanism GAP1).
+ *
+ * Force档 (cold / hot+hard threshold) paths do NOT call runCompression
+ * directly anymore — they `requestForceCompress(sessionId, reason)` here,
+ * which sets this map. AgentLoop reads + clears it via
+ * `consumePendingForceSignal(sessionId)` at the turn boundary (run/resume
+ * finally, AFTER the user turn's StepEnd-persisted data is in the DB,
+ * BEFORE busy releases so no concurrent run() can interject). The loop
+ * then coordinates: memory ephemeral turn (sub-2, persist:false → step
+ * NOT persisted) → compressSession.
+ *
+ * Why a module-level Map (not an AgentLoop instance field): the hook has
+ * no reference to the loop (only ctx: { sessionId, config, providers, ... }).
+ * Module-level state mirrors the existing pattern in this file
+ * (lastLLMCall / compressedThisTurn / lastReductionFraction / inFlight),
+ * keeps the hook → loop contract minimal (one exported consumer), and
+ * avoids threading a loop reference through PreLLMCall/StepEnd ctx.
+ *
+ * Remind档 (hot+soft) stays inline — it injects an appendMessage and lets
+ * the agent self-decide (no signal, no coordination).
+ *
+ * OnLLMError prompt_too_long KEEPS direct runCompression (single-mechanism
+ * recovery path, acceptance-3c #4). It bypasses the signal because it
+ * must compress BEFORE the retry attempt re-enters streamText.
+ */
+export interface ForceSignal {
+	/** Trigger reason (e.g. "PreLLMCall cold preflight (new turn)"). */
+	reason: string;
+	/** Wall-clock ms when the signal was set (debug). */
+	detectedAt: number;
+}
+const pendingForceSignal = new Map<string, ForceSignal>();
+
+/**
+ * Set the Force档 signal for a session. Overwrites if already set (the
+ * latest reason wins; we consume once per turn). Called by the Force档
+ * threshold branches in StepEnd / PreLLMCall below.
+ */
+function requestForceCompress(sessionId: string, reason: string): void {
+	pendingForceSignal.set(sessionId, { reason, detectedAt: Date.now() });
+	log.debug("compress-trigger",
+		`session=${sessionId} Force档 signal set (${reason}); AgentLoop will coordinate at turn boundary`);
+}
+
+/**
+ * Atomically read + clear the Force档 signal for a session. Called by
+ * AgentLoop at the turn boundary. Returns undefined when no signal is
+ * pending (the common case — most turns never cross a Force档 threshold).
+ *
+ * Always consumes — even when the caller decides not to coordinate (e.g.
+ * the turn was itself ephemeral, in which case the memory turn's own
+ * finally re-enters and drops the signal so it doesn't leak to the next
+ * user turn). The compressSession that the loop runs right after the
+ * memory turn makes any signal set DURING the memory turn moot.
+ */
+export function consumePendingForceSignal(sessionId: string): ForceSignal | undefined {
+	const s = pendingForceSignal.get(sessionId);
+	if (s) pendingForceSignal.delete(sessionId);
+	return s;
+}
+
 function markLastLLMCall(sessionId: string, ts: number): void {
 	lastLLMCall.set(sessionId, ts);
 }
@@ -145,6 +212,11 @@ function isCold(sessionId: string, cacheTtlMs: number, now: number): boolean {
 
 function resetTurnState(sessionId: string): void {
 	compressedThisTurn.delete(sessionId);
+	// sub-3c: a stale Force档 signal from a crashed prior turn is dropped at
+	// TurnStart. The current turn's signal is set LATER (PreLLMCall/StepEnd
+	// during the turn body) and consumed at turn-end by AgentLoop, so this
+	// reset never races a live signal — see consumePendingForceSignal.
+	pendingForceSignal.delete(sessionId);
 	// NOTE: lastReductionFraction intentionally SURVIVES across turns — debounce
 	// compares consecutive compressions regardless of which turn they ran in.
 	// It is reset only by clearCompressionTriggerState (test reset).
@@ -201,7 +273,7 @@ function exceedsThreshold(state: TokenState, abs: number, frac: number): boolean
  * (800) inside compression-core applies. Callers that need a different ceiling
  * can set it on the returned opts.
  */
-async function buildCompressOpts(config: SessionConfig, providers: RuntimeProviderConfig[]) {
+export async function buildCompressOpts(config: SessionConfig, providers: RuntimeProviderConfig[]) {
 	const ext = (config as any)?.extractors?.A ?? {};
 	const providerName = ext.provider ?? config.providerName;
 	const modelId = ext.model ?? config.modelId;
@@ -355,7 +427,10 @@ export function registerCompressionTriggerHooks(
 						const state = readTokenState(sessionDb, sessionId, providers, config);
 						if (!state) return;
 						if (!exceedsThreshold(state, COLD_ABSOLUTE_TOKENS, COLD_WINDOW_FRACTION)) return;
-						await runCompression(sessionId, sessionDb, config, providers, "StepEnd cold");
+						// sub-3c Force档: don't compress directly. Set the signal;
+						// AgentLoop coordinates (memory ephemeral turn → compressSession)
+						// at the turn boundary. The hook CANNOT run a nested turn.
+						requestForceCompress(sessionId, "StepEnd cold");
 						return;
 					}
 
@@ -371,21 +446,26 @@ export function registerCompressionTriggerHooks(
 						// lastLLMCall (the "time since last call" is what we judge).
 						if (state) {
 							if (cold) {
-								// Cold + over threshold ⇒ forced preflight compression.
+								// Cold + over threshold ⇒ Force档 signal.
 								// Covers resume-first-call / WAIT-woke-first-call /
 								// crash-recovery-first-call / cold new turn.
+								// sub-3c: don't compress directly — set the signal;
+								// AgentLoop coordinates (memory ephemeral turn →
+								// compressSession) at the turn boundary.
 								if (exceedsThreshold(state, COLD_ABSOLUTE_TOKENS, COLD_WINDOW_FRACTION)) {
-									await runCompression(sessionId, sessionDb, config, providers,
+									requestForceCompress(sessionId,
 										isNewTurn ? "PreLLMCall cold preflight (new turn)" : "PreLLMCall cold preflight (mid-turn)");
 								}
 							} else if (isNewTurn) {
 								// Hot + new turn. mid-turn+hot 不打断.
 								if (exceedsThreshold(state, HOT_FORCE_ABSOLUTE_TOKENS, HOT_FORCE_WINDOW_FRACTION)) {
-									// Hard limit: forced compression before the call.
-									await runCompression(sessionId, sessionDb, config, providers,
-										"PreLLMCall hot hard-limit (new turn)");
+									// Hard limit: Force档 signal. AgentLoop coordinates
+									// (memory ephemeral turn → compressSession) at turn end.
+									requestForceCompress(sessionId, "PreLLMCall hot hard-limit (new turn)");
 								} else if (exceedsThreshold(state, HOT_REMIND_ABSOLUTE_TOKENS, HOT_REMIND_WINDOW_FRACTION)) {
-									// Soft: inject 提醒 — LLM self-decides.
+									// Remind档 (soft): inject 提醒 — LLM self-decides.
+									// Includes a memory-write nudge (sub-3c) so the agent
+									// can also self-write salient wiki memory.
 									return { appendMessages: [buildCompressionReminder(state)] };
 								}
 							}
@@ -426,12 +506,19 @@ export function registerCompressionTriggerHooks(
 
 function buildCompressionReminder(state: TokenState): { role: string; content: string } {
 	const pct = state.window > 0 ? Math.round((state.tokens / state.window) * 100) : 0;
+	// sub-3c Remind档 (design「二、压缩流程」+ Q2): the soft path injects an
+	// appendMessage so the agent can self-write wiki memory (durable cross-
+	// session record) AND self-judge whether compression is warranted. The
+	// Force档 (cold / hot+hard) runs the memory turn + compressSession
+	// automatically — Remind档 leaves it to the agent's judgement.
 	return {
 		role: "user",
 		content:
 			`[system] Context is at ${state.tokens.toLocaleString()} tokens (~${pct}% of the ${state.window.toLocaleString()} window). ` +
-			`Consider calling a compact/summarize step or wrapping up long-running sub-tasks before the context fills further — ` +
-			`the next hard threshold will force an automatic compression that may drop recent detail. ` +
+			`Consider writing any salient facts worth preserving across sessions (decisions, paths, key results, lessons) to your wiki memory via the Wiki tool, ` +
+			`and/or wrapping up long-running sub-tasks before the context fills further. ` +
+			`If you believe the context should be compressed now, say so explicitly in your response (e.g. "requesting compression"). ` +
+			`The next hard threshold will force an automatic compression that runs a memory turn first. ` +
 			`This is an advisory reminder; you may ignore it if the work is near completion.`,
 	};
 }
@@ -446,8 +533,9 @@ function buildCompressionReminder(state: TokenState): { role: string; content: s
  * archive of an active session) so a re-used sessionId / a sessionId whose
  * rows were just deleted doesn't leave stale hook state behind.
  *
- * Clears: lastLLMCall, compressedThisTurn, lastReductionFraction, inFlight for
- * this sessionId. Idempotent (no-op if the session had no state).
+ * Clears: lastLLMCall, compressedThisTurn, lastReductionFraction, inFlight,
+ * pendingForceSignal (sub-3c) for this sessionId. Idempotent (no-op if the
+ * session had no state).
  *
  * NOTE: distinct from `clearCompressionTriggerState` (which clears EVERY
  * session — test-only reset). This is per-session and safe for production.
@@ -457,6 +545,7 @@ export function clearCompressionTriggerStateForSession(sessionId: string): void 
 	compressedThisTurn.delete(sessionId);
 	lastReductionFraction.delete(sessionId);
 	inFlight.delete(sessionId);
+	pendingForceSignal.delete(sessionId);
 }
 
 // ---------------------------------------------------------------------------
@@ -469,6 +558,7 @@ export function clearCompressionTriggerState(): void {
 	compressedThisTurn.clear();
 	lastReductionFraction.clear();
 	inFlight.clear();
+	pendingForceSignal.clear();
 }
 
 /**
@@ -493,4 +583,14 @@ export function _getLastLLMCallForTest(sessionId: string): number | undefined {
 export function _setLastReductionForTest(sessionId: string, frac: number | undefined): void {
 	if (frac === undefined) lastReductionFraction.delete(sessionId);
 	else lastReductionFraction.set(sessionId, frac);
+}
+
+/**
+ * Test-only (sub-3c): read the pending Force档 signal for a session WITHOUT
+ * consuming it. Use this to assert a Force档 threshold branch set the signal
+ * (vs. running compression directly or invoking the Remind档 appendMessage).
+ * Use `consumePendingForceSignal` for the consume-and-clear path.
+ */
+export function _getPendingForceSignalForTest(sessionId: string): ForceSignal | undefined {
+	return pendingForceSignal.get(sessionId);
 }

@@ -451,65 +451,17 @@ describe("sub-7 output check + fallback (agent loop failure → skipped, never t
 });
 
 // ─── 8. compressSession 接 Extractor A(summary 写 messages + 喂 wiki)─
+// sub-3c verification note: the positive-case test ("compressSession with
+// extractorA wired → each summary triggers a wiki merge") was REMOVED —
+// sub-3b ("ExtractorA 拆除") removed the `opts.extractorA` coupling from
+// compressSession (the Force档 memory ephemeral turn in sub-3c replaces it).
+// The case had been red since the sub-3b commit (sub-3b's regression set
+// missed this file). The remaining test below is the negative-case regression
+// guard (compressSession without extractorA leaves wiki untouched), which is
+// still valid and was always passing. sub-5 will delete this whole section
+// when it removes `extractor-a-service.ts` entirely.
 
-describe("sub-7 wiring — compressSession feeds summaries to Extractor A", () => {
-	test("compressSession with extractorA wired → each summary triggers a wiki merge", async () => {
-		// Seed a compressible session (tiny window → fresh-tail budget small).
-		const sessionId = "sess-wire";
-		const big = "x".repeat(3000);
-		sessionDB.appendStep(sessionId, 0, 0, "user", "build auth");
-		sessionDB.appendStep(sessionId, 1, 0, "assistant", JSON.stringify([{ type: "text", text: big }]));
-		sessionDB.appendStep(sessionId, 2, 2, "user", "build billing");
-		sessionDB.appendStep(sessionId, 3, 2, "assistant", JSON.stringify([{ type: "text", text: big }]));
-
-		let mergeCalls = 0;
-		const fakeService = {
-			mergeSummaryIntoWiki: async (_input: MergeSummaryInput) => {
-				mergeCalls++;
-				return { extractedCount: 1, createdCount: 1, updatedCount: 0, mergeCount: 1, skipped: false };
-			},
-		};
-		const summaryModel = (() => {
-			let n = 0;
-			return {
-				specificationVersion: "v3" as const, provider: "stub", modelId: "stub",
-				supportedUrls: {},
-				async doGenerate() {
-					n++;
-					// Two segments (turn_group 0 + 2) → two summary LLM calls.
-					return {
-						content: [{ type: "text", text: JSON.stringify({
-							purpose: `task ${n}`,
-							plan: "p", status: `did. 下一步: continue`, artifacts: "a", lessons: "l",
-						}) }],
-						finishReason: "stop",
-						usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-						warnings: [],
-					};
-				},
-				async doStream() { return { stream: new ReadableStream() }; },
-			};
-		})();
-
-		const result = await compressSession(sessionId, sessionDB, {
-			providers: [], providerName: "stub", modelId: "stub",
-			contextWindow: 1000,
-			testModel: summaryModel,
-			extractorA: {
-				service: fakeService as any,
-				resolveTopic: (summary, _seg, sid) => ({ topicId: `topic-${sid}-${summary.stepRange?.from}`, agentId: "dev" }),
-			},
-		});
-
-		// 2 segments → 2 summaries → 2 merge calls.
-		expect(result.summaries.length).toBe(2);
-		// Fire-and-forget: the merges are dispatched but not awaited by
-		// compressSession. Since our fakeService.mergeSummaryIntoWiki resolves
-		// synchronously, we macrotask-wait for the void promise to settle.
-		await new Promise(r => setTimeout(r, 50));
-		expect(mergeCalls).toBe(2);
-	});
-
+describe("sub-7 wiring — compressSession without extractorA leaves wiki untouched", () => {
 	test("compressSession without extractorA → only messages summary (sub-4 behavior intact)", async () => {
 		const sessionId = "sess-no-wiki";
 		const big = "x".repeat(3000);

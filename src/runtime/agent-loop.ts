@@ -76,6 +76,21 @@ import {
 // which lets us drop the old lazy `require` (undefined under ESM) without pulling
 // todo-write (which cycles with tool-factory) into the static graph.
 import { getSessionTodos, setSessionTodosForCtx } from "../tools/todo-state.js";
+// compression-archive-simplify sub-3c: Force档 (cold / hot+hard) signal
+// coordination. compression-trigger-hooks sets `pendingForceSignal` instead
+// of calling compressSession directly (the hook CANNOT run a nested turn);
+// AgentLoop consumes it at the turn boundary and coordinates a memory
+// ephemeral turn (sub-2) → compressSession. buildCompressOpts is reused so
+// the loop's coordination compress uses the same provider/model/prompt
+// resolution as the trigger path. compressSession lives in server/.
+import { consumePendingForceSignal, buildCompressOpts } from "./hooks/compression-trigger-hooks.js";
+import { compressSession } from "../server/compression-core.js";
+// SessionDB TYPE only (runtime import would still be fine — server/ has no
+// cycle back to runtime/ — but type-only keeps the bundler happy). The loop
+// casts `this.config.db` (typed ISessionStore) to SessionDB inside
+// coordinateForceCompress: agent-service wires BOTH `db` and `sessionDb` from
+// the same SessionDB instance, so the runtime invariant holds.
+import type { SessionDB } from "../server/session-db.js";
 // sub-7 (anchor merger): renderSystemAnchors + renderContextAnchors collapse
 // into the single `wiki-system-anchors` system section (root summary + one
 // layer, both channels unioned). renderContextAnchors stays exported so tests
@@ -100,6 +115,29 @@ function summarizeArgs(argsText: string): string {
 	if (trimmed.length <= 120) return trimmed;
 	return trimmed.slice(0, 120) + "…";
 }
+
+/**
+ * sub-3c Force档: the prompt for the memory ephemeral turn that runs before
+ * compressSession when a Force档 threshold (cold / hot+hard) was crossed
+ * during the just-finished user turn. Instructs the agent to write salient
+ * facts to its wiki memory (durable cross-session record) before the
+ * in-session compression runs.
+ *
+ * Kept as a simple constant (design: "a constant or from config — your call;
+ * keep it simple"). The agent's wiki anchors (memory-root + project-root,
+ * resolved at construction) define where it can write; the prompt does not
+ * need to know paths. The turn is `ephemeral:true` (sub-2) so its steps are
+ * NOT persisted — only the wiki side effects survive (regression-protected by
+ * sub-2 acceptance #1; verified at the turn-hooks `persist:false` guard).
+ */
+const FORCE_MEMORY_PROMPT =
+	"[system] Context has grown large; an automatic compression is about to run. " +
+	"Before it does, take a moment to write any salient facts worth preserving across sessions — " +
+	"decisions, file paths, key results, lessons learned — to your wiki memory " +
+	"(use the Wiki tool to create or update nodes in your memory subtree). " +
+	"Be selective: only durable facts a future session would need, not a recap of every step. " +
+	"After you finish writing (or if there is nothing worth saving), end your turn with a " +
+	"brief text response. The compression will run automatically once you finish.";
 
 export class AgentLoop implements AgentRuntime {
 	private session: AgentSession;
@@ -637,6 +675,34 @@ export class AgentLoop implements AgentRuntime {
 
 			} finally {
 				if (timeout) clearTimeout(timeout);
+				// sub-3c Force档 coordination: consume any pending signal set by
+				// compression-trigger-hooks when a Force档 threshold (cold /
+				// hot+hard) was crossed during this turn. The hook NO LONGER
+				// compresses directly — it sets a signal; the Loop coordinates
+				// here: a memory ephemeral turn (sub-2, persist:false → step NOT
+				// persisted) writes salient wiki memory, THEN compressSession
+				// runs. Runs BEFORE busy releases so no concurrent run() can
+				// interject. The memory turn itself re-enters this finally with
+				// ephemeral=true → signal dropped (no infinite recursion). OnLLMError
+				// prompt_too_long keeps direct compress (single mechanism,
+				// acceptance-3c #4) — its retry path bypasses the signal.
+				//
+				// Placement: AFTER StepEnd has persisted this turn's steps (so
+				// compressSession reads the full turn body) and BEFORE TurnEnd's
+				// safety-net persist / busy release (so the memory turn + compress
+				// happen with the loop still exclusive). The user turn's TurnEnd
+				// fires AFTER coordination — its safety net is then typically a
+				// no-op (StepEnd already persisted all completed steps).
+				const forceSignal = this.config.sessionId ? consumePendingForceSignal(this.config.sessionId) : undefined;
+				if (forceSignal && !ephemeral) {
+					try {
+						await this.coordinateForceCompress(forceSignal.reason);
+					} catch (err) {
+						log.warn("loop",
+							`Force档 coordination failed (session=${this.config.sessionId}, reason=${forceSignal.reason}):`,
+							(err as Error).message);
+					}
+				}
 				this.busy = false;
 				this.streamText = "";
 				this.delegator.cleanup();
@@ -736,6 +802,20 @@ export class AgentLoop implements AgentRuntime {
 				await this.runWithRetry();
 			} finally {
 				if (timeout) clearTimeout(timeout);
+				// sub-3c Force档 coordination: same as run() finally. Resume is
+				// itself a turn boundary — a Force档 threshold crossed during the
+				// resumed turn is consumed + coordinated here. Resume is never
+				// ephemeral (no opts), so no ephemeral guard.
+				const forceSignal = this.config.sessionId ? consumePendingForceSignal(this.config.sessionId) : undefined;
+				if (forceSignal) {
+					try {
+						await this.coordinateForceCompress(forceSignal.reason);
+					} catch (err) {
+						log.warn("loop",
+							`Force档 coordination failed (session=${this.config.sessionId}, reason=${forceSignal.reason}):`,
+							(err as Error).message);
+					}
+				}
 				this.busy = false;
 				this.streamText = "";
 				this.delegator.cleanup();
@@ -750,6 +830,100 @@ export class AgentLoop implements AgentRuntime {
 
 	abort(): void {
 		this.abortController?.abort();
+	}
+
+	/**
+	 * sub-3c Force档 coordination: run a memory ephemeral turn (sub-2) →
+	 * compressSession. Invoked at the user-turn boundary (run/resume finally)
+	 * when compression-trigger-hooks signalled a Force档 threshold (cold /
+	 * hot+hard). The hook CANNOT run a nested turn — it sets a signal and the
+	 * Loop coordinates here.
+	 *
+	 * Memory turn: `run({ephemeral:true})` so its steps are NOT persisted
+	 * (sub-2 acceptance #1 — turn-hooks skip via persist:false). Only wiki
+	 * writes survive (the agent uses its Wiki tool to write salient memory).
+	 *
+	 * compressSession: reuses buildCompressOpts from compression-trigger-hooks
+	 * (single chokepoint for provider/model/prompt resolution). The user turn's
+	 * StepEnd already persisted all completed steps before we reach the finally,
+	 * so compressSession reads the full turn body.
+	 *
+	 * Wiki snapshot refresh (sub-1 acceptance #4, deferred to sub-3): the
+	 * `wiki-system-anchors` system section is a FROZEN snapshot
+	 * (cacheBreak:false, computed at turn start). The memory turn just wrote
+	 * wiki — without invalidation the next turn's system prompt would still
+	 * show the OLD snapshot (memory turn effectively write-only). The
+	 * try/finally wrapper calls `promptAssembler.invalidate("wiki-system-
+	 * anchors")` UNCONDITIONALLY so even a partial memory-turn write (or a
+	 * compressSession failure) still refreshes the snapshot.
+	 *
+	 * Reentry safety: we hold the loop exclusively here (the outer run()'s
+	 * finally hasn't released busy yet — JS is single-threaded and no other
+	 * caller can interject). The inner `run({ephemeral:true})` would throw on
+	 * the busy check, so we briefly flip busy off and restore it after so the
+	 * outer finally can release it cleanly. The memory turn's own finally
+	 * re-enters the signal-consume branch with `ephemeral=true` → drops the
+	 * signal (no recursion).
+	 */
+	private async coordinateForceCompress(reason: string): Promise<void> {
+		const sessionId = this.config.sessionId;
+		if (!sessionId) {
+			log.warn("loop", `Force档 coordination skipped: no sessionId (reason=${reason})`);
+			return;
+		}
+		log.debug("loop",
+			`Force档 coordination (session=${sessionId}, reason=${reason}): ` +
+			`running memory ephemeral turn → compressSession`);
+		// sub-1 acceptance #4 (deferred to sub-3): wrap the memory turn +
+		// compressSession in a try/finally so the wiki-system-anchors snapshot
+		// is invalidated UNCONDITIONALLY. The memory turn just wrote wiki via
+		// the Wiki tool; without invalidation the next turn's system prompt
+		// would still show the OLD frozen snapshot (cacheBreak:false section)
+		// — the memory turn would be effectively write-only. Runs even if the
+		// memory turn threw mid-write or compressSession failed: partial wiki
+		// writes survive and must be visible. The outer coordination try/catch
+		// in run()/resume() finally handles any propagated error.
+		try {
+			// Phase 1 — memory ephemeral turn (sub-2 persist:false → wiki
+			// writes only; steps NOT persisted). Temporarily release busy so
+			// run() can re-enter. We're inside the outer run()/resume() finally
+			// — JS is single-threaded and the outer promise hasn't resolved,
+			// so no concurrent run() caller can race us.
+			const wasBusy = this.busy;
+			this.busy = false;
+			try {
+				await this.run(FORCE_MEMORY_PROMPT, { ephemeral: true });
+			} finally {
+				this.busy = wasBusy;
+			}
+			// Phase 2 — compressSession. Guards inside compression-trigger-hooks
+			// (inFlight / compressedThisTurn) are NOT consulted here — we ARE
+			// the coordination those guards used to gate. A failure logs and
+			// returns (best-effort — must not break the outer finally).
+			try {
+				const opts = await buildCompressOpts(this.config, this.providers);
+				// config.db is typed as ISessionStore but at runtime is the
+				// SessionDB instance wired by agent-service (db + sessionDb are
+				// the same object — see agent-service.ts wiring around line 523).
+				// compressSession needs SessionDB-specific methods
+				// (replaceSummariesAndAdvanceCursor, getDb); cast through
+				// unknown. Test loops that inject a non-SessionDB ISessionStore
+				// stub will throw here and the catch below logs+returns.
+				const db = this.config.db as unknown as SessionDB;
+				await compressSession(sessionId, db, opts);
+			} catch (err) {
+				log.warn("loop",
+					`Force档 compressSession failed (session=${sessionId}, reason=${reason}):`,
+					(err as Error).message);
+			}
+		} finally {
+			// Unconditional wiki snapshot refresh — see comment above. The
+			// promptAssembler caches the wiki-system-anchors section across
+			// turns (cacheBreak:false); without this the next turn would
+			// assemble a stale system prompt that doesn't reflect the memory
+			// turn's writes.
+			this.promptAssembler.invalidate("wiki-system-anchors");
+		}
 	}
 
 	/**

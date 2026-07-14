@@ -107,13 +107,14 @@
 		},
 		{
 			"path": "src/runtime/agent-loop.ts",
-			"lines": 2090,
+			"lines": 2264,
 			"dir": "src/runtime",
 			"exports": [
 				"AgentLoop.buildCallerCtx",
 				"AgentLoop.run",
 				"AgentLoop.resume",
 				"AgentLoop.abort",
+				"AgentLoop.coordinateForceCompress",
 				"AgentLoop.setTurnSource",
 				"AgentLoop.getState",
 				"AgentLoop.isWaiting",
@@ -167,51 +168,55 @@
 				"src/runtime/tool-rate-limiter.ts",
 				"src/runtime/concurrency-context.ts",
 				"src/server/wiki-node-store.ts",
-				"src/runtime/wiki-anchor-injection.ts"
+				"src/runtime/wiki-anchor-injection.ts",
+				"src/runtime/hooks/compression-trigger-hooks.ts",
+				"src/server/compression-core.ts",
+				"src/server/session-db.ts"
 			],
 			"functions": [
-				"src/runtime/agent-loop.ts/summarizeArgs:98",
-				"src/runtime/agent-loop.ts/AgentLoop.buildCallerCtx:426",
-				"src/runtime/agent-loop.ts/AgentLoop.run:540",
-				"src/runtime/agent-loop.ts/AgentLoop.resume:681",
-				"src/runtime/agent-loop.ts/AgentLoop.abort:751",
-				"src/runtime/agent-loop.ts/AgentLoop.setTurnSource:765",
-				"src/runtime/agent-loop.ts/AgentLoop.getState:769",
-				"src/runtime/agent-loop.ts/AgentLoop.isWaiting:784",
-				"src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:795",
-				"src/runtime/agent-loop.ts/AgentLoop.beginWaitSuspend:808",
-				"src/runtime/agent-loop.ts/AgentLoop.endWaitSuspend:820",
-				"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:847",
-				"src/runtime/agent-loop.ts/AgentLoop.getLoopState:910",
-				"src/runtime/agent-loop.ts/AgentLoop.getRecentToolCalls:926",
-				"src/runtime/agent-loop.ts/AgentLoop.getRecentSteps:946",
-				"src/runtime/agent-loop.ts/AgentLoop.getSessionTurns:968",
-				"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:973",
-				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:978",
-				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:983",
-				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:988",
-				"src/runtime/agent-loop.ts/AgentLoop.getModelId:997",
-				"src/runtime/agent-loop.ts/AgentLoop.getModelMultimodalTri:1017",
-				"src/runtime/agent-loop.ts/AgentLoop.getResult:1021",
-				"src/runtime/agent-loop.ts/AgentLoop.resetSession:1025",
-				"src/runtime/agent-loop.ts/AgentLoop.getConfigAgentId:1031",
-				"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:1043",
-				"src/runtime/agent-loop.ts/AgentLoop.restoreDelegatedTasks:1073",
-				"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:1146",
-				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1318",
-				"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357",
-				"src/runtime/agent-loop.ts/AgentLoop.buildTools:1570",
-				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1582",
-				"src/runtime/agent-loop.ts/AgentLoop.prependContext:1590",
-				"src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:1626",
-				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1650",
-				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1798",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1942",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2036",
-				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2053",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:2060",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2079",
-				"src/runtime/agent-loop.ts/AgentLoop.apply:1260"
+				"src/runtime/agent-loop.ts/summarizeArgs:113",
+				"src/runtime/agent-loop.ts/AgentLoop.buildCallerCtx:464",
+				"src/runtime/agent-loop.ts/AgentLoop.run:578",
+				"src/runtime/agent-loop.ts/AgentLoop.resume:747",
+				"src/runtime/agent-loop.ts/AgentLoop.abort:831",
+				"src/runtime/agent-loop.ts/AgentLoop.coordinateForceCompress:868",
+				"src/runtime/agent-loop.ts/AgentLoop.setTurnSource:939",
+				"src/runtime/agent-loop.ts/AgentLoop.getState:943",
+				"src/runtime/agent-loop.ts/AgentLoop.isWaiting:958",
+				"src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:969",
+				"src/runtime/agent-loop.ts/AgentLoop.beginWaitSuspend:982",
+				"src/runtime/agent-loop.ts/AgentLoop.endWaitSuspend:994",
+				"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:1021",
+				"src/runtime/agent-loop.ts/AgentLoop.getLoopState:1084",
+				"src/runtime/agent-loop.ts/AgentLoop.getRecentToolCalls:1100",
+				"src/runtime/agent-loop.ts/AgentLoop.getRecentSteps:1120",
+				"src/runtime/agent-loop.ts/AgentLoop.getSessionTurns:1142",
+				"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:1147",
+				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:1152",
+				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:1157",
+				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:1162",
+				"src/runtime/agent-loop.ts/AgentLoop.getModelId:1171",
+				"src/runtime/agent-loop.ts/AgentLoop.getModelMultimodalTri:1191",
+				"src/runtime/agent-loop.ts/AgentLoop.getResult:1195",
+				"src/runtime/agent-loop.ts/AgentLoop.resetSession:1199",
+				"src/runtime/agent-loop.ts/AgentLoop.getConfigAgentId:1205",
+				"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:1217",
+				"src/runtime/agent-loop.ts/AgentLoop.restoreDelegatedTasks:1247",
+				"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:1320",
+				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1492",
+				"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531",
+				"src/runtime/agent-loop.ts/AgentLoop.buildTools:1744",
+				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1756",
+				"src/runtime/agent-loop.ts/AgentLoop.prependContext:1764",
+				"src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:1800",
+				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1824",
+				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1972",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:2116",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2210",
+				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2227",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:2234",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2253",
+				"src/runtime/agent-loop.ts/AgentLoop.apply:1434"
 			],
 			"description": "AgentLoop 类：单 turn 执行（run/resume/executeStream），retry + exp backoff，context-length prune + retry，streaming event emit"
 		},
@@ -330,15 +335,18 @@
 		},
 		{
 			"path": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"lines": 497,
+			"lines": 597,
 			"dir": "src/runtime/hooks",
 			"exports": [
+				"consumePendingForceSignal",
+				"buildCompressOpts",
 				"registerCompressionTriggerHooks",
 				"clearCompressionTriggerStateForSession",
 				"clearCompressionTriggerState",
 				"_setLastLLMCallForTest",
 				"_getLastLLMCallForTest",
-				"_setLastReductionForTest"
+				"_setLastReductionForTest",
+				"_getPendingForceSignalForTest"
 			],
 			"imports": [
 				"src/core/hook-registry.ts",
@@ -351,21 +359,24 @@
 				"src/core/logger.ts"
 			],
 			"functions": [
-				"src/runtime/hooks/compression-trigger-hooks.ts/markLastLLMCall:136",
-				"src/runtime/hooks/compression-trigger-hooks.ts/isCold:140",
-				"src/runtime/hooks/compression-trigger-hooks.ts/resetTurnState:146",
-				"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:165",
-				"src/runtime/hooks/compression-trigger-hooks.ts/exceedsThreshold:178",
-				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:204",
-				"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224",
-				"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:284",
-				"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307",
-				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:427",
-				"src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerStateForSession:455",
-				"src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerState:467",
-				"src/runtime/hooks/compression-trigger-hooks.ts/_setLastLLMCallForTest:478",
-				"src/runtime/hooks/compression-trigger-hooks.ts/_getLastLLMCallForTest:484",
-				"src/runtime/hooks/compression-trigger-hooks.ts/_setLastReductionForTest:493"
+				"src/runtime/hooks/compression-trigger-hooks.ts/requestForceCompress:180",
+				"src/runtime/hooks/compression-trigger-hooks.ts/consumePendingForceSignal:197",
+				"src/runtime/hooks/compression-trigger-hooks.ts/markLastLLMCall:203",
+				"src/runtime/hooks/compression-trigger-hooks.ts/isCold:207",
+				"src/runtime/hooks/compression-trigger-hooks.ts/resetTurnState:213",
+				"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:237",
+				"src/runtime/hooks/compression-trigger-hooks.ts/exceedsThreshold:250",
+				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:276",
+				"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:296",
+				"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:356",
+				"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379",
+				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:507",
+				"src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerStateForSession:543",
+				"src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerState:556",
+				"src/runtime/hooks/compression-trigger-hooks.ts/_setLastLLMCallForTest:568",
+				"src/runtime/hooks/compression-trigger-hooks.ts/_getLastLLMCallForTest:574",
+				"src/runtime/hooks/compression-trigger-hooks.ts/_setLastReductionForTest:583",
+				"src/runtime/hooks/compression-trigger-hooks.ts/_getPendingForceSignalForTest:594"
 			],
 			"description": ""
 		},
@@ -5159,12 +5170,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/summarizeArgs:98",
+			"id": "src/runtime/agent-loop.ts/summarizeArgs:113",
 			"name": "summarizeArgs",
 			"kind": "function",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 98,
-			"endLine": 102,
+			"line": 113,
+			"endLine": 117,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "function summarizeArgs(argsText: string)",
@@ -5172,12 +5183,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.buildCallerCtx:426",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.buildCallerCtx:464",
 			"name": "AgentLoop.buildCallerCtx",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 426,
-			"endLine": 526,
+			"line": 464,
+			"endLine": 564,
 			"statementCount": 21,
 			"exported": true,
 			"signature": "method buildCallerCtx(toolCallId: string)",
@@ -5185,69 +5196,90 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.run:540",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.run:578",
 			"name": "AgentLoop.run",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 540,
-			"endLine": 662,
-			"statementCount": 46,
+			"line": 578,
+			"endLine": 728,
+			"statementCount": 51,
 			"exported": true,
 			"signature": "method run(userMessage: string | UserContent, opts?: { ephemeral?: boolean })",
 			"description": "multimodal-input sub-4: run() now accepts `string | UserContent`. A bare\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2053",
+				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2227",
 				"src/runtime/concurrency-context.ts/turnSourceToTier:46",
 				"src/runtime/concurrency-context.ts/runInConcurrencyContext:81",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2079",
-				"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:973",
-				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1318",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:2060"
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2253",
+				"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:1147",
+				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1492",
+				"src/runtime/hooks/compression-trigger-hooks.ts/consumePendingForceSignal:197",
+				"src/runtime/agent-loop.ts/AgentLoop.coordinateForceCompress:868",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:2234"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.resume:681",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.resume:747",
 			"name": "AgentLoop.resume",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 681,
-			"endLine": 749,
-			"statementCount": 33,
+			"line": 747,
+			"endLine": 829,
+			"statementCount": 38,
 			"exported": true,
 			"signature": "method resume(interruptedTurnSeq?: number, lastCompletedStepSeq?: number)",
 			"description": "Step 2D: step-level resume. Reads the per-session `lastCompletedStepSeq`\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2053",
+				"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2227",
 				"src/runtime/concurrency-context.ts/turnSourceToTier:46",
 				"src/runtime/concurrency-context.ts/runInConcurrencyContext:81",
-				"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:847",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2079",
-				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1318",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:2060"
+				"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:1021",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2253",
+				"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1492",
+				"src/runtime/hooks/compression-trigger-hooks.ts/consumePendingForceSignal:197",
+				"src/runtime/agent-loop.ts/AgentLoop.coordinateForceCompress:868",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:2234"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.abort:751",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.abort:831",
 			"name": "AgentLoop.abort",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 751,
-			"endLine": 753,
+			"line": 831,
+			"endLine": 833,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method abort()",
 			"description": "",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.abort:751"
+				"src/runtime/agent-loop.ts/AgentLoop.abort:831"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.setTurnSource:765",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.coordinateForceCompress:868",
+			"name": "AgentLoop.coordinateForceCompress",
+			"kind": "method",
+			"file": "src/runtime/agent-loop.ts",
+			"line": 868,
+			"endLine": 927,
+			"statementCount": 17,
+			"exported": true,
+			"signature": "method coordinateForceCompress(reason: string)",
+			"description": "sub-3c Force档 coordination: run a memory ephemeral turn (sub-2) →\r",
+			"callees": [
+				"src/runtime/agent-loop.ts/AgentLoop.run:578",
+				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:276",
+				"src/server/compression-core.ts/compressSession:374"
+			]
+		},
+		{
+			"id": "src/runtime/agent-loop.ts/AgentLoop.setTurnSource:939",
 			"name": "AgentLoop.setTurnSource",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 765,
-			"endLine": 767,
+			"line": 939,
+			"endLine": 941,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method setTurnSource(source: import(\"./types.js\").TurnSource)",
@@ -5255,12 +5287,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getState:769",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getState:943",
 			"name": "AgentLoop.getState",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 769,
-			"endLine": 775,
+			"line": 943,
+			"endLine": 949,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getState()",
@@ -5268,12 +5300,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.isWaiting:784",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.isWaiting:958",
 			"name": "AgentLoop.isWaiting",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 784,
-			"endLine": 784,
+			"line": 958,
+			"endLine": 958,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method isWaiting()",
@@ -5281,73 +5313,73 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:795",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:969",
 			"name": "AgentLoop.interruptWaitForUserInput",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 795,
-			"endLine": 799,
+			"line": 969,
+			"endLine": 973,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method interruptWaitForUserInput()",
 			"description": "Fire the user-input wake source. Called by the server when a user message\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:795"
+				"src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:969"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.beginWaitSuspend:808",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.beginWaitSuspend:982",
 			"name": "AgentLoop.beginWaitSuspend",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 808,
-			"endLine": 812,
+			"line": 982,
+			"endLine": 986,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method beginWaitSuspend()",
 			"description": "sub-5: called by the Wait tool (via ctx.beginWait) right before it\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:2060"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:2234"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.endWaitSuspend:820",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.endWaitSuspend:994",
 			"name": "AgentLoop.endWaitSuspend",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 820,
-			"endLine": 825,
+			"line": 994,
+			"endLine": 999,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method endWaitSuspend(reason: string)",
 			"description": "sub-5: called by the Wait tool (via ctx.endWait) right after it resolves.\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:2060"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:2234"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:847",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:1021",
 			"name": "AgentLoop.detectAndResumePendingWait",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 847,
-			"endLine": 908,
+			"line": 1021,
+			"endLine": 1082,
 			"statementCount": 40,
 			"exported": true,
 			"signature": "method detectAndResumePendingWait()",
 			"description": "sub-5 (durable Wait resume): scan the last persisted step for a pending\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.beginWaitSuspend:808",
-				"src/runtime/agent-loop.ts/AgentLoop.endWaitSuspend:820"
+				"src/runtime/agent-loop.ts/AgentLoop.beginWaitSuspend:982",
+				"src/runtime/agent-loop.ts/AgentLoop.endWaitSuspend:994"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getLoopState:910",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getLoopState:1084",
 			"name": "AgentLoop.getLoopState",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 910,
-			"endLine": 915,
+			"line": 1084,
+			"endLine": 1089,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getLoopState()",
@@ -5355,42 +5387,42 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getRecentToolCalls:926",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getRecentToolCalls:1100",
 			"name": "AgentLoop.getRecentToolCalls",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 926,
-			"endLine": 933,
+			"line": 1100,
+			"endLine": 1107,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method getRecentToolCalls(n: number = 3)",
 			"description": "sub-4 (TaskGet recent-calls source): the last N tool-call blocks from this\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/summarizeArgs:98"
+				"src/runtime/agent-loop.ts/summarizeArgs:113"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getRecentSteps:946",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getRecentSteps:1120",
 			"name": "AgentLoop.getRecentSteps",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 946,
-			"endLine": 962,
+			"line": 1120,
+			"endLine": 1136,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method getRecentSteps(n: number = 3)",
 			"description": "platform-observability ① (sub-4): the last N steps' tool-call blocks,\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/summarizeArgs:98"
+				"src/runtime/agent-loop.ts/summarizeArgs:113"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getSessionTurns:968",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getSessionTurns:1142",
 			"name": "AgentLoop.getSessionTurns",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 968,
-			"endLine": 970,
+			"line": 1142,
+			"endLine": 1144,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getSessionTurns()",
@@ -5398,72 +5430,72 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:973",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:1147",
 			"name": "AgentLoop.refreshTurnsCache",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 973,
-			"endLine": 975,
+			"line": 1147,
+			"endLine": 1149,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method refreshTurnsCache()",
 			"description": "Refresh the cached turns from DB before UI session_init.",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:973"
+				"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:1147"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getContextWindow:978",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getContextWindow:1152",
 			"name": "AgentLoop.getContextWindow",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 978,
-			"endLine": 980,
+			"line": 1152,
+			"endLine": 1154,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getContextWindow()",
 			"description": "Get the context window for the current session model.",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:978"
+				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:1152"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:983",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:1157",
 			"name": "AgentLoop.getEstimatedTokens",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 983,
-			"endLine": 985,
+			"line": 1157,
+			"endLine": 1159,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getEstimatedTokens()",
 			"description": "Get estimated token count from restored messages.",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:983"
+				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:1157"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getContextUsage:988",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getContextUsage:1162",
 			"name": "AgentLoop.getContextUsage",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 988,
-			"endLine": 990,
+			"line": 1162,
+			"endLine": 1164,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getContextUsage()",
 			"description": "Get context usage ratio from restored messages.",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:988"
+				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:1162"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getModelId:997",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getModelId:1171",
 			"name": "AgentLoop.getModelId",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 997,
-			"endLine": 999,
+			"line": 1171,
+			"endLine": 1173,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getModelId()",
@@ -5471,12 +5503,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getModelMultimodalTri:1017",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getModelMultimodalTri:1191",
 			"name": "AgentLoop.getModelMultimodalTri",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1017,
-			"endLine": 1019,
+			"line": 1191,
+			"endLine": 1193,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getModelMultimodalTri()",
@@ -5486,12 +5518,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getResult:1021",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getResult:1195",
 			"name": "AgentLoop.getResult",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1021,
-			"endLine": 1023,
+			"line": 1195,
+			"endLine": 1197,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getResult()",
@@ -5499,12 +5531,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.resetSession:1025",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.resetSession:1199",
 			"name": "AgentLoop.resetSession",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1025,
-			"endLine": 1028,
+			"line": 1199,
+			"endLine": 1202,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method resetSession()",
@@ -5512,12 +5544,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getConfigAgentId:1031",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getConfigAgentId:1205",
 			"name": "AgentLoop.getConfigAgentId",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1031,
-			"endLine": 1033,
+			"line": 1205,
+			"endLine": 1207,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getConfigAgentId()",
@@ -5525,27 +5557,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:1043",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:1217",
 			"name": "AgentLoop.getRuntimeTaskTree",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1043,
-			"endLine": 1050,
+			"line": 1217,
+			"endLine": 1224,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method getRuntimeTaskTree()",
 			"description": "Flat list of this loop's live in-memory tasks (its delegator's\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:1043"
+				"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:1217"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.restoreDelegatedTasks:1073",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.restoreDelegatedTasks:1247",
 			"name": "AgentLoop.restoreDelegatedTasks",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1073,
-			"endLine": 1131,
+			"line": 1247,
+			"endLine": 1305,
 			"statementCount": 16,
 			"exported": true,
 			"signature": "method restoreDelegatedTasks(records: DelegatedTaskRecord[])",
@@ -5553,12 +5585,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:1146",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:1320",
 			"name": "AgentLoop.applyConfigUpdate",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1146,
-			"endLine": 1306,
+			"line": 1320,
+			"endLine": 1480,
 			"statementCount": 42,
 			"exported": true,
 			"signature": "method applyConfigUpdate(patch: {\r\n\t\tsystemPrompt?: string;\r\n\t\ttoolPolicy?: SessionConfig[\"toolPolicy\"];\r\n\t\tsubagents?: SessionConfig[\"subagents\"];\r\n\t\twikiAnchors?: SessionConfig[\"wikiAnchors\"];\r\n\t\t/**\r\n\t\t * N4 (runtime-push-ui-sync, invariant 1): model / provider hot-sync.\r\n\t\t * Written back to this.config.{providerName,modelId}; executeStream\r\n\t\t * re-resolves the model every turn via resolveModel(providers,\r\n\t\t * this.config.providerName, this.config.modelId) (L588), so the next\r\n\t\t * turn picks them up with no cache invalidation needed. Undefined is\r\n\t\t * treated as \"no change\" (mirrors the other fields' !== undefined guard)\r\n\t\t * so the caller may pass the new agent record verbatim.\r\n\t\t */\r\n\t\tproviderName?: string;\r\n\t\tmodelId?: string;\r\n\t\t/**\r\n\t\t * N4 (runtime-push-ui-sync, invariant 1): thinkingLevel hot-sync. Written\r\n\t\t * back to this.config.thinkingLevel; the PreLLMCall provider-options hook\r\n\t\t * (provider-options-hooks.ts) re-reads ctx.config.thinkingLevel every\r\n\t\t * turn, so the next turn's providerOptions reflect the new value with no\r\n\t\t * cache invalidation needed. Undefined = no change.\r\n\t\t */\r\n\t\tthinkingLevel?: string;\r\n\t\t/**\r\n\t\t * agent-context-fields C1: per-agent context-block toggle. Written back to\r\n\t\t * this.config.contextConfig; buildContextMessage re-reads it every turn to\r\n\t\t * gate the Environment section. Only affects the per-turn <context> block,\r\n\t\t * never the system prompt (promptAssembler base), so no invalidation.\r\n\t\t * Undefined = no change.\r\n\t\t */\r\n\t\tcontextConfig?: { useDeviceContext?: boolean };\r\n\t\t/**\r\n\t\t * Capability service handles (management / wikiStore / requirementStore /\r\n\t\t * pmService) recomputed by agent-service against the NEW toolPolicy.\r\n\t\t * buildToolsSet reads toolPolicy fresh every turn, so without these the\r\n\t\t * policy could enable e.g. Wiki on a running loop while toolContext still\r\n\t\t * lacks wikiStore → the tool would be offered but fail at call time (and\r\n\t\t * capabilityHandlesFor warns). The caller passes the handles it wants\r\n\t\t * surfaced; we mirror them onto the tool context so a tool newly enabled\r\n\t\t * by policy actually works.\r\n\t\t */\r\n\t\tcapabilities?: { management?: unknown; wikiStore?: unknown; requirementStore?: unknown; pmService?: unknown };\r\n\t\t/**\r\n\t\t * sub-7 (work-context → system): replacement server-built closure for the\r\n\t\t * Project / Requirement / Wiki Baseline system section. Pass when the\r\n\t\t * activeRequirement / workId changes on a RUNNING loop so the next turn's\r\n\t\t * `work-context` section re-renders the new requirement. Mirrors the\r\n\t\t * wikiAnchors hot-swap pattern. Undefined = no change.\r\n\t\t */\r\n\t\tworkContextSystemSection?: SessionConfig[\"workContextSystemSection\"];\r\n\t\t/**\r\n\t\t * sub-7: replacement server-built closure for the Steps Progress\r\n\t\t * workbench section. Same hot-swap semantics as workContextSystemSection.\r\n\t\t */\r\n\t\tstepsProgressSection?: SessionConfig[\"stepsProgressSection\"];\r\n\t\t/**\r\n\t\t * skill-system sub-9: replacement server-built closure for the skills\r\n\t\t * system section (Available Skills list). Pass when\r\n\t\t * the agent's skillPolicy (enabledSkills) changes on a\r\n\t\t * RUNNING loop so the next turn's `skills` section re-renders. Same\r\n\t\t * hot-swap + invalidate pattern as workContextSystemSection. Undefined =\r\n\t\t * no change. The section is cacheBreak:false (re-reads each turn), but\r\n\t\t * we invalidate anyway so the swap is visible immediately.\r\n\t\t */\r\n\t\tgetSkillSection?: SessionConfig[\"getSkillSection\"];\r\n\t})",
@@ -5570,56 +5602,56 @@
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1318",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1492",
 			"name": "AgentLoop.runWithRetry",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1318,
-			"endLine": 1353,
+			"line": 1492,
+			"endLine": 1527,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method runWithRetry()",
 			"description": "",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357",
+				"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531",
 				"src/runtime/agent-utils.ts/classifyError:36",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2079",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2253",
 				"src/runtime/agent-utils.ts/userFriendlyMessage:54",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:2060"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:2234"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.executeStream:1357",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.executeStream:1531",
 			"name": "AgentLoop.executeStream",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1357,
-			"endLine": 1568,
+			"line": 1531,
+			"endLine": 1742,
 			"statementCount": 48,
 			"exported": true,
 			"signature": "method executeStream()",
 			"description": "",
 			"callees": [
 				"src/runtime/provider-factory.ts/resolveModel:44",
-				"src/runtime/agent-loop.ts/AgentLoop.buildTools:1570",
-				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1582",
+				"src/runtime/agent-loop.ts/AgentLoop.buildTools:1744",
+				"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1756",
 				"src/runtime/context-message.ts/buildContextMessage:40",
-				"src/runtime/agent-loop.ts/AgentLoop.prependContext:1590",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2079",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:2060",
+				"src/runtime/agent-loop.ts/AgentLoop.prependContext:1764",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2253",
+				"src/runtime/agent-loop.ts/AgentLoop.emit:2234",
 				"src/runtime/workbench.ts/renderWorkbench:51",
-				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1650",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1942",
-				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2036"
+				"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1824",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:2116",
+				"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2210"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.buildTools:1570",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.buildTools:1744",
 			"name": "AgentLoop.buildTools",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1570,
-			"endLine": 1580,
+			"line": 1744,
+			"endLine": 1754,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method buildTools()",
@@ -5627,12 +5659,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1582",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1756",
 			"name": "AgentLoop.assembleSystemPrompt",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1582,
-			"endLine": 1588,
+			"line": 1756,
+			"endLine": 1762,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method assembleSystemPrompt()",
@@ -5640,12 +5672,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.prependContext:1590",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.prependContext:1764",
 			"name": "AgentLoop.prependContext",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1590,
-			"endLine": 1617,
+			"line": 1764,
+			"endLine": 1791,
 			"statementCount": 14,
 			"exported": true,
 			"signature": "method prependContext(messages: any[], ctx: string | null)",
@@ -5653,12 +5685,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:1626",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.resolveGlobalWikiStore:1800",
 			"name": "AgentLoop.resolveGlobalWikiStore",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1626,
-			"endLine": 1636,
+			"line": 1800,
+			"endLine": 1810,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method resolveGlobalWikiStore(config: SessionConfig)",
@@ -5666,98 +5698,98 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1650",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1824",
 			"name": "AgentLoop.runOneStepWithRetry",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1650,
-			"endLine": 1787,
+			"line": 1824,
+			"endLine": 1961,
 			"statementCount": 48,
 			"exported": true,
 			"signature": "method runOneStepWithRetry(opts: {\r\n\t\tmodel: any;\r\n\t\tsystem: string;\r\n\t\tmessages: any[];\r\n\t\ttools: Record<string, any>;\r\n\t\tproviderOptions: Record<string, Record<string, any>>;\r\n\t\tstepNumber: number;\r\n\t})",
 			"description": "Step 2C: run a single step (one streamText with stopWhen: stepCountIs(1))\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.buildCallerCtx:426",
-				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1798",
+				"src/runtime/agent-loop.ts/AgentLoop.buildCallerCtx:464",
+				"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1972",
 				"src/runtime/agent-utils.ts/classifyError:36",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2079",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2253",
 				"src/runtime/agent-utils.ts/isTransientError:50",
-				"src/runtime/agent-loop.ts/AgentLoop.emit:2060"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:2234"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1798",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1972",
 			"name": "AgentLoop.processStreamEvents",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1798,
-			"endLine": 1933,
+			"line": 1972,
+			"endLine": 2107,
 			"statementCount": 66,
 			"exported": true,
 			"signature": "method processStreamEvents(result: any, stepNumber: number)",
 			"description": "Step 2C: consume one step's fullStream. Returns a summary (tool-call flag,\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:2060",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2079"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:2234",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2253"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1942",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:2116",
 			"name": "AgentLoop.finalizeOneStep",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1942,
-			"endLine": 2034,
+			"line": 2116,
+			"endLine": 2208,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method finalizeOneStep(usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }, stepNumber?: number, durationMs?: number)",
 			"description": "Step 2C: finalize ONE successful step. Seals the recorder step with its\r",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:2060",
-				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2079",
-				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:988"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:2234",
+				"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2253",
+				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:1162"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2036",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2210",
 			"name": "AgentLoop.finalizeStream",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 2036,
-			"endLine": 2049,
+			"line": 2210,
+			"endLine": 2223,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method finalizeStream(pendingPersist: any[])",
 			"description": "",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.emit:2060",
-				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:988",
-				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:978",
-				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:983"
+				"src/runtime/agent-loop.ts/AgentLoop.emit:2234",
+				"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:1162",
+				"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:1152",
+				"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:1157"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2053",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2227",
 			"name": "AgentLoop.setupTimeout",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 2053,
-			"endLine": 2056,
+			"line": 2227,
+			"endLine": 2230,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method setupTimeout()",
 			"description": "",
 			"callees": [
-				"src/runtime/agent-loop.ts/AgentLoop.abort:751"
+				"src/runtime/agent-loop.ts/AgentLoop.abort:831"
 			]
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.emit:2060",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.emit:2234",
 			"name": "AgentLoop.emit",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 2060,
-			"endLine": 2067,
+			"line": 2234,
+			"endLine": 2241,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method emit(event: StreamEvent)",
@@ -5765,12 +5797,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2079",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2253",
 			"name": "AgentLoop.triggerLocal",
 			"kind": "method",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 2079,
-			"endLine": 2088,
+			"line": 2253,
+			"endLine": 2262,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method triggerLocal(event: import(\"../core/hook-types.js\").HookEventName, ctx: Record<string, unknown>)",
@@ -5778,12 +5810,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/agent-loop.ts/AgentLoop.apply:1260",
+			"id": "src/runtime/agent-loop.ts/AgentLoop.apply:1434",
 			"name": "AgentLoop.apply",
 			"kind": "arrow",
 			"file": "src/runtime/agent-loop.ts",
-			"line": 1260,
-			"endLine": 1264,
+			"line": 1434,
+			"endLine": 1438,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "fn (field: \"management\" | \"wikiStore\" | \"requirementStore\" | \"pmService\")",
@@ -6137,12 +6169,38 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/markLastLLMCall:136",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/requestForceCompress:180",
+			"name": "requestForceCompress",
+			"kind": "function",
+			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
+			"line": 180,
+			"endLine": 184,
+			"statementCount": 2,
+			"exported": false,
+			"signature": "function requestForceCompress(sessionId: string, reason: string)",
+			"description": "Set the Force档 signal for a session. Overwrites if already set (the\r",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/consumePendingForceSignal:197",
+			"name": "consumePendingForceSignal",
+			"kind": "function",
+			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
+			"line": 197,
+			"endLine": 201,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "function consumePendingForceSignal(sessionId: string)",
+			"description": "Atomically read + clear the Force档 signal for a session. Called by\r",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/markLastLLMCall:203",
 			"name": "markLastLLMCall",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 136,
-			"endLine": 138,
+			"line": 203,
+			"endLine": 205,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function markLastLLMCall(sessionId: string, ts: number)",
@@ -6150,12 +6208,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/isCold:140",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/isCold:207",
 			"name": "isCold",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 140,
-			"endLine": 144,
+			"line": 207,
+			"endLine": 211,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "function isCold(sessionId: string, cacheTtlMs: number, now: number)",
@@ -6163,25 +6221,25 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/resetTurnState:146",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/resetTurnState:213",
 			"name": "resetTurnState",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 146,
-			"endLine": 151,
-			"statementCount": 1,
+			"line": 213,
+			"endLine": 223,
+			"statementCount": 2,
 			"exported": false,
 			"signature": "function resetTurnState(sessionId: string)",
 			"description": "",
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:165",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:237",
 			"name": "readTokenState",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 165,
-			"endLine": 176,
+			"line": 237,
+			"endLine": 248,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function readTokenState(db: SessionDB, sessionId: string, providers: RuntimeProviderConfig[], config: SessionConfig)",
@@ -6191,12 +6249,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/exceedsThreshold:178",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/exceedsThreshold:250",
 			"name": "exceedsThreshold",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 178,
-			"endLine": 182,
+			"line": 250,
+			"endLine": 254,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "function exceedsThreshold(state: TokenState, abs: number, frac: number)",
@@ -6204,14 +6262,14 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:204",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:276",
 			"name": "buildCompressOpts",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 204,
-			"endLine": 217,
+			"line": 276,
+			"endLine": 289,
 			"statementCount": 9,
-			"exported": false,
+			"exported": true,
 			"signature": "function buildCompressOpts(config: SessionConfig, providers: RuntimeProviderConfig[])",
 			"description": "Build compressSession opts from the session config.\r",
 			"callees": [
@@ -6219,28 +6277,28 @@
 			]
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/runCompression:296",
 			"name": "runCompression",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 224,
-			"endLine": 278,
+			"line": 296,
+			"endLine": 350,
 			"statementCount": 27,
 			"exported": false,
 			"signature": "function runCompression(sessionId: string, db: SessionDB, config: SessionConfig, providers: RuntimeProviderConfig[], reason: string)",
 			"description": "Run compressSession, guarded against re-entry and per-turn double-fire.\r",
 			"callees": [
 				"src/server/compression-core.ts/compressSession:374",
-				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:204"
+				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:276"
 			]
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:284",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:356",
 			"name": "resolveCacheTtl",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 284,
-			"endLine": 291,
+			"line": 356,
+			"endLine": 363,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "function resolveCacheTtl(providers: RuntimeProviderConfig[], providerName: string)",
@@ -6248,34 +6306,35 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379",
 			"name": "registerCompressionTriggerHooks",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 307,
-			"endLine": 421,
+			"line": 379,
+			"endLine": 501,
 			"statementCount": 56,
 			"exported": true,
 			"signature": "function registerCompressionTriggerHooks(deps: CompressionTriggerHooksDeps, registry: HookRegistry = HookRegistry.getInstance())",
 			"description": "Register the compression trigger hooks. Idempotent. All four trigger seams\r",
 			"callees": [
-				"src/runtime/hooks/compression-trigger-hooks.ts/resetTurnState:146",
-				"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:284",
-				"src/runtime/hooks/compression-trigger-hooks.ts/isCold:140",
-				"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:165",
-				"src/runtime/hooks/compression-trigger-hooks.ts/exceedsThreshold:178",
-				"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224",
-				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:427",
-				"src/runtime/hooks/compression-trigger-hooks.ts/markLastLLMCall:136"
+				"src/runtime/hooks/compression-trigger-hooks.ts/resetTurnState:213",
+				"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:356",
+				"src/runtime/hooks/compression-trigger-hooks.ts/isCold:207",
+				"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:237",
+				"src/runtime/hooks/compression-trigger-hooks.ts/exceedsThreshold:250",
+				"src/runtime/hooks/compression-trigger-hooks.ts/requestForceCompress:180",
+				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:507",
+				"src/runtime/hooks/compression-trigger-hooks.ts/markLastLLMCall:203",
+				"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:296"
 			]
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:427",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:507",
 			"name": "buildCompressionReminder",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 427,
-			"endLine": 437,
+			"line": 507,
+			"endLine": 524,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "function buildCompressionReminder(state: TokenState)",
@@ -6283,38 +6342,38 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerStateForSession:455",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerStateForSession:543",
 			"name": "clearCompressionTriggerStateForSession",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 455,
-			"endLine": 460,
-			"statementCount": 4,
+			"line": 543,
+			"endLine": 549,
+			"statementCount": 5,
 			"exported": true,
 			"signature": "function clearCompressionTriggerStateForSession(sessionId: string)",
 			"description": "steps-overhaul sub-8 (archive): clear ALL in-memory state this module holds\r",
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerState:467",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerState:556",
 			"name": "clearCompressionTriggerState",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 467,
-			"endLine": 472,
-			"statementCount": 4,
+			"line": 556,
+			"endLine": 562,
+			"statementCount": 5,
 			"exported": true,
 			"signature": "function clearCompressionTriggerState()",
 			"description": "Test-only: clear all in-memory cache/turn state.",
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_setLastLLMCallForTest:478",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_setLastLLMCallForTest:568",
 			"name": "_setLastLLMCallForTest",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 478,
-			"endLine": 481,
+			"line": 568,
+			"endLine": 571,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "function _setLastLLMCallForTest(sessionId: string, ts: number | undefined)",
@@ -6322,12 +6381,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_getLastLLMCallForTest:484",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_getLastLLMCallForTest:574",
 			"name": "_getLastLLMCallForTest",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 484,
-			"endLine": 486,
+			"line": 574,
+			"endLine": 576,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function _getLastLLMCallForTest(sessionId: string)",
@@ -6335,16 +6394,29 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_setLastReductionForTest:493",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_setLastReductionForTest:583",
 			"name": "_setLastReductionForTest",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 493,
-			"endLine": 496,
+			"line": 583,
+			"endLine": 586,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "function _setLastReductionForTest(sessionId: string, frac: number | undefined)",
 			"description": "Test-only: directly set the last-compression reduction fraction for a session,\r",
+			"callees": []
+		},
+		{
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_getPendingForceSignalForTest:594",
+			"name": "_getPendingForceSignalForTest",
+			"kind": "function",
+			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
+			"line": 594,
+			"endLine": 596,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "function _getPendingForceSignalForTest(sessionId: string)",
+			"description": "Test-only (sub-3c): read the pending Force档 signal for a session WITHOUT\r",
 			"callees": []
 		},
 		{
@@ -6431,7 +6503,7 @@
 				"src/runtime/hooks/todo-cleanup-hooks.ts/registerTodoCleanupHooks:29",
 				"src/runtime/hooks/force-wait-hooks.ts/registerForceWaitHooks:74",
 				"src/runtime/hooks/extraction-hooks.ts/registerExtractionHooks:68",
-				"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307",
+				"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379",
 				"src/runtime/hooks/input-queue-hooks.ts/registerInputQueueHooks:39",
 				"src/server/metrics-hooks.ts/registerMetricsHooks:31",
 				"src/runtime/hooks/task-control-hooks.ts/registerTaskControlHooks:67"
@@ -23311,145 +23383,165 @@
 		"src/main/ipc-proxy.ts/pollReady:478": [
 			"src/main/ipc-proxy.ts/connectEventBridge:423"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2053": [
-			"src/runtime/agent-loop.ts/AgentLoop.run:540",
-			"src/runtime/agent-loop.ts/AgentLoop.resume:681"
+		"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2227": [
+			"src/runtime/agent-loop.ts/AgentLoop.run:578",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:747"
 		],
 		"src/runtime/concurrency-context.ts/turnSourceToTier:46": [
-			"src/runtime/agent-loop.ts/AgentLoop.run:540",
-			"src/runtime/agent-loop.ts/AgentLoop.resume:681"
+			"src/runtime/agent-loop.ts/AgentLoop.run:578",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:747"
 		],
 		"src/runtime/concurrency-context.ts/runInConcurrencyContext:81": [
-			"src/runtime/agent-loop.ts/AgentLoop.run:540",
-			"src/runtime/agent-loop.ts/AgentLoop.resume:681"
+			"src/runtime/agent-loop.ts/AgentLoop.run:578",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:747"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2079": [
-			"src/runtime/agent-loop.ts/AgentLoop.run:540",
-			"src/runtime/agent-loop.ts/AgentLoop.resume:681",
-			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1318",
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357",
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1650",
-			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1798",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1942"
+		"src/runtime/agent-loop.ts/AgentLoop.triggerLocal:2253": [
+			"src/runtime/agent-loop.ts/AgentLoop.run:578",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:747",
+			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1492",
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531",
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1824",
+			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1972",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:2116"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:973": [
-			"src/runtime/agent-loop.ts/AgentLoop.run:540",
-			"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:973"
+		"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:1147": [
+			"src/runtime/agent-loop.ts/AgentLoop.run:578",
+			"src/runtime/agent-loop.ts/AgentLoop.refreshTurnsCache:1147"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1318": [
-			"src/runtime/agent-loop.ts/AgentLoop.run:540",
-			"src/runtime/agent-loop.ts/AgentLoop.resume:681"
+		"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1492": [
+			"src/runtime/agent-loop.ts/AgentLoop.run:578",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:747"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.emit:2060": [
-			"src/runtime/agent-loop.ts/AgentLoop.run:540",
-			"src/runtime/agent-loop.ts/AgentLoop.resume:681",
-			"src/runtime/agent-loop.ts/AgentLoop.beginWaitSuspend:808",
-			"src/runtime/agent-loop.ts/AgentLoop.endWaitSuspend:820",
-			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1318",
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357",
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1650",
-			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1798",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1942",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2036"
+		"src/runtime/hooks/compression-trigger-hooks.ts/consumePendingForceSignal:197": [
+			"src/runtime/agent-loop.ts/AgentLoop.run:578",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:747"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:847": [
-			"src/runtime/agent-loop.ts/AgentLoop.resume:681"
+		"src/runtime/agent-loop.ts/AgentLoop.coordinateForceCompress:868": [
+			"src/runtime/agent-loop.ts/AgentLoop.run:578",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:747"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.abort:751": [
-			"src/runtime/agent-loop.ts/AgentLoop.abort:751",
-			"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2053"
+		"src/runtime/agent-loop.ts/AgentLoop.emit:2234": [
+			"src/runtime/agent-loop.ts/AgentLoop.run:578",
+			"src/runtime/agent-loop.ts/AgentLoop.resume:747",
+			"src/runtime/agent-loop.ts/AgentLoop.beginWaitSuspend:982",
+			"src/runtime/agent-loop.ts/AgentLoop.endWaitSuspend:994",
+			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1492",
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531",
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1824",
+			"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1972",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:2116",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2210"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:795": [
-			"src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:795"
+		"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:1021": [
+			"src/runtime/agent-loop.ts/AgentLoop.resume:747"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.beginWaitSuspend:808": [
-			"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:847"
+		"src/runtime/agent-loop.ts/AgentLoop.abort:831": [
+			"src/runtime/agent-loop.ts/AgentLoop.abort:831",
+			"src/runtime/agent-loop.ts/AgentLoop.setupTimeout:2227"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.endWaitSuspend:820": [
-			"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:847"
+		"src/runtime/agent-loop.ts/AgentLoop.run:578": [
+			"src/runtime/agent-loop.ts/AgentLoop.coordinateForceCompress:868"
 		],
-		"src/runtime/agent-loop.ts/summarizeArgs:98": [
-			"src/runtime/agent-loop.ts/AgentLoop.getRecentToolCalls:926",
-			"src/runtime/agent-loop.ts/AgentLoop.getRecentSteps:946"
+		"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:276": [
+			"src/runtime/agent-loop.ts/AgentLoop.coordinateForceCompress:868",
+			"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:296"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:978": [
-			"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:978",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2036"
+		"src/server/compression-core.ts/compressSession:374": [
+			"src/runtime/agent-loop.ts/AgentLoop.coordinateForceCompress:868",
+			"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:296",
+			"src/server/archive-service.ts/archiveSession:290"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:983": [
-			"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:983",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2036"
+		"src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:969": [
+			"src/runtime/agent-loop.ts/AgentLoop.interruptWaitForUserInput:969"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:988": [
-			"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:988",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1942",
-			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2036"
+		"src/runtime/agent-loop.ts/AgentLoop.beginWaitSuspend:982": [
+			"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:1021"
+		],
+		"src/runtime/agent-loop.ts/AgentLoop.endWaitSuspend:994": [
+			"src/runtime/agent-loop.ts/AgentLoop.detectAndResumePendingWait:1021"
+		],
+		"src/runtime/agent-loop.ts/summarizeArgs:113": [
+			"src/runtime/agent-loop.ts/AgentLoop.getRecentToolCalls:1100",
+			"src/runtime/agent-loop.ts/AgentLoop.getRecentSteps:1120"
+		],
+		"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:1152": [
+			"src/runtime/agent-loop.ts/AgentLoop.getContextWindow:1152",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2210"
+		],
+		"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:1157": [
+			"src/runtime/agent-loop.ts/AgentLoop.getEstimatedTokens:1157",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2210"
+		],
+		"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:1162": [
+			"src/runtime/agent-loop.ts/AgentLoop.getContextUsage:1162",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:2116",
+			"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2210"
 		],
 		"src/runtime/provider-factory.ts/getMultimodalTri:169": [
-			"src/runtime/agent-loop.ts/AgentLoop.getModelMultimodalTri:1017"
+			"src/runtime/agent-loop.ts/AgentLoop.getModelMultimodalTri:1191"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:1043": [
-			"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:1043"
+		"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:1217": [
+			"src/runtime/agent-loop.ts/AgentLoop.getRuntimeTaskTree:1217"
 		],
 		"src/runtime/provider-factory.ts/getMultimodal:146": [
-			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:1146"
+			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:1320"
 		],
 		"src/runtime/wiki-anchor-injection.ts/resolveAnchors:155": [
-			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:1146",
+			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:1320",
 			"src/server/wiki-router.ts/createWikiRouter:63"
 		],
 		"src/runtime/wiki-anchor-injection.ts/anchorNodeIds:228": [
-			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:1146"
+			"src/runtime/agent-loop.ts/AgentLoop.applyConfigUpdate:1320"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357": [
-			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1318"
+		"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531": [
+			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1492"
 		],
 		"src/runtime/agent-utils.ts/classifyError:36": [
-			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1318",
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1650"
+			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1492",
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1824"
 		],
 		"src/runtime/agent-utils.ts/userFriendlyMessage:54": [
-			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1318"
+			"src/runtime/agent-loop.ts/AgentLoop.runWithRetry:1492"
 		],
 		"src/runtime/provider-factory.ts/resolveModel:44": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357",
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531",
 			"src/server/compression-core.ts/compressSession:374",
 			"src/server/extractor-a-service.ts/ExtractorAService.runAgentLoop:350",
 			"src/server/extractor-b-service.ts/ExtractorBService.callLLM:176",
 			"src/server/tool-execution-router.ts/createToolExecutionRouter:39"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.buildTools:1570": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357"
+		"src/runtime/agent-loop.ts/AgentLoop.buildTools:1744": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1582": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357"
+		"src/runtime/agent-loop.ts/AgentLoop.assembleSystemPrompt:1756": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531"
 		],
 		"src/runtime/context-message.ts/buildContextMessage:40": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357"
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.prependContext:1590": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357"
+		"src/runtime/agent-loop.ts/AgentLoop.prependContext:1764": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531"
 		],
 		"src/runtime/workbench.ts/renderWorkbench:51": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357"
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1650": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357"
+		"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1824": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:1942": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357"
+		"src/runtime/agent-loop.ts/AgentLoop.finalizeOneStep:2116": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2036": [
-			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357"
+		"src/runtime/agent-loop.ts/AgentLoop.finalizeStream:2210": [
+			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1531"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.buildCallerCtx:426": [
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1650"
+		"src/runtime/agent-loop.ts/AgentLoop.buildCallerCtx:464": [
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1824"
 		],
-		"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1798": [
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1650"
+		"src/runtime/agent-loop.ts/AgentLoop.processStreamEvents:1972": [
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1824"
 		],
 		"src/runtime/agent-utils.ts/isTransientError:50": [
-			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1650"
+			"src/runtime/agent-loop.ts/AgentLoop.runOneStepWithRetry:1824"
 		],
 		"src/runtime/checkpoint-manager.ts/CheckpointManager.saveUserTurn:55": [
 			"src/runtime/checkpoint-manager.ts/CheckpointManager.saveUserTurn:55"
@@ -23462,39 +23554,35 @@
 			"src/runtime/context-message.ts/buildContextMessage:40"
 		],
 		"src/runtime/provider-factory.ts/getContextWindow:121": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:165",
-			"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:204"
+			"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:237",
+			"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:276"
 		],
-		"src/server/compression-core.ts/compressSession:374": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224",
-			"src/server/archive-service.ts/archiveSession:290"
+		"src/runtime/hooks/compression-trigger-hooks.ts/resetTurnState:213": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:204": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224"
+		"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:356": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/resetTurnState:146": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
+		"src/runtime/hooks/compression-trigger-hooks.ts/isCold:207": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:284": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
+		"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:237": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/isCold:140": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
+		"src/runtime/hooks/compression-trigger-hooks.ts/exceedsThreshold:250": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:165": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
+		"src/runtime/hooks/compression-trigger-hooks.ts/requestForceCompress:180": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/exceedsThreshold:178": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
+		"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:507": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
+		"src/runtime/hooks/compression-trigger-hooks.ts/markLastLLMCall:203": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:427": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
-		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/markLastLLMCall:136": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
+		"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:296": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379"
 		],
 		"src/runtime/hooks/turn-hooks.ts/registerTurnHooks:53": [
 			"src/runtime/hooks/index.ts/registerHooksForLoop:139"
@@ -23517,7 +23605,7 @@
 		"src/runtime/hooks/extraction-hooks.ts/registerExtractionHooks:68": [
 			"src/runtime/hooks/index.ts/registerHooksForLoop:139"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307": [
+		"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:379": [
 			"src/runtime/hooks/index.ts/registerHooksForLoop:139"
 		],
 		"src/runtime/hooks/input-queue-hooks.ts/registerInputQueueHooks:39": [
@@ -26194,23 +26282,17 @@
 			"src/runtime/agent-loop.ts",
 			"src/server/wiki-router.ts"
 		],
-		"src/runtime/session-store-interface.ts": [
-			"src/runtime/checkpoint-manager.ts",
-			"src/runtime/hooks/index.ts",
-			"src/runtime/hooks/task-control-hooks.ts",
-			"src/runtime/hooks/turn-hooks.ts",
-			"src/runtime/session.ts",
-			"src/runtime/transcript-delta.ts",
-			"src/runtime/turn-recorder.ts",
-			"src/runtime/types.ts",
-			"src/server/compression-core.ts"
+		"src/runtime/hooks/compression-trigger-hooks.ts": [
+			"src/runtime/agent-loop.ts",
+			"src/runtime/hooks/index.ts"
 		],
-		"src/core/hook-types.ts": [
+		"src/server/compression-core.ts": [
+			"src/runtime/agent-loop.ts",
 			"src/runtime/hooks/compression-trigger-hooks.ts",
-			"src/server/metrics-hooks.ts",
-			"src/core/hook-registry.ts"
+			"src/server/archive-service.ts"
 		],
 		"src/server/session-db.ts": [
+			"src/runtime/agent-loop.ts",
 			"src/runtime/hooks/compression-trigger-hooks.ts",
 			"src/runtime/hooks/index.ts",
 			"src/server/agent-router.ts",
@@ -26252,9 +26334,21 @@
 			"src/server/workspace-config.ts",
 			"src/core/test-seed.ts"
 		],
-		"src/server/compression-core.ts": [
+		"src/runtime/session-store-interface.ts": [
+			"src/runtime/checkpoint-manager.ts",
+			"src/runtime/hooks/index.ts",
+			"src/runtime/hooks/task-control-hooks.ts",
+			"src/runtime/hooks/turn-hooks.ts",
+			"src/runtime/session.ts",
+			"src/runtime/transcript-delta.ts",
+			"src/runtime/turn-recorder.ts",
+			"src/runtime/types.ts",
+			"src/server/compression-core.ts"
+		],
+		"src/core/hook-types.ts": [
 			"src/runtime/hooks/compression-trigger-hooks.ts",
-			"src/server/archive-service.ts"
+			"src/server/metrics-hooks.ts",
+			"src/core/hook-registry.ts"
 		],
 		"src/runtime/task-registry.ts": [
 			"src/runtime/hooks/force-wait-hooks.ts",
@@ -26262,9 +26356,6 @@
 			"src/runtime/subagent-delegator.ts"
 		],
 		"src/runtime/hooks/extraction-hooks.ts": [
-			"src/runtime/hooks/index.ts"
-		],
-		"src/runtime/hooks/compression-trigger-hooks.ts": [
 			"src/runtime/hooks/index.ts"
 		],
 		"src/runtime/hooks/force-wait-hooks.ts": [

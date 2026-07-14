@@ -32,6 +32,7 @@ import {
 	_setLastLLMCallForTest,
 	_getLastLLMCallForTest,
 	_setLastReductionForTest,
+	_getPendingForceSignalForTest,
 } from "../../src/runtime/hooks/compression-trigger-hooks.js";
 import type { SessionConfig, RuntimeProviderConfig } from "../../src/runtime/types.js";
 
@@ -208,30 +209,46 @@ describe("steps-overhaul sub-5: compression trigger hooks", () => {
 		const summariesBefore = db.getSummaries("s1").length;
 		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 2 });
 		expect(db.getSummaries("s1").length).toBe(summariesBefore);
+		// And no Force signal set (hot path doesn't signal).
+		expect(_getPendingForceSignalForTest("s1")).toBeUndefined();
 
 		// Now set lastLLMCall to 10 minutes ago → cold.
 		_setLastLLMCallForTest("s1", Date.now() - 600_000);
 		// Need steps to compress. Seed a padded turn then compress preflight fires.
 		seedTurn(db, "s1", 0);
 		seedTurn(db, "s1", 2);
+		const summariesBeforeCold = db.getSummaries("s1").length;
+		// sub-3c: cold+over-threshold now SETS THE FORCE SIGNAL instead of
+		// compressing directly (AgentLoop coordinates at the turn boundary).
 		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 2 });
-		expect(db.getSummaries("s1").length).toBeGreaterThan(0);
+		expect(_getPendingForceSignalForTest("s1"),
+			"cold + over-threshold sets Force signal (sub-3c)").toBeDefined();
+		expect(db.getSummaries("s1").length,
+			"hook does NOT compress directly (sub-3c signal-based)").toBe(summariesBeforeCold);
 	});
 
 	// ── 冷路径 StepEnd ───────────────────────────────────────────────────
 
-	test("StepEnd cold path: cold + over threshold → compresses (mid-turn allowed)", async () => {
+	test("StepEnd cold path: cold + over threshold → sets Force signal (sub-3c, mid-turn allowed)", async () => {
 		seedTurn(db, "s1", 0);
 		seedTurn(db, "s1", 2);
 		// Make cold (10 min ago) and over threshold.
 		_setLastLLMCallForTest("s1", Date.now() - 600_000);
+		const summariesBefore = db.getSummaries("s1").length;
+		const cursorBefore = db.getCompressionCursor("s1") ?? 0;
 		// StepEnd stamps token_usage from ctx.usage first, then evaluates.
 		await fire(reg, "StepEnd", db, {
 			sessionId: "s1", stepNumber: 3,
 			usage: { inputTokens: 150_000, outputTokens: 500, totalTokens: 150_500 },
 		});
-		expect(db.getSummaries("s1").length).toBeGreaterThan(0);
-		expect(db.getCompressionCursor("s1")).toBeGreaterThan(0);
+		// sub-3c: StepEnd cold path now SETS THE FORCE SIGNAL (AgentLoop
+		// coordinates at the turn boundary — memory ephemeral turn → compress).
+		expect(_getPendingForceSignalForTest("s1"),
+			"StepEnd cold + over-threshold sets Force signal").toBeDefined();
+		expect(db.getSummaries("s1").length,
+			"hook does NOT compress directly").toBe(summariesBefore);
+		expect(db.getCompressionCursor("s1") ?? 0,
+			"cursor unchanged (compressSession not yet run)").toBe(cursorBefore);
 	});
 
 	test("StepEnd hot path: hot → no compression even if over threshold", async () => {
@@ -270,13 +287,18 @@ describe("steps-overhaul sub-5: compression trigger hooks", () => {
 		expect(db.getSummaries("s1").length).toBe(0); // no compression (soft)
 	});
 
-	test("hot new-turn hard trigger: >400K or >90% → forced compression", async () => {
+	test("hot new-turn hard trigger: >400K or >90% → sets Force signal (sub-3c)", async () => {
 		seedTurn(db, "s1", 0);
 		seedTurn(db, "s1", 2);
 		_setLastLLMCallForTest("s1", Date.now() - 1_000); // hot
 		db.setTokenUsage("s1", { inputTokens: 450_000 }); // >400K hard
+		const summariesBefore = db.getSummaries("s1").length;
 		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 1 });
-		expect(db.getSummaries("s1").length).toBeGreaterThan(0);
+		// sub-3c: hot+hard now SETS THE FORCE SIGNAL instead of compressing.
+		expect(_getPendingForceSignalForTest("s1"),
+			"hot+hard sets Force signal").toBeDefined();
+		expect(db.getSummaries("s1").length,
+			"hook does NOT compress directly").toBe(summariesBefore);
 	});
 
 	test("hot mid-turn: over threshold → NO interruption (no reminder, no force)", async () => {
@@ -290,26 +312,36 @@ describe("steps-overhaul sub-5: compression trigger hooks", () => {
 
 	// ── resume-time 冷 preflight ─────────────────────────────────────────
 
-	test("PreLLMCall cold preflight: cold + over threshold on resume-first-call → forced compression", async () => {
+	test("PreLLMCall cold preflight: cold + over threshold on resume-first-call → sets Force signal (sub-3c)", async () => {
 		// Simulate resume: lastLLMCall unset (restart) → cold. step 1 (resume's
-		// first LLM call) + over threshold → compress before the call.
+		// first LLM call) + over threshold → Force signal set.
 		seedTurn(db, "s1", 0);
 		seedTurn(db, "s1", 2);
 		_setLastLLMCallForTest("s1", undefined); // restart = cold
 		db.setTokenUsage("s1", { inputTokens: 150_000 }); // >100K
+		const summariesBefore = db.getSummaries("s1").length;
 		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 1 });
-		expect(db.getSummaries("s1").length).toBeGreaterThan(0);
+		// sub-3c: cold preflight sets the signal; AgentLoop coordinates at turn end.
+		expect(_getPendingForceSignalForTest("s1"),
+			"cold preflight sets Force signal").toBeDefined();
+		expect(db.getSummaries("s1").length,
+			"hook does NOT compress directly").toBe(summariesBefore);
 	});
 
-	test("WAIT-woke folded into PreLLMCall cold preflight (no separate WAIT trigger)", async () => {
+	test("WAIT-woke folded into PreLLMCall cold preflight (no separate WAIT trigger, sub-3c signal)", async () => {
 		// Long WAIT (>cacheTTL) ages the cache. On wake, the first LLM call is
 		// PreLLMCall step 1 with a stale lastLLMCall → cold preflight fires.
 		seedTurn(db, "s1", 0);
 		seedTurn(db, "s1", 2);
 		_setLastLLMCallForTest("s1", Date.now() - 600_000); // 10 min ago (WAIT > TTL)
 		db.setTokenUsage("s1", { inputTokens: 150_000 });
+		const summariesBefore = db.getSummaries("s1").length;
 		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 1 });
-		expect(db.getSummaries("s1").length).toBeGreaterThan(0);
+		// sub-3c: WAIT-woke cold preflight sets the signal.
+		expect(_getPendingForceSignalForTest("s1"),
+			"WAIT-woke cold preflight sets Force signal").toBeDefined();
+		expect(db.getSummaries("s1").length,
+			"hook does NOT compress directly").toBe(summariesBefore);
 	});
 
 	// ── reactive OnLLMError ──────────────────────────────────────────────
@@ -364,31 +396,45 @@ describe("steps-overhaul sub-5: compression trigger hooks", () => {
 		expect((res as any)?.retry).toBeUndefined(); // guard returned void → no retry requested by this handler
 	});
 
-	test("fresh tail protected: trigger-driven compression never includes newest steps in stepRange", async () => {
+	test("fresh tail protected: Force signal set; newest steps never compressed at hook layer (sub-3c)", async () => {
+		// sub-3c: the Force path no longer compresses at the hook layer — it
+		// sets a signal; AgentLoop coordinates (memory ephemeral turn →
+		// compressSession) at the turn boundary. compressSession owns the
+		// fresh-tail boundary (computeFreshTailStartSeq). End-to-end coverage
+		// of the fresh-tail invariant under Force coordination lives in
+		// tests/unit/sub3c-dual-mechanism.test.ts (#1 — summaries populated
+		// after coordinateForceCompress, with the newest step preserved by
+		// compressSession's internal boundary). The unit-level fresh-tail
+		// boundary itself is covered by sub3a-2zone-model.test.ts.
 		seedTurn(db, "s1", 0);
 		seedTurn(db, "s1", 2);
 		seedTurn(db, "s1", 4); // newest turn
 		_setLastLLMCallForTest("s1", undefined); // cold
 		db.setTokenUsage("s1", { inputTokens: 150_000 });
+		const summariesBefore = db.getSummaries("s1").length;
 		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 1 });
-		const summaries = db.getSummaries("s1");
-		expect(summaries.length).toBeGreaterThan(0);
-		// Newest step (seq 5) must NEVER be in any compressed range.
-		for (const s of summaries) {
-			expect(s.stepRange!.to).toBeLessThan(5);
-		}
+		// Force signal set; NO compression at hook layer (so newest steps are
+		// trivially preserved — nothing was compressed).
+		expect(_getPendingForceSignalForTest("s1"),
+			"Force signal set (AgentLoop will coordinate)").toBeDefined();
+		expect(db.getSummaries("s1").length,
+			"hook does NOT compress directly → newest steps untouched").toBe(summariesBefore);
 	});
 
 	// ── 防抖:连续两次压缩省 <10% 停 ─────────────────────────────────────
 
-	test("debounce: a prior compression with <10% reduction suppresses the next compression", async () => {
-		// Seed enough compressible content for TWO compressions across two turns.
+	test("debounce (OnLLMError path): a prior compression with <10% reduction suppresses the next compression (sub-3c)", async () => {
+		// sub-3c: the Force path bypasses runCompression guards (calls
+		// compressSession directly via coordinateForceCompress). The debounce
+		// / per-turn guard / inFlight guards now live ONLY on the OnLLMError
+		// path (the single-mechanism prompt_too_long recovery). Test migrated
+		// from PreLLMCall to OnLLMError so the guards are actually exercised.
 		seedTurn(db, "s1", 0);
 		seedTurn(db, "s1", 2);
-		// First turn: compress normally.
-		_setLastLLMCallForTest("s1", undefined); // cold
-		db.setTokenUsage("s1", { inputTokens: 150_000 });
-		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 1 });
+		// First OnLLMError: compresses.
+		await fire(reg, "OnLLMError", db, {
+			sessionId: "s1", errorClass: "prompt_too_long",
+		}, /* runtimeShape */ true);
 		const after1 = db.getSummaries("s1").length;
 		expect(after1).toBeGreaterThan(0);
 
@@ -399,51 +445,69 @@ describe("steps-overhaul sub-5: compression trigger hooks", () => {
 		// Seed fresh compressible content so there IS something to compress.
 		seedTurn(db, "s1", 4);
 		seedTurn(db, "s1", 6);
-		_setLastLLMCallForTest("s1", undefined); // cold
-		db.setTokenUsage("s1", { inputTokens: 150_000 });
-		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 1 });
-		// Debounce fired: NO new compression despite cold + over-threshold +
-		// fresh compressible content. Summaries count unchanged.
+		// Second OnLLMError (new turn, debounce state poisoned) — must skip.
+		await fire(reg, "OnLLMError", db, {
+			sessionId: "s1", errorClass: "prompt_too_long",
+		}, /* runtimeShape */ true);
+		// Debounce fired: NO new compression despite new compressible content.
 		expect(db.getSummaries("s1").length).toBe(after1);
 	});
 
 	// ── per-turn double-compression guard ────────────────────────────────
 
-	test("per-turn guard: a second forced compression in the same turn is skipped", async () => {
+	test("per-turn guard (OnLLMError path): a second OnLLMError compression in the same turn is skipped (sub-3c)", async () => {
+		// sub-3c: per-turn guard now consulted only by OnLLMError's runCompression.
+		// The Force path bypasses it (coordinateForceCompress calls compressSession
+		// directly — the coordination IS the guard). Migrated from PreLLMCall to
+		// OnLLMError to exercise the guard.
 		seedTurn(db, "s1", 0);
 		seedTurn(db, "s1", 2);
 		seedTurn(db, "s1", 4);
 		seedTurn(db, "s1", 6);
-		_setLastLLMCallForTest("s1", undefined); // cold
-		db.setTokenUsage("s1", { inputTokens: 150_000 });
-		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 1 });
+		await fire(reg, "OnLLMError", db, {
+			sessionId: "s1", errorClass: "prompt_too_long",
+		}, /* runtimeShape */ true);
 		const after1 = db.getSummaries("s1").length;
 		expect(after1).toBeGreaterThan(0);
-		// Same turn, another PreLLMCall (step 2) — must NOT compress again even
-		// though still cold+over-threshold (lastLLMCall stamped by step 1's call
-		// makes it hot anyway, but the guard is the belt-and-suspenders).
-		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 2 });
+		// Same turn, another OnLLMError — must NOT compress again
+		// (compressedThisTurn guard set by the first call).
+		await fire(reg, "OnLLMError", db, {
+			sessionId: "s1", errorClass: "prompt_too_long",
+		}, /* runtimeShape */ true);
 		expect(db.getSummaries("s1").length).toBe(after1);
 	});
 
 	// ── TurnStart reset ──────────────────────────────────────────────────
 
-	test("TurnStart clears the per-turn compression guard", async () => {
+	test("TurnStart clears the per-turn guard AND the pending Force signal (sub-3c)", async () => {
+		// sub-3c: TurnStart's resetTurnState now clears BOTH compressedThisTurn
+		// (so OnLLMError can fire again next turn) AND pendingForceSignal (so a
+		// stale signal from a crashed prior turn doesn't leak into the new turn).
 		seedTurn(db, "s1", 0);
 		seedTurn(db, "s1", 2);
 		_setLastLLMCallForTest("s1", undefined);
 		db.setTokenUsage("s1", { inputTokens: 150_000 });
+		const summariesBefore = db.getSummaries("s1").length;
+		// First PreLLMCall sets the signal (Force path).
 		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 1 });
-		expect(db.getSummaries("s1").length).toBeGreaterThan(0);
+		expect(_getPendingForceSignalForTest("s1"),
+			"signal set by PreLLMCall").toBeDefined();
+		expect(db.getSummaries("s1").length,
+			"hook does NOT compress directly").toBe(summariesBefore);
 
-		// New turn: TurnStart resets the guard. Seed more, make cold again.
+		// TurnStart clears the signal.
 		await fire(reg, "TurnStart", db, { sessionId: "s1" });
+		expect(_getPendingForceSignalForTest("s1"),
+			"TurnStart clears stale Force signal").toBeUndefined();
+
+		// Next turn can set it again.
 		seedTurn(db, "s1", 4);
 		seedTurn(db, "s1", 6);
 		_setLastLLMCallForTest("s1", undefined); // cold (new turn, restart)
+		db.setTokenUsage("s1", { inputTokens: 150_000 });
 		await fire(reg, "PreLLMCall", db, { sessionId: "s1", stepNumber: 1 });
-		// Summaries cap at 3; at least the same count (FIFO rotated).
-		expect(db.getSummaries("s1").length).toBeGreaterThan(0);
+		expect(_getPendingForceSignalForTest("s1"),
+			"signal re-set on the new turn").toBeDefined();
 	});
 
 	// ── cacheTTL per-provider 默认 ───────────────────────────────────────
