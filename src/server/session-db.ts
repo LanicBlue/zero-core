@@ -763,6 +763,43 @@ export class SessionDB {
 		tx();
 	}
 
+	/**
+	 * steps-overhaul sub-3b (compression-archive-simplify): atomic clear +
+	 * write-one + advance-cursor — the rolling-summary replace path.
+	 *
+	 * Design「二、压缩流程」: "用新摘要替换 [旧摘要 + 被压 steps];游标前进(原子
+	 * 事务)". The rolling summary this pass produces merges the prior summary
+	 * (via handoff prefix) + the compressed steps into ONE new summary, so the
+	 * prior rows are stale and must be wiped in the SAME tx that writes the new
+	 * one. Cursor advances to `compressedStepSeq` exactly once.
+	 *
+	 * Distinct from `saveSummaryAndAdvanceCursor` (which keeps up to
+	 * MAX_MESSAGE_SUMMARIES FIFO rows): this leaves exactly ONE row. After this
+	 * call the LLM view (session.ts assembleLLMView) shows ONE rolling summary
+	 * block + the post-cursor verbatim region — the 2-zone model.
+	 */
+	replaceSummariesAndAdvanceCursor(
+		sessionId: string,
+		summary: MessageSummary,
+		compressedStepSeq: number,
+	): void {
+		this.ensureSession(sessionId);
+		const now = new Date().toISOString();
+		const tx = this.db.transaction(() => {
+			// Wipe ALL prior summary rows for this session — they are superseded
+			// by the new rolling summary (their info content has been merged in
+			// via the LLM handoff prefix). One tx = no window where the reader
+			// could see both old + new or a missing cursor.
+			this.db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
+			// Dense seq from 0 — only one row survives, so it is seq=0.
+			this.db.prepare(
+				"INSERT INTO messages (session_id, seq, summary_json, last_compressed_step_seq, created_at) VALUES (?, ?, ?, ?, ?)",
+			).run(sessionId, 0, JSON.stringify(summary), compressedStepSeq, now);
+			this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(now, sessionId);
+		});
+		tx();
+	}
+
 	/** Ensure a session row exists for the given ID (defensive FK guard). */
 	private ensureSession(sessionId: string): void {
 		const existing = this.db.prepare("SELECT 1 FROM sessions WHERE id = ?").get(sessionId);

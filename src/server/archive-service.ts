@@ -1,17 +1,20 @@
-// 归档管线服务 (steps-overhaul sub-8)
+// 归档管线服务 (steps-overhaul sub-8 → compression-archive-simplify sub-3b)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 单向归档 = **末次 Extractor A 压缩 → 导出 JSON → 删库(含孤儿) → wiki 留存**。
+// 单向归档 = **末次滚动压缩 → 导出 JSON → 删库(含孤儿) → wiki 留存**。
 // 任一触发后都走这套(`archiveSession`)。
 //
-// ① **末次压缩**:把残留 step(游标之后、fresh-tail 之外)的记忆抽进 wiki。
-//    复用 sub-4 `compressSession` + sub-7 Extractor A 的多步合并通路 —— 与
-//    平时 mid-turn 压缩**完全相同的代码路径**(lazy-require ExtractorAService,
-//    buildFinalCompressOpts 镜像 compression-trigger-hooks 的连线)。归档也压缩
-//    (design.md「归档」:"归档也压缩")。失败仅 warn,不阻塞归档主干(记忆抽不
-//    进 wiki 比丢整个 session 轻 —— JSON 仍落盘)。
+// ① **末次压缩**:把残留 step(游标之后、fresh-tail 之外)抽进滚动摘要。
+//    复用 sub-4 `compressSession`(sub-3b 滚动摘要版)—— 与平时 mid-turn 压缩
+//    **完全相同的代码路径**(buildFinalCompressOpts 镜像 compression-trigger-
+//    hooks 的连线)。归档也压缩(design.md「归档」:"归档也压缩")。失败仅
+//    warn,不阻塞归档主干(摘要没更新比丢整个 session 轻 —— JSON 仍落盘)。
+//
+//    sub-3b:压缩的 ExtractorA wiki-merge 耦合已拆(wiki 写由 sub-3c Force 档
+//    memory ephemeral turn 替代)。本管线不再连 ExtractorA;末次压缩只产滚动摘要
+//    供 JSON 导出。
 //
 // ② **导出 JSON**:该 session 的自有数据 = `sessions` 行 + `steps` 全量 +
 //    `messages` summary 全量 + 压缩游标 → 落盘
@@ -48,12 +51,11 @@
 //
 // ## 定位
 // src/server/ 服务层。被 `subagent-delegator.ts`(delegated 自动)+ session-router
-// (chat 手动)调。复用 compression-core / extractor-a-service / session-db,不
-// 旁路任何通路。
+// (chat 手动)调。复用 compression-core / session-db,不旁路任何通路。
 //
 // ## 维护规则
-// - 末次压缩必须走 compressSession(不要 bypass Extractor A 通路 —— wiki 抽取
-//   由它独占,memory feedback-verify-runtime-wiring)。
+// - 末次压缩必须走 compressSession(不要 bypass —— 滚动摘要 + 游标推进由它独占,
+//   memory feedback-verify-runtime-wiring)。
 // - 删库必须经 db.deleteSessionData(含孤儿清理);不要散在 archive-service 里
 //   手写 DELETE。
 // - 活跃 session 归档必须先 teardown runtime(chat 手动);teardown 顺序见
@@ -201,15 +203,17 @@ function sanitizePathSegment(seg: string): string {
 
 /**
  * Build `compressSession` opts for the final compression, mirroring
- * compression-trigger-hooks' `buildCompressOpts`: reuse the session's working
- * model + wire Extractor A (multi-step wiki-merge agent) when a wiki store is
- * reachable from the config.
+ * compression-trigger-hooks' `buildCompressOpts`.
  *
- * ExtractorAService is imported lazily (dynamic require) to avoid a static
- * server→runtime→server cycle at module-load (same rationale as the trigger
- * hook). The lazy require is wrapped in try/catch — a missing wiki store must
- * NOT block the archive (final compression is best-effort; the JSON export
- * proceeds regardless).
+ * sub-3b: the ExtractorA wiki-merge coupling has been REMOVED from
+ * compressSession — this builder no longer wires `opts.extractorA` and no
+ * longer touches `wikiStoreGlobal` / `wikiStore`. Wiki memory writes are now
+ * the Force档 memory ephemeral turn's job (sub-3c). The final compression here
+ * just produces the rolling summary for the JSON export.
+ *
+ * sub-3b (D2 configurable prompt): forwards `config.compression.
+ * summarySystemPrompt` into opts when set (default falls through to the in-file
+ * SUMMARY_SYSTEM literal inside compression-core).
  */
 async function buildFinalCompressOpts(
 	sessionConfig: SessionConfig,
@@ -230,37 +234,12 @@ async function buildFinalCompressOpts(
 	const contextWindow = getContextWindowFor(providers, providerName, modelId);
 	(opts as any).contextWindow = contextWindow;
 
-	// Extractor A wiring: only when a wiki store is reachable. The wiki store
-	// rides on the config the SAME way the trigger hook reads it
-	// (`(config as any).wikiStoreGlobal ?? config.wikiStore`) — sub-loops
-	// inherit `wikiStore` via the spread in subagent-delegator.
-	const wiki = (sessionConfig as any)?.wikiStoreGlobal ?? (sessionConfig as any)?.wikiStore;
-	if (wiki) {
-		try {
-			// Dynamic import — server/extractor-a-service imports tools/wiki-tool
-			// (which imports server/wiki-node-store). Keeping this dynamic avoids
-			// pulling the whole server/ wiki stack at static load.
-			const { ExtractorAService } = await import("./extractor-a-service.js");
-			const agentId = sessionConfig.agentId;
-			(opts as any).extractorA = {
-				service: new ExtractorAService({ providers, providerName, modelId, wiki }),
-				// Default topic = per-agent (one memory subtree per agent;
-				// agentId is the stable cross-session handle). Mirrors the
-				// trigger hook's resolveTopic so the final compression writes
-				// into the SAME topic subtree as prior mid-turn compressions.
-				resolveTopic: (_summary: unknown, _seg: unknown, _sid: string) => ({
-					topicId: agentId ?? _sid,
-					topicTitle: agentId ? `Memory: ${agentId}` : undefined,
-					agentId,
-				}),
-			};
-		} catch (err) {
-			log.warn(
-				"archive",
-				`failed to wire Extractor A for final compression (wiki merge disabled):`,
-				(err as Error).message,
-			);
-		}
+	// sub-3b D2: forward the configurable compression system prompt (same shape
+	// as the trigger hook). The archive's final compression honors the same
+	// override as mid-turn compressions.
+	const summarySystemPrompt = (sessionConfig as any)?.compression?.summarySystemPrompt;
+	if (typeof summarySystemPrompt === "string" && summarySystemPrompt.trim()) {
+		(opts as any).summarySystemPrompt = summarySystemPrompt;
 	}
 	return opts;
 }

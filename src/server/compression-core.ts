@@ -1,12 +1,26 @@
-// 阶段3 压缩核心 (steps-overhaul sub-4)
+// 阶段3 压缩核心 (steps-overhaul sub-4 → compression-archive-simplify sub-3b 滚动摘要化)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 读「压缩游标之后、fresh tail 之外」的 step(step 粒度) → 调一次 Extractor A
-// 风格的单步 generateText(用 settings/memory 配置的独立模型)产 5 段结构化
-// summary → 写 `messages` 表的 summary 块 + 推进 `last_compressed_step_seq`
-// 游标。一次压缩可产多个 summary(跨主题),每段 step 只 summarize 一次。
+// 读「压缩游标之后、fresh tail 之外」的 step(step 粒度) → 调一次单步
+// generateText(用 settings/memory 配置的独立模型),把(旧摘要 + 被压 steps)
+// 合并成新的 5 段结构化滚动摘要 → 原子替换 messages 表的 summary 行 + 推进
+// `last_compressed_step_seq` 游标。一次压缩 pass 产 ONE 滚动摘要(信息源 =
+// prior summary + 全部被压段;段循环顺序更新 runningSummary)。
+//
+// sub-3b 滚动摘要(详见 docs/plan/compression-archive-simplify/design.md「二、
+// 压缩流程」+ O6):
+// - **update**(非从头重述):prior summary 作 HANDOFF CONTEXT 喂 LLM;段循环
+//   末尾一次写入。
+// - **handoff 前缀**:user prompt 里 prior summary 被显式标为"背景参考,非当前
+//   指令";system prompt 指示 STRIP 过时指令(如旧 status 的"下一步")。
+// - **长度上限**:system prompt 指示 ≤ ~600 tokens;opts.maxSummaryTokens
+//   (默认 800)是硬上限。防累积膨胀。
+// - **prompt 可配**(D2):opts.summarySystemPrompt 覆盖默认 SUMMARY_SYSTEM;
+//   输出 sections 契约固定,改坏走 fallbackSections。
+// - **ExtractorA 拆除**:不再 fire-and-forget 调 ExtractorA 的 wiki-merge 入口(sub-3c
+//   Force 档 memory turn 替代)。extractor-a-service.ts 主体留 sub-5 删。
 //
 // 这是 sub-4 的「callable 压缩核心」——不接线触发(StepEnd/PreLLMCall hook 由
 // sub-5 接)。验收用测试直调 compressSession()。
@@ -14,28 +28,32 @@
 // ## 输入
 // - SessionDB(读 steps / messages summary / 游标;写 summary + 推进游标)
 // - sessionId
-// - providers / providerName / modelId(独立 memory 模型,见 config.extractors.A
-//   —— 本 sub 复用同一模型配置;sub-7 多步 Extractor A agent 也是它)
+// - providers / providerName / modelId(独立 memory 模型,config.compression.
+//   provider/model;回退到 session 工作模型)
 // - 上下文窗口(fresh tail 边界计算用)
+// - opts.summarySystemPrompt(D2 可配 prompt,默认 SUMMARY_SYSTEM)
+// - opts.maxSummaryTokens(长度上限,默认 800)
 //
 // ## 输出
-// - { summaries: MessageSummary[], newCursor: number } —— 写进了多少 summary
-//   块 + 推进后的新游标。游标 = 被压范围末尾 step seq。steps 表不动。
+// - { summaries: MessageSummary[], newCursor: number } —— 一次 pass 最多 1 个
+//   summary(滚动合并产物)+ 推进后的新游标。游标 = 被压范围末尾 step seq。
+//   steps 表不动。
 //
-// ## 关键不变量(acceptance-4)
+// ## 关键不变量(acceptance-3b)
 // - summary 5 段(目的/计划/状态/关键产物·文件/经验),状态段含「下一步立即动作」。
 // - compress once:同一段 step 不被 re-summarize。游标只前进,被压范围(seq ≤
 //   newCursor)不再被本函数取到。
-// - summary 写 messages + 推进 last_compressed_step_seq;cap 3 FIFO(sub-3
-//   saveSummaryAndAdvanceCursor 已实现)。
+// - 滚动 update:旧摘要的内容被 merge 进新摘要(经 LLM handoff);多次压缩信息
+//   不丢。replaceSummariesAndAdvanceCursor 原子清旧+写新+推游标。
 // - summary 带寻回指针(stepRange = 被压 step seq 范围)。
 // - steps 表不动;fresh tail 不被压(永远在 newCursor 之后)。
-// - 一次压缩可产多个 summary(跨主题):按 turn_group(=主题近似)分段,每段产
-//   一个 summary。
+// - handoff 语义:prior summary 仅作背景参考,过时指令(status 的"下一步")剥除。
+// - 长度上限:摘要不无限累积;system prompt 软指示 + maxOutputTokens 硬上限。
 //
 // ## 不做
 // - 不接线触发(StepEnd / PreLLMCall / new-turn / reactive 兜底——sub-5)。
-// - 不写 wiki(本 sub 只产 summary;wiki 节点更新留 sub-7 Extractor A 多步 agent)。
+// - 不写 wiki(ExtractorA compression 耦合已拆;wiki 写由 sub-3c Force 档 memory
+//   ephemeral turn 替代)。
 // - 不动 steps 表(只是读)。
 //
 // ## 定位
@@ -44,14 +62,14 @@
 //
 // ## 依赖
 // - ai.generateText、runtime/provider-factory.resolveModel(独立模型)
-// - server/session-db(SessionDB: getSteps / getCompressionCursor /
-//   saveSummaryAndAdvanceCursor)
+// - server/session-db(SessionDB: getSteps / getCompressionCursor / getSummaries /
+//   replaceSummariesAndAdvanceCursor / saveSummaryAndAdvanceCursor)
 // - runtime/session-store-interface 类型(MessageSummary / StepRow)
 // - core/logger
 //
 // ## 维护规则
-// - summary 模板/prompt 改动后跑 acceptance-4 测试(5 段 + 状态段「下一步」+
-//   寻回指针 + 输出格式核对)。
+// - summary 模板/prompt 改动后跑 acceptance-3b 测试(滚动 update + handoff 前缀
+//   + 长度上限 + 5 段 + 状态段「下一步」+ 寻回指针 + 输出格式核对)。
 // - fresh tail 边界:compression-core 的 computeFreshTailStartSeq 是 design.md
 //   「fresh tail 保护」规则的 SINGLE 源(sub-3a:session.ts 的同名镜像已删)。
 //   LLM view 不再用它(2-zone = summary + postCursor verbatim);它只在压缩
@@ -115,30 +133,22 @@ export interface CompressSessionOptions {
 	 */
 	maxTranscriptChars?: number;
 	/**
-	 * steps-overhaul sub-7: Extractor A multi-step agent. When present, each
-	 * summary written to `messages` is ALSO fed to Extractor A's
-	 * mergeSummaryIntoWiki (the second product of compression: ① messages
-	 * summary, ② wiki node merge). Fire-and-forget per summary — a merge
-	 * failure is logged + swallowed (it must NOT break the compression that
-	 * produced the summary). When absent, compression produces only the
-	 * messages summary (sub-4 behavior — tests that don't care about wiki).
-	 *
-	 * The caller (compression-trigger-hooks) builds this from
-	 * config.wikiStoreGlobal + the extractor-A model config.
+	 * sub-3b (D2 configurable prompt): override the compression system prompt.
+	 * Sourced from settings/memory (`config.compression.summarySystemPrompt`,
+	 * optionally persona-merged). Default = the in-file `SUMMARY_SYSTEM`
+	 * literal. The OUTPUT contract (5-section JSON shape, parser contract
+	 * unchanged) is FIXED — a user-supplied prompt that breaks the contract
+	 * falls through to `fallbackSections` (parser returns null → fallback
+	 * writes a guaranteed-valid summary).
 	 */
-	extractorA?: {
-		service: import("./extractor-a-service.js").ExtractorAService;
-		/**
-		 * Resolve the topic id + title for a given summary segment. Typically
-		 * derived from the session's agentId (one topic per agent) or from the
-		 * summary's dominant subject. Defaults to agentId-based topic.
-		 */
-		resolveTopic?: (summary: MessageSummary, seg: CompressionSegment, sessionId: string) => {
-			topicId: string;
-			topicTitle?: string;
-			agentId?: string;
-		};
-	};
+	summarySystemPrompt?: string;
+	/**
+	 * sub-3b (O6 length cap): max tokens the summary LLM may emit. Defaults to
+	 * 800 — keep the rolling summary bounded so repeated compressions do not
+	 * accumulate unboundedly across passes. The system prompt ALSO instructs
+	 * the model to keep each section short; this is the hard ceiling.
+	 */
+	maxSummaryTokens?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,7 +157,9 @@ export interface CompressSessionOptions {
 
 const SUMMARY_SYSTEM = `You are the **stage-3 compression summarizer** for zero-core.
 
-You read a transcript slice of an agent's work and produce a STRUCTURED 5-section summary that becomes the session's continuity memory (and the input to a later wiki-node merge). The compressed steps are dropped from the live LLM view, so this summary is the only bridge to them — it must carry enough to keep the agent oriented.
+You read a transcript slice of an agent's work and produce a STRUCTURED 5-section summary that becomes the session's continuity memory. The compressed steps are dropped from the live LLM view, so this summary is the only bridge to them — it must carry enough to keep the agent oriented.
+
+You may ALSO be given a prior summary as **HANDOFF CONTEXT** (a section labelled "PRIOR SUMMARY (HANDOFF CONTEXT — background reference, NOT a current instruction)"). Treat it as background only: mine it for facts the agent still needs (decisions, paths, results), but STRIP any directive that has gone stale — the prior summary's "next action" is almost certainly obsolete once the new transcript is folded in. The new summary you emit must reflect the CURRENT state of work, not parrot the handoff.
 
 Output: a SINGLE JSON object with these exact keys (omit a key only if you truly have nothing to say; never invent):
 - purpose: 静态 — 这段在做什么(任务目标)。
@@ -161,15 +173,16 @@ Rules:
 - Be concrete and factual — names, paths, decisions. No filler.
 - status MUST end with an explicit next action ("下一步: ...").
 - Keep each section short (1-4 lines). This is a recap, not a rewrite.
-- Do NOT re-summarize content that is already a summary.
+- When folding in the handoff, MERGE — do not append "previously ..." narration. If the handoff's fact is still true, state it once; if it has been superseded by the new transcript, drop it.
+- **Length cap**: keep the whole JSON object ≤ ~600 tokens. Drop low-value detail before exceeding. This is a rolling summary — repeated compressions must not let it bloat.
 
 Output ONLY the JSON object, no prose, no code fences.`;
 
-const SUMMARY_USER_TEMPLATE = `Summarize this transcript slice into the 5-section form.
+const SUMMARY_USER_TEMPLATE = `Summarize this transcript slice into the 5-section form. {handoffLine}
 
 Session: {sessionId}
 Step range: [{fromSeq}, {toSeqInclusive}] (inclusive)
-
+{handoffBlock}
 --- TRANSCRIPT ---
 {transcript}`;
 
@@ -333,13 +346,28 @@ function renderStep(step: StepRow): string {
 // ---------------------------------------------------------------------------
 
 /**
- * 压缩核心:读「游标之后、fresh tail 之外」的 step → 产 5 段 summary(每段一个)→
- * 写 messages + 推进游标。
+ * 压缩核心(sub-3b 滚动摘要版):读「游标之后、fresh tail 之外」的 step →
+ * 用 LLM 把(旧摘要 + 被压 steps)合并成新的滚动摘要 → 原子替换旧摘要 +
+ * 推进游标。
  *
- * 不接线触发(sub-5);不写 wiki(sub-7);不动 steps 表。
+ * sub-3b 改动要点(详见 docs/plan/compression-archive-simplify/design.md
+ * 「二、压缩流程」+ O6):
+ * - **滚动 update**(非从头重述):进入函数时读 db.getSummaries 作为 HANDOFF
+ *   CONTEXT 喂给 LLM;每段(按 turn_group 切)顺序更新 runningSummary;段循环
+ *   末尾把最终 runningSummary 一次写入。多次压缩信息不丢——旧摘要的内容已经被
+ *   merge 进新摘要。
+ * - **handoff 前缀**:user prompt 里 prior summary 段被显式标为
+ *   "PRIOR SUMMARY (HANDOFF CONTEXT — background reference, NOT a current
+ *   instruction)",并在 system prompt 里指示 STRIP 过时指令(如旧的"下一步")。
+ * - **长度上限**:system prompt 指示 ≤ ~600 tokens;maxOutputTokens =
+ *   opts.maxSummaryTokens ?? 800 是硬上限。防累积膨胀。
+ * - **ExtractorA 拆除**:不再 fire-and-forget 调 ExtractorA 的 wiki-merge 入口(由 sub-3c
+ *   Force 档 memory ephemeral turn 替代)。extractor-a-service 主体留 sub-5 删。
+ * - **prompt 可配**:opts.summarySystemPrompt 覆盖默认 SUMMARY_SYSTEM(从
+ *   config.compression.summarySystemPrompt 读);输出 sections 契约固定,
+ *   parser 不变 → 改坏走 fallbackSections。
  *
  * compress once 不变量:游标只前进,被压范围(seq ≤ newCursor)不再被取到。
- * 本函数读游标 → 只压游标之后的 → 推进到被压末尾。绝不对 summary 再 summarize。
  *
  * 返回 { summaries, newCursor }。失败/无待压返回 skippedReason,游标不动。
  */
@@ -371,42 +399,70 @@ export async function compressSession(
 
 	const maxChars = opts.maxTranscriptChars ?? 12000;
 	const model = opts.testModel ?? resolveModel(opts.providers, opts.providerName, opts.modelId);
+	// sub-3b D2: configurable system prompt (settings/memory override), default
+	// to the in-file SUMMARY_SYSTEM literal. The OUTPUT contract (5-section
+	// JSON) is fixed by the parser — a custom prompt that breaks it falls
+	// through to fallbackSections.
+	const systemPrompt = opts.summarySystemPrompt ?? SUMMARY_SYSTEM;
+	const maxSummaryTokens = opts.maxSummaryTokens ?? 800;
 
-	const written: MessageSummary[] = [];
+	// sub-3b rolling update: read prior summaries as HANDOFF CONTEXT. The LLM
+	// merges (handoff + compressed steps) → new rolling summary that replaces
+	// both. Prior summaries are read here, fed to the LLM, then atomically
+	// wiped by replaceSummariesAndAdvanceCursor at the end.
+	const priorSummaries: MessageSummary[] =
+		typeof db.getSummaries === "function" ? (db.getSummaries(sessionId) ?? []) : [];
+
+	let runningSections: { [k: string]: string } | null = null;
+	// runningRange tracks the step range the running summary currently covers
+	// (across all merged segments + the prior handoff). Used for the title +
+	// stepRange anchor on the final write.
+	let runningRangeFrom = segments[0].fromSeq;
+	let runningRangeTo = oldCursor;
 	let compressedToSeq = oldCursor;
+	let anySegmentsSummarized = false;
 
 	for (const seg of segments) {
 		const transcript = renderSegmentTranscript(seg, maxChars);
 		if (!transcript.trim()) {
 			// 空段(全是空 step)——跳过,但仍要把这段的 seq 算进被压范围(否则游标
-			// 不前进,下轮又取到)。compressedToSeq 在段循环末尾统一推。
+			// 不前进,下轮又取到)。
 			compressedToSeq = Math.max(compressedToSeq, seg.toSeqInclusive);
+			runningRangeTo = Math.max(runningRangeTo, seg.toSeqInclusive);
 			continue;
 		}
+		// handoff: prior summaries (first iteration only, before we have a
+		// running summary) OR the running summary produced by the previous
+		// segment in this pass. Both serve the same semantic role — context
+		// the new summary should fold in, NOT a current directive.
+		const handoff = runningSections
+			? renderRunningHandoff(runningSections, runningRangeFrom, runningRangeTo)
+			: renderPriorHandoff(priorSummaries);
 		let sections: { [k: string]: string } | null = null;
 		try {
 			const user = SUMMARY_USER_TEMPLATE
+				.replace("{handoffLine}", handoff ? "Fold the HANDOFF block into the new summary." : "No prior summary — summarize from scratch.")
 				.replace("{sessionId}", sessionId)
 				.replace("{fromSeq}", String(seg.fromSeq))
 				.replace("{toSeqInclusive}", String(seg.toSeqInclusive))
-				.replace("{transcript}", transcript);
+				.replace("{handoffBlock}", handoff ?? "");
 			const result = await generateText({
 				model,
-				system: SUMMARY_SYSTEM,
+				system: systemPrompt,
 				prompt: user,
-				maxOutputTokens: 800,
+				maxOutputTokens: maxSummaryTokens,
 			});
 			sections = parseSummarySections(result.text);
 			// 核对输出格式:状态段必须有「下一步立即动作」。不符 → 兜底重试一次,
-			// 仍不符 → 用兜底 sections(保证总有 summary 写入,cap 3 FIFO 语义稳)。
+			// 仍不符 → 用兜底 sections(保证总有 summary 写入)。
 			if (sections && !statusHasNextAction(sections.status)) {
 				log.warn("compression-core",
 					`summary status missing next-action (seg ${seg.fromSeq}..${seg.toSeqInclusive}); retrying`);
 				const retry = await generateText({
 					model,
-					system: SUMMARY_SYSTEM,
+					system: systemPrompt,
 					prompt: user + "\n\nREMINDER: the `status` field MUST end with an explicit next action (下一步: ...).",
-					maxOutputTokens: 800,
+					maxOutputTokens: maxSummaryTokens,
 				});
 				sections = parseSummarySections(retry.text);
 			}
@@ -414,67 +470,119 @@ export async function compressSession(
 			log.warn("compression-core", `LLM call failed for seg ${seg.fromSeq}..${seg.toSeqInclusive}:`, (err as Error).message);
 		}
 		if (!sections) {
-			// 兜底:仍写一个 summary(保证 cap 3 FIFO 语义 + 游标推进不被 LLM 失败阻塞)。
-			sections = fallbackSections(seg);
+			// 兜底:仍产 sections(状态段含「下一步」);fold 进 prior handoff 的
+			// 关键信息(purpose/plan/artifacts/lessons)以防 LLM 失败时丢上下文。
+			sections = fallbackSections(seg, runningSections ?? mergePriorSections(priorSummaries));
 		}
-
-		const summary: MessageSummary = {
-			title: `Compression of steps ${seg.fromSeq}..${seg.toSeqInclusive}`,
-			sections,
-			stepRange: { from: seg.fromSeq, to: seg.toSeqInclusive },
-			createdAt: new Date().toISOString(),
-		};
-		// saveSummaryAndAdvanceCursor 内部 cap 3 FIFO + 推进 last_compressed_step_seq。
-		// 推进值 = 这段末尾 step seq(被压范围末尾)。
-		db.saveSummaryAndAdvanceCursor(sessionId, summary, seg.toSeqInclusive);
-		written.push(summary);
+		runningSections = sections;
+		anySegmentsSummarized = true;
 		compressedToSeq = Math.max(compressedToSeq, seg.toSeqInclusive);
-
-		// sub-7: 第二个产物 —— 把 summary 喂 Extractor A 合并进 wiki。fire-and-
-		// forget(失败仅 warn,绝不阻塞压缩主干/游标推进)。一次压缩可产多 summary
-		// (跨主题),每段独立喂一次 → Extractor A 按 topic 合并。
-		if (opts.extractorA) {
-			try {
-				const topic = opts.extractorA.resolveTopic
-					? opts.extractorA.resolveTopic(summary, seg, sessionId)
-					: { topicId: sessionId, agentId: undefined };
-				void opts.extractorA.service.mergeSummaryIntoWiki({
-					summary,
-					topicId: topic.topicId,
-					topicTitle: topic.topicTitle,
-					agentId: topic.agentId,
-					sessionId,
-				}).catch((err: unknown) => {
-					log.warn("compression-core",
-						`Extractor A merge failed (seg ${seg.fromSeq}..${seg.toSeqInclusive}, topic ${topic.topicId}):`,
-						(err as Error).message);
-				});
-			} catch (err) {
-				log.warn("compression-core",
-					`Extractor A merge dispatch failed (seg ${seg.fromSeq}..${seg.toSeqInclusive}):`,
-					(err as Error).message);
-			}
-		}
+		runningRangeTo = Math.max(runningRangeTo, seg.toSeqInclusive);
 	}
 
-	if (written.length === 0) {
+	if (!anySegmentsSummarized) {
 		// 所有段都空 transcript —— 仍把游标推到待压末尾(compress once:这些空 step
 		// 不再被取;否则下轮死循环)。
 		if (compressedToSeq > oldCursor) {
-			// 不写 summary,只推游标:直接 UPDATE(messages 表有 ≥1 行时游标在每行
-			// 冗余;无行时没地方写游标——此时保持 oldCursor,下轮有内容再一起推)。
 			advanceCursorOnly(db, sessionId, compressedToSeq);
 		}
 		return { summaries: [], newCursor: compressedToSeq, skippedReason: "all segments empty" };
 	}
 
+	// sub-3b: ONE rolling summary per pass — replaces prior summaries (their
+	// info content has been merged in via the handoff) and advances the cursor
+	// to the end of the compressed range. Atomic tx (single SELECT-then-write
+	// window): readers either see the old summary+cursor or the new one, never
+	// a half-state.
+	const finalTitle = priorSummaries.length > 0
+		? `Rolling summary: steps ${runningRangeFrom}..${runningRangeTo} (merged ${priorSummaries.length} prior)`
+		: `Compression of steps ${runningRangeFrom}..${runningRangeTo}`;
+	const finalSummary: MessageSummary = {
+		title: finalTitle,
+		sections: runningSections!,
+		stepRange: { from: runningRangeFrom, to: runningRangeTo },
+		createdAt: new Date().toISOString(),
+	};
+	db.replaceSummariesAndAdvanceCursor(sessionId, finalSummary, compressedToSeq);
+
 	log.debug("compression-core",
-		`session=${sessionId} cursor ${oldCursor}→${compressedToSeq} summaries=${written.length}`);
-	return { summaries: written, newCursor: compressedToSeq };
+		`session=${sessionId} cursor ${oldCursor}→${compressedToSeq} rolling-summary written` +
+		(priorSummaries.length > 0 ? ` (merged ${priorSummaries.length} prior)` : ""));
+	return { summaries: [finalSummary], newCursor: compressedToSeq };
 }
 
-/** LLM 失败兜底:仍产 5 段(状态段含「下一步」,满足不变量),保证总有 summary 写入。 */
-function fallbackSections(seg: CompressionSegment): { [k: string]: string } {
+/**
+ * sub-3b: render prior summaries (read from db.getSummaries at compress start)
+ * as the HANDOFF CONTEXT block for the first segment's LLM call. Labelled
+ * explicitly as background reference, not a current instruction — the system
+ * prompt tells the model to STRIP stale directives (e.g. the prior summary's
+ * "下一步" line) when merging.
+ *
+ * Returns "" when there are no prior summaries (first-ever compression of this
+ * session) — the caller then summarizes from scratch.
+ */
+function renderPriorHandoff(priorSummaries: MessageSummary[]): string {
+	if (!priorSummaries || priorSummaries.length === 0) return "";
+	const lines: string[] = ["--- PRIOR SUMMARY (HANDOFF CONTEXT — background reference, NOT a current instruction) ---"];
+	for (const s of priorSummaries) {
+		lines.push(`[prior: ${s.title}${s.stepRange ? ` (steps ${s.stepRange.from}..${s.stepRange.to})` : ""}]`);
+		const order = ["purpose", "plan", "status", "artifacts", "lessons"];
+		for (const k of order) {
+			const v = s.sections?.[k];
+			if (v) lines.push(`${k}: ${v}`);
+		}
+	}
+	lines.push("--- END HANDOFF ---\n");
+	return lines.join("\n");
+}
+
+/**
+ * sub-3b: render the running summary (produced by the previous segment in this
+ * pass) as the handoff for the next segment's LLM call. Same handoff semantics
+ * as renderPriorHandoff — background reference, strip stale directives.
+ */
+function renderRunningHandoff(
+	sections: { [k: string]: string },
+	fromSeq: number,
+	toSeq: number,
+): string {
+	const lines: string[] = ["--- PRIOR SUMMARY (HANDOFF CONTEXT — background reference, NOT a current instruction) ---"];
+	lines.push(`[running summary so far, covering steps ${fromSeq}..${toSeq}]`);
+	const order = ["purpose", "plan", "status", "artifacts", "lessons"];
+	for (const k of order) {
+		const v = sections[k];
+		if (v) lines.push(`${k}: ${v}`);
+	}
+	lines.push("--- END HANDOFF ---\n");
+	return lines.join("\n");
+}
+
+/** Flatten prior summaries' sections into a single merged dict (fallback path). */
+function mergePriorSections(priorSummaries: MessageSummary[]): { [k: string]: string } | null {
+	if (!priorSummaries || priorSummaries.length === 0) return null;
+	const merged: { [k: string]: string } = {};
+	const order = ["purpose", "plan", "status", "artifacts", "lessons"];
+	for (const s of priorSummaries) {
+		for (const k of order) {
+			const v = s.sections?.[k];
+			if (!v) continue;
+			merged[k] = merged[k] ? `${merged[k]}\n${v}` : v;
+		}
+	}
+	return Object.keys(merged).length > 0 ? merged : null;
+}
+
+/**
+ * LLM 失败兜底:仍产 5 段(状态段含「下一步」,满足不变量),保证总有 summary 写入。
+ *
+ * sub-3b: 接受可选的 handoff sections(prior summary 或 running summary)—— LLM
+ * 失败时把 handoff 的 purpose/plan/artifacts/lessons 抄进兜底(状态段重写为
+ * "兜底+下一步",绝不照抄旧 status 里的过时指令)。这样 LLM 偶发失败不会丢上下文。
+ */
+function fallbackSections(
+	seg: CompressionSegment,
+	handoff?: { [k: string]: string } | null,
+): { [k: string]: string } {
 	// 从段里尽量抽点线索(首个 user / 最后 assistant text)。
 	const userStep = seg.steps.find(s => s.role === "user");
 	const userText = (userStep?.content ?? "").trim().slice(0, 500) || "(无显式用户指令)";
@@ -486,11 +594,19 @@ function fallbackSections(seg: CompressionSegment): { [k: string]: string } {
 			lastText = (blocks.filter((b: any) => b.type === "text").map((b: any) => b.text).join(" ") || "").slice(0, 500);
 		} catch { /* ignore */ }
 	}
-	return {
-		purpose: userText,
+	// Fold in handoff context (purpose/plan/artifacts/lessons) so a transient
+	// LLM failure does not erase the cross-session memory the rolling summary
+	// is supposed to preserve. status is ALWAYS rewritten — never parrot the
+	// handoff's stale "next action".
+	const out: { [k: string]: string } = {
+		purpose: (handoff?.purpose ? `${handoff.purpose}\n` : "") + userText,
 		status: `压缩自动兜底(LLM 调用失败/格式不符)。覆盖 step ${seg.fromSeq}..${seg.toSeqInclusive}。下一步:从 steps 表按 stepRange 寻回原始 step,确认进展后续行。`,
-		...(lastText ? { artifacts: lastText } : {}),
 	};
+	if (handoff?.plan) out.plan = handoff.plan;
+	if (lastText) out.artifacts = (handoff?.artifacts ? `${handoff.artifacts}\n` : "") + lastText;
+	else if (handoff?.artifacts) out.artifacts = handoff.artifacts;
+	if (handoff?.lessons) out.lessons = handoff.lessons;
+	return out;
 }
 
 /**

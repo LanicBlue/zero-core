@@ -186,14 +186,20 @@ function exceedsThreshold(state: TokenState, abs: number, frac: number): boolean
 // ---------------------------------------------------------------------------
 
 /**
- * Build compressSession opts from the session config (reuses extractor A model).
+ * Build compressSession opts from the session config.
  *
- * sub-7: when config.wikiStoreGlobal is present, also wire an Extractor A
- * service instance so each summary compressSession writes is fed to the
- * multi-step wiki-merge agent (second product of compression). The Extractor A
- * model config (config.extractors.A.provider/model) is reused. ExtractorAService
- * is imported lazily (dynamic require) to avoid a static runtime→server cycle
- * at module-load (the hook module is in runtime/, the service in server/).
+ * sub-3b: the ExtractorA wiki-merge coupling has been REMOVED from
+ * compressSession (it was fire-and-forget at the end of each segment; the
+ * Force档 memory ephemeral turn in sub-3c replaces it). buildCompressOpts no
+ * longer wires `opts.extractorA` and no longer touches `wikiStoreGlobal`.
+ *
+ * sub-3b (D2 configurable prompt): forwards `config.compression.
+ * summarySystemPrompt` (if set) into opts. Default falls through to the
+ * in-file SUMMARY_SYSTEM literal inside compression-core.
+ *
+ * sub-3b (O6 length cap): opts.maxSummaryTokens is not set here — the default
+ * (800) inside compression-core applies. Callers that need a different ceiling
+ * can set it on the returned opts.
  */
 async function buildCompressOpts(config: SessionConfig, providers: RuntimeProviderConfig[]) {
 	const ext = (config as any)?.extractors?.A ?? {};
@@ -201,28 +207,11 @@ async function buildCompressOpts(config: SessionConfig, providers: RuntimeProvid
 	const modelId = ext.model ?? config.modelId;
 	const contextWindow = getContextWindow(providers, config.providerName, config.modelId);
 	const opts: any = { providers, providerName, modelId, contextWindow };
-	const wiki = (config as any)?.wikiStoreGlobal;
-	if (wiki) {
-		try {
-			// Dynamic import — server/extractor-a-service imports tools/wiki-tool
-			// (which imports server/wiki-node-store). Keeping this dynamic avoids
-			// pulling the whole server/ wiki stack into runtime/ at static load.
-			const { ExtractorAService } = await import("../../server/extractor-a-service.js");
-			const agentId = config.agentId;
-			opts.extractorA = {
-				service: new ExtractorAService({ providers, providerName, modelId, wiki }),
-				// Default topic = per-agent (one memory subtree per agent;
-				// agentId is the stable cross-session handle). Callers that want
-				// a different topic partition can override resolveTopic.
-				resolveTopic: (_summary: unknown, _seg: unknown, sessionId: string) => ({
-					topicId: agentId ?? sessionId,
-					topicTitle: agentId ? `Memory: ${agentId}` : undefined,
-					agentId,
-				}),
-			};
-		} catch (err) {
-			log.warn("compress-trigger", `failed to wire Extractor A for compression (wiki merge disabled):`, (err as Error).message);
-		}
+	// sub-3b D2: forward the configurable compression system prompt. The default
+	// (undefined) means compression-core uses its in-file SUMMARY_SYSTEM literal.
+	const summarySystemPrompt = (config as any)?.compression?.summarySystemPrompt;
+	if (typeof summarySystemPrompt === "string" && summarySystemPrompt.trim()) {
+		opts.summarySystemPrompt = summarySystemPrompt;
 	}
 	return opts;
 }

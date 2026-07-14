@@ -330,7 +330,7 @@
 		},
 		{
 			"path": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"lines": 508,
+			"lines": 497,
 			"dir": "src/runtime/hooks",
 			"exports": [
 				"registerCompressionTriggerHooks",
@@ -356,16 +356,16 @@
 				"src/runtime/hooks/compression-trigger-hooks.ts/resetTurnState:146",
 				"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:165",
 				"src/runtime/hooks/compression-trigger-hooks.ts/exceedsThreshold:178",
-				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:198",
-				"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:235",
-				"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:295",
-				"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318",
-				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:438",
-				"src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerStateForSession:466",
-				"src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerState:478",
-				"src/runtime/hooks/compression-trigger-hooks.ts/_setLastLLMCallForTest:489",
-				"src/runtime/hooks/compression-trigger-hooks.ts/_getLastLLMCallForTest:495",
-				"src/runtime/hooks/compression-trigger-hooks.ts/_setLastReductionForTest:504"
+				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:204",
+				"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224",
+				"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:284",
+				"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307",
+				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:427",
+				"src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerStateForSession:455",
+				"src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerState:467",
+				"src/runtime/hooks/compression-trigger-hooks.ts/_setLastLLMCallForTest:478",
+				"src/runtime/hooks/compression-trigger-hooks.ts/_getLastLLMCallForTest:484",
+				"src/runtime/hooks/compression-trigger-hooks.ts/_setLastReductionForTest:493"
 			],
 			"description": ""
 		},
@@ -1436,7 +1436,7 @@
 		},
 		{
 			"path": "src/server/archive-service.ts",
-			"lines": 489,
+			"lines": 468,
 			"dir": "src/server",
 			"exports": [
 				"archivePathFor",
@@ -1451,14 +1451,14 @@
 				"src/server/compression-core.ts"
 			],
 			"functions": [
-				"src/server/archive-service.ts/archivePathFor:184",
-				"src/server/archive-service.ts/sanitizePathSegment:190",
-				"src/server/archive-service.ts/buildFinalCompressOpts:214",
-				"src/server/archive-service.ts/getContextWindowFor:273",
-				"src/server/archive-service.ts/archiveSession:311",
-				"src/server/archive-service.ts/buildArchivePayload:390",
-				"src/server/archive-service.ts/writeArchiveJson:442",
-				"src/server/archive-service.ts/runTeardown:473"
+				"src/server/archive-service.ts/archivePathFor:186",
+				"src/server/archive-service.ts/sanitizePathSegment:192",
+				"src/server/archive-service.ts/buildFinalCompressOpts:218",
+				"src/server/archive-service.ts/getContextWindowFor:252",
+				"src/server/archive-service.ts/archiveSession:290",
+				"src/server/archive-service.ts/buildArchivePayload:369",
+				"src/server/archive-service.ts/writeArchiveJson:421",
+				"src/server/archive-service.ts/runTeardown:452"
 			],
 			"description": ""
 		},
@@ -1616,7 +1616,7 @@
 		},
 		{
 			"path": "src/server/compression-core.ts",
-			"lines": 513,
+			"lines": 629,
 			"dir": "src/server",
 			"exports": [
 				"computeFreshTailStartSeq",
@@ -1631,16 +1631,19 @@
 				"src/core/logger.ts"
 			],
 			"functions": [
-				"src/server/compression-core.ts/parseSummarySections:181",
-				"src/server/compression-core.ts/statusHasNextAction:210",
-				"src/server/compression-core.ts/computeFreshTailStartSeq:231",
-				"src/server/compression-core.ts/estimateStepTokens:256",
-				"src/server/compression-core.ts/segmentByTurnGroup:270",
-				"src/server/compression-core.ts/renderSegmentTranscript:291",
-				"src/server/compression-core.ts/renderStep:304",
-				"src/server/compression-core.ts/compressSession:346",
-				"src/server/compression-core.ts/fallbackSections:477",
-				"src/server/compression-core.ts/advanceCursorOnly:500"
+				"src/server/compression-core.ts/parseSummarySections:194",
+				"src/server/compression-core.ts/statusHasNextAction:223",
+				"src/server/compression-core.ts/computeFreshTailStartSeq:244",
+				"src/server/compression-core.ts/estimateStepTokens:269",
+				"src/server/compression-core.ts/segmentByTurnGroup:283",
+				"src/server/compression-core.ts/renderSegmentTranscript:304",
+				"src/server/compression-core.ts/renderStep:317",
+				"src/server/compression-core.ts/compressSession:374",
+				"src/server/compression-core.ts/renderPriorHandoff:524",
+				"src/server/compression-core.ts/renderRunningHandoff:544",
+				"src/server/compression-core.ts/mergePriorSections:561",
+				"src/server/compression-core.ts/fallbackSections:582",
+				"src/server/compression-core.ts/advanceCursorOnly:616"
 			],
 			"description": ""
 		},
@@ -3294,7 +3297,7 @@
 		},
 		{
 			"path": "src/server/session-db.ts",
-			"lines": 1666,
+			"lines": 1703,
 			"dir": "src/server",
 			"exports": [
 				"getSessionDB",
@@ -3328,6 +3331,7 @@
 				"SessionDB.getCompressionCursor",
 				"SessionDB.saveSummaryAndAdvanceCursor",
 				"SessionDB.clearSummaries",
+				"SessionDB.replaceSummariesAndAdvanceCursor",
 				"SessionDB.ensureSession",
 				"SessionDB.migrateMessageFiles",
 				"SessionDB.getStepCount",
@@ -3410,45 +3414,46 @@
 				"src/server/session-db.ts/SessionDB.getCompressionCursor:694",
 				"src/server/session-db.ts/SessionDB.saveSummaryAndAdvanceCursor:717",
 				"src/server/session-db.ts/SessionDB.clearSummaries:757",
-				"src/server/session-db.ts/SessionDB.ensureSession:767",
-				"src/server/session-db.ts/SessionDB.migrateMessageFiles:787",
-				"src/server/session-db.ts/SessionDB.getStepCount:841",
-				"src/server/session-db.ts/SessionDB.clearTurns:861",
-				"src/server/session-db.ts/SessionDB.deleteTurn:873",
-				"src/server/session-db.ts/SessionDB.serializeAttachments:890",
-				"src/server/session-db.ts/SessionDB.deserializeAttachments:900",
-				"src/server/session-db.ts/SessionDB.getSteps:911",
-				"src/server/session-db.ts/SessionDB.getStepGroup:934",
-				"src/server/session-db.ts/SessionDB.appendStep:957",
-				"src/server/session-db.ts/SessionDB.upsertStep:1002",
-				"src/server/session-db.ts/SessionDB.updateStepContent:1056",
-				"src/server/session-db.ts/SessionDB.deleteStepGroup:1077",
-				"src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1106",
-				"src/server/session-db.ts/SessionDB.getTurnGroupCount:1139",
-				"src/server/session-db.ts/SessionDB.createTurnState:1163",
-				"src/server/session-db.ts/SessionDB.advanceStepCheckpoint:1200",
-				"src/server/session-db.ts/SessionDB.getStepCheckpoint:1215",
-				"src/server/session-db.ts/SessionDB.completeTurnState:1227",
-				"src/server/session-db.ts/SessionDB.failTurnState:1239",
-				"src/server/session-db.ts/SessionDB.getIncompleteTurns:1262",
-				"src/server/session-db.ts/SessionDB.getIncompleteTurn:1290",
-				"src/server/session-db.ts/SessionDB.getIncompleteTurnSessionIds:1319",
-				"src/server/session-db.ts/SessionDB.abandonInterruptedTurn:1340",
-				"src/server/session-db.ts/SessionDB.cleanOldProviderUsage:1362",
-				"src/server/session-db.ts/SessionDB.deleteTurnState:1383",
-				"src/server/session-db.ts/SessionDB.recordToolExecution:1394",
-				"src/server/session-db.ts/SessionDB.queryToolExecutions:1421",
-				"src/server/session-db.ts/SessionDB.getToolExecutionStats:1437",
-				"src/server/session-db.ts/SessionDB.cleanOldToolExecutions:1457",
-				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:1466",
-				"src/server/session-db.ts/SessionDB.close:1486",
-				"src/server/session-db.ts/SessionDB.rowToRecord:1494",
-				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1543",
-				"src/server/session-db.ts/SessionDB.createDelegatedTask:1571",
-				"src/server/session-db.ts/SessionDB.updateDelegatedTask:1608",
-				"src/server/session-db.ts/SessionDB.getDelegatedTask:1639",
-				"src/server/session-db.ts/SessionDB.listDelegatedTasks:1644",
-				"src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1658"
+				"src/server/session-db.ts/SessionDB.replaceSummariesAndAdvanceCursor:781",
+				"src/server/session-db.ts/SessionDB.ensureSession:804",
+				"src/server/session-db.ts/SessionDB.migrateMessageFiles:824",
+				"src/server/session-db.ts/SessionDB.getStepCount:878",
+				"src/server/session-db.ts/SessionDB.clearTurns:898",
+				"src/server/session-db.ts/SessionDB.deleteTurn:910",
+				"src/server/session-db.ts/SessionDB.serializeAttachments:927",
+				"src/server/session-db.ts/SessionDB.deserializeAttachments:937",
+				"src/server/session-db.ts/SessionDB.getSteps:948",
+				"src/server/session-db.ts/SessionDB.getStepGroup:971",
+				"src/server/session-db.ts/SessionDB.appendStep:994",
+				"src/server/session-db.ts/SessionDB.upsertStep:1039",
+				"src/server/session-db.ts/SessionDB.updateStepContent:1093",
+				"src/server/session-db.ts/SessionDB.deleteStepGroup:1114",
+				"src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1143",
+				"src/server/session-db.ts/SessionDB.getTurnGroupCount:1176",
+				"src/server/session-db.ts/SessionDB.createTurnState:1200",
+				"src/server/session-db.ts/SessionDB.advanceStepCheckpoint:1237",
+				"src/server/session-db.ts/SessionDB.getStepCheckpoint:1252",
+				"src/server/session-db.ts/SessionDB.completeTurnState:1264",
+				"src/server/session-db.ts/SessionDB.failTurnState:1276",
+				"src/server/session-db.ts/SessionDB.getIncompleteTurns:1299",
+				"src/server/session-db.ts/SessionDB.getIncompleteTurn:1327",
+				"src/server/session-db.ts/SessionDB.getIncompleteTurnSessionIds:1356",
+				"src/server/session-db.ts/SessionDB.abandonInterruptedTurn:1377",
+				"src/server/session-db.ts/SessionDB.cleanOldProviderUsage:1399",
+				"src/server/session-db.ts/SessionDB.deleteTurnState:1420",
+				"src/server/session-db.ts/SessionDB.recordToolExecution:1431",
+				"src/server/session-db.ts/SessionDB.queryToolExecutions:1458",
+				"src/server/session-db.ts/SessionDB.getToolExecutionStats:1474",
+				"src/server/session-db.ts/SessionDB.cleanOldToolExecutions:1494",
+				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:1503",
+				"src/server/session-db.ts/SessionDB.close:1523",
+				"src/server/session-db.ts/SessionDB.rowToRecord:1531",
+				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1580",
+				"src/server/session-db.ts/SessionDB.createDelegatedTask:1608",
+				"src/server/session-db.ts/SessionDB.updateDelegatedTask:1645",
+				"src/server/session-db.ts/SessionDB.getDelegatedTask:1676",
+				"src/server/session-db.ts/SessionDB.listDelegatedTasks:1681",
+				"src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1695"
 			],
 			"description": "SessionDB：SQLite CRUD（sessions/messages/turns/turn_state），cleanOldTurnState 24h 清理"
 		},
@@ -4264,7 +4269,7 @@
 		},
 		{
 			"path": "src/core/config.ts",
-			"lines": 359,
+			"lines": 368,
 			"dir": "src/core",
 			"exports": [
 				"getGlobalConfigPath",
@@ -4276,12 +4281,12 @@
 				"src/core/kv-store-interface.ts"
 			],
 			"functions": [
-				"src/core/config.ts/getGlobalConfigPath:270",
-				"src/core/config.ts/deepMerge:278",
-				"src/core/config.ts/readJsonFile:306",
-				"src/core/config.ts/loadConfig:315",
-				"src/core/config.ts/resolveEffective:352",
-				"src/core/config.ts/saveGlobalConfig:356"
+				"src/core/config.ts/getGlobalConfigPath:279",
+				"src/core/config.ts/deepMerge:287",
+				"src/core/config.ts/readJsonFile:315",
+				"src/core/config.ts/loadConfig:324",
+				"src/core/config.ts/resolveEffective:361",
+				"src/core/config.ts/saveGlobalConfig:365"
 			],
 			"description": "全局配置：ZERO_CORE_DIR，默认值，环境变量读取，deep merge"
 		},
@@ -4515,7 +4520,7 @@
 		},
 		{
 			"path": "src/core/persona.ts",
-			"lines": 192,
+			"lines": 207,
 			"dir": "src/core",
 			"exports": [
 				"buildPersonaPrompt",
@@ -4525,8 +4530,8 @@
 				"src/core/config.ts"
 			],
 			"functions": [
-				"src/core/persona.ts/buildPersonaPrompt:108",
-				"src/core/persona.ts/applyPersonaToConfig:149"
+				"src/core/persona.ts/buildPersonaPrompt:115",
+				"src/core/persona.ts/applyPersonaToConfig:156"
 			],
 			"description": "AI 角色定义：风格、专长、工具策略，buildPersonaPrompt"
 		},
@@ -6199,43 +6204,43 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:198",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:204",
 			"name": "buildCompressOpts",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 198,
-			"endLine": 228,
-			"statementCount": 13,
+			"line": 204,
+			"endLine": 217,
+			"statementCount": 9,
 			"exported": false,
 			"signature": "function buildCompressOpts(config: SessionConfig, providers: RuntimeProviderConfig[])",
-			"description": "Build compressSession opts from the session config (reuses extractor A model).\r",
+			"description": "Build compressSession opts from the session config.\r",
 			"callees": [
 				"src/runtime/provider-factory.ts/getContextWindow:121"
 			]
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/runCompression:235",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224",
 			"name": "runCompression",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 235,
-			"endLine": 289,
+			"line": 224,
+			"endLine": 278,
 			"statementCount": 27,
 			"exported": false,
 			"signature": "function runCompression(sessionId: string, db: SessionDB, config: SessionConfig, providers: RuntimeProviderConfig[], reason: string)",
 			"description": "Run compressSession, guarded against re-entry and per-turn double-fire.\r",
 			"callees": [
-				"src/server/compression-core.ts/compressSession:346",
-				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:198"
+				"src/server/compression-core.ts/compressSession:374",
+				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:204"
 			]
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:295",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:284",
 			"name": "resolveCacheTtl",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 295,
-			"endLine": 302,
+			"line": 284,
+			"endLine": 291,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "function resolveCacheTtl(providers: RuntimeProviderConfig[], providerName: string)",
@@ -6243,34 +6248,34 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307",
 			"name": "registerCompressionTriggerHooks",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 318,
-			"endLine": 432,
+			"line": 307,
+			"endLine": 421,
 			"statementCount": 56,
 			"exported": true,
 			"signature": "function registerCompressionTriggerHooks(deps: CompressionTriggerHooksDeps, registry: HookRegistry = HookRegistry.getInstance())",
 			"description": "Register the compression trigger hooks. Idempotent. All four trigger seams\r",
 			"callees": [
 				"src/runtime/hooks/compression-trigger-hooks.ts/resetTurnState:146",
-				"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:295",
+				"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:284",
 				"src/runtime/hooks/compression-trigger-hooks.ts/isCold:140",
 				"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:165",
 				"src/runtime/hooks/compression-trigger-hooks.ts/exceedsThreshold:178",
-				"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:235",
-				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:438",
+				"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224",
+				"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:427",
 				"src/runtime/hooks/compression-trigger-hooks.ts/markLastLLMCall:136"
 			]
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:438",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:427",
 			"name": "buildCompressionReminder",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 438,
-			"endLine": 448,
+			"line": 427,
+			"endLine": 437,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "function buildCompressionReminder(state: TokenState)",
@@ -6278,12 +6283,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerStateForSession:466",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerStateForSession:455",
 			"name": "clearCompressionTriggerStateForSession",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 466,
-			"endLine": 471,
+			"line": 455,
+			"endLine": 460,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "function clearCompressionTriggerStateForSession(sessionId: string)",
@@ -6291,12 +6296,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerState:478",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/clearCompressionTriggerState:467",
 			"name": "clearCompressionTriggerState",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 478,
-			"endLine": 483,
+			"line": 467,
+			"endLine": 472,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "function clearCompressionTriggerState()",
@@ -6304,12 +6309,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_setLastLLMCallForTest:489",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_setLastLLMCallForTest:478",
 			"name": "_setLastLLMCallForTest",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 489,
-			"endLine": 492,
+			"line": 478,
+			"endLine": 481,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "function _setLastLLMCallForTest(sessionId: string, ts: number | undefined)",
@@ -6317,12 +6322,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_getLastLLMCallForTest:495",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_getLastLLMCallForTest:484",
 			"name": "_getLastLLMCallForTest",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 495,
-			"endLine": 497,
+			"line": 484,
+			"endLine": 486,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function _getLastLLMCallForTest(sessionId: string)",
@@ -6330,12 +6335,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_setLastReductionForTest:504",
+			"id": "src/runtime/hooks/compression-trigger-hooks.ts/_setLastReductionForTest:493",
 			"name": "_setLastReductionForTest",
 			"kind": "function",
 			"file": "src/runtime/hooks/compression-trigger-hooks.ts",
-			"line": 504,
-			"endLine": 507,
+			"line": 493,
+			"endLine": 496,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "function _setLastReductionForTest(sessionId: string, frac: number | undefined)",
@@ -6426,7 +6431,7 @@
 				"src/runtime/hooks/todo-cleanup-hooks.ts/registerTodoCleanupHooks:29",
 				"src/runtime/hooks/force-wait-hooks.ts/registerForceWaitHooks:74",
 				"src/runtime/hooks/extraction-hooks.ts/registerExtractionHooks:68",
-				"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318",
+				"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307",
 				"src/runtime/hooks/input-queue-hooks.ts/registerInputQueueHooks:39",
 				"src/server/metrics-hooks.ts/registerMetricsHooks:31",
 				"src/runtime/hooks/task-control-hooks.ts/registerTaskControlHooks:67"
@@ -10692,27 +10697,27 @@
 			]
 		},
 		{
-			"id": "src/server/archive-service.ts/archivePathFor:184",
+			"id": "src/server/archive-service.ts/archivePathFor:186",
 			"name": "archivePathFor",
 			"kind": "function",
 			"file": "src/server/archive-service.ts",
-			"line": 184,
-			"endLine": 187,
+			"line": 186,
+			"endLine": 189,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "function archivePathFor(agentId: string, sessionId: string)",
 			"description": "Per-archive path = `<archives>/<agentId>/<sessionId>.json`.\r",
 			"callees": [
-				"src/server/archive-service.ts/sanitizePathSegment:190"
+				"src/server/archive-service.ts/sanitizePathSegment:192"
 			]
 		},
 		{
-			"id": "src/server/archive-service.ts/sanitizePathSegment:190",
+			"id": "src/server/archive-service.ts/sanitizePathSegment:192",
 			"name": "sanitizePathSegment",
 			"kind": "function",
 			"file": "src/server/archive-service.ts",
-			"line": 190,
-			"endLine": 196,
+			"line": 192,
+			"endLine": 198,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "function sanitizePathSegment(seg: string)",
@@ -10720,27 +10725,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/archive-service.ts/buildFinalCompressOpts:214",
+			"id": "src/server/archive-service.ts/buildFinalCompressOpts:218",
 			"name": "buildFinalCompressOpts",
 			"kind": "function",
 			"file": "src/server/archive-service.ts",
-			"line": 214,
-			"endLine": 266,
-			"statementCount": 14,
+			"line": 218,
+			"endLine": 245,
+			"statementCount": 10,
 			"exported": false,
 			"signature": "function buildFinalCompressOpts(sessionConfig: SessionConfig, providers: RuntimeProviderConfig[])",
 			"description": "Build `compressSession` opts for the final compression, mirroring\r",
 			"callees": [
-				"src/server/archive-service.ts/getContextWindowFor:273"
+				"src/server/archive-service.ts/getContextWindowFor:252"
 			]
 		},
 		{
-			"id": "src/server/archive-service.ts/getContextWindowFor:273",
+			"id": "src/server/archive-service.ts/getContextWindowFor:252",
 			"name": "getContextWindowFor",
 			"kind": "function",
 			"file": "src/server/archive-service.ts",
-			"line": 273,
-			"endLine": 287,
+			"line": 252,
+			"endLine": 266,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function getContextWindowFor(providers: RuntimeProviderConfig[], providerName: string, modelId: string)",
@@ -10748,32 +10753,32 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/archive-service.ts/archiveSession:311",
+			"id": "src/server/archive-service.ts/archiveSession:290",
 			"name": "archiveSession",
 			"kind": "function",
 			"file": "src/server/archive-service.ts",
-			"line": 311,
-			"endLine": 378,
+			"line": 290,
+			"endLine": 357,
 			"statementCount": 17,
 			"exported": true,
 			"signature": "function archiveSession(sessionId: string, db: SessionDB, opts: ArchiveSessionOptions)",
 			"description": "Run the archive pipeline for one session:\r",
 			"callees": [
-				"src/server/archive-service.ts/runTeardown:473",
-				"src/server/compression-core.ts/compressSession:346",
-				"src/server/archive-service.ts/buildFinalCompressOpts:214",
-				"src/server/archive-service.ts/archivePathFor:184",
-				"src/server/archive-service.ts/buildArchivePayload:390",
-				"src/server/archive-service.ts/writeArchiveJson:442"
+				"src/server/archive-service.ts/runTeardown:452",
+				"src/server/compression-core.ts/compressSession:374",
+				"src/server/archive-service.ts/buildFinalCompressOpts:218",
+				"src/server/archive-service.ts/archivePathFor:186",
+				"src/server/archive-service.ts/buildArchivePayload:369",
+				"src/server/archive-service.ts/writeArchiveJson:421"
 			]
 		},
 		{
-			"id": "src/server/archive-service.ts/buildArchivePayload:390",
+			"id": "src/server/archive-service.ts/buildArchivePayload:369",
 			"name": "buildArchivePayload",
 			"kind": "function",
 			"file": "src/server/archive-service.ts",
-			"line": 390,
-			"endLine": 435,
+			"line": 369,
+			"endLine": 414,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function buildArchivePayload(sessionId: string, agentId: string, db: SessionDB, sessionRow: SessionRecord | undefined, finalCompressionRan: boolean)",
@@ -10781,12 +10786,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/archive-service.ts/writeArchiveJson:442",
+			"id": "src/server/archive-service.ts/writeArchiveJson:421",
 			"name": "writeArchiveJson",
 			"kind": "function",
 			"file": "src/server/archive-service.ts",
-			"line": 442,
-			"endLine": 449,
+			"line": 421,
+			"endLine": 428,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "function writeArchiveJson(archivePath: string, payload: ArchiveJson)",
@@ -10794,12 +10799,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/archive-service.ts/runTeardown:473",
+			"id": "src/server/archive-service.ts/runTeardown:452",
 			"name": "runTeardown",
 			"kind": "function",
 			"file": "src/server/archive-service.ts",
-			"line": 473,
-			"endLine": 488,
+			"line": 452,
+			"endLine": 467,
 			"statementCount": 8,
 			"exported": false,
 			"signature": "function runTeardown(teardown: ArchiveRuntimeTeardown, sessionId: string)",
@@ -11274,12 +11279,12 @@
 			]
 		},
 		{
-			"id": "src/server/compression-core.ts/parseSummarySections:181",
+			"id": "src/server/compression-core.ts/parseSummarySections:194",
 			"name": "parseSummarySections",
 			"kind": "function",
 			"file": "src/server/compression-core.ts",
-			"line": 181,
-			"endLine": 207,
+			"line": 194,
+			"endLine": 220,
 			"statementCount": 25,
 			"exported": false,
 			"signature": "function parseSummarySections(text: string)",
@@ -11287,12 +11292,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/compression-core.ts/statusHasNextAction:210",
+			"id": "src/server/compression-core.ts/statusHasNextAction:223",
 			"name": "statusHasNextAction",
 			"kind": "function",
 			"file": "src/server/compression-core.ts",
-			"line": 210,
-			"endLine": 216,
+			"line": 223,
+			"endLine": 229,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "function statusHasNextAction(status: string)",
@@ -11300,27 +11305,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/compression-core.ts/computeFreshTailStartSeq:231",
+			"id": "src/server/compression-core.ts/computeFreshTailStartSeq:244",
 			"name": "computeFreshTailStartSeq",
 			"kind": "function",
 			"file": "src/server/compression-core.ts",
-			"line": 231,
-			"endLine": 254,
+			"line": 244,
+			"endLine": 267,
 			"statementCount": 15,
 			"exported": true,
 			"signature": "function computeFreshTailStartSeq(postCursorSteps: StepRow[], contextWindow: number)",
 			"description": "计算 fresh tail 的起始 seq(含)。fresh tail 是最近一段总 token 预算内的 step,\r",
 			"callees": [
-				"src/server/compression-core.ts/estimateStepTokens:256"
+				"src/server/compression-core.ts/estimateStepTokens:269"
 			]
 		},
 		{
-			"id": "src/server/compression-core.ts/estimateStepTokens:256",
+			"id": "src/server/compression-core.ts/estimateStepTokens:269",
 			"name": "estimateStepTokens",
 			"kind": "function",
 			"file": "src/server/compression-core.ts",
-			"line": 256,
-			"endLine": 258,
+			"line": 269,
+			"endLine": 271,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function estimateStepTokens(step: StepRow)",
@@ -11328,12 +11333,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/compression-core.ts/segmentByTurnGroup:270",
+			"id": "src/server/compression-core.ts/segmentByTurnGroup:283",
 			"name": "segmentByTurnGroup",
 			"kind": "function",
 			"file": "src/server/compression-core.ts",
-			"line": 270,
-			"endLine": 285,
+			"line": 283,
+			"endLine": 298,
 			"statementCount": 14,
 			"exported": true,
 			"signature": "function segmentByTurnGroup(steps: StepRow[])",
@@ -11341,27 +11346,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/compression-core.ts/renderSegmentTranscript:291",
+			"id": "src/server/compression-core.ts/renderSegmentTranscript:304",
 			"name": "renderSegmentTranscript",
 			"kind": "function",
 			"file": "src/server/compression-core.ts",
-			"line": 291,
-			"endLine": 302,
+			"line": 304,
+			"endLine": 315,
 			"statementCount": 11,
 			"exported": false,
 			"signature": "function renderSegmentTranscript(seg: CompressionSegment, maxChars: number)",
 			"description": "",
 			"callees": [
-				"src/server/compression-core.ts/renderStep:304"
+				"src/server/compression-core.ts/renderStep:317"
 			]
 		},
 		{
-			"id": "src/server/compression-core.ts/renderStep:304",
+			"id": "src/server/compression-core.ts/renderStep:317",
 			"name": "renderStep",
 			"kind": "function",
 			"file": "src/server/compression-core.ts",
-			"line": 304,
-			"endLine": 329,
+			"line": 317,
+			"endLine": 342,
 			"statementCount": 20,
 			"exported": false,
 			"signature": "function renderStep(step: StepRow)",
@@ -11369,47 +11374,89 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/compression-core.ts/compressSession:346",
+			"id": "src/server/compression-core.ts/compressSession:374",
 			"name": "compressSession",
 			"kind": "function",
 			"file": "src/server/compression-core.ts",
-			"line": 346,
-			"endLine": 474,
-			"statementCount": 50,
+			"line": 374,
+			"endLine": 512,
+			"statementCount": 55,
 			"exported": true,
 			"signature": "function compressSession(sessionId: string, db: SessionDB, opts: CompressSessionOptions)",
-			"description": "压缩核心:读「游标之后、fresh tail 之外」的 step → 产 5 段 summary(每段一个)→\r",
+			"description": "压缩核心(sub-3b 滚动摘要版):读「游标之后、fresh tail 之外」的 step →\r",
 			"callees": [
-				"src/server/compression-core.ts/computeFreshTailStartSeq:231",
-				"src/server/compression-core.ts/segmentByTurnGroup:270",
+				"src/server/compression-core.ts/computeFreshTailStartSeq:244",
+				"src/server/compression-core.ts/segmentByTurnGroup:283",
 				"src/runtime/provider-factory.ts/resolveModel:44",
-				"src/server/compression-core.ts/renderSegmentTranscript:291",
-				"src/server/compression-core.ts/parseSummarySections:181",
-				"src/server/compression-core.ts/statusHasNextAction:210",
-				"src/server/compression-core.ts/fallbackSections:477",
-				"src/server/compression-core.ts/advanceCursorOnly:500"
+				"src/server/compression-core.ts/renderSegmentTranscript:304",
+				"src/server/compression-core.ts/renderRunningHandoff:544",
+				"src/server/compression-core.ts/renderPriorHandoff:524",
+				"src/server/compression-core.ts/parseSummarySections:194",
+				"src/server/compression-core.ts/statusHasNextAction:223",
+				"src/server/compression-core.ts/fallbackSections:582",
+				"src/server/compression-core.ts/mergePriorSections:561",
+				"src/server/compression-core.ts/advanceCursorOnly:616"
 			]
 		},
 		{
-			"id": "src/server/compression-core.ts/fallbackSections:477",
-			"name": "fallbackSections",
+			"id": "src/server/compression-core.ts/renderPriorHandoff:524",
+			"name": "renderPriorHandoff",
 			"kind": "function",
 			"file": "src/server/compression-core.ts",
-			"line": 477,
-			"endLine": 494,
-			"statementCount": 9,
+			"line": 524,
+			"endLine": 537,
+			"statementCount": 12,
 			"exported": false,
-			"signature": "function fallbackSections(seg: CompressionSegment)",
-			"description": "LLM 失败兜底:仍产 5 段(状态段含「下一步」,满足不变量),保证总有 summary 写入。",
+			"signature": "function renderPriorHandoff(priorSummaries: MessageSummary[])",
+			"description": "sub-3b: render prior summaries (read from db.getSummaries at compress start)\r",
 			"callees": []
 		},
 		{
-			"id": "src/server/compression-core.ts/advanceCursorOnly:500",
+			"id": "src/server/compression-core.ts/renderRunningHandoff:544",
+			"name": "renderRunningHandoff",
+			"kind": "function",
+			"file": "src/server/compression-core.ts",
+			"line": 544,
+			"endLine": 558,
+			"statementCount": 9,
+			"exported": false,
+			"signature": "function renderRunningHandoff(sections: { [k: string]: string }, fromSeq: number, toSeq: number)",
+			"description": "sub-3b: render the running summary (produced by the previous segment in this\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/compression-core.ts/mergePriorSections:561",
+			"name": "mergePriorSections",
+			"kind": "function",
+			"file": "src/server/compression-core.ts",
+			"line": 561,
+			"endLine": 573,
+			"statementCount": 11,
+			"exported": false,
+			"signature": "function mergePriorSections(priorSummaries: MessageSummary[])",
+			"description": "Flatten prior summaries' sections into a single merged dict (fallback path).",
+			"callees": []
+		},
+		{
+			"id": "src/server/compression-core.ts/fallbackSections:582",
+			"name": "fallbackSections",
+			"kind": "function",
+			"file": "src/server/compression-core.ts",
+			"line": 582,
+			"endLine": 610,
+			"statementCount": 18,
+			"exported": false,
+			"signature": "function fallbackSections(seg: CompressionSegment, handoff?: { [k: string]: string } | null)",
+			"description": "LLM 失败兜底:仍产 5 段(状态段含「下一步」,满足不变量),保证总有 summary 写入。\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/compression-core.ts/advanceCursorOnly:616",
 			"name": "advanceCursorOnly",
 			"kind": "function",
 			"file": "src/server/compression-core.ts",
-			"line": 500,
-			"endLine": 512,
+			"line": 616,
+			"endLine": 628,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function advanceCursorOnly(db: SessionDB, sessionId: string, newCursor: number)",
@@ -11434,7 +11481,7 @@
 				"src/core/device-context.ts/loadDeviceContext:213",
 				"src/core/device-context.ts/generateAndSaveDeviceContext:228",
 				"src/core/device-context.ts/saveDeviceContext:224",
-				"src/core/config.ts/loadConfig:315"
+				"src/core/config.ts/loadConfig:324"
 			]
 		},
 		{
@@ -17338,7 +17385,7 @@
 			"signature": "method getSession(sessionId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1494"
+				"src/server/session-db.ts/SessionDB.rowToRecord:1531"
 			]
 		},
 		{
@@ -17353,7 +17400,7 @@
 			"signature": "method getMainSession(agentId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1494"
+				"src/server/session-db.ts/SessionDB.rowToRecord:1531"
 			]
 		},
 		{
@@ -17368,7 +17415,7 @@
 			"signature": "method getMostRecentSession(agentId: string)",
 			"description": "The most-recently-active session for an agent, by `updated_at`. Every\r",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1494"
+				"src/server/session-db.ts/SessionDB.rowToRecord:1531"
 			]
 		},
 		{
@@ -17396,7 +17443,7 @@
 			"signature": "method listSessions(agentId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1494"
+				"src/server/session-db.ts/SessionDB.rowToRecord:1531"
 			]
 		},
 		{
@@ -17411,7 +17458,7 @@
 			"signature": "method listAllSessions()",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1494"
+				"src/server/session-db.ts/SessionDB.rowToRecord:1531"
 			]
 		},
 		{
@@ -17426,7 +17473,7 @@
 			"signature": "method findSessionByAgentAndProject(agentId: string, projectId: string)",
 			"description": "v0.8 (M0): find-or-create routing key for `{role(agentId), projectId} → session`.\r",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1494"
+				"src/server/session-db.ts/SessionDB.rowToRecord:1531"
 			]
 		},
 		{
@@ -17592,7 +17639,7 @@
 			"signature": "method saveSummaryAndAdvanceCursor(sessionId: string, summary: MessageSummary, compressedStepSeq: number)",
 			"description": "Push a new summary block + advance the compression cursor atomically.\r",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:767"
+				"src/server/session-db.ts/SessionDB.ensureSession:804"
 			]
 		},
 		{
@@ -17609,12 +17656,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.ensureSession:767",
+			"id": "src/server/session-db.ts/SessionDB.replaceSummariesAndAdvanceCursor:781",
+			"name": "SessionDB.replaceSummariesAndAdvanceCursor",
+			"kind": "method",
+			"file": "src/server/session-db.ts",
+			"line": 781,
+			"endLine": 801,
+			"statementCount": 7,
+			"exported": true,
+			"signature": "method replaceSummariesAndAdvanceCursor(sessionId: string, summary: MessageSummary, compressedStepSeq: number)",
+			"description": "steps-overhaul sub-3b (compression-archive-simplify): atomic clear +\r",
+			"callees": [
+				"src/server/session-db.ts/SessionDB.ensureSession:804"
+			]
+		},
+		{
+			"id": "src/server/session-db.ts/SessionDB.ensureSession:804",
 			"name": "SessionDB.ensureSession",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 767,
-			"endLine": 774,
+			"line": 804,
+			"endLine": 811,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method ensureSession(sessionId: string)",
@@ -17622,12 +17684,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.migrateMessageFiles:787",
+			"id": "src/server/session-db.ts/SessionDB.migrateMessageFiles:824",
 			"name": "SessionDB.migrateMessageFiles",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 787,
-			"endLine": 833,
+			"line": 824,
+			"endLine": 870,
 			"statementCount": 32,
 			"exported": true,
 			"signature": "method migrateMessageFiles()",
@@ -17635,16 +17697,16 @@
 			"callees": [
 				"src/server/session-db.ts/SessionDB.createSession:395",
 				"src/server/session-db.ts/SessionDB.setMainSession:459",
-				"src/server/session-db.ts/SessionDB.appendStep:957"
+				"src/server/session-db.ts/SessionDB.appendStep:994"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getStepCount:841",
+			"id": "src/server/session-db.ts/SessionDB.getStepCount:878",
 			"name": "SessionDB.getStepCount",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 841,
-			"endLine": 859,
+			"line": 878,
+			"endLine": 896,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getStepCount(sessionId: string)",
@@ -17652,12 +17714,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.clearTurns:861",
+			"id": "src/server/session-db.ts/SessionDB.clearTurns:898",
 			"name": "SessionDB.clearTurns",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 861,
-			"endLine": 871,
+			"line": 898,
+			"endLine": 908,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method clearTurns(sessionId: string)",
@@ -17665,12 +17727,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteTurn:873",
+			"id": "src/server/session-db.ts/SessionDB.deleteTurn:910",
 			"name": "SessionDB.deleteTurn",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 873,
-			"endLine": 878,
+			"line": 910,
+			"endLine": 915,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method deleteTurn(sessionId: string, seq: number)",
@@ -17678,12 +17740,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.serializeAttachments:890",
+			"id": "src/server/session-db.ts/SessionDB.serializeAttachments:927",
 			"name": "SessionDB.serializeAttachments",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 890,
-			"endLine": 893,
+			"line": 927,
+			"endLine": 930,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method serializeAttachments(attachments?: AttachmentMeta[])",
@@ -17691,12 +17753,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deserializeAttachments:900",
+			"id": "src/server/session-db.ts/SessionDB.deserializeAttachments:937",
 			"name": "SessionDB.deserializeAttachments",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 900,
-			"endLine": 909,
+			"line": 937,
+			"endLine": 946,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method deserializeAttachments(raw: unknown)",
@@ -17704,74 +17766,74 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getSteps:911",
+			"id": "src/server/session-db.ts/SessionDB.getSteps:948",
 			"name": "SessionDB.getSteps",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 911,
-			"endLine": 932,
+			"line": 948,
+			"endLine": 969,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getSteps(sessionId: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.deserializeAttachments:900"
+				"src/server/session-db.ts/SessionDB.deserializeAttachments:937"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getStepGroup:934",
+			"id": "src/server/session-db.ts/SessionDB.getStepGroup:971",
 			"name": "SessionDB.getStepGroup",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 934,
-			"endLine": 955,
+			"line": 971,
+			"endLine": 992,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getStepGroup(sessionId: string, turnGroup: number)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.deserializeAttachments:900"
+				"src/server/session-db.ts/SessionDB.deserializeAttachments:937"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.appendStep:957",
+			"id": "src/server/session-db.ts/SessionDB.appendStep:994",
 			"name": "SessionDB.appendStep",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 957,
-			"endLine": 1000,
+			"line": 994,
+			"endLine": 1037,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method appendStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }, attachments?: AttachmentMeta[])",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:767",
-				"src/server/session-db.ts/SessionDB.serializeAttachments:890"
+				"src/server/session-db.ts/SessionDB.ensureSession:804",
+				"src/server/session-db.ts/SessionDB.serializeAttachments:927"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.upsertStep:1002",
+			"id": "src/server/session-db.ts/SessionDB.upsertStep:1039",
 			"name": "SessionDB.upsertStep",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1002,
-			"endLine": 1054,
+			"line": 1039,
+			"endLine": 1091,
 			"statementCount": 14,
 			"exported": true,
 			"signature": "method upsertStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }, attachments?: AttachmentMeta[])",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:767",
-				"src/server/session-db.ts/SessionDB.serializeAttachments:890"
+				"src/server/session-db.ts/SessionDB.ensureSession:804",
+				"src/server/session-db.ts/SessionDB.serializeAttachments:927"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateStepContent:1056",
+			"id": "src/server/session-db.ts/SessionDB.updateStepContent:1093",
 			"name": "SessionDB.updateStepContent",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1056,
-			"endLine": 1075,
+			"line": 1093,
+			"endLine": 1112,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method updateStepContent(sessionId: string, seq: number, content: string, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number })",
@@ -17779,12 +17841,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteStepGroup:1077",
+			"id": "src/server/session-db.ts/SessionDB.deleteStepGroup:1114",
 			"name": "SessionDB.deleteStepGroup",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1077,
-			"endLine": 1092,
+			"line": 1114,
+			"endLine": 1129,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method deleteStepGroup(sessionId: string, turnGroup: number)",
@@ -17792,12 +17854,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1106",
+			"id": "src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1143",
 			"name": "SessionDB.deleteStepsFromSeq",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1106,
-			"endLine": 1137,
+			"line": 1143,
+			"endLine": 1174,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method deleteStepsFromSeq(sessionId: string, fromSeq: number)",
@@ -17808,12 +17870,12 @@
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getTurnGroupCount:1139",
+			"id": "src/server/session-db.ts/SessionDB.getTurnGroupCount:1176",
 			"name": "SessionDB.getTurnGroupCount",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1139,
-			"endLine": 1144,
+			"line": 1176,
+			"endLine": 1181,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getTurnGroupCount(sessionId: string)",
@@ -17821,12 +17883,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.createTurnState:1163",
+			"id": "src/server/session-db.ts/SessionDB.createTurnState:1200",
 			"name": "SessionDB.createTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1163,
-			"endLine": 1189,
+			"line": 1200,
+			"endLine": 1226,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method createTurnState(sessionId: string, turnSeq: number, source: TurnSource = \"background\")",
@@ -17834,12 +17896,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.advanceStepCheckpoint:1200",
+			"id": "src/server/session-db.ts/SessionDB.advanceStepCheckpoint:1237",
 			"name": "SessionDB.advanceStepCheckpoint",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1200,
-			"endLine": 1212,
+			"line": 1237,
+			"endLine": 1249,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method advanceStepCheckpoint(sessionId: string, turnSeq: number, stepSeq: number)",
@@ -17847,12 +17909,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getStepCheckpoint:1215",
+			"id": "src/server/session-db.ts/SessionDB.getStepCheckpoint:1252",
 			"name": "SessionDB.getStepCheckpoint",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1215,
-			"endLine": 1225,
+			"line": 1252,
+			"endLine": 1262,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getStepCheckpoint(sessionId: string)",
@@ -17860,12 +17922,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.completeTurnState:1227",
+			"id": "src/server/session-db.ts/SessionDB.completeTurnState:1264",
 			"name": "SessionDB.completeTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1227,
-			"endLine": 1237,
+			"line": 1264,
+			"endLine": 1274,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method completeTurnState(sessionId: string, turnSeq: number)",
@@ -17873,12 +17935,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.failTurnState:1239",
+			"id": "src/server/session-db.ts/SessionDB.failTurnState:1276",
 			"name": "SessionDB.failTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1239,
-			"endLine": 1249,
+			"line": 1276,
+			"endLine": 1286,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method failTurnState(sessionId: string, turnSeq: number, error: string)",
@@ -17886,12 +17948,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurns:1262",
+			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurns:1299",
 			"name": "SessionDB.getIncompleteTurns",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1262,
-			"endLine": 1279,
+			"line": 1299,
+			"endLine": 1316,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getIncompleteTurns()",
@@ -17899,12 +17961,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurn:1290",
+			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurn:1327",
 			"name": "SessionDB.getIncompleteTurn",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1290,
-			"endLine": 1305,
+			"line": 1327,
+			"endLine": 1342,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method getIncompleteTurn(sessionId: string)",
@@ -17912,12 +17974,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurnSessionIds:1319",
+			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurnSessionIds:1356",
 			"name": "SessionDB.getIncompleteTurnSessionIds",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1319,
-			"endLine": 1329,
+			"line": 1356,
+			"endLine": 1366,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getIncompleteTurnSessionIds()",
@@ -17925,12 +17987,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.abandonInterruptedTurn:1340",
+			"id": "src/server/session-db.ts/SessionDB.abandonInterruptedTurn:1377",
 			"name": "SessionDB.abandonInterruptedTurn",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1340,
-			"endLine": 1351,
+			"line": 1377,
+			"endLine": 1388,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method abandonInterruptedTurn(sessionId: string, reason: string = \"Abandoned via TaskKill\")",
@@ -17938,12 +18000,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.cleanOldProviderUsage:1362",
+			"id": "src/server/session-db.ts/SessionDB.cleanOldProviderUsage:1399",
 			"name": "SessionDB.cleanOldProviderUsage",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1362,
-			"endLine": 1375,
+			"line": 1399,
+			"endLine": 1412,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method cleanOldProviderUsage(maxAgeMs: number)",
@@ -17951,12 +18013,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.deleteTurnState:1383",
+			"id": "src/server/session-db.ts/SessionDB.deleteTurnState:1420",
 			"name": "SessionDB.deleteTurnState",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1383,
-			"endLine": 1388,
+			"line": 1420,
+			"endLine": 1425,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method deleteTurnState(sessionId: string)",
@@ -17964,12 +18026,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.recordToolExecution:1394",
+			"id": "src/server/session-db.ts/SessionDB.recordToolExecution:1431",
 			"name": "SessionDB.recordToolExecution",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1394,
-			"endLine": 1419,
+			"line": 1431,
+			"endLine": 1456,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method recordToolExecution(exec: {\r\n\t\tsessionId: string;\r\n\t\tagentId: string;\r\n\t\ttoolName: string;\r\n\t\tsuccess: boolean;\r\n\t\terrorMessage?: string;\r\n\t\tinputPreview?: string;\r\n\t\toutputPreview?: string;\r\n\t\tdurationMs: number;\r\n\t\tturnSeq?: number;\r\n\t})",
@@ -17977,27 +18039,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.queryToolExecutions:1421",
+			"id": "src/server/session-db.ts/SessionDB.queryToolExecutions:1458",
 			"name": "SessionDB.queryToolExecutions",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1421,
-			"endLine": 1435,
+			"line": 1458,
+			"endLine": 1472,
 			"statementCount": 19,
 			"exported": true,
 			"signature": "method queryToolExecutions(filter: ToolExecutionFilter)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:1466"
+				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:1503"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getToolExecutionStats:1437",
+			"id": "src/server/session-db.ts/SessionDB.getToolExecutionStats:1474",
 			"name": "SessionDB.getToolExecutionStats",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1437,
-			"endLine": 1455,
+			"line": 1474,
+			"endLine": 1492,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method getToolExecutionStats(agentId?: string)",
@@ -18005,12 +18067,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.cleanOldToolExecutions:1457",
+			"id": "src/server/session-db.ts/SessionDB.cleanOldToolExecutions:1494",
 			"name": "SessionDB.cleanOldToolExecutions",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1457,
-			"endLine": 1464,
+			"line": 1494,
+			"endLine": 1501,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method cleanOldToolExecutions(maxAgeMs: number)",
@@ -18018,12 +18080,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.toolExecRowToRecord:1466",
+			"id": "src/server/session-db.ts/SessionDB.toolExecRowToRecord:1503",
 			"name": "SessionDB.toolExecRowToRecord",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1466,
-			"endLine": 1480,
+			"line": 1503,
+			"endLine": 1517,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method toolExecRowToRecord(row: any)",
@@ -18031,27 +18093,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.close:1486",
+			"id": "src/server/session-db.ts/SessionDB.close:1523",
 			"name": "SessionDB.close",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1486,
-			"endLine": 1488,
+			"line": 1523,
+			"endLine": 1525,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method close()",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.close:1486"
+				"src/server/session-db.ts/SessionDB.close:1523"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.rowToRecord:1494",
+			"id": "src/server/session-db.ts/SessionDB.rowToRecord:1531",
 			"name": "SessionDB.rowToRecord",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1494,
-			"endLine": 1537,
+			"line": 1531,
+			"endLine": 1574,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method rowToRecord(row: any)",
@@ -18059,12 +18121,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1543",
+			"id": "src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1580",
 			"name": "SessionDB.delegatedTaskRowToRecord",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1543,
-			"endLine": 1569,
+			"line": 1580,
+			"endLine": 1606,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method delegatedTaskRowToRecord(row: any)",
@@ -18072,72 +18134,72 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.createDelegatedTask:1571",
+			"id": "src/server/session-db.ts/SessionDB.createDelegatedTask:1608",
 			"name": "SessionDB.createDelegatedTask",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1571,
-			"endLine": 1606,
+			"line": 1608,
+			"endLine": 1643,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method createDelegatedTask(input: {\r\n\t\tid: string;\r\n\t\tparentTaskId?: string;\r\n\t\trootTaskId: string;\r\n\t\townerAgentId: string;\r\n\t\ttargetAgentId: string;\r\n\t\tmodelId?: string;\r\n\t\tparentSessionId?: string;\r\n\t\tsessionId?: string;\r\n\t\ttask: string;\r\n\t\tstatus?: DelegatedTaskStatus;\r\n\t\tdepth?: number;\r\n\t\tparentToolCallId?: string;\r\n\t})",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.getDelegatedTask:1639"
+				"src/server/session-db.ts/SessionDB.getDelegatedTask:1676"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.updateDelegatedTask:1608",
+			"id": "src/server/session-db.ts/SessionDB.updateDelegatedTask:1645",
 			"name": "SessionDB.updateDelegatedTask",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1608,
-			"endLine": 1637,
+			"line": 1645,
+			"endLine": 1674,
 			"statementCount": 16,
 			"exported": true,
 			"signature": "method updateDelegatedTask(id: string, patch: Partial<Pick<DelegatedTaskRecord, \"status\" | \"step\" | \"turns\" | \"tokens\" | \"currentTool\" | \"result\" | \"error\" | \"controlMessage\" | \"finishRequestedAt\" | \"completedAt\" | \"sessionId\" | \"parentToolCallId\">>)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.getDelegatedTask:1639"
+				"src/server/session-db.ts/SessionDB.getDelegatedTask:1676"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.getDelegatedTask:1639",
+			"id": "src/server/session-db.ts/SessionDB.getDelegatedTask:1676",
 			"name": "SessionDB.getDelegatedTask",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1639,
-			"endLine": 1642,
+			"line": 1676,
+			"endLine": 1679,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method getDelegatedTask(id: string)",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1543"
+				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1580"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.listDelegatedTasks:1644",
+			"id": "src/server/session-db.ts/SessionDB.listDelegatedTasks:1681",
 			"name": "SessionDB.listDelegatedTasks",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1644,
-			"endLine": 1655,
+			"line": 1681,
+			"endLine": 1692,
 			"statementCount": 20,
 			"exported": true,
 			"signature": "method listDelegatedTasks(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; parentSessionId?: string; status?: DelegatedTaskStatus })",
 			"description": "",
 			"callees": [
-				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1543"
+				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1580"
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1658",
+			"id": "src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1695",
 			"name": "SessionDB.markRunningDelegatedTasksInterrupted",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1658,
-			"endLine": 1664,
+			"line": 1695,
+			"endLine": 1701,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method markRunningDelegatedTasksInterrupted()",
@@ -21962,12 +22024,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/config.ts/getGlobalConfigPath:270",
+			"id": "src/core/config.ts/getGlobalConfigPath:279",
 			"name": "getGlobalConfigPath",
 			"kind": "function",
 			"file": "src/core/config.ts",
-			"line": 270,
-			"endLine": 272,
+			"line": 279,
+			"endLine": 281,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function getGlobalConfigPath()",
@@ -21975,27 +22037,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/config.ts/deepMerge:278",
+			"id": "src/core/config.ts/deepMerge:287",
 			"name": "deepMerge",
 			"kind": "function",
 			"file": "src/core/config.ts",
-			"line": 278,
-			"endLine": 298,
+			"line": 287,
+			"endLine": 307,
 			"statementCount": 7,
 			"exported": false,
 			"signature": "function deepMerge(base: T, override: Partial<T>)",
 			"description": "",
 			"callees": [
-				"src/core/config.ts/deepMerge:278"
+				"src/core/config.ts/deepMerge:287"
 			]
 		},
 		{
-			"id": "src/core/config.ts/readJsonFile:306",
+			"id": "src/core/config.ts/readJsonFile:315",
 			"name": "readJsonFile",
 			"kind": "function",
 			"file": "src/core/config.ts",
-			"line": 306,
-			"endLine": 313,
+			"line": 315,
+			"endLine": 322,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "function readJsonFile(filepath: string)",
@@ -22003,29 +22065,29 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/config.ts/loadConfig:315",
+			"id": "src/core/config.ts/loadConfig:324",
 			"name": "loadConfig",
 			"kind": "function",
 			"file": "src/core/config.ts",
-			"line": 315,
-			"endLine": 346,
+			"line": 324,
+			"endLine": 355,
 			"statementCount": 17,
 			"exported": true,
 			"signature": "function loadConfig(cwd?: string, overrides?: Partial<ZeroCoreConfig>, kv?: IKVStore)",
 			"description": "",
 			"callees": [
-				"src/core/config.ts/deepMerge:278",
-				"src/core/config.ts/readJsonFile:306",
-				"src/core/config.ts/getGlobalConfigPath:270"
+				"src/core/config.ts/deepMerge:287",
+				"src/core/config.ts/readJsonFile:315",
+				"src/core/config.ts/getGlobalConfigPath:279"
 			]
 		},
 		{
-			"id": "src/core/config.ts/resolveEffective:352",
+			"id": "src/core/config.ts/resolveEffective:361",
 			"name": "resolveEffective",
 			"kind": "function",
 			"file": "src/core/config.ts",
-			"line": 352,
-			"endLine": 354,
+			"line": 361,
+			"endLine": 363,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function resolveEffective(configValue: T | undefined, piDefault: T)",
@@ -22033,12 +22095,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/config.ts/saveGlobalConfig:356",
+			"id": "src/core/config.ts/saveGlobalConfig:365",
 			"name": "saveGlobalConfig",
 			"kind": "function",
 			"file": "src/core/config.ts",
-			"line": 356,
-			"endLine": 358,
+			"line": 365,
+			"endLine": 367,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function saveGlobalConfig(config: Partial<ZeroCoreConfig>, kv: IKVStore)",
@@ -22736,12 +22798,12 @@
 			]
 		},
 		{
-			"id": "src/core/persona.ts/buildPersonaPrompt:108",
+			"id": "src/core/persona.ts/buildPersonaPrompt:115",
 			"name": "buildPersonaPrompt",
 			"kind": "function",
 			"file": "src/core/persona.ts",
-			"line": 108,
-			"endLine": 143,
+			"line": 115,
+			"endLine": 150,
 			"statementCount": 14,
 			"exported": true,
 			"signature": "function buildPersonaPrompt(persona: PersonaDefinition)",
@@ -22749,13 +22811,13 @@
 			"callees": []
 		},
 		{
-			"id": "src/core/persona.ts/applyPersonaToConfig:149",
+			"id": "src/core/persona.ts/applyPersonaToConfig:156",
 			"name": "applyPersonaToConfig",
 			"kind": "function",
 			"file": "src/core/persona.ts",
-			"line": 149,
-			"endLine": 191,
-			"statementCount": 13,
+			"line": 156,
+			"endLine": 206,
+			"statementCount": 15,
 			"exported": true,
 			"signature": "function applyPersonaToConfig(config: ZeroCoreConfig, persona: PersonaDefinition)",
 			"description": "",
@@ -23351,7 +23413,7 @@
 		],
 		"src/runtime/provider-factory.ts/resolveModel:44": [
 			"src/runtime/agent-loop.ts/AgentLoop.executeStream:1357",
-			"src/server/compression-core.ts/compressSession:346",
+			"src/server/compression-core.ts/compressSession:374",
 			"src/server/extractor-a-service.ts/ExtractorAService.runAgentLoop:350",
 			"src/server/extractor-b-service.ts/ExtractorBService.callLLM:176",
 			"src/server/tool-execution-router.ts/createToolExecutionRouter:39"
@@ -23401,38 +23463,38 @@
 		],
 		"src/runtime/provider-factory.ts/getContextWindow:121": [
 			"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:165",
-			"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:198"
+			"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:204"
 		],
-		"src/server/compression-core.ts/compressSession:346": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:235",
-			"src/server/archive-service.ts/archiveSession:311"
+		"src/server/compression-core.ts/compressSession:374": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224",
+			"src/server/archive-service.ts/archiveSession:290"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:198": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:235"
+		"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressOpts:204": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224"
 		],
 		"src/runtime/hooks/compression-trigger-hooks.ts/resetTurnState:146": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318"
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:295": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318"
+		"src/runtime/hooks/compression-trigger-hooks.ts/resolveCacheTtl:284": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
 		],
 		"src/runtime/hooks/compression-trigger-hooks.ts/isCold:140": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318"
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
 		],
 		"src/runtime/hooks/compression-trigger-hooks.ts/readTokenState:165": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318"
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
 		],
 		"src/runtime/hooks/compression-trigger-hooks.ts/exceedsThreshold:178": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318"
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:235": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318"
+		"src/runtime/hooks/compression-trigger-hooks.ts/runCompression:224": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:438": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318"
+		"src/runtime/hooks/compression-trigger-hooks.ts/buildCompressionReminder:427": [
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
 		],
 		"src/runtime/hooks/compression-trigger-hooks.ts/markLastLLMCall:136": [
-			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318"
+			"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307"
 		],
 		"src/runtime/hooks/turn-hooks.ts/registerTurnHooks:53": [
 			"src/runtime/hooks/index.ts/registerHooksForLoop:139"
@@ -23455,7 +23517,7 @@
 		"src/runtime/hooks/extraction-hooks.ts/registerExtractionHooks:68": [
 			"src/runtime/hooks/index.ts/registerHooksForLoop:139"
 		],
-		"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:318": [
+		"src/runtime/hooks/compression-trigger-hooks.ts/registerCompressionTriggerHooks:307": [
 			"src/runtime/hooks/index.ts/registerHooksForLoop:139"
 		],
 		"src/runtime/hooks/input-queue-hooks.ts/registerInputQueueHooks:39": [
@@ -24050,26 +24112,26 @@
 		"src/server/analyst-service.ts/AnalystService.buildIncrementalPrompt:216": [
 			"src/server/analyst-service.ts/AnalystService.runIncrementalAnalysis:134"
 		],
-		"src/server/archive-service.ts/sanitizePathSegment:190": [
-			"src/server/archive-service.ts/archivePathFor:184"
+		"src/server/archive-service.ts/sanitizePathSegment:192": [
+			"src/server/archive-service.ts/archivePathFor:186"
 		],
-		"src/server/archive-service.ts/getContextWindowFor:273": [
-			"src/server/archive-service.ts/buildFinalCompressOpts:214"
+		"src/server/archive-service.ts/getContextWindowFor:252": [
+			"src/server/archive-service.ts/buildFinalCompressOpts:218"
 		],
-		"src/server/archive-service.ts/runTeardown:473": [
-			"src/server/archive-service.ts/archiveSession:311"
+		"src/server/archive-service.ts/runTeardown:452": [
+			"src/server/archive-service.ts/archiveSession:290"
 		],
-		"src/server/archive-service.ts/buildFinalCompressOpts:214": [
-			"src/server/archive-service.ts/archiveSession:311"
+		"src/server/archive-service.ts/buildFinalCompressOpts:218": [
+			"src/server/archive-service.ts/archiveSession:290"
 		],
-		"src/server/archive-service.ts/archivePathFor:184": [
-			"src/server/archive-service.ts/archiveSession:311"
+		"src/server/archive-service.ts/archivePathFor:186": [
+			"src/server/archive-service.ts/archiveSession:290"
 		],
-		"src/server/archive-service.ts/buildArchivePayload:390": [
-			"src/server/archive-service.ts/archiveSession:311"
+		"src/server/archive-service.ts/buildArchivePayload:369": [
+			"src/server/archive-service.ts/archiveSession:290"
 		],
-		"src/server/archive-service.ts/writeArchiveJson:442": [
-			"src/server/archive-service.ts/archiveSession:311"
+		"src/server/archive-service.ts/writeArchiveJson:421": [
+			"src/server/archive-service.ts/archiveSession:290"
 		],
 		"src/server/archivist-git.ts/shortId:63": [
 			"src/server/archivist-git.ts/featureWorktreePath:90",
@@ -24157,32 +24219,41 @@
 		"src/server/chat-router.ts/expandHome:40": [
 			"src/server/chat-router.ts/createChatRouter:42"
 		],
-		"src/server/compression-core.ts/estimateStepTokens:256": [
-			"src/server/compression-core.ts/computeFreshTailStartSeq:231"
+		"src/server/compression-core.ts/estimateStepTokens:269": [
+			"src/server/compression-core.ts/computeFreshTailStartSeq:244"
 		],
-		"src/server/compression-core.ts/renderStep:304": [
-			"src/server/compression-core.ts/renderSegmentTranscript:291"
+		"src/server/compression-core.ts/renderStep:317": [
+			"src/server/compression-core.ts/renderSegmentTranscript:304"
 		],
-		"src/server/compression-core.ts/computeFreshTailStartSeq:231": [
-			"src/server/compression-core.ts/compressSession:346"
+		"src/server/compression-core.ts/computeFreshTailStartSeq:244": [
+			"src/server/compression-core.ts/compressSession:374"
 		],
-		"src/server/compression-core.ts/segmentByTurnGroup:270": [
-			"src/server/compression-core.ts/compressSession:346"
+		"src/server/compression-core.ts/segmentByTurnGroup:283": [
+			"src/server/compression-core.ts/compressSession:374"
 		],
-		"src/server/compression-core.ts/renderSegmentTranscript:291": [
-			"src/server/compression-core.ts/compressSession:346"
+		"src/server/compression-core.ts/renderSegmentTranscript:304": [
+			"src/server/compression-core.ts/compressSession:374"
 		],
-		"src/server/compression-core.ts/parseSummarySections:181": [
-			"src/server/compression-core.ts/compressSession:346"
+		"src/server/compression-core.ts/renderRunningHandoff:544": [
+			"src/server/compression-core.ts/compressSession:374"
 		],
-		"src/server/compression-core.ts/statusHasNextAction:210": [
-			"src/server/compression-core.ts/compressSession:346"
+		"src/server/compression-core.ts/renderPriorHandoff:524": [
+			"src/server/compression-core.ts/compressSession:374"
 		],
-		"src/server/compression-core.ts/fallbackSections:477": [
-			"src/server/compression-core.ts/compressSession:346"
+		"src/server/compression-core.ts/parseSummarySections:194": [
+			"src/server/compression-core.ts/compressSession:374"
 		],
-		"src/server/compression-core.ts/advanceCursorOnly:500": [
-			"src/server/compression-core.ts/compressSession:346"
+		"src/server/compression-core.ts/statusHasNextAction:223": [
+			"src/server/compression-core.ts/compressSession:374"
+		],
+		"src/server/compression-core.ts/fallbackSections:582": [
+			"src/server/compression-core.ts/compressSession:374"
+		],
+		"src/server/compression-core.ts/mergePriorSections:561": [
+			"src/server/compression-core.ts/compressSession:374"
+		],
+		"src/server/compression-core.ts/advanceCursorOnly:616": [
+			"src/server/compression-core.ts/compressSession:374"
 		],
 		"src/server/workspace-config.ts/loadWorkspaceConfig:40": [
 			"src/server/config-router.ts/createConfigRouter:41",
@@ -24206,7 +24277,7 @@
 			"src/server/config-router.ts/createConfigRouter:41",
 			"src/core/device-context.ts/generateAndSaveDeviceContext:228"
 		],
-		"src/core/config.ts/loadConfig:315": [
+		"src/core/config.ts/loadConfig:324": [
 			"src/server/config-router.ts/createConfigRouter:41"
 		],
 		"src/server/cron-analysis.ts/tzFields:148": [
@@ -25106,7 +25177,7 @@
 		"src/server/session-db.ts/SessionDB.migrateToolNames:378": [
 			"src/server/session-db.ts/SessionDB.initSchema:159"
 		],
-		"src/server/session-db.ts/SessionDB.rowToRecord:1494": [
+		"src/server/session-db.ts/SessionDB.rowToRecord:1531": [
 			"src/server/session-db.ts/SessionDB.getSession:431",
 			"src/server/session-db.ts/SessionDB.getMainSession:436",
 			"src/server/session-db.ts/SessionDB.getMostRecentSession:451",
@@ -25117,47 +25188,48 @@
 		"src/server/session-db.ts/SessionDB.parseSummary:665": [
 			"src/server/session-db.ts/SessionDB.getSummaries:675"
 		],
-		"src/server/session-db.ts/SessionDB.ensureSession:767": [
+		"src/server/session-db.ts/SessionDB.ensureSession:804": [
 			"src/server/session-db.ts/SessionDB.saveSummaryAndAdvanceCursor:717",
-			"src/server/session-db.ts/SessionDB.appendStep:957",
-			"src/server/session-db.ts/SessionDB.upsertStep:1002"
+			"src/server/session-db.ts/SessionDB.replaceSummariesAndAdvanceCursor:781",
+			"src/server/session-db.ts/SessionDB.appendStep:994",
+			"src/server/session-db.ts/SessionDB.upsertStep:1039"
 		],
 		"src/server/session-db.ts/SessionDB.createSession:395": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:787"
+			"src/server/session-db.ts/SessionDB.migrateMessageFiles:824"
 		],
 		"src/server/session-db.ts/SessionDB.setMainSession:459": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:787"
+			"src/server/session-db.ts/SessionDB.migrateMessageFiles:824"
 		],
-		"src/server/session-db.ts/SessionDB.appendStep:957": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:787"
+		"src/server/session-db.ts/SessionDB.appendStep:994": [
+			"src/server/session-db.ts/SessionDB.migrateMessageFiles:824"
 		],
-		"src/server/session-db.ts/SessionDB.deserializeAttachments:900": [
-			"src/server/session-db.ts/SessionDB.getSteps:911",
-			"src/server/session-db.ts/SessionDB.getStepGroup:934"
+		"src/server/session-db.ts/SessionDB.deserializeAttachments:937": [
+			"src/server/session-db.ts/SessionDB.getSteps:948",
+			"src/server/session-db.ts/SessionDB.getStepGroup:971"
 		],
-		"src/server/session-db.ts/SessionDB.serializeAttachments:890": [
-			"src/server/session-db.ts/SessionDB.appendStep:957",
-			"src/server/session-db.ts/SessionDB.upsertStep:1002"
+		"src/server/session-db.ts/SessionDB.serializeAttachments:927": [
+			"src/server/session-db.ts/SessionDB.appendStep:994",
+			"src/server/session-db.ts/SessionDB.upsertStep:1039"
 		],
 		"src/server/session-db.ts/SessionDB.getCompressionCursor:694": [
-			"src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1106"
+			"src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1143"
 		],
 		"src/server/session-db.ts/SessionDB.clearSummaries:757": [
-			"src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1106"
+			"src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1143"
 		],
-		"src/server/session-db.ts/SessionDB.toolExecRowToRecord:1466": [
-			"src/server/session-db.ts/SessionDB.queryToolExecutions:1421"
+		"src/server/session-db.ts/SessionDB.toolExecRowToRecord:1503": [
+			"src/server/session-db.ts/SessionDB.queryToolExecutions:1458"
 		],
-		"src/server/session-db.ts/SessionDB.close:1486": [
-			"src/server/session-db.ts/SessionDB.close:1486"
+		"src/server/session-db.ts/SessionDB.close:1523": [
+			"src/server/session-db.ts/SessionDB.close:1523"
 		],
-		"src/server/session-db.ts/SessionDB.getDelegatedTask:1639": [
-			"src/server/session-db.ts/SessionDB.createDelegatedTask:1571",
-			"src/server/session-db.ts/SessionDB.updateDelegatedTask:1608"
+		"src/server/session-db.ts/SessionDB.getDelegatedTask:1676": [
+			"src/server/session-db.ts/SessionDB.createDelegatedTask:1608",
+			"src/server/session-db.ts/SessionDB.updateDelegatedTask:1645"
 		],
-		"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1543": [
-			"src/server/session-db.ts/SessionDB.getDelegatedTask:1639",
-			"src/server/session-db.ts/SessionDB.listDelegatedTasks:1644"
+		"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1580": [
+			"src/server/session-db.ts/SessionDB.getDelegatedTask:1676",
+			"src/server/session-db.ts/SessionDB.listDelegatedTasks:1681"
 		],
 		"src/server/session-manager.ts/SessionManager.fireMetrics:129": [
 			"src/server/session-manager.ts/SessionManager._flushMetricsForTest:123",
@@ -25738,15 +25810,15 @@
 		"src/server/wiki-skeleton-service.ts/walkWorkspace:808": [
 			"src/server/wiki-skeleton-service.ts/walkWorkspace:808"
 		],
-		"src/core/config.ts/deepMerge:278": [
-			"src/core/config.ts/deepMerge:278",
-			"src/core/config.ts/loadConfig:315"
+		"src/core/config.ts/deepMerge:287": [
+			"src/core/config.ts/deepMerge:287",
+			"src/core/config.ts/loadConfig:324"
 		],
-		"src/core/config.ts/readJsonFile:306": [
-			"src/core/config.ts/loadConfig:315"
+		"src/core/config.ts/readJsonFile:315": [
+			"src/core/config.ts/loadConfig:324"
 		],
-		"src/core/config.ts/getGlobalConfigPath:270": [
-			"src/core/config.ts/loadConfig:315"
+		"src/core/config.ts/getGlobalConfigPath:279": [
+			"src/core/config.ts/loadConfig:324"
 		],
 		"src/core/context-manager.ts/estimateTokens:34": [
 			"src/core/context-manager.ts/messageTokens:50",

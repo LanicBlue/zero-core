@@ -137,10 +137,19 @@ export const ZeroCoreConfigSchema = Type.Object({
 	//   - enabled: master on/off (sub-5 trigger reads it).
 	//   - provider/model: independent memory model override (defaults to the
 	//     session's working model). Same slot the old engine used.
+	//   - summarySystemPrompt (compression-archive-simplify sub-3b / D2):
+	//     override the stage-3 compression system prompt. Default = the
+	//     SUMMARY_SYSTEM literal in compression-core.ts. The OUTPUT contract
+	//     (5-section JSON shape — purpose/plan/status/artifacts/lessons — parsed
+	//     by parseSummarySections) is FIXED; a custom prompt that breaks the
+	//     parser falls through to fallbackSections (still writes a valid
+	//     summary). Persona layer can override via PersonaDefinition.compression
+	//     .summarySystemPrompt (see persona.ts applyPersonaToConfig).
 	compression: Type.Object({
 		enabled: Type.Optional(Type.Boolean()),
 		provider: Type.Optional(Type.String()),
 		model: Type.Optional(Type.String()),
+		summarySystemPrompt: Type.Optional(Type.String()),
 	}),
 
 	// ─── Extractors (v0.8 M5 — archive extractor A + tool telemetry extractor B)

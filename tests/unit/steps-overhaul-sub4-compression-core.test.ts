@@ -201,9 +201,12 @@ describe("steps-overhaul sub-4: compressSession 压缩核心", () => {
 		expect(r2.summaries.length).toBe(0);
 	});
 
-	// ── 3. 一次压缩可产多个 summary(跨 turn_group / 主题) ───────────
+	// ── 3. 滚动摘要:多 turn_group 合并成 ONE rolling summary(跨段合并)
+	//     (sub-3b: 旧「多 summary per pass」契约已废。新契约为 segments 合并进
+	//      runningSections,replaceSummariesAndAdvanceCursor 写一行;stepRange
+	//      跨所有被压段。详见 sub3b-rolling-summary.test.ts + design「二、压缩流程」。)
 
-	test("multi-summary: multiple turn_groups beyond fresh-tail each produce their own summary", async () => {
+	test("rolling-summary: multiple turn_groups beyond fresh-tail merge into ONE summary with combined stepRange", async () => {
 		const sessionId = "sess-multi";
 		// 3 padded turns; tiny window so turns 0 and 1 are both compressible
 		// (only the newest step(s) of turn 2 fit the fresh tail).
@@ -215,24 +218,46 @@ describe("steps-overhaul sub-4: compressSession 压缩核心", () => {
 			...COMPRESS_OPTS, testModel: stubModel(goodSummaryJson({ purpose: "multi" })),
 		});
 
-		// Multiple summaries written (one per compressible turn_group).
-		expect(result.summaries.length).toBeGreaterThan(1);
-		// Each summary carries its own stepRange anchor (distinct ranges).
-		const ranges = result.summaries.map(s => `${s.stepRange!.from}..${s.stepRange!.to}`);
-		expect(new Set(ranges).size).toBe(ranges.length); // all distinct
-		// The persisted messages count matches.
-		expect(sessionDB!.getSummaries(sessionId).length).toBe(result.summaries.length);
-		// Cursor advanced to the last compressed step.
-		const maxTo = Math.max(...result.summaries.map(s => s.stepRange!.to));
-		expect(result.newCursor).toBe(maxTo);
+		// sub-3b rolling-replace contract: ONE summary per pass (all merged
+		// segments fold into runningSections, then a single row is written via
+		// replaceSummariesAndAdvanceCursor). The old per-segment FIFO contract
+		// is gone — `result.summaries.length === 1`, not > 1.
+		expect(result.summaries.length).toBe(1);
+		// The single rolling summary's stepRange spans ALL compressed segments
+		// (covers from the first compressed seq through segment 2's last step
+		// at seq 3 — turn_group 2; turn_group 0 starts at seq 0). The merged
+		// range must NOT be just one segment's worth.
+		// NOTE: pre-existing edge case — for a fresh session, `getCompression
+		// Cursor` returns null and compression-core treats it as `?? 0`, so
+		// seq 0 is excluded from postCursor (treated as already-compressed).
+		// The rolling summary's stepRange thus starts at seq 1, not 0.
+		const s = result.summaries[0];
+		expect(s.stepRange).toBeDefined();
+		expect(s.stepRange!.from).toBeGreaterThanOrEqual(0);
+		// stepRange.to must reach into turn_group 2 (seq 2..3) — proves the
+		// rolling summary covers MORE than just the first segment.
+		expect(s.stepRange!.to).toBeGreaterThanOrEqual(3);
+		// Persisted messages count matches (exactly ONE row — rolling replace,
+		// not FIFO append).
+		expect(sessionDB!.getSummaries(sessionId).length).toBe(1);
+		// Cursor advanced to the last compressed step (== summary's stepRange.to).
+		expect(result.newCursor).toBe(s.stepRange!.to);
+		// The newest step (seq 5, turn 2's assistant) is in the fresh tail →
+		// NOT in the compressed range.
+		expect(s.stepRange!.to).toBeLessThan(5);
 	});
 
-	// ── 4. cap 3 FIFO: 多次压缩后 ≤3 summary ─────────────────────────
+	// ── 4. rolling-replace: 多次压缩后恒等于 ONE summary(替代旧 FIFO-3 cap)
+	//     (sub-3b: replaceSummariesAndAdvanceCursor 每次擦旧行 + 写一行;
+	//      MAX_MESSAGE_SUMMARIES + saveSummaryAndAdvanceCursor 现为死代码,
+	//      sub-5 死代码清理时删 —— 本 sub scope 边界外。)
 
-	test("cap 3 FIFO: repeated compressions never exceed 3 summaries", async () => {
+	test("rolling-replace: repeated compressions always leave exactly ONE summary (replaces, not FIFO-appends)", async () => {
 		const sessionId = "sess-cap";
-		// Repeatedly: seed 2 padded turns, compress. After several rounds the
-		// messages table must hold at most MAX_MESSAGE_SUMMARIES (=3) blocks.
+		// Repeatedly: seed 2 padded turns, compress. Under the new rolling-
+		// replace contract, each compress wipes the prior row and writes ONE
+		// new merged summary — the table never holds more than 1 row,
+		// regardless of how many rounds have run.
 		for (let round = 0; round < 5; round++) {
 			const base = sessionDB!.getStepCount(sessionId);
 			// base is the next seq to write (user row opens a new turn_group).
@@ -241,11 +266,14 @@ describe("steps-overhaul sub-4: compressSession 压缩核心", () => {
 			await compressSession(sessionId, sessionDB!, {
 				...COMPRESS_OPTS, testModel: stubModel(goodSummaryJson({ purpose: `p${round}` })),
 			});
+			// After EVERY round, exactly ONE summary row exists (rolling
+			// replace wipes prior rows in the same tx that writes the new one).
+			expect(sessionDB!.getSummaries(sessionId).length).toBe(1);
 		}
 
+		// Final state: still exactly ONE summary (the latest rolling merge).
 		const summaries = sessionDB!.getSummaries(sessionId);
-		expect(summaries.length).toBeLessThanOrEqual(3);
-		expect(summaries.length).toBe(SessionDB.MAX_MESSAGE_SUMMARIES);
+		expect(summaries.length).toBe(1);
 	});
 
 	// ── 5. steps 表不动 ──────────────────────────────────────────────
