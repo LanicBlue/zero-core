@@ -100,25 +100,13 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 		expect(sessionDB!.getCompressionCursor(sessionId)).toBeNull();
 	});
 
-	test("saveSummaryAndAdvanceCursor writes summary + advances cursor; FIFO cap at 3", () => {
-		const sessionId = "cap";
-		const mk = (i: number) => ({
-			title: `s${i}`,
-			sections: { status: `status ${i}` },
-			createdAt: `2026-01-0${i + 1}T00:00:00.000Z`,
-		});
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, mk(0), 5);
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, mk(1), 10);
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, mk(2), 15);
-		expect(sessionDB!.getSummaries(sessionId).map(s => s.title)).toEqual(["s0", "s1", "s2"]);
-		expect(sessionDB!.getCompressionCursor(sessionId)).toBe(15);
-
-		// 4th summary evicts the oldest (FIFO).
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, mk(3), 20);
-		const titles = sessionDB!.getSummaries(sessionId).map(s => s.title);
-		expect(titles).toEqual(["s1", "s2", "s3"]);
-		expect(titles).not.toContain("s0");
-		expect(sessionDB!.getCompressionCursor(sessionId)).toBe(20);
+	test("saveSummaryAndAdvanceCursor FIFO-3 path is DELETED (compression-archive-simplify sub-5)", () => {
+		// compression-archive-simplify sub-5: the FIFO-3 sibling
+		// (`saveSummaryAndAdvanceCursor` + `MAX_MESSAGE_SUMMARIES`) is gone.
+		// compressSession now uses `replaceSummariesAndAdvanceCursor` exclusively
+		// (2-zone rolling summary — one row survives per session).
+		expect(typeof (sessionDB as any).saveSummaryAndAdvanceCursor).toBe("undefined");
+		expect((SessionDB as any).MAX_MESSAGE_SUMMARIES).toBeUndefined();
 	});
 
 	test("LLM view with NO summaries + small history: everything is fresh tail, verbatim (no stubs)", () => {
@@ -210,7 +198,9 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 		}
 
 		// Write a summary that compresses steps 1..2 (cursor = 2).
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, {
+		// compression-archive-simplify sub-5: migrated from saveSummaryAndAdvanceCursor
+		// (deleted FIFO-3 path) to replaceSummariesAndAdvanceCursor (2-zone rolling).
+		sessionDB!.replaceSummariesAndAdvanceCursor(sessionId, {
 			title: "compressed 1..2",
 			sections: { status: "did 1 and 2" },
 			stepRange: { from: 1, to: 2 },
@@ -266,7 +256,9 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 				{ type: "text", text: `step ${i}` },
 			]));
 		}
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, {
+		// compression-archive-simplify sub-5: migrated from saveSummaryAndAdvanceCursor
+		// (deleted FIFO-3 path) to replaceSummariesAndAdvanceCursor (2-zone rolling).
+		sessionDB!.replaceSummariesAndAdvanceCursor(sessionId, {
 			title: "did 1..3",
 			sections: { status: "first three done" },
 			stepRange: { from: 1, to: 3 },
@@ -338,7 +330,9 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 				{ type: "text", text: `step ${i}` },
 			]));
 		}
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, {
+		// compression-archive-simplify sub-5: migrated from saveSummaryAndAdvanceCursor
+		// (deleted FIFO-3 path) to replaceSummariesAndAdvanceCursor (2-zone rolling).
+		sessionDB!.replaceSummariesAndAdvanceCursor(sessionId, {
 			title: "recap",
 			sections: { status: "recapped" },
 			stepRange: { from: 1, to: 2 },

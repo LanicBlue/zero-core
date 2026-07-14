@@ -7,7 +7,7 @@
 // 注册功能钩子。注册顺序敏感(providerOptions 对 PreLLMCall 返回值
 // merge 顺序)。分组见 spec §6:
 //   - shared (main + delegated): turn-hooks / tool-execution-hooks / durable-hooks
-//     / provider-options-hooks / extraction-hooks
+//     / provider-options-hooks
 //   - main only:  input-queue-hooks / metrics-hooks (sub-4: notification-hooks
 //     removed — workbench 收件箱 replaces it)
 //   - delegated only: task-control-hooks
@@ -16,6 +16,9 @@
 // Wiki Baseline / Requirement / Steps Progress 改由 SessionConfig 闭包
 // (config.workContextSystemSection / config.stepsProgressSection)直接渲染进
 // system 段 / workbench 段,不再走 PreLLMCall memoryContext 误标通道。
+// compression-archive-simplify sub-5: extraction-hooks.ts **删除** —— ExtractorA
+// 主体被删(wiki 抽取现在由 compressSession 的 Force-档 memory ephemeral turn
+// 承担,sub-3c),其退役 no-op stub + 全部 caller wiring 一并清掉。
 //
 // 各 register*Hooks 子函数收 `registry` 形参(默认 HookRegistry.getInstance(),
 // 旧测试/未迁移调用方仍可用)。
@@ -52,7 +55,10 @@ import type { HookRegistry } from "../../core/hook-registry.js";
 // is a callable, NOT a hook — sub-5 wires the trigger (StepEnd / PreLLMCall
 // preflight / new-turn / reactive) into a NEW hook module. Old compression-
 // engine.ts is also deleted (L1/L2/identifyTurns/TurnBoundary all gone).
-import { registerExtractionHooks, type ExtractionHooksDeps } from "./extraction-hooks.js";
+// compression-archive-simplify sub-5: extraction-hooks.ts is DELETED along
+// with ExtractorA (wiki extraction now in compressSession Force-档 memory
+// turn, sub-3c). No replacement — extractionDeps is dropped from
+// HookWiringDeps and the registerExtractionHooks call is gone.
 // steps-overhaul sub-5: compression TRIGGER hooks (cache 冷热判定 + StepEnd cold /
 // PreLLMCall preflight+hot / OnLLMError reactive). The callable core lives in
 // server/compression-core.ts; this module wires it to the lifecycle triggers.
@@ -70,9 +76,8 @@ import { registerTodoCleanupHooks } from "./todo-cleanup-hooks.js";
 import { registerTaskControlHooks } from "./task-control-hooks.js";
 import { registerTurnHooks } from "./turn-hooks.js";
 import { registerInputQueueHooks } from "./input-queue-hooks.js";
-// server/ hooks — runtime already depends on server/ stores (extraction-hooks
-// → extractor-*). Static imports here are
-// the same layer-crossing that already exists; no new cycle.
+// server/ hooks — runtime already depends on server/ stores. Static imports
+// here are the same layer-crossing that already exists; no new cycle.
 //
 // sub-7: workflow-context-hook is GONE. Its job (Project / Wiki Baseline /
 // Requirement / Steps Progress injection) moved to SessionConfig closures
@@ -108,8 +113,6 @@ export interface HookWiringDeps {
 	db?: ISessionStore;
 	/** Full SessionDB (durable-hooks / tool-execution-hooks). */
 	sessionDb?: SessionDB;
-	/** M5 extractor deps (incremental extraction at PostTurnComplete). */
-	extractionDeps?: ExtractionHooksDeps;
 	/** C2 input queue (main-only insert_now injection). */
 	inputQueue?: InputQueueStore;
 	/** Metrics consumer (main-only). */
@@ -141,7 +144,7 @@ export function registerHooksForLoop(
 	loopKind: "main" | "delegated",
 	deps: HookWiringDeps,
 ): void {
-	const { db, sessionDb, extractionDeps, inputQueue, sessionManager } = deps;
+	const { db, sessionDb, inputQueue, sessionManager } = deps;
 	// steps-overhaul sub-5: compression trigger deps default to a sessionDb-backed
 	// config; explicit override wins (tests).
 	const compressionTriggerDeps = deps.compressionTriggerDeps ?? (sessionDb ? { sessionDb } : undefined);
@@ -165,9 +168,10 @@ export function registerHooksForLoop(
 	// about to end, nudge the model to Wait (one nudge per turn). Registered
 	// for both loop kinds — either can own background tasks via TaskStart.
 	registerForceWaitHooks(registry);
-	if (extractionDeps) {
-		registerExtractionHooks(extractionDeps, registry);
-	}
+	// compression-archive-simplify sub-5: registerExtractionHooks call +
+	// extraction-hooks.ts module DELETED — ExtractorA's wiki extraction now
+	// lives in compressSession's Force-档 memory ephemeral turn (sub-3c); the
+	// M5 no-op stub is gone. No replacement register call here.
 	// steps-overhaul sub-5: compression triggers (cache 冷热判定 + StepEnd cold /
 	// PreLLMCall preflight+hot / OnLLMError reactive). Registered for every loop
 	// kind that owns a SessionDB (main + delegated). Routes through compressSession
@@ -204,7 +208,6 @@ export function registerHooksForLoop(
 }
 
 export {
-	registerExtractionHooks,
 	registerForceWaitHooks,
 	registerProviderOptionsHooks,
 	registerTodoCleanupHooks,
@@ -213,4 +216,4 @@ export {
 	registerInputQueueHooks,
 	registerCompressionTriggerHooks,
 };
-export type { ExtractionHooksDeps, CompressionTriggerHooksDeps };
+export type { CompressionTriggerHooksDeps };

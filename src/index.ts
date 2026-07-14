@@ -10,7 +10,7 @@
 //
 // ## 输出
 // - 配置相关：loadConfig, DEFAULT_CONFIG, ZeroCoreConfigSchema 等
-// - 核心逻辑：buildSystemPrompt, shouldPrune 等
+// - 核心逻辑：buildSystemPrompt
 // - 运行时：AgentLoop, StreamEvent, RuntimeProviderConfig 等
 //
 // ## 定位
@@ -34,8 +34,11 @@ export { loadConfig, DEFAULT_CONFIG, ZeroCoreConfigSchema, ZERO_CORE_DIR, getGlo
 export type { ZeroCoreConfig } from "./core/config.js";
 
 // Core logic
+// compression-archive-simplify sub-5: shouldPrune / pruneMessages re-exports
+// DELETED — context-manager.ts (and compaction.ts) were dead modules (no live
+// callers); only this re-export kept them nominally public. Live pruning now
+// happens via AgentLoop's internal pruneIfNeeded (turn-recorder), not these.
 export { buildSystemPrompt } from "./core/system-prompt.js";
-export { shouldPrune, pruneMessages } from "./core/context-manager.js";
 export { transformToolResult } from "./core/tool-policy.js";
 
 // Runtime

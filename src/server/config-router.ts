@@ -182,13 +182,19 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 	// (route name kept as /memory-config for IPC stability; the standalone
 	// memory/autoRecall config was residual — memory lives in the wiki tree.
 	// Only compression is exchanged now.)
+	//
+	// compression-archive-simplify sub-5: `enabled` removed from the default
+	// fallback — it was an unread fake (the trigger hook never checked it).
+	// The default is now an empty object (provider/model fall through to the
+	// session's working model; summarySystemPrompt falls through to the
+	// in-file SUMMARY_SYSTEM literal in compression-core).
 
 	// config:memory-get
 	router.get("/memory-config", (_req, res) => {
 		try {
 			const configData: any = kv().getJson("global_config") ?? {};
 			res.json({
-				compression: configData.compression ?? { enabled: false },
+				compression: configData.compression ?? {},
 			});
 		} catch (e) {
 			res.status(500).json({ error: (e as Error).message });

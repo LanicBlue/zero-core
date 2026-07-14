@@ -19,7 +19,9 @@
 // - 列表/查询/清理接口(供未来自管理 agent 读)
 //
 // ## 定位
-// src/server/ 数据层。由 extractor B 通过 hooks/extraction-hooks.ts 写入。
+// src/server/ 数据层。compression-archive-simplify sub-5: 原 caller
+// (extractor B 经 hooks/extraction-hooks.ts) 随 ExtractorA 退役一并删除;
+// store 仍保留(独立数据流 — 决策 49),未来 B 触发器挂回时可复用。
 //
 // ## 依赖
 // - better-sqlite3、uuid

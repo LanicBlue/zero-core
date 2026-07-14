@@ -150,26 +150,14 @@ export async function startServer(options?: StartServerOptions) {
 	// legacy IPC/router/renderer keep using it.
 	const wikiStoreGlobal = new WikiStore(sessionDB);
 
-	// v0.8 (M5): extractor cursor + telemetry stores live on SessionDB (lazy
-	// accessors). The extraction hook deps are assembled here; they're handed
-	// to agent-service.setHookDeps below so registerHooksForLoop wires them
-	// onto each loop's own registry.
-	const { ExtractorAService } = await import("./extractor-a-service.js");
-	const { ExtractorBService } = await import("./extractor-b-service.js");
-	const extractionDeps = {
-		cursorStore: sessionDB.getExtractionCursorStore(),
-		buildExtractorA: (providers: any[], providerName: string, modelId: string) =>
-			new ExtractorAService({ providers, providerName, modelId, wiki: wikiStoreGlobal }),
-		buildExtractorB: (providers: any[], providerName: string, modelId: string) =>
-			new ExtractorBService({
-				providers, providerName, modelId,
-				telemetry: sessionDB.getTelemetryStore(),
-			}),
-	};
-	// Note: Step 1B retired the global registerAllRuntimeHooks / durable /
-	// tool-execution registration here — every loop now registers its own hook
-	// set on its own HookRegistry (agent-service.createLoopForSession +
-	// sendProjectPrompt + subagent-delegator delegated sub-loops).
+	// compression-archive-simplify sub-5: the M5 extraction-hooks wiring is
+	// DELETED along with extractor-a-service.ts (ExtractorA body — wiki
+	// extraction now lives in compressSession's Force-档 memory ephemeral turn,
+	// sub-3c). The dead `extractionDeps` block (only consumer was the no-op
+	// registerExtractionHooks) is gone; ExtractorBService's file remains for
+	// future standalone use (decision 49) but its factory had no live caller
+	// either. ExtractionCursorStore + TelemetryStore remain on SessionDB as
+	// lazy accessors — independent of the deleted wiring.
 
 	const registry = new ToolRegistry(sessionDB.getKVStore());
 	registerRuntimeTools(registry);
@@ -257,9 +245,12 @@ export async function startServer(options?: StartServerOptions) {
 	// config.hookWiringDeps. This retires the former global
 	// registerAllRuntimeHooks / registerDurableHooks / registerToolExecutionHooks
 	// / registerWorkflowContextHook / registerInputQueueHooks calls.
-	agentService.setHookDeps({
-		extractionDeps,
-	});
+	//
+	// compression-archive-simplify sub-5: the M5 `extractionDeps` injection is
+	// GONE (extractor-a-service.ts + extraction-hooks.ts deleted; only consumer
+	// was the no-op registerExtractionHooks). The call now passes nothing —
+	// HookWiringDeps's extractionDeps field is removed too.
+	agentService.setHookDeps({});
 	// sub-7 (work-context 拆解到三通道): the workflow-context stores are now
 	// injected here (the deleted workflow-context-hook used to consume them via
 	// setHookDeps.workflowContext; that field is gone). agent-service builds

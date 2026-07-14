@@ -512,10 +512,12 @@ export class AgentService implements PlatformObserver {
 	/**
 	 * Step 1B: assemble the per-loop hook wiring deps. Service-owned handles
 	 * (db / sessionDb / sessionManager / inputQueue) are always available and
-	 * override any same-key field injected via setHookDeps; the rest
-	 * (extractionDeps) comes from server/index.ts injection. (sub-7:
+	 * override any same-key field injected via setHookDeps. (sub-7:
 	 * workflowContext is gone — the workflow-context stores now flow through
-	 * setWorkContextStores → buildWorkContextClosures → SessionConfig closures.)
+	 * setWorkContextStores → buildWorkContextClosures → SessionConfig closures.
+	 * compression-archive-simplify sub-5: extractionDeps is also gone —
+	 * extractor-a-service + extraction-hooks deleted; no per-loop extraction
+	 * wiring remains.)
 	 */
 	private buildHookDeps(): HookWiringDeps {
 		return {
@@ -871,28 +873,12 @@ export class AgentService implements PlatformObserver {
 		return caps;
 	}
 	evictSessionFromMemory(sessionId: string): void {
-		// steps-overhaul sub-7: the M5 close-flush (mechanism 3) is RETIRED —
-		// wiki extraction now happens via compressSession's Extractor A
-		// multi-step agent (decision 53 修订). closeFlushSession is kept as a
-		// no-op shell so this call site doesn't break; it does nothing now.
-		// The session's memory has already been merged into the wiki tree by
-		// the compression trigger throughout the session's life. Kept as a
-		// defensive try/catch + fire-and-forget in case future code restores
-		// eviction-time work.
-		try {
-			if (this.wikiStoreGlobal) {
-				// ESM: dynamic import (require is undefined here). Fire-and-forget.
-				void import("../runtime/hooks/extraction-hooks.js")
-					.then(({ closeFlushSession }) => closeFlushSession({
-						sessionId,
-						resolveConfig: () => this.buildSessionConfigForEviction(sessionId),
-						resolveProviders: () => this.providerConfigs,
-					}))
-					.catch((err: any) => log.warn("agent", `close flush failed: ${err?.message}`));
-			}
-		} catch (err) {
-			log.warn("agent", `close flush dispatch failed: ${(err as Error)?.message}`);
-		}
+		// compression-archive-simplify sub-5: the M5 close-flush (mechanism 3)
+		// wiring is DELETED along with extraction-hooks.ts. Wiki extraction
+		// now happens via compressSession's Force-档 memory ephemeral turn
+		// (sub-3c) — throughout the session's life, not at eviction. The
+		// dead try/catch + dynamic-import + closeFlushSession no-op call are
+		// gone; nothing to do here pre-eviction.
 		const loop = this.loops.get(sessionId);
 		if (loop) {
 			// Resolve the owning agentId BEFORE we clear activeSessions below.
@@ -911,54 +897,6 @@ export class AgentService implements PlatformObserver {
 		for (const [agentId, sid] of this.activeSessions) {
 			if (sid === sessionId) { this.activeSessions.delete(agentId); break; }
 		}
-	}
-
-	/**
-	 * v0.8 (M5): reconstruct a minimal SessionConfig for a session being
-	 * evicted, so the close-flush extractor (which needs provider/model +
-	 * wikiStoreGlobal + db) can run. We don't have the original loop's
-	 * SessionConfig in hand anymore; rebuild from agent + defaults.
-	 */
-	private buildSessionConfigForEviction(sessionId: string): import("../runtime/types.js").SessionConfig | undefined {
-		// Find the agent that owned this session by scanning activeSessions
-		// (already partially cleared, but the lookup happens BEFORE we clear
-		// below in evictSessionFromMemory — actually, this is called from
-		// evictSessionFromMemory; we resolved sessionId from the caller and
-		// haven't cleared activeSessions yet at the point closeFlushSession
-		// runs). To be safe, also check by scanning runStates (the agentId
-		// is recorded there).
-		let agentId = "__default__";
-		for (const [aid, sid] of this.activeSessions) {
-			if (sid === sessionId) { agentId = aid; break; }
-		}
-		const state = this.runStates.get(sessionId);
-		if (state?.agentId) agentId = state.agentId;
-		const agent = this.agentStore?.get(agentId);
-		const sessionRec = this.db.getSession(sessionId);
-		const cfg: import("../runtime/types.js").SessionConfig = {
-			agentId,
-			workspaceDir: sessionRec?.context?.workspaceDir || agent?.workspaceDir || this.workspaceDir,
-			systemPrompt: "",
-			modelId: agent?.model || this.defaultModel || "",
-			providerName: agent?.provider || this.defaultProvider || "",
-			sessionId,
-			db: this.db,
-			toolPolicy: {
-				autoApprove: agent?.toolPolicy?.autoApprove ?? this.config.toolPolicy.autoApprove,
-				blockedTools: agent?.toolPolicy?.blockedTools ?? this.config.toolPolicy.blockedTools,
-				tools: agent?.toolPolicy?.tools ?? this.config.toolPolicy.tools,
-				executionMode: agent?.toolPolicy?.executionMode ?? this.config.toolPolicy.executionMode,
-				resultMaxTokens: agent?.toolPolicy?.resultMaxTokens ?? this.config.toolPolicy.resultMaxTokens,
-				readScope: agent?.toolPolicy?.readScope ?? "filesystem",
-			},
-		};
-		// Re-attach M5 fields used by the extraction hooks.
-		if (this.wikiStoreGlobal) (cfg as any).wikiStoreGlobal = this.wikiStoreGlobal;
-		if (this.extractorsConfig) (cfg as any).extractors = this.extractorsConfig;
-		// Re-attach compression config (the extraction hook doesn't strictly
-		// need it but other code paths might run during the flush).
-		(cfg as any).compression = this.config.compression;
-		return cfg;
 	}
 
 	/**

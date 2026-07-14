@@ -63,7 +63,7 @@
 // ## 依赖
 // - ai.generateText、runtime/provider-factory.resolveModel(独立模型)
 // - server/session-db(SessionDB: getSteps / getCompressionCursor / getSummaries /
-//   replaceSummariesAndAdvanceCursor / saveSummaryAndAdvanceCursor)
+//   replaceSummariesAndAdvanceCursor)
 // - runtime/session-store-interface 类型(MessageSummary / StepRow)
 // - core/logger
 //

@@ -62,20 +62,11 @@ export const ZeroCoreConfigSchema = Type.Object({
 		),
 	}),
 
-	context: Type.Object({
-		maxTokens: Type.Optional(Type.Number()),
-		reserveTokens: Type.Optional(Type.Number()),
-		keepRecentTokens: Type.Optional(Type.Number()),
-		pruningStrategy: Type.Optional(
-			Type.Union([
-				Type.Literal("tail"),
-				Type.Literal("turn-boundary"),
-				Type.Literal("smart"),
-			]),
-		),
-		preserveToolResults: Type.Optional(Type.Boolean()),
-		importanceScoring: Type.Optional(Type.Boolean()),
-	}),
+	// compression-archive-simplify sub-5: `context.*` schema DELETED. The only
+	// consumer was core/context-manager.ts (shouldPrune / pruneMessages), which
+	// was dead code (no live caller — AgentLoop does its own pruneIfNeeded) and
+	// is deleted in this same sub. A pre-existing user config that still
+	// carries `context.*` is harmless (loadConfig deepMerges + ignores it).
 
 	providerAdapter: Type.Object({
 		compatibility: Type.Optional(
@@ -113,16 +104,16 @@ export const ZeroCoreConfigSchema = Type.Object({
 	}),
 
 	// ─── Compaction ──────────────────────────────────────────────
-
-	compaction: Type.Object({
-		strategy: Type.Optional(
-			Type.Union([Type.Literal("auto"), Type.Literal("custom")]),
-		),
-		customInstructions: Type.Optional(Type.String()),
-		enabled: Type.Optional(Type.Boolean()),
-		reserveTokens: Type.Optional(Type.Number()),
-		keepRecentTokens: Type.Optional(Type.Number()),
-	}),
+	//
+	// compression-archive-simplify sub-5: compaction.* schema DELETED. The
+	// only consumer was core/compaction.ts (shouldCompact), which was itself
+	// dead code (no live caller) and is deleted in this same sub. The new
+	// compression control surface is `compression.*` below (provider/model/
+	// summarySystemPrompt — sub-3b configurable prompt); the legacy
+	// `compaction.strategy/customInstructions` knob never gated anything in
+	// the stage-3 core. A pre-existing user config that still carries
+	// `compaction.*` is harmless (loadConfig deepMerges + ignores it); it
+	// just no longer has a typed slot.
 
 	// ─── Compression (stage-3 summary core)
 	//
@@ -145,8 +136,13 @@ export const ZeroCoreConfigSchema = Type.Object({
 	//     parser falls through to fallbackSections (still writes a valid
 	//     summary). Persona layer can override via PersonaDefinition.compression
 	//     .summarySystemPrompt (see persona.ts applyPersonaToConfig).
+	//
+	// compression-archive-simplify sub-5: `compression.enabled` DELETED —
+	// it was an unread fake (the trigger hook never checked it; compressSession
+	// fires on cache cold/hot + token thresholds alone). The UI toggle in
+	// MemorySettings was cosmetic — flipping it did nothing. The stage-3
+	// trigger is unconditionally armed whenever a SessionDB is wired in.
 	compression: Type.Object({
-		enabled: Type.Optional(Type.Boolean()),
 		provider: Type.Optional(Type.String()),
 		model: Type.Optional(Type.String()),
 		summarySystemPrompt: Type.Optional(Type.String()),
@@ -233,23 +229,17 @@ export const DEFAULT_CONFIG: ZeroCoreConfig = {
 		injectProjectContext: true,
 		guidelines: DEFAULT_GUIDELINES,
 	},
-	context: {
-		reserveTokens: 16384,
-		keepRecentTokens: 20000,
-		pruningStrategy: "turn-boundary",
-		preserveToolResults: true,
-		importanceScoring: false,
-	},
 	toolPolicy: {
 		autoApprove: [],
 		executionMode: "parallel",
 	},
-	compaction: {
-		strategy: "auto",
-	},
-	compression: {
-		enabled: false,
-	},
+	// compression-archive-simplify sub-5: `context` + `compaction` defaults
+	// DELETED along with their schemas (consumers were the dead context-manager
+	// + compaction modules). `compression.enabled` default also dropped (unread
+	// fake). compression defaults to an empty object — provider/model fall
+	// through to the session's working model; summarySystemPrompt falls through
+	// to the in-file SUMMARY_SYSTEM literal in compression-core.
+	compression: {},
 	// v0.8 (M5): archive extractors. A is the unified content-memory writer
 	// (incremental + close flush). B is the tool telemetry extractor. Both
 	// off by default; flip extractors.A.enabled=true in config to turn on.

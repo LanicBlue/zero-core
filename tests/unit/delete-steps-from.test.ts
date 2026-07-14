@@ -103,7 +103,9 @@ describe("deleteStepsFromSeq — compression cursor safety", () => {
 	test("cursor >= fromSeq → summaries cleared (cursor back to null)", () => {
 		seedThreeTurns();
 		// Cursor points at seq 3 (inside the region we're about to delete from 2).
-		db.saveSummaryAndAdvanceCursor(SID, { title: "s", sections: {}, createdAt: NOW }, 3);
+		// compression-archive-simplify sub-5: migrated from saveSummaryAndAdvanceCursor
+		// (deleted FIFO-3 path) to replaceSummariesAndAdvanceCursor (2-zone rolling).
+		db.replaceSummariesAndAdvanceCursor(SID, { title: "s", sections: {}, createdAt: NOW }, 3);
 		expect(db.getCompressionCursor(SID)).toBe(3);
 
 		db.deleteStepsFromSeq(SID, 2);
@@ -113,7 +115,9 @@ describe("deleteStepsFromSeq — compression cursor safety", () => {
 	test("cursor < fromSeq → summaries + cursor preserved (compressed region untouched)", () => {
 		seedThreeTurns();
 		// Cursor at seq 1; we delete from seq 4 → compressed region [0..1] intact.
-		db.saveSummaryAndAdvanceCursor(SID, { title: "s", sections: {}, createdAt: NOW }, 1);
+		// compression-archive-simplify sub-5: migrated from saveSummaryAndAdvanceCursor
+		// (deleted FIFO-3 path) to replaceSummariesAndAdvanceCursor (2-zone rolling).
+		db.replaceSummariesAndAdvanceCursor(SID, { title: "s", sections: {}, createdAt: NOW }, 1);
 		expect(db.getCompressionCursor(SID)).toBe(1);
 
 		db.deleteStepsFromSeq(SID, 4);

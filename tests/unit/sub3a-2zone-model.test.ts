@@ -189,7 +189,9 @@ describe("sub-3a #1: 2-zone model — [summary] + [postCursor verbatim]", () => 
 			]));
 		}
 		// Compress steps 1..2 (cursor = 2).
-		sessionDB!.saveSummaryAndAdvanceCursor(sessionId, {
+		// compression-archive-simplify sub-5: migrated from saveSummaryAndAdvanceCursor
+		// (deleted FIFO-3 path) to replaceSummariesAndAdvanceCursor (2-zone rolling).
+		sessionDB!.replaceSummariesAndAdvanceCursor(sessionId, {
 			title: "did 1..2",
 			sections: { status: "first two" },
 			stepRange: { from: 1, to: 2 },
