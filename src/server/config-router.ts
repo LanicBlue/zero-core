@@ -178,16 +178,20 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 		}
 	});
 
-	// ─── Compression Config ──────────────────────────────────
+	// ─── Compression + Archive Config ────────────────────────
 	// (route name kept as /memory-config for IPC stability; the standalone
 	// memory/autoRecall config was residual — memory lives in the wiki tree.
-	// Only compression is exchanged now.)
+	// Compression + archive prompts are exchanged here now.)
 	//
 	// compression-archive-simplify sub-5: `enabled` removed from the default
 	// fallback — it was an unread fake (the trigger hook never checked it).
 	// The default is now an empty object (provider/model fall through to the
 	// session's working model; summarySystemPrompt falls through to the
 	// in-file SUMMARY_SYSTEM literal in compression-core).
+	//
+	// memory-archive-fixes sub-3: `archive` block added. archive.memoryPrompt
+	// overrides ARCHIVE_MEMORY_PROMPT in the two memory turn runners; default
+	// undefined → const. Same whole-block exchange pattern as compression.
 
 	// config:memory-get
 	router.get("/memory-config", (_req, res) => {
@@ -195,6 +199,7 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 			const configData: any = kv().getJson("global_config") ?? {};
 			res.json({
 				compression: configData.compression ?? {},
+				archive: configData.archive ?? {},
 			});
 		} catch (e) {
 			res.status(500).json({ error: (e as Error).message });
@@ -204,9 +209,10 @@ export function createConfigRouter(deps: ConfigRouterDeps): Router {
 	// config:memory-update
 	router.put("/memory-config", (req, res) => {
 		try {
-			const { compression } = req.body as { compression?: any };
+			const { compression, archive } = req.body as { compression?: any; archive?: any };
 			const configData: any = kv().getJson("global_config") ?? {};
 			if (compression !== undefined) configData.compression = compression;
+			if (archive !== undefined) configData.archive = archive;
 			kv().setJson("global_config", configData);
 			res.json({ success: true });
 		} catch (e) {

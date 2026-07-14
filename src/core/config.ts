@@ -148,6 +148,20 @@ export const ZeroCoreConfigSchema = Type.Object({
 		summarySystemPrompt: Type.Optional(Type.String()),
 	}),
 
+	// ─── Archive (memory-archive-fixes sub-3 / decision 4)
+	//
+	// memory-archive-fixes sub-3: `archive.memoryPrompt` overrides the literal
+	// ARCHIVE_MEMORY_PROMPT constant in agent-loop.ts. The two memory turn
+	// runners in agent-service (runManualArchiveMemoryTurn /
+	// runDelegatedArchiveMemoryTurn — both share `buildTempMemoryTurnRunner`)
+	// read this; default undefined → use ARCHIVE_MEMORY_PROMPT. Pure full-text
+	// override (no template variable interpolation). Back-compat: an older
+	// config without `archive` deepMerges to {} → memoryPrompt undefined →
+	// default const, no break.
+	archive: Type.Object({
+		memoryPrompt: Type.Optional(Type.String()),
+	}),
+
 	// ─── Extractors (v0.8 M5 — archive extractor A + tool telemetry extractor B)
 	//
 	// Two independent post-hoc agents that run async after each turn / on
@@ -240,6 +254,9 @@ export const DEFAULT_CONFIG: ZeroCoreConfig = {
 	// through to the session's working model; summarySystemPrompt falls through
 	// to the in-file SUMMARY_SYSTEM literal in compression-core.
 	compression: {},
+	// memory-archive-fixes sub-3: archive.memoryPrompt override (default
+	// undefined → ARCHIVE_MEMORY_PROMPT const in agent-loop.ts).
+	archive: {},
 	// v0.8 (M5): archive extractors. A is the unified content-memory writer
 	// (incremental + close flush). B is the tool telemetry extractor. Both
 	// off by default; flip extractors.A.enabled=true in config to turn on.

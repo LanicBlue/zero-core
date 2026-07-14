@@ -291,12 +291,18 @@ export interface WindowApi {
 	toolExecutionsCleanup: (maxAgeMs: number) => Promise<number>;
 	toolExecutionsAnalyze: (agentId?: string) => Promise<{ analysis: string; stats: ToolExecutionStats[]; recentErrors: ToolExecutionRecord[] } | { error: string }>;
 
-	// ── Compression Config ──
+	// ── Compression + Archive Config ──
 	// steps-overhaul sub-4: L1/L2 keys (keepRecentTurns/l1Threshold/l2Threshold)
 	// removed with compression-engine.ts. Stage-3 core is step-granular.
 	// compression-archive-simplify sub-5: `enabled` removed — unread fake.
-	memoryConfigGet: () => Promise<{ compression: { provider?: string; model?: string } }>;
-	memoryConfigUpdate: (data: { compression?: any }) => Promise<{ success: true }>;
+	// memory-archive-fixes sub-3: `summarySystemPrompt` (override
+	// SUMMARY_SYSTEM) + `archive.memoryPrompt` (override ARCHIVE_MEMORY_PROMPT)
+	// added. Both default undefined → const literal. Whole-block exchange.
+	memoryConfigGet: () => Promise<{
+		compression: { provider?: string; model?: string; summarySystemPrompt?: string };
+		archive: { memoryPrompt?: string };
+	}>;
+	memoryConfigUpdate: (data: { compression?: any; archive?: any }) => Promise<{ success: true }>;
 
 	// ── Projects ──
 	// v0.8 (P5 §8.4): projectsGet supports includeContext → ProjectContainerView.

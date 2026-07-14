@@ -1032,11 +1032,27 @@ export class AgentService implements PlatformObserver {
 	 * Returns the runner closure (does not execute it). The runner returns
 	 * true if the turn ran cleanly, false on any error (caller treats as "no
 	 * memory written" + proceeds with the export — best-effort).
+	 *
+	 * memory-archive-fixes sub-3 (decision 4): the prompt is overridable via
+	 * `config.archive.memoryPrompt` (UI: MemorySettings → memoryConfigUpdate).
+	 * Default undefined / empty-after-trim → ARCHIVE_MEMORY_PROMPT const.
+	 * Read from `this.config` (same ZeroCoreConfig source compression uses
+	 * via `this.config.compression`). Pure full-text override — no template
+	 * variable interpolation.
 	 */
 	private buildTempMemoryTurnRunner(
 		sessionConfig: SessionConfig,
 	): () => Promise<boolean> {
 		const loopSessionId = sessionConfig.sessionId;
+		// memory-archive-fixes sub-3: resolve override ONCE at closure build
+		// time (this.config is the live agent-service config — re-reading on
+		// every runner call would be the same value, since config-router
+		// writes to KV without notifying agent-service to reload; the restart
+		// semantic is the same as compression.summarySystemPrompt).
+		const overrideRaw = (this.config as any)?.archive?.memoryPrompt;
+		const memoryPrompt = typeof overrideRaw === "string" && overrideRaw.trim()
+			? overrideRaw
+			: ARCHIVE_MEMORY_PROMPT;
 		return async () => {
 			if (!loopSessionId) return false;
 			try {
@@ -1048,7 +1064,7 @@ export class AgentService implements PlatformObserver {
 				// Register the main hook set so turn-hooks / wiki tool resolve.
 				registerHooksForLoop(tempLoop.registry, "main", sessionConfig.hookWiringDeps ?? this.buildHookDeps());
 				try {
-					await tempLoop.run(ARCHIVE_MEMORY_PROMPT, { ephemeral: true });
+					await tempLoop.run(memoryPrompt, { ephemeral: true });
 					return true;
 				} finally {
 					// Dispose: abort (cancels any pending provider call) + drop.
