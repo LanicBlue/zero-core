@@ -956,24 +956,19 @@ export class AgentService implements PlatformObserver {
 	 * after its task reaches a terminal state (called from the runtime's
 	 * SubagentDelegator via the `archiveDelegatedSession` config callback).
 	 *
-	 * GAP2 (re-activate): the child AgentLoop has already returned by the time
-	 * the task hits completed/failed, so we can't reuse it. Two cases:
-	 *   - **never compressed** (short session, compressionCursor === null):
-	 *     the child never ran a Force档 memory turn → RE-ACTIVATE by spinning
-	 *     up a TEMP AgentLoop on the child session + running ONE Q5b memory
-	 *     ephemeral turn (sub-2 persist:false → wiki writes only, no step
-	 *     persisted), then dispose the temp loop. The agent gets a chance to
-	 *     write its durable memory before the JSON export.
-	 *   - **already compressed** (long session, compressionCursor !== null):
-	 *     the compression memory turn already wrote wiki → export directly
-	 *     (no re-activate).
+	 * archive-no-residual sub-3 (D3): this is now a thin shim that funnels
+	 * through `archiveOneSessionCascade`. The GAP2 re-activate logic (temp
+	 * memory turn for never-compressed children), the SessionConfig rebuild,
+	 * and the archive pipeline invocation have all moved into
+	 * `archiveTerminalSessionViaArchive` (the no-active-loop branch of
+	 * `archiveOneSessionCascade`), so the same path serves BOTH:
+	 *   - terminal delegated children (this entry — child AgentLoop returned)
+	 *   - cascaded descendants during a parent's archive (children + N-depth
+	 *     grandchildren, regardless of liveness).
 	 *
-	 * Resolves the child's agentId/modelId from the CALLER (archive-no-residual
-	 * sub-1: the delegated_tasks row is deleted in terminal bookkeeping ①
-	 * BEFORE this fires, so it cannot be re-read here), builds a minimal child
-	 * SessionConfig, and runs the archive pipeline (Q5b memory turn if
-	 * applicable → mark → atomic export → delete). delegated auto-archive is
-	 * naturally complete-state, so NO teardown is needed.
+	 * The cascade also runs `archiveChildrenOf` on the child's sessionId, so
+	 * a terminal child ALSO cascades into its own grandchildren before
+	 * self-archiving — zero orphans at every delegation depth.
 	 *
 	 * Best-effort: any failure is logged + swallowed by the caller (the task
 	 * already succeeded/failed; archiving is a post-terminal side-effect).
@@ -984,26 +979,221 @@ export class AgentService implements PlatformObserver {
 		childAgentId?: string,
 		childModelId?: string,
 	): Promise<void> {
+		// archive-no-residual sub-3 (D3): funnel through archiveOneSessionCascade
+		// so a terminal child ALSO cascades into its own grandchildren before
+		// self-archiving (zero orphans at every delegation depth). Previously
+		// this method went straight to archiveSession without recursing. The
+		// taskId is retained on the signature for caller compatibility (the
+		// buildAndRegisterLoop wiring closure passes it through) and for logs.
+		// Best-effort: archiveOneSessionCascade swallows per-child errors; a
+		// rejection here is logged by the caller's `.catch` (the task already
+		// succeeded/failed; archiving is a post-terminal side-effect).
+		void taskId;
+		await this.archiveOneSessionCascade(childSessionId, childAgentId, childModelId);
+	}
+
+	/**
+	 * archive-no-residual sub-3 (D3): recursively archive every child session
+	 * spawned by `parentSessionId` (grandchildren via nested cascade through
+	 * archiveOneSessionCascade). Called from BOTH archive entry points:
+	 *   - archiveDelegatedSession — terminal child cascades into its own
+	 *     grandchildren before self-archiving.
+	 *   - archiveSessionInBackground — chat-manual parent archive cascades
+	 *     into all its delegated children before tearing down + archiving self.
+	 *
+	 * NOT a kill path: the delegated_tasks rows are deleted directly here, and
+	 * each child session is archived via archiveOneSessionCascade → archiveSession
+	 * (NOT via delegator.stopTask). fireOnTaskTerminal explicitly excludes
+	 * `killed` from auto-archive (subagent-delegator.ts:250); going through
+	 * kill would exclude these children from the archive pipeline → orphans,
+	 * which is exactly the failure mode this cascade exists to prevent.
+	 *
+	 * Recursive termination: listDelegatedTasks returns [] for leaf sessions
+	 * (no children spawned). sessionId derivation is monotonic per delegation
+	 * (each child gets a fresh sessionId); cycles are impossible.
+	 *
+	 * Locking: archiveSession's per-session withArchiveLock guards each child.
+	 * If a child is already being archived (e.g. its own terminal just fired
+	 * and the wiring callback raced the cascade), the loser hits the lock and
+	 * returns `skipped: already-archiving` (benign — the holder finishes).
+	 */
+	private async archiveChildrenOf(parentSessionId: string): Promise<void> {
+		const children = this.db.listDelegatedTasks({ parentSessionId });
+		for (const child of children) {
+			if (!child.sessionId) {
+				// No hidden session behind this task row (test stub or row
+				// already cleared). Just drop the row and move on.
+				this.db.deleteDelegatedTask(child.id);
+				continue;
+			}
+			// Recursive cascade: archive this child session (which itself
+			// recurses into grandchildren via archiveOneSessionCascade →
+			// archiveChildrenOf on the child's sessionId).
+			try {
+				await this.archiveOneSessionCascade(
+					child.sessionId,
+					child.targetAgentId,
+					child.modelId,
+				);
+			} catch (err) {
+				// Best-effort: a single child failure must not abort the rest
+				// of the cascade. Log + continue (the row delete below still
+				// runs so no residual task row is left).
+				log.warn("agent",
+					`archiveChildrenOf: cascade failed for child=${child.sessionId} (task=${child.id}):`,
+					(err as Error)?.message ?? err);
+			}
+			// Belt-and-suspenders: sub-1's terminal bookkeeping ① already
+			// deleted rows for completed/failed children. This sweep covers
+			// still-running children (rows that survived because they hadn't
+			// hit terminal yet) and any idempotent no-op re-delete.
+			this.db.deleteDelegatedTask(child.id);
+		}
+	}
+
+	/**
+	 * archive-no-residual sub-3 (D3): unified cascade entry. Archive a single
+	 * session AND (recursively) every descendant session it spawned. Two
+	 * paths picked by liveness of this session's own AgentLoop:
+	 *
+	 *   - **active loop** (this.loops.has(sessionId)): chat-manual style —
+	 *     run the Q5b memory ephemeral turn on the EXISTING loop (its
+	 *     wiki/extractor handles are live, so the write lands in the right
+	 *     topic subtree), then archiveSession's `teardown` option stops the
+	 *     loop + clears per-session hook state AFTER the memory turn. Mirrors
+	 *     the chat-manual SYNC teardown (teardownSessionForArchive) but
+	 *     driven inside archiveSession so the memory turn lands first.
+	 *   - **no active loop** (terminal session, loop already returned, OR a
+	 *     cascaded child sub-loop whose real loop lives in
+	 *     subagent-delegator.runningSubloops rather than this.loops):
+	 *     delegated style — rebuild a minimal SessionConfig from the
+	 *     persisted row, run ONE Q5b memory ephemeral turn on a TEMP loop
+	 *     if the session was never compressed (GAP2 re-activate), then
+	 *     archiveSession. NO teardown (no this.loops entry to clear).
+	 *
+	 * Both paths flow into archiveSession, whose per-session withArchiveLock
+	 * makes a duplicate cascade (terminal fired + parent cascade raced, or
+	 * chat-manual SYNC mark + background archive overlap) benign: the loser
+	 * returns `skipped: already-archiving`.
+	 *
+	 * Recursion order: archiveChildrenOf runs FIRST so descendants are
+	 * archived before the parent's own export+delete (matches user intent —
+	 * the parent's archive semantically "owns" its delegation subtree).
+	 */
+	private async archiveOneSessionCascade(
+		sessionId: string,
+		agentId?: string,
+		modelId?: string,
+	): Promise<void> {
+		// ① Recurse into descendants first (grandchildren via nested cascade).
+		await this.archiveChildrenOf(sessionId);
+
+		// ② Self-archive. Path picked by liveness of this session's own loop.
 		// Dynamic import — server/archive-service imports session-db + (transitively
 		// via AgentLoop) the runtime. Keeping this dynamic avoids pulling the
 		// whole runtime + wiki stack into agent-service's static graph.
 		const { archiveSession } = await import("./archive-service.js");
-		const sessionConfig = this.buildSessionConfigForArchive(childSessionId, childAgentId, childModelId);
+		if (this.loops.has(sessionId)) {
+			const loop = this.loops.get(sessionId);
+			if (loop) {
+				await this.archiveActiveSessionViaArchive(sessionId, loop, archiveSession);
+				return;
+			}
+			// Race: loop evicted between has() and get(). Fall through to
+			// the no-active-loop path (idempotent — rebuild from DB).
+		}
+		await this.archiveTerminalSessionViaArchive(sessionId, agentId, modelId, archiveSession);
+	}
+
+	/**
+	 * Active-loop path for archiveOneSessionCascade (chat-manual style).
+	 * Memory turn runs on the EXISTING loop (its wiki/extractor handles are
+	 * live, so the write lands in the right topic subtree); teardown (passed
+	 * to archiveSession) stops the loop + clears per-session hook state
+	 * AFTER the memory turn, mirroring teardownSessionForArchive's sequence
+	 * (evict FIRST so the loop stops firing hooks, THEN clear hook maps).
+	 */
+	private async archiveActiveSessionViaArchive(
+		sessionId: string,
+		loop: AgentLoop,
+		archiveSession: typeof import("./archive-service.js").archiveSession,
+	): Promise<void> {
+		// Pre-load the per-session hook-state clearers so the sync teardown
+		// callback can invoke them. Dynamic import keeps the runtime hooks
+		// layer out of agent-service's static graph; Node caches the dynamic
+		// import, so the await is trivial past first load.
+		const { clearCompressionTriggerStateForSession } = await import("../runtime/hooks/compression-trigger-hooks.js");
+		const { clearTurnSeqStateForSession } = await import("../runtime/hooks/turn-seq-tracker.js");
+		// Resolve the memory prompt override ONCE (same precedence as
+		// buildTempMemoryTurnRunner: config.archive.memoryPrompt if non-empty,
+		// else ARCHIVE_MEMORY_PROMPT const).
+		const overrideRaw = (this.config as any)?.archive?.memoryPrompt;
+		const memoryPrompt = typeof overrideRaw === "string" && overrideRaw.trim()
+			? overrideRaw
+			: ARCHIVE_MEMORY_PROMPT;
+		await archiveSession(sessionId, this.db, {
+			memoryTurnRunner: async () => {
+				// Guard: a busy loop throws on run() ("Agent is already busy").
+				// Skip the memory turn in that case (best-effort) — teardown
+				// still aborts the loop, so the export proceeds on the last
+				// consistent state. The wiki memory is lost for this session,
+				// which is acceptable per archive's best-effort contract.
+				if (this.runStates.get(sessionId)?.isBusy) return false;
+				try {
+					await loop.run(memoryPrompt, { ephemeral: true });
+					return true;
+				} catch (err) {
+					log.warn("agent",
+						`archiveOneSessionCascade active memory turn failed (session=${sessionId}):`,
+						(err as Error)?.message ?? err);
+					return false;
+				}
+			},
+			teardown: {
+				stopAgentLoop: (sid: string) => this.evictSessionFromMemory(sid),
+				clearHookState: (sid: string) => {
+					clearCompressionTriggerStateForSession(sid);
+					clearTurnSeqStateForSession(sid);
+				},
+			},
+		});
+	}
+
+	/**
+	 * No-active-loop path for archiveOneSessionCascade (delegated style).
+	 * Used by terminal children (loop already returned) AND by cascaded
+	 * child sub-loops (whose real loops live in subagent-delegator's
+	 * runningSubloops, NOT this.loops — evictSessionFromMemory is a no-op
+	 * for them). Rebuilds a minimal SessionConfig from the persisted row,
+	 * runs ONE Q5b memory ephemeral turn on a TEMP loop if the session was
+	 * never compressed (GAP2 re-activate), then archiveSession. NO teardown
+	 * (no this.loops entry to clear; per-session hook state is left for the
+	 * sub-loop's own TurnEnd handlers, mirroring archiveDelegatedSession
+	 * pre-cascade).
+	 */
+	private async archiveTerminalSessionViaArchive(
+		sessionId: string,
+		agentId: string | undefined,
+		modelId: string | undefined,
+		archiveSession: typeof import("./archive-service.js").archiveSession,
+	): Promise<void> {
+		const sessionConfig = this.buildSessionConfigForArchive(sessionId, agentId, modelId);
 		if (!sessionConfig) {
-			log.warn("agent", `archiveDelegatedSession: could not build child config (task=${taskId}, child=${childSessionId}) — skipping archive`);
+			log.warn("agent",
+				`archiveOneSessionCascade: could not build config (session=${sessionId}) — skipping archive`);
 			return;
 		}
-		// GAP2: only re-activate if the child was NEVER compressed (no
+		// GAP2: only re-activate if the session was NEVER compressed (no
 		// compressionCursor → no Force档 memory turn ever ran). A compressed
-		// child already has its wiki memory from the compression memory turn.
-		const cursor = this.db.getCompressionCursor(childSessionId);
+		// session already has its wiki memory from the compression memory turn.
+		const cursor = this.db.getCompressionCursor(sessionId);
 		const neverCompressed = cursor === null || cursor === undefined;
 		const memoryTurnRunner = neverCompressed
 			? this.buildTempMemoryTurnRunner(sessionConfig)
 			: async () => false; // already compressed → skip
-		await archiveSession(childSessionId, this.db, {
+		await archiveSession(sessionId, this.db, {
 			memoryTurnRunner,
-			// NO teardown — delegated child is already complete (AgentLoop returned).
+			// NO teardown — no active loop in this.loops to stop.
 		});
 	}
 
@@ -1106,6 +1296,21 @@ export class AgentService implements PlatformObserver {
 	 * HTTP response returns immediately with the new replacement session id.
 	 */
 	async archiveSessionInBackground(sessionId: string): Promise<void> {
+		// archive-no-residual sub-3 (D3): cascade into descendants FIRST. The
+		// chat-manual archive semantically "owns" every delegated child the
+		// session spawned; without this, still-running or never-acknowledged
+		// children would survive the parent's archive and leak (orphan session
+		// rows + orphan delegated_tasks rows). Each child is archived via
+		// archiveOneSessionCascade → archiveSession (NOT kill). The parent's
+		// own archive proceeds unchanged after the cascade.
+		//
+		// By this point the parent's loop has already been torn down in the
+		// HTTP SYNC phase (teardownSessionForArchive ran before this method
+		// was scheduled), so the parent's this.loops entry is gone. Children
+		// sub-loops live in subagent-delegator.runningSubloops (not this.loops),
+		// so archiveOneSessionCascade takes the no-active-loop path for them.
+		await this.archiveChildrenOf(sessionId);
+
 		// Dynamic import (same rationale as archiveDelegatedSession — avoids
 		// pulling archive-service's runtime transitive deps into agent-service's
 		// static graph).
