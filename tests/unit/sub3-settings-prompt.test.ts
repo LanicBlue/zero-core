@@ -142,49 +142,56 @@ async function setupConfigRouter(initialGlobalConfig: Record<string, any> = {}) 
 // #1 + #5 — MemorySettings UI: two textareas + two reset buttons (source grep)
 // ===========================================================================
 
-describe("sub-3 #1 + #5: MemorySettings renders two textareas + two reset buttons", () => {
+describe("sub-3 #1 + #5: MemorySettings renders two PromptField editors (read-only + Edit, matches AgentEditor)", () => {
 	const SRC = join(__dirname, "..", "..", "src", "renderer", "components", "settings", "MemorySettings.tsx");
 	const src = readFileSync(SRC, "utf8");
 
-	test("#1: two prompt textareas exist with distinct aria-labels", () => {
-		// 压缩摘要 prompt textarea — bound to compression.summarySystemPrompt.
-		expect(src).toMatch(/aria-label=["']Compression Summary Prompt["']/);
-		expect(src).toMatch(/value=\{compression\.summarySystemPrompt\s*\?\?\s*["']["']\}/);
-		expect(src).toMatch(/onChange=\{\(e\)\s*=>\s*setCompression\(\{\s*\.\.\.compression,\s*summarySystemPrompt:\s*e\.target\.value\s*\}\)\}/);
-		// 记忆提取 prompt textarea — bound to archive.memoryPrompt.
-		expect(src).toMatch(/aria-label=["']Archive Memory Prompt["']/);
-		expect(src).toMatch(/value=\{archive\.memoryPrompt\s*\?\?\s*["']["']\}/);
-		expect(src).toMatch(/onChange=\{\(e\)\s*=>\s*setArchive\(\{\s*\.\.\.archive,\s*memoryPrompt:\s*e\.target\.value\s*\}\)\}/);
+	test("#1: two PromptField editors bound to the two prompts (each onSave persists)", () => {
+		// ui-polish: 裸 textarea → PromptField(只读预览 + Edit 解锁 + Save 即时持久化)。
+		// 压缩摘要 prompt — onSave 持久化 compression.summarySystemPrompt。
+		expect(src).toMatch(/label=["']压缩摘要 prompt["']/);
+		expect(src).toMatch(/onSave=\{saveCompressionPrompt\}/);
+		// 记忆提取 prompt — onSave 持久化 archive.memoryPrompt。
+		expect(src).toMatch(/label=["']记忆提取 prompt["']/);
+		expect(src).toMatch(/onSave=\{saveArchivePrompt\}/);
+		// 两个 PromptField 实例(压缩 + 归档)。
+		const uses = src.match(/<PromptField/g) ?? [];
+		expect(uses.length).toBe(2);
 	});
 
 	test("#1: archive state is loaded from memoryConfigGet().archive (UI pulls archive block)", () => {
 		// The useEffect must read data.archive and seed the archive state —
-		// otherwise the second textarea would always render empty even after
+		// otherwise the archive field would always render empty even after
 		// save. Adversarial: a wiring that saves archive but never loads it
 		// would pass a "writes" test but fail at runtime.
 		expect(src).toMatch(/setArchive\(data\.archive\s*\?\?\s*\{\}\)/);
 	});
 
-	test("#1: two distinct reset (「恢复默认」) buttons exist in the JSX", () => {
-		// Count occurrences of 恢复默认 inside the JSX return body only (the
-		// header comment also mentions the phrase, so slice from `return (`).
-		const jsxStart = src.indexOf("return (");
-		expect(jsxStart).toBeGreaterThan(-1);
-		const jsx = src.slice(jsxStart);
-		const matches = jsx.match(/恢复默认/g) ?? [];
-		expect(matches.length).toBe(2);
+	test("#1: PromptField is read-only by default + Edit unlocks (AgentEditor PromptSection pattern)", () => {
+		// 默认只读预览:有值显示 <pre>,空显示「Using built-in default」提示。
+		expect(src).toMatch(/prompt-rendered/);
+		expect(src).toMatch(/prompt-empty/);
+		expect(src).toMatch(/Using built-in default/);
+		// Edit 按键解锁 textarea(非常驻裸 textarea)。
+		expect(src).toMatch(/>\s*Edit\s*<\/button>/);
+		expect(src).toMatch(/startEdit/);
+		// editing 态切 textarea(conditional 渲染)。
+		expect(src).toMatch(/\{\!editing\s*\?/);
 	});
 
-	test("#5: reset buttons clear their respective fields to empty string", () => {
-		// Compression reset → summarySystemPrompt = ""
-		expect(src).toMatch(/onClick=\{\(\)\s*=>\s*setCompression\(\{\s*\.\.\.compression,\s*summarySystemPrompt:\s*["']["']\s*\}\)\}/);
-		// Archive reset → memoryPrompt = ""
-		expect(src).toMatch(/onClick=\{\(\)\s*=>\s*setArchive\(\{\s*\.\.\.archive,\s*memoryPrompt:\s*["']["']\s*\}\)\}/);
+	test("#5: Reset reverts draft to saved value; Save commits via onSave (empty saved = default)", () => {
+		// Reset 把草稿回退到已存值(非清空;清空靠编辑后清 textarea 再 Save)。
+		expect(src).toMatch(/const reset\s*=\s*\(\)\s*=>\s*setDraft\(value\s*\?\?\s*["']["']\)/);
+		// Save 调 onSave(draft) 持久化。
+		expect(src).toMatch(/await onSave\(draft\)/);
+		// 两个 prompt 各有即时持久化 handler(显式构造 next 写主进程)。
+		expect(src).toMatch(/saveCompressionPrompt\s*=\s*async/);
+		expect(src).toMatch(/saveArchivePrompt\s*=\s*async/);
 	});
 
-	test("#1: save() writes both compression AND archive blocks (not just compression)", () => {
-		// Adversarial: if save() were left as the old memoryConfigUpdate({ compression })
-		// the archive textarea would silently never persist.
+	test("#1: model Save writes both compression AND archive blocks (not just compression)", () => {
+		// 底部 Save(模型用)仍写两块。Adversarial: 若留旧的 memoryConfigUpdate({ compression })
+		// archive 会静默不持久化。
 		expect(src).toMatch(/memoryConfigUpdate\(\{\s*compression,\s*archive\s*\}\)/);
 	});
 });

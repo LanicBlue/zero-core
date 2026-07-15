@@ -26,7 +26,7 @@
 // vitest、express、node:http、node:fs、node:os、node:path、node:child_process(建 fixture)
 //
 
-import { describe, test, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { describe, test, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 import express, { type Express } from "express";
 import { createServer, type Server } from "node:http";
 import {
@@ -93,12 +93,45 @@ beforeEach(() => {
 	_fakeHome = tmpHome;
 });
 
+// ui-polish:防御性清理真实 home 的已知测试 skill id。vi.mock("node:os") 应让
+// install 落 tmpHome,但历史上(mock 不全 / 进程崩溃 / 早期代码)曾在真实
+// ~/.zero-core/skills 留下 alpha/beta/single-skill/keep-git 残留。mock 只换
+// homedir() 函数、不动 process.env,故真实 home 仍可经 USERPROFILE/HOME 读到;
+// 每测后 + 文件结束各扫一次,保证零持久污染(本测试不碰用户真实数据 —— 这些 id
+// 是本文件专属 fixture 名,用户不会自建同名 skill)。
+const KNOWN_TEST_SKILL_IDS = ["alpha", "beta", "single-skill", "keep-git"];
+function realSkillsDirs(): string[] {
+	const realHome = process.env.USERPROFILE || process.env.HOME || "";
+	if (!realHome) return [];
+	return [
+		join(realHome, ".zero-core", "skills"),
+		join(realHome, ".claude", "skills"),
+	];
+}
+function scrubKnownTestSkillsFromRealHome() {
+	for (const dir of realSkillsDirs()) {
+		if (!existsSync(dir)) continue;
+		for (const id of KNOWN_TEST_SKILL_IDS) {
+			const p = join(dir, id);
+			if (existsSync(p)) {
+				try { rmSync(p, { recursive: true, force: true }); } catch { /* best-effort */ }
+			}
+		}
+	}
+}
+
 afterEach(async () => {
 	_fakeHome = null;
 	if (server) { await close(server); server = null; }
 	rmSync(tmpHome, { recursive: true, force: true });
 	for (const p of _fixtureParents) { try { rmSync(p, { recursive: true, force: true }); } catch {} }
 	_fixtureParents.clear();
+	scrubKnownTestSkillsFromRealHome(); // 防御:哪怕 mock 泄漏,真实 home 也不留痕
+});
+
+afterAll(() => {
+	// 终极兜底:进程崩溃被 afterEach 漏掉的,文件结束时再扫一次。
+	scrubKnownTestSkillsFromRealHome();
 });
 
 async function start(app: Express): Promise<number> {
