@@ -107,7 +107,12 @@ export class SessionDB {
 		const path = dbPath ?? join(ZERO_CORE_DIR, "sessions.db");
 		this.db = new Database(path);
 
-		this.db.pragma("journal_mode = WAL");
+		// 测试环境(ZERO_CORE_DB_NO_WAL=1)用 MEMORY journal,不产生 -wal/-shm 文件:
+		// vitest worker 退出时无 WAL checkpoint 内核 I/O,避免 mac 上 fsevents 与
+		// checkpoint 互相等待导致 worker 陷入不可中断 sleep(UE,kill -9 无效)拖死
+		// 整个测试 run(根因见 vitest.config.ts 的 env 注释 + lsof 证据)。生产默认 WAL。
+		const journalMode = process.env.ZERO_CORE_DB_NO_WAL === "1" ? "MEMORY" : "WAL";
+		this.db.pragma(`journal_mode = ${journalMode}`);
 		this.db.pragma("foreign_keys = ON");
 
 		this.kvStore = new KeyValueStore(this.db);

@@ -38,6 +38,14 @@ if (!process.env.ZERO_CORE_DIR) {
 	process.env.ZERO_CORE_DIR = mkdtempSync(join(tmpdir(), "zc-unit-"));
 }
 
+// 单测 DB 用 MEMORY journal(非 WAL):无 -wal/-shm 文件 → vitest worker 退出时
+// 无 WAL checkpoint 内核 I/O。根因:lsof 显示卡死(UE = uninterruptible sleep,
+// kill -9 无效)的 worker 持有多个未关闭的 sessions.db-wal;SQLite 在 worker
+// 退出时对每个未关闭的 WAL 做 checkpoint,该 I/O 在 macOS fsevents 监听同目录时
+// 死锁,worker UE 拖死整个 vitest(间歇性,时序依赖)。MEMORY journal 不产生 -wal
+// 文件,从源头消除 checkpoint。生产默认仍 WAL(session-db.ts 仅在此 env 下切 MEMORY)。
+process.env.ZERO_CORE_DB_NO_WAL = "1";
+
 export default defineConfig({
 	test: {
 		include: ["tests/unit/**/*.test.ts"],
