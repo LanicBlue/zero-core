@@ -101,7 +101,10 @@ describe("steps-overhaul sub-2 · 阶段1 recorder choke point (acceptance-2.md)
 		expect(pointer!.startsWith("[externalized: "), "pointer is self-describing").toBe(true);
 		// Pointer embeds: rel path, byte count, summary.
 		expect(pointer, "pointer embeds byte count").toContain(`${Buffer.byteLength(big, "utf8")} bytes`);
-		expect(pointer, "pointer embeds tool-outputs subdir").toContain("tool-outputs/");
+		// tool-quality-pass sub-5:指针前缀从 `.zero-core/tool-outputs/` 改为虚拟前缀
+		// `[tool-outputs]/`(acceptance #1 + #9,预期格式变更,不算回归)。`]` 隔断
+		// 了"tool-outputs/"子串,所以这里改成断言新前缀整体存在。
+		expect(pointer, "pointer embeds [tool-outputs]/ virtual prefix").toContain("[tool-outputs]/");
 		expect(pointer, "pointer embeds .txt extension").toContain(".txt");
 		// Externalized file exists on disk.
 		const parsed = parseExternalizedPointer(pointer!);

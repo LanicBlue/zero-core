@@ -26,9 +26,13 @@
 //
 //     [externalized: <REL_PATH> (<N> bytes)] <SUMMARY>
 //
-// - `<REL_PATH>`:相对 ZERO_CORE_DIR 的路径,如 `.zero-core/tool-outputs/<hash>.txt`。
-//   带 `.zero-core/` 前缀 → agent/人一眼看出根;绝对路径在 `os.homedir()` 因机器而异,
-//   相对路径稳定可移植。完整绝对路径 = join(ZERO_CORE_DIR, "tool-outputs", "<hash>.txt")。
+// - `<REL_PATH>`:**虚拟前缀**形态 `[tool-outputs]/<hash>.txt`(sub-5)。agent 一看
+//   `[tool-outputs]/` 就知道是虚拟通道,不与 workspace 相对路径混淆;绝对真实路径
+//   (`join(ZERO_CORE_DIR, "tool-outputs", "<hash>.txt")`)不泄露给 agent(home 不暴露)。
+//   Read 工具经 src/tools/tool-output-paths.ts 的 resolveToolOutputPath 把虚拟前缀
+//   解析回真实路径(沙箱限 tool-outputs 目录)。
+// - 历史(sub-5 前)指针嵌的是 `.zero-core/tool-outputs/<hash>.txt`(相对 ZERO_CORE_DIR
+//   basename 的形态),resolvePointerRelPath 仍能解析(向后兼容,旧 steps 行不破)。
 // - `<N>`:原始字节数(整数),供体积感知/调试。
 // - `<SUMMARY>`:一句话摘要(见 makeSummary),默认 result 头部若干字符 + `…(truncated)`。
 //
@@ -58,6 +62,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { ZERO_CORE_DIR } from "../core/config.js";
+import { TOOL_OUTPUTS_VIRTUAL_PREFIX } from "../tools/tool-output-paths.js";
 
 /** 体积阈值(字节)。超过即外置。design 阶段1 已定 16K。 */
 export const TOOL_RESULT_EXTERNALIZE_THRESHOLD = 16 * 1024;
@@ -107,14 +112,14 @@ function externalFilePath(filename: string): string {
 }
 
 /**
- * 指针串里嵌的相对路径,带 `.zero-core/` 前缀(自描述根)。
- * ZERO_CORE_DIR 末段按约定就是 `.zero-core`(或用户自定义的 ZERO_CORE_DIR env)。
+ * 指针串里嵌的虚拟前缀路径(sub-5):`[tool-outputs]/<hash>.txt`。
+ *
+ * 不再嵌 `.zero-core/...` 相对形态(agent 易误读为 workspace 相对)。虚拟前缀
+ * `[tool-outputs]/` 一看就是通道,与 workspace 路径不混淆;绝对真实路径不泄露。
+ * Read 工具经 tool-output-paths.ts 的 resolveToolOutputPath 解析回真实路径。
  */
 function relPathForPointer(filename: string): string {
-	// 取 ZERO_CORE_DIR 的basename 作为前缀,使指针自描述根目录(默认 `.zero-core`)。
-	// 不假设 ZERO_CORE_DIR 一定是 `.zero-core`(用户可经 env 改),故取 basename。
-	const rootBasename = ZERO_CORE_DIR.split(/[\\/]/).filter(Boolean).pop() ?? ".zero-core";
-	return `${rootBasename}/${TOOL_OUTPUTS_SUBDIR}/${filename}`;
+	return `${TOOL_OUTPUTS_VIRTUAL_PREFIX}${filename}`;
 }
 
 /**
@@ -130,10 +135,25 @@ export function parseExternalizedPointer(resultString: string): { relPath: strin
 }
 
 /**
- * 由 REL_PATH(指针串里的)还原绝对路径。join(ZERO_CORE_DIR,去掉前缀 basename 后的剩余)。
+ * 由 REL_PATH(指针串里的)还原绝对路径。
+ *
+ * 支持两种形态:
+ * - **新(sub-5)**:`[tool-outputs]/<rest>` 虚拟前缀 → `join(ZERO_CORE_DIR,
+ *   "tool-outputs", <rest>)`。与 src/tools/tool-output-paths.ts 的 resolveToolOutputPath
+ *   解析口径一致(本函数不重复沙箱检查 —— relPath 来自我们产出的指针串,是可信内部数据;
+ *   agent 通过 Read 读 `[tool-outputs]/...` 时由 Read 那侧的 resolveToolOutputPath 拦越界)。
+ * - **旧(sub-5 前)**:`.zero-core/tool-outputs/<hash>.txt`(相对 ZERO_CORE_DIR basename
+ *   的形态)→ 去掉首段 basename 后拼到 ZERO_CORE_DIR。保留兼容让旧 steps 行仍能寻回。
  */
 export function resolvePointerRelPath(relPath: string): string {
-	// relPath 形如 `.zero-core/tool-outputs/<hash>.txt`;去掉首段 basename 后拼到 ZERO_CORE_DIR。
+	// 新格式:虚拟前缀 `[tool-outputs]/<rest>`。
+	const norm = relPath.replace(/\\/g, "/");
+	if (norm.startsWith(TOOL_OUTPUTS_VIRTUAL_PREFIX)) {
+		const rest = norm.slice(TOOL_OUTPUTS_VIRTUAL_PREFIX.length);
+		return join(ZERO_CORE_DIR, TOOL_OUTPUTS_SUBDIR, rest);
+	}
+
+	// 旧格式:`<basename>/tool-outputs/<hash>.txt`;去掉首段 basename 后拼到 ZERO_CORE_DIR。
 	const segs = relPath.split(/[\\/]/).filter(Boolean);
 	if (segs.length <= 1) return join(ZERO_CORE_DIR, relPath);
 	// 去掉首段(它是 ZERO_CORE_DIR 的 basename,仅作自描述),其余接到 ZERO_CORE_DIR 下。

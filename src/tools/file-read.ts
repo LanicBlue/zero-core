@@ -43,6 +43,7 @@ import {
 } from "./file-read-helpers.js";
 import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 import { resolveSkillPath, replaceSkillDirVars } from "./skill-paths.js";
+import { resolveToolOutputPath } from "./tool-output-paths.js";
 import type { CallerCtx, ToolResult } from "./types.js";
 
 function resolvePath(path: string, workingDir: string | undefined, restrictToWorkspace: boolean): string | { error: string } {
@@ -117,20 +118,29 @@ export const fileReadTool = buildTool({
 		// skill-system sub-2: `[skills]/<id>/<rel>` 虚拟路径通道。
 		// 读家族始终放行(不经 restrictToWorkspace);解析 → 真实路径直接用(真实路径
 		// readScope 不变;这里是受信 skill 读取入口)。沙箱由 resolveSkillPath 保证。
+		//
+		// sub-5: `[tool-outputs]/<rel>` 虚拟路径通道(外部化指针回读入口)。镜像 skill
+		// 通道的"前缀识别 → 真实路径直接用"模式;沙箱由 resolveToolOutputPath 保证
+		// (`../` 越界拒,如 `[tool-outputs]/../../etc/passwd`)。
 		const skillResolved = resolveSkillPath(path);
+		const toolOutputResolved = resolveToolOutputPath(path);
 		let resolved: string;
 		let skillIdForVarReplace: string | null = null;
-		if (skillResolved === null) {
-			// 非 `[skills]/` 前缀 → 原 resolvePath(readScope 照常)。
-			const r = resolvePath(path, workingDir, restrictToWorkspace);
-			if (typeof r === "object") return wrap(r.error);
-			resolved = r;
-		} else if (!skillResolved.ok) {
-			return wrap(`Error: ${skillResolved.error}`);
-		} else {
+		if (skillResolved !== null) {
+			if (!skillResolved.ok) return wrap(`Error: ${skillResolved.error}`);
 			// skill 通道:始终放行,真实路径直接用(绕过 resolvePath 的 workspace 守卫)。
 			resolved = skillResolved.realPath;
 			skillIdForVarReplace = skillResolved.skillId;
+		} else if (toolOutputResolved !== null) {
+			if (!toolOutputResolved.ok) return wrap(`Error: ${toolOutputResolved.error}`);
+			// tool-outputs 通道:始终放行,真实路径直接用(绕过 resolvePath 的 workspace 守卫)。
+			// 沙箱由 resolveToolOutputPath 保证(防 `../` 越界逃出 tool-outputs 目录)。
+			resolved = toolOutputResolved.realPath;
+		} else {
+			// 非 `[skills]/` 且非 `[tool-outputs]/` 前缀 → 原 resolvePath(readScope 照常)。
+			const r = resolvePath(path, workingDir, restrictToWorkspace);
+			if (typeof r === "object") return wrap(r.error);
+			resolved = r;
 		}
 
 		try {

@@ -993,7 +993,7 @@
 		},
 		{
 			"path": "src/runtime/tool-result-externalizer.ts",
-			"lines": 177,
+			"lines": 197,
 			"dir": "src/runtime",
 			"exports": [
 				"parseExternalizedPointer",
@@ -1004,14 +1004,14 @@
 				"src/core/config.ts"
 			],
 			"functions": [
-				"src/runtime/tool-result-externalizer.ts/normalizeResult:77",
-				"src/runtime/tool-result-externalizer.ts/hashFilename:88",
-				"src/runtime/tool-result-externalizer.ts/makeSummary:96",
-				"src/runtime/tool-result-externalizer.ts/externalFilePath:105",
-				"src/runtime/tool-result-externalizer.ts/relPathForPointer:113",
-				"src/runtime/tool-result-externalizer.ts/parseExternalizedPointer:125",
-				"src/runtime/tool-result-externalizer.ts/resolvePointerRelPath:135",
-				"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:155"
+				"src/runtime/tool-result-externalizer.ts/normalizeResult:82",
+				"src/runtime/tool-result-externalizer.ts/hashFilename:93",
+				"src/runtime/tool-result-externalizer.ts/makeSummary:101",
+				"src/runtime/tool-result-externalizer.ts/externalFilePath:110",
+				"src/runtime/tool-result-externalizer.ts/relPathForPointer:121",
+				"src/runtime/tool-result-externalizer.ts/parseExternalizedPointer:130",
+				"src/runtime/tool-result-externalizer.ts/resolvePointerRelPath:148",
+				"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:175"
 			],
 			"description": ""
 		},
@@ -8685,12 +8685,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/tool-result-externalizer.ts/normalizeResult:77",
+			"id": "src/runtime/tool-result-externalizer.ts/normalizeResult:82",
 			"name": "normalizeResult",
 			"kind": "function",
 			"file": "src/runtime/tool-result-externalizer.ts",
-			"line": 77,
-			"endLine": 83,
+			"line": 82,
+			"endLine": 88,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "function normalizeResult(result: unknown)",
@@ -8698,12 +8698,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tool-result-externalizer.ts/hashFilename:88",
+			"id": "src/runtime/tool-result-externalizer.ts/hashFilename:93",
 			"name": "hashFilename",
 			"kind": "function",
 			"file": "src/runtime/tool-result-externalizer.ts",
-			"line": 88,
-			"endLine": 90,
+			"line": 93,
+			"endLine": 95,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function hashFilename(text: string)",
@@ -8711,12 +8711,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tool-result-externalizer.ts/makeSummary:96",
+			"id": "src/runtime/tool-result-externalizer.ts/makeSummary:101",
 			"name": "makeSummary",
 			"kind": "function",
 			"file": "src/runtime/tool-result-externalizer.ts",
-			"line": 96,
-			"endLine": 100,
+			"line": 101,
+			"endLine": 105,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "function makeSummary(text: string)",
@@ -8724,12 +8724,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tool-result-externalizer.ts/externalFilePath:105",
+			"id": "src/runtime/tool-result-externalizer.ts/externalFilePath:110",
 			"name": "externalFilePath",
 			"kind": "function",
 			"file": "src/runtime/tool-result-externalizer.ts",
-			"line": 105,
-			"endLine": 107,
+			"line": 110,
+			"endLine": 112,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function externalFilePath(filename: string)",
@@ -8737,25 +8737,25 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tool-result-externalizer.ts/relPathForPointer:113",
+			"id": "src/runtime/tool-result-externalizer.ts/relPathForPointer:121",
 			"name": "relPathForPointer",
 			"kind": "function",
 			"file": "src/runtime/tool-result-externalizer.ts",
-			"line": 113,
-			"endLine": 118,
-			"statementCount": 2,
+			"line": 121,
+			"endLine": 123,
+			"statementCount": 1,
 			"exported": false,
 			"signature": "function relPathForPointer(filename: string)",
-			"description": "指针串里嵌的相对路径,带 `.zero-core/` 前缀(自描述根)。\r",
+			"description": "指针串里嵌的虚拟前缀路径(sub-5):`[tool-outputs]/<hash>.txt`。\r",
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tool-result-externalizer.ts/parseExternalizedPointer:125",
+			"id": "src/runtime/tool-result-externalizer.ts/parseExternalizedPointer:130",
 			"name": "parseExternalizedPointer",
 			"kind": "function",
 			"file": "src/runtime/tool-result-externalizer.ts",
-			"line": 125,
-			"endLine": 130,
+			"line": 130,
+			"endLine": 135,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "function parseExternalizedPointer(resultString: string)",
@@ -8763,35 +8763,35 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tool-result-externalizer.ts/resolvePointerRelPath:135",
+			"id": "src/runtime/tool-result-externalizer.ts/resolvePointerRelPath:148",
 			"name": "resolvePointerRelPath",
 			"kind": "function",
 			"file": "src/runtime/tool-result-externalizer.ts",
-			"line": 135,
-			"endLine": 141,
-			"statementCount": 4,
+			"line": 148,
+			"endLine": 161,
+			"statementCount": 8,
 			"exported": true,
 			"signature": "function resolvePointerRelPath(relPath: string)",
-			"description": "由 REL_PATH(指针串里的)还原绝对路径。join(ZERO_CORE_DIR,去掉前缀 basename 后的剩余)。",
+			"description": "由 REL_PATH(指针串里的)还原绝对路径。\r",
 			"callees": []
 		},
 		{
-			"id": "src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:155",
+			"id": "src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:175",
 			"name": "maybeExternalizeToolResult",
 			"kind": "function",
 			"file": "src/runtime/tool-result-externalizer.ts",
-			"line": 155,
-			"endLine": 176,
+			"line": 175,
+			"endLine": 196,
 			"statementCount": 13,
 			"exported": true,
 			"signature": "function maybeExternalizeToolResult(result: unknown)",
 			"description": "阶段1 choke point:判断 result 体积,>阈值则外置 + 返回指针串;否则返回 null(不外置)。\r",
 			"callees": [
-				"src/runtime/tool-result-externalizer.ts/normalizeResult:77",
-				"src/runtime/tool-result-externalizer.ts/hashFilename:88",
-				"src/runtime/tool-result-externalizer.ts/externalFilePath:105",
-				"src/runtime/tool-result-externalizer.ts/relPathForPointer:113",
-				"src/runtime/tool-result-externalizer.ts/makeSummary:96"
+				"src/runtime/tool-result-externalizer.ts/normalizeResult:82",
+				"src/runtime/tool-result-externalizer.ts/hashFilename:93",
+				"src/runtime/tool-result-externalizer.ts/externalFilePath:110",
+				"src/runtime/tool-result-externalizer.ts/relPathForPointer:121",
+				"src/runtime/tool-result-externalizer.ts/makeSummary:101"
 			]
 		},
 		{
@@ -8915,7 +8915,7 @@
 			"description": "Update a tool block when result arrives. Matches by toolCallId if provided, else by name.\r",
 			"callees": [
 				"src/runtime/turn-recorder.ts/TurnRecorder.findToolBlock:432",
-				"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:155"
+				"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:175"
 			]
 		},
 		{
@@ -8957,7 +8957,7 @@
 			"description": "Record a successful tool result (legacy API — matches by name only).\r",
 			"callees": [
 				"src/runtime/turn-recorder.ts/TurnRecorder.findToolBlock:432",
-				"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:155"
+				"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:175"
 			]
 		},
 		{
@@ -8973,7 +8973,7 @@
 			"description": "Record a tool error (legacy API — matches by name only).\r",
 			"callees": [
 				"src/runtime/turn-recorder.ts/TurnRecorder.findToolBlock:432",
-				"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:155"
+				"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:175"
 			]
 		},
 		{
@@ -23587,20 +23587,20 @@
 			"src/runtime/tool-rate-limiter.ts/ToolRateLimiter.scheduleRelease:93",
 			"src/runtime/tool-rate-limiter.ts/ToolRateLimiter.tryNext:103"
 		],
-		"src/runtime/tool-result-externalizer.ts/normalizeResult:77": [
-			"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:155"
+		"src/runtime/tool-result-externalizer.ts/normalizeResult:82": [
+			"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:175"
 		],
-		"src/runtime/tool-result-externalizer.ts/hashFilename:88": [
-			"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:155"
+		"src/runtime/tool-result-externalizer.ts/hashFilename:93": [
+			"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:175"
 		],
-		"src/runtime/tool-result-externalizer.ts/externalFilePath:105": [
-			"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:155"
+		"src/runtime/tool-result-externalizer.ts/externalFilePath:110": [
+			"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:175"
 		],
-		"src/runtime/tool-result-externalizer.ts/relPathForPointer:113": [
-			"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:155"
+		"src/runtime/tool-result-externalizer.ts/relPathForPointer:121": [
+			"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:175"
 		],
-		"src/runtime/tool-result-externalizer.ts/makeSummary:96": [
-			"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:155"
+		"src/runtime/tool-result-externalizer.ts/makeSummary:101": [
+			"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:175"
 		],
 		"src/runtime/transcript-delta.ts/renderStep:89": [
 			"src/runtime/transcript-delta.ts/sliceTranscriptDelta:56"
@@ -23616,7 +23616,7 @@
 			"src/runtime/turn-recorder.ts/TurnRecorder.addToolResult:209",
 			"src/runtime/turn-recorder.ts/TurnRecorder.addToolError:224"
 		],
-		"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:155": [
+		"src/runtime/tool-result-externalizer.ts/maybeExternalizeToolResult:175": [
 			"src/runtime/turn-recorder.ts/TurnRecorder.updateToolResult:144",
 			"src/runtime/turn-recorder.ts/TurnRecorder.addToolResult:209",
 			"src/runtime/turn-recorder.ts/TurnRecorder.addToolError:224"
