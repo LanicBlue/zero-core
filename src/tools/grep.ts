@@ -26,7 +26,7 @@
 import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { resolve, relative, extname, sep } from "node:path";
+import { resolve, relative, extname, sep, basename } from "node:path";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { buildTool } from "./tool-factory.js";
 import { EXEC_MAX_BUFFER_BYTES } from "../core/constants.js";
@@ -100,6 +100,58 @@ async function* walkFiles(root: string, skipDirs: Set<string>): AsyncIterable<st
 	}
 }
 
+// Match a single file's contents against the regex. Shared by nativeGrepSearch's
+// directory walk (#6 truncation-aware) and the new single-file branch (#5).
+// Returns null when the file should be skipped (unreadable / binary).
+//
+// `contentBudget` caps how many content lines this call is allowed to PUSH (for
+// output_mode === "content"). Once exhausted the helper still iterates remaining
+// lines so matchCount reflects the TRUE total — this is what lets the caller
+// emit an accurate "... (N more matches truncated)" hint (#6).
+export async function matchSingleFile(
+	file: string,
+	relPath: string,
+	regex: RegExp,
+	output_mode: "content" | "files_with_matches" | "count",
+	ctxBefore: number,
+	ctxAfter: number,
+	max_columns: number,
+	contentBudget: number,
+): Promise<{ matchCount: number; shownMatches: number; contentLines: string[] } | null> {
+	let content: string;
+	try { content = await readFile(file, "utf-8"); } catch { return null; }
+	if (content.includes("\0")) return null; // binary
+
+	const lines = content.split(/\r?\n/);
+	let matchCount = 0;
+	let shownMatches = 0;
+	const outLines: string[] = [];
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		if (!regex.test(line)) continue;
+		matchCount++;
+		if (output_mode === "files_with_matches") {
+			break; // one hit per file is enough for this mode
+		}
+		if (output_mode === "content" && contentBudget > 0 && outLines.length < contentBudget) {
+			const display = line.length > max_columns ? line.slice(0, max_columns) + " ..." : line;
+			if (ctxBefore > 0 || ctxAfter > 0) {
+				for (let j = Math.max(0, i - ctxBefore); j <= Math.min(lines.length - 1, i + ctxAfter); j++) {
+					const prefix = j === i ? `${relPath}-${j + 1}-` : `${relPath}-${j + 1}-`;
+					const dl = lines[j].length > max_columns ? lines[j].slice(0, max_columns) + " ..." : lines[j];
+					outLines.push(`${prefix}${dl}`);
+				}
+				outLines.push(""); // blank between groups (rg style)
+			} else {
+				outLines.push(`${relPath}:${i + 1}:${display}`);
+			}
+			shownMatches++;
+		}
+	}
+	return { matchCount, shownMatches, contentLines: outLines };
+}
+
 export async function nativeGrepSearch(opts: {
 	pattern: string; searchPath: string; glob?: string; type?: string;
 	output_mode: "content" | "files_with_matches" | "count";
@@ -120,65 +172,87 @@ export async function nativeGrepSearch(opts: {
 	const ctxBefore = opts.context ?? opts.before ?? 0;
 	const ctxAfter = opts.context ?? opts.after ?? 0;
 
+	// #5: stat searchPath so a FILE input skips walkFiles (whose readdir would
+	// throw and silently yield nothing). Falls back to "treat as directory"
+	// when stat fails, preserving prior behavior for missing paths.
+	let isDir = true;
+	try {
+		const st = await stat(searchPath);
+		isDir = st.isDirectory();
+	} catch { /* leave isDir = true; walkFiles will silently produce nothing */ }
+
 	const matchedFiles: string[] = [];
 	const contentLines: string[] = [];
 	const countLines: string[] = [];
-	let totalMatches = 0;
+	let totalMatches = 0;          // real count across ALL matching lines (#6)
+	let shownContentMatches = 0;   // matches whose content line was actually pushed
+	let totalMatchedFiles = 0;     // files that matched at all (files_with_matches)
 	let filesScanned = 0;
 	const FILE_SCAN_CAP = 8000;
 
-	for await (const file of walkFiles(searchPath, skipDirs)) {
-		if (filesScanned++ > FILE_SCAN_CAP) break;
-		if (totalMatches >= head_limit && output_mode !== "count") break;
-		const relPath = relative(searchPath, file);
+	// Single file → yield just searchPath; relPath is its basename.
+	// Directory → recursive walk; relPath relative to searchPath.
+	const fileIter: AsyncIterable<string> = isDir
+		? walkFiles(searchPath, skipDirs)
+		: (async function* () { yield searchPath; })();
+
+	for await (const file of fileIter) {
+		if (isDir && filesScanned++ > FILE_SCAN_CAP) break;
+		const relPath = isDir ? relative(searchPath, file) : basename(searchPath);
 		if (!globOk(relPath)) continue;
 		const ext = extname(file).toLowerCase();
 		if (typeExts && !typeExts.has(ext.slice(1))) continue;
 		if (BINARY_EXTENSIONS.has(ext)) continue;
 
-		let content: string;
-		try { content = await readFile(file, "utf-8"); } catch { continue; }
-		if (content.includes("\0")) continue; // binary
+		// #6: keep scanning/counting past head_limit; only stop PUSHING.
+		const remainingBudget = Math.max(0, head_limit - contentLines.length);
+		const result = await matchSingleFile(
+			file, relPath, regex, output_mode,
+			ctxBefore, ctxAfter, max_columns, remainingBudget,
+		);
+		if (!result) continue;
 
-		const lines = content.split(/\r?\n/);
-		let fileMatchCount = 0;
-		for (let i = 0; i < lines.length; i++) {
-			const line = lines[i];
-			if (!regex.test(line)) continue;
-			totalMatches++;
-			fileMatchCount++;
-			if (output_mode === "files_with_matches") {
-				matchedFiles.push(relPath);
-				break; // one hit per file is enough for this mode
+		totalMatches += result.matchCount;
+		if (output_mode === "files_with_matches") {
+			if (result.matchCount > 0) {
+				totalMatchedFiles++;
+				if (matchedFiles.length < head_limit) matchedFiles.push(relPath);
 			}
-			if (output_mode === "content") {
-				const display = line.length > max_columns ? line.slice(0, max_columns) + " ..." : line;
-				if (ctxBefore > 0 || ctxAfter > 0) {
-					for (let j = Math.max(0, i - ctxBefore); j <= Math.min(lines.length - 1, i + ctxAfter); j++) {
-						const prefix = j === i ? `${relPath}-${j + 1}-` : `${relPath}-${j + 1}-`;
-						const dl = lines[j].length > max_columns ? lines[j].slice(0, max_columns) + " ..." : lines[j];
-						contentLines.push(`${prefix}${dl}`);
-					}
-					contentLines.push(""); // blank between groups (rg style)
-				} else {
-					contentLines.push(`${relPath}:${i + 1}:${display}`);
-				}
-				if (contentLines.length >= head_limit) break;
+		} else if (output_mode === "count") {
+			if (result.matchCount > 0) {
+				countLines.push(`${relPath}:${result.matchCount}`);
 			}
-		}
-		if (output_mode === "count" && fileMatchCount > 0) {
-			countLines.push(`${relPath}:${fileMatchCount}`);
+		} else if (output_mode === "content") {
+			for (const ln of result.contentLines) contentLines.push(ln);
+			shownContentMatches += result.shownMatches;
 		}
 	}
 
+	const truncationHint = (more: number): string =>
+		`\n\n... (${more} more matches truncated, refine your pattern)`;
+
 	if (output_mode === "files_with_matches") {
-		return matchedFiles.length ? matchedFiles.join("\n") : "No matches found.";
+		if (matchedFiles.length === 0) return "No matches found.";
+		let out = matchedFiles.join("\n");
+		if (totalMatchedFiles > matchedFiles.length) {
+			out += `\n\n... (${totalMatchedFiles - matchedFiles.length} more files truncated, refine your pattern)`;
+		}
+		return out;
 	}
 	if (output_mode === "count") {
 		return countLines.length ? countLines.join("\n") : "No matches found.";
 	}
-	if (contentLines.length === 0) return "No matches found.";
-	return contentLines.slice(0, head_limit).join("\n");
+	// content mode
+	if (contentLines.length === 0) {
+		// Edge: budget was 0 or every match overflowed budget before push.
+		if (totalMatches > 0) return truncationHint(totalMatches);
+		return "No matches found.";
+	}
+	let out = contentLines.slice(0, head_limit).join("\n");
+	if (totalMatches > shownContentMatches) {
+		out += truncationHint(totalMatches - shownContentMatches);
+	}
+	return out;
 }
 
 export const grepTool = buildTool({
