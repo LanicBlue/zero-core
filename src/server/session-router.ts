@@ -203,6 +203,12 @@ export function createSessionRouter(deps: {
 
 		// SYNC phase.
 		db.markArchivedTransient(req.params.sessionId);
+		// archive-no-residual fast bookkeeping: kill running child sub-loops +
+		// mark descendant sessions + delete task rows BEFORE teardown (the
+		// delegator dies with the parent loop at teardown, so the kill MUST
+		// happen here while it's alive). LLM-free, fast; the slow LLM memory
+		// turn + export runs async in the background half below.
+		const archiveDescendants = agentService.archiveBookkeepingSync(req.params.sessionId);
 		await agentService.teardownSessionForArchive(req.params.sessionId);
 		// Create the replacement with the SAME context so routing continues
 		// to work. Hand over main if the archived session owned it (matches
@@ -220,7 +226,7 @@ export function createSessionRouter(deps: {
 
 		// BACKGROUND phase — fire-and-forget. Any failure is logged + leaves
 		// the row in archived=1 state for the next startup's recovery scan.
-		agentService.archiveSessionInBackground(req.params.sessionId).catch((err) => {
+		agentService.archiveSessionInBackground(req.params.sessionId, archiveDescendants).catch((err) => {
 			log.warn("session-router",
 				`background archive failed (session=${req.params.sessionId}); row stays archived=1 for recovery scan:`,
 				(err as Error)?.message ?? err);

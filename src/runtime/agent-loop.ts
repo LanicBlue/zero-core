@@ -851,6 +851,19 @@ export class AgentLoop implements AgentRuntime {
 	}
 
 	/**
+	 * archive-no-residual (parent-archive fast path): abort every running
+	 * sub-agent loop this loop's delegator owns. Used by chat-manual-archive's
+	 * SYNC-phase bookkeeping to stop child runtime loops BEFORE the parent
+	 * loop is torn down (evictSessionFromMemory aborts the parent loop but
+	 * does NOT cascade to the independent child sub-loops — without this,
+	 * archiving a parent mid-delegation orphans the still-running children).
+	 * No-op when there are no running sub-loops.
+	 */
+	abortAllSubloops(): void {
+		this.delegator.abortAllSubloops();
+	}
+
+	/**
 	 * sub-3c Force档 coordination: run a memory ephemeral turn (sub-2) →
 	 * compressSession. Invoked at the user-turn boundary (run/resume finally)
 	 * when compression-trigger-hooks signalled a Force档 threshold (cold /

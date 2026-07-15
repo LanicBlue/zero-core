@@ -1295,37 +1295,93 @@ export class AgentService implements PlatformObserver {
 	 * NOT awaited by the HTTP handler — fire-and-forget after the swap. The
 	 * HTTP response returns immediately with the new replacement session id.
 	 */
-	async archiveSessionInBackground(sessionId: string): Promise<void> {
-		// archive-no-residual sub-3 (D3): cascade into descendants FIRST. The
-		// chat-manual archive semantically "owns" every delegated child the
-		// session spawned; without this, still-running or never-acknowledged
-		// children would survive the parent's archive and leak (orphan session
-		// rows + orphan delegated_tasks rows). Each child is archived via
-		// archiveOneSessionCascade → archiveSession (NOT kill). The parent's
-		// own archive proceeds unchanged after the cascade.
-		//
-		// By this point the parent's loop has already been torn down in the
-		// HTTP SYNC phase (teardownSessionForArchive ran before this method
-		// was scheduled), so the parent's this.loops entry is gone. Children
-		// sub-loops live in subagent-delegator.runningSubloops (not this.loops),
-		// so archiveOneSessionCascade takes the no-active-loop path for them.
-		await this.archiveChildrenOf(sessionId);
+	/**
+	 * archive-no-residual (parent-archive fast path): the FAST, LLM-free half
+	 * of chat-manual archive. Runs in the HTTP SYNC phase, BEFORE
+	 * teardownSessionForArchive evicts the parent loop. Three synchronous steps:
+	 *
+	 *   ① KILL — abort every running sub-loop the parent loop's delegator owns.
+	 *     teardownSessionForArchive → evictSessionFromMemory aborts the PARENT
+	 *     loop but does NOT cascade to the independent child sub-loops; without
+	 *     this, archiving a parent mid-delegation orphans the still-running
+	 *     children (they'd keep writing to sessions about to be exported +
+	 *     deleted). MUST run while the parent loop is still alive (the delegator
+	 *     dies with it at teardown).
+	 *   ② MARK + DELETE descendants (recursive, DB-only) — mark each child
+	 *     session archived=1 (UI hides it + recoverInterruptedArchives protects
+	 *     it), delete the delegated_tasks row (stops restoreDelegatedTasks
+	 *     re-seed), recurse for grandchildren.
+	 *   ③ MARK self (idempotent; session-router already markArchivedTransient'd).
+	 *
+	 * Returns the descendant sessions (sid + agent/model) so the BACKGROUND
+	 * half can run the slow LLM memory turn + export per descendant. This is
+	 * the parent-archive analogue of sub-1's terminal bookkeeping: row delete
+	 * + mark are decoupled from the slow LLM archive pipeline.
+	 */
+	archiveBookkeepingSync(sessionId: string): Array<{ sid: string; agentId?: string; modelId?: string }> {
+		const descendants: Array<{ sid: string; agentId?: string; modelId?: string }> = [];
+		// ① KILL running child sub-loops (parent loop is still alive pre-teardown).
+		const loop = this.loops.get(sessionId);
+		try {
+			loop?.abortAllSubloops?.();
+		} catch (err) {
+			log.warn("agent",
+				`archiveBookkeepingSync: abortAllSubloops failed (session=${sessionId}):`,
+				(err as Error)?.message ?? err);
+		}
+		// ② recursive mark + delete descendants (DB-only, no LLM).
+		const walk = (parentSid: string): void => {
+			const children = this.db.listDelegatedTasks({ parentSessionId: parentSid });
+			for (const c of children) {
+				if (c.sessionId) {
+					this.db.markArchivedTransient(c.sessionId);
+					descendants.push({ sid: c.sessionId, agentId: c.targetAgentId, modelId: c.modelId });
+					walk(c.sessionId);
+				}
+				this.db.deleteDelegatedTask(c.id);
+			}
+		};
+		walk(sessionId);
+		// ③ mark self (idempotent).
+		this.db.markArchivedTransient(sessionId);
+		return descendants;
+	}
 
+	async archiveSessionInBackground(
+		sessionId: string,
+		descendants: Array<{ sid: string; agentId?: string; modelId?: string }> = [],
+	): Promise<void> {
 		// Dynamic import (same rationale as archiveDelegatedSession — avoids
 		// pulling archive-service's runtime transitive deps into agent-service's
 		// static graph).
 		const { archiveSession } = await import("./archive-service.js");
+		// SELF archive — memory turn + export + delete (existing pipeline). The
+		// row is already archived=1 + task rows already deleted in the SYNC
+		// bookkeeping; archiveSession's mark is idempotent.
 		const sessionConfig = this.buildSessionConfigForArchive(sessionId);
 		if (!sessionConfig) {
 			log.warn("agent",
 				`archiveSessionInBackground: could not build session config (session=${sessionId}) — skipping archive; row stays archived=1 for recovery scan`);
-			return;
+		} else {
+			const memoryTurnRunner = this.buildTempMemoryTurnRunner(sessionConfig);
+			// NO teardown — the active loop + hook state were synchronously
+			// cleared in the HTTP SYNC phase (teardownSessionForArchive).
+			await archiveSession(sessionId, this.db, { memoryTurnRunner });
 		}
-		const memoryTurnRunner = this.buildTempMemoryTurnRunner(sessionConfig);
-		// NO teardown — the active loop + hook state were synchronously cleared
-		// in the HTTP SYNC phase (teardownSessionForArchive). archiveSession's
-		// mark is idempotent (archived=1 already set; no-op here).
-		await archiveSession(sessionId, this.db, { memoryTurnRunner });
+		// DESCENDANTS — memory turn + export per child, awaited (still
+		// background w.r.t. the HTTP response: session-router doesn't await
+		// archiveSessionInBackground). Each was marked archived=1 + its task
+		// row deleted in SYNC bookkeeping; a per-child failure is logged +
+		// swallowed (recoverInterruptedArchives is the crash backstop).
+		for (const d of descendants) {
+			try {
+				await this.archiveTerminalSessionViaArchive(d.sid, d.agentId, d.modelId, archiveSession);
+			} catch (err) {
+				log.warn("agent",
+					`archiveSessionInBackground: descendant ${d.sid} archive failed (row stays archived=1 for recovery):`,
+					(err as Error)?.message ?? err);
+			}
+		}
 	}
 
 	/**

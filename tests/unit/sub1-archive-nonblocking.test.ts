@@ -110,6 +110,9 @@ interface MockAgentService {
 	getDB: () => InstanceType<typeof SessionDBCtor>;
 	recreateLoop: ReturnType<typeof vi.fn>;
 	teardownSessionForArchive: ReturnType<typeof vi.fn>;
+	/** archive-no-residual: SYNC-phase fast bookkeeping (kill+mark+delete). Mocked
+	 * to return [] — these tests have no delegated children. */
+	archiveBookkeepingSync: ReturnType<typeof vi.fn>;
 	archiveSessionInBackground: ReturnType<typeof vi.fn>;
 	/** Replace the bg-runner body (default = no-op). */
 	_setBgRunner: (fn: (sid: string) => Promise<void>) => void;
@@ -124,6 +127,9 @@ function mockAgentService(db: InstanceType<typeof SessionDBCtor>): MockAgentServ
 		getDB: () => db,
 		recreateLoop: vi.fn(),
 		teardownSessionForArchive: vi.fn(async (_sid: string) => { /* spy */ }),
+		// archive-no-residual: SYNC fast bookkeeping. These tests have no
+		// delegated children → return [] (no descendants for the bg half).
+		archiveBookkeepingSync: vi.fn(() => []),
 		// IMPORTANT: return bgRunner(sid) DIRECTLY (no async wrapper). The
 		// router attaches .catch on this exact promise; an intermediate
 		// wrapper promise would itself be unhandled when bgRunner rejects
@@ -226,7 +232,9 @@ describe("sub-1 #1 + #2: HTTP archive responds < 500ms with main session id (not
 		expect(res.data.success).toBe(true);
 		// Background was fired (just not awaited).
 		expect(svc!.archiveSessionInBackground).toHaveBeenCalledTimes(1);
-		expect(svc!.archiveSessionInBackground).toHaveBeenCalledWith(sid);
+		// archive-no-residual: bg half now takes the descendants list from the
+		// SYNC bookkeeping (empty here — no delegated children).
+		expect(svc!.archiveSessionInBackground).toHaveBeenCalledWith(sid, []);
 	});
 
 	test("#2: response.newSessionId === db.getMainSession(agentId).id; recreateLoop called once", async () => {

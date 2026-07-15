@@ -568,6 +568,33 @@ export class SubagentDelegator {
 		return out;
 	}
 
+	/**
+	 * archive-no-residual (parent-archive fast path): abort EVERY running
+	 * sub-loop this delegator owns, by triggering each sub-loop's
+	 * AbortController (wired at dispatch to `subLoop.abort()`). Raw abort —
+	 * no stopTask hooks, no status/row mutation. The archive flow owns row +
+	 * session lifecycle from here.
+	 *
+	 * Why raw abort, not stopTask-per-task: stopTask fires SubagentStop /
+	 * TaskCompleted hooks + marks the row killed, which is noise for a batch
+	 * archive kill. The fast bookkeeping deletes the rows anyway; we only need
+	 * the runtime loops to stop so they stop writing to sessions about to be
+	 * exported + deleted. The aborted sub-loops' own completion handlers still
+	 * run their normal `runningSubloops.delete` + row-update cleanup; any row
+	 * write they attempt is an idempotent no-op (bookkeeping already deleted
+	 * the row).
+	 *
+	 * MUST be called while the owning parent loop is still alive (pre-teardown)
+	 * — the delegator is torn down with the loop. Called by
+	 * agent-service.archiveBookkeepingSync in the chat-manual-archive SYNC
+	 * phase, before teardownSessionForArchive evicts the parent loop.
+	 */
+	abortAllSubloops(): void {
+		for (const [, entry] of this.runningSubloops) {
+			try { entry.abort.abort(); } catch { /* already aborted */ }
+		}
+	}
+
 	stopTask(taskId: string): boolean {
 		const killed = this.taskRegistry.kill(taskId);
 		if (killed) {

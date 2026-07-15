@@ -149,9 +149,20 @@ describe("[#8, #9, #10] source-level invariants (archive-no-residual sub-3)", ()
 		expect(body, "must call archiveOneSessionCascade").toMatch(/this\.archiveOneSessionCascade\(/);
 	});
 
-	test("#9b: archiveSessionInBackground calls archiveChildrenOf at entry (chat-manual cascade)", () => {
-		const body = sliceMethod(src, "async archiveSessionInBackground(", "async teardownSessionForArchive(");
-		expect(body, "archiveSessionInBackground MUST call archiveChildrenOf at entry").toMatch(/this\.archiveChildrenOf\(/);
+	test("#9b: chat-manual archive splits into archiveBookkeepingSync (SYNC fast) + archiveSessionInBackground(sid, descendants) (BACKGROUND)", () => {
+		// archiveBookkeepingSync: the FAST LLM-free half — kill subloops + mark
+		// descendant sessions + delete task rows + mark self. Returns descendants.
+		const bkBody = sliceMethod(src, "archiveBookkeepingSync(", "async archiveSessionInBackground(");
+		expect(bkBody, "archiveBookkeepingSync MUST list delegated tasks by parentSessionId").toMatch(/listDelegatedTasks\(\{\s*parentSessionId/);
+		expect(bkBody, "archiveBookkeepingSync MUST mark child sessions").toMatch(/markArchivedTransient/);
+		expect(bkBody, "archiveBookkeepingSync MUST delete task rows").toMatch(/deleteDelegatedTask/);
+		expect(bkBody, "archiveBookkeepingSync MUST kill running subloops").toMatch(/abortAllSubloops/);
+		// archiveSessionInBackground: the BACKGROUND half — takes a descendants
+		// param + exports self + descendants. NO longer calls archiveChildrenOf
+		// (the cascade bookkeeping moved to the SYNC phase).
+		const bgBody = sliceMethod(src, "async archiveSessionInBackground(", "async teardownSessionForArchive(");
+		expect(bgBody, "archiveSessionInBackground MUST accept a descendants param").toMatch(/descendants/);
+		expect(bgBody, "archiveSessionInBackground must NO LONGER call archiveChildrenOf (moved to SYNC bookkeeping)").not.toMatch(/this\.archiveChildrenOf\(/);
 	});
 
 	test("#10: cascade path does NOT invoke delegator kill / stopTask / abandonTask (direct archiveSession only)", () => {
@@ -166,6 +177,7 @@ describe("[#8, #9, #10] source-level invariants (archive-no-residual sub-3)", ()
 			"private async archiveOneSessionCascade(",
 			"private async archiveActiveSessionViaArchive(",
 			"private async archiveTerminalSessionViaArchive(",
+			"archiveBookkeepingSync(",
 			"async archiveSessionInBackground(",
 		];
 		for (const m of methodsToCheck) {
@@ -308,6 +320,19 @@ describe("[#1-#7] behavioral cascade tests", () => {
 	}
 
 	/**
+	 * Drive the chat-manual-archive 2-phase flow exactly as session-router
+	 * does: FAST SYNC bookkeeping (archiveBookkeepingSync — kill subloops +
+	 * mark descendants + delete task rows + mark self) THEN BACKGROUND
+	 * memory+export of self + descendants (archiveSessionInBackground).
+	 * Behavioral tests route through this so they exercise the real split
+	 * (the user's design: fast LLM-free bookkeeping first, LLM async).
+	 */
+	async function archiveParent(svc: any, parentSid: string): Promise<void> {
+		const descendants = svc.archiveBookkeepingSync(parentSid);
+		await svc.archiveSessionInBackground(parentSid, descendants);
+	}
+
+	/**
 	 * Real archive-service — used for the lock-race test (#5) and idempotent
 	 * test (#7) so we exercise the actual withArchiveLock. Real archive writes
 	 * a JSON file under ARCHIVES_ROOT (redirected via ZERO_CORE_DIR).
@@ -349,7 +374,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
 		try {
-			await svc.archiveSessionInBackground(parentSid);
+			await archiveParent(svc, parentSid);
 
 			// Children's session rows GONE (cascade → archiveSession → deleteSessionData).
 			expect(sessionRowGone(db, child1), "child1 session row must be deleted by cascade").toBe(true);
@@ -372,41 +397,15 @@ describe("[#1-#7] behavioral cascade tests", () => {
 	});
 
 	// -------------------------------------------------------------------------
-	// #2: 父归档级联运行中子(子 loop 活跃 mock)→ teardown 调用 + 子归档
-	// (CAVEAT: production subagent loops live in runningSubloops, not this.loops
-	//  — see header. This test exercises the active-loop path via a mock loop
-	//  injected into this.loops, exactly as acceptance #2 specifies.)
+	// #2: 父归档 KILL 运行中子 —— archiveBookkeepingSync 调 parent loop 的
+	// abortAllSubloops(修复 runtime loop 泄漏),子 session 在 FAST 段就 mark+
+	// delete,LLM export 后台异步。
 	// -------------------------------------------------------------------------
 
-	test("#2: cascading a session whose loop is in this.loops invokes teardown.stopAgentLoop + archives (mock-injected loop)", async () => {
+	test("#2: archiveBookkeepingSync kills running child subloops via parent loop's abortAllSubloops + marks/deletes FAST (no LLM)", async () => {
 		await freshImports();
 		db = new SessionDBCtor(join(tmp, "sessions.db"));
-
-		// For this test we want to observe the active-loop path's teardown. Use
-		// a fake archiveSession that captures the teardown callbacks (the real
-		// archive-service calls them; we mimic that here).
-		const teardownStopCalls: string[] = [];
-		const teardownClearCalls: string[] = [];
-		const archiveCalls: string[] = [];
-		vi.doMock("../../src/server/archive-service.js", () => ({
-			archiveSession: vi.fn(async (sessionId: string, dbArg: any, opts: any) => {
-				archiveCalls.push(sessionId);
-				// Mimic real archiveSession: run memoryTurnRunner (no-op for our
-				// mock loop), then run teardown (the active-path side effect we
-				// want to assert), then mark + delete.
-				if (opts?.memoryTurnRunner) { try { await opts.memoryTurnRunner(); } catch { /* best-effort */ } }
-				if (opts?.teardown) {
-					opts.teardown.stopAgentLoop(sessionId);
-					opts.teardown.clearHookState(sessionId);
-				}
-				dbArg.deleteSessionData(sessionId);
-				return { archivePath: `/dev/null/${sessionId}.json`, memoryTurnRan: false, stepsExported: 0, summariesExported: 0 };
-			}),
-			archivePathFor: () => "/dev/null/mock.json",
-			ARCHIVES_ROOT: "/dev/null",
-			recoverInterruptedArchives: vi.fn(async () => 0),
-		}));
-
+		const { calls: archiveCalls } = interceptArchiveService({ deleteRow: true });
 		const { AgentService: Svc } = await import("../../src/server/agent-service.js");
 		const svc = new Svc(tmp, db);
 
@@ -423,63 +422,36 @@ describe("[#1-#7] behavioral cascade tests", () => {
 		const childSid = seedSession("child-agent", parentSid, "delegated");
 		seedDelegatedRow(parentSid, "t-running", childSid, { status: "running" });
 
-		// Inject a MOCK loop into this.loops so the active-loop path is taken.
-		// This mirrors the acceptance criterion's "子 loop 活跃 mock" spec.
-		// The mock loop has a run() that returns immediately (so the memoryTurn
-		// runner completes without needing providers).
-		const mockLoop = {
-			run: vi.fn(async () => ({}) as any),
-			setTurnSource: () => {},
-		};
-		(svc as any).loops.set(childSid, mockLoop);
-
-		// Spy evictSessionFromMemory so we observe the active path's stop callback.
-		const evictSpy = vi.spyOn(svc as any, "evictSessionFromMemory").mockImplementation((sid: string) => {
-			teardownStopCalls.push(sid);
-			// Real evict pulls from this.loops; mimic so subsequent has() returns false.
-			(svc as any).loops.delete(sid);
-			(svc as any).runStates?.delete?.(sid);
-		});
-
-		// Also spy the (private) clearHookState import path indirectly — the
-		// active path dynamic-imports clearer modules. We can't easily intercept
-		// those without mocking the hook modules; instead, we assert via the
-		// teardown callback the fake archiveSession invoked (stopAgentLoop).
-		// To make clearHookState observable, mock the two clearer modules.
-		vi.doMock("../../src/runtime/hooks/compression-trigger-hooks.js", () => ({
-			clearCompressionTriggerStateForSession: (sid: string) => { teardownClearCalls.push(sid); },
-			registerCompressionTriggerHooks: () => () => {},
-		}));
-		vi.doMock("../../src/runtime/hooks/turn-seq-tracker.js", () => ({
-			clearTurnSeqStateForSession: (sid: string) => { teardownClearCalls.push(sid); },
-		}));
+		// Inject a MOCK PARENT loop (the one whose delegator owns the running
+		// child subloop). archiveBookkeepingSync calls its abortAllSubloops —
+		// this is the KILL that fixes the runtime-loop leak (teardown alone
+		// aborts the parent loop but NOT the independent child subloops).
+		const abortSpy = vi.fn();
+		(svc as any).loops.set(parentSid, { abortAllSubloops: abortSpy });
 
 		const { log } = await import("../../src/core/logger.js");
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
 		try {
-			await svc.archiveSessionInBackground(parentSid);
+			// FAST SYNC bookkeeping — LLM-free, completes fully + synchronously.
+			const descendants = svc.archiveBookkeepingSync(parentSid);
 
-			// Child loop teardown was invoked: stopAgentLoop called with childSid.
-			expect(teardownStopCalls, "active-path stopAgentLoop MUST be called for the child").toContain(childSid);
-			// Child archive ran (not the kill path).
-			expect(archiveCalls).toContain(childSid);
-			// Child session row gone (delete ran after teardown).
-			expect(sessionRowGone(db, childSid)).toBe(true);
-			// delegated_tasks row gone.
-			expect(db.getDelegatedTask("t-running")).toBeUndefined();
+			// ① KILL: parent loop's abortAllSubloops invoked (the leak fix).
+			expect(abortSpy, "archiveBookkeepingSync MUST call parent loop's abortAllSubloops").toHaveBeenCalled();
+			// ② MARK + DELETE happened FAST (before any LLM): child session marked
+			//    archived=1 + task row deleted, BEFORE archiveSessionInBackground.
+			expect(archivedFlag(db, childSid), "child session MUST be marked archived=1 in the FAST bookkeeping (before LLM)").toBe(1);
+			expect(db.getDelegatedTask("t-running"), "task row MUST be deleted in the FAST bookkeeping").toBeUndefined();
+			expect(archiveCalls.length, "FAST bookkeeping MUST NOT invoke archiveSession (no LLM)").toBe(0);
+			expect(descendants.some((d: any) => d.sid === childSid), "descendants MUST include the child for background export").toBe(true);
 
-			// Adversarial: child's status did NOT become "killed" — the cascade
-			// path doesn't touch the row's status; it just deletes it. (We
-			// already assert row is undefined; this is a belt-and-suspenders
-			// assertion that no kill-style status update happened.)
-			// (Row is gone, so we can't read status — the assertion is the absence.)
-
-			// Parent also archived.
-			expect(sessionRowGone(db, parentSid)).toBe(true);
+			// BACKGROUND half: LLM memory turn + export (async; awaited here).
+			await svc.archiveSessionInBackground(parentSid, descendants);
+			expect(archiveCalls, "child MUST be exported by the background half").toContain(childSid);
+			expect(sessionRowGone(db, childSid), "child session row gone after background export").toBe(true);
+			expect(sessionRowGone(db, parentSid), "parent session row gone after background export").toBe(true);
 		} finally {
 			warnSpy.mockRestore();
-			evictSpy.mockRestore();
 		}
 	});
 
@@ -517,7 +489,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
 		try {
-			await svc.archiveSessionInBackground(parentSid);
+			await archiveParent(svc, parentSid);
 
 			// All three rows gone (recursion reached the grandchild).
 			expect(sessionRowGone(db, parentSid), "parent row gone").toBe(true);
@@ -533,14 +505,16 @@ describe("[#1-#7] behavioral cascade tests", () => {
 			expect(archiveCalls).toContain(childSid);
 			expect(archiveCalls).toContain(parentSid);
 
-			// Adversarial ordering: grandchild archived BEFORE child (recursion-first).
-			// archiveChildrenOf recurses BEFORE self-archive, so grandSid must
-			// appear earlier in the call list than childSid.
+			// Adversarial ordering: the FAST bookkeeping recurses depth-first
+			// (marks grandchild during the child's walk) but the descendants
+			// list is PRE-ORDER [child, grandchild]; archiveSessionInBackground
+			// exports self first then descendants in array order, so child is
+			// archived BEFORE grandchild. Both must be archived.
 			const grandIdx = archiveCalls.indexOf(grandSid);
 			const childIdx = archiveCalls.indexOf(childSid);
 			expect(grandIdx, "grandchild must be archived").toBeGreaterThan(-1);
 			expect(childIdx, "child must be archived").toBeGreaterThan(-1);
-			expect(grandIdx, "grandchild MUST be archived BEFORE its parent (recursion-first)").toBeLessThan(childIdx);
+			expect(childIdx, "child MUST be archived BEFORE grandchild (descendants array order)").toBeLessThan(grandIdx);
 		} finally {
 			warnSpy.mockRestore();
 		}
@@ -579,7 +553,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
 		try {
-			await expect(svc.archiveSessionInBackground(parentSid)).resolves.toBeUndefined();
+			await expect(archiveParent(svc, parentSid)).resolves.toBeUndefined();
 
 			// No-sid row gone (cascade's `if (!child.sessionId) deleteDelegatedTask` branch).
 			expect(db.getDelegatedTask("t-no-sid"), "sessionId-less row MUST be deleted").toBeUndefined();
@@ -761,7 +735,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
 		try {
-			await svc.archiveSessionInBackground(parentSid);
+			await archiveParent(svc, parentSid);
 
 			// Killed child session GONE (cascade archived it directly).
 			expect(sessionRowGone(db, killedChild), "killed child MUST be archived by cascade").toBe(true);
@@ -803,7 +777,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 
 		try {
 			// First cascade.
-			await svc.archiveSessionInBackground(parentSid);
+			await archiveParent(svc, parentSid);
 			const firstCallCount = archiveCalls.length;
 
 			// Second invocation: rows are gone, listDelegatedTasks returns [],
