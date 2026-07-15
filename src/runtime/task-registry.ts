@@ -34,6 +34,30 @@ export class TaskRegistry {
 	 */
 	private waitResolver: ((reason: WakeReason) => void) | null = null;
 
+	/**
+	 * sub-2 (#8): ids of tasks that reached a terminal state while a Wait was
+	 * suspended. Populated by complete/fail/kill/acknowledge just BEFORE
+	 * tryWake() fires (so the ids are recorded before the resolver resolves).
+	 * Drained into the WaitWakeResult on wake, and reset on every wake so the
+	 * next Wait starts from empty. Only pushed when waitActive is true
+	 * (no Wait active → nothing to report to).
+	 */
+	private finishedDuringWait: string[] = [];
+
+	/**
+	 * sub-2 (#8): independent "a Wait is currently suspended" flag, separate
+	 * from waitResolver. Why not reuse waitResolver as the push guard:
+	 * tryWake() calls the resolver synchronously, and the resolver's first
+	 * action is `if (this.waitResolver === finish) this.waitResolver = null`.
+	 * So on the FIRST terminal transition in a synchronous burst (e.g.
+	 * `complete("t1"); kill("t2");` with no await between), waitResolver
+	 * becomes null before t2's push runs → t2 would be dropped. waitActive
+	 * stays true from registration through the wake's return path, so every
+	 * terminal transition during the suspension is recorded regardless of the
+	 * resolver's own lifecycle.
+	 */
+	private waitActive = false;
+
 	// N1 (runtime-push-ui-sync): coalesced change notification. The registry
 	// stays sessionId-agnostic — AgentLoop subscribes and translates the ping
 	// into a runtime:tasks:changed agent:event carrying its own sessionId.
@@ -131,6 +155,8 @@ export class TaskRegistry {
 		info.completedAt = Date.now();
 		info.currentTool = undefined;
 		this.abortControllers.delete(taskId);
+		// sub-2 (#8): record id BEFORE tryWake fires the resolver.
+		if (this.waitActive) this.finishedDuringWait.push(taskId);
 		this.tryWake();
 		this.scheduleChange();
 	}
@@ -143,6 +169,8 @@ export class TaskRegistry {
 		info.completedAt = Date.now();
 		info.currentTool = undefined;
 		this.abortControllers.delete(taskId);
+		// sub-2 (#8): record id BEFORE tryWake fires the resolver.
+		if (this.waitActive) this.finishedDuringWait.push(taskId);
 		this.tryWake();
 		this.scheduleChange();
 	}
@@ -158,6 +186,8 @@ export class TaskRegistry {
 		info.status = "killed";
 		info.completedAt = Date.now();
 		info.currentTool = undefined;
+		// sub-2 (#8): record id BEFORE tryWake fires the resolver.
+		if (this.waitActive) this.finishedDuringWait.push(taskId);
 		this.tryWake();
 		this.scheduleChange();
 		return true;
@@ -177,6 +207,8 @@ export class TaskRegistry {
 		if (info.status === "running" || info.status === "finishing") return false;
 		this.tasks.delete(taskId);
 		this.abortControllers.delete(taskId);
+		// sub-2 (#8): record id BEFORE tryWake fires the resolver.
+		if (this.waitActive) this.finishedDuringWait.push(taskId);
 		this.tryWake();
 		this.scheduleChange();
 		return true;
@@ -276,13 +308,30 @@ export class TaskRegistry {
 			// call it. If a second Wait suspends while one is active (shouldn't
 			// happen — a loop runs one Wait at a time), the new one supersedes.
 			this.waitResolver = finish;
+			// sub-2 (#8): waitActive mirrors "a Wait is suspended" but is NOT
+			// cleared synchronously by tryWake (unlike waitResolver, which the
+			// resolver's first line nulls). Stays true through the wake's return
+			// path so a synchronous burst of terminal transitions all record.
+			this.waitActive = true;
 
 			if (delayMs !== undefined) {
 				timer = setTimeout(() => finish("timeout"), delayMs);
 			}
 		});
 
-		return { reason, elapsedMs: Date.now() - start };
+		// sub-2 (#8): on task-finished wake, snapshot the ids collected during
+		// the suspension into the result. Always drain the buffer afterwards so
+		// the next Wait starts from empty regardless of wake reason.
+		const result: WaitWakeResult = { reason, elapsedMs: Date.now() - start };
+		if (reason === "task finished" && this.finishedDuringWait.length > 0) {
+			result.finishedTaskIds = [...this.finishedDuringWait];
+		}
+		this.finishedDuringWait = [];
+		// Drop the active flag AFTER draining — terminal transitions landing
+		// between the resolver firing and this point (same tick) are captured;
+		// from here the suspension is fully over.
+		this.waitActive = false;
+		return result;
 	}
 
 	/**

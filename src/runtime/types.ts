@@ -694,6 +694,14 @@ export interface WaitSuspendOptions {
 export interface WaitWakeResult {
 	reason: WakeReason;
 	elapsedMs: number;
+	/**
+	 * sub-2 (#8): when reason === "task finished", the ids of the tasks that
+	 * reached a terminal state (complete/fail/kill/acknowledge) during the
+	 * suspension. Empty/absent on timeout / user-input wakes. The snapshot is
+	 * drained into here on wake and the underlying buffer cleared, so each new
+	 * Wait starts from empty.
+	 */
+	finishedTaskIds?: string[];
 }
 
 export interface TaskInfo {

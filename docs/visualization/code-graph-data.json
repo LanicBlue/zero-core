@@ -887,7 +887,7 @@
 		},
 		{
 			"path": "src/runtime/task-registry.ts",
-			"lines": 315,
+			"lines": 364,
 			"dir": "src/runtime",
 			"exports": [
 				"TaskRegistry.subscribe",
@@ -915,28 +915,28 @@
 				"src/runtime/types.ts"
 			],
 			"functions": [
-				"src/runtime/task-registry.ts/TaskRegistry.subscribe:47",
-				"src/runtime/task-registry.ts/TaskRegistry._flushChangeForTest:53",
-				"src/runtime/task-registry.ts/TaskRegistry.fireChange:59",
-				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65",
-				"src/runtime/task-registry.ts/TaskRegistry.create:74",
-				"src/runtime/task-registry.ts/TaskRegistry.updateProgress:93",
-				"src/runtime/task-registry.ts/TaskRegistry.addUsage:102",
-				"src/runtime/task-registry.ts/TaskRegistry.requestFinish:116",
-				"src/runtime/task-registry.ts/TaskRegistry.complete:126",
-				"src/runtime/task-registry.ts/TaskRegistry.fail:138",
-				"src/runtime/task-registry.ts/TaskRegistry.kill:150",
-				"src/runtime/task-registry.ts/TaskRegistry.acknowledge:174",
-				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.seed:196",
-				"src/runtime/task-registry.ts/TaskRegistry.list:201",
-				"src/runtime/task-registry.ts/TaskRegistry.hasRunning:215",
-				"src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:246",
-				"src/runtime/task-registry.ts/TaskRegistry.interruptWaitForUserInput:293",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
-				"src/runtime/task-registry.ts/TaskRegistry.cleanup:303",
-				"src/runtime/task-registry.ts/TaskRegistry.hasRunning:263",
-				"src/runtime/task-registry.ts/TaskRegistry.finish:270"
+				"src/runtime/task-registry.ts/TaskRegistry.subscribe:71",
+				"src/runtime/task-registry.ts/TaskRegistry._flushChangeForTest:77",
+				"src/runtime/task-registry.ts/TaskRegistry.fireChange:83",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89",
+				"src/runtime/task-registry.ts/TaskRegistry.create:98",
+				"src/runtime/task-registry.ts/TaskRegistry.updateProgress:117",
+				"src/runtime/task-registry.ts/TaskRegistry.addUsage:126",
+				"src/runtime/task-registry.ts/TaskRegistry.requestFinish:140",
+				"src/runtime/task-registry.ts/TaskRegistry.complete:150",
+				"src/runtime/task-registry.ts/TaskRegistry.fail:164",
+				"src/runtime/task-registry.ts/TaskRegistry.kill:178",
+				"src/runtime/task-registry.ts/TaskRegistry.acknowledge:204",
+				"src/runtime/task-registry.ts/TaskRegistry.get:217",
+				"src/runtime/task-registry.ts/TaskRegistry.seed:228",
+				"src/runtime/task-registry.ts/TaskRegistry.list:233",
+				"src/runtime/task-registry.ts/TaskRegistry.hasRunning:247",
+				"src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:278",
+				"src/runtime/task-registry.ts/TaskRegistry.interruptWaitForUserInput:342",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:346",
+				"src/runtime/task-registry.ts/TaskRegistry.cleanup:352",
+				"src/runtime/task-registry.ts/TaskRegistry.hasRunning:295",
+				"src/runtime/task-registry.ts/TaskRegistry.finish:302"
 			],
 			"description": "任务注册表：跟踪运行中任务状态、进度、完成/失败/kill"
 		},
@@ -1092,7 +1092,7 @@
 		},
 		{
 			"path": "src/runtime/types.ts",
-			"lines": 965,
+			"lines": 973,
 			"dir": "src/runtime",
 			"exports": [],
 			"imports": [
@@ -8151,12 +8151,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.subscribe:47",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.subscribe:71",
 			"name": "TaskRegistry.subscribe",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 47,
-			"endLine": 50,
+			"line": 71,
+			"endLine": 74,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method subscribe(cb: () => void)",
@@ -8164,27 +8164,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry._flushChangeForTest:53",
+			"id": "src/runtime/task-registry.ts/TaskRegistry._flushChangeForTest:77",
 			"name": "TaskRegistry._flushChangeForTest",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 53,
-			"endLine": 57,
+			"line": 77,
+			"endLine": 81,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method _flushChangeForTest()",
 			"description": "Test helper: drain any pending coalesced flush synchronously.",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.fireChange:59"
+				"src/runtime/task-registry.ts/TaskRegistry.fireChange:83"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.fireChange:59",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.fireChange:83",
 			"name": "TaskRegistry.fireChange",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 59,
-			"endLine": 63,
+			"line": 83,
+			"endLine": 87,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method fireChange()",
@@ -8192,189 +8192,189 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89",
 			"name": "TaskRegistry.scheduleChange",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 65,
-			"endLine": 72,
+			"line": 89,
+			"endLine": 96,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method scheduleChange()",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.fireChange:59"
+				"src/runtime/task-registry.ts/TaskRegistry.fireChange:83"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.create:74",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.create:98",
 			"name": "TaskRegistry.create",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 74,
-			"endLine": 91,
+			"line": 98,
+			"endLine": 115,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method create(taskId: string, type: TaskType, task: string, abortController?: AbortController, parentTaskId?: string, targetAgentId?: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.updateProgress:93",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.updateProgress:117",
 			"name": "TaskRegistry.updateProgress",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 93,
-			"endLine": 99,
+			"line": 117,
+			"endLine": 123,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method updateProgress(taskId: string, step: number, toolName?: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
+				"src/runtime/task-registry.ts/TaskRegistry.get:217",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.addUsage:102",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.addUsage:126",
 			"name": "TaskRegistry.addUsage",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 102,
-			"endLine": 108,
+			"line": 126,
+			"endLine": 132,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method addUsage(taskId: string, tokensDelta: number, turnCompleted: boolean)",
 			"description": "Add accumulated tokens + one completed agent-loop turn to a task.",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
+				"src/runtime/task-registry.ts/TaskRegistry.get:217",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.requestFinish:116",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.requestFinish:140",
 			"name": "TaskRegistry.requestFinish",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 116,
-			"endLine": 124,
+			"line": 140,
+			"endLine": 148,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method requestFinish(taskId: string, message?: string)",
 			"description": "Advisory finish: mark a running task \"finishing\" and stage a control\r",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
-				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
+				"src/runtime/task-registry.ts/TaskRegistry.get:217",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:346",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.complete:126",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.complete:150",
 			"name": "TaskRegistry.complete",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 126,
-			"endLine": 136,
-			"statementCount": 10,
+			"line": 150,
+			"endLine": 162,
+			"statementCount": 12,
 			"exported": true,
 			"signature": "method complete(taskId: string, result: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
-				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
+				"src/runtime/task-registry.ts/TaskRegistry.get:217",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:346",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.fail:138",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.fail:164",
 			"name": "TaskRegistry.fail",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 138,
-			"endLine": 148,
-			"statementCount": 10,
+			"line": 164,
+			"endLine": 176,
+			"statementCount": 12,
 			"exported": true,
 			"signature": "method fail(taskId: string, error: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
-				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
+				"src/runtime/task-registry.ts/TaskRegistry.get:217",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:346",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.kill:150",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.kill:178",
 			"name": "TaskRegistry.kill",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 150,
-			"endLine": 164,
-			"statementCount": 13,
+			"line": 178,
+			"endLine": 194,
+			"statementCount": 15,
 			"exported": true,
 			"signature": "method kill(taskId: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
-				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
+				"src/runtime/task-registry.ts/TaskRegistry.get:217",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:346",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.acknowledge:174",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.acknowledge:204",
 			"name": "TaskRegistry.acknowledge",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 174,
-			"endLine": 183,
-			"statementCount": 10,
+			"line": 204,
+			"endLine": 215,
+			"statementCount": 12,
 			"exported": true,
 			"signature": "method acknowledge(taskId: string)",
 			"description": "Acknowledge a FINISHED task (completed/failed/killed/interrupted) and drop\r",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:185",
-				"src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
-				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
+				"src/runtime/task-registry.ts/TaskRegistry.get:217",
+				"src/runtime/task-registry.ts/TaskRegistry.tryWake:346",
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.get:185",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.get:217",
 			"name": "TaskRegistry.get",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 185,
-			"endLine": 187,
+			"line": 217,
+			"endLine": 219,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method get(taskId: string)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.get:185"
+				"src/runtime/task-registry.ts/TaskRegistry.get:217"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.seed:196",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.seed:228",
 			"name": "TaskRegistry.seed",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 196,
-			"endLine": 199,
+			"line": 228,
+			"endLine": 231,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method seed(info: TaskInfo)",
 			"description": "Restore a persisted task as-is into the live registry (startup / activate\r",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.list:201",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.list:233",
 			"name": "TaskRegistry.list",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 201,
-			"endLine": 206,
+			"line": 233,
+			"endLine": 238,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method list(filter?: \"running\" | \"completed\")",
@@ -8382,12 +8382,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.hasRunning:215",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.hasRunning:247",
 			"name": "TaskRegistry.hasRunning",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 215,
-			"endLine": 220,
+			"line": 247,
+			"endLine": 252,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method hasRunning()",
@@ -8395,25 +8395,25 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:246",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.suspendUntilWake:278",
 			"name": "TaskRegistry.suspendUntilWake",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 246,
-			"endLine": 286,
-			"statementCount": 25,
+			"line": 278,
+			"endLine": 335,
+			"statementCount": 31,
 			"exported": true,
 			"signature": "method suspendUntilWake(opts: WaitSuspendOptions)",
 			"description": "sub-5 (Wait rewrite): suspend the calling Wait tool until one of three\r",
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.interruptWaitForUserInput:293",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.interruptWaitForUserInput:342",
 			"name": "TaskRegistry.interruptWaitForUserInput",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 293,
-			"endLine": 295,
+			"line": 342,
+			"endLine": 344,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method interruptWaitForUserInput()",
@@ -8421,12 +8421,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.tryWake:297",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.tryWake:346",
 			"name": "TaskRegistry.tryWake",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 297,
-			"endLine": 301,
+			"line": 346,
+			"endLine": 350,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method tryWake()",
@@ -8434,27 +8434,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.cleanup:303",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.cleanup:352",
 			"name": "TaskRegistry.cleanup",
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
-			"line": 303,
-			"endLine": 313,
+			"line": 352,
+			"endLine": 362,
 			"statementCount": 8,
 			"exported": true,
 			"signature": "method cleanup(maxAgeMs: number = 3600_000)",
 			"description": "",
 			"callees": [
-				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
+				"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89"
 			]
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.hasRunning:263",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.hasRunning:295",
 			"name": "TaskRegistry.hasRunning",
 			"kind": "arrow",
 			"file": "src/runtime/task-registry.ts",
-			"line": 263,
-			"endLine": 263,
+			"line": 295,
+			"endLine": 295,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn ()",
@@ -8462,12 +8462,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/task-registry.ts/TaskRegistry.finish:270",
+			"id": "src/runtime/task-registry.ts/TaskRegistry.finish:302",
 			"name": "TaskRegistry.finish",
 			"kind": "arrow",
 			"file": "src/runtime/task-registry.ts",
-			"line": 270,
-			"endLine": 274,
+			"line": 302,
+			"endLine": 306,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "fn (r: WakeReason)",
@@ -23502,38 +23502,38 @@
 		"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1118": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1118"
 		],
-		"src/runtime/task-registry.ts/TaskRegistry.fireChange:59": [
-			"src/runtime/task-registry.ts/TaskRegistry._flushChangeForTest:53",
-			"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65"
+		"src/runtime/task-registry.ts/TaskRegistry.fireChange:83": [
+			"src/runtime/task-registry.ts/TaskRegistry._flushChangeForTest:77",
+			"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89"
 		],
-		"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:65": [
-			"src/runtime/task-registry.ts/TaskRegistry.create:74",
-			"src/runtime/task-registry.ts/TaskRegistry.updateProgress:93",
-			"src/runtime/task-registry.ts/TaskRegistry.addUsage:102",
-			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:116",
-			"src/runtime/task-registry.ts/TaskRegistry.complete:126",
-			"src/runtime/task-registry.ts/TaskRegistry.fail:138",
-			"src/runtime/task-registry.ts/TaskRegistry.kill:150",
-			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:174",
-			"src/runtime/task-registry.ts/TaskRegistry.seed:196",
-			"src/runtime/task-registry.ts/TaskRegistry.cleanup:303"
+		"src/runtime/task-registry.ts/TaskRegistry.scheduleChange:89": [
+			"src/runtime/task-registry.ts/TaskRegistry.create:98",
+			"src/runtime/task-registry.ts/TaskRegistry.updateProgress:117",
+			"src/runtime/task-registry.ts/TaskRegistry.addUsage:126",
+			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:140",
+			"src/runtime/task-registry.ts/TaskRegistry.complete:150",
+			"src/runtime/task-registry.ts/TaskRegistry.fail:164",
+			"src/runtime/task-registry.ts/TaskRegistry.kill:178",
+			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:204",
+			"src/runtime/task-registry.ts/TaskRegistry.seed:228",
+			"src/runtime/task-registry.ts/TaskRegistry.cleanup:352"
 		],
-		"src/runtime/task-registry.ts/TaskRegistry.get:185": [
-			"src/runtime/task-registry.ts/TaskRegistry.updateProgress:93",
-			"src/runtime/task-registry.ts/TaskRegistry.addUsage:102",
-			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:116",
-			"src/runtime/task-registry.ts/TaskRegistry.complete:126",
-			"src/runtime/task-registry.ts/TaskRegistry.fail:138",
-			"src/runtime/task-registry.ts/TaskRegistry.kill:150",
-			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:174",
-			"src/runtime/task-registry.ts/TaskRegistry.get:185"
+		"src/runtime/task-registry.ts/TaskRegistry.get:217": [
+			"src/runtime/task-registry.ts/TaskRegistry.updateProgress:117",
+			"src/runtime/task-registry.ts/TaskRegistry.addUsage:126",
+			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:140",
+			"src/runtime/task-registry.ts/TaskRegistry.complete:150",
+			"src/runtime/task-registry.ts/TaskRegistry.fail:164",
+			"src/runtime/task-registry.ts/TaskRegistry.kill:178",
+			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:204",
+			"src/runtime/task-registry.ts/TaskRegistry.get:217"
 		],
-		"src/runtime/task-registry.ts/TaskRegistry.tryWake:297": [
-			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:116",
-			"src/runtime/task-registry.ts/TaskRegistry.complete:126",
-			"src/runtime/task-registry.ts/TaskRegistry.fail:138",
-			"src/runtime/task-registry.ts/TaskRegistry.kill:150",
-			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:174"
+		"src/runtime/task-registry.ts/TaskRegistry.tryWake:346": [
+			"src/runtime/task-registry.ts/TaskRegistry.requestFinish:140",
+			"src/runtime/task-registry.ts/TaskRegistry.complete:150",
+			"src/runtime/task-registry.ts/TaskRegistry.fail:164",
+			"src/runtime/task-registry.ts/TaskRegistry.kill:178",
+			"src/runtime/task-registry.ts/TaskRegistry.acknowledge:204"
 		],
 		"src/runtime/terminal-adapter.ts/TerminalAdapter.flushText:150": [
 			"src/runtime/terminal-adapter.ts/TerminalAdapter.handleEvent:60",

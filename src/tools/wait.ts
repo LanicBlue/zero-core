@@ -46,6 +46,8 @@ interface WaitData {
 	reason?: WakeReason;
 	/** Elapsed seconds. */
 	elapsedSec?: number;
+	/** sub-2 (#8): task ids that finished during the suspension (task-finished wake only). */
+	finishedTaskIds?: string[];
 }
 
 export const waitTool = buildTool({
@@ -65,7 +67,7 @@ export const waitTool = buildTool({
 		"Returns: `woke: timeout` / `woke: task finished` / `woke: user input` plus elapsed seconds. For task results use Task action:'get' — Wait no longer returns a task summary.",
 	meta: { category: "task", isReadOnly: true, isConcurrencySafe: true, isDestructive: false, exposable: false },
 	inputSchema: z.object({
-		until: z.string().describe("ISO 8601 absolute time point to wake at. Durable across restarts."),
+		until: z.string().optional().describe("ISO 8601 absolute time point to wake at. Durable across restarts."),
 		timeout: z.number().min(1).max(3600).optional().describe("Relative wait in seconds (1-3600). Used when `until` is omitted."),
 	}),
 	execute: async (input: any, callerCtx: CallerCtx): Promise<ToolResult<WaitData>> => {
@@ -121,12 +123,20 @@ export const waitTool = buildTool({
 		}
 		fns.endWait?.(result.reason);
 		const elapsedSec = Math.max(0, Math.round(result.elapsedMs / 1000));
+		// sub-2 (#8): on a task-finished wake with collected ids, append them
+		// to the LLM-facing text. Other wake reasons keep the original shape.
+		const finishedIds = result.reason === "task finished" ? result.finishedTaskIds : undefined;
+		let text = `woke: ${result.reason} elapsed ${elapsedSec}s`;
+		if (finishedIds && finishedIds.length > 0) {
+			text += ` finishedTaskIds: [${finishedIds.join(", ")}]`;
+		}
 		return {
 			ok: true,
 			data: {
-				text: `woke: ${result.reason} elapsed ${elapsedSec}s`,
+				text,
 				reason: result.reason,
 				elapsedSec,
+				finishedTaskIds: finishedIds,
 			},
 		};
 	},
