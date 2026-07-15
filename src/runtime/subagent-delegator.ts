@@ -265,11 +265,14 @@ export class SubagentDelegator {
 	 * is abandoned, not "completed work", and the parent owns its cleanup,
 	 * including row deletion via abandonTask/acknowledgeTask).
 	 *
-	 * Wiring: ② is currently wired only by agent-service's createLoopForSession
-	 * (onTaskTerminal = config.archiveDelegatedSession, threaded via AgentLoop).
-	 * sub-2 of this effort closes the remaining gaps (e.g. sendProjectPrompt
-	 * dispatch paths) so every dispatching loop fires ②; until then an unwired
-	 * path still runs ① (no residual) and leans on recovery for ②.
+	 * Wiring: ② is wired by agent-service's buildAndRegisterLoop — the shared
+	 * construction point used by BOTH createLoopForSession (chat) AND
+	 * sendProjectPrompt's lazy-rebuild (work/cron/automation). archive-no-residual
+	 * sub-2 closed the gap: every parent loop that dispatches sub-agents now
+	 * fires ②. tempLoop (memory-turn runner), subagent-delegator's own subLoop
+	 * (the child itself), and cli.ts do not wire ② — by design (none dispatch
+	 * sub-agents in turn). An unwired path still runs ① (no residual in
+	 * delegated_tasks) and leans on recovery for ②.
 	 */
 	private fireOnTaskTerminal(taskId: string, status: "completed" | "failed"): void {
 		const row = this.config.db?.getDelegatedTask?.(taskId);

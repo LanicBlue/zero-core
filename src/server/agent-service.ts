@@ -1244,6 +1244,71 @@ export class AgentService implements PlatformObserver {
 		this.createLoopForSession(agentId, sessionId, agent);
 		this.activeSessions.set(agentId, sessionId);
 	}
+	/**
+	 * archive-no-residual sub-2 (D2): single shared construction point for
+	 * parent loops. Both createLoopForSession (chat) and sendProjectPrompt's
+	 * lazy-rebuild (work/cron/automation) funnel through here, so the four
+	 * wiring steps that were previously inlined TWICE — and diverged
+	 * (sendProjectPrompt dropped `archiveDelegatedSession` → Gap A: its
+	 * dispatched sub-agents never auto-archived) — are now written exactly
+	 * once. Physically prevents re-divergence.
+	 *
+	 * The steps MUST stay together, in this order:
+	 *   1. set sessionConfig.archiveDelegatedSession  (agent-loop.ts:340 reads
+	 *      config.archiveDelegatedSession at construction time → must be set
+	 *      BEFORE `new AgentLoop` so the SubagentDelegator picks it up).
+	 *   2. construct AgentLoop (threads onEvent to this.handleRuntimeEvent).
+	 *   3. register the main hook set on the loop's own registry.
+	 *   4. register in this.loops + fire SessionStart (fire-and-forget).
+	 *
+	 * Not used by: tempLoop (buildTempMemoryTurnRunner — no children to
+	 * archive, not registered in this.loops), subagent-delegator's subLoop
+	 * (the child itself; its config is assembled by the delegator), cli.ts's
+	 * loop (CLI does not dispatch sub-agents). Those three are intentionally
+	 * out of scope for this consolidation.
+	 */
+	private buildAndRegisterLoop(
+		sessionConfig: SessionConfig,
+		agentId: string,
+		sessionId: string,
+	): AgentLoop {
+		// sub-2: every parent loop wires archiveDelegatedSession. This is the
+		// fix for Gap A — sendProjectPrompt previously omitted this line, so
+		// its dispatched children leaked (terminal bookkeeping ① still cleared
+		// the row, but ② memory-preservation never fired → no auto-archive).
+		// Best-effort: a rejection is logged + swallowed (the task already
+		// succeeded; archiving is a post-terminal side-effect).
+		sessionConfig.archiveDelegatedSession = (
+			taskId: string,
+			_status: "completed" | "failed",
+			childSessionId: string,
+			childAgentId?: string,
+			childModelId?: string,
+		) => {
+			this.archiveDelegatedSession(taskId, childSessionId, childAgentId, childModelId)
+				.catch((err: unknown) => {
+					log.warn("agent", `archiveDelegatedSession failed (task=${taskId}, child=${childSessionId}):`, (err as Error)?.message ?? err);
+				});
+		};
+		const loop = new AgentLoop(
+			sessionConfig,
+			this.providerConfigs,
+			{
+				onEvent: (event: StreamEvent) => {
+					this.handleRuntimeEvent(agentId, event);
+				},
+			},
+		);
+		// Step 1B: register the main-loop hook set on the loop's own registry.
+		registerHooksForLoop(loop.registry, "main", this.buildHookDeps());
+		this.loops.set(sessionId, loop);
+		// Step 1C: fire session-lifecycle SessionStart now that the loop is
+		// built + registered. Fire-and-forget: handlers must not block loop
+		// creation (the loop is returned synchronously to callers like
+		// sendPrompt which then drive run()).
+		void this.fireSessionStart(loop, agentId, sessionId, "main");
+		return loop;
+	}
 	private createLoopForSession(agentId: string, sessionId: string, agent?: AgentRecord): AgentLoop {
 		// v0.8: context handles are injected by CONFIG (which domain tools the
 		// agent's toolPolicy enables), NOT by identity/roleTag. toolPolicy is the
@@ -1372,40 +1437,18 @@ export class AgentService implements PlatformObserver {
 		if (agent?.wikiAnchors) (sessionConfig as any).wikiAnchors = agent.wikiAnchors;
 		// Step 1B: attach hook wiring deps so this loop's SubagentDelegator can
 		// register delegated sub-loops with the same set. The main loop's own
-		// registration happens below (right after construction).
+		// registration happens inside buildAndRegisterLoop below.
 		sessionConfig.hookWiringDeps = this.buildHookDeps();
-		// sub-8 (archive): wire the delegated-session auto-archive callback so a
-		// sub-agent that reaches completed/failed auto-archives (design.md
-		// 「归档」). archive-no-residual sub-1: the child's agentId/modelId are
-		// threaded THROUGH the callback (the delegated_tasks row is already
-		// deleted by terminal bookkeeping ① before this fires, so the callee
-		// cannot re-read it) + THIS loop's wiki/extractors handles (sub-loops
-		// inherit these via the config spread in subagent-delegator, so mirroring
-		// them here lets the final compression write into the same topic
-		// subtree). Best-effort: a build failure is logged + swallowed (the task
-		// already succeeded; archiving is a post-terminal side-effect).
-		sessionConfig.archiveDelegatedSession = (taskId, _status, childSessionId, childAgentId, childModelId) => {
-			this.archiveDelegatedSession(taskId, childSessionId, childAgentId, childModelId).catch((err: unknown) => {
-				log.warn("agent", `archiveDelegatedSession failed (task=${taskId}, child=${childSessionId}):`, (err as Error)?.message ?? err);
-			});
-		};
 		// Initialize run state for this session
 		if (!this.runStates.has(sessionId)) {
 			this.runStates.set(sessionId, { agentId, isBusy: false, waiting: false, streamingText: "", toolCalls: [] });
 		}
-		const capturedAgentId = agentId;
-		const loop = new AgentLoop(
-			sessionConfig,
-			this.providerConfigs,
-			{
-				onEvent: (event: StreamEvent) => {
-					this.handleRuntimeEvent(capturedAgentId, event);
-				},
-			},
-		);
-		// Step 1B: register the main-loop hook set on the loop's own registry.
-		registerHooksForLoop(loop.registry, "main", this.buildHookDeps());
-		this.loops.set(sessionId, loop);
+		// sub-2: build + wire + register via the shared construction point.
+		// archiveDelegatedSession / new AgentLoop / registerHooksForLoop /
+		// loops.set / fireSessionStart live there exactly once — prevents the
+		// divergence that caused Gap A (sendProjectPrompt previously dropped
+		// the archive wiring).
+		const loop = this.buildAndRegisterLoop(sessionConfig, agentId, sessionId);
 		// Restore persisted delegated tasks into the live registry so the
 		// memory-only getRuntimeTaskTree reflects history after restart/eviction.
 		// Roots = tasks this chat session dispatched (parent_session_id); expand
@@ -1430,11 +1473,6 @@ export class AgentService implements PlatformObserver {
 		this.sessionManager?.trackSessionCreated(sessionId, agentId);
 		this.sessionManager?.trackSessionActivated(sessionId);
 		log.agent("Runtime ready for:", agentId, "session:", sessionId);
-		// Step 1C: fire session-lifecycle SessionStart now that the loop is
-		// built + registered + tracked. Fire-and-forget: handlers must not
-		// block loop creation (the loop is returned synchronously to callers
-		// like sendPrompt which then drive run()).
-		void this.fireSessionStart(loop, agentId, sessionId, "main");
 		return loop;
 	}
 	// ─── Prompt execution — concurrent ──────────────────────────────
@@ -1654,18 +1692,12 @@ export class AgentService implements PlatformObserver {
 		}
 
 		let loop = this.loops.get(sessionId);
+		// sub-2: shared construction point — also wires archiveDelegatedSession
+		// (Gap A fix: this path previously omitted it, so work/cron-dispatched
+		// sub-agents never auto-archived; their terminal bookkeeping ① cleared
+		// the row but ② memory-preservation never fired).
 		if (!loop) {
-			loop = new AgentLoop(sessionConfig, this.providerConfigs, {
-				onEvent: (event: StreamEvent) => {
-					this.handleRuntimeEvent(agentId, event);
-				},
-			});
-			// Step 1B: register the main-loop hook set on the loop's own registry.
-			registerHooksForLoop(loop.registry, "main", this.buildHookDeps());
-			this.loops.set(sessionId, loop);
-			// Step 1C: fire session-lifecycle SessionStart for this newly-built
-			// project loop (mirrors createLoopForSession). Fire-and-forget.
-			void this.fireSessionStart(loop, agentId, sessionId, "main");
+			loop = this.buildAndRegisterLoop(sessionConfig, agentId, sessionId);
 		}
 
 		this.activeSessions.set(agentId, sessionId);

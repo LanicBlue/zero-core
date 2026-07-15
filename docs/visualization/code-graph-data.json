@@ -810,7 +810,7 @@
 		},
 		{
 			"path": "src/runtime/subagent-delegator.ts",
-			"lines": 1170,
+			"lines": 1173,
 			"dir": "src/runtime",
 			"exports": [
 				"delegatedToolPolicy",
@@ -855,33 +855,33 @@
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.createDelegatedSession:185",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.createDelegatedTask:205",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.updateDelegatedTask:235",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:274",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:315",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:361",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:459",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskResult:546",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.listTasks:550",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.getRunningSubloops:562",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:568",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.abandonTask:588",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskRecentCalls:624",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.acknowledgeTask:645",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:664",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:714",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:810",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:912",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:920",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:925",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:934",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:1026",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1152",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1159",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:501",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:879",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:942",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:1034",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1056",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.trunc:1081"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:277",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:318",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:364",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:462",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskResult:549",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.listTasks:553",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.getRunningSubloops:565",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:571",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.abandonTask:591",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskRecentCalls:627",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.acknowledgeTask:648",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:667",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:717",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:813",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:915",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:923",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:928",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:937",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:1029",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1155",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1162",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:504",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:882",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:945",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:1037",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1059",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.trunc:1084"
 			],
 			"description": ""
 		},
@@ -1169,7 +1169,7 @@
 		},
 		{
 			"path": "src/server/agent-service.ts",
-			"lines": 2426,
+			"lines": 2458,
 			"dir": "src/server",
 			"exports": [
 				"AgentService.getDB",
@@ -1218,6 +1218,7 @@
 				"AgentService.getAgentRecord",
 				"AgentService.getOrCreateLoop",
 				"AgentService.recreateLoop",
+				"AgentService.buildAndRegisterLoop",
 				"AgentService.createLoopForSession",
 				"AgentService.sendPrompt",
 				"AgentService.sendProjectPrompt",
@@ -1321,32 +1322,33 @@
 				"src/server/agent-service.ts/AgentService.getAgentRecord:1220",
 				"src/server/agent-service.ts/AgentService.getOrCreateLoop:1224",
 				"src/server/agent-service.ts/AgentService.recreateLoop:1239",
-				"src/server/agent-service.ts/AgentService.createLoopForSession:1247",
-				"src/server/agent-service.ts/AgentService.sendPrompt:1449",
-				"src/server/agent-service.ts/AgentService.sendProjectPrompt:1534",
-				"src/server/agent-service.ts/AgentService.abort:1717",
-				"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:1732",
-				"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1743",
-				"src/server/agent-service.ts/AgentService.restoreAllSessions:1811",
-				"src/server/agent-service.ts/AgentService.activateSession:1865",
-				"src/server/agent-service.ts/AgentService.getSessionVolume:1929",
-				"src/server/agent-service.ts/AgentService.getSessionInitPayload:1954",
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:2034",
-				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:2038",
-				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:2055",
-				"src/server/agent-service.ts/AgentService.buildLegacyMessages:2178",
-				"src/server/agent-service.ts/AgentService.dispose:2261",
-				"src/server/agent-service.ts/AgentService.invalidateLoops:2294",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:2308",
-				"src/server/agent-service.ts/AgentService.findStateByAgentId:2364",
-				"src/server/agent-service.ts/AgentService.emit:2370",
+				"src/server/agent-service.ts/AgentService.buildAndRegisterLoop:1270",
+				"src/server/agent-service.ts/AgentService.createLoopForSession:1312",
+				"src/server/agent-service.ts/AgentService.sendPrompt:1487",
+				"src/server/agent-service.ts/AgentService.sendProjectPrompt:1572",
+				"src/server/agent-service.ts/AgentService.abort:1749",
+				"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:1764",
+				"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1775",
+				"src/server/agent-service.ts/AgentService.restoreAllSessions:1843",
+				"src/server/agent-service.ts/AgentService.activateSession:1897",
+				"src/server/agent-service.ts/AgentService.getSessionVolume:1961",
+				"src/server/agent-service.ts/AgentService.getSessionInitPayload:1986",
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:2066",
+				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:2070",
+				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:2087",
+				"src/server/agent-service.ts/AgentService.buildLegacyMessages:2210",
+				"src/server/agent-service.ts/AgentService.dispose:2293",
+				"src/server/agent-service.ts/AgentService.invalidateLoops:2326",
+				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:2340",
+				"src/server/agent-service.ts/AgentService.findStateByAgentId:2396",
+				"src/server/agent-service.ts/AgentService.emit:2402",
 				"src/server/agent-service.ts/AgentService.workContextSystemSection:460",
 				"src/server/agent-service.ts/AgentService.stepsProgressSection:484",
 				"src/server/agent-service.ts/AgentService.on:849",
-				"src/server/agent-service.ts/createAgentService:2376",
-				"src/server/agent-service.ts/getAgentService:2395",
-				"src/server/agent-service.ts/setAgentService:2398",
-				"src/server/agent-service.ts/normalizeBlockArgsForUi:2414"
+				"src/server/agent-service.ts/createAgentService:2408",
+				"src/server/agent-service.ts/getAgentService:2427",
+				"src/server/agent-service.ts/setAgentService:2430",
+				"src/server/agent-service.ts/normalizeBlockArgsForUi:2446"
 			],
 			"description": "AgentService 类：全局调度入口，sendPrompt → createLoop → loop.run，session 管理，事件分发，recovery"
 		},
@@ -7737,12 +7739,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:274",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:277",
 			"name": "SubagentDelegator.fireOnTaskTerminal",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 274,
-			"endLine": 308,
+			"line": 277,
+			"endLine": 311,
 			"statementCount": 16,
 			"exported": true,
 			"signature": "method fireOnTaskTerminal(taskId: string, status: \"completed\" | \"failed\")",
@@ -7750,12 +7752,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:315",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:318",
 			"name": "SubagentDelegator.buildSubEventHandler",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 315,
-			"endLine": 352,
+			"line": 318,
+			"endLine": 355,
 			"statementCount": 22,
 			"exported": true,
 			"signature": "method buildSubEventHandler(taskId: string, entry: RunningSubloop)",
@@ -7765,12 +7767,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:361",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:364",
 			"name": "SubagentDelegator.delegateTask",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 361,
-			"endLine": 453,
+			"line": 364,
+			"endLine": 456,
 			"statementCount": 34,
 			"exported": true,
 			"signature": "method delegateTask(task: string, options?: DelegateTaskOptions)",
@@ -7780,19 +7782,19 @@
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.createDelegatedTask:205",
 				"src/runtime/subagent-delegator.ts/delegatedToolPolicy:153",
 				"src/core/hook-registry.ts/triggerHooks:137",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:315",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1152",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:318",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1155",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.updateDelegatedTask:235",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:274"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:277"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:459",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:462",
 			"name": "SubagentDelegator.delegateTaskBackground",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 459,
-			"endLine": 540,
+			"line": 462,
+			"endLine": 543,
 			"statementCount": 45,
 			"exported": true,
 			"signature": "method delegateTaskBackground(task: string, options?: DelegateTaskOptions)",
@@ -7802,19 +7804,19 @@
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.createDelegatedTask:205",
 				"src/runtime/subagent-delegator.ts/delegatedToolPolicy:153",
 				"src/core/hook-registry.ts/triggerHooks:137",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:315",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1152",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:318",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1155",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.updateDelegatedTask:235",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:274"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:277"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskResult:546",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskResult:549",
 			"name": "SubagentDelegator.getTaskResult",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 546,
-			"endLine": 548,
+			"line": 549,
+			"endLine": 551,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getTaskResult(taskId: string)",
@@ -7822,12 +7824,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.listTasks:550",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.listTasks:553",
 			"name": "SubagentDelegator.listTasks",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 550,
-			"endLine": 552,
+			"line": 553,
+			"endLine": 555,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method listTasks(filter?: \"running\" | \"completed\")",
@@ -7835,12 +7837,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.getRunningSubloops:562",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.getRunningSubloops:565",
 			"name": "SubagentDelegator.getRunningSubloops",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 562,
-			"endLine": 566,
+			"line": 565,
+			"endLine": 569,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method getRunningSubloops()",
@@ -7848,12 +7850,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:568",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:571",
 			"name": "SubagentDelegator.stopTask",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 568,
-			"endLine": 576,
+			"line": 571,
+			"endLine": 579,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method stopTask(taskId: string)",
@@ -7864,12 +7866,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.abandonTask:588",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.abandonTask:591",
 			"name": "SubagentDelegator.abandonTask",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 588,
-			"endLine": 608,
+			"line": 591,
+			"endLine": 611,
 			"statementCount": 14,
 			"exported": true,
 			"signature": "method abandonTask(taskId: string)",
@@ -7880,12 +7882,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskRecentCalls:624",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskRecentCalls:627",
 			"name": "SubagentDelegator.getTaskRecentCalls",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 624,
-			"endLine": 638,
+			"line": 627,
+			"endLine": 641,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method getTaskRecentCalls(taskId: string, n: number = 3)",
@@ -7893,12 +7895,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.acknowledgeTask:645",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.acknowledgeTask:648",
 			"name": "SubagentDelegator.acknowledgeTask",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 645,
-			"endLine": 655,
+			"line": 648,
+			"endLine": 658,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method acknowledgeTask(taskId: string)",
@@ -7906,12 +7908,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:664",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:667",
 			"name": "SubagentDelegator.requestTaskFinish",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 664,
-			"endLine": 683,
+			"line": 667,
+			"endLine": 686,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method requestTaskFinish(taskId: string, options?: { message?: string; maxTurns?: number })",
@@ -7921,34 +7923,34 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:714",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:717",
 			"name": "SubagentDelegator.resumeTask",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 714,
-			"endLine": 794,
+			"line": 717,
+			"endLine": 797,
 			"statementCount": 39,
 			"exported": true,
 			"signature": "method resumeTask(taskId: string)",
 			"description": "Step 2E: resume a delegated task by taskId. Called from the parent\r",
 			"callees": [
 				"src/runtime/subagent-delegator.ts/delegatedToolPolicy:153",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:315",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1152",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:318",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1155",
 				"src/runtime/hooks/turn-seq-tracker.ts/setTurnSeq:31",
 				"src/runtime/hooks/turn-seq-tracker.ts/markTurnStatePrecreated:67",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.updateDelegatedTask:235",
 				"src/core/hook-registry.ts/triggerHooks:137",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:274"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:277"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:810",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:813",
 			"name": "SubagentDelegator.resumeTaskBackground",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 810,
-			"endLine": 909,
+			"line": 813,
+			"endLine": 912,
 			"statementCount": 55,
 			"exported": true,
 			"signature": "method resumeTaskBackground(taskId: string)",
@@ -7957,65 +7959,65 @@
 				"src/runtime/hooks/turn-seq-tracker.ts/setTurnSeq:31",
 				"src/runtime/hooks/turn-seq-tracker.ts/markTurnStatePrecreated:67",
 				"src/runtime/subagent-delegator.ts/delegatedToolPolicy:153",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:315",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1152",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:318",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1155",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.updateDelegatedTask:235",
 				"src/core/hook-registry.ts/triggerHooks:137",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:274"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:277"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:912",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:915",
 			"name": "SubagentDelegator.listDelegatedTasks",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 912,
-			"endLine": 918,
+			"line": 915,
+			"endLine": 921,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method listDelegatedTasks(filter?: { rootTaskId?: string; parentTaskId?: string })",
 			"description": "List delegated-task records (persisted) for this owner, optionally scoped.",
 			"callees": [
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:912"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:915"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:920",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:923",
 			"name": "SubagentDelegator.suspendUntilWake",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 920,
-			"endLine": 922,
+			"line": 923,
+			"endLine": 925,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method suspendUntilWake(opts: WaitSuspendOptions)",
 			"description": "",
 			"callees": [
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:920"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:923"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:925",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:928",
 			"name": "SubagentDelegator.interruptWaitForUserInput",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 925,
-			"endLine": 927,
+			"line": 928,
+			"endLine": 930,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method interruptWaitForUserInput()",
 			"description": "sub-5: expose the user-input wake source for the loop.",
 			"callees": [
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:925"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:928"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:934",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:937",
 			"name": "SubagentDelegator.runBackground",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 934,
-			"endLine": 985,
+			"line": 937,
+			"endLine": 988,
 			"statementCount": 42,
 			"exported": true,
 			"signature": "method runBackground(command: string, timeoutSec?: number)",
@@ -8026,12 +8028,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:1026",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:1029",
 			"name": "SubagentDelegator.adoptBackgroundTask",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 1026,
-			"endLine": 1144,
+			"line": 1029,
+			"endLine": 1147,
 			"statementCount": 58,
 			"exported": true,
 			"signature": "method adoptBackgroundTask(child: import(\"node:child_process\").ChildProcess, command: string, stdoutChunks: Buffer[], stderrChunks: Buffer[])",
@@ -8042,12 +8044,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1152",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1155",
 			"name": "SubagentDelegator.registerSubLoopHooks",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 1152,
-			"endLine": 1157,
+			"line": 1155,
+			"endLine": 1160,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method registerSubLoopHooks(subLoop: AgentRuntime)",
@@ -8057,27 +8059,27 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1159",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1162",
 			"name": "SubagentDelegator.cleanup",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 1159,
-			"endLine": 1168,
+			"line": 1162,
+			"endLine": 1171,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method cleanup()",
 			"description": "",
 			"callees": [
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1159"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1162"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:501",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:504",
 			"name": "SubagentDelegator.parentEmit",
 			"kind": "arrow",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 501,
-			"endLine": 501,
+			"line": 504,
+			"endLine": 504,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (event: StreamEvent)",
@@ -8085,12 +8087,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:879",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:882",
 			"name": "SubagentDelegator.parentEmit",
 			"kind": "arrow",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 879,
-			"endLine": 879,
+			"line": 882,
+			"endLine": 882,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (event: StreamEvent)",
@@ -8098,12 +8100,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:942",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:945",
 			"name": "SubagentDelegator.parentEmit",
 			"kind": "arrow",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 942,
-			"endLine": 942,
+			"line": 945,
+			"endLine": 945,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (event: StreamEvent)",
@@ -8111,12 +8113,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:1034",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:1037",
 			"name": "SubagentDelegator.parentEmit",
 			"kind": "arrow",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 1034,
-			"endLine": 1034,
+			"line": 1037,
+			"endLine": 1037,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (event: StreamEvent)",
@@ -8124,12 +8126,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1056",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1059",
 			"name": "SubagentDelegator.finalize",
 			"kind": "arrow",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 1056,
-			"endLine": 1138,
+			"line": 1059,
+			"endLine": 1141,
 			"statementCount": 44,
 			"exported": false,
 			"signature": "fn (reason: \"close\" | \"error\", code: number | null, err?: Error)",
@@ -8140,12 +8142,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.trunc:1081",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.trunc:1084",
 			"name": "SubagentDelegator.trunc",
 			"kind": "arrow",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 1081,
-			"endLine": 1083,
+			"line": 1084,
+			"endLine": 1086,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (s: string)",
@@ -9363,7 +9365,7 @@
 			"signature": "method setWorkspaceDir(dir: string)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.invalidateLoops:2294"
+				"src/server/agent-service.ts/AgentService.invalidateLoops:2326"
 			]
 		},
 		{
@@ -9380,7 +9382,7 @@
 			"callees": [
 				"src/runtime/provider-factory.ts/clearProviderCache:223",
 				"src/runtime/provider-factory.ts/setConcurrencyManager:42",
-				"src/server/agent-service.ts/AgentService.invalidateLoops:2294",
+				"src/server/agent-service.ts/AgentService.invalidateLoops:2326",
 				"src/server/agent-service.ts/AgentService.notifyReady:574"
 			]
 		},
@@ -9397,7 +9399,7 @@
 			"description": "",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.fireSessionClose:560",
-				"src/server/agent-service.ts/AgentService.createLoopForSession:1247",
+				"src/server/agent-service.ts/AgentService.createLoopForSession:1312",
 				"src/server/agent-service.ts/AgentService.capabilityHandlesFor:848",
 				"src/server/agent-service.ts/AgentService.buildSkillSectionClosure:826",
 				"src/server/agent-service.ts/AgentService.notifyReady:574"
@@ -9785,7 +9787,7 @@
 			"description": "",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.fireSessionClose:560",
-				"src/server/agent-service.ts/AgentService.abort:1717"
+				"src/server/agent-service.ts/AgentService.abort:1749"
 			]
 		},
 		{
@@ -9833,7 +9835,7 @@
 			"callees": [
 				"src/runtime/hooks/index.ts/registerHooksForLoop:142",
 				"src/server/agent-service.ts/AgentService.buildHookDeps:522",
-				"src/server/agent-service.ts/AgentService.abort:1717"
+				"src/server/agent-service.ts/AgentService.abort:1749"
 			]
 		},
 		{
@@ -9905,7 +9907,7 @@
 			"signature": "method markRunning(sessionId: string, agentId: string)",
 			"description": "Mark a session as running (isBusy=true) and emit the authoritative\r",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.emit:2370"
+				"src/server/agent-service.ts/AgentService.emit:2402"
 			]
 		},
 		{
@@ -9972,7 +9974,7 @@
 			"signature": "method getOrCreateLoop(agent?: AgentRecord)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:1247"
+				"src/server/agent-service.ts/AgentService.createLoopForSession:1312"
 			]
 		},
 		{
@@ -9987,17 +9989,36 @@
 			"signature": "method recreateLoop(agentId: string, sessionId: string, agent?: AgentRecord)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:1247"
+				"src/server/agent-service.ts/AgentService.createLoopForSession:1312"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.createLoopForSession:1247",
+			"id": "src/server/agent-service.ts/AgentService.buildAndRegisterLoop:1270",
+			"name": "AgentService.buildAndRegisterLoop",
+			"kind": "method",
+			"file": "src/server/agent-service.ts",
+			"line": 1270,
+			"endLine": 1311,
+			"statementCount": 9,
+			"exported": true,
+			"signature": "method buildAndRegisterLoop(sessionConfig: SessionConfig, agentId: string, sessionId: string)",
+			"description": "archive-no-residual sub-2 (D2): single shared construction point for\r",
+			"callees": [
+				"src/server/agent-service.ts/AgentService.archiveDelegatedSession:981",
+				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:2340",
+				"src/runtime/hooks/index.ts/registerHooksForLoop:142",
+				"src/server/agent-service.ts/AgentService.buildHookDeps:522",
+				"src/server/agent-service.ts/AgentService.fireSessionStart:540"
+			]
+		},
+		{
+			"id": "src/server/agent-service.ts/AgentService.createLoopForSession:1312",
 			"name": "AgentService.createLoopForSession",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1247,
-			"endLine": 1439,
-			"statementCount": 69,
+			"line": 1312,
+			"endLine": 1477,
+			"statementCount": 61,
 			"exported": true,
 			"signature": "method createLoopForSession(agentId: string, sessionId: string, agent?: AgentRecord)",
 			"description": "",
@@ -10006,59 +10027,54 @@
 				"src/server/flow-actions.ts/createFlowActions:321",
 				"src/server/agent-service.ts/AgentService.buildSkillSectionClosure:826",
 				"src/server/agent-service.ts/AgentService.buildHookDeps:522",
-				"src/server/agent-service.ts/AgentService.archiveDelegatedSession:981",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:2308",
-				"src/runtime/hooks/index.ts/registerHooksForLoop:142",
-				"src/server/agent-service.ts/AgentService.fireSessionStart:540"
+				"src/server/agent-service.ts/AgentService.buildAndRegisterLoop:1270"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.sendPrompt:1449",
+			"id": "src/server/agent-service.ts/AgentService.sendPrompt:1487",
 			"name": "AgentService.sendPrompt",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1449,
-			"endLine": 1525,
+			"line": 1487,
+			"endLine": 1563,
 			"statementCount": 36,
 			"exported": true,
 			"signature": "method sendPrompt(text: string | UserContent, agent?: AgentRecord, sessionId?: string, source: TurnSource = \"background\")",
 			"description": "Send a user/automated prompt. `source` is the platform-observability ②.1\r",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:1247",
+				"src/server/agent-service.ts/AgentService.createLoopForSession:1312",
 				"src/server/agent-service.ts/AgentService.getOrCreateLoop:1224",
 				"src/server/agent-service.ts/AgentService.isSessionRunning:1163",
 				"src/server/agent-service.ts/AgentService.markRunning:1175",
-				"src/server/agent-service.ts/AgentService.emit:2370"
+				"src/server/agent-service.ts/AgentService.emit:2402"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.sendProjectPrompt:1534",
+			"id": "src/server/agent-service.ts/AgentService.sendProjectPrompt:1572",
 			"name": "AgentService.sendProjectPrompt",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1534,
-			"endLine": 1703,
-			"statementCount": 52,
+			"line": 1572,
+			"endLine": 1735,
+			"statementCount": 48,
 			"exported": true,
 			"signature": "method sendProjectPrompt(agentId: string, sessionId: string, prompt: string, context: {\r\n\t\t\tprojectId?: string;\r\n\t\t\tprojectPath?: string;\r\n\t\t\tprojectName?: string;\r\n\t\t\twikiStore?: any;\r\n\t\t\tactiveRequirementId?: string;\r\n\t\t\t/** v0.8 project-work:触发本 turn 的工位。sub-7:work-context closures 据此读 work.contextPolicy 渲染 system/workbench 段。 */\r\n\t\t\tworkId?: string;\r\n\t\t\t/** 可选注入(需求管理工位等需要):工具上下文 stores + git。 */\r\n\t\t\trequirementStore?: any;\r\n\t\t\ttaskStepStore?: any;\r\n\t\t\torchestratePlanStore?: any;\r\n\t\t\torchestrateManifestStore?: any;\r\n\t\t\tgitIntegration?: any;\r\n\t\t}, source: TurnSource = \"work\")",
 			"description": "v0.8 project-work(取代工作流角色的去-role 触发器):身份 prompt + toolPolicy\r",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.buildHookDeps:522",
 				"src/server/agent-service.ts/AgentService.buildWorkContextClosures:440",
-				"src/server/agent-service.ts/AgentService.handleRuntimeEvent:2308",
-				"src/runtime/hooks/index.ts/registerHooksForLoop:142",
-				"src/server/agent-service.ts/AgentService.fireSessionStart:540",
+				"src/server/agent-service.ts/AgentService.buildAndRegisterLoop:1270",
 				"src/server/agent-service.ts/AgentService.markRunning:1175",
-				"src/server/agent-service.ts/AgentService.emit:2370"
+				"src/server/agent-service.ts/AgentService.emit:2402"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.abort:1717",
+			"id": "src/server/agent-service.ts/AgentService.abort:1749",
 			"name": "AgentService.abort",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1717,
-			"endLine": 1731,
+			"line": 1749,
+			"endLine": 1763,
 			"statementCount": 11,
 			"exported": true,
 			"signature": "method abort(agentId?: string, sessionId?: string)",
@@ -10066,76 +10082,76 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.recoverIncompleteSessions:1732",
+			"id": "src/server/agent-service.ts/AgentService.recoverIncompleteSessions:1764",
 			"name": "AgentService.recoverIncompleteSessions",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1732,
-			"endLine": 1741,
+			"line": 1764,
+			"endLine": 1773,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method recoverIncompleteSessions()",
 			"description": "",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.whenReady:592",
-				"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1743"
+				"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1775"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1743",
+			"id": "src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1775",
 			"name": "AgentService.doRecoverIncompleteSessions",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1743,
-			"endLine": 1807,
+			"line": 1775,
+			"endLine": 1839,
 			"statementCount": 32,
 			"exported": true,
 			"signature": "method doRecoverIncompleteSessions()",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:1247",
+				"src/server/agent-service.ts/AgentService.createLoopForSession:1312",
 				"src/server/durable-hooks.ts/setSessionTurnSeq:54",
 				"src/server/agent-service.ts/AgentService.markRunning:1175"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.restoreAllSessions:1811",
+			"id": "src/server/agent-service.ts/AgentService.restoreAllSessions:1843",
 			"name": "AgentService.restoreAllSessions",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1811,
-			"endLine": 1862,
+			"line": 1843,
+			"endLine": 1894,
 			"statementCount": 16,
 			"exported": true,
 			"signature": "method restoreAllSessions()",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:1247"
+				"src/server/agent-service.ts/AgentService.createLoopForSession:1312"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.activateSession:1865",
+			"id": "src/server/agent-service.ts/AgentService.activateSession:1897",
 			"name": "AgentService.activateSession",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1865,
-			"endLine": 1910,
+			"line": 1897,
+			"endLine": 1942,
 			"statementCount": 18,
 			"exported": true,
 			"signature": "method activateSession(agentId: string, sessionId?: string)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.getSessionInitPayload:1954",
-				"src/server/agent-service.ts/AgentService.emit:2370"
+				"src/server/agent-service.ts/AgentService.getSessionInitPayload:1986",
+				"src/server/agent-service.ts/AgentService.emit:2402"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.getSessionVolume:1929",
+			"id": "src/server/agent-service.ts/AgentService.getSessionVolume:1961",
 			"name": "AgentService.getSessionVolume",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1929,
-			"endLine": 1944,
+			"line": 1961,
+			"endLine": 1976,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method getSessionVolume(sessionId: string)",
@@ -10145,140 +10161,140 @@
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.getSessionInitPayload:1954",
+			"id": "src/server/agent-service.ts/AgentService.getSessionInitPayload:1986",
 			"name": "AgentService.getSessionInitPayload",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 1954,
-			"endLine": 2011,
+			"line": 1986,
+			"endLine": 2043,
 			"statementCount": 12,
 			"exported": true,
 			"signature": "method getSessionInitPayload(sessionId: string)",
 			"description": "构建 session 的完整 init payload(messages + token 信息 + todos + 未决\r",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.createLoopForSession:1247",
-				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:2038",
+				"src/server/agent-service.ts/AgentService.createLoopForSession:1312",
+				"src/server/agent-service.ts/AgentService.buildSessionInitMessages:2070",
 				"src/runtime/pending-responses.ts/PendingResponseManager.getPendingForSession:93",
-				"src/server/agent-service.ts/AgentService.getSessionVolume:1929"
+				"src/server/agent-service.ts/AgentService.getSessionVolume:1961"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.normalizeBlockArgs:2034",
+			"id": "src/server/agent-service.ts/AgentService.normalizeBlockArgs:2066",
 			"name": "AgentService.normalizeBlockArgs",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 2034,
-			"endLine": 2036,
+			"line": 2066,
+			"endLine": 2068,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method normalizeBlockArgs(blocks: any[])",
 			"description": "Normalize tool-call blocks' `args` to a JSON STRING. The renderer's\r",
 			"callees": [
-				"src/server/agent-service.ts/normalizeBlockArgsForUi:2414"
+				"src/server/agent-service.ts/normalizeBlockArgsForUi:2446"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildSessionInitMessages:2038",
+			"id": "src/server/agent-service.ts/AgentService.buildSessionInitMessages:2070",
 			"name": "AgentService.buildSessionInitMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 2038,
-			"endLine": 2052,
+			"line": 2070,
+			"endLine": 2084,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method buildSessionInitMessages(agentId: string, sessionId: string, loop: AgentLoop)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:2055",
-				"src/server/agent-service.ts/AgentService.buildLegacyMessages:2178"
+				"src/server/agent-service.ts/AgentService.buildStepLevelMessages:2087",
+				"src/server/agent-service.ts/AgentService.buildLegacyMessages:2210"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildStepLevelMessages:2055",
+			"id": "src/server/agent-service.ts/AgentService.buildStepLevelMessages:2087",
 			"name": "AgentService.buildStepLevelMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 2055,
-			"endLine": 2175,
+			"line": 2087,
+			"endLine": 2207,
 			"statementCount": 48,
 			"exported": true,
 			"signature": "method buildStepLevelMessages(turns: Array<{ seq: number; role: string; content: string | null; createdAt: string; turnGroup?: number; attachments?: AttachmentMeta[] }>, isBusy: boolean, recorderBlocks: any[])",
 			"description": "Build UI messages from step-level data, grouping by turnGroup.",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:2034"
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:2066"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.buildLegacyMessages:2178",
+			"id": "src/server/agent-service.ts/AgentService.buildLegacyMessages:2210",
 			"name": "AgentService.buildLegacyMessages",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 2178,
-			"endLine": 2249,
+			"line": 2210,
+			"endLine": 2281,
 			"statementCount": 27,
 			"exported": true,
 			"signature": "method buildLegacyMessages(turns: Array<{ seq: number; role: string; content: string | null; createdAt: string }>, isBusy: boolean, recorderBlocks: any[])",
 			"description": "Legacy path: no turnGroup, each turn is one UI message.",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:2034"
+				"src/server/agent-service.ts/AgentService.normalizeBlockArgs:2066"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.dispose:2261",
+			"id": "src/server/agent-service.ts/AgentService.dispose:2293",
 			"name": "AgentService.dispose",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 2261,
-			"endLine": 2293,
+			"line": 2293,
+			"endLine": 2325,
 			"statementCount": 20,
 			"exported": true,
 			"signature": "method dispose()",
 			"description": "Step 1C: now async. SessionClose MUST fire BEFORE SessionManager.dispose()\r",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.fireSessionClose:560",
-				"src/server/agent-service.ts/AgentService.dispose:2261",
-				"src/server/agent-service.ts/AgentService.abort:1717"
+				"src/server/agent-service.ts/AgentService.dispose:2293",
+				"src/server/agent-service.ts/AgentService.abort:1749"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.invalidateLoops:2294",
+			"id": "src/server/agent-service.ts/AgentService.invalidateLoops:2326",
 			"name": "AgentService.invalidateLoops",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 2294,
-			"endLine": 2306,
+			"line": 2326,
+			"endLine": 2338,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method invalidateLoops()",
 			"description": "",
 			"callees": [
 				"src/server/agent-service.ts/AgentService.fireSessionClose:560",
-				"src/server/agent-service.ts/AgentService.abort:1717"
+				"src/server/agent-service.ts/AgentService.abort:1749"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.handleRuntimeEvent:2308",
+			"id": "src/server/agent-service.ts/AgentService.handleRuntimeEvent:2340",
 			"name": "AgentService.handleRuntimeEvent",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 2308,
-			"endLine": 2363,
+			"line": 2340,
+			"endLine": 2395,
 			"statementCount": 30,
 			"exported": true,
 			"signature": "method handleRuntimeEvent(agentId: string, event: StreamEvent)",
 			"description": "",
 			"callees": [
-				"src/server/agent-service.ts/AgentService.findStateByAgentId:2364",
-				"src/server/agent-service.ts/AgentService.emit:2370"
+				"src/server/agent-service.ts/AgentService.findStateByAgentId:2396",
+				"src/server/agent-service.ts/AgentService.emit:2402"
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.findStateByAgentId:2364",
+			"id": "src/server/agent-service.ts/AgentService.findStateByAgentId:2396",
 			"name": "AgentService.findStateByAgentId",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 2364,
-			"endLine": 2369,
+			"line": 2396,
+			"endLine": 2401,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method findStateByAgentId(agentId: string)",
@@ -10286,12 +10302,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/AgentService.emit:2370",
+			"id": "src/server/agent-service.ts/AgentService.emit:2402",
 			"name": "AgentService.emit",
 			"kind": "method",
 			"file": "src/server/agent-service.ts",
-			"line": 2370,
-			"endLine": 2374,
+			"line": 2402,
+			"endLine": 2406,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method emit(event: { type: string; [key: string]: unknown })",
@@ -10342,12 +10358,12 @@
 			]
 		},
 		{
-			"id": "src/server/agent-service.ts/createAgentService:2376",
+			"id": "src/server/agent-service.ts/createAgentService:2408",
 			"name": "createAgentService",
 			"kind": "function",
 			"file": "src/server/agent-service.ts",
-			"line": 2376,
-			"endLine": 2378,
+			"line": 2408,
+			"endLine": 2410,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function createAgentService(workspaceDir: string, sessionDb?: SessionDB, registry?: ToolRegistry, mcp?: MCPManager)",
@@ -10355,12 +10371,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/getAgentService:2395",
+			"id": "src/server/agent-service.ts/getAgentService:2427",
 			"name": "getAgentService",
 			"kind": "function",
 			"file": "src/server/agent-service.ts",
-			"line": 2395,
-			"endLine": 2397,
+			"line": 2427,
+			"endLine": 2429,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function getAgentService()",
@@ -10368,12 +10384,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/setAgentService:2398",
+			"id": "src/server/agent-service.ts/setAgentService:2430",
 			"name": "setAgentService",
 			"kind": "function",
 			"file": "src/server/agent-service.ts",
-			"line": 2398,
-			"endLine": 2400,
+			"line": 2430,
+			"endLine": 2432,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function setAgentService(s: AgentService | undefined)",
@@ -10381,12 +10397,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/agent-service.ts/normalizeBlockArgsForUi:2414",
+			"id": "src/server/agent-service.ts/normalizeBlockArgsForUi:2446",
 			"name": "normalizeBlockArgsForUi",
 			"kind": "function",
 			"file": "src/server/agent-service.ts",
-			"line": 2414,
-			"endLine": 2425,
+			"line": 2446,
+			"endLine": 2457,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "function normalizeBlockArgsForUi(blocks: any[])",
@@ -13126,7 +13142,7 @@
 				"src/server/workspace-config.ts/loadWorkspaceConfig:40",
 				"src/server/builtin-skills.ts/ensureBuiltinSkills:63",
 				"src/runtime/proxy-manager.ts/applyProxy:30",
-				"src/server/agent-service.ts/createAgentService:2376",
+				"src/server/agent-service.ts/createAgentService:2408",
 				"src/server/runtime-instances.ts/registerServerInstances:64",
 				"src/server/data-change-hub.ts/onDataChange:165",
 				"src/server/index.ts/broadcast:331",
@@ -17089,7 +17105,7 @@
 			"signature": "function registerServerInstances(deps: ServerInstances)",
 			"description": "把启动构造的实例写进各数据源模块的 process-wide 单例。在任何工具调用前\r",
 			"callees": [
-				"src/server/agent-service.ts/setAgentService:2398",
+				"src/server/agent-service.ts/setAgentService:2430",
 				"src/server/session-db.ts/setSessionDB:92",
 				"src/server/wiki-node-store.ts/setWikiStoreGlobal:351",
 				"src/server/project-wiki-store.ts/setProjectWikiStore:51",
@@ -23303,8 +23319,8 @@
 		],
 		"src/runtime/hooks/turn-seq-tracker.ts/setTurnSeq:31": [
 			"src/runtime/hooks/turn-hooks.ts/registerTurnHooks:53",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:714",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:810",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:717",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:813",
 			"src/server/durable-hooks.ts/setSessionTurnSeq:54"
 		],
 		"src/runtime/hooks/turn-seq-tracker.ts/getTurnSeq:27": [
@@ -23389,15 +23405,15 @@
 			"src/runtime/subagent-delegation.ts/delegateTask:68",
 			"src/runtime/subagent-delegation.ts/delegateTaskBackground:162",
 			"src/runtime/subagent-delegation.ts/runBackground:262",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:361",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:459",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:568",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.abandonTask:588",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:714",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:810",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:934",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:1026",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1056"
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:364",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:462",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:571",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.abandonTask:591",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:717",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:813",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:937",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:1029",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1059"
 		],
 		"src/runtime/session.ts/AgentSession.estimateMessageTokens:923": [
 			"src/runtime/session.ts/AgentSession.pruneIfNeeded:377",
@@ -23443,79 +23459,78 @@
 		"src/core/encoding.ts/decodeShellBuffer:33": [
 			"src/runtime/subagent-delegation.ts/createSubagentDelegation:61",
 			"src/runtime/subagent-delegation.ts/runBackground:262",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:934",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:1026",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1056",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:937",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:1029",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1059",
 			"src/core/device-context.ts/execDecode:33",
 			"src/core/encoding.ts/decodeExecBuffers:47"
 		],
 		"src/runtime/subagent-delegator.ts/SubagentDelegator.createDelegatedTask:205": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.createDelegatedTask:205",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:361",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:459"
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:364",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:462"
 		],
 		"src/runtime/subagent-delegator.ts/SubagentDelegator.updateDelegatedTask:235": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.updateDelegatedTask:235",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:315",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:361",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:459",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:568",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.abandonTask:588",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:664",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:714",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:810"
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:318",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:364",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:462",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:571",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.abandonTask:591",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:667",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:717",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:813"
 		],
 		"src/runtime/subagent-delegator.ts/SubagentDelegator.createDelegatedSession:185": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:361",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:459"
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:364",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:462"
 		],
 		"src/runtime/subagent-delegator.ts/delegatedToolPolicy:153": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:361",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:459",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:714",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:810"
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:364",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:462",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:717",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:813"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:315": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:361",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:459",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:714",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:810"
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:318": [
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:364",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:462",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:717",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:813"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1152": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:361",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:459",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:714",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:810"
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1155": [
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:364",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:462",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:717",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:813"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:274": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:361",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:459",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:714",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:810"
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:277": [
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:364",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:462",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:717",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:813"
 		],
 		"src/runtime/hooks/turn-seq-tracker.ts/markTurnStatePrecreated:67": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:714",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:810",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:717",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:813",
 			"src/server/durable-hooks.ts/setSessionTurnSeq:54",
 			"src/server/durable-hooks.ts/registerDurableHooks:73"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:912": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:912"
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:915": [
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:915"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:920": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:920"
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:923": [
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:923"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:925": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:925"
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:928": [
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:928"
 		],
 		"src/runtime/hooks/index.ts/registerHooksForLoop:142": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1152",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1155",
 			"src/server/agent-service.ts/AgentService.buildTempMemoryTurnRunner:1044",
-			"src/server/agent-service.ts/AgentService.createLoopForSession:1247",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1534"
+			"src/server/agent-service.ts/AgentService.buildAndRegisterLoop:1270"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1159": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1159"
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1162": [
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1162"
 		],
 		"src/runtime/task-registry.ts/TaskRegistry.fireChange:83": [
 			"src/runtime/task-registry.ts/TaskRegistry._flushChangeForTest:77",
@@ -23666,7 +23681,7 @@
 			"src/runtime/wiki-anchor-injection.ts/renderSystemAnchors:315",
 			"src/runtime/wiki-anchor-injection.ts/renderContextAnchors:343"
 		],
-		"src/server/agent-service.ts/AgentService.invalidateLoops:2294": [
+		"src/server/agent-service.ts/AgentService.invalidateLoops:2326": [
 			"src/server/agent-service.ts/AgentService.setWorkspaceDir:273",
 			"src/server/agent-service.ts/AgentService.setProviders:279"
 		],
@@ -23684,26 +23699,26 @@
 		"src/server/agent-service.ts/AgentService.fireSessionClose:560": [
 			"src/server/agent-service.ts/AgentService.setAgentStore:289",
 			"src/server/agent-service.ts/AgentService.evictSessionFromMemory:875",
-			"src/server/agent-service.ts/AgentService.dispose:2261",
-			"src/server/agent-service.ts/AgentService.invalidateLoops:2294"
+			"src/server/agent-service.ts/AgentService.dispose:2293",
+			"src/server/agent-service.ts/AgentService.invalidateLoops:2326"
 		],
-		"src/server/agent-service.ts/AgentService.createLoopForSession:1247": [
+		"src/server/agent-service.ts/AgentService.createLoopForSession:1312": [
 			"src/server/agent-service.ts/AgentService.setAgentStore:289",
 			"src/server/agent-service.ts/AgentService.getOrCreateLoop:1224",
 			"src/server/agent-service.ts/AgentService.recreateLoop:1239",
-			"src/server/agent-service.ts/AgentService.sendPrompt:1449",
-			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1743",
-			"src/server/agent-service.ts/AgentService.restoreAllSessions:1811",
-			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1954"
+			"src/server/agent-service.ts/AgentService.sendPrompt:1487",
+			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1775",
+			"src/server/agent-service.ts/AgentService.restoreAllSessions:1843",
+			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1986"
 		],
 		"src/server/agent-service.ts/AgentService.capabilityHandlesFor:848": [
 			"src/server/agent-service.ts/AgentService.setAgentStore:289",
 			"src/server/agent-service.ts/AgentService.setPmService:366",
-			"src/server/agent-service.ts/AgentService.createLoopForSession:1247"
+			"src/server/agent-service.ts/AgentService.createLoopForSession:1312"
 		],
 		"src/server/agent-service.ts/AgentService.buildSkillSectionClosure:826": [
 			"src/server/agent-service.ts/AgentService.setAgentStore:289",
-			"src/server/agent-service.ts/AgentService.createLoopForSession:1247"
+			"src/server/agent-service.ts/AgentService.createLoopForSession:1312"
 		],
 		"src/server/metrics-events.ts/createEventMetricsAdapter:34": [
 			"src/server/agent-service.ts/AgentService.setSessionManager:349"
@@ -23732,17 +23747,18 @@
 			"src/server/agent-service.ts/AgentService.capabilityHandlesFor:848",
 			"src/server/agent-service.ts/AgentService.on:849"
 		],
-		"src/server/agent-service.ts/AgentService.abort:1717": [
+		"src/server/agent-service.ts/AgentService.abort:1749": [
 			"src/server/agent-service.ts/AgentService.evictSessionFromMemory:875",
 			"src/server/agent-service.ts/AgentService.buildTempMemoryTurnRunner:1044",
-			"src/server/agent-service.ts/AgentService.dispose:2261",
-			"src/server/agent-service.ts/AgentService.invalidateLoops:2294"
+			"src/server/agent-service.ts/AgentService.dispose:2293",
+			"src/server/agent-service.ts/AgentService.invalidateLoops:2326"
 		],
 		"src/server/agent-service.ts/AgentService.buildHookDeps:522": [
 			"src/server/agent-service.ts/AgentService.buildSessionConfigForArchive:918",
 			"src/server/agent-service.ts/AgentService.buildTempMemoryTurnRunner:1044",
-			"src/server/agent-service.ts/AgentService.createLoopForSession:1247",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1534"
+			"src/server/agent-service.ts/AgentService.buildAndRegisterLoop:1270",
+			"src/server/agent-service.ts/AgentService.createLoopForSession:1312",
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1572"
 		],
 		"src/server/agent-service.ts/AgentService.buildSessionConfigForArchive:918": [
 			"src/server/agent-service.ts/AgentService.archiveDelegatedSession:981",
@@ -23755,84 +23771,86 @@
 		"src/server/agent-service.ts/AgentService.evictSessionFromMemory:875": [
 			"src/server/agent-service.ts/AgentService.teardownSessionForArchive:1143"
 		],
-		"src/server/agent-service.ts/AgentService.emit:2370": [
+		"src/server/agent-service.ts/AgentService.emit:2402": [
 			"src/server/agent-service.ts/AgentService.markRunning:1175",
-			"src/server/agent-service.ts/AgentService.sendPrompt:1449",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1534",
-			"src/server/agent-service.ts/AgentService.activateSession:1865",
-			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:2308"
-		],
-		"src/server/flow-actions.ts/createFlowActions:321": [
-			"src/server/agent-service.ts/AgentService.createLoopForSession:1247",
-			"src/server/index.ts/startServer:107"
+			"src/server/agent-service.ts/AgentService.sendPrompt:1487",
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1572",
+			"src/server/agent-service.ts/AgentService.activateSession:1897",
+			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:2340"
 		],
 		"src/server/agent-service.ts/AgentService.archiveDelegatedSession:981": [
-			"src/server/agent-service.ts/AgentService.createLoopForSession:1247"
+			"src/server/agent-service.ts/AgentService.buildAndRegisterLoop:1270"
 		],
-		"src/server/agent-service.ts/AgentService.handleRuntimeEvent:2308": [
-			"src/server/agent-service.ts/AgentService.createLoopForSession:1247",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1534"
+		"src/server/agent-service.ts/AgentService.handleRuntimeEvent:2340": [
+			"src/server/agent-service.ts/AgentService.buildAndRegisterLoop:1270"
 		],
 		"src/server/agent-service.ts/AgentService.fireSessionStart:540": [
-			"src/server/agent-service.ts/AgentService.createLoopForSession:1247",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1534"
+			"src/server/agent-service.ts/AgentService.buildAndRegisterLoop:1270"
+		],
+		"src/server/flow-actions.ts/createFlowActions:321": [
+			"src/server/agent-service.ts/AgentService.createLoopForSession:1312",
+			"src/server/index.ts/startServer:107"
+		],
+		"src/server/agent-service.ts/AgentService.buildAndRegisterLoop:1270": [
+			"src/server/agent-service.ts/AgentService.createLoopForSession:1312",
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1572"
 		],
 		"src/server/agent-service.ts/AgentService.getOrCreateLoop:1224": [
-			"src/server/agent-service.ts/AgentService.sendPrompt:1449"
+			"src/server/agent-service.ts/AgentService.sendPrompt:1487"
 		],
 		"src/server/agent-service.ts/AgentService.isSessionRunning:1163": [
-			"src/server/agent-service.ts/AgentService.sendPrompt:1449"
+			"src/server/agent-service.ts/AgentService.sendPrompt:1487"
 		],
 		"src/server/agent-service.ts/AgentService.markRunning:1175": [
-			"src/server/agent-service.ts/AgentService.sendPrompt:1449",
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1534",
-			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1743"
+			"src/server/agent-service.ts/AgentService.sendPrompt:1487",
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1572",
+			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1775"
 		],
 		"src/server/agent-service.ts/AgentService.buildWorkContextClosures:440": [
-			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1534"
+			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1572"
 		],
 		"src/server/agent-service.ts/AgentService.whenReady:592": [
-			"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:1732"
+			"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:1764"
 		],
-		"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1743": [
-			"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:1732"
+		"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1775": [
+			"src/server/agent-service.ts/AgentService.recoverIncompleteSessions:1764"
 		],
 		"src/server/durable-hooks.ts/setSessionTurnSeq:54": [
-			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1743"
+			"src/server/agent-service.ts/AgentService.doRecoverIncompleteSessions:1775"
 		],
-		"src/server/agent-service.ts/AgentService.getSessionInitPayload:1954": [
-			"src/server/agent-service.ts/AgentService.activateSession:1865"
+		"src/server/agent-service.ts/AgentService.getSessionInitPayload:1986": [
+			"src/server/agent-service.ts/AgentService.activateSession:1897"
 		],
 		"src/server/session-volume.ts/computeDisplayWindow:53": [
-			"src/server/agent-service.ts/AgentService.getSessionVolume:1929"
+			"src/server/agent-service.ts/AgentService.getSessionVolume:1961"
 		],
-		"src/server/agent-service.ts/AgentService.buildSessionInitMessages:2038": [
-			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1954"
+		"src/server/agent-service.ts/AgentService.buildSessionInitMessages:2070": [
+			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1986"
 		],
 		"src/runtime/pending-responses.ts/PendingResponseManager.getPendingForSession:93": [
-			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1954"
+			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1986"
 		],
-		"src/server/agent-service.ts/AgentService.getSessionVolume:1929": [
-			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1954"
+		"src/server/agent-service.ts/AgentService.getSessionVolume:1961": [
+			"src/server/agent-service.ts/AgentService.getSessionInitPayload:1986"
 		],
-		"src/server/agent-service.ts/normalizeBlockArgsForUi:2414": [
-			"src/server/agent-service.ts/AgentService.normalizeBlockArgs:2034"
+		"src/server/agent-service.ts/normalizeBlockArgsForUi:2446": [
+			"src/server/agent-service.ts/AgentService.normalizeBlockArgs:2066"
 		],
-		"src/server/agent-service.ts/AgentService.buildStepLevelMessages:2055": [
-			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:2038"
+		"src/server/agent-service.ts/AgentService.buildStepLevelMessages:2087": [
+			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:2070"
 		],
-		"src/server/agent-service.ts/AgentService.buildLegacyMessages:2178": [
-			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:2038"
+		"src/server/agent-service.ts/AgentService.buildLegacyMessages:2210": [
+			"src/server/agent-service.ts/AgentService.buildSessionInitMessages:2070"
 		],
-		"src/server/agent-service.ts/AgentService.normalizeBlockArgs:2034": [
-			"src/server/agent-service.ts/AgentService.buildStepLevelMessages:2055",
-			"src/server/agent-service.ts/AgentService.buildLegacyMessages:2178"
+		"src/server/agent-service.ts/AgentService.normalizeBlockArgs:2066": [
+			"src/server/agent-service.ts/AgentService.buildStepLevelMessages:2087",
+			"src/server/agent-service.ts/AgentService.buildLegacyMessages:2210"
 		],
-		"src/server/agent-service.ts/AgentService.dispose:2261": [
-			"src/server/agent-service.ts/AgentService.dispose:2261"
+		"src/server/agent-service.ts/AgentService.dispose:2293": [
+			"src/server/agent-service.ts/AgentService.dispose:2293"
 		],
-		"src/server/agent-service.ts/AgentService.findStateByAgentId:2364": [
-			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:2308"
+		"src/server/agent-service.ts/AgentService.findStateByAgentId:2396": [
+			"src/server/agent-service.ts/AgentService.handleRuntimeEvent:2340"
 		],
 		"src/server/agent-store.ts/AgentStore.delete:193": [
 			"src/server/agent-store.ts/AgentStore.onChange:119",
@@ -24381,7 +24399,7 @@
 		"src/runtime/proxy-manager.ts/applyProxy:30": [
 			"src/server/index.ts/startServer:107"
 		],
-		"src/server/agent-service.ts/createAgentService:2376": [
+		"src/server/agent-service.ts/createAgentService:2408": [
 			"src/server/index.ts/startServer:107"
 		],
 		"src/server/runtime-instances.ts/registerServerInstances:64": [
@@ -24898,7 +24916,7 @@
 		"src/server/requirement-state-machine.ts/isValidTransition:84": [
 			"src/server/requirement-store.ts/RequirementStore.transitionStatus:195"
 		],
-		"src/server/agent-service.ts/setAgentService:2398": [
+		"src/server/agent-service.ts/setAgentService:2430": [
 			"src/server/runtime-instances.ts/registerServerInstances:64"
 		],
 		"src/server/session-db.ts/setSessionDB:92": [
