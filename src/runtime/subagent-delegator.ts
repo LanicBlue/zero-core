@@ -1167,6 +1167,20 @@ export class SubagentDelegator {
 		// loop rebuild. Idempotent — acknowledgeTask already deleted the row for
 		// consumed tasks, so this only catches the never-acknowledged terminal
 		// tasks (the accumulation case). Best-effort: ?. no-ops in test stubs.
+		//
+		// archive-no-residual sub-4 (D4): SAFETY NET + memory hygiene. The
+		// PRIMARY delete now happens in `fireOnTaskTerminal` (sub-1 D1) — the
+		// row vanishes the instant a task hits completed/failed, not on the
+		// slow TTL ager below. So `deleteDelegatedTask` here is almost always
+		// an idempotent no-op (row already gone). Kept for:
+		//   ① the in-memory `TaskInfo` aging on `taskRegistry.cleanup()` (the
+		//     real point of this call — prevents the registry Map from growing
+		//     unbounded for long-lived parent loops);
+		//   ② the rare edge case where terminal didn't fire but the in-memory
+		//     entry aged out (a missed terminal hook) — the DB catch-up below
+		//     keeps the row from lingering in that path too.
+		// No logic change — the call was already idempotent (deleteDelegatedTask
+		// is a no-op on missing ids); sub-1 just makes the no-op the common case.
 		for (const id of removed) this.config.db?.deleteDelegatedTask?.(id);
 	}
 }

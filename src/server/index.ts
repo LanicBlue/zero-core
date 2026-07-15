@@ -138,9 +138,26 @@ export async function startServer(options?: StartServerOptions) {
 	// idempotent + best-effort (failures log + leave the row for next retry).
 	// Run AFTER migrations so the archived column exists; safe to fire before
 	// the wiki store is up (recovery doesn't touch wiki).
-	void import("./archive-service.js").then(({ recoverInterruptedArchives }) => {
+	//
+	// archive-no-residual sub-4 (D5): in the SAME fire-and-forget block, AFTER
+	// the recovery scan, sweep存量 orphan sessions (delegated children whose
+	// delegated_tasks row was hand-cleaned pre-fix but whose sessions/steps/
+	// messages rows remain, archived=0 + is_main=0). 14-day default cutoff is
+	// conservative enough that an empty activeSessionIds set is safe (anything
+	// currently active is by definition recent). The two scans target DISJOINT
+	// row sets (archived=1 vs archived=0) so firing them back-to-back is safe.
+	//
+	// TODO(active-injection): if a future change lowers maxAgeDays aggressively,
+	// wire `agentService.getActiveSessionsMap()` values into activeSessionIds
+	// so any session an agent is currently running is protected. At the time
+	// this fires (fire-and-forget, before restoreAllSessions), the map is empty
+	// anyway, so the empty Set is correct for now — not a regression.
+	void import("./archive-service.js").then(({ recoverInterruptedArchives, sweepOrphanSessions }) => {
 		recoverInterruptedArchives(sessionDB).catch((err: unknown) => {
 			console.error(`[server] Archive recovery scan failed:`, (err as Error)?.message ?? err);
+		});
+		sweepOrphanSessions(sessionDB, { activeSessionIds: new Set() }).catch((err: unknown) => {
+			console.error(`[server] Orphan session sweep failed:`, (err as Error)?.message ?? err);
 		});
 	});
 

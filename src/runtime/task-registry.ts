@@ -364,6 +364,18 @@ export class TaskRegistry {
 		// this, cleanup only clears the in-memory registry → the DB row lingers
 		// → restoreDelegatedTasks re-seeds it on the next loop rebuild → terminal
 		// tasks flood the UI/TaskList forever (the 264-row accumulation).
+		//
+		// archive-no-residual sub-4 (D4): the PRIMARY value of this method is
+		// now MEMORY HYGIENE — aging terminal `TaskInfo` entries out of the
+		// in-memory `tasks` Map so a long-lived parent loop doesn't grow it
+		// unbounded. The returned ids still flow to `deleteDelegatedTask` in
+		// the delegator, but post-sub-1 (D1) that DB delete is almost always
+		// an idempotent no-op (the row was already deleted in
+		// `fireOnTaskTerminal` at task terminal). The DB catch-up remains as a
+		// SAFETY NET for the edge case where terminal didn't fire but the
+		// in-memory entry aged out. No logic change — the aging + return-id
+		// contract is unchanged; only the typical effect of the downstream DB
+		// delete shifted from "primary" to "idempotent safety net".
 		return removed;
 	}
 }

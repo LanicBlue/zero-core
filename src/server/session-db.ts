@@ -501,6 +501,62 @@ export class SessionDB {
 	}
 
 	/**
+	 * archive-no-residual sub-4 (D5): list candidate "orphan" sessions for the
+	 * startup sweep. An orphan candidate is a session that:
+	 *   - is NOT the main session (`is_main = 0`);
+	 *   - is NOT archived (`archived = 0` — `archived = 1` is either a transient
+	 *     crash checkpoint that `recoverInterruptedArchives` handles, or a
+	 *     permanent soft-delete we deliberately don't touch);
+	 *   - was last updated before `olderThan` (`updated_at < cutoff`);
+	 *   - is NOT in `excludeIds` (caller passes active session ids to protect
+	 *     any session an agent is currently running);
+	 *   - is not the `__recovered__` bookkeeping pseudo-agent.
+	 *
+	 * Heuristic is intentionally broad — NO `session_kind` filter, so both
+	 * `delegated` children (the primary target) and non-main `chat` sessions
+	 * match. False positives are mitigated upstream by:
+	 *   ① the 14-day default cutoff (anything recent is untouched);
+	 *   ② export-before-delete (the JSON lands on disk before the row goes,
+	 *     so a misjudged sweep is reversible);
+	 *   ③ `excludeIds` (active sessions are protected).
+	 *
+	 * Used once at startup by `sweepOrphanSessions` in archive-service.ts to
+	 * clean pre-fix accumulated orphans that `recoverInterruptedArchives`
+	 * (which only scans `archived = 1`) cannot see. After sub-1/2/3 no NEW
+	 * orphans accumulate, so this is a one-time存量 cleanup that becomes a
+	 * near-no-op on later boots.
+	 */
+	listOrphanCandidateSessions(opts: { olderThan: string; excludeIds?: Set<string> }): SessionRecord[] {
+		try {
+			const excludeIds = opts.excludeIds && opts.excludeIds.size > 0
+				? Array.from(opts.excludeIds)
+				: null;
+			if (excludeIds) {
+				// NOT IN needs one ? per excluded id. Empty set is handled above
+				// (SQLite rejects `NOT IN ()` as a syntax error).
+				const placeholders = excludeIds.map(() => "?").join(", ");
+				const rows = this.db.prepare(
+					`SELECT * FROM sessions WHERE ` +
+						`is_main = 0 AND archived = 0 AND updated_at < ? AND ` +
+						`agent_id != '__recovered__' AND id NOT IN (${placeholders}) ` +
+						`ORDER BY updated_at ASC`,
+				).all(opts.olderThan, ...excludeIds) as any[];
+				return rows.map((r) => this.rowToRecord(r));
+			}
+			const rows = this.db.prepare(
+				`SELECT * FROM sessions WHERE ` +
+					`is_main = 0 AND archived = 0 AND updated_at < ? AND ` +
+					`agent_id != '__recovered__' ` +
+					`ORDER BY updated_at ASC`,
+			).all(opts.olderThan) as any[];
+			return rows.map((r) => this.rowToRecord(r));
+		} catch (err) {
+			log.warn("db", `listOrphanCandidateSessions failed:`, (err as Error).message);
+			return [];
+		}
+	}
+
+	/**
 	 * v0.8 (M0): find-or-create routing key for `{role(agentId), projectId} → session`.
 	 * Used by discuss / notification / cron to land on a stable session per
 	 * (role, project). Returns existing session if found, otherwise undefined

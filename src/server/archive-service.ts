@@ -618,3 +618,75 @@ export async function recoverInterruptedArchives(db: SessionDB): Promise<number>
 	log.warn("archive", `recovery scan: ${recovered}/${stranded.length} re-archived`);
 	return recovered;
 }
+
+// ---------------------------------------------------------------------------
+// Startup orphan sweep (archive-no-residual sub-4 / D5)
+// ---------------------------------------------------------------------------
+
+/**
+ * sub-4 D5: best-effort sweep for "存量" orphan sessions accumulated BEFORE
+ * the sub-1/2/3 pipeline fix. An orphan is a session whose
+ * `delegated_tasks` row was hand-cleaned (so it's no longer parent-linked
+ * in the DB) but whose `sessions` / `steps` / `messages` rows still exist
+ * with `archived = 0` and `is_main = 0`. `recoverInterruptedArchives`
+ * (above) only scans `archived = 1`, so these slip past it. After sub-1/2/3
+ * no NEW orphans accumulate; this sweep is the one-time cleanup of the
+ *存量 backlog.
+ *
+ * Heuristic (imprecise by design): non-main + non-archived + older than
+ * `maxAgeDays` (default 14). False positives mitigated by:
+ *   ① 14-day default cutoff (conservative — only long-stale rows match);
+ *   ② export-before-delete — the JSON lands on disk before the row goes,
+ *     so a misjudged sweep is reversible by reading the archive file;
+ *   ③ `activeSessionIds` exclusion — any session currently in use by an
+ *     agent is protected (caller injects; if absent, an empty Set is safe
+ *     given the 14-day threshold).
+ *
+ * Per-row best-effort: a failure (unreadable row / IO error) is logged +
+ * skipped; the row stays for the next sweep. Returns the count of sessions
+ * swept (exported + deleted).
+ *
+ * Called once at server startup (index.ts), AFTER `recoverInterruptedArchives`
+ * (so the `archived = 1` rows are cleaned first). Fire-and-forget.
+ */
+export async function sweepOrphanSessions(
+	db: SessionDB,
+	opts?: { maxAgeDays?: number; activeSessionIds?: Set<string> },
+): Promise<number> {
+	const maxAgeDays = opts?.maxAgeDays ?? 14;
+	const cutoff = new Date(Date.now() - maxAgeDays * 86_400_000).toISOString();
+	const excludeIds = opts?.activeSessionIds ?? new Set<string>();
+	const candidates = db.listOrphanCandidateSessions({ olderThan: cutoff, excludeIds });
+	if (candidates.length === 0) return 0;
+	log.warn("archive",
+		`orphan sweep: ${candidates.length} candidate(s) older than ${maxAgeDays}d (cutoff=${cutoff}); exporting + deleting`);
+	let swept = 0;
+	for (const row of candidates) {
+		try {
+			// Export-before-delete (防误判丢数据). Reuse the same payload
+			// builder + atomic writer as the canonical archive pipeline so the
+			// on-disk format is identical to a normal archive.
+			//
+			// memoryTurnRan=false: no temp loop is spun up for存量 cleanup —
+			// the agent's wiki writes happened (or didn't) long ago; the JSON
+			// captures whatever is in the DB at rest, which is the same
+			// contract as the recovery scan.
+			const sessionRow = db.getSession(row.id) ?? row;
+			const agentId = sessionRow.agentId ?? "__default__";
+			const payload = buildArchivePayload(row.id, agentId, db, sessionRow, false);
+			const archivePath = archivePathFor(agentId, row.id);
+			writeArchiveJsonAtomic(archivePath, payload);
+			db.deleteSessionData(row.id);
+			swept++;
+			log.debug("archive",
+				`orphan sweep: session=${row.id} (agent=${agentId}) → ${archivePath} (steps=${payload.steps.length})`);
+		} catch (err) {
+			// Best-effort: log + skip. Row stays for the next sweep attempt.
+			log.warn("archive",
+				`orphan sweep: session=${row.id} failed, skipped:`,
+				(err as Error)?.message ?? err);
+		}
+	}
+	log.warn("archive", `orphan sweep: ${swept}/${candidates.length} swept`);
+	return swept;
+}
