@@ -349,15 +349,21 @@ export class TaskRegistry {
 		if (this.waitResolver) this.waitResolver("task finished");
 	}
 
-	cleanup(maxAgeMs: number = 3600_000): void {
+	cleanup(maxAgeMs: number = 3600_000): string[] {
 		const now = Date.now();
-		let changed = false;
+		const removed: string[] = [];
 		for (const [id, info] of this.tasks) {
 			if (info.completedAt && now - info.completedAt > maxAgeMs) {
 				this.tasks.delete(id);
-				changed = true;
+				removed.push(id);
 			}
 		}
-		if (changed) this.scheduleChange();
+		if (removed.length) this.scheduleChange();
+		// tool-quality-pass follow-up (#1): return the removed ids so the
+		// delegator can also hard-delete their delegated_tasks DB rows. Without
+		// this, cleanup only clears the in-memory registry → the DB row lingers
+		// → restoreDelegatedTasks re-seeds it on the next loop rebuild → terminal
+		// tasks flood the UI/TaskList forever (the 264-row accumulation).
+		return removed;
 	}
 }

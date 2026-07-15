@@ -810,7 +810,7 @@
 		},
 		{
 			"path": "src/runtime/subagent-delegator.ts",
-			"lines": 1135,
+			"lines": 1142,
 			"dir": "src/runtime",
 			"exports": [
 				"delegatedToolPolicy",
@@ -887,7 +887,7 @@
 		},
 		{
 			"path": "src/runtime/task-registry.ts",
-			"lines": 364,
+			"lines": 370,
 			"dir": "src/runtime",
 			"exports": [
 				"TaskRegistry.subscribe",
@@ -8062,8 +8062,8 @@
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
 			"line": 1131,
-			"endLine": 1133,
-			"statementCount": 1,
+			"endLine": 1140,
+			"statementCount": 3,
 			"exported": true,
 			"signature": "method cleanup()",
 			"description": "",
@@ -8441,8 +8441,8 @@
 			"kind": "method",
 			"file": "src/runtime/task-registry.ts",
 			"line": 352,
-			"endLine": 362,
-			"statementCount": 8,
+			"endLine": 368,
+			"statementCount": 9,
 			"exported": true,
 			"signature": "method cleanup(maxAgeMs: number = 3600_000)",
 			"description": "",

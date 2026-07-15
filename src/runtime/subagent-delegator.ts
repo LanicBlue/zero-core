@@ -1129,6 +1129,13 @@ export class SubagentDelegator {
 	}
 
 	cleanup(): void {
-		this.taskRegistry.cleanup();
+		const removed = this.taskRegistry.cleanup();
+		// tool-quality-pass follow-up (#1): also hard-delete the DB rows for
+		// tasks whose in-memory entry aged out (terminal > maxAgeMs). Without
+		// this the row lingers and restoreDelegatedTasks re-seeds it on the next
+		// loop rebuild. Idempotent — acknowledgeTask already deleted the row for
+		// consumed tasks, so this only catches the never-acknowledged terminal
+		// tasks (the accumulation case). Best-effort: ?. no-ops in test stubs.
+		for (const id of removed) this.config.db?.deleteDelegatedTask?.(id);
 	}
 }
