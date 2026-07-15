@@ -134,7 +134,7 @@ export interface SubagentDelegatorDeps {
 	 * terminal states — it does NOT fire for cron/main (parent) completion,
 	 * preserving the "cron/main 不自动归档" invariant (acceptance-8).
 	 */
-	onTaskTerminal?: (taskId: string, status: "completed" | "failed", childSessionId: string) => Promise<void> | void;
+	onTaskTerminal?: (taskId: string, status: "completed" | "failed", childSessionId: string, childAgentId?: string, childModelId?: string) => Promise<void> | void;
 }
 
 const DEFAULT_FINISH_MESSAGE =
@@ -237,36 +237,64 @@ export class SubagentDelegator {
 	}
 
 	/**
-	 * steps-overhaul sub-8 (archive): fire the `onTaskTerminal` callback when a
-	 * delegated task reaches a terminal state, so the caller (agent-service)
-	 * can run the archive pipeline on the CHILD session.
+	 * archive-no-residual sub-1 (D1): run terminal bookkeeping + (optionally)
+	 * fire the `onTaskTerminal` callback when a delegated task reaches a
+	 * terminal state. Two phases, strictly ordered:
 	 *
-	 * Resolves the child sessionId from the delegated_tasks row (after the
-	 * status patch has been written). Fire-and-forget: the callback's promise
-	 * is detached + errors are logged; a rejection MUST NOT propagate to the
-	 * task caller (the task already succeeded/failed — archiving is a
-	 * post-terminal side-effect, never part of the task's own contract).
+	 *   ① terminal bookkeeping (UNCONDITIONAL — only needs db):
+	 *        markArchivedTransient(childSessionId)   // idempotent crash checkpoint
+	 *        deleteDelegatedTask(taskId)             // row vanishes immediately,
+	 *                                                // no re-seed on next loop
+	 *      This runs even when onTaskTerminal is unwired, so a crashed/missed
+	 *      archive leaves a mark → recoverInterruptedArchives picks it up on
+	 *      next startup. Invariant: zero residual in delegated_tasks regardless
+	 *      of wiring. The mark + delete are decoupled from the (slow, async)
+	 *      memory/archive pipeline so the row stops re-seeding into the UI the
+	 *      moment the task hits its terminal state.
+	 *
+	 *   ② memory preservation (WIRED — fire-and-forget):
+	 *        onTaskTerminal(taskId, status, childSessionId, childAgentId, childModelId)
+	 *      Only fires when the caller wired the callback. agentId/modelId are
+	 *      passed in (the row is already deleted in ①, so the callee cannot
+	 *      re-read it). A rejection/throw is logged + swallowed — archiving is
+	 *      a detached post-terminal side-effect, never part of the task's own
+	 *      contract.
 	 *
 	 * Only fires for `completed` / `failed` (NOT `killed` — killed is a
 	 * parent-initiated stop via stopTask/abandonTask; the child session there
-	 * is abandoned, not "completed work", and the parent owns its cleanup).
-	 * The cron/main invariant ("cron/main 不自动归档") is preserved because this
-	 * callback is ONLY wired by agent-service for delegated sub-agent loops —
-	 * cron/main loops never set onTaskTerminal on their own delegator (a cron/
-	 * main agent that itself dispatches sub-agents DOES archive those
-	 * sub-agents, which is correct: the sub-agent is delegated work, not the
-	 * cron/main parent).
+	 * is abandoned, not "completed work", and the parent owns its cleanup,
+	 * including row deletion via abandonTask/acknowledgeTask).
+	 *
+	 * Wiring: ② is currently wired only by agent-service's createLoopForSession
+	 * (onTaskTerminal = config.archiveDelegatedSession, threaded via AgentLoop).
+	 * sub-2 of this effort closes the remaining gaps (e.g. sendProjectPrompt
+	 * dispatch paths) so every dispatching loop fires ②; until then an unwired
+	 * path still runs ① (no residual) and leans on recovery for ②.
 	 */
 	private fireOnTaskTerminal(taskId: string, status: "completed" | "failed"): void {
-		if (!this.onTaskTerminal) return;
-		const childSessionId = this.config.db?.getDelegatedTask?.(taskId)?.sessionId;
+		const row = this.config.db?.getDelegatedTask?.(taskId);
+		const childSessionId = row?.sessionId;
 		if (!childSessionId) {
 			// No child session (e.g. test stub without persistence, or the row
-			// was already cleared). Nothing to archive.
+			// was already cleared). Nothing to bookkeep or archive.
 			return;
 		}
+		const childAgentId = row?.targetAgentId;
+		const childModelId = row?.modelId;
+		// ① terminal bookkeeping — UNCONDITIONAL. markArchivedTransient is the
+		// idempotent crash checkpoint (reuses the sessions.archived column);
+		// deleteDelegatedTask removes the row so it stops re-seeding into the
+		// UI / restoreDelegatedTasks on the next loop rebuild. Order matters:
+		// mark BEFORE delete so a crash between them still leaves a recoverable
+		// mark on the sessions row (the delegated_tasks row is gone either way).
+		this.config.db?.markArchivedTransient?.(childSessionId);
+		this.config.db?.deleteDelegatedTask?.(taskId);
+		// ② memory preservation — only when wired. The row is already gone, so
+		// the callee must take agentId/modelId from the args (it cannot
+		// re-read the row). Fire-and-forget; reject/throw is logged + swallowed.
+		if (!this.onTaskTerminal) return;
 		try {
-			const ret = this.onTaskTerminal(taskId, status, childSessionId);
+			const ret = this.onTaskTerminal(taskId, status, childSessionId, childAgentId, childModelId);
 			if (ret && typeof (ret as Promise<void>).then === "function") {
 				void (ret as Promise<void>).catch((err: unknown) => {
 					// Log only — archiving is a detached post-terminal side-effect.

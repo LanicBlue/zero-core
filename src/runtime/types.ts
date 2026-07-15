@@ -642,13 +642,17 @@ export interface SessionConfig {
 	 */
 	hookWiringDeps?: HookWiringDeps;
 	/**
-	 * steps-overhaul sub-8 (archive): fired by the runtime's SubagentDelegator
-	 * when a delegated sub-agent task reaches a terminal state
-	 * (`completed` / `failed`), so the owning layer (agent-service) can run the
-	 * archive pipeline on the CHILD session. The callback receives the taskId,
-	 * the terminal status, and the child session id (resolved from the
-	 * delegated_tasks row by the delegator). Fire-and-forget from the runtime's
-	 * POV — the callback owns its own error handling.
+	 * steps-overhaul sub-8 (archive) + archive-no-residual sub-1: fired by the
+	 * runtime's SubagentDelegator when a delegated sub-agent task reaches a
+	 * terminal state (`completed` / `failed`), so the owning layer (agent-
+	 * service) can run the archive pipeline on the CHILD session.
+	 *
+	 * archive-no-residual sub-1 (D1): the callback receives the taskId, the
+	 * terminal status, the child session id, AND the child's agentId / modelId
+	 * (resolved from the delegated_tasks row BEFORE the row is deleted by
+	 * terminal bookkeeping ①). The callee MUST NOT re-read the row — it's gone
+	 * by the time ② fires. Fire-and-forget from the runtime's POV — the callback
+	 * owns its own error handling; a rejection is logged but does NOT propagate.
 	 *
 	 * Set by agent-service to call archive-service.archiveSession. Omitted in
 	 * test stubs / when archiving is disabled. The cron/main invariant
@@ -656,7 +660,7 @@ export interface SessionConfig {
 	 * CHILD session (delegated work), not the parent — a cron/main parent that
 	 * itself dispatches sub-agents correctly archives those sub-agents.
 	 */
-	archiveDelegatedSession?: (taskId: string, status: "completed" | "failed", childSessionId: string) => Promise<void> | void;
+	archiveDelegatedSession?: (taskId: string, status: "completed" | "failed", childSessionId: string, childAgentId?: string, childModelId?: string) => Promise<void> | void;
 }
 
 // ---------------------------------------------------------------------------

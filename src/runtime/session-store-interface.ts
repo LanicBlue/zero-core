@@ -115,6 +115,15 @@ export interface ISessionStore {
 	listSessions(agentId: string): Array<{ id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string }>;
 	listAllSessions(): Array<{ id: string; agentId: string; isMain: boolean; title: string | null; createdAt: string; updatedAt: string }>;
 	deleteSession(sessionId: string): void;
+	/**
+	 * archive-no-residual sub-1 (D1): idempotent crash-checkpoint mark used by
+	 * the terminal bookkeeping path. Sets `sessions.archived = 1` so a crash
+	 * between this mark and the archive pipeline's eventual `deleteSessionData`
+	 * is recoverable on next startup (listArchivedTransientSessions re-exports).
+	 * Declared optional on the interface so test stubs can omit it; the runtime
+	 * null-checks before calling. Mirrors SessionDB.markArchivedTransient.
+	 */
+	markArchivedTransient?(sessionId: string): void;
 	deleteTurn(sessionId: string, seq: number): void;
 	clearTurns(sessionId: string): void;
 	getKVStore(): IKVStore;

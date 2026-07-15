@@ -968,10 +968,12 @@ export class AgentService implements PlatformObserver {
 	 *     the compression memory turn already wrote wiki → export directly
 	 *     (no re-activate).
 	 *
-	 * Resolves the child's agentId/modelId from the delegated_tasks row, builds
-	 * a minimal child SessionConfig, and runs the archive pipeline (Q5b memory
-	 * turn if applicable → mark → atomic export → delete). delegated auto-
-	 * archive is naturally complete-state, so NO teardown is needed.
+	 * Resolves the child's agentId/modelId from the CALLER (archive-no-residual
+	 * sub-1: the delegated_tasks row is deleted in terminal bookkeeping ①
+	 * BEFORE this fires, so it cannot be re-read here), builds a minimal child
+	 * SessionConfig, and runs the archive pipeline (Q5b memory turn if
+	 * applicable → mark → atomic export → delete). delegated auto-archive is
+	 * naturally complete-state, so NO teardown is needed.
 	 *
 	 * Best-effort: any failure is logged + swallowed by the caller (the task
 	 * already succeeded/failed; archiving is a post-terminal side-effect).
@@ -979,14 +981,13 @@ export class AgentService implements PlatformObserver {
 	async archiveDelegatedSession(
 		taskId: string,
 		childSessionId: string,
+		childAgentId?: string,
+		childModelId?: string,
 	): Promise<void> {
 		// Dynamic import — server/archive-service imports session-db + (transitively
 		// via AgentLoop) the runtime. Keeping this dynamic avoids pulling the
 		// whole runtime + wiki stack into agent-service's static graph.
 		const { archiveSession } = await import("./archive-service.js");
-		const rec = this.db.getDelegatedTask?.(taskId);
-		const childAgentId = rec?.targetAgentId;
-		const childModelId = rec?.modelId;
 		const sessionConfig = this.buildSessionConfigForArchive(childSessionId, childAgentId, childModelId);
 		if (!sessionConfig) {
 			log.warn("agent", `archiveDelegatedSession: could not build child config (task=${taskId}, child=${childSessionId}) — skipping archive`);
@@ -1375,15 +1376,16 @@ export class AgentService implements PlatformObserver {
 		sessionConfig.hookWiringDeps = this.buildHookDeps();
 		// sub-8 (archive): wire the delegated-session auto-archive callback so a
 		// sub-agent that reaches completed/failed auto-archives (design.md
-		// 「归档」). The child session config is rebuilt here from the child's
-		// delegated_tasks row (target agent + inherited model) + THIS loop's
-		// wiki/extractors handles (sub-loops inherit these via the config spread
-		// in subagent-delegator, so mirroring them here lets the final
-		// compression write into the same topic subtree). Best-effort: a missing
-		// child row / build failure is logged + swallowed (the task already
-		// succeeded; archiving is a post-terminal side-effect).
-		sessionConfig.archiveDelegatedSession = (taskId, _status, childSessionId) => {
-			this.archiveDelegatedSession(taskId, childSessionId).catch((err: unknown) => {
+		// 「归档」). archive-no-residual sub-1: the child's agentId/modelId are
+		// threaded THROUGH the callback (the delegated_tasks row is already
+		// deleted by terminal bookkeeping ① before this fires, so the callee
+		// cannot re-read it) + THIS loop's wiki/extractors handles (sub-loops
+		// inherit these via the config spread in subagent-delegator, so mirroring
+		// them here lets the final compression write into the same topic
+		// subtree). Best-effort: a build failure is logged + swallowed (the task
+		// already succeeded; archiving is a post-terminal side-effect).
+		sessionConfig.archiveDelegatedSession = (taskId, _status, childSessionId, childAgentId, childModelId) => {
+			this.archiveDelegatedSession(taskId, childSessionId, childAgentId, childModelId).catch((err: unknown) => {
 				log.warn("agent", `archiveDelegatedSession failed (task=${taskId}, child=${childSessionId}):`, (err as Error)?.message ?? err);
 			});
 		};
