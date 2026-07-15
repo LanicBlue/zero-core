@@ -135,6 +135,14 @@ function writeResult(obj) {
 
 async function main() {
 	log(`helper pid=${process.pid} platform=${platform} install=${installPath}`);
+	// 防御:installPath 必须是有效字符串。packaged 模式由 self-update.cjs P0 保证非空;
+	// 此处兜底 swap.json 损坏 / 非常规调用(如 mode=dev 回归 installPath=null),
+	// 避免 ditto [staging, null] 把 staging 复制到 cwd/"null" + 误导性"替换完成"日志,
+	// 也避免 ensureQuit 写 sentinel 误伤恰好运行中的 zero-core。
+	if (!installPath || typeof installPath !== "string") {
+		writeResult({ ok: false, rolledBack: false, error: `installPath 无效(${JSON.stringify(installPath)}),跳过替换` });
+		return;
+	}
 	try {
 		await ensureQuit();
 		replaceInstall();
