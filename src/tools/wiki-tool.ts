@@ -271,6 +271,58 @@ function sourceFileFromPath(path: string | undefined): string | undefined {
 }
 
 /**
+ * Walk a hierarchical title path like "Parent/Child/Leaf" from the anchor
+ * scope, matching each segment against a child's TITLE. Titles are unique per
+ * parent (enforced on create/update) → each segment matches at most one child.
+ * Returns the resolved node on success, or a precise reason identifying WHICH
+ * segment failed to match (so the caller can surface a clear error instead of
+ * a silent empty result).
+ *
+ * First segment: direct child of any anchor (the scope roots). Subsequent
+ * segments: child of the previously matched node by id. The visible-nodes list
+ * is fetched ONCE (it can be large) and reused across segments.
+ *
+ * Shared between resolveNode (doc ops — silent fallback) and the expand
+ * action's `path` parameter (#4 — surfaces the reason verbatim).
+ */
+function walkTitlePath(
+	path: string,
+	anchors: string[],
+	wiki: WikiStore,
+): { ok: true; node: WikiNode } | { ok: false; reason: string } {
+	const segments = path.split("/").map((s) => s.trim()).filter(Boolean);
+	if (segments.length === 0) {
+		return { ok: false, reason: `path "${path}" has no segments` };
+	}
+	const all = wiki.listVisibleFromAnchors(anchors);
+	let cursor: string | undefined = undefined;
+	let cursorTitle: string | undefined = undefined;
+	for (let i = 0; i < segments.length; i++) {
+		const seg = segments[i];
+		const children = all.filter((n) =>
+			// First segment: direct child of any anchor (the scope roots).
+			// Subsequent segments: child of the previously matched node.
+			cursor === undefined ? anchors.includes(n.parentId ?? "") : n.parentId === cursor,
+		);
+		const next = children.find((n) => n.title === seg);
+		if (!next) {
+			const parentLabel = cursor === undefined ? "scope root" : `"${cursorTitle}"`;
+			const avail = children.map((c) => c.title).filter(Boolean);
+			const availHint = avail.length ? ` (available: ${avail.slice(0, 10).join(", ")}${avail.length > 10 ? ", …" : ""})` : " (no children)";
+			return {
+				ok: false,
+				reason: `path segment ${i + 1} "${seg}" not found under ${parentLabel}${availHint}`,
+			};
+		}
+		cursor = next.id;
+		cursorTitle = next.title;
+	}
+	const node = cursor ? wiki.getVisibleFromAnchors(anchors, cursor) : undefined;
+	if (!node) return { ok: false, reason: `resolved node not in scope` };
+	return { ok: true, node };
+}
+
+/**
  * Resolve a doc-op target to a node, accepting EITHER a nodeId (direct) OR a
  * hierarchical title path like "Parent/Child/Leaf" (walked from the anchor
  * scope, matching each segment against a child's title). Titles are unique per
@@ -287,19 +339,8 @@ function resolveNode(
 		return r.ok ? r.node : undefined;
 	}
 	if (target.path) {
-		const segments = target.path.split("/").map((s) => s.trim()).filter(Boolean);
-		let cursor: string | undefined = undefined;
-		for (const seg of segments) {
-			const children = wiki.listVisibleFromAnchors(anchors).filter((n) =>
-				// First segment: direct child of any anchor (the scope roots).
-				// Subsequent segments: child of the previously matched node.
-				cursor === undefined ? anchors.includes(n.parentId ?? "") : n.parentId === cursor,
-			);
-			const next = children.find((n) => n.title === seg);
-			if (!next) return undefined;
-			cursor = next.id;
-		}
-		return cursor ? wiki.getVisibleFromAnchors(anchors, cursor) : undefined;
+		const r = walkTitlePath(target.path, anchors, wiki);
+		return r.ok ? r.node : undefined;
 	}
 	return undefined;
 }
@@ -318,8 +359,10 @@ export const wikiActionSchema = z.object({
 	action: z.enum(["expand", "search", "create", "update", "delete", "createMemory", "updateMemory", "docRead", "docWrite", "docEdit"]),
 	// expand / search / docRead / docWrite / docEdit / update / delete — direct addressing
 	nodeId: z.string().optional(),
-	// docRead / docWrite / docEdit — hierarchical title path addressing (alt to nodeId)
-	path: z.string().optional().describe("Hierarchical title path (e.g. 'Parent/Child') for doc ops — alt to nodeId"),
+	// docRead / docWrite / docEdit (alt to nodeId) AND expand (#4 — jump to a deep
+	// node by title). For expand, trailing '/*' ("A/B/*") shows the SECOND-TO-LAST
+	// segment's direct children (depth=1 wildcard).
+	path: z.string().optional().describe("Hierarchical title path (e.g. 'Parent/Child') for doc ops + expand — alt to nodeId; expand also supports trailing '/*' to show direct children of the second-to-last segment"),
 	// expand — how many descendant levels to include (1 = direct children only,
 	// the default; capped at 5). expand NEVER returns node bodies — use docRead.
 	depth: z.number().optional().describe("expand: descendant levels to include (1=direct children, default 1, max 5)"),
@@ -330,8 +373,12 @@ export const wikiActionSchema = z.object({
 	leavesOnly: z.boolean().optional().describe("expand: only include leaf nodes (no children)"),
 	// expand — replace the root's Summary line with its own doc body (capped 4kb).
 	rootDoc: z.boolean().optional().describe("expand: replace root Summary line with its doc body (<=4kb)"),
-	// search
-	query: z.string().optional().describe("Substring query (action:'search')"),
+	// search — substring (default) or regex (#2). regex:true treats query as a
+	// JS regex (case-insensitive, matching the default substring behavior).
+	query: z.string().optional().describe("Substring query (action:'search'); set regex:true to treat as regex"),
+	// search — treat `query` as a JavaScript regex (default false = literal
+	// substring, case-insensitive). Invalid regex returns a friendly error.
+	regex: z.boolean().optional().describe("search: treat query as regex (default false = substring)"),
 	// search — limit matches to the subtree under this nodeId (narrow within a
 	// large session). Accepts a short id like expand's nodeId.
 	subtree: z.string().optional().describe("search: limit matches to the subtree under this nodeId"),
@@ -365,12 +412,12 @@ export const wikiActionSchema = z.object({
 export const wikiTool = buildTool({
 	name: "Wiki",
 	description:
-		"Operate on the project Wiki. Two groups: STRUCTURE ops (expand/search/create/update/delete nodes; expand/search support type filter + subtree/leaves narrowing) and DOC ops (docRead/docWrite/docEdit a node's body — mirror Read/Write/Edit; docRead supports batch via nodeIds). Address nodes by their 8-char short id (#xxxxxxxx, shown in expand/search/injected outlines), a full nodeId, or a title path. header/intent node paths encode their source file (shown as 'Source file' in expand).",
+		"Operate on the project Wiki. Two groups: STRUCTURE ops (expand/search/create/update/delete nodes; expand takes nodeId OR title path with type/subtree/leaves narrowing; search supports regex:true + type/subtree filters) and DOC ops (docRead/docWrite/docEdit a node's body — mirror Read/Write/Edit; docRead supports batch via nodeIds). Address nodes by their 8-char short id (#xxxxxxxx, shown in expand/search/injected outlines), a full nodeId, or a title path. header/intent node paths encode their source file (shown as 'Source file' in expand).",
 	prompt:
 		"Operate on the project Wiki. Two groups of actions:\n\n" +
 		"STRUCTURE (node tree):\n" +
-		"- { action:'expand', nodeId, depth?, type?, leavesOnly? } — read a node's STRUCTURE: its metadata (summary/flags/source file) plus its descendants as an indented tree, `depth` levels deep (1 = direct children only, default; max 5). `type` filters the listing to one node type; `leavesOnly` shows only leaf nodes (still walks through non-leaf ancestors to reach deeper leaves). Primary way to navigate and discover nodeIds. Does NOT return any node's body (use docRead); rootDoc:true is the one exception — it inlines the ROOT's own doc (<=4kb).\n" +
-		"- { action:'search', query, limit?, type?, subtree? } — substring search across visible nodes (title/summary). `type` filters matches; `subtree` (a nodeId) narrows the search to that node's subtree — useful inside a large session to avoid noise (e.g. searching 'tool' inside one project only).\n" +
+		"- { action:'expand', nodeId | path, depth?, type?, leavesOnly? } — read a node's STRUCTURE: its metadata (summary/flags/source file) plus its descendants as an indented tree, `depth` levels deep (1 = direct children only, default; max 5). `path` (e.g. 'Knowledge/software-dev/工作流') jumps straight to a deep node by title without walking down level-by-level; trailing '/*' ('A/B/*') shows the SECOND-TO-LAST segment's direct children (depth=1 wildcard). When both are given, path takes priority over nodeId. `type` filters the listing to one node type; `leavesOnly` shows only leaf nodes (still walks through non-leaf ancestors to reach deeper leaves). Each non-leaf child line ends with a `▾<direct>(<total>)` marker = direct children + total descendants under it; leaf nodes show `leaf`. Primary way to navigate and discover nodeIds. Does NOT return any node's body (use docRead); rootDoc:true is the one exception — it inlines the ROOT's own doc (<=4kb).\n" +
+		"- { action:'search', query, limit?, type?, subtree?, regex? } — substring search across visible nodes (title/summary/path), case-insensitive. Set `regex:true` to treat `query` as a JavaScript regex (still case-insensitive; invalid regex returns a friendly error, no throw). `type` filters matches; `subtree` (a nodeId) narrows the search to that node's subtree — useful inside a large session to avoid noise (e.g. searching 'tool' inside one project only).\n" +
 		"- { action:'create', parentId, title, summary?, content? } — create a STRUCTURE node under a parent (header/intent/structure, type inherited from the parent's position). NO memory type: memory leaves go via createMemory. Titles must be unique under the same parent (rejected otherwise). content?, if given, is the initial body.\n" +
 		"- { action:'update', nodeId, title?, summary?, flags? } — edit a STRUCTURE node's metadata. Does NOT touch the body. Changing title must keep it unique among siblings.\n" +
 		"- { action:'delete', nodeId } — delete a node (cascades children + body).\n" +
@@ -443,10 +490,26 @@ async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<strin
 	switch (input.action) {
 		// ── STRUCTURE ────────────────────────────────────────────────
 		case "expand": {
-			if (!input.nodeId) return "Error: nodeId required for expand";
+			// #4 path support: a title path jumps straight to a deep node without
+			// walking down level by level. path TAKES PRIORITY over nodeId (back-
+			// compat for pure-nodeId callers — both passed → nodeId ignored).
+			// Trailing '/*' is a wildcard: locate the SECOND-TO-LAST segment and
+			// force depth=1 (show that node's direct children).
+			let node: WikiNode;
+			let depthOverride: number | undefined;
+			if (input.path) {
+				const isWildcard = input.path.endsWith("/*");
+				const walkPath = isWildcard ? input.path.slice(0, -2) : input.path;
+				const r = walkTitlePath(walkPath, anchors, wiki);
+				if (!r.ok) return `Error: ${r.reason}`;
+				node = r.node;
+				if (isWildcard) depthOverride = 1;
+			} else {
+				if (!input.nodeId) return "Error: nodeId or path required for expand";
 				const resolved = resolveNodeIdArg(input.nodeId, anchors, wiki);
 				if (!resolved.ok) return `Error: ${resolved.reason}`;
-				const node = resolved.node;
+				node = resolved.node;
+			}
 				// expand is STRUCTURE-only: metadata + a descendant subtree, rendered as a
 				// nested markdown list (2-space indent per level → real hierarchy in the UI).
 				// BREADTH-FIRST BUDGET (was: depth-first walk at the full `depth`, so a huge
@@ -458,7 +521,7 @@ async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<strin
 				// never level-1 siblings. Filters (type/leavesOnly) only prune emission;
 				// traversal still descends through filtered ancestors so deeper matches
 				// stay reachable.
-				const depthCap = Math.max(1, Math.min(input.depth ?? 1, 5));
+				const depthCap = Math.max(1, Math.min(depthOverride ?? input.depth ?? 1, 5));
 				const typeFilter = input.type;
 				const leavesOnly = input.leavesOnly === true;
 				const allVisible = wiki.listVisibleFromAnchors(anchors);
@@ -477,17 +540,21 @@ async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<strin
 						lvl++;
 					}
 				}
-				// Total structural descendants (uncapped by depth) → feeds the 'more hidden'
-				// count (nodes beyond what we rendered).
-				let totalDescendants = 0;
-				{
-					const q: string[] = (byParent.get(node.id) ?? []).map((k) => k.id);
-					while (q.length) {
-						const id = q.shift()!;
-						totalDescendants++;
-						for (const c of byParent.get(id) ?? []) q.push(c.id);
-					}
-				}
+				// Per-render memoized cache of total descendants per node. Drives BOTH
+				// the per-child marker `▾direct(total)` (#3 — total = whole subtree under
+				// the child, uncapped by depth) and the root's 'more hidden' count.
+				// Bottom-up post-order DFS so each subtree is computed exactly once;
+				// the cache is scoped to this single expand call.
+				const totalDescMap = new Map<string, number>();
+				const getTotalDesc = (id: string): number => {
+					const cached = totalDescMap.get(id);
+					if (cached !== undefined) return cached;
+					let total = 0;
+					for (const c of byParent.get(id) ?? []) total += 1 + getTotalDesc(c.id);
+					totalDescMap.set(id, total);
+					return total;
+				};
+				const totalDescendants = getTotalDesc(node.id);
 				// Largest maxLevel ≤ depthCap whose cumulative structural node count fits
 				// the budget. Level 1 is ALWAYS kept even if it alone exceeds the budget —
 				// the breadth-first guarantee (siblings before depth).
@@ -514,8 +581,8 @@ async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<strin
 							// Child line carries the subtree-abstract summary so expand is more
 							// than a flat directory listing.
 							const childSummary = k.summary ? ` — ${sanitizeText(truncateUtf8Bytes(k.summary, SUMMARY_MAX_BYTES))}` : "";
-							const childCount = (byParent.get(k.id) ?? []).length;
-							const childMarker = childCount > 0 ? ` ▾${childCount}` : " leaf";
+							const directCount = (byParent.get(k.id) ?? []).length;
+							const childMarker = directCount > 0 ? ` ▾${directCount}(${getTotalDesc(k.id)})` : " leaf";
 							treeLines.push(`${"  ".repeat(level - 1)}- ${formatNodeId(k.id)} [${k.type}] ${k.title}${childSummary} ${formatBodySize(wiki.getNodeDetailSize(k.id))}${childMarker}`);
 						}
 						walk(k.id, level + 1);
@@ -554,9 +621,22 @@ async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<strin
 
 			case "search": {
 				if (!input.query) return "Error: query required for search";
-				const q = input.query.toLowerCase();
 				const limit = input.limit ?? 50;
 				const nodes = wiki.listVisibleFromAnchors(anchors);
+				// #2 regex mode (default off = literal substring, case-insensitive —
+				// matches the pre-#2 toLowerCase semantics). On invalid regex, surface
+				// a friendly error instead of letting new RegExp throw.
+				let regex: RegExp | undefined;
+				const qLower = input.query.toLowerCase();
+				if (input.regex === true) {
+					try {
+						regex = new RegExp(input.query, "i");
+					} catch {
+						return `Error: Invalid regex: ${input.query}`;
+					}
+				}
+				const matchStr = (s: string | undefined): boolean =>
+					regex ? regex.test(s ?? "") : (s?.toLowerCase().includes(qLower) ?? false);
 				// Optional subtree narrowing: resolve the subtree nodeId, then keep
 				// only nodes inside that subtree (root + descendants).
 				let subtree: Set<string> | undefined;
@@ -572,12 +652,7 @@ async function renderWikiAction(input: any, callerCtx: CallerCtx): Promise<strin
 					.filter((n) => !n.id.startsWith("wiki-root:"))
 					.filter((n) => !subtree || subtree.has(n.id))
 					.filter((n) => !typeFilter || n.type === typeFilter)
-					.filter(
-						(n) =>
-						(n.title?.toLowerCase().includes(q) ?? false) ||
-						(n.summary?.toLowerCase().includes(q) ?? false) ||
-						(n.path?.toLowerCase().includes(q) ?? false),
-				);
+					.filter((n) => matchStr(n.title) || matchStr(n.summary) || matchStr(n.path));
 				if (hits.length === 0) {
 					const scope = subtree ? " in subtree" : "";
 					const typeN = typeFilter ? ` (type=${typeFilter})` : "";
