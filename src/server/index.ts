@@ -26,7 +26,7 @@ import { createServer } from "http";
 import { WebSocketServer } from "ws";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { AgentStore } from "./agent-store.js";
 import { onDataChange, emitTransition } from "./data-change-hub.js";
@@ -55,6 +55,7 @@ import { createLogRouter } from "./log-router.js";
 import { createFileRouter } from "./file-router.js";
 import { createToolExecutionRouter } from "./tool-execution-router.js";
 import { createSkillRouter } from "./skill-router.js";
+import { createHealthRouter } from "./health-router.js";
 // multimodal-input sub-1: per-session attachment upload (single bytes-into-main
 // entry point, design 顶层原则 A). Mounted under /api/attachments.
 import { createAttachmentRouter } from "./attachment-router.js";
@@ -1028,43 +1029,8 @@ export async function startServer(options?: StartServerOptions) {
 	app.get("/api/ready", (_req, res) => res.json({ ready: true }));
 
 	// Health endpoint — 业务活络(自更新冒烟用);/api/ready 只代表 HTTP listen
-	app.get("/api/health", (_req, res) => {
-		const db = sessionDB.getDb();
-		let integrity = "ok";
-		let dbOk = false;
-		try {
-			const rows = db.pragma("integrity_check") as Array<{ integrity_check: string }>;
-			integrity = rows.map((r) => r.integrity_check).join("; ");
-			dbOk = integrity === "ok";
-		} catch (e: any) {
-			integrity = "error: " + (e?.message ?? String(e));
-		}
-		let dbWritable = false;
-		try {
-			db.exec("BEGIN; CREATE TEMP TABLE IF NOT EXISTS _health_probe(x); INSERT INTO _health_probe VALUES(1); ROLLBACK;");
-			dbWritable = true;
-		} catch { /* db not writable */ }
-		let providers = 0;
-		let agents = 0;
-		try { providers = providerStore.list().length; } catch { /* empty */ }
-		try { agents = agentStore.list().length; } catch { /* empty */ }
-		let version = "unknown";
-		try {
-			const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json");
-			version = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "unknown";
-		} catch { /* unknown */ }
-		res.json({
-			ready: true,
-			db: dbOk,
-			dbWritable,
-			integrity,
-			providers,
-			agents,
-			workspace: { exists: existsSync(workspaceConfig.workspaceDir) },
-			version,
-			uptimeMs: Math.round(process.uptime() * 1000),
-		});
-	});
+	// 抽成 health-router 便于单测(依赖注入);见 src/server/health-router.ts
+	app.use(createHealthRouter({ sessionDB, providerStore, agentStore, workspaceConfig }));
 
 	// ─── WebSocket ──────────────────────────────────────────────
 
