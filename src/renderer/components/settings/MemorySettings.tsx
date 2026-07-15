@@ -7,35 +7,27 @@
 // memory turn),保存到主进程。
 //
 // steps-overhaul sub-4:旧的 L1 摘要阈值 / L2 记忆抽取阈值 / 保留轮数控件随
-// compression-engine.ts(L1/L2)一起删除。新的阶段3 压缩核心(server/
-// compression-core.ts)是 step 粒度 + fresh-tail 边界(min(32K, 20% 窗口)),
-// 没有用户可调的阈值——何时触发由 sub-5 的触发器(cache 冷热 + token 阈值)决定。
-// 本面板只留:压缩模型(默认 = 工作模型)+ 两个 prompt override。
-//
-// compression-archive-simplify sub-5:总开关(`compression.enabled`)删除——
-// 它是未读假配置(触发 hook 根本不读),UI 翻动它无效果。压缩现在由 cache 冷热
-// + token 阈值自动触发。
+// compression-engine.ts(L1/L2)一起删除。本面板只留:压缩模型(默认 = 工作
+// 模型)+ 两个 prompt override。
 //
 // memory-archive-fixes sub-3 (decision 4):加两个 prompt override。
-// ui-polish:两个 prompt 改成与 AgentEditor 的 PromptSection 同款交互 ——
-// 默认只读预览当前值(空 = 显示「使用内置默认」提示),点 Edit 才解锁 textarea,
-// Save 即时持久化、Reset 回退草稿。不再常驻裸 textarea。
+// ui-polish(第二轮):两个 prompt 改成与 AgentEditor 的 PromptSection 同款交互 ——
+// 默认只读渲染(复用 .prompt-rendered + MarkdownRenderer,与 agent 完全一致),
+// 点 Edit 才解锁 textarea(复用 .system-prompt-editor 类,不再用内联样式)。
+// 未覆盖时把**内置默认 prompt 正文**显示出来(从 shared/default-prompts 取),
+// 配 "default" 徽标,而非只说「使用默认」。Save 即时持久化、Reset 回退草稿。
 //   1. 「压缩摘要 prompt」绑 compression.summarySystemPrompt(空 = 默认
-//      SUMMARY_SYSTEM;读侧 compression-trigger-hooks.ts 已转发,本面板只
-//      负责写)。
+//      DEFAULT_SUMMARY_SYSTEM;读侧 compression-trigger-hooks.ts 已转发)。
 //   2. 「记忆提取 prompt」绑 archive.memoryPrompt(空 = 默认
-//      ARCHIVE_MEMORY_PROMPT;agent-service buildTempMemoryTurnRunner 读它
-//      覆盖)。纯整段覆盖,无模板变量插值。
-//
-// 注:独立的 memory/autoRecall 配置是 v0.8 前的残留(memory 现以 wiki 子树形式存在),
-// 已移除。
+//      DEFAULT_ARCHIVE_MEMORY_PROMPT;agent-service buildTempMemoryTurnRunner 读它)。
 //
 // ## 输入
 // - providerStore (Zustand):用于挑选压缩模型的可用 provider/model 列表
 // - window.api.memoryConfigGet / memoryConfigUpdate:读写主进程配置
+// - shared/default-prompts:内置默认 prompt 正文(显示用)
 //
 // ## 输出
-// - 渲染的设置面板 DOM(模型下拉 + 两个 prompt 字段[只读预览/Edit 解锁])
+// - 渲染的设置面板 DOM(模型下拉 + 两个 prompt 字段[只读渲染/Edit 解锁])
 //
 // ## 定位
 // 渲染进程组件,被 SettingsPage 在 Memory 分页下渲染。
@@ -43,16 +35,20 @@
 // ## 依赖
 // - react
 // - ../../store/provider-store
+// - ../common/MarkdownRenderer(与 AgentEditor PromptSection 同款渲染)
+// - ../../../shared/default-prompts(内置默认正文)
 // - window.api(preload 暴露的 memoryConfig* 接口)
 //
 // ## 维护规则
 // - 压缩/归档配置字段变化时同步本面板。
-// - 新增模型分组逻辑需要保留按 group 聚合的 optgroup 渲染。
+// - 默认 prompt 文案改 → 改 shared/default-prompts.ts(此处自动跟)。
 //
 
 import { useEffect, useState } from "react";
 import { modelOptionSuffix } from "../../utils/model-format.js";
 import { useProviderStore } from "../../store/provider-store.js";
+import MarkdownRenderer from "../common/MarkdownRenderer.js";
+import { DEFAULT_SUMMARY_SYSTEM, DEFAULT_ARCHIVE_MEMORY_PROMPT } from "../../../shared/default-prompts.js";
 
 const api = () => (window as any).api;
 
@@ -69,23 +65,23 @@ interface ArchiveConfig {
 }
 
 /**
- * ui-polish:单个 prompt 字段 —— 默认只读预览 + Edit 解锁 + Save/Reset。
- * 与 AgentEditor 的 PromptSection 同款交互(不复用组件是因为它绑死 FormState,
- * 这里 config 形态不同;视觉上复用同套 .prompt-* CSS class)。
+ * 单个 prompt 字段 —— 默认只读渲染 + Edit 解锁 + Save/Reset。与 AgentEditor
+ * 的 PromptSection 同款交互 + 同套 CSS 类(.prompt-rendered / .system-prompt-editor /
+ * .prompt-header),不再用内联样式。
  *
- * Save 即时持久化(onSave 写主进程),不是攒着等底部按钮 —— 和 AgentEditor
- * 一致。空值 = 用内置默认,预览态显示「使用内置默认」提示。
+ * 未覆盖(value 空)时显示**内置默认正文**(defaultValue,渲染端从 shared 取),
+ * 配 "default" 徽标 —— 用户能直接看到当前生效的 prompt 是什么。Save 即时持久化。
  */
 function PromptField({
 	label,
 	value,
-	defaultLabel,
+	defaultValue,
 	description,
 	onSave,
 }: {
 	label: string;
 	value: string | undefined;
-	defaultLabel: string;
+	defaultValue: string;
 	description: string;
 	onSave: (next: string) => Promise<void> | void;
 }) {
@@ -93,11 +89,14 @@ function PromptField({
 	const [draft, setDraft] = useState(value ?? "");
 	const [saving, setSaving] = useState(false);
 
+	const usingDefault = !value || !value.trim();
+
 	const startEdit = () => {
-		setDraft(value ?? "");
+		// 进入编辑态:草稿预填当前生效值(用户覆盖值,或内置默认正文)。
+		setDraft(usingDefault ? defaultValue : value!);
 		setEditing(true);
 	};
-	const reset = () => setDraft(value ?? "");
+	const reset = () => setDraft(usingDefault ? defaultValue : value!);
 	const save = async () => {
 		setSaving(true);
 		try {
@@ -111,7 +110,12 @@ function PromptField({
 	return (
 		<div className="memory-config-row memory-config-row-stack">
 			<div className="prompt-header">
-				<label className="config-label">{label}</label>
+				<label className="config-label">
+					{label}
+					{usingDefault && (
+						<span className="prompt-default-badge" title="当前生效的是内置默认 prompt">default</span>
+					)}
+				</label>
 				<div className="prompt-header-actions">
 					{!editing ? (
 						<button type="button" className="btn-primary btn-sm" onClick={startEdit}>Edit</button>
@@ -125,21 +129,19 @@ function PromptField({
 			</div>
 			<p className="memory-config-desc">{description}</p>
 			{!editing ? (
+				// 只读渲染:与 AgentEditor PromptSection 同款 .prompt-rendered + MarkdownRenderer。
+				// 未覆盖 → 显示内置默认正文(用户看得到当前生效内容)。
 				<div className="prompt-rendered">
-					{value && value.trim() ? (
-						<pre className="system-prompt-editor" style={{ whiteSpace: "pre-wrap", margin: 0 }}>{value}</pre>
-					) : (
-						<p className="prompt-empty">Using built-in default ({defaultLabel}). Click Edit to override.</p>
-					)}
+					<MarkdownRenderer content={usingDefault ? defaultValue : value!} />
 				</div>
 			) : (
+				// 编辑态:复用 .system-prompt-editor(全局 textarea 类,不用内联样式)。
 				<textarea
+					className="system-prompt-editor"
 					aria-label={label}
-					rows={8}
-					placeholder={`Leave empty to use the built-in default ${defaultLabel}.`}
+					placeholder="Leave empty (clear all text) + Save to use the built-in default."
 					value={draft}
 					onChange={(e) => setDraft(e.target.value)}
-					style={{ width: "100%", resize: "vertical", fontFamily: "monospace", fontSize: "12px" }}
 				/>
 			)}
 		</div>
@@ -238,8 +240,8 @@ export function MemorySettings() {
 				<PromptField
 					label="压缩摘要 prompt"
 					value={compression.summarySystemPrompt}
-					defaultLabel="SUMMARY_SYSTEM"
-					description="Override the stage-3 compression system prompt (default = built-in SUMMARY_SYSTEM). Empty = use default. The 5-section JSON output contract is fixed — a custom prompt that breaks the parser falls back to a valid summary."
+					defaultValue={DEFAULT_SUMMARY_SYSTEM}
+					description="Override the stage-3 compression system prompt (default shown when empty). The 5-section JSON output contract is fixed — a custom prompt that breaks the parser falls back to a valid summary. Clear all text + Save to use the default."
 					onSave={saveCompressionPrompt}
 				/>
 			</div>
@@ -247,14 +249,14 @@ export function MemorySettings() {
 			<div className="memory-config-section">
 				<h4 className="memory-config-title">Memory Extraction (Archive)</h4>
 				<p className="memory-config-desc">
-					Override the prompt fed to the ephemeral "memory turn" that runs when a session is archived (default = built-in ARCHIVE_MEMORY_PROMPT). The agent uses it to self-write durable wiki memory before the JSON export. Empty = use default.
+					Override the prompt fed to the ephemeral "memory turn" that runs when a session is archived (default shown when empty). The agent uses it to self-write durable wiki memory before the JSON export.
 				</p>
 
 				<PromptField
 					label="记忆提取 prompt"
 					value={archive.memoryPrompt}
-					defaultLabel="ARCHIVE_MEMORY_PROMPT"
-					description="Override the archive memory-turn prompt (default = built-in ARCHIVE_MEMORY_PROMPT). Empty = use default. Pure full-text override, no template variables."
+					defaultValue={DEFAULT_ARCHIVE_MEMORY_PROMPT}
+					description="Override the archive memory-turn prompt (default shown when empty). Clear all text + Save to use the default."
 					onSave={saveArchivePrompt}
 				/>
 			</div>

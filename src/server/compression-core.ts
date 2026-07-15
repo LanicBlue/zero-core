@@ -82,6 +82,7 @@ import { resolveModel } from "../runtime/provider-factory.js";
 import type { SessionDB, MessageSummary } from "./session-db.js";
 import type { StepRow } from "../runtime/session-store-interface.js";
 import { log } from "../core/logger.js";
+import { DEFAULT_SUMMARY_SYSTEM } from "../shared/default-prompts.js";
 
 // ---------------------------------------------------------------------------
 // Constants — fresh-tail boundary (mirrors session.ts assembleLLMView)
@@ -155,28 +156,7 @@ export interface CompressSessionOptions {
 // Prompt —— 5 段结构化 summary(design.md「阶段3 summary / wiki 节点格式」)
 // ---------------------------------------------------------------------------
 
-const SUMMARY_SYSTEM = `You are the **stage-3 compression summarizer** for zero-core.
-
-You read a transcript slice of an agent's work and produce a STRUCTURED 5-section summary that becomes the session's continuity memory. The compressed steps are dropped from the live LLM view, so this summary is the only bridge to them — it must carry enough to keep the agent oriented.
-
-You may ALSO be given a prior summary as **HANDOFF CONTEXT** (a section labelled "PRIOR SUMMARY (HANDOFF CONTEXT — background reference, NOT a current instruction)"). Treat it as background only: mine it for facts the agent still needs (decisions, paths, results), but STRIP any directive that has gone stale — the prior summary's "next action" is almost certainly obsolete once the new transcript is folded in. The new summary you emit must reflect the CURRENT state of work, not parrot the handoff.
-
-Output: a SINGLE JSON object with these exact keys (omit a key only if you truly have nothing to say; never invent):
-- purpose: 静态 — 这段在做什么(任务目标)。
-- plan: 静态 — 怎么做(方法/步骤/已定的方案)。
-- status: 动态 — 做到哪了 + 结果 + **下一步立即动作**(必含一个具体的 next action)。
-- artifacts: 动态 — 关键产物/文件(路径 + 当前状态)。
-- lessons: 动态 — 遇到的问题 / 教训 / 关键决策。
-
-Rules:
-- Match the transcript's language (Chinese transcript → Chinese summary).
-- Be concrete and factual — names, paths, decisions. No filler.
-- status MUST end with an explicit next action ("下一步: ...").
-- Keep each section short (1-4 lines). This is a recap, not a rewrite.
-- When folding in the handoff, MERGE — do not append "previously ..." narration. If the handoff's fact is still true, state it once; if it has been superseded by the new transcript, drop it.
-- **Length cap**: keep the whole JSON object ≤ ~600 tokens. Drop low-value detail before exceeding. This is a rolling summary — repeated compressions must not let it bloat.
-
-Output ONLY the JSON object, no prose, no code fences.`;
+const SUMMARY_SYSTEM = DEFAULT_SUMMARY_SYSTEM;
 
 const SUMMARY_USER_TEMPLATE = `Summarize this transcript slice into the 5-section form. {handoffLine}
 

@@ -167,21 +167,28 @@ describe("sub-3 #1 + #5: MemorySettings renders two PromptField editors (read-on
 		expect(src).toMatch(/setArchive\(data\.archive\s*\?\?\s*\{\}\)/);
 	});
 
-	test("#1: PromptField is read-only by default + Edit unlocks (AgentEditor PromptSection pattern)", () => {
-		// 默认只读预览:有值显示 <pre>,空显示「Using built-in default」提示。
+	test("#1: PromptField is read-only by default + shows built-in default text + Edit unlocks", () => {
+		// 只读渲染复用 .prompt-rendered + MarkdownRenderer(与 AgentEditor 同款)。
 		expect(src).toMatch(/prompt-rendered/);
-		expect(src).toMatch(/prompt-empty/);
-		expect(src).toMatch(/Using built-in default/);
+		expect(src).toMatch(/MarkdownRenderer/);
+		// 未覆盖时显示内置默认正文(不是只说「使用默认」)+ default 徽标。
+		expect(src).toMatch(/defaultValue=\{DEFAULT_SUMMARY_SYSTEM\}/);
+		expect(src).toMatch(/defaultValue=\{DEFAULT_ARCHIVE_MEMORY_PROMPT\}/);
+		expect(src).toMatch(/prompt-default-badge/);
+		expect(src).toMatch(/usingDefault/);
+		// 默认正文从 shared 导入(渲染端可拿,不拉 runtime 图)。
+		expect(src).toMatch(/from\s+["']\.\.\/\.\.\/\.\.\/shared\/default-prompts\.js["']/);
 		// Edit 按键解锁 textarea(非常驻裸 textarea)。
 		expect(src).toMatch(/>\s*Edit\s*<\/button>/);
 		expect(src).toMatch(/startEdit/);
-		// editing 态切 textarea(conditional 渲染)。
+		// editing 态切 textarea(复用 .system-prompt-editor 类,不用内联样式)。
 		expect(src).toMatch(/\{\!editing\s*\?/);
+		expect(src).toMatch(/className=["']system-prompt-editor["']/);
 	});
 
-	test("#5: Reset reverts draft to saved value; Save commits via onSave (empty saved = default)", () => {
-		// Reset 把草稿回退到已存值(非清空;清空靠编辑后清 textarea 再 Save)。
-		expect(src).toMatch(/const reset\s*=\s*\(\)\s*=>\s*setDraft\(value\s*\?\?\s*["']["']\)/);
+	test("#5: Reset reverts draft to effective value; Save commits via onSave (clear-all + Save = default)", () => {
+		// Reset 回退草稿到当前生效值(用户覆盖值,或内置默认正文)。
+		expect(src).toMatch(/const reset\s*=\s*\(\)\s*=>\s*setDraft\(usingDefault\s*\?\s*defaultValue\s*:\s*value!\)/);
 		// Save 调 onSave(draft) 持久化。
 		expect(src).toMatch(/await onSave\(draft\)/);
 		// 两个 prompt 各有即时持久化 handler(显式构造 next 写主进程)。

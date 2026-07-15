@@ -91,6 +91,7 @@ import { compressSession } from "../server/compression-core.js";
 // coordinateForceCompress: agent-service wires BOTH `db` and `sessionDb` from
 // the same SessionDB instance, so the runtime invariant holds.
 import type { SessionDB } from "../server/session-db.js";
+import { DEFAULT_ARCHIVE_MEMORY_PROMPT } from "../shared/default-prompts.js";
 // sub-7 (anchor merger): renderSystemAnchors + renderContextAnchors collapse
 // into the single `wiki-system-anchors` system section (root summary + one
 // layer, both channels unioned). renderContextAnchors stays exported so tests
@@ -154,14 +155,7 @@ const FORCE_MEMORY_PROMPT =
  * ExtractorA.archiveService merge step (sub-3b stripped the wiring; sub-4
  * removes the dead code + replumbs the call site to drive this turn).
  */
-export const ARCHIVE_MEMORY_PROMPT =
-	"[system] This session is being archived. Before it closes, take a moment to write " +
-	"any salient facts worth preserving across sessions — decisions, file paths, key " +
-	"results, lessons learned, unfinished threads — to your wiki memory (use the Wiki " +
-	"tool to create or update nodes in your memory subtree). " +
-	"Be selective: only durable facts a future session would need, not a recap of every step. " +
-	"After you finish writing (or if there is nothing worth saving), end your turn with a " +
-	"brief text response. The session will be exported to JSON once you finish.";
+export const ARCHIVE_MEMORY_PROMPT = DEFAULT_ARCHIVE_MEMORY_PROMPT;
 
 export class AgentLoop implements AgentRuntime {
 	private session: AgentSession;

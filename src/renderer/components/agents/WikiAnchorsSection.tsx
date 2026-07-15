@@ -196,86 +196,73 @@ export function WikiAnchorsSection({ form, agentId, wikiNodes, onChange }: Props
 				</table>
 			)}
 
-			{/* Add new anchor — 2-row × 3-column grid: labels on top, controls
-			    aligned below (node select + manual checkbox | inject | Add button).
-			    Replaces the old uneven flex (node flex:2 / inject no-flex / inline
-			    checkbox marginRight) that left the button + checkbox misaligned. */}
+			{/* Add new anchor — 单行 flex,所有控件 alignItems:center 同基线
+			    (node select/input + manual checkbox + Inject select + Add)。
+			    不再用网格/多行 label(那会让 checkbox + 按键相对抬高)。标签靠
+			    aria-label + 占位符,Inject 选项自解释。flexWrap 在窄屏自动换行。 */}
 			<div
 				className="anchor-add"
-				style={{
-					marginTop: 16,
-					display: "grid",
-					gridTemplateColumns: "minmax(220px, 1fr) 150px auto",
-					gap: "4px 10px",
-					alignItems: "center",
-				}}
+				style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
 			>
-				<label style={labelStyle}>Node</label>
-				<label style={labelStyle}>Inject</label>
-				<span aria-hidden="true" />
-
-				<div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
-					{useManual ? (
-						<input
-							type="text"
-							value={manualNodeId}
-							onChange={(e) => setManualNodeId(e.target.value)}
-							placeholder="wiki-root:global / wiki-root:<projectId> / <nodeId>"
-							aria-label="Manual wiki node id"
-							style={{ ...inputStyle, flex: 1, minWidth: 0 }}
-						/>
-					) : (
-						<select
-							value={newNodeId}
-							onChange={(e) => setNewNodeId(e.target.value)}
-							aria-label="Pick wiki node to anchor"
-							style={{ ...inputStyle, flex: 1, minWidth: 0 }}
-						>
-							<option value="">-- pick node --</option>
-							{/* Offer the synthetic roots + global-root explicitly so users can
-							    anchor at the whole tree (zero pattern) even when that root isn't
-							    in the current visible set. */}
-							<option value="wiki-root:global">wiki-root:global (whole tree)</option>
-							{wikiNodes
-								// The global root is already offered explicitly above; the global-scope
-								// refresh returns the whole tree (root included), so skip it here to
-								// avoid a duplicate "wiki-root:global" entry in the dropdown.
-								.filter((n) => n.id !== "wiki-root:global")
-								.map((n) => (
-									<option key={n.id} value={n.id}>
-										{n.title || n.path} ({n.id})
-									</option>
-								))}
-						</select>
-					)}
-					<label
-						className="checkbox-label"
-						title="Enter node id manually"
-						style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", fontSize: 11, color: "var(--text-secondary, #888)" }}
+				{useManual ? (
+					<input
+						type="text"
+						value={manualNodeId}
+						onChange={(e) => setManualNodeId(e.target.value)}
+						placeholder="wiki-root:global / wiki-root:<projectId> / <nodeId>"
+						aria-label="Manual wiki node id"
+						style={{ ...inputStyle, flex: "1 1 220px", minWidth: 120 }}
+					/>
+				) : (
+					<select
+						value={newNodeId}
+						onChange={(e) => setNewNodeId(e.target.value)}
+						aria-label="Pick wiki node to anchor"
+						style={{ ...inputStyle, flex: "1 1 220px", minWidth: 120 }}
 					>
-						<input
-							type="checkbox"
-							checked={useManual}
-							onChange={(e) => setUseManual(e.target.checked)}
-						/>
-						manual
-					</label>
-				</div>
-
+						<option value="">-- pick node --</option>
+						{/* Offer the synthetic roots + global-root explicitly so users can
+						    anchor at the whole tree (zero pattern) even when that root isn't
+						    in the current visible set. */}
+						<option value="wiki-root:global">wiki-root:global (whole tree)</option>
+						{wikiNodes
+							// The global root is already offered explicitly above; the global-scope
+							// refresh returns the whole tree (root included), so skip it here to
+							// avoid a duplicate "wiki-root:global" entry in the dropdown.
+							.filter((n) => n.id !== "wiki-root:global")
+							.map((n) => (
+								<option key={n.id} value={n.id}>
+									{n.title || n.path} ({n.id})
+								</option>
+							))}
+					</select>
+				)}
+				<label
+					className="checkbox-label"
+					title="Enter node id manually"
+					style={{ flex: "0 0 auto", whiteSpace: "nowrap", fontSize: 11, color: "var(--text-secondary, #888)" }}
+				>
+					<input
+						type="checkbox"
+						checked={useManual}
+						onChange={(e) => setUseManual(e.target.checked)}
+					/>
+					manual
+				</label>
 				<select
 					value={newInject}
 					onChange={(e) => setNewInject(e.target.value as Inject)}
 					aria-label="Inject for new anchor"
-					style={{ ...inputStyle, width: "100%" }}
+					style={{ ...inputStyle, flex: "0 0 120px" }}
 				>
 					{INJECT_OPTIONS.map((v) => (
 						<option key={v} value={v}>{v}</option>
 					))}
 				</select>
-
 				<button
 					type="button"
 					className="btn-primary btn-sm"
+					style={{ flex: "0 0 auto" }}
 					onClick={handleAdd}
 					disabled={!(useManual ? manualNodeId.trim() : newNodeId.trim())}
 				>
@@ -362,7 +349,7 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
 	padding: "6px 8px",
 	borderBottom: "1px solid var(--border-color, #333)",
-	verticalAlign: "top",
+	verticalAlign: "middle",
 };
 
 const inputStyle: React.CSSProperties = {
