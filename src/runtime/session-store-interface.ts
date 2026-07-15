@@ -136,6 +136,8 @@ export interface ISessionStore {
 	}): DelegatedTaskRecord;
 	updateDelegatedTask?(id: string, patch: Partial<Pick<DelegatedTaskRecord, "status" | "step" | "turns" | "tokens" | "currentTool" | "result" | "error" | "controlMessage" | "finishRequestedAt" | "completedAt" | "sessionId" | "parentToolCallId">>): DelegatedTaskRecord | undefined;
 	getDelegatedTask?(id: string): DelegatedTaskRecord | undefined;
+	/** sub-4 (#1): hard-delete a delegated_tasks row (acknowledge / abandon). */
+	deleteDelegatedTask?(taskId: string): void;
 	listDelegatedTasks?(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; parentSessionId?: string; status?: DelegatedTaskStatus }): DelegatedTaskRecord[];
 	/** Mark still-running/finishing delegated tasks as interrupted (startup recovery). Returns the count marked. */
 	markRunningDelegatedTasksInterrupted?(): number;

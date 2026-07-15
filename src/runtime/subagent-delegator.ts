@@ -569,6 +569,11 @@ export class SubagentDelegator {
 		this.updateDelegatedTask(taskId, { status: "killed", error: "Abandoned via TaskKill." });
 		// Drop from the live registry → leaves the workbench / TaskList.
 		this.taskRegistry.acknowledge(taskId);
+		// sub-4 (#1): also hard-delete the delegated_tasks row so the next
+		// turn loop's restoreDelegatedTasks doesn't re-seed it as
+		// interrupted/killed. The updateDelegatedTask(killed) above is kept
+		// as a defensive fallback if the delete somehow fails.
+		this.config.db?.deleteDelegatedTask?.(taskId);
 		triggerHooks("SubagentStop", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed" }).catch(() => {});
 		triggerHooks("TaskCompleted", { agentId: this.config.agentId, sessionId: this.config.sessionId, taskId, status: "failed" }).catch(() => {});
 		return true;
@@ -610,7 +615,15 @@ export class SubagentDelegator {
 	 * running tasks (stop them first). Returns false if not terminal / absent.
 	 */
 	acknowledgeTask(taskId: string): boolean {
-		return this.taskRegistry.acknowledge(taskId);
+		const ok = this.taskRegistry.acknowledge(taskId);
+		// sub-4 (#1): also hard-delete the delegated_tasks DB row so a later
+		// restoreDelegatedTasks (new turn loop) doesn't re-seed it — the root
+		// cause of "Task get → disappears → next turn it's back". Best-effort:
+		// ?. short-circuits when no db is wired (test stubs).
+		if (ok) {
+			this.config.db?.deleteDelegatedTask?.(taskId);
+		}
+		return ok;
 	}
 
 	/**

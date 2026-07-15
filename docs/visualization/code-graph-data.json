@@ -680,7 +680,7 @@
 		},
 		{
 			"path": "src/runtime/session-store-interface.ts",
-			"lines": 211,
+			"lines": 213,
 			"dir": "src/runtime",
 			"exports": [],
 			"imports": [
@@ -810,7 +810,7 @@
 		},
 		{
 			"path": "src/runtime/subagent-delegator.ts",
-			"lines": 1122,
+			"lines": 1135,
 			"dir": "src/runtime",
 			"exports": [
 				"delegatedToolPolicy",
@@ -864,24 +864,24 @@
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.getRunningSubloops:534",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:540",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.abandonTask:560",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskRecentCalls:591",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.acknowledgeTask:612",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:623",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:673",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:769",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:871",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:879",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:884",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:893",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:985",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1111",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1118",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskRecentCalls:596",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.acknowledgeTask:617",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:636",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:686",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:782",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:884",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:892",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:897",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:906",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:998",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1124",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1131",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:473",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:838",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:901",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:993",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1015",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.trunc:1040"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:851",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:914",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:1006",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1028",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.trunc:1053"
 			],
 			"description": ""
 		},
@@ -3263,7 +3263,7 @@
 		},
 		{
 			"path": "src/server/session-db.ts",
-			"lines": 1718,
+			"lines": 1730,
 			"dir": "src/server",
 			"exports": [
 				"getSessionDB",
@@ -3337,6 +3337,7 @@
 				"SessionDB.createDelegatedTask",
 				"SessionDB.updateDelegatedTask",
 				"SessionDB.getDelegatedTask",
+				"SessionDB.deleteDelegatedTask",
 				"SessionDB.listDelegatedTasks",
 				"SessionDB.markRunningDelegatedTasksInterrupted"
 			],
@@ -3422,8 +3423,9 @@
 				"src/server/session-db.ts/SessionDB.createDelegatedTask:1623",
 				"src/server/session-db.ts/SessionDB.updateDelegatedTask:1660",
 				"src/server/session-db.ts/SessionDB.getDelegatedTask:1691",
-				"src/server/session-db.ts/SessionDB.listDelegatedTasks:1696",
-				"src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1710"
+				"src/server/session-db.ts/SessionDB.deleteDelegatedTask:1704",
+				"src/server/session-db.ts/SessionDB.listDelegatedTasks:1708",
+				"src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1722"
 			],
 			"description": "SessionDB：SQLite CRUD（sessions/messages/turns/turn_state），cleanOldTurnState 24h 清理"
 		},
@@ -7779,7 +7781,7 @@
 				"src/runtime/subagent-delegator.ts/delegatedToolPolicy:153",
 				"src/core/hook-registry.ts/triggerHooks:137",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:287",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1111",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1124",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.updateDelegatedTask:235",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:260"
 			]
@@ -7801,7 +7803,7 @@
 				"src/runtime/subagent-delegator.ts/delegatedToolPolicy:153",
 				"src/core/hook-registry.ts/triggerHooks:137",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:287",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1111",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1124",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.updateDelegatedTask:235",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:260"
 			]
@@ -7867,8 +7869,8 @@
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
 			"line": 560,
-			"endLine": 575,
-			"statementCount": 13,
+			"endLine": 580,
+			"statementCount": 14,
 			"exported": true,
 			"signature": "method abandonTask(taskId: string)",
 			"description": "sub-4 (TaskKill interrupted→abandon): the parent has chosen NOT to resume\r",
@@ -7878,12 +7880,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskRecentCalls:591",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.getTaskRecentCalls:596",
 			"name": "SubagentDelegator.getTaskRecentCalls",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 591,
-			"endLine": 605,
+			"line": 596,
+			"endLine": 610,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method getTaskRecentCalls(taskId: string, n: number = 3)",
@@ -7891,25 +7893,25 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.acknowledgeTask:612",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.acknowledgeTask:617",
 			"name": "SubagentDelegator.acknowledgeTask",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 612,
-			"endLine": 614,
-			"statementCount": 1,
+			"line": 617,
+			"endLine": 627,
+			"statementCount": 4,
 			"exported": true,
 			"signature": "method acknowledgeTask(taskId: string)",
 			"description": "Parent-agent \"confirm completion\": drop a FINISHED task from the live\r",
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:623",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:636",
 			"name": "SubagentDelegator.requestTaskFinish",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 623,
-			"endLine": 642,
+			"line": 636,
+			"endLine": 655,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method requestTaskFinish(taskId: string, options?: { message?: string; maxTurns?: number })",
@@ -7919,12 +7921,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:673",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:686",
 			"name": "SubagentDelegator.resumeTask",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 673,
-			"endLine": 753,
+			"line": 686,
+			"endLine": 766,
 			"statementCount": 39,
 			"exported": true,
 			"signature": "method resumeTask(taskId: string)",
@@ -7932,7 +7934,7 @@
 			"callees": [
 				"src/runtime/subagent-delegator.ts/delegatedToolPolicy:153",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:287",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1111",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1124",
 				"src/runtime/hooks/turn-seq-tracker.ts/setTurnSeq:31",
 				"src/runtime/hooks/turn-seq-tracker.ts/markTurnStatePrecreated:67",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.updateDelegatedTask:235",
@@ -7941,12 +7943,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:769",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:782",
 			"name": "SubagentDelegator.resumeTaskBackground",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 769,
-			"endLine": 868,
+			"line": 782,
+			"endLine": 881,
 			"statementCount": 55,
 			"exported": true,
 			"signature": "method resumeTaskBackground(taskId: string)",
@@ -7956,64 +7958,64 @@
 				"src/runtime/hooks/turn-seq-tracker.ts/markTurnStatePrecreated:67",
 				"src/runtime/subagent-delegator.ts/delegatedToolPolicy:153",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:287",
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1111",
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1124",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.updateDelegatedTask:235",
 				"src/core/hook-registry.ts/triggerHooks:137",
 				"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:260"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:871",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:884",
 			"name": "SubagentDelegator.listDelegatedTasks",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 871,
-			"endLine": 877,
+			"line": 884,
+			"endLine": 890,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method listDelegatedTasks(filter?: { rootTaskId?: string; parentTaskId?: string })",
 			"description": "List delegated-task records (persisted) for this owner, optionally scoped.",
 			"callees": [
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:871"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:884"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:879",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:892",
 			"name": "SubagentDelegator.suspendUntilWake",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 879,
-			"endLine": 881,
+			"line": 892,
+			"endLine": 894,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method suspendUntilWake(opts: WaitSuspendOptions)",
 			"description": "",
 			"callees": [
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:879"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:892"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:884",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:897",
 			"name": "SubagentDelegator.interruptWaitForUserInput",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 884,
-			"endLine": 886,
+			"line": 897,
+			"endLine": 899,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method interruptWaitForUserInput()",
 			"description": "sub-5: expose the user-input wake source for the loop.",
 			"callees": [
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:884"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:897"
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:893",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:906",
 			"name": "SubagentDelegator.runBackground",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 893,
-			"endLine": 944,
+			"line": 906,
+			"endLine": 957,
 			"statementCount": 42,
 			"exported": true,
 			"signature": "method runBackground(command: string, timeoutSec?: number)",
@@ -8024,12 +8026,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:985",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:998",
 			"name": "SubagentDelegator.adoptBackgroundTask",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 985,
-			"endLine": 1103,
+			"line": 998,
+			"endLine": 1116,
 			"statementCount": 58,
 			"exported": true,
 			"signature": "method adoptBackgroundTask(child: import(\"node:child_process\").ChildProcess, command: string, stdoutChunks: Buffer[], stderrChunks: Buffer[])",
@@ -8040,12 +8042,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1111",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1124",
 			"name": "SubagentDelegator.registerSubLoopHooks",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 1111,
-			"endLine": 1116,
+			"line": 1124,
+			"endLine": 1129,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method registerSubLoopHooks(subLoop: AgentRuntime)",
@@ -8055,18 +8057,18 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1118",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1131",
 			"name": "SubagentDelegator.cleanup",
 			"kind": "method",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 1118,
-			"endLine": 1120,
+			"line": 1131,
+			"endLine": 1133,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method cleanup()",
 			"description": "",
 			"callees": [
-				"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1118"
+				"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1131"
 			]
 		},
 		{
@@ -8083,12 +8085,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:838",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:851",
 			"name": "SubagentDelegator.parentEmit",
 			"kind": "arrow",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 838,
-			"endLine": 838,
+			"line": 851,
+			"endLine": 851,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (event: StreamEvent)",
@@ -8096,12 +8098,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:901",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:914",
 			"name": "SubagentDelegator.parentEmit",
 			"kind": "arrow",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 901,
-			"endLine": 901,
+			"line": 914,
+			"endLine": 914,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (event: StreamEvent)",
@@ -8109,12 +8111,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:993",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.parentEmit:1006",
 			"name": "SubagentDelegator.parentEmit",
 			"kind": "arrow",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 993,
-			"endLine": 993,
+			"line": 1006,
+			"endLine": 1006,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (event: StreamEvent)",
@@ -8122,12 +8124,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1015",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1028",
 			"name": "SubagentDelegator.finalize",
 			"kind": "arrow",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 1015,
-			"endLine": 1097,
+			"line": 1028,
+			"endLine": 1110,
 			"statementCount": 44,
 			"exported": false,
 			"signature": "fn (reason: \"close\" | \"error\", code: number | null, err?: Error)",
@@ -8138,12 +8140,12 @@
 			]
 		},
 		{
-			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.trunc:1040",
+			"id": "src/runtime/subagent-delegator.ts/SubagentDelegator.trunc:1053",
 			"name": "SubagentDelegator.trunc",
 			"kind": "arrow",
 			"file": "src/runtime/subagent-delegator.ts",
-			"line": 1040,
-			"endLine": 1042,
+			"line": 1053,
+			"endLine": 1055,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (s: string)",
@@ -18120,12 +18122,25 @@
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.listDelegatedTasks:1696",
+			"id": "src/server/session-db.ts/SessionDB.deleteDelegatedTask:1704",
+			"name": "SessionDB.deleteDelegatedTask",
+			"kind": "method",
+			"file": "src/server/session-db.ts",
+			"line": 1704,
+			"endLine": 1706,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method deleteDelegatedTask(taskId: string)",
+			"description": "sub-4 (#1): hard-delete a single delegated_tasks row. Called after\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/session-db.ts/SessionDB.listDelegatedTasks:1708",
 			"name": "SessionDB.listDelegatedTasks",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1696,
-			"endLine": 1707,
+			"line": 1708,
+			"endLine": 1719,
 			"statementCount": 20,
 			"exported": true,
 			"signature": "method listDelegatedTasks(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; parentSessionId?: string; status?: DelegatedTaskStatus })",
@@ -18135,12 +18150,12 @@
 			]
 		},
 		{
-			"id": "src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1710",
+			"id": "src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1722",
 			"name": "SessionDB.markRunningDelegatedTasksInterrupted",
 			"kind": "method",
 			"file": "src/server/session-db.ts",
-			"line": 1710,
-			"endLine": 1716,
+			"line": 1722,
+			"endLine": 1728,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method markRunningDelegatedTasksInterrupted()",
@@ -23288,8 +23303,8 @@
 		],
 		"src/runtime/hooks/turn-seq-tracker.ts/setTurnSeq:31": [
 			"src/runtime/hooks/turn-hooks.ts/registerTurnHooks:53",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:673",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:769",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:686",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:782",
 			"src/server/durable-hooks.ts/setSessionTurnSeq:54"
 		],
 		"src/runtime/hooks/turn-seq-tracker.ts/getTurnSeq:27": [
@@ -23378,11 +23393,11 @@
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:431",
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:540",
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.abandonTask:560",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:673",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:769",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:893",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:985",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1015"
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:686",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:782",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:906",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:998",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1028"
 		],
 		"src/runtime/session.ts/AgentSession.estimateMessageTokens:923": [
 			"src/runtime/session.ts/AgentSession.pruneIfNeeded:377",
@@ -23428,9 +23443,9 @@
 		"src/core/encoding.ts/decodeShellBuffer:33": [
 			"src/runtime/subagent-delegation.ts/createSubagentDelegation:61",
 			"src/runtime/subagent-delegation.ts/runBackground:262",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:893",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:985",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1015",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.runBackground:906",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.adoptBackgroundTask:998",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.finalize:1028",
 			"src/core/device-context.ts/execDecode:33",
 			"src/core/encoding.ts/decodeExecBuffers:47"
 		],
@@ -23446,9 +23461,9 @@
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:431",
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.stopTask:540",
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.abandonTask:560",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:623",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:673",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:769"
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.requestTaskFinish:636",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:686",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:782"
 		],
 		"src/runtime/subagent-delegator.ts/SubagentDelegator.createDelegatedSession:185": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:333",
@@ -23457,50 +23472,50 @@
 		"src/runtime/subagent-delegator.ts/delegatedToolPolicy:153": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:333",
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:431",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:673",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:769"
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:686",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:782"
 		],
 		"src/runtime/subagent-delegator.ts/SubagentDelegator.buildSubEventHandler:287": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:333",
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:431",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:673",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:769"
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:686",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:782"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1111": [
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1124": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:333",
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:431",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:673",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:769"
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:686",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:782"
 		],
 		"src/runtime/subagent-delegator.ts/SubagentDelegator.fireOnTaskTerminal:260": [
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTask:333",
 			"src/runtime/subagent-delegator.ts/SubagentDelegator.delegateTaskBackground:431",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:673",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:769"
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:686",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:782"
 		],
 		"src/runtime/hooks/turn-seq-tracker.ts/markTurnStatePrecreated:67": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:673",
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:769",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTask:686",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.resumeTaskBackground:782",
 			"src/server/durable-hooks.ts/setSessionTurnSeq:54",
 			"src/server/durable-hooks.ts/registerDurableHooks:73"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:871": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:871"
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:884": [
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.listDelegatedTasks:884"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:879": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:879"
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:892": [
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.suspendUntilWake:892"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:884": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:884"
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:897": [
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.interruptWaitForUserInput:897"
 		],
 		"src/runtime/hooks/index.ts/registerHooksForLoop:142": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1111",
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.registerSubLoopHooks:1124",
 			"src/server/agent-service.ts/AgentService.buildTempMemoryTurnRunner:1043",
 			"src/server/agent-service.ts/AgentService.createLoopForSession:1246",
 			"src/server/agent-service.ts/AgentService.sendProjectPrompt:1532"
 		],
-		"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1118": [
-			"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1118"
+		"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1131": [
+			"src/runtime/subagent-delegator.ts/SubagentDelegator.cleanup:1131"
 		],
 		"src/runtime/task-registry.ts/TaskRegistry.fireChange:83": [
 			"src/runtime/task-registry.ts/TaskRegistry._flushChangeForTest:77",
@@ -24974,7 +24989,7 @@
 		],
 		"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1595": [
 			"src/server/session-db.ts/SessionDB.getDelegatedTask:1691",
-			"src/server/session-db.ts/SessionDB.listDelegatedTasks:1696"
+			"src/server/session-db.ts/SessionDB.listDelegatedTasks:1708"
 		],
 		"src/server/session-manager.ts/SessionManager.fireMetrics:129": [
 			"src/server/session-manager.ts/SessionManager._flushMetricsForTest:123",

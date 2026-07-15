@@ -1693,6 +1693,18 @@ export class SessionDB {
 		return row ? this.delegatedTaskRowToRecord(row) : undefined;
 	}
 
+	/**
+	 * sub-4 (#1): hard-delete a single delegated_tasks row. Called after
+	 * `acknowledgeTask` (Task get on a terminal task) and after `abandonTask`
+	 * (TaskKill on an interrupted task) so the row no longer sits in the table
+	 * waiting to be re-seeded by `restoreDelegatedTasks` on the next turn loop
+	 * (which was the root cause of "Task get → disappears → next turn it's
+	 * back"). No-op if the id doesn't exist. No schema change.
+	 */
+	deleteDelegatedTask(taskId: string): void {
+		this.db.prepare("DELETE FROM delegated_tasks WHERE id = ?").run(taskId);
+	}
+
 	listDelegatedTasks(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; parentSessionId?: string; status?: DelegatedTaskStatus }): DelegatedTaskRecord[] {
 		const where: string[] = [];
 		const vals: any[] = [];

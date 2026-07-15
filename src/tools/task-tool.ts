@@ -288,6 +288,26 @@ export const taskTool = buildTool({
 				lines.push("");
 				lines.push(`Total: ${tasks.length} tasks, ${running.length} running`);
 
+				// sub-4 (#10): aggregate Summary line — tokens sum, elapsed sum
+				// (completed → completedAt-startedAt, running → now-startedAt),
+				// and the longest single-task elapsed. Always emitted (no flag);
+				// reflects the post-filter set. Safe on empty sets (early-return
+				// above handles tasks.length===0; this just stays correct if the
+				// early-return is ever lifted).
+				const summaryNow = Date.now();
+				let totalTokens = 0;
+				let totalElapsedSec = 0;
+				let maxElapsedSec = 0;
+				for (const t of tasks) {
+					totalTokens += t.tokens || 0;
+					const elapsedSec = t.completedAt
+						? Math.round((t.completedAt - t.startedAt) / 1000)
+						: Math.round((summaryNow - t.startedAt) / 1000);
+					totalElapsedSec += elapsedSec;
+					if (elapsedSec > maxElapsedSec) maxElapsedSec = elapsedSec;
+				}
+				lines.push(`Summary: ${tasks.length} tasks | tokens ${totalTokens} | elapsed ${totalElapsedSec}s (running ${running.length}, max ${maxElapsedSec}s)`);
+
 				// Tree view (appended when there are nested tasks — parentTaskId present).
 				const hasNested = tasks.some((t) => t.parentTaskId);
 				if (hasNested) {
