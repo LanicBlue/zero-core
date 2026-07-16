@@ -531,4 +531,42 @@ export class WikiNodeRepository {
 			)
 			.all(ftsQuery, safeLimit) as WikiNodeRow[];
 	}
+
+	// -----------------------------------------------------------------------
+	// Subtree primitives（plan-02 service 层用 —— 不开 transaction,由调用方包装）
+	// -----------------------------------------------------------------------
+
+	/**
+	 * 取所有严格后代（path LIKE `<escapedPrefix>/%` ESCAPE '\'）,含归档行。
+	 *
+	 * @param escapedPrefix **已 escape** 的 path 前缀。调用方必须先 escape `%` / `_`
+	 *   和确保 `'\\'` 作为 escape char:见 wiki-service.ts collectSubtreeRows 的用法。
+	 *   本方法不做 escape,避免双重 escape。
+	 */
+	getAllByPathPrefix(escapedPrefix: string): WikiNodeRow[] {
+		// 用 LIKE 的 ESCAPE 子句:把传入前缀视为字面量,后跟 `/%` 匹配子路径。
+		// 调用方已 escape `%` 和 `_` 为 `\%` / `\_`,本方法加 `/%` 后缀 + ESCAPE `'\'`。
+		return this.db
+			.prepare(
+				`SELECT * FROM wiki_nodes
+				 WHERE path LIKE ? || '/%' ESCAPE '\\'
+				 ORDER BY path ASC, id ASC`,
+			)
+			.all(escapedPrefix) as WikiNodeRow[];
+	}
+
+	/**
+	 * 只更新 path（move 后代专用;不 bump revision,不改 updated_at）。
+	 *
+	 * 设计（plan-02 §4「仅被移动根节点 revision +1;后代 path 是派生更新,
+	 * 后代 revision/updated_at 不变」）:materialized path 是结构性派生数据,
+	 * 更新它不算内容修改 —— 后代节点的 revision/updated_at 必须保持不变。
+	 *
+	 * 调用方必须在显式 transaction 内。
+	 */
+	updateChildPathOnly(id: number, newPath: string): void {
+		this.db
+			.prepare(`UPDATE wiki_nodes SET path = ? WHERE id = ?`)
+			.run(newPath, id);
+	}
 }

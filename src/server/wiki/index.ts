@@ -67,3 +67,24 @@ export type {
 	AppendAuditInput,
 	AppendAuditResult,
 } from "./wiki-audit-repository.js";
+
+// plan-02 data-plane service layer（wiki-system-redesign）
+export { WikiService, WIKI_MOVE_NODE_CAP } from "./wiki-service.js";
+export type { WikiServiceDeps } from "./wiki-service.js";
+export { WikiAddressService } from "./wiki-address-service.js";
+export type {
+	WikiAddressContext,
+	WikiResolvedAddress,
+	RegisterAddressInput,
+	WikiAddressResolver,
+} from "./wiki-address-service.js";
+export {
+	WIKI_DYNAMIC_MEMORY_SCHEME,
+	WIKI_DYNAMIC_PROJECT_SCHEME,
+	WIKI_ADDRESS_RESOLVERS,
+} from "./wiki-address-service.js";
+export { WikiAuthorizationService } from "./wiki-authorization-service.js";
+export type { WikiAuthorizationDecision } from "./wiki-authorization-service.js";
+export { WikiEditService } from "./wiki-edit-service.js";
+export type { SectionHit } from "./wiki-edit-service.js";
+export { WikiServiceError, isWikiServiceError, wikiError, assertFound } from "./wiki-errors.js";

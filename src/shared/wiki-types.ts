@@ -346,6 +346,64 @@ export interface WikiPageRequest {
 }
 
 // ---------------------------------------------------------------------------
+// Request context（plan-02 §1 / design.md §7.2 / §7.4）
+// ---------------------------------------------------------------------------
+
+/**
+ * 普通 Agent 数据面调用上下文（plan-02 §1）。
+ *
+ * 关键不变量（plan-02 §3 / acceptance-02 §C「compiled access 不能从 service 输入
+ * 中的 agentId/projectId 被覆盖」）:
+ *   - `access` 由 AgentService 在 session build 时编译为 `CompiledWikiAccess`,
+ *     由 host（Agent loop / REST host for UI）注入;**禁止**由 Agent 工具输入
+ *     自报。WikiService 必须忽略 req 中的 agentId/projectId/scope 字段 —— 唯一
+ *     权威来源是 ctx.access。
+ *   - 普通 ctx 不能执行管理面 action（restore / hardDelete / 地址注册）。
+ *   - `agentId` / `activeProjectId` 用于解析 `memory://` / `project://`,
+ *     不用于授权覆盖。
+ */
+export interface WikiRequestContext {
+	/** Host 注入的编译后访问上下文（权威 grants 来源）。 */
+	access: CompiledWikiAccess;
+	/** Agent 稳定 ID（用于解析 memory:// + audit）。 */
+	agentId: string;
+	/** 当前活跃项目稳定 ID（用于解析 project://;可能为空）。 */
+	activeProjectId?: string;
+	/** 会话 ID（audit 关联;可选）。 */
+	sessionId?: string | null;
+	/** 请求 ID（安全重试去重;可选）。 */
+	requestId?: string | null;
+}
+
+/**
+ * 管理面调用上下文（plan-02 §1 / §4）。restore / hardDelete / 地址注册走此 ctx。
+ *
+ * 设计（plan-02 §4 + design.md §7.4）：REST host 为管理 UI 注入管理 authority;
+ * UI 不提交任意 callerCtx 或 grants。管理面 ctx 不携带 Agent grants —— 权限来自
+ * host 的管理 authority 校验（不在 WikiService 内判定）。
+ */
+export interface WikiAdminRequestContext {
+	/** 管理通道标识（如 'rest-ui' / 'cli' / 'indexer'）。 */
+	channel: string;
+	/** 操作发起者（用户 ID / 系统服务名;audit 用）。 */
+	actor: string;
+	/** 请求 ID（安全重试去重;可选）。 */
+	requestId?: string | null;
+	/** 会话 ID（audit;可选）。 */
+	sessionId?: string | null;
+	/**
+	 * 可选的管理员视图：当管理操作需要走 Agent grants 判定时（罕见,例如 index
+	 * batch），host 可注入 effective access。无则视为管理 authority 已通过。
+	 */
+	effectiveAccess?: CompiledWikiAccess;
+}
+
+/**
+ * 任意 Wiki 调用上下文（internal helper 用;公开 API 用具体子类型）。
+ */
+export type AnyWikiRequestContext = WikiRequestContext | WikiAdminRequestContext;
+
+// ---------------------------------------------------------------------------
 // Compiled grants / access（design.md §7.2）— shape only, no logic in plan-01
 // ---------------------------------------------------------------------------
 
@@ -409,4 +467,298 @@ export interface WikiMutationResult {
 	auditId: string;
 	/** 操作前的修订号（便于客户端冲突检测）。 */
 	oldRevision: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Data-plane request / result shapes（plan-02 §1 / design.md §8.3–§8.9）
+// ---------------------------------------------------------------------------
+
+/**
+ * 逻辑地址输入。接受 canonical path（`wiki-root/...`）、动态地址（`memory://` /
+ * `project://`）或静态 alias（`runtime://...`）。
+ */
+export interface WikiAddressInput {
+	/**
+	 * 节点地址（canonical / 动态 / alias）。`memory://` / `project://` 走内建
+	 * 动态 resolver;其它 scheme 走 wiki_addresses 静态 alias。
+	 */
+	address: string;
+}
+
+/** 分页参数（design.md §8.3 expand）。 */
+export interface WikiPaginationInput {
+	/** 每页上限（service 层裁剪到合法区间）。 */
+	limit?: number;
+	/** 上一页 cursor;首次请求不传。 */
+	cursor?: string | null;
+}
+
+/**
+ * `expand` 请求（design.md §8.3）。返回当前节点 summary + 直接 children 分页,
+ * 不返回长正文。
+ */
+export interface WikiExpandRequest extends WikiAddressInput, WikiPaginationInput {
+	/** 是否在每个 child 上附带 link 摘要计数。 */
+	includeLinks?: boolean;
+}
+
+/**
+ * `expand` 结果项（一个直接 child 的紧凑视图）。
+ */
+export interface WikiExpandChildItem {
+	/** Child 规范路径。 */
+	path: string;
+	/** 最后一段 name。 */
+	name: string;
+	/** v1 闭合 kind。 */
+	kind: WikiNodeKind;
+	/** 短摘要。 */
+	summary: string;
+	/** 当前 revision。 */
+	revision: number;
+	/** display title。 */
+	displayTitle: string;
+	/** 是否归档（expand 默认只返回 active;管理面可包含 archived）。 */
+	archived: boolean;
+	/** Outgoing + incoming 链接计数（includeLinks=true 时填）。 */
+	outgoingCount?: number;
+	incomingCount?: number;
+}
+
+/**
+ * `expand` 结果。
+ */
+export interface WikiExpandResult {
+	/** 当前节点规范路径。 */
+	path: string;
+	/** 当前节点 summary。 */
+	summary: string;
+	/** 当前节点 display title。 */
+	displayTitle: string;
+	/** 当前节点 kind。 */
+	kind: WikiNodeKind;
+	/** 直接 children 分页。 */
+	children: WikiPageResult<WikiExpandChildItem>;
+	/** 操作 audit receipt（read-only action 也记录一条 expand 操作;null=未记录）。 */
+	auditId: string | null;
+}
+
+/**
+ * `read` 请求视图选择（design.md §8.4）。
+ */
+export type WikiReadView = "summary" | "content" | "links" | "all" | "source";
+
+/**
+ * `read` 请求（design.md §8.4）。
+ */
+export interface WikiReadRequest extends WikiAddressInput {
+	/** 视图选择（默认 summary）。 */
+	view?: WikiReadView;
+	/** section 名（content 视图;按 heading 取一段）。 */
+	section?: string | null;
+	/** 同名 section 1-based occurrence（可选）。 */
+	sectionOccurrence?: number | null;
+	/** 同名 section level 消歧（可选）。 */
+	sectionLevel?: number | null;
+	/** content 行范围（line_start / line_end;可选）。 */
+	lineStart?: number | null;
+	lineEnd?: number | null;
+	/** source 视图模式（indexed / dirty;plan-03 实现 dirty）。 */
+	sourceView?: "indexed" | "dirty" | null;
+}
+
+/**
+ * `read` 结果。
+ */
+export interface WikiReadResult {
+	/** 节点规范路径。 */
+	path: string;
+	/** 节点视图（含 summary / attributes 等完整字段;无内部 ID）。 */
+	node: WikiNodeView;
+	/**
+	 * 当 view=content/all 时的正文内容（按 section / lineStart-lineEnd 切片后）。
+	 * WikiNodeView 不含 content（避免 expand/search 携带长正文）—— read action
+	 * 显式在此字段提供。
+	 */
+	content?: string;
+	/** 当 view 包含 links 时的可见链接列表（已按授权过滤对端不可见条目）。 */
+	links?: {
+		outgoing: WikiLinkView[];
+		incoming: WikiLinkView[];
+	};
+	/** 当 view=source 时的源码元数据（无则不填）。 */
+	source?: {
+		repositoryId: string;
+		sourcePath: string;
+		indexedRevision: string;
+		syncStatus: string;
+	};
+	/** 行范围或 section 切片（view=content 时;null 表示全文）。 */
+	contentSlice?: {
+		/** 切片起点行号（1-based;null=从 1 开始）。 */
+		startLine: number | null;
+		/** 切片终点行号（1-based inclusive;null=到末尾）。 */
+		endLine: number | null;
+		/** 总行数（用于客户端判断是否被截断）。 */
+		totalLines: number;
+	};
+	/** 操作 audit receipt（read-only;null=未记录）。 */
+	auditId: string | null;
+}
+
+/**
+ * `create` 请求（design.md §8.6）。
+ */
+export interface WikiCreateRequest {
+	/** 父节点地址。 */
+	parent: string;
+	/** 新节点最后一段 name。 */
+	name: string;
+	/** v1 闭合 kind（默认 node）。 */
+	kind?: WikiNodeKind;
+	/** 短摘要。 */
+	summary?: string;
+	/** 长正文（默认空串）。 */
+	content?: string;
+	/** attributes 容器（整体写入;后续 update 走字段级 patch）。 */
+	attributes?: WikiNodeAttributes;
+	/** 创建者标识（默认取 ctx.agentId）。 */
+	createdBy?: string | null;
+}
+
+/**
+ * 字段更新集合（design.md §8.7 字段更新）。`attributes` 为字段级 patch;
+ * 值为 `null` 删除该 key。
+ */
+export interface WikiUpdateFieldChanges {
+	/** 新 summary。 */
+	summary?: string;
+	/** 整段 content 替换（少见;常用 operations 局部编辑）。 */
+	content?: string;
+	/** attributes 字段级 patch（null 删除 key,不传 key 不动）。 */
+	attributes?: WikiNodeAttributes | null;
+}
+
+/**
+ * 单个局部编辑 operation（design.md §8.7）。
+ */
+export type WikiEditOperation =
+	| {
+		op: "replace_text";
+		old_text: string;
+		new_text: string;
+		expected_occurrences?: number | null;
+	}
+	| {
+		op: "insert_before";
+		text: string;
+		anchor: string;
+		anchor_section?: string | null;
+	}
+	| {
+		op: "insert_after";
+		text: string;
+		anchor: string;
+		anchor_section?: string | null;
+	}
+	| {
+		op: "append";
+		text: string;
+	}
+	| {
+		op: "prepend";
+		text: string;
+	}
+	| {
+		op: "replace_section";
+		section: string;
+		new_text: string;
+		level?: number | null;
+		occurrence?: number | null;
+	}
+	| {
+		op: "append_to_section";
+		section: string;
+		text: string;
+		level?: number | null;
+		occurrence?: number | null;
+	}
+	| {
+		op: "delete_section";
+		section: string;
+		level?: number | null;
+		occurrence?: number | null;
+	};
+
+/**
+ * `update` 请求（design.md §8.7）。`changes` 与 `operations` 二选一或都传
+ * （先应用 changes 再 operations;同一 transaction 内 revision +1 一次）。
+ */
+export interface WikiUpdateRequest extends WikiAddressInput {
+	/** 乐观并发：调用方观察到的当前 revision。 */
+	expected_revision: number;
+	/** 字段级更新（可选;不传则不修改具体字段）。 */
+	changes?: WikiUpdateFieldChanges;
+	/** 局部正文编辑（可选）。 */
+	operations?: WikiEditOperation[];
+}
+
+/**
+ * `archive`（默认 delete 行为）请求（design.md §8.9）。
+ */
+export interface WikiArchiveRequest extends WikiAddressInput {
+	/** 是否级联整棵子树（默认 true）。 */
+	cascade?: boolean;
+}
+
+/**
+ * `hardDelete` 请求（管理面;design.md §8.9）。
+ */
+export interface WikiHardDeleteRequest extends WikiAddressInput {
+	/** 是否级联整棵子树（默认 true）。 */
+	cascade?: boolean;
+}
+
+/**
+ * `restore` 请求（管理面;plan-02 §4）。重新激活归档节点。
+ */
+export interface WikiRestoreRequest {
+	/** 归档节点的 canonical path（不接受动态地址;管理面使用稳定路径）。 */
+	path: string;
+	/** 是否级联恢复整棵子树（默认 true）。 */
+	cascade?: boolean;
+}
+
+/**
+ * `link` 请求（design.md §8.8）。
+ */
+export interface WikiLinkRequest {
+	/** source 节点地址。 */
+	source: string;
+	/** target 节点地址。 */
+	target: string;
+	/** 关系语义（depends_on / used_by / contains / ...）。 */
+	relation: string;
+}
+
+/**
+ * `unlink` 请求（design.md §8.8）。
+ */
+export interface WikiUnlinkRequest {
+	/** source 节点地址。 */
+	source: string;
+	/** target 节点地址。 */
+	target: string;
+	/** 关系语义。 */
+	relation: string;
+}
+
+/**
+ * `move` 请求（design.md §8.9）。
+ */
+export interface WikiMoveRequest extends WikiAddressInput {
+	/** 新父节点地址。 */
+	newParent: string;
+	/** 可选新 name（不传则保留原名）。 */
+	newName?: string | null;
 }

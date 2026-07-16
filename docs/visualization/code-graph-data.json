@@ -3999,11 +3999,52 @@
 		},
 		{
 			"path": "src/server/wiki/index.ts",
-			"lines": 70,
+			"lines": 91,
 			"dir": "src/server/wiki",
 			"exports": [],
 			"imports": [],
 			"functions": [],
+			"description": ""
+		},
+		{
+			"path": "src/server/wiki/wiki-address-service.ts",
+			"lines": 578,
+			"dir": "src/server/wiki",
+			"exports": [
+				"WikiAddressService.resolve",
+				"WikiAddressService.resolveMemoryDynamic",
+				"WikiAddressService.resolveProjectDynamic",
+				"WikiAddressService.resolveAliasRow",
+				"WikiAddressService.findLongestAliasPrefix",
+				"WikiAddressService.register",
+				"WikiAddressService.update",
+				"WikiAddressService.delete",
+				"WikiAddressService.validate",
+				"WikiAddressService.validateInputShape",
+				"WikiAddressService.assertNoAliasCycle"
+			],
+			"imports": [
+				"src/server/wiki/wiki-repository-store.ts",
+				"src/server/wiki/wiki-node-repository.ts",
+				"src/server/wiki/wiki-path.ts",
+				"src/shared/wiki-types.ts",
+				"src/server/wiki/wiki-errors.ts"
+			],
+			"functions": [
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolve:144",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveMemoryDynamic:203",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveProjectDynamic:220",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveAliasRow:242",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.findLongestAliasPrefix:308",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.register:340",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.update:388",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.delete:439",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.validate:446",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.validateInputShape:460",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.assertNoAliasCycle:517",
+				"src/server/wiki/wiki-address-service.ts/splitRest:555",
+				"src/server/wiki/wiki-address-service.ts/joinPathSegments:567"
+			],
 			"description": ""
 		},
 		{
@@ -4028,6 +4069,32 @@
 				"src/server/wiki/wiki-audit-repository.ts/WikiAuditRepository.listByActor:181",
 				"src/server/wiki/wiki-audit-repository.ts/WikiAuditRepository.listByTimeWindow:196",
 				"src/server/wiki/wiki-audit-repository.ts/WikiAuditRepository.count:226"
+			],
+			"description": ""
+		},
+		{
+			"path": "src/server/wiki/wiki-authorization-service.ts",
+			"lines": 257,
+			"dir": "src/server/wiki",
+			"exports": [
+				"WikiAuthorizationService.authorize",
+				"WikiAuthorizationService.decide",
+				"WikiAuthorizationService.prepareSearchScopes",
+				"WikiAuthorizationService.filterVisibleLinks",
+				"WikiAuthorizationService.canRead"
+			],
+			"imports": [
+				"src/shared/wiki-types.ts",
+				"src/server/wiki/wiki-path.ts",
+				"src/server/wiki/wiki-errors.ts"
+			],
+			"functions": [
+				"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.authorize:69",
+				"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.decide:100",
+				"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.prepareSearchScopes:130",
+				"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.filterVisibleLinks:170",
+				"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.canRead:232",
+				"src/server/wiki/wiki-authorization-service.ts/dedupSorted:247"
 			],
 			"description": ""
 		},
@@ -4067,6 +4134,74 @@
 			"description": ""
 		},
 		{
+			"path": "src/server/wiki/wiki-edit-service.ts",
+			"lines": 458,
+			"dir": "src/server/wiki",
+			"exports": [
+				"WikiEditService.applyOperations",
+				"WikiEditService.applyOne",
+				"WikiEditService.applyReplaceText",
+				"WikiEditService.applyInsertBefore",
+				"WikiEditService.applyInsertAfter",
+				"WikiEditService.applyAppend",
+				"WikiEditService.applyPrepend",
+				"WikiEditService.applyReplaceSection",
+				"WikiEditService.applyAppendToSection",
+				"WikiEditService.applyDeleteSection",
+				"WikiEditService.locateAnchor",
+				"WikiEditService.findSectionPublic",
+				"WikiEditService.findSection",
+				"WikiEditService.enumerateSections"
+			],
+			"imports": [
+				"src/shared/wiki-types.ts",
+				"src/server/wiki/wiki-errors.ts"
+			],
+			"functions": [
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOperations:82",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceText:120",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyInsertBefore:154",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyInsertAfter:162",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyAppend:171",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyPrepend:179",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceSection:191",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyAppendToSection:199",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyDeleteSection:209",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.locateAnchor:240",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSectionPublic:285",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSection:326",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.enumerateSections:341",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.searchIn:244",
+				"src/server/wiki/wiki-edit-service.ts/countOccurrences:392",
+				"src/server/wiki/wiki-edit-service.ts/splitJoinReplace:408",
+				"src/server/wiki/wiki-edit-service.ts/headingText:428",
+				"src/server/wiki/wiki-edit-service.ts/inlineText:439"
+			],
+			"description": ""
+		},
+		{
+			"path": "src/server/wiki/wiki-errors.ts",
+			"lines": 88,
+			"dir": "src/server/wiki",
+			"exports": [
+				"WikiServiceError.toWikiError",
+				"assertFound",
+				"wikiError",
+				"isWikiServiceError"
+			],
+			"imports": [
+				"src/shared/wiki-types.ts"
+			],
+			"functions": [
+				"src/server/wiki/wiki-errors.ts/WikiServiceError.toWikiError:48",
+				"src/server/wiki/wiki-errors.ts/assertFound:61",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-errors.ts/isWikiServiceError:85"
+			],
+			"description": ""
+		},
+		{
 			"path": "src/server/wiki/wiki-link-repository.ts",
 			"lines": 170,
 			"dir": "src/server/wiki",
@@ -4095,7 +4230,7 @@
 		},
 		{
 			"path": "src/server/wiki/wiki-node-repository.ts",
-			"lines": 426,
+			"lines": 573,
 			"dir": "src/server/wiki",
 			"exports": [
 				"rowKindAsKind",
@@ -4113,30 +4248,38 @@
 				"WikiNodeRepository.syncFtsInsert",
 				"WikiNodeRepository.syncFtsUpdate",
 				"WikiNodeRepository.syncFtsDelete",
+				"WikiNodeRepository.readIndexedColumns",
+				"WikiNodeRepository.ftsDeleteCommand",
 				"WikiNodeRepository.rebuildFts",
-				"WikiNodeRepository.searchFts"
+				"WikiNodeRepository.searchFts",
+				"WikiNodeRepository.getAllByPathPrefix",
+				"WikiNodeRepository.updateChildPathOnly"
 			],
 			"imports": [
 				"src/shared/wiki-types.ts"
 			],
 			"functions": [
-				"src/server/wiki/wiki-node-repository.ts/rowKindAsKind:101",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveByPath:121",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getByPath:132",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getById:139",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveChildren:146",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveChildrenPaged:162",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.packPage:191",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.insert:221",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.update:258",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.archive:319",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.unarchive:331",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.hardDelete:344",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsInsert:358",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:371",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:380",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.rebuildFts:392",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.searchFts:411"
+				"src/server/wiki/wiki-node-repository.ts/rowKindAsKind:104",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveByPath:124",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getByPath:135",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getById:142",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveChildren:149",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveChildrenPaged:165",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.packPage:194",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.insert:224",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.update:266",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.archive:341",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.unarchive:353",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.hardDelete:366",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsInsert:398",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:428",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:451",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.readIndexedColumns:468",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.ftsDeleteCommand:484",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.rebuildFts:501",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.searchFts:520",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getAllByPathPrefix:546",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.updateChildPathOnly:567"
 			],
 			"description": ""
 		},
@@ -4229,6 +4372,85 @@
 				"src/server/wiki/wiki-schema.ts/initWikiSchema:64",
 				"src/server/wiki/wiki-schema.ts/markSchemaVersion:255",
 				"src/server/wiki/wiki-schema.ts/readWikiSchemaVersion:266"
+			],
+			"description": ""
+		},
+		{
+			"path": "src/server/wiki/wiki-service.ts",
+			"lines": 1320,
+			"dir": "src/server/wiki",
+			"exports": [
+				"nodeRowToView",
+				"WikiService.fromDatabase",
+				"WikiService.expand",
+				"WikiService.read",
+				"WikiService.create",
+				"WikiService.update",
+				"WikiService.archive",
+				"WikiService.hardDelete",
+				"WikiService.restore",
+				"WikiService.link",
+				"WikiService.unlink",
+				"WikiService.move",
+				"WikiService.ensureAgentMemoryRoot",
+				"WikiService.archiveAgentMemoryRoot",
+				"WikiService.resolveAddress",
+				"WikiService.resolveAddressAdmin",
+				"WikiService.ctxToAddressCtx",
+				"WikiService.assertAgentAccess",
+				"WikiService.isSourceBound",
+				"WikiService.collectSubtree",
+				"WikiService.collectSubtreeRows",
+				"WikiService.collectSubtreeAll",
+				"WikiService.toExpandChildItem",
+				"WikiService.appendAuditSafe"
+			],
+			"imports": [
+				"src/shared/wiki-types.ts",
+				"src/server/wiki/wiki-database.ts",
+				"src/server/wiki/wiki-node-repository.ts",
+				"src/server/wiki/wiki-link-repository.ts",
+				"src/server/wiki/wiki-audit-repository.ts",
+				"src/server/wiki/wiki-repository-store.ts",
+				"src/server/wiki/wiki-address-service.ts",
+				"src/server/wiki/wiki-authorization-service.ts",
+				"src/server/wiki/wiki-edit-service.ts",
+				"src/server/wiki/wiki-path.ts",
+				"src/server/wiki/wiki-errors.ts"
+			],
+			"functions": [
+				"src/server/wiki/wiki-service.ts/nodeRowToView:119",
+				"src/server/wiki/wiki-service.ts/parseAttributesJson:141",
+				"src/server/wiki/wiki-service.ts/WikiService.fromDatabase:167",
+				"src/server/wiki/wiki-service.ts/WikiService.expand:192",
+				"src/server/wiki/wiki-service.ts/WikiService.read:239",
+				"src/server/wiki/wiki-service.ts/WikiService.create:326",
+				"src/server/wiki/wiki-service.ts/WikiService.update:392",
+				"src/server/wiki/wiki-service.ts/WikiService.archive:472",
+				"src/server/wiki/wiki-service.ts/WikiService.hardDelete:529",
+				"src/server/wiki/wiki-service.ts/WikiService.restore:626",
+				"src/server/wiki/wiki-service.ts/WikiService.link:706",
+				"src/server/wiki/wiki-service.ts/WikiService.unlink:758",
+				"src/server/wiki/wiki-service.ts/WikiService.move:806",
+				"src/server/wiki/wiki-service.ts/WikiService.ensureAgentMemoryRoot:923",
+				"src/server/wiki/wiki-service.ts/WikiService.archiveAgentMemoryRoot:1010",
+				"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062",
+				"src/server/wiki/wiki-service.ts/WikiService.resolveAddressAdmin:1071",
+				"src/server/wiki/wiki-service.ts/WikiService.ctxToAddressCtx:1084",
+				"src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1098",
+				"src/server/wiki/wiki-service.ts/WikiService.isSourceBound:1105",
+				"src/server/wiki/wiki-service.ts/WikiService.collectSubtree:1112",
+				"src/server/wiki/wiki-service.ts/WikiService.collectSubtreeRows:1127",
+				"src/server/wiki/wiki-service.ts/WikiService.collectSubtreeAll:1145",
+				"src/server/wiki/wiki-service.ts/WikiService.toExpandChildItem:1152",
+				"src/server/wiki/wiki-service.ts/WikiService.appendAuditSafe:1179",
+				"src/server/wiki/wiki-service.ts/linkRowToView:1203",
+				"src/server/wiki/wiki-service.ts/encodeCursor:1221",
+				"src/server/wiki/wiki-service.ts/decodeCursor:1230",
+				"src/server/wiki/wiki-service.ts/countLines:1250",
+				"src/server/wiki/wiki-service.ts/lineToOffset:1263",
+				"src/server/wiki/wiki-service.ts/offsetToLine:1278",
+				"src/server/wiki/wiki-service.ts/applyAttributesPatch:1289"
 			],
 			"description": ""
 		},
@@ -5037,7 +5259,7 @@
 		},
 		{
 			"path": "src/shared/wiki-types.ts",
-			"lines": 413,
+			"lines": 759,
 			"dir": "src/shared",
 			"exports": [],
 			"imports": [],
@@ -21017,6 +21239,213 @@
 			"callees": []
 		},
 		{
+			"id": "src/server/wiki/wiki-address-service.ts/WikiAddressService.resolve:144",
+			"name": "WikiAddressService.resolve",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 144,
+			"endLine": 197,
+			"statementCount": 27,
+			"exported": true,
+			"signature": "method resolve(address: string, ctx: WikiAddressContext)",
+			"description": "把任意逻辑地址解析为 canonical path。",
+			"callees": [
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveMemoryDynamic:203",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveProjectDynamic:220",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveAliasRow:242",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.findLongestAliasPrefix:308"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveMemoryDynamic:203",
+			"name": "WikiAddressService.resolveMemoryDynamic",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 203,
+			"endLine": 214,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method resolveMemoryDynamic(address: string, ctx: WikiAddressContext)",
+			"description": "memory:// scheme 解析。`memory://` → `wiki-root/memory/<agentId>`;",
+			"callees": [
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-address-service.ts/joinPathSegments:567"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveProjectDynamic:220",
+			"name": "WikiAddressService.resolveProjectDynamic",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 220,
+			"endLine": 234,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method resolveProjectDynamic(address: string, ctx: WikiAddressContext)",
+			"description": "project:// scheme 解析。`project://` → `wiki-root/projects/<projectId>`;",
+			"callees": [
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-address-service.ts/joinPathSegments:567"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveAliasRow:242",
+			"name": "WikiAddressService.resolveAliasRow",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 242,
+			"endLine": 302,
+			"statementCount": 23,
+			"exported": true,
+			"signature": "method resolveAliasRow(row: WikiAddressRow, ctx: WikiAddressContext, rest: string | null)",
+			"description": "按一行 wiki_addresses 解析为 canonical path。处理两种情况:",
+			"callees": [
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-address-service.ts/joinPathSegments:567"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/WikiAddressService.findLongestAliasPrefix:308",
+			"name": "WikiAddressService.findLongestAliasPrefix",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 308,
+			"endLine": 325,
+			"statementCount": 9,
+			"exported": true,
+			"signature": "method findLongestAliasPrefix(address: string)",
+			"description": "找最长前缀匹配的注册地址。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/WikiAddressService.register:340",
+			"name": "WikiAddressService.register",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 340,
+			"endLine": 383,
+			"statementCount": 14,
+			"exported": true,
+			"signature": "method register(input: RegisterAddressInput)",
+			"description": "创建或更新地址注册。错误映射（plan-02 §2）:",
+			"callees": [
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.validateInputShape:460",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.assertNoAliasCycle:517"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/WikiAddressService.update:388",
+			"name": "WikiAddressService.update",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 388,
+			"endLine": 434,
+			"statementCount": 17,
+			"exported": true,
+			"signature": "method update(address: string, patch: Omit<RegisterAddressInput, \"address\">)",
+			"description": "更新地址注册（target / resolver / scope / kind / promptPolicy）。",
+			"callees": [
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.validateInputShape:460",
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.assertNoAliasCycle:517"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/WikiAddressService.delete:439",
+			"name": "WikiAddressService.delete",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 439,
+			"endLine": 441,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method delete(address: string)",
+			"description": "删除地址注册。不存在视为已删除（幂等）。",
+			"callees": [
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.delete:439"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/WikiAddressService.validate:446",
+			"name": "WikiAddressService.validate",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 446,
+			"endLine": 454,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method validate(input: RegisterAddressInput)",
+			"description": "静态校验（不入库）：返回 ok / 错误码 + 消息。给 UI 预检 / 测试用。",
+			"callees": [
+				"src/server/wiki/wiki-address-service.ts/WikiAddressService.validateInputShape:460"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/WikiAddressService.validateInputShape:460",
+			"name": "WikiAddressService.validateInputShape",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 460,
+			"endLine": 510,
+			"statementCount": 18,
+			"exported": true,
+			"signature": "method validateInputShape(input: RegisterAddressInput)",
+			"description": "WikiAddressService —— 逻辑地址解析 + 静态地址注册（管理面）。",
+			"callees": [
+				"src/server/wiki/wiki-errors.ts/wikiError:74"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/WikiAddressService.assertNoAliasCycle:517",
+			"name": "WikiAddressService.assertNoAliasCycle",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 517,
+			"endLine": 548,
+			"statementCount": 19,
+			"exported": true,
+			"signature": "method assertNoAliasCycle(sourceAddress: string, targetId: number | null)",
+			"description": "Alias 循环检测:targetId 节点若被另一条 alias 指向,跟随 target 链最多 32 跳,",
+			"callees": [
+				"src/server/wiki/wiki-errors.ts/wikiError:74"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/splitRest:555",
+			"name": "splitRest",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 555,
+			"endLine": 561,
+			"statementCount": 3,
+			"exported": false,
+			"signature": "function splitRest(rest: string)",
+			"description": "把相对段字符串拆成路径段数组。`a/b/c` → `[\"a\", \"b\", \"c\"]`。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-address-service.ts/joinPathSegments:567",
+			"name": "joinPathSegments",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-address-service.ts",
+			"line": 567,
+			"endLine": 574,
+			"statementCount": 5,
+			"exported": false,
+			"signature": "function joinPathSegments(base: string, rest: string)",
+			"description": "把 base canonical path 与多段 rest 拼成最终 canonical path。逐段 joinWikiPath",
+			"callees": [
+				"src/server/wiki/wiki-address-service.ts/splitRest:555",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:233"
+			]
+		},
+		{
 			"id": "src/server/wiki/wiki-audit-repository.ts/WikiAuditRepository.append:105",
 			"name": "WikiAuditRepository.append",
 			"kind": "method",
@@ -21105,6 +21534,101 @@
 			"exported": true,
 			"signature": "method count()",
 			"description": "统计总记录数(管理面健康指标)。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.authorize:69",
+			"name": "WikiAuthorizationService.authorize",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-authorization-service.ts",
+			"line": 69,
+			"endLine": 94,
+			"statementCount": 11,
+			"exported": true,
+			"signature": "method authorize(action: WikiAction, canonicalPath: string, access: CompiledWikiAccess)",
+			"description": "判定 access 是否允许在 canonicalPath 上执行 action。",
+			"callees": [
+				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
+				"src/server/wiki/wiki-path.ts/isSameOrDescendant:266",
+				"src/server/wiki/wiki-errors.ts/wikiError:74"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.decide:100",
+			"name": "WikiAuthorizationService.decide",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-authorization-service.ts",
+			"line": 100,
+			"endLine": 114,
+			"statementCount": 8,
+			"exported": true,
+			"signature": "method decide(action: WikiAction, canonicalPath: string, access: CompiledWikiAccess)",
+			"description": "非抛出版本:返回 decision。便于调用方在不抛 NOT_FOUND 的场景（如 search scope",
+			"callees": [
+				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
+				"src/server/wiki/wiki-path.ts/isSameOrDescendant:266"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.prepareSearchScopes:130",
+			"name": "WikiAuthorizationService.prepareSearchScopes",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-authorization-service.ts",
+			"line": 130,
+			"endLine": 155,
+			"statementCount": 11,
+			"exported": true,
+			"signature": "method prepareSearchScopes(access: CompiledWikiAccess, requestedScope?: string | null)",
+			"description": "计算当前 access 在 search action 下可见的 canonical scope 列表。若提供",
+			"callees": [
+				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
+				"src/server/wiki/wiki-authorization-service.ts/dedupSorted:247",
+				"src/server/wiki/wiki-path.ts/isSameOrDescendant:266"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.filterVisibleLinks:170",
+			"name": "WikiAuthorizationService.filterVisibleLinks",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-authorization-service.ts",
+			"line": 170,
+			"endLine": 227,
+			"statementCount": 12,
+			"exported": true,
+			"signature": "method filterVisibleLinks(nodeCanonicalPath: string, links: ReadonlyArray<{\n\t\t\tsourcePath: string;\n\t\t\ttargetPath: string;\n\t\t\trelation: string;\n\t\t\tcreatedAt: string;\n\t\t\tcreatedBy: string | null;\n\t\t}>, access: CompiledWikiAccess)",
+			"description": "过滤链接列表,只保留对端（source/target 中不是 `nodePath` 的那一端）路径",
+			"callees": [
+				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
+				"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.canRead:232"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.canRead:232",
+			"name": "WikiAuthorizationService.canRead",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-authorization-service.ts",
+			"line": 232,
+			"endLine": 241,
+			"statementCount": 7,
+			"exported": true,
+			"signature": "method canRead(canonicalPath: string, access: CompiledWikiAccess)",
+			"description": "判断 access 是否允许 read 该 canonicalPath。",
+			"callees": [
+				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
+				"src/server/wiki/wiki-path.ts/isSameOrDescendant:266"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-authorization-service.ts/dedupSorted:247",
+			"name": "dedupSorted",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-authorization-service.ts",
+			"line": 247,
+			"endLine": 256,
+			"statementCount": 8,
+			"exported": false,
+			"signature": "function dedupSorted(arr: string[])",
+			"description": "数组去重并保持稳定排序（按字母序）。供 prepareSearchScopes 使用。",
 			"callees": []
 		},
 		{
@@ -21235,6 +21759,349 @@
 			]
 		},
 		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOperations:82",
+			"name": "WikiEditService.applyOperations",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 82,
+			"endLine": 88,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method applyOperations(content: string, operations: WikiEditOperation[])",
+			"description": "按序应用 operations 到 content,返回新 content。任意 op 失败则抛",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93",
+			"name": "WikiEditService.applyOne",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 93,
+			"endLine": 114,
+			"statementCount": 10,
+			"exported": true,
+			"signature": "method applyOne(content: string, op: WikiEditOperation)",
+			"description": "应用单个 operation。",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceText:120",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyInsertBefore:154",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyInsertAfter:162",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyAppend:171",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyPrepend:179",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceSection:191",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyAppendToSection:199",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyDeleteSection:209",
+				"src/server/wiki/wiki-errors.ts/wikiError:74"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceText:120",
+			"name": "WikiEditService.applyReplaceText",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 120,
+			"endLine": 152,
+			"statementCount": 11,
+			"exported": true,
+			"signature": "method applyReplaceText(content: string, op: Extract<WikiEditOperation, { op: \"replace_text\" }>)",
+			"description": "WikiEditService —— 局部正文编辑纯函数实现。",
+			"callees": [
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-edit-service.ts/countOccurrences:392",
+				"src/server/wiki/wiki-edit-service.ts/splitJoinReplace:408"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.applyInsertBefore:154",
+			"name": "WikiEditService.applyInsertBefore",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 154,
+			"endLine": 160,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method applyInsertBefore(content: string, op: Extract<WikiEditOperation, { op: \"insert_before\" }>)",
+			"description": "WikiEditService —— 局部正文编辑纯函数实现。",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.locateAnchor:240"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.applyInsertAfter:162",
+			"name": "WikiEditService.applyInsertAfter",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 162,
+			"endLine": 169,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method applyInsertAfter(content: string, op: Extract<WikiEditOperation, { op: \"insert_after\" }>)",
+			"description": "WikiEditService —— 局部正文编辑纯函数实现。",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.locateAnchor:240"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.applyAppend:171",
+			"name": "WikiEditService.applyAppend",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 171,
+			"endLine": 177,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method applyAppend(content: string, op: Extract<WikiEditOperation, { op: \"append\" }>)",
+			"description": "WikiEditService —— 局部正文编辑纯函数实现。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.applyPrepend:179",
+			"name": "WikiEditService.applyPrepend",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 179,
+			"endLine": 185,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method applyPrepend(content: string, op: Extract<WikiEditOperation, { op: \"prepend\" }>)",
+			"description": "WikiEditService —— 局部正文编辑纯函数实现。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceSection:191",
+			"name": "WikiEditService.applyReplaceSection",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 191,
+			"endLine": 197,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method applyReplaceSection(content: string, op: Extract<WikiEditOperation, { op: \"replace_section\" }>)",
+			"description": "WikiEditService —— 局部正文编辑纯函数实现。",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSection:326"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.applyAppendToSection:199",
+			"name": "WikiEditService.applyAppendToSection",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 199,
+			"endLine": 207,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method applyAppendToSection(content: string, op: Extract<WikiEditOperation, { op: \"append_to_section\" }>)",
+			"description": "WikiEditService —— 局部正文编辑纯函数实现。",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSection:326"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.applyDeleteSection:209",
+			"name": "WikiEditService.applyDeleteSection",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 209,
+			"endLine": 227,
+			"statementCount": 10,
+			"exported": true,
+			"signature": "method applyDeleteSection(content: string, op: Extract<WikiEditOperation, { op: \"delete_section\" }>)",
+			"description": "WikiEditService —— 局部正文编辑纯函数实现。",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSection:326"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.locateAnchor:240",
+			"name": "WikiEditService.locateAnchor",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 240,
+			"endLine": 267,
+			"statementCount": 15,
+			"exported": true,
+			"signature": "method locateAnchor(content: string, anchor: string, section: string | null)",
+			"description": "在 content 中定位 anchor 的字节偏移。如果 anchor_section 提供,先定位 section,",
+			"callees": [
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-edit-service.ts/countOccurrences:392",
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSection:326"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.findSectionPublic:285",
+			"name": "WikiEditService.findSectionPublic",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 285,
+			"endLine": 320,
+			"statementCount": 17,
+			"exported": true,
+			"signature": "method findSectionPublic(content: string, name: string, level: number | null, occurrence: number | null)",
+			"description": "用 unified + remark-parse 解析 content,枚举所有 heading,按",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.enumerateSections:341",
+				"src/server/wiki/wiki-errors.ts/wikiError:74"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.findSection:326",
+			"name": "WikiEditService.findSection",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 326,
+			"endLine": 333,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method findSection(content: string, name: string, level: number | null, occurrence: number | null)",
+			"description": "WikiEditService —— 局部正文编辑纯函数实现。",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSectionPublic:285"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.enumerateSections:341",
+			"name": "WikiEditService.enumerateSections",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 341,
+			"endLine": 382,
+			"statementCount": 21,
+			"exported": true,
+			"signature": "method enumerateSections(content: string)",
+			"description": "用 remark-parse 解析 content,枚举所有 section（每个 heading 对应一段 section,",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/headingText:428"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/WikiEditService.searchIn:244",
+			"name": "WikiEditService.searchIn",
+			"kind": "arrow",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 244,
+			"endLine": 259,
+			"statementCount": 6,
+			"exported": false,
+			"signature": "fn (haystack: string, label: string)",
+			"description": "",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/countOccurrences:392",
+				"src/server/wiki/wiki-errors.ts/wikiError:74"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/countOccurrences:392",
+			"name": "countOccurrences",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 392,
+			"endLine": 403,
+			"statementCount": 11,
+			"exported": false,
+			"signature": "function countOccurrences(haystack: string, needle: string)",
+			"description": "计算子串出现次数（不重叠,从左向右扫）。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/splitJoinReplace:408",
+			"name": "splitJoinReplace",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 408,
+			"endLine": 419,
+			"statementCount": 11,
+			"exported": false,
+			"signature": "function splitJoinReplace(haystack: string, needle: string, replacement: string)",
+			"description": "把 haystack 中所有 needle 替换为 replacement（不重叠）。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/headingText:428",
+			"name": "headingText",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 428,
+			"endLine": 434,
+			"statementCount": 4,
+			"exported": false,
+			"signature": "function headingText(node: Heading)",
+			"description": "从 mdast heading node 展平 children 取文本。支持 text / strong / em / code /",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/inlineText:439"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-edit-service.ts/inlineText:439",
+			"name": "inlineText",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-edit-service.ts",
+			"line": 439,
+			"endLine": 453,
+			"statementCount": 11,
+			"exported": false,
+			"signature": "function inlineText(node: unknown)",
+			"description": "内联节点展平。递归处理嵌套（如 link > text）。",
+			"callees": [
+				"src/server/wiki/wiki-edit-service.ts/inlineText:439"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-errors.ts/WikiServiceError.toWikiError:48",
+			"name": "WikiServiceError.toWikiError",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-errors.ts",
+			"line": 48,
+			"endLine": 55,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method toWikiError()",
+			"description": "转为共享契约 WikiError（无内部 ID）。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-errors.ts/assertFound:61",
+			"name": "assertFound",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-errors.ts",
+			"line": 61,
+			"endLine": 69,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "function assertFound(value: T | null | undefined, code: WikiErrorCode, message: string, opts: {\n\tpath?: string | null;\n\trequestId?: string | null;\n} = {})",
+			"description": "断言值非 undefined / null,否则抛 NOT_FOUND。常见于「按 path 查节点未命中」。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-errors.ts/wikiError:74",
+			"name": "wikiError",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-errors.ts",
+			"line": 74,
+			"endLine": 80,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "function wikiError(code: WikiErrorCode, message: string, opts: {\n\tpath?: string | null;\n\trequestId?: string | null;\n\tcause?: unknown;\n} = {})",
+			"description": "便捷构造。callers 用 `throw wikiError('INVALID_ADDRESS', '...')` 风格。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-errors.ts/isWikiServiceError:85",
+			"name": "isWikiServiceError",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-errors.ts",
+			"line": 85,
+			"endLine": 87,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "function isWikiServiceError(err: unknown)",
+			"description": "判断是否 WikiServiceError（窄化类型用）。",
+			"callees": []
+		},
+		{
 			"id": "src/server/wiki/wiki-link-repository.ts/WikiLinkRepository.insert:68",
 			"name": "WikiLinkRepository.insert",
 			"kind": "method",
@@ -21342,12 +22209,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/rowKindAsKind:101",
+			"id": "src/server/wiki/wiki-node-repository.ts/rowKindAsKind:104",
 			"name": "rowKindAsKind",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 101,
-			"endLine": 103,
+			"line": 104,
+			"endLine": 106,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function rowKindAsKind(row: WikiNodeRow)",
@@ -21355,12 +22222,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveByPath:121",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveByPath:124",
 			"name": "WikiNodeRepository.getActiveByPath",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 121,
-			"endLine": 129,
+			"line": 124,
+			"endLine": 132,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getActiveByPath(path: string)",
@@ -21368,12 +22235,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getByPath:132",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getByPath:135",
 			"name": "WikiNodeRepository.getByPath",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 132,
-			"endLine": 136,
+			"line": 135,
+			"endLine": 139,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getByPath(path: string)",
@@ -21381,12 +22248,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getById:139",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getById:142",
 			"name": "WikiNodeRepository.getById",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 139,
-			"endLine": 143,
+			"line": 142,
+			"endLine": 146,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getById(id: number)",
@@ -21394,12 +22261,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveChildren:146",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveChildren:149",
 			"name": "WikiNodeRepository.getActiveChildren",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 146,
-			"endLine": 154,
+			"line": 149,
+			"endLine": 157,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method getActiveChildren(parentId: number)",
@@ -21407,27 +22274,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveChildrenPaged:162",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveChildrenPaged:165",
 			"name": "WikiNodeRepository.getActiveChildrenPaged",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 162,
-			"endLine": 189,
+			"line": 165,
+			"endLine": 192,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method getActiveChildrenPaged(parentId: number, limit: number, cursor: WikiChildCursor | null)",
 			"description": "按 parent_id 分页查 active 直接 children。",
 			"callees": [
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.packPage:191"
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.packPage:194"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.packPage:191",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.packPage:194",
 			"name": "WikiNodeRepository.packPage",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 191,
-			"endLine": 205,
+			"line": 194,
+			"endLine": 208,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method packPage(items: WikiNodeRow[], limit: number)",
@@ -21435,42 +22302,44 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.insert:221",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.insert:224",
 			"name": "WikiNodeRepository.insert",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 221,
-			"endLine": 248,
+			"line": 224,
+			"endLine": 251,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method insert(input: CreateNodeInput)",
 			"description": "插入新节点。返回新行(含生成的 id)。revision 默认 1。",
 			"callees": [
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getById:139"
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getById:142"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.update:258",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.update:266",
 			"name": "WikiNodeRepository.update",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 258,
-			"endLine": 310,
-			"statementCount": 23,
+			"line": 266,
+			"endLine": 328,
+			"statementCount": 25,
 			"exported": true,
 			"signature": "method update(id: number, expectedRevision: number, input: UpdateNodeInput)",
 			"description": "整段更新节点(summary/content/attributes/...)。revision 自动 +1。",
 			"callees": [
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getById:139"
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getById:142",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.ftsDeleteCommand:484",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsInsert:398"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.archive:319",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.archive:341",
 			"name": "WikiNodeRepository.archive",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 319,
-			"endLine": 324,
+			"line": 341,
+			"endLine": 346,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method archive(id: number)",
@@ -21478,12 +22347,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.unarchive:331",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.unarchive:353",
 			"name": "WikiNodeRepository.unarchive",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 331,
-			"endLine": 335,
+			"line": 353,
+			"endLine": 357,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method unarchive(id: number)",
@@ -21491,27 +22360,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.hardDelete:344",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.hardDelete:366",
 			"name": "WikiNodeRepository.hardDelete",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 344,
-			"endLine": 348,
+			"line": 366,
+			"endLine": 372,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method hardDelete(id: number)",
 			"description": "硬删除节点。FK 约束会阻止被 link target / address / repository 引用的",
 			"callees": [
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:380"
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:451"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsInsert:358",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsInsert:398",
 			"name": "WikiNodeRepository.syncFtsInsert",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 358,
-			"endLine": 365,
+			"line": 398,
+			"endLine": 405,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method syncFtsInsert(rowid: number, name: string, summary: string, content: string)",
@@ -21519,41 +22388,71 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:371",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:428",
 			"name": "WikiNodeRepository.syncFtsUpdate",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 371,
-			"endLine": 374,
-			"statementCount": 2,
+			"line": 428,
+			"endLine": 439,
+			"statementCount": 5,
 			"exported": true,
 			"signature": "method syncFtsUpdate(rowid: number, name: string, summary: string, content: string)",
-			"description": "同步 FTS 索引(更新节点)。delete + insert(external-content 安全更新)。",
+			"description": "同步 FTS 索引到传入的值(external-content 安全更新,acceptance-01 §A.11)。",
 			"callees": [
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:380",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsInsert:358"
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.readIndexedColumns:468",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.ftsDeleteCommand:484",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsInsert:398"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:380",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:451",
 			"name": "WikiNodeRepository.syncFtsDelete",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 380,
-			"endLine": 382,
-			"statementCount": 1,
+			"line": 451,
+			"endLine": 461,
+			"statementCount": 4,
 			"exported": true,
 			"signature": "method syncFtsDelete(rowid: number)",
-			"description": "同步 FTS 索引(删除节点)。`DELETE FROM ... WHERE rowid = ?` 对",
+			"description": "同步 FTS 索引(删除节点)。读 wiki_nodes **当前** name/summary/content,",
+			"callees": [
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.readIndexedColumns:468",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.ftsDeleteCommand:484"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.readIndexedColumns:468",
+			"name": "WikiNodeRepository.readIndexedColumns",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-node-repository.ts",
+			"line": 468,
+			"endLine": 474,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method readIndexedColumns(rowid: number)",
+			"description": "读 wiki_nodes 的 FTS-indexed 列(name/summary/content)。供 FTS 'delete'",
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.rebuildFts:392",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.ftsDeleteCommand:484",
+			"name": "WikiNodeRepository.ftsDeleteCommand",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-node-repository.ts",
+			"line": 484,
+			"endLine": 491,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method ftsDeleteCommand(rowid: number, name: string, summary: string, content: string)",
+			"description": "FTS5 'delete' 命令(external-content 安全的 row 移除原语,acceptance-01 §A.11)。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.rebuildFts:501",
 			"name": "WikiNodeRepository.rebuildFts",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 392,
-			"endLine": 399,
+			"line": 501,
+			"endLine": 508,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method rebuildFts()",
@@ -21561,16 +22460,42 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.searchFts:411",
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.searchFts:520",
 			"name": "WikiNodeRepository.searchFts",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-node-repository.ts",
-			"line": 411,
-			"endLine": 424,
+			"line": 520,
+			"endLine": 533,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method searchFts(ftsQuery: string, limit: number)",
 			"description": "基本 FTS5 全文查询。返回匹配的节点行(含内部 id;service 层负责转 view)。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getAllByPathPrefix:546",
+			"name": "WikiNodeRepository.getAllByPathPrefix",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-node-repository.ts",
+			"line": 546,
+			"endLine": 556,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method getAllByPathPrefix(escapedPrefix: string)",
+			"description": "取所有严格后代（path LIKE `<escapedPrefix>/%` ESCAPE '\\'）,含归档行。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.updateChildPathOnly:567",
+			"name": "WikiNodeRepository.updateChildPathOnly",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-node-repository.ts",
+			"line": 567,
+			"endLine": 571,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method updateChildPathOnly(id: number, newPath: string)",
+			"description": "只更新 path（move 后代专用;不 bump revision,不改 updated_at）。",
 			"callees": []
 		},
 		{
@@ -21991,6 +22916,513 @@
 			"exported": true,
 			"signature": "function readWikiSchemaVersion(db: Database.Database)",
 			"description": "读取当前 schema 版本（最新一行）。无版本行返回 0(fresh DB 调用 initWikiSchema 前)。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/nodeRowToView:119",
+			"name": "nodeRowToView",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 119,
+			"endLine": 136,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "function nodeRowToView(row: WikiNodeRow)",
+			"description": "把 WikiNodeRow 转为 WikiNodeView(无内部 ID;acceptance-02 §C「不泄露 ID」)。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/parseAttributesJson:141",
+				"src/server/wiki/wiki-path.ts/parentWikiPath:245"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/parseAttributesJson:141",
+			"name": "parseAttributesJson",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 141,
+			"endLine": 152,
+			"statementCount": 7,
+			"exported": false,
+			"signature": "function parseAttributesJson(json: string | null)",
+			"description": "解析 attributes_json。null/undefined/非法 JSON → 空对象。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.fromDatabase:167",
+			"name": "WikiService.fromDatabase",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 167,
+			"endLine": 186,
+			"statementCount": 9,
+			"exported": true,
+			"signature": "method fromDatabase(wikiDb: WikiDatabase)",
+			"description": "从 WikiDatabase 单参构造,内部组装所有依赖。生产推荐此构造器。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.expand:192",
+			"name": "WikiService.expand",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 192,
+			"endLine": 233,
+			"statementCount": 14,
+			"exported": true,
+			"signature": "method expand(req: WikiExpandRequest, ctx: WikiRequestContext)",
+			"description": "WikiService —— 数据面 API 主入口。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062",
+				"src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1098",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-service.ts/decodeCursor:1230",
+				"src/server/wiki/wiki-service.ts/WikiService.toExpandChildItem:1152",
+				"src/server/wiki/wiki-service.ts/WikiService.appendAuditSafe:1179",
+				"src/server/wiki/wiki-service.ts/nodeRowToView:119",
+				"src/server/wiki/wiki-service.ts/encodeCursor:1221"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.read:239",
+			"name": "WikiService.read",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 239,
+			"endLine": 320,
+			"statementCount": 34,
+			"exported": true,
+			"signature": "method read(req: WikiReadRequest, ctx: WikiRequestContext)",
+			"description": "WikiService —— 数据面 API 主入口。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062",
+				"src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1098",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-service.ts/nodeRowToView:119",
+				"src/server/wiki/wiki-service.ts/linkRowToView:1203",
+				"src/server/wiki/wiki-service.ts/countLines:1250",
+				"src/server/wiki/wiki-service.ts/offsetToLine:1278",
+				"src/server/wiki/wiki-service.ts/lineToOffset:1263",
+				"src/server/wiki/wiki-service.ts/WikiService.appendAuditSafe:1179"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.create:326",
+			"name": "WikiService.create",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 326,
+			"endLine": 386,
+			"statementCount": 22,
+			"exported": true,
+			"signature": "method create(req: WikiCreateRequest, ctx: WikiRequestContext)",
+			"description": "WikiService —— 数据面 API 主入口。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062",
+				"src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1098",
+				"src/server/wiki/wiki-path.ts/validateWikiName:96",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-service.ts/WikiService.isSourceBound:1105",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:233"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.update:392",
+			"name": "WikiService.update",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 392,
+			"endLine": 466,
+			"statementCount": 26,
+			"exported": true,
+			"signature": "method update(req: WikiUpdateRequest, ctx: WikiRequestContext)",
+			"description": "WikiService —— 数据面 API 主入口。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062",
+				"src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1098",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-service.ts/WikiService.isSourceBound:1105",
+				"src/server/wiki/wiki-service.ts/parseAttributesJson:141",
+				"src/server/wiki/wiki-service.ts/applyAttributesPatch:1289",
+				"src/server/wiki/wiki-service.ts/WikiService.update:392"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.archive:472",
+			"name": "WikiService.archive",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 472,
+			"endLine": 523,
+			"statementCount": 22,
+			"exported": true,
+			"signature": "method archive(req: WikiArchiveRequest, ctx: WikiRequestContext)",
+			"description": "WikiService —— 数据面 API 主入口。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062",
+				"src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1098",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-service.ts/WikiService.isSourceBound:1105",
+				"src/server/wiki/wiki-service.ts/WikiService.collectSubtree:1112",
+				"src/server/wiki/wiki-service.ts/WikiService.archive:472"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.hardDelete:529",
+			"name": "WikiService.hardDelete",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 529,
+			"endLine": 620,
+			"statementCount": 32,
+			"exported": true,
+			"signature": "method hardDelete(req: WikiHardDeleteRequest, ctx: WikiAdminRequestContext)",
+			"description": "WikiService —— 数据面 API 主入口。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/WikiService.resolveAddressAdmin:1071",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-service.ts/WikiService.isSourceBound:1105",
+				"src/server/wiki/wiki-service.ts/WikiService.collectSubtreeAll:1145",
+				"src/server/wiki/wiki-service.ts/WikiService.hardDelete:529"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.restore:626",
+			"name": "WikiService.restore",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 626,
+			"endLine": 700,
+			"statementCount": 31,
+			"exported": true,
+			"signature": "method restore(req: WikiRestoreRequest, ctx: WikiAdminRequestContext)",
+			"description": "WikiService —— 数据面 API 主入口。",
+			"callees": [
+				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-service.ts/WikiService.isSourceBound:1105",
+				"src/server/wiki/wiki-service.ts/WikiService.collectSubtreeAll:1145"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.link:706",
+			"name": "WikiService.link",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 706,
+			"endLine": 756,
+			"statementCount": 17,
+			"exported": true,
+			"signature": "method link(req: WikiLinkRequest, ctx: WikiRequestContext)",
+			"description": "WikiService —— 数据面 API 主入口。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062",
+				"src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1098",
+				"src/server/wiki/wiki-errors.ts/wikiError:74"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.unlink:758",
+			"name": "WikiService.unlink",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 758,
+			"endLine": 800,
+			"statementCount": 17,
+			"exported": true,
+			"signature": "method unlink(req: WikiUnlinkRequest, ctx: WikiRequestContext)",
+			"description": "WikiService —— 数据面 API 主入口。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062",
+				"src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1098",
+				"src/server/wiki/wiki-errors.ts/wikiError:74"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.move:806",
+			"name": "WikiService.move",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 806,
+			"endLine": 911,
+			"statementCount": 40,
+			"exported": true,
+			"signature": "method move(req: WikiMoveRequest, ctx: WikiRequestContext)",
+			"description": "WikiService —— 数据面 API 主入口。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062",
+				"src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1098",
+				"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:292",
+				"src/server/wiki/wiki-path.ts/validateWikiName:96",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-path.ts/isSameOrDescendant:266",
+				"src/server/wiki/wiki-service.ts/WikiService.isSourceBound:1105",
+				"src/server/wiki/wiki-service.ts/WikiService.collectSubtreeRows:1127",
+				"src/server/wiki/wiki-service.ts/WikiService.update:392"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.ensureAgentMemoryRoot:923",
+			"name": "WikiService.ensureAgentMemoryRoot",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 923,
+			"endLine": 1005,
+			"statementCount": 22,
+			"exported": true,
+			"signature": "method ensureAgentMemoryRoot(agentId: string, displayName: string)",
+			"description": "幂等保证 Agent memory root 存在。多次调用:同一 stable agentId → 不动 path;",
+			"callees": [
+				"src/server/wiki/wiki-path.ts/validateWikiName:96",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-service.ts/parseAttributesJson:141",
+				"src/server/wiki/wiki-service.ts/WikiService.update:392",
+				"src/server/wiki/wiki-errors.ts/wikiError:74"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.archiveAgentMemoryRoot:1010",
+			"name": "WikiService.archiveAgentMemoryRoot",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1010,
+			"endLine": 1053,
+			"statementCount": 13,
+			"exported": true,
+			"signature": "method archiveAgentMemoryRoot(agentId: string)",
+			"description": "归档 Agent memory root（不硬删;保留历史供审计）。",
+			"callees": [
+				"src/server/wiki/wiki-path.ts/validateWikiName:96",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-service.ts/WikiService.collectSubtree:1112",
+				"src/server/wiki/wiki-service.ts/WikiService.archive:472"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062",
+			"name": "WikiService.resolveAddress",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1062,
+			"endLine": 1065,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method resolveAddress(address: string, ctx: WikiRequestContext)",
+			"description": "解析地址为 canonical path（数据面 ctx）。提前于授权与节点查询。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/WikiService.ctxToAddressCtx:1084"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.resolveAddressAdmin:1071",
+			"name": "WikiService.resolveAddressAdmin",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1071,
+			"endLine": 1082,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method resolveAddressAdmin(address: string, ctx: WikiAdminRequestContext)",
+			"description": "解析地址（管理面 ctx）。管理面 ctx 没有 agentId/activeProjectId —— 不接受",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.ctxToAddressCtx:1084",
+			"name": "WikiService.ctxToAddressCtx",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1084,
+			"endLine": 1089,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method ctxToAddressCtx(ctx: WikiRequestContext)",
+			"description": "WikiService —— 数据面 API 主入口。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1098",
+			"name": "WikiService.assertAgentAccess",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1098,
+			"endLine": 1100,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method assertAgentAccess(action: WikiAction, canonicalPath: string, ctx: WikiRequestContext)",
+			"description": "授权断言:先于节点存在性查询。**关键不变量**（plan-02 §3 / acceptance-02 §C）。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.isSourceBound:1105",
+			"name": "WikiService.isSourceBound",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1105,
+			"endLine": 1107,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method isSourceBound(nodeId: number)",
+			"description": "判断节点是否 source-bound（绑定到 Git 镜像）。从 wiki_source_bindings 查。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.collectSubtree:1112",
+			"name": "WikiService.collectSubtree",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1112,
+			"endLine": 1122,
+			"statementCount": 9,
+			"exported": true,
+			"signature": "method collectSubtree(rootId: number)",
+			"description": "收集 active 子树（不含归档）—— BFS,返回 id 列表（含 root）。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.collectSubtreeRows:1127",
+			"name": "WikiService.collectSubtreeRows",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1127,
+			"endLine": 1140,
+			"statementCount": 12,
+			"exported": true,
+			"signature": "method collectSubtreeRows(rootId: number)",
+			"description": "收集所有子树行（含归档）—— 用于 hardDelete / move。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.collectSubtreeAll:1145",
+			"name": "WikiService.collectSubtreeAll",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1145,
+			"endLine": 1147,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method collectSubtreeAll(rootId: number)",
+			"description": "收集所有子树 id（含归档）—— 用于 hardDelete。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/WikiService.collectSubtreeRows:1127"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.toExpandChildItem:1152",
+			"name": "WikiService.toExpandChildItem",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1152,
+			"endLine": 1173,
+			"statementCount": 7,
+			"exported": true,
+			"signature": "method toExpandChildItem(child: WikiNodeRow, includeLinks: boolean, _ctx: WikiRequestContext)",
+			"description": "给 expand 把 child row 转 view。includeLinks=true 时填计数。",
+			"callees": [
+				"src/server/wiki/wiki-service.ts/nodeRowToView:119"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/WikiService.appendAuditSafe:1179",
+			"name": "WikiService.appendAuditSafe",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1179,
+			"endLine": 1187,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method appendAuditSafe(input: Parameters<WikiAuditRepository[\"append\"]>[0])",
+			"description": "安全 append audit —— 任何失败都吞掉并返回 null auditId（read-only action 不应",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/linkRowToView:1203",
+			"name": "linkRowToView",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1203,
+			"endLine": 1216,
+			"statementCount": 3,
+			"exported": false,
+			"signature": "function linkRowToView(row: { source_id: number; target_id: number; relation: string; created_at: string; created_by: string | null }, nodeRepo: WikiNodeRepository)",
+			"description": "把 WikiLinkRow（含整数 source_id/target_id）转为 WikiLinkView（含 canonical 路径）。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/encodeCursor:1221",
+			"name": "encodeCursor",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1221,
+			"endLine": 1225,
+			"statementCount": 4,
+			"exported": false,
+			"signature": "function encodeCursor(cursor: { path: string; id: number } | null)",
+			"description": "cursor 编码:base64(JSON({path,id}))。null → null。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/decodeCursor:1230",
+			"name": "decodeCursor",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1230,
+			"endLine": 1245,
+			"statementCount": 8,
+			"exported": false,
+			"signature": "function decodeCursor(cursor: string | null)",
+			"description": "cursor 解码。null / 非法 → null。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/countLines:1250",
+			"name": "countLines",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1250,
+			"endLine": 1258,
+			"statementCount": 9,
+			"exported": false,
+			"signature": "function countLines(text: string)",
+			"description": "计算文本行数（\\n 分隔;空文本为 0 行）。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/lineToOffset:1263",
+			"name": "lineToOffset",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1263,
+			"endLine": 1273,
+			"statementCount": 9,
+			"exported": false,
+			"signature": "function lineToOffset(text: string, line: number)",
+			"description": "1-based 行号 → 字节偏移。lineStart=1 → 0。lineStart=N → 第 N 行起始 offset。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/offsetToLine:1278",
+			"name": "offsetToLine",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1278,
+			"endLine": 1284,
+			"statementCount": 5,
+			"exported": false,
+			"signature": "function offsetToLine(text: string, offset: number)",
+			"description": "字节偏移 → 1-based 行号。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-service.ts/applyAttributesPatch:1289",
+			"name": "applyAttributesPatch",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-service.ts",
+			"line": 1289,
+			"endLine": 1304,
+			"statementCount": 10,
+			"exported": false,
+			"signature": "function applyAttributesPatch(current: WikiNodeAttributes, patch: WikiNodeAttributes | null)",
+			"description": "字段级 attributes patch。null 删除 key,undefined 不动。",
 			"callees": []
 		},
 		{
@@ -27122,6 +28554,103 @@
 		"src/server/tool-usage-store.ts/rowToRecord:240": [
 			"src/server/tool-usage-store.ts/ToolUsageStore.get:199"
 		],
+		"src/server/wiki/wiki-errors.ts/wikiError:74": [
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolve:144",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveMemoryDynamic:203",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveProjectDynamic:220",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveAliasRow:242",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.register:340",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.update:388",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.validateInputShape:460",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.assertNoAliasCycle:517",
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.authorize:69",
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93",
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceText:120",
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.locateAnchor:240",
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSectionPublic:285",
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.searchIn:244",
+			"src/server/wiki/wiki-service.ts/WikiService.expand:192",
+			"src/server/wiki/wiki-service.ts/WikiService.read:239",
+			"src/server/wiki/wiki-service.ts/WikiService.create:326",
+			"src/server/wiki/wiki-service.ts/WikiService.update:392",
+			"src/server/wiki/wiki-service.ts/WikiService.archive:472",
+			"src/server/wiki/wiki-service.ts/WikiService.hardDelete:529",
+			"src/server/wiki/wiki-service.ts/WikiService.restore:626",
+			"src/server/wiki/wiki-service.ts/WikiService.link:706",
+			"src/server/wiki/wiki-service.ts/WikiService.unlink:758",
+			"src/server/wiki/wiki-service.ts/WikiService.move:806",
+			"src/server/wiki/wiki-service.ts/WikiService.ensureAgentMemoryRoot:923"
+		],
+		"src/server/wiki/wiki-path.ts/normalizeWikiPath:149": [
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolve:144",
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.authorize:69",
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.decide:100",
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.prepareSearchScopes:130",
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.filterVisibleLinks:170",
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.canRead:232",
+			"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+			"src/server/wiki/wiki-path.ts/parentWikiPath:245",
+			"src/server/wiki/wiki-path.ts/isSameOrDescendant:266",
+			"src/server/wiki/wiki-path.ts/splitWikiPath:285",
+			"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:292",
+			"src/server/wiki/wiki-path.ts/isWikiRoot:301",
+			"src/server/wiki/wiki-service.ts/WikiService.restore:626"
+		],
+		"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveMemoryDynamic:203": [
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolve:144"
+		],
+		"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveProjectDynamic:220": [
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolve:144"
+		],
+		"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveAliasRow:242": [
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolve:144"
+		],
+		"src/server/wiki/wiki-address-service.ts/WikiAddressService.findLongestAliasPrefix:308": [
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolve:144"
+		],
+		"src/server/wiki/wiki-path.ts/joinWikiPath:233": [
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveMemoryDynamic:203",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveProjectDynamic:220",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveAliasRow:242",
+			"src/server/wiki/wiki-address-service.ts/joinPathSegments:567",
+			"src/server/wiki/wiki-service.ts/WikiService.create:326",
+			"src/server/wiki/wiki-service.ts/WikiService.move:806",
+			"src/server/wiki/wiki-service.ts/WikiService.ensureAgentMemoryRoot:923",
+			"src/server/wiki/wiki-service.ts/WikiService.archiveAgentMemoryRoot:1010"
+		],
+		"src/server/wiki/wiki-address-service.ts/joinPathSegments:567": [
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveMemoryDynamic:203",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveProjectDynamic:220",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveAliasRow:242"
+		],
+		"src/server/wiki/wiki-address-service.ts/WikiAddressService.validateInputShape:460": [
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.register:340",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.update:388",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.validate:446"
+		],
+		"src/server/wiki/wiki-address-service.ts/WikiAddressService.assertNoAliasCycle:517": [
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.register:340",
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.update:388"
+		],
+		"src/server/wiki/wiki-address-service.ts/WikiAddressService.delete:439": [
+			"src/server/wiki/wiki-address-service.ts/WikiAddressService.delete:439"
+		],
+		"src/server/wiki/wiki-address-service.ts/splitRest:555": [
+			"src/server/wiki/wiki-address-service.ts/joinPathSegments:567"
+		],
+		"src/server/wiki/wiki-path.ts/isSameOrDescendant:266": [
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.authorize:69",
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.decide:100",
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.prepareSearchScopes:130",
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.canRead:232",
+			"src/server/wiki/wiki-service.ts/WikiService.move:806"
+		],
+		"src/server/wiki/wiki-authorization-service.ts/dedupSorted:247": [
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.prepareSearchScopes:130"
+		],
+		"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.canRead:232": [
+			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.filterVisibleLinks:170"
+		],
 		"src/server/wiki/wiki-schema.ts/readWikiSchemaVersion:266": [
 			"src/server/wiki/wiki-database.ts/WikiDatabase.schemaVersion:166",
 			"src/server/wiki/wiki-database.ts/WikiDatabase.health:206"
@@ -27133,25 +28662,92 @@
 		"src/server/wiki/wiki-database.ts/WikiDatabase.close:253": [
 			"src/server/wiki/wiki-database.ts/WikiDatabase.close:253"
 		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOperations:82"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceText:120": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyInsertBefore:154": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyInsertAfter:162": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyAppend:171": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyPrepend:179": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceSection:191": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyAppendToSection:199": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyDeleteSection:209": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyOne:93"
+		],
+		"src/server/wiki/wiki-edit-service.ts/countOccurrences:392": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceText:120",
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.locateAnchor:240",
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.searchIn:244"
+		],
+		"src/server/wiki/wiki-edit-service.ts/splitJoinReplace:408": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceText:120"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.locateAnchor:240": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyInsertBefore:154",
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyInsertAfter:162"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSection:326": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyReplaceSection:191",
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyAppendToSection:199",
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.applyDeleteSection:209",
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.locateAnchor:240"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.enumerateSections:341": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSectionPublic:285"
+		],
+		"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSectionPublic:285": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSection:326"
+		],
+		"src/server/wiki/wiki-edit-service.ts/headingText:428": [
+			"src/server/wiki/wiki-edit-service.ts/WikiEditService.enumerateSections:341"
+		],
+		"src/server/wiki/wiki-edit-service.ts/inlineText:439": [
+			"src/server/wiki/wiki-edit-service.ts/headingText:428",
+			"src/server/wiki/wiki-edit-service.ts/inlineText:439"
+		],
 		"src/server/wiki/wiki-link-repository.ts/WikiLinkRepository.outgoing:109": [
 			"src/server/wiki/wiki-link-repository.ts/WikiLinkRepository.both:135"
 		],
 		"src/server/wiki/wiki-link-repository.ts/WikiLinkRepository.incoming:122": [
 			"src/server/wiki/wiki-link-repository.ts/WikiLinkRepository.both:135"
 		],
-		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.packPage:191": [
-			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveChildrenPaged:162"
+		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.packPage:194": [
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getActiveChildrenPaged:165"
 		],
-		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getById:139": [
-			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.insert:221",
-			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.update:258"
+		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getById:142": [
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.insert:224",
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.update:266"
 		],
-		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:380": [
-			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.hardDelete:344",
-			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:371"
+		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.ftsDeleteCommand:484": [
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.update:266",
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:428",
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:451"
 		],
-		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsInsert:358": [
-			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:371"
+		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsInsert:398": [
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.update:266",
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:428"
+		],
+		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:451": [
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.hardDelete:366"
+		],
+		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.readIndexedColumns:468": [
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:428",
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:451"
 		],
 		"src/server/wiki/wiki-path.ts/pathError:68": [
 			"src/server/wiki/wiki-path.ts/validateWikiName:96",
@@ -27163,15 +28759,11 @@
 		],
 		"src/server/wiki/wiki-path.ts/validateWikiName:96": [
 			"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
-			"src/server/wiki/wiki-path.ts/joinWikiPath:233"
-		],
-		"src/server/wiki/wiki-path.ts/normalizeWikiPath:149": [
 			"src/server/wiki/wiki-path.ts/joinWikiPath:233",
-			"src/server/wiki/wiki-path.ts/parentWikiPath:245",
-			"src/server/wiki/wiki-path.ts/isSameOrDescendant:266",
-			"src/server/wiki/wiki-path.ts/splitWikiPath:285",
-			"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:292",
-			"src/server/wiki/wiki-path.ts/isWikiRoot:301"
+			"src/server/wiki/wiki-service.ts/WikiService.create:326",
+			"src/server/wiki/wiki-service.ts/WikiService.move:806",
+			"src/server/wiki/wiki-service.ts/WikiService.ensureAgentMemoryRoot:923",
+			"src/server/wiki/wiki-service.ts/WikiService.archiveAgentMemoryRoot:1010"
 		],
 		"src/server/wiki/wiki-repository-store.ts/WikiRepositoryTable.getById:68": [
 			"src/server/wiki/wiki-repository-store.ts/WikiRepositoryTable.upsert:93",
@@ -27185,6 +28777,108 @@
 		],
 		"src/server/wiki/wiki-schema.ts/markSchemaVersion:255": [
 			"src/server/wiki/wiki-schema.ts/initWikiSchema:64"
+		],
+		"src/server/wiki/wiki-service.ts/parseAttributesJson:141": [
+			"src/server/wiki/wiki-service.ts/nodeRowToView:119",
+			"src/server/wiki/wiki-service.ts/WikiService.update:392",
+			"src/server/wiki/wiki-service.ts/WikiService.ensureAgentMemoryRoot:923"
+		],
+		"src/server/wiki/wiki-path.ts/parentWikiPath:245": [
+			"src/server/wiki/wiki-service.ts/nodeRowToView:119"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062": [
+			"src/server/wiki/wiki-service.ts/WikiService.expand:192",
+			"src/server/wiki/wiki-service.ts/WikiService.read:239",
+			"src/server/wiki/wiki-service.ts/WikiService.create:326",
+			"src/server/wiki/wiki-service.ts/WikiService.update:392",
+			"src/server/wiki/wiki-service.ts/WikiService.archive:472",
+			"src/server/wiki/wiki-service.ts/WikiService.link:706",
+			"src/server/wiki/wiki-service.ts/WikiService.unlink:758",
+			"src/server/wiki/wiki-service.ts/WikiService.move:806"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1098": [
+			"src/server/wiki/wiki-service.ts/WikiService.expand:192",
+			"src/server/wiki/wiki-service.ts/WikiService.read:239",
+			"src/server/wiki/wiki-service.ts/WikiService.create:326",
+			"src/server/wiki/wiki-service.ts/WikiService.update:392",
+			"src/server/wiki/wiki-service.ts/WikiService.archive:472",
+			"src/server/wiki/wiki-service.ts/WikiService.link:706",
+			"src/server/wiki/wiki-service.ts/WikiService.unlink:758",
+			"src/server/wiki/wiki-service.ts/WikiService.move:806"
+		],
+		"src/server/wiki/wiki-service.ts/decodeCursor:1230": [
+			"src/server/wiki/wiki-service.ts/WikiService.expand:192"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.toExpandChildItem:1152": [
+			"src/server/wiki/wiki-service.ts/WikiService.expand:192"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.appendAuditSafe:1179": [
+			"src/server/wiki/wiki-service.ts/WikiService.expand:192",
+			"src/server/wiki/wiki-service.ts/WikiService.read:239"
+		],
+		"src/server/wiki/wiki-service.ts/nodeRowToView:119": [
+			"src/server/wiki/wiki-service.ts/WikiService.expand:192",
+			"src/server/wiki/wiki-service.ts/WikiService.read:239",
+			"src/server/wiki/wiki-service.ts/WikiService.toExpandChildItem:1152"
+		],
+		"src/server/wiki/wiki-service.ts/encodeCursor:1221": [
+			"src/server/wiki/wiki-service.ts/WikiService.expand:192"
+		],
+		"src/server/wiki/wiki-service.ts/linkRowToView:1203": [
+			"src/server/wiki/wiki-service.ts/WikiService.read:239"
+		],
+		"src/server/wiki/wiki-service.ts/countLines:1250": [
+			"src/server/wiki/wiki-service.ts/WikiService.read:239"
+		],
+		"src/server/wiki/wiki-service.ts/offsetToLine:1278": [
+			"src/server/wiki/wiki-service.ts/WikiService.read:239"
+		],
+		"src/server/wiki/wiki-service.ts/lineToOffset:1263": [
+			"src/server/wiki/wiki-service.ts/WikiService.read:239"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.isSourceBound:1105": [
+			"src/server/wiki/wiki-service.ts/WikiService.create:326",
+			"src/server/wiki/wiki-service.ts/WikiService.update:392",
+			"src/server/wiki/wiki-service.ts/WikiService.archive:472",
+			"src/server/wiki/wiki-service.ts/WikiService.hardDelete:529",
+			"src/server/wiki/wiki-service.ts/WikiService.restore:626",
+			"src/server/wiki/wiki-service.ts/WikiService.move:806"
+		],
+		"src/server/wiki/wiki-service.ts/applyAttributesPatch:1289": [
+			"src/server/wiki/wiki-service.ts/WikiService.update:392"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.update:392": [
+			"src/server/wiki/wiki-service.ts/WikiService.update:392",
+			"src/server/wiki/wiki-service.ts/WikiService.move:806",
+			"src/server/wiki/wiki-service.ts/WikiService.ensureAgentMemoryRoot:923"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.collectSubtree:1112": [
+			"src/server/wiki/wiki-service.ts/WikiService.archive:472",
+			"src/server/wiki/wiki-service.ts/WikiService.archiveAgentMemoryRoot:1010"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.archive:472": [
+			"src/server/wiki/wiki-service.ts/WikiService.archive:472",
+			"src/server/wiki/wiki-service.ts/WikiService.archiveAgentMemoryRoot:1010"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.resolveAddressAdmin:1071": [
+			"src/server/wiki/wiki-service.ts/WikiService.hardDelete:529"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.collectSubtreeAll:1145": [
+			"src/server/wiki/wiki-service.ts/WikiService.hardDelete:529",
+			"src/server/wiki/wiki-service.ts/WikiService.restore:626"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.hardDelete:529": [
+			"src/server/wiki/wiki-service.ts/WikiService.hardDelete:529"
+		],
+		"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:292": [
+			"src/server/wiki/wiki-service.ts/WikiService.move:806"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.collectSubtreeRows:1127": [
+			"src/server/wiki/wiki-service.ts/WikiService.move:806",
+			"src/server/wiki/wiki-service.ts/WikiService.collectSubtreeAll:1145"
+		],
+		"src/server/wiki/wiki-service.ts/WikiService.ctxToAddressCtx:1084": [
+			"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1062"
 		],
 		"src/server/wiki-node-store.ts/sanitizeSeg:223": [
 			"src/server/wiki-node-store.ts/nodeSlug:237",
@@ -28249,7 +29943,8 @@
 			"src/server/recovery.ts"
 		],
 		"src/server/wiki/wiki-database.ts": [
-			"src/server/database-manager.ts"
+			"src/server/database-manager.ts",
+			"src/server/wiki/wiki-service.ts"
 		],
 		"src/core/default-prompt.ts": [
 			"src/server/db-migration.ts",
@@ -28405,16 +30100,53 @@
 		"src/shared/github-template-utils.ts": [
 			"src/server/template-router.ts"
 		],
+		"src/server/wiki/wiki-repository-store.ts": [
+			"src/server/wiki/wiki-address-service.ts",
+			"src/server/wiki/wiki-service.ts"
+		],
+		"src/server/wiki/wiki-node-repository.ts": [
+			"src/server/wiki/wiki-address-service.ts",
+			"src/server/wiki/wiki-service.ts"
+		],
 		"src/server/wiki/wiki-path.ts": [
-			"src/server/wiki/wiki-database.ts"
+			"src/server/wiki/wiki-address-service.ts",
+			"src/server/wiki/wiki-authorization-service.ts",
+			"src/server/wiki/wiki-database.ts",
+			"src/server/wiki/wiki-service.ts"
+		],
+		"src/shared/wiki-types.ts": [
+			"src/server/wiki/wiki-address-service.ts",
+			"src/server/wiki/wiki-authorization-service.ts",
+			"src/server/wiki/wiki-database.ts",
+			"src/server/wiki/wiki-edit-service.ts",
+			"src/server/wiki/wiki-errors.ts",
+			"src/server/wiki/wiki-node-repository.ts",
+			"src/server/wiki/wiki-path.ts",
+			"src/server/wiki/wiki-service.ts"
+		],
+		"src/server/wiki/wiki-errors.ts": [
+			"src/server/wiki/wiki-address-service.ts",
+			"src/server/wiki/wiki-authorization-service.ts",
+			"src/server/wiki/wiki-edit-service.ts",
+			"src/server/wiki/wiki-service.ts"
 		],
 		"src/server/wiki/wiki-schema.ts": [
 			"src/server/wiki/wiki-database.ts"
 		],
-		"src/shared/wiki-types.ts": [
-			"src/server/wiki/wiki-database.ts",
-			"src/server/wiki/wiki-node-repository.ts",
-			"src/server/wiki/wiki-path.ts"
+		"src/server/wiki/wiki-link-repository.ts": [
+			"src/server/wiki/wiki-service.ts"
+		],
+		"src/server/wiki/wiki-audit-repository.ts": [
+			"src/server/wiki/wiki-service.ts"
+		],
+		"src/server/wiki/wiki-address-service.ts": [
+			"src/server/wiki/wiki-service.ts"
+		],
+		"src/server/wiki/wiki-authorization-service.ts": [
+			"src/server/wiki/wiki-service.ts"
+		],
+		"src/server/wiki/wiki-edit-service.ts": [
+			"src/server/wiki/wiki-service.ts"
 		],
 		"src/server/fresh-db-seed.ts": [
 			"src/core/test-seed.ts"
