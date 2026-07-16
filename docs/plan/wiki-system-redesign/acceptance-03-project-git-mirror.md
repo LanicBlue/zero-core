@@ -18,6 +18,7 @@
 - [ ] modify 只更新 source binding/blob/stale 状态，不覆盖 curated summary/content/links。
 - [ ] delete 归档原节点，不留下 active source binding。
 - [ ] rename 保留内部 ID、summary、content、revision 历史和 links，只改变 path/source binding。
+- [ ] A↔B rename swap/cycle 不撞 active path/source UNIQUE，使用临时路径后最终状态准确且无临时残留。
 - [ ] Git diff 中 copy 按新节点处理，不复用源节点 ID。
 - [ ] 故障注入后所有结构变更 rollback，`indexed_revision` 不推进，状态为 failed 且可重试成功。
 - [ ] 对同一 SHA 重试幂等，不增加节点/revision/audit 噪声。
@@ -27,6 +28,8 @@
 - [ ] 成功 commit/merge 后调用 indexer 并记录目标 SHA。
 - [ ] Git 成功、Wiki 失败时 Git commit 保留且 UI/service 可读到 stale/failed。
 - [ ] 显式 full reindex 可从 Wiki 空 project subtree 重建相同 canonical tree。
+- [ ] 正式 commit、merge、scan/rescan/rebuild 路由和 project workflow 都调用新 indexer；旧 WikiSkeletonService 不存在可达写路径。
+- [ ] 启动不等待全量项目扫描；stale 项目有进度/状态并可继续读取旧 indexed snapshot。
 
 ## D. Source read/search 安全
 
@@ -37,6 +40,7 @@
 - [ ] ripgrep 的 cwd、glob 和 scope 由服务端绑定推导，模型不能传绝对 cwd。
 - [ ] source search 结果均能映射回唯一 Wiki canonical path。
 - [ ] case-insensitive 与 regex 搜索有 fixture 测试。
+- [ ] source regex 的 2,048-byte pattern、2 s timeout、2 MiB output、200 results 上限均有稳定错误与进程终止测试。
 
 ## E. 验证命令
 
@@ -64,4 +68,3 @@ npm run check:links
 - rename 通过 delete+create 丢失语义或 links。
 - sync 失败仍推进 revision。
 - 在 summary/content 存放完整源码或仓库文档正文。
-

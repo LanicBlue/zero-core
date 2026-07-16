@@ -73,7 +73,7 @@ WikiAccessSection
 
 - `wiki-root` 全树写权限二次确认。
 - 重复/重叠 grant 提示并展示 action union。
-- `${active_project}` 无示例项目时显示 inactive，不错误扩根。
+- `project://` 无示例/active project 时显示 inactive，不错误扩根。
 - 删除最后一条 grant 必须以 `[]` 持久化，不能因 undefined 保留旧值。
 
 ### 4. Agent Editor：Wiki Context
@@ -115,6 +115,8 @@ Project 页面增加索引卡片：
 
 bind/reindex 必须显示进度；任务可重试，不能因页面关闭丢失 server 状态。
 
+Agent/Project selector 以 Core DB 稳定 ID绑定 Wiki root，但 UI 默认显示 `display_name` 和首选逻辑地址；改名只更新显示，不移动 Wiki path。
+
 unbind 默认只解除 binding/停止同步，不硬删除 project Wiki；归档/删除是单独管理动作并显示影响。
 
 ### 6. Session publish 行为
@@ -132,6 +134,8 @@ grants/context/address publish：
 管理 API 类型独立于 data API。renderer 不接触内部 ID；target 选择器使用 canonical path/address。
 
 管理状态发生变化时使用专用 `wiki_admin/wiki_sync` change event，避免误刷新整棵 data tree。
+
+`wiki-root` 全树 grant 允许管理员保存，但必须显示受影响范围、要求二次确认并写管理审计；不能硬编码禁止，也不能静默允许。Cron/Work 编辑器只能选择运行 Agent/Project/context，不得直接赋予额外 Wiki actions。
 
 ## 测试要求
 
@@ -157,4 +161,3 @@ tests/e2e/wiki-management.spec.ts
 ## 完成定义
 
 [Acceptance 07](acceptance-07-management-ui.md) 全部通过并提交 `result-07.md`。
-

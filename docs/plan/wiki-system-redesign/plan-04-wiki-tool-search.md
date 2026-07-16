@@ -38,6 +38,16 @@ address/register/grant/context/repository actions
 - compiled grants。
 - policy revision。
 
+本阶段负责在 `src/tools/types.ts` 增加共享字段：
+
+```ts
+interface CallerCtx {
+  wikiAccess?: CompiledWikiAccess;
+}
+```
+
+测试 factory 显式注入该字段；Plan 05 负责从正式 SessionConfig 填充。旧 `wikiAnchorNodeIds` 在 Plan 05 原子切换后删除，不能作为新工具 fallback。
+
 LLM input schema 不得出现 agentId、projectId、grant、canonicalScope 或 arbitrary cwd。
 
 本阶段可提供测试 factory：
@@ -57,7 +67,7 @@ ToolResult<WikiExpandResult | WikiReadResult | WikiSearchResult | WikiMutationRe
 ```
 
 - Agent-facing payload 无内部 ID。
-- mutation 返回 path/address/revision/auditId/changedFields。
+- mutation 返回 path/address/revision/auditId/changedFields；auditId 是公开 opaque audit receipt，不是节点内部 ID。
 - error 返回稳定 code/message/details（details 也必须权限过滤）。
 - `format()` 生成紧凑 Markdown，REST/UI 不调用 format。
 
@@ -82,6 +92,10 @@ summary, content, links, all, source
 
 统一接口：
 
+```ts
+WikiSearchService.search(req: WikiSearchRequest, ctx: WikiRequestContext): Promise<WikiSearchResult>
+```
+
 ```text
 target: wiki | source | both
 mode: exact | substring | glob | regex | fulltext | hybrid
@@ -98,8 +112,10 @@ kinds, limit, cursor
 - substring：大小写选项明确；不能因 SQLite NOCASE 只覆盖 ASCII 而声称完整 Unicode。
 - glob：按路径段实现 `*`、`**`、`?`。
 - fulltext：FTS5 + scope filter + snippet。
-- regex：在 worker/可终止执行环境中运行；pattern length、候选数、正文总字节、时间和结果数均有限制。
+- regex：使用 `node:worker_threads` 或等价可终止 worker；默认上限固定为 pattern 2,048 UTF-8 bytes、授权候选 50,000、正文 16 MiB、wall time 250 ms、结果 200，分别返回共享 `REGEX_INVALID/REGEX_LIMIT_EXCEEDED/REGEX_TIMEOUT`。
 - hybrid：第一版融合 exact/path/FTS/source，不要求 embedding。
+
+hybrid 排序固定为 `(match_type_rank ASC, normalized_score DESC, canonical_path ASC, target ASC)`；rank/score 函数放共享模块并由 fixture 固定，不得使用 DB 内部 ID 破同分。
 
 不得在 SQLite 主线程对全库直接执行不受限 JavaScript regex。
 
@@ -114,7 +130,7 @@ kinds, limit, cursor
 
 ### 6. 写 action
 
-- create/update/delete/link/unlink/move 直接委托 WikiService。
+- create/update/delete/link/unlink/move 直接委托 WikiService；update 支持 summary/content operations/attributes patch。
 - update 强制 expected_revision。
 - exact edit 使用 operations，不接收整文件 `overwrite=true` 绕过冲突。
 - source-bound 结构错误原样返回 `SOURCE_MANAGED`。
@@ -130,6 +146,8 @@ kinds, limit, cursor
 - 不解释内部 ID、数据库、anchor 或旧 doc actions。
 
 更新/准备 `wiki-operations.ts` 和 Archivist enrichment prompt 使用新 action/path，但在 Plan 05 注册切换前不得触发未注册工具。
+
+迁移清单必须覆盖现有全部 10 个 action 的调用者：`expand/search/create/update/delete/createMemory/updateMemory/docRead/docWrite/docEdit`。Plan 04 建立 caller inventory；Plan 05 改 runtime/memory/Archivist 调用；Plan 08 以零生产引用收尾。
 
 ## 测试要求
 
@@ -156,4 +174,3 @@ tests/unit/wiki-v2-tool-format.test.ts
 ## 完成定义
 
 [Acceptance 04](acceptance-04-wiki-tool-search.md) 全部通过并提交 `result-04.md`。
-

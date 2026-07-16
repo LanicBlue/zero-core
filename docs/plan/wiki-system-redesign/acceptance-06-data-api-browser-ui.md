@@ -9,11 +9,13 @@
 - [ ] server 注入 UI authority；renderer 不能扩大权限。
 - [ ] preload/IPC 类型与 router request/result 同源或编译期一致。
 - [ ] Wiki Browser 不再调用 legacy project-wiki CRUD/nodeId detail/search API。
+- [ ] renderer 对 `/api/project-wiki/*`、legacy mutation IPC 和 `project_wiki` data event 的生产引用均为零；九个 `/api/wiki/*` endpoint 覆盖读写。
 - [ ] REST adapter 与 Agent tool 调用相同 service，而不是复制业务逻辑。
 
 ## B. Store 与树
 
 - [ ] renderer state 和 React keys 只使用 canonical path，不含 DB ID/短 ID。
+- [ ] AppLayout、AgentEditor、WikiPage、WikiTree、WikiTreePanel 全部完成 path-key migration，无兼容 nodeById shadow state。
 - [ ] 首屏只拉当前 root 的一页直接 children。
 - [ ] expand 按需、分页、重复展开不重复请求。
 - [ ] search result 可定位节点并按需加载祖先。
@@ -76,4 +78,3 @@ npm run check:links
 - Markdown 原始 HTML 可执行脚本。
 - 搜索控件与后端参数脱节。
 - 为省事一次拉整棵 Wiki 树。
-

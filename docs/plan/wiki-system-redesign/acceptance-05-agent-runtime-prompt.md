@@ -7,16 +7,16 @@
 - [ ] `wikiGrants/wikiContext/policyRevision` create/update/list/export/import 完整 round-trip。
 - [ ] fresh DB agents 表含新列；旧 Wiki 数据未被转换。
 - [ ] 新 Agent 创建唯一 Memory root；不创建固定子目录。
-- [ ] Agent rename 保持 Memory root 内部 ID、content 和 links，只改变 canonical path。
+- [ ] Memory root path 使用稳定 Agent ID；Agent rename 只改 display_name/summary，canonical path/content/links 不变。
 - [ ] Agent delete 归档 root。
-- [ ] 非法/冲突 Agent name 有清晰错误，不追加随机 suffix。
-- [ ] Project rename 对 root/repository/source descendants 保持同样 ID 语义。
+- [ ] Project root 使用稳定 Project ID；Project rename 不触发百万级子树 move。
+- [ ] 跨库 create 中断后 session build 的幂等 repair 只补缺失 root，不重复节点或扩大权限。
 
 ## B. Runtime 权限
 
 - [ ] SessionConfig/CallerCtx 使用 `CompiledWikiAccess`，新 Wiki tool 不读取 anchors。
 - [ ] LLM input 无法改变 agentId、active project 或 grants。
-- [ ] 无 active project 时 project:// 与 `${active_project}` 不扩大到 projects 根。
+- [ ] 无 active project 时 project:// 不扩大到 projects 根并显示 inactive/`ADDRESS_UNRESOLVED`。
 - [ ] Zero 仅在 template 显式 grant 时拥有全树权限；删除该 grant 后立即失去。
 - [ ] ToolRegistry 对 Agent 只暴露一个名为 `Wiki` 的新 schema，无 Legacy/V2 名称。
 - [ ] Agent 调用旧 action 返回 schema validation error，而不是 fallback。
@@ -36,6 +36,12 @@
 - [ ] Agent config publish、active project change、显式 refresh、memory archive 后下一 turn 使用新 context。
 - [ ] 无关 UI/Agent 字段更新不导致 wiki-context cache 无意义失效。
 - [ ] address/policy revision 在日志/preview 中可追踪。
+- [ ] publish 发生在在途 tool call 时，该调用继续使用旧 access snapshot；对应 StepEnd 后下一调用同时切换 access 和 section。
+- [ ] 正式 AgentService/session 入口触发 compiler；只直接调用 compiler 的测试不能满足 wiring 验收。
+- [ ] `src/runtime/agent-loop.ts` 不 import Wiki compiler/store，不含 `wiki-context/wiki-system-anchors` 字面 section 或 `promptAssembler.invalidate("wiki-`。
+- [ ] `PostTurnComplete` 在本阶段新增/修改代码中零引用。
+- [ ] config-sync StepEnd hook 在真实 busy loop 刷新 pending generic patch；idle path 不需伪造 StepEnd 即可立即应用。
+- [ ] AgentLoop 对任意测试 section 都可通用 add/replace/remove/invalidate，测试不依赖 Wiki 名称。
 
 ## E. Memory/Archivist
 
@@ -51,6 +57,7 @@
 npm run typecheck
 npm run build:lib
 npm run test:unit
+npm run test:e2e
 npm run check:links
 ```
 
@@ -62,7 +69,7 @@ npm run check:links
 
 - 一个只读 Agent、一个 Archivist、一个显式全局管理 Agent 的 compiled grants。
 - 三种 profile 的 Prompt 样例和 token 统计。
-- Agent rename 前后 Memory root identity 证据。
+- Agent rename 前后稳定 Memory path/display_name 证据。
 - Memory turn 防越权用例。
 - ToolRegistry 导出工具名/schema 摘要。
 
@@ -73,3 +80,4 @@ npm run check:links
 - Prompt 内容决定 authorization。
 - preview 与 runtime 各有一套渲染器。
 - 为已有 Agent 自动把旧 anchors 转成全权 grant。
+- AgentLoop 内联 Wiki feature/invalidation 或 dead-path compiler。

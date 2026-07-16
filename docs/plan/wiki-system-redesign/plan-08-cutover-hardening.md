@@ -24,19 +24,26 @@
 - header/intent/structure/project_wiki 兼容类型与 prefix。
 - 只验证旧实现的测试。
 
+必须显式处理当前启动写入点：
+
+- 删除 `db-migration.ts` 的 `migrateWikiTableSchema`、`migrateWikiDetailToDisk`、`safeAddColumn(project_wiki.links)` 和 fresh `CREATE TABLE project_wiki` 调用/定义。
+- fresh `core.db` 不再创建 `project_wiki`；已有 Core DB 中的旧表保持原样但任何生产代码不得 touch。
+- 删除 `server/index.ts` 的旧 `ensureWikiSkeleton(wikiStoreGlobal)`、`rebuildStaleStructureLayouts` 及旧 WikiSkeletonService 装配。
+- 删除 data-change-hub 对 `project_wiki` 的广播(`data-change-hub.ts` 的 `UI_COLLECTIONS` 白名单)与 renderer 订阅;同时清理 server 端订阅者 `project-work-hook-manager.ts`(订阅 project_wiki domain 事件)与 `renderer/components/requirements/ProjectPage.tsx` 的 `<option value="project_wiki">` 下拉项——这两处在 hub 停播后成 dead code,必须一并删除而非保留。
+
 不能只“停止注册”而保留可被其他模块调用的旧全局 singleton/fallback。
 
-`sessions.db.project_wiki` 旧表可以保留为未读取的历史表，或通过显式维护命令删除；启动过程不得静默清除。代码中不得再查询/写入它。
+`core.db.project_wiki`（原 `sessions.db.project_wiki`）旧表可以保留为未读取的历史表，或通过显式维护命令删除；启动过程不得静默清除。代码中不得再查询/写入它。
 
 ### 2. 文件系统隔离
 
 重写 Wiki path guard，保护：
 
 ```text
-${ZERO_CORE_DIR}/wiki/wiki.db
-${ZERO_CORE_DIR}/wiki/wiki.db-wal
-${ZERO_CORE_DIR}/wiki/wiki.db-shm
-${ZERO_CORE_DIR}/wiki/backups
+${ZERO_CORE_DIR}/db/core.db{,-wal,-shm}
+${ZERO_CORE_DIR}/db/wiki.db{,-wal,-shm}
+${ZERO_CORE_DIR}/backups/core
+${ZERO_CORE_DIR}/backups/wiki
 ${ZERO_CORE_DIR}/wiki/.runtime
 ```
 
@@ -49,10 +56,12 @@ attachments 若允许 Agent 读取，必须经 Wiki attachment API 和 grants，
 实现管理级 snapshot：
 
 - 使用 SQLite Backup API 或 `VACUUM INTO`。
-- snapshot 前后记录 source DB revision/time/hash。
+- Core/Wiki 各自使用 Backup API 生成独立 snapshot；一个 manifest 记录两个 source path、时间、schema version、hash 和业务 revision，不声称跨库同一 SQLite transaction。
 - 不直接复制活跃 `wiki.db`。
 - 支持 restore 到新临时 DB 并验证 integrity/foreign key/roots/counts。
 - 可选本地 Git 只提交一致 snapshot 或 JSONL change log，不 commit 活跃 WAL DB。
+
+Core 与 Wiki 的 checkpoint、VACUUM、integrity 和 restore 各自独立；写 Wiki 的测试必须证明不会触发 Core checkpoint/mtime/WAL 变化。外部诊断仅可 readonly 打开 snapshot 或显式 readonly URI，绝不对活跃 DB 执行 checkpoint/VACUUM/migration。
 
 备份计划不要求每次全库 LLM 或逐节点扫描。大库的周期由管理配置决定；默认可按时间 + change count 触发。
 
@@ -91,6 +100,8 @@ explicit legacy cleanup
 
 不得每日对百万节点逐行 hash 或每次全量 Git commit 活跃 DB。
 
+启动只 eager bootstrap 固定 root 和有界状态核对；Project full reindex 是可观察的 background job。大型仓库不能阻塞 server ready，Prompt/UI 必须显示 pending/stale/indexing。
+
 ### 6. 架构文档
 
 更新：
@@ -121,6 +132,8 @@ fresh Wiki DB
 
 所有路径从应用正式入口执行，不只直接调用 service。
 
+Plan 05–07 的中间 commit 不可单独发布。最终切换以 release gate 为原子边界：正式 runtime、tool、Prompt、REST/IPC/UI 全部只指向新 service，旧 ProjectWikiStore/router/anchor injection/data subscriber 同一最终变更集不可达。验收需要运行时断言，而非只 grep 文件名。
+
 ## 明确不做
 
 - 不迁移旧 Wiki 数据。
@@ -131,4 +144,3 @@ fresh Wiki DB
 ## 完成定义
 
 先通过 [Acceptance 08](acceptance-08-cutover-hardening.md)，再由独立验收 Agent 执行 [Final Acceptance](acceptance-final.md)。
-

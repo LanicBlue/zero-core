@@ -54,6 +54,8 @@ wikiSearch(query, anchorIds)
 legacy /api/project-wiki CRUD
 ```
 
+现状有两套入口：legacy `/api/project-wiki/*`（含 mutation，`WikiPage.tsx` 仍调用）与只读 `/api/wiki/*`。本阶段必须把所有 renderer 数据面调用合并到上述九个 `/api/wiki/*` endpoint；不得只改其中一套。旧 route 的生产注册由 Plan 08 删除，但 Plan 06 结束时 renderer 调用数必须为零。
+
 新接口全部使用共享 request/result types。
 
 ### 3. Zustand store
@@ -67,6 +69,8 @@ legacy /api/project-wiki CRUD
 - archived 默认隐藏。
 - scope 支持 canonical root 或已解析 logical address view。
 - 选中 search result 可展开祖先并定位节点。
+
+联动修改所有已知 nodeById 消费方：`AppLayout`、`AgentEditor`、`WikiPage`、`WikiTree`、`WikiTreePanel` 以及 grep 发现的其他消费者。公开 key 统一 canonical path；内部 ID 不得以兼容字段继续流入 store。
 
 不得把内部 DB ID 存入 renderer state。
 
@@ -133,6 +137,8 @@ event 含 path/oldPath/parentPath/op/revision。前端：
 - move 删除 old path cache 并刷新 old/new parent。
 - 未展开 branch 不主动拉取。
 
+新 UI 只订阅 `wiki_nodes/wiki_links/wiki_sync`；不得继续订阅或根据 `project_wiki` collection 刷新。
+
 ## UI 安全
 
 - Markdown 默认不执行 script；若继续用 `rehype-raw`，必须 sanitizer 白名单并有 XSS 测试。
@@ -153,4 +159,3 @@ event 含 path/oldPath/parentPath/op/revision。前端：
 ## 完成定义
 
 [Acceptance 06](acceptance-06-data-api-browser-ui.md) 全部通过并提交 `result-06.md`。
-

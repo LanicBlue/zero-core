@@ -7,13 +7,13 @@
 - [ ] action 枚举恰好包含 9 个最终 action。
 - [ ] schema 无旧 memory/doc action、管理 action、nodeId、agentId、projectId、grants 或 cwd。
 - [ ] 当前 ToolRegistry 未额外暴露 `WikiV2`/测试工具名称。
-- [ ] 所有结果 payload 与 format 文本不含数据库 ID、UUID、短 ID、旧 path prefix。
+- [ ] 所有结果 payload 与 format 文本不含 Wiki 内部整数 ID、合成/短 ID或旧 path prefix；canonical path 中稳定 Agent/Project 业务 ID 路径段不视为内部 Wiki ID。
 - [ ] 普通 Agent 无 hard-delete/address/repository/grant/context action。
 
 ## B. ToolResult
 
 - [ ] execute 返回结构化 ToolResult；UI 可不经 format 消费完整字段。
-- [ ] format 输出紧凑、稳定并可重新用于下一次工具寻址。
+- [ ] format 输出中的每个 canonical path/address 回灌对应 expand/read schema 都能解析成功，不用主观“紧凑”代替断言。
 - [ ] error code 可机器判断，不要求解析 message。
 - [ ] mutation 返回 revision/auditId；并发冲突不伪装为普通错误文本。
 
@@ -31,11 +31,12 @@
 - [ ] exact、substring、glob、regex、fulltext、hybrid 全部有正反测试。
 - [ ] case_sensitive true/false 对 ASCII fixture 正确；Unicode 限制在文档/API 中诚实说明。
 - [ ] glob 的 `*` 不跨段、`**` 可跨段、`?` 单字符。
-- [ ] regex 无法阻塞主线程；超长、灾难性 pattern 或超时返回稳定 limit error。
+- [ ] regex pattern 2,048 bytes、50,000 candidates、16 MiB、250 ms、200 results 五个默认阈值分别有边界测试；worker 超时被 terminate，后续请求可立即执行。
 - [ ] FTS/search 在无授权 scope 时不执行正文查询或 snippet 生成。
 - [ ] `both` 能融合 Wiki/source 命中且无重复/丢失来源。
 - [ ] source search 不能通过参数改变 cwd 或逃离绑定仓库。
 - [ ] cursor/limit 结果稳定，同输入同 revision 顺序可重复。
+- [ ] hybrid 精确符合共享 `(match_type_rank, -normalized_score, canonical_path, target)` 排序 oracle，同分不依赖内部 ID。
 
 ## E. 泄露测试
 
@@ -62,6 +63,7 @@ npm run check:links
 - 每个 action 的一组 sanitized input/result。
 - search mode × target × case 表。
 - regex timeout/worker 证据。
+- 旧 10-action caller inventory 及每项的迁移阶段。
 - secret keyword 防泄露测试输出摘要。
 
 ## H. 拒绝条件
@@ -71,4 +73,3 @@ npm run check:links
 - 工具通过读取 AgentStore 或 input 自行决定身份。
 - 保留旧 ID/短 ID 作为“兼容入口”。
 - 把管理功能塞进 Wiki action 枚举。
-

@@ -25,14 +25,15 @@ Agent 看到的始终是一棵树：
 wiki-root
 ├── knowledge
 ├── memory
-│   └── <agent-name>
+│   └── <stable-agent-id>
 └── projects
-    └── <project-name>
+    └── <stable-project-id>
 ```
 
 核心结论：
 
-- Wiki 数据统一存入独立的 `wiki.db`，正文不再拆到磁盘 Markdown 文件。
+- 数据库统一位于 `${ZERO_CORE_DIR}/db/`：Core 状态使用 `core.db`，Wiki 使用独立 `wiki.db`；正文不再拆到磁盘 Markdown 文件。
+- 已退役的 `knowledge.db` 由数据库布局切换直接删除，不迁移或保留兼容读取。
 - `wiki-root/...` 是 Agent 可见的规范路径；SQLite `id` 仅供内部关联，绝不暴露给 Agent。
 - Project Wiki 是仓库结构的语义镜像，源码和仓库文档正文仍以 Git 仓库为事实源。
 - 当前单个 `Wiki(action, ...)` 工具可以保留，但 action 收敛为 `expand/read/search/create/update/delete/link/unlink/move`。
@@ -45,7 +46,7 @@ wiki-root
 
 | 方面 | 当前实现 | 目标实现 |
 |---|---|---|
-| 存储 | `project_wiki` 表保存元数据，正文位于 `~/.zero-core/wiki` | 独立 `wiki.db` 保存节点、正文、链接、地址、索引和审计 |
+| 存储 | `sessions.db.project_wiki` 保存元数据，正文位于 `~/.zero-core/wiki` | `db/core.db` 保存应用状态；独立 `db/wiki.db` 保存节点、正文、链接、地址、索引和审计 |
 | 身份 | UUID、合成 root ID、8 字符短 ID、title path 并存 | Agent 只使用规范路径或逻辑地址；内部 ID 透明 |
 | 路径 | `project:<id>`、`header:*`、`intent:*`、`structure:*` | 统一 `wiki-root/<namespace>/...` |
 | 节点类型 | 依靠 `header/intent/structure/project/memory` | `root/namespace/project/directory/source_file/document/...` |
@@ -85,15 +86,18 @@ Wiki Data Plane                     Management Plane
 
 ### 3.2 物理目录
 
-建议将 Wiki 从主 `sessions.db` 中分离：
+数据库布局由 Plan 00 统一：
 
 ```text
-${ZERO_CORE_DIR}/wiki/
-├── wiki.db
-├── attachments/
-├── backups/
-├── changes/             # 可选 JSONL 审计导出
-└── .runtime/
+${ZERO_CORE_DIR}/
+├── db/
+│   ├── core.db
+│   └── wiki.db
+├── wiki/
+│   └── attachments/
+└── backups/
+    ├── core/
+    └── wiki/
 ```
 
 单独数据库的理由：
@@ -102,6 +106,7 @@ ${ZERO_CORE_DIR}/wiki/
 - FTS、项目重建和 Wiki snapshot 可以独立执行。
 - 旧 `project_wiki` 可以完全停止使用，不需要改造主数据库中的旧表。
 - Wiki 备份、完整性检查和未来导入导出有清晰边界。
+- 两个数据库分别拥有连接、migration、WAL、checkpoint、backup 和 close 生命周期，不使用跨库 transaction。
 
 `WikiDatabase` 使用单独的 `better-sqlite3` 连接，启用：
 
@@ -110,6 +115,8 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 ```
+
+`DatabaseManager` 在 composition root 中统一编排路径、打开和关闭顺序：CoreDatabase 与 WikiDatabase 全部 ready 后才能构造 WikiService、AgentService 和 recovery。它不暴露 `ATTACH DATABASE` 或跨库事务。Core 与 Wiki 的业务关联使用稳定 Agent/Project ID、幂等 service 操作和修复检查。
 
 ## 4. 节点树与路径
 
@@ -126,18 +133,18 @@ wiki-root
 
 `wiki-root` 本身可寻址，但通常没有 Agent grant。
 
-创建 Agent 时，由管理服务幂等创建：
+创建 Agent 时，由管理服务按不可变 `AgentRecord.id` 幂等创建：
 
 ```text
-wiki-root/memory/<agent-name>
+wiki-root/memory/<stable-agent-id>
 ```
 
 系统只固定 Memory 根，不规定 `preferences/lessons/tasks` 等子树。Agent 根据自己的长期记忆动态创建、移动和合并子节点。删除 Agent 时默认归档 Memory 根，而不是级联硬删除。
 
-注册项目时，由项目管理服务创建：
+注册项目时，由项目管理服务按不可变 `ProjectRecord.id` 创建：
 
 ```text
-wiki-root/projects/<project-name>
+wiki-root/projects/<stable-project-id>
 ```
 
 仓库索引器随后在该节点下建立仓库镜像。
@@ -158,7 +165,7 @@ wiki-root/projects/<project-name>
 wiki-root/projects/zero-core/src/tools/wiki-tool.ts
 ```
 
-节点 `name` 是路径最后一段，也是默认展示名。当前 `title` 字段应删除；确有展示名需求时使用 `attributes.display_name`：
+普通节点的 `name` 是路径最后一段，也是默认展示名。Agent/Project 根的 `name` 是稳定业务 ID，展示名称使用 `attributes.display_name`。当前 `title` 字段应删除：
 
 ```text
 display title = attributes.display_name ?? name
@@ -185,7 +192,7 @@ CREATE TABLE wiki_nodes (
     id              INTEGER PRIMARY KEY,
     parent_id       INTEGER,
     name            TEXT NOT NULL,
-    path            TEXT NOT NULL UNIQUE,
+    path            TEXT NOT NULL,
     kind            TEXT NOT NULL DEFAULT 'node',
     summary         TEXT NOT NULL DEFAULT '',
     content         TEXT NOT NULL DEFAULT '',
@@ -195,7 +202,6 @@ CREATE TABLE wiki_nodes (
     updated_at      TEXT NOT NULL,
     archived_at     TEXT,
 
-    UNIQUE(parent_id, name),
     CHECK(attributes_json IS NULL OR json_valid(attributes_json)),
     FOREIGN KEY(parent_id) REFERENCES wiki_nodes(id) ON DELETE RESTRICT
 );
@@ -203,6 +209,10 @@ CREATE TABLE wiki_nodes (
 CREATE INDEX idx_wiki_nodes_parent ON wiki_nodes(parent_id);
 CREATE INDEX idx_wiki_nodes_kind ON wiki_nodes(kind);
 CREATE INDEX idx_wiki_nodes_archived ON wiki_nodes(archived_at);
+CREATE UNIQUE INDEX uq_wiki_nodes_active_path
+    ON wiki_nodes(path) WHERE archived_at IS NULL;
+CREATE UNIQUE INDEX uq_wiki_nodes_active_sibling
+    ON wiki_nodes(parent_id, name) WHERE archived_at IS NULL;
 ```
 
 `summary` 和 `content` 分开保留，但物理上都位于 SQLite：
@@ -211,6 +221,17 @@ CREATE INDEX idx_wiki_nodes_archived ON wiki_nodes(archived_at);
 - `content`：Markdown 正文，按需 read。
 - `revision`：乐观并发控制。
 - `attributes_json`：Memory 属性、来源状态、显示名等非通用字段。
+- 归档节点保留原始 path/name；partial unique index 允许同路径重新创建。restore 必须先检查 active path/sibling 冲突。
+
+第一版 `kind` 是闭集：
+
+```text
+root, namespace, project, directory,
+source_file, source_symlink, source_submodule,
+knowledge, memory, node
+```
+
+文档、测试、配置、资产等细分类放在 `attributes.source_kind`，未知通用节点使用 `node`；不得让任意 kind 字符串直接进入 UI 图标和搜索契约。
 
 一般数 KB 到数百 KB 的正文直接使用 SQLite `TEXT`。图片、PDF、视频、数据集和大型日志放入 `attachments/`，数据库只保存元数据和相对位置。
 
@@ -260,9 +281,11 @@ CREATE TABLE wiki_addresses (
 
 支持：
 
-- 静态地址：`runtime://` 指向某个内部节点 ID。
-- 动态地址：`memory://`、`project://` 由当前 session 解析。
+- 静态地址：`runtime://` 等管理者注册的地址在表中指向内部节点 ID；地址字符串不包含也不暴露该 ID。
+- 动态地址：`memory://`、`project://` 是系统保留 resolver，不插入 `wiki_addresses`。它们分别按 `CallerCtx.agentId/activeProjectId` 解析稳定根路径。
 - 规范路径：不需要注册，始终可由 resolver 直接处理。
+
+`resolver` 是闭集声明值，不是函数名或可执行脚本。语法非法返回 `INVALID_ADDRESS`；已知动态地址缺少运行上下文返回 `ADDRESS_UNRESOLVED`；有效地址或 alias 不存在返回 `NOT_FOUND`。
 
 地址管理不进入普通 Wiki tool schema。
 
@@ -316,7 +339,7 @@ CREATE VIRTUAL TABLE wiki_nodes_fts USING fts5(
 );
 ```
 
-通过 trigger 或显式 store transaction 保证 `wiki_nodes` 和 FTS 同步。索引属于可重建数据。
+FTS 固定索引 `name/summary/content`。所有增删改由 repository 在同一个显式 transaction 内同步 node、FTS 和 audit；不使用隐藏 trigger。索引属于可重建数据。
 
 ### 5.6 审计与幂等
 
@@ -346,7 +369,7 @@ CREATE TABLE wiki_audit_log (
 项目根映射一个已注册仓库：
 
 ```text
-wiki-root/projects/zero-core
+wiki-root/projects/<stable-project-id>   # display_name = zero-core
 ├── README.md
 ├── docs
 │   └── design
@@ -422,6 +445,7 @@ commit succeeded
 - delete：将 source-bound 节点归档，默认不立即丢弃语义内容和 links。
 - 空目录：Git 不跟踪空目录，因此没有独立节点。
 - 同步失败：保留旧 `indexed_revision`，记录 `last_error`，项目根显示 `stale/failed`。
+- rename swap/cycle：先把同批受影响 source binding/path 移到 transaction 内唯一临时名，再写最终路径，避免 SQLite UNIQUE 冲突。
 
 当前 `WikiSkeletonService` 应重构为 `WikiProjectIndexer`；不再生成 `header/intent/structure` 前缀，也不再靠扫描时读取所有文件正文生成摘要。
 
@@ -465,11 +489,11 @@ interface AgentRecord {
       "actions": ["expand", "read", "search"]
     },
     {
-      "scope": "wiki-root/memory/${agent_id}",
+      "scope": "memory://",
       "actions": ["expand", "read", "search", "create", "update", "delete", "link", "unlink", "move"]
     },
     {
-      "scope": "wiki-root/projects/${active_project}",
+      "scope": "project://",
       "actions": ["expand", "read", "search", "update", "link", "unlink"]
     }
   ]
@@ -487,8 +511,8 @@ interface AgentRecord {
 `AgentService` 在创建 session 时：
 
 1. 读取 Agent 已发布的 `wikiGrants`。
-2. 展开 `${agent_id}` 和 `${active_project}`。
-3. 将逻辑地址或模板路径规范化为 canonical scope。
+2. 使用当前 Agent/Project 的稳定业务 ID解析 `memory://` 和 `project://`。
+3. 将逻辑地址或规范路径编译为 canonical scope。
 4. 生成 `CompiledWikiAccess` 放入 `SessionConfig` 和 `CallerCtx`。
 
 ```ts
@@ -517,6 +541,7 @@ Wiki 工具不再接收 `wikiAnchorNodeIds`，也不允许模型在 input 中自
 - 深层 scope 不自动授予祖先访问；Prompt 应直接给 Agent 可用逻辑地址。
 - 搜索先计算具有 `search` action 的 canonical scopes，再在这些 scopes 内查询和生成 snippet。
 - 返回 links 时，对端不在任何可见 grant 中则不返回该 link。
+- Work/Cron 只能提供 active project/context，不能扩大 Agent grants；effective access 始终来自已发布 Agent 配置。
 
 错误规则必须在查节点内容前执行：
 
@@ -531,6 +556,19 @@ Wiki 工具不再接收 `wikiAnchorNodeIds`，也不允许模型在 input 中自
 ### 7.4 UI 与管理调用
 
 Wiki Browser 是管理员界面，不伪装成某个 Agent。REST host 为 UI 注入管理 authority，UI 不提交任意 `callerCtx` 或 grants。
+
+### 7.5 Core 对象与 Wiki 的关系
+
+`core.db` 是 Agent、Project、Work、Cron、Session 的事实源；`wiki.db` 不复制这些业务对象：
+
+| Core 对象 | Wiki 关系 |
+|---|---|
+| Agent | `wiki-root/memory/<agent-id>`，grants/context 保存在 AgentRecord |
+| Project | `wiki-root/projects/<project-id>`，`wiki_repositories.project_id` 是应用层软引用 |
+| Work | 保存 agent/project/work 状态；不默认创建 Wiki 根，可携带逻辑地址 context |
+| Cron | 指定运行 Agent及可选 Project/Work；不拥有独立 Wiki 权限 |
+
+跨库不建立 foreign key。Agent/Project 创建与删除由管理 service 编排为幂等操作，并在 session build/startup diagnostics 修复缺失 root/binding。Work/Cron 只能缩小运行上下文，不能扩大 Agent 已发布 grants。第一版不创建 `works/` 或 `crons/` Wiki namespace；未来若需要查询 Work 产物关系，再单独设计可重建的 entity-reference 表。
 
 ## 8. Wiki 工具定义
 
@@ -639,6 +677,10 @@ summary, content, links, all, source
 - regex：源码使用 ripgrep；Wiki 正文第一版在授权且有上限的候选集上执行安全 worker，并限制 pattern 长度、候选数和总时间。不要直接在主线程对全库使用 JavaScript RegExp。
 - hybrid：先融合 path/title/FTS/source 结果；Embedding 留作未来扩展。
 
+第一版 regex 默认硬上限：pattern 2,048 UTF-8 bytes、授权候选 50,000、输入正文总量 16 MiB、worker wall time 250 ms、返回结果 200。测试可通过依赖注入缩短 timeout，但生产值只能由 host 配置收紧。分别返回 `REGEX_INVALID/REGEX_LIMIT_EXCEEDED/REGEX_TIMEOUT`。
+
+Hybrid 排序固定为 `(match_type_rank ASC, normalized_score DESC, canonical_path ASC, target ASC)`；rank 枚举和 score 归一化函数属于共享契约，不能依赖数据库内部 ID 破同分。
+
 FTS5 `unicode61` 不能覆盖所有 Unicode case folding。中文不受大小写影响；若后续需要完整国际化大小写规则，再接 ICU tokenizer 或规范化 shadow column。
 
 ### 8.6 `create`
@@ -670,7 +712,11 @@ FTS5 `unicode61` 不能覆盖所有 Unicode case folding。中文不受大小写
   "node": "memory://failed-approaches",
   "expected_revision": 18,
   "changes": {
-    "summary": "..."
+    "summary": "...",
+    "attributes": {
+      "durability": "permanent",
+      "review_after": null
+    }
   }
 }
 ```
@@ -709,6 +755,8 @@ EDIT_TARGET_AMBIGUOUS
 WRITE_CONFLICT
 ```
 
+Section 使用 CommonMark AST（项目显式依赖 `unified/remark-parse` 或等价直接依赖），同时识别 ATX 与 Setext heading。一个 section 从目标 heading 开始，到下一个同级或更高级 heading 前结束；fenced code 内的 `#` 不是 heading。同名匹配必须通过 `level/occurrence` 消歧，否则返回 `EDIT_TARGET_AMBIGUOUS`。
+
 ### 8.8 `link/unlink`
 
 ```json
@@ -725,8 +773,10 @@ WRITE_CONFLICT
 ### 8.9 `move/delete`
 
 - `move` 在事务中更新自身与后代 materialized path，links 和静态逻辑地址保持不变。
+- 只有被直接移动的根节点 revision +1；后代 path 是派生更新，后代 revision/updated_at 不变。change event 必须携带 subtree 的 `oldPath/newPath`。
+- 普通 Agent move 默认最多 10,000 个节点，超限返回 `MOVE_TOO_LARGE`；Git indexer/管理异步任务可使用受控内部批量路径并记录耗时/WAL。
 - 规范路径型 grants 不自动改写；管理面返回受影响 Agent 列表供管理员确认。
-- `delete` 默认归档。
+- `delete` 默认归档整棵子树；所有后代同时标记 archived，active partial unique index 允许未来重建同路径节点。
 - 有 children、incoming links、逻辑地址或 source binding 时拒绝硬删除。
 - source-bound Project 节点只能由 Git 同步移动/归档。
 
@@ -744,7 +794,21 @@ type WikiToolData =
 ToolResult<WikiToolData>
 ```
 
-`format(result)` 再为 Agent 生成紧凑 Markdown；REST/UI 直接消费 JSON。错误使用稳定 code + message，不靠字符串正则识别。
+`format(result)` 再为 Agent 生成紧凑 Markdown；REST/UI 直接消费 JSON。mutation 返回的 `auditId` 是可公开的 opaque operation receipt（`wiki_audit_log.audit_id`），不属于被禁止暴露的 node/link/source 整数 ID。
+
+第一版共享错误码闭集：
+
+```text
+INVALID_REQUEST, INVALID_PATH, INVALID_NAME,
+INVALID_ADDRESS, ADDRESS_UNRESOLVED,
+NOT_FOUND, ACCESS_DENIED, ALREADY_EXISTS,
+WRITE_CONFLICT, EDIT_TARGET_NOT_FOUND, EDIT_TARGET_AMBIGUOUS,
+SOURCE_MANAGED, SOURCE_UNAVAILABLE, SYNC_FAILED,
+REGEX_INVALID, REGEX_LIMIT_EXCEEDED, REGEX_TIMEOUT,
+HARD_DELETE_BLOCKED, MOVE_TOO_LARGE, INTERNAL_ERROR
+```
+
+后续阶段只能引用该 union；新增 code 必须先更新设计、共享契约和所有相关 acceptance，不能由某个 sub 静默扩展。
 
 ## 9. Prompt 与上下文注入
 
@@ -805,15 +869,19 @@ Available addresses:
 
 预算是上限，不要求填满。完整历史、低置信度 hypothesis、过期 task_state、长正文和整棵项目树不固定注入。
 
+截断顺序固定为：地址/检索指引 → 根稳定规则 → permanent/long_term preference/procedure → Project 目标/约束/sync → 当前 work 相关候选 → 近期高价值节点 → 导航补充。每类内部使用稳定 tuple（显式 priority、durability、confidence、updated_at、canonical path），并输出 dropped count/token 统计。
+
 ### 9.3 编译与缓存
 
-`AgentService` 在 session 创建或 active project 改变时编译 `wiki-context` section：
+`AgentService` 在 session 创建或 active project 改变时编译 Wiki system section。它把 `{name, compute, cacheBreak}` 作为通用 dynamic system section 放入 SessionConfig；`AgentLoop` 只消费通用 sections，不得 import Wiki compiler/store，也不得出现 Wiki 专用 section 字面量或 `promptAssembler.invalidate("wiki-...")`：
 
 - 保存 `addressRevision`、`policyRevision`、节点 revision 快照。
 - section 保持 `cacheBreak: false`，兼容当前 prefix cache。
 - 普通 Wiki 写入不在同一 turn 中重算 Prompt。
-- Memory 归档完成、用户显式 refresh、Agent 配置发布或项目切换时使 section 失效。
-- 地址/grants/context policy 发布后，现有 session 在安全边界重编译；不能让一次工具调用中途改变地址语义。
+- Memory 归档完成、用户显式 refresh、Agent 配置发布或项目切换由 AgentService config-sync 通道排队。
+- 空闲 session 可立即交换 compiled snapshot；busy session 只在 `StepEnd` hook 后的安全边界应用。地址/grants/context policy 发布不能改变在途工具调用使用的 `CompiledWikiAccess`。
+- `PostTurnComplete` 已删除，任何实现和验收不得引用它。
+- runtime wiring 测试必须从正式 AgentService/session 入口证明 compiler 被调用、section 被组装和安全边界刷新，不能只直接测试 compiler 形成 dead-path 假阳性。
 
 工具自身 prompt 应删除关于 `#xxxxxxxx`、`docRead/docWrite/docEdit`、header/intent 和 pure-anchor scope 的长说明，改成简短的 action 说明与 `search → expand → read` 工作流。
 
@@ -927,7 +995,7 @@ source-bound 节点的 move/delete/create 控件禁用并解释“结构由 Git 
 
 1. **Wiki Access**
    - 每行：scope/address + action chips。
-   - 支持 `${agent_id}`、`${active_project}` 模板预览。
+   - 支持 `memory://`、`project://` 和管理员静态 alias 的编译预览。
    - 显示编译后的 canonical scopes。
    - 检测无效地址、重复 grant 和危险的 `wiki-root` 全权。
 
@@ -959,8 +1027,9 @@ UI 管理调用由 server 注入 admin authority，不把管理 action 暴露给
 
 | 文件/模块 | 修改方向 |
 |---|---|
+| `src/server/database/*` | Plan 00：统一 DB paths/lifecycle，`CoreDatabase` 取代 `SessionDB`，删除退役 `knowledge.db` |
 | `src/server/wiki-node-store.ts` | 重写为独立 Wiki DB repository/service；删除磁盘正文、短 ID 和 anchor-scope 方法 |
-| `src/server/session-db.ts` | 不再承载新 Wiki 表；只保留 Agent/Project 等业务数据 |
+| `src/server/core-database.ts` | 不再承载新 Wiki 表；保存 Agent/Project/Work/Cron/Session 等 Core 业务数据 |
 | `src/server/db-migration.ts` | 不新增旧 Wiki 迁移；新 Wiki schema 由 `WikiDatabase` 独立初始化 |
 | `src/shared/types.ts` | 新增 WikiNodeView、WikiLink、WikiGrant、WikiContext、结构化 request/result；删除旧 WikiNode 兼容字段 |
 | `src/server/project-wiki-store.ts` | 删除兼容层 |
@@ -972,9 +1041,9 @@ UI 管理调用由 server 注入 admin authority，不把管理 action 暴露给
 | `src/tools/wiki-tool.ts` | 新 action schema、逻辑地址、grants、结构化 ToolResult、FTS/source search、revision update |
 | `src/tools/types.ts` | `CallerCtx.wikiAccess` 取代 `wikiAnchorNodeIds` |
 | `src/tools/wiki-path-guard.ts` | 从阻止磁盘 Markdown 改为阻止 Agent 直接访问 `wiki.db/backups/.runtime` |
-| `src/runtime/wiki-anchor-injection.ts` | 由 `wiki-context-compiler.ts` 替代 |
+| `src/runtime/wiki-anchor-injection.ts` | 删除；compiler 位于 server Wiki 层，由 AgentService 注入通用 system section |
 | `src/runtime/types.ts` | `wikiGrants/wikiContext/compiled access` 取代 `wikiAnchors` |
-| `src/runtime/agent-loop.ts` | 注入新 wiki-context section；buildCallerCtx 传 compiled access；删除 anchor 重解析 |
+| `src/runtime/agent-loop.ts` | 仅消费通用 dynamic system sections 与 CallerCtx compiled access；删除 Wiki import、字面 section 和 anchor 重解析 |
 | `src/server/agent-store.ts` | round-trip `wikiGrants` 与 `wikiContext` |
 | `src/server/agent-service.ts` | 编译 grants/context、处理 hot update 与 active project 变化 |
 | `src/server/template-store.ts` | 模板改用新 grants/context；Archivist prompt 删除 header/intent/short-ID 指令 |
@@ -992,13 +1061,14 @@ UI 管理调用由 server 注入 admin authority，不把管理 action 暴露给
 
 本设计明确不迁移旧数据，因此实现阶段采用 clean cutover：
 
-1. 新增独立 `wiki.db` 和新 service，不读取 `project_wiki`。
-2. 初始化固定根、现有 Agent Memory 根和现有 Project 根。
-3. 用新 `WikiProjectIndexer` 从各项目 Git revision 全量重建 Project Wiki。
-4. Knowledge 与 Memory 从空树开始。
-5. 切换 Wiki tool、Prompt、REST/IPC 和 UI 到新 service。
-6. 删除运行时对 `ProjectWikiStore`、旧 anchors 和磁盘正文的引用。
-7. 旧 `project_wiki` 表和 `~/.zero-core/wiki` 旧 Markdown 仅作为停止使用的遗留物；确认新版本稳定后再通过显式维护命令清理，启动迁移不得静默删除。
+1. Plan 00 将活动主库切换为 `db/core.db`，删除退役 `knowledge.db`。
+2. 新增独立 `db/wiki.db` 和新 service，不读取 `core.db.project_wiki`。
+3. 初始化固定根、现有 Agent Memory 根和现有 Project 根。
+4. 用新 `WikiProjectIndexer` 从各项目 Git revision 全量重建 Project Wiki。
+5. Knowledge 与 Memory 从空树开始。
+6. 切换 Wiki tool、Prompt、REST/IPC 和 UI 到新 service。
+7. 删除运行时对 `ProjectWikiStore`、旧 anchors 和磁盘正文的引用。
+8. 旧 `project_wiki` 表和 `~/.zero-core/wiki` 旧 Markdown 仅作为停止使用的遗留物；只能由显式维护命令清理，启动不得静默删除。
 
 不实现：
 
@@ -1009,43 +1079,21 @@ UI 管理调用由 server 注入 admin authority，不把管理 action 暴露给
 
 ## 14. 实施阶段
 
-### Phase 1：核心存储
+实施与 `docs/plan/wiki-system-redesign/README.md` 一一对应：
 
-- `WikiDatabase`、DDL、repositories、links、FTS、audit。
-- path normalizer、address resolver、authorization service。
-- 节点 CRUD、revision、局部编辑和事务测试。
+| Phase | 所有权与主要 contract |
+|---|---|
+| 00 Database Foundation | `db/core.db`、DatabaseManager、旧 Core 安全切换、删除 `knowledge.db` |
+| 01 Database & Contracts | WikiDatabase、DDL、path、closed kind/error/view、repository/FTS/audit |
+| 02 Core Service | WikiService 签名、address resolver、compiled grants、CRUD/edit/move/archive |
+| 03 Project Mirror | repository binding、Git tree/diff、source read/search、sync 触发 |
+| 04 Tool & Search | flat Wiki action schema、CallerCtx contract、结构化结果、regex worker/hybrid ranking |
+| 05 Runtime & Prompt | AgentRecord round-trip、正式 tool 接线、server compiler、StepEnd 安全边界 |
+| 06 Data API & Browser | 合并两套 IPC、path-keyed store、Browser/Search/Detail、change event |
+| 07 Management UI | address/repository/grant/context 管理与发布、真实 preview |
+| 08 Cutover & Hardening | 删除全部 legacy、DB 保护/备份/性能、文档和 release gate |
 
-### Phase 2：项目镜像
-
-- `WikiProjectIndexer` 全量 Git tree 建图。
-- Git diff 增量 add/modify/delete/rename。
-- source read/search、sync 状态和 commit hook。
-
-### Phase 3：Wiki tool
-
-- 新 action schema 和结构化结果。
-- search modes、link/move/delete 约束。
-- 删除 memory/doc 专用 action 与短 ID。
-
-### Phase 4：权限与 Prompt
-
-- AgentRecord grants/context。
-- Session compile、CallerCtx、授权错误语义。
-- 新 Context Compiler、preview 和缓存失效。
-
-### Phase 5：API 与 UI
-
-- 新 REST/IPC/preload。
-- path-keyed lazy browser、advanced search、detail tabs。
-- Agent Access/Context、Project Sync、Address Admin UI。
-
-### Phase 6：旧实现清理
-
-- 删除 legacy ProjectWikiStore/router、anchor injection 和旧测试。
-- 删除运行时对磁盘 Wiki 正文的依赖。
-- 文档更新和 explicit legacy cleanup 命令。
-
-阶段间不做旧数据兼容；每一阶段在开发分支上使用新空 Wiki DB。
+阶段间不做旧 Wiki 数据兼容；每一阶段在开发分支上使用新空 Wiki DB。阶段产物的 TypeScript contract 必须由拥有阶段先落地，后续阶段只能消费，不能静默重定义。
 
 ## 15. 测试与验收标准
 
@@ -1109,8 +1157,9 @@ UI 管理调用由 server 注入 admin authority，不把管理 action 暴露给
 
 本文已采用以下推荐默认值，若没有新的产品要求，可直接按此实现：
 
-1. Wiki 使用独立 `${ZERO_CORE_DIR}/wiki/wiki.db`，不继续写 `sessions.db.project_wiki`。
+1. 活动数据库统一为 `${ZERO_CORE_DIR}/db/core.db` 与独立 `${ZERO_CORE_DIR}/db/wiki.db`；退役 `knowledge.db` 直接删除。
 2. source-bound Project 节点的结构完全由 Git indexer 管理，普通 Wiki tool 不能 create/move/delete 它们。
 3. Agent template 显式提供 grants；系统不在工具内部暗中授予 active project 写权限。
 4. Prompt 使用 `standard` profile，Memory 与 Project 均注入比当前一层 anchor 更丰富的 manifest。
 5. 旧 Wiki 数据不迁移、不双写；新系统从空 Knowledge/Memory 和重建 Project Wiki 开始。
+6. Agent/Project 根使用稳定业务 ID 路径段，重命名只更新 `attributes.display_name`。

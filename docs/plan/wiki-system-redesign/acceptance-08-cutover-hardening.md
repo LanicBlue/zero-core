@@ -8,6 +8,8 @@
 - [ ] Agent schema 无旧 memory/doc action、nodeId/short ID 寻址。
 - [ ] Runtime/CallerCtx/Agent Editor 无 `wikiAnchors/wikiAnchorNodeIds` 行为字段。
 - [ ] 生产代码不查询/写入 `project_wiki`，不读旧 Wiki Markdown。
+- [ ] `db-migration.ts` 不再创建/迁移/加列 `project_wiki`；fresh core.db 无该表，既有表启动前后 schema/count 不变。
+- [ ] `ensureWikiSkeleton/rebuildStaleStructureLayouts` 和 `project_wiki` data subscriber 在生产 runtime 不可达。
 - [ ] 无 `header:/intent:/structure:` 生成或解析逻辑。
 - [ ] 无 `WikiLegacy/WikiV2` 用户可见工具或 hidden fallback。
 
@@ -15,7 +17,7 @@
 
 ## B. 文件系统保护
 
-- [ ] Read/Write/Edit/Grep/Glob/Shell 对 wiki.db、WAL、SHM、backup、runtime 均拒绝。
+- [ ] Read/Write/Edit/Grep/Glob/Shell 对 db/core.db、db/wiki.db、各自 WAL/SHM、backup、runtime 均拒绝。
 - [ ] 相对路径、引号、环境变量、大小写、symlink/junction 和 shell 拼接绕过有测试。
 - [ ] 合法项目源码访问不被误拦截。
 - [ ] attachment 访问经 API/grants，不开放 Wiki 根目录。
@@ -27,6 +29,8 @@
 - [ ] restore 到临时实例后 roots、nodes、links、addresses、repositories、FTS 查询一致。
 - [ ] 活跃 DB/WAL 不进入 Git 备份 commit。
 - [ ] explicit legacy cleanup 不在普通 startup 自动执行。
+- [ ] Core/Wiki snapshot manifest 成对记录但分别验证；写 Wiki 不触发 Core checkpoint/mtime/WAL 变化。
+- [ ] readonly 诊断不会对活跃数据库执行 checkpoint/VACUUM/migration。
 
 ## D. 规模与查询计划
 
@@ -36,6 +40,9 @@
 - [ ] FTS top-k 不把全部 content 拉入 Node 内存。
 - [ ] authorized search 随 grant scope 数量有界，不先全库结果后过滤。
 - [ ] Windows 上 Wiki 物理文件数量与节点数无关，仅 DB/WAL/附件/备份增长。
+- [ ] result 附 1M benchmark 原始命令日志、日期、commit SHA、硬件、数据生成参数；只有总结文字不通过。
+- [ ] 10,000 节点 Agent move 与更大管理批量 move 均有延迟/WAL/rollback 记录。
+- [ ] 大项目启动不等待 full reindex，background 状态和进度可观察。
 
 ## E. 文档与构建
 
@@ -71,8 +78,8 @@ npm run check:links
 ## H. 拒绝条件
 
 - 旧实现仍可被生产入口调用。
+- 仅 grep 通过但运行时仍有 `project_wiki` subscriber/旧 router。
 - 直接复制运行中的 wiki.db 当备份。
 - Agent shell 可访问 DB/WAL/backups。
 - 没有 1M 规模记录就宣称百万节点目标已验证。
 - 为通过性能门槛关闭权限过滤、FTS 同步或审计。
-

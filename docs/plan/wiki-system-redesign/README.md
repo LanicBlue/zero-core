@@ -1,7 +1,7 @@
 # Wiki System Redesign：实施路线图
 
 > 设计基线：[`./design.md`](./design.md)
-> 状态：待实施
+> 状态：✅ 独立 re-review PASS(见 [`plan-review-r2.md`](./plan-review-r2.md))—— 6 blocker 全 RESOLVED、跨文档一致;可进入实施(sub-00 watch-item 见 r2 §2)
 > 数据策略：clean cutover，不迁移旧 Wiki 数据。
 
 ## 1. 使用方式
@@ -27,7 +27,8 @@ acceptance-XX-*.md  可判定的验收清单与证据要求
 
 | 阶段 | 实施文档 | 验收文档 | 依赖 | 主要产物 |
 |---|---|---|---|---|
-| 01 | [Database & Contracts](plan-01-database-contracts.md) | [Acceptance 01](acceptance-01-database-contracts.md) | 无 | 独立 wiki.db、schema、path、repositories |
+| 00 | [Database Foundation](plan-00-database-foundation.md) | [Acceptance 00](acceptance-00-database-foundation.md) | 无 | `db/core.db`、统一生命周期、删除退役 `knowledge.db` |
+| 01 | [Database & Contracts](plan-01-database-contracts.md) | [Acceptance 01](acceptance-01-database-contracts.md) | 00 | 独立 `db/wiki.db`、schema、path、repositories |
 | 02 | [Core Service, Address & Auth](plan-02-core-service-address-auth.md) | [Acceptance 02](acceptance-02-core-service-address-auth.md) | 01 | CRUD、revision、links、逻辑地址、授权 |
 | 03 | [Project Git Mirror](plan-03-project-git-mirror.md) | [Acceptance 03](acceptance-03-project-git-mirror.md) | 01–02 | Git tree/diff 索引、source read/search |
 | 04 | [Wiki Tool & Search](plan-04-wiki-tool-search.md) | [Acceptance 04](acceptance-04-wiki-tool-search.md) | 01–03 | 新 Wiki action tool、结构化结果、统一搜索 |
@@ -39,18 +40,21 @@ acceptance-XX-*.md  可判定的验收清单与证据要求
 所有阶段完成后必须执行 [最终端到端验收](acceptance-final.md)。单阶段通过不等于整个重构完成。
 
 ```text
-01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → FINAL
+00 → 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → FINAL
 ```
 
 ## 3. 全程不可违反的不变量
 
 ### 3.1 数据与身份
 
-- 新 Wiki 事实源是 `${ZERO_CORE_DIR}/wiki/wiki.db`，不是 `sessions.db.project_wiki`。
+- 应用核心状态事实源是 `${ZERO_CORE_DIR}/db/core.db`；新 Wiki 事实源是 `${ZERO_CORE_DIR}/db/wiki.db`。
+- `knowledge.db` 已退役并由 Plan 00 精确删除，不保留运行时或兼容读取。
+- 新 Wiki 不使用旧 `core.db.project_wiki`（原 `sessions.db.project_wiki`）。
 - 不迁移、双读或双写旧 `project_wiki` 与旧磁盘正文。
-- Agent 只能看到规范路径和逻辑地址，不能看到数据库 ID、UUID、`wiki-root:*` 合成 ID 或 8 字符短 ID。
+- Agent 只能看到规范路径、逻辑地址和稳定业务 ID 路径段，不能看到 Wiki 数据库整数 ID、`wiki-root:*` 合成 ID 或 8 字符短 ID。
 - 所有 canonical path 以 `wiki-root` 开头，路径规范化只能由共享 path 模块完成。
 - links 和静态地址使用内部 ID，因此节点移动后无需改写关系端点。
+- Agent/Project 根使用稳定业务 ID 作为路径段；改显示名称不移动子树。
 
 ### 3.2 权限与管理边界
 
@@ -71,7 +75,7 @@ acceptance-XX-*.md  可判定的验收清单与证据要求
 
 ### 3.4 工程质量
 
-- 每个阶段结束时仓库必须 typecheck 和 unit tests 全绿，不能把编译失败留给下一阶段。
+- 每个阶段结束时仓库必须 typecheck 和 unit tests 全绿，不能把编译失败留给下一阶段；Plan 05/06/07/08 还必须运行相关 E2E。
 - 临时 adapter 必须在对应 plan 中明确标注删除阶段；第 08 阶段后不得残留。
 - 不得通过放宽权限、吞掉错误、跳过 foreign key、禁用测试或保留双实现来“通过验收”。
 - 新行为必须有自动化测试；仅人工观察不能替代核心权限、事务和搜索测试。

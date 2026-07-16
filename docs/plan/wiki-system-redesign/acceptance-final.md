@@ -1,21 +1,22 @@
 # Final Acceptance：Wiki 重构端到端验收
 
-> 本文只在 Acceptance 01–08 全部通过后执行。
+> 本文只在 Acceptance 00–08 全部通过后执行。
 > 验收者应与主要实现者不同。
 > 任一关键场景失败，整个 Wiki 重构不得标记完成或归档。
 
 ## 1. 前置条件
 
-- [ ] 01–08 各有 `result-XX.md`、commit SHA 和验收证据。
+- [ ] 00–08 各有 `result-XX.md`、commit SHA 和验收证据。
 - [ ] 从干净 checkout 开始，无未说明的本地补丁。
 - [ ] 使用全新 `ZERO_CORE_DIR` 或隔离测试 profile。
 - [ ] 旧 `project_wiki`/旧 Markdown 不存在或存在但新 runtime 不读取。
+- [ ] 活动数据库只有 `db/core.db` 与 `db/wiki.db`；根目录无 `sessions.db/knowledge.db` 活动文件。
 - [ ] 准备至少两个 Agent、一个管理用户视角和一个包含多次 Git commit 的项目 fixture。
 
 ## 2. 场景 A：Fresh bootstrap 与身份
 
 1. 启动应用。
-2. 检查独立 Wiki DB 和固定根。
+2. 检查 `db/core.db`、独立 `db/wiki.db` 和固定根。
 3. 创建 Agent `research-agent`、`coding-agent`。
 4. 验证各自 Memory root。
 5. 重命名其中一个 Agent。
@@ -24,7 +25,7 @@
 
 - [ ] `wiki-root`、knowledge、memory、projects 唯一且幂等。
 - [ ] 两个 Agent 只各有一个 Memory root，未自动写死子树。
-- [ ] rename 保留 Memory root identity/content/links。
+- [ ] Memory/Project root 使用稳定业务 ID；rename 只更新 display_name，path/content/links 不变。
 - [ ] Agent/API/Prompt/UI 不展示内部 ID。
 
 ## 3. 场景 B：权限隔离
@@ -107,7 +108,10 @@
 
 1. 注册 `runtime://` 到 Project runtime 节点。
 2. 将 target 节点 Git rename/move。
-3. 修改 Agent grants/context 并 publish。
+3. Agent 正在执行一个可控阻塞的 Wiki tool call 时，修改 grants/context 并 publish。
+4. 结束该 tool call，等待 StepEnd 安全边界。
+5. 在同一 running session 中切换 active project。
+6. 删除 Agent 最后一条 grant 并 publish/reload。
 
 验收：
 
@@ -115,21 +119,30 @@
 - [ ] 地址 impact preview 列出受影响 Agent/session。
 - [ ] context 不隐式 grant；缺 read grant 阻止 publish。
 - [ ] running session 在安全边界应用新 revision，进行中 tool call 不变。
+- [ ] active project 切换后 `project://`、compiled access 和 Wiki Prompt 在同一安全边界一起切换，无旧项目内容残留。
+- [ ] 删除最后 grant 持久化为 `[]`；下一次调用稳定拒绝，重新打开 Agent Editor 仍为 `[]`。
 - [ ] 普通 Wiki tool 无地址/权限/Prompt 管理 action。
 
 ## 9. 场景 H：Browser UI
 
-- [ ] Global/Knowledge/Memory/Project/alias scope 可导航。
+运行 `tests/e2e/wiki-browser.spec.ts` 与 `tests/e2e/wiki-management.spec.ts`（文件可按仓库规范合并，但必须覆盖同等步骤）：
+
+1. 从 Global 进入 Knowledge、Memory、Project 和 alias。
+2. 展开 1,000-child fixture 并翻页，检查请求数。
+3. 依次运行 Wiki/Source/Both 与 Exact/Substring/Glob/Regex/Full-text。
+4. 打开 Overview/Content/Relations/Source/History，制造一次 WRITE_CONFLICT。
+5. 发送 create/update/move/link/sync event，记录实际失效 key 和网络请求。
+6. 完成 Agent Access、Context、Address、Project Sync publish 流程。
+
+- [ ] 自动 E2E trace 覆盖上述步骤；视觉细节可人工截图补充，但不能替代行为断言。
 - [ ] 大 children 分页/懒加载，无整树请求。
-- [ ] Wiki/Source/Both 与五种搜索模式可用。
-- [ ] Overview/Content/Relations/Source/History 五 tab 正常。
 - [ ] Markdown XSS fixture 不执行。
-- [ ] WS create/update/move/link/sync 仅刷新相关缓存。
-- [ ] Agent Access、Context、Address、Project Sync UI 与真实 runtime 行为一致。
+- [ ] move event 同时清除 old subtree cache 并刷新 old/new parent，其他 branch 不请求。
+- [ ] 管理 UI preview 与真实 runtime 行为一致。
 
 ## 10. 场景 I：安全旁路
 
-尝试使用 Read/Write/Edit/Grep/Glob/Shell 访问 DB、WAL、SHM、backup 和 runtime；尝试 source path traversal、symlink/junction、regex DoS 和 renderer admin 伪造。
+尝试使用 Read/Write/Edit/Grep/Glob/Shell 访问 Core/Wiki DB、WAL、SHM、backup 和 runtime；尝试 source path traversal、symlink/junction、regex DoS 和 renderer admin 伪造。
 
 - [ ] 所有 Wiki 物理数据旁路被拒绝。
 - [ ] 合法 workspace 源码访问不受影响。
@@ -141,6 +154,7 @@
 
 - [ ] 并发写入期间 snapshot 一致可恢复。
 - [ ] restore 后 nodes/links/addresses/repositories/FTS 与 snapshot 一致。
+- [ ] Core/Wiki 各自 WAL/checkpoint 独立；Wiki write 不改变 Core DB mtime/WAL/checkpoint 统计。
 - [ ] 应用重启后 Prompt、tool、UI 使用相同 revision。
 - [ ] 100k 自动 benchmark 通过。
 - [ ] 1M benchmark 有可复查报告，Windows 文件数量不随节点线性增长。
@@ -161,13 +175,14 @@ npm run check:links
 - [ ] 无 skipped/only 测试用于绕过关键验收；平台条件 skip 有书面理由。
 - [ ] `PRAGMA integrity_check`、`foreign_key_check` 成功。
 - [ ] legacy grep 审查无生产可调用旧路径。
+- [ ] 运行期 `data:changed(project_wiki)` 无订阅者，旧 router 请求稳定不可用；不只依赖静态 grep。
 
 ## 13. 最终证据包
 
 验收 Agent 创建 `result-final.md`，包含：
 
 - 被验收 commit SHA 和环境信息。
-- 01–08 result 链接。
+- 00–08 result 链接。
 - A–J 每个场景的实际证据。
 - 全部命令结果与测试数量。
 - 100k/1M benchmark、query plan、backup restore 报告。
@@ -179,7 +194,13 @@ npm run check:links
 只有同时满足以下条件才可标记完成：
 
 - [ ] A–J 全部通过。
-- [ ] 无跨阶段不变量被破坏。
+- [ ] 活动 DB 仅为 `db/core.db` 与 `db/wiki.db`，无 `knowledge.db` 或双 Core 事实源。
+- [ ] Agent 只见逻辑地址/canonical path，不见 Wiki 内部整数 ID；auditId 仅为 opaque receipt。
+- [ ] grants 与 Prompt context 分离，搜索授权先于查询/snippet。
+- [ ] Project 结构由 Git indexer 独占，源码/仓库文档正文不复制进 Wiki。
+- [ ] links/静态地址使用内部 identity，move 后稳定；Agent/Project rename 不移动稳定 ID 根。
+- [ ] node/FTS/audit 同事务，Core/Wiki 生命周期与 WAL 独立。
+- [ ] AgentLoop 无 Wiki feature 内联，安全刷新只在 idle/StepEnd 边界发生。
 - [ ] 无旧 Wiki fallback、无权限旁路、无源码正文复制。
 - [ ] 设计文档、运行实现、Agent tool schema、Prompt、UI 和架构文档一致。
 - [ ] 验收者明确给出 `PASS`，不是“基本可用”或“有非阻塞问题”。

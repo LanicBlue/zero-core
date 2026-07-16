@@ -26,7 +26,8 @@
 - [ ] 删除最后一项保存 `[]` 并实际撤销权限。
 - [ ] `wiki-root` 全树写 grant 有明确高风险确认。
 - [ ] overlapping grants 显示 union，不产生随机优先级。
-- [ ] `${active_project}` 无项目时 inactive，不解析为 projects root。
+- [ ] `project://` 无项目时 inactive，不解析为 projects root。
+- [ ] `wiki-root` 全权 grant 显示影响、二次确认并产生审计；取消确认不保存。
 - [ ] publish 后真实 Agent tool 权限与 preview 一致。
 
 ## D. Agent Context UI
@@ -44,6 +45,8 @@
 - [ ] full reindex 有进度、失败可重试、页面关闭不取消 server job。
 - [ ] unbind 不隐式硬删除 Wiki。
 - [ ] Open Wiki 定位项目 canonical root。
+- [ ] Agent/Project 改显示名后 root canonical path 不变，UI breadcrumb/label 更新。
+- [ ] Work/Cron 配置不能绕过 Agent grants 扩大 Wiki actions。
 
 ## F. 命令与人工验收
 
@@ -75,4 +78,3 @@ npm run check:links
 - 删除最后 grant 因 undefined 未生效。
 - 地址注册出现在 Agent Wiki tool 中。
 - repository 本地绝对路径复制进共享 Wiki DB。
-
