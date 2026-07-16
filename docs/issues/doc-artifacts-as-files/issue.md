@@ -3,6 +3,7 @@
 - **状态**:① issues(问题记录)
 - **提出**:2026-07-11
 - **类型**:改进(架构)
+- **范围更新**(2026-07-16):wiki 半边曾拆出独立 effort **wiki-search**,但已 **❌ 废止**(folder-per-node 统一节点模型在 Windows 上小文件负担过重,模型不成立;详见 [archive/wiki-search/issue.md](../../archive/wiki-search/issue.md))。wiki 子系统 redesign 不再推进,现有 `wiki-tool` / `wiki-node-store` / `project_wiki` DB / 磁盘镜像树保持现状不动。本 issue **保留**剩余范围:agents / templates 迁文件 + 虚拟路径前缀 infra(`[agents]/` `[wiki]/`,现仅 `[skills]/`)。
 
 ## 问题
 
