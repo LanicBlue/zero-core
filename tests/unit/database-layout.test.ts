@@ -106,7 +106,13 @@ function cleanLayoutState(): void {
 		legacyWalPath,
 		legacyShmPath,
 		layoutMarkerPath,
+		// plan-01: DatabaseManager.open() now constructs WikiDatabase, creating
+		// db/wiki.db{,-wal,-shm}. Tests in this file drive open(), so clean all
+		// three between cases (MEMORY mode in test env yields no -wal/-shm, but
+		// WAL mode would — defensive).
 		wikiDbPath,
+		`${wikiDbPath}-wal`,
+		`${wikiDbPath}-shm`,
 		join(ZERO_CORE_DIR, "knowledge.db"),
 		join(ZERO_CORE_DIR, "knowledge.db-wal"),
 		join(ZERO_CORE_DIR, "knowledge.db-shm"),
@@ -211,51 +217,59 @@ afterAll(() => {
 // ============================================================
 
 describe("plan-00 §A — fresh profile", () => {
-	test("bootstrap creates ONLY db/core.db; no root-level sessions.db / knowledge.db; no premature wiki.db", () => {
+	test("bootstrap + open create db/core.db AND db/wiki.db; no root-level sessions.db / knowledge.db", () => {
 		// Fresh profile: neither core.db nor sessions.db exist.
 		expect(existsSync(coreDbPath)).toBe(false);
 		expect(existsSync(legacyCoreDbPath)).toBe(false);
 
 		// Bootstrap (Case C: neither exists) writes the fresh-create marker
-		// (complete:false) and returns. core.db itself is created by the
-		// CoreDatabase constructor inside DatabaseManager.open(), not by
-		// performLayoutBootstrap alone.
+		// (complete:false) and returns. performLayoutBootstrap alone does NOT
+		// create core.db or wiki.db — core.db is created by the CoreDatabase
+		// constructor inside DatabaseManager.open(), and wiki.db by the
+		// WikiDatabase constructor in the same open() (plan-01 ready-order).
 		performLayoutBootstrap();
 		expect(existsSync(layoutMarkerPath)).toBe(true);
 		const marker = readMarkerFile();
 		expect(marker.complete).toBe(false);
+		// No premature wiki.db before DatabaseManager.open() runs.
+		expect(existsSync(wikiDbPath)).toBe(false);
 
-		// DatabaseManager.open() finishes the fresh-create: builds core.db
-		// and finalizes the marker to complete:true.
+		// DatabaseManager.open() finishes the fresh-create: builds core.db AND
+		// wiki.db (plan-01 ready-order) and finalizes the marker to complete:true.
 		const mgr = new DatabaseManager();
 		mgr.open();
 		expect(existsSync(coreDbPath)).toBe(true);
+		expect(existsSync(wikiDbPath)).toBe(true); // plan-01: wiki.db now created
 		const finalMarker = readMarkerFile();
 		expect(finalMarker.complete).toBe(true);
 
-		// §A bullet 1 + bullet 4: NO root-level sessions.db / knowledge.db,
-		// NO premature wiki.db.
+		// §A bullet 1 + bullet 4: NO root-level sessions.db / knowledge.db.
+		// (wiki.db lives under db/, NOT at the ZERO_CORE_DIR root.)
 		expect(existsSync(legacyCoreDbPath)).toBe(false);
 		expect(existsSync(join(ZERO_CORE_DIR, "knowledge.db"))).toBe(false);
-		expect(existsSync(wikiDbPath)).toBe(false);
 
 		mgr.close();
 	});
 
-	test("fresh profile via DatabaseManager.open: only db/core.db + journal + layout marker exist in db/", () => {
+	test("fresh profile via DatabaseManager.open: db/ contains core.db + wiki.db + journals + layout marker", () => {
 		const mgr = new DatabaseManager();
 		mgr.open();
 		mgr.close();
 
-		// Enumerate db/ contents. We accept core.db plus its journal files
-		// (wal/shm, may be absent post-close) and layout-v1.json; nothing
-		// else (no wiki.db).
+		// Enumerate db/ contents. plan-01: open() creates core.db AND wiki.db
+		// plus their journal files (wal/shm, may be absent post-close / under
+		// MEMORY test mode) and layout-v1.json. Nothing else (no stray files).
 		const dbEntries = readdirSync(DB_DIR);
-		const allowed = new Set(["core.db", "core.db-wal", "core.db-shm", "layout-v1.json"]);
+		const allowed = new Set([
+			"core.db", "core.db-wal", "core.db-shm",
+			"wiki.db", "wiki.db-wal", "wiki.db-shm",
+			"layout-v1.json",
+		]);
 		const offenders = dbEntries.filter((e) => !allowed.has(e));
 		expect(offenders).toEqual([]);
-		// Specifically, no wiki.db.
-		expect(dbEntries).not.toContain("wiki.db");
+		// plan-01: wiki.db IS present in db/ (no longer absent).
+		expect(dbEntries).toContain("wiki.db");
+		expect(dbEntries).toContain("core.db");
 	});
 });
 

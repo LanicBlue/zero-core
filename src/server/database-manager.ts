@@ -1,4 +1,4 @@
-// 数据库生命周期管理器（wiki-system-redesign plan-00 §3/§4/§5）
+// 数据库生命周期管理器（wiki-system-redesign plan-00 §3/§4/§5 + plan-01 §1）
 //
 // # 文件说明书
 //
@@ -7,30 +7,39 @@
 //   - 启动布局 bootstrap（sessions.db → db/core.db 切换；plan-00 §4）
 //   - 退役 knowledge.db 删除（plan-00 §5）
 //   - 打开 / 关闭 CoreDatabase（plan-00 已实现）
-//   - health（core 项；plan-00 已实现，wiki 项待 plan-01）
-//   - WAL checkpoint（core 项已实现；wiki 项待 plan-01）
+//   - 打开 / 关闭 WikiDatabase（plan-01 已实现;独立 wiki.db + 7 表 + 固定根）
+//   - health（core + wiki 两项;plan-01 起补 wiki）
+//   - WAL checkpoint（core + wiki 两项;plan-01 起补 wiki）
 //   - backup（core/wiki 项待 plan-08）
 //
 // ## 接口形状（锁定，core/wiki 对称）
 //   readonly core: CoreDatabase            // plan-00 已设
-//   readonly wiki: WikiDatabase | undefined // plan-01 起设；plan-00 阶段 undefined
-//   open(): void                            // bootstrap + 构造 core（+ plan-01 wiki）
+//   readonly wiki: WikiDatabase            // plan-01 起设(open 后必有)
+//   open(): void                           // bootstrap + 构造 core + wiki(ready-order)
 //   close(): void
-//   health(): DatabaseHealthMap             // plan-00 只返 core 项
-//   checkpointCore(): void                  // plan-00 已实现
-//   checkpointWiki(): void                  // plan-01 实现
-//   backupCore(dest): string                // plan-08 实现
-//   backupWiki(dest): string                // plan-08 实现
+//   health(): DatabaseHealthMap            // plan-01 起 core + wiki
+//   checkpointCore(): void                 // plan-00 已实现
+//   checkpointWiki(): void                 // plan-01 实现
+//   backupCore(dest): string               // plan-08 实现
+//   backupWiki(dest): string               // plan-08 实现
+//
+// ## Ready-order 不变量（plan-01 §1）
+//   open() 必须**先**完成 core + wiki 双 ready,再返回 —— 下游 AgentService /
+//   recovery 在那之后才构造。server/index.ts composition root 已遵循此序:
+//   dbManager.open() → setDatabaseManager → ... → createAgentService / recovery。
 //
 // ## 不做
 //   - 跨库 SQL / transaction / 共享 migration（plan-00 §G 拒绝条件）。
-//   - 不直接持有 WikiDatabase 实例（plan-00 阶段 wiki 字段恒 undefined）。
+//   - 不对 wiki.db 建立 ATTACH DATABASE 或第二个指向 core.db 的连接。
 //
 // ## 错误码
-//   - `DATABASE_LAYOUT_CONFLICT`：启动布局冲突（plan-00 §4）。本阶段闭集仅此一个。
+//   - `DATABASE_LAYOUT_CONFLICT`：启动布局冲突（plan-00 §4）。启动/布局类闭集。
+//   - `WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00`：backupCore/backupWiki 占位码(plan-08
+//     填实现;不是 WikiErrorCode 闭集成员,仅 DatabaseManager 内部用)。
 //
 // ## 维护规则
-//   - 启动序：DatabaseManager 必须在任何 CoreDatabase 被业务代码构造之前 open()。
+//   - 启动序：DatabaseManager 必须在任何 CoreDatabase/WikiDatabase 被业务代码
+//     构造之前 open()。
 //   - 所有 DB 路径来自 src/core/database-paths.ts。
 //   - sessions.db readonly 不变量（memory feedback-sessions-db-readonly）：
 //     本文件对**旧** sessions.db 的 wal_checkpoint(TRUNCATE) 是**启动时**做的，
@@ -49,9 +58,13 @@ import {
 	layoutMarkerPath,
 	coreBackupDir,
 	DB_DIR,
+	wikiDbPath,
 } from "../core/database-paths.js";
 import { CoreDatabase } from "./core-database.js";
-import type { WikiDatabase } from "./wiki-database.js";
+// plan-01 §1：真实 WikiDatabase 位于 src/server/wiki/wiki-database.ts。
+// sub-00 的 src/server/wiki-database.ts 占位已退化为 re-export,本文件从
+// 真实位置 import(避免误用占位类型)。
+import { WikiDatabase } from "./wiki/wiki-database.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -534,12 +547,17 @@ export class DatabaseManager {
 	}
 
 	/**
-	 * Wiki DB 句柄。Plan-00 阶段始终 undefined —— Plan 01 起在 open() 里赋值。
-	 * 锁定的字段位置 —— 后续 plan 不得改名。
+	 * Wiki DB 句柄。open() 之后返回 WikiDatabase 实例;open() 之前 / close()
+	 * 之后访问 throw。Plan-01 起在 open() 里赋值。锁定的字段位置 —— 后续 plan
+	 * 不得改名。
+	 *
+	 * 注意:wiki 可能为 undefined 的唯一场景是 open() 未调用 —— 一旦 open()
+	 * 返回,core + wiki 都 ready(plan-01 ready-order 不变量)。
 	 */
-	get wiki(): WikiDatabase | undefined {
-		// plan-00 阶段：wiki getter 始终返 undefined（或 throw if accessed pre-open）。
-		// Plan-01 起在此 return this._wiki（open() 里赋值）。
+	get wiki(): WikiDatabase {
+		if (!this._opened || !this._wiki) {
+			throw new Error("DatabaseManager.wiki accessed before open() (or after close())");
+		}
 		return this._wiki;
 	}
 
@@ -566,8 +584,12 @@ export class DatabaseManager {
 		// 补全 fresh-create marker（Case C 的延迟完成）。
 		finalizeFreshCreateMarker();
 
-		// Plan-01 起在这里构造 this._wiki = new WikiDatabase(wikiDbPath);
-		// Plan-00 阶段 wiki 字段保持 undefined。
+		// plan-01 §1 ready-order 不变量：open() 必须**先**完成 core + wiki 双 ready,
+		// 再返回 —— 下游 AgentService / recovery 在那之后才构造。WikiDatabase
+		// 构造器同步完成 open(schema init + fixed-root bootstrap),因此此处返回后
+		// wiki 已 ready。测试允许传临时绝对路径;生产走 wikiDbPath
+		// (`${ZERO_CORE_DIR}/db/wiki.db`,来自 database-paths)。
+		this._wiki = new WikiDatabase(wikiDbPath);
 
 		this._opened = true;
 	}
@@ -580,14 +602,19 @@ export class DatabaseManager {
 		} catch (err) {
 			log.warn("db", "DatabaseManager.close: core close failed:", (err as Error).message);
 		}
-		// Plan-01 起：try { this._wiki?.close(); } catch ...
+		// plan-01：wiki 与 core 对称 close(独立 lifecycle,不跨库)。
+		try {
+			this._wiki?.close();
+		} catch (err) {
+			log.warn("db", "DatabaseManager.close: wiki close failed:", (err as Error).message);
+		}
 		this._core = undefined;
 		this._wiki = undefined;
 		this._opened = false;
 	}
 
 	/**
-	 * 健康检查。Plan-00 只返 core 项；Plan-01 起补 wiki 项。
+	 * 健康检查。Plan-01 起补 wiki 项(core + wiki 对称)。
 	 * 形状锁定：返回类型是 DatabaseHealthMap，字段名 core/wiki 不得改名。
 	 */
 	health(): DatabaseHealthMap {
@@ -595,8 +622,10 @@ export class DatabaseManager {
 			throw new Error("DatabaseManager.health() called before open()");
 		}
 		const coreEntry = probeHealth(this._core);
-		// Plan-00 阶段 wiki 字段省略（undefined）；Plan-01 起补 wikiEntry。
-		return { core: coreEntry };
+		// plan-01：wiki 与 core 对称健康探测。open() 之后 wiki 必然 ready,
+		// 因此此处总有 wikiEntry。
+		const wikiEntry = this._wiki ? probeWikiHealth(this._wiki) : undefined;
+		return { core: coreEntry, ...(wikiEntry ? { wiki: wikiEntry } : {}) };
 	}
 
 	/**
@@ -614,14 +643,17 @@ export class DatabaseManager {
 	}
 
 	/**
-	 * Wiki DB 的 WAL checkpoint。Plan-01 实现。Plan-00 阶段调用即 throw
-	 * （形状锁定，Plan-01 在此填实现且不得改名）。
+	 * Wiki DB 的 WAL checkpoint(TRUNCATE 模式)。Plan-01 实现。
+	 *
+	 * 与 checkpointCore 对称:仅在 open() 之后调用 —— 此时本进程是 wiki.db
+	 * 的活跃所有者,checkpoint 安全(参考 memory feedback-sessions-db-readonly
+	 * 的「受许可的维护路径」语义)。
 	 */
 	checkpointWiki(): void {
-		throw new Error(
-			`checkpointWiki not implemented in plan-00 (code=${WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00}); `
-			+ `Plan 01 fills this once WikiDatabase is wired.`,
-		);
+		if (!this._opened || !this._wiki) {
+			throw new Error("DatabaseManager.checkpointWiki() called before open()");
+		}
+		this._wiki.checkpoint();
 	}
 
 	/**
@@ -689,5 +721,29 @@ function probeHealth(db: CoreDatabase): DatabaseHealthEntry {
 		integrity: typeof integrity === "string" ? integrity : JSON.stringify(integrity),
 		foreignKeys: typeof foreignKeys === "string" ? foreignKeys : JSON.stringify(foreignKeys),
 		journalMode,
+	};
+}
+
+/**
+ * 探测一个 WikiDatabase 的健康状态。与 probeHealth(core) 对称。
+ *
+ * plan-01 新增:与 CoreDatabase 健康探测并列,DatabaseManager.health() 同时
+ * 返回 core + wiki 两项。
+ *
+ * 实现说明:WikiDatabase.health() 已封装 integrity_check / foreign_key_check /
+ * journal_mode / schemaVersion 探测。`writable` 的真实写入证明来自构造器阶段
+ * 的 schema init + fixed-root bootstrap(都是写操作) —— 若那一步成功,本进程
+ * 持有 wiki.db 的可写句柄;若 DB 在 open 后被外部改成只读,integrity_check
+ * PRAGMA 会失败并被 base.writable=false 捕获。这与 core 的 KV-set/delete 探测
+ * 语义对齐(只是 wiki 没有 KV store,以构造期写入 + PRAGMA 探测代替)。
+ */
+function probeWikiHealth(db: WikiDatabase): DatabaseHealthEntry {
+	const base = db.health();
+	return {
+		exists: base.exists,
+		writable: base.writable,
+		integrity: base.integrity,
+		foreignKeys: base.foreignKeys,
+		journalMode: base.journalMode,
 	};
 }

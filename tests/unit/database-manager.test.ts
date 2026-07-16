@@ -10,9 +10,11 @@
 //      独立于 DatabaseManager 的 CoreDatabase 生产构造路径)。
 //   - open/close/health/checkpointCore 行为正确,idempotent,句柄在 close 后真正
 //     关闭 (process exit 无未关闭句柄)。
-//   - wiki / checkpointWiki / backupCore / backupWiki 为占位,抛稳定错误码
-//     WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00;方法签名锁定(参数/返回类型),plan-01/08
-//     可以无 rename 补齐。
+//   - wiki getter / checkpointWiki / health().wiki: plan-01 起为真实实现
+//     (open() 构造 WikiDatabase,checkpointWiki 调 wal_checkpoint(TRUNCATE),
+//      health() 返回 core + wiki 两项)。backupCore / backupWiki 仍为占位,抛
+//     稳定错误码 WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 (plan-08 填);方法签名锁定
+//     (参数/返回类型),plan-08 可以无 rename 补齐。
 //   - DatabaseManager 不暴露跨库 SQL/transaction/ATTACH(§G 拒绝条件)。
 //   - core 与 wiki 的 checkpoint/backup 互不委托(结构独立性)。
 //   - readonly 诊断 (check-turns.cjs) 用 file:...?mode=ro + { readonly: true },
@@ -28,7 +30,7 @@
 // ## 关键文件
 //   - src/server/database-manager.ts (DatabaseManager class + singleton getters)
 //   - src/server/core-database.ts (CoreDatabase — owned by DatabaseManager)
-//   - src/server/wiki-database.ts (WikiDatabase placeholder type)
+//   - src/server/wiki-database.ts (WikiDatabase re-export shim → src/server/wiki/wiki-database.ts 真实实现)
 //   - src/server/index.ts (composition root wiring)
 //   - src/cli.ts (headless composition root)
 //   - scripts/check-turns.cjs (readonly diagnostic script)
@@ -75,13 +77,18 @@ import {
 	WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00,
 } from "../../src/server/database-manager.js";
 import { CoreDatabase } from "../../src/server/core-database.js";
-import type { WikiDatabase } from "../../src/server/wiki-database.js";
+// Value import (not `import type`): plan-01 wiki getter returns a real
+// WikiDatabase instance after open(); the instanceof assertion below needs the
+// class value. src/server/wiki-database.ts is a thin re-export shim over the
+// real impl at src/server/wiki/wiki-database.ts.
+import { WikiDatabase } from "../../src/server/wiki-database.js";
 import {
 	coreDbPath,
 	legacyCoreDbPath,
 	layoutMarkerPath,
 	coreBackupDir,
 	DB_DIR,
+	wikiDbPath,
 } from "../../src/core/database-paths.js";
 import { ZERO_CORE_DIR } from "../../src/core/config.js";
 
@@ -103,6 +110,13 @@ function cleanLayoutState(): void {
 		`${legacyCoreDbPath}-wal`,
 		`${legacyCoreDbPath}-shm`,
 		layoutMarkerPath,
+		// plan-01: DatabaseManager.open() now also constructs WikiDatabase at
+		// wikiDbPath. Tests in this file drive open(), so wiki.db{,-wal,-shm}
+		// must be cleaned between cases (defensive — MEMORY journal mode in test
+		// env produces no -wal/-shm, but WAL mode would).
+		wikiDbPath,
+		`${wikiDbPath}-wal`,
+		`${wikiDbPath}-shm`,
 	]) {
 		try { rmSync(p, { force: true }); } catch { /* best effort */ }
 	}
@@ -444,17 +458,17 @@ describe("acceptance-00 §D.4 + plan-00 §3 — DatabaseManager lifecycle behavi
 		expect(() => mgr.health()).toThrow(/before open/i);
 	});
 
-	test("health() after open returns { core: {...} } with NO wiki key (plan-00 omits wiki)", () => {
+	test("health() after open returns { core: {...}, wiki: {...} } (plan-01 adds wiki entry)", () => {
 		const mgr = new DatabaseManager();
 		mgr.open();
 		try {
 			const h = mgr.health();
-			// Shape lock: DatabaseHealthMap with `core` (always) and `wiki?` (optional,
-			// plan-00 omits). Assert wiki is ABSENT so plan-01 adds it deliberately.
+			// Shape lock: DatabaseHealthMap with `core` (always) and `wiki`
+			// (plan-01+: open() constructs WikiDatabase, so health() reports it).
 			expect(h).toHaveProperty("core");
-			expect(h).not.toHaveProperty("wiki");
+			expect(h).toHaveProperty("wiki");
 
-			// Core entry has the locked fields.
+			// Core entry has the locked DatabaseHealthEntry fields.
 			const c = h.core;
 			expect(c).toHaveProperty("exists");
 			expect(c).toHaveProperty("writable");
@@ -466,6 +480,18 @@ describe("acceptance-00 §D.4 + plan-00 §3 — DatabaseManager lifecycle behavi
 			expect(c.integrity).toBe("ok");
 			expect(c.foreignKeys).toBe("ok");
 			expect(c.writable).toBe(true);
+
+			// Wiki entry (plan-01) has the SAME DatabaseHealthEntry shape:
+			// exists / integrity / foreignKeys / journalMode (+ writable).
+			const w = h.wiki!;
+			expect(w).toHaveProperty("exists");
+			expect(w).toHaveProperty("writable");
+			expect(w).toHaveProperty("integrity");
+			expect(w).toHaveProperty("foreignKeys");
+			expect(w).toHaveProperty("journalMode");
+			expect(w.exists).toBe(true);
+			expect(w.integrity).toBe("ok");
+			expect(w.foreignKeys).toBe("ok");
 		} finally {
 			mgr.close();
 		}
@@ -510,32 +536,53 @@ describe("acceptance-00 §D.4 + plan-00 §3 — DatabaseManager lifecycle behavi
 // plan-00 §3 — placeholder signatures LOCKED (no rename in plan-01/08)
 // ============================================================
 
-describe("plan-00 §3 — wiki/backup placeholders throw stable code + signatures locked", () => {
-	test("wiki getter returns undefined in plan-00 (no WikiDatabase instance yet)", () => {
+describe("plan-01 §3 — wiki/checkpointWiki real (plan-01); backupCore/backupWiki placeholders throw stable code (plan-08)", () => {
+	test("wiki getter throws before open(); returns a WikiDatabase instance after open (plan-01)", () => {
 		const mgr = new DatabaseManager();
+		// Pre-open: wiki getter throws (mirrors the core getter lifecycle guard).
+		expect(() => mgr.wiki).toThrow(/before open|after close/i);
 		mgr.open();
 		try {
-			// plan-00: wiki field is undefined. Plan-01 will start returning an
-			// instance — this assertion pins the plan-00 behavior.
-			expect(mgr.wiki).toBeUndefined();
+			// plan-01: wiki getter returns a real WikiDatabase instance once open()
+			// has completed the core+wiki ready-order.
+			expect(mgr.wiki).toBeInstanceOf(WikiDatabase);
 		} finally {
 			mgr.close();
 		}
+		// After close: throws again (no zombie handle).
+		expect(() => mgr.wiki).toThrow(/before open|after close/i);
 	});
 
-	test("checkpointWiki() throws with code WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00", () => {
+	test("checkpointWiki() runs wal_checkpoint(TRUNCATE) on the wiki handle without throwing (plan-01)", () => {
+		// plan-00 used to throw WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00; plan-01 wires
+		// checkpointWiki to the wiki handle's wal_checkpoint(TRUNCATE). Mirror the
+		// checkpointCore body-source assertion pattern: behavioral no-throw +
+		// structural proof the chain reaches SQLite.
 		const mgr = new DatabaseManager();
+		// Lifecycle guard parity with checkpointCore: throws before open().
+		expect(() => mgr.checkpointWiki()).toThrow(/before open/i);
 		mgr.open();
 		try {
-			expect(() => mgr.checkpointWiki()).toThrow(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
-			let caught: any;
-			try { mgr.checkpointWiki(); } catch (e) { caught = e; }
-			// The impl message says "Plan 01 fills this" — note the SPACE (not
-			// "plan-01"). Match the actual literal.
-			expect((caught as Error).message).toMatch(/Plan 01/i);
+			expect(() => mgr.checkpointWiki()).not.toThrow();
 		} finally {
 			mgr.close();
 		}
+
+		// Structural: database-manager.ts checkpointWiki body delegates to the
+		// wiki handle (this._wiki) and NO LONGER carries the plan-00 placeholder.
+		const src = readSrc("src/server/database-manager.ts");
+		const body = findMethodBody(src, /checkpointWiki\(\)/);
+		expect(body.length).toBeGreaterThan(0);
+		const code = stripComments(body);
+		expect(code).toMatch(/this\._wiki/);
+		expect(code).not.toMatch(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
+
+		// And the underlying WikiDatabase.checkpoint() actually issues
+		// wal_checkpoint(TRUNCATE) — proves the delegation reaches SQLite.
+		const wikiSrc = readSrc("src/server/wiki/wiki-database.ts");
+		const wikiCheckpointBody = findMethodBody(wikiSrc, /checkpoint\(\)\s*:\s*void/);
+		expect(wikiCheckpointBody.length).toBeGreaterThan(0);
+		expect(stripComments(wikiCheckpointBody)).toMatch(/wal_checkpoint\(TRUNCATE\)/);
 	});
 
 	test("backupCore(dest) throws with code WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 (plan-08 fills)", () => {
@@ -711,12 +758,16 @@ describe("acceptance-00 §D.2 + plan-00 §3 — core and wiki checkpoint/backup 
 		// And it must use the core handle's pragma (positive assertion).
 		expect(coreCode).toMatch(/wal_checkpoint\(TRUNCATE\)/);
 
-		// Conversely checkpointWiki throws (does not delegate to checkpointCore).
+		// Conversely checkpointWiki delegates to the wiki handle (NOT to
+		// checkpointCore). plan-01 filled it: it now calls this._wiki.checkpoint()
+		// and no longer carries the plan-00 WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00
+		// placeholder.
 		const wikiBody = findMethodBody(src, /checkpointWiki\(\)/);
 		expect(wikiBody.length).toBeGreaterThan(0);
 		const wikiCode = stripComments(wikiBody);
 		expect(wikiCode).not.toMatch(/this\.checkpointCore/);
-		expect(wikiCode).toMatch(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
+		expect(wikiCode).toMatch(/this\._wiki/);
+		expect(wikiCode).not.toMatch(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
 	});
 
 	test("backupCore body does NOT delegate to backupWiki (or vice versa)", () => {
@@ -734,19 +785,19 @@ describe("acceptance-00 §D.2 + plan-00 §3 — core and wiki checkpoint/backup 
 		expect(wikiCode).toMatch(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
 	});
 
-	test("DatabaseManager holds at most ONE active DB handle (core) in plan-00 (wiki undefined)", () => {
-		// Structural: in plan-00 DatabaseManager has exactly one DB field
-		// (`_core`) plus the placeholder `_wiki` field. Assert via the open()
-		// method body that ONLY `this._core` is assigned (no `this._wiki =`
-		// assignment in CODE — the body has a `// Plan-01 ... this._wiki = ...`
-		// comment showing future work, which we strip before asserting).
+	test("open() constructs BOTH core and wiki handles (plan-01 ready-order: core + wiki ready before open returns)", () => {
+		// Structural: plan-01 open() assigns BOTH this._core (CoreDatabase) AND
+		// this._wiki (WikiDatabase). The ready-order invariant (plan-01 §1)
+		// requires core + wiki to both be ready before open() returns, so
+		// downstream AgentService/recovery can rely on both. plan-00 only
+		// assigned _core; plan-01 added the _wiki assignment.
 		const src = readSrc("src/server/database-manager.ts");
 		const openBody = findMethodBody(src, /open\(\)\s*:\s*void/);
 		expect(openBody.length).toBeGreaterThan(0);
 		const openCode = stripComments(openBody);
-		// open() assigns this._core but NOT this._wiki (plan-00).
+		// open() assigns BOTH handles (plan-01 ready-order).
 		expect(openCode).toMatch(/this\._core\s*=\s*new\s+CoreDatabase/);
-		expect(openCode).not.toMatch(/this\._wiki\s*=/);
+		expect(openCode).toMatch(/this\._wiki\s*=\s*new\s+WikiDatabase/);
 	});
 });
 

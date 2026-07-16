@@ -1,31 +1,22 @@
-// Wiki 数据库占位类型（wiki-system-redesign plan-00 §3）
+// WikiDatabase 占位 → 真实实现的兼容 re-export（wiki-system-redesign plan-01）
 //
 // # 文件说明书
 //
 // ## 核心功能
-// `WikiDatabase` 类型占位：plan-00 只锁定 DatabaseManager 的接口形状，
-// 不实现 wiki 逻辑。Plan 01 起会用真实实现替换本文件（独立 SQLite，位于
-// `${ZERO_CORE_DIR}/db/wiki.db`）。
+// sub-00 的占位类型 `WikiDatabase` 已被 plan-01 的真实 class 取代。真实实现
+// 位于 `src/server/wiki/wiki-database.ts`(plan-01 §1 模块布局)。
+//
+// 本文件保留为薄 re-export shim,避免破坏任何潜在的外部引用;plan-05–08
+// clean cutover 阶段会移除它。**新代码不应**从此处 import —— 直接从
+// `src/server/wiki/wiki-database.ts` 或 `src/server/wiki/index.ts` import。
 //
 // ## 维护规则
-// - Plan 00 阶段：本文件保持为类型占位（无运行时实现）。
-// - Plan 01：在此添加真实 `WikiDatabase` class（打开 wikiDbPath、own schema、
-//   独立 WAL checkpoint）。DatabaseManager 的 `wiki`/`checkpointWiki`/
-//   `backupWiki` 随之从 placeholder 切到真实实现。
-// - Plan 08：补 `backupWiki` 的 snapshot 实现。
+//   - plan-05–08:clean cutover 完成后删除本文件。
+//   - 不得在此添加新逻辑(只做 re-export)。
 //
-// plan-00 §3 接口锁定：core 与 wiki 形状对称（各自 open/close/health/
-// checkpoint/backup），DatabaseManager 不提供跨库 transaction。
+// 参见:
+//   - src/server/wiki/wiki-database.ts(真实实现)
+//   - src/server/wiki/index.ts(barrel)
 
-/**
- * Plan-00 占位类型。Plan 01 用真实 class 替换。
- *
- * 注意：本标记类型故意为空 —— 任何对 wiki 的运行时访问在 DatabaseManager
- * 里都会 throw `WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00`，确保 plan-00 阶段
- * 没有代码路径误以为 wiki 已就绪。
- */
-export type WikiDatabase = {
-	// plan-00 placeholder — 在 DatabaseManager 的 wiki getter 里 throw。
-	// Plan 01 把它换成真实 class，再在 DatabaseManager.open() 末尾实例化。
-	readonly __plan00Placeholder: true;
-};
+export { WikiDatabase } from "./wiki/wiki-database.js";
+export type { WikiDatabaseHealth } from "./wiki/wiki-database.js";
