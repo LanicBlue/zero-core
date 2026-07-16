@@ -225,15 +225,9 @@ turn 结束(模型不再调工具,或 abort)后,run() 的 finally 再 `triggerLo
       └─ 输出 assistant message + 一组 tool messages
 ```
 
-### 4.3 三种 pruning 策略（context-manager.ts）
+### 4.3 ~~三种 pruning 策略~~（⚠️ 已移除，superseded by compression 管线）
 
-| 策略 | 触发条件 | 行为 |
-|------|----------|------|
-| `tail` | `config.context.pruningStrategy === 'tail'` | 保留最后 N tokens |
-| `turn-boundary` | 默认 | 按"完整 turn 边界"切除 |
-| `smart` | `importanceScoring: true` | 用 `scoreMessage()` 给每条消息打分，保留高分 |
-
-**重要**：三种策略都不会留下"孤立的 tool-call"，`applyPreserveToolResults()` 会把被切的 tool-call 关联的 tool-result 一起切掉或一起留。
+> **此节描述的子系统已整体删除**（compression-archive-simplify 之后）：`core/context-manager.ts`、`config.context.pruningStrategy`（`tail` / `turn-boundary` / `smart`）、`scoreMessage()` / `applyPreserveToolResults()` 均已不在代码中（`grep` 零命中）。上下文超限不再走"原地修剪策略"，改由**压缩管线**处理：`server/compression-core.ts` + `runtime/hooks/compression-trigger-hooks.ts`（摘要 + 记忆写 wiki，详见 `06-knowledge-subsystems.md`）。当前**无显式的 token 预算 / 修剪分配器**——如需重新引入，见 `docs/issues/` 相关方向。
 
 ### 4.4 自适应 token 估算
 

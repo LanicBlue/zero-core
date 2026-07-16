@@ -1,6 +1,6 @@
 # sub-4 Task:#1 acknowledge 删 DB 行 + #10 list 汇总
 
-> 对应 design:[`../design.md`](../design.md) #1 #10。范围:`src/server/session-db.ts`、`src/runtime/subagent-delegator.ts`、`src/tools/task-tool.ts`。
+> 对应 design:[`./design.md`](./design.md) #1 #10。范围:`src/server/session-db.ts`、`src/runtime/subagent-delegator.ts`、`src/tools/task-tool.ts`。
 
 ## #1 acknowledge 必须删 DB 行(根因见 design #1)
 

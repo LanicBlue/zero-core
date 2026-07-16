@@ -157,7 +157,7 @@ graph TB
 - **ConcurrencyQueue**：FIFO 信号量，每 Provider 一个实例。`runtime/concurrency-queue.ts`。
 - **CONDITIONAL_TOOLS**：依赖 ToolExecutionContext 能力的工具（Agent / TaskStatus / TaskList / TaskStop / Wait）。
 - **contextBridge**：Electron 在 preload 中安全暴露 API 到 renderer 的机制。
-- **ContextManager**：token 估算 + 三种修剪策略。`core/context-manager.ts`。
+- ~~**ContextManager**~~：⚠️ 已移除（`core/context-manager.ts` 删除，三种 pruning 策略整体退役）。修剪/压缩迁至 `runtime/session.ts` + `server/compression-core.ts`，由 `runtime/hooks/compression-trigger-hooks.ts` 触发。
 
 ## D
 

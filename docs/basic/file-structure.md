@@ -16,7 +16,7 @@ renderer / runtime 四个独立 JS 上下文**。
 
 | 层 | 当前职责 | 关键内容 |
 |----|---------|---------|
-| [`src/core/`](../../src/core/) | 跨层共享核心 | config / constants / system-prompt / tool-registry / tool-policy / hook-registry / context-manager / logger / persona / model-registry / encoding / **test-seed**(测试种子,ZERO_CORE_TEST_FIXTURE 门控) |
+| [`src/core/`](../../src/core/) | 跨层共享核心 | config / constants / system-prompt / tool-registry / tool-policy / hook-registry / logger / persona / model-registry / encoding / **test-seed**(测试种子,ZERO_CORE_TEST_FIXTURE 门控) |
 | [`src/main/`](../../src/main/) | Electron 主进程 | 入口 `index.ts`、后端子进程拉起 `backend-spawn.ts`、IPC 桥 `ipc-proxy.ts`、`test-setup.ts`(测试模式预加载) |
 | [`src/preload/`](../../src/preload/) | 预加载脚本 | 单文件 `index.ts`,通过 contextBridge 把 IPC API 暴露给渲染进程 |
 | [`src/renderer/`](../../src/renderer/) | React 前端 | **13 个页面目录** / **15 个 Zustand store** / styles / types / App |

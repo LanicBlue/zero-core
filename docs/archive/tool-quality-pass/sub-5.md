@@ -1,6 +1,6 @@
 # sub-5 外部化路径:#9 虚拟前缀 [tool-outputs]/
 
-> 对应 design:[`../design.md`](../design.md) #9。范围:`src/runtime/tool-result-externalizer.ts`、`src/tools/file-read.ts`、可选新 `src/tools/tool-output-paths.ts`。照搬 `[skills]/` 虚拟前缀模式([skill-paths.ts](../../../src/tools/skill-paths.ts) 是范本)。
+> 对应 design:[`./design.md`](./design.md) #9。范围:`src/runtime/tool-result-externalizer.ts`、`src/tools/file-read.ts`、可选新 `src/tools/tool-output-paths.ts`。照搬 `[skills]/` 虚拟前缀模式([skill-paths.ts](../../../src/tools/skill-paths.ts) 是范本)。
 
 ## 现状
 

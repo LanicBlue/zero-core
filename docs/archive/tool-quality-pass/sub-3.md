@@ -1,6 +1,6 @@
 # sub-3 Wiki:#2 regex + #3 计数 + #4 path 跳层
 
-> 对应 design:[`../design.md`](../design.md) #2 #3 #4。范围:`src/tools/wiki-tool.ts`(仅此文件)。
+> 对应 design:[`./design.md`](./design.md) #2 #3 #4。范围:`src/tools/wiki-tool.ts`(仅此文件)。
 
 ## #2 search 正则(显式 flag)
 

@@ -68,10 +68,11 @@
 >
 > **正确口径**:`sessions.db` 的表分两批管理 ——
 > **批 A · db-migration.ts 管理**(对应 §4.2 迁移机制的 5 阶段,共 24 张):
-> 阶段 1 SessionDB `initSchema()` 5 张(sessions/messages/turns/turn_state/tool_executions,
+> 阶段 1 SessionDB `initSchema()` 4 张(sessions/messages/steps/tool_executions；
+> 原 `turns` 表已 rename 为 `steps`、`turn_state` 表已 DROP 并入 `sessions`——见 §2.1,
 > 见 §2.1)+ 阶段 2 显式 `db.exec CREATE TABLE IF NOT EXISTS` 14 张(全部 v0.8 工作流域表,
 > 见 §2.2b)+ 阶段 3 通过 `new SqliteStore(...)` 构造时自动 `CREATE TABLE` 5 张(agents /
-> providers / templates / mcp_servers / kb_entries,见 §2.2 业务实体表前 5 行)。
+> providers / templates / mcp_servers；~~kb_entries~~ 已随 KB 子系统移除 DROP,见 §2.2 业务实体表)。
 >
 > **批 B · 构造自建(Store 在自己的 `init()` / 构造函数里 `CREATE TABLE IF NOT EXISTS`,v0.8 清理
 > MemoryStore 后**共 7 张**,不进 db-migration,改 schema 要去 store 文件)**:`kv_store`
@@ -143,9 +144,9 @@ msg_json     TEXT    -- 完整结构化消息
 created_at   TEXT
 ```
 
-注意：**`messages` 表非权威**。`turns` 表是 source of truth。`AgentSession` 构造时从 turns 重建 messages。
+注意：**`messages` 表非权威**。`steps` 表是 source of truth（原 `turns` 表已 rename 为 `steps`）。`AgentSession` 构造时从 steps 重建 messages。
 
-#### `turns`（**source of truth**,Step 4A:step-only 存储)
+#### `steps`（**source of truth**,Step 4A:step-only 存储；原表名 `turns`）
 ```sql
 session_id   TEXT
 seq          INTEGER   -- 全局单调;user turn 与 assistant step 各占独立行

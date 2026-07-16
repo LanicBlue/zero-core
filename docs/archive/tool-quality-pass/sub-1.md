@@ -1,6 +1,6 @@
 # sub-1 Grep:#5 单文件 + #6 截断提示
 
-> 对应 design:[`../design.md`](../design.md) #5 #6。范围:`src/tools/grep.ts`(仅此文件)。
+> 对应 design:[`./design.md`](./design.md) #5 #6。范围:`src/tools/grep.ts`(仅此文件)。
 
 ## 背景
 

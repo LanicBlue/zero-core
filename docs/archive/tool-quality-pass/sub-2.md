@@ -1,6 +1,6 @@
 # sub-2 Wait:#7 until optional + #8 finishedTaskIds
 
-> 对应 design:[`../design.md`](../design.md) #7 #8。范围:`src/tools/wait.ts`、`src/runtime/task-registry.ts`、`src/runtime/types.ts`(WaitWakeResult)。
+> 对应 design:[`./design.md`](./design.md) #7 #8。范围:`src/tools/wait.ts`、`src/runtime/task-registry.ts`、`src/runtime/types.ts`(WaitWakeResult)。
 
 ## #7 until 必填(一行 schema bug)
 

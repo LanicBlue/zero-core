@@ -4,7 +4,7 @@
 
 ## 1. 一句话定义
 
-Zero-Core 是一个 **本地优先的 AI Agent 运行时**，通过 Electron 桌面壳运行：主进程壳 + 子进程 HTTP/WS 后端 + Chromium 渲染进程。后端用 Vercel AI SDK 统一多 LLM Provider，状态分散落在多个 SQLite 文件 + 磁盘镜像树：会话核心与配置在 `sessions.db`、KB 向量分片在独立的 `knowledge.db`、Wiki 正文下沉到 `~/.zero-core/wiki/` 镜像树（详见 §9）。Agent 通过内置 25 个工具（分 9 个语义 category，详见 `docs/arch/04-tools-subsystem.md` §3 矩阵）+ MCP 协议接入的外部工具完成任务；v0.8 后旧 "Agent-as-a-Tool" 第三层已下线，改为统一的 `Agent` 委派工具 + `AgentRegistry` 注册表 CRUD（详见 04 §5）。
+Zero-Core 是一个 **本地优先的 AI Agent 运行时**，通过 Electron 桌面壳运行：主进程壳 + 子进程 HTTP/WS 后端 + Chromium 渲染进程。后端用 Vercel AI SDK 统一多 LLM Provider，状态分散落在 SQLite（`sessions.db`）+ 磁盘镜像树：会话核心与配置在 `sessions.db`、Wiki 正文下沉到 `~/.zero-core/wiki/` 镜像树（详见 §9）。> 注：旧的 KB 向量库 `knowledge.db` 已整体移除（详见 §9 + `06-knowledge-subsystems.md`）。Agent 通过内置 25 个工具（分 9 个语义 category，详见 `docs/arch/04-tools-subsystem.md` §3 矩阵）+ MCP 协议接入的外部工具完成任务；v0.8 后旧 "Agent-as-a-Tool" 第三层已下线，改为统一的 `Agent` 委派工具 + `AgentRegistry` 注册表 CRUD（详见 04 §5）。
 
 ## 2. 进程模型
 
@@ -116,7 +116,7 @@ WebSocket 反向：`src/main/ipc-proxy.ts` 的 `connectEventBridge()` 维护 `ws
 │  src/core/hook-registry.ts   ←  30 event lifecycle hooks     │
 │  src/core/logger.ts          ←  console + file dual sink     │
 │  src/core/persona.ts         ←  role definitions             │
-│  src/core/context-manager.ts ←  3 pruning strategies         │
+│  src/core/system-prompt.ts   ←  dynamic prompt assembly      │
 │  src/core/input-handler.ts   ←  /command expansion           │
 │  src/core/provider-adapter.ts ← per-provider quirks         │
 │  src/core/model-registry.ts  ←  OpenRouter + local fallback  │
@@ -125,12 +125,8 @@ WebSocket 反向：`src/main/ipc-proxy.ts` 的 `connectEventBridge()` 维护 `ws
 │                  Persistence                                  │
 │  better-sqlite3  →  server/sqlite-store.ts  (generic CRUD)   │
 │                  →  server/session-db.ts   (sessions/messages│
-│                                             /turns/tool exec)│
+│                                             /steps/tool exec)│
 │                  →  server/key-value-store.ts                │
-│                  →  server/kb-db.ts        (knowledge.db:    │
-│                                             chunks+embeddings)│
-│                  →  server/memory-node-store.ts              │
-│                  →  server/memory-store.ts                   │
 │                  →  v0.8 工作流域 9 store (project/requirement│
 │                     /cron/orchestrate/wiki/...)独立 new,     │
 │                     不挂 SessionDB(见 05 §4.0.3)             │
@@ -254,15 +250,15 @@ sequenceDiagram
 
 | 文件 / 目录 | 来源 | 内容 |
 |------|------|------|
-| `sessions.db` | SessionDB 持有 | **30+ 张表**：会话核心 5 表（sessions/messages/turns/turn_state/tool_executions）+ 旧业务实体 11 表（agents/providers/mcp_servers/...）+ v0.8 工作流域 9 表（projects/requirements/crons/orchestrate_*/project_wiki/wiki_scan_cursors/tool_configs/tool_usage/project_jobs，详见 `05-persistence.md` §2.2b 矩阵）+ kv_store + memory_nodes/memory_subjects/memory_edges（构造自建，不进 db-migration）+ memory_nodes_fts（FTS5 虚拟表） |
-| `knowledge.db` | KbDB 独立连接 | 仅 `kb_chunks`（含 embedding 向量 blob）+ 2 个索引。**不在 sessions.db**：`KbDB` 在 `kb-db.ts:46-51` 自己 `new Database()` 开连接，原因是 embedding blob 大且写入频繁，隔离后不拖慢主库 WAL checkpoint。`kb_entries`（元数据）仍在 sessions.db，跨库靠应用层按 `kb_id` 关联（详见 `06-knowledge-subsystems.md` §2.7 三套系统对比矩阵） |
+| `sessions.db` | SessionDB 持有 | 会话核心 4 表（sessions/messages/**steps**/tool_executions；steps-overhaul 后原 `turns` 表已 rename 为 `steps`、`turn_state` 表已 DROP 并入 `sessions`）+ 旧业务实体表（agents/providers/mcp_servers/...）+ v0.8 工作流域表（projects/requirements/crons/orchestrate_*/project_wiki/wiki_scan_cursors/tool_configs/tool_usage/project_jobs，详见 `05-persistence.md` §2.2b 矩阵）+ kv_store + delegated_tasks + provider_usage。KB(`kb_*`)与 Gen1 `memory_*` 表均已在 v0.8 清理 DROP（详见 `06-knowledge-subsystems.md`） |
+| ~~`knowledge.db`~~ | ~~KbDB 独立连接~~ | ⚠️ **已退役（KB 子系统整体移除）**：`kb_chunks` / `kb_entries` 由 `runMigrations` 用 `DROP IF EXISTS` 清掉，`knowledge.db` 不再产生，`kb-db.ts` / `kb-store.ts` 等服务端代码已删。详见 `06-knowledge-subsystems.md` §3 与 `05-persistence.md` §2.3。 |
 | `wiki/` | WikiStore 磁盘镜像树 | v0.8 P1 §10.1 引入：每个 wiki 节点的正文下沉为 `.md` 文件（`WIKI_DISK_ROOT`，`wiki-node-store.ts:197`），DB 行只存元数据 + `docPointer`。目录结构与 `project_wiki` 表的 `path` 列镜像（详见 `06-knowledge-subsystems.md` §2.5） |
 | `webfetch/` | fetch-tools.ts | 抓取缓存、二进制持久化、cookies.json |
 | `logs/<date>.log` | file-log-sink.ts | 按天轮转日志 |
 | `messages/<persona>.json` | message-store.ts | 旧版遗留，迁移完成后改名为 `.migrated.bak` |
 | `workspace/` | 默认 workspace | 未指定工作区时使用 |
 
-> ⚠️ **v0.8 更正**：旧版本节把主库文件名写成 `db.sqlite` 且只列 11 张业务表 + kv_store —— 两处都不准。源码里 `session-db.ts:63` 写的是 `sessions.db`（`grep "db\.sqlite" src/` 零命中），且 v0.8 工作流域 9 张表 + memory_* 4 张自建表此前都漏列。备份策略相应从"复制单个 sqlite 文件"改为"备份整个 `~/.zero-core/`（只复制 sessions.db 会丢 wiki 正文 + kb 向量）"，详见 `05-persistence.md` §9。
+> ⚠️ **v0.8 更正**：旧版本节把主库文件名写成 `db.sqlite` 且只列 11 张业务表 + kv_store —— 两处都不准。源码里 `session-db.ts:63` 写的是 `sessions.db`（`grep "db\.sqlite" src/` 零命中），且 v0.8 工作流域 9 张表 + memory_* 4 张自建表此前都漏列。备份策略相应从"复制单个 sqlite 文件"改为"备份整个 `~/.zero-core/`（只复制 sessions.db 会丢 wiki 正文）"，详见 `05-persistence.md` §9。
 
 迁移策略：见 `src/server/db-migration.ts`（1059 行）。`runMigrations` 分 5 阶段（`05-persistence.md` §4.2）：① 列补齐（`safeAddColumn` 必须先于 `new SqliteStore`）→ ② v0.8 表 DDL（按依赖顺序，`project_wiki` 必须先 `migrateWikiTableSchema` 再 `migrateWikiDetailToDisk`）→ ③ 构造各 `SqliteStore` → ④ 旧 JSON → SQLite 搬运 → ⑤ KV + Memory 搬运。注意 v0.8 表无 JSON 前身，阶段 ④/⑤ 完全不涉及它们。
 
@@ -283,10 +279,9 @@ Electron Desktop
     │                 ├─ MCPManager ── stdio + sse transports
     │                 └─ ProviderConcurrencyManager ── FIFO semaphores
     ├─ HookRegistry (singleton) ── 30 events
-    │   ├─ turn-hooks: SQLite turn 持久化
-    │   ├─ compression-hooks: L1 摘要 + L2 记忆节点
+    │   ├─ turn-hooks: SQLite step 持久化（原 turns 表已 rename 为 steps）
+    │   ├─ compression-hooks: 摘要 + 记忆写 wiki
     │   ├─ wiki-anchor-injection: system/context Wiki anchors
-    │   ├─ rag-hooks: legacy optional，默认未接 getRagContext
-    │   └─ durable-hooks: turn_state 检查点
-    └─ SQLite ── sessions.db (30+ 张表) + knowledge.db (kb_chunks) + wiki/ 镜像树
+    │   └─ durable-hooks: sessions 表检查点（turn_state 表已 DROP 并入 sessions）
+    └─ SQLite ── sessions.db + wiki/ 镜像树（knowledge.db / kb_chunks 已移除）
 ```
