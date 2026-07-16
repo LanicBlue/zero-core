@@ -2,7 +2,8 @@
 
 放**正在执行**的 effort 的 `plan-*.md`(实施路线)+ 对应 `acceptance-*.md`(验收标准),一一对应。每个主题一个子目录。
 
-> **当前状态:无进行中的实施 effort。** 已完成的实施计划全部归档到 [`../archive/`](../archive/)(随各 effort 的 spec 一起)。
+> **当前进行中:** [`wiki-system-redesign/`](wiki-system-redesign/)——统一 SQLite Wiki、Agent grants/context、Project Git 语义镜像、工具与 UI 重构。
+> 已完成的实施计划归档到 [`../archive/`](../archive/)(随各 effort 的 spec 一起)。
 
 ## 执行约定
 

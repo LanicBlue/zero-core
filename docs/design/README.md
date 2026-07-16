@@ -2,7 +2,9 @@
 
 放**正在讨论/细化**的设计 spec。每个主题一个子目录,至少一份 spec 文件。
 
-> **当前状态:无进行中的设计 effort。** 已完成的 5 个 effort 全部归档到 [`../archive/`](../archive/):
+> **当前进行中:** [`external-subagent-mcp/`](external-subagent-mcp/)。
+> `wiki-system-redesign` 已进入实施阶段,见 [`../plan/wiki-system-redesign/`](../plan/wiki-system-redesign/)。
+> 已完成的 5 个 effort 全部归档到 [`../archive/`](../archive/):
 > - `archive/agent-driven-workflow/`(v0.8 多 agent 工作流,P0–P9)
 > - `archive/hook-redesign/`(hook 生命周期重做)
 > - `archive/project-flow/`(需求→代码合并 Flow)
