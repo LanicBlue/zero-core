@@ -28,7 +28,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import {
 	compressSession,
 	segmentByTurnGroup,
@@ -79,7 +79,7 @@ function assistantContent(blocks: any[]): string {
  * budget (so older turns become compressible). Returns the last assistant seq.
  */
 function seedTurn(
-	db: SessionDB,
+	db: CoreDatabase,
 	sessionId: string,
 	startSeq: number,
 	userText: string,
@@ -107,12 +107,12 @@ const COMPRESS_OPTS = {
 describe("steps-overhaul sub-4: compressSession 压缩核心", () => {
 	let tmpDir: string;
 	let dbPath: string;
-	let sessionDB: SessionDB | null = null;
+	let sessionDB: CoreDatabase | null = null;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub4-compress-"));
-		dbPath = join(tmpDir, "sessions.db");
-		sessionDB = new SessionDB(dbPath);
+		dbPath = join(tmpDir, "core.db");
+		sessionDB = new CoreDatabase(dbPath);
 	});
 
 	afterEach(() => {

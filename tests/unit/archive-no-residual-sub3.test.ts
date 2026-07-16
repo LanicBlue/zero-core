@@ -6,7 +6,7 @@
 // 独立验证 acceptance-3.md 的 12 个条目(由独立的 adversarial verifier 写,
 // 非实施者)。覆盖父归档时级联归档子 session(递归孙子层)的行为 + 源码断言。
 //
-// 行为测试 (#1-#7) — real AgentService + real SessionDB on temp file:
+// 行为测试 (#1-#7) — real AgentService + real CoreDatabase on temp file:
 //   #1  父归档级联终态子(2 completed 子)→ 子 session 行删 + 行清 + 父归档完成。
 //   #2  父归档级联运行中子(子 loop 活跃 mock)→ 子 loop 被 teardown + 子归档。
 //   #3  递归孙子层(父→子→孙)→ 孙 session 也归档。
@@ -50,7 +50,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // Module-level placeholders — populated in beforeEach after ZERO_CORE_DIR redirect.
-let SessionDBCtor: typeof import("../../src/server/session-db.js").SessionDB;
+let CoreDatabaseCtor: typeof import("../../src/server/core-database.js").CoreDatabase;
 let AgentServiceCtor: typeof import("../../src/server/agent-service.js").AgentService;
 let archiveMod: typeof import("../../src/server/archive-service.js");
 
@@ -61,19 +61,19 @@ const DELEGATOR_SRC = join(__dirname, "..", "..", "src", "runtime", "subagent-de
 // helpers
 // ---------------------------------------------------------------------------
 
-/** Cast SessionDB to expose the private better-sqlite3 handle. */
-function rawDb(db: InstanceType<typeof SessionDBCtor>): import("better-sqlite3").Database {
+/** Cast CoreDatabase to expose the private better-sqlite3 handle. */
+function rawDb(db: InstanceType<typeof CoreDatabaseCtor>): import("better-sqlite3").Database {
 	return (db as unknown as { db: import("better-sqlite3").Database }).db;
 }
 
 /** Read sessions.archived straight from the row. */
-function archivedFlag(db: InstanceType<typeof SessionDBCtor>, sessionId: string): number | undefined {
+function archivedFlag(db: InstanceType<typeof CoreDatabaseCtor>, sessionId: string): number | undefined {
 	const row = rawDb(db).prepare("SELECT archived FROM sessions WHERE id = ?").get(sessionId) as { archived: number } | undefined;
 	return row?.archived;
 }
 
 /** True when the session row is gone (archive pipeline's ⑤ deleteSessionData ran). */
-function sessionRowGone(db: InstanceType<typeof SessionDBCtor>, sessionId: string): boolean {
+function sessionRowGone(db: InstanceType<typeof CoreDatabaseCtor>, sessionId: string): boolean {
 	return rawDb(db).prepare("SELECT 1 FROM sessions WHERE id = ?").get(sessionId) === undefined;
 }
 
@@ -204,10 +204,10 @@ describe("[#8, #9, #10] source-level invariants (archive-no-residual sub-3)", ()
 });
 
 // ===========================================================================
-// #1-#7 — behavioral tests (real AgentService + real SessionDB).
+// #1-#7 — behavioral tests (real AgentService + real CoreDatabase).
 //
 // Harness shape mirrors archive-no-residual-sub2.test.ts: ZERO_CORE_DIR redirect +
-// vi.resetModules for fresh config + AgentService constructed with real SessionDB
+// vi.resetModules for fresh config + AgentService constructed with real CoreDatabase
 // on a temp file. archive-service is mocked so we observe whether the cascade
 // path is taken (memoryTurnRunner invoked) without needing a full LLM provider
 // stack; the row-deletion side effect is still exercised through the real
@@ -217,7 +217,7 @@ describe("[#8, #9, #10] source-level invariants (archive-no-residual sub-3)", ()
 
 describe("[#1-#7] behavioral cascade tests", () => {
 	let tmp: string;
-	let db: InstanceType<typeof SessionDBCtor>;
+	let db: InstanceType<typeof CoreDatabaseCtor>;
 
 	beforeEach(() => {
 		tmp = mkdtempSync(join(tmpdir(), "zero-archive-sub3-"));
@@ -239,7 +239,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 
 	/** Import modules FRESH after vi.resetModules + ZERO_CORE_DIR redirect. */
 	async function freshImports(): Promise<void> {
-		({ SessionDB: SessionDBCtor } = await import("../../src/server/session-db.js"));
+		({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 		({ AgentService: AgentServiceCtor } = await import("../../src/server/agent-service.js"));
 		archiveMod = await import("../../src/server/archive-service.js");
 	}
@@ -344,7 +344,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 
 	test("#1: archiveSessionInBackground cascades into terminal children — both child rows + sessions gone + parent archived", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { calls: archiveCalls } = interceptArchiveService({ deleteRow: true });
 		const { AgentService: Svc } = await import("../../src/server/agent-service.js");
 		const svc = new Svc(tmp, db);
@@ -404,7 +404,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 
 	test("#2: archiveBookkeepingSync kills running child subloops via parent loop's abortAllSubloops + marks/deletes FAST (no LLM)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { calls: archiveCalls } = interceptArchiveService({ deleteRow: true });
 		const { AgentService: Svc } = await import("../../src/server/agent-service.js");
 		const svc = new Svc(tmp, db);
@@ -461,7 +461,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 
 	test("#3: grandchild session is archived when parent is archived (recursion depth 2)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { calls: archiveCalls } = interceptArchiveService({ deleteRow: true });
 		const { AgentService: Svc } = await import("../../src/server/agent-service.js");
 		const svc = new Svc(tmp, db);
@@ -526,7 +526,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 
 	test("#4: delegated task row with sessionId=null is still deleted (no skip, no throw)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { calls: archiveCalls } = interceptArchiveService({ deleteRow: true });
 		const { AgentService: Svc } = await import("../../src/server/agent-service.js");
 		const svc = new Svc(tmp, db);
@@ -577,7 +577,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 
 	test("#5: concurrent cascade on an already-archiving child is benign (skipped, no throw, no double-archive)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 
 		// Use the REAL archive-service so the real withArchiveLock is exercised.
 		// To make the lock observable, we stall the first archive's memory turn
@@ -648,7 +648,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 
 	test("#6a: stopTask sets status=killed but does NOT auto-archive via terminal", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 
 		// Use the real delegator (no archive mock) — fireOnTaskTerminal is what
 		// we're asserting is NOT invoked from the stopTask path.
@@ -711,7 +711,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 
 	test("#6b: parent archive cascade DOES archive the killed child directly (not via terminal)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { calls: archiveCalls } = interceptArchiveService({ deleteRow: true });
 		const { AgentService: Svc } = await import("../../src/server/agent-service.js");
 		const svc = new Svc(tmp, db);
@@ -754,7 +754,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 
 	test("#7: calling archiveChildrenOf again after parent is archived is a no-op (no throw, list empty)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { calls: archiveCalls } = interceptArchiveService({ deleteRow: true });
 		const { AgentService: Svc } = await import("../../src/server/agent-service.js");
 		const svc = new Svc(tmp, db);

@@ -741,7 +741,7 @@ export default function ChatPanel() {
 	// each ping so the sidebar shows them immediately — no polling. We only
 	// patch the list (setSessions); active-session selection / messages are
 	// untouched (no inline-render wiring changes). Filters out the high-
-	// frequency sessions UPDATEs at the source (SessionDB only emits
+	// frequency sessions UPDATEs at the source (CoreDatabase only emits
 	// create/delete/archive, see N1).
 	useEffect(() => {
 		const unsub = api().onDataChanged((e: { collection?: string; changes?: Array<{ id?: string; op?: string; record?: { agentId?: string; archived?: boolean } }> }) => {

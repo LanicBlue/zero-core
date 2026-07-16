@@ -15,7 +15,7 @@
 //      子节点 `- title — summary (doc N) #id ▾N|leaf`
 //
 // ## 设计
-// 真 WikiStore + 临时 SessionDB(同 p1-anchor-injection.test.ts 风格);
+// 真 WikiStore + 临时 CoreDatabase(同 p1-anchor-injection.test.ts 风格);
 // 冻结测试用 SystemPromptAssembler + 复刻 agent-loop.ts L218-229 的 section
 // 闭包(捕获 anchors + wikiStoreGlobal),验证 cache 命中语义。
 //
@@ -29,7 +29,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import {
@@ -51,14 +51,14 @@ import type {
 } from "../../src/shared/types.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let wiki: WikiStore;
 let projectStore: ProjectStore;
 const createdNodeIds: string[] = [];
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub1-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	wiki = new WikiStore(sessionDB);

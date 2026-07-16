@@ -13,15 +13,15 @@
 // updateDelegatedTask fires on every tool_start/usage, too hot for push.
 //
 // ## 输入
-// - SessionDB (listDelegatedTasks / getDelegatedTask)
+// - CoreDatabase (listDelegatedTasks / getDelegatedTask)
 //
 // ## 输出
 // - Express Router, mounted at /api/delegated-tasks
 //
 import { Router } from "express";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 
-export function createDelegatedTaskRouter(sessionDB: SessionDB): Router {
+export function createDelegatedTaskRouter(sessionDB: CoreDatabase): Router {
 	const router = Router();
 
 	/** GET /by-session/:sessionId — tasks this chat session launched. */

@@ -91,7 +91,7 @@ import { registerMetricsHooks } from "../../server/metrics-hooks.js";
 import type { ISessionStore } from "../session-store-interface.js";
 import type { InputQueueStore } from "../../server/input-queue-store.js";
 import type { SessionManager } from "../../server/session-manager.js";
-import type { SessionDB } from "../../server/session-db.js";
+import type { CoreDatabase } from "../../server/core-database.js";
 import { log } from "../../core/logger.js";
 
 /**
@@ -111,8 +111,8 @@ import { log } from "../../core/logger.js";
 export interface HookWiringDeps {
 	/** Step-level persistence store (turn-hooks). */
 	db?: ISessionStore;
-	/** Full SessionDB (durable-hooks / tool-execution-hooks). */
-	sessionDb?: SessionDB;
+	/** Full CoreDatabase (durable-hooks / tool-execution-hooks). */
+	sessionDb?: CoreDatabase;
 	/** C2 input queue (main-only insert_now injection). */
 	inputQueue?: InputQueueStore;
 	/** Metrics consumer (main-only). */
@@ -174,7 +174,7 @@ export function registerHooksForLoop(
 	// M5 no-op stub is gone. No replacement register call here.
 	// steps-overhaul sub-5: compression triggers (cache 冷热判定 + StepEnd cold /
 	// PreLLMCall preflight+hot / OnLLMError reactive). Registered for every loop
-	// kind that owns a SessionDB (main + delegated). Routes through compressSession
+	// kind that owns a CoreDatabase (main + delegated). Routes through compressSession
 	// so fresh-tail protection (owned by the core) is never bypassed.
 	if (compressionTriggerDeps) {
 		registerCompressionTriggerHooks(compressionTriggerDeps, registry);

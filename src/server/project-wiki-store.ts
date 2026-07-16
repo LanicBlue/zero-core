@@ -12,7 +12,7 @@
 // 自己的 SqliteStore,而是把每个旧 API 委托给 WikiStore 的等价方法。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - WikiStore(主存储,通过 deps 注入或自动构造)
 //
 // ## 输出
@@ -32,7 +32,7 @@
 // - 全局树 schema 变更先动 WikiStore + db-migration.ts,这里只跟投影
 //
 
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import { WikiStore } from "./wiki-node-store.js";
 import type { ProjectWikiNode, WikiNode, WikiNodeType } from "../shared/types.js";
 
@@ -59,11 +59,11 @@ export class ProjectWikiStore {
 	 * Back-compat constructor: called as `new ProjectWikiStore(sessionDB)`.
 	 * Builds its own WikiStore internally.
 	 */
-	constructor(sessionDBOrWiki: SessionDB | WikiStore) {
+	constructor(sessionDBOrWiki: CoreDatabase | WikiStore) {
 		if (sessionDBOrWiki instanceof WikiStore) {
 			this.wiki = sessionDBOrWiki;
 		} else {
-			this.wiki = new WikiStore(sessionDBOrWiki as SessionDB);
+			this.wiki = new WikiStore(sessionDBOrWiki as CoreDatabase);
 		}
 	}
 

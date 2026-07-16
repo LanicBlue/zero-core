@@ -4,31 +4,31 @@
 // restoreDelegatedTasks re-seeds it on next loop rebuild → terminal tasks
 // accumulate (the 264-row flood the user hit).
 //
-// Harness mirrors sub4-tool-quality-pass.test.ts: real SessionDB on temp file +
+// Harness mirrors sub4-tool-quality-pass.test.ts: real CoreDatabase on temp file +
 // real SubagentDelegator with `db` wired into config.
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { SubagentDelegator } from "../../src/runtime/subagent-delegator.js";
 import { TaskRegistry } from "../../src/runtime/task-registry.js";
 import type { SessionConfig } from "../../src/runtime/types.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-task-cleanup-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 });
 afterEach(() => {
 	sessionDB?.close();
 	if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
 });
 
-function makeDelegator(db?: SessionDB): SubagentDelegator {
+function makeDelegator(db?: CoreDatabase): SubagentDelegator {
 	const cfg = {
 		agentId: "parent-agent",
 		sessionId: "parent-session",
@@ -45,7 +45,7 @@ function makeDelegator(db?: SessionDB): SubagentDelegator {
 }
 
 /** Seed a delegated_tasks row so we can assert cleanup deletes it. */
-function seedRow(db: SessionDB, id: string): void {
+function seedRow(db: CoreDatabase, id: string): void {
 	db.createDelegatedTask({
 		id,
 		rootTaskId: id,

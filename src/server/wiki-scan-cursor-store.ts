@@ -9,7 +9,7 @@
 // feature 分支 WIP 不进 wiki(决策 19/26)。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - (archivistId, projectId) 复合键
 //
 // ## 输出
@@ -26,7 +26,7 @@
 //
 
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,7 +62,7 @@ const COLUMNS: ColumnDef[] = [
 export class WikiScanCursorStore {
 	private store: SqliteStore<WikiScanCursor>;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.store = new SqliteStore<WikiScanCursor>(
 			sessionDB.getDb(),
 			"wiki_scan_cursors",

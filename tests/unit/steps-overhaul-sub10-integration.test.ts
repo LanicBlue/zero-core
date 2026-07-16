@@ -8,15 +8,15 @@
 // 首选,但任务允许降级。决定走 vitest 集成测的理由:
 //   1. **内部状态断言需求**:本管线验收要断言"summary 进 messages / 游标推进 /
 //      DB 删行 / wiki 节点写入"——这些是内部状态,Electron e2e 只能间接经 UI
-//      钩子观察(脆)。vitest 经真 SessionDB 可直接 readonly 查表 + 断言 cursor。
+//      钩子观察(脆)。vitest 经真 CoreDatabase 可直接 readonly 查表 + 断言 cursor。
 //   2. **e2e 基础设施脆**:Playwright Electron 每测启一个真 Electron 进程,需要
 //      `npm run build` 产物(out/main/index.cjs);VSCode 锁 electron .asar 已是
 //      已知陷阱 (memory reference-npm-electron-asar-lock-recovery)。每次 e2e
 //      跑全量 build + 启进程,慢且易 flaky。
 //   3. **既有约定**:steps-overhaul sub-3..9 的 acceptance 测全走 vitest + 真
-//      SessionDB + stub provider 模式;本测延续这套集成层。
+//      CoreDatabase + stub provider 模式;本测延续这套集成层。
 //   4. **任务显式授权**:sub-10.md "若 e2e 基础设施太脆/electron .asar 锁问题,
-//      降级为 vitest 集成测——真 SessionDB + stub provider,同样验管线接线"。
+//      降级为 vitest 集成测——真 CoreDatabase + stub provider,同样验管线接线"。
 //
 // 这与 memory `feedback-verify-runtime-wiring` 一致:验下游真消费(messages 组装
 // 真读 summary + steps;recovery 真重组;archive 真删 + wiki 真留存)。
@@ -32,7 +32,7 @@
 //      chat 归档活跃 session 先 teardown (teardown 顺序断言)。
 //   4. **wiki stub**:压缩后 topic 节点写入路径通 (ExtractorAService.mergeSummaryIntoWiki
 //      被 compressSession 真调;内容质量由 sub-7 vitest 验)。
-//   5. **内容量 UI**:数据源是 steps 表 (getSessionVolume 经真 SessionDB,读
+//   5. **内容量 UI**:数据源是 steps 表 (getSessionVolume 经真 CoreDatabase,读
 //      steps + sessions 计数,不读 messages)。
 //
 // ## 关键不变量 (acceptance-10)
@@ -54,7 +54,7 @@ vi.mock("../../src/runtime/provider-factory.js", () => ({
 	getMultimodal: () => false,
 }));
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentSession } from "../../src/runtime/session.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 import {
@@ -118,7 +118,7 @@ function assistantContent(blocks: any[]): string {
  * compressed.
  */
 function seedTurn(
-	db: SessionDB,
+	db: CoreDatabase,
 	sessionId: string,
 	startSeq: number,
 	pad: number = 80_000,
@@ -150,7 +150,7 @@ function mkConfig(sessionId: string): SessionConfig {
 }
 
 /** Insert a session row with a known id (createSession auto-generates). */
-function insertSession(db: SessionDB, sessionId: string, agentId = "integ-agent") {
+function insertSession(db: CoreDatabase, sessionId: string, agentId = "integ-agent") {
 	const rawDb = (db as unknown as { db: import("better-sqlite3").Database }).db;
 	const now = new Date().toISOString();
 	rawDb.prepare(
@@ -171,7 +171,7 @@ interface FireOpts {
  */
 function fireStepEnd(
 	reg: HookRegistry,
-	db: SessionDB,
+	db: CoreDatabase,
 	opts: FireOpts,
 ) {
 	const config = mkConfig(opts.sessionId);
@@ -196,13 +196,13 @@ function fireStepEnd(
  * directly, mirroring what coordinateForceCompress does MINUS the memory
  * ephemeral turn (which is exercised separately in sub3c-dual-mechanism.test.ts).
  */
-async function compressDirect(db: SessionDB, sessionId: string) {
+async function compressDirect(db: CoreDatabase, sessionId: string) {
 	const opts = await buildCompressOpts(mkConfig(sessionId), PROVIDERS);
 	return compressSession(sessionId, db, opts);
 }
 
 /** A standalone registry with the production hook set wired for "main" loop. */
-function wireProductionHooks(db: SessionDB): HookRegistry {
+function wireProductionHooks(db: CoreDatabase): HookRegistry {
 	const reg = new HookRegistry();
 	const deps: HookWiringDeps = { sessionDb: db, db: db as any };
 	registerHooksForLoop(reg, "main", deps);
@@ -215,11 +215,11 @@ function wireProductionHooks(db: SessionDB): HookRegistry {
 
 describe("steps-overhaul sub-10 integration: compression → messages → cursor → 3-zone view", () => {
 	let tmpDir: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub10-integ-"));
-		db = new SessionDB(join(tmpDir, "sessions.db"));
+		db = new CoreDatabase(join(tmpDir, "core.db"));
 		insertSession(db, "s1");
 		clearCompressionTriggerState();
 	});
@@ -336,11 +336,11 @@ describe("steps-overhaul sub-10 integration: compression → messages → cursor
 
 describe("steps-overhaul sub-10 integration: crash → restart reassembly (no mid-turn drift)", () => {
 	let tmpDir: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub10-resume-"));
-		db = new SessionDB(join(tmpDir, "sessions.db"));
+		db = new CoreDatabase(join(tmpDir, "core.db"));
 		insertSession(db, "rs1");
 		clearCompressionTriggerState();
 	});
@@ -435,12 +435,12 @@ describe("steps-overhaul sub-10 integration: crash → restart reassembly (no mi
 
 describe("steps-overhaul sub-10 integration: archive pipeline (delegated auto + chat teardown)", () => {
 	let tmpDir: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub10-archive-"));
 		process.env.ZERO_CORE_DIR = tmpDir;
-		db = new SessionDB(join(tmpDir, "sessions.db"));
+		db = new CoreDatabase(join(tmpDir, "core.db"));
 		insertSession(db, "a1");
 	});
 
@@ -584,11 +584,11 @@ describe("steps-overhaul sub-10 integration: archive pipeline (delegated auto + 
 
 describe("steps-overhaul sub-10 integration: volume-UI stays accurate across compression (steps = immutable source)", () => {
 	let tmpDir: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub10-vol-"));
-		db = new SessionDB(join(tmpDir, "sessions.db"));
+		db = new CoreDatabase(join(tmpDir, "core.db"));
 		clearCompressionTriggerState();
 	});
 

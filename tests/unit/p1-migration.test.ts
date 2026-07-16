@@ -12,7 +12,7 @@
 // "detail 内容先导出磁盘再删列(否则丢数据)"。
 //
 // ## 输入
-// 临时 SessionDB + helpers/p0-test-helpers 的 createLegacySchemaDb /
+// 临时 CoreDatabase + helpers/p0-test-helpers 的 createLegacySchemaDb /
 // buildLegacyWikiRow(新)。
 //
 // ## 输出
@@ -29,7 +29,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { WikiStore, WIKI_DISK_ROOT } from "../../src/server/wiki-node-store.js";
 import {
@@ -62,7 +62,7 @@ function indexesOf(db: Database.Database, table: string): Set<string> {
 describe("P1 migration — fresh DB path", () => {
 	test("fresh DB 没有 detail / type 列 (P1 §10.1 新 schema)", () => {
 		const dbPath = join(tmpDir, "fresh.db");
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		const cols = columnsOf(sessionDB.getDb(), "project_wiki");
 		expect(cols.has("detail")).toBe(false);
@@ -77,7 +77,7 @@ describe("P1 migration — fresh DB path", () => {
 
 	test("fresh DB 没有 idx_wiki_type 索引 (依赖已删的 type 列)", () => {
 		const dbPath = join(tmpDir, "fresh-idx.db");
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		expect(indexesOf(sessionDB.getDb(), "project_wiki").has("idx_wiki_type")).toBe(false);
 		// Other wiki indexes preserved.
@@ -88,7 +88,7 @@ describe("P1 migration — fresh DB path", () => {
 
 	test("fresh DB 上 WikiStore 正常起 + 可写正文走文件", () => {
 		const dbPath = join(tmpDir, "fresh-wiki.db");
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		const wiki = new WikiStore(sessionDB);
 		// Global root exists by construction.
@@ -111,7 +111,7 @@ describe("P1 migration — fresh DB path", () => {
 
 	test("fresh DB:runMigrations 二次幂等(不抛)", () => {
 		const dbPath = join(tmpDir, "fresh-idempotent.db");
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		expect(() => runMigrations(sessionDB)).not.toThrow();
 		// Second run still has no detail/type.
@@ -155,7 +155,7 @@ describe("P1 migration — legacy DB upgrade path (detail → disk)", () => {
 		legacy.close();
 
 		// Migrate.
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		expect(() => runMigrations(sessionDB)).not.toThrow();
 		const db = sessionDB.getDb();
 
@@ -212,7 +212,7 @@ describe("P1 migration — legacy DB upgrade path (detail → disk)", () => {
 		});
 		legacy.close();
 
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		const db = sessionDB.getDb();
 
@@ -256,7 +256,7 @@ describe("P1 migration — legacy DB upgrade path (detail → disk)", () => {
 		});
 		legacy.close();
 
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		const wiki = new WikiStore(sessionDB);
 		// runMigrations writes bodies to the LEGACY flat layout; the tree-mirror
@@ -289,7 +289,7 @@ describe("P1 migration — legacy DB upgrade path (detail → disk)", () => {
 		});
 		legacy.close();
 
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		// Second run — idempotent (detail already dropped, no error).
 		expect(() => runMigrations(sessionDB)).not.toThrow();

@@ -34,7 +34,11 @@ import { AgentStore } from "./agent-store.js";
 import { AgentLoop, ARCHIVE_MEMORY_PROMPT } from "../runtime/agent-loop.js";
 import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource, PlatformObserver, PlatformSessionSummary, PlatformProviderStat, PlatformProviderSeries, PlatformProviderQueueEntry } from "../runtime/types.js";
 import { clearProviderCache, setConcurrencyManager } from "../runtime/provider-factory.js";
-import { SessionDB } from "./session-db.js";
+import { CoreDatabase } from "./core-database.js";
+// plan-00 round-2 FIX 6：DI fallback 必须经 DatabaseManager，不能直接
+// `new CoreDatabase()`（绕过布局 bootstrap + knowledge.db 清理，破坏 plan-00
+// §3「唯一生命周期所有者」不变量）。下方构造函数 fallback 用这三个符号。
+import { DatabaseManager, getDatabaseManager, setDatabaseManager } from "./database-manager.js";
 import { computeDisplayWindow } from "./session-volume.js";
 import { InputQueueStore } from "./input-queue-store.js";
 import { MCPManager } from "./mcp-manager.js";
@@ -175,6 +179,27 @@ function getWikiBaseline(wikiStore: ProjectWikiStore, projectId: string): string
 	}).join("\n");
 }
 
+/**
+ * plan-00 round-2 FIX 6：为 AgentService 构造函数提供 DatabaseManager 感知的
+ * CoreDatabase 解析。绝不在 DatabaseManager 之外构造野生 CoreDatabase。
+ *
+ * 解析顺序：
+ *   1. 已注册的进程单例（getDatabaseManager()）→ 返回其 .core（最常见路径）。
+ *   2. 否则构造 + open + 注册一个新 DatabaseManager（保证至多一个实例）。
+ *
+ * 第 2 分支只在 headless/未走 server/index.ts 或 cli.ts composition root 的
+ * 调用方（极少数测试或第三方入口）触发；正常 prod 路径 server/CLI 都会先
+ * setDatabaseManager，从而走第 1 分支。
+ */
+function resolveCoreDatabase(): CoreDatabase {
+	const existing = getDatabaseManager();
+	if (existing) return existing.core;
+	const mgr = new DatabaseManager();
+	mgr.open();
+	setDatabaseManager(mgr);
+	return mgr.core;
+}
+
 // ---------------------------------------------------------------------------
 // Agent Service — supports concurrent multi-agent execution
 // ---------------------------------------------------------------------------
@@ -190,7 +215,7 @@ export class AgentService implements PlatformObserver {
 	private providerConfigs: RuntimeProviderConfig[] = [];
 	private defaultModel: string | undefined;
 	private defaultProvider: string | undefined;
-	private db: SessionDB;
+	private db: CoreDatabase;
 	private registry: ToolRegistry;
 	private mcp: MCPManager;
 	private concurrencyManager = new ProviderConcurrencyManager();
@@ -260,14 +285,26 @@ export class AgentService implements PlatformObserver {
 	// Module readiness — modules notify when loaded, deferred actions wait until ready
 	private readyModules = new Set<string>();
 	private deferredActions: Array<{ waitFor: string[]; action: () => Promise<void> }> = [];
-	constructor(workspaceDir: string, sessionDb?: SessionDB, registry?: ToolRegistry, mcp?: MCPManager) {
+	constructor(workspaceDir: string, sessionDb?: CoreDatabase, registry?: ToolRegistry, mcp?: MCPManager) {
 		this.workspaceDir = workspaceDir;
-		this.db = sessionDb ?? new SessionDB();
+		// plan-00 round-2 FIX 6（架构 lens concern）：fallback 不再直接
+		// `new CoreDatabase()` —— 那会构造一个 DatabaseManager 之外的、未经
+		// 布局 bootstrap（sessions.db → db/core.db 切换）/未做 knowledge.db
+		// 清理的野生的 CoreDatabase，破坏「唯一生命周期所有者」不变量。
+		//
+		// 选用的方案（task 推荐）：fallback 走 getDatabaseManager() 单例感知：
+		//   1. 若 composition root（server/index.ts 或 cli.ts）已 setDatabaseManager，
+		//      复用其 .core（最常见路径 —— server 与 CLI 都会 set）。
+		//   2. 否则就地 new + open + setDatabaseManager 一个新 DatabaseManager，
+		//      保证全进程至多一个实例（singleton 唯一性）。
+		// 替代方案「让 sessionDb 必填」是更严格的 fail-fast，但会破坏多个测试
+		// fixture 与潜在第三方调用方，改动面过大；本方案最小且自愈。
+		this.db = sessionDb ?? resolveCoreDatabase();
 		this.registry = registry ?? new ToolRegistry(this.db.getKVStore());
 		this.mcp = mcp ?? new MCPManager(this.registry);
 		this.config = loadConfig(process.cwd(), undefined, this.db.getKVStore());
 	}
-	getDB(): SessionDB {
+	getDB(): CoreDatabase {
 		return this.db;
 	}
 	setWorkspaceDir(dir: string): void {
@@ -684,7 +721,7 @@ export class AgentService implements PlatformObserver {
 	 * 'providers' resource — ProviderStore's constructor has write side-effects,
 	 * so we SELECT directly). Returns the authoritative provider list (including
 	 * disabled, per acceptance-5 #6). Localized cast: ISessionStore doesn't
-	 * expose getDb(); SessionDB does.
+	 * expose getDb(); CoreDatabase does.
 	 */
 	private readProvidersTable(): Array<{ name: string; type: string; enabled: boolean; models: any[] }> {
 		const rawDb = (this.db as any).getDb?.();
@@ -2666,7 +2703,7 @@ export class AgentService implements PlatformObserver {
 		}
 	}
 }
-export function createAgentService(workspaceDir: string, sessionDb?: SessionDB, registry?: ToolRegistry, mcp?: MCPManager): AgentService {
+export function createAgentService(workspaceDir: string, sessionDb?: CoreDatabase, registry?: ToolRegistry, mcp?: MCPManager): AgentService {
 	return new AgentService(workspaceDir, sessionDb, registry, mcp);
 }
 

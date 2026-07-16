@@ -14,14 +14,14 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { ManagementService } from "../../src/server/management-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
 let management: ManagementService;
@@ -30,12 +30,12 @@ beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-m4-route-"));
 	const ws = join(tmpDir, "ws");
 	mkdirSync(ws, { recursive: true });
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);
 	management = new ManagementService({ agentStore, projectStore });
-	management.setSessionDB(sessionDB);
+	management.setCoreDatabase(sessionDB);
 });
 
 afterEach(() => {

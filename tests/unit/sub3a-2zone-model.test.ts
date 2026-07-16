@@ -11,14 +11,14 @@
 //   #6 build:lib typecheck.
 //
 // Each test names the acceptance item it implements. Tests #1/#2 build a real
-// AgentSession over a temp SessionDB; #3/#4 are static fs greps over src/.
+// AgentSession over a temp CoreDatabase; #3/#4 are static fs greps over src/.
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentSession } from "../../src/runtime/session.js";
 
 // ---------------------------------------------------------------------------
@@ -107,12 +107,12 @@ describe("sub-3a #3+#4: static source invariants (boundary single source + no do
 describe("sub-3a #1: 2-zone model — [summary] + [postCursor verbatim]", () => {
 	let tmpDir: string;
 	let dbPath: string;
-	let sessionDB: SessionDB | null = null;
+	let sessionDB: CoreDatabase | null = null;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub3a-2zone-"));
-		dbPath = join(tmpDir, "sessions.db");
-		sessionDB = new SessionDB(dbPath);
+		dbPath = join(tmpDir, "core.db");
+		sessionDB = new CoreDatabase(dbPath);
 	});
 
 	afterEach(() => {
@@ -221,12 +221,12 @@ describe("sub-3a #1: 2-zone model — [summary] + [postCursor verbatim]", () => 
 describe("sub-3a #2: tool_use / tool_result stay paired in the 2-zone output", () => {
 	let tmpDir: string;
 	let dbPath: string;
-	let sessionDB: SessionDB | null = null;
+	let sessionDB: CoreDatabase | null = null;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub3a-pair-"));
-		dbPath = join(tmpDir, "sessions.db");
-		sessionDB = new SessionDB(dbPath);
+		dbPath = join(tmpDir, "core.db");
+		sessionDB = new CoreDatabase(dbPath);
 	});
 
 	afterEach(() => {

@@ -16,7 +16,7 @@
 // Approach: spy on the per-module register functions (they are the public
 // registerHooksForLoop subcontract — each branch dispatches to exactly one set
 // of these). This directly verifies the loopKind branch in registerHooksForLoop
-// without needing real SessionDB / SessionManager / InputQueueStore stores,
+// without needing real CoreDatabase / SessionManager / InputQueueStore stores,
 // which would require an Electron-aware harness. The spies also capture the
 // registry argument so we assert it is the per-loop instance, not the global
 // singleton.

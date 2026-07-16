@@ -1,18 +1,20 @@
-// Step-level 存储集成测试：对真实 SessionDB 跑全生命周期。
+// Step-level 存储集成测试：对真实 CoreDatabase 跑全生命周期。
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 不使用 mock，直接从 dist/ 加载真实 SessionDB 与 runMigrations，新建临时 DB 后
+// 不使用 mock，直接从 dist/ 加载真实 CoreDatabase 与 runMigrations，新建临时 DB 后
 // 串联 11 个用例验证 step 级存储：建库+迁移、列与索引存在性、appendStep/
 // getStepGroup/getSteps/upsertStep/updateStepContent/deleteStepGroup/
 // getTurnGroupCount/replaceStepsFromMessages、token 用量统计、
 // 以及 step 级低层 CRUD(Step 4A: legacy appendTurn/updateTurnContent/getTurns 已退役)。
 // (steps-overhaul sub-1:turns→steps 改名 + DROP-rebuild,旧 schema 迁移用例已退役。)
+// (plan-00 round-2 FIX 3：SessionDB → CoreDatabase 改名同步；
+//  hasStepSchema() 已随 sub-1 退役，Test 2 改用 table_info 此断言。)
 //
 // ## 输入
 // - 可选 CLI 参数：db-path（默认 ~/.zero-core/itest-test.db）
-// - 前置条件：项目已构建出 dist/server/session-db.js 与 dist/server/db-migration.js
+// - 前置条件：项目已构建出 dist/server/core-database.js 与 dist/server/db-migration.js
 //
 // ## 输出
 // - 控制台逐项 ✓ / ✗，最后汇总 passed/failed
@@ -24,7 +26,7 @@
 // 语义与 schema 迁移逻辑。
 //
 // ## 依赖
-// - dist/server/session-db.js（SessionDB）
+// - dist/server/core-database.js（CoreDatabase）
 // - dist/server/db-migration.js（runMigrations）
 // - Node.js：path / os / fs
 //
@@ -35,7 +37,7 @@
 /**
  * Integration test: step-level storage against real database.
  *
- * Uses the ACTUAL SessionDB + real migrations — no mocks.
+ * Uses the ACTUAL CoreDatabase + real migrations — no mocks.
  * Tests the full lifecycle: schema → migration → write → read → rebuild.
  *
  * Usage: node scripts/itest-step-storage.cjs [db-path]
@@ -53,7 +55,7 @@ if (fs.existsSync(dbPath + "-wal")) fs.unlinkSync(dbPath + "-wal");
 if (fs.existsSync(dbPath + "-shm")) fs.unlinkSync(dbPath + "-shm");
 
 async function run() {
-	const { SessionDB } = await import("../dist/server/session-db.js");
+	const { CoreDatabase } = await import("../dist/server/core-database.js");
 	const { runMigrations } = await import("../dist/server/db-migration.js");
 
 	let passed = 0;
@@ -66,9 +68,9 @@ async function run() {
 
 	// ─── Test 1: Fresh DB creation + migrations ──────────────
 	console.log("\n=== Test 1: Fresh DB creation ===");
-	const db = new SessionDB(dbPath);
+	const db = new CoreDatabase(dbPath);
 	runMigrations(db);
-	assert(db !== null, "SessionDB created + migrations ran");
+	assert(db !== null, "CoreDatabase created + migrations ran");
 
 	// Check columns
 	const cols = db.getDb().pragma("table_info(steps)").map(c => c.name);
@@ -81,9 +83,13 @@ async function run() {
 	const idxs = db.getDb().prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='steps'").all().map(i => i.name);
 	assert(idxs.includes("idx_steps_session_seq"), "idx_steps_session_seq index exists");
 
-	// ─── Test 2: hasStepSchema ─────────────────────────────────
-	console.log("\n=== Test 2: hasStepSchema ===");
-	assert(db.hasStepSchema() === true, "hasStepSchema returns true on fresh DB");
+	// ─── Test 2: steps schema sanity (plan-00 FIX 3) ───────────
+	// 原 db.hasStepSchema() 已随 steps-overhaul sub-1 退役。改用 table_info
+	// 直接断言 steps 表存在且带预期列 —— 与 hasStepSchema 等价的可观察后验。
+	console.log("\n=== Test 2: steps schema sanity ===");
+	const stepsCols = db.getDb().pragma("table_info(steps)").map(c => c.name);
+	assert(stepsCols.length > 0, "steps table exists with columns");
+	assert(stepsCols.includes("role"), "steps.role column exists (post-sub-1 schema)");
 
 	// ─── Test 3: Create session + write user step ──────────────
 	console.log("\n=== Test 3: Write user step ===");

@@ -35,9 +35,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentSession } from "../../src/runtime/session.js";
-import type { MessageSummary } from "../../src/server/session-db.js";
+import type { MessageSummary } from "../../src/server/core-database.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -47,7 +47,7 @@ function assistantContent(blocks: any[]): string {
 	return JSON.stringify(blocks);
 }
 
-function insertSession(db: SessionDB, sessionId: string) {
+function insertSession(db: CoreDatabase, sessionId: string) {
 	const rawDb = (db as unknown as { db: import("better-sqlite3").Database }).db;
 	const now = new Date().toISOString();
 	rawDb.prepare(
@@ -91,11 +91,11 @@ function assertSystemRoleContiguous(msgs: Array<{ role: string }>, label: string
 
 describe("steps-overhaul sub-10 Lens B (sub-4 移交): system role only in zone-1 contiguous run", () => {
 	let tmpDir: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub10-sys-"));
-		db = new SessionDB(join(tmpDir, "sessions.db"));
+		db = new CoreDatabase(join(tmpDir, "core.db"));
 	});
 
 	afterEach(() => {

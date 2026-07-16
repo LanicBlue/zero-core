@@ -12,7 +12,7 @@
 //     memory,zero 看全树
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + 真实 WikiStore。
+// 临时 CoreDatabase (mkdtempSync) + 真实 WikiStore。
 //
 // 注意:WIKI_DISK_ROOT 是模块导入期固化常量(指向 ~/.zero-core/wiki),无法按测试
 // 重定向。本测试通过 store API 间接验证磁盘行为 + 在 afterEach 用 wikiStore.delete
@@ -37,7 +37,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import {
@@ -50,14 +50,14 @@ import {
 } from "../../src/server/wiki-node-store.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let wiki: WikiStore;
 let projectStore: ProjectStore;
 const createdNodeIds: string[] = [];
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-p1-store-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	wiki = new WikiStore(sessionDB);

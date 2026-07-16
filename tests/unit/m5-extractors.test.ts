@@ -22,7 +22,7 @@
 // 不受影响。
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + WikiStore + ExtractionCursorStore + TelemetryStore +
+// 临时 CoreDatabase (mkdtempSync) + WikiStore + ExtractionCursorStore + TelemetryStore +
 // 注入 testModel stub 的 ExtractorBService.
 //
 // ## 输出
@@ -33,7 +33,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { WikiStore } from "../../src/server/wiki-node-store.js";
 import { ExtractionCursorStore } from "../../src/server/extraction-cursor-store.js";
 import { TelemetryStore } from "../../src/server/telemetry-store.js";
@@ -44,14 +44,14 @@ import { AgentSession } from "../../src/runtime/session.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let wiki: WikiStore;
 let cursorStore: ExtractionCursorStore;
 let telemetryStore: TelemetryStore;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-m5-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	wiki = new WikiStore(sessionDB);
 	cursorStore = sessionDB.getExtractionCursorStore();

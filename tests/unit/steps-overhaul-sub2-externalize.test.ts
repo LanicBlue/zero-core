@@ -16,7 +16,7 @@
 //   - 不用 PostToolUse modifiedResult(验证没走那条路 — 走的是 ctx.result)。
 //
 // ## 设计
-// Drives the real pipeline: temporary SessionDB + runMigrations (own temp dir),
+// Drives the real pipeline: temporary CoreDatabase + runMigrations (own temp dir),
 // a fresh HookRegistry per case, registerTurnHooks(sessionDB, registry), and a
 // real TurnRecorder. ZERO_CORE_DIR is already pinned to a per-run temp dir by
 // vitest.config.ts (see its header comment) — so externalized files land in OS
@@ -35,7 +35,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 import { registerTurnHooks } from "../../src/runtime/hooks/turn-hooks.js";
@@ -50,13 +50,13 @@ import {
 const SESSION_ID = "sess-sub2-externalize";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 /** ZERO_CORE_DIR pinned by vitest.config.ts to a per-run temp dir. */
 let zeroCoreDir: string;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub2-ext-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	zeroCoreDir = process.env.ZERO_CORE_DIR
 		?? join(homedir(), ".zero-core");

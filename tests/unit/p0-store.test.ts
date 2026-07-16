@@ -12,7 +12,7 @@
 //   - ToolUsageStore: record / get / listByTool / listBySession
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + runMigrations。
+// 临时 CoreDatabase (mkdtempSync) + runMigrations。
 //
 // ## 输出
 // Vitest 用例。
@@ -28,7 +28,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { CronStore, CronRunStore } from "../../src/server/cron-store.js";
 import { WikiStore } from "../../src/server/wiki-node-store.js";
@@ -38,7 +38,7 @@ import { runMigrations } from "../../src/server/db-migration.js";
 import type { CronSchedule } from "../../src/shared/types.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let agentStore: AgentStore;
 let cronStore: CronStore;
 let cronRunStore: CronRunStore;
@@ -49,7 +49,7 @@ let projectStore: ProjectStore;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-p0-store-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	agentStore = new AgentStore(sessionDB);
 	cronStore = new CronStore(sessionDB);

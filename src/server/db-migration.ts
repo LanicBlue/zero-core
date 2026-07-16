@@ -6,7 +6,7 @@
 // 数据库迁移管理，处理 schema 版本升级和数据迁移。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 //
 // ## 输出
 // - 迁移结果
@@ -23,7 +23,7 @@
 // - 保持迁移顺序不可变
 //
 import type Database from "better-sqlite3";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import { join } from "node:path";
 import { existsSync, readFileSync, renameSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -80,7 +80,7 @@ const PROJECT_COLUMNS = [
 // v0.8 (M0): SessionRecord context bundle columns. JSON-stored context +
 // extracted projectId column for the (agentId, projectId) find-or-create
 // routing key. Kept here for parity with the *_COLUMNS pattern even though
-// the sessions table itself is owned by SessionDB.
+// the sessions table itself is owned by CoreDatabase.
 //
 // Note: SESSION_COLUMNS is consumed by the `for (const col of SESSION_COLUMNS)`
 // loop in runMigrations, which calls safeAddColumn(..., "TEXT") for each. That
@@ -91,7 +91,7 @@ const PROJECT_COLUMNS = [
 // 'completed', turn_count = INTEGER NOT NULL DEFAULT 0, etc.) — forcing them
 // through the TEXT-only loop would corrupt their types. They are added with
 // the correct types by an explicit typed safeAddColumn block in runMigrations
-// below AND by SessionDB.initSchema (double-belt-and-suspenders; both paths
+// below AND by CoreDatabase.initSchema (double-belt-and-suspenders; both paths
 // run on every startup, fresh + upgraded). They are also NOT part of the
 // SessionRecord TS type — rowToRecord does not read them.
 const SESSION_COLUMNS = [
@@ -321,7 +321,7 @@ const TOOL_USAGE_COLUMNS = [
 ];
 
 // ---------------------------------------------------------------------------
-// runMigrations — called once at startup, after SessionDB is created
+// runMigrations — called once at startup, after CoreDatabase is created
 // ---------------------------------------------------------------------------
 
 function safeAddColumn(db: Database.Database, table: string, column: string, def: string): void {
@@ -688,7 +688,7 @@ function migrateRoleTokensToAgent(db: Database.Database): void {
 	}
 }
 
-export function runMigrations(sessionDB: SessionDB): void {
+export function runMigrations(sessionDB: CoreDatabase): void {
 	const kv = sessionDB.getKVStore();
 	const db = sessionDB.getDb();
 
@@ -738,7 +738,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 
 	// v0.8: archived flag — soft-delete sessions (excluded from active
 	// routing/listing/main lookup, row retained). Added here with the other
-	// sessions columns; SessionDB.initSchema also adds it idempotently.
+	// sessions columns; CoreDatabase.initSchema also adds it idempotently.
 	safeAddColumn(db, "sessions", "archived", "INTEGER NOT NULL DEFAULT 0");
 
 	// v0.8 (M0): SessionRecord context bundle (D-B) + routing columns.
@@ -749,7 +749,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 	safeAddIndex(db, "sessions", "idx_sessions_agent_project", "agent_id, context_project_id");
 
 	// steps-overhaul sub-1: sessions absorbs turn_state. 7 typed columns with
-	// the SAME types/defaults as SessionDB.initSchema's CREATE TABLE / ALTER
+	// the SAME types/defaults as CoreDatabase.initSchema's CREATE TABLE / ALTER
 	// (double-belt-and-suspenders: both paths run on every startup). phase
 	// defaults to 'completed' so existing (pre-fold) sessions rows are NOT
 	// flagged as recovery candidates (recovery scans phase NOT IN
@@ -767,7 +767,7 @@ export function runMigrations(sessionDB: SessionDB): void {
 	safeAddIndex(db, "sessions", "idx_sessions_phase", "phase");
 
 	// steps-overhaul sub-1: physical `turns` table renamed to `steps`.
-	// SessionDB.initSchema DROPPED the legacy `turns` + `turn_state` tables and
+	// CoreDatabase.initSchema DROPPED the legacy `turns` + `turn_state` tables and
 	// CREATEs `steps` with these columns, so on every startup (fresh + upgraded)
 	// the columns already exist by here — these safeAddColumn calls are no-ops
 	// kept as defensive parity with the v0.8 pattern (and to self-heal any DB

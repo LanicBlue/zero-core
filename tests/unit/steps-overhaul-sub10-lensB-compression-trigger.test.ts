@@ -36,7 +36,7 @@ vi.mock("../../src/runtime/provider-factory.js", () => ({
 	getMultimodal: () => false,
 }));
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 import {
 	registerHooksForLoop,
@@ -79,7 +79,7 @@ function goodSummaryJson(): string {
 	});
 }
 
-function seedTurn(db: SessionDB, sessionId: string, startSeq: number, pad = 80_000): number {
+function seedTurn(db: CoreDatabase, sessionId: string, startSeq: number, pad = 80_000): number {
 	const group = startSeq;
 	db.appendStep(sessionId, startSeq, group, "user", `turn ${startSeq} user`);
 	db.appendStep(sessionId, startSeq + 1, group, "assistant", JSON.stringify([
@@ -106,7 +106,7 @@ function mkConfig(sessionId: string): SessionConfig {
 	} as any;
 }
 
-function insertSession(db: SessionDB, sessionId: string) {
+function insertSession(db: CoreDatabase, sessionId: string) {
 	const rawDb = (db as unknown as { db: import("better-sqlite3").Database }).db;
 	const now = new Date().toISOString();
 	rawDb.prepare(
@@ -121,12 +121,12 @@ function insertSession(db: SessionDB, sessionId: string) {
 
 describe("steps-overhaul sub-10 Lens B (sub-5 移交): production hook wiring drives reactive compression", () => {
 	let tmpDir: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 	let reg: HookRegistry;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub10-lensb-"));
-		db = new SessionDB(join(tmpDir, "sessions.db"));
+		db = new CoreDatabase(join(tmpDir, "core.db"));
 		insertSession(db, "lb1");
 		clearCompressionTriggerState();
 		// Production wiring: registerHooksForLoop is what agent-service calls on

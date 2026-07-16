@@ -11,7 +11,7 @@
 //   - trigger_mode 回填与 schedule.mode 一致
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + 用 helpers/p0-test-helpers 构造的旧 schema 库。
+// 临时 CoreDatabase (mkdtempSync) + 用 helpers/p0-test-helpers 构造的旧 schema 库。
 //
 // ## 输出
 // Vitest 用例。
@@ -26,7 +26,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import {
 	createLegacySchemaDb,
@@ -68,7 +68,7 @@ function indexesOf(db: Database.Database, table: string): Set<string> {
 describe("P0 migration — fresh DB path", () => {
 	test("runMigrations on an empty DB creates all P0 new tables", () => {
 		const dbPath = join(tmpDir, "fresh.db");
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		const db = sessionDB.getDb();
 
@@ -87,7 +87,7 @@ describe("P0 migration — fresh DB path", () => {
 
 	test("fresh DB has all P0 columns on agents/crons/project_wiki (no fresh-missing column)", () => {
 		const dbPath = join(tmpDir, "fresh-cols.db");
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		const db = sessionDB.getDb();
 
@@ -132,7 +132,7 @@ describe("P0 migration — fresh DB path", () => {
 
 	test("fresh DB has all P0 indexes", () => {
 		const dbPath = join(tmpDir, "fresh-idx.db");
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		const db = sessionDB.getDb();
 
@@ -145,7 +145,7 @@ describe("P0 migration — fresh DB path", () => {
 
 	test("fresh DB is idempotent — running runMigrations twice does not throw", () => {
 		const dbPath = join(tmpDir, "fresh-idempotent.db");
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		expect(() => runMigrations(sessionDB)).not.toThrow();
 		sessionDB.close();
@@ -167,8 +167,8 @@ describe("P0 migration — legacy schema upgrade path", () => {
 		buildLegacyCronRow(legacy, { id: "cron-5", agentId: "agent-pm-1", schedule: "60000", enabled: 1 });
 		legacy.close();
 
-		// Open via SessionDB + migrate.
-		const sessionDB = new SessionDB(dbPath);
+		// Open via CoreDatabase + migrate.
+		const sessionDB = new CoreDatabase(dbPath);
 		expect(() => runMigrations(sessionDB)).not.toThrow();
 		const db = sessionDB.getDb();
 
@@ -202,7 +202,7 @@ describe("P0 migration — legacy schema upgrade path", () => {
 		buildLegacyCronRow(legacy, { id: "c-ms", agentId: "a", schedule: "120000", enabled: 1 });
 		legacy.close();
 
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		const db = sessionDB.getDb();
 
@@ -247,7 +247,7 @@ describe("P0 migration — legacy schema upgrade path", () => {
 		buildLegacyCronRow(legacy, { id: "c-1", agentId: "a", schedule: "hourly", enabled: 1 });
 		legacy.close();
 
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		const after1 = (sessionDB.getDb().prepare("SELECT schedule FROM crons WHERE id = 'c-1'").get() as { schedule: string }).schedule;
 
@@ -267,7 +267,7 @@ describe("P0 migration — legacy schema upgrade path", () => {
 		buildLegacyAgentRow(legacy, { id: "a2", name: "Lead", roleTag: "lead" });
 		legacy.close();
 
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		const { AgentStore } = await import("../../src/server/agent-store.js");
 		const store = new AgentStore(sessionDB);

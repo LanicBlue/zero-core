@@ -44,7 +44,7 @@ import { beforeAll, afterAll, beforeEach, afterEach, describe, test, expect, vi 
 // Module-level placeholders — populated in beforeAll after ZERO_CORE_DIR redirect.
 let TMP = "";
 let archiveMod: typeof import("../../src/server/archive-service.js");
-let SessionDBCtor: typeof import("../../src/server/session-db.js").SessionDB;
+let CoreDatabaseCtor: typeof import("../../src/server/core-database.js").CoreDatabase;
 
 // ---------------------------------------------------------------------------
 // Mock node:fs with a pass-through that can selectively fail specific paths.
@@ -104,7 +104,7 @@ beforeAll(async () => {
 	process.env.ZERO_CORE_DIR = TMP;
 	vi.resetModules();
 	archiveMod = await import("../../src/server/archive-service.js");
-	({ SessionDB: SessionDBCtor } = await import("../../src/server/session-db.js"));
+	({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 });
 
 afterAll(() => {
@@ -120,20 +120,20 @@ function assistantContent(text: string, pad = 2000): string {
 	return JSON.stringify([{ type: "text", text: text + " ".repeat(pad) }]);
 }
 
-function seedTurn(db: InstanceType<typeof SessionDBCtor>, sessionId: string, startSeq: number, userText: string, asstText: string): number {
+function seedTurn(db: InstanceType<typeof CoreDatabaseCtor>, sessionId: string, startSeq: number, userText: string, asstText: string): number {
 	const group = startSeq;
 	db.appendStep(sessionId, startSeq, group, "user", userText);
 	db.appendStep(sessionId, startSeq + 1, group, "assistant", assistantContent(asstText));
 	return startSeq + 1;
 }
 
-/** Cast SessionDB to expose the private `db` (better-sqlite3) for fixture inserts. */
-function rawDb(db: InstanceType<typeof SessionDBCtor>): import("better-sqlite3").Database {
+/** Cast CoreDatabase to expose the private `db` (better-sqlite3) for fixture inserts. */
+function rawDb(db: InstanceType<typeof CoreDatabaseCtor>): import("better-sqlite3").Database {
 	return (db as unknown as { db: import("better-sqlite3").Database }).db;
 }
 
 /** Count steps for a session via raw DB (bypasses any guards). */
-function stepCount(db: InstanceType<typeof SessionDBCtor>, sessionId: string): number {
+function stepCount(db: InstanceType<typeof CoreDatabaseCtor>, sessionId: string): number {
 	const row = rawDb(db).prepare("SELECT COUNT(*) AS c FROM steps WHERE session_id = ?").get(sessionId) as { c: number };
 	return row.c;
 }
@@ -151,11 +151,11 @@ function anyTmpInArchiveDir(agentId: string): boolean {
 
 describe("sub-4 #1: full happy path — memory turn → mark → atomic export → delete", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 
 	beforeEach(() => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub4-happy-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 	});
 	afterEach(() => {
 		sessionDB?.close();
@@ -207,11 +207,11 @@ describe("sub-4 #1: full happy path — memory turn → mark → atomic export �
 
 describe("sub-4 #2: atomicity — DB row NOT deleted when export fails at each step", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 
 	beforeEach(() => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub4-atomic-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 		clearFsFailures();
 	});
 	afterEach(() => {
@@ -306,11 +306,11 @@ describe("sub-4 #2: atomicity — DB row NOT deleted when export fails at each s
 
 describe("sub-4 #3: recoverInterruptedArchives — re-exports stranded archived=1 sessions", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 
 	beforeEach(() => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub4-recover-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 	});
 	afterEach(() => {
 		sessionDB?.close();
@@ -394,11 +394,11 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 	// (which is what acceptance-4 #4 specifies).
 
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 
 	beforeEach(() => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub4-gap2-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 	});
 	afterEach(() => {
 		sessionDB?.close();
@@ -495,7 +495,7 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 			vi.doUnmock("../../src/server/archive-service.js");
 			vi.resetModules();
 			archiveMod = await import("../../src/server/archive-service.js");
-			({ SessionDB: SessionDBCtor } = await import("../../src/server/session-db.js"));
+			({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 		}
 	});
 
@@ -540,7 +540,7 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 			vi.doUnmock("../../src/server/archive-service.js");
 			vi.resetModules();
 			archiveMod = await import("../../src/server/archive-service.js");
-			({ SessionDB: SessionDBCtor } = await import("../../src/server/session-db.js"));
+			({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 		}
 	});
 
@@ -566,11 +566,11 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 
 describe("sub-4 #5: archive memory turn writes zero steps (sub-2 ephemeral)", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 
 	beforeEach(() => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub4-ephemeral-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 	});
 	afterEach(() => {
 		sessionDB?.close();
@@ -655,11 +655,11 @@ describe("sub-4 #6 + #7: source-level invariants (archive-service scope)", () =>
 
 describe("sub-4 #8: per-session DB lock — concurrent same-session archive", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 
 	beforeEach(() => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub4-lock-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 	});
 	afterEach(() => {
 		vi.restoreAllMocks();

@@ -20,7 +20,7 @@
 //     without throwing, and A's tool-call has a paired tool-result.
 //
 // ## 设计
-// Drives the real pipeline: temporary SessionDB + runMigrations (own temp dir,
+// Drives the real pipeline: temporary CoreDatabase + runMigrations (own temp dir,
 // never touches ~/.zero-core/sessions.db), a fresh HookRegistry per case,
 // registerTurnHooks(sessionDB, registry), and a real TurnRecorder. The
 // AgentLoop is NOT instantiated — instead we replay the exact sequence of
@@ -31,7 +31,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 import { registerTurnHooks } from "../../src/runtime/hooks/turn-hooks.js";
@@ -39,14 +39,14 @@ import { TurnRecorder } from "../../src/runtime/turn-recorder.js";
 import { AgentSession } from "../../src/runtime/session.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let sessionId = "test-session-2b";
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-2b-per-tool-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
-	// Note: do NOT call ensureSession here — it is private on SessionDB.
+	// Note: do NOT call ensureSession here — it is private on CoreDatabase.
 	// appendStep/upsertStep call it internally as needed.
 });
 

@@ -2,11 +2,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "vitest";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 
 describe("delegated task persistence", () => {
 	let tmp: string | undefined;
-	let db: SessionDB | undefined;
+	let db: CoreDatabase | undefined;
 
 	afterEach(() => {
 		db?.close();
@@ -15,9 +15,9 @@ describe("delegated task persistence", () => {
 		tmp = undefined;
 	});
 
-	function makeDb(): SessionDB {
+	function makeDb(): CoreDatabase {
 		tmp = mkdtempSync(join(tmpdir(), "zero-delegated-"));
-		db = new SessionDB(join(tmp, "sessions.db"));
+		db = new CoreDatabase(join(tmp, "core.db"));
 		return db;
 	}
 

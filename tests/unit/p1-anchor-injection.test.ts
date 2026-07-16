@@ -12,7 +12,7 @@
 //   - 通道:system / context / off
 //
 // ## 输入
-// 临时 SessionDB + 真实 WikiStore + 构造的 AgentRecord.wikiAnchors。
+// 临时 CoreDatabase + 真实 WikiStore + 构造的 AgentRecord.wikiAnchors。
 //
 // ## 输出
 // Vitest snapshot + 结构断言。
@@ -26,7 +26,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import {
@@ -47,14 +47,14 @@ import {
 import type { AgentRecord, SessionContextBundle } from "../../src/shared/types.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let wiki: WikiStore;
 let projectStore: ProjectStore;
 const createdNodeIds: string[] = [];
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-p1-inject-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	wiki = new WikiStore(sessionDB);

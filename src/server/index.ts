@@ -35,7 +35,11 @@ import { TemplateStore } from "./template-store.js";
 import { McpStore } from "./mcp-store.js";
 import { createAgentService } from "./agent-service.js";
 import { ensureBuiltinSkills } from "./builtin-skills.js";
-import { SessionDB } from "./session-db.js";
+import { CoreDatabase } from "./core-database.js";
+// plan-00 §3: DatabaseManager 是服务端唯一的 DB 生命周期所有者。启动时先
+// bootstrap 布局（sessions.db → db/core.db 切换 + 退役 knowledge.db 删除），
+// 再构造 CoreDatabase。任何业务代码访问 core 之前必须 dbManager.open()。
+import { DatabaseManager, setDatabaseManager } from "./database-manager.js";
 import { runMigrations } from "./db-migration.js";
 import { loadWorkspaceConfig } from "./workspace-config.js";
 import { applyProxy } from "../runtime/proxy-manager.js";
@@ -120,7 +124,14 @@ export async function startServer(options?: StartServerOptions) {
 
 	// ─── Initialize stores and services ──────────────────────────
 
-	const sessionDB = new SessionDB();
+	// plan-00 §3/§4: DatabaseManager 是 composition root 唯一的 DB 生命周期
+	// 所有者。open() 内部按顺序做：① 删除退役 knowledge.db（§5）
+	// ② sessions.db → db/core.db 布局 bootstrap（§4，含冲突检测、迁移、marker）
+	// ③ 构造 CoreDatabase。任何业务代码在此之后才能访问 core 句柄。
+	const dbManager = new DatabaseManager();
+	dbManager.open();
+	setDatabaseManager(dbManager);
+	const sessionDB: CoreDatabase = dbManager.core;
 	runMigrations(sessionDB);
 
 	// Crash recovery: any delegated tasks still marked running/finishing were
@@ -192,7 +203,7 @@ export async function startServer(options?: StartServerOptions) {
 	// sub-3c). The dead `extractionDeps` block (only consumer was the no-op
 	// registerExtractionHooks) is gone; ExtractorBService's file remains for
 	// future standalone use (decision 49) but its factory had no live caller
-	// either. ExtractionCursorStore + TelemetryStore remain on SessionDB as
+	// either. ExtractionCursorStore + TelemetryStore remain on CoreDatabase as
 	// lazy accessors — independent of the deleted wiring.
 
 	const registry = new ToolRegistry(sessionDB.getKVStore());

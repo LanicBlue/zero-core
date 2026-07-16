@@ -15,7 +15,7 @@
 //   - memory turn 失败 / 未注入 → 不阻塞 JSON 落盘 + 删库(best-effort)。
 //   - 无 memoryTurnRunner 的 caller(如 recovery scan)→ 直接 export + delete。
 //   - archivePathFor 路径段净化(防 ../../escape)。
-//   - SessionDB.deleteSessionData:孤儿清理(tool_executions/delegated_tasks)。
+//   - CoreDatabase.deleteSessionData:孤儿清理(tool_executions/delegated_tasks)。
 //
 // ## 不变量守恒(acceptance-4 + acceptance-8)
 //   - 管线顺序 / JSON 形态 / 孤儿清理 / wiki 不归本管线管(deleteSessionData 不
@@ -39,10 +39,10 @@ import type { ArchiveJson } from "../../src/server/archive-service.js";
 
 // Module-level placeholders — populated in beforeAll after ZERO_CORE_DIR redirect +
 // module reset (same pattern as attachment-store.test.ts). Each test gets a FRESH
-// SessionDB in a per-test temp dir, but shares the ONE archive root.
+// CoreDatabase in a per-test temp dir, but shares the ONE archive root.
 let TMP = "";
 let archiveMod: typeof import("../../src/server/archive-service.js");
-let SessionDBCtor: typeof import("../../src/server/session-db.js").SessionDB;
+let CoreDatabaseCtor: typeof import("../../src/server/core-database.js").CoreDatabase;
 
 beforeAll(async () => {
 	TMP = mkdtempSync(join(tmpdir(), "zero-sub8-archive-"));
@@ -51,7 +51,7 @@ beforeAll(async () => {
 	// archive-service's ARCHIVES_ROOT resolves under TMP for every test.
 	vi.resetModules();
 	archiveMod = await import("../../src/server/archive-service.js");
-	({ SessionDB: SessionDBCtor } = await import("../../src/server/session-db.js"));
+	({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 });
 
 afterAll(() => {
@@ -68,7 +68,7 @@ function assistantContent(text: string, pad = 2000): string {
 }
 
 /** Seed a user+assistant turn; returns the assistant seq. */
-function seedTurn(db: InstanceType<typeof SessionDBCtor>, sessionId: string, startSeq: number, userText: string, asstText: string): number {
+function seedTurn(db: InstanceType<typeof CoreDatabaseCtor>, sessionId: string, startSeq: number, userText: string, asstText: string): number {
 	const group = startSeq;
 	db.appendStep(sessionId, startSeq, group, "user", userText);
 	db.appendStep(sessionId, startSeq + 1, group, "assistant", assistantContent(asstText));
@@ -96,8 +96,8 @@ function memoryTurnRanStub(): () => Promise<boolean> {
 	return async () => true;
 }
 
-/** Cast SessionDB to expose the private `db` (better-sqlite3) for fixture inserts. */
-function rawDb(db: InstanceType<typeof SessionDBCtor>): import("better-sqlite3").Database {
+/** Cast CoreDatabase to expose the private `db` (better-sqlite3) for fixture inserts. */
+function rawDb(db: InstanceType<typeof CoreDatabaseCtor>): import("better-sqlite3").Database {
 	return (db as unknown as { db: import("better-sqlite3").Database }).db;
 }
 
@@ -107,11 +107,11 @@ function rawDb(db: InstanceType<typeof SessionDBCtor>): import("better-sqlite3")
 
 describe("steps-overhaul sub-8: archive pipeline (archiveSession)", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 
 	beforeEach(() => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub8-db-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 	});
 
 	afterEach(() => {
@@ -256,9 +256,9 @@ describe("steps-overhaul sub-8: archive pipeline (archiveSession)", () => {
 		expect(clean.replace(/\\/g, "/")).toMatch(/archives\/agt-normal\/sess-y\.json$/);
 	});
 
-	// ── 6. SessionDB.deleteSessionData:孤儿清理 + 幂等 ───────────────────
+	// ── 6. CoreDatabase.deleteSessionData:孤儿清理 + 幂等 ───────────────────
 
-	test("SessionDB.deleteSessionData removes sessions/steps/messages/tool_executions/delegated_tasks orphans; scoped + idempotent", () => {
+	test("CoreDatabase.deleteSessionData removes sessions/steps/messages/tool_executions/delegated_tasks orphans; scoped + idempotent", () => {
 		const created = sessionDB!.createSession("agt-7", "t");
 		const sid = created.id;
 		sessionDB!.appendStep(sid, 0, 0, "user", "hi");

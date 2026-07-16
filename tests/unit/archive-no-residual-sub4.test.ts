@@ -60,7 +60,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // Module-level placeholders — populated in beforeEach after ZERO_CORE_DIR redirect.
-let SessionDBCtor: typeof import("../../src/server/session-db.js").SessionDB;
+let CoreDatabaseCtor: typeof import("../../src/server/core-database.js").CoreDatabase;
 let archiveMod: typeof import("../../src/server/archive-service.js");
 let DelegatorCtor: typeof import("../../src/runtime/subagent-delegator.js").SubagentDelegator;
 let TaskRegistryCtor: typeof import("../../src/runtime/task-registry.js").TaskRegistry;
@@ -68,25 +68,25 @@ let TaskRegistryCtor: typeof import("../../src/runtime/task-registry.js").TaskRe
 const DELEGATOR_SRC = join(__dirname, "..", "..", "src", "runtime", "subagent-delegator.ts");
 const TASK_REGISTRY_SRC = join(__dirname, "..", "..", "src", "runtime", "task-registry.ts");
 const ARCHIVE_SVC_SRC = join(__dirname, "..", "..", "src", "server", "archive-service.ts");
-const SESSION_DB_SRC = join(__dirname, "..", "..", "src", "server", "session-db.ts");
+const SESSION_DB_SRC = join(__dirname, "..", "..", "src", "server", "core-database.ts");
 const INDEX_SRC = join(__dirname, "..", "..", "src", "server", "index.ts");
 
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 
-/** Cast SessionDB to expose the private better-sqlite3 handle. */
-function rawDb(db: InstanceType<typeof SessionDBCtor>): import("better-sqlite3").Database {
+/** Cast CoreDatabase to expose the private better-sqlite3 handle. */
+function rawDb(db: InstanceType<typeof CoreDatabaseCtor>): import("better-sqlite3").Database {
 	return (db as unknown as { db: import("better-sqlite3").Database }).db;
 }
 
 /** True when the session row is gone. */
-function sessionRowGone(db: InstanceType<typeof SessionDBCtor>, sessionId: string): boolean {
+function sessionRowGone(db: InstanceType<typeof CoreDatabaseCtor>, sessionId: string): boolean {
 	return rawDb(db).prepare("SELECT 1 FROM sessions WHERE id = ?").get(sessionId) === undefined;
 }
 
 /** Force a session's updated_at back in time (for "old orphan" seeding). */
-function setUpdatedAt(db: InstanceType<typeof SessionDBCtor>, sessionId: string, iso: string): void {
+function setUpdatedAt(db: InstanceType<typeof CoreDatabaseCtor>, sessionId: string, iso: string): void {
 	rawDb(db).prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(iso, sessionId);
 }
 
@@ -148,7 +148,7 @@ describe("[#3, #11, #12, #13] source-level invariants (archive-no-residual sub-4
 		expect(sweepIdx, "sweep MUST appear AFTER recover in index.ts source").toBeGreaterThan(recIdx);
 	});
 
-	test("#13: SessionDB exposes listOrphanCandidateSessions with the {olderThan, excludeIds} filter (isMain=false, archived=false are SQL constants)", () => {
+	test("#13: CoreDatabase exposes listOrphanCandidateSessions with the {olderThan, excludeIds} filter (isMain=false, archived=false are SQL constants)", () => {
 		const src = readFileSync(SESSION_DB_SRC, "utf8");
 		const start = src.indexOf("listOrphanCandidateSessions(");
 		expect(start, "listOrphanCandidateSessions must exist").toBeGreaterThan(-1);
@@ -175,7 +175,7 @@ describe("[#3, #11, #12, #13] source-level invariants (archive-no-residual sub-4
 
 describe("[D4 #1, #2] cleanup-TTL safety-net behavior", () => {
 	let tmp: string;
-	let db: InstanceType<typeof SessionDBCtor>;
+	let db: InstanceType<typeof CoreDatabaseCtor>;
 
 	beforeEach(() => {
 		tmp = mkdtempSync(join(tmpdir(), "zero-archive-sub4-d4-"));
@@ -190,13 +190,13 @@ describe("[D4 #1, #2] cleanup-TTL safety-net behavior", () => {
 	});
 
 	async function freshImports(): Promise<void> {
-		({ SessionDB: SessionDBCtor } = await import("../../src/server/session-db.js"));
+		({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 		({ SubagentDelegator: DelegatorCtor } = await import("../../src/runtime/subagent-delegator.js"));
 		({ TaskRegistry: TaskRegistryCtor } = await import("../../src/runtime/task-registry.js"));
 		archiveMod = await import("../../src/server/archive-service.js");
 	}
 
-	function makeDelegator(dbArg: InstanceType<typeof SessionDBCtor>): InstanceType<typeof DelegatorCtor> {
+	function makeDelegator(dbArg: InstanceType<typeof CoreDatabaseCtor>): InstanceType<typeof DelegatorCtor> {
 		const cfg = {
 			agentId: "parent-agent",
 			sessionId: "parent-session",
@@ -214,7 +214,7 @@ describe("[D4 #1, #2] cleanup-TTL safety-net behavior", () => {
 
 	test("#1: cleanup() on a task whose DB row is ALREADY deleted → idempotent no-op, no throw, registry aging still runs", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 
 		// Seed a delegated_tasks row + register it in-memory, then DELETE the
 		// row (mimicking sub-1 terminal having already fired). The row is gone
@@ -251,7 +251,7 @@ describe("[D4 #1, #2] cleanup-TTL safety-net behavior", () => {
 
 	test("#2: TaskRegistry.cleanup() still ages out terminal tasks (returns the removed ids + clears memory)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 
 		const reg = new TaskRegistryCtor();
 		reg.create("t-aged-2", "subagent", "work");
@@ -279,7 +279,7 @@ describe("[D4 #1, #2] cleanup-TTL safety-net behavior", () => {
 
 describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () => {
 	let tmp: string;
-	let db: InstanceType<typeof SessionDBCtor>;
+	let db: InstanceType<typeof CoreDatabaseCtor>;
 
 	beforeEach(() => {
 		tmp = mkdtempSync(join(tmpdir(), "zero-archive-sub4-d5-"));
@@ -294,7 +294,7 @@ describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () =
 	});
 
 	async function freshImports(): Promise<void> {
-		({ SessionDB: SessionDBCtor } = await import("../../src/server/session-db.js"));
+		({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 		archiveMod = await import("../../src/server/archive-service.js");
 	}
 
@@ -334,7 +334,7 @@ describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () =
 
 	test("#4: seed N (3) orphans → all exported + deleted, return count = 3", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { log } = await import("../../src/core/logger.js");
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
@@ -378,7 +378,7 @@ describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () =
 
 	test("#5: is_main=1 session (even if 15d old) is NOT swept", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { log } = await import("../../src/core/logger.js");
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
@@ -405,7 +405,7 @@ describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () =
 
 	test("#6: orphan in activeSessionIds is protected from sweep", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { log } = await import("../../src/core/logger.js");
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
@@ -431,7 +431,7 @@ describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () =
 
 	test("#7a: orphan updated 5d ago (within default 14d) is NOT swept", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { log } = await import("../../src/core/logger.js");
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
@@ -450,7 +450,7 @@ describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () =
 
 	test("#7b: custom maxAgeDays=30 is STRICTER than default 14 — only orphans >30d old are swept", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { log } = await import("../../src/core/logger.js");
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
@@ -475,7 +475,7 @@ describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () =
 
 	test("#7c: maxAgeDays=30 keeps 15d orphan, sweeps 40d orphan (stricter cutoff)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { log } = await import("../../src/core/logger.js");
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
@@ -500,7 +500,7 @@ describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () =
 
 	test("#8: swept orphan's JSON lands at archives/<agentId>/<id>.json with session/steps/summaries; survives DB delete", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { log } = await import("../../src/core/logger.js");
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
@@ -543,7 +543,7 @@ describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () =
 
 	test("#9: when one orphan's export throws, others still sweep; failed one stays + count excludes it", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { log } = await import("../../src/core/logger.js");
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
@@ -598,7 +598,7 @@ describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () =
 
 	test("#10: second sweep after a clean sweep returns 0 (idempotent)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const { log } = await import("../../src/core/logger.js");
 		const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => {});
 
@@ -629,9 +629,9 @@ describe("[independent judgement] __recovered__ pseudo-agent exclusion", () => {
 		process.env.ZERO_CORE_DIR = tmp;
 		vi.resetModules();
 		try {
-			({ SessionDB: SessionDBCtor } = await import("../../src/server/session-db.js"));
+			({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 			archiveMod = await import("../../src/server/archive-service.js");
-			const db = new SessionDBCtor(join(tmp, "sessions.db"));
+			const db = new CoreDatabaseCtor(join(tmp, "core.db"));
 			// Insert a __recovered__ row directly (mimics ensureSession's FK guard).
 			rawDb(db).prepare(
 				"INSERT INTO sessions (id, agent_id, is_main, archived, title, created_at, updated_at) " +

@@ -26,7 +26,7 @@
 //      clearCompressionTriggerState / clearCompressionTriggerStateForSession 真的清空.
 //
 // ## 驱动方式
-//   真实 AgentLoop + 真实 SessionDB + mock LanguageModelV2 (沿用 sub2-ephemeral-turn
+//   真实 AgentLoop + 真实 CoreDatabase + mock LanguageModelV2 (沿用 sub2-ephemeral-turn
 //   形态). 在 loop.registry 上注册 production compression-trigger-hooks, 让 PreLLMCall
 //   / OnLLMError 走真生产路径. vi.spyOn 监听 compressSession 直接断言"被调用".
 
@@ -49,7 +49,7 @@ vi.mock("../../src/runtime/provider-factory.js", () => ({
 	getMultimodalTri: () => false,
 }));
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 import { registerTurnHooks } from "../../src/runtime/hooks/turn-hooks.js";
@@ -195,7 +195,7 @@ function makeWikiStubTool(sideEffectMap: Map<string, string>) {
 // ─── Test harness ──────────────────────────────────────────────────────────
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let emitted: StreamEvent[];
 let hookEvents: Array<{ event: string; ctx: Record<string, unknown> }>;
 let appendStepSpy: ReturnType<typeof vi.spyOn>;
@@ -245,7 +245,7 @@ function buildLoop(sessionId: string, opts: { registerCompressionHooks?: boolean
 	return l;
 }
 
-function insertSessionRow(db: SessionDB, sessionId: string): void {
+function insertSessionRow(db: CoreDatabase, sessionId: string): void {
 	const now = new Date().toISOString();
 	(db as any).db.prepare(
 		"INSERT INTO sessions (id, agent_id, is_main, title, created_at, updated_at, session_kind) " +
@@ -258,7 +258,7 @@ function insertSessionRow(db: SessionDB, sessionId: string): void {
  * actually compress; AgentLoop's own user turn is too short to trigger a real
  * segment). Pad makes it cross the fresh-tail budget.
  */
-function seedTurn(db: SessionDB, sessionId: string, startSeq: number, pad = 150_000): number {
+function seedTurn(db: CoreDatabase, sessionId: string, startSeq: number, pad = 150_000): number {
 	const group = startSeq;
 	db.appendStep(sessionId, startSeq, group, "user", `seeded user ${startSeq}`);
 	db.appendStep(sessionId, startSeq + 1, group, "assistant", JSON.stringify([
@@ -269,7 +269,7 @@ function seedTurn(db: SessionDB, sessionId: string, startSeq: number, pad = 150_
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub3c-dual-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	appendStepSpy = vi.spyOn(sessionDB, "appendStep");
 	upsertStepSpy = vi.spyOn(sessionDB, "upsertStep");

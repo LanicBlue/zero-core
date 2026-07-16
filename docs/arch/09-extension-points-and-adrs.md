@@ -311,7 +311,7 @@ graph TB
 **Consequences**：
 - ✅ 单文件备份 / 迁移简单。
 - ✅ KV 灵活补丁 + 业务表结构化并存。
-- ❌ `session-db.ts` 类持有多个独立存储后端，类太大（当前约 960 行；v0.8 仅聚合 5 个内核 store，9 个工作流域 store 已在 `server/index.ts` 独立 `new`）。
+- ❌ `core-database.ts` 类持有多个独立存储后端，类太大（当前约 960 行；v0.8 仅聚合 5 个内核 store，9 个工作流域 store 已在 `server/index.ts` 独立 `new`）。
 - ❌ KB 向量搜索 O(M×D) 是性能瓶颈。
 
 **Code evidence**：`server/sqlite-store.ts:43-273`、`server/key-value-store.ts:32-116`。
@@ -334,7 +334,7 @@ graph TB
 - ❌ 写入时双写（turns + messages），事务成本。
 - ❌ rebuildFromTurns() 的 tc-id 重生成可能影响 provider 兼容性（已通过 `tc-N` 重映射规避）。
 
-**Code evidence**：`runtime/session.ts:159-178`、`server/session-db.ts:251-275`。
+**Code evidence**：`runtime/session.ts:159-178`、`server/core-database.ts:251-275`。
 
 ---
 
@@ -438,11 +438,11 @@ graph TB
 - `memory-store.ts` + `memory-tools.ts`(MemoryStore + 旧工具):早已删除(僵尸)。
 - `memory-node-store.ts` + `memory-node-router.ts` + `/api/memory-nodes`(Gen1 MemoryNodeStore):**本批删除**。compression 回退路径去掉,wiki 不可用时跳过抽取。`MemoryNodeInput` 类型搬到 `compression-engine.ts`。
 - 旧表 `memory_entities`/`memory_relations`/`memory_nodes`/`_subjects`/`_edges`/`_fts` 由 `runMigrations` `DROP IF EXISTS`。
-- `SessionDB` 不再持有任何 memory store。
+- `CoreDatabase` 不再持有任何 memory store。
 
 **Consequences**：
 - ✅ 文档和运行路径一致,wiki memory 子树是唯一记忆后端。
-- ✅ `SessionDB` 认知负担消除(不再持旧 store)。
+- ✅ `CoreDatabase` 认知负担消除(不再持旧 store)。
 
 **Code evidence**：`runtime/tools/index.ts`、`runtime/wiki-anchor-injection.ts`、`runtime/hooks/extraction-hooks.ts`、`runtime/compression-engine.ts`(MemoryNodeInput 现居此)。
 ### ADR-014 · Zustand 单 Store 单关注点
@@ -689,7 +689,7 @@ graph TB
 
 **Wiki 工具迁移缺口(后补)**:v0.8 帕尔斯凯域工具(Wiki/Project/Cron/AgentRegistry)曾缺 `RENAMED_TOOLS` 小写别名,且 `toolEnabled()`(能力注入的判据)不做迁移 → 旧的小写键配置(如 `{wiki:{enabled:true}}`)下,`buildToolsSet` 想启用 Wiki,但能力侧 `on("Wiki")` 返回 false → 不注入 `wikiStore` → `CONDITIONAL_TOOLS["Wiki"]` 把它过滤掉。子代理经 `...this.config` 本会继承 wikiStore,故子代理缺 Wiki 只是父代理的连带。修复:`RENAMED_TOOLS` 补 `wiki→Wiki` 等别名 + `toolEnabled` 与 `buildToolsSet` 走同一套迁移。
 
-**Code evidence**:`runtime/subagent-delegator.ts`(持久化 + turn 预算 + 竞态修复)、`runtime/task-registry.ts`(requestFinish/finishing)、`runtime/agent-loop.ts`(prepareStep 点位)、`runtime/hooks/task-control-hooks.ts` + `input-queue-hooks.ts`、`server/session-db.ts`(delegated_tasks 表 + session 列 + 隔离查询 + markRunningDelegatedTasksInterrupted)、`server/input-queue-store.ts`、`server/delegated-task-router.ts` + `input-queue-router.ts`、`renderer/components/layout/TaskTreePanel.tsx` + `chat/InputQueueStrip.tsx`、`renderer/store/task-store.ts` + `input-queue-store.ts`。
+**Code evidence**:`runtime/subagent-delegator.ts`(持久化 + turn 预算 + 竞态修复)、`runtime/task-registry.ts`(requestFinish/finishing)、`runtime/agent-loop.ts`(prepareStep 点位)、`runtime/hooks/task-control-hooks.ts` + `input-queue-hooks.ts`、`server/core-database.ts`(delegated_tasks 表 + session 列 + 隔离查询 + markRunningDelegatedTasksInterrupted)、`server/input-queue-store.ts`、`server/delegated-task-router.ts` + `input-queue-router.ts`、`renderer/components/layout/TaskTreePanel.tsx` + `chat/InputQueueStrip.tsx`、`renderer/store/task-store.ts` + `input-queue-store.ts`。
 
 **已知技术债**:**已解决(见 [ADR-025](#adr-025--hook-重做per-loop-registry--step-中心--去-turn-表--外置重试与-resume--所有权归位))**。原债有三:① HookRegistry 是全局单例,handler 触发跨所有 loop(含子 agent loop),靠 sessionId 自行过滤;② PrepareStep 多 handler 的 appendMessages merge 是 last-writer-wins(不 concat);③ 注册分散(`registerAllRuntimeHooks` / `registerDurableHooks` / `registerToolExecutionHooks` 三处)。ADR-025 用 per-loop registry(①)+ 数组 concat(②)+ `registerHooksForLoop` 归一(③)全部解决。
 
@@ -752,7 +752,7 @@ graph TB
 - ✅ tool-call ↔ task 链接(父侧 Agent tool-call ↔ 子侧 delegated task,经 `parentToolCallId`):taskId 在子 agent loop 建立前就分配+落库+返回父,**父始终持有 durable handle**。崩溃恢复**父驱动**(by design):`markRunningDelegatedTasksInterrupted` 标 interrupted → 父下一轮 TaskStatus/tree 看到后**自己决定**调 `resumeTask` 续跑或接受 interrupted 结果,**不做自动 scan-backfill**。
 - ⚠️ 9 个 observability/workflow hook(`TeammateIdle` / `PermissionRequest/Denied` / `ConfigChange` / `CwdChanged` / `FileChanged` / `WorktreeCreate/Remove` / `InstructionsLoaded`)仍在类型里定义但零触发(占位),未在本 ADR 清理。
 
-**Code evidence**:`core/hook-registry.ts`(可实例化 + 数组 concat + 标量 last-writer-wins)、`core/hook-types.ts`(step-centric 14 hook + 5 级注释)、`runtime/hooks/index.ts`(`registerHooksForLoop` 按 loopKind 分组)、`server/agent-service.ts`(`fireSessionStart`/`fireSessionClose` + `registerHooksForLoop(main)`)、`runtime/subagent-delegator.ts`(`registerHooksForLoop(delegated)`)、`runtime/agent-loop.ts`(`this.registry` + 外置 step 循环 + `runOneStepWithRetry` + `finalizeOneStep` + `resume(lastCompletedStepSeq)` + `triggerLocal`)、`runtime/hooks/turn-hooks.ts`(TurnStart/StepEnd/PostToolUse 即时落库/TurnEnd safety-net+闭合/TurnError)、`runtime/session.ts`(`rebuildFromSteps` + dangling `[interrupted]` 合成)、`server/session-db.ts`(turns step-only + turn_group + last_completed_step_seq + appendStep/upsertStep/getSteps)、`server/db-migration.ts`(`migrateTurnsToSteps` 回填)、`runtime/hooks/compression-hooks.ts` + `extraction-hooks.ts` + `todo-cleanup-hooks.ts`(迁到 StepEnd)、`server/requirement-hooks.ts`(退役,标 legacy)。详见 [03 §Hook 系统](03-runtime-engine.md#hook-系统) 与 [05 §8.1 step 级恢复](05-persistence.md#81-step-级恢复step-2d2e)。
+**Code evidence**:`core/hook-registry.ts`(可实例化 + 数组 concat + 标量 last-writer-wins)、`core/hook-types.ts`(step-centric 14 hook + 5 级注释)、`runtime/hooks/index.ts`(`registerHooksForLoop` 按 loopKind 分组)、`server/agent-service.ts`(`fireSessionStart`/`fireSessionClose` + `registerHooksForLoop(main)`)、`runtime/subagent-delegator.ts`(`registerHooksForLoop(delegated)`)、`runtime/agent-loop.ts`(`this.registry` + 外置 step 循环 + `runOneStepWithRetry` + `finalizeOneStep` + `resume(lastCompletedStepSeq)` + `triggerLocal`)、`runtime/hooks/turn-hooks.ts`(TurnStart/StepEnd/PostToolUse 即时落库/TurnEnd safety-net+闭合/TurnError)、`runtime/session.ts`(`rebuildFromSteps` + dangling `[interrupted]` 合成)、`server/core-database.ts`(turns step-only + turn_group + last_completed_step_seq + appendStep/upsertStep/getSteps)、`server/db-migration.ts`(`migrateTurnsToSteps` 回填)、`runtime/hooks/compression-hooks.ts` + `extraction-hooks.ts` + `todo-cleanup-hooks.ts`(迁到 StepEnd)、`server/requirement-hooks.ts`(退役,标 legacy)。详见 [03 §Hook 系统](03-runtime-engine.md#hook-系统) 与 [05 §8.1 step 级恢复](05-persistence.md#81-step-级恢复step-2d2e)。
 
 ---
 

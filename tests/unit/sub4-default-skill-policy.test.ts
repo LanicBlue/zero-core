@@ -11,7 +11,7 @@
 // UI 表单(agentToForm)对 legacy 记录(undefined)也归一化为 []。
 //
 // ## 输入
-// 临时 SessionDB + runMigrations;AgentStore;agent-editor-types.agentToForm。
+// 临时 CoreDatabase + runMigrations;AgentStore;agent-editor-types.agentToForm。
 //
 // ## 输出
 // Vitest 用例覆盖 acceptance-4.md 用例 2。
@@ -28,18 +28,18 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { agentToForm } from "../../src/renderer/components/agents/agent-editor-types.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let agentStore: AgentStore;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub4-skill-policy-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	agentStore = new AgentStore(sessionDB);
 });

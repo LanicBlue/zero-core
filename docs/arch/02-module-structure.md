@@ -52,7 +52,7 @@ src/
 
 - **理想边界**:不依赖 `server/`、`runtime/`(它们依赖 `core/`,反向依赖会形成环)。
 - **实际例外** —— `test-seed.ts` 是这条边界的**两处轻微泄漏**,但是测试辅助代码:
-  - **类型层**:import type 多个 `../server/*-store.js`(`SessionDB`/`AgentStore`/`ProviderStore`/`WikiStore`/`ProjectStore`),编译时擦除,**不产生运行时依赖边**。
+  - **类型层**:import type 多个 `../server/*-store.js`(`CoreDatabase`/`AgentStore`/`ProviderStore`/`WikiStore`/`ProjectStore`),编译时擦除,**不产生运行时依赖边**。
   - **值层**:从 `../server/fresh-db-seed.js` 导入 `ensureWikiSkeleton`(值导入)。这是真正的运行时边,但因为 `test-seed.ts` 全文由 `ZERO_CORE_TEST_FIXTURE` 环境变量门控(生产代码路径永不进),且仅在 backend 子进程内执行,所以这条边在**生产拓扑上不可达**。架构上把它视作"测试夹具自带的旁路",而非 `core/` 对 `server/` 的真实依赖。
   - 为什么不挪到 `tests/`:`test-seed.ts` 必须在 backend 子进程内(用 system Node.js / packaged Electron fork 加载 better-sqlite3,确保 ABI 一致),放进 `tests/` 会让测试夹具难以复用 backend 启动路径。
 - **依赖** `typebox`、`node:fs`、`node:path`、`./kv-store-interface`(类型 only)、`./hook-types`、`./config`、`./logger`。
@@ -167,12 +167,12 @@ runtime/hooks/
 | agent-service.ts | 约 1,200 行 | 多 Agent 生命周期 + 会话循环管理 + provider/runtime 编排 |
 | db-migration.ts | 约 1,060 行 | SQLite schema 演进、历史数据清理和兼容迁移（v0.8 后 5 阶段：列补齐 → 9 张工作流域表 DDL → SqliteStore 构造 → JSON→SQLite → KV+Memory，详见 [05 §4.2](./05-persistence.md#42-迁移机制)） |
 | index.ts | 约 900 行 | 后端组合根：初始化 DB、hooks、**手动编排 12+ store**（见 §4.1.1）、services、routers、cron、archivist |
-| session-db.ts | 约 960 行 | SQLite 连接生命周期 + **会话核心 5 表 + 4 个聚合 store**（2 eager 内核 + 2 v0.8 M5 lazy；MemoryStore 已删除，原 3 eager 内核降为 2）的门面，详见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store) |
+| core-database.ts | 约 960 行 | SQLite 连接生命周期 + **会话核心 5 表 + 4 个聚合 store**（2 eager 内核 + 2 v0.8 M5 lazy；MemoryStore 已删除，原 3 eager 内核降为 2）的门面，详见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store) |
 | session-manager.ts | 约 350 行 | 会话生命周期状态机 + 指标聚合 + TTL 清理 |
 | session-lifecycle.ts | 约 45 行 | 状态枚举 + VALID_TRANSITIONS |
 | session-router.ts | 约 120 行 | 会话 CRUD REST API |
 
-> **v0.8 关键更正**：早期文档把 `session-db.ts` 描述成"所有 store 的聚合门面"——**已不准确**。v0.8 后 SessionDB 只聚合 2 个 eager 内核 store（`KeyValueStore`/`MemoryNodeStore`；原 3 个里的 `MemoryStore` 已作为僵尸清理删除）+ 2 个 M5 lazy store（`ExtractionCursorStore`/`TelemetryStore`），共 4 个；而 9 个工作流域 store（`ProjectStore`/`RequirementStore`/`CronStore`/`WikiScanCursorStore`/`TaskStepStore`/`ProjectJobStore`/`CronRunStore`/...）在 `index.ts:151-171` **独立 new**，只把 SessionDB 当 `getDb()` 提供者。详见 [05 §4.0.3](./05-persistence.md#403-关键边界sessiondb-不是聚合根) 与下方 §4.1.1。
+> **v0.8 关键更正**：早期文档把 `core-database.ts` 描述成"所有 store 的聚合门面"——**已不准确**。v0.8 后 CoreDatabase 只聚合 2 个 eager 内核 store（`KeyValueStore`/`MemoryNodeStore`；原 3 个里的 `MemoryStore` 已作为僵尸清理删除）+ 2 个 M5 lazy store（`ExtractionCursorStore`/`TelemetryStore`），共 4 个；而 9 个工作流域 store（`ProjectStore`/`RequirementStore`/`CronStore`/`WikiScanCursorStore`/`TaskStepStore`/`ProjectJobStore`/`CronRunStore`/...）在 `index.ts:151-171` **独立 new**，只把 CoreDatabase 当 `getDb()` 提供者。详见 [05 §4.0.3](./05-persistence.md#403-关键边界sessiondb-不是聚合根) 与下方 §4.1.1。
 
 **架构判断**：服务层的复杂度正在向**组合根（store 编排）**、Agent 编排、Wiki/Memory 持久化、迁移脚本四个热点集中。后续拆分不应只盯 `AgentService`，也要把 `WikiStore`、`db-migration` 以及 `index.ts` 内 12+ store 的手动编排（应引入 store registry）纳入计划。
 
@@ -180,9 +180,9 @@ runtime/hooks/
 
 v0.8 后共 **~25 个 store 类、分布在 20 个文件**（不含 `sqlite-store.ts` 抽象基类 / `key-value-store.ts` KV 接口实现 / `message-store.ts` 已废文件存储；v0.8 清理僵尸 MemoryStore 后从 ~26/21 下调）。按归属方式分四类（A/B/C/D）：
 
-> **切分视角说明**：这里的 A/B/C/D 是按**归属方式**（是否挂 SessionDB + v0.8 阶段）切的；[`file-structure.md`](../basic/file-structure.md) 的 server 章节（§"数据存储"）则按**业务域**切（会话核心 / 旧业务实体 / 工作流域，再分路由层 + 服务编排）。两种切分是**正交**的，不强行统一：本节关心"谁持有 store 引用、store 怎么被 new 出来"，`file-structure.md` 关心"store 属于哪个业务域、跟哪些 router/service 配套"。同一 store 在两种视角下归类可能不同（例如 `wiki-node-store.ts` 在本节属 C 类工作流域，但在域视角下跨"会话核心回退 + Wiki 镜像"两个域），这是预期的。
+> **切分视角说明**：这里的 A/B/C/D 是按**归属方式**（是否挂 CoreDatabase + v0.8 阶段）切的；[`file-structure.md`](../basic/file-structure.md) 的 server 章节（§"数据存储"）则按**业务域**切（会话核心 / 旧业务实体 / 工作流域，再分路由层 + 服务编排）。两种切分是**正交**的，不强行统一：本节关心"谁持有 store 引用、store 怎么被 new 出来"，`file-structure.md` 关心"store 属于哪个业务域、跟哪些 router/service 配套"。同一 store 在两种视角下归类可能不同（例如 `wiki-node-store.ts` 在本节属 C 类工作流域，但在域视角下跨"会话核心回退 + Wiki 镜像"两个域），这是预期的。
 
-**A. SessionDB 直接聚合 store**（4 个，`session-db.ts:69-105` 持有引用 + getter；原 5 个中的 `MemoryStore` 已作僵尸清理删除）—— 详见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store)：
+**A. CoreDatabase 直接聚合 store**（4 个，`core-database.ts:69-105` 持有引用 + getter；原 5 个中的 `MemoryStore` 已作僵尸清理删除）—— 详见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store)：
 
 | Store | 行 | eager/lazy | 表 |
 |-------|----|-----------|-----|
@@ -195,7 +195,7 @@ v0.8 后共 **~25 个 store 类、分布在 20 个文件**（不含 `sqlite-stor
 
 > **lazy 的设计动机**：不碰 M5 抽取路径的代码不付初始化成本；两表也故意**不进** `db-migration.ts` 的 `*_COLUMNS` 数组（独立 DDL，见 [05 §4.0.2](./05-persistence.md#402-sessiondb-直接聚合-store)）。
 
-**B. 旧业务实体 store**（在 `index.ts:151-156` 独立 new，构造时传 SessionDB 当 `getDb()`）：
+**B. 旧业务实体 store**（在 `index.ts:151-156` 独立 new，构造时传 CoreDatabase 当 `getDb()`）：
 
 | Store | 行 | 表 |
 |-------|----|----|
@@ -206,7 +206,7 @@ v0.8 后共 **~25 个 store 类、分布在 20 个文件**（不含 `sqlite-stor
 | ~~`kb-store.ts`~~ ~~KbStore~~ | — | ⚠️ 已删（KB 子系统移除），原 `kb_entries` 表已 DROP |
 | `persona-store.ts` PersonaStore | — | personas（与 agents 共表） |
 
-**C. v0.8 工作流域 store**（9 个，`index.ts:159-171` 独立 new，**不挂 SessionDB**）—— 详见 [05 §2.2b](./05-persistence.md#22b-v08-多-agent-工作流域表)：
+**C. v0.8 工作流域 store**（9 个，`index.ts:159-171` 独立 new，**不挂 CoreDatabase**）—— 详见 [05 §2.2b](./05-persistence.md#22b-v08-多-agent-工作流域表)：
 
 | Store | 行 | 阶段 | 表 |
 |-------|----|------|----|
@@ -230,16 +230,16 @@ v0.8 后共 **~25 个 store 类、分布在 20 个文件**（不含 `sqlite-stor
 
 它们大多基于 `sqlite-store.ts`（393）的通用 CRUD。SqliteStore 的三个写原语(`insertRow`/`updateRow`/`delete`)是**唯一写出口**,也是 `data-change-hub.ts` 的唯一 emit 点 —— 所有 store 的写都由此被 renderer 自动感知(UI 同步,见 ADR-021),无需逐 store 加通知。**例外**：`ToolConfigStore` 与 v0.8 M5 的两个 lazy store 用独立 DDL/手写 SQL，绕过 `SqliteStore` 抽象，因此也不进 `db-migration.ts` 的 `*_COLUMNS` 数组。
 
-#### 4.1.1 store 编排：SessionDB 不是聚合根（v0.8 重要边界）
+#### 4.1.1 store 编排：CoreDatabase 不是聚合根（v0.8 重要边界）
 
-旧文档（含本文早期版本）把 SessionDB 描述为"所有 store 的聚合根 / 聚合门面"——**这是 v0.7 叙事，已不准确**。v0.8 M0~M3 落地工作流域后，store 编排变成两层：
+旧文档（含本文早期版本）把 CoreDatabase 描述为"所有 store 的聚合根 / 聚合门面"——**这是 v0.7 叙事，已不准确**。v0.8 M0~M3 落地工作流域后，store 编排变成两层：
 
-1. **SessionDB 自持 4 个内核 store**（§4.1.A 表，eager 2 + lazy 2；原 eager 3 中的 MemoryStore 已删），其余什么也不聚合。
-2. **`index.ts:151-171` 手动 new 15+ store**（§4.1.B + C），全部把 SessionDB 当作 `getDb()` 提供者传入（store 内部读 `sessionDB.db` 直接操作 SQLite），但 SessionDB **不持有这些 store 的引用**。
+1. **CoreDatabase 自持 4 个内核 store**（§4.1.A 表，eager 2 + lazy 2；原 eager 3 中的 MemoryStore 已删），其余什么也不聚合。
+2. **`index.ts:151-171` 手动 new 15+ store**（§4.1.B + C），全部把 CoreDatabase 当作 `getDb()` 提供者传入（store 内部读 `sessionDB.db` 直接操作 SQLite），但 CoreDatabase **不持有这些 store 的引用**。
 
 ```ts
 // index.ts:115-171 摘录(简化)
-const sessionDB = new SessionDB();           // 内部 eager new 2 个内核 store（KV/MemoryNode；MemoryStore 已删）
+const sessionDB = new CoreDatabase();           // 内部 eager new 2 个内核 store（KV/MemoryNode；MemoryStore 已删）
 runMigrations(sessionDB);
 const wikiStoreGlobal = new WikiStore(sessionDB);   // C 类,独立 new
 // ...
@@ -256,7 +256,7 @@ const projectJobStore   = new ProjectJobStore(sessionDB);
 
 **为什么这么设计**（v0.8 刻意取舍）：
 - ✅ 会话核心（5 表）不被工作流域写入拖累 / 不被工作域 schema 变更耦合。
-- ✅ 新增工作流域 store **不必改 SessionDB**（SessionDB 已 960 行，再加会撑）。
+- ✅ 新增工作流域 store **不必改 CoreDatabase**（CoreDatabase 已 960 行，再加会撑）。
 - ✅ 工作域 store 之间可独立演化（cron 不必知道 wiki 存在）。
 - ⚠️ 代价：`index.ts` 手动编排 15+ store，**无 registry / 无自动依赖注入**，加一个 store 要改 `index.ts` 多处（new + 注入 router + 注入 service）。
 
@@ -287,15 +287,15 @@ server/index.ts 注入主要 HTTP 表面：
 ### 4.4 边界约束
 
 - `server/` 是顶层入口，不被 `core/`、`runtime/`、`shared/` 反向依赖。
-- 启动顺序（`index.ts:113-150` 实际序列，比早期"SessionDB→runMigrations→...→Stores"线性模型复杂）：
-  1. `new SessionDB()` —— 内部 eager new 2 个内核 store（KV/MemoryNode；MemoryStore 已作僵尸删除）
+- 启动顺序（`index.ts:113-150` 实际序列，比早期"CoreDatabase→runMigrations→...→Stores"线性模型复杂）：
+  1. `new CoreDatabase()` —— 内部 eager new 2 个内核 store（KV/MemoryNode；MemoryStore 已作僵尸删除）
   2. `runMigrations(sessionDB)` —— 5 阶段 schema 演进，详见 [05 §4.2](./05-persistence.md#42-迁移机制)
   3. `new WikiStore(sessionDB)` —— v0.8 M2 全局 memory tree，**早于 hooks 注册**（M5 抽取器要引用它）
   4. (Step 1B 起)durable / tool-execution hook 不再在启动期单独注册 —— 它们由 `registerHooksForLoop` 在每个 AgentLoop 构造时随其他 hook 一起注册到 per-loop registry
   5. M5 抽取依赖装配（`ExtractionCursorStore` / `ExtractorA/BService`），首次访问触发 lazy new
   6. `createAgentService()` —— agent-service 构造 main loop 时调 `registerHooksForLoop(loop.registry, "main", deps)` + `fireSessionStart`(per-loop 注册,按 main/delegated 分组)
   7. `new ToolRegistry + registerRuntimeTools` —— 25 个内置工具注册
-  8. **手动 new 15+ store**（B + C 类，§4.1.1）—— 不挂 SessionDB，只在 `index.ts` 局部变量
+  8. **手动 new 15+ store**（B + C 类，§4.1.1）—— 不挂 CoreDatabase，只在 `index.ts` 局部变量
   9. 各 `*-router(deps)` 注入 + `app.use(...)` —— 20 个 HTTP router
   10. `startServer()`
   
@@ -551,6 +551,6 @@ graph LR
 1. 把 `runtime/mcp-tools/` 改名 `runtime/advanced-tools/`，把 `core/`, `runtime/`, `server/` 三层共有的 `tool-policy` / `persona` 等概念挪到 `core/domain/`。
 2. `agent-service.ts` 需要拆分：会话循环管理 → `loop-supervisor.ts`，事件广播 → `event-broadcaster.ts`，provider/runtime 配置 → `provider-runtime.ts`，并发控制 → `provider-throttle.ts`。
 3. IPC 契约应继续收敛：补齐或删除 `templates:github-preview/import-github` 与 `search-provider:get/set` 这 4 个 preload 例外，并考虑从 `shared/ipc-api.ts` 生成 preload/proxy 校验。
-4. `session-db.ts` 应逐步退化为 DB lifecycle + store factory；`db-migration.ts` 和 `wiki-node-store.ts` 也需要拆出更小的 schema/domain/service 单元。
+4. `core-database.ts` 应逐步退化为 DB lifecycle + store factory；`db-migration.ts` 和 `wiki-node-store.ts` 也需要拆出更小的 schema/domain/service 单元。
 
 详见 ADR-001 ~ ADR-018。

@@ -56,7 +56,7 @@ npm run typecheck      # tsc 类型检查(cli + web + node)
 
 ## 配置
 
-- **数据根**:默认 `~/.zero-core`(sessions.db、wiki、skills、attachments 等)。可用 `ZERO_CORE_DIR` 覆盖。
+- **数据根**:默认 `~/.zero-core`(db/core.db、wiki、skills、attachments 等)。可用 `ZERO_CORE_DIR` 覆盖。
 - **provider / 工具策略 / 代理** 等在应用内 Settings 配置,持久化到配置库。
 - 环境变量示例见 [`.env.example`](.env.example)(复制为 `.env` 使用,`.env` 已 gitignore)。
 

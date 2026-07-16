@@ -15,7 +15,7 @@
 
 ```mermaid
 graph TB
-    Start["server/index.ts startup"] --> DB["SessionDB + migrations"]
+    Start["server/index.ts startup"] --> DB["CoreDatabase + migrations"]
     DB --> WikiStore["WikiStore(sessionDB)"]
     WikiStore --> Extractors["ExtractorA/B deps"]
     WikiStore --> ProjectCompat["ProjectWikiStore compatibility wrapper"]
@@ -246,7 +246,7 @@ Wiki 是所有 agent 共用的工具,不是某个角色专属。因此 `summary`
 
 ## 3. 已退役:KB 子系统与 Gen1 Memory
 
-历史上 sessions.db 里曾并存三套知识/记忆后端。v0.8 之后只剩 `project_wiki` 一套;另两套已整体移除。
+历史上 db/core.db 里曾并存三套知识/记忆后端。v0.8 之后只剩 `project_wiki` 一套;另两套已整体移除。
 
 | 旧子系统 | 状态 | 处置 |
 |------|------|------|

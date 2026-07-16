@@ -29,7 +29,7 @@
 // m5-extractors.test.ts 的 ExtractionCursorStore 段。
 //
 // ## 输入
-// - 构造时注入 better-sqlite3 Database(由 SessionDB 提供)
+// - 构造时注入 better-sqlite3 Database(由 CoreDatabase 提供)
 // - upsertCursor 接收 { sessionId, lastExtractedSeq, lastThresholdIdx, lastExtractedAt }
 //
 // ## 输出

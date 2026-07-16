@@ -8,7 +8,7 @@
 // - ToolUsageStore:per-call 调用日志(id PK,每次 tool 调用一行)。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - ToolConfigRecord / CreateToolUsageInput
 //
 // ## 输出
@@ -20,7 +20,7 @@
 //
 // ## 依赖
 // - better-sqlite3 - SQLite 驱动
-// - ./session-db - SessionDB (getDb())
+// - ./session-db - CoreDatabase (getDb())
 // - ../shared/types - ToolConfigRecord / ToolUsageRecord / CreateToolUsageInput
 //
 // ## 维护规则
@@ -34,7 +34,7 @@
 
 import type Database from "better-sqlite3";
 import { v4 as uuidv4 } from "uuid";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type {
 	ToolConfigRecord,
 	ToolUsageRecord,
@@ -55,7 +55,7 @@ export class ToolConfigStore {
 	private _listStmt: Database.Statement;
 	private _deleteStmt: Database.Statement;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.db = sessionDB.getDb();
 		this._getStmt = this.db.prepare(
 			"SELECT tool_name AS toolName, config, updated_at AS updatedAt FROM tool_configs WHERE tool_name = ?",
@@ -146,7 +146,7 @@ export class ToolUsageStore {
 	private _listAllStmt: Database.Statement;
 	private _deleteStmt: Database.Statement;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.db = sessionDB.getDb();
 		this._insertStmt = this.db.prepare(
 			`INSERT INTO tool_usage

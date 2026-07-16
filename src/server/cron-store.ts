@@ -8,7 +8,7 @@
 // 同一个 agent 可以有多条 cron (各带不同 scope)，决策 6/41/42。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - CronRecord 数据
 //
 // ## 输出
@@ -29,7 +29,7 @@
 //
 
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { CronRecord, CronRunRecord } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ export class CronStore {
 	private store: SqliteStore<CronRecord>;
 	private db: import("better-sqlite3").Database;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.db = sessionDB.getDb();
 		this.store = new SqliteStore<CronRecord>(this.db, "crons", COLUMNS);
 	}
@@ -179,7 +179,7 @@ const CRON_RUNS_COLUMNS: ColumnDef[] = [
 export class CronRunStore {
 	private store: SqliteStore<CronRunRecord>;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.store = new SqliteStore<CronRunRecord>(
 			sessionDB.getDb(),
 			"cron_runs",

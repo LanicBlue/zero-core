@@ -6,7 +6,7 @@
 // Provider 数据持久化，管理 AI 模型提供商配置。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - Provider 数据
 //
 // ## 输出
@@ -23,7 +23,7 @@
 // - 新增字段时需更新列定义
 //
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { ProviderModel, Provider } from "../shared/types.js";
 import { DEFAULT_URLS } from "../core/constants.js";
 
@@ -112,9 +112,9 @@ const COLUMNS: ColumnDef[] = [
 
 export class ProviderStore {
 	private store: SqliteStore<Provider>;
-	private db: SessionDB;
+	private db: CoreDatabase;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.db = sessionDB;
 		this.store = new SqliteStore<Provider>(sessionDB.getDb(), "providers", COLUMNS);
 

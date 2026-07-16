@@ -16,7 +16,7 @@
 //   - 写入守卫靠 prompt + 工具能力,无 AST/hook (archivist 角色 toolPolicy 无 Write/Edit)
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + 真实 stores + 临时 git repo (simple-git via child_process).
+// 临时 CoreDatabase (mkdtempSync) + 真实 stores + 临时 git repo (simple-git via child_process).
 //
 // ## 输出
 // Vitest 用例。
@@ -27,7 +27,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { RequirementStore } from "../../src/server/requirement-store.js";
 import {
@@ -44,7 +44,7 @@ import { WikiSkeletonService } from "../../src/server/wiki-skeleton-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let wikiStore: WikiStore;
 let projectStore: ProjectStore;
 let requirementStore: RequirementStore;
@@ -54,7 +54,7 @@ let archivistService: WikiSkeletonService;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-m2-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	requirementStore = new RequirementStore(sessionDB);

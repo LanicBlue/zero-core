@@ -4,7 +4,7 @@
 //
 // ## 核心功能
 // 验证 v0.8 P0 (契约 §1.2 双路径):
-//   - **fresh DB**:空库 → SessionDB 构造 + runMigrations + 实例化所有 store
+//   - **fresh DB**:空库 → CoreDatabase 构造 + runMigrations + 实例化所有 store
 //     全程不崩,所有 P0 表/列可读写。
 //   - **旧库**:用 helpers 构造 pre-P0 schema 库(带数据) → runMigrations →
 //     实例化所有 store + CRUD 一轮不崩。
@@ -13,14 +13,14 @@
 // 的等价路径在此处用 unit/集成测试覆盖 —— 见 impl-plan「若无对应 e2e」)。
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + helpers 构造的旧 schema 库。
+// 临时 CoreDatabase (mkdtempSync) + helpers 构造的旧 schema 库。
 //
 // ## 输出
 // Vitest 用例。
 //
 // ## 关键文件
 //   - src/server/db-migration.ts (runMigrations)
-//   - src/server/session-db.ts
+//   - src/server/core-database.ts
 //   - 全部 P0 store (AgentStore / CronStore / CronRunStore / WikiStore /
 //     ToolConfigStore / ToolUsageStore)
 //
@@ -29,7 +29,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { CronStore, CronRunStore } from "../../src/server/cron-store.js";
 import { WikiStore } from "../../src/server/wiki-node-store.js";
@@ -53,7 +53,7 @@ afterEach(() => {
 });
 
 /** Instantiate every P0 store and run a one-row CRUD pass on each. */
-function exerciseAllStores(sessionDB: SessionDB) {
+function exerciseAllStores(sessionDB: CoreDatabase) {
 	const agent = new AgentStore(sessionDB).create({ name: "Startup", subagents: [{ agentId: "x" }] } as any);
 	expect(agent.subagents).toEqual([{ agentId: "x" }]);
 
@@ -87,9 +87,9 @@ function exerciseAllStores(sessionDB: SessionDB) {
 // ─── Fresh DB startup ────────────────────────────────────────
 
 describe("P0 startup — fresh DB", () => {
-	test("SessionDB + runMigrations + every P0 store instantiates and CRUDs without crashing", () => {
+	test("CoreDatabase + runMigrations + every P0 store instantiates and CRUDs without crashing", () => {
 		const dbPath = join(tmpDir, "fresh.db");
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		expect(() => runMigrations(sessionDB)).not.toThrow();
 		expect(() => exerciseAllStores(sessionDB)).not.toThrow();
 		sessionDB.close();
@@ -97,12 +97,12 @@ describe("P0 startup — fresh DB", () => {
 
 	test("fresh DB can open, close, reopen and runMigrations stays healthy", () => {
 		const dbPath = join(tmpDir, "fresh-reopen.db");
-		const s1 = new SessionDB(dbPath);
+		const s1 = new CoreDatabase(dbPath);
 		runMigrations(s1);
 		new AgentStore(s1).create({ name: "A" } as any);
 		s1.close();
 
-		const s2 = new SessionDB(dbPath);
+		const s2 = new CoreDatabase(dbPath);
 		expect(() => runMigrations(s2)).not.toThrow();
 		const agents = new AgentStore(s2).list();
 		expect(agents.length).toBeGreaterThanOrEqual(1);
@@ -123,8 +123,8 @@ describe("P0 startup — legacy (upgraded) DB", () => {
 		buildLegacyCronRow(db, { id: "legacy-cron", agentId: "legacy-pm", schedule: "hourly", enabled: 1 });
 		db.close();
 
-		// Upgrade via SessionDB + runMigrations.
-		const sessionDB = new SessionDB(dbPath);
+		// Upgrade via CoreDatabase + runMigrations.
+		const sessionDB = new CoreDatabase(dbPath);
 		expect(() => runMigrations(sessionDB)).not.toThrow();
 
 		// Legacy data preserved.
@@ -151,7 +151,7 @@ describe("P0 startup — legacy (upgraded) DB", () => {
 		createLegacySchemaDb(db);
 		db.close();
 
-		const sessionDB = new SessionDB(dbPath);
+		const sessionDB = new CoreDatabase(dbPath);
 		expect(() => runMigrations(sessionDB)).not.toThrow();
 		expect(() => exerciseAllStores(sessionDB)).not.toThrow();
 		sessionDB.close();

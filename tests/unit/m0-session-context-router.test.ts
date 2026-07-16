@@ -6,14 +6,14 @@
 // 验证 M0 的核心交付 (acceptance-M0.md):
 //   - resolveSessionByRoleProject: find-or-create 路由 (同一 PM agent 服务多 project)
 //   - bundle 继承 (per-call override)
-//   - SessionDB context 列持久化
+//   - CoreDatabase context 列持久化
 //   - role-presets (lead/PM/archivist/analyzer/planner/dev/review/qa/zero)
 //   - ManagementService.instantiateTemplate (一键实例化 + subagents 接好)
 //   - ManagementService.updateAgent (consolidates toolPolicy)
 //   - ProjectStore workspaceDir 唯一约束 + 不可改
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + 真实 stores。
+// 临时 CoreDatabase (mkdtempSync) + 真实 stores。
 //
 // ## 输出
 // Vitest 用例。
@@ -23,7 +23,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import {
@@ -39,7 +39,7 @@ import { runMigrations } from "../../src/server/db-migration.js";
 import { seedAgentWithRoleTag } from "./helpers/p0-test-helpers.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
 let templateStore: TemplateStore;
@@ -47,7 +47,7 @@ let management: ManagementService;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-m0-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);

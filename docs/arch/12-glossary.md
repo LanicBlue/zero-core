@@ -27,7 +27,7 @@ graph LR
     end
 
     subgraph "持久化"
-        S1[SessionDB]
+        S1[CoreDatabase]
         S2[SqliteStore]
         S3[KeyValueStore]
         S4[FTS5]
@@ -91,7 +91,7 @@ graph TB
 
     subgraph "存储"
         S1[SqliteStore]
-        S2[SessionDB]
+        S2[CoreDatabase]
         S3[KVStore]
         S4[MemoryNodeStore]
         S1 --> S2
@@ -227,7 +227,7 @@ graph TB
 - **MCPManager**：MCP 连接池 + 工具缓存。`server/mcp-manager.ts`。
 - **MCPScanner**：扫描外部应用配置（Claude Desktop / Cursor / ...）。
 - **MemoryRecall / MemoryNote**：已退役的旧记忆工具名；当前 `ALL_TOOLS` 不再注册，记忆操作走 `Wiki` 工具。
-- **MemoryStore**：⚠️ **已删除**(v0.8 清理僵尸 store)。原 `server/memory-store.ts` 持有 `memory_entities` / `memory_relations` 两张构造自建表。**构造时 eager new**(`session-db.ts:70`)+ v0.7 `memory.json` 一次性迁移(`db-migration.ts:586`)曾是唯一写入路径;**运行时零写入者** —— 唯一消费者 `runtime/mcp-tools/memory-tools.ts` 的 `memoryReadTool`/`memoryWriteTool` 自 v0.8 P2 §11.6 起从 `tools/index.ts` **取消注册**,所以 `getMemoryStore()` 在生产环境永远不会被 Agent 工具调到。v0.8 后续清理已执行:删除 `memory-tools.ts`(memoryReadTool/memoryWriteTool)+ `MemoryStore` 类 + 两表(`memory_entities` / `memory_relations` 已由 db-migration DROP)+ `memory.json` 迁移分支 + SessionDB getter。**不要**把它当活跃系统,也不要与仍存活的 **MemoryNodeStore** 混为一谈 —— 二者数据不互通、互不引用、互不依赖。详见 [06 §2.7](./06-knowledge-subsystems.md) "三套数据库知识系统的对比矩阵"。
+- **MemoryStore**：⚠️ **已删除**(v0.8 清理僵尸 store)。原 `server/memory-store.ts` 持有 `memory_entities` / `memory_relations` 两张构造自建表。**构造时 eager new**(`core-database.ts:70`)+ v0.7 `memory.json` 一次性迁移(`db-migration.ts:586`)曾是唯一写入路径;**运行时零写入者** —— 唯一消费者 `runtime/mcp-tools/memory-tools.ts` 的 `memoryReadTool`/`memoryWriteTool` 自 v0.8 P2 §11.6 起从 `tools/index.ts` **取消注册**,所以 `getMemoryStore()` 在生产环境永远不会被 Agent 工具调到。v0.8 后续清理已执行:删除 `memory-tools.ts`(memoryReadTool/memoryWriteTool)+ `MemoryStore` 类 + 两表(`memory_entities` / `memory_relations` 已由 db-migration DROP)+ `memory.json` 迁移分支 + CoreDatabase getter。**不要**把它当活跃系统,也不要与仍存活的 **MemoryNodeStore** 混为一谈 —— 二者数据不互通、互不引用、互不依赖。详见 [06 §2.7](./06-knowledge-subsystems.md) "三套数据库知识系统的对比矩阵"。
 - **MemoryNodeStore**：`server/memory-node-store.ts`(活的,仍在运行时被调用),持有 `memory_nodes` / `memory_subjects` / `memory_edges` / `memory_nodes_fts`(FTS5) 四张构造自建表(`init()` 自建,不进 db-migration)。MemoryNodeStore **仍在运行时被调用**(`runtime/hooks/compression-hooks.ts:153` 在 wiki 写失败时回退写它 + `server/memory-node-router.ts` 暴露 `/api/memory-nodes` REST),所以是 legacy 但**活**。与已删除的 MemoryStore **曾是兄弟而非父子** —— 各自 eager new、各自 `init()`、表结构无任何关联(MemoryStore 那侧现已全删)。**不进** db-migration.ts 的 `*_COLUMNS` 数组,改 schema 要去 `init()`。
 - **MockLanguageModel**：测试用 mock LLM。`runtime/mock-language-model.ts`。
 - **ModelRegistry**：模型元数据（context window / max tokens），OpenRouter + 本地正则回填。
@@ -277,7 +277,7 @@ graph TB
 ## S
 
 - **SessionConfig**：单个会话的完整配置。`runtime/types.ts`。
-- **SessionDB**：业务核心表（sessions / messages / turns / turn_state / tool_executions）+ KV + MemoryNode 持有的 DB 门面（v0.8 清理 MemoryStore 后，原 Memory 持有已移除），当前约 850 行。
+- **CoreDatabase**：业务核心表（sessions / messages / turns / turn_state / tool_executions）+ KV + MemoryNode 持有的 DB 门面（v0.8 清理 MemoryStore 后，原 Memory 持有已移除），当前约 850 行。
 - **SessionLifecycleState**：状态机枚举（created / idle / queued / streaming / executing_tools / error / disposed）。
 - **SessionManager**：会话生命周期状态管理 + 指标聚合 + TTL 清理。`server/session-manager.ts`。
 - **SessionStoreInterface**：运行时对 DB 的抽象接口。

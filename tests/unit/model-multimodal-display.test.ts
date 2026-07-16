@@ -28,7 +28,7 @@ import { join } from "node:path";
 
 import { getMultimodal, getMultimodalTri } from "../../src/runtime/provider-factory.js";
 import type { RuntimeProviderConfig } from "../../src/runtime/types.js";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import {
 	useChatStore,
@@ -128,11 +128,11 @@ describe("sub-6: getMultimodalTri (tri-state image capability)", () => {
 
 describe("sub-6: AgentLoop.getModelMultimodalTri delegates to getMultimodalTri", () => {
 	let tmpDir: string;
-	let sessionDB: SessionDB;
+	let sessionDB: CoreDatabase;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-mm-loop-"));
-		sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+		sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 		runMigrations(sessionDB);
 	});
 

@@ -39,9 +39,9 @@ agent-service.ts (orchestrator, 200 行)
 
 ---
 
-### D-002 · session-db.ts 巨型 Store（影响 4 / 成本 3 / 紧迫 3）
+### D-002 · core-database.ts 巨型 Store（影响 4 / 成本 3 / 紧迫 3）
 
-**位置**：`server/session-db.ts`，当前约 960 行。
+**位置**：`server/core-database.ts`，当前约 960 行。
 
 **症状**：一张表一个类本应 < 200 行，这里塞了：
 - sessions CRUD
@@ -58,14 +58,14 @@ agent-service.ts (orchestrator, 200 行)
 **建议拆分**：
 
 ```
-session-db.ts (orchestrator, 100 行)
+core-database.ts (orchestrator, 100 行)
 ├─ sessions-store.ts    (sessions + main session)
 ├─ messages-store.ts    (messages)
 ├─ turns-store.ts       (turns + turn_state)
 ├─ tool-executions-store.ts
 ├─ key-value-store.ts   (已独立)
-├─ ~~memory-store.ts~~      (~~旧版~~ v0.8 已删,见 D-006;SessionDB 不再持有)
-└─ memory-node-store.ts (已拆为独立文件但仍由 SessionDB 实例化（`session-db.ts:70-71`），新版,**唯一 memory 后端**)
+├─ ~~memory-store.ts~~      (~~旧版~~ v0.8 已删,见 D-006;CoreDatabase 不再持有)
+└─ memory-node-store.ts (已拆为独立文件但仍由 CoreDatabase 实例化（`core-database.ts:70-71`），新版,**唯一 memory 后端**)
 ```
 
 **优先级**：4 × 3 / 3 = **4.0**。
@@ -123,7 +123,7 @@ session-db.ts (orchestrator, 100 行)
 
 `MemoryNodeStore`(4 张表:`memory_nodes` / `memory_subjects` / `memory_edges` / `memory_nodes_fts`)
 **保留**,仍是 `wiki-anchor-injection` / `wiki-search` 间接读取的唯一 memory 后端。
-05-persistence.md §2 / §4.0.2 / §5 已同步更正表计数(sessions.db 总表 ≈31,memory_* 只剩 4 张)。
+05-persistence.md §2 / §4.0.2 / §5 已同步更正表计数(db/core.db 总表 ≈31,memory_* 只剩 4 张)。
 
 **剩余风险**:无新风险。若旧 DB 残留 `memory_entities` / `memory_relations` 行数据,
 `db-migration.ts` 的 `DROP TABLE IF EXISTS` 会直接丢弃(僵尸零运行时写入者,数据无业务价值)。
@@ -220,9 +220,9 @@ session-db.ts (orchestrator, 100 行)
 
 ### D-013 · SQLite 未启用 WAL ✅ **已解决**
 
-**位置**：`server/session-db.ts:59-75` `constructor`。
+**位置**：`server/core-database.ts:59-75` `constructor`。
 
-**解决说明**：`session-db.ts:66` 和 `kb-db.ts:52` 已执行 `db.pragma('journal_mode = WAL')`。WAL 模式已启用，读写不再互斥。
+**解决说明**：`core-database.ts:66` 和 `kb-db.ts:52` 已执行 `db.pragma('journal_mode = WAL')`。WAL 模式已启用，读写不再互斥。
 
 **原描述**（保留供参考）：
 - `better-sqlite3` 默认 `journal_mode=DELETE`。崩溃可能丢失最后一笔。

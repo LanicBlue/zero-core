@@ -4,7 +4,7 @@
 //
 // ## Core
 // Adversarial verification of docs/plan/multimodal-input/acceptance-2.md.
-// Independent from the implementer — exercises the real SessionDB +
+// Independent from the implementer — exercises the real CoreDatabase +
 // AgentSession.rebuildFromTurns against temp DBs, asserts the wire shape and
 // back-compat invariants, not the implementer's claims.
 //
@@ -37,7 +37,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentSession } from "../../src/runtime/session.js";
 import type { AttachmentMeta } from "../../src/shared/types.js";
 
@@ -80,8 +80,8 @@ function makeAttachment(overrides: Partial<AttachmentMeta> = {}): AttachmentMeta
 
 /**
  * Pre-create the turns table WITHOUT the attachments column, mirroring a DB
- * from before sub-2 shipped. Must run BEFORE SessionDB's CREATE TABLE IF NOT
- * EXISTS so the IF NOT EXISTS no-ops and SessionDB has to safeAddColumn it.
+ * from before sub-2 shipped. Must run BEFORE CoreDatabase's CREATE TABLE IF NOT
+ * EXISTS so the IF NOT EXISTS no-ops and CoreDatabase has to safeAddColumn it.
  */
 function preCreateLegacyTurnsTable(db: Database.Database): void {
 	db.exec(`
@@ -120,7 +120,7 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-mm-sub2-turns-att-"));
-		dbPath = join(tmpDir, "sessions.db");
+		dbPath = join(tmpDir, "core.db");
 	});
 
 	afterEach(() => {
@@ -129,9 +129,9 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 	});
 
 	test("fresh DB: steps.attachments column exists after initSchema", () => {
-		let sessionDB: SessionDB | null = null;
+		let sessionDB: CoreDatabase | null = null;
 		try {
-			sessionDB = new SessionDB(dbPath);
+			sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			expect(turnsColumns(raw)).toContain("attachments");
 		} finally {
@@ -140,9 +140,9 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 	});
 
 	test("appendStep with attachments persists JSON to steps.attachments and getSteps reads it back", () => {
-		let sessionDB: SessionDB | null = null;
+		let sessionDB: CoreDatabase | null = null;
 		try {
-			sessionDB = new SessionDB(dbPath);
+			sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			const sessionId = "fresh-att";
 			const attachments = [makeAttachment(), makeAttachment({ id: "att-002", kind: "pdf", fileName: "doc.pdf", mimeType: "application/pdf", size: 67890 })];
@@ -171,9 +171,9 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 	});
 
 	test("appendStep with no attachments arg writes NULL (legacy-equivalent row)", () => {
-		let sessionDB: SessionDB | null = null;
+		let sessionDB: CoreDatabase | null = null;
 		try {
-			sessionDB = new SessionDB(dbPath);
+			sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			const sessionId = "no-att";
 
@@ -188,9 +188,9 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 	});
 
 	test("appendStep with empty attachments array writes NULL (treated as no attachments)", () => {
-		let sessionDB: SessionDB | null = null;
+		let sessionDB: CoreDatabase | null = null;
 		try {
-			sessionDB = new SessionDB(dbPath);
+			sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			const sessionId = "empty-att";
 
@@ -205,9 +205,9 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 	});
 
 	test("upsertStep: INSERT path writes attachments; UPDATE path overwrites attachments", () => {
-		let sessionDB: SessionDB | null = null;
+		let sessionDB: CoreDatabase | null = null;
 		try {
-			sessionDB = new SessionDB(dbPath);
+			sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			const sessionId = "upsert-att";
 			const att1 = [makeAttachment({ id: "u-1" })];
@@ -235,7 +235,7 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 	// trip is fully covered by the appendStep / upsertStep cases above.
 
 	test("legacy DB (no attachments column) → startup safeAddColumn adds it; legacy rows read back as undefined", () => {
-		let sessionDB: SessionDB | null = null;
+		let sessionDB: CoreDatabase | null = null;
 		try {
 			// Pre-create the turns table WITHOUT the attachments column, mirroring
 			// a DB from before sub-2 shipped. Seed a legacy row directly.
@@ -249,10 +249,10 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 			).run(sessionId, 0, "user", "legacy text", "2026-01-01T00:00:00.000Z", 0);
 			raw0.close();
 
-			// Open via SessionDB — initSchema.safeAddColumn must add the column
+			// Open via CoreDatabase — initSchema.safeAddColumn must add the column
 			// and NOT crash (this is the non-COLUMNS-array path called out in
 			// the plan — turns has no *_COLUMNS array).
-			sessionDB = new SessionDB(dbPath);
+			sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			expect(turnsColumns(raw)).toContain("attachments");
 
@@ -272,9 +272,9 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 	});
 
 	test("corrupt JSON in steps.attachments reads back as undefined (read tolerance)", () => {
-		let sessionDB: SessionDB | null = null;
+		let sessionDB: CoreDatabase | null = null;
 		try {
-			sessionDB = new SessionDB(dbPath);
+			sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			const sessionId = "corrupt";
 			ensureSession(raw, sessionId);
@@ -294,9 +294,9 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 	});
 
 	test("rebuildFromTurns / refreshTurnsCache load attachments into CachedTurnData (restart recovery)", () => {
-		let sessionDB: SessionDB | null = null;
+		let sessionDB: CoreDatabase | null = null;
 		try {
-			sessionDB = new SessionDB(dbPath);
+			sessionDB = new CoreDatabase(dbPath);
 			const sessionId = "rebuild-att";
 			const attachments = [
 				makeAttachment({ id: "rb-1" }),
@@ -325,9 +325,9 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 	});
 
 	test("rebuildFromTurns on legacy rows (no attachments) yields cached turns with undefined attachments", () => {
-		let sessionDB: SessionDB | null = null;
+		let sessionDB: CoreDatabase | null = null;
 		try {
-			sessionDB = new SessionDB(dbPath);
+			sessionDB = new CoreDatabase(dbPath);
 			const sessionId = "rebuild-legacy";
 			// Write WITHOUT the attachments arg — legacy-equivalent row.
 			sessionDB.appendStep(sessionId, 0, 0, "user", "legacy");
@@ -344,9 +344,9 @@ describe("multimodal-input sub-2: steps.attachments column", () => {
 	});
 
 	test("getStepGroup reads attachments back for a single turn group", () => {
-		let sessionDB: SessionDB | null = null;
+		let sessionDB: CoreDatabase | null = null;
 		try {
-			sessionDB = new SessionDB(dbPath);
+			sessionDB = new CoreDatabase(dbPath);
 			const sessionId = "group-att";
 			const att = [makeAttachment({ id: "g-1" })];
 

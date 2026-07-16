@@ -43,7 +43,7 @@
 // - WikiNodeStore (读 wiki 上下文)
 // - OrchestrateManifestStore (verify 时读清单)
 // - ArchivistService (verify 通过 → 触发合并 + 增量扫描,§4.6)
-// - SessionDB / SessionContextRouter (discuss 路由)
+// - CoreDatabase / SessionContextRouter (discuss 路由)
 //
 // ## 输出
 // - PmService 类
@@ -71,7 +71,7 @@ import type { RequirementDocStore } from "./requirement-doc-store.js";
 import type { WikiStore } from "./wiki-node-store.js";
 import type { OrchestrateManifestStore } from "./orchestrate-store.js";
 import type { WikiSkeletonService } from "./wiki-skeleton-service.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type {
 	AgentRecord,
 	RequirementRecord,
@@ -98,7 +98,7 @@ export interface PmServiceDeps {
 	manifestStore?: OrchestrateManifestStore;
 	/** v0.8 P7: archivist 合并入口(verify 通过 → mergeFeatureToMain + 增量扫描)。 */
 	archivistService?: WikiSkeletonService;
-	sessionDB: SessionDB;
+	sessionDB: CoreDatabase;
 	resolveWikiRoot?: WikiRootResolver;
 }
 

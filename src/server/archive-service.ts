@@ -81,7 +81,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, unlinkS
 import { join } from "node:path";
 import { ZERO_CORE_DIR } from "../core/config.js";
 import { log } from "../core/logger.js";
-import type { SessionDB, MessageSummary } from "./session-db.js";
+import type { CoreDatabase, MessageSummary } from "./core-database.js";
 import type { SessionRecord } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
@@ -326,7 +326,7 @@ async function withArchiveLock<T>(
  */
 export async function archiveSession(
 	sessionId: string,
-	db: SessionDB,
+	db: CoreDatabase,
 	opts: ArchiveSessionOptions,
 ): Promise<ArchiveResult> {
 	const lockOutcome = await withArchiveLock(sessionId, () =>
@@ -354,7 +354,7 @@ export async function archiveSession(
  */
 async function runArchivePipeline(
 	sessionId: string,
-	db: SessionDB,
+	db: CoreDatabase,
 	opts: ArchiveSessionOptions,
 ): Promise<ArchiveResult> {
 	const sessionRow = db.getSession(sessionId);
@@ -441,7 +441,7 @@ async function runArchivePipeline(
 function buildArchivePayload(
 	sessionId: string,
 	agentId: string,
-	db: SessionDB,
+	db: CoreDatabase,
 	sessionRow: SessionRecord | undefined,
 	memoryTurnRan: boolean,
 ): ArchiveJson {
@@ -596,7 +596,7 @@ function runTeardown(teardown: ArchiveRuntimeTeardown, sessionId: string): void 
  * ready. Doesn't accept a memoryTurnRunner — recovery assumes the pre-crash
  * memory turn's wiki writes survived (wiki is cross-session + durable).
  */
-export async function recoverInterruptedArchives(db: SessionDB): Promise<number> {
+export async function recoverInterruptedArchives(db: CoreDatabase): Promise<number> {
 	const stranded = db.listArchivedTransientSessions();
 	if (stranded.length === 0) return 0;
 	log.warn("archive",
@@ -650,7 +650,7 @@ export async function recoverInterruptedArchives(db: SessionDB): Promise<number>
  * (so the `archived = 1` rows are cleaned first). Fire-and-forget.
  */
 export async function sweepOrphanSessions(
-	db: SessionDB,
+	db: CoreDatabase,
 	opts?: { maxAgeDays?: number; activeSessionIds?: Set<string> },
 ): Promise<number> {
 	const maxAgeDays = opts?.maxAgeDays ?? 14;

@@ -30,7 +30,7 @@
 
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
-import type { SessionDB } from "../server/session-db.js";
+import type { CoreDatabase } from "../server/core-database.js";
 import type { AgentStore } from "../server/agent-store.js";
 import type { ProviderStore } from "../server/provider-store.js";
 import type { WikiStore } from "../server/wiki-node-store.js";
@@ -55,7 +55,7 @@ export function isTestMode(): boolean {
 }
 
 export function seedTestEnvironment(
-	sessionDb: SessionDB,
+	sessionDb: CoreDatabase,
 	agentStore: AgentStore,
 	providerStore: ProviderStore,
 	wikiStore?: WikiStore,

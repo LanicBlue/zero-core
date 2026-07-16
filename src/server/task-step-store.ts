@@ -6,7 +6,7 @@
 // TaskStep 数据持久化，基于 SqliteStore 的 CRUD 操作。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - TaskStep 数据
 //
 // ## 输出
@@ -22,7 +22,7 @@
 // - 新增字段时需更新列定义
 //
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { TaskStepRecord } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ const COLUMNS: ColumnDef[] = [
 export class TaskStepStore {
 	private store: SqliteStore<TaskStepRecord>;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.store = new SqliteStore<TaskStepRecord>(sessionDB.getDb(), "task_steps", COLUMNS);
 	}
 

@@ -62,7 +62,7 @@
 //
 // ## Token 判定
 // Reads sessions.token_usage (last API usage snapshot, set by THIS module's
-// StepEnd handler from ctx.usage) via SessionDB.getTokenUsage. Window size from
+// StepEnd handler from ctx.usage) via CoreDatabase.getTokenUsage. Window size from
 // getContextWindow(providers, providerName, modelId). NOT recomputed.
 //
 // ## Invariants (acceptance-5)
@@ -73,14 +73,14 @@
 // - WAIT/resume 折叠成 PreLLMCall 冷 preflight, no separate WAIT trigger.
 //
 // ## Position
-// src/runtime/hooks/ — registered for every loop kind that owns a SessionDB
+// src/runtime/hooks/ — registered for every loop kind that owns a CoreDatabase
 // (main + delegated). Registered by hooks/index.ts registerHooksForLoop.
 //
 // ## Dependencies
 // - core/hook-registry (HookRegistry)
 // - core/hook-types (StepEnd / PreLLMCall / OnLLMError / TurnStart ctx)
 // - server/compression-core (compressSession)
-// - server/session-db (SessionDB: getTokenUsage / getCompressionCursor)
+// - server/session-db (CoreDatabase: getTokenUsage / getCompressionCursor)
 // - runtime/types (SessionConfig / RuntimeProviderConfig)
 // - runtime/provider-factory (getContextWindow)
 // - core/constants (DEFAULT_CACHE_TTL_MS)
@@ -94,7 +94,7 @@
 import { HookRegistry } from "../../core/hook-registry.js";
 import type { HookEventName } from "../../core/hook-types.js";
 import type { SessionConfig, RuntimeProviderConfig } from "../types.js";
-import type { SessionDB } from "../../server/session-db.js";
+import type { CoreDatabase } from "../../server/core-database.js";
 import { compressSession, type CompressionResult } from "../../server/compression-core.js";
 import { getContextWindow } from "../provider-factory.js";
 import { DEFAULT_CACHE_TTL_MS } from "../../core/constants.js";
@@ -235,7 +235,7 @@ interface TokenState {
 
 /** Read the current token state off the session row + provider config. */
 function readTokenState(
-	db: SessionDB,
+	db: CoreDatabase,
 	sessionId: string,
 	providers: RuntimeProviderConfig[],
 	config: SessionConfig,
@@ -301,7 +301,7 @@ export async function buildCompressOpts(config: SessionConfig, providers: Runtim
  */
 async function runCompression(
 	sessionId: string,
-	db: SessionDB,
+	db: CoreDatabase,
 	config: SessionConfig,
 	providers: RuntimeProviderConfig[],
 	reason: string,
@@ -373,8 +373,8 @@ function resolveCacheTtl(
 // ---------------------------------------------------------------------------
 
 export interface CompressionTriggerHooksDeps {
-	/** Full SessionDB (token_usage read + compression write). */
-	sessionDb: SessionDB;
+	/** Full CoreDatabase (token_usage read + compression write). */
+	sessionDb: CoreDatabase;
 }
 
 /**

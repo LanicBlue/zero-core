@@ -9,7 +9,7 @@
 // 不在本表;本表只持有"工作定义"本身。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - ProjectWorkRecord 数据
 //
 // ## 输出
@@ -28,7 +28,7 @@
 // - 删 work 不级联删它引用的 agent(解绑而非级联);cron 触发器由 ManagementService 清理
 //
 
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { ProjectWorkRecord, WorkHookTrigger } from "../shared/types.js";
 
@@ -49,7 +49,7 @@ const PROJECT_WORK_COLUMNS: ColumnDef[] = [
 export class ProjectWorkStore {
 	private store: SqliteStore<ProjectWorkRecord>;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.store = new SqliteStore<ProjectWorkRecord>(
 			sessionDB.getDb(),
 			"project_work",

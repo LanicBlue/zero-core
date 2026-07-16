@@ -51,7 +51,7 @@ graph LR
 | 文本 delta 间隔 | < 100ms | < 300ms | WS 推送速度 |
 | 工具调用（Shell 简单命令）| < 500ms | < 2s | 取决于命令 |
 | 工具调用（WebFetch）| < 1s | < 5s | 取决于目标网站 |
-| 工具调用（KB 检索）| < 500ms | < 2s | `knowledge.db` 余弦相似度 O(M×D)，M=chunks |
+| ~~工具调用（KB 检索）~~ | — | — | **RETIRED (plan-00 §5)**：`knowledge.db` / `kb_chunks` / `KbDB` 全部删除；KB 向量检索路径已不在运行时。 |
 | 工具调用（Wiki 检索）| < 200ms | < 1s | `WikiStore` 树遍历 + FTS5 MATCH（`memory_nodes_fts`），live 路径仅在会话压缩 wiki 写失败时回退写入 |
 | 会话恢复 | < 2s | < 5s | DB 读取 + UI 渲染 |
 | 应用启动 | < 3s | < 6s | Electron + 后端 spawn |
@@ -104,8 +104,8 @@ IPC invoke (5ms)
 
 ### 3.4 优化机会
 
-- WAL 模式已启用（session-db.ts:56 / kb-db.ts:52），读写不互斥。
-- v0.8 引入 14 张工作流域表 + 9 个独立 `new` 的 store（05 §2.2b + 02 §4.1.1）—— 单 `sessions.db` 写锁仍是全局串行点，但工作流域写入分散在不同 store / 路由，热点表竞争压力小于 v0.7（单一 AgentToolStore）。
+- WAL 模式已启用（core-database.ts:56 / kb-db.ts:52），读写不互斥。
+- v0.8 引入 14 张工作流域表 + 9 个独立 `new` 的 store（05 §2.2b + 02 §4.1.1）—— 单 `db/core.db` 写锁仍是全局串行点，但工作流域写入分散在不同 store / 路由，热点表竞争压力小于 v0.7（单一 AgentToolStore）。
 - 读多写少场景可考虑只读副本（但 better-sqlite3 不支持）。
 - AI SDK fetch 池设置 `dispatcher` 限流。
 
@@ -121,7 +121,7 @@ IPC invoke (5ms)
 ### 4.2 不保证的场景
 
 - **进程崩溃时最后一笔写入**：WAL 模式已启用（`journal_mode=WAL`），大幅降低丢失风险。
-- **跨表事务**：session-db.ts 内部用 `db.transaction()`，跨表是原子的；跨多个方法调用不是。
+- **跨表事务**：core-database.ts 内部用 `db.transaction()`，跨表是原子的；跨多个方法调用不是。
 - **多进程写入**：当前单进程，无竞争。如果未来多进程，需要锁。
 
 ### 4.3 数据丢失风险
@@ -201,7 +201,7 @@ IPC invoke (5ms)
 
 **当前**：2 小时
 - `db-migration.ts` 阶段 2 加 `CREATE TABLE` DDL（10 min）—— v0.8 工作流域表（projects / requirements / project_wiki / crons / orchestrate_* / tool_configs / tool_usage 等 14 张）走批 A 阶段 2 显式 DDL，不是简单的"加列"（详见 05 §4.2 + §2.2b）。两个例外 `ToolConfigStore` + `ToolUsageStore` 手写 SQL 不基于 SqliteStore。
-- 写 SqliteStore（30 min）—— 复用通用 CRUD，`server/index.ts:148-171` 独立 `new`（不挂 SessionDB，详见 05 §4.0.3 + 02 §4.1.1）。
+- 写 SqliteStore（30 min）—— 复用通用 CRUD，`server/index.ts:148-171` 独立 `new`（不挂 CoreDatabase，详见 05 §4.0.3 + 02 §4.1.1）。
 - 写 Router（30 min）—— `*-router.ts` 挂到 `server/index.ts:475+`，自动进 `ROUTE_MAP` 派生（07 §2.5）。
 - 写前端 Store + 5 个 store 之一订阅 `data:changed`（30 min）—— 走 `subscribeListDataChange`（增量 patch）或 `subscribeDataChange`（全量 refetch，树形数据用）。
 - 测试（30 min）
@@ -227,7 +227,7 @@ IPC invoke (5ms)
 - 单用户单机
 - 消息数：~10K turns / session
 - 工具调用：~1K / day
-- KB chunks：~5K（独立 `knowledge.db`）
+- ~~KB chunks~~：**RETIRED (plan-00 §5)** —— `knowledge.db` 已删除，不再列入规模假设。
 - Memory nodes：~500（v0.8 后写入路径仅会话压缩 wiki 写失败时回退，正常情况增长极慢；主线知识走 `project_wiki` 磁盘镜像树，按项目维度独立增长）
 - MCP servers：~5
 - Agents：~10
@@ -238,7 +238,7 @@ IPC invoke (5ms)
 | 资源 | 天花板 | 瓶颈 |
 |------|--------|------|
 | 消息数 | ~100K turns | turns 表全量重建时间 |
-| KB chunks | ~50K | 搜索 O(M×D)（`knowledge.db` 独立库，余弦相似度） |
+| ~~KB chunks~~ | — | **RETIRED (plan-00 §5)**：`knowledge.db` / `kb_chunks` 删除，不再列入天花板矩阵。 |
 | Wiki / Memory nodes | ~10K | FTS5 MATCH OK；**注意**：FTS5 同步**没有 DB trigger**，由 `memory-node-store.ts:128/131/134` 的 prepared statement 在 store 方法里手动 upsert/delete（详见 05 §2.5 + 06 §2.7）—— 高频写时同步成本在 store 层不在 DB 层 |
 | Agent 并发 | ~50 | event loop + SQLite 锁 |
 | LLM 并发 | 1-10 per Provider | Provider 配额（`provider-concurrency-manager.ts` clamp 1-10） |

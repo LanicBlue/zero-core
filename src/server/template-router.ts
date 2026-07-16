@@ -6,7 +6,7 @@
 // 提供 Agent 模板的 Express REST API 路由（列表、创建、更新、删除、GitHub 同步）
 //
 // ## 输入
-// HTTP 请求、TemplateStore、SessionDB (for cache)
+// HTTP 请求、TemplateStore、CoreDatabase (for cache)
 //
 // ## 输出
 // Express Router，处理模板 CRUD + GitHub 导入 API
@@ -22,7 +22,7 @@
 //
 import { Router } from "express";
 import type { TemplateStore } from "./template-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import { parseFrontmatter, extractTag, shouldSkipMd } from "../shared/github-template-utils.js";
 import { log } from "../core/logger.js";
 
@@ -35,16 +35,16 @@ interface GithubCacheEntry {
 
 type GithubCache = Record<string, GithubCacheEntry>;
 
-function loadGithubCache(sessionDB: SessionDB): GithubCache {
+function loadGithubCache(sessionDB: CoreDatabase): GithubCache {
 	try { return sessionDB.getKVStore().getJson("github_cache") ?? {}; } catch { return {}; }
 }
 
-function saveGithubCache(sessionDB: SessionDB, data: GithubCache): void {
+function saveGithubCache(sessionDB: CoreDatabase, data: GithubCache): void {
 	try { sessionDB.getKVStore().setJson("github_cache", data); }
 	catch (err) { log.warn("template-router", "github cache save failed:", (err as Error).message); }
 }
 
-export function createTemplateRouter(templateStore: TemplateStore, sessionDB: SessionDB): Router {
+export function createTemplateRouter(templateStore: TemplateStore, sessionDB: CoreDatabase): Router {
 	const router = Router();
 	let githubCache: GithubCache = loadGithubCache(sessionDB);
 

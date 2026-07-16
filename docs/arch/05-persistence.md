@@ -1,9 +1,9 @@
 # 05 · 持久化层
 
 > Zero-Core 是"本地优先"系统。用户数据主要落在 `~/.zero-core/` 下的几个文件里:**主库
-> `sessions.db`**(`SessionDB` 持有,better-sqlite3 单连接) + **Wiki 磁盘镜像树** `wiki/`
+> `db/core.db`**(`CoreDatabase` 持有,better-sqlite3 单连接) + **Wiki 磁盘镜像树** `wiki/`
 > (v0.8,正文 markdown,见 06 §2.5) + 一组旧版 JSON 文件(迁移后改 `.migrated.bak`)。本文
-> 剖析 sessions.db 这张表图谱,并标注哪些表"不在主库 / 不进 db-migration"。
+> 剖析 db/core.db 这张表图谱,并标注哪些表"不在主库 / 不进 db-migration"。
 >
 > v0.8 后续清理:旧的向量库 `knowledge.db`(`kb_chunks`)、`kb_entries`、以及 Gen1
 > `MemoryNodeStore` 的 4 张表(`memory_nodes`/`memory_subjects`/`memory_edges`/
@@ -14,7 +14,7 @@
 
 ```
 ~/.zero-core/
-├── sessions.db            ← 主数据库 (SessionDB,better-sqlite3,§2 全部表 ≈25 张 = 批 A db-migration 管理 23 张 [5 会话核心 + 4 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 2 张 [kv_store + extraction_cursors + tool_telemetry 中 db-migration 未管的];v0.8 已 DROP memory_entities/memory_relations + memory_nodes/_subjects/_edges/_fts + kb_entries/kb_chunks;§2 顶部"表计数的口径"块有详细切分)
+├── db/core.db            ← 主数据库 (CoreDatabase,better-sqlite3,§2 全部表 ≈25 张 = 批 A db-migration 管理 23 张 [5 会话核心 + 4 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 2 张 [kv_store + extraction_cursors + tool_telemetry 中 db-migration 未管的];v0.8 已 DROP memory_entities/memory_relations + memory_nodes/_subjects/_edges/_fts + kb_entries/kb_chunks;§2 顶部"表计数的口径"块有详细切分)
 ├── webfetch/
 │   ├── cache/<hash>.json  ← URL 抓取缓存
 │   ├── results/<id>.json ← 大结果/binary 持久化
@@ -48,7 +48,7 @@
 
 证据：`src/core/config.ts:233` `ZERO_CORE_DIR = process.env.ZERO_CORE_DIR ?? join(homedir(), ".zero-core")`；迁移路径见 `src/server/db-migration.ts:130-218`(旧 JSON 迁移) + `:653-897`(v0.8 工作流域表 DDL)。
 
-## 2. SQLite Schema（sessions.db 实际 ≈31 张表 = 批 A db-migration 管理 24 张 [5 会话核心 + 5 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 7 张 [4 memory_* (MemoryNodeStore) + kv_store + extraction_cursors + tool_telemetry];另有 1 张 kb_chunks 在独立 knowledge.db。v0.8 清理僵尸 MemoryStore 时已 DROP `memory_entities` / `memory_relations` 2 表,见 §2.2 末)
+## 2. SQLite Schema（db/core.db 实际 ≈31 张表 = 批 A db-migration 管理 24 张 [5 会话核心 + 5 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 7 张 [4 memory_* (MemoryNodeStore) + kv_store + extraction_cursors + tool_telemetry]。v0.8 清理僵尸 MemoryStore 时已 DROP `memory_entities` / `memory_relations` 2 表,见 §2.2 末。**`kb_chunks` 表及其独立 `knowledge.db` 已 RETIRED (plan-00 §5)** —— 由 `runMigrations` `DROP IF EXISTS`，`knowledge.db` 文件由 `DatabaseManager.open()` 删除；不再计入任何活动表 tally。详见 §2.3 历史说明）
 
 > v0.8 落地后,持久化层从"会话核心 + 配置/记忆"扩展为"会话核心 + 项目/需求/工作流 + cron/wiki
 > 副本"。本节按"会话核心 → 旧业务实体 → v0.8 工作流域 → 构造自建(不进 db-migration)"四组分别列出。
@@ -66,9 +66,9 @@
 > 标注)。**所以 memory_* 现在只剩 `MemoryNodeStore` 的 4 张**(nodes/subjects/edges/fts),
 > 总表数从 ≈33 降到 **≈31**(批 B 自建表从 9 张降到 7 张)。本节计数全部按这个新口径更正。
 >
-> **正确口径**:`sessions.db` 的表分两批管理 ——
+> **正确口径**:`db/core.db` 的表分两批管理 ——
 > **批 A · db-migration.ts 管理**(对应 §4.2 迁移机制的 5 阶段,共 24 张):
-> 阶段 1 SessionDB `initSchema()` 4 张(sessions/messages/steps/tool_executions；
+> 阶段 1 CoreDatabase `initSchema()` 4 张(sessions/messages/steps/tool_executions；
 > 原 `turns` 表已 rename 为 `steps`、`turn_state` 表已 DROP 并入 `sessions`——见 §2.1,
 > 见 §2.1)+ 阶段 2 显式 `db.exec CREATE TABLE IF NOT EXISTS` 14 张(全部 v0.8 工作流域表,
 > 见 §2.2b)+ 阶段 3 通过 `new SqliteStore(...)` 构造时自动 `CREATE TABLE` 5 张(agents /
@@ -83,10 +83,12 @@
 > (~~`memory_entities` + `memory_relations`~~ —— ~~`memory-store.ts:97/104`~~ 已删:见下文 v0.8
 > 清理说明。)
 >
-> 此外 `kb_chunks` 表**根本不在 sessions.db**,而在独立的 `knowledge.db`(§2.3),不要把它
-> 算进 sessions.db 的表数。06 §2.7 "三套知识系统对比矩阵"有跨库横向对照。
+> 此外 `kb_chunks` 表及其独立 `knowledge.db` **已 RETIRED (plan-00 §5)** —— 表由
+> `runMigrations` `DROP IF EXISTS`，文件由 `DatabaseManager.open()` 删除；既不在 db/core.db，
+> 也不再以任何形式存在。不要把它算进 db/core.db 或任何活动库的表数。详见 §2.3 历史说明 +
+> 06 §2.7 "三套知识系统对比矩阵"。
 
-### 2.1 会话 / 消息核心（SessionDB，src/server/session-db.ts）
+### 2.1 会话 / 消息核心（CoreDatabase，src/server/core-database.ts）
 
 #### `sessions`
 ```sql
@@ -272,31 +274,30 @@ JSON 前身)。Store 类多数用 `SqliteStore<T>` 反射 CRUD(见 §3),**两个
 **两个并行的 wiki 系统** —— 旧 `kb_*` 走嵌入向量检索(RAG),新 `project_wiki` 走磁盘镜像树
 + archivist 摘要(见 06 §2)。两者不互转。
 
-### 2.3 KB chunks —— **独立 SQLite 文件 `knowledge.db`**（⚠️ 已退役）
+### 2.3 KB chunks —— **独立 SQLite 文件 `knowledge.db`**（⚠️ RETIRED plan-00 §5）
 
-> **v0.8 后续清理:整条退役**。KB 子系统(向量 RAG)已移除:`kb_chunks` + `kb_entries` 表由
-> `runMigrations` `DROP IF EXISTS`,`knowledge.db` 不再产生,`KbDB` / `kb-*` 服务端代码删除。
-> 知识/记忆统一以 `project_wiki` wiki 树承载(06 §2)。本节以下为历史描述,保留备查。
+> **RETIRED (plan-00 §5)**：知识库向量 RAG 子系统已整体退役。`kb_chunks` + `kb_entries`
+> 表由 `runMigrations` `DROP IF EXISTS`；`KbDB` / `KbStore` / `kb-*` 服务端代码已删除；
+> `knowledge.db` 文件本身由 `DatabaseManager.open()` 在布局 bootstrap 之前通过
+> `deleteRetiredKnowledgeDb()` **删除**（精确白名单：`knowledge.db` + `-wal` + `-shm`，
+> 不备份、不导入、不 glob）。知识/记忆统一以 `project_wiki` 磁盘镜像树承载（见 06 §2）。
+>
+> 以下内容为**历史描述，保留备查**（解释为何曾经独立成库）；这些代码路径与文件已不在
+> 仓库中，不再属于活动架构。
 
-> ⚠️ v0.8 更正:旧版本节写"KbDB 也使用同一个 db.sqlite"是**错的**。`KbDB` 在自己的构造函数里
-> `new Database(path)` 开了一条**独立连接**,指向 `~/.zero-core/knowledge.db`
-> (`src/server/kb-db.ts:46-51`),与 `sessions.db` 物理隔离。这个事实在 06 §2.7 的"三套知识
-> 系统对比矩阵"里已系统化讲清,本节同步更正。
+**为什么曾经独立成库**（历史背景）：每行 `kb_chunks` 都带一个 `embedding` BLOB（Float32Array
+序列化，典型几百到几千字节），规模大、写入频繁（kb-ingest 流式分块）。如果塞进 `db/core.db`，
+会拖慢主库的 WAL checkpoint（主库存的是 sessions/turns/messages 这类小行高频读写的会话核心
+数据），也会让备份/导出体积膨胀。所以 `kb_chunks` 故意隔离在 `knowledge.db`，主库只留
+`kb_entries` 元数据（`kb-store.ts:51` 的 `SqliteStore` 走 `sessionDB.getDb()` —— 那张表**在**
+db/core.db，只是行里不存向量）。
 
-**为什么独立成库**:每行 `kb_chunks` 都带一个 `embedding` BLOB(Float32Array 序列化,典型几百到
-几千字节),规模大、写入频繁(kb-ingest 流式分块)。如果塞进 `sessions.db`,会拖慢主库的
-WAL checkpoint(主库存的是 sessions/turns/messages 这类小行高频读写的会话核心数据),也会让
-备份/导出体积膨胀。所以 `kb_chunks` 故意隔离在 `knowledge.db`,主库只留 `kb_entries` 元数据
-(`kb-store.ts:51` 的 `SqliteStore` 走 `sessionDB.getDb()` —— 那张表**在** sessions.db,
-只是行里不存向量)。
-
-建表机制(关键维护信息):**`kb_chunks` 不进 `db-migration.ts`**(`grep "kb_chunks" db-migration.ts`
-零命中),而是由 `KbDB.initSchema()`(`kb-db.ts:56-69`)在构造时 `CREATE TABLE IF NOT EXISTS`
-自建 —— 与 `memory_*` 表(§2.2 末"构造自建表"块)是同一类"store 自己管 schema"模式。改它的
-schema 要去 `kb-db.ts`,不要去 `db-migration.ts`。
+历史建表机制（已删除，仅作参考）：**`kb_chunks` 不进 `db-migration.ts`**，而是由
+`KbDB.initSchema()`（`kb-db.ts:56-69`，**文件已删**）在构造时 `CREATE TABLE IF NOT EXISTS`
+自建。改它的 schema 曾经要去 `kb-db.ts` —— 该文件已不存在。
 
 ```sql
--- kb-db.ts:56-69,knowledge.db 内
+-- 历史-schema（kb-db.ts:56-69，knowledge.db 内）—— 文件已删除，仅供历史参考
 CREATE TABLE IF NOT EXISTS kb_chunks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   kb_id TEXT NOT NULL,
@@ -311,7 +312,10 @@ CREATE INDEX IF NOT EXISTS idx_kb_chunks_kb ON kb_chunks(kb_id);
 CREATE INDEX IF NOT EXISTS idx_kb_chunks_file ON kb_chunks(kb_id, file_path);
 ```
 
-`embedding` 列是 BLOB —— Float32Array 直接序列化。`getAllChunksForSearch()` 加载所有 chunks 计算 cosine 相似度（纯 JS 循环,见 06 §2.7 检索方式列）。跨库关联:`kb_entries.id`(sessions.db) ↔ `kb_chunks.kb_id`(knowledge.db),应用层 join,SQL 层无法直接联表。
+`embedding` 列曾是 BLOB —— Float32Array 直接序列化。`getAllChunksForSearch()` 加载所有 chunks
+计算 cosine 相似度（纯 JS 循环，见 06 §2.7 检索方式列）。跨库关联：`kb_entries.id`
+（db/core.db） ↔ `kb_chunks.kb_id`（knowledge.db），应用层 join，SQL 层无法直接联表 ——
+**这些代码路径与表均已退役删除**。
 
 ### 2.4 KV store
 
@@ -360,9 +364,10 @@ insertFtsStmt(双保险,即使 FTS5 外部内容表本应自动同步),`deleteNo
 > crons.agent_id` 与 `sessions.context_project_id`(v0.8 D-B)弱关联。
 >
 > **读图注意(物理分布)**:图里的节点是逻辑关系,不反映物理库边界。具体地:① `KB_CHUNKS` 节点
-> **不在 sessions.db**,而在独立的 `knowledge.db`(§2.3);`KB_ENTRIES ||--o{ KB_CHUNKS` 那条
-> 边是**跨库应用层 join**(SQL 层无法直接联表)。② `MEMORY_NODES` / `MEMORY_SUBJECTS` /
-> `MEMORY_EDGES` / `MEMORY_NODES_FTS` 节点虽然在 sessions.db 里,但它们**不进 db-migration**,
+> 及其独立 `knowledge.db` **已 RETIRED (plan-00 §5)** —— 表 DROP，文件删除；ER 图里
+> `KB_ENTRIES ||--o{ KB_CHUNKS` 那条边是**历史跨库应用层 join**，对应代码已删（详见 §2.3
+> 历史说明）。② `MEMORY_NODES` / `MEMORY_SUBJECTS` /
+> `MEMORY_EDGES` / `MEMORY_NODES_FTS` 节点虽然在 db/core.db 里,但它们**不进 db-migration**,
 > 由 `MemoryNodeStore.init()` 构造自建(§2.2 末)。这两类例外都已在对应小节标出,此处不再画
 > 物理库边界以免图过载。
 
@@ -660,12 +665,12 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 - JSON 列没有 schema 校验，存入任意结构。
 - 没有"软删除"机制。
 
-## 4. SessionDB — 会话核心(不是业务核心)
+## 4. CoreDatabase — 会话核心(不是业务核心)
 
-`src/server/session-db.ts` 当前约 960 行(v0.8 后从 ~850 长到 960),定位是**会话核心 + DB lifecycle + 内核 store 工厂**,
+`src/server/core-database.ts` 当前约 960 行(v0.8 后从 ~850 长到 960),定位是**会话核心 + DB lifecycle + 内核 store 工厂**,
 **不是**全业务 store 的聚合根。它的职责被刻意收窄:
 
-#### 4.0.1 SessionDB 自己持有的表(5 张,全部在 `initSchema()` 里 `CREATE TABLE IF NOT EXISTS`)
+#### 4.0.1 CoreDatabase 自己持有的表(5 张,全部在 `initSchema()` 里 `CREATE TABLE IF NOT EXISTS`)
 
 | 表 | 角色 | 写入入口 |
 |----|------|---------|
@@ -675,12 +680,12 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 | `turn_state` | durable execution 检查点(Step 2D:`last_completed_step_seq` step 级) | `createTurnState` / `updateTurnPhase` / `updateLastCompletedStep` |
 | `tool_executions` | 会话级工具调用日志(旧版,见 §2.1 与 §11.2 关于与 `tool_usage` 重叠的讨论) | `recordToolExecution` |
 
-#### 4.0.2 SessionDB 直接聚合的 store(v0.8 清理 MemoryStore 后剩 4 个,分两批)
+#### 4.0.2 CoreDatabase 直接聚合的 store(v0.8 清理 MemoryStore 后剩 4 个,分两批)
 
-`SessionDB` 在构造函数里 **eager** 实例化 2 个内核 store(KeyValueStore + MemoryNodeStore;
+`CoreDatabase` 在构造函数里 **eager** 实例化 2 个内核 store(KeyValueStore + MemoryNodeStore;
 ~~MemoryStore~~ 已随 v0.8 僵尸清理删除),在 v0.8 (M5) 又加了 2 个 **lazy** store:
 
-> ⚠️ **更正**:本文此前写"6 个,分两批 + 1 个全局 wiki store 入口",这是**错的**。`WikiStore`(`wiki-node-store.ts:327` 的 `WikiStore` 类)在 `server/index.ts:122` 以 `wikiStoreGlobal = new WikiStore(sessionDB)` **独立 new** —— SessionDB 只是被当 `getDb()` 提供者传进去,本身**不**持有 `WikiStore` 字段、不暴露 getter(在 `session-db.ts` 里 grep `WikiStore` 零命中)。`WikiStore` 与 §4.0.3 的 9 个工作流域 store 同属"在 server/index.ts 独立 new、不挂 SessionDB"那一类,只是它实例化得更早(必须在 hooks 注册前,以便 M5 抽取器拿到 writer)。详见 §4.0.3 与 [02-module-structure.md §4.1.1](02-module-structure.md)。
+> ⚠️ **更正**:本文此前写"6 个,分两批 + 1 个全局 wiki store 入口",这是**错的**。`WikiStore`(`wiki-node-store.ts:327` 的 `WikiStore` 类)在 `server/index.ts:122` 以 `wikiStoreGlobal = new WikiStore(sessionDB)` **独立 new** —— CoreDatabase 只是被当 `getDb()` 提供者传进去,本身**不**持有 `WikiStore` 字段、不暴露 getter(在 `core-database.ts` 里 grep `WikiStore` 零命中)。`WikiStore` 与 §4.0.3 的 9 个工作流域 store 同属"在 server/index.ts 独立 new、不挂 CoreDatabase"那一类,只是它实例化得更早(必须在 hooks 注册前,以便 M5 抽取器拿到 writer)。详见 §4.0.3 与 [02-module-structure.md §4.1.1](02-module-structure.md)。
 
 | store | 实例化时机 | 用途 | getter |
 |-------|-----------|------|--------|
@@ -690,16 +695,16 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 | `ExtractionCursorStore` | **lazy**(v0.8 M5,首次 `getExtractionCursorStore()` 才 new) | extractor A 增量游标(见 §2.13b) | `getExtractionCursorStore()` |
 | `TelemetryStore` | **lazy**(v0.8 M5) | extractor B 独立遥测写入 | `getTelemetryStore()` |
 
-> lazy 是有意为之 —— 这样不碰 M5 路径的代码(如 compression engine 单测)不必为这两个 store 付初始化成本;它们的两张表(`extraction_cursors` / `tool_telemetry`)由各自构造函数 `CREATE TABLE IF NOT EXISTS` 自建,**故意不进 `db-migration.ts` 的 `*_COLUMNS` 数组**(注释 session-db.ts:37-43 说明)。
+> lazy 是有意为之 —— 这样不碰 M5 路径的代码(如 compression engine 单测)不必为这两个 store 付初始化成本;它们的两张表(`extraction_cursors` / `tool_telemetry`)由各自构造函数 `CREATE TABLE IF NOT EXISTS` 自建,**故意不进 `db-migration.ts` 的 `*_COLUMNS` 数组**(注释 core-database.ts:37-43 说明)。
 
-#### 4.0.3 SessionDB **不**聚合 v0.8 工作流域 store —— 关键边界
+#### 4.0.3 CoreDatabase **不**聚合 v0.8 工作流域 store —— 关键边界
 
 v0.8 (M0~M3) 引入的 **14 张工作流域表**(`projects` / `project_wiki` / `wiki_scan_cursors` /
 `requirements` ×3(主表+history+messages)/ `task_steps` / `crons` / `cron_runs` / `project_jobs`
 / `orchestrate_plans` + `orchestrate_manifests` / `tool_usage` / `tool_configs`,见 §2.2b)
 对应的 Store **全部在 `src/server/index.ts:148-171` 里独立 `new`**(显式 new 的 Store 实例数
 是 9 个,但其中 `RequirementStore` 内部聚合了 historyStore + messageStore 两个内部
-`SqliteStore` —— 所以 9 个 store 实例映射到 14 张表),不挂在 `SessionDB` 上:
+`SqliteStore` —— 所以 9 个 store 实例映射到 14 张表),不挂在 `CoreDatabase` 上:
 
 ```typescript
 // src/server/index.ts:159-171
@@ -715,24 +720,24 @@ const projectJobStore    = new ProjectJobStore(sessionDB);
 ```
 
 这些 Store 全部继承 `SqliteStore<T>`,构造时只接 `sessionDB` 一个参数 —— `SqliteStore` 的构造函数
-(`sqlite-store.ts:43-67`)从 `sessionDB.getDb()` 拿底层 `Database.Database` 句柄,**不依赖 SessionDB 的任何
-聚合关系**。换句话说:`SessionDB` 在这里降级为"DB 句柄 + 5 张自持表 + 5 个内核 store"的提供者,
+(`sqlite-store.ts:43-67`)从 `sessionDB.getDb()` 拿底层 `Database.Database` 句柄,**不依赖 CoreDatabase 的任何
+聚合关系**。换句话说:`CoreDatabase` 在这里降级为"DB 句柄 + 5 张自持表 + 5 个内核 store"的提供者,
 v0.8 工作流域 store(以及 §4.0.2 更正块提到的 `WikiStore`)把它当 **`getDb()` 提供者** 用,而不是当父聚合根。
 
 **这个边界是 v0.8 刻意的取舍**:
-- SessionDB 仍是会话核心(sessions/messages/turns/turn_state/tool_executions)的唯一权威,会话域不会
+- CoreDatabase 仍是会话核心(sessions/messages/turns/turn_state/tool_executions)的唯一权威,会话域不会
   被工作流域的写入拖累(如 cron 后台写 `cron_runs` 不会撞 session 主路径)。
-- v0.8 工作流域 store 各自独立 new,各自管自己的表与索引,新增 store 不必改 SessionDB。
+- v0.8 工作流域 store 各自独立 new,各自管自己的表与索引,新增 store 不必改 CoreDatabase。
 - 代价是 `server/index.ts` 的启动序列手动编排 12+ 个 store —— 没有统一的 store registry(见 §11.2)。
 
 #### 4.0.4 旧叙事更正
 
-此前本文写"SessionDB 持有 KeyValueStore / MemoryStore / MemoryNodeStore **4 个独立的存储后端**"。
+此前本文写"CoreDatabase 持有 KeyValueStore / MemoryStore / MemoryNodeStore **4 个独立的存储后端**"。
 两个问题:① 计数已过时(v0.8 M5 加了 2 个 lazy store → 实际 5 个,加上 §4.0.3 提到的 v0.8 工作流域
-store 并不被 SessionDB 聚合,所以"4 个后端"既漏了新 store 又误把工作流域 store 算进来);
-② 更根本的是它把 SessionDB 描述成"全业务聚合根",而 v0.8 已经把它降级为会话核心 + DB 句柄提供者
+store 并不被 CoreDatabase 聚合,所以"4 个后端"既漏了新 store 又误把工作流域 store 算进来);
+② 更根本的是它把 CoreDatabase 描述成"全业务聚合根",而 v0.8 已经把它降级为会话核心 + DB 句柄提供者
 (§4.0.3)。**v0.8 后续修正**:僵尸 `MemoryStore` 已被 master 本批删除(见 §4.0.2),
-所以当前 SessionDB 直接聚合的 store 实际是 **4 个**(KeyValueStore + MemoryNodeStore + 2 个
+所以当前 CoreDatabase 直接聚合的 store 实际是 **4 个**(KeyValueStore + MemoryNodeStore + 2 个
 v0.8 M5 lazy store),不再是 5 个。本节重写以反映这层架构演变。
 
 ### 4.1 关键不变量
@@ -749,7 +754,7 @@ v0.8 M5 lazy store),不再是 5 个。本节重写以反映这层架构演变。
 > "DDL 应下沉各 store"的讨论)。下面按实际 5 个阶段重写,并把 v0.8 表 DDL 单独列出来(原叙事只覆盖旧 JSON 迁移,
 > 完全漏了 14 张 v0.8 表是怎么被创建的)。
 
-`runMigrations(sessionDB)` 在 `SessionDB` 构造完(`initSchema()` 跑过、内核 5 张表 + 内核 store 就绪)之后、
+`runMigrations(sessionDB)` 在 `CoreDatabase` 构造完(`initSchema()` 跑过、内核 5 张表 + 内核 store 就绪)之后、
 任何 `SqliteStore` 工作流域 store 构造之前**启动期必跑一次**。它分 5 个阶段:
 
 #### 阶段 1:列补齐(`safeAddColumn`,必须先于 SqliteStore 构造)
@@ -861,16 +866,21 @@ END;
 
 （同样有 `_ad` / `_au` 触发器保持 DELETE/UPDATE 同步）
 
-## 6. KbDB — 简单但够用的向量存储
+## 6. KbDB — ~~简单但够用的向量存储~~ **RETIRED (plan-00 §5)**
 
-`src/server/kb-db.ts:43-128`：
+> **本节整体退役**。`src/server/kb-db.ts` 文件已删除，`kb_chunks` 表由 `runMigrations`
+> `DROP IF EXISTS`，`knowledge.db` 文件由 `DatabaseManager.open()` 在布局 bootstrap 前
+> 通过 `deleteRetiredKnowledgeDb()` 删除。以下内容为**历史描述，保留备查**，不再描述活动
+> 架构。知识/记忆统一以 `project_wiki` 磁盘镜像树承载（见 06 §2）。
+
+**历史信息**（`src/server/kb-db.ts:43-128`，**文件已删**）：
 
 - 表：`kb_chunks`（id / kb_id / file_path / chunk_index / content / **embedding BLOB** / token_count / created_at）
 - 写入：批量 insert in transaction
 - 删除：按 `kb_id + file_path` 或按 `kb_id`
 - 搜索：`getAllChunksForSearch()` + 客户端 cosine
 
-**架构师评估**：100K+ chunks 时全量加载+计算是性能瓶颈。当前没有 HNSW / IVF 索引。详见 ADR-007。
+**架构师评估（历史）**：100K+ chunks 时全量加载+计算是性能瓶颈。当前没有 HNSW / IVF 索引。详见 ADR-007。
 
 ## 7. KeyValueStore — 灵活补丁
 
@@ -932,8 +942,8 @@ Prepared statements 在构造函数中缓存，热路径 O(1) SQL 解析。
 
 ## 9. 备份与一致性
 
-- **没有**自动备份机制。用户数据分散在 `~/.zero-core/sessions.db`(主库)+ `knowledge.db`(向量库)+ `wiki/`(磁盘镜像树)+ 旧 JSON,用户自己备份整个 `~/.zero-core/` 目录最稳妥(只复制 `sessions.db` 会丢 wiki 正文 + kb 向量)。
-- **WAL 模式已启用**：`session-db.ts:56` 和 `kb-db.ts:52` 均已设置 `db.pragma("journal_mode = WAL")`。
+- **没有**自动备份机制。用户数据分散在 `~/.zero-core/db/core.db`(主库) + `wiki/`(磁盘镜像树) + 旧 JSON（`knowledge.db` 向量库已在 plan-00 §5 退役删除，不再属于活动数据）；用户自己备份整个 `~/.zero-core/` 目录最稳妥（只复制 `db/core.db` 会丢 wiki 正文）。
+- **WAL 模式已启用**：`core-database.ts:56` 已设置 `db.pragma("journal_mode = WAL")`（`kb-db.ts:52` 引用为历史——该文件已在 plan-00 §5 删除）。
 - **事务粒度**：`saveTurn` 用 transaction 包裹整批 message 写入。`upsertNodes` 同样事务化。其他大多数写入是单条。
 
 ### 9.1 持久化写入路径
@@ -946,7 +956,7 @@ flowchart LR
     B -->|StepEnd| T2[turn-hooks.ts<br/>persistAllSteps + usage]
     B -->|TurnEnd| T3[turn-hooks.ts<br/>safety-net + 闭合 turn_group]
     B -->|PostToolUse / TurnEnd| T4[durable-hooks.ts<br/>turn_state phase + last_completed_step_seq]
-    T0 --> DB[(SQLite sessions.db · turns 表 step 行)]
+    T0 --> DB[(SQLite db/core.db · turns 表 step 行)]
     T1 --> DB
     T2 --> DB
     T3 --> DB
@@ -987,13 +997,13 @@ flowchart LR
 - **turns 表作为 source of truth** —— UI 渲染与运行时计算走同一路径。
 - **KV store 替代散落的 JSON** —— 配置集中化，事务化。
 - **JSON → SQLite 迁移** —— 完整的"软启动"路径，幂等。
-- **WAL 模式已启用** —— `session-db.ts:56` 和 `kb-db.ts:52` 均已配置 WAL，崩溃恢复能力良好。
+- **WAL 模式已启用** —— `core-database.ts:56` 已配置 WAL，崩溃恢复能力良好（`kb-db.ts:52` 引用为历史——该文件已在 plan-00 §5 删除）。
 - **v0.8 工作流域表全部 DB-native**(无 JSON 前身),省掉了一类迁移路径,迁移代码集中在 §4.2 的 `CREATE TABLE IF NOT EXISTS` + `safeAddColumn` —— 升级 DB / fresh DB 走同一段代码,只有"补列"是幂等 ALTER。
 - **`db-migration.ts` 的 `safeAddIndex`** —— 索引创建与列添加走同一套幂等封装,避免升级 DB 遗漏 v0.8 索引(archivist 热路径 `idx_wiki_parent_path` 在两路 DB 上都有保障)。
 
 ### 11.2 可以改进的
 
-- **session-db.ts 太大**(当前约 960 行,v0.8 后从 ~850 长到 960)。可拆为:sessions / messages / turns / turn_state / tool_executions 各一个文件,并让 SessionDB 退化为 DB lifecycle + 内核 store factory。注意 §4.0.3:v0.8 工作流域 store(ProjectStore / RequirementStore / CronStore / ...)已经在 `server/index.ts` 独立 new、**不**挂在 SessionDB 上,所以拆分压力其实只剩会话核心 5 张表 + 5 个内核 store。
+- **core-database.ts 太大**(当前约 960 行,v0.8 后从 ~850 长到 960)。可拆为:sessions / messages / turns / turn_state / tool_executions 各一个文件,并让 CoreDatabase 退化为 DB lifecycle + 内核 store factory。注意 §4.0.3:v0.8 工作流域 store(ProjectStore / RequirementStore / CronStore / ...)已经在 `server/index.ts` 独立 new、**不**挂在 CoreDatabase 上,所以拆分压力其实只剩会话核心 5 张表 + 5 个内核 store。
 - **KB 搜索** 在大库时性能崩塌（O(M×D) 客户端循环）。
 - **message-store.ts** 是已迁移完成的历史遗留物，应删除或迁移到 `legacy/`。
 - **内存节点** 与 **旧版知识图谱** 同时存在——需要明确"哪个是默认"，否则用户数据写错地方。v0.8 又新增 `project_wiki`(第三套 wiki 系统)—— 目前它走 archivist 摘要 + 磁盘镜像树,**与 kb_*(RAG) / memory_nodes(主题聚合) 三路并存**,需要文档与 UI 明确各自适用场景(见 06 §2)。

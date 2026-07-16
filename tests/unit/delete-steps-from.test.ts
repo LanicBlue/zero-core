@@ -3,7 +3,7 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 直测 SessionDB.deleteStepsFromSeq:
+// 直测 CoreDatabase.deleteStepsFromSeq:
 //   1. 删 seq >= fromSeq,保留 seq < fromSeq(回档到该 user 消息之前)。
 //   2. step_count 重算 = 剩余行数;且因恒为尾部删除,剩余 [0..fromSeq-1] 连续,
 //      故 step_count = fromSeq = 下一个正确分配的 seq(无中段删除的碰撞风险)。
@@ -12,12 +12,12 @@
 //      则摘要/游标保留。
 //
 // ## 测试策略
-// 临时 SessionDB + runMigrations;appendStep 造 3 个 turn(user 的 turn_group ===
+// 临时 CoreDatabase + runMigrations;appendStep 造 3 个 turn(user 的 turn_group ===
 // seq),recordToolExecution 造带 turnSeq 的工具记录,saveSummaryAndAdvanceCursor
 // 造压缩游标;然后 deleteStepsFromSeq 并断言剩余。
 //
 // ## 输入
-// 临时目录 + 真 SessionDB。
+// 临时目录 + 真 CoreDatabase。
 //
 // ## 输出
 // Vitest 用例。
@@ -26,11 +26,11 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 
 let tmpDir: string;
-let db: SessionDB;
+let db: CoreDatabase;
 
 const SID = "sess-cascade";
 const AGENT = "a1";
@@ -38,7 +38,7 @@ const NOW = "2026-01-01T00:00:00.000Z";
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-delsteps-"));
-	db = new SessionDB(join(tmpDir, "sessions.db"));
+	db = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(db);
 });
 

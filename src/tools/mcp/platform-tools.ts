@@ -410,7 +410,7 @@ export function createPlatformTools(getAppVersion?: () => string) {
 				"- 'sessions' — parent-agent session observation. OMIT sessionId → LIST (one line per parent agent's active/main chat session: status dot · agent · sessionId(short) · running|waiting|idle · relative time · turns). PASS sessionId → DETAIL (that session's live task tree via getRuntimeTaskTree + last 3 steps' tool calls, no tokens). Useful to self-introspect what the platform's parent agents are doing right now.\n\n" +
 				"This tool is for platform self-introspection only. To read files, list directories, or search content, use Read / Glob / Grep instead.\n\n" +
 				"Three distinct paths reported across resources — do NOT confuse them:\n" +
-				"- info.paths.dataDir   — the .zero-core HOME: DB (sessions.db), logs/, app config. Persistent app data.\n" +
+				"- info.paths.dataDir   — the .zero-core HOME: DB (db/core.db), logs/, app config. Persistent app data.\n" +
 				"- info.paths.processCwd — where the process was LAUNCHED. In dev = the source repo root; in a packaged build = the exe install dir. NOT the agent's working dir.\n" +
 				"- config.workspaceDir   — the agent's FILE-WORKING directory (where agents read/write project files). This is the path you almost always want when talking about 'the workspace'.",
 			meta: { category: "management", isReadOnly: true },

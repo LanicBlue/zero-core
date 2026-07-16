@@ -11,7 +11,7 @@
 // ## 核心功能
 // 直接调 dispatchTool 验:全工具可达 / JSON 返 / session 工具降级 / 错误结构化。
 // ## 输入
-// 临时 SessionDB + 注册单例(setManagementService / setWikiStoreGlobal)。
+// 临时 CoreDatabase + 注册单例(setManagementService / setWikiStoreGlobal)。
 // ## 输出
 // Vitest 用例。
 
@@ -19,7 +19,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { WikiStore, setWikiStoreGlobal } from "../../src/server/wiki-node-store.js";
 import { ManagementService, setManagementService } from "../../src/server/management-service.js";
 import { AgentStore } from "../../src/server/agent-store.js";
@@ -32,13 +32,13 @@ import { dispatchTool, listDispatchableTools } from "../../src/server/tool-dispa
 import { runMigrations } from "../../src/server/db-migration.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let wikiStoreGlobal: WikiStore;
 let management: ManagementService;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub5-dispatch-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	wikiStoreGlobal = new WikiStore(sessionDB);
 	const agentStore = new AgentStore(sessionDB);
@@ -178,7 +178,7 @@ describe("sub-5 UI dispatcher", () => {
 
 describe("sub-6 dispatcher: Cron today + Platform providerUsage/queue", () => {
 	let sub6Tmp: string;
-	let sub6Db: SessionDB;
+	let sub6Db: CoreDatabase;
 	let cronStore: CronStore;
 	let cronRunStore: CronRunStore;
 	let agentStore: AgentStore;
@@ -187,7 +187,7 @@ describe("sub-6 dispatcher: Cron today + Platform providerUsage/queue", () => {
 
 	beforeEach(() => {
 		sub6Tmp = mkdtempSync(join(tmpdir(), "zero-sub6-dispatch-"));
-		sub6Db = new SessionDB(join(sub6Tmp, "sessions.db"));
+		sub6Db = new CoreDatabase(join(sub6Tmp, "core.db"));
 		runMigrations(sub6Db);
 		cronStore = new CronStore(sub6Db);
 		cronRunStore = new CronRunStore(sub6Db);

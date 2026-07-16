@@ -96,7 +96,7 @@ vi.mock("ai", () => ({
 let lastStickyFactory: ((c: GenCall) => string) | null = null;
 
 // IMPORT AFTER vi.mock (vitest hoists vi.mock above imports).
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { compressSession } from "../../src/server/compression-core.js";
 
 // ---------------------------------------------------------------------------
@@ -151,7 +151,7 @@ function assistantContent(blocks: any[]): string {
  * budget (so older turns become compressible). Returns the last assistant seq.
  */
 function seedTurn(
-	db: SessionDB,
+	db: CoreDatabase,
 	sessionId: string,
 	startSeq: number,
 	userText: string,
@@ -180,12 +180,12 @@ const COMPRESS_OPTS = {
 describe("compression-archive-simplify sub-3b: rolling summary + handoff + cap + prompt 可配", () => {
 	let tmpDir: string;
 	let dbPath: string;
-	let sessionDB: SessionDB | null = null;
+	let sessionDB: CoreDatabase | null = null;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub3b-"));
-		dbPath = join(tmpDir, "sessions.db");
-		sessionDB = new SessionDB(dbPath);
+		dbPath = join(tmpDir, "core.db");
+		sessionDB = new CoreDatabase(dbPath);
 		genCalls.length = 0;
 		genResponses.length = 0;
 		lastStickyFactory = null;
@@ -588,7 +588,7 @@ describe("compression-archive-simplify sub-3b: rolling summary + handoff + cap +
 
 	test("adversarial: replaceSummariesAndAdvanceCursor is ONE transaction (DELETE-all + INSERT-one + cursor-advance)", () => {
 		const src = readFileSync(
-			join(__dirname, "..", "..", "src", "server", "session-db.ts"),
+			join(__dirname, "..", "..", "src", "server", "core-database.ts"),
 			"utf-8",
 		);
 		// Slice from the method definition to the end of its body (next method

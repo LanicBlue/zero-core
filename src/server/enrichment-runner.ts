@@ -40,7 +40,7 @@
 import type { AgentService } from "./agent-service.js";
 import type { AgentStore } from "./agent-store.js";
 import type { TemplateStore } from "./template-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { ProjectStore } from "./project-store.js";
 import type { WikiStore } from "./wiki-node-store.js";
 import type { ProjectJobStore } from "./project-job-store.js";
@@ -54,7 +54,7 @@ export interface EnrichmentRunnerDeps {
 	agentService: AgentService;
 	agentStore: AgentStore;
 	templateStore: TemplateStore;
-	sessionDB: SessionDB;
+	sessionDB: CoreDatabase;
 	projectStore: ProjectStore;
 	wikiStore: WikiStore;
 	projectJobStore: ProjectJobStore;

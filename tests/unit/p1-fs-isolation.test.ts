@@ -11,7 +11,7 @@
 //   - shell command scan 抓 .zero-core/wiki/ 字面引用 + token-level 解析
 //
 // ## 输入
-// 直接调用 wiki-path-guard 的导出函数(无需 SessionDB)。
+// 直接调用 wiki-path-guard 的导出函数(无需 CoreDatabase)。
 //
 // ## 输出
 // Vitest 用例。

@@ -29,7 +29,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import {
 	WikiStore,
@@ -48,12 +48,12 @@ import type { WikiNode } from "../../src/shared/types.js";
 // ---------------------------------------------------------------------------
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let wiki: WikiStore;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub3-verifier-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	wiki = new WikiStore(sessionDB);
 	// wiki-tool 直读全局单例 (getWikiStoreGlobal); 注册本用例实例。

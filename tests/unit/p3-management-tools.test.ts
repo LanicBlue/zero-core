@@ -15,7 +15,7 @@
 //   - tool_usage 记录写入 (tool-factory recordToolUsage 经 ctx.toolUsageStore)
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + 真实 stores + mock delegateTask。
+// 临时 CoreDatabase (mkdtempSync) + 真实 stores + mock delegateTask。
 //
 // ## 输出
 // Vitest 用例。
@@ -29,7 +29,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { CronStore } from "../../src/server/cron-store.js";
@@ -54,7 +54,7 @@ import { runTool } from "./helpers/tool-decoupling-helpers.js";
 import type { CronSchedule } from "../../src/shared/types.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
 let cronStore: CronStore;
@@ -111,7 +111,7 @@ function parse(s: unknown): any {
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-p3-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);

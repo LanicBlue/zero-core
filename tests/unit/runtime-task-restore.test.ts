@@ -12,16 +12,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentService } from "../../src/server/agent-service.js";
 
 describe("delegated task restart restore (DB → runtime at loop creation)", () => {
 	let tmp: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 
 	beforeEach(() => {
 		tmp = mkdtempSync(join(tmpdir(), "zc-tasktree-"));
-		db = new SessionDB(join(tmp, "sessions.db"));
+		db = new CoreDatabase(join(tmp, "core.db"));
 	});
 	afterEach(() => {
 		db?.close();

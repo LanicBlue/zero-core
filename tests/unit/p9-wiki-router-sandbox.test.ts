@@ -18,7 +18,7 @@
 // 路径,使 P8 wiki 浏览器在 P9 后仍有完整的 REST-layer 单元覆盖。
 //
 // ## 输入
-// 真实 ProjectStore(临时 SessionDB) + 真实 WikiStore + Express 临时 server。
+// 真实 ProjectStore(临时 CoreDatabase) + 真实 WikiStore + Express 临时 server。
 //
 // ## 输出
 // Vitest 用例。
@@ -38,7 +38,7 @@ import { join } from "node:path";
 import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { WikiStore, WIKI_GLOBAL_ROOT_ID, projectSubtreeRootId } from "../../src/server/wiki-node-store.js";
@@ -88,7 +88,7 @@ async function post(port: number, path: string, body: any): Promise<{ status: nu
 
 describe("P9 wiki-router · createWorkspaceDocHandler sandbox", () => {
 	let tmpDir: string;
-	let sessionDB: SessionDB;
+	let sessionDB: CoreDatabase;
 	let projectStore: ProjectStore;
 	let app: Express;
 	let server: Server;
@@ -98,7 +98,7 @@ describe("P9 wiki-router · createWorkspaceDocHandler sandbox", () => {
 
 	beforeEach(async () => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-p9-wiki-"));
-		sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+		sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 		runMigrations(sessionDB);
 		projectStore = new ProjectStore(sessionDB);
 
@@ -185,7 +185,7 @@ describe("P9 wiki-router · createWorkspaceDocHandler sandbox", () => {
 
 describe("P9 wiki-router · createWikiRouter endpoints", () => {
 	let tmpDir: string;
-	let sessionDB: SessionDB;
+	let sessionDB: CoreDatabase;
 	let projectStore: ProjectStore;
 	let wiki: WikiStore;
 	let app: Express;
@@ -195,7 +195,7 @@ describe("P9 wiki-router · createWikiRouter endpoints", () => {
 
 	beforeEach(async () => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-p9-wiki-tree-"));
-		sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+		sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 		runMigrations(sessionDB);
 		projectStore = new ProjectStore(sessionDB);
 		wiki = new WikiStore(sessionDB);

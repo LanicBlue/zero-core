@@ -13,7 +13,7 @@
 //     project_wiki 表(无 P0 新列),用于 migration 双路径测试。
 //
 // ## 输入
-// - SessionDB / Database 实例
+// - CoreDatabase / Database 实例
 //
 // ## 输出
 // - 测试夹具构造函数
@@ -33,7 +33,7 @@
 //
 
 import type Database from "better-sqlite3";
-import type { SessionDB } from "../../../src/server/session-db.js";
+import type { CoreDatabase } from "../../../src/server/core-database.js";
 import type { AgentRecord } from "../../../src/shared/types.js";
 
 /**
@@ -45,7 +45,7 @@ import type { AgentRecord } from "../../../src/shared/types.js";
  * P2/P7 把所有 roleTag 调用方迁完后,本 helper 删除。
  */
 export function seedAgentWithRoleTag(
-	sessionDB: SessionDB,
+	sessionDB: CoreDatabase,
 	agentId: string,
 	roleTag: string,
 ): void {
@@ -54,7 +54,7 @@ export function seedAgentWithRoleTag(
 
 /** Sugar: create + seed in one call. Returns the created AgentRecord. */
 export function createAgentWithRoleTag(
-	sessionDB: SessionDB,
+	sessionDB: CoreDatabase,
 	agentStore: { create(input: Omit<AgentRecord, "id" | "createdAt" | "updatedAt">): AgentRecord },
 	input: { name: string; roleTag: string; systemPrompt?: string; workspaceDir?: string; toolPolicy?: AgentRecord["toolPolicy"] },
 ): AgentRecord {

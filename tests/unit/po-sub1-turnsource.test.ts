@@ -5,7 +5,7 @@
 // ## Core
 // Adversarial verification of docs/plan/platform-observability/acceptance-1.md
 // (8 cases). Independent from the implementer — asserts behavior against the
-// real SessionDB + the real entry-stamping path (loop.setTurnSource →
+// real CoreDatabase + the real entry-stamping path (loop.setTurnSource →
 // SessionConfig.source → durable-hooks TurnStart → createTurnState), not the
 // implementer's claims.
 //
@@ -36,7 +36,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import type { TurnSource } from "../../src/runtime/types.js";
 
 // ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "po-sub1-turnsource-"));
-		dbPath = join(tmpDir, "sessions.db");
+		dbPath = join(tmpDir, "core.db");
 	});
 
 	afterEach(() => {
@@ -86,8 +86,8 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 	// Case 1: column exists after migration AND on fresh DB
 	// -------------------------------------------------------------------------
 	describe("case 1 — column exists", () => {
-		test("fresh DB: sessions.source column present after SessionDB construction", () => {
-			const sessionDB = new SessionDB(dbPath);
+		test("fresh DB: sessions.source column present after CoreDatabase construction", () => {
+			const sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			try {
 				expect(sessionsColumns(raw)).toContain("source");
@@ -115,8 +115,8 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 			expect(sessionsColumns(raw0)).not.toContain("source");
 			raw0.close();
 
-			// 2. Re-open via SessionDB — initSchema's safeAddColumn must add it.
-			const sessionDB = new SessionDB(dbPath);
+			// 2. Re-open via CoreDatabase — initSchema's safeAddColumn must add it.
+			const sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			try {
 				expect(sessionsColumns(raw)).toContain("source");
@@ -126,7 +126,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 		});
 
 		test("fresh DB: source column has DEFAULT 'background' (NOT NULL)", () => {
-			const sessionDB = new SessionDB(dbPath);
+			const sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			try {
 				const col = (raw.pragma("table_info(sessions)") as Array<{ name: string; dflt_value: string | null; notnull: number }>)
@@ -166,7 +166,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 
 		for (const { label, source, expected } of cases) {
 			test(label, () => {
-				const sessionDB = new SessionDB(dbPath);
+				const sessionDB = new CoreDatabase(dbPath);
 				const raw = (sessionDB as any).db as Database.Database;
 				const sessionId = `sess-${label.replace(/\W+/g, "-")}`;
 				try {
@@ -191,7 +191,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 		}
 
 		test("case 6 — createTurnState default param (no source arg) lands on background", () => {
-			const sessionDB = new SessionDB(dbPath);
+			const sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			const sessionId = "sess-default-param";
 			try {
@@ -227,7 +227,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 			// Pre-migration scenario: a sessions row with phase='pending'
 			// (non-terminal) and source defaulting to 'background' via the
 			// column DEFAULT. We build a legacy DB without the source column,
-			// seed a pending sessions row, then re-open via SessionDB so
+			// seed a pending sessions row, then re-open via CoreDatabase so
 			// safeAddColumn adds source with DEFAULT 'background'.
 			const raw0 = new Database(dbPath);
 			raw0.exec(`
@@ -248,7 +248,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 			).run("2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
 			raw0.close();
 
-			const sessionDB = new SessionDB(dbPath);
+			const sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			try {
 				// Flip phase to 'pending' so recovery surfaces it (the legacy
@@ -286,7 +286,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 			).run("2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
 			raw0.close();
 
-			const sessionDB = new SessionDB(dbPath);
+			const sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			try {
 				raw.prepare("UPDATE sessions SET phase = 'pending' WHERE id = 'legacy-single'").run();
@@ -300,7 +300,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 		});
 
 		test("terminal pre-migration rows (completed/failed) are excluded from recovery", () => {
-			const sessionDB = new SessionDB(dbPath);
+			const sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			try {
 				// Seed two sessions with terminal phases.
@@ -374,7 +374,7 @@ describe("platform-observability sub-1 · turn_source marker (acceptance-1)", ()
 			//
 			// The unit-level invariant: createTurnState(source) writes exactly
 			// what it receives, and the default matches the column default.
-			const sessionDB = new SessionDB(dbPath);
+			const sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 			try {
 				for (const src of ["user", "work", "cron", "background"] as TurnSource[]) {

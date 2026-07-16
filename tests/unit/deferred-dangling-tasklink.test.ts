@@ -25,7 +25,7 @@
 //            WITHOUT re-invoking it (no new task row, sub-step history intact).
 //
 // ## Scope note (read-only DB)
-// Every SessionDB instance is created inside its own throwaway temp directory
+// Every CoreDatabase instance is created inside its own throwaway temp directory
 // (mkdtempSync under os.tmpdir()); the production ~/.zero-core/sessions.db is
 // never opened and never checkpointed.
 
@@ -33,7 +33,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 import { registerTaskControlHooks } from "../../src/runtime/hooks/task-control-hooks.js";
@@ -48,9 +48,9 @@ import type { SessionConfig, RuntimeProviderConfig, RuntimeCallbacks, AgentRunti
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeTempDB(): { db: SessionDB; dir: string } {
+function makeTempDB(): { db: CoreDatabase; dir: string } {
 	const dir = mkdtempSync(join(tmpdir(), "zero-2e-"));
-	const db = new SessionDB(join(dir, "sessions.db"));
+	const db = new CoreDatabase(join(dir, "core.db"));
 	runMigrations(db);
 	return { db, dir };
 }
@@ -58,7 +58,7 @@ function makeTempDB(): { db: SessionDB; dir: string } {
 /** Insert a raw sessions row with the given id (createSession mints its own
  *  uuid, but delegated_tasks has FKs on (parent_session_id, session_id), so we
  *  need rows with specific ids). */
-function seedSession(db: SessionDB, id: string, agentId: string, opts?: { parentSessionId?: string; sessionKind?: string; visibility?: string }): void {
+function seedSession(db: CoreDatabase, id: string, agentId: string, opts?: { parentSessionId?: string; sessionKind?: string; visibility?: string }): void {
 	const now = new Date().toISOString();
 	(db as unknown as { db: { prepare: (q: string) => { run: (...a: any[]) => void } } }).db.prepare(
 		"INSERT INTO sessions (id, agent_id, is_main, title, created_at, updated_at, context, context_project_id, context_workspace_dir, context_wiki_root_node_id, session_kind, parent_session_id, parent_task_id, visibility) " +
@@ -67,7 +67,7 @@ function seedSession(db: SessionDB, id: string, agentId: string, opts?: { parent
 }
 
 /** Parse persisted assistant step content into a block list. */
-function readAssistantBlocks(db: SessionDB, sessionId: string, turnGroup: number): any[] {
+function readAssistantBlocks(db: CoreDatabase, sessionId: string, turnGroup: number): any[] {
 	const blocks: any[] = [];
 	for (const r of db.getSteps(sessionId).filter((s) => s.turnGroup === turnGroup && s.role === "assistant")) {
 		try { blocks.push(...JSON.parse(r.content ?? "[]")); } catch { /* ignore */ }
@@ -80,7 +80,7 @@ function readAssistantBlocks(db: SessionDB, sessionId: string, turnGroup: number
 // ===========================================================================
 
 describe("Step 2E · A2: control-message deferred consume", () => {
-	let db: SessionDB;
+	let db: CoreDatabase;
 	let dir: string;
 	const sessionId = "2e-a2-sub";
 	const parentSessionId = "2e-a2-parent";
@@ -231,7 +231,7 @@ describe("Step 2E · A3: insert_now deferred dequeue", () => {
 // ===========================================================================
 
 describe("Step 2E · A4: dangling tool-call synthesis (persist truth + rebuild-safe)", () => {
-	let db: SessionDB;
+	let db: CoreDatabase;
 	let dir: string;
 	const sessionId = "2e-a4-sub";
 	const turnGroup = 700;
@@ -314,7 +314,7 @@ describe("Step 2E · A4: dangling tool-call synthesis (persist truth + rebuild-s
 // ===========================================================================
 
 describe("Step 2E · A5: tool-call ↔ task link + subagent resume", () => {
-	let db: SessionDB;
+	let db: CoreDatabase;
 	let dir: string;
 	const parentSessionId = "2e-a5-parent";
 

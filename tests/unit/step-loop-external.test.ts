@@ -19,7 +19,7 @@
 // Drives the REAL AgentLoop end-to-end (run() → executeStream → outer while).
 // provider-factory.resolveModel is mocked with an inline LanguageModelV2 model
 // (self-contained, mirrors tests/spike/step-loop-spike.test.ts shape) so we can
-// script per-call behavior (multi-step, throwOnCall). A throwaway SessionDB +
+// script per-call behavior (multi-step, throwOnCall). A throwaway CoreDatabase +
 // runMigrations isolates persistence; registerTurnHooks wires StepEnd so step
 // rows land in DB (lets A5 assert step 1 is persisted).
 //
@@ -42,7 +42,7 @@ vi.mock("../../src/runtime/provider-factory.js", () => ({
 	getMultimodal: () => false,
 }));
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 import { registerTurnHooks } from "../../src/runtime/hooks/turn-hooks.js";
@@ -145,7 +145,7 @@ function createMockModel(config: MockModelConfig, modelId = "mock-2c"): Language
 // ─── Test harness ─────────────────────────────────────────────────────────
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let loop: AgentLoop;
 let emitted: StreamEvent[];
 let hookEvents: Array<{ event: string; ctx: Record<string, unknown> }>;
@@ -194,7 +194,7 @@ function buildLoop(sessionId: string): { loop: AgentLoop; registry: HookRegistry
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-2c-step-loop-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	resolveModelMock.mockReset();
 	resolveModelMock.mockReturnValue(createMockModel({ steps: [[{ type: "finish" }]] }));

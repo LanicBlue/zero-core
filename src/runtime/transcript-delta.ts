@@ -13,7 +13,7 @@
 // 未来挂回 B 触发器时可复用)。
 //
 // ## 输入
-// - SessionDB(via db.getSteps)
+// - CoreDatabase(via db.getSteps)
 // - sessionId
 // - fromSeq(inclusive)/ toSeq(exclusive)
 //

@@ -15,13 +15,13 @@
 // src/server/ — 服务层，为 IPC 和 REST API 提供 MCP 配置存储
 //
 // ## 依赖
-// sqlite-store.ts、session-db.ts、shared/types.ts
+// sqlite-store.ts、core-database.ts、shared/types.ts
 //
 // ## 维护规则
 // 新增 MCP 配置字段需同步更新 COLUMNS 数组
 //
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { McpServerConfig } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
@@ -50,7 +50,7 @@ const COLUMNS: ColumnDef[] = [
 export class McpStore {
 	private store: SqliteStore<McpServerConfig>;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.store = new SqliteStore<McpServerConfig>(sessionDB.getDb(), "mcp_servers", COLUMNS);
 	}
 

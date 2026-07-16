@@ -6,7 +6,7 @@
 // 提示词模板持久化，管理预设模板。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - 模板数据
 //
 // ## 输出
@@ -22,7 +22,7 @@
 // - 新增字段时需更新列定义
 //
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { PromptTemplate } from "../shared/types.js";
 // (WORKFLOW_ROLES 已退役 —— Archivist 画廊种子 prompt/toolPolicy 内联于 mergeBuiltInTemplates)
 
@@ -918,7 +918,7 @@ const COLUMNS: ColumnDef[] = [
 export class TemplateStore {
 	private store: SqliteStore<PromptTemplate>;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.store = new SqliteStore<PromptTemplate>(sessionDB.getDb(), "templates", COLUMNS);
 
 		// Merge built-in templates

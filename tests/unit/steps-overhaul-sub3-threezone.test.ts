@@ -27,7 +27,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentSession } from "../../src/runtime/session.js";
 
 // ---------------------------------------------------------------------------
@@ -68,12 +68,12 @@ function toolResultText(part: any): string {
 describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", () => {
 	let tmpDir: string;
 	let dbPath: string;
-	let sessionDB: SessionDB | null = null;
+	let sessionDB: CoreDatabase | null = null;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub3-threezone-"));
-		dbPath = join(tmpDir, "sessions.db");
-		sessionDB = new SessionDB(dbPath);
+		dbPath = join(tmpDir, "core.db");
+		sessionDB = new CoreDatabase(dbPath);
 	});
 
 	afterEach(() => {
@@ -106,7 +106,7 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 		// compressSession now uses `replaceSummariesAndAdvanceCursor` exclusively
 		// (2-zone rolling summary — one row survives per session).
 		expect(typeof (sessionDB as any).saveSummaryAndAdvanceCursor).toBe("undefined");
-		expect((SessionDB as any).MAX_MESSAGE_SUMMARIES).toBeUndefined();
+		expect((CoreDatabase as any).MAX_MESSAGE_SUMMARIES).toBeUndefined();
 	});
 
 	test("LLM view with NO summaries + small history: everything is fresh tail, verbatim (no stubs)", () => {
@@ -316,7 +316,7 @@ describe("steps-overhaul sub-3: messages 引用模型 + LLM view 三区组装", 
 		for (const id of resultIds) expect(callIds.has(id), `tool-result ${id} has a paired call`).toBe(true);
 	});
 
-	test("replaceStepsFromMessages is DELETED (no longer on SessionDB)", () => {
+	test("replaceStepsFromMessages is DELETED (no longer on CoreDatabase)", () => {
 		// Sub-3 deleted the destructive "rebuild steps from compressed messages"
 		// path. The method must be gone.
 		expect(typeof (sessionDB as any).replaceStepsFromMessages).toBe("undefined");

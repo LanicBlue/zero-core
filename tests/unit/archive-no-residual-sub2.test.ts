@@ -16,7 +16,7 @@
 //   #4  顺序:archiveDelegatedSession 赋值在 `new AgentLoop` 之前(agent-loop.ts:340
 //        构造时读 config.archiveDelegatedSession)。
 //
-// 行为测试 (#5-#8) — real AgentService + real SessionDB on temp file:
+// 行为测试 (#5-#8) — real AgentService + real CoreDatabase on temp file:
 //   #5  sendProjectPrompt 建出的 loop 的 delegator.onTaskTerminal 非 undefined
 //        (Gap A 修复核心验证);实际 fire 后 svc.archiveDelegatedSession 被调。
 //   #6  createLoopForSession 建出的 loop 同样带 onTaskTerminal + 主 hook 集 +
@@ -44,7 +44,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // Module-level placeholders — populated in beforeEach after ZERO_CORE_DIR redirect.
-let SessionDBCtor: typeof import("../../src/server/session-db.js").SessionDB;
+let CoreDatabaseCtor: typeof import("../../src/server/core-database.js").CoreDatabase;
 let AgentServiceCtor: typeof import("../../src/server/agent-service.js").AgentService;
 let archiveMod: typeof import("../../src/server/archive-service.js");
 
@@ -54,13 +54,13 @@ const SRC = join(__dirname, "..", "..", "src", "server", "agent-service.ts");
 // helpers
 // ---------------------------------------------------------------------------
 
-/** Cast SessionDB to expose the private better-sqlite3 handle. */
-function rawDb(db: InstanceType<typeof SessionDBCtor>): import("better-sqlite3").Database {
+/** Cast CoreDatabase to expose the private better-sqlite3 handle. */
+function rawDb(db: InstanceType<typeof CoreDatabaseCtor>): import("better-sqlite3").Database {
 	return (db as unknown as { db: import("better-sqlite3").Database }).db;
 }
 
 /** Read sessions.archived straight from the row (defensive against future shape changes). */
-function archivedFlag(db: InstanceType<typeof SessionDBCtor>, sessionId: string): number | undefined {
+function archivedFlag(db: InstanceType<typeof CoreDatabaseCtor>, sessionId: string): number | undefined {
 	const row = rawDb(db).prepare("SELECT archived FROM sessions WHERE id = ?").get(sessionId) as { archived: number } | undefined;
 	return row?.archived;
 }
@@ -163,12 +163,12 @@ describe("[#1-#4] source-level invariants (archive-no-residual sub-2)", () => {
 });
 
 // ===========================================================================
-// #5 - #8: behavioral tests (real AgentService + real SessionDB)
+// #5 - #8: behavioral tests (real AgentService + real CoreDatabase)
 // ===========================================================================
 
-describe("[#5-#8] behavioral tests (real AgentService + real SessionDB)", () => {
+describe("[#5-#8] behavioral tests (real AgentService + real CoreDatabase)", () => {
 	let tmp: string;
-	let db: InstanceType<typeof SessionDBCtor>;
+	let db: InstanceType<typeof CoreDatabaseCtor>;
 
 	beforeEach(() => {
 		tmp = mkdtempSync(join(tmpdir(), "zero-archive-sub2-"));
@@ -187,7 +187,7 @@ describe("[#5-#8] behavioral tests (real AgentService + real SessionDB)", () => 
 
 	/** Import modules FRESH after vi.resetModules + ZERO_CORE_DIR redirect. */
 	async function freshImports(): Promise<void> {
-		({ SessionDB: SessionDBCtor } = await import("../../src/server/session-db.js"));
+		({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 		({ AgentService: AgentServiceCtor } = await import("../../src/server/agent-service.js"));
 		archiveMod = await import("../../src/server/archive-service.js");
 	}
@@ -234,7 +234,7 @@ describe("[#5-#8] behavioral tests (real AgentService + real SessionDB)", () => 
 
 	test("#5a: sendProjectPrompt path builds a loop whose delegator.onTaskTerminal is non-undefined", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const svc = new AgentServiceCtor(tmp, db);
 
 		const agentId = "lead-agent";
@@ -284,7 +284,7 @@ describe("[#5-#8] behavioral tests (real AgentService + real SessionDB)", () => 
 
 	test("#5b: actually firing delegator.fireOnTaskTerminal reaches svc.archiveDelegatedSession (Gap A behavior)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const svc = new AgentServiceCtor(tmp, db);
 
 		const agentId = "lead-agent-5b";
@@ -358,7 +358,7 @@ describe("[#5-#8] behavioral tests (real AgentService + real SessionDB)", () => 
 
 	test("#6: createLoopForSession-built loop has onTaskTerminal wired + main hooks + is registered in this.loops", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const svc = new AgentServiceCtor(tmp, db);
 
 		const agentId = "chat-agent";
@@ -420,7 +420,7 @@ describe("[#5-#8] behavioral tests (real AgentService + real SessionDB)", () => 
 
 	test("#7: fireSessionStart is called exactly once when a new loop is built (not duplicated)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const svc = new AgentServiceCtor(tmp, db);
 
 		const agentId = "fire-agent";
@@ -466,7 +466,7 @@ describe("[#5-#8] behavioral tests (real AgentService + real SessionDB)", () => 
 
 	test("#8a: chat path (recreateLoop) — pre-existing loop → buildAndRegisterLoop NOT called", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const svc = new AgentServiceCtor(tmp, db);
 
 		const agentId = "reuse-agent";
@@ -504,7 +504,7 @@ describe("[#5-#8] behavioral tests (real AgentService + real SessionDB)", () => 
 
 	test("#8b: sendProjectPrompt path — pre-existing loop → buildAndRegisterLoop NOT called (and fireSessionStart not re-fired)", async () => {
 		await freshImports();
-		db = new SessionDBCtor(join(tmp, "sessions.db"));
+		db = new CoreDatabaseCtor(join(tmp, "core.db"));
 		const svc = new AgentServiceCtor(tmp, db);
 
 		const agentId = "reuse-agent-8b";

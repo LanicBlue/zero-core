@@ -7,7 +7,7 @@
 // 非实施者)。驱动真实的 session-router POST /:agentId/:sessionId/archive
 // HTTP handler(Express + node:http),mock agentService 在 router 边界上
 // 的 4 个方法(teardownSessionForArchive / recreateLoop / archiveSession
-// InBackground / getDB),用真实 SessionDB 验证状态。
+// InBackground / getDB),用真实 CoreDatabase 验证状态。
 //
 //   #1  归档响应即时:< 500ms 返回,memory turn LLM(mock 2s)不阻塞响应。
 //   #2  新 session 立即可用:newSessionId === db.getMainSession(agentId).id;
@@ -46,7 +46,7 @@ import { beforeAll, afterAll, beforeEach, afterEach, describe, test, expect, vi 
 
 // Module-level placeholders — populated in beforeAll after ZERO_CORE_DIR redirect.
 let TMP = "";
-let SessionDBCtor: typeof import("../../src/server/session-db.js").SessionDB;
+let CoreDatabaseCtor: typeof import("../../src/server/core-database.js").CoreDatabase;
 let archiveMod: typeof import("../../src/server/archive-service.js");
 let createSessionRouterFn: typeof import("../../src/server/session-router.js").createSessionRouter;
 
@@ -54,7 +54,7 @@ beforeAll(async () => {
 	TMP = mkdtempSync(join(tmpdir(), "zero-sub1-archive-"));
 	process.env.ZERO_CORE_DIR = TMP;
 	vi.resetModules();
-	({ SessionDB: SessionDBCtor } = await import("../../src/server/session-db.js"));
+	({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 	archiveMod = await import("../../src/server/archive-service.js");
 	({ createSessionRouter: createSessionRouterFn } = await import("../../src/server/session-router.js"));
 });
@@ -107,7 +107,7 @@ async function request(port: number, method: string, path: string, body?: any): 
 // ---------------------------------------------------------------------------
 
 interface MockAgentService {
-	getDB: () => InstanceType<typeof SessionDBCtor>;
+	getDB: () => InstanceType<typeof CoreDatabaseCtor>;
 	recreateLoop: ReturnType<typeof vi.fn>;
 	teardownSessionForArchive: ReturnType<typeof vi.fn>;
 	/** archive-no-residual: SYNC-phase fast bookkeeping (kill+mark+delete). Mocked
@@ -120,7 +120,7 @@ interface MockAgentService {
 	_bgPromises: Promise<void>[];
 }
 
-function mockAgentService(db: InstanceType<typeof SessionDBCtor>): MockAgentService {
+function mockAgentService(db: InstanceType<typeof CoreDatabaseCtor>): MockAgentService {
 	let bgRunner: (sid: string) => Promise<void> = async () => { /* no-op */ };
 	const bgPromises: Promise<void>[] = [];
 	return {
@@ -145,22 +145,22 @@ function mockAgentService(db: InstanceType<typeof SessionDBCtor>): MockAgentServ
 }
 
 // ---------------------------------------------------------------------------
-// SessionDB helpers (copied from sub4-archive-flow.test.ts — same shape).
+// CoreDatabase helpers (copied from sub4-archive-flow.test.ts — same shape).
 // ---------------------------------------------------------------------------
 
 function assistantContent(text: string, pad = 2000): string {
 	return JSON.stringify([{ type: "text", text: text + " ".repeat(pad) }]);
 }
 
-function seedTurn(db: InstanceType<typeof SessionDBCtor>, sessionId: string, startSeq: number, userText: string, asstText: string): number {
+function seedTurn(db: InstanceType<typeof CoreDatabaseCtor>, sessionId: string, startSeq: number, userText: string, asstText: string): number {
 	const group = startSeq;
 	db.appendStep(sessionId, startSeq, group, "user", userText);
 	db.appendStep(sessionId, startSeq + 1, group, "assistant", assistantContent(asstText));
 	return startSeq + 1;
 }
 
-/** Cast SessionDB to expose the private `db` (better-sqlite3) for fixture inserts. */
-function rawDb(db: InstanceType<typeof SessionDBCtor>): import("better-sqlite3").Database {
+/** Cast CoreDatabase to expose the private `db` (better-sqlite3) for fixture inserts. */
+function rawDb(db: InstanceType<typeof CoreDatabaseCtor>): import("better-sqlite3").Database {
 	return (db as unknown as { db: import("better-sqlite3").Database }).db;
 }
 
@@ -168,7 +168,7 @@ function rawDb(db: InstanceType<typeof SessionDBCtor>): import("better-sqlite3")
 // Shared setup — fresh DB + mock agentService + Express app per test.
 // ---------------------------------------------------------------------------
 
-async function setupRouter(db: InstanceType<typeof SessionDBCtor>, svc: MockAgentService): Promise<{ app: Express; server: Server; port: number }> {
+async function setupRouter(db: InstanceType<typeof CoreDatabaseCtor>, svc: MockAgentService): Promise<{ app: Express; server: Server; port: number }> {
 	const app = express();
 	app.use(express.json());
 	app.use("/api/sessions", createSessionRouterFn({
@@ -185,14 +185,14 @@ async function setupRouter(db: InstanceType<typeof SessionDBCtor>, svc: MockAgen
 
 describe("sub-1 #1 + #2: HTTP archive responds < 500ms with main session id (not blocked by LLM)", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 	let svc: MockAgentService | null = null;
 	let server: Server | null = null;
 	let port = 0;
 
 	beforeEach(async () => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub1-sync-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 		svc = mockAgentService(sessionDB);
 		// Simulate the LLM-bound memory turn taking 2s in the BACKGROUND.
 		// The HTTP handler MUST respond before this resolves.
@@ -273,14 +273,14 @@ describe("sub-1 #1 + #2: HTTP archive responds < 500ms with main session id (not
 
 describe("sub-1 #3: background archive deletes old row + writes JSON at archives root", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 	let svc: MockAgentService | null = null;
 	let server: Server | null = null;
 	let port = 0;
 
 	beforeEach(async () => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub1-bg-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 		svc = mockAgentService(sessionDB);
 		// Wire the bg runner to invoke the REAL archive pipeline with a
 		// stub memoryTurnRunner (no AgentLoop / LLM — just exercises the
@@ -349,14 +349,14 @@ describe("sub-1 #3: background archive deletes old row + writes JSON at archives
 
 describe("sub-1 #4: memory turn uses temp loop (active loop evicted before bg memory turn)", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 	let svc: MockAgentService | null = null;
 	let server: Server | null = null;
 	let port = 0;
 
 	beforeEach(async () => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub1-temp-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 		svc = mockAgentService(sessionDB);
 		const setup = await setupRouter(sessionDB, svc);
 		server = setup.server;
@@ -451,14 +451,14 @@ describe("sub-1 #4: memory turn uses temp loop (active loop evicted before bg me
 
 describe("sub-1 #5: background archive failure does NOT surface to HTTP (200 + row stays archived=1)", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 	let svc: MockAgentService | null = null;
 	let server: Server | null = null;
 	let port = 0;
 
 	beforeEach(async () => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub1-fail-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 		svc = mockAgentService(sessionDB);
 		// Bg runner REJECTS — simulates a real archive failure (e.g. tmp write
 		// or rename failure during export). The router catches + logs.
@@ -533,11 +533,11 @@ describe("sub-1 #5: background archive failure does NOT surface to HTTP (200 + r
 
 describe("sub-1 #6: recoverInterruptedArchives — crash recovery covers bg-archive-stranded sessions", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 
 	beforeEach(() => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub1-recover-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 	});
 	afterEach(() => {
 		sessionDB?.close();
@@ -581,14 +581,14 @@ describe("sub-1 #6: recoverInterruptedArchives — crash recovery covers bg-arch
 
 describe("sub-1 #7: concurrent archive of same session — second is skipped (already-archived)", () => {
 	let testDir: string;
-	let sessionDB: InstanceType<typeof SessionDBCtor> | null = null;
+	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
 	let svc: MockAgentService | null = null;
 	let server: Server | null = null;
 	let port = 0;
 
 	beforeEach(async () => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub1-concurrent-"));
-		sessionDB = new SessionDBCtor(join(testDir, "sessions.db"));
+		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 		svc = mockAgentService(sessionDB);
 		const setup = await setupRouter(sessionDB, svc);
 		server = setup.server;

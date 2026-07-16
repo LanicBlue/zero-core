@@ -3,7 +3,7 @@
 		"src/main": "Electron 主进程：入口、BrowserWindow、IPC handler 注册（14 个领域文件）、模块就绪管理",
 		"src/preload": "Context Bridge：85 个 IPC 桥接方法 + 4 个事件订阅，连接 renderer ↔ main",
 		"src/runtime": "Agent 运行时：单 turn 编排（AgentLoop）、Provider 工厂、工具系统（bash/read/write/edit/grep/glob/web-search/todo）、MCP tool 桥接、sub-agent 委派",
-		"src/server": "持久化层：SQLite stores（10 个）、AgentService 全局调度、SessionManager 生命周期、MCP 客户端、知识库（向量 + embedding）、recovery",
+		"src/server": "持久化层：SQLite stores（10 个）、AgentService 全局调度、SessionManager 生命周期、MCP 客户端、DatabaseManager（plan-00 单一 DB 生命周期）、recovery",
 		"src/core": "共享基础设施：配置、常量、文件日志、context 管理、工具策略、hook 注册、默认 prompt",
 		"src/shared": "跨进程类型契约：IPC API 类型（85 channel）、业务模型（Agent/Provider/Session）、文件树类型"
 	},
@@ -172,7 +172,7 @@
 				"src/runtime/wiki-anchor-injection.ts",
 				"src/runtime/hooks/compression-trigger-hooks.ts",
 				"src/server/compression-core.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/default-prompts.ts"
 			],
 			"functions": [
@@ -355,7 +355,7 @@
 				"src/core/hook-registry.ts",
 				"src/core/hook-types.ts",
 				"src/runtime/types.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/compression-core.ts",
 				"src/runtime/provider-factory.ts",
 				"src/core/constants.ts",
@@ -424,7 +424,7 @@
 				"src/runtime/session-store-interface.ts",
 				"src/server/input-queue-store.ts",
 				"src/server/session-manager.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/core/logger.ts"
 			],
 			"functions": [
@@ -1164,7 +1164,7 @@
 			"imports": [
 				"src/server/agent-store.ts",
 				"src/server/agent-service.ts",
-				"src/server/session-db.ts"
+				"src/server/core-database.ts"
 			],
 			"functions": [
 				"src/server/agent-router.ts/createAgentRouter:28"
@@ -1259,7 +1259,7 @@
 				"src/runtime/agent-loop.ts",
 				"src/runtime/types.ts",
 				"src/runtime/provider-factory.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/session-volume.ts",
 				"src/server/input-queue-store.ts",
 				"src/server/mcp-manager.ts",
@@ -1383,7 +1383,7 @@
 			],
 			"imports": [
 				"src/server/sqlite-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts",
 				"src/core/config.ts"
 			],
@@ -1456,7 +1456,7 @@
 			"imports": [
 				"src/core/config.ts",
 				"src/core/logger.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts"
 			],
 			"functions": [
@@ -1637,7 +1637,7 @@
 			"imports": [
 				"src/runtime/types.ts",
 				"src/runtime/provider-factory.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/runtime/session-store-interface.ts",
 				"src/core/logger.ts",
 				"src/shared/default-prompts.ts"
@@ -1667,7 +1667,7 @@
 				"createConfigRouter"
 			],
 			"imports": [
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/core/tool-registry.ts",
 				"src/server/workspace-config.ts",
 				"src/core/config.ts",
@@ -1678,6 +1678,177 @@
 				"src/server/config-router.ts/kv:44"
 			],
 			"description": "全局配置管理路由：read/update workspace 级配置"
+		},
+		{
+			"path": "src/server/core-database.ts",
+			"lines": 1806,
+			"dir": "src/server",
+			"exports": [
+				"getCoreDatabase",
+				"setCoreDatabase",
+				"CoreDatabase.getDb",
+				"CoreDatabase.getKVStore",
+				"CoreDatabase.getExtractionCursorStore",
+				"CoreDatabase.getTelemetryStore",
+				"CoreDatabase.initSchema",
+				"CoreDatabase.safeDropColumn",
+				"CoreDatabase.safeAddColumn",
+				"CoreDatabase.safeAddIndex",
+				"CoreDatabase.migrateToolNames",
+				"CoreDatabase.createSession",
+				"CoreDatabase.getSession",
+				"CoreDatabase.getMainSession",
+				"CoreDatabase.getMostRecentSession",
+				"CoreDatabase.setMainSession",
+				"CoreDatabase.listSessions",
+				"CoreDatabase.listAllSessions",
+				"CoreDatabase.listOrphanCandidateSessions",
+				"CoreDatabase.findSessionByAgentAndProject",
+				"CoreDatabase.updateSessionContext",
+				"CoreDatabase.getSessionContext",
+				"CoreDatabase.deleteSession",
+				"CoreDatabase.archiveSession",
+				"CoreDatabase.markArchivedTransient",
+				"CoreDatabase.listArchivedTransientSessions",
+				"CoreDatabase.deleteSessionData",
+				"CoreDatabase.updateSessionUsage",
+				"CoreDatabase.getTokenUsage",
+				"CoreDatabase.setTokenUsage",
+				"CoreDatabase.parseSummary",
+				"CoreDatabase.getSummaries",
+				"CoreDatabase.getCompressionCursor",
+				"CoreDatabase.clearSummaries",
+				"CoreDatabase.replaceSummariesAndAdvanceCursor",
+				"CoreDatabase.ensureSession",
+				"CoreDatabase.migrateMessageFiles",
+				"CoreDatabase.getStepCount",
+				"CoreDatabase.clearTurns",
+				"CoreDatabase.deleteTurn",
+				"CoreDatabase.serializeAttachments",
+				"CoreDatabase.deserializeAttachments",
+				"CoreDatabase.getSteps",
+				"CoreDatabase.getStepGroup",
+				"CoreDatabase.appendStep",
+				"CoreDatabase.upsertStep",
+				"CoreDatabase.updateStepContent",
+				"CoreDatabase.deleteStepGroup",
+				"CoreDatabase.deleteStepsFromSeq",
+				"CoreDatabase.getTurnGroupCount",
+				"CoreDatabase.createTurnState",
+				"CoreDatabase.advanceStepCheckpoint",
+				"CoreDatabase.getStepCheckpoint",
+				"CoreDatabase.completeTurnState",
+				"CoreDatabase.failTurnState",
+				"CoreDatabase.getIncompleteTurns",
+				"CoreDatabase.getIncompleteTurn",
+				"CoreDatabase.getIncompleteTurnSessionIds",
+				"CoreDatabase.abandonInterruptedTurn",
+				"CoreDatabase.cleanOldProviderUsage",
+				"CoreDatabase.deleteTurnState",
+				"CoreDatabase.recordToolExecution",
+				"CoreDatabase.queryToolExecutions",
+				"CoreDatabase.getToolExecutionStats",
+				"CoreDatabase.cleanOldToolExecutions",
+				"CoreDatabase.toolExecRowToRecord",
+				"CoreDatabase.close",
+				"CoreDatabase.rowToRecord",
+				"CoreDatabase.delegatedTaskRowToRecord",
+				"CoreDatabase.createDelegatedTask",
+				"CoreDatabase.updateDelegatedTask",
+				"CoreDatabase.getDelegatedTask",
+				"CoreDatabase.deleteDelegatedTask",
+				"CoreDatabase.listDelegatedTasks",
+				"CoreDatabase.markRunningDelegatedTasksInterrupted"
+			],
+			"imports": [
+				"src/core/logger.ts",
+				"src/shared/types.ts",
+				"src/runtime/types.ts",
+				"src/server/key-value-store.ts",
+				"src/server/extraction-cursor-store.ts",
+				"src/server/telemetry-store.ts",
+				"src/core/config.ts",
+				"src/core/database-paths.ts",
+				"src/server/data-change-hub.ts"
+			],
+			"functions": [
+				"src/server/core-database.ts/getCoreDatabase:101",
+				"src/server/core-database.ts/setCoreDatabase:104",
+				"src/server/core-database.ts/CoreDatabase.getDb:140",
+				"src/server/core-database.ts/CoreDatabase.getKVStore:144",
+				"src/server/core-database.ts/CoreDatabase.getExtractionCursorStore:150",
+				"src/server/core-database.ts/CoreDatabase.getTelemetryStore:157",
+				"src/server/core-database.ts/CoreDatabase.initSchema:179",
+				"src/server/core-database.ts/CoreDatabase.safeDropColumn:391",
+				"src/server/core-database.ts/CoreDatabase.safeAddColumn:401",
+				"src/server/core-database.ts/CoreDatabase.safeAddIndex:411",
+				"src/server/core-database.ts/CoreDatabase.migrateToolNames:420",
+				"src/server/core-database.ts/CoreDatabase.createSession:437",
+				"src/server/core-database.ts/CoreDatabase.getSession:473",
+				"src/server/core-database.ts/CoreDatabase.getMainSession:478",
+				"src/server/core-database.ts/CoreDatabase.getMostRecentSession:493",
+				"src/server/core-database.ts/CoreDatabase.setMainSession:501",
+				"src/server/core-database.ts/CoreDatabase.listSessions:509",
+				"src/server/core-database.ts/CoreDatabase.listAllSessions:516",
+				"src/server/core-database.ts/CoreDatabase.listOrphanCandidateSessions:549",
+				"src/server/core-database.ts/CoreDatabase.findSessionByAgentAndProject:588",
+				"src/server/core-database.ts/CoreDatabase.updateSessionContext:597",
+				"src/server/core-database.ts/CoreDatabase.getSessionContext:612",
+				"src/server/core-database.ts/CoreDatabase.deleteSession:623",
+				"src/server/core-database.ts/CoreDatabase.archiveSession:635",
+				"src/server/core-database.ts/CoreDatabase.markArchivedTransient:661",
+				"src/server/core-database.ts/CoreDatabase.listArchivedTransientSessions:679",
+				"src/server/core-database.ts/CoreDatabase.deleteSessionData:712",
+				"src/server/core-database.ts/CoreDatabase.updateSessionUsage:726",
+				"src/server/core-database.ts/CoreDatabase.getTokenUsage:751",
+				"src/server/core-database.ts/CoreDatabase.setTokenUsage:769",
+				"src/server/core-database.ts/CoreDatabase.parseSummary:803",
+				"src/server/core-database.ts/CoreDatabase.getSummaries:813",
+				"src/server/core-database.ts/CoreDatabase.getCompressionCursor:832",
+				"src/server/core-database.ts/CoreDatabase.clearSummaries:848",
+				"src/server/core-database.ts/CoreDatabase.replaceSummariesAndAdvanceCursor:872",
+				"src/server/core-database.ts/CoreDatabase.ensureSession:895",
+				"src/server/core-database.ts/CoreDatabase.migrateMessageFiles:915",
+				"src/server/core-database.ts/CoreDatabase.getStepCount:969",
+				"src/server/core-database.ts/CoreDatabase.clearTurns:989",
+				"src/server/core-database.ts/CoreDatabase.deleteTurn:1001",
+				"src/server/core-database.ts/CoreDatabase.serializeAttachments:1018",
+				"src/server/core-database.ts/CoreDatabase.deserializeAttachments:1028",
+				"src/server/core-database.ts/CoreDatabase.getSteps:1039",
+				"src/server/core-database.ts/CoreDatabase.getStepGroup:1062",
+				"src/server/core-database.ts/CoreDatabase.appendStep:1085",
+				"src/server/core-database.ts/CoreDatabase.upsertStep:1130",
+				"src/server/core-database.ts/CoreDatabase.updateStepContent:1184",
+				"src/server/core-database.ts/CoreDatabase.deleteStepGroup:1205",
+				"src/server/core-database.ts/CoreDatabase.deleteStepsFromSeq:1234",
+				"src/server/core-database.ts/CoreDatabase.getTurnGroupCount:1267",
+				"src/server/core-database.ts/CoreDatabase.createTurnState:1291",
+				"src/server/core-database.ts/CoreDatabase.advanceStepCheckpoint:1328",
+				"src/server/core-database.ts/CoreDatabase.getStepCheckpoint:1343",
+				"src/server/core-database.ts/CoreDatabase.completeTurnState:1355",
+				"src/server/core-database.ts/CoreDatabase.failTurnState:1367",
+				"src/server/core-database.ts/CoreDatabase.getIncompleteTurns:1390",
+				"src/server/core-database.ts/CoreDatabase.getIncompleteTurn:1418",
+				"src/server/core-database.ts/CoreDatabase.getIncompleteTurnSessionIds:1447",
+				"src/server/core-database.ts/CoreDatabase.abandonInterruptedTurn:1468",
+				"src/server/core-database.ts/CoreDatabase.cleanOldProviderUsage:1490",
+				"src/server/core-database.ts/CoreDatabase.deleteTurnState:1511",
+				"src/server/core-database.ts/CoreDatabase.recordToolExecution:1522",
+				"src/server/core-database.ts/CoreDatabase.queryToolExecutions:1549",
+				"src/server/core-database.ts/CoreDatabase.getToolExecutionStats:1565",
+				"src/server/core-database.ts/CoreDatabase.cleanOldToolExecutions:1585",
+				"src/server/core-database.ts/CoreDatabase.toolExecRowToRecord:1594",
+				"src/server/core-database.ts/CoreDatabase.close:1614",
+				"src/server/core-database.ts/CoreDatabase.rowToRecord:1622",
+				"src/server/core-database.ts/CoreDatabase.delegatedTaskRowToRecord:1671",
+				"src/server/core-database.ts/CoreDatabase.createDelegatedTask:1699",
+				"src/server/core-database.ts/CoreDatabase.updateDelegatedTask:1736",
+				"src/server/core-database.ts/CoreDatabase.getDelegatedTask:1767",
+				"src/server/core-database.ts/CoreDatabase.deleteDelegatedTask:1780",
+				"src/server/core-database.ts/CoreDatabase.listDelegatedTasks:1784",
+				"src/server/core-database.ts/CoreDatabase.markRunningDelegatedTasksInterrupted:1798"
+			],
+			"description": "CoreDatabase（plan-00 改名自 SessionDB）：承载 sessions/agents/projects 等核心状态的 SQLite 持久化；CRUD（sessions/messages/steps/tool_executions/delegated_tasks/provider_usage）+ KV store"
 		},
 		{
 			"path": "src/server/cron-analysis.ts",
@@ -1712,7 +1883,7 @@
 				"src/server/wiki-node-store.ts",
 				"src/server/archivist-git.ts",
 				"src/server/wiki-operations.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/cron-store.ts",
 				"src/shared/types.ts",
 				"src/server/session-context-router.ts",
@@ -1797,7 +1968,7 @@
 			],
 			"imports": [
 				"src/server/sqlite-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts"
 			],
 			"functions": [
@@ -1840,6 +2011,52 @@
 			"description": ""
 		},
 		{
+			"path": "src/server/database-manager.ts",
+			"lines": 648,
+			"dir": "src/server",
+			"exports": [
+				"deleteRetiredKnowledgeDb",
+				"performLayoutBootstrap",
+				"setDatabaseManager",
+				"getDatabaseManager",
+				"DatabaseManager.open",
+				"DatabaseManager.close",
+				"DatabaseManager.health",
+				"DatabaseManager.checkpointCore",
+				"DatabaseManager.checkpointWiki",
+				"DatabaseManager.backupCore",
+				"DatabaseManager.backupWiki"
+			],
+			"imports": [
+				"src/core/logger.ts",
+				"src/core/config.ts",
+				"src/core/database-paths.ts",
+				"src/server/core-database.ts",
+				"src/server/wiki-database.ts"
+			],
+			"functions": [
+				"src/server/database-manager.ts/deleteRetiredKnowledgeDb:144",
+				"src/server/database-manager.ts/performLayoutBootstrap:186",
+				"src/server/database-manager.ts/readMarker:241",
+				"src/server/database-manager.ts/migrateLegacyToCore:256",
+				"src/server/database-manager.ts/writeMarkerForFreshCreate:367",
+				"src/server/database-manager.ts/writeMarkerForExistingCoreDb:385",
+				"src/server/database-manager.ts/finalizeFreshCreateMarker:405",
+				"src/server/database-manager.ts/safeSha256:424",
+				"src/server/database-manager.ts/setDatabaseManager:446",
+				"src/server/database-manager.ts/getDatabaseManager:457",
+				"src/server/database-manager.ts/DatabaseManager.open:506",
+				"src/server/database-manager.ts/DatabaseManager.close:529",
+				"src/server/database-manager.ts/DatabaseManager.health:546",
+				"src/server/database-manager.ts/DatabaseManager.checkpointCore:561",
+				"src/server/database-manager.ts/DatabaseManager.checkpointWiki:573",
+				"src/server/database-manager.ts/DatabaseManager.backupCore:584",
+				"src/server/database-manager.ts/DatabaseManager.backupWiki:595",
+				"src/server/database-manager.ts/probeHealth:606"
+			],
+			"description": "DatabaseManager（plan-00 §3）：服务端唯一的 DB 生命周期所有者，负责 sessions.db→db/core.db 布局 bootstrap、knowledge.db 退役删除、open/close/health/checkpointCore"
+		},
+		{
 			"path": "src/server/db-migration.ts",
 			"lines": 1245,
 			"dir": "src/server",
@@ -1847,7 +2064,7 @@
 				"runMigrations"
 			],
 			"imports": [
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/core/config.ts",
 				"src/server/sqlite-store.ts",
 				"src/server/key-value-store.ts",
@@ -1880,7 +2097,7 @@
 				"createDelegatedTaskRouter"
 			],
 			"imports": [
-				"src/server/session-db.ts"
+				"src/server/core-database.ts"
 			],
 			"functions": [
 				"src/server/delegated-task-router.ts/createDelegatedTaskRouter:24"
@@ -1897,7 +2114,7 @@
 			],
 			"imports": [
 				"src/core/hook-registry.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/core/logger.ts",
 				"src/runtime/hooks/turn-seq-tracker.ts"
 			],
@@ -1919,7 +2136,7 @@
 				"src/server/agent-service.ts",
 				"src/server/agent-store.ts",
 				"src/server/template-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/project-store.ts",
 				"src/server/wiki-node-store.ts",
 				"src/server/project-job-store.ts",
@@ -2081,8 +2298,21 @@
 			"description": ""
 		},
 		{
+			"path": "src/server/health-router.ts",
+			"lines": 83,
+			"dir": "src/server",
+			"exports": [
+				"createHealthRouter"
+			],
+			"imports": [],
+			"functions": [
+				"src/server/health-router.ts/createHealthRouter:33"
+			],
+			"description": ""
+		},
+		{
 			"path": "src/server/index.ts",
-			"lines": 1177,
+			"lines": 1154,
 			"dir": "src/server",
 			"exports": [
 				"startServer"
@@ -2095,7 +2325,8 @@
 				"src/server/mcp-store.ts",
 				"src/server/agent-service.ts",
 				"src/server/builtin-skills.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
+				"src/server/database-manager.ts",
 				"src/server/db-migration.ts",
 				"src/server/workspace-config.ts",
 				"src/runtime/proxy-manager.ts",
@@ -2115,6 +2346,7 @@
 				"src/server/file-router.ts",
 				"src/server/tool-execution-router.ts",
 				"src/server/skill-router.ts",
+				"src/server/health-router.ts",
 				"src/server/attachment-router.ts",
 				"src/server/project-store.ts",
 				"src/server/requirement-store.ts",
@@ -2135,11 +2367,11 @@
 				"src/server/runtime-instances.ts"
 			],
 			"functions": [
-				"src/server/index.ts/expandHome:88",
-				"src/server/index.ts/startServer:107",
-				"src/server/index.ts/broadcast:348",
-				"src/server/index.ts/reloadProviders:385",
-				"src/server/index.ts/rebuildStaleStructureLayouts:1147"
+				"src/server/index.ts/expandHome:93",
+				"src/server/index.ts/startServer:112",
+				"src/server/index.ts/broadcast:360",
+				"src/server/index.ts/reloadProviders:397",
+				"src/server/index.ts/rebuildStaleStructureLayouts:1124"
 			],
 			"description": "服务器入口：初始化所有 store/service/router，HTTP API 模式启动"
 		},
@@ -2293,7 +2525,7 @@
 				"ManagementService.requireTemplateStore",
 				"ManagementService.setCronStore",
 				"ManagementService.setRequirementStore",
-				"ManagementService.setSessionDB",
+				"ManagementService.setCoreDatabase",
 				"ManagementService.setAgentService",
 				"ManagementService.setWikiStore",
 				"ManagementService.setArchivistService",
@@ -2358,7 +2590,7 @@
 				"src/server/project-store.ts",
 				"src/server/cron-store.ts",
 				"src/server/requirement-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/wiki-node-store.ts",
 				"src/server/wiki-skeleton-service.ts",
 				"src/server/project-job-store.ts",
@@ -2380,7 +2612,7 @@
 				"src/server/management-service.ts/ManagementService.requireTemplateStore:176",
 				"src/server/management-service.ts/ManagementService.setCronStore:182",
 				"src/server/management-service.ts/ManagementService.setRequirementStore:187",
-				"src/server/management-service.ts/ManagementService.setSessionDB:188",
+				"src/server/management-service.ts/ManagementService.setCoreDatabase:188",
 				"src/server/management-service.ts/ManagementService.setAgentService:190",
 				"src/server/management-service.ts/ManagementService.setWikiStore:191",
 				"src/server/management-service.ts/ManagementService.setArchivistService:199",
@@ -2511,7 +2743,7 @@
 			"functions": [
 				"src/server/mcp-router.ts/createMcpRouter:29"
 			],
-			"description": "MCP 服务器管理路由：CRUD + 连接测试 + tool 同步"
+			"description": ""
 		},
 		{
 			"path": "src/server/mcp-scanner.ts",
@@ -2548,7 +2780,7 @@
 			],
 			"imports": [
 				"src/server/sqlite-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts"
 			],
 			"functions": [
@@ -2683,7 +2915,7 @@
 			],
 			"imports": [
 				"src/server/sqlite-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts",
 				"src/core/logger.ts"
 			],
@@ -2764,7 +2996,7 @@
 				"src/server/wiki-node-store.ts",
 				"src/server/orchestrate-store.ts",
 				"src/server/wiki-skeleton-service.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts",
 				"src/server/session-context-router.ts",
 				"src/core/logger.ts"
@@ -2801,7 +3033,7 @@
 				"ProjectJobStore.delete"
 			],
 			"imports": [
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/sqlite-store.ts",
 				"src/shared/types.ts"
 			],
@@ -2857,7 +3089,7 @@
 			],
 			"imports": [
 				"src/server/sqlite-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts"
 			],
 			"functions": [
@@ -2908,7 +3140,7 @@
 				"ProjectWikiStore.deleteByProject"
 			],
 			"imports": [
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/wiki-node-store.ts",
 				"src/shared/types.ts"
 			],
@@ -2968,7 +3200,7 @@
 				"src/server/project-store.ts",
 				"src/server/project-work-store.ts",
 				"src/server/wiki-node-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/session-context-router.ts",
 				"src/server/wiki-operations.ts",
 				"src/core/logger.ts",
@@ -2993,7 +3225,7 @@
 				"ProjectWorkStore.delete"
 			],
 			"imports": [
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/sqlite-store.ts",
 				"src/shared/types.ts"
 			],
@@ -3041,7 +3273,7 @@
 			],
 			"imports": [
 				"src/server/sqlite-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts",
 				"src/core/constants.ts"
 			],
@@ -3095,7 +3327,7 @@
 				"recoverWorkflowState"
 			],
 			"imports": [
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/project-store.ts",
 				"src/server/requirement-store.ts",
 				"src/server/task-step-store.ts",
@@ -3216,7 +3448,7 @@
 			],
 			"imports": [
 				"src/server/sqlite-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts",
 				"src/server/requirement-state-machine.ts"
 			],
@@ -3247,7 +3479,7 @@
 			],
 			"imports": [
 				"src/server/agent-service.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/wiki-node-store.ts",
 				"src/server/project-wiki-store.ts",
 				"src/server/requirement-store.ts",
@@ -3269,7 +3501,7 @@
 				"buildProjectBundle"
 			],
 			"imports": [
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/project-store.ts",
 				"src/shared/types.ts"
 			],
@@ -3279,176 +3511,6 @@
 				"src/server/session-context-router.ts/buildProjectBundle:137"
 			],
 			"description": ""
-		},
-		{
-			"path": "src/server/session-db.ts",
-			"lines": 1786,
-			"dir": "src/server",
-			"exports": [
-				"getSessionDB",
-				"setSessionDB",
-				"SessionDB.getDb",
-				"SessionDB.getKVStore",
-				"SessionDB.getExtractionCursorStore",
-				"SessionDB.getTelemetryStore",
-				"SessionDB.initSchema",
-				"SessionDB.safeDropColumn",
-				"SessionDB.safeAddColumn",
-				"SessionDB.safeAddIndex",
-				"SessionDB.migrateToolNames",
-				"SessionDB.createSession",
-				"SessionDB.getSession",
-				"SessionDB.getMainSession",
-				"SessionDB.getMostRecentSession",
-				"SessionDB.setMainSession",
-				"SessionDB.listSessions",
-				"SessionDB.listAllSessions",
-				"SessionDB.listOrphanCandidateSessions",
-				"SessionDB.findSessionByAgentAndProject",
-				"SessionDB.updateSessionContext",
-				"SessionDB.getSessionContext",
-				"SessionDB.deleteSession",
-				"SessionDB.archiveSession",
-				"SessionDB.markArchivedTransient",
-				"SessionDB.listArchivedTransientSessions",
-				"SessionDB.deleteSessionData",
-				"SessionDB.updateSessionUsage",
-				"SessionDB.getTokenUsage",
-				"SessionDB.setTokenUsage",
-				"SessionDB.parseSummary",
-				"SessionDB.getSummaries",
-				"SessionDB.getCompressionCursor",
-				"SessionDB.clearSummaries",
-				"SessionDB.replaceSummariesAndAdvanceCursor",
-				"SessionDB.ensureSession",
-				"SessionDB.migrateMessageFiles",
-				"SessionDB.getStepCount",
-				"SessionDB.clearTurns",
-				"SessionDB.deleteTurn",
-				"SessionDB.serializeAttachments",
-				"SessionDB.deserializeAttachments",
-				"SessionDB.getSteps",
-				"SessionDB.getStepGroup",
-				"SessionDB.appendStep",
-				"SessionDB.upsertStep",
-				"SessionDB.updateStepContent",
-				"SessionDB.deleteStepGroup",
-				"SessionDB.deleteStepsFromSeq",
-				"SessionDB.getTurnGroupCount",
-				"SessionDB.createTurnState",
-				"SessionDB.advanceStepCheckpoint",
-				"SessionDB.getStepCheckpoint",
-				"SessionDB.completeTurnState",
-				"SessionDB.failTurnState",
-				"SessionDB.getIncompleteTurns",
-				"SessionDB.getIncompleteTurn",
-				"SessionDB.getIncompleteTurnSessionIds",
-				"SessionDB.abandonInterruptedTurn",
-				"SessionDB.cleanOldProviderUsage",
-				"SessionDB.deleteTurnState",
-				"SessionDB.recordToolExecution",
-				"SessionDB.queryToolExecutions",
-				"SessionDB.getToolExecutionStats",
-				"SessionDB.cleanOldToolExecutions",
-				"SessionDB.toolExecRowToRecord",
-				"SessionDB.close",
-				"SessionDB.rowToRecord",
-				"SessionDB.delegatedTaskRowToRecord",
-				"SessionDB.createDelegatedTask",
-				"SessionDB.updateDelegatedTask",
-				"SessionDB.getDelegatedTask",
-				"SessionDB.deleteDelegatedTask",
-				"SessionDB.listDelegatedTasks",
-				"SessionDB.markRunningDelegatedTasksInterrupted"
-			],
-			"imports": [
-				"src/core/logger.ts",
-				"src/shared/types.ts",
-				"src/runtime/types.ts",
-				"src/server/key-value-store.ts",
-				"src/server/extraction-cursor-store.ts",
-				"src/server/telemetry-store.ts",
-				"src/core/config.ts",
-				"src/server/data-change-hub.ts"
-			],
-			"functions": [
-				"src/server/session-db.ts/getSessionDB:89",
-				"src/server/session-db.ts/setSessionDB:92",
-				"src/server/session-db.ts/SessionDB.getDb:120",
-				"src/server/session-db.ts/SessionDB.getKVStore:124",
-				"src/server/session-db.ts/SessionDB.getExtractionCursorStore:130",
-				"src/server/session-db.ts/SessionDB.getTelemetryStore:137",
-				"src/server/session-db.ts/SessionDB.initSchema:159",
-				"src/server/session-db.ts/SessionDB.safeDropColumn:371",
-				"src/server/session-db.ts/SessionDB.safeAddColumn:381",
-				"src/server/session-db.ts/SessionDB.safeAddIndex:391",
-				"src/server/session-db.ts/SessionDB.migrateToolNames:400",
-				"src/server/session-db.ts/SessionDB.createSession:417",
-				"src/server/session-db.ts/SessionDB.getSession:453",
-				"src/server/session-db.ts/SessionDB.getMainSession:458",
-				"src/server/session-db.ts/SessionDB.getMostRecentSession:473",
-				"src/server/session-db.ts/SessionDB.setMainSession:481",
-				"src/server/session-db.ts/SessionDB.listSessions:489",
-				"src/server/session-db.ts/SessionDB.listAllSessions:496",
-				"src/server/session-db.ts/SessionDB.listOrphanCandidateSessions:529",
-				"src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:568",
-				"src/server/session-db.ts/SessionDB.updateSessionContext:577",
-				"src/server/session-db.ts/SessionDB.getSessionContext:592",
-				"src/server/session-db.ts/SessionDB.deleteSession:603",
-				"src/server/session-db.ts/SessionDB.archiveSession:615",
-				"src/server/session-db.ts/SessionDB.markArchivedTransient:641",
-				"src/server/session-db.ts/SessionDB.listArchivedTransientSessions:659",
-				"src/server/session-db.ts/SessionDB.deleteSessionData:692",
-				"src/server/session-db.ts/SessionDB.updateSessionUsage:706",
-				"src/server/session-db.ts/SessionDB.getTokenUsage:731",
-				"src/server/session-db.ts/SessionDB.setTokenUsage:749",
-				"src/server/session-db.ts/SessionDB.parseSummary:783",
-				"src/server/session-db.ts/SessionDB.getSummaries:793",
-				"src/server/session-db.ts/SessionDB.getCompressionCursor:812",
-				"src/server/session-db.ts/SessionDB.clearSummaries:828",
-				"src/server/session-db.ts/SessionDB.replaceSummariesAndAdvanceCursor:852",
-				"src/server/session-db.ts/SessionDB.ensureSession:875",
-				"src/server/session-db.ts/SessionDB.migrateMessageFiles:895",
-				"src/server/session-db.ts/SessionDB.getStepCount:949",
-				"src/server/session-db.ts/SessionDB.clearTurns:969",
-				"src/server/session-db.ts/SessionDB.deleteTurn:981",
-				"src/server/session-db.ts/SessionDB.serializeAttachments:998",
-				"src/server/session-db.ts/SessionDB.deserializeAttachments:1008",
-				"src/server/session-db.ts/SessionDB.getSteps:1019",
-				"src/server/session-db.ts/SessionDB.getStepGroup:1042",
-				"src/server/session-db.ts/SessionDB.appendStep:1065",
-				"src/server/session-db.ts/SessionDB.upsertStep:1110",
-				"src/server/session-db.ts/SessionDB.updateStepContent:1164",
-				"src/server/session-db.ts/SessionDB.deleteStepGroup:1185",
-				"src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1214",
-				"src/server/session-db.ts/SessionDB.getTurnGroupCount:1247",
-				"src/server/session-db.ts/SessionDB.createTurnState:1271",
-				"src/server/session-db.ts/SessionDB.advanceStepCheckpoint:1308",
-				"src/server/session-db.ts/SessionDB.getStepCheckpoint:1323",
-				"src/server/session-db.ts/SessionDB.completeTurnState:1335",
-				"src/server/session-db.ts/SessionDB.failTurnState:1347",
-				"src/server/session-db.ts/SessionDB.getIncompleteTurns:1370",
-				"src/server/session-db.ts/SessionDB.getIncompleteTurn:1398",
-				"src/server/session-db.ts/SessionDB.getIncompleteTurnSessionIds:1427",
-				"src/server/session-db.ts/SessionDB.abandonInterruptedTurn:1448",
-				"src/server/session-db.ts/SessionDB.cleanOldProviderUsage:1470",
-				"src/server/session-db.ts/SessionDB.deleteTurnState:1491",
-				"src/server/session-db.ts/SessionDB.recordToolExecution:1502",
-				"src/server/session-db.ts/SessionDB.queryToolExecutions:1529",
-				"src/server/session-db.ts/SessionDB.getToolExecutionStats:1545",
-				"src/server/session-db.ts/SessionDB.cleanOldToolExecutions:1565",
-				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:1574",
-				"src/server/session-db.ts/SessionDB.close:1594",
-				"src/server/session-db.ts/SessionDB.rowToRecord:1602",
-				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1651",
-				"src/server/session-db.ts/SessionDB.createDelegatedTask:1679",
-				"src/server/session-db.ts/SessionDB.updateDelegatedTask:1716",
-				"src/server/session-db.ts/SessionDB.getDelegatedTask:1747",
-				"src/server/session-db.ts/SessionDB.deleteDelegatedTask:1760",
-				"src/server/session-db.ts/SessionDB.listDelegatedTasks:1764",
-				"src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1778"
-			],
-			"description": "SessionDB：SQLite CRUD（sessions/messages/turns/turn_state），cleanOldTurnState 24h 清理"
 		},
 		{
 			"path": "src/server/session-lifecycle.ts",
@@ -3507,7 +3569,7 @@
 			"imports": [
 				"src/server/session-lifecycle.ts",
 				"src/server/session-metrics.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/provider-usage-store.ts",
 				"src/runtime/types.ts",
 				"src/core/logger.ts"
@@ -3748,7 +3810,7 @@
 			],
 			"imports": [
 				"src/server/sqlite-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts"
 			],
 			"functions": [
@@ -3796,7 +3858,7 @@
 			],
 			"imports": [
 				"src/server/template-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/github-template-utils.ts",
 				"src/core/logger.ts"
 			],
@@ -3825,7 +3887,7 @@
 			],
 			"imports": [
 				"src/server/sqlite-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts"
 			],
 			"functions": [
@@ -3866,7 +3928,7 @@
 			],
 			"imports": [
 				"src/core/hook-registry.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/core/logger.ts"
 			],
 			"functions": [
@@ -3911,7 +3973,7 @@
 				"ToolUsageStore.delete"
 			],
 			"imports": [
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts"
 			],
 			"functions": [
@@ -3931,6 +3993,15 @@
 				"src/server/tool-usage-store.ts/parseJson:254"
 			],
 			"description": ""
+		},
+		{
+			"path": "src/server/wiki-database.ts",
+			"lines": 32,
+			"dir": "src/server",
+			"exports": [],
+			"imports": [],
+			"functions": [],
+			"description": "WikiDatabase 占位类型（plan-00 §3）；Plan-01 起替换为真实 class"
 		},
 		{
 			"path": "src/server/wiki-node-store.ts",
@@ -4006,7 +4077,7 @@
 			],
 			"imports": [
 				"src/server/sqlite-store.ts",
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/shared/types.ts",
 				"src/core/config.ts",
 				"src/shared/file-utils.ts"
@@ -4148,7 +4219,7 @@
 			],
 			"imports": [
 				"src/server/sqlite-store.ts",
-				"src/server/session-db.ts"
+				"src/server/core-database.ts"
 			],
 			"functions": [
 				"src/server/wiki-scan-cursor-store.ts/WikiScanCursorStore.get:74",
@@ -4231,7 +4302,7 @@
 				"saveWorkspaceConfig"
 			],
 			"imports": [
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/core/config.ts",
 				"src/shared/types.ts"
 			],
@@ -4291,6 +4362,17 @@
 				"src/core/custom-tools.ts/executeCustomTool:55"
 			],
 			"description": "自定义工具注册表接口：运行时动态注册用户定义的工具"
+		},
+		{
+			"path": "src/core/database-paths.ts",
+			"lines": 68,
+			"dir": "src/core",
+			"exports": [],
+			"imports": [
+				"src/core/config.ts"
+			],
+			"functions": [],
+			"description": ""
 		},
 		{
 			"path": "src/core/default-prompt.ts",
@@ -4558,7 +4640,7 @@
 				"seedTestEnvironment"
 			],
 			"imports": [
-				"src/server/session-db.ts",
+				"src/server/core-database.ts",
 				"src/server/agent-store.ts",
 				"src/server/provider-store.ts",
 				"src/server/wiki-node-store.ts",
@@ -6203,7 +6285,7 @@
 			"endLine": 248,
 			"statementCount": 6,
 			"exported": false,
-			"signature": "function readTokenState(db: SessionDB, sessionId: string, providers: RuntimeProviderConfig[], config: SessionConfig)",
+			"signature": "function readTokenState(db: CoreDatabase, sessionId: string, providers: RuntimeProviderConfig[], config: SessionConfig)",
 			"description": "Read the current token state off the session row + provider config.",
 			"callees": [
 				"src/runtime/provider-factory.ts/getContextWindow:121"
@@ -6246,7 +6328,7 @@
 			"endLine": 356,
 			"statementCount": 27,
 			"exported": false,
-			"signature": "function runCompression(sessionId: string, db: SessionDB, config: SessionConfig, providers: RuntimeProviderConfig[], reason: string)",
+			"signature": "function runCompression(sessionId: string, db: CoreDatabase, config: SessionConfig, providers: RuntimeProviderConfig[], reason: string)",
 			"description": "Run compressSession, guarded against re-entry and per-turn double-fire.\r",
 			"callees": [
 				"src/server/compression-core.ts/compressSession:354",
@@ -6798,7 +6880,7 @@
 			"statementCount": 4,
 			"exported": false,
 			"signature": "method getPendingForSession(sessionId: string)",
-			"description": "返回某 session 当前未决的 AskUser 问题(若有)。前端\"显示时 pull\"用:切到",
+			"description": "返回某 session 当前未决的 AskUser 问题(若有)。前端\"显示时 pull\"用:切到\r",
 			"callees": []
 		},
 		{
@@ -9357,7 +9439,7 @@
 			"endLine": 161,
 			"statementCount": 63,
 			"exported": true,
-			"signature": "function createAgentRouter(deps: {\r\n\tagentStore: AgentStore;\r\n\tagentService: ReturnType<typeof createAgentService>;\r\n\tsessionDB: SessionDB;\r\n})",
+			"signature": "function createAgentRouter(deps: {\r\n\tagentStore: AgentStore;\r\n\tagentService: ReturnType<typeof createAgentService>;\r\n\tsessionDB: CoreDatabase;\r\n})",
 			"description": "",
 			"callees": []
 		},
@@ -10502,7 +10584,7 @@
 			"endLine": 2671,
 			"statementCount": 1,
 			"exported": true,
-			"signature": "function createAgentService(workspaceDir: string, sessionDb?: SessionDB, registry?: ToolRegistry, mcp?: MCPManager)",
+			"signature": "function createAgentService(workspaceDir: string, sessionDb?: CoreDatabase, registry?: ToolRegistry, mcp?: MCPManager)",
 			"description": "",
 			"callees": []
 		},
@@ -10876,7 +10958,7 @@
 			"endLine": 349,
 			"statementCount": 5,
 			"exported": true,
-			"signature": "function archiveSession(sessionId: string, db: SessionDB, opts: ArchiveSessionOptions)",
+			"signature": "function archiveSession(sessionId: string, db: CoreDatabase, opts: ArchiveSessionOptions)",
 			"description": "Run the archive pipeline for one session (compression-archive-simplify\r",
 			"callees": [
 				"src/server/archive-service.ts/withArchiveLock:268",
@@ -10892,7 +10974,7 @@
 			"endLine": 430,
 			"statementCount": 18,
 			"exported": false,
-			"signature": "function runArchivePipeline(sessionId: string, db: SessionDB, opts: ArchiveSessionOptions)",
+			"signature": "function runArchivePipeline(sessionId: string, db: CoreDatabase, opts: ArchiveSessionOptions)",
 			"description": "Inner pipeline (runs under the lock). Broken out so the lock wrapper stays\r",
 			"callees": [
 				"src/server/archive-service.ts/runTeardown:564",
@@ -10910,7 +10992,7 @@
 			"endLine": 486,
 			"statementCount": 6,
 			"exported": false,
-			"signature": "function buildArchivePayload(sessionId: string, agentId: string, db: SessionDB, sessionRow: SessionRecord | undefined, memoryTurnRan: boolean)",
+			"signature": "function buildArchivePayload(sessionId: string, agentId: string, db: CoreDatabase, sessionRow: SessionRecord | undefined, memoryTurnRan: boolean)",
 			"description": "Read the session's own data into the ArchiveJson payload. Reads happen AFTER\r",
 			"callees": []
 		},
@@ -10949,7 +11031,7 @@
 			"endLine": 620,
 			"statementCount": 12,
 			"exported": true,
-			"signature": "function recoverInterruptedArchives(db: SessionDB)",
+			"signature": "function recoverInterruptedArchives(db: CoreDatabase)",
 			"description": "sub-4 acceptance #3: scan for sessions left in the transient `archived=1`\r",
 			"callees": [
 				"src/server/archive-service.ts/archiveSession:327"
@@ -10964,7 +11046,7 @@
 			"endLine": 692,
 			"statementCount": 21,
 			"exported": true,
-			"signature": "function sweepOrphanSessions(db: SessionDB, opts?: { maxAgeDays?: number; activeSessionIds?: Set<string> })",
+			"signature": "function sweepOrphanSessions(db: CoreDatabase, opts?: { maxAgeDays?: number; activeSessionIds?: Set<string> })",
 			"description": "sub-4 D5: best-effort sweep for \"存量\" orphan sessions accumulated BEFORE\r",
 			"callees": [
 				"src/server/archive-service.ts/buildArchivePayload:441",
@@ -11393,7 +11475,7 @@
 			"statementCount": 13,
 			"exported": true,
 			"signature": "function ensureBuiltinSkills()",
-			"description": "启动期 seed:把每个内置 skill 落进 app skills 根(仅当缺失)。",
+			"description": "启动期 seed:把每个内置 skill 落进 app skills 根(仅当缺失)。\r",
 			"callees": [
 				"src/server/skill-router.ts/appSkillDir:392"
 			]
@@ -11543,7 +11625,7 @@
 			"endLine": 492,
 			"statementCount": 55,
 			"exported": true,
-			"signature": "function compressSession(sessionId: string, db: SessionDB, opts: CompressSessionOptions)",
+			"signature": "function compressSession(sessionId: string, db: CoreDatabase, opts: CompressSessionOptions)",
 			"description": "压缩核心(sub-3b 滚动摘要版):读「游标之后、fresh tail 之外」的 step →\r",
 			"callees": [
 				"src/server/compression-core.ts/computeFreshTailStartSeq:224",
@@ -11620,7 +11702,7 @@
 			"endLine": 608,
 			"statementCount": 6,
 			"exported": false,
-			"signature": "function advanceCursorOnly(db: SessionDB, sessionId: string, newCursor: number)",
+			"signature": "function advanceCursorOnly(db: CoreDatabase, sessionId: string, newCursor: number)",
 			"description": "只推游标不写 summary(全空段场景)。messages 表有 ≥1 summary 行时游标冗余在每\r",
 			"callees": []
 		},
@@ -11656,6 +11738,1043 @@
 			"exported": false,
 			"signature": "fn ()",
 			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/getCoreDatabase:101",
+			"name": "getCoreDatabase",
+			"kind": "function",
+			"file": "src/server/core-database.ts",
+			"line": 101,
+			"endLine": 103,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "function getCoreDatabase()",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/setCoreDatabase:104",
+			"name": "setCoreDatabase",
+			"kind": "function",
+			"file": "src/server/core-database.ts",
+			"line": 104,
+			"endLine": 106,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "function setCoreDatabase(s: CoreDatabase | undefined)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getDb:140",
+			"name": "CoreDatabase.getDb",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 140,
+			"endLine": 142,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method getDb()",
+			"description": "Expose the underlying db for SqliteStore instances.",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getKVStore:144",
+			"name": "CoreDatabase.getKVStore",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 144,
+			"endLine": 146,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method getKVStore()",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getExtractionCursorStore:150",
+			"name": "CoreDatabase.getExtractionCursorStore",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 150,
+			"endLine": 155,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method getExtractionCursorStore()",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getTelemetryStore:157",
+			"name": "CoreDatabase.getTelemetryStore",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 157,
+			"endLine": 162,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method getTelemetryStore()",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.initSchema:179",
+			"name": "CoreDatabase.initSchema",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 179,
+			"endLine": 384,
+			"statementCount": 26,
+			"exported": true,
+			"signature": "method initSchema()",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.safeAddColumn:401",
+				"src/server/core-database.ts/CoreDatabase.safeAddIndex:411",
+				"src/server/core-database.ts/CoreDatabase.migrateToolNames:420",
+				"src/server/core-database.ts/CoreDatabase.safeDropColumn:391"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.safeDropColumn:391",
+			"name": "CoreDatabase.safeDropColumn",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 391,
+			"endLine": 398,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method safeDropColumn(table: string, column: string)",
+			"description": "Idempotently drop a column from an existing table (no-op if absent).\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.safeAddColumn:401",
+			"name": "CoreDatabase.safeAddColumn",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 401,
+			"endLine": 408,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method safeAddColumn(table: string, column: string, def: string)",
+			"description": "Idempotently add a column to an existing table (no-op if present).",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.safeAddIndex:411",
+			"name": "CoreDatabase.safeAddIndex",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 411,
+			"endLine": 418,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method safeAddIndex(table: string, indexName: string, columns: string)",
+			"description": "Idempotently create an index on an existing table (no-op if present).",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.migrateToolNames:420",
+			"name": "CoreDatabase.migrateToolNames",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 420,
+			"endLine": 432,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method migrateToolNames()",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.createSession:437",
+			"name": "CoreDatabase.createSession",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 437,
+			"endLine": 471,
+			"statementCount": 9,
+			"exported": true,
+			"signature": "method createSession(agentId: string, title?: string, context?: SessionRecord[\"context\"], options?: { sessionKind?: \"chat\" | \"delegated\"; parentSessionId?: string; parentTaskId?: string; visibility?: \"normal\" | \"hidden\" | \"debug\" })",
+			"description": "",
+			"callees": [
+				"src/server/data-change-hub.ts/emitDataChange:122"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getSession:473",
+			"name": "CoreDatabase.getSession",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 473,
+			"endLine": 476,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method getSession(sessionId: string)",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.rowToRecord:1622"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getMainSession:478",
+			"name": "CoreDatabase.getMainSession",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 478,
+			"endLine": 481,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method getMainSession(agentId: string)",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.rowToRecord:1622"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getMostRecentSession:493",
+			"name": "CoreDatabase.getMostRecentSession",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 493,
+			"endLine": 499,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method getMostRecentSession(agentId: string)",
+			"description": "The most-recently-active session for an agent, by `updated_at`. Every\r",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.rowToRecord:1622"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.setMainSession:501",
+			"name": "CoreDatabase.setMainSession",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 501,
+			"endLine": 507,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method setMainSession(agentId: string, sessionId: string)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.listSessions:509",
+			"name": "CoreDatabase.listSessions",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 509,
+			"endLine": 514,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method listSessions(agentId: string)",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.rowToRecord:1622"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.listAllSessions:516",
+			"name": "CoreDatabase.listAllSessions",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 516,
+			"endLine": 521,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method listAllSessions()",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.rowToRecord:1622"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.listOrphanCandidateSessions:549",
+			"name": "CoreDatabase.listOrphanCandidateSessions",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 549,
+			"endLine": 577,
+			"statementCount": 10,
+			"exported": true,
+			"signature": "method listOrphanCandidateSessions(opts: { olderThan: string; excludeIds?: Set<string> })",
+			"description": "archive-no-residual sub-4 (D5): list candidate \"orphan\" sessions for the\r",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.rowToRecord:1622"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.findSessionByAgentAndProject:588",
+			"name": "CoreDatabase.findSessionByAgentAndProject",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 588,
+			"endLine": 594,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method findSessionByAgentAndProject(agentId: string, projectId: string)",
+			"description": "v0.8 (M0): find-or-create routing key for `{role(agentId), projectId} → session`.\r",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.rowToRecord:1622"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.updateSessionContext:597",
+			"name": "CoreDatabase.updateSessionContext",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 597,
+			"endLine": 609,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method updateSessionContext(sessionId: string, context: SessionRecord[\"context\"])",
+			"description": "Update a session's context bundle.",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getSessionContext:612",
+			"name": "CoreDatabase.getSessionContext",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 612,
+			"endLine": 622,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method getSessionContext(sessionId: string)",
+			"description": "Get a session's context bundle (D-B).",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.deleteSession:623",
+			"name": "CoreDatabase.deleteSession",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 623,
+			"endLine": 627,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method deleteSession(sessionId: string)",
+			"description": "",
+			"callees": [
+				"src/server/data-change-hub.ts/emitDataChange:122"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.archiveSession:635",
+			"name": "CoreDatabase.archiveSession",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 635,
+			"endLine": 643,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method archiveSession(sessionId: string)",
+			"description": "Mark a session as archived (soft delete). Archived sessions are excluded\r",
+			"callees": [
+				"src/server/data-change-hub.ts/emitDataChange:122"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.markArchivedTransient:661",
+			"name": "CoreDatabase.markArchivedTransient",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 661,
+			"endLine": 669,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method markArchivedTransient(sessionId: string)",
+			"description": "compression-archive-simplify sub-4 (atomic archive): transient mark used\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.listArchivedTransientSessions:679",
+			"name": "CoreDatabase.listArchivedTransientSessions",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 679,
+			"endLine": 689,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method listArchivedTransientSessions()",
+			"description": "compression-archive-simplify sub-4: list sessions left in the transient\r",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.rowToRecord:1622"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.deleteSessionData:712",
+			"name": "CoreDatabase.deleteSessionData",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 712,
+			"endLine": 724,
+			"statementCount": 8,
+			"exported": true,
+			"signature": "method deleteSessionData(sessionId: string)",
+			"description": "steps-overhaul sub-8 (archive pipeline): hard-delete ALL of a session's\r",
+			"callees": [
+				"src/server/data-change-hub.ts/emitDataChange:122"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.updateSessionUsage:726",
+			"name": "CoreDatabase.updateSessionUsage",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 726,
+			"endLine": 731,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method updateSessionUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number; estimatedCostUsd: number })",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getTokenUsage:751",
+			"name": "CoreDatabase.getTokenUsage",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 751,
+			"endLine": 762,
+			"statementCount": 7,
+			"exported": true,
+			"signature": "method getTokenUsage(sessionId: string)",
+			"description": "Read the last API-returned usage snapshot for a session (the `token_usage`\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.setTokenUsage:769",
+			"name": "CoreDatabase.setTokenUsage",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 769,
+			"endLine": 777,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method setTokenUsage(sessionId: string, usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number })",
+			"description": "Overwrite the last API-returned usage snapshot. Called by the compression\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.parseSummary:803",
+			"name": "CoreDatabase.parseSummary",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 803,
+			"endLine": 805,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method parseSummary(raw: string)",
+			"description": "Shape of one summary block persisted to messages.summary_json.",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getSummaries:813",
+			"name": "CoreDatabase.getSummaries",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 813,
+			"endLine": 823,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method getSummaries(sessionId: string)",
+			"description": "Read the summary blocks for a session, oldest-first. Returns [] when no\r",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.parseSummary:803"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getCompressionCursor:832",
+			"name": "CoreDatabase.getCompressionCursor",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 832,
+			"endLine": 842,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method getCompressionCursor(sessionId: string)",
+			"description": "Read the compression/assembly cursor (messages.last_compressed_step_seq).\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.clearSummaries:848",
+			"name": "CoreDatabase.clearSummaries",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 848,
+			"endLine": 855,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method clearSummaries(sessionId: string)",
+			"description": "Clear all summaries for a session (e.g. on session reset). Does NOT touch\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.replaceSummariesAndAdvanceCursor:872",
+			"name": "CoreDatabase.replaceSummariesAndAdvanceCursor",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 872,
+			"endLine": 892,
+			"statementCount": 7,
+			"exported": true,
+			"signature": "method replaceSummariesAndAdvanceCursor(sessionId: string, summary: MessageSummary, compressedStepSeq: number)",
+			"description": "steps-overhaul sub-3b (compression-archive-simplify): atomic clear +\r",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.ensureSession:895"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.ensureSession:895",
+			"name": "CoreDatabase.ensureSession",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 895,
+			"endLine": 902,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method ensureSession(sessionId: string)",
+			"description": "Ensure a session row exists for the given ID (defensive FK guard).",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.migrateMessageFiles:915",
+			"name": "CoreDatabase.migrateMessageFiles",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 915,
+			"endLine": 961,
+			"statementCount": 32,
+			"exported": true,
+			"signature": "method migrateMessageFiles()",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.createSession:437",
+				"src/server/core-database.ts/CoreDatabase.setMainSession:501",
+				"src/server/core-database.ts/CoreDatabase.appendStep:1085"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getStepCount:969",
+			"name": "CoreDatabase.getStepCount",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 969,
+			"endLine": 987,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method getStepCount(sessionId: string)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.clearTurns:989",
+			"name": "CoreDatabase.clearTurns",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 989,
+			"endLine": 999,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method clearTurns(sessionId: string)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.deleteTurn:1001",
+			"name": "CoreDatabase.deleteTurn",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1001,
+			"endLine": 1006,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method deleteTurn(sessionId: string, seq: number)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.serializeAttachments:1018",
+			"name": "CoreDatabase.serializeAttachments",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1018,
+			"endLine": 1021,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method serializeAttachments(attachments?: AttachmentMeta[])",
+			"description": "multimodal-input sub-2: serialize a step's attachment metadata to the\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.deserializeAttachments:1028",
+			"name": "CoreDatabase.deserializeAttachments",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1028,
+			"endLine": 1037,
+			"statementCount": 8,
+			"exported": true,
+			"signature": "method deserializeAttachments(raw: unknown)",
+			"description": "multimodal-input sub-2: parse the `steps.attachments` column back into\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getSteps:1039",
+			"name": "CoreDatabase.getSteps",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1039,
+			"endLine": 1060,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method getSteps(sessionId: string)",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.deserializeAttachments:1028"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getStepGroup:1062",
+			"name": "CoreDatabase.getStepGroup",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1062,
+			"endLine": 1083,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method getStepGroup(sessionId: string, turnGroup: number)",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.deserializeAttachments:1028"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.appendStep:1085",
+			"name": "CoreDatabase.appendStep",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1085,
+			"endLine": 1128,
+			"statementCount": 10,
+			"exported": true,
+			"signature": "method appendStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }, attachments?: AttachmentMeta[])",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.ensureSession:895",
+				"src/server/core-database.ts/CoreDatabase.serializeAttachments:1018"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.upsertStep:1130",
+			"name": "CoreDatabase.upsertStep",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1130,
+			"endLine": 1182,
+			"statementCount": 14,
+			"exported": true,
+			"signature": "method upsertStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }, attachments?: AttachmentMeta[])",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.ensureSession:895",
+				"src/server/core-database.ts/CoreDatabase.serializeAttachments:1018"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.updateStepContent:1184",
+			"name": "CoreDatabase.updateStepContent",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1184,
+			"endLine": 1203,
+			"statementCount": 7,
+			"exported": true,
+			"signature": "method updateStepContent(sessionId: string, seq: number, content: string, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number })",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.deleteStepGroup:1205",
+			"name": "CoreDatabase.deleteStepGroup",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1205,
+			"endLine": 1220,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method deleteStepGroup(sessionId: string, turnGroup: number)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.deleteStepsFromSeq:1234",
+			"name": "CoreDatabase.deleteStepsFromSeq",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1234,
+			"endLine": 1265,
+			"statementCount": 11,
+			"exported": true,
+			"signature": "method deleteStepsFromSeq(sessionId: string, fromSeq: number)",
+			"description": "Rollback delete: drop the step at `fromSeq` AND every step after it (seq\r",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.getCompressionCursor:832",
+				"src/server/core-database.ts/CoreDatabase.clearSummaries:848"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getTurnGroupCount:1267",
+			"name": "CoreDatabase.getTurnGroupCount",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1267,
+			"endLine": 1272,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method getTurnGroupCount(sessionId: string)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.createTurnState:1291",
+			"name": "CoreDatabase.createTurnState",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1291,
+			"endLine": 1317,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method createTurnState(sessionId: string, turnSeq: number, source: TurnSource = \"background\")",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.advanceStepCheckpoint:1328",
+			"name": "CoreDatabase.advanceStepCheckpoint",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1328,
+			"endLine": 1340,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method advanceStepCheckpoint(sessionId: string, turnSeq: number, stepSeq: number)",
+			"description": "steps-overhaul sub-1: advance the per-session step checkpoint (was\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getStepCheckpoint:1343",
+			"name": "CoreDatabase.getStepCheckpoint",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1343,
+			"endLine": 1353,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method getStepCheckpoint(sessionId: string)",
+			"description": "Read the per-session step checkpoint (NULL when no step has completed).",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.completeTurnState:1355",
+			"name": "CoreDatabase.completeTurnState",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1355,
+			"endLine": 1365,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method completeTurnState(sessionId: string, turnSeq: number)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.failTurnState:1367",
+			"name": "CoreDatabase.failTurnState",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1367,
+			"endLine": 1377,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method failTurnState(sessionId: string, turnSeq: number, error: string)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getIncompleteTurns:1390",
+			"name": "CoreDatabase.getIncompleteTurns",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1390,
+			"endLine": 1407,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method getIncompleteTurns()",
+			"description": "steps-overhaul sub-1: all sessions whose phase is non-terminal (recovery\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getIncompleteTurn:1418",
+			"name": "CoreDatabase.getIncompleteTurn",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1418,
+			"endLine": 1433,
+			"statementCount": 7,
+			"exported": true,
+			"signature": "method getIncompleteTurn(sessionId: string)",
+			"description": "sub-4 (TaskResume turn_seq guard): single-session interrupted turn read.\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getIncompleteTurnSessionIds:1447",
+			"name": "CoreDatabase.getIncompleteTurnSessionIds",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1447,
+			"endLine": 1457,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method getIncompleteTurnSessionIds()",
+			"description": "sub-8 (lazy rebuild + interrupted seed): set of DISTINCT session ids whose\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.abandonInterruptedTurn:1468",
+			"name": "CoreDatabase.abandonInterruptedTurn",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1468,
+			"endLine": 1479,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method abandonInterruptedTurn(sessionId: string, reason: string = \"Abandoned via TaskKill\")",
+			"description": "sub-4 (TaskKill interrupted→abandon): mark a session's interrupted state\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.cleanOldProviderUsage:1490",
+			"name": "CoreDatabase.cleanOldProviderUsage",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1490,
+			"endLine": 1503,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method cleanOldProviderUsage(maxAgeMs: number)",
+			"description": "platform-observability ②.2 (sub-2): retention for the provider_usage\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.deleteTurnState:1511",
+			"name": "CoreDatabase.deleteTurnState",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1511,
+			"endLine": 1516,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method deleteTurnState(sessionId: string)",
+			"description": "Reset a session's turn state row to terminal-completed (defensive clear).\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.recordToolExecution:1522",
+			"name": "CoreDatabase.recordToolExecution",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1522,
+			"endLine": 1547,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method recordToolExecution(exec: {\r\n\t\tsessionId: string;\r\n\t\tagentId: string;\r\n\t\ttoolName: string;\r\n\t\tsuccess: boolean;\r\n\t\terrorMessage?: string;\r\n\t\tinputPreview?: string;\r\n\t\toutputPreview?: string;\r\n\t\tdurationMs: number;\r\n\t\tturnSeq?: number;\r\n\t})",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.queryToolExecutions:1549",
+			"name": "CoreDatabase.queryToolExecutions",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1549,
+			"endLine": 1563,
+			"statementCount": 19,
+			"exported": true,
+			"signature": "method queryToolExecutions(filter: ToolExecutionFilter)",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.toolExecRowToRecord:1594"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getToolExecutionStats:1565",
+			"name": "CoreDatabase.getToolExecutionStats",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1565,
+			"endLine": 1583,
+			"statementCount": 7,
+			"exported": true,
+			"signature": "method getToolExecutionStats(agentId?: string)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.cleanOldToolExecutions:1585",
+			"name": "CoreDatabase.cleanOldToolExecutions",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1585,
+			"endLine": 1592,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "method cleanOldToolExecutions(maxAgeMs: number)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.toolExecRowToRecord:1594",
+			"name": "CoreDatabase.toolExecRowToRecord",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1594,
+			"endLine": 1608,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method toolExecRowToRecord(row: any)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.close:1614",
+			"name": "CoreDatabase.close",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1614,
+			"endLine": 1616,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method close()",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.close:1614"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.rowToRecord:1622",
+			"name": "CoreDatabase.rowToRecord",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1622,
+			"endLine": 1665,
+			"statementCount": 9,
+			"exported": true,
+			"signature": "method rowToRecord(row: any)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.delegatedTaskRowToRecord:1671",
+			"name": "CoreDatabase.delegatedTaskRowToRecord",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1671,
+			"endLine": 1697,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method delegatedTaskRowToRecord(row: any)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.createDelegatedTask:1699",
+			"name": "CoreDatabase.createDelegatedTask",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1699,
+			"endLine": 1734,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method createDelegatedTask(input: {\r\n\t\tid: string;\r\n\t\tparentTaskId?: string;\r\n\t\trootTaskId: string;\r\n\t\townerAgentId: string;\r\n\t\ttargetAgentId: string;\r\n\t\tmodelId?: string;\r\n\t\tparentSessionId?: string;\r\n\t\tsessionId?: string;\r\n\t\ttask: string;\r\n\t\tstatus?: DelegatedTaskStatus;\r\n\t\tdepth?: number;\r\n\t\tparentToolCallId?: string;\r\n\t})",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.getDelegatedTask:1767"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.updateDelegatedTask:1736",
+			"name": "CoreDatabase.updateDelegatedTask",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1736,
+			"endLine": 1765,
+			"statementCount": 16,
+			"exported": true,
+			"signature": "method updateDelegatedTask(id: string, patch: Partial<Pick<DelegatedTaskRecord, \"status\" | \"step\" | \"turns\" | \"tokens\" | \"currentTool\" | \"result\" | \"error\" | \"controlMessage\" | \"finishRequestedAt\" | \"completedAt\" | \"sessionId\" | \"parentToolCallId\">>)",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.getDelegatedTask:1767"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.getDelegatedTask:1767",
+			"name": "CoreDatabase.getDelegatedTask",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1767,
+			"endLine": 1770,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method getDelegatedTask(id: string)",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.delegatedTaskRowToRecord:1671"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.deleteDelegatedTask:1780",
+			"name": "CoreDatabase.deleteDelegatedTask",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1780,
+			"endLine": 1782,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method deleteDelegatedTask(taskId: string)",
+			"description": "sub-4 (#1): hard-delete a single delegated_tasks row. Called after\r",
+			"callees": []
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.listDelegatedTasks:1784",
+			"name": "CoreDatabase.listDelegatedTasks",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1784,
+			"endLine": 1795,
+			"statementCount": 20,
+			"exported": true,
+			"signature": "method listDelegatedTasks(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; parentSessionId?: string; status?: DelegatedTaskStatus })",
+			"description": "",
+			"callees": [
+				"src/server/core-database.ts/CoreDatabase.delegatedTaskRowToRecord:1671"
+			]
+		},
+		{
+			"id": "src/server/core-database.ts/CoreDatabase.markRunningDelegatedTasksInterrupted:1798",
+			"name": "CoreDatabase.markRunningDelegatedTasksInterrupted",
+			"kind": "method",
+			"file": "src/server/core-database.ts",
+			"line": 1798,
+			"endLine": 1804,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method markRunningDelegatedTasksInterrupted()",
+			"description": "Mark still-running/finishing delegated tasks interrupted (startup recovery).",
 			"callees": []
 		},
 		{
@@ -12482,6 +13601,261 @@
 			"callees": []
 		},
 		{
+			"id": "src/server/database-manager.ts/deleteRetiredKnowledgeDb:144",
+			"name": "deleteRetiredKnowledgeDb",
+			"kind": "function",
+			"file": "src/server/database-manager.ts",
+			"line": 144,
+			"endLine": 165,
+			"statementCount": 12,
+			"exported": true,
+			"signature": "function deleteRetiredKnowledgeDb()",
+			"description": "删除退役的 knowledge.db{-wal,-shm}。精确白名单匹配，禁止 glob/递归。",
+			"callees": []
+		},
+		{
+			"id": "src/server/database-manager.ts/performLayoutBootstrap:186",
+			"name": "performLayoutBootstrap",
+			"kind": "function",
+			"file": "src/server/database-manager.ts",
+			"line": 186,
+			"endLine": 236,
+			"statementCount": 26,
+			"exported": true,
+			"signature": "function performLayoutBootstrap()",
+			"description": "sessions.db → db/core.db 启动切换。在任何 CoreDatabase 连接建立前调用。",
+			"callees": [
+				"src/server/database-manager.ts/readMarker:241",
+				"src/server/database-manager.ts/writeMarkerForExistingCoreDb:385",
+				"src/server/database-manager.ts/migrateLegacyToCore:256",
+				"src/server/database-manager.ts/writeMarkerForFreshCreate:367"
+			]
+		},
+		{
+			"id": "src/server/database-manager.ts/readMarker:241",
+			"name": "readMarker",
+			"kind": "function",
+			"file": "src/server/database-manager.ts",
+			"line": 241,
+			"endLine": 251,
+			"statementCount": 9,
+			"exported": false,
+			"signature": "function readMarker()",
+			"description": "读取并验证布局标记。complete:true 才算\"有效\"。",
+			"callees": []
+		},
+		{
+			"id": "src/server/database-manager.ts/migrateLegacyToCore:256",
+			"name": "migrateLegacyToCore",
+			"kind": "function",
+			"file": "src/server/database-manager.ts",
+			"line": 256,
+			"endLine": 360,
+			"statementCount": 50,
+			"exported": false,
+			"signature": "function migrateLegacyToCore()",
+			"description": "Case B 实际迁移逻辑：sessions.db → db/core.db。",
+			"callees": [
+				"src/server/database-manager.ts/DatabaseManager.close:529",
+				"src/server/database-manager.ts/safeSha256:424"
+			]
+		},
+		{
+			"id": "src/server/database-manager.ts/writeMarkerForFreshCreate:367",
+			"name": "writeMarkerForFreshCreate",
+			"kind": "function",
+			"file": "src/server/database-manager.ts",
+			"line": 367,
+			"endLine": 380,
+			"statementCount": 2,
+			"exported": false,
+			"signature": "function writeMarkerForFreshCreate()",
+			"description": "Fresh-create 的 marker：CoreDatabase 构造器尚未运行，因此 target hash",
+			"callees": []
+		},
+		{
+			"id": "src/server/database-manager.ts/writeMarkerForExistingCoreDb:385",
+			"name": "writeMarkerForExistingCoreDb",
+			"kind": "function",
+			"file": "src/server/database-manager.ts",
+			"line": 385,
+			"endLine": 399,
+			"statementCount": 3,
+			"exported": false,
+			"signature": "function writeMarkerForExistingCoreDb(_prior: LayoutMarker | null)",
+			"description": "已存在的 core.db（无迁移）写 marker —— 单源场景补写以让后续启动识别。",
+			"callees": [
+				"src/server/database-manager.ts/safeSha256:424"
+			]
+		},
+		{
+			"id": "src/server/database-manager.ts/finalizeFreshCreateMarker:405",
+			"name": "finalizeFreshCreateMarker",
+			"kind": "function",
+			"file": "src/server/database-manager.ts",
+			"line": 405,
+			"endLine": 421,
+			"statementCount": 6,
+			"exported": false,
+			"signature": "function finalizeFreshCreateMarker()",
+			"description": "CoreDatabase open() 完成后，把 fresh-create 的 marker 补全为 complete:true。",
+			"callees": [
+				"src/server/database-manager.ts/readMarker:241",
+				"src/server/database-manager.ts/safeSha256:424"
+			]
+		},
+		{
+			"id": "src/server/database-manager.ts/safeSha256:424",
+			"name": "safeSha256",
+			"kind": "function",
+			"file": "src/server/database-manager.ts",
+			"line": 424,
+			"endLine": 437,
+			"statementCount": 8,
+			"exported": false,
+			"signature": "function safeSha256(p: string)",
+			"description": "同步计算文件 sha256（小文件可接受；失败返回 null）。",
+			"callees": []
+		},
+		{
+			"id": "src/server/database-manager.ts/setDatabaseManager:446",
+			"name": "setDatabaseManager",
+			"kind": "function",
+			"file": "src/server/database-manager.ts",
+			"line": 446,
+			"endLine": 448,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "function setDatabaseManager(m: DatabaseManager | undefined)",
+			"description": "注册进程唯一的 DatabaseManager 实例（由 server/index.ts 启动时调用）。",
+			"callees": []
+		},
+		{
+			"id": "src/server/database-manager.ts/getDatabaseManager:457",
+			"name": "getDatabaseManager",
+			"kind": "function",
+			"file": "src/server/database-manager.ts",
+			"line": 457,
+			"endLine": 459,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "function getDatabaseManager()",
+			"description": "取进程唯一的 DatabaseManager 实例。CLI/headless 路径若未 set 则返回 undefined。",
+			"callees": []
+		},
+		{
+			"id": "src/server/database-manager.ts/DatabaseManager.open:506",
+			"name": "DatabaseManager.open",
+			"kind": "method",
+			"file": "src/server/database-manager.ts",
+			"line": 506,
+			"endLine": 526,
+			"statementCount": 7,
+			"exported": true,
+			"signature": "method open()",
+			"description": "打开数据库：先做 layout bootstrap（sessions.db → core.db 切换）+",
+			"callees": [
+				"src/server/database-manager.ts/deleteRetiredKnowledgeDb:144",
+				"src/server/database-manager.ts/performLayoutBootstrap:186",
+				"src/server/database-manager.ts/finalizeFreshCreateMarker:405"
+			]
+		},
+		{
+			"id": "src/server/database-manager.ts/DatabaseManager.close:529",
+			"name": "DatabaseManager.close",
+			"kind": "method",
+			"file": "src/server/database-manager.ts",
+			"line": 529,
+			"endLine": 540,
+			"statementCount": 8,
+			"exported": true,
+			"signature": "method close()",
+			"description": "关闭所有数据库。Idempotent（重复 close no-op）。",
+			"callees": [
+				"src/server/database-manager.ts/DatabaseManager.close:529"
+			]
+		},
+		{
+			"id": "src/server/database-manager.ts/DatabaseManager.health:546",
+			"name": "DatabaseManager.health",
+			"kind": "method",
+			"file": "src/server/database-manager.ts",
+			"line": 546,
+			"endLine": 553,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method health()",
+			"description": "健康检查。Plan-00 只返 core 项；Plan-01 起补 wiki 项。",
+			"callees": [
+				"src/server/database-manager.ts/probeHealth:606"
+			]
+		},
+		{
+			"id": "src/server/database-manager.ts/DatabaseManager.checkpointCore:561",
+			"name": "DatabaseManager.checkpointCore",
+			"kind": "method",
+			"file": "src/server/database-manager.ts",
+			"line": 561,
+			"endLine": 567,
+			"statementCount": 3,
+			"exported": true,
+			"signature": "method checkpointCore()",
+			"description": "Core DB 的 WAL checkpoint（TRUNCATE 模式）。Plan-00 实现。",
+			"callees": []
+		},
+		{
+			"id": "src/server/database-manager.ts/DatabaseManager.checkpointWiki:573",
+			"name": "DatabaseManager.checkpointWiki",
+			"kind": "method",
+			"file": "src/server/database-manager.ts",
+			"line": 573,
+			"endLine": 578,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method checkpointWiki()",
+			"description": "Wiki DB 的 WAL checkpoint。Plan-01 实现。Plan-00 阶段调用即 throw",
+			"callees": []
+		},
+		{
+			"id": "src/server/database-manager.ts/DatabaseManager.backupCore:584",
+			"name": "DatabaseManager.backupCore",
+			"kind": "method",
+			"file": "src/server/database-manager.ts",
+			"line": 584,
+			"endLine": 589,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method backupCore(_dest: string)",
+			"description": "Core DB 备份到 dest。Plan-08 实现（snapshot 用）。Plan-00 阶段 throw。",
+			"callees": []
+		},
+		{
+			"id": "src/server/database-manager.ts/DatabaseManager.backupWiki:595",
+			"name": "DatabaseManager.backupWiki",
+			"kind": "method",
+			"file": "src/server/database-manager.ts",
+			"line": 595,
+			"endLine": 600,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method backupWiki(_dest: string)",
+			"description": "Wiki DB 备份到 dest。Plan-08 实现。Plan-00 阶段 throw。",
+			"callees": []
+		},
+		{
+			"id": "src/server/database-manager.ts/probeHealth:606",
+			"name": "probeHealth",
+			"kind": "function",
+			"file": "src/server/database-manager.ts",
+			"line": 606,
+			"endLine": 647,
+			"statementCount": 23,
+			"exported": false,
+			"signature": "function probeHealth(db: CoreDatabase)",
+			"description": "探测一个 CoreDatabase 的健康状态。所有 PRAGMA 只读，不写、不 checkpoint。",
+			"callees": []
+		},
+		{
 			"id": "src/server/db-migration.ts/safeAddColumn:327",
 			"name": "safeAddColumn",
 			"kind": "function",
@@ -12626,7 +14000,7 @@
 			"endLine": 1200,
 			"statementCount": 142,
 			"exported": true,
-			"signature": "function runMigrations(sessionDB: SessionDB)",
+			"signature": "function runMigrations(sessionDB: CoreDatabase)",
 			"description": "",
 			"callees": [
 				"src/server/db-migration.ts/safeAddColumn:327",
@@ -12678,7 +14052,7 @@
 			"endLine": 42,
 			"statementCount": 12,
 			"exported": true,
-			"signature": "function createDelegatedTaskRouter(sessionDB: SessionDB)",
+			"signature": "function createDelegatedTaskRouter(sessionDB: CoreDatabase)",
 			"description": "",
 			"callees": []
 		},
@@ -12707,7 +14081,7 @@
 			"endLine": 181,
 			"statementCount": 65,
 			"exported": true,
-			"signature": "function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistry = HookRegistry.getInstance())",
+			"signature": "function registerDurableHooks(sessionDb: CoreDatabase, registry: HookRegistry = HookRegistry.getInstance())",
 			"description": "",
 			"callees": [
 				"src/runtime/hooks/turn-seq-tracker.ts/isTurnStatePrecreated:71",
@@ -12889,7 +14263,7 @@
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function flowDocPath(workspaceDir: string, id: string)",
-			"description": "Canonical doc path: `{workspace}/docs/requirements/{id}.md` (project-flow §4",
+			"description": "Canonical doc path: `{workspace}/docs/requirements/{id}.md` (project-flow §4\r",
 			"callees": []
 		},
 		{
@@ -12902,7 +14276,7 @@
 			"statementCount": 8,
 			"exported": true,
 			"signature": "function resolveExistingDocPath(workspaceDir: string, projectId: string | undefined, id: string)",
-			"description": "Resolve the on-disk path for an EXISTING doc, honouring the legacy",
+			"description": "Resolve the on-disk path for an EXISTING doc, honouring the legacy\r",
 			"callees": [
 				"src/server/flow-actions.ts/flowDocPath:109"
 			]
@@ -12932,7 +14306,7 @@
 			"statementCount": 22,
 			"exported": true,
 			"signature": "function writeDocSection(workspaceDir: string, projectId: string | undefined, id: string, section: \"Summary\" | \"Plan\" | \"Coverage\" | \"Decision Log\", body: string)",
-			"description": "Replace the `## <Section>` block in the requirement doc, or append it if",
+			"description": "Replace the `## <Section>` block in the requirement doc, or append it if\r",
 			"callees": [
 				"src/server/flow-actions.ts/resolveExistingDocPath:123"
 			]
@@ -12960,7 +14334,7 @@
 			"statementCount": 88,
 			"exported": true,
 			"signature": "function createFlowActions(deps: FlowActionsDeps)",
-			"description": "Build the FlowActions backend. Both the runtime Flow tool (via",
+			"description": "Build the FlowActions backend. Both the runtime Flow tool (via\r",
 			"callees": [
 				"src/server/flow-actions.ts/writeIntentDoc:138",
 				"src/server/flow-actions.ts/writeDocSection:161",
@@ -13267,12 +14641,25 @@
 			]
 		},
 		{
-			"id": "src/server/index.ts/expandHome:88",
+			"id": "src/server/health-router.ts/createHealthRouter:33",
+			"name": "createHealthRouter",
+			"kind": "function",
+			"file": "src/server/health-router.ts",
+			"line": 33,
+			"endLine": 82,
+			"statementCount": 27,
+			"exported": true,
+			"signature": "function createHealthRouter(deps: {\r\n\tsessionDB: { getDb(): { pragma(sql: string): unknown; exec(sql: string): void } };\r\n\tproviderStore: { list(): unknown[] };\r\n\tagentStore: { list(): unknown[] };\r\n\tworkspaceConfig: { workspaceDir: string };\r\n})",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/index.ts/expandHome:93",
 			"name": "expandHome",
 			"kind": "arrow",
 			"file": "src/server/index.ts",
-			"line": 88,
-			"endLine": 88,
+			"line": 93,
+			"endLine": 93,
 			"statementCount": 0,
 			"exported": false,
 			"signature": "fn (p: string)",
@@ -13280,17 +14667,18 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/index.ts/startServer:107",
+			"id": "src/server/index.ts/startServer:112",
 			"name": "startServer",
 			"kind": "function",
 			"file": "src/server/index.ts",
-			"line": 107,
-			"endLine": 1134,
-			"statementCount": 388,
+			"line": 112,
+			"endLine": 1111,
+			"statementCount": 368,
 			"exported": true,
 			"signature": "function startServer(options?: StartServerOptions)",
 			"description": "",
 			"callees": [
+				"src/server/database-manager.ts/setDatabaseManager:446",
 				"src/server/db-migration.ts/runMigrations:691",
 				"src/server/workspace-config.ts/loadWorkspaceConfig:40",
 				"src/server/builtin-skills.ts/ensureBuiltinSkills:63",
@@ -13298,11 +14686,11 @@
 				"src/server/agent-service.ts/createAgentService:2669",
 				"src/server/runtime-instances.ts/registerServerInstances:64",
 				"src/server/data-change-hub.ts/onDataChange:165",
-				"src/server/index.ts/broadcast:348",
-				"src/server/index.ts/reloadProviders:385",
+				"src/server/index.ts/broadcast:360",
+				"src/server/index.ts/reloadProviders:397",
 				"src/server/mcp-scanner.ts/scanExternalMcpConfigs:156",
 				"src/server/mcp-scanner.ts/mergeDetectedServers:202",
-				"src/server/index.ts/rebuildStaleStructureLayouts:1147",
+				"src/server/index.ts/rebuildStaleStructureLayouts:1124",
 				"src/server/config-router.ts/createConfigRouter:41",
 				"src/server/agent-router.ts/createAgentRouter:28",
 				"src/server/provider-router.ts/createProviderRouter:36",
@@ -13324,16 +14712,17 @@
 				"src/server/wiki-router.ts/createWikiRouter:63",
 				"src/server/wiki-router.ts/createWorkspaceDocHandler:262",
 				"src/server/tool-dispatcher.ts/dispatchTool:88",
-				"src/server/index.ts/expandHome:88"
+				"src/server/health-router.ts/createHealthRouter:33",
+				"src/server/index.ts/expandHome:93"
 			]
 		},
 		{
-			"id": "src/server/index.ts/broadcast:348",
+			"id": "src/server/index.ts/broadcast:360",
 			"name": "broadcast",
 			"kind": "arrow",
 			"file": "src/server/index.ts",
-			"line": 348,
-			"endLine": 353,
+			"line": 360,
+			"endLine": 365,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "fn (event: any)",
@@ -13341,12 +14730,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/index.ts/reloadProviders:385",
+			"id": "src/server/index.ts/reloadProviders:397",
 			"name": "reloadProviders",
 			"kind": "arrow",
 			"file": "src/server/index.ts",
-			"line": 385,
-			"endLine": 398,
+			"line": 397,
+			"endLine": 410,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "fn ()",
@@ -13354,12 +14743,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/index.ts/rebuildStaleStructureLayouts:1147",
+			"id": "src/server/index.ts/rebuildStaleStructureLayouts:1124",
 			"name": "rebuildStaleStructureLayouts",
 			"kind": "function",
 			"file": "src/server/index.ts",
-			"line": 1147,
-			"endLine": 1176,
+			"line": 1124,
+			"endLine": 1153,
 			"statementCount": 23,
 			"exported": false,
 			"signature": "function rebuildStaleStructureLayouts(archivistService: import(\"./wiki-skeleton-service.js\").WikiSkeletonService, projectStore: import(\"./project-store.js\").ProjectStore, wikiStore: import(\"./wiki-node-store.js\").WikiStore)",
@@ -13660,7 +15049,7 @@
 			"statementCount": 13,
 			"exported": true,
 			"signature": "method migrateFromJsonFile(key: string, jsonPath: string)",
-			"description": "Migrate from a JSON file. If the key already exists in SQLite, skip.",
+			"description": "Migrate from a JSON file. If the key already exists in SQLite, skip.\r",
 			"callees": [
 				"src/server/key-value-store.ts/KeyValueStore.get:61",
 				"src/server/key-value-store.ts/KeyValueStore.set:76"
@@ -13868,15 +15257,15 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/management-service.ts/ManagementService.setSessionDB:188",
-			"name": "ManagementService.setSessionDB",
+			"id": "src/server/management-service.ts/ManagementService.setCoreDatabase:188",
+			"name": "ManagementService.setCoreDatabase",
 			"kind": "method",
 			"file": "src/server/management-service.ts",
 			"line": 188,
 			"endLine": 188,
 			"statementCount": 1,
 			"exported": true,
-			"signature": "method setSessionDB(db: SessionDB)",
+			"signature": "method setCoreDatabase(db: CoreDatabase)",
 			"description": "",
 			"callees": []
 		},
@@ -16012,7 +17401,7 @@
 			"endLine": 321,
 			"statementCount": 180,
 			"exported": true,
-			"signature": "function createProjectRouter(deps: {\n\tprojectStore: ProjectStore;\n\trequirementStore: RequirementStore;\n\twikiStore: ProjectWikiStore;\n\ttaskStepStore: TaskStepStore;\n\tcronStore?: CronStore;\n\tmanagement?: ManagementService;\n})",
+			"signature": "function createProjectRouter(deps: {\r\n\tprojectStore: ProjectStore;\r\n\trequirementStore: RequirementStore;\r\n\twikiStore: ProjectWikiStore;\r\n\ttaskStepStore: TaskStepStore;\r\n\tcronStore?: CronStore;\r\n\tmanagement?: ManagementService;\r\n})",
 			"description": "",
 			"callees": []
 		},
@@ -16146,7 +17535,7 @@
 			"endLine": 93,
 			"statementCount": 35,
 			"exported": true,
-			"signature": "function createWikiRouter(deps: {\n\twikiStore: ProjectWikiStore;\n})",
+			"signature": "function createWikiRouter(deps: {\r\n\twikiStore: ProjectWikiStore;\r\n})",
 			"description": "",
 			"callees": []
 		},
@@ -16500,7 +17889,7 @@
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method listWithHook(event: string)",
-			"description": "列出监听指定 hook 事件的全部 work(跨 project)。ProjectWorkHookManager 收到",
+			"description": "列出监听指定 hook 事件的全部 work(跨 project)。ProjectWorkHookManager 收到\r",
 			"callees": [
 				"src/server/project-work-store.ts/ProjectWorkStore.list:60"
 			]
@@ -16833,7 +18222,7 @@
 			"endLine": 56,
 			"statementCount": 6,
 			"exported": true,
-			"signature": "function scanIncompleteTurns(sessionDb: SessionDB)",
+			"signature": "function scanIncompleteTurns(sessionDb: CoreDatabase)",
 			"description": "",
 			"callees": []
 		},
@@ -16989,7 +18378,7 @@
 			"endLine": 250,
 			"statementCount": 89,
 			"exported": true,
-			"signature": "function createRequirementRouter(deps: {\n\trequirementStore: RequirementStore;\n\ttaskStepStore: TaskStepStore;\n\tnotificationService?: NotificationService;\n\t/**\n\t * project-flow F4: shared FlowActions backend. When supplied, the\n\t * transition / create / coverage-verdict endpoints route through it (the\n\t * same object the runtime Flow tool uses via ctx.flowActions — single\n\t * source). When absent, the endpoints fall back to the legacy direct-store\n\t * path (back-compat for tests / not-yet-migrated callers).\n\t */\n\tflowActions?: FlowActions;\n})",
+			"signature": "function createRequirementRouter(deps: {\r\n\trequirementStore: RequirementStore;\r\n\ttaskStepStore: TaskStepStore;\r\n\tnotificationService?: NotificationService;\r\n\t/**\r\n\t * project-flow F4: shared FlowActions backend. When supplied, the\r\n\t * transition / create / coverage-verdict endpoints route through it (the\r\n\t * same object the runtime Flow tool uses via ctx.flowActions — single\r\n\t * source). When absent, the endpoints fall back to the legacy direct-store\r\n\t * path (back-compat for tests / not-yet-migrated callers).\r\n\t */\r\n\tflowActions?: FlowActions;\r\n})",
 			"description": "",
 			"callees": [
 				"src/server/requirement-router.ts/flowActionForTarget:258"
@@ -17005,7 +18394,7 @@
 			"statementCount": 7,
 			"exported": false,
 			"signature": "function flowActionForTarget(toStatus: RequirementStatus)",
-			"description": "Map a target status to its Flow transition action (project-flow §2). Each",
+			"description": "Map a target status to its Flow transition action (project-flow §2). Each\r",
 			"callees": []
 		},
 		{
@@ -17018,7 +18407,7 @@
 			"statementCount": 7,
 			"exported": true,
 			"signature": "function isValidTransition(from: RequirementStatus | undefined, to: RequirementStatus, triggeredBy: string)",
-			"description": "Check if a status transition is valid.",
+			"description": "Check if a status transition is valid.\r",
 			"callees": [
 				"src/server/requirement-state-machine.ts/getNextStatuses:113"
 			]
@@ -17259,7 +18648,7 @@
 			"description": "把启动构造的实例写进各数据源模块的 process-wide 单例。在任何工具调用前\r",
 			"callees": [
 				"src/server/agent-service.ts/setAgentService:2691",
-				"src/server/session-db.ts/setSessionDB:92",
+				"src/server/core-database.ts/setCoreDatabase:104",
 				"src/server/wiki-node-store.ts/setWikiStoreGlobal:351",
 				"src/server/project-wiki-store.ts/setProjectWikiStore:51",
 				"src/server/requirement-store.ts/setRequirementStore:92",
@@ -17307,1043 +18696,6 @@
 			"exported": true,
 			"signature": "function buildProjectBundle(deps: { projectStore: ProjectStore; resolveWikiRoot?: WikiRootResolver }, projectId: string)",
 			"description": "Build the standard context bundle for a project (workspaceDir from project,\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/getSessionDB:89",
-			"name": "getSessionDB",
-			"kind": "function",
-			"file": "src/server/session-db.ts",
-			"line": 89,
-			"endLine": 91,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "function getSessionDB()",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/setSessionDB:92",
-			"name": "setSessionDB",
-			"kind": "function",
-			"file": "src/server/session-db.ts",
-			"line": 92,
-			"endLine": 94,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "function setSessionDB(s: SessionDB | undefined)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getDb:120",
-			"name": "SessionDB.getDb",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 120,
-			"endLine": 122,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "method getDb()",
-			"description": "Expose the underlying db for SqliteStore instances.",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getKVStore:124",
-			"name": "SessionDB.getKVStore",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 124,
-			"endLine": 126,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "method getKVStore()",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getExtractionCursorStore:130",
-			"name": "SessionDB.getExtractionCursorStore",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 130,
-			"endLine": 135,
-			"statementCount": 3,
-			"exported": true,
-			"signature": "method getExtractionCursorStore()",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getTelemetryStore:137",
-			"name": "SessionDB.getTelemetryStore",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 137,
-			"endLine": 142,
-			"statementCount": 3,
-			"exported": true,
-			"signature": "method getTelemetryStore()",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.initSchema:159",
-			"name": "SessionDB.initSchema",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 159,
-			"endLine": 364,
-			"statementCount": 26,
-			"exported": true,
-			"signature": "method initSchema()",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.safeAddColumn:381",
-				"src/server/session-db.ts/SessionDB.safeAddIndex:391",
-				"src/server/session-db.ts/SessionDB.migrateToolNames:400",
-				"src/server/session-db.ts/SessionDB.safeDropColumn:371"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.safeDropColumn:371",
-			"name": "SessionDB.safeDropColumn",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 371,
-			"endLine": 378,
-			"statementCount": 4,
-			"exported": true,
-			"signature": "method safeDropColumn(table: string, column: string)",
-			"description": "Idempotently drop a column from an existing table (no-op if absent).\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.safeAddColumn:381",
-			"name": "SessionDB.safeAddColumn",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 381,
-			"endLine": 388,
-			"statementCount": 4,
-			"exported": true,
-			"signature": "method safeAddColumn(table: string, column: string, def: string)",
-			"description": "Idempotently add a column to an existing table (no-op if present).",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.safeAddIndex:391",
-			"name": "SessionDB.safeAddIndex",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 391,
-			"endLine": 398,
-			"statementCount": 4,
-			"exported": true,
-			"signature": "method safeAddIndex(table: string, indexName: string, columns: string)",
-			"description": "Idempotently create an index on an existing table (no-op if present).",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.migrateToolNames:400",
-			"name": "SessionDB.migrateToolNames",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 400,
-			"endLine": 412,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method migrateToolNames()",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.createSession:417",
-			"name": "SessionDB.createSession",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 417,
-			"endLine": 451,
-			"statementCount": 9,
-			"exported": true,
-			"signature": "method createSession(agentId: string, title?: string, context?: SessionRecord[\"context\"], options?: { sessionKind?: \"chat\" | \"delegated\"; parentSessionId?: string; parentTaskId?: string; visibility?: \"normal\" | \"hidden\" | \"debug\" })",
-			"description": "",
-			"callees": [
-				"src/server/data-change-hub.ts/emitDataChange:122"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getSession:453",
-			"name": "SessionDB.getSession",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 453,
-			"endLine": 456,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method getSession(sessionId: string)",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1602"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getMainSession:458",
-			"name": "SessionDB.getMainSession",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 458,
-			"endLine": 461,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method getMainSession(agentId: string)",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1602"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getMostRecentSession:473",
-			"name": "SessionDB.getMostRecentSession",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 473,
-			"endLine": 479,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method getMostRecentSession(agentId: string)",
-			"description": "The most-recently-active session for an agent, by `updated_at`. Every\r",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1602"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.setMainSession:481",
-			"name": "SessionDB.setMainSession",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 481,
-			"endLine": 487,
-			"statementCount": 4,
-			"exported": true,
-			"signature": "method setMainSession(agentId: string, sessionId: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.listSessions:489",
-			"name": "SessionDB.listSessions",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 489,
-			"endLine": 494,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method listSessions(agentId: string)",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1602"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.listAllSessions:496",
-			"name": "SessionDB.listAllSessions",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 496,
-			"endLine": 501,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method listAllSessions()",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1602"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.listOrphanCandidateSessions:529",
-			"name": "SessionDB.listOrphanCandidateSessions",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 529,
-			"endLine": 557,
-			"statementCount": 10,
-			"exported": true,
-			"signature": "method listOrphanCandidateSessions(opts: { olderThan: string; excludeIds?: Set<string> })",
-			"description": "archive-no-residual sub-4 (D5): list candidate \"orphan\" sessions for the\r",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1602"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:568",
-			"name": "SessionDB.findSessionByAgentAndProject",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 568,
-			"endLine": 574,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method findSessionByAgentAndProject(agentId: string, projectId: string)",
-			"description": "v0.8 (M0): find-or-create routing key for `{role(agentId), projectId} → session`.\r",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1602"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.updateSessionContext:577",
-			"name": "SessionDB.updateSessionContext",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 577,
-			"endLine": 589,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method updateSessionContext(sessionId: string, context: SessionRecord[\"context\"])",
-			"description": "Update a session's context bundle.",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getSessionContext:592",
-			"name": "SessionDB.getSessionContext",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 592,
-			"endLine": 602,
-			"statementCount": 6,
-			"exported": true,
-			"signature": "method getSessionContext(sessionId: string)",
-			"description": "Get a session's context bundle (D-B).",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.deleteSession:603",
-			"name": "SessionDB.deleteSession",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 603,
-			"endLine": 607,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method deleteSession(sessionId: string)",
-			"description": "",
-			"callees": [
-				"src/server/data-change-hub.ts/emitDataChange:122"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.archiveSession:615",
-			"name": "SessionDB.archiveSession",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 615,
-			"endLine": 623,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method archiveSession(sessionId: string)",
-			"description": "Mark a session as archived (soft delete). Archived sessions are excluded\r",
-			"callees": [
-				"src/server/data-change-hub.ts/emitDataChange:122"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.markArchivedTransient:641",
-			"name": "SessionDB.markArchivedTransient",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 641,
-			"endLine": 649,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "method markArchivedTransient(sessionId: string)",
-			"description": "compression-archive-simplify sub-4 (atomic archive): transient mark used\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.listArchivedTransientSessions:659",
-			"name": "SessionDB.listArchivedTransientSessions",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 659,
-			"endLine": 669,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method listArchivedTransientSessions()",
-			"description": "compression-archive-simplify sub-4: list sessions left in the transient\r",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.rowToRecord:1602"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.deleteSessionData:692",
-			"name": "SessionDB.deleteSessionData",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 692,
-			"endLine": 704,
-			"statementCount": 8,
-			"exported": true,
-			"signature": "method deleteSessionData(sessionId: string)",
-			"description": "steps-overhaul sub-8 (archive pipeline): hard-delete ALL of a session's\r",
-			"callees": [
-				"src/server/data-change-hub.ts/emitDataChange:122"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.updateSessionUsage:706",
-			"name": "SessionDB.updateSessionUsage",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 706,
-			"endLine": 711,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method updateSessionUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number; estimatedCostUsd: number })",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getTokenUsage:731",
-			"name": "SessionDB.getTokenUsage",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 731,
-			"endLine": 742,
-			"statementCount": 7,
-			"exported": true,
-			"signature": "method getTokenUsage(sessionId: string)",
-			"description": "Read the last API-returned usage snapshot for a session (the `token_usage`\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.setTokenUsage:749",
-			"name": "SessionDB.setTokenUsage",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 749,
-			"endLine": 757,
-			"statementCount": 3,
-			"exported": true,
-			"signature": "method setTokenUsage(sessionId: string, usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number })",
-			"description": "Overwrite the last API-returned usage snapshot. Called by the compression\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.parseSummary:783",
-			"name": "SessionDB.parseSummary",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 783,
-			"endLine": 785,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "method parseSummary(raw: string)",
-			"description": "Shape of one summary block persisted to messages.summary_json.",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getSummaries:793",
-			"name": "SessionDB.getSummaries",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 793,
-			"endLine": 803,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method getSummaries(sessionId: string)",
-			"description": "Read the summary blocks for a session, oldest-first. Returns [] when no\r",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.parseSummary:783"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getCompressionCursor:812",
-			"name": "SessionDB.getCompressionCursor",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 812,
-			"endLine": 822,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method getCompressionCursor(sessionId: string)",
-			"description": "Read the compression/assembly cursor (messages.last_compressed_step_seq).\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.clearSummaries:828",
-			"name": "SessionDB.clearSummaries",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 828,
-			"endLine": 835,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method clearSummaries(sessionId: string)",
-			"description": "Clear all summaries for a session (e.g. on session reset). Does NOT touch\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.replaceSummariesAndAdvanceCursor:852",
-			"name": "SessionDB.replaceSummariesAndAdvanceCursor",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 852,
-			"endLine": 872,
-			"statementCount": 7,
-			"exported": true,
-			"signature": "method replaceSummariesAndAdvanceCursor(sessionId: string, summary: MessageSummary, compressedStepSeq: number)",
-			"description": "steps-overhaul sub-3b (compression-archive-simplify): atomic clear +\r",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:875"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.ensureSession:875",
-			"name": "SessionDB.ensureSession",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 875,
-			"endLine": 882,
-			"statementCount": 3,
-			"exported": true,
-			"signature": "method ensureSession(sessionId: string)",
-			"description": "Ensure a session row exists for the given ID (defensive FK guard).",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.migrateMessageFiles:895",
-			"name": "SessionDB.migrateMessageFiles",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 895,
-			"endLine": 941,
-			"statementCount": 32,
-			"exported": true,
-			"signature": "method migrateMessageFiles()",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.createSession:417",
-				"src/server/session-db.ts/SessionDB.setMainSession:481",
-				"src/server/session-db.ts/SessionDB.appendStep:1065"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getStepCount:949",
-			"name": "SessionDB.getStepCount",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 949,
-			"endLine": 967,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method getStepCount(sessionId: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.clearTurns:969",
-			"name": "SessionDB.clearTurns",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 969,
-			"endLine": 979,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method clearTurns(sessionId: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.deleteTurn:981",
-			"name": "SessionDB.deleteTurn",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 981,
-			"endLine": 986,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "method deleteTurn(sessionId: string, seq: number)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.serializeAttachments:998",
-			"name": "SessionDB.serializeAttachments",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 998,
-			"endLine": 1001,
-			"statementCount": 3,
-			"exported": true,
-			"signature": "method serializeAttachments(attachments?: AttachmentMeta[])",
-			"description": "multimodal-input sub-2: serialize a step's attachment metadata to the\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.deserializeAttachments:1008",
-			"name": "SessionDB.deserializeAttachments",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1008,
-			"endLine": 1017,
-			"statementCount": 8,
-			"exported": true,
-			"signature": "method deserializeAttachments(raw: unknown)",
-			"description": "multimodal-input sub-2: parse the `steps.attachments` column back into\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getSteps:1019",
-			"name": "SessionDB.getSteps",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1019,
-			"endLine": 1040,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method getSteps(sessionId: string)",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.deserializeAttachments:1008"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getStepGroup:1042",
-			"name": "SessionDB.getStepGroup",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1042,
-			"endLine": 1063,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method getStepGroup(sessionId: string, turnGroup: number)",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.deserializeAttachments:1008"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.appendStep:1065",
-			"name": "SessionDB.appendStep",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1065,
-			"endLine": 1108,
-			"statementCount": 10,
-			"exported": true,
-			"signature": "method appendStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }, attachments?: AttachmentMeta[])",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:875",
-				"src/server/session-db.ts/SessionDB.serializeAttachments:998"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.upsertStep:1110",
-			"name": "SessionDB.upsertStep",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1110,
-			"endLine": 1162,
-			"statementCount": 14,
-			"exported": true,
-			"signature": "method upsertStep(sessionId: string, seq: number, turnGroup: number, role: string, content: string | null, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }, attachments?: AttachmentMeta[])",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.ensureSession:875",
-				"src/server/session-db.ts/SessionDB.serializeAttachments:998"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.updateStepContent:1164",
-			"name": "SessionDB.updateStepContent",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1164,
-			"endLine": 1183,
-			"statementCount": 7,
-			"exported": true,
-			"signature": "method updateStepContent(sessionId: string, seq: number, content: string, usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number })",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.deleteStepGroup:1185",
-			"name": "SessionDB.deleteStepGroup",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1185,
-			"endLine": 1200,
-			"statementCount": 6,
-			"exported": true,
-			"signature": "method deleteStepGroup(sessionId: string, turnGroup: number)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1214",
-			"name": "SessionDB.deleteStepsFromSeq",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1214,
-			"endLine": 1245,
-			"statementCount": 11,
-			"exported": true,
-			"signature": "method deleteStepsFromSeq(sessionId: string, fromSeq: number)",
-			"description": "Rollback delete: drop the step at `fromSeq` AND every step after it (seq\r",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.getCompressionCursor:812",
-				"src/server/session-db.ts/SessionDB.clearSummaries:828"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getTurnGroupCount:1247",
-			"name": "SessionDB.getTurnGroupCount",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1247,
-			"endLine": 1252,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method getTurnGroupCount(sessionId: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.createTurnState:1271",
-			"name": "SessionDB.createTurnState",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1271,
-			"endLine": 1297,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method createTurnState(sessionId: string, turnSeq: number, source: TurnSource = \"background\")",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.advanceStepCheckpoint:1308",
-			"name": "SessionDB.advanceStepCheckpoint",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1308,
-			"endLine": 1320,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method advanceStepCheckpoint(sessionId: string, turnSeq: number, stepSeq: number)",
-			"description": "steps-overhaul sub-1: advance the per-session step checkpoint (was\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getStepCheckpoint:1323",
-			"name": "SessionDB.getStepCheckpoint",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1323,
-			"endLine": 1333,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method getStepCheckpoint(sessionId: string)",
-			"description": "Read the per-session step checkpoint (NULL when no step has completed).",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.completeTurnState:1335",
-			"name": "SessionDB.completeTurnState",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1335,
-			"endLine": 1345,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method completeTurnState(sessionId: string, turnSeq: number)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.failTurnState:1347",
-			"name": "SessionDB.failTurnState",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1347,
-			"endLine": 1357,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method failTurnState(sessionId: string, turnSeq: number, error: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurns:1370",
-			"name": "SessionDB.getIncompleteTurns",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1370,
-			"endLine": 1387,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method getIncompleteTurns()",
-			"description": "steps-overhaul sub-1: all sessions whose phase is non-terminal (recovery\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurn:1398",
-			"name": "SessionDB.getIncompleteTurn",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1398,
-			"endLine": 1413,
-			"statementCount": 7,
-			"exported": true,
-			"signature": "method getIncompleteTurn(sessionId: string)",
-			"description": "sub-4 (TaskResume turn_seq guard): single-session interrupted turn read.\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getIncompleteTurnSessionIds:1427",
-			"name": "SessionDB.getIncompleteTurnSessionIds",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1427,
-			"endLine": 1437,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method getIncompleteTurnSessionIds()",
-			"description": "sub-8 (lazy rebuild + interrupted seed): set of DISTINCT session ids whose\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.abandonInterruptedTurn:1448",
-			"name": "SessionDB.abandonInterruptedTurn",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1448,
-			"endLine": 1459,
-			"statementCount": 6,
-			"exported": true,
-			"signature": "method abandonInterruptedTurn(sessionId: string, reason: string = \"Abandoned via TaskKill\")",
-			"description": "sub-4 (TaskKill interrupted→abandon): mark a session's interrupted state\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.cleanOldProviderUsage:1470",
-			"name": "SessionDB.cleanOldProviderUsage",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1470,
-			"endLine": 1483,
-			"statementCount": 6,
-			"exported": true,
-			"signature": "method cleanOldProviderUsage(maxAgeMs: number)",
-			"description": "platform-observability ②.2 (sub-2): retention for the provider_usage\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.deleteTurnState:1491",
-			"name": "SessionDB.deleteTurnState",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1491,
-			"endLine": 1496,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method deleteTurnState(sessionId: string)",
-			"description": "Reset a session's turn state row to terminal-completed (defensive clear).\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.recordToolExecution:1502",
-			"name": "SessionDB.recordToolExecution",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1502,
-			"endLine": 1527,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "method recordToolExecution(exec: {\r\n\t\tsessionId: string;\r\n\t\tagentId: string;\r\n\t\ttoolName: string;\r\n\t\tsuccess: boolean;\r\n\t\terrorMessage?: string;\r\n\t\tinputPreview?: string;\r\n\t\toutputPreview?: string;\r\n\t\tdurationMs: number;\r\n\t\tturnSeq?: number;\r\n\t})",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.queryToolExecutions:1529",
-			"name": "SessionDB.queryToolExecutions",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1529,
-			"endLine": 1543,
-			"statementCount": 19,
-			"exported": true,
-			"signature": "method queryToolExecutions(filter: ToolExecutionFilter)",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.toolExecRowToRecord:1574"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getToolExecutionStats:1545",
-			"name": "SessionDB.getToolExecutionStats",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1545,
-			"endLine": 1563,
-			"statementCount": 7,
-			"exported": true,
-			"signature": "method getToolExecutionStats(agentId?: string)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.cleanOldToolExecutions:1565",
-			"name": "SessionDB.cleanOldToolExecutions",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1565,
-			"endLine": 1572,
-			"statementCount": 5,
-			"exported": true,
-			"signature": "method cleanOldToolExecutions(maxAgeMs: number)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.toolExecRowToRecord:1574",
-			"name": "SessionDB.toolExecRowToRecord",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1574,
-			"endLine": 1588,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "method toolExecRowToRecord(row: any)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.close:1594",
-			"name": "SessionDB.close",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1594,
-			"endLine": 1596,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "method close()",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.close:1594"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.rowToRecord:1602",
-			"name": "SessionDB.rowToRecord",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1602,
-			"endLine": 1645,
-			"statementCount": 9,
-			"exported": true,
-			"signature": "method rowToRecord(row: any)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1651",
-			"name": "SessionDB.delegatedTaskRowToRecord",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1651,
-			"endLine": 1677,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "method delegatedTaskRowToRecord(row: any)",
-			"description": "",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.createDelegatedTask:1679",
-			"name": "SessionDB.createDelegatedTask",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1679,
-			"endLine": 1714,
-			"statementCount": 4,
-			"exported": true,
-			"signature": "method createDelegatedTask(input: {\r\n\t\tid: string;\r\n\t\tparentTaskId?: string;\r\n\t\trootTaskId: string;\r\n\t\townerAgentId: string;\r\n\t\ttargetAgentId: string;\r\n\t\tmodelId?: string;\r\n\t\tparentSessionId?: string;\r\n\t\tsessionId?: string;\r\n\t\ttask: string;\r\n\t\tstatus?: DelegatedTaskStatus;\r\n\t\tdepth?: number;\r\n\t\tparentToolCallId?: string;\r\n\t})",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.getDelegatedTask:1747"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.updateDelegatedTask:1716",
-			"name": "SessionDB.updateDelegatedTask",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1716,
-			"endLine": 1745,
-			"statementCount": 16,
-			"exported": true,
-			"signature": "method updateDelegatedTask(id: string, patch: Partial<Pick<DelegatedTaskRecord, \"status\" | \"step\" | \"turns\" | \"tokens\" | \"currentTool\" | \"result\" | \"error\" | \"controlMessage\" | \"finishRequestedAt\" | \"completedAt\" | \"sessionId\" | \"parentToolCallId\">>)",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.getDelegatedTask:1747"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.getDelegatedTask:1747",
-			"name": "SessionDB.getDelegatedTask",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1747,
-			"endLine": 1750,
-			"statementCount": 2,
-			"exported": true,
-			"signature": "method getDelegatedTask(id: string)",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1651"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.deleteDelegatedTask:1760",
-			"name": "SessionDB.deleteDelegatedTask",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1760,
-			"endLine": 1762,
-			"statementCount": 1,
-			"exported": true,
-			"signature": "method deleteDelegatedTask(taskId: string)",
-			"description": "sub-4 (#1): hard-delete a single delegated_tasks row. Called after\r",
-			"callees": []
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.listDelegatedTasks:1764",
-			"name": "SessionDB.listDelegatedTasks",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1764,
-			"endLine": 1775,
-			"statementCount": 20,
-			"exported": true,
-			"signature": "method listDelegatedTasks(filter?: { ownerAgentId?: string; rootTaskId?: string; parentTaskId?: string; parentSessionId?: string; status?: DelegatedTaskStatus })",
-			"description": "",
-			"callees": [
-				"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1651"
-			]
-		},
-		{
-			"id": "src/server/session-db.ts/SessionDB.markRunningDelegatedTasksInterrupted:1778",
-			"name": "SessionDB.markRunningDelegatedTasksInterrupted",
-			"kind": "method",
-			"file": "src/server/session-db.ts",
-			"line": 1778,
-			"endLine": 1784,
-			"statementCount": 3,
-			"exported": true,
-			"signature": "method markRunningDelegatedTasksInterrupted()",
-			"description": "Mark still-running/finishing delegated tasks interrupted (startup recovery).",
 			"callees": []
 		},
 		{
@@ -18424,7 +18776,7 @@
 			"endLine": 144,
 			"statementCount": 1,
 			"exported": true,
-			"signature": "method setSessionDb(db: SessionDB)",
+			"signature": "method setSessionDb(db: CoreDatabase)",
 			"description": "",
 			"callees": []
 		},
@@ -19912,7 +20264,7 @@
 			"endLine": 40,
 			"statementCount": 3,
 			"exported": false,
-			"signature": "function loadGithubCache(sessionDB: SessionDB)",
+			"signature": "function loadGithubCache(sessionDB: CoreDatabase)",
 			"description": "",
 			"callees": []
 		},
@@ -19925,7 +20277,7 @@
 			"endLine": 45,
 			"statementCount": 3,
 			"exported": false,
-			"signature": "function saveGithubCache(sessionDB: SessionDB, data: GithubCache)",
+			"signature": "function saveGithubCache(sessionDB: CoreDatabase, data: GithubCache)",
 			"description": "",
 			"callees": []
 		},
@@ -19938,7 +20290,7 @@
 			"endLine": 259,
 			"statementCount": 154,
 			"exported": true,
-			"signature": "function createTemplateRouter(templateStore: TemplateStore, sessionDB: SessionDB)",
+			"signature": "function createTemplateRouter(templateStore: TemplateStore, sessionDB: CoreDatabase)",
 			"description": "",
 			"callees": [
 				"src/server/template-router.ts/loadGithubCache:38",
@@ -20139,7 +20491,7 @@
 			"endLine": 117,
 			"statementCount": 46,
 			"exported": true,
-			"signature": "function registerToolExecutionHooks(sessionDb: SessionDB, registry: HookRegistry = HookRegistry.getInstance())",
+			"signature": "function registerToolExecutionHooks(sessionDb: CoreDatabase, registry: HookRegistry = HookRegistry.getInstance())",
 			"description": "",
 			"callees": [
 				"src/server/tool-execution-hooks.ts/truncatePreview:128",
@@ -20183,7 +20535,7 @@
 			"endLine": 129,
 			"statementCount": 32,
 			"exported": true,
-			"signature": "function createToolExecutionRouter(deps: {\n\tsessionDb: any;\n\tagentService: any;\n\tproviderStore: any;\n\tworkspaceConfig: any;\n})",
+			"signature": "function createToolExecutionRouter(deps: {\r\n\tsessionDb: any;\r\n\tagentService: any;\r\n\tproviderStore: any;\r\n\tworkspaceConfig: any;\r\n})",
 			"description": "",
 			"callees": [
 				"src/runtime/provider-factory.ts/resolveModel:44"
@@ -22106,7 +22458,7 @@
 			"endLine": 46,
 			"statementCount": 5,
 			"exported": true,
-			"signature": "function loadWorkspaceConfig(db?: SessionDB)",
+			"signature": "function loadWorkspaceConfig(db?: CoreDatabase)",
 			"description": "",
 			"callees": []
 		},
@@ -22119,7 +22471,7 @@
 			"endLine": 54,
 			"statementCount": 4,
 			"exported": true,
-			"signature": "function saveWorkspaceConfig(config: Partial<WorkspaceConfig>, db: SessionDB)",
+			"signature": "function saveWorkspaceConfig(config: Partial<WorkspaceConfig>, db: CoreDatabase)",
 			"description": "",
 			"callees": [
 				"src/server/workspace-config.ts/loadWorkspaceConfig:40"
@@ -22603,7 +22955,7 @@
 			"statementCount": 9,
 			"exported": true,
 			"signature": "function processInput(config: ZeroCoreConfig, input: string)",
-			"description": "Process user input through custom command templates.",
+			"description": "Process user input through custom command templates.\r",
 			"callees": []
 		},
 		{
@@ -22728,7 +23080,7 @@
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function enrichInBackground(models: RawModel[], onEnriched: (enriched: ProviderModel[]) => void)",
-			"description": "Enrich models in the background and persist the enriched data via a callback.",
+			"description": "Enrich models in the background and persist the enriched data via a callback.\r",
 			"callees": [
 				"src/core/model-registry.ts/enrichModels:174"
 			]
@@ -22824,7 +23176,7 @@
 			"endLine": 209,
 			"statementCount": 5,
 			"exported": true,
-			"signature": "function loadProjectContext(cwd: string, config?: {\n\t\tinjectProjectContext?: boolean;\n\t\tmaxDirectoryDepth?: number;\n\t\texcludePatterns?: string[];\n\t})",
+			"signature": "function loadProjectContext(cwd: string, config?: {\r\n\t\tinjectProjectContext?: boolean;\r\n\t\tmaxDirectoryDepth?: number;\r\n\t\texcludePatterns?: string[];\r\n\t})",
 			"description": "",
 			"callees": [
 				"src/core/project-context.ts/loadContextFiles:56",
@@ -22855,7 +23207,7 @@
 			"statementCount": 4,
 			"exported": true,
 			"signature": "function getProviderAdapter(config: ZeroCoreConfig, provider: string)",
-			"description": "Look up provider-specific compatibility settings from config.",
+			"description": "Look up provider-specific compatibility settings from config.\r",
 			"callees": []
 		},
 		{
@@ -22908,7 +23260,7 @@
 			"endLine": 215,
 			"statementCount": 43,
 			"exported": true,
-			"signature": "function seedTestEnvironment(sessionDb: SessionDB, agentStore: AgentStore, providerStore: ProviderStore, wikiStore?: WikiStore, projectStore?: ProjectStore, projectWorkStore?: ProjectWorkStore)",
+			"signature": "function seedTestEnvironment(sessionDb: CoreDatabase, agentStore: AgentStore, providerStore: ProviderStore, wikiStore?: WikiStore, projectStore?: ProjectStore, projectWorkStore?: ProjectWorkStore)",
 			"description": "",
 			"callees": [
 				"src/server/fresh-db-seed.ts/ensureWikiSkeleton:325"
@@ -23130,7 +23482,7 @@
 			"statementCount": 16,
 			"exported": true,
 			"signature": "function truncateUtf8Bytes(str: string | undefined | null, maxBytes: number, marker = \"…\")",
-			"description": "Truncate a string to at most `maxBytes` UTF-8 bytes WITHOUT splitting a",
+			"description": "Truncate a string to at most `maxBytes` UTF-8 bytes WITHOUT splitting a\r",
 			"callees": []
 		},
 		{
@@ -23975,7 +24327,7 @@
 		],
 		"src/server/flow-actions.ts/createFlowActions:321": [
 			"src/server/agent-service.ts/AgentService.createLoopForSession:1573",
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/agent-service.ts/AgentService.buildAndRegisterLoop:1531": [
 			"src/server/agent-service.ts/AgentService.createLoopForSession:1573",
@@ -24236,7 +24588,7 @@
 		],
 		"src/server/workspace-config.ts/loadWorkspaceConfig:40": [
 			"src/server/config-router.ts/createConfigRouter:41",
-			"src/server/index.ts/startServer:107",
+			"src/server/index.ts/startServer:112",
 			"src/server/workspace-config.ts/saveWorkspaceConfig:48"
 		],
 		"src/server/workspace-config.ts/saveWorkspaceConfig:48": [
@@ -24258,6 +24610,84 @@
 		],
 		"src/core/config.ts/loadConfig:331": [
 			"src/server/config-router.ts/createConfigRouter:41"
+		],
+		"src/server/core-database.ts/CoreDatabase.safeAddColumn:401": [
+			"src/server/core-database.ts/CoreDatabase.initSchema:179"
+		],
+		"src/server/core-database.ts/CoreDatabase.safeAddIndex:411": [
+			"src/server/core-database.ts/CoreDatabase.initSchema:179"
+		],
+		"src/server/core-database.ts/CoreDatabase.migrateToolNames:420": [
+			"src/server/core-database.ts/CoreDatabase.initSchema:179"
+		],
+		"src/server/core-database.ts/CoreDatabase.safeDropColumn:391": [
+			"src/server/core-database.ts/CoreDatabase.initSchema:179"
+		],
+		"src/server/data-change-hub.ts/emitDataChange:122": [
+			"src/server/core-database.ts/CoreDatabase.createSession:437",
+			"src/server/core-database.ts/CoreDatabase.deleteSession:623",
+			"src/server/core-database.ts/CoreDatabase.archiveSession:635",
+			"src/server/core-database.ts/CoreDatabase.deleteSessionData:712",
+			"src/server/data-change-hub.ts/emitTransition:145",
+			"src/server/input-queue-store.ts/InputQueueStore.emit:62",
+			"src/server/sqlite-store.ts/SqliteStore.delete:279",
+			"src/server/sqlite-store.ts/SqliteStore.insertRow:324",
+			"src/server/sqlite-store.ts/SqliteStore.updateRow:330"
+		],
+		"src/server/core-database.ts/CoreDatabase.rowToRecord:1622": [
+			"src/server/core-database.ts/CoreDatabase.getSession:473",
+			"src/server/core-database.ts/CoreDatabase.getMainSession:478",
+			"src/server/core-database.ts/CoreDatabase.getMostRecentSession:493",
+			"src/server/core-database.ts/CoreDatabase.listSessions:509",
+			"src/server/core-database.ts/CoreDatabase.listAllSessions:516",
+			"src/server/core-database.ts/CoreDatabase.listOrphanCandidateSessions:549",
+			"src/server/core-database.ts/CoreDatabase.findSessionByAgentAndProject:588",
+			"src/server/core-database.ts/CoreDatabase.listArchivedTransientSessions:679"
+		],
+		"src/server/core-database.ts/CoreDatabase.parseSummary:803": [
+			"src/server/core-database.ts/CoreDatabase.getSummaries:813"
+		],
+		"src/server/core-database.ts/CoreDatabase.ensureSession:895": [
+			"src/server/core-database.ts/CoreDatabase.replaceSummariesAndAdvanceCursor:872",
+			"src/server/core-database.ts/CoreDatabase.appendStep:1085",
+			"src/server/core-database.ts/CoreDatabase.upsertStep:1130"
+		],
+		"src/server/core-database.ts/CoreDatabase.createSession:437": [
+			"src/server/core-database.ts/CoreDatabase.migrateMessageFiles:915"
+		],
+		"src/server/core-database.ts/CoreDatabase.setMainSession:501": [
+			"src/server/core-database.ts/CoreDatabase.migrateMessageFiles:915"
+		],
+		"src/server/core-database.ts/CoreDatabase.appendStep:1085": [
+			"src/server/core-database.ts/CoreDatabase.migrateMessageFiles:915"
+		],
+		"src/server/core-database.ts/CoreDatabase.deserializeAttachments:1028": [
+			"src/server/core-database.ts/CoreDatabase.getSteps:1039",
+			"src/server/core-database.ts/CoreDatabase.getStepGroup:1062"
+		],
+		"src/server/core-database.ts/CoreDatabase.serializeAttachments:1018": [
+			"src/server/core-database.ts/CoreDatabase.appendStep:1085",
+			"src/server/core-database.ts/CoreDatabase.upsertStep:1130"
+		],
+		"src/server/core-database.ts/CoreDatabase.getCompressionCursor:832": [
+			"src/server/core-database.ts/CoreDatabase.deleteStepsFromSeq:1234"
+		],
+		"src/server/core-database.ts/CoreDatabase.clearSummaries:848": [
+			"src/server/core-database.ts/CoreDatabase.deleteStepsFromSeq:1234"
+		],
+		"src/server/core-database.ts/CoreDatabase.toolExecRowToRecord:1594": [
+			"src/server/core-database.ts/CoreDatabase.queryToolExecutions:1549"
+		],
+		"src/server/core-database.ts/CoreDatabase.close:1614": [
+			"src/server/core-database.ts/CoreDatabase.close:1614"
+		],
+		"src/server/core-database.ts/CoreDatabase.getDelegatedTask:1767": [
+			"src/server/core-database.ts/CoreDatabase.createDelegatedTask:1699",
+			"src/server/core-database.ts/CoreDatabase.updateDelegatedTask:1736"
+		],
+		"src/server/core-database.ts/CoreDatabase.delegatedTaskRowToRecord:1671": [
+			"src/server/core-database.ts/CoreDatabase.getDelegatedTask:1767",
+			"src/server/core-database.ts/CoreDatabase.listDelegatedTasks:1784"
 		],
 		"src/server/cron-analysis.ts/tzFields:148": [
 			"src/server/cron-analysis.ts/nextAlarmMs:91"
@@ -24423,16 +24853,39 @@
 		"src/server/cron-store.ts/CronRunStore.listByCron:195": [
 			"src/server/cron-store.ts/CronRunStore.deleteByCron:214"
 		],
-		"src/server/data-change-hub.ts/emitDataChange:122": [
-			"src/server/data-change-hub.ts/emitTransition:145",
-			"src/server/input-queue-store.ts/InputQueueStore.emit:62",
-			"src/server/session-db.ts/SessionDB.createSession:417",
-			"src/server/session-db.ts/SessionDB.deleteSession:603",
-			"src/server/session-db.ts/SessionDB.archiveSession:615",
-			"src/server/session-db.ts/SessionDB.deleteSessionData:692",
-			"src/server/sqlite-store.ts/SqliteStore.delete:279",
-			"src/server/sqlite-store.ts/SqliteStore.insertRow:324",
-			"src/server/sqlite-store.ts/SqliteStore.updateRow:330"
+		"src/server/database-manager.ts/readMarker:241": [
+			"src/server/database-manager.ts/performLayoutBootstrap:186",
+			"src/server/database-manager.ts/finalizeFreshCreateMarker:405"
+		],
+		"src/server/database-manager.ts/writeMarkerForExistingCoreDb:385": [
+			"src/server/database-manager.ts/performLayoutBootstrap:186"
+		],
+		"src/server/database-manager.ts/migrateLegacyToCore:256": [
+			"src/server/database-manager.ts/performLayoutBootstrap:186"
+		],
+		"src/server/database-manager.ts/writeMarkerForFreshCreate:367": [
+			"src/server/database-manager.ts/performLayoutBootstrap:186"
+		],
+		"src/server/database-manager.ts/DatabaseManager.close:529": [
+			"src/server/database-manager.ts/migrateLegacyToCore:256",
+			"src/server/database-manager.ts/DatabaseManager.close:529"
+		],
+		"src/server/database-manager.ts/safeSha256:424": [
+			"src/server/database-manager.ts/migrateLegacyToCore:256",
+			"src/server/database-manager.ts/writeMarkerForExistingCoreDb:385",
+			"src/server/database-manager.ts/finalizeFreshCreateMarker:405"
+		],
+		"src/server/database-manager.ts/deleteRetiredKnowledgeDb:144": [
+			"src/server/database-manager.ts/DatabaseManager.open:506"
+		],
+		"src/server/database-manager.ts/performLayoutBootstrap:186": [
+			"src/server/database-manager.ts/DatabaseManager.open:506"
+		],
+		"src/server/database-manager.ts/finalizeFreshCreateMarker:405": [
+			"src/server/database-manager.ts/DatabaseManager.open:506"
+		],
+		"src/server/database-manager.ts/probeHealth:606": [
+			"src/server/database-manager.ts/DatabaseManager.health:546"
 		],
 		"src/server/db-migration.ts/memoryArea:537": [
 			"src/server/db-migration.ts/migrateWikiDetailToDisk:509",
@@ -24579,104 +25032,110 @@
 		"src/server/archivist-git.ts/centralFeatureWorktreePath:113": [
 			"src/server/git-integration.ts/GitIntegration.createFeatureWorktree:101"
 		],
+		"src/server/database-manager.ts/setDatabaseManager:446": [
+			"src/server/index.ts/startServer:112"
+		],
 		"src/server/db-migration.ts/runMigrations:691": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/builtin-skills.ts/ensureBuiltinSkills:63": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/runtime/proxy-manager.ts/applyProxy:30": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/agent-service.ts/createAgentService:2669": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/runtime-instances.ts/registerServerInstances:64": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/data-change-hub.ts/onDataChange:165": [
-			"src/server/index.ts/startServer:107",
+			"src/server/index.ts/startServer:112",
 			"src/server/project-work-hook-manager.ts/ProjectWorkHookManager.start:48"
 		],
-		"src/server/index.ts/broadcast:348": [
-			"src/server/index.ts/startServer:107"
+		"src/server/index.ts/broadcast:360": [
+			"src/server/index.ts/startServer:112"
 		],
-		"src/server/index.ts/reloadProviders:385": [
-			"src/server/index.ts/startServer:107"
+		"src/server/index.ts/reloadProviders:397": [
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/mcp-scanner.ts/scanExternalMcpConfigs:156": [
-			"src/server/index.ts/startServer:107",
+			"src/server/index.ts/startServer:112",
 			"src/server/mcp-router.ts/createMcpRouter:29"
 		],
 		"src/server/mcp-scanner.ts/mergeDetectedServers:202": [
-			"src/server/index.ts/startServer:107",
+			"src/server/index.ts/startServer:112",
 			"src/server/mcp-router.ts/createMcpRouter:29"
 		],
-		"src/server/index.ts/rebuildStaleStructureLayouts:1147": [
-			"src/server/index.ts/startServer:107"
+		"src/server/index.ts/rebuildStaleStructureLayouts:1124": [
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/config-router.ts/createConfigRouter:41": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/agent-router.ts/createAgentRouter:28": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/provider-router.ts/createProviderRouter:36": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/template-router.ts/createTemplateRouter:47": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/mcp-router.ts/createMcpRouter:29": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/skill-router.ts/createSkillRouter:67": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/chat-router.ts/createChatRouter:42": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/session-router.ts/createSessionRouter:41": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/delegated-task-router.ts/createDelegatedTaskRouter:24": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/input-queue-router.ts/createInputQueueRouter:11": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/log-router.ts/createLogRouter:55": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/file-router.ts/createFileRouter:41": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/tool-execution-router.ts/createToolExecutionRouter:39": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/attachment-router.ts/createAttachmentRouter:44": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/project-router.ts/createProjectRouter:37": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/requirement-router.ts/createRequirementRouter:36": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/project-wiki-router.ts/createWikiRouter:26": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/wiki-router.ts/createWikiRouter:63": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/wiki-router.ts/createWorkspaceDocHandler:262": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/tool-dispatcher.ts/dispatchTool:88": [
-			"src/server/index.ts/startServer:107"
+			"src/server/index.ts/startServer:112"
 		],
-		"src/server/index.ts/expandHome:88": [
-			"src/server/index.ts/startServer:107"
+		"src/server/health-router.ts/createHealthRouter:33": [
+			"src/server/index.ts/startServer:112"
+		],
+		"src/server/index.ts/expandHome:93": [
+			"src/server/index.ts/startServer:112"
 		],
 		"src/server/input-queue-store.ts/InputQueueStore.emit:62": [
 			"src/server/input-queue-store.ts/InputQueueStore.enqueue:92",
@@ -25108,7 +25567,7 @@
 		"src/server/agent-service.ts/setAgentService:2691": [
 			"src/server/runtime-instances.ts/registerServerInstances:64"
 		],
-		"src/server/session-db.ts/setSessionDB:92": [
+		"src/server/core-database.ts/setCoreDatabase:104": [
 			"src/server/runtime-instances.ts/registerServerInstances:64"
 		],
 		"src/server/wiki-node-store.ts/setWikiStoreGlobal:351": [
@@ -25131,73 +25590,6 @@
 		],
 		"src/server/session-context-router.ts/buildProjectBundle:137": [
 			"src/server/session-context-router.ts/resolveSessionByRoleProject:98"
-		],
-		"src/server/session-db.ts/SessionDB.safeAddColumn:381": [
-			"src/server/session-db.ts/SessionDB.initSchema:159"
-		],
-		"src/server/session-db.ts/SessionDB.safeAddIndex:391": [
-			"src/server/session-db.ts/SessionDB.initSchema:159"
-		],
-		"src/server/session-db.ts/SessionDB.migrateToolNames:400": [
-			"src/server/session-db.ts/SessionDB.initSchema:159"
-		],
-		"src/server/session-db.ts/SessionDB.safeDropColumn:371": [
-			"src/server/session-db.ts/SessionDB.initSchema:159"
-		],
-		"src/server/session-db.ts/SessionDB.rowToRecord:1602": [
-			"src/server/session-db.ts/SessionDB.getSession:453",
-			"src/server/session-db.ts/SessionDB.getMainSession:458",
-			"src/server/session-db.ts/SessionDB.getMostRecentSession:473",
-			"src/server/session-db.ts/SessionDB.listSessions:489",
-			"src/server/session-db.ts/SessionDB.listAllSessions:496",
-			"src/server/session-db.ts/SessionDB.listOrphanCandidateSessions:529",
-			"src/server/session-db.ts/SessionDB.findSessionByAgentAndProject:568",
-			"src/server/session-db.ts/SessionDB.listArchivedTransientSessions:659"
-		],
-		"src/server/session-db.ts/SessionDB.parseSummary:783": [
-			"src/server/session-db.ts/SessionDB.getSummaries:793"
-		],
-		"src/server/session-db.ts/SessionDB.ensureSession:875": [
-			"src/server/session-db.ts/SessionDB.replaceSummariesAndAdvanceCursor:852",
-			"src/server/session-db.ts/SessionDB.appendStep:1065",
-			"src/server/session-db.ts/SessionDB.upsertStep:1110"
-		],
-		"src/server/session-db.ts/SessionDB.createSession:417": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:895"
-		],
-		"src/server/session-db.ts/SessionDB.setMainSession:481": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:895"
-		],
-		"src/server/session-db.ts/SessionDB.appendStep:1065": [
-			"src/server/session-db.ts/SessionDB.migrateMessageFiles:895"
-		],
-		"src/server/session-db.ts/SessionDB.deserializeAttachments:1008": [
-			"src/server/session-db.ts/SessionDB.getSteps:1019",
-			"src/server/session-db.ts/SessionDB.getStepGroup:1042"
-		],
-		"src/server/session-db.ts/SessionDB.serializeAttachments:998": [
-			"src/server/session-db.ts/SessionDB.appendStep:1065",
-			"src/server/session-db.ts/SessionDB.upsertStep:1110"
-		],
-		"src/server/session-db.ts/SessionDB.getCompressionCursor:812": [
-			"src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1214"
-		],
-		"src/server/session-db.ts/SessionDB.clearSummaries:828": [
-			"src/server/session-db.ts/SessionDB.deleteStepsFromSeq:1214"
-		],
-		"src/server/session-db.ts/SessionDB.toolExecRowToRecord:1574": [
-			"src/server/session-db.ts/SessionDB.queryToolExecutions:1529"
-		],
-		"src/server/session-db.ts/SessionDB.close:1594": [
-			"src/server/session-db.ts/SessionDB.close:1594"
-		],
-		"src/server/session-db.ts/SessionDB.getDelegatedTask:1747": [
-			"src/server/session-db.ts/SessionDB.createDelegatedTask:1679",
-			"src/server/session-db.ts/SessionDB.updateDelegatedTask:1716"
-		],
-		"src/server/session-db.ts/SessionDB.delegatedTaskRowToRecord:1651": [
-			"src/server/session-db.ts/SessionDB.getDelegatedTask:1747",
-			"src/server/session-db.ts/SessionDB.listDelegatedTasks:1764"
 		],
 		"src/server/session-manager.ts/SessionManager.fireMetrics:129": [
 			"src/server/session-manager.ts/SessionManager._flushMetricsForTest:123",
@@ -25887,7 +26279,9 @@
 			"src/server/archivist-git.ts",
 			"src/server/builtin-skills.ts",
 			"src/server/compression-core.ts",
+			"src/server/core-database.ts",
 			"src/server/cron-analysis.ts",
+			"src/server/database-manager.ts",
 			"src/server/db-migration.ts",
 			"src/server/durable-hooks.ts",
 			"src/server/enrichment-runner.ts",
@@ -25906,7 +26300,6 @@
 			"src/server/project-work-runner.ts",
 			"src/server/recovery.ts",
 			"src/server/requirement-hooks.ts",
-			"src/server/session-db.ts",
 			"src/server/session-manager.ts",
 			"src/server/session-router.ts",
 			"src/server/sqlite-store.ts",
@@ -25928,14 +26321,16 @@
 			"src/server/archivist-git.ts",
 			"src/server/attachment-store.ts",
 			"src/server/config-router.ts",
+			"src/server/core-database.ts",
+			"src/server/database-manager.ts",
 			"src/server/db-migration.ts",
 			"src/server/log-router.ts",
 			"src/server/message-store.ts",
 			"src/server/persona-store.ts",
-			"src/server/session-db.ts",
 			"src/server/wiki-node-store.ts",
 			"src/server/workspace-config.ts",
 			"src/core/custom-tools.ts",
+			"src/core/database-paths.ts",
 			"src/core/file-log-sink.ts",
 			"src/core/input-handler.ts",
 			"src/core/persona.ts",
@@ -25973,10 +26368,10 @@
 			"src/runtime/terminal-adapter.ts",
 			"src/server/agent-service.ts",
 			"src/server/compression-core.ts",
+			"src/server/core-database.ts",
 			"src/server/extractor-b-service.ts",
 			"src/server/metrics-events.ts",
 			"src/server/provider-usage-store.ts",
-			"src/server/session-db.ts",
 			"src/server/session-manager.ts"
 		],
 		"src/shared/types.ts": [
@@ -25996,6 +26391,7 @@
 			"src/server/builtin-role-templates.ts",
 			"src/server/builtin-work-templates.ts",
 			"src/server/chat-router.ts",
+			"src/server/core-database.ts",
 			"src/server/cron-analysis.ts",
 			"src/server/cron-router.ts",
 			"src/server/cron-store.ts",
@@ -26026,7 +26422,6 @@
 			"src/server/requirement-state-machine.ts",
 			"src/server/requirement-store.ts",
 			"src/server/session-context-router.ts",
-			"src/server/session-db.ts",
 			"src/server/session-volume.ts",
 			"src/server/task-step-store.ts",
 			"src/server/template-store.ts",
@@ -26126,7 +26521,7 @@
 			"src/runtime/agent-loop.ts",
 			"src/runtime/hooks/compression-trigger-hooks.ts"
 		],
-		"src/server/session-db.ts": [
+		"src/server/core-database.ts": [
 			"src/runtime/agent-loop.ts",
 			"src/runtime/hooks/compression-trigger-hooks.ts",
 			"src/runtime/hooks/index.ts",
@@ -26138,6 +26533,7 @@
 			"src/server/config-router.ts",
 			"src/server/cron-analysis.ts",
 			"src/server/cron-store.ts",
+			"src/server/database-manager.ts",
 			"src/server/db-migration.ts",
 			"src/server/delegated-task-router.ts",
 			"src/server/durable-hooks.ts",
@@ -26324,10 +26720,10 @@
 		],
 		"src/server/data-change-hub.ts": [
 			"src/server/agent-service.ts",
+			"src/server/core-database.ts",
 			"src/server/index.ts",
 			"src/server/input-queue-store.ts",
 			"src/server/project-work-hook-manager.ts",
-			"src/server/session-db.ts",
 			"src/server/sqlite-store.ts"
 		],
 		"src/server/flow-actions.ts": [
@@ -26471,6 +26867,21 @@
 		"src/core/device-context.ts": [
 			"src/server/config-router.ts"
 		],
+		"src/server/key-value-store.ts": [
+			"src/server/core-database.ts",
+			"src/server/db-migration.ts"
+		],
+		"src/server/extraction-cursor-store.ts": [
+			"src/server/core-database.ts"
+		],
+		"src/server/telemetry-store.ts": [
+			"src/server/core-database.ts",
+			"src/server/extractor-b-service.ts"
+		],
+		"src/core/database-paths.ts": [
+			"src/server/core-database.ts",
+			"src/server/database-manager.ts"
+		],
 		"src/server/archivist-git.ts": [
 			"src/server/cron-analysis.ts",
 			"src/server/git-integration.ts",
@@ -26501,9 +26912,8 @@
 			"src/server/cron-router.ts",
 			"src/server/recovery.ts"
 		],
-		"src/server/key-value-store.ts": [
-			"src/server/db-migration.ts",
-			"src/server/session-db.ts"
+		"src/server/wiki-database.ts": [
+			"src/server/database-manager.ts"
 		],
 		"src/core/default-prompt.ts": [
 			"src/server/db-migration.ts",
@@ -26512,10 +26922,6 @@
 		"src/server/project-job-store.ts": [
 			"src/server/enrichment-runner.ts",
 			"src/server/management-service.ts"
-		],
-		"src/server/telemetry-store.ts": [
-			"src/server/extractor-b-service.ts",
-			"src/server/session-db.ts"
 		],
 		"src/server/pm-service.ts": [
 			"src/server/flow-actions.ts",
@@ -26526,6 +26932,9 @@
 			"src/server/mcp-router.ts"
 		],
 		"src/server/builtin-skills.ts": [
+			"src/server/index.ts"
+		],
+		"src/server/database-manager.ts": [
 			"src/server/index.ts"
 		],
 		"src/server/db-migration.ts": [
@@ -26568,6 +26977,9 @@
 			"src/server/index.ts"
 		],
 		"src/server/tool-execution-router.ts": [
+			"src/server/index.ts"
+		],
+		"src/server/health-router.ts": [
 			"src/server/index.ts"
 		],
 		"src/server/attachment-router.ts": [
@@ -26646,9 +27058,6 @@
 		],
 		"src/server/tool-usage-store.ts": [
 			"src/server/runtime-instances.ts"
-		],
-		"src/server/extraction-cursor-store.ts": [
-			"src/server/session-db.ts"
 		],
 		"src/server/session-lifecycle.ts": [
 			"src/server/session-manager.ts",

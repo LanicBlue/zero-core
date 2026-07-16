@@ -34,7 +34,7 @@
 // ## 约束
 // - Windows vitest STACK_BUFFER_OVERRUN:少开 temp DB。config-router 用 mock KV
 //   (0 temp DB);buildCompressOpts 纯函数(0 temp DB);UI 源码 grep(0 temp DB);
-//   仅 buildTempMemoryTurnRunner describe 开 1 个共享 temp SessionDB(beforeAll)。
+//   仅 buildTempMemoryTurnRunner describe 开 1 个共享 temp CoreDatabase(beforeAll)。
 // - vi.mock + importOriginal 保 ARCHIVE_MEMORY_PROMPT 真值(strict-equal 默认 const)。
 // - 不 git commit;不修改 src/(verifier 只写测试)。
 
@@ -85,7 +85,7 @@ vi.mock("../../src/runtime/hooks/index.js", async (importOriginal) => {
 	};
 });
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { AgentService } from "../../src/server/agent-service.js";
 import { ARCHIVE_MEMORY_PROMPT } from "../../src/runtime/agent-loop.js";
@@ -339,12 +339,12 @@ describe("sub-3 #7: config-router GET/PUT /memory-config round-trips {compressio
 
 describe("sub-3 #3 + #4 + #6: buildTempMemoryTurnRunner picks up archive.memoryPrompt override", () => {
 	let testDir: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 	let svc: AgentService;
 
 	beforeAll(() => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub3-runner-"));
-		db = new SessionDB(join(testDir, "sessions.db"));
+		db = new CoreDatabase(join(testDir, "core.db"));
 		runMigrations(db);
 		svc = new AgentService(testDir, db);
 	});

@@ -9,7 +9,7 @@
 //
 // The legacy `migrateTurnsToSteps` backfill migration has been REMOVED in
 // steps-overhaul sub-1 (the physical `turns` table is DROPped on every
-// startup in SessionDB.initSchema, so there is nothing to migrate). The
+// startup in CoreDatabase.initSchema, so there is nothing to migrate). The
 // earlier tests that exercised the backfill directly have been deleted along
 // with it; this file now guards only the column-presence + write contract.
 //
@@ -27,7 +27,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 
 // ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ describe("Steps table · steps.turn_group column", () => {
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-steps-turn-group-"));
-		dbPath = join(tmpDir, "sessions.db");
+		dbPath = join(tmpDir, "core.db");
 	});
 
 	afterEach(() => {
@@ -58,9 +58,9 @@ describe("Steps table · steps.turn_group column", () => {
 	});
 
 	test("fresh DB: steps.turn_group column exists and appendStep persists the group", () => {
-		let sessionDB: SessionDB | null = null;
+		let sessionDB: CoreDatabase | null = null;
 		try {
-			sessionDB = new SessionDB(dbPath);
+			sessionDB = new CoreDatabase(dbPath);
 			const raw = (sessionDB as any).db as Database.Database;
 
 			// Column exists on a fresh DB.

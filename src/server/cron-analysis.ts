@@ -19,7 +19,7 @@
 //
 // ## 输入
 // - AgentService (跑 prompt)
-// - SessionDB / ProjectStore (路由 helper 依赖)
+// - CoreDatabase / ProjectStore (路由 helper 依赖)
 // - CronStore (调度源)
 // - CronRunStore (审计日志写入,P4)
 // - AgentStore (取 agent record)
@@ -45,7 +45,7 @@ import type { ProjectStore } from "./project-store.js";
 import type { WikiStore } from "./wiki-node-store.js";
 import type { ArchivistGit } from "./archivist-git.js";
 import { isGitAwarePrompt, stripGitAwareSentinel, agentHasTool } from "./wiki-operations.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { CronStore, CronRunStore } from "./cron-store.js";
 import type {
 	CronRecord,
@@ -374,7 +374,7 @@ export interface CronAnalysisDeps {
 	agentService: AgentService;
 	agentStore: AgentStore;
 	projectStore: ProjectStore;
-	sessionDB: SessionDB;
+	sessionDB: CoreDatabase;
 	cronStore: CronStore;
 	/** P4: per-fire audit log sink. Optional so legacy callers still build. */
 	cronRunStore?: CronRunStore;

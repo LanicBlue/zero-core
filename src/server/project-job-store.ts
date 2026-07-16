@@ -8,7 +8,7 @@
 // running → completed | failed | cancelled。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - ProjectJobRecord 数据
 //
 // ## 输出
@@ -25,7 +25,7 @@
 // - 新增字段时需同步 db-migration.ts 的 PROJECT_JOBS_COLUMNS(否则 fresh DB 缺列)
 //
 
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
 import type { ProjectJobRecord, ProjectJobStatus } from "../shared/types.js";
 
@@ -47,7 +47,7 @@ const PROJECT_JOBS_COLUMNS: ColumnDef[] = [
 export class ProjectJobStore {
 	private store: SqliteStore<ProjectJobRecord>;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.store = new SqliteStore<ProjectJobRecord>(
 			sessionDB.getDb(),
 			"project_jobs",

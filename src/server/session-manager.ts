@@ -6,7 +6,7 @@
 // 管理会话的生命周期状态转换、指标收集和超时处理
 //
 // ## 输入
-// SessionDB、SessionLifecycleState 转换请求
+// CoreDatabase、SessionLifecycleState 转换请求
 //
 // ## 输出
 // 会话状态管理、聚合指标、超时清理
@@ -15,7 +15,7 @@
 // src/server/ — 服务层，为 AgentService 提供会话状态管理
 //
 // ## 依赖
-// session-lifecycle.ts、session-metrics.ts、session-db.ts、core/logger.ts
+// session-lifecycle.ts、session-metrics.ts、core-database.ts、core/logger.ts
 //
 // ## 维护规则
 // 状态转换规则变更需确保 isValidTransition 同步
@@ -24,10 +24,10 @@ import type { SessionLifecycleState } from "./session-lifecycle.js";
 import { isValidTransition } from "./session-lifecycle.js";
 import type { SessionMetrics, AggregateMetrics } from "./session-metrics.js";
 import { SessionMetricsHolder } from "./session-metrics.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 // platform-observability ②.2 (sub-2): provider-layer usage store. Lazy-init
-// on first access — constructed against sessionDB.getDb() so it shares the
-// same SQLite handle (no second connection to sessions.db, no WAL contention).
+// on first access — constructed against coreDB.getDb() so it shares the
+// same SQLite handle (no second connection to db/core.db, no WAL contention).
 import { ProviderUsageStore, floorToHourBucket } from "./provider-usage-store.js";
 import type { TurnSource } from "../runtime/types.js";
 import { log } from "../core/logger.js";
@@ -83,9 +83,9 @@ export class SessionManager {
 	private readonly turnStartAt = new Map<string, number>();
 	private readonly firstTokenRecorded = new Map<string, boolean>();
 
-	private db: SessionDB | null = null;
+	private db: CoreDatabase | null = null;
 	// sub-2: provider-layer usage rollup. Lazy so callers that never touch
-	// provider stats (and unit tests that don't wire a SessionDB) pay nothing.
+	// provider stats (and unit tests that don't wire a CoreDatabase) pay nothing.
 	private providerUsageStore: ProviderUsageStore | null = null;
 
 	// platform-observability ②.2 (sub-2 补遗): per-provider process-local
@@ -141,12 +141,12 @@ export class SessionManager {
 		}, 0);
 	}
 
-	setSessionDb(db: SessionDB): void { this.db = db; }
+	setSessionDb(db: CoreDatabase): void { this.db = db; }
 
 	/**
 	 * sub-2: provider-layer usage store. Constructed against the session DB's
 	 * underlying better-sqlite3 handle so it shares one connection (no WAL
-	 * contention, no second writer). Lazy — returns undefined if no SessionDB
+	 * contention, no second writer). Lazy — returns undefined if no CoreDatabase
 	 * is attached (unit-test paths).
 	 */
 	getProviderUsageStore(): ProviderUsageStore | undefined {
@@ -367,7 +367,7 @@ export class SessionManager {
 	}): void {
 		// (sub-2 补遗) Latency accumulator runs FIRST, before the DB-store
 		// guard, because it is process-local (design ②.2: NOT in DB, restart-
-		// safe). The DB rollup below needs a SessionDB, but the latency fold
+		// safe). The DB rollup below needs a CoreDatabase, but the latency fold
 		// must still land when the DB is cold/unwired (tests, fresh boot) so
 		// listProviderStats can surface a real avg instead of permanent N/A.
 		// Only fold non-negative durationMs on the success path — the error

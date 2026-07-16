@@ -12,9 +12,9 @@
 //   - the REAL REST endpoints /api/providers/stats | /usage | /queue (IPC face)
 //     — fed by an agentService-shaped mock OR a real AgentService prototype
 //     instance (bypassing the heavy constructor via Object.create) wired to a
-//     temp SessionDB + real ConcurrencyQueue + real ProviderUsageStore.
+//     temp CoreDatabase + real ConcurrencyQueue + real ProviderUsageStore.
 //   - the REAL ProviderUsageStore.seriesByModel (granularity hour/day,
-//     per-model series) over a temp SessionDB.
+//     per-model series) over a temp CoreDatabase.
 //   - the REAL ConcurrencyQueue.getWaiting for the queue list.
 //
 // ## Acceptance cases (acceptance-5.md)
@@ -59,7 +59,7 @@ import { join } from "node:path";
 
 import { createPlatformTools } from "../../src/tools/mcp/platform-tools.js";
 import { getToolExecute, getToolFormat } from "../../src/tools/tool-factory.js";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProviderUsageStore, floorToHourBucket } from "../../src/server/provider-usage-store.js";
 import { ProviderConcurrencyManager } from "../../src/runtime/provider-concurrency-manager.js";
 import { AgentService, setAgentService, getAgentService } from "../../src/server/agent-service.js";
@@ -124,13 +124,13 @@ function observerWithStats(rows: PlatformProviderStat[]): any {
 }
 
 /**
- * Create the `providers` table on a fresh SessionDB. SessionDB's constructor
+ * Create the `providers` table on a fresh CoreDatabase. CoreDatabase's constructor
  * does NOT create it (ProviderStore's SqliteStore does, but instantiating
  * ProviderStore triggers mergeSystemProviders which would pollute assertions).
  * Schema mirrors what listProviderStats SELECTs (name/type/enabled/base_url/
  * api_key/models).
  */
-function ensureProvidersTable(db: ReturnType<SessionDB["getDb"]>): void {
+function ensureProvidersTable(db: ReturnType<CoreDatabase["getDb"]>): void {
 	db.prepare(
 		`CREATE TABLE IF NOT EXISTS providers (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,7 +151,7 @@ function ensureProvidersTable(db: ReturnType<SessionDB["getDb"]>): void {
 
 /** Insert a provider row (minimal fields). */
 function insertProvider(
-	db: ReturnType<SessionDB["getDb"]>,
+	db: ReturnType<CoreDatabase["getDb"]>,
 	name: string,
 	type: string,
 	enabled: boolean,
@@ -173,10 +173,10 @@ function insertProvider(
  * provider-observation methods touch (db / concurrencyManager /
  * sessionManager). Lets us drive the REAL listProviderStats /
  * getProviderUsageSeries / getProviderQueue / getConcurrencySnapshot code
- * against a temp SessionDB + real ConcurrencyQueue + real ProviderUsageStore.
+ * against a temp CoreDatabase + real ConcurrencyQueue + real ProviderUsageStore.
  */
 function makeAgentServiceHarness(opts: {
-	db: SessionDB;
+	db: CoreDatabase;
 	concurrencyManager: ProviderConcurrencyManager;
 	sessionManager: any;
 }): AgentService {
@@ -297,14 +297,14 @@ describe("acceptance-5 #1 — Platform providerStats JSON + text format", () => 
 
 describe("acceptance-5 #2 — data sources correct (cumulative + concurrency)", () => {
 	let dir: string;
-	let sessionDb: SessionDB;
+	let sessionDb: CoreDatabase;
 	let usageStore: ProviderUsageStore;
 	let concurrencyManager: ProviderConcurrencyManager;
 	let svc: AgentService;
 
 	beforeEach(() => {
 		dir = mkdtempSync(join(tmpdir(), "po-sub5-src-"));
-		sessionDb = new SessionDB(join(dir, "sessions.db"));
+		sessionDb = new CoreDatabase(join(dir, "core.db"));
 		usageStore = new ProviderUsageStore(sessionDb.getDb());
 		concurrencyManager = new ProviderConcurrencyManager();
 		// Seed ONE provider in the providers table (the real listProviderStats
@@ -390,7 +390,7 @@ describe("acceptance-5 #2 — data sources correct (cumulative + concurrency)", 
 	});
 
 	test("latencyMs is the process-local running average over recorded steps (design ②.2)", () => {
-		// Use a REAL SessionManager wired to the same temp SessionDB. listProviderStats
+		// Use a REAL SessionManager wired to the same temp CoreDatabase. listProviderStats
 		// calls sm.getProviderLatencyMs(p.name); recordProviderUsage folds each
 		// successful step's durationMs into the in-memory accumulator. Verifies the
 		// implementer's 补建 (was null/GAP — now a real value).
@@ -473,14 +473,14 @@ describe("acceptance-5 #3 — Platform providerStats resource (JSON)", () => {
 describe("acceptance-5 #4 — Platform providerUsage resource (hour/day + per-model series)", () => {
 	const callerCtx: CallerCtx = { caller: "internal" };
 	let dir: string;
-	let sessionDb: SessionDB;
+	let sessionDb: CoreDatabase;
 	let usageStore: ProviderUsageStore;
 	let svc: AgentService;
 	let prev: unknown;
 
 	beforeEach(() => {
 		dir = mkdtempSync(join(tmpdir(), "po-sub5-usage-"));
-		sessionDb = new SessionDB(join(dir, "sessions.db"));
+		sessionDb = new CoreDatabase(join(dir, "core.db"));
 		usageStore = new ProviderUsageStore(sessionDb.getDb());
 
 		// Seed usage across 25 distinct hours (2 models) for the 24h cutoff
@@ -604,14 +604,14 @@ describe("acceptance-5 #4 — Platform providerUsage resource (hour/day + per-mo
 describe("acceptance-5 #5 — Platform providerQueue resource (queued session list)", () => {
 	const callerCtx: CallerCtx = { caller: "internal" };
 	let dir: string;
-	let sessionDb: SessionDB;
+	let sessionDb: CoreDatabase;
 	let concurrencyManager: ProviderConcurrencyManager;
 	let svc: AgentService;
 	let prev: unknown;
 
 	beforeEach(() => {
 		dir = mkdtempSync(join(tmpdir(), "po-sub5-queue-"));
-		sessionDb = new SessionDB(join(dir, "sessions.db"));
+		sessionDb = new CoreDatabase(join(dir, "core.db"));
 		concurrencyManager = new ProviderConcurrencyManager();
 		// Seed the providers table so listProviderStats / getConcurrencySnapshot
 		// iterate this provider; and configure a real queue.
@@ -691,13 +691,13 @@ describe("acceptance-5 #5 — Platform providerQueue resource (queued session li
 
 describe("acceptance-5 #6 — disabled provider listed (marked, cumulative 0)", () => {
 	let dir: string;
-	let sessionDb: SessionDB;
+	let sessionDb: CoreDatabase;
 	let usageStore: ProviderUsageStore;
 	let svc: AgentService;
 
 	beforeEach(() => {
 		dir = mkdtempSync(join(tmpdir(), "po-sub5-disabled-"));
-		sessionDb = new SessionDB(join(dir, "sessions.db"));
+		sessionDb = new CoreDatabase(join(dir, "core.db"));
 		usageStore = new ProviderUsageStore(sessionDb.getDb());
 		const rawDb = (sessionDb as any).getDb();
 		// Two providers: one enabled, one DISABLED.
@@ -774,7 +774,7 @@ describe("acceptance-5 #7 — no cost / balance / spend / credit fields", () => 
 	test("provider:usage series points carry no cost/balance fields (tokens only)", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "po-sub5-cost-"));
 		try {
-			const sessionDb = new SessionDB(join(dir, "sessions.db"));
+			const sessionDb = new CoreDatabase(join(dir, "core.db"));
 			const usageStore = new ProviderUsageStore(sessionDb.getDb());
 			usageStore.upsert({ provider: "OpenAI", model: "gpt-4", hourBucket: floorToHourBucket(Date.now()), source: "user", calls: 1, inputTokens: 10, outputTokens: 5 });
 
@@ -803,7 +803,7 @@ describe("acceptance-5 #7 — no cost / balance / spend / credit fields", () => 
 	test("provider:queue entries carry no cost/balance fields", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "po-sub5-qcost-"));
 		try {
-			const sessionDb = new SessionDB(join(dir, "sessions.db"));
+			const sessionDb = new CoreDatabase(join(dir, "core.db"));
 			const rawDb = (sessionDb as any).getDb();
 			ensureProvidersTable(rawDb);
 			insertProvider(rawDb, "OpenAI", "openai", true, []);

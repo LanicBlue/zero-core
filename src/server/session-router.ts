@@ -22,7 +22,7 @@
 // ## 依赖
 // - express Router
 // - ./agent-service(createAgentService)、./agent-store
-// - SessionDB(via agentService.getDB)提供的 step / turn / message 接口
+// - CoreDatabase(via agentService.getDB)提供的 step / turn / message 接口
 //
 // ## 维护规则
 // - 新增 GET 端点若路径形如固定段(如 /metrics),必须放在 /:agentId 之前,否则会被 agentId 捕获。

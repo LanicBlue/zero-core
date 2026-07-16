@@ -42,7 +42,7 @@ vi.mock("../../src/server/skill-scanner.js", () => ({
 	scanSkills: (...args: unknown[]) => scanSkillsMock(...args),
 }));
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { AgentService } from "../../src/server/agent-service.js";
@@ -86,7 +86,7 @@ function createCapturingModel(): LanguageModelV2 {
 }
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 
 function makeCallbacks(): RuntimeCallbacks {
 	return { onEvent: (_event: StreamEvent) => { /* swallow */ } };
@@ -108,7 +108,7 @@ function makeConfig(sessionId: string, getSkillSection?: () => string): SessionC
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub9-skills-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	capturedSystemPrompts = [];
 	scanSkillsMock.mockReturnValue(SKILLS);

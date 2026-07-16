@@ -8,7 +8,7 @@
 // 复用为统一入口 —— 当前 M0 只提供路由原语本身,具体调用方在后续 M 落地。
 //
 // ## 输入
-// - SessionDB
+// - CoreDatabase
 // - ProjectStore (查 workspaceDir)
 // - WikiRootResolver (回调,把 projectId → wikiRootNodeId;M2 全局 wiki 树落地后接入)
 // - agentId + projectId (+ per-call bundle override)
@@ -31,7 +31,7 @@
 //   直接继承 caller bundle(见 subagent-delegation.ts),不走本 helper
 //
 
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { ProjectStore } from "./project-store.js";
 import type { SessionContextBundle, SessionRecord } from "../shared/types.js";
 
@@ -61,7 +61,7 @@ export const defaultWikiRootResolver: WikiRootResolver = (projectId: string) =>
 export const GLOBAL_WIKI_ROOT_ID = "wiki-root:global";
 
 export interface SessionContextRouterDeps {
-	sessionDB: SessionDB;
+	sessionDB: CoreDatabase;
 	projectStore: ProjectStore;
 	/** Optional override; defaults to defaultWikiRootResolver. */
 	resolveWikiRoot?: WikiRootResolver;

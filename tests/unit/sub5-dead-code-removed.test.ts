@@ -27,7 +27,7 @@ import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 
 import { ZeroCoreConfigSchema, DEFAULT_CONFIG } from "../../src/core/config.js";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 
 // ---------------------------------------------------------------------------
 // Paths + helpers
@@ -327,12 +327,12 @@ describe("[acceptance-5 #4] dead config surface gone, live surface intact", () =
 describe("[acceptance-5 #5] steps.compressed column dropped + fresh DB boots", () => {
 	let tmpDir: string;
 	let dbPath: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub5-steps-compressed-"));
-		dbPath = join(tmpDir, "sessions.db");
-		db = new SessionDB(dbPath);
+		dbPath = join(tmpDir, "core.db");
+		db = new CoreDatabase(dbPath);
 	});
 
 	afterEach(() => {
@@ -345,7 +345,7 @@ describe("[acceptance-5 #5] steps.compressed column dropped + fresh DB boots", (
 		expect(db).toBeDefined();
 		// A second construction on the same path must also succeed (idempotency
 		// on re-open — the safeDropColumn path runs every startup).
-		const db2 = new SessionDB(dbPath);
+		const db2 = new CoreDatabase(dbPath);
 		expect(db2).toBeDefined();
 		db2.close();
 	});
@@ -366,7 +366,7 @@ describe("[acceptance-5 #5] steps.compressed column dropped + fresh DB boots", (
 		// Re-open → safeDropColumn must NOT throw and the schema must be stable.
 		const colsBefore = ((db as any).db.pragma("table_info(steps)") as Array<{ name: string }>)
 			.map((c) => c.name);
-		const db2 = new SessionDB(dbPath);
+		const db2 = new CoreDatabase(dbPath);
 		const colsAfter = ((db2 as any).db.pragma("table_info(steps)") as Array<{ name: string }>)
 			.map((c) => c.name);
 		expect(colsAfter.sort()).toEqual(colsBefore.sort());
@@ -374,7 +374,7 @@ describe("[acceptance-5 #5] steps.compressed column dropped + fresh DB boots", (
 	});
 
 	test("upgraded DB (with legacy `compressed` column) is migrated: column dropped, data preserved", () => {
-		// 1. Seed a session + step through the SessionDB API (so FK + all
+		// 1. Seed a session + step through the CoreDatabase API (so FK + all
 		//    required NOT NULL columns are satisfied). This row must SURVIVE
 		//    the column drop (proves the migration is non-destructive to live
 		//    data, even though `compressed` itself never had writers).
@@ -385,7 +385,7 @@ describe("[acceptance-5 #5] steps.compressed column dropped + fresh DB boots", (
 		).get("s-survive");
 		expect(seeded?.content).toBe("keep-me");
 
-		// 2. Close the SessionDB and re-open the file RAW (no migration logic).
+		// 2. Close the CoreDatabase and re-open the file RAW (no migration logic).
 		//    Simulate a legacy upgraded DB by re-adding the column the
 		//    sub-5 migration is supposed to drop.
 		db.close();
@@ -400,9 +400,9 @@ describe("[acceptance-5 #5] steps.compressed column dropped + fresh DB boots", (
 		expect(colsBefore, "pre-migration: legacy column present").toContain("compressed");
 		raw.close();
 
-		// 3. Re-open through SessionDB — the constructor runs initSchema, which
+		// 3. Re-open through CoreDatabase — the constructor runs initSchema, which
 		//    calls safeDropColumn("steps","compressed").
-		const dbMigrated = new SessionDB(dbPath);
+		const dbMigrated = new CoreDatabase(dbPath);
 		const colsAfter = ((dbMigrated as any).db.pragma("table_info(steps)") as Array<{ name: string }>)
 			.map((c) => c.name);
 		expect(colsAfter, "post-migration: safeDropColumn must remove `compressed`").not.toContain("compressed");
@@ -416,7 +416,7 @@ describe("[acceptance-5 #5] steps.compressed column dropped + fresh DB boots", (
 
 		// 5. Idempotency: opening AGAIN on the now-clean DB is a no-op.
 		dbMigrated.close();
-		const dbAgain = new SessionDB(dbPath);
+		const dbAgain = new CoreDatabase(dbPath);
 		const colsFinal = ((dbAgain as any).db.pragma("table_info(steps)") as Array<{ name: string }>)
 			.map((c) => c.name);
 		expect(colsFinal).not.toContain("compressed");

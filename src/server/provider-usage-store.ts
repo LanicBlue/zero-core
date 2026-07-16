@@ -15,7 +15,7 @@
 //   喂后续 sub-3 优先级统计 + 看板按来源切。
 //
 // ## 输入
-// - 构造时注入 better-sqlite3 Database(由 SessionDB.getDb() 提供)
+// - 构造时注入 better-sqlite3 Database(由 CoreDatabase.getDb() 提供)
 // - upsert 接收 { provider, model, hourBucket, source, calls?, tokens, error? }
 //
 // ## 输出
@@ -33,7 +33,7 @@
 // - TurnSource(type-only,跨层 type import 无运行期环)
 //
 // ## 维护规则
-// - 表 schema 在 session-db.ts initSchema 创建(IF NOT EXISTS,自管,
+// - 表 schema 在 core-database.ts initSchema 创建(IF NOT EXISTS,自管,
 //   不进 db-migration.ts 的 *_COLUMNS —— 同 turn_state/tool_telemetry)。
 // - 留存清理在 recovery.ts scanIncompleteTurns 启动时调用(30d)。
 // - hour_bucket 必须是 hour-floor ISO UTC,由调用方算好传入(单一真相源,
@@ -121,7 +121,7 @@ export class ProviderUsageStore {
 
 	constructor(db: Database.Database) {
 		this.db = db;
-		// Table is created by session-db.ts initSchema (CREATE TABLE IF NOT
+		// Table is created by core-database.ts initSchema (CREATE TABLE IF NOT
 		// EXISTS provider_usage). We don't re-create here to keep schema owner
 		//单一 (same convention as turn_state).
 		//

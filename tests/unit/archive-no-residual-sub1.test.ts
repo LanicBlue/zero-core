@@ -4,7 +4,7 @@
 //
 // ## 核心功能
 // 独立验证 acceptance-1.md 的 11 个条目(由独立的 adversarial verifier 写,
-// 非实施者)。Harness 镜像 task-cleanup-db.test.ts:real SessionDB on temp file +
+// 非实施者)。Harness 镜像 task-cleanup-db.test.ts:real CoreDatabase on temp file +
 // real SubagentDelegator(db 接进 config)。fireOnTaskTerminal 是 private,通过
 // `(delegator as any).fireOnTaskTerminal(...)` 反射调用——同 harness 已用反射
 // 访问 `(delegator.taskRegistry as any).tasks.get(...)` 的既定风格。
@@ -41,17 +41,17 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { SubagentDelegator } from "../../src/runtime/subagent-delegator.js";
 import { log } from "../../src/core/logger.js";
 import type { SessionConfig } from "../../src/runtime/types.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-archive-sub1-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 });
 afterEach(() => {
 	sessionDB?.close();
@@ -66,7 +66,7 @@ interface MakeDelegatorOpts {
 	onTaskTerminal?: (taskId: string, status: "completed" | "failed", childSessionId: string, childAgentId?: string, childModelId?: string) => Promise<void> | void;
 }
 
-function makeDelegator(db: SessionDB, opts?: MakeDelegatorOpts): SubagentDelegator {
+function makeDelegator(db: CoreDatabase, opts?: MakeDelegatorOpts): SubagentDelegator {
 	const cfg = {
 		agentId: "parent-agent",
 		sessionId: "parent-session",
@@ -84,7 +84,7 @@ function makeDelegator(db: SessionDB, opts?: MakeDelegatorOpts): SubagentDelegat
 }
 
 /** Create a real child session row so markArchivedTransient has something to update. */
-function seedChildSession(db: SessionDB, agentId = "dev"): string {
+function seedChildSession(db: CoreDatabase, agentId = "dev"): string {
 	const created = db.createSession(agentId, "delegated child", undefined, {
 		sessionKind: "delegated",
 		parentSessionId: "parent-session",
@@ -95,7 +95,7 @@ function seedChildSession(db: SessionDB, agentId = "dev"): string {
 
 /** Insert a delegated_tasks row with sessionId set. Returns the seeded record. */
 function seedDelegatedRow(
-	db: SessionDB,
+	db: CoreDatabase,
 	taskId: string,
 	childSessionId: string,
 	overrides?: { targetAgentId?: string; modelId?: string; status?: any },
@@ -122,7 +122,7 @@ function fire(delegator: SubagentDelegator, taskId: string, status: "completed" 
 
 /** Read sessions.archived flag straight from the row (defensive against any
  *  future SessionRecord shape change). */
-function archivedFlag(db: SessionDB, sessionId: string): number | undefined {
+function archivedFlag(db: CoreDatabase, sessionId: string): number | undefined {
 	const raw = (db as unknown as { db: import("better-sqlite3").Database }).db;
 	const row = raw.prepare("SELECT archived FROM sessions WHERE id = ?").get(sessionId) as { archived: number } | undefined;
 	return row?.archived;
@@ -294,11 +294,11 @@ describe("[#6] AgentService.archiveDelegatedSession does NOT call getDelegatedTa
 	// Then assert: getDelegatedTask is never invoked from within archiveDelegatedSession.
 
 	let testDir: string;
-	let archiveDB: SessionDB;
+	let archiveDB: CoreDatabase;
 
 	beforeEach(() => {
 		testDir = mkdtempSync(join(tmpdir(), "zero-archive-sub1-noReread-"));
-		archiveDB = new SessionDB(join(testDir, "sessions.db"));
+		archiveDB = new CoreDatabase(join(testDir, "core.db"));
 	});
 	afterEach(() => {
 		archiveDB?.close();

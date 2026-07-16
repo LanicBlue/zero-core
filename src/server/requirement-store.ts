@@ -6,7 +6,7 @@
 // Requirement 数据持久化，包含需求、状态历史、消息三个 Store。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - Requirement 数据
 //
 // ## 输出
@@ -23,7 +23,7 @@
 // - 新增字段时需更新列定义
 //
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type {
 	RequirementRecord,
 	RequirementStatus,
@@ -98,7 +98,7 @@ export class RequirementStore {
 	private historyStore: SqliteStore<any>;
 	private messageStore: SqliteStore<any>;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		const db = sessionDB.getDb();
 		this.reqStore = new SqliteStore<RequirementRecord>(db, "requirements", REQUIREMENT_COLUMNS);
 		this.historyStore = new SqliteStore<any>(db, "requirement_status_history", STATUS_HISTORY_COLUMNS);

@@ -18,7 +18,7 @@
 //   - assert the TurnEnd handler closed the first turn_group.
 //
 // ## Design
-// Drives the real pipeline: a temporary SessionDB + runMigrations (own temp
+// Drives the real pipeline: a temporary CoreDatabase + runMigrations (own temp
 // dir, never touches ~/.zero-core/sessions.db), a fresh HookRegistry, real
 // registerTurnHooks. We fire the exact event sequence agent-loop emits for
 // two consecutive runs (TurnStart → ... → TurnEnd), then read back the
@@ -30,7 +30,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 import { registerTurnHooks, getTurnSeq } from "../../src/runtime/hooks/turn-hooks.js";
@@ -39,11 +39,11 @@ import { TurnRecorder } from "../../src/runtime/turn-recorder.js";
 const SESSION_ID = "sess-turnend-3b";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-3b-turnend-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 });
 

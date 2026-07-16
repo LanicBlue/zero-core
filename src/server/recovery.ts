@@ -6,7 +6,7 @@
 // 启动时扫描中断的会话轮次，清理过期记录，辅助 AgentService 恢复未完成会话
 //
 // ## 输入
-// SessionDB 实例
+// CoreDatabase 实例
 //
 // ## 输出
 // 不完整轮次列表（sessionId、turnSeq、phase）
@@ -15,12 +15,12 @@
 // src/server/ — 服务层，应用启动时的数据恢复机制
 //
 // ## 依赖
-// session-db.ts、core/logger.ts
+// core-database.ts、core/logger.ts
 //
 // ## 维护规则
 // 新增中断场景需在此添加扫描逻辑
 //
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { ProjectStore } from "./project-store.js";
 import type { RequirementStore } from "./requirement-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
@@ -34,7 +34,7 @@ import { log } from "../core/logger.js";
 // Runs once at app startup after the database is initialized.
 // ---------------------------------------------------------------------------
 
-export function scanIncompleteTurns(sessionDb: SessionDB): Array<{ sessionId: string; turnSeq: number; phase: string }> {
+export function scanIncompleteTurns(sessionDb: CoreDatabase): Array<{ sessionId: string; turnSeq: number; phase: string }> {
 	// steps-overhaul sub-1: cleanOldTurnState is removed (its GC job — clearing
 	// stale turn_state rows — is absorbed by recovery scanning sessions.phase:
 	// a non-terminal session is a recovery candidate; one that can't be resumed

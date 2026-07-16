@@ -22,7 +22,7 @@
 //
 /**
  * Minimal interface for key-value persistence.
- * Core layer uses this instead of depending on server/SessionDB.
+ * Core layer uses this instead of depending on server/CoreDatabase.
  */
 export interface IKVStore {
 	getJson<T>(key: string): T | null;

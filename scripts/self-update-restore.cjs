@@ -39,8 +39,14 @@ if (!fs.existsSync(snapshot)) {
 }
 
 const zcDir = process.env.ZERO_CORE_DIR || path.join(os.homedir(), ".zero-core");
-if (fs.existsSync(path.join(zcDir, "sessions.db-shm"))) {
-	console.error(`警告:检测到 ${zcDir}/sessions.db-shm,zero-core 可能还在运行。`);
+// plan-00 §6: WAL/SHM 检测路径跟随重命名后的 db/core.db。
+// 同时检测旧的 sessions.db-* 以兼容尚未完成布局切换的快照。
+const dbDir = path.join(zcDir, "db");
+const activeShm = path.join(dbDir, "core.db-shm");
+const legacyShm = path.join(zcDir, "sessions.db-shm");
+if (fs.existsSync(activeShm) || fs.existsSync(legacyShm)) {
+	const which = fs.existsSync(activeShm) ? activeShm : legacyShm;
+	console.error(`警告:检测到 ${which},zero-core 可能还在运行。`);
 	console.error("请先完全退出 zero-core,再运行本脚本。");
 	process.exit(2);
 }

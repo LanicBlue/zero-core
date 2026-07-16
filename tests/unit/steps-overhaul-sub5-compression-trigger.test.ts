@@ -24,7 +24,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 import {
 	registerCompressionTriggerHooks,
@@ -80,7 +80,7 @@ function goodSummaryJson(): string {
  * padded to ~150K char so older turns exceed the fresh-tail budget (min(32K,
  * 20%×200K=40K) = 32K token ≈ 128K char) and become compressible.
  */
-function seedTurn(db: SessionDB, sessionId: string, startSeq: number, pad: number = 150_000): number {
+function seedTurn(db: CoreDatabase, sessionId: string, startSeq: number, pad: number = 150_000): number {
 	const group = startSeq;
 	db.appendStep(sessionId, startSeq, group, "user", `turn ${startSeq} user`);
 	db.appendStep(sessionId, startSeq + 1, group, "assistant", JSON.stringify([
@@ -130,7 +130,7 @@ interface FireOpts {
 function fire(
 	reg: HookRegistry,
 	ev: "StepEnd" | "PreLLMCall" | "OnLLMError" | "TurnStart",
-	db: SessionDB,
+	db: CoreDatabase,
 	opts: FireOpts,
 	runtimeShape: boolean = false,
 ) {
@@ -169,12 +169,12 @@ function fire(
 
 describe("steps-overhaul sub-5: compression trigger hooks", () => {
 	let tmpDir: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 	let reg: HookRegistry;
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "zero-sub5-trig-"));
-		db = new SessionDB(join(tmpDir, "sessions.db"));
+		db = new CoreDatabase(join(tmpDir, "core.db"));
 		// Insert a session row with a fixed id so token_usage / cursor updates
 		// have a target (createSession auto-generates an id; we want a known one).
 		const now = new Date().toISOString();

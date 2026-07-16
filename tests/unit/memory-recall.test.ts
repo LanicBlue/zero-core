@@ -15,7 +15,7 @@
 // 取代旧的 memory-recall.test.ts (基于已废的 MemoryRecall + MemoryNodeStore)。
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + 新建 WikiStore
+// 临时 CoreDatabase (mkdtempSync) + 新建 WikiStore
 //
 // ## 输出
 // Vitest 用例
@@ -29,7 +29,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import {
 	WikiStore,
 	WIKI_GLOBAL_ROOT_ID,
@@ -44,12 +44,12 @@ import {
 } from "../../src/runtime/wiki-anchor-injection.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let wiki: WikiStore;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-memwiki-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	wiki = new WikiStore(sessionDB);
 });

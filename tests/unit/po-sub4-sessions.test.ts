@@ -298,7 +298,7 @@ describe("acceptance-4 #1–5: Platform 'sessions' resource", () => {
 		// (b) The SQL filter is the source of truth — read it straight from the
 		//     source file rather than trusting the implementer's claim.
 		const fs = await import("node:fs");
-		const sql = fs.readFileSync("src/server/session-db.ts", "utf-8");
+		const sql = fs.readFileSync("src/server/core-database.ts", "utf-8");
 		const m = sql.match(/getMainSession[^}]*?SELECT \* FROM sessions WHERE[^"]*?"/);
 		expect(m, "getMainSession SQL must exist and be readable").toBeTruthy();
 		expect(m![0]).toContain("session_kind = 'chat'");

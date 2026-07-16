@@ -6,7 +6,7 @@
 // 将工具执行记录注册到 Hook 系统，在 PreToolUse/PostToolUse/PostToolUseFailure 事件中自动采集执行数据
 //
 // ## 输入
-// SessionDB 实例
+// CoreDatabase 实例
 //
 // ## 输出
 // 数据库中的工具执行记录
@@ -15,13 +15,13 @@
 // src/server/ — 服务层，Hook 系统的工具执行记录消费者
 //
 // ## 依赖
-// core/hook-registry.ts、session-db.ts、core/logger.ts
+// core/hook-registry.ts、core-database.ts、core/logger.ts
 //
 // ## 维护规则
 // recordToolExecution 参数变更需同步更新此处的字段提取逻辑
 //
 import { HookRegistry } from "../core/hook-registry.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import { log } from "../core/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ import { log } from "../core/logger.js";
 // Per-invocation start time + args, keyed by toolCallId
 const pendingExecutions = new Map<string, { startTime: number; args: unknown }>();
 
-export function registerToolExecutionHooks(sessionDb: SessionDB, registry: HookRegistry = HookRegistry.getInstance()): void {
+export function registerToolExecutionHooks(sessionDb: CoreDatabase, registry: HookRegistry = HookRegistry.getInstance()): void {
 
 	registry.register("PreToolUse", async (ctx) => {
 		try {

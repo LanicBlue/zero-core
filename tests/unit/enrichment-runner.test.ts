@@ -11,7 +11,7 @@
 //     触发,注入 wikiStore/projectContext),run 完成 → markCompleted / 失败 → markFailed。
 //
 // ## 输入
-// 临时 SessionDB + 真实 stores + stub AgentService(capture sendProjectPrompt,
+// 临时 CoreDatabase + 真实 stores + stub AgentService(capture sendProjectPrompt,
 // 可控 resolve/reject)+ 一个带 Wiki 工具的 agent。
 //
 
@@ -19,7 +19,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { TemplateStore } from "../../src/server/template-store.js";
@@ -29,7 +29,7 @@ import { EnrichmentRunner } from "../../src/server/enrichment-runner.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
 let templateStore: TemplateStore;
@@ -41,7 +41,7 @@ beforeEach(() => {
 	const workspaceDir = join(tmpDir, "ws");
 	mkdirSync(workspaceDir, { recursive: true });
 
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);

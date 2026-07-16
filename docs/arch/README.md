@@ -60,7 +60,7 @@
 2. **IPC 代理规模更新**：`src/main/ipc-proxy.ts` 当前约 350 行，`R` 映射表约 140 个后端代理通道；main 进程另有 5 个本地 `ipcMain.handle` 通道（3 个窗口控制 + `dialog:openDirectory` + `webfetch:login`），`app:ready` 是健康检查通道。
 3. **preload 契约规模更新**：`src/preload/index.ts` 当前暴露约 150 个 `ipcRenderer.invoke` 通道。`rest-routers.test.ts` 已检查大多数 preload invoke 都必须有 proxy/local 映射。
 4. **仍存在的 IPC 漂移**：测试中显式放行了 `search-provider:get/set`、`templates:github-preview/import-github` 这 4 个未走 `R` 映射的通道；其中 template GitHub 后端路由存在，search provider 后端入口仍待确认。
-5. **核心大文件规模更新**：`wiki-node-store.ts`、`agent-service.ts`、`db-migration.ts`、`session-db.ts`、`server/index.ts`、`agent-loop.ts` 均已进入大文件区间，架构债务不再只集中于 AgentService / SessionDB。
+5. **核心大文件规模更新**：`wiki-node-store.ts`、`agent-service.ts`、`db-migration.ts`、`core-database.ts`、`server/index.ts`、`agent-loop.ts` 均已进入大文件区间，架构债务不再只集中于 AgentService / CoreDatabase。
 6. **记忆主线已切到 Wiki tree**：当前默认 Agent 会话通过 Wiki anchors 注入项目/Agent 记忆；`rag-hooks.ts` 仍注册但普通会话未注入 `getRagContext`，应视为 legacy optional hook，而不是当前主线功能缺陷。
-7. **D-013 SQLite WAL**：保持为已解决（`session-db.ts` 和 `kb-db.ts` 均执行 `db.pragma("journal_mode = WAL")`）。
+7. **D-013 SQLite WAL**：保持为已解决（`core-database.ts` 和 `kb-db.ts` 均执行 `db.pragma("journal_mode = WAL")`）。
 8. **D-007 ToolRateLimiter**：保持为已解决（已在 AgentLoop / tool-factory 执行路径中运行）。

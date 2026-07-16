@@ -6,7 +6,7 @@
 // 将执行状态检查点到数据库，确保 hook 事件持久化后可恢复
 //
 // ## 输入
-// Hook 事件上下文、SessionDB 实例
+// Hook 事件上下文、CoreDatabase 实例
 //
 // ## 输出
 // 数据库中的 turn_state 记录（含 last_completed_step_seq 检查点）
@@ -15,13 +15,13 @@
 // src/server/ — 服务层，Hook 系统的首个持久化消费者
 //
 // ## 依赖
-// core/hook-registry.ts、session-db.ts、core/logger.ts
+// core/hook-registry.ts、core-database.ts、core/logger.ts
 //
 // ## 维护规则
 // 检查点格式变更需考虑数据迁移
 //
 import { HookRegistry } from "../core/hook-registry.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import { log } from "../core/logger.js";
 // Step 4A (fix): the shared turn_seq Map is OWNED by turn-hooks — it writes the
 // user-step row at TurnStart, so it owns the cursor. durable-hooks READS the
@@ -70,7 +70,7 @@ export function setSessionTurnSeq(sessionId: string, turnSeq: number): void {
 // flip is gone — phase now only marks terminal session state.
 // ---------------------------------------------------------------------------
 
-export function registerDurableHooks(sessionDb: SessionDB, registry: HookRegistry = HookRegistry.getInstance()): void {
+export function registerDurableHooks(sessionDb: CoreDatabase, registry: HookRegistry = HookRegistry.getInstance()): void {
 
 	registry.register("TurnStart", async (ctx) => {
 		try {

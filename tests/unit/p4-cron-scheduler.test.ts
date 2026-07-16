@@ -22,7 +22,7 @@
 // (vi.setSystemTime 调整 Date.now())。这样 setTimeout(delay) 与 now() 都对齐。
 //
 // ## 输入
-// 临时 SessionDB + 真实 stores + CronRunStore + stub AgentService。
+// 临时 CoreDatabase + 真实 stores + CronRunStore + stub AgentService。
 //
 // ## 输出
 // Vitest 用例。
@@ -32,7 +32,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { CronStore, CronRunStore } from "../../src/server/cron-store.js";
@@ -78,7 +78,7 @@ const ANCHOR_NOW = Date.UTC(2026, 2, 9, 9, 0, 0); // Monday 09:00 UTC
 // ---------------------------------------------------------------------------
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
 let cronStore: CronStore;
@@ -90,7 +90,7 @@ beforeEach(() => {
 	vi.setSystemTime(ANCHOR_NOW);
 
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-p4-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);

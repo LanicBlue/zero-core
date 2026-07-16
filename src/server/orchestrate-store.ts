@@ -17,7 +17,7 @@
 // 自然停在这里直到外部 IPC 唤醒。真正的挂起,不是忙等。
 //
 // ## 输入
-// - SessionDB
+// - CoreDatabase
 // - OrchestrateFlow / OrchestratePlanRecord / OrchestrateManifestRecord
 //
 // ## 输出
@@ -38,7 +38,7 @@
 //
 
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type {
 	OrchestrateFlow,
 	OrchestratePlanRecord,
@@ -79,7 +79,7 @@ const ORCHESTRATE_MANIFEST_COLUMNS: ColumnDef[] = [
 export class OrchestratePlanStore {
 	private store: SqliteStore<OrchestratePlanRecord>;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.store = new SqliteStore<OrchestratePlanRecord>(
 			sessionDB.getDb(),
 			"orchestrate_plans",
@@ -131,7 +131,7 @@ export class OrchestratePlanStore {
 export class OrchestrateManifestStore {
 	private store: SqliteStore<OrchestrateManifestRecord>;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.store = new SqliteStore<OrchestrateManifestRecord>(
 			sessionDB.getDb(),
 			"orchestrate_manifests",

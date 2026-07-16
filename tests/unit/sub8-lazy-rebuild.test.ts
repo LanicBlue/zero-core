@@ -22,7 +22,7 @@
 //        数据正确)。
 //
 // ## 驱动方式
-// 真实 SessionDB + AgentService(无 provider,只调 restoreAllSessions /
+// 真实 CoreDatabase + AgentService(无 provider,只调 restoreAllSessions /
 // activateSession / getRuntimeTaskTree)。不跑 loop.resume(测恢复语义的话另用
 // sub8-recovery-resume.test.ts 仿 step-resume)。loop 是否"被建"通过
 // getRuntimeTaskTree(sessionId) 是否回填 seeded delegated task 判定 —— loop 存在
@@ -38,16 +38,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentService } from "../../src/server/agent-service.js";
 
 // 注:createSession(agentId, title?, context?, options?) —— sessionKind 在第 4
 // 参 options.sessionKind,不在第 2 参 title。误用 "chat"/"delegated" 作 title 会把
 // sessionKind 留默认 "chat",delegated session 被误当 chat 处理(freeze 失效)。
-function createChat(db: SessionDB, agentId: string, title = "chat"): string {
+function createChat(db: CoreDatabase, agentId: string, title = "chat"): string {
 	return db.createSession(agentId, title).id;
 }
-function createDelegated(db: SessionDB, agentId: string, title = "delegated"): string {
+function createDelegated(db: CoreDatabase, agentId: string, title = "delegated"): string {
 	return db.createSession(agentId, title, undefined, { sessionKind: "delegated", visibility: "hidden" }).id;
 }
 
@@ -57,11 +57,11 @@ function createDelegated(db: SessionDB, agentId: string, title = "delegated"): s
 
 describe("sub-8 lazy rebuild (acceptance #1-#5)", () => {
 	let tmp: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 
 	beforeEach(() => {
 		tmp = mkdtempSync(join(tmpdir(), "zc-sub8-"));
-		db = new SessionDB(join(tmp, "sessions.db"));
+		db = new CoreDatabase(join(tmp, "core.db"));
 	});
 	afterEach(() => {
 		db?.close();
@@ -227,11 +227,11 @@ describe("sub-8 lazy rebuild (acceptance #1-#5)", () => {
 
 describe("sub-8 interrupted-status seed (acceptance #6-#8)", () => {
 	let tmp: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 
 	beforeEach(() => {
 		tmp = mkdtempSync(join(tmpdir(), "zc-sub8-seed-"));
-		db = new SessionDB(join(tmp, "sessions.db"));
+		db = new CoreDatabase(join(tmp, "core.db"));
 	});
 	afterEach(() => {
 		db?.close();

@@ -23,7 +23,7 @@
 //   - **projects/memory 骨架根**(P6 测试时这俩根还没加)。
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + 真实 stores + ManagementService。
+// 临时 CoreDatabase (mkdtempSync) + 真实 stores + ManagementService。
 //
 // ## 输出
 // Vitest 用例。
@@ -40,7 +40,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { CronStore } from "../../src/server/cron-store.js";
@@ -59,7 +59,7 @@ import { runMigrations } from "../../src/server/db-migration.js";
 import { seedFreshDbDefaults } from "../../src/server/fresh-db-seed.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let agentStore: AgentStore;
 let projectStore: ProjectStore;
 let cronStore: CronStore;
@@ -68,7 +68,7 @@ let management: ManagementService;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-p7-skeleton-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	agentStore = new AgentStore(sessionDB);
 	projectStore = new ProjectStore(sessionDB);

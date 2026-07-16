@@ -39,7 +39,7 @@ vi.mock("../../src/runtime/provider-factory.js", () => ({
 	getMultimodal: () => false,
 }));
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { AgentService } from "../../src/server/agent-service.js";
@@ -74,7 +74,7 @@ function createFinishModel(modelId = "n4-mock"): LanguageModelV2 {
 // ─── Shared harness (AgentLoop) ───────────────────────────────────────────
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let loop: AgentLoop;
 let emitted: StreamEvent[];
 
@@ -107,7 +107,7 @@ function buildLoop(sessionId: string): { loop: AgentLoop; registry: HookRegistry
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-n4-hot-sync-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	resolveModelMock.mockReset();
 	resolveModelMock.mockReturnValue(createFinishModel());
@@ -206,9 +206,9 @@ describe("N4 · acceptance #3 thinkingLevel hot-sync", () => {
 
 describe("N4 · acceptance #6 agent-service store.onChange passes new fields to applyConfigUpdate", () => {
 	let dir: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 
-	beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "zero-n4-svc-")); db = new SessionDB(join(dir, "sessions.db")); runMigrations(db); });
+	beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "zero-n4-svc-")); db = new CoreDatabase(join(dir, "core.db")); runMigrations(db); });
 	afterEach(() => { try { db.close(); } catch { /* ignore */ } rmSync(dir, { recursive: true, force: true }); });
 
 	test("busy loop: changing model/provider/thinkingLevel forwards them to applyConfigUpdate", () => {

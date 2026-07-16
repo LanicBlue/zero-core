@@ -9,7 +9,7 @@
 //   创建后不可改 (换目录 = 新建 Project)。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - Project 数据
 //
 // ## 输出
@@ -29,7 +29,7 @@
 import { resolve, normalize } from "node:path";
 import { realpathSync } from "node:fs";
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { ProjectRecord } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ function normalizeWorkspaceDir(dir: string): string {
 export class ProjectStore {
 	private store: SqliteStore<ProjectRecord>;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.store = new SqliteStore<ProjectRecord>(sessionDB.getDb(), "projects", COLUMNS);
 	}
 

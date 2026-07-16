@@ -1,28 +1,31 @@
-// 会话数据库
+// Core 数据库（wiki-system-redesign plan-00：SessionDB → CoreDatabase 改名）
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 会话数据库管理，提供会话 CRUD、消息存储和 KV 存储。
+// Core 数据库管理：承载 sessions / agents / projects / work / cron / provider /
+// 配置 / 任务 / 遥测等核心状态，提供会话 CRUD、消息存储和 KV 存储。
 //
 // ## 输入
-// - 数据库路径
+// - 数据库路径（默认走 `database-paths.ts` 的 `coreDbPath`）
 // - SessionRecord 数据
 //
 // ## 输出
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - KeyValueStore
 //
 // ## 定位
-// 服务层数据库，被 agent-service 使用。
+// 服务层数据库，被 agent-service / DatabaseManager 使用。
 //
 // ## 依赖
 // - better-sqlite3 - SQLite 驱动
 // - uuid - ID 生成
+// - database-paths.ts - 物理布局
 //
 // ## 维护规则
 // - 新增表或列时需同步更新 db-migration.ts
 // - 保持向后兼容
+// - 路径默认来自 `database-paths.ts`，禁止在本文件外拼接 `core.db`/`sessions.db`
 //
 import Database from "better-sqlite3";
 import { join } from "node:path";
@@ -31,7 +34,7 @@ import { v4 as uuidv4 } from "uuid";
 import { log } from "../core/logger.js";
 import type { AttachmentMeta, DelegatedTaskRecord, DelegatedTaskStatus, SessionRecord, ToolExecutionRecord, ToolExecutionFilter, ToolExecutionStats } from "../shared/types.js";
 // platform-observability ②.1 (sub-1): type-only import — no runtime cycle with
-// the runtime layer (session-db is server, but types are erased at runtime).
+// the runtime layer (core-database is server, but types are erased at runtime).
 import type { TurnSource } from "../runtime/types.js";
 import { KeyValueStore } from "./key-value-store.js";
 // v0.8 (M5): extractor cursor + tool telemetry stores. These back
@@ -42,6 +45,9 @@ import { KeyValueStore } from "./key-value-store.js";
 import { ExtractionCursorStore } from "./extraction-cursor-store.js";
 import { TelemetryStore } from "./telemetry-store.js";
 import { ZERO_CORE_DIR } from "../core/config.js";
+// plan-00 §1/§4: 物理布局中央模块。默认 dbPath 走 coreDbPath；启动切换由
+// DatabaseManager 在构造本类之前完成（core.db 已就位）。
+import { coreDbPath } from "../core/database-paths.js";
 // N1 (runtime-push-ui-sync): structural session primitives (create/delete/
 // archive) feed the unified data-change-hub so the sidebar list updates in
 // real time. data-change-hub is a pure module (no DB / no session-db import),
@@ -52,7 +58,11 @@ import { ZERO_CORE_DIR } from "../core/config.js";
 import { emitDataChange } from "./data-change-hub.js";
 
 // ---------------------------------------------------------------------------
-// SessionDB — SQLite-backed session & message persistence
+// CoreDatabase — SQLite-backed core persistence (sessions + agents + ...).
+// plan-00 §2: renamed from `SessionDB`; the class still owns sessions/messages/
+// steps/delegated_tasks/tool_executions/provider_usage tables plus the KV store
+// and the lazy extractor stores. Subsequent subs may split repositories; this
+// sub keeps behavior identical.
 // ---------------------------------------------------------------------------
 
 /**
@@ -84,16 +94,18 @@ export interface MessageSummary {
 }
 
 // tool-decoupling(决策 1):process-wide 单例 getter/setter。启动时注册;
-// 工具 import { getSessionDB } 直读(db / messages / KV)。headless 无则 undefined。
-let _sessionDB: SessionDB | undefined;
-export function getSessionDB(): SessionDB | undefined {
-	return _sessionDB;
+// 工具 import { getCoreDatabase } 直读(db / messages / KV)。headless 无则 undefined。
+// plan-00 §2: 改名 SessionDB→CoreDatabase；旧 getCoreDatabase/setCoreDatabase 别名
+// 不保留（plan-00 §G 拒绝「生产可调用的 SessionDB fallback」）。
+let _coreDB: CoreDatabase | undefined;
+export function getCoreDatabase(): CoreDatabase | undefined {
+	return _coreDB;
 }
-export function setSessionDB(s: SessionDB | undefined): void {
-	_sessionDB = s;
+export function setCoreDatabase(s: CoreDatabase | undefined): void {
+	_coreDB = s;
 }
 
-export class SessionDB {
+export class CoreDatabase {
 	private db: Database.Database;
 	private kvStore: KeyValueStore;
 	// v0.8 (M5): extractor cursor + telemetry stores (lazy-init below).
@@ -101,10 +113,13 @@ export class SessionDB {
 	private telemetryStore: TelemetryStore | null = null;
 
 	constructor(dbPath?: string) {
-		const dir = join(dbPath ?? ZERO_CORE_DIR, "..");
+		// plan-00 §1: 默认 dbPath 走 database-paths.coreDbPath
+		// （`${ZERO_CORE_DIR}/db/core.db`）。DatabaseManager 在调用本构造器前
+		// 已完成 sessions.db → db/core.db 的启动切换；此构造器本身不做切换。
+		const path = dbPath ?? coreDbPath;
+		const dir = join(path, "..");
 		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-		const path = dbPath ?? join(ZERO_CORE_DIR, "sessions.db");
 		this.db = new Database(path);
 
 		// 测试环境(ZERO_CORE_DB_NO_WAL=1)用 MEMORY journal,不产生 -wal/-shm 文件:
@@ -147,7 +162,7 @@ export class SessionDB {
 	}
 
 	// -----------------------------------------------------------------------
-	// Schema — sessions/messages/steps (owned by SessionDB itself).
+	// Schema — sessions/messages/steps (owned by CoreDatabase itself).
 	//
 	// steps-overhaul sub-1: the physical `turns` table was renamed to `steps`
 	// (it always held step rows; the old name was a misnomer). The per-(session,
@@ -355,7 +370,7 @@ export class SessionDB {
 		// multimodal-input sub-2: per-step attachment metadata. The steps table
 		// stores an `AttachmentMeta[]` JSON blob here; `content` stays a plain
 		// string (design principle A — bytes never enter the steps table, only
-		// the lightweight meta does). steps is SessionDB-owned (no *_COLUMNS
+		// the lightweight meta does). steps is CoreDatabase-owned (no *_COLUMNS
 		// array), so this single safeAddColumn is the only migration sync point
 		// — fresh DBs get the column from CREATE TABLE above; upgraded DBs get
 		// it here. NULL on legacy rows (read back as undefined — back-compat).
@@ -800,7 +815,7 @@ export class SessionDB {
 			const rows = this.db.prepare(
 				"SELECT summary_json FROM messages WHERE session_id = ? ORDER BY seq",
 			).all(sessionId) as { summary_json: string }[];
-			return rows.map((r) => SessionDB.parseSummary(r.summary_json));
+			return rows.map((r) => CoreDatabase.parseSummary(r.summary_json));
 		} catch (err) {
 			log.warn("db", `getSummaries failed (session=${sessionId}):`, (err as Error).message);
 			return [];

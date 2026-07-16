@@ -6,7 +6,7 @@
 // 提供 Agent 的 Express REST API 路由（列表、创建、更新、删除）
 //
 // ## 输入
-// HTTP 请求（GET/POST/PUT/DELETE）、AgentStore、AgentService、SessionDB
+// HTTP 请求（GET/POST/PUT/DELETE）、AgentStore、AgentService、CoreDatabase
 //
 // ## 输出
 // Express Router，处理 Agent CRUD API
@@ -15,7 +15,7 @@
 // src/server/ — 服务层，为外部 API 提供 Agent 管理端点
 //
 // ## 依赖
-// express、agent-store.ts、agent-service.ts、session-db.ts
+// express、agent-store.ts、agent-service.ts、core-database.ts
 //
 // ## 维护规则
 // API 路径变更需同步更新前端调用
@@ -23,12 +23,12 @@
 import { Router } from "express";
 import type { AgentStore } from "./agent-store.js";
 import type { createAgentService } from "./agent-service.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 
 export function createAgentRouter(deps: {
 	agentStore: AgentStore;
 	agentService: ReturnType<typeof createAgentService>;
-	sessionDB: SessionDB;
+	sessionDB: CoreDatabase;
 }): Router {
 	const router = Router();
 	const { agentStore, agentService, sessionDB } = deps;

@@ -29,7 +29,7 @@ import type { AgentStore } from "./agent-store.js";
 import type { ProjectStore } from "./project-store.js";
 import type { ProjectWorkStore } from "./project-work-store.js";
 import type { WikiStore } from "./wiki-node-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import { resolveSessionByRoleProject, type WikiRootResolver } from "./session-context-router.js";
 import { agentHasTool } from "./wiki-operations.js";
 import { log } from "../core/logger.js";
@@ -42,7 +42,7 @@ export interface ProjectWorkRunnerDeps {
 	agentStore: AgentStore;
 	projectStore: ProjectStore;
 	projectWorkStore: ProjectWorkStore;
-	sessionDB: SessionDB;
+	sessionDB: CoreDatabase;
 	wikiStore?: WikiStore;
 	resolveWikiRoot?: WikiRootResolver;
 }

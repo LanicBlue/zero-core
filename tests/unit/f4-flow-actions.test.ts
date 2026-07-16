@@ -21,7 +21,7 @@
 //     leaves user-customized works alone, idempotent.
 //
 // ## Inputs
-// Temporary SessionDB (mkdtempSync) + real RequirementStore + ProjectWorkStore
+// Temporary CoreDatabase (mkdtempSync) + real RequirementStore + ProjectWorkStore
 // + emitTransition wired through the real hub (onDataChange spy). For the
 // verify path a fake PmService records submitCoverageVerdict calls.
 //
@@ -33,7 +33,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { RequirementStore } from "../../src/server/requirement-store.js";
 import { ProjectWorkStore } from "../../src/server/project-work-store.js";
@@ -55,7 +55,7 @@ import {
 
 let tmpDir: string;
 let workspaceDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let projectStore: ProjectStore;
 let requirementStore: RequirementStore;
 let projectWorkStore: ProjectWorkStore;
@@ -66,7 +66,7 @@ beforeEach(() => {
 	workspaceDir = join(tmpDir, "ws");
 	mkdirSync(workspaceDir, { recursive: true });
 
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	requirementStore = new RequirementStore(sessionDB);

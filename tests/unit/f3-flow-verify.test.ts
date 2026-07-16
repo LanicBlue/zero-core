@@ -23,7 +23,7 @@
 //   - RENAMED_TOOLS back-compat: legacy spellings → "Flow".
 //
 // ## Inputs
-// Temporary SessionDB (mkdtempSync) + real RequirementStore + mocked
+// Temporary CoreDatabase (mkdtempSync) + real RequirementStore + mocked
 // delegateTask / pmService / gitIntegration.
 //
 // ## Output
@@ -34,7 +34,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { RequirementStore } from "../../src/server/requirement-store.js";
 import { runMigrations } from "../../src/server/db-migration.js";
@@ -63,7 +63,7 @@ const execFlow = (i: any, c: any) => __execFlow(i, c).then(__fmtFlow);
 
 let tmpDir: string;
 let workspaceDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let projectStore: ProjectStore;
 let requirementStore: RequirementStore;
 let PROJECT_ID: string;
@@ -73,7 +73,7 @@ beforeEach(() => {
 	workspaceDir = join(tmpDir, "ws");
 	mkdirSync(workspaceDir, { recursive: true });
 
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	requirementStore = new RequirementStore(sessionDB);

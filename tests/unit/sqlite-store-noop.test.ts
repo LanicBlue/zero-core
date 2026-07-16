@@ -13,14 +13,14 @@ import { describe, test, expect, beforeEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { SqliteStore, type ColumnDef } from "../../src/server/sqlite-store.js";
 import { onDataChange, _resetDataChangeHubForTest } from "../../src/server/data-change-hub.js";
 
 interface Row { id: string; createdAt: string; updatedAt: string; name: string; count: number }
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let store: SqliteStore<Row>;
 
 const COLUMNS: ColumnDef[] = [
@@ -30,7 +30,7 @@ const COLUMNS: ColumnDef[] = [
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sqlite-noop-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	store = new SqliteStore<Row>(sessionDB.getDb(), "noop_test", COLUMNS);
 	_resetDataChangeHubForTest();
 });

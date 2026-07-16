@@ -14,7 +14,7 @@
 // 与现有 IPC,内部委托到本类。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - WikiNode 数据
 //
 // ## 输出
@@ -36,7 +36,7 @@
 //
 
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { WikiNode, WikiNodeTypeGlobal } from "../shared/types.js";
 import { join, resolve, normalize, isAbsolute } from "node:path";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, renameSync, statSync, readdirSync, rmdirSync } from "node:fs";
@@ -357,7 +357,7 @@ export class WikiStore {
 	private db: import("better-sqlite3").Database;
 	private _insertWithIdStmt?: import("better-sqlite3").Statement;
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.db = sessionDB.getDb();
 		this.store = new SqliteStore<WikiNode & { nodeType?: string }>(
 			this.db,

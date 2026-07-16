@@ -12,13 +12,13 @@
 // ISessionStore 接口，提供消息读写和轮次管理
 //
 // ## 定位
-// src/runtime/ — 运行时层接口定义，由 server/SessionDB 实现
+// src/runtime/ — 运行时层接口定义，由 server/CoreDatabase 实现
 //
 // ## 依赖
 // core/kv-store-interface.ts
 //
 // ## 维护规则
-// 接口变更需确保 SessionDB 实现方同步更新
+// 接口变更需确保 CoreDatabase 实现方同步更新
 //
 import type { IKVStore } from "../core/kv-store-interface.js";
 import type { AttachmentMeta, DelegatedTaskRecord, DelegatedTaskStatus, SessionContextBundle } from "../shared/types.js";
@@ -34,9 +34,9 @@ export interface StepUsage {
 }
 
 /**
- * steps-overhaul sub-3: re-export of the summary block type from SessionDB so
+ * steps-overhaul sub-3: re-export of the summary block type from CoreDatabase so
  * the runtime layer can read/write summaries without importing server/ (which
- * would create a runtime cycle). Structurally identical to SessionDB's
+ * would create a runtime cycle). Structurally identical to CoreDatabase's
  * MessageSummary — kept as a type alias for clarity at call sites.
  */
 export interface MessageSummary {
@@ -87,7 +87,7 @@ export interface StepRow {
 
 /**
  * Interface for session/message persistence.
- * Runtime layer uses this instead of depending on server/SessionDB.
+ * Runtime layer uses this instead of depending on server/CoreDatabase.
  */
 export interface ISessionStore {
 	/**
@@ -121,7 +121,7 @@ export interface ISessionStore {
 	 * between this mark and the archive pipeline's eventual `deleteSessionData`
 	 * is recoverable on next startup (listArchivedTransientSessions re-exports).
 	 * Declared optional on the interface so test stubs can omit it; the runtime
-	 * null-checks before calling. Mirrors SessionDB.markArchivedTransient.
+	 * null-checks before calling. Mirrors CoreDatabase.markArchivedTransient.
 	 */
 	markArchivedTransient?(sessionId: string): void;
 	deleteTurn(sessionId: string, seq: number): void;

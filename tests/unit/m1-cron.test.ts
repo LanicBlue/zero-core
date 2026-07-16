@@ -13,7 +13,7 @@
 //   - ManagementService.createCron / updateCron / deleteCron / listCrons
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + 真实 stores + stub AgentService (capture sendPrompt)。
+// 临时 CoreDatabase (mkdtempSync) + 真实 stores + stub AgentService (capture sendPrompt)。
 //
 // ## 输出
 // Vitest 用例。
@@ -23,7 +23,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { CronStore } from "../../src/server/cron-store.js";
@@ -43,7 +43,7 @@ const SCHED_INTERVAL_WEEKLY: CronSchedule = { mode: "interval", everyMs: 7 * 86_
 const SCHED_OFF_INERT: CronSchedule = { mode: "interval", everyMs: 0 };
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
 let cronStore: CronStore;
@@ -63,7 +63,7 @@ function makeStubAgentService() {
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-m1-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);

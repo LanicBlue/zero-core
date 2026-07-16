@@ -85,12 +85,12 @@ import { getSessionTodos, setSessionTodosForCtx } from "../tools/todo-state.js";
 // resolution as the trigger path. compressSession lives in server/.
 import { consumePendingForceSignal, buildCompressOpts } from "./hooks/compression-trigger-hooks.js";
 import { compressSession } from "../server/compression-core.js";
-// SessionDB TYPE only (runtime import would still be fine — server/ has no
+// CoreDatabase TYPE only (runtime import would still be fine — server/ has no
 // cycle back to runtime/ — but type-only keeps the bundler happy). The loop
-// casts `this.config.db` (typed ISessionStore) to SessionDB inside
+// casts `this.config.db` (typed ISessionStore) to CoreDatabase inside
 // coordinateForceCompress: agent-service wires BOTH `db` and `sessionDb` from
-// the same SessionDB instance, so the runtime invariant holds.
-import type { SessionDB } from "../server/session-db.js";
+// the same CoreDatabase instance, so the runtime invariant holds.
+import type { CoreDatabase } from "../server/core-database.js";
 import { DEFAULT_ARCHIVE_MEMORY_PROMPT } from "../shared/default-prompts.js";
 // sub-7 (anchor merger): renderSystemAnchors + renderContextAnchors collapse
 // into the single `wiki-system-anchors` system section (root summary + one
@@ -335,7 +335,7 @@ export class AgentLoop implements AgentRuntime {
 			// sub-8 (archive): thread the delegated-session archive callback so
 			// delegated sub-agents auto-archive on terminal state. agent-service
 			// sets this when building the loop config (server layer owns the
-			// SessionDB + archive-service). Sub-loops inherit it via the config
+			// CoreDatabase + archive-service). Sub-loops inherit it via the config
 			// spread in subagent-delegator, so nested delegated work also archives.
 			onTaskTerminal: config.archiveDelegatedSession,
 		});
@@ -934,13 +934,13 @@ export class AgentLoop implements AgentRuntime {
 			try {
 				const opts = await buildCompressOpts(this.config, this.providers);
 				// config.db is typed as ISessionStore but at runtime is the
-				// SessionDB instance wired by agent-service (db + sessionDb are
+				// CoreDatabase instance wired by agent-service (db + sessionDb are
 				// the same object — see agent-service.ts wiring around line 523).
-				// compressSession needs SessionDB-specific methods
+				// compressSession needs CoreDatabase-specific methods
 				// (replaceSummariesAndAdvanceCursor, getDb); cast through
-				// unknown. Test loops that inject a non-SessionDB ISessionStore
+				// unknown. Test loops that inject a non-CoreDatabase ISessionStore
 				// stub will throw here and the catch below logs+returns.
-				const db = this.config.db as unknown as SessionDB;
+				const db = this.config.db as unknown as CoreDatabase;
 				await compressSession(sessionId, db, opts);
 			} catch (err) {
 				log.warn("loop",

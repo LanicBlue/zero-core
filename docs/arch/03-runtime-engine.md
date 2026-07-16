@@ -409,7 +409,7 @@ sequenceDiagram
 2. `AgentSession.rebuildFromSteps()` —— 从 turns 表的 step 行重建 messages(source of truth)。
 3. **step 级恢复**:`resume(lastCompletedStepSeq)` 从已持久化的 step 行续跑,已完成 step 不重跑。
 
-**好处**:AgentLoop 不需要知道 SQLite 的存在。如果以后想换 MySQL / Postgres,只需要改 `server/session-db.ts`。
+**好处**:AgentLoop 不需要知道 SQLite 的存在。如果以后想换 MySQL / Postgres,只需要改 `server/core-database.ts`。
 
 ## Hook 系统
 

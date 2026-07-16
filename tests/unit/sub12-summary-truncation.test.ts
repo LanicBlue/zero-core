@@ -18,7 +18,7 @@
 // - store 字节上限直接 upsert 一个超长 summary,验持久化结果。
 //
 // ## 输入
-// 临时 SessionDB + 真 stores + 临时 workspace 目录。
+// 临时 CoreDatabase + 真 stores + 临时 workspace 目录。
 //
 // ## 输出
 // Vitest 用例。
@@ -27,7 +27,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { RequirementStore } from "../../src/server/requirement-store.js";
 import { WikiStore, SUMMARY_MAX_BYTES } from "../../src/server/wiki-node-store.js";
@@ -37,7 +37,7 @@ import { WikiSkeletonService } from "../../src/server/wiki-skeleton-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let wikiStore: WikiStore;
 let projectStore: ProjectStore;
 let requirementStore: RequirementStore;
@@ -46,7 +46,7 @@ let archivistService: WikiSkeletonService;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub12-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	requirementStore = new RequirementStore(sessionDB);

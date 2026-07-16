@@ -113,7 +113,7 @@ test.describe("Session archive model", () => {
 		);
 
 		// Resolve the active agent id from the dropdown, then query both the
-		// active list (archived = 0 filter in SessionDB.listSessions) and the
+		// active list (archived = 0 filter in CoreDatabase.listSessions) and the
 		// archived session's init payload directly.
 		const agentId = await window.locator(".chat-agent-select").first().inputValue();
 

@@ -26,7 +26,7 @@
 // - 字段全部可选(headless 兼容)。
 
 import { setAgentService } from "./agent-service.js";
-import { setSessionDB } from "./session-db.js";
+import { setCoreDatabase } from "./core-database.js";
 import { setWikiStoreGlobal, type WikiStore } from "./wiki-node-store.js";
 import { setProjectWikiStore, type ProjectWikiStore } from "./project-wiki-store.js";
 import { setRequirementStore, type RequirementStore } from "./requirement-store.js";
@@ -34,7 +34,7 @@ import { setManagementService, type ManagementService } from "./management-servi
 import { setPmService, type PmService } from "./pm-service.js";
 import { setToolUsageStore, type ToolUsageStore } from "./tool-usage-store.js";
 import type { AgentService } from "./agent-service.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 
 /**
  * 启动时已构造的 app 级服务实例集合。字段全可选 —— headless/CLI 路径只
@@ -44,7 +44,7 @@ import type { SessionDB } from "./session-db.js";
  */
 export interface ServerInstances {
 	agentService?: AgentService;
-	sessionDB?: SessionDB;
+	sessionDB?: CoreDatabase;
 	wikiStoreGlobal?: WikiStore;
 	projectWikiStore?: ProjectWikiStore;
 	requirementStore?: RequirementStore;
@@ -63,7 +63,7 @@ export interface ServerInstances {
  */
 export function registerServerInstances(deps: ServerInstances): void {
 	if (deps.agentService !== undefined) setAgentService(deps.agentService);
-	if (deps.sessionDB !== undefined) setSessionDB(deps.sessionDB);
+	if (deps.sessionDB !== undefined) setCoreDatabase(deps.sessionDB);
 	if (deps.wikiStoreGlobal !== undefined) setWikiStoreGlobal(deps.wikiStoreGlobal);
 	if (deps.projectWikiStore !== undefined) setProjectWikiStore(deps.projectWikiStore);
 	if (deps.requirementStore !== undefined) setRequirementStore(deps.requirementStore);

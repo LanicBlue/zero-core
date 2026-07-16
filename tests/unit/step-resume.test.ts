@@ -22,7 +22,7 @@
 //      user turn row are persisted. The model call schedule is captured so we
 //      can prove steps 1-3 were each invoked once (3 doStream calls) before the
 //      simulated crash.
-//   2. Resume scenario: a FRESH AgentLoop+Session over the SAME SessionDB
+//   2. Resume scenario: a FRESH AgentLoop+Session over the SAME CoreDatabase
 //      (mimicking a process restart). Call loop.resume(turnSeq, checkpoint).
 //      Assert: only ONE new doStream call fires (step 4), its prompt already
 //      contains steps 1-3's tool-calls (rebuilt from the steps table via
@@ -60,7 +60,7 @@ vi.mock("../../src/runtime/provider-factory.js", () => ({
 	getMultimodal: () => false,
 }));
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { AgentLoop } from "../../src/runtime/agent-loop.js";
 import { registerDurableHooks, setSessionTurnSeq } from "../../src/server/durable-hooks.js";
@@ -155,7 +155,7 @@ function createMockModel(config: MockModelConfig, modelId = "mock-2d"): Language
 // ─── Test harness ─────────────────────────────────────────────────────────
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 
 function makeCallbacks(sink: StreamEvent[]): RuntimeCallbacks {
 	return { onEvent: (event: StreamEvent) => { sink.push(event); } };
@@ -176,7 +176,7 @@ function makeConfig(sessionId: string): SessionConfig {
 
 /** Build a fresh AgentLoop wired with the REAL durable hooks (turn_state rows
  * + per-StepEnd checkpoint advance) and registerTurnHooks (StepEnd persists
- * step rows) over the shared SessionDB. Observer events are recorded to
+ * step rows) over the shared CoreDatabase. Observer events are recorded to
  * hookSink. */
 function buildLoop(
 	sessionId: string,
@@ -204,7 +204,7 @@ function buildLoop(
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-2d-step-resume-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	resolveModelMock.mockReset();
 	resolveModelMock.mockReturnValue(createMockModel({ steps: [[{ type: "finish" }]] }));

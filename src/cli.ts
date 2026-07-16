@@ -35,7 +35,11 @@ import { TerminalAdapter } from "./runtime/terminal-adapter.js";
 import { loadConfig } from "./core/config.js";
 import { buildSystemPrompt } from "./core/system-prompt.js";
 import { loadDeviceContext } from "./core/device-context.js";
-import { SessionDB } from "./server/session-db.js";
+import { CoreDatabase } from "./server/core-database.js";
+// plan-00 §3/§4: CLI/headless 路径也走 DatabaseManager —— 布局 bootstrap
+// （sessions.db → db/core.db 切换 + knowledge.db 删除）必须与 server 路径
+// 一致，否则 CLI 首次运行会在旧位置创建 sessions.db，绕过切换。
+import { DatabaseManager, setDatabaseManager } from "./server/database-manager.js";
 import { ProviderStore } from "./server/provider-store.js";
 import { runMigrations } from "./server/db-migration.js";
 import { ToolRegistry } from "./core/tool-registry.js";
@@ -177,7 +181,17 @@ async function main() {
 	console.log(`zero-core CLI — workspace: ${cwd}`);
 
 	// Initialize DB
-	const sessionDB = new SessionDB();
+	// plan-00 §3/§4: CLI 也走 DatabaseManager，确保布局 bootstrap 与 server
+	// 路径一致（sessions.db → db/core.db 切换 + knowledge.db 删除）。
+	// plan-00 round-2 FIX 7：headless CLI 必须和 server/index.ts:133 一样
+	// 调 setDatabaseManager 注册单例 —— plan-01+ 的 wiki 工具/recovery/诊断
+	// 都通过 getDatabaseManager() 取生命周期 owner，CLI 不注册则这些消费者
+	// 在 headless 路径上拿不到 owner 而走 fallback，破坏「唯一生命周期所有者」
+	// 不变量。
+	const dbManager = new DatabaseManager();
+	dbManager.open();
+	setDatabaseManager(dbManager);
+	const sessionDB: CoreDatabase = dbManager.core;
 	runMigrations(sessionDB);
 	// tool-decoupling(决策 6):headless CLI 只起 sessionDB;其余 stores 不构造,
 	// getter 返 undefined → 数据工具优雅报错(不崩)。共用注册逻辑与 server 路径。

@@ -1,0 +1,916 @@
+// Wiki-system-redesign plan-00 §3 + acceptance-00 §D (architecture lens).
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 行为级 + 结构级编码 plan-00 §3 的接口形状锁与 acceptance-00 §D 全部 4 条
+// 生命周期/周边工具要点。本文件从**架构约束**视角断言:
+//   - DatabaseManager 是生产 composition root 唯一的 CoreDatabase 生命周期所有者
+//     (全仓 grep: new DatabaseManager 只出现在 cli.ts + server/index.ts;没有
+//      独立于 DatabaseManager 的 CoreDatabase 生产构造路径)。
+//   - open/close/health/checkpointCore 行为正确,idempotent,句柄在 close 后真正
+//     关闭 (process exit 无未关闭句柄)。
+//   - wiki / checkpointWiki / backupCore / backupWiki 为占位,抛稳定错误码
+//     WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00;方法签名锁定(参数/返回类型),plan-01/08
+//     可以无 rename 补齐。
+//   - DatabaseManager 不暴露跨库 SQL/transaction/ATTACH(§G 拒绝条件)。
+//   - core 与 wiki 的 checkpoint/backup 互不委托(结构独立性)。
+//   - readonly 诊断 (check-turns.cjs) 用 file:...?mode=ro + { readonly: true },
+//     不 checkpoint/VACUUM/migrate 活跃库 (acceptance §D bullet 3)。
+//
+// ## 输入
+//   - ZERO_CORE_DIR (vitest.config.ts 注入的 per-worker temp dir)
+//   - src/ + scripts/ 源文件系统读取(用于结构级 grep 审计)
+//
+// ## 输出
+// Vitest 用例。每个用例真跑 DatabaseManager,绝不读活跃 ~/.zero-core。
+//
+// ## 关键文件
+//   - src/server/database-manager.ts (DatabaseManager class + singleton getters)
+//   - src/server/core-database.ts (CoreDatabase — owned by DatabaseManager)
+//   - src/server/wiki-database.ts (WikiDatabase placeholder type)
+//   - src/server/index.ts (composition root wiring)
+//   - src/cli.ts (headless composition root)
+//   - scripts/check-turns.cjs (readonly diagnostic script)
+//
+// ## 维护规则
+//   - 每个用例 beforeEach/afterEach 跑 cleanLayoutState(),仅清 plan-00 涉及的
+//     固定路径,绝不 rmSync(ZERO_CORE_DIR) 整个目录(其他单测可能共用)。
+//   - 测试 DB 真在 OS temp 路径创建,绝不读活跃 ~/.zero-core。
+//   - 本测试只读 scripts/check-turns.cjs 源码做 grep 审计,不 require 它。
+//
+
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+
+// ---------------------------------------------------------------------------
+// Per-file filesystem isolation (acceptance §E — test:unit runnable together).
+// ---------------------------------------------------------------------------
+// ZERO_CORE_DIR is captured at module-load by src/core/config.ts and frozen
+// into the database-paths constants. vitest.config.ts sets a single shared
+// ZERO_CORE_DIR for the whole suite, so when several DB-bootstrap test files
+// run in parallel threads they ALL stamp the same db/core.db, sessions.db and
+// layout-v1.json → ~35 false cross-file failures. vi.hoisted runs this factory
+// BEFORE any other import (vitest transform guarantee), so config.ts picks up
+// OUR unique temp dir and every path constant (coreDbPath, legacyCoreDbPath,
+// layoutMarkerPath, coreBackupDir, …) resolves under it. Each file thus gets
+// its own scratch profile; cleanLayoutState() handles within-file cleanup.
+const UNIQUE_DIR = vi.hoisted<string>(() => {
+	const { mkdtempSync } = require("node:fs") as typeof import("node:fs");
+	const { tmpdir } = require("node:os") as typeof import("node:os");
+	const { join } = require("node:path") as typeof import("node:path");
+	const d = mkdtempSync(join(tmpdir(), "zc-db-mgr-"));
+	process.env.ZERO_CORE_DIR = d;
+	return d;
+});
+
+import { existsSync, rmSync, readFileSync, readdirSync, mkdirSync, statSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+	DatabaseManager,
+	setDatabaseManager,
+	getDatabaseManager,
+	DATABASE_LAYOUT_CONFLICT,
+	WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00,
+} from "../../src/server/database-manager.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
+import type { WikiDatabase } from "../../src/server/wiki-database.js";
+import {
+	coreDbPath,
+	legacyCoreDbPath,
+	layoutMarkerPath,
+	coreBackupDir,
+	DB_DIR,
+} from "../../src/core/database-paths.js";
+import { ZERO_CORE_DIR } from "../../src/core/config.js";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/**
+ * Surgical removal of every file/dir the bootstrap + DatabaseManager.open may
+ * create. Does NOT touch the ZERO_CORE_DIR root itself — sibling unit tests
+ * share the worker's temp dir. `force: true` so missing entries don't throw
+ * and locked files don't break the run.
+ */
+function cleanLayoutState(): void {
+	for (const p of [
+		coreDbPath,
+		`${coreDbPath}-wal`,
+		`${coreDbPath}-shm`,
+		`${coreDbPath}.tmp`,
+		legacyCoreDbPath,
+		`${legacyCoreDbPath}-wal`,
+		`${legacyCoreDbPath}-shm`,
+		layoutMarkerPath,
+	]) {
+		try { rmSync(p, { force: true }); } catch { /* best effort */ }
+	}
+	try { rmSync(coreBackupDir, { recursive: true, force: true }); } catch { /* empty */ }
+}
+
+/** Read a TS/CJS source file under the repo as a UTF-8 string (for audit). */
+function readSrc(rel: string): string {
+	return readFileSync(join(ROOT, rel), "utf-8");
+}
+
+/**
+ * Normalize an absolute path to a forward-slash repo-relative string
+ * (`./src/server/index.ts`). Windows `path.join` uses `\`; we normalize to `/`
+ * so the allow-list comparison is OS-agnostic.
+ */
+function relPosix(absPath: string): string {
+	const rel = absPath.replace(ROOT, ".");
+	return rel.split("\\").join("/");
+}
+
+/**
+ * Strip comment lines from a source string so audits don't trip on prose
+ * mentions of identifiers. Recognizes `//` line comments, `*`/`/*` block
+ * comment lines. Conservative (line-level, not token-level) — sufficient for
+ * audits that look for whole-word patterns on code lines.
+ */
+function stripComments(src: string): string {
+	return src
+		.split(/\r?\n/)
+		.filter((l) => {
+			const t = l.trim();
+			return !(t.startsWith("//") || t.startsWith("*") || t.startsWith("/*"));
+		})
+		.join("\n");
+}
+
+/** Walk a directory recursively, returning absolute paths of files matching suffix. */
+function walk(dir: string, suffix: string): string[] {
+	const out: string[] = [];
+	const go = (d: string) => {
+		let entries: ReturnType<typeof readdirSync>;
+		try { entries = readdirSync(d, { withFileTypes: true }); } catch { return; }
+		for (const e of entries) {
+			if (e.name === "node_modules" || e.name === "dist" || e.name === ".vite") continue;
+			const full = join(d, e.name);
+			if (e.isDirectory()) go(full);
+			else if (e.isFile() && e.name.endsWith(suffix)) out.push(full);
+		}
+	};
+	go(dir);
+	return out;
+}
+
+/**
+ * Find the body of a method, skipping comment-header mentions. Method
+ * definitions in this codebase are indented with a single TAB and end their
+ * signature line with `{`. Comment-header mentions live on lines starting
+ * with ` *` and never carry a `{`. We scan line-by-line for a code-line
+ * matching `signature` AND containing `{` on the same line, then return from
+ * that line through the matching closing `}` (brace-depth tracked so we don't
+ * bleed into the next method's body or JSDoc).
+ */
+function findMethodBody(src: string, signature: RegExp): string {
+	const lines = src.split(/\r?\n/);
+	let startIdx = -1;
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		const trimmed = line.trim();
+		if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+		// Method definition line: matches signature AND opens its body with `{`
+		// on the same line (the convention used throughout database-manager.ts).
+		if (signature.test(line) && /\{\s*$/.test(line)) {
+			startIdx = i;
+			break;
+		}
+	}
+	if (startIdx === -1) return "";
+	// Walk forward tracking brace depth. The signature line opened the body
+	// with exactly one `{` at end-of-line. Stop when depth returns to 0.
+	let depth = 0;
+	let endIdx = startIdx;
+	for (let i = startIdx; i < lines.length; i++) {
+		const line = lines[i];
+		// Count braces on this line (naive — strings/comments in database-manager.ts
+		// don't contain unbalanced braces that would trip this for the methods we
+		// audit). Skip pure-comment lines so their braces don't count.
+		const isComment = line.trim().startsWith("//") || line.trim().startsWith("*") || line.trim().startsWith("/*");
+		if (!isComment) {
+			for (const ch of line) {
+				if (ch === "{") depth++;
+				else if (ch === "}") depth--;
+			}
+		}
+		endIdx = i;
+		if (depth <= 0 && i > startIdx) break;
+	}
+	return lines.slice(startIdx, endIdx + 1).join("\n");
+}
+
+beforeEach(() => {
+	cleanLayoutState();
+});
+
+afterEach(() => {
+	cleanLayoutState();
+});
+
+// ============================================================
+// §D bullet 1 — DatabaseManager is sole CoreDatabase lifecycle owner
+// ============================================================
+
+describe("acceptance-00 §D.1 — sole CoreDatabase lifecycle ownership", () => {
+	test("`new DatabaseManager(` appears ONLY in the 3 licensed sites: server/index.ts + cli.ts + agent-service.ts singleton-aware fallback", () => {
+		// Audit all src TS files for direct DatabaseManager construction. The
+		// invariant is "at most ONE DatabaseManager per PROCESS" (sole owner),
+		// NOT "a single textual construction site". Three licensed sites exist:
+		//   - src/server/index.ts  — server composition root (constructs + sets
+		//     the singleton).
+		//   - src/cli.ts           — headless CLI composition root (constructs
+		//     + sets the singleton).
+		//   - src/server/agent-service.ts — resolveCoreDatabase() DI fallback
+		//     (plan-00 round-2 FIX 6). This site is singleton-aware: it checks
+		//     getDatabaseManager() FIRST and only constructs when no singleton
+		//     is registered, then immediately setDatabaseManager()s the new
+		//     instance — so it can never spawn a second live owner. Verified
+		//     structurally by the next test.
+		const files = walk(join(ROOT, "src"), ".ts");
+		expect(files.length).toBeGreaterThan(0);
+		const hits: Array<{ file: string; line: number }> = [];
+		for (const f of files) {
+			const src = readFileSync(f, "utf-8").split(/\r?\n/);
+			for (let i = 0; i < src.length; i++) {
+				const line = src[i];
+				// Skip comment lines — they may cite the symbol in prose.
+				const trimmed = line.trim();
+				if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+				if (/new\s+DatabaseManager\s*\(/.test(line)) {
+					hits.push({ file: relPosix(f), line: i + 1 });
+				}
+			}
+		}
+		// Allow-list: the two composition roots + the singleton-aware DI fallback.
+		const allowed = new Set<string>([
+			"./src/server/index.ts",
+			"./src/cli.ts",
+			"./src/server/agent-service.ts",
+		]);
+		const offenders = hits.filter((h) => !allowed.has(h.file));
+		if (offenders.length > 0) {
+			console.error("Unexpected `new DatabaseManager(` sites:\n" +
+				offenders.map((h) => `${h.file}:${h.line}`).join("\n"));
+		}
+		expect(offenders.length).toBe(0);
+		// And all three allowed sites actually DO construct it (guards against
+		// the allow-list drifting away from reality).
+		expect(hits.some((h) => h.file === "./src/server/index.ts")).toBe(true);
+		expect(hits.some((h) => h.file === "./src/cli.ts")).toBe(true);
+		expect(hits.some((h) => h.file === "./src/server/agent-service.ts")).toBe(true);
+	});
+
+	test("agent-service.ts resolveCoreDatabase() is singleton-aware: checks getDatabaseManager() FIRST, registers via setDatabaseManager() (at most ONE owner per process)", () => {
+		// plan-00 round-2 FIX 6 invariant: the agent-service.ts fallback must NOT
+		// be a second independent construction site. It must (a) consult the
+		// process singleton via getDatabaseManager() BEFORE constructing, (b)
+		// return the existing .core when present, and (c) register any newly
+		// constructed instance via setDatabaseManager() so subsequent callers see
+		// it. This is what keeps "3 textual sites" safe under the "1 live owner"
+		// invariant.
+		const src = readSrc("src/server/agent-service.ts");
+		const body = findMethodBody(src, /function\s+resolveCoreDatabase\s*\(/);
+		expect(body.length).toBeGreaterThan(0);
+		const code = stripComments(body);
+		const lines = code.split(/\r?\n/);
+		// All three calls must be present in the body.
+		const idxGet = lines.findIndex((l) => /getDatabaseManager\s*\(/.test(l));
+		const idxNew = lines.findIndex((l) => /new\s+DatabaseManager\s*\(/.test(l));
+		const idxSet = lines.findIndex((l) => /setDatabaseManager\s*\(/.test(l));
+		expect(idxGet).toBeGreaterThanOrEqual(0);
+		expect(idxNew).toBeGreaterThanOrEqual(0);
+		expect(idxSet).toBeGreaterThanOrEqual(0);
+		// CRITICAL ordering: getDatabaseManager() is consulted BEFORE any new
+		// DatabaseManager() — so when a singleton is already registered (the
+		// normal prod path, server/CLI both set it), construction is skipped
+		// entirely and no second owner can appear.
+		expect(idxGet).toBeLessThan(idxNew);
+		// And the new instance is registered (setDatabaseManager) so it becomes
+		// the singleton for any later caller.
+		expect(idxSet).toBeGreaterThan(idxNew);
+		// The early-return on the existing singleton must be present (otherwise
+		// getDatabaseManager() would be a dead read).
+		expect(code).toMatch(/if\s*\(\s*existing\s*\)\s*return\s+existing\.core/);
+	});
+
+	test("`new CoreDatabase(` appears ONLY in DatabaseManager.open() + agent-service.ts DI fallback in src/", () => {
+		// Direct construction of CoreDatabase outside DatabaseManager bypasses the
+		// layout bootstrap — that breaks the "sole lifecycle owner" invariant.
+		// We allow exactly two sites:
+		//   (1) DatabaseManager.open()  — the canonical owner
+		//   (2) agent-service.ts ctor   — defensive DI fallback (`sessionDb ?? new CoreDatabase()`)
+		//       that NEVER fires in production: both server/index.ts and cli.ts
+		//       inject `dbManager.core` into createAgentService. The fallback is
+		//       a smell (see findings), but it is not a live second owner.
+		const files = walk(join(ROOT, "src"), ".ts");
+		const hits: Array<{ file: string; line: number; text: string }> = [];
+		for (const f of files) {
+			const src = readFileSync(f, "utf-8").split(/\r?\n/);
+			for (let i = 0; i < src.length; i++) {
+				const line = src[i];
+				const trimmed = line.trim();
+				if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+				if (/new\s+CoreDatabase\s*\(/.test(line)) {
+					hits.push({ file: relPosix(f), line: i + 1, text: trimmed });
+				}
+			}
+		}
+		const allowedFiles = new Set<string>([
+			"./src/server/database-manager.ts",
+			"./src/server/agent-service.ts",
+		]);
+		const offenders = hits.filter((h) => !allowedFiles.has(h.file));
+		if (offenders.length > 0) {
+			console.error("Unexpected `new CoreDatabase(` sites:\n" +
+				offenders.map((h) => `${h.file}:${h.line}: ${h.text}`).join("\n"));
+		}
+		expect(offenders.length).toBe(0);
+		// Canonical owner exists.
+		expect(hits.some((h) => h.file === "./src/server/database-manager.ts")).toBe(true);
+	});
+
+	test("server/index.ts calls setDatabaseManager(dbManager) and threads dbManager.core into createAgentService (no independent SessionDB)", () => {
+		const idx = readSrc("src/server/index.ts");
+		// Singleton registration.
+		expect(idx).toMatch(/setDatabaseManager\s*\(\s*dbManager\s*\)/);
+		// DatabaseManager construction + open.
+		expect(idx).toMatch(/new\s+DatabaseManager\s*\(\s*\)/);
+		expect(idx).toMatch(/dbManager\.open\s*\(\s*\)/);
+		// The CoreDatabase handle handed to downstream services is dbManager.core
+		// (NOT a second `new CoreDatabase()`).
+		expect(idx).toMatch(/dbManager\.core\b/);
+		// No SessionDB references on code lines (comment mentions are allowed; here
+		// we just assert the production-callable import line was renamed).
+		expect(idx).not.toMatch(/from\s+["']\.\/session-db\.js["']/);
+	});
+
+	test("cli.ts constructs DatabaseManager + open() (layout bootstrap parity with server)", () => {
+		const cli = readSrc("src/cli.ts");
+		expect(cli).toMatch(/new\s+DatabaseManager\s*\(\s*\)/);
+		expect(cli).toMatch(/dbManager\.open\s*\(\s*\)/);
+		expect(cli).toMatch(/dbManager\.core\b/);
+		// No SessionDB import.
+		expect(cli).not.toMatch(/from\s+["']\.\.\/server\/session-db\.js["']/);
+	});
+
+	test("getDatabaseManager() returns undefined before setDatabaseManager; returns the wired instance after", () => {
+		// Default state: no singleton registered.
+		setDatabaseManager(undefined);
+		expect(getDatabaseManager()).toBeUndefined();
+
+		// Open a real DatabaseManager and register it.
+		const mgr = new DatabaseManager();
+		mgr.open();
+		setDatabaseManager(mgr);
+		try {
+			expect(getDatabaseManager()).toBe(mgr);
+			// The registered instance is fully wired: its .core is open.
+			expect(getDatabaseManager()!.core).toBe(mgr.core);
+			const health = getDatabaseManager()!.health();
+			expect(health.core).toBeDefined();
+			expect(health.core.integrity).toBe("ok");
+		} finally {
+			setDatabaseManager(undefined);
+			mgr.close();
+		}
+		expect(getDatabaseManager()).toBeUndefined();
+	});
+});
+
+// ============================================================
+// §D bullet 4 + plan-00 §3 — open/close/health/checkpointCore behavior
+// ============================================================
+
+describe("acceptance-00 §D.4 + plan-00 §3 — DatabaseManager lifecycle behavior", () => {
+	test("open() constructs the core handle; .core is usable after open", () => {
+		const mgr = new DatabaseManager();
+		expect(() => mgr.core).toThrow(/before open|after close/i);
+		mgr.open();
+		try {
+			const cdb = mgr.core;
+			expect(cdb).toBeInstanceOf(CoreDatabase);
+			// The handle is a real open better-sqlite3 connection.
+			expect((cdb.getDb() as any).open).toBe(true);
+		} finally {
+			mgr.close();
+		}
+	});
+
+	test("open() is idempotent (re-calling is a no-op, same core instance)", () => {
+		const mgr = new DatabaseManager();
+		mgr.open();
+		const coreAfterFirst = mgr.core;
+		// Second open is a no-op (does not re-bootstrap or replace the handle).
+		expect(() => mgr.open()).not.toThrow();
+		const coreAfterSecond = mgr.core;
+		expect(coreAfterSecond).toBe(coreAfterFirst);
+		mgr.close();
+	});
+
+	test("close() disposes the core handle; underlying better-sqlite3 connection is closed", () => {
+		const mgr = new DatabaseManager();
+		mgr.open();
+		const coreRef = mgr.core;
+		expect((coreRef.getDb() as any).open).toBe(true);
+
+		mgr.close();
+		// The better-sqlite3 handle is truly closed — not just forgotten by the
+		// manager. This is the "process exit leaves no open handles" guarantee
+		// (acceptance §D bullet 4).
+		expect((coreRef.getDb() as any).open).toBe(false);
+	});
+
+	test("close() is idempotent (re-calling is a no-op)", () => {
+		const mgr = new DatabaseManager();
+		mgr.open();
+		expect(() => mgr.close()).not.toThrow();
+		// Second close is a no-op (must not throw on already-closed state).
+		expect(() => mgr.close()).not.toThrow();
+	});
+
+	test(".core access after close() throws (no zombie handle)", () => {
+		const mgr = new DatabaseManager();
+		mgr.open();
+		mgr.close();
+		expect(() => mgr.core).toThrow(/before open|after close/i);
+	});
+
+	test("health() before open() throws", () => {
+		const mgr = new DatabaseManager();
+		expect(() => mgr.health()).toThrow(/before open/i);
+	});
+
+	test("health() after open returns { core: {...} } with NO wiki key (plan-00 omits wiki)", () => {
+		const mgr = new DatabaseManager();
+		mgr.open();
+		try {
+			const h = mgr.health();
+			// Shape lock: DatabaseHealthMap with `core` (always) and `wiki?` (optional,
+			// plan-00 omits). Assert wiki is ABSENT so plan-01 adds it deliberately.
+			expect(h).toHaveProperty("core");
+			expect(h).not.toHaveProperty("wiki");
+
+			// Core entry has the locked fields.
+			const c = h.core;
+			expect(c).toHaveProperty("exists");
+			expect(c).toHaveProperty("writable");
+			expect(c).toHaveProperty("integrity");
+			expect(c).toHaveProperty("foreignKeys");
+			expect(c).toHaveProperty("journalMode");
+
+			// On a fresh-opened WAL-or-MEMORY core.db these checks are sane.
+			expect(c.integrity).toBe("ok");
+			expect(c.foreignKeys).toBe("ok");
+			expect(c.writable).toBe(true);
+		} finally {
+			mgr.close();
+		}
+	});
+
+	test("open → checkpointCore → close ordering works end-to-end (no throw)", () => {
+		// plan-00 §3 "打开、checkpoint、close 的顺序有自动化测试" — drive the
+		// canonical ordering and assert no step throws.
+		const mgr = new DatabaseManager();
+		mgr.open();
+		// Write something so WAL has frames to checkpoint (WAL mode under
+		// ZERO_CORE_DB_NO_WAL=1 uses MEMORY — checkpoint still returns cleanly).
+		mgr.core.getKVStore().set("__dmgr_order_probe__", "x");
+		expect(() => mgr.checkpointCore()).not.toThrow();
+		mgr.core.getKVStore().delete("__dmgr_order_probe__");
+		mgr.close();
+	});
+
+	test("checkpointCore() before open() throws (lifecycle guard)", () => {
+		const mgr = new DatabaseManager();
+		expect(() => mgr.checkpointCore()).toThrow(/before open/i);
+	});
+
+	test("checkpointCore() actually executes wal_checkpoint(TRUNCATE) on the core handle", () => {
+		// Structural assertion: the source delegates to the core handle's
+		// `pragma("wal_checkpoint(TRUNCATE)")`. Read the source and confirm the
+		// implementation actually issues a TRUNCATE checkpoint (not a no-op).
+		const src = readSrc("src/server/database-manager.ts");
+		// The file as a whole contains wal_checkpoint(TRUNCATE) somewhere.
+		expect(src).toMatch(/wal_checkpoint\(TRUNCATE\)/);
+		// And it is inside the checkpointCore METHOD BODY (not the file-header
+		// comment that enumerates the interface shape). Use findMethodBody to
+		// skip the comment-header mention.
+		const body = findMethodBody(src, /checkpointCore\(\)/);
+		expect(body.length).toBeGreaterThan(0);
+		expect(body).toMatch(/wal_checkpoint\(TRUNCATE\)/);
+		expect(body).toMatch(/this\._core/);
+	});
+});
+
+// ============================================================
+// plan-00 §3 — placeholder signatures LOCKED (no rename in plan-01/08)
+// ============================================================
+
+describe("plan-00 §3 — wiki/backup placeholders throw stable code + signatures locked", () => {
+	test("wiki getter returns undefined in plan-00 (no WikiDatabase instance yet)", () => {
+		const mgr = new DatabaseManager();
+		mgr.open();
+		try {
+			// plan-00: wiki field is undefined. Plan-01 will start returning an
+			// instance — this assertion pins the plan-00 behavior.
+			expect(mgr.wiki).toBeUndefined();
+		} finally {
+			mgr.close();
+		}
+	});
+
+	test("checkpointWiki() throws with code WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00", () => {
+		const mgr = new DatabaseManager();
+		mgr.open();
+		try {
+			expect(() => mgr.checkpointWiki()).toThrow(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
+			let caught: any;
+			try { mgr.checkpointWiki(); } catch (e) { caught = e; }
+			// The impl message says "Plan 01 fills this" — note the SPACE (not
+			// "plan-01"). Match the actual literal.
+			expect((caught as Error).message).toMatch(/Plan 01/i);
+		} finally {
+			mgr.close();
+		}
+	});
+
+	test("backupCore(dest) throws with code WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 (plan-08 fills)", () => {
+		const mgr = new DatabaseManager();
+		mgr.open();
+		try {
+			expect(() => mgr.backupCore(join(ZERO_CORE_DIR, "snap.db"))).toThrow(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
+			let caught: any;
+			try { mgr.backupCore(join(ZERO_CORE_DIR, "snap.db")); } catch (e) { caught = e; }
+			expect((caught as Error).message).toMatch(/Plan 08/i);
+		} finally {
+			mgr.close();
+		}
+	});
+
+	test("backupWiki(dest) throws with code WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 (plan-08 fills)", () => {
+		const mgr = new DatabaseManager();
+		mgr.open();
+		try {
+			expect(() => mgr.backupWiki(join(ZERO_CORE_DIR, "snap.db"))).toThrow(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
+			let caught: any;
+			try { mgr.backupWiki(join(ZERO_CORE_DIR, "snap.db")); } catch (e) { caught = e; }
+			expect((caught as Error).message).toMatch(/Plan 08/i);
+		} finally {
+			mgr.close();
+		}
+	});
+
+	test("DATABASE_LAYOUT_CONFLICT and WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 are distinct stable string codes", () => {
+		// plan-00 §4: DATABASE_LAYOUT_CONFLICT is independent of plan-01's
+		// WikiErrorCode namespace. WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 is the
+		// plan-00 placeholder code. Assert they are exported string literals
+		// and do NOT collide.
+		expect(typeof DATABASE_LAYOUT_CONFLICT).toBe("string");
+		expect(typeof WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00).toBe("string");
+		expect(DATABASE_LAYOUT_CONFLICT).toBe("DATABASE_LAYOUT_CONFLICT");
+		expect(WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00).toBe("WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00");
+		expect(DATABASE_LAYOUT_CONFLICT).not.toBe(WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00);
+	});
+
+	// --------------------------------------------------------------------
+	// Compile-time signature lock — plan-01/08 must fill these WITHOUT rename.
+	// We use TypeScript's structural typing to assert the method shapes match
+	// the plan-00 §3 spec exactly. If a future plan renames a method or
+	// changes its parameters/return type, these assertions fail at compile
+	// time (the test file no longer type-checks).
+	// --------------------------------------------------------------------
+	test("compile-time signature lock — methods present with plan-00 §3 shapes", () => {
+		// plan-00 §3 locked interface (target shape):
+		//   open(): void
+		//   close(): void
+		//   health(): DatabaseHealthMap
+		//   checkpointCore(): void
+		//   checkpointWiki(): void
+		//   backupCore(dest: string): string
+		//   backupWiki(dest: string): string
+		type _AssertOpen = DatabaseManager["open"] extends () => void ? true : never;
+		type _AssertClose = DatabaseManager["close"] extends () => void ? true : never;
+		type _AssertCheckpointCore = DatabaseManager["checkpointCore"] extends () => void ? true : never;
+		type _AssertCheckpointWiki = DatabaseManager["checkpointWiki"] extends () => void ? true : never;
+		type _AssertBackupCore = DatabaseManager["backupCore"] extends (dest: string) => string ? true : never;
+		type _AssertBackupWiki = DatabaseManager["backupWiki"] extends (dest: string) => string ? true : never;
+		type _AssertCore = DatabaseManager["core"] extends CoreDatabase ? true : never;
+		type _AssertWiki = DatabaseManager["wiki"] extends WikiDatabase | undefined ? true : never;
+		// Force the type-level checks to evaluate (assignment to `true`).
+		const _ok1: _AssertOpen = true;
+		const _ok2: _AssertClose = true;
+		const _ok3: _AssertCheckpointCore = true;
+		const _ok4: _AssertCheckpointWiki = true;
+		const _ok5: _AssertBackupCore = true;
+		const _ok6: _AssertBackupWiki = true;
+		const _ok7: _AssertCore = true;
+		const _ok8: _AssertWiki = true;
+		// Reference the locals so TS doesn't complain about unused bindings.
+		void [_ok1, _ok2, _ok3, _ok4, _ok5, _ok6, _ok7, _ok8];
+		expect(true).toBe(true); // runtime anchor; the real check is the type instantiations above
+	});
+});
+
+// ============================================================
+// §G bullet (d) — NO cross-DB SQL / transaction / ATTACH
+// ============================================================
+
+describe("acceptance-00 §G (d) — DatabaseManager exposes no cross-DB transaction / ATTACH", () => {
+	test("database-manager.ts source does NOT use ATTACH DATABASE", () => {
+		// plan-00 §G (d): "DatabaseManager 暗中提供跨库 transaction" is rejected.
+		// Audit the source for any ATTACH (the canonical cross-DB primitive).
+		const src = readSrc("src/server/database-manager.ts");
+		// Strip comment lines (prose may mention ATTACH as a "don't do this").
+		const codeLines = src.split(/\r?\n/).filter((l) => {
+			const t = l.trim();
+			return !(t.startsWith("//") || t.startsWith("*") || t.startsWith("/*"));
+		});
+		const codeOnly = codeLines.join("\n");
+		expect(codeOnly).not.toMatch(/\bATTACH\b/i);
+	});
+
+	test("database-manager.ts source does NOT open a BEGIN ... COMMIT spanning two connections", () => {
+		// A cross-connection transaction would require holding two Database
+		// handles simultaneously and issuing BEGIN on a wrapper. The plan-00
+		// DatabaseManager only ever holds `this._core` (and a brief legacy RW
+		// handle during migrateLegacyToCore, which is closed before the next
+		// handle opens — sequential, not concurrent).
+		const src = readSrc("src/server/database-manager.ts");
+		// Forbidden: any "transaction" helper that takes >1 connection. The
+		// better-sqlite3 `db.transaction()` helper is per-connection, so the
+		// risk is a hand-rolled BEGIN ... COMMIT bridging two `new Database()`
+		// instances. We assert the file does not declare such a helper.
+		// Heuristic: no `BEGIN` keyword on a code line.
+		const codeLines = src.split(/\r?\n/).filter((l) => {
+			const t = l.trim();
+			return !(t.startsWith("//") || t.startsWith("*") || t.startsWith("/*"));
+		});
+		const codeOnly = codeLines.join("\n");
+		expect(codeOnly).not.toMatch(/\bBEGIN\s+(TRANSACTION|DEFERRED|IMMEDIATE|EXCLUSIVE)\b/i);
+		expect(codeOnly).not.toMatch(/\bCOMMIT\b/i);
+	});
+
+	test("migrateLegacyToCore opens legacy + tmp handles SEQUENTIALLY (copyFileSync, never concurrent)", () => {
+		// plan-00 round-2 FIX 1: the readonly `source` handle + async
+		// `source.backup(tmpPath)` was REPLACED by synchronous
+		// `copyFileSync(legacyCoreDbPath, tmpPath)` AFTER wal_checkpoint(TRUNCATE)
+		// + legacy.close(). The legacy handle is closed before the copy, and the
+		// tmp probe handle is opened after the copy — at no point are two DB
+		// handles open at once. Assert the NEW structure.
+		const src = readSrc("src/server/database-manager.ts");
+		const body = findMethodBody(src, /function\s+migrateLegacyToCore\s*\(/);
+		expect(body.length).toBeGreaterThan(0);
+		const code = stripComments(body);
+		const lines = code.split(/\r?\n/);
+		// 1) legacy handle: open → wal_checkpoint(TRUNCATE) → close (try/finally).
+		const idxLegacyOpen = lines.findIndex((l) => /const\s+legacy\s*=\s*new\s+Database\s*\(/.test(l));
+		const idxLegacyCheckpoint = lines.findIndex((l) => /wal_checkpoint\(TRUNCATE\)/.test(l));
+		const idxLegacyClose = lines.findIndex((l) => /legacy\.close\s*\(\s*\)/.test(l));
+		expect(idxLegacyOpen).toBeGreaterThanOrEqual(0);
+		expect(idxLegacyCheckpoint).toBeGreaterThan(idxLegacyOpen);
+		expect(idxLegacyClose).toBeGreaterThan(idxLegacyCheckpoint);
+		// 2) Synchronous copyFileSync replaces the async Backup API (FIX 1).
+		//    Must run AFTER legacy.close() (no concurrent handle on the source).
+		const idxCopy = lines.findIndex((l) => /copyFileSync\s*\(\s*legacyCoreDbPath/.test(l));
+		expect(idxCopy).toBeGreaterThanOrEqual(0);
+		expect(idxCopy).toBeGreaterThan(idxLegacyClose);
+		// 3) probe handle: open (readonly) → integrity/foreign_key checks → close.
+		const idxProbeOpen = lines.findIndex((l) => /const\s+probe\s*=\s*new\s+Database\s*\(/.test(l));
+		const idxProbeClose = lines.findIndex((l) => /probe\.close\s*\(\s*\)/.test(l));
+		expect(idxProbeOpen).toBeGreaterThanOrEqual(0);
+		expect(idxProbeOpen).toBeGreaterThan(idxCopy);
+		expect(idxProbeClose).toBeGreaterThan(idxProbeOpen);
+		// 4) NO async `source.backup(` on CODE lines (the FIX 1 regression we
+		//    defend against — the unawaited Promise that bricked migration).
+		expect(code).not.toMatch(/source\.backup\s*\(/);
+		// And no `source` readonly handle is opened at all (FIX 1 removed it).
+		expect(code).not.toMatch(/const\s+source\s*=\s*new\s+Database/);
+	});
+});
+
+// ============================================================
+// §D bullet 2 + §3 independence — core/wiki checkpoint/backup independent
+// ============================================================
+
+describe("acceptance-00 §D.2 + plan-00 §3 — core and wiki checkpoint/backup are independent", () => {
+	test("checkpointCore body does NOT delegate to checkpointWiki (or vice versa)", () => {
+		const src = readSrc("src/server/database-manager.ts");
+		// Use findMethodBody to extract ONLY checkpointCore's body (brace-depth
+		// tracked so we don't bleed into the next method's JSDoc).
+		const coreBody = findMethodBody(src, /checkpointCore\(\)/);
+		expect(coreBody.length).toBeGreaterThan(0);
+		// checkpointCore must NOT call this.checkpointWiki (would couple them).
+		// Strip comments first — the body has no `this.checkpointWiki(...)` call
+		// in code, but JSDoc on the next method could mention the name.
+		const coreCode = stripComments(coreBody);
+		expect(coreCode).not.toMatch(/this\.checkpointWiki/);
+		// And it must use the core handle's pragma (positive assertion).
+		expect(coreCode).toMatch(/wal_checkpoint\(TRUNCATE\)/);
+
+		// Conversely checkpointWiki throws (does not delegate to checkpointCore).
+		const wikiBody = findMethodBody(src, /checkpointWiki\(\)/);
+		expect(wikiBody.length).toBeGreaterThan(0);
+		const wikiCode = stripComments(wikiBody);
+		expect(wikiCode).not.toMatch(/this\.checkpointCore/);
+		expect(wikiCode).toMatch(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
+	});
+
+	test("backupCore body does NOT delegate to backupWiki (or vice versa)", () => {
+		const src = readSrc("src/server/database-manager.ts");
+		const coreBody = findMethodBody(src, /backupCore\(/);
+		expect(coreBody.length).toBeGreaterThan(0);
+		const coreCode = stripComments(coreBody);
+		expect(coreCode).not.toMatch(/this\.backupWiki/);
+		expect(coreCode).toMatch(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
+
+		const wikiBody = findMethodBody(src, /backupWiki\(/);
+		expect(wikiBody.length).toBeGreaterThan(0);
+		const wikiCode = stripComments(wikiBody);
+		expect(wikiCode).not.toMatch(/this\.backupCore/);
+		expect(wikiCode).toMatch(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
+	});
+
+	test("DatabaseManager holds at most ONE active DB handle (core) in plan-00 (wiki undefined)", () => {
+		// Structural: in plan-00 DatabaseManager has exactly one DB field
+		// (`_core`) plus the placeholder `_wiki` field. Assert via the open()
+		// method body that ONLY `this._core` is assigned (no `this._wiki =`
+		// assignment in CODE — the body has a `// Plan-01 ... this._wiki = ...`
+		// comment showing future work, which we strip before asserting).
+		const src = readSrc("src/server/database-manager.ts");
+		const openBody = findMethodBody(src, /open\(\)\s*:\s*void/);
+		expect(openBody.length).toBeGreaterThan(0);
+		const openCode = stripComments(openBody);
+		// open() assigns this._core but NOT this._wiki (plan-00).
+		expect(openCode).toMatch(/this\._core\s*=\s*new\s+CoreDatabase/);
+		expect(openCode).not.toMatch(/this\._wiki\s*=/);
+	});
+});
+
+// ============================================================
+// §D bullet 2 + §D bullet 3 — diagnostic scripts use new paths + readonly
+// ============================================================
+
+describe("acceptance-00 §D.2/§D.3 — diagnostic + self-update scripts use new paths, readonly invariant", () => {
+	test("scripts/check-turns.cjs opens core.db via file:...?mode=ro readonly URI (no checkpoint/VACUUM/migrate)", () => {
+		// memory feedback-sessions-db-readonly: external diagnostics MUST open
+		// snapshots or the live Core DB with { readonly: true } and MUST NOT
+		// checkpoint/VACUUM/migrate. Assert the script source obeys this.
+		const rawSrc = readSrc("scripts/check-turns.cjs");
+		// Strip comment lines — the source's own docstring says "绝不
+		// checkpoint/VACUUM/migrate", which would false-positive the VACUUM audit.
+		const src = stripComments(rawSrc);
+		// Path updated to db/core.db (not sessions.db). The literal appears as
+		// part of a longer path string (e.g. ".zero-core/db/core.db"), so we
+		// assert `core.db` is present as a substring of a string literal.
+		expect(src).toMatch(/["'][^"']*core\.db[^"']*["']/);
+		expect(src).toMatch(/db[\\/]core\.db/);
+		// No writable sessions.db opens on the active path.
+		expect(src).not.toMatch(/file:.*sessions\.db/);
+		// Readonly URI pattern.
+		expect(src).toMatch(/\?mode=ro/);
+		expect(src).toMatch(/\{\s*readonly:\s*true\s*\}/);
+		// Forbidden write/checkpoint primitives on CODE lines only.
+		expect(src).not.toMatch(/wal_checkpoint/i);
+		expect(src).not.toMatch(/\bVACUUM\b/i);
+		expect(src).not.toMatch(/ALTER\s+TABLE/i);
+		expect(src).not.toMatch(/CREATE\s+TABLE/i);
+		expect(src).not.toMatch(/INSERT\s+INTO/i);
+		expect(src).not.toMatch(/UPDATE\s+\w+\s+SET/i);
+		expect(src).not.toMatch(/DELETE\s+FROM/i);
+	});
+
+	test("scripts/self-update-restore.cjs detects the renamed core.db-shm (and tolerates legacy sessions.db-shm)", () => {
+		// plan-00 §6: WAL/SHM "is the app still running" detection must follow
+		// the rename. The script checks db/core.db-shm (new) AND sessions.db-shm
+		// (legacy, for snapshots taken before the layout switch).
+		const src = readSrc("scripts/self-update-restore.cjs");
+		// The script constructs the path via path.join(zcDir, "db") +
+		// "core.db-shm" — assert BOTH literals are present (the rename landed).
+		expect(src).toMatch(/["']core\.db-shm["']/);
+		expect(src).toMatch(/["']sessions\.db-shm["']/);
+	});
+
+	test("no production src TS file opens `sessions.db` as a writable active DB path", () => {
+		// The legacy name may appear only in: (a) database-paths.ts as
+		// `legacyCoreDbPath`, (b) database-manager.ts (the bootstrap consumer),
+		// (c) comments. Any NEW database(...) open on a sessions.db path outside
+		// the licensed bootstrap path is a violation.
+		const files = walk(join(ROOT, "src"), ".ts");
+		const offenders: Array<{ file: string; line: number; text: string }> = [];
+		const allowedFiles = new Set<string>([
+			relPosix(join(ROOT, "src", "core", "database-paths.ts")),
+			relPosix(join(ROOT, "src", "server", "database-manager.ts")),
+		]);
+		for (const f of files) {
+			const rel = relPosix(f);
+			if (allowedFiles.has(rel)) continue;
+			const src = readFileSync(f, "utf-8").split(/\r?\n/);
+			for (let i = 0; i < src.length; i++) {
+				const line = src[i];
+				const trimmed = line.trim();
+				if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+				// A writable open of "sessions.db" would be `new Database("...sessions.db")`
+				// or similar. Detect the filename literal in a `new Database(...)` call.
+				if (/new\s+Database\s*\([^)]*sessions\.db/.test(line)) {
+					offenders.push({ file: rel, line: i + 1, text: trimmed });
+				}
+			}
+		}
+		if (offenders.length > 0) {
+			console.error("Writable sessions.db opens in prod src:\n" +
+				offenders.map((o) => `${o.file}:${o.line}: ${o.text}`).join("\n"));
+		}
+		expect(offenders.length).toBe(0);
+	});
+});
+
+// ============================================================
+// §D bullet 4 — performLayoutBootstrap is the DatabaseManager-owned entry
+// ============================================================
+
+describe("acceptance-00 §D.4 — performLayoutBootstrap is invoked only from DatabaseManager.open", () => {
+	test("performLayoutBootstrap is called ONLY inside DatabaseManager.open() (no external prod caller)", () => {
+		// Sole-ownership extends to the bootstrap entry: it must not be called
+		// from anywhere other than DatabaseManager.open(). An external caller
+		// could skip the knowledge.db cleanup or run bootstrap without wiring
+		// the singleton.
+		const files = walk(join(ROOT, "src"), ".ts");
+		const hits: Array<{ file: string; line: number; text: string }> = [];
+		for (const f of files) {
+			const rel = relPosix(f);
+			const src = readFileSync(f, "utf-8").split(/\r?\n/);
+			for (let i = 0; i < src.length; i++) {
+				const line = src[i];
+				const trimmed = line.trim();
+				if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+				// Definition site (`export function performLayoutBootstrap`) is exempt.
+				if (/export\s+function\s+performLayoutBootstrap/.test(line)) continue;
+				// Call site: `performLayoutBootstrap()` (possibly with leading dot).
+				if (/\bperformLayoutBootstrap\s*\(\s*\)/.test(line)) {
+					hits.push({ file: rel, line: i + 1, text: trimmed });
+				}
+			}
+		}
+		// Exactly ONE call site: DatabaseManager.open().
+		const allowed = new Set<string>(["./src/server/database-manager.ts"]);
+		const offenders = hits.filter((h) => !allowed.has(h.file));
+		if (offenders.length > 0) {
+			console.error("External performLayoutBootstrap callers in prod src:\n" +
+				offenders.map((o) => `${o.file}:${o.line}: ${o.text}`).join("\n"));
+		}
+		expect(offenders.length).toBe(0);
+		// And the canonical call site exists.
+		expect(hits.some((h) => h.file === "./src/server/database-manager.ts")).toBe(true);
+	});
+
+	test("deleteRetiredKnowledgeDb is invoked ONLY inside DatabaseManager.open()", () => {
+		// Same invariant for knowledge.db cleanup.
+		const files = walk(join(ROOT, "src"), ".ts");
+		const hits: Array<{ file: string; line: number; text: string }> = [];
+		for (const f of files) {
+			const rel = relPosix(f);
+			const src = readFileSync(f, "utf-8").split(/\r?\n/);
+			for (let i = 0; i < src.length; i++) {
+				const line = src[i];
+				const trimmed = line.trim();
+				if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+				if (/export\s+function\s+deleteRetiredKnowledgeDb/.test(line)) continue;
+				if (/\bdeleteRetiredKnowledgeDb\s*\(\s*\)/.test(line)) {
+					hits.push({ file: rel, line: i + 1, text: trimmed });
+				}
+			}
+		}
+		const allowed = new Set<string>(["./src/server/database-manager.ts"]);
+		const offenders = hits.filter((h) => !allowed.has(h.file));
+		if (offenders.length > 0) {
+			console.error("External deleteRetiredKnowledgeDb callers in prod src:\n" +
+				offenders.map((o) => `${o.file}:${o.line}: ${o.text}`).join("\n"));
+		}
+		expect(offenders.length).toBe(0);
+	});
+});
+
+// ============================================================
+// Singleton state isolation — tests must not pollute the global singleton
+// ============================================================
+
+describe("DatabaseManager singleton isolation in tests", () => {
+	test("setDatabaseManager(undefined) clears the singleton (no leakage between tests)", () => {
+		// Defensive: this test guards against a prior test having left the
+		// singleton populated. afterEach in the lifecycle tests must clean up.
+		setDatabaseManager(undefined);
+		expect(getDatabaseManager()).toBeUndefined();
+		// Construct + register + clear.
+		const mgr = new DatabaseManager();
+		mgr.open();
+		setDatabaseManager(mgr);
+		expect(getDatabaseManager()).toBe(mgr);
+		setDatabaseManager(undefined);
+		mgr.close();
+		expect(getDatabaseManager()).toBeUndefined();
+	});
+});

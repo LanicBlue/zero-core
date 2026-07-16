@@ -12,7 +12,7 @@
 //   D  rollback:getMessages 被回滚到 snapshot(prompt+response 不残留)。
 //
 // ## 驱动方式
-// 真实 AgentLoop + 真实 SessionDB(runMigrations)。provider-factory.resolveModel
+// 真实 AgentLoop + 真实 CoreDatabase(runMigrations)。provider-factory.resolveModel
 // 被 inline LanguageModelV2 mock 替换(自包含,复用 step-loop-external.test.ts 的
 // 形态)。一个 fake MCP "wikiStub" tool 经 config.getMcpTools 注入,记录副作用。
 // turn-hooks 在 loop.registry 注册;vi.spyOn 监听 db.appendStep / upsertStep,
@@ -47,7 +47,7 @@ vi.mock("../../src/runtime/provider-factory.js", () => ({
 	getMultimodalTri: () => false,
 }));
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { HookRegistry } from "../../src/core/hook-registry.js";
 import { registerTurnHooks } from "../../src/runtime/hooks/turn-hooks.js";
@@ -165,7 +165,7 @@ function makeWikiStubTool(sideEffectMap: Map<string, string>) {
 // ─── Test harness ──────────────────────────────────────────────────────────
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let emitted: StreamEvent[];
 let hookEvents: Array<{ event: string; ctx: Record<string, unknown> }>;
 let appendStepSpy: ReturnType<typeof vi.spyOn>;
@@ -219,7 +219,7 @@ function buildLoop(sessionId: string): AgentLoop {
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub2-ephemeral-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	// Spies on the THREE write paths that turn-hooks could use. Counters reset
 	// per-test via mockReset() so each test gets a clean baseline.

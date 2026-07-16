@@ -20,7 +20,7 @@
 //     DELETE 级联 crons
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + 真实 stores + ManagementService +
+// 临时 CoreDatabase (mkdtempSync) + 真实 stores + ManagementService +
 // 真实 Express Router(supertest 风格,通过 node:http 启 listen)。
 //
 // ## 输出
@@ -52,7 +52,7 @@ import { join } from "node:path";
 import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { AgentStore } from "../../src/server/agent-store.js";
@@ -70,7 +70,7 @@ import type { CronSchedule, ProjectContainerView, RequirementStatus } from "../.
 // ---------------------------------------------------------------------------
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let projectStore: ProjectStore;
 let agentStore: AgentStore;
 let cronStore: CronStore;
@@ -84,7 +84,7 @@ const SCHED_DAILY: CronSchedule = { mode: "interval", everyMs: 86_400_000 };
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-p5-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
 	agentStore = new AgentStore(sessionDB);

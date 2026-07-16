@@ -87,10 +87,10 @@ created → idle → queued → streaming ⇄ executing_tools → idle
 
 | phase | 含义 | 谁写入 |
 |-------|------|--------|
-| `pending` | turn 刚创建，尚未开始执行 | `SessionDB.createTurnState` |
-| `running`（含 checkpoint） | 执行中，每个 tool-result 后更新 checkpoint | `SessionDB.updateTurnState` |
-| `completed` | 本轮正常结束 | `SessionDB.completeTurnState` |
-| `failed` | 本轮出错，记录 error | `SessionDB.failTurnState` |
+| `pending` | turn 刚创建，尚未开始执行 | `CoreDatabase.createTurnState` |
+| `running`（含 checkpoint） | 执行中，每个 tool-result 后更新 checkpoint | `CoreDatabase.updateTurnState` |
+| `completed` | 本轮正常结束 | `CoreDatabase.completeTurnState` |
+| `failed` | 本轮出错，记录 error | `CoreDatabase.failTurnState` |
 
 启动时 `scanIncompleteTurns` 找出 `phase NOT IN ('completed', 'failed')` 的记录，由 `AgentLoop.resume()` 从 checkpoint 继续；超过 24 小时的 `turn_state` 行由 `cleanOldTurnState` 清理。
 

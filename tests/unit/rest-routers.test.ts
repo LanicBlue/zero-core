@@ -89,7 +89,7 @@ function mockSessionDb() {
 		deleteStepsFromSeq: vi.fn(),
 		getTurnGroupCount: vi.fn(() => 0),
 		// steps-overhaul sub-3: getMessagesWithSeq/updateMessageContent/deleteMessage/
-		// replaceStepsFromMessages removed from SessionDB (messages redefined to
+		// replaceStepsFromMessages removed from CoreDatabase (messages redefined to
 		// summary+cursor; the edit/delete routers no longer mirror to messages).
 	};
 }

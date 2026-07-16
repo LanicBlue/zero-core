@@ -8,7 +8,7 @@
 //   2. TaskRegistry coalesce:create/complete/acknowledge 触发回调;同 tick
 //      连续 updateProgress N 次只触发 1 次。
 //   3. TaskRegistry 不感知 sessionId:回调无 sessionId 入参(AgentLoop 转译)。
-//   4. SessionDB emit:createSession/deleteSession/archiveSession 触发对应 op;
+//   4. CoreDatabase emit:createSession/deleteSession/archiveSession 触发对应 op;
 //      updateSessionUsage(高频 UPDATE)不触发。
 //   5. InputQueueStore 适配:enqueue → emitDataChange("runtime:input-queue", ...)。
 //   6. MCPManager / SessionManager.metrics / ConfirmRegistry emit:各自变更点
@@ -16,7 +16,7 @@
 //   7. 白名单:新 collection 生效;非白名单不发。
 //
 // ## 输入
-// 直接构造各 store / manager(纯单元,SessionDB 走临时目录)。
+// 直接构造各 store / manager(纯单元,CoreDatabase 走临时目录)。
 //
 // ## 输出
 // Vitest 用例。
@@ -31,7 +31,7 @@ import {
 	_resetDataChangeHubForTest,
 } from "../../src/server/data-change-hub.js";
 import { TaskRegistry } from "../../src/runtime/task-registry.js";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { InputQueueStore } from "../../src/server/input-queue-store.js";
 import { MCPManager } from "../../src/server/mcp-manager.js";
 import { ToolRegistry } from "../../src/core/tool-registry.js";
@@ -145,16 +145,16 @@ describe("N1 · TaskRegistry coalesced change ping", () => {
 	});
 });
 
-// ─── 4. SessionDB structural emit (create/delete/archive; high-freq UPDATE silent) ──
+// ─── 4. CoreDatabase structural emit (create/delete/archive; high-freq UPDATE silent) ──
 
-describe("N1 · SessionDB structural emit", () => {
+describe("N1 · CoreDatabase structural emit", () => {
 	let tmpDir: string;
-	let db: SessionDB;
+	let db: CoreDatabase;
 
 	beforeEach(async () => {
 		_resetDataChangeHubForTest();
 		tmpDir = mkdtempSync(join(tmpdir(), "n1-session-"));
-		db = new SessionDB(join(tmpDir, "sessions.db"));
+		db = new CoreDatabase(join(tmpDir, "core.db"));
 		// runMigrations adds the token-counter columns updateSessionUsage
 		// references (input_tokens / output_tokens / total_tokens / ...).
 		const { runMigrations } = await import("../../src/server/db-migration.js");

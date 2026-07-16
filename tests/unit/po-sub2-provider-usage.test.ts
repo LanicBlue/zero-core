@@ -1,7 +1,7 @@
 // platform-observability sub-2 (provider_usage 表 + 记录) 单测。
 //
 // 验证 agent(本文件)对抗式校验 acceptance-2.md 九条。覆盖路径:
-//   1. 表存在        — 经真实 SessionDB.initSchema 验证(migration/fresh DB)。
+//   1. 表存在        — 经真实 CoreDatabase.initSchema 验证(migration/fresh DB)。
 //   2. 打点正确      — provider X / model Y / source user / calls=1 / tokens 累加。
 //   3. 同桶累加      — 同 (provider,model,hour,source) 多次 upsert → 单行,值累加。
 //   4. mid-session 切 provider — X/Y 各自独立行。
@@ -17,7 +17,7 @@
 // 对抗式校验 provider_usage 表 + ProviderUsageStore + 记录路径(acceptance-2)。
 //
 // ## 输入
-// 临时 SessionDB(走 initSchema)+ ProviderUsageStore + SessionManager(测 error 路径)。
+// 临时 CoreDatabase(走 initSchema)+ ProviderUsageStore + SessionManager(测 error 路径)。
 //
 // ## 输出
 // Vitest 用例集。
@@ -30,7 +30,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { SessionManager } from "../../src/server/session-manager.js";
 import {
 	ProviderUsageStore,
@@ -39,7 +39,7 @@ import {
 
 // helper:取一行(精确匹配 4-tuple key)
 function getRow(
-	db: ReturnType<SessionDB["getDb"]>,
+	db: ReturnType<CoreDatabase["getDb"]>,
 	provider: string,
 	model: string,
 	hourBucket: string,
@@ -53,7 +53,7 @@ function getRow(
 		.get(provider, model, hourBucket, source) as any | undefined;
 }
 
-function rowCount(db: ReturnType<SessionDB["getDb"]>): number {
+function rowCount(db: ReturnType<CoreDatabase["getDb"]>): number {
 	return (
 		db.prepare(`SELECT COUNT(*) AS n FROM provider_usage`).get() as any
 	).n;
@@ -61,14 +61,14 @@ function rowCount(db: ReturnType<SessionDB["getDb"]>): number {
 
 describe("platform-observability sub-2: provider_usage", () => {
 	let dir: string;
-	let sessionDb: SessionDB;
-	let db: ReturnType<SessionDB["getDb"]>;
+	let sessionDb: CoreDatabase;
+	let db: ReturnType<CoreDatabase["getDb"]>;
 	let store: ProviderUsageStore;
 	let nowHour: string;
 
 	beforeEach(() => {
 		dir = mkdtempSync(join(tmpdir(), "po-sub2-"));
-		sessionDb = new SessionDB(join(dir, "sessions.db"));
+		sessionDb = new CoreDatabase(join(dir, "core.db"));
 		db = sessionDb.getDb();
 		store = new ProviderUsageStore(db);
 		// Pin "now" to a fixed hour so deterministic assertions don't drift
@@ -501,7 +501,7 @@ describe("platform-observability sub-2: provider_usage", () => {
 	// listProviderStats surfaces a non-null avg.
 	test("10. recordProviderUsage durationMs folds into per-provider process-local latency avg (sub-2 补遗)", () => {
 		// Cold-DB tolerated: the latency fold runs BEFORE the store guard, so
-		// even with no SessionDB attached the accumulator fills. (Production
+		// even with no CoreDatabase attached the accumulator fills. (Production
 		// always has a DB; this proves the latency path is independent of it,
 		// matching design ②.2's "NOT in DB" decision.)
 		const sm = new SessionManager({} as any);

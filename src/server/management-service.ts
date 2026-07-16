@@ -47,7 +47,7 @@ import type { AgentService } from "./agent-service.js";
 import type { ProjectStore } from "./project-store.js";
 import type { CronStore } from "./cron-store.js";
 import type { RequirementStore } from "./requirement-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { WikiStore } from "./wiki-node-store.js";
 import type { WikiSkeletonService } from "./wiki-skeleton-service.js";
 import type { ProjectJobStore } from "./project-job-store.js";
@@ -97,7 +97,7 @@ export interface ManagementDeps {
 	 * still construct the service without these. P5 wires them in production.
 	 */
 	requirementStore?: RequirementStore;
-	sessionDB?: SessionDB;
+	sessionDB?: CoreDatabase;
 	wikiStore?: WikiStore;
 	archivistService?: WikiSkeletonService;
 	/** v0.8 §8.6: task-step store for the project-delete cascade. */
@@ -140,7 +140,7 @@ export class ManagementService {
 	// via setters so production wiring order (server/index.ts constructs the
 	// management service before its service-layer dependencies) is preserved.
 	private requirementStore: RequirementStore | null;
-	private sessionDB: SessionDB | null;
+	private sessionDB: CoreDatabase | null;
 	private wikiStore: WikiStore | null;
 	private archivistService: WikiSkeletonService | null;
 	// v0.8: task-step store for the project-delete cascade (§8.6). Late-bound.
@@ -185,7 +185,7 @@ export class ManagementService {
 
 	/** v0.8 P5: late-bind container-view dependencies (server/index.ts order). */
 	setRequirementStore(store: RequirementStore): void { this.requirementStore = store; }
-	setSessionDB(db: SessionDB): void { this.sessionDB = db; }
+	setCoreDatabase(db: CoreDatabase): void { this.sessionDB = db; }
 	private agentService: AgentService | null = null;
 	setAgentService(a: AgentService): void { this.agentService = a; }
 	setWikiStore(wiki: WikiStore): void {
@@ -313,7 +313,7 @@ export class ManagementService {
 	 * 需 sessionDB 已注入。
 	 */
 	ensureProjectSession(agentId: string, projectId: string): { sessionId: string; created: boolean } {
-		if (!this.sessionDB) throw new Error("SessionDB not wired into ManagementService");
+		if (!this.sessionDB) throw new Error("CoreDatabase not wired into ManagementService");
 		const { session, created } = resolveSessionByRoleProject(
 			{ sessionDB: this.sessionDB, projectStore: this.projectStore },
 			agentId,
@@ -365,7 +365,7 @@ export class ManagementService {
 	 * crons + the project row. Optional deps that aren't wired (tests) simply
 	 * contribute nothing; the project row is always deleted.
 	 *
-	 * Runs as one transaction when a SessionDB is available so a partial
+	 * Runs as one transaction when a CoreDatabase is available so a partial
 	 * failure can't leave the project half-deleted.
 	 */
 	deleteProject(id: string): void {		const doDelete = () => {

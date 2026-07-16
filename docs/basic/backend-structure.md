@@ -19,7 +19,7 @@
 
 CLI 入口在 `src/cli.ts`（构建产物 `dist/cli.js`，`package.json` 的 `bin.zero-core` 指向它），提供终端交互模式，不依赖 Electron、不依赖 HTTP server：
 
-- **启动流程**：解析 argv → 初始化 `SessionDB` + 迁移 → 构建 `ToolRegistry` → 加载 config → 从 `ProviderStore` 读 Provider（缺 apiKey 时尝试用 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` 自动补全）→ 构建 systemPrompt → 起 `AgentLoop` + `TerminalAdapter` → 进入 readline REPL。
+- **启动流程**：解析 argv → 初始化 `CoreDatabase` + 迁移 → 构建 `ToolRegistry` → 加载 config → 从 `ProviderStore` 读 Provider（缺 apiKey 时尝试用 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` 自动补全）→ 构建 systemPrompt → 起 `AgentLoop` + `TerminalAdapter` → 进入 readline REPL。
 - **支持的参数**：`--model <id>`、`--provider <name>`、`--workspace <dir>`、`--thinking <none|low|medium|high>`、`--help`。
 - **会话内命令**：`/reset` 清空历史、`/exit` `/quit` 退出、`/help` 查看命令。
 - **中断处理**：SIGINT 在 busy 时中止当前任务（第二次 SIGINT 强制退出），idle 时直接退出。
@@ -119,7 +119,7 @@ WS 客户端 → ws.send({ type: "send" | "abort" })
 ### 持久化数据流（两种模式共享）
 
 ```
-AgentLoop 每个 tool-result → CheckpointManager → SessionDB.updateTurnState（写 turn_state.checkpoint）
+AgentLoop 每个 tool-result → CheckpointManager → CoreDatabase.updateTurnState（写 turn_state.checkpoint）
   → 异常退出后启动 → recovery.scanIncompleteTurns
   → AgentLoop.resume(interruptedTurnSeq) 从 checkpoint 续跑
 
@@ -184,21 +184,21 @@ tool-call 事件
 ## 数据存储
 
 > v0.8 后 store 总数从 v0.7 的 ~10 个扩到 **18+ 个**（会话核心 5 + 旧业务 6 + v0.8 工作流域 9+）。
-> SessionDB **不**聚合工作流域 store —— 它们在 `server/index.ts:148-171` 独立 `new`，把
-> SessionDB 当 `getDb()` 提供者。详见 [`05-persistence.md`](../arch/05-persistence.md) §4.0.3、
+> CoreDatabase **不**聚合工作流域 store —— 它们在 `server/index.ts:148-171` 独立 `new`，把
+> CoreDatabase 当 `getDb()` 提供者。详见 [`05-persistence.md`](../arch/05-persistence.md) §4.0.3、
 > [`02-module-structure.md`](../arch/02-module-structure.md) §4.1.1。本表只列与后端接入面最相关的几个。
 
 | 存储类 | 数据 |
 |--------|------|
-| `SessionDB` | 会话、消息、turn_state、tool_executions、KV store（会话核心 5 表；聚合 5 个内核 store eager/lazy） |
+| `CoreDatabase` | 会话、消息、turn_state、tool_executions、KV store（会话核心 5 表；聚合 5 个内核 store eager/lazy） |
 | `AgentStore` | Agent 配置（模型、prompt、toolPolicy、knowledgeBaseIds） |
 | `ProviderStore` | AI Provider 配置和模型列表 |
 | `TemplateStore` | **16 内置** + 用户模板，自动合并 |
 | `McpStore` | MCP 服务器配置 |
-| `KbStore` | 知识库元数据（`kb_chunks` 在独立 `knowledge.db`，见 06 §2.7） |
+| ~~`KbStore`~~ | **RETIRED (plan-00 §5)**：知识库向量 RAG 子系统已整体退役，`KbStore` / `KbDB` 服务端代码删除，`kb_entries` / `kb_chunks` 表由 `runMigrations` `DROP IF EXISTS`，`knowledge.db` 文件由 `DatabaseManager.open()` 在布局 bootstrap 前**删除**（plan-00 §5 精确白名单）。知识/记忆统一以 `project_wiki` 磁盘镜像树承载（见 06 §2）。本行保留为历史说明，**不再是活动 store**。 |
 | `SqliteStore` | 基础 CRUD store（所有 store 的父类） |
 | ~~`AgentToolStore`~~ | **v0.8 §11.5 已退役**：Agent-as-Tool 映射机制删除，文件 `agent-tool-store.ts` 已不存在，router 与 `afterDelete` 级联回调同步下线 |
-| v0.8 工作流域 store | `ProjectStore` / `RequirementStore` / `CronStore` / `WikiStore` / `OrchestrateStore` / `ProjectJobStore` / `TaskStepStore` / `WikiScanCursorStore` / `ToolConfigStore` / `ToolUsageStore` 等（在 `server/index.ts` 独立 new，不挂 SessionDB；详见 05 §2.2b 矩阵） |
+| v0.8 工作流域 store | `ProjectStore` / `RequirementStore` / `CronStore` / `WikiStore` / `OrchestrateStore` / `ProjectJobStore` / `TaskStepStore` / `WikiScanCursorStore` / `ToolConfigStore` / `ToolUsageStore` 等（在 `server/index.ts` 独立 new，不挂 CoreDatabase；详见 05 §2.2b 矩阵） |
 
 ## 维护规则
 

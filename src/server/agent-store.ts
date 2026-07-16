@@ -13,7 +13,7 @@
 //   `agentStore.list().length === 0` 判断写入(RFC §7.1),不再埋在 store 里。
 //
 // ## 输入
-// - SessionDB 实例
+// - CoreDatabase 实例
 // - Agent 数据
 //
 // ## 输出
@@ -31,7 +31,7 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { SqliteStore, type ColumnDef } from "./sqlite-store.js";
-import type { SessionDB } from "./session-db.js";
+import type { CoreDatabase } from "./core-database.js";
 import type { AgentRecord } from "../shared/types.js";
 import { ZERO_CORE_DIR } from "../core/config.js";
 
@@ -79,7 +79,7 @@ function normalizeWorkspaceDir(dir: string | undefined): string | undefined {
 
 export class AgentStore {
 	private store: SqliteStore<AgentRecord>;
-	private db: SessionDB;
+	private db: CoreDatabase;
 	/**
 	 * v0.8 (P0 §1.4): prepared statement to read the legacy `role_tag` column
 	 * for listByRoleTag. The column is not in COLUMNS so SqliteStore doesn't
@@ -100,7 +100,7 @@ export class AgentStore {
 	 */
 	private readonly _changeListeners = new Set<(agentId: string) => void>();
 
-	constructor(sessionDB: SessionDB) {
+	constructor(sessionDB: CoreDatabase) {
 		this.db = sessionDB;
 		this.store = new SqliteStore<AgentRecord>(sessionDB.getDb(), "agents", COLUMNS);
 

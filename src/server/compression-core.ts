@@ -26,7 +26,7 @@
 // sub-5 接)。验收用测试直调 compressSession()。
 //
 // ## 输入
-// - SessionDB(读 steps / messages summary / 游标;写 summary + 推进游标)
+// - CoreDatabase(读 steps / messages summary / 游标;写 summary + 推进游标)
 // - sessionId
 // - providers / providerName / modelId(独立 memory 模型,config.compression.
 //   provider/model;回退到 session 工作模型)
@@ -62,7 +62,7 @@
 //
 // ## 依赖
 // - ai.generateText、runtime/provider-factory.resolveModel(独立模型)
-// - server/session-db(SessionDB: getSteps / getCompressionCursor / getSummaries /
+// - server/session-db(CoreDatabase: getSteps / getCompressionCursor / getSummaries /
 //   replaceSummariesAndAdvanceCursor)
 // - runtime/session-store-interface 类型(MessageSummary / StepRow)
 // - core/logger
@@ -79,7 +79,7 @@
 import { generateText } from "ai";
 import type { RuntimeProviderConfig } from "../runtime/types.js";
 import { resolveModel } from "../runtime/provider-factory.js";
-import type { SessionDB, MessageSummary } from "./session-db.js";
+import type { CoreDatabase, MessageSummary } from "./core-database.js";
 import type { StepRow } from "../runtime/session-store-interface.js";
 import { log } from "../core/logger.js";
 import { DEFAULT_SUMMARY_SYSTEM } from "../shared/default-prompts.js";
@@ -353,7 +353,7 @@ function renderStep(step: StepRow): string {
  */
 export async function compressSession(
 	sessionId: string,
-	db: SessionDB,
+	db: CoreDatabase,
 	opts: CompressSessionOptions,
 ): Promise<CompressionResult> {
 	const oldCursor = db.getCompressionCursor(sessionId) ?? 0;
@@ -593,7 +593,7 @@ function fallbackSections(
  * 只推游标不写 summary(全空段场景)。messages 表有 ≥1 summary 行时游标冗余在每
  * 行,直接 UPDATE;无行时没地方挂游标——保持不动(下轮有内容一起推)。
  */
-function advanceCursorOnly(db: SessionDB, sessionId: string, newCursor: number): void {
+function advanceCursorOnly(db: CoreDatabase, sessionId: string, newCursor: number): void {
 	try {
 		const cnt = (db.getDb().prepare(
 			"SELECT COUNT(*) AS cnt FROM messages WHERE session_id = ?",

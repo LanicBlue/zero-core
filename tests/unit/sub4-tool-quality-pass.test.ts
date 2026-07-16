@@ -13,7 +13,7 @@
 //
 // # Harness
 // Mirrors sub-3 verifier + runtime-task-restore.test.ts + n4-config-hot-sync:
-//   - Real SessionDB on a mkdtempSync temp file (no mock; survives across
+//   - Real CoreDatabase on a mkdtempSync temp file (no mock; survives across
 //     instances so we can rebuild loops against the same DB).
 //   - Real SubagentDelegator / AgentLoop with provider-factory vi.mock'd to an
 //     inline finish-model (we never drive a real LLM stream — restoreDelegatedTasks
@@ -40,7 +40,7 @@ vi.mock("../../src/runtime/provider-factory.js", () => ({
 	getMultimodal: () => false,
 }));
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { SubagentDelegator } from "../../src/runtime/subagent-delegator.js";
 import { AgentLoop } from "../../src/runtime/agent-loop.js";
 import { TaskRegistry } from "../../src/runtime/task-registry.js";
@@ -78,14 +78,14 @@ function createFinishModel(modelId = "sub4-mock"): LanguageModelV2 {
 	} as unknown as LanguageModelV2;
 }
 
-// ─── harness: temp SessionDB ──────────────────────────────────────────────
+// ─── harness: temp CoreDatabase ──────────────────────────────────────────────
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub4-quality-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	resolveModelMock.mockImplementation(() => createFinishModel());
 });
 afterEach(() => {
@@ -97,7 +97,7 @@ afterEach(() => {
 // ─── helpers ──────────────────────────────────────────────────────────────
 
 /** Build a minimal SubagentDelegator with `db` wired into config. */
-function makeDelegator(db?: SessionDB): SubagentDelegator {
+function makeDelegator(db?: CoreDatabase): SubagentDelegator {
 	const cfg = {
 		agentId: "parent-agent",
 		sessionId: "parent-session",
@@ -119,7 +119,7 @@ function makeDelegator(db?: SessionDB): SubagentDelegator {
  * INSERT/UPDATE time); pass undefined otherwise.
  */
 function seedDelegatedRow(
-	db: SessionDB,
+	db: CoreDatabase,
 	over: Partial<DelegatedTaskRecord> & { id: string },
 ): DelegatedTaskRecord {
 	db.createDelegatedTask({
@@ -143,7 +143,7 @@ function seedDelegatedRow(
 }
 
 /** Build a real AgentLoop against `db` so we can call restoreDelegatedTasks. */
-function buildLoop(db: SessionDB, sessionId = "parent-session"): AgentLoop {
+function buildLoop(db: CoreDatabase, sessionId = "parent-session"): AgentLoop {
 	const cfg: SessionConfig = {
 		agentId: "parent-agent",
 		sessionId,

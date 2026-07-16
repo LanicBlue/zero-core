@@ -141,7 +141,7 @@ export const ZeroCoreConfigSchema = Type.Object({
 	// it was an unread fake (the trigger hook never checked it; compressSession
 	// fires on cache cold/hot + token thresholds alone). The UI toggle in
 	// MemorySettings was cosmetic — flipping it did nothing. The stage-3
-	// trigger is unconditionally armed whenever a SessionDB is wired in.
+	// trigger is unconditionally armed whenever a CoreDatabase is wired in.
 	compression: Type.Object({
 		provider: Type.Optional(Type.String()),
 		model: Type.Optional(Type.String()),

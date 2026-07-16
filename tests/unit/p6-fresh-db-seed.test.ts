@@ -12,7 +12,7 @@
 //     archivist 合并 main。
 //
 // ## 输入
-// 临时 SessionDB (mkdtempSync) + 真实 stores + ManagementService。
+// 临时 CoreDatabase (mkdtempSync) + 真实 stores + ManagementService。
 //
 // ## 输出
 // Vitest 用例。
@@ -30,7 +30,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-import { SessionDB } from "../../src/server/session-db.js";
+import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { CronStore } from "../../src/server/cron-store.js";
@@ -46,14 +46,14 @@ import { BUILTIN_WORKFLOW_ROLES } from "../../src/server/builtin-role-templates.
 const getRole = (id: string) => BUILTIN_WORKFLOW_ROLES.find((r) => r.id === id);
 
 let tmpDir: string;
-let sessionDB: SessionDB;
+let sessionDB: CoreDatabase;
 let agentStore: AgentStore;
 let wikiStore: WikiStore;
 let management: ManagementService;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-p6-seed-"));
-	sessionDB = new SessionDB(join(tmpDir, "sessions.db"));
+	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	agentStore = new AgentStore(sessionDB);
 	const projectStore = new ProjectStore(sessionDB);
