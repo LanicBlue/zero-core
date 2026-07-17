@@ -1,6 +1,6 @@
 # Research: agent-eval-harness
 
-- **状态**:① issues(问题记录)— 研究输入,供 `/effort design` 用
+- **状态**:研究输入快照，供本 effort 的 design / plan 使用
 - **日期**:2026-07-16
 - **来源**:τ-bench / τ²-bench / Terminal-Bench / DeepEval / Braintrust / Anthropic《Demystifying evals for AI agents》
 - **关联**:[issue.md](./issue.md)
@@ -8,6 +8,12 @@
 > 目的:回答"什么是 Agent eval / 怎么实现",并把业界标杆的设计模式映射到 zero-core 的栈(TS + Electron + 已有 `mock-language-model` 确定性重放 + `steps`/`tool_executions` 持久化),为 design 提供决策依据。
 
 > **研究快照（2026-07-16）**：外部框架、论文和 API 会变化。本文用于提出 design 问题，不是当前实现或依赖选型；进入实施前应重新核对官方/原始来源。
+
+> **后续决策（2026-07-17）**：本研究中的 benchmark 术语和 outcome-first 方法仍是
+> 输入，但“zero-core 核心内建 Eval runner、默认 CI 阈值门禁、与生产 replay 强绑定”
+> 已被 [design.md](./design.md) 的内置 Skill + 配置化 Flow 方案取代。归档分析不再
+> 需要专用导出 adapter：分析 Agent 可以直接以 `~/.zero-core/archives` 为 workspace，
+> 由 Cron Work 增量读取普通 JSON。
 
 ---
 

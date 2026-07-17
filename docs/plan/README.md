@@ -2,7 +2,13 @@
 
 本目录保存已经细化为实施步骤与验收条件、但尚不能作为当前事实的 effort。
 
-当前计划：[`wiki-system-redesign/`](wiki-system-redesign/README.md)。它的独立 re-review 已通过，但目录中的 `db/core.db`、`db/wiki.db`、新授权模型和新 UI 都仍是目标状态；只有对应代码落地并完成 acceptance 后，才能更新当前架构文档。
+当前计划：
+
+- [`wiki-system-redesign/`](wiki-system-redesign/README.md)：独立 re-review 已通过，正在
+  实施；目录中的目标状态只有完成 acceptance 后才是当前事实。
+- [`agent-eval-harness/`](agent-eval-harness/README.md)：Flow dependency /
+  composition / Work / Context / VFS 与内置 Eval Skill 的执行计划；当前实施安排在
+  `wiki-system-redesign` 最终验收通过并合并后开始，该顺序尚不属于 zero-core 控制。
 
 ## 执行约定
 

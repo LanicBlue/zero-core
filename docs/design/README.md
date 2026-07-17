@@ -7,7 +7,9 @@
 - [`external-subagent-mcp/issue.md`](external-subagent-mcp/issue.md)
 - [`external-subagent-mcp/design.md`](external-subagent-mcp/design.md)
 
-`wiki-system-redesign` 已完成设计评审并进入 [`../plan/wiki-system-redesign/`](../plan/wiki-system-redesign/README.md)，但尚未按 acceptance 证明实施完成。
+`agent-eval-harness` 与 `wiki-system-redesign` 已进入 [`../plan/`](../plan/README.md)；
+当前实施安排是 `agent-eval-harness` 等待 `wiki-system-redesign` 完成、验收并合并后
+再开始；这不是 zero-core 已建立的 Flow 控制。
 
 ## 生命周期
 
