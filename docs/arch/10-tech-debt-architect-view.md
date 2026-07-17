@@ -28,6 +28,9 @@ Electron main 把业务调用代理到本地 HTTP/WS 后端。当前架构文档
 
 **修复前要确认**：真实 bind 地址、端口文件权限、是否存在未文档化 token，以及 standalone server 的预期威胁模型。
 
+**计划**：[`local-backend-security-boundary`](../plan/local-backend-security-boundary/README.md)
+已完成并确认设计与分阶段计划，当前为 Ready、尚未实施；当前事实仍是本节所述风险。
+
 ### D-003：GitHub template IPC 调用不可达
 
 Renderer/template store 调用 `templates:github-preview` 和 `templates:import-github`，preload 也暴露了它们；契约测试把它们列为例外，但当前 main proxy/local handler 中没有对应接线。后端 router 存在相关 endpoint。

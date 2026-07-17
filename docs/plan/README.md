@@ -9,6 +9,9 @@
 - [`agent-eval-harness/`](agent-eval-harness/README.md)：Flow dependency /
   composition / Work / Context / VFS 与内置 Eval Skill 的执行计划；当前实施安排在
   `wiki-system-redesign` 最终验收通过并合并后开始，该顺序尚不属于 zero-core 控制。
+- [`local-backend-security-boundary/`](local-backend-security-boundary/README.md)：
+  loopback、HTTP/WS 认证、IPC sender、backend generation 与 self-update 安全边界计划；
+  已经用户确认进入 Ready，实施等待 Wiki 合并后 reconciliation。
 
 ## 执行约定
 
