@@ -7,10 +7,28 @@
 - [ ] control/definition/instance/document/work/workRun/importer API 均有 schema 和稳定错误。
 - [ ] actor/Project 身份由 server 注入，renderer/LLM 不能伪造。
 - [ ] reconnect/refetch 能恢复持久事实，不依赖进程内 event。
+- [ ] Project config API/tool 以 kind + 完整 definition/ref 工作，Flow/Work validator 独立。
 
-## B. 动态 Flow UI
+## B. Agent 工具授权边界
+
+- [ ] 管理 Agent 的 Project 提供 config.validate/publish/activate/list/get 与 work.fire。
+- [ ] 普通 Project Agent 的 Flow 只有 FlowInstance runtime action，无 definition mutation。
+- [ ] 普通 Project Agent 的 Work 只有 WorkRun runtime action，无 definition CRUD/manual fire。
+- [ ] Work 在一个原子提交中切换 schema/prompt/registration/policy；任何 commit 都不存在
+  两个同名 Work 或 feature flag 双语义。
+- [ ] 不存在 action-level tool grant；未持有对应工具时整个能力不可调用。
+- [ ] CallerCtx 注入 project/session/agent/currentWorkRun，伪造跨 Project/run 稳定拒绝。
+- [ ] WorkRun mutation 仅作用于当前 Agent Session；跨 Agent Session 或 switch 两端 scope
+  不一致稳定拒绝。
+- [ ] Project config 扁平 schema 没有复制每个 Flow/Work definition 字段。
+
+## C. 动态 Flow UI
 
 - [ ] UI 列和 allowed transitions 来自当前 Project FlowDefinition。
+- [ ] Ready→Discuss、Build→Plan、Verify→Build 等回边不会因列顺序被隐藏或禁用。
+- [ ] transition input 表单来自 definition contract；缺失 reason 在 UI 和 API 得到一致错误。
+- [ ] 返工 preview/history 显示 from/to、actor、reason、revision 和触发的 WorkRun。
+- [ ] terminal abandoned 进入终止筛选，保留 reason/history/documents；首版不可恢复。
 - [ ] 3、7 和自定义状态 fixture 无 renderer 常量改动即可显示。
 - [ ] instance version/revision/history/documents/workRuns 可追踪。
 - [ ] prerequisite/dependent、milestone、satisfied/blocked/unknown 和 gated transition
@@ -24,13 +42,15 @@
 - [ ] conflict/unavailable Project 不允许误操作且不影响其他 Project。
 - [ ] 新组件不 import RequirementStatus 或旧 FLOW_TRANSITIONS。
 
-## C. WorkRun UI
+## D. WorkRun UI
 
-- [ ] queued/running/waiting/terminal、retry/cancel/manual fire 行为可自动化验证。
+- [ ] queued/deferred/running/waiting/terminal、defer/prioritize/switch/retry/cancel 行为可自动化验证。
+- [ ] defer reason/notBefore、priority/order、actor/revision 在重连后仍一致。
+- [ ] switch 只在安全 handoff 后改变 current invocation。
 - [ ] session/turn/worktree/trigger event 关联准确。
 - [ ] 无效 WorkDefinition 在保存/启用前被拒绝。
 
-## D. Importer
+## E. Importer
 
 - [ ] preview 列出状态、文档、冲突、目标 id 和来源 hash。
 - [ ] execute 幂等；中断恢复不会生成重复 FlowInstance。
@@ -38,7 +58,7 @@
 - [ ] 旧 Requirement 表、状态和文档不被删除或修改。
 - [ ] 未知状态/definition mismatch 不被静默猜测。
 
-## E. 验证与证据
+## F. 验证与证据
 
 ```bash
 npm run typecheck
@@ -49,12 +69,13 @@ npm run test:e2e
 npm run check:links
 ```
 
-`result-07.md` 包含 API contract、动态状态 E2E、dependency/cycle/unknown UI、
-split/merge preview/lineage/idempotency E2E、queue reconnect、import 前后 hash/count
-与 legacy isolation。
+`result-07.md` 包含 API contract、三工具授权矩阵、Project config、动态状态和正反向/废案
+E2E、dependency/cycle/unknown UI、split/merge preview/lineage/idempotency E2E、
+queue defer/switch/reconnect、import 前后 hash/count 与 legacy isolation。
 
-## F. 拒绝条件
+## G. 拒绝条件
 
 - 把旧 Kanban 复制后继续写死状态。
 - 新旧系统双写或 importer 自动运行。
 - 仅靠人工截图验收 transition/queue/import。
+- 普通 Agent通过 Work 修改 definition，或通过 Flow 发布 definition。

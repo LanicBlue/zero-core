@@ -45,6 +45,9 @@ zero-core 目前没有 **Agent trajectory/outcome 质量评估套件**。`tests/
   transition 必须等待依赖满足。
 - 支持同 Project FlowInstance 按配置 split/merge，以独立、不可变 lineage 保存组合
   关系；跨 Project 组合由 dependency 协调。
+- 支持 FlowInstance 配置化打回与 terminal 废案；正反/废案事件都能触发 Work。
+- 保持工具级授权：Project 管 Flow/Work 配置，Flow 管实例流转，Work 管 WorkRun；
+  Project Agent可审计地 defer、prioritize 和 switch 工作。
 - 保留同一 Agent 在同一 Project 上的长期 Session，用不可变 TurnInvocationContext
   切换当前 worktree、Work 和文档挂载。
 - 不把 Eval 逻辑写进 AgentLoop，不默认修改被评估项目代码，也不设置全局 CI 门禁。

@@ -10,6 +10,8 @@
 - [ ] 起点包含已最终验收并合并的 `wiki-system-redesign`。
 - [ ] 从干净 checkout 和隔离 `ZERO_CORE_DIR` 开始。
 - [ ] 准备两个 Git Project、一个 non-Git Project、两个 Agent 和一个 archive fixture。
+- [ ] 管理 Agent持有 Project；普通 Project Agent持有 Flow/Work；另有一个无 Work 工具
+  的执行 Agent作为权限对照。
 - [ ] 准备一个旧 Requirement fixture，但新 Flow 尚未 import。
 
 ## 2. 场景 A：Project 控制目录
@@ -25,23 +27,35 @@
 
 ## 3. 场景 B：Project FlowDefinition
 
-1. Project A 使用默认 7-state definition。
+1. Project A 使用默认 delivery definition。
 2. Project B 使用 3-state 自定义 definition。
-3. 为 A/B 创建 FlowInstance，更新 A 的 active definition。
+3. 管理 Agent 通过 Project.config 发布/激活 Flow 与 Work definition。
+4. 为 A/B 创建 FlowInstance，更新 A 的 active definition。
 
 - [ ] UI/tool/API 均按各自 definition 呈现状态和 transition。
+- [ ] 只有持有 Project 的管理 Agent能 publish/activate definition。
+- [ ] 普通 Agent 的 Flow/Work 工具不能修改 definition。
 - [ ] A 的既有 instance 固定旧 version/digest，新 instance 使用新 active version。
 - [ ] Project B 不出现 A 的状态、文档或 event。
 - [ ] 非法 actor/from/revision 均稳定拒绝。
 
 ## 4. 场景 C：原子 Transition 与 Work Trigger
 
-1. 对 A instance 执行一次 transition。
-2. 配置两个 Work，其中一个匹配、一个不匹配。
-3. 重放同一 event。
-4. 故障注入 inner Git commit。
+1. 对 A instance 执行 Discuss→Ready，触发 Plan Work。
+2. Plan Agent 先审核需求，再执行 Ready→Discuss 打回并填写 reason。
+3. 依次验证 Plan→Build→Plan、Build→Verify→Build，并最终前进。
+4. 配置匹配正向、匹配反向和不匹配的 Work。
+5. 重放同一 event。
+6. 从不同活动状态执行 abandon，并配置 terminal event 通知 Work。
+7. 故障注入 inner Git commit。
 
 - [ ] 成功 transition 产生一个权威 commit、一个 event、一个匹配 WorkRun。
+- [ ] 三组反向 transition 均追加 event，并触发配置的返工 WorkRun。
+- [ ] 返工 WorkRun 是新 run，不改写或 retry 已完成交接 run。
+- [ ] 缺失 reason、非法 actor 和 stale expectedRevision 的打回稳定拒绝。
+- [ ] 多轮往返保留完整 history；latched milestone 不回滚，live milestone 正确 regression。
+- [ ] abandon 保留实例/文档/history，取消此前活动 run，不误杀发起 run或通知 run。
+- [ ] terminal-blocked dependent 可见且未被级联废案。
 - [ ] 重放不产生第二个 WorkRun。
 - [ ] 不匹配 Work 不运行。
 - [ ] commit 故障不更新 index、不发 event、不创建 WorkRun。
@@ -101,11 +115,14 @@
 ## 8. 场景 G：Busy、Wait、重启
 
 1. WorkRun A 长时间运行。
-2. 触发 WorkRun B 并发送用户消息。
-3. A 进入 Wait，由用户消息唤醒。
-4. 在 B queued/running 时重启。
+2. 触发 WorkRun B/C，Agent defer A、prioritize C，再 switch A→C。
+3. 发送用户消息，C 进入 Wait并被用户消息唤醒。
+4. 在 A deferred、B queued、C running 时重启。
 
 - [ ] B 持久 queued，不 skip、不重复。
+- [ ] A 的 defer reason/notBefore/revision 持久，C 按 Agent选择安全成为下一 Turn。
+- [ ] switch 没有并发 run，A worktree/mount 不泄漏到 C。
+- [ ] 没有 Work 工具的 fixture 不能调整 queue，但仍能正常执行 dispatch run。
 - [ ] 同一 Loop 无并发 run。
 - [ ] Wait handoff 后用户 turn 使用 Project context，不继承 A worktree。
 - [ ] 重启后 B 按 snapshot/retry 恢复一次。
@@ -186,8 +203,8 @@ npm run check:links
 
 - [ ] 全部成功。
 - [ ] 没有 skipped/only 绕过核心验收。
-- [ ] 旧 `[skills]/`、固定 Flow action、新 Work busy skip、new→Requirement 双写的生产 grep
-  均为零或只有明确历史文档命中。
+- [ ] 旧 `[skills]/`、固定 Flow action、旧 Work definition-management action、新 Work busy
+  skip、new→Requirement 双写的生产 grep 均为零或只有明确历史文档命中。
 
 ## 15. 最终证据包
 
@@ -205,7 +222,9 @@ npm run check:links
 
 - [ ] A–L 全部通过。
 - [ ] Project 控制面、内层 Git、Flow/Work 事实源无双写。
-- [ ] Flow 与 Work 单向事件解耦。
+- [ ] Project/Flow/Work 工具级权限边界成立，无 action-level grant 或定义/运行双语义。
+- [ ] Flow→event→Work 保持单向依赖解耦，同时 Flow state transition graph 支持配置回边。
+- [ ] FlowInstance 可审计废案，WorkRun 可审计 defer/prioritize/switch。
 - [ ] Flow dependency 无环、milestone 可配置、gated transition 与事件恢复一致。
 - [ ] Flow composition 无环、同 Project 原子、source 历史保留，文档输入固定且不自动
   拼接。

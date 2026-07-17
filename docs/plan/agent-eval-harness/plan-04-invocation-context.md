@@ -63,9 +63,15 @@ install → invalidate/rebuild prompt sections → run
 - 用户 queued input 与 WorkRun 串行，不允许两个 `loop.run()` 并发。
 - 当前 running Turn 不被抢占；waiting/barrier 的用户、Work、Cron invocation 使用已验收的
   atomic handoff。
-- Session 空闲后先按 FIFO 处理 queued user input，再按 FIFO claim background
-  WorkRun，避免后台 Work 让交互饥饿。该调度策略集中在一个 scheduler，不分散到
-  router/hook。
+- Session 空闲后先处理 queued user input；WorkRun 按 eligible、priority、queueOrder
+  选择，FIFO 只是默认。该调度策略和 Agent 的 defer/prioritize/switch 命令集中在一个
+  scheduler，不分散到 router/hook。
+- WorkRun switch command（Plan 07 再由 `Work.switch` 暴露）原子提交当前 run deferred +
+  目标 run reserved-next 后，向
+  SessionRuntimeSupervisor 请求安全 handoff；当前 Turn 的 finally 清理旧 invocation，
+  下一 Turn 才安装目标 worktree/mount。
+- 本阶段按 capability contract 模拟“有/无 Work runtime 能力”；Plan 07 接入真实工具
+  grant。无该能力的 Agent仍可执行已 dispatch run，但不能调整 Project WorkRun queue。
 
 ### 5. Wait、恢复与 prompt
 
@@ -85,8 +91,8 @@ override，不允许隐式扩大 Project/Flow scope。子 Loop 有自己的 prov
 
 覆盖同 Session 连续 user→Work A→user→Work B、busy queue、Wait handoff、Stop queue
 pause、后台 task event 跨 Turn、restart、worktree→project cwd 恢复、prompt cache、
-tool call audit 和 subagent 继承/缩小。生命周期行为复用既有 supervisor 测试；本阶段重点
-断言 invocation context 不泄漏。
+tool call audit、defer/prioritize/switch 和 subagent 继承/缩小。生命周期行为复用既有
+supervisor 测试；本阶段重点断言 invocation context 不泄漏，switch 不产生并发 run。
 
 ## 完成定义
 

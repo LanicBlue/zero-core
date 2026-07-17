@@ -279,7 +279,8 @@ states:
   - build
   - verify
   - closed
-  - merged
+  - { id: merged, terminal: true }
+  - { id: abandoned, terminal: true }
 
 documents:
   requirement:  { mediaType: text/markdown }
@@ -333,12 +334,58 @@ transitions:
     to: ready
     actors: [user]
 
+  - id: return-to-discuss
+    from: ready
+    to: discuss
+    actors: [agent, user]
+    input:
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 4000 }
+
+  - id: plan-complete
+    from: ready
+    to: plan
+    actors: [agent]
+
   - id: begin-build
     from: plan
     to: build
     actors: [user, agent]
     gates:
       dependencies: all-satisfied
+
+  - id: return-to-plan
+    from: build
+    to: plan
+    actors: [agent, user]
+    input:
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 4000 }
+
+  - id: begin-verify
+    from: build
+    to: verify
+    actors: [agent]
+
+  - id: return-to-build
+    from: verify
+    to: build
+    actors: [agent, user]
+    input:
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 4000 }
+
+  - id: abandon
+    from: [found, discuss, ready, plan, build, verify, closed]
+    to: abandoned
+    actors: [agent, user]
+    input:
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 4000 }
 
   - id: final-accept
     from: verify
@@ -355,6 +402,35 @@ transitions:
 未配置时，
 拥有该 Project Flow 能力的用户或 Agent 可以请求 transition。复杂审批仍应通过文档、
 Agent 判断和 Work 表达，不在核心写死 proposer/implementer/verifier 角色。
+
+FlowDefinition 的 transition 构成**有向图而不是单向流水线**。图可以包含回边和循环；
+只有 dependency graph 与 composition lineage 必须保持 DAG。核心不理解“前进”“打回”
+或“返工”等固定业务含义，只校验当前 state 是否存在匹配的配置 transition。
+
+state 可以使用字符串简写，也可以声明 `{ id, terminal: true }`。terminal state 是
+FlowInstance 的最终结果，不能出现在任何 transition 的 `from` 中；definition validator
+必须拒绝终态出边。transition 的 `from` 接受单个 state 或非空 state 列表；列表只是同一
+transition id 的多条合法来源边，不是通配符。默认模板用这一能力让任意非终态阶段都能
+进入 `abandoned`，并把 `merged` 与 `abandoned` 都显式标成终态。
+
+transition 可以声明有限、纯数据的 `input` contract，约束必填字段、基础类型、长度和数量；
+不能执行任意 JSON Schema extension 或代码。默认模板的返工 transition 要求非空
+`reason`，该 input 随 transition event 和内层 Git history 持久化。Project 也可以定义
+其他字段或不要求 reason。
+
+这使接棒 Agent 能在进入下一阶段后先审核输入，再决定继续或打回：
+
+```text
+Discuss --accept----------> Ready  --return-to-discuss--> Discuss
+Ready   --plan-complete---> Plan
+Plan    --begin-build-----> Build  --return-to-plan------> Plan
+Build   --begin-verify----> Verify --return-to-build-----> Build
+Verify  --final-accept----> Closed
+任意活动状态 --abandon----> Abandoned
+```
+
+每条正向或反向 transition 都走完全相同的原子提交、event/outbox 和恢复路径。反向
+transition 不是修改或撤销旧 event，而是追加一个新的、可审计的事实。
 
 ### 5.3 FlowInstance
 
@@ -376,6 +452,34 @@ createdAt / updatedAt
 `.zero-core/flow/instances/<id>/state.json`，相关过程文档位于同一实例的
 `documents/`，实例依赖位于 `dependencies.json`，transition 历史以 append-only event
 保存并由内层 Git 版本化。
+
+#### FlowInstance 废案
+
+`abandoned` 是默认模板的 terminal state，但名称不是核心保留词；核心只读取 definition
+中的 `terminal: true`。废案使用普通 `Flow.transition`，必须满足 actor、from、
+expectedRevision 和 input contract：
+
+```text
+任意配置允许的活动 state
+  → abandon transition（reason 必填）
+  → abandoned terminal state
+  → inner Git commit + flow.transitioned
+```
+
+废案保留 FlowInstance、文档、event 和 Git history，不物理删除，也不改写已经发生的
+milestone。terminal state 没有出边；首版不提供 reopen、definition migration 绕过或
+“取消废案”专用 action。若以后确有恢复需求，应作为独立设计处理，不能让新的 active
+definition 追溯改变已经固定旧 definition version 的实例。
+
+进入 terminal state 后，Work 子系统先取消该 FlowInstance 在该 terminal revision
+之前创建的 queued/deferred WorkRun，并向 running WorkRun 请求 cooperative
+cancellation；发起本次 terminal transition 的当前 WorkRun允许正常收尾。随后
+`flow.transitioned` 仍正常投递，因 terminal event 新创建的通知/清理 WorkRun不被前述
+历史清理误杀。
+
+依赖该实例尚未达到的 live milestone 显示 `terminal-blocked`，并发出幂等 dependency
+变化事件；已经发生的 `transition-reached` milestone 保持成立。废案本身不级联废弃
+dependent FlowInstance。
 
 ### 5.4 Transition
 
@@ -410,6 +514,15 @@ input metadata
 ```
 
 Flow 不在 transition 中引用或直接调用 Work，也不创建 worktree。
+
+`flow.transitioned` 不区分正向与反向投递：所有已提交 transition 都使用同一标准事件。
+WorkDefinition 可以按 `transitionId`、`from`、`to` 和可选 input 条件匹配，因此被打回的
+Flow 会像向前流转一样触发配置的返工/讨论 Work。event reconcile 重发仍由
+`workId + workVersion + eventId` 去重。
+
+返回不会自动撤销 latched `transition-reached` milestone。例如 Build→Plan 后，历史上的
+`begin-build` 仍然发生过；若依赖需要随返工失效，应使用 `state-in` milestone，或在
+FlowDefinition 中声明另一个 live milestone，而不能把 transition history 改写掉。
 
 ### 5.5 FlowInstance dependency
 
@@ -562,7 +675,7 @@ run:
   prompt: |
     阅读讨论结论并编写实施计划。
     完成判断后，通过 Flow 工具请求下一次合适的 transition。
-  requiredTools: [Read, Write, Edit, Flow]
+  requiredTools: [Read, Write, Edit, Flow, Work]
 
 workspace:
   kind: project
@@ -602,14 +715,30 @@ Flow emits event → Work trigger matches event
 FlowDefinition 不保存 Work id。Work 可以在 Agent 执行过程中通过通用 Flow 工具请求
 transition；WorkRun 成功本身不会自动推动 Flow。
 
+典型项目可以用纯配置组成双向交接：
+
+| Flow event | 触发的 Work | 接棒 Agent 可做的 transition |
+|---|---|---|
+| `accept`（Discuss→Ready） | 创建/审核 Plan | `plan-complete` 或 `return-to-discuss` |
+| `return-to-discuss` | 补充讨论 | 再次 `accept` |
+| `begin-build`（Plan→Build） | 实施/审核计划可执行性 | `begin-verify` 或 `return-to-plan` |
+| `return-to-plan` | 修订 Plan | 再次 `begin-build` |
+| `begin-verify`（Build→Verify） | 验收实现 | `final-accept` 或 `return-to-build` |
+| `return-to-build` | 修复实现 | 再次 `begin-verify` |
+
+表格只是默认模板示例。Work 是否存在、由哪个 Agent 执行、匹配正向还是反向 event，全部
+由 Project 的 WorkDefinition 决定。一次返工产生新的 event 和 WorkRun；它不是原
+WorkRun 的 retry。Agent 必须显式请求 transition，WorkRun succeeded 不会自动前进或打回。
+
 ### 6.2 WorkRun
 
 WorkRun 是某个 WorkDefinition 被触发后由软件自动创建的轻量执行记录，不是第二套 Flow：
 
 ```text
 queued → running → succeeded
-                 → failed
-                 → cancelled
+   ↕         ├──→ failed
+deferred ←───┤
+             └──→ cancelled
 ```
 
 Agent 使用 Wait 时 WorkRun 仍属于 `running`，UI 可以额外显示 `waiting` 运行态，但它
@@ -622,15 +751,19 @@ id
 projectId
 workId
 triggerEventId
+originFlowInstanceId? / originFlowRevision?
 agentId
 sessionId
 turnId
 status
+revision
 attempt
+priority / queueOrder
+notBefore / deferReason / deferCount
 workDefinitionSnapshot + digest
 turnInvocationContext
 createdAt / startedAt / finishedAt
-result summary / error
+result outcome / summary / error
 ```
 
 规则：
@@ -639,25 +772,52 @@ result summary / error
 - 手动触发每次创建新的 WorkRun。
 - WorkDefinition 修改只影响未来 WorkRun；已创建 run 使用自己的配置快照。
 - 同一 Project Session busy 时，WorkRun 保持 `queued`，不能像当前实现一样直接 skip。
+- FIFO + WorkDefinition priority 是默认建议顺序，不是不可改变的业务门禁。拥有 `Work`
+  工具的 Project Agent 可以审计地 defer、prioritize 或 switch 自己 Project Session 中的
+  eligible WorkRun。
+- `defer` 把 queued/running run 转为 deferred，保存 reason 和可选 notBefore；到期或
+  Agent 显式恢复后重新 eligible。
+- `switch` 使用 CAS 原子 defer 当前 running run、预约目标 queued/deferred run，并请求
+  SessionRuntimeSupervisor 在安全 Turn 边界 handoff；不能在当前 Loop 中热改 cwd/mount。
 - Agent turn 正常结束时 WorkRun 为 `succeeded`；运行异常为 `failed`。
+- Agent 审核后通过 Flow 工具打回或废案，仍可使本次审核 WorkRun `succeeded`，并在
+  result 中记录 `outcome: returned|abandoned`；业务未前进不等于执行失败。
 - `succeeded` 只表示本次 Agent 执行完成，不代表 Flow 必须迁移。
 - 重启时，遗留 `running` 按 Work 的 retry policy 重新排队或转为 failed，并增加 attempt。
-- WorkRun 生命周期、排队和重试由软件维护，不要求 Agent 手工更新。
+- WorkRun 的 terminal 状态仍由软件根据 Turn 结果维护；Agent不能任意把 run 标成
+  succeeded/failed，也不能修改固定 snapshot。
 
-### 6.3 核心通用原语
+### 6.3 工具级权限与控制面/运行面
 
-核心只提供：
+zero-core 当前按**工具名**授予 Agent 能力，不按 action 分配权限。新系统保留这个模型，
+不为了 Flow/Work 增加 action-level tool policy。三个工具边界固定为：
 
-- 注册、读取和版本化 Project FlowDefinition / WorkDefinition；
-- 创建、查询和迁移 FlowInstance；
-- 建立、查询和验证 FlowInstance dependency graph；
-- 按 FlowDefinition policy 原子 split/merge FlowInstance 并查询 lineage；
-- 追加 transition event；
-- 根据 event、manual、cron 匹配 Work trigger；
-- 创建、排队、执行和恢复 WorkRun；
-- 创建和回收 linked worktree；
-- 建立 TurnInvocationContext 和 `flow://` mount table；
-- 持久化审计、查询索引和恢复信息。
+| 工具 | 默认持有者 | 目标职责 |
+|---|---|---|
+| `Project` | 管理 Agent | Project 注册，以及 FlowDefinition/WorkDefinition 配置 |
+| `Flow` | Project Agent | FlowInstance 查询、transition、dependency、split/merge、lineage |
+| `Work` | Project Agent | 当前 Project 的 WorkRun 查询、defer、priority、switch、cancel/retry |
+
+`Project` 不为每个 definition 字段增加 action。它只增加小型通用配置原语：
+
+```text
+Project({ action: "config.validate", projectId, kind: "flow"|"work", definition })
+Project({ action: "config.publish", projectId, kind: "flow"|"work", definition })
+Project({ action: "config.activate", projectId, kind: "flow"|"work",
+          definitionId, version, digest })
+Project({ action: "config.list", projectId, kind: "flow"|"work" })
+Project({ action: "config.get", projectId, kind: "flow"|"work",
+          definitionId, version? })
+Project({ action: "work.fire", projectId, workDefinitionId })
+```
+
+publish 创建不可变新版本，不原地 update；activate 只改变未来实例/run 的默认版本。
+`work.fire` 是管理动作，只创建 durable WorkRun，不直接调用 AgentLoop。服务端按 `kind`
+调用独立 Flow/Work validator 和 repository，Project 工具不吞并领域实现。
+
+`Flow` 向普通 Project Agent开放，但不包含 FlowDefinition 配置 action。FlowInstance
+操作仍由 CallerCtx project scope、definition actor、from/state、expectedRevision、
+dependency gate 和 composition policy 校验；这属于领域授权，不是 action-level 工具权限。
 
 通用 Flow 工具采用类似：
 
@@ -674,7 +834,46 @@ Flow({ action: "merge", sourceFlowInstanceIds, policyDefinitionRef, policyId, ta
 Flow({ action: "lineage", flowInstanceId, direction? })
 ```
 
-核心不包含 `ready`、`startBuild` 等固定业务 action。
+废案也是普通配置 transition，例如
+`Flow({ action:"transition", transitionId:"abandon", input:{reason} })`。核心不包含
+`ready`、`startBuild`、`reject` 或 `abandon` 等固定业务 action。
+
+`Work` 在 cutover 后不再创建/修改 WorkDefinition，而成为 WorkRun 运行工具：
+
+```text
+Work({ action: "current" })
+Work({ action: "list", status? })
+Work({ action: "get", workRunId })
+Work({ action: "defer", workRunId, reason, notBefore?, expectedRevision })
+Work({ action: "prioritize", workRunId, priority?, beforeWorkRunId?, reason,
+       expectedRevision })
+Work({ action: "switch", fromWorkRunId, toWorkRunId, reason,
+       expectedFromRevision, expectedToRevision })
+Work({ action: "cancel", workRunId, reason, expectedRevision })
+Work({ action: "retry", workRunId, reason, expectedRevision })
+```
+
+CallerCtx 注入 projectId、sessionId、agentId 和 currentWorkRunId；模型不能用参数扩大到其他
+Project/Agent Session。`list/get` 只返回当前 Project 中调用者被允许观察的 run；
+defer/prioritize/switch/cancel/retry 只作用于分配给当前 Agent Session 的 run，且
+`switch` 两端必须属于同一 Project Session。持有 `Work` 的 Agent拥有整组运行 action，
+因此该工具不包含 definition mutation 或 manual fire。没有 `Work` 工具的 Agent仍能被
+dispatcher 执行，只是按默认 scheduler 顺序工作，不能自主调整 queue。
+
+### 6.4 核心通用原语
+
+核心只提供：
+
+- 注册、读取和版本化 Project FlowDefinition / WorkDefinition；
+- 创建、查询和迁移 FlowInstance；
+- 建立、查询和验证 FlowInstance dependency graph；
+- 按 FlowDefinition policy 原子 split/merge FlowInstance 并查询 lineage；
+- 追加 transition event；
+- 根据 event、manual、cron 匹配 Work trigger；
+- 创建、排队、执行和恢复 WorkRun；
+- 创建和回收 linked worktree；
+- 建立 TurnInvocationContext 和 `flow://` mount table；
+- 持久化审计、查询索引和恢复信息。
 
 ## 7. Context Management
 
@@ -689,6 +888,12 @@ Flow({ action: "lineage", flowInstanceId, direction? })
 
 同一个 Agent 可以在一个 Project Session 中看到多个 issue、正在执行的 Plan 和 WorkRun；
 执行上下文只限制当前 turn 的默认工作位置和映射，不抹掉 Agent 的项目知识。
+
+Flow event 创建 WorkRun 只表示“项目产生了一项可执行工作”，不会把长期 Session 绑定到
+该 FlowInstance，也不意味着它必须抢在所有其他事项之前执行。Session 可以知道
+originFlowInstanceId/triggerEventId/currentWorkRunId，同时通过 `flow://project` 查看其他
+Flow。Agent 若决定先做别的 eligible WorkRun，必须用 Work.defer/prioritize/switch 显式
+改变队列并留下原因，不能让当前 run 保持 running 后静默漂移到其他任务。
 
 ```text
 AgentContext
@@ -1249,6 +1454,12 @@ commit 成功后若 DB index/outbox publish 失败，权威状态已经成立：
 - **首版支持跨 Project split/merge**：需要多个内层 Git 仓库的分布式原子事务；跨
   Project 协作首版使用 dependency。
 - **WorkRun 成功自动等价于 Flow 迁移**：Agent 完成一次执行不代表业务判断已经通过。
+- **同一个 Work 工具同时管理 WorkDefinition 和 WorkRun**：当前权限按工具名分配，会让
+  普通 Project Agent同时获得配置删除/修改权。
+- **为 Work/Flow 增加 action-level tool policy**：扩大整个授权模型且增加每次调用解释
+  成本；使用 Project/Flow/Work 三个工具级能力边界即可。
+- **把每个 Flow/Work 配置字段做成 Project action**：会让扁平 schema 和 prompt 失控；
+  Project 只接收通用、完整、可验证的 definition version。
 - **每个 WorkRun 创建独立 Project Session**：割裂同一 Agent 对项目多个任务的连续理解。
 - **在长期 SessionConfig 上热切换 cwd 和 mount**：容易留下旧 Work 上下文。
 - **按 agentId 永久映射 `flow://`**：同一 Agent 的不同 turn 会串用上下文。
@@ -1288,6 +1499,12 @@ commit 成功后若 DB index/outbox publish 失败，权威状态已经成立：
 | D26 | dependency gate 只作用于 FlowDefinition 明确声明的 transition；满足后只发事件，不自动流转。 |
 | D27 | split/merge 是与 dependency 分离的同 Project composition；以不可变 manifest 保存 lineage，source 历史始终保留。 |
 | D28 | composition 只固定 source 文档 revision，不自动拼接内容；综合工作由 Work/Agent 完成。 |
+| D29 | Flow transition graph 允许配置回边/循环；正向与反向 transition 使用同一原子 event/outbox 协议。 |
+| D30 | 被打回 event 由 WorkDefinition 正常消费并创建新 WorkRun；返工不是旧 WorkRun retry，核心不硬编码阶段角色。 |
+| D31 | FlowInstance 可经配置 transition 进入 terminal abandoned；废案保留历史、取消既有活动 WorkRun，不物理删除。 |
+| D32 | 工具权限仍按工具名：Project 管 Flow/Work 配置，Flow 管 FlowInstance，Work 管 WorkRun。 |
+| D33 | WorkRun 默认队列顺序可由持有 Work 工具的 Project Agent 审计地 defer、prioritize、switch。 |
+| D34 | Project 通过通用 config.validate/publish/activate/list/get 管理不可变定义版本，不吸收 Flow/Work 领域实现。 |
 
 ## 15. 进入 plan 前的验收边界
 
@@ -1295,20 +1512,24 @@ commit 成功后若 DB index/outbox publish 失败，权威状态已经成立：
 
 1. Project 控制目录 manifest、外层 exclude、内层 Git 初始化、commit、rollback 和恢复。
 2. Project 级 FlowDefinition 版本/digest、FlowInstance、原子 transition 和标准 event。
+   必须覆盖正向/反向/废案 transition、返工 input contract、回边循环、terminal 清理和
+   同一事件投递协议。
 3. milestone、同/跨 Project dependency、cycle 检测、gated transition 和依赖事件恢复。
 4. 同 Project split/merge、policy、幂等、原子提交、不可变 lineage、固定文档输入和
    composition event 恢复。
-5. Work trigger、WorkDefinition snapshot、WorkRun 幂等/队列/重试/重启恢复。
-6. ProjectSessionContext、TurnInvocationContext、ToolCallContext 和每 turn cache 重建。
-7. 用户输入、Work、Cron、Wait 唤醒和 subagent 的上下文继承/清除测试。
-8. 项目内 linked worktree 创建/失败/合并/清理，无主目录 fallback。
-9. 普通文件工具忽略物理 `.zero-core`，同时内部 worktree 正常工作。
-10. 通用 VFS provider、`skill://` 硬迁移、`flow://project/current` mount 和
+5. 正向/反向 Work trigger、WorkDefinition snapshot、WorkRun 幂等/队列/重试/重启恢复，
+   以及 deferred/priority/switch 和 Agent 自主选择。
+6. Project/Flow/Work 三工具的工具级授权边界、Project config 原语和旧工具原子切换。
+7. ProjectSessionContext、TurnInvocationContext、ToolCallContext 和每 turn cache 重建。
+8. 用户输入、Work、Cron、Wait 唤醒和 subagent 的上下文继承/清除测试。
+9. 项目内 linked worktree 创建/失败/合并/清理，无主目录 fallback。
+10. 普通文件工具忽略物理 `.zero-core`，同时内部 worktree 正常工作。
+11. 通用 VFS provider、`skill://` 硬迁移、`flow://project/current` mount 和
    Read/Write/Edit/Glob/Grep 一致行为。
-11. content revision、路径逃逸、mount 冲突和多个 Agent 并发编辑。
-12. 新 Flow 与旧 Requirement 完全解耦，以及显式 importer 的无损校验。
-13. `agent-eval-harness` bundled、seed、脚本、profile/scenario、归档扫描和自测。
-14. 启动无自动 Eval Project 注册、无自动目标源码 Git 初始化、无自动 Flow、无自动
+12. content revision、路径逃逸、mount 冲突和多个 Agent 并发编辑。
+13. 新 Flow 与旧 Requirement 完全解耦，以及显式 importer 的无损校验。
+14. `agent-eval-harness` bundled、seed、脚本、profile/scenario、归档扫描和自测。
+15. 启动无自动 Eval Project 注册、无自动目标源码 Git 初始化、无自动 Flow、无自动
     Eval 执行。
 
 profile 的最终序列化格式、Eval CLI 的精确参数名、默认 Flow 模板内容和 UI 展示形式

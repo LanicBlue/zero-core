@@ -8,6 +8,10 @@
 - [ ] definition version 文件不可变，active switch 只影响新 instance。
 - [ ] FlowInstance 固定 definition id/version/digest。
 - [ ] 无效 YAML、超限配置和未知 schema 稳定拒绝，无代码执行。
+- [ ] transition graph 允许回边/循环；不会误用 dependency/lineage DAG 校验拒绝返工边。
+- [ ] state terminal metadata 与多来源 transition 可配置，不硬编码 `abandoned` 字面量。
+- [ ] terminal state 作为 transition `from` 时 definition 稳定拒绝；首版没有 reopen。
+- [ ] transition input contract 只支持受限纯数据规则，缺失/超长 reason 在提交前拒绝。
 
 ## B. Transition 事务
 
@@ -18,6 +22,13 @@
 - [ ] commit 后、index/publish 前崩溃返回/恢复为 `committed_pending_delivery`，重启补索引
   和重发同一 eventId。
 - [ ] 多 Agent 并发 transition 只有一个成功，另一个得到可恢复 conflict。
+- [ ] 正向与反向 transition 使用同一 commit/event/outbox/reconcile 协议。
+- [ ] 反向 transition 追加新 event，不删除历史、不撤销 latched milestone。
+- [ ] Ready→Discuss、Build→Plan、Verify→Build 可多轮往返，每次 revision/event 独立。
+- [ ] 全部非终态状态可进入 terminal abandoned；实例/文档/history 保留且没有出边。
+- [ ] terminal event 带 terminal revision/currentWorkRunId，fake consumer 固定历史 run
+  清理先于 terminal-trigger matching；本阶段不伪装成 WorkRunStore 已接入。
+- [ ] terminal-blocked dependency 可观测且不级联废案 dependent。
 
 ## C. Dependency graph
 
@@ -32,6 +43,7 @@
 - [ ] 既有 target unavailable/missing 显示 unknown，并在 gated transition 上 fail closed。
 - [ ] prerequisite definition migration 不得破坏 inbound milestone；缺失时拒绝或在同一
   审计事务显式 remap。
+- [ ] terminal FlowInstance 的 definition migration 稳定拒绝，不能绕过无出边合同。
 - [ ] 依赖只阻止声明 gate 的 transition；Found/Discuss/Plan 等未声明 transition 可继续。
 - [ ] 依赖满足只发幂等标准 event，不自动 transition 或 dispatch Work。
 
@@ -62,6 +74,8 @@
 ## E. Tool 与隔离
 
 - [ ] Flow tool 只有通用 action，不包含固定 ready/build/verify 分支。
+- [ ] Flow tool 不包含 FlowDefinition publish/activate/mutation。
+- [ ] Flow tool 从 definition 列出并执行返工 transition，不硬编码 reject/rollback action。
 - [ ] Flow tool 暴露 policy 驱动的 split、merge 和 lineage 通用 action。
 - [ ] actor/Project 身份由 host context 注入。
 - [ ] 跨 Project 未授权操作不泄露 instance/definition。
@@ -81,6 +95,8 @@
 运行 typecheck、build:lib、unit、check:links。`result-02.md` 必须包含 commit 前后故障
 注入矩阵、dependency graph/cycle/并发反向边、split/merge/lineage/idempotency、
 Git log、outbox 补发、索引重建和 legacy DB 不变 hash/count。
+证据另包含默认模板三组正反向往返、返工 input 校验、旧 revision conflict 和 latched/live
+milestone 在返工后的差异，以及 terminal 清理/依赖矩阵。
 
 ## H. 拒绝条件
 

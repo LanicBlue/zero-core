@@ -21,12 +21,17 @@
 
 - [ ] busy WorkRun 持久 queued，Session 空闲后只执行一次。
 - [ ] 同一 Loop 不发生两个并发 run。
-- [ ] 当前 running Turn 不被抢占；空闲后 queued user FIFO 优先于 background WorkRun FIFO。
+- [ ] 当前 running Turn 不被硬抢占；queued user 优先，WorkRun 按
+  eligible/priority/queueOrder 选择。
 - [ ] waiting/barrier 的 Work、Cron、用户 invocation 使用统一 atomic handoff。
 - [ ] Stop 后普通 inbox 保持 paused，不因 WorkRun dispatcher 自动 drain。
 - [ ] Wait 保持当前 invocation；handoff 后的新 Turn 使用自己的 context。
 - [ ] abort/error/finally 均清除当前 invocation。
 - [ ] restart 后 WorkRun 恢复不借用旧 SessionConfig 猜测上下文。
+- [ ] WorkRun switch command 经 supervisor 安全 handoff，旧 invocation finally clear 后
+  才安装目标；本阶段不伪装成 Agent-facing Work tool 已切换。
+- [ ] switch 不产生两个并发 run，目标 cwd/mount 不提前泄漏到旧 Turn。
+- [ ] 无 Work 工具的 Agent按 scheduler 执行，但不能调用 queue 调整命令。
 
 ## D. Subagent
 

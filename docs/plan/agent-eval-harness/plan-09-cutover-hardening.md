@@ -21,6 +21,7 @@ Acceptance 01–08 通过。
 - dependency reverse index、milestone satisfaction 和漏发 dependency event；
 - composition lineage/idempotency index 和漏发 split/merge event；
 - queued/running WorkRun；
+- deferred/notBefore/priority/switch reservation 与 terminal Flow cleanup；
 - missing/stale worktree；
 - invalid definition/work snapshot；
 - skill migration interruption；
@@ -31,6 +32,15 @@ Acceptance 01–08 通过。
 ### 2. Cutover 清理
 
 - 删除 Agent-facing 固定 Flow action 和其 prompt/schema/tests；
+- 复核 Plan 07 已把 management-only `Work create/update/delete/list/fire` 原子切换为
+  Project Agent `Work current/list/get/defer/prioritize/switch/cancel/retry`，删除任何
+  残留旧 action/fallback；
+- 将 Flow/Work definition 管理接入 management-only `Project config.*`，`Project.work.fire`
+  只创建 durable WorkRun，不直接调用旧 runner；
+- 验证普通 Agent 的 `Flow` 只有 FlowInstance runtime action，管理 Agent 的 `Project`
+  才能 publish/activate definition；
+- 删除旧 ProjectWorkRunner/HookManager 的新系统调用路径和 Work→ManagementService
+  singleton；旧 Requirement 自有路径只在明确 legacy 边界内存续；
 - 旧 Requirement service/UI 明确 legacy 命名，不与新 Flow 双写；
 - 删除本 effort 中临时 adapter、fallback、feature flag 双实现；
 - grep `[skills]/`、旧 worktree 新建路径、busy skip、新 Flow 调用 Requirement 的残留；
@@ -53,9 +63,9 @@ Acceptance 01–08 通过。
 ### 4. 安全与故障注入
 
 覆盖 Windows path、junction、repo lock、磁盘写失败、Git process failure、进程 crash、
-重复 event、并发反向 dependency edge、target Project unavailable、renderer forged
-actor、split/merge revision conflict/部分提交、malformed YAML/archive 和 script child
-process。
+重复 event、并发反向 dependency edge、target Project unavailable、renderer/LLM forged
+actor/project/workRun、switch 双 revision conflict、terminal cleanup race、split/merge
+revision conflict/部分提交、malformed YAML/archive 和 script child process。
 
 ### 5. 文档
 

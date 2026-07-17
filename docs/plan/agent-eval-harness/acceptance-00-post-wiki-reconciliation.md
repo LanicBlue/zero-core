@@ -19,6 +19,8 @@
 
 - [ ] `result-00.md` 完整列出数据库、Runtime、CallerCtx、文件保护、Prompt、Project
   API/UI、Git 与 Skill 的真实所有者。
+- [ ] Project/Flow/Work 当前 action、授权门控、ManagementService/CallerCtx 后端和旧
+  ProjectWorkRunner 路径均有映射。
 - [ ] 逐项说明 Wiki 原语是复用、扩展还是不可复用，并给出代码证据。
 - [ ] 后续计划没有引用已经不存在的关键接口而未说明替代位置。
 - [ ] 没有改变 Flow/Work/Context/VFS 的设计不变量。

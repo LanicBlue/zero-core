@@ -13,6 +13,13 @@
 ## B. Cutover
 
 - [ ] Agent-facing Flow 无 fixed ready/build/verify action。
+- [ ] Project 是 Flow/Work definition 配置的唯一 Agent tool；Project config 使用通用
+  kind + definition/ref，不复制领域 schema。
+- [ ] Flow 只暴露 FlowInstance runtime action，可授予普通 Project Agent。
+- [ ] Work 只暴露 WorkRun runtime action，可授予普通 Project Agent。
+- [ ] 旧 Work create/update/delete/list/fire action、旧 runner 新系统路径和 definition/run
+  双语义全部删除。
+- [ ] 工具授权仍按工具名，无新 action-level grant。
 - [ ] 生产 prompt/schema/tool output 无 `[skills]/`。
 - [ ] 新 Work 无 busy skip、旧 worktree create fallback 或 Requirement 双写。
 - [ ] 临时 adapter/feature flag 已删除或有用户批准的独立后续 issue。
@@ -21,8 +28,9 @@
 ## C. 安全与性能
 
 - [ ] Windows traversal/junction、repo lock、disk/Git failure、duplicate event、并发反向
-  dependency、missing target、split/merge revision conflict/partial commit、forged actor、
-  malformed config/archive、child process 均有证据。
+  dependency、missing target、split/merge revision conflict/partial commit、forged actor/
+  project/workRun、switch/terminal cleanup race、malformed config/archive、child process
+  均有证据。
 - [ ] Project 根 Glob/Grep 不遍历 `.zero-core/worktrees`。
 - [ ] Flow/WorkRun/index/inner Git/archive benchmark 满足 result 中预先记录阈值。
 - [ ] 无 skipped/only 测试绕过关键平台场景。
