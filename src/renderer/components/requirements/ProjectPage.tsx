@@ -54,6 +54,8 @@ import { useAgentStore } from "../../store/agent-store.js";
 import { useChatStore } from "../../store/chat-store.js";
 import { usePageStore } from "../../store/page-store.js";
 import KanbanBoard from "./KanbanBoard.js";
+// plan-07 §5:Wiki Git binding card(显示 binding/sync/reindex)。
+import { WikiProjectCard } from "./WikiProjectCard.js";
 
 const api = () => (window as any).api;
 
@@ -382,6 +384,22 @@ function DashboardTab({
 	usage: ProjectResourceUsage | null;
 	onRefresh: () => void;
 }) {
+	// plan-07 §5 兑现 defer:WikiProjectCard 显示 Git binding / sync status /
+	// reindex 按钮。挂在这里(DashboardTab 主信息层)。onOpenWiki 走 page-store
+	// 跳到 wiki page + wiki-store 设 scope=project://<projectId>。
+	const handleOpenWiki = useCallback((projectId: string) => {
+		try {
+			usePageStore.getState().setActivePage("wiki");
+			usePageStore.getState().setActiveWikiProjectId(projectId);
+			// wiki-store scope 切到 project;wiki-store 会按 projectId 解析
+			// canonical root(wiki-root/projects/<projectId>)。
+			void import("../../store/wiki-store.js").then(({ useWikiStore }) => {
+				useWikiStore.getState().setScope({ kind: "project", projectId });
+			}).catch(() => {});
+		} catch {
+			// ignore
+		}
+	}, []);
 	const wiki = container?.wikiSummary;
 	const scanPct = wiki?.scanProgress != null ? Math.round(wiki.scanProgress * 100) : null;
 	return (
@@ -448,6 +466,9 @@ function DashboardTab({
 					)}
 				</div>
 			</Card>
+
+			{/* plan-07 §5:Wiki Git binding card —— bind/reindex/unbind/status */}
+			<WikiProjectCard project={project} onOpenWiki={handleOpenWiki} />
 		</div>
 	);
 }

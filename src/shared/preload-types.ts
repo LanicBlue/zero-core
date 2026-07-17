@@ -48,6 +48,8 @@ import type {
 	RuntimeTaskInfo,
 	AttachmentMeta,
 	SessionVolumeInfo,
+	WikiGrant,
+	WikiContextEntry,
 } from "./types.js";
 // wiki-system-redesign plan-06 §2: 共享 Wiki v2 request/result types(替代旧
 // ProjectWikiNode / WikiNode / ResolvedAnchorView 的 anchor/nodeId 模型)。
@@ -60,6 +62,29 @@ import type {
 	WikiAuditView,
 } from "./wiki-types.js";
 import type { WikiSearchRequest, WikiSearchResult } from "./wiki-search-types.js";
+// wiki-system-redesign plan-07: 管理面类型(独立于数据面 wiki-types)。
+import type {
+	WikiAdminResult,
+	WikiAdminAddressView,
+	AddressUpsertInput,
+	AddressValidateResult,
+	AddressImpactInput,
+	AddressImpactResult,
+	WikiAdminRepositoryView,
+	RepositoryValidateInput,
+	RepositoryValidateResult,
+	RepositoryBindInput,
+	RepositoryUpdateInput,
+	RepositoryReindexInput,
+	RepositoryReindexResult,
+	GrantsValidateResult,
+	GrantsPreviewResult,
+	GrantsPublishResult,
+	ContextValidateResult,
+	ContextPreviewResult,
+	ContextPublishResult,
+	SessionPublishStatusResult,
+} from "./wiki-admin-types.js";
 
 /**
  * 包装后的 REST 响应形状 —— wiki-router 所有 10 个 endpoint 统一返
@@ -386,6 +411,35 @@ export interface WindowApi {
 	wikiV2History: (req: { address: string; limit?: number }) => Promise<WikiRestResult<WikiAuditView[]>>;
 	/** Source tab:沙箱读项目工作区原文件(revision/dirty 走 read.source 元数据)。*/
 	wikiV2ReadWorkspaceDoc: (projectId: string, relPath: string) => Promise<{ content?: string; error?: string }>;
+
+	// ── Wiki Admin (v2 / plan-07) ── 管理面 endpoint。authority 由 server
+	// 注入;renderer 只传数据(body)+ agentId(走 query string,绕开 body
+	// forged-identity guard)。所有 mutation 在 server 写管理 audit + revision
+	// +1 + emit wiki_admin/wiki_repositories collection。
+	wikiAdminAddressesList: () => Promise<WikiAdminResult<{ addresses: WikiAdminAddressView[] }>>;
+	wikiAdminAddressesValidate: (body: AddressUpsertInput) => Promise<WikiAdminResult<AddressValidateResult>>;
+	wikiAdminAddressesImpact: (body: AddressImpactInput) => Promise<WikiAdminResult<AddressImpactResult>>;
+	wikiAdminAddressesCreate: (body: AddressUpsertInput) => Promise<WikiAdminResult<{ address: WikiAdminAddressView }>>;
+	wikiAdminAddressesUpdate: (body: { address: string; patch: Partial<AddressUpsertInput> }) => Promise<WikiAdminResult<{ address: WikiAdminAddressView }>>;
+	wikiAdminAddressesDelete: (body: { address: string }) => Promise<WikiAdminResult<{ address: string }>>;
+
+	wikiAdminRepositoriesList: () => Promise<WikiAdminResult<{ repositories: WikiAdminRepositoryView[] }>>;
+	wikiAdminRepositoriesValidate: (body: RepositoryValidateInput) => Promise<WikiAdminResult<RepositoryValidateResult>>;
+	wikiAdminRepositoriesStatus: (body: { projectId: string }) => Promise<WikiAdminResult<WikiAdminRepositoryView>>;
+	wikiAdminRepositoriesBind: (body: RepositoryBindInput) => Promise<WikiAdminResult<RepositoryReindexResult>>;
+	wikiAdminRepositoriesUpdate: (body: RepositoryUpdateInput) => Promise<WikiAdminResult<WikiAdminRepositoryView>>;
+	wikiAdminRepositoriesUnbind: (body: { projectId: string; hard?: boolean }) => Promise<WikiAdminResult<{ projectId: string; unbound: boolean; hard: boolean }>>;
+	wikiAdminRepositoriesReindex: (body: RepositoryReindexInput) => Promise<WikiAdminResult<RepositoryReindexResult>>;
+
+	wikiAdminGrantsValidate: (agentId: string, body: { grants: WikiGrant[] }) => Promise<WikiAdminResult<GrantsValidateResult>>;
+	wikiAdminGrantsPreview: (agentId: string, body: { grants: WikiGrant[] }) => Promise<WikiAdminResult<GrantsPreviewResult>>;
+	wikiAdminGrantsPublish: (agentId: string, body: { grants: WikiGrant[]; expectedRevision: number; confirmRootWriteGrant?: boolean }) => Promise<WikiAdminResult<GrantsPublishResult>>;
+
+	wikiAdminContextValidate: (agentId: string, body: { entries: WikiContextEntry[]; grants?: WikiGrant[] }) => Promise<WikiAdminResult<ContextValidateResult>>;
+	wikiAdminContextPreview: (agentId: string, body: { entries: WikiContextEntry[]; grants?: WikiGrant[] }) => Promise<WikiAdminResult<ContextPreviewResult>>;
+	wikiAdminContextPublish: (agentId: string, body: { entries: WikiContextEntry[]; expectedRevision: number }) => Promise<WikiAdminResult<ContextPublishResult>>;
+
+	wikiAdminSessionStatus: (agentId: string) => Promise<WikiAdminResult<SessionPublishStatusResult>>;
 
 	// ── Delegated tasks (TaskTree) ──
 	delegatedTasksBySession: (sessionId: string) => Promise<DelegatedTaskRecord[]>;

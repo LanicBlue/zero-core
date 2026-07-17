@@ -66,6 +66,10 @@ import {
 } from "./wiki/wiki-access-compiler.js";
 import { compileWikiContext } from "./wiki/wiki-context-compiler.js";
 import { getWikiService } from "./wiki/wiki-runtime.js";
+// plan-07 §3 round-2 FIX 3:publishAgentWikiPolicy service 边界强制 wiki-root
+// 写 grant 二次确认(defense-in-depth,router 已检查;直接调 service 的 caller
+// 如 recovery script / 测试 harness / 未来 admin tool 也必须经过确认)。
+import { WIKI_ROOT_PATH } from "./wiki/wiki-path.js";
 import type { CompiledWikiAccess } from "../shared/wiki-types.js";
 import { getSessionTodos } from "../tools/todo-write.js";
 import { pendingResponses } from "../runtime/pending-responses.js";
@@ -825,6 +829,156 @@ export class AgentService implements PlatformObserver {
 			log.warn("agent",
 				`refreshSessionWikiContext failed (session=${sessionId}): ${(err as Error)?.message ?? err}`);
 		}
+	}
+
+	/**
+	 * wiki-system-redesign plan-07 §6:publish Wiki policy(grants/context)到
+	 * 指定 agent。流程:
+	 *   1. expected revision CAS:比对 AgentRecord.wikiPolicyRevision 与
+	 *      input.expectedRevision;不一致 → 抛 WRITE_CONFLICT(不覆盖)。
+	 *   2. patch AgentRecord(写 grants / context 字段 + revision+1)。
+	 *   3. 触发 AgentStore.onChange → setAgentStore 内部已挂的热同步 callback
+	 *      → busy loop enqueueConfigPatch,idle loop 重建。**安全边界**:正在
+	 *      执行 tool call snapshot 的 loop 在 StepEnd 才 flush,不改变当前
+	 *      turn 的 wikiAccess(acceptance-07 §A「不改变正在执行中的 tool call
+	 *      snapshot」)。
+	 *   4. 返回每个 active session 是否已应用 / 待应用的状态。
+	 *
+	 * 本方法是 AgentStore.update 的薄包装 + revision gate。所有 audit 由
+	 * wiki-admin-router 在调本方法之前/之后写入 wiki_audit_log(管理面 action
+	 * = `policy.publish.grants` / `policy.publish.context`),不走 AgentStore
+	 * (AgentStore 不接触 wiki.db)。
+	 */
+	publishAgentWikiPolicy(args: {
+		agentId: string;
+		expectedRevision: number;
+		patch: { wikiGrants?: WikiGrant[]; wikiContext?: WikiContextEntry[] };
+		/**
+		 * plan-07 §3 round-2 FIX 3:wiki-root 全树写 grant 的二次确认 flag。
+		 * service 边界强制(defense-in-depth):直接调本方法的 caller(recovery
+		 * script / 测试 harness / 未来 admin tool)若 patch.wikiGrants 含 wiki-root
+		 * + 写 action 而此参数 !== true → 抛 INVALID_REQUEST。router 已在调用前
+		 * 做同样检查并透传此 flag,这里单点兜底。plan-07 §3「不硬禁、不静默允」
+		 * 在 service 边界也成立。
+		 */
+		confirmRootWriteGrant?: boolean;
+	}): {
+		newRevision: number;
+		affectedSessions: Array<{ sessionId: string; applied: boolean }>;
+	} {
+		if (!this.agentStore) {
+			throw new Error("AgentService.publishAgentWikiPolicy: agentStore not wired");
+		}
+		const agent = this.agentStore.get(args.agentId);
+		if (!agent) {
+			throw new Error(`Agent not found: ${args.agentId}`);
+		}
+		// plan-07 §3 round-2 FIX 3 — service 边界 root-write 二次确认(与
+		// wiki-admin-router 的 summarizeGrants 同款判定:canonical scope 命中
+		// WIKI_ROOT_PATH 且 actions 含任一写 action)。复用 compileWikiAccess
+		// 做 canonicalization,避免 raw scope 字符串比较漏掉 wiki-root/ 之类
+		// normalize 后才命中的等价形式。
+		if (args.patch.wikiGrants !== undefined && args.confirmRootWriteGrant !== true) {
+			const compiled = compileWikiAccess({
+				agentId: args.agentId,
+				wikiGrants: args.patch.wikiGrants,
+				wikiPolicyRevision: args.expectedRevision,
+			});
+			const hasRootWriteGrant = compiled.access.grants.some(
+				(g) => g.canonicalScope === WIKI_ROOT_PATH
+					&& g.actions.some((a) => a === "create" || a === "update" || a === "delete" || a === "link" || a === "unlink" || a === "move"),
+			);
+			if (hasRootWriteGrant) {
+				const err = new Error(
+					"wiki-root full-tree write grant requires confirmRootWriteGrant=true (high-risk confirmation)",
+				);
+				(err as Error & { code?: string }).code = "INVALID_REQUEST";
+				throw err;
+			}
+		}
+		const currentRev = typeof agent.wikiPolicyRevision === "number"
+			? agent.wikiPolicyRevision
+			: 0;
+		if (currentRev !== args.expectedRevision) {
+			const err = new Error(
+				`WRITE_CONFLICT: policy revision mismatch (expected=${args.expectedRevision}, current=${currentRev})`,
+			);
+			(err as Error & { code?: string; currentRevision?: number }).code = "WRITE_CONFLICT";
+			(err as Error & { code?: string; currentRevision?: number }).currentRevision = currentRev;
+			throw err;
+		}
+
+		// patch AgentRecord + bump revision。patch 用显式 [] 兜底,避免 undefined
+		// 跳过字段(round-2 feedback-unique-message-keys:JSON.stringify 丢 undefined)。
+		const patch: Record<string, unknown> = {
+			wikiPolicyRevision: currentRev + 1,
+		};
+		if (args.patch.wikiGrants !== undefined) {
+			patch.wikiGrants = args.patch.wikiGrants.length > 0 ? args.patch.wikiGrants : [];
+		}
+		if (args.patch.wikiContext !== undefined) {
+			patch.wikiContext = args.patch.wikiContext.length > 0 ? args.patch.wikiContext : [];
+		}
+		// AgentStore.update → notifyChanged → setAgentStore 的 onChange callback
+		// 自动 hot-sync 到 active loop(idle 重建,busy enqueueConfigPatch)。所以
+		// 这里不需要再手动调 refreshSessionWikiContext。
+		this.agentStore.update(args.agentId, patch as any);
+
+		const newRevision = currentRev + 1;
+		const affectedSessions: Array<{ sessionId: string; applied: boolean }> = [];
+		for (const [sid, loop] of this.loops.entries()) {
+			if (loop.getConfigAgentId() !== args.agentId) continue;
+			const pending = this.pendingConfigPatches.get(sid);
+			affectedSessions.push({
+				sessionId: sid,
+				// idle loop 的 patch 已立即 apply(走 applyConfigUpdate);busy
+				// loop 的 patch 在 pendingConfigPatches,StepEnd 才 flush。
+				applied: !pending || pending.length === 0,
+			});
+		}
+		return { newRevision, affectedSessions };
+	}
+
+	/**
+	 * plan-07 §6 / acceptance-07 §D.5:返回 agent 的 active session 列表 +
+	 * wiki policy 应用状态(供 UI 显示「已应用 / 待应用」)。
+	 */
+	getAgentWikiSessionStatus(agentId: string): Array<{
+		sessionId: string;
+		isBusy: boolean;
+		policyRevision: number | null;
+		pendingPatch: boolean;
+	}> {
+		const out: Array<{
+			sessionId: string;
+			isBusy: boolean;
+			policyRevision: number | null;
+			pendingPatch: boolean;
+		}> = [];
+		for (const [sid, loop] of this.loops.entries()) {
+			if (loop.getConfigAgentId() !== agentId) continue;
+			const pending = this.pendingConfigPatches.get(sid);
+			out.push({
+				sessionId: sid,
+				isBusy: !!loop.getState()?.isBusy,
+				// loop 当前 effective policyRevision(若 loop.config 暴露了
+				// wikiAccess.policyRevision 则读出;否则 null)。
+				policyRevision: this.readLoopWikiPolicyRevision(loop),
+				pendingPatch: !!pending && pending.length > 0,
+			});
+		}
+		return out;
+	}
+
+	/**
+	 * 内部:尽量读出 loop 当前 wikiAccess.policyRevision;loop 没暴露或没有
+	 * wikiAccess → null。type-safe:AgentLoop 实际形状由 runtime/types 定义,
+	 * 这里走 optional getConfig;若未来 loop 暴露 official getter,改走那条。
+	 */
+	private readLoopWikiPolicyRevision(loop: AgentLoop): number | null {
+		const cfg = (loop as unknown as { getConfig?: () => { wikiAccess?: { policyRevision?: number } } }).getConfig?.();
+		const rev = cfg?.wikiAccess?.policyRevision;
+		return typeof rev === "number" ? rev : null;
 	}
 
 	/**

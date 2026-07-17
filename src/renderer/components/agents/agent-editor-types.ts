@@ -24,7 +24,7 @@ import type { AgentRecord, PromptTemplate } from "../../../shared/types.js";
 
 export type FormState = Omit<AgentRecord, "id" | "createdAt" | "updatedAt">;
 
-export type Section = "basic" | "prompt" | "tools" | "skills" | "expose" | "permissions" | "subagents" | "anchors";
+export type Section = "basic" | "prompt" | "tools" | "skills" | "expose" | "permissions" | "subagents" | "wiki-access" | "wiki-context" | "anchors";
 
 export const DEFAULT_ENABLED_TOOLS = new Set(["Shell", "Read", "Write", "Edit", "Grep", "Glob"]);
 
@@ -59,15 +59,16 @@ export function agentToForm(a: AgentRecord): FormState {
 			enabledSkills: a.skillPolicy?.enabledSkills ?? [],
 		},
 		// v0.8 (P2 §11.9 / §11.5 / §11.3): harness fields surfaced in the
-		// agent config page. Copy through so the subagents + wikiAnchors
-		// editors round-trip with the server record.
+		// agent config page. Copy through so the subagents editor round-trips
+		// with the server record.
 		subagents: a.subagents,
-		wikiAnchors: a.wikiAnchors,
-		// wiki-system-redesign plan-05 §1: new Wiki config schema round-trip.
-		// UI editor for these lands in plan-07 (Management UI); here we only
-		// ensure agentToForm / agentStore.create/update round-trip the fields
-		// without dropping them (FormState is Omit<AgentRecord, ...> so they
-		// flow through automatically once AgentRecord declares them).
+		// plan-07 §3 兑现 sub-06 defer:旧 wikiAnchors 字段**清空**(runtime
+		// 不再读,form 也不再 round-trip)。save 时显式传 [] —— 这样 ipc-proxy
+		// JSON.stringify([]) 存活 → AgentStore.update 把字段写为 [],旧值
+		// 不残留(feedback-unique-message-keys 同款陷阱)。
+		wikiAnchors: [],
+		// wiki-system-redesign plan-05 §1 + plan-07 §3/§4:Wiki grants/context
+		// 现在由 WikiAccessSection / WikiContextSection 编辑。round-trip 保留。
 		wikiGrants: a.wikiGrants,
 		wikiContext: a.wikiContext,
 		wikiPolicyRevision: a.wikiPolicyRevision,
@@ -82,6 +83,12 @@ export function templateToForm(t: PromptTemplate): FormState {
 		provider: t.provider,
 		thinkingLevel: t.thinkingLevel,
 		toolPolicy: t.toolPolicy,
+		// plan-07 §3:从 template seed 拷贝 wikiGrants/wikiContext(字段化 defer
+		// 兑现)。Prefill 路径(AgentEditor prefillTemplate)走的就是这条 → 新建
+		// agent 出生即带 template 默认 grants,与 management-service.instantiate
+		// Template 路径行为一致。
+		wikiGrants: t.wikiGrants,
+		wikiContext: t.wikiContext,
 	};
 }
 

@@ -906,6 +906,12 @@ const COLUMNS: ColumnDef[] = [
 	{ key: "sourceUrl", column: "source_url" },
 	{ key: "color" },
 	{ key: "recommendedTools", column: "recommended_tools", json: true },
+	// plan-07 §3 兑现 sub-06 defer:PromptTemplate.wikiGrants / wikiContext 字段化。
+	// fresh-DB CREATE TABLE 由 db-migration 保证;存量 DB ALTER TABLE 在
+	// db-migration.ts 同步(见 TEMPLATES_WIKI_COLUMNS migration)。参考
+	// feedback-fresh-db-migrations。
+	{ key: "wikiGrants", column: "wiki_grants", json: true },
+	{ key: "wikiContext", column: "wiki_context", json: true },
 	{ key: "isBuiltIn", column: "is_built_in", bool: true },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
@@ -983,6 +989,30 @@ export class TemplateStore {
 			},
 			tags: ["wiki", "archivist", "knowledge", "documentation"],
 			isBuiltIn: true,
+			// plan-07 §3 兑现 sub-06 defer:template 显式携带 wikiGrants。
+			// 同 DEFAULT_GRANTS_ARCHIVIST(own Memory 全数据面 + Knowledge read +
+			// active project read/search + update/link/unlink 语义层)。无 active
+			// project session 时 project:// grant inactive(不扩根)。从该 template
+			// 创建 agent → 拷贝到 AgentRecord.wikiGrants,作为 runtime 编译输入。
+			wikiGrants: [
+				{
+					scope: "memory://",
+					actions: ["expand", "read", "search", "create", "update", "delete", "link", "unlink", "move"],
+				},
+				{
+					scope: "wiki-root/knowledge",
+					actions: ["expand", "read", "search"],
+				},
+				{
+					scope: "project://",
+					actions: ["expand", "read", "search", "update", "link", "unlink"],
+				},
+			],
+			// plan-07 §4:默认 context 条目 = own Memory + active project standard。
+			wikiContext: [
+				{ address: "memory://", profile: "standard", channel: "system", budgetTokens: 1800 },
+				{ address: "project://", profile: "standard", channel: "system", budgetTokens: 2800 },
+			],
 		};
 		const allSeeds: Array<{ id?: string } & Omit<PromptTemplate, "id" | "createdAt" | "updatedAt">> = [
 			...BUILT_IN_TEMPLATES,
@@ -1007,6 +1037,11 @@ export class TemplateStore {
 					toolPolicy: seed.toolPolicy,
 					tags: seed.tags,
 					icon: seed.icon,
+					// plan-07 §3:wikiGrants/wikiContext 字段化 —— seed 携带的默认
+					// grants/context 在 prompt 同步时一并刷新(用户创建的 template
+					// is_built_in=false 不走此分支,自定义不受影响)。
+					wikiGrants: seed.wikiGrants,
+					wikiContext: seed.wikiContext,
 				} as any);
 		}
 		}

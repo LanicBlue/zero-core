@@ -27,7 +27,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useAgentStore } from "../../store/agent-store.js";
 import { useProviderStore } from "../../store/provider-store.js";
-import type { AgentRecord, PromptTemplate, DiscoveredSkill } from "../../../shared/types.js";
+import type { AgentRecord, PromptTemplate, DiscoveredSkill, WikiGrant, WikiContextEntry } from "../../../shared/types.js";
 import { ConfirmModal } from "../common/ConfirmModal.js";
 import { BasicSection } from "./BasicSection.js";
 import { PromptSection } from "./PromptSection.js";
@@ -35,6 +35,9 @@ import { ToolsSection } from "./ToolsSection.js";
 import { SkillsSection } from "./SkillsSection.js";
 import { PermissionsSection } from "./PermissionsSection.js";
 import { SubagentsSection } from "./SubagentsSection.js";
+// plan-07 §3 / §4:Wiki grants / context 编辑器(取代已删除的 WikiAnchorsSection)。
+import { WikiAccessSection } from "./WikiAccessSection.js";
+import { WikiContextSection } from "./WikiContextSection.js";
 // wiki-system-redesign plan-06: WikiAnchorsSection 已删除(锚点注入模型退役)。
 // AgentRecord.wikiAnchors 字段保留到 plan-08 删除;form 仍 round-trip 它
 // (agent-editor-types.ts:62),但不再在 UI 编辑。Wiki grants/context 编辑器
@@ -297,14 +300,32 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 	// 字段(form round-trip 保留)由 plan-07 的 WikiAccessSection / WikiContextSection
 	// 取代。
 
+	// plan-07 §3 / §4:Wiki grants / context form writers。和 updateSubagents 同
+	// 款,**list 空时显式写 []**(JSON.stringify 丢 undefined → ipc-proxy 传给
+	// 后端 merge 时旧值残留;feedback-unique-message-keys 同款陷阱)。删除最后
+	// 一条 grant / context entry 必须 [],不能 undefined —— 否则 publish 不生效。
+	const updateWikiGrants = (next: WikiGrant[]) => {
+		const f: FormState = { ...form, wikiGrants: next && next.length > 0 ? next : [] };
+		setForm(f);
+		if (agent) autoSave(f);
+	};
+	const updateWikiContext = (next: WikiContextEntry[]) => {
+		const f: FormState = { ...form, wikiContext: next && next.length > 0 ? next : [] };
+		setForm(f);
+		if (agent) autoSave(f);
+	};
+
 	const SECTIONS: { key: Section; label: string }[] = [
 		{ key: "basic", label: "基础设置" },
 		{ key: "prompt", label: "提示词设置" },
 		{ key: "tools", label: "工具" },
 		{ key: "skills", label: "Skills" },
 		{ key: "subagents", label: "委派 (subagents)" },
+		// plan-07 §3 / §4:Wiki grants + context 编辑器取代 anchors。
+		{ key: "wiki-access", label: "Wiki access" },
+		{ key: "wiki-context", label: "Wiki context" },
 		// plan-06: "anchors" (Wiki 锚点) section 从 nav 隐藏 —— WikiAnchorsSection
-		// 已删除,plan-07 将以 WikiAccessSection / WikiContextSection 取代。Section
+		// 已删除,plan-07 已被 WikiAccessSection / WikiContextSection 取代。Section
 		// union 中保留 "anchors" string 以兼容旧持久化 state。
 		{ key: "permissions", label: "权限模式" },
 	];
@@ -415,17 +436,41 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 						/>
 					)}
 
+					{section === "wiki-access" && (
+						// plan-07 §3:Wiki grants 编辑器。agentId 来自当前编辑的
+						// agent(新建未保存时隐藏 publish 按钮)。currentRevision
+						// 来自 AgentRecord.wikiPolicyRevision(publish CAS 用)。
+						// activeProjectId 暂不传(chat-store 没暴露给 AgentEditor;
+						// project:// grant 在 active project session 仍会激活,
+						// 这里只影响 UI preview inactive 标注,不影响 runtime)。
+						<WikiAccessSection
+							form={form}
+							agentId={agent?.id}
+							currentRevision={agent?.wikiPolicyRevision}
+							onChange={updateWikiGrants}
+						/>
+					)}
+
+					{section === "wiki-context" && (
+						// plan-07 §4:Wiki context 编辑器。preview 调真实 compiler;
+						// publish 阻止 unauthorized address。grants 来自 form(已
+						// 在 wiki-access 段编辑),server 用它判断 read coverage。
+						<WikiContextSection
+							form={form}
+							agentId={agent?.id}
+							currentRevision={agent?.wikiPolicyRevision}
+							onChange={updateWikiContext}
+						/>
+					)}
+
 					{section === "anchors" && (
-						// plan-06: WikiAnchorsSection 删除(锚点注入模型退役)。
-						// AgentRecord.wikiAnchors 字段保留到 plan-08。Wiki grants +
-						// context 编辑器由 plan-07 接入(WikiAccessSection /
-						// WikiContextSection)。此 section 入口在 nav 里也隐藏
-						// (SECTIONS 数组中已去掉),这里保留 guard 防止 section
-						// state 残留导致白屏。
+						// plan-07: anchors section 永久退役,nav 已隐藏;guard 防止
+						// section state 残留导致白屏。Wiki grants / context 编辑走
+						// 新 "wiki-access" / "wiki-context" section(上方)。
 						<div className="editor-section">
 							<p className="empty-hint">
-								Wiki access &amp; context 编辑器待 plan-07 接入。
-								旧 wiki anchors 字段已退役(runtime 不再读)。
+								Wiki anchors 字段已退役。改用 <strong>Wiki access</strong> 与{" "}
+								<strong>Wiki context</strong> 段(左侧导航)。
 							</p>
 						</div>
 					)}

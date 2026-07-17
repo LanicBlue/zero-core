@@ -246,6 +246,18 @@ export interface PromptTemplate {
 	isBuiltIn: boolean;
 	createdAt: string;
 	updatedAt: string;
+	/**
+	 * wiki-system-redesign plan-07 §3(兑现 sub-06 defer):template 携带的
+	 * 默认 Wiki grants。从该 template 创建 agent 时把此字段写入 AgentRecord
+	 * .wikiGrants(plan-05 §2 「fallback by template」的真正落地)。未配 →
+	 * AgentService.pickDefaultGrants 退 own-Memory + Knowledge read。
+	 */
+	wikiGrants?: WikiGrant[];
+	/**
+	 * plan-07 §4:template 携带的默认 Wiki context 条目。从该 template 创建
+	 * agent 时拷贝到 AgentRecord.wikiContext。
+	 */
+	wikiContext?: WikiContextEntry[];
 }
 
 export interface SessionRecord {

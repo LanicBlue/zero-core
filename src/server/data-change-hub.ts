@@ -67,6 +67,16 @@ const UI_COLLECTIONS = new Set([
 	"wiki_nodes",
 	"wiki_links",
 	"wiki_sync",
+	// wiki-system-redesign plan-07 §7: 管理面专用 event collection。
+	// **id 是 admin record id**(address 字符串 / projectId / agentId)。
+	// 管理面 mutation(register address / bind repo / publish grants+context /
+	// full reindex)emit 到这些 collection;renderer wiki-admin-store 只订阅这
+	// 几个,**不订阅 wiki_nodes/wiki_links/wiki_sync** —— 避免管理面改动误刷
+	// 整棵 wiki data tree(plan-07 §7「不误刷整棵 data tree」)。
+	// wiki_admin: address / grants / context policy 变更;
+	// wiki_repositories: project 仓库绑定 / reindex 状态变更。
+	"wiki_admin",
+	"wiki_repositories",
 ]);
 
 export type DataChangeOp = "create" | "update" | "delete";

@@ -725,6 +725,13 @@ export function runMigrations(sessionDB: CoreDatabase): void {
 	// upgraded DBs; fresh DBs get it from the CREATE TABLE block above.
 	safeAddColumn(db, "project_wiki", "links", "TEXT");
 
+	// wiki-system-redesign plan-07 §3 兑现 sub-06 defer:PromptTemplate 字段化。
+	// 新增 templates.wiki_grants / wiki_context 列(JSON TEXT)。fresh DB 由
+	// CREATE TABLE 保证;upgraded DB ALTER 补。参考 feedback-fresh-db-migrations:
+	// 新增 SqliteStore 列必须同步 db-migration,否则 fresh DB 缺列。
+	safeAddColumn(db, "templates", "wiki_grants", "TEXT");
+	safeAddColumn(db, "templates", "wiki_context", "TEXT");
+
 	// v0.8 (§11.5): agent-as-tool retired — DROP the agent_tools table on
 	// upgraded DBs. Fresh DBs never had it. Empty on production (no callers
 	// since P2 retired the runtime path), so DROP is lossless. Idempotent.
@@ -1146,6 +1153,12 @@ export function runMigrations(sessionDB: CoreDatabase): void {
 		{ key: "thinkingLevel", column: "thinking_level" }, { key: "toolPolicy", column: "tool_policy", json: true },
 		{ key: "tags", json: true }, { key: "sourceUrl", column: "source_url" }, { key: "color" },
 		{ key: "recommendedTools", column: "recommended_tools", json: true },
+		// plan-07 §3 round-2 FIX 4:PromptTemplate.wikiGrants / wikiContext 字段化。
+		// feedback-fresh-db-migrations:db-migration *_COLUMNS 是 fresh-DB 真相源,
+		// 不能靠 ensureTable self-heal ALTER。与 template-store.ts COLUMNS 同步;
+		// 存量 DB ALTER 由下方 safeAddColumn("templates", "wiki_grants" / "wiki_context") 保证。
+		{ key: "wikiGrants", column: "wiki_grants", json: true },
+		{ key: "wikiContext", column: "wiki_context", json: true },
 		{ key: "isBuiltIn", column: "is_built_in", bool: true },
 		{ key: "createdAt", column: "created_at" }, { key: "updatedAt", column: "updated_at" },
 	]);

@@ -283,6 +283,35 @@ const R: Record<string, RouteMapping> = {
 		// workspace-doc 保留(Source tab 读项目工作区原文件,沙箱在后端)。
 		"wikiV2:readWorkspaceDoc": { method: "GET", path: "/api/projects/:projectId/workspace-doc", buildReq: (projectId, relPath) => ({ params: { projectId }, query: { relPath } }) },
 
+		// ─── Wiki v2 管理面 (plan-07 §1–§7) ───────────────────────────
+		// 4 大类 endpoint + sessions/status。agentId 走 query string(?agentId=);
+		// body 是 grant/context 数据(无身份字段)。所有 mutation 在 server 写
+		// 管理 audit + revision +1 + emit wiki_admin/wiki_repositories。
+		"wikiAdmin:addresses:list":      { method: "POST", path: "/api/wiki-admin/addresses/list",      buildReq: () => ({ body: {} }) },
+		"wikiAdmin:addresses:validate":  { method: "POST", path: "/api/wiki-admin/addresses/validate",  buildReq: (body) => ({ body }) },
+		"wikiAdmin:addresses:impact":    { method: "POST", path: "/api/wiki-admin/addresses/impact",    buildReq: (body) => ({ body }) },
+		"wikiAdmin:addresses:create":    { method: "POST", path: "/api/wiki-admin/addresses/create",    buildReq: (body) => ({ body }) },
+		"wikiAdmin:addresses:update":    { method: "POST", path: "/api/wiki-admin/addresses/update",    buildReq: (body) => ({ body }) },
+		"wikiAdmin:addresses:delete":    { method: "POST", path: "/api/wiki-admin/addresses/delete",    buildReq: (body) => ({ body }) },
+
+		"wikiAdmin:repositories:list":      { method: "POST", path: "/api/wiki-admin/repositories/list",      buildReq: () => ({ body: {} }) },
+		"wikiAdmin:repositories:validate":  { method: "POST", path: "/api/wiki-admin/repositories/validate",  buildReq: (body) => ({ body }) },
+		"wikiAdmin:repositories:status":    { method: "POST", path: "/api/wiki-admin/repositories/status",    buildReq: (body) => ({ body }) },
+		"wikiAdmin:repositories:bind":      { method: "POST", path: "/api/wiki-admin/repositories/bind",      buildReq: (body) => ({ body }) },
+		"wikiAdmin:repositories:update":    { method: "POST", path: "/api/wiki-admin/repositories/update",    buildReq: (body) => ({ body }) },
+		"wikiAdmin:repositories:unbind":    { method: "POST", path: "/api/wiki-admin/repositories/unbind",    buildReq: (body) => ({ body }) },
+		"wikiAdmin:repositories:reindex":   { method: "POST", path: "/api/wiki-admin/repositories/reindex",   buildReq: (body) => ({ body }) },
+
+		"wikiAdmin:grants:validate": { method: "POST", path: "/api/wiki-admin/grants/validate", buildReq: (agentId, body) => ({ query: { agentId }, body }) },
+		"wikiAdmin:grants:preview":  { method: "POST", path: "/api/wiki-admin/grants/preview",  buildReq: (agentId, body) => ({ query: { agentId }, body }) },
+		"wikiAdmin:grants:publish":  { method: "POST", path: "/api/wiki-admin/grants/publish",  buildReq: (agentId, body) => ({ query: { agentId }, body }) },
+
+		"wikiAdmin:context:validate": { method: "POST", path: "/api/wiki-admin/context/validate", buildReq: (agentId, body) => ({ query: { agentId }, body }) },
+		"wikiAdmin:context:preview":  { method: "POST", path: "/api/wiki-admin/context/preview",  buildReq: (agentId, body) => ({ query: { agentId }, body }) },
+		"wikiAdmin:context:publish":  { method: "POST", path: "/api/wiki-admin/context/publish",  buildReq: (agentId, body) => ({ query: { agentId }, body }) },
+
+		"wikiAdmin:session:status": { method: "POST", path: "/api/wiki-admin/sessions/status", buildReq: (agentId) => ({ query: { agentId }, body: {} }) },
+
 		// ─── Delegated tasks (TaskTree UI) ───────────────────
 		"delegatedTasks:bySession": { method: "GET", path: "/api/delegated-tasks/by-session/:sessionId", buildReq: (sessionId) => ({ params: { sessionId } }) },
 		"delegatedTasks:get":       { method: "GET", path: "/api/delegated-tasks/:id",                   buildReq: (id) => ({ params: { id } }) },

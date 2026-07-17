@@ -280,6 +280,34 @@ const api: WindowApi = {
 	wikiV2History: (req) => ipcRenderer.invoke("wikiV2:history", req),
 	wikiV2ReadWorkspaceDoc: (projectId, relPath) => ipcRenderer.invoke("wikiV2:readWorkspaceDoc", projectId, relPath),
 
+	// ── Wiki v2 (plan-07) ── 管理面 endpoint。agentId 走 query string(server
+	// 注入 forged-identity guard 走 body;query 绕开 body scan)。所有 mutation
+	// 在 server 写管理 audit + revision +1 + emit wiki_admin/wiki_repositories。
+	wikiAdminAddressesList: () => ipcRenderer.invoke("wikiAdmin:addresses:list"),
+	wikiAdminAddressesValidate: (body) => ipcRenderer.invoke("wikiAdmin:addresses:validate", body),
+	wikiAdminAddressesImpact: (body) => ipcRenderer.invoke("wikiAdmin:addresses:impact", body),
+	wikiAdminAddressesCreate: (body) => ipcRenderer.invoke("wikiAdmin:addresses:create", body),
+	wikiAdminAddressesUpdate: (body) => ipcRenderer.invoke("wikiAdmin:addresses:update", body),
+	wikiAdminAddressesDelete: (body) => ipcRenderer.invoke("wikiAdmin:addresses:delete", body),
+
+	wikiAdminRepositoriesList: () => ipcRenderer.invoke("wikiAdmin:repositories:list"),
+	wikiAdminRepositoriesValidate: (body) => ipcRenderer.invoke("wikiAdmin:repositories:validate", body),
+	wikiAdminRepositoriesStatus: (body) => ipcRenderer.invoke("wikiAdmin:repositories:status", body),
+	wikiAdminRepositoriesBind: (body) => ipcRenderer.invoke("wikiAdmin:repositories:bind", body),
+	wikiAdminRepositoriesUpdate: (body) => ipcRenderer.invoke("wikiAdmin:repositories:update", body),
+	wikiAdminRepositoriesUnbind: (body) => ipcRenderer.invoke("wikiAdmin:repositories:unbind", body),
+	wikiAdminRepositoriesReindex: (body) => ipcRenderer.invoke("wikiAdmin:repositories:reindex", body),
+
+	wikiAdminGrantsValidate: (agentId, body) => ipcRenderer.invoke("wikiAdmin:grants:validate", agentId, body),
+	wikiAdminGrantsPreview: (agentId, body) => ipcRenderer.invoke("wikiAdmin:grants:preview", agentId, body),
+	wikiAdminGrantsPublish: (agentId, body) => ipcRenderer.invoke("wikiAdmin:grants:publish", agentId, body),
+
+	wikiAdminContextValidate: (agentId, body) => ipcRenderer.invoke("wikiAdmin:context:validate", agentId, body),
+	wikiAdminContextPreview: (agentId, body) => ipcRenderer.invoke("wikiAdmin:context:preview", agentId, body),
+	wikiAdminContextPublish: (agentId, body) => ipcRenderer.invoke("wikiAdmin:context:publish", agentId, body),
+
+	wikiAdminSessionStatus: (agentId) => ipcRenderer.invoke("wikiAdmin:session:status", agentId),
+
 	// ── Delegated tasks (TaskTree) ──
 	delegatedTasksBySession: (sessionId) => ipcRenderer.invoke("delegatedTasks:bySession", sessionId),
 	delegatedTasksGet: (id) => ipcRenderer.invoke("delegatedTasks:get", id),

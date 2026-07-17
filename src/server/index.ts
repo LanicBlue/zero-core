@@ -103,6 +103,9 @@ import { createWikiRouter } from "./project-wiki-router.js";
 // wiki-system-redesign plan-06: 新 wiki browser router(9 个结构化 POST endpoint)
 // + 保留 workspace-doc handler(Source tab 读 workspace 文件)。
 import { createWikiBrowserRouter, createWorkspaceDocHandler } from "./wiki-router.js";
+// wiki-system-redesign plan-07 §1:管理面 router(addresses/repos/grants/
+// context;validate/preview/publish)。authority 由 server host 注入。
+import { createWikiAdminRouter } from "./wiki-admin-router.js";
 import { AnalystService } from "./analyst-service.js";
 import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
 import { ALL_TOOLS, registerRuntimeTools } from "../tools/index.js";
@@ -952,6 +955,25 @@ export async function startServer(options?: StartServerOptions) {
 		"/api/projects/:projectId/workspace-doc",
 		createWorkspaceDocHandler({ projectStore }),
 	);
+
+	// wiki-system-redesign plan-07 §1:管理面 router(addresses / repositories /
+	// grants / context;validate / preview / publish + sessions/status)。所有
+	// service 句柄与 runtime 单例同源(getWikiService / 已 new 出来的 wikiAd
+	// dressService / wikiProjectIndexer / wikiRepositoryStore / wikiAuditRepo /
+	// wikiNodeRepo / projectStore / agentService / agentStore / archivistGit)。
+	// authority 由 router 内部模块级常量注入,renderer 不接触。
+	app.use("/api/wiki-admin", createWikiAdminRouter({
+		wikiService,
+		addressService: wikiAddressService,
+		indexer: wikiProjectIndexer,
+		repositoryStore: wikiRepositoryStore,
+		auditRepo: wikiAuditRepo,
+		nodeRepo: wikiNodeRepo,
+		projectStore,
+		agentService,
+		agentStore,
+		git: archivistGit,
+	}));
 
 	// v0.8 (M2): archivist endpoints — scan / rescan / divergence / git ops.
 	// Routes the project-notification / cron / requirement-accept flows into

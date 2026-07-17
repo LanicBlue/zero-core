@@ -727,6 +727,13 @@ export class ManagementService {
 			thinkingLevel: overrides?.thinkingLevel ?? template.thinkingLevel,
 			systemPrompt: template.systemPrompt,
 			toolPolicy: template.toolPolicy as AgentRecord["toolPolicy"],
+			// plan-07 §3 兑现 sub-06 defer:从 template seed 拷贝默认 wikiGrants/
+			// wikiContext 到 AgentRecord。fresh DB Archivist 等 template 现在显式
+			// 携带 grants;从此 template 创建的 agent 一出生就有 own-Memory +
+			// Knowledge read + (Archivist) project 语义层 update 权限,不靠 name
+			// 启发式(acceptance-05 §H)。
+			wikiGrants: template.wikiGrants,
+			wikiContext: template.wikiContext,
 		});
 	}
 
