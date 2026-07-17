@@ -144,18 +144,11 @@ const PROJECT_WIKI_COLUMNS = [
 	{ key: "updatedAt", column: "updated_at" },
 ];
 
-// v0.8 (M2): wiki scan cursor — per (archivist, project) git scan cursor
-// (RFC §2.13, §4.2). Records the main-branch commit sha the archivist last
-// scanned; on the next scan it runs `git log/diff <last>..main` and only
-// re-reads changes. MUST stay in sync with wiki-scan-cursor-store.ts COLUMNS.
-const WIKI_SCAN_CURSOR_COLUMNS = [
-	{ key: "archivistId", column: "archivist_id" },
-	{ key: "projectId", column: "project_id" },
-	{ key: "lastScannedRef", column: "last_scanned_ref" },
-	{ key: "lastFullScanAt", column: "last_full_scan_at" },
-	{ key: "createdAt", column: "created_at" },
-	{ key: "updatedAt", column: "updated_at" },
-];
+// v0.8 plan-03: wiki_scan_cursors store deleted; cursor moved into
+// wiki_repositories.indexed_revision in the new wiki.db(sub-01 schema).
+// The legacy CREATE TABLE IF NOT EXISTS below is retained ONLY so existing
+// core DBs don't see a missing-table error on read paths that haven't been
+// fully migrated; no code reads or writes this table anymore.
 
 const REQUIREMENT_COLUMNS = [
 	{ key: "projectId", column: "project_id" },

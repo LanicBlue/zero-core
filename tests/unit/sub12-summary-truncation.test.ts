@@ -1,64 +1,53 @@
-// summary 内容策略 + 截断验证(原 sub-12,重写适配新策略)
+// summary store-layer byte cap (SUMMARY_MAX_BYTES) — legacy WikiStore.
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 验证新 summary 策略:
-//   1. 代码文件 rule-based summary = `<relPath> — <首条有意义注释>` 或
-//      `<relPath> — <N> 行代码`(无 Head/Exports 段 —— 那些属于 detail)。
-//   2. 文档文件 summarizeDocFile:heading/firstPara 截断(>200 字符)带 `…`(不变)。
-//   3. 截断标记透传到存储行(expand/search 读的就是这行)。
-//   4. 短 summary(未截断)末尾无 `…`。
-//   5. store 层 summary 字节上限:写入 > SUMMARY_MAX_BYTES(512)→ 截到 512 + `…`,
-//      UTF-8 安全(不截断多字节字符)。
+// 验证 legacy WikiStore (wiki-node-store.ts) 的 summary 字节上限:
+//   - 写入 > SUMMARY_MAX_BYTES(512)→ 截到 512 + `…`,UTF-8 安全(不截断多字节)。
+//   - 写入 ≤ 512 → 原样,无标记。
 //
-// ## 测试策略
-// - 代码/文档 summary 经公开 ensureSummary(传 header:/intent: 路径节点)触发真实
-//   summarizeCodeFile/summarizeDocFile,验真实存储的 summary。
-// - store 字节上限直接 upsert 一个超长 summary,验持久化结果。
+// ## 上下文(为何只剩这一块)
+// sub-03 (wiki-system-redesign) 把 archivist 扫描职责迁到 WikiProjectIndexer
+// (写新 wiki.db)。旧的 readdir 扫描 + summarizeCodeFile / summarizeDocFile /
+// ensureSummary lazy-materialization 全部移除:
+//   - WikiSkeletonService.ensureSummary 现在是只读 no-op(返回 undefined)。
+//   - summarizeCodeFile / summarizeDocFile 已从 src/ 删除(grep 0 matches)。
+// 所以原 sub12 中"经 ensureSummary 触发真实 summarize\* 验内容策略"的用例
+// 全部 dead —— 由 wiki-v2-indexer/sync 测试覆盖新确定性 summary。
 //
-// ## 输入
-// 临时 CoreDatabase + 真 stores + 临时 workspace 目录。
+// 唯一仍 live 的是 legacy WikiStore 的 store-layer 字节上限(在 wiki-node-store.ts
+// upsertProjectNode + update 路径强制,SUMMARY_MAX_BYTES 仍被 wiki-anchor-injection /
+// wiki-tool / wiki-node-store 使用)。保留这块避免 coverage 丢失。
 //
-// ## 输出
-// Vitest 用例。
+// ## BLOCKER 6 fix (round-2 架构 lens)
+// 原 sub12 import 了被删除的 wiki-scan-cursor-store + 用旧 deps 形状({wikiStore,
+// cursorStore,...})构造 WikiSkeletonService → npm run test:unit import error。
+// 本文件移除所有 cursorStore / archivistService 依赖,只保留 byte-cap 直测 WikiStore。
+//
+// ## 输入 / 输出
+// 临时 CoreDatabase + 真 WikiStore。Vitest 用例。
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
-import { RequirementStore } from "../../src/server/requirement-store.js";
 import { WikiStore, SUMMARY_MAX_BYTES } from "../../src/server/wiki-node-store.js";
-import { WikiScanCursorStore } from "../../src/server/wiki-scan-cursor-store.js";
-import { ArchivistGit } from "../../src/server/archivist-git.js";
-import { WikiSkeletonService } from "../../src/server/wiki-skeleton-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
 
 let tmpDir: string;
 let sessionDB: CoreDatabase;
 let wikiStore: WikiStore;
 let projectStore: ProjectStore;
-let requirementStore: RequirementStore;
-let cursorStore: WikiScanCursorStore;
-let archivistService: WikiSkeletonService;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub12-"));
 	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
-	requirementStore = new RequirementStore(sessionDB);
 	wikiStore = new WikiStore(sessionDB);
-	cursorStore = new WikiScanCursorStore(sessionDB);
-	archivistService = new WikiSkeletonService({
-		wikiStore,
-		cursorStore,
-		git: new ArchivistGit(),
-		projectStore,
-		requirementStore,
-	});
 });
 
 afterEach(() => {
@@ -66,150 +55,7 @@ afterEach(() => {
 	rmSync(tmpDir, { recursive: true, force: true });
 });
 
-function ensureParentDir(abs: string): void {
-	mkdirSync(abs.slice(0, abs.lastIndexOf(require("node:path").sep)), { recursive: true });
-}
-
-function makeCodeFile(ws: string, rel: string, content: string): void {
-	const abs = join(ws, rel);
-	ensureParentDir(abs);
-	writeFileSync(abs, content);
-}
-
-function makeDocWithHeading(ws: string, rel: string, headingText: string): void {
-	const abs = join(ws, rel);
-	ensureParentDir(abs);
-	writeFileSync(abs, `# ${headingText}\n\nbody\n`);
-}
-
-function makeDocWithoutHeading(ws: string, rel: string, firstParaText: string): void {
-	const abs = join(ws, rel);
-	ensureParentDir(abs);
-	writeFileSync(abs, `${firstParaText}\n\nsome body text without hash prefix\n`);
-}
-
-function materializeHeaderCodeSummary(projectId: string, relPath: string): { nodeId: string; summary: string } {
-	const root = wikiStore.ensureProjectSubtree(projectId);
-	const node = wikiStore.upsertProjectNode(projectId, {
-		parentId: root.id,
-		type: "header",
-		path: `header:${relPath}`,
-		title: relPath,
-		summary: "",
-	});
-	const summary = archivistService.ensureSummary(node.id) ?? "";
-	const reloaded = wikiStore.get(node.id);
-	return { nodeId: node.id, summary: reloaded?.summary ?? summary };
-}
-
-function materializeIntentDocSummary(projectId: string, relPath: string): { nodeId: string; summary: string } {
-	const root = wikiStore.ensureProjectSubtree(projectId);
-	const node = wikiStore.upsertProjectNode(projectId, {
-		parentId: root.id,
-		type: "intent",
-		path: `intent:${relPath}`,
-		title: relPath,
-		summary: "",
-	});
-	archivistService.ensureSummary(node.id);
-	const reloaded = wikiStore.get(node.id);
-	return { nodeId: node.id, summary: reloaded?.summary ?? "" };
-}
-
 const ELLIPSIS = "…";
-
-// ─── code file summary: relPath — firstComment | N 行代码 ─────────
-
-describe("code file summary: relPath — firstComment | N 行代码 (no Head/Exports)", () => {
-	test("file with a leading description comment → summary = relPath — comment", () => {
-		const proj = projectStore.create({ name: "P", workspaceDir: tmpDir });
-		makeCodeFile(tmpDir, "foo.ts", "// Foo module: does foo things\nexport const x = 1;\n");
-
-		const { summary } = materializeHeaderCodeSummary(proj.id, "foo.ts");
-		expect(summary).toBe("foo.ts — Foo module: does foo things");
-		// No Head/Exports segments (those belong in detail now).
-		expect(summary).not.toContain("Head:");
-		expect(summary).not.toContain("Exports:");
-	});
-
-	test("file with no usable comment → summary = relPath — N 行代码", () => {
-		const proj = projectStore.create({ name: "P", workspaceDir: tmpDir });
-		makeCodeFile(tmpDir, "bare.ts", "export const a = 1;\nexport const b = 2;\nexport const c = 3;\n");
-
-		const { summary } = materializeHeaderCodeSummary(proj.id, "bare.ts");
-		expect(summary).toBe("bare.ts — 3 行代码");
-		expect(summary).not.toContain("Exports:");
-	});
-
-	test("summary persisted on the row (expand/search read this)", () => {
-		const proj = projectStore.create({ name: "P", workspaceDir: tmpDir });
-		makeCodeFile(tmpDir, "persist.ts", "// persisted desc\n");
-		const { nodeId, summary } = materializeHeaderCodeSummary(proj.id, "persist.ts");
-		expect(wikiStore.get(nodeId)!.summary).toBe(summary);
-	});
-});
-
-// ─── doc file: heading/firstPara truncation (>200) ──────────────
-
-describe("doc heading/firstPara truncation marks with …", () => {
-	test("heading > 200 chars → summary ends with …", () => {
-		const proj = projectStore.create({ name: "P", workspaceDir: tmpDir });
-		makeDocWithHeading(tmpDir, "docs/requirements/req-long.md", "h".repeat(250));
-		const { summary } = materializeIntentDocSummary(proj.id, "docs/requirements/req-long.md");
-		expect(summary.endsWith(ELLIPSIS)).toBe(true);
-		expect(summary).toBe(`${"h".repeat(200)}${ELLIPSIS}`);
-	});
-
-	test("heading exactly 200 chars → no …", () => {
-		const proj = projectStore.create({ name: "P", workspaceDir: tmpDir });
-		makeDocWithHeading(tmpDir, "docs/requirements/req-200.md", "h".repeat(200));
-		const { summary } = materializeIntentDocSummary(proj.id, "docs/requirements/req-200.md");
-		expect(summary.endsWith(ELLIPSIS)).toBe(false);
-		expect(summary).toBe("h".repeat(200));
-	});
-
-	test("firstPara > 200 chars (no heading) → summary ends with …", () => {
-		const proj = projectStore.create({ name: "P", workspaceDir: tmpDir });
-		makeDocWithoutHeading(tmpDir, "docs/requirements/req-para.md", "p".repeat(300));
-		const { summary } = materializeIntentDocSummary(proj.id, "docs/requirements/req-para.md");
-		expect(summary.endsWith(ELLIPSIS)).toBe(true);
-		expect(summary).toBe(`${"p".repeat(200)}${ELLIPSIS}`);
-	});
-});
-
-// ─── marker passes through to the stored row (expand/search) ─────
-
-describe("truncation marker passes through to expand/search source row", () => {
-	test("truncated doc summary persisted with …", () => {
-		const proj = projectStore.create({ name: "P", workspaceDir: tmpDir });
-		makeDocWithHeading(tmpDir, "docs/requirements/expand-doc.md", "z".repeat(400));
-		const { nodeId } = materializeIntentDocSummary(proj.id, "docs/requirements/expand-doc.md");
-		const persisted = wikiStore.get(nodeId)!.summary!;
-		expect(persisted.endsWith(ELLIPSIS)).toBe(true);
-	});
-});
-
-// ─── short summaries: no marker ──────────────────────────────────
-
-describe("short summaries do NOT get …", () => {
-	test("short doc heading → no …", () => {
-		const proj = projectStore.create({ name: "P", workspaceDir: tmpDir });
-		makeDocWithHeading(tmpDir, "docs/requirements/short.md", "short heading");
-		const { summary } = materializeIntentDocSummary(proj.id, "docs/requirements/short.md");
-		expect(summary.endsWith(ELLIPSIS)).toBe(false);
-		expect(summary).toBe("short heading");
-	});
-
-	test("empty doc (no heading, empty firstPara) → empty summary, no marker", () => {
-		const proj = projectStore.create({ name: "P", workspaceDir: tmpDir });
-		const abs = join(tmpDir, "docs/requirements/empty.md");
-		ensureParentDir(abs);
-		writeFileSync(abs, "");
-		const { summary } = materializeIntentDocSummary(proj.id, "docs/requirements/empty.md");
-		expect(summary).toBe("");
-		expect(summary.includes(ELLIPSIS)).toBe(false);
-	});
-});
 
 // ─── store-layer summary byte cap (SUMMARY_MAX_BYTES) ────────────
 

@@ -229,11 +229,71 @@ export function normalizeWikiPath(input: string): string {
  * 父路径 + name → 子路径。先 normalize parent,再校验 name,最后拼接。
  *
  * `joinWikiPath("wiki-root/knowledge", "topic")` → `"wiki-root/knowledge/topic"`。
+ *
+ * **单段 name only**:`name` 不允许含 `/`(会抛 INVALID_NAME)。要把一个多段
+ * 仓库相对路径(如 `src/server/loop.ts`)挂到父路径下,用 {@link joinWikiPathMulti}。
  */
 export function joinWikiPath(parent: string, name: string): string {
 	const normalizedParent = normalizeWikiPath(parent);
 	validateWikiName(name);
 	return `${normalizedParent}${WIKI_PATH_SEPARATOR}${name}`;
+}
+
+/**
+ * 父路径 + 一个或多个 segment(每个 segment 可以含 `/`) → 子路径。
+ *
+ * 用于把 Git 仓库相对路径(`src/server/loop.ts`、`config/app.json`)挂到
+ * Wiki 节点路径下。每个 segment 会被 `/` split,空段跳过(与 normalizeWikiPath
+ * 一致),每个非空段单独通过 {@link validateWikiName} 校验。
+ *
+ * 与 {@link joinWikiPath} 的区别:后者只接受单个不含 `/` 的 name 段。
+ * 传多段路径给 joinWikiPath 会被 INVALID_NAME 拒绝(round-1 BLOCKER 1:
+ * `validateWikiName` 拒绝含 `/` 的 name)。
+ *
+ * 行为示例:
+ *   - `joinWikiPathMulti("wiki-root/projects/p", "src/server/loop.ts")` →
+ *     `"wiki-root/projects/p/src/server/loop.ts"`
+ *   - `joinWikiPathMulti("wiki-root/projects/p", "src", "server", "loop.ts")` →
+ *     同上(等价)
+ *   - `joinWikiPathMulti("wiki-root/projects/p", "")` →
+ *     `"wiki-root/projects/p"`(空 segment 跳过)
+ *   - `joinWikiPathMulti("wiki-root/projects/p", "a//b")` →
+ *     `"wiki-root/projects/p/a/b"`(空段跳过)
+ *
+ * 入参约定:`segments` 应来自已校验的 Git 仓库相对路径(Git `/` 分隔 +
+ * 原始大小写),不应来自 Agent 输入。每段仍走 `validateWikiName` 以拒绝
+ * 控制字符、`.`、`..`、反斜线等。
+ *
+ * @throws INVALID_PATH / INVALID_NAME 当 parent 不合法或任一 segment 段非法时。
+ */
+export function joinWikiPathMulti(parent: string, ...segments: string[]): string {
+	const normalizedParent = normalizeWikiPath(parent);
+	if (segments.length === 0) return normalizedParent;
+	const allSegs = normalizedParent.split(WIKI_PATH_SEPARATOR);
+	for (const seg of segments) {
+		if (typeof seg !== "string") {
+			throw pathError(
+				"INVALID_NAME",
+				`segment must be a string (got ${typeof seg})`,
+			);
+		}
+		// 按 `/` split(Git 路径用 `/`;也允许调用方传反斜线?——不允许,
+		// validateWikiName 会拒绝)。空段(连续 `/` 或首尾)直接跳过,与
+		// normalizeWikiPath 行为一致。
+		const subSegs = seg.split(WIKI_PATH_SEPARATOR);
+		for (const sub of subSegs) {
+			if (sub.length === 0) continue; // 重复 `/` 或首尾 `/`
+			validateWikiName(sub);
+			allSegs.push(sub);
+		}
+	}
+	if (allSegs.length > WIKI_PATH_MAX_SEGMENTS) {
+		throw pathError(
+			"INVALID_PATH",
+			`path too deep: ${allSegs.length} > ${WIKI_PATH_MAX_SEGMENTS} segments`,
+		);
+	}
+	return allSegs.join(WIKI_PATH_SEPARATOR);
 }
 
 /**

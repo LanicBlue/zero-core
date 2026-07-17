@@ -68,9 +68,21 @@ import { RequirementStore } from "./requirement-store.js";
 import { ProjectWikiStore } from "./project-wiki-store.js";
 // v0.8 (M2): global wiki memory tree + archivist.
 import { WikiStore } from "./wiki-node-store.js";
-import { WikiScanCursorStore } from "./wiki-scan-cursor-store.js";
 import { ArchivistGit } from "./archivist-git.js";
 import { WikiSkeletonService } from "./wiki-skeleton-service.js";
+// plan-03 §1/§6: WikiProjectIndexer replaces the legacy scanning duty of
+// WikiSkeletonService. WikiSkeletonService remains as a thin delegating shim
+// (callers don't need to change); the actual write path is the indexer, which
+// writes to the new wiki.db via WikiService / WikiRepositoryStore.
+import { WikiProjectIndexer } from "./wiki/wiki-project-indexer.js";
+import { WikiNodeRepository } from "./wiki/wiki-node-repository.js";
+import { WikiLinkRepository } from "./wiki/wiki-link-repository.js";
+import { WikiAuditRepository } from "./wiki/wiki-audit-repository.js";
+import { WikiRepositoryStore } from "./wiki/wiki-repository-store.js";
+// plan-03 §7/§8: source read + ripgrep search(not yet exposed as Agent tool —
+// plan-04 wires them into the Wiki action surface; here we only construct them).
+import { WikiSourceService } from "./wiki/wiki-source-service.js";
+import { WikiSourceSearch } from "./wiki/wiki-source-search.js";
 import { TaskStepStore } from "./task-step-store.js";
 import { createProjectRouter } from "./project-router.js";
 import { createRequirementRouter } from "./requirement-router.js";
@@ -219,8 +231,9 @@ export async function startServer(options?: StartServerOptions) {
 	const requirementStore = new RequirementStore(sessionDB);
 	// ProjectWikiStore back-compat view over the same rows as wikiStoreGlobal.
 	const wikiStore = new ProjectWikiStore(wikiStoreGlobal);
-	// v0.8 (M2): per-(archivist, project) git scan cursor.
-	const wikiScanCursorStore = new WikiScanCursorStore(sessionDB);
+	// plan-03 §6: wiki_scan_cursors deleted; cursor moved into
+	// wiki_repositories.indexed_revision. (Legacy wiki_scan_cursors table on
+	// existing core DBs is no longer read or written.)
 	const taskStepStore = new TaskStepStore(sessionDB);
 	// v0.8 (M1): cron store — first-class cron entity (one agent → N cron).
 	// v0.8 (P4 §9.3): cron_runs audit sink — one row per actual cron fire.
@@ -452,18 +465,45 @@ export async function startServer(options?: StartServerOptions) {
 		templateStore,
 	});
 
-	// ─── ArchivistService (v0.8 M2) ─────────────────────────────────
-	// archivist owns the project wiki subtree structure (RFC §2.7/§2.13/
-	// §2.16). Fed by main-branch git scans; writes only to its project
-	// subtree (store-layer enforced). Manages main-branch git (commit PM
-	// docs / merge feature→main / non-repo auto-init / worktree cleanup).
+	// ─── ArchivistService (v0.8 M2 → plan-03 Git semantic mirror) ────
+	// plan-03 §6: WikiProjectIndexer replaces the legacy scanning duty of
+	// WikiSkeletonService. The indexer writes to the new wiki.db(via
+	// WikiService / WikiRepositoryStore). WikiSkeletonService remains as a
+	// thin delegating shim so existing callers(management-service.createProject,
+	// archivist REST routes, wiki-router.ensureSummary)keep their API.
 	const archivistGit = new ArchivistGit();
+	const wikiDbHandle = dbManager.wiki;
+	const wikiNodeRepo = new WikiNodeRepository(wikiDbHandle.getDb());
+	const wikiLinkRepo = new WikiLinkRepository(wikiDbHandle.getDb());
+	const wikiAuditRepo = new WikiAuditRepository(wikiDbHandle.getDb());
+	const wikiRepositoryStore = new WikiRepositoryStore(wikiDbHandle.getDb());
+	const wikiProjectIndexer = new WikiProjectIndexer({
+		wikiDb: wikiDbHandle,
+		nodeRepo: wikiNodeRepo,
+		linkRepo: wikiLinkRepo,
+		auditRepo: wikiAuditRepo,
+		repositoryStore: wikiRepositoryStore,
+		git: archivistGit,
+		projectStore,
+	});
 	const archivistService = new WikiSkeletonService({
-		wikiStore: wikiStoreGlobal,
-		cursorStore: wikiScanCursorStore,
+		indexer: wikiProjectIndexer,
 		git: archivistGit,
 		projectStore,
 		requirementStore,
+	});
+	// plan-03 §7/§8: source read + ripgrep search. Constructed here, exposed
+	// to plan-04 Wiki tool / plan-06 UI later; not routed in this sub.
+	const wikiSourceService = new WikiSourceService({
+		nodeRepo: wikiNodeRepo,
+		repositoryStore: wikiRepositoryStore,
+		git: archivistGit,
+		resolveWorkspace: (pid: string) => projectStore.get(pid)?.workspaceDir,
+	});
+	const wikiSourceSearch = new WikiSourceSearch({
+		nodeRepo: wikiNodeRepo,
+		repositoryStore: wikiRepositoryStore,
+		resolveWorkspace: (pid: string) => projectStore.get(pid)?.workspaceDir,
 	});
 	// v0.8 (P5 §8.3): ManagementService.createProject kicks the archivist
 	// background scan; wire it now that archivistService exists.
@@ -649,6 +689,10 @@ export async function startServer(options?: StartServerOptions) {
 		pmService,
 		toolUsageStore,
 	});
+	// plan-03 §6/§7/§8: wikiProjectIndexer / wikiSourceService / wikiSourceSearch
+	// are constructed above and reachable via closures in the archivist REST
+	// routes below. plan-04 Wiki tool will wire process-wide getters when it
+	// needs them directly.
 
 	analystService.setGitIntegration(gitIntegration);
 	// project-flow F4: surface GitIntegration on the FlowActions backend so the
@@ -667,13 +711,11 @@ export async function startServer(options?: StartServerOptions) {
 	// Run workflow state recovery (cron schedules + plan/build/verify reqs).
 	recoverWorkflowState({ projectStore, requirementStore, taskStepStore, cronManager, agentService });
 
-	// v0.8 §2.13 (structure rework): the archivist now builds a directory-
-	// mirror tree (every dir = structure node) instead of the old flat
-	// top-level-module grouping. Detect project subtrees still on the OLD
-	// layout (a header node whose `path` nests deeper than its parent
-	// structure node's dir) and rebuild them once. Idempotent — a no-op once
-	// every subtree is on the new layout. Runs after archivistService is wired.
-	void rebuildStaleStructureLayouts(archivistService, projectStore, wikiStoreGlobal);
+	// plan-03 §6 startup stale-check: bounded `git rev-parse HEAD` per bound
+	// project; if HEAD ≠ wiki_repositories.indexed_revision, mark stale +
+	// kick a background sync(non-blocking — server serves before full scan).
+	// Project full index does NOT block app start.
+	void kickStaleProjectSyncs(wikiProjectIndexer, wikiRepositoryStore, projectStore, archivistGit);
 
 	// ─── Mount API routers ───────────────────────────────────────
 
@@ -1111,43 +1153,45 @@ export async function startServer(options?: StartServerOptions) {
 }
 
 /**
- * v0.8 §2.13 (structure rework): detect project subtrees still laid out
- * under the OLD archivist grouping (flat top-level module — a header node's
- * parent structure node names only the file's TOP directory, not its
- * immediate parent dir) and rebuild them with the directory-mirror logic.
+ * plan-03 §6 startup stale-check queue. For each project that has a
+ * `wiki_repositories` binding, run a bounded `git rev-parse HEAD`:
+ *   - HEAD == indexed_revision → synced, nothing to do.
+ *   - HEAD ≠ indexed_revision  → mark `stale` + queue background sync.
  *
- * Detection: a header node `header:<dirA>/<dirB>/file` is on the OLD layout
- * if its parent is a `structure:<dirA>` node (top dir only) while the file
- * lives ≥2 dirs deep. On the new layout the parent would be
- * `structure:<dirA>/<dirB>`. Idempotent — no-op once clean.
+ * Non-blocking — the server continues to boot and serves requests off the
+ * existing indexed snapshot while the sync runs. Failures log + leave the
+ * binding in `stale/failed` state for an explicit retry.
+ *
+ * This replaces the legacy `rebuildStaleStructureLayouts`(which was about
+ * the old flat header/intent/structure layout — gone in plan-03).
  */
-async function rebuildStaleStructureLayouts(
-	archivistService: import("./wiki-skeleton-service.js").WikiSkeletonService,
+async function kickStaleProjectSyncs(
+	indexer: import("./wiki/wiki-project-indexer.js").WikiProjectIndexer,
+	repositoryStore: import("./wiki/wiki-repository-store.js").WikiRepositoryStore,
 	projectStore: import("./project-store.js").ProjectStore,
-	wikiStore: import("./wiki-node-store.js").WikiStore,
+	git: import("./archivist-git.js").ArchivistGit,
 ): Promise<void> {
 	try {
-		for (const project of projectStore.list()) {
-			const nodes = wikiStore.listByProject(project.id);
-			let stale = false;
-			for (const n of nodes) {
-				if (n.type !== "header" || !n.path.startsWith("header:")) continue;
-				const fileRel = n.path.slice("header:".length).replace(/\\/g, "/");
-				const fileSegs = fileRel.split("/").filter(Boolean);
-				if (fileSegs.length < 3) continue; // ≤2 deep: top-dir grouping is correct
-				const parent = nodes.find((p) => p.id === n.parentId);
-				if (!parent || !parent.path.startsWith("structure:")) continue;
-				// New layout: parent dir = all-but-last seg. Old (flat): top seg only.
-				const expectedParentDir = fileSegs.slice(0, -1).join("/");
-				const actualParentDir = parent.path.slice("structure:".length).replace(/\\/g, "/");
-				if (actualParentDir !== expectedParentDir) { stale = true; break; }
-			}
-			if (stale) {
-				console.error(`[server] Rebuilding stale wiki structure for project ${project.name} (${project.id})`);
-				await archivistService.rebuildProjectSubtree(project.id);
-			}
+		const bindings = repositoryStore.repositories.list();
+		for (const binding of bindings) {
+			const project = projectStore.get(binding.project_id);
+			if (!project) continue;
+			// Bounded rev-parse — does NOT walk the tree.
+			const head = await git.resolveRevision(project.workspaceDir, "HEAD");
+			if (!head) continue;
+			if (binding.indexed_revision === head) continue;
+			console.error(
+				`[server] wiki sync stale for ${project.name} (${project.id}): ` +
+				`indexed=${(binding.indexed_revision ?? "none").slice(0, 8)} head=${head.slice(0, 8)} — queueing background sync`,
+			);
+			// Fire-and-forget; failures are logged inside the indexer(syncStatus=failed).
+			void indexer.sync(binding.project_id, { targetRevision: head })
+				.catch((err: unknown) => {
+					console.error(`[server] background sync for ${project.id} threw:`, (err as Error)?.message ?? err);
+				});
 		}
 	} catch (err) {
-		console.error("[server] structure-rebuild migration failed:", (err as Error).message);
+		console.error("[server] startup stale-check queue failed:", (err as Error).message);
 	}
 }
+

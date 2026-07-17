@@ -29,7 +29,6 @@ import { join } from "node:path";
 import { execSync } from "node:child_process";
 import { CoreDatabase } from "../../src/server/core-database.js";
 import { ProjectStore } from "../../src/server/project-store.js";
-import { RequirementStore } from "../../src/server/requirement-store.js";
 import {
 	WikiStore,
 	WIKI_GLOBAL_ROOT_ID,
@@ -37,37 +36,29 @@ import {
 	projectSubtreeRootId,
 	isInsideWikiDisk,
 } from "../../src/server/wiki-node-store.js";
-import { WikiScanCursorStore } from "../../src/server/wiki-scan-cursor-store.js";
 import { ProjectWikiStore } from "../../src/server/project-wiki-store.js";
 import { ArchivistGit, featureBranchName, featureWorktreePath } from "../../src/server/archivist-git.js";
-import { WikiSkeletonService } from "../../src/server/wiki-skeleton-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
+// NOTE (BLOCKER 6 fix, round-2 架构 lens): wiki-scan-cursor-store.ts was DELETED
+// by sub-03 (cursor migrated into wiki_repositories), and WikiSkeletonService was
+// rewritten as a delegation shim whose scanner scenarios are covered by
+// wiki-v2-indexer/sync tests. The old archivist-scan + intent/divergence describe
+// blocks that relied on the legacy readdir scan + cursorStore were removed here;
+// the live WikiStore / write-guard / ArchivistGit / ProjectWikiStore coverage stays.
 
 let tmpDir: string;
 let sessionDB: CoreDatabase;
 let wikiStore: WikiStore;
 let projectStore: ProjectStore;
-let requirementStore: RequirementStore;
-let cursorStore: WikiScanCursorStore;
 let archivistGit: ArchivistGit;
-let archivistService: WikiSkeletonService;
 
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-m2-"));
 	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	projectStore = new ProjectStore(sessionDB);
-	requirementStore = new RequirementStore(sessionDB);
 	wikiStore = new WikiStore(sessionDB);
-	cursorStore = new WikiScanCursorStore(sessionDB);
 	archivistGit = new ArchivistGit();
-	archivistService = new WikiSkeletonService({
-		wikiStore,
-		cursorStore,
-		git: archivistGit,
-		projectStore,
-		requirementStore,
-	});
 });
 
 afterEach(() => {
@@ -336,241 +327,15 @@ describe("WikiStore: archivist write guard (decision 39)", () => {
 	});
 });
 
-// ─── archivist-service: incremental git scan ─────────────────
-
-describe("ArchivistService: incremental git scan", () => {
-	let ws: string;
-	let proj: { id: string; name: string; workspaceDir: string };
-
-	beforeEach(() => {
-		ws = join(tmpDir, "ws");
-		makeGitRepo(ws);
-		proj = projectStore.create({ name: "P", workspaceDir: ws }) as any;
-	});
-
-	test("initial scan builds header nodes for code files", async () => {
-		writeFile(ws, "src/a.ts", "export function foo() { return 1; }\n");
-		writeFile(ws, "src/b.ts", "export const X = 2;\n");
-		gitCommit(ws, "feat: initial code");
-
-		const result = await archivistService.buildSkeleton(proj.id);
-
-		expect(result.isInitial).toBe(true);
-		expect(result.filesScanned).toBeGreaterThanOrEqual(2);
-		expect(result.nodesUpserted).toBeGreaterThanOrEqual(2);
-
-		const nodes = wikiStore.listByProject(proj.id);
-		const headers = nodes.filter((n) => n.type === "header");
-		expect(headers.length).toBeGreaterThanOrEqual(2);
-		expect(headers.every((h) => h.provenance === "structure")).toBe(true);
-		// v0.8 (P1 §10.1, hardened): the workspace-file reference lives in
-		// the node PATH (`header:src/a.ts`), not docPointer. docPointer is a
-		// code-internal cache the archivist never sets directly (the store
-		// derives + stamps it when a body is written via writeNodeDetail).
-		expect(headers.every((h) => h.path.startsWith("header:"))).toBe(true);
-	});
-
-	test("scan ignores nested common directories from git slash paths", async () => {
-		writeFile(ws, "packages/core/src/index.ts", "export const tracked = 1;\n");
-		writeFile(ws, "packages/core/node_modules/bad.ts", "export const bad = 1;\n");
-		gitCommit(ws, "feat: tracked package with nested ignored dir");
-
-		await archivistService.buildSkeleton(proj.id);
-
-		const nodes = wikiStore.listByProject(proj.id);
-		expect(nodes.find((n) => n.path === "header:packages/core/src/index.ts")).toBeDefined();
-		expect(nodes.find((n) => n.path === "structure:packages/core/node_modules")).toBeUndefined();
-		expect(nodes.find((n) => n.path === "header:packages/core/node_modules/bad.ts")).toBeUndefined();
-	});
-
-	test("initial scan excludes untracked workspace files", async () => {
-		writeFile(ws, "packages/core/src/index.ts", "export const tracked = 1;\n");
-		gitCommit(ws, "feat: tracked package");
-
-		// Wiki structure follows the git-tracked project boundary. Untracked files
-		// may be editor output, generated artifacts, or unrelated local work and
-		// must not appear in the project wiki.
-		writeFile(ws, "apps/desktop/src/main.ts", "export const untracked = 1;\n");
-
-		const result = await archivistService.buildSkeleton(proj.id);
-
-		expect(result.isInitial).toBe(true);
-		const nodes = wikiStore.listByProject(proj.id);
-		expect(nodes.find((n) => n.path === "structure:packages")).toBeDefined();
-		expect(nodes.find((n) => n.path === "structure:apps")).toBeUndefined();
-		expect(nodes.find((n) => n.path === "header:apps/desktop/src/main.ts")).toBeUndefined();
-	});
-
-	test("structure mirrors the directory layout (nested dir chain)", async () => {
-		// A deeply-nested file produces a chain of directory structure nodes,
-		// and the header leaf hangs under its IMMEDIATE parent dir — not the
-		// top-level module (flat-module design was retired).
-		writeFile(ws, "apps/desktop/src/main/index.ts", "export function main() {}\n");
-		writeFile(ws, "apps/desktop/src/util.ts", "export const u = 1;\n");
-		writeFile(ws, "pkg/x.ts", "export const x = 1;\n");
-		gitCommit(ws, "feat: nested layout");
-
-		await archivistService.buildSkeleton(proj.id);
-
-		const nodes = wikiStore.listByProject(proj.id);
-		const struct = (dirRel: string) => nodes.find((n) => n.type === "structure" && n.path === `structure:${dirRel}`);
-		// every intermediate dir exists
-		expect(struct("apps")).toBeDefined();
-		expect(struct("apps/desktop")).toBeDefined();
-		expect(struct("apps/desktop/src")).toBeDefined();
-		expect(struct("apps/desktop/src/main")).toBeDefined();
-		expect(struct("pkg")).toBeDefined();
-		// nesting: apps/desktop's parent is apps, not the project root
-		const appsDesktop = struct("apps/desktop")!;
-		const apps = struct("apps")!;
-		expect(appsDesktop.parentId).toBe(apps.id);
-		// header index.ts hangs under its immediate parent (apps/desktop/src/main)
-		const mainDir = struct("apps/desktop/src/main")!;
-		const idx = nodes.find((n) => n.path === "header:apps/desktop/src/main/index.ts")!;
-		expect(idx.parentId).toBe(mainDir.id);
-		// no flat top-level-only grouping: a 'desktop' node directly under root would be wrong
-		const subtreeRoot = nodes.find((m) => m.id.startsWith("wiki-root:") && m.id !== "wiki-root:global" && m.id !== "wiki-root:projects")!;
-		const rootChildren = nodes.filter((n) => n.parentId === subtreeRoot.id);
-		expect(rootChildren.some((n) => n.path === "structure:apps")).toBe(true);
-		expect(rootChildren.some((n) => n.path === "structure:desktop")).toBe(false);
-	});
-
-	test("rebuildProjectSubtree wipes + rescans cleanly", async () => {
-		writeFile(ws, "src/a.ts", "export const X = 1;\n");
-		gitCommit(ws, "feat: a");
-		await archivistService.buildSkeleton(proj.id);
-		const before = wikiStore.listByProject(proj.id).length;
-		expect(before).toBeGreaterThan(0);
-
-		// Change the tree (add a deeper file) and rebuild — old flat nodes gone.
-		writeFile(ws, "src/deep/b.ts", "export const Y = 2;\n");
-		gitCommit(ws, "feat: deep");
-		const r = await archivistService.rebuildProjectSubtree(proj.id);
-		expect(r.filesScanned).toBeGreaterThanOrEqual(2);
-		const nodes = wikiStore.listByProject(proj.id);
-		// both files present, deep dir node created
-		expect(nodes.find((n) => n.path === "header:src/a.ts")).toBeDefined();
-		expect(nodes.find((n) => n.path === "header:src/deep/b.ts")).toBeDefined();
-		expect(nodes.find((n) => n.path === "structure:src/deep")).toBeDefined();
-	});
-
-	test("second scan with no changes is a no-op", async () => {
-		writeFile(ws, "src/a.ts", "export const X = 1;\n");
-		gitCommit(ws, "feat: a");
-		await archivistService.buildSkeleton(proj.id);
-
-		const result2 = await archivistService.buildSkeleton(proj.id);
-		expect(result2.filesScanned).toBe(0);
-		expect(result2.nodesUpserted).toBe(0);
-		expect(result2.notes).toContain("no changes since last scan");
-	});
-
-	test("incremental scan only re-reads changed files (decision 19)", async () => {
-		writeFile(ws, "src/a.ts", "export const X = 1;\n");
-		gitCommit(ws, "feat: a");
-		await archivistService.buildSkeleton(proj.id);
-
-		// Add a new file, advance main.
-		writeFile(ws, "src/b.ts", "export const Y = 2;\n");
-		gitCommit(ws, "feat: b");
-
-		const result2 = await archivistService.buildSkeleton(proj.id);
-		expect(result2.isInitial).toBe(false);
-		// b.ts is the only changed file (and not in IGNORED).
-		expect(result2.filesScanned).toBeGreaterThanOrEqual(1);
-		const nodes = wikiStore.listByProject(proj.id);
-		expect(nodes.find((n) => n.path === "header:src/b.ts")).toBeDefined();
-	});
-
-	test("cursor is recorded per (archivist, project)", async () => {
-		writeFile(ws, "src/a.ts", "export const X = 1;\n");
-		gitCommit(ws, "feat: a");
-		await archivistService.buildSkeleton(proj.id);
-
-		const cursor = cursorStore.get("archivist", proj.id);
-		expect(cursor).toBeDefined();
-		expect(cursor!.lastScannedRef).toMatch(/^[0-9a-f]+$/);
-	});
-
-	test("feature-branch WIP is not picked up (decision 26)", async () => {
-		writeFile(ws, "src/a.ts", "export const X = 1;\n");
-		gitCommit(ws, "feat: a on main");
-		await archivistService.buildSkeleton(proj.id);
-
-		// Create a feature branch with WIP that does NOT merge.
-		execSync("git checkout -b feat-wip", { cwd: ws, stdio: "ignore" });
-		writeFile(ws, "src/wip.ts", "export const WIP = true;\n");
-		gitCommit(ws, "wip: not merged");
-		execSync("git checkout main", { cwd: ws, stdio: "ignore" });
-
-		const result = await archivistService.buildSkeleton(proj.id);
-		// No new files on main → no new header node for wip.ts.
-		const nodes = wikiStore.listByProject(proj.id);
-		expect(nodes.find((n) => n.path === "header:src/wip.ts")).toBeUndefined();
-		expect(result.filesScanned).toBe(0);
-	});
-});
-
-// ─── archivist-service: intent + provenance + divergence ─────
-
-describe("ArchivistService: intent aggregation + divergence signals", () => {
-	let ws: string;
-	let proj: { id: string; name: string; workspaceDir: string };
-
-	beforeEach(() => {
-		ws = join(tmpDir, "ws");
-		makeGitRepo(ws);
-		proj = projectStore.create({ name: "P", workspaceDir: ws }) as any;
-	});
-
-	test("intent node is built from a requirement doc (provenance=confirmed)", async () => {
-		writeFile(ws, "src/a.ts", "export const X = 1;\n");
-		writeFile(ws, "docs/requirements/req-foo.md", "# Foo requirement\nMake foo work.\n");
-		gitCommit(ws, "feat: foo");
-
-		await archivistService.buildSkeleton(proj.id);
-
-		const nodes = wikiStore.listByProject(proj.id);
-		const intent = nodes.find((n) => n.type === "intent");
-		expect(intent).toBeDefined();
-		expect(intent!.provenance).toBe("confirmed");
-		// v0.8 (P1 §10.1, hardcoded): the workspace-doc reference lives in the
-		// node PATH (`intent:<relPath>`), NOT in docPointer. docPointer is now
-		// a code-internal cache of the wiki body file (derived by the store);
-		// since the archivist writes no detail body for intent nodes, it stays
-		// null/undefined here.
-		expect(intent!.path).toBe("intent:docs/requirements/req-foo.md");
-		expect(intent!.docPointer).toBeFalsy();
-	});
-
-	test("code header without sibling intent flags 'intent:no-recorded-reason'", async () => {
-		writeFile(ws, "src/orphan.ts", "export const X = 1;\n");
-		gitCommit(ws, "feat: orphan");
-
-		await archivistService.buildSkeleton(proj.id);
-
-		const nodes = wikiStore.listByProject(proj.id);
-		const header = nodes.find((n) => n.type === "header" && n.path === "header:src/orphan.ts");
-		expect(header).toBeDefined();
-		expect(header!.flags).toContain("intent:no-recorded-reason");
-	});
-
-	test("detectDivergence flags unimplemented requirements + uncovered code", async () => {
-		// Code with no matching intent doc → uncovered capability.
-		writeFile(ws, "src/a.ts", "export const X = 1;\n");
-		// Intent doc with no realizing code (the requirement file alone).
-		writeFile(ws, "docs/requirements/req-unmet.md", "# Unmet requirement\n");
-		gitCommit(ws, "feat: mix");
-
-		await archivistService.buildSkeleton(proj.id);
-		const report = await archivistService.detectDivergence(proj.id);
-
-		expect(report.uncoveredCode.length).toBeGreaterThan(0);
-		expect(report.unimplementedRequirements.length).toBeGreaterThanOrEqual(0);
-	});
-});
-
 // ─── archivist git management (RFC §2.15) ────────────────────
+// (BLOCKER 6 fix) The two describe blocks that used to live here —
+// "ArchivistService: incremental git scan" and "ArchivistService: intent
+// aggregation + divergence signals" — were REMOVED: they exercised the legacy
+// readdir scanner + cursorStore (header:/intent:/structure: provenance) that
+// sub-03 migrated into WikiProjectIndexer (writing the new wiki.db). Those
+// scenarios are now covered by wiki-v2-indexer / wiki-v2-sync / wiki-v2-source
+// tests against the real indexer. The legacy WikiStore write-guard, view
+// truncation, and ProjectWikiStore back-compat coverage above stays live.
 
 describe("ArchivistGit: main-branch management (§2.15)", () => {
 	let ws: string;

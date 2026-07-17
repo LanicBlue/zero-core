@@ -569,4 +569,93 @@ export class WikiNodeRepository {
 			.prepare(`UPDATE wiki_nodes SET path = ? WHERE id = ?`)
 			.run(newPath, id);
 	}
+
+	/**
+	 * 只更新 path + name (+ 可选 parent_id);**不 bump revision,不改 updated_at**,
+	 * 但 **必须同步 FTS**(round-3 FIX 1:`name` 是 FTS-indexed 列)。
+	 *
+	 * 设计(plan-03 §5 rename swap/cycle phase-1):两阶段 rename 的 phase-1 需要
+	 * 把节点从最终路径让位 —— 之前用 {@link updateChildPathOnly} 只改 path,但
+	 * active sibling 的 UNIQUE 约束是 `(parent_id, name) WHERE archived_at IS NULL`,
+	 * 不含 path。结果 phase-2 在写最终路径时撞 UNIQUE → transaction rollback。
+	 *
+	 * phase-1 改 path + name + parent_id 三者后,UNIQUE(parent_id, name) 让位,
+	 * phase-2 可安全写最终路径。临时 name 由调用方生成(transaction 唯一,不与
+	 * 真实 sibling 冲突)。
+	 *
+	 * **FTS 同步(round-3 FIX 1,BLOCKER):** `name` 是 `wiki_nodes_fts` 的索引列
+	 * (name/summary/content)。round-2 在此只做 raw UPDATE 不同步 FTS,留下
+	 * content-table 行持有 `tmpName` 而 FTS 索引仍是 OLD name 的 token。后续
+	 * phase-2 的 `update()` 读 CURRENT(post-phase-1)name=tmpName 并对 FTS5
+	 * 'delete' 命令传入 tmpName —— 与已索引的 OLD token 不匹配 →
+	 * `SqliteError: database disk image is malformed` (SQLITE_CORRUPT_VTAB)
+	 * → 整个 swap transaction fail(sync_status=failed)。
+	 *
+	 * 修复:镜像 {@link update} 的 FTS discipline ——
+	 *   1. 读 OLD row(name/summary/content)by id;
+	 *   2. `ftsDeleteCommand(id, OLD.name, OLD.summary, OLD.content)` —— 在
+	 *      content row 仍持 OLD 值时移除 OLD 索引项;
+	 *   3. `UPDATE wiki_nodes SET path=?, name=?, parent_id=?`(no revision bump,
+	 *      no updated_at change)—— content table 现持有 (newName, OLD.summary,
+	 *      OLD.content);
+	 *   4. `syncFtsInsert(id, newName, OLD.summary, OLD.content)` —— 插入与
+	 *      content table 一致的 NEW 索引项。
+	 * 全部在调用方的显式 transaction 内完成。phase-2 的 update() 随后读到
+	 * `current.name = tmpName` 与 FTS 索引里的 tmpName token 一致 → 无 corrupt。
+	 *
+	 * **调用方必须在显式 transaction 内。** 不 bump revision 意味着乐观并发
+	 * 控制看不到此次更改;调用方必须保证同一 transaction 内没有其它操作依赖
+	 * revision 不变(典型用法:phase-2 立即用 `node.revision` 做 update())。
+	 */
+	updateChildPathAndName(
+		id: number,
+		newPath: string,
+		newName: string,
+		newParentId?: number | null,
+	): void {
+		// 1. 读 OLD indexed columns(name/summary/content)。若行不存在,落到
+		//    defensive raw update(保持 round-2 行为;FTS 表本就没有该 rowid)。
+		const oldRow = this.readIndexedColumns(id);
+		if (!oldRow) {
+			if (newParentId !== undefined) {
+				this.db
+					.prepare(
+						`UPDATE wiki_nodes
+						 SET path = ?, name = ?, parent_id = ?
+						 WHERE id = ?`,
+					)
+					.run(newPath, newName, newParentId ?? null, id);
+			} else {
+				this.db
+					.prepare(
+						`UPDATE wiki_nodes SET path = ?, name = ? WHERE id = ?`,
+					)
+					.run(newPath, newName, id);
+			}
+			return;
+		}
+		// 2. FTS5 'delete' OLD(name/summary/content)—— 必须在 UPDATE 之前,
+		//    content row 仍持 OLD 值时执行(external-content invariant)。
+		this.ftsDeleteCommand(id, oldRow.name, oldRow.summary, oldRow.content);
+		// 3. UPDATE path + name + parent_id(无 revision bump,无 updated_at)。
+		if (newParentId !== undefined) {
+			this.db
+				.prepare(
+					`UPDATE wiki_nodes
+					 SET path = ?, name = ?, parent_id = ?
+					 WHERE id = ?`,
+				)
+				.run(newPath, newName, newParentId ?? null, id);
+		} else {
+			this.db
+				.prepare(
+					`UPDATE wiki_nodes SET path = ?, name = ? WHERE id = ?`,
+				)
+				.run(newPath, newName, id);
+		}
+		// 4. FTS insert NEW —— newName + OLD summary/content(与 UPDATE 后的
+		//    content table 完全一致)。summary/content 不变,所以 OLD 值就是
+		//    NEW 值,FTS 项除 name token 外其它一致。
+		this.syncFtsInsert(id, newName, oldRow.summary, oldRow.content);
+	}
 }

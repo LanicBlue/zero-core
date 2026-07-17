@@ -36,7 +36,7 @@
 // - 只动 main 分支 + worktree 清理;feature 分支 WIP 不进 wiki(决策 26)
 //
 
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -55,6 +55,48 @@ function execAsync(cmd: string, options: { cwd: string; timeout?: number }): Pro
 			(err, stdout, stderr) => {
 				if (err) return reject(err);
 				resolve(stdout);
+			},
+		);
+	});
+}
+
+/**
+ * Run git with `execFile` and a **literal argv vector** (no shell). This is the
+ * safe path for any command that takes pathspecs or revisions that may contain
+ * spaces, unicode, leading-dashes, or shell metacharacters — `exec`'s shell
+ * mode would mangle them. Output is returned as a Node Buffer so the caller
+ * can split on NUL (`-z`) without decoding round-trip ambiguity; helpers below
+ * decide whether to decode as UTF-8.
+ *
+ * plan-03 §3/§5 Git plumbing contract: every indexer-facing helper goes
+ * through here, never through shell-string `exec`.
+ */
+function execGitRaw(
+	args: string[],
+	options: { cwd: string; timeout?: number },
+): Promise<Buffer> {
+	return new Promise((resolve, reject) => {
+		execFile(
+			"git",
+			args,
+			{
+				cwd: options.cwd,
+				timeout: options.timeout ?? 15000,
+				maxBuffer: 64 * 1024 * 1024, // 64 MiB — large trees (e.g. chromium) ls-tree can be tens of MiB.
+				encoding: null, // force Buffer so NUL splitting is byte-exact.
+				windowsHide: true,
+			},
+			(err, stdout, stderr) => {
+				if (err) {
+					// Attach stderr to the error message — git's diagnostics are here
+					// (e.g. "fatal: not a valid object name"). Caller can log it.
+					const stderrText = stderr ? Buffer.isBuffer(stderr) ? stderr.toString("utf-8") : String(stderr) : "";
+					const e = err as Error & { stderr?: string };
+					e.stderr = stderrText;
+					reject(e);
+					return;
+				}
+				resolve(stdout as unknown as Buffer);
 			},
 		);
 	});
@@ -188,6 +230,213 @@ export class ArchivistGit {
 			return out.trim() || undefined;
 		} catch {
 			return undefined;
+		}
+	}
+
+	/**
+	 * Resolve an arbitrary ref (branch / tag / abbreviated SHA / HEAD) to a
+	 * full 40-char commit SHA. Returns undefined if the ref does not exist.
+	 *
+	 * plan-03 §6 startup check: bounded `rev-parse` to detect HEAD movement
+	 * without doing a full scan.
+	 */
+	async resolveRevision(workspaceDir: string, ref: string): Promise<string | undefined> {
+		try {
+			const out = await execGitRaw(
+				["rev-parse", "--verify", `${ref}^{commit}`],
+				{ cwd: workspaceDir, timeout: 5000 },
+			);
+			const sha = out.toString("utf-8").trim();
+			return /^[0-9a-f]{40}$/i.test(sha) ? sha : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * Default branch name (refs/heads/<X>) of the repo. Falls back to "main"
+	 * when no commits exist yet. plan-03 §2 binding uses this to populate
+	 * `wiki_repositories.default_branch`.
+	 */
+	async detectDefaultBranch(workspaceDir: string): Promise<string> {
+		try {
+			// `git symbolic-ref refs/remotes/origin/HEAD` works when an upstream
+			// is configured; otherwise fall back to the local HEAD's branch.
+			const buf = await execGitRaw(
+				["symbolic-ref", "--short", "HEAD"],
+				{ cwd: workspaceDir, timeout: 5000 },
+			);
+			const name = buf.toString("utf-8").trim();
+			return name || "main";
+		} catch {
+			return "main";
+		}
+	}
+
+	/**
+	 * `git ls-tree -r -z <revision>` — full recursive tree listing at an
+	 * explicit commit. plan-03 §3 contract: this is the **truth source** for
+	 * the project mirror; never use readdir to enumerate tracked files.
+	 *
+	 * Returns one entry per tracked path (blobs, executable blobs, symlinks,
+	 * submodule gitlinks). Does NOT include untracked / ignored / work-in-
+	 * progress files. Directories are implicit — inferred from file paths
+	 * by the caller.
+	 *
+	 * Output format per entry (NUL-separated):
+	 *   `<mode> SP <type> SP <oid> TAB <path>` NUL ...
+	 */
+	async listTreeAtRevision(
+		workspaceDir: string,
+		revision: string,
+	): Promise<readonly LsTreeEntry[]> {
+		let buf: Buffer;
+		try {
+			buf = await execGitRaw(
+				["ls-tree", "-r", "-z", revision],
+				{ cwd: workspaceDir, timeout: 60_000 },
+			);
+		} catch (err) {
+			log.debug("archivist-git", `ls-tree -r -z ${revision} failed: ${(err as Error).message}`);
+			return [];
+		}
+		return parseLsTreeZ(buf);
+	}
+
+	/**
+	 * `git diff --name-status -z <oldRev> <newRev>` — change set for sync
+	 * (plan-03 §5). Returns one record per changed path. Status codes:
+	 *
+	 *   A  add           — `<status>\t<path>`
+	 *   M  modify        — `<status>\t<path>`
+	 *   D  delete        — `<status>\t<path>`
+	 *   T  type-change   — `<status>\t<path>`
+	 *   R* rename        — `<status>\t<oldPath>\t<newPath>`  (similarity %)
+	 *   C* copy          — `<status>\t<srcPath>\t<dstPath>`  (similarity %)
+	 *
+	 * With `-z`, fields AND records are NUL-separated (the rename / copy
+	 * triple becomes `<status>\0<oldPath>\0<newPath>\0`). Caller decides how
+	 * to handle C (plan-03: treat as add of a new node).
+	 */
+	async diffNameStatus(
+		workspaceDir: string,
+		oldRev: string,
+		newRev: string,
+	): Promise<readonly DiffNameStatusEntry[]> {
+		let buf: Buffer;
+		try {
+			buf = await execGitRaw(
+				// `--find-renames` (long form of the default-on `-M`) keeps rename
+				// detection ON; the previous `--no-renames=false` is INVALID syntax
+				// (option `no-renames' takes no value) → git prints usage to stderr
+				// and produces NO output, which the catch below swallowed as [].
+				// standardizeDiffEntries consumes R/C entries. (round-1 BLOCKER 2)
+				["diff", "--name-status", "-z", "--find-renames", oldRev, newRev],
+				{ cwd: workspaceDir, timeout: 60_000 },
+			);
+		} catch (err) {
+			log.debug(
+				"archivist-git",
+				`diff --name-status -z ${shortSha(oldRev)}..${shortSha(newRev)} failed: ${(err as Error).message}`,
+			);
+			return [];
+		}
+		return parseDiffNameStatusZ(buf);
+	}
+
+	/**
+	 * `git cat-file -p <revision>:<path>` — read a blob at a specific indexed
+	 * revision (plan-03 §7 indexed read). Returns the raw blob bytes; caller
+	 * decides whether to decode as UTF-8 (binary detection is the caller's
+	 * responsibility). Throws if the path does not exist at that revision.
+	 */
+	async catFileBlob(
+		workspaceDir: string,
+		revision: string,
+		path: string,
+	): Promise<Buffer> {
+		return execGitRaw(
+			["cat-file", "-p", `${revision}:${path}`],
+			{ cwd: workspaceDir, timeout: 15_000 },
+		);
+	}
+
+	/**
+	 * `git cat-file -p <revision>:<path>` returning UTF-8 text. Used by source
+	 * read when the caller already knows the blob is text. For unknown file
+	 * types use {@link catFileBlob} and run binary detection.
+	 */
+	async catFileText(
+		workspaceDir: string,
+		revision: string,
+		path: string,
+	): Promise<string> {
+		const buf = await this.catFileBlob(workspaceDir, revision, path);
+		return buf.toString("utf-8");
+	}
+
+	/**
+	 * Quick blob metadata (mode/type/oid/size) without fetching the bytes.
+	 * plan-03 §7 uses this for binary detection ("blob" + size) and oid
+	 * verification.
+	 *
+	 * Implementation: `git ls-tree <rev> -- <path>` gives mode + type + oid in
+	 * one shot; `git cat-file -s <oid>` gives the size. The previous impl used
+	 * `git cat-file --batch-check <rev>:<path>` which is INVALID —
+	 * `--batch-check` is a STDIN mode and rejects a positional `<rev>:<path>`
+	 * argument (git prints usage to stderr, the catch returns undefined →
+	 * readInternal reports available=false). (round-1 BLOCKER 4)
+	 */
+	async blobMetadata(
+		workspaceDir: string,
+		revision: string,
+		path: string,
+	): Promise<{ oid: string; size: number; type: string } | undefined> {
+		try {
+			// ls-tree <rev> -- <path>: returns `<mode> <type> <oid>\t<path>` or
+			// empty if the path doesn't exist at that revision.
+			const buf = await execGitRaw(
+				["ls-tree", revision, "--", path],
+				{ cwd: workspaceDir, timeout: 5000 },
+			);
+			const line = buf.toString("utf-8").trim();
+			if (!line) return undefined; // path does not exist at revision
+			const tabIdx = line.indexOf("\t");
+			if (tabIdx < 0) return undefined;
+			const head = line.slice(0, tabIdx);
+			const headParts = head.split(" ");
+			if (headParts.length < 3) return undefined;
+			const oid = headParts[2];
+			const type = headParts[1];
+			// cat-file -s <oid>: returns the blob size in bytes (decimal).
+			let size = 0;
+			try {
+				const sizeBuf = await execGitRaw(
+					["cat-file", "-s", oid],
+					{ cwd: workspaceDir, timeout: 5000 },
+				);
+				size = parseInt(sizeBuf.toString("utf-8").trim(), 10);
+				if (!Number.isFinite(size)) size = 0;
+			} catch {
+				// oid unresolvable — treat as missing.
+				return undefined;
+			}
+			return { oid, type, size };
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * Test whether a workspace path is a real Git repository (`.git` exists or
+	 * `git rev-parse --git-dir` succeeds). plan-03 §2 binding validation.
+	 */
+	async isGitRepo(workspaceDir: string): Promise<boolean> {
+		try {
+			await execGitRaw(["rev-parse", "--git-dir"], { cwd: workspaceDir, timeout: 5000 });
+			return true;
+		} catch {
+			return false;
 		}
 	}
 
@@ -457,4 +706,118 @@ function isSafePathspec(p: string): boolean {
 function isSafeCommitSubject(s: string): boolean {
 	if (!s || typeof s !== "string") return false;
 	return !/[`$\n\r"]/.test(s);
+}
+
+// ---------------------------------------------------------------------------
+// Git plumbing output parsers (plan-03 §3 / §5)
+//
+// These decode the NUL-separated binary output of `git ls-tree -r -z` and
+// `git diff --name-status -z` into typed records. Parsers are byte-exact
+// (never split a UTF-8 codepoint mid-character) and tolerant of CRLF /
+// trailing-NUL / empty input.
+// ---------------------------------------------------------------------------
+
+/** One entry from `git ls-tree -r -z <rev>`. */
+export interface LsTreeEntry {
+	/** Raw Git mode (e.g. `100644` blob, `100755` exec, `120000` symlink, `160000` gitlink). */
+	mode: string;
+	/** Object type (`blob` / `commit` for submodules; `tree` only without `-r`). */
+	type: string;
+	/** Object ID (SHA-1 / SHA-256 hex). */
+	oid: string;
+	/** Repo-relative path with Git `/` separators and original case. */
+	path: string;
+}
+
+/** One record from `git diff --name-status -z <a> <b>`. */
+export interface DiffNameStatusEntry {
+	/** Single-letter status code (A/M/D/T) or prefix with score (R100/C50). */
+	status: string;
+	/** Primary path; for R/C this is the SOURCE path. */
+	path: string;
+	/** Destination path, only set for R-prefixed (rename) or C-prefixed (copy) records. */
+	newPath?: string;
+}
+
+/**
+ * Parse `git ls-tree -r -z` Buffer into entries. Each record is
+ * `<mode> SP <type> SP <oid> TAB <path>` NUL-terminated.
+ */
+function parseLsTreeZ(buf: Buffer): LsTreeEntry[] {
+	const out: LsTreeEntry[] = [];
+	if (!buf || buf.length === 0) return out;
+	// Split on NUL byte (0x00). The last record is followed by NUL too, so we
+	// may get one empty trailing element — skip it.
+	let start = 0;
+	const parts: Buffer[] = [];
+	for (let i = 0; i < buf.length; i++) {
+		if (buf[i] === 0) {
+			parts.push(buf.subarray(start, i));
+			start = i + 1;
+		}
+	}
+	if (start < buf.length) parts.push(buf.subarray(start));
+	for (const part of parts) {
+		if (part.length === 0) continue;
+		const line = part.toString("utf-8");
+		// Format: "<mode> <type> <oid>\t<path>"
+		const tabIdx = line.indexOf("\t");
+		if (tabIdx < 0) continue; // malformed; skip defensively
+		const head = line.slice(0, tabIdx);
+		const path = line.slice(tabIdx + 1);
+		const headParts = head.split(" ");
+		if (headParts.length < 3) continue;
+		out.push({ mode: headParts[0], type: headParts[1], oid: headParts[2], path });
+	}
+	return out;
+}
+
+/**
+ * Parse `git diff --name-status -z` Buffer into records.
+ *
+ * Format with `-z`: each field is NUL-terminated, and each record is a
+ * sequence of fields. Status determines field count:
+ *   - A/M/D/T: `<status>\0<path>\0`  → 2 fields after the status
+ *   - Rxxx/Cxxx: `<status>\0<srcPath>\0<dstPath>\0`  → 3 fields
+ *
+ * Implementation: walk the NUL-delimited tokens, read status, then read 1 or 2
+ * path tokens based on the status prefix.
+ */
+function parseDiffNameStatusZ(buf: Buffer): DiffNameStatusEntry[] {
+	const out: DiffNameStatusEntry[] = [];
+	if (!buf || buf.length === 0) return out;
+	const tokens: string[] = [];
+	let start = 0;
+	for (let i = 0; i < buf.length; i++) {
+		if (buf[i] === 0) {
+			tokens.push(buf.subarray(start, i).toString("utf-8"));
+			start = i + 1;
+		}
+	}
+	if (start < buf.length) tokens.push(buf.subarray(start).toString("utf-8"));
+
+	let i = 0;
+	while (i < tokens.length) {
+		const status = tokens[i];
+		if (!status) { i++; continue; }
+		const code = status.charAt(0);
+		if (code === "R" || code === "C") {
+			const src = tokens[i + 1];
+			const dst = tokens[i + 2];
+			if (src === undefined || dst === undefined) break; // truncated
+			out.push({ status, path: src, newPath: dst });
+			i += 3;
+		} else {
+			const path = tokens[i + 1];
+			if (path === undefined) break;
+			out.push({ status, path });
+			i += 2;
+		}
+	}
+	return out;
+}
+
+/** Short SHA for log readability (8 chars, git's default abbreviated length). */
+function shortSha(sha: string): string {
+	return sha ? sha.substring(0, 8) : "unknown";
 }
