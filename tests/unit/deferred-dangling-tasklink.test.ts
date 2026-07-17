@@ -434,12 +434,14 @@ describe("Step 2E · A5: tool-call ↔ task link + subagent resume", () => {
 		expect(resumeInvocations, "resumeTask calls sub-loop.resume() exactly once").toBe(1);
 		expect(freshInvocations, "resumeTask must NOT re-invoke (sub-loop.run() untouched)").toBe(0);
 
-		// ── Assertion 4: the task row was NOT replaced (no new id, status
-		//    advanced to completed by the resume). ─────────────────────────
-		const rowAfter = db.getDelegatedTask(taskId)!;
-		expect(rowAfter.id, "same taskId after resume (no new delegation row)").toBe(taskId);
-		expect(rowAfter.status, "resume marks the task completed").toBe("completed");
-		expect(rowAfter.result, "resume result back-filled onto the task row").toBe("SUB-RESUMED-RESULT");
+		// ── Assertion 4: terminal bookkeeping removes the completed row. ───
+		// fireOnTaskTerminal deliberately marks the child session archived and
+		// deletes delegated_tasks immediately so completed work is not restored
+		// into the live task tree after restart. The stable taskId assertions
+		// above still prove resume continued the existing task rather than
+		// creating a replacement delegation.
+		expect(db.getDelegatedTask(taskId), "completed task row is removed by terminal bookkeeping").toBeUndefined();
+		expect(db.getSession("2e-a5-sub-session")?.archived, "resumed child session is marked for archive").toBe(true);
 	});
 
 	test("resumeTask throws for an unknown taskId (no silent re-invoke)", async () => {

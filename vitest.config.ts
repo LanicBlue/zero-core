@@ -26,6 +26,23 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+const MINIMUM_NODE = [24, 14, 0] as const;
+const runningNode = process.versions.node.split(".").map(Number);
+let nodeIsSupported = true;
+for (let index = 0; index < MINIMUM_NODE.length; index++) {
+	const current = runningNode[index] ?? 0;
+	if (current === MINIMUM_NODE[index]) continue;
+	nodeIsSupported = current > MINIMUM_NODE[index];
+	break;
+}
+
+if (!nodeIsSupported) {
+	throw new Error(
+		`zero-core tests require Node >=${MINIMUM_NODE.join(".")}; running ${process.versions.node}. ` +
+		"Older Windows Node releases crash in fs.rmSync on non-ASCII paths.",
+	);
+}
+
 // Isolate ZERO_CORE_DIR for unit tests. WIKI_DISK_ROOT (= ZERO_CORE_DIR/wiki)
 // is a GLOBAL path resolved at module load (core/config.ts), independent of each
 // test's temp SQLite DB — so without this, every unit test that creates a wiki
@@ -51,43 +68,13 @@ export default defineConfig({
 		include: ["tests/unit/**/*.test.ts"],
 		environment: "node",
 		globals: false,
-		// sub-11 (2026-07-07): pool is `threads` (was `forks`).
-		//
-		// ROOT CAUSE being defended against: Vitest 4.x on Windows + the
-		// `forks` pool has a process-cwd binding bug — when the runner's cwd
-		// is exactly the project root (the normal case: VS Code opens this
-		// dir, or `npm run test:unit` is invoked here), the fork-worker IPC
-		// channel can fail to initialize on some machine states (e.g. when a
-		// file-watcher holds the dir), so the runtime config never reaches the
-		// child and every `describe(...)` throws
-		// `Cannot read properties of undefined (reading 'config')`. This is
-		// INTERMITTENT (cwd lock / timing dependent) — it does not fire on
-		// every run, which made it hard to reproduce. `--root=<sibling dir>`
-		// (running the same code from another cwd) was always green, proving
-		// the bug is pool+cwd-specific, not a code regression.
-		//
-		// FIX: switch to the `threads` pool. Threads workers do not bind
-		// their IPC to process.cwd() the way forks does, so the cwd-binding
-		// failure mode cannot occur. `isolate: true` (default) keeps each test
-		// file in its own module registry — required because the mixed
-		// ESM/CJS graph (jsdom → @exodus/bytes) is sensitive to module state
-		// leaking between files.
-		//
-		// WHY NOT vmThreads (the earlier workaround): vmThreads runs tests
-		// under Vite's CJS-interop loader, which breaks on @exodus/bytes
-		// (shipped as ESM, require()'d via CJS by html-encoding-sniffer, a
-		// transitive dep of jsdom via fetch-tools → config-router). The plain
-		// `threads` pool uses Node's native module loader and handles the
-		// mixed graph correctly — verified: no @exodus/bytes error with
-		// threads.
-		//
-		// WHY NOT keep forks: forks is the pool with the cwd-binding bug.
-		// Keeping it would leave the intermittent failure latent. Switching
-		// to threads removes the failure mode entirely while preserving
-		// correct module loading (the original reason forks was chosen).
-		//
-		// Re-evaluate if a future Vitest patch fixes the forks cwd binding
-		// and threads shows its own regression.
-		pool: "threads",
+		// Windows: use process workers for native SQLite isolation. With the
+		// supported Node 24.14 runtime, threads still exit intermittently with
+		// 0xC0000005 during the SQLite-heavy suite; forks complete the full suite
+		// cleanly. Bound concurrency because each worker loads a large module
+		// graph and creates real temporary databases. Other platforms retain
+		// lower-overhead threads.
+		pool: process.platform === "win32" ? "forks" : "threads",
+		maxWorkers: process.platform === "win32" ? 2 : undefined,
 	},
 });

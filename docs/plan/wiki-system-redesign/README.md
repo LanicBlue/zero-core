@@ -1,7 +1,7 @@
 # Wiki System Redesign：实施路线图
 
 > 设计基线：[`./design.md`](./design.md)
-> 状态：✅ 独立 re-review PASS(见 [`plan-review-r2.md`](./plan-review-r2.md))—— 6 blocker 全 RESOLVED、跨文档一致;可进入实施(sub-00 watch-item 见 r2 §2)
+> 状态：✅ 独立 re-review PASS（见 [`plan-review-r2.md`](./plan-review-r2.md)）；**尚未实施**。本文及各 plan/acceptance 描述目标状态，不是当前代码事实。
 > 数据策略：clean cutover，不迁移旧 Wiki 数据。
 
 ## 1. 使用方式

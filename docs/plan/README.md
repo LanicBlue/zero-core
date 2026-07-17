@@ -1,14 +1,15 @@
-# docs/plan — 实施拆分 + 验收(进行中)
+# docs/plan — 待实施或实施中的计划
 
-放**正在执行**的 effort 的 `plan-*.md`(实施路线)+ 对应 `acceptance-*.md`(验收标准),一一对应。每个主题一个子目录。
+本目录保存已经细化为实施步骤与验收条件、但尚不能作为当前事实的 effort。
 
-> **当前进行中:** [`wiki-system-redesign/`](wiki-system-redesign/)——数据库统一布局 + SQLite Wiki、Agent grants/context、Project Git 语义镜像、工具与 UI 重构；当前等待实施前 re-review。
-> 已完成的实施计划归档到 [`../archive/`](../archive/)(随各 effort 的 spec 一起)。
+当前计划：[`wiki-system-redesign/`](wiki-system-redesign/README.md)。它的独立 re-review 已通过，但目录中的 `db/core.db`、`db/wiki.db`、新授权模型和新 UI 都仍是目标状态；只有对应代码落地并完成 acceptance 后，才能更新当前架构文档。
 
 ## 执行约定
 
-- 每个 sub 既有 `plan-<id>.md` 也有对应 `acceptance-<id>.md`。
-- 执行前先建新 git branch;按 sub 实施 → 对应 acceptance 验收;通过 → 下一个,不通过 → 回该 sub 修改。
-- 合并 master 需用户同意;合并后整组(spec + plan + acceptance)移到 [`../archive/<topic>/`](../archive/)。
+- 每个阶段同时提供 plan 与可判定 acceptance。
+- 开始前记录 typecheck/unit baseline，按依赖顺序执行。
+- 不通过验收时回到当前阶段修改，不把失败留给下一阶段。
+- 合并需要用户同意；合并后整个 effort 移入 [`../archive/`](../archive/README.md)。
+- 任何文档移动后运行 `npm run check:links`，并额外检查目录、源码和 anchor 链接。
 
-完整生命周期见 [`../issues/README.md`](../issues/README.md)。
+完整生命周期见 [`../issues/README.md`](../issues/README.md)。当前实现见 [`../arch/README.md`](../arch/README.md)。

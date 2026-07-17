@@ -7,9 +7,9 @@
 
 ## 问题
 
-zero-core **完全没有 agent 质量评估基础设施**(`find -iname "*eval*"` 零命中;`tests/` 只有 unit/e2e/spike,验证的是**代码正确性**,不是 **agent 行为质量**)。后果:每一次记忆 / 压缩 / 工具 / prompt 改动都**裸奔上线**——memory-maintenance([issues/memory-maintenance](../memory-maintenance/issue.md))做完后怎么知道记忆变好了?compression-archive-simplify 砍掉 ExtractorA 怎么验证没丢信息?tool-quality-pass 修了 5 个工具,怎么回归?目前只能靠人肉跑 session 主观判断,既不可重复也无法进 CI。
+zero-core 目前没有 **Agent trajectory/outcome 质量评估套件**。`tests/` 有 unit/e2e/spike，E2E 还包含 `tool-evaluator.ts`，但它们主要验证代码和单工具契约，不提供跨 turn 的 Agent 行为评分、基线数据集或 CI 退化门禁。后果是记忆、压缩、工具描述和 prompt 的质量变化难以重复比较。
 
-业界共识([tau-bench](https://www.morphllm.com/ai-agent-evaluation) / [DeepEval](https://deepeval.com/docs/getting-started-agents) / Inspect / promptfoo):agent eval 要校验 **tool-call 轨迹 + 最终副作用状态**(wiki / DB / 文件),不只看回答文本,且要能在 CI 里做回归门禁。
+本 issue 采用 [τ-bench](https://github.com/sierra-research/tau-bench) 等公开评测的设计方向：同时校验 **tool-call 轨迹与最终副作用状态**（Wiki/DB/文件），不只比较回答文本。外部框架只是研究输入，最终方案仍要适配 zero-core 的本地副作用模型。
 
 ## 现状 / 真相源 / 影响面
 

@@ -360,6 +360,19 @@ describe("[sub2 #6] cleanupLegacyMemoryData startup cleanup", () => {
 		expect(existsSync(join(memDir, "dev-1"))).toBe(false);
 	});
 
+	test("deletes a non-ASCII orphan directory without crashing", () => {
+		const memDir = join(WIKI_DISK_ROOT, "memory");
+		const orphanName = "测试员";
+		const orphanDir = join(memDir, orphanName);
+		mkdirSync(orphanDir, { recursive: true });
+		writeFileSync(join(orphanDir, "memory.md"), "orphan");
+
+		const res = wiki.cleanupLegacyMemoryData();
+
+		expect(res.orphanDirs).toContain(orphanName);
+		expect(existsSync(orphanDir)).toBe(false);
+	});
+
 	test("preserves per-agent root dir that has a backing DB row", async () => {
 		const agentId = "keep-me";
 		const agentName = "Keep Me";

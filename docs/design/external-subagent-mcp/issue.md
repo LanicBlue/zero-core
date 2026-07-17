@@ -5,6 +5,8 @@
 - **类型**:改进(架构 / 集成)
 - **依赖**:[`../../archive/tool-decoupling/`](../../archive/tool-decoupling/)(工具纯函数化是地基,已合并)
 
+> **实现状态（2026-07-16）**：问题仍在 design 阶段。当前 MCP 能力是 zero-core 作为 client 连接外部 server，不包含把内部工具作为 MCP host 暴露给 Claude Code/Codex。
+
 ## 问题
 
 subagent 当前只有一种:内部 AgentLoop(`subagent-delegator` 起子 loop)。无法把任务委派给**外部 agent**(Claude Code、Codex 等),也无法把内部工具(Wiki / Platform 读 / 文件类)暴露给它们用。

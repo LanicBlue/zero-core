@@ -1,459 +1,151 @@
-# 10 · 架构级 Tech Debt
+# 10 · 架构级技术债
 
-> 从架构师视角看，技术债不仅是"丑代码"，更是"未来 6-18 个月内会让改动变贵的设计选择"。本文列出当前最影响演进能力的架构级债务，并标注已被代码或测试契约解决的旧债。
+> 核对基线：2026-07-16。这里只记录当前源码中仍可复现的风险。优先级是文档评估，不是修复授权；修复前仍需为目标问题补最小复现。
 
-## 1. 评估方法
+## 1. 优先级定义
 
-每条债务按三个维度打分：
+| 级别 | 含义 |
+| --- | --- |
+| P0 | 可能造成持久数据丢失、越权或关键功能不可达 |
+| P1 | 中断/恢复不可靠、跨层一致性薄弱，或显著扩大修改成本 |
+| P2 | 可观测性、性能、维护性或未接通能力问题 |
 
-- **影响面**：1（局部）- 5（系统级）
-- **修复成本**：1（小时）- 5（周级）
-- **紧迫度**：1（可推迟）- 5（阻碍演进）
+## 2. P0
 
-最终优先级 = 影响面 × 紧迫度 / 修复成本。
+### D-001：启动时无条件删除 `messages`
 
-## 2. 债务清单
+[`SessionDB.initSchema()`](../../src/server/session-db.ts) 每次构造都会 `DROP TABLE IF EXISTS messages` 后重建。`messages` 现在承载滚动摘要和压缩游标，不再是可以随时从历史无损重建的缓存。
 
-### D-001 · AgentService 上帝对象（影响 5 / 成本 4 / 紧迫 4）
+**影响**：正常重启可能丢失已生成摘要与压缩位置，后续上下文组成和再次压缩会偏离重启前状态。
 
-**位置**：`server/agent-service.ts`，当前约 1,200 行。
+**缺口**：现有测试覆盖 fresh/upgrade schema，但没有覆盖“写入摘要 → 关闭 DB → 用同一 DB 重启 → 摘要仍存在”。
 
-**症状**：
-- 同时管理 AgentLoop 生命周期、会话状态、Provider 配置、并发控制、ready 协调、事件广播、状态查询。
-- 字段 25 个：`loops / runStates / activeSessions / subscribers / config / workspaceDir / providerConfigs / defaultModel / defaultProvider / db / kbStore / kbDb / registry / mcp / concurrencyManager / agentStore / sessionManager / metricsAdapter / management / pmService / requirementStore / wikiStore / wikiStoreGlobal / extractorsConfig / toolUsageStore / readyModules / deferredActions`（v0.8 注入 7 个工作流域服务：`management / pmService / requirementStore / wikiStore / wikiStoreGlobal / extractorsConfig / toolUsageStore`）。
+### D-002：桌面后端缺少明确的本机安全边界
 
-**风险**：任何 Agent 相关改动都要碰这个文件，merge conflict 概率高。
+Electron main 把业务调用代理到本地 HTTP/WS 后端。当前架构文档与代码中没有看到完整的请求认证协议、来源校验和统一的 loopback-only 保证。
 
-**建议拆分**：
+**影响**：如果监听地址或端口信息暴露，同机进程可能绕过 Renderer/preload 直接调用业务 API。工具、文件和配置 API 的风险高于普通 UI API。
 
-```
-agent-service.ts (orchestrator, 200 行)
-├─ loop-supervisor.ts     (loops Map + createLoop/recreateLoop)
-├─ agent-registry.ts      (agentStore 代理)
-├─ provider-throttle.ts   (concurrencyManager 注入)
-├─ readiness-coordinator.ts (notifyReady / whenReady)
-└─ event-broadcaster.ts   (subscribers Set + emit)
-```
+**修复前要确认**：真实 bind 地址、端口文件权限、是否存在未文档化 token，以及 standalone server 的预期威胁模型。
 
-**优先级**：4 × 4 / 4 = **4.0**。
+### D-003：GitHub template IPC 调用不可达
 
----
+Renderer/template store 调用 `templates:github-preview` 和 `templates:import-github`，preload 也暴露了它们；契约测试把它们列为例外，但当前 main proxy/local handler 中没有对应接线。后端 router 存在相关 endpoint。
 
-### D-002 · session-db.ts 巨型 Store（影响 4 / 成本 3 / 紧迫 3）
+**影响**：UI 功能可能在 invoke 处失败；测试白名单把缺口固化成“允许遗漏”。
 
-**位置**：`server/session-db.ts`，当前约 960 行。
+## 3. P1
 
-**症状**：一张表一个类本应 < 200 行，这里塞了：
-- sessions CRUD
-- messages CRUD
-- turns CRUD
-- turn_state CRUD
-- tool_executions CRUD
-- KeyValueStore 持有
-- ~~MemoryStore 持有（旧）~~ ✅ **v0.8 已删**(僵尸清理,见 D-006)
-- MemoryNodeStore 持有（新,**当前唯一 memory 后端**)
+### D-004：abort 没有贯穿等待队列
 
-**风险**：业务表增长后单文件不可维护。
+- Provider 的 `ConcurrencyQueue.acquire()` 支持 `AbortSignal`，但 provider factory 获取许可时没有传入当前 loop 的 signal。
+- `ToolRateLimiter` 的等待接口没有 abort 参数。
 
-**建议拆分**：
+**影响**：用户中止后，仍在排队的模型请求或工具调用可能晚些时候获得许可并继续产生副作用。
 
-```
-session-db.ts (orchestrator, 100 行)
-├─ sessions-store.ts    (sessions + main session)
-├─ messages-store.ts    (messages)
-├─ turns-store.ts       (turns + turn_state)
-├─ tool-executions-store.ts
-├─ key-value-store.ts   (已独立)
-├─ ~~memory-store.ts~~      (~~旧版~~ v0.8 已删,见 D-006;SessionDB 不再持有)
-└─ memory-node-store.ts (已拆为独立文件但仍由 SessionDB 实例化（`session-db.ts:70-71`），新版,**唯一 memory 后端**)
-```
+### D-005：DB 与文件系统写入不是统一事务
 
-**优先级**：4 × 3 / 3 = **4.0**。
+Wiki、附件、归档、大工具输出都跨 SQLite 和磁盘。局部流程使用临时文件、rename、SQLite transaction 或恢复扫描，但没有通用的原子提交协议。
 
----
+**影响**：崩溃点不同会留下孤儿文件、缺失正文或状态与 payload 不一致。每个域必须独立实现补偿，保证不一致。
 
-### D-003 · Legacy KB RAG hook 未接通/待退役（影响 2 / 成本 1 / 紧迫 2）
+### D-006：schema 有多处真相源且没有版本台账
 
-**位置**：`runtime/hooks/rag-hooks.ts:13-25`、`server/agent-service.ts:createLoopForSession()`。
+部分核心 DDL 在 `SessionDB.initSchema()`，升级逻辑在 `runMigrations()`，部分 Store 又自行 `CREATE TABLE IF NOT EXISTS`。迁移按当前结构幂等探测，每次启动执行，没有 migration id/version ledger。
 
-**症状**：`rag-hooks.ts` 仍被注册，但普通 Agent 会话的 `SessionConfig` 没有注入 `getRagContext`，所以 hook 默认直接返回，不会把 KB 内容注入 `ctx.ragContext`。旧文档曾把它描述为“自动 RAG 查询未带当前问题”，但从当前实际运行路径看，它更像是迁移后留下的可选扩展点。
+**影响**：无法直接回答某个数据库经历了哪些迁移；fresh 与 upgraded schema 容易漂移；回滚和故障定位困难。
 
-**风险**：维护者会误以为 KB 自动 RAG 仍在生产路径中，进而在错误的位置修功能；产品层也容易混淆“KB 手动检索”和“Wiki 记忆注入”。
+### D-007：核心编排文件过大
 
-**修复**：
-1. 若短期不做自动 RAG：停止注册 `rag-hooks.ts` 或加 feature flag，并在代码注释中标明 legacy optional。
-2. 若要恢复自动 RAG：重新设计 KB binding、query planner、上下文预算、与 Wiki anchors 的去重策略，而不是只补 `getRagContext(agentId, query)`。
+截至核对日，`agent-service.ts`、`agent-loop.ts`、`session-db.ts`、`wiki-node-store.ts`、`db-migration.ts` 与 `server/index.ts` 都承担多个职责。
 
-**优先级**：2 × 2 / 1 = **4.0**。
+**影响**：跨域改动集中、审查困难、测试替身复杂，也增加把服务层状态直接塞回 runtime 的诱因。
 
----
+**方向**：先按生命周期监督、事件广播、恢复协调、领域 Store 等稳定边界拆分，不按行数机械切文件。
 
-### D-004 · main/ipc/* 死代码 ✅ **已解决**
+### D-008：Wiki live prompt 缓存失效不完整
 
-**原位置**：`src/main/ipc.ts` 与 `src/main/ipc/`。
+Wiki anchors 被合并进缓存的 system section。普通 Wiki 工具写入没有统一使当前 loop 的快照失效；force memory turn 和部分配置变更会刷新。
 
-**当前状态**：P9 已清理。当前工作树中 `src/main/ipc.ts` 与 `src/main/ipc/` 均不存在，`tests/unit/p9-dead-path-removal.test.ts` 明确校验这一点，并校验 `ipc-proxy.ts` 是 main 进程唯一批量 IPC 注册路径。
+**影响**：刚写入的知识可能已经落盘，却要到后续生命周期才出现在模型上下文。
 
-**剩余风险**：死代码本身已解决，但 IPC 契约仍有漂移风险，见 D-016。
+### D-009：Hook 副作用存在双路径风险
 
-**原优先级**：2 × 3 / 1 = **6.0**。→ ✅ 已解决。
+系统同时有 per-loop hooks、global hooks、data-change hub 和 runtime StreamEvent。历史重构后仍有注释和兼容入口描述旧触发方式。
 
----
+**影响**：新增 handler 容易重复持久化、重复计数，或只在 main/delegated 其中一条路径触发。
 
-### D-005 · runtime/mcp-tools/ 目录名误导（影响 2 / 成本 2 / 紧迫 3）
+## 4. P2
 
-**位置**：`runtime/mcp-tools/` 6 个文件 + 1 个 cookie-jar。
+### D-010：WebFetch 数据目录与 Cookie 状态分裂
 
-**症状**：不是 MCP 客户端，是 built-in 高级工具。
+后端 WebFetch 的路径构造直接使用 `homedir()/.zero-core/webfetch`，没有完全遵守 `ZERO_CORE_DIR`。Electron main 登录流程和 backend fetch 各维护一个内存 Cookie Jar，并写同一磁盘文件。
 
-**修复**：改名为 `runtime/advanced-tools/`，更新所有 import。
+**影响**：自定义数据目录失效；main 登录后的 Cookie 不一定立即进入已运行 backend 的内存状态。
 
-**优先级**：2 × 3 / 2 = **3.0**。
+### D-011：部分推送通道只有订阅者
 
----
+`tools:changed`、`session:lifecycle`、`github-import:progress`、`github-preview:progress` 在 preload/Renderer 有订阅代码，但当前未找到对应 `webContents.send` 生产者。
 
-### D-006 · 双 Memory 系统 ✅ **已清理**
+**影响**：维护者会误以为 UI 已是实时更新，实际只能靠重新拉取或永远不会收到事件。
 
-**原位置**：~~`server/memory-store.ts` (266)~~ + `server/memory-node-store.ts` (352)。
+### D-012：重连恢复并未覆盖所有 Store
 
-**当前状态**：master 本批已清理僵尸 `MemoryStore`。具体删除:
-- `src/server/memory-store.ts`(`MemoryStore` 类)文件已删
-- `src/runtime/mcp-tools/memory-tools.ts`(唯一消费者,零 importer)文件已删
-- `db-migration.ts` 加 `DROP TABLE IF EXISTS memory_entities` + `DROP TABLE IF EXISTS memory_relations`
+主重连路径会刷新 chat/core 数据，但 Dashboard metrics 和 MCP status 的调用结果没有完整写回对应状态。
 
-`MemoryNodeStore`(4 张表:`memory_nodes` / `memory_subjects` / `memory_edges` / `memory_nodes_fts`)
-**保留**,仍是 `wiki-anchor-injection` / `wiki-search` 间接读取的唯一 memory 后端。
-05-persistence.md §2 / §4.0.2 / §5 已同步更正表计数(sessions.db 总表 ≈31,memory_* 只剩 4 张)。
+**影响**：backend 重启后部分页面显示旧状态，直到用户执行其他刷新动作。
 
-**剩余风险**:无新风险。若旧 DB 残留 `memory_entities` / `memory_relations` 行数据,
-`db-migration.ts` 的 `DROP TABLE IF EXISTS` 会直接丢弃(僵尸零运行时写入者,数据无业务价值)。
+### D-013：Extractor B 是休眠子系统
 
-**原描述**（保留供参考）:
-- **症状**：两套并存。`MemoryStore` 是**僵尸**——零运行时写入者,且其唯一消费者
-  `runtime/mcp-tools/memory-tools.ts` 零 importer(已从工具注册表移除)。`MemoryNodeStore`
-  仍被 `wiki-anchor-injection` / `wiki-search` 间接读取。旧表数据可能在 DB 中。
-- **修复方案**:删除旧版 + `mcp-tools/memory-tools.ts`(已执行)。
+Extractor B 的 service、Store 和测试仍存在，但当前生产启动工厂和触发路径没有装配它。Extractor A 已删除，向量 KB/RAG 也已删除。
 
-**原优先级**：3 × 3 / 3 = **3.0**。→ ✅ 已清理(master 本批删除 memory-store.ts + memory-tools.ts + DROP 2 表)。
+**影响**：代码与配置暗示存在自动抽取能力，实际在线路径主要依赖模型主动写 Wiki 和 memory turn。
 
----
+### D-014：日志同步写入且缺少敏感信息治理
 
-### D-007 · ToolRateLimiter 已装载运行 ✅ **已解决**
+日志文件 sink 使用同步 I/O；没有统一字段化结构、轮转策略或 secret redaction。代理 URL 等配置可能进入日志。
 
-**位置**：`runtime/tool-rate-limiter.ts` 122 行。
+**影响**：高频日志会阻塞事件循环；支持日志可能泄露凭证或本地路径。
 
-**解决说明**：已在 `agent-loop.ts:53` 导入、`line 117` 实例化，并在 `tool-factory.ts:121-156` 中调用 acquire/release。工具限流已在生产路径运行。
+### D-015：Renderer/Electron 防护未系统化
 
-**原描述**（保留供参考）：
-- 完整实现，每个工具有独立的"信号量 + 间隔门控"。
-- 高频工具（WebSearch / WebFetch）不会被 LLM 滥用。
+当前启用了 context isolation 并关闭 node integration，但 webview 能力开启；没有在架构入口看到统一 CSP、导航限制和 permission handler 策略，sandbox 也未形成明确契约。
 
-**原优先级**：3 × 3 / 2 = **4.5**。→ ✅ 已解决。
+**影响**：Renderer 内容、外部导航或 webview 一旦出现注入问题，防御层不足。
 
----
+### D-016：代理只覆盖部分网络客户端
 
-### D-008 · KB 搜索性能瓶颈（影响 3 / 成本 4 / 紧迫 3）
+[`proxy-manager.ts`](../../src/runtime/proxy-manager.ts) 主要设置 backend 的 undici dispatcher，不自动覆盖 Electron、MCP 子进程或所有 SDK/外部命令。
 
-**位置**：`server/kb-search.ts` cosine 计算在客户端循环。
+**影响**：UI 显示“已配置代理”时，不同网络路径仍可能行为不一致。
 
-**症状**：`getAllChunksForSearch()` 全量加载 + 循环计算。10K+ chunks 时秒级延迟。
+### D-017：崩溃处理可能让进程在未知状态继续运行
 
-**修复路径**：
-- 短期：限制 KB 大小 + 显示"性能警告"。
-- 中期：sqlite-vss（SQLite 原生向量搜索）。
-- 长期：外置向量库（lancedb / qdrant）。
+全局 `uncaughtException` handler 记录错误，但未形成“记录后退出、由 supervisor 重启”的统一策略。
 
-**优先级**：3 × 3 / 4 = **2.25**。
+**影响**：捕获不可恢复错误后继续服务，可能扩大内存/状态损坏。
 
----
+### D-018：缺少持续集成与行为质量评估
 
-### D-009 · `meta.requiresConfirmation` 字段已删除 ✅ **已解决**
+仓库有大量 unit/E2E 测试和 mock model，但当前没有 `.github/workflows`，也没有 Agent trajectory/outcome eval harness。
 
-**原位置**：所有 `buildTool({meta:{requiresConfirmation: true}})`。
+**影响**：本地测试能力强，但没有仓库级自动门禁；Prompt、记忆和工具策略变化难以用行为指标回归。
 
-**当前状态**：字段已从 `src` 删除（v0.8 hook-first）。工具确认 UX 改走 `PreToolUse` hook + permission 机制，不需要工具 meta 的 boolean 字段。原描述的"meta 字段未完全接通"已不成立——根本就不该有这个 meta。
+## 5. 已退役但仍会误导维护者的叙事
 
-**原描述**（保留供参考）：
-- 字段已定义，无 UI 弹窗，无 hook 阻断。
+以下内容不是当前债务，继续把它们当活跃模块反而会制造错误修复：
 
-**原优先级**：3 × 3 / 2 = **4.5**。→ ✅ 已解决（字段删除，无需"接通"）。
+- `turns` / `turn_state` 表：已由 `steps` 与 `sessions` 取代。
+- `MemoryStore` / `MemoryNodeStore` 在线后端：类和表已移除或迁移清理，当前记忆走 Wiki subtree。
+- `knowledge.db` / KB embedding / RAG hook：不在当前生产路径。
+- `src/runtime/tools`：工具已移动到 `src/tools`。
+- `src/main/ipc/`：旧 handler 树已删除。
 
----
+## 6. 建议处理顺序
 
-### D-010 · 23 个 Hook 未装载（影响 2 / 成本 4 / 紧迫 2）
-
-**位置**：`core/hook-types.ts:28-39` 30 个事件，实际注册 7 个事件类型（剩余 19 个 emit 点无 handler）。
-
-**症状**：`PermissionRequest / TeammateIdle / TaskCreated / TaskCompleted / Elicitation / ElicitationResult / ConfigChange / CwdChanged / FileChanged / WorktreeCreate / WorktreeRemove / InstructionsLoaded / Notification` 等未注册。
-
-**修复**：
-- 删除无用定义；或
-- 实现这些事件的具体 handler（取决于产品方向）。
-
-**优先级**：2 × 2 / 4 = **1.0**。
-
----
-
-### D-011 · ChatPanel 未虚拟化（影响 3 / 成本 2 / 紧迫 2）
-
-**位置**：`renderer/components/layout/ChatPanel.tsx`。
-
-**症状**：长会话（1000+ 消息）渲染慢。
-
-**修复**：用 `react-virtuoso` 或 `react-window`。
-
-**优先级**：3 × 2 / 2 = **3.0**。
-
----
-
-### D-012 · 日志无脱敏（影响 3 / 成本 2 / 紧迫 2）
-
-**位置**：`core/logger.ts`、`server/provider-store.ts`。
-
-**症状**：API key 可能被 log 出来（虽然 assistant-tools 已有 `redactSensitive`）。
-
-**修复**：在 logger 层加 `redact(obj)` 自动脱敏（key/secret/token/password 字段 → ***）。
-
-**优先级**：3 × 2 / 2 = **3.0**。
-
----
-
-### D-013 · SQLite 未启用 WAL ✅ **已解决**
-
-**位置**：`server/session-db.ts:59-75` `constructor`。
-
-**解决说明**：`session-db.ts:66` 和 `kb-db.ts:52` 已执行 `db.pragma('journal_mode = WAL')`。WAL 模式已启用，读写不再互斥。
-
-**原描述**（保留供参考）：
-- `better-sqlite3` 默认 `journal_mode=DELETE`。崩溃可能丢失最后一笔。
-- 修复方法：构造函数加 `db.pragma('journal_mode = WAL')`。
-
-**原优先级**：3 × 2 / 1 = **6.0**。→ ✅ 已解决。
-
----
-
-### D-014 · WebSocket 重连丢事件（影响 3 / 成本 2 / 紧迫 2）
-
-**位置**：`main/ipc-proxy.ts:214-261`。
-
-**症状**：后端重启时，前端 WS 重连，但期间事件丢失。
-
-**修复**：后端在 `/ws` 重连握手时回放最近 N 秒的事件缓存；前端在 WS 重连后请求 `GET /api/sessions/<id>/since=<seq>` 拉取未读消息。
-
-**优先级**：3 × 2 / 2 = **3.0**。
-
----
-
-### D-015 · IPC 调用无 retry（影响 3 / 成本 1 / 紧迫 3）
-
-**位置**：`preload/index.ts` 所有 `invoke()` 调用。
-
-**症状**：网络抖动或后端重启时 `api.x()` 直接失败。
-
-**修复**：在 `preload/index.ts` 包装一层 retry-with-backoff（最多 3 次）。
-
-**优先级**：3 × 3 / 1 = **9.0**。
-
----
-
-### D-016 · preload/proxy IPC 契约漂移（影响 3 / 成本 1 / 紧迫 4）
-
-**位置**：`preload/index.ts`、`main/ipc-proxy.ts`、`shared/ipc-api.ts`、`tests/unit/rest-routers.test.ts`。
-
-**症状**：`preload/index.ts` 暴露 155 个 preload API（138 个唯一通道），`ipc-proxy.ts` 的 `R` 表代理 141 个通道。测试已检查大多数通道必须有映射，但当前显式放行了 4 个例外：
-- `templates:github-preview`
-- `templates:import-github`
-- `search-provider:get`
-- `search-provider:set`
-
-其中 GitHub template 后端路由已经存在于 `server/template-router.ts`，但 `R` 表未映射；search provider 通道只在 preload 出现，后端入口待确认。
-
-**风险**：UI 调用这些 API 时可能挂起/失败；新通道继续靠手写同步，容易再次漂移。
-
-**修复**：
-1. 对 template GitHub 两个通道补齐 `ipc-proxy.ts` 映射，或明确改成非 proxy 路径并在测试中说明原因。
-2. 对 search provider 两个通道做产品决策：删除废弃 preload 方法，或补后端路由与 proxy 映射。
-3. 中期从 `shared/ipc-api.ts` 生成 preload wrapper / proxy 校验，减少三处手写漂移。
-
-**优先级**：3 × 4 / 1 = **12.0**。
-
----
-## 3. 优先级矩阵
-
-| 优先级 | 债务 | 影响 × 紧迫 / 成本 |
-|--------|------|-------------------|
-| 🔴 12.0 | D-016 preload/proxy IPC 契约漂移 | 3 × 4 / 1 |
-| 🔴 9.0 | D-015 IPC 无 retry | 3 × 3 / 1 |
-| ~~🔴 6.0~~ | ~~D-004 main/ipc 死代码~~ | ~~2 × 3 / 1~~ ✅ 已解决 |
-| ~~🔴 6.0~~ | ~~D-013 SQLite 未启用 WAL~~ | ~~3 × 2 / 1~~ ✅ 已解决 |
-| ~~🟠 4.5~~ | ~~D-007 ToolRateLimiter 未装~~ | ~~3 × 3 / 2~~ ✅ 已解决 |
-| ~~🟠 4.5~~ | ~~D-009 requiresConfirmation 未通~~ | ~~3 × 3 / 2~~ ✅ 已解决（字段删除） |
-| 🟠 4.0 | D-001 AgentService 上帝对象 | 5 × 4 / 4 |
-| 🟠 4.0 | D-002 session-db 巨型 | 4 × 3 / 3 |
-| 🟠 4.0 | D-003 legacy KB RAG hook | 2 × 2 / 1 |
-| 🟡 3.0 | D-005 mcp-tools 改名 | 2 × 3 / 2 |
-| 🟡 3.0 | D-006 双 Memory 系统 | 3 × 3 / 3 |
-| 🟡 3.0 | D-011 ChatPanel 虚拟化 | 3 × 2 / 2 |
-| 🟡 3.0 | D-012 日志脱敏 | 3 × 2 / 2 |
-| 🟡 3.0 | D-014 WS 重连丢事件 | 3 × 2 / 2 |
-| 🟢 2.25 | D-008 KB 搜索性能 | 3 × 3 / 4 |
-| 🟢 1.0 | D-010 23 个 Hook 未装 | 2 × 2 / 4 |
-
-### 3.1 象限图（quadrantChart）
-
-```mermaid
-quadrantChart
-    title Tech Debt 优先级象限图
-    x-axis "低成本 --> 高成本" 修复代价
-    y-axis "低紧迫 --> 高紧迫" 紧迫度
-    quadrant-1 暂缓<br/>(高成本 + 高紧迫)
-    quadrant-2 立即清理<br/>(低成本 + 高紧迫)
-    quadrant-3 忽略<br/>(低成本 + 低紧迫)
-    quadrant-4 计划清理<br/>(高成本 + 低紧迫)
-    D-003 legacy KB RAG: [0.10, 0.35]
-    D-015 IPC retry: [0.10, 0.65]
-    D-016 IPC 契约漂移: [0.10, 0.80]
-    D-001 AgentService: [0.85, 0.75]
-    D-002 session-db: [0.70, 0.55]
-    D-005 mcp-tools 改名: [0.40, 0.55]
-    D-006 Memory 双系统: [0.60, 0.50]
-    D-011 ChatPanel 虚拟化: [0.40, 0.40]
-    D-012 日志脱敏: [0.40, 0.40]
-    D-014 WS 重连: [0.40, 0.40]
-    D-008 KB 性能: [0.80, 0.55]
-    D-010 23 Hook 未装: [0.85, 0.30]
-```
-
-**解读**：
-- ~~D-013 SQLite WAL~~、~~D-007 ToolRateLimiter~~、~~D-009 requiresConfirmation~~ 已解决，从活跃债务中移除
-- **第二象限（立即清理）**：2 条 — D-016 与 D-015 都是低成本且会影响前后端调用可靠性的基础设施债，建议 1 个月内处理
-- **第一象限（暂缓）**：D-001（影响最大但成本 4 周）+ D-002（拆分巨型类）— 需要稳定期才能动
-- **第四象限（计划清理）**：D-003 / D-005 / D-011 / D-012 / D-014 — 1 个月内分批
-- **第三象限（忽略）**：D-010（23 个 hook 未装）— 视产品方向决定
-
-### 3.2 风险-影响气泡图
-
-```mermaid
-graph LR
-    subgraph "Q1 立即清理"
-        D015["D-015<br/>9.0<br/>IPC retry"]
-        D016["D-016<br/>12.0<br/>IPC 契约漂移"]
-    end
-    subgraph "Q2 计划清理"
-        D003["D-003<br/>4.0<br/>legacy KB RAG"]
-        D005["D-005<br/>3.0<br/>mcp-tools 改名"]
-        D006["D-006<br/>3.0<br/>Memory 双系统"]
-        D011["D-011<br/>3.0<br/>ChatPanel 虚拟化"]
-        D012["D-012<br/>3.0<br/>日志脱敏"]
-        D014["D-014<br/>3.0<br/>WS 重连"]
-    end
-    subgraph "Q3 暂缓"
-        D001["D-001<br/>4.0<br/>AgentService 拆分<br/>⚠ 影响最大"]
-        D002["D-002<br/>4.0<br/>session-db 拆分"]
-        D008["D-008<br/>2.25<br/>KB 性能"]
-    end
-    subgraph "Q4 忽略"
-        D010["D-010<br/>1.0<br/>23 Hook 未装"]
-    end
-    subgraph "✅ 已解决"
-        D004s["D-004<br/>main/ipc 死代码<br/>✅ 已清理"]
-        D007s["D-007<br/>ToolRateLimiter<br/>✅ 已装载运行"]
-        D013s["D-013<br/>SQLite WAL<br/>✅ 已启用"]
-        D009s["D-009<br/>requiresConfirmation<br/>✅ 字段已删除"]
-    end
-
-    style D003 fill:#fbbf24,color:#000
-    style D015 fill:#f87171,color:#000
-    style D016 fill:#f87171,color:#000
-    style D005 fill:#fbbf24,color:#000
-    style D006 fill:#fbbf24,color:#000
-    style D011 fill:#fbbf24,color:#000
-    style D012 fill:#fbbf24,color:#000
-    style D014 fill:#fbbf24,color:#000
-    style D001 fill:#60a5fa,color:#000
-    style D002 fill:#60a5fa,color:#000
-    style D008 fill:#60a5fa,color:#000
-    style D010 fill:#9ba0a8,color:#000
-    style D004s fill:#34d399,color:#000
-    style D007s fill:#34d399,color:#000
-    style D013s fill:#34d399,color:#000
-    style D009s fill:#34d399,color:#000
-```
-
-## 4. 推荐的 3 个月路线图
-
-### 4.1 甘特图
-
-```mermaid
-gantt
-    title Tech Debt 清理 3 个月路线图
-    dateFormat  YYYY-MM-DD
-    axisFormat %m-%d
-
-    section 第 1 月：基础设施
-    D-013 WAL 模式           :done, t1, 2026-06-15, 1d
-    D-007 ToolRateLimiter    :done, t1b, 2026-06-15, 1d
-    D-016 IPC 契约漂移       :active, t0, 2026-06-21, 1d
-    D-015 IPC retry          :t2, after t0, 3d
-    D-003 legacy RAG 标注/退役 :t3, after t2, 1d
-    D-012 日志脱敏           :t4, 2026-06-23, 3d
-
-    section 第 2 月：性能 + 安全
-    D-009 confirmation       :done, t6, after t3, 1d
-
-    section 第 3 月：清理债
-    D-004 删除死代码         :done, t7, 2026-06-21, 1d
-    D-005 mcp-tools 改名     :t8, after t4, 2d
-    D-006 合并 Memory        :crit, t9, after t8, 7d
-    D-014 WS 重连            :t10, after t9, 3d
-```
-
-### 4.2 详细执行
-
-#### 第 1 个月：基础设施债
-
-1. ~~**D-013 WAL 模式**：1 小时，零风险。~~ ✅ 已完成
-2. ~~**D-007 ToolRateLimiter 装载**：已在 agent-loop.ts 导入并实例化，tool-factory.ts 中调用 acquire/release。~~ ✅ 已完成
-3. **D-015 IPC retry**：半天，需要小心不破坏已有调用语义。
-4. **D-003 legacy RAG 标注/退役**：1 天，降低文档与运行路径误判。
-
-#### 第 2 个月：性能 + 安全债
-
-5. ~~**D-009 requiresConfirmation 接通**：~~ ✅ 已完成（v0.8 改为 hook-first，字段已从 `src` 删除，工具确认 UX 走 PreToolUse hook + permission，无需 meta boolean）。
-6. **D-012 日志脱敏**：1 天，避免泄漏 API key。
-
-#### 第 3 个月：清理债
-
-7. ~~**D-004 删除 main/ipc 死代码**：1 天。~~ ✅ 已完成
-8. **D-005 mcp-tools 改名**：半天，全局 rename。
-9. **D-006 合并 Memory 系统**：1 周（迁移 + 测试）。
-10. **D-014 WS 重连事件回放**：2 天。
-
-#### 暂缓（视业务需要）
-
-- **D-001 AgentService 拆分**：高价值但需要稳定期再动。
-- **D-002 session-db 拆分**：同上。
-- **D-008 KB 性能**：KB 用户量小，暂不急。
-- **D-010 23 个 Hook**：视产品方向决定。
-- **D-011 ChatPanel 虚拟化**：等用户反馈。
-
-## 5. 架构师视角的元判断
-
-**最严重的不是代码债，而是"文档债"**：
-- 没有架构图（本文档是补救）。
-- 没有模块依赖图（见 02-module-structure.md 末尾）。
-- 没有"测试哪些"清单（85 unit + 8 e2e 不算文档）。
-- 没有"性能预算"或"SLO"。
-
-**次严重的是"未完成的扩展点"**：
-- 23 个 hook 等待 handler（其中 10 个连 emit 都没有，纯死定义）。
-- `src/main/ipc*` 死代码已清理；当前剩余的是 preload/proxy 契约漂移。
-- ~~tool meta `requiresConfirmation` 等待 UI 闭环。~~ ✅ 已删除（v0.8 hook-first，确认 UX 走 PreToolUse hook + permission）
-- ~~ToolRateLimiter 等待装载。~~ ✅ 已装载运行
-
-**第三严重的是"安全债"**：
-- 无确认弹窗。
-- 无日志脱敏。
-- 无文件路径默认限制。
-
-修复这些会让项目在**未来 18 个月**内保持演进能力。
+1. 先为 D-001 写重启持久性复现，再决定 schema 修复。
+2. 明确 backend bind/auth 威胁模型，处理 D-002。
+3. 补齐或删除 D-003 的不可达 UI 能力。
+4. 让 abort 贯穿 Provider 与工具等待队列。
+5. 再处理 schema 台账、跨介质一致性和大文件拆分。
+6. 最后收敛推送、日志、代理和休眠子系统。

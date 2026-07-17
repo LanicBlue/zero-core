@@ -1,23 +1,19 @@
-# docs/design — 设计 spec(进行中)
+# docs/design — 正在讨论的设计
 
-放**正在讨论/细化**的设计 spec。每个主题一个子目录,至少一份 spec 文件。
+本目录只放尚未进入实施计划的设计。设计中的类型、表、路由和命令是目标方案，不代表当前代码已经支持。
 
-> **当前进行中:** [`external-subagent-mcp/`](external-subagent-mcp/)。
-> `wiki-system-redesign` 独立 re-review 已 PASS(见 [`../plan/wiki-system-redesign/plan-review-r2.md`](../plan/wiki-system-redesign/plan-review-r2.md)),可进入实施。
-> 已完成的 5 个 effort 全部归档到 [`../archive/`](../archive/):
-> - `archive/agent-driven-workflow/`(v0.8 多 agent 工作流,P0–P9)
-> - `archive/hook-redesign/`(hook 生命周期重做)
-> - `archive/project-flow/`(需求→代码合并 Flow)
-> - `archive/runtime-push-ui-sync/`(运行时推送 · UI 窗口,N1–N4)
-> - `archive/agent-context-fields/`(上下文字段接通,C1–C3)
->
-> 当前架构以 [`../arch/`](../arch/) 为准(code-as-truth)。本目录是"为什么这么设计"的来源;一旦 effort 合并 master,spec 随 plan/acceptance 一起沉到 `archive/`。
+当前设计：
 
-## 约定(新 effort 进来时)
+- [`external-subagent-mcp/issue.md`](external-subagent-mcp/issue.md)
+- [`external-subagent-mcp/design.md`](external-subagent-mcp/design.md)
 
-- 发现问题 → 先建 [`../issues/<name>.md`](../issues/)。
-- 讨论细化 → 在本目录建 `<topic>/`,至少一份 spec。
-- 需求明确 → 拆 [`../plan/<topic>/`](../plan/)(sub-impl + acceptance 一一对应)。
-- 合并 master → 整组(spec + plan + acceptance)移到 [`../archive/<topic>/`](../archive/)。
+`wiki-system-redesign` 已完成设计评审并进入 [`../plan/wiki-system-redesign/`](../plan/wiki-system-redesign/README.md)，但尚未按 acceptance 证明实施完成。
 
-完整生命周期见 [`../issues/README.md`](../issues/README.md)。
+## 生命周期
+
+1. 问题记录在 [`../issues/`](../issues/README.md)。
+2. 讨论成熟后把整个 effort 目录移动到 `design/` 并补 `design.md`。
+3. 可执行后移动到 [`../plan/`](../plan/README.md)，增加逐阶段 plan 与 acceptance。
+4. 实施完成、验收通过并经用户同意后，移动到 [`../archive/`](../archive/README.md)。
+
+当前架构以 [`../basic/`](../basic/README.md)、[`../arch/`](../arch/README.md) 和源码/测试为准。

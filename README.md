@@ -1,99 +1,110 @@
 # zero-core
 
-> AI Agent 运行时 —— 基于 Electron,可配置工具 / MCP / 多 provider / 可扩展 skill 体系。
+> 本地优先的 AI Agent 工作台：Electron 桌面端、独立 Node 后端、可配置工具、MCP、多 Provider 与 Skill。
 
-zero-core 是一个本地优先的 AI Agent 工作台:把大模型接入一个带工具调用、子代理委派、会话持久化与可视化界面的运行时。你在里面定义 agent、给它挂工具和 skill、然后像和一个会干活的助手对话一样让它完成真实任务。
+zero-core 把模型接入本地文件、终端、Wiki、任务委派和持久化会话。桌面模式下，Electron 主进程负责窗口与桥接，业务后端运行在单独的 Node 子进程中，React 渲染层通过 IPC → HTTP/WebSocket 与后端通信。
 
-## 特性
+## 当前能力
 
-- **多 provider**:OpenAI / Anthropic / Google / OpenAI 兼容 / Ollama,通过 AI SDK 接入,一个 agent 可切换模型。
-- **可配置工具体系**:文件读写、Bash、Grep/Glob、Wiki、子代理委派等内置工具,工具策略(白/黑名单、自动批准、并行/串行)按 agent 配置。
-- **MCP**:标准 Model Context Protocol 客户端,接入任意 MCP server 扩展能力。
-- **Skill 体系(渐进式披露)**:skill 是带 `SKILL.md` 的目录,系统提示只注入 name + description,agent 按需经 `[skills]/<id>/` 虚拟通道读取正文与脚本。**`skill-creator` 开箱即有**(内置,首次启动自动 seed 到 `~/.zero-core/skills/`),用来创建/迭代新 skill。
-- **会话持久化**:better-sqlite3 存步骤/会话/工具执行,支持流式渲染、压缩摘要、归档。
-- **Electron 桌面应用**:主进程 + 预加载 + React 渲染层;后端是独立 fork 的 Node 子进程(Express + WebSocket),主进程桥接 IPC ↔ HTTP/WS。
-- **CLI / headless**:除桌面应用外,核心运行时也可作为库或 CLI 使用(`dist/cli.js`)。
+- OpenAI、Anthropic、Google、OpenAI-compatible 与 Ollama Provider。
+- 22 个当前内置工具，包括文件/终端、Web、子代理、任务、工作流、Wiki 和平台工具；实际注册表以 [`src/tools/index.ts`](src/tools/index.ts) 为准。
+- 外部 MCP server 扫描、配置与动态工具接入。
+- 基于 `SKILL.md` 的 Skill 扫描、读取、创建和安装。
+- SQLite 会话、消息、任务、工作流和工具审计；Wiki 与附件等内容同时使用本地文件。
+- 流式输出、工具调用、中断恢复、上下文压缩和子代理委派。
 
-## 快速开始
+## 环境要求
 
-### 环境要求
+- Node.js ≥ 24.14.0；仓库的 [`.nvmrc`](.nvmrc) 是推荐版本。
+- npm。
+- Windows、macOS 或 Linux。当前依赖 Electron 43，并包含 `better-sqlite3` 原生模块。
 
-- Node.js ≥ 20.6
-- Windows / macOS / Linux(主开发环境为 Windows + Electron 41)
+Windows 上不支持更旧的 Node 24 版本：Node 24.12.0 的 `fs.rmSync` 可能在删除非 ASCII 路径时导致进程原生崩溃，测试启动时会主动拒绝不满足版本要求的运行时。
 
-### 安装
+## 安装与开发
 
 ```bash
 git clone https://github.com/LanicBlue/zero-core.git
 cd zero-core
 npm install
+npm run dev
 ```
 
-> better-sqlite3 是原生模块,`npm install` 会按系统 Node 版本编译。Electron 打包时由 electron-builder 重新编译给 Electron ABI。
+`npm run dev` 会在需要时先生成 `dist/`，随后启动 `electron-vite` 开发模式。开发模式的后端使用系统 `node`，因此当前 shell 的 Node 版本必须满足上述要求。
 
-### 开发
+## 验证与构建
 
 ```bash
-npm run dev      # 检查 dist/ 是否需要重建 → electron-vite dev 启动 Electron
+npm run typecheck       # cli / web / node 三套 TypeScript 配置
+npm run test:unit       # Vitest 单元测试
+npm run test:e2e        # build 后运行 Electron Playwright 测试
+npm run check:links     # 检查 Markdown 本地链接
+npm run build           # typecheck + Electron 三入口构建
+npm run build:lib       # 生成 dist/ CLI/后端库并复制内置 Skill
 ```
 
-### 构建
+平台安装包：
 
 ```bash
-npm run build          # typecheck + electron-vite build
-npm run build:lib      # 仅编译核心库到 dist/(tsc + 复制内置 skill 资产)
-npm run build:win      # Windows 安装包(nsis + portable)
-npm run build:mac      # macOS dmg
+npm run build:win
+npm run build:mac
+npm run build:linux
 ```
 
-### 测试
+三个打包命令都会先把 `better-sqlite3` 重编译为 Electron ABI，打包结束后再恢复为系统 Node ABI。不要用普通 `npm run build` 代替安装包命令。
 
-```bash
-npm run test:unit      # vitest 单测
-npm run test:e2e       # 先 build 再跑 Playwright(Electron)
-npm run typecheck      # tsc 类型检查(cli + web + node)
-```
+## 运行入口
 
-## 配置
-
-- **数据根**:默认 `~/.zero-core`(sessions.db、wiki、skills、attachments 等)。可用 `ZERO_CORE_DIR` 覆盖。
-- **provider / 工具策略 / 代理** 等在应用内 Settings 配置,持久化到配置库。
-- 环境变量示例见 [`.env.example`](.env.example)(复制为 `.env` 使用,`.env` 已 gitignore)。
-
-## Skill 体系
-
-skill 放在以下目录(扫描优先级:数组靠后覆盖前者,`~/.zero-core/skills` 最高):
-
-| 目录 | 来源 | 可写 |
+| 入口 | 源文件 | 当前用途 |
 | --- | --- | --- |
-| `~/.claude/skills` | Claude 生态 | 只读 |
-| `~/.agents/skills` | agents 生态 | 只读 |
-| `~/.codex/skills` | codex 生态 | 只读 |
-| `~/.zero-core/skills` | zero-core 应用 | **可写**(Skills 页可新建/编辑) |
+| Electron 桌面端 | `src/main/index.ts` | 主要产品入口，由 `npm run dev` 或打包产物启动 |
+| 后端子进程 | `src/backend.ts` | Electron 自动拉起，使用随机本地端口 |
+| CLI | `src/cli.ts` | `npm run build:lib` 后运行 `dist/cli.js` |
+| 独立 HTTP/WS | `src/serve.ts` | 库级入口；当前 `package.json` 没有 `serve` npm script |
 
-- 每个 skill 是一个目录:`SKILL.md`(带 `name` / `description` frontmatter)+ 可选 `scripts/` / `references/` / `assets/`。
-- agent 通过 `[skills]/<id>/SKILL.md` 这样的虚拟路径读取,运行时解析到真实磁盘路径并沙箱化(不能 `../` 越界)。
-- **`skill-creator` 是内置 skill**:首次启动后端时自动 seed 到 `~/.zero-core/skills/skill-creator`,开箱即有,用它来创建和迭代你自己的 skill。
+CLI 与独立服务入口存在，但桌面端是当前完整接线、测试覆盖最充分的运行方式。
 
-## 项目结构
+## 配置与数据
 
+- 数据根默认为 `~/.zero-core`，可用 `ZERO_CORE_DIR` 覆盖。
+- 主配置文件为 `~/.zero-core/zero-core.json`；项目目录也可提供 `zero-core.json` 或 `.zero-core.json`。
+- Provider、Agent、工具策略等主要通过桌面应用配置。
+- 环境变量说明见 [`.env.example`](.env.example)。
+
+典型数据包括 `sessions.db`、`wiki/`、`skills/`、`attachments/`、`archives/`、`tool-outputs/`、`logs/` 和项目/工作流 worktree。WebFetch 目前有一条绕过 `ZERO_CORE_DIR` 的旧路径，详见架构文档。
+
+## Skill 来源
+
+扫描优先级从低到高如下；同名 Skill 由后面的来源覆盖：
+
+| 目录 | 来源 | 应用是否可写 |
+| --- | --- | --- |
+| `~/.claude/skills` | Claude 生态 | 否 |
+| `~/.agents/skills` | Agent 生态 | 否 |
+| `~/.codex/skills` | Codex 用户 Skill | 否 |
+| `~/.codex/skills/.system` | Codex 内置 Skill | 否 |
+| `~/.zero-core/skills` | zero-core | 是 |
+
+内置 `skill-creator` 会在后端首次启动时 seed 到 `~/.zero-core/skills/skill-creator`。
+
+## 代码结构
+
+```text
+src/
+├── core/       # 配置、提示词、Hook/工具注册表、日志
+├── main/       # Electron 主进程、后端生命周期、IPC 代理
+├── preload/    # contextBridge API
+├── renderer/   # React UI 与 Zustand 状态
+├── runtime/    # AgentLoop、Session、恢复/并发运行时
+├── server/     # Express/WS、服务、Store、迁移与后台工作流
+├── shared/     # 跨进程类型和契约
+├── tools/      # 内置工具、MCP 平台工具和 Outline
+├── backend.ts  # Electron 后端子进程入口
+├── serve.ts    # 独立 HTTP/WS 入口
+└── cli.ts      # 终端入口
 ```
-zero-core/
-├── src/
-│   ├── main/        # Electron 主进程(窗口、后端子进程生命周期、IPC 桥)
-│   ├── preload/     # 预加载(安全暴露 API 给渲染层)
-│   ├── renderer/    # React UI(store、组件、样式)
-│   ├── server/      # 后端:Express + WebSocket、各 store、DB、router
-│   ├── runtime/     # agent loop、hooks、provider、子代理委派、会话
-│   ├── core/        # 配置、system prompt 组装、工具注册表
-│   └── tools/       # 内置工具实现(文件/Bash/Grep/Glob/Wiki + skill 路径解析)
-├── tests/           # vitest 单测 + Playwright e2e
-├── scripts/         # 构建/开发辅助
-├── docs/            # 架构文档、设计/计划/归档、可视化
-└── electron.vite.config.ts / electron-builder.yml
-```
 
-架构细节见 [docs/arch/](docs/arch/),入门导览见 [docs/basic/](docs/basic/)。
+文档总入口见 [`docs/README.md`](docs/README.md)，当前事实速览见 [`docs/basic/README.md`](docs/basic/README.md)。`docs/plan/` 描述未来方案，`docs/archive/` 仅是历史实施记录，不能作为当前行为依据。
 
 ## License
 

@@ -56,6 +56,7 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 </style>
 </head>
 <body>
+<div style="max-width:880px;margin:0 auto 18px;padding:10px 14px;border:1px solid #d29922;border-radius:8px;color:#d29922;background:#d2992218">历史可视化快照：Hook 名称与装配状态可能已变化。当前事实见 <code>docs/arch/03-runtime-engine.md</code> 与 <code>08-cross-cutting.md</code>。</div>
 
 <h1>🔌 AgentLoop 全扩展点 — 内联提取后</h1>
 <p class="sub">按 loop 执行顺序 · 30 Hook 点 · executeStream 纯编排 · Loop 不持有业务逻辑</p>
@@ -242,7 +243,7 @@ h1{text-align:center;font-size:24px;margin-bottom:4px}
 <div class="row"><div class="hook-name">PostTurnComplete</div><div class="dot live"></div><div class="cc"><div class="card live">
 <div class="ct">PostTurnComplete <span class="s sl">✅ 已接入 ×1</span></div>
 <div class="desc"><span class="loc">agent-loop.ts:161</span><br>
-<span class="impl">● compression-hooks</span> — L1 摘要 + L2 记忆提取 + turns 同步
+<span class="impl">● compression-trigger-hooks + compression-core</span> — 滚动摘要 + cursor 推进；必要时先运行 memory turn
 </div>
 </div></div></div>
 

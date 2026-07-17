@@ -1,287 +1,176 @@
 # 01 · 系统全景
 
-> 本文从架构师视角，回答三个问题：系统由哪几个进程组成？进程之间如何对话？数据在系统里如何流动？
+> 当前架构基线，按 2026-07-16 的入口代码、运行时与测试核对。未来设计见 `docs/design/` 和 `docs/plan/`，不在本文冒充已实现行为。
 
 ## 1. 一句话定义
 
-Zero-Core 是一个 **本地优先的 AI Agent 运行时**，通过 Electron 桌面壳运行：主进程壳 + 子进程 HTTP/WS 后端 + Chromium 渲染进程。后端用 Vercel AI SDK 统一多 LLM Provider，状态分散落在 SQLite（`sessions.db`）+ 磁盘镜像树：会话核心与配置在 `sessions.db`、Wiki 正文下沉到 `~/.zero-core/wiki/` 镜像树（详见 §9）。> 注：旧的 KB 向量库 `knowledge.db` 已整体移除（详见 §9 + `06-knowledge-subsystems.md`）。Agent 通过内置 25 个工具（分 9 个语义 category，详见 `docs/arch/04-tools-subsystem.md` §3 矩阵）+ MCP 协议接入的外部工具完成任务；v0.8 后旧 "Agent-as-a-Tool" 第三层已下线，改为统一的 `Agent` 委派工具 + `AgentRegistry` 注册表 CRUD（详见 04 §5）。
+Zero-Core 是本地单用户 AI Agent 工作台。主要形态是 Electron 桌面应用：React renderer 不直接访问数据库或运行时，而是经 preload 和 Electron main 转发到独立 Node backend；backend 组合 Agent runtime、工具、工作流、MCP 和本地持久化。
 
-## 2. 进程模型
+## 2. 运行时拓扑
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          用户桌面 (Electron)                              │
-│                                                                         │
-│  ┌──────────────────┐   stdio(JSON)   ┌───────────────────────────────┐ │
-│  │  Main Process    │────────────────▶│  Backend Process (Node.js)    │ │
-│  │  (src/main/*)    │◀───── ready ────│  src/backend.ts → server/     │ │
-│  │                  │                 │  Express + WebSocket          │ │
-│  │  BrowserWindow   │                 │                               │ │
-│  │  IPC 代理         │  HTTP + WS       │  SQLite (better-sqlite3)     │ │
-│  │  Electron hooks  │────────────────▶│  ~/.zero-core/sessions.db     │ │
-│  │                  │                 │                               │ │
-│  └──────────────────┘                 │  持久化:                      │ │
-│          │                            │  - 会话 / 消息 / 轮次          │ │
-│          │ contextBridge              │  - Agent / Provider / MCP     │ │
-│          │ preload                   │  - KB chunks + embeddings     │ │
-│          ▼                            │  - Memory graph + nodes       │ │
-│  ┌──────────────────┐                 │  - KV store (settings)        │ │
-│  │ Renderer Process │                 │                               │ │
-│  │  (src/renderer/*)│                 └───────────────────────────────┘ │
-│  │  React 19        │                          │                        │
-│  │  Zustand         │                          │ spawn                  │
-│  │                  │◀─────────────────────────┘                        │
-│  └──────────────────┘   (WebView for MCP login, browser-render)         │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    UI["React renderer"] -->|"window.api / IPC invoke"| MAIN["Electron main"]
+    MAIN -->|"HTTP /api/*"| BACKEND["Node backend"]
+    BACKEND -->|"WebSocket /ws"| MAIN
+    MAIN -->|"IPC events"| UI
+    BACKEND --> DB["sessions.db"]
+    BACKEND --> FILES["wiki / tool-outputs / attachments / archives / logs"]
+    BACKEND --> PROVIDERS["Model providers"]
+    BACKEND --> MCP["MCP servers"]
 ```
 
-证据：
+### 2.1 Electron main
 
-- 主进程入口 `src/main/index.ts`（226 行）通过 `spawnBackend()` 启动后端子进程
-- 后端入口 `src/backend.ts`（60 行）通过 stdin/stdout JSON 报告 `{type:"ready",port}`
-- `src/main/backend-spawn.ts`（128 行）根据 `app.isPackaged` 决定 `fork()` 还是 `spawn("node")`
-- 渲染进程入口 `src/renderer/main.tsx` → `App.tsx` → `AppLayout`
+`src/main/index.ts` 负责：
 
-## 3. 进程间通信契约
+- Electron 生命周期、窗口、托盘和少量本地能力。
+- 通过 `backend-spawn.ts` 启动、监控并关闭 backend。
+- 通过 `ipc-proxy.ts` 把 renderer invoke 翻译为 HTTP。
+- 把 backend WebSocket 事件转成 renderer IPC 事件。
 
-### 3.1 主 ↔ 后端（Electron ↔ Node 子进程）
+main 不创建 SessionDB、AgentService 或领域 Store。窗口控制、目录选择、Web 登录窗口等必须依赖 Electron 的能力保留在 main；普通业务能力应落在 backend。
 
-| 方向 | 通道 | 协议 |
-|------|------|------|
-| 后端 → 主 | stdout JSON line | `{type:"ready",port,pid}` |
-| 后端 → 主 | stderr | 直接透传 |
-| 主 → 后端 | stdin JSON line | `{type:"shutdown"}` |
-| 主 → 后端 | 信号 | SIGTERM / SIGINT（兜底） |
+### 2.2 Node backend
 
-`backend-spawn.ts` 内有 30 秒启动超时；启动后崩溃会自动递归重启。
+`src/backend.ts` 是桌面模式入口，调用 `startServer({ port: 0, serveStatic: false })`。`src/server/index.ts` 是组合根，负责数据库、迁移、Store、Service、REST、WebSocket、恢复和启动 seed。
 
-### 3.2 主 ↔ 渲染（Electron IPC + contextBridge）
+开发模式用系统 `node dist/backend.js --port=0`；打包模式用 Electron `fork()`。两者需要不同的 `better-sqlite3` ABI，这也是平台打包命令在 Electron ABI 与 Node ABI 之间重编译的原因。
 
-- `preload/index.ts` 通过 `contextBridge.exposeInMainWorld("api", api)` 暴露 `window.api`
-- 类型契约见 `src/shared/preload-types.ts`（213 行）的 `WindowApi` 接口
-- 通道声明见 `src/shared/ipc-api.ts`（175 行）的 `IPC_API` 表
+### 2.3 Renderer 与 preload
 
-### 3.3 主 IPC ↔ 后端 HTTP（**这是关键的桥**）
+`src/preload/index.ts` 通过 `contextBridge` 暴露 `WindowApi`。renderer 只消费 `window.api` 和共享类型，不应直接 import server/runtime 或 Node 数据库实现。
 
-`src/main/ipc-proxy.ts` 当前维护一个约 140 项的映射表 `R`，将大多数业务 IPC 调用翻译成对 `http://localhost:<port>/api/...` 的 HTTP 请求。主进程本地仅保留 5 个必须使用 Electron 原生能力的通道：3 个窗口控制、`dialog:openDirectory`、`webfetch:login`。`app:ready` 是健康检查通道。
+页面路由是 `page-store.ts` 的内存状态，不是 URL router。核心会话事件主要由 `AppLayout` 分发，但领域 store/页面也会订阅数据、任务、Wiki 和指标事件。
 
-WebSocket 反向：`src/main/ipc-proxy.ts` 的 `connectEventBridge()` 维护 `ws://localhost:<port>/ws`，订阅后端推送事件（`text_delta` / `tool_start` / `tool_end` / `session_init` / `lifecycle` 等），并转译为 Electron 的 IPC 事件发到渲染进程。
-
-```
-[Renderer]
-   │  window.api.sendMessage(text)
-   ▼
-[Preload] ─── contextBridge ───▶ [Main IPC channel: chat:send]
-   │
-   ▼
-[ipc-proxy.ts: registerProxyHandlers()] ─── fetch ───▶ [http://localhost:PORT/api/chat/send]
-   │
-   ▼
-[server/chat-router.ts → agent-service.sendPrompt()]
-   │
-   ▼ (流式事件)
-[ws://localhost:PORT/ws] ─── connectEventBridge ───▶ [Main IPC event: agent:event]
-   │
-   ▼
-[Renderer: chat-store.handleEvent()]
-```
-
-## 4. 进程内架构分层
-
-后端进程（`src/backend.ts` 启动后）内部按以下层次组织：
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                  Transport / I/O                              │
-│  src/server/*  ←  Express routers + WS server                │
-│                ←  IPC-typed channel handlers                  │
-├──────────────────────────────────────────────────────────────┤
-│                  Service Layer                                │
-│  AgentService      ←  multi-agent lifecycle                  │
-│  SessionManager    ←  lifecycle state machine                │
-│  MCPManager        ←  stdio/SSE MCP connections              │
-│  Recovery          ←  startup scan incomplete turns          │
-├──────────────────────────────────────────────────────────────┤
-│                  Runtime / Domain                             │
-│  src/runtime/agent-loop.ts   ←  streamText() driver          │
-│  src/runtime/session.ts      ←  message array + pruning      │
-│  src/runtime/provider-factory ←  AI SDK model instances      │
-│  src/runtime/tools/*         ←  25 tools (file/shell/web/...)│
-│  src/runtime/mcp-tools/*     ←  advanced tools               │
-│  src/runtime/hooks/*         ←  7 handler 注册中心            │
-├──────────────────────────────────────────────────────────────┤
-│                  Core / Foundation                            │
-│  src/core/config.ts          ←  TypeBox schema + loader      │
-│  src/core/tool-registry.ts   ←  tool catalog                 │
-│  src/core/hook-registry.ts   ←  30 event lifecycle hooks     │
-│  src/core/logger.ts          ←  console + file dual sink     │
-│  src/core/persona.ts         ←  role definitions             │
-│  src/core/system-prompt.ts   ←  dynamic prompt assembly      │
-│  src/core/input-handler.ts   ←  /command expansion           │
-│  src/core/provider-adapter.ts ← per-provider quirks         │
-│  src/core/model-registry.ts  ←  OpenRouter + local fallback  │
-│  src/core/constants.ts       ←  shared magic numbers         │
-├──────────────────────────────────────────────────────────────┤
-│                  Persistence                                  │
-│  better-sqlite3  →  server/sqlite-store.ts  (generic CRUD)   │
-│                  →  server/session-db.ts   (sessions/messages│
-│                                             /steps/tool exec)│
-│                  →  server/key-value-store.ts                │
-│                  →  v0.8 工作流域 9 store (project/requirement│
-│                     /cron/orchestrate/wiki/...)独立 new,     │
-│                     不挂 SessionDB(见 05 §4.0.3)             │
-│  db-migration.ts (启动期 5 阶段迁移 + JSON→SQLite 导入)      │
-└──────────────────────────────────────────────────────────────┘
-```
-
-**关键约束**：
-- `core/` 不依赖 `server/` 或 `runtime/`（除 `test-seed.ts` 有 type-only import 用于测试种子数据）。
-- `runtime/` 通过 `core/kv-store-interface.ts` 与 `runtime/session-store-interface.ts` 这两个**抽象接口**间接依赖 `server/` 的实现（实际运行时依赖包括 MemoryNodeStore 等具体 store 类型）。注入发生于 `agent-service.ts` 创建 `AgentLoop` 时。
-- `server/` 是顶层入口，不被 `core/` 或 `runtime/` 反向依赖。
-
-依赖图：
-
-```
-   shared/types.ts (零依赖)
-        ▲
-        │ types only
-        │
-   ┌────┴────────┐
-   │             │
-core/*      runtime/*  ── 抽象接口 ──▶ server/*  ── HTTP/WS ──▶ main/* ── IPC ──▶ renderer/*
-   │             │                                              ▲
-   └──────┬──────┘                                              │
-          │                                                     │
-       renderer/* (类型 import) ─────────────────────────────────┘
-```
-
-## 5. 关键数据流：一次完整对话
+## 3. 启动顺序
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    participant U as User
-    participant R as Renderer (React)
-    participant M as Main Process
-    participant B as Backend (Express+WS)
-    participant A as AgentLoop
-    participant L as LLM Provider
-    participant T as Tools
+    participant E as Electron main
+    participant B as backend child
+    participant S as startServer
+    participant R as renderer
 
-    U->>R: 输入消息
-    R->>M: window.api.chat.send(text) (IPC)
-    M->>B: POST /api/chat/send (HTTP via ipc-proxy)
-    B->>A: AgentLoop.run(text) (per sessionId)
-    A->>A: assemble system prompt + tools
-    A->>L: streamText(messages, tools)
-    L-->>A: text_delta / thinking_delta / tool-call
-    A->>R: emit StreamEvent via WS bridge
-    Note over A,R: 前端 UI 实时刷新 (chat-store.updateAssistantText)
-
-    loop 每个 tool-call
-        A->>T: execute tool(args)
-        T-->>A: result / error
-        A->>R: tool_start / tool_end events
-    end
-
-    L-->>A: message_end (stop reason)
-    A->>B: session.saveTurn() (SQLite)
-    A->>R: agent_end event
+    E->>B: spawn/fork dist/backend.js --port=0
+    B->>S: startServer(port=0, serveStatic=false)
+    S->>S: DB + migrations + cleanup + services + recovery + routes
+    S-->>B: HTTP server listening
+    B-->>E: stdout {type:"ready", port, pid}
+    E->>E: createWindow + tray
+    E->>E: registerProxyHandlers(port)
+    E->>B: connect WebSocket /ws
+    E-->>R: app:ready / initial events
 ```
 
-## 6. 技术栈速览
+关键顺序：
 
-证据来自 `package.json`（78 行）。
+1. backend 必须先监听成功并通过 stdout JSON 行报告端口。
+2. main 才创建窗口、注册代理和事件桥。
+3. backend 30 秒未就绪时，启动失败。
+4. backend 意外退出后，main 按指数退避重启；60 秒窗口内超过 5 次则停止并显示错误。
+5. 应用退出时，main 先通过 stdin 请求 backend 优雅关闭，再以 SIGTERM/SIGKILL 兜底。
 
-| 层 | 选型 | 备注 |
-|----|------|------|
-| 壳 | Electron 41.6 | 主/渲染/preload 三进程 |
-| 渲染 | React 19.2 + Vite 6.4 | TypeScript TSX |
-| 状态 | Zustand 5.0 | 14 个 store + 1 个 data-sync helper |
-| 构建 | electron-vite 5 + electron-builder 26 | Win/Mac 产物 |
-| 后端 | Express + ws 8 | HTTP + WebSocket |
-| 数据库 | better-sqlite3 12 | 同步驱动，避免回调地狱 |
-| AI | Vercel AI SDK (`ai` 6) + `@ai-sdk/openai`/`anthropic`/`google` | streamText() 主入口 |
-| MCP | `@modelcontextprotocol/sdk` 1.29 | stdio + SSE/SHTTP |
-| Schema | TypeBox + Zod 4 | config schema / 工具入参 |
-| Markdown | react-markdown 10 + Shiki 4 + Mermaid 11 | 渲染 + 高亮 + 图 |
-| 网络 | undici 8 | ProxyAgent for 全局代理 |
-| HTML | turndown 7 + jsdom 29 | fetch 工具的 HTML→Markdown |
-| 测试 | vitest 4 + Playwright 1.60 | 85 unit + 8 e2e |
+## 4. 请求通道
 
-## 7. 启动序列
+桌面业务请求走两跳：
+
+```text
+renderer store/component
+  → preload ipcRenderer.invoke(channel, args)
+  → main ipcMain.handle
+  → fetch http://localhost:<port>/api/*
+  → Express router → service/store
+  → JSON/text 沿原路返回
+```
+
+`ipc-proxy.ts` 的映射表定义 HTTP method、path、path params、query 和 body。后端非 2xx 响应会在 main 中转换为 rejected IPC Promise；错误包含状态码和经过截断的响应信息。Renderer 调用方必须 `try/catch`，不能把失败当成功响应。
+
+`app:ready` 是 main 直接请求 `/api/ready` 的健康轮询。必须依赖 Electron 的能力由 `registerLocalHandlers()` 处理，不经过 REST。
+
+## 5. 实时事件通道
+
+backend 把两类信息广播到 `/ws`：
+
+- Agent/运行时事件：文本、思考、工具、usage、交互、任务、错误和结束事件。
+- 数据/运行态变化：`data:changed` 以及 `runtime:*:changed` ping。
+
+main 的事件桥进行最小分流：
+
+- `data:changed` → renderer 的独立 `data:changed` IPC channel。
+- 其他 WebSocket 消息 → `agent:event`。
+
+WebSocket 断开后每 2 秒重连。首次连接不触发 resync；曾经连接成功后重连，会发送 `ws:reconnected`，renderer 应重新拉取当前可见集合，弥补断线期间错过的 best-effort 事件。
+
+直接连接 backend WebSocket 的客户端还可以发送 `{type:"send"}` 和 `{type:"abort"}`。连接时若 AgentService 正忙，server 会返回 `reconnect` 快照。
+
+## 6. Backend 组合与恢复
+
+`startServer()` 的启动工作不只是挂路由。当前还包括：
+
+- 创建 `SessionDB` 并运行迁移。
+- 把崩溃前仍为 running/finishing 的 delegated task 标记为 interrupted。
+- 恢复中断归档并清理 orphan delegated sessions。
+- 清理旧 Memory 磁盘布局中的无归属目录。
+- seed 默认 Agent、Wiki skeleton 和内置 Skill。
+- 构造 Agent、Provider、MCP、Project、Requirement、Work、Cron、Wiki 等服务。
+- 扫描未完成会话并让 AgentService 调度恢复。
+- 恢复 requirement/cron 等工作流状态。
+
+这些恢复路径是 best-effort：有些状态会自动继续，有些只会被标记为 interrupted/failed 等待人工决定。
+
+## 7. 一次对话的数据流
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    participant M as Main (Electron)
-    participant S as Backend (Node)
-    participant D as SQLite
-
-    M->>M: app.whenReady()
-    M->>S: spawnBackend() → fork/spawn("node")
-    S->>S: startServer() {port:0}
-    S->>D: new SessionDB() → init schema
-    S->>S: runMigrations(sessionDB)
-    S->>S: build ToolRegistry + Stores
-    S->>S: createAgentService()(内部 per-loop registerHooksForLoop + fireSessionStart)
-    S->>M: stdout {type:"ready", port}
-    M->>M: createWindow() (BrowserWindow)
-    M->>M: registerProxyHandlers(port)
-    M->>M: connectEventBridge(port) — opens WS
-    M->>M: pollReady() — wait /api/ready, then notify renderer
-    Note over M: app:ready IPC event → renderer unhides
+flowchart TD
+    SEND["chat send"] --> SERVICE["AgentService"]
+    SERVICE --> CONFIG["SessionConfig + Provider + tools + hooks"]
+    CONFIG --> LOOP["AgentLoop.run"]
+    LOOP --> STEP["single model step"]
+    STEP -->|"tool call"| TOOL["tool wrapper / execute"]
+    TOOL --> STEP
+    STEP -->|"no tool call"| END["TurnEnd"]
+    LOOP --> EVENTS["StreamEvent"]
+    EVENTS --> WS["backend WebSocket"]
+    WS --> UI["renderer"]
+    LOOP --> PERSIST["steps / session state / audit"]
 ```
 
-## 8. 多 Agent 并发模型
+AgentService 是会话与 loop 生命周期的 owner；AgentLoop 是 turn/step 的执行器；AgentSession 负责提供 LLM 视图；Hook 和 TurnRecorder 把 step、工具块、checkpoint 与指标落入持久化层。
 
-`src/server/agent-service.ts` 是核心调度器：
+## 8. 数据驻留
 
-- `loops: Map<sessionId, AgentLoop>`：每个会话一个 Loop 实例
-- `runStates: Map<sessionId, AgentRunState>`：运行时状态（busy / streamingText / toolCalls）
-- `activeSessions: Map<agentId, sessionId>`：每个 Agent 当前激活的会话
-- `concurrencyManager: ProviderConcurrencyManager`：每个 LLM Provider 独立的 FIFO 信号量（`concurrency-queue.ts`，104 行），默认上限 1-10
+默认数据根是 `~/.zero-core`，可由 `ZERO_CORE_DIR` 覆盖。
 
-`AgentService.sendPrompt(text, agent?, sessionId?)` 支持多个并发 turn；不同 Agent 互不阻塞，但同一 Provider 内可串行化以防触发 LLM 服务端的限流。
+| 位置 | 主要内容 |
+| --- | --- |
+| `sessions.db` | 会话、step、摘要/游标、Agent、Provider、工作流和审计等结构化状态 |
+| `wiki/` | Wiki 文档镜像 |
+| `tool-outputs/` | 超过阈值的工具完整结果 |
+| `attachments/` | 会话附件 |
+| `archives/` | 会话归档 JSON |
+| `skills/` | zero-core 可写 Skill |
+| `projects/` | 工作流 worktree |
+| `logs/` | 运行日志 |
 
-## 9. 持久化数据全景
+只备份 `sessions.db` 不足以恢复完整应用状态；应备份整个数据根，并在复制数据库前确保 backend 已优雅关闭或使用一致的 SQLite 备份方式。
 
-存储根目录：`~/.zero-core/`（可通过 `ZERO_CORE_DIR` 覆盖）。关键文件：
+## 9. 其他入口
 
-| 文件 / 目录 | 来源 | 内容 |
-|------|------|------|
-| `sessions.db` | SessionDB 持有 | 会话核心 4 表（sessions/messages/**steps**/tool_executions；steps-overhaul 后原 `turns` 表已 rename 为 `steps`、`turn_state` 表已 DROP 并入 `sessions`）+ 旧业务实体表（agents/providers/mcp_servers/...）+ v0.8 工作流域表（projects/requirements/crons/orchestrate_*/project_wiki/wiki_scan_cursors/tool_configs/tool_usage/project_jobs，详见 `05-persistence.md` §2.2b 矩阵）+ kv_store + delegated_tasks + provider_usage。KB(`kb_*`)与 Gen1 `memory_*` 表均已在 v0.8 清理 DROP（详见 `06-knowledge-subsystems.md`） |
-| ~~`knowledge.db`~~ | ~~KbDB 独立连接~~ | ⚠️ **已退役（KB 子系统整体移除）**：`kb_chunks` / `kb_entries` 由 `runMigrations` 用 `DROP IF EXISTS` 清掉，`knowledge.db` 不再产生，`kb-db.ts` / `kb-store.ts` 等服务端代码已删。详见 `06-knowledge-subsystems.md` §3 与 `05-persistence.md` §2.3。 |
-| `wiki/` | WikiStore 磁盘镜像树 | v0.8 P1 §10.1 引入：每个 wiki 节点的正文下沉为 `.md` 文件（`WIKI_DISK_ROOT`，`wiki-node-store.ts:197`），DB 行只存元数据 + `docPointer`。目录结构与 `project_wiki` 表的 `path` 列镜像（详见 `06-knowledge-subsystems.md` §2.5） |
-| `webfetch/` | fetch-tools.ts | 抓取缓存、二进制持久化、cookies.json |
-| `logs/<date>.log` | file-log-sink.ts | 按天轮转日志 |
-| `messages/<persona>.json` | message-store.ts | 旧版遗留，迁移完成后改名为 `.migrated.bak` |
-| `workspace/` | 默认 workspace | 未指定工作区时使用 |
+| 入口 | 特性与限制 |
+| --- | --- |
+| `src/serve.ts` | 独立 HTTP/WS + 静态 renderer；默认端口 3210/`PORT`，当前没有 npm `serve` script |
+| `src/cli.ts` | 终端 Agent；只初始化必要 Store，能力少于完整 server 组合根 |
+| `src/index.ts` | 库导出 |
 
-> ⚠️ **v0.8 更正**：旧版本节把主库文件名写成 `db.sqlite` 且只列 11 张业务表 + kv_store —— 两处都不准。源码里 `session-db.ts:63` 写的是 `sessions.db`（`grep "db\.sqlite" src/` 零命中），且 v0.8 工作流域 9 张表 + memory_* 4 张自建表此前都漏列。备份策略相应从"复制单个 sqlite 文件"改为"备份整个 `~/.zero-core/`（只复制 sessions.db 会丢 wiki 正文）"，详见 `05-persistence.md` §9。
+`startServer()` 当前未看到认证/授权中间件，并且调用 `server.listen(port)` 未显式限制 loopback。独立服务模式应只在可信本机/网络使用；随机端口不是安全边界。
 
-迁移策略：见 `src/server/db-migration.ts`（1059 行）。`runMigrations` 分 5 阶段（`05-persistence.md` §4.2）：① 列补齐（`safeAddColumn` 必须先于 `new SqliteStore`）→ ② v0.8 表 DDL（按依赖顺序，`project_wiki` 必须先 `migrateWikiTableSchema` 再 `migrateWikiDetailToDisk`）→ ③ 构造各 `SqliteStore` → ④ 旧 JSON → SQLite 搬运 → ⑤ KV + Memory 搬运。注意 v0.8 表无 JSON 前身，阶段 ④/⑤ 完全不涉及它们。
+## 10. 当前架构不变量
 
-## 10. 单图总结
-
-```
-Electron Desktop
-├─ Main (spawns)
-│   ├─ BrowserWindow ── preload ──▶ Renderer (React + Zustand)
-│   ├─ ipc-proxy ──────────────────▶ Backend HTTP/WS
-│   └─ Native (dialog, login)
-│
-└─ Backend (Node, better-sqlite3)
-    ├─ Express routers ── 20+ 个 HTTP surfaces / createXxxRouter()
-    ├─ WebSocketServer (/ws) ── stream events
-    ├─ AgentService ──┬─ AgentLoop[] (per session)
-    │                 ├─ SessionManager ── lifecycle state machine
-    │                 ├─ MCPManager ── stdio + sse transports
-    │                 └─ ProviderConcurrencyManager ── FIFO semaphores
-    ├─ HookRegistry (singleton) ── 30 events
-    │   ├─ turn-hooks: SQLite step 持久化（原 turns 表已 rename 为 steps）
-    │   ├─ compression-hooks: 摘要 + 记忆写 wiki
-    │   ├─ wiki-anchor-injection: system/context Wiki anchors
-    │   └─ durable-hooks: sessions 表检查点（turn_state 表已 DROP 并入 sessions）
-    └─ SQLite ── sessions.db + wiki/ 镜像树（knowledge.db / kb_chunks 已移除）
-```
+- Renderer 不直接访问 DB、文件系统或 Agent runtime。
+- Electron main 不复制 backend 业务逻辑。
+- 桌面 backend 端口由操作系统随机分配，通过父子进程握手传递。
+- 非 2xx REST 响应必须在 renderer 表现为失败。
+- WebSocket 是 best-effort 通知通道；重连后通过 pull 修复状态。
+- 开发模式 Node 版本与 native ABI 是运行前置条件。
+- 当前是本地单用户信任模型，不具备远程多租户安全边界。

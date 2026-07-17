@@ -24,7 +24,6 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { execSync } from "node:child_process";
 
 import { ZeroCoreConfigSchema, DEFAULT_CONFIG } from "../../src/core/config.js";
 import { SessionDB } from "../../src/server/session-db.js";
@@ -189,7 +188,6 @@ describe("[acceptance-5 #2] extraction-hooks stub 删除", () => {
 		expectNoLiveCode("extractionDeps");
 	});
 });
-
 // ---------------------------------------------------------------------------
 // #3 — compaction / context-manager 死模块删
 // ---------------------------------------------------------------------------
@@ -544,28 +542,4 @@ describe("[adversarial #1] ExtractorB instantiation status after buildExtractorB
 		expect(hits, "m5-extractors.test.ts must still exercise ExtractorB (sub-5 keeps the class)").toBeGreaterThan(0);
 	});
 });
-
-// ---------------------------------------------------------------------------
-// Adversarial #4 — net subtraction sanity (git diff --shortstat)
-// ---------------------------------------------------------------------------
-
-describe("[adversarial #4] net subtraction sanity", () => {
-	test("deletions >> insertions (pure-subtraction shape)", () => {
-		// git diff --shortstat HEAD (uncommitted = sub-5's working changes).
-		// Shape: "X files changed, N insertions(+), M deletions(-)".
-		const out = execSync("git diff --shortstat", { cwd: REPO_ROOT }).toString().trim();
-		expect(out, "git diff --shortstat must produce output").toMatch(/insertions|deletions/);
-
-		// Parse "<n> insertion(s)(+)" and "<m> deletion(s)(-)".
-		const insMatch = out.match(/(\d+)\s+insertion/);
-		const delMatch = out.match(/(\d+)\s+deletion/);
-		const ins = insMatch ? parseInt(insMatch[1], 10) : 0;
-		const del = delMatch ? parseInt(delMatch[1], 10) : 0;
-
-		// Sanity floor: the sub touched many files (deletions of 4 source files
-		// + ~20 modified). Pure subtraction ⇒ del >> ins.
-		expect(del, `deletions must be substantial (>= 1000 for this sub); got: ${out}`).toBeGreaterThanOrEqual(1000);
-		// 3x is a lenient floor — the real ratio is ~8x (1853/223 at writing).
-		expect(del, `deletions must outnumber insertions ≥ 3x (pure subtraction); got: ${out}`).toBeGreaterThan(ins * 3);
-	});
-});
+// Worktree-shape assertions do not belong in the repeatable unit suite.
