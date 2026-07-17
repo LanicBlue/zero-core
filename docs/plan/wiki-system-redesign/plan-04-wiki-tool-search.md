@@ -117,6 +117,13 @@ kinds, limit, cursor
 
 hybrid 排序固定为 `(match_type_rank ASC, normalized_score DESC, canonical_path ASC, target ASC)`；rank/score 函数放共享模块并由 fixture 固定，不得使用 DB 内部 ID 破同分。
 
+**hybrid 节点语义（round-6 用户决策 2026-07-17）**：hybrid 的 `truncated` 与 `wikiHits` 集合语义按**节点**（distinct canonical path），不按 (path × matchType × matchedField) tuple：
+
+- `truncated=true` **仅当**匹配的不同节点数 > cap（200）；恰好 200 个不同节点全部返回则 `truncated=false`。
+- **wikiHits 按 canonical path 去重**——一节点一 hit。同一节点命中多个 matchType 只算 1 个节点；primary `matchType` 取该节点 best-rank（按 `MATCH_TYPE_RANK` 最优），其余 matchType 聚合到 `WikiSearchHit.matchTypes` 证据字段（去重、长度 ≥ 2 时才填）。
+- 组件计数（rawCount）也必须按不同节点：`hybrid.rawCount = max(dedup.size, max(component rawCounts))`，其中 `dedup.size` 是 path-keyed distinct 节点并集；组件 rawCount 兜底单组件内部溢出（组件已 slice 到 200 但 pre-slice 节点数 >200）。组件 rawCounts 全部经独立验证为节点数（exact/substring/glob=rows.length；fulltext=COUNT(*) over FTS5 rowid=wiki_nodes.id；regex=worker rawMatchCount，每候选节点最多 +1）。
+- 游标翻页应获得**新节点**，不应返回同一节点的其他命中类型视图。
+
 不得在 SQLite 主线程对全库直接执行不受限 JavaScript regex。
 
 #### Source search

@@ -1477,7 +1477,7 @@
 		},
 		{
 			"path": "src/server/archivist-git.ts",
-			"lines": 792,
+			"lines": 824,
 			"dir": "src/server",
 			"exports": [
 				"featureWorktreePath",
@@ -1521,22 +1521,22 @@
 				"src/server/archivist-git.ts/ArchivistGit.detectDefaultBranch:261",
 				"src/server/archivist-git.ts/ArchivistGit.listTreeAtRevision:289",
 				"src/server/archivist-git.ts/ArchivistGit.diffNameStatus:321",
-				"src/server/archivist-git.ts/ArchivistGit.catFileBlob:348",
-				"src/server/archivist-git.ts/ArchivistGit.catFileText:364",
-				"src/server/archivist-git.ts/ArchivistGit.blobMetadata:378",
-				"src/server/archivist-git.ts/ArchivistGit.isGitRepo:402",
-				"src/server/archivist-git.ts/ArchivistGit.changesSince:419",
-				"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:476",
-				"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:528",
-				"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:581",
-				"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:623",
-				"src/server/archivist-git.ts/ArchivistGit.safeLog:632",
-				"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:644",
-				"src/server/archivist-git.ts/isSafePathspec:667",
-				"src/server/archivist-git.ts/isSafeCommitSubject:674",
-				"src/server/archivist-git.ts/parseLsTreeZ:714",
-				"src/server/archivist-git.ts/parseDiffNameStatusZ:754",
-				"src/server/archivist-git.ts/shortSha:789"
+				"src/server/archivist-git.ts/ArchivistGit.catFileBlob:353",
+				"src/server/archivist-git.ts/ArchivistGit.catFileText:369",
+				"src/server/archivist-git.ts/ArchivistGit.blobMetadata:390",
+				"src/server/archivist-git.ts/ArchivistGit.isGitRepo:434",
+				"src/server/archivist-git.ts/ArchivistGit.changesSince:451",
+				"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:508",
+				"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:560",
+				"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:613",
+				"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:655",
+				"src/server/archivist-git.ts/ArchivistGit.safeLog:664",
+				"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:676",
+				"src/server/archivist-git.ts/isSafePathspec:699",
+				"src/server/archivist-git.ts/isSafeCommitSubject:706",
+				"src/server/archivist-git.ts/parseLsTreeZ:746",
+				"src/server/archivist-git.ts/parseDiffNameStatusZ:786",
+				"src/server/archivist-git.ts/shortSha:821"
 			],
 			"description": ""
 		},
@@ -4254,7 +4254,7 @@
 		},
 		{
 			"path": "src/server/wiki/wiki-node-repository.ts",
-			"lines": 573,
+			"lines": 662,
 			"dir": "src/server/wiki",
 			"exports": [
 				"rowKindAsKind",
@@ -4277,7 +4277,8 @@
 				"WikiNodeRepository.rebuildFts",
 				"WikiNodeRepository.searchFts",
 				"WikiNodeRepository.getAllByPathPrefix",
-				"WikiNodeRepository.updateChildPathOnly"
+				"WikiNodeRepository.updateChildPathOnly",
+				"WikiNodeRepository.updateChildPathAndName"
 			],
 			"imports": [
 				"src/shared/wiki-types.ts"
@@ -4303,18 +4304,20 @@
 				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.rebuildFts:501",
 				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.searchFts:520",
 				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.getAllByPathPrefix:546",
-				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.updateChildPathOnly:567"
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.updateChildPathOnly:567",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.updateChildPathAndName:610"
 			],
 			"description": ""
 		},
 		{
 			"path": "src/server/wiki/wiki-path.ts",
-			"lines": 304,
+			"lines": 364,
 			"dir": "src/server/wiki",
 			"exports": [
 				"validateWikiName",
 				"normalizeWikiPath",
 				"joinWikiPath",
+				"joinWikiPathMulti",
 				"parentWikiPath",
 				"isSameOrDescendant",
 				"splitWikiPath",
@@ -4329,18 +4332,19 @@
 				"src/server/wiki/wiki-path.ts/isControlChar:78",
 				"src/server/wiki/wiki-path.ts/validateWikiName:96",
 				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
-				"src/server/wiki/wiki-path.ts/parentWikiPath:245",
-				"src/server/wiki/wiki-path.ts/isSameOrDescendant:266",
-				"src/server/wiki/wiki-path.ts/splitWikiPath:285",
-				"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:292",
-				"src/server/wiki/wiki-path.ts/isWikiRoot:301"
+				"src/server/wiki/wiki-path.ts/joinWikiPath:236",
+				"src/server/wiki/wiki-path.ts/joinWikiPathMulti:269",
+				"src/server/wiki/wiki-path.ts/parentWikiPath:305",
+				"src/server/wiki/wiki-path.ts/isSameOrDescendant:326",
+				"src/server/wiki/wiki-path.ts/splitWikiPath:345",
+				"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:352",
+				"src/server/wiki/wiki-path.ts/isWikiRoot:361"
 			],
 			"description": ""
 		},
 		{
 			"path": "src/server/wiki/wiki-project-indexer.ts",
-			"lines": 1698,
+			"lines": 1786,
 			"dir": "src/server/wiki",
 			"exports": [
 				"WikiProjectIndexer.ensureBinding",
@@ -4379,45 +4383,46 @@
 				"src/core/logger.ts"
 			],
 			"functions": [
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:309",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncToHead:793",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.rebuildFromScratch:803",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.onGitCommitSuccess:842",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.standardizeDiffEntries:1152",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.enrichChangesWithOid:1201",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceFileNode:1245",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1283",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1308",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1334",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampProjectRootSummary:1357",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.pruneEmptyDirectories:1375",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectSubtreeRows:1392",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectDescendantRows:1405",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1412",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1445",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1451",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.bindingFailure:1462",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.indexFailure:1480",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncFailure:1497",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDir:479",
-				"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1531",
-				"src/server/wiki/wiki-project-indexer.ts/sourceKindOf:1558",
-				"src/server/wiki/wiki-project-indexer.ts/extOf:1566",
-				"src/server/wiki/wiki-project-indexer.ts/fileSummary:1575",
-				"src/server/wiki/wiki-project-indexer.ts/fileAttributes:1588",
-				"src/server/wiki/wiki-project-indexer.ts/normalizeSourceRoot:1600",
-				"src/server/wiki/wiki-project-indexer.ts/stripSourceRoot:1614",
-				"src/server/wiki/wiki-project-indexer.ts/parseAttrs:1626",
-				"src/server/wiki/wiki-project-indexer.ts/countActiveFileBindings:1639",
-				"src/server/wiki/wiki-project-indexer.ts/countActiveDirNodes:1647",
-				"src/server/wiki/wiki-project-indexer.ts/countDescendants:1660",
-				"src/server/wiki/wiki-project-indexer.ts/makeRepositoryId:1673",
-				"src/server/wiki/wiki-project-indexer.ts/makeTxId:1679",
-				"src/server/wiki/wiki-project-indexer.ts/makeSwapTempPath:1684",
-				"src/server/wiki/wiki-project-indexer.ts/makeSwapTempSource:1693"
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:310",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncToHead:857",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.rebuildFromScratch:867",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.onGitCommitSuccess:906",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.standardizeDiffEntries:1226",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.enrichChangesWithOid:1275",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceFileNode:1319",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1357",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1382",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1409",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampProjectRootSummary:1432",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.pruneEmptyDirectories:1450",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectSubtreeRows:1467",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectDescendantRows:1480",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1487",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1520",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1526",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.bindingFailure:1537",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.indexFailure:1555",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncFailure:1572",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDir:491",
+				"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1606",
+				"src/server/wiki/wiki-project-indexer.ts/sourceKindOf:1633",
+				"src/server/wiki/wiki-project-indexer.ts/extOf:1641",
+				"src/server/wiki/wiki-project-indexer.ts/fileSummary:1650",
+				"src/server/wiki/wiki-project-indexer.ts/fileAttributes:1663",
+				"src/server/wiki/wiki-project-indexer.ts/normalizeSourceRoot:1675",
+				"src/server/wiki/wiki-project-indexer.ts/stripSourceRoot:1689",
+				"src/server/wiki/wiki-project-indexer.ts/parseAttrs:1701",
+				"src/server/wiki/wiki-project-indexer.ts/countActiveFileBindings:1714",
+				"src/server/wiki/wiki-project-indexer.ts/countActiveDirNodes:1722",
+				"src/server/wiki/wiki-project-indexer.ts/countDescendants:1735",
+				"src/server/wiki/wiki-project-indexer.ts/makeRepositoryId:1748",
+				"src/server/wiki/wiki-project-indexer.ts/makeTxId:1754",
+				"src/server/wiki/wiki-project-indexer.ts/makeSwapTempPath:1759",
+				"src/server/wiki/wiki-project-indexer.ts/makeSwapTempName:1775",
+				"src/server/wiki/wiki-project-indexer.ts/makeSwapTempSource:1781"
 			],
 			"description": ""
 		},
@@ -4479,6 +4484,94 @@
 				"src/server/wiki/wiki-schema.ts/initWikiSchema:64",
 				"src/server/wiki/wiki-schema.ts/markSchemaVersion:255",
 				"src/server/wiki/wiki-schema.ts/readWikiSchemaVersion:266"
+			],
+			"description": ""
+		},
+		{
+			"path": "src/server/wiki/wiki-search-service.ts",
+			"lines": 1059,
+			"dir": "src/server/wiki",
+			"exports": [
+				"WikiSearchService.search",
+				"WikiSearchService.searchWiki",
+				"WikiSearchService.searchExact",
+				"WikiSearchService.searchSubstring",
+				"WikiSearchService.searchGlob",
+				"WikiSearchService.searchFulltext",
+				"WikiSearchService.searchRegex",
+				"WikiSearchService.searchHybrid",
+				"WikiSearchService.searchSource",
+				"WikiSearchService.queryNodesInScopes",
+				"WikiSearchService.emptyResult",
+				"WikiSearchService.regexFlags",
+				"WikiSearchService.buildFtsQuery",
+				"WikiSearchService.escapeLike",
+				"WikiSearchService.globToSqlLike",
+				"WikiSearchService.buildSnippet",
+				"WikiSearchService.clampLimit",
+				"WikiSearchService.encodeCursor",
+				"WikiSearchService.decodeCursor",
+				"WikiSearchService.mergeForPagination",
+				"WikiSearchService.canonicalToSourceRel",
+				"WikiSearchService.rowToExactHit",
+				"WikiSearchService.rowToSubstringHit",
+				"WikiSearchService.rowToGlobHit",
+				"WikiSearchService.rowToFulltextHit",
+				"WikiSearchService.detectExactField",
+				"WikiSearchService.detectFulltextField",
+				"WikiSearchService.detectSubstringField",
+				"WikiSearchService.displayTitleOf",
+				"compileGlobMatcher"
+			],
+			"imports": [
+				"src/server/wiki/wiki-authorization-service.ts",
+				"src/server/wiki/wiki-address-service.ts",
+				"src/server/wiki/wiki-node-repository.ts",
+				"src/server/wiki/wiki-errors.ts",
+				"src/shared/wiki-types.ts",
+				"src/server/wiki/wiki-repository-store.ts",
+				"src/server/wiki/wiki-source-search.ts",
+				"src/shared/wiki-search-types.ts",
+				"src/core/logger.ts"
+			],
+			"functions": [
+				"src/server/wiki/wiki-search-service.ts/RegexWorkerPool.loadModule:169",
+				"src/server/wiki/wiki-search-service.ts/RegexWorkerPool.ensureWorker:184",
+				"src/server/wiki/wiki-search-service.ts/RegexWorkerPool.run:222",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchWiki:415",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchExact:445",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSubstring:464",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchGlob:489",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchFulltext:515",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchRegex:557",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchHybrid:633",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSource:667",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.queryNodesInScopes:724",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.emptyResult:747",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.regexFlags:765",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.buildFtsQuery:773",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.escapeLike:779",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.globToSqlLike:790",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.buildSnippet:799",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.clampLimit:809",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.encodeCursor:813",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.decodeCursor:817",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.mergeForPagination:829",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.canonicalToSourceRel:851",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToExactHit:862",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToSubstringHit:877",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToGlobHit:896",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToFulltextHit:915",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.detectExactField:935",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.detectFulltextField:946",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.detectSubstringField:953",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.displayTitleOf:966",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.subReq:639",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.toKey:834",
+				"src/server/wiki/wiki-search-service.ts/compileGlobMatcher:994",
+				"src/server/wiki/wiki-search-service.ts/fieldText:1024",
+				"src/server/wiki/wiki-search-service.ts/sourceHitToView:1037"
 			],
 			"description": ""
 		},
@@ -4563,7 +4656,7 @@
 		},
 		{
 			"path": "src/server/wiki/wiki-source-search.ts",
-			"lines": 500,
+			"lines": 669,
 			"dir": "src/server/wiki",
 			"exports": [
 				"WikiSourceSearch.search",
@@ -4572,20 +4665,24 @@
 			"imports": [
 				"src/server/wiki/wiki-node-repository.ts",
 				"src/server/wiki/wiki-repository-store.ts",
+				"src/core/config.ts",
 				"src/core/logger.ts"
 			],
 			"functions": [
-				"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:176",
-				"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.lookupRepository:283",
-				"src/server/wiki/wiki-source-search.ts/buildRipgrepArgv:301",
-				"src/server/wiki/wiki-source-search.ts/runSubprocess:349",
-				"src/server/wiki/wiki-source-search.ts/parseHitLine:384",
-				"src/server/wiki/wiki-source-search.ts/stripSourceRootPrefix:436",
-				"src/server/wiki/wiki-source-search.ts/computeEffectiveScope:450",
-				"src/server/wiki/wiki-source-search.ts/normalizeScopeSeg:462",
-				"src/server/wiki/wiki-source-search.ts/clamp:477",
-				"src/server/wiki/wiki-source-search.ts/encodeCursor:481",
-				"src/server/wiki/wiki-source-search.ts/parseCursor:485"
+				"src/server/wiki/wiki-source-search.ts/resolveRipgrepBinary:75",
+				"src/server/wiki/wiki-source-search.ts/tryLayouts:100",
+				"src/server/wiki/wiki-source-search.ts/getCachedRipgrepBinary:168",
+				"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:315",
+				"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.lookupRepository:433",
+				"src/server/wiki/wiki-source-search.ts/buildRipgrepArgv:451",
+				"src/server/wiki/wiki-source-search.ts/runSubprocess:499",
+				"src/server/wiki/wiki-source-search.ts/parseHitLine:534",
+				"src/server/wiki/wiki-source-search.ts/stripSourceRootPrefix:605",
+				"src/server/wiki/wiki-source-search.ts/computeEffectiveScope:619",
+				"src/server/wiki/wiki-source-search.ts/normalizeScopeSeg:631",
+				"src/server/wiki/wiki-source-search.ts/clamp:646",
+				"src/server/wiki/wiki-source-search.ts/encodeCursor:650",
+				"src/server/wiki/wiki-source-search.ts/parseCursor:654"
 			],
 			"description": ""
 		},
@@ -4798,7 +4895,7 @@
 		},
 		{
 			"path": "src/server/wiki-operations.ts",
-			"lines": 192,
+			"lines": 229,
 			"dir": "src/server",
 			"exports": [
 				"agentHasWikiTool",
@@ -4813,13 +4910,13 @@
 				"src/shared/types.ts"
 			],
 			"functions": [
-				"src/server/wiki-operations.ts/agentHasWikiTool:26",
-				"src/server/wiki-operations.ts/agentHasTool:38",
-				"src/server/wiki-operations.ts/agentWikiToolAutoApproved:56",
-				"src/server/wiki-operations.ts/resolveOperationPrompt:159",
-				"src/server/wiki-operations.ts/wrapGitAwarePrompt:179",
-				"src/server/wiki-operations.ts/isGitAwarePrompt:184",
-				"src/server/wiki-operations.ts/stripGitAwareSentinel:189"
+				"src/server/wiki-operations.ts/agentHasWikiTool:35",
+				"src/server/wiki-operations.ts/agentHasTool:47",
+				"src/server/wiki-operations.ts/agentWikiToolAutoApproved:65",
+				"src/server/wiki-operations.ts/resolveOperationPrompt:196",
+				"src/server/wiki-operations.ts/wrapGitAwarePrompt:216",
+				"src/server/wiki-operations.ts/isGitAwarePrompt:221",
+				"src/server/wiki-operations.ts/stripGitAwareSentinel:226"
 			],
 			"description": ""
 		},
@@ -5388,6 +5485,26 @@
 			"imports": [],
 			"functions": [],
 			"description": "核心业务类型：AgentRecord, Provider, SearchProviderConfig, WorkspaceConfig, SessionState 等"
+		},
+		{
+			"path": "src/shared/wiki-search-types.ts",
+			"lines": 392,
+			"dir": "src/shared",
+			"exports": [
+				"normalizeScore",
+				"compareHybridHits",
+				"resolveRegexLimits"
+			],
+			"imports": [
+				"src/shared/wiki-types.ts"
+			],
+			"functions": [
+				"src/shared/wiki-search-types.ts/normalizeScore:143",
+				"src/shared/wiki-search-types.ts/compareHybridHits:184",
+				"src/shared/wiki-search-types.ts/resolveRegexLimits:253",
+				"src/shared/wiki-search-types.ts/min:258"
+			],
+			"description": ""
 		},
 		{
 			"path": "src/shared/wiki-types.ts",
@@ -11859,7 +11976,7 @@
 			"description": "`git ls-tree -r -z <revision>` — full recursive tree listing at an\r",
 			"callees": [
 				"src/server/archivist-git.ts/execGitRaw:74",
-				"src/server/archivist-git.ts/parseLsTreeZ:714"
+				"src/server/archivist-git.ts/parseLsTreeZ:746"
 			]
 		},
 		{
@@ -11868,24 +11985,24 @@
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
 			"line": 321,
-			"endLine": 340,
+			"endLine": 345,
 			"statementCount": 6,
 			"exported": true,
 			"signature": "method diffNameStatus(workspaceDir: string, oldRev: string, newRev: string)",
 			"description": "`git diff --name-status -z <oldRev> <newRev>` — change set for sync\r",
 			"callees": [
 				"src/server/archivist-git.ts/execGitRaw:74",
-				"src/server/archivist-git.ts/shortSha:789",
-				"src/server/archivist-git.ts/parseDiffNameStatusZ:754"
+				"src/server/archivist-git.ts/shortSha:821",
+				"src/server/archivist-git.ts/parseDiffNameStatusZ:786"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.catFileBlob:348",
+			"id": "src/server/archivist-git.ts/ArchivistGit.catFileBlob:353",
 			"name": "ArchivistGit.catFileBlob",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 348,
-			"endLine": 357,
+			"line": 353,
+			"endLine": 362,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method catFileBlob(workspaceDir: string, revision: string, path: string)",
@@ -11895,42 +12012,42 @@
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.catFileText:364",
+			"id": "src/server/archivist-git.ts/ArchivistGit.catFileText:369",
 			"name": "ArchivistGit.catFileText",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 364,
-			"endLine": 371,
+			"line": 369,
+			"endLine": 376,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method catFileText(workspaceDir: string, revision: string, path: string)",
 			"description": "",
 			"callees": [
-				"src/server/archivist-git.ts/ArchivistGit.catFileBlob:348"
+				"src/server/archivist-git.ts/ArchivistGit.catFileBlob:353"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.blobMetadata:378",
+			"id": "src/server/archivist-git.ts/ArchivistGit.blobMetadata:390",
 			"name": "ArchivistGit.blobMetadata",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 378,
-			"endLine": 396,
-			"statementCount": 8,
+			"line": 390,
+			"endLine": 428,
+			"statementCount": 23,
 			"exported": true,
 			"signature": "method blobMetadata(workspaceDir: string, revision: string, path: string)",
-			"description": "`git cat-file --batch-check` — quick blob metadata (oid + size + type)\r",
+			"description": "Quick blob metadata (mode/type/oid/size) without fetching the bytes.\r",
 			"callees": [
 				"src/server/archivist-git.ts/execGitRaw:74"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.isGitRepo:402",
+			"id": "src/server/archivist-git.ts/ArchivistGit.isGitRepo:434",
 			"name": "ArchivistGit.isGitRepo",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 402,
-			"endLine": 409,
+			"line": 434,
+			"endLine": 441,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method isGitRepo(workspaceDir: string)",
@@ -11940,49 +12057,49 @@
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.changesSince:419",
+			"id": "src/server/archivist-git.ts/ArchivistGit.changesSince:451",
 			"name": "ArchivistGit.changesSince",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 419,
-			"endLine": 462,
+			"line": 451,
+			"endLine": 494,
 			"statementCount": 18,
 			"exported": true,
 			"signature": "method changesSince(workspaceDir: string, lastScannedRef: string | undefined)",
 			"description": "Compute the change set between the previous scan cursor (lastScannedRef)\r",
 			"callees": [
 				"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:227",
-				"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:623",
-				"src/server/archivist-git.ts/ArchivistGit.safeLog:632",
+				"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:655",
+				"src/server/archivist-git.ts/ArchivistGit.safeLog:664",
 				"src/server/archivist-git.ts/execAsync:50"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:476",
+			"id": "src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:508",
 			"name": "ArchivistGit.commitRequirementDoc",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 476,
-			"endLine": 517,
+			"line": 508,
+			"endLine": 549,
 			"statementCount": 22,
 			"exported": true,
 			"signature": "method commitRequirementDoc(workspaceDir: string, requirementId: string, title: string, docPaths: string[])",
 			"description": "Commit PM-written requirement docs to main. RFC §2.15:\r",
 			"callees": [
-				"src/server/archivist-git.ts/isSafePathspec:667",
-				"src/server/archivist-git.ts/isSafeCommitSubject:674",
+				"src/server/archivist-git.ts/isSafePathspec:699",
+				"src/server/archivist-git.ts/isSafeCommitSubject:706",
 				"src/server/archivist-git.ts/execAsync:50",
 				"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:227",
 				"src/server/archivist-git.ts/shortId:105"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:528",
+			"id": "src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:560",
 			"name": "ArchivistGit.mergeFeatureToMain",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 528,
-			"endLine": 575,
+			"line": 560,
+			"endLine": 607,
 			"statementCount": 19,
 			"exported": true,
 			"signature": "method mergeFeatureToMain(workspaceDir: string, requirementId: string, projectId?: string)",
@@ -11991,18 +12108,18 @@
 				"src/server/archivist-git.ts/featureBranchName:160",
 				"src/server/archivist-git.ts/featureWorktreePath:132",
 				"src/server/archivist-git.ts/execAsync:50",
-				"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:644",
+				"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:676",
 				"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:227",
-				"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:581"
+				"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:613"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:581",
+			"id": "src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:613",
 			"name": "ArchivistGit.cleanupWorktree",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 581,
-			"endLine": 619,
+			"line": 613,
+			"endLine": 651,
 			"statementCount": 17,
 			"exported": true,
 			"signature": "method cleanupWorktree(workspaceDir: string, requirementId: string, projectId?: string)",
@@ -12010,17 +12127,17 @@
 			"callees": [
 				"src/server/archivist-git.ts/featureBranchName:160",
 				"src/server/archivist-git.ts/featureWorktreePath:132",
-				"src/server/archivist-git.ts/isSafePathspec:667",
+				"src/server/archivist-git.ts/isSafePathspec:699",
 				"src/server/archivist-git.ts/execAsync:50"
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:623",
+			"id": "src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:655",
 			"name": "ArchivistGit.listTrackedFiles",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 623,
-			"endLine": 630,
+			"line": 655,
+			"endLine": 662,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method listTrackedFiles(workspaceDir: string)",
@@ -12030,12 +12147,12 @@
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.safeLog:632",
+			"id": "src/server/archivist-git.ts/ArchivistGit.safeLog:664",
 			"name": "ArchivistGit.safeLog",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 632,
-			"endLine": 642,
+			"line": 664,
+			"endLine": 674,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method safeLog(workspaceDir: string, ...args: string[])",
@@ -12045,12 +12162,12 @@
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:644",
+			"id": "src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:676",
 			"name": "ArchivistGit.listConflictedFiles",
 			"kind": "method",
 			"file": "src/server/archivist-git.ts",
-			"line": 644,
-			"endLine": 651,
+			"line": 676,
+			"endLine": 683,
 			"statementCount": 4,
 			"exported": true,
 			"signature": "method listConflictedFiles(workspaceDir: string)",
@@ -12060,12 +12177,12 @@
 			]
 		},
 		{
-			"id": "src/server/archivist-git.ts/isSafePathspec:667",
+			"id": "src/server/archivist-git.ts/isSafePathspec:699",
 			"name": "isSafePathspec",
 			"kind": "function",
 			"file": "src/server/archivist-git.ts",
-			"line": 667,
-			"endLine": 671,
+			"line": 699,
+			"endLine": 703,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "function isSafePathspec(p: string)",
@@ -12073,12 +12190,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/archivist-git.ts/isSafeCommitSubject:674",
+			"id": "src/server/archivist-git.ts/isSafeCommitSubject:706",
 			"name": "isSafeCommitSubject",
 			"kind": "function",
 			"file": "src/server/archivist-git.ts",
-			"line": 674,
-			"endLine": 677,
+			"line": 706,
+			"endLine": 709,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "function isSafeCommitSubject(s: string)",
@@ -12086,12 +12203,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/archivist-git.ts/parseLsTreeZ:714",
+			"id": "src/server/archivist-git.ts/parseLsTreeZ:746",
 			"name": "parseLsTreeZ",
 			"kind": "function",
 			"file": "src/server/archivist-git.ts",
-			"line": 714,
-			"endLine": 741,
+			"line": 746,
+			"endLine": 773,
 			"statementCount": 25,
 			"exported": false,
 			"signature": "function parseLsTreeZ(buf: Buffer)",
@@ -12099,12 +12216,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/archivist-git.ts/parseDiffNameStatusZ:754",
+			"id": "src/server/archivist-git.ts/parseDiffNameStatusZ:786",
 			"name": "parseDiffNameStatusZ",
 			"kind": "function",
 			"file": "src/server/archivist-git.ts",
-			"line": 754,
-			"endLine": 786,
+			"line": 786,
+			"endLine": 818,
 			"statementCount": 31,
 			"exported": false,
 			"signature": "function parseDiffNameStatusZ(buf: Buffer)",
@@ -12112,12 +12229,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/archivist-git.ts/shortSha:789",
+			"id": "src/server/archivist-git.ts/shortSha:821",
 			"name": "shortSha",
 			"kind": "function",
 			"file": "src/server/archivist-git.ts",
-			"line": 789,
-			"endLine": 791,
+			"line": 821,
+			"endLine": 823,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function shortSha(sha: string)",
@@ -13809,7 +13926,7 @@
 				"src/server/cron-analysis.ts/startOfLocalDay:305",
 				"src/server/cron-analysis.ts/endOfLocalDay:310",
 				"src/server/cron-analysis.ts/fireTimeToday:330",
-				"src/server/wiki-operations.ts/isGitAwarePrompt:184",
+				"src/server/wiki-operations.ts/isGitAwarePrompt:221",
 				"src/server/cron-analysis.ts/get:247",
 				"src/server/cron-analysis.ts/formatEveryMs:359"
 			]
@@ -14023,9 +14140,9 @@
 			"signature": "method fireAgent(cron: CronRecord, agent: AgentRecord, prompt: string, sessionId: string)",
 			"description": "触发执行(去-role 分支):\r",
 			"callees": [
-				"src/server/wiki-operations.ts/agentHasTool:38",
-				"src/server/wiki-operations.ts/isGitAwarePrompt:184",
-				"src/server/wiki-operations.ts/stripGitAwareSentinel:189"
+				"src/server/wiki-operations.ts/agentHasTool:47",
+				"src/server/wiki-operations.ts/isGitAwarePrompt:221",
+				"src/server/wiki-operations.ts/stripGitAwareSentinel:226"
 			]
 		},
 		{
@@ -14910,7 +15027,7 @@
 			"signature": "method resolveAgent(via: AgentVia)",
 			"description": "解析 via → { agentId }。**无 fallback**:via.agentId 必填,且必须存在、\r",
 			"callees": [
-				"src/server/wiki-operations.ts/agentHasWikiTool:26"
+				"src/server/wiki-operations.ts/agentHasWikiTool:35"
 			]
 		},
 		{
@@ -14927,7 +15044,7 @@
 			"callees": [
 				"src/server/enrichment-runner.ts/EnrichmentRunner.resolveAgent:80",
 				"src/server/session-context-router.ts/resolveSessionByRoleProject:98",
-				"src/server/wiki-operations.ts/resolveOperationPrompt:159"
+				"src/server/wiki-operations.ts/resolveOperationPrompt:196"
 			]
 		},
 		{
@@ -16581,10 +16698,10 @@
 			"signature": "method bindProjectArchivist(projectId: string, opts: { agentId: string; operations: WikiOperationId[]; schedule: CronSchedule; gitAware?: boolean; gitEveryMs?: number })",
 			"description": "绑定一个 archivist agent 到 project:对每个 operation 建一条 project-scoped\r",
 			"callees": [
-				"src/server/wiki-operations.ts/agentHasWikiTool:26",
-				"src/server/wiki-operations.ts/resolveOperationPrompt:159",
+				"src/server/wiki-operations.ts/agentHasWikiTool:35",
+				"src/server/wiki-operations.ts/resolveOperationPrompt:196",
 				"src/server/management-service.ts/ManagementService.createCron:722",
-				"src/server/wiki-operations.ts/wrapGitAwarePrompt:179"
+				"src/server/wiki-operations.ts/wrapGitAwarePrompt:216"
 			]
 		},
 		{
@@ -16616,7 +16733,7 @@
 			"signature": "method switchProjectArchivistAgent(projectId: string, newAgentId: string)",
 			"description": "切换管理者 agent:批量更新该 project 所有绑定 cron 的 agentId。",
 			"callees": [
-				"src/server/wiki-operations.ts/agentHasWikiTool:26",
+				"src/server/wiki-operations.ts/agentHasWikiTool:35",
 				"src/server/management-service.ts/ManagementService.requireCronStore:224",
 				"src/server/management-service.ts/ManagementService.listCrons:773",
 				"src/server/management-service.ts/ManagementService.cronOperationId:889"
@@ -16653,7 +16770,7 @@
 			"callees": [
 				"src/server/management-service.ts/ManagementService.listCrons:773",
 				"src/server/management-service.ts/ManagementService.cronOperationId:889",
-				"src/server/wiki-operations.ts/isGitAwarePrompt:184"
+				"src/server/wiki-operations.ts/isGitAwarePrompt:221"
 			]
 		},
 		{
@@ -16729,7 +16846,7 @@
 				"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1145",
 				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:213",
 				"src/server/management-service.ts/ManagementService.createCron:722",
-				"src/server/wiki-operations.ts/wrapGitAwarePrompt:179",
+				"src/server/wiki-operations.ts/wrapGitAwarePrompt:216",
 				"src/server/management-service.ts/ManagementService.requireProjectWorkRunner:217"
 			]
 		},
@@ -16828,7 +16945,7 @@
 			"callees": [
 				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:213",
 				"src/server/management-service.ts/ManagementService.listCrons:773",
-				"src/server/wiki-operations.ts/isGitAwarePrompt:184"
+				"src/server/wiki-operations.ts/isGitAwarePrompt:221"
 			]
 		},
 		{
@@ -16843,7 +16960,7 @@
 			"signature": "method assertAgentMeetsTools(agent: AgentRecord, tools: string[])",
 			"description": "校验 agent 满足 tools 任一不满足 throw(供前端 catch 提醒)。",
 			"callees": [
-				"src/server/wiki-operations.ts/agentHasTool:38"
+				"src/server/wiki-operations.ts/agentHasTool:47"
 			]
 		},
 		{
@@ -16872,9 +16989,9 @@
 			"description": "全量设定 work 的 cron 触发器列表。按 {schedule, gitAware} 签名 diff:\r",
 			"callees": [
 				"src/server/management-service.ts/ManagementService.requireProjectWorkStore:213",
-				"src/server/wiki-operations.ts/isGitAwarePrompt:184",
+				"src/server/wiki-operations.ts/isGitAwarePrompt:221",
 				"src/server/management-service.ts/ManagementService.createCron:722",
-				"src/server/wiki-operations.ts/wrapGitAwarePrompt:179"
+				"src/server/wiki-operations.ts/wrapGitAwarePrompt:216"
 			]
 		},
 		{
@@ -18655,7 +18772,7 @@
 			"signature": "method fireProjectWork(workId: string, opts: { requirementId?: string } = {})",
 			"description": "触发一个 project-work。actionPrompt 作为 user message 发送给 work.agentId\r",
 			"callees": [
-				"src/server/wiki-operations.ts/agentHasTool:38",
+				"src/server/wiki-operations.ts/agentHasTool:47",
 				"src/server/session-context-router.ts/resolveSessionByRoleProject:98"
 			]
 		},
@@ -21578,7 +21695,7 @@
 			"description": "memory:// scheme 解析。`memory://` → `wiki-root/memory/<agentId>`;",
 			"callees": [
 				"src/server/wiki/wiki-errors.ts/wikiError:74",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:236",
 				"src/server/wiki/wiki-address-service.ts/joinPathSegments:554"
 			]
 		},
@@ -21595,7 +21712,7 @@
 			"description": "project:// scheme 解析。`project://` → `wiki-root/projects/<projectId>`;",
 			"callees": [
 				"src/server/wiki/wiki-errors.ts/wikiError:74",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:236",
 				"src/server/wiki/wiki-address-service.ts/joinPathSegments:554"
 			]
 		},
@@ -21612,7 +21729,7 @@
 			"description": "按一行 wiki_addresses 解析为 canonical path。处理两种情况:",
 			"callees": [
 				"src/server/wiki/wiki-errors.ts/wikiError:74",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:236",
 				"src/server/wiki/wiki-address-service.ts/joinPathSegments:554"
 			]
 		},
@@ -21732,7 +21849,7 @@
 			"description": "把 base canonical path 与多段 rest 拼成最终 canonical path。逐段 joinWikiPath",
 			"callees": [
 				"src/server/wiki/wiki-address-service.ts/splitRest:542",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233"
+				"src/server/wiki/wiki-path.ts/joinWikiPath:236"
 			]
 		},
 		{
@@ -21839,7 +21956,7 @@
 			"description": "判定 access 是否允许在 canonicalPath 上执行 action。",
 			"callees": [
 				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
-				"src/server/wiki/wiki-path.ts/isSameOrDescendant:266",
+				"src/server/wiki/wiki-path.ts/isSameOrDescendant:326",
 				"src/server/wiki/wiki-errors.ts/wikiError:74"
 			]
 		},
@@ -21856,7 +21973,7 @@
 			"description": "非抛出版本:返回 decision。便于调用方在不抛 NOT_FOUND 的场景（如 search scope",
 			"callees": [
 				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
-				"src/server/wiki/wiki-path.ts/isSameOrDescendant:266"
+				"src/server/wiki/wiki-path.ts/isSameOrDescendant:326"
 			]
 		},
 		{
@@ -21873,7 +21990,7 @@
 			"callees": [
 				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
 				"src/server/wiki/wiki-authorization-service.ts/dedupSorted:247",
-				"src/server/wiki/wiki-path.ts/isSameOrDescendant:266"
+				"src/server/wiki/wiki-path.ts/isSameOrDescendant:326"
 			]
 		},
 		{
@@ -21905,7 +22022,7 @@
 			"description": "判断 access 是否允许 read 该 canonicalPath。",
 			"callees": [
 				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
-				"src/server/wiki/wiki-path.ts/isSameOrDescendant:266"
+				"src/server/wiki/wiki-path.ts/isSameOrDescendant:326"
 			]
 		},
 		{
@@ -22789,6 +22906,23 @@
 			"callees": []
 		},
 		{
+			"id": "src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.updateChildPathAndName:610",
+			"name": "WikiNodeRepository.updateChildPathAndName",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-node-repository.ts",
+			"line": 610,
+			"endLine": 660,
+			"statementCount": 11,
+			"exported": true,
+			"signature": "method updateChildPathAndName(id: number, newPath: string, newName: string, newParentId?: number | null)",
+			"description": "节点低层 repository。所有方法都不开自动 transaction(除显式注明的 FTS",
+			"callees": [
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.readIndexedColumns:468",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.ftsDeleteCommand:484",
+				"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsInsert:398"
+			]
+		},
+		{
 			"id": "src/server/wiki/wiki-path.ts/pathError:68",
 			"name": "pathError",
 			"kind": "function",
@@ -22848,28 +22982,45 @@
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-path.ts/joinWikiPath:233",
+			"id": "src/server/wiki/wiki-path.ts/joinWikiPath:236",
 			"name": "joinWikiPath",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-path.ts",
-			"line": 233,
-			"endLine": 237,
+			"line": 236,
+			"endLine": 240,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "function joinWikiPath(parent: string, name: string)",
-			"description": "父路径 + name → 子路径。先 normalize parent,再校验 name,最后拼接。",
+			"description": "",
 			"callees": [
 				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
 				"src/server/wiki/wiki-path.ts/validateWikiName:96"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-path.ts/parentWikiPath:245",
+			"id": "src/server/wiki/wiki-path.ts/joinWikiPathMulti:269",
+			"name": "joinWikiPathMulti",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-path.ts",
+			"line": 269,
+			"endLine": 297,
+			"statementCount": 16,
+			"exported": true,
+			"signature": "function joinWikiPathMulti(parent: string, ...segments: string[])",
+			"description": "",
+			"callees": [
+				"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
+				"src/server/wiki/wiki-path.ts/pathError:68",
+				"src/server/wiki/wiki-path.ts/validateWikiName:96"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-path.ts/parentWikiPath:305",
 			"name": "parentWikiPath",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-path.ts",
-			"line": 245,
-			"endLine": 250,
+			"line": 305,
+			"endLine": 310,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "function parentWikiPath(path: string)",
@@ -22879,12 +23030,12 @@
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-path.ts/isSameOrDescendant:266",
+			"id": "src/server/wiki/wiki-path.ts/isSameOrDescendant:326",
 			"name": "isSameOrDescendant",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-path.ts",
-			"line": 266,
-			"endLine": 280,
+			"line": 326,
+			"endLine": 340,
 			"statementCount": 12,
 			"exported": true,
 			"signature": "function isSameOrDescendant(scope: string, path: string)",
@@ -22894,12 +23045,12 @@
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-path.ts/splitWikiPath:285",
+			"id": "src/server/wiki/wiki-path.ts/splitWikiPath:345",
 			"name": "splitWikiPath",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-path.ts",
-			"line": 285,
-			"endLine": 287,
+			"line": 345,
+			"endLine": 347,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function splitWikiPath(path: string)",
@@ -22909,12 +23060,12 @@
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:292",
+			"id": "src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:352",
 			"name": "lastSegmentOfWikiPath",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-path.ts",
-			"line": 292,
-			"endLine": 296,
+			"line": 352,
+			"endLine": 356,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "function lastSegmentOfWikiPath(path: string)",
@@ -22924,12 +23075,12 @@
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-path.ts/isWikiRoot:301",
+			"id": "src/server/wiki/wiki-path.ts/isWikiRoot:361",
 			"name": "isWikiRoot",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-path.ts",
-			"line": 301,
-			"endLine": 303,
+			"line": 361,
+			"endLine": 363,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function isWikiRoot(path: string)",
@@ -22939,172 +23090,173 @@
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:309",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:310",
 			"name": "WikiProjectIndexer.ensureBinding",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 309,
-			"endLine": 393,
-			"statementCount": 24,
+			"line": 310,
+			"endLine": 405,
+			"statementCount": 27,
 			"exported": true,
 			"signature": "method ensureBinding(projectId: string, opts?: { sourceRoot?: string; defaultBranch?: string })",
 			"description": "建立 / 校验 repository 绑定。幂等:同一 project_id 多次调用 → 返回现有 binding,",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.bindingFailure:1462",
-				"src/server/wiki/wiki-project-indexer.ts/normalizeSourceRoot:1600",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1451",
-				"src/server/wiki/wiki-project-indexer.ts/makeRepositoryId:1673",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1412",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1445"
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.bindingFailure:1537",
+				"src/server/wiki/wiki-project-indexer.ts/normalizeSourceRoot:1675",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1526",
+				"src/server/wiki/wiki-project-indexer.ts/makeRepositoryId:1748",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1487",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1520"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
 			"name": "WikiProjectIndexer.fullIndex",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 408,
-			"endLine": 582,
+			"line": 420,
+			"endLine": 598,
 			"statementCount": 75,
 			"exported": true,
 			"signature": "method fullIndex(projectId: string, opts?: { revision?: string })",
 			"description": "WikiProjectIndexer —— Project Git 语义镜像索引器。每个 Project 对应一个",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:309",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.indexFailure:1480",
-				"src/server/wiki/wiki-project-indexer.ts/stripSourceRoot:1614",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1445",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1283",
-				"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1531",
-				"src/server/wiki/wiki-project-indexer.ts/fileSummary:1575",
-				"src/server/wiki/wiki-project-indexer.ts/fileAttributes:1588",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceFileNode:1245",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1334",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampProjectRootSummary:1357"
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:310",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.indexFailure:1555",
+				"src/server/wiki/wiki-project-indexer.ts/stripSourceRoot:1689",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1520",
+				"src/server/wiki/wiki-path.ts/joinWikiPathMulti:269",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1357",
+				"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1606",
+				"src/server/wiki/wiki-project-indexer.ts/fileSummary:1650",
+				"src/server/wiki/wiki-project-indexer.ts/fileAttributes:1663",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceFileNode:1319",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1409",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampProjectRootSummary:1432"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623",
 			"name": "WikiProjectIndexer.sync",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 607,
-			"endLine": 787,
-			"statementCount": 45,
+			"line": 623,
+			"endLine": 851,
+			"statementCount": 53,
 			"exported": true,
 			"signature": "method sync(projectId: string, opts?: { targetRevision?: string })",
 			"description": "增量同步:`indexed_revision → newRevision` 的 Git diff 原子应用到 Wiki DB。",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncFailure:1497",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.standardizeDiffEntries:1152",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.enrichChangesWithOid:1201",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1451",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1445",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1334",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampProjectRootSummary:1357",
-				"src/server/wiki/wiki-project-indexer.ts/countActiveFileBindings:1639",
-				"src/server/wiki/wiki-project-indexer.ts/countActiveDirNodes:1647"
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncFailure:1572",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1526",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.standardizeDiffEntries:1226",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.enrichChangesWithOid:1275",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1520",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1409",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampProjectRootSummary:1432",
+				"src/server/wiki/wiki-project-indexer.ts/countActiveFileBindings:1714",
+				"src/server/wiki/wiki-project-indexer.ts/countActiveDirNodes:1722"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncToHead:793",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncToHead:857",
 			"name": "WikiProjectIndexer.syncToHead",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 793,
-			"endLine": 795,
+			"line": 857,
+			"endLine": 859,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method syncToHead(projectId: string)",
 			"description": "同步到 HEAD 的便捷入口(commit / merge 成功后调用)。",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607"
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.rebuildFromScratch:803",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.rebuildFromScratch:867",
 			"name": "WikiProjectIndexer.rebuildFromScratch",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 803,
-			"endLine": 832,
+			"line": 867,
+			"endLine": 896,
 			"statementCount": 14,
 			"exported": true,
 			"signature": "method rebuildFromScratch(projectId: string)",
 			"description": "重建:drop 现有 source-bound 子树 + binding,再走全量索引。",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1451",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectSubtreeRows:1392",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408"
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1526",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectSubtreeRows:1467",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.onGitCommitSuccess:842",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.onGitCommitSuccess:906",
 			"name": "WikiProjectIndexer.onGitCommitSuccess",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 842,
-			"endLine": 847,
+			"line": 906,
+			"endLine": 911,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method onGitCommitSuccess(projectId: string, finalSha: string)",
 			"description": "Git commit 成功 → 同步 Wiki 到 final SHA。plan-03 §6: 不回滚 Git;",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607"
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923",
 			"name": "WikiProjectIndexer.applyDiffAtomically",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 859,
-			"endLine": 1135,
-			"statementCount": 125,
+			"line": 923,
+			"endLine": 1209,
+			"statementCount": 126,
 			"exported": true,
 			"signature": "method applyDiffAtomically(input: {\n\t\trepositoryId: string;\n\t\tprojectNodePath: string;\n\t\tprojectNodeId: number;\n\t\tnewRevision: string;\n\t\tchanges: readonly StandardizedChange[];\n\t})",
 			"description": "Apply the standardized diff inside an OPEN transaction (caller wraps in",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/makeTxId:1679",
-				"src/server/wiki/wiki-project-indexer.ts/makeSwapTempPath:1684",
-				"src/server/wiki/wiki-project-indexer.ts/makeSwapTempSource:1693",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1308",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
-				"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1531",
-				"src/server/wiki/wiki-project-indexer.ts/fileSummary:1575",
-				"src/server/wiki/wiki-project-indexer.ts/fileAttributes:1588",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceFileNode:1245",
-				"src/server/wiki/wiki-project-indexer.ts/parseAttrs:1626",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectSubtreeRows:1392",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectDescendantRows:1405",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.pruneEmptyDirectories:1375"
+				"src/server/wiki/wiki-project-indexer.ts/makeTxId:1754",
+				"src/server/wiki/wiki-project-indexer.ts/makeSwapTempPath:1759",
+				"src/server/wiki/wiki-project-indexer.ts/makeSwapTempName:1775",
+				"src/server/wiki/wiki-project-indexer.ts/makeSwapTempSource:1781",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1382",
+				"src/server/wiki/wiki-path.ts/joinWikiPathMulti:269",
+				"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1606",
+				"src/server/wiki/wiki-project-indexer.ts/fileSummary:1650",
+				"src/server/wiki/wiki-project-indexer.ts/fileAttributes:1663",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceFileNode:1319",
+				"src/server/wiki/wiki-project-indexer.ts/parseAttrs:1701",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectSubtreeRows:1467",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectDescendantRows:1480",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.pruneEmptyDirectories:1450"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.standardizeDiffEntries:1152",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.standardizeDiffEntries:1226",
 			"name": "WikiProjectIndexer.standardizeDiffEntries",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1152,
-			"endLine": 1195,
+			"line": 1226,
+			"endLine": 1269,
 			"statementCount": 31,
 			"exported": true,
 			"signature": "method standardizeDiffEntries(raw: readonly DiffNameStatusEntryLike[], sourceRoot: string)",
 			"description": "把 raw diff --name-status entries 标准化:",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/stripSourceRoot:1614"
+				"src/server/wiki/wiki-project-indexer.ts/stripSourceRoot:1689"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.enrichChangesWithOid:1201",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.enrichChangesWithOid:1275",
 			"name": "WikiProjectIndexer.enrichChangesWithOid",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1201,
-			"endLine": 1235,
+			"line": 1275,
+			"endLine": 1309,
 			"statementCount": 20,
 			"exported": true,
 			"signature": "method enrichChangesWithOid(workspaceDir: string, revision: string, changes: StandardizedChange[], _sourceRoot: string)",
@@ -23112,12 +23264,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceFileNode:1245",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceFileNode:1319",
 			"name": "WikiProjectIndexer.upsertSourceFileNode",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1245,
-			"endLine": 1280,
+			"line": 1319,
+			"endLine": 1354,
 			"statementCount": 9,
 			"exported": true,
 			"signature": "method upsertSourceFileNode(input: {\n\t\tparentId: number;\n\t\tnodePath: string;\n\t\tname: string;\n\t\tkind: WikiNodeKind;\n\t\tsummary: string;\n\t\tattributesJson: string;\n\t})",
@@ -23125,12 +23277,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1283",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1357",
 			"name": "WikiProjectIndexer.upsertSourceDirNode",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1283,
-			"endLine": 1302,
+			"line": 1357,
+			"endLine": 1376,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method upsertSourceDirNode(parentId: number, nodePath: string, repoRelativeDir: string)",
@@ -23138,43 +23290,43 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1308",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1382",
 			"name": "WikiProjectIndexer.ensureDirChain",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1308,
-			"endLine": 1331,
+			"line": 1382,
+			"endLine": 1406,
 			"statementCount": 15,
 			"exported": true,
 			"signature": "method ensureDirChain(projectNodeId: number, projectNodePath: string, repoRelativePath: string)",
 			"description": "确保 chain 完整 —— 给 repo 相对 file path 计算所在目录链,返回文件应挂的",
 			"callees": [
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1283"
+				"src/server/wiki/wiki-path.ts/joinWikiPathMulti:269",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1357"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1334",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1409",
 			"name": "WikiProjectIndexer.stampDirectorySummaries",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1334,
-			"endLine": 1354,
+			"line": 1409,
+			"endLine": 1429,
 			"statementCount": 13,
 			"exported": true,
 			"signature": "method stampDirectorySummaries(projectNodeId: number, projectNodePath: string)",
 			"description": "给目录节点 stamp 确定性 summary(直接 child 数 + 总后代数)。",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/countDescendants:1660"
+				"src/server/wiki/wiki-project-indexer.ts/countDescendants:1735"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampProjectRootSummary:1357",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampProjectRootSummary:1432",
 			"name": "WikiProjectIndexer.stampProjectRootSummary",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1357,
-			"endLine": 1372,
+			"line": 1432,
+			"endLine": 1447,
 			"statementCount": 7,
 			"exported": true,
 			"signature": "method stampProjectRootSummary(projectNodeId: number, displayName: string, branch: string, revision: string, trackedFiles: number, inferredDirs: number)",
@@ -23182,12 +23334,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.pruneEmptyDirectories:1375",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.pruneEmptyDirectories:1450",
 			"name": "WikiProjectIndexer.pruneEmptyDirectories",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1375,
-			"endLine": 1389,
+			"line": 1450,
+			"endLine": 1464,
 			"statementCount": 15,
 			"exported": true,
 			"signature": "method pruneEmptyDirectories(projectNodeId: number)",
@@ -23195,12 +23347,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectSubtreeRows:1392",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectSubtreeRows:1467",
 			"name": "WikiProjectIndexer.collectSubtreeRows",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1392,
-			"endLine": 1402,
+			"line": 1467,
+			"endLine": 1477,
 			"statementCount": 10,
 			"exported": true,
 			"signature": "method collectSubtreeRows(rootId: number)",
@@ -23208,12 +23360,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectDescendantRows:1405",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectDescendantRows:1480",
 			"name": "WikiProjectIndexer.collectDescendantRows",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1405,
-			"endLine": 1409,
+			"line": 1480,
+			"endLine": 1484,
 			"statementCount": 3,
 			"exported": true,
 			"signature": "method collectDescendantRows(rootId: number, rootPath: string)",
@@ -23221,28 +23373,28 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1412",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1487",
 			"name": "WikiProjectIndexer.ensureProjectRootNode",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1412,
-			"endLine": 1442,
+			"line": 1487,
+			"endLine": 1517,
 			"statementCount": 14,
 			"exported": true,
 			"signature": "method ensureProjectRootNode(projectId: string, displayName: string)",
 			"description": "创建(幂等)project root 节点。",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1451",
-				"src/server/wiki/wiki-project-indexer.ts/parseAttrs:1626"
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1526",
+				"src/server/wiki/wiki-project-indexer.ts/parseAttrs:1701"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1445",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1520",
 			"name": "WikiProjectIndexer.lookupProjectNodeId",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1445,
-			"endLine": 1448,
+			"line": 1520,
+			"endLine": 1523,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method lookupProjectNodeId(projectNodePath: string)",
@@ -23250,28 +23402,28 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1451",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1526",
 			"name": "WikiProjectIndexer.projectPathFor",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1451,
-			"endLine": 1456,
+			"line": 1526,
+			"endLine": 1531,
 			"statementCount": 2,
 			"exported": true,
 			"signature": "method projectPathFor(projectId: string)",
 			"description": "`wiki-root/projects/<projectId>` 规范路径。",
 			"callees": [
 				"src/server/wiki/wiki-path.ts/validateWikiName:96",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233"
+				"src/server/wiki/wiki-path.ts/joinWikiPath:236"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.bindingFailure:1462",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.bindingFailure:1537",
 			"name": "WikiProjectIndexer.bindingFailure",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1462,
-			"endLine": 1478,
+			"line": 1537,
+			"endLine": 1553,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method bindingFailure(projectId: string, repositoryId: string, sourceRoot: string, error: string)",
@@ -23279,12 +23431,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.indexFailure:1480",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.indexFailure:1555",
 			"name": "WikiProjectIndexer.indexFailure",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1480,
-			"endLine": 1495,
+			"line": 1555,
+			"endLine": 1570,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method indexFailure(projectId: string, repositoryId: string, indexedRevision: string, trackedFiles: number, inferredDirs: number, nodesAffected: number, error: string)",
@@ -23292,12 +23444,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncFailure:1497",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncFailure:1572",
 			"name": "WikiProjectIndexer.syncFailure",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1497,
-			"endLine": 1514,
+			"line": 1572,
+			"endLine": 1589,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "method syncFailure(projectId: string, binding: WikiRepositoryRow, error: string, stats: SyncResult[\"stats\"])",
@@ -23305,44 +23457,44 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDir:479",
+			"id": "src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDir:491",
 			"name": "WikiProjectIndexer.ensureDir",
 			"kind": "arrow",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 479,
-			"endLine": 498,
+			"line": 491,
+			"endLine": 512,
 			"statementCount": 18,
 			"exported": false,
 			"signature": "fn (repoRelativeDir: string)",
 			"description": "",
 			"callees": [
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
-				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1283"
+				"src/server/wiki/wiki-path.ts/joinWikiPathMulti:269",
+				"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1357"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/classifyByMode:1531",
+			"id": "src/server/wiki/wiki-project-indexer.ts/classifyByMode:1606",
 			"name": "classifyByMode",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1531,
-			"endLine": 1556,
+			"line": 1606,
+			"endLine": 1631,
 			"statementCount": 23,
 			"exported": true,
 			"signature": "function classifyByMode(mode: string, fileName: string, repoRelativePath: string)",
 			"description": "按 Git mode + 文件名 + 仓库相对 path 推导 Wiki kind + source_kind。",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/extOf:1566",
-				"src/server/wiki/wiki-project-indexer.ts/sourceKindOf:1558"
+				"src/server/wiki/wiki-project-indexer.ts/extOf:1641",
+				"src/server/wiki/wiki-project-indexer.ts/sourceKindOf:1633"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/sourceKindOf:1558",
+			"id": "src/server/wiki/wiki-project-indexer.ts/sourceKindOf:1633",
 			"name": "sourceKindOf",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1558,
-			"endLine": 1564,
+			"line": 1633,
+			"endLine": 1639,
 			"statementCount": 4,
 			"exported": false,
 			"signature": "function sourceKindOf(mode: string, base: string, ext: string)",
@@ -23350,12 +23502,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/extOf:1566",
+			"id": "src/server/wiki/wiki-project-indexer.ts/extOf:1641",
 			"name": "extOf",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1566,
-			"endLine": 1569,
+			"line": 1641,
+			"endLine": 1644,
 			"statementCount": 2,
 			"exported": false,
 			"signature": "function extOf(fileName: string)",
@@ -23363,27 +23515,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/fileSummary:1575",
+			"id": "src/server/wiki/wiki-project-indexer.ts/fileSummary:1650",
 			"name": "fileSummary",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1575,
-			"endLine": 1585,
+			"line": 1650,
+			"endLine": 1660,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function fileSummary(sourceKind: string, mode: string, fileName: string, repoRelativePath: string)",
 			"description": "文件节点确定性初始 summary(plan-03 §4)。**不**含文件正文。",
 			"callees": [
-				"src/server/wiki/wiki-project-indexer.ts/extOf:1566"
+				"src/server/wiki/wiki-project-indexer.ts/extOf:1641"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/fileAttributes:1588",
+			"id": "src/server/wiki/wiki-project-indexer.ts/fileAttributes:1663",
 			"name": "fileAttributes",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1588,
-			"endLine": 1594,
+			"line": 1663,
+			"endLine": 1669,
 			"statementCount": 8,
 			"exported": false,
 			"signature": "function fileAttributes(sourceKind: string, mode: string)",
@@ -23391,12 +23543,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/normalizeSourceRoot:1600",
+			"id": "src/server/wiki/wiki-project-indexer.ts/normalizeSourceRoot:1675",
 			"name": "normalizeSourceRoot",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1600,
-			"endLine": 1606,
+			"line": 1675,
+			"endLine": 1681,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "function normalizeSourceRoot(input: string)",
@@ -23404,12 +23556,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/stripSourceRoot:1614",
+			"id": "src/server/wiki/wiki-project-indexer.ts/stripSourceRoot:1689",
 			"name": "stripSourceRoot",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1614,
-			"endLine": 1623,
+			"line": 1689,
+			"endLine": 1698,
 			"statementCount": 10,
 			"exported": false,
 			"signature": "function stripSourceRoot(repoPath: string, sourceRoot: string)",
@@ -23417,12 +23569,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/parseAttrs:1626",
+			"id": "src/server/wiki/wiki-project-indexer.ts/parseAttrs:1701",
 			"name": "parseAttrs",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1626,
-			"endLine": 1636,
+			"line": 1701,
+			"endLine": 1711,
 			"statementCount": 6,
 			"exported": false,
 			"signature": "function parseAttrs(json: string | null)",
@@ -23430,12 +23582,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/countActiveFileBindings:1639",
+			"id": "src/server/wiki/wiki-project-indexer.ts/countActiveFileBindings:1714",
 			"name": "countActiveFileBindings",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1639,
-			"endLine": 1644,
+			"line": 1714,
+			"endLine": 1719,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function countActiveFileBindings(store: WikiRepositoryStore, repositoryId: string)",
@@ -23443,12 +23595,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/countActiveDirNodes:1647",
+			"id": "src/server/wiki/wiki-project-indexer.ts/countActiveDirNodes:1722",
 			"name": "countActiveDirNodes",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1647,
-			"endLine": 1657,
+			"line": 1722,
+			"endLine": 1732,
 			"statementCount": 5,
 			"exported": false,
 			"signature": "function countActiveDirNodes(repo: WikiNodeRepository, projectNodeId: number)",
@@ -23456,12 +23608,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/countDescendants:1660",
+			"id": "src/server/wiki/wiki-project-indexer.ts/countDescendants:1735",
 			"name": "countDescendants",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1660,
-			"endLine": 1670,
+			"line": 1735,
+			"endLine": 1745,
 			"statementCount": 9,
 			"exported": false,
 			"signature": "function countDescendants(repo: WikiNodeRepository, rootId: number)",
@@ -23469,12 +23621,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/makeRepositoryId:1673",
+			"id": "src/server/wiki/wiki-project-indexer.ts/makeRepositoryId:1748",
 			"name": "makeRepositoryId",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1673,
-			"endLine": 1676,
+			"line": 1748,
+			"endLine": 1751,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function makeRepositoryId(projectId: string)",
@@ -23482,12 +23634,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/makeTxId:1679",
+			"id": "src/server/wiki/wiki-project-indexer.ts/makeTxId:1754",
 			"name": "makeTxId",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1679,
-			"endLine": 1681,
+			"line": 1754,
+			"endLine": 1756,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function makeTxId()",
@@ -23495,12 +23647,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/makeSwapTempPath:1684",
+			"id": "src/server/wiki/wiki-project-indexer.ts/makeSwapTempPath:1759",
 			"name": "makeSwapTempPath",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1684,
-			"endLine": 1690,
+			"line": 1759,
+			"endLine": 1765,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "function makeSwapTempPath(txId: string, originalRepoPath: string)",
@@ -23508,12 +23660,25 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-project-indexer.ts/makeSwapTempSource:1693",
+			"id": "src/server/wiki/wiki-project-indexer.ts/makeSwapTempName:1775",
+			"name": "makeSwapTempName",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-project-indexer.ts",
+			"line": 1775,
+			"endLine": 1778,
+			"statementCount": 2,
+			"exported": false,
+			"signature": "function makeSwapTempName(txId: string, nodeId: number)",
+			"description": "临时 name(单段,validateWikiName 合法)用于 swap phase-1。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-project-indexer.ts/makeSwapTempSource:1781",
 			"name": "makeSwapTempSource",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-project-indexer.ts",
-			"line": 1693,
-			"endLine": 1697,
+			"line": 1781,
+			"endLine": 1785,
 			"statementCount": 3,
 			"exported": false,
 			"signature": "function makeSwapTempSource(txId: string, originalSourcePath: string)",
@@ -23791,6 +23956,566 @@
 			"callees": []
 		},
 		{
+			"id": "src/server/wiki/wiki-search-service.ts/RegexWorkerPool.loadModule:169",
+			"name": "RegexWorkerPool.loadModule",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 169,
+			"endLine": 182,
+			"statementCount": 10,
+			"exported": false,
+			"signature": "method loadModule()",
+			"description": "Singleton regex worker pool. Worker starts lazily on first regex request;",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/RegexWorkerPool.ensureWorker:184",
+			"name": "RegexWorkerPool.ensureWorker",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 184,
+			"endLine": 216,
+			"statementCount": 28,
+			"exported": false,
+			"signature": "method ensureWorker()",
+			"description": "Singleton regex worker pool. Worker starts lazily on first regex request;",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/RegexWorkerPool.loadModule:169"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/RegexWorkerPool.run:222",
+			"name": "RegexWorkerPool.run",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 222,
+			"endLine": 281,
+			"statementCount": 10,
+			"exported": false,
+			"signature": "method run(pattern: string, flags: string, candidates: Array<{\n\t\t\tpath: string;\n\t\t\tname: string;\n\t\t\tkind: string;\n\t\t\tdisplayTitle: string;\n\t\t\tsummary: string;\n\t\t\tcontent: string;\n\t\t\trevision: number;\n\t\t}>, limits: typeof WIKI_REGEX_DEFAULT_LIMITS)",
+			"description": "Run a regex search on the candidate set.",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/RegexWorkerPool.ensureWorker:184"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327",
+			"name": "WikiSearchService.search",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 327,
+			"endLine": 409,
+			"statementCount": 33,
+			"exported": true,
+			"signature": "method search(req: WikiSearchRequest, ctx: WikiRequestContext)",
+			"description": "统一搜索入口。",
+			"callees": [
+				"src/shared/wiki-search-types.ts/resolveRegexLimits:253",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.emptyResult:747",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.regexFlags:765",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchWiki:415",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSource:667",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.clampLimit:809",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.mergeForPagination:829",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.decodeCursor:817",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.encodeCursor:813"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.searchWiki:415",
+			"name": "WikiSearchService.searchWiki",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 415,
+			"endLine": 436,
+			"statementCount": 7,
+			"exported": true,
+			"signature": "method searchWiki(req: WikiSearchRequest, mode: WikiSearchMode, allowedScopes: string[], _ctx: WikiRequestContext, limits: typeof WIKI_REGEX_DEFAULT_LIMITS)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchExact:445",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSubstring:464",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchGlob:489",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchFulltext:515",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchRegex:557",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchHybrid:633"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.searchExact:445",
+			"name": "WikiSearchService.searchExact",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 445,
+			"endLine": 455,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method searchExact(req: WikiSearchRequest, allowedScopes: string[])",
+			"description": "exact:canonical name/path/字段精确匹配。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.queryNodesInScopes:724",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToExactHit:862"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSubstring:464",
+			"name": "WikiSearchService.searchSubstring",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 464,
+			"endLine": 480,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method searchSubstring(req: WikiSearchRequest, allowedScopes: string[])",
+			"description": "substring:子串匹配。SQL `LIKE` + ESCAPE。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.escapeLike:779",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.queryNodesInScopes:724",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToSubstringHit:877",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.detectSubstringField:953"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.searchGlob:489",
+			"name": "WikiSearchService.searchGlob",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 489,
+			"endLine": 507,
+			"statementCount": 8,
+			"exported": true,
+			"signature": "method searchGlob(req: WikiSearchRequest, allowedScopes: string[])",
+			"description": "glob:段基 `*`(不跨段)/ `**`(跨段)/ `?`(单字符)。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.globToSqlLike:790",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.queryNodesInScopes:724",
+				"src/server/wiki/wiki-search-service.ts/compileGlobMatcher:994",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToGlobHit:896"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.searchFulltext:515",
+			"name": "WikiSearchService.searchFulltext",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 515,
+			"endLine": 543,
+			"statementCount": 13,
+			"exported": true,
+			"signature": "method searchFulltext(req: WikiSearchRequest, allowedScopes: string[])",
+			"description": "fulltext:FTS5 MATCH + scope filter + snippet。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.buildFtsQuery:773",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.buildSnippet:799",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToFulltextHit:915"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.searchRegex:557",
+			"name": "WikiSearchService.searchRegex",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 557,
+			"endLine": 622,
+			"statementCount": 15,
+			"exported": true,
+			"signature": "method searchRegex(req: WikiSearchRequest, allowedScopes: string[], limits: typeof WIKI_REGEX_DEFAULT_LIMITS)",
+			"description": "regex:Wiki 正文 regex 搜索 —— **worker_threads** + 5 上限。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.displayTitleOf:966",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.regexFlags:765",
+				"src/server/wiki/wiki-search-service.ts/RegexWorkerPool.run:222",
+				"src/shared/wiki-search-types.ts/normalizeScore:143"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.searchHybrid:633",
+			"name": "WikiSearchService.searchHybrid",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 633,
+			"endLine": 661,
+			"statementCount": 10,
+			"exported": true,
+			"signature": "method searchHybrid(req: WikiSearchRequest, allowedScopes: string[], limits: typeof WIKI_REGEX_DEFAULT_LIMITS)",
+			"description": "hybrid:融合 exact + substring + fulltext + source,固定排序 tuple。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchExact:445",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSubstring:464",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchFulltext:515",
+				"src/shared/wiki-search-types.ts/compareHybridHits:184"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSource:667",
+			"name": "WikiSearchService.searchSource",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 667,
+			"endLine": 711,
+			"statementCount": 17,
+			"exported": true,
+			"signature": "method searchSource(req: WikiSearchRequest, mode: WikiSearchMode, allowedScopes: string[], ctx: WikiRequestContext)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.canonicalToSourceRel:851",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327",
+				"src/server/wiki/wiki-errors.ts/wikiError:74",
+				"src/server/wiki/wiki-search-service.ts/sourceHitToView:1037"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.queryNodesInScopes:724",
+			"name": "WikiSearchService.queryNodesInScopes",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 724,
+			"endLine": 745,
+			"statementCount": 11,
+			"exported": true,
+			"signature": "method queryNodesInScopes(allowedScopes: string[], buildPredicate: (scope: string) => string, params: string[])",
+			"description": "取所有 active 节点 in allowedScopes(路径前缀段基匹配)。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.emptyResult:747",
+			"name": "WikiSearchService.emptyResult",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 747,
+			"endLine": 763,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method emptyResult(req: WikiSearchRequest, mode: WikiSearchMode, target: WikiSearchTarget)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": [
+				"src/shared/wiki-search-types.ts/resolveRegexLimits:253"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.regexFlags:765",
+			"name": "WikiSearchService.regexFlags",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 765,
+			"endLine": 767,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method regexFlags(caseSensitive: boolean)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.buildFtsQuery:773",
+			"name": "WikiSearchService.buildFtsQuery",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 773,
+			"endLine": 777,
+			"statementCount": 4,
+			"exported": true,
+			"signature": "method buildFtsQuery(query: string)",
+			"description": "FTS5 安全 query:把 query 包成 `\"token\"*`(phrase + prefix match)。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.escapeLike:779",
+			"name": "WikiSearchService.escapeLike",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 779,
+			"endLine": 781,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method escapeLike(s: string)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.globToSqlLike:790",
+			"name": "WikiSearchService.globToSqlLike",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 790,
+			"endLine": 797,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method globToSqlLike(glob: string)",
+			"description": "glob → SQL LIKE pattern 编译(粗筛)。JS glob matcher 做精确段级 verify。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.buildSnippet:799",
+			"name": "WikiSearchService.buildSnippet",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 799,
+			"endLine": 807,
+			"statementCount": 9,
+			"exported": true,
+			"signature": "method buildSnippet(row: WikiNodeRow, query: string)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.clampLimit:809",
+			"name": "WikiSearchService.clampLimit",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 809,
+			"endLine": 811,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method clampLimit(n: number)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.encodeCursor:813",
+			"name": "WikiSearchService.encodeCursor",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 813,
+			"endLine": 815,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method encodeCursor(idx: number)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.decodeCursor:817",
+			"name": "WikiSearchService.decodeCursor",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 817,
+			"endLine": 827,
+			"statementCount": 8,
+			"exported": true,
+			"signature": "method decodeCursor(c: string | null)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.mergeForPagination:829",
+			"name": "WikiSearchService.mergeForPagination",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 829,
+			"endLine": 849,
+			"statementCount": 7,
+			"exported": true,
+			"signature": "method mergeForPagination(wikiHits: WikiSearchHit[], sourceHits: WikiSourceSearchHit[], target: WikiSearchTarget)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": [
+				"src/shared/wiki-search-types.ts/compareHybridHits:184"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.canonicalToSourceRel:851",
+			"name": "WikiSearchService.canonicalToSourceRel",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 851,
+			"endLine": 856,
+			"statementCount": 2,
+			"exported": true,
+			"signature": "method canonicalToSourceRel(canonicalScope: string, projectScope: string)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToExactHit:862",
+			"name": "WikiSearchService.rowToExactHit",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 862,
+			"endLine": 875,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method rowToExactHit(row: WikiNodeRow, req: WikiSearchRequest)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.displayTitleOf:966",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.detectExactField:935",
+				"src/shared/wiki-search-types.ts/normalizeScore:143"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToSubstringHit:877",
+			"name": "WikiSearchService.rowToSubstringHit",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 877,
+			"endLine": 894,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method rowToSubstringHit(row: WikiNodeRow, req: WikiSearchRequest, field: WikiSearchField)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.displayTitleOf:966",
+				"src/shared/wiki-search-types.ts/normalizeScore:143",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.buildSnippet:799"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToGlobHit:896",
+			"name": "WikiSearchService.rowToGlobHit",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 896,
+			"endLine": 913,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method rowToGlobHit(row: WikiNodeRow, req: WikiSearchRequest, field: WikiSearchField)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.displayTitleOf:966",
+				"src/shared/wiki-search-types.ts/normalizeScore:143",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.buildSnippet:799"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToFulltextHit:915",
+			"name": "WikiSearchService.rowToFulltextHit",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 915,
+			"endLine": 933,
+			"statementCount": 1,
+			"exported": true,
+			"signature": "method rowToFulltextHit(row: WikiNodeRow, req: WikiSearchRequest, snippet: string, rawRank: number)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.displayTitleOf:966",
+				"src/server/wiki/wiki-search-service.ts/WikiSearchService.detectFulltextField:946",
+				"src/shared/wiki-search-types.ts/normalizeScore:143"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.detectExactField:935",
+			"name": "WikiSearchService.detectExactField",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 935,
+			"endLine": 944,
+			"statementCount": 9,
+			"exported": true,
+			"signature": "method detectExactField(row: WikiNodeRow, req: WikiSearchRequest)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.detectFulltextField:946",
+			"name": "WikiSearchService.detectFulltextField",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 946,
+			"endLine": 951,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method detectFulltextField(row: WikiNodeRow, req: WikiSearchRequest)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.detectSubstringField:953",
+			"name": "WikiSearchService.detectSubstringField",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 953,
+			"endLine": 964,
+			"statementCount": 11,
+			"exported": true,
+			"signature": "method detectSubstringField(row: WikiNodeRow, req: WikiSearchRequest)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": [
+				"src/server/wiki/wiki-search-service.ts/fieldText:1024"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.displayTitleOf:966",
+			"name": "WikiSearchService.displayTitleOf",
+			"kind": "method",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 966,
+			"endLine": 974,
+			"statementCount": 6,
+			"exported": true,
+			"signature": "method displayTitleOf(row: WikiNodeRow)",
+			"description": "WikiSearchService —— 统一 Wiki + source 搜索。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.subReq:639",
+			"name": "WikiSearchService.subReq",
+			"kind": "arrow",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 639,
+			"endLine": 639,
+			"statementCount": 0,
+			"exported": false,
+			"signature": "fn (m: WikiSearchMode)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/WikiSearchService.toKey:834",
+			"name": "WikiSearchService.toKey",
+			"kind": "arrow",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 834,
+			"endLine": 839,
+			"statementCount": 0,
+			"exported": false,
+			"signature": "fn (h: WikiSearchHit | WikiSourceSearchHit)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/compileGlobMatcher:994",
+			"name": "compileGlobMatcher",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 994,
+			"endLine": 1022,
+			"statementCount": 23,
+			"exported": true,
+			"signature": "function compileGlobMatcher(glob: string, caseSensitive: boolean)",
+			"description": "编译 segment-aware glob matcher。",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/fieldText:1024",
+			"name": "fieldText",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 1024,
+			"endLine": 1032,
+			"statementCount": 6,
+			"exported": false,
+			"signature": "function fieldText(row: WikiNodeRow, f: WikiSearchField)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-search-service.ts/sourceHitToView:1037",
+			"name": "sourceHitToView",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-search-service.ts",
+			"line": 1037,
+			"endLine": 1055,
+			"statementCount": 2,
+			"exported": false,
+			"signature": "function sourceHitToView(h: SourceSearchHit)",
+			"description": "把 sub-03 SourceSearchHit 转 WikiSourceSearchHit(strip 内部 id;带 score)。",
+			"callees": [
+				"src/shared/wiki-search-types.ts/normalizeScore:143"
+			]
+		},
+		{
 			"id": "src/server/wiki/wiki-service.ts/nodeRowToView:119",
 			"name": "nodeRowToView",
 			"kind": "function",
@@ -23803,7 +24528,7 @@
 			"description": "把 WikiNodeRow 转为 WikiNodeView(无内部 ID;acceptance-02 §C「不泄露 ID」)。",
 			"callees": [
 				"src/server/wiki/wiki-service.ts/parseAttributesJson:141",
-				"src/server/wiki/wiki-path.ts/parentWikiPath:245"
+				"src/server/wiki/wiki-path.ts/parentWikiPath:305"
 			]
 		},
 		{
@@ -23894,7 +24619,7 @@
 				"src/server/wiki/wiki-path.ts/validateWikiName:96",
 				"src/server/wiki/wiki-errors.ts/wikiError:74",
 				"src/server/wiki/wiki-service.ts/WikiService.isSourceBound:1112",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233"
+				"src/server/wiki/wiki-path.ts/joinWikiPath:236"
 			]
 		},
 		{
@@ -24023,11 +24748,11 @@
 			"callees": [
 				"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1069",
 				"src/server/wiki/wiki-service.ts/WikiService.assertAgentAccess:1105",
-				"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:292",
+				"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:352",
 				"src/server/wiki/wiki-path.ts/validateWikiName:96",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:236",
 				"src/server/wiki/wiki-errors.ts/wikiError:74",
-				"src/server/wiki/wiki-path.ts/isSameOrDescendant:266",
+				"src/server/wiki/wiki-path.ts/isSameOrDescendant:326",
 				"src/server/wiki/wiki-service.ts/WikiService.isSourceBound:1112",
 				"src/server/wiki/wiki-service.ts/WikiService.collectSubtreeRows:1134",
 				"src/server/wiki/wiki-service.ts/WikiService.update:389"
@@ -24046,7 +24771,7 @@
 			"description": "幂等保证 Agent memory root 存在。多次调用:同一 stable agentId → 不动 path;",
 			"callees": [
 				"src/server/wiki/wiki-path.ts/validateWikiName:96",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:236",
 				"src/server/wiki/wiki-service.ts/parseAttributesJson:141",
 				"src/server/wiki/wiki-service.ts/WikiService.update:389",
 				"src/server/wiki/wiki-errors.ts/wikiError:74"
@@ -24065,7 +24790,7 @@
 			"description": "归档 Agent memory root（不硬删;保留历史供审计）。",
 			"callees": [
 				"src/server/wiki/wiki-path.ts/validateWikiName:96",
-				"src/server/wiki/wiki-path.ts/joinWikiPath:233",
+				"src/server/wiki/wiki-path.ts/joinWikiPath:236",
 				"src/server/wiki/wiki-service.ts/WikiService.collectSubtree:1119",
 				"src/server/wiki/wiki-service.ts/WikiService.archive:479"
 			]
@@ -24299,34 +25024,78 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:176",
+			"id": "src/server/wiki/wiki-source-search.ts/resolveRipgrepBinary:75",
+			"name": "resolveRipgrepBinary",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-source-search.ts",
+			"line": 75,
+			"endLine": 164,
+			"statementCount": 35,
+			"exported": false,
+			"signature": "function resolveRipgrepBinary()",
+			"description": "Resolve the ripgrep binary path. Production rg is **not** guaranteed to be on",
+			"callees": [
+				"src/server/wiki/wiki-source-search.ts/tryLayouts:100"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-source-search.ts/tryLayouts:100",
+			"name": "tryLayouts",
+			"kind": "arrow",
+			"file": "src/server/wiki/wiki-source-search.ts",
+			"line": 100,
+			"endLine": 115,
+			"statementCount": 5,
+			"exported": false,
+			"signature": "fn (extRoot: string)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/server/wiki/wiki-source-search.ts/getCachedRipgrepBinary:168",
+			"name": "getCachedRipgrepBinary",
+			"kind": "function",
+			"file": "src/server/wiki/wiki-source-search.ts",
+			"line": 168,
+			"endLine": 176,
+			"statementCount": 5,
+			"exported": false,
+			"signature": "function getCachedRipgrepBinary()",
+			"description": "",
+			"callees": [
+				"src/server/wiki/wiki-source-search.ts/resolveRipgrepBinary:75"
+			]
+		},
+		{
+			"id": "src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:315",
 			"name": "WikiSourceSearch.search",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-source-search.ts",
-			"line": 176,
-			"endLine": 281,
-			"statementCount": 39,
+			"line": 315,
+			"endLine": 431,
+			"statementCount": 41,
 			"exported": true,
 			"signature": "method search(req: SourceSearchRequest)",
 			"description": "WikiSourceSearch —— 源码搜索 ripgrep 封装。每次 search 走一次 rg 子进程。",
 			"callees": [
-				"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.lookupRepository:283",
-				"src/server/wiki/wiki-source-search.ts/computeEffectiveScope:450",
-				"src/server/wiki/wiki-source-search.ts/buildRipgrepArgv:301",
-				"src/server/wiki/wiki-source-search.ts/clamp:477",
-				"src/server/wiki/wiki-source-search.ts/runSubprocess:349",
-				"src/server/wiki/wiki-source-search.ts/parseHitLine:384",
-				"src/server/wiki/wiki-source-search.ts/parseCursor:485",
-				"src/server/wiki/wiki-source-search.ts/encodeCursor:481"
+				"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.lookupRepository:433",
+				"src/server/wiki/wiki-source-search.ts/computeEffectiveScope:619",
+				"src/server/wiki/wiki-source-search.ts/buildRipgrepArgv:451",
+				"src/server/wiki/wiki-source-search.ts/getCachedRipgrepBinary:168",
+				"src/server/wiki/wiki-source-search.ts/clamp:646",
+				"src/server/wiki/wiki-source-search.ts/runSubprocess:499",
+				"src/server/wiki/wiki-source-search.ts/parseHitLine:534",
+				"src/server/wiki/wiki-source-search.ts/parseCursor:654",
+				"src/server/wiki/wiki-source-search.ts/encodeCursor:650"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-source-search.ts/WikiSourceSearch.lookupRepository:283",
+			"id": "src/server/wiki/wiki-source-search.ts/WikiSourceSearch.lookupRepository:433",
 			"name": "WikiSourceSearch.lookupRepository",
 			"kind": "method",
 			"file": "src/server/wiki/wiki-source-search.ts",
-			"line": 283,
-			"endLine": 291,
+			"line": 433,
+			"endLine": 441,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "method lookupRepository(req: SourceSearchRequest)",
@@ -24334,12 +25103,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-source-search.ts/buildRipgrepArgv:301",
+			"id": "src/server/wiki/wiki-source-search.ts/buildRipgrepArgv:451",
 			"name": "buildRipgrepArgv",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-source-search.ts",
-			"line": 301,
-			"endLine": 344,
+			"line": 451,
+			"endLine": 494,
 			"statementCount": 20,
 			"exported": false,
 			"signature": "function buildRipgrepArgv(input: {\n\tmode: SourceSearchMode;\n\tpattern: string;\n\tcaseSensitive: boolean;\n\teffectiveScope: string;\n\tfileGlobs?: string[];\n})",
@@ -24347,12 +25116,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-source-search.ts/runSubprocess:349",
+			"id": "src/server/wiki/wiki-source-search.ts/runSubprocess:499",
 			"name": "runSubprocess",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-source-search.ts",
-			"line": 349,
-			"endLine": 377,
+			"line": 499,
+			"endLine": 527,
 			"statementCount": 10,
 			"exported": false,
 			"signature": "function runSubprocess(argv: string[], cwd: string, timeoutMs: number, maxBytes: number)",
@@ -24360,27 +25129,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-source-search.ts/parseHitLine:384",
+			"id": "src/server/wiki/wiki-source-search.ts/parseHitLine:534",
 			"name": "parseHitLine",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-source-search.ts",
-			"line": 384,
-			"endLine": 430,
-			"statementCount": 18,
+			"line": 534,
+			"endLine": 599,
+			"statementCount": 20,
 			"exported": false,
 			"signature": "function parseHitLine(rawLine: string, repo: WikiRepositoryRow, origin: \"indexed\" | \"workspace\", bindingByPath: Map<string, WikiSourceBindingRow>, nodeRepo: WikiNodeRepository, nodePathCache: Map<number, string>)",
 			"description": "解析 ripgrep 输出行 `<path>:<line>:<col>:<content>` → SourceSearchHit。",
 			"callees": [
-				"src/server/wiki/wiki-source-search.ts/stripSourceRootPrefix:436"
+				"src/server/wiki/wiki-source-search.ts/stripSourceRootPrefix:605"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-source-search.ts/stripSourceRootPrefix:436",
+			"id": "src/server/wiki/wiki-source-search.ts/stripSourceRootPrefix:605",
 			"name": "stripSourceRootPrefix",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-source-search.ts",
-			"line": 436,
-			"endLine": 444,
+			"line": 605,
+			"endLine": 613,
 			"statementCount": 7,
 			"exported": false,
 			"signature": "function stripSourceRootPrefix(path: string, sourceRoot: string)",
@@ -24388,27 +25157,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-source-search.ts/computeEffectiveScope:450",
+			"id": "src/server/wiki/wiki-source-search.ts/computeEffectiveScope:619",
 			"name": "computeEffectiveScope",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-source-search.ts",
-			"line": 450,
-			"endLine": 460,
+			"line": 619,
+			"endLine": 629,
 			"statementCount": 10,
 			"exported": false,
 			"signature": "function computeEffectiveScope(sourceRoot: string, reqScope: string)",
 			"description": "scope = source_root + req.scope。返回 ripgrep 接受的 path(workspace 相对)。",
 			"callees": [
-				"src/server/wiki/wiki-source-search.ts/normalizeScopeSeg:462"
+				"src/server/wiki/wiki-source-search.ts/normalizeScopeSeg:631"
 			]
 		},
 		{
-			"id": "src/server/wiki/wiki-source-search.ts/normalizeScopeSeg:462",
+			"id": "src/server/wiki/wiki-source-search.ts/normalizeScopeSeg:631",
 			"name": "normalizeScopeSeg",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-source-search.ts",
-			"line": 462,
-			"endLine": 475,
+			"line": 631,
+			"endLine": 644,
 			"statementCount": 13,
 			"exported": false,
 			"signature": "function normalizeScopeSeg(s: string)",
@@ -24416,12 +25185,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-source-search.ts/clamp:477",
+			"id": "src/server/wiki/wiki-source-search.ts/clamp:646",
 			"name": "clamp",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-source-search.ts",
-			"line": 477,
-			"endLine": 479,
+			"line": 646,
+			"endLine": 648,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function clamp(n: number, min: number, max: number)",
@@ -24429,12 +25198,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-source-search.ts/encodeCursor:481",
+			"id": "src/server/wiki/wiki-source-search.ts/encodeCursor:650",
 			"name": "encodeCursor",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-source-search.ts",
-			"line": 481,
-			"endLine": 483,
+			"line": 650,
+			"endLine": 652,
 			"statementCount": 1,
 			"exported": false,
 			"signature": "function encodeCursor(idx: number)",
@@ -24442,12 +25211,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki/wiki-source-search.ts/parseCursor:485",
+			"id": "src/server/wiki/wiki-source-search.ts/parseCursor:654",
 			"name": "parseCursor",
 			"kind": "function",
 			"file": "src/server/wiki/wiki-source-search.ts",
-			"line": 485,
-			"endLine": 495,
+			"line": 654,
+			"endLine": 664,
 			"statementCount": 8,
 			"exported": false,
 			"signature": "function parseCursor(c: string | null)",
@@ -25845,27 +26614,27 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-operations.ts/agentHasWikiTool:26",
+			"id": "src/server/wiki-operations.ts/agentHasWikiTool:35",
 			"name": "agentHasWikiTool",
 			"kind": "function",
 			"file": "src/server/wiki-operations.ts",
-			"line": 26,
-			"endLine": 28,
+			"line": 35,
+			"endLine": 37,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function agentHasWikiTool(agent: AgentRecord)",
 			"description": "agent 是否配置了 Wiki 工具。判定:Wiki 没被 blockedTools 禁用即可用。\r",
 			"callees": [
-				"src/server/wiki-operations.ts/agentHasTool:38"
+				"src/server/wiki-operations.ts/agentHasTool:47"
 			]
 		},
 		{
-			"id": "src/server/wiki-operations.ts/agentHasTool:38",
+			"id": "src/server/wiki-operations.ts/agentHasTool:47",
 			"name": "agentHasTool",
 			"kind": "function",
 			"file": "src/server/wiki-operations.ts",
-			"line": 38,
-			"endLine": 50,
+			"line": 47,
+			"endLine": 59,
 			"statementCount": 15,
 			"exported": true,
 			"signature": "function agentHasTool(agent: AgentRecord, tool: string)",
@@ -25873,12 +26642,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-operations.ts/agentWikiToolAutoApproved:56",
+			"id": "src/server/wiki-operations.ts/agentWikiToolAutoApproved:65",
 			"name": "agentWikiToolAutoApproved",
 			"kind": "function",
 			"file": "src/server/wiki-operations.ts",
-			"line": 56,
-			"endLine": 58,
+			"line": 65,
+			"endLine": 67,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function agentWikiToolAutoApproved(agent: AgentRecord)",
@@ -25886,12 +26655,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-operations.ts/resolveOperationPrompt:159",
+			"id": "src/server/wiki-operations.ts/resolveOperationPrompt:196",
 			"name": "resolveOperationPrompt",
 			"kind": "function",
 			"file": "src/server/wiki-operations.ts",
-			"line": 159,
-			"endLine": 168,
+			"line": 196,
+			"endLine": 205,
 			"statementCount": 5,
 			"exported": true,
 			"signature": "function resolveOperationPrompt(operationId?: string, customPrompt?: string, projectName?: string)",
@@ -25899,12 +26668,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-operations.ts/wrapGitAwarePrompt:179",
+			"id": "src/server/wiki-operations.ts/wrapGitAwarePrompt:216",
 			"name": "wrapGitAwarePrompt",
 			"kind": "function",
 			"file": "src/server/wiki-operations.ts",
-			"line": 179,
-			"endLine": 181,
+			"line": 216,
+			"endLine": 218,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function wrapGitAwarePrompt(prompt: string)",
@@ -25912,12 +26681,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-operations.ts/isGitAwarePrompt:184",
+			"id": "src/server/wiki-operations.ts/isGitAwarePrompt:221",
 			"name": "isGitAwarePrompt",
 			"kind": "function",
 			"file": "src/server/wiki-operations.ts",
-			"line": 184,
-			"endLine": 186,
+			"line": 221,
+			"endLine": 223,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function isGitAwarePrompt(prompt: string | undefined)",
@@ -25925,12 +26694,12 @@
 			"callees": []
 		},
 		{
-			"id": "src/server/wiki-operations.ts/stripGitAwareSentinel:189",
+			"id": "src/server/wiki-operations.ts/stripGitAwareSentinel:226",
 			"name": "stripGitAwareSentinel",
 			"kind": "function",
 			"file": "src/server/wiki-operations.ts",
-			"line": 189,
-			"endLine": 191,
+			"line": 226,
+			"endLine": 228,
 			"statementCount": 1,
 			"exported": true,
 			"signature": "function stripGitAwareSentinel(prompt: string)",
@@ -27265,6 +28034,60 @@
 			"signature": "function originGroupOrder(origins: Iterable<string>)",
 			"description": "sub-14: origin 分组顺序 —— zero-core 置顶(产品精调优先展示),其余按 originLabel\r",
 			"callees": []
+		},
+		{
+			"id": "src/shared/wiki-search-types.ts/normalizeScore:143",
+			"name": "normalizeScore",
+			"kind": "function",
+			"file": "src/shared/wiki-search-types.ts",
+			"line": 143,
+			"endLine": 168,
+			"statementCount": 10,
+			"exported": true,
+			"signature": "function normalizeScore(matchType: WikiSearchMatchType, rawScore?: number)",
+			"description": "把原始分数归一化到 [0,1]。每种 match_type 单独定义归一化函数 —— 接收原始",
+			"callees": []
+		},
+		{
+			"id": "src/shared/wiki-search-types.ts/compareHybridHits:184",
+			"name": "compareHybridHits",
+			"kind": "function",
+			"file": "src/shared/wiki-search-types.ts",
+			"line": 184,
+			"endLine": 201,
+			"statementCount": 15,
+			"exported": true,
+			"signature": "function compareHybridHits(a: HybridSortKey, b: HybridSortKey)",
+			"description": "",
+			"callees": []
+		},
+		{
+			"id": "src/shared/wiki-search-types.ts/resolveRegexLimits:253",
+			"name": "resolveRegexLimits",
+			"kind": "function",
+			"file": "src/shared/wiki-search-types.ts",
+			"line": 253,
+			"endLine": 269,
+			"statementCount": 5,
+			"exported": true,
+			"signature": "function resolveRegexLimits(host?: WikiRegexLimits)",
+			"description": "把 host 提供的 limits 与默认合并,** clamp 到绝不低于默认值**(production",
+			"callees": [
+				"src/shared/wiki-search-types.ts/min:258"
+			]
+		},
+		{
+			"id": "src/shared/wiki-search-types.ts/min:258",
+			"name": "min",
+			"kind": "arrow",
+			"file": "src/shared/wiki-search-types.ts",
+			"line": 258,
+			"endLine": 258,
+			"statementCount": 0,
+			"exported": false,
+			"signature": "fn (a: number, b: number)",
+			"description": "",
+			"callees": []
 		}
 	],
 	"callers": {
@@ -28191,7 +29014,7 @@
 			"src/server/archivist-git.ts/featureWorktreePath:132",
 			"src/server/archivist-git.ts/centralFeatureWorktreePath:155",
 			"src/server/archivist-git.ts/featureBranchName:160",
-			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:476"
+			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:508"
 		],
 		"src/server/archivist-git.ts/projectSlug:114": [
 			"src/server/archivist-git.ts/featureWorktreePath:132",
@@ -28201,13 +29024,13 @@
 			"src/server/archivist-git.ts/ArchivistGit.isRepo:192",
 			"src/server/archivist-git.ts/ArchivistGit.ensureRepo:205",
 			"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:227",
-			"src/server/archivist-git.ts/ArchivistGit.changesSince:419",
-			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:476",
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:528",
-			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:581",
-			"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:623",
-			"src/server/archivist-git.ts/ArchivistGit.safeLog:632",
-			"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:644"
+			"src/server/archivist-git.ts/ArchivistGit.changesSince:451",
+			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:508",
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:560",
+			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:613",
+			"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:655",
+			"src/server/archivist-git.ts/ArchivistGit.safeLog:664",
+			"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:676"
 		],
 		"src/server/archivist-git.ts/ArchivistGit.isRepo:192": [
 			"src/server/archivist-git.ts/ArchivistGit.ensureRepo:205"
@@ -28217,53 +29040,53 @@
 			"src/server/archivist-git.ts/ArchivistGit.detectDefaultBranch:261",
 			"src/server/archivist-git.ts/ArchivistGit.listTreeAtRevision:289",
 			"src/server/archivist-git.ts/ArchivistGit.diffNameStatus:321",
-			"src/server/archivist-git.ts/ArchivistGit.catFileBlob:348",
-			"src/server/archivist-git.ts/ArchivistGit.blobMetadata:378",
-			"src/server/archivist-git.ts/ArchivistGit.isGitRepo:402"
+			"src/server/archivist-git.ts/ArchivistGit.catFileBlob:353",
+			"src/server/archivist-git.ts/ArchivistGit.blobMetadata:390",
+			"src/server/archivist-git.ts/ArchivistGit.isGitRepo:434"
 		],
-		"src/server/archivist-git.ts/parseLsTreeZ:714": [
+		"src/server/archivist-git.ts/parseLsTreeZ:746": [
 			"src/server/archivist-git.ts/ArchivistGit.listTreeAtRevision:289"
 		],
-		"src/server/archivist-git.ts/shortSha:789": [
+		"src/server/archivist-git.ts/shortSha:821": [
 			"src/server/archivist-git.ts/ArchivistGit.diffNameStatus:321"
 		],
-		"src/server/archivist-git.ts/parseDiffNameStatusZ:754": [
+		"src/server/archivist-git.ts/parseDiffNameStatusZ:786": [
 			"src/server/archivist-git.ts/ArchivistGit.diffNameStatus:321"
 		],
-		"src/server/archivist-git.ts/ArchivistGit.catFileBlob:348": [
-			"src/server/archivist-git.ts/ArchivistGit.catFileText:364"
+		"src/server/archivist-git.ts/ArchivistGit.catFileBlob:353": [
+			"src/server/archivist-git.ts/ArchivistGit.catFileText:369"
 		],
 		"src/server/archivist-git.ts/ArchivistGit.getCurrentMainRef:227": [
-			"src/server/archivist-git.ts/ArchivistGit.changesSince:419",
-			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:476",
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:528"
+			"src/server/archivist-git.ts/ArchivistGit.changesSince:451",
+			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:508",
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:560"
 		],
-		"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:623": [
-			"src/server/archivist-git.ts/ArchivistGit.changesSince:419"
+		"src/server/archivist-git.ts/ArchivistGit.listTrackedFiles:655": [
+			"src/server/archivist-git.ts/ArchivistGit.changesSince:451"
 		],
-		"src/server/archivist-git.ts/ArchivistGit.safeLog:632": [
-			"src/server/archivist-git.ts/ArchivistGit.changesSince:419"
+		"src/server/archivist-git.ts/ArchivistGit.safeLog:664": [
+			"src/server/archivist-git.ts/ArchivistGit.changesSince:451"
 		],
-		"src/server/archivist-git.ts/isSafePathspec:667": [
-			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:476",
-			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:581"
+		"src/server/archivist-git.ts/isSafePathspec:699": [
+			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:508",
+			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:613"
 		],
-		"src/server/archivist-git.ts/isSafeCommitSubject:674": [
-			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:476"
+		"src/server/archivist-git.ts/isSafeCommitSubject:706": [
+			"src/server/archivist-git.ts/ArchivistGit.commitRequirementDoc:508"
 		],
 		"src/server/archivist-git.ts/featureBranchName:160": [
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:528",
-			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:581"
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:560",
+			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:613"
 		],
 		"src/server/archivist-git.ts/featureWorktreePath:132": [
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:528",
-			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:581"
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:560",
+			"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:613"
 		],
-		"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:644": [
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:528"
+		"src/server/archivist-git.ts/ArchivistGit.listConflictedFiles:676": [
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:560"
 		],
-		"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:581": [
-			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:528"
+		"src/server/archivist-git.ts/ArchivistGit.cleanupWorktree:613": [
+			"src/server/archivist-git.ts/ArchivistGit.mergeFeatureToMain:560"
 		],
 		"src/server/attachment-store.ts/saveAttachment:153": [
 			"src/server/attachment-router.ts/createAttachmentRouter:44"
@@ -28476,7 +29299,7 @@
 		"src/server/cron-analysis.ts/fireTimeToday:330": [
 			"src/server/cron-analysis.ts/CronAnalysisManager.listTodaysFires:483"
 		],
-		"src/server/wiki-operations.ts/isGitAwarePrompt:184": [
+		"src/server/wiki-operations.ts/isGitAwarePrompt:221": [
 			"src/server/cron-analysis.ts/CronAnalysisManager.listTodaysFires:483",
 			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:872",
 			"src/server/management-service.ts/ManagementService.getProjectArchivistBinding:855",
@@ -28533,13 +29356,13 @@
 			"src/server/cron-analysis.ts/CronAnalysisManager.fireCron:697",
 			"src/server/cron-analysis.ts/CronAnalysisManager.triggerCron:792"
 		],
-		"src/server/wiki-operations.ts/agentHasTool:38": [
+		"src/server/wiki-operations.ts/agentHasTool:47": [
 			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:872",
 			"src/server/management-service.ts/ManagementService.assertAgentMeetsTools:1145",
 			"src/server/project-work-runner.ts/ProjectWorkRunner.fireProjectWork:62",
-			"src/server/wiki-operations.ts/agentHasWikiTool:26"
+			"src/server/wiki-operations.ts/agentHasWikiTool:35"
 		],
-		"src/server/wiki-operations.ts/stripGitAwareSentinel:189": [
+		"src/server/wiki-operations.ts/stripGitAwareSentinel:226": [
 			"src/server/cron-analysis.ts/CronAnalysisManager.fireAgent:872"
 		],
 		"src/server/session-context-router.ts/resolveSessionByRoleProject:98": [
@@ -28684,7 +29507,7 @@
 		"src/runtime/hooks/turn-seq-tracker.ts/clearTurnStatePrecreated:76": [
 			"src/server/durable-hooks.ts/registerDurableHooks:73"
 		],
-		"src/server/wiki-operations.ts/agentHasWikiTool:26": [
+		"src/server/wiki-operations.ts/agentHasWikiTool:35": [
 			"src/server/enrichment-runner.ts/EnrichmentRunner.resolveAgent:80",
 			"src/server/management-service.ts/ManagementService.bindProjectArchivist:798",
 			"src/server/management-service.ts/ManagementService.switchProjectArchivistAgent:836"
@@ -28692,7 +29515,7 @@
 		"src/server/enrichment-runner.ts/EnrichmentRunner.resolveAgent:80": [
 			"src/server/enrichment-runner.ts/EnrichmentRunner.runProjectEnrichment:100"
 		],
-		"src/server/wiki-operations.ts/resolveOperationPrompt:159": [
+		"src/server/wiki-operations.ts/resolveOperationPrompt:196": [
 			"src/server/enrichment-runner.ts/EnrichmentRunner.runProjectEnrichment:100",
 			"src/server/management-service.ts/ManagementService.bindProjectArchivist:798"
 		],
@@ -28945,7 +29768,7 @@
 			"src/server/management-service.ts/ManagementService.createProjectWork:997",
 			"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1167"
 		],
-		"src/server/wiki-operations.ts/wrapGitAwarePrompt:179": [
+		"src/server/wiki-operations.ts/wrapGitAwarePrompt:216": [
 			"src/server/management-service.ts/ManagementService.bindProjectArchivist:798",
 			"src/server/management-service.ts/ManagementService.createProjectWork:997",
 			"src/server/management-service.ts/ManagementService.setWorkCronTriggers:1167"
@@ -29617,6 +30440,9 @@
 			"src/server/wiki/wiki-edit-service.ts/WikiEditService.locateAnchor:240",
 			"src/server/wiki/wiki-edit-service.ts/WikiEditService.findSectionPublic:285",
 			"src/server/wiki/wiki-edit-service.ts/WikiEditService.searchIn:244",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchRegex:557",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSource:667",
 			"src/server/wiki/wiki-service.ts/WikiService.expand:192",
 			"src/server/wiki/wiki-service.ts/WikiService.read:239",
 			"src/server/wiki/wiki-service.ts/WikiService.create:323",
@@ -29636,12 +30462,13 @@
 			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.prepareSearchScopes:130",
 			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.filterVisibleLinks:170",
 			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.canRead:232",
-			"src/server/wiki/wiki-path.ts/joinWikiPath:233",
-			"src/server/wiki/wiki-path.ts/parentWikiPath:245",
-			"src/server/wiki/wiki-path.ts/isSameOrDescendant:266",
-			"src/server/wiki/wiki-path.ts/splitWikiPath:285",
-			"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:292",
-			"src/server/wiki/wiki-path.ts/isWikiRoot:301",
+			"src/server/wiki/wiki-path.ts/joinWikiPath:236",
+			"src/server/wiki/wiki-path.ts/joinWikiPathMulti:269",
+			"src/server/wiki/wiki-path.ts/parentWikiPath:305",
+			"src/server/wiki/wiki-path.ts/isSameOrDescendant:326",
+			"src/server/wiki/wiki-path.ts/splitWikiPath:345",
+			"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:352",
+			"src/server/wiki/wiki-path.ts/isWikiRoot:361",
 			"src/server/wiki/wiki-service.ts/WikiService.restore:633"
 		],
 		"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveMemoryDynamic:203": [
@@ -29656,16 +30483,12 @@
 		"src/server/wiki/wiki-address-service.ts/WikiAddressService.findLongestAliasPrefix:330": [
 			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolve:144"
 		],
-		"src/server/wiki/wiki-path.ts/joinWikiPath:233": [
+		"src/server/wiki/wiki-path.ts/joinWikiPath:236": [
 			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveMemoryDynamic:203",
 			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveProjectDynamic:220",
 			"src/server/wiki/wiki-address-service.ts/WikiAddressService.resolveAliasRow:242",
 			"src/server/wiki/wiki-address-service.ts/joinPathSegments:554",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1308",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1451",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDir:479",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1526",
 			"src/server/wiki/wiki-service.ts/WikiService.create:323",
 			"src/server/wiki/wiki-service.ts/WikiService.move:813",
 			"src/server/wiki/wiki-service.ts/WikiService.ensureAgentMemoryRoot:930",
@@ -29687,7 +30510,7 @@
 		"src/server/wiki/wiki-address-service.ts/splitRest:542": [
 			"src/server/wiki/wiki-address-service.ts/joinPathSegments:554"
 		],
-		"src/server/wiki/wiki-path.ts/isSameOrDescendant:266": [
+		"src/server/wiki/wiki-path.ts/isSameOrDescendant:326": [
 			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.authorize:69",
 			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.decide:100",
 			"src/server/wiki/wiki-authorization-service.ts/WikiAuthorizationService.prepareSearchScopes:130",
@@ -29785,22 +30608,26 @@
 		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.ftsDeleteCommand:484": [
 			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.update:266",
 			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:428",
-			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:451"
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:451",
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.updateChildPathAndName:610"
 		],
 		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsInsert:398": [
 			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.update:266",
-			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:428"
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:428",
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.updateChildPathAndName:610"
 		],
 		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:451": [
 			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.hardDelete:366"
 		],
 		"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.readIndexedColumns:468": [
 			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsUpdate:428",
-			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:451"
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.syncFtsDelete:451",
+			"src/server/wiki/wiki-node-repository.ts/WikiNodeRepository.updateChildPathAndName:610"
 		],
 		"src/server/wiki/wiki-path.ts/pathError:68": [
 			"src/server/wiki/wiki-path.ts/validateWikiName:96",
-			"src/server/wiki/wiki-path.ts/normalizeWikiPath:149"
+			"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
+			"src/server/wiki/wiki-path.ts/joinWikiPathMulti:269"
 		],
 		"src/server/wiki/wiki-path.ts/isControlChar:78": [
 			"src/server/wiki/wiki-path.ts/validateWikiName:96",
@@ -29808,136 +30635,146 @@
 		],
 		"src/server/wiki/wiki-path.ts/validateWikiName:96": [
 			"src/server/wiki/wiki-path.ts/normalizeWikiPath:149",
-			"src/server/wiki/wiki-path.ts/joinWikiPath:233",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1451",
+			"src/server/wiki/wiki-path.ts/joinWikiPath:236",
+			"src/server/wiki/wiki-path.ts/joinWikiPathMulti:269",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1526",
 			"src/server/wiki/wiki-service.ts/WikiService.create:323",
 			"src/server/wiki/wiki-service.ts/WikiService.move:813",
 			"src/server/wiki/wiki-service.ts/WikiService.ensureAgentMemoryRoot:930",
 			"src/server/wiki/wiki-service.ts/WikiService.archiveAgentMemoryRoot:1017"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.bindingFailure:1462": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:309"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.bindingFailure:1537": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:310"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/normalizeSourceRoot:1600": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:309"
+		"src/server/wiki/wiki-project-indexer.ts/normalizeSourceRoot:1675": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:310"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1451": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:309",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.rebuildFromScratch:803",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1412"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.projectPathFor:1526": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:310",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.rebuildFromScratch:867",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1487"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/makeRepositoryId:1673": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:309"
+		"src/server/wiki/wiki-project-indexer.ts/makeRepositoryId:1748": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:310"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1412": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:309"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1487": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:310"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1445": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:309",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.lookupProjectNodeId:1520": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:310",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:309": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureBinding:310": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.indexFailure:1480": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.indexFailure:1555": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/stripSourceRoot:1614": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.standardizeDiffEntries:1152"
+		"src/server/wiki/wiki-project-indexer.ts/stripSourceRoot:1689": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.standardizeDiffEntries:1226"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1283": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1308",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDir:479"
+		"src/server/wiki/wiki-path.ts/joinWikiPathMulti:269": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1382",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDir:491"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1531": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceDirNode:1357": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1382",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDir:491"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/fileSummary:1575": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859"
+		"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1606": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/fileAttributes:1588": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859"
+		"src/server/wiki/wiki-project-indexer.ts/fileSummary:1650": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceFileNode:1245": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859"
+		"src/server/wiki/wiki-project-indexer.ts/fileAttributes:1663": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1334": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.upsertSourceFileNode:1319": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampProjectRootSummary:1357": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1409": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:408": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.rebuildFromScratch:803"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampProjectRootSummary:1432": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncFailure:1497": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.fullIndex:420": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.rebuildFromScratch:867"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.standardizeDiffEntries:1152": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncFailure:1572": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.enrichChangesWithOid:1201": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.standardizeDiffEntries:1226": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.enrichChangesWithOid:1275": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/countActiveFileBindings:1639": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/countActiveDirNodes:1647": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607"
+		"src/server/wiki/wiki-project-indexer.ts/countActiveFileBindings:1714": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:607": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncToHead:793",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.onGitCommitSuccess:842"
+		"src/server/wiki/wiki-project-indexer.ts/countActiveDirNodes:1722": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectSubtreeRows:1392": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.rebuildFromScratch:803",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.sync:623": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.syncToHead:857",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.onGitCommitSuccess:906"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/makeTxId:1679": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectSubtreeRows:1467": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.rebuildFromScratch:867",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/makeSwapTempPath:1684": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859"
+		"src/server/wiki/wiki-project-indexer.ts/makeTxId:1754": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/makeSwapTempSource:1693": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859"
+		"src/server/wiki/wiki-project-indexer.ts/makeSwapTempPath:1759": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1308": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859"
+		"src/server/wiki/wiki-project-indexer.ts/makeSwapTempName:1775": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/parseAttrs:1626": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859",
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1412"
+		"src/server/wiki/wiki-project-indexer.ts/makeSwapTempSource:1781": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectDescendantRows:1405": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureDirChain:1382": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.pruneEmptyDirectories:1375": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:859"
+		"src/server/wiki/wiki-project-indexer.ts/parseAttrs:1701": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923",
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.ensureProjectRootNode:1487"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/countDescendants:1660": [
-			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1334"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.collectDescendantRows:1480": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/extOf:1566": [
-			"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1531",
-			"src/server/wiki/wiki-project-indexer.ts/fileSummary:1575"
+		"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.pruneEmptyDirectories:1450": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.applyDiffAtomically:923"
 		],
-		"src/server/wiki/wiki-project-indexer.ts/sourceKindOf:1558": [
-			"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1531"
+		"src/server/wiki/wiki-project-indexer.ts/countDescendants:1735": [
+			"src/server/wiki/wiki-project-indexer.ts/WikiProjectIndexer.stampDirectorySummaries:1409"
+		],
+		"src/server/wiki/wiki-project-indexer.ts/extOf:1641": [
+			"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1606",
+			"src/server/wiki/wiki-project-indexer.ts/fileSummary:1650"
+		],
+		"src/server/wiki/wiki-project-indexer.ts/sourceKindOf:1633": [
+			"src/server/wiki/wiki-project-indexer.ts/classifyByMode:1606"
 		],
 		"src/server/wiki/wiki-repository-store.ts/WikiRepositoryTable.getById:68": [
 			"src/server/wiki/wiki-repository-store.ts/WikiRepositoryTable.upsert:93",
@@ -29952,12 +30789,145 @@
 		"src/server/wiki/wiki-schema.ts/markSchemaVersion:255": [
 			"src/server/wiki/wiki-schema.ts/initWikiSchema:64"
 		],
+		"src/server/wiki/wiki-search-service.ts/RegexWorkerPool.loadModule:169": [
+			"src/server/wiki/wiki-search-service.ts/RegexWorkerPool.ensureWorker:184"
+		],
+		"src/server/wiki/wiki-search-service.ts/RegexWorkerPool.ensureWorker:184": [
+			"src/server/wiki/wiki-search-service.ts/RegexWorkerPool.run:222"
+		],
+		"src/shared/wiki-search-types.ts/resolveRegexLimits:253": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.emptyResult:747"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.emptyResult:747": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.regexFlags:765": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchRegex:557"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchWiki:415": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSource:667": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.clampLimit:809": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.mergeForPagination:829": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.decodeCursor:817": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.encodeCursor:813": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchExact:445": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchWiki:415",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchHybrid:633"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSubstring:464": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchWiki:415",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchHybrid:633"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchGlob:489": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchWiki:415"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchFulltext:515": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchWiki:415",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchHybrid:633"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchRegex:557": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchWiki:415"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchHybrid:633": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchWiki:415"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.queryNodesInScopes:724": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchExact:445",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSubstring:464",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchGlob:489"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToExactHit:862": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchExact:445"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.escapeLike:779": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSubstring:464"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToSubstringHit:877": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSubstring:464"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.detectSubstringField:953": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSubstring:464"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.globToSqlLike:790": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchGlob:489"
+		],
+		"src/server/wiki/wiki-search-service.ts/compileGlobMatcher:994": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchGlob:489"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToGlobHit:896": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchGlob:489"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.buildFtsQuery:773": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchFulltext:515"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.buildSnippet:799": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchFulltext:515",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToSubstringHit:877",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToGlobHit:896"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToFulltextHit:915": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchFulltext:515"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.displayTitleOf:966": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchRegex:557",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToExactHit:862",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToSubstringHit:877",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToGlobHit:896",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToFulltextHit:915"
+		],
+		"src/server/wiki/wiki-search-service.ts/RegexWorkerPool.run:222": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchRegex:557"
+		],
+		"src/shared/wiki-search-types.ts/normalizeScore:143": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchRegex:557",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToExactHit:862",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToSubstringHit:877",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToGlobHit:896",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToFulltextHit:915",
+			"src/server/wiki/wiki-search-service.ts/sourceHitToView:1037"
+		],
+		"src/shared/wiki-search-types.ts/compareHybridHits:184": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchHybrid:633",
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.mergeForPagination:829"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.canonicalToSourceRel:851": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSource:667"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.search:327": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSource:667"
+		],
+		"src/server/wiki/wiki-search-service.ts/sourceHitToView:1037": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.searchSource:667"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.detectExactField:935": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToExactHit:862"
+		],
+		"src/server/wiki/wiki-search-service.ts/WikiSearchService.detectFulltextField:946": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.rowToFulltextHit:915"
+		],
+		"src/server/wiki/wiki-search-service.ts/fieldText:1024": [
+			"src/server/wiki/wiki-search-service.ts/WikiSearchService.detectSubstringField:953"
+		],
 		"src/server/wiki/wiki-service.ts/parseAttributesJson:141": [
 			"src/server/wiki/wiki-service.ts/nodeRowToView:119",
 			"src/server/wiki/wiki-service.ts/WikiService.update:389",
 			"src/server/wiki/wiki-service.ts/WikiService.ensureAgentMemoryRoot:930"
 		],
-		"src/server/wiki/wiki-path.ts/parentWikiPath:245": [
+		"src/server/wiki/wiki-path.ts/parentWikiPath:305": [
 			"src/server/wiki/wiki-service.ts/nodeRowToView:119"
 		],
 		"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1069": [
@@ -30045,7 +31015,7 @@
 		"src/server/wiki/wiki-service.ts/WikiService.hardDelete:536": [
 			"src/server/wiki/wiki-service.ts/WikiService.hardDelete:536"
 		],
-		"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:292": [
+		"src/server/wiki/wiki-path.ts/lastSegmentOfWikiPath:352": [
 			"src/server/wiki/wiki-service.ts/WikiService.move:813"
 		],
 		"src/server/wiki/wiki-service.ts/WikiService.collectSubtreeRows:1134": [
@@ -30055,35 +31025,44 @@
 		"src/server/wiki/wiki-service.ts/WikiService.ctxToAddressCtx:1091": [
 			"src/server/wiki/wiki-service.ts/WikiService.resolveAddress:1069"
 		],
-		"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.lookupRepository:283": [
-			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:176"
+		"src/server/wiki/wiki-source-search.ts/tryLayouts:100": [
+			"src/server/wiki/wiki-source-search.ts/resolveRipgrepBinary:75"
 		],
-		"src/server/wiki/wiki-source-search.ts/computeEffectiveScope:450": [
-			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:176"
+		"src/server/wiki/wiki-source-search.ts/resolveRipgrepBinary:75": [
+			"src/server/wiki/wiki-source-search.ts/getCachedRipgrepBinary:168"
 		],
-		"src/server/wiki/wiki-source-search.ts/buildRipgrepArgv:301": [
-			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:176"
+		"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.lookupRepository:433": [
+			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:315"
 		],
-		"src/server/wiki/wiki-source-search.ts/clamp:477": [
-			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:176"
+		"src/server/wiki/wiki-source-search.ts/computeEffectiveScope:619": [
+			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:315"
 		],
-		"src/server/wiki/wiki-source-search.ts/runSubprocess:349": [
-			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:176"
+		"src/server/wiki/wiki-source-search.ts/buildRipgrepArgv:451": [
+			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:315"
 		],
-		"src/server/wiki/wiki-source-search.ts/parseHitLine:384": [
-			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:176"
+		"src/server/wiki/wiki-source-search.ts/getCachedRipgrepBinary:168": [
+			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:315"
 		],
-		"src/server/wiki/wiki-source-search.ts/parseCursor:485": [
-			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:176"
+		"src/server/wiki/wiki-source-search.ts/clamp:646": [
+			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:315"
 		],
-		"src/server/wiki/wiki-source-search.ts/encodeCursor:481": [
-			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:176"
+		"src/server/wiki/wiki-source-search.ts/runSubprocess:499": [
+			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:315"
 		],
-		"src/server/wiki/wiki-source-search.ts/stripSourceRootPrefix:436": [
-			"src/server/wiki/wiki-source-search.ts/parseHitLine:384"
+		"src/server/wiki/wiki-source-search.ts/parseHitLine:534": [
+			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:315"
 		],
-		"src/server/wiki/wiki-source-search.ts/normalizeScopeSeg:462": [
-			"src/server/wiki/wiki-source-search.ts/computeEffectiveScope:450"
+		"src/server/wiki/wiki-source-search.ts/parseCursor:654": [
+			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:315"
+		],
+		"src/server/wiki/wiki-source-search.ts/encodeCursor:650": [
+			"src/server/wiki/wiki-source-search.ts/WikiSourceSearch.search:315"
+		],
+		"src/server/wiki/wiki-source-search.ts/stripSourceRootPrefix:605": [
+			"src/server/wiki/wiki-source-search.ts/parseHitLine:534"
+		],
+		"src/server/wiki/wiki-source-search.ts/normalizeScopeSeg:631": [
+			"src/server/wiki/wiki-source-search.ts/computeEffectiveScope:619"
 		],
 		"src/server/wiki/wiki-source-service.ts/WikiSourceService.readInternal:206": [
 			"src/server/wiki/wiki-source-service.ts/WikiSourceService.readIndexedSource:163",
@@ -30466,6 +31445,9 @@
 		],
 		"src/core/tool-registry.ts/ToolRegistry.buildEffectivePrompt:224": [
 			"src/core/tool-registry.ts/ToolRegistry.getAll:151"
+		],
+		"src/shared/wiki-search-types.ts/min:258": [
+			"src/shared/wiki-search-types.ts/resolveRegexLimits:253"
 		]
 	},
 	"fileCallers": {
@@ -30518,6 +31500,7 @@
 			"src/server/tool-execution-hooks.ts",
 			"src/server/wiki/wiki-database.ts",
 			"src/server/wiki/wiki-project-indexer.ts",
+			"src/server/wiki/wiki-search-service.ts",
 			"src/server/wiki/wiki-source-search.ts",
 			"src/server/wiki/wiki-source-service.ts",
 			"src/server/wiki-skeleton-service.ts",
@@ -30542,6 +31525,7 @@
 			"src/server/log-router.ts",
 			"src/server/message-store.ts",
 			"src/server/persona-store.ts",
+			"src/server/wiki/wiki-source-search.ts",
 			"src/server/wiki-node-store.ts",
 			"src/server/workspace-config.ts",
 			"src/core/custom-tools.ts",
@@ -31215,6 +32199,7 @@
 			"src/server/index.ts",
 			"src/server/wiki/wiki-address-service.ts",
 			"src/server/wiki/wiki-project-indexer.ts",
+			"src/server/wiki/wiki-search-service.ts",
 			"src/server/wiki/wiki-service.ts",
 			"src/server/wiki/wiki-source-search.ts",
 			"src/server/wiki/wiki-source-service.ts"
@@ -31233,6 +32218,7 @@
 			"src/server/index.ts",
 			"src/server/wiki/wiki-address-service.ts",
 			"src/server/wiki/wiki-project-indexer.ts",
+			"src/server/wiki/wiki-search-service.ts",
 			"src/server/wiki/wiki-service.ts",
 			"src/server/wiki/wiki-source-search.ts",
 			"src/server/wiki/wiki-source-service.ts"
@@ -31241,7 +32227,8 @@
 			"src/server/index.ts"
 		],
 		"src/server/wiki/wiki-source-search.ts": [
-			"src/server/index.ts"
+			"src/server/index.ts",
+			"src/server/wiki/wiki-search-service.ts"
 		],
 		"src/server/project-router.ts": [
 			"src/server/index.ts"
@@ -31337,22 +32324,30 @@
 			"src/server/wiki/wiki-node-repository.ts",
 			"src/server/wiki/wiki-path.ts",
 			"src/server/wiki/wiki-project-indexer.ts",
-			"src/server/wiki/wiki-service.ts"
+			"src/server/wiki/wiki-search-service.ts",
+			"src/server/wiki/wiki-service.ts",
+			"src/shared/wiki-search-types.ts"
 		],
 		"src/server/wiki/wiki-errors.ts": [
 			"src/server/wiki/wiki-address-service.ts",
 			"src/server/wiki/wiki-authorization-service.ts",
 			"src/server/wiki/wiki-edit-service.ts",
+			"src/server/wiki/wiki-search-service.ts",
 			"src/server/wiki/wiki-service.ts"
 		],
 		"src/server/wiki/wiki-schema.ts": [
 			"src/server/wiki/wiki-database.ts"
 		],
-		"src/server/wiki/wiki-address-service.ts": [
+		"src/server/wiki/wiki-authorization-service.ts": [
+			"src/server/wiki/wiki-search-service.ts",
 			"src/server/wiki/wiki-service.ts"
 		],
-		"src/server/wiki/wiki-authorization-service.ts": [
+		"src/server/wiki/wiki-address-service.ts": [
+			"src/server/wiki/wiki-search-service.ts",
 			"src/server/wiki/wiki-service.ts"
+		],
+		"src/shared/wiki-search-types.ts": [
+			"src/server/wiki/wiki-search-service.ts"
 		],
 		"src/server/wiki/wiki-edit-service.ts": [
 			"src/server/wiki/wiki-service.ts"

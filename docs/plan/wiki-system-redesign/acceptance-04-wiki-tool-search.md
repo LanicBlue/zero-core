@@ -37,6 +37,14 @@
 - [ ] source search 不能通过参数改变 cwd 或逃离绑定仓库。
 - [ ] cursor/limit 结果稳定，同输入同 revision 顺序可重复。
 - [ ] hybrid 精确符合共享 `(match_type_rank, -normalized_score, canonical_path, target)` 排序 oracle，同分不依赖内部 ID。
+- [ ] **hybrid 节点边界（round-6 用户决策 2026-07-17）**：
+    - 199 个不同匹配节点 → `truncated=false`、`wikiHits.length===199`。
+    - 200 个不同匹配节点全部返回 → `truncated=false`、`wikiHits.length===200`、wikiHits 中**每条 path 唯一**（`new Set(paths).size === paths.length`）。
+    - 201 个不同匹配节点 → `truncated=true`、`wikiHits.length===200`、wikiHits 中每条 path 唯一。
+    - 250 个不同匹配节点 → `truncated=true`、`wikiHits.length===200`、wikiHits 中每条 path 唯一。
+    - **单节点多 matchType**（一节点被 exact + substring + fulltext 同时命中）→ wikiHits 中**只 1 条**该节点的 hit；primary `matchType` 为 best-rank（exact）；`matchTypes` 聚合证据含全部命中类型（长度 ≥ 2，去重）。
+    - 150 节点 × 每节点 2 种 matchType（content 含 token：substring + fulltext）→ `truncated=false`（150 distinct 节点 < 200）、`wikiHits.length===150`、每节点 1 条 hit、`matchTypes.length===2`。**注意**：这取代了 round-5 tuple-count 语义下「150 节点 × 2 = 300 dedup → truncated=true」的旧行为；新契约按节点而非 tuple 计数。
+    - 游标翻页第 2 页获得的节点 path 与第 1 页**无重叠**（path-keyed dedup 保证）。
 
 ## E. 泄露测试
 

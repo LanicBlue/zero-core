@@ -36,6 +36,7 @@
 
 import type Database from "better-sqlite3";
 import type { WikiNodeKind } from "../../shared/wiki-types.js";
+import { wikiError } from "./wiki-errors.js";
 
 /**
  * 节点内部行(repository 内部类型,含 DB 整数 ID)。
@@ -266,16 +267,22 @@ export class WikiNodeRepository {
 	update(id: number, expectedRevision: number, input: UpdateNodeInput): WikiNodeRow {
 		const current = this.getById(id);
 		if (!current) {
-			const err = new Error(`WikiNodeRepository.update: node not found (id=${id})`);
-			(err as Error & { code?: string }).code = "NOT_FOUND";
-			throw err;
+			// Path-based message —— 不泄露内部整数 id(round-2 FIX 1 / acceptance-02 §G)。
+			// 用 path 作为公开标识,与 Agent-facing view 一致。
+			throw wikiError(
+				"NOT_FOUND",
+				`node not found at path ${input.path ?? "(unknown)"}`,
+				{ path: input.path ?? null },
+			);
 		}
 		if (current.revision !== expectedRevision) {
-			const err = new Error(
-				`WRITE_CONFLICT: node id=${id} expected revision ${expectedRevision} but got ${current.revision}`,
+			// revision 是公开的乐观并发 token,可包含;内部整数 id 绝不出现在 message
+			// (round-2 FIX 1 / acceptance-02 §G / §A.4)。
+			throw wikiError(
+				"WRITE_CONFLICT",
+				`stale revision: expected ${expectedRevision}, current is ${current.revision}`,
+				{ path: current.path },
 			);
-			(err as Error & { code?: string }).code = "WRITE_CONFLICT";
-			throw err;
 		}
 		const now = new Date().toISOString();
 		const nextSummary = input.summary ?? current.summary;

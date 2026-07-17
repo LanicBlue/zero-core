@@ -24,6 +24,9 @@
 // - 本文件**只放类型**,不放运行时值。
 // ## 依赖
 // - ../../shared/types.js (Scope 等共享类型)。
+// - ../../shared/wiki-types.js (CompiledWikiAccess — wiki-system-redesign plan-04)。
+
+import type { CompiledWikiAccess } from "../shared/wiki-types.js";
 
 // ---------------------------------------------------------------------------
 // per-session 状态访问器(G1):loop 注入,工具经访问器读写本 loop 状态
@@ -384,4 +387,25 @@ export interface CallerCtx {
 	 * Flow.plan 写;后续 Orchestrate / startBuild 走它作 cwd。
 	 */
 	featureWorkspace?: string;
+
+	// ─── Wiki v2 (wiki-system-redesign plan-04)──────────────────────────
+	// **wiki-system-redesign plan-04 §2 / design.md §7.2**:
+	// 新 Wiki 工具(`createWikiTool` factory)只从此字段读 Agent 身份、
+	// active project、compiled grants 与 policy revision。Host 在 session build
+	// 时编译 AgentRecord.wikiGrants + 解析 memory:// / project:// 为 canonical
+	// scope,生成 CompiledWikiAccess 放入此字段。
+	//
+	// 关键不变量(acceptance-04 §A/§H):
+	//   - LLM 输入 schema **不得**携带 agentId/projectId/grants/canonicalScope/cwd。
+	//   - 工具不读 AgentStore 也不读 ctx.agentId/projectId 补 grants —— 唯一权威
+	//     是此字段。
+	//   - Plan-05 runtime 接线时由 AgentService 从 SessionConfig 填充;Plan-04
+	//     factory 通过 createWikiTool(deps) 注入测试 host 直接调用。
+	//   - 旧 `wikiAnchorNodeIds` 在 Plan-05 原子切换后删除,**不**作为本字段的
+	//     fallback。
+	/**
+	 * Host 注入的 Wiki v2 编译后访问上下文(权威 grants 来源)。
+	 * 缺失时新 Wiki 工具调用立即返 ACCESS_DENIED(不退回旧 anchor 模型)。
+	 */
+	wikiAccess?: CompiledWikiAccess;
 }
