@@ -267,21 +267,18 @@ const api: WindowApi = {
 	// project-flow F4: user-supplied coverage verdict (verify compound close).
 	requirementsCoverageVerdict: (id, covered, reason?) => ipcRenderer.invoke("requirements:coverageVerdict", id, covered, reason),
 
-	// ── Wiki ──
-	wikiListByProject: (projectId) => ipcRenderer.invoke("wiki:listByProject", projectId),
-	wikiGetNode: (id) => ipcRenderer.invoke("wiki:getNode", id),
-	wikiCreateNode: (projectId, input) => ipcRenderer.invoke("wiki:createNode", projectId, input),
-	wikiUpdateNode: (id, input) => ipcRenderer.invoke("wiki:updateNode", id, input),
-	wikiDeleteNode: (id) => ipcRenderer.invoke("wiki:deleteNode", id),
-	// v0.8 (P8 §10.9): global-tree browser surface.
-	wikiGetChildren: (nodeId) => ipcRenderer.invoke("wiki:getChildren", nodeId),
-	wikiReadDetail: (nodeId) => ipcRenderer.invoke("wiki:readDetail", nodeId),
-	wikiReadWorkspaceDoc: (projectId, relPath) => ipcRenderer.invoke("wiki:readWorkspaceDoc", projectId, relPath),
-	wikiSearch: (query, anchorIds?) => ipcRenderer.invoke("wiki:search", query, anchorIds),
-	wikiResolvedAnchors: (agentId, projectId?) => ipcRenderer.invoke("wiki:resolvedAnchors", agentId, projectId),
-	// Live preview of the wiki text this (agent, project) + free wikiAnchors would
-	// inject (system prompt section + per-turn context) + token estimates.
-	wikiPreviewInjection: (body) => ipcRenderer.invoke("wiki:previewInjection", body),
+	// ── Wiki v2 (plan-06) ── 10 个结构化 endpoint + workspace-doc。
+	wikiV2Expand: (req) => ipcRenderer.invoke("wikiV2:expand", req),
+	wikiV2Read: (req) => ipcRenderer.invoke("wikiV2:read", req),
+	wikiV2Search: (req) => ipcRenderer.invoke("wikiV2:search", req),
+	wikiV2Create: (req) => ipcRenderer.invoke("wikiV2:create", req),
+	wikiV2Update: (req) => ipcRenderer.invoke("wikiV2:update", req),
+	wikiV2Delete: (req) => ipcRenderer.invoke("wikiV2:delete", req),
+	wikiV2Link: (req) => ipcRenderer.invoke("wikiV2:link", req),
+	wikiV2Unlink: (req) => ipcRenderer.invoke("wikiV2:unlink", req),
+	wikiV2Move: (req) => ipcRenderer.invoke("wikiV2:move", req),
+	wikiV2History: (req) => ipcRenderer.invoke("wikiV2:history", req),
+	wikiV2ReadWorkspaceDoc: (projectId, relPath) => ipcRenderer.invoke("wikiV2:readWorkspaceDoc", projectId, relPath),
 
 	// ── Delegated tasks (TaskTree) ──
 	delegatedTasksBySession: (sessionId) => ipcRenderer.invoke("delegatedTasks:bySession", sessionId),

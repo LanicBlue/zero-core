@@ -58,6 +58,15 @@ const UI_COLLECTIONS = new Set([
 	"runtime:metrics",
 	"runtime:input-queue",
 	"runtime:orchestrate",
+	// wiki-system-redesign plan-06 §7: 新 wiki 浏览器增量同步 collection。
+	// **id 是 canonical path**,不是内部 DB 整数 ID;record 携带
+	// `{path, op, revision, oldPath?, parentPath?}` 用于增量失效缓存。
+	// REST adapter (wiki-router.ts) 在每次 mutation 后 emit;renderer
+	// wiki-store 订阅这三个 collection,只失效受影响分支(不全量重拉)。
+	// 旧 `project_wiki` 仍保留给 plan-08 cutover 前的 legacy path。
+	"wiki_nodes",
+	"wiki_links",
+	"wiki_sync",
 ]);
 
 export type DataChangeOp = "create" | "update" | "delete";

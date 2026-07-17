@@ -27,7 +27,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useAgentStore } from "../../store/agent-store.js";
 import { useProviderStore } from "../../store/provider-store.js";
-import { useWikiStore } from "../../store/wiki-store.js";
 import type { AgentRecord, PromptTemplate, DiscoveredSkill } from "../../../shared/types.js";
 import { ConfirmModal } from "../common/ConfirmModal.js";
 import { BasicSection } from "./BasicSection.js";
@@ -36,7 +35,10 @@ import { ToolsSection } from "./ToolsSection.js";
 import { SkillsSection } from "./SkillsSection.js";
 import { PermissionsSection } from "./PermissionsSection.js";
 import { SubagentsSection } from "./SubagentsSection.js";
-import { WikiAnchorsSection } from "./WikiAnchorsSection.js";
+// wiki-system-redesign plan-06: WikiAnchorsSection 已删除(锚点注入模型退役)。
+// AgentRecord.wikiAnchors 字段保留到 plan-08 删除;form 仍 round-trip 它
+// (agent-editor-types.ts:62),但不再在 UI 编辑。Wiki grants/context 编辑器
+// 由 plan-07 实现(WikiAccessSection / WikiContextSection)。
 import {
 	DEFAULT_ENABLED_TOOLS,
 	agentToForm,
@@ -66,14 +68,10 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 	const update = useAgentStore((s) => s.update);
 	const tools = useAgentStore((s) => s.tools);
 	const agents = useAgentStore((s) => s.agents);
-	// v0.8 (P8): wiki nodes for the anchors picker. The wiki store is now
-	// lazy (loads the root's children on refresh); the anchors dropdown shows
-	// what's loaded so far + the global root is always offered explicitly.
-	// Users can also type any node id manually (WikiAnchorsSection).
-	const wikiNodeById = useWikiStore((s) => s.nodeById);
-	const refreshWiki = useWikiStore((s) => s.refresh);
-	useEffect(() => { void refreshWiki(); }, [refreshWiki]);
-	const wikiNodes = useMemo(() => Object.values(wikiNodeById), [wikiNodeById]);
+	// v0.8 (P8): wiki nodes for the anchors picker. RETIRED in plan-06 ——
+	// anchors picker lived in WikiAnchorsSection, which was deleted (anchor
+	// injection model abandoned). The wiki store is no longer touched here;
+	// Wiki grants/context editors land in plan-07.
 	// sub-5 (skill-system): pull discovered skills from skill-router via preload
 	// (skillsList → /api/skills → scanSkills()). Scanner reads disk on every
 	// call, so seeding a skill mid-session + refresh picks it up (E2E depends on
@@ -295,11 +293,9 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		if (agent) autoSave(f);
 	};
 
-	const updateWikiAnchors = (next: FormState["wikiAnchors"]) => {
-		const f: FormState = { ...form, wikiAnchors: next && next.length > 0 ? next : [] };
-		setForm(f);
-		if (agent) autoSave(f);
-	};
+	// plan-06: WikiAnchorsSection + updateWikiAnchors 已删除。AgentRecord.wikiAnchors
+	// 字段(form round-trip 保留)由 plan-07 的 WikiAccessSection / WikiContextSection
+	// 取代。
 
 	const SECTIONS: { key: Section; label: string }[] = [
 		{ key: "basic", label: "基础设置" },
@@ -307,7 +303,9 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		{ key: "tools", label: "工具" },
 		{ key: "skills", label: "Skills" },
 		{ key: "subagents", label: "委派 (subagents)" },
-		{ key: "anchors", label: "Wiki 锚点" },
+		// plan-06: "anchors" (Wiki 锚点) section 从 nav 隐藏 —— WikiAnchorsSection
+		// 已删除,plan-07 将以 WikiAccessSection / WikiContextSection 取代。Section
+		// union 中保留 "anchors" string 以兼容旧持久化 state。
 		{ key: "permissions", label: "权限模式" },
 	];
 
@@ -418,12 +416,18 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 					)}
 
 					{section === "anchors" && (
-						<WikiAnchorsSection
-							form={form}
-							agentId={agent?.id}
-							wikiNodes={wikiNodes}
-							onChange={updateWikiAnchors}
-						/>
+						// plan-06: WikiAnchorsSection 删除(锚点注入模型退役)。
+						// AgentRecord.wikiAnchors 字段保留到 plan-08。Wiki grants +
+						// context 编辑器由 plan-07 接入(WikiAccessSection /
+						// WikiContextSection)。此 section 入口在 nav 里也隐藏
+						// (SECTIONS 数组中已去掉),这里保留 guard 防止 section
+						// state 残留导致白屏。
+						<div className="editor-section">
+							<p className="empty-hint">
+								Wiki access &amp; context 编辑器待 plan-07 接入。
+								旧 wiki anchors 字段已退役(runtime 不再读)。
+							</p>
+						</div>
 					)}
 
 					{section === "permissions" && (

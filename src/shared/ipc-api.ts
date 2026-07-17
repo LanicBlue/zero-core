@@ -40,8 +40,7 @@ import type {
 	ProjectArchivistBinding, CronSchedule, WikiOperationId,
 	ProjectWorkRecord, ProjectWorkView, CreateProjectWorkBody, FireProjectWorkResult,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
-	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
-	WikiNode,
+	RequirementMessage, TaskStepRecord,
 	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord, ProjectJobRecord,
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
@@ -50,6 +49,22 @@ import type {
 	AttachmentMeta,
 } from "./types.js";
 import type { FileTreeNode } from "./file-utils.js";
+// wiki-system-redesign plan-06 §2: Wiki v2 request/result types.
+import type {
+	WikiExpandRequest, WikiExpandResult,
+	WikiReadRequest, WikiReadResult,
+	WikiCreateRequest, WikiUpdateRequest, WikiArchiveRequest,
+	WikiLinkRequest, WikiUnlinkRequest, WikiMoveRequest,
+	WikiMutationResult,
+	WikiAuditView,
+} from "./wiki-types.js";
+import type { WikiSearchRequest, WikiSearchResult } from "./wiki-search-types.js";
+
+/** V2 REST envelope(与 wiki-router 所有 9 个 endpoint 一致)。 */
+export type WikiRestResult<T> = { ok: true; result: T } | {
+	ok: false;
+	error: { code: string; message: string; path?: string | null; requestId?: string | null };
+};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -238,22 +253,32 @@ export interface IpcChannelDefs {
 	"requirements:coverageVerdict": { params: [id: string, covered: boolean, reason?: string];            result: { ok: boolean; requirement: RequirementRecord; text: string } | Err };
 
 	// ── Wiki ─────────────────────────────────────────────────
-	"wiki:listByProject": { params: [projectId: string];                            result: ProjectWikiNode[] };
-	"wiki:getNode":       { params: [id: string];                                  result: ProjectWikiNode | undefined };
-	"wiki:createNode":    { params: [projectId: string, input: CreateWikiNodeInput]; result: ProjectWikiNode };
-	"wiki:updateNode":    { params: [id: string, input: UpdateWikiNodeInput];       result: ProjectWikiNode | Err };
-	"wiki:deleteNode":    { params: [id: string];                                  result: Ok };
-	// v0.8 (P8 §10.9): global-tree browser surface. The renderer drives the
-	// whole wiki tree from a SET of anchor nodeIds (session's anchor union).
-	// listByAnchors returns the union of each anchor's subtree (or the whole
-	// tree if WIKI_GLOBAL_ROOT_ID is in the set). readDetail loads a node's
-	// on-disk body (the "expand" path). readWorkspaceDoc jumps to a project
-	// source/requirement file by workspace-relative path. search is a
-	// substring scan scoped to the caller's anchors.
-	"wiki:getChildren":       { params: [nodeId: string];                                    result: WikiNode[] };
-	"wiki:readDetail":        { params: [nodeId: string];                                    result: { nodeId: string; detail?: string } };
-	"wiki:readWorkspaceDoc":  { params: [projectId: string, relPath: string];               result: { content?: string; error?: string } };
-	"wiki:search":            { params: [query: string, anchorIds?: string[]];              result: WikiNode[] };
+	// wiki-system-redesign plan-06 §2: 旧 wiki:* IPC channel 全部退役
+	// (legacy /api/project-wiki CRUD + P8 anchor-based 浏览器)。新 channel
+	// 为 wikiV2:*（9 个结构化 POST endpoint + workspace-doc）。channel→REST
+	// 映射在 ipc-proxy.ts ROUTE_MAP；类型契约在 preload-types.ts(WikiRestResult)。
+	//
+	// 旧 ProjectWikiNode / WikiNode / CreateWikiNodeInput / UpdateWikiNodeInput
+	// 类型保留(plan-08 cutover 才彻底删 /api/project-wiki 路由 + store),但
+	// renderer 不再使用 —— 留作 IPC API 历史记录参考。
+	// "wiki:listByProject" / "wiki:getNode" / "wiki:createNode" /
+	// "wiki:updateNode" / "wiki:deleteNode" / "wiki:getChildren" /
+	// "wiki:readDetail" / "wiki:readWorkspaceDoc" / "wiki:search" — REMOVED.
+
+	// ── Wiki v2 (plan-06) ────────────────────────────────────
+	// 10 个结构化 endpoint,路径放 body,UI admin authority 在 server 注入。
+	// buildReq 全部 (body) => ({ body })。
+	"wikiV2:expand":          { params: [req: WikiExpandRequest];   result: WikiRestResult<WikiExpandResult> };
+	"wikiV2:read":            { params: [req: WikiReadRequest];     result: WikiRestResult<WikiReadResult> };
+	"wikiV2:search":          { params: [req: WikiSearchRequest];   result: WikiRestResult<WikiSearchResult> },
+	"wikiV2:create":          { params: [req: WikiCreateRequest];   result: WikiRestResult<WikiMutationResult> };
+	"wikiV2:update":          { params: [req: WikiUpdateRequest];   result: WikiRestResult<WikiMutationResult> };
+	"wikiV2:delete":          { params: [req: WikiArchiveRequest];  result: WikiRestResult<WikiMutationResult> };
+	"wikiV2:link":            { params: [req: WikiLinkRequest];     result: WikiRestResult<WikiMutationResult> };
+	"wikiV2:unlink":          { params: [req: WikiUnlinkRequest];   result: WikiRestResult<WikiMutationResult> };
+	"wikiV2:move":            { params: [req: WikiMoveRequest];     result: WikiRestResult<WikiMutationResult> };
+	"wikiV2:history":         { params: [req: { address: string; limit?: number }]; result: WikiRestResult<WikiAuditView[]> };
+	"wikiV2:readWorkspaceDoc": { params: [projectId: string, relPath: string]; result: { content?: string; error?: string } };
 
 	// ── Lead (internal — backend auto-pickup, manual retry) ──
 	"lead:pickup":    { params: [requirementId: string];                            result: { sessionId: string } | Err };

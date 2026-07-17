@@ -40,8 +40,7 @@ import type {
 	ProjectArchivistBinding, CronSchedule, WikiOperationId,
 	ProjectWorkRecord, ProjectWorkView, CreateProjectWorkBody, FireProjectWorkResult,
 	RequirementRecord, CreateRequirementInput, UpdateRequirementInput, RequirementStatusHistory,
-	RequirementMessage, TaskStepRecord, ProjectWikiNode, CreateWikiNodeInput, UpdateWikiNodeInput,
-	WikiNode, ResolvedAnchorView,
+	RequirementMessage, TaskStepRecord,
 	CronRecord, CreateCronInput, UpdateCronInput, CronRunRecord, ProjectJobRecord,
 	OrchestratePlanRecord,
 	OrchestrateManifestRecord,
@@ -50,6 +49,32 @@ import type {
 	AttachmentMeta,
 	SessionVolumeInfo,
 } from "./types.js";
+// wiki-system-redesign plan-06 §2: 共享 Wiki v2 request/result types(替代旧
+// ProjectWikiNode / WikiNode / ResolvedAnchorView 的 anchor/nodeId 模型)。
+import type {
+	WikiExpandRequest, WikiExpandResult,
+	WikiReadRequest, WikiReadResult,
+	WikiCreateRequest, WikiUpdateRequest, WikiArchiveRequest,
+	WikiLinkRequest, WikiUnlinkRequest, WikiMoveRequest,
+	WikiMutationResult,
+	WikiAuditView,
+} from "./wiki-types.js";
+import type { WikiSearchRequest, WikiSearchResult } from "./wiki-search-types.js";
+
+/**
+ * 包装后的 REST 响应形状 —— wiki-router 所有 10 个 endpoint 统一返
+ * `{ ok: true, result } | { ok: false, error: { code, message, path?, requestId? } }`。
+ * ipc-proxy 已对 4xx 抛 Error(renderer try/catch);成功路径返 `{ ok, result }`。
+ */
+export type WikiRestResult<T> = { ok: true; result: T } | {
+	ok: false;
+	error: {
+		code: string;
+		message: string;
+		path?: string | null;
+		requestId?: string | null;
+	};
+};
 
 export interface WindowApi {
 	// ── Config ──
@@ -343,29 +368,24 @@ export interface WindowApi {
 	// project-flow F4: user-supplied coverage verdict (verify compound close).
 	requirementsCoverageVerdict: (id: string, covered: boolean, reason?: string) => Promise<{ ok: boolean; requirement: RequirementRecord; text: string } | { error: string }>;
 
-	// ── Wiki ──
-	wikiListByProject: (projectId: string) => Promise<ProjectWikiNode[]>;
-	wikiGetNode: (id: string) => Promise<ProjectWikiNode | undefined>;
-	wikiCreateNode: (projectId: string, input: CreateWikiNodeInput) => Promise<ProjectWikiNode>;
-	wikiUpdateNode: (id: string, input: UpdateWikiNodeInput) => Promise<ProjectWikiNode | { error: string }>;
-	wikiDeleteNode: (id: string) => Promise<{ success: true }>;
-	// v0.8 (P8 §10.9): global-tree browser surface.
-	wikiGetChildren: (nodeId: string) => Promise<WikiNode[]>;
-	wikiReadDetail: (nodeId: string) => Promise<{ nodeId: string; detail?: string; summary?: string }>;
-	wikiReadWorkspaceDoc: (projectId: string, relPath: string) => Promise<{ content?: string; error?: string }>;
-	wikiSearch: (query: string, anchorIds?: string[]) => Promise<WikiNode[]>;
-	wikiResolvedAnchors: (agentId: string, projectId?: string) => Promise<ResolvedAnchorView[]>;
-	wikiPreviewInjection: (body: {
-		agentId: string;
-		projectId?: string;
-		wikiAnchors?: AgentRecord["wikiAnchors"];
-	}) => Promise<{
-		systemText: string;
-		contextText: string;
-		systemTokens: number;
-		contextTokens: number;
-		anchors: ResolvedAnchorView[];
-	}>;
+	// ── Wiki (v2 / plan-06) ──
+	// 10 个结构化 data-plane endpoint(POST + body 寻址,无 :nodeId)。返回
+	// `{ ok, result } | { ok:false, error:{code,message,path?,requestId?} }`;
+	// ipc-proxy 对 4xx 抛 Error(进入 renderer catch),2xx 解 JSON。
+	// UI admin authority 由 server 注入,renderer 不传 grants/agentId/admin 等。
+	wikiV2Expand: (req: WikiExpandRequest) => Promise<WikiRestResult<WikiExpandResult>>;
+	wikiV2Read: (req: WikiReadRequest) => Promise<WikiRestResult<WikiReadResult>>;
+	wikiV2Search: (req: WikiSearchRequest) => Promise<WikiRestResult<WikiSearchResult>>;
+	wikiV2Create: (req: WikiCreateRequest) => Promise<WikiRestResult<WikiMutationResult>>;
+	wikiV2Update: (req: WikiUpdateRequest) => Promise<WikiRestResult<WikiMutationResult>>;
+	wikiV2Delete: (req: WikiArchiveRequest) => Promise<WikiRestResult<WikiMutationResult>>;
+	wikiV2Link: (req: WikiLinkRequest) => Promise<WikiRestResult<WikiMutationResult>>;
+	wikiV2Unlink: (req: WikiUnlinkRequest) => Promise<WikiRestResult<WikiMutationResult>>;
+	wikiV2Move: (req: WikiMoveRequest) => Promise<WikiRestResult<WikiMutationResult>>;
+	/** History tab(§D7):节点 audit log;只读。 */
+	wikiV2History: (req: { address: string; limit?: number }) => Promise<WikiRestResult<WikiAuditView[]>>;
+	/** Source tab:沙箱读项目工作区原文件(revision/dirty 走 read.source 元数据)。*/
+	wikiV2ReadWorkspaceDoc: (projectId: string, relPath: string) => Promise<{ content?: string; error?: string }>;
 
 	// ── Delegated tasks (TaskTree) ──
 	delegatedTasksBySession: (sessionId: string) => Promise<DelegatedTaskRecord[]>;

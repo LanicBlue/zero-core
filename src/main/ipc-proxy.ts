@@ -258,26 +258,30 @@ const R: Record<string, RouteMapping> = {
 		"requirements:coverageVerdict": { method: "POST", path: "/api/requirements/:id/coverage-verdict", buildReq: (id, covered, reason?) => ({ params: { id }, body: { covered, reason } }) },
 
 		// ─── Wiki (M1) ──────────────────────────────────────
-		"wiki:listByProject":      { method: "GET",    path: "/api/project-wiki/:projectId/nodes", buildReq: (projectId) => ({ params: { projectId } }) },
-		"wiki:getNode":            { method: "GET",    path: "/api/project-wiki/node/:id",         buildReq: (id) => ({ params: { id } }) },
-		"wiki:createNode":         { method: "POST",   path: "/api/project-wiki/:projectId/nodes", buildReq: (projectId, input) => ({ params: { projectId }, body: input }) },
-		"wiki:updateNode":         { method: "PUT",    path: "/api/project-wiki/node/:id",         buildReq: (id, input) => ({ params: { id }, body: input }) },
-		"wiki:deleteNode":         { method: "DELETE", path: "/api/project-wiki/node/:id",         buildReq: (id) => ({ params: { id } }) },
+		// wiki-system-redesign plan-06 §2: legacy project-wiki CRUD IPC channels
+		// (wiki:listByProject/getNode/createNode/updateNode/deleteNode) RETIRED —
+		// renderer 走 9 个 `/api/wiki/*` 结构化 endpoint(wikiV2:*)。生产 route
+		// 挂载(`app.use("/api/project-wiki", ...)`)留给 plan-08 cutover 删除;
+		// plan-06 结束时 renderer 引用必须为零(acceptance-06 §A.6/§A.7)。
+		// 旧 wiki:getChildren / wiki:readDetail / wiki:search / wiki:resolvedAnchors
+		// / wiki:previewInjection(anchor-based)同步退役 —— 由 wikiV2:* 取代。
 
-		// ─── Wiki (v0.8 P8 §10.9) — global-tree browser surface ───────
-		// backend /api/wiki/* (wiki-router.ts) against the global WikiStore.
-		// These are NOT the legacy project-wiki CRUD above; they drive the new
-		// wiki browser (multi-anchor scope + disk body detail + workspace-doc
-		// jump-to-original + substring search). Preload arg order is authoritative.
-		"wiki:getChildren":      { method: "GET",  path: "/api/wiki/nodes/:nodeId/children",                buildReq: (nodeId) => ({ params: { nodeId } }) },
-		"wiki:readDetail":       { method: "GET",  path: "/api/wiki/nodes/:nodeId/detail",                  buildReq: (nodeId) => ({ params: { nodeId } }) },
-		"wiki:readWorkspaceDoc": { method: "GET",  path: "/api/projects/:projectId/workspace-doc",          buildReq: (projectId, relPath) => ({ params: { projectId }, query: { relPath } }) },
-		"wiki:search":           { method: "GET",  path: "/api/wiki/search",                                buildReq: (query, anchorIds?) => ({ query: { query, ...(anchorIds?.length ? { anchorIds: anchorIds.join(",") } : {}) } }) },
-		"wiki:resolvedAnchors":  { method: "GET",  path: "/api/wiki/anchors",                              buildReq: (agentId, projectId?) => ({ query: { agentId, ...(projectId ? { projectId } : {}) } }) },
-		// Live preview of what the (agent, project) + free wikiAnchors will inject
-		// into the system prompt + per-turn context. Body carries the editor's
-		// current form so the agent-config UI can preview before saving.
-		"wiki:previewInjection": { method: "POST", path: "/api/wiki/preview-injection",                     buildReq: (body) => ({ body: body ?? {} }) },
+		// ─── Wiki v2 (plan-06) — 10 structured POST endpoints ─────────
+		// 路径放 body,无 :nodeId;UI admin authority 在 server 注入。
+		// preload arg order 与 buildReq 一一对应,types 见 preload-types.ts。
+		"wikiV2:expand":  { method: "POST", path: "/api/wiki/expand",  buildReq: (body) => ({ body }) },
+		"wikiV2:read":    { method: "POST", path: "/api/wiki/read",    buildReq: (body) => ({ body }) },
+		"wikiV2:search":  { method: "POST", path: "/api/wiki/search",  buildReq: (body) => ({ body }) },
+		"wikiV2:create":  { method: "POST", path: "/api/wiki/create",  buildReq: (body) => ({ body }) },
+		"wikiV2:update":  { method: "POST", path: "/api/wiki/update",  buildReq: (body) => ({ body }) },
+		"wikiV2:delete":  { method: "POST", path: "/api/wiki/delete",  buildReq: (body) => ({ body }) },
+		"wikiV2:link":    { method: "POST", path: "/api/wiki/link",    buildReq: (body) => ({ body }) },
+		"wikiV2:unlink":  { method: "POST", path: "/api/wiki/unlink",  buildReq: (body) => ({ body }) },
+		"wikiV2:move":    { method: "POST", path: "/api/wiki/move",    buildReq: (body) => ({ body }) },
+		"wikiV2:history": { method: "POST", path: "/api/wiki/history", buildReq: (body) => ({ body }) },
+
+		// workspace-doc 保留(Source tab 读项目工作区原文件,沙箱在后端)。
+		"wikiV2:readWorkspaceDoc": { method: "GET", path: "/api/projects/:projectId/workspace-doc", buildReq: (projectId, relPath) => ({ params: { projectId }, query: { relPath } }) },
 
 		// ─── Delegated tasks (TaskTree UI) ───────────────────
 		"delegatedTasks:bySession": { method: "GET", path: "/api/delegated-tasks/by-session/:sessionId", buildReq: (sessionId) => ({ params: { sessionId } }) },

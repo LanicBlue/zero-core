@@ -41,6 +41,7 @@ import type {
 	WikiAction,
 	WikiAdminRequestContext,
 	WikiArchiveRequest,
+	WikiAuditView,
 	WikiCreateRequest,
 	WikiExpandChildItem,
 	WikiExpandRequest,
@@ -67,7 +68,7 @@ import {
 	type WikiNodeRow,
 } from "./wiki-node-repository.js";
 import { WikiLinkRepository } from "./wiki-link-repository.js";
-import { WikiAuditRepository } from "./wiki-audit-repository.js";
+import { WikiAuditRepository, type WikiAuditRow } from "./wiki-audit-repository.js";
 import {
 	WikiRepositoryStore,
 	type WikiAddressRow,
@@ -111,6 +112,34 @@ export interface WikiServiceDeps {
 	readonly addressService: WikiAddressService;
 	readonly authorizationService: WikiAuthorizationService;
 	readonly editService: WikiEditService;
+}
+
+/**
+ * 把 {@link WikiAuditRow} 转为 {@link WikiAuditView}(snake_case → camelCase;
+ * `detail_json` 反序列化为 `detail`)。失败的反序列化 → `detail = null`(与
+ * wiki-audit-repository 的 "null/undefined → NULL" 写入语义对齐)。
+ */
+export function auditRowToView(row: WikiAuditRow): WikiAuditView {
+	let detail: unknown = null;
+	if (row.detail_json !== null && row.detail_json !== undefined) {
+		try {
+			detail = JSON.parse(row.detail_json);
+		} catch {
+			detail = null;
+		}
+	}
+	return {
+		auditId: row.audit_id,
+		requestId: row.request_id,
+		actorAgentId: row.actor_agent_id,
+		sessionId: row.session_id,
+		action: row.action,
+		nodePath: row.node_path,
+		oldRevision: row.old_revision,
+		newRevision: row.new_revision,
+		detail,
+		createdAt: row.created_at,
+	};
 }
 
 /**
@@ -1057,6 +1086,34 @@ export class WikiService {
 				oldRevision,
 			};
 		});
+	}
+
+	// =========================================================================
+	// listHistory —— 节点 audit 历史(只读;plan-06 §6 History tab)
+	// =========================================================================
+
+	/**
+	 * 列出某节点的 audit 历史(时间倒序)。委托**已有**的
+	 * {@link WikiAuditRepository.listByNodePath}。
+	 *
+	 * **不 append audit**:与 expand/read 不同,history 是 meta-query
+	 * (audit-of-audit)。为每次浏览历史再写一条 audit 行会污染真实历史,
+	 * 让 History tab 永远显示 "listHistory" 噪音。读路径不写 audit 是合理的
+	 * (管理面浏览日志不应改变日志本身)。
+	 *
+	 * 走 `read` action 授权(与 read 同级;UI-admin 的 wiki-root grant 自动通过)。
+	 * 不校验节点存在性:对不存在节点返空数组(与 NOT_FOUND 外观一致,不泄露存在性
+	 * 给无授权调用方)。已存在的节点 → 按授权后的 scope 查 audit log。
+	 */
+	listHistory(
+		nodePath: string,
+		limit: number,
+		ctx: WikiRequestContext,
+	): WikiAuditView[] {
+		const canonicalPath = this.resolveAddress(nodePath, ctx);
+		this.assertAgentAccess("read", canonicalPath, ctx);
+		const rows = this.deps.auditRepo.listByNodePath(canonicalPath, limit);
+		return rows.map(auditRowToView);
 	}
 
 	// =========================================================================
