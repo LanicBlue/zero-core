@@ -107,7 +107,7 @@
 
 - [ ] B 持久 queued，不 skip、不重复。
 - [ ] 同一 Loop 无并发 run。
-- [ ] Wait 收束后用户 turn 使用 Project context，不继承 A worktree。
+- [ ] Wait handoff 后用户 turn 使用 Project context，不继承 A worktree。
 - [ ] 重启后 B 按 snapshot/retry 恢复一次。
 - [ ] terminal A 不被重放。
 

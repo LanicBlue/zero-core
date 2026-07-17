@@ -5,6 +5,9 @@
 > 当前实施前置：[`wiki-system-redesign`](../wiki-system-redesign/README.md) 必须完成
 > Acceptance Final、经用户同意合并到目标主分支；本 effort 不得与其并行修改 Runtime、
 > CallerCtx、文件保护、Core DB 或 Project UI。
+> Plan 04 另需等待
+> [`session-turn-lifecycle`](../session-turn-lifecycle/README.md) Final Acceptance；Plan 01–03
+> 可以先完成，但不得在 Plan 04 中并行发明另一套 Session/Turn 状态机。
 
 这是本次计划的外部实施安排，不是 zero-core 当前已经建立或执行的 Flow 控制。Plan 00
 只在开工时核对合并事实；它不创建 dependency、不改变 FlowInstance，也不是系统门禁。
@@ -48,7 +51,7 @@ FlowDependency、FlowInstance 或自动门禁。
 | 01 | [Project Control Git](plan-01-project-control-git.md) | [Acceptance 01](acceptance-01-project-control-git.md) | 00 | `.zero-core` manifest、内层 Git、外层 exclude |
 | 02 | [Flow Engine](plan-02-flow-engine.md) | [Acceptance 02](acceptance-02-flow-engine.md) | 01 | FlowDefinition、FlowInstance、dependency/composition graph、原子 transition |
 | 03 | [Work & WorkRun](plan-03-work-and-workrun.md) | [Acceptance 03](acceptance-03-work-and-workrun.md) | 02 | WorkDefinition trigger、持久 WorkRun 队列 |
-| 04 | [Invocation Context](plan-04-invocation-context.md) | [Acceptance 04](acceptance-04-invocation-context.md) | 03 | Project Session + TurnInvocation + ToolCallContext |
+| 04 | [Invocation Context](plan-04-invocation-context.md) | [Acceptance 04](acceptance-04-invocation-context.md) | 03 + session-turn-lifecycle FINAL | Project Session + TurnInvocation + ToolCallContext |
 | 05 | [VFS & URI Cutover](plan-05-vfs-uri-cutover.md) | [Acceptance 05](acceptance-05-vfs-uri-cutover.md) | 01–04 | `.zero-core` 隐藏、`skill://`、`flow://` |
 | 06 | [Worktree Execution](plan-06-worktree-execution.md) | [Acceptance 06](acceptance-06-worktree-execution.md) | 01–05 | 内部 linked worktree、执行/清理策略 |
 | 07 | [Flow API, UI & Importer](plan-07-flow-api-ui-importer.md) | [Acceptance 07](acceptance-07-flow-api-ui-importer.md) | 02–06 | 通用 Flow UI、WorkRun 观察、旧 Requirement importer |
@@ -60,7 +63,9 @@ FlowDependency、FlowInstance 或自动门禁。
 ```text
 wiki-system-redesign FINAL + merge
           ↓
-00 → 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → FINAL
+00 → 01 → 02 → 03 ───────────────→ 04 → 05 → 06 → 07 → 08 → 09 → FINAL
+                    ↑
+       session-turn-lifecycle FINAL
 ```
 
 阶段顺序是交接顺序，不表示一个 WorkRun 可以跨阶段留下编译失败。每阶段必须独立全绿。
@@ -99,6 +104,8 @@ wiki-system-redesign FINAL + merge
 - 一个 `agentId + projectId` 保持长期 Project Session。
 - Work 的 cwd、worktree、mount 和 workId 只存在于不可变 TurnInvocationContext。
 - 同一 Session 的 turn 串行；busy WorkRun 持久排队，不得 skip 或覆盖当前 turn。
+- Session 状态、Stop、Wait、handoff、普通 inbox 和跨 Turn task event 复用
+  `session-turn-lifecycle` 的唯一 supervisor，不建立平行真相源。
 - 每个工具调用读取当前 ToolCallContext；不能在 Loop 创建时永久闭包 cwd/mount。
 - 用户 queued input、Wait 唤醒和 subagent 不能继承错误的前一 Work 上下文。
 

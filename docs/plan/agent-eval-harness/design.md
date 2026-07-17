@@ -776,6 +776,10 @@ WorkRun snapshot / explicit invocation
 
 ### 7.5 队列与生命周期
 
+Session/Turn 状态、Stop、Wait、普通 inbox、atomic handoff 和跨 Turn task event 由
+[`session-turn-lifecycle`](../session-turn-lifecycle/design.md) 提供。本节只定义
+invocation 中的 Project/Work context 以及 WorkRun dispatcher 如何消费该契约。
+
 队列项必须保存完整 invocation envelope，而不只保存 prompt：
 
 ```text
@@ -797,8 +801,8 @@ AgentLoop 的执行顺序：
 7. 执行下一项。
 
 用户消息在 Work 运行中到达时，也以自己的 invocation 排队。它不能继承当前 Work 的
-worktree 或 mount。Wait 被用户输入唤醒后，当前 turn 先正常收束，再执行用户消息的
-invocation。
+worktree 或 mount。waiting/barrier 收到新的用户、Work 或 Cron invocation 时，使用统一
+supervisor 原子 supersede 旧 Turn 并 handoff；running Turn 不被硬抢占。
 
 同一个 Project Session 默认串行执行 turn。不同 Session 可以并行；需要并行实现时应
 分配其他 Agent / subagent，而不是让同一个 AgentLoop 同时持有两套当前上下文。
@@ -1199,6 +1203,8 @@ commit 成功后若 DB index/outbox publish 失败，权威状态已经成立：
 - Work/Cron/用户输入队列改为保存完整 TurnInvocationContext。
 - AgentLoop 与 ToolFactory 从当前 invocation 取动态 ToolCallContext。
 - 当前 busy skip 改为持久化 WorkRun queue。
+- 复用 session-turn-lifecycle 的 TurnRun、snapshot、queue pause 和 handoff，不建立第二套
+  Session busy/waiting 状态。
 - prompt cache、environment block、Work context 和 VFS mounts 每个 turn 按
   invocation 重建。
 

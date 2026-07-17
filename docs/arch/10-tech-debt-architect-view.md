@@ -39,12 +39,19 @@ Renderer/template store 调用 `templates:github-preview` 和 `templates:import-
 
 ## 3. P1
 
-### D-004：abort 没有贯穿等待队列
+### D-004：Session / Turn 生命周期与取消传播不完整
 
 - Provider 的 `ConcurrencyQueue.acquire()` 支持 `AbortSignal`，但 provider factory 获取许可时没有传入当前 loop 的 signal。
 - `ToolRateLimiter` 的等待接口没有 abort 参数。
 
-**影响**：用户中止后，仍在排队的模型请求或工具调用可能晚些时候获得许可并继续产生副作用。
+进一步核对发现该问题同时涉及 Stop 后输入队列继续 drain、Wait/AskUser 挂起、后台任务跨
+Turn 事件、force-Wait 二次放行、compacting 和 UI 状态双真相源。
+
+**影响**：用户中止后，仍在排队的模型请求或工具调用可能晚些时候获得许可并继续产生副作用；
+Stop 还可能自动启动 queued Turn，后台任务结果也缺少稳定的跨 Turn 交付语义。
+
+**计划**：[`session-turn-lifecycle`](../plan/session-turn-lifecycle/README.md) 已完成并确认
+设计与分阶段计划，当前为 Ready、尚未实施；当前事实仍是本节所述风险。
 
 ### D-005：DB 与文件系统写入不是统一事务
 
@@ -149,6 +156,6 @@ Extractor B 的 service、Store 和测试仍存在，但当前生产启动工厂
 1. 先为 D-001 写重启持久性复现，再决定 schema 修复。
 2. 明确 backend bind/auth 威胁模型，处理 D-002。
 3. 补齐或删除 D-003 的不可达 UI 能力。
-4. 让 abort 贯穿 Provider 与工具等待队列。
+4. 按 Session / Turn lifecycle 计划统一 Stop、等待、队列、后台任务和 compacting。
 5. 再处理 schema 台账、跨介质一致性和大文件拆分。
 6. 最后收敛推送、日志、代理和休眠子系统。
