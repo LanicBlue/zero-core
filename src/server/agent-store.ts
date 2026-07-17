@@ -57,6 +57,15 @@ const COLUMNS: ColumnDef[] = [
 	// round-tripped here.
 	{ key: "subagents", json: true },
 	{ key: "wikiAnchors", json: true },
+	// wiki-system-redesign plan-05 §1: new Wiki config schema round-trip.
+	// JSON-stored as single TEXT columns (parity with wikiAnchors). wikiGrants
+	// is the explicit grants array (compiled at session build); wikiContext is
+	// the prompt-injection entries; wikiPolicyRevision is the monotonic revision
+	// number used for cache invalidation. Legacy `wikiAnchors` is RETAINED
+	// (plan-08 deletion) but runtime ignores it from this sub forward.
+	{ key: "wikiGrants", json: true },
+	{ key: "wikiContext", json: true },
+	{ key: "wikiPolicyRevision", column: "wiki_policy_revision", number: true },
 	{ key: "createdAt", column: "created_at" },
 	{ key: "updatedAt", column: "updated_at" },
 ];

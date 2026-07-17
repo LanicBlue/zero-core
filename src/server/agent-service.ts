@@ -29,10 +29,10 @@
 import { loadConfig, ZERO_CORE_DIR, type ZeroCoreConfig } from "../core/config.js";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
-import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy, UserContent, AttachmentMeta, SessionVolumeInfo } from "../shared/types.js";
+import type { AgentRecord, DelegatedTaskRecord, WorkContextPolicy, UserContent, AttachmentMeta, SessionVolumeInfo, WikiGrant, WikiContextEntry } from "../shared/types.js";
 import { AgentStore } from "./agent-store.js";
 import { AgentLoop, ARCHIVE_MEMORY_PROMPT } from "../runtime/agent-loop.js";
-import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource, PlatformObserver, PlatformSessionSummary, PlatformProviderStat, PlatformProviderSeries, PlatformProviderQueueEntry } from "../runtime/types.js";
+import type { RuntimeProviderConfig, SessionConfig, StreamEvent, TurnSource, PlatformObserver, PlatformSessionSummary, PlatformProviderStat, PlatformProviderSeries, PlatformProviderQueueEntry, DynamicSystemSection } from "../runtime/types.js";
 import { clearProviderCache, setConcurrencyManager } from "../runtime/provider-factory.js";
 import { CoreDatabase } from "./core-database.js";
 // plan-00 round-2 FIX 6：DI fallback 必须经 DatabaseManager，不能直接
@@ -53,6 +53,20 @@ import { createEventMetricsAdapter, type EventMetricsAdapter } from "./metrics-e
 import { setSessionTurnSeq } from "./durable-hooks.js";
 import { setTurnSeq } from "../runtime/hooks/turn-hooks.js";
 import { registerHooksForLoop, type HookWiringDeps } from "../runtime/hooks/index.js";
+// wiki-system-redesign plan-05 §7:config-sync StepEnd hook(generic,非 Wiki 专用)。
+import { registerConfigSyncHooks } from "../runtime/hooks/config-sync-hooks.js";
+// plan-05 §4/§6:Wiki access + context 编译器(preview 与 runtime 共用同一函数)。
+// round-2 B1:DEFAULT_GRANTS_ARCHIVIST / PROJECT_RESEARCHER / ZERO_ADMIN 不再
+// 在 AgentService 里用(pickDefaultGrants 删 name 启发式后所有 fallback 统一
+// DEFAULT_GRANTS_AGENT);保留常量在 wiki-access-compiler.ts 供测试/template seed。
+import {
+	compileWikiAccess,
+	DEFAULT_GRANTS_AGENT,
+	DEFAULT_WIKI_CONTEXT,
+} from "./wiki/wiki-access-compiler.js";
+import { compileWikiContext } from "./wiki/wiki-context-compiler.js";
+import { getWikiService } from "./wiki/wiki-runtime.js";
+import type { CompiledWikiAccess } from "../shared/wiki-types.js";
 import { getSessionTodos } from "../tools/todo-write.js";
 import { pendingResponses } from "../runtime/pending-responses.js";
 // sub-7 (work-context 拆解到三通道): store types for the work-context closures
@@ -281,6 +295,25 @@ export class AgentService implements PlatformObserver {
 	 * setWorkContextStores / buildWorkContextClosures into SessionConfig.)
 	 */
 	private hookDeps: HookWiringDeps = {};
+	/**
+	 * wiki-system-redesign plan-05 §7:per-session pending generic config patch
+	 * queue. AgentService 在 session create / active project change / grants
+	 * publish / 显式 refresh / memory archive 完成时,把要应用的 patch 排到
+	 * 这里。idle session 立即应用;busy session 由 config-sync StepEnd hook
+	 * 在安全边界调用 flushPendingConfigUpdate 取出并应用。
+	 *
+	 * 关键不变量:
+	 *   - 取出即清空 —— 每个 patch 只应用一次。
+	 *   - 通用 section patch,不含 Wiki 判断(hook + AgentService 都不识别
+	 *     section 名语义)。
+	 */
+	private readonly pendingConfigPatches = new Map<string, Array<{ sessionId: string; update: Record<string, unknown> }>>();
+	/**
+	 * plan-05 §7:AgentService 持有的 wiki-context closure cache,按 sessionId。
+	 * session create / active project change / refresh 时重建;closure 在
+	 * SessionConfig.dynamicSystemSections 里被 AgentLoop 调用。
+	 */
+	private readonly wikiContextClosures = new Map<string, () => string>();
 
 	// Module readiness — modules notify when loaded, deferred actions wait until ready
 	private readyModules = new Set<string>();
@@ -348,13 +381,24 @@ export class AgentService implements PlatformObserver {
 				return;
 			}
 
-			for (const loop of this.loops.values()) {
+			for (const [loopSessionId, loop] of this.loops.entries()) {
 				if (loop.getConfigAgentId() !== agentId) continue;
+				// wiki-system-redesign plan-05 §7 + round-2 B2①/B2④:agent record
+				// 变更(wikiGrants / wikiContext / wikiPolicyRevision 经 publish /
+				// AgentRegistry / UI 编辑)→ 重新编译 wiki access + section,热同步
+				// 到 busy loop。idle loop 已在上方 createLoopForSession 重建路径
+				// 走 compileWikiAccessForSession;此处是 busy 分支:applyConfigUpdate
+				// 透传 dynamicSystemSections + wikiAccess,AgentLoop 替换 section +
+				// invalidate("wiki-context")。其它字段仍走原 hot-sync。
+				const wikiUpdate = this.compileWikiAccessForSession(
+					agent,
+					loopSessionId,
+					this.activeProjectIdOfLoop(loopSessionId),
+				);
 				loop.applyConfigUpdate({
 					systemPrompt: agent.systemPrompt,
 					toolPolicy: agent.toolPolicy,
 					subagents: agent.subagents,
-					wikiAnchors: agent.wikiAnchors,
 					// N4 (invariant 1): hot-sync model / provider / thinkingLevel
 					// from the new agent record. applyConfigUpdate treats each as
 					// "undefined = no change", so passing them verbatim is safe
@@ -378,6 +422,11 @@ export class AgentService implements PlatformObserver {
 					// each turn anyway; applyConfigUpdate also invalidate("skills")
 					// so the swap is immediate.
 					getSkillSection: this.buildSkillSectionClosure(agentId),
+					// B2①/B2④:Wiki access + section hot-sync(busy loop 也走)。
+					// undefined → applyConfigUpdate 视为「no change」,所以即使
+					// wikiUpdate 没产出 access/section(wikiService 未注册)也安全。
+					...(wikiUpdate.wikiAccess ? { wikiAccess: wikiUpdate.wikiAccess } : {}),
+					...(wikiUpdate.dynamicSection ? { dynamicSystemSections: [wikiUpdate.dynamicSection] } : {}),
 				});
 			}
 		});
@@ -564,6 +613,250 @@ export class AgentService implements PlatformObserver {
 			sessionManager: this.sessionManager ?? undefined,
 			inputQueue: this.inputQueue,
 		};
+	}
+
+	// =========================================================================
+	// wiki-system-redesign plan-05 §4/§7:Wiki access + context compilation
+	// =========================================================================
+
+	/**
+	 * plan-05 §4:编译 AgentRecord.wikiGrants + 当前 active project 为
+	 * CompiledWikiAccess,并把 wiki-context system section 一并装配到
+	 * SessionConfig.dynamicSystemSections。AgentService 在 session build
+	 * (createLoopForSession / sendProjectPrompt) + hot-reload (applyConfigUpdate
+	 * via setAgentStore) 时调用。
+	 *
+	 * 幂等:同一 (agentId, activeProjectId, wikiPolicyRevision) 输入 → 同输出。
+	 * preview 与 runtime 共用此函数(及 compileWikiContext)。
+	 *
+	 * plan-05 §3 / acceptance-05 §A.7:**轻量 ensure repair** —— 每次编译
+	 * 顺便幂等调 `wikiServiceV2.ensureAgentMemoryRoot(agent.id, agent.name)`
+	 * 补缺。Core agent 存在 + wiki.db memory root 缺失的跨库中断态(create /
+	 * rename / delete 的 fire-and-forget 写入失败时)在下次 session build 必修复。
+	 * 失败不阻断 session(只 log warn + 留下次重试)。
+	 */
+	private compileWikiAccessForSession(
+		agent: AgentRecord | undefined,
+		sessionId: string,
+		activeProjectId: string | undefined,
+	): { wikiAccess: CompiledWikiAccess | undefined; dynamicSection: DynamicSystemSection | undefined } {
+		// Lazy import to keep startup fast + avoid cycle if wiki-service hasn't
+		// been registered yet (tests / headless). Real runtime always has it.
+		const wikiService = getWikiService();
+		if (!agent || !wikiService) {
+			return { wikiAccess: undefined, dynamicSection: undefined };
+		}
+		// §A.7 轻量 ensure repair:幂等补 own memory root(失败不阻断)。
+		// 不重复节点、不扩权 —— 仅当 wiki-root/memory/<agentId> 缺失时插入;
+		// 已存在则 noop(见 WikiService.ensureAgentMemoryRoot)。
+		void wikiService.ensureAgentMemoryRoot(agent.id, agent.name ?? agent.id)
+			.catch((err: unknown) => {
+				log.warn("agent",
+					`session-build ensureAgentMemoryRoot failed (agent=${agent.id}, session=${sessionId}): ${(err as Error)?.message ?? err}; will retry next session build`);
+			});
+		// 选择 fallback grants:plan-05 §2 默认策略(round-2 B1:去除 name 启发式,
+		// 所有未显式配 wikiGrants 的 agent 一律退 own-Memory + Knowledge read。
+		// fresh zero / admin / archivist 不再凭名字拿 wiki-root 全树;
+		// 全树权限必须经 template / AgentRegistry 显式 wikiGrants)。
+		const fallbackGrants = this.pickDefaultGrants(agent);
+		const result = compileWikiAccess({
+			agentId: agent.id,
+			activeProjectId,
+			wikiGrants: agent.wikiGrants,
+			wikiPolicyRevision: agent.wikiPolicyRevision,
+			fallbackGrants,
+		});
+		if (result.warnings.length > 0) {
+			log.debug("agent", `compileWikiAccess for ${agent.id}/${sessionId}: ${result.warnings.length} warning(s): ${result.warnings.slice(0, 3).join(" | ")}`);
+		}
+		// 构建 wiki-context closure(standard profile 默认)。closure 捕获当前
+		// access + agent.wikiContext;AgentService 在 hot-reload 时重建。
+		const entries = agent.wikiContext && agent.wikiContext.length > 0
+			? agent.wikiContext
+			: (activeProjectId ? DEFAULT_WIKI_CONTEXT : [DEFAULT_WIKI_CONTEXT[0]]); // 无 active project 时只注入 memory://
+		const access = result.access;
+		const computeClosure = (): string => {
+			// 同步返回 wrapper —— compileWikiContext 是 async,但 DynamicSystemSection
+			// 的 compute 签名是 sync。AgentService 在 push 之前 await 一次,缓存
+			// 文本到 closure;每次 compute 调用返上次缓存的文本。hot-reload 时
+			// AgentService 重建 closure (enqueueConfigPatch)。
+			// 此处返 closure-cached text;若 cache 还未填充(初始 push),返占位。
+			const cached = this.wikiContextClosureCache.get(sessionId);
+			return cached ?? "";
+		};
+		// 启动时同步预编译一次(async,但 fire-and-forget);closure 立即可用,
+		// 待编译完成后 cache 填入,下次 compute 调用看到新值。
+		void this.refreshWikiContextCache(sessionId, access, entries);
+		// round-2 B6:cacheBreak:true —— SystemPromptAssembler 对 cacheBreak:false
+		// 段首次 compute 返空串时 `cache.set(name, null)` 写 null,后续 cacheBreak:false
+		// + has + null 永远 continue(死锁,LLM 永远看不到 Wiki Context)。cacheBreak:
+		// true 每 turn 重算(closure 仅 Map.get,O(1)),refreshWikiContextCache 完成
+		// 后下一 turn 必渲染 section。性能可接受 —— closure 已缓存 compiled 文本。
+		const dynamicSection: DynamicSystemSection = {
+			name: "wiki-context",
+			compute: computeClosure,
+			cacheBreak: true,
+		};
+		return { wikiAccess: access, dynamicSection };
+	}
+
+	/**
+	 * plan-05 §2 + round-2 B1:挑 fallback grants。
+	 *
+	 * **不变量**:不依赖 agent.name 启发式(acceptance-05 §H #1 / §B.4)。
+	 * 历史曾用 `name === "zero" || name.includes("admin")` 把 wiki-root 全树
+	 * 权限绑到 agent 名字 → fresh zero/admin agent 仅凭名字拿全树,用户无法
+	 * 「删除后立即失去」(fallback 不在 AgentRecord)。
+	 *
+	 * 现行策略:**所有未显式配 wikiGrants 的 agent 一律 `DEFAULT_GRANTS_AGENT`**
+	 * (own Memory 全数据面 + Knowledge read)。wiki-root 全树权限必须经
+	 * PromptTemplate 显式 seed(sub-06/07 字段化)或 AgentRegistry 工具显式
+	 * 写入 AgentRecord.wikiGrants。本函数保留以便未来 template-aware 选择,
+	 * 但当前任何输入都返 `DEFAULT_GRANTS_AGENT`(不读 name)。
+	 */
+	private pickDefaultGrants(_agent: AgentRecord): WikiGrant[] {
+		// round-2 B1:完全无视 name/agentId 启发式。所有 fallback 统一 own-Memory
+		// + Knowledge read。fresh zero/admin/Archivist 仅在显式 wikiGrants 时获得
+		// 高权限。production 应通过 PromptTemplate.wikiGrants 字段化(sub-06/07)
+		// 在 template seed 里携带 grants —— 那是 deferred 的,本阶段 fallback
+		// 退到最小权限满足 acceptance-05 §H「name 硬编码全树 = 拒绝条件」。
+		return DEFAULT_GRANTS_AGENT;
+	}
+
+	/** wiki-context closure 文本 cache(per-session)。 */
+	private readonly wikiContextClosureCache = new Map<string, string>();
+
+	/** 异步刷新 wiki-context cache(由 closure 启动时 + hot-reload 时调用)。 */
+	private async refreshWikiContextCache(
+		sessionId: string,
+		access: CompiledWikiAccess,
+		entries: WikiContextEntry[],
+	): Promise<void> {
+		try {
+			const wikiService = getWikiService();
+			if (!wikiService) return;
+			const section = await compileWikiContext({
+				wikiService,
+				access,
+				entries,
+			});
+			this.wikiContextClosureCache.set(sessionId, section.text);
+		} catch (err) {
+			log.warn("agent", `refreshWikiContextCache failed (session=${sessionId}): ${(err as Error).message}`);
+		}
+	}
+
+	/**
+	 * plan-05 §7:把通用 config patch 排到队列。idle session 立即应用;busy
+	 * session 由 config-sync StepEnd hook 在安全边界 flush。
+	 */
+	private enqueueConfigPatch(sessionId: string, update: Record<string, unknown>): void {
+		const loop = this.loops.get(sessionId);
+		if (!loop) return;
+		// idle → 立即应用;busy → 排队等 StepEnd flush。
+		if (!loop.isWaiting() && !loop.getState().isBusy) {
+			try {
+				loop.applyConfigUpdate(update);
+				return;
+			} catch (err) {
+				log.warn("agent", `applyConfigUpdate idle failed (session=${sessionId}): ${(err as Error).message}`);
+			}
+		}
+		const queue = this.pendingConfigPatches.get(sessionId) ?? [];
+		queue.push({ sessionId, update });
+		this.pendingConfigPatches.set(sessionId, queue);
+	}
+
+	/**
+	 * plan-05 §7:flush pending patch(取出即清空)。config-sync hook 调用。
+	 * 返 null 表示无 pending。
+	 */
+	private flushPendingConfigPatch(sessionId: string): { sessionId: string; update: Record<string, unknown> } | null {
+		const queue = this.pendingConfigPatches.get(sessionId);
+		if (!queue || queue.length === 0) return null;
+		// 取最末 patch(后写覆盖前写 —— 同字段以最新为准)。清空队列。
+		const last = queue[queue.length - 1];
+		this.pendingConfigPatches.set(sessionId, []);
+		return last;
+	}
+
+	/**
+	 * round-2 B2 helper:解析 loop 当前 active project。从持久化 session row
+	 * 读 `context.projectId`(sendProjectPrompt 在 contextBundle 里设)。
+	 * 无 session row / 无 context → undefined(非 project session)。
+	 */
+	private activeProjectIdOfLoop(sessionId: string): string | undefined {
+		try {
+			const row = this.db.getSession?.(sessionId);
+			return (row as { context?: { projectId?: string } } | undefined)?.context?.projectId;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * round-2 B2⑤:显式刷新一个 session 的 wiki-context cache + hot-sync 到 loop。
+	 *
+	 * 调用点:
+	 *   - 外部 API(memory archive 完成 / cron 通知 / UI refresh 按钮)。
+	 *   - 同 agent 跨 session:session A 写 memory → 调本方法刷新 session B。
+	 *
+	 * 行为:重新 compile wikiAccess + section,enqueue patch。idle 立即 apply,
+	 * busy 走 StepEnd。失败 log warn 不抛(幂等可重试)。
+	 */
+	refreshSessionWikiContext(sessionId: string): void {
+		try {
+			const loop = this.loops.get(sessionId);
+			if (!loop) return;
+			const agentId = loop.getConfigAgentId();
+			const agent = this.agentStore?.get(agentId);
+			if (!agent) return;
+			const wikiUpdate = this.compileWikiAccessForSession(
+				agent,
+				sessionId,
+				this.activeProjectIdOfLoop(sessionId),
+			);
+			if (!wikiUpdate.wikiAccess && !wikiUpdate.dynamicSection) return;
+			this.enqueueConfigPatch(sessionId, {
+				...(wikiUpdate.wikiAccess ? { wikiAccess: wikiUpdate.wikiAccess } : {}),
+				...(wikiUpdate.dynamicSection ? { dynamicSystemSections: [wikiUpdate.dynamicSection] } : {}),
+			});
+		} catch (err) {
+			log.warn("agent",
+				`refreshSessionWikiContext failed (session=${sessionId}): ${(err as Error)?.message ?? err}`);
+		}
+	}
+
+	/**
+	 * round-2 B2③:memory archive 完成后刷新同 agent 其它 session 的 wiki-context。
+	 *
+	 * archive pipeline 在被 archive session 上跑 memory turn(wiki writes 落
+	 * own memory://)。被 archive session 即将删除无需刷新;但同一 agent 的其它
+	 * active session 的 wikiContextClosureCache 可能已陈旧,下次 assemble 看到的
+	 * 还是旧 memory snapshot。本方法遍历同 agentId 的 active loop 逐个 refresh。
+	 *
+	 * @param agentId 被 archive session 的 agentId
+	 * @param exceptSessionId 被 archive 的 session 本身(跳过)
+	 */
+	refreshAgentWikiContextsExcept(agentId: string, exceptSessionId?: string): void {
+		for (const [sid, loop] of this.loops.entries()) {
+			if (sid === exceptSessionId) continue;
+			if (loop.getConfigAgentId() !== agentId) continue;
+			this.refreshSessionWikiContext(sid);
+		}
+	}
+
+	/**
+	 * plan-05 §7:在 buildAndRegisterLoop 后注册 config-sync StepEnd hook。
+	 * 用 sessionId 关联,保证 hook 解析 loop 时拿到正确的实例。
+	 */
+	private registerConfigSyncHookForLoop(loop: AgentLoop, sessionId: string): void {
+		registerConfigSyncHooks(loop.registry, {
+			flushPendingConfigUpdate: (sid) => this.flushPendingConfigPatch(sid),
+			resolveLoop: (sid) => sid === sessionId
+				? { applyConfigUpdate: (u: Record<string, unknown>) => loop.applyConfigUpdate(u as any) }
+				: null,
+		});
 	}
 
 	/**
@@ -1193,6 +1486,9 @@ export class AgentService implements PlatformObserver {
 					clearTurnSeqStateForSession(sid);
 				},
 			},
+			// round-2 B2③:memory turn 写完 own memory:// 后,刷新同 agent 其它
+			// active session 的 wiki-context cache。
+			onMemoryTurnWikiWritesCommitted: (aid, except) => this.refreshAgentWikiContextsExcept(aid, except),
 		});
 	}
 
@@ -1231,6 +1527,9 @@ export class AgentService implements PlatformObserver {
 		await archiveSession(sessionId, this.db, {
 			memoryTurnRunner,
 			// NO teardown — no active loop in this.loops to stop.
+			// round-2 B2③:memory turn 写完 own memory:// 后,刷新同 agent 其它
+			// active session 的 wiki-context cache。
+			onMemoryTurnWikiWritesCommitted: (aid, except) => this.refreshAgentWikiContextsExcept(aid, except),
 		});
 	}
 
@@ -1403,7 +1702,11 @@ export class AgentService implements PlatformObserver {
 			const memoryTurnRunner = this.buildTempMemoryTurnRunner(sessionConfig);
 			// NO teardown — the active loop + hook state were synchronously
 			// cleared in the HTTP SYNC phase (teardownSessionForArchive).
-			await archiveSession(sessionId, this.db, { memoryTurnRunner });
+			// round-2 B2③:刷新同 agent 其它 active session 的 wiki-context cache。
+			await archiveSession(sessionId, this.db, {
+				memoryTurnRunner,
+				onMemoryTurnWikiWritesCommitted: (aid, except) => this.refreshAgentWikiContextsExcept(aid, except),
+			});
 		}
 		// DESCENDANTS — memory turn + export per child, awaited (still
 		// background w.r.t. the HTTP response: session-router doesn't await
@@ -1599,6 +1902,10 @@ export class AgentService implements PlatformObserver {
 		);
 		// Step 1B: register the main-loop hook set on the loop's own registry.
 		registerHooksForLoop(loop.registry, "main", this.buildHookDeps());
+		// plan-05 §7:register generic config-sync StepEnd hook (per-loop).
+		// Hook 是通用的 —— 不识别任何 Wiki 字面 section 名;只负责在 StepEnd
+		// 安全边界 flush AgentService 排队的 pending config patch。
+		this.registerConfigSyncHookForLoop(loop, sessionId);
 		this.loops.set(sessionId, loop);
 		// Step 1C: fire session-lifecycle SessionStart now that the loop is
 		// built + registered. Fire-and-forget: handlers must not block loop
@@ -1733,6 +2040,19 @@ export class AgentService implements PlatformObserver {
 		// channels). Auto anchors (memory + project) are derived from the
 		// contextBundle inside the loop.
 		if (agent?.wikiAnchors) (sessionConfig as any).wikiAnchors = agent.wikiAnchors;
+		// wiki-system-redesign plan-05 §4/§7:compile Wiki access + context
+		// section. AgentLoop 只消费通用 dynamicSystemSections + wikiAccess,
+		// 不识别 Wiki 语义。contextBundle.projectId 决定 active project;
+		// project session → project:// 解析到 wiki-root/projects/<pid>;
+		// 否则 grant inactive(不扩大到 projects 根,防 scope 跨项目泄露)。
+		const activeProjectId = sessionConfig.contextBundle?.projectId;
+		const wikiCompiled = this.compileWikiAccessForSession(agent, sessionId, activeProjectId);
+		if (wikiCompiled.wikiAccess) {
+			(sessionConfig as { wikiAccess?: CompiledWikiAccess }).wikiAccess = wikiCompiled.wikiAccess;
+		}
+		if (wikiCompiled.dynamicSection) {
+			(sessionConfig as { dynamicSystemSections?: DynamicSystemSection[] }).dynamicSystemSections = [wikiCompiled.dynamicSection];
+		}
 		// Step 1B: attach hook wiring deps so this loop's SubagentDelegator can
 		// register delegated sub-loops with the same set. The main loop's own
 		// registration happens inside buildAndRegisterLoop below.
@@ -1989,6 +2309,21 @@ export class AgentService implements PlatformObserver {
 			(sessionConfig as any).stepsProgressSection = workClosures.stepsProgressSection;
 		}
 
+		// wiki-system-redesign plan-05 §4/§7 + round-2 B5:sendProjectPrompt
+		// 必须调 compileWikiAccessForSession。historical gap:sendProjectPrompt
+		// 构造 sessionConfig 后直接 buildAndRegisterLoop,从不编译 wiki access
+		// → fresh project session 第一次 Wiki tool ACCESS_DENIED,project://
+		// grant 从未生效。修复:与 createLoopForSession 同样在 buildAndRegister
+		// 之前 compile,写入 wikiAccess + dynamicSystemSections。
+		const activeProjectId = sessionConfig.contextBundle?.projectId;
+		const wikiCompiled = this.compileWikiAccessForSession(agent, sessionId, activeProjectId);
+		if (wikiCompiled.wikiAccess) {
+			(sessionConfig as { wikiAccess?: CompiledWikiAccess }).wikiAccess = wikiCompiled.wikiAccess;
+		}
+		if (wikiCompiled.dynamicSection) {
+			(sessionConfig as { dynamicSystemSections?: DynamicSystemSection[] }).dynamicSystemSections = [wikiCompiled.dynamicSection];
+		}
+
 		let loop = this.loops.get(sessionId);
 		// sub-2: shared construction point — also wires archiveDelegatedSession
 		// (Gap A fix: this path previously omitted it, so work/cron-dispatched
@@ -1996,6 +2331,18 @@ export class AgentService implements PlatformObserver {
 		// the row but ② memory-preservation never fired).
 		if (!loop) {
 			loop = this.buildAndRegisterLoop(sessionConfig, agentId, sessionId);
+		} else if (wikiCompiled.wikiAccess || wikiCompiled.dynamicSection) {
+			// round-2 B2②:loop 已存在(sendProjectPrompt 复用)→ active project
+			// 可能已切换;compile 出的新 wikiAccess + section 必须热同步到运行中
+			// 的 loop,否则下一次 Wiki tool 仍读旧 access / 旧 closure → 切项目后
+			// project:// 仍指旧 projectId 的子树。idle loop 直接 apply;busy loop
+			// 由 enqueueConfigPatch 在 StepEnd 安全边界应用(config-sync hook)。
+			// wikiAccess 字段透传 + dynamicSystemSections 替换 + invalidate
+			// wiki-context section,见 AgentLoop.applyConfigUpdate。
+			this.enqueueConfigPatch(sessionId, {
+				...(wikiCompiled.wikiAccess ? { wikiAccess: wikiCompiled.wikiAccess } : {}),
+				...(wikiCompiled.dynamicSection ? { dynamicSystemSections: [wikiCompiled.dynamicSection] } : {}),
+			});
 		}
 
 		this.activeSessions.set(agentId, sessionId);

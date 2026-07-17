@@ -27,6 +27,56 @@
 
 // ── Data Models ─────────────────────────────────────────────────────────────
 
+/**
+ * wiki-system-redesign plan-05 §1: Agent 配置 schema 中的 Wiki 授权模板。
+ *
+ * `scope` 在 AgentService session build 时编译:
+ *   - `memory://`        → `wiki-root/memory/<stable-agent-id>`
+ *   - `project://`       → `wiki-root/projects/<stable-project-id>`(需 active project)
+ *   - `wiki-root/...`    → canonical path(原样)
+ *   - `runtime://...`    → 静态 alias(wiki_addresses 表查询)
+ *
+ * 无 active project 时,`project://` grant 标 inactive(不解析到 projects 根)。
+ */
+export interface WikiGrant {
+	/**
+	 * 授权 scope。接受动态地址(`memory://` / `project://`)、canonical path
+	 * (`wiki-root/...`)或静态 alias(`runtime://...`)。**不接受** DB 内部 ID /
+	 * 短 ID / 旧 title path(由 WikiAccessCompiler 校验)。
+	 */
+	scope: string;
+	/**
+	 * 允许的 action 闭集(并集语义;多条 grant 取并集)。
+	 * 设计 §7.1: `{scope, actions}` 一对一映射。
+	 */
+	actions: Array<
+		| "expand"
+		| "read"
+		| "search"
+		| "create"
+		| "update"
+		| "delete"
+		| "link"
+		| "unlink"
+		| "move"
+	>;
+}
+
+/**
+ * Wiki context 注入条目(plan-05 §1/§6)。每条 = 一个逻辑地址 + profile +
+ * channel + token budget。WikiContextCompiler 据此渲染 system section。
+ */
+export interface WikiContextEntry {
+	/** 逻辑地址(`memory://` / `project://` / `wiki-root/...` / `runtime://...`)。 */
+	address: string;
+	/** profile 决定渲染深度(compact/standard/deep;token 预算不同)。 */
+	profile: "compact" | "standard" | "deep";
+	/** channel: `system` 进 system prompt(享冻结快照);`off` 不注入但仍占 grant。 */
+	channel: "system" | "off";
+	/** 该 entry 的 token 上限(可选;profile 默认值见 plan-05 §6 表)。 */
+	budgetTokens?: number;
+}
+
 export interface AgentRecord {
 	id: string;
 	name: string;
@@ -73,6 +123,39 @@ export interface AgentRecord {
 		nodeId: string;
 		inject: "system" | "context" | "off";
 	}>;
+	/**
+	 * wiki-system-redesign plan-05 §1: Agent 配置 schema 迁移到新 Wiki 模型。
+	 * `wikiGrants` 是显式授权模板(在 session build 时由 AgentService 编译为
+	 * `CompiledWikiAccess`,放入 SessionConfig 与 CallerCtx.wikiAccess)。
+	 *
+	 * 关键不变量(plan-05 §「明确不做」/ acceptance-05 §H):
+	 *   - **不自动从 wikiAnchors 转换**:旧 wikiAnchors 字段保留到 plan-08 删除;
+	 *     runtime 从本阶段起忽略它。旧数据不迁移、不双写。
+	 *   - **不隐式授予全树**:zero / memory turn 的全树权限必须经 template 显式
+	 *     `wiki-root` grant,不得靠 `agentId === "zero"` 硬编码。
+	 *   - **不参与 prompt 注入决策**:grant 只决定工具权限;prompt 内容由
+	 *     `wikiContext` 决定。
+	 *
+	 * scope 接受 `memory://` / `project://` 动态地址、`wiki-root/...` canonical
+	 * path、或 `runtime://...` 静态 alias —— 编译时由 WikiAccessCompiler 解析。
+	 */
+	wikiGrants?: WikiGrant[];
+	/**
+	 * Wiki context 注入条目(plan-05 §1/§6)。每条 = 一个逻辑地址 + profile +
+	 * channel + token budget。AgentService 在 session build 时编译为 WikiContext
+	 * system section(由 WikiContextCompiler 渲染)。
+	 *
+	 * 默认 template 应至少包含:
+	 *   - `{ address: "memory://", profile: "standard", channel: "system", budgetTokens: 1800 }`
+	 *   - `{ address: "project://", profile: "standard", channel: "system", budgetTokens: 2800 }`
+	 *     (仅 active project session)
+	 */
+	wikiContext?: WikiContextEntry[];
+	/**
+	 * Wiki 授权/context 策略修订号。AgentService 在 publish 时 +1;runtime 用它
+	 * 作 prompt cache 失效 key(plan-05 §7)。
+	 */
+	wikiPolicyRevision?: number;
 	/**
 	 * v0.8 (P0 §1.4 / §2.2): roleTag was REMOVED from the type. Identity in
 	 * v0.8 = name + systemPrompt (RFC §1.4); UI grouping / preset entry now

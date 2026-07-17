@@ -58,6 +58,14 @@ const AGENT_COLUMNS = [
 	// self-heal below.
 	{ key: "subagents", json: true },
 	{ key: "wikiAnchors", json: true },
+	// wiki-system-redesign plan-05 §1: new Wiki config schema. JSON-stored as
+	// single TEXT columns (parity with wikiAnchors); wikiPolicyRevision is INTEGER.
+	// Migration ALTERs these onto upgraded DBs; fresh DBs get them via the
+	// SqliteStore ensureTable() self-heal below. AGENT_COLUMNS lists all three
+	// so SELECT/INSERT/UPDATE round-trip them (feedback-fresh-db-migrations).
+	{ key: "wikiGrants", json: true },
+	{ key: "wikiContext", json: true },
+	{ key: "wikiPolicyRevision", column: "wiki_policy_revision", number: true },
 	// v0.8 (P0 §1.4): roleTag was REMOVED from the AgentRecord type. The
 	// physical `role_tag` column is INTENTIONALLY KEPT (legacy) — dropping it
 	// would risk data loss / rollback pain (plan-P0 §1.4 + acceptance-P0).
@@ -702,6 +710,14 @@ export function runMigrations(sessionDB: CoreDatabase): void {
 	// round-trip them.
 	safeAddColumn(db, "agents", "subagents", "TEXT");
 	safeAddColumn(db, "agents", "wiki_anchors", "TEXT");
+	// wiki-system-redesign plan-05 §1: new Wiki config schema columns. ALTER
+	// for upgraded DBs; fresh DBs pick them up via SqliteStore.ensureTable()
+	// self-heal (AGENT_COLUMNS lists all three so they round-trip).
+	// feedback-fresh-db-migrations: fresh DB MUST self-heal same set; verified
+	// by acceptance-05 §A "fresh DB agents 表含新列".
+	safeAddColumn(db, "agents", "wiki_grants", "TEXT");
+	safeAddColumn(db, "agents", "wiki_context", "TEXT");
+	safeAddColumn(db, "agents", "wiki_policy_revision", "INTEGER");
 
 	// Wiki columns
 	// v0.8 (P0 §3.3): project_wiki.links — undirected sibling nodeId array

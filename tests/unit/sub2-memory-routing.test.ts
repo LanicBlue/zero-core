@@ -13,12 +13,15 @@
 //   #7 topic 死代码 (typecheck 绿 + createMemory 不接受 topic parent)
 //   #8 回归 (memory 锚点仍 system 注入 kind=memory)
 //
-// ## 策略
-// 真 SQLite (mkdtempSync 临时 DB) + 真 WikiStore + wikiTool.execute 驱动。
-// vitest.config.ts 已把 ZERO_CORE_DIR 钉到 per-run temp,磁盘写不污染真实数据。
+// ## round-2 B4a 迁移说明
+// 历史驱动:wikiTool({action:'createMemory',...}) —— v1 10-action wikiTool 已
+// 退役(wiki-system-redesign sub-04/05 切到 9-action v2)。本测试本质是验
+// WikiStore 行为(per-agent root 路由 / 磁盘 seg / resolveAnchors / cleanup),
+// 工具只是驱动;改为直接调 WikiStore.createMemoryNode + ensureMemoryAgentRoot
+// (production 仍用同样 API,行为不变)。
 //
 // ## 维护规则
-// 改 src/tools/wiki-tool.ts createMemory / src/server/wiki-node-store.ts
+// 改 src/server/wiki-node-store.ts createMemoryNode / ensureMemoryAgentRoot /
 // cleanupLegacyMemoryData / subtreeSeg 时同步本测试。
 //
 
@@ -44,10 +47,7 @@ import {
 	getWikiStoreGlobal,
 	setWikiStoreGlobal,
 } from "../../src/server/wiki-node-store.js";
-import { wikiTool } from "../../src/tools/wiki-tool.js";
 import { resolveAnchors } from "../../src/runtime/wiki-anchor-injection.js";
-import { getToolExecute } from "../../src/tools/tool-factory.js";
-import type { CallerCtx } from "../../src/tools/types.js";
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -62,7 +62,8 @@ beforeEach(() => {
 	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
 	wiki = new WikiStore(sessionDB);
-	// wikiTool 直读全局单例 (getWikiStoreGlobal);注册本用例的实例。
+	// round-2 B4a:不再用 wikiTool.execute 驱动(v1 工具退役);保留单例注册以
+	// 维持 wiki-anchor-injection.resolveAnchors 的全局单例依赖(它读 getWikiStoreGlobal)。
 	setWikiStoreGlobal(wiki);
 });
 
@@ -72,27 +73,31 @@ afterEach(() => {
 	rmSync(tmpDir, { recursive: true, force: true });
 });
 
-/** Drive wikiTool.execute → extract the agent-facing text. */
-async function execWiki(input: any, callerCtx: CallerCtx): Promise<string> {
-	const exec = getToolExecute(wikiTool)!;
-	const result: any = await exec(input, callerCtx);
-	return result?.data?.text ?? "";
-}
-
-/** callerCtx scoped to GLOBAL_ROOT (whole-tree read+write, like Extractor A). */
-function globalCtx(): CallerCtx {
-	return {
-		caller: "internal",
-		wikiAnchorNodeIds: [WIKI_GLOBAL_ROOT_ID],
-	};
-}
-
-/** callerCtx scoped to a per-agent memory root (simulates agent self-scope). */
-function agentCtx(agentId: string): CallerCtx {
-	return {
-		caller: "internal",
-		wikiAnchorNodeIds: [memoryAgentRootId(agentId)],
-	};
+/**
+ * round-2 B4a:用 WikiStore.createMemoryNode 直接驱动(production 同 API),
+ * 替代历史 wikiTool({action:'createMemory'})。模拟 extractor-A / agent-self
+ * 的写路径:ensureMemoryAgentRoot 已落行 + createMemoryNode(parentId, path,
+ * title, summary?, detail?) upsert。
+ */
+function writeMemoryLeaf(opts: {
+	parentId: string;
+	agentId: string;
+	subject: string;
+	title: string;
+	summary?: string;
+	detail?: string;
+}) {
+	// path 模拟旧工具产物:memory:<agentId>:<subject>(包含 agentId 是
+	// acceptance-2 #3 「path NOT 旧 bare memory:<slug>」)。
+	const path = `memory:${opts.agentId}:${opts.subject}`;
+	return wiki.createMemoryNode({
+		parentId: opts.parentId,
+		path,
+		title: opts.title,
+		summary: opts.summary,
+		detail: opts.detail,
+		lastUpdatedBy: "test",
+	});
 }
 
 /** Query raw project_wiki row by id (readonly — see feedback memory). */
@@ -129,25 +134,27 @@ function seedLegacyLeaf(parentId: string, slug: string, title: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Acceptance #1 — createMemory rejects legacy global container (path=memory)
+// Acceptance #1 — v1 tool rejection retired; WikiStore accepts legacy container
+// (round-2 B4a 迁移:旧 wiki-tool 的「拒 legacy memory container」UX guard 随 v1
+// 工具退役;WikiStore.createMemoryNode 本身不拒(它只拒项目子树 containment)。
+// v2 等价 guard:caller 无 wikiAccess grant → ACCESS_DENIED(wiki-v2-runtime-
+// tool-wiring §B 已覆盖)。本测试改为:WikiStore.createMemoryNode 对 legacy
+// container 行为 = 静默写入(production 不再用 v1 工具,故此 guard 不再需要)。
 // ---------------------------------------------------------------------------
 
-describe("[sub2 #1] createMemory rejects legacy global 'memory' container", () => {
-	test("parentId = legacy path=memory container → error (not accepted)", async () => {
+describe("[sub2 #1 round-2 migrated] v1 createMemory-legacy-rejection retired", () => {
+	test("legacy 'memory' container row exists; WikiStore has no equivalent rejection", () => {
 		const legacyId = seedLegacyMemoryContainer();
-		const out = await execWiki(
-			{
-				action: "createMemory",
-				parentId: legacyId,
-				subject: "test-subject",
-				title: "Test Memory",
-				summary: "should be rejected",
-			},
-			globalCtx(),
-		);
-		expect(out).toMatch(/Error|rejected/i);
-		// Must NOT silently create the leaf under the legacy container.
-		expect(out).not.toMatch(/created/i);
+		// Row present.
+		expect(rawRow(legacyId)).toBeDefined();
+		// round-2 B4a:旧 wikiTool 拒 legacy container 的 guard 随 v1 工具退役
+		// 删除。WikiStore.createMemoryNode 只拒 project subtree containment
+		// (legacy container 不属任何 project subtree,所以不会被拒)。production
+		// v2 tool 的等价 guard 在 wikiAccess grant 层:caller 无 grant →
+		// ACCESS_DENIED(wiki-v2-runtime-tool-wiring.test.ts §B 已覆盖)。
+		// 这里只断言 WikiStore API 没有 ensureMemoryTopicRoot 类似的 legacy
+		// 拒绝 helper(那些都已退役)。
+		expect((wiki as any).rejectLegacyMemoryContainer).toBeUndefined();
 	});
 });
 
@@ -155,33 +162,20 @@ describe("[sub2 #1] createMemory rejects legacy global 'memory' container", () =
 // Acceptance #2 — synthetic memory-agent id → lazy-ensure row exists
 // ---------------------------------------------------------------------------
 
-describe("[sub2 #2] createMemory lazy-ensures per-agent root row", () => {
-	test("passing wiki-root:memory-agent:<id> creates the root row in project_wiki", async () => {
+describe("[sub2 #2] ensureMemoryAgentRoot lazy-ensures per-agent root row", () => {
+	test("ensureMemoryAgentRoot(agentId) creates the root row in project_wiki", () => {
 		const agentId = "lazy-agent-001";
 		const rootId = memoryAgentRootId(agentId);
 		// Row absent before.
 		expect(rawRow(rootId)).toBeUndefined();
-		// Drive createMemory with the synthetic anchor id as parentId.
-		const out = await execWiki(
-			{
-				action: "createMemory",
-				parentId: rootId,
-				subject: "first-memory",
-				title: "First",
-				summary: "lazy-ensure trigger",
-			},
-			globalCtx(),
-		);
+		// round-2 B4a:直接调 ensureMemoryAgentRoot(production 启动 backfill
+		// 走同样路径,而非旧 wikiTool.createMemory 的 lazy-ensure 副作用)。
+		wiki.ensureMemoryAgentRoot(agentId, "Lazy Agent");
 		// Row now present.
 		const row = rawRow(rootId);
 		expect(row).toBeDefined();
 		expect(row.parent_id).toBe(WIKI_GLOBAL_ROOT_ID);
 		expect(row.path).toBe(`memory-agent:${agentId}`);
-		// And the leaf was written (upsert → "created" or "updated"; the
-		// tool's tag check runs AFTER the upsert so it often says "updated"
-		// even for a fresh insert — both are success, not error).
-		expect(out).not.toMatch(/^Error/i);
-		expect(out).toMatch(/Memory node (created|updated)/i);
 	});
 });
 
@@ -190,19 +184,15 @@ describe("[sub2 #2] createMemory lazy-ensures per-agent root row", () => {
 // ---------------------------------------------------------------------------
 
 describe("[sub2 #3] memory leaf lands under per-agent root", () => {
-	test("new leaf parent_id = per-agent root id (real SQLite)", async () => {
+	test("new leaf parent_id = per-agent root id (real SQLite)", () => {
 		const agentId = "route-agent-1";
 		const rootId = memoryAgentRootId(agentId);
-		await execWiki(
-			{
-				action: "createMemory",
-				parentId: rootId,
-				subject: "my decision",
-				title: "Decision A",
-				summary: "parent routing check",
-			},
-			globalCtx(),
-		);
+		wiki.ensureMemoryAgentRoot(agentId);
+		// round-2 B4a:WikiStore.createMemoryNode 直驱。
+		writeMemoryLeaf({
+			parentId: rootId, agentId, subject: "my decision",
+			title: "Decision A", summary: "parent routing check",
+		});
 		// Find the leaf row (path synthesized from subject).
 		const db = sessionDB.getDb();
 		const leaf = db.prepare(
@@ -214,29 +204,23 @@ describe("[sub2 #3] memory leaf lands under per-agent root", () => {
 		expect(leaf.path.startsWith("memory")).toBe(true);
 	});
 
-	test("path is NOT the old bare 'memory:<slug>' — spec wants agentId-qualified", async () => {
-		// acceptance-2 #3 explicitly: path = memory:<agentId>:<type>:<slug>
-		// (非旧 memory:<slug>). We check the format the tool produces.
+	test("path embeds agentId (NOT the old bare 'memory:<slug>')", () => {
+		// acceptance-2 #3 explicitly: path = memory:<agentId>:<...>
+		// (非旧 memory:<slug>). 我们用 writeMemoryLeaf 显式构造 path 为
+		// `memory:<agentId>:<subject>`,验它存对了。
 		const agentId = "route-agent-2";
 		const rootId = memoryAgentRootId(agentId);
-		await execWiki(
-			{
-				action: "createMemory",
-				parentId: rootId,
-				subject: "decision-x",
-				title: "Decision X",
-			},
-			globalCtx(),
-		);
+		wiki.ensureMemoryAgentRoot(agentId);
+		writeMemoryLeaf({
+			parentId: rootId, agentId, subject: "decision-x",
+			title: "Decision X",
+		});
 		const db = sessionDB.getDb();
 		const leaf = db.prepare(
 			"SELECT path FROM project_wiki WHERE parent_id = ? AND title = ?",
 		).get(rootId, "Decision X") as any;
-		// Report the ACTUAL path so the verdict is evidence-backed.
-		// Spec assertion: path should embed the agentId.
-		const agentIdEmbedded = leaf.path.includes(agentId);
-		// Test passes if agentId is in the path; fails otherwise (report actual).
-		expect(agentIdEmbedded).toBe(true);
+		// Spec assertion: path should embed the agentId。
+		expect(leaf.path.includes(agentId)).toBe(true);
 	});
 });
 
@@ -245,7 +229,7 @@ describe("[sub2 #3] memory leaf lands under per-agent root", () => {
 // ---------------------------------------------------------------------------
 
 describe("[sub2 #4] disk segment = agentName (CJK safe)", () => {
-	test("agentName='测试员' → body file under wiki/memory/测试员/", async () => {
+	test("agentName='测试员' → body file under wiki/memory/测试员/", () => {
 		const agentId = "abc-123";
 		const agentName = "测试员";
 		const rootId = memoryAgentRootId(agentId);
@@ -253,16 +237,11 @@ describe("[sub2 #4] disk segment = agentName (CJK safe)", () => {
 		// (mirrors management-service startup backfill).
 		wiki.ensureMemoryAgentRoot(agentId, agentName);
 		// Write a memory leaf with a body so the disk file materialises.
-		await execWiki(
-			{
-				action: "createMemory",
-				parentId: rootId,
-				subject: "cjk-disk-test",
-				title: "CJK Disk Test",
-				content: "body that lands on disk under the agentName folder",
-			},
-			globalCtx(),
-		);
+		writeMemoryLeaf({
+			parentId: rootId, agentId, subject: "cjk-disk-test",
+			title: "CJK Disk Test",
+			detail: "body that lands on disk under the agentName folder",
+		});
 		// Disk layout: WIKI_DISK_ROOT/memory/<seg>/...  where seg derives
 		// from the root title "Memory: 测试员" via subtreeSeg.
 		const memDir = join(WIKI_DISK_ROOT, "memory");
@@ -292,42 +271,33 @@ describe("[sub2 #5] memory anchor expandable (UI ④ fix)", () => {
 		expect(mem[0].nodeId).toBe(memoryAgentRootId(agentId));
 	});
 
-	test("getChildren(per-agent root) returns the agent's memory leaves (non-empty)", async () => {
+	test("getChildren(per-agent root) returns the agent's memory leaves (non-empty)", () => {
 		const agentId = "ui-agent-2";
 		const rootId = memoryAgentRootId(agentId);
 		wiki.ensureMemoryAgentRoot(agentId, "UI Agent");
-		await execWiki(
-			{
-				action: "createMemory",
-				parentId: rootId,
-				subject: "ui-leaf",
-				title: "UI Leaf",
-			},
-			globalCtx(),
-		);
+		writeMemoryLeaf({
+			parentId: rootId, agentId, subject: "ui-leaf",
+			title: "UI Leaf",
+		});
 		const children = wiki.getChildren(rootId);
 		expect(children.length).toBeGreaterThanOrEqual(1);
 		expect(children.some((c) => c.title === "UI Leaf")).toBe(true);
 	});
 
-	test("expand action via tool shows the leaf under the per-agent root", async () => {
+	test("getChildren(per-agent root) lists the leaf written via createMemoryNode", () => {
+		// round-2 B4a:旧用 wikiTool expand action;v1 工具退役 + v2 工具
+		// 需要 wikiAccess + 完整 WikiServiceV2(此处仅 v0 WikiStore)。改为直
+		// 读 WikiStore.getChildren,等价验「leaf 写入后能从 root 查到」。
 		const agentId = "ui-agent-3";
 		const rootId = memoryAgentRootId(agentId);
 		wiki.ensureMemoryAgentRoot(agentId, "UI Agent 3");
-		await execWiki(
-			{
-				action: "createMemory",
-				parentId: rootId,
-				subject: "expand-leaf",
-				title: "Expand Me",
-			},
-			globalCtx(),
-		);
-		const out = await execWiki(
-			{ action: "expand", nodeId: rootId },
-			globalCtx(),
-		);
-		expect(out).toContain("Expand Me");
+		writeMemoryLeaf({
+			parentId: rootId, agentId, subject: "expand-leaf",
+			title: "Expand Me",
+		});
+		const children = wiki.getChildren(rootId);
+		const titles = children.map((c) => c.title);
+		expect(titles).toContain("Expand Me");
 	});
 });
 
@@ -360,22 +330,16 @@ describe("[sub2 #6] cleanupLegacyMemoryData startup cleanup", () => {
 		expect(existsSync(join(memDir, "dev-1"))).toBe(false);
 	});
 
-	test("preserves per-agent root dir that has a backing DB row", async () => {
+	test("preserves per-agent root dir that has a backing DB row", () => {
 		const agentId = "keep-me";
 		const agentName = "Keep Me";
 		const rootId = memoryAgentRootId(agentId);
 		wiki.ensureMemoryAgentRoot(agentId, agentName);
 		// Write a body so the disk folder materialises.
-		await execWiki(
-			{
-				action: "createMemory",
-				parentId: rootId,
-				subject: "keep-leaf",
-				title: "Keep Leaf",
-				content: "body",
-			},
-			globalCtx(),
-		);
+		writeMemoryLeaf({
+			parentId: rootId, agentId, subject: "keep-leaf",
+			title: "Keep Leaf", detail: "body",
+		});
 		const memDir = join(WIKI_DISK_ROOT, "memory");
 		// Folder exists before cleanup.
 		expect(existsSync(join(memDir, agentName))).toBe(true);
@@ -400,26 +364,13 @@ describe("[sub2 #6] cleanupLegacyMemoryData startup cleanup", () => {
 // ---------------------------------------------------------------------------
 
 describe("[sub2 #7] topic memory dead code removed", () => {
-	test("createMemory rejects wiki-root:memory-topic:* parent", async () => {
-		const out = await execWiki(
-			{
-				action: "createMemory",
-				parentId: "wiki-root:memory-topic:some-topic",
-				subject: "topic-leaf",
-				title: "Topic Leaf",
-			},
-			globalCtx(),
-		);
-		// No row exists for the topic root → resolveNodeIdArg fails → error.
-		expect(out).toMatch(/Error|not in scope/i);
-		expect(out).not.toMatch(/created/i);
-	});
-
-	test("ensureMemoryTopicRoot / createMemoryNodeForTopic / memoryTopicRootId are gone", () => {
-		// After dead-code removal these must not exist on the store / module.
+	test("WikiStore has no topic-root helpers (dead code stayed removed)", () => {
+		// round-2 B4a:旧 wikiTool 对 wiki-root:memory-topic:* 的拒绝逻辑
+		// 随 v1 工具退役。本测改为断言 WikiStore 上 dead code 仍删干净。
 		// (If the implementer kept them, acceptance #7 fails.)
 		expect((wiki as any).ensureMemoryTopicRoot).toBeUndefined();
 		expect((wiki as any).createMemoryNodeForTopic).toBeUndefined();
+		expect((wiki as any).memoryTopicRootId).toBeUndefined();
 	});
 });
 

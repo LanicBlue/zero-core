@@ -39,6 +39,7 @@ import type {
 	RuntimeState,
 	ToolExecutionContext,
 	TaskInfo,
+	DynamicSystemSection,
 } from "./types.js";
 // multimodal-input sub-4: run() accepts string | UserContent. Internal model
 // stays meta-only (principle A); bytes are read at the LLM edge (getMessages)
@@ -62,15 +63,12 @@ import { ToolRateLimiter } from "./tool-rate-limiter.js";
 // platform-observability ②.4 (sub-3): turn 级 ALS context,传 tier + 身份给
 // provider-factory acquire → 并发队列按 tier 优先级出队。
 import { runInConcurrencyContext, turnSourceToTier } from "./concurrency-context.js";
-import type { WikiStore } from "../server/wiki-node-store.js";
 import type { DelegatedTaskRecord } from "../shared/types.js";
-import {
-	resolveAnchors,
-	anchorNodeIds,
-	renderSystemAnchors,
-	renderContextAnchors,
-	type ResolvedAnchor,
-} from "./wiki-anchor-injection.js";
+// wiki-system-redesign plan-05 §7:wiki-anchor-injection + WikiStore 已从
+// AgentLoop 移除(acceptance-05 §D 41)。Wiki context 现在以通用
+// DynamicSystemSection 形态由 AgentService 注入 SessionConfig.
+// dynamicSystemSections,AgentLoop 只消费通用数组,不识别任何 Wiki 字面
+// section 名(/wiki-system-anchors/)。
 // todo state for the todos accessor in buildCallerCtx. Imported STATICALLY from
 // the leaf module todo-state (no cycle — it imports nothing from tools/runtime),
 // which lets us drop the old lazy `require` (undefined under ESM) without pulling
@@ -92,12 +90,10 @@ import { compressSession } from "../server/compression-core.js";
 // the same CoreDatabase instance, so the runtime invariant holds.
 import type { CoreDatabase } from "../server/core-database.js";
 import { DEFAULT_ARCHIVE_MEMORY_PROMPT } from "../shared/default-prompts.js";
-// sub-7 (anchor merger): renderSystemAnchors + renderContextAnchors collapse
-// into the single `wiki-system-anchors` system section (root summary + one
-// layer, both channels unioned). renderContextAnchors stays exported so tests
-// can call it directly; the executeStream path no longer renders it into the
-// per-turn <context> block (the context channel now carries only Recalled
-// Memories — design §1.2).
+// (round-2 B2 sub:deleted dead comment referencing the retired `wiki-system-
+// anchors` section + renderSystemAnchors/renderContextAnchors merger. wiki-
+// system-redesign plan-05 §7 removed AgentLoop's wiki imports + literal
+// section names; the comment was stale.)
 
 // ---------------------------------------------------------------------------
 // AgentLoop
@@ -216,14 +212,12 @@ export class AgentLoop implements AgentRuntime {
 	 * run(msg, {ephemeral:true}).
 	 */
 	private persistMode: "default" | "ephemeral" = "default";
-	/**
-	 * v0.8 (P1 §10.6): resolved wiki anchors for this session (auto memory +
-	 * auto project + free wikiAnchors). Cached at construction; invalidated
-	 * by invalidateWikiAnchorCache() when a subtree changes (future hook).
-	 */
-	private wikiAnchors: ResolvedAnchor[] = [];
-	/** v0.8 (P1 §10.6): global WikiStore, resolved from config.wikiStore. */
-	private wikiStoreGlobal: WikiStore | null = null;
+	// wiki-system-redesign plan-05 §7:Wiki section / anchors 不再在 AgentLoop
+	// 字段中持有 —— Wiki context 由 AgentService 编译并以通用
+	// DynamicSystemSection 形态注入 SessionConfig.dynamicSystemSections,本 loop
+	// 在构造时一并喂给 SystemPromptAssembler;hot-reload 经 applyConfigUpdate
+	// 通用 replace/invalidate。无 wikiAnchors / wikiStoreGlobal / ResolvedAnchor[]
+	// 字段(acceptance-05 §D 41「AgentLoop 不 import Wiki compiler/store」)。
 	/**
 	 * Step 1B: this loop's own HookRegistry. Handlers register here (via
 	 * registerHooksForLoop, called by agent-service / subagent-delegator right
@@ -252,49 +246,15 @@ export class AgentLoop implements AgentRuntime {
 		const multimodal = getMultimodal(providers, config.providerName, config.modelId);
 		this.session = new AgentSession(config.systemPrompt, contextWindow, config.sessionId, config.db, multimodal);
 
-		// v0.8 (P1 §10.6): resolve the global WikiStore + the session's wiki
-		// anchor set. config.wikiStore is the ProjectWikiStore back-compat
-		// view (or already a WikiStore); .getWikiStore() unwraps it.
-		this.wikiStoreGlobal = this.resolveGlobalWikiStore(config);
-
-		// Build prompt sections: base + wiki system-anchor section (cacheable) +
-		// work-context system section (on-demand). sub-7 merges the context-
-		// channel anchors into the existing `wiki-system-anchors` section (root
-		// summary + one layer for both channels); the per-turn <context> block
-		// no longer renders an anchors sub-block (context channel = Recalled
-		// Memories only, design §1.2).
-		const sections = [
+		// wiki-system-redesign plan-05 §7:Wiki context 不再由 AgentLoop 解析
+		// anchors + 渲染 section —— 改由 AgentService 在 session build 时编译
+		// 并以通用 DynamicSystemSection 形态注入 SessionConfig.
+		// dynamicSystemSections。AgentLoop 只把通用 sections 数组喂给
+		// SystemPromptAssembler,不识别任何 Wiki 字面 section 名(acceptance-05
+		// §D 41「不含 wiki-context/wiki-system-anchors 字面 section」)。
+		const sections: Array<{ name: string; compute: () => string; cacheBreak: boolean }> = [
 			{ name: "base", compute: () => this.session.getSystemPrompt(), cacheBreak: false },
 		];
-		if (this.wikiStoreGlobal) {
-			this.wikiAnchors = resolveAnchors({
-				wiki: this.wikiStoreGlobal,
-				agentId: config.agentId,
-				contextBundle: config.contextBundle,
-				wikiAnchors: config.wikiAnchors,
-			});
-			// sub-7 (Wiki Anchors merger): renderSystemAnchors + the context-
-			// channel anchors render TOGETHER into this single cached section
-			// (cacheBreak:false). compression-archive-simplify sub-1 moved the
-			// default memory root context→system, so renderSystemAnchors now
-			// carries memory + project (+ zero global-root);
-			// renderContextAnchors only catches free wikiAnchors still on
-			// inject:context. One Wiki Anchors block, cache-stable: refresh
-			// only on patch.wikiAnchors / resetSession — mid-session wiki
-			// writes do NOT invalidate it (frozen snapshot, design §零).
-			sections.push({
-				name: "wiki-system-anchors",
-				compute: () => {
-					const sys = renderSystemAnchors({ wiki: this.wikiStoreGlobal!, anchors: this.wikiAnchors });
-					const ctx = renderContextAnchors({ wiki: this.wikiStoreGlobal!, anchors: this.wikiAnchors });
-					if (!sys && !ctx) return "";
-					if (!ctx) return sys;
-					if (!sys) return ctx;
-					return sys + "\n\n" + ctx;
-				},
-				cacheBreak: false,
-			});
-		}
 		// sub-7 (work-context → system): Project / Requirement / Wiki Baseline
 		// rendered by a server-built closure (config.workContextSystemSection)
 		// — on-demand (cacheBreak:false so the closure re-reads store state
@@ -320,6 +280,17 @@ export class AgentLoop implements AgentRuntime {
 				compute: () => config.getSkillSection!() ?? "",
 				cacheBreak: false,
 			});
+		}
+		// plan-05 §7:通用动态 sections(Wiki context / future hot-reload
+		// sections 都通过此注入)。AgentLoop 不识别 section 名语义,只透传。
+		if (config.dynamicSystemSections && config.dynamicSystemSections.length > 0) {
+			for (const dyn of config.dynamicSystemSections) {
+				sections.push({
+					name: dyn.name,
+					compute: dyn.compute,
+					cacheBreak: dyn.cacheBreak,
+				});
+			}
 		}
 		this.promptAssembler = new SystemPromptAssembler(sections);
 
@@ -414,10 +385,10 @@ export class AgentLoop implements AgentRuntime {
 			// 不再装进 ctx(避免"装了不用 + 单例漂移")。capabilityHandlesFor 仍把
 			// 这些 handles 注入 SessionConfig → 各工具 import getXxx 单例读最新实例。
 			projectId: config.projectContext?.projectId,
-			// v0.8 (读写同界): resolved wiki anchor node ids = read scope = write
-			// scope for the Wiki tool. Zero/global sessions include the global
-			// root here → whole-tree read+write; project sessions stay scoped.
-			wikiAnchorNodeIds: anchorNodeIds(this.wikiAnchors),
+			// wiki-system-redesign plan-05 §4/§5:wikiAnchorNodeIds 不再由
+			// AgentLoop 填充 —— 新 Wiki v2 tool 只读 callerCtx.wikiAccess
+			// (buildCallerCtx 从 config.wikiAccess 桥接)。CallerCtx 类型上该
+			// 字段仍保留(optional,过渡期),但本 loop 不写。
 			projectPath: config.projectContext?.projectPath,
 			activeRequirementId: config.projectContext?.activeRequirementId,
 			// v0.8 (M0): createRoleLoop removed — sub-agent dispatch flows
@@ -557,7 +528,6 @@ export class AgentLoop implements AgentRuntime {
 			// sub-3 过渡字段(B4 收敛后并入 scope / host 显式填):
 			toolConfig: (ctx as any).toolConfig,
 			readScope: (ctx as any).readScope,
-			wikiAnchorNodeIds: (ctx as any).wikiAnchorNodeIds,
 			contextBundle: (ctx as any).contextBundle,
 			projectId: (ctx as any).projectId,
 			// per-session accessors + delegation fns + agent resolvers (G1).
@@ -573,6 +543,13 @@ export class AgentLoop implements AgentRuntime {
 			activeRequirementId: (ctx as any).activeRequirementId,
 			featureWorkspace: (ctx as any).featureWorkspace,
 		};
+		// wiki-system-redesign plan-05 §4:桥接 SessionConfig.wikiAccess →
+		// callerCtx.wikiAccess。Wiki v2 tool 唯一身份来源(buildRequestContext
+		// 从此读 access + agentId + activeProjectId)。AgentLoop 不读 grants /
+		// agentStore,只透传 host 编译后的 CompiledWikiAccess。
+		if (this.config.wikiAccess) {
+			callerCtx.wikiAccess = this.config.wikiAccess;
+		}
 		// ctx.emit is the loop's streaming channel (runtime events → UI). Bridge it
 		// so the emit contract (CallerCtx.emit) reaches streaming-capable tools.
 		if (typeof (ctx as any).emit === "function") {
@@ -879,14 +856,15 @@ export class AgentLoop implements AgentRuntime {
 	 * StepEnd already persisted all completed steps before we reach the finally,
 	 * so compressSession reads the full turn body.
 	 *
-	 * Wiki snapshot refresh (sub-1 acceptance #4, deferred to sub-3): the
-	 * `wiki-system-anchors` system section is a FROZEN snapshot
-	 * (cacheBreak:false, computed at turn start). The memory turn just wrote
-	 * wiki — without invalidation the next turn's system prompt would still
-	 * show the OLD snapshot (memory turn effectively write-only). The
-	 * try/finally wrapper calls `promptAssembler.invalidate("wiki-system-
-	 * anchors")` UNCONDITIONALLY so even a partial memory-turn write (or a
-	 * compressSession failure) still refreshes the snapshot.
+	 * plan-05 §7 (system section snapshot refresh): the dynamic system sections
+	 * (e.g. wiki-context) are FROZEN snapshots (cacheBreak:false, computed at
+	 * turn start). The memory turn just wrote wiki/memory — without
+	 * invalidation the next turn's system prompt would still show the OLD
+	 * snapshot (memory turn effectively write-only). The try/finally wrapper
+	 * calls `promptAssembler.invalidate()` UNCONDITIONALLY(no args → clear all
+	 * cached sections) so even a partial memory-turn write (or compressSession
+	 * failure) still refreshes every cached section. **通用** invalidate —— 不
+	 * 含 Wiki 字面 section 名(acceptance-05 §D 41)。
 	 *
 	 * Reentry safety: we hold the loop exclusively here (the outer run()'s
 	 * finally hasn't released busy yet — JS is single-threaded and no other
@@ -905,15 +883,16 @@ export class AgentLoop implements AgentRuntime {
 		log.debug("loop",
 			`Force档 coordination (session=${sessionId}, reason=${reason}): ` +
 			`running memory ephemeral turn → compressSession`);
-		// sub-1 acceptance #4 (deferred to sub-3): wrap the memory turn +
-		// compressSession in a try/finally so the wiki-system-anchors snapshot
-		// is invalidated UNCONDITIONALLY. The memory turn just wrote wiki via
-		// the Wiki tool; without invalidation the next turn's system prompt
-		// would still show the OLD frozen snapshot (cacheBreak:false section)
-		// — the memory turn would be effectively write-only. Runs even if the
-		// memory turn threw mid-write or compressSession failed: partial wiki
-		// writes survive and must be visible. The outer coordination try/catch
-		// in run()/resume() finally handles any propagated error.
+		// plan-05 §7: wrap the memory turn + compressSession in a try/finally
+		// so ALL cached system sections are invalidated UNCONDITIONALLY. The
+		// memory turn just wrote wiki via the Wiki tool; without invalidation
+		// the next turn's system prompt would still show the OLD frozen
+		// snapshot (cacheBreak:false sections) — the memory turn would be
+		// effectively write-only. Runs even if the memory turn threw mid-write
+		// or compressSession failed: partial wiki writes survive and must be
+		// visible. The outer coordination try/catch in run()/resume() finally
+		// handles any propagated error. **通用** invalidate(no args) —— 不含
+		// Wiki 字面 section 名。
 		try {
 			// Phase 1 — memory ephemeral turn (sub-2 persist:false → wiki
 			// writes only; steps NOT persisted). Temporarily release busy so
@@ -948,12 +927,11 @@ export class AgentLoop implements AgentRuntime {
 					(err as Error).message);
 			}
 		} finally {
-			// Unconditional wiki snapshot refresh — see comment above. The
-			// promptAssembler caches the wiki-system-anchors section across
-			// turns (cacheBreak:false); without this the next turn would
-			// assemble a stale system prompt that doesn't reflect the memory
-			// turn's writes.
-			this.promptAssembler.invalidate("wiki-system-anchors");
+			// Unconditional system section snapshot refresh — see comment
+			// above. `invalidate()` 无参 → 清空所有 cached sections,下一 turn
+			// 的 assemble() 会重新 compute。**通用** invalidate,不含 Wiki
+			// 字面 section 名(acceptance-05 §D 41)。
+			this.promptAssembler.invalidate();
 		}
 	}
 
@@ -1345,14 +1323,21 @@ export class AgentLoop implements AgentRuntime {
 	 *   prompt section (cache break is acceptable; this is infrequent).
 	 * - toolPolicy / subagents → assigned in place; buildTools() reads them
 	 *   fresh every turn, so the next turn picks them up.
-	 * - wikiAnchors → re-resolved + injected section invalidated + tool ctx
-	 *   anchor ids updated.
+	 * - dynamicSystemSections → 通用 section 数组替换(add/replace/invalidate
+	 *   by name);AgentService 用此推送新的 wiki-context section。AgentLoop
+	 *   不识别 section 名语义。
+	 * - wikiAccess → 替换 compiled Wiki access;下一 buildCallerCtx 桥到
+	 *   callerCtx.wikiAccess(Wiki v2 tool 唯一身份来源)。
 	 */
 	applyConfigUpdate(patch: {
 		systemPrompt?: string;
 		toolPolicy?: SessionConfig["toolPolicy"];
 		subagents?: SessionConfig["subagents"];
-		wikiAnchors?: SessionConfig["wikiAnchors"];
+		// wiki-system-redesign plan-05 §7:`wikiAnchors` 字段从 patch 删除 ——
+		// AgentLoop 不再持有 WikiStore / 解析 anchors;Wiki context 改由
+		// AgentService 编译为通用 DynamicSystemSection 推送(走下面的
+		// `dynamicSystemSections` + `wikiAccess` 字段)。AgentService 调用方
+		// 不应再传 wikiAnchors。
 		/**
 		 * N4 (runtime-push-ui-sync, invariant 1): model / provider hot-sync.
 		 * Written back to this.config.{providerName,modelId}; executeStream
@@ -1414,6 +1399,20 @@ export class AgentLoop implements AgentRuntime {
 		 * we invalidate anyway so the swap is visible immediately.
 		 */
 		getSkillSection?: SessionConfig["getSkillSection"];
+		/**
+		 * wiki-system-redesign plan-05 §7:替换/添加通用动态 system sections。
+		 * AgentService 用此把新的 wiki-context section(及其它 hot-reload
+		 * sections)推到 running loop。AgentLoop 按 section name 通用 replace
+		 * + invalidate,不识别 Wiki 语义。
+		 */
+		dynamicSystemSections?: DynamicSystemSection[];
+		/**
+		 * wiki-system-redesign plan-05 §4:替换 compiled Wiki access。AgentService
+		 * 在 active project 切换 / grants publish / memory archive 完成时推新
+		 * access 到 running loop。AgentLoop 透传到 this.config.wikiAccess,下一
+		 * 个 buildCallerCtx 调用时桥到 callerCtx.wikiAccess。
+		 */
+		wikiAccess?: SessionConfig["wikiAccess"];
 	}): void {
 		if (patch.systemPrompt !== undefined && patch.systemPrompt !== this.config.systemPrompt) {
 			this.config.systemPrompt = patch.systemPrompt;
@@ -1476,16 +1475,37 @@ export class AgentLoop implements AgentRuntime {
 			this.config.subagents = patch.subagents;
 			this.toolContext.subagents = patch.subagents;
 		}
-		if (patch.wikiAnchors !== undefined && this.wikiStoreGlobal) {
-			this.config.wikiAnchors = patch.wikiAnchors;
-			this.wikiAnchors = resolveAnchors({
-				wiki: this.wikiStoreGlobal,
-				agentId: this.config.agentId,
-				contextBundle: this.config.contextBundle,
-				wikiAnchors: this.config.wikiAnchors,
-			});
-			this.toolContext.wikiAnchorNodeIds = anchorNodeIds(this.wikiAnchors);
-			this.promptAssembler.invalidate("wiki-system-anchors");
+		// wiki-system-redesign plan-05 §7:通用 dynamicSystemSections 替换 +
+		// wikiAccess 替换。AgentLoop 只按字段名透传 + 通用 invalidate(section
+		// name);不识别任何 Wiki 语义(acceptance-05 §D 41「不含 wiki-...
+		// 字面 section」)。
+		if (patch.dynamicSystemSections !== undefined) {
+			this.config.dynamicSystemSections = patch.dynamicSystemSections;
+			// 替换 assembler 里的 section:先移除旧的(按 name 匹配),再插入新
+			// 的。assembler 自己负责 drop 空 section;这里只负责 enqueue。
+			for (const dyn of patch.dynamicSystemSections) {
+				this.promptAssembler.invalidate(dyn.name);
+				// assembler 的 add section API 取决于其实现;此处走通用 replace:
+				// 直接调 addSection(若存在),否则下次 invalidate 后自然重建。
+				const assemblerAny = this.promptAssembler as unknown as {
+					addSection?: (s: { name: string; compute: () => string; cacheBreak: boolean }) => void;
+					sections?: Array<{ name: string; compute: () => string; cacheBreak: boolean }>;
+				};
+				if (typeof assemblerAny.addSection === "function") {
+					assemblerAny.addSection({ name: dyn.name, compute: dyn.compute, cacheBreak: dyn.cacheBreak });
+				} else if (Array.isArray(assemblerAny.sections)) {
+					// Fallback: 直接操作 sections 数组(去重 + 追加)。
+					const existingIdx = assemblerAny.sections.findIndex((s) => s.name === dyn.name);
+					if (existingIdx >= 0) {
+						assemblerAny.sections[existingIdx] = { name: dyn.name, compute: dyn.compute, cacheBreak: dyn.cacheBreak };
+					} else {
+						assemblerAny.sections.push({ name: dyn.name, compute: dyn.compute, cacheBreak: dyn.cacheBreak });
+					}
+				}
+			}
+		}
+		if (patch.wikiAccess !== undefined) {
+			(this.config as { wikiAccess?: typeof patch.wikiAccess }).wikiAccess = patch.wikiAccess;
 		}
 		// sub-7 (work-context → system): hot-swap the work-context / Steps
 		// Progress closures when activeRequirement / workId / work policy flips
@@ -1591,8 +1611,8 @@ export class AgentLoop implements AgentRuntime {
 			useDeviceContext: this.config.contextConfig?.useDeviceContext,
 			// (sub-1) todos moved out of the turn-scoped context block into the
 			// per-step workbench channel (renderWorkbench) so they refresh mid-turn.
-			// (sub-7) wiki anchors moved into the cached `wiki-system-anchors`
-			// system section; the context channel is Recalled Memories only.
+			// (plan-05 §7) Wiki context 经 SessionConfig.dynamicSystemSections
+			// 注入(由 AgentService 编译);context channel = Recalled Memories only.
 		});
 		// multimodal-input sub-3 (#3 wiring — consumer): feed the
 		// multimodal-aware message list into streamText so images on the CURRENT
@@ -1821,24 +1841,9 @@ export class AgentLoop implements AgentRuntime {
 		return copy;
 	}
 
-	/**
-	 * v0.8 (P1 §10.6): resolve the global WikiStore from SessionConfig. The
-	 * config carries it as the ProjectWikiStore back-compat view (which wraps
-	 * a WikiStore and exposes it via .getWikiStore()); some callers inject a
-	 * bare WikiStore. Returns null when no wiki store is configured (legacy
-	 * / test paths) — anchor injection is silently skipped in that case.
-	 */
-	private resolveGlobalWikiStore(config: SessionConfig): WikiStore | null {
-		const raw = (config as any).wikiStoreGlobal ?? config.wikiStore;
-		if (!raw) return null;
-		if (typeof raw.getWikiStore === "function") {
-			try { return raw.getWikiStore() as WikiStore; } catch { return null; }
-		}
-		if (typeof raw.upsertProjectNode === "function" || typeof raw.listVisibleFromAnchors === "function") {
-			return raw as WikiStore;
-		}
-		return null;
-	}
+	// wiki-system-redesign plan-05 §7:resolveGlobalWikiStore 已删除 —— Wiki
+	// context 不再由 AgentLoop 持有 WikiStore / 解析 anchors;改由 AgentService
+	// 编译为通用 DynamicSystemSection 注入 SessionConfig。
 
 
 	/**

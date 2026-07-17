@@ -63,6 +63,14 @@ export function agentToForm(a: AgentRecord): FormState {
 		// editors round-trip with the server record.
 		subagents: a.subagents,
 		wikiAnchors: a.wikiAnchors,
+		// wiki-system-redesign plan-05 §1: new Wiki config schema round-trip.
+		// UI editor for these lands in plan-07 (Management UI); here we only
+		// ensure agentToForm / agentStore.create/update round-trip the fields
+		// without dropping them (FormState is Omit<AgentRecord, ...> so they
+		// flow through automatically once AgentRecord declares them).
+		wikiGrants: a.wikiGrants,
+		wikiContext: a.wikiContext,
+		wikiPolicyRevision: a.wikiPolicyRevision,
 	};
 }
 

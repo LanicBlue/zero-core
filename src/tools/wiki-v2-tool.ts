@@ -412,12 +412,30 @@ function buildRequestContext(
 /**
  * Wiki v2 工具依赖。Plan-05 在 AgentService / server tool-execute 接线时
  * 构造;Plan-04 测试 host 直接 new。
+ *
+ * 字段接受**实例**或 **getter 函数**两种形态:
+ *   - 测试 / 直接 host:传实例(`{ wikiService, searchService }`)。
+ *   - 生产注册(`src/tools/wiki-tool.ts` 注册到 ALL_TOOLS 时服务还未实例化):
+ *     传 getter(`{ wikiService: getWikiService, searchService: getWikiSearchService }`),
+ *     execute 调用时才解析 —— 避开 module-load 时序陷阱。
  */
 export interface WikiV2ToolDeps {
 	/** sub-02 WikiService —— expand/read/create/update/delete(link/unlink/move)/archive。 */
-	readonly wikiService: WikiService;
+	readonly wikiService: WikiService | (() => WikiService | undefined);
 	/** sub-04 WikiSearchService —— search action。 */
-	readonly searchService: WikiSearchService;
+	readonly searchService: WikiSearchService | (() => WikiSearchService | undefined);
+}
+
+/** 内部:解析 deps 字段为实例(支持 instance / getter 两种形态)。 */
+function resolveService<T>(dep: T | (() => T | undefined), label: string): T {
+	const value = typeof dep === "function" ? (dep as () => T | undefined)() : dep;
+	if (!value) {
+		throw wikiError(
+			"INTERNAL_ERROR",
+			`Wiki v2 ${label} not registered (setWikiRuntime not called before Wiki tool invocation)`,
+		);
+	}
+	return value;
 }
 
 /**
@@ -442,50 +460,54 @@ export function createWikiTool(deps: WikiV2ToolDeps) {
 		execute: async (input: WikiV2ActionInput, callerCtx: CallerCtx): Promise<ToolResult<WikiV2ToolData>> => {
 			try {
 				const ctx = buildRequestContext(callerCtx);
+				// plan-05 §5: deps 可能是 getter 形态(注册时服务未实例化)。
+				// 每次调用解析一次 —— 注册后 instance 路径只走函数分支一次,几乎零开销。
+				const wikiService = resolveService(deps.wikiService, "wikiService");
+				const searchService = resolveService(deps.searchService, "searchService");
 				switch (input.action) {
 					case "expand": {
 						const req = buildExpandRequest(input);
-						const result = await deps.wikiService.expand(req, ctx);
+						const result = await wikiService.expand(req, ctx);
 						return { ok: true, data: result };
 					}
 					case "read": {
 						const req = buildReadRequest(input);
-						const result = await deps.wikiService.read(req, ctx);
+						const result = await wikiService.read(req, ctx);
 						return { ok: true, data: result };
 					}
 					case "search": {
 						const req = buildSearchRequest(input);
-						const result = await deps.searchService.search(req, ctx);
+						const result = await searchService.search(req, ctx);
 						return { ok: true, data: result };
 					}
 					case "create": {
 						const req = buildCreateRequest(input);
-						const result = await deps.wikiService.create(req, ctx);
+						const result = await wikiService.create(req, ctx);
 						return { ok: true, data: result };
 					}
 					case "update": {
 						const req = buildUpdateRequest(input);
-						const result = await deps.wikiService.update(req, ctx);
+						const result = await wikiService.update(req, ctx);
 						return { ok: true, data: result };
 					}
 					case "delete": {
 						const req = buildArchiveRequest(input);
-						const result = await deps.wikiService.archive(req, ctx);
+						const result = await wikiService.archive(req, ctx);
 						return { ok: true, data: result };
 					}
 					case "link": {
 						const req = buildLinkRequest(input);
-						const result = await deps.wikiService.link(req, ctx);
+						const result = await wikiService.link(req, ctx);
 						return { ok: true, data: result };
 					}
 					case "unlink": {
 						const req = buildUnlinkRequest(input);
-						const result = await deps.wikiService.unlink(req, ctx);
+						const result = await wikiService.unlink(req, ctx);
 						return { ok: true, data: result };
 					}
 					case "move": {
 						const req = buildMoveRequest(input);
-						const result = await deps.wikiService.move(req, ctx);
+						const result = await wikiService.move(req, ctx);
 						return { ok: true, data: result };
 					}
 				}
@@ -741,7 +763,21 @@ function formatSearchResult(r: WikiSearchResult): string {
 	if (r.wikiHits.length > 0) {
 		lines.push(`## Wiki hits (${r.wikiHits.length})`);
 		for (const h of r.wikiHits) {
-			lines.push(`- \`${h.path}\` — **${h.displayTitle}** (${h.kind}, ${h.matchType}/${h.matchedField}, score=${h.normalizedScore.toFixed(2)})`);
+			// plan-05 §5 defer concern C: 渲染 matchTypes 聚合证据。
+			// 当 matchTypes 长度 ≥ 2 时,该节点同时被多种 matchType 命中 —— Agent
+			// 只看 primary 会漏证据(例如 summary 含 substring + content FTS 命中)。
+			// 在 primary 后用 `[also: type2, type3]` 形式补全(matchTypes 已按
+			// 去重保证不含重复;顺序未规定)。长度 0/1 时不显示(等同 primary)。
+			const primary = `${h.matchType}/${h.matchedField}`;
+			const also = (h.matchTypes && h.matchTypes.length >= 2)
+				? h.matchTypes
+					.filter((t) => t !== h.matchType)
+					.slice(0, 5)  // 安全上限:多于 5 个聚合意义不大,避免噪声
+					.map((t) => String(t))
+					.join(", ")
+				: "";
+			const matchInfo = also ? `${primary} [also: ${also}]` : primary;
+			lines.push(`- \`${h.path}\` — **${h.displayTitle}** (${h.kind}, ${matchInfo}, score=${h.normalizedScore.toFixed(2)})`);
 			if (h.snippet) {
 				lines.push(`  > ${h.snippet.replace(/\n/g, " ").slice(0, 200)}`);
 			}

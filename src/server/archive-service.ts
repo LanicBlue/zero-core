@@ -173,6 +173,15 @@ export interface ArchiveSessionOptions {
 	 * BEFORE the mark + atomic export.
 	 */
 	teardown?: ArchiveRuntimeTeardown;
+	/**
+	 * wiki-system-redesign round-2 B2③:memory turn 完成 + wiki 写入落盘后,
+	 * 刷新同 agent 其它 active session 的 wiki-context cache。被 archive 的
+	 * session 即将删除无需刷新;但同一 agent 的其它 session 的 wiki context
+	 * 可能已陈旧。caller(AgentService)注入 `refreshAgentWikiContextsExcept`;
+	 * archive pipeline 在 memory turn 成功(memoryTurnRan=true)后调用一次。
+	 * Best-effort,失败 log warn 不阻断 archive。
+	 */
+	onMemoryTurnWikiWritesCommitted?: (agentId: string, archivedSessionId: string) => void;
 }
 
 export interface ArchiveResult {
@@ -371,6 +380,18 @@ async function runArchivePipeline(
 			memoryTurnRan = (await opts.memoryTurnRunner()) === true;
 			log.debug("archive",
 				`session=${sessionId} Q5b memory ephemeral turn: ${memoryTurnRan ? "ran" : "skipped"}`);
+			// round-2 B2③:memory turn 跑了 → wiki 写入已落 own memory:// → 同 agent
+			// 其它 active session 的 wikiContextClosureCache 可能已陈旧,刷新它们。
+			// Best-effort:失败不阻断 archive。
+			if (memoryTurnRan && typeof opts.onMemoryTurnWikiWritesCommitted === "function") {
+				try {
+					opts.onMemoryTurnWikiWritesCommitted(agentId, sessionId);
+				} catch (err) {
+					log.warn("archive",
+						`onMemoryTurnWikiWritesCommitted callback failed (session=${sessionId}):`,
+						(err as Error)?.message ?? err);
+				}
+			}
 		} catch (err) {
 			// Best-effort: a failure here MUST NOT block the export+delete.
 			// Log + continue with memoryTurnRan=false.

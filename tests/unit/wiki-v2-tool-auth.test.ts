@@ -397,14 +397,27 @@ describe("wiki-v2 §A registry — no 2nd agent-visible Wiki tool name [架构 l
 		expect(name, "factory tool name must be 'Wiki' (plan-05 replaces old impl in-place)").toBe("Wiki");
 	});
 
-	test("old wiki-tool.ts is NOT modified to delegate to createWikiTool (no premature swap)", () => {
-		// Plan-04 says factory is exported but unregistered; the old tool keeps its
-		// own 10-action enum. If someone wired the old tool's execute to the new
-		// factory, plan-05's atomic-swap boundary would be broken.
-		const oldPath = join(REPO_ROOT, "src/tools/wiki-tool.ts");
-		const src = readFileSync(oldPath, "utf-8");
-		expect(src).not.toContain("createWikiTool");
-		expect(src).not.toContain("wiki-v2-tool");
+	test("wiki-tool.ts delegates to createWikiTool (plan-05 §5 atomic swap)", () => {
+		// plan-05 §5: ToolRegistry 中 Wiki 名称仍只有 `Wiki`,指向 plan-04 的新实现。
+		// sub-04 时 factory 已 export 但未注册,此断言锁定 "尚未切换" 状态;
+		// sub-05 原子切换后,wiki-tool.ts 改为 createWikiTool 的注册包装 — 该断言
+		// 必须更新为反映切换后的预期。
+		const path = join(REPO_ROOT, "src/tools/wiki-tool.ts");
+		const src = readFileSync(path, "utf-8");
+		expect(src).toContain("createWikiTool");
+		expect(src).toContain("wiki-v2-tool");
+		// 注释里会引用历史名字(wikiActionSchema / wikiV2ActionSchema 作为退役
+		// 说明),但代码里不能复活 —— 剥离注释后检查。
+		const code = src
+			.replace(/\/\*[\s\S]*?\*\//g, "")
+			.replace(/^\s*\/\/.*$/gm, "")
+			.replace(/\s*\/\/.*$/g, "");
+		// Plan-05 §5 拒绝条件:不提供 WikiLegacy / WikiV2 别名(identifier 级别)。
+		expect(code, "no WikiLegacy/WikiV2 identifier in live code").not.toMatch(/\bWikiLegacy\b|\bWikiV2\b/);
+		// Plan-05 §5:旧 10-action schema 不得 export 复活。
+		expect(code, "no revived wikiActionSchema export").not.toMatch(/export\s+const\s+wikiActionSchema/);
+		// Plan-05 §8:旧 buildGlobalAnchorWikiCallerCtx 全树捷径不得复活。
+		expect(code, "no revived global-anchor caller shortcut").not.toMatch(/\bbuildGlobalAnchorWikiCallerCtx\b/);
 	});
 });
 

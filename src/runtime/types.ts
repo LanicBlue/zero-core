@@ -473,6 +473,25 @@ export interface RuntimeProviderConfig {
 // Session config — derived from AgentRecord
 // ---------------------------------------------------------------------------
 
+/**
+ * wiki-system-redesign plan-05 §7:通用动态 system section contract。
+ *
+ * **非 Wiki 专用** —— AgentLoop 只消费通用 section 数组,不识别任何
+ * Wiki 字面 section 名(acceptance-05 §D 41「不含 wiki-context/wiki-system-
+ * anchors 字面 section」)。
+ *
+ * 使用方:AgentService 把 Wiki context(及其它需要 hot-reload 的 system
+ * section)包装为此形状注入 SessionConfig.dynamicSystemSections。
+ */
+export interface DynamicSystemSection {
+	/** Section 唯一 key(SystemPromptAssembler 据此去重/替换/invalidate)。 */
+	name: string;
+	/** 渲染函数;每次 assemble 时调用,空串 → section 被丢。 */
+	compute: () => string;
+	/** true = 每 turn 重算;false = 缓存到 invalidate(name)。 */
+	cacheBreak: boolean;
+}
+
 export interface SessionConfig {
 	agentId: string;
 	workspaceDir: string;
@@ -625,6 +644,31 @@ export interface SessionConfig {
 	 * skillPolicy change via applyConfigUpdate (mirrors work-context/wikiAnchors).
 	 */
 	getSkillSection?: () => string;
+	/**
+	 * wiki-system-redesign plan-05 §7:通用动态 system section 数组。
+	 *
+	 * AgentService 把 Wiki context(及其它需要 hot-reload 的 system section)
+	 * 包装为 `{name, compute, cacheBreak}` 通用条目注入。AgentLoop 只消费
+	 * 通用数组 —— **不**import Wiki compiler/store,不出现 'wiki-context' /
+	 * 'wiki-system-anchors' 字面量(acceptance-05 §D 41)。
+	 *
+	 * - `name`:section 唯一 key(SystemPromptAssembler 据此去重 / 替换 /
+	 *   invalidate)。
+	 * - `compute`:每次 assemble 时调用,返回 section 文本(空串 → section 被丢)。
+	 * - `cacheBreak`:true 时每 turn 重算;false 时缓存到 invalidate(name)。
+	 *
+	 * Wiki section 由 AgentService 在 session build 时构造为:
+	 *   `{name:'wiki-context', compute: () => compileWikiContext(...).text, cacheBreak:false}`
+	 * applyConfigUpdate 通用 replace/invalidate 不含 Wiki 判断。
+	 */
+	dynamicSystemSections?: DynamicSystemSection[];
+	/**
+	 * wiki-system-redesign plan-05 §4:Host 编译后的 Wiki access(AgentService
+	 * 在 session build 时从 AgentRecord.wikiGrants + activeProjectId 编译)。
+	 * AgentLoop 把它桥入 callerCtx.wikiAccess 供 Wiki v2 tool 读取。AgentLoop
+	 * **不**直接读 grants / agentStore / wiki.db(acceptance-05 §B)。
+	 */
+	wikiAccess?: import("../shared/wiki-types.js").CompiledWikiAccess;
 	/**
 	 * v0.8 (P3): ManagementService handle for the domain action tools
 	 * (Project/Agent/Cron). Only set on zero sessions.

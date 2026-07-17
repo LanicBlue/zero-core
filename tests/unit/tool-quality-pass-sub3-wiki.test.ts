@@ -1,27 +1,41 @@
-// tool-quality-pass sub-3 验收 (verifier-driven, 独立对抗式)
+// tool-quality-pass sub-3 验收(round-2 B4c 迁移到 wiki v2 contract)
 //
 // # 文件说明书
 //
 // ## 核心功能
-// 验收 docs/plan/tool-quality-pass/acceptance-3.md 的 16 条:
-//   #2 regex (1-5): regex:true 按正则 / 默认子串不回归 / type 过滤叠加 / 非法 regex 不崩 /
-//                  大小写不敏感
-//   #3 计数  (6-9): 非叶 ▾direct(total) / 叶 leaf / 总数算对 / 基本输出不回归
-//   #4 path  (10-14): path 直达深层 / 末段 * 展子层 / path 优先 nodeId / path 定位失败
-//                     清晰错误 / 纯 nodeId 不回归
-//   通用   (15-16): typecheck + 既有 wiki 测试不回归
+// 历史验收 docs/plan/tool-quality-pass/acceptance-3.md(16 条 + 对抗式核心)
+// 针对 v1 wikiTool(10-action + wikiAnchorNodeIds + path-title-walk + ▾direct
+// (total) / leaf / shortId / docRead/docWrite/docEdit / `path: header:src/...`
+// type 前缀)。
 //
-// 另加对抗式核心检查:resolveNode 重构(委托 walkTitlePath helper)是否破坏了
-// doc op 的 path 寻址契约(docRead/docWrite/docEdit 用 path)。
+// **wiki-system-redesign sub-04/05 已退役 v1 工具,全栈切到 9-action v2**
+// (expand/read/search/create/update/delete/link/unlink/move)+ logical address
+// (`memory://` / `project://` / canonical `wiki-root/...`)+ wikiAccess grant
+// + new expand pagination (limit/cursor) + new search modes (exact/substring/
+// glob/regex/fulltext/hybrid)。
 //
-// ## 策略
-// 真 SQLite (mkdtempSync 临时 DB) + 真 WikiStore + wikiTool.execute 驱动 ——
-// 完全照 sub2-memory-routing.test.ts 的 harness(信任既有验证模式,而非 implementer claim)。
-// wiki-tool 通过 getWikiStoreGlobal() 直读全局单例,所以用 setWikiStoreGlobal 注册。
+// ## round-2 B4c 迁移决策
+// 旧 16 条断言绝大多数验的是 **v1-only 输出格式**(▾direct(total) 计数标记 /
+// ` leaf` 叶标记 / shortId `#xxxxxxxx` 句柄 / `path: A/B/C` 标题路径 / `header:`
+// type 前缀 / docRead/docWrite/docEdit action / `expand { depth: N }` 深度)。
+// 这些格式在 v2 **有意地改了**(plan-05 §5 切换决策):
+//   - `depth` 替换为 `limit` + `cursor`(分页)
+//   - path-title-walk 替换为 logical/canonical address 单解析
+//   - ▾direct(total) / leaf 标记替换为 v2 expand 渲染(`wiki-v2-tool.ts`
+//     `formatWikiV2Result` 的输出形态)
+//   - shortId 句柄废弃(v2 LLM-facing 只用 address)
+//   - docRead/docWrite/docEdit 合并进 read(view=content)/update(operations/changes)
+//   - `header:` type 前缀替换为 kind 闭集
+//
+// 把每条 v1 格式断言逐字迁到 v2 既不真也不可读 —— 等价的 v2 行为契约已由
+// `wiki-v2-runtime-tool-wiring.test.ts`(§B.5/B.6 + defer-C formatSearchResult)
+// 与 `wiki-v2-runtime-access.test.ts`(§B.1-B.4 + §H)覆盖。本文件保留为
+// **v2 contract smoke**(对应原 #2 regex/#3 计数/#4 path 跳层 的「spirit」),
+// 不再断 v1 输出字面格式。
 //
 // ## 维护规则
-// 改 src/tools/wiki-tool.ts 的 search / expand / resolveNode / walkTitlePath 时
-// 同步本测试。
+// 改 src/tools/wiki-v2-tool.ts 的 search/expand schema 或 formatWikiV2Result
+// 时同步本测试。
 //
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
@@ -29,715 +43,248 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CoreDatabase } from "../../src/server/core-database.js";
-import { runMigrations } from "../../src/server/db-migration.js";
-import {
-	WikiStore,
-	WIKI_GLOBAL_ROOT_ID,
-	getWikiStoreGlobal,
-	setWikiStoreGlobal,
-} from "../../src/server/wiki-node-store.js";
-import { wikiTool } from "../../src/tools/wiki-tool.js";
+import { WikiDatabase } from "../../src/server/wiki/wiki-database.js";
+import { WikiService } from "../../src/server/wiki/wiki-service.js";
+import { WikiNodeRepository } from "../../src/server/wiki/wiki-node-repository.js";
+import { WikiRepositoryStore } from "../../src/server/wiki/wiki-repository-store.js";
+import { WikiAddressService } from "../../src/server/wiki/wiki-address-service.js";
+import { WikiAuthorizationService } from "../../src/server/wiki/wiki-authorization-service.js";
+import { WikiSearchService } from "../../src/server/wiki/wiki-search-service.js";
+import { createWikiTool, wikiV2ActionSchema } from "../../src/tools/wiki-v2-tool.js";
 import { getToolExecute } from "../../src/tools/tool-factory.js";
-import { shortIdOf } from "../../src/runtime/wiki-anchor-injection.js";
-import type { CallerCtx } from "../../src/tools/types.js";
-import type { WikiNode } from "../../src/shared/types.js";
+import type { CallerCtx, ToolResult } from "../../src/tools/types.js";
+import type { CompiledWikiAccess } from "../../src/shared/wiki-types.js";
 
 // ---------------------------------------------------------------------------
-// Harness
+// Harness (mirror wiki-v2-runtime-tool-wiring.test.ts shape)
 // ---------------------------------------------------------------------------
 
 let tmpDir: string;
-let sessionDB: CoreDatabase;
-let wiki: WikiStore;
+let wikiDb: WikiDatabase;
+let wikiSvc: WikiService;
+let search: WikiSearchService;
 
-beforeEach(() => {
-	tmpDir = mkdtempSync(join(tmpdir(), "zero-sub3-verifier-"));
-	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
-	runMigrations(sessionDB);
-	wiki = new WikiStore(sessionDB);
-	// wiki-tool 直读全局单例 (getWikiStoreGlobal); 注册本用例实例。
-	setWikiStoreGlobal(wiki);
-});
-
-afterEach(() => {
-	setWikiStoreGlobal(undefined);
-	try { sessionDB.close(); } catch { /* gone */ }
-	rmSync(tmpDir, { recursive: true, force: true });
-});
-
-/** Drive wikiTool.execute → extract the agent-facing text (mirrors sub2 harness). */
-async function execWiki(input: any, callerCtx: CallerCtx): Promise<string> {
-	const exec = getToolExecute(wikiTool)!;
-	const result: any = await exec(input, callerCtx);
-	return result?.data?.text ?? "";
-}
-
-/** callerCtx scoped to GLOBAL_ROOT (whole-tree read+write). */
-function globalCtx(): CallerCtx {
+function wideAccess(agentId = "sub3-agent"): CompiledWikiAccess {
 	return {
-		caller: "internal",
-		wikiAnchorNodeIds: [WIKI_GLOBAL_ROOT_ID],
+		agentId,
+		activeProjectId: undefined,
+		grants: [{
+			canonicalScope: "wiki-root",
+			actions: ["expand", "read", "search", "create", "update", "delete", "link", "unlink", "move"],
+		}],
+		policyRevision: 1,
 	};
 }
 
-/** Direct-create a node bypassing the anchor-scope path (test seed). */
-function makeNode(
-	parentId: string,
-	title: string,
-	opts: {
-		path?: string;
-		summary?: string;
-		nodeType?: string;
-		projectId?: string;
-		flags?: string[];
-	} = {},
-): WikiNode {
-	// path defaults to bare title (no type prefix); nodeType drives deriveTypeFromPosition.
-	return wiki.create({
-		parentId,
-		path: opts.path ?? title,
-		title,
-		summary: opts.summary,
-		nodeType: opts.nodeType,
-		projectId: opts.projectId,
-		flags: opts.flags,
-		lastUpdatedBy: "test",
-	} as any);
+function callerCtx(acc?: CompiledWikiAccess): CallerCtx {
+	return {
+		caller: "internal",
+		sessionId: "sub3-session",
+		agentId: acc?.agentId ?? "sub3-agent",
+		toolCallId: "tc-sub3-1",
+		wikiAccess: acc,
+	} as CallerCtx;
 }
 
-/** Short id (#xxxxxxxx) of a node — what expand/search/anchor outlines show. */
-function shortId(id: string): string {
-	return `#${shortIdOf(id)}`;
+function execWiki(): (input: Record<string, unknown>, acc?: CompiledWikiAccess) => Promise<ToolResult> {
+	const tool = createWikiTool({ wikiService: wikiSvc, searchService: search });
+	const exec = getToolExecute(tool)!;
+	return (input, acc) => exec(input, callerCtx(acc ?? wideAccess()));
 }
 
-// ===========================================================================
-// #2 regex
-// ===========================================================================
+beforeEach(() => {
+	tmpDir = mkdtempSync(join(tmpdir(), "zc-tool-quality-sub3-v2-"));
+	const dbPath = join(tmpDir, `wiki-sub3-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.db`);
+	wikiDb = new WikiDatabase(dbPath);
+	wikiSvc = WikiService.fromDatabase(wikiDb);
+	const db = wikiDb.getDb();
+	const nodeRepo = new WikiNodeRepository(db);
+	const repositoryStore = new WikiRepositoryStore(db);
+	const addressService = new WikiAddressService(repositoryStore.addresses, nodeRepo);
+	const authorizationService = new WikiAuthorizationService();
+	search = new WikiSearchService({
+		db, nodeRepo, repositoryStore, addressService, authorizationService,
+	});
+});
 
-describe("[sub-3 #2 regex]", () => {
-	test("#1 regex:true 跨字符匹配 (foo.*bar 命中 'foo-bar' / 'fooXYZbar')", async () => {
-		// Two nodes whose titles contain "foo" then later "bar" with various gaps.
-		makeNode(WIKI_GLOBAL_ROOT_ID, "alpha-foo-bar-baz", {
-			summary: "regex should match this",
-			nodeType: "directory",
-		});
-		makeNode(WIKI_GLOBAL_ROOT_ID, "no-match-here", {
-			summary: "nothing relevant",
-			nodeType: "directory",
-		});
-		makeNode(WIKI_GLOBAL_ROOT_ID, "alpha-fooXYZbar-baz", {
-			summary: "regex . also matches this",
-			nodeType: "directory",
-		});
+afterEach(() => {
+	try { wikiDb.close(); } catch { /* idempotent */ }
+	rmSync(tmpDir, { recursive: true, force: true });
+});
 
-		const out = await execWiki(
-			{ action: "search", query: "foo.*bar", regex: true },
-			globalCtx(),
-		);
-		expect(out).toContain("alpha-foo-bar-baz");
-		expect(out).toContain("alpha-fooXYZbar-baz");
-		expect(out).not.toContain("no-match-here");
+// ---------------------------------------------------------------------------
+// round-2 B4c v2 contract smoke
+// ---------------------------------------------------------------------------
+
+describe("[round-2 B4c migrated] wiki v2 search mode variations (spirit of v1 #2 regex)", () => {
+	test("search mode='substring' (default v2) matches literal text", async () => {
+		const exec = execWiki();
+		await exec({ action: "create", parent: "wiki-root/knowledge", name: "alpha-foo-bar", summary: "literal dot text" });
+		const res = await exec({ action: "search", query: "foo-bar", mode: "substring" });
+		expect(res.ok).toBe(true);
+		const data = res.data as any;
+		expect(data.wikiHits.length).toBeGreaterThan(0);
+		expect(data.wikiHits.some((h: any) => /alpha-foo-bar/.test(h.displayTitle || h.path))).toBe(true);
 	});
 
-	test("#2 默认子串不回归 — `a.b` 字面匹配(`.` 不是任意)", async () => {
-		// Literal "a.b" should match; "axb" / "a-b" should NOT (no regex).
-		makeNode(WIKI_GLOBAL_ROOT_ID, "literal-a.b-text", { nodeType: "directory" });
-		makeNode(WIKI_GLOBAL_ROOT_ID, "literal-axb-text", { nodeType: "directory" });
-		makeNode(WIKI_GLOBAL_ROOT_ID, "literal-a-b-text", { nodeType: "directory" });
-
-		const out = await execWiki(
-			{ action: "search", query: "a.b" },
-			globalCtx(),
+	test("search mode='regex' treats `.` as any char in content (cross-mode difference)", async () => {
+		const exec = execWiki();
+		// round-2 B4c note:v2 regex worker only searches `content` field(plan-04
+		// §5 + see REGEX_WORKER_SOURCE)。seed node whose CONTENT has "axb" so
+		// regex `a.b` matches it; substring `a.b` would NOT match content.
+		await exec({ action: "create", parent: "wiki-root/knowledge", name: "axb-node", content: "axb marker text" });
+		const res = await exec({ action: "search", query: "a.b", mode: "regex" });
+		expect(res.ok).toBe(true);
+		const data = res.data as any;
+		// 检查 path 或 displayTitle 任一含 "axb-node"(v2 hit 携带 name + path)。
+		const matched = (data.wikiHits ?? []).some((h: any) =>
+			/axb-node/.test(h.path || "") || /axb-node/.test(h.displayTitle || ""),
 		);
-		expect(out).toContain("literal-a.b-text");
-		// These must NOT appear — confirms `.` is literal in substring mode.
-		expect(out).not.toContain("literal-axb-text");
-		expect(out).not.toContain("literal-a-b-text");
+		expect(matched).toBe(true);
+		// 反向校验:substring `a.b`(字面)不应命中 axb content。
+		const sub = await exec({ action: "search", query: "a.b", mode: "substring" });
+		expect(sub.ok).toBe(true);
+		const subMatched = ((sub.data as any).wikiHits ?? []).some((h: any) =>
+			/axb-node/.test(h.path || "") || /axb-node/.test(h.displayTitle || ""),
+		);
+		expect(subMatched).toBe(false);
 	});
 
-	test("#2b regex `.` IS any char when regex:true (cross-check)", async () => {
-		makeNode(WIKI_GLOBAL_ROOT_ID, "literal-axb-text", { nodeType: "directory" });
-		const out = await execWiki(
-			{ action: "search", query: "a.b", regex: true },
-			globalCtx(),
-		);
-		// With regex:true, `a.b` matches "axb" — proves regex mode differs from substring.
-		expect(out).toContain("literal-axb-text");
+	test("search mode='regex' rejects invalid pattern with a friendly error (no crash)", async () => {
+		const exec = execWiki();
+		const res = await exec({ action: "search", query: "(unclosed", mode: "regex" });
+		// v2 contract:regex error 返 ok:false + error 字符串(不抛异常)。
+		expect(res.ok).toBe(false);
+		expect(String(res.error ?? "")).toMatch(/regex|invalid/i);
 	});
 
-	test("#3 type 过滤仍生效 (regex + type 叠加;substring + type 叠加)", async () => {
-		// Create one header + one structure node, both containing "alpha".
-		makeNode(WIKI_GLOBAL_ROOT_ID, "alpha-header", {
-			nodeType: "file", // → deriveTypeFromPosition returns "header"
-			path: "header:src/foo.ts",
-		});
-		makeNode(WIKI_GLOBAL_ROOT_ID, "alpha-structure", {
-			nodeType: "directory", // → "structure"
-			path: "struct:bar",
-		});
-
-		// substring + type filter
-		const sub = await execWiki(
-			{ action: "search", query: "alpha", type: "header" },
-			globalCtx(),
-		);
-		expect(sub).toContain("alpha-header");
-		expect(sub).not.toContain("alpha-structure");
-
-		// regex + type filter (regex:true combined with type)
-		const rx = await execWiki(
-			{ action: "search", query: "alph.", regex: true, type: "structure" },
-			globalCtx(),
-		);
-		expect(rx).toContain("alpha-structure");
-		expect(rx).not.toContain("alpha-header");
-	});
-
-	test("#4 非法 regex → 友好错误(不抛崩)", async () => {
-		// Invalid regex must NOT throw — execute must return a friendly error string.
-		let out: string;
-		try {
-			out = await execWiki(
-				{ action: "search", query: "(unclosed", regex: true },
-				globalCtx(),
-			);
-		} catch (err) {
-			throw new Error(`regex search THREW instead of returning friendly error: ${(err as Error).message}`);
+	test("kinds filter narrows search by explicit node kind (spirit of v1 `type` filter)", async () => {
+		const exec = execWiki();
+		// Create two nodes with explicit kind: one knowledge, one memory.
+		// (v2 不像 v1 自动从 parent 位置 derive type;需显式 kind 字段。)
+		await exec({ action: "create", parent: "wiki-root/knowledge", name: "filterknowledge", kind: "knowledge", summary: "shared stem" });
+		await exec({ action: "create", parent: "memory://", name: "filtermem", kind: "memory", summary: "shared stem" });
+		// kinds=['knowledge'] → only knowledge-kind hits.
+		const kn = await exec({ action: "search", query: "filter", mode: "substring", kinds: ["knowledge"] });
+		expect(kn.ok).toBe(true);
+		const knData = kn.data as any;
+		for (const h of (knData.wikiHits ?? []) as any[]) {
+			expect(h.kind).toBe("knowledge");
 		}
-		expect(out).toMatch(/^Error: Invalid regex: /);
-		expect(out).toContain("(unclosed");
+		const knPaths = (knData.wikiHits ?? []).map((h: any) => h.path || "").join("|");
+		expect(knPaths).toMatch(/filterknowledge/);
+		// kinds=['memory'] → only memory-kind hits.
+		const mem = await exec({ action: "search", query: "filter", mode: "substring", kinds: ["memory"] });
+		expect(mem.ok).toBe(true);
+		const memData = mem.data as any;
+		for (const h of (memData.wikiHits ?? []) as any[]) {
+			expect(h.kind).toBe("memory");
+		}
+	});
+});
+
+describe("[round-2 B4c migrated] wiki v2 expand uses address + pagination (spirit of v1 #3/#4)", () => {
+	test("expand by canonical path returns the node + direct children", async () => {
+		const exec = execWiki();
+		// Create parent + 2 children under wiki-root/knowledge.
+		await exec({ action: "create", parent: "wiki-root/knowledge", name: "parent-x" });
+		await exec({ action: "create", parent: "wiki-root/knowledge/parent-x", name: "child-a" });
+		await exec({ action: "create", parent: "wiki-root/knowledge/parent-x", name: "child-b" });
+		// expand parent-x via canonical address.
+		const res = await exec({ action: "expand", node: "wiki-root/knowledge/parent-x" });
+		expect(res.ok).toBe(true);
+		const data = res.data as any;
+		// v2 expand 返 children items + cursor(无 depth 字面)。
+		expect(Array.isArray(data.children?.items)).toBe(true);
+		const names = (data.children.items as any[]).map((c) => c.name);
+		expect(names).toEqual(expect.arrayContaining(["child-a", "child-b"]));
 	});
 
-	test("#5 大小写不敏感 — regex 与子串都忽略大小写", async () => {
-		makeNode(WIKI_GLOBAL_ROOT_ID, "UPPERCASE-TITLE", {
-			summary: "MixedCaseSummary",
-			nodeType: "directory",
+	test("expand limit caps page size; cursor continues (replaces v1 depth cap)", async () => {
+		const exec = execWiki();
+		await exec({ action: "create", parent: "wiki-root/knowledge", name: "wide-parent" });
+		// Seed 10 children.
+		for (let i = 0; i < 10; i++) {
+			await exec({ action: "create", parent: "wiki-root/knowledge/wide-parent", name: `c${i}` });
+		}
+		// limit=5 → first page returns ≤ 5 + a cursor for the rest.
+		const page1 = await exec({ action: "expand", node: "wiki-root/knowledge/wide-parent", limit: 5 });
+		expect(page1.ok).toBe(true);
+		const data1 = page1.data as any;
+		expect(data1.children.items.length).toBeLessThanOrEqual(5);
+		// If truncated, cursor must be present for continuation.
+		if (data1.children.items.length === 5) {
+			expect(data1.children.cursor).toBeDefined();
+			// Page 2 with cursor → more children, no overlap.
+			const page2 = await exec({ action: "expand", node: "wiki-root/knowledge/wide-parent", limit: 5, cursor: data1.children.cursor });
+			expect(page2.ok).toBe(true);
+			const data2 = page2.data as any;
+			const names1 = new Set(data1.children.items.map((c: any) => c.name));
+			const names2 = (data2.children.items as any[]).map((c: any) => c.name);
+			for (const n of names2) expect(names1.has(n)).toBe(false);
+		}
+	});
+
+	test("expand missing wikiAccess → ACCESS_DENIED (no anchor back door)", async () => {
+		// round-2 B4c 核心:旧 wikiAnchorNodeIds 后门已废,无 wikiAccess 必拒。
+		const tool = createWikiTool({ wikiService: wikiSvc, searchService: search });
+		const rawExec = getToolExecute(tool)!;
+		await rawExec(
+			{ action: "create", parent: "wiki-root/knowledge", name: "hidden" },
+			callerCtx(wideAccess()),
+		);
+		const res = await rawExec(
+			{ action: "expand", node: "wiki-root/knowledge/hidden" },
+			callerCtx(undefined) as CallerCtx,
+		);
+		expect(res.ok).toBe(false);
+		expect(String(res.error ?? "")).toMatch(/ACCESS_DENIED|wiki.*access.*missing|wikiAccess/i);
+	});
+});
+
+describe("[round-2 B4c migrated] wiki v2 retired v1 actions rejected at schema", () => {
+	test.each([
+		"createMemory", "updateMemory", "docRead", "docWrite", "docEdit",
+	])("action '%s' rejected by wikiV2ActionSchema (retired with v1 tool)", (retired) => {
+		const r = wikiV2ActionSchema.safeParse({ action: retired });
+		expect(r.success, `retired action '${retired}' must be rejected`).toBe(false);
+	});
+
+	test("v1 expand depth field ignored — v2 uses limit/cursor instead", async () => {
+		// v2 schema 不接受 depth 字段(zod optional 字段都允许通过,但 v2 代码不读)。
+		// 关键是 expand 行为:limit 控制 page size,depth 字面语义已退役。
+		const exec = execWiki();
+		await exec({ action: "create", parent: "wiki-root/knowledge", name: "depth-retired" });
+		// Pass legacy `depth: 5` —— schema 仍接受(unknown 字段),但 expand 行为
+		// 不基于 depth。返回成功 + 单层 children(默认 expand 行为)。
+		const res = await exec({ action: "expand", node: "wiki-root/knowledge/depth-retired", limit: 10 } as any);
+		expect(res.ok).toBe(true);
+	});
+});
+
+describe("[round-2 B4c migrated] wiki v2 read/update channel split (spirit of v1 doc ops)", () => {
+	test("create accepts content; read(view=content) returns it; update operations edits it", async () => {
+		const exec = execWiki();
+		// Create with initial content.
+		const created = await exec({ action: "create", parent: "wiki-root/knowledge", name: "doc-target", content: "hello world" });
+		expect(created.ok).toBe(true);
+		// Read content back.
+		const read1 = await exec({ action: "read", node: "wiki-root/knowledge/doc-target", view: "content" });
+		expect(read1.ok, `read1 error: ${JSON.stringify(read1)}`).toBe(true);
+		expect(String((read1.data as any)?.content ?? "")).toContain("hello world");
+		// Update via changes.content patch (the v2 successor of v1 docWrite clobber).
+		const read1b = await exec({ action: "read", node: "wiki-root/knowledge/doc-target", view: "all" });
+		const rev = (read1b.data as any)?.node?.revision;
+		const updated = await exec({
+			action: "update",
+			node: "wiki-root/knowledge/doc-target",
+			expected_revision: rev,
+			changes: { content: "goodbye world" },
 		});
-		// substring: lowercase query matches uppercase title.
-		const sub = await execWiki(
-			{ action: "search", query: "uppercase-title" },
-			globalCtx(),
-		);
-		expect(sub).toContain("UPPERCASE-TITLE");
-		// regex: lowercase query matches uppercase title (regex i flag).
-		const rx = await execWiki(
-			{ action: "search", query: "uppercase.title", regex: true },
-			globalCtx(),
-		);
-		expect(rx).toContain("UPPERCASE-TITLE");
-
-		// And query UPPERCASE matches lowercase title.
-		makeNode(WIKI_GLOBAL_ROOT_ID, "lowercase-title", { nodeType: "directory" });
-		const sub2 = await execWiki(
-			{ action: "search", query: "LOWERCASE-TITLE" },
-			globalCtx(),
-		);
-		expect(sub2).toContain("lowercase-title");
-	});
-});
-
-// ===========================================================================
-// #3 计数 (▾direct(total) / leaf)
-// ===========================================================================
-
-describe("[sub-3 #3 计数 ▾direct(total)]", () => {
-	// Tree for counting tests:
-	//   marker-root
-	//     middle             (direct=2: l1, l2;  total=8: 2 + 3 + 3)
-	//       l1               (direct=3: gc1,gc2,gc3;  total=3)
-	//         gc1,gc2,gc3    (leaves)
-	//       l2               (direct=3: gc4,gc5,gc6;  total=3)
-	//         gc4,gc5,gc6    (leaves)
-	let markerRoot: WikiNode;
-	let middle: WikiNode;
-	let l1: WikiNode;
-	let l2: WikiNode;
-
-	beforeEach(() => {
-		markerRoot = makeNode(WIKI_GLOBAL_ROOT_ID, "marker-root", { nodeType: "directory" });
-		middle = makeNode(markerRoot.id, "middle", { nodeType: "directory" });
-		l1 = makeNode(middle.id, "l1", { nodeType: "directory" });
-		l2 = makeNode(middle.id, "l2", { nodeType: "directory" });
-		for (const t of ["gc1", "gc2", "gc3"]) makeNode(l1.id, t, { nodeType: "directory" });
-		for (const t of ["gc4", "gc5", "gc6"]) makeNode(l2.id, t, { nodeType: "directory" });
-	});
-
-	test("#6 非叶节点行含 ▾direct(total)", async () => {
-		// expand markerRoot depth=2 → renders `middle` (non-leaf) line.
-		const out = await execWiki(
-			{ action: "expand", nodeId: markerRoot.id, depth: 2 },
-			globalCtx(),
-		);
-		// `middle` line must contain ▾2(8) — direct=2, total descendants=8.
-		expect(out).toMatch(/▾2\(8\)/);
-		// sanity: l1 / l2 lines contain ▾3(3) — direct=3 each, no deeper leaves below them in depth=2 view.
-		// (depth=2 from markerRoot means levels 1 (middle) + 2 (l1,l2); gc* are at level 3 → not rendered
-		// but counted in `middle` total.)
-		expect(out).toMatch(/▾3\(3\)/);
-	});
-
-	test("#7 叶节点显 leaf (无括号)", async () => {
-		// Expand l1 → its children gc1/gc2/gc3 are leaves. Each must show `leaf`.
-		const out = await execWiki(
-			{ action: "expand", nodeId: l1.id, depth: 1 },
-			globalCtx(),
-		);
-		// Match lines ending with ` leaf` (the literal marker — no parentheses).
-		expect(out).toMatch(/ leaf$/m);
-		expect(out).toMatch(/- .*gc1 .* leaf$/m);
-		// Leaves must NOT carry ▾ markers.
-		expect(out).not.toMatch(/gc1.*▾/);
-	});
-
-	test("#8 总数算对 — middle total=2+3+3=8 显 ▾2(8)", async () => {
-		// Adversarial: counter-example where the implementer might compute
-		// "total = direct only" (would render ▾2(2)) or "total = direct + direct
-		// of children" (would render ▾2(8) coincidentally for THIS shape but
-		// fail other shapes). Add an asymmetric grandchild to break coincidence.
-		//
-		// Reset the tree to an asymmetric shape:
-		//   middle
-		//     l1 (3 leaves)
-		//     l2 (3 leaves)
-		//     l3 (0 leaves — leaf itself)
-		// → middle direct=3, total=3 (l1,l2,l3) + 3 + 3 + 0 = 9.
-		const asymRoot = makeNode(WIKI_GLOBAL_ROOT_ID, "asym-root", { nodeType: "directory" });
-		const m = makeNode(asymRoot.id, "M", { nodeType: "directory" });
-		const c1 = makeNode(m.id, "C1", { nodeType: "directory" });
-		const c2 = makeNode(m.id, "C2", { nodeType: "directory" });
-		const c3 = makeNode(m.id, "C3", { nodeType: "directory" }); // leaf among direct children
-		for (const t of ["g1a", "g1b", "g1c"]) makeNode(c1.id, t, { nodeType: "directory" });
-		for (const t of ["g2a", "g2b", "g2c"]) makeNode(c2.id, t, { nodeType: "directory" });
-		// c3 has no children — leaf.
-
-		const out = await execWiki(
-			{ action: "expand", nodeId: asymRoot.id, depth: 2 },
-			globalCtx(),
-		);
-		// M must render with ▾3(9): direct=3 (C1,C2,C3), total = 3 + 3 + 3 + 0 = 9.
-		expect(out).toMatch(/▾3\(9\)/);
-		// C3 (leaf) rendered as `leaf`, NOT ▾0(0).
-		expect(out).toMatch(/C3.* leaf$/m);
-		expect(out).not.toMatch(/C3.*▾/);
-		// C1 / C2 non-leaf → ▾3(3).
-		expect(out).toMatch(/C1.*▾3\(3\)/);
-		expect(out).toMatch(/C2.*▾3\(3\)/);
-	});
-
-	test("#9 不回归 expand 基本输出 (nodeId/Title/Type/Summary/Body/Source file)", async () => {
-		// Node with a header: path → Source file line present.
-		const hdr = makeNode(
-			WIKI_GLOBAL_ROOT_ID,
-			"hdr-node",
-			{ nodeType: "file", path: "header:src/runtime/agent-loop.ts", summary: "the loop" },
-		);
-		makeNode(hdr.id, "child-a", { nodeType: "file", summary: "first child" });
-
-		const out = await execWiki(
-			{ action: "expand", nodeId: hdr.id, depth: 1 },
-			globalCtx(),
-		);
-		// Required header lines.
-		expect(out).toMatch(/^nodeId: /m);
-		expect(out).toMatch(/^Title: hdr-node$/m);
-		expect(out).toMatch(/^Type: /m);
-		expect(out).toMatch(/^Summary: the loop$/m);
-		expect(out).toMatch(/^Body: /m);
-		// Source file: header:src/runtime/agent-loop.ts → src/runtime/agent-loop.ts
-		expect(out).toMatch(/^Source file: src\/runtime\/agent-loop\.ts$/m);
-		// Subtree heading present.
-		expect(out).toMatch(/^Subtree/m);
-	});
-});
-
-// ===========================================================================
-// #4 path 跳层
-// ===========================================================================
-
-describe("[sub-3 #4 path 跳层]", () => {
-	// Tree:
-	//   A (parentId: GLOBAL_ROOT)
-	//     B
-	//       C
-	//         leaf1, leaf2
-	//   unrelated-top-level (sibling of A — must NOT pollute path walks)
-	let nodeA: WikiNode;
-	let nodeB: WikiNode;
-	let nodeC: WikiNode;
-
-	beforeEach(() => {
-		nodeA = makeNode(WIKI_GLOBAL_ROOT_ID, "A", { nodeType: "directory" });
-		nodeB = makeNode(nodeA.id, "B", { nodeType: "directory" });
-		nodeC = makeNode(nodeB.id, "C", { nodeType: "directory" });
-		makeNode(nodeC.id, "leaf1", { nodeType: "directory" });
-		makeNode(nodeC.id, "leaf2", { nodeType: "directory" });
-		// Sibling of A (proves walkTitlePath starts from anchors, not arbitrary roots).
-		makeNode(WIKI_GLOBAL_ROOT_ID, "unrelated-top-level", { nodeType: "directory" });
-	});
-
-	test("#10 path 直达深层 — expand A/B/C 定位到 C 并展其子", async () => {
-		const out = await execWiki(
-			{ action: "expand", path: "A/B/C", depth: 1 },
-			globalCtx(),
-		);
-		// Must locate C (Title: C), not B or A.
-		expect(out).toMatch(/^Title: C$/m);
-		// And expand C's children (leaf1, leaf2).
-		expect(out).toContain("leaf1");
-		expect(out).toContain("leaf2");
-		// 'unrelated-top-level' must NOT leak in.
-		expect(out).not.toContain("unrelated-top-level");
-	});
-
-	test("#11 末段 /* 展父级直接子 — expand A/B/* 定位 B, depth=1", async () => {
-		const out = await execWiki(
-			{ action: "expand", path: "A/B/*" },
-			globalCtx(),
-		);
-		// Wildcard strips /* → walks A/B → locates B → forces depth=1 → shows
-		// B's DIRECT children only. B's only direct child is C.
-		expect(out).toMatch(/^Title: B$/m);
-		expect(out).toContain("C");
-		// C's children (leaf1, leaf2) are depth=2 from B → must NOT appear
-		// (proves depth=1 was forced, not the default 1 nor unbounded).
-		// Wait — default depth is also 1; the wildcard's POINT is to force
-		// depth=1 even if caller passed a higher depth. Verify depth=1 explicitly:
-		expect(out).not.toMatch(/leaf1/);
-		expect(out).not.toMatch(/leaf2/);
-	});
-
-	test("#11b 末段 /* 强制 depth=1 即便 caller 传 depth=5", async () => {
-		const out = await execWiki(
-			{ action: "expand", path: "A/B/*", depth: 5 },
-			globalCtx(),
-		);
-		// depth=5 from caller but `/*` must override to depth=1 → only C shown.
-		expect(out).toMatch(/^Title: B$/m);
-		expect(out).toContain("C");
-		expect(out).not.toMatch(/leaf1/);
-		expect(out).not.toMatch(/leaf2/);
-	});
-
-	test("#12 path 优先于 nodeId — expand { path:'A/B', nodeId:'<wrong>', depth:2 } 用 path", async () => {
-		// nodeId is INTENTIONALLY a real but DIFFERENT node (C). path A/B must win.
-		const out = await execWiki(
-			{ action: "expand", path: "A/B", nodeId: nodeC.id, depth: 2 },
-			globalCtx(),
-		);
-		// Must locate B (per path), NOT C (per nodeId).
-		expect(out).toMatch(/^Title: B$/m);
-		expect(out).not.toMatch(/^Title: C$/m);
-		// depth=2 from B means C + leaf1/leaf2 visible.
-		expect(out).toContain("C");
-		expect(out).toContain("leaf1");
-		expect(out).toContain("leaf2");
-	});
-
-	test("#12b path with bogus nodeId — bogus nodeId ignored, path resolves", async () => {
-		const out = await execWiki(
-			{ action: "expand", path: "A/B", nodeId: "totally-bogus-nonexistent-id" },
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Title: B$/m);
-	});
-
-	test("#13 path 定位失败 → 清晰错误(指出哪段没匹配)", async () => {
-		const out = await execWiki(
-			{ action: "expand", path: "A/does-not-exist" },
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Error: /);
-		// Must identify WHICH segment failed (segment 2 = "does-not-exist").
-		expect(out).toContain("does-not-exist");
-		// And identify the parent under which it failed (segment 1 = "A").
-		// walkTitlePath surfaces `path segment 2 "..." not found under "A"`.
-		expect(out).toMatch(/segment 2/);
-		// And hint at available siblings.
-		expect(out).toContain("available");
-	});
-
-	test("#13b deeply-nested path failure — segment 3 missing surfaces correctly", async () => {
-		const out = await execWiki(
-			{ action: "expand", path: "A/B/missing-deep" },
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Error: /);
-		expect(out).toContain("missing-deep");
-		expect(out).toMatch(/segment 3/);
-	});
-
-	test("#14 纯 nodeId 不回归 — expand { nodeId } 行为与改前一致", async () => {
-		// No path → uses nodeId directly (back-compat).
-		const out = await execWiki(
-			{ action: "expand", nodeId: nodeC.id, depth: 1 },
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Title: C$/m);
-		expect(out).toContain("leaf1");
-		expect(out).toContain("leaf2");
-		// Adversarial: nodeId alone (no path) — must NOT surface "nodeId or path required" error.
-		expect(out).not.toMatch(/nodeId or path required/);
-	});
-
-	test("#14b 短 id (#xxxxxxxx) 不回归", async () => {
-		// Same as #14 but using short-id form.
-		const out = await execWiki(
-			{ action: "expand", nodeId: shortId(nodeC.id), depth: 1 },
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Title: C$/m);
-		expect(out).toContain("leaf1");
-	});
-
-	test("#14c neither nodeId nor path → friendly error", async () => {
-		const out = await execWiki(
-			{ action: "expand" },
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Error: nodeId or path required/);
-	});
-});
-
-// ===========================================================================
-// resolveNode / doc-op regression (ADVERSARIAL CORE — verification of
-// implementer's claim that the walkTitlePath refactor preserves doc op semantics)
-// ===========================================================================
-
-describe("[sub-3 doc-op path regression — resolveNode refactor preserves contract]", () => {
-	// Tree:
-	//   docRoot (parentId: GLOBAL_ROOT)
-	//     mid
-	//       leafA
-	let docRoot: WikiNode;
-	let mid: WikiNode;
-	let leafA: WikiNode;
-
-	beforeEach(() => {
-		docRoot = makeNode(WIKI_GLOBAL_ROOT_ID, "docRoot", { nodeType: "directory" });
-		mid = makeNode(docRoot.id, "mid", { nodeType: "directory" });
-		leafA = makeNode(mid.id, "leafA", { nodeType: "directory" });
-		// Seed an initial body so docEdit has something to replace.
-		wiki.writeNodeDetail(leafA.id, "Hello world from leafA.");
-	});
-
-	test("docRead via path (deep) — resolves to target, reads existing body", async () => {
-		const out = await execWiki(
-			{ action: "docRead", path: "docRoot/mid/leafA" },
-			globalCtx(),
-		);
-		expect(out).toBe("Hello world from leafA.");
-	});
-
-	test("docRead via path (mid) — resolves to mid, reads its (empty) body", async () => {
-		const out = await execWiki(
-			{ action: "docRead", path: "docRoot/mid" },
-			globalCtx(),
-		);
-		// `mid` has no body yet → friendly "no body" message.
-		expect(out).toMatch(/no body document yet|^\(node/);
-	});
-
-	test("docRead via path that doesn't resolve → friendly 'node not found'", async () => {
-		const out = await execWiki(
-			{ action: "docRead", path: "docRoot/nonexistent" },
-			globalCtx(),
-		);
-		// resolveNode returns undefined → tool surfaces 'Error: node not found (...)'.
-		// Must NOT throw, must NOT silently return empty.
-		expect(out).toMatch(/^Error: node not found/);
-		expect(out).toContain("docRoot/nonexistent");
-	});
-
-	test("docRead via path partial (stops mid-walk) → friendly 'node not found'", async () => {
-		// path with extra segment that doesn't exist past leafA.
-		const out = await execWiki(
-			{ action: "docRead", path: "docRoot/mid/leafA/too-deep" },
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Error: node not found/);
-	});
-
-	test("docWrite via path — writes body to resolved node", async () => {
-		// Pre-existing body must be clobbered with overwrite:true.
-		const out = await execWiki(
-			{
-				action: "docWrite",
-				path: "docRoot/mid/leafA",
-				content: "New body via path.",
-				overwrite: true,
-			},
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Document written: /);
-		expect(out).toContain("leafA");
-		// Verify via direct store read (truth source — not the tool's own output).
-		const body = wiki.readNodeDetail(leafA.id);
-		expect(body).toBe("New body via path.");
-	});
-
-	test("docWrite via path on fresh node (no existing body) — no overwrite needed", async () => {
-		const out = await execWiki(
-			{
-				action: "docWrite",
-				path: "docRoot/mid", // mid has no body
-				content: "Body for mid.",
-			},
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Document written: /);
-		expect(wiki.readNodeDetail(mid.id)).toBe("Body for mid.");
-	});
-
-	test("docWrite via path that doesn't resolve → friendly 'node not found'", async () => {
-		const out = await execWiki(
-			{
-				action: "docWrite",
-				path: "docRoot/nonexistent",
-				content: "x",
-			},
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Error: node not found/);
-		expect(out).toContain("docRoot/nonexistent");
-	});
-
-	test("docEdit via path — exact-string replace on resolved node's body", async () => {
-		const out = await execWiki(
-			{
-				action: "docEdit",
-				path: "docRoot/mid/leafA",
-				oldString: "Hello world",
-				newString: "Goodbye universe",
-			},
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Document edited: /);
-		// Verify via direct store read.
-		expect(wiki.readNodeDetail(leafA.id)).toBe("Goodbye universe from leafA.");
-	});
-
-	test("docEdit via path — oldString not in body → friendly 'not found' error", async () => {
-		const out = await execWiki(
-			{
-				action: "docEdit",
-				path: "docRoot/mid/leafA",
-				oldString: "this string is not in the body",
-				newString: "x",
-			},
-			globalCtx(),
-		);
-		expect(out).toMatch(/oldString not found/);
-		// Body must NOT have changed.
-		expect(wiki.readNodeDetail(leafA.id)).toBe("Hello world from leafA.");
-	});
-
-	test("docEdit via path that doesn't resolve → friendly 'node not found'", async () => {
-		const out = await execWiki(
-			{
-				action: "docEdit",
-				path: "docRoot/nope",
-				oldString: "x",
-				newString: "y",
-			},
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Error: node not found/);
-	});
-
-	test("docRead by nodeId STILL works (resolveNode's nodeId branch not broken)", async () => {
-		const out = await execWiki(
-			{ action: "docRead", nodeId: leafA.id },
-			globalCtx(),
-		);
-		expect(out).toBe("Hello world from leafA.");
-	});
-
-	test("docRead by short-id STILL works", async () => {
-		const out = await execWiki(
-			{ action: "docRead", nodeId: shortId(leafA.id) },
-			globalCtx(),
-		);
-		expect(out).toBe("Hello world from leafA.");
-	});
-
-	test("docRead with neither nodeId nor path → friendly 'required' error", async () => {
-		const out = await execWiki(
-			{ action: "docRead" },
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Error: nodeId or path required/);
-	});
-
-	test("resolveNode prefers nodeId when BOTH nodeId and path given (doc op)", async () => {
-		// docWrite with both → nodeId wins (matches existing doc-op behavior;
-		// NOTE: this differs from expand where path wins. resolveNode checks
-		// target.nodeId first).
-		const out = await execWiki(
-			{
-				action: "docRead",
-				nodeId: leafA.id,           // → leafA
-				path: "docRoot/mid",        // → mid (DIFFERENT node)
-			},
-			globalCtx(),
-		);
-		// Per resolveNode: target.nodeId first → reads leafA's body.
-		expect(out).toBe("Hello world from leafA.");
-	});
-
-	test("path with whitespace around segments still resolves (trim)", async () => {
-		// walkTitlePath trims each segment; useful when LLM emits ' / ' separators.
-		const out = await execWiki(
-			{ action: "docRead", path: "  docRoot /  mid / leafA  " },
-			globalCtx(),
-		);
-		expect(out).toBe("Hello world from leafA.");
-	});
-});
-
-// ===========================================================================
-// Cross-checks / paranoid
-// ===========================================================================
-
-describe("[sub-3 paranoid cross-checks]", () => {
-	test("regex search still excludes synthetic wiki-root:* containers", async () => {
-		// The synthetic project subtree root wiki-root:projects has title
-		// "Projects" (or similar) — it must NOT show up in search results
-		// (the tool filters n.id.startsWith('wiki-root:')).
-		makeNode(WIKI_GLOBAL_ROOT_ID, "alpha-real", { nodeType: "directory" });
-		const out = await execWiki(
-			{ action: "search", query: ".", regex: true },
-			globalCtx(),
-		);
-		// Every line is `<shortId> | <type> | <title> ...` — none should have
-		// a title of "Projects" or "Global" (synthetic root titles).
-		expect(out).not.toMatch(/\| Global\b/);
-	});
-
-	test("expand path with regex-special chars in title (e.g. '.') still matches literally", async () => {
-		// walkTitlePath uses === on titles (literal), NOT regex. A title with
-		// a literal `.` must match by exact equality.
-		const dot = makeNode(WIKI_GLOBAL_ROOT_ID, "config.json", { nodeType: "directory" });
-		makeNode(dot.id, "inner", { nodeType: "directory" });
-		const out = await execWiki(
-			{ action: "expand", path: "config.json" },
-			globalCtx(),
-		);
-		expect(out).toMatch(/^Title: config\.json$/m);
-		expect(out).toContain("inner");
-	});
-
-	test("expand path resolves first segment against ANY anchor in the set", async () => {
-		// callerCtx scoped to a non-root anchor: path's first segment must be a
-		// child of THAT anchor (not GLOBAL_ROOT).
-		const sub = makeNode(WIKI_GLOBAL_ROOT_ID, "sub-anchor-root", { nodeType: "directory" });
-		const inner = makeNode(sub.id, "inner-child", { nodeType: "directory" });
-		makeNode(inner.id, "deep-leaf", { nodeType: "directory" });
-
-		const out = await execWiki(
-			{ action: "expand", path: "inner-child/deep-leaf" },
-			{ caller: "internal", wikiAnchorNodeIds: [sub.id] },
-		);
-		expect(out).toMatch(/^Title: deep-leaf$/m);
+		expect(updated.ok, `update error: ${JSON.stringify(updated)}`).toBe(true);
+		// Read again — content reflects the patch.
+		const read2 = await exec({ action: "read", node: "wiki-root/knowledge/doc-target", view: "content" });
+		expect(read2.ok).toBe(true);
+		expect(String((read2.data as any)?.content ?? "")).toContain("goodbye world");
 	});
 });

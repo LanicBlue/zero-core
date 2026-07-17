@@ -83,6 +83,16 @@ import { WikiRepositoryStore } from "./wiki/wiki-repository-store.js";
 // plan-04 wires them into the Wiki action surface; here we only construct them).
 import { WikiSourceService } from "./wiki/wiki-source-service.js";
 import { WikiSourceSearch } from "./wiki/wiki-source-search.js";
+// wiki-system-redesign plan-05 §5: register Wiki v2 data-plane services
+// (WikiService + WikiSearchService) as process-wide singletons so the
+// Wiki v2 tool (createWikiTool factory) can read them via getWikiService /
+// getWikiSearchService without per-loop ctx injection.
+import { WikiService } from "./wiki/wiki-service.js";
+import { WikiSearchService } from "./wiki/wiki-search-service.js";
+import { WikiAddressService } from "./wiki/wiki-address-service.js";
+import { WikiAuthorizationService } from "./wiki/wiki-authorization-service.js";
+import { WikiEditService } from "./wiki/wiki-edit-service.js";
+import { setWikiRuntime } from "./wiki/wiki-runtime.js";
 import { TaskStepStore } from "./task-step-store.js";
 import { createProjectRouter } from "./project-router.js";
 import { createRequirementRouter } from "./requirement-router.js";
@@ -505,6 +515,38 @@ export async function startServer(options?: StartServerOptions) {
 		repositoryStore: wikiRepositoryStore,
 		resolveWorkspace: (pid: string) => projectStore.get(pid)?.workspaceDir,
 	});
+	// wiki-system-redesign plan-05 §5: WikiService + WikiSearchService 单例。
+	// sub-02/sub-03 实现已就绪,plan-04 提供了 factory 但未注册;此处实例化并
+	// 通过 setWikiRuntime 暴露给 Wiki v2 工具(getWikiService / getWikiSearchService)。
+	// AddressService / AuthorizationService / EditService 与 WikiService.fromDatabase
+	// 内部组装的实例同源 —— 这里显式 new 以便复用 sub-03 已构造的 wikiSourceSearch
+	// (sub-03 §8 的 source target = both 需要 ripgrep 包装器)。
+	const wikiAddressService = new WikiAddressService(wikiRepositoryStore.addresses, wikiNodeRepo);
+	const wikiAuthorizationService = new WikiAuthorizationService();
+	const wikiEditService = new WikiEditService();
+	const wikiService = new WikiService({
+		wikiDb: wikiDbHandle,
+		nodeRepo: wikiNodeRepo,
+		linkRepo: wikiLinkRepo,
+		auditRepo: wikiAuditRepo,
+		repositoryStore: wikiRepositoryStore,
+		addressService: wikiAddressService,
+		authorizationService: wikiAuthorizationService,
+		editService: wikiEditService,
+	});
+	const wikiSearchService = new WikiSearchService({
+		db: wikiDbHandle.getDb(),
+		nodeRepo: wikiNodeRepo,
+		repositoryStore: wikiRepositoryStore,
+		addressService: wikiAddressService,
+		authorizationService: wikiAuthorizationService,
+		sourceSearch: wikiSourceSearch,
+	});
+	setWikiRuntime({ wikiService, searchService: wikiSearchService });
+	// wiki-system-redesign plan-05 §3:把 WikiService 注入 management-service,
+	// 让 createAgent / renameAgent / deleteAgent 在新 wiki.db 中 ensure/archive
+	// memory root(与旧 ProjectWikiStore 并行,plan-08 才彻底退役旧 store)。
+	management.setWikiServiceV2(wikiService);
 	// v0.8 (P5 §8.3): ManagementService.createProject kicks the archivist
 	// background scan; wire it now that archivistService exists.
 	management.setArchivistService(archivistService);

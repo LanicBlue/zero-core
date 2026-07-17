@@ -196,6 +196,24 @@ export class ManagementService {
 			this.wikiStore?.ensureMemoryAgentRoot(a.id, a.name);
 		}
 	}
+	/**
+	 * wiki-system-redesign plan-05 §3:Wiki v2 service setter(sub-02 WikiService)。
+	 * 用于在新 wiki.db 中 ensure Agent memory root(create/rename)与 archive
+	 * (delete)。与旧 ProjectWikiStore 并行调用 —— 旧 store 保留供 plan-08 前
+	 * 的 back-compat 读取(plan-06/07 切 UI 后才彻底退役)。
+	 *
+	 * 幂等:重复调用覆盖前值。多次 ensure 同一 agent 不 bump revision(WikiService
+	 * 内部 noop 路径)。
+	 */
+	private wikiServiceV2: import("./wiki/wiki-service.js").WikiService | null = null;
+	setWikiServiceV2(svc: import("./wiki/wiki-service.js").WikiService): void {
+		this.wikiServiceV2 = svc;
+		// backfill:存量 agent 的 memory root 在新 wiki.db 里 ensure 一次。
+		// 幂等 —— 已存在的 root 仅在 display_name 变化时 bump revision。
+		for (const a of this.agentStore.list()) {
+			void this.wikiServiceV2?.ensureAgentMemoryRoot(a.id, a.name);
+		}
+	}
 	setArchivistService(svc: WikiSkeletonService): void { this.archivistService = svc; }
 	/** v0.8 §8.6: late-bind the task-step store (server/index.ts wiring order). */
 	setTaskStepStore(store: TaskStepStore): void { this.taskStepStore = store; }
@@ -558,6 +576,15 @@ export class ManagementService {
 		const rec = this.agentStore.create(input);
 		// 立刻建 memory 根并按 agent 名字命名(不等 extractor 懒建)。
 		this.wikiStore?.ensureMemoryAgentRoot(rec.id, rec.name);
+		// wiki-system-redesign plan-05 §3:在新 wiki.db 也 ensure memory root。
+		// 幂等 + 写确定性 summary + attributes.display_name(canonical path 不变)。
+		// fire-and-forget —— Core DB 已 commit,跨库不事务(plan-05 §3「Core DB
+		// 与 Wiki DB 不跨库事务」)。失败不阻断 agent 创建,session build 会做
+		// 轻量 ensure 修复中断态。
+		void this.wikiServiceV2?.ensureAgentMemoryRoot(rec.id, rec.name)
+			.catch((err: unknown) => {
+				console.warn(`[management] ensureAgentMemoryRoot (v2) failed for ${rec.id}:`, (err as Error)?.message ?? err);
+			});
 		return rec;
 	}
 
@@ -597,6 +624,13 @@ export class ManagementService {
 		if (input.name !== undefined && oldName !== undefined && oldName !== input.name) {
 			this.wikiStore?.ensureMemoryAgentRoot(id, input.name);
 			this.wikiStore?.renameMemoryAgentDiskDir(id, oldName);
+			// wiki-system-redesign plan-05 §3:在新 wiki.db 也更新 display_name /
+			// summary —— canonical path 不变(wiki-root/memory/<stable-agent-id>),
+			// 整棵子树不移动。幂等。
+			void this.wikiServiceV2?.ensureAgentMemoryRoot(id, input.name)
+				.catch((err: unknown) => {
+					console.warn(`[management] ensureAgentMemoryRoot rename (v2) failed for ${id}:`, (err as Error)?.message ?? err);
+				});
 		}
 		return updated;
 	}
@@ -631,6 +665,12 @@ export class ManagementService {
 		}
 		// AgentStore.delete throws if the agent is the protected "zero".
 		this.agentStore.delete(id);
+		// wiki-system-redesign plan-05 §3:在新 wiki.db 中 archive memory root
+		// (不硬删,保留历史供审计)。fire-and-forget —— 跨库不事务。失败记 warn。
+		void this.wikiServiceV2?.archiveAgentMemoryRoot(id)
+			.catch((err: unknown) => {
+				console.warn(`[management] archiveAgentMemoryRoot (v2) failed for ${id}:`, (err as Error)?.message ?? err);
+			});
 	}
 
 	listAgents(roleTag?: string): AgentRecord[] {
