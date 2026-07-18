@@ -544,11 +544,6 @@ export async function startServer(options?: StartServerOptions) {
 		projectJobStore,
 	});
 	management.setEnrichmentRunner((projectId, opts) => enrichmentRunner.runProjectEnrichment(projectId, opts));
-	// v0.8 §8.6 (bugfix): purge orphan wiki subtrees left by pre-fix project
-	// deletes (tool path used to skip the cascade). Idempotent — no-op once
-	// clean. Runs after wikiStore + management are fully wired.
-	const purged = management.purgeOrphanProjectSubtrees();
-	if (purged > 0) console.error(`[server] Purged ${purged} orphan project wiki subtree(s)`);
 
 	// ─── LeadService + Requirement Hooks (M3) ────────────────────────
 	const { LeadService } = await import("./lead-service.js");

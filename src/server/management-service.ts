@@ -335,19 +335,6 @@ export class ManagementService {
 	}
 
 	/**
-	 * v0.8 §8.6 (bugfix): purge orphan wiki project subtrees — subtree roots
-	 * (`wiki-root:<projectId>`) whose projectId no longer exists in the
-	 * `projects` table. These accumulate when a project was deleted through a
-	 * path that didn't cascade (pre-fix tool delete). Idempotent — call at
-	 * startup; a no-op once no orphans remain. Returns the count removed.
-	 */
-	/**
-	 * plan-08 §1: legacy orphan-wiki-subtree purge removed (old wikiStore deleted).
-	 * wiki.db cleanup happens via the indexer + management cascade.
-	 */
-	purgeOrphanProjectSubtrees(): number { return 0; }
-
-	/**
 	 * Delete a Project with the FULL cascade (§8.6). This is the single source
 	 * of truth for project deletion — both the REST router and the Project tool
 	 * go through here, so the cascade can never drift between entry points

@@ -5,6 +5,8 @@
 - **类型**:改进(记忆质量 / 机制)
 - **来源**:2026-07-15 每日扫描建议(方向 2)
 
+> **⚠️ 现状校正（2026-07-18，wiki-system-redesign cutover 后）**：本 issue 撰写于 cutover 前,下文 legacy 记忆主干描述(`wiki-root:memory-agent:<agentId>` 寻址 / `wiki-node-store.ts` `ensureMemoryAgentRoot` / `project_wiki` 表列)均**已被超越(overtaken)**。当前唯一长期记忆主干是 `db/wiki.db` 的 `wiki-root/memory/<agentId>` 子树(canonical path + `memory://` 逻辑地址 + `memory_type` / `durability` / `confidence` / `review_after` attributes + FTS5)。本 issue 的**核心关切——memory maintenance（dedup / consolidation / conflict resolution / forgetting）——依然有效且适用**于新 wiki.db 记忆子树;只是落地机制需基于 `wiki_nodes` 表(可扩 `last_accessed` / `access_count` 列 + 复用 Wiki 工具读侧埋点),而非已删的 `project_wiki`。详见 [docs/plan/wiki-system-redesign/](../../plan/wiki-system-redesign/)。下文凡 `project_wiki` / `wiki-node-store` / `wiki-root:memory-agent:` 描述按**历史问题陈述**理解,不代表当前架构。
+
 ## 问题
 
 per-agent memory 子树(`wiki-root:memory-agent:<agentId>`,memory-archive-fixes sub-2 刚统一了写入路由)是当前唯一长期记忆主线,但**完全没有"维护阶段(memory maintenance)"**——记忆一旦写入就永久静置,**跨子树的语义重复、同主题矛盾、过时记忆无人治理**。随记忆累积,树会越来越脏:agent 把 stale 记忆和 fresh 上下文同等对待。业界共识(Letta / Zep / Mem0 与 [arXiv 2606.06448](https://arxiv.org/html/2606.06448v1) 的 maintenance 阶段)把长期记忆的 **dedup / consolidation / conflict resolution / forgetting** 列为必备四件套。compression-archive-simplify sub-3a 的 fresh-tail 边界去重只防**相邻**重复,不防**跨子树**重复。

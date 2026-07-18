@@ -3,7 +3,7 @@
 - **状态**:① issues(问题记录)
 - **提出**:2026-07-11
 - **类型**:改进(架构)
-- **范围更新**(2026-07-16):wiki 半边曾拆出独立 effort **wiki-search**,但已 **❌ 废止**(folder-per-node 统一节点模型在 Windows 上小文件负担过重,模型不成立;详见 [archive/wiki-search/issue.md](../../archive/wiki-search/issue.md))。wiki 子系统 redesign 不再推进,现有 `wiki-tool` / `wiki-node-store` / `project_wiki` DB / 磁盘镜像树保持现状不动。本 issue **保留**剩余范围:agents / templates 迁文件 + 虚拟路径前缀 infra(`[agents]/` `[wiki]/`,现仅 `[skills]/`)。
+- **范围更新**(2026-07-16,2026-07-18 校正):wiki 半边曾拆出独立 effort **wiki-search**,但已 **❌ 废止**(folder-per-node 统一节点模型在 Windows 上小文件负担过重,模型不成立;详见 [archive/wiki-search/issue.md](../../archive/wiki-search/issue.md))。**随后 `wiki-system-redesign` effort 推进并以 clean cutover 完成,本 issue 的 wiki-disk-mirror 关切已被超越(overtaken)**:旧 v0.8 wiki(`ProjectWikiStore` / `wiki-node-store` / `project_wiki` 表 / 磁盘 Markdown 正文镜像 / `wiki-root:memory-agent:` 寻址)**已全部删除**,wiki 节点现作为 **`db/wiki.db`**(`wiki_nodes` + FTS5 + canonical paths + grants/context)的唯一实现存活,**不再是磁盘文件**。详见 [docs/plan/wiki-system-redesign/](../../plan/wiki-system-redesign/)。本 issue **保留并收窄至剩余非-wiki 范围**:agents / templates 迁文件 + 虚拟路径前缀 infra(`[agents]/`,现仅 `[skills]/` 有虚拟前缀)。下文凡涉及 wiki / `project_wiki` / `wiki-node-store` / 磁盘镜像树的描述,均按 **历史问题陈述**理解,不代表当前架构。
 
 ## 问题
 
