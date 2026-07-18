@@ -286,36 +286,54 @@ describe("§A legacy absence — runtime reachability + fresh-DB migration", () 
 		).toEqual([]);
 	});
 
-	// A: grep classification — the orchestrator's note lists 4 categories of allowed
-	// project_wiki mentions. This test documents them so the grep evidence is
-	// auditable, not "zero hits".
-	test("A: project_wiki mentions in src/ are classified (comments / shim / legacy-cleanup endpoint / forbidden guard)", () => {
-		const { execSync } = require("node:child_process") as typeof import("node:child_process");
-		let raw = "";
-		try {
-			raw = execSync(
-				`rg -n "project_wiki" src/ --no-heading || true`,
-				{ encoding: "utf-8", cwd: process.cwd() },
-			);
-		} catch { raw = ""; }
-		const lines = raw.split("\n").filter(Boolean);
-		// Every hit must fall into an allowed bucket:
-		//   (a) comment (/​/, *, block)
-		//   (b) wiki-maintenance-router /legacy/cleanup endpoint (explicit, confirm-gated)
-		//   (c) wiki-skeleton-service shim (documents non-use)
-		//   (d) data-change-hub whitelist-removal comment
-		const offenders: string[] = [];
-		for (const line of lines) {
-			const isComment = /:\s*(\/\/|\*|\/\*)/.test(line) || /^\s*[*/]/.test(line);
-			const isLegacyCleanup = line.includes("wiki-maintenance-router.ts") && /\b(DROP TABLE|project_wiki|legacy)/.test(line);
-			const isShim = line.includes("wiki-skeleton-service.ts");
-			const isHub = line.includes("data-change-hub.ts");
-			const isMigration = line.includes("db-migration.ts"); // comments about removal
-			if (!(isComment || isLegacyCleanup || isShim || isHub || isMigration)) {
-				offenders.push(line);
+	// A: classification — the orchestrator's note lists categories of allowed
+	// project_wiki mentions. This test documents them so the audit is real,
+	// not "zero hits". P1-7b follow-up (2026-07-18): converted from
+	// execSync('rg') (which SILENTLY FALSE-PASSED on Windows where rg is not on
+	// PATH — `try { execSync('rg ...') } catch { raw = '' }` → empty → offenders
+	// empty → vacuous green; the exact vector A7 above was hardened from in
+	// P1-3) to a portable Node-native fs walk. Now actually scans src/ and
+	// classifies every project_wiki hit into an allowed bucket.
+	test("A: project_wiki mentions in src/ are classified (comments / orchestrator / legacy-cleanup endpoint / forbidden guard)", () => {
+		const { readdirSync, readFileSync } = require("node:fs") as typeof import("node:fs");
+		const { join, relative, extname } = require("node:path") as typeof import("node:path");
+		const SRC_ROOT = join(process.cwd(), "src");
+		const filesToScan: string[] = [];
+		function walk(dir: string) {
+			for (const ent of readdirSync(dir, { withFileTypes: true })) {
+				const full = join(dir, ent.name);
+				if (ent.isDirectory()) walk(full);
+				else if (ent.isFile() && (extname(full) === ".ts" || extname(full) === ".tsx") && !full.endsWith(".d.ts")) {
+					filesToScan.push(full);
+				}
 			}
 		}
-		expect(offenders, `unclassified project_wiki hits (must be comment/shim/legacy-cleanup/hub/migration):\n${offenders.join("\n")}`).toEqual([]);
+		walk(SRC_ROOT);
+		const offenders: string[] = [];
+		for (const f of filesToScan) {
+			const rel = relative(process.cwd(), f).replace(/\\/g, "/");
+			let src: string;
+			try { src = readFileSync(f, "utf-8"); } catch { continue; }
+			src.split("\n").forEach((line: string, i: number) => {
+				if (!line.includes("project_wiki")) return;
+				const labeled = `${rel}:${i + 1}: ${line.trim()}`;
+				// Every hit must fall into an allowed bucket:
+				//   (a) comment (// , * , /* , or line starts with a comment marker)
+				//   (b) wiki-maintenance-router /legacy/cleanup endpoint (confirm-gated DROP)
+				//   (c) wiki-skeleton-service orchestrator (documents non-use)
+				//   (d) data-change-hub whitelist-removal comment
+				//   (e) db-migration comment about removal
+				const isComment = /^\s*(\/\/|\*|\/\*)/.test(line) || /:\s*(\/\/|\*|\/\*)/.test(line);
+				const isLegacyCleanup = rel.includes("wiki-maintenance-router.ts") && /\b(DROP TABLE|project_wiki|legacy)/.test(line);
+				const isOrchestrator = rel.includes("wiki-skeleton-service.ts");
+				const isHub = rel.includes("data-change-hub.ts");
+				const isMigration = rel.includes("db-migration.ts");
+				if (!(isComment || isLegacyCleanup || isOrchestrator || isHub || isMigration)) {
+					offenders.push(labeled);
+				}
+			});
+		}
+		expect(offenders, `unclassified project_wiki hits (must be comment/orchestrator/legacy-cleanup/hub/migration):\n${offenders.join("\n")}`).toEqual([]);
 	});
 });
 
