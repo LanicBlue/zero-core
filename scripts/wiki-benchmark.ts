@@ -17,6 +17,13 @@
 //   S4  FTS top-k                  → MATCH … ORDER BY rank LIMIT ?
 //   S5  authorized multi-scope search → FTS top-k + path-prefix scope filter
 //   S6  subtree move (bounded)     → LIKE '<prefix>/%' + UPDATE path (bounded N)
+//   S7  candidate bounded SELECT   → WHERE parent_id=? ORDER BY path,id LIMIT scanCap
+//                                    (round-2 P1 §4: replaces expand({limit:100}))
+//   S8  candidate grouped childrenCount → WHERE parent_id IN(...) GROUP BY parent_id
+//                                    (round-2 P1 §4: N+1-eliminating count batch)
+//   S9  candidate scale + tail     → wide parents (100/1000 direct children, last =
+//                                    priority=999 path-last) — proves tail inclusion
+//                                    + per-op at scale (round-2 P1 §4.3.1 / §8)
 //
 // 每场景前先 `EXPLAIN QUERY PLAN` 并断言用 path / parent / target / FTS 索引,
 // 避免硬件 flaky。报告含 commit SHA /硬件/数据规模/耗时/内存。
@@ -446,6 +453,109 @@ function runAllScenarios(db: Database.Database, data: GeneratedData, enabled: re
 			}
 		});
 		restoreTx(readShadowed);
+	}
+
+	// S7 context candidate bounded SELECT (round-2 review P1 §4 / §8).
+	// Mirrors WikiNodeRepository.getActiveChildrenBounded: bounded fetch of ALL
+	// active direct children of a parent, ordered path ASC + id ASC, LIMIT scanCap.
+	// This is the query that replaced expand({limit:100}); prove it uses the
+	// parent_id index (not a full scan) at 1M scale.
+	if (isEnabled("S7")) {
+		const sql = `SELECT * FROM wiki_nodes
+		             WHERE parent_id = ? AND archived_at IS NULL
+		             ORDER BY path ASC, id ASC LIMIT 5000`;
+		let idx = 0;
+		results.push(runScenario(db, "S7 candidate bounded SELECT (scanCap 5000)", sql,
+			() => [data.sampledParentIds[idx++ % data.sampledParentIds.length]],
+			200,
+			(rows) => rows.length,
+		));
+	}
+
+	// S8 context candidate grouped childrenCount (round-2 review P1 §4 / §8).
+	// Mirrors WikiNodeRepository.countChildrenByParents: single grouped COUNT over
+	// a batch of candidate parent IDs — the N+1-eliminating query that replaced
+	// per-node countActiveChildren(). Batch = direct children of the first sampled
+	// parent (exactly what the compiler passes: the just-fetched candidate rows).
+	if (isEnabled("S8")) {
+		const batchParent = data.sampledParentIds[0];
+		const batchIds = (db.prepare(`SELECT id FROM wiki_nodes WHERE parent_id = ? AND archived_at IS NULL LIMIT 100`)
+			.all(batchParent) as Array<{ id: number }>).map((r) => r.id);
+		const placeholders = batchIds.map(() => "?").join(", ");
+		const sql = `SELECT parent_id, COUNT(*) AS n FROM wiki_nodes
+		             WHERE parent_id IN (${placeholders}) AND archived_at IS NULL
+		             GROUP BY parent_id`;
+		results.push(runScenario(db, `S8 candidate grouped childrenCount (batch ${batchIds.length})`, sql,
+			() => [...batchIds],
+			200,
+			(rows) => rows.length,
+		));
+	}
+
+	// S9 context candidate scaling + tail-priority inclusion (round-2 review P1
+	// §4.3.1 / §8). Creates dedicated wide parents (100 + 1000 direct children)
+	// where the LAST child (path-sorts last, `zzz-critical`) carries priority=999.
+	// Runs the candidate bounded SELECT (LIMIT 5000) and asserts the tail
+	// high-priority child is in the fetched set every iteration — the OLD
+	// expand({limit:100}) would have EXCLUDED it (position 100 / 1000). Reports
+	// per-op at each width.
+	if (isEnabled("S9")) {
+		const candRootPath = `${BENCH_ROOT_PATH}/__cand`;
+		const ts = new Date().toISOString();
+		let candRootRow = db.prepare(`SELECT id FROM wiki_nodes WHERE path = ? LIMIT 1`).get(candRootPath) as { id: number } | undefined;
+		if (!candRootRow) {
+			const r = db.prepare(`INSERT INTO wiki_nodes (parent_id, name, path, kind, summary, content, attributes_json, created_at, updated_at) VALUES (NULL, ?, ?, 'node', '', '', NULL, ?, ?)`)
+				.run("__cand", candRootPath, ts, ts);
+			candRootRow = { id: Number(r.lastInsertRowid) };
+		}
+		const sql = `SELECT * FROM wiki_nodes WHERE parent_id = ? AND archived_at IS NULL ORDER BY path ASC, id ASC LIMIT 5000`;
+		for (const width of [100, 1000]) {
+			const parentPath = `${candRootPath}/w${width}`;
+			let parentId: number;
+			const existPar = db.prepare(`SELECT id FROM wiki_nodes WHERE path = ? LIMIT 1`).get(parentPath) as { id: number } | undefined;
+			if (existPar) {
+				parentId = existPar.id;
+			} else {
+				const r = db.prepare(`INSERT INTO wiki_nodes (parent_id, name, path, kind, summary, content, attributes_json, created_at, updated_at) VALUES (?, ?, ?, 'node', '', '', NULL, ?, ?)`)
+					.run(candRootRow!.id, `w${width}`, parentPath, ts, ts);
+				parentId = Number(r.lastInsertRowid);
+				const insChild = db.prepare(`INSERT INTO wiki_nodes (parent_id, name, path, kind, summary, content, attributes_json, created_at, updated_at) VALUES (?, ?, ?, 'node', ?, ?, ?, ?, ?)`);
+				const tx = db.transaction(() => {
+					for (let i = 0; i < width; i++) {
+						const isTail = i === width - 1;
+						const name = isTail ? "zzz-critical" : `kid-${String(i).padStart(4, "0")}`;
+						const attrs = isTail
+							? JSON.stringify({ priority: 999, durability: "permanent" })
+							: JSON.stringify({ priority: 1 });
+						insChild.run(parentId, name, `${parentPath}/${name}`, genSummary(i), "", attrs, ts, ts);
+					}
+				});
+				tx();
+			}
+			const plan = explainQueryPlan(db, sql, parentId);
+			const planCheck = assertPlan(`S9-${width}`, plan);
+			// warmup
+			db.prepare(sql).all(parentId);
+			const iters = 50;
+			const t0 = nowMs();
+			let tailHit = 0;
+			for (let i = 0; i < iters; i++) {
+				const rows = db.prepare(sql).all(parentId) as Array<{ path: string }>;
+				if (rows.some((r) => r.path.endsWith("/zzz-critical"))) tailHit++;
+			}
+			const totalMs = nowMs() - t0;
+			results.push({
+				label: `S9 candidate scale width=${width} (tail zzz-critical priority=999 fetched ${tailHit}/${iters})`,
+				totalMs,
+				iterations: iters,
+				perOpUs: (totalMs * 1000) / iters,
+				rowsTouched: tailHit,
+				// plan-ok AND tail must be fetched every iter (old expand({limit:100})
+				// excluded it; new bounded SELECT includes it).
+				planAsserted: planCheck.ok && tailHit === iters,
+				planSummary: plan,
+			});
+		}
 	}
 
 	return results;

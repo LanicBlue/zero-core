@@ -90,6 +90,14 @@ export function initWikiSchema(db: Database.Database): void {
 		CREATE INDEX IF NOT EXISTS idx_wiki_nodes_parent ON wiki_nodes(parent_id);
 		CREATE INDEX IF NOT EXISTS idx_wiki_nodes_kind ON wiki_nodes(kind);
 		CREATE INDEX IF NOT EXISTS idx_wiki_nodes_archived ON wiki_nodes(archived_at);
+		-- 复合 (parent_id, archived_at) covering index(round-2 P1 §4 perf):
+		-- WikiNodeRepository.countChildrenByParents 的 grouped COUNT
+		-- (WHERE parent_id IN (...) AND archived_at IS NULL GROUP BY parent_id)
+		-- 在无此索引时退到 idx_wiki_nodes_archived(扫全表 active 行,1M 下
+		-- ~400ms/op);有此索引走 covering seek(parent_id=? AND archived_at=?),
+		-- 0.1ms/op 级,与规模无关。同时加速 countActiveChildren / getActiveChildrenBounded
+		-- 的 parent_id + active 过滤。CREATE IF NOT EXISTS 幂等,fresh+存量 DB 都建。
+		CREATE INDEX IF NOT EXISTS idx_wiki_nodes_parent_archived ON wiki_nodes(parent_id, archived_at);
 
 		-- active 节点 path 唯一:partial unique index(WHERE archived_at IS NULL)。
 		-- 表级永久 UNIQUE 禁止(plan-01 §2):归档后允许同路径 active 重建。
