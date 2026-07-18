@@ -149,10 +149,9 @@ function makeHarness(projectId: string, workspaceDir: string): Harness {
 // ===========================================================================
 //
 // acceptance-03 §C: "旧 WikiSkeletonService 不存在可达写路径".
-// Trace: every shim method delegates to either ArchivistGit (for Git ops) or
-// WikiProjectIndexer (for structural writes). The shim holds NO handle on
-// WikiStore / wikiDb / nodeRepo / sourceBindings. ensureSummary is read-only
-// (returns undefined), detectDivergence returns empty report.
+// Trace: every orchestration method delegates to either ArchivistGit (for Git
+// ops) or WikiProjectIndexer (for structural writes). The class holds NO
+// handle on WikiStore / wikiDb / nodeRepo / sourceBindings.
 //
 // This is a static + behavioural cross-check (grep the source + behaviour).
 
@@ -182,29 +181,6 @@ describe("D1 — WikiSkeletonService shim has NO reachable structural-WRITE path
 			expect(depsAny["wikiDb"]).toBeUndefined();
 			expect(depsAny["nodeRepo"]).toBeUndefined();
 			expect(depsAny["repositoryStore"]).toBeUndefined();
-		} finally {
-			h.dispose();
-		}
-	});
-
-	test("ensureSummary is a read-only no-op (returns undefined; never writes)", () => {
-		// plan-03 §C trace: legacy lazy-summary materialization is removed; the
-		// shim returns undefined so wiki-router falls back to the existing summary.
-		const h = makeHarness("es", UNIQUE_DIR);
-		try {
-			const ret = h.shim.ensureSummary("any-node-id");
-			expect(ret).toBeUndefined();
-		} finally {
-			h.dispose();
-		}
-	});
-
-	test("detectDivergence returns empty report (no structural mutation)", async () => {
-		const h = makeHarness("dd", UNIQUE_DIR);
-		try {
-			const r = await h.shim.detectDivergence("dd");
-			expect(r.unimplementedRequirements).toEqual([]);
-			expect(r.uncoveredCode).toEqual([]);
 		} finally {
 			h.dispose();
 		}
@@ -461,7 +437,7 @@ describe("§C formal routes — /api/archivist/* all delegate to the new indexer
 		// Cursor store is GONE — no cursorStore field anywhere in the wiring.
 		expect(src).not.toMatch(/cursorStore\s*:/);
 		// /api/archivist routes call archivistService.{buildSkeleton,rescanProjectFull,
-		// rebuildProjectSubtree,detectDivergence,commitRequirementDoc,mergeFeatureToMain,
+		// rebuildProjectSubtree,commitRequirementDoc,mergeFeatureToMain,
 		// cleanupWorktree}.
 		expect(src).toMatch(/archivistService\.buildSkeleton\b/);
 		expect(src).toMatch(/archivistService\.rescanProjectFull\b/);

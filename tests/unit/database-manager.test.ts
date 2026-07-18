@@ -81,9 +81,9 @@ import {
 import { CoreDatabase } from "../../src/server/core-database.js";
 // Value import (not `import type`): plan-01 wiki getter returns a real
 // WikiDatabase instance after open(); the instanceof assertion below needs the
-// class value. src/server/wiki-database.ts is a thin re-export shim over the
-// real impl at src/server/wiki/wiki-database.ts.
-import { WikiDatabase } from "../../src/server/wiki-database.js";
+// class value. P1-6 removed the re-export shim at src/server/wiki-database.ts;
+// import the real class directly from src/server/wiki/wiki-database.ts.
+import { WikiDatabase } from "../../src/server/wiki/wiki-database.js";
 import {
 	coreDbPath,
 	legacyCoreDbPath,

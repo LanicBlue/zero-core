@@ -71,9 +71,8 @@ import { RequirementStore } from "./requirement-store.js";
 import { ArchivistGit } from "./archivist-git.js";
 import { WikiSkeletonService } from "./wiki-skeleton-service.js";
 // plan-03 §1/§6: WikiProjectIndexer replaces the legacy scanning duty of
-// WikiSkeletonService. WikiSkeletonService remains as a thin delegating shim
-// (callers don't need to change); the actual write path is the indexer, which
-// writes to the new wiki.db via WikiService / WikiRepositoryStore.
+// WikiSkeletonService. WikiSkeletonService 现在是 Archivist 项目编排器
+// (Git + Indexer),不再是 readdir shim;实际写路径是 indexer → wiki.db。
 import { WikiProjectIndexer } from "./wiki/wiki-project-indexer.js";
 import { WikiNodeRepository } from "./wiki/wiki-node-repository.js";
 import { WikiLinkRepository } from "./wiki/wiki-link-repository.js";
@@ -461,9 +460,9 @@ export async function startServer(options?: StartServerOptions) {
 	// ─── ArchivistService (v0.8 M2 → plan-03 Git semantic mirror) ────
 	// plan-03 §6: WikiProjectIndexer replaces the legacy scanning duty of
 	// WikiSkeletonService. The indexer writes to the new wiki.db(via
-	// WikiService / WikiRepositoryStore). WikiSkeletonService remains as a
-	// thin delegating shim so existing callers(management-service.createProject,
-	// archivist REST routes, wiki-router.ensureSummary)keep their API.
+	// WikiService / WikiRepositoryStore). WikiSkeletonService 现在是 Archivist
+	// 项目编排器(Git + Indexer),不再是 shim;callers(management-service
+	// / archivist REST 路由)看到的 API 不变。
 	const archivistGit = new ArchivistGit();
 	const wikiDbHandle = dbManager.wiki;
 	const wikiNodeRepo = new WikiNodeRepository(wikiDbHandle.getDb());
@@ -984,11 +983,14 @@ export async function startServer(options?: StartServerOptions) {
 			res.json(result);
 		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
 	});
-	archivistRouter.get("/:projectId/divergence", async (req, res) => {
-		try {
-			const report = await archivistService.detectDivergence(req.params.projectId);
-			res.json(report);
-		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
+	// Legacy 意图↔结构分歧检测(RFC §2.16)在 plan-03 不实现,P1-6 cutover
+	// 移除了返回空 report 的 false-success shim。明确 501 NOT_IMPLEMENTED,
+	// 避免调用方把"空 report"误判成"已检测、无分歧"。
+	archivistRouter.get("/:projectId/divergence", (_req, res) => {
+		res.status(501).json({
+			error: "divergence detection not implemented",
+			code: "NOT_IMPLEMENTED",
+		});
 	});
 	archivistRouter.post("/:projectId/commit-requirement-doc", async (req, res) => {
 		try {

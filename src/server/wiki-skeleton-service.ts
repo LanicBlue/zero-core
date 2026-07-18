@@ -1,30 +1,29 @@
-// WikiSkeletonService — 兼容 shim(委托给 WikiProjectIndexer)
-//
-// v0.8 plan-03 重构:本类的扫描职责已迁移到 `src/server/wiki/wiki-project-indexer.ts`。
-// 旧的 readdir 扫描 + `header:/intent:/structure:` provenance + 磁盘 cursor
-// (wiki_scan_cursors)全部移除。本文件保留为 **委托 shim**:
-//
-//   - 旧调用方(management-service.createProject / archivist REST 路由 / wiki-router
-//     ensureSummary)无需改 API —— 它们看到的还是 WikiSkeletonService。
-//   - 实际写路径全部走 WikiProjectIndexer(plan-03 §6 acceptance C「旧
-//     WikiSkeletonService 不存在可达写路径」)。
+// WikiSkeletonService — Archivist 项目编排器(Git + Indexer)
 //
 // # 文件说明书
 //
-// ## 核心功能
-// 把旧 API(buildSkeleton / rescanProjectFull / rebuildProjectSubtree /
-// commitRequirementDoc / mergeFeatureToMain / cleanupWorktree / ensureSummary /
-// detectDivergence)映射到新 indexer 接口 + ArchivistGit:
+// ## 核心职责
+// PM/archivist REST 路由的高层编排入口:把"commit 需求文档 / 合并 feature /
+// 重建 wiki / rescan"等用例协调成 ArchivistGit 操作 + WikiProjectIndexer 同步,
+// 并把新 indexer 的结果形状(SyncResult / IndexResult)翻译成调用方期望的
+// 旧 `ScanResult` 形状。本类**保留**是因为这份编排本身有价值:Git 成功而
+// Wiki 同步失败时不回滚 Git(项目显示 stale/failed),这套语义在此处落地。
 //
-//   - `buildSkeleton` → `indexer.sync(projectId)`(增量到 HEAD)
+// ## 历史命名
+// 类名沿用了 readdir 时代的 `WikiSkeletonService`。v0.8 plan-03 之后它已不再
+// 是 "skeleton/readdir shim" —— 旧的目录扫描职责被迁到
+// `src/server/wiki/wiki-project-indexer.ts`,旧的 lazy summary / divergence
+// / walkWorkspace / projectSubtreeRootId 等 vestigial API 在 P1-6 已删除。
+// 重命名会牵动 3 个生产 import + 多个测试断言,成本高于收益,故保留类名;
+// 读这段注释时请把它理解为"Archivist Project Orchestrator"。
+//
+// ## 保留的编排方法(均有真实调用方 — archivist REST 路由)
+//   - `buildSkeleton` → `indexer.syncToHead(projectId)`(增量到 HEAD)
 //   - `rescanProjectFull` → `indexer.fullIndex(projectId)`(全量)
 //   - `rebuildProjectSubtree` → `indexer.rebuildFromScratch(projectId)`(wipe + 重建)
 //   - `commitRequirementDoc` → `git.commitRequirementDoc` → `indexer.onGitCommitSuccess(sha)`
 //   - `mergeFeatureToMain` → `git.mergeFeatureToMain` → `indexer.onGitCommitSuccess(mergedToRef)`
 //   - `cleanupWorktree` → `git.cleanupWorktree`(不触发 wiki sync)
-//   - `ensureSummary` → 返回现有 summary(索引器在扫描时已写确定性 summary;
-//     不再 lazy read 工作区文件 —— 那个机制属于 readdir 时代,违反 §G)
-//   - `detectDivergence` → 返回空 report(legacy RFC §2.16 概念,plan-03 不实现)
 //
 // ## 关键不变量
 //   - 本类**不**直接读旧 `project_wiki`(plan-00 已停用)。
@@ -32,6 +31,15 @@
 //   - 本类**不**持有 wiki_scan_cursor_store(已删除)。
 //   - 所有结构写都通过 WikiProjectIndexer → wiki.db(独立数据库)。
 //   - Git ops 委托 ArchivistGit;返回 final SHA 后调 indexer.onGitCommitSuccess。
+//
+// ## 已删除的 vestigial API(P1-6 cutover)
+//   - `ensureSummary(nodeId)` — readdir 时代的 lazy summary,plan-03 索引器在
+//     扫描时已写确定性 summary;返回 undefined 的 stub 已删除。
+//   - `detectDivergence(projectId)` — legacy RFC §2.16 概念,plan-03 不实现;
+//     archivist REST 路由 `/api/archivist/:projectId/divergence` 直接返回
+//     501 NOT_IMPLEMENTED,不再有 false-success 空 report。
+//   - `projectSubtreeRootId(projectId)` / `walkWorkspace(...)` — 旧 readdir
+//     fallback helper,无调用方,已删除。
 //
 // 参见:
 //   - docs/plan/wiki-system-redesign/plan-03-project-git-mirror.md §6
@@ -57,14 +65,8 @@ export interface ScanResult {
 	notes: string[];
 }
 
-export interface DivergenceReport {
-	projectId: string;
-	unimplementedRequirements: Array<{ requirementId: string; title: string; intentNodeId: string }>;
-	uncoveredCode: Array<{ nodeId: string; path: string; docPointer: string }>;
-}
-
 // ---------------------------------------------------------------------------
-// WikiSkeletonService(委托 shim)
+// WikiSkeletonService — Archivist 项目编排器
 // ---------------------------------------------------------------------------
 
 /**
@@ -193,30 +195,6 @@ export class WikiSkeletonService {
 		if (!project) return;
 		await this.deps.git.cleanupWorktree(project.workspaceDir, requirementId, projectId);
 	}
-
-	// ─── 兼容 API(plan-03 后已无操作)─────────────────────────────────
-
-	/**
-	 * 旧 lazy summary materialization 已移除:plan-03 索引器在扫描时已写
-	 * 确定性 summary;expand/read 路径直接读 wiki_nodes.summary。
-	 * 本方法保留以维持 wiki-router 调用面 —— 直接返回 undefined,让 router
-	 * fallback 到节点的现有 summary。
-	 */
-	ensureSummary(_nodeId: string): string | undefined {
-		return undefined;
-	}
-
-	/**
-	 * Legacy 意图↔结构分歧检测(RFC §2.16)。plan-03 不实现 —— 返回空 report。
-	 * 旧调用方按 empty report 处理(不抛错,保持 API 兼容)。
-	 */
-	async detectDivergence(projectId: string): Promise<DivergenceReport> {
-		return {
-			projectId,
-			unimplementedRequirements: [],
-			uncoveredCode: [],
-		};
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -255,24 +233,4 @@ function indexToScanResult(r: IndexResult): ScanResult {
 			? [`full index: ${r.trackedFiles} files, ${r.inferredDirs} dirs`]
 			: [`full index failed: ${r.error ?? "unknown"}`],
 	};
-}
-
-// ---------------------------------------------------------------------------
-// Legacy exports —— 保留以避免 import 路径破坏(无实际语义)
-// ---------------------------------------------------------------------------
-
-/**
- * @deprecated plan-03 重构后无意义 —— 索引器使用 `wiki-root/projects/<projectId>`
- * 规范路径;不再需要合成 root ID。仅为向后兼容 re-export。
- */
-export function projectSubtreeRootId(projectId: string): string {
-	return `project:${projectId}`;
-}
-
-/**
- * @deprecated readdir-based fallback —— plan-03 §G 明确禁止用文件系统扫描
- * 替代 Git tree。保留空 stub 仅为链接兼容;不再实现。
- */
-export function walkWorkspace(_rootDir: string, _accumulator: string[] = [], _prefix = ""): string[] {
-	return [];
 }
