@@ -179,13 +179,31 @@ test.describe("acceptance-final §H — Wiki Browser UI", () => {
 			defaultBranch: "main",
 		});
 		// Wait for the initial index to settle (small repo → a couple of seconds).
+		// round-2 review P1 §6.1/§6.2:按目标 projectId 查(旧 repositories[0] 在
+		// 多项目时取错项 + failed 静默 false-pass)。只在该项目 synced 时退出;
+		// failed 立即抛;超时抛带诊断。400ms 轮询,无固定 sleep。
 		const deadline = Date.now() + 30_000;
+		let lastStatus = "unknown";
+		let lastIndexed: unknown = undefined;
+		let lastError: unknown = undefined;
 		while (Date.now() < deadline) {
 			const list = await apiPost(port, "/api/wiki-admin/repositories/list");
-			const entry = list?.result?.repositories?.[0] ?? list?.result ?? list;
-			const status = entry?.syncStatus ?? entry?.sync_status ?? "unknown";
-			if (status !== "indexing" && status !== "pending") break;
+			const repos = list?.result?.repositories ?? [];
+			const entry = repos.find((r: any) => r.projectId === projectId);
+			lastStatus = entry?.syncStatus ?? entry?.sync_status ?? "unknown";
+			lastIndexed = entry?.indexedRevision ?? entry?.indexed_revision;
+			lastError = entry?.lastError ?? entry?.last_error;
+			if (lastStatus === "failed") {
+				throw new Error(`wiki-browser bind: project ${projectId} sync failed (lastError=${lastError})`);
+			}
+			if (lastStatus === "synced") break;
 			await new Promise((r) => setTimeout(r, 400));
+		}
+		if (lastStatus !== "synced") {
+			throw new Error(
+				`wiki-browser bind: project ${projectId} did not reach synced within 30s `
+				+ `(lastStatus=${lastStatus}, indexedRevision=${lastIndexed})`,
+			);
 		}
 	});
 

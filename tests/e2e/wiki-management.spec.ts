@@ -130,14 +130,34 @@ async function bindAndIndex(port: number, projectId: string, _repo: string): Pro
 		sourceRoot: "",
 		defaultBranch: "main",
 	});
+	// round-2 review P1 §6.1/§6.2:必须按目标 projectId 查状态(旧代码取
+	// repositories[0],多项目时 [0] 是已 synced 的第一个,循环立刻退出,第二
+	// 项目可能仍 pending → §G.5 multi-project 断言失败)。现在:只在该项目
+	// synced 时返回;failed 立即抛(lastError);超时抛带诊断(projectId /
+	// 最后状态 / indexedRevision)。不用固定 sleep,400ms 轮询。
 	const deadline = Date.now() + 30_000;
+	let lastStatus = "unknown";
+	let lastIndexed: unknown = undefined;
+	let lastError: unknown = undefined;
 	while (Date.now() < deadline) {
 		const list = await apiPost(port, "/api/wiki-admin/repositories/list");
-		const entry = list?.result?.repositories?.[0] ?? list?.result ?? list;
-		const status = entry?.syncStatus ?? entry?.sync_status ?? "unknown";
-		if (status !== "indexing" && status !== "pending") break;
+		const repos = list?.result?.repositories ?? [];
+		const entry = repos.find((r: any) => r.projectId === projectId);
+		lastStatus = entry?.syncStatus ?? entry?.sync_status ?? "unknown";
+		lastIndexed = entry?.indexedRevision ?? entry?.indexed_revision;
+		lastError = entry?.lastError ?? entry?.last_error;
+		if (lastStatus === "failed") {
+			throw new Error(
+				`bindAndIndex: project ${projectId} sync failed (lastError=${lastError})`,
+			);
+		}
+		if (lastStatus === "synced") return;
 		await new Promise((r) => setTimeout(r, 400));
 	}
+	throw new Error(
+		`bindAndIndex: project ${projectId} did not reach synced within 30s `
+		+ `(lastStatus=${lastStatus}, indexedRevision=${lastIndexed})`,
+	);
 }
 
 /** Open AgentEditor for the first agent in the list (fresh-DB seed always has ≥1). */
@@ -159,6 +179,9 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 	let port: number;
 	let repo: string;
 	let projectId: string;
+	// §G.5 second project temp repo(cleanup in afterEach so assertion-failure
+	// still cleans — round-2 review P1 §6.2)。空串=本测试未用,no-op 清理。
+	let repo2 = "";
 
 	test.beforeEach(async () => {
 		app = await launchAppFresh();
@@ -177,6 +200,8 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 	test.afterEach(async () => {
 		try { await app.cleanup(); } catch {}
 		try { rmSync(repo, { recursive: true, force: true }); } catch {}
+		try { rmSync(repo2, { recursive: true, force: true }); } catch {}
+		repo2 = "";
 	});
 
 	// ─── §G.1 + §H.6 Address publish: runtime:// target rename keeps identity ──
@@ -362,7 +387,7 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 		// The full runtime switch (publish mid-session → step boundary → prompt
 		// uses new project subtree, no old-project content leak) needs a running
 		// agent loop with Wiki tool calls — see test.skip below.
-		const repo2 = makeTempGitRepo();
+		repo2 = makeTempGitRepo();
 		const project2 = await apiPost(port, "/api/projects", {
 			name: "mgmt-e2e-proj-2",
 			workspaceDir: repo2,
@@ -419,9 +444,7 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 			.map((r: any) => r.projectId);
 		expect(syncedProjects).toContain(projectId);
 		expect(syncedProjects).toContain(project2.id);
-
-		// Cleanup repo2.
-		try { rmSync(repo2, { recursive: true, force: true }); } catch {}
+		// repo2 cleanup in afterEach(round-2 review P1 §6.2:断言失败也清)。
 	});
 
 	test.skip("§G.5 runtime: switching active project mid-session reframes Wiki Prompt at step boundary (needs running agent loop fixture)", async () => {
