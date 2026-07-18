@@ -51,8 +51,10 @@
 //     integers) —— 绝不把 updated_at 时间戳当 revision 解析(defect #8 修复)。
 //     staleness 时间戳单独走 snapshot.maxUpdatedAt。
 //   - **stats 真实**:memoryNodesTotal / projectNodesTotal = 直接 children TRUE
-//     计数(via WikiService.countActiveChildren,authz-gated);*Dropped = total
-//     − included;truncated true iff included < total。
+//     计数(via WikiService.listContextCandidates,authz-gated);*Dropped = total
+//     − included;truncated true iff included < total。selectionTruncated
+//     true iff 父节点下 active 直接 children > LIST_CONTEXT_CANDIDATES_SCAN_CAP
+//     (round-2 review P1 §4,query 前的 candidate 集截断,与 token 预算截断独立)。
 //   - **超预算输出 truncated marker + 统计**(便于 UI preview 与 audit)。
 //   - **compiler 不在 AgentLoop**(plan-05 §6 + feedback-agent-loop-hooks-only)。
 //     AgentService 在 session build / hot-reload 时调用本 compiler,把结果包装
@@ -223,8 +225,16 @@ interface SubtreeRootSnapshot {
 interface SubtreeSnapshot {
 	root: SubtreeRootSnapshot | null;
 	children: SubtreeNodeSnapshot[];
-	/** 直接 children 真实总数(via countActiveChildren;非首页长度)。 */
+	/** 直接 children 真实总数(via listContextCandidates;非首页长度)。 */
 	total: number;
+	/**
+	 * candidate 选择是否被 SCAN CAP 截断(round-2 review P1 §4.3.7)。
+	 * true = 父节点下 active 直接 children > LIST_CONTEXT_CANDIDATES_SCAN_CAP
+	 * (5000),candidate 集被裁剪到首 N 个,filter→boost→sort 仍跑但有偏。
+	 * 现实子树(几百 children)永不触顶;只有 pathological parent 才为真。
+	 * true 时渲染段渲染显式 truncated-marker,提示 agent / UI。
+	 */
+	selectionTruncated: boolean;
 	/** max(visible nodes' revision) —— 整数,绝不混 updated_at。 */
 	maxRevision: number | null;
 	/** max(visible nodes' updated_at ISO) —— 独立 staleness 信号。 */
@@ -263,6 +273,14 @@ export interface CompiledWikiContextSection {
 		memoryTokensUsed: number;
 		projectTokensUsed: number;
 		truncated: boolean;
+		/**
+		 * candidate 选择是否被 SCAN CAP 截断(round-2 review P1 §4)。
+		 * true = memory 或 project 父节点下 active 直接 children >
+		 * LIST_CONTEXT_CANDIDATES_SCAN_CAP(5000),candidate 集被裁剪到首 N 个。
+		 * 现实子树永不触顶;pathological parent 才为真。true 时 render 段渲染
+		 * 显式 truncated-marker。
+		 */
+		selectionTruncated: boolean;
 	};
 	/** 输入快照 revision(plan-05 §7 hot-reload 检测变化用)。 */
 	snapshot: {
@@ -309,7 +327,14 @@ export async function compileWikiContext(opts: CompileWikiContextOpts): Promise<
 	const memorySnapshot = await fetchSubtreeSnapshot(wikiService, access, memoryRootPath);
 	const projectSnapshot = projectRootPath
 		? await fetchSubtreeSnapshot(wikiService, access, projectRootPath)
-		: { root: null, children: [], total: 0, maxRevision: null, maxUpdatedAt: null };
+		: {
+			root: null,
+			children: [],
+			total: 0,
+			selectionTruncated: false,
+			maxRevision: null,
+			maxUpdatedAt: null,
+		};
 
 	// 读 Project repo binding(branch / indexed_revision / sync_status / ...)。
 	// 在 compiler 内部从 wikiService 取 —— 保证 preview == runtime 字节级一致,
@@ -382,6 +407,7 @@ export async function compileWikiContext(opts: CompileWikiContextOpts): Promise<
 			memoryTokensUsed: memoryRender.tokensUsed,
 			projectTokensUsed: projectRender.tokensUsed,
 			truncated: memoryRender.truncated || projectRender.truncated,
+			selectionTruncated: memorySnapshot.selectionTruncated || projectSnapshot.selectionTruncated,
 		},
 		snapshot: {
 			memoryRevision: memorySnapshot.maxRevision,
@@ -470,79 +496,46 @@ async function fetchSubtreeSnapshot(
 ): Promise<SubtreeSnapshot> {
 	const ctx = makeRequestContext(access);
 	try {
-		// 读 root(content + attributes)。
+		// 读 root(content + attributes)。root read 不变 —— attributes_json 仍
+		// 由 read 解析;root 不进 candidate 集。
 		const rootRead = await wikiService.read({
 			address: rootPath,
 			view: "all",
 		}, ctx);
 		const root = rootRead.node;
-		// 读 children(分页,第一页 100 个 —— 普通场景够用;deep profile 的
-		// 2nd-level 由 attachDeepGrandchildren 单独 expand)。
-		const expandResult = await wikiService.expand({
-			address: rootPath,
-			limit: 100,
-			cursor: null,
-			includeLinks: false,
-		}, ctx);
 
-		// TRUE 直接 children 总数(defect #7 修复):不再用首页长度冒充。
-		// countActiveChildren 与 expand 同样的 authz 门(resolveAddress +
-		// assertAgentAccess("expand"));授权失败抛 → 落回首页长度(defensive)。
-		let total = expandResult.children.items.length;
-		try {
-			total = wikiService.countActiveChildren(rootPath, ctx);
-		} catch {
-			// root 不可见 / 不存在 → 保持首页长度(此时通常也是 0)。
-		}
+		// 取 candidate 集(round-2 review P1 §4):替代旧 expand({limit:100}) +
+		// per-node read + per-node countActiveChildren 三段式。
+		//   - candidate 集 = 全量 active 直接 children(由 SCAN CAP 5000 封顶),
+		//     消除首 100 bias —— 第 101+ 的高价值节点(如 priority=999 path-last
+		//     `zzz-critical`)正常进 candidate 集,下游 filter→boost→sort 在无偏
+		//     集合上跑。
+		//   - 单条 bounded SELECT(全字段)+ 单条 grouped COUNT —— 消除 2× N+1,
+		//     子树总查询数常数化(1 root read + 1 candidates SELECT + 1 grouped
+		//     childrenCount COUNT,与 N 无关)。
+		//   - 授权纪律与 expand/countActiveChildren 完全一致:resolveAddress +
+		//     assertAgentAccess("expand") 在 service 内完成,失败抛 → 本 try/catch
+		//     转空 snapshot,绝不泄露 total 或节点存在性。
+		//   - selectionTruncated:true 表示父节点下 active 直接 children > SCAN
+		//     CAP(pathological parent),candidate 集被裁剪到首 N 个。现实子树
+		//     永不触顶。true 时 stats + render 显式提示。
+		const candidatesResult = wikiService.listContextCandidates({ address: rootPath }, ctx);
 
-		const children: SubtreeNodeSnapshot[] = await Promise.all(
-			expandResult.children.items.map(async (c): Promise<SubtreeNodeSnapshot> => {
-				// 单次 read 以拿 updated_at + attributes(memory_type / durability /
-				// confidence / priority / review_after)。N+1 风险但 wiki-context
-				// 是缓存段,每 session 一次,不是 hot path。
-				let updated_at = "";
-				let memory_type: string | undefined;
-				let durability: SubtreeNodeSnapshot["durability"];
-				let confidence: number | undefined;
-				let priority: number | undefined;
-				let review_after: string | null = null;
-				try {
-					const detail = await wikiService.read({
-						address: c.path, view: "summary",
-					}, ctx);
-					updated_at = detail.node.updatedAt;
-					memory_type = detail.node.attributes.memory_type;
-					durability = detail.node.attributes.durability;
-					confidence = detail.node.attributes.confidence;
-					priority = typeof detail.node.attributes.priority === "number"
-						? detail.node.attributes.priority
-						: undefined;
-					review_after = detail.node.attributes.review_after ?? null;
-				} catch {
-					// read 失败(罕见;expand 通过 → read 通常也通过)→ 落回 expand 字段。
-				}
-				// 直接 children 真实计数(defect #3 修复:之前硬编码 0)。
-				let childrenCount = 0;
-				try {
-					childrenCount = wikiService.countActiveChildren(c.path, ctx);
-				} catch {
-					// 子节点不可见 → 0(不泄露)。
-				}
-				return {
-					path: c.path,
-					name: c.name,
-					summary: c.summary,
-					revision: c.revision,
-					updated_at,
-					memory_type,
-					durability,
-					confidence,
-					priority,
-					review_after,
-					childrenCount,
-				};
-			}),
-		);
+		// 直接从 candidate 构造 SubtreeNodeSnapshot,字段名/类型完全一致 ——
+		// prepareMemoryChildren / prepareProjectChildren 不需要改。
+		const children: SubtreeNodeSnapshot[] = candidatesResult.candidates.map((c): SubtreeNodeSnapshot => ({
+			path: c.path,
+			name: c.name,
+			summary: c.summary,
+			revision: c.revision,
+			updated_at: c.updated_at,
+			memory_type: c.memory_type,
+			durability: c.durability,
+			confidence: c.confidence,
+			priority: c.priority,
+			review_after: c.review_after,
+			childrenCount: c.childrenCount,
+		}));
 
 		// maxRevision:整数 ONLY(defect #8 修复)。绝不解析 updated_at 当 revision。
 		const revisionInts = [root.revision, ...children.map((c) => c.revision)]
@@ -570,13 +563,21 @@ async function fetchSubtreeSnapshot(
 				attributes: root.attributes,
 			},
 			children,
-			total,
+			total: candidatesResult.total,
+			selectionTruncated: candidatesResult.selectionTruncated,
 			maxRevision,
 			maxUpdatedAt,
 		};
 	} catch {
 		// root 不存在 / 无权限 → 空 snapshot(不抛;不泄露)。
-		return { root: null, children: [], total: 0, maxRevision: null, maxUpdatedAt: null };
+		return {
+			root: null,
+			children: [],
+			total: 0,
+			selectionTruncated: false,
+			maxRevision: null,
+			maxUpdatedAt: null,
+		};
 	}
 }
 
@@ -906,6 +907,16 @@ function renderMemorySection(
 		out.push(`_(${snapshot.total - included} more memory nodes omitted — use Wiki search/expand to browse)_`);
 	}
 
+	// round-2 review P1 §4:candidate 选择被 SCAN CAP 截断 → 显式提示 agent + UI。
+	// 现实子树永不触顶(5000 cap),只有 pathological parent 才为真。提示让 agent
+	// 知道 prompt 不全,需用 search 补全(与 omitted 不冲突 —— omitted 是 token
+	// 预算截断,selection-truncated 是查询前的 candidate 集截断,二者独立)。
+	if (snapshot.selectionTruncated) {
+		out.push(
+			`_(selection scanned first ${snapshot.children.length} of ${snapshot.total} direct children — truncated; refine with Wiki search)_`,
+		);
+	}
+
 	return { text: out.join("\n"), included, tokensUsed: used, truncated };
 }
 
@@ -1005,6 +1016,13 @@ function renderProjectSection(
 
 	if (snapshot.total > included) {
 		out.push(`_(${snapshot.total - included} more project nodes omitted — use Wiki search/expand to browse)_`);
+	}
+
+	// round-2 review P1 §4:candidate 选择被 SCAN CAP 截断 → 显式提示(同 memory 段)。
+	if (snapshot.selectionTruncated) {
+		out.push(
+			`_(selection scanned first ${snapshot.children.length} of ${snapshot.total} direct children — truncated; refine with Wiki search)_`,
+		);
 	}
 
 	return { text: out.join("\n"), included, tokensUsed: used, truncated };

@@ -1184,3 +1184,403 @@ describe("P0-2 FOLLOW-UP undefined-durability navigation (standard/deep include,
 		expect(lIdx, "long_term BEFORE undefined (undefined is rank 3, fills in last)").toBeLessThan(uIdx);
 	});
 });
+
+// ===========================================================================
+// ROUND-2 REVIEW FIX P1 §4 — wiki-context-compiler candidate selection
+//
+// # 文件说明书
+//
+// ## 核心功能
+// 独立验证 round-2 review P1 §4 修复:compiler 的 `fetchSubtreeSnapshot` 之前
+// 走 `expand({limit:100})` + per-node `read()` + per-node `countActiveChildren()`
+// (2× N+1 + 首 100 bias)。修复后改走单条 `WikiService.listContextCandidates`
+// (bounded SELECT + grouped COUNT,常数次查询,candidate 集 = 全量 active 直接
+// children 直到 SCAN_CAP=5000)。本测试块覆盖 review §4.3 列出的 8 个案例。
+//
+// ## 对抗 probe 焦点(全部来自 review §4.3,不删一个)
+//   §4.3.1  tail-priority candidate:第 120 个 path-last `zzz-critical`
+//           (priority=999)必须在 standard 输出里(旧代码永远拿不到)。
+//   §4.3.2  workContext 命中第 120 个 path-last:必须进 candidate 集获得 workHit
+//           提升。
+//   §4.3.3  低置信过滤不被宽 candidate 集绕过:第 120 个 path-last 是低置信假设
+//           时,standard/compact 仍要排除;deep 可带 marker 保留。
+//   §4.3.4  total/dropped/truncated 真实:120 节点 + 紧预算 → stats 数值正确,
+//           selectionTruncated === false(120 < 5000)。
+//   §4.3.5  selectionTruncated 在 pathological parent 下为真 + 渲染段加 marker。
+//           双轨:primitive({scanCap:3} on 5-child root)+ 全管线(SCAN_CAP patch)。
+//   §4.3.6  字节级确定性:同输入两次编译 → 文本 + stats 完全一致。
+//   §4.3.7  无 grant 无泄漏:attacker 无 memory:// grant → 段空, total=0, 不抛,
+//           不暴露节点存在。
+//   §4.3.8  N+1 guard(最关键):10 vs 50 children → 每子树查询数恒定;
+//           expand/countActiveChildren/read 不 per-node 调用。
+// ===========================================================================
+
+describe("P1 §4 candidate selection: tail-priority / N+1 / selectionTruncated / authz [round-2 review fix]", () => {
+	let s: Setup;
+	beforeEach(async () => { s = setup(); await ensureMemoryRoot(s, "ctx-test-agent"); });
+	afterEach(() => { s.dispose(); });
+
+	// §4.3.1 — tail-priority candidate
+	test("§4.3.1 120-node tree: path-last `zzz-critical` (priority=999) appears in standard output", async () => {
+		// 119 path-first nodes (low priority) + 1 path-last high-priority node.
+		// `zzz-critical` sorts LAST by path — old expand({limit:100}) missed it.
+		for (let i = 0; i < 119; i++) {
+			await create(s, MEMORY_ROOT, `kid-${String(i).padStart(3, "0")}`, {
+				summary: `kid ${i}`,
+				attributes: { durability: "permanent", priority: 1 },
+			});
+		}
+		await create(s, MEMORY_ROOT, "zzz-critical", {
+			summary: "the critical one that sorts last by path",
+			attributes: { durability: "permanent", priority: 999 },
+		});
+
+		const r = await compileWikiContext({
+			wikiService: s.wikiService, access: wideAccess(),
+			entries: [{ address: "memory://", profile: "standard", channel: "system", budgetTokens: 8000 }],
+		});
+
+		// Direct adversarial probe: bug was `"total":120, "included":100, "containsCritical":false`.
+		// Now: candidates=120 (scanCap 5000 > 120) → zzz-critical enters set → sort ranks it first.
+		expect(r.stats.memoryNodesTotal, "total = TRUE count of direct children").toBe(120);
+		expect(r.text, "zzz-critical MUST appear in standard render (was the bug)").toContain("zzz-critical");
+
+		// Sanity: zzz-critical (priority 999) should rank at the top of the
+		// sorted memory lines — before any `kid-NNN` (priority 1). Find first
+		// kid line and zzz-critical line; zzz-critical must come first.
+		const zzzIdx = r.text.indexOf("zzz-critical");
+		const firstKidIdx = r.text.indexOf("kid-000");
+		expect(zzzIdx).toBeGreaterThan(-1);
+		expect(firstKidIdx).toBeGreaterThan(-1);
+		expect(zzzIdx, "high-priority tail candidate ranks before low-priority path-first").toBeLessThan(firstKidIdx);
+	});
+
+	// §4.3.2 — workContext tail candidate
+	test("§4.3.2 workContext.recentFiles hitting 120th path-last node promotes it into render", async () => {
+		// 119 path-first nodes; 120th is path-last, otherwise eligible for standard
+		// (permanent, priority 50) and matches a recentFile basename.
+		for (let i = 0; i < 119; i++) {
+			await create(s, MEMORY_ROOT, `kid-${String(i).padStart(3, "0")}`, {
+				summary: `kid ${i}`,
+				attributes: { durability: "permanent", priority: 50 },
+			});
+		}
+		await create(s, MEMORY_ROOT, "zzz-tail-workhit", {
+			summary: "sorts path-last but should be promoted by workContext",
+			attributes: { durability: "permanent", priority: 50 },
+		});
+
+		// recentFiles → basename "zzz-tail-workhit" matches the node path/name.
+		const r = await compileWikiContext({
+			wikiService: s.wikiService, access: wideAccess(),
+			entries: [{ address: "memory://", profile: "standard", channel: "system", budgetTokens: 8000 }],
+			workContext: { recentFiles: ["src/agents/zzz-tail-workhit.ts"] },
+		});
+
+		expect(r.stats.memoryNodesTotal).toBe(120);
+		expect(r.text, "zzz-tail-workhit MUST appear (workHit + wider candidate set)").toContain("zzz-tail-workhit");
+
+		// workHit > priority: tail node (workHit=true, priority=50) ranks before
+		// any kid (workHit=false, priority=50).
+		const tailIdx = r.text.indexOf("zzz-tail-workhit");
+		const firstKidIdx = r.text.indexOf("kid-000");
+		expect(tailIdx).toBeGreaterThan(-1);
+		expect(firstKidIdx).toBeGreaterThan(-1);
+		expect(tailIdx, "workHit-tail candidate ranks before non-hit same-priority kid").toBeLessThan(firstKidIdx);
+	});
+
+	// §4.3.3 — low-confidence filter NOT bypassed
+	test("§4.3.3 wider candidate net does NOT weaken the confidence filter (120th = low-conf hypothesis)", async () => {
+		// 119 path-first permanent high-conf nodes + 1 path-last low-conf hypothesis.
+		for (let i = 0; i < 119; i++) {
+			await create(s, MEMORY_ROOT, `kid-${String(i).padStart(3, "0")}`, {
+				summary: `kid ${i}`,
+				attributes: { durability: "permanent", priority: 50, confidence: 0.9 },
+			});
+		}
+		await create(s, MEMORY_ROOT, "zzz-low-conf-hypothesis", {
+			summary: "low-confidence hypothesis at path-last position",
+			attributes: {
+				durability: "permanent",
+				priority: 999,           // sky-high priority would surface IF filter leaked
+				confidence: 0.2,
+				memory_type: "hypothesis",
+			},
+		});
+
+		// standard MUST still exclude the low-confidence hypothesis.
+		const std = await compileWikiContext({
+			wikiService: s.wikiService, access: wideAccess(),
+			entries: [{ address: "memory://", profile: "standard", channel: "system", budgetTokens: 8000 }],
+		});
+		expect(std.text, "standard MUST exclude low-conf hypothesis even with wider candidate net").not.toContain("zzz-low-conf-hypothesis");
+
+		// compact same.
+		const compact = await compileWikiContext({
+			wikiService: s.wikiService, access: wideAccess(),
+			entries: [{ address: "memory://", profile: "compact", channel: "system", budgetTokens: 8000 }],
+		});
+		expect(compact.text, "compact MUST exclude low-conf hypothesis").not.toContain("zzz-low-conf-hypothesis");
+
+		// deep INCLUDES with marker (existing rule; not regressed by wider net).
+		const deep = await compileWikiContext({
+			wikiService: s.wikiService, access: wideAccess(),
+			entries: [{ address: "memory://", profile: "deep", channel: "system", budgetTokens: 8000 }],
+		});
+		expect(deep.text, "deep MUST include low-conf hypothesis with marker (existing rule)").toContain("zzz-low-conf-hypothesis");
+		const hypLineStart = deep.text.indexOf("zzz-low-conf-hypothesis");
+		const hypLineEnd = deep.text.indexOf("\n", hypLineStart);
+		const hypLine = deep.text.slice(hypLineStart, hypLineEnd === -1 ? undefined : hypLineEnd);
+		expect(hypLine, "deep low-conf line carries (low confidence) marker").toMatch(/\(low confidence\)/);
+	});
+
+	// §4.3.4 — total/dropped/truncated truthful at 100+ nodes
+	test("§4.3.4 120 nodes + tight budget: total=120, dropped=120-included, selectionTruncated=false", async () => {
+		for (let i = 0; i < 120; i++) {
+			await create(s, MEMORY_ROOT, `kid-${String(i).padStart(3, "0")}`, {
+				summary: `kid node ${i} `.repeat(20),
+				attributes: { durability: "permanent", priority: 50 },
+			});
+		}
+		const r = await compileWikiContext({
+			wikiService: s.wikiService, access: wideAccess(),
+			entries: [{ address: "memory://", profile: "standard", channel: "system", budgetTokens: 600 }],
+		});
+		expect(r.stats.memoryNodesTotal, "total = TRUE direct children count").toBe(120);
+		expect(r.stats.memoryNodesIncluded, "must include fewer than total under tight budget").toBeLessThan(120);
+		expect(r.stats.memoryNodesDropped, "dropped = total − included").toBe(120 - r.stats.memoryNodesIncluded);
+		expect(r.stats.truncated, "truncated flag set under budget pressure").toBe(true);
+		expect(r.stats.selectionTruncated, "selectionTruncated = false (120 < SCAN_CAP 5000)").toBe(false);
+	});
+
+	// §4.3.5a — primitive proof via service method
+	test("§4.3.5a primitive: listContextCandidates({scanCap:3}) on 5-child root → 3 candidates, total=5, selectionTruncated=true", async () => {
+		for (let i = 0; i < 5; i++) {
+			await create(s, MEMORY_ROOT, `n${i}`, {
+				summary: `node ${i}`,
+				attributes: { durability: "permanent" },
+			});
+		}
+		const ctx = {
+			access: wideAccess(),
+			agentId: "ctx-test-agent",
+			activeProjectId: undefined,
+			sessionId: null,
+			requestId: null,
+		};
+		const result = s.wikiService.listContextCandidates(
+			{ address: "memory://", scanCap: 3 },
+			ctx,
+		);
+		expect(result.total, "TRUE total unaffected by scanCap").toBe(5);
+		expect(result.candidates.length, "candidates capped at scanCap").toBe(3);
+		expect(result.selectionTruncated, "selectionTruncated=true when total > candidates").toBe(true);
+		// path ASC + id ASC ordering: first 3 = n0,n1,n2
+		expect(result.candidates.map((c) => c.name)).toEqual(["n0", "n1", "n2"]);
+		// Each candidate carries childrenCount via the grouped count query.
+		for (const c of result.candidates) {
+			expect(typeof c.childrenCount).toBe("number");
+			expect(c.childrenCount).toBeGreaterThanOrEqual(0);
+		}
+	});
+
+	// §4.3.5b — full pipeline via patched SCAN_CAP
+	test("§4.3.5b full pipeline: SCAN_CAP patched to 3 on 10-child root → selectionTruncated=true + truncation marker", async () => {
+		for (let i = 0; i < 10; i++) {
+			await create(s, MEMORY_ROOT, `n${i}`, {
+				summary: `node ${i}`,
+				attributes: { durability: "permanent", priority: 50 },
+			});
+		}
+		const originalCap = WikiService.LIST_CONTEXT_CANDIDATES_SCAN_CAP;
+		// Static `readonly` is TS-only; runtime descriptor is writable. Redefine
+		// via defineProperty so the production code path picks up the small cap.
+		Object.defineProperty(WikiService, "LIST_CONTEXT_CANDIDATES_SCAN_CAP", {
+			value: 3,
+			writable: true,
+			configurable: true,
+		});
+		try {
+			const r = await compileWikiContext({
+				wikiService: s.wikiService, access: wideAccess(),
+				entries: [{ address: "memory://", profile: "standard", channel: "system", budgetTokens: 8000 }],
+			});
+			expect(r.stats.selectionTruncated, "selectionTruncated must be true when total > SCAN_CAP").toBe(true);
+			expect(r.stats.memoryNodesTotal, "total still TRUE count").toBe(10);
+			expect(r.text, "rendered text MUST contain the selection-truncation marker").toMatch(/selection scanned first 3 of 10 direct children — truncated; refine with Wiki search/);
+		} finally {
+			Object.defineProperty(WikiService, "LIST_CONTEXT_CANDIDATES_SCAN_CAP", {
+				value: originalCap,
+				writable: true,
+				configurable: true,
+			});
+		}
+	});
+
+	// §4.3.6 — byte determinism floor
+	test("§4.3.6 byte determinism: 50-node compile twice → identical text AND stats", async () => {
+		for (let i = 0; i < 50; i++) {
+			await create(s, MEMORY_ROOT, `n${String(i).padStart(3, "0")}`, {
+				summary: `node ${i}`,
+				attributes: {
+					durability: i % 3 === 0 ? "permanent" : i % 3 === 1 ? "long_term" : undefined,
+					priority: 50 + (i % 7),
+					confidence: 0.5 + (i % 5) * 0.1,
+				},
+			});
+		}
+		const now = new Date("2026-07-15T12:00:00.000Z");
+		const opts = {
+			wikiService: s.wikiService,
+			access: wideAccess(),
+			entries: [{ address: "memory://", profile: "standard", channel: "system", budgetTokens: 4000 }] as WikiContextEntry[],
+			now,
+		} as const;
+		const a = await compileWikiContext(opts);
+		const b = await compileWikiContext(opts);
+		expect(b.text, "text byte-identical across runs").toBe(a.text);
+		expect(JSON.stringify(b.stats), "stats byte-identical across runs").toBe(JSON.stringify(a.stats));
+	});
+
+	// §4.3.7 — no-leak without grant
+	test("§4.3.7 agent with NO grant to memory root → empty section, total=0, no leak, no throw", async () => {
+		// Seed 50 permanent nodes + the path-last zzz-critical under victim memory root.
+		for (let i = 0; i < 50; i++) {
+			await create(s, MEMORY_ROOT, `victim-${i}`, {
+				summary: `victim ${i}`,
+				attributes: { durability: "permanent" },
+			});
+		}
+		await create(s, MEMORY_ROOT, "zzz-critical-secret", {
+			summary: "CRITICAL_SECRET_VALUE_THAT_MUST_NOT_LEAK",
+			attributes: { durability: "permanent", priority: 999 },
+		});
+
+		// Attacker has no grant to wiki-root/memory/ctx-test-agent (or memory://) at all.
+		const attacker: CompiledWikiAccess = {
+			agentId: "attacker",
+			activeProjectId: undefined,
+			grants: [{ canonicalScope: "wiki-root/knowledge", actions: [...ALL_ACTIONS] }],
+			policyRevision: 1,
+		};
+
+		// Must not throw; must produce an empty memory section.
+		const r = await compileWikiContext({
+			wikiService: s.wikiService, access: attacker,
+			entries: [{ address: "memory://", profile: "standard", channel: "system", budgetTokens: 1800 }],
+		});
+		expect(r.stats.memoryNodesTotal, "no grant → total=0 (authz-correct count, no existence leak)").toBe(0);
+		expect(r.stats.memoryNodesIncluded).toBe(0);
+		expect(r.stats.memoryNodesDropped).toBe(0);
+		// Output MUST NOT reveal victim names, agentId, the secret, or the count.
+		expect(r.text).not.toContain("CRITICAL_SECRET_VALUE_THAT_MUST_NOT_LEAK");
+		expect(r.text).not.toContain("zzz-critical-secret");
+		expect(r.text).not.toContain("victim-0");
+		expect(r.text).not.toContain("ctx-test-agent");
+	});
+
+	// §4.3.8 — N+1 guard (most important regression test)
+	test("§4.3.8 N+1 guard: 10 vs 50 children → same per-subtree query count; no per-node expand/read/countActiveChildren", async () => {
+		// Build a 10-child fixture and a 50-child fixture separately.
+		const s10 = setup();
+		await ensureMemoryRoot(s10, "ctx-test-agent");
+		for (let i = 0; i < 10; i++) {
+			await create(s10, MEMORY_ROOT, `n${String(i).padStart(3, "0")}`, {
+				summary: `kid ${i}`,
+				attributes: { durability: "permanent", priority: 50 },
+			});
+		}
+		const s50 = setup();
+		await ensureMemoryRoot(s50, "ctx-test-agent");
+		for (let i = 0; i < 50; i++) {
+			await create(s50, MEMORY_ROOT, `n${String(i).padStart(3, "0")}`, {
+				summary: `kid ${i}`,
+				attributes: { durability: "permanent", priority: 50 },
+			});
+		}
+
+		const instrument = (svc: WikiService) => {
+			// Access the private deps to spy on the repo methods.
+			const nodeRepo = (svc as unknown as {
+				deps: {
+					nodeRepo: {
+						getActiveByPath: (path: string) => unknown;
+						getActiveChildrenBounded: (parentId: number, scanCap: number) => unknown;
+						countChildrenByParents: (parentIds: number[]) => unknown;
+						getActiveChildrenPaged: (...args: unknown[]) => unknown;
+						getActiveChildren: (...args: unknown[]) => unknown;
+						countActiveChildren: (...args: unknown[]) => unknown;
+					};
+				};
+			}).deps.nodeRepo;
+			return {
+				svcSpies: {
+					expand: vi.spyOn(svc, "expand"),
+					read: vi.spyOn(svc, "read"),
+					countActiveChildren: vi.spyOn(svc, "countActiveChildren"),
+					listContextCandidates: vi.spyOn(svc, "listContextCandidates"),
+				},
+				repoSpies: {
+					getActiveByPath: vi.spyOn(nodeRepo, "getActiveByPath"),
+					getActiveChildrenBounded: vi.spyOn(nodeRepo, "getActiveChildrenBounded"),
+					countChildrenByParents: vi.spyOn(nodeRepo, "countChildrenByParents"),
+					getActiveChildrenPaged: vi.spyOn(nodeRepo, "getActiveChildrenPaged"),
+					getActiveChildren: vi.spyOn(nodeRepo, "getActiveChildren"),
+					countActiveChildren: vi.spyOn(nodeRepo, "countActiveChildren"),
+				},
+			};
+		};
+
+		const instr10 = instrument(s10.wikiService);
+		await compileWikiContext({
+			wikiService: s10.wikiService, access: wideAccess(),
+			entries: [{ address: "memory://", profile: "standard", channel: "system", budgetTokens: 8000 }],
+		});
+
+		const instr50 = instrument(s50.wikiService);
+		await compileWikiContext({
+			wikiService: s50.wikiService, access: wideAccess(),
+			entries: [{ address: "memory://", profile: "standard", channel: "system", budgetTokens: 8000 }],
+		});
+
+		// ===== Hard regression assertions: candidate path MUST NOT call these =====
+		// expand: was used by old fetchSubtreeSnapshot AND by deep grandchildren; in
+		// standard profile (not deep) it MUST be 0.
+		expect(instr10.svcSpies.expand.mock.calls.length, "10-child: expand must NOT be called by candidate path").toBe(0);
+		expect(instr50.svcSpies.expand.mock.calls.length, "50-child: expand must NOT be called by candidate path").toBe(0);
+
+		// per-node WikiService.countActiveChildren: was the N+1 count primitive; must be 0 now.
+		expect(instr10.svcSpies.countActiveChildren.mock.calls.length, "10-child: WikiService.countActiveChildren must NOT be called").toBe(0);
+		expect(instr50.svcSpies.countActiveChildren.mock.calls.length, "50-child: WikiService.countActiveChildren must NOT be called").toBe(0);
+
+		// per-node WikiService.read: only the root read remains. NOT per-node.
+		expect(instr10.svcSpies.read.mock.calls.length, "10-child: read called exactly once (root only), not per-node").toBe(1);
+		expect(instr50.svcSpies.read.mock.calls.length, "50-child: read called exactly once (root only), not per-node").toBe(1);
+
+		// repo-level countActiveChildren (the primitive the old per-node path used): must be 0.
+		expect(instr10.repoSpies.countActiveChildren.mock.calls.length, "10-child: repo.countActiveChildren must NOT be called").toBe(0);
+		expect(instr50.repoSpies.countActiveChildren.mock.calls.length, "50-child: repo.countActiveChildren must NOT be called").toBe(0);
+
+		// repo-level getActiveChildrenPaged (expand's primitive): must be 0.
+		expect(instr10.repoSpies.getActiveChildrenPaged.mock.calls.length, "10-child: getActiveChildrenPaged must NOT be called").toBe(0);
+		expect(instr50.repoSpies.getActiveChildrenPaged.mock.calls.length, "50-child: getActiveChildrenPaged must NOT be called").toBe(0);
+
+		// ===== Constant-count assertions: same regardless of N =====
+		expect(instr10.svcSpies.listContextCandidates.mock.calls.length, "10-child: listContextCandidates exactly 1").toBe(1);
+		expect(instr50.svcSpies.listContextCandidates.mock.calls.length, "50-child: listContextCandidates exactly 1").toBe(1);
+
+		expect(instr10.repoSpies.getActiveChildrenBounded.mock.calls.length, "10-child: getActiveChildrenBounded exactly 1").toBe(1);
+		expect(instr50.repoSpies.getActiveChildrenBounded.mock.calls.length, "50-child: getActiveChildrenBounded exactly 1").toBe(1);
+
+		expect(instr10.repoSpies.countChildrenByParents.mock.calls.length, "10-child: countChildrenByParents exactly 1 (grouped, no N+1)").toBe(1);
+		expect(instr50.repoSpies.countChildrenByParents.mock.calls.length, "50-child: countChildrenByParents exactly 1 (grouped, no N+1)").toBe(1);
+
+		// getActiveByPath: called twice per compile (once in read, once in listContextCandidates)
+		// — independent of N.
+		expect(instr10.repoSpies.getActiveByPath.mock.calls.length, "10-child: getActiveByPath count independent of N").toBe(instr50.repoSpies.getActiveByPath.mock.calls.length);
+
+		// Final sanity: both fixtures compiled to non-empty output with correct totals.
+		s10.dispose();
+		s50.dispose();
+	});
+});

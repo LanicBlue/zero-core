@@ -177,6 +177,109 @@ export class WikiNodeRepository {
 	}
 
 	/**
+	 * 一次性取某 parent 的 active 直接 children 全量行(带 SCAN CAP),用于
+	 * plan-05 §6 wiki-context-compiler 的 candidate 选择(round-2 review P1 §4)。
+	 *
+	 * **为什么存在**:之前 compiler 走 `expand({limit:100})` 拿首页 100 个直接
+	 * children,再对每个 child 单独 `read()` + `countActiveChildren()` —— 两个
+	 * 独立 N+1:
+	 *   1. **首 100 bias**:expand 按 path ASC 返回首 100。priority/confidence
+	 *      极高但 path 排在 101+(如 `zzz-critical`)永远进不了 candidate 集,
+	 *      无论 workContext.recentFiles 是否命中。
+	 *   2. **N+1 read + N+1 count**:每个 child 一次 `read()` 拿 updated_at +
+	 *      attributes,再加一次 `countActiveChildren()` 拿 childrenCount —— 子树
+	 *      查询次数 = O(N)。
+	 *
+	 * 本 primitive 同时解决两个问题:返回**全量 active 直接 children 行**(由
+	 * `scanCap` 封顶,5000 足以让现实树永不截断)+ **TRUE 总数** + **是否截断**
+	 * 标志。行带全字段(summary/attributes_json/revision/updated_at),compiler
+	 * 可直接 JS 解析 attributes,不再 per-node read。childrenCount 由配套
+	 * {@link countChildrenByParents} 单条 grouped 查询补齐。
+	 *
+	 * 子树总查询数因此从 O(N) 降为常数:1(root read)+ 1(本 SELECT)+ 1
+	 * (grouped childrenCount)+ 1(COUNT total)。
+	 *
+	 * 排序键 `path ASC, id ASC` 与 {@link getActiveChildrenPaged} 完全一致 ——
+	 * 保留稳定序,确保 preview == runtime 字节级一致。归档节点不计入。不开
+	 * transaction(纯读)。无授权(与 countActiveChildren 同模型:授权在 service
+	 * 层 / 调用上下文)。
+	 *
+	 * @param parentId root 节点的内部整数 ID。
+	 * @param scanCap  返回行数硬上限。调用方裁剪到合法区间(safeLimit)。默认
+	 *                 service 层用 5000;现实子树几乎不会触顶。超过 → `truncated=true`。
+	 * @returns `{ rows, total, truncated }`:rows 是按 path ASC + id ASC 排序的
+	 *                 active 直接 children 行(可能达到 scanCap 截断);total 是
+	 *                 TRUE active 直接 children 总数(不受 scanCap 影响);truncated
+	 *                 = total > rows.length。parent 不存在 → rows=[] / total=0 /
+	 *                 truncated=false。
+	 */
+	getActiveChildrenBounded(
+		parentId: number,
+		scanCap: number,
+	): { rows: WikiNodeRow[]; total: number; truncated: boolean } {
+		const safeCap = Math.max(1, Math.min(Math.floor(scanCap), 10_000));
+		const totalRow = this.db
+			.prepare(
+				`SELECT COUNT(*) AS n
+				 FROM wiki_nodes
+				 WHERE parent_id = ? AND archived_at IS NULL`,
+			)
+			.get(parentId) as { n: number } | undefined;
+		const total = totalRow?.n ?? 0;
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM wiki_nodes
+				 WHERE parent_id = ? AND archived_at IS NULL
+				 ORDER BY path ASC, id ASC
+				 LIMIT ?`,
+			)
+			.all(parentId, safeCap) as WikiNodeRow[];
+		return { rows, total, truncated: total > rows.length };
+	}
+
+	/**
+	 * 一次 grouped 查询取多个 parent 的 active 直接 children 计数(plan-05 §6
+	 * wiki-context-compiler round-2 review P1 §4:消除 N+1 countActiveChildren)。
+	 *
+	 * 配套 {@link getActiveChildrenBounded}:后者返回全量行后,compiler 用本方法
+	 * 把所有 candidate 的 childrenCount 一次性补齐,而不是对每个 candidate 单独
+	 * 调 `countActiveChildren()`(N+1)。
+	 *
+	 * 单条 `SELECT parent_id, COUNT(*) ... WHERE parent_id IN (...) AND
+	 * archived_at IS NULL GROUP BY parent_id`。返回 Map parentId → count;Map
+	 * 中**不存在**的 key 表示 0(调用方用 `map.get(id) ?? 0`),与 countActiveChildren
+	 * 单条调用语义一致(archived 不计)。
+	 *
+	 * **空输入 → 空 Map**(不执行 `IN ()`,那会抛 SQLite 语法错)。不开 transaction
+	 * (纯读)。无授权(与 countActiveChildren 同模型:授权在 service 层 / 调用
+	 * 上下文 —— 这些 parent_id 是已通过 grant 的 root 的 active children,默认可见)。
+	 *
+	 * @param parentIds 需要计数的 parent 内部整数 ID 列表。重复值安全(GROUP BY
+	 *                  天然去重;输出 Map 每个 key 只一条)。空 → 空 Map。
+	 * @returns parentId → active 直接 children 计数的 Map。
+	 */
+	countChildrenByParents(parentIds: number[]): Map<number, number> {
+		const out = new Map<number, number>();
+		if (parentIds.length === 0) return out;
+		// 去重避免重复 placeholder(查询语义不变,但减少绑定数 + 避免 SQLite
+		// `SQLITE_MAX_VARIABLE_NUMBER` 边界压力)。5000 candidates 远低于默认 32766 上限。
+		const unique = Array.from(new Set(parentIds));
+		const placeholders = unique.map(() => "?").join(", ");
+		const rows = this.db
+			.prepare(
+				`SELECT parent_id, COUNT(*) AS n
+				 FROM wiki_nodes
+				 WHERE parent_id IN (${placeholders}) AND archived_at IS NULL
+				 GROUP BY parent_id`,
+			)
+			.all(...unique) as Array<{ parent_id: number; n: number }>;
+		for (const r of rows) {
+			out.set(r.parent_id, r.n);
+		}
+		return out;
+	}
+
+	/**
 	 * 数某子树下 active 且 `attributes_json.source_stale = true` 的节点数
 	 * (plan-05 §6 P1-5 区分 structure-sync vs semantic-sync)。
 	 *

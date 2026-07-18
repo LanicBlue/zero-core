@@ -182,6 +182,44 @@ function parseAttributesJson(json: string | null): WikiNodeAttributes {
 }
 
 /**
+ * Wiki Context compiler candidate(plan-05 §6 / round-2 review P1 §4)。
+ *
+ * 携带 compiler 的 `SubtreeNodeSnapshot` 所需的全字段 —— 直接从 wiki_nodes 行
+ * + attributes_json 解析得出,**不再 per-node read**。由 {@link WikiService.listContextCandidates}
+ * 单条 bounded SELECT + 单条 grouped COUNT 组装,把 candidate 选择 + attributes
+ * + childrenCount 合并为常数次查询(消除 2× N+1 + 首 100 bias)。
+ *
+ * 字段语义与 compiler 旧路径(`read` + `countActiveChildren`)输出的字段一一对应,
+ * 默认值(undefined / null)与旧 read-failed 路径一致 —— 旧 read 失败时
+ * `updated_at=""` / 无 attributes / `review_after=null` / `childrenCount=0`;
+ * 新路径 row 必然带 updated_at + JSON 解析后的 attributes,无 read 失败路径。
+ */
+export interface ContextCandidate {
+	/** 规范路径(来自 row.path)。 */
+	path: string;
+	/** 最后一段 name(来自 row.name)。 */
+	name: string;
+	/** 短摘要(来自 row.summary)。 */
+	summary: string;
+	/** 当前 revision(整数,来自 row.revision)。 */
+	revision: number;
+	/** ISO updated_at(来自 row.updated_at)。 */
+	updated_at: string;
+	/** attributes.memory_type(未设 → undefined)。 */
+	memory_type?: string;
+	/** attributes.durability(未设 → undefined)。 */
+	durability?: "permanent" | "long_term" | "short_term";
+	/** attributes.confidence(非数字 → undefined)。 */
+	confidence?: number;
+	/** attributes.priority(非数字 → undefined)。 */
+	priority?: number;
+	/** attributes.review_after(ISO 字符串;未设 → null)。 */
+	review_after: string | null;
+	/** 该 candidate 的 active 直接 children 真实计数(单条 grouped 查询)。 */
+	childrenCount: number;
+}
+
+/**
  * WikiService —— 数据面 API 主入口。
  */
 export class WikiService {
@@ -281,6 +319,94 @@ export class WikiService {
 		const node = this.deps.nodeRepo.getActiveByPath(canonicalPath);
 		if (!node) return 0;
 		return this.deps.nodeRepo.countActiveChildren(node.id);
+	}
+
+	/**
+	 * SCAN CAP for {@link WikiService.listContextCandidates}:5000。足够让现实
+	 * 子树(几百个直接 children)永不截断,只对 pathological parent(单 parent
+	 * 下 > 5000 active children)才报 `selectionTruncated=true`。设计依据见
+	 * plan-05 §6 / round-2 review P1 §4.3.7。
+	 */
+	static readonly LIST_CONTEXT_CANDIDATES_SCAN_CAP = 5000;
+
+	/**
+	 * 一次性取某 root 的全量 active 直接 children 作为 wiki-context-compiler 的
+	 * candidate 集(plan-05 §6 / round-2 review P1 §4)。
+	 *
+	 * **为什么存在**:替代 compiler 之前的 `expand({limit:100})` + per-node
+	 * `read()` + per-node `countActiveChildren()` 三段式。问题:
+	 *   1. `expand({limit:100})` 按 path ASC 取首 100 → 第 101+ 的高价值节点
+	 *      (如 `zzz-critical` priority=999)永远进不了 candidate 集,无论它多
+	 *      重要、是否被 workContext 命中。compiler 的 filter→boost→sort 管道
+	 *      在有偏的子集上跑,排序结果不可信。
+	 *   2. 每个 candidate 一次 `read()` + 一次 `countActiveChildren()` → 2× N+1
+	 *      查询。N=100 时单次编译 200+ SQL,session build latency 飙升。
+	 *
+	 * 本方法走单条 bounded SELECT(全字段)+ 单条 grouped COUNT,把 candidate
+	 * 选择 + attributes + childrenCount 合并为常数次查询(1 + 1 + 1,与 N 无关)。
+	 * candidate 集 = 全量 active 直接 children(由 {@link WikiService.LIST_CONTEXT_CANDIDATES_SCAN_CAP}
+	 * 封顶),compiler 下游 filter→boost→sort 在无偏集合上跑,sort 结果可信。
+	 *
+	 * **授权纪律(与 expand/countActiveChildren 完全一致)**:先解析地址 →
+	 * {@link assertAgentAccess}(`"expand"`)→ 再查节点 → 调 repo。授权失败抛
+	 * (NOT_FOUND / ACCESS_DENIED);调用方(compiler)的 try/catch 把异常转为空
+	 * snapshot,**绝不**泄露 total 或节点存在性 —— 与 `read` / `expand` 同外观。
+	 *
+	 * **不写 audit**(read-only candidate query;与 countActiveChildren 同模型 ——
+	 * compiler 内部副查询,写 audit 会污染历史)。
+	 *
+	 * @param req.address root 地址(memory://、project://、wiki-root/...)。
+	 * @param req.scanCap 可选 SCAN CAP;不传 → 默认 {@link WikiService.LIST_CONTEXT_CANDIDATES_SCAN_CAP}=5000。
+	 * @param ctx 标准 WikiRequestContext(access 是唯一权威 grants 来源)。
+	 * @returns `{ candidates, total, selectionTruncated }`:candidates 按行
+	 *   (path ASC, id ASC) 排序;total = TRUE active 直接 children 总数;
+	 *   selectionTruncated = total > candidates.length(pathological parent 才为真)。
+	 *   root 不存在 / 无授权 → 走异常(调用方转空)。
+	 */
+	listContextCandidates(
+		req: { address: string; scanCap?: number },
+		ctx: WikiRequestContext,
+	): {
+		candidates: ContextCandidate[];
+		total: number;
+		selectionTruncated: boolean;
+	} {
+		const canonicalPath = this.resolveAddress(req.address, ctx);
+		this.assertAgentAccess("expand", canonicalPath, ctx);
+		const node = this.deps.nodeRepo.getActiveByPath(canonicalPath);
+		if (!node) {
+			throw wikiError("NOT_FOUND", `no accessible resource at ${canonicalPath}`);
+		}
+		const scanCap = req.scanCap ?? WikiService.LIST_CONTEXT_CANDIDATES_SCAN_CAP;
+		const bounded = this.deps.nodeRepo.getActiveChildrenBounded(node.id, scanCap);
+		// 单条 grouped COUNT 补齐所有 candidate 的 childrenCount(无 N+1)。
+		const countMap = this.deps.nodeRepo.countChildrenByParents(
+			bounded.rows.map((r) => r.id),
+		);
+		const candidates: ContextCandidate[] = bounded.rows.map((row) => {
+			const attrs = parseAttributesJson(row.attributes_json);
+			const priority = typeof attrs.priority === "number" ? attrs.priority : undefined;
+			const confidence = typeof attrs.confidence === "number" ? attrs.confidence : undefined;
+			const review_after = typeof attrs.review_after === "string" ? attrs.review_after : null;
+			return {
+				path: row.path,
+				name: row.name,
+				summary: row.summary,
+				revision: row.revision,
+				updated_at: row.updated_at,
+				memory_type: attrs.memory_type,
+				durability: attrs.durability,
+				confidence,
+				priority,
+				review_after,
+				childrenCount: countMap.get(row.id) ?? 0,
+			};
+		});
+		return {
+			candidates,
+			total: bounded.total,
+			selectionTruncated: bounded.truncated,
+		};
 	}
 
 	/**
