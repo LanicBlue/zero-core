@@ -94,6 +94,10 @@ import {
 	validateWikiName,
 } from "./wiki-path.js";
 import { isWikiServiceError, wikiError, WikiServiceError } from "./wiki-errors.js";
+import {
+	manifestStatusFromAttrs,
+	type ProjectManifestStatus,
+} from "./wiki-manifest.js";
 
 /**
  * Agent data-plane move 节点上限(plan-02 §4)。超过 → MOVE_TOO_LARGE。
@@ -453,6 +457,37 @@ export class WikiService {
 		} catch {
 			// 与 safeGetRepositoryBinding 同兜底:DB 异常不阻塞 status/编译。
 			return 0;
+		}
+	}
+
+	/**
+	 * 读 project root 节点的 manifest_status(round-2 review-fix P1 §5)。
+	 *
+	 * **Layering(与 {@link getRepositoryBinding} / {@link countSourceStale} 同模型)**:
+	 * service-level accessor,不接 ctx。理由:
+	 *   1. wiki-admin-router 的 status endpoint 在 server host admin 上下文运行。
+	 *   2. 与 binding / semantic-stale count 同一 meta 层(一个 enum + ISO 时间戳,
+	 *      不泄露节点正文),授权由 admin plane 既有 admin authz 把关。
+	 *   3. 节点正文仍由 expand/read 的 grant 体系保护;这里只返 enum。
+	 *
+	 * **absent → pending**:未绑定 / 无 root / attributes 缺 manifest_status → 一律
+	 * `"pending"`(review-fix P1 §5.4:老项目 / 未 enriched 项目显式渲染成 pending,
+	 * 不静默)。DB 异常 → `"pending"`(与 countSourceStale 同兜底)。
+	 *
+	 * **单一真相源**:wiki-admin-router / 未来 UI status 都走本方法;manifest 字段
+	 * 由 indexer(fullIndex → pending)+ wiki-enrich(填字段 + ready)+ MODIFY
+	 * demote(ready → partial)维护,见 wiki-project-indexer.ts。
+	 */
+	getProjectManifestStatus(projectId: string): ProjectManifestStatus {
+		const projectRootPath = `${WIKI_ROOT_PATH}/projects/${projectId}`;
+		try {
+			const rootRow = this.deps.nodeRepo.getActiveByPath(projectRootPath);
+			if (!rootRow) return "pending";
+			const attrs = parseAttributesJson(rootRow.attributes_json);
+			return manifestStatusFromAttrs(attrs);
+		} catch {
+			// 与 countSourceStale 同兜底:DB 异常不阻塞 admin status endpoint。
+			return "pending";
 		}
 	}
 

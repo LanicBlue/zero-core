@@ -56,6 +56,10 @@ import {
 	validateWikiName,
 } from "./wiki-path.js";
 import type { WikiNodeKind } from "../../shared/wiki-types.js";
+import {
+	MANIFEST_STATUS_ATTR_KEY,
+	MANIFEST_UPDATED_AT_ATTR_KEY,
+} from "./wiki-manifest.js";
 import { log } from "../../core/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -560,6 +564,14 @@ export class WikiProjectIndexer {
 				projectNodeId, project.name, binding.defaultBranch, headRevision,
 				indexEntries.length, sortedDirs.length,
 			);
+
+			// round-2 review-fix P1 §5.2.1:刚结构索引完的 project,manifest 标记
+			// pending ——绝不声称语义完整。6 个结构化字段(goals/stack/...)
+			// 留空(absent → compiler 渲染 "(none recorded)");Archivist 通过
+			// wiki-enrich 填完后会显式置 ready。这一步把 manifest 字段从「不可见
+			// 默认」变成「显式 pending 状态」,UI / compiler / admin 都能据此
+			// 提示用户跑 wiki-enrich。preserve existing display_name 等已有 attrs。
+			this.seedProjectManifestPending(projectNodeId);
 
 			// 推进 indexed_revision(plan-03 §5.4:成功才推进;失败 transaction rollback)。
 			this.deps.repositoryStore.repositories.updateSyncState({
@@ -1097,6 +1109,13 @@ export class WikiProjectIndexer {
 							attributes_json: JSON.stringify(attrs),
 						});
 					}
+					// round-2 review-fix P1 §5.2.3 / §5.3.4:source 文件变了 → 整个
+					// project 的 manifest 可能也过时了。若 project root 当前是 ready,
+					// 降级为 partial(等 wiki-enrich 重新填字段后再置 ready)。同步事务,
+					// 复用 root revision CAS。只在 ready 时降级:pending 不动(本来就
+					// 没 ready),partial 不动(已经是部分过时)。首次索引不会进这里
+					// (sync 走 fullIndex,fullIndex 直接置 pending)。
+					this.demoteManifestIfReady(projectNodeId);
 					changesApplied++;
 					stats.modified++;
 					break;
@@ -1444,6 +1463,57 @@ export class WikiProjectIndexer {
 		if (projectNode.summary !== summary) {
 			this.deps.nodeRepo.update(projectNode.id, projectNode.revision, { summary });
 		}
+	}
+
+	/**
+	 * 把 project root 节点的 manifest_status 标成 "pending" + 时间戳(round-2
+	 * review-fix P1 §5.2.1)。preserve 已有 attributes(display_name / 老
+	 * manifest 字段 / 任意 caller-set attrs)。revision CAS 走 nodeRepo.update。
+	 *
+	 * 设计取舍:
+	 *   - 不删 6 个结构化字段键(goals/stack/...):fullIndex 是结构索引,语义
+	 *     字段由 wiki-enrich 维护,fullIndex 不掺合。若 caller 用 rebuildFromScratch
+	 *     走完 fullIndex,curated content 已被 archive(那是 rebuild 语义);
+	 *     而本字段不主动重置,以便未来 rebuild 策略变更时不会丢字段。
+	 *   - manifest_updated_at 总刷新:即便从 pending 再到 pending,语义上是
+	 *     「最近一次结构索引」时间戳,有诊断价值。
+	 *
+	 * 调用方:fullIndex 成功路径(同 transaction)。
+	 */
+	private seedProjectManifestPending(projectNodeId: number): void {
+		const rootRow = this.deps.nodeRepo.getById(projectNodeId);
+		if (!rootRow || rootRow.archived_at !== null) return;
+		const attrs = parseAttrs(rootRow.attributes_json);
+		attrs[MANIFEST_STATUS_ATTR_KEY] = "pending";
+		attrs[MANIFEST_UPDATED_AT_ATTR_KEY] = new Date().toISOString();
+		this.deps.nodeRepo.update(rootRow.id, rootRow.revision, {
+			attributes_json: JSON.stringify(attrs),
+		});
+	}
+
+	/**
+	 * 若 project root 当前 manifest_status === "ready",降级为 "partial" 并刷新
+	 * manifest_updated_at(round-2 review-fix P1 §5.2.3 / §5.3.4)。
+	 *
+	 * 触发场景:Git MODIFY change(indexer 处理 modify 文件时调用)。source 变了,
+	 * 已 enrich 的 manifest 字段可能也过时 —— 显式降级让 compiler / UI 提示用户
+	 * 重跑 wiki-enrich。Archivist 重新跑 wiki-enrich 后会把 ready 写回。
+	 *
+	 * 只降 ready → partial;pending / partial 不动(避免无谓 revision bump +
+	 * 覆盖 Archivist 已经在做的 enrich)。revision CAS 走 nodeRepo.update。
+	 *
+	 * 调用方:applyDiffAtomically 的 modify 分支(同 transaction)。
+	 */
+	private demoteManifestIfReady(projectNodeId: number): void {
+		const rootRow = this.deps.nodeRepo.getById(projectNodeId);
+		if (!rootRow || rootRow.archived_at !== null) return;
+		const attrs = parseAttrs(rootRow.attributes_json);
+		if (attrs[MANIFEST_STATUS_ATTR_KEY] !== "ready") return;
+		attrs[MANIFEST_STATUS_ATTR_KEY] = "partial";
+		attrs[MANIFEST_UPDATED_AT_ATTR_KEY] = new Date().toISOString();
+		this.deps.nodeRepo.update(rootRow.id, rootRow.revision, {
+			attributes_json: JSON.stringify(attrs),
+		});
 	}
 
 	/** 归档空目录节点(无 active children 的 directory)。project root 不动。 */

@@ -165,6 +165,20 @@ export function WikiProjectCard({ project, onOpenWiki }: Props) {
 		stale: "#FF9800",
 	};
 
+	// round-2 review-fix P1 §5.6: manifest 状态配色(第三个独立维度)。pending=还没
+	// enrich 6 字段;partial=enrich 中途 / 被 MODIFY 踩回;ready=已填。与 syncColor
+	// / semanticColor 都不同色域,让用户一眼分辨三个正交维度。
+	const manifestColor: Record<string, string> = {
+		pending: "#8B8B8B",
+		partial: "#FF9800",
+		ready: "#4CAF50",
+	};
+	const manifestHint: Record<string, string> = {
+		pending: "Manifest pending: structural index only; goals/stack/entrypoints not yet enriched. Run wiki-enrich to populate.",
+		partial: "Manifest partial: some structured fields may be stale; re-run wiki-enrich.",
+		ready: "Manifest ready: goals/stack/entrypoints enriched.",
+	};
+
 	return (
 		<div style={{
 			background: "var(--bg-secondary, #1c1c1e)",
@@ -191,23 +205,38 @@ export function WikiProjectCard({ project, onOpenWiki }: Props) {
 						{/* P1-5: semantic-sync badge (orthogonal to struct). Deliberately a
 							separate badge so the user can see struct=synced BUT semantic=stale
 							at the same time. Color palette distinct from syncColor. */}
-						<span
-							title={
-								status.semanticSyncStatus === "stale"
-									? `Semantic sync: ${status.semanticStaleNodeCount} node(s) have stale summaries (source changed, re-summarization pending)`
-									: "Semantic sync: all indexed nodes have current summaries"
-							}
-							style={{
-								fontSize: 10, padding: "2px 6px", borderRadius: 3,
-								color: semanticColor[status.semanticSyncStatus] ?? "#888",
-								border: `1px solid ${semanticColor[status.semanticSyncStatus] ?? "#888"}55`,
-							}}
-						>
-							sem: {status.semanticSyncStatus}
-							{status.semanticSyncStatus === "stale" ? ` (${status.semanticStaleNodeCount})` : ""}
-						</span>
-					</>
-				)}
+					<span
+						title={
+							status.semanticSyncStatus === "stale"
+								? `Semantic sync: ${status.semanticStaleNodeCount} node(s) have stale summaries (source changed, re-summarization pending)`
+								: "Semantic sync: all indexed nodes have current summaries"
+						}
+						style={{
+							fontSize: 10, padding: "2px 6px", borderRadius: 3,
+							color: semanticColor[status.semanticSyncStatus] ?? "#888",
+							border: `1px solid ${semanticColor[status.semanticSyncStatus] ?? "#888"}55`,
+						}}
+					>
+						sem: {status.semanticSyncStatus}
+						{status.semanticSyncStatus === "stale" ? ` (${status.semanticStaleNodeCount})` : ""}
+					</span>
+					{/* round-2 review-fix P1 §5.6: manifest badge (third orthogonal dim).
+						pending=structural index only / 6 fields not enriched;
+						partial=enrich incomplete or demoted by Git MODIFY;
+						ready=goals/stack/entrypoints enriched. Color palette distinct
+						from struct/semantic so user can tell the three apart at a glance. */}
+					<span
+						title={manifestHint[status.manifestStatus] ?? "Manifest status unknown"}
+						style={{
+							fontSize: 10, padding: "2px 6px", borderRadius: 3,
+							color: manifestColor[status.manifestStatus] ?? "#888",
+							border: `1px solid ${manifestColor[status.manifestStatus] ?? "#888"}55`,
+						}}
+					>
+						manifest: {status.manifestStatus}
+					</span>
+				</>
+			)}
 				<button type="button" onClick={() => void refresh()} style={ghostBtnStyle} disabled={loading}>
 					{loading ? "..." : "Refresh"}
 				</button>
@@ -245,6 +274,20 @@ export function WikiProjectCard({ project, onOpenWiki }: Props) {
 							) : (
 								<span style={{ color: semanticColor.fresh }}>fresh</span>
 							)
+						}
+					/>
+					{/* round-2 review-fix P1 §5.6: Manifest row — third orthogonal dim.
+						pending=structural index only (6 fields not enriched);
+						partial=enrich incomplete or demoted by Git MODIFY;
+						ready=goals/stack/entrypoints enriched. */}
+					<Row
+						label="Manifest"
+						value={
+							<span style={{ color: manifestColor[status.manifestStatus] ?? "#888" }}>
+								{status.manifestStatus}
+								{status.manifestStatus === "pending" ? " — run wiki-enrich to enrich goals/stack/entrypoints" : ""}
+								{status.manifestStatus === "partial" ? " — re-run wiki-enrich to refresh fields" : ""}
+							</span>
 						}
 					/>
 					<Row label="Last indexed" value={status.lastIndexedAt ? new Date(status.lastIndexedAt).toLocaleString() : "—"} />

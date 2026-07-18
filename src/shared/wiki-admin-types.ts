@@ -30,6 +30,28 @@
 import type { WikiGrant, WikiContextEntry } from "./types.js";
 
 // ---------------------------------------------------------------------------
+// Project manifest status(round-2 review-fix P1 §5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Project root wiki 节点 manifest 状态。**类型真相源在 shared**(避免 shared→server
+ * 反向依赖);server 端用 `src/server/wiki/wiki-manifest.ts` 的 helper
+ * (isManifestStatus / manifestStatusFromAttrs)操作值,该模块 re-export 本类型。
+ *
+ * 生命周期:
+ *   - `"pending"` —— git fullIndex 刚把结构索引完,但 6 个结构化字段
+ *     (goals/stack/entrypoints/modules/risks/constraints)还没被 wiki-enrich 填充。
+ *     老项目 / 未 enriched 项目也视为 pending(absent → pending)。
+ *   - `"partial"` —— wiki-enrich 中途 / 不完整,或 ready 项目被 MODIFY 踩回。
+ *   - `"ready"` —— wiki-enrich 完整填充 6 字段 + 子树 enrichment 后由 Archivist
+ *     显式标记。
+ *
+ * 与 `syncStatus` / `semanticSyncStatus` **正交**:structure/semantic 描述「Git tree
+ * 是否追平 + 摘要是否过时」;manifest_status 描述「项目级 manifest 是否已 enrich」。
+ */
+export type ProjectManifestStatus = "pending" | "partial" | "ready";
+
+// ---------------------------------------------------------------------------
 // Authority —— 完全由 server 注入,不在任何 request body 出现
 // ---------------------------------------------------------------------------
 
@@ -185,6 +207,19 @@ export interface WikiAdminRepositoryView {
 	 *   - structure indexing/pending + semantic fresh = 结构还在追,但已索引部分无 stale。
 	 */
 	semanticSyncStatus: "fresh" | "stale";
+	/**
+	 * PROJECT MANIFEST 状态(round-2 review-fix P1 §5):project root wiki 节点
+	 * 的 6 个结构化字段(goals/stack/entrypoints/modules/risks/constraints)是否
+	 * 已被 wiki-enrich 填充。**与 syncStatus / semanticSyncStatus 正交**:
+	 *   - structure synced + semantic fresh + manifest pending = Git 已追平、摘要
+	 *     不过时,但项目级 manifest 还没 enrich(老项目常见,显式提示用户跑
+	 *     wiki-enrich)。
+	 *   - manifest ready = 6 字段已填,manifest_updated_at 记录最近 enrich 时间。
+	 *
+	 * 值来自 `WikiService.getProjectManifestStatus`(单一真相源;读 project root
+	 * 节点的 attributes_json.manifest_status)。未绑定 / 无根节点 → "pending"。
+	 */
+	manifestStatus: ProjectManifestStatus;
 }
 export interface RepositoryListResult {
 	repositories: WikiAdminRepositoryView[];

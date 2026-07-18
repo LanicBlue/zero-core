@@ -550,6 +550,10 @@ export function createWikiAdminRouter(deps: WikiAdminRouterDeps): Router {
 		// P1-5: semantic-sync 计数来自 WikiService.countSourceStale(单一真相源,
 		// 与 compiler 共用)。一条 COUNT,廉价。未绑定 / 无子树 → 0(fresh)。
 		const semanticStaleNodeCount = deps.wikiService.countSourceStale(row.project_id);
+		// round-2 review-fix P1 §5.5: project manifest 状态(单一真相源:
+		// WikiService.getProjectManifestStatus → 读 project root attributes.manifest_status)。
+		// 未绑定 / 无根 → "pending"。与 syncStatus / semanticSyncStatus 正交。
+		const manifestStatus = deps.wikiService.getProjectManifestStatus(row.project_id);
 		return {
 			projectId: row.project_id,
 			projectName: project?.name ?? row.project_id,
@@ -565,6 +569,7 @@ export function createWikiAdminRouter(deps: WikiAdminRouterDeps): Router {
 			lastIndexedAt: row.last_indexed_at,
 			semanticStaleNodeCount,
 			semanticSyncStatus: semanticStaleNodeCount > 0 ? "stale" : "fresh",
+			manifestStatus,
 		};
 	}
 

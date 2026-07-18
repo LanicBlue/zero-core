@@ -82,6 +82,10 @@ import {
 	WIKI_ROOT_PATH,
 	normalizeWikiPath,
 } from "./wiki-path.js";
+import {
+	manifestStatusFromAttrs,
+	type ProjectManifestStatus,
+} from "./wiki-manifest.js";
 
 // ---------------------------------------------------------------------------
 // 常量:profile token 预算(来自 plan-05 §6 表)
@@ -973,6 +977,13 @@ function renderProjectSection(
 		out.push(`Summary: ${truncate(snapshot.root.summary, 800)}`);
 	}
 
+	// round-2 review-fix P1 §5.4:manifest 状态行 —— 显式告诉 agent 当前 project
+	// 的 6 个结构化字段是 pending / partial / ready 哪一种,放在结构化字段**之前**
+	// 让 agent 一眼看到「这字段是不是 enrich 过」,而不是从一堆 (none recorded)
+	// 里推断。读 project root attributes.json(已通过 fetchSubtreeSnapshot 注入到
+	// snapshot.root.attributes),preview == runtime 同一根源。
+	out.push(renderManifestStatusLine(snapshot.root.attributes));
+
 	// defect #9 修复:渲染 root 结构化字段(goals/stack/entrypoints/modules/risks/
 	// constraints),缺省 → 显式 "(none recorded)"。
 	for (const line of renderProjectStructuredFields(snapshot.root.attributes, profile)) {
@@ -1057,6 +1068,48 @@ function renderProjectStructuredFields(attrs: WikiNodeAttributes, profile: Profi
 	];
 	const fields = profile === "compact" ? fieldsCompact : fieldsStandard;
 	return fields.map(([label, key]) => `- ${label}: ${formatFieldValue(attrs[key])}`);
+}
+
+/**
+ * 渲染 manifest 状态行(round-2 review-fix P1 §5.4)。读 project root attributes
+ * 的 `manifest_status` + `manifest_updated_at`,输出单行让 agent 一眼看出当前
+ * project 的 6 个结构化字段处于什么生命周期阶段。
+ *
+ * 规则(absent → pending,由 {@link manifestStatusFromAttrs} 处理):
+ *   - `ready` —— `Manifest: ready (goals/stack/entrypoints enriched <date>)`,
+ *     其中 <date> 来自 manifest_updated_at(date-only 简短显示)。
+ *   - `partial` —— `Manifest: partial — some structured fields may be stale; re-run wiki-enrich.`
+ *   - `pending` 或 absent —— `Manifest: pending — structural index only; goals/stack/entrypoints not yet enriched. Run wiki-enrich to populate.`
+ *
+ * preview == runtime:同一 root attributes → 同一行字节级一致。
+ */
+function renderManifestStatusLine(attrs: WikiNodeAttributes): string {
+	const status: ProjectManifestStatus = manifestStatusFromAttrs(attrs);
+	if (status === "ready") {
+		const date = formatManifestDate(attrs.manifest_updated_at);
+		return `Manifest: ready (goals/stack/entrypoints enriched${date ? ` ${date}` : ""}).`;
+	}
+	if (status === "partial") {
+		return "Manifest: partial — some structured fields may be stale; re-run wiki-enrich.";
+	}
+	return "Manifest: pending — structural index only; goals/stack/entrypoints not yet enriched. Run wiki-enrich to populate.";
+}
+
+/**
+ * 把 manifest_updated_at(ISO-8601)格式化成 date-only 字符串(YYYY-MM-DD)用于
+ * 渲染。无效 / 缺失 → 空字符串(调用方判断后省略)。刻意只取日期:分钟级时间对
+ * agent 无意义且占 token;date-only 已足够表达「最近 enrich 大致什么时候」。
+ */
+function formatManifestDate(iso: unknown): string {
+	if (typeof iso !== "string" || iso.length === 0) return "";
+	const t = Date.parse(iso);
+	if (!Number.isFinite(t)) return "";
+	try {
+		// toISOString → "2026-07-18T..." → 取前 10 字符。
+		return new Date(t).toISOString().slice(0, 10);
+	} catch {
+		return "";
+	}
 }
 
 /**
