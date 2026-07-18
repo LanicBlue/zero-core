@@ -11,7 +11,8 @@
 
 > **后续决策（2026-07-17）**：本研究中的 benchmark 术语和 outcome-first 方法仍是
 > 输入，但“zero-core 核心内建 Eval runner、默认 CI 阈值门禁、与生产 replay 强绑定”
-> 已被 [design.md](./design.md) 的内置 Skill + 配置化 Flow 方案取代。归档分析不再
+> 已被 [design.md](./design.md) 的内置 Skill 与
+> [跨 effort 架构合同](../agent-project-automation.md) 的配置化 Flow 方案取代。归档分析不再
 > 需要专用导出 adapter：分析 Agent 可以直接以 `~/.zero-core/archives` 为 workspace，
 > 由 Cron Work 增量读取普通 JSON。
 

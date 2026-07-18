@@ -7,10 +7,10 @@
 - [`external-subagent-mcp/issue.md`](external-subagent-mcp/issue.md)
 - [`external-subagent-mcp/design.md`](external-subagent-mcp/design.md)
 
-`agent-eval-harness`、`local-backend-security-boundary` 与 `wiki-system-redesign`
-已进入 [`../plan/`](../plan/README.md)；当前实施安排是前两者等待
-`wiki-system-redesign` 完成、验收并合并后再开始；这不是 zero-core 已建立的 Flow
-控制。
+`session-turn-lifecycle`、`local-backend-security-boundary`、`project-flow-system`、
+`agent-work-runtime`、`project-management-ui`、`agent-eval-harness` 与
+`wiki-system-redesign` 已进入 [`../plan/`](../plan/README.md)。准确实施依赖以 plan
+入口为准；这些人工/文档门禁不是 zero-core 已建立的 Flow 控制。
 
 ## 生命周期
 

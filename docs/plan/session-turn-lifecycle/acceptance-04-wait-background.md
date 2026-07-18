@@ -9,3 +9,5 @@
 - [ ] Wait 多唤醒源按 dispose > Stop > AskUser response > invocation > task > timeout
   集中仲裁且只 settle 一次，未获胜 invocation/task event 不丢失。
 - [ ] restart 可为持久 task 恢复 continuation；纯内存任务不伪称可恢复。
+- [ ] delegated task 的 waiting_provider 是非 terminal 状态，不触发 completed/failed
+  delivery、archive 或 Parent tool failure。

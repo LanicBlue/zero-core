@@ -93,11 +93,57 @@ AskUser 会让工具 Promise 长时间 pending。UI 能按 sessionId pull 未决
 `compressSession()`。它会改变后续模型上下文，但 UI 没有稳定的 compacting 状态；Stop、
 外部 invocation 与后台任务事件在各压缩阶段的处理也未成契约。
 
-## 10. 计划约束
+## 10. Provider API 错误与当前重试边界
+
+[`agent-utils.ts`](../../../src/runtime/agent-utils.ts) 已把错误粗分为 timeout、rate limit、
+server、auth、network、prompt too long 和 unknown；[`agent-loop.ts`](../../../src/runtime/agent-loop.ts)
+在每个 model step 内最多重试三次，并把最终错误发成 `TurnError`。但当前边界存在以下问题：
+
+- retry/backoff 由 AgentLoop 自己实现，没有进入 Session snapshot，也没有与 Provider
+  concurrency、全局 circuit 或 credential revision 统一；
+- backoff 使用普通 timer，Session Stop、handoff 和 supersede 没有一个 Provider waiter
+  identity 可集中撤销；
+- stream 的临时 text/reasoning 已推送 UI，retry 没有正式的 attempt generation/reset 协议；
+- 同一个 provider stream 内会收到 `tool-call`、`tool-result` 并立即持久化工具结果，失败
+  attempt 可能已经越过外部副作用边界，不能由 Provider 无条件重放；
+- `SessionManager.trackSessionError()` 把最终错误直接投影回 idle，重连后的 snapshot 看不到
+  retry wait、blocked provider 或最后失败 Turn；
+- 三次 attempt 是一次 AgentLoop 调用的终止条件，不存在“主动重试预算耗尽后进入低频、
+  可取消、可跨重启恢复的 Provider wait”这一层；长时间 quota window 因而只能终止 Turn
+  或由外层重新发起；
+- Subagent 虽有隐藏 Session、`delegated_tasks` 和 `resumeTask(taskId)`，但在线 Provider
+  错误会直接走 task failed；重启 resume 也会从父 Loop 当前配置重建部分 Child 配置，而
+  不是完整 delegation snapshot；
+- 每个 Main Agent/Subagent各自重试会在 Provider 恢复时形成 thundering herd。
+- [`DashboardPage.tsx`](../../../src/renderer/components/dashboard/DashboardPage.tsx) 已在首页底部
+  展示 Provider selector、并发、queue、usage 和 error metrics，数据来自 Platform tool 的
+  providerStats/providerUsage/providerQueue；但当前只能单选查看，8 秒轮询的统计 DTO
+  没有 circuit、quota、resetAt、runtime revision 或安全的 retry command，不能作为
+  Provider 恢复控制面。
+- 当前 BrowserWindow 默认 `1400 × 900`、最小 `900 × 600`；Icon Sidebar 为 48px，
+  Dashboard 左右 padding 共 48px。现有 Provider chart 固定高 220px，responsive 主要按
+  aspect ratio 切换，没有针对 900–1180px 内容宽的列裁剪规则。直接把所有 Provider card
+  加到当前页尾会增加首屏丢失、水平拥挤和嵌套滚动。
+- [`provider-store.ts`](../../../src/server/provider-store.ts) 当前会合并 4 个 system Provider
+  （OpenAI、Anthropic、Google Gemini、Ollama），并允许用户继续增加 Provider；布局不能把
+  “当前正好 4 个”写成上限。
+
+根因不是缺少更多 `catch/retry`，而是 Provider call 同时承担“生成候选输出”和“执行本地
+工具”。只要未完成的 Provider stream 能产生工具副作用，Provider 层就无法把失败 attempt
+当作可安全丢弃的事务。
+
+## 11. 计划约束
 
 1. 不以旧类名为最终实现接口；Wiki 合并后 Plan 00 重新映射。
 2. 不把当前 `isBusy=false` 解释为 Turn 已结束。
 3. 不把 TaskRegistry 的内存实现误写成“所有任务必须持久化”。
 4. 不为修复 Stop 扩大成任意工具的线程级强杀；副作用只能在安全边界 cooperative cancel。
-5. Agent Eval 的 TurnInvocationContext 是 invocation payload，不是 Session 状态机的替代品。
-
+5. Agent Work Runtime 的 TurnInvocationContext 是 invocation payload，不是 Session
+   状态机的替代品。
+6. Provider Runtime 可以拥有 error normalization、backoff、circuit 和 retry mechanism，
+   但不能拥有 Session handoff、Turn fencing 或工具副作用恢复。
+7. Provider stream 成功提交 `ModelStepProposal` 前不得执行本地工具；否则透明 retry
+   必须 fail closed。
+8. maxAttempts 只能限制一次 active retry burst；达到上限后必须停止高频请求并进入有明确
+   wake condition 的挂起状态，不能自动把 Turn/Child task 判为失败。
+9. 本 effort 只处理模型 Provider API 错误，不统一 zero-core 内部 REST/IPC error envelope。

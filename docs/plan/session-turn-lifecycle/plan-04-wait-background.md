@@ -16,6 +16,8 @@
 7. task event 可唤醒当前 Turn/continuation；新 invocation 可 handoff；所有 task terminal 后才允许结束。
 8. restart 恢复持久 task 且无 active Turn 时创建 recovering → continuation。
 9. 覆盖 task completion 与 input/timeout/Stop 同 tick、重复 terminal event、旧 Turn completion race。
+10. 为 delegated task 增加非 terminal `waiting_provider` task projection，确保它不触发
+    terminal hook、archive 或 Parent failure；具体 Provider 恢复在 Plan 05。
 
 ## 完成
 

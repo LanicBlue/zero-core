@@ -8,7 +8,7 @@
 ## 目标
 
 建立 Session/Turn 唯一状态机，统一 Stop、普通队列、软插队、Wait、AskUser、后台任务、
-跨 Turn 事件、system continuation 和 compacting。
+跨 Turn 事件、system continuation、Provider retry/recovery 和 compacting。
 
 ## 执行 Agent 必读
 
@@ -22,7 +22,7 @@
 6. 已完成阶段的 result
 7. Wiki 合并结果、当前源码和活动架构文档
 
-若实现细节变化但 D1–D12 仍成立，只更新接口映射。若无法满足决策或 acceptance，停止并
+若实现细节变化但 D1–D21 仍成立，只更新接口映射。若无法满足决策或 acceptance，停止并
 回到设计讨论，不得保留新旧状态双真相源。
 
 ## 阶段
@@ -34,18 +34,19 @@
 | 02 | [Cancellation & Stop](plan-02-cancellation-stop.md) | [Acceptance 02](acceptance-02-cancellation-stop.md) | 01 | cancellation tree、Stop pause、AskUser settle |
 | 03 | [Inbox & Handoff](plan-03-inbox-handoff.md) | [Acceptance 03](acceptance-03-inbox-handoff.md) | 01–02 | invocation inbox、soft insert、atomic handoff |
 | 04 | [Wait & Background Barrier](plan-04-wait-background.md) | [Acceptance 04](acceptance-04-wait-background.md) | 01–03 | task event inbox、hard barrier、continuation |
-| 05 | [Compacting & UI](plan-05-compacting-ui.md) | [Acceptance 05](acceptance-05-compacting-ui.md) | 01–04 | compacting phases、统一 UI/API snapshot |
-| 06 | [Cutover & Hardening](plan-06-cutover-hardening.md) | [Acceptance 06](acceptance-06-cutover-hardening.md) | 01–05 | 删除旧真相源、race/restart/E2E、文档 |
+| 05 | [Provider Retry & Recovery](plan-05-provider-retry-recovery.md) | [Acceptance 05](acceptance-05-provider-retry-recovery.md) | 01–04 | transactional proposal、circuit、恢复控制合同 |
+| 06 | [Compacting & UI](plan-06-compacting-ui.md) | [Acceptance 06](acceptance-06-compacting-ui.md) | 01–05 | compacting、统一 snapshot、首页 Provider Control Center |
+| 07 | [Cutover & Hardening](plan-07-cutover-hardening.md) | [Acceptance 07](acceptance-07-cutover-hardening.md) | 01–06 | 删除旧真相源、race/restart/E2E、文档 |
 
 全部通过后执行 [Final Acceptance](acceptance-final.md)。
 
 ```text
 wiki FINAL + merge
         ↓
-00 → 01 → 02 → 03 → 04 → 05 → 06 → FINAL
+00 → 01 → 02 → 03 → 04 → 05 → 06 → 07 → FINAL
 ```
 
-Agent Eval Plan 04 必须在本计划核心契约可用后做 reconciliation；不能并行实现另一套
+Agent Work Runtime Plan 02 必须在本计划核心契约可用后做 reconciliation；不能并行实现另一套
 Turn/queue 生命周期。
 
 ## 提交与验收
@@ -55,4 +56,3 @@ Turn/queue 生命周期。
 - 至少运行 typecheck、build:lib、相关 unit；涉及 UI/WS 时运行 build/E2E。
 - 不允许以 skipped/only、延长 timeout 或保留旧布尔状态 fallback 通过验收。
 - Final 由非主要实施 Agent 验证；最终合并仍由用户决定。
-

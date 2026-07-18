@@ -7,13 +7,15 @@
 ## 工作
 
 1. 建立 Session dispose、Turn 和 background task 分离的 cancellation scopes。
-2. signal 贯穿 provider stream/concurrency acquire、tool limiter、Wait、AskUser、blocking child。
+2. signal 贯穿 provider stream/concurrency acquire/retry timer/circuit waiter、tool limiter、
+   Wait、AskUser、blocking child。
 3. 工具调用上下文暴露 signal 和 cooperative cancellation helper。
 4. Stop 进入 cancelling，禁止新 model/tool step 和 post-run queue drain。
 5. AskUser 在 Stop/supersede/dispose 时以结构化原因 settle，清理 UI pending state。
 6. compression 使用 stage-aware stopRequested；commit settle 后再完成取消。
 7. UI 等 backend snapshot 确认，不先乐观 finish streaming。
-8. 为 queued provider/tool、Wait、AskUser、blocking child、已提交副作用写 race tests。
+8. 为 queued/retrying/half-open provider、tool、Wait、AskUser、blocking child、已提交
+   副作用写 race tests。
 
 ## 约束
 
@@ -24,4 +26,3 @@
 ## 完成
 
 [Acceptance 02](acceptance-02-cancellation-stop.md) 通过并创建 `result-02.md`。
-

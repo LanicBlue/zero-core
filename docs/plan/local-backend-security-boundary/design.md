@@ -298,8 +298,8 @@ server static hosting 分支。
   不修改其 worktree。
 - **session-summary-restart-integrity**：Wiki 合并后仍应优先重新验证该 P0 数据完整性
   缺陷；两者可以分别规划，但实现不得在同一文件上无协调并行。
-- **agent-eval-harness**：它将增加 Flow/Work API；本安全边界先落地可让新 API 默认受
-  保护。两份计划没有运行时自动 dependency。
+- **project-flow-system / agent-work-runtime**：它们将增加 Flow/Work API；本安全边界先
+  落地可让新 API 默认受保护。这些计划之间没有运行时自动 dependency。
 - **external-subagent-mcp**：实施前必须重审其旧 design。MCP scoped token 与 desktop
   root token 必须是两个 credential domain。
 - **D-015 Renderer hardening**：IPC sender 验证在本 effort；CSP/webview/navigation 等
