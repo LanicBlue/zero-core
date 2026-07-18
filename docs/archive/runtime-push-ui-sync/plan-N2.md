@@ -23,7 +23,7 @@
    - 选择器订阅替全仓 `useStore()`:[TaskTreePanel.tsx](../../../src/renderer/components/layout/TaskTreePanel.tsx) 按 active session 切片订阅;[AgentEditor.tsx](../../../src/renderer/components/agents/AgentEditor.tsx) `useAgentStore()` → 选择器。
    - 行组件抽 `React.memo`(浅比较):task 卡片、kanban 卡片、execution 步骤行。
    - 稳定 key 复核(已用 id)。
-   - loading 不 gate 内容:[WikiAnchorsSection.tsx](../../../src/renderer/components/agents/WikiAnchorsSection.tsx) `list = form.wikiAnchors ?? EMPTY`(模块级常量稳引用);刷新期保留上次 preview,token 行不摘,"refreshing" 改不占位小圆点。
+   - loading 不 gate 内容:`WikiAnchorsSection.tsx` `list = form.wikiAnchors ?? EMPTY`(模块级常量稳引用);刷新期保留上次 preview,token 行不摘,"refreshing" 改不占位小圆点。
    - 通用原则:刷新期始终渲染上次数据,loading 只做轻量指示。
 5. **重连 resync**:
    - [src/main/ipc-proxy.ts](../../../src/main/ipc-proxy.ts) `_ws.on("close")` 重连成功后(`_ws.on("open")` 或 connect() 内新 ws open)→ `win.webContents.send("ws:reconnected")`。

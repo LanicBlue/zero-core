@@ -88,7 +88,7 @@ session 自然结束(子 agent task-finish / 手动归档)
 
 ### 四、死代码 / 假配置清理(纯减法)
 
-- 删 [compaction.ts](../../src/core/compaction.ts) + [context-manager.ts](../../src/core/context-manager.ts) + re-export + `context.*` 配置面;`compaction.*` 被 D2 可配 prompt 取代。
+- 删 `compaction.ts` + `context-manager.ts` + re-export + `context.*` 配置面;`compaction.*` 被 D2 可配 prompt 取代。
 - 删 `steps.compressed` 列 + migration。
 - `compression.enabled`(未读)删;模型配置改名 `compression.provider/model`。
 - **删 ExtractorA**:`extractor-a-service.ts` + 两 lazy import + `buildExtractorA` wiring + 退役 `extraction-hooks.ts` stub(确认 ExtractorB 不受影响)。

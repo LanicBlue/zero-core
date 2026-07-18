@@ -250,9 +250,11 @@ sequenceDiagram
 
 | 文件 / 目录 | 来源 | 内容 |
 |------|------|------|
-| `db/core.db` | CoreDatabase 持有 | 会话核心 4 表（sessions/messages/**steps**/tool_executions；steps-overhaul 后原 `turns` 表已 rename 为 `steps`、`turn_state` 表已 DROP 并入 `sessions`）+ 旧业务实体表（agents/providers/mcp_servers/...）+ v0.8 工作流域表（projects/requirements/crons/orchestrate_*/project_wiki/wiki_scan_cursors/tool_configs/tool_usage/project_jobs，详见 `05-persistence.md` §2.2b 矩阵）+ kv_store + delegated_tasks + provider_usage。KB(`kb_*`)与 Gen1 `memory_*` 表均已在 v0.8 清理 DROP（详见 `06-knowledge-subsystems.md`） |
+| `db/core.db` | CoreDatabase 持有 | 会话核心 4 表（sessions/messages/**steps**/tool_executions；steps-overhaul 后原 `turns` 表已 rename 为 `steps`、`turn_state` 表已 DROP 并入 `sessions`）+ 旧业务实体表（agents/providers/mcp_servers/...）+ v0.8 工作流域表（projects/requirements/crons/orchestrate_*/tool_configs/tool_usage/project_jobs，详见 `05-persistence.md` §2.2b 矩阵）+ kv_store + delegated_tasks + provider_usage。KB(`kb_*`)、Gen1 `memory_*` 表、`project_wiki`、`wiki_scan_cursors` 均已 DROP（详见 `06-knowledge-subsystems.md`）。 |
 | ~~`knowledge.db`~~ | ~~KbDB 独立连接~~ | ⚠️ **已退役（KB 子系统整体移除）**：`kb_chunks` / `kb_entries` 由 `runMigrations` 用 `DROP IF EXISTS` 清掉，`knowledge.db` 不再产生，`kb-db.ts` / `kb-store.ts` 等服务端代码已删。详见 `06-knowledge-subsystems.md` §3 与 `05-persistence.md` §2.3。 |
-| `wiki/` | WikiStore 磁盘镜像树 | v0.8 P1 §10.1 引入：每个 wiki 节点的正文下沉为 `.md` 文件（`WIKI_DISK_ROOT`，`wiki-node-store.ts:197`），DB 行只存元数据 + `docPointer`。目录结构与 `project_wiki` 表的 `path` 列镜像（详见 `06-knowledge-subsystems.md` §2.5） |
+| `db/wiki.db` | `WikiDatabase` 持有(plan-01+) | 独立 wiki 数据库(7 张表 `wiki_nodes` / `wiki_links` / `wiki_addresses` / `wiki_repositories` / `wiki_source_bindings` / `wiki_nodes_fts` / `wiki_audit_log` + `wiki_schema_version`),独立 WAL/checkpoint/backup 生命周期。cutover 后**唯一活跃的 wiki/记忆/项目知识存储**,正文直接存 `wiki_nodes.content` TEXT 列。详见 [06 §0](./06-knowledge-subsystems.md#0-wiki-v2plan-01plan-08-cutover-后的当前模型)。 |
+| `wiki/` | (cutover 后)Project git mirror + indexer scratch | cutover 后 `wiki/` 不再写 per-node 正文 markdown(正文落 `db/wiki.db.wiki_nodes.content`);目录承载 Project git mirror 物理仓库 + `.runtime/` indexer 私有 scratch。cutover 前的 v0.8 `WikiStore` 磁盘镜像树(`WIKI_DISK_ROOT` + `wiki-node-store.ts`)已退役。 |
+| `backups/{core,wiki}/` | `BackupService` | SQLite Backup API 在线 snapshot;core 与 wiki 各自独立 + manifest sidecar JSON(plan-08 §3)。 |
 | `webfetch/` | fetch-tools.ts | 抓取缓存、二进制持久化、cookies.json |
 | `logs/<date>.log` | file-log-sink.ts | 按天轮转日志 |
 | `messages/<persona>.json` | message-store.ts | 旧版遗留，迁移完成后改名为 `.migrated.bak` |
@@ -260,7 +262,7 @@ sequenceDiagram
 
 > ⚠️ **v0.8 更正**：旧版本节把主库文件名写成 `db.sqlite` 且只列 11 张业务表 + kv_store —— 两处都不准。源码里 `core-database.ts:63` 写的是 `db/core.db`（`grep "db\.sqlite" src/` 零命中），且 v0.8 工作流域 9 张表 + memory_* 4 张自建表此前都漏列。备份策略相应从"复制单个 sqlite 文件"改为"备份整个 `~/.zero-core/`（只复制 db/core.db 会丢 wiki 正文）"，详见 `05-persistence.md` §9。
 
-迁移策略：见 `src/server/db-migration.ts`（1059 行）。`runMigrations` 分 5 阶段（`05-persistence.md` §4.2）：① 列补齐（`safeAddColumn` 必须先于 `new SqliteStore`）→ ② v0.8 表 DDL（按依赖顺序，`project_wiki` 必须先 `migrateWikiTableSchema` 再 `migrateWikiDetailToDisk`）→ ③ 构造各 `SqliteStore` → ④ 旧 JSON → SQLite 搬运 → ⑤ KV + Memory 搬运。注意 v0.8 表无 JSON 前身，阶段 ④/⑤ 完全不涉及它们。
+迁移策略：见 `src/server/db-migration.ts`（1059 行）。`runMigrations` 分 5 阶段（`05-persistence.md` §4.2）：① 列补齐（`safeAddColumn` 必须先于 `new SqliteStore`）→ ② v0.8 表 DDL（按依赖顺序；cutover 后 `project_wiki` / `wiki_scan_cursors` 的 DDL/migration 已从 db-migration 移除）→ ③ 构造各 `SqliteStore` → ④ 旧 JSON → SQLite 搬运 → ⑤ KV + Memory 搬运。注意 v0.8 表无 JSON 前身，阶段 ④/⑤ 完全不涉及它们。Wiki v2 的 `db/wiki.db` schema 由 `src/server/wiki/wiki-schema.ts` 的 `initWikiSchema` + `wiki_schema_version` 管理,**不在 `runMigrations` 5 阶段之内**。
 
 ## 10. 单图总结
 
@@ -281,7 +283,7 @@ Electron Desktop
     ├─ HookRegistry (singleton) ── 30 events
     │   ├─ turn-hooks: SQLite step 持久化（原 turns 表已 rename 为 steps）
     │   ├─ compression-hooks: 摘要 + 记忆写 wiki
-    │   ├─ wiki-anchor-injection: system/context Wiki anchors
+    │   ├─ wiki-context-compiler: Wiki v2 grants/context → system prompt section（cutover 后取代旧 wiki-anchor-injection）
     │   └─ durable-hooks: sessions 表检查点（turn_state 表已 DROP 并入 sessions）
-    └─ SQLite ── db/core.db + wiki/ 镜像树（knowledge.db / kb_chunks 已移除）
+    └─ SQLite ── db/core.db + db/wiki.db(独立 wiki 子系统;knowledge.db / kb_chunks / project_wiki 已移除)
 ```

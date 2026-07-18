@@ -44,7 +44,7 @@ export async function sweepOrphanSessions(db, opts?: { maxAgeDays?: number }): P
 
 ### listSessions 查询
 
-[session-db.ts](../../../src/server/session-db.ts) 加 `listSessions({isMain, archived, olderThan, excludeActive})`(或扩展现有 list)。新列无;只用现有 `is_main`/`archived`/`updated_at`。`excludeActive` 由 caller 传 active sessionId 集合过滤(archive-service 不持有 active 集合 → index.ts/agent-service 注入)。
+`session-db.ts` 加 `listSessions({isMain, archived, olderThan, excludeActive})`(或扩展现有 list)。新列无;只用现有 `is_main`/`archived`/`updated_at`。`excludeActive` 由 caller 传 active sessionId 集合过滤(archive-service 不持有 active 集合 → index.ts/agent-service 注入)。
 
 ## 不做(out of scope)
 

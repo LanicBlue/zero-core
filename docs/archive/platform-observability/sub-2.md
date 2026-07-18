@@ -12,7 +12,7 @@
    - session-manager 处理 usage 事件时 → `ProviderUsageStore.upsert({provider,model,hour,source,tokens,calls,error?})`(同桶累加)。
    - error:该 step 若失败,error 计 +1。
 3. **新 `ProviderUsageStore`**(server):upsert(累加)+ 查询:`cumulative(provider?,model?)` SUM、`series(provider, granularity:hour|day, range:24h|30d)` GROUP BY hour_bucket / date(hour_bucket)。
-4. **留存 ≥30d**:定期清 30 天前数据(类 turn_state 清理 [:921](../../../src/server/session-db.ts#L921))。
+4. **留存 ≥30d**:定期清 30 天前数据(类 turn_state 清理 `:921`)。
 
 ## 范围
 

@@ -17,9 +17,9 @@
 
 ### memory 写入路由(③④)
 - `createMemory` [wiki-tool.ts:673-691](../../../src/tools/wiki-tool.ts):接受 agent 传 parentId,只校验 `parent.path.startsWith("memory")`。旧全局 Memory 容器(path=`memory`)合格 → agent 把叶子写到旧容器,path 退回 `memory:<slug>` 旧格式。
-- store 侧 per-agent 机制**齐全但没被 Wiki 工具调到**:`ensureMemoryAgentRoot` [wiki-node-store.ts:1541](../../../src/server/wiki-node-store.ts) + `upsertMemoryLeafForAgent` [wiki-node-store.ts:1572](../../../src/server/wiki-node-store.ts)(leaf path `memory:<agentId>:<type>:<slug>`)。
-- agent 的 memory 锚点 = `wiki-root:memory-agent:<agentId>`(synthetic,[wiki-anchor-injection.ts:174-180](../../../src/runtime/wiki-anchor-injection.ts)),DB 里无行 → `expandNode` 空(UI ④)。
-- 磁盘布局 `diskPathFor` [wiki-node-store.ts:702](../../../src/server/wiki-node-store.ts):per-agent 根 → `WIKI_DISK_ROOT/memory/<seg>/`,seg 取 `subtreeSeg` [wiki-node-store.ts:661](../../../src/server/wiki-node-store.ts) = **agentId**(非 agentName)。rename 迁移机制已存在 [wiki-node-store.ts:534-543](../../../src/server/wiki-node-store.ts)。
+- store 侧 per-agent 机制**齐全但没被 Wiki 工具调到**:`ensureMemoryAgentRoot` `wiki-node-store.ts:1541` + `upsertMemoryLeafForAgent` `wiki-node-store.ts:1572`(leaf path `memory:<agentId>:<type>:<slug>`)。
+- agent 的 memory 锚点 = `wiki-root:memory-agent:<agentId>`(synthetic,`wiki-anchor-injection.ts:174-180`),DB 里无行 → `expandNode` 空(UI ④)。
+- 磁盘布局 `diskPathFor` `wiki-node-store.ts:702`:per-agent 根 → `WIKI_DISK_ROOT/memory/<seg>/`,seg 取 `subtreeSeg` `wiki-node-store.ts:661` = **agentId**(非 agentName)。rename 迁移机制已存在 `wiki-node-store.ts:534-543`。
 
 ### settings prompt(②)
 - 引擎支持压缩 prompt override:`opts.summarySystemPrompt ?? SUMMARY_SYSTEM` [compression-core.ts:406](../../../src/server/compression-core.ts)。
@@ -49,7 +49,7 @@ swap 后不 evict 旧 loop,藏在后台跑 memory turn,完事再 evict+export。
 **A — 收紧 createMemory parent + 锚点解析时 ensureMemoryAgentRoot**
 1. `isMemoryParent` [wiki-tool.ts:687-689](../../../src/tools/wiki-tool.ts) 收紧:**拒绝**旧全局容器(path===`memory`),只放行 `wiki-root:memory-agent:*` / `wiki-root:memory-topic:*` / 其下 memory 叶子。
 2. memory 锚点注入时(`resolveAnchors` 或 wiki 工具初始化)调 `ensureMemoryAgentRoot(agentId, agentName)` 落行 → agent 在 outline 看到自己的 per-agent 根 → createMemory 传它 → leaf 落正处。topic 路径(Extractor A)不受影响(走 memory-topic 根)。
-3. 磁盘 seg 改 agentName:`subtreeSeg` 对 memory-agent 根返 agentName(需 callerCtx 带 agentName,或读 agents 表)。agent 改名 → 复用 rename 迁移 [wiki-node-store.ts:534](../../../src/server/wiki-node-store.ts) 迁磁盘文件夹。
+3. 磁盘 seg 改 agentName:`subtreeSeg` 对 memory-agent 根返 agentName(需 callerCtx 带 agentName,或读 agents 表)。agent 改名 → 复用 rename 迁移 `wiki-node-store.ts:534` 迁磁盘文件夹。
 4. 启动清理(不写迁移):删除旧全局 Memory 容器(`path=memory`)+ 其下所有叶子(test 数据,用户已确认可删);清孤儿磁盘目录 `auth-system/`、`dev-1/`(无 DB 行残留)。topic memory 死代码(`ensureMemoryTopicRoot`/`createMemoryNodeForTopic`/`wiki-root:memory-topic:*` 分类)顺手清。
 
 优点:根因修复;agentName 可读;无迁移归属负担。缺点:旧 memory 数据丢失(用户已确认全是测试数据,可接受)。

@@ -7,7 +7,7 @@
 **根因**:`Task get`→acknowledge→[registry.delete](../../../src/runtime/task-registry.ts#L178) 只清内存,不删 `delegated_tasks` DB 行。完成行因归档 async/skip 持续存在 → 新 turn loop 重建 → [restoreDelegatedTasks](../../../src/server/agent-service.ts#L1424) re-seed → task 复活("get后消失，新turn后又出现")。
 
 **做法**:
-1. [session-db.ts](../../../src/server/session-db.ts) 加方法:
+1. `session-db.ts` 加方法:
    ```ts
    deleteDelegatedTask(taskId: string): void {
      this.db.prepare("DELETE FROM delegated_tasks WHERE id = ?").run(taskId);

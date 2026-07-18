@@ -26,7 +26,7 @@
 | 修订假设 | 代码现实 | 裁决 |
 |---|---|---|
 | knowledge.db 退役(精确删除) | src/ **零运行时引用**(仅 docs + scripts/build-codegraph.ts 陈旧注释);磁盘 `~/.zero-core/knowledge.db{,-wal,-shm}` 是真孤儿;db-migration.ts:1193-1194 已 DROP kb_* 表 | ✅ 前提为真 |
-| sessions.db→core.db 文件改名 | 功能性引用仅 [session-db.ts:107](../../../src/server/session-db.ts#L107) 1 行(+注释/字符串) | ✅ 文件改名 = 1 行 |
+| sessions.db→core.db 文件改名 | 功能性引用仅 `session-db.ts:107` 1 行(+注释/字符串) | ✅ 文件改名 = 1 行 |
 | DatabaseManager 多 DB 管理 | 服务端**无任何现成多 DB 基础设施**(仅 session-db.ts:108 一处 `new Database()`;WikiStore 复用 SessionDB 句柄;session-manager.ts:30 注释「无第二个连接」) | ✅ 诚实标「新增」,但属全新造 |
 | project_wiki 4 处启动写入 | 复核 db-migration.ts:464-489/511/716-717/821 + index.ts:329/665 + data-change-hub.ts:48,与 round-1 所述一致 | ✅ |
 | hook/inline(B1) | 复核 agent-loop.ts:269-296 内联建段、:956/:1488 内联 invalidate、PostTurnComplete 已删、StepEnd 每步触发(:2193/:2223) | ✅ 现状如所述 |

@@ -12,7 +12,7 @@
 ### src/tools/bash.ts
 - inputSchema 加 `background: z.boolean().optional()`(参照 sub-4 移除前的形态,git 历史里有;[bash.ts:336](../../../src/tools/bash.ts#L336) 注释 "background:true was removed")
 - execute:
-  - `background:true` → `fns.runBackground(command)` → 返回 task_id(参照 [task-start.ts:91-117](../../../src/tools/task-start.ts#L91) 的 shell 分支)。立即返回,不等命令。
+  - `background:true` → `fns.runBackground(command)` → 返回 task_id(参照 `task-start.ts:91-117` 的 shell 分支)。立即返回,不等命令。
   - 否则 blocking(现状),timeout 默认改 300s:`const timeoutSec = inputTimeout ?? 300;`(不再读 `config.timeout`,[bash.ts:285](../../../src/tools/bash.ts#L285))
 - 去 configSchema 的 timeout 项([bash.ts:262](../../../src/tools/bash.ts#L262))
 - callerCtx 无 delegateFns(UI 预览)→ background 模式返 benign preview(参照其他工具的 G1 模式)

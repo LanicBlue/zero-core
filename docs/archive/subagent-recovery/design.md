@@ -38,12 +38,12 @@
 | Requirement(title/priority/impact/desc) | work-context hook | **system** |
 | Steps Progress(各 role step 状态) | work-context hook | **workbench**(与 task 状态同类,合并) |
 | Recalled Memories | `memoryContext` | **context(持久,唯一留存内容)** |
-| Task List(todos) | `renderTodosContext`([todo-write.ts:62](../../../src/runtime/tools/todo-write.ts#L62)) | **workbench** |
+| Task List(todos) | `renderTodosContext`(`todo-write.ts:62`) | **workbench** |
 | task 状态 / wait 状态(新) | — | **workbench** |
 
-**work-context hook([workflow-context-hook.ts](../../../src/server/workflow-context-hook.ts))拆解**:Project/Requirement/Wiki Baseline → system 段渲染器(on-demand);Steps Progress → workbench 渲染器;`memoryContext` 误标修正(它装的不是 memory)。hook 大幅瘦身/拆分,内容各归各位。
+**work-context hook(`workflow-context-hook.ts`)拆解**:Project/Requirement/Wiki Baseline → system 段渲染器(on-demand);Steps Progress → workbench 渲染器;`memoryContext` 误标修正(它装的不是 memory)。hook 大幅瘦身/拆分,内容各归各位。
 
-**notification hook([notification-hooks.ts:34](../../../src/runtime/hooks/notification-hooks.ts#L34))取代**:完成通知进 workbench(每 step 新鲜、不累积),删 addMessage 持久路径 → 少一类累积消息。
+**notification hook(`notification-hooks.ts:34`)取代**:完成通知进 workbench(每 step 新鲜、不累积),删 addMessage 持久路径 → 少一类累积消息。
 
 ### 1.2 三通道最终内容
 
@@ -84,12 +84,12 @@
 
 ### 2.2 recovery 分流(已对齐)
 
-启动时按 `session_kind`([session-db.ts:189](../../../src/server/session-db.ts#L189)、[:286](../../../src/server/session-db.ts#L286))分流:
+启动时按 `session_kind`(`session-db.ts:189`、`:286`)分流:
 
 - **父 session(`session_kind='chat'`)**:auto-resume 执行(照旧)。
 - **委派子 session(`session_kind='delegated'`)**:启动**不 auto-run**,冻结在 interrupted(turn_state 留 incomplete),等父决定。
 
-现状问题:`doRecoverIncompleteSessions`([agent-service.ts:1047](../../../src/server/agent-service.ts#L1047))对 `getIncompleteTurns()`([session-db.ts:847](../../../src/server/session-db.ts#L847))返回的每个 turn 无差别 `loop.resume()`,不看 session_kind → 子独立 auto-run,与父脱钩(结果孤儿或重复派发)。
+现状问题:`doRecoverIncompleteSessions`([agent-service.ts:1047](../../../src/server/agent-service.ts#L1047))对 `getIncompleteTurns()`(`session-db.ts:847`)返回的每个 turn 无差别 `loop.resume()`,不看 session_kind → 子独立 auto-run,与父脱钩(结果孤儿或重复派发)。
 
 ### 2.3 父决定续子
 
@@ -191,7 +191,7 @@
 | **TaskGet** | 单 task | 钻取(§4.2) | 按需 |
 
 - workbench 收件箱:**running 一直在;终态留到被 `TaskGet`(completed) 消费才删**。
-- → **notification hook([notification-hooks.ts:34](../../../src/runtime/hooks/notification-hooks.ts#L34))及 `notified` 标志删除** —— 收件箱覆盖完成通知。
+- → **notification hook(`notification-hooks.ts:34`)及 `notified` 标志删除** —— 收件箱覆盖完成通知。
 - workbench 注入富度 = **紧凑档**(只 id+status),富信息走 TaskList/TaskGet/blocking;token 不随任务数膨胀。
 
 ---

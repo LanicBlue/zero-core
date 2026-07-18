@@ -7,7 +7,7 @@
 **核心修复(已落)**:`doRecoverIncompleteSessions` 加 `session_kind` 过滤 —— `session.sessionKind === "delegated"` 的子 **跳过 auto-resume**(冻结,turn_state 留 incomplete),只有 chat session auto-resume。这是关键正确性修复(消除子脱钩 auto-run)。
 
 **延后**:
-- **懒重建 `restoreAllSessions`**:`listAllSessions` 已过滤 `session_kind='chat'`([session-db.ts:363](../../../src/server/session-db.ts#L363)),delegated 本就不被 restore。chat session 的 eager 重建是启动成本,非正确性 bug;改懒风险高(需审 getRuntimeTaskTree/config-sync/metrics 对 loop 已建的假设),留作后续优化。
+- **懒重建 `restoreAllSessions`**:`listAllSessions` 已过滤 `session_kind='chat'`(`session-db.ts:363`),delegated 本就不被 restore。chat session 的 eager 重建是启动成本,非正确性 bug;改懒风险高(需审 getRuntimeTaskTree/config-sync/metrics 对 loop 已建的假设),留作后续优化。
 - **interrupted-status seed**:冻结子 task 在 workbench 显 `Interrupted` 的 seeding 逻辑属 sub-4(workbench/TaskGet 处理 interrupted task),不在本 sub。
 
 ## 目标

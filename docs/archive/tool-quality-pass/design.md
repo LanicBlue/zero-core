@@ -33,7 +33,7 @@
 - 链路:acknowledge 只清内存 → DB 行留存 → 重建 re-seed → "get 了又冒回"。
 
 **方案:acknowledge 同步删 DB 行(已定)**
-- [session-db](../../../src/server/session-db.ts) 加 `deleteDelegatedTask(id)`(`DELETE FROM delegated_tasks WHERE id=?`,**无 schema 变更、无 migration**)。
+- `session-db` 加 `deleteDelegatedTask(id)`(`DELETE FROM delegated_tasks WHERE id=?`,**无 schema 变更、无 migration**)。
 - [delegator.acknowledgeTask](../../../src/runtime/subagent-delegator.ts#L612)(Task get 走)`registry.acknowledge` 后调 `this.config.db?.deleteDelegatedTask(id)`。
 - [abandonTask](../../../src/runtime/subagent-delegator.ts#L560)(TaskKill interrupted→abandon 走)同样删行(它现在只 update killed + registry.acknowledge,行仍留 → 同 bug)。
 - 效果:acknowledge 后 DB 行即清 → restoreDelegatedTasks 无行可 re-seed → 不再复活。归档若之后才跑,deleteSessionData 的 `DELETE WHERE session_id` 是 no-op,安全。

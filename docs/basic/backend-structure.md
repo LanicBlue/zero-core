@@ -195,10 +195,11 @@ tool-call 事件
 | `ProviderStore` | AI Provider 配置和模型列表 |
 | `TemplateStore` | **16 内置** + 用户模板，自动合并 |
 | `McpStore` | MCP 服务器配置 |
-| ~~`KbStore`~~ | **RETIRED (plan-00 §5)**：知识库向量 RAG 子系统已整体退役，`KbStore` / `KbDB` 服务端代码删除，`kb_entries` / `kb_chunks` 表由 `runMigrations` `DROP IF EXISTS`，`knowledge.db` 文件由 `DatabaseManager.open()` 在布局 bootstrap 前**删除**（plan-00 §5 精确白名单）。知识/记忆统一以 `project_wiki` 磁盘镜像树承载（见 06 §2）。本行保留为历史说明，**不再是活动 store**。 |
+| ~~`KbStore`~~ | **RETIRED (plan-00 §5)**：知识库向量 RAG 子系统已整体退役，`KbStore` / `KbDB` 服务端代码删除，`kb_entries` / `kb_chunks` 表由 `runMigrations` `DROP IF EXISTS`，`knowledge.db` 文件由 `DatabaseManager.open()` 在布局 bootstrap 前**删除**（plan-00 §5 精确白名单）。cutover 后知识/记忆统一以**独立 `db/wiki.db`** 承载(见 [06 §0](../arch/06-knowledge-subsystems.md#0-wiki-v2plan-01plan-08-cutover-后的当前模型));原 `project_wiki` 磁盘镜像树已退役。本行保留为历史说明，**不再是活动 store**。 |
 | `SqliteStore` | 基础 CRUD store（所有 store 的父类） |
 | ~~`AgentToolStore`~~ | **v0.8 §11.5 已退役**：Agent-as-Tool 映射机制删除，文件 `agent-tool-store.ts` 已不存在，router 与 `afterDelete` 级联回调同步下线 |
-| v0.8 工作流域 store | `ProjectStore` / `RequirementStore` / `CronStore` / `WikiStore` / `OrchestrateStore` / `ProjectJobStore` / `TaskStepStore` / `WikiScanCursorStore` / `ToolConfigStore` / `ToolUsageStore` 等（在 `server/index.ts` 独立 new，不挂 CoreDatabase；详见 05 §2.2b 矩阵） |
+| v0.8 工作流域 store | `ProjectStore` / `RequirementStore` / `CronStore` / `OrchestrateStore` / `ProjectJobStore` / `TaskStepStore` / `ToolConfigStore` / `ToolUsageStore` 等（在 `server/index.ts` 独立 new，不挂 CoreDatabase；详见 05 §2.2b 矩阵） |
+| Wiki v2 子系统(`src/server/wiki/`) | cutover (plan-01..08) 后的当前 wiki 实现:独立 `db/wiki.db`(7 表 + FTS5),`WikiDatabase` 持有,`WikiService` + repository / `compileWikiAccess` / `compileWikiContext` / `WikiProjectIndexer` / `BackupService` 在子目录内组装,**不参与 CoreDatabase 编排**(详见 [06 §0](../arch/06-knowledge-subsystems.md#0-wiki-v2plan-01plan-08-cutover-后的当前模型))。cutover 前的 v0.8 wiki store(`WikiStore`/`ProjectWikiStore`/`WikiScanCursorStore` + `project_wiki` 表)已物理删除。 |
 
 ## 维护规则
 

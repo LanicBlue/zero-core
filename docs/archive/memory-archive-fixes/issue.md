@@ -27,7 +27,7 @@
 
 根因:[wiki-tool.ts:673-691](../../../src/tools/wiki-tool.ts) 的 `createMemory` 接受 agent 传入的 parentId,只校验 `parent.path.startsWith("memory")` 就放行 → 旧全局 Memory 容器(path=`memory`)合格,agent 把叶子写到旧容器下,**绕过**了 store 的 per-agent 根机制(`upsertMemoryLeafForAgent`/`ensureMemoryAgentRoot` 从未被 Wiki 工具调到)。
 - **③**:叶子落旧容器 → 磁盘散落在 memory/ 根层。
-- **④**:[wiki-anchor-injection.ts:174-180](../../../src/runtime/wiki-anchor-injection.ts) 给每个 session 注入的 memory 锚点 = `wiki-root:memory-agent:<agentId>`(DB 里不存在);[WikiTreePanel.tsx:79-84](../../../src/renderer/components/layout/WikiTreePanel.tsx) `expandNode` 它 → `getChildren` 空 → 展开是空的。
+- **④**:`wiki-anchor-injection.ts:174-180` 给每个 session 注入的 memory 锚点 = `wiki-root:memory-agent:<agentId>`(DB 里不存在);[WikiTreePanel.tsx:79-84](../../../src/renderer/components/layout/WikiTreePanel.tsx) `expandNode` 它 → `getChildren` 空 → 展开是空的。
 
 ## 下一步
 

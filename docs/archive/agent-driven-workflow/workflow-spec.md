@@ -434,7 +434,7 @@ wiki-root:global              ← 全局根（zero 全局视角）
 - 用户可在项目页**手动创建新项目**。
 
 ### 8.6 死代码清理（与 v0.8 矛盾）
-- 删 `projects:pause / resume / updateInterval` IPC + [project-handlers.ts:51-72](src/main/ipc/project-handlers.ts#L51) 对应 + REST（cron 调度归 Cron 域；这些调的是 v0.8 no-op legacy alias `cron-analysis.ts:184-201`）。
+- 删 `projects:pause / resume / updateInterval` IPC + `project-handlers.ts:51-72` 对应 + REST（cron 调度归 Cron 域；这些调的是 v0.8 no-op legacy alias `cron-analysis.ts:184-201`）。
 - 删 `POST /api/projects/:id/trigger-analysis`（扫描归 archivist）。
 - 级联删除补「删该 projectId 的 crons」。
 - 补 `Project(get)` 工具。

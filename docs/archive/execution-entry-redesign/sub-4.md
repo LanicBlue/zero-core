@@ -12,11 +12,11 @@
 ### 新建 src/tools/task-tool.ts
 - 单 `Task` 工具,扁平 schema:`z.object({ action: z.enum(["get","list","kill","finish","resume"]), ...各 action 字段全 optional })`
 - execute `switch(input.action)` 分发,每个 case 内联原工具 execute 逻辑(从旧文件搬):
-  - get:单 task 钻取,按 running/interrupted/completed 三状态分支(搬 [task-get.ts](../../../src/tools/task-get.ts))
-  - list:富列表 + tree,带 max_completed config(搬 [task-list.ts](../../../src/tools/task-list.ts))
-  - kill:running→kill / interrupted→abandon(搬 [task-kill.ts](../../../src/tools/task-kill.ts))
-  - finish:优雅收尾,仅 agent(搬 [task-finish.ts](../../../src/tools/task-finish.ts))
-  - resume:解冻冻结子,仅 agent(搬 [task-resume.ts](../../../src/tools/task-resume.ts))
+  - get:单 task 钻取,按 running/interrupted/completed 三状态分支(搬 `task-get.ts`)
+  - list:富列表 + tree,带 max_completed config(搬 `task-list.ts`)
+  - kill:running→kill / interrupted→abandon(搬 `task-kill.ts`)
+  - finish:优雅收尾,仅 agent(搬 `task-finish.ts`)
+  - resume:解冻冻结子,仅 agent(搬 `task-resume.ts`)
 - meta:`{ category:"task", isReadOnly:false, isDestructive:false, isConcurrencySafe:false }`(action 惯例)
 - config:max_completed 从 TaskList 挂到 Task(configSchema)
 - per-action 必填 runtime 校验(参照各原工具)

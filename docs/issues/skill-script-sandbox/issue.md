@@ -3,7 +3,7 @@
 - **状态**:① issues(问题记录)
 - **提出**:2026-07-08
 - **类型**:改进(安全 / 架构)
-- **依赖**:[`../plan/skill-system/`](../plan/skill-system/)(`[skills]/` 虚拟路径是前置——它标识 skill 发起的执行,给沙盒一个干净拦截点)
+- **依赖**:[`../../archive/skill-system/`](../../archive/skill-system/)(`[skills]/` 虚拟路径是前置——它标识 skill 发起的执行,给沙盒一个干净拦截点)
 
 ## 问题
 

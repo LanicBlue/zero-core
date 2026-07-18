@@ -16,12 +16,12 @@
 
 - 数据层已有,但无面向父 session 的观测口:
   - `agent-service.ts` `runStates`(sessionId→{isBusy,waiting,streamingText,toolCalls},:590/:1002/:1591)、`activeSessions`(agentId→activeSessionId,:142/:437)、`isSessionRunning(sessionId)`(:576)、`db.getMainSession(agentId)`、`listDelegatedTasks({parentSessionId})`(:798)、`session_kind` chat/delegated。
-  - `Platform` 工具([platform-tools.ts](../../../src/runtime/mcp-tools/platform-tools.ts))有 info/logs/config/providers 四个 resource,**无 session resource** —— agent 无法自省"父 session(agent-general / agent-project)现在 running/waiting/idle、跑到哪个 turn、派了几个子"。
+  - `Platform` 工具(`platform-tools.ts`)有 info/logs/config/providers 四个 resource,**无 session resource** —— agent 无法自省"父 session(agent-general / agent-project)现在 running/waiting/idle、跑到哪个 turn、派了几个子"。
 - 首页看板 `DashboardPage.tsx` 有 per-session `SessionMetrics`(inputTokens/outputTokens/totalTurns/errorCount/lifecycleState)+ busy/idle 汇总计数,但**不是面向父 session 的清单+钻取视角**,也不供 agent 自省。
 
 ### ② provider 观测
 
-- `Platform` 'providers' resource([platform-tools.ts:128](../../../src/runtime/mcp-tools/platform-tools.ts#L128))只读静态配置(name/type/enabled/modelCount/baseUrl/redacted apiKey)。
+- `Platform` 'providers' resource(`platform-tools.ts:128`)只读静态配置(name/type/enabled/modelCount/baseUrl/redacted apiKey)。
 - `DashboardPage.tsx` 有 `ConcurrencyInfo`(per provider active/waiting 即时并发数)。
 - usage(tokens)在 `agent-loop.ts:1367` `finalizeOneStep` 按 **step/session** 捕获(含 cacheRead/cacheWrite/reasoning),但**未按 provider 聚合** —— 缺 provider 维度的运行观测(用量/成本/错误率/延迟/quota)。
 - 影响:无法判断哪个 provider 在烧 token、哪个出错率高、哪个该换。

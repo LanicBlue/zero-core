@@ -24,7 +24,7 @@
 
 ### B2 — 「独立 wiki.db」是结构性大手术,计划低估
 - **问题**:计划把 wiki.db 当「新建一个文件」,但**现状 wiki 不是独立 db**——是 `sessions.db` 里的 `project_wiki` 表 + 磁盘 `~/.zero-core/wiki/` 正文;WikiStore 直接复用 SessionDB 的 better-sqlite3 句柄。拆独立 db 牵动 5+ 模块,且服务端**无「第二个 Database 实例」先例**。还引入**新启动 race**(第二 db 文件 + 第二连接,race 面扩大,正中 memory `project-recovery-wikistore-startup-race`)。
-- **证据**:[wiki-node-store.ts:360-366](../../../src/server/wiki-node-store.ts#L360)(WikiStore 复用 `sessionDB.getDb()`);耦合面:[data-change-hub.ts:48](../../../src/server/data-change-hub.ts#L48)(`project_wiki` UI 广播)、`project-wiki-store.ts`/`project-wiki-router.ts`(back-compat + REST)、`wiki-scan-cursor-store.ts` + `wiki-skeleton-service.ts`、[server/index.ts:165-218,439-477,599-665,846-857](../../../src/server/index.ts#L165)(装配 + 两套路由)、[project-work-hook-manager.ts:6](../../../src/server/project-work-hook-manager.ts#L6)(订阅)。
+- **证据**:`wiki-node-store.ts:360-366`(WikiStore 复用 `sessionDB.getDb()`);耦合面:[data-change-hub.ts:48](../../../src/server/data-change-hub.ts#L48)(`project_wiki` UI 广播)、`project-wiki-store.ts`/`project-wiki-router.ts`(back-compat + REST)、`wiki-scan-cursor-store.ts` + `wiki-skeleton-service.ts`、[server/index.ts:165-218,439-477,599-665,846-857](../../../src/server/index.ts#L165)(装配 + 两套路由)、[project-work-hook-manager.ts:6](../../../src/server/project-work-hook-manager.ts#L6)(订阅)。
 - **修法**:需用户显式认领这块成本;plan-08 补——(a) 启动顺序:wiki.db 必须先于 agent-service / recovery 扫描就绪;(b) wiki.db 与 sessions.db 的 WAL checkpoint **各自独立**;(c) 新库物理隔离(见 B5);(d) 给 WikiStore 自己的 better-sqlite3 实例 + 自己的 migration 入口(明确「服务端首个多 Database 实例」)。
 - **状态**:☐
 
@@ -36,7 +36,7 @@
 
 ### B4 — sub-01 SQLite TEXT 亲和陷阱(连锁挂掉 sub-02)
 - **问题**:`sqlite-store.ts` 的 `columnDef` 把几乎所有列声明 TEXT;design §5 DDL 用 INTEGER(revision/ids)。implementer 极可能照抄相邻 `wiki-node-store.ts` 复用 `SqliteStore<T>` → `revision` 被建成 TEXT,`revision + 1` 走字符串拼接,acceptance-02「revision 恰好 +1」必挂。design.md:837 禁 SqliteStore 但 plan-01 没复述,acceptance-01 不查列亲和。
-- **证据**:[sqlite-store.ts:103-109](../../../src/server/sqlite-store.ts#L103)(TEXT 亲和根因);[wiki-node-store.ts:38-90](../../../src/server/wiki-node-store.ts#L38)(现有 store 模板,易被抄);memory `reference-sqlite-text-affinity-numeric`。
+- **证据**:[sqlite-store.ts:103-109](../../../src/server/sqlite-store.ts#L103)(TEXT 亲和根因);`wiki-node-store.ts:38-90`(现有 store 模板,易被抄);memory `reference-sqlite-text-affinity-numeric`。
 - **修法**:plan-01 §6 钉死——用裸 `Database.exec()` 跑 design §5 的 DDL,**不得复用 `SqliteStore<T>`**;acceptance-01 §A 增断言 `PRAGMA table_info(wiki_nodes).revision.type = 'INTEGER'`(以及所有 INTEGER 列)。
 - **状态**:☐
 
@@ -89,7 +89,7 @@
 ### 代码现实偏差(照计划写会踩空)
 - [ ] wiki 工具实际 **10 个 action**(漏 createMemory / updateMemory / docWrite)→ 漏了破坏 Force-档 memory 自写([agent-loop.ts:918-928](../../../src/runtime/agent-loop.ts#L918))与文档写入路径。schema **必须保持顶层 flat `z.object`**。
 - [ ] `deriveTypeFromPosition` 是**模块级私有 fn**(不是 WikiStore 方法),签名 `(row) => WikiNodeTypeGlobal`;`upsertProjectNode` 是 **legacy 单-project 入口**(archivist 用),工具层走 `upsertNodeInScope`(多 anchor)。
-- [ ] `wikiAnchors[].depth` 在 schema 里([agent-registry.ts:137](../../../src/tools/agent-registry.ts#L137))但渲染层已不消费([wiki-anchor-injection.ts:282](../../../src/runtime/wiki-anchor-injection.ts#L282) 注释)→ dead field,改造时删或重接。
+- [ ] `wikiAnchors[].depth` 在 schema 里([agent-registry.ts:137](../../../src/tools/agent-registry.ts#L137))但渲染层已不消费(`wiki-anchor-injection.ts:282` 注释)→ dead field,改造时删或重接。
 - [ ] renderer 有**两套 wiki IPC**:legacy `/api/project-wiki/*`(CRUD,`WikiPage.tsx:126` 仍用 `wikiUpdateNode`)+ P8 `/api/wiki/*`(只读浏览,**无 mutation 端点**)。plan-06 改 IPC 要明确动哪套或趁机合并。
 - [ ] plan-06 §3「重写 wiki-store」低估:`renderer/store/wiki-store.ts` 整体按 `nodeById` 内部 ID 索引,被 `AppLayout/AgentEditor/WikiPage/WikiTree/WikiTreePanel` 至少 5 个组件消费 → 全 store 重写 + 5 消费方联动改 canonical path key。
 

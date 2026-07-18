@@ -9,7 +9,7 @@
 
 ## 关键事实(审计)
 
-- **Subagent delegate 与 TaskStart{agent} 同源**:底层共享 delegator,`entryDisplayName` 重复两份([agent.ts:49](../../../src/tools/agent.ts#L49) / [task-start.ts:39](../../../src/tools/task-start.ts#L39))。Subagent delegate 改走 `delegateTaskBackground` 是顺势。
+- **Subagent delegate 与 TaskStart{agent} 同源**:底层共享 delegator,`entryDisplayName` 重复两份([agent.ts:49](../../../src/tools/agent.ts#L49) / `task-start.ts:39`)。Subagent delegate 改走 `delegateTaskBackground` 是顺势。
 - **Shell 后台能力被 sub-4 移除**:[bash.ts:336-340](../../../src/tools/bash.ts#L336) 注释明确 "Shell is BLOCKING only … `background:true` was removed … a blocking call that times out throws (the auto-background safety net is a Subagent delegate concern, not a Shell one)"。超时是 kill([bash.ts:372](../../../src/tools/bash.ts#L372)),不转后台。[bash.ts:244](../../../src/tools/bash.ts#L244) 的"超时 auto-backgrounds"prompt 文案过时,与代码不符。→ **Shell 后台化(恢复 `background?` + 新实现超时转后台)是新功能,非小改**。
 - **3 个 meta 在 runtime 零消费**:`isConcurrencySafe` / `isDestructive` / `isReadOnly` 只 UI 标签([ToolsPage.tsx](../../../src/renderer/components/tools/ToolsPage.tsx)),runtime 用 policy 级 `executionMode`。→ 合并/统一 meta 无运行时代价。
 - **action 工具顶层 `type:object` 硬约束**([action-tool-schema.test.ts](../../../tests/unit/action-tool-schema.test.ts)):扁平 `z.object({action:z.enum([...]),...})`,非 discriminatedUnion;per-action 必填 runtime 校验。先例 [project-tool.ts:77](../../../src/tools/project-tool.ts#L77)。

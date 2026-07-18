@@ -11,7 +11,7 @@
 
 ### src/tools/agent.ts
 - `delegate` action:从 `fns.delegateTask`(blocking,等结果)改成 `fns.delegateTaskBackground`(立即返回 task_id)
-- 返回文本改成 TaskStart{agent} 风格:`"Background sub-agent started.\ntask_id: X\nUse TaskGet to drill in..."`(参照 [task-start.ts:187](../../../src/tools/task-start.ts#L187) 的 agent 分支返回;此时 Task 工具仍是 6 个独立工具,引用 TaskGet,sub-5 统一改)
+- 返回文本改成 TaskStart{agent} 风格:`"Background sub-agent started.\ntask_id: X\nUse TaskGet to drill in..."`(参照 `task-start.ts:187` 的 agent 分支返回;此时 Task 工具仍是 6 个独立工具,引用 TaskGet,sub-5 统一改)
 - 去掉 blocking 等待逻辑(execute 里 `await delegateTask` 那段)
 - 去掉 `configSchema` 的 auto_background / auto_background_timeout 两项([agent.ts:75](../../../src/tools/agent.ts#L75))
 - 保留 `list` action 不变

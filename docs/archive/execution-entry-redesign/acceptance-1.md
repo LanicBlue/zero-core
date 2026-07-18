@@ -22,7 +22,7 @@
 7. **Orchestrate 仍 blocking**:Orchestrate task 节点仍走 delegateTask(blocking),pipeline 前一节点输出仍灌后一节点。
    - 验证:Orchestrate 现有测试(若有)仍过;或单测 delegateTask 仍 blocking 等结果。
 8. **TaskStart{agent} 仍工作**:TaskStart{type:agent} 未动(sub-4 才删)。
-   - 验证:TaskStart 现有测试([sub4-task-tools.test.ts](../../../tests/unit/sub4-task-tools.test.ts))仍过。
+   - 验证:TaskStart 现有测试(`sub4-task-tools.test.ts`)仍过。
 
 ## 前端验收
 

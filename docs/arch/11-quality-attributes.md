@@ -22,7 +22,7 @@
 
 ### 2.0 SLO 仪表盘（gauge-style bar chart）
 
-> **v0.8 更正**：旧表第 6 行 "Memory 召回 100ms" 已废 —— MemoryRecall / MemoryNote 工具在 v0.8 P2 §11.6 从 `ALL_TOOLS` 取消注册（`src/runtime/tools/index.ts:79-83` 注释明示，"memory is now a wiki per-agent subtree"），对应后端 `MemoryStore` 变成**僵尸**（构造但零运行时写入者，见 12-glossary + 06 §2.7 矩阵）。当前主线知识检索走 **Wiki**（每 agent 一个 wiki 子树，`WikiStore` + Wiki action 工具的 expand/read/search），其延迟特性与旧的 Memory 召回（FTS5 MATCH）完全不同 —— 见下表第 6 行。KB 检索路径不变（独立 `knowledge.db`，余弦相似度）。
+> **v0.8 + cutover 更正**：旧表第 6 行 "Memory 召回 100ms" 已废 —— MemoryRecall / MemoryNote 工具在 v0.8 P2 §11.6 从 `ALL_TOOLS` 取消注册；对应后端 `MemoryStore` / `MemoryNodeStore` 已随 cutover 整体删除。当前主线知识检索走 **Wiki v2**(每 agent 经 `wikiGrants`/`wikiContext` 编译后的可见子树,`WikiService` + Wiki v2 tool 的 expand/read/search,延迟特性见下表)。KB 检索路径(`knowledge.db` 余弦相似度)已随 KB 子系统 RETIRE(plan-00 §5)整体退役,不再有这条延迟路径。
 
 ```mermaid
 graph LR
@@ -52,7 +52,7 @@ graph LR
 | 工具调用（Shell 简单命令）| < 500ms | < 2s | 取决于命令 |
 | 工具调用（WebFetch）| < 1s | < 5s | 取决于目标网站 |
 | ~~工具调用（KB 检索）~~ | — | — | **RETIRED (plan-00 §5)**：`knowledge.db` / `kb_chunks` / `KbDB` 全部删除；KB 向量检索路径已不在运行时。 |
-| 工具调用（Wiki 检索）| < 200ms | < 1s | `WikiStore` 树遍历 + FTS5 MATCH（`memory_nodes_fts`），live 路径仅在会话压缩 wiki 写失败时回退写入 |
+| 工具调用（Wiki 检索）| < 200ms | < 1s | Wiki v2 `WikiService` canonical path 读 / parent expand+pagination / FTS5 MATCH(`wiki_nodes_fts`);plan-08 §4 benchmark 在 1M 节点规模下验证(详见 [06 §0.8](./06-knowledge-subsystems.md#08-性能基线plan08-§4)) |
 | 会话恢复 | < 2s | < 5s | DB 读取 + UI 渲染 |
 | 应用启动 | < 3s | < 6s | Electron + 后端 spawn |
 
@@ -228,7 +228,8 @@ IPC invoke (5ms)
 - 消息数：~10K turns / session
 - 工具调用：~1K / day
 - ~~KB chunks~~：**RETIRED (plan-00 §5)** —— `knowledge.db` 已删除，不再列入规模假设。
-- Memory nodes：~500（v0.8 后写入路径仅会话压缩 wiki 写失败时回退，正常情况增长极慢；主线知识走 `project_wiki` 磁盘镜像树，按项目维度独立增长）
+- ~~Memory nodes~~:**RETIRED** —— `MemoryNodeStore` 与 `memory_nodes` 表已随 cutover 整体退役,不再产生写入。
+- Wiki v2 nodes(`wiki.db.wiki_nodes`):目标支持 1M 节点(plan-08 §4 benchmark),按 knowledge/memory/projects 三 namespace 独立增长;Project mirror 由 `WikiProjectIndexer` 增量同步。
 - MCP servers：~5
 - Agents：~10
 - 项目（v0.8 工作流域）：~5 个活跃项目，每个项目下 requirements / wiki 节点 / crons / orchestrate plans 按需增长

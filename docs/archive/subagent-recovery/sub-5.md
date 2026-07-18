@@ -8,7 +8,7 @@
 
 ## 范围 / 改动
 
-- **`Wait` 输入**([tools/wait.ts](../../../src/runtime/tools/wait.ts)):去 `task_id`;保留 `timeout`(相对)+ 加 `until`(绝对时间点)。return 仅 wake 原因 + elapsed。
+- **`Wait` 输入**(`tools/wait.ts`):去 `task_id`;保留 `timeout`(相对)+ 加 `until`(绝对时间点)。return 仅 wake 原因 + elapsed。
 - **三 wake 源**(改 `suspendUntilWake` [task-registry.ts:216](../../../src/runtime/task-registry.ts#L216)):
   - 到点(`until`/`timeout`)。
   - any-task-finish(任一后台 task 完成,全局事件)。

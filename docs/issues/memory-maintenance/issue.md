@@ -12,7 +12,7 @@ per-agent memory 子树(`wiki-root:memory-agent:<agentId>`,memory-archive-fixes 
 ## 现状 / 真相源 / 影响面
 
 ### 记忆写入路径(memory-archive-fixes 后)
-- per-agent 根 [wiki-node-store.ts](../../../src/server/wiki-node-store.ts) `ensureMemoryAgentRoot` / `memoryAgentRootId`(~[331](../../../src/server/wiki-node-store.ts#L331) / [338](../../../src/server/wiki-node-store.ts#L338) 行),叶子 `upsertMemoryLeafForAgent`,磁盘 seg 用 agentName(sub-2)。
+- per-agent 根 `wiki-node-store.ts` `ensureMemoryAgentRoot` / `memoryAgentRootId`(~`331` / `338` 行),叶子 `upsertMemoryLeafForAgent`,磁盘 seg 用 agentName(sub-2)。
 - 写入触发器:压缩流程(compression-archive-simplify)+ memory turn(归档前)+ `Wiki` 工具(agent 手动)。**三者全部只写不维护**。
 
 ### 现有可复用元数据(project_wiki 列,[db-migration.ts:821](../../../src/server/db-migration.ts#L821))

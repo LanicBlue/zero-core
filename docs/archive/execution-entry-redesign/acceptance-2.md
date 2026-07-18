@@ -20,7 +20,7 @@
 6. **blocking 命令仍工作**:正常短命令 blocking 返回 stdout + [Completed in Xs]。
    - 验证:现有 Shell 测试仍过。
 7. **TaskStart{shell} 仍工作**:未动(sub-4 才删)。
-   - 验证:TaskStart 现有测试([sub4-task-tools.test.ts](../../../tests/unit/sub4-task-tools.test.ts))仍过。
+   - 验证:TaskStart 现有测试(`sub4-task-tools.test.ts`)仍过。
 
 ## 前端验收
 

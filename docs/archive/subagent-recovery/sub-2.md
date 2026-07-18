@@ -16,7 +16,7 @@
   - 从"每 turn 重建块"改成"recall 事件 `addMessage` 进历史的持久日志"。
   - 去重:已 recall 过的不重加。
   - recall 源 = wiki memory 子树(per-agent `memory/<agentId>/`)—— **本次留空接口,不接入**(记忆写入未完善)。
-- **work-context hook([workflow-context-hook.ts](../../../src/server/workflow-context-hook.ts))拆解**:
+- **work-context hook(`workflow-context-hook.ts`)拆解**:
   - Project / Requirement / Wiki Baseline → system 段渲染器(on-demand)。
   - Steps Progress → workbench 段渲染器(sub-1 通道)。
   - `memoryContext` 误标修正(它装的不是 memory)。

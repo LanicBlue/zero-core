@@ -15,13 +15,13 @@ agent 写 memory 一律落到**自己的 per-agent 根**(`wiki-root:memory-agent
 - agent 传非法 parent → 返回清晰错误,指明应用自己的 memory 根锚点 id。
 
 ### B. 锚点注入时 ensureMemoryAgentRoot 落行
-agent 的 memory 锚点 = `wiki-root:memory-agent:<agentId>`(synthetic,当前 DB 无行)。在 Wiki 工具的 scope/anchor 解析处(构 anchors 时)调 `ensureMemoryAgentRoot(agentId, agentName)`([wiki-node-store.ts:1541](../../../src/server/wiki-node-store.ts))→ 行落库 → agent 在 outline 看到自己的根 → createMemory 传它 → leaf 落正处。
+agent 的 memory 锚点 = `wiki-root:memory-agent:<agentId>`(synthetic,当前 DB 无行)。在 Wiki 工具的 scope/anchor 解析处(构 anchors 时)调 `ensureMemoryAgentRoot(agentId, agentName)`(`wiki-node-store.ts:1541`)→ 行落库 → agent 在 outline 看到自己的根 → createMemory 传它 → leaf 落正处。
 - agentName 从 callerCtx / agents 表取,一并传 ensureMemoryAgentRoot(它已用 agentName 设 title)。
 
 ### C. 磁盘 seg 用 agentName
-[wiki-node-store.ts:661](../../../src/server/wiki-node-store.ts) `subtreeSeg`:对 `wiki-root:memory-agent:` 根,返 **agentName**(非 agentId)。diskPathFor → `WIKI_DISK_ROOT/memory/<agentName>/`。
+`wiki-node-store.ts:661` `subtreeSeg`:对 `wiki-root:memory-agent:` 根,返 **agentName**(非 agentId)。diskPathFor → `WIKI_DISK_ROOT/memory/<agentName>/`。
 - agentName 需对 disk seg 安全(复用 sanitizeSeg)。空/冲突 → fallback agentId。
-- **agent 改名 → rename 磁盘文件夹**:复用既有 rename 迁移机制 [wiki-node-store.ts:534-543](../../../src/server/wiki-node-store.ts)。在 agent-rename 路径(agent-service/agent-store)触发 memory 根的 disk rename + title 更新(ensureMemoryAgentRoot 已纠 title,见 [wiki-node-store.ts:1543-1549](../../../src/server/wiki-node-store.ts))。本 sub 接 rename 触发;若 agent-rename 钩子不存在,至少保证**新写**用 agentName(改名迁移作 follow-up 也在接受范围 —— 待验既有 rename 机制覆盖面)。
+- **agent 改名 → rename 磁盘文件夹**:复用既有 rename 迁移机制 `wiki-node-store.ts:534-543`。在 agent-rename 路径(agent-service/agent-store)触发 memory 根的 disk rename + title 更新(ensureMemoryAgentRoot 已纠 title,见 `wiki-node-store.ts:1543-1549`)。本 sub 接 rename 触发;若 agent-rename 钩子不存在,至少保证**新写**用 agentName(改名迁移作 follow-up 也在接受范围 —— 待验既有 rename 机制覆盖面)。
 
 ### D. 启动清理(不写迁移,直接删)
 启动 index.ts(recoverInterruptedArchives 旁):
@@ -34,7 +34,7 @@ agent 的 memory 锚点 = `wiki-root:memory-agent:<agentId>`(synthetic,当前 DB
 
 ## 改动文件
 - [wiki-tool.ts](../../../src/tools/wiki-tool.ts):isMemoryParent 收紧 + 删 topic 分支。
-- [wiki-node-store.ts](../../../src/server/wiki-node-store.ts):subtreeSeg 用 agentName;删 topic 死代码。
+- `wiki-node-store.ts`:subtreeSeg 用 agentName;删 topic 死代码。
 - wiki-anchor-injection.ts 或 Wiki 工具 scope 构建处:ensureMemoryAgentRoot 落行。
 - [index.ts](../../../src/server/index.ts) 启动:加 legacy 容器 + 孤儿目录清理(挨着 recoverInterruptedArchives)。
 - agent-rename 路径:触发 memory 根 rename(若既有机制未覆盖)。

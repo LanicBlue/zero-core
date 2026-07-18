@@ -122,16 +122,20 @@ core-database.ts (orchestrator, 100 行)
 - `db-migration.ts` 加 `DROP TABLE IF EXISTS memory_entities` + `DROP TABLE IF EXISTS memory_relations`
 
 `MemoryNodeStore`(4 张表:`memory_nodes` / `memory_subjects` / `memory_edges` / `memory_nodes_fts`)
-**保留**,仍是 `wiki-anchor-injection` / `wiki-search` 间接读取的唯一 memory 后端。
-05-persistence.md §2 / §4.0.2 / §5 已同步更正表计数(db/core.db 总表 ≈31,memory_* 只剩 4 张)。
+**已在 wiki-system-redesign cutover 中整体退役**(plan-08 §1):store 文件 + 4 张表 + reader
+路径全部删除。cutover 前它确实是被 `wiki-anchor-injection` / `wiki-search` 间接读取的唯一 memory
+后端,但这两条 reader 已随 v0.8 anchor 注入退役而消失,cutover 把残余 MemoryNodeStore 一并清理。
+05-persistence.md §2 / §4.0.2 / §5 已同步更正表计数;当前 db/core.db 总表数已下调(memory_* 4 张 + project_wiki + wiki_scan_cursors 全 DROP)。
 
-**剩余风险**:无新风险。若旧 DB 残留 `memory_entities` / `memory_relations` 行数据,
-`db-migration.ts` 的 `DROP TABLE IF EXISTS` 会直接丢弃(僵尸零运行时写入者,数据无业务价值)。
+**剩余风险**:无新风险。若旧 DB 残留 `memory_entities` / `memory_relations` / `memory_nodes*` /
+`project_wiki` / `wiki_scan_cursors` 行数据,`db-migration.ts` 的 `DROP TABLE IF EXISTS` / 表保留为
+未读取历史数据策略会直接处理(僵尸零运行时写入者,数据无业务价值)。`/api/wiki-maintain/legacy/cleanup`
+可在管理面显式 DROP `project_wiki`。
 
-**原描述**（保留供参考）:
+**原描述**（保留供参考,描述的是 cutover 前的状态）:
 - **症状**：两套并存。`MemoryStore` 是**僵尸**——零运行时写入者,且其唯一消费者
   `runtime/mcp-tools/memory-tools.ts` 零 importer(已从工具注册表移除)。`MemoryNodeStore`
-  仍被 `wiki-anchor-injection` / `wiki-search` 间接读取。旧表数据可能在 DB 中。
+  曾被 `wiki-anchor-injection` / `wiki-search` 间接读取(v0.8 anchor 退役前);旧表数据可能在 DB 中。
 - **修复方案**:删除旧版 + `mcp-tools/memory-tools.ts`(已执行)。
 
 **原优先级**：3 × 3 / 3 = **3.0**。→ ✅ 已清理(master 本批删除 memory-store.ts + memory-tools.ts + DROP 2 表)。

@@ -3,7 +3,7 @@
 > 节点 F5(依赖 F4)。目标:删旧文件、扫注释、code-graph、全回归。Flow 全面接管,无残留。对应 [project-flow.md](./project-flow.md) §8。
 
 ## 范围
-- 删 [requirement-tools.ts](../../../src/runtime/tools/requirement-tools.ts)、[verify-tool.ts](../../../src/runtime/tools/verify-tool.ts)(若 F3 已移注册、F4 已接管 UI,此时无人引用)。
+- 删 `requirement-tools.ts`、`verify-tool.ts`(若 F3 已移注册、F4 已接管 UI,此时无人引用)。
 - 扫旧工具名注释/文档:agent-service、fresh-db-seed、runtime/types、server/index、template-store(blockedTools)等处对 CreateRequirement/CreateRequirementWithDoc/verify 的引用,更新为 Flow(或确认经 RENAMED_TOOLS 自动迁移、注释准确性)。
 - template-store 的 blockedTools 列表里 "CreateRequirement" → "Flow"(或留 RENAMED 处理 + 注释)。
 - code-graph 重生成。

@@ -21,7 +21,7 @@
 
 ### 两条入口(同一逻辑两份适配)
 同一 agentService 方法被两种入口调:
-- agent 入口:Platform 工具([platform-tools.ts](../../../src/runtime/mcp-tools/platform-tools.ts))→ `ctx.platformObserver.listParentSessions()`(经 ctx,文本输出)
+- agent 入口:Platform 工具(`platform-tools.ts`)→ `ctx.platformObserver.listParentSessions()`(经 ctx,文本输出)
 - UI 入口:REST router([session-router.ts](../../../src/server/session-router.ts) / [provider-router.ts](../../../src/server/provider-router.ts))→ `agentService.listParentSessions()`(直读,JSON 输出)
 - 逻辑一份(agentService 方法),入口两份 + 工具入口的 ctx 注入舞。
 

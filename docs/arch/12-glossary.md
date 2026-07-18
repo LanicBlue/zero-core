@@ -67,7 +67,7 @@ graph LR
         K2[ToolFactory]
         K3[MCPManager]
         K4["MemoryNodeStore<br/>(压缩回退,活)"]
-        K6["WikiStore<br/>(主线)"]
+        K6["WikiService<br/>(wiki.db 主线)"]
         K1 --> K2
         K1 --> K3
         K1 --> K6

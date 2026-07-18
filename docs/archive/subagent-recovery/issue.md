@@ -4,11 +4,11 @@
 
 ## 背景:崩溃/关闭打断 subagent 后,重启如何恢复
 
-子代理 session 是真实 sessionId、带 `parent_session_id` 落盘的([session-db.ts:189](../../../src/server/session-db.ts#L189)、[:286](../../../src/server/session-db.ts#L286) `session_kind: "chat" | "delegated"`)。turns/step 即时持久化,turn_state 记未完成 turn + `last_completed_step_seq` 检查点。
+子代理 session 是真实 sessionId、带 `parent_session_id` 落盘的(`session-db.ts:189`、`:286` `session_kind: "chat" | "delegated"`)。turns/step 即时持久化,turn_state 记未完成 turn + `last_completed_step_seq` 检查点。
 
 ## 当前行为(问题所在)
 
-重启时 `recoverIncompleteSessions()`([agent-service.ts:1047](../../../src/server/agent-service.ts#L1047))对 `getIncompleteTurns()`([session-db.ts:847](../../../src/server/session-db.ts#L847))返回的**每个** incomplete turn 无差别 `loop.resume()`。`getIncompleteTurns` 只按 `phase` 过滤,**不看 `session_kind`/`parent_session_id`** —— 父子一视同仁。
+重启时 `recoverIncompleteSessions()`([agent-service.ts:1047](../../../src/server/agent-service.ts#L1047))对 `getIncompleteTurns()`(`session-db.ts:847`)返回的**每个** incomplete turn 无差别 `loop.resume()`。`getIncompleteTurns` 只按 `phase` 过滤,**不看 `session_kind`/`parent_session_id`** —— 父子一视同仁。
 
 后果:
 1. **委派子 session 被独立 auto-resume,自顾自跑完**,结果无人消费。
@@ -41,7 +41,7 @@
 
 ### 2. Wait 增加"到某时间点"功能(cron 式,不注入 prompt,可打断)
 
-- 现状:`Wait`([tools/wait.ts](../../../src/runtime/tools/wait.ts))已事件驱动(`suspendUntilWake` [task-registry.ts:216](../../../src/runtime/task-registry.ts#L216):timeout + 任一后台子完成即唤醒),但**只有相对 timeout,无"等到时间点"**;`wakeCallback` **纯内存,崩了即丢**。
+- 现状:`Wait`(`tools/wait.ts`)已事件驱动(`suspendUntilWake` [task-registry.ts:216](../../../src/runtime/task-registry.ts#L216):timeout + 任一后台子完成即唤醒),但**只有相对 timeout,无"等到时间点"**;`wakeCallback` **纯内存,崩了即丢**。
 - 提案:加 `until`(绝对时间点 / cron 式)。与 cron 区别:不注入 prompt(只挂起当前 turn 到点)、可被打断(子完成提前唤醒)。
 - 配合第 1 点:长时间后台活用 `Wait until=明天` 挂起,期间 turn 不结束、子完成即打断唤醒。
 - **硬成本:durable Wait**。需把 wait 状态(deadline + 等 task_ids)持久化到 turn_state / resume 上下文,`resume()` 见未到点重新挂起。与 durable blocking delegation 同类原语,范围限 Wait 一个工具。
@@ -73,8 +73,8 @@
 - resume 语义:[agent-loop.ts:325](../../../src/runtime/agent-loop.ts#L325)(lastCompletedStepSeq 仅信息性,不跳步)
 - 悬挂工具合成:[session.ts:334](../../../src/runtime/session.ts#L334) `synthesizeDanglingToolResultsInPlace`、[:539](../../../src/runtime/session.ts#L539) `normalizeMessages` 剥孤儿 result
 - 委派路径:[subagent-delegator.ts](../../../src/runtime/subagent-delegator.ts) 阻塞 `await subLoop.run`:372、后台 delegateTaskBackground、parent_tool_call_id:79
-- Wait / 挂起:[tools/wait.ts](../../../src/runtime/tools/wait.ts)、[task-registry.ts:216](../../../src/runtime/task-registry.ts#L216) suspendUntilWake(wakeCallback 内存态)
-- session_kind 列:[session-db.ts:189](../../../src/server/session-db.ts#L189)、[:286](../../../src/server/session-db.ts#L286)
+- Wait / 挂起:`tools/wait.ts`、[task-registry.ts:216](../../../src/runtime/task-registry.ts#L216) suspendUntilWake(wakeCallback 内存态)
+- session_kind 列:`session-db.ts:189`、`:286`
 - workflow 状态恢复:[recovery.ts:64](../../../src/server/recovery.ts#L64) recoverWorkflowState(正交,业务层)
 
 ## 相关记忆

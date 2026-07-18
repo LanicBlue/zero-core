@@ -16,7 +16,7 @@
    - `list`:{ projectId?, status?, priority? } → `ctx.requirementStore.list(...)`.
    - `get`:{ id } → `ctx.requirementStore.get(id)`(本阶段只返 record,不含 messages)。
    - meta.category 用 `"management"`(暂归类管理域,F5 视情况调)。
-3. **注册**:[tools/index.ts](../../../src/runtime/tools/index.ts) `import { flowTool }`;`ALL_TOOLS.Flow = flowTool`;`CONDITIONAL_TOOLS.Flow = (ctx) => !!ctx.requirementStore`。
+3. **注册**:`tools/index.ts` `import { flowTool }`;`ALL_TOOLS.Flow = flowTool`;`CONDITIONAL_TOOLS.Flow = (ctx) => !!ctx.requirementStore`。
 4. **能力注入**:[agent-service.ts](../../../src/server/agent-service.ts) ~L422 `capabilityHandlesFor`:把 `on("Flow")` 加进 requirementStore 注入条件(`on("Flow") || on("CreateRequirement") || on("verify")`)。verify/CreateRequirement 本阶段保留。
 5. **prompt/description**:Flow 描述 create/list/get(简洁,后续 F2 扩)。
 

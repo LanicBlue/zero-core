@@ -271,7 +271,7 @@ started_at    TEXT
 > (`memory_nodes` / `memory_subjects` / `memory_edges` / `memory_nodes_fts`,Gen1 MemoryNodeStore)
 > 与 `kb_entries` / `kb_chunks`(KB 子系统)都已删除,`runMigrations` 用 `DROP IF EXISTS`
 > 清掉。`MemoryNodeStore` / `MemoryStore` / `KbDB` / `KbStore` 等 store 文件也不再存在,所以
-> 不再有"构造自建 memory/KB 表"这一类。知识与记忆统一以 `project_wiki` wiki 树承载(06 §2/§3)。
+> 不再有"构造自建 memory/KB 表"这一类。cutover 后知识与记忆统一以**独立 `db/wiki.db`** 承载(见顶部 banner 与 [06 §0](./06-knowledge-subsystems.md#0-wiki-v2plan-01plan-08-cutover-后的当前模型));旧 `project_wiki` 表已退役(行保留为未读取历史数据,见 §2.2b)。
 >
 > **批 B 构造自建表全清单(清理后共 2 张)**:
 > `extraction_cursors`(`extraction-cursor-store.ts`,v0.8 M5 lazy store)/
@@ -307,16 +307,13 @@ JSON 前身)。Store 类多数用 `SqliteStore<T>` 反射 CRUD(见 §3),**两个
 | `orchestrate_manifests` | `OrchestrateManifestStore` (orchestrate-store.ts:131) | 8 | M3 (D34) | 每次执行的 manifest:touchedFiles/tests/review(JSON 数组)+ summary。PM 读它判覆盖度,archivist 读它做可追溯 |
 
 **关键关系(见图 §2.13)**:
-- `projects` 是工作流域根(1:N → requirements / project_wiki / project_jobs)。
+- `projects` 是工作流域根(1:N → requirements / project_jobs;wiki 子树在独立 `db/wiki.db` 中,通过 `wiki_repositories.project_id` 反向绑定)。
 - `requirements` 是流程枢纽:1:N → task_steps / requirement_status_history / requirement_messages / orchestrate_plans。
 - `orchestrate_plans` ↔ `orchestrate_manifests` 是 1:N(plan 可重跑,每次 manifest)。
 - `crons` → `cron_runs` 1:N(每次触发一行)。
-- `project_wiki` 自引用 `parent_id` + `project_id` 可空(global root / memory 节点 project_id=NULL,
-  这是 M2 wiki 全局化的关键约束)。
+- (历史)`project_wiki` 自引用 `parent_id` + 可空 `project_id` 曾经是 M2 全局化的关键约束;plan-08 cutover 后该表退役(行保留为历史数据,无代码读写),wiki 全局根与 projects 子树改由 `wiki.db` 的固定根 + `wiki_repositories` 承载,详见 [06 §0](./06-knowledge-subsystems.md#0-wiki-v2plan-01plan-08-cutover-后的当前模型)。
 
-**与旧业务表的边界**:`agents` 表的 `knowledgeBaseIds` 仍是旧 KB 概念,与 `project_wiki` 是
-**两个并行的 wiki 系统** —— 旧 `kb_*` 走嵌入向量检索(RAG),新 `project_wiki` 走磁盘镜像树
-+ archivist 摘要(见 06 §2)。两者不互转。
+> **cutover 后没有"并行 wiki 系统"**:`agents.knowledgeBaseIds`(旧 KB 概念,字段保留但读者已不存在)与 `project_wiki`(已退役)都不再产生写入;唯一活跃的 wiki 路径是 `db/wiki.db`。旧 `kb_*`(RAG)与 `project_wiki`(磁盘镜像树 + archivist 摘要)整套基础设施已删除。
 
 ### 2.3 KB chunks —— **独立 SQLite 文件 `knowledge.db`**（⚠️ RETIRED plan-00 §5）
 
@@ -324,7 +321,7 @@ JSON 前身)。Store 类多数用 `SqliteStore<T>` 反射 CRUD(见 §3),**两个
 > 表由 `runMigrations` `DROP IF EXISTS`；`KbDB` / `KbStore` / `kb-*` 服务端代码已删除；
 > `knowledge.db` 文件本身由 `DatabaseManager.open()` 在布局 bootstrap 之前通过
 > `deleteRetiredKnowledgeDb()` **删除**（精确白名单：`knowledge.db` + `-wal` + `-shm`，
-> 不备份、不导入、不 glob）。知识/记忆统一以 `project_wiki` 磁盘镜像树承载（见 06 §2）。
+> 不备份、不导入、不 glob）。cutover 后知识/记忆统一以**独立 `db/wiki.db`** 承载(见顶部 banner 与 [06 §0](./06-knowledge-subsystems.md#0-wiki-v2plan-01plan-08-cutover-后的当前模型))。
 >
 > 以下内容为**历史描述，保留备查**（解释为何曾经独立成库）；这些代码路径与文件已不在
 > 仓库中，不再属于活动架构。
@@ -628,14 +625,13 @@ erDiagram
   让"归档当前 session"把行标记 `archived=1` 并从活跃视图移除——`getMainSession`/`listSessions`/
   `listAllSessions`/`getMostRecentSession`/`findSessionByAgentAndProject` 及资源聚合 raw SQL
   均 `WHERE archived = 0`;row 保留,由同 `(agentId, projectId)` 的新 session 接替路由(`POST /api/sessions/:agentId/:sessionId/archive`)。
-- **`PROJECTS` 是工作流域枢纽**(v0.8 新增):1:N → requirements / project_wiki / project_jobs。
+- **`PROJECTS` 是工作流域枢纽**(v0.8 新增):1:N → requirements / project_jobs;wiki 子树通过 `wiki.db.wiki_repositories.project_id` 反向绑定。
 - **`REQUIREMENTS` 是流程枢纽**:1:N → task_steps / history / messages / orchestrate_plans。
 - **`turns` 是 source of truth**，`messages` 是 write-through 缓存（双写）;v0.8 加 `turn_group`
   列把同一逻辑 turn 内的多步 LLM 调用聚合(索引 idx_turns_session_group)。
 - **`memory_nodes` 自引用**：`evolvedFrom` 形成演化链。
-- **`project_wiki` 自引用 + project_id 可空**:这是 M2 全局化的关键 —— 全局 root / memory 节点
-  不属于任何 project(见 06 §2.5)。
-- **`kb_chunks` 与 session 无关**:独立 RAG 索引。
+- (历史)`project_wiki` 自引用 + project_id 可空曾是 M2 全局化的关键;plan-08 cutover 后表退役,wiki 全局根/projects 子树/memory 子树改在 `wiki.db` 中(详见 [06 §0](./06-knowledge-subsystems.md#0-wiki-v2plan-01plan-08-cutover-后的当前模型))。
+- **`kb_chunks` 与 session 无关**(且表已 DROP)。
 - **`tool_usage`(P0) ≠ `tool_executions`(旧)**:前者是 RFC §7.7 #4 的工具级日志(含 params/成功/耗时),
   后者是 §2.1 的会话级日志(input/output_preview);两个表的 `session_id` 不一定一致 ——
   `tool_usage` 在 cron / 后台 job / 子 agent 委派里也会写,这些 session 可能是临时的。
@@ -683,7 +679,7 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 
 #### 3.0.1 写出口 = UI 同步捕获点
 
-`insertRow` / `updateRow` / `delete` 是 SqliteStore **唯一的写原语**,也是 `data-change-hub` 的唯一 emit 点(见 ADR-021)。所有领域 store(AgentStore/ProjectStore/CronStore/RequirementStore/WikiStore/...)的写都收敛到这里,因此四个突变面(UI REST / agent 工具 / 后台服务 / 启动恢复)改的数据都能被 renderer 自动感知,无需逐 store 加通知:
+`insertRow` / `updateRow` / `delete` 是 SqliteStore **唯一的写原语**,也是 `data-change-hub` 的唯一 emit 点(见 ADR-021)。所有基于 `SqliteStore` 的领域 store(AgentStore/ProjectStore/CronStore/RequirementStore/...)的写都收敛到这里,因此四个突变面(UI REST / agent 工具 / 后台服务 / 启动恢复)改的数据都能被 renderer 自动感知,无需逐 store 加通知:
 
 - `insertRow(record)` → `emitDataChange(table, record.id, "create", record)`
 - `updateRow(id, record)` → `emitDataChange(table, id, "update", record)`
@@ -729,7 +725,7 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 `CoreDatabase` 在构造函数里 **eager** 实例化 2 个内核 store(KeyValueStore + MemoryNodeStore;
 ~~MemoryStore~~ 已随 v0.8 僵尸清理删除),在 v0.8 (M5) 又加了 2 个 **lazy** store:
 
-> ⚠️ **更正**:本文此前写"6 个,分两批 + 1 个全局 wiki store 入口",这是**错的**。`WikiStore`(`wiki-node-store.ts:327` 的 `WikiStore` 类)在 `server/index.ts:122` 以 `wikiStoreGlobal = new WikiStore(sessionDB)` **独立 new** —— CoreDatabase 只是被当 `getDb()` 提供者传进去,本身**不**持有 `WikiStore` 字段、不暴露 getter(在 `core-database.ts` 里 grep `WikiStore` 零命中)。`WikiStore` 与 §4.0.3 的 9 个工作流域 store 同属"在 server/index.ts 独立 new、不挂 CoreDatabase"那一类,只是它实例化得更早(必须在 hooks 注册前,以便 M5 抽取器拿到 writer)。详见 §4.0.3 与 [02-module-structure.md §4.1.1](02-module-structure.md)。
+> ⚠️ **更正(已被 cutover 进一步更新)**:本文此前写"6 个,分两批 + 1 个全局 wiki store 入口",这是**错的**。`WikiStore`(`wiki-node-store.ts` 的 `WikiStore` 类)**在 cutover (plan-08 §1) 中已物理删除**,CoreDatabase 从未持有过它。cutover 前 `WikiStore` 在 `server/index.ts` 以独立 `new` 的形式存在(不挂 CoreDatabase),cutover 后这条装配路径完全消失,wiki 走独立 `wiki.db` + `WikiService`,见顶部 banner 与 [02 §4.1.1](./02-module-structure.md#411-store-编排coredatabase-不是聚合根v08-重要边界)。
 
 | store | 实例化时机 | 用途 | getter |
 |-------|-----------|------|--------|
@@ -743,19 +739,22 @@ new SqliteStore<T>(db, "agents", COLUMNS)
 
 #### 4.0.3 CoreDatabase **不**聚合 v0.8 工作流域 store —— 关键边界
 
-v0.8 (M0~M3) 引入的 **14 张工作流域表**(`projects` / `project_wiki` / `wiki_scan_cursors` /
+v0.8 (M0~M3) 引入的工作流域表(`projects` /
 `requirements` ×3(主表+history+messages)/ `task_steps` / `crons` / `cron_runs` / `project_jobs`
 / `orchestrate_plans` + `orchestrate_manifests` / `tool_usage` / `tool_configs`,见 §2.2b)
 对应的 Store **全部在 `src/server/index.ts:148-171` 里独立 `new`**(显式 new 的 Store 实例数
-是 9 个,但其中 `RequirementStore` 内部聚合了 historyStore + messageStore 两个内部
-`SqliteStore` —— 所以 9 个 store 实例映射到 14 张表),不挂在 `CoreDatabase` 上:
+是 7 个,但其中 `RequirementStore` 内部聚合了 historyStore + messageStore 两个内部
+`SqliteStore`),不挂在 `CoreDatabase` 上:
+
+> **cutover 删除清单(原 9 个 store 实例 → 现 7 个)**:原 `wikiStoreGlobal = new WikiStore(sessionDB)` /
+> `wikiStore = new ProjectWikiStore(wikiStoreGlobal)` / `wikiScanCursorStore = new WikiScanCursorStore(sessionDB)`
+> 三行 + 对应 store 文件 + `project_wiki` / `wiki_scan_cursors` 表的 DDL 维护**已全部移除**(plan-08 §1)。
+> Wiki v2 的 `WikiService` + repository 在 `src/server/wiki/` 子目录独立组装,不经此编排。
 
 ```typescript
-// src/server/index.ts:159-171
+// src/server/index.ts:159-171(cutover 后)
 const projectStore       = new ProjectStore(sessionDB);       // SqliteStore<project>
 const requirementStore   = new RequirementStore(sessionDB);   // SqliteStore<requirements>
-const wikiStore          = new ProjectWikiStore(wikiStoreGlobal);
-const wikiScanCursorStore= new WikiScanCursorStore(sessionDB);
 const taskStepStore      = new TaskStepStore(sessionDB);
 const cronStore          = new CronStore(sessionDB);
 const cronRunStore       = new CronRunStore(sessionDB);
@@ -765,8 +764,8 @@ const projectJobStore    = new ProjectJobStore(sessionDB);
 
 这些 Store 全部继承 `SqliteStore<T>`,构造时只接 `sessionDB` 一个参数 —— `SqliteStore` 的构造函数
 (`sqlite-store.ts:43-67`)从 `sessionDB.getDb()` 拿底层 `Database.Database` 句柄,**不依赖 CoreDatabase 的任何
-聚合关系**。换句话说:`CoreDatabase` 在这里降级为"DB 句柄 + 5 张自持表 + 5 个内核 store"的提供者,
-v0.8 工作流域 store(以及 §4.0.2 更正块提到的 `WikiStore`)把它当 **`getDb()` 提供者** 用,而不是当父聚合根。
+聚合关系**。换句话说:`CoreDatabase` 在这里降级为"DB 句柄 + 5 张自持表 + 内核 store"的提供者,
+v0.8 工作流域 store 把它当 **`getDb()` 提供者** 用,而不是当父聚合根。
 
 **这个边界是 v0.8 刻意的取舍**:
 - CoreDatabase 仍是会话核心(sessions/messages/turns/turn_state/tool_executions)的唯一权威,会话域不会
@@ -807,7 +806,7 @@ v0.8 M5 lazy store),不再是 5 个。本节重写以反映这层架构演变。
 prepare 失败。所以补列永远在第 1 步。涵盖:
 
 - `agents`:`knowledge_base_ids` + v0.8 `role_tag` / `subagents` / `wiki_anchors`(P0 §1.4 / §2.2)
-- `project_wiki`:`links`(P0 §3.3)
+- (历史)`project_wiki.links`(P0 §3.3):cutover 后该 ALTER 已移除(`db-migration.ts` 内对应代码块已删),表本身保留为未读取历史数据。
 - `providers`:`enable_concurrency_limit` / `max_concurrency`
 - `sessions`:6 个 token 列 + v0.8 D-B `context_*` 列(走 `SESSION_COLUMNS` 循环)+ `idx_sessions_agent_project`
 - `turns`:`turn_group`(`NOT NULL DEFAULT -1`,Step 4A 必填)+ 3 个 step 级 token 列 + `idx_turns_session_group`,然后 **`migrateTurnsToSteps`** 把旧行按 session 回填(`turn_group = -1` 的:user → 自身 seq,assistant → 最近前置 user 的 seq)。这是 legacy 单行 turn API → step-only 存储的唯一同步点(详见 §2.1 turns 表)
@@ -819,11 +818,8 @@ prepare 失败。所以补列永远在第 1 步。涵盖:
 14 张表全部在这一阶段内联建表 + 建索引,**严格按依赖顺序**(§2.2b 表逐行对应):
 
 1. `projects`(M0)+ `idx_projects_workspace`(回填 `workspace_dir` from legacy `path`)
-2. `project_wiki`(M2)→ 先 `migrateWikiTableSchema`(拆掉 legacy `UNIQUE(project_id, path)` / `project_id NOT NULL`
-   约束,否则全局 root 装不进去)→ 再 `migrateWikiDetailToDisk`(把 `detail` 列正文下沉到
-   `~/.zero-core/wiki/<area>/<safe-name>.md`,然后 DROP `detail` + `type` 列)→ 建三个索引
-   (`idx_wiki_project` / `idx_wiki_parent` / `idx_wiki_parent_path` —— archivist upsert 热路径)
-3. `wiki_scan_cursors`(M2)→ `idx_scan_cursor_arch_proj`
+2. ~~`project_wiki`(M2)→ `migrateWikiTableSchema` → `migrateWikiDetailToDisk` + 3 索引~~ ⚠️ **cutover (plan-08 §1) 后此段 DDL / migration 全部从 `db-migration.ts` 移除**(`db-migration.ts:646-648` 注释明确说明)。fresh core.db 不再建此表;升级 DB 上的存量表保留为未读取历史数据,无任何代码读写。
+3. ~~`wiki_scan_cursors`(M2)→ `idx_scan_cursor_arch_proj`~~ ⚠️ **同上,cutover 后此 DDL 移除**(`db-migration.ts:121` 注释)。游标已合并进 `wiki.db.wiki_repositories.indexed_revision` + `wiki_source_bindings.indexed_revision`。
 4. `requirements` + `requirement_status_history` + `requirement_messages`(M1)→ 各自索引
 5. `task_steps`(M1)
 6. `crons`(M1 / P0 §3.4)→ 补 5 个 telemetry 列 + `migrateCronScheduleToJson`(旧 string 行转结构化
@@ -835,9 +831,9 @@ prepare 失败。所以补列永远在第 1 步。涵盖:
 10. `tool_usage`(P0 §7.7 #4)→ `idx_tool_usage_tool` / `idx_tool_usage_session`
 11. `orchestrate_plans`(M3) / `orchestrate_manifests`(M3 D34)→ 各自索引
 
-> 关键依赖:`project_wiki` 必须在 `migrateWikiDetailToDisk` 之前先 `migrateWikiTableSchema`,因为后者要
+> 关键依赖(cutover 前,历史):`project_wiki` 必须在 `migrateWikiDetailToDisk` 之前先 `migrateWikiTableSchema`,因为后者要
 > 读 `detail` 列导出到磁盘然后 DROP —— 如果表还带着 legacy NOT NULL 约束,导出+DROP 会丢全局节点。
-> 这两步的顺序在源码注释里被反复强调(db-migration.ts:683-698)。
+> 这两步已随 cutover 整体移除,不再属于活动迁移路径。
 
 #### 阶段 3:构造 `SqliteStore`(此时所有列都已就位)
 
@@ -866,10 +862,15 @@ prepare 失败。所以补列永远在第 1 步。涵盖:
   `memory_entities`/`memory_relations` 已被 `db-migration.ts` DROP。当前 memory.json 迁移
   路径(若仍存在)不再写入任何表;MemoryNodeStore 是唯一存活的 memory 后端(见 §5)。
 
-> **v0.8 表没有任何 JSON 前身** —— `projects` / `project_wiki` / `requirements` / `crons` / `orchestrate_*`
+> **v0.8 表没有任何 JSON 前身** —— `projects` / `requirements` / `crons` / `orchestrate_*`
 > / `tool_usage` 等都是 DB-native 的,阶段 4 / 5 完全不涉及它们。这就是 §11.1 评的"v0.8 工作流域表
 > 全部 DB-native,省掉一类迁移路径":升级 DB 与 fresh DB 都只走阶段 1 + 阶段 2 的幂等 `CREATE TABLE IF NOT EXISTS`
 > + `safeAddColumn`。
+>
+> (cutover 后)原 v0.8 工作流域的 `project_wiki` / `wiki_scan_cursors` 表与对应 store 退出了 db-migration
+> 维护(DDL 段已删,fresh core.db 不再建)。Wiki v2 数据落独立 `db/wiki.db`,其 schema 由
+> [`wiki-schema.ts`](../../src/server/wiki/wiki-schema.ts) 的 `initWikiSchema` + `wiki_schema_version`
+> 表管理,不在 `db-migration.ts` 的 5 阶段之内。
 
 每步都做了"源文件存在性检查"+"读取验证",且**重复启动是幂等的**(`migrateFromJson` 内部判断目标表已有则跳过;
 `CREATE TABLE IF NOT EXISTS` / `safeAddColumn` / `safeAddIndex` 三件套对已存在对象全部 no-op)。
@@ -915,7 +916,7 @@ END;
 > **本节整体退役**。`src/server/kb-db.ts` 文件已删除，`kb_chunks` 表由 `runMigrations`
 > `DROP IF EXISTS`，`knowledge.db` 文件由 `DatabaseManager.open()` 在布局 bootstrap 前
 > 通过 `deleteRetiredKnowledgeDb()` 删除。以下内容为**历史描述，保留备查**，不再描述活动
-> 架构。知识/记忆统一以 `project_wiki` 磁盘镜像树承载（见 06 §2）。
+> 架构。cutover 后知识/记忆统一以**独立 `db/wiki.db`** 承载(见顶部 banner 与 [06 §0](./06-knowledge-subsystems.md#0-wiki-v2plan-01plan-08-cutover-后的当前模型));原 `project_wiki` 磁盘镜像树已退役。
 
 **历史信息**（`src/server/kb-db.ts:43-128`，**文件已删**）：
 
@@ -1021,10 +1022,10 @@ flowchart LR
 | 读 messages | O(N) | 全表扫描 |
 | 读 turns (by session) | O(N) | 无 `idx_turns_session_seq`,仍全扫;**v0.8 加了 `idx_turns_session_group(session_id, turn_group)`**(只优化 step-group 聚合,不优化单 session 全读) |
 | 写 turn | O(N) | N = 消息数，全量覆盖 |
-| KB 搜索 | O(M×D) | M = chunks, D = embedding dim |
+| KB 搜索 | (退役) | KB 子系统已删,知识检索走 `db/wiki.db.wiki_nodes_fts`(FTS5) |
 | FTS5 search | O(log N) | 倒排索引 |
 | KV get/set | O(1) | 主键 |
-| project_wiki getByParentAndPath | O(log N) | **v0.8 加 `idx_wiki_parent_path`**,archivist upsert 热路径(原全表扫,M2 之前是性能墙) |
+| ~~project_wiki getByParentAndPath~~ | (退役) | **cutover 后已删**;wiki 路径查询走 `wiki.db.wiki_nodes` 的 canonical path 主键 + partial unique index(`WHERE archived_at IS NULL`) |
 | tool_usage 查询 | O(log N) | `idx_tool_usage_tool` / `idx_tool_usage_session` |
 
 **架构师建议**：
@@ -1050,7 +1051,7 @@ flowchart LR
 - **core-database.ts 太大**(当前约 960 行,v0.8 后从 ~850 长到 960)。可拆为:sessions / messages / turns / turn_state / tool_executions 各一个文件,并让 CoreDatabase 退化为 DB lifecycle + 内核 store factory。注意 §4.0.3:v0.8 工作流域 store(ProjectStore / RequirementStore / CronStore / ...)已经在 `server/index.ts` 独立 new、**不**挂在 CoreDatabase 上,所以拆分压力其实只剩会话核心 5 张表 + 5 个内核 store。
 - **KB 搜索** 在大库时性能崩塌（O(M×D) 客户端循环）。
 - **message-store.ts** 是已迁移完成的历史遗留物，应删除或迁移到 `legacy/`。
-- **内存节点** 与 **旧版知识图谱** 同时存在——需要明确"哪个是默认"，否则用户数据写错地方。v0.8 又新增 `project_wiki`(第三套 wiki 系统)—— 目前它走 archivist 摘要 + 磁盘镜像树,**与 kb_*(RAG) / memory_nodes(主题聚合) 三路并存**,需要文档与 UI 明确各自适用场景(见 06 §2)。
+- **内存节点 vs 知识图谱 vs wiki** 的三路并存问题已在 cutover 中解决:KB / Gen1 Memory / 旧 `project_wiki` 全部退役,唯一活跃的长期记忆/项目知识路径是 `db/wiki.db`(详见 [06 §0](./06-knowledge-subsystems.md#0-wiki-v2plan-01plan-08-cutover-后的当前模型))。`agents.knowledgeBaseIds` 字段保留但已无 reader,可在后续 schema 演进中 DROP。
 - **没有数据导出**。用户无法迁移到新机器。v0.8 把表数翻倍(≈15→≈31 张,v0.8 清理僵尸 MemoryStore 后口径,见 §2 顶部口径块),导出/导入的紧迫性更高。
 - **`tool_usage`(P0) 与 `tool_executions`(旧) 并存**:两张表语义高度重叠(都是工具调用日志),只是字段集与归属不同(`tool_usage` 含 params/独立 session_id,`tool_executions` 含 input/output_preview)。长期应合并为一张 + 视图。
 - **`db-migration.ts` 已 1059 行**:14 张 v0.8 工作流域表的 DDL 全部内联在这个文件里(没有拆到各 store)。每次新增表都让这个文件更长。可考虑把每张表的 `CREATE TABLE` + 列定义下沉到对应 store 文件顶部(migration 只负责调度顺序)。

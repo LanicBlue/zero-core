@@ -53,4 +53,4 @@ private async archiveChildrenOf(parentSessionId: string): Promise<void> {
 
 - **深递归**:委托树深度 = 递归深度。实际委托链浅(2~3 层);withArchiveLock 防同 session 重复;无环(sessionId 单调派生,不会成环)。
 - **活跃子 loop teardown 阻塞**:teardown best-effort、MUST NOT throw(现有契约);卡住的 loop 不阻断父归档。
-- **listDelegatedTasks 查询**:[session-db.ts:1708](../../../src/server/session-db.ts#L1708) 已支持 `{parentSessionId}`,无需新查询。
+- **listDelegatedTasks 查询**:`session-db.ts:1708` 已支持 `{parentSessionId}`,无需新查询。

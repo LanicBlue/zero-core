@@ -38,7 +38,9 @@ agent-execution 14 hook 的完整触发点 + handler 映射见 [03 §Hook 系统
 
 > Session 级 `SessionStart` / `SessionClose` 由 **agent-service** 在 loop build/destroy 时 fire(实例生命周期),不在 `registerHooksForLoop` 注册。
 >
-> v0.8 后续(Step 1C):`memory-hooks.ts` / `requirement-hooks.ts` 已退役(见 §5.5 原则,ADR-025)。memory 合并进 per-agent wiki 子树,召回改由 `wiki-anchor-injection` 注入;requirement 工作流改走 project-work hook(订阅 data-change-hub)。
+> v0.8 后续(Step 1C):`memory-hooks.ts` / `requirement-hooks.ts` 已退役(见 §5.5 原则,ADR-025)。memory 合并进 per-agent wiki 子树;requirement 工作流改走 project-work hook(订阅 data-change-hub)。
+>
+> wiki-system-redesign cutover 后:wiki 注入从 v0.8 的 `wiki-anchor-injection` 改为 `wiki-context-compiler`(基于 `wikiGrants` + `wikiContext` 编译到 CallerCtx 的 prompt section),旧 anchor 模型与 `wiki-anchor-injection.ts` 文件已物理删除,详见 [06 §0.3 / §0.9](./06-knowledge-subsystems.md#03-grants--contextscope-与-prompt-编译)。
 
 ### 1.2 工具（最直接）
 
@@ -352,7 +354,7 @@ graph TB
 - ✅ 避免维护者误以为 KB 会自动参与每轮 Agent 上下文(现已不存在该路径)。
 - ✅ Wiki memory 是唯一知识/记忆后端,边界单一清晰。
 
-**Code evidence**(已删):`runtime/hooks/rag-hooks.ts`(已移除)、`server/agent-service.ts:createLoopForSession()`、`runtime/wiki-anchor-injection.ts`。
+**Code evidence**(已删):`runtime/hooks/rag-hooks.ts`(已移除)、`server/agent-service.ts:createLoopForSession()`、`runtime/wiki-anchor-injection.ts`(cutover 中物理删除,详见 [06 §0.3](./06-knowledge-subsystems.md#03-grants--contextscope-与-prompt-编译))。
 ### ADR-009 · config.ts 三件套耦合
 
 **Context**：单一文件同时承担 schema、默认、加载逻辑。
@@ -432,7 +434,7 @@ graph TB
 
 **Context**：项目曾存在 `memory-store.ts`(MemoryStore)、`memory-node-store.ts`(MemoryNodeStore) 和旧 `runtime/mcp-tools/memory-tools.ts`(memoryReadTool/memoryWriteTool)。
 
-**Decision**(原)：把旧 memory 代码标注为兼容/迁移残留。当前默认长期记忆路径是全局 Wiki tree：Extractor 与 compression 写入 Wiki，AgentLoop 通过 `wiki-anchor-injection.ts` 注入项目/Agent 锚点。
+**Decision**(原)：把旧 memory 代码标注为兼容/迁移残留。当前(cutover 后)默认长期记忆路径是独立 `db/wiki.db` 的 `wiki-root/memory/<agentId>/...` 子树;Extractor / compression 经 AgentLoop hooks 写入 Wiki,AgentLoop 经 `compileWikiContext` hook 把 grants/context 编译的 prompt section 注入 system prompt(取代旧 `wiki-anchor-injection.ts` 注入 anchor,后者已物理删除)。
 
 **后续收尾(本批)**:残留全部清理 ——
 - `memory-store.ts` + `memory-tools.ts`(MemoryStore + 旧工具):早已删除(僵尸)。
@@ -444,7 +446,7 @@ graph TB
 - ✅ 文档和运行路径一致,wiki memory 子树是唯一记忆后端。
 - ✅ `CoreDatabase` 认知负担消除(不再持旧 store)。
 
-**Code evidence**：`runtime/tools/index.ts`、`runtime/wiki-anchor-injection.ts`、`runtime/hooks/extraction-hooks.ts`、`runtime/compression-engine.ts`(MemoryNodeInput 现居此)。
+**Code evidence**：`runtime/tools/index.ts`、`runtime/hooks/extraction-hooks.ts`、`runtime/compression-engine.ts`(MemoryNodeInput 现居此)、`src/server/wiki/wiki-context-compiler.ts`(cutover 后取代旧 `runtime/wiki-anchor-injection.ts`,后者已物理删除)。
 ### ADR-014 · Zustand 单 Store 单关注点
 
 **Context**：渲染层有多个交互域（聊天 / Agent / MCP / KB / 设置 / 主题 / 页面 / 交互）。
@@ -584,7 +586,7 @@ graph TB
 **Decision**:**DB 是唯一真源,所有突变面收敛到 `SqliteStore` 三个写原语(`insertRow`/`updateRow`/`delete`);在这唯一的写出口统一发 `data:changed` 事件,renderer 增量订阅。**
 
 - **`data-change-hub`**(`server/data-change-hub.ts`):
-  - **白名单** `UI_COLLECTIONS`(agents/projects/crons/requirements/project_wiki)——`messages`/`turns`/`tool_usage` 等高频表(流式每 chunk 写)不广播,避免刷屏。
+  - **白名单** `UI_COLLECTIONS`(agents/projects/crons/requirements;cutover 后 `project_wiki` 已从此白名单移除,wiki v2 走独立 pull-on-display)——`messages`/`turns`/`tool_usage` 等高频表(流式每 chunk 写)不广播,避免刷屏。
   - **coalesce**——同 tick 内按 `(collection,id)` 去重(保留最新 op+record),批量写(archivist 扫数百节点)只触发一次 flush。
   - **推全对象**——create/update emit 时带 `record`(store 本就返回记录),renderer 收到直接 patch,**免 `GET /:id` 那一跳**;delete 只带 id。
 - **`SqliteStore`**:`insertRow/updateRow/delete` 调 `emitDataChange(table, id, op, record?)`;`update` 做 **no-op 检测**(patch 字段全等于现值 → 跳过写+不发通知,标量按数值比以兼容"数字存 TEXT 读回 `'2.0'`"的 round-trip 怪癖)。

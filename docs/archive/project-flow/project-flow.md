@@ -127,5 +127,5 @@ verdict 由调用方供入(用户或复盘 agent),合并在 `verify` 内(复合)
 
 ## 10. 相关
 
-- 代码权威:[requirement-store.ts](../../../src/server/requirement-store.ts)、[requirement-state-machine](../../../src/server/)、[project-work-hook-manager.ts](../../../src/server/project-work-hook-manager.ts)、[builtin-work-templates.ts](../../../src/server/builtin-work-templates.ts)、[verify-tool.ts](../../../src/runtime/tools/verify-tool.ts)、[pm-service.ts](../../../src/server/pm-service.ts)、[lead-service.ts](../../../src/server/lead-service.ts)、[data-change-hub.ts](../../../src/server/data-change-hub.ts)。
+- 代码权威:[requirement-store.ts](../../../src/server/requirement-store.ts)、[requirement-state-machine](../../../src/server/)、[project-work-hook-manager.ts](../../../src/server/project-work-hook-manager.ts)、[builtin-work-templates.ts](../../../src/server/builtin-work-templates.ts)、`verify-tool.ts`、[pm-service.ts](../../../src/server/pm-service.ts)、[lead-service.ts](../../../src/server/lead-service.ts)、[data-change-hub.ts](../../../src/server/data-change-hub.ts)。
 - 关联设计:[agent-context-fields](../agent-context-fields/agent-context-fields.md)、[runtime-push-ui-sync](../runtime-push-ui-sync/runtime-push-ui-sync.md)。

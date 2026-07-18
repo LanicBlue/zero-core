@@ -14,11 +14,11 @@
 - **活状态(瞬时)**:`agent-service.ts` `runStates` Map<sessionId,{agentId,isBusy,waiting,streamingText,toolCalls}>([:590](../../../src/server/agent-service.ts#L590)/[:1002](../../../src/server/agent-service.ts#L1002)/[:1591](../../../src/server/agent-service.ts#L1591));`isSessionRunning(sid)`([:576](../../../src/server/agent-service.ts#L576));`activeSessions` agentId→activeSessionId([:142](../../../src/server/agent-service.ts#L142)/[:437](../../../src/server/agent-service.ts#L437));`db.getMainSession(agentId)`;`listDelegatedTasks({parentSessionId})`([:798](../../../src/server/agent-service.ts#L798));`session_kind` chat/delegated。
 - **累积指标**:[`session-metrics.ts`](../../../src/server/session-metrics.ts) `SessionMetrics`(parentSessionId/spawnDepth/lifecycleState/inputTokens/outputTokens/cacheRead/cacheWrite/reasoningTokens/avgTurnLatencyMs/avgFirstTokenMs/totalTurns/errorCount/retryCount/toolCallCounts),`SessionMetricsHolder.recordTokenUsage`([:165](../../../src/server/session-metrics.ts#L165)),`getAllSessionMetrics`(session-manager [:318](../../../src/server/session-manager.ts#L318))。
 - **IPC**:`sessions:metrics`([ipc-api.ts:138](../../../src/shared/ipc-api.ts#L138))→ `AggregateMetrics + sessions`(session-router [:62](../../../src/server/session-router.ts#L62));前端 `DashboardPage.tsx` 消费。
-- **缺口**:`Platform` 工具([platform-tools.ts](../../../src/runtime/mcp-tools/platform-tools.ts))无 session resource —— agent 无法自省父 session 状态;活状态(runStates)与累积指标(SessionMetrics)是两套,无统一"父 session 状态"视图。
+- **缺口**:`Platform` 工具(`platform-tools.ts`)无 session resource —— agent 无法自省父 session 状态;活状态(runStates)与累积指标(SessionMetrics)是两套,无统一"父 session 状态"视图。
 
 ### provider 侧(②)
 
-- **静态配置**:`Platform` 'providers' resource([platform-tools.ts:128](../../../src/runtime/mcp-tools/platform-tools.ts#L128))只读 providers 表(name/type/enabled/modelCount/baseUrl/redacted apiKey)。
+- **静态配置**:`Platform` 'providers' resource(`platform-tools.ts:128`)只读 providers 表(name/type/enabled/modelCount/baseUrl/redacted apiKey)。
 - **并发快照**:`AggregateMetrics.concurrencySnapshot`(per provider active/waiting,[:115](../../../src/server/session-metrics.ts#L115)),`agentService.getConcurrencySnapshot()`(session-manager [:355](../../../src/server/session-manager.ts#L355))。
 - **usage 不带 provider**:`recordTokenUsage(sessionId, usage)`([session-manager.ts:290](../../../src/server/session-manager.ts#L290))无 providerName 参数;usage 按 **session** 累积,未按 provider。
 - **provider 可 mid-session 切换**:`config.providerName/modelId` 在 AgentLoop,`patch` 可改([agent-loop.ts:741](../../../src/runtime/agent-loop.ts#L741))→ **一个 session 历史上可能用过多个 provider**,按"当前 provider"聚合会错配。

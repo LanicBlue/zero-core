@@ -5,8 +5,8 @@
 ## 任务
 
 1. **`turn_state` 加列 `source`** TEXT,值 `user | work | cron | background`,默认 `background`。
-   - turn_state 是 SessionDB 自管(非 SqliteStore 表),用 `safeAddColumn`([session-db.ts:242](../../../src/server/session-db.ts#L242))。
-   - 同步改 INSERT([:763](../../../src/server/session-db.ts#L763))+ 各 SELECT(:854/:881 等)带 source。
+   - turn_state 是 SessionDB 自管(非 SqliteStore 表),用 `safeAddColumn`(`session-db.ts:242`)。
+   - 同步改 INSERT(`:763`)+ 各 SELECT(:854/:881 等)带 source。
 2. **入口设置 source**(按 turn 起始 user message 来源):
    - `chat-router.sendPrompt`([:67](../../../src/server/chat-router.ts#L67))→ `user`
    - `sendProjectPrompt`(带 workId,project-work-runner/lead-service/enrichment-runner)→ `work`

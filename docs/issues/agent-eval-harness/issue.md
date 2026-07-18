@@ -15,7 +15,7 @@ zero-core **完全没有 agent 质量评估基础设施**(`find -iname "*eval*"`
 
 ### 现成可复用的底座
 - **`mock-language-model.ts`**([src/runtime/mock-language-model.ts](../../../src/runtime/mock-language-model.ts))已实现"JSON fixture 重放事件序列"的 `LanguageModelV2` mock,被 `provider-factory` 在 `type=mock` 时调用,**目前只用于 E2E 测试**。这正是 eval harness 需要的"确定性重放"底座——eval 可直接复用,无需从零造。
-- **持久化齐全(生产 session replay 的原料)**:`steps` + `tool_executions` + `messages` + `sessions` 表已落全量 step([session-db.ts](../../../src/server/session-db.ts),`turns`→`steps` rename 后)。一个生产 session 的完整轨迹(每步消息 + 每次工具调用 + 结果)都在表里 → 可作为 eval 场景的**录制源**。
+- **持久化齐全(生产 session replay 的原料)**:`steps` + `tool_executions` + `messages` + `sessions` 表已落全量 step(`session-db.ts`,`turns`→`steps` rename 后)。一个生产 session 的完整轨迹(每步消息 + 每次工具调用 + 结果)都在表里 → 可作为 eval 场景的**录制源**。
 
 ### 缺口
 - **无场景库**:没有"标准 agent 任务 + 期望轨迹 / 期望终态"的 fixture 集合。

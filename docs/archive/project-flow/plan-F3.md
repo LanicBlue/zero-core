@@ -7,7 +7,7 @@
 2. **`plan` 补 worktree**:F2 的 plan 只迁态+写 Plan 段;F3 加 worktree 创建(复用 LeadService.pickupRequirement 的 worktree 部分),位置集中化。
 3. **worktree 集中化**:LeadService / GitIntegration 的 worktree 路径 `{workspace}.worktrees/req-{shortId}/` → `~/.zero-core/projects/{project}/{req-shortId}/`。
 4. **交付 work hook 改 ready**:[builtin-work-templates.ts](../../../src/server/builtin-work-templates.ts) 需求管理 work hook `requirements.create` → `requirements.ready`;actionPrompt 按新流程重写(finishBuild 提交、verify 复合判断)。
-5. **替换旧工具**:[tools/index.ts](../../../src/runtime/tools/index.ts) 移除 CreateRequirement / CreateRequirementWithDoc / verify 注册;Flow 唯一入口。
+5. **替换旧工具**:`tools/index.ts` 移除 CreateRequirement / CreateRequirementWithDoc / verify 注册;Flow 唯一入口。
 6. **RENAMED_TOOLS back-compat**:[tool-registry.ts](../../../src/core/tool-registry.ts) `CreateRequirement`/`CreateRequirementWithDoc`/`verify`/`create_requirement*` → `"Flow"`。
 7. **capability 注入**:agent-service 按新工具集收口(verify 复合需 delegateTask + pmService;Flow 注入条件更新)。
 8. **返工回路**:verify 打回 → 写 Decision Log + 发 rejected;需求状态退回(状态机 verify→? 的合法目标,如 build/discuss);交付 work 经 ready(或下次 fire)读到意见重走。

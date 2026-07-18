@@ -21,7 +21,7 @@
 6. **ConfirmRegistry emit**:[src/server/orchestrate-store.ts](../../../src/server/orchestrate-store.ts) ConfirmRegistry 加 emit/subscribe;index.ts 接 `runtime:orchestrate:changed`。
 7. **InputQueueStore 适配**:[src/server/input-queue-store.ts](../../../src/server/input-queue-store.ts) 现有 `emit(sessionId)` 发 `{sessionId, items}` 快照;在 emit 里**转调** `emitDataChange("runtime:input-queue", sessionId, "update", items)`(或 index.ts 订阅它的 subscribe 再转)。非零成本,需适配。
 8. **扩白名单**:[src/server/data-change-hub.ts](../../../src/server/data-change-hub.ts) `UI_COLLECTIONS` 加 `orchestrate_plans` / `task_steps` / `requirement_messages` / `sessions` + server 层 runtime 虚拟名(`runtime:mcp` / `runtime:metrics` / `runtime:input-queue` / `runtime:orchestrate`)。**`runtime:tasks` 不进白名单**(它走 agent:event,不经 hub)。
-9. **SessionDB 显式 emit**:[src/server/session-db.ts](../../../src/server/session-db.ts) `createSession` / `deleteSession` / `archiveSession` 三个原语调 `emitDataChange("sessions", id, op, record)`。**高频 UPDATE(updated_at/token/context/setMain 等)不 emit。**
+9. **SessionDB 显式 emit**:`src/server/session-db.ts` `createSession` / `deleteSession` / `archiveSession` 三个原语调 `emitDataChange("sessions", id, op, record)`。**高频 UPDATE(updated_at/token/context/setMain 等)不 emit。**
 
 ## 关键文件
 `index.ts` · `data-change-hub.ts` · `task-registry.ts` · `agent-loop.ts` · `mcp-manager.ts` · `session-manager.ts` · `orchestrate-store.ts` · `input-queue-store.ts` · `session-db.ts`

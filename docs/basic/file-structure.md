@@ -55,7 +55,7 @@ renderer / runtime 四个独立 JS 上下文**。
 - `transcript-delta.ts` — transcript 增量
 - `turn-recorder.ts` — 流式输出 / turn 持久化
 - `types.ts` — runtime 类型
-- `wiki-anchor-injection.ts` — wiki anchor → system/context 注入(记忆主线的运行时入口)
+- `wiki-context-compiler.ts` — wiki v2 grants/context → system prompt section 编译(cutover 后取代旧 `wiki-anchor-injection.ts`,后者已物理删除;详见 [arch/06 §0.3](../arch/06-knowledge-subsystems.md))
 
 ### hooks/(7 个 feature hook handler)
 
@@ -108,7 +108,7 @@ renderer / runtime 四个独立 JS 上下文**。
 
 **会话核心(CoreDatabase 自持,5 张表 + 5 个聚合 store)**:
 
-- `core-database.ts` — CoreDatabase,会话核心 + DB 句柄提供者(960 行,**不**聚合工作流域 store 也不聚合 WikiStore,见 05 §4.0.2 更正块 / §4.0.3)
+- `core-database.ts` — CoreDatabase,会话核心 + DB 句柄提供者(960 行,**不**聚合工作流域 store;wiki v2 在独立 `wiki.db`,不经 CoreDatabase 编排,见 05 §4.0.2 / §4.0.3)
 - `message-store.ts` / `turn-recorder`(runtime) — messages / turns / turn_state / tool_executions
 - `sqlite-store.ts` — SqliteStore 通用 CRUD 基类(列补齐 + JSON 序列化)
 - `key-value-store.ts` — KeyValueStore(KV,CoreDatabase eager 聚合)
@@ -122,13 +122,13 @@ renderer / runtime 四个独立 JS 上下文**。
 - KB:`kb-store.ts`、`kb-db.ts`、`kb-embeddings.ts`、`kb-ingest.ts`、`kb-search.ts`(本地文档 + chunk + embedding + cosine 检索,见 06 §3)
 - `memory-store.ts` — **已删(本批清理僵尸)**:legacy 实体-关系图谱 memory(`MemoryStore`,零运行时写入者,本批删文件)。`MemoryNodeStore` 保留(见上方会话核心区)。
 
-**v0.8 工作流域(9 张表 + 对应 store,在 `server/index.ts` 独立 new,不挂 CoreDatabase)**:
+**v0.8 工作流域(store 在 `server/index.ts` 独立 new,不挂 CoreDatabase;cutover 后原 wiki store 退役)**:
 
-- 项目域:`project-store.ts`(projects)、`project-job-store.ts`(project_jobs)、`project-wiki-store.ts`(project_wiki 兼容包装,内部委托 `wiki-node-store.ts`)
+- 项目域:`project-store.ts`(projects)、`project-job-store.ts`(project_jobs)
 - 需求域:`requirement-store.ts`(requirements 主表)、`requirement-doc-store.ts`(需求文档)、`requirement-state-machine.ts`、`requirement-hooks.ts`(需求状态机 + 通知)
 - 任务编排:`task-step-store.ts`(task_steps + history + messages)、`orchestrate-store.ts`(orchestrate_plans + manifests)
 - 定时:`cron-store.ts`(crons + cron_runs)、`cron-analysis.ts`
-- Wiki 镜像:`wiki-node-store.ts`(project_wiki 表 + **磁盘镜像树**,见 06 §2.5)、`wiki-scan-cursor-store.ts`(wiki_scan_cursors)、`wiki-skeleton-service.ts`(无 LLM 静态扫描器,建骨架,见 06 §2.6)、`archivist-git.ts`(git diff 增量)
+- (cutover 后)Wiki v2 子系统(`src/server/wiki/` 子目录 20 文件 + 顶层 `wiki-{router,admin-router,maintenance-router,operations,skeleton-service,backup-service}.ts`):独立 `db/wiki.db`(7 表 + FTS5),不经此编排。**cutover 前**的 `wiki-node-store.ts`(v0.8 project_wiki + 磁盘镜像树)/ `project-wiki-store.ts` / `wiki-scan-cursor-store.ts` 三个 store 文件已物理删除,`project_wiki` / `wiki_scan_cursors` 表退役(行保留为历史数据)。`wiki-skeleton-service.ts` 现为 orchestrator facade(P1-6 后 vestigial stub 已清,委托给 `WikiProjectIndexer`)。详见 [arch/06 §0](../arch/06-knowledge-subsystems.md)。
 - 工具遥测:`tool-usage-store.ts`(tool_usage)、`tool-execution-hooks.ts`、`tool-execution-router.ts`
 
 > **`tool_usage` vs `tool_executions` 语义重叠**(都是工具调用日志,字段集不同)—— 见 TRACKER open question,待用户拍板是否合并。

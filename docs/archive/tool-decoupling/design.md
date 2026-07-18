@@ -9,7 +9,7 @@
 
 ## 关键事实(审计 —— 现状已接近目标)
 
-- **`buildTool` wrapper 已经是 loop 侧关注点**([tool-factory.ts:155](../../../src/runtime/tools/tool-factory.ts#L155)):
+- **`buildTool` wrapper 已经是 loop 侧关注点**(`tool-factory.ts:155`):
   - PreToolUse hook(可 block = 权限闸,:173)
   - rate limiting(:186)
   - toolCallId stamping(:200)
