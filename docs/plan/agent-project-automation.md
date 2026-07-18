@@ -1275,7 +1275,8 @@ src/server/bundled-skills/agent-eval-harness/
 ├── scripts/
 │   ├── run-eval.mjs
 │   ├── analyze-session.mjs
-│   └── validate-profile.mjs
+│   ├── validate-profile.mjs
+│   └── adapters/
 ├── profiles/
 │   ├── default.yaml
 │   └── retrospective.yaml
@@ -1294,8 +1295,9 @@ src/server/bundled-skills/agent-eval-harness/
 - 读取 profile，选择 scenario 和 grader；
 - 准备隔离的临时环境或使用 profile 指定的项目命令；
 - 运行确定性断言、目标项目测试或可选模型评审；
-- 分析归档 session JSON，生成带证据的发现；
+- 通过 adapter 分析归档 session JSON 或显式传入的 OTLP trace，生成带证据的发现；
 - 输出稳定 JSON 和人类可读 Markdown 报告；
+- 可选生成 OpenTelemetry `gen_ai.evaluation.result` 产物或显式发送；
 - 由 Agent 调用目标 Project 的 Flow 工具创建 Found item 或更新本次
   `flow://current` 文档。
 
@@ -1305,7 +1307,10 @@ Skill 不负责：
 - 直接修改被评估项目代码；
 - 自动把发现移到 Ready/Build；
 - 决定用户是否必须阻断合并；
-- 直接读取 zero-core 私有数据库。
+- 直接读取 zero-core 私有数据库；
+- 向 AgentLoop、Provider、Session、Tool、Flow 或 Work runtime 注入 OTel
+  instrumentation；
+- 提供 zero-core 原生 collector/export pipeline 或观测 UI。
 
 ### 10.3 Profile 与 scenario
 
@@ -1315,6 +1320,8 @@ Profile 至少能配置：
 - scenario 选择；
 - outcome grader、trajectory grader 和可选 judge；
 - 超时、trial 数和成本预算；
+- input adapter、OpenTelemetry GenAI semantic-convention revision、内容采集/redaction
+  和可选 evaluation export；
 - 报告格式和退出码策略。
 
 Scenario 采用 outcome-first 模型，至少包含：
@@ -1329,7 +1336,32 @@ Scenario 采用 outcome-first 模型，至少包含：
 精确 tool-call 序列不是默认成功条件。只要最终状态满足需求，Agent 可以采用不同合法
 路径；trajectory grader 主要诊断违规、无效循环和工具契约问题。
 
-### 10.4 归档分析 Agent
+### 10.4 OpenTelemetry adapter
+
+OTel GenAI 是可选 trajectory 交换协议，不是 Eval 或 zero-core 业务状态的真相源。Skill
+内部保留版本化 normalized trajectory 与 Eval result；`archive-v1`、OTLP JSON 和 OTLP
+Protobuf adapter 只负责转换。grader 不直接绑定某版 `gen_ai.*` 字段。
+
+映射遵守以下约束：
+
+- Project Session 映射为 conversation/correlation identity，不创建跨越长期 Session 的
+  单一 trace；
+- Turn/invocation、subagent、model call、tool/MCP call 使用 span/link 关联；WorkRun 和
+  Flow identity 可使用 `zero_core.*` 扩展属性，但不能冒充标准 GenAI 语义；
+- 只有能可靠区分的 planning/task decomposition 才使用 `plan`，普通 reasoning 不生成
+  伪 span；
+- 只有 operation/response scoped grader 才投影 `gen_ai.evaluation.result`；trial/outcome
+  级结果不误用该事件，且 OTel 投影不能成为唯一报告；
+- profile pin 官方规范 revision 与 adapter version，未知属性、缺失 parent、乱序和
+  span link 必须可诊断、向前兼容；
+- prompt、reasoning、tool args/result 和模型输出默认不 export；内容采集和网络发送均需
+  profile 显式启用并 redaction。
+
+OTel adapter 完全位于 bundled Skill 内。zero-core 原生实时 spans、collector/export
+pipeline 和观测 UI 如需实施，进入独立 Agent Observability effort；不作为本 effort 的
+隐含前置或扩展范围。
+
+### 10.5 归档分析 Agent
 
 归档分析不需要核心增加“导出到 Flow”的专用通道。当前归档已经是普通 JSON：
 
@@ -1363,7 +1395,7 @@ checkpoint 可以保存在归档分析 Project 自己的 `.zero-core` 或 zero-c
 不修改原始 archive JSON。目标 Project 不存在或未注册时，结果保留在分析报告中等待
 路由，不自动创建 Project。
 
-### 10.5 执行结果与门禁
+### 10.6 执行结果与门禁
 
 runner 同时产出：
 
@@ -1374,7 +1406,7 @@ runner 同时产出：
 退出码只表达脚本运行结果。是否触发返工、阻断 transition 或只记录观察，由调用它的
 Work 和项目 FlowDefinition 决定，zero-core 不设置全局 Eval gate。
 
-### 10.6 自主演进与发行副本
+### 10.7 自主演进与发行副本
 
 现有 seed 语义保持：
 
@@ -1572,6 +1604,9 @@ commit 成功后若 DB index/outbox publish 失败，权威状态已经成立：
 | D40 | Definition Studio 使用持久 draft；draft 不进入 active runtime，publish 后才形成不可变 semantic version。 |
 | D41 | Project Management UI 拥有 Project 页面壳层、Overview 与模块编排；Wiki/Flow/Work/Session 仍拥有各自 API、状态和领域组件行为。 |
 | D42 | Project 页面一级区域为 Overview、Flows、Work、Wiki、Settings；旧 Requirement 只保留明确的 Legacy/Importer 边界。 |
+| D43 | OTel GenAI 只作为 Eval Skill 的可选 input/output adapter；版本化 normalized trajectory 与 Eval result 仍是 Skill 内部合同。 |
+| D44 | OTel adapter pin 官方规范 revision、默认离线和内容关闭；telemetry 不反推或回写 Flow/Work/Session 状态。 |
+| D45 | Eval effort 不修改或 instrument AgentLoop、Provider、Session、Tool、Flow/Work runtime；zero-core 原生 OTel 属于独立 Agent Observability effort。 |
 
 ## 15. 进入 plan 前的验收边界
 
@@ -1597,9 +1632,10 @@ commit 成功后若 DB index/outbox publish 失败，权威状态已经成立：
 13. 多 FlowDefinition catalog、独立 active binding、持久 draft 与 semantic/view 分离。
 14. dependency/lineage/related 分层可视化，以及不写回核心的进度 projection。
 15. 新 Flow 与旧 Requirement 完全解耦，以及显式 importer 的无损校验。
-16. `agent-eval-harness` bundled、seed、脚本、profile/scenario、归档扫描和自测。
+16. `agent-eval-harness` bundled、seed、脚本、profile/scenario、归档扫描、
+    archive-v1/OTLP adapters、OTel evaluation 投影、版本/redaction 和自测。
 17. 启动无自动 Eval Project 注册、无自动目标源码 Git 初始化、无自动 Flow、无自动
-    Eval 执行。
+    Eval 执行或 OTel exporter；Eval effort 不 instrument Core runtime。
 
 profile 的最终序列化格式、Eval CLI 的精确参数名、默认 Flow 模板内容和具体视觉样式
 可以由所属 effort 的 plan 确定；不得改变上述职责边界和已定决策。

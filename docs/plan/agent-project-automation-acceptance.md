@@ -186,13 +186,20 @@
 2. 运行 deterministic scenario 两次。
 3. 运行失败、timeout 和 cleanup fixture。
 4. 对 archive fixture 执行两轮增量分析。
+5. 对语义等价的 archive-v1、OTLP JSON 和 OTLP Protobuf fixtures 执行相同 grader。
+6. 显式生成一次 `gen_ai.evaluation.result`，再验证默认 profile 不发送 telemetry。
 
 - [ ] bundled/seed 资源完整且只使用 `skill://`。
 - [ ] deterministic 输出一致，JSON/Markdown/exit code 符合合同。
+- [ ] 三类 input adapter 进入同一版本化 normalized trajectory，等价输入得到相同结果。
+- [ ] operation/response evaluation event 映射、trial/outcome 非误用、规范 revision、
+  adapter version、未知属性和 redaction 可审计。
+- [ ] 默认离线且内容关闭；长期 Session 不是单一 trace，普通 reasoning 不冒充 `plan`。
 - [ ] timeout 无残留进程/临时目录。
 - [ ] 第二轮 archive 扫描不重复 finding。
 - [ ] 已注册目标收到带 session 证据的 Found；未知目标只保留报告。
-- [ ] 应用启动没有自动 Eval Project/Agent/Cron/运行。
+- [ ] 应用启动没有自动 Eval Project/Agent/Cron/运行或 OTel exporter。
+- [ ] Eval effort 没有修改或 instrument AgentLoop/Provider/Session/Tool/Flow/Work runtime。
 
 ## 13. 场景 L：安全、恢复与索引
 
@@ -249,6 +256,7 @@ npm run check:links
 - [ ] `skill://` / `flow://` 唯一且五个文件工具一致。
 - [ ] worktree 无 main fallback。
 - [ ] 新 Flow 独立于旧 Requirement。
-- [ ] Eval 是可自主演进的 Skill，无启动副作用和自动代码修复。
+- [ ] Eval 是可自主演进的 Skill，OTel 仅为版本化 adapter，无启动副作用、Core
+  instrumentation 和自动代码修复。
 - [ ] 活动文档、工具 schema、Prompt、UI 和实现一致。
 - [ ] 验收者给出明确 `PASS`，不是“基本可用”。
