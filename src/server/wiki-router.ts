@@ -64,6 +64,7 @@ import type {
 } from "../shared/wiki-search-types.js";
 import { getWikiService, getWikiSearchService } from "./wiki/wiki-runtime.js";
 import { isWikiServiceError, type WikiServiceError } from "./wiki/wiki-errors.js";
+import { emitDataChange } from "./data-change-hub.js";
 
 // ---------------------------------------------------------------------------
 // UI admin authority — server-injected, never read from request body
@@ -122,6 +123,7 @@ const FORBIDDEN_BODY_KEYS = new Set([
 	// 身份/权限字段(server-injected,不应出现在 input)
 	"callerCtx", "grants", "access", "compiledAccess", "wikiAccess",
 	"admin", "global", "is-admin", "isAdmin", "isGlobal",
+	"authority",
 	// Wiki service ctx 字段 + 身份同义词(server 注入,renderer 自报一律拒)
 	"agentId", "actorAgentId", "sessionId", "requestId", "policyRevision",
 	"projectId", "activeProjectId", "actor", "channel", "effectiveAccess",
@@ -601,11 +603,11 @@ function emitWikiNodeChange(
 	oldPath: string | undefined,
 	parentPath: string | undefined,
 ): void {
-	// Lazy import 避免 wiki-router 在测试 / 静态分析阶段强绑 hub。
-	// (data-change-hub 是 server 层单例,模块加载顺序未必先于 router。)
+	// Static ESM import at top of file (mirror wiki-admin-router.ts).
+	// try/catch tolerates hub-absence (e.g. unit tests that don't boot the hub)
+	// without blocking the mutation itself. ReferenceError on a misconfigured
+	// import must NOT be silenced — that would hide a wiring bug.
 	try {
-		// eslint-disable-next-line @typescript-eslint/no-var-requires
-		const { emitDataChange } = require("./data-change-hub.js") as typeof import("./data-change-hub.js");
 		emitDataChange("wiki_nodes", path, op === "delete" ? "delete" : "update", {
 			path,
 			op,
@@ -635,8 +637,6 @@ function emitWikiLinkChange(
 	relation: string,
 ): void {
 	try {
-		// eslint-disable-next-line @typescript-eslint/no-var-requires
-		const { emitDataChange } = require("./data-change-hub.js") as typeof import("./data-change-hub.js");
 		const id = `${source}|${target}|${relation}`;
 		emitDataChange("wiki_links", id, op === "unlink" ? "delete" : "update", {
 			source, target, relation, op,
@@ -648,8 +648,6 @@ function emitWikiLinkChange(
 
 function emitWikiSyncChange(newPath: string, oldPath: string): void {
 	try {
-		// eslint-disable-next-line @typescript-eslint/no-var-requires
-		const { emitDataChange } = require("./data-change-hub.js") as typeof import("./data-change-hub.js");
 		emitDataChange("wiki_sync", newPath, "update", {
 			path: newPath,
 			oldPath,

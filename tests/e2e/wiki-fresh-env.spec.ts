@@ -131,19 +131,37 @@ test.describe("plan-08 §7 — Wiki v2 fresh-env full lifecycle", () => {
 
 	// ─── Step 1: fresh wiki.db bootstraps the 4 fixed roots ───────────
 	test("fresh wiki.db bootstraps wiki-root + 3 namespace roots via /api/wiki", async () => {
-		// /api/wiki is the data plane (plan-06). expand on wiki-root should show
-		// the 3 namespace children (knowledge / memory / projects). Caller must
-		// be authorized — we use the zero management agent which has wiki-root
-		// scope by default (fresh-db-seed gives zero the Wiki tool).
-		// Drive through the admin plane first to read addresses.
-		// wiki-admin-router: POST /addresses/list (no body) →
-		// {ok:true, result:{addresses:[...]}}.
-		const addressesResp = await adminApi(port, "/api/wiki-admin/addresses/list", { method: "POST" });
-		const addresses = addressesResp.result.addresses;
-		// 3 static namespace addresses are bootstrapped by WikiAddressService seed
-		// (knowledge:// / memory:// / projects://) plus wiki-root canonical.
-		expect(Array.isArray(addresses)).toBe(true);
-		expect(addresses.length).toBeGreaterThanOrEqual(3);
+		// plan-01/plan-08 redesign: namespaces (knowledge / memory / projects)
+		// are canonical roots in wiki.db (children of wiki-root), NOT address
+		// book entries. The pre-redesign test asserted the address book had ≥3
+		// seeded namespace addresses — that is stale: WikiAddressService no
+		// longer seeds namespace addresses; the address book only holds
+		// user-created runtime:// aliases. The fresh-DB bootstrap contract now
+		// lives in wiki.db directly, so verify via the data plane.
+		//
+		// wiki-router: POST /api/wiki/expand body {address, limit, cursor?,
+		// includeLinks?} → {ok:true, result:{path, children:{items, cursor}}}.
+		// The wiki-router injects UI_ADMIN_GRANT internally, so no caller auth
+		// is required.
+		const expandResp = await adminApi(port, "/api/wiki/expand", {
+			method: "POST",
+			body: JSON.stringify({
+				address: "wiki-root",
+				limit: 50,
+				cursor: null,
+				includeLinks: false,
+			}),
+		});
+		expect(expandResp?.ok).toBe(true);
+		const items: Array<{ name?: string; path?: string; title?: string }> =
+			expandResp?.result?.children?.items ?? [];
+		// 3 namespace roots must bootstrap as wiki-root children.
+		const names = new Set(items.map((it) => it.name ?? it.title ?? it.path ?? ""));
+		expect(names.has("knowledge") || items.some((it) => (it.path ?? "").includes("knowledge"))).toBe(true);
+		expect(names.has("memory") || items.some((it) => (it.path ?? "").includes("memory"))).toBe(true);
+		expect(names.has("projects") || items.some((it) => (it.path ?? "").includes("projects"))).toBe(true);
+		// At least the 3 namespace roots + nothing fewer.
+		expect(items.length).toBeGreaterThanOrEqual(3);
 	});
 
 	// ─── Step 2: create an Agent with wikiGrants via REST ──────────────
@@ -194,7 +212,10 @@ test.describe("plan-08 §7 — Wiki v2 fresh-env full lifecycle", () => {
 			method: "POST",
 			body: JSON.stringify({
 				projectId,
-				sourceRoot: repo,
+				// sourceRoot MUST be relative (indexer rejects absolute paths).
+				// The repo path is already known via ProjectStore.workspaceDir;
+				// "" = index the whole repo.
+				sourceRoot: "",
 				defaultBranch: "main",
 			}),
 		});
@@ -203,12 +224,14 @@ test.describe("plan-08 §7 — Wiki v2 fresh-env full lifecycle", () => {
 		expect(binding.projectId).toBe(projectId);
 
 		// Trigger full index — long-running, but bounded for a tiny repo.
-		// Loop on status until sync_status != 'indexing' (timeout 30s).
+		// Loop on status until sync_status != 'indexing' (timeout 60s; was 30s
+		// but CI / Windows-defender scan of the git repo can push the initial
+		// index past 30s on a cold cache, causing a timing flake).
 		// wiki-admin-router: POST /repositories/status body {projectId} →
 		// {ok:true, result:{syncStatus, indexedRevision, ...}}. (repositories/list
 		// returns ALL bindings and takes no projectId filter — status is the
 		// per-project lookup.)
-		const deadline = Date.now() + 30_000;
+		const deadline = Date.now() + 60_000;
 		let status: string = "indexing";
 		while (Date.now() < deadline) {
 			const statusResp = await adminApi(port, "/api/wiki-admin/repositories/status", {
@@ -222,19 +245,30 @@ test.describe("plan-08 §7 — Wiki v2 fresh-env full lifecycle", () => {
 		expect(["idle", "ok", "ready", "synced"]).toContain(status);
 
 		// Verify the index actually produced wiki_nodes for src/index.ts by
-		// searching the data plane.
+		// searching the data plane. **Re-try the search for up to 15s after
+		// status flips to synced**: the FTS index can lag a few hundred ms
+		// behind the wiki_nodes commit, so an immediate query occasionally
+		// returns 0 hits on slower machines (timing flake observed in
+		// acceptance-final round-1).
 		// wiki-router: POST /wiki/search body {query, mode?, target?, limit?} →
 		// {ok:true, result:{wikiHits:[...], sourceHits:[...], ...}}.
-		const searchResp = await adminApi(port, "/api/wiki/search", {
-			method: "POST",
-			body: JSON.stringify({
-				query: "index.ts",
-				mode: "substring",
-				target: "wiki",
-				limit: 20,
-			}),
-		});
-		expect(searchResp.result.wikiHits.length).toBeGreaterThan(0);
+		let wikiHits: any[] = [];
+		const searchDeadline = Date.now() + 15_000;
+		while (Date.now() < searchDeadline) {
+			const searchResp = await adminApi(port, "/api/wiki/search", {
+				method: "POST",
+				body: JSON.stringify({
+					query: "index.ts",
+					mode: "substring",
+					target: "wiki",
+					limit: 20,
+				}),
+			});
+			wikiHits = searchResp?.result?.wikiHits ?? [];
+			if (wikiHits.length > 0) break;
+			await new Promise((r) => setTimeout(r, 400));
+		}
+		expect(wikiHits.length).toBeGreaterThan(0);
 	});
 
 	// ─── Step 4: snapshot + verify + restore via /api/wiki-maintain ───

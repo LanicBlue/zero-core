@@ -201,22 +201,42 @@ function ContentTab({ path }: { path: string }) {
 	const [submitting, setSubmitting] = useState(false);
 	const [conflictInfo, setConflictInfo] = useState<{ serverRevision: number | null } | null>(null);
 
-	// 进入编辑模式时,把当前 detail 拷成 draft。
-	useEffect(() => {
-		if (editing) {
-			setDraftSummary(detail?.node?.summary ?? "");
-			setDraftContent(detail?.content ?? "");
-			setConflictInfo(null);
-		}
-	}, [editing, detail]);
+	// stale-while-editing snapshot —— 进入 edit mode 时拍当前 detail 快照
+	// (node + content)。editing 期间即使 store 的 detailByPath[path] 被
+	// live-update 失效/重写(plan-06 §7 _applyNodeEvent 删 detail),ContentTab
+	// 仍从 snapshot + draft 渲染 edit UI,不进 loading 态、Save 按钮不消失、
+	// draft 不丢(acceptance §H.4 race + §E 草稿不丢契约)。
+	const [editSnapshot, setEditSnapshot] = useState<{
+		node: WikiNodeView;
+		content: string;
+	} | null>(null);
+
+	// handleEditStart 同步拍快照 + 种 draft(不用 useEffect):editing=true 与
+	// editSnapshot 设置在同一事件中完成,React 18 批处理 → 单次重渲染,避免
+	// useEffect 异步触发期间出现 editing=true 但 editSnapshot=null 的中间态
+	// (那个中间态会落到 Loading 分支,edit UI 一闪即丢)。**不**依赖 detail:
+	// 否则 editing 期间 store 失效/重写 detail 会覆盖用户 draft。
+	const handleEditStart = () => {
+		const node = detail?.node;
+		if (!node) return; // Edit 按钮仅在 detail 存在时渲染,这里只是兜底。
+		setDraftSummary(node.summary ?? "");
+		setDraftContent(detail?.content ?? "");
+		setConflictInfo(null);
+		setEditSnapshot({ node, content: detail?.content ?? "" });
+		setEditing(true);
+	};
 
 	const handleSave = async () => {
-		if (!detail?.node) return;
+		// 从 snapshot 读 base revision —— editing 期间 store 的 detail 可能已被
+		// live-update 失效,直接读 detail.node.revision 会让 expected_revision
+		// 错位(detail 为 undefined 时更会让 Save 早退 —— §H.4 race 暴露的 bug)。
+		const base = editSnapshot ?? detail;
+		if (!base?.node) return;
 		setSubmitting(true);
 		setConflictInfo(null);
 		const result = await updateNode({
 			address: path,
-			expected_revision: detail.node.revision,
+			expected_revision: base.node.revision,
 			summary: draftSummary,
 			content: draftContent,
 		});
@@ -231,26 +251,30 @@ function ContentTab({ path }: { path: string }) {
 			return;
 		}
 		setEditing(false);
+		setEditSnapshot(null);
 	};
 
 	const handleCancel = () => {
 		setEditing(false);
 		setConflictInfo(null);
+		setEditSnapshot(null);
+		// 编辑期间 store detail 若已被 live-update 失效,cancel 后 load useEffect
+		// 的 deps(path/tab)未变不会自动重拉 → UI 卡 Loading。手动拉一次恢复显示。
+		if (!useWikiStore.getState().detailByPath[path]) {
+			void loadDetail(path, "all");
+		}
 	};
 
-	if (!detail) {
-		return <div style={{ fontSize: 12, color: "var(--text-tertiary, #555)" }}>Loading…</div>;
-	}
-
-	if (detail.error) {
-		return <div style={{ fontSize: 12, color: "#f44336" }}>{detail.error}</div>;
-	}
-
-	if (editing) {
+	// stale-while-editing:editing 期间从 snapshot 渲染 edit UI,**先于** `!detail`
+	// 的 Loading 态。否则 store 失效 detail 后 ContentTab 重渲染进 Loading,edit
+	// UI 消失、Save 按钮 timeout(acceptance §H.4 round-2 race 暴露的真实 UX bug)。
+	// snapshot 在 handleEditStart 中同步设置(与 setEditing 在同一事件中批处理),
+	// 所以 editing=true 时 editSnapshot 必然非空;`&& editSnapshot` 是防御性兜底。
+	if (editing && editSnapshot) {
 		return (
 			<div>
 				<div style={{ fontSize: 12, color: "var(--text-tertiary, #555)", marginBottom: 8 }}>
-					Editing at revision <code>{detail.node?.revision}</code>.
+					Editing at revision <code>{editSnapshot.node.revision}</code>.
 					Server will reject if the node changed (WRITE_CONFLICT); your draft is preserved.
 				</div>
 				{conflictInfo && (
@@ -310,6 +334,14 @@ function ContentTab({ path }: { path: string }) {
 		);
 	}
 
+	if (!detail) {
+		return <div style={{ fontSize: 12, color: "var(--text-tertiary, #555)" }}>Loading…</div>;
+	}
+
+	if (detail.error) {
+		return <div style={{ fontSize: 12, color: "#f44336" }}>{detail.error}</div>;
+	}
+
 	return (
 		<div>
 			{detail.content === undefined ? (
@@ -334,7 +366,7 @@ function ContentTab({ path }: { path: string }) {
 			<div style={{ marginTop: 16 }}>
 				<button
 					type="button"
-					onClick={() => setEditing(true)}
+					onClick={handleEditStart}
 					style={primaryBtnStyle}
 					data-testid="wiki-edit-start"
 				>

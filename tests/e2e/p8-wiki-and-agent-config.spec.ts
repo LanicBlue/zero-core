@@ -76,7 +76,12 @@ test.describe("P8 — agent config page (harness fields round-trip)", () => {
 		await expect(nav).toBeVisible();
 		const navText = await nav.textContent({ timeout: 5_000 });
 		expect(navText).toContain("委派");
-		expect(navText).toContain("Wiki 锚点");
+		// plan-07 §3: Wiki 锚点 nav tab retired + replaced by Wiki access +
+		// Wiki context (AgentEditor.tsx SECTIONS). The retired "Wiki 锚点"
+		// label MUST NOT appear (regression guard against accidental revival).
+		expect(navText).toContain("Wiki access");
+		expect(navText).toContain("Wiki context");
+		expect(navText).not.toContain("Wiki 锚点");
 		// v0.8 §11.5: agent-as-tool retired — the "作为工具 (legacy)" nav tab
 		// was removed from AgentEditor.tsx along with the AgentToolStore/ExposeAsToolSection
 		// delete. Assert the retirement: the tab MUST NOT be present.
@@ -131,96 +136,15 @@ test.describe("P8 — agent config page (harness fields round-trip)", () => {
 		await expect(window.locator(".subagents-table tbody tr").first()).toBeVisible({ timeout: 5_000 });
 	});
 
-	test("wikiAnchors section: add a free anchor with manual node id + inject setting", async () => {
-		await window.locator("button[title='Agents']").click();
-		await expect(window.locator(".page-overlay").first()).toBeVisible({ timeout: 10_000 });
-
-		const agentItem = window.locator(".agents-list-item").first();
-		await agentItem.waitFor({ state: "visible", timeout: 10_000 });
-		await agentItem.click();
-		await expect(window.locator(".agent-editor").first()).toBeVisible({ timeout: 10_000 });
-
-		// Switch to wiki anchors section.
-		await window.locator(".editor-nav-item", { hasText: "Wiki 锚点" }).click();
-		await expect(window.getByText("Wiki anchors", { exact: false }).first()).toBeVisible({ timeout: 5_000 }).catch(async () => {
-			// The header text is "Wiki anchors" — fall back to the section hint text.
-			await expect(window.getByText("Free wiki anchors", { exact: false }).first()).toBeVisible({ timeout: 5_000 });
-		});
-
-		// Read-only auto-anchor info section is present (P8 §11.3).
-		await expect(window.getByText(/Auto anchors/i).first()).toBeVisible({ timeout: 5_000 });
-
-		// Use manual node id entry to avoid depending on the (currently broken)
-		// wiki:listByAnchors — pick the global root, which is always a valid
-		// free anchor for a zero-style agent.
-		await window.locator("input[type='checkbox']").first().check();
-		await window.locator("input[aria-label='Manual wiki node id']").fill("wiki-root:global");
-
-		// Set inject = system.
-		const injectSelect = window.locator("select[aria-label='Inject for new anchor']");
-		await injectSelect.selectOption("system");
-
-		await window.getByRole("button", { name: "Add", exact: true }).click();
-
-		// The row persisted in the anchors table.
-		await expect(window.locator(".anchors-table tbody tr").first()).toBeVisible({ timeout: 5_000 });
-
-		// Reload and verify round-trip.
-		await window.locator("button[title='Agents']").click();
-		await expect(window.locator(".page-overlay").first()).toBeVisible({ timeout: 10_000 });
-		const agentItem2 = window.locator(".agents-list-item").first();
-		await agentItem2.waitFor({ state: "visible", timeout: 10_000 });
-		await agentItem2.click();
-		await expect(window.locator(".agent-editor").first()).toBeVisible({ timeout: 10_000 });
-		await window.locator(".editor-nav-item", { hasText: "Wiki 锚点" }).click();
-		await expect(window.locator(".anchors-table tbody tr").first()).toBeVisible({ timeout: 5_000 });
-
-		// The selected inject value round-tripped.
-		const persistedInject = window.locator(".anchors-table tbody tr select[aria-label*='Inject']").first();
-		await expect(persistedInject).toHaveValue("system", { timeout: 5_000 });
-	});
-
-	test("wikiAnchors section: removing the LAST anchor persists across reload (regression: undefined dropped in JSON)", async () => {
-		// Regression guard: clearing wikiAnchors to empty must send an explicit
-		// signal (`[]`), not `undefined` — JSON.stringify drops undefined, so the
-		// backend merge would keep the old list and the anchor would reappear.
-		await window.locator("button[title='Agents']").click();
-		await expect(window.locator(".page-overlay").first()).toBeVisible({ timeout: 10_000 });
-
-		const agentItem = window.locator(".agents-list-item").first();
-		await agentItem.waitFor({ state: "visible", timeout: 10_000 });
-		await agentItem.click();
-		await expect(window.locator(".agent-editor").first()).toBeVisible({ timeout: 10_000 });
-
-		await window.locator(".editor-nav-item", { hasText: "Wiki 锚点" }).click();
-
-		// Add one anchor (so there's exactly one to remove).
-		await window.locator("input[type='checkbox']").first().check();
-		await window.locator("input[aria-label='Manual wiki node id']").fill("wiki-root:global");
-		await window.getByRole("button", { name: "Add", exact: true }).click();
-		await expect(window.locator(".anchors-table tbody tr").first()).toBeVisible({ timeout: 5_000 });
-
-		// Remove it — this clears wikiAnchors to empty (the bug scenario).
-		await window.locator(".anchors-table tbody tr").first()
-			.getByRole("button", { name: "Remove" }).click();
-
-		// Table empties → the "No free anchors" hint shows.
-		await expect(window.getByText(/No free anchors/i).first()).toBeVisible({ timeout: 5_000 });
-
-		// Reload the editor (close + reopen) and verify the anchor STAYS gone.
-		// (Pre-fix, the undefined-clear was dropped in JSON, the backend kept the
-		// old list, and the row reappeared here.)
-		await window.locator("button[title='Agents']").click();
-		await expect(window.locator(".page-overlay").first()).toBeVisible({ timeout: 10_000 });
-		const agentItem2 = window.locator(".agents-list-item").first();
-		await agentItem2.waitFor({ state: "visible", timeout: 10_000 });
-		await agentItem2.click();
-		await expect(window.locator(".agent-editor").first()).toBeVisible({ timeout: 10_000 });
-		await window.locator(".editor-nav-item", { hasText: "Wiki 锚点" }).click();
-
-		await expect(window.getByText(/No free anchors/i).first()).toBeVisible({ timeout: 5_000 });
-		await expect(window.locator(".anchors-table tbody tr")).toHaveCount(0);
-	});
+	// plan-07 SS3 / plan-08 SS1: the two former wikiAnchors UI tests (add a free
+	// anchor + remove-last-anchor-persists-[]) were retired along with the
+	// WikiAnchorsSection / AgentRecord.wikiAnchors column. The wikiGrants
+	// equivalents (add grant + remove-last-grant-persists-[]) are covered in
+	// tests/e2e/wiki-management.spec.ts SSH.6 (Wiki Access publish flow) and
+	// SG.6 (deleting last wiki grant persists [] across reload). Do NOT revive
+	// anchors-based assertions here -- the section is gone from
+	// AgentEditor.tsx SECTIONS, and a parallel grant test in p8 would just
+	// duplicate wiki-management.spec.ts coverage.
 });
 
 // ── Wiki browser rendering — ROUTE_MAP + backend router fixed ──────────
